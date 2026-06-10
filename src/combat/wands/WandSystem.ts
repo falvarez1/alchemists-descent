@@ -1,6 +1,6 @@
 import type { CardId, Ctx, Projectile, WandFrame, WandsApi, WandState } from '@/core/types';
-import { Cell } from '@/sim/CellType';
-import { fireColor, smokeColor } from '@/sim/colors';
+import { Cell, isGas, isLiquid } from '@/sim/CellType';
+import { acidColor, emberColor, fireColor, smokeColor, stoneColor } from '@/sim/colors';
 import { CARD_DEFS } from './cards';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 
@@ -50,7 +50,22 @@ export const TRIGGERED: WeakMap<Projectile, CastAction[]> = new WeakMap();
 /** Cards a lit waystone can gift (weighted toward build-shaping mods). */
 const MOD_POOL: CardId[] = ['speed', 'heavy', 'spread', 'bounce', 'trigger', 'infuser', 'double', 'triple'];
 /** Cards a first visit to a new depth can gift. */
-const PROJ_POOL: CardId[] = ['spark', 'bomb', 'lightning', 'flame', 'dig', 'warp', 'blackhole'];
+const PROJ_POOL: CardId[] = [
+  'spark',
+  'bomb',
+  'lightning',
+  'flame',
+  'dig',
+  'warp',
+  'blackhole',
+  'vitriol',
+  'frostshard',
+  'icelance',
+  'wisp',
+  'meteor',
+  'conjure',
+  'emberstorm',
+];
 /** waystoneLit grant: chance the gift is a modifier/multicast rather than a projectile. */
 const WAYSTONE_MOD_BIAS = 0.75;
 
@@ -228,6 +243,97 @@ export class WandSystem implements WandsApi {
       const p: Projectile = { x, y, vx: 0, vy: 0, type: 'blackhole', vortexRad: sp.blackhole.baseRadius!, life: 240, age: 0, charging: true, hostile: false };
       ctx.projectiles.push(p);
       ctx.input.activeChargingBlackHole = p;
+    } else if (action.card === 'vitriol') {
+      // Stream card: a spray of REAL acid particles that pool where they land.
+      const count = 4 + Math.max(0, Math.round(action.dmgMul) - 1) * 2;
+      for (let j = 0; j < count; j++) {
+        const a = jitter() + (Math.random() - 0.5) * 0.3;
+        const spd = (3.0 + Math.random() * 2.2) * action.speedMul;
+        ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd, Cell.Acid, acidColor(),
+          30 + Math.floor(Math.random() * 20), { grav: 0.05, glow: 0.8 });
+      }
+      if (ctx.state.frameCount % 6 === 0) ctx.audio.noiseBurst(0.1, 1400, 0.07, true);
+    } else if (action.card === 'frostshard') {
+      const a = jitter();
+      const v = 11 * action.speedMul;
+      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'iceshard', life: 180, age: 0, charging: false, hostile: false, mul: action.dmgMul };
+      ctx.projectiles.push(p);
+      this.markProjectile(ctx, p, action);
+      ctx.audio.tone(1100, 500, 0.08, 'sine', 0.09);
+    } else if (action.card === 'icelance') {
+      const a = jitter();
+      const v = 16 * action.speedMul;
+      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'icelance', life: 140, age: 0, charging: false, hostile: false, mul: action.dmgMul };
+      ctx.projectiles.push(p);
+      this.markProjectile(ctx, p, action);
+      ctx.audio.tone(1500, 700, 0.1, 'triangle', 0.1);
+    } else if (action.card === 'wisp') {
+      // dmgMul >= 2 releases a pair of seekers.
+      const seekers = action.dmgMul >= 2 ? 2 : 1;
+      for (let n = 0; n < seekers; n++) {
+        const a = jitter() + (n > 0 ? 0.5 : 0);
+        const v = 4.5 * action.speedMul;
+        const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'wisp', life: 240, age: 0, charging: false, hostile: false, mul: action.dmgMul };
+        ctx.projectiles.push(p);
+        this.markProjectile(ctx, p, action);
+      }
+      ctx.audio.tone(700, 1200, 0.1, 'sine', 0.07);
+    } else if (action.card === 'meteor') {
+      // Lobbed in a heavy arc — the upward bias makes the descent count.
+      const a = jitter();
+      const v = 6.5 * action.speedMul;
+      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2.2, type: 'meteor', life: 300, age: 0, charging: false, hostile: false, mul: action.dmgMul };
+      ctx.projectiles.push(p);
+      this.markProjectile(ctx, p, action);
+      ctx.audio.tone(120, 40, 0.4, 'sawtooth', 0.18);
+    } else if (action.card === 'conjure') {
+      // Raise a disc of real stone at the cursor, clamped to casting range 130.
+      let tx = ctx.input.mouse.x,
+        ty = ctx.input.mouse.y;
+      const dx = tx - x,
+        dy = ty - y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 130) {
+        tx = x + (dx / dist) * 130;
+        ty = y + (dy / dist) * 130;
+      }
+      const world = ctx.world;
+      const cxx = Math.floor(tx),
+        cyy = Math.floor(ty);
+      for (let oy = -6; oy <= 6; oy++) {
+        for (let ox = -6; ox <= 6; ox++) {
+          if (ox * ox + oy * oy > 36) continue;
+          const X = cxx + ox,
+            Y = cyy + oy;
+          if (!world.inBounds(X, Y)) continue;
+          const ci = world.idx(X, Y);
+          const t = world.types[ci];
+          if (t === Cell.Empty || isLiquid(t) || isGas(t)) {
+            world.types[ci] = Cell.Stone;
+            world.colors[ci] = stoneColor();
+            world.life[ci] = 0;
+            world.charge[ci] = 0;
+          }
+        }
+      }
+      ctx.particles.burst(cxx, cyy - 4, 8, null, stoneColor, 1.2, { grav: 0.08 });
+      ctx.audio.tone(180, 60, 0.18, 'triangle', 0.2);
+    } else if (action.card === 'emberstorm') {
+      // A fountain of real embers that smoulder where they land.
+      const count = 16 + Math.max(0, Math.round(action.dmgMul) - 1) * 6;
+      for (let j = 0; j < count; j++) {
+        ctx.particles.spawn(
+          x,
+          y - 1,
+          (Math.random() - 0.5) * 3.2 * action.speedMul,
+          -1.4 - Math.random() * 2.2,
+          Cell.Ember,
+          emberColor(),
+          100 + Math.floor(Math.random() * 80),
+          { grav: 0.06, glow: 1.5 },
+        );
+      }
+      ctx.audio.flame();
     }
   }
 

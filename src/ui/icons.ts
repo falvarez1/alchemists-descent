@@ -125,6 +125,10 @@ export const ELEMENT_ICON: Record<number, string> = {
 const LEGACY_CARD_ICON: Record<string, string> = {
   spark: 'bolt', bomb: 'bomb', lightning: 'lightning', flame: 'flame',
   dig: 'dig', warp: 'warp', blackhole: 'blackhole',
+  // Upgrade-port payload cards borrow the closest existing glyphs until
+  // they get bespoke pixel art.
+  vitriol: 'acid', frostshard: 'ice', icelance: 'ice', wisp: 'bolt',
+  meteor: 'bomb', conjure: 'wall', emberstorm: 'ember',
 };
 
 /** Card id → PIXEL_ICONS key (modifier/multicast cards live under 'card-*'). */

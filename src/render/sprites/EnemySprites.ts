@@ -172,6 +172,109 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     PE(6, 5, hg * 0.8, hg * 0.32, hg);
     PE(-6, 4, hg * 0.5, hg * 0.2, hg * 0.65);
     PE(6, 4, hg * 0.5, hg * 0.2, hg * 0.65);
+  } else if (e.kind === 'bat') {
+    // --- Cave bat: 2-pose wing snap, glinting red eyes ---
+    const hover = Math.round(Math.sin(e.bobPhase) * 1.2);
+    const Q = (dx: number, dy: number, r: number, g: number, b: number): void =>
+      P(dx, dy + hover, r, g, b);
+    const V: RGB = [0.36, 0.22, 0.46],
+      VD: RGB = [0.2, 0.11, 0.27];
+    const wingUp = frameCount % 10 < 5;
+    // body nub
+    Q(-1, 2, ...V); Q(0, 2, ...V); Q(1, 2, ...V);
+    Q(-1, 1, ...VD); Q(0, 1, ...V); Q(1, 1, ...VD);
+    Q(0, 0, ...VD);
+    // ears
+    Q(-1, 3, ...VD); Q(1, 3, ...VD);
+    // eyes glint red (emissive — they pierce the dark)
+    const ef = 0.8 + Math.random() * 0.5;
+    PE(look === 1 ? 0 : -1, 2 + hover, ef * boost * 0.4, 0.04, 0.04);
+    PE(look === 1 ? 1 : 0, 2 + hover, ef * boost * 0.4, 0.04, 0.04);
+    // wings: snap between raised and swept
+    if (wingUp) {
+      Q(-2, 3, ...V); Q(-3, 4, ...VD); Q(-4, 4, ...VD);
+      Q(2, 3, ...V); Q(3, 4, ...VD); Q(4, 4, ...VD);
+    } else {
+      Q(-2, 1, ...V); Q(-3, 1, ...VD); Q(-4, 0, ...VD);
+      Q(2, 1, ...V); Q(3, 1, ...VD); Q(4, 0, ...VD);
+    }
+  } else if (e.kind === 'spitter') {
+    // --- Rooted toxic bulb: swaying stalk, maw recoils after each lob ---
+    const sway = Math.round(Math.sin(frameCount * 0.04 + e.bobPhase) * 1.2);
+    const rec = (e.recoil ?? 0) > 0 ? Math.round((e.recoil ?? 0) * 0.18) : 0;
+    const T: RGB = [0.3, 0.55, 0.18],
+      TD: RGB = [0.16, 0.32, 0.1],
+      TB: RGB = [0.55, 0.85, 0.25];
+    // root claws
+    for (let dx = -4; dx <= 4; dx += 2) P(dx, 0, ...TD);
+    for (let dx = -3; dx <= 3; dx++) P(dx, 1, ...TD);
+    // stalk
+    for (let dy = 2; dy <= 5; dy++) {
+      const sx2 = Math.round((sway * (dy - 1)) / 5);
+      P(sx2 - 1, dy, ...TD); P(sx2, dy, ...T); P(sx2 + 1, dy, ...TD);
+    }
+    // bulb head (recoils down when it spits)
+    const hy = 8 - rec;
+    for (let dy = -2; dy <= 2; dy++) {
+      const hw = Math.abs(dy) === 2 ? 2 : 3;
+      for (let dx = -hw; dx <= hw; dx++) {
+        const c = Math.abs(dx) === hw ? TD : T;
+        P(dx + sway, hy + dy, ...c);
+      }
+    }
+    // glowing maw, brighter as the next shot charges
+    const charge = e.attackCd < 40 ? 1 - e.attackCd / 40 : 0;
+    const mawG = (0.5 + charge * 0.9) * boost * 0.5;
+    PE(sway + look, hy, mawG * 0.6, mawG, mawG * 0.2);
+    PE(sway + look * 2, hy, mawG * 0.5, mawG * 0.85, mawG * 0.15);
+    // venom sacs
+    P(sway - 2, hy + 1, ...TB);
+    P(sway + 2, hy - 1, ...TB);
+  } else if (e.kind === 'bomber') {
+    // --- Volatile orange slime: jiggles, then strobes white as the fuse burns ---
+    if (e.grounded && !e.prevG && Math.abs(e.vy) < 0.1) e.splat = 8;
+    e.prevG = e.grounded;
+    if (e.splat > 0) e.splat--;
+    let sy = 1,
+      sx = 1;
+    if (!e.grounded) {
+      sy = 1 + Math.min(0.45, Math.abs(e.vy) * 0.13);
+      sx = 1 / sy;
+    } else if (e.splat > 0) {
+      sx = 1 + e.splat * 0.05;
+      sy = 1 / sx;
+    } else {
+      const w = Math.sin(frameCount * 0.12 + e.bobPhase) * 0.09;
+      sx = 1 + w;
+      sy = 1 - w;
+    }
+    // fuse strobe: flashes white faster as detonation nears
+    const fusing = (e.fusing ?? 0) > 0;
+    const strobe =
+      fusing && Math.floor(frameCount / Math.max(1, Math.floor((e.fusing ?? 0) / 6))) % 2 === 0;
+    const O: RGB = strobe ? [2.0, 2.0, 1.6] : [0.95, 0.45, 0.08];
+    const OD: RGB = strobe ? [1.4, 1.4, 1.1] : [0.55, 0.22, 0.03];
+    const PB = strobe ? PE : P; // a strobing bomber lights itself
+    const H = Math.max(4, Math.round(def.h * sy));
+    for (let dy = 0; dy < H; dy++) {
+      const t = dy / H;
+      const hw = Math.max(1, Math.round(def.halfW * sx * Math.sqrt(Math.max(0, 1 - t * t * 0.92))));
+      for (let dx = -hw; dx <= hw; dx++) {
+        const c = Math.abs(dx) === hw || dy === 0 ? OD : O;
+        PB(dx, dy, ...c);
+      }
+    }
+    // stubby fuse on top, spark when lit
+    PB(0, H, ...OD);
+    PB(0, H + 1, ...OD);
+    if (fusing) {
+      const sp = 1.4 + Math.random() * 0.8;
+      PE(0, H + 2, sp * boost * 0.5, sp * boost * 0.4, 0.1);
+    } else {
+      const eyeY = Math.max(1, Math.round(H * 0.4));
+      P(look - 1, eyeY, 0.05, 0.02, 0.02);
+      P(look + 1, eyeY, 0.05, 0.02, 0.02);
+    }
   } else if (e.kind === 'golem') {
     // --- Heavy stride driven by real displacement, arms, breath, pulsing core ---
     const gx2 = e.x + (e.fx || 0);

@@ -3,8 +3,8 @@ import { BOUNCE_COUNTS, INFUSED, TRIGGERED } from '@/combat/wands/WandSystem';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, Projectile, ProjectilesApi } from '@/core/types';
-import { Cell, isGas } from '@/sim/CellType';
-import { COLOR_FN, EMPTY_COLOR, iceColor, packRGB } from '@/sim/colors';
+import { Cell, isGas, isSolid } from '@/sim/CellType';
+import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { probeHollow } from '@/world/secrets';
 
@@ -13,6 +13,73 @@ function solidAt(world: World, x: number, y: number): boolean {
   if (!world.inBounds(x, y)) return true;
   const c = world.types[world.idx(x, y)];
   return c !== Cell.Empty && !isGas(c);
+}
+
+/** Frost shard impact: freeze standing water, rime exposed surfaces — never inside the player. */
+function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
+  const world = ctx.world;
+  cx = Math.floor(cx);
+  cy = Math.floor(cy);
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy > radius * radius) continue;
+      const X = cx + dx,
+        Y = cy + dy;
+      if (!world.inBounds(X, Y)) continue;
+      // never crust over the wizard
+      if (Math.abs(X - ctx.player.x) <= 5 && Y <= ctx.player.y + 1 && Y >= ctx.player.y - 18)
+        continue;
+      const ci = world.idx(X, Y);
+      const t = world.types[ci];
+      if (t === Cell.Water) {
+        world.types[ci] = Cell.Ice;
+        world.colors[ci] = iceColor();
+      } else if (t === Cell.Empty && Math.random() < 0.35) {
+        // thin rime on solid-adjacent air cells
+        let nearSolid = false;
+        for (let k = 0; k < 4 && !nearSolid; k++) {
+          const nx = X + (k === 0 ? 1 : k === 1 ? -1 : 0);
+          const ny = Y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+          if (world.inBounds(nx, ny) && isSolid(world.types[world.idx(nx, ny)])) nearSolid = true;
+        }
+        if (nearSolid) {
+          world.types[ci] = Cell.Ice;
+          world.colors[ci] = iceColor();
+        }
+      }
+    }
+  }
+  ctx.particles.burst(cx, cy, 8, null, iceColor, 1.8, { glow: 1.6, grav: 0.03 });
+  ctx.audio.shatter();
+}
+
+/** Deposit a disc of liquid cells (glob splashes, future flask spills). */
+function splashLiquid(
+  ctx: Ctx,
+  cx: number,
+  cy: number,
+  type: number,
+  colorFn: () => number,
+  radius: number,
+): void {
+  const world = ctx.world;
+  cx = Math.floor(cx);
+  cy = Math.floor(cy);
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy > radius * radius) continue;
+      const X = cx + dx,
+        Y = cy + dy;
+      if (!world.inBounds(X, Y)) continue;
+      const ci = world.idx(X, Y);
+      const t = world.types[ci];
+      if (t === Cell.Empty || isGas(t)) {
+        world.types[ci] = type;
+        world.colors[ci] = colorFn();
+        world.life[ci] = 0;
+      }
+    }
+  }
 }
 
 /**
@@ -241,8 +308,48 @@ export class Projectiles implements ProjectilesApi {
         continue;
       }
 
+      // Per-type gravity / steering
       if (p.type === 'bomb' || p.type === 'fireball' || p.type === 'frostbolt')
         p.vy += p.type === 'bomb' ? 0.14 : p.type === 'fireball' ? 0.02 : 0.01;
+      else if (p.type === 'iceshard') p.vy += 0.04;
+      else if (p.type === 'meteor') p.vy += 0.07;
+      else if (p.type === 'acidglob') p.vy += 0.12;
+      else if (p.type === 'wisp') {
+        // Seek the nearest enemy within 240px
+        let best = null,
+          bestD = 240 * 240;
+        for (const e of ctx.enemies) {
+          const dx = e.x - p.x,
+            dy = e.y - 5 - p.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < bestD) {
+            bestD = d2;
+            best = e;
+          }
+        }
+        if (best) {
+          const d = Math.sqrt(bestD) || 1;
+          p.vx += ((best.x - p.x) / d) * 0.42;
+          p.vy += ((best.y - 5 - p.y) / d) * 0.42;
+          const spd = Math.hypot(p.vx, p.vy);
+          if (spd > 5.2) {
+            p.vx = (p.vx / spd) * 5.2;
+            p.vy = (p.vy / spd) * 5.2;
+          }
+        }
+        if (ctx.state.frameCount % 2 === 0) {
+          ctx.particles.spawn(
+            p.x,
+            p.y,
+            (Math.random() - 0.5) * 0.25,
+            (Math.random() - 0.5) * 0.25,
+            null,
+            packRGB(120, 230, 255),
+            12,
+            { grav: 0, glow: 2.4 },
+          );
+        }
+      }
 
       // Infuser card (Wave D): the wand charged this projectile from the
       // flask — it sheds 2 real cells of that material per frame in its wake.
@@ -288,8 +395,55 @@ export class Projectiles implements ProjectilesApi {
           break;
         }
 
+        // Ice lance: pierce, deep-freeze, keep flying
+        if (!p.hostile && p.type === 'icelance') {
+          for (const e of ctx.enemies) {
+            if (e.flash > 2) continue; // already struck by this lance pass
+            const dx = e.x - p.x,
+              dy = e.y - 5 - p.y;
+            if (dx * dx + dy * dy < 130) {
+              ctx.enemyCtl.damage(e, 30 * (p.mul ?? 1), p.vx * 0.4, -0.8);
+              e.status.frozen = Math.max(e.status.frozen, 150);
+              ctx.particles.burst(e.x, e.y - 5, 10, null, () => packRGB(200, 240, 255), 2.2, {
+                glow: 1.8,
+                grav: 0.08,
+              });
+              ctx.audio.tone(900 + Math.random() * 300, 130, 0.12, 'sine', 0.08);
+            }
+          }
+          // freeze water in the wake
+          for (let fz = -2; fz <= 2; fz++) {
+            for (let fzx = -2; fzx <= 2; fzx++) {
+              const wx2 = gx + fzx,
+                wy2 = gy + fz;
+              if (
+                world.inBounds(wx2, wy2) &&
+                world.types[world.idx(wx2, wy2)] === Cell.Water &&
+                Math.random() < 0.6
+              ) {
+                const wi = world.idx(wx2, wy2);
+                world.types[wi] = Cell.Ice;
+                world.colors[wi] = iceColor();
+                world.life[wi] = 0;
+              }
+            }
+          }
+          // frosty contrail
+          if (Math.random() < 0.5)
+            ctx.particles.spawn(
+              p.x,
+              p.y,
+              (Math.random() - 0.5) * 0.4,
+              -0.2,
+              null,
+              packRGB(190, 235, 255),
+              10,
+              { grav: -0.005, glow: 1.6 },
+            );
+        }
+
         // Hostile projectiles: fireballs detonate on the player, frostbolts
-        // hit lighter but soak in as a real frozen status
+        // hit lighter but soak in as a real frozen status, acid globs splash
         if (p.hostile && ctx.state.mode === 'play' && !ctx.player.dead) {
           const dx = ctx.player.x - p.x,
             dy = ctx.player.y - 9 - p.y;
@@ -297,6 +451,9 @@ export class Projectiles implements ProjectilesApi {
             if (p.type === 'frostbolt') {
               ctx.playerCtl.damage(6, p.vx * 0.8, -0.6);
               ctx.player.status.frozen = Math.max(ctx.player.status.frozen, 120);
+            } else if (p.type === 'acidglob') {
+              ctx.playerCtl.damage(8, p.vx * 1.3, -1.6);
+              splashLiquid(ctx, p.x, p.y, Cell.Acid, acidColor, 3);
             } else {
               ctx.playerCtl.damage(11, p.vx * 1.7, -2.3);
               ctx.explosions.trigger(p.x, p.y, 10);
@@ -306,15 +463,37 @@ export class Projectiles implements ProjectilesApi {
             break;
           }
         }
-        // Player bolt: detonate on enemies
-        if (!p.hostile && p.type === 'bolt') {
+        // Player projectiles: detonate on enemies (meteors hit a wider arc)
+        if (
+          !p.hostile &&
+          (p.type === 'bolt' ||
+            p.type === 'pellet' ||
+            p.type === 'iceshard' ||
+            p.type === 'wisp' ||
+            p.type === 'meteor')
+        ) {
+          const mul = p.mul ?? 1;
           let hit = false;
           for (const e of ctx.enemies) {
             const dx = e.x - p.x,
               dy = e.y - 5 - p.y;
-            if (dx * dx + dy * dy < 120) {
-              ctx.enemyCtl.damage(e, 18, p.vx * 0.8, -1.6);
-              ctx.explosions.trigger(p.x, p.y, ctx.params.spells.bolt.explosionRadius!);
+            if (dx * dx + dy * dy < (p.type === 'meteor' ? 200 : 120)) {
+              if (p.type === 'bolt') {
+                ctx.enemyCtl.damage(e, 18 * mul, p.vx * 0.8, -1.6);
+                ctx.explosions.trigger(p.x, p.y, ctx.params.spells.bolt.explosionRadius!);
+              } else if (p.type === 'pellet') {
+                ctx.enemyCtl.damage(e, 8 * mul, p.vx * 0.6, -1.0);
+                ctx.explosions.trigger(p.x, p.y, 6);
+              } else if (p.type === 'iceshard') {
+                ctx.enemyCtl.damage(e, 16 * mul, p.vx * 0.5, -0.8);
+                e.status.frozen = Math.max(e.status.frozen, 140);
+                freezeSplash(ctx, p.x, p.y, 7);
+              } else if (p.type === 'wisp') {
+                ctx.enemyCtl.damage(e, 13 * mul, p.vx * 0.5, -1.0);
+                ctx.explosions.trigger(p.x, p.y, 5);
+              } else {
+                ctx.explosions.trigger(p.x, p.y, 40);
+              }
               releaseTriggered(ctx, p);
               projectiles.splice(i, 1);
               hit = true;
@@ -377,7 +556,51 @@ export class Projectiles implements ProjectilesApi {
               break;
             }
           }
-          if (p.type === 'bolt') {
+          if (p.type === 'icelance') {
+            // shatter: ice shards + frozen splash
+            ctx.spells.erodeAt(gx, gy, 3);
+            for (let fz = -5; fz <= 5; fz++) {
+              for (let fzx = -5; fzx <= 5; fzx++) {
+                if (fz * fz + fzx * fzx > 26) continue;
+                const wx2 = gx + fzx,
+                  wy2 = gy + fz;
+                if (world.inBounds(wx2, wy2) && world.types[world.idx(wx2, wy2)] === Cell.Water) {
+                  const wi = world.idx(wx2, wy2);
+                  world.types[wi] = Cell.Ice;
+                  world.colors[wi] = iceColor();
+                  world.life[wi] = 0;
+                }
+              }
+            }
+            ctx.particles.burst(gx, gy, 16, Cell.Ice, iceColor, 2.6);
+            ctx.particles.burst(gx, gy, 8, null, () => packRGB(220, 245, 255), 2.0, {
+              glow: 2.0,
+              grav: 0.06,
+            });
+            ctx.audio.tone(1600, 160, 0.14, 'triangle', 0.1);
+            projectiles.splice(i, 1);
+            removed = true;
+          } else if (p.type === 'pellet') {
+            ctx.explosions.trigger(gx, gy, 6);
+            projectiles.splice(i, 1);
+            removed = true;
+          } else if (p.type === 'iceshard') {
+            freezeSplash(ctx, gx, gy, 7);
+            projectiles.splice(i, 1);
+            removed = true;
+          } else if (p.type === 'wisp') {
+            ctx.explosions.trigger(gx, gy, 5);
+            projectiles.splice(i, 1);
+            removed = true;
+          } else if (p.type === 'meteor') {
+            ctx.explosions.trigger(gx, gy, 40);
+            projectiles.splice(i, 1);
+            removed = true;
+          } else if (p.type === 'acidglob') {
+            splashLiquid(ctx, gx, gy, Cell.Acid, acidColor, 3);
+            projectiles.splice(i, 1);
+            removed = true;
+          } else if (p.type === 'bolt') {
             ctx.explosions.trigger(gx, gy, ctx.params.spells.bolt.explosionRadius!);
             world.charge[world.idx(gx, gy)] = 20;
             projectiles.splice(i, 1);
@@ -438,6 +661,8 @@ export class Projectiles implements ProjectilesApi {
               glow: 2.2,
               grav: -0.01,
             });
+        } else if (p.type === 'meteor') {
+          ctx.explosions.trigger(p.x, p.y, 40);
         }
         projectiles.splice(i, 1);
         continue;
@@ -453,6 +678,18 @@ export class Projectiles implements ProjectilesApi {
           packRGB(255, 110, 20),
           9,
           { grav: -0.01, glow: 1.8 },
+        );
+      }
+      if (p.type === 'meteor') {
+        ctx.particles.spawn(
+          p.x,
+          p.y,
+          (Math.random() - 0.5) * 0.4,
+          (Math.random() - 0.5) * 0.4,
+          Cell.Fire,
+          fireColor(),
+          16 + Math.floor(Math.random() * 10),
+          { grav: -0.01, glow: 2.4 },
         );
       }
     }

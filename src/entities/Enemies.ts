@@ -15,6 +15,7 @@ import {
   slimeColor,
   smokeColor,
   stoneColor,
+  toxicColor,
 } from '@/sim/colors';
 import { splatterStain } from '@/sim/stains';
 
@@ -26,6 +27,10 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   acidslime: { hp: 40, halfW: 5, h: 8, bounty: 45, gore: Cell.Acid, goreFn: acidColor },
   wisp: { hp: 22, halfW: 4, h: 8, bounty: 60, gore: Cell.Nitrogen, goreFn: nitrogenColor },
   mage: { hp: 60, halfW: 5, h: 14, bounty: 120, gore: Cell.Blood, goreFn: bloodColor },
+  // Upgrade port (noita-alchemists-descent.html)
+  bat: { hp: 16, halfW: 3, h: 5, bounty: 15, gore: Cell.Blood, goreFn: bloodColor },
+  spitter: { hp: 55, halfW: 5, h: 11, bounty: 60, gore: Cell.Toxic, goreFn: toxicColor },
+  bomber: { hp: 34, halfW: 5, h: 8, bounty: 45, gore: Cell.Fire, goreFn: fireColor },
 };
 
 /** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
@@ -61,6 +66,10 @@ export class Enemies implements EnemyControlApi {
       }
     }
     if (sy < 0) sy = Math.max(def.h, Math.floor(y)); // last resort
+    // Depth scaling: tougher and harder-hitting the deeper you descend
+    const depth = ctx.state.mode === 'play' ? (ctx.levels.current?.def.depth ?? 1) : 1;
+    const hpMul = 1 + (depth - 1) * 0.16;
+    const dmgK = 1 + (depth - 1) * 0.1;
     ctx.enemies.push({
       kind,
       x: sx,
@@ -69,8 +78,9 @@ export class Enemies implements EnemyControlApi {
       fy: 0,
       vx: 0,
       vy: 0,
-      hp: def.hp,
-      maxHp: def.hp,
+      hp: Math.round(def.hp * hpMul),
+      maxHp: Math.round(def.hp * hpMul),
+      dmgK,
       flash: 0,
       timer: Math.floor(Math.random() * 80),
       attackCd: 60,
@@ -139,6 +149,13 @@ export class Enemies implements EnemyControlApi {
     const idx = ctx.enemies.indexOf(e);
     if (idx === -1) return;
     ctx.enemies.splice(idx, 1);
+    // Bombers go out the only way they know how
+    if (e.kind === 'bomber') {
+      ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(Math.random() * 3));
+      this.dropBounty(e, def);
+      ctx.waves.kills++;
+      return;
+    }
     // Gib burst + gold bounty shower
     ctx.particles.burst(
       e.x,
@@ -153,11 +170,21 @@ export class Enemies implements EnemyControlApi {
       // The membrane ruptures: a shower of real acid rains back into the grid
       ctx.particles.burst(e.x, e.y - 4, 26, Cell.Acid, acidColor, 3.4);
     }
-    if (e.kind !== 'imp') {
+    if (e.kind === 'spitter') {
+      // Toxic bulb ruptures — caustic shower instead of blood
+      ctx.particles.burst(e.x, e.y - 5, 40, Cell.Toxic, toxicColor, 3.8);
+    } else if (e.kind !== 'imp') {
       // Violent blood splash: fast radial spray + slow wide arc + heavy directional gouts
-      ctx.particles.burst(e.x, e.y - 5, e.kind === 'golem' ? 62 : 46, Cell.Blood, bloodColor, 4.8);
-      ctx.particles.burst(e.x, e.y - 7, 24, Cell.Blood, bloodColor, 2.2);
-      for (let i = 0; i < 16; i++) {
+      ctx.particles.burst(
+        e.x,
+        e.y - 5,
+        e.kind === 'golem' ? 62 : e.kind === 'bat' ? 24 : 46,
+        Cell.Blood,
+        bloodColor,
+        4.8,
+      );
+      ctx.particles.burst(e.x, e.y - 7, e.kind === 'bat' ? 10 : 24, Cell.Blood, bloodColor, 2.2);
+      for (let i = 0; i < (e.kind === 'bat' ? 7 : 16); i++) {
         ctx.particles.spawn(
           e.x,
           e.y - 5,
@@ -169,8 +196,17 @@ export class Enemies implements EnemyControlApi {
         );
       }
       // gore decal painted straight onto the nearby cave walls
-      splatterStain(ctx.world, e.x, e.y - 5, e.kind === 'golem' ? 14 : 10);
+      splatterStain(ctx.world, e.x, e.y - 5, e.kind === 'golem' ? 14 : e.kind === 'bat' ? 5 : 10);
     }
+    this.dropBounty(e, def);
+    ctx.audio.squelch();
+    ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.012, 0.04);
+    ctx.waves.kills++;
+  }
+
+  /** Gold coin shower (homing in play mode) + build-mode direct score credit. */
+  private dropBounty(e: Enemy, def: EnemyDef): void {
+    const ctx = this.ctx;
     const coins = Math.floor(def.bounty / 10);
     for (let i = 0; i < coins; i++) {
       ctx.particles.spawn(
@@ -192,9 +228,6 @@ export class Enemies implements EnemyControlApi {
       ctx.state.score += def.bounty;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
     }
-    ctx.audio.squelch();
-    ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.012, 0.04);
-    ctx.waves.kills++;
   }
 
   /**
@@ -267,10 +300,14 @@ export class Enemies implements EnemyControlApi {
     const player = ctx.player;
     const targetAlive = !player.dead;
 
+    const sim = ctx.world.simBounds;
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
       if (!e) continue;
       const def = this.defs[e.kind];
+      // Freeze foes far outside the simulation window — they wake when you approach
+      if (e.x < sim.x0 - 60 || e.x > sim.x1 + 60 || e.y < sim.y0 - 60 || e.y > sim.y1 + 60)
+        continue;
       if (e.flash > 0) e.flash--;
       e.timer++;
       if (e.attackCd > 0) e.attackCd--;
@@ -323,8 +360,89 @@ export class Enemies implements EnemyControlApi {
         }
         // Melee contact
         if (targetAlive && e.attackCd === 0 && Math.abs(pdx) < 11 && Math.abs(pdy) < 17) {
-          ctx.playerCtl.damage(e.kind === 'acidslime' ? 10 : 12, Math.sign(pdx) * -3.6, -2.8);
+          ctx.playerCtl.damage(
+            (e.kind === 'acidslime' ? 10 : 12) * (e.dmgK ?? 1),
+            Math.sign(pdx) * -3.6,
+            -2.8,
+          );
           e.attackCd = 45;
+        }
+      } else if (e.kind === 'bat') {
+        // Erratic flying swarmer: darts at the wizard, contact bites
+        e.bobPhase += 0.22;
+        if (targetAlive && pDist < 320) {
+          const d = pDist || 1;
+          e.vx += (pdx / d) * 0.14;
+          e.vy += (pdy / d) * 0.14;
+        } else {
+          e.vx += (Math.random() - 0.5) * 0.1;
+          e.vy += (Math.random() - 0.5) * 0.1;
+        }
+        e.vy += Math.sin(e.bobPhase) * 0.08;
+        const batMax = 1.7;
+        e.vx = clamp(e.vx, -batMax, batMax);
+        e.vy = clamp(e.vy, -batMax, batMax);
+        if (!ctx.physics.entityFree(e.x, e.y, def.halfW, def.h)) {
+          e.y -= 1;
+          e.vy = -0.6;
+        }
+        if (targetAlive && e.attackCd === 0 && Math.abs(pdx) < 8 && Math.abs(pdy) < 12) {
+          ctx.playerCtl.damage(6 * (e.dmgK ?? 1), Math.sign(pdx) * -2.2, -1.6);
+          e.attackCd = 50;
+          // dart away after the bite
+          e.vx = -Math.sign(pdx) * 1.6;
+          e.vy = -1.0;
+        }
+      } else if (e.kind === 'spitter') {
+        // Rooted toxic bulb: settles, then lobs caustic globs in an arc
+        e.vy += 0.33;
+        e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+        e.vx *= 0.4;
+        if ((e.recoil ?? 0) > 0) e.recoil = (e.recoil ?? 0) - 1;
+        if (targetAlive && e.attackCd === 0 && pDist < 280) {
+          const arc = Math.atan2(pdy - Math.min(60, pDist * 0.35), pdx);
+          const spd = 2.6 + pDist * 0.006;
+          ctx.projectiles.push({
+            x: e.x,
+            y: e.y - def.h,
+            vx: Math.cos(arc) * spd,
+            vy: Math.sin(arc) * spd - 1.4,
+            type: 'acidglob',
+            life: 220,
+            age: 0,
+            charging: false,
+            hostile: true,
+          });
+          ctx.audio.flame();
+          e.recoil = 14;
+          e.attackCd = 150 + Math.floor(Math.random() * 50);
+        }
+      } else if (e.kind === 'bomber') {
+        // Fast hopping slime that fuses and detonates when close
+        e.vy += 0.3;
+        e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+        if ((e.fusing ?? 0) > 0) {
+          e.fusing = (e.fusing ?? 0) - 1;
+          e.vx *= 0.5;
+          if (e.fusing === 0) {
+            this.kill(e, 0, 0);
+            continue;
+          }
+        } else {
+          if (e.grounded) {
+            e.vx *= 0.6;
+            if (targetAlive && pDist < 300 && e.timer % 32 === 0) {
+              e.vx = Math.sign(pdx) * (2.4 + Math.random() * 0.8);
+              e.vy = -2.8 - Math.random() * 0.8;
+            } else if (e.timer % 110 === 0) {
+              e.vx = (Math.random() - 0.5) * 3.0;
+              e.vy = -2.2;
+            }
+          }
+          if (targetAlive && pDist < 34) {
+            e.fusing = 36; // light the fuse
+            ctx.audio.tone(900, 60, 0.3, 'square', 0.1);
+          }
         }
       } else if (e.kind === 'imp') {
         // Hover at a standoff distance, strafe, lob fireballs
@@ -618,8 +736,8 @@ export class Enemies implements EnemyControlApi {
         }
       }
 
-      // Integrate movement (slimes/golems/mages collide; imps and wisps drift)
-      if (e.kind === 'imp' || e.kind === 'wisp') {
+      // Integrate movement (slimes/golems/mages collide; imps/wisps/bats drift)
+      if (e.kind === 'imp' || e.kind === 'wisp' || e.kind === 'bat') {
         // Drift via sub-cell accumulators so e.x / e.y stay integers (grid indices)
         e.fx += e.vx;
         e.fy += e.vy;

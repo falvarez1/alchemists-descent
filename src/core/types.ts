@@ -85,7 +85,16 @@ export const PLAYER_HALF_W = 4;
 export const PLAYER_H = 17;
 export const PLAYER_STEP_UP = 5;
 
-export type EnemyKind = 'slime' | 'imp' | 'golem' | 'acidslime' | 'wisp' | 'mage';
+export type EnemyKind =
+  | 'slime'
+  | 'imp'
+  | 'golem'
+  | 'acidslime'
+  | 'wisp'
+  | 'mage'
+  | 'bat'
+  | 'spitter'
+  | 'bomber';
 
 export interface EnemyDef {
   hp: number;
@@ -122,6 +131,12 @@ export interface Enemy {
   _px?: number;
   _svx?: number;
   status: EntityStatus;
+  /** Depth-scaled damage multiplier (1 at depth 1). */
+  dmgK?: number;
+  /** Spitter: frames of lob recoil (sprite squash). */
+  recoil?: number;
+  /** Bomber: fuse frames remaining; detonates at 0. */
+  fusing?: number;
 }
 
 export type SpellId = 'bolt' | 'bomb' | 'lightning' | 'flame' | 'dig' | 'warp' | 'blackhole';
@@ -376,6 +391,8 @@ export interface AudioApi {
   hollowKnock(): void;
   /** Cauldron simmer blub. */
   bubble(): void;
+  /** Glass/ice breaking: bright crack + falling ring. */
+  shatter(): void;
   coin(): void;
   hurt(): void;
   jump(): void;

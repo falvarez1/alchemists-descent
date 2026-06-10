@@ -16,11 +16,12 @@
 //   world floor instead of falling out.
 
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
-import { LEVELS, START_LEVEL, populationForDepth } from '@/config/worldgraph';
+import { LEVELS, START_LEVEL, populationForLevel } from '@/config/worldgraph';
 import type { Ctx, EnemyKind, LevelDef, LevelRuntime, LevelsApi } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { emberColor, packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
+import { EXTRAS } from '@/world/biomeExtras';
 import { extractRegionGraph } from '@/world/regions';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
@@ -196,7 +197,7 @@ export class Levels implements LevelsApi {
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, { x: exit.x, y: exit.sealY - 12 });
-    this.placePopulation(ctx, def.depth, spawn);
+    this.placePopulation(ctx, def, spawn);
     this.litOrder.set(def.id, []);
 
     return {
@@ -215,8 +216,9 @@ export class Levels implements LevelsApi {
   }
 
   /** Placed populations (finite, readable) — the descent's replacement for endless waves. */
-  private placePopulation(ctx: Ctx, depth: number, spawn: { x: number; y: number }): void {
-    const pop = populationForDepth(depth);
+  private placePopulation(ctx: Ctx, def: LevelDef, spawn: { x: number; y: number }): void {
+    // Depth sets the headcount; the biome's foes table sets the mix.
+    const pop = populationForLevel(def, EXTRAS[def.biome].foes);
     for (const [kind, count] of Object.entries(pop) as Array<[EnemyKind, number]>) {
       for (let i = 0; i < count; i++) {
         for (let attempt = 0; attempt < 30; attempt++) {

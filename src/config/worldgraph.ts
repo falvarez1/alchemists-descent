@@ -6,10 +6,13 @@ import type { EnemyKind, LevelDef } from '@/core/types';
  */
 export const LEVELS: Record<string, LevelDef> = {
   d1: { id: 'd1', name: 'EARTHEN HOLLOWS', biome: 'earthen', depth: 1, nextLevelId: 'd2' },
-  d2: { id: 'd2', name: 'TIMBERWORKS', biome: 'timber', depth: 2, nextLevelId: 'd3' },
-  d3: { id: 'd3', name: 'FLOODED CAVERNS', biome: 'flooded', depth: 3, nextLevelId: 'd4' },
-  d4: { id: 'd4', name: 'FROZEN DEPTHS', biome: 'frozen', depth: 4, nextLevelId: 'd5' },
-  d5: { id: 'd5', name: 'SCORCHED CORE', biome: 'scorched', depth: 5, nextLevelId: null },
+  d2: { id: 'd2', name: 'FUNGAL DEEP', biome: 'fungal', depth: 2, nextLevelId: 'd3' },
+  d3: { id: 'd3', name: 'FROZEN DEPTHS', biome: 'frozen', depth: 3, nextLevelId: 'd4' },
+  d4: { id: 'd4', name: 'FLOODED CAVERNS', biome: 'flooded', depth: 4, nextLevelId: 'd5' },
+  d5: { id: 'd5', name: 'TIMBERWORKS', biome: 'timber', depth: 5, nextLevelId: 'd6' },
+  d6: { id: 'd6', name: 'CRYSTAL HOLLOWS', biome: 'crystal', depth: 6, nextLevelId: 'd7' },
+  d7: { id: 'd7', name: 'SCORCHED WASTES', biome: 'scorched', depth: 7, nextLevelId: 'd8' },
+  d8: { id: 'd8', name: 'VOLCANIC MAW', biome: 'volcanic', depth: 8, nextLevelId: null },
 };
 
 export const START_LEVEL = 'd1';
@@ -24,4 +27,27 @@ export function populationForDepth(depth: number): Partial<Record<EnemyKind, num
     wisp: depth >= 3 ? 1 + depth : depth === 2 ? 1 : 0,
     mage: depth >= 4 ? depth - 2 : 0,
   };
+}
+
+/**
+ * Biome-weighted population: the total count follows the depth curve, but the
+ * kind mix comes from the biome's foes table (biomeExtras), with a seasoning
+ * of our Wave C kinds (acid slimes, wisps, mages) at the depths they unlock.
+ */
+export function populationForLevel(
+  def: LevelDef,
+  foes: Partial<Record<EnemyKind, number>>,
+): Partial<Record<EnemyKind, number>> {
+  const depth = def.depth;
+  const total = 24 + depth * 6;
+  const weightSum = Object.values(foes).reduce((a, b) => a + (b ?? 0), 0) || 1;
+  const out: Partial<Record<EnemyKind, number>> = {};
+  for (const [kind, weight] of Object.entries(foes) as Array<[EnemyKind, number]>) {
+    out[kind] = Math.round((total * weight) / weightSum);
+  }
+  // Wave C natives keep their depth gating on top of the biome roster.
+  if (depth >= 2) out.acidslime = (out.acidslime ?? 0) + 2;
+  if (depth >= 3) out.wisp = (out.wisp ?? 0) + 1 + Math.floor(depth / 3);
+  if (depth >= 4) out.mage = (out.mage ?? 0) + Math.max(1, depth - 3);
+  return out;
 }

@@ -22,6 +22,7 @@ import {
   waterColor,
   woodColor,
 } from '@/sim/colors';
+import { applyBiomeExtras } from '@/world/biomeExtras';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { extractRegionGraph } from '@/world/regions';
 import { stampSecrets } from '@/world/secrets';
@@ -744,8 +745,10 @@ export class WorldGen implements WorldGenApi {
       }
     }
 
-    // 5) Placement brain + secrets: flood-fill the finished caves into a region
-    //    graph, then stamp sealed treasure hollows behind breachable skins.
+    // 5) Biome extras first (fungus colonies, crystal clusters, snow drifts,
+    //    coal seams, healing springs), so secrets can still find untouched
+    //    thick wall masses afterward; then the placement brain + secrets.
+    applyBiomeExtras(ctx, this.rng, def.biome);
     const graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
     stampSecrets(ctx, this.rng, graph, def.biome);
 

@@ -88,6 +88,8 @@ export class AudioEngine implements AudioApi {
 
   bubble(): void { if (!this.throttled('bubble', 90)) return; this.tone(220 + Math.random() * 120, 160, 0.09, 'sine', 0.07); this.noiseBurst(0.05, 500, 0.04); }
 
+  shatter(): void { if (!this.throttled('shatter', 100)) return; this.noiseBurst(0.12, 3200, 0.14, true); this.tone(1900 + Math.random() * 600, 400, 0.12, 'square', 0.07); }
+
   flame(): void {
     if (!this.throttled('flame', 70)) return;
     this.noiseBurst(0.22, 550 + Math.random() * 300, 0.18);          // body of the roar

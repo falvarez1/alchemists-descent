@@ -107,7 +107,15 @@ export class Lighting implements LightField {
         const wi = world.idx(wx, wy);
         const t = world.types[wi];
         const i = row + lx;
-        lightAtt[i] = t === Cell.Empty || isGas(t) ? 0.86 : isLiquid(t) ? 0.8 : 0.4;
+        // Translucent solids (ice, glass, crystal) pass most light through
+        lightAtt[i] =
+          t === Cell.Empty || isGas(t)
+            ? 0.86
+            : t === Cell.Crystal || t === Cell.Glass || t === Cell.Ice
+              ? 0.84
+              : isLiquid(t)
+                ? 0.8
+                : 0.4;
         if (t === Cell.Fire) {
           const f = 0.9 + Math.random() * 0.5;
           if (f > lightR[i]) {
@@ -140,6 +148,45 @@ export class Lighting implements LightField {
             lightG[i] = Math.max(lightG[i], 0.27);
             lightB[i] = Math.max(lightB[i], 0.06);
           }
+        } else if (t === Cell.Fungus) {
+          const f = 0.3 + Math.sin(ctx.state.frameCount * 0.04 + wx * 0.3 + wy * 0.2) * 0.08;
+          if (lightG[i] < f) {
+            lightR[i] = Math.max(lightR[i], f * 0.25);
+            lightG[i] = f;
+            lightB[i] = Math.max(lightB[i], f * 0.8);
+          }
+        } else if (t === Cell.Crystal) {
+          const cf2 = 0.42 + Math.sin(ctx.state.frameCount * 0.05 + wx * 0.7) * 0.1;
+          if (lightB[i] < cf2) {
+            lightR[i] = Math.max(lightR[i], cf2 * 0.35);
+            lightG[i] = Math.max(lightG[i], cf2 * 0.85);
+            lightB[i] = cf2;
+          }
+        } else if (t === Cell.Glowshroom) {
+          if (lightG[i] < 0.4) {
+            lightR[i] = Math.max(lightR[i], 0.16);
+            lightG[i] = 0.4;
+            lightB[i] = Math.max(lightB[i], 0.2);
+          }
+        } else if (t === Cell.Healium) {
+          if (lightR[i] < 0.3) {
+            lightR[i] = 0.3;
+            lightG[i] = Math.max(lightG[i], 0.12);
+            lightB[i] = Math.max(lightB[i], 0.2);
+          }
+        } else if (t === Cell.Toxic) {
+          if (lightG[i] < 0.18) {
+            lightR[i] = Math.max(lightR[i], 0.05);
+            lightG[i] = 0.18;
+            lightB[i] = Math.max(lightB[i], 0.03);
+          }
+        } else if (t === Cell.Teleportium) {
+          const f = 0.28 + Math.random() * 0.08;
+          if (lightB[i] < f) {
+            lightR[i] = Math.max(lightR[i], f * 0.6);
+            lightG[i] = Math.max(lightG[i], f * 0.2);
+            lightB[i] = f;
+          }
         } else if (world.charge[wi] > 0) {
           lightR[i] = Math.max(lightR[i], 0.25);
           lightG[i] = Math.max(lightG[i], 0.8);
@@ -158,11 +205,16 @@ export class Lighting implements LightField {
 
     // Projectiles glow in their own colors
     for (const p of ctx.projectiles) {
-      if (p.type === 'bolt') this.seedLight(p.x, p.y, 0.5, 1.3, 1.6);
+      if (p.type === 'bolt' || p.type === 'pellet') this.seedLight(p.x, p.y, 0.5, 1.3, 1.6);
       else if (p.type === 'fireball') this.seedLight(p.x, p.y, 1.5, 0.7, 0.15);
       else if (p.type === 'bomb') this.seedLight(p.x, p.y, 0.45, 0.32, 0.12);
       else if (p.type === 'warp') this.seedLight(p.x, p.y, 1.1, 0.6, 1.5);
       else if (p.type === 'blackhole') this.seedLight(p.x, p.y, 0.9, 0.45, 1.4);
+      else if (p.type === 'iceshard' || p.type === 'icelance')
+        this.seedLight(p.x, p.y, 0.5, 0.85, 1.2);
+      else if (p.type === 'wisp') this.seedLight(p.x, p.y, 0.4, 1.0, 1.3);
+      else if (p.type === 'meteor') this.seedLight(p.x, p.y, 1.6, 0.6, 0.1);
+      else if (p.type === 'acidglob') this.seedLight(p.x, p.y, 0.15, 0.55, 0.1);
     }
     // Chain lightning floods its path with cold light
     for (const arc of ctx.lightning.arcs) {

@@ -319,6 +319,55 @@ export class FrameComposer implements PixelSurface {
           this.addPx(gx + 2, gy, 0.05, 0.16, 0.24);
           this.addPx(gx, gy + 1, 0.05, 0.16, 0.24);
           this.addPx(gx, gy - 2, 0.05, 0.16, 0.24);
+        } else if (p.type === 'iceshard' || p.type === 'icelance') {
+          // Pale crystal dart; the lance trails extra segments along its flight line
+          const fl = 0.85 + Math.random() * 0.3;
+          const seg = p.type === 'icelance' ? 3 : 1;
+          const spd = Math.hypot(p.vx, p.vy) || 1;
+          for (let sgi = 0; sgi <= seg; sgi++) {
+            const lx = gx - Math.round((p.vx / spd) * sgi);
+            const ly = gy - Math.round((p.vy / spd) * sgi);
+            const fade = 1 - sgi / (seg + 1);
+            this.setPx(
+              lx,
+              ly,
+              0.5 * boost * fl * fade,
+              0.85 * boost * fl * fade,
+              1.0 * boost * fl * fade,
+            );
+          }
+          this.addPx(gx, gy - 1, 0.06, 0.14, 0.22);
+          this.addPx(gx, gy + 1, 0.06, 0.14, 0.22);
+        } else if (p.type === 'pellet') {
+          const fl = 0.8 + Math.random() * 0.4;
+          this.setPx(gx, gy, 0.35 * boost * fl, 0.85 * boost * fl, 1.0 * boost * fl);
+          this.addPx(gx + 1, gy, 0.05, 0.14, 0.2);
+        } else if (p.type === 'wisp') {
+          // A guttering self-lit mote with an orbiting glint
+          const fl = 0.9 + Math.random() * 0.5;
+          this.setPx(gx, gy, 0.35 * boost * fl, 0.95 * boost * fl, 1.1 * boost * fl);
+          const oa = frameCount * 0.35;
+          this.addPx(
+            gx + Math.round(Math.cos(oa) * 2),
+            gy + Math.round(Math.sin(oa) * 2),
+            0.1,
+            0.28,
+            0.34,
+          );
+        } else if (p.type === 'meteor') {
+          // Burning boulder: 3x3 molten core inside a ragged dark crust
+          for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++) {
+              const hot = (dx === 0 && dy === 0) || Math.random() < 0.5;
+              if (hot) this.setPx(gx + dx, gy + dy, 1.3 * boost, 0.5 * boost, 0.08);
+              else this.setPx(gx + dx, gy + dy, 0.25, 0.12, 0.08);
+            }
+          this.addPx(gx, gy - 2, 0.3, 0.12, 0.02);
+        } else if (p.type === 'acidglob') {
+          const fl = 0.75 + Math.random() * 0.3;
+          this.setPx(gx, gy, 0.15 * fl, 0.8 * boost * fl, 0.12 * fl);
+          this.setPx(gx, gy - 1, 0.1 * fl, 0.6 * fl, 0.08 * fl);
+          this.addPx(gx + 1, gy, 0.03, 0.16, 0.03);
         } else if (p.type === 'blackhole') {
           const drawRad = Math.max(2, Math.floor(p.vortexRad! / 6));
           for (let dy = -drawRad - 1; dy <= drawRad + 1; dy++) {
