@@ -18,7 +18,7 @@ interface StatusBody {
   status: EntityStatus;
 }
 
-/** All eight timers at zero: dry, clean, unlit, unenchanted. */
+/** Every timer at zero: dry, clean, unlit, unenchanted. */
 export function createDefaultStatus(): EntityStatus {
   return {
     wet: 0,
@@ -29,6 +29,8 @@ export function createDefaultStatus(): EntityStatus {
     regen: 0,
     levity: 0,
     stoneskin: 0,
+    swift: 0,
+    torch: 0,
   };
 }
 
@@ -124,6 +126,8 @@ export function sampleAndTickStatus(
   if (st.regen > 0) st.regen--;
   if (st.levity > 0) st.levity--;
   if (st.stoneskin > 0) st.stoneskin--;
+  if (st.swift > 0) st.swift--;
+  if (st.torch > 0) st.torch--;
 
   // --- Active side effects: statuses write back into the world ---
   const frame = ctx.state.frameCount;

@@ -36,6 +36,19 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.ElixirLife]: { name: 'Elixir of Life', flowRate: 0.6, viscosity: 0.5, bloomWeight: 0.35 },
   [Cell.ElixirLevity]: { name: 'Elixir of Levity', flowRate: 0.6, viscosity: 0.5, bloomWeight: 0.45 },
   [Cell.ElixirStone]: { name: 'Elixir of Stone', flowRate: 0.45, viscosity: 0.5, bloomWeight: 0.2 },
+  // Upgrade port: 10 new materials + Stone made inspectable (remapped ids).
+  // Crystal's dead 'resonance' param was dropped (vestige of a cut feature).
+  [Cell.Stone]: { name: 'Stone' },
+  [Cell.Toxic]: { name: 'Toxic Sludge', flowRate: 0.5, flammability: 0.3, bloomWeight: 0.2 },
+  [Cell.Healium]: { name: 'Healium', flowRate: 0.55, evaporationSpeed: 0.004, bloomWeight: 0.35 },
+  [Cell.Teleportium]: { name: 'Teleportium', flowRate: 0.6, bloomWeight: 0.4 },
+  [Cell.Snow]: { name: 'Snow', friction: 0.3 },
+  [Cell.Coal]: { name: 'Coal', friction: 0.45, burnDuration: 170, igniteChance: 0.08 },
+  [Cell.Crystal]: { name: 'Mana Crystal', bloomWeight: 0.45 },
+  [Cell.Glowshroom]: { name: 'Glowshroom', flammability: 0.3, bloomWeight: 0.4 },
+  [Cell.Fungus]: { name: 'Glowcap Fungus', flammability: 0.5, bloomWeight: 0.3 },
+  [Cell.Glass]: { name: 'Glass' },
+  [Cell.Ash]: { name: 'Ash', friction: 0.2 },
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };

@@ -31,11 +31,24 @@ export const Cell = {
   ElixirLife: 21,
   ElixirLevity: 22,
   ElixirStone: 23,
+  // Upgrade port (noita-alchemists-descent.html) — REMAPPED from its ids
+  // 21-30 because 21-23 were already ours. The remap table lives in
+  // docs/UPGRADE-DELTA.md; cell ids are append-only forever.
+  Toxic: 24,
+  Healium: 25,
+  Teleportium: 26,
+  Snow: 27,
+  Coal: 28,
+  Crystal: 29,
+  Fungus: 30,
+  Glass: 31,
+  Ash: 32,
+  Glowshroom: 33,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
 
-export const CELL_COUNT = 24;
+export const CELL_COUNT = 34;
 
 /**
  * Classification predicates take plain numbers so values read straight out of
@@ -50,7 +63,11 @@ export function isSolid(t: number): boolean {
     t === Cell.Metal ||
     t === Cell.Stone ||
     t === Cell.Ice ||
-    t === Cell.Vines
+    t === Cell.Vines ||
+    t === Cell.Crystal ||
+    t === Cell.Glass ||
+    t === Cell.Fungus ||
+    t === Cell.Glowshroom
   );
 }
 
@@ -61,7 +78,8 @@ export function isConductor(t: number): boolean {
     t === Cell.Lava ||
     t === Cell.Metal ||
     t === Cell.Acid ||
-    t === Cell.Blood
+    t === Cell.Blood ||
+    t === Cell.Toxic
   );
 }
 
@@ -76,7 +94,10 @@ export function isLiquid(t: number): boolean {
     t === Cell.Slime ||
     t === Cell.ElixirLife ||
     t === Cell.ElixirLevity ||
-    t === Cell.ElixirStone
+    t === Cell.ElixirStone ||
+    t === Cell.Toxic ||
+    t === Cell.Healium ||
+    t === Cell.Teleportium
   );
 }
 
@@ -86,5 +107,13 @@ export function isGas(t: number): boolean {
 
 /** Materials that obstruct moving bodies (player, enemies, projectiles). */
 export function blocksEntity(t: number): boolean {
-  return isSolid(t) || t === Cell.Sand || t === Cell.Gold || t === Cell.Gunpowder;
+  return (
+    isSolid(t) ||
+    t === Cell.Sand ||
+    t === Cell.Gold ||
+    t === Cell.Gunpowder ||
+    t === Cell.Snow ||
+    t === Cell.Coal ||
+    t === Cell.Ash
+  );
 }

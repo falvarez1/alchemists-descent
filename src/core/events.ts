@@ -30,6 +30,10 @@ export interface EventMap {
   cardGranted: { id: string; name: string };
   /** Active wand or its loadout changed — HUD wand display refresh. */
   wandChanged: undefined;
+  /** A concussive strike landed at (x, y) — mechanisms/rune vaults listen. */
+  structureStrike: { x: number; y: number; radius: number };
+  /** Short corner toast ("GOLDEN KEY ACQUIRED", "+20 MAX HP", ...). */
+  toast: { text: string };
 }
 
 type Handler<T> = (payload: T) => void;

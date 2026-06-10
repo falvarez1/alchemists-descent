@@ -55,6 +55,28 @@ export const slimeColor = () => packRGB(80 + rand(25), 200 + rand(30), 50 + rand
 export const elixirLifeColor = () => packRGB(255, 100 + rand(40), 130 + rand(40));
 export const elixirLevityColor = () => packRGB(130 + rand(40), 220 + rand(30), 255);
 export const elixirStoneColor = () => packRGB(155 + rand(30), 140 + rand(20), 100 + rand(20));
+export const toxicColor = () => packRGB(64 + rand(18), 118 + rand(26), 36 + rand(12));
+export const healiumColor = () => packRGB(248 + rand(8), 110 + rand(30), 160 + rand(30));
+export const teleportiumColor = () => packRGB(150 + rand(30), 60 + rand(20), 235 + rand(20));
+export const snowColor = () => {
+  const s = 232 + rand(18);
+  return packRGB(s, s, Math.min(255, s + 8));
+};
+export const coalColor = () => {
+  const c = 30 + rand(14);
+  return packRGB(c, c, c + 3);
+};
+export const crystalColor = () => {
+  const v = Math.random();
+  return packRGB(96 + Math.floor(v * 50), 200 + Math.floor(v * 45), 228 + rand(27));
+};
+export const fungusColor = () => packRGB(40 + rand(20), 190 + rand(35), 150 + rand(30));
+export const glassColor = () => packRGB(185 + rand(20), 210 + rand(18), 222 + rand(16));
+export const ashColor = () => {
+  const a = 95 + rand(22);
+  return packRGB(a, a - 4, a - 6);
+};
+export const glowshroomColor = () => packRGB(120 + rand(40), 230 + rand(25), 140 + rand(50));
 
 /** Fresh randomized color for a newly placed cell of the given material. */
 export const COLOR_FN: Record<number, () => number> = {
@@ -82,4 +104,14 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.ElixirLife]: elixirLifeColor,
   [Cell.ElixirLevity]: elixirLevityColor,
   [Cell.ElixirStone]: elixirStoneColor,
+  [Cell.Toxic]: toxicColor,
+  [Cell.Healium]: healiumColor,
+  [Cell.Teleportium]: teleportiumColor,
+  [Cell.Snow]: snowColor,
+  [Cell.Coal]: coalColor,
+  [Cell.Crystal]: crystalColor,
+  [Cell.Fungus]: fungusColor,
+  [Cell.Glass]: glassColor,
+  [Cell.Ash]: ashColor,
+  [Cell.Glowshroom]: glowshroomColor,
 };

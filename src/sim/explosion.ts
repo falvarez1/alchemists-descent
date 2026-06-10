@@ -1,6 +1,6 @@
 import type { Ctx, ExplosionApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
-import { EMPTY_COLOR, fireColor, smokeColor } from '@/sim/colors';
+import { crystalColor, EMPTY_COLOR, fireColor, glassColor, smokeColor } from '@/sim/colors';
 
 /**
  * Explosions. Ported from triggerExplosion (noita-sandbox.html lines 718-800).
@@ -25,6 +25,8 @@ export class Explosions implements ExplosionApi {
     ctx.fx.bloomKick = Math.min(0.95, ctx.fx.bloomKick + radius * 0.026);
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + radius * 0.0022, 0.045);
     ctx.audio.boom(radius);
+    // Concussion is a valid puzzle input: levers and rune switches listen.
+    ctx.events.emit('structureStrike', { x: cx, y: cy, radius: radius + 4 });
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -42,6 +44,20 @@ export class Explosions implements ExplosionApi {
               Math.random() < 0.45
             )
               continue;
+            // Crystal shatters into a burst of glowing shards
+            if (orig === Cell.Crystal && Math.random() < 0.6) {
+              const d = Math.sqrt(dx * dx + dy * dy) || 1;
+              ctx.particles.spawn(
+                nx,
+                ny,
+                (dx / d) * 2.4 + (Math.random() - 0.5) * 1.6,
+                (dy / d) * 2.0 - 1.6 - Math.random(),
+                Cell.Crystal,
+                crystalColor(),
+                110,
+                { glow: 1.8 },
+              );
+            }
             // Launch a fraction of destroyed material as ballistic debris
             if (
               orig !== Cell.Empty &&
@@ -92,6 +108,12 @@ export class Explosions implements ExplosionApi {
         if (!world.inBounds(nx, ny)) continue;
         const ni = world.idx(nx, ny);
         const t = world.types[ni];
+        // Heat fuses sand at the blast rim into glass
+        if (t === Cell.Sand && Math.random() < 0.4) {
+          world.types[ni] = Cell.Glass;
+          world.colors[ni] = glassColor();
+          continue;
+        }
         if (t === Cell.Empty || t === Cell.Metal || !blocksEntity(t) || ctx.physics.cellBlocks(nx, ny))
           continue;
         if (Math.random() < 0.25) {

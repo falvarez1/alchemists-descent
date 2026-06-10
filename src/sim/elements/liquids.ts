@@ -17,6 +17,19 @@ import {
 
 export function handleWater(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
+  // Clean water dilutes toxic sludge it touches
+  if (Math.random() < 0.03) {
+    for (let k = 0; k < 4; k++) {
+      const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
+      const ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+      if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Toxic) {
+        const ni = w.idx(nx, ny);
+        w.types[ni] = Cell.Water;
+        w.colors[ni] = waterColor();
+        break;
+      }
+    }
+  }
   const pass = (t: number) =>
     t === Cell.Empty || t === Cell.Oil || t === Cell.Steam || t === Cell.Smoke;
   if (w.inBounds(x, y + 1) && pass(w.types[w.idx(x, y + 1)])) {
@@ -285,10 +298,36 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
         w.types[ti] = Cell.Water;
         w.colors[ti] = waterColor();
       }
-      if (n === Cell.Wood || n === Cell.Oil || n === Cell.Vines) {
+      if (n === Cell.Snow) {
+        w.types[ti] = Cell.Steam;
+        w.life[ti] = 30;
+        w.colors[ti] = steamColor();
+      }
+      if (
+        n === Cell.Wood ||
+        n === Cell.Oil ||
+        n === Cell.Vines ||
+        n === Cell.Fungus ||
+        n === Cell.Glowshroom
+      ) {
         w.types[ti] = Cell.Fire;
         w.life[ti] = 35;
         w.colors[ti] = fireColor();
+      }
+      if (n === Cell.Coal && Math.random() < 0.15) {
+        w.types[ti] = Cell.Fire;
+        w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration!;
+        w.colors[ti] = fireColor();
+      }
+      if (n === Cell.Toxic && Math.random() < 0.3) {
+        w.types[ti] = Cell.Smoke;
+        w.life[ti] = 35;
+        w.colors[ti] = smokeColor();
+      }
+      if (n === Cell.Healium) {
+        w.types[ti] = Cell.Steam;
+        w.life[ti] = 40;
+        w.colors[ti] = packRGB(255, 175, 205);
       }
       if (n === Cell.Blood || n === Cell.Slime) {
         w.types[ti] = Cell.Smoke;

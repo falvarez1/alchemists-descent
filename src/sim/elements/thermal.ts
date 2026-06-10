@@ -3,6 +3,7 @@ import type { Ctx } from '@/core/types';
 import { Cell, isGas } from '@/sim/CellType';
 import {
   acidColor,
+  ashColor,
   emberColor,
   EMPTY_COLOR,
   fireColor,
@@ -126,8 +127,14 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
   const ci = w.idx(x, y);
   w.life[ci]--;
   if (w.life[ci] <= 0) {
-    w.types[ci] = Cell.Empty;
-    w.colors[ci] = EMPTY_COLOR;
+    // A fraction of burned-out fire leaves drifting ash
+    if (Math.random() < 0.1 && w.inBounds(x, y + 1) && w.types[w.idx(x, y + 1)] !== Cell.Empty) {
+      w.types[ci] = Cell.Ash;
+      w.colors[ci] = ashColor();
+    } else {
+      w.types[ci] = Cell.Empty;
+      w.colors[ci] = EMPTY_COLOR;
+    }
     return;
   }
 
@@ -166,6 +173,41 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.life[ti] = 30;
         w.colors[ti] = fireColor();
         if (Math.random() < 0.6) spawnSmoke(ctx, x, y);
+      }
+      if (n === Cell.Fungus && Math.random() < ctx.params.materials[Cell.Fungus].flammability!) {
+        w.types[ti] = Cell.Fire;
+        w.life[ti] = 35;
+        w.colors[ti] = fireColor();
+        if (Math.random() < 0.5) spawnSmoke(ctx, x, y);
+      }
+      if (
+        n === Cell.Glowshroom &&
+        Math.random() < ctx.params.materials[Cell.Glowshroom].flammability!
+      ) {
+        w.types[ti] = Cell.Fire;
+        w.life[ti] = 40;
+        w.colors[ti] = fireColor();
+        if (Math.random() < 0.5) spawnSmoke(ctx, x, y);
+      }
+      if (n === Cell.Coal && Math.random() < ctx.params.materials[Cell.Coal].igniteChance!) {
+        w.types[ti] = Cell.Fire;
+        w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration!;
+        w.colors[ti] = fireColor();
+      }
+      if (n === Cell.Toxic && Math.random() < ctx.params.materials[Cell.Toxic].flammability!) {
+        w.types[ti] = Cell.Fire;
+        w.life[ti] = 50;
+        w.colors[ti] = fireColor();
+        if (Math.random() < 0.7) spawnSmoke(ctx, t.x, t.y);
+      }
+      if (n === Cell.Snow) {
+        w.types[ti] = Cell.Water;
+        w.colors[ti] = waterColor();
+      }
+      if (n === Cell.Healium) {
+        w.types[ti] = Cell.Steam;
+        w.life[ti] = 40;
+        w.colors[ti] = packRGB(255, 175, 205);
       }
       if (n === Cell.Oil) {
         w.types[ti] = Cell.Fire;

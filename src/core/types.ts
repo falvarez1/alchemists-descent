@@ -24,6 +24,10 @@ export interface EntityStatus {
   levity: number;
   /** Potion: damage taken halved, knockback immune. */
   stoneskin: number;
+  /** Buff: movement speed x1.45 and stronger jump. */
+  swift: number;
+  /** Buff: brighter, steadier, longer wand light. */
+  torch: number;
 }
 
 export interface Hat {
@@ -122,7 +126,17 @@ export interface Enemy {
 
 export type SpellId = 'bolt' | 'bomb' | 'lightning' | 'flame' | 'dig' | 'warp' | 'blackhole';
 
-export type ProjectileType = SpellId | 'fireball' | 'frostbolt';
+export type ProjectileType =
+  | SpellId
+  | 'fireball'
+  | 'frostbolt'
+  // Upgrade-port projectiles (noita-alchemists-descent.html)
+  | 'pellet'
+  | 'iceshard'
+  | 'icelance'
+  | 'wisp'
+  | 'meteor'
+  | 'acidglob';
 
 export interface Projectile {
   x: number;
@@ -136,6 +150,8 @@ export interface Projectile {
   hostile: boolean;
   /** Black hole only: current vortex radius. */
   vortexRad?: number;
+  /** Damage/radius multiplier applied at impact (wand 'heavy', perks). Default 1. */
+  mul?: number;
 }
 
 export interface FlyingParticle {
@@ -265,7 +281,15 @@ export interface BiomeDef {
   iceClusters: number;
 }
 
-export type BiomeId = 'earthen' | 'frozen' | 'flooded' | 'timber' | 'scorched';
+export type BiomeId =
+  | 'earthen'
+  | 'frozen'
+  | 'flooded'
+  | 'timber'
+  | 'scorched'
+  | 'fungal'
+  | 'crystal'
+  | 'volcanic';
 
 /* ============================================================
  * Shared mutable game state
@@ -534,6 +558,95 @@ export interface TelemetryApi {
 }
 
 /* ============================================================
+ * Upgrade port: mechanisms, pickups, portal progression, sanctum
+ * ============================================================ */
+
+export type MechanismKind = 'door' | 'plate' | 'lever' | 'brazier';
+
+/**
+ * A placed contraption. Doors are real Metal-cell spans that retract row by
+ * row; plates/levers/braziers drive the door whose id matches targetId.
+ * Plates read raw cell weight + entities; braziers read real Fire cells;
+ * levers flip from concussion (structureStrike) or projectile hits.
+ */
+export interface Mechanism {
+  id: number;
+  kind: MechanismKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Generic state: lever 0/1, plate hold ticks, brazier lit 0/1, door rows retracted. */
+  state: number;
+  /** Door id driven by this trigger; -1 for doors themselves / unlinked. */
+  targetId: number;
+}
+
+export interface RuneSwitch {
+  x: number;
+  y: number;
+  struck: boolean;
+}
+
+/** A sealed strongroom that opens when all its remote rune switches are struck. */
+export interface RuneVault {
+  runes: RuneSwitch[];
+  doorId: number;
+  opened: boolean;
+}
+
+export type PickupKind = 'goldpile' | 'heart' | 'tome' | 'chest' | 'potion' | 'key';
+
+export interface Pickup {
+  kind: PickupKind;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  taken: boolean;
+  /** tome: the card granted; potion: POTION_DEFS key; goldpile/chest: amount. */
+  data: { card?: CardId; potion?: string; amount?: number };
+}
+
+/** The level's exit gate: opens when the golden key is brought to it. */
+export interface ExitPortal {
+  x: number;
+  y: number;
+  open: boolean;
+}
+
+/** One-time boons drafted in the Sanctum between depths. */
+export type PerkId =
+  | 'might'
+  | 'vampirism'
+  | 'featherweight'
+  | 'manafont'
+  | 'swiftfoot'
+  | 'torchbearer'
+  | 'ironhide'
+  | 'flameward'
+  | 'toxinward'
+  | 'goldmagnet';
+
+export interface MechanismsApi {
+  /** Plate/brazier/door physics each frame (play mode, current level). */
+  update(ctx: Ctx): void;
+  /** Concussive strike test against levers + rune switches. */
+  strike(ctx: Ctx, x: number, y: number, radius: number): void;
+}
+
+export interface PickupsApi {
+  /** Bobbing, gravity, magnet-to-player, collection effects. */
+  update(ctx: Ctx): void;
+}
+
+export interface SanctumApi {
+  readonly isOpen: boolean;
+  /** Open the between-depths pause: perk draft + shop. onDescend fires on close. */
+  open(ctx: Ctx, onDescend: () => void): void;
+}
+
+/* ============================================================
  * Wave D: Wandsmith — frames, cards, and the cast compiler
  * ============================================================ */
 
@@ -546,6 +659,14 @@ export type CardId =
   | 'dig'
   | 'warp'
   | 'blackhole'
+  // upgrade-port payload cards
+  | 'vitriol'
+  | 'frostshard'
+  | 'icelance'
+  | 'wisp'
+  | 'meteor'
+  | 'conjure'
+  | 'emberstorm'
   // modifier / multicast cards
   | 'double'
   | 'triple'

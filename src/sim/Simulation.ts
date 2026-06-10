@@ -11,6 +11,13 @@ import {
   handleViscousLiquid,
   handleWater,
 } from '@/sim/elements/liquids';
+import {
+  handleAsh,
+  handleCoal,
+  handleExoticLiquid,
+  handleFungus,
+  handleSnow,
+} from '@/sim/elements/newMaterials';
 import { handleGunpowder, handleSand } from '@/sim/elements/powders';
 import { handleEmber, handleFire, handleIce } from '@/sim/elements/thermal';
 import { handleVines } from '@/sim/elements/vines';
@@ -68,7 +75,11 @@ export class Simulation implements SimulationApi {
           type === Cell.Stone ||
           type === Cell.Metal ||
           type === Cell.Ice ||
-          type === Cell.Vines
+          type === Cell.Vines ||
+          type === Cell.Crystal ||
+          type === Cell.Glass ||
+          type === Cell.Fungus ||
+          type === Cell.Glowshroom
         )
           continue;
 
@@ -81,6 +92,11 @@ export class Simulation implements SimulationApi {
         else if (type === Cell.Gunpowder) handleGunpowder(ctx, x, y);
         else if (type === Cell.Lava) handleLava(ctx, x, y);
         else if (type === Cell.Nitrogen) handleNitrogen(ctx, x, y);
+        else if (type === Cell.Snow) handleSnow(ctx, x, y);
+        else if (type === Cell.Coal) handleCoal(ctx, x, y);
+        else if (type === Cell.Ash) handleAsh(ctx, x, y);
+        else if (type === Cell.Toxic || type === Cell.Healium || type === Cell.Teleportium)
+          handleExoticLiquid(ctx, x, y, type);
         else if (
           type === Cell.Blood ||
           type === Cell.Slime ||
@@ -126,6 +142,7 @@ export class Simulation implements SimulationApi {
         const ci = x + y * world.width;
         if (world.types[ci] === Cell.Ice && !world.moved[ci]) handleIce(ctx, x, y);
         if (world.types[ci] === Cell.Vines && !world.moved[ci]) handleVines(ctx, x, y);
+        if (world.types[ci] === Cell.Fungus && !world.moved[ci]) handleFungus(ctx, x, y);
       }
     }
   }

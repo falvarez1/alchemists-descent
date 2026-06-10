@@ -58,6 +58,57 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
     blurb: 'A singularity that eats the world, then collapses',
   },
 
+  // ------- upgrade-port payload cards (noita-alchemists-descent.html) -------
+  vitriol: {
+    id: 'vitriol',
+    name: 'Vitriol Spray',
+    kind: 'projectile',
+    manaCost: 2,
+    blurb: 'A streaming spray of real acid — melts what it pools on',
+  },
+  frostshard: {
+    id: 'frostshard',
+    name: 'Frost Shard',
+    kind: 'projectile',
+    manaCost: 16,
+    blurb: 'Shatters into a freezing splash that ices water and chills flesh',
+  },
+  icelance: {
+    id: 'icelance',
+    name: 'Ice Lance',
+    kind: 'projectile',
+    manaCost: 22,
+    blurb: 'A piercing spear of ice — runs through whole packs, deep-freezing them',
+  },
+  wisp: {
+    id: 'wisp',
+    name: 'Seeking Wisp',
+    kind: 'projectile',
+    manaCost: 8,
+    blurb: 'A slow mote that hunts the nearest hostile on its own',
+  },
+  meteor: {
+    id: 'meteor',
+    name: 'Meteor Call',
+    kind: 'projectile',
+    manaCost: 70,
+    blurb: 'Lob a burning boulder; the crater answers for you',
+  },
+  conjure: {
+    id: 'conjure',
+    name: 'Conjure Stone',
+    kind: 'projectile',
+    manaCost: 18,
+    blurb: 'Raises a disc of real stone at the cursor — bridge, plug, or shield',
+  },
+  emberstorm: {
+    id: 'emberstorm',
+    name: 'Ember Storm',
+    kind: 'projectile',
+    manaCost: 18,
+    blurb: 'A fountain of drifting embers that smoulder where they land',
+  },
+
   // ---------------- modifier cards ----------------
   speed: {
     id: 'speed',
