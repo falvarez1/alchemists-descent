@@ -99,6 +99,11 @@ portable cauldron, shrine wrong-pour curses, per-biome shrine trio (→ merged R
 
 ## What the panel missed (now mandated)
 
+- **Real Builder tooling**: the current Build mode is a Sandbox, not a level
+  authoring tool. It should be renamed accordingly. A separate Builder must edit
+  durable authored level documents with placeable objects, enemies, pickups,
+  mechanisms, links, lights, procedural passes, validation, and playtest
+  compilation. See `docs/BUILDER.md`.
 - **Onboarding**: D1 gets authored teaching moments — a wooden seal with a brazier
   beside it, a sand plug over visible treasure, one free water-filled flask next to
   a small lava pool. Minute one must teach "materials are verbs".

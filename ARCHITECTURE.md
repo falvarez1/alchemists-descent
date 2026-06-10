@@ -65,6 +65,19 @@ src/
     Hud.ts                In-canvas HUD: vitals, hotbar, banners, game-over overlay
 ```
 
+## Authoring modes
+
+The current `build` mode is a live simulation sandbox: it paints cells into the
+active `World`, casts test spells, and saves raw grid data. Long term, this should
+be user-facing **Sandbox** mode.
+
+The planned **Builder** is a separate developer tool. It should edit a durable
+`EditorDocument` containing terrain, objects, links, lights, procedural pass
+history, and validation state, then compile that authored document into a
+temporary `LevelRuntime` for playtest. Do not grow the current sandbox save format
+into the Builder format; Sandbox saves, Builder documents, and expedition saves
+serve different purposes. See `docs/BUILDER.md`.
+
 ## Key design decisions
 
 **Ctx composition root.** Every shared dependency (world state, entity lists, service
