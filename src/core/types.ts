@@ -1,0 +1,485 @@
+import type { World } from '@/sim/World';
+import type { EventBus } from '@/core/events';
+import type { Cell } from '@/sim/CellType';
+
+/* ============================================================
+ * Entity data
+ * ============================================================ */
+
+export interface Hat {
+  ox: number;
+  oy: number;
+  vx: number;
+  vy: number;
+  pvx: number;
+  pvy: number;
+}
+
+/**
+ * The alchemist. Position is an integer cell coordinate (x, y at the FEET);
+ * fx/fy accumulate sub-cell motion until a whole cell is crossed.
+ * Hitbox: halfW 4, height 17 (PLAYER_HALF_W / PLAYER_H).
+ */
+export interface PlayerState {
+  x: number;
+  y: number;
+  fx: number;
+  fy: number;
+  vx: number;
+  vy: number;
+  hp: number;
+  maxHp: number;
+  mana: number;
+  maxMana: number;
+  levit: number;
+  maxLevit: number;
+  facing: number;
+  aimAngle: number;
+  grounded: boolean;
+  inLiquid: boolean;
+  dead: boolean;
+  invuln: number;
+  spell: SpellId;
+  cooldown: number;
+  firing: boolean;
+  // procedural animation state
+  stridePhase: number;
+  landTimer: number;
+  blinkTimer: number;
+  prevGrounded: boolean;
+  fallPeak: number;
+  hat: Hat;
+  // smoothed real-displacement trackers (updated by the animation pass)
+  _px: number;
+  _py: number;
+  _svx: number;
+  _svy: number;
+}
+
+export const PLAYER_HALF_W = 4;
+export const PLAYER_H = 17;
+export const PLAYER_STEP_UP = 5;
+
+export type EnemyKind = 'slime' | 'imp' | 'golem';
+
+export interface EnemyDef {
+  hp: number;
+  halfW: number;
+  h: number;
+  bounty: number;
+  gore: Cell;
+  goreFn: () => number;
+}
+
+export interface Enemy {
+  kind: EnemyKind;
+  x: number;
+  y: number;
+  fx: number;
+  fy: number;
+  vx: number;
+  vy: number;
+  hp: number;
+  maxHp: number;
+  flash: number;
+  timer: number;
+  attackCd: number;
+  bobPhase: number;
+  grounded: boolean;
+  stride: number;
+  splat: number;
+  prevG: boolean;
+  blink: number;
+  jetFuel: number;
+  jetCd: number;
+  stuckT: number;
+  // lazily-added smoothed displacement trackers (sprite animation)
+  _px?: number;
+  _svx?: number;
+}
+
+export type SpellId = 'bolt' | 'bomb' | 'lightning' | 'flame' | 'dig' | 'warp' | 'blackhole';
+
+export type ProjectileType = SpellId | 'fireball';
+
+export interface Projectile {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  type: ProjectileType;
+  life: number;
+  age: number;
+  charging: boolean;
+  hostile: boolean;
+  /** Black hole only: current vortex radius. */
+  vortexRad?: number;
+}
+
+export interface FlyingParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** Cell type re-deposited into the grid on landing; null = purely visual. */
+  type: number | null;
+  /** Packed 0xRRGGBB. */
+  color: number;
+  life: number;
+  grav: number;
+  glow: number;
+  homing: boolean;
+  hostileDmg: number;
+}
+
+export interface ParticleOpts {
+  grav?: number;
+  glow?: number;
+  homing?: boolean;
+  hostileDmg?: number;
+}
+
+export interface Shockwave {
+  cx: number;
+  cy: number;
+  currentRadius: number;
+  maxRadius: number;
+  speed: number;
+  /** Negative strength = implosion (black hole collapse). */
+  strength: number;
+}
+
+export interface LightningArc {
+  pts: Array<{ x: number; y: number }>;
+  life: number;
+  intensity: number;
+}
+
+export interface DigBeam {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  life: number;
+}
+
+/* ============================================================
+ * Tunable parameters (mutated live by the inspector UI)
+ * ============================================================ */
+
+export interface MaterialParams {
+  name: string;
+  friction?: number;
+  densityWeight?: number;
+  blastRadius?: number;
+  flammability?: number;
+  carbonSmokeGen?: number;
+  climbRate?: number;
+  hangRate?: number;
+  flowRate?: number;
+  poolingFactor?: number;
+  burnDuration?: number;
+  evaporationSpeed?: number;
+  meltRange?: number;
+  bloomWeight?: number;
+  corrosiveSpeed?: number;
+  particleLife?: number;
+  upwardSpread?: number;
+  floatSpeed?: number;
+  dispersion?: number;
+  insulationRating?: number;
+  conductivity?: number;
+  coagulation?: number;
+  viscosity?: number;
+  fallChance?: number;
+  igniteChance?: number;
+}
+
+export interface SpellParams {
+  name: string;
+  manaCost: number;
+  cooldown: number;
+  velocityForce?: number;
+  explosionRadius?: number;
+  fuseTicks?: number;
+  range?: number;
+  branches?: number;
+  damage?: number;
+  heat?: number;
+  spread?: number;
+  baseRadius?: number;
+  chargeRate?: number;
+  collapseLimit?: number;
+}
+
+export interface GlobalParams {
+  simSpeed: number;
+  maxBrightness: number;
+  /** Base ambient light level (original top-level `AMBIENT`). */
+  ambient: number;
+}
+
+export interface GameParams {
+  global: GlobalParams;
+  materials: Record<number, MaterialParams>;
+  spells: Record<SpellId, SpellParams>;
+}
+
+export type BiomeCrown = 'moss' | 'frost' | 'ember';
+
+export interface BiomeDef {
+  name: string;
+  /** Four rock material color bands [r, g, b]. */
+  bands: [number, number, number][];
+  crown: BiomeCrown;
+  flowerChance: number;
+  pools: number;
+  poolElement: () => Cell;
+  seedsOilBias: number;
+  beams: number;
+  fires: number;
+  /** Fraction of world height flooded with standing water (0 = none). */
+  flood: number;
+  iceClusters: number;
+}
+
+export type BiomeId = 'earthen' | 'frozen' | 'flooded' | 'timber' | 'scorched';
+
+/* ============================================================
+ * Shared mutable game state
+ * ============================================================ */
+
+export type GameMode = 'build' | 'play';
+export type InputMode = 'element' | 'spell';
+
+export interface GameStateData {
+  mode: GameMode;
+  score: number;
+  frameCount: number;
+  activeInputMode: InputMode;
+  currentElement: Cell;
+  currentSpell: SpellId;
+  currentBiome: BiomeId;
+  brushSize: number;
+  playerSpawned: boolean;
+}
+
+export interface Keys {
+  left: boolean;
+  right: boolean;
+  jump: boolean;
+  down: boolean;
+}
+
+export interface InputState {
+  keys: Keys;
+  /** Cursor position in world-grid coordinates (original mouseGridPosition). */
+  mouse: { x: number; y: number };
+  isDrawing: boolean;
+  lastX: number | null;
+  lastY: number | null;
+  /** True while the mouse is held with a spell selected in build mode. */
+  buildSpellHeld: boolean;
+  /** -1 idle; 0..1 while charging a bomb throw. */
+  bombCharge: number;
+  /** The charging black-hole projectile (aliased into ctx.projectiles), or null. */
+  activeChargingBlackHole: Projectile | null;
+}
+
+export interface FxState {
+  /** Transient bloom surge after detonations; decays *= 0.86 per frame. */
+  bloomKick: number;
+  /** Camera shake magnitude; decays *= 0.88 per frame. */
+  screenShake: number;
+  digBeam: DigBeam | null;
+}
+
+export interface WaveState {
+  num: number;
+  active: boolean;
+  intermission: number;
+  kills: number;
+}
+
+/* ============================================================
+ * Service APIs (implemented by systems, wired by Game)
+ * ============================================================ */
+
+export interface AudioApi {
+  readonly enabled: boolean;
+  /** Create/resume the AudioContext. Must be called from a user gesture. */
+  ensure(): void;
+  /** Flip sound on/off; returns the new enabled state. */
+  toggle(): boolean;
+  tone(freq: number, endFreq: number, dur: number, type: OscillatorType, vol: number): void;
+  noiseBurst(dur: number, filterFreq: number, vol: number, highpass?: boolean): void;
+  boom(size: number): void;
+  zap(): void;
+  lightning(): void;
+  coin(): void;
+  hurt(): void;
+  jump(): void;
+  squelch(): void;
+  flame(): void;
+  dig(): void;
+  waveHorn(): void;
+  levitate(): void;
+  implode(): void;
+}
+
+export interface ParticlesApi {
+  readonly list: FlyingParticle[];
+  spawn(
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    type: number | null,
+    color: number,
+    life: number,
+    opts?: ParticleOpts,
+  ): void;
+  burst(
+    cx: number,
+    cy: number,
+    count: number,
+    type: number | null,
+    colorFn: () => number,
+    speed: number,
+    opts?: ParticleOpts,
+  ): void;
+  update(ctx: Ctx): void;
+  clear(): void;
+}
+
+export interface ExplosionApi {
+  trigger(cx: number, cy: number, radius: number): void;
+}
+
+export interface LightningApi {
+  readonly arcs: LightningArc[];
+  cast(ox: number, oy: number, angle: number): void;
+  update(): void;
+  clear(): void;
+}
+
+export interface ProjectilesApi {
+  update(ctx: Ctx): void;
+}
+
+export interface PhysicsApi {
+  /** True if the solid cell at (x, y) belongs to a 5+ connected cluster (metal always blocks). */
+  cellBlocks(x: number, y: number): boolean;
+  /** AABB clearance test: halfW cells each side, h cells tall, anchored at the feet. */
+  entityFree(cx: number, cy: number, halfW: number, h: number): boolean;
+  crushLooseDebris(ent: { x: number; y: number }, halfW: number, h: number): void;
+  /** Move one cell horizontally (with optional stepUp ledge climb) or vertically. */
+  tryMoveEntity(
+    ent: { x: number; y: number },
+    dx: number,
+    dy: number,
+    halfW: number,
+    h: number,
+    stepUp: number,
+  ): boolean;
+}
+
+export interface PlayerControlApi {
+  damage(amount: number, kx: number, ky: number): void;
+  kill(): void;
+  respawn(): void;
+  findSpawnPoint(): { x: number; y: number };
+  update(ctx: Ctx): void;
+}
+
+export interface EnemyControlApi {
+  readonly defs: Record<EnemyKind, EnemyDef>;
+  spawn(kind: EnemyKind, x: number, y: number): void;
+  damage(e: Enemy, amount: number, kx: number, ky: number): void;
+  kill(e: Enemy, kx: number, ky: number): void;
+  update(ctx: Ctx): void;
+}
+
+export interface SpellsApi {
+  /** Wand muzzle: 9 cells along aimAngle from (player.x, player.y - 9). */
+  wandTip(): { x: number; y: number };
+  digRay(ox: number, oy: number, angle: number, range: number): { x: number; y: number } | null;
+  erodeAt(cx: number, cy: number, rad: number): void;
+  /** Teleport the player back along the warp bolt's path; returns success. */
+  executeWarp(p: Projectile): boolean;
+  /** Play-mode per-frame casting dispatch (called while player.firing). */
+  firePlayerSpell(): void;
+  /** Build-mode one-shot cast toward a world-grid target. */
+  castBuildSpell(type: SpellId, targetX: number, targetY: number): void;
+  emitBuildFlame(): void;
+}
+
+export interface CameraApi {
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  zoom: number;
+  idleFrames: number;
+  /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
+  renderX: number;
+  renderY: number;
+  update(ctx: Ctx): void;
+  /** Derive world.simBounds from the camera position (+/- SIM_MARGIN). */
+  updateSimBounds(world: World): void;
+  /** Hard-snap camera + render snapshot to center on a world position. */
+  snapTo(x: number, y: number): void;
+}
+
+export interface SimulationApi {
+  accumulator: number;
+  /** Fixed-step accumulator: runs 0-6 processFrame substeps per render frame. */
+  update(ctx: Ctx): void;
+  processFrame(ctx: Ctx): void;
+}
+
+export interface WorldGenApi {
+  spawnHint: { x: number; y: number } | null;
+  generateCaves(ctx: Ctx): void;
+  /** generateCaves + snap camera onto the spawn hint. */
+  regenerate(ctx: Ctx): void;
+  spawnFortress(ctx: Ctx): void;
+}
+
+export interface WaveDirectorApi {
+  start(n: number): void;
+  update(ctx: Ctx): void;
+}
+
+/* ============================================================
+ * The game context — every shared dependency, wired once in Game.ts
+ * ============================================================ */
+
+export interface Ctx {
+  world: World;
+  events: EventBus;
+  audio: AudioApi;
+  params: GameParams;
+  state: GameStateData;
+  input: InputState;
+  fx: FxState;
+  camera: CameraApi;
+
+  player: PlayerState;
+  enemies: Enemy[];
+  projectiles: Projectile[];
+  shockwaves: Shockwave[];
+  waves: WaveState;
+
+  particles: ParticlesApi;
+  explosions: ExplosionApi;
+  lightning: LightningApi;
+  projectileCtl: ProjectilesApi;
+  physics: PhysicsApi;
+  playerCtl: PlayerControlApi;
+  enemyCtl: EnemyControlApi;
+  spells: SpellsApi;
+  simulation: SimulationApi;
+  worldgen: WorldGenApi;
+  waveCtl: WaveDirectorApi;
+}

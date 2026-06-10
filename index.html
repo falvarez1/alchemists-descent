@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noita Studio — Alchemist's Descent</title>
+    <link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+
+    <header>
+        <div><h1>Noita Studio <span class="title-sub">| Alchemist's Descent</span></h1></div>
+        <div class="hud-wrapper">
+            <div class="mode-switch">
+                <button data-mode="build" class="active" id="mode-build-btn">BUILD</button>
+                <button data-mode="play" id="mode-play-btn">PLAY</button>
+            </div>
+            <div class="score-box">GOLD PURSED: <span id="score-val">0</span> oz</div>
+            <button class="sound-btn" id="sound-toggle">SND ON</button>
+            <div class="engine-status">THREE.JS COMPOSER RUNNING</div>
+        </div>
+    </header>
+
+    <div id="workbench">
+        <div id="left-toolbar">
+            <div class="section-title">World Generation</div>
+            <select id="biome-select" class="biome-select">
+                <option value="earthen" selected>Biome: Earthen Hollows</option>
+                <option value="frozen">Biome: Frozen Depths</option>
+                <option value="flooded">Biome: Flooded Caverns</option>
+                <option value="timber">Biome: Timberworks</option>
+                <option value="scorched">Biome: Scorched Wastes</option>
+            </select>
+            <button class="action-btn" id="btn-caves">Generate Caves</button>
+            <button class="action-btn" id="btn-fortress">Spawn Fortress</button>
+
+            <div class="section-title">Granular Solids</div>
+            <button class="tool-btn active" data-mode="element" data-id="1"><span class="color-indicator" style="background:#d4af37"></span>Sand</button>
+            <button class="tool-btn" data-mode="element" data-id="8"><span class="color-indicator" style="background:#5a5d64"></span>Gunpowder</button>
+            <button class="tool-btn" data-mode="element" data-id="4"><span class="color-indicator" style="background:#8a5a36"></span>Wood</button>
+            <button class="tool-btn" data-mode="element" data-id="15"><span class="color-indicator" style="background:#3ad55a"></span>Vines (Organic)</button>
+            <button class="tool-btn" data-mode="element" data-id="17"><span class="color-indicator" style="background:#fbbf24"></span>Gold Powder</button>
+            <button class="tool-btn" data-mode="element" data-id="20"><span class="color-indicator" style="background:#ff7a1e"></span>Ember</button>
+
+            <div class="section-title">Fluids &amp; Gases</div>
+            <button class="tool-btn" data-mode="element" data-id="2"><span class="color-indicator" style="background:#3a7bd5"></span>Water</button>
+            <button class="tool-btn" data-mode="element" data-id="6"><span class="color-indicator" style="background:#654228"></span>Oil</button>
+            <button class="tool-btn" data-mode="element" data-id="11"><span class="color-indicator" style="background:#ff4500"></span>Lava</button>
+            <button class="tool-btn" data-mode="element" data-id="16"><span class="color-indicator" style="background:#a0f0ff"></span>Liquid Nitrogen</button>
+            <button class="tool-btn" data-mode="element" data-id="7"><span class="color-indicator" style="background:#4afc4a"></span>Acid</button>
+            <button class="tool-btn" data-mode="element" data-id="18"><span class="color-indicator" style="background:#c01a2e"></span>Blood</button>
+            <button class="tool-btn" data-mode="element" data-id="19"><span class="color-indicator" style="background:#65d63f"></span>Slime</button>
+            <button class="tool-btn" data-mode="element" data-id="5"><span class="color-indicator" style="background:#e65c00"></span>Fire</button>
+            <button class="tool-btn" data-mode="element" data-id="14"><span class="color-indicator" style="background:#55555d"></span>Smoke</button>
+
+            <div class="section-title">Structural Frameworks</div>
+            <button class="tool-btn" data-mode="element" data-id="10"><span class="color-indicator" style="background:#7cd0ff"></span>Ice</button>
+            <button class="tool-btn" data-mode="element" data-id="13"><span class="color-indicator" style="background:#7a8a99"></span>Metal</button>
+            <button class="tool-btn" data-mode="element" data-id="3"><span class="color-indicator" style="background:#555555"></span>Wall</button>
+            <button class="tool-btn" data-mode="element" data-id="0"><span class="color-indicator" style="background:#a83232"></span>Eraser</button>
+
+            <div class="section-title">Tactical Spells</div>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="bolt"><span class="color-indicator" style="background:#00d2ff"></span>Spark Bolt</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="bomb"><span class="color-indicator" style="background:#ff3b3b"></span>Cast Bomb</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="lightning"><span class="color-indicator" style="background:#e0f2ff"></span>Chain Lightning</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="flame"><span class="color-indicator" style="background:#ff7a18"></span>Flamethrower</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="dig"><span class="color-indicator" style="background:#fbbf24"></span>Excavate Ray</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="warp"><span class="color-indicator" style="background:#c084fc"></span>Warp Bolt</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="blackhole"><span class="color-indicator" style="background:#a855f7"></span>Black Hole</button>
+
+            <div class="section-title">Hostiles (Build Mode)</div>
+            <button class="action-btn dropper-slime" id="btn-spawn-slime">Drop Slime</button>
+            <button class="action-btn dropper-imp" id="btn-spawn-imp">Drop Fire Imp</button>
+            <button class="action-btn dropper-golem" id="btn-spawn-golem">Drop Stone Golem</button>
+        </div>
+
+        <div id="viewport-container">
+            <div id="canvas-holder">
+                <div id="game-hud">
+                    <div class="vitals">
+                        <div class="vital-row"><div class="vital-label">HP</div><div class="vital-track"><div class="vital-fill" id="hp-fill"></div></div></div>
+                        <div class="vital-row"><div class="vital-label">MANA</div><div class="vital-track"><div class="vital-fill" id="mana-fill"></div></div></div>
+                        <div class="vital-row"><div class="vital-label">LEV</div><div class="vital-track"><div class="vital-fill" id="levit-fill"></div></div></div>
+                    </div>
+                    <div class="wave-readout">
+                        <div class="wave-num" id="wave-num">WAVE 1</div>
+                        <div class="sub"><span id="enemies-left">0</span> HOSTILES &middot; <span class="gold" id="hud-gold">0</span> oz</div>
+                    </div>
+                    <div id="spell-hotbar"></div>
+                    <div id="controls-hint">
+                        <b>A / D</b> move &nbsp; <b>SPACE</b> jump / levitate<br>
+                        <b>MOUSE</b> aim + fire &nbsp; <b>1&ndash;7</b> spells &nbsp; <b>TAB</b> build mode
+                    </div>
+                    <div id="wave-banner"><div class="big" id="banner-big">WAVE 1</div><div class="small" id="banner-small">HOSTILES INBOUND</div></div>
+                    <div id="damage-vignette"></div>
+                </div>
+                <div id="gameover-overlay">
+                    <div class="go-title">YOU DIED</div>
+                    <div class="go-stats">REACHED <span id="go-wave">WAVE 1</span> &middot; PURSED <span id="go-gold">0</span> oz OF GOLD<br>THE CAVES RECLAIM ANOTHER ALCHEMIST</div>
+                    <button id="respawn-btn">RISE AGAIN</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="right-inspector">
+            <div class="section-title">Global Controls</div>
+            <div class="control-panel-group">
+                <div>
+                    <div class="control-label-wrapper"><label>Simulation Speed</label><span id="g-speed-value" class="val-display">1.0x</span></div>
+                    <input type="range" id="g-speed" min="0" max="2.0" step="0.1" value="1.0">
+                </div>
+                <div>
+                    <div class="control-label-wrapper"><label>Max Brightness</label><span id="g-bright-value" class="val-display">3.5</span></div>
+                    <input type="range" id="g-bright" min="1.0" max="10.0" step="0.5" value="3.5">
+                    <div class="control-label-wrapper"><label>Ambient Light</label><span id="g-ambient-value" class="val-display">0.14</span></div>
+                    <input type="range" id="g-ambient" min="0.02" max="0.50" step="0.02" value="0.14">
+                </div>
+                <div>
+                    <div class="control-label-wrapper"><label>Brush Radius</label><span id="brush-value" class="val-display">4px</span></div>
+                    <input type="range" id="brush-size" min="1" max="24" value="6">
+                </div>
+            </div>
+
+            <div class="section-title" id="context-inspector-header">Context Parameters</div>
+            <div id="material-dynamic-controls"></div>
+
+            <button id="clear-btn">Clear Canvas Matrix</button>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
