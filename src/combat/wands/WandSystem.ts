@@ -1,4 +1,12 @@
-import type { CardId, Ctx, Projectile, WandFrame, WandsApi, WandState } from '@/core/types';
+import type {
+  CardId,
+  Ctx,
+  Projectile,
+  WandFrame,
+  WandLoadoutSave,
+  WandsApi,
+  WandState,
+} from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { acidColor, emberColor, fireColor, smokeColor, stoneColor } from '@/sim/colors';
 import { CARD_DEFS } from './cards';
@@ -405,6 +413,41 @@ export class WandSystem implements WandsApi {
     this.collection.push(id);
     ctx.telemetry.count('card.granted.' + id);
     ctx.events.emit('cardGranted', { id, name: CARD_DEFS[id].name });
+  }
+
+  /* ---------------- save-game support ---------------- */
+
+  snapshotLoadout(): WandLoadoutSave {
+    return {
+      active: this._active,
+      collection: [...this.collection],
+      wands: this.wands.map((w) => ({
+        frameId: w.frame.id,
+        cards: [...w.cards],
+        mana: w.mana,
+      })),
+    };
+  }
+
+  loadLoadout(data: WandLoadoutSave): void {
+    this._active = data.active;
+    this.collection.length = 0;
+    this.collection.push(...data.collection);
+    for (let i = 0; i < this.wands.length && i < data.wands.length; i++) {
+      const saved = data.wands[i];
+      const w = this.wands[i];
+      w.frame = WAND_FRAMES[saved.frameId] ?? w.frame;
+      w.cards.length = 0;
+      w.cards.push(...saved.cards);
+      // pad/trim to the frame's capacity
+      while (w.cards.length < w.frame.capacity) w.cards.push(null);
+      w.cards.length = w.frame.capacity;
+      w.mana = Math.min(w.frame.manaMax, saved.mana);
+      w.cooldown = 0;
+      w.castIndex = 0;
+      this.compiled[i as 0 | 1] = null;
+    }
+    this.ctx.events.emit('wandChanged');
   }
 
   slotCard(wand: 0 | 1, slot: number, id: CardId | null): void {

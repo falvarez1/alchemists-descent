@@ -17,9 +17,23 @@
 
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { LEVELS, START_LEVEL, populationForLevel } from '@/config/worldgraph';
-import type { Ctx, EnemyKind, LevelDef, LevelRuntime, LevelsApi } from '@/core/types';
+import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
+import type {
+  Ctx,
+  Enemy,
+  EnemyKind,
+  LevelDef,
+  LevelRuntime,
+  LevelsApi,
+  Mechanism,
+  Pickup,
+  RuneVault,
+  WandLoadoutSave,
+  Waystone,
+} from '@/core/types';
+import { createDefaultStatus } from '@/entities/status';
 import { Cell } from '@/sim/CellType';
-import { emberColor, packRGB } from '@/sim/colors';
+import { COLOR_FN, emberColor, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
 import { EXTRAS } from '@/world/biomeExtras';
 import { extractRegionGraph } from '@/world/regions';
@@ -30,6 +44,54 @@ const CURTAIN_HOLD_MS = 450;
 const WAYSTONE_LIGHT_TICKS = 30;
 /** Minimum placement distance (cells) between a placed enemy and the level spawn. */
 const POPULATION_SPAWN_CLEARANCE = 220;
+
+/* ---------------- expedition save format (localStorage) ---------------- */
+
+const EXPEDITION_KEY = 'noita-expedition';
+
+interface SavedEnemy {
+  kind: EnemyKind;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  dmgK: number;
+}
+
+interface SavedLevelBlob {
+  id: string;
+  /** RLE cell types; colors regenerate from the seed + a diff recolor pass. */
+  rle: string;
+  life: Array<[number, number]>;
+  charge: Array<[number, number]>;
+  explored: string;
+  waystones: Waystone[];
+  pickups: Pickup[];
+  mechanisms: Mechanism[];
+  runeVaults: RuneVault[];
+  keyTaken: boolean;
+  portalOpen: boolean;
+  litOrder: number[];
+  enemies: SavedEnemy[];
+}
+
+interface ExpeditionSave {
+  v: 1;
+  expeditionSeed: number;
+  currentId: string;
+  score: number;
+  player: {
+    x: number;
+    y: number;
+    hp: number;
+    maxHp: number;
+    levit: number;
+    maxLevit: number;
+    perks: Record<string, true>;
+  };
+  loadout: WandLoadoutSave;
+  levels: SavedLevelBlob[];
+}
 
 export class Levels implements LevelsApi {
   /** Every level visited this expedition, kept live (keyed by LevelDef.id). */
@@ -61,9 +123,10 @@ export class Levels implements LevelsApi {
     return this._transitioning;
   }
 
-  /** Generate D1 (or resume the descent in progress) and swap it into ctx. Idempotent. */
+  /** Generate D1 (or resume the saved expedition) and swap it into ctx. Idempotent. */
   startDescent(ctx: Ctx): void {
     if (this.currentId) return;
+    if (this.tryResumeExpedition(ctx)) return;
     this.expeditionSeed = ctx.state.worldSeed >>> 0;
     this.enterLevel(ctx, START_LEVEL);
   }
@@ -172,6 +235,224 @@ export class Levels implements LevelsApi {
     ctx.events.emit('objectiveChanged', { text: 'YOUR LEVEL — YOUR RULES' });
   }
 
+  /* ---------------- expedition persistence ---------------- */
+
+  /** Lazily-restorable blobs for levels saved but not yet revisited this session. */
+  private savedBlobs = new Map<string, SavedLevelBlob>();
+
+  saveExpedition(ctx: Ctx): void {
+    if (!this.currentId || this.currentId === 'custom') return;
+    // Sync the live hostile roster into the current runtime before reading it.
+    this.leaveLevel();
+    const blobs: SavedLevelBlob[] = [];
+    for (const [id, rt] of this.levels) {
+      if (id === 'custom') continue;
+      blobs.push(this.serializeLevel(id, rt));
+    }
+    // Levels saved earlier but not visited this session keep their old blobs.
+    for (const [id, blob] of this.savedBlobs) {
+      if (!this.levels.has(id)) blobs.push(blob);
+    }
+    const save: ExpeditionSave = {
+      v: 1,
+      expeditionSeed: this.expeditionSeed,
+      currentId: this.currentId,
+      score: ctx.state.score,
+      player: {
+        x: ctx.player.x,
+        y: ctx.player.y,
+        hp: ctx.player.hp,
+        maxHp: ctx.player.maxHp,
+        levit: ctx.player.levit,
+        maxLevit: ctx.player.maxLevit,
+        perks: { ...ctx.player.perks } as Record<string, true>,
+      },
+      loadout: ctx.wands.snapshotLoadout(),
+      levels: blobs,
+    };
+    try {
+      localStorage.setItem(EXPEDITION_KEY, JSON.stringify(save));
+    } catch {
+      // quota — the expedition just lives and dies with the tab
+    }
+  }
+
+  hasSavedExpedition(): boolean {
+    try {
+      return localStorage.getItem(EXPEDITION_KEY) !== null;
+    } catch {
+      return false;
+    }
+  }
+
+  abandonExpedition(): void {
+    try {
+      localStorage.removeItem(EXPEDITION_KEY);
+    } catch {
+      /* nothing to drop */
+    }
+    this.savedBlobs.clear();
+  }
+
+  private serializeLevel(id: string, rt: LevelRuntime): SavedLevelBlob {
+    // Life on transient cells (fire/ember/smoke/steam) is noise a second from
+    // now — skipping it keeps multi-level saves well inside localStorage quota.
+    const life: Array<[number, number]> = [];
+    const types = rt.world.types;
+    const lifeArr = rt.world.life;
+    for (let i = 0; i < lifeArr.length && life.length < 20000; i++) {
+      if (lifeArr[i] === 0) continue;
+      const t = types[i];
+      if (t === Cell.Fire || t === Cell.Ember || t === Cell.Smoke || t === Cell.Steam) continue;
+      life.push([i, lifeArr[i]]);
+    }
+    return {
+      id,
+      rle: rleEncode(rt.world.types),
+      life,
+      charge: sparsePairs(rt.world.charge, 20000),
+      explored: bytesToBase64(rt.explored),
+      waystones: rt.waystones,
+      pickups: rt.pickups,
+      mechanisms: rt.mechanisms,
+      runeVaults: rt.runeVaults,
+      keyTaken: rt.keyTaken,
+      portalOpen: rt.portal?.open ?? false,
+      litOrder: this.litOrder.get(id) ?? [],
+      enemies: rt.enemies.map((e) => ({
+        kind: e.kind,
+        x: e.x,
+        y: e.y,
+        hp: e.hp,
+        maxHp: e.maxHp,
+        dmgK: e.dmgK ?? 1,
+      })),
+    };
+  }
+
+  /** Resume a saved expedition: hero + loadout now, levels lazily on entry. */
+  private tryResumeExpedition(ctx: Ctx): boolean {
+    let save: ExpeditionSave | null = null;
+    try {
+      const raw = localStorage.getItem(EXPEDITION_KEY);
+      if (raw) save = JSON.parse(raw) as ExpeditionSave;
+    } catch {
+      save = null;
+    }
+    if (!save || save.v !== 1 || !LEVELS[save.currentId]) return false;
+
+    this.expeditionSeed = save.expeditionSeed >>> 0;
+    for (const blob of save.levels) this.savedBlobs.set(blob.id, blob);
+
+    ctx.state.score = save.score;
+    ctx.events.emit('scoreChanged', { score: ctx.state.score });
+    const p = ctx.player;
+    p.maxHp = save.player.maxHp;
+    p.hp = save.player.hp;
+    p.maxLevit = save.player.maxLevit;
+    p.levit = save.player.levit;
+    p.perks = { ...save.player.perks } as typeof p.perks;
+    ctx.wands.loadLoadout(save.loadout);
+
+    this.enterLevel(ctx, save.currentId);
+    // enterLevel parks the hero at the spawn; the save knows better.
+    p.x = save.player.x;
+    p.y = save.player.y;
+    ctx.camera.snapTo(p.x, p.y);
+    ctx.events.emit('toast', { text: 'EXPEDITION RESUMED' });
+    return true;
+  }
+
+  /**
+   * Rebuild a saved level: regenerate the pristine world from its seed (which
+   * restores the rim-lit terrain colors exactly), then overlay the saved cell
+   * types — only player-changed cells get generic per-material recolors.
+   */
+  private restoreLevel(ctx: Ctx, def: LevelDef, blob: SavedLevelBlob): LevelRuntime {
+    const world = new World();
+    ctx.world = world;
+    ctx.enemies.length = 0;
+
+    const seed = (this.expeditionSeed ^ this.hashString(def.id)) >>> 0;
+    const pristine = ctx.worldgen.generateLevel(ctx, def, seed);
+
+    const savedTypes = new Uint8Array(world.types.length);
+    rleDecode(blob.rle, savedTypes);
+    for (let i = 0; i < savedTypes.length; i++) {
+      if (savedTypes[i] !== world.types[i]) {
+        world.types[i] = savedTypes[i];
+        const fn = COLOR_FN[savedTypes[i]];
+        world.colors[i] = fn ? fn() : EMPTY_COLOR;
+      }
+    }
+    world.life.fill(0);
+    world.charge.fill(0);
+    for (const [i, v] of blob.life) world.life[i] = v;
+    for (const [i, v] of blob.charge) world.charge[i] = v;
+
+    for (const se of blob.enemies) {
+      ctx.enemies.push(this.reviveEnemy(ctx, se));
+    }
+
+    const explored = new Uint8Array(MINIMAP_W * MINIMAP_H);
+    base64ToBytes(blob.explored, explored);
+    this.litOrder.set(def.id, [...blob.litOrder]);
+
+    const portal = pristine.portal
+      ? { x: pristine.portal.x, y: pristine.portal.y, open: blob.portalOpen }
+      : null;
+
+    return {
+      def,
+      world,
+      enemies: ctx.enemies.slice(),
+      waystones: blob.waystones,
+      exit: pristine.exit,
+      explored,
+      spawn: pristine.spawn,
+      regions: extractRegionGraph(ctx.world, pristine.spawn, {
+        x: pristine.exit.x,
+        y: pristine.exit.sealY - 12,
+      }),
+      cauldron: pristine.cauldron,
+      pickups: blob.pickups,
+      portal,
+      keyTaken: blob.keyTaken,
+      mechanisms: blob.mechanisms,
+      runeVaults: blob.runeVaults,
+    };
+  }
+
+  /** A saved hostile rejoins the living with full kit but its saved wounds. */
+  private reviveEnemy(ctx: Ctx, se: SavedEnemy): Enemy {
+    void ctx;
+    return {
+      kind: se.kind,
+      x: se.x,
+      y: se.y,
+      fx: 0,
+      fy: 0,
+      vx: 0,
+      vy: 0,
+      hp: se.hp,
+      maxHp: se.maxHp,
+      dmgK: se.dmgK,
+      flash: 0,
+      timer: Math.floor(Math.random() * 80),
+      attackCd: 60,
+      bobPhase: Math.random() * Math.PI * 2,
+      grounded: false,
+      stride: 0,
+      splat: 0,
+      prevG: false,
+      blink: 0,
+      jetFuel: 0,
+      jetCd: 0,
+      stuckT: 0,
+      status: createDefaultStatus(),
+    };
+  }
+
   /** Respawn anchor: last lit waystone in the current level, else level spawn. */
   respawnPoint(): { x: number; y: number } | null {
     const runtime = this.current;
@@ -220,7 +501,14 @@ export class Levels implements LevelsApi {
       ctx.enemies.length = 0;
       ctx.enemies.push(...runtime.enemies);
     } else {
-      runtime = this.createLevel(ctx, def);
+      const blob = this.savedBlobs.get(id);
+      if (blob) {
+        // Saved by a previous session: regenerate-and-overlay (see restoreLevel)
+        runtime = this.restoreLevel(ctx, def, blob);
+        this.savedBlobs.delete(id);
+      } else {
+        runtime = this.createLevel(ctx, def);
+      }
       this.levels.set(id, runtime);
     }
 
@@ -261,6 +549,9 @@ export class Levels implements LevelsApi {
       curtain?.classList.remove('visible');
       this._transitioning = false;
     }, CURTAIN_HOLD_MS);
+
+    // Crossing a threshold is a natural checkpoint.
+    this.saveExpedition(ctx);
   }
 
   /** Generate a fresh level World into ctx and place its hostile population. */

@@ -166,6 +166,13 @@ export class Game {
     const hint = this.ctx.worldgen.spawnHint;
     if (hint) this.ctx.camera.snapTo(hint.x, hint.y);
 
+    // A hidden tab is the most likely prelude to a closed one — checkpoint.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.ctx.state.mode === 'play') {
+        this.ctx.levels.saveExpedition(this.ctx);
+      }
+    });
+
     requestAnimationFrame(this.step);
   }
 
@@ -173,6 +180,11 @@ export class Game {
     const ctx = this.ctx;
     const tFrame = performance.now();
     ctx.state.frameCount++;
+
+    // Expedition autosave: every ~30s of play, a closed tab costs nothing.
+    if (ctx.state.mode === 'play' && !ctx.state.paused && ctx.state.frameCount % 1800 === 0) {
+      ctx.levels.saveExpedition(ctx);
+    }
 
     // Impact hitstop freezes gameplay for a beat; the Sanctum pauses it
     // outright. Rendering continues through both.

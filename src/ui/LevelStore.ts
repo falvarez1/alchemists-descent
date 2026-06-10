@@ -1,4 +1,5 @@
 import type { Ctx } from '@/core/types';
+import { rleDecode, rleEncode } from '@/core/rle';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 
@@ -24,37 +25,6 @@ interface SavedLevel {
 }
 
 const STORE_KEY = 'noita-level-library';
-
-function rleEncode(types: Uint8Array): string {
-  const out: number[] = [];
-  let run = 1;
-  for (let i = 1; i <= types.length; i++) {
-    if (i < types.length && types[i] === types[i - 1] && run < 0xffff) {
-      run++;
-      continue;
-    }
-    out.push(run & 0xff, (run >> 8) & 0xff, types[i - 1]);
-    run = 1;
-  }
-  const bytes = new Uint8Array(out);
-  let bin = '';
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(bin);
-}
-
-function rleDecode(rle: string, into: Uint8Array): void {
-  const bin = atob(rle);
-  let pos = 0;
-  for (let i = 0; i + 2 < bin.length; i += 3) {
-    const run = bin.charCodeAt(i) | (bin.charCodeAt(i + 1) << 8);
-    const t = bin.charCodeAt(i + 2);
-    into.fill(t, pos, pos + run);
-    pos += run;
-  }
-}
 
 function loadLibrary(): Record<string, SavedLevel> {
   try {
@@ -180,6 +150,16 @@ export class LevelStore {
     document.getElementById('btn-level-playtest')?.addEventListener('click', () => {
       this.ctx.levels.playCurrentWorld(this.ctx);
       (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
+    });
+
+    document.getElementById('btn-expedition-abandon')?.addEventListener('click', () => {
+      if (!this.ctx.levels.hasSavedExpedition()) {
+        this.ctx.events.emit('toast', { text: 'NO SAVED EXPEDITION' });
+        return;
+      }
+      if (!window.confirm('Abandon the saved expedition? The next descent starts fresh.')) return;
+      this.ctx.levels.abandonExpedition();
+      this.ctx.events.emit('toast', { text: 'EXPEDITION ABANDONED' });
     });
   }
 

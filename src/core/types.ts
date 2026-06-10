@@ -785,6 +785,15 @@ export interface WandsApi {
   grantCard(ctx: Ctx, id: CardId): void;
   /** Move a card between collection and a wand slot (bench UI). */
   slotCard(wand: 0 | 1, slot: number, id: CardId | null): void;
+  /** Save-game support: capture / restore the full wand loadout. */
+  snapshotLoadout(): WandLoadoutSave;
+  loadLoadout(data: WandLoadoutSave): void;
+}
+
+export interface WandLoadoutSave {
+  active: 0 | 1;
+  collection: CardId[];
+  wands: Array<{ frameId: string; cards: (CardId | null)[]; mana: number }>;
 }
 
 /* ============================================================
@@ -905,6 +914,11 @@ export interface LevelsApi {
    * enemies placed in build mode are kept.
    */
   playCurrentWorld(ctx: Ctx): void;
+  /** Persist the whole expedition (visited levels + hero) to localStorage. */
+  saveExpedition(ctx: Ctx): void;
+  hasSavedExpedition(): boolean;
+  /** Drop the save; the next play entry starts a fresh expedition. */
+  abandonExpedition(): void;
 }
 
 /* ============================================================
