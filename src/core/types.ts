@@ -418,6 +418,8 @@ export interface AudioApi {
   doorGrind(): void;
   /** A brazier catching: whoosh + rising triangle. */
   brazier(): void;
+  /** A broken mechanism groaning before its gate falls open. */
+  groan(): void;
   coin(): void;
   hurt(): void;
   jump(): void;
@@ -609,7 +611,15 @@ export interface TelemetryApi {
  * Upgrade port: mechanisms, pickups, portal progression, sanctum
  * ============================================================ */
 
-export type MechanismKind = 'door' | 'plate' | 'lever' | 'brazier';
+export type MechanismKind =
+  | 'door'
+  | 'plate'
+  | 'lever'
+  | 'brazier'
+  // Wave E sensors — each reads raw cells, so emergent solutions always count
+  | 'scale' // PRESSURE: enough material weight in the pan zone
+  | 'buoy' // BUOY: enough liquid cells pooled in the basin zone
+  | 'chargelatch'; // CHARGE-LATCH: any electrified cell in the zone latches it forever
 
 /**
  * A placed contraption. Doors are real Metal-cell spans that retract row by
@@ -625,12 +635,29 @@ export interface Mechanism {
   /** Door/plate width in cells (doors also use h). */
   w: number;
   h: number;
-  /** door: open 0/1 · lever: on 0/1 · brazier: lit 0/1 · plate: latch frames left. */
+  /**
+   * door: open 0/1 · lever: on 0/1 · brazier/chargelatch: lit/latched 0/1 ·
+   * plate/scale/buoy: latch frames left.
+   */
   state: number;
   /** Plate weight currently on the sill (transient, not persisted semantics). */
   pressed?: boolean;
-  /** Door id driven by this trigger; -1 for doors themselves / unlinked. */
+  /** Door id driven by this trigger; -1 for doors themselves / unlinked.
+   *  A door with SEVERAL triggers opens only when ALL are satisfied. */
   targetId: number;
+  /** scale/buoy trigger threshold (cells of weight / pooled liquid). */
+  threshold?: number;
+  /** Sensor read region (inclusive), world cells. */
+  zone?: { x0: number; y0: number; x1: number; y1: number };
+  /** Live sensor reading (weight / liquid count), for the HUD gauge. */
+  reading?: number;
+  /**
+   * Fail-open rule: structural cells recorded at construction. When most are
+   * destroyed the mechanism breaks, groans, and its gate falls open 30s later.
+   * broken = frames left on the groan timer (0 = gate forced open forever).
+   */
+  body?: Array<[number, number]>;
+  broken?: number;
 }
 
 /**

@@ -110,6 +110,8 @@ export class AudioEngine implements AudioApi {
 
   brazier(): void { this.noiseBurst(0.3, 700, 0.18); this.tone(220, 480, 0.3, 'triangle', 0.14); }
 
+  groan(): void { if (!this.throttled('groan', 400)) return; this.tone(72, 38, 0.7, 'sawtooth', 0.16); this.noiseBurst(0.45, 160, 0.12); }
+
   flame(): void {
     if (!this.throttled('flame', 70)) return;
     this.noiseBurst(0.22, 550 + Math.random() * 300, 0.18);          // body of the roar

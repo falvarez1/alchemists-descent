@@ -1,6 +1,6 @@
 import type { Ctx, Mechanism, MechanismsApi } from '@/core/types';
 import { hash2 } from '@/core/math';
-import { Cell, isGas } from '@/sim/CellType';
+import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { EMPTY_COLOR, fireColor, packRGB, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
 
@@ -110,13 +110,16 @@ export function makePlate(
   };
   list.push(m);
   // visible plate: a thin brass sill flush with the floor
+  const body: Array<[number, number]> = [];
   for (let dx = 0; dx < w; dx++) {
     if (world.inBounds(x + dx, y)) {
       const i = world.idx(x + dx, y);
       world.types[i] = Cell.Metal;
       world.colors[i] = packRGB(148, 132, 70);
+      body.push([x + dx, y]);
     }
   }
+  m.body = body;
   return m;
 }
 
@@ -135,6 +138,12 @@ export function makeLever(
     h: 1,
     state: 0,
     targetId: door.id,
+    // the bracket's footing — blast it away and the gate fail-opens
+    body: [
+      [x - 1, y + 1],
+      [x, y + 1],
+      [x + 1, y + 1],
+    ],
   };
   list.push(m);
   return m;
@@ -159,11 +168,13 @@ export function makeBrazier(
   };
   list.push(m);
   // bowl: a small stone cup waiting for flame
+  const body: Array<[number, number]> = [];
   for (let dx = -2; dx <= 2; dx++) {
     if (world.inBounds(x + dx, y)) {
       const i = world.idx(x + dx, y);
       world.types[i] = Cell.Stone;
       world.colors[i] = stoneColor();
+      body.push([x + dx, y]);
     }
   }
   for (const dx of [-2, 2]) {
@@ -171,8 +182,118 @@ export function makeBrazier(
       const i = world.idx(x + dx, y - 1);
       world.types[i] = Cell.Stone;
       world.colors[i] = stoneColor();
+      body.push([x + dx, y - 1]);
     }
   }
+  m.body = body;
+  return m;
+}
+
+/** SAND SCALE: a brass pan that wants real material weight poured onto it. */
+export function makeScale(
+  world: World,
+  list: Mechanism[],
+  x: number,
+  y: number,
+  w: number,
+  threshold: number,
+  door: Mechanism,
+): Mechanism {
+  const m: Mechanism = {
+    id: allocId(list),
+    kind: 'scale',
+    x,
+    y,
+    w,
+    h: 1,
+    state: 0,
+    targetId: door.id,
+    threshold,
+    zone: { x0: x, y0: y - 7, x1: x + w - 1, y1: y - 1 },
+  };
+  list.push(m);
+  const body: Array<[number, number]> = [];
+  // the pan: a brass sill with raised lips so the pour stays put
+  for (let dx = 0; dx < w; dx++) {
+    if (world.inBounds(x + dx, y)) {
+      const i = world.idx(x + dx, y);
+      world.types[i] = Cell.Metal;
+      world.colors[i] = packRGB(168, 142, 64);
+      body.push([x + dx, y]);
+    }
+  }
+  for (const dx of [-1, w]) {
+    for (let dy = 0; dy <= 2; dy++) {
+      if (world.inBounds(x + dx, y - dy)) {
+        const i = world.idx(x + dx, y - dy);
+        world.types[i] = Cell.Metal;
+        world.colors[i] = packRGB(148, 126, 58);
+        body.push([x + dx, y - dy]);
+      }
+    }
+  }
+  m.body = body;
+  return m;
+}
+
+/** SLUICE BUOY: a float that rises when its basin pools enough liquid. */
+export function makeBuoy(
+  list: Mechanism[],
+  x: number,
+  y: number,
+  zone: { x0: number; y0: number; x1: number; y1: number },
+  threshold: number,
+  door: Mechanism,
+  body: Array<[number, number]>,
+): Mechanism {
+  const m: Mechanism = {
+    id: allocId(list),
+    kind: 'buoy',
+    x,
+    y,
+    w: 1,
+    h: 1,
+    state: 0,
+    targetId: door.id,
+    threshold,
+    zone,
+    body,
+  };
+  list.push(m);
+  return m;
+}
+
+/** CHARGE-LATCH: a coil that latches forever on the first spark in its zone. */
+export function makeChargeLatch(
+  world: World,
+  list: Mechanism[],
+  x: number,
+  y: number,
+  door: Mechanism,
+): Mechanism {
+  const m: Mechanism = {
+    id: allocId(list),
+    kind: 'chargelatch',
+    x,
+    y,
+    w: 1,
+    h: 1,
+    state: 0,
+    targetId: door.id,
+    zone: { x0: x - 3, y0: y - 5, x1: x + 3, y1: y - 1 },
+  };
+  list.push(m);
+  // a conductive pedestal: metal drinks lightning and wears charge visibly
+  const body: Array<[number, number]> = [];
+  for (let dx = -2; dx <= 2; dx++) {
+    if (world.inBounds(x + dx, y)) {
+      const i = world.idx(x + dx, y);
+      world.types[i] = Cell.Metal;
+      world.colors[i] = packRGB(104, 116, 132);
+      body.push([x + dx, y]);
+    }
+  }
+  m.body = body;
   return m;
 }
 
@@ -184,10 +305,6 @@ export class Mechanisms implements MechanismsApi {
     ctx.events.on('structureStrike', ({ x, y, radius }) => this.strike(this.ctx, x, y, radius));
   }
 
-  private findDoor(list: Mechanism[], id: number): Mechanism | undefined {
-    return list.find((m) => m.kind === 'door' && m.id === id);
-  }
-
   update(ctx: Ctx): void {
     if (ctx.state.mode !== 'play' || ctx.state.paused) return;
     const runtime = ctx.levels.current;
@@ -195,25 +312,90 @@ export class Mechanisms implements MechanismsApi {
     const world = ctx.world;
     const list = runtime.mechanisms;
 
+    // ---- 1) Each sensor reads the raw grid ----
     for (const m of list) {
+      if (m.kind === 'door') continue;
+
+      // Fail-open rule: a wrecked mechanism groans, then its gate falls open.
+      // Physics can never hard-lock progression.
+      if (m.broken === undefined && m.body && ctx.state.frameCount % 30 === 0) {
+        let intact = 0;
+        for (const [bx, by] of m.body) {
+          if (!world.inBounds(bx, by)) continue;
+          const t = world.types[world.idx(bx, by)];
+          if (t === Cell.Metal || t === Cell.Stone || blocksEntity(t)) intact++;
+        }
+        if (intact < m.body.length / 2) {
+          m.broken = 1800; // 30 seconds of groaning
+          ctx.audio.groan();
+          ctx.events.emit('toast', { text: 'THE MECHANISM GROANS — SOMETHING GIVES WAY' });
+        }
+      }
+      if (m.broken !== undefined && m.broken > 0) {
+        m.broken--;
+        if (m.broken % 360 === 0) ctx.audio.groan();
+        if (m.broken === 0) {
+          ctx.events.emit('toast', { text: 'THE BROKEN GATE FALLS OPEN' });
+        }
+        continue; // a dying mechanism no longer senses
+      }
+      if (m.broken === 0) continue;
+
       if (m.kind === 'plate') {
         const was = m.pressed === true;
         m.pressed = this.sensePlate(ctx, m);
         if (m.pressed) m.state = 420; // stays open ~7s after weight lifts
         else if (m.state > 0) m.state--;
-        const want = m.pressed || m.state > 0;
-        const door = this.findDoor(list, m.targetId);
-        if (door && (door.state === 1) !== want) {
-          setDoorCells(ctx, door, want);
-          ctx.audio.doorGrind();
-        }
         if (m.pressed && !was) ctx.audio.tone(140, 90, 0.1, 'square', 0.14);
-      } else if (m.kind === 'lever') {
-        const door = this.findDoor(list, m.targetId);
-        const on = m.state === 1;
-        if (door && (door.state === 1) !== on) {
-          setDoorCells(ctx, door, on);
-          ctx.audio.doorGrind();
+      } else if (m.kind === 'scale' && m.zone) {
+        // SAND SCALE: pure material weight in the pan — bodies don't count,
+        // only what you pour or drop stays poured
+        let weight = 0;
+        for (let X = m.zone.x0; X <= m.zone.x1; X++) {
+          for (let Y = m.zone.y0; Y <= m.zone.y1; Y++) {
+            if (!world.inBounds(X, Y)) continue;
+            const t = world.types[world.idx(X, Y)];
+            if (t !== Cell.Empty && !isGas(t) && t !== Cell.Fire) weight++;
+          }
+        }
+        m.reading = weight;
+        const enough = weight >= (m.threshold ?? 24);
+        if (enough && m.state === 0) ctx.audio.tone(180, 120, 0.14, 'square', 0.15);
+        if (enough) m.state = 420;
+        else if (m.state > 0) m.state--;
+      } else if (m.kind === 'buoy' && m.zone) {
+        // SLUICE: pooled liquid lifts the float
+        let liquid = 0;
+        for (let X = m.zone.x0; X <= m.zone.x1; X++) {
+          for (let Y = m.zone.y0; Y <= m.zone.y1; Y++) {
+            if (!world.inBounds(X, Y)) continue;
+            if (isLiquid(world.types[world.idx(X, Y)])) liquid++;
+          }
+        }
+        m.reading = liquid;
+        const afloat = liquid >= (m.threshold ?? 28);
+        if (afloat && m.state === 0) ctx.audio.bubble();
+        if (afloat) m.state = 600; // generous latch: pools drain slowly anyway
+        else if (m.state > 0) m.state--;
+      } else if (m.kind === 'chargelatch' && m.zone) {
+        // CHARGE-LATCH: one spark anywhere in the zone latches it forever —
+        // lightning, electrified water, even a conducting enemy's blood
+        if (m.state === 0) {
+          let charged = false;
+          for (let X = m.zone.x0; X <= m.zone.x1 && !charged; X++) {
+            for (let Y = m.zone.y0; Y <= m.zone.y1 && !charged; Y++) {
+              if (world.inBounds(X, Y) && world.charge[world.idx(X, Y)] > 0) charged = true;
+            }
+          }
+          if (charged) {
+            m.state = 1;
+            ctx.audio.zap();
+            ctx.particles.burst(m.x, m.y - 3, 12, null, () => packRGB(120, 200, 255), 2.0, {
+              glow: 2.4,
+              grav: -0.01,
+            });
+            ctx.events.emit('toast', { text: 'THE COIL DRINKS THE SPARK — LATCHED' });
+          }
         }
       } else if (m.kind === 'brazier') {
         if (m.state === 0) {
@@ -237,24 +419,39 @@ export class Mechanisms implements MechanismsApi {
             });
             ctx.events.emit('toast', { text: 'A BRAZIER ROARS TO LIFE' });
           }
-        } else {
+        } else if (ctx.state.frameCount % 6 === 0) {
           // keep it burning: re-seed a flame in the bowl
-          if (ctx.state.frameCount % 6 === 0) {
-            const X = m.x + Math.floor(Math.random() * 3) - 1,
-              Y = m.y - 1 - Math.floor(Math.random() * 2);
-            if (world.inBounds(X, Y) && world.types[world.idx(X, Y)] === Cell.Empty) {
-              const i = world.idx(X, Y);
-              world.types[i] = Cell.Fire;
-              world.life[i] = 18 + Math.floor(Math.random() * 22);
-              world.colors[i] = fireColor();
-            }
-          }
-          const door = this.findDoor(list, m.targetId);
-          if (door && door.state !== 1) {
-            setDoorCells(ctx, door, true);
-            ctx.audio.doorGrind();
+          const X = m.x + Math.floor(Math.random() * 3) - 1,
+            Y = m.y - 1 - Math.floor(Math.random() * 2);
+          if (world.inBounds(X, Y) && world.types[world.idx(X, Y)] === Cell.Empty) {
+            const i = world.idx(X, Y);
+            world.types[i] = Cell.Fire;
+            world.life[i] = 18 + Math.floor(Math.random() * 22);
+            world.colors[i] = fireColor();
           }
         }
+      }
+    }
+
+    // ---- 2) Doors aggregate their triggers: ALL must be satisfied (a door
+    //         with one plate behaves exactly as before; Burning Seals wires
+    //         three braziers to one gate). Broken triggers count as satisfied
+    //         once their groan timer runs out.
+    for (const door of list) {
+      if (door.kind !== 'door') continue;
+      let hasTrigger = false;
+      let want = true;
+      for (const t of list) {
+        if (t.kind === 'door' || t.targetId !== door.id) continue;
+        hasTrigger = true;
+        if (!this.satisfied(t)) {
+          want = false;
+          break;
+        }
+      }
+      if (hasTrigger && (door.state === 1) !== want) {
+        setDoorCells(ctx, door, want);
+        ctx.audio.doorGrind();
       }
     }
 
@@ -281,6 +478,25 @@ export class Mechanisms implements MechanismsApi {
         }
       }
       if (v.door.length === 0) ctx.audio.tone(520, 300, 0.3, 'triangle', 0.12);
+    }
+  }
+
+  /** One trigger's contribution to its door (fail-open: broken = satisfied). */
+  private satisfied(t: Mechanism): boolean {
+    if (t.broken === 0) return true;
+    if (t.broken !== undefined) return false; // still groaning
+    switch (t.kind) {
+      case 'lever':
+      case 'brazier':
+      case 'chargelatch':
+        return t.state === 1;
+      case 'plate':
+        return t.pressed === true || t.state > 0;
+      case 'scale':
+      case 'buoy':
+        return t.state > 0;
+      default:
+        return false;
     }
   }
 

@@ -494,6 +494,47 @@ export class FrameComposer implements PixelSurface {
       } else if (m.kind === 'brazier' && m.state === 0) {
         // dark bowls hint at what they want
         if (frame % 40 < 20) this.addPx(m.x, m.y - 2, 0.25, 0.12, 0.04);
+      } else if (m.kind === 'scale') {
+        // weight gauge: notches above the pan fill amber toward the threshold
+        const frac = Math.min(1, (m.reading ?? 0) / (m.threshold ?? 24));
+        for (let n = 0; n < 5; n++) {
+          const gy = m.y - 9 - n;
+          if (frac * 5 > n) this.setPx(m.x - 2, gy, 0.95, 0.7, 0.15);
+          else this.setPx(m.x - 2, gy, 0.16, 0.13, 0.08);
+        }
+        if (m.state > 0) {
+          const g = 0.6 + Math.sin(frame * 0.2) * 0.3;
+          this.addPx(m.x + (m.w >> 1), m.y - 1, 0.9 * g, 0.75 * g, 0.2 * g);
+        }
+      } else if (m.kind === 'buoy' && m.zone) {
+        // the float: a bobbing diamond riding the fill line, green when up
+        const frac = Math.min(1, (m.reading ?? 0) / (m.threshold ?? 28));
+        const fy = m.zone.y1 - Math.round((m.zone.y1 - m.zone.y0) * frac);
+        const y2 = Math.round(fy - 1 + Math.sin(frame * 0.1 + m.x) * 0.8);
+        const up = m.state > 0;
+        const r2 = up ? 0.25 : 0.8,
+          g2 = up ? 1.3 : 0.6,
+          b2 = up ? 0.45 : 0.25;
+        this.setPx(m.x, y2, r2, g2, b2);
+        this.setPx(m.x - 1, y2 + 1, r2 * 0.6, g2 * 0.6, b2 * 0.6);
+        this.setPx(m.x + 1, y2 + 1, r2 * 0.6, g2 * 0.6, b2 * 0.6);
+      } else if (m.kind === 'chargelatch') {
+        // the coil: cold cyan spiral, blazing white-blue once latched
+        const latched = m.state === 1;
+        const p2 = latched ? 1 : 0.45 + Math.sin(frame * 0.13 + m.y) * 0.25;
+        this.setPx(m.x, m.y - 2, 0.3 * p2, 0.7 * p2, 1.1 * p2);
+        this.setPx(m.x - 1, m.y - 3, 0.22 * p2, 0.5 * p2, 0.8 * p2);
+        this.setPx(m.x + 1, m.y - 3, 0.22 * p2, 0.5 * p2, 0.8 * p2);
+        this.setPx(m.x, m.y - 4, 0.35 * p2, 0.75 * p2, 1.2 * p2);
+        if (latched && frame % 9 < 2) this.addPx(m.x, m.y - 5, 0.5, 0.9, 1.4);
+      }
+      // a broken mechanism strobes a dying red cross while it groans
+      if (m.broken !== undefined && m.broken > 0 && frame % 20 < 10) {
+        this.addPx(m.x, m.y - 4, 0.9, 0.12, 0.08);
+        this.addPx(m.x - 1, m.y - 3, 0.5, 0.07, 0.04);
+        this.addPx(m.x + 1, m.y - 5, 0.5, 0.07, 0.04);
+        this.addPx(m.x + 1, m.y - 3, 0.5, 0.07, 0.04);
+        this.addPx(m.x - 1, m.y - 5, 0.5, 0.07, 0.04);
       }
     }
 

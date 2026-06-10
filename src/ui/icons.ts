@@ -117,7 +117,23 @@ export const PIXEL_ICONS: Record<string, PixelIconDef> = {
     "..b...b....",".....c...b.","..b.....b..","....b.c....","..........."]},
   icelance: { p: { a: '#155e75', b: '#38bdf8', c: '#e0f6ff' }, g: [
     "...........","..........c","........cb.","......cba..",".....cba...","....cba....",
-    "...cba.....","..cba......",".cb........","ac.........","..........."]}
+    "...cba.....","..cba......",".cb........","ac.........","..........."]},
+  // Bespoke art for the remaining upgrade-port payload cards
+  vitriol: { p: { a: '#365314', b: '#84cc16', c: '#d9f99d' }, g: [
+    "....aaa....","....a.a....","...a...a...","...a.b.a...","..a..b..a..","..a.bbb.a..",
+    ".a.bbbbb.a.",".a.bcbbb.a.",".a.bbbbb.a.","..aaaaaaa..","....b.b...."]},
+  frostshard: { p: { a: '#155e75', b: '#38bdf8', c: '#e0f6ff' }, g: [
+    ".....c.....",".....b.....","..b..b..b..","...b.b.b...","....bbb....",".cbbbcbbbc.",
+    "....bbb....","...b.b.b...","..b..b..b..",".....b.....",".....c....."]},
+  wisp: { p: { a: '#1e3a8a', b: '#60a5fa', c: '#e0f2fe' }, g: [
+    "...........","....bbb....","..bb...bb..",".b...c...b.",".b..ccc..b.","b..cc.cc..b",
+    ".b..ccc..b.",".b...c...b.","..bb...bb..","....bbb....","..........."]},
+  meteor: { p: { a: '#7c2d12', b: '#fb923c', c: '#fde68a' }, g: [
+    "c..........",".cb........","..cb.......","...cbb.....","....bbaa...","....baaaa..",
+    ".....aaaaa.","....baaaaa.",".....aaaa..","......bb...","..........."]},
+  conjure: { p: { a: '#57534e', b: '#a8a29e', c: '#fcd34d' }, g: [
+    "...........","....c......","...........",".aabaabaab.",".aabaabaab.","...........",
+    ".baabaabaa.",".baabaabaa.","...........",".aabaabaab.",".aabaabaab."]}
 };
 
 /** Cell id → icon name for the element toolbar buttons. */
@@ -132,10 +148,9 @@ export const ELEMENT_ICON: Record<number, string> = {
 const LEGACY_CARD_ICON: Record<string, string> = {
   spark: 'bolt', bomb: 'bomb', lightning: 'lightning', flame: 'flame',
   dig: 'dig', warp: 'warp', blackhole: 'blackhole',
-  // Upgrade-port payload cards: icelance/emberstorm have dedicated art from
-  // noita-sandbox (15).html; the rest borrow the closest existing glyphs.
-  vitriol: 'acid', frostshard: 'ice', icelance: 'icelance', wisp: 'bolt',
-  meteor: 'bomb', conjure: 'wall', emberstorm: 'emberstorm',
+  // Upgrade-port payload cards: every one now has dedicated pixel art.
+  vitriol: 'vitriol', frostshard: 'frostshard', icelance: 'icelance', wisp: 'wisp',
+  meteor: 'meteor', conjure: 'conjure', emberstorm: 'emberstorm',
 };
 
 /** Card id → PIXEL_ICONS key (modifier/multicast cards live under 'card-*'). */

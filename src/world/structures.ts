@@ -11,10 +11,18 @@ import type {
   RuneVault,
   Waystone,
 } from '@/core/types';
-import { makeBrazier, makeDoor, makeLever, makePlate } from '@/game/Mechanisms';
+import {
+  makeBrazier,
+  makeBuoy,
+  makeChargeLatch,
+  makeDoor,
+  makeLever,
+  makePlate,
+  makeScale,
+} from '@/game/Mechanisms';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { Cell } from '@/sim/CellType';
-import { EMPTY_COLOR, goldColor, packRGB, stoneColor } from '@/sim/colors';
+import { EMPTY_COLOR, goldColor, packRGB, sandColor, stoneColor } from '@/sim/colors';
 import type { CardId } from '@/core/types';
 
 /**
@@ -332,6 +340,152 @@ export function placeStructures(
     }
     runeVaults.push({ rx, ry: ry - 2, door: doorCells, active: false });
     vPlaced++;
+  }
+
+  // ---- Wave E puzzle chamber (depth 2+): a lock made of physics ----
+  // One archetype per level, rotating with depth: Sand Scale (pour weight
+  // onto the pan), Burning Seals (light ALL three braziers), Sluice (pool
+  // liquid past the buoy line), Charge Latch (bring it a spark). The loot
+  // pocket behind the gate carries a chest, gold, and a tome.
+  if (def.depth >= 2) {
+    let px2 = -1,
+      py2 = -1,
+      pTries = 0;
+    while (pTries < 9000) {
+      pTries++;
+      const cand = 60 + Math.floor(rng.next() * (WIDTH - 120));
+      const candY = 100 + Math.floor(rng.next() * (HEIGHT - 280));
+      if (Math.abs(cand - spawn.x) < 160 || Math.abs(cand - portalX) < 120) continue;
+      // mostly-solid host rock, no metal collisions
+      let rock = 0,
+        cells = 0,
+        collide = false;
+      for (let dy = -12; dy <= 12 && !collide; dy++) {
+        for (let dx = -20; dx <= 20; dx++) {
+          if (!w.inBounds(cand + dx, candY + dy)) {
+            collide = true;
+            break;
+          }
+          const t = w.types[w.idx(cand + dx, candY + dy)];
+          if (t === Cell.Metal) {
+            collide = true;
+            break;
+          }
+          cells++;
+          if (t === Cell.Wall) rock++;
+        }
+      }
+      if (collide || rock / cells < 0.82) continue;
+      px2 = cand;
+      py2 = candY;
+      break;
+    }
+    if (px2 >= 0) {
+      const archetype = (def.depth + Math.floor(rng.next() * 2)) % 4;
+      // main chamber + sealed loot pocket on the right
+      carvePocket(px2, py2, 16, 9);
+      for (let dx = -16; dx <= 16; dx++) {
+        const Y = py2 + 9;
+        if (w.inBounds(px2 + dx, Y) && w.types[w.idx(px2 + dx, Y)] === Cell.Empty) {
+          const i = w.idx(px2 + dx, Y);
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      }
+      carvePocket(px2 + 24, py2 + 2, 7, 6);
+      const door = makeDoor(ctx, mechanisms, px2 + 15, py2 - 4, 3, 13);
+      pickups.push(makePickup('chest', px2 + 24, py2 + 6));
+      pickups.push(
+        makePickup('goldpile', px2 + 27, py2 + 6, { amount: 30 + Math.floor(rng.next() * 30) }),
+      );
+      pickups.push(
+        makePickup('tome', px2 + 21, py2 + 6, {
+          card: TOME_POOL[Math.floor(rng.next() * TOME_POOL.length)],
+        }),
+      );
+
+      const floorY = py2 + 8;
+      if (archetype === 0) {
+        // SAND SCALE + a diggable sand hopper in the ceiling above the pan
+        makeScale(w, mechanisms, px2 - 10, floorY, 7, 24, door);
+        for (let dx = -4; dx <= 4; dx++) {
+          for (let dy = -3; dy <= 1; dy++) {
+            const X = px2 - 7 + dx,
+              Y = py2 - 12 + dy;
+            if (!w.inBounds(X, Y)) continue;
+            const i = w.idx(X, Y);
+            const shell = Math.abs(dx) === 4 || dy === -3;
+            if (shell) {
+              w.types[i] = Cell.Stone;
+              w.colors[i] = stoneColor();
+            } else {
+              w.types[i] = Cell.Sand;
+              w.colors[i] = sandColor();
+            }
+          }
+        }
+        // a one-cell stone lip holds the hopper shut — dig it
+        for (let dx = -3; dx <= 3; dx++) {
+          const i = w.idx(px2 - 7 + dx, py2 - 10);
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      } else if (archetype === 1) {
+        // BURNING SEALS: all three braziers must roar at once
+        makeBrazier(w, mechanisms, px2 - 11, floorY - 1, door);
+        makeBrazier(w, mechanisms, px2 - 4, floorY - 1, door);
+        makeBrazier(w, mechanisms, px2 + 3, floorY - 1, door);
+      } else if (archetype === 2) {
+        // SLUICE: a stone basin + buoy; the water is in a ceiling pocket
+        const basin: Array<[number, number]> = [];
+        for (let dx = -7; dx <= 7; dx++) {
+          for (const dy of [0, 1]) {
+            const X = px2 - 4 + dx,
+              Y = floorY - dy;
+            if (Math.abs(dx) === 7 || dy === 0) {
+              const i = w.idx(X, Y);
+              w.types[i] = Cell.Stone;
+              w.colors[i] = stoneColor();
+              basin.push([X, Y]);
+            }
+          }
+        }
+        makeBuoy(
+          mechanisms,
+          px2 - 4,
+          floorY - 1,
+          { x0: px2 - 10, y0: floorY - 4, x1: px2 + 2, y1: floorY - 1 },
+          26,
+          door,
+          basin,
+        );
+        // ceiling water pocket sealed by a stone plug
+        for (let dx = -4; dx <= 4; dx++) {
+          for (let dy = -3; dy <= 0; dy++) {
+            const X = px2 - 4 + dx,
+              Y = py2 - 11 + dy;
+            const i = w.idx(X, Y);
+            const shell = Math.abs(dx) === 4 || dy === -3;
+            if (shell) {
+              w.types[i] = Cell.Metal;
+              w.colors[i] = packRGB(96, 102, 112);
+            } else {
+              w.types[i] = Cell.Water;
+              w.colors[i] = packRGB(28, 140, 224);
+            }
+          }
+        }
+        for (let dx = -3; dx <= 3; dx++) {
+          const i = w.idx(px2 - 4 + dx, py2 - 10);
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      } else {
+        // CHARGE LATCH: bring the coil a spark — lightning, charged water,
+        // anything the conductors will carry
+        makeChargeLatch(w, mechanisms, px2 - 8, floorY, door);
+      }
+    }
   }
 
   // ---- The Kiln (bottom level only): the colossus arena ----
