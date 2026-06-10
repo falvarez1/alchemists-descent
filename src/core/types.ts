@@ -452,6 +452,16 @@ export interface WorldGenApi {
   /** generateCaves + snap camera onto the spawn hint. */
   regenerate(ctx: Ctx): void;
   spawnFortress(ctx: Ctx): void;
+  /**
+   * Descent-mode generation into ctx.world (the caller swaps the level's World
+   * in first): runs generateCaves for the level's biome with the given seed,
+   * then dresses the level — bedrock floor, sealed exit well, waystone braziers.
+   */
+  generateLevel(
+    ctx: Ctx,
+    def: LevelDef,
+    seed: number,
+  ): { exit: LevelExitWell; waystones: Waystone[]; spawn: { x: number; y: number } };
 }
 
 export interface WaveDirectorApi {
@@ -491,6 +501,65 @@ export interface TelemetryApi {
 }
 
 /* ============================================================
+ * Wave B: the Descent — depth graph of persistent levels
+ * ============================================================ */
+
+export interface LevelDef {
+  id: string;
+  name: string;
+  biome: BiomeId;
+  /** 1-based descent depth; scales enemy population. */
+  depth: number;
+  /** Level reached by breaking this level's floor well, or null for the last floor. */
+  nextLevelId: string | null;
+}
+
+/** A fire-lit checkpoint brazier. Lights when Fire cells touch its bowl. */
+export interface Waystone {
+  x: number;
+  y: number;
+  lit: boolean;
+}
+
+export interface LevelExitWell {
+  /** Center column of the well shaft. */
+  x: number;
+  /** Top row of the seal plug. */
+  sealY: number;
+  halfW: number;
+}
+
+/**
+ * Everything that persists for a visited level. Worlds are kept live in RAM
+ * for the whole expedition (v1) — your scars stay exactly as you left them.
+ */
+export interface LevelRuntime {
+  def: LevelDef;
+  world: World;
+  enemies: Enemy[];
+  waystones: Waystone[];
+  exit: LevelExitWell | null;
+  /** Fog-of-war mask, 1:8 downsample of the world (MINIMAP_W x MINIMAP_H). */
+  explored: Uint8Array;
+  spawn: { x: number; y: number };
+}
+
+export interface LevelsApi {
+  /** Null until the descent starts (first play-mode entry). */
+  readonly current: LevelRuntime | null;
+  readonly transitioning: boolean;
+  /** Generate D1 (or resume) and swap it into ctx. Idempotent. */
+  startDescent(ctx: Ctx): void;
+  /**
+   * Per-frame (play mode): well-fall detection -> level transition,
+   * waystone lighting checks, explored-mask stamping.
+   */
+  update(ctx: Ctx): void;
+  /** Respawn anchor: last lit waystone in the current level, else level spawn. */
+  respawnPoint(): { x: number; y: number } | null;
+}
+
+/* ============================================================
  * The game context — every shared dependency, wired once in Game.ts
  * ============================================================ */
 
@@ -523,4 +592,5 @@ export interface Ctx {
   waveCtl: WaveDirectorApi;
   flask: FlaskApi;
   telemetry: TelemetryApi;
+  levels: LevelsApi;
 }

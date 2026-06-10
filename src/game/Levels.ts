@@ -1,0 +1,335 @@
+// ===================== Levels (the Descent) =====================
+// Wave B: the arena becomes a vertical stack of persistent levels connected
+// by sealed wells. Each visited level stays a LIVE World instance in RAM for
+// the whole session — your scars stay exactly as you left them when you
+// return (no snapshot codec yet; that arrives with persistence/autosave).
+//
+// v1 decisions encoded here:
+// - The descent is linear d1->d5 (worldgraph.ts); going down = breaking the
+//   floor well's plug and falling through. Re-ascending an open well is
+//   allowed by levitation (both levels stay live).
+// - Arrival placement: whether descending OR re-ascending, the player is
+//   placed at the destination level's spawn chamber. Spawning inside the well
+//   column is unsafe while plug debris settles; revisit when wells get
+//   per-direction arrival points.
+// - The bottom of the run (d5) has no exit: the player is clamped above the
+//   world floor instead of falling out.
+
+import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
+import { LEVELS, START_LEVEL, populationForDepth } from '@/config/worldgraph';
+import type { Ctx, EnemyKind, LevelDef, LevelRuntime, LevelsApi } from '@/core/types';
+import { Cell } from '@/sim/CellType';
+import { emberColor, packRGB } from '@/sim/colors';
+import { World } from '@/sim/World';
+
+/** Frames the transition curtain stays down after the (synchronous) swap. */
+const CURTAIN_HOLD_MS = 450;
+/** Waystone bowl fire checks run every 4th frame; this many hot checks light it. */
+const WAYSTONE_LIGHT_TICKS = 30;
+/** Minimum placement distance (cells) between a placed enemy and the level spawn. */
+const POPULATION_SPAWN_CLEARANCE = 220;
+
+export class Levels implements LevelsApi {
+  /** Every level visited this expedition, kept live (keyed by LevelDef.id). */
+  private levels = new Map<string, LevelRuntime>();
+  private currentId: string | null = null;
+  private _transitioning = false;
+
+  /**
+   * worldSeed captured on the FIRST startDescent. Level seeds derive from
+   * this, not the live state.worldSeed, so build-mode regenerations mid-
+   * session cannot shift the seeds of levels not yet generated.
+   */
+  private expeditionSeed = 0;
+
+  /** Per-waystone accumulated hot ticks for the CURRENT level (reset on enter). */
+  private waystoneHeat: number[] = [];
+  /** Waystone indices per level id, in the order they were lit (last = respawn anchor). */
+  private litOrder = new Map<string, number[]>();
+  /** Last hostile count emitted via enemiesLeft. */
+  private lastEnemiesEmit = -1;
+
+  constructor(private ctx: Ctx) {}
+
+  get current(): LevelRuntime | null {
+    return this.currentId ? (this.levels.get(this.currentId) ?? null) : null;
+  }
+
+  get transitioning(): boolean {
+    return this._transitioning;
+  }
+
+  /** Generate D1 (or resume the descent in progress) and swap it into ctx. Idempotent. */
+  startDescent(ctx: Ctx): void {
+    if (this.currentId) return;
+    this.expeditionSeed = ctx.state.worldSeed >>> 0;
+    this.enterLevel(ctx, START_LEVEL);
+  }
+
+  /**
+   * Per-frame (play mode): well-fall detection -> level transition, waystone
+   * lighting checks, explored-mask stamping, hostile-count events.
+   */
+  update(ctx: Ctx): void {
+    if (ctx.state.mode !== 'play' || this._transitioning || ctx.player.dead) return;
+    const runtime = this.current;
+    if (!runtime) return;
+    const player = ctx.player;
+
+    // WELL FALL: dropping past the world floor means the exit plug is broken
+    if (player.y >= HEIGHT - 10) {
+      if (runtime.def.nextLevelId) {
+        this.leaveLevel();
+        this.enterLevel(ctx, runtime.def.nextLevelId);
+        return;
+      }
+      // Bottom of the run (v1): nothing below the Scorched Core
+      player.y = HEIGHT - 12;
+      player.vy = 0;
+      player.fy = 0;
+    }
+
+    if (ctx.state.frameCount % 4 === 0) this.updateWaystones(ctx, runtime);
+    if (ctx.state.frameCount % 8 === 0) this.stampExplored(runtime, player.x, player.y);
+
+    if (ctx.enemies.length !== this.lastEnemiesEmit) {
+      this.lastEnemiesEmit = ctx.enemies.length;
+      ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
+    }
+  }
+
+  /** Respawn anchor: last lit waystone in the current level, else level spawn. */
+  respawnPoint(): { x: number; y: number } | null {
+    const runtime = this.current;
+    if (!runtime) return null;
+    const order = this.litOrder.get(runtime.def.id);
+    if (order && order.length > 0) {
+      const ws = runtime.waystones[order[order.length - 1]];
+      return { x: ws.x, y: ws.y - 2 };
+    }
+    return { x: runtime.spawn.x, y: runtime.spawn.y };
+  }
+
+  /* ---------------- transitions ---------------- */
+
+  /** Park the live hostile roster back into the level being left. */
+  private leaveLevel(): void {
+    const runtime = this.current;
+    if (!runtime) return;
+    runtime.enemies.length = 0;
+    runtime.enemies.push(...this.ctx.enemies);
+  }
+
+  /**
+   * Swap a level into ctx behind the transition curtain: restore it live if
+   * already visited, else generate-and-populate it. Synchronous; the curtain
+   * covers the generation hitch and lifts CURTAIN_HOLD_MS later.
+   */
+  private enterLevel(ctx: Ctx, id: string): void {
+    const def = LEVELS[id];
+    if (!def) return;
+    this._transitioning = true;
+
+    // Curtain down (element owned by the UI layer — null-safe). Reading
+    // offsetHeight forces a reflow so the class change is committed before
+    // the synchronous generation below blocks the main thread.
+    const curtain = document.getElementById('level-curtain');
+    if (curtain) {
+      curtain.classList.add('visible');
+      void curtain.offsetHeight;
+    }
+
+    let runtime = this.levels.get(id);
+    if (runtime) {
+      // RESTORE: the world object swaps back in untouched — scars and all
+      ctx.world = runtime.world;
+      ctx.enemies.length = 0;
+      ctx.enemies.push(...runtime.enemies);
+    } else {
+      runtime = this.createLevel(ctx, def);
+      this.levels.set(id, runtime);
+    }
+
+    // Transient combat state never crosses a well
+    ctx.projectiles.length = 0;
+    ctx.shockwaves.length = 0;
+    ctx.particles.clear();
+    ctx.lightning.clear();
+    ctx.input.activeChargingBlackHole = null;
+    ctx.fx.digBeam = null;
+
+    // v1: arrival (descending or re-ascending) always places the player at
+    // the destination level's spawn chamber — see file header
+    const player = ctx.player;
+    player.x = runtime.spawn.x;
+    player.y = runtime.spawn.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.fx = 0;
+    player.fy = 0;
+    player.invuln = 60;
+    ctx.camera.snapTo(player.x, player.y);
+
+    this.currentId = id;
+    this.waystoneHeat = new Array<number>(runtime.waystones.length).fill(0);
+    this.lastEnemiesEmit = ctx.enemies.length;
+    ctx.events.emit('levelChanged', { depth: def.depth, name: def.name });
+    ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
+
+    window.setTimeout(() => {
+      curtain?.classList.remove('visible');
+      this._transitioning = false;
+    }, CURTAIN_HOLD_MS);
+  }
+
+  /** Generate a fresh level World into ctx and place its hostile population. */
+  private createLevel(ctx: Ctx, def: LevelDef): LevelRuntime {
+    // Ctx.world is a mutable field by design: every system dereferences ctx
+    // each frame, so swapping between frames is safe.
+    const world = new World();
+    ctx.world = world;
+    ctx.enemies.length = 0;
+
+    const seed = (this.expeditionSeed ^ this.hashString(def.id)) >>> 0;
+    const { exit, waystones, spawn } = ctx.worldgen.generateLevel(ctx, def, seed);
+    this.placePopulation(ctx, def.depth, spawn);
+    this.litOrder.set(def.id, []);
+
+    return {
+      def,
+      world,
+      // Detached snapshot array: synced from ctx.enemies on leave, copied
+      // back into ctx.enemies on enter (the Enemy objects are shared).
+      enemies: ctx.enemies.slice(),
+      waystones,
+      exit,
+      explored: new Uint8Array(MINIMAP_W * MINIMAP_H),
+      spawn,
+    };
+  }
+
+  /** Placed populations (finite, readable) — the descent's replacement for endless waves. */
+  private placePopulation(ctx: Ctx, depth: number, spawn: { x: number; y: number }): void {
+    const pop = populationForDepth(depth);
+    const units: EnemyKind[] = [];
+    for (let i = 0; i < pop.slimes; i++) units.push('slime');
+    for (let i = 0; i < pop.imps; i++) units.push('imp');
+    for (let i = 0; i < pop.golems; i++) units.push('golem');
+
+    for (const kind of units) {
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const x = 40 + Math.floor(Math.random() * (WIDTH - 80));
+        const y = 60 + Math.floor(Math.random() * (HEIGHT - 140));
+        const dx = x - spawn.x,
+          dy = y - spawn.y;
+        if (dx * dx + dy * dy < POPULATION_SPAWN_CLEARANCE * POPULATION_SPAWN_CLEARANCE) continue;
+        if (!ctx.physics.entityFree(x, y, 6, 12)) continue;
+        ctx.enemyCtl.spawn(kind, x, y);
+        break;
+      }
+    }
+  }
+
+  /* ---------------- waystones ---------------- */
+
+  /**
+   * Fire-lit checkpoints: you must BRING fire to the bowl. Runs every 4th
+   * frame; sustained Cell.Fire in the bowl rect for WAYSTONE_LIGHT_TICKS hot
+   * checks lights the brazier.
+   */
+  private updateWaystones(ctx: Ctx, runtime: LevelRuntime): void {
+    const world = ctx.world;
+    for (let i = 0; i < runtime.waystones.length; i++) {
+      const ws = runtime.waystones[i];
+      if (ws.lit) continue;
+      let fire = 0;
+      for (let dy = -3; dy <= -1; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const X = ws.x + dx,
+            Y = ws.y + dy;
+          if (world.inBounds(X, Y) && world.types[world.idx(X, Y)] === Cell.Fire) fire++;
+        }
+      }
+      this.waystoneHeat[i] = fire > 0 ? this.waystoneHeat[i] + 1 : 0;
+      if (this.waystoneHeat[i] >= WAYSTONE_LIGHT_TICKS) this.lightWaystone(ctx, runtime, i);
+    }
+  }
+
+  private lightWaystone(ctx: Ctx, runtime: LevelRuntime, index: number): void {
+    const ws = runtime.waystones[index];
+    ws.lit = true;
+    const order = this.litOrder.get(runtime.def.id);
+    if (order) order.push(index);
+    else this.litOrder.set(runtime.def.id, [index]);
+
+    // Checkpoint reward: full vitals
+    const player = ctx.player;
+    player.hp = player.maxHp;
+    player.mana = player.maxMana;
+    player.levit = player.maxLevit;
+
+    // Seed the bowl with long-lived embers: a lit brazier visibly glows and
+    // keeps lighting itself (and the minimap) after the brought fire dies.
+    const world = ctx.world;
+    const bowl: Array<[number, number]> = [
+      [-2, -1],
+      [-1, -1],
+      [0, -1],
+      [1, -1],
+      [2, -1],
+      [0, -2],
+    ];
+    for (const [dx, dy] of bowl) {
+      const X = ws.x + dx,
+        Y = ws.y + dy;
+      if (!world.inBounds(X, Y)) continue;
+      const wi = world.idx(X, Y);
+      world.types[wi] = Cell.Ember;
+      world.colors[wi] = emberColor();
+      world.life[wi] = 560 + Math.floor(Math.random() * 90);
+    }
+
+    // Celebration: gold motes rising, embers tumbling, a two-tone chime
+    ctx.particles.burst(
+      ws.x,
+      ws.y - 3,
+      26,
+      null,
+      () => packRGB(255, 196 + Math.floor(Math.random() * 40), 64),
+      2.6,
+      { glow: 2.4, grav: -0.012 },
+    );
+    ctx.particles.burst(ws.x, ws.y - 3, 14, null, emberColor, 1.7, { glow: 2.2, grav: 0.02 });
+    ctx.audio.tone(660, 660, 0.22, 'sine', 0.18);
+    setTimeout(() => ctx.audio.tone(990, 990, 0.3, 'sine', 0.16), 130);
+
+    ctx.events.emit('waystoneLit');
+  }
+
+  /* ---------------- cartography ---------------- */
+
+  /** Stamp a radius-6 disc around the player into the level's 1:8 fog-of-war mask. */
+  private stampExplored(runtime: LevelRuntime, px: number, py: number): void {
+    const cx = Math.floor(px / 8),
+      cy = Math.floor(py / 8);
+    for (let dy = -6; dy <= 6; dy++) {
+      const Y = cy + dy;
+      if (Y < 0 || Y >= MINIMAP_H) continue;
+      for (let dx = -6; dx <= 6; dx++) {
+        const X = cx + dx;
+        if (X < 0 || X >= MINIMAP_W) continue;
+        if (dx * dx + dy * dy <= 36) runtime.explored[X + Y * MINIMAP_W] = 1;
+      }
+    }
+  }
+
+  /** Tiny FNV-1a over the level id — folds it into the expedition seed. */
+  private hashString(s: string): number {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return h >>> 0;
+  }
+}

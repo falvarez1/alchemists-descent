@@ -2,7 +2,7 @@ import { BIOMES } from '@/config/biomes';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp, hash2, valueNoise } from '@/core/math';
 import { Rng, randomSeed } from '@/core/rng';
-import type { Ctx, WorldGenApi } from '@/core/types';
+import type { Ctx, LevelDef, LevelExitWell, Waystone, WorldGenApi } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import {
   EMPTY_COLOR,
@@ -14,6 +14,7 @@ import {
   nitrogenColor,
   oilColor,
   packRGB,
+  stoneColor,
   unpackB,
   unpackG,
   unpackR,
@@ -590,5 +591,150 @@ export class WorldGen implements WorldGenApi {
         }
       }
     }
+  }
+
+  /**
+   * Descent-mode generation (Wave B): base biome caves, then the level dressing —
+   * an indestructible bedrock floor, a stone-sealed exit well through it, and two
+   * unlit waystone braziers along the lower artery. Layout randomness flows through
+   * this.rng (re-seeded by generateCaves from worldSeed), so a level replays
+   * identically from its seed. No enemies here — the levels manager places those.
+   */
+  generateLevel(
+    ctx: Ctx,
+    def: LevelDef,
+    seed: number,
+  ): { exit: LevelExitWell; waystones: Waystone[]; spawn: { x: number; y: number } } {
+    // 1) Base caves for the level's biome, replayable from the seed.
+    ctx.state.currentBiome = def.biome;
+    ctx.state.worldSeed = seed >>> 0;
+    this.generateCaves(ctx);
+
+    const world = ctx.world;
+    const spawn = this.spawnHint ?? { x: Math.floor(WIDTH / 2), y: Math.floor(HEIGHT / 2) };
+
+    const bedrockColor = (): number => {
+      const j = Math.floor(this.rng.next() * 9) - 4;
+      return packRGB(30 + j, 28 + j, 36 + j);
+    };
+    const setCell = (x: number, y: number, t: Cell, color: number): void => {
+      if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
+      const i = x + y * WIDTH;
+      world.types[i] = t;
+      world.colors[i] = color;
+      world.life[i] = 0;
+      world.charge[i] = 0;
+    };
+
+    // 2) Bedrock: the bottom 6 rows become metal (explosion/acid/dig-proof),
+    //    so the floor is indestructible everywhere except the well.
+    for (let y = HEIGHT - 6; y < HEIGHT; y++) {
+      for (let x = 0; x < WIDTH; x++) setCell(x, y, Cell.Metal, bedrockColor());
+    }
+
+    // 3) Exit well: a cased shaft through the bedrock, locked by a stone plug.
+    const halfW = 14;
+    const sealY = HEIGHT - 46;
+    let wellX = spawn.x >= WIDTH / 2 ? Math.floor(WIDTH * 0.2) : Math.floor(WIDTH * 0.8);
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const x = Math.floor(this.rng.range(WIDTH * 0.12, WIDTH * 0.88));
+      if (Math.abs(x - spawn.x) < 300) continue;
+      wellX = x;
+      break;
+    }
+
+    // Open shaft from the floor band straight through the bedrock (open bottom).
+    for (let y = HEIGHT - 52; y < HEIGHT; y++) {
+      for (let dx = -halfW; dx <= halfW; dx++) setCell(wellX + dx, y, Cell.Empty, EMPTY_COLOR);
+    }
+    // Indestructible casing flanking the shaft below the seal: the floor band is an
+    // open strip, so without these walls the plug could simply be walked around.
+    for (let y = sealY; y < HEIGHT; y++) {
+      for (let t = 1; t <= 3; t++) {
+        setCell(wellX - halfW - t, y, Cell.Metal, bedrockColor());
+        setCell(wellX + halfW + t, y, Cell.Metal, bedrockColor());
+      }
+    }
+    // The plug: 14 rows of diggable/blastable stone — that IS the lock.
+    for (let y = sealY; y < sealY + 14; y++) {
+      for (let dx = -halfW; dx <= halfW; dx++) setCell(wellX + dx, y, Cell.Stone, stoneColor());
+    }
+    // Approach pocket above the plug so the well mouth is findable.
+    for (let dy = -10; dy <= 10; dy++) {
+      for (let dx = -10; dx <= 10; dx++) {
+        const py = sealY - 8 + dy;
+        if (dx * dx + dy * dy <= 100 && py < sealY) setCell(wellX + dx, py, Cell.Empty, EMPTY_COLOR);
+      }
+    }
+    // Gold flecks ringing the mouth — a glittering tell.
+    let tells = 0;
+    for (let attempt = 0; attempt < 80 && tells < 12; attempt++) {
+      const a = this.rng.next() * Math.PI * 2;
+      const rr = 10.5 + this.rng.next() * 3;
+      const gx = Math.floor(wellX + Math.cos(a) * rr);
+      const gy = Math.floor(sealY - 8 + Math.sin(a) * rr);
+      if (gx <= 1 || gx >= WIDTH - 2 || gy <= 1) continue;
+      if (world.types[gx + gy * WIDTH] === Cell.Wall) {
+        setCell(gx, gy, Cell.Gold, goldColor());
+        tells++;
+      }
+    }
+
+    // 4) Waystones: two unlit brazier bowls on solid ground along the lower artery.
+    const waystones: Waystone[] = [];
+    const isOpenT = (t: number): boolean => t === Cell.Empty || t === Cell.Water;
+    const isFloorT = (t: number): boolean =>
+      t === Cell.Wall || t === Cell.Stone || t === Cell.Metal || t === Cell.Ice || t === Cell.Gold;
+    const stampBrazier = (cx: number, baseY: number): void => {
+      // 1-row stone base + two 2-tall side pillars; the 5x2 interior stays open
+      // for fire (you must BRING fire to light it), with headroom above to pour.
+      for (let dx = -3; dx <= 3; dx++) setCell(cx + dx, baseY, Cell.Stone, stoneColor());
+      for (let t = 1; t <= 2; t++) {
+        setCell(cx - 3, baseY - t, Cell.Stone, stoneColor());
+        setCell(cx + 3, baseY - t, Cell.Stone, stoneColor());
+      }
+      for (let dy = 1; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) setCell(cx + dx, baseY - dy, Cell.Empty, EMPTY_COLOR);
+      }
+      for (let dy = 3; dy <= 5; dy++) {
+        for (let dx = -3; dx <= 3; dx++) setCell(cx + dx, baseY - dy, Cell.Empty, EMPTY_COLOR);
+      }
+      waystones.push({ x: cx, y: baseY - 1, lit: false });
+    };
+    for (const anchor of [WIDTH * 0.33, WIDTH * 0.66]) {
+      let placed = false;
+      for (let attempt = 0; attempt < 40 && !placed; attempt++) {
+        const cx = Math.floor(anchor + (this.rng.next() - 0.5) * 80);
+        if (cx < 12 || cx >= WIDTH - 12) continue;
+        if (Math.abs(cx - wellX) < halfW + 26) continue;
+        // Scan down from the lower artery's band for the first standable floor.
+        let baseY = -1;
+        for (let y = Math.floor(HEIGHT * 0.56); y < HEIGHT - 6; y++) {
+          if (isOpenT(world.types[cx + y * WIDTH]) && isFloorT(world.types[cx + (y + 1) * WIDTH])) {
+            baseY = y;
+            break;
+          }
+        }
+        if (baseY < 0) continue;
+        if (Math.abs(cx - spawn.x) < 80 && Math.abs(baseY - spawn.y) < 80) continue;
+        if (
+          !isFloorT(world.types[cx - 1 + (baseY + 1) * WIDTH]) ||
+          !isFloorT(world.types[cx + 1 + (baseY + 1) * WIDTH])
+        )
+          continue;
+        stampBrazier(cx, baseY);
+        placed = true;
+      }
+      if (!placed) {
+        // Guaranteed fallback: stand it on the bedrock at the bottom of the floor band.
+        let cx = Math.floor(anchor);
+        if (Math.abs(cx - wellX) < halfW + 26) cx = cx >= wellX ? wellX + halfW + 26 : wellX - halfW - 26;
+        cx = Math.floor(clamp(cx, 12, WIDTH - 13));
+        stampBrazier(cx, HEIGHT - 7);
+      }
+    }
+
+    // 5/6) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
+    return { exit: { x: wellX, sealY, halfW }, waystones, spawn: { x: spawn.x, y: spawn.y } };
   }
 }

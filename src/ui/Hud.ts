@@ -32,6 +32,16 @@ export class Hud {
 
     ctx.events.on('waveBanner', ({ big, small }) => this.showBanner(big, small));
 
+    // The descent: depth readout + arrival banner whenever a level is entered.
+    ctx.events.on('levelChanged', ({ depth, name }) => {
+      el('wave-num').textContent = 'D' + depth;
+      this.showBanner('D' + depth + ' — ' + name, 'THE DESCENT CONTINUES');
+    });
+
+    ctx.events.on('waystoneLit', () => {
+      this.showBanner('WAYSTONE LIT', 'CHECKPOINT SET — VITALS RESTORED');
+    });
+
     ctx.events.on('enemiesLeft', ({ count }) => {
       el('enemies-left').textContent = String(count);
     });

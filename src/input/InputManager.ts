@@ -8,8 +8,8 @@ import { spawnCircle, drawLine } from '@/sim/brush';
  * Mouse + keyboard input and build/play mode switching.
  *
  * Wires all listeners in the constructor. Cross-system effects (casting,
- * respawning, wave kickoff) go through the Ctx services; DOM feedback
- * (mode buttons, HUD visibility, banners, wave number) is emitted as events.
+ * respawning, descent kickoff) go through the Ctx services; DOM feedback
+ * (mode buttons, HUD visibility, banners, depth readout) is emitted as events.
  */
 export class InputManager {
   constructor(
@@ -176,7 +176,11 @@ export class InputManager {
     ctx.events.emit('modeChanged', { mode });
 
     if (mode === 'play') {
-      if (!ctx.state.playerSpawned || ctx.player.dead) {
+      // Play mode IS the descent: generate (or resume) the current level.
+      // On first entry this swaps in D1 and positions the player at its spawn.
+      ctx.levels.startDescent(ctx);
+      // Defensive legacy fallback: only if no level took over the spawn.
+      if (ctx.levels.current === null && (!ctx.state.playerSpawned || ctx.player.dead)) {
         const sp = ctx.playerCtl.findSpawnPoint();
         ctx.player.x = sp.x;
         ctx.player.y = sp.y;
@@ -196,15 +200,6 @@ export class InputManager {
           grav: -0.01,
         });
       }
-      if (ctx.waves.num === 0 && !ctx.waves.active) {
-        ctx.waves.intermission = 150;
-        ctx.events.emit('waveBanner', {
-          big: 'SURVIVE',
-          small: 'THE CAVES ARE AWAKE — WAVE 1 INCOMING',
-        });
-        ctx.audio.waveHorn();
-      }
-      ctx.events.emit('waveStarted', { num: Math.max(1, ctx.waves.num) });
     } else {
       ctx.player.firing = false;
       ctx.input.keys.left = ctx.input.keys.right = ctx.input.keys.jump = false;

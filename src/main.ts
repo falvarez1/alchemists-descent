@@ -6,3 +6,8 @@ if (!holder) throw new Error('missing #canvas-holder');
 
 const game = new Game(holder);
 game.start();
+
+if (import.meta.env.DEV) {
+  // Debug handle for the console and headless verification scripts.
+  (window as unknown as { __game: Game }).__game = game;
+}

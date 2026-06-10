@@ -12,6 +12,7 @@ import { Spells } from '@/combat/Spells';
 import { Enemies } from '@/entities/Enemies';
 import { createPlayer, PlayerControl } from '@/entities/Player';
 import { Physics } from '@/entities/physics';
+import { Levels } from '@/game/Levels';
 import { createWaveState, WaveDirector } from '@/game/WaveDirector';
 import { InputManager } from '@/input/InputManager';
 import { Particles } from '@/particles/Particles';
@@ -28,6 +29,7 @@ import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
 import { Hud } from '@/ui/Hud';
 import { Inspector } from '@/ui/Inspector';
+import { Minimap } from '@/ui/Minimap';
 import { PerfHud } from '@/ui/PerfHud';
 import { Toolbar } from '@/ui/Toolbar';
 import { WorldGen } from '@/world/CaveGenerator';
@@ -40,10 +42,12 @@ import { WorldGen } from '@/world/CaveGenerator';
  * (see ARCHITECTURE.md "Frame order is a contract") — do not reorder casually.
  */
 export class Game {
-  private readonly ctx: Ctx;
+  /** Public for dev tooling and verification scripts only — not a gameplay API. */
+  readonly ctx: Ctx;
   private readonly renderer: Renderer;
   private readonly composer: FrameComposer;
   private readonly hud: Hud;
+  private readonly minimap: Minimap;
   private readonly toolbar: Toolbar;
   private readonly inspector: Inspector;
   private readonly perfHud = new PerfHud();
@@ -107,6 +111,7 @@ export class Game {
     ctx.waveCtl = new WaveDirector(ctx);
     ctx.flask = new Flask();
     ctx.telemetry = new Telemetry();
+    ctx.levels = new Levels(ctx);
     this.ctx = ctx;
 
     ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
@@ -122,6 +127,7 @@ export class Game {
     );
 
     this.hud = new Hud(ctx);
+    this.minimap = new Minimap(ctx);
     this.inspector = new Inspector(ctx);
     this.toolbar = new Toolbar(ctx, (id, mode) => this.inspector.generateContextInspector(id, mode));
     // Wires its DOM listeners in the constructor; lives for the page lifetime.
@@ -166,7 +172,9 @@ export class Game {
       ctx.playerCtl.update(ctx);
       ctx.flask.update(ctx);
       ctx.enemyCtl.update(ctx);
-      ctx.waveCtl.update(ctx);
+      // The descent replaced wave survival (Wave B): levels own population,
+      // transitions, waystones, and the explored mask.
+      ctx.levels.update(ctx);
       ctx.particles.update(ctx);
       ctx.lightning.update();
       this.updateBuildModeHeldSpells();
@@ -177,6 +185,7 @@ export class Game {
     const tRender = performance.now();
     this.composer.compose(ctx);
     if (ctx.state.mode === 'play' && ctx.state.frameCount % 2 === 0) this.hud.update(ctx);
+    this.minimap.update(ctx);
     this.renderer.render(ctx);
     this.perfHud.mark('render', performance.now() - tRender);
 

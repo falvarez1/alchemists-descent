@@ -28,11 +28,15 @@ npm run dev      # http://localhost:5173
 **Build mode** — paint materials, generate biomes, drop enemies, tune every
 parameter live in the right panel. WASD pans the camera.
 
-**Play mode** (TAB or the PLAY button):
+**Play mode** (TAB or the PLAY button) — descend through five persistent biome
+levels (Earthen Hollows → Timberworks → Flooded Caverns → Frozen Depths →
+Scorched Core). Find the sealed well in each floor, break the stone plug, and
+drop deeper. Light waystone braziers with real fire to set your respawn; death
+keeps the world exactly as you scarred it and costs 15% of your gold.
 - `A`/`D` move, `SPACE` jump / levitate (coyote time + jump buffering included)
 - Mouse aims and fires the selected spell; `1`-`7` switch spells
 - `E` siphon materials into your flask, `Q` pour, `F` throw the bottle
-- `R` rise again when dead, `F3` perf overlay
+- `M` fog-of-war map, `R` rise again when dead, `F3` perf overlay
 
 ## Architecture
 

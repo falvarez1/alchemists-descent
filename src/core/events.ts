@@ -20,6 +20,10 @@ export interface EventMap {
   waveBanner: { big: string; small: string };
   /** Remaining hostile count changed — HUD readout. */
   enemiesLeft: { count: number };
+  /** The player arrived in a level — HUD shows depth + biome name. */
+  levelChanged: { depth: number; name: string };
+  /** A waystone brazier caught fire — checkpoint set. */
+  waystoneLit: undefined;
 }
 
 type Handler<T> = (payload: T) => void;

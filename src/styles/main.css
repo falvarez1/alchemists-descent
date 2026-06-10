@@ -142,6 +142,27 @@ body.play-active #viewport-container { padding: 0; }
 
 #damage-vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.25s ease; box-shadow: inset 0 0 90px 30px rgba(220, 30, 30, 0.55); border-radius: 6px; }
 
+/* Streamed level transitions: fades to black over the well drop, lifts on arrival */
+#level-curtain {
+    position: absolute; inset: 0; background: #050308; opacity: 0;
+    pointer-events: none; transition: opacity 0.35s ease; z-index: 6;
+}
+#level-curtain.visible { opacity: 1; }
+
+/* ---------- Minimap overlay (M, play mode) ---------- */
+#minimap-overlay {
+    position: absolute; inset: 7%; z-index: 4; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    padding: 14px; box-sizing: border-box; pointer-events: none;
+    background: rgba(8,6,12,0.92); border: 1px dashed #6e4632; border-radius: 6px;
+}
+#minimap-overlay.visible { display: flex; }
+#minimap-canvas { width: 100%; height: auto; image-rendering: pixelated; flex-shrink: 1; min-height: 0; }
+#minimap-caption {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
+    color: rgba(255,235,200,0.75); text-shadow: 0 1px 3px #000; white-space: nowrap;
+}
+
 #gameover-overlay {
     position: absolute; inset: 0; background: rgba(4,2,8,0.82); backdrop-filter: blur(3px);
     display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px;

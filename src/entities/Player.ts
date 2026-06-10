@@ -140,10 +140,39 @@ export class PlayerControl implements PlayerControlApi {
     return { x: Math.floor(WIDTH / 2), y: 20 };
   }
 
-  /** Original: respawnPlayer() — lines 1608-1619. */
+  /** Original: respawnPlayer() — lines 1608-1619; descent rules added in Wave B. */
   respawn(): void {
     const ctx = this.ctx;
     const player = ctx.player;
+
+    // Descent (Wave B): come back at the last lit waystone (or the level
+    // spawn) with the world UNTOUCHED — enemies, scars, and hostile fire all
+    // persist. The only toll is 15% of carried gold.
+    if (ctx.levels.current) {
+      const rp = ctx.levels.respawnPoint()!;
+      player.x = rp.x;
+      player.y = rp.y;
+      player.vx = 0;
+      player.vy = 0;
+      player.fx = 0;
+      player.fy = 0;
+      player.hp = player.maxHp;
+      player.mana = player.maxMana;
+      player.levit = player.maxLevit;
+      player.dead = false;
+      player.invuln = 90;
+      ctx.events.emit('playerRespawned');
+      ctx.state.score = Math.floor(ctx.state.score * 0.85);
+      ctx.events.emit('scoreChanged', { score: ctx.state.score });
+      ctx.telemetry.count('death.goldLost');
+      ctx.particles.burst(rp.x, rp.y - 7, 20, null, () => packRGB(200, 160, 255), 2.7, {
+        glow: 2.2,
+        grav: -0.01,
+      });
+      return;
+    }
+
+    // Legacy arena path (pre-descent / safety fallback)
     const sp = this.findSpawnPoint();
     player.x = sp.x;
     player.y = sp.y;

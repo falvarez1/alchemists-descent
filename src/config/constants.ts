@@ -15,3 +15,7 @@ export const SIM_MARGIN = 44;
 
 /** Hard cap on concurrently-alive ballistic particles. */
 export const MAX_PARTICLES = 4200;
+
+/** Fog-of-war minimap mask dimensions (1:8 downsample of the world). */
+export const MINIMAP_W = 200;
+export const MINIMAP_H = 133;
