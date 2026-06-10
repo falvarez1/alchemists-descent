@@ -81,7 +81,13 @@ export class Simulation implements SimulationApi {
         else if (type === Cell.Gunpowder) handleGunpowder(ctx, x, y);
         else if (type === Cell.Lava) handleLava(ctx, x, y);
         else if (type === Cell.Nitrogen) handleNitrogen(ctx, x, y);
-        else if (type === Cell.Blood || type === Cell.Slime) {
+        else if (
+          type === Cell.Blood ||
+          type === Cell.Slime ||
+          type === Cell.ElixirLife ||
+          type === Cell.ElixirLevity ||
+          type === Cell.ElixirStone
+        ) {
           if (type === Cell.Blood) {
             // wet blood stains adjacent rock and timber, and slowly soaks in
             if (Math.random() < 0.10) {

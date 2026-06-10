@@ -42,6 +42,10 @@ export class Hud {
       this.showBanner('WAYSTONE LIT', 'CHECKPOINT SET — VITALS RESTORED');
     });
 
+    ctx.events.on('recipeDiscovered', ({ name, bounty }) => {
+      this.showBanner(name + ' BREWED', 'GRIMOIRE UPDATED — +' + bounty + ' oz');
+    });
+
     ctx.events.on('enemiesLeft', ({ count }) => {
       el('enemies-left').textContent = String(count);
     });

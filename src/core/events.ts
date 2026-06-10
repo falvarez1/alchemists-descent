@@ -24,6 +24,8 @@ export interface EventMap {
   levelChanged: { depth: number; name: string };
   /** A waystone brazier caught fire — checkpoint set. */
   waystoneLit: undefined;
+  /** First-time brew of a recipe — Grimoire entry + gold bounty. */
+  recipeDiscovered: { name: string; bounty: number };
 }
 
 type Handler<T> = (payload: T) => void;

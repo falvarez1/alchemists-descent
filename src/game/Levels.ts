@@ -21,6 +21,7 @@ import type { Ctx, EnemyKind, LevelDef, LevelRuntime, LevelsApi } from '@/core/t
 import { Cell } from '@/sim/CellType';
 import { emberColor, packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
+import { extractRegionGraph } from '@/world/regions';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
 const CURTAIN_HOLD_MS = 450;
@@ -191,7 +192,10 @@ export class Levels implements LevelsApi {
     ctx.enemies.length = 0;
 
     const seed = (this.expeditionSeed ^ this.hashString(def.id)) >>> 0;
-    const { exit, waystones, spawn } = ctx.worldgen.generateLevel(ctx, def, seed);
+    const { exit, waystones, spawn, cauldron } = ctx.worldgen.generateLevel(ctx, def, seed);
+    // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
+    // anchored at the spawn chamber and the well mouth above the seal plug.
+    const regions = extractRegionGraph(ctx.world, spawn, { x: exit.x, y: exit.sealY - 12 });
     this.placePopulation(ctx, def.depth, spawn);
     this.litOrder.set(def.id, []);
 
@@ -205,27 +209,27 @@ export class Levels implements LevelsApi {
       exit,
       explored: new Uint8Array(MINIMAP_W * MINIMAP_H),
       spawn,
+      regions,
+      cauldron,
     };
   }
 
   /** Placed populations (finite, readable) — the descent's replacement for endless waves. */
   private placePopulation(ctx: Ctx, depth: number, spawn: { x: number; y: number }): void {
     const pop = populationForDepth(depth);
-    const units: EnemyKind[] = [];
-    for (let i = 0; i < pop.slimes; i++) units.push('slime');
-    for (let i = 0; i < pop.imps; i++) units.push('imp');
-    for (let i = 0; i < pop.golems; i++) units.push('golem');
-
-    for (const kind of units) {
-      for (let attempt = 0; attempt < 30; attempt++) {
-        const x = 40 + Math.floor(Math.random() * (WIDTH - 80));
-        const y = 60 + Math.floor(Math.random() * (HEIGHT - 140));
-        const dx = x - spawn.x,
-          dy = y - spawn.y;
-        if (dx * dx + dy * dy < POPULATION_SPAWN_CLEARANCE * POPULATION_SPAWN_CLEARANCE) continue;
-        if (!ctx.physics.entityFree(x, y, 6, 12)) continue;
-        ctx.enemyCtl.spawn(kind, x, y);
-        break;
+    for (const [kind, count] of Object.entries(pop) as Array<[EnemyKind, number]>) {
+      for (let i = 0; i < count; i++) {
+        for (let attempt = 0; attempt < 30; attempt++) {
+          const x = 40 + Math.floor(Math.random() * (WIDTH - 80));
+          const y = 60 + Math.floor(Math.random() * (HEIGHT - 140));
+          const dx = x - spawn.x,
+            dy = y - spawn.y;
+          if (dx * dx + dy * dy < POPULATION_SPAWN_CLEARANCE * POPULATION_SPAWN_CLEARANCE)
+            continue;
+          if (!ctx.physics.entityFree(x, y, 6, 12)) continue;
+          ctx.enemyCtl.spawn(kind, x, y);
+          break;
+        }
       }
     }
   }

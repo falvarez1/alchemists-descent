@@ -148,6 +148,7 @@ export class InputManager {
     else if (e.code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
     else if (e.code === 'KeyE' && ctx.state.mode === 'play') ctx.input.siphonHeld = true;
     else if (e.code === 'KeyQ' && ctx.state.mode === 'play') ctx.input.pourHeld = true;
+    else if (e.code === 'KeyX' && ctx.state.mode === 'play') ctx.input.drinkHeld = true;
     else if (e.code === 'KeyF' && ctx.state.mode === 'play' && !ctx.player.dead) ctx.flask.throwFlask(ctx);
     else if (e.code.startsWith('Digit')) {
       const n = parseInt(e.code.slice(5)) - 1;
@@ -166,6 +167,7 @@ export class InputManager {
     else if (e.code === 'KeyS' || e.code === 'ArrowDown') ctx.input.keys.down = false;
     else if (e.code === 'KeyE') ctx.input.siphonHeld = false;
     else if (e.code === 'KeyQ') ctx.input.pourHeld = false;
+    else if (e.code === 'KeyX') ctx.input.drinkHeld = false;
   }
 
   // ===================== Mode Switching =====================
@@ -203,7 +205,7 @@ export class InputManager {
     } else {
       ctx.player.firing = false;
       ctx.input.keys.left = ctx.input.keys.right = ctx.input.keys.jump = false;
-      ctx.input.siphonHeld = ctx.input.pourHeld = false;
+      ctx.input.siphonHeld = ctx.input.pourHeld = ctx.input.drinkHeld = false;
     }
   }
 }

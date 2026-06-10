@@ -12,6 +12,7 @@ import { Spells } from '@/combat/Spells';
 import { Enemies } from '@/entities/Enemies';
 import { createPlayer, PlayerControl } from '@/entities/Player';
 import { Physics } from '@/entities/physics';
+import { Brewing } from '@/game/Brewing';
 import { Levels } from '@/game/Levels';
 import { createWaveState, WaveDirector } from '@/game/WaveDirector';
 import { InputManager } from '@/input/InputManager';
@@ -51,6 +52,7 @@ export class Game {
   private readonly toolbar: Toolbar;
   private readonly inspector: Inspector;
   private readonly perfHud = new PerfHud();
+  private readonly brewing = new Brewing();
   private started = false;
 
   constructor(holder: HTMLElement) {
@@ -77,6 +79,7 @@ export class Game {
       activeChargingBlackHole: null,
       siphonHeld: false,
       pourHeld: false,
+      drinkHeld: false,
     };
     const fx: FxState = { bloomKick: 0, screenShake: 0, digBeam: null, hitstop: 0 };
 
@@ -175,6 +178,7 @@ export class Game {
       // The descent replaced wave survival (Wave B): levels own population,
       // transitions, waystones, and the explored mask.
       ctx.levels.update(ctx);
+      this.brewing.update(ctx);
       ctx.particles.update(ctx);
       ctx.lightning.update();
       this.updateBuildModeHeldSpells();

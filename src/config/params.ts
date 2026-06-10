@@ -32,6 +32,10 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Blood]: { name: 'Blood', flowRate: 0.55, coagulation: 0.002 },
   [Cell.Slime]: { name: 'Slime', flowRate: 0.15, viscosity: 0.85, bloomWeight: 0.2 },
   [Cell.Ember]: { name: 'Ember', fallChance: 0.4, igniteChance: 0.015, bloomWeight: 0.7 },
+  // Brewed elixirs: inert viscous liquids whose glow (bloomWeight) is the in-world discovery tell.
+  [Cell.ElixirLife]: { name: 'Elixir of Life', flowRate: 0.6, viscosity: 0.5, bloomWeight: 0.35 },
+  [Cell.ElixirLevity]: { name: 'Elixir of Levity', flowRate: 0.6, viscosity: 0.5, bloomWeight: 0.45 },
+  [Cell.ElixirStone]: { name: 'Elixir of Stone', flowRate: 0.45, viscosity: 0.5, bloomWeight: 0.2 },
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };

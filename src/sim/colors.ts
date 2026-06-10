@@ -52,6 +52,9 @@ export const goldColor = () => packRGB(245 + rand(10), 195 + rand(20), 30);
 export const nitrogenColor = () => packRGB(210 + rand(30), 245, 255);
 export const bloodColor = () => packRGB(160 + rand(50), 12 + rand(18), 25 + rand(12));
 export const slimeColor = () => packRGB(80 + rand(25), 200 + rand(30), 50 + rand(20));
+export const elixirLifeColor = () => packRGB(255, 100 + rand(40), 130 + rand(40));
+export const elixirLevityColor = () => packRGB(130 + rand(40), 220 + rand(30), 255);
+export const elixirStoneColor = () => packRGB(155 + rand(30), 140 + rand(20), 100 + rand(20));
 
 /** Fresh randomized color for a newly placed cell of the given material. */
 export const COLOR_FN: Record<number, () => number> = {
@@ -76,4 +79,7 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.Blood]: bloodColor,
   [Cell.Slime]: slimeColor,
   [Cell.Ember]: emberColor,
+  [Cell.ElixirLife]: elixirLifeColor,
+  [Cell.ElixirLevity]: elixirLevityColor,
+  [Cell.ElixirStone]: elixirStoneColor,
 };

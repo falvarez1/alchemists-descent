@@ -308,6 +308,17 @@ export class FrameComposer implements PixelSurface {
           this.setPx(gx + 1, gy, 0.9 * boost * fl, 0.35 * boost * fl, 0.04);
           this.setPx(gx, gy - 1, 0.85 * fl, 0.3 * fl, 0.03);
           this.setPx(gx + 1, gy - 1, 0.7 * fl, 0.22 * fl, 0.02);
+        } else if (p.type === 'frostbolt') {
+          // 2x2 pale-cyan core with a small additive halo
+          const fl = 0.8 + Math.random() * 0.35;
+          this.setPx(gx, gy, 0.55 * boost * fl, 0.9 * boost * fl, 1.0 * boost * fl);
+          this.setPx(gx + 1, gy, 0.45 * boost * fl, 0.8 * boost * fl, 0.95 * boost * fl);
+          this.setPx(gx, gy - 1, 0.45 * fl, 0.8 * fl, 0.95 * fl);
+          this.setPx(gx + 1, gy - 1, 0.35 * fl, 0.65 * fl, 0.85 * fl);
+          this.addPx(gx - 1, gy, 0.05, 0.16, 0.24);
+          this.addPx(gx + 2, gy, 0.05, 0.16, 0.24);
+          this.addPx(gx, gy + 1, 0.05, 0.16, 0.24);
+          this.addPx(gx, gy - 2, 0.05, 0.16, 0.24);
         } else if (p.type === 'blackhole') {
           const drawRad = Math.max(2, Math.floor(p.vortexRad! / 6));
           for (let dy = -drawRad - 1; dy <= drawRad + 1; dy++) {

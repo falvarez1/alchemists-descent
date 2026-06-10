@@ -196,7 +196,8 @@ export class Lighting implements LightField {
     // Excavation beam scorches with light
     const digBeam = ctx.fx.digBeam;
     if (digBeam && digBeam.life > 0) this.seedLight(digBeam.x1, digBeam.y1, 1.6, 1.1, 0.4);
-    // Living light: golem cores pulse (synced to the sprite), imps smoulder
+    // Living light: golem cores pulse (synced to the sprite), imps smoulder,
+    // wisps carry their own cold halo, mage hands throb purple
     for (const e of ctx.enemies) {
       if (e.kind === 'golem') {
         const pulse = 0.7 + Math.sin(ctx.state.frameCount * 0.12 + e.bobPhase) * 0.3;
@@ -205,6 +206,11 @@ export class Lighting implements LightField {
       } else if (e.kind === 'imp') {
         const f = 0.55 + Math.random() * 0.2;
         this.seedLight(e.x, e.y - 6, f, f * 0.45, f * 0.08);
+      } else if (e.kind === 'wisp') {
+        this.seedLight(e.x, e.y - 4, 0.5, 0.9, 1.1);
+      } else if (e.kind === 'mage') {
+        const pulse = 0.8 + Math.sin(ctx.state.frameCount * 0.1 + e.bobPhase) * 0.2;
+        this.seedLight(e.x, e.y - 6, 0.8 * pulse, 0.3 * pulse, 1.0 * pulse);
       }
     }
 

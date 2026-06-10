@@ -6,6 +6,26 @@ import type { Cell } from '@/sim/CellType';
  * Entity data
  * ============================================================ */
 
+/**
+ * Sim-sampled entity statuses: read from the cells touching a body each tick,
+ * written back as cells where it matters (burning sheds fire). All values are
+ * frames remaining. Potion timers live here too — a potion is just a timed
+ * rewrite of entity-vs-cell rules (DESIGN.md pillar 5).
+ */
+export interface EntityStatus {
+  wet: number;
+  oiled: number;
+  burning: number;
+  frozen: number;
+  electrified: number;
+  /** Potion: heal-over-time. */
+  regen: number;
+  /** Potion: free levitation (no levit drain). */
+  levity: number;
+  /** Potion: damage taken halved, knockback immune. */
+  stoneskin: number;
+}
+
 export interface Hat {
   ox: number;
   oy: number;
@@ -54,13 +74,14 @@ export interface PlayerState {
   _py: number;
   _svx: number;
   _svy: number;
+  status: EntityStatus;
 }
 
 export const PLAYER_HALF_W = 4;
 export const PLAYER_H = 17;
 export const PLAYER_STEP_UP = 5;
 
-export type EnemyKind = 'slime' | 'imp' | 'golem';
+export type EnemyKind = 'slime' | 'imp' | 'golem' | 'acidslime' | 'wisp' | 'mage';
 
 export interface EnemyDef {
   hp: number;
@@ -96,11 +117,12 @@ export interface Enemy {
   // lazily-added smoothed displacement trackers (sprite animation)
   _px?: number;
   _svx?: number;
+  status: EntityStatus;
 }
 
 export type SpellId = 'bolt' | 'bomb' | 'lightning' | 'flame' | 'dig' | 'warp' | 'blackhole';
 
-export type ProjectileType = SpellId | 'fireball';
+export type ProjectileType = SpellId | 'fireball' | 'frostbolt';
 
 export interface Projectile {
   x: number;
@@ -290,6 +312,8 @@ export interface InputState {
   siphonHeld: boolean;
   /** Held while Q is down (play mode): flask pours its contents at the wand tip. */
   pourHeld: boolean;
+  /** Held while X is down (play mode): drink the flask's contents. */
+  drinkHeld: boolean;
 }
 
 export interface FxState {
@@ -324,6 +348,10 @@ export interface AudioApi {
   boom(size: number): void;
   zap(): void;
   lightning(): void;
+  /** Low resonant impact: a thin wall with open space behind it. */
+  hollowKnock(): void;
+  /** Cauldron simmer blub. */
+  bubble(): void;
   coin(): void;
   hurt(): void;
   jump(): void;
@@ -461,7 +489,12 @@ export interface WorldGenApi {
     ctx: Ctx,
     def: LevelDef,
     seed: number,
-  ): { exit: LevelExitWell; waystones: Waystone[]; spawn: { x: number; y: number } };
+  ): {
+    exit: LevelExitWell;
+    waystones: Waystone[];
+    spawn: { x: number; y: number };
+    cauldron: { x: number; y: number } | null;
+  };
 }
 
 export interface WaveDirectorApi {
@@ -498,6 +531,47 @@ export interface FlaskApi {
 export interface TelemetryApi {
   count(key: string, n?: number): void;
   all(): Record<string, number>;
+}
+
+/* ============================================================
+ * Wave C: region graph — the placement brain
+ * ============================================================ */
+
+export interface Region {
+  id: number;
+  /** Open area in downsampled cells (1:4). */
+  area: number;
+  /** Centroid in WORLD coordinates. */
+  cx: number;
+  cy: number;
+  onMainPath: boolean;
+  /** Small enclosed pocket not on the main path (natural secret candidate). */
+  isPocket: boolean;
+}
+
+export interface RegionEdge {
+  a: number;
+  b: number;
+  /** Minimum separating wall thickness in WORLD cells (breachability). */
+  minWallThickness: number;
+  /** Midpoint of the thinnest separating wall, world coords. */
+  mx: number;
+  my: number;
+}
+
+/** Flood-fill analysis of a generated level at 1:4 downsample. */
+export interface RegionGraph {
+  scale: 4;
+  w: number;
+  h: number;
+  /** Region id per downsampled cell, -1 = solid. */
+  labels: Int32Array;
+  regions: Region[];
+  edges: RegionEdge[];
+  /** Region ids along the BFS path spawn -> exit well. */
+  mainPath: number[];
+  spawnRegion: number;
+  exitRegion: number;
 }
 
 /* ============================================================
@@ -542,6 +616,10 @@ export interface LevelRuntime {
   /** Fog-of-war mask, 1:8 downsample of the world (MINIMAP_W x MINIMAP_H). */
   explored: Uint8Array;
   spawn: { x: number; y: number };
+  /** Placement-brain analysis, extracted once after generation. */
+  regions: RegionGraph | null;
+  /** Cauldron basin center (stamped near the first waystone), if placed. */
+  cauldron: { x: number; y: number } | null;
 }
 
 export interface LevelsApi {

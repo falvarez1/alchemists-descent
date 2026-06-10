@@ -1,12 +1,16 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
+import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { Cell } from '@/sim/CellType';
 import {
+  acidColor,
   bloodColor,
   EMPTY_COLOR,
   fireColor,
   goldColor,
+  iceColor,
+  nitrogenColor,
   packRGB,
   slimeColor,
   smokeColor,
@@ -19,6 +23,17 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   slime: { hp: 48, halfW: 5, h: 8, bounty: 30, gore: Cell.Slime, goreFn: slimeColor },
   imp: { hp: 40, halfW: 5, h: 12, bounty: 50, gore: Cell.Fire, goreFn: fireColor },
   golem: { hp: 170, halfW: 7, h: 20, bounty: 150, gore: Cell.Stone, goreFn: stoneColor },
+  acidslime: { hp: 40, halfW: 5, h: 8, bounty: 45, gore: Cell.Acid, goreFn: acidColor },
+  wisp: { hp: 22, halfW: 4, h: 8, bounty: 60, gore: Cell.Nitrogen, goreFn: nitrogenColor },
+  mage: { hp: 60, halfW: 5, h: 14, bounty: 120, gore: Cell.Blood, goreFn: bloodColor },
+};
+
+/** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
+const STATUS_IMMUNE: Partial<
+  Record<EnemyKind, Partial<Record<'burning' | 'frozen' | 'electrified' | 'wet' | 'oiled', boolean>>>
+> = {
+  imp: { burning: true },
+  wisp: { frozen: true },
 };
 
 export class Enemies implements EnemyControlApi {
@@ -68,6 +83,7 @@ export class Enemies implements EnemyControlApi {
       jetFuel: 0,
       jetCd: 0,
       stuckT: 0,
+      status: createDefaultStatus(),
     });
     ctx.particles.burst(sx, sy, 6, Cell.Smoke, smokeColor, 0.9);
   }
@@ -133,6 +149,10 @@ export class Enemies implements EnemyControlApi {
       3.6,
       e.kind === 'imp' ? { glow: 1.6, grav: 0.08 } : undefined,
     );
+    if (e.kind === 'acidslime') {
+      // The membrane ruptures: a shower of real acid rains back into the grid
+      ctx.particles.burst(e.x, e.y - 4, 26, Cell.Acid, acidColor, 3.4);
+    }
     if (e.kind !== 'imp') {
       // Violent blood splash: fast radial spray + slow wide arc + heavy directional gouts
       ctx.particles.burst(e.x, e.y - 5, e.kind === 'golem' ? 62 : 46, Cell.Blood, bloodColor, 4.8);
@@ -177,6 +197,55 @@ export class Enemies implements EnemyControlApi {
     ctx.waves.kills++;
   }
 
+  /**
+   * Powder Mage telekinesis: tear up to 14 powder cells (Sand/Gold/Gunpowder,
+   * nearest-first within 40 cells) OUT of the grid and hurl them at the player
+   * as hostile debris. The level itself is the ammunition — whatever misses
+   * re-deposits as real cells where it lands.
+   */
+  private telekinesisVolley(e: Enemy): void {
+    const ctx = this.ctx;
+    const world = ctx.world;
+    const player = ctx.player;
+    const ex = Math.floor(e.x),
+      ey = Math.floor(e.y) - 7;
+    const found: Array<{ x: number; y: number; d2: number }> = [];
+    for (let dy = -40; dy <= 40; dy++) {
+      for (let dx = -40; dx <= 40; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 > 1600) continue;
+        const nx = ex + dx,
+          ny = ey + dy;
+        if (!world.inBounds(nx, ny)) continue;
+        const t = world.types[world.idx(nx, ny)];
+        if (t === Cell.Sand || t === Cell.Gold || t === Cell.Gunpowder) {
+          found.push({ x: nx, y: ny, d2 });
+        }
+      }
+    }
+    found.sort((a, b) => a.d2 - b.d2);
+    const n = Math.min(14, found.length);
+    for (let k = 0; k < n; k++) {
+      const c = found[k];
+      const ci = world.idx(c.x, c.y);
+      const t = world.types[ci];
+      const color = world.colors[ci];
+      world.types[ci] = Cell.Empty;
+      world.colors[ci] = EMPTY_COLOR;
+      const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (Math.random() - 0.5) * 0.24;
+      const spd = 3.6 + Math.random() * 0.8;
+      ctx.particles.spawn(c.x, c.y, Math.cos(aim) * spd, Math.sin(aim) * spd, t, color, 170, {
+        hostileDmg: 6,
+        glow: 0.6,
+        grav: 0.015,
+      });
+    }
+    if (n > 0) {
+      ctx.audio.tone(240, 70, 0.3, 'sawtooth', 0.12);
+      ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.006, 0.04);
+    }
+  }
+
   private enemyEnvironmentDamage(e: Enemy): void {
     const ctx = this.ctx;
     const def = this.defs[e.kind];
@@ -187,7 +256,7 @@ export class Enemies implements EnemyControlApi {
       if (!ctx.world.inBounds(X, Y)) continue;
       const c = ctx.world.types[ctx.world.idx(X, Y)];
       if ((c === Cell.Fire || c === Cell.Lava) && e.kind !== 'imp') dmg += c === Cell.Lava ? 1.6 : 0.7;
-      if (c === Cell.Acid) dmg += 0.9;
+      if (c === Cell.Acid && e.kind !== 'acidslime') dmg += 0.9;
     }
     if (dmg > 0) this.damage(e, dmg, 0, 0);
   }
@@ -208,11 +277,24 @@ export class Enemies implements EnemyControlApi {
       this.enemyEnvironmentDamage(e);
       if (enemies[i] !== e) continue; // died from environment
 
+      // Sim-sampled statuses (DESIGN pillar 5/9): every 2nd frame the cells
+      // touching the body ARE the status — damage lands straight on hp (no
+      // flash), and a frozen body's horizontal speed is scaled once per sample.
+      if (e.timer % 2 === 0) {
+        const eff = sampleAndTickStatus(ctx, e, def.halfW, def.h, STATUS_IMMUNE[e.kind]);
+        if (eff.damage > 0) e.hp -= eff.damage;
+        if (e.hp <= 0) {
+          this.kill(e, 0, 0);
+          continue;
+        }
+        if (eff.slowFactor !== 1) e.vx *= eff.slowFactor;
+      }
+
       const pdx = player.x - e.x,
         pdy = player.y - 9 - (e.y - 5);
       const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
 
-      if (e.kind === 'slime') {
+      if (e.kind === 'slime' || e.kind === 'acidslime') {
         e.vy += 0.3;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
         if (e.grounded) {
@@ -225,9 +307,23 @@ export class Enemies implements EnemyControlApi {
             e.vy = -2.4;
           }
         }
+        // Corrosive trail: an acid slime sweats one real acid cell at its feet
+        if (e.kind === 'acidslime' && e.timer % 14 === 0) {
+          const tx = Math.floor(e.x);
+          for (let dy = 0; dy <= 1; dy++) {
+            const ty = Math.floor(e.y) + dy;
+            if (!ctx.world.inBounds(tx, ty)) break;
+            const ti = ctx.world.idx(tx, ty);
+            if (ctx.world.types[ti] === Cell.Empty) {
+              ctx.world.types[ti] = Cell.Acid;
+              ctx.world.colors[ti] = acidColor();
+              break;
+            }
+          }
+        }
         // Melee contact
         if (targetAlive && e.attackCd === 0 && Math.abs(pdx) < 11 && Math.abs(pdy) < 17) {
-          ctx.playerCtl.damage(12, Math.sign(pdx) * -3.6, -2.8);
+          ctx.playerCtl.damage(e.kind === 'acidslime' ? 10 : 12, Math.sign(pdx) * -3.6, -2.8);
           e.attackCd = 45;
         }
       } else if (e.kind === 'imp') {
@@ -268,6 +364,130 @@ export class Enemies implements EnemyControlApi {
           });
           ctx.audio.zap();
           e.attackCd = 130 + Math.floor(Math.random() * 70);
+        }
+      } else if (e.kind === 'wisp') {
+        // Frost wisp: hovers high off the player's shoulder (no gravity at all),
+        // flees when cornered, and radiates real cold into the grid beneath it
+        e.bobPhase += 0.08;
+        const cornered = targetAlive && pDist < 60;
+        if (targetAlive) {
+          const standoff = 110;
+          const dirX = Math.abs(pdx) > standoff ? Math.sign(pdx) : -Math.sign(pdx);
+          // retreat at 1.4x when the alchemist closes in
+          e.vx += (cornered ? -Math.sign(pdx || 1) * 1.4 : dirX) * 0.1;
+          const desiredY = player.y - 60;
+          e.vy += Math.sign(desiredY - e.y) * 0.08;
+        } else {
+          e.vx += (Math.random() - 0.5) * 0.05;
+          e.vy += (Math.random() - 0.5) * 0.05;
+        }
+        e.vy += Math.sin(e.bobPhase) * 0.03; // gentle bob
+        e.vx = clamp(e.vx, cornered ? -1.54 : -1.1, cornered ? 1.54 : 1.1);
+        e.vy = clamp(e.vy, -1.0, 1.0);
+        // Escape solids upward
+        if (!ctx.physics.entityFree(e.x, e.y, def.halfW, def.h)) {
+          e.y -= 1;
+          e.vy = -0.5;
+        }
+        if (targetAlive && e.attackCd === 0 && pDist < 320) {
+          const fa = Math.atan2(pdy, pdx) + (Math.random() - 0.5) * 0.14;
+          ctx.projectiles.push({
+            x: e.x,
+            y: e.y - 5,
+            vx: Math.cos(fa) * 3.2,
+            vy: Math.sin(fa) * 3.2,
+            type: 'frostbolt',
+            life: 200,
+            age: 0,
+            charging: false,
+            hostile: true,
+          });
+          ctx.audio.tone(820, 1300, 0.12, 'sine', 0.09);
+          e.attackCd = 140 + Math.floor(Math.random() * 60);
+        }
+        // Every 8th frame the cold soaks downward: water below locks into real
+        // ice, lava occasionally skins over into stone
+        if (e.timer % 8 === 0) {
+          const wx = Math.floor(e.x),
+            wy = Math.floor(e.y);
+          let frozen = 0;
+          for (let dy = 0; dy <= 6 && frozen < 10; dy++) {
+            for (let dx = -6; dx <= 6 && frozen < 10; dx++) {
+              if (dx * dx + dy * dy > 36) continue;
+              const nx = wx + dx,
+                ny = wy + dy;
+              if (!ctx.world.inBounds(nx, ny)) continue;
+              const ci = ctx.world.idx(nx, ny);
+              const c = ctx.world.types[ci];
+              if (c === Cell.Water) {
+                ctx.world.types[ci] = Cell.Ice;
+                ctx.world.colors[ci] = iceColor();
+                frozen++;
+              } else if (c === Cell.Lava && Math.random() < 0.1) {
+                ctx.world.types[ci] = Cell.Stone;
+                ctx.world.colors[ci] = stoneColor();
+                frozen++;
+              }
+            }
+          }
+        }
+      } else if (e.kind === 'mage') {
+        // Powder Mage (pillar 9): a slow walker that throws the level at you.
+        // e.blink doubles as the telekinesis telegraph countdown (the sprite
+        // reads it to flare the hands); e.jetFuel doubles as the spent flag
+        // for its one-time emergency teleport.
+        e.vy += 0.3;
+        e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+
+        if (e.blink > 0) {
+          // Telegraph window: rooted, purple motes rise off the robe
+          e.blink--;
+          e.vx *= 0.7;
+          if (e.timer % 2 === 0) {
+            ctx.particles.spawn(
+              e.x + ((Math.random() * 13) | 0) - 6,
+              e.y - ((Math.random() * def.h) | 0),
+              (Math.random() - 0.5) * 0.3,
+              -0.5 - Math.random() * 0.7,
+              null,
+              packRGB(150 + ((Math.random() * 70) | 0), 60, 255),
+              20,
+              { grav: -0.02, glow: 1.9 },
+            );
+          }
+          if (e.blink === 0 && targetAlive) this.telekinesisVolley(e);
+        } else {
+          if (targetAlive) e.vx += Math.sign(pdx) * 0.04;
+          e.vx = clamp(e.vx, -0.45, 0.45);
+          if (targetAlive && e.attackCd === 0 && pDist < 340) {
+            e.blink = 20; // begin the 20-frame telegraph
+            e.attackCd = 180 + Math.floor(Math.random() * 80);
+          }
+        }
+
+        // One-time emergency blink once bloodied: 40-80 cells away, both ends
+        // marked with purple bursts
+        if (e.jetFuel === 0 && e.hp < e.maxHp * 0.5) {
+          e.jetFuel = 1;
+          const burstCol = (): number => packRGB(180 + ((Math.random() * 60) | 0), 70, 255);
+          for (let attempt = 0; attempt < 20; attempt++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = 40 + Math.random() * 40;
+            const nx = Math.floor(clamp(e.x + Math.cos(a) * r, def.halfW + 2, WIDTH - def.halfW - 3));
+            const ny = Math.floor(clamp(e.y + Math.sin(a) * r, def.h + 1, HEIGHT - 3));
+            if (ctx.physics.entityFree(nx, ny, def.halfW, def.h)) {
+              ctx.particles.burst(e.x, e.y - 7, 14, null, burstCol, 2.4, { glow: 2.2, grav: -0.01 });
+              e.x = nx;
+              e.y = ny;
+              e.vx = 0;
+              e.vy = 0;
+              e.fx = 0;
+              e.fy = 0;
+              ctx.particles.burst(nx, ny - 7, 14, null, burstCol, 2.4, { glow: 2.2, grav: -0.01 });
+              ctx.audio.zap();
+              break;
+            }
+          }
         }
       } else if (e.kind === 'golem') {
         e.vy += 0.33;
@@ -398,8 +618,8 @@ export class Enemies implements EnemyControlApi {
         }
       }
 
-      // Integrate movement (slimes/golems collide; imps drift)
-      if (e.kind === 'imp') {
+      // Integrate movement (slimes/golems/mages collide; imps and wisps drift)
+      if (e.kind === 'imp' || e.kind === 'wisp') {
         // Drift via sub-cell accumulators so e.x / e.y stay integers (grid indices)
         e.fx += e.vx;
         e.fy += e.vy;

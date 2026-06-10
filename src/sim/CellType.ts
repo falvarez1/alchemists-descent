@@ -28,11 +28,14 @@ export const Cell = {
   Blood: 18,
   Slime: 19,
   Ember: 20,
+  ElixirLife: 21,
+  ElixirLevity: 22,
+  ElixirStone: 23,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
 
-export const CELL_COUNT = 21;
+export const CELL_COUNT = 24;
 
 /**
  * Classification predicates take plain numbers so values read straight out of
@@ -70,7 +73,10 @@ export function isLiquid(t: number): boolean {
     t === Cell.Lava ||
     t === Cell.Nitrogen ||
     t === Cell.Blood ||
-    t === Cell.Slime
+    t === Cell.Slime ||
+    t === Cell.ElixirLife ||
+    t === Cell.ElixirLevity ||
+    t === Cell.ElixirStone
   );
 }
 

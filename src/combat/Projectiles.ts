@@ -2,7 +2,8 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, Projectile, ProjectilesApi } from '@/core/types';
 import { Cell, isGas } from '@/sim/CellType';
-import { EMPTY_COLOR, packRGB } from '@/sim/colors';
+import { EMPTY_COLOR, iceColor, packRGB } from '@/sim/colors';
+import { probeHollow } from '@/world/secrets';
 
 // ===================== Projectiles & Black Holes =====================
 export class Projectiles implements ProjectilesApi {
@@ -165,7 +166,8 @@ export class Projectiles implements ProjectilesApi {
         continue;
       }
 
-      if (p.type === 'bomb' || p.type === 'fireball') p.vy += p.type === 'fireball' ? 0.02 : 0.14;
+      if (p.type === 'bomb' || p.type === 'fireball' || p.type === 'frostbolt')
+        p.vy += p.type === 'bomb' ? 0.14 : p.type === 'fireball' ? 0.02 : 0.01;
 
       // Swept movement: sub-step at <=1 cell so fast bolts can't tunnel through thin walls
       const speed = Math.max(Math.abs(p.vx), Math.abs(p.vy));
@@ -192,13 +194,19 @@ export class Projectiles implements ProjectilesApi {
           break;
         }
 
-        // Hostile fireball: detonate on the player
+        // Hostile projectiles: fireballs detonate on the player, frostbolts
+        // hit lighter but soak in as a real frozen status
         if (p.hostile && ctx.state.mode === 'play' && !ctx.player.dead) {
           const dx = ctx.player.x - p.x,
             dy = ctx.player.y - 9 - p.y;
           if (dx * dx + dy * dy < 85) {
-            ctx.playerCtl.damage(11, p.vx * 1.7, -2.3);
-            ctx.explosions.trigger(p.x, p.y, 10);
+            if (p.type === 'frostbolt') {
+              ctx.playerCtl.damage(6, p.vx * 0.8, -0.6);
+              ctx.player.status.frozen = Math.max(ctx.player.status.frozen, 120);
+            } else {
+              ctx.playerCtl.damage(11, p.vx * 1.7, -2.3);
+              ctx.explosions.trigger(p.x, p.y, 10);
+            }
             projectiles.splice(i, 1);
             removed = true;
             break;
@@ -226,6 +234,32 @@ export class Projectiles implements ProjectilesApi {
 
         const col = world.types[world.idx(gx, gy)];
         if (col !== Cell.Empty && !isGas(col)) {
+          // Hollow-wall tell (pillar 10): a player shot striking a thin wall
+          // with open space behind it knocks hollow — probed through the real
+          // cells along the impact direction. The speed gate keeps a bomb
+          // resting on the ground from drumming every frame.
+          if (
+            !p.hostile &&
+            (p.type === 'bolt' || p.type === 'bomb' || p.type === 'fireball') &&
+            Math.abs(p.vx) + Math.abs(p.vy) > 0.8
+          ) {
+            const behind = probeHollow(ctx.world, gx, gy, p.vx, p.vy);
+            if (behind) {
+              ctx.audio.hollowKnock();
+              for (let d = 0; d < 2; d++) {
+                ctx.particles.spawn(
+                  gx,
+                  gy,
+                  (Math.random() - 0.5) * 1.4,
+                  -0.4 - Math.random() * 0.9,
+                  null,
+                  packRGB(145, 145, 152),
+                  30,
+                  { grav: 0.1 },
+                );
+              }
+            }
+          }
           if (p.type === 'bolt') {
             ctx.explosions.trigger(gx, gy, ctx.params.spells.bolt.explosionRadius!);
             world.charge[world.idx(gx, gy)] = 20;
@@ -233,6 +267,27 @@ export class Projectiles implements ProjectilesApi {
             removed = true;
           } else if (p.type === 'fireball') {
             ctx.explosions.trigger(gx, gy, 10);
+            projectiles.splice(i, 1);
+            removed = true;
+          } else if (p.type === 'frostbolt') {
+            // No blast — the impact frost-locks nearby water into real ice
+            let frozen = 0;
+            for (let dy = -4; dy <= 4 && frozen < 6; dy++) {
+              for (let dx = -4; dx <= 4 && frozen < 6; dx++) {
+                if (dx * dx + dy * dy > 16) continue;
+                const nx = gx + dx,
+                  ny = gy + dy;
+                if (!world.inBounds(nx, ny)) continue;
+                const ci = world.idx(nx, ny);
+                if (world.types[ci] === Cell.Water) {
+                  world.types[ci] = Cell.Ice;
+                  world.colors[ci] = iceColor();
+                  frozen++;
+                }
+              }
+            }
+            ctx.particles.burst(gx, gy, 10, null, iceColor, 1.3, { glow: 1.5, grav: 0.02 });
+            ctx.audio.tone(900, 400, 0.1, 'sine', 0.1);
             projectiles.splice(i, 1);
             removed = true;
           } else if (p.type === 'warp') {

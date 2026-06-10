@@ -5,12 +5,16 @@ import { clamp } from '@/core/math';
 type RGB = readonly [number, number, number];
 
 /**
- * Procedural enemy sprites (original drawEnemySprite): slime squash & stretch,
- * imp hover/flap/flicker, golem heavy stride with pulsing core.
+ * Procedural enemy sprites (original drawEnemySprite): slime squash & stretch
+ * (shared by the acid slime, in acid greens with drip pixels), imp
+ * hover/flap/flicker, wisp self-lit guttering diamond, mage hooded robe with
+ * channel-flare hands, golem heavy stride with pulsing core.
  *
  * NOTE: this function intentionally MUTATES animation state on the enemy
  * (e.splat / e.prevG / e.blink for slimes; e._px / e._svx / e.stride for
- * golems) exactly like the original did from inside the renderer.
+ * golems) exactly like the original did from inside the renderer. The mage
+ * only READS e.blink — there it is the telekinesis telegraph countdown set
+ * by the AI (Enemies.ts), and the hands flare while it runs.
  */
 export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e: Enemy): void {
   const frameCount = ctx.state.frameCount;
@@ -19,10 +23,11 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   const boost = ctx.params.global.maxBrightness;
   // Creatures obey the light: a body in shadow is a silhouette, a body near
   // glowing material is revealed. Emissive parts (eyes, cores, flames) stay lit.
+  const selfLit = e.kind === 'imp' || e.kind === 'wisp';
   const lt = light.sample(e.x, e.y - def.h * 0.5);
-  const bR = e.kind === 'imp' ? 1 : Math.max(0.05, lt.r);
-  const bG = e.kind === 'imp' ? 1 : Math.max(0.05, lt.g);
-  const bB = e.kind === 'imp' ? 1 : Math.max(0.05, lt.b);
+  const bR = selfLit ? 1 : Math.max(0.05, lt.r);
+  const bG = selfLit ? 1 : Math.max(0.05, lt.g);
+  const bB = selfLit ? 1 : Math.max(0.05, lt.b);
   const P = (dx: number, dy: number, r: number, g: number, b: number): void => {
     if (flash) s.setPx(e.x + dx, e.y - dy, 2.2, 2.2, 2.2);
     else s.setPx(e.x + dx, e.y - dy, r * bR, g * bG, b * bB);
@@ -33,7 +38,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   };
   const look = ctx.player.x > e.x ? 1 : -1;
 
-  if (e.kind === 'slime') {
+  if (e.kind === 'slime' || e.kind === 'acidslime') {
     // --- Squash & stretch: tall in flight, splat on landing, wobble at rest ---
     if (e.grounded && !e.prevG && Math.abs(e.vy) < 0.1) e.splat = 8;
     e.prevG = e.grounded;
@@ -45,7 +50,10 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     else if (e.splat > 0) { sx = 1 + e.splat * 0.05; sy = 1 / sx; }
     else { const w = Math.sin(frameCount * 0.085 + e.bobPhase) * 0.07; sx = 1 + w; sy = 1 - w; }
 
-    const G: RGB = [0.20, 0.78, 0.35], GD: RGB = [0.10, 0.45, 0.20], GL: RGB = [0.55, 1.0, 0.65];
+    const acid = e.kind === 'acidslime';
+    const G: RGB = acid ? [0.28, 0.92, 0.12] : [0.20, 0.78, 0.35];
+    const GD: RGB = acid ? [0.12, 0.52, 0.05] : [0.10, 0.45, 0.20];
+    const GL: RGB = acid ? [0.72, 1.0, 0.32] : [0.55, 1.0, 0.65];
     const H = Math.max(4, Math.round(def.h * sy));
     const baseHW = def.halfW;
     for (let dy = 0; dy < H; dy++) {
@@ -57,6 +65,12 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       }
     }
     P(-Math.round(baseHW * sx * 0.5), H - 2, ...GL); // sheen
+    if (acid) {
+      // two darker drips sweating down the membrane
+      const drip = (frameCount >> 2) % H;
+      P(-2, H - 1 - drip, ...GD);
+      P(3, H - 1 - ((drip + (H >> 1)) % H), ...GD);
+    }
     if (e.blink === 0) {
       const eyeY = Math.max(1, Math.round(H * 0.4));
       P(look - 2, eyeY, 0.95, 1.0, 0.95); P(look + 2, eyeY, 0.95, 1.0, 0.95);
@@ -102,6 +116,62 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     Q(-look, 3, ...OD);
     Q(-look * 2 + Math.round(wag * 0.5), 2, ...OD);
     Q(-look * 3 + wag, 1, ...O);
+  } else if (e.kind === 'wisp') {
+    // --- Frost wisp: a self-lit 5x7 diamond of cold light, guttering ---
+    const hover = Math.round(Math.sin(e.bobPhase) * 1.5);
+    const flick = 0.8 + Math.random() * 0.35 + Math.sin(frameCount * 0.23 + e.bobPhase) * 0.12;
+    const W7 = [0, 1, 2, 2, 2, 1, 0] as const;
+    for (let dy = 0; dy < 7; dy++) {
+      const hw = W7[dy];
+      for (let dx = -hw; dx <= hw; dx++) {
+        const heart = dx === 0 && dy === 3;
+        const edge = Math.abs(dx) === hw;
+        const f = (heart ? 1.5 : edge ? 0.5 : 1.0) * flick * boost * 0.55;
+        P(dx, dy + 1 + hover, 0.5 * f, 0.92 * f, 1.1 * f);
+      }
+    }
+    // two trailing motes drift behind its motion
+    const tl = Math.abs(e.vx) + Math.abs(e.vy) + 0.001;
+    const mxn = -e.vx / tl,
+      myn = -e.vy / tl;
+    const m1 = 0.55 * flick, m2 = 0.3 * flick;
+    PE(Math.round(mxn * 3), 4 - Math.round(myn * 3) + hover, 0.18 * m1, 0.4 * m1, 0.5 * m1);
+    PE(Math.round(mxn * 5), 4 - Math.round(myn * 5) + hover, 0.18 * m2, 0.4 * m2, 0.5 * m2);
+  } else if (e.kind === 'mage') {
+    // --- Powder Mage: hooded robe, purple-lit hands, eyes that never leave you ---
+    // (e.blink is the telekinesis telegraph countdown set by the AI; while it
+    //  runs, the hands flare bright)
+    const R: RGB = [0.17, 0.13, 0.25], RD: RGB = [0.08, 0.06, 0.13], RT: RGB = [0.33, 0.22, 0.50];
+    const sway = Math.round(Math.sin(frameCount * 0.045 + e.bobPhase));
+    // robe: widens to a frayed hem
+    for (let dy = 0; dy <= 7; dy++) {
+      const hw = Math.max(3, 5 - (dy >> 1));
+      for (let dx = -hw; dx <= hw; dx++) {
+        P(dx, dy, ...(Math.abs(dx) === hw || dy === 0 ? RD : R));
+      }
+    }
+    // belted waist
+    for (let dx = -3; dx <= 3; dx++) P(dx, 8, ...(Math.abs(dx) === 3 ? RD : RT));
+    // chest
+    for (let dx = -3; dx <= 3; dx++) P(dx + sway, 9, ...(Math.abs(dx) === 3 ? RD : R));
+    // hood
+    for (let dy = 10; dy <= 13; dy++) {
+      const hw = dy === 13 ? 1 : dy === 12 ? 2 : 3;
+      for (let dx = -hw; dx <= hw; dx++) P(dx + sway, dy, ...(Math.abs(dx) === hw ? RD : R));
+    }
+    // hood shadow + white eyes tracking the player
+    for (let dx = -1; dx <= 1; dx++) P(dx + sway, 11, 0.03, 0.02, 0.05);
+    PE(look - 1 + sway, 11, 0.95, 0.95, 1.0);
+    PE(look + 1 + sway, 11, 0.95, 0.95, 1.0);
+    // hands: a purple glow that flares while the telegraph runs
+    const channeling = e.blink > 0;
+    const hg =
+      (channeling ? 1.6 + Math.random() * 0.6 : 0.55 + Math.sin(frameCount * 0.09 + e.bobPhase) * 0.18) *
+      boost * 0.5;
+    PE(-6, 5, hg * 0.8, hg * 0.32, hg);
+    PE(6, 5, hg * 0.8, hg * 0.32, hg);
+    PE(-6, 4, hg * 0.5, hg * 0.2, hg * 0.65);
+    PE(6, 4, hg * 0.5, hg * 0.2, hg * 0.65);
   } else if (e.kind === 'golem') {
     // --- Heavy stride driven by real displacement, arms, breath, pulsing core ---
     const gx2 = e.x + (e.fx || 0);

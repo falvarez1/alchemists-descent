@@ -14,6 +14,7 @@ import {
   nitrogenColor,
   oilColor,
   packRGB,
+  sandColor,
   stoneColor,
   unpackB,
   unpackG,
@@ -22,6 +23,8 @@ import {
   woodColor,
 } from '@/sim/colors';
 import { spawnFortress as stampFortress } from '@/world/fortress';
+import { extractRegionGraph } from '@/world/regions';
+import { stampSecrets } from '@/world/secrets';
 
 /* ===================== Procedural Generation Map Engines ===================== */
 
@@ -594,17 +597,24 @@ export class WorldGen implements WorldGenApi {
   }
 
   /**
-   * Descent-mode generation (Wave B): base biome caves, then the level dressing —
-   * an indestructible bedrock floor, a stone-sealed exit well through it, and two
-   * unlit waystone braziers along the lower artery. Layout randomness flows through
-   * this.rng (re-seeded by generateCaves from worldSeed), so a level replays
-   * identically from its seed. No enemies here — the levels manager places those.
+   * Descent-mode generation (Wave B/C): base biome caves, then the level dressing —
+   * an indestructible bedrock floor, a stone-sealed exit well through it, two unlit
+   * waystone braziers along the lower artery, sim-obeying secrets stamped off the
+   * region graph, a cauldron basin beside the first waystone, and (depth 1 only)
+   * the two onboarding moments near spawn. Layout randomness flows through this.rng
+   * (re-seeded by generateCaves from worldSeed), so a level replays identically
+   * from its seed. No enemies here — the levels manager places those.
    */
   generateLevel(
     ctx: Ctx,
     def: LevelDef,
     seed: number,
-  ): { exit: LevelExitWell; waystones: Waystone[]; spawn: { x: number; y: number } } {
+  ): {
+    exit: LevelExitWell;
+    waystones: Waystone[];
+    spawn: { x: number; y: number };
+    cauldron: { x: number; y: number } | null;
+  } {
     // 1) Base caves for the level's biome, replayable from the seed.
     ctx.state.currentBiome = def.biome;
     ctx.state.worldSeed = seed >>> 0;
@@ -734,7 +744,156 @@ export class WorldGen implements WorldGenApi {
       }
     }
 
-    // 5/6) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
-    return { exit: { x: wellX, sealY, halfW }, waystones, spawn: { x: spawn.x, y: spawn.y } };
+    // 5) Placement brain + secrets: flood-fill the finished caves into a region
+    //    graph, then stamp sealed treasure hollows behind breachable skins.
+    const graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+    stampSecrets(ctx, this.rng, graph, def.biome);
+
+    // 6) Cauldron: a stone brewing basin on the first waystone's ground row —
+    //    9 wide, 1-row stone base, 2-tall side walls, open 7x3 interior bowl.
+    const ws0 = waystones[0];
+    const cSide = this.rng.next() < 0.5 ? -1 : 1;
+    const cauldronX = Math.floor(clamp(ws0.x + cSide * 14, 8, WIDTH - 9));
+    const cauldronBaseY = ws0.y + 1;
+    // carve clearance above the basin footprint if rock is in the way
+    for (let dy = 1; dy <= 6; dy++) {
+      for (let dx = -4; dx <= 4; dx++) setCell(cauldronX + dx, cauldronBaseY - dy, Cell.Empty, EMPTY_COLOR);
+    }
+    for (let dx = -4; dx <= 4; dx++) setCell(cauldronX + dx, cauldronBaseY, Cell.Stone, stoneColor());
+    for (let t = 1; t <= 2; t++) {
+      setCell(cauldronX - 4, cauldronBaseY - t, Cell.Stone, stoneColor());
+      setCell(cauldronX + 4, cauldronBaseY - t, Cell.Stone, stoneColor());
+    }
+    const cauldron = { x: cauldronX, y: cauldronBaseY - 1 };
+
+    // 7) D1 onboarding (depth 1 only): two staged lessons in sim literacy near
+    //    spawn — fire eats wood, sand obeys gravity. Both are plain cells.
+    if (def.depth === 1) {
+      const isWallAt = (x: number, y: number): boolean =>
+        x > 1 && x < WIDTH - 2 && y > 2 && y < HEIGHT - 7 && world.types[x + y * WIDTH] === Cell.Wall;
+      const isOpenAt = (x: number, y: number): boolean =>
+        world.inBounds(x, y) && world.types[x + y * WIDTH] === Cell.Empty;
+
+      // (i) The wooden seal: a 12x8 pocket carved into a wall face, its throat
+      // sealed with 4-thick wood, 40 gold inside, and a campfire smouldering
+      // 10-14 cells outside as the hint that fire opens it.
+      const trySeal = (ex: number, ey: number, dir: number, needFire: boolean): boolean => {
+        if (!isOpenAt(ex, ey) || !isOpenAt(ex - dir, ey)) return false;
+        for (let d = 1; d <= 16; d++) {
+          for (let dy = -4; dy <= 3; dy++) {
+            if (!isWallAt(ex + dir * d, ey + dy)) return false;
+          }
+        }
+        let fireX = -1,
+          fireY = -1;
+        for (let out = 10; out <= 14 && fireX < 0; out++) {
+          const px = ex - dir * out;
+          if (px < 6 || px >= WIDTH - 6) continue;
+          for (let py = Math.max(3, ey - 6); py < Math.min(HEIGHT - 7, ey + 24); py++) {
+            if (world.types[px + py * WIDTH] === Cell.Empty && world.types[px + (py + 1) * WIDTH] === Cell.Wall) {
+              fireX = px;
+              fireY = py;
+              break;
+            }
+          }
+        }
+        if (fireX < 0 && needFire) return false;
+        for (let d = 1; d <= 16; d++) {
+          for (let dy = -4; dy <= 3; dy++) {
+            if (d <= 4) setCell(ex + dir * d, ey + dy, Cell.Wood, woodColor());
+            else setCell(ex + dir * d, ey + dy, Cell.Empty, EMPTY_COLOR);
+          }
+        }
+        let goldLeft = 40;
+        for (let dy = 3; dy >= -4 && goldLeft > 0; dy--) {
+          for (let d = 5; d <= 16 && goldLeft > 0; d++) {
+            setCell(ex + dir * d, ey + dy, Cell.Gold, goldColor());
+            goldLeft--;
+          }
+        }
+        if (fireX >= 0) {
+          // same pattern as the generator's campfires, burning a touch longer
+          for (let dx = -4; dx <= 4; dx++) {
+            if (isOpenAt(fireX + dx, fireY)) setCell(fireX + dx, fireY, Cell.Wood, woodColor());
+            if (Math.abs(dx) <= 3 && isOpenAt(fireX + dx, fireY - 1))
+              setCell(fireX + dx, fireY - 1, Cell.Wood, woodColor());
+            if (Math.abs(dx) <= 3 && isOpenAt(fireX + dx, fireY - 2)) {
+              setCell(fireX + dx, fireY - 2, Cell.Fire, fireColor());
+              world.life[fireX + dx + (fireY - 2) * WIDTH] = 260 + Math.floor(this.rng.next() * 80);
+            }
+          }
+        }
+        return true;
+      };
+      let sealDone = false;
+      for (let attempt = 0; attempt < 240 && !sealDone; attempt++) {
+        const ex = spawn.x + Math.floor((this.rng.next() - 0.5) * 240);
+        const ey = spawn.y + Math.floor((this.rng.next() - 0.5) * 170);
+        const dir = this.rng.next() < 0.5 ? -1 : 1;
+        sealDone = trySeal(ex, ey, dir, true) || trySeal(ex, ey, -dir, true);
+      }
+      // guaranteed fallback: systematic sweep of the spawn surroundings
+      for (let dy = -84; dy <= 84 && !sealDone; dy += 3) {
+        for (let dx = -120; dx <= 120 && !sealDone; dx += 2) {
+          sealDone =
+            trySeal(spawn.x + dx, spawn.y + dy, dx >= 0 ? 1 : -1, false) ||
+            trySeal(spawn.x + dx, spawn.y + dy, dx >= 0 ? -1 : 1, false);
+        }
+      }
+
+      // (ii) The sand plug: an 8x14 pit in the spawn region's floor — six rows
+      // of cap sand over a hollow drop with 30 gold waiting at the bottom.
+      const tryPlug = (px: number, relaxed: boolean): boolean => {
+        if (px < 6 || px >= WIDTH - 8) return false;
+        const yLo = Math.max(4, spawn.y - 70);
+        const yHi = Math.min(HEIGHT - 26, spawn.y + 90);
+        // natural floors are never perfectly flat: each column's surface may
+        // sit up to `lead` cells below the shared top row
+        const lead = relaxed ? 3 : 1;
+        for (let y = yLo; y < yHi; y++) {
+          let ok = true;
+          for (let dx = -3; dx <= 4 && ok; dx++) {
+            const col = px + dx;
+            if (world.types[col + y * WIDTH] !== Cell.Empty) {
+              ok = false;
+              break;
+            }
+            let d = 1;
+            while (d <= lead && world.types[col + (y + d) * WIDTH] === Cell.Empty) d++;
+            for (; d <= 14 && ok; d++) {
+              const t = world.types[col + (y + d) * WIDTH];
+              if (relaxed ? t === Cell.Empty || t === Cell.Metal : t !== Cell.Wall) ok = false;
+            }
+          }
+          if (!ok) continue;
+          let goldLeft = 30;
+          for (let d = 14; d >= 1; d--) {
+            for (let dx = -3; dx <= 4; dx++) {
+              if (d <= 6) setCell(px + dx, y + d, Cell.Sand, sandColor());
+              else if (goldLeft > 0) {
+                setCell(px + dx, y + d, Cell.Gold, goldColor());
+                goldLeft--;
+              } else setCell(px + dx, y + d, Cell.Empty, EMPTY_COLOR);
+            }
+          }
+          return true;
+        }
+        return false;
+      };
+      let plugDone = false;
+      for (let attempt = 0; attempt < 160 && !plugDone; attempt++) {
+        const off = (12 + this.rng.int(110)) * (this.rng.next() < 0.5 ? -1 : 1);
+        plugDone = tryPlug(spawn.x + off, false);
+      }
+      for (let off = 12; off <= 124 && !plugDone; off++) {
+        plugDone = tryPlug(spawn.x + off, false) || tryPlug(spawn.x - off, false);
+      }
+      for (let off = 12; off <= 124 && !plugDone; off++) {
+        plugDone = tryPlug(spawn.x + off, true) || tryPlug(spawn.x - off, true);
+      }
+    }
+
+    // 8) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
+    return { exit: { x: wellX, sealY, halfW }, waystones, spawn: { x: spawn.x, y: spawn.y }, cauldron };
   }
 }

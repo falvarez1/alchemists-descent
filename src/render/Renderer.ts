@@ -5,6 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 
 import { RENDER_H, RENDER_W, VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx } from '@/core/types';
+import { PostFx } from '@/render/PostFx';
 import type { RenderTarget } from '@/render/pixels';
 
 /**
@@ -24,6 +25,7 @@ export class Renderer implements RenderTarget {
   private readonly quadMesh: THREE.Mesh;
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
+  private readonly postFx: PostFx;
 
   constructor(holder: HTMLElement) {
     // ===================== Three.js WebGL Setup =====================
@@ -60,6 +62,10 @@ export class Renderer implements RenderTarget {
 
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(RENDER_W, RENDER_H), 1.5, 0.4, 1.0);
     this.composer.addPass(this.bloomPass);
+
+    // Lens layer: chromatic aberration, grain, vignette, low-health pulse.
+    this.postFx = new PostFx();
+    this.composer.addPass(this.postFx.pass);
   }
 
   /** Flag the GPU texture for re-upload after the buffer was written. */
@@ -91,8 +97,10 @@ export class Renderer implements RenderTarget {
       1,
     );
 
-    // Blast-wave bloom surge decays back to baseline
+    // Blast-wave bloom surge decays back to baseline.
+    // PostFx reads bloomKick/screenShake BEFORE decay so kicks land this frame.
     this.bloomPass.strength = 1.5 + ctx.fx.bloomKick;
+    this.postFx.update(ctx);
     if (ctx.fx.bloomKick > 0.001) ctx.fx.bloomKick *= 0.86;
     else ctx.fx.bloomKick = 0;
 

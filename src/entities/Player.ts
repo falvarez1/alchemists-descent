@@ -7,6 +7,7 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, PlayerControlApi, PlayerState, Projectile } from '@/core/types';
+import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { bloodColor, EMPTY_COLOR, packRGB, smokeColor } from '@/sim/colors';
 
@@ -50,6 +51,7 @@ export function createPlayer(): PlayerState {
     _py: 0,
     _svx: 0,
     _svy: 0,
+    status: createDefaultStatus(),
   };
 }
 
@@ -70,6 +72,8 @@ export class PlayerControl implements PlayerControlApi {
   private prevJumpHeld = false;
   /** Sustained levitation frames (drives the thrust response curve). */
   private levitFrames = 0;
+  /** Horizontal accel multiplier from the status engine (frozen = 0.55). */
+  private statusSlow = 1;
 
   constructor(private ctx: Ctx) {}
 
@@ -78,9 +82,14 @@ export class PlayerControl implements PlayerControlApi {
     const ctx = this.ctx;
     const player = ctx.player;
     if (player.dead || player.invuln > 0) return;
+    // Stoneskin (Wave C potion): half damage, knockback shrugged off entirely
+    const stoneskinned = player.status.stoneskin > 0;
+    if (stoneskinned) amount *= 0.5;
     player.hp -= amount;
-    player.vx += kx || 0;
-    player.vy += ky || 0;
+    if (!stoneskinned) {
+      player.vx += kx || 0;
+      player.vy += ky || 0;
+    }
     player.invuln = 30;
     ctx.audio.hurt();
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.018, 0.05);
@@ -207,8 +216,27 @@ export class PlayerControl implements PlayerControlApi {
     if (ctx.state.mode !== 'play' || player.dead) return;
     if (player.invuln > 0) player.invuln--;
 
+    // Sim-sampled statuses (Wave C, pillar 5): the cells touching the body
+    // decide what you ARE — wet, oiled, burning, frozen, electrified.
+    // Sampled every 2nd frame; status DPS bypasses invuln like hazard DPS.
+    if (ctx.state.frameCount % 2 === 0) {
+      const { damage, slowFactor } = sampleAndTickStatus(ctx, player, 4, 17);
+      this.statusSlow = slowFactor;
+      if (damage > 0) {
+        player.hp -= damage;
+        if (player.hp <= 0) {
+          this.kill();
+          return;
+        }
+      }
+      if (player.status.regen > 0) player.hp = Math.min(player.maxHp, player.hp + 0.15);
+    }
+
+    // DRINK (X held): gulp the flask's contents — a potion is real cells swallowed
+    if (ctx.input.drinkHeld) this.drink(ctx);
+
     // air control: stronger mid-air acceleration for Ori-like corrections
-    const accel = player.grounded ? 0.5 : 0.575,
+    const accel = (player.grounded ? 0.5 : 0.575) * this.statusSlow,
       maxRun = 2.6;
     if (keys.left) {
       player.vx -= accel;
@@ -275,7 +303,8 @@ export class PlayerControl implements PlayerControlApi {
         // levitation response curve: thrust eases 0.40 -> 0.62 over the first 10 frames
         const t = Math.min(this.levitFrames / 10, 1);
         player.vy -= 0.4 + 0.22 * (1 - (1 - t) * (1 - t));
-        player.levit -= 1.15;
+        // Levity potion (Wave C): levitation burns no levit while the timer runs
+        if (player.status.levity <= 0) player.levit -= 1.15;
         this.levitFrames++;
         ctx.audio.levitate();
         if (ctx.state.frameCount % 3 === 0) {
@@ -382,6 +411,34 @@ export class PlayerControl implements PlayerControlApi {
 
     if (player.firing) ctx.spells.firePlayerSpell();
     this.updatePlayerAnimation(ctx);
+  }
+
+  /**
+   * DRINK (Wave C): swallow the flask's real cells, 2 per frame. Elixirs load
+   * the potion timers (a potion is a timed rewrite of entity-vs-cell rules);
+   * water soaks you and puts you out; anything else refuses to go down.
+   */
+  private drink(ctx: Ctx): void {
+    const s = ctx.flask.state;
+    const st = ctx.player.status;
+    if (s.material === null || s.count === 0) return;
+    const m = s.material;
+    if (m !== Cell.ElixirLife && m !== Cell.ElixirLevity && m !== Cell.ElixirStone && m !== Cell.Water) return;
+
+    const sips = Math.min(2, s.count);
+    for (let i = 0; i < sips; i++) {
+      if (m === Cell.ElixirLife) st.regen = Math.min(1800, st.regen + 10);
+      else if (m === Cell.ElixirLevity) st.levity = Math.min(1800, st.levity + 12);
+      else if (m === Cell.ElixirStone) st.stoneskin = Math.min(1800, st.stoneskin + 10);
+    }
+    if (m === Cell.Water) {
+      // Drinking water soaks you from the inside — and puts you out
+      st.wet = 120;
+      st.burning = 0;
+    }
+    s.count -= sips;
+    if (s.count === 0) s.material = null;
+    if (ctx.state.frameCount % 10 === 0) ctx.audio.tone(300, 180, 0.08, 'sine', 0.12);
   }
 
   /** Original: updatePlayerAnimation() — lines 1723-1760. */
