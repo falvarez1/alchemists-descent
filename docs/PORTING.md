@@ -110,5 +110,13 @@ manipulated `[r,g,b]` channels (coagulation darkening, stains, shading), use
 6. The unused `colFunc` parameter of `handleGas` is dropped.
 7. `digBeam.life--` moves out of the renderer into the frame tail in `Game.ts` (same cadence).
 8. Audio SFX calls go through `ctx.audio` methods (same sounds, same throttle keys).
+9. `Lighting.build` inlines the wand-tip formula (9 cells along aimAngle from
+   `(x, y-9)`) instead of calling `ctx.spells.wandTip()`, so the render layer has no
+   spells dependency. If the wand-tip formula ever changes, change both.
+10. Entering play mode shows `WAVE n` in the wave readout; the original wrote the
+    bare number there (its own inconsistency vs the in-wave `WAVE n` format).
+11. `scoreChanged` updates both `#score-val` and `#hud-gold`; the original refreshed
+    `#hud-gold` only on the even-frame HUD cadence. Same value, marginally fresher.
 
-Everything else: identical behavior.
+Everything else: identical behavior — confirmed by a 13-agent adversarial fidelity
+audit (zero critical/major divergences) on 2026-06-10.

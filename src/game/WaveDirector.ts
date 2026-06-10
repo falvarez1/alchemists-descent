@@ -13,10 +13,11 @@ import type { Ctx, WaveDirectorApi, WaveState } from '@/core/types';
  * Original boot value (line 2157) was `intermission: 60`, but updateWaves
  * early-exits outside play mode, and the first entry into play mode
  * (setMode, original line 4026) always resets intermission to 150 before the
- * countdown can ever tick — so 150 is the effective initial value.
+ * countdown can ever tick — the 60 here matches the original literal at line
+ * 2157 and is never consumed in practice.
  */
 export function createWaveState(): WaveState {
-  return { num: 0, active: false, intermission: 150, kills: 0 };
+  return { num: 0, active: false, intermission: 60, kills: 0 };
 }
 
 export class WaveDirector implements WaveDirectorApi {
