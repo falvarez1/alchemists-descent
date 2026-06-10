@@ -98,7 +98,10 @@ export class WandSystem implements WandsApi {
     { frame: WAND_FRAMES.bone, cards: ['dig', null, null, null], mana: WAND_FRAMES.bone.manaMax, cooldown: 0, castIndex: 0 },
   ];
 
-  readonly collection: CardId[] = ['double', 'flame'];
+  // Starting kit: utility/multicast basics plus the four signature payloads
+  // the (15) build shipped in its active inventory — Ice Lance, Ember Storm,
+  // Black Hole, and Warp Bolt are equippable from the first bench visit.
+  readonly collection: CardId[] = ['double', 'flame', 'icelance', 'emberstorm', 'blackhole', 'warp'];
 
   /** Compiled programs, rebuilt lazily when a wand's slots change. */
   private readonly compiled: [CastGroup[] | null, CastGroup[] | null] = [null, null];

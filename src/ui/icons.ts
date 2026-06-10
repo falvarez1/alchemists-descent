@@ -110,7 +110,14 @@ export const PIXEL_ICONS: Record<string, PixelIconDef> = {
     ".a...b...a.","..a..b..a..","...aaaaa...",".....a.....",".....a....."]},
   'card-bounce': { p: { a: '#15803d', b: '#4ade80', c: '#6b7280' }, g: [
     "...........","...........",".a.......bb","..a......bb","...a....b..","....a..b...",
-    ".....ab....",".....a.....","..ccccccc..","...........","..........."]}
+    ".....ab....",".....a.....","..ccccccc..","...........","..........."]},
+  // Dedicated card art from noita-sandbox (15).html
+  emberstorm: { p: { a: '#7a2a08', b: '#ff7a1e', c: '#ffd23e' }, g: [
+    "...........","..b...c....",".....b...b.","..c....b...",".b..c......","....b...c..",
+    "..b...b....",".....c...b.","..b.....b..","....b.c....","..........."]},
+  icelance: { p: { a: '#155e75', b: '#38bdf8', c: '#e0f6ff' }, g: [
+    "...........","..........c","........cb.","......cba..",".....cba...","....cba....",
+    "...cba.....","..cba......",".cb........","ac.........","..........."]}
 };
 
 /** Cell id → icon name for the element toolbar buttons. */
@@ -125,10 +132,10 @@ export const ELEMENT_ICON: Record<number, string> = {
 const LEGACY_CARD_ICON: Record<string, string> = {
   spark: 'bolt', bomb: 'bomb', lightning: 'lightning', flame: 'flame',
   dig: 'dig', warp: 'warp', blackhole: 'blackhole',
-  // Upgrade-port payload cards borrow the closest existing glyphs until
-  // they get bespoke pixel art.
-  vitriol: 'acid', frostshard: 'ice', icelance: 'ice', wisp: 'bolt',
-  meteor: 'bomb', conjure: 'wall', emberstorm: 'ember',
+  // Upgrade-port payload cards: icelance/emberstorm have dedicated art from
+  // noita-sandbox (15).html; the rest borrow the closest existing glyphs.
+  vitriol: 'acid', frostshard: 'ice', icelance: 'icelance', wisp: 'bolt',
+  meteor: 'bomb', conjure: 'wall', emberstorm: 'emberstorm',
 };
 
 /** Card id → PIXEL_ICONS key (modifier/multicast cards live under 'card-*'). */

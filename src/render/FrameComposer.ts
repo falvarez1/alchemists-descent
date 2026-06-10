@@ -221,13 +221,16 @@ export class FrameComposer implements PixelSurface {
         {
           const li = (vy >> 1) * LW + (vx >> 1);
           const vg = vignette[vy * VIEW_W + vx];
-          // squared: compensates the sRGB output curve so darkness reads as darkness
+          // squared: compensates the sRGB output curve so darkness reads as darkness.
+          // The small additive floor keeps shadowed rock readable as silhouette
+          // (the BFS rim shading baked into cell colors carries the detail).
+          const floor = 0.06 * vg;
           let lf = (ambient + Math.min(2.2, lightR[li])) * vg;
-          r *= Math.min(2.6, lf * lf);
+          r = r * Math.min(2.6, lf * lf) + r * floor;
           lf = (ambient + Math.min(2.2, lightG[li])) * vg;
-          g *= Math.min(2.6, lf * lf);
+          g = g * Math.min(2.6, lf * lf) + g * floor;
           lf = (ambient + Math.min(2.2, lightB[li])) * vg;
-          b *= Math.min(2.6, lf * lf);
+          b = b * Math.min(2.6, lf * lf) + b * floor;
         }
         pixelData[bufferIdx] = r * intensity + ringGlow * 0.55;
         pixelData[bufferIdx + 1] = g * intensity + ringGlow * 0.42;

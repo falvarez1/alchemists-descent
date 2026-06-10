@@ -13,9 +13,8 @@ const PostFxShader = {
     tDiffuse: { value: null },
     uTime: { value: 0 },
     /** Base + blast-kick chromatic aberration strength (uv offset at the rim). */
-    uAberration: { value: 0.0012 },
-    uGrain: { value: 0.045 },
-    uVignette: { value: 0.16 },
+    uAberration: { value: 0.0005 },
+    uGrain: { value: 0.028 },
     /** 0..1 — red edge pulse as the alchemist nears death. */
     uHurt: { value: 0 },
   },
@@ -31,7 +30,6 @@ const PostFxShader = {
     uniform float uTime;
     uniform float uAberration;
     uniform float uGrain;
-    uniform float uVignette;
     uniform float uHurt;
     varying vec2 vUv;
 
@@ -54,11 +52,10 @@ const PostFxShader = {
       vec3 col = vec3(cr, gb.x, cb);
 
       // Animated film grain (luma-preserving, centered around 0).
+      // (No GPU vignette: the CPU light field already vignettes the frame —
+      // doubling it crushed the screen edges into black.)
       float g = hash(vUv * vec2(1050.0, 714.0) + mod(uTime, 64.0) * 17.0) - 0.5;
       col += g * uGrain * (0.4 + 0.6 * clamp(1.0 - dot(col, vec3(0.333)), 0.0, 1.0));
-
-      // Gentle vignette on top of the CPU-side one (composite depth).
-      col *= 1.0 - uVignette * smoothstep(0.15, 0.65, r2);
 
       // Low-health pulse: red bleed creeping in from the edges.
       if (uHurt > 0.001) {
@@ -83,7 +80,7 @@ export class PostFx {
     const u = this.pass.uniforms;
     u.uTime.value = ctx.state.frameCount;
     // Detonations split the lens for a few frames (bloomKick already decays).
-    u.uAberration.value = 0.0012 + ctx.fx.bloomKick * 0.006 + ctx.fx.screenShake * 0.05;
+    u.uAberration.value = 0.0005 + ctx.fx.bloomKick * 0.006 + ctx.fx.screenShake * 0.05;
     // Creeps in below 35% HP; full pulse near death. Zero outside play mode.
     const hurt =
       ctx.state.mode === 'play' && !ctx.player.dead

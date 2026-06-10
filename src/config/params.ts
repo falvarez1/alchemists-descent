@@ -10,7 +10,9 @@ import type { GameParams, GlobalParams, MaterialParams, SpellId, SpellParams } f
 export const GLOBAL_PARAMS: GlobalParams = {
   simSpeed: 1.0,
   maxBrightness: 3.5,
-  ambient: 0.14,
+  // Raised from the original 0.14: with the squared light curve, 0.18 keeps
+  // the caves moody while letting shadowed rock read as silhouette.
+  ambient: 0.18,
 };
 
 export const MATERIAL_PARAMS: Record<number, MaterialParams> = {

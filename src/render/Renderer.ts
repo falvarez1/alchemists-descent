@@ -60,7 +60,9 @@ export class Renderer implements RenderTarget {
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(RENDER_W, RENDER_H), 1.5, 0.4, 1.0);
+    // Tighter than the original 1.5/0.4: emissive cells should glow against
+    // the rock they light, not swallow it in a screen-space halo.
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(RENDER_W, RENDER_H), 1.2, 0.28, 1.0);
     this.composer.addPass(this.bloomPass);
 
     // Lens layer: chromatic aberration, grain, vignette, low-health pulse.
@@ -99,7 +101,7 @@ export class Renderer implements RenderTarget {
 
     // Blast-wave bloom surge decays back to baseline.
     // PostFx reads bloomKick/screenShake BEFORE decay so kicks land this frame.
-    this.bloomPass.strength = 1.5 + ctx.fx.bloomKick;
+    this.bloomPass.strength = 1.2 + ctx.fx.bloomKick;
     this.postFx.update(ctx);
     if (ctx.fx.bloomKick > 0.001) ctx.fx.bloomKick *= 0.86;
     else ctx.fx.bloomKick = 0;
