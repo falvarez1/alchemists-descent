@@ -109,8 +109,17 @@ header .engine-status { font-size: 11px; color: var(--accent-purple); font-weigh
 .wave-readout .sub { font-size: 10px; color: rgba(255,255,255,0.5); letter-spacing: 1px; margin-top: 2px; }
 .wave-readout .gold { color: var(--accent-gold); font-weight: 700; }
 
-/* Noita-style inventory bar (play mode, top-left) */
-#spell-hotbar { position: absolute; top: 12px; left: 12px; display: flex; gap: 5px; }
+/* Noita-style inventory bar (play mode, top-left): the active wand's program */
+#spell-hotbar { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.wand-slots { display: flex; gap: 5px; }
+/* Cards aren't selectable in play (the bench owns editing) — tiles are read-only. */
+.wand-slots .hot-slot { cursor: default; }
+.hot-slot.empty { opacity: 0.35; }
+.wand-label {
+    font-family: var(--mono); font-size: 9px; font-weight: 800; letter-spacing: 2px;
+    font-variant: small-caps; text-transform: uppercase;
+    color: rgba(255,235,200,0.7); text-shadow: 0 1px 3px #000;
+}
 .hot-slot {
     width: 46px; height: 46px; position: relative; cursor: pointer; pointer-events: auto;
     background: linear-gradient(180deg, rgba(34,24,17,0.92), rgba(22,15,11,0.94));
@@ -162,6 +171,41 @@ body.play-active #viewport-container { padding: 0; }
     font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
     color: rgba(255,235,200,0.75); text-shadow: 0 1px 3px #000; white-space: nowrap;
 }
+
+/* ---------- Wand bench overlay (B, play mode) ---------- */
+#wand-bench {
+    position: absolute; inset: 7%; z-index: 5; display: none;
+    flex-direction: column; gap: 10px; padding: 18px; box-sizing: border-box;
+    overflow-y: auto; pointer-events: auto; font-family: var(--mono);
+    background: rgba(8,6,12,0.92); border: 1px dashed #6e4632; border-radius: 6px;
+}
+#wand-bench.visible { display: flex; }
+.bench-title { font-size: 13px; font-weight: 800; letter-spacing: 4px; color: #e9d5ff; text-shadow: 0 1px 4px #000; }
+.bench-wand {
+    display: flex; flex-direction: column; gap: 6px; padding: 10px;
+    border: 1px dashed #4a3122; border-radius: 4px; background: rgba(22,15,11,0.6);
+}
+.bench-wand.active { border-color: #9c6a44; }
+.bench-wand-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.bench-stats { font-size: 9px; color: rgba(255,255,255,0.45); letter-spacing: 0.6px; text-align: right; }
+.bench-slots, .bench-collection { display: flex; flex-wrap: wrap; gap: 6px; }
+.bench-slot, .bench-card {
+    width: 40px; height: 40px; position: relative; cursor: pointer;
+    background: linear-gradient(180deg, rgba(34,24,17,0.92), rgba(22,15,11,0.94));
+    border: 1px dashed #6e4632; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.55);
+}
+.bench-slot:hover, .bench-card:hover {
+    border-color: #9c6a44;
+    box-shadow: 0 0 0 1px #9c6a44, inset 0 0 10px rgba(0,0,0,0.55);
+}
+.bench-slot.empty { opacity: 0.4; }
+.bench-card.held { border: 1px solid #e8c15a; box-shadow: 0 0 14px rgba(232,193,90,0.5), inset 0 0 10px rgba(0,0,0,0.5); }
+.bench-slot .cost, .bench-card .cost { position: absolute; bottom: 1px; right: 3px; font-size: 8px; color: var(--mana); }
+.bench-section { font-size: 9px; font-weight: 800; letter-spacing: 2px; color: rgba(255,235,200,0.6); margin-top: 4px; }
+.bench-empty { font-size: 9px; color: rgba(255,255,255,0.35); letter-spacing: 1px; align-self: center; }
+.bench-hint { margin-top: auto; font-size: 8px; letter-spacing: 1.5px; color: rgba(255,255,255,0.35); }
 
 #gameover-overlay {
     position: absolute; inset: 0; background: rgba(4,2,8,0.82); backdrop-filter: blur(3px);

@@ -7,6 +7,7 @@ import type { Ctx, FxState, GameStateData, InputState } from '@/core/types';
 import { AudioEngine } from '@/audio/AudioEngine';
 import { Flask } from '@/combat/Flask';
 import { Lightning } from '@/combat/Lightning';
+import { WandSystem } from '@/combat/wands/WandSystem';
 import { Projectiles } from '@/combat/Projectiles';
 import { Spells } from '@/combat/Spells';
 import { Enemies } from '@/entities/Enemies';
@@ -33,6 +34,7 @@ import { Inspector } from '@/ui/Inspector';
 import { Minimap } from '@/ui/Minimap';
 import { PerfHud } from '@/ui/PerfHud';
 import { Toolbar } from '@/ui/Toolbar';
+import { WandBench } from '@/ui/WandBench';
 import { WorldGen } from '@/world/CaveGenerator';
 
 /**
@@ -115,6 +117,7 @@ export class Game {
     ctx.flask = new Flask();
     ctx.telemetry = new Telemetry();
     ctx.levels = new Levels(ctx);
+    ctx.wands = new WandSystem(ctx);
     this.ctx = ctx;
 
     ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
@@ -131,6 +134,8 @@ export class Game {
 
     this.hud = new Hud(ctx);
     this.minimap = new Minimap(ctx);
+    // Self-binds the B key; lives for the page lifetime.
+    new WandBench(ctx);
     this.inspector = new Inspector(ctx);
     this.toolbar = new Toolbar(ctx, (id, mode) => this.inspector.generateContextInspector(id, mode));
     // Wires its DOM listeners in the constructor; lives for the page lifetime.
@@ -179,6 +184,7 @@ export class Game {
       // transitions, waystones, and the explored mask.
       ctx.levels.update(ctx);
       this.brewing.update(ctx);
+      ctx.wands.update(ctx);
       ctx.particles.update(ctx);
       ctx.lightning.update();
       this.updateBuildModeHeldSpells();

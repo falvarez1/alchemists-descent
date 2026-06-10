@@ -26,6 +26,10 @@ export interface EventMap {
   waystoneLit: undefined;
   /** First-time brew of a recipe — Grimoire entry + gold bounty. */
   recipeDiscovered: { name: string; bounty: number };
+  /** A spell card entered the collection — banner + bench refresh. */
+  cardGranted: { id: string; name: string };
+  /** Active wand or its loadout changed — HUD wand display refresh. */
+  wandChanged: undefined;
 }
 
 type Handler<T> = (payload: T) => void;

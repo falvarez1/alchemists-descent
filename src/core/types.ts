@@ -534,6 +534,88 @@ export interface TelemetryApi {
 }
 
 /* ============================================================
+ * Wave D: Wandsmith — frames, cards, and the cast compiler
+ * ============================================================ */
+
+export type CardId =
+  // projectile cards (the legacy spells reborn)
+  | 'spark'
+  | 'bomb'
+  | 'lightning'
+  | 'flame'
+  | 'dig'
+  | 'warp'
+  | 'blackhole'
+  // modifier / multicast cards
+  | 'double'
+  | 'triple'
+  | 'speed'
+  | 'heavy'
+  | 'spread'
+  | 'infuser'
+  | 'trigger'
+  | 'bounce';
+
+export type CardKind = 'projectile' | 'modifier' | 'multicast';
+
+export interface CardDef {
+  id: CardId;
+  name: string;
+  kind: CardKind;
+  /** Added to the frame's per-cast mana drain. */
+  manaCost: number;
+  /** One-line bench tooltip. */
+  blurb: string;
+}
+
+export interface WandFrame {
+  id: string;
+  name: string;
+  /** Card slots. */
+  capacity: number;
+  /** Frames between casts within a cycle. */
+  castDelay: number;
+  /** Frames after the full card cycle completes. */
+  recharge: number;
+  manaMax: number;
+  manaRegen: number;
+  /** Base aim jitter in radians. */
+  spread: number;
+}
+
+export interface WandState {
+  frame: WandFrame;
+  /** Slotted cards, length === frame.capacity (null = empty slot). */
+  cards: (CardId | null)[];
+  mana: number;
+  /** Frames until the next cast group may fire. */
+  cooldown: number;
+  /** Pointer into the compiled program (wraps + triggers recharge). */
+  castIndex: number;
+}
+
+/**
+ * The wand system replaces the fixed 7-spell loadout in PLAY mode (build-mode
+ * sandbox spells are untouched). Compiler rules: cards execute left-to-right;
+ * modifiers attach to the next projectile card; multicasts group the following
+ * N projectiles into one cast; total damage multiplier clamps at x4 and
+ * projectiles-per-cast at 6; 'trigger' nests at most one level deep.
+ */
+export interface WandsApi {
+  readonly wands: [WandState, WandState];
+  active: 0 | 1;
+  /** Owned cards not currently slotted in either wand. */
+  readonly collection: CardId[];
+  /** Per-frame while player.firing (play mode): advance + cast the program. */
+  fire(ctx: Ctx): void;
+  /** Per-frame always: cooldowns, recharge, wand mana regen. */
+  update(ctx: Ctx): void;
+  grantCard(ctx: Ctx, id: CardId): void;
+  /** Move a card between collection and a wand slot (bench UI). */
+  slotCard(wand: 0 | 1, slot: number, id: CardId | null): void;
+}
+
+/* ============================================================
  * Wave C: region graph — the placement brain
  * ============================================================ */
 
@@ -671,4 +753,5 @@ export interface Ctx {
   flask: FlaskApi;
   telemetry: TelemetryApi;
   levels: LevelsApi;
+  wands: WandsApi;
 }

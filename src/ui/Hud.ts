@@ -1,7 +1,7 @@
 import type { Ctx } from '@/core/types';
-import { SPELL_ORDER } from '@/config/params';
+import { CARD_DEFS } from '@/combat/wands/cards';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
-import { makeIconCanvas } from '@/ui/icons';
+import { cardIconName, makeIconCanvas } from '@/ui/icons';
 
 /** Non-null getElementById — all HUD elements exist statically in index.html. */
 function el(id: string): HTMLElement {
@@ -19,6 +19,8 @@ function el(id: string): HTMLElement {
 export class Hud {
   /** Last flask material rendered (undefined = never rendered), so the palette lookup runs once per change. */
   private flaskMaterial: number | null | undefined = undefined;
+  /** Filled hotbar tiles + their card mana costs, rebuilt by buildHotbar. */
+  private hotbarSlots: Array<{ tile: HTMLElement; cost: number }> = [];
 
   constructor(private ctx: Ctx) {
     ctx.events.on('scoreChanged', ({ score }) => {
@@ -46,6 +48,14 @@ export class Hud {
       this.showBanner(name + ' BREWED', 'GRIMOIRE UPDATED — +' + bounty + ' oz');
     });
 
+    // Wandsmith: a found card announces itself; the bench (B) slots it.
+    ctx.events.on('cardGranted', ({ name }) => {
+      this.showBanner(name + ' ACQUIRED', 'NEW SPELL CARD — PRESS B');
+    });
+
+    // The hotbar mirrors the active wand; any loadout change rebuilds it.
+    ctx.events.on('wandChanged', () => this.buildHotbar());
+
     ctx.events.on('enemiesLeft', ({ count }) => {
       el('enemies-left').textContent = String(count);
     });
@@ -66,6 +76,7 @@ export class Hud {
       el('game-hud').classList.toggle('visible', mode === 'play');
       document.body.classList.toggle('play-active', mode === 'play');
       if (mode !== 'play') el('damage-vignette').style.opacity = '0';
+      this.buildHotbar();
     });
 
     el('respawn-btn').addEventListener('click', () => { ctx.audio.ensure(); ctx.playerCtl.respawn(); });
@@ -79,29 +90,52 @@ export class Hud {
     setTimeout(() => banner.classList.remove('show'), 2200);
   }
 
+  /**
+   * Wandsmith (Wave D): the play-mode hotbar mirrors the ACTIVE WAND — its
+   * name as a label, then one tile per frame slot (empty = dim). Cards are
+   * not selectable in play (the program runs left-to-right; the bench owns
+   * editing), so the tiles carry no click handlers and no digit keys.
+   */
   buildHotbar(): void {
     const bar = el('spell-hotbar');
     bar.innerHTML = '';
-    SPELL_ORDER.forEach((key, i) => {
-      const sp = this.ctx.params.spells[key];
+    this.hotbarSlots = [];
+
+    const wands = this.ctx.wands;
+    const wand = wands.wands[wands.active];
+
+    const label = document.createElement('div');
+    label.className = 'wand-label';
+    label.textContent = wand.frame.name;
+    bar.appendChild(label);
+
+    const row = document.createElement('div');
+    row.className = 'wand-slots';
+    wand.cards.forEach((id) => {
       const slot = document.createElement('div');
       slot.className = 'hot-slot';
-      slot.id = 'hot-' + key;
-      slot.title = sp.name + ' — ' + sp.manaCost + ' mana';
-      const k = document.createElement('div'); k.className = 'key'; k.textContent = String(i + 1);
-      const cost = document.createElement('div'); cost.className = 'cost'; cost.textContent = String(sp.manaCost);
-      const icon = makeIconCanvas(key, 3);
-      slot.appendChild(k);
-      if (icon) slot.appendChild(icon);
-      slot.appendChild(cost);
-      slot.addEventListener('click', () => { this.ctx.player.spell = key; this.ctx.input.bombCharge = -1; });
-      bar.appendChild(slot);
+      if (id === null) {
+        slot.classList.add('empty');
+        slot.title = 'Empty slot';
+      } else {
+        const def = CARD_DEFS[id];
+        slot.title = def.name + ' — ' + def.manaCost + ' mana';
+        const icon = makeIconCanvas(cardIconName(id), 3);
+        if (icon) slot.appendChild(icon);
+        const cost = document.createElement('div'); cost.className = 'cost'; cost.textContent = String(def.manaCost);
+        slot.appendChild(cost);
+        this.hotbarSlots.push({ tile: slot, cost: def.manaCost });
+      }
+      row.appendChild(slot);
     });
+    bar.appendChild(row);
   }
 
   update(ctx: Ctx): void {
     const player = ctx.player;
     el('hp-fill').style.width = Math.max(0, (player.hp / player.maxHp) * 100) + '%';
+    // player.mana mirrors the active wand's tank (WandSystem guarantee), so
+    // the mana bar tracks the wand with no extra wiring here.
     el('mana-fill').style.width = Math.max(0, (player.mana / player.maxMana) * 100) + '%';
     el('levit-fill').style.width = Math.max(0, (player.levit / player.maxLevit) * 100) + '%';
     el('hud-gold').textContent = String(ctx.state.score);
@@ -124,11 +158,8 @@ export class Hud {
     const hurt = 1 - (player.hp / player.maxHp);
     el('damage-vignette').style.opacity = String(player.dead ? 0.85 : Math.max(0, (hurt - 0.4) * 1.3));
 
-    SPELL_ORDER.forEach(key => {
-      const slot = document.getElementById('hot-' + key);
-      if (!slot) return;
-      slot.classList.toggle('selected', player.spell === key);
-      slot.classList.toggle('unaffordable', player.mana < ctx.params.spells[key].manaCost);
-    });
+    for (const s of this.hotbarSlots) {
+      s.tile.classList.toggle('unaffordable', player.mana < s.cost);
+    }
   }
 }

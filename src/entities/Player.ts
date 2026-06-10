@@ -409,7 +409,10 @@ export class PlayerControl implements PlayerControlApi {
       if (absorbed > 0 && ctx.state.frameCount % 9 === 0) ctx.audio.tone(620 + player.hp * 3, 70, 0.08, 'sine', 0.05);
     }
 
-    if (player.firing) ctx.spells.firePlayerSpell();
+    // Wave D: play-mode casting runs the wand's compiled card program
+    // (update() already gates on mode === 'play'; build-mode sandbox spells
+    // keep the legacy ctx.spells dispatch).
+    if (player.firing) ctx.wands.fire(ctx);
     this.updatePlayerAnimation(ctx);
   }
 

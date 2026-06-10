@@ -1,9 +1,82 @@
+import type { CastAction } from '@/combat/wands/compiler';
+import { BOUNCE_COUNTS, INFUSED, TRIGGERED } from '@/combat/wands/WandSystem';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, Projectile, ProjectilesApi } from '@/core/types';
 import { Cell, isGas } from '@/sim/CellType';
-import { EMPTY_COLOR, iceColor, packRGB } from '@/sim/colors';
+import { COLOR_FN, EMPTY_COLOR, iceColor, packRGB } from '@/sim/colors';
+import type { World } from '@/sim/World';
 import { probeHollow } from '@/world/secrets';
+
+/** Solid-for-projectiles test (same gate as the impact check in update()). */
+function solidAt(world: World, x: number, y: number): boolean {
+  if (!world.inBounds(x, y)) return true;
+  const c = world.types[world.idx(x, y)];
+  return c !== Cell.Empty && !isGas(c);
+}
+
+/**
+ * Trigger card payload (Wave D): cast one compiled action at an impact point,
+ * aimed along the carrier's flight direction. Only the simple payloads are
+ * handled — spark/bomb/warp pushes plus a lightning arc; the compiler keeps
+ * the exotic cards (dig, flame, blackhole) out of trigger nests.
+ */
+function castActionAt(ctx: Ctx, x: number, y: number, angle: number, action: CastAction): void {
+  const spells = ctx.params.spells;
+  if (action.card === 'spark') {
+    ctx.projectiles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * spells.bolt.velocityForce!,
+      vy: Math.sin(angle) * spells.bolt.velocityForce!,
+      type: 'bolt',
+      life: 180,
+      age: 0,
+      charging: false,
+      hostile: false,
+    });
+    ctx.audio.zap();
+  } else if (action.card === 'bomb') {
+    ctx.projectiles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * spells.bomb.velocityForce!,
+      vy: Math.sin(angle) * spells.bomb.velocityForce! - 0.6,
+      type: 'bomb',
+      life: Math.floor(spells.bomb.fuseTicks!),
+      age: 0,
+      charging: false,
+      hostile: false,
+    });
+  } else if (action.card === 'warp') {
+    ctx.projectiles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * spells.warp.velocityForce!,
+      vy: Math.sin(angle) * spells.warp.velocityForce!,
+      type: 'warp',
+      life: 90,
+      age: 0,
+      charging: false,
+      hostile: false,
+    });
+    ctx.audio.zap();
+  } else if (action.card === 'lightning') {
+    ctx.lightning.cast(x, y, angle);
+  }
+}
+
+/**
+ * Release a projectile's trigger payload (if any) at its terminal impact.
+ * No-op for projectiles the wand system never charged.
+ */
+function releaseTriggered(ctx: Ctx, p: Projectile): void {
+  const actions = TRIGGERED.get(p);
+  if (!actions) return;
+  TRIGGERED.delete(p);
+  const angle = Math.atan2(p.vy, p.vx);
+  for (const action of actions) castActionAt(ctx, p.x, p.y, angle, action);
+}
 
 // ===================== Projectiles & Black Holes =====================
 export class Projectiles implements ProjectilesApi {
@@ -156,18 +229,39 @@ export class Projectiles implements ProjectilesApi {
 
       if (p.type === 'blackhole' && p.life <= 0) {
         this.implosionCollapse(ctx, p);
+        releaseTriggered(ctx, p);
         projectiles.splice(i, 1);
         continue;
       }
 
       if (p.type === 'bomb' && p.life <= 0) {
         ctx.explosions.trigger(p.x, p.y, Math.floor(ctx.params.spells.bomb.explosionRadius!));
+        releaseTriggered(ctx, p);
         projectiles.splice(i, 1);
         continue;
       }
 
       if (p.type === 'bomb' || p.type === 'fireball' || p.type === 'frostbolt')
         p.vy += p.type === 'bomb' ? 0.14 : p.type === 'fireball' ? 0.02 : 0.01;
+
+      // Infuser card (Wave D): the wand charged this projectile from the
+      // flask — it sheds 2 real cells of that material per frame in its wake.
+      const infuseMat = INFUSED.get(p);
+      if (infuseMat !== undefined) {
+        const spd = Math.hypot(p.vx, p.vy) || 1;
+        const colorFn = COLOR_FN[infuseMat];
+        for (let d = 0; d < 2; d++) {
+          const tx = Math.floor(p.x - (p.vx / spd) * 2 + (Math.random() - 0.5) * 2);
+          const ty = Math.floor(p.y - (p.vy / spd) * 2 + (Math.random() - 0.5) * 2);
+          if (!world.inBounds(tx, ty)) continue;
+          const ti = world.idx(tx, ty);
+          const t = world.types[ti];
+          if (t === Cell.Empty || isGas(t)) {
+            world.types[ti] = infuseMat;
+            world.colors[ti] = colorFn ? colorFn() : EMPTY_COLOR;
+          }
+        }
+      }
 
       // Swept movement: sub-step at <=1 cell so fast bolts can't tunnel through thin walls
       const speed = Math.max(Math.abs(p.vx), Math.abs(p.vy));
@@ -221,6 +315,7 @@ export class Projectiles implements ProjectilesApi {
             if (dx * dx + dy * dy < 120) {
               ctx.enemyCtl.damage(e, 18, p.vx * 0.8, -1.6);
               ctx.explosions.trigger(p.x, p.y, ctx.params.spells.bolt.explosionRadius!);
+              releaseTriggered(ctx, p);
               projectiles.splice(i, 1);
               hit = true;
               break;
@@ -258,6 +353,28 @@ export class Projectiles implements ProjectilesApi {
                   { grav: 0.1 },
                 );
               }
+            }
+          }
+          // Bounce card (Wave D): while charges remain, a player bolt/fireball
+          // ricochets off terrain instead of detonating — reflect off the
+          // axis whose substep entered the solid (cf. the bomb branch below).
+          if (!p.hostile && (p.type === 'bolt' || p.type === 'fireball')) {
+            const left = BOUNCE_COUNTS.get(p);
+            if (left !== undefined && left > 0) {
+              BOUNCE_COUNTS.set(p, left - 1);
+              const prevGx = Math.floor(p.x - p.vx / steps);
+              const prevGy = Math.floor(p.y - p.vy / steps);
+              const hitVertical = solidAt(world, gx, prevGy); // the x-step alone hits
+              const hitHorizontal = solidAt(world, prevGx, gy); // the y-step alone hits
+              if (hitVertical || !hitHorizontal) p.vx *= -0.55;
+              if (hitHorizontal || !hitVertical) p.vy *= -0.55;
+              p.x += p.vx;
+              p.y += p.vy;
+              ctx.particles.burst(gx, gy, 4, null, () => packRGB(255, 215, 120), 1.2, {
+                glow: 2.0,
+                grav: 0.02,
+              });
+              break;
             }
           }
           if (p.type === 'bolt') {
@@ -304,6 +421,9 @@ export class Projectiles implements ProjectilesApi {
             p.x += p.vx;
             p.y += p.vy;
           }
+          // Trigger card (Wave D): a terminal terrain impact releases any
+          // nested cast payload at the hit point.
+          if (removed && !p.hostile) releaseTriggered(ctx, p);
           break;
         }
       }

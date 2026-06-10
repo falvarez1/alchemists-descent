@@ -20,6 +20,8 @@ export class InputManager {
     canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
     canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
     window.addEventListener('mouseup', () => this.onMouseUp());
+    // Wave D: the wheel swaps the held wand in play mode.
+    canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: true });
 
     // ===================== Input: Keyboard =====================
     window.addEventListener('keydown', (e) => this.onKeyDown(e));
@@ -130,6 +132,20 @@ export class InputManager {
     }
   }
 
+  private onWheel(e: WheelEvent): void {
+    const { ctx } = this;
+    if (ctx.state.mode !== 'play' || e.deltaY === 0) return;
+    this.selectWand(ctx.wands.active === 0 ? 1 : 0);
+  }
+
+  /** Wave D: swap the held wand (Digit1/Digit2 or the mouse wheel). */
+  private selectWand(idx: 0 | 1): void {
+    const { ctx } = this;
+    if (ctx.wands.active === idx) return;
+    ctx.wands.active = idx;
+    ctx.events.emit('wandChanged');
+  }
+
   private onKeyDown(e: KeyboardEvent): void {
     const { ctx } = this;
     ctx.audio.ensure();
@@ -152,7 +168,10 @@ export class InputManager {
     else if (e.code === 'KeyF' && ctx.state.mode === 'play' && !ctx.player.dead) ctx.flask.throwFlask(ctx);
     else if (e.code.startsWith('Digit')) {
       const n = parseInt(e.code.slice(5)) - 1;
-      if (n >= 0 && n < SPELL_ORDER.length) {
+      if (ctx.state.mode === 'play') {
+        // Wave D: digits pick wands in play, not spells — 1/2 only, 3-7 are dead keys
+        if (n === 0 || n === 1) this.selectWand(n);
+      } else if (n >= 0 && n < SPELL_ORDER.length) {
         ctx.player.spell = SPELL_ORDER[n];
         ctx.input.bombCharge = -1;
       }

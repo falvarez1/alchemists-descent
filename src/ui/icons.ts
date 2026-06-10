@@ -86,7 +86,31 @@ export const PIXEL_ICONS: Record<string, PixelIconDef> = {
     ".a..ccc..a.",".ab.....ba.","..aab.baa..","....aaa....","..........."]},
   blackhole: { p: { a: '#7c3aed', b: '#c084fc', c: '#0a0312' }, g: [
     "...........","....aaa....","..aabbbaa..","..ab...ba..",".ab..c..ba.",".ab.ccc.ba.",
-    ".ab..c..ba.","..ab...ba..","..aabbbaa..","....aaa....","..........."]}
+    ".ab..c..ba.","..ab...ba..","..aabbbaa..","....aaa....","..........."]},
+  'card-double': { p: { a: '#0e7490', b: '#38bdf8', c: '#e0f2fe' }, g: [
+    "...........","...........",".abbbbc....","..abbc.....","...........","...........",
+    "....abbbbc.",".....abbc..","...........","...........","..........."]},
+  'card-triple': { p: { a: '#0e7490', b: '#38bdf8', c: '#e0f2fe' }, g: [
+    "...........","...........",".abbbc.....","...........","...abbbc...","...........",
+    ".....abbbc.","...........","...........","...........","..........."]},
+  'card-speed': { p: { a: '#22d3ee', b: '#a5f3fc' }, g: [
+    "...........","...........",".aa...bb...","..aa...bb..","...aa...bb.","..aa...bb..",
+    ".aa...bb...","...........","...........","...........","..........."]},
+  'card-heavy': { p: { a: '#3f4754', b: '#7a8699' }, g: [
+    "...........",".aaaaaaaaa.",".abbbbbbba.","..aabbbaa..","....aba....","....aba....",
+    "...abbba...","..abbbbba..",".aaaaaaaaa.","...........","..........."]},
+  'card-spread': { p: { a: '#f97316', b: '#fde047' }, g: [
+    "...........",".....b.....",".....a.....",".....a.....",".b...a...b.","..a..a..a..",
+    "...a.a.a...","....aaa....",".....a.....","...........","..........."]},
+  'card-infuser': { p: { a: '#1d4ed8', b: '#67e8f9', c: '#c084fc' }, g: [
+    ".....a.....","....aba....","...abbba...",".....b.....","...ccccc...","..c.....c..",
+    ".c...b...c.",".c..bbb..c.",".c...b...c.","..c.....c..","...ccccc..."]},
+  'card-trigger': { p: { a: '#ef4444', b: '#fca5a5', c: '#ffffff' }, g: [
+    ".....a.....",".....a.....","...aaaaa...","..a..b..a..",".a...b...a.","aab.bcb.baa",
+    ".a...b...a.","..a..b..a..","...aaaaa...",".....a.....",".....a....."]},
+  'card-bounce': { p: { a: '#15803d', b: '#4ade80', c: '#6b7280' }, g: [
+    "...........","...........",".a.......bb","..a......bb","...a....b..","....a..b...",
+    ".....ab....",".....a.....","..ccccccc..","...........","..........."]}
 };
 
 /** Cell id → icon name for the element toolbar buttons. */
@@ -96,6 +120,17 @@ export const ELEMENT_ICON: Record<number, string> = {
   18: 'blood', 19: 'slime', 5: 'fire', 14: 'smoke', 20: 'ember',
   10: 'ice', 13: 'metal', 3: 'wall', 0: 'eraser'
 };
+
+/** Legacy projectile cards reuse the spell icons they were reborn from. */
+const LEGACY_CARD_ICON: Record<string, string> = {
+  spark: 'bolt', bomb: 'bomb', lightning: 'lightning', flame: 'flame',
+  dig: 'dig', warp: 'warp', blackhole: 'blackhole',
+};
+
+/** Card id → PIXEL_ICONS key (modifier/multicast cards live under 'card-*'). */
+export function cardIconName(id: string): string {
+  return LEGACY_CARD_ICON[id] ?? 'card-' + id;
+}
 
 export function makeIconCanvas(name: string, scale = 3): HTMLCanvasElement | null {
   const def = PIXEL_ICONS[name];
