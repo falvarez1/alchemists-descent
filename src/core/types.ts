@@ -262,6 +262,8 @@ export interface GameStateData {
   currentBiome: BiomeId;
   brushSize: number;
   playerSpawned: boolean;
+  /** Seed for the current world generation (drives the seeded RNG). */
+  worldSeed: number;
 }
 
 export interface Keys {
@@ -284,6 +286,10 @@ export interface InputState {
   bombCharge: number;
   /** The charging black-hole projectile (aliased into ctx.projectiles), or null. */
   activeChargingBlackHole: Projectile | null;
+  /** Held while E is down (play mode): flask siphons cells at the cursor. */
+  siphonHeld: boolean;
+  /** Held while Q is down (play mode): flask pours its contents at the wand tip. */
+  pourHeld: boolean;
 }
 
 export interface FxState {
@@ -292,6 +298,8 @@ export interface FxState {
   /** Camera shake magnitude; decays *= 0.88 per frame. */
   screenShake: number;
   digBeam: DigBeam | null;
+  /** Frames of gameplay freeze remaining (impact hitstop); rendering continues. */
+  hitstop: number;
 }
 
 export interface WaveState {
@@ -452,6 +460,37 @@ export interface WaveDirectorApi {
 }
 
 /* ============================================================
+ * Wave A expansion systems
+ * ============================================================ */
+
+export interface FlaskState {
+  /** Cell type currently stored, or null when empty. */
+  material: number | null;
+  /** Cells stored (0..capacity). */
+  count: number;
+  capacity: number;
+}
+
+/**
+ * The Material Flask: siphon real cells out of the world, carry them,
+ * pour them back, or throw the bottle. Nothing is abstracted — stored
+ * material keeps its identity (a flask of blood is a portable conductor).
+ */
+export interface FlaskApi {
+  readonly state: FlaskState;
+  /** Per-frame: handles siphon/pour holds and any in-flight thrown bottle. */
+  update(ctx: Ctx): void;
+  /** Lob the bottle toward the cursor; shatters on impact, releasing the cells. */
+  throwFlask(ctx: Ctx): void;
+}
+
+/** Local gameplay counters (deaths by cause, material usage, ...). */
+export interface TelemetryApi {
+  count(key: string, n?: number): void;
+  all(): Record<string, number>;
+}
+
+/* ============================================================
  * The game context — every shared dependency, wired once in Game.ts
  * ============================================================ */
 
@@ -482,4 +521,6 @@ export interface Ctx {
   simulation: SimulationApi;
   worldgen: WorldGenApi;
   waveCtl: WaveDirectorApi;
+  flask: FlaskApi;
+  telemetry: TelemetryApi;
 }

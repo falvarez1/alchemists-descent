@@ -1,5 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { SPELL_ORDER } from '@/config/params';
+import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { makeIconCanvas } from '@/ui/icons';
 
 /** Non-null getElementById — all HUD elements exist statically in index.html. */
@@ -16,6 +17,9 @@ function el(id: string): HTMLElement {
  * the Hud (constructed after all systems exist) subscribes here.
  */
 export class Hud {
+  /** Last flask material rendered (undefined = never rendered), so the palette lookup runs once per change. */
+  private flaskMaterial: number | null | undefined = undefined;
+
   constructor(private ctx: Ctx) {
     ctx.events.on('scoreChanged', ({ score }) => {
       el('score-val').textContent = String(score);
@@ -87,6 +91,21 @@ export class Hud {
     el('mana-fill').style.width = Math.max(0, (player.mana / player.maxMana) * 100) + '%';
     el('levit-fill').style.width = Math.max(0, (player.levit / player.maxLevit) * 100) + '%';
     el('hud-gold').textContent = String(ctx.state.score);
+
+    const flask = ctx.flask.state;
+    const flaskFill = el('flask-fill');
+    flaskFill.style.width = Math.max(0, (flask.count / flask.capacity) * 100) + '%';
+    if (flask.material !== this.flaskMaterial) {
+      this.flaskMaterial = flask.material;
+      if (flask.material === null) {
+        flaskFill.style.backgroundColor = '';
+        flaskFill.title = 'Empty flask';
+      } else {
+        const c = COLOR_FN[flask.material]();
+        flaskFill.style.backgroundColor = 'rgb(' + unpackR(c) + ', ' + unpackG(c) + ', ' + unpackB(c) + ')';
+        flaskFill.title = ctx.params.materials[flask.material]?.name ?? 'Unknown material';
+      }
+    }
 
     const hurt = 1 - (player.hp / player.maxHp);
     el('damage-vignette').style.opacity = String(player.dead ? 0.85 : Math.max(0, (hurt - 0.4) * 1.3));

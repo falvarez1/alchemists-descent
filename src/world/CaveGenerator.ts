@@ -1,6 +1,7 @@
 import { BIOMES } from '@/config/biomes';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp, hash2, valueNoise } from '@/core/math';
+import { Rng, randomSeed } from '@/core/rng';
 import type { Ctx, WorldGenApi } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import {
@@ -27,7 +28,13 @@ export class WorldGen implements WorldGenApi {
   /** Center of the carved spawn chamber (original caveSpawnHint). */
   spawnHint: { x: number; y: number } | null = null;
 
+  /** Seeded generation stream; re-seeded from state.worldSeed by generateCaves. */
+  private rng = new Rng(0);
+
   regenerate(ctx: Ctx): void {
+    // The regenerate button always rolls a fresh world; generateCaves itself
+    // never re-rolls the seed, so a fixed worldSeed replays the same layout.
+    ctx.state.worldSeed = randomSeed();
     this.generateCaves(ctx);
     if (this.spawnHint) {
       ctx.camera.snapTo(this.spawnHint.x, this.spawnHint.y);
@@ -39,6 +46,7 @@ export class WorldGen implements WorldGenApi {
   }
 
   generateCaves(ctx: Ctx): void {
+    this.rng = new Rng(ctx.state.worldSeed >>> 0);
     const world = ctx.world;
     const B = BIOMES[ctx.state.currentBiome] || BIOMES.earthen;
     const FLOOR_BAND = HEIGHT - 52; // open strip at the bottom
@@ -49,7 +57,7 @@ export class WorldGen implements WorldGenApi {
     let work = new Uint8Array(WIDTH * HEIGHT);
     for (let x = 0; x < WIDTH; x += 2) {
       for (let y = 0; y < HEIGHT; y += 2) {
-        const v = y >= FLOOR_BAND ? 0 : Math.random() < 0.54 ? 1 : 0;
+        const v = y >= FLOOR_BAND ? 0 : this.rng.next() < 0.54 ? 1 : 0;
         work[x + y * WIDTH] = v;
         if (x + 1 < WIDTH) work[x + 1 + y * WIDTH] = v;
         if (y + 1 < HEIGHT) {
@@ -103,9 +111,9 @@ export class WorldGen implements WorldGenApi {
     // Two meandering horizontal arteries (upper + lower)
     const tunnelY: number[] = new Array<number>(WIDTH).fill(0);
     {
-      const ph1 = Math.random() * Math.PI * 2,
-        ph2 = Math.random() * Math.PI * 2;
-      const base = HEIGHT * 0.4 + (Math.random() - 0.5) * 64;
+      const ph1 = this.rng.next() * Math.PI * 2,
+        ph2 = this.rng.next() * Math.PI * 2;
+      const base = HEIGHT * 0.4 + (this.rng.next() - 0.5) * 64;
       for (let x = 2; x < WIDTH - 2; x++) {
         let ty = base + Math.sin(x * 0.0075 + ph1) * 88 + Math.sin(x * 0.0021 + ph2) * 116;
         ty = clamp(ty, 60, FLOOR_BAND - 92);
@@ -114,8 +122,8 @@ export class WorldGen implements WorldGenApi {
       }
     }
     {
-      const ph1 = Math.random() * Math.PI * 2,
-        ph2 = Math.random() * Math.PI * 2;
+      const ph1 = this.rng.next() * Math.PI * 2,
+        ph2 = this.rng.next() * Math.PI * 2;
       const base = HEIGHT * 0.74;
       for (let x = 2; x < WIDTH - 2; x++) {
         let ty = base + Math.sin(x * 0.0065 + ph1) * 52 + Math.sin(x * 0.0025 + ph2) * 68;
@@ -126,8 +134,8 @@ export class WorldGen implements WorldGenApi {
 
     // Upper gallery artery
     {
-      const ph1 = Math.random() * Math.PI * 2,
-        ph2 = Math.random() * Math.PI * 2;
+      const ph1 = this.rng.next() * Math.PI * 2,
+        ph2 = this.rng.next() * Math.PI * 2;
       const base = HEIGHT * 0.14;
       for (let x = 2; x < WIDTH - 2; x++) {
         let ty = base + Math.sin(x * 0.0085 + ph1) * 36 + Math.sin(x * 0.003 + ph2) * 44;
@@ -138,8 +146,8 @@ export class WorldGen implements WorldGenApi {
 
     // Mid gallery artery
     {
-      const ph1 = Math.random() * Math.PI * 2,
-        ph2 = Math.random() * Math.PI * 2;
+      const ph1 = this.rng.next() * Math.PI * 2,
+        ph2 = this.rng.next() * Math.PI * 2;
       const base = HEIGHT * 0.57;
       for (let x = 2; x < WIDTH - 2; x++) {
         let ty = base + Math.sin(x * 0.007 + ph1) * 48 + Math.sin(x * 0.0024 + ph2) * 60;
@@ -157,13 +165,13 @@ export class WorldGen implements WorldGenApi {
       WIDTH * 0.64,
       WIDTH * 0.78,
       WIDTH * 0.92,
-    ].map((v) => Math.floor(v + (Math.random() - 0.5) * 36));
+    ].map((v) => Math.floor(v + (this.rng.next() - 0.5) * 36));
     for (const sx of shaftXs) {
-      const ph = Math.random() * Math.PI * 2;
-      const amp = 24 + Math.random() * 32;
+      const ph = this.rng.next() * Math.PI * 2;
+      const amp = 24 + this.rng.next() * 32;
       let jitter = 0;
       for (let y = 20; y < FLOOR_BAND - 6; y += 3) {
-        jitter += (Math.random() - 0.5) * 4.6;
+        jitter += (this.rng.next() - 0.5) * 4.6;
         jitter = clamp(jitter, -28, 28);
         const wx = Math.floor(clamp(sx + Math.sin(y * 0.0125 + ph) * amp + jitter, 20, WIDTH - 20));
         carveDisc(wx, y, 11);
@@ -172,10 +180,10 @@ export class WorldGen implements WorldGenApi {
 
     // A handful of open chambers off the main routes
     for (let i = 0; i < 18; i++) {
-      const cx = 48 + Math.random() * (WIDTH - 96);
-      const cy = 80 + Math.random() * (FLOOR_BAND - 144);
-      const rx = 26 + Math.random() * 20,
-        ry = 17 + Math.random() * 13;
+      const cx = 48 + this.rng.next() * (WIDTH - 96);
+      const cy = 80 + this.rng.next() * (FLOOR_BAND - 144);
+      const rx = 26 + this.rng.next() * 20,
+        ry = 17 + this.rng.next() * 13;
       for (let dy = -Math.ceil(ry); dy <= ry; dy++) {
         for (let dx = -Math.ceil(rx); dx <= rx; dx++) {
           if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) {
@@ -197,21 +205,21 @@ export class WorldGen implements WorldGenApi {
         if (!(work[x + y * WIDTH] && !work[x + (y + 1) * WIDTH])) continue; // ceiling surface
         let depth = 0;
         while (depth < 90 && y + 1 + depth < FLOOR_BAND && !work[x + (y + 1 + depth) * WIDTH]) depth++;
-        if (depth >= 52 && Math.random() < 0.35) {
-          const len = 11 + Math.floor(Math.random() * Math.min(13, depth - 36));
+        if (depth >= 52 && this.rng.next() < 0.35) {
+          const len = 11 + Math.floor(this.rng.next() * Math.min(13, depth - 36));
           let hw = Math.round(len * 0.42);
           for (let s = 1; s <= len; s++) {
-            const wob = Math.random() < 0.3 ? 1 : 0;
+            const wob = this.rng.next() < 0.3 ? 1 : 0;
             for (let dx = -hw - wob; dx <= hw + wob; dx++) {
               const X = x + dx;
               if (X > 1 && X < WIDTH - 2) work[X + (y + s) * WIDTH] = 1;
             }
-            if (Math.random() < 0.75) hw = Math.max(0, hw - 1);
+            if (this.rng.next() < 0.75) hw = Math.max(0, hw - 1);
           }
           // occasional stalagmite below
-          if (Math.random() < 0.4 && depth >= 70) {
+          if (this.rng.next() < 0.4 && depth >= 70) {
             const fy = y + depth; // floor surface row is open; ground at fy+1
-            const slen = 6 + Math.floor(Math.random() * 7);
+            const slen = 6 + Math.floor(this.rng.next() * 7);
             let shw = Math.round(slen * 0.7);
             for (let s = 0; s < slen; s++) {
               for (let dx = -shw; dx <= shw; dx++) {
@@ -219,10 +227,10 @@ export class WorldGen implements WorldGenApi {
                   Y = fy - s;
                 if (X > 1 && X < WIDTH - 2 && Y > MIN_Y) work[X + Y * WIDTH] = 1;
               }
-              if (Math.random() < 0.8) shw = Math.max(0, shw - 1);
+              if (this.rng.next() < 0.8) shw = Math.max(0, shw - 1);
             }
           }
-          x += 24 + Math.floor(Math.random() * 30);
+          x += 24 + Math.floor(this.rng.next() * 30);
         }
         break; // only the topmost ceiling per column
       }
@@ -238,13 +246,13 @@ export class WorldGen implements WorldGenApi {
           if (work[x + 1 + y * WIDTH]) n++;
           if (work[x + (y - 1) * WIDTH]) n++;
           if (work[x + (y + 1) * WIDTH]) n++;
-          if (n === 0 || (n === 1 && Math.random() < 0.7)) work[x + y * WIDTH] = 0;
+          if (n === 0 || (n === 1 && this.rng.next() < 0.7)) work[x + y * WIDTH] = 0;
         }
       }
     }
 
     // --- 4) Commit with layered material palette + depth shading ---
-    const seed = Math.floor(Math.random() * 100000);
+    const seed = Math.floor(this.rng.next() * 100000);
 
     // Distance-from-air (multi-source BFS, capped) drives rim-light shading
     const dist = new Uint8Array(WIDTH * HEIGHT).fill(99);
@@ -406,8 +414,8 @@ export class WorldGen implements WorldGenApi {
       goldTries = 0;
     while (goldPlaced < 100 && goldTries < 30000) {
       goldTries++;
-      const x = 14 + Math.floor(Math.random() * (WIDTH - 28));
-      const y = 40 + Math.floor(Math.random() * (FLOOR_BAND - 70));
+      const x = 14 + Math.floor(this.rng.next() * (WIDTH - 28));
+      const y = 40 + Math.floor(this.rng.next() * (FLOOR_BAND - 70));
       if (world.types[x + y * WIDTH] !== Cell.Wall) continue;
       let nearOpen = false;
       for (let dy = -6; dy <= 6 && !nearOpen; dy += 2) {
@@ -423,7 +431,7 @@ export class WorldGen implements WorldGenApi {
             dx * dx + dy * dy <= 24 &&
             world.inBounds(x + dx, y + dy) &&
             world.types[x + dx + (y + dy) * WIDTH] === Cell.Wall &&
-            Math.random() < 0.85
+            this.rng.next() < 0.85
           ) {
             world.types[x + dx + (y + dy) * WIDTH] = Cell.Gold;
             world.colors[x + dx + (y + dy) * WIDTH] = goldColor();
@@ -442,7 +450,7 @@ export class WorldGen implements WorldGenApi {
         if (
           world.types[x + y * WIDTH] === Cell.Empty &&
           world.types[x + (y + 1) * WIDTH] === Cell.Wall &&
-          Math.random() < 0.006
+          this.rng.next() < 0.006
         ) {
           for (let dx = -9; dx <= 9; dx++) {
             for (let dy = 0; dy >= -2; dy--) {
@@ -466,10 +474,10 @@ export class WorldGen implements WorldGenApi {
     // Combustible seeds tucked into lower-half pockets
     let seeds = 0;
     for (let attempt = 0; attempt < 3600 && seeds < 60; attempt++) {
-      const x = 8 + Math.floor(Math.random() * (WIDTH - 16));
-      const y = Math.floor(HEIGHT / 2) + Math.floor(Math.random() * (FLOOR_BAND - HEIGHT / 2 - 6));
+      const x = 8 + Math.floor(this.rng.next() * (WIDTH - 16));
+      const y = Math.floor(HEIGHT / 2) + Math.floor(this.rng.next() * (FLOOR_BAND - HEIGHT / 2 - 6));
       if (world.types[x + y * WIDTH] !== Cell.Empty) continue;
-      const seedType = Math.random() < B.seedsOilBias ? Cell.Oil : Cell.Gunpowder;
+      const seedType = this.rng.next() < B.seedsOilBias ? Cell.Oil : Cell.Gunpowder;
       for (let i = -7; i <= 7; i++) {
         for (let j = -5; j <= 5; j++) {
           if (world.inBounds(x + i, y + j) && world.types[x + i + (y + j) * WIDTH] === Cell.Empty) {
@@ -484,10 +492,10 @@ export class WorldGen implements WorldGenApi {
     // Timber platforms floating in the larger caverns (flammable, walkable)
     let beams = 0;
     for (let attempt = 0; attempt < B.beams * 110 && beams < B.beams; attempt++) {
-      const bx = 30 + Math.floor(Math.random() * (WIDTH - 60));
-      const by = 40 + Math.floor(Math.random() * (FLOOR_BAND - 84));
+      const bx = 30 + Math.floor(this.rng.next() * (WIDTH - 60));
+      const by = 40 + Math.floor(this.rng.next() * (FLOOR_BAND - 84));
       if (this.spawnHint && Math.abs(bx - this.spawnHint.x) < 50 && Math.abs(by - this.spawnHint.y) < 50) continue;
-      const bw = 15 + Math.floor(Math.random() * 10);
+      const bw = 15 + Math.floor(this.rng.next() * 10);
       let ok = true;
       for (let dx = -bw - 1; dx <= bw + 1 && ok; dx++) {
         for (let dy = -22; dy <= 21 && ok; dy++) {
@@ -512,8 +520,8 @@ export class WorldGen implements WorldGenApi {
     // Smouldering campfires dotting the cavern floors
     let fires = 0;
     for (let attempt = 0; attempt < B.fires * 110 && fires < B.fires; attempt++) {
-      const fx = 36 + Math.floor(Math.random() * (WIDTH - 72));
-      const fy = 60 + Math.floor(Math.random() * (FLOOR_BAND - 86));
+      const fx = 36 + Math.floor(this.rng.next() * (WIDTH - 72));
+      const fy = 60 + Math.floor(this.rng.next() * (FLOOR_BAND - 86));
       if (world.types[fx + fy * WIDTH] !== Cell.Empty || world.types[fx + (fy + 1) * WIDTH] !== Cell.Wall) continue;
       if (this.spawnHint && Math.abs(fx - this.spawnHint.x) < 66 && Math.abs(fy - this.spawnHint.y) < 50) continue;
       for (let dx = -4; dx <= 4; dx++) {
@@ -528,7 +536,7 @@ export class WorldGen implements WorldGenApi {
         if (Math.abs(dx) <= 3 && world.inBounds(fx + dx, fy - 2) && world.types[fx + dx + (fy - 2) * WIDTH] === Cell.Empty) {
           world.types[fx + dx + (fy - 2) * WIDTH] = Cell.Fire;
           world.colors[fx + dx + (fy - 2) * WIDTH] = fireColor();
-          world.life[fx + dx + (fy - 2) * WIDTH] = 220 + Math.floor(Math.random() * 220);
+          world.life[fx + dx + (fy - 2) * WIDTH] = 220 + Math.floor(this.rng.next() * 220);
         }
       }
       fires++;
@@ -538,8 +546,8 @@ export class WorldGen implements WorldGenApi {
     if (B.iceClusters > 0) {
       let ic = 0;
       for (let attempt = 0; attempt < B.iceClusters * 70 && ic < B.iceClusters; attempt++) {
-        const x = 6 + Math.floor(Math.random() * (WIDTH - 12));
-        const y = 14 + Math.floor(Math.random() * (FLOOR_BAND - 20));
+        const x = 6 + Math.floor(this.rng.next() * (WIDTH - 12));
+        const y = 14 + Math.floor(this.rng.next() * (FLOOR_BAND - 20));
         if (world.types[x + y * WIDTH] !== Cell.Wall) continue;
         let nearAir = false;
         for (const [ddx, ddy] of [
@@ -554,13 +562,13 @@ export class WorldGen implements WorldGenApi {
           }
         }
         if (!nearAir) continue;
-        const cr = 4 + Math.floor(Math.random() * 5);
+        const cr = 4 + Math.floor(this.rng.next() * 5);
         for (let dy = -cr; dy <= cr; dy++) {
           for (let dx = -cr; dx <= cr; dx++) {
             if (dx * dx + dy * dy > cr * cr) continue;
             const X = x + dx,
               Y = y + dy;
-            if (world.inBounds(X, Y) && world.types[X + Y * WIDTH] === Cell.Wall && Math.random() < 0.8) {
+            if (world.inBounds(X, Y) && world.types[X + Y * WIDTH] === Cell.Wall && this.rng.next() < 0.8) {
               world.types[X + Y * WIDTH] = Cell.Ice;
               world.colors[X + Y * WIDTH] = iceColor();
             }

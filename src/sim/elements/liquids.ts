@@ -189,6 +189,15 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
   }
 }
 
+function hasWaterNeighbor(w: Ctx['world'], x: number, y: number): boolean {
+  return (
+    (w.inBounds(x + 1, y) && w.types[w.idx(x + 1, y)] === Cell.Water) ||
+    (w.inBounds(x - 1, y) && w.types[w.idx(x - 1, y)] === Cell.Water) ||
+    (w.inBounds(x, y + 1) && w.types[w.idx(x, y + 1)] === Cell.Water) ||
+    (w.inBounds(x, y - 1) && w.types[w.idx(x, y - 1)] === Cell.Water)
+  );
+}
+
 export function handleAcid(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const targets = [
@@ -209,7 +218,14 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
         n !== Cell.Smoke
       ) {
         if (Math.random() < ctx.params.materials[Cell.Acid].corrosiveSpeed!) {
-          if ((n === Cell.Wall || n === Cell.Wood || n === Cell.Stone) && Math.random() < 0.10) {
+          // Alchemy needs a solvent: transmutation only fires next to water, and
+          // rarely (economy guard — portable acid in flasks made 10% an
+          // infinite-money hose; see DESIGN.md "acid->gold nerf").
+          if (
+            (n === Cell.Wall || n === Cell.Wood || n === Cell.Stone) &&
+            Math.random() < 0.03 &&
+            hasWaterNeighbor(w, t.x, t.y)
+          ) {
             w.types[ti] = Cell.Gold;
             w.colors[ti] = goldColor();
           } else {

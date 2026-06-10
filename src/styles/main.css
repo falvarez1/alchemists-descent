@@ -101,6 +101,8 @@ header .engine-status { font-size: 11px; color: var(--accent-purple); font-weigh
 #hp-fill { background: repeating-linear-gradient(90deg, var(--hp) 0 4px, #7f1d1d 4px 5px, rgba(0,0,0,0.55) 5px 6px); box-shadow: 0 0 8px rgba(239,68,68,0.35); }
 #mana-fill { background: repeating-linear-gradient(90deg, var(--mana) 0 4px, #075985 4px 5px, rgba(0,0,0,0.55) 5px 6px); box-shadow: 0 0 8px rgba(56,189,248,0.35); }
 #levit-fill { background: repeating-linear-gradient(90deg, var(--levit) 0 4px, #92400e 4px 5px, rgba(0,0,0,0.55) 5px 6px); box-shadow: 0 0 8px rgba(251,191,36,0.3); }
+/* Neutral amber base; Hud.update retints background-color to the stored material */
+#flask-fill { background-color: #b45309; background-image: repeating-linear-gradient(90deg, transparent 0 4px, rgba(0,0,0,0.3) 4px 5px, rgba(0,0,0,0.55) 5px 6px); box-shadow: 0 0 8px rgba(212,175,55,0.3); }
 
 .wave-readout { position: absolute; top: 12px; right: 14px; text-align: right; text-shadow: 0 1px 4px #000; }
 .wave-readout .wave-num { font-size: 18px; font-weight: 800; color: #e9d5ff; letter-spacing: 2px; }

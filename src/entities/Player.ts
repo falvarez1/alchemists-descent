@@ -61,6 +61,16 @@ export class PlayerControl implements PlayerControlApi {
    */
   private animStarted = false;
 
+  // Movement-feel state (coyote time / jump buffer / levitation ramp)
+  /** Frames since the player last stood on ground (starts "long ago"). */
+  private framesSinceGrounded = 99;
+  /** Frames remaining in which a pre-landing jump press still fires. */
+  private jumpBufferFrames = 0;
+  /** Edge detector for the jump key. */
+  private prevJumpHeld = false;
+  /** Sustained levitation frames (drives the thrust response curve). */
+  private levitFrames = 0;
+
   constructor(private ctx: Ctx) {}
 
   /** Original: damagePlayer(amount, kx, ky) — lines 1565-1575. */
@@ -74,6 +84,8 @@ export class PlayerControl implements PlayerControlApi {
     player.invuln = 30;
     ctx.audio.hurt();
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.018, 0.05);
+    // hitstop: heavy hits freeze gameplay for a beat (Game consumes fx.hitstop)
+    if (amount >= 8) ctx.fx.hitstop = 3;
     // Blood spray — the Noita way
     ctx.particles.burst(player.x, player.y - 7, Math.min(16, 5 + amount * 0.4), Cell.Blood, bloodColor, 2.4);
     if (player.hp <= 0) this.kill();
@@ -166,7 +178,8 @@ export class PlayerControl implements PlayerControlApi {
     if (ctx.state.mode !== 'play' || player.dead) return;
     if (player.invuln > 0) player.invuln--;
 
-    const accel = 0.5,
+    // air control: stronger mid-air acceleration for Ori-like corrections
+    const accel = player.grounded ? 0.5 : 0.575,
       maxRun = 2.6;
     if (keys.left) {
       player.vx -= accel;
@@ -212,14 +225,29 @@ export class PlayerControl implements PlayerControlApi {
     player.vy += grav;
     if (player.inLiquid) player.vy *= 0.88;
 
+    // jump buffer: remember a fresh press for up to 8 frames before touchdown
+    const jumpPressed = keys.jump && !this.prevJumpHeld;
+    this.prevJumpHeld = keys.jump;
+    if (jumpPressed) this.jumpBufferFrames = 8;
+    else if (this.jumpBufferFrames > 0) this.jumpBufferFrames--;
+
+    let levitating = false;
     if (keys.jump) {
-      if (player.grounded || player.inLiquid) {
+      // coyote time: a press within 6 frames of walking off a ledge still gets the full jump
+      const coyote = jumpPressed && this.framesSinceGrounded <= 6;
+      if (player.grounded || player.inLiquid || coyote) {
         player.vy = -3.7;
         player.grounded = false;
+        this.framesSinceGrounded = 99; // consumed — no double coyote jumps
+        this.jumpBufferFrames = 0;
         ctx.audio.jump();
       } else if (player.levit > 0) {
-        player.vy -= 0.62;
+        levitating = true;
+        // levitation response curve: thrust eases 0.40 -> 0.62 over the first 10 frames
+        const t = Math.min(this.levitFrames / 10, 1);
+        player.vy -= 0.4 + 0.22 * (1 - (1 - t) * (1 - t));
         player.levit -= 1.15;
+        this.levitFrames++;
         ctx.audio.levitate();
         if (ctx.state.frameCount % 3 === 0) {
           ctx.particles.spawn(
@@ -235,6 +263,7 @@ export class PlayerControl implements PlayerControlApi {
         }
       }
     }
+    if (!levitating) this.levitFrames = 0;
     if (player.grounded || player.inLiquid) player.levit = Math.min(player.maxLevit, player.levit + 1.7);
     player.vy = clamp(player.vy, -4.6, 5.0);
 
@@ -280,6 +309,21 @@ export class PlayerControl implements PlayerControlApi {
       player.fy += 1;
     }
     player.grounded = !ctx.physics.entityFree(player.x, player.y + 1, 4, 1);
+    if (player.grounded) {
+      // jump buffer: a press made just before touchdown fires on the landing frame
+      if (this.jumpBufferFrames > 0) {
+        player.vy = -3.7;
+        player.grounded = false;
+        player.fallPeak = 0; // this landing was consumed by the jump
+        this.jumpBufferFrames = 0;
+        this.framesSinceGrounded = 99;
+        ctx.audio.jump();
+      } else {
+        this.framesSinceGrounded = 0; // coyote time anchor
+      }
+    } else {
+      this.framesSinceGrounded++;
+    }
 
     // Aim and continuous fire
     player.aimAngle = Math.atan2(ctx.input.mouse.y - (player.y - 9), ctx.input.mouse.x - player.x);
@@ -338,6 +382,23 @@ export class PlayerControl implements PlayerControlApi {
     // Landing squash: triggered by how hard we hit the ground
     if (player.grounded && !player.prevGrounded && player.fallPeak > 2.2) {
       player.landTimer = Math.min(10, 4 + Math.floor(player.fallPeak * 1.4));
+      // landing feedback: dust puff, shake pulse, and a soft thud on hard landings
+      if (player.fallPeak > 3.5) {
+        ctx.particles.burst(
+          player.x,
+          player.y,
+          6 + Math.floor(Math.random() * 5),
+          null,
+          () => {
+            const g = 110 + Math.floor(Math.random() * 70);
+            return packRGB(g, g, g);
+          },
+          0.9,
+          { grav: 0.05 },
+        );
+        ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.006 + player.fallPeak * 0.0015, 0.03);
+        ctx.audio.tone(90, 40, 0.08, 'sine', 0.12);
+      }
     }
     player.fallPeak = player.grounded ? 0 : Math.max(player.fallPeak, player.vy);
     if (player.landTimer > 0) player.landTimer--;

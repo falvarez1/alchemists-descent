@@ -1,8 +1,11 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
+import { randomSeed } from '@/core/rng';
+import { Telemetry } from '@/core/telemetry';
 import type { Ctx, FxState, GameStateData, InputState } from '@/core/types';
 import { AudioEngine } from '@/audio/AudioEngine';
+import { Flask } from '@/combat/Flask';
 import { Lightning } from '@/combat/Lightning';
 import { Projectiles } from '@/combat/Projectiles';
 import { Spells } from '@/combat/Spells';
@@ -25,6 +28,7 @@ import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
 import { Hud } from '@/ui/Hud';
 import { Inspector } from '@/ui/Inspector';
+import { PerfHud } from '@/ui/PerfHud';
 import { Toolbar } from '@/ui/Toolbar';
 import { WorldGen } from '@/world/CaveGenerator';
 
@@ -42,6 +46,7 @@ export class Game {
   private readonly hud: Hud;
   private readonly toolbar: Toolbar;
   private readonly inspector: Inspector;
+  private readonly perfHud = new PerfHud();
   private started = false;
 
   constructor(holder: HTMLElement) {
@@ -55,6 +60,7 @@ export class Game {
       currentBiome: 'earthen',
       brushSize: 6,
       playerSpawned: false,
+      worldSeed: randomSeed(),
     };
     const input: InputState = {
       keys: { left: false, right: false, jump: false, down: false },
@@ -65,8 +71,10 @@ export class Game {
       buildSpellHeld: false,
       bombCharge: -1,
       activeChargingBlackHole: null,
+      siphonHeld: false,
+      pourHeld: false,
     };
-    const fx: FxState = { bloomKick: 0, screenShake: 0, digBeam: null };
+    const fx: FxState = { bloomKick: 0, screenShake: 0, digBeam: null, hitstop: 0 };
 
     // Assembled in two steps: data first, then services that close over ctx.
     // Services only USE ctx at runtime, after wiring completes.
@@ -97,7 +105,12 @@ export class Game {
     ctx.simulation = new Simulation();
     ctx.worldgen = new WorldGen();
     ctx.waveCtl = new WaveDirector(ctx);
+    ctx.flask = new Flask();
+    ctx.telemetry = new Telemetry();
     this.ctx = ctx;
+
+    ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
+    ctx.events.on('waveStarted', ({ num }) => ctx.telemetry.count(`wave.reached.${num}`));
 
     this.renderer = new Renderer(holder);
     this.composer = new FrameComposer(
@@ -134,27 +147,44 @@ export class Game {
 
   private step = (): void => {
     const ctx = this.ctx;
+    const tFrame = performance.now();
     ctx.state.frameCount++;
+
+    // Impact hitstop: gameplay freezes for a few frames, rendering continues.
+    const frozen = ctx.fx.hitstop > 0;
+    if (frozen) ctx.fx.hitstop--;
 
     ctx.camera.update(ctx);
     ctx.camera.updateSimBounds(ctx.world);
-    ctx.simulation.update(ctx);
-    ctx.playerCtl.update(ctx);
-    ctx.enemyCtl.update(ctx);
-    ctx.waveCtl.update(ctx);
-    ctx.particles.update(ctx);
-    ctx.lightning.update();
-    this.updateBuildModeHeldSpells();
+
+    if (!frozen) {
+      const tSim = performance.now();
+      ctx.simulation.update(ctx);
+      this.perfHud.mark('sim', performance.now() - tSim);
+
+      const tEnt = performance.now();
+      ctx.playerCtl.update(ctx);
+      ctx.flask.update(ctx);
+      ctx.enemyCtl.update(ctx);
+      ctx.waveCtl.update(ctx);
+      ctx.particles.update(ctx);
+      ctx.lightning.update();
+      this.updateBuildModeHeldSpells();
+      this.perfHud.mark('entities', performance.now() - tEnt);
+    }
 
     // Compose the frame, sync the HUD on even frames, then present.
+    const tRender = performance.now();
     this.composer.compose(ctx);
     if (ctx.state.mode === 'play' && ctx.state.frameCount % 2 === 0) this.hud.update(ctx);
     this.renderer.render(ctx);
+    this.perfHud.mark('render', performance.now() - tRender);
 
     // Dig beam fades after 3 drawn frames (decay moved out of the renderer —
     // approved deviation 7; same cadence as the original).
     if (ctx.fx.digBeam && ctx.fx.digBeam.life > 0) ctx.fx.digBeam.life--;
 
+    this.perfHud.mark('frame', performance.now() - tFrame);
     requestAnimationFrame(this.step);
   };
 
