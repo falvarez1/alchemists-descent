@@ -1,6 +1,7 @@
 import type { Ctx, Enemy } from '@/core/types';
 import type { LightField, ParallaxLayers, PixelSurface, RenderTarget } from '@/render/pixels';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
+import { PICKUP_COLOR } from '@/game/Pickups';
 import { Cell } from '@/sim/CellType';
 import { unpackB, unpackG, unpackR } from '@/sim/colors';
 
@@ -225,12 +226,18 @@ export class FrameComposer implements PixelSurface {
           // The small additive floor keeps shadowed rock readable as silhouette
           // (the BFS rim shading baked into cell colors carries the detail).
           const floor = 0.06 * vg;
+          // Emissive cells are LIGHT SOURCES: their own brightness must not be
+          // crushed by the screen vignette (it sits inside the squared light
+          // factor, so corners rendered at ~23% and bloom only fired near the
+          // center). The vignette-free self-glow floor keeps lava/fire/crystal
+          // equally bloom-bright across the whole frame.
+          const selfGlow = scalar > 0 ? 0.45 + scalar * 1.55 : 0;
           let lf = (ambient + Math.min(2.2, lightR[li])) * vg;
-          r = r * Math.min(2.6, lf * lf) + r * floor;
+          r = r * Math.max(Math.min(2.6, lf * lf), selfGlow) + r * floor;
           lf = (ambient + Math.min(2.2, lightG[li])) * vg;
-          g = g * Math.min(2.6, lf * lf) + g * floor;
+          g = g * Math.max(Math.min(2.6, lf * lf), selfGlow) + g * floor;
           lf = (ambient + Math.min(2.2, lightB[li])) * vg;
-          b = b * Math.min(2.6, lf * lf) + b * floor;
+          b = b * Math.max(Math.min(2.6, lf * lf), selfGlow) + b * floor;
         }
         pixelData[bufferIdx] = r * intensity + ringGlow * 0.55;
         pixelData[bufferIdx + 1] = g * intensity + ringGlow * 0.42;
@@ -392,6 +399,9 @@ export class FrameComposer implements PixelSurface {
       }
     }
 
+    // World pickups + the exit portal (under entities so foes read on top)
+    this.drawPickupsAndPortal(ctx);
+
     // Entities on top
     for (const e of ctx.enemies) this.drawEnemy(this, this.light, ctx, e);
     // Excavation beam: white-hot core, tight amber sheath, light cast onto nearby rock
@@ -445,5 +455,68 @@ export class FrameComposer implements PixelSurface {
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
 
     this.target.markTextureDirty();
+  }
+
+  /** Bobbing treasure glyphs + the swirling exit gate (all self-lit). */
+  private drawPickupsAndPortal(ctx: Ctx): void {
+    const runtime = ctx.levels.current;
+    if (!runtime || ctx.state.mode !== 'play') return;
+    const frame = ctx.state.frameCount;
+
+    for (const p of runtime.pickups) {
+      if (p.taken) continue;
+      const bob = Math.sin(frame * 0.08 + p.x * 0.7) * 1.4;
+      const x = Math.round(p.x);
+      const y = Math.round(p.y + bob) - 2;
+      const c = PICKUP_COLOR[p.kind];
+      const r = ((c >> 16) & 0xff) / 255;
+      const g = ((c >> 8) & 0xff) / 255;
+      const b = (c & 0xff) / 255;
+      const pulse = 0.8 + Math.sin(frame * 0.12 + p.y) * 0.25;
+      if (p.kind === 'chest') {
+        // squat banded coffer
+        for (let dx = -2; dx <= 2; dx++) {
+          this.setPx(x + dx, y, r * 0.8, g * 0.8, b * 0.8);
+          this.setPx(x + dx, y + 1, r * 0.55, g * 0.5, b * 0.4);
+        }
+        this.setPx(x, y, 1.2, 1.1, 0.5); // clasp glint
+      } else if (p.kind === 'key') {
+        // bright sparkling key
+        this.setPx(x, y, r * pulse * 1.6, g * pulse * 1.6, b * pulse * 0.9);
+        this.setPx(x + 1, y, r * pulse * 1.3, g * pulse * 1.3, b * 0.6);
+        this.setPx(x - 1, y, r * pulse * 1.3, g * pulse * 1.3, b * 0.6);
+        this.setPx(x, y - 1, r * pulse, g * pulse, b * 0.5);
+        if (frame % 14 < 3) this.addPx(x + 2, y - 2, 0.8, 0.8, 0.6);
+      } else {
+        // diamond glyph (heart/tome/potion/goldpile)
+        this.setPx(x, y, r * pulse * 1.4, g * pulse * 1.4, b * pulse * 1.4);
+        this.setPx(x + 1, y, r * pulse * 0.8, g * pulse * 0.8, b * pulse * 0.8);
+        this.setPx(x - 1, y, r * pulse * 0.8, g * pulse * 0.8, b * pulse * 0.8);
+        this.setPx(x, y - 1, r * pulse * 0.9, g * pulse * 0.9, b * pulse * 0.9);
+        this.setPx(x, y + 1, r * pulse * 0.6, g * pulse * 0.6, b * pulse * 0.6);
+      }
+    }
+
+    const portal = runtime.portal;
+    if (portal) {
+      const lit = runtime.keyTaken ? 1.6 : 0.55;
+      const ringR = 6;
+      for (let k = 0; k < 14; k++) {
+        const a = (k / 14) * Math.PI * 2 + frame * 0.04;
+        const px = Math.round(portal.x + Math.cos(a) * ringR);
+        const py = Math.round(portal.y - 4 + Math.sin(a) * (ringR + 2));
+        const tw = 0.6 + Math.sin(frame * 0.2 + k) * 0.4;
+        this.setPx(px, py, 0.55 * lit * tw, 0.18 * lit * tw, 0.95 * lit * tw);
+      }
+      if (runtime.keyTaken && frame % 3 === 0) {
+        this.addPx(
+          portal.x + Math.round((Math.random() - 0.5) * 8),
+          portal.y - 4 + Math.round((Math.random() - 0.5) * 10),
+          0.3,
+          0.1,
+          0.5,
+        );
+      }
+    }
   }
 }

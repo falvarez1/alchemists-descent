@@ -90,6 +90,20 @@ export class AudioEngine implements AudioApi {
 
   shatter(): void { if (!this.throttled('shatter', 100)) return; this.noiseBurst(0.12, 3200, 0.14, true); this.tone(1900 + Math.random() * 600, 400, 0.12, 'square', 0.07); }
 
+  // ---- Descent pickup/landmark presets (noita-alchemists-descent.html) ----
+
+  pickup(): void { if (!this.throttled('pickup', 80)) return; this.tone(660, 880, 0.08, 'sine', 0.14); setTimeout(() => this.tone(990, 1320, 0.09, 'sine', 0.12), 70); }
+
+  chest(): void { this.tone(392, 392, 0.12, 'triangle', 0.2); setTimeout(() => this.tone(523, 523, 0.12, 'triangle', 0.2), 110); setTimeout(() => this.tone(784, 784, 0.16, 'triangle', 0.22), 230); }
+
+  keyJingle(): void { this.tone(1568, 1568, 0.09, 'sine', 0.16); setTimeout(() => this.tone(2093, 2093, 0.09, 'sine', 0.15), 70); setTimeout(() => this.tone(1760, 1760, 0.12, 'sine', 0.14), 150); }
+
+  portalWhoosh(): void { this.tone(110, 440, 0.8, 'sine', 0.22); this.tone(165, 660, 0.8, 'sine', 0.16); this.noiseBurst(0.5, 900, 0.1); }
+
+  learn(): void { this.tone(523, 523, 0.11, 'triangle', 0.2); setTimeout(() => this.tone(659, 659, 0.11, 'triangle', 0.2), 140); setTimeout(() => this.tone(784, 784, 0.11, 'triangle', 0.2), 280); setTimeout(() => this.tone(1046, 1046, 0.18, 'triangle', 0.22), 420); }
+
+  drinkPotion(): void { this.tone(420, 280, 0.1, 'sine', 0.14); setTimeout(() => this.tone(520, 340, 0.1, 'sine', 0.13), 90); setTimeout(() => this.tone(640, 400, 0.12, 'sine', 0.12), 180); }
+
   flame(): void {
     if (!this.throttled('flame', 70)) return;
     this.noiseBurst(0.22, 550 + Math.random() * 300, 0.18);          // body of the roar

@@ -2,6 +2,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
+import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { Cell } from '@/sim/CellType';
 import {
   acidColor,
@@ -153,6 +154,7 @@ export class Enemies implements EnemyControlApi {
     if (e.kind === 'bomber') {
       ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(Math.random() * 3));
       this.dropBounty(e, def);
+      this.maybeDropPotion(e);
       ctx.waves.kills++;
       return;
     }
@@ -199,9 +201,24 @@ export class Enemies implements EnemyControlApi {
       splatterStain(ctx.world, e.x, e.y - 5, e.kind === 'golem' ? 14 : e.kind === 'bat' ? 5 : 10);
     }
     this.dropBounty(e, def);
+    this.maybeDropPotion(e);
     ctx.audio.squelch();
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.012, 0.04);
     ctx.waves.kills++;
+  }
+
+  /** Felled foes sometimes drop a potion (golems are walking apothecaries). */
+  private maybeDropPotion(e: Enemy): void {
+    const ctx = this.ctx;
+    const runtime = ctx.levels.current;
+    if (!runtime || ctx.state.mode !== 'play') return;
+    if (Math.random() < (e.kind === 'golem' ? 0.3 : 0.12)) {
+      runtime.pickups.push(
+        makePickup('potion', e.x, e.y - 5, {
+          potion: POTION_KINDS[Math.floor(Math.random() * POTION_KINDS.length)],
+        }),
+      );
+    }
   }
 
   /** Gold coin shower (homing in play mode) + build-mode direct score credit. */

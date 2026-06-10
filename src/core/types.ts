@@ -393,6 +393,18 @@ export interface AudioApi {
   bubble(): void;
   /** Glass/ice breaking: bright crack + falling ring. */
   shatter(): void;
+  /** Small treasure chime (gold piles, generic pickups). */
+  pickup(): void;
+  /** Chest-opening three-note arpeggio. */
+  chest(): void;
+  /** The golden key's bright jingle. */
+  keyJingle(): void;
+  /** Portal activation whoosh (dual rising sines). */
+  portalWhoosh(): void;
+  /** Four-note fanfare: a new spell tome is learned. */
+  learn(): void;
+  /** Potion gulp: three descending sweeps. */
+  drinkPotion(): void;
   coin(): void;
   hurt(): void;
   jump(): void;
@@ -535,6 +547,8 @@ export interface WorldGenApi {
     waystones: Waystone[];
     spawn: { x: number; y: number };
     cauldron: { x: number; y: number } | null;
+    pickups: Pickup[];
+    portal: ExitPortal | null;
   };
 }
 
@@ -840,6 +854,12 @@ export interface LevelRuntime {
   regions: RegionGraph | null;
   /** Cauldron basin center (stamped near the first waystone), if placed. */
   cauldron: { x: number; y: number } | null;
+  /** World pickups (hearts/tomes/chests/potions/gold/key); taken ones persist as taken. */
+  pickups: Pickup[];
+  /** The level's exit gate; null on custom/bottom levels. */
+  portal: ExitPortal | null;
+  /** The golden key has been collected in this level. */
+  keyTaken: boolean;
 }
 
 export interface LevelsApi {
@@ -855,6 +875,12 @@ export interface LevelsApi {
   update(ctx: Ctx): void;
   /** Respawn anchor: last lit waystone in the current level, else level spawn. */
   respawnPoint(): { x: number; y: number } | null;
+  /**
+   * Build-mode playtest: wrap the CURRENT world (hand-built or loaded from
+   * the level library) into a custom level runtime instead of generating —
+   * enemies placed in build mode are kept.
+   */
+  playCurrentWorld(ctx: Ctx): void;
 }
 
 /* ============================================================
@@ -892,4 +918,5 @@ export interface Ctx {
   telemetry: TelemetryApi;
   levels: LevelsApi;
   wands: WandsApi;
+  pickups: PickupsApi;
 }

@@ -34,6 +34,8 @@ export interface EventMap {
   structureStrike: { x: number; y: number; radius: number };
   /** Short corner toast ("GOLDEN KEY ACQUIRED", "+20 MAX HP", ...). */
   toast: { text: string };
+  /** The HUD objective line ("FIND THE GOLDEN KEY" -> "REACH THE PORTAL"). */
+  objectiveChanged: { text: string };
 }
 
 type Handler<T> = (payload: T) => void;

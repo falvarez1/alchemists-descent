@@ -82,6 +82,16 @@
             <button class="action-btn dropper-slime" id="btn-spawn-slime">Drop Slime</button>
             <button class="action-btn dropper-imp" id="btn-spawn-imp">Drop Fire Imp</button>
             <button class="action-btn dropper-golem" id="btn-spawn-golem">Drop Stone Golem</button>
+
+            <div class="section-title">Level Library</div>
+            <button class="action-btn" id="btn-level-save">Save Level</button>
+            <select id="level-select" class="biome-select" disabled></select>
+            <button class="action-btn" id="btn-level-load">Load Level</button>
+            <button class="action-btn" id="btn-level-delete">Delete Level</button>
+            <button class="action-btn" id="btn-level-export">Export .json</button>
+            <label class="action-btn" for="level-import" style="text-align:center;cursor:pointer;">Import .json</label>
+            <input type="file" id="level-import" accept=".json" style="display:none">
+            <button class="action-btn" id="btn-level-playtest" style="border-color:#78350f;color:#fcd34d;background:#1d1407;">Playtest Level</button>
         </div>
 
         <div id="viewport-container">
@@ -96,7 +106,10 @@
                     <div class="wave-readout">
                         <div class="wave-num" id="wave-num">WAVE 1</div>
                         <div class="sub"><span id="enemies-left">0</span> HOSTILES &middot; <span class="gold" id="hud-gold">0</span> oz</div>
+                        <div class="objective" id="objective"></div>
+                        <canvas id="minimap-corner" width="200" height="133"></canvas>
                     </div>
+                    <div id="toast-stack"></div>
                     <div id="spell-hotbar"></div>
                     <div id="controls-hint">
                         <b>A / D</b> move &nbsp; <b>SPACE</b> jump / levitate<br>

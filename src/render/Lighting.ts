@@ -248,6 +248,23 @@ export class Lighting implements LightField {
     // Excavation beam scorches with light
     const digBeam = ctx.fx.digBeam;
     if (digBeam && digBeam.life > 0) this.seedLight(digBeam.x1, digBeam.y1, 1.6, 1.1, 0.4);
+
+    // Pickups shimmer; the portal throbs violet (bright once the key is held)
+    const runtime = ctx.levels.current;
+    if (runtime && ctx.state.mode === 'play') {
+      for (const p of runtime.pickups) {
+        if (p.taken) continue;
+        if (p.kind === 'key') this.seedLight(p.x, p.y - 2, 0.7, 0.6, 0.2);
+        else if (p.kind === 'heart') this.seedLight(p.x, p.y - 2, 0.5, 0.16, 0.22);
+        else if (p.kind === 'tome') this.seedLight(p.x, p.y - 2, 0.25, 0.4, 0.6);
+        else if (p.kind === 'potion') this.seedLight(p.x, p.y - 2, 0.4, 0.2, 0.5);
+      }
+      if (runtime.portal) {
+        const throb = 0.6 + Math.sin(ctx.state.frameCount * 0.07) * 0.25;
+        const lit = runtime.keyTaken ? 1.5 : 0.6;
+        this.seedLight(runtime.portal.x, runtime.portal.y - 4, 0.55 * throb * lit, 0.2 * throb * lit, 0.9 * throb * lit);
+      }
+    }
     // Living light: golem cores pulse (synced to the sprite), imps smoulder,
     // wisps carry their own cold halo, mage hands throb purple
     for (const e of ctx.enemies) {

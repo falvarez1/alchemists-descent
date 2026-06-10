@@ -2,7 +2,15 @@ import { BIOMES } from '@/config/biomes';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp, hash2, valueNoise } from '@/core/math';
 import { Rng, randomSeed } from '@/core/rng';
-import type { Ctx, LevelDef, LevelExitWell, Waystone, WorldGenApi } from '@/core/types';
+import type {
+  Ctx,
+  ExitPortal,
+  LevelDef,
+  LevelExitWell,
+  Pickup,
+  Waystone,
+  WorldGenApi,
+} from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import {
   EMPTY_COLOR,
@@ -26,6 +34,7 @@ import { applyBiomeExtras } from '@/world/biomeExtras';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { extractRegionGraph } from '@/world/regions';
 import { stampSecrets } from '@/world/secrets';
+import { placeStructures } from '@/world/structures';
 
 /* ===================== Procedural Generation Map Engines ===================== */
 
@@ -615,6 +624,8 @@ export class WorldGen implements WorldGenApi {
     waystones: Waystone[];
     spawn: { x: number; y: number };
     cauldron: { x: number; y: number } | null;
+    pickups: Pickup[];
+    portal: ExitPortal | null;
   } {
     // 1) Base caves for the level's biome, replayable from the seed.
     ctx.state.currentBiome = def.biome;
@@ -896,7 +907,26 @@ export class WorldGen implements WorldGenApi {
       }
     }
 
-    // 8) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
-    return { exit: { x: wellX, sealY, halfW }, waystones, spawn: { x: spawn.x, y: spawn.y }, cauldron };
+    // 8) Landmark structures (upgrade-port meta layer): the exit portal above
+    //    the seal plug, the golden key vault, hearts, tomes, chests, gold.
+    const { pickups, portal } = placeStructures(
+      ctx,
+      this.rng,
+      graph,
+      def,
+      { x: wellX, sealY },
+      waystones,
+      spawn,
+    );
+
+    // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
+    return {
+      exit: { x: wellX, sealY, halfW },
+      waystones,
+      spawn: { x: spawn.x, y: spawn.y },
+      cauldron,
+      pickups,
+      portal,
+    };
   }
 }

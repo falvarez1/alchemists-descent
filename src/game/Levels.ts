@@ -91,6 +91,27 @@ export class Levels implements LevelsApi {
       player.fy = 0;
     }
 
+    // EXIT PORTAL: the golden key opens it; touching the open gate descends.
+    const portal = runtime.portal;
+    if (portal && runtime.def.nextLevelId) {
+      const pdx = player.x - portal.x;
+      const pdy = player.y - 6 - portal.y;
+      const near = pdx * pdx + pdy * pdy < 100;
+      if (near && runtime.keyTaken) {
+        if (!portal.open) {
+          portal.open = true;
+          ctx.audio.portalWhoosh();
+          ctx.events.emit('toast', { text: 'THE PORTAL AWAKENS' });
+        }
+        this.leaveLevel();
+        this.enterLevel(ctx, runtime.def.nextLevelId);
+        return;
+      }
+      if (near && !runtime.keyTaken && ctx.state.frameCount % 90 === 0) {
+        ctx.events.emit('toast', { text: 'SEALED — THE GOLDEN KEY IS MISSING' });
+      }
+    }
+
     if (ctx.state.frameCount % 4 === 0) this.updateWaystones(ctx, runtime);
     if (ctx.state.frameCount % 8 === 0) this.stampExplored(runtime, player.x, player.y);
 
@@ -98,6 +119,51 @@ export class Levels implements LevelsApi {
       this.lastEnemiesEmit = ctx.enemies.length;
       ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
     }
+  }
+
+  /**
+   * Build-mode playtest: wrap the CURRENT world into a custom level runtime —
+   * no generation, hand-placed enemies kept, no exit (the level IS the game).
+   */
+  playCurrentWorld(ctx: Ctx): void {
+    if (this.expeditionSeed === 0) this.expeditionSeed = ctx.state.worldSeed >>> 0;
+    const def: LevelDef = {
+      id: 'custom',
+      name: 'CUSTOM LEVEL',
+      biome: ctx.state.currentBiome,
+      depth: 1,
+      nextLevelId: null,
+    };
+    const spawn = ctx.playerCtl.findSpawnPoint();
+    const runtime: LevelRuntime = {
+      def,
+      world: ctx.world,
+      enemies: ctx.enemies.slice(),
+      waystones: [],
+      exit: null,
+      explored: new Uint8Array(MINIMAP_W * MINIMAP_H),
+      spawn,
+      regions: extractRegionGraph(ctx.world, spawn, spawn),
+      cauldron: null,
+      pickups: [],
+      portal: null,
+      keyTaken: false,
+    };
+    this.levels.set('custom', runtime);
+    this.currentId = 'custom';
+    this.waystoneHeat = [];
+    this.litOrder.set('custom', []);
+    this.lastEnemiesEmit = ctx.enemies.length;
+    const player = ctx.player;
+    player.x = spawn.x;
+    player.y = spawn.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.fx = 0;
+    player.fy = 0;
+    ctx.camera.snapTo(player.x, player.y);
+    ctx.events.emit('levelChanged', { depth: 1, name: def.name });
+    ctx.events.emit('objectiveChanged', { text: 'YOUR LEVEL — YOUR RULES' });
   }
 
   /** Respawn anchor: last lit waystone in the current level, else level spawn. */
@@ -177,6 +243,13 @@ export class Levels implements LevelsApi {
     this.lastEnemiesEmit = ctx.enemies.length;
     ctx.events.emit('levelChanged', { depth: def.depth, name: def.name });
     ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
+    ctx.events.emit('objectiveChanged', {
+      text: runtime.portal
+        ? runtime.keyTaken
+          ? 'REACH THE PORTAL'
+          : 'FIND THE GOLDEN KEY'
+        : 'THE DEPTHS END HERE — SURVIVE',
+    });
 
     window.setTimeout(() => {
       curtain?.classList.remove('visible');
@@ -193,7 +266,11 @@ export class Levels implements LevelsApi {
     ctx.enemies.length = 0;
 
     const seed = (this.expeditionSeed ^ this.hashString(def.id)) >>> 0;
-    const { exit, waystones, spawn, cauldron } = ctx.worldgen.generateLevel(ctx, def, seed);
+    const { exit, waystones, spawn, cauldron, pickups, portal } = ctx.worldgen.generateLevel(
+      ctx,
+      def,
+      seed,
+    );
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, { x: exit.x, y: exit.sealY - 12 });
@@ -212,6 +289,9 @@ export class Levels implements LevelsApi {
       spawn,
       regions,
       cauldron,
+      pickups,
+      portal,
+      keyTaken: false,
     };
   }
 

@@ -53,6 +53,20 @@ export class Hud {
       this.showBanner(name + ' ACQUIRED', 'NEW SPELL CARD — PRESS B');
     });
 
+    // Descent meta layer: the objective line + short center toasts.
+    ctx.events.on('objectiveChanged', ({ text }) => {
+      el('objective').textContent = text;
+    });
+    ctx.events.on('toast', ({ text }) => {
+      const stack = el('toast-stack');
+      const node = document.createElement('div');
+      node.className = 'toast';
+      node.textContent = text;
+      stack.appendChild(node);
+      while (stack.children.length > 4) stack.removeChild(stack.firstChild!);
+      window.setTimeout(() => node.remove(), 2700);
+    });
+
     // The hotbar mirrors the active wand; any loadout change rebuilds it.
     ctx.events.on('wandChanged', () => this.buildHotbar());
 

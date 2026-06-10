@@ -31,6 +31,9 @@ export class Minimap {
   private readonly canvas: HTMLCanvasElement;
   private readonly c2d: CanvasRenderingContext2D;
   private readonly img: ImageData;
+  /** Always-on corner panel (play mode), refreshed on a slower cadence. */
+  private readonly corner: CanvasRenderingContext2D;
+  private readonly cornerEl: HTMLCanvasElement;
   /** One representative packed 0xRRGGBB per cell type, frozen at construction. */
   private readonly palette: Uint32Array;
   private visible = false;
@@ -41,6 +44,8 @@ export class Minimap {
     this.canvas.height = MINIMAP_H;
     this.c2d = this.canvas.getContext('2d')!;
     this.img = this.c2d.createImageData(MINIMAP_W, MINIMAP_H);
+    this.cornerEl = el('minimap-corner') as HTMLCanvasElement;
+    this.corner = this.cornerEl.getContext('2d')!;
 
     this.palette = new Uint32Array(CELL_COUNT);
     for (let t = 0; t < CELL_COUNT; t++) {
@@ -67,16 +72,38 @@ export class Minimap {
     if (on) this.redraw(this.ctx);
   }
 
-  /** Per-frame hook (lead-wired). Cheap no-op unless the overlay is open. */
+  /** Per-frame hook (lead-wired). Cheap no-op unless something needs redrawing. */
   update(ctx: Ctx): void {
+    // Always-on corner panel: a slower cadence keeps it nearly free.
+    if (ctx.state.mode === 'play' && ctx.state.frameCount % 30 === 0) this.redrawCorner(ctx);
     if (!this.visible || ctx.state.frameCount % REDRAW_INTERVAL !== 0) return;
     this.redraw(ctx);
+  }
+
+  /** The compact top-right map: terrain + landmark dots, no caption. */
+  private redrawCorner(ctx: Ctx): void {
+    const level = ctx.levels.current;
+    if (!level) return;
+    this.paintTerrain(level);
+    this.corner.putImageData(this.img, 0, 0);
+    this.paintMarkers(this.corner, ctx, level);
   }
 
   private redraw(ctx: Ctx): void {
     const level = ctx.levels.current;
     if (!level) return;
 
+    const exploredCount = this.paintTerrain(level);
+    this.c2d.putImageData(this.img, 0, 0);
+    this.paintMarkers(this.c2d, ctx, level);
+
+    const pct = Math.round((exploredCount / level.explored.length) * 100);
+    el('minimap-caption').textContent =
+      'D' + level.def.depth + ' · ' + level.def.name + ' — ' + pct + '% explored';
+  }
+
+  /** Fill this.img from the explored mask + live world; returns explored count. */
+  private paintTerrain(level: NonNullable<Ctx['levels']['current']>): number {
     const { world, explored } = level;
     const data = this.img.data;
     const palette = this.palette;
@@ -99,22 +126,40 @@ export class Minimap {
         data[o + 3] = 255;
       }
     }
-    this.c2d.putImageData(this.img, 0, 0);
+    return exploredCount;
+  }
 
-    // Markers go over the terrain: well exit, lit waystones, then the player.
+  /** Landmark dots: portal, well, lit waystones, cauldron, key/hearts/tomes, player. */
+  private paintMarkers(
+    g: CanvasRenderingContext2D,
+    ctx: Ctx,
+    level: NonNullable<Ctx['levels']['current']>,
+  ): void {
+    if (level.portal) {
+      g.fillStyle = level.keyTaken ? '#c084fc' : '#7c3aed';
+      g.fillRect((level.portal.x >> 3) - 1, (level.portal.y >> 3) - 1, 3, 3);
+    }
     if (level.exit) {
-      this.c2d.fillStyle = '#a855f7';
-      this.c2d.fillRect((level.exit.x >> 3) - 1, (level.exit.sealY >> 3) - 1, 2, 2);
+      g.fillStyle = '#a855f7';
+      g.fillRect((level.exit.x >> 3) - 1, (level.exit.sealY >> 3) - 1, 2, 2);
     }
-    this.c2d.fillStyle = '#ff9a3c';
+    g.fillStyle = '#ff9a3c';
     for (const w of level.waystones) {
-      if (w.lit) this.c2d.fillRect((w.x >> 3) - 1, (w.y >> 3) - 1, 2, 2);
+      if (w.lit) g.fillRect((w.x >> 3) - 1, (w.y >> 3) - 1, 2, 2);
     }
-    this.c2d.fillStyle = '#ffffff';
-    this.c2d.fillRect((ctx.player.x >> 3) - 1, (ctx.player.y >> 3) - 1, 2, 2);
-
-    const pct = Math.round((exploredCount / explored.length) * 100);
-    el('minimap-caption').textContent =
-      'D' + level.def.depth + ' · ' + level.def.name + ' — ' + pct + '% explored';
+    if (level.cauldron) {
+      g.fillStyle = '#4ade80';
+      g.fillRect((level.cauldron.x >> 3) - 1, (level.cauldron.y >> 3) - 1, 2, 2);
+    }
+    for (const p of level.pickups) {
+      if (p.taken) continue;
+      if (p.kind === 'key') g.fillStyle = '#fde047';
+      else if (p.kind === 'heart') g.fillStyle = '#fb7185';
+      else if (p.kind === 'tome') g.fillStyle = '#7dd3fc';
+      else continue; // gold/chests/potions stay secrets until found on foot
+      g.fillRect(p.x >> 3, p.y >> 3, 2, 2);
+    }
+    g.fillStyle = '#ffffff';
+    g.fillRect((ctx.player.x >> 3) - 1, (ctx.player.y >> 3) - 1, 2, 2);
   }
 }
