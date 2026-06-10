@@ -230,6 +230,48 @@ body.play-active #viewport-container { padding: 0; }
 .bench-empty { font-size: 9px; color: rgba(255,255,255,0.35); letter-spacing: 1px; align-self: center; }
 .bench-hint { margin-top: auto; font-size: 8px; letter-spacing: 1.5px; color: rgba(255,255,255,0.35); }
 
+#sanctum-overlay {
+    position: absolute; inset: 0; background: rgba(6,3,12,0.9); backdrop-filter: blur(4px);
+    display: none; align-items: center; justify-content: center; flex-direction: column; gap: 10px;
+    pointer-events: auto; z-index: 7; font-family: var(--mono);
+}
+#sanctum-overlay.visible { display: flex; }
+#sanctum-overlay .sanc-title { font-size: 26px; font-weight: 800; letter-spacing: 9px; color: #e9d5ff; text-shadow: 0 0 26px rgba(168,85,247,0.8); }
+#sanctum-overlay .sanc-sub { font-size: 10px; letter-spacing: 1.5px; color: rgba(255,255,255,0.55); }
+#sanctum-overlay .sanc-sub .gold { color: var(--accent-gold); font-weight: 700; }
+#sanctum-overlay .sanc-heading { font-size: 9px; font-weight: 800; letter-spacing: 3px; color: var(--text-muted); margin-top: 8px; }
+#perk-row { display: flex; gap: 10px; }
+.perk-card {
+    width: 150px; padding: 12px 10px; cursor: pointer; text-align: center;
+    background: linear-gradient(180deg, rgba(34,24,17,0.95), rgba(22,15,11,0.95));
+    border: 1px dashed #6e4632; border-radius: 6px; transition: all 0.12s ease;
+}
+.perk-card:hover { border-color: #e8c15a; transform: translateY(-2px); }
+.perk-card .pk-name { font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #fcd34d; margin-bottom: 6px; }
+.perk-card .pk-desc { font-size: 9px; line-height: 1.6; color: rgba(255,255,255,0.6); }
+.perk-card.taken { border: 2px solid #e8c15a; box-shadow: 0 0 18px rgba(232,193,90,0.4); }
+.perk-card.faded { opacity: 0.35; pointer-events: none; }
+#sanc-shop { display: flex; flex-direction: column; gap: 5px; min-width: 380px; }
+.shop-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 14px;
+    background: rgba(19,19,26,0.9); border: 1px solid var(--panel-border); border-radius: 5px; padding: 7px 10px;
+}
+.shop-row .sh-name { font-size: 10px; font-weight: 800; letter-spacing: 1px; color: var(--text-main); }
+.shop-row .sh-desc { font-size: 9px; color: var(--text-muted); margin-top: 2px; }
+.shop-row button {
+    background: #2a2005; border: 1px solid #78350f; color: var(--accent-gold); font-family: var(--mono);
+    font-size: 10px; font-weight: 700; padding: 6px 12px; border-radius: 4px; cursor: pointer; white-space: nowrap;
+}
+.shop-row button:hover:not(:disabled) { background: #78350f; color: #fff; }
+.shop-row button:disabled { opacity: 0.35; cursor: default; }
+#descend-btn {
+    margin-top: 10px; background: #2a1336; border: 1px solid var(--accent-purple); color: #e9d5ff;
+    font-weight: 700; letter-spacing: 2px; font-size: 12px; padding: 11px 30px; border-radius: 6px;
+    cursor: pointer; font-family: var(--mono); transition: all 0.15s ease;
+}
+#descend-btn:hover:not(:disabled) { background: var(--accent-purple); color: #fff; box-shadow: 0 0 22px rgba(168,85,247,0.6); }
+#descend-btn:disabled { opacity: 0.4; cursor: default; }
+
 #gameover-overlay {
     position: absolute; inset: 0; background: rgba(4,2,8,0.82); backdrop-filter: blur(3px);
     display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px;

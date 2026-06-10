@@ -154,7 +154,7 @@ export class Explosions implements ExplosionApi {
       const d = Math.sqrt(dx * dx + dy * dy);
       if (d < radius * 1.5) {
         const dmg = Math.min(42, Math.max(3, (1 - d / (radius * 1.5)) * radius * 2.0));
-        ctx.playerCtl.damage(dmg, (dx / (d || 1)) * 2.4, -1.8);
+        ctx.playerCtl.damage(dmg, (dx / (d || 1)) * 2.4, -1.8, 'explosion');
       }
     }
   }

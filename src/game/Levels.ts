@@ -103,8 +103,12 @@ export class Levels implements LevelsApi {
           ctx.audio.portalWhoosh();
           ctx.events.emit('toast', { text: 'THE PORTAL AWAKENS' });
         }
-        this.leaveLevel();
-        this.enterLevel(ctx, runtime.def.nextLevelId);
+        // The Sanctum opens between depths: boon draft + shop, then descend.
+        const next = runtime.def.nextLevelId;
+        ctx.sanctum.open(ctx, () => {
+          this.leaveLevel();
+          this.enterLevel(ctx, next);
+        });
         return;
       }
       if (near && !runtime.keyTaken && ctx.state.frameCount % 90 === 0) {
@@ -148,6 +152,8 @@ export class Levels implements LevelsApi {
       pickups: [],
       portal: null,
       keyTaken: false,
+      mechanisms: [],
+      runeVaults: [],
     };
     this.levels.set('custom', runtime);
     this.currentId = 'custom';
@@ -266,11 +272,8 @@ export class Levels implements LevelsApi {
     ctx.enemies.length = 0;
 
     const seed = (this.expeditionSeed ^ this.hashString(def.id)) >>> 0;
-    const { exit, waystones, spawn, cauldron, pickups, portal } = ctx.worldgen.generateLevel(
-      ctx,
-      def,
-      seed,
-    );
+    const { exit, waystones, spawn, cauldron, pickups, portal, mechanisms, runeVaults } =
+      ctx.worldgen.generateLevel(ctx, def, seed);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, { x: exit.x, y: exit.sealY - 12 });
@@ -292,6 +295,8 @@ export class Levels implements LevelsApi {
       pickups,
       portal,
       keyTaken: false,
+      mechanisms,
+      runeVaults,
     };
   }
 

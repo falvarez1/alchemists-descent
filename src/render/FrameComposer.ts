@@ -401,6 +401,7 @@ export class FrameComposer implements PixelSurface {
 
     // World pickups + the exit portal (under entities so foes read on top)
     this.drawPickupsAndPortal(ctx);
+    this.drawMechanismsAndRunes(ctx);
 
     // Entities on top
     for (const e of ctx.enemies) this.drawEnemy(this, this.light, ctx, e);
@@ -455,6 +456,61 @@ export class FrameComposer implements PixelSurface {
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
 
     this.target.markTextureDirty();
+  }
+
+  /** Lever arms, pressed-plate glows, dark brazier hints, floating rune glyphs. */
+  private drawMechanismsAndRunes(ctx: Ctx): void {
+    const runtime = ctx.levels.current;
+    if (!runtime || ctx.state.mode !== 'play') return;
+    const frame = ctx.state.frameCount;
+    const bst = ctx.params.global.maxBrightness;
+    const camX = ctx.camera.renderX,
+      camY = ctx.camera.renderY;
+
+    for (const m of runtime.mechanisms) {
+      if (m.x < camX - 12 || m.x > camX + VIEW_W + 12 || m.y < camY - 12 || m.y > camY + VIEW_H + 12)
+        continue;
+      if (m.kind === 'lever') {
+        // base bracket
+        this.setPx(m.x - 1, m.y, 0.42, 0.44, 0.5);
+        this.setPx(m.x, m.y, 0.5, 0.52, 0.58);
+        this.setPx(m.x + 1, m.y, 0.42, 0.44, 0.5);
+        this.setPx(m.x, m.y - 1, 0.32, 0.34, 0.4);
+        // arm tilts with state
+        const dir = m.state === 1 ? 1 : -1;
+        for (let s = 1; s <= 4; s++) {
+          this.setPx(m.x + dir * Math.round(s * 0.55), m.y - 1 - s, 0.55, 0.42, 0.2);
+        }
+        // glowing knob signals on/off
+        const kx = m.x + dir * 3,
+          ky = m.y - 5;
+        const g = 0.7 + Math.sin(frame * 0.1) * 0.2;
+        if (m.state === 1) this.setPx(kx, ky, 0.2 * g, 1.6 * g, 0.4 * g);
+        else this.setPx(kx, ky, 1.6 * g, 0.3 * g, 0.15 * g);
+      } else if (m.kind === 'plate' && (m.pressed || m.state > 0)) {
+        // pressed plates glow along the sill
+        const g = 0.5 + Math.sin(frame * 0.18) * 0.25;
+        for (let dx = 0; dx < m.w; dx += 2) this.addPx(m.x + dx, m.y - 1, 0.9 * g, 0.75 * g, 0.2 * g);
+      } else if (m.kind === 'brazier' && m.state === 0) {
+        // dark bowls hint at what they want
+        if (frame % 40 < 20) this.addPx(m.x, m.y - 2, 0.25, 0.12, 0.04);
+      }
+    }
+
+    for (const v of runtime.runeVaults) {
+      if (v.rx < camX - 8 || v.rx > camX + VIEW_W + 8 || v.ry < camY - 8 || v.ry > camY + VIEW_H + 8)
+        continue;
+      const p = v.active ? 0.9 : 0.55 + Math.sin(frame * 0.07 + v.rx) * 0.35;
+      const cr = v.active ? 0.2 * bst * p : 0.7 * bst * p;
+      const cg = v.active ? 0.9 * bst * p : 0.25 * bst * p;
+      const cb = v.active ? 0.4 * bst * p : 0.95 * bst * p;
+      // a small floating glyph above the pedestal
+      this.setPx(v.rx, v.ry, cr, cg, cb);
+      this.setPx(v.rx - 1, v.ry + 1, cr * 0.7, cg * 0.7, cb * 0.7);
+      this.setPx(v.rx + 1, v.ry + 1, cr * 0.7, cg * 0.7, cb * 0.7);
+      this.setPx(v.rx, v.ry - 1, cr * 0.8, cg * 0.8, cb * 0.8);
+      this.setPx(v.rx, v.ry + 2, cr * 0.5, cg * 0.5, cb * 0.5);
+    }
   }
 
   /** Bobbing treasure glyphs + the swirling exit gate (all self-lit). */

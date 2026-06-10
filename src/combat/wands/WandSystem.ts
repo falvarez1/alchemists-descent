@@ -189,8 +189,12 @@ export class WandSystem implements WandsApi {
    * fire() calls this with the wand tip + player aim; the Projectiles.ts
    * trigger-payload consumer calls it with the impact point.
    */
-  castActionAt(ctx: Ctx, action: CastAction, x: number, y: number, angle: number): void {
+  castActionAt(ctx: Ctx, actionIn: CastAction, x: number, y: number, angle: number): void {
     const frame = this.wands[this._active].frame;
+    // Power Surge boon: +25% on every cast's damage multiplier.
+    const action: CastAction = ctx.player.perks.might
+      ? { ...actionIn, dmgMul: Math.min(4, actionIn.dmgMul * 1.25) }
+      : actionIn;
     const jitter = (): number => angle + (Math.random() * 2 - 1) * (frame.spread + action.spreadAdd);
     const sp = ctx.params.spells;
     ctx.telemetry.count('card.cast.' + action.card);
@@ -232,6 +236,8 @@ export class WandSystem implements WandsApi {
       if (hit) {
         ctx.spells.erodeAt(hit.x, hit.y, action.dmgMul > 1 ? Math.round(4 * 1.7) : 4);
         if (ctx.state.frameCount % 3 === 0) ctx.particles.burst(hit.x, hit.y, 2, Cell.Smoke, smokeColor, 0.7);
+        // The excavation beam can strike rune glyphs
+        ctx.events.emit('structureStrike', { x: hit.x, y: hit.y, radius: 7 });
       }
     } else if (action.card === 'warp') {
       const a = jitter();
@@ -358,9 +364,11 @@ export class WandSystem implements WandsApi {
   /* ---------------- per-frame upkeep ---------------- */
 
   update(ctx: Ctx): void {
+    // Mana Font boon: the old ones keep the tanks topped up 60% faster.
+    const regenK = ctx.player.perks.manafont ? 1.6 : 1;
     for (const w of this.wands) {
       if (w.cooldown > 0) w.cooldown--;
-      w.mana = Math.min(w.frame.manaMax, w.mana + w.frame.manaRegen);
+      w.mana = Math.min(w.frame.manaMax, w.mana + w.frame.manaRegen * regenK);
     }
 
     // Flame card stream: spray 4 fire particles per burst frame, same recipe

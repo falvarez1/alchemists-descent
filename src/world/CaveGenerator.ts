@@ -7,7 +7,9 @@ import type {
   ExitPortal,
   LevelDef,
   LevelExitWell,
+  Mechanism,
   Pickup,
+  RuneVault,
   Waystone,
   WorldGenApi,
 } from '@/core/types';
@@ -626,6 +628,8 @@ export class WorldGen implements WorldGenApi {
     cauldron: { x: number; y: number } | null;
     pickups: Pickup[];
     portal: ExitPortal | null;
+    mechanisms: Mechanism[];
+    runeVaults: RuneVault[];
   } {
     // 1) Base caves for the level's biome, replayable from the seed.
     ctx.state.currentBiome = def.biome;
@@ -909,7 +913,7 @@ export class WorldGen implements WorldGenApi {
 
     // 8) Landmark structures (upgrade-port meta layer): the exit portal above
     //    the seal plug, the golden key vault, hearts, tomes, chests, gold.
-    const { pickups, portal } = placeStructures(
+    const { pickups, portal, mechanisms, runeVaults } = placeStructures(
       ctx,
       this.rng,
       graph,
@@ -927,6 +931,8 @@ export class WorldGen implements WorldGenApi {
       cauldron,
       pickups,
       portal,
+      mechanisms,
+      runeVaults,
     };
   }
 }

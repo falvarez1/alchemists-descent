@@ -452,10 +452,10 @@ export class Projectiles implements ProjectilesApi {
               ctx.playerCtl.damage(6, p.vx * 0.8, -0.6);
               ctx.player.status.frozen = Math.max(ctx.player.status.frozen, 120);
             } else if (p.type === 'acidglob') {
-              ctx.playerCtl.damage(8, p.vx * 1.3, -1.6);
+              ctx.playerCtl.damage(8, p.vx * 1.3, -1.6, 'acid');
               splashLiquid(ctx, p.x, p.y, Cell.Acid, acidColor, 3);
             } else {
-              ctx.playerCtl.damage(11, p.vx * 1.7, -2.3);
+              ctx.playerCtl.damage(11, p.vx * 1.7, -2.3, 'explosion');
               ctx.explosions.trigger(p.x, p.y, 10);
             }
             projectiles.splice(i, 1);
@@ -646,7 +646,11 @@ export class Projectiles implements ProjectilesApi {
           }
           // Trigger card (Wave D): a terminal terrain impact releases any
           // nested cast payload at the hit point.
-          if (removed && !p.hostile) releaseTriggered(ctx, p);
+          if (removed && !p.hostile) {
+            releaseTriggered(ctx, p);
+            // Rune glyphs and levers answer to projectile strikes too
+            ctx.events.emit('structureStrike', { x: gx, y: gy, radius: 7 });
+          }
           break;
         }
       }

@@ -1,9 +1,20 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { clamp, hash2 } from '@/core/math';
 import type { Rng } from '@/core/rng';
-import type { Ctx, ExitPortal, LevelDef, Pickup, RegionGraph, Waystone } from '@/core/types';
+import type {
+  Ctx,
+  ExitPortal,
+  LevelDef,
+  Mechanism,
+  Pickup,
+  RegionGraph,
+  RuneVault,
+  Waystone,
+} from '@/core/types';
+import { makeBrazier, makeDoor, makeLever, makePlate } from '@/game/Mechanisms';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { Cell } from '@/sim/CellType';
-import { goldColor, stoneColor } from '@/sim/colors';
+import { EMPTY_COLOR, goldColor, packRGB, stoneColor } from '@/sim/colors';
 import type { CardId } from '@/core/types';
 
 /**
@@ -28,9 +39,16 @@ export function placeStructures(
   exit: { x: number; sealY: number },
   waystones: Waystone[],
   spawn: { x: number; y: number },
-): { pickups: Pickup[]; portal: ExitPortal | null } {
+): {
+  pickups: Pickup[];
+  portal: ExitPortal | null;
+  mechanisms: Mechanism[];
+  runeVaults: RuneVault[];
+} {
   const w = ctx.world;
   const pickups: Pickup[] = [];
+  const mechanisms: Mechanism[] = [];
+  const runeVaults: RuneVault[] = [];
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void => {
     for (let dy = -ry; dy <= ry; dy++) {
@@ -172,5 +190,148 @@ export function placeStructures(
     );
   }
 
-  return { pickups, portal };
+  // ---- Mechanism-gated treasure vault: a sealed room whose metal door obeys
+  //      a pressure plate, a lever, or a fire brazier placed just outside ----
+  const FLOOR_BAND = HEIGHT - 52;
+  for (let vaultIdx = 0; vaultIdx < 1 + (rng.next() < 0.5 ? 1 : 0); vaultIdx++) {
+    let vx = 80 + Math.floor(rng.next() * (WIDTH - 160));
+    for (let a = 0; a < 12; a++) {
+      if (Math.abs(vx - spawn.x) > 220 && Math.abs(vx - portalX) > 160) break;
+      vx = 80 + Math.floor(rng.next() * (WIDTH - 160));
+    }
+    const vy = Math.floor(HEIGHT * (0.3 + rng.next() * 0.42));
+    // chamber: carved room with a stone floor
+    carvePocket(vx, vy + 2, 13, 9);
+    for (let dx = -13; dx <= 13; dx++) {
+      const Y = vy + 9;
+      if (w.inBounds(vx + dx, Y) && w.types[w.idx(vx + dx, Y)] === Cell.Empty) {
+        const i = w.idx(vx + dx, Y);
+        w.types[i] = Cell.Stone;
+        w.colors[i] = stoneColor();
+      }
+    }
+    // loot
+    pickups.push(makePickup('chest', vx, vy + 8));
+    if (rng.next() < 0.5) pickups.push(makePickup('heart', vx + 6, vy + 8));
+
+    // entry corridor on a random side, sealed with a metal door
+    const side = rng.next() < 0.5 ? -1 : 1;
+    const doorX = vx + side * 13;
+    for (let s = 0; s < 16; s++) {
+      carvePocket(doorX + side * s, vy + 4 + Math.floor(Math.sin(s * 0.4) * 2), 5, 5);
+    }
+    const door = makeDoor(ctx, mechanisms, Math.min(doorX, doorX + side * 2) - 1, vy - 2, 4, 12);
+    // mechanism alternates: plate puzzles and lever/brazier puzzles
+    const mechRoll = (vaultIdx + (rng.next() < 0.5 ? 0 : 1)) % 3;
+    const mx = Math.floor(clamp(doorX + side * 22, 8, WIDTH - 9));
+    const my = settleY(mx, vy - 6);
+    if (mechRoll === 0) makePlate(w, mechanisms, Math.floor(clamp(mx - 3, 4, WIDTH - 12)), my + 1, 7, door);
+    else if (mechRoll === 1) makeLever(mechanisms, mx, my, door);
+    else makeBrazier(w, mechanisms, mx, my, door);
+  }
+
+  // ---- Sealed rune vaults: metal strongrooms opened by a distant rune glyph ----
+  let vPlaced = 0,
+    vTries = 0;
+  const vaultGoal = 1 + (rng.next() < 0.6 ? 1 : 0);
+  while (vPlaced < vaultGoal && vTries < 12000) {
+    vTries++;
+    const vx = 40 + Math.floor(rng.next() * (WIDTH - 80));
+    const vy = 90 + Math.floor(rng.next() * (FLOOR_BAND - 150));
+    // need a MOSTLY solid region for the shell (>=90% rock, never overlap metal)
+    let rock = 0,
+      cells = 0,
+      collide = false;
+    for (let dy = -9; dy <= 9 && !collide; dy++) {
+      for (let dx = -12; dx <= 12; dx++) {
+        if (!w.inBounds(vx + dx, vy + dy)) {
+          collide = true;
+          break;
+        }
+        const t = w.types[w.idx(vx + dx, vy + dy)];
+        if (t === Cell.Metal) {
+          collide = true;
+          break;
+        }
+        cells++;
+        if (t === Cell.Wall) rock++;
+      }
+    }
+    if (collide || rock / cells < 0.9) continue;
+    // shell: metal box, interior hollow, stone door on the left wall
+    for (let dy = -8; dy <= 8; dy++) {
+      for (let dx = -11; dx <= 11; dx++) {
+        const ax2 = vx + dx,
+          ay2 = vy + dy;
+        const i = w.idx(ax2, ay2);
+        const edge = Math.abs(dx) > 9 || Math.abs(dy) > 6;
+        if (edge) {
+          w.types[i] = Cell.Metal;
+          const m2 = 0.8 + hash2(ax2, ay2, 99) * 0.3;
+          w.colors[i] = packRGB(Math.floor(96 * m2), Math.floor(102 * m2), Math.floor(112 * m2));
+        } else {
+          w.types[i] = Cell.Empty;
+          w.colors[i] = EMPTY_COLOR;
+        }
+      }
+    }
+    const doorCells: Array<[number, number]> = [];
+    for (let dy = -4; dy <= 6; dy++) {
+      for (let dx = -11; dx <= -10; dx++) {
+        const ax2 = vx + dx,
+          ay2 = vy + dy;
+        const i = w.idx(ax2, ay2);
+        w.types[i] = Cell.Stone;
+        w.colors[i] = stoneColor();
+        doorCells.push([ax2, ay2]);
+      }
+    }
+    // loot inside
+    pickups.push(makePickup('chest', vx + 3, vy + 5));
+    pickups.push(
+      makePickup('potion', vx - 3, vy + 5, {
+        potion: POTION_KINDS[Math.floor(rng.next() * POTION_KINDS.length)],
+      }),
+    );
+    if (rng.next() < 0.5) pickups.push(makePickup('heart', vx, vy + 5));
+    for (let g3 = 0; g3 < 14; g3++) {
+      const gx2 = vx - 6 + Math.floor(rng.next() * 13),
+        gy2 = vy + 5 + Math.floor(rng.next() * 2);
+      if (w.inBounds(gx2, gy2) && w.types[w.idx(gx2, gy2)] === Cell.Empty) {
+        const i = w.idx(gx2, gy2);
+        w.types[i] = Cell.Gold;
+        w.colors[i] = goldColor();
+      }
+    }
+    // the rune switch: a marked pedestal 70-240 cells away in open cave
+    let rx = -1,
+      ry = -1,
+      rTries = 0;
+    while (rTries < 3000) {
+      rTries++;
+      const cand = 14 + Math.floor(rng.next() * (WIDTH - 28));
+      const candY = 40 + Math.floor(rng.next() * (FLOOR_BAND - 60));
+      const dist = Math.abs(cand - vx) + Math.abs(candY - vy);
+      if (dist < 70 || dist > 240) continue;
+      if (
+        w.types[w.idx(cand, candY)] !== Cell.Empty ||
+        w.types[w.idx(cand, candY + 1)] !== Cell.Wall
+      )
+        continue;
+      rx = cand;
+      ry = candY;
+      break;
+    }
+    if (rx < 0) continue;
+    // pedestal
+    for (let dx = -2; dx <= 2; dx++) {
+      const i = w.idx(rx + dx, ry);
+      w.types[i] = Cell.Metal;
+      w.colors[i] = packRGB(88, 94, 104);
+    }
+    runeVaults.push({ rx, ry: ry - 2, door: doorCells, active: false });
+    vPlaced++;
+  }
+
+  return { pickups, portal, mechanisms, runeVaults };
 }

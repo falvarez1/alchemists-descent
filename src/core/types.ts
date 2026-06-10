@@ -79,6 +79,10 @@ export interface PlayerState {
   _svx: number;
   _svy: number;
   status: EntityStatus;
+  /** One-time Sanctum boons. */
+  perks: Partial<Record<PerkId, true>>;
+  /** Teleportium contact cooldown (frames). */
+  tpCool: number;
 }
 
 export const PLAYER_HALF_W = 4;
@@ -325,6 +329,8 @@ export interface GameStateData {
   playerSpawned: boolean;
   /** Seed for the current world generation (drives the seeded RNG). */
   worldSeed: number;
+  /** Gameplay frozen behind a modal (Sanctum); rendering continues. */
+  paused: boolean;
 }
 
 export interface Keys {
@@ -405,6 +411,12 @@ export interface AudioApi {
   learn(): void;
   /** Potion gulp: three descending sweeps. */
   drinkPotion(): void;
+  /** Lever clack (two square clicks). */
+  lever(): void;
+  /** Heavy metal door grinding open or shut. */
+  doorGrind(): void;
+  /** A brazier catching: whoosh + rising triangle. */
+  brazier(): void;
   coin(): void;
   hurt(): void;
   jump(): void;
@@ -474,7 +486,8 @@ export interface PhysicsApi {
 }
 
 export interface PlayerControlApi {
-  damage(amount: number, kx: number, ky: number): void;
+  /** src tags ('explosion' | 'fire' | 'acid' | 'toxic' | 'impact') drive boon resistances. */
+  damage(amount: number, kx: number, ky: number, src?: string): void;
   kill(): void;
   respawn(): void;
   findSpawnPoint(): { x: number; y: number };
@@ -549,6 +562,8 @@ export interface WorldGenApi {
     cauldron: { x: number; y: number } | null;
     pickups: Pickup[];
     portal: ExitPortal | null;
+    mechanisms: Mechanism[];
+    runeVaults: RuneVault[];
   };
 }
 
@@ -605,25 +620,28 @@ export interface Mechanism {
   kind: MechanismKind;
   x: number;
   y: number;
+  /** Door/plate width in cells (doors also use h). */
   w: number;
   h: number;
-  /** Generic state: lever 0/1, plate hold ticks, brazier lit 0/1, door rows retracted. */
+  /** door: open 0/1 · lever: on 0/1 · brazier: lit 0/1 · plate: latch frames left. */
   state: number;
+  /** Plate weight currently on the sill (transient, not persisted semantics). */
+  pressed?: boolean;
   /** Door id driven by this trigger; -1 for doors themselves / unlinked. */
   targetId: number;
 }
 
-export interface RuneSwitch {
-  x: number;
-  y: number;
-  struck: boolean;
-}
-
-/** A sealed strongroom that opens when all its remote rune switches are struck. */
+/**
+ * A sealed metal strongroom whose stone door dissolves when its distant rune
+ * glyph is struck by any blast, projectile, or dig beam.
+ */
 export interface RuneVault {
-  runes: RuneSwitch[];
-  doorId: number;
-  opened: boolean;
+  /** The floating rune glyph (strike target), world coords. */
+  rx: number;
+  ry: number;
+  /** Remaining stone door cells, dissolved bottom-up a few per frame. */
+  door: Array<[number, number]>;
+  active: boolean;
 }
 
 export type PickupKind = 'goldpile' | 'heart' | 'tome' | 'chest' | 'potion' | 'key';
@@ -660,10 +678,12 @@ export type PerkId =
   | 'goldmagnet';
 
 export interface MechanismsApi {
-  /** Plate/brazier/door physics each frame (play mode, current level). */
+  /** Plate/brazier/door physics + rune-vault dissolution each frame (play mode). */
   update(ctx: Ctx): void;
-  /** Concussive strike test against levers + rune switches. */
+  /** Concussive strike test against levers + rune glyphs. */
   strike(ctx: Ctx, x: number, y: number, radius: number): void;
+  /** E-key interaction: flip the nearest lever within reach; true if one flipped. */
+  interact(ctx: Ctx): boolean;
 }
 
 export interface PickupsApi {
@@ -860,6 +880,10 @@ export interface LevelRuntime {
   portal: ExitPortal | null;
   /** The golden key has been collected in this level. */
   keyTaken: boolean;
+  /** Doors/plates/levers/braziers guarding this level's treasure. */
+  mechanisms: Mechanism[];
+  /** Sealed strongrooms with remote rune switches. */
+  runeVaults: RuneVault[];
 }
 
 export interface LevelsApi {
@@ -919,4 +943,6 @@ export interface Ctx {
   levels: LevelsApi;
   wands: WandsApi;
   pickups: PickupsApi;
+  mechanisms: MechanismsApi;
+  sanctum: SanctumApi;
 }

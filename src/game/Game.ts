@@ -15,6 +15,7 @@ import { createPlayer, PlayerControl } from '@/entities/Player';
 import { Physics } from '@/entities/physics';
 import { Brewing } from '@/game/Brewing';
 import { Levels } from '@/game/Levels';
+import { Mechanisms } from '@/game/Mechanisms';
 import { Pickups } from '@/game/Pickups';
 import { createWaveState, WaveDirector } from '@/game/WaveDirector';
 import { InputManager } from '@/input/InputManager';
@@ -34,6 +35,7 @@ import { Hud } from '@/ui/Hud';
 import { Inspector } from '@/ui/Inspector';
 import { LevelStore } from '@/ui/LevelStore';
 import { Minimap } from '@/ui/Minimap';
+import { Sanctum } from '@/ui/Sanctum';
 import { PerfHud } from '@/ui/PerfHud';
 import { Toolbar } from '@/ui/Toolbar';
 import { WandBench } from '@/ui/WandBench';
@@ -71,6 +73,7 @@ export class Game {
       brushSize: 6,
       playerSpawned: false,
       worldSeed: randomSeed(),
+      paused: false,
     };
     const input: InputState = {
       keys: { left: false, right: false, jump: false, down: false },
@@ -121,6 +124,8 @@ export class Game {
     ctx.levels = new Levels(ctx);
     ctx.wands = new WandSystem(ctx);
     ctx.pickups = new Pickups();
+    ctx.mechanisms = new Mechanisms(ctx);
+    ctx.sanctum = new Sanctum(ctx);
     this.ctx = ctx;
 
     ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
@@ -169,9 +174,10 @@ export class Game {
     const tFrame = performance.now();
     ctx.state.frameCount++;
 
-    // Impact hitstop: gameplay freezes for a few frames, rendering continues.
-    const frozen = ctx.fx.hitstop > 0;
-    if (frozen) ctx.fx.hitstop--;
+    // Impact hitstop freezes gameplay for a beat; the Sanctum pauses it
+    // outright. Rendering continues through both.
+    const frozen = ctx.fx.hitstop > 0 || ctx.state.paused;
+    if (ctx.fx.hitstop > 0 && !ctx.state.paused) ctx.fx.hitstop--;
 
     ctx.camera.update(ctx);
     ctx.camera.updateSimBounds(ctx.world);
@@ -189,6 +195,7 @@ export class Game {
       // transitions, waystones, and the explored mask.
       ctx.levels.update(ctx);
       ctx.pickups.update(ctx);
+      ctx.mechanisms.update(ctx);
       this.brewing.update(ctx);
       ctx.wands.update(ctx);
       ctx.particles.update(ctx);

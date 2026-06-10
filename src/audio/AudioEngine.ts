@@ -104,6 +104,12 @@ export class AudioEngine implements AudioApi {
 
   drinkPotion(): void { this.tone(420, 280, 0.1, 'sine', 0.14); setTimeout(() => this.tone(520, 340, 0.1, 'sine', 0.13), 90); setTimeout(() => this.tone(640, 400, 0.12, 'sine', 0.12), 180); }
 
+  lever(): void { if (!this.throttled('lever', 150)) return; this.tone(360, 360, 0.04, 'square', 0.12); setTimeout(() => this.tone(220, 220, 0.05, 'square', 0.1), 60); }
+
+  doorGrind(): void { if (!this.throttled('door', 200)) return; this.noiseBurst(0.35, 240, 0.22); this.tone(60, 45, 0.35, 'sawtooth', 0.12); }
+
+  brazier(): void { this.noiseBurst(0.3, 700, 0.18); this.tone(220, 480, 0.3, 'triangle', 0.14); }
+
   flame(): void {
     if (!this.throttled('flame', 70)) return;
     this.noiseBurst(0.22, 550 + Math.random() * 300, 0.18);          // body of the roar

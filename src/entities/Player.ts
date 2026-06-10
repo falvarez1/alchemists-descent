@@ -52,6 +52,8 @@ export function createPlayer(): PlayerState {
     _svx: 0,
     _svy: 0,
     status: createDefaultStatus(),
+    perks: {},
+    tpCool: 0,
   };
 }
 
@@ -78,13 +80,18 @@ export class PlayerControl implements PlayerControlApi {
   constructor(private ctx: Ctx) {}
 
   /** Original: damagePlayer(amount, kx, ky) — lines 1565-1575. */
-  damage(amount: number, kx: number, ky: number): void {
+  damage(amount: number, kx: number, ky: number, src?: string): void {
     const ctx = this.ctx;
     const player = ctx.player;
     if (player.dead || player.invuln > 0) return;
+    // Sanctum boon resistances by damage source
+    if (src === 'explosion' && player.perks.ironhide) amount *= 0.4;
+    if (src === 'fire' && player.perks.flameward) amount *= 0.4;
+    if ((src === 'toxic' || src === 'acid') && player.perks.toxinward) amount *= 0.25;
     // Stoneskin (Wave C potion): half damage, knockback shrugged off entirely
     const stoneskinned = player.status.stoneskin > 0;
     if (stoneskinned) amount *= 0.5;
+    amount = Math.max(0.5, amount);
     player.hp -= amount;
     if (!stoneskinned) {
       player.vx += kx || 0;
@@ -220,7 +227,13 @@ export class PlayerControl implements PlayerControlApi {
     // decide what you ARE — wet, oiled, burning, frozen, electrified.
     // Sampled every 2nd frame; status DPS bypasses invuln like hazard DPS.
     if (ctx.state.frameCount % 2 === 0) {
-      const { damage, slowFactor } = sampleAndTickStatus(ctx, player, 4, 17);
+      const { damage, slowFactor } = sampleAndTickStatus(
+        ctx,
+        player,
+        4,
+        17,
+        player.perks.flameward ? { burning: true } : undefined,
+      );
       this.statusSlow = slowFactor;
       if (damage > 0) {
         player.hp -= damage;
@@ -235,9 +248,12 @@ export class PlayerControl implements PlayerControlApi {
     // DRINK (X held): gulp the flask's contents — a potion is real cells swallowed
     if (ctx.input.drinkHeld) this.drink(ctx);
 
-    // air control: stronger mid-air acceleration for Ori-like corrections
-    const accel = (player.grounded ? 0.5 : 0.575) * this.statusSlow,
-      maxRun = 2.6;
+    // air control: stronger mid-air acceleration for Ori-like corrections.
+    // Swift potion (x1.5) and Swift Soles boon (x1.18) stack on top.
+    const speedK =
+      (player.status.swift > 0 ? 1.5 : 1) * (player.perks.swiftfoot ? 1.18 : 1);
+    const accel = (player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK,
+      maxRun = 2.6 * speedK;
     if (keys.left) {
       player.vx -= accel;
       player.facing = -1;
@@ -249,22 +265,54 @@ export class PlayerControl implements PlayerControlApi {
     if (!keys.left && !keys.right) player.vx *= 0.72;
     player.vx = clamp(player.vx, -maxRun, maxRun);
 
-    // Sample body cells for liquid and hazards
+    // Sample body cells for liquid and hazards (Pyro Skin / Toxicology resist)
+    if (player.tpCool > 0) player.tpCool--;
+    const pyro = player.perks.flameward ? 0.4 : 1;
+    const toxi = player.perks.toxinward ? 0.25 : 1;
     let liquidCount = 0,
-      hazardDmg = 0;
+      hazardDmg = 0,
+      healTouch = 0,
+      tpTouch = false;
     for (let dy = 0; dy < 17; dy += 2) {
       for (let dx = -4; dx <= 4; dx += 2) {
         const X = player.x + dx,
           Y = player.y - dy;
         if (!world.inBounds(X, Y)) continue;
-        const c = world.types[world.idx(X, Y)];
+        const ci2 = world.idx(X, Y);
+        const c = world.types[ci2];
         if (isLiquid(c)) liquidCount++;
-        if (c === Cell.Fire) hazardDmg += 0.22;
-        if (c === Cell.Lava) hazardDmg += 0.62;
-        if (c === Cell.Acid) hazardDmg += 0.32;
+        if (c === Cell.Fire) hazardDmg += 0.22 * pyro;
+        if (c === Cell.Lava) hazardDmg += 0.62 * pyro;
+        if (c === Cell.Acid) hazardDmg += 0.32 * toxi;
+        if (c === Cell.Toxic) hazardDmg += 0.2 * toxi;
+        if (c === Cell.Healium) {
+          healTouch += 0.14;
+          // consumed as it heals
+          if (Math.random() < 0.12) {
+            world.types[ci2] = Cell.Empty;
+            world.colors[ci2] = EMPTY_COLOR;
+          }
+        }
+        if (c === Cell.Teleportium) tpTouch = true;
       }
     }
     player.inLiquid = liquidCount >= 13;
+    if (healTouch > 0 && player.hp < player.maxHp) {
+      player.hp = Math.min(player.maxHp, player.hp + healTouch);
+      if (ctx.state.frameCount % 10 === 0) {
+        ctx.particles.spawn(
+          player.x + (Math.random() - 0.5) * 6,
+          player.y - 8 - Math.random() * 8,
+          (Math.random() - 0.5) * 0.3,
+          -0.5 - Math.random() * 0.4,
+          null,
+          packRGB(255, 150, 195),
+          24,
+          { grav: -0.01, glow: 2.0 },
+        );
+      }
+    }
+    if (tpTouch && player.tpCool <= 0) this.randomTeleport(ctx);
     if (hazardDmg > 0) {
       player.hp -= hazardDmg;
       if (ctx.state.frameCount % 14 === 0) {
@@ -304,7 +352,8 @@ export class PlayerControl implements PlayerControlApi {
         const t = Math.min(this.levitFrames / 10, 1);
         player.vy -= 0.4 + 0.22 * (1 - (1 - t) * (1 - t));
         // Levity potion (Wave C): levitation burns no levit while the timer runs
-        if (player.status.levity <= 0) player.levit -= 1.15;
+        if (player.status.levity <= 0)
+          player.levit -= 1.15 * (player.perks.featherweight ? 0.55 : 1);
         this.levitFrames++;
         ctx.audio.levitate();
         if (ctx.state.frameCount % 3 === 0) {
@@ -442,6 +491,35 @@ export class PlayerControl implements PlayerControlApi {
     s.count -= sips;
     if (s.count === 0) s.material = null;
     if (ctx.state.frameCount % 10 === 0) ctx.audio.tone(300, 180, 0.08, 'sine', 0.12);
+  }
+
+  /**
+   * Teleportium contact: the violet liquid flings the alchemist somewhere
+   * else entirely. 120-frame cooldown so a pool doesn't strobe-teleport.
+   */
+  private randomTeleport(ctx: Ctx): void {
+    const player = ctx.player;
+    player.tpCool = 120;
+    ctx.particles.burst(player.x, player.y - 8, 18, null, () => packRGB(185, 110, 255), 2.6, {
+      glow: 2.4,
+      grav: 0,
+    });
+    for (let a = 0; a < 60; a++) {
+      const tx = 20 + Math.floor(Math.random() * (WIDTH - 40));
+      const ty = 24 + Math.floor(Math.random() * (HEIGHT - 60));
+      if (ctx.physics.entityFree(tx, ty, 4, 17)) {
+        player.x = tx;
+        player.y = ty;
+        player.vx = 0;
+        player.vy = 0;
+        ctx.particles.burst(tx, ty - 8, 18, null, () => packRGB(185, 110, 255), 2.6, {
+          glow: 2.4,
+          grav: 0,
+        });
+        ctx.audio.tone(660, 1320, 0.18, 'sine', 0.18);
+        return;
+      }
+    }
   }
 
   /** Original: updatePlayerAnimation() — lines 1723-1760. */

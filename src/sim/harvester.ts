@@ -8,7 +8,8 @@ export function runHarvesterField(ctx: Ctx): void {
   // Build mode: cursor magnet. Play mode: gold flies to the wizard.
   if (ctx.state.mode === 'play') {
     if (ctx.player.dead) return;
-    const rad = 30,
+    // Gold Sense boon: the pull reaches much further
+    const rad = ctx.player.perks.goldmagnet ? 48 : 30,
       mx = Math.round(ctx.player.x),
       my = Math.round(ctx.player.y) - 7;
     for (let dy = -rad; dy <= rad; dy++) {

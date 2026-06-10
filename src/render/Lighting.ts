@@ -264,6 +264,15 @@ export class Lighting implements LightField {
         const lit = runtime.keyTaken ? 1.5 : 0.6;
         this.seedLight(runtime.portal.x, runtime.portal.y - 4, 0.55 * throb * lit, 0.2 * throb * lit, 0.9 * throb * lit);
       }
+      // Rune glyphs glow violet until struck, then triumphant green
+      for (const v of runtime.runeVaults) {
+        if (v.active) this.seedLight(v.rx, v.ry, 0.15, 0.6, 0.28);
+        else this.seedLight(v.rx, v.ry, 0.45, 0.16, 0.6);
+      }
+      // Lit braziers cast warmth past their own flames (fire cells help too)
+      for (const m of runtime.mechanisms) {
+        if (m.kind === 'brazier' && m.state === 1) this.seedLight(m.x, m.y - 2, 0.8, 0.5, 0.12);
+      }
     }
     // Living light: golem cores pulse (synced to the sprite), imps smoulder,
     // wisps carry their own cold halo, mage hands throb purple
@@ -361,8 +370,11 @@ export class Lighting implements LightField {
       // layer never depends on the spells system.
       const tipX = ctx.player.x + Math.cos(ctx.player.aimAngle) * 9;
       const tipY = ctx.player.y - 9 + Math.sin(ctx.player.aimAngle) * 9;
-      const s = 4.6 * this.wandFlicker;
-      this.raycastLight(tipX, tipY, s, s * 0.84, s * 0.6, 56);
+      // Torchbearer (tonic or boon): brighter, steadier, longer wand light
+      const torch = ctx.player.status.torch > 0 || ctx.player.perks.torchbearer === true;
+      const flick = torch ? Math.max(this.wandFlicker, 1.05) : this.wandFlicker;
+      const s = (torch ? 5.6 : 4.6) * flick;
+      this.raycastLight(tipX, tipY, s, s * 0.84, s * 0.6, torch ? 76 : 56);
     }
   }
 

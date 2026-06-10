@@ -155,6 +155,9 @@ export class Enemies implements EnemyControlApi {
       ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(Math.random() * 3));
       this.dropBounty(e, def);
       this.maybeDropPotion(e);
+      if (ctx.player.perks.vampirism && !ctx.player.dead) {
+        ctx.player.hp = Math.min(ctx.player.maxHp, ctx.player.hp + 2);
+      }
       ctx.waves.kills++;
       return;
     }
@@ -202,6 +205,10 @@ export class Enemies implements EnemyControlApi {
     }
     this.dropBounty(e, def);
     this.maybeDropPotion(e);
+    // Vampirism boon: every kill feeds the alchemist
+    if (ctx.player.perks.vampirism && !ctx.player.dead) {
+      ctx.player.hp = Math.min(ctx.player.maxHp, ctx.player.hp + 2);
+    }
     ctx.audio.squelch();
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.012, 0.04);
     ctx.waves.kills++;

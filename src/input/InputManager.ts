@@ -162,7 +162,12 @@ export class InputManager {
       ctx.input.keys.jump = true;
     } else if (e.code === 'KeyS' || e.code === 'ArrowDown') ctx.input.keys.down = true;
     else if (e.code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
-    else if (e.code === 'KeyE' && ctx.state.mode === 'play') ctx.input.siphonHeld = true;
+    else if (e.code === 'KeyE' && ctx.state.mode === 'play') {
+      // Context-sensitive E: a lever in reach flips on the press; otherwise
+      // (and additionally) the hold starts the flask siphon.
+      if (!e.repeat) ctx.mechanisms.interact(ctx);
+      ctx.input.siphonHeld = true;
+    }
     else if (e.code === 'KeyQ' && ctx.state.mode === 'play') ctx.input.pourHeld = true;
     else if (e.code === 'KeyX' && ctx.state.mode === 'play') ctx.input.drinkHeld = true;
     else if (e.code === 'KeyF' && ctx.state.mode === 'play' && !ctx.player.dead) ctx.flask.throwFlask(ctx);
