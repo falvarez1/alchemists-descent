@@ -420,6 +420,8 @@ export class Levels implements LevelsApi {
       keyTaken: blob.keyTaken,
       mechanisms: blob.mechanisms,
       runeVaults: blob.runeVaults,
+      // Alive-or-dead truth lives in blob.enemies; the arena marker is static.
+      boss: pristine.boss,
     };
   }
 
@@ -542,7 +544,9 @@ export class Levels implements LevelsApi {
         ? runtime.keyTaken
           ? 'REACH THE PORTAL'
           : 'FIND THE GOLDEN KEY'
-        : 'THE DEPTHS END HERE — SURVIVE',
+        : runtime.boss
+          ? 'SLAY THE KILN COLOSSUS'
+          : 'THE DEPTHS END HERE — SURVIVE',
     });
 
     window.setTimeout(() => {
@@ -563,12 +567,14 @@ export class Levels implements LevelsApi {
     ctx.enemies.length = 0;
 
     const seed = (this.expeditionSeed ^ this.hashString(def.id)) >>> 0;
-    const { exit, waystones, spawn, cauldron, pickups, portal, mechanisms, runeVaults } =
+    const { exit, waystones, spawn, cauldron, pickups, portal, mechanisms, runeVaults, boss } =
       ctx.worldgen.generateLevel(ctx, def, seed);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, { x: exit.x, y: exit.sealY - 12 });
     this.placePopulation(ctx, def, spawn);
+    // The bottom of the run: the Kiln Colossus waits in its arena.
+    if (boss) ctx.enemyCtl.spawn('colossus', boss.x, boss.y);
     this.litOrder.set(def.id, []);
 
     return {
@@ -588,6 +594,7 @@ export class Levels implements LevelsApi {
       keyTaken: false,
       mechanisms,
       runeVaults,
+      boss,
     };
   }
 

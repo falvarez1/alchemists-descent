@@ -342,6 +342,78 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       PE(-3 + legA, -2, jf * 0.7, jf * 0.35, 0.05);
       PE(3 + legB, -2, jf * 0.7, jf * 0.35, 0.05);
     }
+  } else if (e.kind === 'colossus') {
+    // --- THE KILN COLOSSUS: a walking furnace of cracked basalt ---
+    const cx2 = e.x + (e.fx || 0);
+    const cdrv = cx2 - (e._px === undefined ? cx2 : e._px);
+    e._px = cx2;
+    e._svx = (e._svx || 0) * 0.55 + cdrv * 0.45;
+    const cWalking = e.grounded && Math.abs(e._svx) > 0.05;
+    if (cWalking) e.stride += Math.abs(e._svx) * 0.16;
+    const cst = e.stride;
+    const cLegA = e.grounded ? Math.round(Math.sin(cst) * 3) : 1;
+    const cLegB = -cLegA;
+    const doused = e.status.wet > 0;
+    // doused basalt runs dark; a healthy kiln glows from every crack
+    const heat = doused ? 0.25 : 0.7 + Math.sin(frameCount * 0.09 + e.bobPhase) * 0.3;
+
+    const R: RGB = [0.3, 0.26, 0.27], RD: RGB = [0.18, 0.15, 0.16], RL: RGB = [0.42, 0.36, 0.36];
+
+    // legs: massive striding pillars
+    for (let dy = 0; dy <= 7; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        P(dx - 6 + cLegA, dy, ...(dx === -2 ? RD : R));
+        P(dx + 6 + cLegB, dy, ...(dx === 2 ? RD : R));
+      }
+    }
+    // hips + torso slab
+    for (let dx = -8; dx <= 8; dx++) P(dx, 8, ...R);
+    for (let dy = 9; dy <= 19; dy++) {
+      for (let dx = -9; dx <= 9; dx++) {
+        P(dx, dy, ...(Math.abs(dx) >= 8 ? RD : R));
+      }
+    }
+    // molten cracks: deterministic zig-zags that pulse with the furnace
+    for (let k = 0; k < 5; k++) {
+      const sxx = ((k * 37) % 15) - 7;
+      for (let dy = 0; dy < 4; dy++) {
+        const wob = (k + dy) % 2 === 0 ? 1 : 0;
+        PE(sxx + wob, 10 + k + dy, heat * boost * 0.28, heat * boost * 0.12, 0.02);
+      }
+    }
+    // arms: slabs ending in slam-fists
+    const cArm = Math.round(Math.sin(cst + Math.PI) * 3);
+    for (let dy = 6; dy <= 17; dy++) {
+      P(-11 - (dy <= 9 ? Math.round(cArm * 0.6) : 0), dy, ...RD);
+      P(-12, dy, ...(dy >= 15 ? RL : RD));
+      P(11 + (dy <= 9 ? Math.round(cArm * 0.6) : 0), dy, ...RD);
+      P(12, dy, ...(dy >= 15 ? RL : RD));
+    }
+    for (const fx2 of [-12, -11, 11, 12]) {
+      P(fx2 - Math.sign(fx2) * Math.round(cArm * 0.4), 5, ...RL);
+    }
+    // shoulder ridge
+    for (let dx = -11; dx <= 11; dx++) P(dx, 20, ...(Math.abs(dx) >= 9 ? RD : RL));
+    // head: a squat kiln-mouth with twin white-hot eyes
+    for (let dx = -3; dx <= 3; dx++) {
+      P(dx + look, 23, ...RD);
+      P(dx + look, 22, ...R);
+      P(dx + look, 21, ...R);
+    }
+    PE(look * 2 - 2, 22, heat * boost * 0.5, heat * boost * 0.42, heat * 0.2);
+    PE(look * 2 + 2, 22, heat * boost * 0.5, heat * boost * 0.42, heat * 0.2);
+    // THE CORE: a 3x3 furnace heart — the thing water is for
+    const cHeart = heat * boost * 0.55;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const fall = dx === 0 && dy === 0 ? 1 : 0.6;
+        PE(dx, 14 + dy, cHeart * fall, cHeart * 0.75 * fall, cHeart * 0.16 * fall);
+      }
+    }
+    // doused: steam wisps bleed off the slab
+    if (doused && frameCount % 3 === 0) {
+      P(((frameCount / 3) % 17) - 8, 20 + ((frameCount / 7) % 3), 0.7, 0.74, 0.78);
+    }
   }
 
   // HP bar above damaged enemies

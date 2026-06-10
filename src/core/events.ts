@@ -36,6 +36,8 @@ export interface EventMap {
   toast: { text: string };
   /** The HUD objective line ("FIND THE GOLDEN KEY" -> "REACH THE PORTAL"). */
   objectiveChanged: { text: string };
+  /** The Kiln Colossus is slain: the expedition is complete. */
+  runComplete: { gold: number };
 }
 
 type Handler<T> = (payload: T) => void;

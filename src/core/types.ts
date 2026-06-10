@@ -98,7 +98,8 @@ export type EnemyKind =
   | 'mage'
   | 'bat'
   | 'spitter'
-  | 'bomber';
+  | 'bomber'
+  | 'colossus';
 
 export interface EnemyDef {
   hp: number;
@@ -564,6 +565,7 @@ export interface WorldGenApi {
     portal: ExitPortal | null;
     mechanisms: Mechanism[];
     runeVaults: RuneVault[];
+    boss: { x: number; y: number } | null;
   };
 }
 
@@ -893,6 +895,8 @@ export interface LevelRuntime {
   mechanisms: Mechanism[];
   /** Sealed strongrooms with remote rune switches. */
   runeVaults: RuneVault[];
+  /** Boss arena center (bottom level only); the colossus spawns here. */
+  boss?: { x: number; y: number } | null;
 }
 
 export interface LevelsApi {

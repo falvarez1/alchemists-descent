@@ -32,6 +32,8 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   bat: { hp: 16, halfW: 3, h: 5, bounty: 15, gore: Cell.Blood, goreFn: bloodColor },
   spitter: { hp: 55, halfW: 5, h: 11, bounty: 60, gore: Cell.Toxic, goreFn: toxicColor },
   bomber: { hp: 34, halfW: 5, h: 8, bounty: 45, gore: Cell.Fire, goreFn: fireColor },
+  // The Kiln Colossus: the run's final door. Water is the strategy.
+  colossus: { hp: 520, halfW: 13, h: 26, bounty: 600, gore: Cell.Stone, goreFn: stoneColor },
 };
 
 /** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
@@ -40,6 +42,8 @@ const STATUS_IMMUNE: Partial<
 > = {
   imp: { burning: true },
   wisp: { frozen: true },
+  // The kiln cannot burn or freeze — but it CAN be doused (wet = thermal shock)
+  colossus: { burning: true, frozen: true },
 };
 
 export class Enemies implements EnemyControlApi {
@@ -159,6 +163,25 @@ export class Enemies implements EnemyControlApi {
         ctx.player.hp = Math.min(ctx.player.maxHp, ctx.player.hp + 2);
       }
       ctx.waves.kills++;
+      return;
+    }
+    // The Kiln Colossus: the run ends here, loudly.
+    if (e.kind === 'colossus') {
+      ctx.explosions.trigger(e.x, e.y - 10, 28);
+      ctx.particles.burst(e.x, e.y - 12, 40, Cell.Stone, stoneColor, 4.5);
+      ctx.particles.burst(e.x, e.y - 12, 24, null, () => packRGB(255, 170, 40), 3.8, {
+        glow: 2.6,
+        grav: -0.01,
+      });
+      this.dropBounty(e, def);
+      ctx.audio.portalWhoosh();
+      ctx.fx.screenShake = 0.06;
+      ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 1.6);
+      ctx.waves.kills++;
+      ctx.events.emit('toast', { text: 'THE KILN IS COLD' });
+      ctx.events.emit('runComplete', { gold: ctx.state.score });
+      // The run is complete — the save has nothing left to protect.
+      ctx.levels.abandonExpedition();
       return;
     }
     // Gib burst + gold bounty shower
@@ -631,6 +654,85 @@ export class Enemies implements EnemyControlApi {
             }
           }
         }
+      } else if (e.kind === 'colossus') {
+        // ===== THE KILN COLOSSUS =====
+        // A slow furnace of living stone. Stomps, slams, lobs molten rock.
+        // Water is the strategy: a doused kiln takes thermal-shock damage and
+        // staggers; lightning also stuns it. The arena ceiling holds a sealed
+        // water tank for exactly this reason.
+        e.vy += 0.36;
+        e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+
+        const doused = e.status.wet > 0;
+        const shocked = e.status.electrified > 0;
+        if (doused) {
+          // THERMAL SHOCK: the furnace cracks — heavy damage, visible steam
+          this.damage(e, 1.4, 0, 0);
+          if (e.hp <= 0) continue; // damage() may have killed it
+          if (ctx.state.frameCount % 4 === 0) {
+            ctx.particles.burst(
+              e.x + (Math.random() - 0.5) * 20,
+              e.y - 10 - Math.random() * 14,
+              2,
+              Cell.Steam,
+              () => packRGB(220, 228, 236),
+              1.4,
+            );
+          }
+          e.attackCd = Math.max(e.attackCd, 36); // staggered: no attacks
+        }
+        if (shocked) e.attackCd = Math.max(e.attackCd, 30);
+
+        // March: slow, implacable, screen-shaking footfalls
+        if (targetAlive && !doused && e.timer % 2 === 0) {
+          e.vx += Math.sign(pdx) * 0.06;
+        }
+        e.vx = clamp(e.vx, -0.42, 0.42);
+        if (e.grounded && !e.prevG) {
+          ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.02, 0.05);
+          ctx.audio.hollowKnock();
+        }
+
+        // Furnace breath: embers rise off the shoulders
+        if (ctx.state.frameCount % 5 === 0 && !doused) {
+          ctx.particles.spawn(
+            e.x + (Math.random() - 0.5) * 18,
+            e.y - def.h + 2,
+            (Math.random() - 0.5) * 0.4,
+            -0.6 - Math.random() * 0.5,
+            null,
+            packRGB(255, 120 + Math.floor(Math.random() * 100), 20),
+            18,
+            { glow: 2.0, grav: -0.01 },
+          );
+        }
+
+        if (targetAlive && e.attackCd === 0) {
+          if (Math.abs(pdx) < 32 && Math.abs(pdy) < 32) {
+            // GROUND SLAM: a real explosion at the fist — far enough out that
+            // the blast radius (r*1.5) cannot reach the colossus's own body
+            ctx.explosions.trigger(e.x + Math.sign(pdx) * 18, e.y - 2, 11);
+            ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.03, 0.06);
+            e.attackCd = 150 + Math.floor(Math.random() * 40);
+          } else if (Math.abs(pdx) < 300) {
+            // MOLTEN VOLLEY: three lobbed gobs of kiln-fire
+            for (let v = -1; v <= 1; v++) {
+              ctx.projectiles.push({
+                x: e.x + Math.sign(pdx) * 8,
+                y: e.y - def.h + 4,
+                vx: pdx * 0.014 + v * 0.5 + (Math.random() - 0.5) * 0.4,
+                vy: -1.3 - Math.random() * 0.5,
+                type: 'fireball',
+                life: 240,
+                age: 0,
+                charging: false,
+                hostile: true,
+              });
+            }
+            ctx.audio.tone(90, 220, 0.4, 'sawtooth', 0.16);
+            e.attackCd = 170 + Math.floor(Math.random() * 50);
+          }
+        }
       } else if (e.kind === 'golem') {
         e.vy += 0.33;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
@@ -776,9 +878,10 @@ export class Enemies implements EnemyControlApi {
           e.fy -= sy;
         }
       } else {
+        const stepUp = e.kind === 'colossus' ? 3 : e.kind === 'golem' ? 2 : 1;
         e.fx += e.vx;
         while (e.fx >= 1) {
-          if (!ctx.physics.tryMoveEntity(e, 1, 0, def.halfW, def.h, e.kind === 'golem' ? 2 : 1)) {
+          if (!ctx.physics.tryMoveEntity(e, 1, 0, def.halfW, def.h, stepUp)) {
             e.vx = 0;
             e.fx = 0;
             break;
@@ -786,7 +889,7 @@ export class Enemies implements EnemyControlApi {
           e.fx -= 1;
         }
         while (e.fx <= -1) {
-          if (!ctx.physics.tryMoveEntity(e, -1, 0, def.halfW, def.h, e.kind === 'golem' ? 2 : 1)) {
+          if (!ctx.physics.tryMoveEntity(e, -1, 0, def.halfW, def.h, stepUp)) {
             e.vx = 0;
             e.fx = 0;
             break;

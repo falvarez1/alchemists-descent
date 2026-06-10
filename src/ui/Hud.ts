@@ -57,6 +57,17 @@ export class Hud {
     ctx.events.on('objectiveChanged', ({ text }) => {
       el('objective').textContent = text;
     });
+
+    // The Kiln Colossus is slain: roll victory after the explosion lands.
+    ctx.events.on('runComplete', ({ gold }) => {
+      window.setTimeout(() => {
+        el('vic-gold').textContent = String(gold);
+        el('victory-overlay').classList.add('visible');
+        ctx.state.paused = true;
+        ctx.audio.learn();
+      }, 1400);
+    });
+    el('vic-return').addEventListener('click', () => window.location.reload());
     ctx.events.on('toast', ({ text }) => {
       const stack = el('toast-stack');
       const node = document.createElement('div');

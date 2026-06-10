@@ -630,6 +630,7 @@ export class WorldGen implements WorldGenApi {
     portal: ExitPortal | null;
     mechanisms: Mechanism[];
     runeVaults: RuneVault[];
+    boss: { x: number; y: number } | null;
   } {
     // 1) Base caves for the level's biome, replayable from the seed.
     ctx.state.currentBiome = def.biome;
@@ -913,7 +914,7 @@ export class WorldGen implements WorldGenApi {
 
     // 8) Landmark structures (upgrade-port meta layer): the exit portal above
     //    the seal plug, the golden key vault, hearts, tomes, chests, gold.
-    const { pickups, portal, mechanisms, runeVaults } = placeStructures(
+    const { pickups, portal, mechanisms, runeVaults, boss } = placeStructures(
       ctx,
       this.rng,
       graph,
@@ -933,6 +934,7 @@ export class WorldGen implements WorldGenApi {
       portal,
       mechanisms,
       runeVaults,
+      boss,
     };
   }
 }

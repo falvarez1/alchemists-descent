@@ -277,7 +277,13 @@ export class Lighting implements LightField {
     // Living light: golem cores pulse (synced to the sprite), imps smoulder,
     // wisps carry their own cold halo, mage hands throb purple
     for (const e of ctx.enemies) {
-      if (e.kind === 'golem') {
+      if (e.kind === 'colossus') {
+        // The kiln lights its own arena — dimming hard when doused
+        const heat =
+          e.status.wet > 0 ? 0.3 : 0.85 + Math.sin(ctx.state.frameCount * 0.09 + e.bobPhase) * 0.25;
+        this.seedLight(e.x, e.y - 12, heat * 2.0, heat * 1.2, heat * 0.25);
+        this.seedLight(e.x, e.y - 22, heat * 0.9, heat * 0.55, heat * 0.12);
+      } else if (e.kind === 'golem') {
         const pulse = 0.7 + Math.sin(ctx.state.frameCount * 0.12 + e.bobPhase) * 0.3;
         this.seedLight(e.x, e.y - 10, pulse * 1.25, pulse * 0.95, pulse * 0.2);
         if (e.jetFuel > 0) this.seedLight(e.x, e.y + 2, 1.5, 0.9, 0.22);

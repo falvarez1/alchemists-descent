@@ -44,6 +44,7 @@ export function placeStructures(
   portal: ExitPortal | null;
   mechanisms: Mechanism[];
   runeVaults: RuneVault[];
+  boss: { x: number; y: number } | null;
 } {
   const w = ctx.world;
   const pickups: Pickup[] = [];
@@ -333,5 +334,69 @@ export function placeStructures(
     vPlaced++;
   }
 
-  return { pickups, portal, mechanisms, runeVaults };
+  // ---- The Kiln (bottom level only): the colossus arena ----
+  // A vast scorched chamber with lava moats, and the strategy hanging from
+  // the ceiling: a metal-cased water tank sealed by a breakable stone plug.
+  // Flood the kiln, thermal-shock the colossus.
+  let boss: { x: number; y: number } | null = null;
+  if (!def.nextLevelId) {
+    const cx = Math.floor(WIDTH * (0.42 + rng.next() * 0.16));
+    const cy = HEIGHT - 116;
+    carvePocket(cx, cy, 38, 24);
+    // stone floor band
+    for (let dx = -38; dx <= 38; dx++) {
+      for (let dy = 18; dy <= 21; dy++) {
+        const X = cx + dx,
+          Y = cy + dy;
+        if (!w.inBounds(X, Y)) continue;
+        const i = w.idx(X, Y);
+        w.types[i] = Cell.Stone;
+        w.colors[i] = stoneColor();
+      }
+    }
+    // lava moats at the arena edges
+    for (const side of [-1, 1]) {
+      for (let dx = 26; dx <= 34; dx++) {
+        for (let dy = 15; dy <= 17; dy++) {
+          const i = w.idx(cx + side * dx, cy + dy);
+          w.types[i] = Cell.Lava;
+          w.colors[i] = packRGB(252, 60 + Math.floor(rng.next() * 60), 8);
+        }
+      }
+    }
+    // ceiling water tank: metal casing, breakable stone seal at its mouth
+    const ty = cy - 24;
+    for (let dx = -9; dx <= 9; dx++) {
+      for (let dy = -8; dy <= 2; dy++) {
+        const X = cx + dx,
+          Y = ty + dy;
+        if (!w.inBounds(X, Y)) continue;
+        const i = w.idx(X, Y);
+        const casing = Math.abs(dx) > 7 || dy < -6;
+        if (casing) {
+          w.types[i] = Cell.Metal;
+          w.colors[i] = packRGB(96, 102, 112);
+        } else if (dy <= 0) {
+          w.types[i] = Cell.Water;
+          w.colors[i] = packRGB(28, 120 + Math.floor(rng.next() * 60), 220);
+        } else {
+          // the seal: two rows of breakable stone — dig it, flood the kiln
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      }
+    }
+    // gold-flecked tell around the seal
+    for (let g4 = 0; g4 < 8; g4++) {
+      const gx = cx - 8 + Math.floor(rng.next() * 17);
+      const i = w.idx(gx, ty + 3);
+      if (w.types[i] === Cell.Empty) {
+        w.types[i] = Cell.Gold;
+        w.colors[i] = goldColor();
+      }
+    }
+    boss = { x: cx, y: cy + 14 };
+  }
+
+  return { pickups, portal, mechanisms, runeVaults, boss };
 }
