@@ -34,8 +34,12 @@ Scorched Core). Find the sealed well in each floor, break the stone plug, and
 drop deeper. Light waystone braziers with real fire to set your respawn; death
 keeps the world exactly as you scarred it and costs 15% of your gold.
 - `A`/`D` move, `SPACE` jump / levitate (coyote time + jump buffering included)
-- Mouse aims and fires the selected spell; `1`-`7` switch spells
-- `E` siphon materials into your flask, `Q` pour, `F` throw the bottle
+- Mouse aims and fires your **wand** — a frame slotted with spell cards
+  (multicasts, modifiers, impact triggers, the flask-fed Infuser); earn cards by
+  lighting waystones, descending, and brewing
+- `1`/`2` or mouse wheel switch wands, `B` opens the wand bench
+- `E` siphon materials into your flask, `Q` pour, `F` throw the bottle, `X` drink
+  (brew elixirs at cauldrons: real reagents in the bowl + real fire against it)
 - `M` fog-of-war map, `R` rise again when dead, `F3` perf overlay
 
 ## Architecture
