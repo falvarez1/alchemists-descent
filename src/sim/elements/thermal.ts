@@ -1,0 +1,219 @@
+import { MAX_PARTICLES } from '@/config/constants';
+import type { Ctx } from '@/core/types';
+import { Cell, isGas } from '@/sim/CellType';
+import {
+  acidColor,
+  emberColor,
+  EMPTY_COLOR,
+  fireColor,
+  packRGB,
+  smokeColor,
+  steamColor,
+  waterColor,
+} from '@/sim/colors';
+
+/** EXPORTED for cross-handler use: handleFire melts adjacent ice via this. */
+export function handleIce(ctx: Ctx, x: number, y: number): void {
+  const w = ctx.world;
+  const targets = [
+    { x: x + 1, y: y },
+    { x: x - 1, y: y },
+    { x: x, y: y + 1 },
+    { x: x, y: y - 1 },
+  ];
+  for (const t of targets) {
+    if (w.inBounds(t.x, t.y)) {
+      const ti = w.idx(t.x, t.y);
+      if (w.types[ti] === Cell.Fire) {
+        if (Math.random() < 1.0 - ctx.params.materials[Cell.Ice].insulationRating!) {
+          const ci = w.idx(x, y);
+          if (Math.random() < 0.40) {
+            w.types[ci] = Cell.Steam;
+            w.life[ci] = 260;
+            w.colors[ci] = steamColor();
+          } else {
+            w.types[ci] = Cell.Water;
+            w.colors[ci] = waterColor();
+          }
+          return;
+        }
+      } else if (w.types[ti] === Cell.Lava) {
+        if (Math.random() < 0.4) {
+          const ci = w.idx(x, y);
+          w.types[ci] = Cell.Water;
+          w.colors[ci] = waterColor();
+          return;
+        }
+      }
+    }
+  }
+}
+
+export function handleEmber(ctx: Ctx, x: number, y: number): void {
+  const w = ctx.world;
+  const P = ctx.params.materials[Cell.Ember];
+  // React with neighbors
+  const nbs = [
+    [x, y + 1],
+    [x - 1, y],
+    [x + 1, y],
+    [x, y - 1],
+  ];
+  for (const [nx, ny] of nbs) {
+    if (!w.inBounds(nx, ny)) continue;
+    const ni = w.idx(nx, ny);
+    const n = w.types[ni];
+    if (n === Cell.Water || n === Cell.Nitrogen) {
+      // quenched with a hiss of steam
+      const ci = w.idx(x, y);
+      w.types[ci] = Cell.Steam;
+      w.life[ci] = 28;
+      w.colors[ci] = steamColor();
+      w.moved[ci] = 1;
+      if (n === Cell.Water && Math.random() < 0.4) {
+        w.types[ni] = Cell.Steam;
+        w.life[ni] = 24;
+        w.colors[ni] = steamColor();
+      }
+      return;
+    }
+    if ((n === Cell.Wood || n === Cell.Vines) && Math.random() < P.igniteChance!) {
+      // slow smoulder: a small, short-lived flame that grows or fizzles with the fuel
+      w.types[ni] = Cell.Fire;
+      w.life[ni] = 40 + Math.floor(Math.random() * 50);
+      w.colors[ni] = fireColor();
+    }
+    if ((n === Cell.Oil || n === Cell.Gunpowder) && Math.random() < P.igniteChance! * 7) {
+      w.types[ni] = Cell.Fire;
+      w.life[ni] = 60 + Math.floor(Math.random() * 60);
+      w.colors[ni] = fireColor();
+    }
+  }
+  // Drift downward slowly, fluttering sideways like a falling spark
+  if (Math.random() < P.fallChance!) {
+    const drift = Math.random();
+    const tx = drift < 0.18 ? x - 1 : drift < 0.36 ? x + 1 : x;
+    const ty = y + 1;
+    if (w.inBounds(tx, ty) && (w.types[w.idx(tx, ty)] === Cell.Empty || isGas(w.types[w.idx(tx, ty)]))) {
+      w.swap(x, y, tx, ty);
+      w.moved[w.idx(tx, ty)] = 1;
+      return;
+    }
+    if (w.inBounds(x, ty) && (w.types[w.idx(x, ty)] === Cell.Empty || isGas(w.types[w.idx(x, ty)]))) {
+      w.swap(x, y, x, ty);
+      w.moved[w.idx(x, ty)] = 1;
+      return;
+    }
+  }
+  // Resting embers shimmer and occasionally spit a spark
+  if (Math.random() < 0.18) w.colors[w.idx(x, y)] = emberColor();
+  if (Math.random() < 0.0025) {
+    ctx.particles.spawn(
+      x,
+      y - 1,
+      (Math.random() - 0.5) * 0.6,
+      -0.5 - Math.random() * 0.5,
+      null,
+      packRGB(255, 150, 40),
+      16,
+      { grav: -0.01, glow: 2.0 },
+    );
+  }
+}
+
+export function handleFire(ctx: Ctx, x: number, y: number): void {
+  const w = ctx.world;
+  const ci = w.idx(x, y);
+  w.life[ci]--;
+  if (w.life[ci] <= 0) {
+    w.types[ci] = Cell.Empty;
+    w.colors[ci] = EMPTY_COLOR;
+    return;
+  }
+
+  // Occasionally lift a glowing ember (visual only) — gorgeous with bloom
+  if (Math.random() < 0.012 && ctx.particles.list.length < MAX_PARTICLES - 100) {
+    ctx.particles.spawn(
+      x + Math.random(),
+      y,
+      (Math.random() - 0.5) * 0.3,
+      -0.4 - Math.random() * 0.4,
+      null,
+      packRGB(255, 120 + Math.floor(Math.random() * 90), 10),
+      26 + Math.floor(Math.random() * 20),
+      { grav: -0.012, glow: 2.6 },
+    );
+  }
+
+  const targets = [
+    { x: x + 1, y: y },
+    { x: x - 1, y: y },
+    { x: x, y: y + 1 },
+    { x: x - 1, y: y - 1 },
+  ];
+  for (const t of targets) {
+    if (w.inBounds(t.x, t.y)) {
+      const ti = w.idx(t.x, t.y);
+      const n = w.types[ti];
+      if (n === Cell.Wood && Math.random() < ctx.params.materials[Cell.Wood].flammability!) {
+        w.types[ti] = Cell.Fire;
+        w.life[ti] = 45;
+        w.colors[ti] = fireColor();
+        if (Math.random() < ctx.params.materials[Cell.Wood].carbonSmokeGen!) spawnSmoke(ctx, x, y);
+      }
+      if (n === Cell.Vines && Math.random() < ctx.params.materials[Cell.Vines].flammability!) {
+        w.types[ti] = Cell.Fire;
+        w.life[ti] = 30;
+        w.colors[ti] = fireColor();
+        if (Math.random() < 0.6) spawnSmoke(ctx, x, y);
+      }
+      if (n === Cell.Oil) {
+        w.types[ti] = Cell.Fire;
+        w.life[ti] = ctx.params.materials[Cell.Oil].burnDuration!;
+        w.colors[ti] = fireColor();
+      }
+      if (n === Cell.Gunpowder) {
+        ctx.explosions.trigger(t.x, t.y, ctx.params.materials[Cell.Gunpowder].blastRadius!);
+        return;
+      }
+      if (n === Cell.Ice) {
+        handleIce(ctx, t.x, t.y);
+      }
+      if (n === Cell.Blood && Math.random() < 0.06) {
+        w.types[ti] = Cell.Smoke;
+        w.life[ti] = 20;
+        w.colors[ti] = smokeColor();
+      }
+      if (n === Cell.Slime && Math.random() < 0.04) {
+        w.types[ti] = Cell.Acid;
+        w.colors[ti] = acidColor();
+      }
+      if (n === Cell.Water) {
+        w.types[ci] = Cell.Steam;
+        w.life[ci] = 260;
+        w.colors[ci] = steamColor();
+        w.types[ti] = Cell.Empty;
+        w.colors[ti] = EMPTY_COLOR;
+        return;
+      }
+    }
+  }
+  if (Math.random() < ctx.params.materials[Cell.Fire].upwardSpread!) {
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    if (w.inBounds(x, y - 1) && w.types[w.idx(x, y - 1)] === Cell.Empty) w.swap(x, y, x, y - 1);
+    else if (w.inBounds(x + dir, y - 1) && w.types[w.idx(x + dir, y - 1)] === Cell.Empty)
+      w.swap(x, y, x + dir, y - 1);
+  }
+}
+
+export function spawnSmoke(ctx: Ctx, x: number, y: number): void {
+  const w = ctx.world;
+  const sx = x + Math.floor(Math.random() * 3 - 1),
+    sy = y - 1;
+  if (w.inBounds(sx, sy) && w.types[w.idx(sx, sy)] === Cell.Empty) {
+    const si = w.idx(sx, sy);
+    w.types[si] = Cell.Smoke;
+    w.life[si] = Math.floor(Math.random() * 50) + 40;
+    w.colors[si] = smokeColor();
+  }
+}

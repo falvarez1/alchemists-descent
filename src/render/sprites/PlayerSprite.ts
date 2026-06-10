@@ -1,0 +1,159 @@
+import type { Ctx } from '@/core/types';
+import type { LightField, PixelSurface } from '@/render/pixels';
+import { clamp } from '@/core/math';
+
+type RGB = readonly [number, number, number];
+
+/**
+ * Procedural wizard sprite (original drawPlayerSprite): boots ride a stride
+ * wheel, the robe sways and flares, the torso leans with smoothed velocity,
+ * the 4-segment spring hat whips, and the wand glows toward the aim.
+ *
+ * The player is fully self-lit — the light field is not sampled here (the
+ * parameter is kept for the shared sprite-drawing signature).
+ */
+export function drawPlayerSprite(s: PixelSurface, _light: LightField, ctx: Ctx): void {
+  const player = ctx.player;
+  const frameCount = ctx.state.frameCount;
+  if (ctx.state.mode !== 'play' || player.dead) return;
+  if (player.invuln > 0 && frameCount % 6 < 3) return;
+
+  const px = player.x, f = player.facing;
+  const HAT: RGB = [0.62, 0.30, 0.94], HAT_D: RGB = [0.40, 0.17, 0.66], BAND: RGB = [0.95, 0.78, 0.30];
+  const ROBE: RGB = [0.22, 0.50, 0.95], ROBE_D: RGB = [0.13, 0.31, 0.66], TRIM: RGB = [0.55, 0.75, 1.0];
+  const SKIN: RGB = [0.95, 0.80, 0.62], SKIN_D: RGB = [0.78, 0.62, 0.46], BOOT: RGB = [0.16, 0.13, 0.20], BOOT_L: RGB = [0.30, 0.24, 0.34];
+
+  const svx = player._svx || 0, svy = player._svy || 0;
+  const moving = player.grounded && Math.abs(svx) > 0.2;
+  const stride = player.stridePhase;
+  const lean = clamp(Math.round(svx * 1.1), -2, 2);
+  const sq = player.landTimer > 0 ? Math.min(3, Math.ceil(player.landTimer / 3)) : 0; // landing squash
+  const bob = moving ? -Math.round(Math.abs(Math.sin(stride)) * 1.4) : 0;
+  const breathe = (!moving && player.grounded) ? (Math.sin(frameCount * 0.045) > 0.2 ? -1 : 0) : 0;
+  const py = player.y;
+  const lift = bob + breathe + sq; // applied to body above the boots (sq pushes DOWN via +)
+
+  const row = (x0: number, x1: number, yy: number, c: RGB): void => {
+    for (let xx = x0; xx <= x1; xx++) s.setPx(xx, yy, c[0], c[1], c[2]);
+  };
+
+  // --- Boots: alternate fore/aft with the stride wheel; tuck in the air ---
+  let footA = 0, footB = 0, footAy = 0, footBy = 0;
+  if (moving) {
+    footA = Math.round(Math.sin(stride) * 2.6);
+    footB = -footA;
+    footAy = Math.sin(stride) > 0.55 ? -1 : 0;       // lifting foot clears the ground
+    footBy = Math.sin(stride) < -0.55 ? -1 : 0;
+  } else if (!player.grounded) {
+    footA = f; footB = -f; footAy = -1; footBy = -2;  // tucked mid-air
+  }
+  row(px - 3 + footA, px - 1 + footA, py + footAy, BOOT);
+  row(px - 3 + footA, px - 2 + footA, py - 1 + footAy, BOOT_L);
+  row(px + 1 + footB, px + 3 + footB, py + footBy, BOOT);
+  row(px + 2 + footB, px + 3 + footB, py - 1 + footBy, BOOT_L);
+
+  // --- Robe skirt: flares at the hem, sways against motion, lifts when falling ---
+  const hemSway = clamp(Math.round(-svx * 1.3), -2, 2);
+  const falling = !player.grounded && svy > 1.6;
+  const skirt = [
+    { dy: 2, hw: 4 + (sq > 0 ? 1 : 0) },
+    { dy: 3, hw: 4 },
+    { dy: 4, hw: 3 },
+    { dy: 5, hw: 3 },
+    { dy: 6, hw: 3 }
+  ];
+  for (const sRow of skirt) {
+    const yy = py - sRow.dy - lift + (falling && sRow.dy <= 3 ? -1 : 0);
+    const off = sRow.dy <= 3 ? hemSway : Math.round(hemSway * 0.5);
+    const hw = sRow.hw + (falling && sRow.dy <= 3 ? 1 : 0);
+    for (let dx = -hw; dx <= hw; dx++) {
+      const edge = Math.abs(dx) === hw;
+      s.setPx(px + dx + off, yy, ...(edge ? ROBE_D : ROBE));
+    }
+  }
+
+  // --- Belt ---
+  row(px - 3 + lean, px - 1 + lean, py - 7 - lift, ROBE_D);
+  s.setPx(px + lean, py - 7 - lift, ...BAND);
+  row(px + 1 + lean, px + 3 + lean, py - 7 - lift, ROBE_D);
+
+  // --- Torso with trim, leaning into the run ---
+  for (let dy = 8; dy <= 10; dy++) {
+    const yy = py - dy - lift;
+    for (let dx = -3; dx <= 3; dx++) {
+      const c = dx === 0 ? TRIM : (Math.abs(dx) === 3 ? ROBE_D : ROBE);
+      s.setPx(px + dx + lean, yy, ...c);
+    }
+  }
+  // Off-hand swings opposite the legs
+  const armSwing = moving ? Math.round(Math.sin(stride + Math.PI) * 2) : 0;
+  s.setPx(px - f * 4 + lean + armSwing, py - 9 - lift, ...ROBE_D);
+  s.setPx(px - f * 4 + lean + armSwing, py - 8 - lift, ...SKIN_D);
+
+  // --- Shoulders ---
+  row(px - 3 + lean, px + 3 + lean, py - 11 - lift, ROBE);
+
+  // --- Head with blinking, directionally lit ---
+  const hx = px + lean;
+  for (let dy = 12; dy <= 14; dy++) {
+    const yy = py - dy - lift;
+    for (let dx = -2; dx <= 2; dx++) {
+      s.setPx(hx + dx, yy, ...((dx * f) < 0 ? SKIN_D : SKIN));
+    }
+  }
+  if (player.blinkTimer === 0) {
+    s.setPx(hx + f, py - 13 - lift, 1.0, 1.0, 1.0);
+    s.setPx(hx + f * 2, py - 13 - lift, 0.08, 0.08, 0.12);
+  }
+
+  // --- The floppy hat: brim barely moves, segments lean progressively, tip whips ---
+  const h = player.hat;
+  const hatY = py - 15 - lift;
+  const seg = (t: number): { x: number; y: number } => ({ x: Math.round(h.ox * t), y: Math.round(h.oy * t) });
+  const s0 = seg(0.25), s1 = seg(0.5), s2 = seg(0.75), s3 = seg(1.0);
+  // brim
+  for (let dx = -5; dx <= 5; dx++) {
+    s.setPx(hx + dx + s0.x, hatY + s0.y, ...(Math.abs(dx) === 5 ? HAT_D : HAT));
+  }
+  // band + lower cone
+  s.setPx(hx - 2 + s1.x, hatY - 1 + s1.y, ...BAND);
+  row(hx - 1 + s1.x, hx + 1 + s1.x, hatY - 1 + s1.y, BAND);
+  s.setPx(hx + 2 + s1.x, hatY - 1 + s1.y, ...BAND);
+  row(hx - 2 + s1.x, hx + 2 + s1.x, hatY - 2 + s1.y, HAT);
+  // mid cone
+  row(hx - 1 + s2.x, hx + 1 + s2.x, hatY - 3 + s2.y, HAT);
+  s.setPx(hx - 2 * f + s2.x, hatY - 3 + s2.y, ...HAT_D);
+  // tip: droops at rest, whips with the spring
+  const restDroop = (Math.abs(h.ox) < 1 && Math.abs(h.oy) < 1) ? 1 : 0;
+  s.setPx(hx + s3.x - f * restDroop, hatY - 4 + s3.y + restDroop, ...HAT);
+  s.setPx(hx + s3.x - f * (restDroop + 1), hatY - 4 + s3.y + restDroop + (restDroop ? 1 : 0), ...HAT_D);
+
+  // --- Wand toward aim with pulsing tip ---
+  const a = player.aimAngle, wsx = px + f * 3 + lean, wsy = py - 10 - lift;
+  s.setPx(wsx + Math.cos(a) * 2, wsy + Math.sin(a) * 2, 0.45, 0.30, 0.18);
+  s.setPx(wsx + Math.cos(a) * 4, wsy + Math.sin(a) * 4, 0.55, 0.38, 0.22);
+  s.setPx(wsx + Math.cos(a) * 5, wsy + Math.sin(a) * 5, 0.62, 0.44, 0.26);
+  // Charged throw meter: dots march out along the aim as power builds
+  const bombCharge = ctx.input.bombCharge;
+  if (bombCharge >= 0) {
+    const ca = player.aimAngle;
+    const sx0 = px + f * 3 + lean, sy0 = py - 10 - lift;
+    const steps = Math.floor(bombCharge * 8 + 0.001);
+    for (let k = 0; k < steps; k++) {
+      const t = (k + 1) / 8;
+      const ddx = sx0 + Math.cos(ca) * (7 + k * 2.6);
+      const ddy = sy0 + Math.sin(ca) * (7 + k * 2.6);
+      const bst = ctx.params.global.maxBrightness * (0.5 + bombCharge * 0.5);
+      s.setPx(ddx, ddy, (0.7 + t * 0.8) * bst, (1.0 - t * 0.85) * bst, 0.06 * bst);
+    }
+  }
+
+  const tip = ctx.spells.wandTip();
+  const boost = ctx.params.global.maxBrightness;
+  const pulse = 0.8 + Math.sin(frameCount * 0.3) * 0.2;
+  s.setPx(tip.x, tip.y, 0.5 * boost * pulse, 0.9 * boost * pulse, 1.0 * boost * pulse);
+  if (player.firing && frameCount % 4 < 2) {
+    s.setPx(tip.x + Math.cos(a), tip.y + Math.sin(a), 0.9 * boost, 0.95 * boost, 1.0 * boost);
+    s.setPx(tip.x + Math.cos(a) * 2, tip.y + Math.sin(a) * 2, 0.6 * boost, 0.7 * boost, 0.8 * boost);
+  }
+}

@@ -18,6 +18,7 @@
     "three": "^0.160.0"
   },
   "devDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.61.1",
     "@types/node": "^25.9.2",
     "@types/three": "^0.160.0",
     "eslint": "^9.0.0",
