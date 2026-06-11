@@ -5,8 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Noita Studio — Alchemist's Descent</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2307070a'/%3E%3Crect x='3' y='9' width='3' height='3' fill='%23d4af37'/%3E%3Crect x='6' y='6' width='3' height='3' fill='%23a855f7'/%3E%3Crect x='9' y='9' width='3' height='3' fill='%233a7bd5'/%3E%3C/svg%3E">
+    <style>
+      /* Critical boot styles, inlined on purpose: the app stylesheet loads
+         through main.ts, so this overlay must style itself to cover the
+         unstyled DOM during module load + synchronous worldgen. */
+      #boot-overlay {
+        position: fixed; inset: 0; z-index: 1000; background: #07070a;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: #f3f3f6;
+        transition: opacity 0.45s ease; user-select: none;
+      }
+      #boot-overlay.done { opacity: 0; pointer-events: none; }
+      #boot-overlay .boot-title { font-size: 22px; font-weight: 800; letter-spacing: 7px; }
+      #boot-overlay .boot-sub { font-size: 11px; letter-spacing: 4px; color: #6b6b7a; }
+      #boot-overlay .boot-dots { display: flex; gap: 10px; margin-top: 8px; }
+      #boot-overlay .boot-dots span { width: 10px; height: 10px; border-radius: 2px; animation: bootPulse 1.05s infinite ease-in-out; }
+      #boot-overlay .boot-dots span:nth-child(1) { background: #d4af37; }
+      #boot-overlay .boot-dots span:nth-child(2) { background: #a855f7; animation-delay: 0.18s; }
+      #boot-overlay .boot-dots span:nth-child(3) { background: #3a7bd5; animation-delay: 0.36s; }
+      #boot-status { font-size: 10px; letter-spacing: 2.5px; color: #6b6b7a; }
+      #boot-status.error { color: #ef4444; letter-spacing: 0.5px; max-width: 70ch; line-height: 1.6; padding: 0 24px; }
+      @keyframes bootPulse {
+        0%, 100% { transform: translateY(0); opacity: 0.4; }
+        50% { transform: translateY(-7px); opacity: 1; }
+      }
+    </style>
 </head>
 <body>
+
+    <div id="boot-overlay">
+        <div class="boot-title">NOITA STUDIO</div>
+        <div class="boot-sub">ALCHEMIST'S DESCENT</div>
+        <div class="boot-dots"><span></span><span></span><span></span></div>
+        <div id="boot-status">CONJURING THE CAVES&hellip;</div>
+    </div>
 
     <header>
         <div><h1>Noita Studio <span class="title-sub">| Alchemist's Descent</span></h1></div>
