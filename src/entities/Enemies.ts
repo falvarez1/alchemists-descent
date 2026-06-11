@@ -432,12 +432,24 @@ export class Enemies implements EnemyControlApi {
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
         if (e.grounded) {
           e.vx *= 0.6;
-          if (targetAlive && pDist < 260 && e.timer % 50 === 0) {
-            e.vx = Math.sign(pdx) * (1.8 + Math.random() * 0.9);
-            e.vy = -3.1 - Math.random() * 1.0;
-          } else if (e.timer % 130 === 0) {
-            e.vx = (Math.random() - 0.5) * 2.8;
-            e.vy = -2.4;
+          // ANTICIPATION (Rain World): the body visibly gathers before it
+          // leaps — the old instant hops now charge through a short windup.
+          if (!e.windup) {
+            if (targetAlive && pDist < 260 && e.timer % 50 === 0) e.windup = 7;
+            else if (e.timer % 130 === 0) e.windup = 12; // a lazy wander gathers longer
+          } else {
+            e.windup--;
+            if (e.windup === 0) {
+              // wounded slimes spring shallow and crooked
+              const hurtK = e.hp / e.maxHp < 0.4 ? 0.55 + Math.random() * 0.3 : 1;
+              if (targetAlive && pDist < 260) {
+                e.vx = Math.sign(pdx) * (1.8 + Math.random() * 0.9) * hurtK;
+                e.vy = (-3.1 - Math.random() * 1.0) * hurtK;
+              } else {
+                e.vx = (Math.random() - 0.5) * 2.8 * hurtK;
+                e.vy = -2.4 * hurtK;
+              }
+            }
           }
         }
         // Corrosive trail: an acid slime sweats one real acid cell at its feet
@@ -528,16 +540,38 @@ export class Enemies implements EnemyControlApi {
             }
           }
         }
-        if (!hunting && targetAlive && pDist < 320) {
+        // Wounded wings fail in bursts (Rain World body language): a
+        // flutter-tumble that sinks and scrambles before the bat recovers.
+        if (e.hp / e.maxHp < 0.4 && !e.tumble && Math.random() < 0.012) e.tumble = 14;
+        if (e.tumble) {
+          e.tumble--;
+          e.vx += (Math.random() - 0.5) * 0.5;
+          e.vy += 0.18;
+        } else if (e.windup) {
+          // ANTICIPATION: brake and flare the wings for a beat — THEN the dart
+          e.windup--;
+          e.vx *= 0.72;
+          e.vy = e.vy * 0.72 - 0.06; // hover-lift while flaring
+          if (e.windup === 0 && targetAlive) {
+            const d = pDist || 1;
+            e.swoop = 12;
+            e.vx = (pdx / d) * 2.5;
+            e.vy = (pdy / d) * 2.5;
+            ctx.audio.tone(1500, 900, 0.05, 'square', 0.04);
+          }
+        } else if (!hunting && targetAlive && pDist < 320) {
           const d = pDist || 1;
           e.vx += (pdx / d) * 0.14;
           e.vy += (pdy / d) * 0.14;
+          if (pDist < 64 && e.attackCd === 0 && !e.swoop) e.windup = 8;
         } else if (!hunting) {
           e.vx += (Math.random() - 0.5) * 0.1;
           e.vy += (Math.random() - 0.5) * 0.1;
         }
+        if (e.swoop) e.swoop--;
         e.vy += Math.sin(e.bobPhase) * 0.08;
-        const batMax = 1.7;
+        // a committed dart briefly outruns the normal flight cap
+        const batMax = e.swoop ? 2.6 : 1.7;
         e.vx = clamp(e.vx, -batMax, batMax);
         e.vy = clamp(e.vy, -batMax, batMax);
         if (!ctx.physics.entityFree(e.x, e.y, def.halfW, def.h)) {

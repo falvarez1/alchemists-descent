@@ -181,8 +181,26 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     }
   }
   if (player.blinkTimer === 0) {
-    s.setPx(hx + f, py - 13 - lift, 1.0, 1.0, 1.0);
-    s.setPx(hx + f * 2, py - 13 - lift, 0.08, 0.08, 0.12);
+    // Rain World look-at: the eye finds the nearest threat (even one behind
+    // him); with no threat it follows the aim pitch — and a crouch-peek
+    // glances down at whatever the ledge is hiding.
+    let side = f;
+    let drop = clamp(Math.round(Math.sin(player.aimAngle) * 1.4), -1, 1);
+    if (player.crouchT > 4) drop = 1;
+    let best = 80 * 80;
+    for (const en of ctx.enemies) {
+      const ddx = en.x - px;
+      const ddy = en.y - 6 - (py - 13);
+      const d2 = ddx * ddx + ddy * ddy;
+      if (d2 < best) {
+        best = d2;
+        side = ddx < 0 ? -1 : 1;
+        drop = ddy < -14 ? -1 : ddy > 14 ? 1 : 0;
+      }
+    }
+    const ey = py - 13 - lift + drop;
+    s.setPx(hx + side, ey, 1.0, 1.0, 1.0);
+    s.setPx(hx + side * 2, ey, 0.08, 0.08, 0.12);
   }
 
   // --- The floppy hat: brim barely moves, segments lean progressively, tip whips ---

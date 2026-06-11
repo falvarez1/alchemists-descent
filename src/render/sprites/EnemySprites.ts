@@ -36,7 +36,15 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     if (flash) s.setPx(e.x + dx, e.y - dy, 2.2, 2.2, 2.2);
     else s.setPx(e.x + dx, e.y - dy, r, g, b);
   };
-  const look = ctx.player.x > e.x ? 1 : -1;
+  // Eyes are honest (Rain World): an unaware creature scans the room on a
+  // slow wander; only an ALERTED one locks its gaze onto the alchemist.
+  const look = e.alerted
+    ? ctx.player.x > e.x
+      ? 1
+      : -1
+    : Math.sin(frameCount * 0.02 + e.bobPhase * 3.7) > 0
+      ? 1
+      : -1;
 
   if (e.kind === 'slime' || e.kind === 'acidslime') {
     // --- Squash & stretch: tall in flight, splat on landing, wobble at rest ---
@@ -47,8 +55,11 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
 
     let sy = 1, sx = 1;
     if (!e.grounded) { sy = 1 + Math.min(0.45, Math.abs(e.vy) * 0.13); sx = 1 / sy; }
+    else if ((e.windup ?? 0) > 0) { sx = 1 + (e.windup ?? 0) * 0.045; sy = 1 / sx; } // gathering to leap
     else if (e.splat > 0) { sx = 1 + e.splat * 0.05; sy = 1 / sx; }
     else { const w = Math.sin(frameCount * 0.085 + e.bobPhase) * 0.07; sx = 1 + w; sy = 1 - w; }
+    // wounded droop: the membrane sags wide and low
+    if (e.hp / e.maxHp < 0.4 && e.grounded) { sx *= 1.12; sy *= 0.86; }
 
     const acid = e.kind === 'acidslime';
     const G: RGB = acid ? [0.28, 0.92, 0.12] : [0.20, 0.78, 0.35];
@@ -72,7 +83,9 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       P(3, H - 1 - ((drip + (H >> 1)) % H), ...GD);
     }
     if (e.blink === 0) {
-      const eyeY = Math.max(1, Math.round(H * 0.4));
+      // alerted eyes also pitch toward the alchemist's altitude
+      const vlook = e.alerted ? (e.y - ctx.player.y > 14 ? 1 : ctx.player.y - e.y > 14 ? -1 : 0) : 0;
+      const eyeY = Math.max(1, Math.round(H * 0.4) + vlook);
       P(look - 2, eyeY, 0.95, 1.0, 0.95); P(look + 2, eyeY, 0.95, 1.0, 0.95);
       P(look - 2 + (look > 0 ? 1 : 0), eyeY, 0.02, 0.10, 0.02);
       P(look + 2 + (look > 0 ? 1 : 0), eyeY, 0.02, 0.10, 0.02);
@@ -212,13 +225,26 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     if (frameCount % 90 < 6) PE(0, 2, 0.12, 0.03, 0.03);
     if (near && frameCount % 30 < 18) PE(tr, 2, 0.5, 0.06, 0.06);
   } else if (e.kind === 'bat') {
-    // --- Cave bat: 2-pose wing snap, glinting red eyes ---
-    const hover = Math.round(Math.sin(e.bobPhase) * 1.2);
+    // --- Cave bat: 2-pose wing snap, glinting red eyes. Anticipation and
+    // injury read through the wings: a full-spread FLARE holds before the
+    // dart, a swoop sweeps them tight, and a tumble scrambles the beat. ---
+    const flaring = (e.windup ?? 0) > 0;
+    const swooping = (e.swoop ?? 0) > 0;
+    const tumbling = (e.tumble ?? 0) > 0;
+    const hover =
+      Math.round(Math.sin(e.bobPhase) * 1.2) +
+      (tumbling ? Math.round((Math.random() - 0.5) * 2) : 0);
     const Q = (dx: number, dy: number, r: number, g: number, b: number): void =>
       P(dx, dy + hover, r, g, b);
     const V: RGB = [0.36, 0.22, 0.46],
       VD: RGB = [0.2, 0.11, 0.27];
-    const wingUp = frameCount % 10 < 5;
+    const wingUp = tumbling
+      ? frameCount % 4 < 2 // panicked double-time flutter
+      : flaring
+        ? true
+        : swooping
+          ? false
+          : frameCount % 10 < 5;
     // body nub
     Q(-1, 2, ...V); Q(0, 2, ...V); Q(1, 2, ...V);
     Q(-1, 1, ...VD); Q(0, 1, ...V); Q(1, 1, ...VD);
@@ -233,6 +259,10 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     if (wingUp) {
       Q(-2, 3, ...V); Q(-3, 4, ...VD); Q(-4, 4, ...VD);
       Q(2, 3, ...V); Q(3, 4, ...VD); Q(4, 4, ...VD);
+      if (flaring) {
+        // the full spread: wingtips out one more reach before the dart
+        Q(-5, 5, ...VD); Q(5, 5, ...VD);
+      }
     } else {
       Q(-2, 1, ...V); Q(-3, 1, ...VD); Q(-4, 0, ...VD);
       Q(2, 1, ...V); Q(3, 1, ...VD); Q(4, 0, ...VD);

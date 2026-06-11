@@ -180,6 +180,12 @@ export interface Enemy {
   punching?: number;
   /** Has noticed the alchemist at least once (alert blip fired). */
   alerted?: boolean;
+  /** Anticipation frames: a slime gathering before its hop / a bat flaring before the dart. */
+  windup?: number;
+  /** Bat: frames of the committed high-speed dart after the flare. */
+  swoop?: number;
+  /** Wounded bat: frames of flutter-tumble (the wings failing). */
+  tumble?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
