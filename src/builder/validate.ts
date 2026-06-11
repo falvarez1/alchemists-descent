@@ -446,8 +446,16 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     if ((o.kind === 'enemy' || o.kind === 'pickup') && blockedAt(closed, o.x, o.y - 2)) {
       push('warning', o.kind + ' embedded in blocking cells', o.id);
     }
-    if (o.kind === 'hazardEmitter' && blockedAt(closed, o.x, o.y)) {
-      push('warning', 'hazard emitter buried in blocking cells — it will never drip', o.id);
+    if (o.kind === 'hazardEmitter') {
+      if (blockedAt(closed, o.x, o.y))
+        push('warning', 'hazard emitter buried in blocking cells — it will never drip', o.id);
+      if (
+        spawns.length === 1 &&
+        Math.abs(o.x - spawns[0].x) < 18 &&
+        o.y <= spawns[0].y &&
+        spawns[0].y - o.y < 120
+      )
+        push('warning', 'hazard emitter drips onto the spawn point', o.id);
     }
   }
 

@@ -310,6 +310,12 @@ export class Builder {
     // document survives for the next open.
     ctx.events.on('modeChanged', ({ mode }) => {
       if (mode === 'play' && this.isOpen) this.close();
+      // a mood-overridden playtest must not leak its ambient into the
+      // sandbox if the user abandons it without reopening the Builder
+      if (mode === 'build' && this.prevAmbient !== null && !this.isOpen) {
+        ctx.params.global.ambient = this.prevAmbient;
+        this.prevAmbient = null;
+      }
     });
     // Sandbox world-shaping buttons reshape the WHOLE world under the open
     // document with no undo. While the Builder is open they must confirm
@@ -429,6 +435,7 @@ export class Builder {
     this.shapeDrag = null;
     this.marquee = null;
     this.armedStamp = null;
+    this.patrolEditId = null;
     this.linkFrom = null;
     this.root.style.display = 'none';
     this.modeBtn.classList.remove('active');
@@ -690,6 +697,7 @@ export class Builder {
         this.paintDirty;
       if (hasWork && !window.confirm('Discard the current document?')) return;
       this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
+      this.playtestScars = null; // scars belong to the old document
       this.cmds.clear();
       this.select(null);
       this.paintDirty = false;
@@ -715,6 +723,7 @@ export class Builder {
       if (!saved) return;
       // Clone so edits never mutate the library copy until the next SAVE.
       this.doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
+      this.playtestScars = null;
       this.cmds.clear();
       this.select(null);
       this.paintDirty = false;
@@ -756,6 +765,7 @@ export class Builder {
           this.status('NOT A BUILDER DOCUMENT', true);
         } else {
           this.doc = doc;
+          this.playtestScars = null;
           this.cmds.clear();
           this.select(null);
           this.paintDirty = false;
@@ -1006,12 +1016,15 @@ export class Builder {
         this.renderInspector();
       }
       // group drag: every unlocked member of the selection moves together
+      const lightsMovable = !this.layerLocked.has('lights') && !this.layerHidden.has('lights');
       const targets: Array<{ t: EditorObject | EditorLight; isLight: boolean; ox: number; oy: number }> = [];
       for (const o of this.doc.objects) {
-        if (this.selectedIds.has(o.id) && !o.locked) targets.push({ t: o, isLight: false, ox: o.x, oy: o.y });
+        if (this.selectedIds.has(o.id) && !o.locked && this.layerSelectableObj(o))
+          targets.push({ t: o, isLight: false, ox: o.x, oy: o.y });
       }
       for (const l of this.doc.lights) {
-        if (this.selectedIds.has(l.id) && !l.locked) targets.push({ t: l, isLight: true, ox: l.x, oy: l.y });
+        if (this.selectedIds.has(l.id) && !l.locked && lightsMovable)
+          targets.push({ t: l, isLight: true, ox: l.x, oy: l.y });
       }
       if (targets.length > 0) this.drag = { targets, grabX: pos.x, grabY: pos.y };
     });
@@ -1389,8 +1402,8 @@ export class Builder {
     let px = this.snap(x),
       py = this.snap(y);
     if (kind === 'door' || kind === 'runeDoor') {
-      px = x - Math.floor(((params.w as number) ?? 3) / 2);
-      py = y - Math.floor(((params.h as number) ?? 13) / 2);
+      px = this.snap(x) - Math.floor(((params.w as number) ?? 3) / 2);
+      py = this.snap(y) - Math.floor(((params.h as number) ?? 13) / 2);
     }
     const obj: EditorObject = {
       id: freshId(kind),
@@ -1543,6 +1556,11 @@ export class Builder {
         y: o.y + 8,
         params: JSON.parse(JSON.stringify(o.params)) as Record<string, unknown>,
       };
+      if (Array.isArray(clone.params.patrol)) {
+        clone.params.patrol = (clone.params.patrol as Array<[number, number]>).map(
+          ([wx, wy]) => [wx + 8, wy + 8],
+        );
+      }
       idMap.set(o.id, clone.id);
       newIds.push(clone.id);
       adds.push(addObjectCmd(clone));
@@ -1596,12 +1614,14 @@ export class Builder {
 
   /** Align the selection to the primary; spread distributes evenly between ends. */
   private alignSelection(mode: 'x' | 'y' | 'spreadX' | 'spreadY'): void {
+    const lightsMovable = !this.layerLocked.has('lights') && !this.layerHidden.has('lights');
     const targets: Array<{ t: EditorObject | EditorLight; isLight: boolean }> = [];
     for (const o of this.doc.objects) {
-      if (this.selectedIds.has(o.id) && !o.locked) targets.push({ t: o, isLight: false });
+      if (this.selectedIds.has(o.id) && !o.locked && this.layerSelectableObj(o))
+        targets.push({ t: o, isLight: false });
     }
     for (const l of this.doc.lights) {
-      if (this.selectedIds.has(l.id) && !l.locked) targets.push({ t: l, isLight: true });
+      if (this.selectedIds.has(l.id) && !l.locked && lightsMovable) targets.push({ t: l, isLight: true });
     }
     const moves: Command[] = [];
     if (mode === 'x' || mode === 'y') {
@@ -2093,6 +2113,7 @@ export class Builder {
           return;
         }
         this.doc = doc;
+        this.playtestScars = null;
         this.cmds.clear();
         this.select(null);
         this.paintDirty = false;
@@ -2137,12 +2158,17 @@ export class Builder {
         if (this.layerHidden.has(family)) this.layerHidden.delete(family);
         else this.layerHidden.add(family);
         this.syncLayers();
+        this.pruneSelection();
         this.syncMarkers();
+        this.renderInspector();
       });
       row.querySelector('[data-lock]')?.addEventListener('click', () => {
         if (this.layerLocked.has(family)) this.layerLocked.delete(family);
         else this.layerLocked.add(family);
         this.syncLayers();
+        this.pruneSelection();
+        this.syncMarkers();
+        this.renderInspector();
       });
     }
   }
@@ -2153,6 +2179,20 @@ export class Builder {
       row.classList.toggle('off', this.layerHidden.has(family));
       row.classList.toggle('locked', this.layerLocked.has(family));
     }
+  }
+
+  /** Drop selection members that just became unselectable (layer hide/lock). */
+  private pruneSelection(): void {
+    const keep = new Set<string>();
+    for (const o of this.doc.objects) {
+      if (this.selectedIds.has(o.id) && this.layerSelectableObj(o)) keep.add(o.id);
+    }
+    const lightsOk = !this.layerHidden.has('lights') && !this.layerLocked.has('lights');
+    if (lightsOk) {
+      for (const l of this.doc.lights) if (this.selectedIds.has(l.id)) keep.add(l.id);
+    }
+    this.selectedIds = keep;
+    if (this.selectedId && !keep.has(this.selectedId)) this.selectedId = [...keep][0] ?? null;
   }
 
   private layerVisibleObj(o: EditorObject): boolean {
