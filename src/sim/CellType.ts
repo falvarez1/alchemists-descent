@@ -44,11 +44,13 @@ export const Cell = {
   Glass: 31,
   Ash: 32,
   Glowshroom: 33,
+  // Wave F "The Caves Breathe"
+  Moss: 34,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
 
-export const CELL_COUNT = 34;
+export const CELL_COUNT = 35;
 
 /**
  * Classification predicates take plain numbers so values read straight out of
@@ -67,7 +69,8 @@ export function isSolid(t: number): boolean {
     t === Cell.Crystal ||
     t === Cell.Glass ||
     t === Cell.Fungus ||
-    t === Cell.Glowshroom
+    t === Cell.Glowshroom ||
+    t === Cell.Moss
   );
 }
 

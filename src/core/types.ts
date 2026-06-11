@@ -99,7 +99,9 @@ export type EnemyKind =
   | 'bat'
   | 'spitter'
   | 'bomber'
-  | 'colossus';
+  | 'colossus'
+  // Wave F: a glistening slime egg clutch — destroy it or it hatches
+  | 'eggs';
 
 export interface EnemyDef {
   hp: number;
@@ -142,6 +144,33 @@ export interface Enemy {
   recoil?: number;
   /** Bomber: fuse frames remaining; detonates at 0. */
   fusing?: number;
+  /** Bat roosts (Wave F): hangs dormant from the ceiling until disturbed. */
+  sleeping?: boolean;
+}
+
+/* ---------------- Wave F: the critter layer ---------------- */
+
+export type CritterKind = 'moth' | 'firefly' | 'fish' | 'beetle' | 'fly';
+
+/** Ambient harmless life. Transient per level — respawned around the camera. */
+export interface Critter {
+  kind: CritterKind;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** Per-critter animation/wander phase. */
+  phase: number;
+  /** Fish out of water / general distress countdown; <=0 from spawn = unused. */
+  gasp: number;
+  facing: number;
+}
+
+export interface CrittersApi {
+  readonly list: Critter[];
+  update(ctx: Ctx): void;
+  /** Concussion/heat kills the small things too (splat + remove). */
+  killAt(ctx: Ctx, x: number, y: number, radius: number): void;
 }
 
 export type SpellId = 'bolt' | 'bomb' | 'lightning' | 'flame' | 'dig' | 'warp' | 'blackhole';
@@ -420,6 +449,12 @@ export interface AudioApi {
   brazier(): void;
   /** A broken mechanism groaning before its gate falls open. */
   groan(): void;
+  /** Tiny cave-life chirp (crickets, moths near the lamp). */
+  chirp(): void;
+  /** A beetle's dry tick-tick skitter. */
+  skitter(): void;
+  /** A single water drop falling from the ceiling into a pool. */
+  drip(): void;
   coin(): void;
   hurt(): void;
   jump(): void;
@@ -996,4 +1031,5 @@ export interface Ctx {
   pickups: PickupsApi;
   mechanisms: MechanismsApi;
   sanctum: SanctumApi;
+  critters: CrittersApi;
 }

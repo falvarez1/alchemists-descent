@@ -605,7 +605,8 @@ export class Levels implements LevelsApi {
   /** Placed populations (finite, readable) — the descent's replacement for endless waves. */
   private placePopulation(ctx: Ctx, def: LevelDef, spawn: { x: number; y: number }): void {
     // Depth sets the headcount; the biome's foes table sets the mix.
-    const pop = populationForLevel(def, EXTRAS[def.biome].foes);
+    const foes = EXTRAS[def.biome].foes;
+    const pop = populationForLevel(def, foes);
     for (const [kind, count] of Object.entries(pop) as Array<[EnemyKind, number]>) {
       for (let i = 0; i < count; i++) {
         for (let attempt = 0; attempt < 30; attempt++) {
@@ -617,6 +618,51 @@ export class Levels implements LevelsApi {
             continue;
           if (!ctx.physics.entityFree(x, y, 6, 12)) continue;
           ctx.enemyCtl.spawn(kind, x, y);
+          break;
+        }
+      }
+    }
+
+    // Wave F nests — life that implies more life.
+    // Bat roosts: sleeping clusters hanging from cave ceilings.
+    if (foes.bat) {
+      const roosts = 1 + (Math.random() < 0.5 ? 1 : 0);
+      for (let r = 0; r < roosts; r++) {
+        for (let attempt = 0; attempt < 400; attempt++) {
+          const x = 40 + Math.floor(Math.random() * (WIDTH - 80));
+          const y = 50 + Math.floor(Math.random() * (HEIGHT - 200));
+          const dx = x - spawn.x;
+          if (Math.abs(dx) < 200) continue;
+          // ceiling: solid above, open air below
+          const w = ctx.world;
+          if (w.types[w.idx(x, y - 1)] === Cell.Empty || w.types[w.idx(x, y)] !== Cell.Empty)
+            continue;
+          if (w.types[w.idx(x, y + 1)] !== Cell.Empty || w.types[w.idx(x, y + 4)] !== Cell.Empty)
+            continue;
+          const brood = 3 + Math.floor(Math.random() * 2);
+          for (let b = 0; b < brood; b++) {
+            ctx.enemyCtl.spawn('bat', x + (b - 1) * 5, y + 4);
+            const bat = ctx.enemies[ctx.enemies.length - 1];
+            if (bat && bat.kind === 'bat') {
+              bat.sleeping = true;
+              bat.y = y + 4; // hang just under the ceiling
+              bat.x = x + (b - 1) * 5;
+            }
+          }
+          break;
+        }
+      }
+    }
+    // Slime egg clutches: glistening on the cave floor, ticking quietly.
+    if (foes.slime) {
+      const clutches = 1 + (Math.random() < 0.5 ? 1 : 0);
+      for (let c = 0; c < clutches; c++) {
+        for (let attempt = 0; attempt < 40; attempt++) {
+          const x = 40 + Math.floor(Math.random() * (WIDTH - 80));
+          const y = 60 + Math.floor(Math.random() * (HEIGHT - 140));
+          if (Math.abs(x - spawn.x) < 180) continue;
+          if (!ctx.physics.entityFree(x, y, 5, 6)) continue;
+          ctx.enemyCtl.spawn('eggs', x, y);
           break;
         }
       }

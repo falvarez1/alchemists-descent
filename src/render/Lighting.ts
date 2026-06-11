@@ -168,6 +168,12 @@ export class Lighting implements LightField {
             lightG[i] = 0.4;
             lightB[i] = Math.max(lightB[i], 0.2);
           }
+        } else if (t === Cell.Moss) {
+          // the faintest living shimmer — only readable in true dark
+          if (lightG[i] < 0.09) {
+            lightG[i] = 0.09;
+            lightB[i] = Math.max(lightB[i], 0.03);
+          }
         } else if (t === Cell.Healium) {
           if (lightR[i] < 0.3) {
             lightR[i] = 0.3;
@@ -248,6 +254,15 @@ export class Lighting implements LightField {
     // Excavation beam scorches with light
     const digBeam = ctx.fx.digBeam;
     if (digBeam && digBeam.life > 0) this.seedLight(digBeam.x1, digBeam.y1, 1.6, 1.1, 0.4);
+
+    // Fireflies carry their own tiny lamps
+    if (ctx.state.mode === 'play') {
+      for (const c of ctx.critters.list) {
+        if (c.kind !== 'firefly') continue;
+        const pulse = Math.max(0, Math.sin(c.phase * 0.45));
+        if (pulse > 0.25) this.seedLight(c.x, c.y, 0.12 * pulse, 0.32 * pulse, 0.07 * pulse);
+      }
+    }
 
     // Pickups shimmer; the portal throbs violet (bright once the key is held)
     const runtime = ctx.levels.current;

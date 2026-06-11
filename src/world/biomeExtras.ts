@@ -9,6 +9,7 @@ import {
   fungusColor,
   glowshroomColor,
   healiumColor,
+  mossColor,
   snowColor,
   stoneColor,
 } from '@/sim/colors';
@@ -31,20 +32,31 @@ export interface BiomeExtras {
   coalSeams?: number;
   ashPiles?: number;
   snowDrifts?: number;
+  /** Cave-moss seed patches near standing water (Wave F: damp rock greens over). */
+  mossPatches?: number;
 }
 
 export const EXTRAS: Record<BiomeId, BiomeExtras> = {
-  earthen: { foes: { slime: 5, bat: 3, imp: 2, golem: 1 }, goldBonus: 1 },
+  earthen: { foes: { slime: 5, bat: 3, imp: 2, golem: 1 }, goldBonus: 1, mossPatches: 22 },
   fungal: {
     foes: { slime: 4, spitter: 4, bat: 3, bomber: 1 },
     goldBonus: 1,
     fungusPatches: 160,
     healSprings: 3,
     shrooms: 26,
+    mossPatches: 30,
   },
   frozen: { foes: { slime: 3, bat: 4, golem: 3, imp: 1 }, goldBonus: 1, snowDrifts: 90 },
-  flooded: { foes: { slime: 5, spitter: 3, bat: 2, golem: 1 }, goldBonus: 1 },
-  timber: { foes: { imp: 4, slime: 3, bomber: 3, bat: 2 }, goldBonus: 1.1 },
+  flooded: {
+    foes: { slime: 5, spitter: 3, bat: 2, golem: 1 },
+    goldBonus: 1,
+    mossPatches: 48,
+  },
+  timber: {
+    foes: { imp: 4, slime: 3, bomber: 3, bat: 2 },
+    goldBonus: 1.1,
+    mossPatches: 26,
+  },
   crystal: {
     foes: { bat: 5, golem: 3, imp: 2, bomber: 1 },
     goldBonus: 1.6,
@@ -107,6 +119,31 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
       set(x, y, Cell.Fungus, fungusColor());
       w.life[w.idx(x, y)] = 0;
       fp++;
+    }
+  }
+
+  // Cave-moss seeds: spores latch onto rock beside standing liquid and creep
+  // out from there at the sim's own pace (handleMoss does the growing)
+  if (B.mossPatches) {
+    let mp = 0;
+    for (let attempt = 0; attempt < B.mossPatches * 80 && mp < B.mossPatches; attempt++) {
+      const x = 8 + Math.floor(rng.next() * (WIDTH - 16));
+      const y = 14 + Math.floor(rng.next() * (FLOOR_BAND - 20));
+      if (w.types[w.idx(x, y)] !== Cell.Empty) continue;
+      let nearSolid = false,
+        nearWet = false;
+      for (let dy = -3; dy <= 3 && !(nearSolid && nearWet); dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          if (!w.inBounds(x + dx, y + dy)) continue;
+          const t = w.types[w.idx(x + dx, y + dy)];
+          if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && t === Cell.Wall) nearSolid = true;
+          if (t === Cell.Water) nearWet = true;
+        }
+      }
+      if (!nearSolid || !nearWet) continue;
+      set(x, y, Cell.Moss, mossColor());
+      w.life[w.idx(x, y)] = 0;
+      mp++;
     }
   }
 

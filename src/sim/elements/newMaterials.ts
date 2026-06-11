@@ -1,7 +1,7 @@
 import { MAX_PARTICLES } from '@/config/constants';
 import type { Ctx } from '@/core/types';
 import { Cell, isGas, isLiquid, isSolid } from '@/sim/CellType';
-import { EMPTY_COLOR, fireColor, fungusColor, packRGB, waterColor } from '@/sim/colors';
+import { EMPTY_COLOR, fireColor, fungusColor, mossColor, packRGB, waterColor } from '@/sim/colors';
 import { handleViscousLiquid } from '@/sim/elements/liquids';
 import { spawnSmoke } from '@/sim/elements/thermal';
 
@@ -106,6 +106,55 @@ export function handleAsh(ctx: Ctx, x: number, y: number): void {
       return;
     }
   }
+}
+
+/**
+ * Cave moss (Wave F): slow benign creep across damp rock. Spreads only into
+ * air hugging a solid surface AND only where liquid sits nearby — the damp
+ * parts of a cave green over; dry galleries stay bare stone.
+ */
+export function handleMoss(ctx: Ctx, x: number, y: number): void {
+  const w = ctx.world;
+  const i = w.idx(x, y);
+  if (w.life[i] === 0) w.life[i] = 10 + Math.floor(Math.random() * 14);
+  if (w.life[i] < 0) return;
+  if (Math.random() > 0.02) return; // far slower than fungus — geology pace
+  // dampness: any liquid within a loose 4-cell sniff (5 random samples)
+  let damp = false;
+  for (let s = 0; s < 5 && !damp; s++) {
+    const sx = x + Math.floor(Math.random() * 9) - 4;
+    const sy = y + Math.floor(Math.random() * 9) - 4;
+    if (w.inBounds(sx, sy) && isLiquid(w.types[w.idx(sx, sy)])) damp = true;
+  }
+  if (!damp) return;
+  const dirs = [
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0, y: -1 },
+    { x: 0, y: 1 },
+  ];
+  const d = dirs[Math.floor(Math.random() * dirs.length)];
+  const nx = x + d.x;
+  const ny = y + d.y;
+  if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Empty) {
+    let touching = false;
+    for (let k = 0; k < 4 && !touching; k++) {
+      const tx = nx + (k === 0 ? 1 : k === 1 ? -1 : 0);
+      const ty = ny + (k === 2 ? 1 : k === 3 ? -1 : 0);
+      if (w.inBounds(tx, ty)) {
+        const t = w.types[w.idx(tx, ty)];
+        if (isSolid(t) && t !== Cell.Moss && t !== Cell.Fungus) touching = true;
+      }
+    }
+    if (touching) {
+      const ni = w.idx(nx, ny);
+      w.types[ni] = Cell.Moss;
+      w.colors[ni] = mossColor();
+      w.life[ni] = Math.max(2, w.life[i] - 1 - Math.floor(Math.random() * 3));
+    }
+  }
+  w.life[i]--;
+  if (w.life[i] <= 0) w.life[i] = -1; // mature: settled green, stops creeping
 }
 
 /**

@@ -34,6 +34,8 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   bomber: { hp: 34, halfW: 5, h: 8, bounty: 45, gore: Cell.Fire, goreFn: fireColor },
   // The Kiln Colossus: the run's final door. Water is the strategy.
   colossus: { hp: 520, halfW: 13, h: 26, bounty: 600, gore: Cell.Stone, goreFn: stoneColor },
+  // Wave F: slime egg clutch — destroy it now or fight what hatches later
+  eggs: { hp: 14, halfW: 4, h: 5, bounty: 25, gore: Cell.Slime, goreFn: slimeColor },
 };
 
 /** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
@@ -414,14 +416,76 @@ export class Enemies implements EnemyControlApi {
           );
           e.attackCd = 45;
         }
+      } else if (e.kind === 'eggs') {
+        // Slime egg clutch: sits glistening, then hatches — sooner if you
+        // loom over it. Killing it normally pays the small bounty instead.
+        e.vy += 0.3;
+        e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+        if (e.grounded) e.vy = 0;
+        const due =
+          e.timer > 1400 + e.bobPhase * 220 ||
+          (targetAlive && pDist < 36 && e.timer > 240);
+        if (due) {
+          const brood = 2 + (e.bobPhase > Math.PI ? 1 : 0);
+          for (let b2 = 0; b2 < brood; b2++) {
+            ctx.enemyCtl.spawn('slime', e.x + (b2 - 1) * 4, e.y - 2);
+          }
+          ctx.particles.burst(e.x, e.y - 3, 14, Cell.Slime, slimeColor, 2.0);
+          ctx.audio.squelch();
+          ctx.events.emit('toast', { text: 'AN EGG CLUTCH HATCHES' });
+          enemies.splice(i, 1);
+          continue;
+        }
       } else if (e.kind === 'bat') {
-        // Erratic flying swarmer: darts at the wizard, contact bites
+        // Roosting (Wave F): hangs dormant from the ceiling until disturbed
+        if (e.sleeping) {
+          e.vx = 0;
+          e.vy = 0;
+          if (targetAlive && pDist < 70) {
+            e.sleeping = false;
+            e.vy = 1.2; // drop off the ceiling
+            ctx.audio.tone(1900 + Math.random() * 600, 2600, 0.08, 'square', 0.06);
+          }
+          continue;
+        }
+        // Erratic flying swarmer: darts at the wizard, contact bites.
+        // Wave F predation: a moth nearby is easier prey than the wizard.
         e.bobPhase += 0.22;
-        if (targetAlive && pDist < 320) {
+        let hunting = false;
+        if (!targetAlive || pDist > 120) {
+          let prey = null as { x: number; y: number } | null;
+          let preyIdx = -1;
+          const critters = ctx.critters.list;
+          for (let ci2 = 0; ci2 < critters.length; ci2++) {
+            const cr = critters[ci2];
+            if (cr.kind !== 'moth') continue;
+            const cdx = cr.x - e.x,
+              cdy = cr.y - e.y;
+            if (cdx * cdx + cdy * cdy < 70 * 70) {
+              prey = cr;
+              preyIdx = ci2;
+              break;
+            }
+          }
+          if (prey) {
+            hunting = true;
+            const cdx = prey.x - e.x,
+              cdy = prey.y - e.y;
+            const cd = Math.sqrt(cdx * cdx + cdy * cdy) || 1;
+            e.vx += (cdx / cd) * 0.16;
+            e.vy += (cdy / cd) * 0.16;
+            if (cd < 4) {
+              // gulp: a puff of wing dust and the moth is gone
+              ctx.particles.burst(prey.x, prey.y, 3, null, () => packRGB(150, 140, 110), 0.8);
+              critters.splice(preyIdx, 1);
+            }
+          }
+        }
+        if (!hunting && targetAlive && pDist < 320) {
           const d = pDist || 1;
           e.vx += (pdx / d) * 0.14;
           e.vy += (pdy / d) * 0.14;
-        } else {
+        } else if (!hunting) {
           e.vx += (Math.random() - 0.5) * 0.1;
           e.vy += (Math.random() - 0.5) * 0.1;
         }

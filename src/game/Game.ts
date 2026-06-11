@@ -14,6 +14,7 @@ import { Enemies } from '@/entities/Enemies';
 import { createPlayer, PlayerControl } from '@/entities/Player';
 import { Physics } from '@/entities/physics';
 import { Brewing } from '@/game/Brewing';
+import { Critters } from '@/game/Critters';
 import { Levels } from '@/game/Levels';
 import { Mechanisms } from '@/game/Mechanisms';
 import { Pickups } from '@/game/Pickups';
@@ -127,6 +128,7 @@ export class Game {
     ctx.pickups = new Pickups();
     ctx.mechanisms = new Mechanisms(ctx);
     ctx.sanctum = new Sanctum(ctx);
+    ctx.critters = new Critters(ctx);
     this.ctx = ctx;
 
     ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
@@ -211,6 +213,7 @@ export class Game {
       ctx.levels.update(ctx);
       ctx.pickups.update(ctx);
       ctx.mechanisms.update(ctx);
+      ctx.critters.update(ctx);
       this.brewing.update(ctx);
       ctx.wands.update(ctx);
       ctx.particles.update(ctx);

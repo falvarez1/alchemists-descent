@@ -172,6 +172,39 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     PE(6, 5, hg * 0.8, hg * 0.32, hg);
     PE(-6, 4, hg * 0.5, hg * 0.2, hg * 0.65);
     PE(6, 4, hg * 0.5, hg * 0.2, hg * 0.65);
+  } else if (e.kind === 'eggs') {
+    // --- Slime egg clutch: glistening blobs, embryos pulsing inside ---
+    const G: RGB = [0.25, 0.5, 0.22],
+      GD: RGB = [0.14, 0.3, 0.13];
+    for (const [bx, by, rr] of [
+      [-2, 1, 2],
+      [2, 1, 2],
+      [0, 3, 2],
+    ] as Array<[number, number, number]>) {
+      for (let dy = -rr; dy <= rr; dy++) {
+        for (let dx = -rr; dx <= rr; dx++) {
+          if (dx * dx + dy * dy > rr * rr) continue;
+          P(bx + dx, by + dy, ...(dx * dx + dy * dy >= rr * rr - 1 ? GD : G));
+        }
+      }
+      // the embryo stirs: a brighter pulse deep in each egg
+      const stir = 0.4 + Math.sin(frameCount * 0.06 + e.bobPhase + bx) * 0.25;
+      PE(bx, by, 0.25 * stir, 0.8 * stir * boost * 0.4, 0.2 * stir);
+    }
+    // wet glints
+    P(-3, 2, 0.5, 0.75, 0.5);
+    P(1, 4, 0.5, 0.75, 0.5);
+  } else if (e.kind === 'bat' && e.sleeping) {
+    // --- Roosting bat: folded teardrop hanging from the ceiling ---
+    const V2: RGB = [0.3, 0.18, 0.38],
+      VD2: RGB = [0.17, 0.1, 0.23];
+    P(0, 4, ...VD2); // ceiling grip
+    P(-1, 3, ...V2); P(0, 3, ...V2); P(1, 3, ...V2);
+    P(-1, 2, ...V2); P(0, 2, ...VD2); P(1, 2, ...V2);
+    P(-1, 1, ...VD2); P(0, 1, ...V2); P(1, 1, ...VD2);
+    P(0, 0, ...VD2);
+    // the faintest breathing shimmer
+    if (frameCount % 90 < 6) PE(0, 2, 0.12, 0.03, 0.03);
   } else if (e.kind === 'bat') {
     // --- Cave bat: 2-pose wing snap, glinting red eyes ---
     const hover = Math.round(Math.sin(e.bobPhase) * 1.2);

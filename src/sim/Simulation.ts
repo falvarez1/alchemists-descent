@@ -16,6 +16,7 @@ import {
   handleCoal,
   handleExoticLiquid,
   handleFungus,
+  handleMoss,
   handleSnow,
 } from '@/sim/elements/newMaterials';
 import { handleGunpowder, handleSand } from '@/sim/elements/powders';
@@ -79,7 +80,8 @@ export class Simulation implements SimulationApi {
           type === Cell.Crystal ||
           type === Cell.Glass ||
           type === Cell.Fungus ||
-          type === Cell.Glowshroom
+          type === Cell.Glowshroom ||
+          type === Cell.Moss
         )
           continue;
 
@@ -143,6 +145,7 @@ export class Simulation implements SimulationApi {
         if (world.types[ci] === Cell.Ice && !world.moved[ci]) handleIce(ctx, x, y);
         if (world.types[ci] === Cell.Vines && !world.moved[ci]) handleVines(ctx, x, y);
         if (world.types[ci] === Cell.Fungus && !world.moved[ci]) handleFungus(ctx, x, y);
+        if (world.types[ci] === Cell.Moss && !world.moved[ci]) handleMoss(ctx, x, y);
       }
     }
   }

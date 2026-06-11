@@ -51,6 +51,7 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Fungus]: { name: 'Glowcap Fungus', flammability: 0.5, bloomWeight: 0.3 },
   [Cell.Glass]: { name: 'Glass' },
   [Cell.Ash]: { name: 'Ash', friction: 0.2 },
+  [Cell.Moss]: { name: 'Cave Moss', flammability: 0.25, bloomWeight: 0.08 },
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };

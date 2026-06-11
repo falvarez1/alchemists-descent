@@ -112,6 +112,14 @@ export class AudioEngine implements AudioApi {
 
   groan(): void { if (!this.throttled('groan', 400)) return; this.tone(72, 38, 0.7, 'sawtooth', 0.16); this.noiseBurst(0.45, 160, 0.12); }
 
+  // ---- Wave F: the quiet sounds of cave life ----
+
+  chirp(): void { if (!this.throttled('chirp', 700)) return; const f = 2600 + Math.random() * 900; this.tone(f, f * 1.06, 0.05, 'sine', 0.045); setTimeout(() => this.tone(f * 0.96, f, 0.04, 'sine', 0.035), 90); }
+
+  skitter(): void { if (!this.throttled('skitter', 600)) return; this.noiseBurst(0.025, 4200, 0.04, true); setTimeout(() => this.noiseBurst(0.02, 4600, 0.03, true), 70); setTimeout(() => this.noiseBurst(0.02, 3900, 0.03, true), 130); }
+
+  drip(): void { if (!this.throttled('drip', 500)) return; this.tone(900 + Math.random() * 300, 420, 0.07, 'sine', 0.06); }
+
   flame(): void {
     if (!this.throttled('flame', 70)) return;
     this.noiseBurst(0.22, 550 + Math.random() * 300, 0.18);          // body of the roar

@@ -272,7 +272,8 @@ export class PlayerControl implements PlayerControlApi {
     let liquidCount = 0,
       hazardDmg = 0,
       healTouch = 0,
-      tpTouch = false;
+      tpTouch = false,
+      fungusBrush = false;
     for (let dy = 0; dy < 17; dy += 2) {
       for (let dx = -4; dx <= 4; dx += 2) {
         const X = player.x + dx,
@@ -294,9 +295,21 @@ export class PlayerControl implements PlayerControlApi {
           }
         }
         if (c === Cell.Teleportium) tpTouch = true;
+        if (c === Cell.Fungus || c === Cell.Glowshroom) fungusBrush = true;
       }
     }
     player.inLiquid = liquidCount >= 13;
+    // Wave F: brushing through glowcap colonies puffs a little spore cloud
+    if (
+      fungusBrush &&
+      Math.random() < 0.05 &&
+      (Math.abs(player.vx) > 0.4 || Math.abs(player.vy) > 0.4)
+    ) {
+      ctx.particles.burst(player.x, player.y - 8, 5, null, () => packRGB(110, 200, 130), 0.9, {
+        glow: 0.9,
+        grav: -0.004,
+      });
+    }
     if (healTouch > 0 && player.hp < player.maxHp) {
       player.hp = Math.min(player.maxHp, player.hp + healTouch);
       if (ctx.state.frameCount % 10 === 0) {

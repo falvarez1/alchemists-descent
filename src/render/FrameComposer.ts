@@ -402,6 +402,7 @@ export class FrameComposer implements PixelSurface {
     // World pickups + the exit portal (under entities so foes read on top)
     this.drawPickupsAndPortal(ctx);
     this.drawMechanismsAndRunes(ctx);
+    this.drawCritters(ctx);
 
     // Entities on top
     for (const e of ctx.enemies) this.drawEnemy(this, this.light, ctx, e);
@@ -456,6 +457,39 @@ export class FrameComposer implements PixelSurface {
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
 
     this.target.markTextureDirty();
+  }
+
+  /** Wave F: the critter layer — tiny, alive, mostly ignorable. */
+  private drawCritters(ctx: Ctx): void {
+    if (ctx.state.mode !== 'play') return;
+    const frame = ctx.state.frameCount;
+    for (const c of ctx.critters.list) {
+      const x = Math.round(c.x),
+        y = Math.round(c.y);
+      if (c.kind === 'moth') {
+        // pale dusty wings, alternating beat
+        const beat = frame % 6 < 3 ? 1 : 0;
+        this.setPx(x, y, 0.62, 0.58, 0.46);
+        this.setPx(x - 1, y - beat, 0.45, 0.42, 0.33);
+        this.setPx(x + 1, y - (1 - beat), 0.45, 0.42, 0.33);
+      } else if (c.kind === 'firefly') {
+        // dark speck, bright abdomen on the pulse
+        const pulse = Math.max(0, Math.sin(c.phase * 0.45));
+        this.setPx(x, y, 0.1, 0.12, 0.06);
+        if (pulse > 0.25) this.addPx(x, y + 1, 0.5 * pulse, 1.4 * pulse, 0.25 * pulse);
+      } else if (c.kind === 'fish') {
+        const tail = Math.sin(c.phase * 1.6) > 0 ? 1 : 0;
+        this.setPx(x, y, 0.5, 0.6, 0.62);
+        this.setPx(x - c.facing, y, 0.36, 0.46, 0.5);
+        this.setPx(x - c.facing * 2, y + tail - 0, 0.26, 0.36, 0.4);
+      } else if (c.kind === 'beetle') {
+        this.setPx(x, y, 0.16, 0.13, 0.1);
+        this.setPx(x + c.facing, y, 0.22, 0.18, 0.12);
+      } else if (c.kind === 'fly') {
+        this.setPx(x, y, 0.12, 0.11, 0.09);
+        if (frame % 4 < 2) this.addPx(x, y - 1, 0.08, 0.08, 0.07);
+      }
+    }
   }
 
   /** Lever arms, pressed-plate glows, dark brazier hints, floating rune glyphs. */

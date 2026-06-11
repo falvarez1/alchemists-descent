@@ -77,6 +77,7 @@ export const ashColor = () => {
   return packRGB(a, a - 4, a - 6);
 };
 export const glowshroomColor = () => packRGB(120 + rand(40), 230 + rand(25), 140 + rand(50));
+export const mossColor = () => packRGB(38 + rand(20), 96 + rand(44), 42 + rand(18));
 
 /** Fresh randomized color for a newly placed cell of the given material. */
 export const COLOR_FN: Record<number, () => number> = {
@@ -114,4 +115,5 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.Glass]: glassColor,
   [Cell.Ash]: ashColor,
   [Cell.Glowshroom]: glowshroomColor,
+  [Cell.Moss]: mossColor,
 };
