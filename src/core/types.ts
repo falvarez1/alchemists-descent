@@ -1011,6 +1011,33 @@ export interface LevelExitWell {
 }
 
 /**
+ * A designer-placed light compiled from a Builder document (Phase 7).
+ * Seeded into the dynamic light field each rebuild alongside emissive
+ * materials; `occluded` lights seed a point and let the directional sweeps
+ * carve shadows, non-occluded lights paint their whole falloff disk.
+ */
+export interface AuthoredLight {
+  x: number;
+  y: number;
+  /** Channel weights 0..1 (parsed from the authored hex color). */
+  r: number;
+  g: number;
+  b: number;
+  /** Overall strength multiplier (sane range 0..4). */
+  intensity: number;
+  /** Reach in world cells. */
+  radius: number;
+  /** Extra hot-spot boost at the core (feeds the bloom threshold). */
+  bloom: number;
+  /** 0..1 torch-like wobble depth. */
+  flicker: number;
+  /** Stable per-light phase so neighboring torches don't sync. */
+  flickerPhase: number;
+  falloff: 'soft' | 'linear' | 'sharp';
+  occluded: boolean;
+}
+
+/**
  * Everything that persists for a visited level. Worlds are kept live in RAM
  * for the whole expedition (v1) — your scars stay exactly as you left them.
  */
@@ -1039,6 +1066,8 @@ export interface LevelRuntime {
   runeVaults: RuneVault[];
   /** Boss arena center (bottom level only); the colossus spawns here. */
   boss?: { x: number; y: number } | null;
+  /** Designer-placed lights from a compiled Builder document (custom playtests). */
+  authoredLights?: AuthoredLight[];
 }
 
 export interface LevelsApi {

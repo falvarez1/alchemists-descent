@@ -29,9 +29,12 @@ npm run dev      # http://localhost:5173
 into the live simulation, generate biomes, drop quick test enemies, cast test
 spells, and tune parameters live in the right panel. WASD pans the camera.
 
-**Builder** — planned as a separate developer tool for authored levels: place and
-edit terrain, enemies, pickups, mechanisms, links, lights, procedural passes, and
-validation data. See `docs/BUILDER.md`.
+**Builder** — the level-authoring tool (BUILDER button in the header): terrain
+shape tools (paint/line/rect/ellipse/flood fill/replace), gameplay objects,
+mechanisms wired with a link tool (multiple triggers on one door = AND gate),
+authored lights, seeded procedural passes with preview/apply/discard, and a
+validation pass with BFS findability — then PLAYTEST compiles the document
+into a disposable custom level. See `docs/BUILDER.md`.
 
 **Play mode** (TAB or the PLAY button) — descend through the persistent biome
 stack. Find the sealed well in each floor, break the stone plug, and drop deeper.

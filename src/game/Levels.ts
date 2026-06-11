@@ -157,8 +157,10 @@ export class Levels implements LevelsApi {
     }
 
     // EXIT PORTAL: the golden key opens it; touching the open gate descends.
+    // Custom levels (Builder playtests) have no next depth — the portal still
+    // awakens so authored key->portal flows can be playtested end to end.
     const portal = runtime.portal;
-    if (portal && runtime.def.nextLevelId) {
+    if (portal) {
       const pdx = player.x - portal.x;
       const pdy = player.y - 6 - portal.y;
       const near = pdx * pdx + pdy * pdy < 100;
@@ -168,12 +170,16 @@ export class Levels implements LevelsApi {
           ctx.audio.portalWhoosh();
           ctx.events.emit('toast', { text: 'THE PORTAL AWAKENS' });
         }
-        // The Sanctum opens between depths: boon draft + shop, then descend.
         const next = runtime.def.nextLevelId;
-        ctx.sanctum.open(ctx, () => {
-          this.leaveLevel();
-          this.enterLevel(ctx, next);
-        });
+        if (next) {
+          // The Sanctum opens between depths: boon draft + shop, then descend.
+          ctx.sanctum.open(ctx, () => {
+            this.leaveLevel();
+            this.enterLevel(ctx, next);
+          });
+        } else if (ctx.state.frameCount % 240 === 0) {
+          ctx.events.emit('toast', { text: 'CUSTOM LEVEL CLEAR — THE PORTAL SHINES' });
+        }
         return;
       }
       if (near && !runtime.keyTaken && ctx.state.frameCount % 90 === 0) {

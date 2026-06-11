@@ -1,10 +1,10 @@
-import type { EditorDocument, EditorObject } from '@/builder/document';
+import type { EditorDocument, EditorLight, EditorLink, EditorObject } from '@/builder/document';
 import type { World } from '@/sim/World';
 
 /**
  * Command-based undo/redo (docs/BUILDER.md): every edit is a do/undo pair
- * over the document — no whole-world snapshots. Object commands cover
- * Phases 2-3; paint commands carry sparse before/after cell patches.
+ * over the document — no whole-world snapshots. Object/link/light commands
+ * cover the authoring records; paint commands carry sparse cell patches.
  */
 
 export interface Command {
@@ -67,17 +67,31 @@ export function addObjectCmd(obj: EditorObject): Command {
   };
 }
 
+/** Deleting an object also severs every link touching it (restored on undo). */
 export function deleteObjectCmd(obj: EditorObject): Command {
   let index = -1;
+  let severed: Array<{ link: EditorLink; at: number }> = [];
   return {
     label: 'delete ' + obj.kind,
     do: (doc) => {
       index = doc.objects.indexOf(obj);
       if (index >= 0) doc.objects.splice(index, 1);
+      severed = [];
+      for (let n = doc.links.length - 1; n >= 0; n--) {
+        const l = doc.links[n];
+        if (l.fromId === obj.id || l.toId === obj.id) {
+          severed.push({ link: l, at: n });
+          doc.links.splice(n, 1);
+        }
+      }
     },
     undo: (doc) => {
       if (index >= 0) doc.objects.splice(index, 0, obj);
       else doc.objects.push(obj);
+      // severed was collected back-to-front; re-insert front-to-back
+      for (let n = severed.length - 1; n >= 0; n--) {
+        doc.links.splice(severed[n].at, 0, severed[n].link);
+      }
     },
   };
 }
@@ -124,6 +138,112 @@ export function paintTerrainCmd(world: World, before: CellPatch, after: CellPatc
     }
   };
   return { label: 'paint', do: () => apply(after), undo: () => apply(before) };
+}
+
+/* ---------------- link commands ---------------- */
+
+export function addLinkCmd(link: EditorLink): Command {
+  return {
+    label: 'link',
+    do: (doc) => {
+      doc.links.push(link);
+    },
+    undo: (doc) => {
+      const i = doc.links.indexOf(link);
+      if (i >= 0) doc.links.splice(i, 1);
+    },
+  };
+}
+
+export function deleteLinkCmd(link: EditorLink): Command {
+  let index = -1;
+  return {
+    label: 'unlink',
+    do: (doc) => {
+      index = doc.links.indexOf(link);
+      if (index >= 0) doc.links.splice(index, 1);
+    },
+    undo: (doc) => {
+      if (index >= 0) doc.links.splice(index, 0, link);
+      else doc.links.push(link);
+    },
+  };
+}
+
+/* ---------------- light commands ---------------- */
+
+export function addLightCmd(light: EditorLight): Command {
+  return {
+    label: 'add light',
+    do: (doc) => {
+      doc.lights.push(light);
+    },
+    undo: (doc) => {
+      const i = doc.lights.indexOf(light);
+      if (i >= 0) doc.lights.splice(i, 1);
+    },
+  };
+}
+
+export function deleteLightCmd(light: EditorLight): Command {
+  let index = -1;
+  return {
+    label: 'delete light',
+    do: (doc) => {
+      index = doc.lights.indexOf(light);
+      if (index >= 0) doc.lights.splice(index, 1);
+    },
+    undo: (doc) => {
+      if (index >= 0) doc.lights.splice(index, 0, light);
+      else doc.lights.push(light);
+    },
+  };
+}
+
+export function moveLightCmd(light: EditorLight, toX: number, toY: number): Command {
+  const fromX = light.x;
+  const fromY = light.y;
+  return {
+    label: 'move light',
+    do: () => {
+      light.x = toX;
+      light.y = toY;
+    },
+    undo: () => {
+      light.x = fromX;
+      light.y = fromY;
+    },
+  };
+}
+
+export function editLightCmd(light: EditorLight, patch: Partial<EditorLight>): Command {
+  const prev: Partial<EditorLight> = {};
+  for (const key of Object.keys(patch) as Array<keyof EditorLight>) {
+    (prev as Record<string, unknown>)[key] = light[key];
+  }
+  return {
+    label: 'edit light',
+    do: () => {
+      Object.assign(light, patch);
+    },
+    undo: () => {
+      Object.assign(light, prev);
+    },
+  };
+}
+
+/* ---------------- composite (procedural population passes) ---------------- */
+
+export function compositeCmd(label: string, cmds: Command[]): Command {
+  return {
+    label,
+    do: (doc) => {
+      for (const c of cmds) c.do(doc);
+    },
+    undo: (doc) => {
+      for (let n = cmds.length - 1; n >= 0; n--) cmds[n].undo(doc);
+    },
+  };
 }
 
 export function editParamCmd(obj: EditorObject, key: string, value: unknown): Command {

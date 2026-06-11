@@ -570,6 +570,38 @@ production interface.
 
 ## Implementation Phases
 
+Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not started.
+
+- [x] Phase 1 — Sandbox rename
+- [x] Phase 2 — Builder shell (overlay, pause claim, markers, inspector)
+- [x] Phase 3 — Document, save/load/export/import, command undo/redo
+- [~] Phase 4 — Terrain tools: paint, line, rect/filled, ellipse/filled,
+      flood fill, replace-in-region, region select. Deferred: smooth/roughen,
+      dedicated spray-parameter tools (Sandbox spray remains available),
+      per-layer visibility toggles.
+- [~] Phase 5 — Objects: spawn, enemy, pickup, portal, exit well, waystone,
+      cauldron, boss marker, all persisted. Deferred: rotation/duplicate/
+      multi-select, patrol points, terrainStamp/vegetationStamp/hazardEmitter/
+      decor kinds.
+- [x] Phase 6 — Mechanisms & links: door, plate, lever, brazier, scale, buoy,
+      charge latch, rune glyph/door; LINK tool with live wires; inspector
+      wiring rows with unlink; compiles to runtime Mechanism[] (multi-trigger
+      = AND) and RuneVault[].
+- [~] Phase 7 — Lighting: placement, full inspector (color/intensity/radius/
+      bloom/flicker/falloff/occluded), editor rings, runtime seeding in
+      Lighting.build. Deferred: presets, solo/toggle-all.
+- [~] Phase 8 — Procedural: seeded passes (caves CA, veins, pockets,
+      vegetation, scatter, enemy/pickup population) over whole level or
+      region, preview/apply/discard, history persisted. Deferred: polygon /
+      connected-region targets, bake-from-playtest.
+- [x] Phase 9 — Playtest compiler (document -> custom LevelRuntime; scars
+      never flow back; custom portals award a "level clear" toast).
+- [x] Phase 10 — Validation service: ids/links/wiring/bounds/embedding
+      checks plus two-pass BFS findability (doors closed: inputs reachable;
+      doors open: rewards reachable). Regression tests in tests/builder.test.ts;
+      end-to-end probes in scripts/verify-builder.mjs and
+      scripts/verify-builder-suite.mjs.
+
 ### Phase 1 - Rename Existing Build To Sandbox
 
 - Relabel UI from Build to Sandbox.

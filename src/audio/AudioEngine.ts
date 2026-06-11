@@ -22,7 +22,7 @@ export class AudioEngine implements AudioApi {
         this.masterGain = this.audioCtx.createGain();
         this.masterGain.gain.value = 0.4;
         this.masterGain.connect(this.audioCtx.destination);
-      } catch (e) {
+      } catch {
         this.soundOn = false;
       }
     }

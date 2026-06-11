@@ -107,6 +107,49 @@ export function freshId(prefix: string): string {
   return prefix + '-' + Date.now().toString(36) + '-' + (idCounter++).toString(36);
 }
 
+/** Read a numeric object param with a per-kind fallback. */
+export function paramNum(o: EditorObject, key: string, fallback: number): number {
+  const v = o.params[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+}
+
+/**
+ * World-cell bounding box of an object's structural footprint (door slabs,
+ * sensor basins, the well shaft mouth...). Point objects return null.
+ * Shared by the editor canvas (hit test + outline boxes), validation
+ * (closed-door stamping), and anything that needs "how big is this thing".
+ */
+export function objectFootprint(
+  o: EditorObject,
+): { x0: number; y0: number; x1: number; y1: number } | null {
+  switch (o.kind) {
+    case 'door':
+      return { x0: o.x, y0: o.y, x1: o.x + paramNum(o, 'w', 3) - 1, y1: o.y + paramNum(o, 'h', 13) - 1 };
+    case 'runeDoor':
+      return { x0: o.x, y0: o.y, x1: o.x + paramNum(o, 'w', 2) - 1, y1: o.y + paramNum(o, 'h', 11) - 1 };
+    case 'plate': {
+      const hw = Math.floor(paramNum(o, 'w', 5) / 2);
+      return { x0: o.x - hw, y0: o.y - 1, x1: o.x - hw + paramNum(o, 'w', 5) - 1, y1: o.y };
+    }
+    case 'scale': {
+      const hw = Math.floor(paramNum(o, 'w', 7) / 2);
+      return { x0: o.x - hw - 1, y0: o.y - 7, x1: o.x - hw + paramNum(o, 'w', 7), y1: o.y };
+    }
+    case 'buoy': {
+      const half = Math.max(2, Math.floor(paramNum(o, 'w', 13) / 2));
+      return { x0: o.x - half, y0: o.y - paramNum(o, 'depth', 4), x1: o.x + half, y1: o.y };
+    }
+    case 'exitWell': {
+      const hw = paramNum(o, 'halfW', 14);
+      return { x0: o.x - hw - 3, y0: o.y - 14, x1: o.x + hw + 3, y1: o.y + 13 };
+    }
+    case 'cauldron':
+      return { x0: o.x - 4, y0: o.y - 5, x1: o.x + 4, y1: o.y };
+    default:
+      return null;
+  }
+}
+
 export function createEmptyDocument(name: string, biome: BiomeId): EditorDocument {
   return {
     v: 2,
