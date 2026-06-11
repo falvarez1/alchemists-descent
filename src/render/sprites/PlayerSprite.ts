@@ -213,21 +213,52 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   }
   stampOutline();
 
-  // --- Wand toward aim with pulsing tip ---
-  // Swap: the fresh wand sweeps a draw arc from the hip up into the aim
-  // (eased quadratically so it snaps into place). Recoil: a cast kicks the
-  // whole arm back along the aim line for a few frames.
+  // --- The staff, drawn TIP-FIRST ---
+  // wandTip() is the gameplay muzzle (projectile spawn + light seed); the
+  // shaft is laid backward from that exact point through the gripping hand,
+  // so the glow always sits ON the staff's end — no more drifting apart.
+  // The butt extends behind the grip to keep a constant ~11-cell Gandalf
+  // length whatever the lean/bob did to the hand position.
+  // Swap: the staff sweeps a quadratically-eased draw arc up into the aim.
+  // Recoil: a cast kicks the WHOLE staff back along the aim for a few frames.
+  const tipBase = ctx.spells.wandTip();
+  const gripX = px + f * 3 + lean;
+  const gripY = py - 10 - lift;
   const drawT = player.swapT > 0 ? player.swapT / 12 : 0;
-  const a = player.aimAngle + drawT * drawT * 2.2 * f;
+  const a = Math.atan2(tipBase.y - gripY, tipBase.x - gripX) + drawT * drawT * 2.2 * f;
+  const shaftLen = Math.max(4, Math.round(Math.hypot(tipBase.x - gripX, tipBase.y - gripY)));
+  const buttLen = Math.max(2, 11 - shaftLen);
   const rec = player.recoilT > 0 ? (player.recoilT > 3 ? 2 : 1) : 0;
-  const wsx = px + f * 3 + lean - Math.cos(player.aimAngle) * rec;
-  const wsy = py - 10 - lift - Math.sin(player.aimAngle) * rec;
-  s.setPx(wsx + Math.cos(a) * 2, wsy + Math.sin(a) * 2, 0.45, 0.30, 0.18);
-  s.setPx(wsx + Math.cos(a) * 4, wsy + Math.sin(a) * 4, 0.55, 0.38, 0.22);
-  s.setPx(wsx + Math.cos(a) * 5, wsy + Math.sin(a) * 5, 0.62, 0.44, 0.26);
+  const wsx = gripX - Math.cos(a) * rec;
+  const wsy = gripY - Math.sin(a) * rec;
+  // staff end (the recoiled, possibly mid-draw muzzle the visuals attach to)
+  const endX = wsx + Math.cos(a) * shaftLen;
+  const endY = wsy + Math.sin(a) * shaftLen;
+  // One-sided drop shadow (underside only) — pops the shaft off the
+  // background without the fattening of a full outline.
+  const wandKeys = new Set<number>();
+  const wandPx = (d: number, r: number, g: number, b: number): void => {
+    const wx2 = wsx + Math.cos(a) * d;
+    const wy2 = wsy + Math.sin(a) * d;
+    wandKeys.add((Math.round(wx2) & 0xfff) | ((Math.round(wy2) & 0xfff) << 12));
+    s.setPx(wx2, wy2, r, g, b);
+  };
+  for (let d = -buttLen; d <= shaftLen; d++) {
+    if (d === 0) continue; // the hand owns this cell
+    const t = (d + buttLen) / (shaftLen + buttLen); // dark butt -> bright head
+    wandPx(d, 0.26 + 0.46 * t, 0.16 + 0.36 * t, 0.10 + 0.20 * t);
+  }
+  // the gripping hand sits over the shaft
+  s.setPx(wsx, wsy, ...SKIN);
+  for (const key of wandKeys) {
+    const sx2 = key & 0xfff;
+    const sy2 = ((key >> 12) & 0xfff) + 1;
+    const skey = (sx2 & 0xfff) | ((sy2 & 0xfff) << 12);
+    if (!wandKeys.has(skey) && !marks.has(skey)) out.setPx(sx2, sy2, 0.02, 0.03, 0.07);
+  }
   if (player.swapT >= 5 && player.swapT <= 7) {
-    // mid-draw gleam: the wand catches the light as it comes up
-    s.setPx(wsx + Math.cos(a) * 5, wsy + Math.sin(a) * 5, 1.0, 1.0, 0.85);
+    // mid-draw gleam: the staff head catches the light as it comes up
+    s.setPx(endX, endY, 1.0, 1.0, 0.85);
   }
   // Charged throw meter: dots march out along the aim as power builds
   const bombCharge = ctx.input.bombCharge;
@@ -237,26 +268,27 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     const steps = Math.floor(bombCharge * 8 + 0.001);
     for (let k = 0; k < steps; k++) {
       const t = (k + 1) / 8;
-      const ddx = sx0 + Math.cos(ca) * (7 + k * 2.6);
-      const ddy = sy0 + Math.sin(ca) * (7 + k * 2.6);
+      // meter dots march out PAST the staff tip (the shaft now owns 1..8)
+      const ddx = sx0 + Math.cos(ca) * (11 + k * 2.6);
+      const ddy = sy0 + Math.sin(ca) * (11 + k * 2.6);
       const bst = ctx.params.global.maxBrightness * (0.5 + bombCharge * 0.5);
       s.setPx(ddx, ddy, (0.7 + t * 0.8) * bst, (1.0 - t * 0.85) * bst, 0.06 * bst);
     }
   }
 
-  // Tip glow stays dark through the first half of a draw — the wand isn't
-  // up yet, so the muzzle has nothing to say.
+  // Tip glow stays dark through the first half of a draw — the staff isn't
+  // up yet, so the muzzle has nothing to say. It rides the VISUAL staff end
+  // (recoil and all); projectiles still spawn at the wandTip contract point.
   if (player.swapT <= 6) {
-    const tip = ctx.spells.wandTip();
     const boost = ctx.params.global.maxBrightness;
     // At rest the tip smolders instead of flaring — the constant bloom halo
     // was washing the character's silhouette out. Full brightness returns
     // the moment the trigger is down.
     const pulse = (0.8 + Math.sin(frameCount * 0.3) * 0.2) * (player.firing ? 1 : 0.55);
-    s.setPx(tip.x, tip.y, 0.5 * boost * pulse, 0.9 * boost * pulse, 1.0 * boost * pulse);
+    s.setPx(endX, endY, 0.5 * boost * pulse, 0.9 * boost * pulse, 1.0 * boost * pulse);
     if (player.firing && frameCount % 4 < 2) {
-      s.setPx(tip.x + Math.cos(a), tip.y + Math.sin(a), 0.9 * boost, 0.95 * boost, 1.0 * boost);
-      s.setPx(tip.x + Math.cos(a) * 2, tip.y + Math.sin(a) * 2, 0.6 * boost, 0.7 * boost, 0.8 * boost);
+      s.setPx(endX + Math.cos(a), endY + Math.sin(a), 0.9 * boost, 0.95 * boost, 1.0 * boost);
+      s.setPx(endX + Math.cos(a) * 2, endY + Math.sin(a) * 2, 0.6 * boost, 0.7 * boost, 0.8 * boost);
     }
   }
 }
