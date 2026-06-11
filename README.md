@@ -49,6 +49,8 @@ exactly as you scarred it and costs 15% of your gold.
 ## Architecture
 
 See `ARCHITECTURE.md` (module map, frame-order contract, design decisions),
-`docs/INVENTORY.md` (system map of the original file), `docs/PORTING.md`
-(porting conventions + approved deviations), `docs/DESIGN.md` (expansion design),
-and `docs/BUILDER.md` (planned Sandbox/Builder split and authoring tool spec).
+`docs/FEEL.md` (every mechanic, micro-animation, and game-feel rule with its
+tuning numbers), `docs/INVENTORY.md` (system map of the original file),
+`docs/PORTING.md` (porting conventions + approved deviations), `docs/DESIGN.md`
+(expansion design), and `docs/BUILDER.md` (the Sandbox/Builder split and
+authoring tool spec).

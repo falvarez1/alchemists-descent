@@ -112,6 +112,7 @@ loops degrade criteria progressively, never silently skip.
 - `ARCHITECTURE.md` — module map, frame-order contract, design decisions
 - `.claude/skills/indie-game-dev/SKILL.md` — step-by-step content checklists (new material /
   enemy / spell card / biome / pickup) and the full verification playbook
-- `docs/DESIGN.md` — canonical game design; `docs/BUILDER.md` — Builder tool spec and phases
+- `docs/DESIGN.md` — canonical game design; `docs/FEEL.md` — every mechanic/micro-animation
+  with its tuning numbers; `docs/BUILDER.md` — Builder tool spec and phases
 - `docs/PORTING.md` — port conventions + approved deviations; `docs/INVENTORY.md` — system map
   of the original HTML; `docs/UPGRADE-DELTA.md` — what was mined from the prototype files
