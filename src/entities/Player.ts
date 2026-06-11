@@ -513,9 +513,15 @@ export class PlayerControl implements PlayerControlApi {
         ctx.audio.jump();
       } else if (player.levit > 0 && player.diveT === 0) {
         levitating = true;
-        // levitation response curve: thrust eases 0.40 -> 0.62 over the first 10 frames
-        const t = Math.min(this.levitFrames / 10, 1);
-        player.vy -= 0.4 + 0.22 * (1 - (1 - t) * (1 - t));
+        // levitation response: the jet SPOOLS. Thrust starts at a near-hover
+        // 0.34 (gravity is 0.28 — the first frames barely arrest the fall)
+        // and builds t-squared to the full 0.62 over 20 frames, so a tap
+        // feathers your height and a hold winds up into a climb. Releasing
+        // resets the spool (levitFrames), which is what makes tapping a
+        // hover instrument instead of an on/off rocket.
+        const t = Math.min(this.levitFrames / 20, 1);
+        const thrust = 0.34 + 0.28 * t * t;
+        player.vy -= thrust;
         // Levity potion (Wave C): levitation burns no levit while the timer runs
         if (player.status.levity <= 0)
           player.levit -= 1.15 * (player.perks.featherweight ? 0.55 : 1);
@@ -539,11 +545,13 @@ export class PlayerControl implements PlayerControlApi {
         }
         ctx.audio.levitate();
         if (ctx.state.frameCount % 3 === 0 && !(sputtering && ctx.state.frameCount % 9 >= 4)) {
+          // the plume reads the spool: soft puffs while winding up, a full
+          // hard exhaust once the jet is at speed
           ctx.particles.spawn(
             player.x + (Math.random() - 0.5) * 2,
             player.y + 0.5,
             (Math.random() - 0.5) * 0.4,
-            0.7 + Math.random() * 0.5,
+            (0.7 + Math.random() * 0.5) * (0.55 + 0.45 * t),
             null,
             packRGB(255, 150 + Math.floor(Math.random() * 80), 30),
             14,

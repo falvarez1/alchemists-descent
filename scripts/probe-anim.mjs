@@ -156,6 +156,25 @@ await page.waitForTimeout(300);
 s = await P();
 check('release stands back up', s.crouchT === 0, JSON.stringify(s));
 
+/* 1b2) levitation spool: thrust must build gradually, not kick instantly */
+await park(630);
+await page.evaluate(() => {
+  const p = window.__game.ctx.player;
+  p.y -= 80; // high enough that the whole spool happens airborne
+  p.vy = 0;
+  p.levit = p.maxLevit;
+});
+await page.waitForTimeout(150); // outlive the coyote window so S P A C E levitates
+await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' })));
+await page.waitForTimeout(100); // ~6 frames into the spool
+const earlyLift = (await P()).vy;
+await page.waitForTimeout(330); // ~26 frames: jet at full thrust
+const lateLift = (await P()).vy;
+await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' })));
+check('levitation starts gentle (no instant kick)', earlyLift > -1.0, `vy@6f ${earlyLift}`);
+check('and winds up into a real climb', lateLift < earlyLift - 0.6, `vy ${earlyLift} -> ${lateLift}`);
+await page.waitForTimeout(700); // fall back to the floor
+
 /* 1c) dive slam: jump, then S mid-air */
 await page.evaluate(() => {
   const ctx = window.__game.ctx;

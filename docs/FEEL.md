@@ -28,7 +28,7 @@ The house principles, in order of authority:
 | Coyote time | A jump press within 6 frames of walking off a ledge still gets the full jump | `entities/Player.ts` |
 | Jump buffer | A press up to 8 frames before touchdown fires on the landing frame | `Player.ts` |
 | Air control | Mid-air acceleration (0.575) is *stronger* than ground (0.5) for Ori-like corrections | `Player.ts` |
-| Levitation ramp | Thrust eases 0.40 → 0.62 over the first 10 frames; refuels on ground/liquid contact | `Player.ts` |
+| Levitation spool | Thrust starts at a near-hover 0.34 (gravity 0.28) and builds t² to 0.62 over 20 frames — a tap feathers height, a hold winds into a climb; releasing resets the spool. The exhaust plume scales with the spool. Refuels on ground/liquid contact | `Player.ts` |
 | Levitation sputter | Below 20% fuel the jet coughs — exhaust gaps + put-put audio — so panic starts *before* the fall | `Player.ts` + `AudioEngine.sputter` |
 | Step-up | 2-cell ledges are walked up automatically (step-up 5 in the entity mover) | `entities/physics.ts` |
 | Loose rubble | Connected solid clusters < 5 cells are walk-through debris | `physics.cellBlocks` |
@@ -259,6 +259,7 @@ Layered, bottom to top:
 
 ```
 coyote 6f · jump buffer 8f · jump vy -3.7 · gravity 0.28 (liquid 0.12)
+levitation spool: 0.34 -> 0.62 thrust over 20f (t-squared ease-in)
 run accel 0.5 ground / 0.575 air · max run 2.6 · crouch 0.38x · peek +48 cells
 dive: entry 5.6, floor 4.6, terminal 6.4 (normal 5.0), drift x0.86/f
 slam: 26-cell knock radius, 1 dmg, ≤12 powder cells popped
