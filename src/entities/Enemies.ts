@@ -240,16 +240,18 @@ export class Enemies implements EnemyControlApi {
   }
 
   /**
-   * Screen shake you can SEE: only world positions inside the viewport get
-   * to rattle the camera. Off-screen deaths, pounds, and volleys stay felt
-   * in the world, not in your hands.
+   * Screen shake with distance: full strength at the screen's heart, fading
+   * quadratically to nothing ~420 cells out. A quake next door rattles you;
+   * the same quake across the cavern is a tremor; off-screen it is nothing.
    */
   private shakeAt(x: number, y: number, amount: number, cap: number): void {
     const ctx = this.ctx;
-    const camX = Math.floor(ctx.camera.x),
-      camY = Math.floor(ctx.camera.y);
-    if (x < camX - 8 || x > camX + VIEW_W + 8 || y < camY - 8 || y > camY + VIEW_H + 8) return;
-    ctx.fx.screenShake = Math.min(ctx.fx.screenShake + amount, cap);
+    const cx = ctx.camera.x + VIEW_W / 2,
+      cy = ctx.camera.y + VIEW_H / 2;
+    const d = Math.hypot(x - cx, y - cy);
+    const falloff = Math.max(0, 1 - d / 420);
+    if (falloff <= 0) return;
+    ctx.fx.screenShake = Math.min(ctx.fx.screenShake + amount * falloff * falloff, cap);
   }
 
   /** Felled foes sometimes drop a potion (golems are walking apothecaries). */

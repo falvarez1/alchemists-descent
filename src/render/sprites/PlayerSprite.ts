@@ -128,6 +128,20 @@ export function drawPlayerSprite(s: PixelSurface, _light: LightField, ctx: Ctx):
   s.setPx(hx + s3.x - f * restDroop, hatY - 4 + s3.y + restDroop, ...HAT);
   s.setPx(hx + s3.x - f * (restDroop + 1), hatY - 4 + s3.y + restDroop + (restDroop ? 1 : 0), ...HAT_D);
 
+  // --- Lever pull: wand stowed, both arms out to the iron, body heaving ---
+  if (player.pullT > 0) {
+    const pd = player.pullDir;
+    const haul = Math.sin((26 - player.pullT) * 0.24) * 1.2; // strain bob
+    const ay = py - 9 - lift + Math.round(haul * 0.5);
+    // two reaching arms, hands stacked on the lever side
+    s.setPx(px + pd * 4 + lean, ay, ...ROBE_D);
+    s.setPx(px + pd * 5 + lean, ay, ...SKIN_D);
+    s.setPx(px + pd * 6 + lean, ay, ...SKIN);
+    s.setPx(px + pd * 4 + lean, ay + 1, ...ROBE_D);
+    s.setPx(px + pd * 5 + lean, ay + 1, ...SKIN);
+    return; // no wand, no charge meter — both hands are busy
+  }
+
   // --- Wand toward aim with pulsing tip ---
   const a = player.aimAngle, wsx = px + f * 3 + lean, wsy = py - 10 - lift;
   s.setPx(wsx + Math.cos(a) * 2, wsy + Math.sin(a) * 2, 0.45, 0.30, 0.18);

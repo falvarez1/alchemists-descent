@@ -232,12 +232,21 @@ export class FrameComposer implements PixelSurface {
           // center). The vignette-free self-glow floor keeps lava/fire/crystal
           // equally bloom-bright across the whole frame.
           const selfGlow = scalar > 0 ? 0.45 + scalar * 1.55 : 0;
+          // Soft knee on lit (non-emissive) cells: strong light keeps its REACH
+          // but the top end compresses, so the wand no longer blows nearby
+          // floor into a white bloom wash that swallows levers and pickups.
           let lf = (ambient + Math.min(2.2, lightR[li])) * vg;
-          r = r * Math.max(Math.min(2.6, lf * lf), selfGlow) + r * floor;
+          let lit = lf * lf;
+          if (lit > 1.25) lit = Math.min(2.0, 1.25 + (lit - 1.25) * 0.3);
+          r = r * Math.max(lit, selfGlow) + r * floor;
           lf = (ambient + Math.min(2.2, lightG[li])) * vg;
-          g = g * Math.max(Math.min(2.6, lf * lf), selfGlow) + g * floor;
+          lit = lf * lf;
+          if (lit > 1.25) lit = Math.min(2.0, 1.25 + (lit - 1.25) * 0.3);
+          g = g * Math.max(lit, selfGlow) + g * floor;
           lf = (ambient + Math.min(2.2, lightB[li])) * vg;
-          b = b * Math.max(Math.min(2.6, lf * lf), selfGlow) + b * floor;
+          lit = lf * lf;
+          if (lit > 1.25) lit = Math.min(2.0, 1.25 + (lit - 1.25) * 0.3);
+          b = b * Math.max(lit, selfGlow) + b * floor;
         }
         pixelData[bufferIdx] = r * intensity + ringGlow * 0.55;
         pixelData[bufferIdx + 1] = g * intensity + ringGlow * 0.42;
@@ -510,16 +519,26 @@ export class FrameComposer implements PixelSurface {
         this.setPx(m.x, m.y, 0.5, 0.52, 0.58);
         this.setPx(m.x + 1, m.y, 0.42, 0.44, 0.5);
         this.setPx(m.x, m.y - 1, 0.32, 0.34, 0.4);
-        // arm tilts with state
+        // the arm: snapped to its side at rest, SWEEPING during a hand-pull
+        // (state flips only when the pull completes, so animate from the
+        // current side toward its opposite)
         const dir = m.state === 1 ? 1 : -1;
-        for (let s = 1; s <= 4; s++) {
-          this.setPx(m.x + dir * Math.round(s * 0.55), m.y - 1 - s, 0.55, 0.42, 0.2);
+        let lean = dir;
+        const pulling = m.pullT !== undefined && m.pullT > 0;
+        if (pulling) {
+          const p = 1 - m.pullT! / 26;
+          const eased = p * p * (3 - 2 * p); // smoothstep: heavy start, firm finish
+          lean = dir + (-dir - dir) * eased;
         }
-        // glowing knob signals on/off
-        const kx = m.x + dir * 3,
-          ky = m.y - 5;
+        for (let s = 1; s <= 4; s++) {
+          this.setPx(m.x + Math.round(s * 0.55 * lean), m.y - 1 - s, 0.55, 0.42, 0.2);
+        }
+        // glowing knob rides the arm tip; strains white mid-pull
+        const kx = m.x + Math.round(3 * lean),
+          ky = m.y - 5 + (pulling ? Math.round(Math.abs(lean) < 0.4 ? -1 : 0) : 0);
         const g = 0.7 + Math.sin(frame * 0.1) * 0.2;
-        if (m.state === 1) this.setPx(kx, ky, 0.2 * g, 1.6 * g, 0.4 * g);
+        if (pulling) this.setPx(kx, ky, 1.1, 1.0, 0.7);
+        else if (m.state === 1) this.setPx(kx, ky, 0.2 * g, 1.6 * g, 0.4 * g);
         else this.setPx(kx, ky, 1.6 * g, 0.3 * g, 0.15 * g);
       } else if (m.kind === 'plate' && (m.pressed || m.state > 0)) {
         // pressed plates glow along the sill

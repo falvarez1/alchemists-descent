@@ -56,6 +56,8 @@ export function createPlayer(): PlayerState {
     perks: {},
     tpCool: 0,
     recharge: 0,
+    pullT: 0,
+    pullDir: 1,
   };
 }
 
@@ -245,10 +247,16 @@ export class PlayerControl implements PlayerControlApi {
     const world = ctx.world;
     if (ctx.state.mode !== 'play' || player.dead) return;
 
-    // HEART COMMUNION: restoring vitality roots the alchemist. Movement and
-    // casting lock while the charge runs — drink hearts somewhere safe.
+    // HEART COMMUNION roots the alchemist; a LEVER PULL plants him too.
+    // Movement and casting lock while either runs.
+    if (player.pullT > 0) {
+      player.pullT--;
+      player.facing = player.pullDir; // both hands on the iron
+      player.vx *= 0.5;
+    }
     const channeling = player.recharge > 0;
-    const keys = channeling
+    const restrained = channeling || player.pullT > 0;
+    const keys = restrained
       ? { left: false, right: false, jump: false, down: false }
       : ctx.input.keys;
     if (channeling) {

@@ -88,6 +88,10 @@ export interface PlayerState {
    * movement and casting are locked while the charge runs.
    */
   recharge: number;
+  /** Lever pull (frames left): gripping and driving the arm across. */
+  pullT: number;
+  /** Direction (+-1) toward the lever being pulled. */
+  pullDir: number;
 }
 
 export const PLAYER_HALF_W = 4;
@@ -684,6 +688,8 @@ export interface Mechanism {
   state: number;
   /** Plate weight currently on the sill (transient, not persisted semantics). */
   pressed?: boolean;
+  /** Lever: frames left of the hand-pull animation; flips when it hits 0. */
+  pullT?: number;
   /** Door id driven by this trigger; -1 for doors themselves / unlinked.
    *  A door with SEVERAL triggers opens only when ALL are satisfied. */
   targetId: number;

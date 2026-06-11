@@ -341,7 +341,13 @@ export class Mechanisms implements MechanismsApi {
       }
       if (m.broken === 0) continue;
 
-      if (m.kind === 'plate') {
+      if (m.kind === 'lever') {
+        // hand-pull in progress: the arm sweeps, then the flip lands
+        if (m.pullT !== undefined && m.pullT > 0) {
+          m.pullT--;
+          if (m.pullT === 0) this.flipLever(ctx, m);
+        }
+      } else if (m.kind === 'plate') {
         const was = m.pressed === true;
         m.pressed = this.sensePlate(ctx, m);
         if (m.pressed) m.state = 420; // stays open ~7s after weight lifts
@@ -535,6 +541,7 @@ export class Mechanisms implements MechanismsApi {
     // Concussion flips nearby levers — explosions are valid puzzle inputs
     for (const m of runtime.mechanisms) {
       if (m.kind !== 'lever') continue;
+      if (m.pullT !== undefined && m.pullT > 0) continue; // a hand is on it
       const ddx = m.x - x,
         ddy = m.y - y;
       if (ddx * ddx + ddy * ddy <= (radius + 6) * (radius + 6)) this.flipLever(ctx, m);
@@ -561,12 +568,20 @@ export class Mechanisms implements MechanismsApi {
   interact(ctx: Ctx): boolean {
     const runtime = ctx.levels.current;
     if (!runtime || ctx.state.mode !== 'play' || ctx.player.dead) return false;
+    if (ctx.player.pullT > 0) return true; // already mid-pull
     for (const m of runtime.mechanisms) {
-      if (m.kind !== 'lever') continue;
+      if (m.kind !== 'lever' || m.broken !== undefined) continue;
       const dx = m.x - ctx.player.x,
         dy = m.y - 3 - (ctx.player.y - 9);
       if (dx * dx + dy * dy < 22 * 22) {
-        this.flipLever(ctx, m);
+        // An INTENTIONAL pull: the alchemist plants, grips, and drives the
+        // arm across (~half a second). The flip lands when the pull completes
+        // (see update); a hand on iron, not a tap on a button.
+        m.pullT = 26;
+        ctx.player.pullT = 26;
+        ctx.player.pullDir = Math.sign(m.x - ctx.player.x) || 1;
+        ctx.player.facing = ctx.player.pullDir;
+        ctx.audio.tone(180, 140, 0.08, 'square', 0.08); // the grip
         return true;
       }
     }
