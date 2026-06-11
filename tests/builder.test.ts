@@ -265,6 +265,21 @@ describe('builder validation', () => {
     expect(errors(validateDocument(doc))).toEqual([]);
   });
 
+  it('warns that triggers override initialOpen and seeds the fixpoint shut', () => {
+    const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
+    const spawn = makeObj('spawn', 120, 158);
+    // plate is INSIDE the door's chamber — the portcullis trap-room pattern:
+    // runtime slams the door shut at t=0, so this must not validate clean
+    const plate = makeObj('plate', 190, 159, { w: 5 });
+    const door = makeObj('door', 180, 100, { w: 3, h: 60, initialOpen: true });
+    const key = makeObj('pickup', 195, 158, { kind: 'key' });
+    doc.objects.push(spawn, plate, door, key);
+    doc.links.push({ id: freshId('link'), fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
+    const issues = validateDocument(doc);
+    expect(issues.some((i) => i.severity === 'warning' && i.what.includes('initialOpen is overridden'))).toBe(true);
+    expect(issues.some((i) => i.severity === 'error' && i.what.includes('unreachable'))).toBe(true);
+  });
+
   it('warns when a sensor threshold exceeds its physical capacity', () => {
     const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
     const spawn = makeObj('spawn', 120, 158);

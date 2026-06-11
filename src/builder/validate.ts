@@ -260,6 +260,12 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
       const hasTrigger = liveLinks.some((l) => l.toId === o.id && l.kind === 'triggerDoor');
       if (!hasTrigger && o.params.initialOpen !== true)
         push('warning', 'door has no trigger — it can never open', o.id);
+      if (hasTrigger && o.params.initialOpen === true)
+        push(
+          'warning',
+          'initialOpen is overridden by trigger logic — the runtime slams this door shut at playtest start',
+          o.id,
+        );
     } else if (o.kind === 'runeGlyph') {
       if (!liveLinks.some((l) => l.fromId === o.id && l.kind === 'runeDoor'))
         push('error', 'rune glyph opens nothing — link it to a rune door', o.id);
@@ -281,7 +287,9 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
           o.id,
         );
     } else if (o.kind === 'buoy') {
-      const capacity = (paramNum(o, 'w', 13) - 1) * paramNum(o, 'depth', 4);
+      // the basin interior is 2*half-1 wide (see stampBuoyBasin)
+      const half = Math.max(2, Math.floor(paramNum(o, 'w', 13) / 2));
+      const capacity = (2 * half - 1) * paramNum(o, 'depth', 4);
       if (paramNum(o, 'threshold', 26) > capacity)
         push(
           'warning',
@@ -319,9 +327,18 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   }
 
   const baseTypes = decodeTypes(doc.world);
+  // Round-0 open set mirrors the runtime at t=0: a door with ANY live
+  // trigger gets slammed shut on the first update tick even if initialOpen,
+  // so only trigger-less initialOpen doors start the fixpoint open.
   const initialOpen = new Set(
     doc.objects
-      .filter((o) => o.kind === 'door' && !o.hidden && o.params.initialOpen === true)
+      .filter(
+        (o) =>
+          o.kind === 'door' &&
+          !o.hidden &&
+          o.params.initialOpen === true &&
+          !liveLinks.some((l) => l.kind === 'triggerDoor' && l.toId === o.id),
+      )
       .map((o) => o.id),
   );
   const closed = baseTypes.slice();
