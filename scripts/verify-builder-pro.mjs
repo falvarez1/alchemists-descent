@@ -325,13 +325,13 @@ const seqResult = await page.evaluate(async () => {
   const rt = window.__game.ctx.levels.current;
   const door = rt.mechanisms.find((m) => m.kind === 'door');
   const plates = rt.mechanisms.filter((m) => m.kind === 'plate');
-  // wrong order: satisfy plate 2 first
+  // wrong order: satisfy plate 2 first — the chain must reset AND spit the
+  // plate's latch back out (state auto-zeroed) so retrying is instant
   plates[1].state = 420;
   await wait(300);
-  const afterWrong = { seq: door.seq ?? 0, state: door.state };
-  plates[1].state = 0;
-  await wait(300);
-  // right order: plate 1, then plate 2
+  const afterWrong = { seq: door.seq ?? 0, state: door.state, p2: plates[1].state };
+  await wait(200);
+  // right order: plate 1, then plate 2 (fresh rising edges)
   plates[0].state = 420;
   await wait(300);
   const afterFirst = { seq: door.seq ?? 0 };
@@ -340,8 +340,28 @@ const seqResult = await page.evaluate(async () => {
   return { afterWrong, afterFirst, done: door.seqDone === true, state: door.state, logic: door.logic };
 });
 check('sequence door ignores the wrong order', seqResult.afterWrong.seq === 0 && seqResult.afterWrong.state === 0, JSON.stringify(seqResult));
+check('chain reset spits the early plate back out', seqResult.afterWrong.p2 === 0, JSON.stringify(seqResult));
 check('first step advances the chain', seqResult.afterFirst.seq === 1, JSON.stringify(seqResult));
 check('completing the sequence latches the door open', seqResult.done && seqResult.state === 1, JSON.stringify(seqResult));
+
+/* fail-open doctrine on sequence chains: wreck every trigger, gate gives way */
+await page.click('#mode-builder-btn');
+await page.waitForTimeout(400);
+await page.click('#b-playtest');
+await page.waitForFunction(
+  () => window.__game.ctx.levels.current && !window.__game.ctx.levels.transitioning,
+  { timeout: 10000 },
+);
+await page.waitForTimeout(400);
+const failOpen = await page.evaluate(async () => {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const rt = window.__game.ctx.levels.current;
+  const door = rt.mechanisms.find((m) => m.kind === 'door');
+  for (const m of rt.mechanisms) if (m.kind === 'plate') m.broken = 0; // fully wrecked
+  await wait(500);
+  return { done: door.seqDone === true, state: door.state };
+});
+check('wrecking every sequence trigger fails the chain OPEN', failOpen.done && failOpen.state === 1, JSON.stringify(failOpen));
 
 /* ---------- playtest-from-here (T) ---------- */
 console.log('-- playtest from here');

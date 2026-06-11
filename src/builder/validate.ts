@@ -327,6 +327,27 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
       const lg = o.params.logic;
       if (lg !== undefined && lg !== 'and' && lg !== 'or' && lg !== 'sequence')
         push('warning', `unknown door logic '${String(lg)}' — it will compile as AND`, o.id);
+      if (lg === 'sequence') {
+        // sequence chains advance on rising edges — a trigger that can never
+        // un-fire jams the chain forever after one wrong order
+        const chainKinds = liveLinks
+          .filter((l) => l.kind === 'triggerDoor' && l.toId === o.id)
+          .map((l) => byId.get(l.fromId)!)
+          .filter((t) => !t.hidden)
+          .map((t) => t.kind);
+        if (chainKinds.includes('brazier') || chainKinds.includes('chargeLatch'))
+          push(
+            'error',
+            'sequence chain contains a brazier/charge latch — they can never un-fire, so one wrong order jams the chain forever (use plates/levers/scales/buoys, or AND)',
+            o.id,
+          );
+        if (chainKinds.includes('scale') || chainKinds.includes('buoy'))
+          push(
+            'warning',
+            'sequence chain contains a scale/buoy — retrying a broken order means physically removing the poured material',
+            o.id,
+          );
+      }
     } else if (o.kind === 'runeGlyph') {
       if (!liveLinks.some((l) => l.fromId === o.id && l.kind === 'runeDoor'))
         push('error', 'rune glyph opens nothing — link it to a rune door', o.id);

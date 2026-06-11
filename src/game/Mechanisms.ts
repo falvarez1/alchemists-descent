@@ -482,23 +482,43 @@ export class Mechanisms implements MechanismsApi {
           // ANY satisfied trigger opens (and it closes again when none are)
           want = triggers.some((t) => this.satisfied(t));
         } else if (door.logic === 'sequence') {
-          // Triggers must FIRE IN ORDER; a later trigger firing early resets
-          // the chain; completing it latches the door open forever.
+          // Triggers must FIRE IN ORDER, judged on RISING EDGES — a trigger
+          // that merely STAYS satisfied (plate latch, lingering pour) never
+          // re-fires the chain. Fail-open holds per step: a fully broken
+          // trigger auto-completes its slot (all broken = the chain itself
+          // fails open). Completion latches the door open forever.
           if (door.seqDone !== true) {
-            const seq = door.seq ?? 0;
-            let early = false;
-            for (let n = seq + 1; n < triggers.length && !early; n++) {
-              if (this.satisfied(triggers[n])) early = true;
-            }
-            if (early) {
-              if (seq > 0) {
-                door.seq = 0;
-                ctx.audio.tone(120, 200, 0.14, 'sawtooth', 0.1); // the chain breaks
+            const chain = triggers.filter((t) => t.broken !== 0);
+            if (chain.length === 0) {
+              door.seqDone = true; // every step wrecked: the lock gives way
+            } else {
+              const prev = (door.seqPrev ??= {});
+              let seq = Math.min(door.seq ?? 0, chain.length);
+              const edges: boolean[] = [];
+              for (const t of chain) {
+                const sat = this.satisfied(t);
+                edges.push(sat && prev[t.id] !== true);
+                prev[t.id] = sat;
               }
-            } else if (seq < triggers.length && this.satisfied(triggers[seq])) {
-              door.seq = seq + 1;
-              ctx.audio.tone(300 + seq * 90, 110, 0.1, 'triangle', 0.12); // step chime
-              if (door.seq === triggers.length) door.seqDone = true;
+              if (edges[seq]) {
+                seq++;
+                ctx.audio.tone(300 + seq * 90, 110, 0.1, 'triangle', 0.12); // step chime
+                if (seq >= chain.length) door.seqDone = true;
+              } else if (edges.some((e, n) => e && n > seq)) {
+                // The chain breaks: spit the resettable mechanisms back out
+                // so the player can retry at once. (Braziers/charge latches
+                // can never un-fire — the Builder validator refuses to wire
+                // them into sequences for exactly this reason.)
+                seq = 0;
+                for (const t of chain) {
+                  if (t.kind === 'plate' || t.kind === 'scale' || t.kind === 'buoy' || t.kind === 'lever') {
+                    t.state = 0;
+                    if (t.kind === 'plate') t.pressed = false;
+                  }
+                }
+                ctx.audio.tone(120, 200, 0.14, 'sawtooth', 0.1); // sour break
+              }
+              door.seq = seq;
             }
           }
           want = door.seqDone === true;

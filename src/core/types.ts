@@ -751,9 +751,12 @@ export interface Mechanism {
    * in link order — wrong order resets, completion latches the door open.
    */
   logic?: 'and' | 'or' | 'sequence';
-  /** sequence doors: triggers satisfied so far, and the completion latch. */
+  /** sequence doors: steps completed so far, and the completion latch. */
   seq?: number;
   seqDone?: boolean;
+  /** sequence doors: per-trigger edge memory (keyed by trigger id) so only
+   *  NEW activations advance/reset the chain — lingering latches don't. */
+  seqPrev?: Record<number, boolean>;
   /** Plate weight currently on the sill (transient, not persisted semantics). */
   pressed?: boolean;
   /** Lever: frames left of the hand-pull animation; flips when it hits 0. */

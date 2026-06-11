@@ -280,6 +280,27 @@ describe('builder validation', () => {
     expect(issues.some((i) => i.severity === 'error' && i.what.includes('unreachable'))).toBe(true);
   });
 
+  it('refuses latching triggers in sequence chains, allows resettable ones', () => {
+    const build = (kinds: Array<'plate' | 'brazier'>) => {
+      const { doc } = worldDoc((w) => carveBox(w, 100, 100, 300, 159));
+      doc.objects.push(makeObj('spawn', 110, 158));
+      const door = makeObj('door', 260, 100, { w: 3, h: 60, logic: 'sequence' });
+      doc.objects.push(door);
+      kinds.forEach((kind, n) => {
+        const t = makeObj(kind, 130 + n * 40, kind === 'brazier' ? 158 : 159, kind === 'plate' ? { w: 5 } : {});
+        doc.objects.push(t);
+        doc.links.push({ id: freshId('link'), fromId: t.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
+      });
+      return validateDocument(doc);
+    };
+    expect(
+      build(['plate', 'brazier']).some(
+        (i) => i.severity === 'error' && i.what.includes('never un-fire'),
+      ),
+    ).toBe(true);
+    expect(errors(build(['plate', 'plate']))).toEqual([]);
+  });
+
   it('warns when a sensor threshold exceeds its physical capacity', () => {
     const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
     const spawn = makeObj('spawn', 120, 158);
