@@ -1,4 +1,4 @@
-# Noita Studio — Architecture
+# Purple Llama Studio — Architecture
 
 A falling-sand action roguelite: a cellular-automata material simulation, a Three.js
 post-processed renderer, procedural audio, and an action game layered on top.

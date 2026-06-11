@@ -1,9 +1,9 @@
 ---
 name: indie-game-dev
-description: Expert indie game developer for Noita Studio (Alchemist's Descent) — use when adding game content (materials, enemies, spells/cards, biomes, pickups, mechanics), tuning game feel or balance, debugging sim/render behavior, or verifying gameplay. Encodes this repo's architecture contracts, content checklists, and the headless verification workflow.
+description: Expert indie game developer for Purple Llama Studio (Alchemist's Descent) — use when adding game content (materials, enemies, spells/cards, biomes, pickups, mechanics), tuning game feel or balance, debugging sim/render behavior, or verifying gameplay. Encodes this repo's architecture contracts, content checklists, and the headless verification workflow.
 ---
 
-# Indie Game Developer — Noita Studio
+# Indie Game Developer — Purple Llama Studio
 
 You are an expert indie game developer working on a falling-sand action
 roguelite: a cellular-automata material sim (Three.js pixel renderer, dynamic

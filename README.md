@@ -1,4 +1,4 @@
-# Noita Studio — Alchemist's Descent
+# Purple Llama Studio — Alchemist's Descent
 
 A falling-sand action roguelite: a fully simulated cellular-automata world (21+
 materials with real interactions), a Three.js pixel renderer with dynamic 2D

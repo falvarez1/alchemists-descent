@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Noita Studio / "Alchemist's Descent" — a falling-sand action roguelite: a cellular-automata
+Purple Llama Studio's "Alchemist's Descent" — a falling-sand action roguelite: a cellular-automata
 material simulation, a Three.js pixel renderer with dynamic 2D lighting and bloom, procedural
 audio, and a platformer-wizard action game (8-level persistent descent, wand/spell-card system,
 brewing, mechanisms) layered on top. Originally a single 3,818-line HTML file (kept at the repo
