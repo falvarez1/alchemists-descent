@@ -157,7 +157,11 @@ export class WandSystem implements WandsApi {
   set active(v: 0 | 1) {
     if (v === this._active) return;
     this._active = v;
-    if (this.ctx.state.mode === 'play') this.ctx.audio.wandSwap();
+    if (this.ctx.state.mode === 'play') {
+      this.ctx.audio.wandSwap();
+      // The character sells the swap too: holster-to-aim draw arc.
+      this.ctx.player.swapT = 12;
+    }
     this.ctx.events.emit('wandChanged');
   }
 
@@ -197,6 +201,12 @@ export class WandSystem implements WandsApi {
     // Recharge stacks onto the cast delay when the cycle wraps to the top.
     wand.cooldown = wand.frame.castDelay + (wrapped ? wand.frame.recharge : 0);
     wand.cooldownMax = wand.cooldown;
+    // CAST RECOIL: the arm kicks back along the aim and the hat takes the
+    // jolt through its spring — heavier groups kick harder.
+    ctx.player.recoilT = group.manaCost >= 25 ? 7 : 5;
+    const ra = ctx.player.aimAngle;
+    ctx.player.hat.vx -= Math.cos(ra) * 1.0;
+    ctx.player.hat.vy -= Math.sin(ra) * 0.7 + 0.3;
 
     const tip = ctx.spells.wandTip();
     for (const action of group.actions) {

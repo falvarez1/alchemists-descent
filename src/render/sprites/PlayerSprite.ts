@@ -26,37 +26,58 @@ export function drawPlayerSprite(s: PixelSurface, _light: LightField, ctx: Ctx):
   const svx = player._svx || 0, svy = player._svy || 0;
   const moving = player.grounded && Math.abs(svx) > 0.2;
   const stride = player.stridePhase;
-  const lean = clamp(Math.round(svx * 1.1), -2, 2);
+  const skid = player.skidT > 0 && player.grounded;
+  // Lean: velocity, plus a hurt flinch away from the blow; a skid throws the
+  // torso back the way it was travelling while the heels plant forward.
+  let lean = clamp(Math.round(svx * 1.1), -2, 2);
+  if (player.staggerT > 0)
+    lean = clamp(lean + player.staggerDir * (player.staggerT > 6 ? 2 : 1), -3, 3);
+  if (skid) lean = player.skidDir * (player.skidT > 5 ? 3 : 2);
   const sq = player.landTimer > 0 ? Math.min(3, Math.ceil(player.landTimer / 3)) : 0; // landing squash
+  // launch stretch: the first jump frames elongate — squash's opposite pole
+  const stretch = sq === 0 && player.stretchT > 0 ? (player.stretchT > 3 ? 2 : 1) : 0;
   const bob = moving ? -Math.round(Math.abs(Math.sin(stride)) * 1.4) : 0;
   const breathe = (!moving && player.grounded) ? (Math.sin(frameCount * 0.045) > 0.2 ? -1 : 0) : 0;
   const py = player.y;
-  const lift = bob + breathe + sq; // applied to body above the boots (sq pushes DOWN via +)
+  const lift = bob + breathe + sq - stretch; // sq compresses the body, stretch elongates it
 
   const row = (x0: number, x1: number, yy: number, c: RGB): void => {
     for (let xx = x0; xx <= x1; xx++) s.setPx(xx, yy, c[0], c[1], c[2]);
   };
 
-  // --- Boots: alternate fore/aft with the stride wheel; tuck in the air ---
+  // --- Boots: alternate fore/aft with the stride wheel; the air gets three
+  // distinct poses (rising tuck / apex drift / falling sprawl); a skid
+  // plants both heels down the old travel direction ---
   let footA = 0, footB = 0, footAy = 0, footBy = 0;
-  if (moving) {
+  if (skid) {
+    footA = player.skidDir * 3; footB = player.skidDir;  // braced stance
+  } else if (moving) {
     footA = Math.round(Math.sin(stride) * 2.6);
     footB = -footA;
     footAy = Math.sin(stride) > 0.55 ? -1 : 0;       // lifting foot clears the ground
     footBy = Math.sin(stride) < -0.55 ? -1 : 0;
   } else if (!player.grounded) {
-    footA = f; footB = -f; footAy = -1; footBy = -2;  // tucked mid-air
+    if (svy < -0.8) {
+      footA = f; footB = -f; footAy = -2; footBy = -2;        // rising: tight tuck
+    } else if (svy > 1.6) {
+      footA = f * 2; footB = -f * 2; footAy = -1; footBy = 0; // falling: legs trail apart
+    } else {
+      footA = f; footB = -f; footAy = -1; footBy = -2;        // apex drift
+    }
   }
   row(px - 3 + footA, px - 1 + footA, py + footAy, BOOT);
   row(px - 3 + footA, px - 2 + footA, py - 1 + footAy, BOOT_L);
   row(px + 1 + footB, px + 3 + footB, py + footBy, BOOT);
   row(px + 2 + footB, px + 3 + footB, py - 1 + footBy, BOOT_L);
 
-  // --- Robe skirt: flares at the hem, sways against motion, lifts when falling ---
-  const hemSway = clamp(Math.round(-svx * 1.3), -2, 2);
+  // --- Robe skirt: real cloth now — part instant wind, part the lagged
+  // hem spring, so it swings past a stop and settles instead of snapping.
+  // A skid sends it overtaking the body; falling lifts it; stretch tapers it.
+  let hemSway = clamp(Math.round(-svx * 0.6 - player.robe.ox * 1.1), -3, 3);
+  if (skid) hemSway = clamp(hemSway + player.skidDir * 2, -4, 4);
   const falling = !player.grounded && svy > 1.6;
   const skirt = [
-    { dy: 2, hw: 4 + (sq > 0 ? 1 : 0) },
+    { dy: 2, hw: 4 + (sq > 0 ? 1 : 0) - (stretch > 0 ? 1 : 0) },
     { dy: 3, hw: 4 },
     { dy: 4, hw: 3 },
     { dy: 5, hw: 3 },
@@ -85,10 +106,21 @@ export function drawPlayerSprite(s: PixelSurface, _light: LightField, ctx: Ctx):
       s.setPx(px + dx + lean, yy, ...c);
     }
   }
-  // Off-hand swings opposite the legs
-  const armSwing = moving ? Math.round(Math.sin(stride + Math.PI) * 2) : 0;
-  s.setPx(px - f * 4 + lean + armSwing, py - 9 - lift, ...ROBE_D);
-  s.setPx(px - f * 4 + lean + armSwing, py - 8 - lift, ...SKIN_D);
+  // Off-hand: swings opposite the legs; trails high in a fall; reaches up
+  // to straighten the hat during the idle fidget.
+  const reachUp = player.fidgetT > 58 && player.fidgetT <= 88;
+  if (reachUp) {
+    s.setPx(px - f * 3 + lean, py - 11 - lift, ...ROBE_D);
+    s.setPx(px - f * 3 + lean, py - 13 - lift, ...SKIN_D);
+    s.setPx(px - f * 2 + lean, py - 15 - lift, ...SKIN);
+  } else if (falling) {
+    s.setPx(px - f * 4 + lean, py - 11 - lift, ...ROBE_D);
+    s.setPx(px - f * 5 + lean, py - 12 - lift, ...SKIN_D);
+  } else {
+    const armSwing = moving ? Math.round(Math.sin(stride + Math.PI) * 2) : 0;
+    s.setPx(px - f * 4 + lean + armSwing, py - 9 - lift, ...ROBE_D);
+    s.setPx(px - f * 4 + lean + armSwing, py - 8 - lift, ...SKIN_D);
+  }
 
   // --- Shoulders ---
   row(px - 3 + lean, px + 3 + lean, py - 11 - lift, ROBE);
@@ -143,10 +175,21 @@ export function drawPlayerSprite(s: PixelSurface, _light: LightField, ctx: Ctx):
   }
 
   // --- Wand toward aim with pulsing tip ---
-  const a = player.aimAngle, wsx = px + f * 3 + lean, wsy = py - 10 - lift;
+  // Swap: the fresh wand sweeps a draw arc from the hip up into the aim
+  // (eased quadratically so it snaps into place). Recoil: a cast kicks the
+  // whole arm back along the aim line for a few frames.
+  const drawT = player.swapT > 0 ? player.swapT / 12 : 0;
+  const a = player.aimAngle + drawT * drawT * 2.2 * f;
+  const rec = player.recoilT > 0 ? (player.recoilT > 3 ? 2 : 1) : 0;
+  const wsx = px + f * 3 + lean - Math.cos(player.aimAngle) * rec;
+  const wsy = py - 10 - lift - Math.sin(player.aimAngle) * rec;
   s.setPx(wsx + Math.cos(a) * 2, wsy + Math.sin(a) * 2, 0.45, 0.30, 0.18);
   s.setPx(wsx + Math.cos(a) * 4, wsy + Math.sin(a) * 4, 0.55, 0.38, 0.22);
   s.setPx(wsx + Math.cos(a) * 5, wsy + Math.sin(a) * 5, 0.62, 0.44, 0.26);
+  if (player.swapT >= 5 && player.swapT <= 7) {
+    // mid-draw gleam: the wand catches the light as it comes up
+    s.setPx(wsx + Math.cos(a) * 5, wsy + Math.sin(a) * 5, 1.0, 1.0, 0.85);
+  }
   // Charged throw meter: dots march out along the aim as power builds
   const bombCharge = ctx.input.bombCharge;
   if (bombCharge >= 0) {
@@ -162,12 +205,16 @@ export function drawPlayerSprite(s: PixelSurface, _light: LightField, ctx: Ctx):
     }
   }
 
-  const tip = ctx.spells.wandTip();
-  const boost = ctx.params.global.maxBrightness;
-  const pulse = 0.8 + Math.sin(frameCount * 0.3) * 0.2;
-  s.setPx(tip.x, tip.y, 0.5 * boost * pulse, 0.9 * boost * pulse, 1.0 * boost * pulse);
-  if (player.firing && frameCount % 4 < 2) {
-    s.setPx(tip.x + Math.cos(a), tip.y + Math.sin(a), 0.9 * boost, 0.95 * boost, 1.0 * boost);
-    s.setPx(tip.x + Math.cos(a) * 2, tip.y + Math.sin(a) * 2, 0.6 * boost, 0.7 * boost, 0.8 * boost);
+  // Tip glow stays dark through the first half of a draw — the wand isn't
+  // up yet, so the muzzle has nothing to say.
+  if (player.swapT <= 6) {
+    const tip = ctx.spells.wandTip();
+    const boost = ctx.params.global.maxBrightness;
+    const pulse = 0.8 + Math.sin(frameCount * 0.3) * 0.2;
+    s.setPx(tip.x, tip.y, 0.5 * boost * pulse, 0.9 * boost * pulse, 1.0 * boost * pulse);
+    if (player.firing && frameCount % 4 < 2) {
+      s.setPx(tip.x + Math.cos(a), tip.y + Math.sin(a), 0.9 * boost, 0.95 * boost, 1.0 * boost);
+      s.setPx(tip.x + Math.cos(a) * 2, tip.y + Math.sin(a) * 2, 0.6 * boost, 0.7 * boost, 0.8 * boost);
+    }
   }
 }

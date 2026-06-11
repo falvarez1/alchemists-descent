@@ -92,6 +92,23 @@ export interface PlayerState {
   pullT: number;
   /** Direction (+-1) toward the lever being pulled. */
   pullDir: number;
+  // fluidity pass: squash/stretch, skid, draw, recoil, stagger, fidget, cloth
+  /** Jump-launch stretch (frames left) — the opposite pole of landTimer. */
+  stretchT: number;
+  /** Turn-around skid (frames left); skidDir is the OLD travel direction. */
+  skidT: number;
+  skidDir: number;
+  /** Wand draw arc after a swap (frames left). */
+  swapT: number;
+  /** Cast recoil kick on the wand arm (frames left). */
+  recoilT: number;
+  /** Hurt stagger lean (frames left) in staggerDir (+-1, away from the hit). */
+  staggerT: number;
+  staggerDir: number;
+  /** Idle fidget routine (frames left: hat adjust, then a wand twirl). */
+  fidgetT: number;
+  /** Robe hem cloth spring: lagged horizontal offset (same idea as the hat). */
+  robe: { ox: number; vx: number };
 }
 
 export const PLAYER_HALF_W = 4;

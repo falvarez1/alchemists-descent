@@ -58,6 +58,15 @@ export function createPlayer(): PlayerState {
     recharge: 0,
     pullT: 0,
     pullDir: 1,
+    stretchT: 0,
+    skidT: 0,
+    skidDir: 1,
+    swapT: 0,
+    recoilT: 0,
+    staggerT: 0,
+    staggerDir: 1,
+    fidgetT: 0,
+    robe: { ox: 0, vx: 0 },
   };
 }
 
@@ -80,6 +89,8 @@ export class PlayerControl implements PlayerControlApi {
   private levitFrames = 0;
   /** Last half-turn of the stride wheel that produced a footstep. */
   private lastStrideStep = 0;
+  /** Consecutive frames standing still (arms the idle fidget). */
+  private idleFrames = 0;
   /** Was the body submerged last frame (splash edge detector). */
   private prevInLiquid = false;
   /** Horizontal accel multiplier from the status engine (frozen = 0.55). */
@@ -111,6 +122,11 @@ export class PlayerControl implements PlayerControlApi {
       player.vy += ky || 0;
     }
     player.invuln = 30;
+    // Hurt stagger: a lean away from the blow, and the hat whips with it
+    player.staggerT = 12;
+    player.staggerDir = kx !== 0 ? Math.sign(kx) : -player.facing;
+    player.hat.vx += player.staggerDir * 2.6;
+    player.hat.vy -= 1.2;
     ctx.audio.hurt();
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.018, 0.05);
     // hitstop: heavy hits freeze gameplay for a beat (Game consumes fx.hitstop)
@@ -468,6 +484,7 @@ export class PlayerControl implements PlayerControlApi {
       if (player.grounded || player.inLiquid || coyote) {
         player.vy = -3.7;
         player.grounded = false;
+        player.stretchT = 6; // launch stretch (anti-squash)
         this.framesSinceGrounded = 99; // consumed — no double coyote jumps
         this.jumpBufferFrames = 0;
         ctx.audio.jump();
@@ -564,6 +581,7 @@ export class PlayerControl implements PlayerControlApi {
         player.vy = -3.7;
         player.grounded = false;
         player.fallPeak = 0; // this landing was consumed by the jump
+        player.stretchT = 6;
         this.jumpBufferFrames = 0;
         this.framesSinceGrounded = 99;
         ctx.audio.jump();
@@ -713,6 +731,42 @@ export class PlayerControl implements PlayerControlApi {
       }
     } else if (!player.grounded) player.stridePhase += 0.05;
 
+    // TURN SKID: reversing at speed plants both heels — a beat of
+    // anticipation (Dead Cells style) with scuffed dust and a hat whip.
+    const want = (ctx.input.keys.right ? 1 : 0) - (ctx.input.keys.left ? 1 : 0);
+    if (
+      player.skidT === 0 &&
+      player.grounded &&
+      want !== 0 &&
+      Math.sign(player._svx) === -want &&
+      Math.abs(player._svx) > 1.1
+    ) {
+      player.skidT = 9;
+      player.skidDir = Math.sign(player._svx);
+      player.hat.vx += player.skidDir * 2.0; // hat keeps going the old way
+      ctx.audio.noiseBurst(0.05, 700, 0.07, true);
+      ctx.particles.burst(player.x + player.skidDir * 2, player.y, 4, null, () => {
+        const g = 120 + Math.floor(Math.random() * 60);
+        return packRGB(g, g, g - 10);
+      }, 0.8, { grav: 0.05 });
+    }
+    if (player.skidT > 0) {
+      player.skidT--;
+      // dust keeps kicking off the planted heels mid-skid
+      if (player.skidT > 3 && ctx.state.frameCount % 3 === 0) {
+        ctx.particles.spawn(
+          player.x + player.skidDir * 3,
+          player.y,
+          player.skidDir * 0.5,
+          -0.3,
+          null,
+          packRGB(140, 135, 125),
+          10,
+          { grav: 0.06 },
+        );
+      }
+    }
+
     // Landing squash: triggered by how hard we hit the ground
     if (player.grounded && !player.prevGrounded && player.fallPeak > 2.2) {
       player.landTimer = Math.min(10, 4 + Math.floor(player.fallPeak * 1.4));
@@ -736,11 +790,56 @@ export class PlayerControl implements PlayerControlApi {
     }
     player.fallPeak = player.grounded ? 0 : Math.max(player.fallPeak, player.vy);
     if (player.landTimer > 0) player.landTimer--;
+    if (player.stretchT > 0) player.stretchT--;
+    if (player.recoilT > 0) player.recoilT--;
+    if (player.staggerT > 0) player.staggerT--;
+    if (player.swapT > 0) player.swapT--;
     player.prevGrounded = player.grounded;
 
     // Occasional blink
     if (player.blinkTimer > 0) player.blinkTimer--;
     else if (Math.random() < 0.007) player.blinkTimer = 6;
+
+    // IDLE FIDGETS: stand still long enough and the alchemist stays alive —
+    // straightens the hat, then gives the wand a little flourish of sparks.
+    const idle =
+      player.grounded &&
+      Math.abs(player._svx) < 0.15 &&
+      !player.firing &&
+      player.pullT === 0 &&
+      player.recharge === 0 &&
+      player.staggerT === 0;
+    if (!idle) {
+      this.idleFrames = 0;
+      player.fidgetT = 0;
+    } else if (player.fidgetT > 0) {
+      player.fidgetT--;
+      if (player.fidgetT === 74) {
+        // the hand reaches the brim: the hat springs from being straightened
+        player.hat.vy -= 2.2;
+        player.hat.vx += player.facing * 0.8;
+      }
+      if (player.fidgetT < 50 && player.fidgetT > 18 && player.fidgetT % 6 === 0) {
+        // wand flourish: a slow figure of sparks off the tip
+        const tip = ctx.spells.wandTip();
+        ctx.particles.spawn(
+          tip.x,
+          tip.y,
+          Math.cos(player.fidgetT * 0.45) * 0.5,
+          Math.sin(player.fidgetT * 0.45) * 0.5 - 0.15,
+          null,
+          packRGB(150 + Math.floor(Math.random() * 80), 200, 255),
+          16,
+          { grav: -0.005, glow: 2.4 },
+        );
+      }
+    } else {
+      this.idleFrames++;
+      if (this.idleFrames > 420) {
+        player.fidgetT = 90;
+        this.idleFrames = 60; // next fidget ~6s later, not instantly
+      }
+    }
 
     // Hat: damped spring driven by the wizard's acceleration — it lags,
     // overshoots, and flops exactly opposite to each change of motion
@@ -756,5 +855,12 @@ export class PlayerControl implements PlayerControlApi {
     h.oy = clamp(h.oy + h.vy, -4, 4);
     h.pvx = player._svx;
     h.pvy = player._svy;
+
+    // Robe hem: a second, heavier cloth spring — it lags the body and
+    // overshoots on direction changes, so the skirt swings instead of snaps.
+    const r = player.robe;
+    r.vx += -r.ox * 0.2 - ax * 1.5;
+    r.vx *= 0.78;
+    r.ox = clamp(r.ox + r.vx, -3, 3);
   }
 }
