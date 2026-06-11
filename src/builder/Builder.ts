@@ -68,6 +68,8 @@ import {
 } from '@/builder/terrain';
 import type { Region } from '@/builder/terrain';
 import { PASSES, runPass } from '@/builder/procedural';
+import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
+import { paramSliderSpec } from '@/ui/Inspector';
 
 /**
  * The Builder (docs/BUILDER.md Phases 2-10): an authoring overlay on top of
@@ -259,7 +261,8 @@ export class Builder {
   private snapStep: 0 | 8 | 16 = 0;
   /** Palette drag-to-place: armed on button mousedown, live once a ghost exists. */
   private palDrag: {
-    kind: EditorObjectKind | 'light';
+    kind: EditorObjectKind | 'light' | 'material';
+    material?: number;
     startX: number;
     startY: number;
     ghost: HTMLDivElement | null;
@@ -543,11 +546,24 @@ export class Builder {
         <div class="bp-head">VIEW</div>
         <button id="bp-overlay-btn" title="Readability overlays (O)">OVERLAY: NONE</button>
         <button id="bp-snap-btn" title="Snap placements and drags to a grid">SNAP: OFF</button>
+        <div class="bp-head">PARAMETERS</div>
+        <button id="bp-world-btn" title="Global sim/light tuning (live params)">WORLD&hellip;</button>
+        <button id="bp-mat-btn" title="Tuning sliders for the armed material">MATERIAL&hellip;</button>
         <div class="bp-head">PROCEDURAL</div>
         <button id="bp-proc-btn">SEEDED PASSES&hellip;</button>
         <div class="bp-hint">RMB eyedrops &middot; wheel zooms.<br>Shift-click multi-selects,<br>drag empty = marquee.<br>Ctrl+D duplicate &middot; Ctrl+C/V<br>copy/paste params.<br>T playtests at the cursor.<br>Stamp armed: Q rotate, E flip.<br>ESC steps back &middot; DEL removes.</div>
       </div>
+      <div id="bp-matpop" style="display:none"></div>
       <div id="builder-inspector"></div>
+      <div id="builder-world" style="display:none">
+        <div class="bi-head">WORLD PARAMETERS <button id="bw-close">&times;</button></div>
+        <div id="bw-controls"></div>
+        <div class="bp-hint">Live tuning data — changes<br>apply to the sim immediately<br>(document MOOD sets the<br>playtest ambient).</div>
+      </div>
+      <div id="builder-matparams" style="display:none">
+        <div class="bi-head">MATERIAL PARAMETERS <button id="bm-close">&times;</button></div>
+        <div id="bm-controls"></div>
+      </div>
       <div id="builder-proc" style="display:none">
         <div class="bi-head">PROCEDURAL PASS <button id="bp-proc-close">&times;</button></div>
         <div class="bi-row"><span>pass</span><select id="bp-pass">${PASSES.map(
@@ -602,23 +618,75 @@ export class Builder {
     }
 
     // MATERIALS: cloned from the Sandbox toolbar's buttons (one source of
-    // truth in index.html) — the Builder owns the whole left edge now.
+    // truth in index.html) — the Builder owns the whole left edge now —
+    // plus authoring-only extras the Sandbox doesn't paint (Stone: well
+    // plugs, basins, and rune doors are made of it).
     const matGrid = this.el<HTMLDivElement>('bp-materials');
     for (const src of document.querySelectorAll<HTMLButtonElement>('.tool-btn[data-mode="element"]')) {
-      const id = Number(src.dataset.id);
-      const name = (src.textContent ?? '').trim();
-      const dot = src.querySelector<HTMLElement>('.color-indicator');
-      const swatch = document.createElement('button');
-      swatch.className = 'bp-swatch';
-      swatch.dataset.el = String(id);
-      swatch.title = name;
+      this.addMaterialSwatch(
+        matGrid,
+        Number(src.dataset.id),
+        (src.textContent ?? '').trim(),
+        src.querySelector<HTMLElement>('.color-indicator')?.style.background ?? '#888',
+      );
+    }
+    this.addMaterialSwatch(matGrid, 12, 'Stone', '#8a8a92');
+  }
+
+  /**
+   * One material swatch: real pixel icon when one exists (color dot
+   * otherwise), an INSTANT hover popover with the full-size icon + name
+   * (no squinting at colors, no tooltip delay), click to arm, drag onto
+   * the canvas to arm AND land the first dab.
+   */
+  private addMaterialSwatch(grid: HTMLDivElement, id: number, name: string, color: string): void {
+    const pop = this.el<HTMLDivElement>('bp-matpop');
+    const swatch = document.createElement('button');
+    swatch.className = 'bp-swatch';
+    swatch.dataset.el = String(id);
+    swatch.dataset.name = name;
+    swatch.dataset.color = color;
+    const icon = makeIconCanvas(ELEMENT_ICON[id] ?? '', 2);
+    if (icon) {
+      icon.className = 'bp-swatch-icon';
+      swatch.appendChild(icon);
+    } else {
       const d = document.createElement('span');
       d.className = 'dot';
-      d.style.background = dot?.style.background ?? '#888';
+      d.style.background = color;
       swatch.appendChild(d);
-      swatch.addEventListener('click', () => this.selectMaterial(id));
-      matGrid.appendChild(swatch);
     }
+    swatch.addEventListener('click', () => this.selectMaterial(id));
+    swatch.addEventListener('mouseenter', () => {
+      if (this.palDrag?.ghost) return; // no popover noise mid-drag
+      pop.innerHTML = '';
+      const big = makeIconCanvas(ELEMENT_ICON[id] ?? '', 4);
+      if (big) pop.appendChild(big);
+      else {
+        const d = document.createElement('span');
+        d.className = 'bp-matpop-dot';
+        d.style.background = color;
+        pop.appendChild(d);
+      }
+      const label = document.createElement('span');
+      label.textContent = name;
+      pop.appendChild(label);
+      const rootRect = this.root.getBoundingClientRect();
+      const palRect = this.el<HTMLDivElement>('builder-palette').getBoundingClientRect();
+      const swRect = swatch.getBoundingClientRect();
+      pop.style.left = palRect.right - rootRect.left + 8 + 'px';
+      pop.style.top = Math.max(4, swRect.top - rootRect.top - 6) + 'px';
+      pop.style.display = '';
+    });
+    swatch.addEventListener('mouseleave', () => {
+      pop.style.display = 'none';
+    });
+    swatch.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      this.palDrag = { kind: 'material', material: id, startX: e.clientX, startY: e.clientY, ghost: null };
+      e.preventDefault();
+    });
+    grid.appendChild(swatch);
   }
 
   private snap(v: number): number {
@@ -640,6 +708,8 @@ export class Builder {
     const isTerrainTool =
       this.tool === 'paint' || SHAPE_TOOLS.has(this.tool) || this.tool === 'fill' || this.tool === 'replace';
     if (!isTerrainTool) this.setTool('paint');
+    // the MATERIAL window follows the armed material
+    if (this.el<HTMLDivElement>('builder-matparams').style.display !== 'none') this.buildMatPanel();
     const name = ctx.params.materials[id]?.name ?? 'Material ' + id;
     this.status('ARMED: ' + name.toUpperCase());
   }
@@ -1773,14 +1843,12 @@ export class Builder {
   /* ===================== procedural panel (Phase 8) ===================== */
 
   private wireProcPanel(): void {
-    this.el('bp-proc-btn').addEventListener('click', () => {
-      const panel = this.el<HTMLDivElement>('builder-proc');
-      panel.style.display = panel.style.display === 'none' ? '' : 'none';
-      this.syncProcPanel();
-    });
-    this.el('bp-proc-close').addEventListener('click', () => {
-      this.el<HTMLDivElement>('builder-proc').style.display = 'none';
-    });
+    this.el('bp-proc-btn').addEventListener('click', () => this.toggleSidePanel('proc'));
+    this.el('bp-proc-close').addEventListener('click', () => this.openSidePanel(null));
+    this.el('bp-world-btn').addEventListener('click', () => this.toggleSidePanel('world'));
+    this.el('bw-close').addEventListener('click', () => this.openSidePanel(null));
+    this.el('bp-mat-btn').addEventListener('click', () => this.toggleSidePanel('mat'));
+    this.el('bm-close').addEventListener('click', () => this.openSidePanel(null));
     this.el('bp-dice').addEventListener('click', () => {
       this.el<HTMLInputElement>('bp-seed').value = String(1 + Math.floor(Math.random() * 999999));
     });
@@ -1801,6 +1869,119 @@ export class Builder {
       this.discardPreview();
       this.procStatus('PREVIEW DISCARDED');
     });
+  }
+
+  /* ---------- the right-hand side-panel slot (proc / world / material) ---------- */
+
+  private static readonly SIDE_PANELS = {
+    proc: 'builder-proc',
+    world: 'builder-world',
+    mat: 'builder-matparams',
+  } as const;
+
+  private openSidePanel(which: 'proc' | 'world' | 'mat' | null): void {
+    for (const [key, id] of Object.entries(Builder.SIDE_PANELS)) {
+      this.el<HTMLDivElement>(id).style.display = which === key ? '' : 'none';
+    }
+    if (which === 'proc') this.syncProcPanel();
+    else if (which === 'world') this.buildWorldPanel();
+    else if (which === 'mat') this.buildMatPanel();
+  }
+
+  private toggleSidePanel(which: 'proc' | 'world' | 'mat'): void {
+    const open = this.el<HTMLDivElement>(Builder.SIDE_PANELS[which]).style.display !== 'none';
+    this.openSidePanel(open ? null : which);
+  }
+
+  /** One live-param slider row (writes straight into the shared object). */
+  private sliderRow(
+    host: HTMLElement,
+    label: string,
+    value: number,
+    min: number,
+    max: number,
+    step: number,
+    fmt: (v: number) => string,
+    onInput: (v: number) => void,
+  ): void {
+    const row = document.createElement('div');
+    row.className = 'bw-row';
+    row.innerHTML = `<div class="bw-label"><span>${label}</span><b>${fmt(value)}</b></div>
+      <input type="range" min="${min}" max="${max}" step="${step}" value="${value}">`;
+    const input = row.querySelector('input')!;
+    const out = row.querySelector('b')!;
+    input.addEventListener('input', () => {
+      const v = Number(input.value);
+      onInput(v);
+      out.textContent = fmt(v);
+    });
+    host.appendChild(row);
+  }
+
+  /** WORLD window: the Sandbox global controls, builder-side. */
+  private buildWorldPanel(): void {
+    const host = this.el<HTMLDivElement>('bw-controls');
+    host.innerHTML = '';
+    const g = this.ctx.params.global;
+    this.sliderRow(host, 'Simulation Speed', g.simSpeed, 0, 2, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
+      g.simSpeed = v;
+    });
+    this.sliderRow(host, 'Max Brightness', g.maxBrightness, 1, 10, 0.5, (v) => v.toFixed(1), (v) => {
+      g.maxBrightness = v;
+    });
+    this.sliderRow(host, 'Ambient Light', g.ambient, 0.02, 0.5, 0.02, (v) => v.toFixed(2), (v) => {
+      g.ambient = v;
+    });
+    this.sliderRow(host, 'Brush Radius', this.ctx.state.brushSize, 1, 24, 1, (v) => v + 'px', (v) => {
+      this.ctx.state.brushSize = v;
+    });
+  }
+
+  /** MATERIAL window: tuning sliders for the armed material (same live
+   *  params and ranges as the Sandbox inspector — paramSliderSpec). */
+  private buildMatPanel(): void {
+    const host = this.el<HTMLDivElement>('bm-controls');
+    host.innerHTML = '';
+    const state = this.ctx.state;
+    if (state.activeInputMode !== 'element') {
+      host.innerHTML = '<div class="bp-hint">Pick a material swatch first.</div>';
+      return;
+    }
+    const profile = this.ctx.params.materials[state.currentElement];
+    if (!profile) {
+      host.innerHTML = '<div class="bp-hint">This material has no tunable<br>parameters.</div>';
+      return;
+    }
+    const title = document.createElement('div');
+    title.className = 'bw-title';
+    title.textContent = profile.name + ' Config';
+    host.appendChild(title);
+    const fields = profile as unknown as Record<string, number>;
+    let rows = 0;
+    for (const key of Object.keys(profile)) {
+      if (key === 'name') continue;
+      const spec = paramSliderSpec(key);
+      const pct = key === 'bloomWeight';
+      this.sliderRow(
+        host,
+        spec.label.replace(/([A-Z])/g, ' $1'),
+        fields[key],
+        spec.min,
+        spec.max,
+        spec.step,
+        (v) => (pct ? (v * 100).toFixed(0) + '%' : String(v)),
+        (v) => {
+          fields[key] = v;
+        },
+      );
+      rows++;
+    }
+    if (rows === 0) {
+      const hint = document.createElement('div');
+      hint.className = 'bp-hint';
+      hint.innerHTML = 'Nothing tunable on this<br>material — it just is.';
+      host.appendChild(hint);
+    }
   }
 
   private procDef() {
@@ -2041,7 +2222,12 @@ export class Builder {
         if (Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) < 6) return;
         const ghost = document.createElement('div');
         ghost.className = 'b-dnd-ghost';
-        ghost.textContent = d.kind === 'light' ? '*' : (GLYPH[d.kind] ?? '?');
+        if (d.kind === 'material') {
+          const sw = this.root.querySelector<HTMLButtonElement>(`.bp-swatch[data-el="${d.material}"]`);
+          ghost.style.background = sw?.dataset.color ?? '#888';
+        } else {
+          ghost.textContent = d.kind === 'light' ? '*' : (GLYPH[d.kind] ?? '?');
+        }
         document.body.appendChild(ghost);
         d.ghost = ghost;
       }
@@ -2060,6 +2246,20 @@ export class Builder {
         return;
       }
       const pos = this.mouseToWorld(e);
+      if (d.kind === 'material') {
+        // arm the material AND land the first dab where it dropped
+        if (this.previewBlocks()) return;
+        this.selectMaterial(d.material!);
+        const w = this.ctx.world;
+        const rec = new PatchRecorder(w);
+        stampLine(w, rec, pos.x, pos.y, pos.x, pos.y, this.ctx.state.brushSize, d.material!);
+        const patch = rec.finish();
+        if (patch) {
+          this.cmds.run(paintTerrainCmd(w, patch.before, patch.after));
+          this.paintDirty = true;
+        }
+        return;
+      }
       if (d.kind === 'light') this.placeLight(pos.x, pos.y);
       else this.place(d.kind, pos.x, pos.y);
     });
@@ -2465,6 +2665,8 @@ export class Builder {
       { label: 'Settle preview (2s of physics)', run: () => this.startSettle() },
       { label: 'Bake playtest scars', run: () => this.bakePlaytestScars() },
       { label: 'Toggle light preview', run: click('bp-light-toggle') },
+      { label: 'World parameters…', run: () => this.toggleSidePanel('world') },
+      { label: 'Material parameters…', run: () => this.toggleSidePanel('mat') },
       { label: 'Toggle panels / zen (`)', run: () => this.toggleZen() },
       { label: 'Cycle readability overlay (O)', run: () => this.cycleOverlay() },
       { label: 'Cycle snap grid', run: click('bp-snap-btn') },

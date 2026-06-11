@@ -424,18 +424,32 @@ button#clear-btn:hover { background: var(--accent-danger); color: white; border-
 /* ---------- Builder authoring overlay (src/builder/Builder.ts) ---------- */
 .mode-switch button#mode-builder-btn.active { background: #122a1c; color: #86efac; }
 
-/* The Builder owns its own left panel — the Sandbox toolbar yields entirely */
+/* The Builder owns BOTH side panels — the Sandbox toolbar AND the right
+   inspector yield entirely (the Builder has its own WORLD/MATERIAL windows) */
 body.builder-open #left-toolbar { display: none; }
+body.builder-open #right-inspector { display: none; }
 
 /* builder material swatches (cloned from the Sandbox toolbar's data) */
-#builder-palette .bp-grid6 { grid-template-columns: repeat(6, 1fr); }
+#builder-palette .bp-grid6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .bp-swatch {
     padding: 2px; height: 22px; display: flex; align-items: center; justify-content: center;
-    background: #14181f; border: 1px solid #25303d; border-radius: 3px; cursor: pointer;
+    background: #14181f; border: 1px solid #25303d; border-radius: 3px; cursor: grab;
 }
 .bp-swatch:hover { border-color: #3a4c61; }
 .bp-swatch.active { border-color: #4ade80; background: #122a1c; }
 .bp-swatch .dot { width: 10px; height: 10px; border-radius: 2px; }
+.bp-swatch .bp-swatch-icon { width: 14px !important; height: 14px !important; image-rendering: pixelated; }
+
+/* instant material popover: full icon + name, no tooltip lag */
+#bp-matpop {
+    position: absolute; z-index: 9; pointer-events: none;
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    background: rgba(10,13,18,0.97); border: 1px solid #2c3a4c; border-radius: 5px;
+    font-family: var(--mono); font-size: 11px; font-weight: 700; color: #d6e6f5;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.7); white-space: nowrap;
+}
+#bp-matpop canvas { width: 28px !important; height: 28px !important; image-rendering: pixelated; }
+#bp-matpop .bp-matpop-dot { width: 18px; height: 18px; border-radius: 3px; display: inline-block; }
 .bp-brushrow { display: flex; align-items: center; gap: 6px; font-size: 9px; color: #5b7187; }
 .bp-brushrow input[type="range"] { flex: 1; min-width: 0; }
 .bp-brushrow b { color: #9fb6cc; min-width: 14px; text-align: right; }
@@ -444,6 +458,8 @@ body.builder-open #left-toolbar { display: none; }
 #builder-root.b-zen #builder-palette,
 #builder-root.b-zen #builder-inspector,
 #builder-root.b-zen #builder-proc,
+#builder-root.b-zen #builder-world,
+#builder-root.b-zen #builder-matparams,
 #builder-root.b-zen #builder-issues,
 #builder-root.b-zen #builder-minimap { display: none !important; }
 #builder-root.b-zen ~ * .b-marker { opacity: 0.9; }
@@ -547,24 +563,45 @@ body.builder-open #left-toolbar { display: none; }
 #builder-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
 #builder-palette {
-    /* top 78px: the bar wraps to two rows at moderate widths */
-    position: absolute; left: 8px; top: 78px; bottom: 34px; z-index: 2; pointer-events: auto; width: 150px;
+    /* top 78px: the bar wraps to two rows at moderate widths.
+       scrollbar-gutter reserves the bar's lane so content never sits under
+       it, and overflow-x:hidden kills the horizontal scroller it caused. */
+    position: absolute; left: 8px; top: 78px; bottom: 34px; z-index: 2; pointer-events: auto; width: 162px;
     display: flex; flex-direction: column; gap: 3px; padding: 7px;
     background: rgba(10,13,18,0.92); border: 1px solid #1d2733; border-radius: 5px;
-    overflow-y: auto; scrollbar-width: thin;
+    overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-gutter: stable;
+    scrollbar-color: #2c3a4c #0c0f14;
 }
+#builder-palette::-webkit-scrollbar { width: 8px; }
+#builder-palette::-webkit-scrollbar-track { background: #0c0f14; }
+#builder-palette::-webkit-scrollbar-thumb { background: #2c3a4c; border-radius: 4px; }
+/* minmax(0,1fr): grid items may shrink below content width — long labels
+   ellipsize instead of forcing a horizontal scroller */
 #builder-palette .bp-grid { display: grid; gap: 3px; }
-#builder-palette .bp-grid5 { grid-template-columns: repeat(5, 1fr); }
-#builder-palette .bp-grid2 { grid-template-columns: 1fr 1fr; }
+#builder-palette .bp-grid5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+#builder-palette .bp-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #builder-palette .bp-icon { padding: 3px; display: flex; justify-content: center; }
-#builder-palette .bp-mini { padding: 3px 4px; font-size: 8px; display: flex; align-items: center; gap: 3px; text-align: left; }
+#builder-palette .bp-mini {
+    padding: 3px 4px; font-size: 8px; display: flex; align-items: center; gap: 3px; text-align: left;
+    min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 #builder-palette .bp-mini .bp-glyph { width: 12px; height: 12px; font-size: 7px; }
 
-#builder-proc {
+#builder-proc, #builder-world, #builder-matparams {
+    /* the shared right-hand side-panel slot: one of these at a time */
     position: absolute; right: 184px; top: 78px; z-index: 2; pointer-events: auto; width: 196px;
     display: flex; flex-direction: column; gap: 4px; padding: 8px;
     background: rgba(10,13,18,0.94); border: 1px solid #1d2733; border-radius: 5px;
-    font-size: 10px; color: #9fb6cc;
+    font-size: 10px; color: #9fb6cc; max-height: calc(100% - 120px); overflow-y: auto;
+    scrollbar-width: thin; scrollbar-gutter: stable;
+}
+.bw-row { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.bw-label { display: flex; justify-content: space-between; font-size: 9px; color: #5b7187; }
+.bw-label b { color: #7dd3fc; }
+.bw-row input[type="range"] { width: 100%; }
+.bw-title {
+    font-size: 10px; font-weight: 700; color: #d6e6f5; padding: 3px 6px; margin-bottom: 4px;
+    border-left: 2px solid var(--accent-blue); background: #14181f; border-radius: 0 3px 3px 0;
 }
 #builder-proc .bp-actions { display: flex; gap: 4px; margin-top: 3px; }
 #builder-proc .bp-actions button { flex: 1; padding: 4px 2px; }
@@ -573,7 +610,7 @@ body.builder-open #left-toolbar { display: none; }
 #builder-proc #bp-pass { width: 124px; }
 .bi-warn { color: #fbbf24; }
 
-#builder-palette .bp-grid3 { grid-template-columns: 1fr 1fr 1fr; }
+#builder-palette .bp-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #bp-settle-keep { border-color: #166534; color: #86efac; background: #0c1f12; }
 #bp-settle-revert { border-color: #78350f; color: #fcd34d; background: #1d1407; }
 .bp-stamp {

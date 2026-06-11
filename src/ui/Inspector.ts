@@ -1,6 +1,35 @@
 import type { Ctx, MaterialParams, SpellId, SpellParams } from '@/core/types';
 
 // ===================== Adaptive UI Form Inspectors =====================
+
+/**
+ * Slider spec for one live-param key — shared by the Sandbox inspector and
+ * the Builder's MATERIAL window so their ranges can never drift.
+ */
+export function paramSliderSpec(propKey: string): {
+  min: number;
+  max: number;
+  step: number;
+  label: string;
+} {
+  let min = 0,
+    max = 1,
+    step = 0.05,
+    label = propKey;
+  if (propKey === 'blastRadius' || propKey === 'burnDuration' || propKey === 'particleLife' || propKey === 'fuseTicks' || propKey === 'collapseLimit' || propKey === 'baseRadius') { min = 5; max = 100; step = 1; }
+  if (propKey === 'velocityForce' || propKey === 'explosionRadius') { min = 1; max = 20; step = 0.5; }
+  if (propKey === 'range') { min = 20; max = 250; step = 5; }
+  if (propKey === 'branches') { min = 0; max = 6; step = 1; }
+  if (propKey === 'damage') { min = 1; max = 100; step = 1; }
+  if (propKey === 'manaCost') { min = 0; max = 100; step = 1; }
+  if (propKey === 'cooldown') { min = 0; max = 180; step = 1; }
+  if (propKey === 'heat') { min = 1; max = 60; step = 1; }
+  if (propKey === 'chargeRate') { min = 0.05; max = 2; step = 0.05; }
+  if (propKey === 'coagulation') { min = 0; max = 0.02; step = 0.001; }
+  if (propKey === 'bloomWeight') label = 'Bloom Scale (%)';
+  return { min, max, step, label };
+}
+
 /**
  * Right-hand inspector panel: per-material / per-spell parameter sliders
  * (mutating the live `ctx.params` profiles in place), the global sim
@@ -40,20 +69,7 @@ export class Inspector {
 
     Object.keys(profile).forEach(propKey => {
       if (propKey === 'name') return;
-      let min = 0, max = 1, step = 0.05, labelText = propKey;
-
-      if (propKey === 'blastRadius' || propKey === 'burnDuration' || propKey === 'particleLife' || propKey === 'fuseTicks' || propKey === 'collapseLimit' || propKey === 'baseRadius') { min = 5; max = 100; step = 1; }
-      if (propKey === 'velocityForce' || propKey === 'explosionRadius') { min = 1; max = 20; step = 0.5; }
-      if (propKey === 'range') { min = 20; max = 250; step = 5; }
-      if (propKey === 'branches') { min = 0; max = 6; step = 1; }
-      if (propKey === 'damage') { min = 1; max = 100; step = 1; }
-      if (propKey === 'manaCost') { min = 0; max = 100; step = 1; }
-      if (propKey === 'cooldown') { min = 0; max = 180; step = 1; }
-      if (propKey === 'heat') { min = 1; max = 60; step = 1; }
-      if (propKey === 'chargeRate') { min = 0.05; max = 2; step = 0.05; }
-      if (propKey === 'coagulation') { min = 0; max = 0.02; step = 0.001; }
-
-      if (propKey === 'bloomWeight') labelText = "Bloom Scale (%)";
+      const { min, max, step, label: labelText } = paramSliderSpec(propKey);
 
       const wrapper = document.createElement('div');
       wrapper.innerHTML = `

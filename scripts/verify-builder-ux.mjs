@@ -101,6 +101,110 @@ const toClient = async (wx, wy) =>
     return { x: r.left + ux * r.width, y: r.top + uy * r.height };
   }, [wx, wy]);
 
+/* ---------- material swatches: icons, popover, drag-to-paint, layout ---------- */
+console.log('-- material swatches');
+const swatchInfo = await page.evaluate(() => {
+  const pal = document.getElementById('builder-palette');
+  return {
+    icons: document.querySelectorAll('.bp-swatch canvas').length,
+    hOverflow: pal.scrollWidth > pal.clientWidth,
+  };
+});
+check('swatches show real pixel icons', swatchInfo.icons >= 15, `got ${swatchInfo.icons}`);
+check('palette has no horizontal overflow', swatchInfo.hOverflow === false, JSON.stringify(swatchInfo));
+await page.hover('.bp-swatch[data-el="11"]'); // lava
+await page.waitForTimeout(120);
+const matPop = await page.evaluate(() => {
+  const el = document.getElementById('bp-matpop');
+  return { visible: el.style.display !== 'none', text: el.textContent };
+});
+check('hover popover shows the material name instantly', matPop.visible && matPop.text.includes('Lava'), JSON.stringify(matPop));
+// drag a STONE swatch onto the canvas: arms it AND paints a first dab
+const stoneSw = await page.evaluate(() => {
+  const b = document.querySelector('.bp-swatch[data-el="12"]');
+  b.scrollIntoView({ block: 'center' });
+  const r = b.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+});
+const dabAt = await toClient(700, 450);
+await page.mouse.move(stoneSw.x, stoneSw.y);
+await page.mouse.down();
+await page.mouse.move(dabAt.x, dabAt.y, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(150);
+const dab = await page.evaluate(() => ({
+  cell: window.__game.ctx.world.types[window.__game.ctx.world.idx(700, 450)],
+  el: window.__game.ctx.state.currentElement,
+}));
+check('dragging a swatch paints a dab and arms the material', dab.cell === 12 && dab.el === 12, JSON.stringify(dab));
+await page.keyboard.press('Control+z'); // clean the dab away
+await page.waitForTimeout(100);
+
+/* ---------- parameter windows (the right inspector yields to the builder) ---------- */
+console.log('-- parameter windows');
+const rightHidden = await page.evaluate(
+  () => getComputedStyle(document.getElementById('right-inspector')).display === 'none',
+);
+check('sandbox right inspector yields to the builder', rightHidden);
+await page.click('#bp-world-btn');
+await page.waitForTimeout(120);
+const worldPanel = await page.evaluate(() => {
+  const panel = document.getElementById('builder-world');
+  const rows = [...panel.querySelectorAll('.bw-row')];
+  const ambient = rows.find((r) => r.textContent.includes('Ambient Light'));
+  const input = ambient?.querySelector('input');
+  if (input) {
+    input.value = '0.4';
+    input.dispatchEvent(new Event('input'));
+  }
+  return {
+    visible: panel.style.display !== 'none',
+    rows: rows.length,
+    ambient: window.__game.ctx.params.global.ambient,
+  };
+});
+check('WORLD window opens with the global controls', worldPanel.visible && worldPanel.rows >= 4, JSON.stringify(worldPanel));
+check('WORLD ambient slider drives the live param', worldPanel.ambient === 0.4, `got ${worldPanel.ambient}`);
+await page.evaluate(() => {
+  // restore the default so later light checks aren't washed out
+  window.__game.ctx.params.global.ambient = 0.18;
+});
+// arm LAVA (it has tunable params; stone is name-only) and open its window
+await page.evaluate(() => {
+  document.querySelector('.bp-swatch[data-el="11"]').click();
+});
+await page.waitForTimeout(80);
+await page.click('#bp-mat-btn');
+await page.waitForTimeout(120);
+const matPanel = await page.evaluate(() => {
+  const panel = document.getElementById('builder-matparams');
+  const world = document.getElementById('builder-world');
+  const title = panel.querySelector('.bw-title')?.textContent ?? '';
+  const firstRow = panel.querySelector('.bw-row');
+  let tweaked = null;
+  if (firstRow) {
+    const label = firstRow.querySelector('.bw-label span')?.textContent ?? '';
+    const input = firstRow.querySelector('input');
+    input.value = String(Number(input.max));
+    input.dispatchEvent(new Event('input'));
+    const key = Object.keys(window.__game.ctx.params.materials[11]).find(
+      (k) => k !== 'name' && window.__game.ctx.params.materials[11][k] === Number(input.max),
+    );
+    tweaked = { label, key };
+  }
+  return {
+    visible: panel.style.display !== 'none',
+    worldClosed: world.style.display === 'none',
+    title,
+    tweaked,
+  };
+});
+check('MATERIAL window shows the armed material', matPanel.visible && matPanel.title.includes('Config'), JSON.stringify(matPanel));
+check('side panels share one slot (world closed)', matPanel.worldClosed);
+check('material slider drives the live profile', matPanel.tweaked?.key != null, JSON.stringify(matPanel.tweaked));
+await page.click('#bm-close');
+await page.waitForTimeout(80);
+
 /* ---------- drag-to-place ---------- */
 console.log('-- drag to place');
 const btnRect = await page.evaluate(() => {
@@ -298,7 +402,7 @@ await page.waitForFunction(
   () => window.__game.ctx.levels.current && !window.__game.ctx.levels.transitioning,
   { timeout: 10000 },
 );
-await page.waitForTimeout(1600);
+await page.waitForTimeout(2400); // ~144 frames: 4+ emitter drips at rate 30
 const pt = await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const w = ctx.world;
