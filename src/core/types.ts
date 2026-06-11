@@ -466,6 +466,18 @@ export interface AudioApi {
   skitter(): void;
   /** A single water drop falling from the ceiling into a pool. */
   drip(): void;
+  /** Hollow click: the wand asked for mana the tank doesn't have. */
+  dryFire(): void;
+  /** Quick whick of drawing the other wand. */
+  wandSwap(): void;
+  /** Levitation running on fumes: a coughing put-put. */
+  sputter(): void;
+  /** Two low thumps — the alchemist's own heart, near the end. */
+  heartbeat(): void;
+  /** Paper snick: a spell card picked up at the bench. */
+  cardPick(): void;
+  /** Firm clack: a card seated into a wand slot. */
+  cardSlot(): void;
   coin(): void;
   hurt(): void;
   jump(): void;
@@ -690,6 +702,9 @@ export interface Mechanism {
   pressed?: boolean;
   /** Lever: frames left of the hand-pull animation; flips when it hits 0. */
   pullT?: number;
+  /** Door: remaining cells of the opening retraction (cleared a few per
+   *  frame, bottom row first, like a gate sliding up into the frame). */
+  dissolve?: Array<[number, number]>;
   /** Door id driven by this trigger; -1 for doors themselves / unlinked.
    *  A door with SEVERAL triggers opens only when ALL are satisfied. */
   targetId: number;

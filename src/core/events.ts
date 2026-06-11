@@ -38,6 +38,8 @@ export interface EventMap {
   objectiveChanged: { text: string };
   /** The Kiln Colossus is slain: the expedition is complete. */
   runComplete: { gold: number };
+  /** A cast was refused for lack of mana (HUD flashes the mana bar). */
+  dryFire: undefined;
 }
 
 type Handler<T> = (payload: T) => void;

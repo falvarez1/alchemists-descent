@@ -8,7 +8,7 @@ import type {
   WandState,
 } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
-import { acidColor, emberColor, fireColor, smokeColor, stoneColor } from '@/sim/colors';
+import { acidColor, emberColor, fireColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
 import { CARD_DEFS } from './cards';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 
@@ -113,6 +113,8 @@ export class WandSystem implements WandsApi {
 
   /** Compiled programs, rebuilt lazily when a wand's slots change. */
   private readonly compiled: [CastGroup[] | null, CastGroup[] | null] = [null, null];
+  /** Last dry-fire feedback frame (throttles the click while held). */
+  private lastDryFire = -99;
   private _active: 0 | 1 = 0;
   /** Frames of flame-card stream left to spray from the wand tip. */
   private flameBurst = 0;
@@ -155,6 +157,7 @@ export class WandSystem implements WandsApi {
   set active(v: 0 | 1) {
     if (v === this._active) return;
     this._active = v;
+    if (this.ctx.state.mode === 'play') this.ctx.audio.wandSwap();
     this.ctx.events.emit('wandChanged');
   }
 
@@ -171,7 +174,21 @@ export class WandSystem implements WandsApi {
 
     if (wand.castIndex >= program.length) wand.castIndex = 0;
     const group = program[wand.castIndex];
-    if (wand.mana < group.manaCost) return;
+    if (wand.mana < group.manaCost) {
+      // DRY FIRE: tell the player WHY nothing happened — hollow click,
+      // mana bar flash (HUD listens), a sad fizzle at the wand tip.
+      if (ctx.state.frameCount - this.lastDryFire > 14) {
+        this.lastDryFire = ctx.state.frameCount;
+        ctx.audio.dryFire();
+        ctx.events.emit('dryFire');
+        const tip = ctx.spells.wandTip();
+        ctx.particles.burst(tip.x, tip.y, 3, null, () => packRGB(120, 150, 180), 0.7, {
+          glow: 0.8,
+          grav: 0.04,
+        });
+      }
+      return;
+    }
 
     wand.mana -= group.manaCost;
     wand.castIndex++;

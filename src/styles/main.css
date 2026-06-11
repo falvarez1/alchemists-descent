@@ -111,7 +111,21 @@ header .engine-status { font-size: 11px; color: var(--accent-purple); font-weigh
 .wave-readout .wave-num { font-size: 24px; font-weight: 800; color: #e9d5ff; letter-spacing: 2px; }
 .wave-readout .sub { font-size: 13px; color: rgba(255,255,255,0.5); letter-spacing: 1px; margin-top: 2px; }
 .wave-readout .gold { color: var(--accent-gold); font-weight: 700; }
-.wave-readout .objective { font-size: 13px; color: #fcd34d; letter-spacing: 1.6px; margin-top: 4px; font-weight: 700; }
+.wave-readout .objective { font-size: 13px; color: #fcd34d; letter-spacing: 1.6px; font-weight: 700; }
+.objective-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 4px; }
+/* The golden key: hidden until held, then a steady gleam beside the objective */
+#key-indicator { display: none; font-size: 16px; color: #fde047; text-shadow: 0 0 8px rgba(253,224,71,0.8); }
+#key-indicator.visible { display: inline; animation: key-gleam 2.2s ease-in-out infinite; }
+@keyframes key-gleam { 0%,100% { text-shadow: 0 0 5px rgba(253,224,71,0.5); } 50% { text-shadow: 0 0 12px rgba(253,224,71,1); } }
+/* Bar language for critical states */
+#hp-fill.critical { animation: hp-critical 0.8s ease-in-out infinite; }
+@keyframes hp-critical { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.7); } }
+#levit-fill.low { animation: lev-blink 0.5s steps(2, end) infinite; }
+@keyframes lev-blink { 0% { opacity: 1; } 50% { opacity: 0.35; } }
+.vital-track.mana-dry { border-color: #ef4444; animation: mana-dry-flash 0.3s ease; }
+@keyframes mana-dry-flash { 0% { box-shadow: inset 0 0 8px rgba(239,68,68,0.9), 0 0 10px rgba(239,68,68,0.7); } 100% { box-shadow: inset 0 0 8px rgba(0,0,0,0.6); } }
+/* Rolling gold readout swells while counting */
+#hud-gold.rolling { text-shadow: 0 0 9px rgba(251,191,36,0.9); }
 #minimap-corner {
     display: block; margin-top: 8px; margin-left: auto;
     width: 200px; height: 133px; image-rendering: pixelated;
@@ -151,6 +165,9 @@ header .engine-status { font-size: 11px; color: var(--accent-purple); font-weigh
 .wand-slots.holstered { opacity: 0.4; cursor: pointer; pointer-events: auto; }
 .wand-slots.holstered .hot-slot { width: 30px; height: 30px; cursor: pointer; }
 .wand-slots.holstered:hover { opacity: 0.7; }
+/* Drawing a wand: the fresh active row settles up into place. */
+.wand-slots:not(.holstered) { animation: wand-draw 0.12s ease; }
+@keyframes wand-draw { 0% { transform: translateY(3px); opacity: 0.6; } 100% { transform: translateY(0); opacity: 1; } }
 /* Cast rhythm bar: a thin amber drain under the active wand — short blips
    between cards, a long readable draw on the end-of-cycle recharge. */
 .wand-recharge {
@@ -218,7 +235,8 @@ body.play-active #viewport-container { padding: 0; }
     padding: 14px; box-sizing: border-box; pointer-events: none;
     background: rgba(8,6,12,0.92); border: 1px dashed #6e4632; border-radius: 6px;
 }
-#minimap-overlay.visible { display: flex; }
+#minimap-overlay.visible { display: flex; animation: overlay-in 0.12s ease; }
+@keyframes overlay-in { 0% { opacity: 0; transform: translateY(6px); } 100% { opacity: 1; transform: translateY(0); } }
 #minimap-canvas { width: 100%; height: auto; image-rendering: pixelated; flex-shrink: 1; min-height: 0; }
 #minimap-caption {
     font-family: var(--mono); font-size: 13px; letter-spacing: 2px;
@@ -232,7 +250,13 @@ body.play-active #viewport-container { padding: 0; }
     overflow-y: auto; pointer-events: auto; font-family: var(--mono);
     background: rgba(8,6,12,0.92); border: 1px dashed #6e4632; border-radius: 6px;
 }
-#wand-bench.visible { display: flex; }
+#wand-bench.visible { display: flex; animation: overlay-in 0.12s ease; }
+/* A freshly seated card flashes its slot once */
+.bench-slot.just-slotted { animation: slot-flash 0.3s ease; }
+@keyframes slot-flash {
+    0% { border-color: #fcd34d; box-shadow: 0 0 14px rgba(252,211,77,0.9); transform: scale(1.12); }
+    100% { box-shadow: none; transform: scale(1); }
+}
 .bench-title { font-size: 17px; font-weight: 800; letter-spacing: 4px; color: #e9d5ff; text-shadow: 0 1px 4px #000; }
 .bench-wand {
     display: flex; flex-direction: column; gap: 6px; padding: 10px;

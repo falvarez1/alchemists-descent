@@ -247,6 +247,13 @@ export class PlayerControl implements PlayerControlApi {
     const world = ctx.world;
     if (ctx.state.mode !== 'play' || player.dead) return;
 
+    // Near death, you hear it: a slow heartbeat under 25% HP, urgent under 12%.
+    const hpFrac = player.hp / player.maxHp;
+    if (hpFrac < 0.25) {
+      const beat = hpFrac < 0.12 ? 48 : 75;
+      if (ctx.state.frameCount % beat === 0) ctx.audio.heartbeat();
+    }
+
     // HEART COMMUNION roots the alchemist; a LEVER PULL plants him too.
     // Movement and casting lock while either runs.
     if (player.pullT > 0) {
@@ -447,8 +454,25 @@ export class PlayerControl implements PlayerControlApi {
         if (player.status.levity <= 0)
           player.levit -= 1.15 * (player.perks.featherweight ? 0.55 : 1);
         this.levitFrames++;
+        // SPUTTER WARNING: below 20% fuel the jet coughs — gaps in the
+        // exhaust, a put-put under the hum — panic BEFORE the fall starts.
+        const sputtering = player.levit / player.maxLevit < 0.2 && player.status.levity <= 0;
+        if (sputtering) {
+          ctx.audio.sputter();
+          if (ctx.state.frameCount % 9 < 4) {
+            ctx.particles.spawn(
+              player.x + (Math.random() - 0.5) * 3,
+              player.y + 1,
+              (Math.random() - 0.5) * 0.4,
+              0.8,
+              null,
+              packRGB(110, 100, 90),
+              12,
+            );
+          }
+        }
         ctx.audio.levitate();
-        if (ctx.state.frameCount % 3 === 0) {
+        if (ctx.state.frameCount % 3 === 0 && !(sputtering && ctx.state.frameCount % 9 >= 4)) {
           ctx.particles.spawn(
             player.x + (Math.random() - 0.5) * 2,
             player.y + 0.5,

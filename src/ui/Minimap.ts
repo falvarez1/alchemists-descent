@@ -63,7 +63,16 @@ export class Minimap {
     ctx.events.on('modeChanged', ({ mode }) => {
       if (mode !== 'play') this.setVisible(false);
     });
+
+    // Key in hand -> the portal dot pings on the corner map for a few
+    // seconds: "now go THERE."
+    ctx.events.on('objectiveChanged', ({ text }) => {
+      if (text === 'REACH THE PORTAL') this.portalPing = 300;
+    });
   }
+
+  /** Frames left of the go-to-the-portal ping. */
+  private portalPing = 0;
 
   private setVisible(on: boolean): void {
     if (on === this.visible) return;
@@ -74,8 +83,11 @@ export class Minimap {
 
   /** Per-frame hook (lead-wired). Cheap no-op unless something needs redrawing. */
   update(ctx: Ctx): void {
-    // Always-on corner panel: a slower cadence keeps it nearly free.
-    if (ctx.state.mode === 'play' && ctx.state.frameCount % 30 === 0) this.redrawCorner(ctx);
+    if (this.portalPing > 0) this.portalPing--;
+    // Always-on corner panel: a slower cadence keeps it nearly free —
+    // except while the portal ping flashes, which earns a fast refresh.
+    const cadence = this.portalPing > 0 ? 8 : 30;
+    if (ctx.state.mode === 'play' && ctx.state.frameCount % cadence === 0) this.redrawCorner(ctx);
     if (!this.visible || ctx.state.frameCount % REDRAW_INTERVAL !== 0) return;
     this.redraw(ctx);
   }
@@ -136,6 +148,11 @@ export class Minimap {
     level: NonNullable<Ctx['levels']['current']>,
   ): void {
     if (level.portal) {
+      // ping: the destination flashes big and bright right after the key
+      if (this.portalPing > 0 && this.portalPing % 16 < 8) {
+        g.fillStyle = '#ffffff';
+        g.fillRect((level.portal.x >> 3) - 3, (level.portal.y >> 3) - 3, 7, 7);
+      }
       g.fillStyle = level.keyTaken ? '#c084fc' : '#7c3aed';
       g.fillRect((level.portal.x >> 3) - 1, (level.portal.y >> 3) - 1, 3, 3);
     }

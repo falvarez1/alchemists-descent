@@ -120,6 +120,20 @@ export class AudioEngine implements AudioApi {
 
   drip(): void { if (!this.throttled('drip', 500)) return; this.tone(900 + Math.random() * 300, 420, 0.07, 'sine', 0.06); }
 
+  // ---- Micro-interaction feedback ----
+
+  dryFire(): void { if (!this.throttled('dry', 220)) return; this.tone(140, 90, 0.05, 'square', 0.1); this.noiseBurst(0.03, 1200, 0.05, true); }
+
+  wandSwap(): void { if (!this.throttled('swap', 120)) return; this.noiseBurst(0.05, 2600, 0.07, true); this.tone(520, 760, 0.06, 'triangle', 0.08); }
+
+  sputter(): void { if (!this.throttled('sputter', 260)) return; this.noiseBurst(0.04, 480, 0.09); setTimeout(() => this.noiseBurst(0.03, 380, 0.07), 80); }
+
+  heartbeat(): void { if (!this.throttled('heart', 400)) return; this.tone(58, 42, 0.11, 'sine', 0.22); setTimeout(() => this.tone(52, 38, 0.09, 'sine', 0.16), 150); }
+
+  cardPick(): void { if (!this.throttled('cardp', 80)) return; this.noiseBurst(0.025, 3400, 0.05, true); }
+
+  cardSlot(): void { if (!this.throttled('cards', 80)) return; this.tone(240, 180, 0.05, 'square', 0.12); this.noiseBurst(0.02, 2000, 0.04, true); }
+
   flame(): void {
     if (!this.throttled('flame', 70)) return;
     this.noiseBurst(0.22, 550 + Math.random() * 300, 0.18);          // body of the roar

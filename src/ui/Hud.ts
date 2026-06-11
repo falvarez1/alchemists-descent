@@ -23,11 +23,21 @@ export class Hud {
   private hotbarSlots: Array<{ tile: HTMLElement; cost: number; slotIdx: number }> = [];
   /** The active wand's recharge bar fill (rebuilt with the hotbar). */
   private rechargeFill: HTMLElement | null = null;
+  /** Rolling gold display: ticks toward the true score instead of snapping. */
+  private displayedGold = 0;
+  /** Frame the last dry-fire flash started (clears the class after it). */
+  private dryFlashUntil = 0;
 
   constructor(private ctx: Ctx) {
     ctx.events.on('scoreChanged', ({ score }) => {
       el('score-val').textContent = String(score);
-      el('hud-gold').textContent = String(score);
+      // hud-gold rolls toward the target in update() — income you can watch
+    });
+
+    // Dry fire: the mana bar itself flinches red so the WHY is unmissable.
+    ctx.events.on('dryFire', () => {
+      this.dryFlashUntil = this.ctx.state.frameCount + 18;
+      el('mana-fill').parentElement?.classList.add('mana-dry');
     });
 
     ctx.events.on('waveStarted', ({ num }) => {
@@ -198,7 +208,29 @@ export class Hud {
     // the mana bar tracks the wand with no extra wiring here.
     el('mana-fill').style.width = Math.max(0, (player.mana / player.maxMana) * 100) + '%';
     el('levit-fill').style.width = Math.max(0, (player.levit / player.maxLevit) * 100) + '%';
-    el('hud-gold').textContent = String(ctx.state.score);
+
+    // Critical-state bar language: HP pulses near death, LEV blinks on fumes,
+    // the mana track recovers from its dry-fire flinch.
+    el('hp-fill').classList.toggle('critical', !player.dead && player.hp / player.maxHp < 0.25);
+    el('levit-fill').classList.toggle('low', player.levit / player.maxLevit < 0.2);
+    if (this.dryFlashUntil && ctx.state.frameCount > this.dryFlashUntil) {
+      el('mana-fill').parentElement?.classList.remove('mana-dry');
+      this.dryFlashUntil = 0;
+    }
+
+    // Rolling gold: income ticks up, losses tick down — both watchable.
+    const goldTarget = ctx.state.score;
+    if (this.displayedGold !== goldTarget) {
+      const step = Math.ceil(Math.abs(goldTarget - this.displayedGold) * 0.18);
+      this.displayedGold += Math.sign(goldTarget - this.displayedGold) * step;
+      el('hud-gold').textContent = String(this.displayedGold);
+      el('hud-gold').classList.add('rolling');
+    } else {
+      el('hud-gold').classList.remove('rolling');
+    }
+
+    // The golden key rides the HUD once held — you never wonder again.
+    el('key-indicator').classList.toggle('visible', ctx.levels.current?.keyTaken === true);
 
     const flask = ctx.flask.state;
     const flaskFill = el('flask-fill');

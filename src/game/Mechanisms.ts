@@ -43,30 +43,27 @@ export function makeDoor(
 export function setDoorCells(ctx: Ctx, door: Mechanism, open: boolean): void {
   const world = ctx.world;
   door.state = open ? 1 : 0;
+  if (open) {
+    // RETRACTION, not teleportation: queue the door's cells bottom-row-first
+    // (a gate sliding up into its frame); Mechanisms.update clears a few per
+    // frame with dust shaking off the rising edge.
+    const cells: Array<[number, number]> = [];
+    for (let dy = 0; dy < door.h; dy++) {
+      for (let dx = 0; dx < door.w; dx++) {
+        cells.push([door.x + dx, door.y + dy]);
+      }
+    }
+    door.dissolve = cells; // pop() takes the bottom rows first
+    return;
+  }
+  door.dissolve = undefined; // a closing door slams shut at once
   for (let dx = 0; dx < door.w; dx++) {
     for (let dy = 0; dy < door.h; dy++) {
       const X = door.x + dx,
         Y = door.y + dy;
       if (!world.inBounds(X, Y)) continue;
       const i = world.idx(X, Y);
-      if (open) {
-        if (world.types[i] === Cell.Metal) {
-          world.types[i] = Cell.Empty;
-          world.colors[i] = EMPTY_COLOR;
-          if (Math.random() < 0.2) {
-            ctx.particles.spawn(
-              X,
-              Y,
-              (Math.random() - 0.5) * 0.8,
-              -0.4 - Math.random() * 0.6,
-              null,
-              packRGB(150, 160, 180),
-              30,
-              { glow: 1.2, grav: 0.04 },
-            );
-          }
-        }
-      } else {
+      {
         // Safe close: never crush a living body
         let occupied =
           Math.abs(X - ctx.player.x) <= 5 && Y <= ctx.player.y + 1 && Y >= ctx.player.y - 18;
@@ -445,6 +442,34 @@ export class Mechanisms implements MechanismsApi {
     //         once their groan timer runs out.
     for (const door of list) {
       if (door.kind !== 'door') continue;
+
+      // Door retraction in progress: the gate slides up, 6 cells a frame,
+      // dust shaking off the rising edge.
+      if (door.dissolve && door.dissolve.length > 0) {
+        for (let n = 0; n < 6 && door.dissolve.length; n++) {
+          const [X, Y] = door.dissolve.pop()!;
+          if (!world.inBounds(X, Y)) continue;
+          const i = world.idx(X, Y);
+          if (world.types[i] === Cell.Metal) {
+            world.types[i] = Cell.Empty;
+            world.colors[i] = EMPTY_COLOR;
+            if (Math.random() < 0.25) {
+              ctx.particles.spawn(
+                X,
+                Y,
+                (Math.random() - 0.5) * 0.8,
+                -0.3 - Math.random() * 0.5,
+                null,
+                packRGB(150, 160, 180),
+                26,
+                { glow: 1.0, grav: 0.05 },
+              );
+            }
+          }
+        }
+        if (door.dissolve.length === 0) door.dissolve = undefined;
+      }
+
       let hasTrigger = false;
       let want = true;
       for (const t of list) {
@@ -456,6 +481,14 @@ export class Mechanisms implements MechanismsApi {
         }
       }
       if (hasTrigger && (door.state === 1) !== want) {
+        if (want) {
+          // The circuit closes: a spark races from each satisfied trigger to
+          // its gate — the wiring teaches itself.
+          for (const t of list) {
+            if (t.kind === 'door' || t.targetId !== door.id) continue;
+            this.sparkLine(ctx, t.x, t.y - 2, door.x + door.w / 2, door.y + door.h / 2);
+          }
+        }
         setDoorCells(ctx, door, want);
         ctx.audio.doorGrind();
       }
@@ -484,6 +517,24 @@ export class Mechanisms implements MechanismsApi {
         }
       }
       if (v.door.length === 0) ctx.audio.tone(520, 300, 0.3, 'triangle', 0.12);
+    }
+  }
+
+  /** A line of staggered amber sparks from trigger to gate (one-shot). */
+  private sparkLine(ctx: Ctx, x0: number, y0: number, x1: number, y1: number): void {
+    const steps = 12;
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      ctx.particles.spawn(
+        x0 + (x1 - x0) * t,
+        y0 + (y1 - y0) * t,
+        (Math.random() - 0.5) * 0.2,
+        (Math.random() - 0.5) * 0.2,
+        null,
+        packRGB(252, 211, 77),
+        10 + k * 2, // staggered lifetimes: the spark visibly TRAVELS
+        { glow: 2.0, grav: 0 },
+      );
     }
   }
 

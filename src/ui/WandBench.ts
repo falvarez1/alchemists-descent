@@ -116,9 +116,15 @@ export class WandBench {
     root.appendChild(hint);
   }
 
+  /** Slot to flash on the next render (CSS animation runs on the fresh tile). */
+  private flashSlot: { w: 0 | 1; s: number } | null = null;
+
   private makeSlotTile(w: 0 | 1, s: number, id: CardId | null): HTMLElement {
     const tile = document.createElement('div');
     tile.className = 'bench-slot' + (id === null ? ' empty' : '');
+    if (this.flashSlot && this.flashSlot.w === w && this.flashSlot.s === s) {
+      tile.classList.add('just-slotted');
+    }
     if (id === null) {
       tile.title = 'Empty slot';
     } else {
@@ -147,6 +153,7 @@ export class WandBench {
     // Click toggles 'held' — clicking the held card again puts it down.
     tile.addEventListener('click', () => {
       this.heldIdx = this.heldIdx === i ? -1 : i;
+      this.ctx.audio.cardPick(); // paper snick
       this.render();
     });
     return tile;
@@ -160,12 +167,16 @@ export class WandBench {
       // Swap: a filled slot returns its card to the collection first.
       if (id !== null) wands.slotCard(w, s, null);
       wands.slotCard(w, s, held);
+      this.ctx.audio.cardSlot(); // firm clack: seated in the wand
+      this.flashSlot = { w, s };
     } else if (id !== null) {
       // Empty-handed click on a filled slot returns the card to the collection.
       wands.slotCard(w, s, null);
+      this.ctx.audio.cardPick();
     }
     // slotCard emits wandChanged, but re-render directly so the bench never
     // depends on the event for its own interactions.
     this.render();
+    this.flashSlot = null;
   }
 }
