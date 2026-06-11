@@ -159,6 +159,17 @@ export class Minimap {
       else continue; // gold/chests/potions stay secrets until found on foot
       g.fillRect(p.x >> 3, p.y >> 3, 2, 2);
     }
+    // Locks worth hunting: sealed mechanism gates (amber, dim once opened)
+    // and rune glyphs (violet until struck, green after)
+    for (const m of level.mechanisms) {
+      if (m.kind !== 'door') continue;
+      g.fillStyle = m.state === 1 ? '#3f6212' : '#fbbf24';
+      g.fillRect(m.x >> 3, m.y >> 3, 2, 2);
+    }
+    for (const v of level.runeVaults) {
+      g.fillStyle = v.active ? '#4ade80' : '#a78bfa';
+      g.fillRect(v.rx >> 3, v.ry >> 3, 2, 2);
+    }
     g.fillStyle = '#ffffff';
     g.fillRect((ctx.player.x >> 3) - 1, (ctx.player.y >> 3) - 1, 2, 2);
   }

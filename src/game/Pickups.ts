@@ -54,11 +54,23 @@ export class Pickups implements PickupsApi {
       } else {
         p.vy = 0;
       }
-      // Gentle magnetism when the alchemist is near.
+      // Gentle magnetism when the alchemist is near — but never through
+      // walls: a sealed vault's loot must not leak past its lock.
       const dx = player.x - p.x;
       const dy = player.y - 8 - p.y;
       const d2 = dx * dx + dy * dy;
-      if (!player.dead && d2 < 24 * 24) {
+      let clearLine = true;
+      if (d2 < 24 * 24) {
+        for (const t of [0.3, 0.55, 0.8]) {
+          const sx = Math.floor(p.x + dx * t);
+          const sy = Math.floor(p.y + dy * t);
+          if (world.inBounds(sx, sy) && blocksEntity(world.types[world.idx(sx, sy)])) {
+            clearLine = false;
+            break;
+          }
+        }
+      }
+      if (!player.dead && d2 < 24 * 24 && clearLine) {
         const d = Math.sqrt(d2) || 1;
         p.vx += (dx / d) * 0.18;
         p.vy += (dy / d) * 0.18;
@@ -70,7 +82,7 @@ export class Pickups implements PickupsApi {
       p.x += p.vx;
       p.y += p.vy;
 
-      if (!player.dead && d2 < 49) this.collect(ctx, p);
+      if (!player.dead && d2 < 49 && clearLine) this.collect(ctx, p);
     }
   }
 

@@ -84,6 +84,44 @@ export function placeStructures(
     return y;
   };
 
+  /**
+   * REACHABILITY GUARANTEE: every carved structure must join the cave
+   * network. Winds a 4-radius tunnel from a structure's mouth to the nearest
+   * sizable open region's centroid (Metal is never breached, so vault shells
+   * and water tanks survive their own approach tunnels).
+   */
+  const connectToCaves = (fromX: number, fromY: number): void => {
+    // Target the nearest MAIN-PATH region: those form the spawn<->exit artery,
+    // so the tunnel provably joins the network the player actually walks.
+    // (Nearest "open area" is not enough — isolated pockets are open too.)
+    let best: { cx: number; cy: number } | null = null;
+    let bestD = Infinity;
+    for (const onlyMain of [true, false]) {
+      for (const reg of graph.regions) {
+        if (onlyMain && !reg.onMainPath) continue;
+        if (!onlyMain && reg.area < 60) continue;
+        const d = (reg.cx - fromX) * (reg.cx - fromX) + (reg.cy - fromY) * (reg.cy - fromY);
+        if (d < bestD) {
+          bestD = d;
+          best = { cx: reg.cx, cy: reg.cy };
+        }
+      }
+      if (best) break;
+    }
+    if (!best) return;
+    let x = fromX,
+      y = fromY,
+      guard = 0;
+    while ((Math.abs(x - best.cx) > 5 || Math.abs(y - best.cy) > 5) && guard < 900) {
+      guard++;
+      x += Math.sign(best.cx - x) * (rng.next() < 0.8 ? 1 : 0) + Math.floor((rng.next() - 0.5) * 2);
+      y += Math.sign(best.cy - y) * (rng.next() < 0.8 ? 1 : 0);
+      x = Math.floor(clamp(x, 6, WIDTH - 7));
+      y = Math.floor(clamp(y, 26, HEIGHT - 12));
+      carvePocket(x, y, 4, 4);
+    }
+  };
+
   // ---- Exit portal: a carved shrine right above the well's seal plug ----
   const portalX = exit.x;
   const portalY = exit.sealY - 10;
@@ -230,13 +268,27 @@ export function placeStructures(
       carvePocket(doorX + side * s, vy + 4 + Math.floor(Math.sin(s * 0.4) * 2), 5, 5);
     }
     const door = makeDoor(ctx, mechanisms, Math.min(doorX, doorX + side * 2) - 1, vy - 2, 4, 12);
-    // mechanism alternates: plate puzzles and lever/brazier puzzles
+    // mechanism alternates: plate puzzles and lever/brazier puzzles.
+    // The trigger gets its own carved antechamber with a stone shelf —
+    // contiguous with the corridor, so it is always standing in walkable
+    // space instead of wherever settleY happened to drop it.
     const mechRoll = (vaultIdx + (rng.next() < 0.5 ? 0 : 1)) % 3;
-    const mx = Math.floor(clamp(doorX + side * 22, 8, WIDTH - 9));
-    const my = settleY(mx, vy - 6);
+    const mx = Math.floor(clamp(doorX + side * 22, 10, WIDTH - 11));
+    carvePocket(mx, vy + 1, 8, 8);
+    for (let dx = -8; dx <= 8; dx++) {
+      const Y = vy + 8;
+      if (w.inBounds(mx + dx, Y) && w.types[w.idx(mx + dx, Y)] === Cell.Empty) {
+        const i = w.idx(mx + dx, Y);
+        w.types[i] = Cell.Stone;
+        w.colors[i] = stoneColor();
+      }
+    }
+    const my = vy + 7;
     if (mechRoll === 0) makePlate(w, mechanisms, Math.floor(clamp(mx - 3, 4, WIDTH - 12)), my + 1, 7, door);
     else if (mechRoll === 1) makeLever(mechanisms, mx, my, door);
     else makeBrazier(w, mechanisms, mx, my, door);
+    // the antechamber joins the cave network
+    connectToCaves(mx + side * 6, vy + 2);
   }
 
   // ---- Sealed rune vaults: metal strongrooms opened by a distant rune glyph ----
@@ -332,13 +384,18 @@ export function placeStructures(
       break;
     }
     if (rx < 0) continue;
-    // pedestal
+    // pedestal — tunneled to the network so the glyph can actually be found
     for (let dx = -2; dx <= 2; dx++) {
       const i = w.idx(rx + dx, ry);
       w.types[i] = Cell.Metal;
       w.colors[i] = packRGB(88, 94, 104);
     }
+    connectToCaves(rx, ry - 3);
     runeVaults.push({ rx, ry: ry - 2, door: doorCells, active: false });
+    // approach antechamber outside the stone door, tunneled to the caves —
+    // once the rune is struck and the door dissolves, you walk straight in
+    carvePocket(vx - 15, vy + 2, 4, 5);
+    connectToCaves(vx - 16, vy + 2);
     vPlaced++;
   }
 
@@ -348,15 +405,20 @@ export function placeStructures(
   // liquid past the buoy line), Charge Latch (bring it a spark). The loot
   // pocket behind the gate carries a chest, gold, and a tome.
   if (def.depth >= 2) {
+    // Progressive relaxation: prefer deep solid rock far from the landmarks,
+    // but NEVER skip — a level without its lock is a broken promise.
     let px2 = -1,
       py2 = -1,
       pTries = 0;
     while (pTries < 9000) {
       pTries++;
+      const rockMin = pTries < 4000 ? 0.82 : pTries < 7000 ? 0.5 : 0;
+      const clearMin = pTries < 4000 ? 160 : pTries < 7000 ? 100 : 60;
       const cand = 60 + Math.floor(rng.next() * (WIDTH - 120));
       const candY = 100 + Math.floor(rng.next() * (HEIGHT - 280));
-      if (Math.abs(cand - spawn.x) < 160 || Math.abs(cand - portalX) < 120) continue;
-      // mostly-solid host rock, no metal collisions
+      if (Math.abs(cand - spawn.x) < clearMin || Math.abs(cand - portalX) < clearMin * 0.75)
+        continue;
+      // no metal collisions; rock fraction per current relaxation tier
       let rock = 0,
         cells = 0,
         collide = false;
@@ -375,7 +437,7 @@ export function placeStructures(
           if (t === Cell.Wall) rock++;
         }
       }
-      if (collide || rock / cells < 0.82) continue;
+      if (collide || rock / cells < rockMin) continue;
       px2 = cand;
       py2 = candY;
       break;
@@ -485,6 +547,9 @@ export function placeStructures(
         // anything the conductors will carry
         makeChargeLatch(w, mechanisms, px2 - 8, floorY, door);
       }
+
+      // The chamber joins the cave network through its left mouth.
+      connectToCaves(px2 - 17, py2 + 3);
     }
   }
 
@@ -550,6 +615,9 @@ export function placeStructures(
       }
     }
     boss = { x: cx, y: cy + 14 };
+    // both arena flanks join the cave network — the kiln must be findable
+    connectToCaves(cx - 39, cy + 6);
+    connectToCaves(cx + 39, cy + 6);
   }
 
   return { pickups, portal, mechanisms, runeVaults, boss };
