@@ -127,7 +127,17 @@ export class Levels implements LevelsApi {
 
   /** Generate D1 (or resume the saved expedition) and swap it into ctx. Idempotent. */
   startDescent(ctx: Ctx): void {
-    if (this.currentId) return;
+    if (this.currentId) {
+      // The Builder detaches ctx.world onto a scratch world to protect a
+      // running expedition (Builder.open). Resuming play must re-attach the
+      // current level — a full enterLevel so enemies and transients restore
+      // with it (arrival-at-spawn is the established re-entry semantic).
+      const rt = this.current;
+      if (rt && ctx.world !== rt.world && rt.def.id !== 'custom') {
+        this.enterLevel(ctx, rt.def.id);
+      }
+      return;
+    }
     if (this.tryResumeExpedition(ctx)) return;
     this.expeditionSeed = ctx.state.worldSeed >>> 0;
     this.enterLevel(ctx, START_LEVEL);

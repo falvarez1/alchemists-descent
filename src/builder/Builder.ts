@@ -8,7 +8,8 @@ import {
   loadDocLibrary,
   objectFootprint,
   paramNum,
-  saveDocLibrary,
+  sanitizeImportedDoc,
+  saveDocToLibrary,
 } from '@/builder/document';
 import type {
   EditorDocument,
@@ -31,9 +32,11 @@ import {
   moveLightCmd,
   moveObjectCmd,
   paintTerrainCmd,
+  setObjectFlagCmd,
 } from '@/builder/commands';
 import type { CellPatch, Command } from '@/builder/commands';
 import { drawLine, spawnCircle } from '@/sim/brush';
+import { World } from '@/sim/World';
 import { compileAndPlaytest } from '@/builder/compile';
 import { TRIGGER_KINDS, validateDocument } from '@/builder/validate';
 import type { DocIssue } from '@/builder/validate';
@@ -202,13 +205,40 @@ export class Builder {
     ctx.events.on('modeChanged', ({ mode }) => {
       if (mode === 'play' && this.isOpen) this.close();
     });
-    // Sandbox world-shaping buttons also edit terrain — the document must
-    // re-capture before the next validate/playtest/save.
+    // Sandbox world-shaping buttons reshape the WHOLE world under the open
+    // document with no undo. While the Builder is open they must confirm
+    // first (capture phase beats the Sandbox handler), and a confirmed
+    // reshape marks the terrain dirty for re-capture.
     for (const id of ['btn-caves', 'btn-fortress', 'clear-btn']) {
-      document.getElementById(id)?.addEventListener('click', () => {
-        if (this.isOpen) this.paintDirty = true;
-      });
+      document.getElementById(id)?.addEventListener(
+        'click',
+        (e) => {
+          if (!this.isOpen) return;
+          const hasWork = this.doc.world !== null || this.cmds.depth > 0 || this.paintDirty;
+          if (
+            this.pendingPreview ||
+            (hasWork &&
+              !window.confirm(
+                'This reshapes the ENTIRE world under the open document and cannot be undone. ' +
+                  '(RESTORE re-decodes the last captured terrain.) Continue?',
+              ))
+          ) {
+            if (this.pendingPreview) this.status('APPLY OR DISCARD THE PROCEDURAL PREVIEW FIRST', true);
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return;
+          }
+          this.paintDirty = true;
+        },
+        true,
+      );
     }
+    // Unsaved authoring work guards the tab close.
+    window.addEventListener('beforeunload', (e) => {
+      if (this.isOpen && (this.cmds.depth > 0 || this.paintDirty || this.pendingPreview)) {
+        e.preventDefault();
+      }
+    });
   }
 
   /* ===================== open / close ===================== */
@@ -219,10 +249,28 @@ export class Builder {
     if (this.ctx.state.mode === 'play') {
       (document.getElementById('mode-build-btn') as HTMLButtonElement | null)?.click();
     }
+    // EXPEDITION PROTECTION: levels persist as live World instances. If the
+    // canvas still shows an expedition level, the Builder must NOT edit it
+    // in place (LOAD/IMPORT would wipe a depth and autosave would keep it).
+    // Detach onto a scratch world; PLAY re-attaches the expedition's own.
+    let detached = false;
+    const rt = this.ctx.levels.current;
+    if (rt && rt.def.id !== 'custom' && this.ctx.world === rt.world) {
+      this.ctx.world = new World();
+      this.ctx.enemies.length = 0;
+      this.ctx.projectiles.length = 0;
+      this.ctx.particles.clear();
+      if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
+      detached = true;
+    }
     this.isOpen = true;
     if (!this.ctx.state.paused) {
       this.ctx.state.paused = true;
       this.ownsPause = true;
+    }
+    if (detached) {
+      this.root.style.display = '';
+      this.status('EXPEDITION PARKED — THE BUILDER WORKS ON ITS OWN WORLD');
     }
     if (this.returningFromPlaytest && this.doc.world) {
       // The compiled playtest scarred a COPY; re-decode the authored layer.
@@ -295,6 +343,7 @@ export class Builder {
         <button id="b-redo" title="Ctrl+Y">&#8618;</button>
         <span class="b-sep"></span>
         <button id="b-capture" title="Snapshot the live sandbox cells into the document">CAPTURE TERRAIN</button>
+        <button id="b-restore" title="Re-decode the document's captured terrain into the live world (clears undo)">RESTORE</button>
         <button id="b-validate">VALIDATE</button>
         <button id="b-playtest" class="b-accent">PLAYTEST</button>
         <button id="b-exit">EXIT</button>
@@ -314,6 +363,7 @@ export class Builder {
           ${toolBtn('replace', '⇄', 'Replace clicked material everywhere (respects region)')}
           ${toolBtn('region', '▦', 'Select a region for passes & replace (R)')}
         </div>
+        <div id="bp-mat-row" class="bp-hint" title="Active material & brush — RMB eyedrops; pick in the Sandbox panel"></div>
         <div class="bp-head">PLACE</div>
         <div class="bp-grid bp-grid2">${PLACE_GAMEPLAY.map(placeBtn).join('')}</div>
         <div class="bp-head">MECHANISMS</div>
@@ -415,9 +465,7 @@ export class Builder {
     this.el('b-save').addEventListener('click', () => {
       if (this.previewBlocks()) return;
       this.ensureCaptured();
-      const lib = loadDocLibrary();
-      lib[this.doc.id] = this.doc;
-      if (saveDocLibrary(lib)) this.status(`SAVED "${this.doc.name.toUpperCase()}"`);
+      if (saveDocToLibrary(this.doc)) this.status(`SAVED "${this.doc.name.toUpperCase()}"`);
       else this.status('STORAGE FULL — USE EXPORT', true);
       this.refreshDocSelect();
     });
@@ -453,22 +501,29 @@ export class Builder {
       const input = e.target as HTMLInputElement;
       const file = input.files?.[0];
       if (!file) return;
+      if (this.previewBlocks()) {
+        input.value = '';
+        return;
+      }
       file.text().then((text) => {
+        // Validate-then-swap: the previous document survives any garbage.
+        let parsed: unknown = null;
         try {
-          const parsed = JSON.parse(text) as EditorDocument;
-          if (parsed.v !== 2 || !Array.isArray(parsed.objects)) throw new Error('bad');
-          parsed.links = parsed.links ?? [];
-          parsed.lights = parsed.lights ?? [];
-          parsed.proceduralHistory = parsed.proceduralHistory ?? [];
-          this.doc = parsed;
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = null;
+        }
+        const doc = parsed === null ? null : sanitizeImportedDoc(parsed);
+        if (!doc) {
+          this.status('NOT A BUILDER DOCUMENT', true);
+        } else {
+          this.doc = doc;
           this.cmds.clear();
           this.selectedId = null;
           this.paintDirty = false;
           this.applyDocTerrain();
           this.syncAll();
           this.status(`IMPORTED "${this.doc.name.toUpperCase()}"`);
-        } catch {
-          this.status('NOT A BUILDER DOCUMENT', true);
         }
         input.value = '';
       });
@@ -482,6 +537,22 @@ export class Builder {
       this.doc.world = captureWorldLayer(this.ctx);
       this.paintDirty = false;
       this.status('TERRAIN CAPTURED INTO DOCUMENT');
+    });
+
+    // The recovery path for "I just wiped the world": re-decode the layer
+    // the document already holds. Undo clears — cell patches recorded
+    // against the wiped world would lie against the restored one.
+    this.el('b-restore').addEventListener('click', () => {
+      if (this.previewBlocks()) return;
+      if (!this.doc.world) {
+        this.status('NOTHING CAPTURED YET — THE DOCUMENT HAS NO TERRAIN', true);
+        return;
+      }
+      this.applyDocTerrain();
+      this.cmds.clear();
+      this.paintDirty = false;
+      this.syncAll();
+      this.status('DOCUMENT TERRAIN RESTORED (UNDO HISTORY CLEARED)');
     });
 
     this.el('b-validate').addEventListener('click', () => {
@@ -585,18 +656,23 @@ export class Builder {
       }
       if (e.button !== 0) return;
       if (this.tool === 'paint') {
+        if (this.previewBlocks()) return;
         this.beginStroke(pos.x, pos.y);
         return;
       }
       if (SHAPE_TOOLS.has(this.tool) || this.tool === 'region') {
+        // shapes write cells on mouseup; the region tool is read-only
+        if (this.tool !== 'region' && this.previewBlocks()) return;
         this.shapeDrag = { x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y };
         return;
       }
       if (this.tool === 'fill') {
+        if (this.previewBlocks()) return;
         this.commitFlood(pos.x, pos.y);
         return;
       }
       if (this.tool === 'replace') {
+        if (this.previewBlocks()) return;
         this.commitReplace(pos.x, pos.y);
         return;
       }
@@ -609,9 +685,12 @@ export class Builder {
         return;
       }
       if (this.tool !== 'select') {
-        // every non-object tool was handled above; what's left is a placement
-        this.place(this.tool as EditorObjectKind, pos.x, pos.y);
-        this.setTool('select');
+        // every non-object tool was handled above; what's left is a placement.
+        // Population kinds stay armed (placing ten slimes shouldn't be twenty
+        // palette round-trips); ESC steps back to select.
+        const kind = this.tool as EditorObjectKind;
+        this.place(kind, pos.x, pos.y);
+        if (kind !== 'enemy' && kind !== 'pickup') this.setTool('select');
         return;
       }
       const hit = this.hitTest(pos.x, pos.y);
@@ -772,6 +851,7 @@ export class Builder {
   /* ---------- terrain shape tools (Phase 4) ---------- */
 
   private commitShape(s: { x0: number; y0: number; x1: number; y1: number }): void {
+    if (this.previewBlocks()) return;
     const type = this.materialOrComplain();
     if (type === null) return;
     const w = this.ctx.world;
@@ -923,8 +1003,8 @@ export class Builder {
     };
     this.cmds.run(addLightCmd(light));
     this.select(light.id);
-    this.setTool('select');
-    this.status('PLACED LIGHT');
+    // stays armed: light rigs come in clusters; ESC steps back to select
+    this.status('PLACED LIGHT — ESC WHEN DONE');
   }
 
   private linkClick(x: number, y: number): void {
@@ -1021,6 +1101,24 @@ export class Builder {
     return this.doc.objects.find((o) => o.id === this.selectedId) ?? null;
   }
 
+  /** Center the camera on the selection (F, and validation issue clicks). */
+  private frameSelection(): void {
+    const obj = this.selected();
+    const light = this.selectedLight();
+    const rec = obj ?? light;
+    if (!rec) return;
+    let cx = rec.x,
+      cy = rec.y;
+    if (obj) {
+      const f = objectFootprint(obj);
+      if (f) {
+        cx = (f.x0 + f.x1) / 2;
+        cy = (f.y0 + f.y1) / 2;
+      }
+    }
+    this.ctx.camera.snapTo(cx, cy);
+  }
+
   private selectedLight(): EditorLight | null {
     return this.doc.lights.find((l) => l.id === this.selectedId) ?? null;
   }
@@ -1028,6 +1126,10 @@ export class Builder {
   private deleteSelection(): void {
     const obj = this.selected();
     if (obj) {
+      if (obj.locked) {
+        this.status('LOCKED — UNLOCK IT TO DELETE', true);
+        return;
+      }
       this.cmds.run(deleteObjectCmd(obj));
       this.select(null);
       this.status('DELETED ' + obj.kind.toUpperCase());
@@ -1035,6 +1137,10 @@ export class Builder {
     }
     const light = this.selectedLight();
     if (light) {
+      if (light.locked) {
+        this.status('LOCKED — UNLOCK IT TO DELETE', true);
+        return;
+      }
       this.cmds.run(deleteLightCmd(light));
       this.select(null);
       this.status('DELETED LIGHT');
@@ -1130,8 +1236,8 @@ export class Builder {
         this.procStatus('PASS PLACED NOTHING (NO VALID FLOOR SPOTS?)');
         return;
       }
+      adds.push(this.passHistoryCmd(def.id, seed, density, material, region));
       this.cmds.run(compositeCmd('pass:' + def.id, adds));
-      this.recordPassHistory(def.id, seed, density, material, region);
       this.syncMarkers();
       this.renderInspector();
       this.procStatus(result.summary.toUpperCase());
@@ -1162,9 +1268,13 @@ export class Builder {
       };
       this.procStatus(result.summary.toUpperCase() + '<br>PREVIEW — APPLY OR DISCARD');
     } else {
-      this.cmds.run(paintTerrainCmd(w, patch.before, patch.after));
+      this.cmds.run(
+        compositeCmd('pass:' + def.id, [
+          paintTerrainCmd(w, patch.before, patch.after),
+          this.passHistoryCmd(def.id, seed, density, material, region),
+        ]),
+      );
       this.paintDirty = true;
-      this.recordPassHistory(def.id, seed, density, material, region);
       this.procStatus(result.summary.toUpperCase() + ' — APPLIED');
       this.status('PASS APPLIED: ' + result.summary.toUpperCase());
     }
@@ -1175,9 +1285,13 @@ export class Builder {
     const p = this.pendingPreview;
     if (!p) return;
     this.pendingPreview = null;
-    this.cmds.run(paintTerrainCmd(this.ctx.world, p.before, p.after));
+    this.cmds.run(
+      compositeCmd('pass:' + p.passId, [
+        paintTerrainCmd(this.ctx.world, p.before, p.after),
+        this.passHistoryCmd(p.passId, p.seed, p.density, p.material, p.region),
+      ]),
+    );
     this.paintDirty = true;
-    this.recordPassHistory(p.passId, p.seed, p.density, p.material, p.region);
     this.procStatus(p.summary.toUpperCase() + ' — APPLIED');
     this.status('PASS APPLIED: ' + p.summary.toUpperCase());
   }
@@ -1198,14 +1312,18 @@ export class Builder {
     if (!silent) this.syncProcPanel();
   }
 
-  private recordPassHistory(
+  /**
+   * History entry as a command, so undoing a pass also retracts its claim
+   * from proceduralHistory (a history line must mean "this is in the doc").
+   */
+  private passHistoryCmd(
     pass: string,
     seed: number,
     density: number,
     material: number,
     region: Region,
-  ): void {
-    this.doc.proceduralHistory.push({
+  ): Command {
+    const entry = {
       id: freshId('pass'),
       pass,
       seed,
@@ -1215,7 +1333,17 @@ export class Builder {
         region: this.region ? { ...region } : null,
       },
       appliedAt: new Date().toISOString(),
-    });
+    };
+    return {
+      label: 'history',
+      do: (doc) => {
+        doc.proceduralHistory.push(entry);
+      },
+      undo: (doc) => {
+        const i = doc.proceduralHistory.indexOf(entry);
+        if (i >= 0) doc.proceduralHistory.splice(i, 1);
+      },
+    };
   }
 
   /* ===================== keyboard (capture phase) ===================== */
@@ -1260,6 +1388,9 @@ export class Builder {
     } else if (e.code === 'KeyR') {
       e.stopPropagation();
       this.setTool('region');
+    } else if (e.code === 'KeyF') {
+      e.stopPropagation();
+      this.frameSelection();
     } else if (e.code === 'Delete') {
       e.stopPropagation();
       this.deleteSelection();
@@ -1280,11 +1411,25 @@ export class Builder {
 
   /* ===================== per-frame: markers + canvas ===================== */
 
+  private matRowText = '';
+
   private loop = (): void => {
     if (!this.isOpen) return;
     this.rafId = requestAnimationFrame(this.loop);
     const rect = this.overlay.getBoundingClientRect();
     if (rect.width === 0) return;
+
+    // active material + brush readout (the tools depend on Sandbox state)
+    const state = this.ctx.state;
+    const matName =
+      state.activeInputMode === 'spell'
+        ? 'SPELL (pick a material!)'
+        : (this.ctx.params.materials[state.currentElement]?.name ?? 'material ' + state.currentElement);
+    const text = `MAT ${matName.toUpperCase()} · BRUSH ${state.brushSize}`;
+    if (text !== this.matRowText) {
+      this.matRowText = text;
+      this.el<HTMLDivElement>('bp-mat-row').textContent = text;
+    }
 
     // markers glue to world positions (sized kinds anchor at footprint center)
     for (const [id, el] of this.markers) {
@@ -1586,8 +1731,7 @@ export class Builder {
     }
     for (const flag of panel.querySelectorAll<HTMLInputElement>('input[data-f="locked"],input[data-f="hidden"]')) {
       flag.addEventListener('change', () => {
-        if (flag.dataset.f === 'locked') obj.locked = flag.checked;
-        else obj.hidden = flag.checked;
+        this.cmds.run(setObjectFlagCmd(obj, flag.dataset.f as 'locked' | 'hidden', flag.checked));
         this.syncMarkers();
       });
     }
@@ -1703,7 +1847,10 @@ export class Builder {
     for (const row of panel.querySelectorAll<HTMLDivElement>('.b-issue')) {
       row.addEventListener('click', () => {
         const issue = issues[Number(row.dataset.n)];
-        if (issue?.objId) this.select(issue.objId);
+        if (issue?.objId) {
+          this.select(issue.objId);
+          this.frameSelection(); // the world is ~9 screens; jump, don't hunt
+        }
       });
     }
   }

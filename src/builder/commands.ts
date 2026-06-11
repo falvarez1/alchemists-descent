@@ -11,19 +11,34 @@ export interface Command {
   label: string;
   do(doc: EditorDocument): void;
   undo(doc: EditorDocument): void;
+  /** Approximate retained cell count (terrain patches) for stack budgeting. */
+  cells?: number;
 }
+
+/** Total cells of terrain patches the undo stack may retain (~memory cap). */
+const STACK_CELL_BUDGET = 3_000_000;
 
 export class CommandStack {
   private done: Command[] = [];
   private undone: Command[] = [];
+  private retainedCells = 0;
 
   constructor(private readonly doc: () => EditorDocument) {}
 
   run(cmd: Command): void {
     cmd.do(this.doc());
     this.done.push(cmd);
+    this.retainedCells += cmd.cells ?? 0;
     this.undone.length = 0; // a new edit forks history
-    if (this.done.length > 200) this.done.shift();
+    // Budget by command count AND by retained patch cells: a few whole-world
+    // replaces must not pin tens of MB of before/after arrays forever.
+    while (
+      this.done.length > 200 ||
+      (this.retainedCells > STACK_CELL_BUDGET && this.done.length > 1)
+    ) {
+      const evicted = this.done.shift()!;
+      this.retainedCells -= evicted.cells ?? 0;
+    }
   }
 
   undo(): string | null {
@@ -45,6 +60,7 @@ export class CommandStack {
   clear(): void {
     this.done.length = 0;
     this.undone.length = 0;
+    this.retainedCells = 0;
   }
 
   get depth(): number {
@@ -137,7 +153,30 @@ export function paintTerrainCmd(world: World, before: CellPatch, after: CellPatc
       world.charge[i] = p.charge[n];
     }
   };
-  return { label: 'paint', do: () => apply(after), undo: () => apply(before) };
+  return {
+    label: 'paint',
+    do: () => apply(after),
+    undo: () => apply(before),
+    cells: before.idxs.length * 2,
+  };
+}
+
+/** Undoable locked/hidden flips so object flags match the light commands. */
+export function setObjectFlagCmd(
+  obj: EditorObject,
+  key: 'locked' | 'hidden',
+  value: boolean,
+): Command {
+  const prev = obj[key];
+  return {
+    label: key + ' ' + obj.kind,
+    do: () => {
+      obj[key] = value;
+    },
+    undo: () => {
+      obj[key] = prev;
+    },
+  };
 }
 
 /* ---------------- link commands ---------------- */
@@ -243,6 +282,7 @@ export function compositeCmd(label: string, cmds: Command[]): Command {
     undo: (doc) => {
       for (let n = cmds.length - 1; n >= 0; n--) cmds[n].undo(doc);
     },
+    cells: cmds.reduce((s, c) => s + (c.cells ?? 0), 0),
   };
 }
 

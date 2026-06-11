@@ -202,7 +202,11 @@ await page.fill('#b-doc-name', 'probe-level');
 await page.evaluate(() => document.getElementById('b-doc-name').dispatchEvent(new Event('change')));
 await page.click('#b-save');
 const saved = await page.evaluate(() => {
-  const lib = JSON.parse(localStorage.getItem('noita-builder-docs') ?? '{}');
+  const lib = {};
+  for (let n = 0; n < localStorage.length; n++) {
+    const k = localStorage.key(n);
+    if (k && k.startsWith('noita-builder-doc:')) { const d = JSON.parse(localStorage.getItem(k)); lib[d.id] = d; }
+  }
   const docs = Object.values(lib);
   return { count: docs.length, name: docs[0]?.name, objects: docs[0]?.objects?.length, hasWorld: !!docs[0]?.world };
 });

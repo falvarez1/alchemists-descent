@@ -202,24 +202,88 @@ export function applyWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {
 
 /* ---------------- document library (localStorage) ---------------- */
 
-const DOCS_KEY = 'noita-builder-docs';
+/**
+ * One localStorage key per document. A captured world layer serializes to
+ * several hundred KB, so a single monolithic blob would hit the ~5MB quota
+ * after a handful of documents — and one corrupt byte would eat the whole
+ * library. Per-doc keys make quota failures and corruption per-document.
+ */
+const LEGACY_DOCS_KEY = 'noita-builder-docs';
+const DOC_PREFIX = 'noita-builder-doc:';
 
-export function loadDocLibrary(): Record<string, EditorDocument> {
+function migrateLegacyLibrary(): void {
   try {
-    const raw = localStorage.getItem(DOCS_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, EditorDocument>) : {};
+    const raw = localStorage.getItem(LEGACY_DOCS_KEY);
+    if (!raw) return;
+    const lib = JSON.parse(raw) as Record<string, EditorDocument>;
+    for (const [id, doc] of Object.entries(lib)) {
+      if (!localStorage.getItem(DOC_PREFIX + id)) {
+        localStorage.setItem(DOC_PREFIX + id, JSON.stringify(doc));
+      }
+    }
+    localStorage.removeItem(LEGACY_DOCS_KEY);
   } catch {
-    return {};
+    // a corrupt legacy blob stays where it is; per-doc keys still work
   }
 }
 
-export function saveDocLibrary(lib: Record<string, EditorDocument>): boolean {
+export function loadDocLibrary(): Record<string, EditorDocument> {
+  migrateLegacyLibrary();
+  const lib: Record<string, EditorDocument> = {};
   try {
-    localStorage.setItem(DOCS_KEY, JSON.stringify(lib));
+    for (let n = 0; n < localStorage.length; n++) {
+      const storageKey = localStorage.key(n);
+      if (!storageKey || !storageKey.startsWith(DOC_PREFIX)) continue;
+      try {
+        const doc = JSON.parse(localStorage.getItem(storageKey)!) as EditorDocument;
+        if (doc && doc.v === 2) lib[doc.id] = doc;
+      } catch {
+        // one corrupt document must not take the library down
+      }
+    }
+  } catch {
+    return lib;
+  }
+  return lib;
+}
+
+export function saveDocToLibrary(doc: EditorDocument): boolean {
+  try {
+    localStorage.setItem(DOC_PREFIX + doc.id, JSON.stringify(doc));
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Validate-then-accept for imported JSON: defaults for optional families,
+ * and the terrain layer must decode cleanly into a scratch buffer BEFORE
+ * the document is allowed to replace the open one. Returns null on garbage.
+ */
+export function sanitizeImportedDoc(parsed: unknown): EditorDocument | null {
+  const doc = parsed as EditorDocument;
+  if (!doc || doc.v !== 2 || !Array.isArray(doc.objects)) return null;
+  doc.name = typeof doc.name === 'string' && doc.name.trim() ? doc.name : 'imported';
+  doc.id = typeof doc.id === 'string' && doc.id ? doc.id : freshId('doc');
+  doc.biome = (doc.biome ?? 'earthen') as BiomeId;
+  doc.size = doc.size ?? { w: WIDTH, h: HEIGHT };
+  doc.links = Array.isArray(doc.links) ? doc.links : [];
+  doc.lights = Array.isArray(doc.lights) ? doc.lights : [];
+  doc.proceduralHistory = Array.isArray(doc.proceduralHistory) ? doc.proceduralHistory : [];
+  doc.validation = doc.validation ?? null;
+  if (doc.world) {
+    if (typeof doc.world.rle !== 'string') return null;
+    if (doc.size.w !== WIDTH || doc.size.h !== HEIGHT) return null;
+    try {
+      rleDecode(doc.world.rle, new Uint8Array(WIDTH * HEIGHT));
+    } catch {
+      return null;
+    }
+  } else {
+    doc.world = null;
+  }
+  return doc;
 }
 
 /** Migrate a Sandbox raw-grid save (LevelStore v1) into a Builder document. */

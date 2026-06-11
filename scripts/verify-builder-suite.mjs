@@ -153,7 +153,11 @@ check('five markers (4 objects + 1 light)', markers === 5, `got ${markers}`);
 await page.click('#b-save');
 await page.waitForTimeout(150);
 const savedDoc = await page.evaluate(() => {
-  const lib = JSON.parse(localStorage.getItem('noita-builder-docs') ?? '{}');
+  const lib = {};
+  for (let n = 0; n < localStorage.length; n++) {
+    const k = localStorage.key(n);
+    if (k && k.startsWith('noita-builder-doc:')) { const d = JSON.parse(localStorage.getItem(k)); lib[d.id] = d; }
+  }
   return Object.values(lib)[0] ?? null;
 });
 check('saved doc has 4 objects', savedDoc && savedDoc.objects.length === 4, `got ${savedDoc?.objects?.length}`);
@@ -261,14 +265,22 @@ await page.waitForTimeout(400);
 markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('document intact after playtest (5 markers)', markers === 5, `got ${markers}`);
 const procCount = await page.evaluate(() => {
-  const lib = JSON.parse(localStorage.getItem('noita-builder-docs') ?? '{}');
+  const lib = {};
+  for (let n = 0; n < localStorage.length; n++) {
+    const k = localStorage.key(n);
+    if (k && k.startsWith('noita-builder-doc:')) { const d = JSON.parse(localStorage.getItem(k)); lib[d.id] = d; }
+  }
   return Object.values(lib)[0]?.proceduralHistory?.length ?? -1;
 });
 check('saved doc predates the pass (history persists on next save)', procCount === 0, `got ${procCount}`);
 await page.click('#b-save');
 await page.waitForTimeout(150);
 const procCount2 = await page.evaluate(() => {
-  const lib = JSON.parse(localStorage.getItem('noita-builder-docs') ?? '{}');
+  const lib = {};
+  for (let n = 0; n < localStorage.length; n++) {
+    const k = localStorage.key(n);
+    if (k && k.startsWith('noita-builder-doc:')) { const d = JSON.parse(localStorage.getItem(k)); lib[d.id] = d; }
+  }
   return Object.values(lib)[0]?.proceduralHistory?.length ?? -1;
 });
 check('procedural history saved with the document', procCount2 === 1, `got ${procCount2}`);

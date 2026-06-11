@@ -596,11 +596,17 @@ Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not start
       connected-region targets, bake-from-playtest.
 - [x] Phase 9 — Playtest compiler (document -> custom LevelRuntime; scars
       never flow back; custom portals award a "level clear" toast).
-- [x] Phase 10 — Validation service: ids/links/wiring/bounds/embedding
-      checks plus two-pass BFS findability (doors closed: inputs reachable;
-      doors open: rewards reachable). Regression tests in tests/builder.test.ts;
-      end-to-end probes in scripts/verify-builder.mjs and
-      scripts/verify-builder-suite.mjs.
+- [x] Phase 10 — Validation service: ids/links/wiring/bounds/embedding/
+      capacity/footing checks plus FIXPOINT findability — BFS from spawn,
+      open every door whose full visible trigger set became reachable
+      (and rune doors whose glyphs did), repeat until stable; the final mask
+      is everything a player can earn. Sequenced puzzles validate correctly
+      and never-openable doors genuinely seal their rewards. Hidden objects
+      mirror the compiler (they don't stamp, don't compile, kill their
+      links). Regression tests in tests/builder.test.ts; end-to-end probes in
+      scripts/verify-builder.mjs, scripts/verify-builder-suite.mjs, and
+      scripts/verify-builder-expedition.mjs (mid-expedition the Builder
+      detaches onto a scratch world; PLAY re-attaches the real level).
 
 ### Phase 1 - Rename Existing Build To Sandbox
 

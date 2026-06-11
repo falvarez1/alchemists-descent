@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { rleEncode } from '@/core/rle';
-import { createEmptyDocument, freshId, objectFootprint } from '@/builder/document';
+import {
+  createEmptyDocument,
+  freshId,
+  objectFootprint,
+  sanitizeImportedDoc,
+} from '@/builder/document';
 import type { EditorDocument, EditorObject, EditorObjectKind } from '@/builder/document';
 import {
   floodFill,
@@ -211,6 +216,117 @@ describe('builder validation', () => {
     doc.objects.push(makeObj('exitWell', 150, 170, { halfW: 14 }));
     const issues = validateDocument(doc);
     expect(issues.some((i) => i.what.includes('well mouth unreachable'))).toBe(false);
+  });
+
+  it('accepts a SEQUENCED puzzle: lever behind door A opens door B (fixpoint)', () => {
+    const { doc } = worldDoc((w) => carveBox(w, 100, 100, 300, 159));
+    const spawn = makeObj('spawn', 110, 158);
+    const plateA = makeObj('plate', 130, 159, { w: 5 });
+    const doorA = makeObj('door', 180, 100, { w: 3, h: 60 });
+    const leverB = makeObj('lever', 220, 159);
+    const doorB = makeObj('door', 260, 100, { w: 3, h: 60 });
+    const key = makeObj('pickup', 285, 158, { kind: 'key' });
+    doc.objects.push(spawn, plateA, doorA, leverB, doorB, key);
+    doc.links.push(
+      { id: freshId('link'), fromId: plateA.id, toId: doorA.id, kind: 'triggerDoor', logic: 'and' },
+      { id: freshId('link'), fromId: leverB.id, toId: doorB.id, kind: 'triggerDoor', logic: 'and' },
+    );
+    expect(errors(validateDocument(doc))).toEqual([]);
+  });
+
+  it('catches the hidden-trigger trap: door can never open, key flagged sealed', () => {
+    const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
+    const spawn = makeObj('spawn', 120, 158);
+    const plate = makeObj('plate', 140, 159, { w: 5 });
+    plate.hidden = true; // "decluttering" the canvas — the compiler drops it
+    const door = makeObj('door', 180, 100, { w: 3, h: 60 });
+    const key = makeObj('pickup', 190, 158, { kind: 'key' });
+    doc.objects.push(spawn, plate, door, key);
+    doc.links.push({ id: freshId('link'), fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
+    const issues = validateDocument(doc);
+    expect(issues.some((i) => i.severity === 'error' && i.what.includes('key unreachable'))).toBe(true);
+    expect(issues.some((i) => i.severity === 'warning' && i.what.includes('hidden object'))).toBe(true);
+  });
+
+  it('a triggerless closed door genuinely seals its key (no phantom open pass)', () => {
+    const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
+    doc.objects.push(makeObj('spawn', 120, 158));
+    doc.objects.push(makeObj('door', 180, 100, { w: 3, h: 60 }));
+    doc.objects.push(makeObj('pickup', 190, 158, { kind: 'key' }));
+    const issues = validateDocument(doc);
+    expect(issues.some((i) => i.severity === 'error' && i.what.includes('key unreachable'))).toBe(true);
+  });
+
+  it('an initially-open door does not seal anything', () => {
+    const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
+    doc.objects.push(makeObj('spawn', 120, 158));
+    doc.objects.push(makeObj('door', 180, 100, { w: 3, h: 60, initialOpen: true }));
+    doc.objects.push(makeObj('pickup', 190, 158, { kind: 'key' }));
+    expect(errors(validateDocument(doc))).toEqual([]);
+  });
+
+  it('warns when a sensor threshold exceeds its physical capacity', () => {
+    const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
+    const spawn = makeObj('spawn', 120, 158);
+    const scale = makeObj('scale', 140, 159, { w: 7, threshold: 200 });
+    const door = makeObj('door', 180, 100, { w: 3, h: 60 });
+    doc.objects.push(spawn, scale, door);
+    doc.links.push({ id: freshId('link'), fromId: scale.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
+    expect(
+      validateDocument(doc).some((i) => i.severity === 'warning' && i.what.includes('pan capacity')),
+    ).toBe(true);
+  });
+
+  it('rejects unsupported link logic', () => {
+    const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
+    const spawn = makeObj('spawn', 120, 158);
+    const plate = makeObj('plate', 140, 159, { w: 5 });
+    const door = makeObj('door', 180, 100, { w: 3, h: 60 });
+    doc.objects.push(spawn, plate, door);
+    doc.links.push({ id: freshId('link'), fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'or' });
+    expect(
+      validateDocument(doc).some((i) => i.severity === 'error' && i.what.includes("logic 'or'")),
+    ).toBe(true);
+  });
+
+  it('warns about a floating lever (it would break and fail open by itself)', () => {
+    const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
+    const spawn = makeObj('spawn', 120, 158);
+    const lever = makeObj('lever', 140, 130); // mid-air
+    const door = makeObj('door', 180, 100, { w: 3, h: 60 });
+    doc.objects.push(spawn, lever, door);
+    doc.links.push({ id: freshId('link'), fromId: lever.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
+    expect(
+      validateDocument(doc).some((i) => i.severity === 'warning' && i.what.includes('footing')),
+    ).toBe(true);
+  });
+});
+
+describe('import sanitizer', () => {
+  it('rejects garbage and bad terrain, accepts minimal documents with defaults', () => {
+    expect(sanitizeImportedDoc(42)).toBeNull();
+    expect(sanitizeImportedDoc({ v: 1, objects: [] })).toBeNull();
+    expect(sanitizeImportedDoc({ v: 2 })).toBeNull();
+    expect(
+      sanitizeImportedDoc({ v: 2, objects: [], world: { rle: '!!not-base64!!' } }),
+    ).toBeNull();
+
+    const minimal = sanitizeImportedDoc({ v: 2, objects: [] });
+    expect(minimal).not.toBeNull();
+    expect(minimal!.links).toEqual([]);
+    expect(minimal!.lights).toEqual([]);
+    expect(minimal!.proceduralHistory).toEqual([]);
+    expect(minimal!.name).toBe('imported');
+
+    const w = new World();
+    const full = sanitizeImportedDoc({
+      v: 2,
+      objects: [],
+      world: { rle: rleEncode(w.types), life: [], charge: [] },
+      size: { w: w.width, h: w.height },
+    });
+    expect(full).not.toBeNull();
+    expect(full!.world).not.toBeNull();
   });
 });
 

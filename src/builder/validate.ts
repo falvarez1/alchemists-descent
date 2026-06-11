@@ -1,7 +1,7 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { decodeTypes, paramNum } from '@/builder/document';
-import type { EditorDocument, EditorObjectKind } from '@/builder/document';
+import type { EditorDocument, EditorObject, EditorObjectKind } from '@/builder/document';
 import {
   stampBuoyBasin,
   stampCauldron,
@@ -12,12 +12,17 @@ import {
 
 /**
  * Document validation service (docs/BUILDER.md Phase 10): visible, fast,
- * specific. Structural checks first (ids, links, params), then the
- * findability doctrine applied to authored content: BFS from spawn over a
- * scratch grid with every compile-time stamp applied — once with all
- * authored doors CLOSED (can you reach the inputs?) and once with them OPEN
- * (can you reach the rewards after solving?). Mechanism-correct is NOT
- * player-findable; this is where authored levels prove both.
+ * specific. Structural checks first (ids, links, params), then findability
+ * as a FIXPOINT progression simulation: BFS from spawn, open every door
+ * whose full visible trigger set became reachable (the runtime AND gate)
+ * and every rune door whose glyph became reachable, repeat until stable.
+ * The final mask is "everything a player can earn" — sequenced puzzles
+ * (lever behind door A opens door B) validate correctly, and a door that
+ * can never open (no compiled trigger) correctly seals its rewards.
+ *
+ * Hidden objects mirror the compiler exactly: they do not stamp, do not
+ * compile, and their links are dead — so hiding a linked trigger flags the
+ * door it strands instead of validating a sealed-forever vault.
  */
 
 export interface DocIssue {
@@ -39,12 +44,13 @@ export const TRIGGER_KINDS: ReadonlySet<EditorObjectKind> = new Set([
 /* ---------------- scratch grid: document terrain + compile stamps ---------------- */
 
 /**
- * Decode the document terrain and stamp every structural object the compiler
- * would stamp. `open` controls authored doors: closed = solid (pass 1, the
- * world as the player first finds it), open = cleared (pass 2, post-solve).
+ * Stamp every structural object the compiler would stamp onto a types grid.
+ * Doors/rune doors in `openIds` stamp open (cleared); the rest stamp solid.
+ * Trigger furniture mirrors the game/Mechanisms.ts factories cell for cell
+ * (plate sill, scale pan + lips, brazier bowl, latch pedestal) so the
+ * reachability audit walks the same world the compiler builds.
  */
-export function buildScratchGrid(doc: EditorDocument, open: boolean): Uint8Array {
-  const types = decodeTypes(doc.world!);
+function stampObjects(types: Uint8Array, doc: EditorDocument, openIds: ReadonlySet<string>): void {
   const set = (x: number, y: number, t: number): void => {
     if (x >= 0 && y >= 0 && x < WIDTH && y < HEIGHT) types[x + y * WIDTH] = t;
   };
@@ -63,33 +69,51 @@ export function buildScratchGrid(doc: EditorDocument, open: boolean): Uint8Array
     } else if (o.kind === 'door') {
       const w = paramNum(o, 'w', 3),
         h = paramNum(o, 'h', 13);
+      const open = openIds.has(o.id);
       for (let dy = 0; dy < h; dy++) {
         for (let dx = 0; dx < w; dx++) set(x + dx, y + dy, open ? Cell.Empty : Cell.Metal);
       }
     } else if (o.kind === 'runeDoor') {
       const w = paramNum(o, 'w', 2),
         h = paramNum(o, 'h', 11);
-      if (open) {
+      if (openIds.has(o.id)) {
         for (let dy = 0; dy < h; dy++) {
           for (let dx = 0; dx < w; dx++) set(x + dx, y + dy, Cell.Empty);
         }
       } else {
         stampRuneDoor(set, x, y, w, h);
       }
-    } else if (o.kind === 'plate' || o.kind === 'chargeLatch') {
-      const w = o.kind === 'plate' ? paramNum(o, 'w', 5) : 5;
+    } else if (o.kind === 'plate') {
+      // mirror makePlate: a 1-row metal sill, w wide (left edge at x - w/2)
+      const w = paramNum(o, 'w', 5);
       const hw = Math.floor(w / 2);
       for (let dx = 0; dx < w; dx++) set(x - hw + dx, y, Cell.Metal);
     } else if (o.kind === 'scale') {
+      // mirror makeScale: pan row + 3-tall lip columns at both ends
       const w = paramNum(o, 'w', 7);
       const hw = Math.floor(w / 2);
-      for (let dx = 0; dx < w; dx++) set(x - hw + dx, y, Cell.Metal);
+      const left = x - hw;
+      for (let dx = 0; dx < w; dx++) set(left + dx, y, Cell.Metal);
+      for (const dx of [-1, w]) {
+        for (let dy = 0; dy <= 2; dy++) set(left + dx, y - dy, Cell.Metal);
+      }
+    } else if (o.kind === 'chargeLatch') {
+      // mirror makeChargeLatch: a 5-wide conductive pedestal
+      for (let dx = -2; dx <= 2; dx++) set(x + dx, y, Cell.Metal);
     } else if (o.kind === 'brazier') {
+      // mirror makeBrazier: stone bowl with raised tips
       for (let dx = -2; dx <= 2; dx++) set(x + dx, y, Cell.Stone);
       set(x - 2, y - 1, Cell.Stone);
       set(x + 2, y - 1, Cell.Stone);
     }
+    // lever: no stamp — its footing is whatever terrain is already there
   }
+}
+
+/** Decode the document terrain and stamp it as compiled (for tests/tools). */
+export function buildScratchGrid(doc: EditorDocument, openIds: ReadonlySet<string>): Uint8Array {
+  const types = decodeTypes(doc.world!);
+  stampObjects(types, doc, openIds);
   return types;
 }
 
@@ -134,6 +158,15 @@ function near(mask: Uint8Array, x: number, y: number, r: number): boolean {
   return false;
 }
 
+/** Where a player must stand to operate a trigger (matches the error checks). */
+function triggerReachable(mask: Uint8Array, o: EditorObject): boolean {
+  return near(mask, o.x, o.y - 2, 4);
+}
+
+function glyphReachable(mask: Uint8Array, o: EditorObject): boolean {
+  return near(mask, o.x, o.y - 3, 5);
+}
+
 /* ---------------- the validation pass ---------------- */
 
 export function validateDocument(doc: EditorDocument): DocIssue[] {
@@ -171,7 +204,7 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     }
   }
 
-  // ---- link integrity ----
+  // ---- link integrity (hidden endpoints are dead links: the compiler skips them) ----
   const byId = new Map(doc.objects.map((o) => [o.id, o] as const));
   for (const l of doc.links) {
     const from = byId.get(l.fromId);
@@ -191,12 +224,30 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
       if (to.kind !== 'runeDoor')
         push('error', 'rune glyph linked to ' + to.kind + ' — glyphs open rune doors', to.id);
     }
+    if (l.logic !== undefined && l.logic !== 'and') {
+      push('error', `link logic '${l.logic}' is not supported by the compiler (AND only)`, from.id);
+    }
+    if (from.hidden || to.hidden) {
+      push(
+        'warning',
+        'link touches a hidden object — it will not compile (the door loses this trigger)',
+        from.hidden ? from.id : to.id,
+      );
+    }
   }
 
-  // ---- per-object wiring requirements ----
+  /** Links the compiler will actually wire: both endpoints visible. */
+  const liveLinks = doc.links.filter((l) => {
+    const from = byId.get(l.fromId);
+    const to = byId.get(l.toId);
+    return from && to && !from.hidden && !to.hidden;
+  });
+
+  // ---- per-object wiring requirements (hidden objects don't compile: skip) ----
   for (const o of doc.objects) {
+    if (o.hidden) continue;
     if (TRIGGER_KINDS.has(o.kind)) {
-      const outs = doc.links.filter((l) => l.fromId === o.id && l.kind === 'triggerDoor');
+      const outs = liveLinks.filter((l) => l.fromId === o.id && l.kind === 'triggerDoor');
       if (outs.length === 0)
         push('error', o.kind + ' is not linked to any door (use the LINK tool)', o.id);
       if (outs.length > 1)
@@ -206,14 +257,37 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
           o.id,
         );
     } else if (o.kind === 'door') {
-      if (!doc.links.some((l) => l.toId === o.id && l.kind === 'triggerDoor') && o.params.initialOpen !== true)
+      const hasTrigger = liveLinks.some((l) => l.toId === o.id && l.kind === 'triggerDoor');
+      if (!hasTrigger && o.params.initialOpen !== true)
         push('warning', 'door has no trigger — it can never open', o.id);
     } else if (o.kind === 'runeGlyph') {
-      if (!doc.links.some((l) => l.fromId === o.id && l.kind === 'runeDoor'))
+      if (!liveLinks.some((l) => l.fromId === o.id && l.kind === 'runeDoor'))
         push('error', 'rune glyph opens nothing — link it to a rune door', o.id);
     } else if (o.kind === 'runeDoor') {
-      if (!doc.links.some((l) => l.toId === o.id && l.kind === 'runeDoor'))
+      if (!liveLinks.some((l) => l.toId === o.id && l.kind === 'runeDoor'))
         push('error', 'rune door has no glyph — it can never dissolve', o.id);
+    }
+  }
+
+  // ---- sensor capacity: a threshold its zone cannot physically hold ----
+  for (const o of doc.objects) {
+    if (o.hidden) continue;
+    if (o.kind === 'scale') {
+      const capacity = paramNum(o, 'w', 7) * 7; // zone is w wide x 7 rows tall
+      if (paramNum(o, 'threshold', 24) > capacity)
+        push(
+          'warning',
+          `scale threshold ${paramNum(o, 'threshold', 24)} exceeds its pan capacity (~${capacity} cells)`,
+          o.id,
+        );
+    } else if (o.kind === 'buoy') {
+      const capacity = (paramNum(o, 'w', 13) - 1) * paramNum(o, 'depth', 4);
+      if (paramNum(o, 'threshold', 26) > capacity)
+        push(
+          'warning',
+          `buoy threshold ${paramNum(o, 'threshold', 26)} exceeds its basin capacity (~${capacity} cells)`,
+          o.id,
+        );
     }
   }
 
@@ -226,9 +300,9 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   }
 
   // ---- win condition ----
-  const portal = doc.objects.find((o) => o.kind === 'exitPortal');
-  const well = doc.objects.find((o) => o.kind === 'exitWell');
-  const key = doc.objects.find((o) => o.kind === 'pickup' && o.params.kind === 'key');
+  const portal = doc.objects.find((o) => o.kind === 'exitPortal' && !o.hidden);
+  const well = doc.objects.find((o) => o.kind === 'exitWell' && !o.hidden);
+  const key = doc.objects.find((o) => o.kind === 'pickup' && o.params.kind === 'key' && !o.hidden);
   if (portal && !key && portal.params.alwaysOpen !== true) {
     push(
       'warning',
@@ -244,7 +318,14 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     return issues;
   }
 
-  const closed = buildScratchGrid(doc, false);
+  const baseTypes = decodeTypes(doc.world);
+  const initialOpen = new Set(
+    doc.objects
+      .filter((o) => o.kind === 'door' && !o.hidden && o.params.initialOpen === true)
+      .map((o) => o.id),
+  );
+  const closed = baseTypes.slice();
+  stampObjects(closed, doc, initialOpen);
   const blockedAt = (g: Uint8Array, x: number, y: number): boolean =>
     blocksEntity(g[Math.floor(x) + Math.floor(y) * WIDTH]);
 
@@ -260,63 +341,103 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     if (blocked) push('error', 'Spawn is embedded in blocking cells', s.id);
   }
 
-  // embedded enemies/pickups (against the world as compiled, doors closed)
+  // embedded enemies/pickups (against the world as first compiled)
   for (const o of doc.objects) {
+    if (o.hidden) continue;
     if ((o.kind === 'enemy' || o.kind === 'pickup') && blockedAt(closed, o.x, o.y - 2)) {
       push('warning', o.kind + ' embedded in blocking cells', o.id);
     }
   }
 
-  // ---- findability: pass 1 (doors closed — the inputs must be walkable) ----
+  // lever footing: the only trigger whose body is bare terrain — no footing
+  // means it breaks on its own and the gate fail-opens unprompted
+  for (const o of doc.objects) {
+    if (o.hidden || o.kind !== 'lever') continue;
+    let footing = 0;
+    for (let dx = -1; dx <= 1; dx++) {
+      if (blockedAt(closed, o.x + dx, o.y + 1)) footing++;
+    }
+    if (footing < 2)
+      push('warning', 'lever has almost no footing — it will shake loose and fail open', o.id);
+  }
+
+  // ---- findability: fixpoint progression simulation ----
   if (spawns.length !== 1) return issues;
   const spawn = spawns[0];
-  const maskClosed = bfsMask(closed, spawn.x, spawn.y - 2);
-  for (const o of doc.objects) {
-    if (o.hidden) continue;
+
+  const visible = doc.objects.filter((o) => !o.hidden);
+  const doors = visible.filter((o) => o.kind === 'door');
+  const runeDoors = visible.filter((o) => o.kind === 'runeDoor');
+  const openIds = new Set(initialOpen);
+
+  let mask = bfsMask(closed, spawn.x, spawn.y - 2);
+  const maxRounds = doors.length + runeDoors.length + 1;
+  for (let round = 0; round < maxRounds; round++) {
+    let opened = false;
+    for (const d of doors) {
+      if (openIds.has(d.id)) continue;
+      const triggers = liveLinks
+        .filter((l) => l.kind === 'triggerDoor' && l.toId === d.id)
+        .map((l) => byId.get(l.fromId)!)
+        .filter((t) => !t.hidden);
+      // the runtime AND gate: EVERY wired trigger must be operable
+      if (triggers.length > 0 && triggers.every((t) => triggerReachable(mask, t))) {
+        openIds.add(d.id);
+        opened = true;
+      }
+    }
+    for (const rd of runeDoors) {
+      if (openIds.has(rd.id)) continue;
+      const glyphs = liveLinks
+        .filter((l) => l.kind === 'runeDoor' && l.toId === rd.id)
+        .map((l) => byId.get(l.fromId)!)
+        .filter((g) => !g.hidden);
+      if (glyphs.length > 0 && glyphs.some((g) => glyphReachable(mask, g))) {
+        openIds.add(rd.id);
+        opened = true;
+      }
+    }
+    if (!opened) break;
+    const grid = baseTypes.slice();
+    stampObjects(grid, doc, openIds);
+    mask = bfsMask(grid, spawn.x, spawn.y - 2);
+  }
+
+  // The final mask is everything a player can EARN. A door that never made
+  // it into openIds stays closed forever in this document — its rewards are
+  // genuinely sealed, and the checks below say so.
+  for (const o of visible) {
     if (TRIGGER_KINDS.has(o.kind)) {
-      if (!near(maskClosed, o.x, o.y - 2, 4))
-        push('error', o.kind + ' unreachable from spawn (before its door opens)', o.id);
+      if (!triggerReachable(mask, o))
+        push('error', o.kind + ' unreachable from spawn (even after opening every earnable door)', o.id);
     } else if (o.kind === 'runeGlyph') {
-      if (!near(maskClosed, o.x, o.y - 3, 5))
-        push('error', 'rune glyph unreachable from spawn', o.id);
+      if (!glyphReachable(mask, o)) push('error', 'rune glyph unreachable from spawn', o.id);
     } else if (o.kind === 'exitWell') {
-      if (!near(maskClosed, o.x, o.y - 8, 6))
+      if (!near(mask, o.x, o.y - 8, 6))
         push('error', 'exit well mouth unreachable from spawn', o.id);
     } else if (o.kind === 'door') {
       const w = paramNum(o, 'w', 3),
         h = paramNum(o, 'h', 13);
-      if (
-        !near(maskClosed, o.x - 2, o.y + h / 2, 4) &&
-        !near(maskClosed, o.x + w + 1, o.y + h / 2, 4)
-      )
+      if (!near(mask, o.x - 2, o.y + h / 2, 4) && !near(mask, o.x + w + 1, o.y + h / 2, 4))
         push('warning', 'no side of this door is reachable from spawn', o.id);
-    }
-  }
-
-  // ---- findability: pass 2 (doors open — rewards must exist behind locks) ----
-  const open = buildScratchGrid(doc, true);
-  const maskOpen = bfsMask(open, spawn.x, spawn.y - 2);
-  for (const o of doc.objects) {
-    if (o.hidden) continue;
-    if (o.kind === 'pickup') {
-      const reachable = near(maskOpen, o.x, o.y - 2, 6);
-      if (!reachable) {
+    } else if (o.kind === 'pickup') {
+      if (!near(mask, o.x, o.y - 2, 6)) {
         if (o.params.kind === 'key')
-          push('error', 'golden key unreachable even with every door open', o.id);
+          push('error', 'golden key unreachable (no earnable path opens the way)', o.id);
         else
           push('info', String(o.params.kind ?? 'pickup') + ' is buried treasure (unreachable on foot)', o.id);
       }
     } else if (o.kind === 'exitPortal') {
-      if (!near(maskOpen, o.x, o.y - 2, 6))
-        push('error', 'exit portal unreachable even with every door open', o.id);
+      if (!near(mask, o.x, o.y - 2, 6))
+        push('error', 'exit portal unreachable (no earnable path opens the way)', o.id);
     } else if (o.kind === 'waystone') {
-      if (!near(maskOpen, o.x, o.y - 3, 6)) push('warning', 'waystone unreachable', o.id);
+      if (!near(mask, o.x, o.y - 3, 6)) push('warning', 'waystone unreachable', o.id);
     } else if (o.kind === 'cauldron') {
-      if (!near(maskOpen, o.x, o.y - 3, 6)) push('warning', 'cauldron unreachable', o.id);
+      if (!near(mask, o.x, o.y - 3, 6)) push('warning', 'cauldron unreachable', o.id);
     } else if (o.kind === 'bossMarker') {
-      if (!near(maskOpen, o.x, o.y - 4, 6)) push('warning', 'boss arena unreachable', o.id);
+      if (!near(mask, o.x, o.y - 4, 6)) push('warning', 'boss arena unreachable', o.id);
     } else if (o.kind === 'enemy') {
-      if (!near(maskOpen, o.x, o.y - 2, 6)) push('info', 'enemy sealed away from the player', o.id);
+      if (!near(mask, o.x, o.y - 2, 6)) push('info', 'enemy sealed away from the player', o.id);
     }
   }
 
