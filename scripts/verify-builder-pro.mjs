@@ -153,6 +153,69 @@ await page.evaluate(() => {
     }
 });
 
+/* ---------- settle gating + zero-diff KEEP keeps paint dirty ---------- */
+console.log('-- settle gating');
+const readSavedRle = () =>
+  page.evaluate(() => {
+    for (let n = 0; n < localStorage.length; n++) {
+      const k = localStorage.key(n);
+      if (k && k.startsWith('noita-builder-doc:')) {
+        return JSON.parse(localStorage.getItem(k)).world?.rle ?? null;
+      }
+    }
+    return null;
+  });
+const arenaChecksum = () =>
+  page.evaluate(() => {
+    const w = window.__game.ctx.world;
+    let sum = 0;
+    for (let y = 375; y <= 625; y++) for (let x = 430; x <= 770; x++) sum += w.types[w.idx(x, y)];
+    return sum;
+  });
+// paint STATIC stone block A through the UI, then snapshot it into a save
+await page.evaluate(() => {
+  window.__game.ctx.state.currentElement = 12;
+  window.__game.ctx.state.activeInputMode = 'element';
+});
+const paintBlock = async (x0, y0, x1, y1) => {
+  await page.click('.bp-tool[data-tool="rectFill"]');
+  const sa = await toClient(x0, y0);
+  const sb = await toClient(x1, y1);
+  await page.mouse.move(sa.x, sa.y);
+  await page.mouse.down();
+  await page.mouse.move(sb.x, sb.y, { steps: 3 });
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+};
+await paintBlock(640, 500, 650, 510);
+await page.click('#b-save');
+await page.waitForTimeout(200);
+const rle1 = await readSavedRle();
+// paint block B (paintDirty earned again), then run a ZERO-DIFF settle:
+// stone never moves, so KEEP reports "nothing moved" — and must NOT launder
+// away block B's dirty flag
+await paintBlock(660, 500, 670, 510);
+await page.click('#bp-settle');
+await page.waitForTimeout(2600); // run completes; KEEP/REVERT pending
+await page.click('#bp-proc-btn'); // open the procedural panel
+const sumBefore = await arenaChecksum();
+await page.click('#bp-apply'); // must be REFUSED while the settle decision is pending
+await page.waitForTimeout(200);
+const sumAfter = await arenaChecksum();
+const gateStatus = await page.evaluate(() => document.getElementById('builder-status').textContent);
+check('proc APPLY refused while a settle decision is pending', sumBefore === sumAfter && gateStatus.includes('SETTLE'), `${sumBefore} vs ${sumAfter} · "${gateStatus}"`);
+await page.click('#bp-settle-keep');
+await page.waitForTimeout(200);
+await page.click('#b-save');
+await page.waitForTimeout(200);
+const rle2 = await readSavedRle();
+check(
+  'zero-diff KEEP keeps earlier paint dirty (save captures it)',
+  rle1 !== null && rle2 !== null && rle1 !== rle2,
+  `rle1 ${rle1 === null ? 'null' : rle1.length} · rle2 ${rle2 === null ? 'null' : rle2.length} · same=${rle1 === rle2}`,
+);
+await page.click('#bp-proc-close');
+
 /* ---------- multi-select: marquee, group drag, duplicate ---------- */
 console.log('-- multi-select');
 const placeAt = async (kind, wx, wy) => {

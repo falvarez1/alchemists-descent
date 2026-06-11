@@ -38,6 +38,7 @@ import {
 } from '@/builder/commands';
 import type { CellPatch, Command } from '@/builder/commands';
 import { drawLine, spawnCircle } from '@/sim/brush';
+import { blocksEntity } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
 import {
@@ -227,6 +228,9 @@ export class Builder {
   } | null = null;
   private settling = false;
   private settleEndFrame = 0;
+  /** paintDirty as it stood when the settle began — a zero-diff KEEP must
+   *  not launder away dirt earned by earlier uncaptured painting. */
+  private settleWasDirty = false;
   private autosaveTimer = 0;
   private draftOffered = false;
 
@@ -520,12 +524,19 @@ export class Builder {
 
   /* ===================== top bar actions ===================== */
 
-  /** True (and complains) while a preview — procedural or settle — awaits a decision. */
-  private previewBlocks(): boolean {
+  /** True (and complains) while a settle run/decision is pending. The
+   *  procedural panel gates on THIS (it owns its own pendingPreview). */
+  private settleBlocks(): boolean {
     if (this.settling || this.settleSnap) {
       this.status('FINISH THE SETTLE PREVIEW FIRST (KEEP / REVERT)', true);
       return true;
     }
+    return false;
+  }
+
+  /** True (and complains) while a preview — procedural or settle — awaits a decision. */
+  private previewBlocks(): boolean {
+    if (this.settleBlocks()) return true;
     if (!this.pendingPreview) return false;
     this.status('APPLY OR DISCARD THE PROCEDURAL PREVIEW FIRST', true);
     return true;
@@ -1424,11 +1435,13 @@ export class Builder {
     this.el('bp-pass').addEventListener('change', () => this.syncProcPanel());
     this.el('bp-preview').addEventListener('click', () => this.procRun(true));
     this.el('bp-apply').addEventListener('click', () => {
+      if (this.settleBlocks()) return;
       // A pending preview commits exactly as shown; otherwise run fresh.
       if (this.pendingPreview) this.applyPreview();
       else this.procRun(false);
     });
     this.el('bp-discard').addEventListener('click', () => {
+      if (this.settleBlocks()) return;
       if (!this.pendingPreview) {
         this.procStatus('NO PREVIEW PENDING');
         return;
@@ -1461,6 +1474,7 @@ export class Builder {
   }
 
   private procRun(previewOnly: boolean): void {
+    if (this.settleBlocks()) return;
     const def = this.procDef();
     const seed = Number(this.el<HTMLInputElement>('bp-seed').value) || 1;
     const density = Number(this.el<HTMLInputElement>('bp-density').value) / 100;
@@ -1739,6 +1753,7 @@ export class Builder {
   private startSettle(): void {
     if (this.previewBlocks()) return;
     const w = this.ctx.world;
+    this.settleWasDirty = this.paintDirty;
     this.settleSnap = {
       types: w.types.slice(),
       colors: w.colors.slice(),
@@ -1806,7 +1821,8 @@ export class Builder {
       this.status(`SETTLED ${before.idxs.length} CELLS (UNDOABLE)`);
     } else {
       this.status('NOTHING MOVED');
-      this.paintDirty = false;
+      // restore, don't clear: earlier uncaptured paint keeps its dirty flag
+      this.paintDirty = this.settleWasDirty;
     }
     this.syncSettleButtons();
     this.renderInspector();
@@ -1868,6 +1884,19 @@ export class Builder {
 
   private playtestHere(): void {
     if (this.previewBlocks()) return;
+    // the wizard is 9x17 — refuse to spawn him inside terrain
+    const w = this.ctx.world;
+    const m = this.lastMouse;
+    for (let dy = 0; dy < 17; dy += 4) {
+      for (let dx = -4; dx <= 4; dx += 4) {
+        const X = Math.floor(m.x) + dx,
+          Y = Math.floor(m.y) - dy;
+        if (w.inBounds(X, Y) && blocksEntity(w.types[w.idx(X, Y)])) {
+          this.status('T NEEDS OPEN SPACE — THE CURSOR IS INSIDE TERRAIN', true);
+          return;
+        }
+      }
+    }
     this.ensureCaptured();
     const issues = validateDocument(this.doc);
     this.renderIssues(issues);
@@ -2460,7 +2489,8 @@ export class Builder {
     panel.querySelector('#bi-delete')?.addEventListener('click', () => this.deleteSelection());
   }
 
-  /** Wiring summary rows: who drives me / what do I drive, with unlink buttons. */
+  /** Wiring summary rows: who drives me / what do I drive, with unlink
+   *  buttons. Sequence doors number their steps in firing (link) order. */
   private linkRows(obj: EditorObject, dir: 'in' | 'out'): string {
     const links = this.doc.links.filter((l) =>
       dir === 'in' ? l.toId === obj.id : l.fromId === obj.id,
@@ -2468,11 +2498,13 @@ export class Builder {
     if (links.length === 0) {
       return `<div class="bi-row"><span>${dir === 'in' ? 'triggers' : 'drives'}</span><b class="bi-warn">unlinked (K)</b></div>`;
     }
+    const numbered = dir === 'in' && obj.kind === 'door' && obj.params.logic === 'sequence';
     return links
-      .map((l) => {
+      .map((l, n) => {
         const otherId = dir === 'in' ? l.fromId : l.toId;
         const other = this.doc.objects.find((o) => o.id === otherId);
-        return `<div class="bi-row"><span>${dir === 'in' ? '←' : '→'} ${
+        const prefix = numbered ? `${n + 1}. ` : dir === 'in' ? '← ' : '→ ';
+        return `<div class="bi-row"><span>${prefix}${
           other?.kind ?? '?'
         }</span><button data-unlink="${l.id}" title="Remove link">&times;</button></div>`;
       })

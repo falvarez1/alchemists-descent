@@ -464,7 +464,8 @@ button#clear-btn:hover { background: var(--accent-danger); color: white; border-
 #builder-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
 #builder-palette {
-    position: absolute; left: 8px; top: 44px; bottom: 34px; z-index: 2; pointer-events: auto; width: 150px;
+    /* top 78px: the bar wraps to two rows at moderate widths */
+    position: absolute; left: 8px; top: 78px; bottom: 34px; z-index: 2; pointer-events: auto; width: 150px;
     display: flex; flex-direction: column; gap: 3px; padding: 7px;
     background: rgba(10,13,18,0.92); border: 1px solid #1d2733; border-radius: 5px;
     overflow-y: auto; scrollbar-width: thin;
@@ -477,7 +478,7 @@ button#clear-btn:hover { background: var(--accent-danger); color: white; border-
 #builder-palette .bp-mini .bp-glyph { width: 12px; height: 12px; font-size: 7px; }
 
 #builder-proc {
-    position: absolute; right: 184px; top: 44px; z-index: 2; pointer-events: auto; width: 196px;
+    position: absolute; right: 184px; top: 78px; z-index: 2; pointer-events: auto; width: 196px;
     display: flex; flex-direction: column; gap: 4px; padding: 8px;
     background: rgba(10,13,18,0.94); border: 1px solid #1d2733; border-radius: 5px;
     font-size: 10px; color: #9fb6cc;
@@ -521,7 +522,7 @@ body.builder-open #builder-issues { bottom: 182px; }
 #builder-palette .bp-hint { font-size: 8px; line-height: 1.7; color: #50596b; margin-top: 5px; }
 
 #builder-inspector, #builder-issues {
-    position: absolute; right: 8px; top: 44px; z-index: 2; pointer-events: auto; width: 168px;
+    position: absolute; right: 8px; top: 78px; z-index: 2; pointer-events: auto; width: 168px;
     display: flex; flex-direction: column; gap: 4px; padding: 8px;
     background: rgba(10,13,18,0.92); border: 1px solid #1d2733; border-radius: 5px;
     font-size: 10px; color: #9fb6cc;
