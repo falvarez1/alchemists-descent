@@ -12,16 +12,52 @@ type RGB = readonly [number, number, number];
  * The player is fully self-lit — the light field is not sampled here (the
  * parameter is kept for the shared sprite-drawing signature).
  */
-export function drawPlayerSprite(s: PixelSurface, _light: LightField, ctx: Ctx): void {
+export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx): void {
   const player = ctx.player;
   const frameCount = ctx.state.frameCount;
   if (ctx.state.mode !== 'play' || player.dead) return;
   if (player.invuln > 0 && frameCount % 6 < 3) return;
 
+  // Silhouette pass: every BODY pixel is recorded so a near-black rim can be
+  // stamped around the finished figure (Noita/Dead Cells readability — the
+  // character cuts against any background instead of dissolving into it).
+  // The wand, charge meter, and tip glow draw after recording stops.
+  const marks = new Set<number>();
+  let recording = true;
+  const s: PixelSurface = {
+    setPx(x: number, y: number, r: number, g: number, b: number): void {
+      if (recording) marks.add((Math.round(x) & 0xfff) | ((Math.round(y) & 0xfff) << 12));
+      out.setPx(x, y, r, g, b);
+    },
+    addPx(x: number, y: number, r: number, g: number, b: number): void {
+      out.addPx(x, y, r, g, b);
+    },
+  };
+
   const px = player.x, f = player.facing;
-  const HAT: RGB = [0.62, 0.30, 0.94], HAT_D: RGB = [0.40, 0.17, 0.66], BAND: RGB = [0.95, 0.78, 0.30];
-  const ROBE: RGB = [0.22, 0.50, 0.95], ROBE_D: RGB = [0.13, 0.31, 0.66], TRIM: RGB = [0.55, 0.75, 1.0];
-  const SKIN: RGB = [0.95, 0.80, 0.62], SKIN_D: RGB = [0.78, 0.62, 0.46], BOOT: RGB = [0.16, 0.13, 0.20], BOOT_L: RGB = [0.30, 0.24, 0.34];
+  // Value-contrast palette: edges run DARK (they read as outline from inside),
+  // accents run bright, so the figure keeps its shape at 2-3 screen px/cell.
+  const HAT: RGB = [0.62, 0.30, 0.94], HAT_D: RGB = [0.24, 0.09, 0.42], BAND: RGB = [1.0, 0.84, 0.25];
+  const ROBE: RGB = [0.22, 0.50, 0.95], ROBE_D: RGB = [0.08, 0.16, 0.38], TRIM: RGB = [0.70, 0.85, 1.0];
+  const SKIN: RGB = [0.95, 0.80, 0.62], SKIN_D: RGB = [0.78, 0.62, 0.46], BOOT: RGB = [0.10, 0.08, 0.14], BOOT_L: RGB = [0.30, 0.24, 0.34];
+  const SHADE: RGB = [0.48, 0.38, 0.30]; // brim shadow across the brow
+
+  const stampOutline = (): void => {
+    recording = false;
+    const feetY = player.y;
+    for (const key of marks) {
+      const mx = key & 0xfff;
+      const my = (key >> 12) & 0xfff;
+      // 4-neighbour rim; skip below the feet so the ground line stays clean
+      for (let n = 0; n < 4; n++) {
+        const nx = mx + (n === 0 ? 1 : n === 1 ? -1 : 0);
+        const ny = my + (n === 2 ? 1 : n === 3 ? -1 : 0);
+        if (ny > feetY) continue;
+        if (marks.has((nx & 0xfff) | ((ny & 0xfff) << 12))) continue;
+        out.setPx(nx, ny, 0.02, 0.03, 0.07);
+      }
+    }
+  };
 
   const svx = player._svx || 0, svy = player._svy || 0;
   const moving = player.grounded && Math.abs(svx) > 0.2;
@@ -125,12 +161,13 @@ export function drawPlayerSprite(s: PixelSurface, _light: LightField, ctx: Ctx):
   // --- Shoulders ---
   row(px - 3 + lean, px + 3 + lean, py - 11 - lift, ROBE);
 
-  // --- Head with blinking, directionally lit ---
+  // --- Head with blinking, directionally lit; the brim shades the brow ---
   const hx = px + lean;
   for (let dy = 12; dy <= 14; dy++) {
     const yy = py - dy - lift;
     for (let dx = -2; dx <= 2; dx++) {
-      s.setPx(hx + dx, yy, ...((dx * f) < 0 ? SKIN_D : SKIN));
+      const c = dy === 14 ? SHADE : (dx * f) < 0 ? SKIN_D : SKIN;
+      s.setPx(hx + dx, yy, ...c);
     }
   }
   if (player.blinkTimer === 0) {
@@ -171,8 +208,10 @@ export function drawPlayerSprite(s: PixelSurface, _light: LightField, ctx: Ctx):
     s.setPx(px + pd * 6 + lean, ay, ...SKIN);
     s.setPx(px + pd * 4 + lean, ay + 1, ...ROBE_D);
     s.setPx(px + pd * 5 + lean, ay + 1, ...SKIN);
+    stampOutline();
     return; // no wand, no charge meter — both hands are busy
   }
+  stampOutline();
 
   // --- Wand toward aim with pulsing tip ---
   // Swap: the fresh wand sweeps a draw arc from the hip up into the aim
@@ -210,7 +249,10 @@ export function drawPlayerSprite(s: PixelSurface, _light: LightField, ctx: Ctx):
   if (player.swapT <= 6) {
     const tip = ctx.spells.wandTip();
     const boost = ctx.params.global.maxBrightness;
-    const pulse = 0.8 + Math.sin(frameCount * 0.3) * 0.2;
+    // At rest the tip smolders instead of flaring — the constant bloom halo
+    // was washing the character's silhouette out. Full brightness returns
+    // the moment the trigger is down.
+    const pulse = (0.8 + Math.sin(frameCount * 0.3) * 0.2) * (player.firing ? 1 : 0.55);
     s.setPx(tip.x, tip.y, 0.5 * boost * pulse, 0.9 * boost * pulse, 1.0 * boost * pulse);
     if (player.firing && frameCount % 4 < 2) {
       s.setPx(tip.x + Math.cos(a), tip.y + Math.sin(a), 0.9 * boost, 0.95 * boost, 1.0 * boost);

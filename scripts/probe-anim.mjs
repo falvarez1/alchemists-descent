@@ -57,9 +57,6 @@ await page.evaluate(() => {
   p.x = 630; p.y = 534; p.vx = 0; p.vy = 0; p.hp = p.maxHp;
   p.dead = false;
   ctx.camera.snapTo(630, 480);
-  // Pose review needs to SEE the wizard: ambient is live-tunable data.
-  // 0.45 lights him without bloom-washing the metal floor.
-  ctx.params.global.ambient = 0.45;
 });
 await page.waitForTimeout(400);
 const parked = await page.evaluate(() => {
@@ -109,7 +106,15 @@ const shot = async (name) => {
   await page.screenshot({ path: `verify-out/anim-${name}.png`, clip });
 };
 
-/* idle baseline */
+/* darkness readability: default ambient, unlit cavern — the wizard must
+   still read (he draws raw colors + outline, untouched by the light field) */
+await pause(true);
+await shot('idle-dark');
+await pause(false);
+
+/* now light the room for the pose review shots */
+await page.evaluate(() => { window.__game.ctx.params.global.ambient = 0.45; });
+await page.waitForTimeout(250);
 await pause(true);
 await shot('idle');
 await pause(false);
