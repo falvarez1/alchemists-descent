@@ -40,7 +40,7 @@ import {
 import type { CellPatch, Command } from '@/builder/commands';
 import { drawLine, spawnCircle } from '@/sim/brush';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
-import { blocksEntity } from '@/sim/CellType';
+import { blocksEntity, Cell, isGas, isLiquid, isSolid } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
 import {
@@ -200,6 +200,186 @@ const LIGHT_PRESETS: Record<string, Partial<EditorLight>> = {
   warning: { color: '#ff4444', intensity: 1.2, radius: 56, bloom: 0.5, flicker: 0.55, falloff: 'soft', occluded: false },
 };
 
+/** Tiny procedural pixel previews for the palette popovers (28x28). */
+type PreviewDraw = (g: CanvasRenderingContext2D) => void;
+function previewCanvas(draw: PreviewDraw): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 28;
+  c.height = 28;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#0a0d12';
+  g.fillRect(0, 0, 28, 28);
+  draw(g);
+  return c;
+}
+const px = (g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, col: string): void => {
+  g.fillStyle = col;
+  g.fillRect(x, y, w, h);
+};
+
+/** What each placeable IS — a picture and the one rule that matters. */
+const OBJECT_INFO: Partial<Record<EditorObjectKind | 'light', { desc: string; draw: PreviewDraw }>> = {
+  spawn: {
+    desc: 'Where the alchemist enters. Exactly one per level; needs 9×17 of open space.',
+    draw: (g) => {
+      px(g, 11, 3, 6, 3, '#6d28d9'); px(g, 9, 6, 10, 2, '#7c3aed'); // hat
+      px(g, 11, 8, 6, 5, '#e8d5b5'); px(g, 12, 9, 1, 1, '#1a1a24'); px(g, 15, 9, 1, 1, '#1a1a24'); // face
+      px(g, 10, 13, 8, 9, '#2741a3'); px(g, 10, 22, 3, 3, '#16161e'); px(g, 15, 22, 3, 3, '#16161e'); // robe+boots
+    },
+  },
+  enemy: {
+    desc: 'Exact foes at exact spots. Bats can roost; slimes/golems can walk patrol routes.',
+    draw: (g) => {
+      px(g, 7, 14, 14, 9, '#3f9e3f'); px(g, 9, 12, 10, 3, '#4ab54a');
+      px(g, 10, 16, 2, 3, '#10240f'); px(g, 16, 16, 2, 3, '#10240f');
+    },
+  },
+  pickup: {
+    desc: 'Gold, hearts, tomes, chests, potions — and the golden key that opens the portal.',
+    draw: (g) => {
+      px(g, 8, 18, 12, 4, '#b8860b'); px(g, 10, 15, 8, 3, '#fbbf24'); px(g, 12, 12, 4, 3, '#ffe066');
+    },
+  },
+  exitPortal: {
+    desc: 'The win gate. Opens when the golden key arrives ("CUSTOM LEVEL CLEAR").',
+    draw: (g) => {
+      px(g, 9, 4, 10, 2, '#7c3aed'); px(g, 7, 6, 2, 16, '#7c3aed'); px(g, 19, 6, 2, 16, '#7c3aed');
+      px(g, 9, 22, 10, 2, '#7c3aed'); px(g, 12, 10, 4, 8, '#c084fc');
+    },
+  },
+  exitWell: {
+    desc: 'A cased shaft sealed by 14 rows of stone. Digging or blasting the plug IS the lock.',
+    draw: (g) => {
+      px(g, 4, 4, 4, 20, '#5a6470'); px(g, 20, 4, 4, 20, '#5a6470'); // casing
+      px(g, 8, 10, 12, 6, '#8a8a92'); // the plug
+      px(g, 8, 16, 12, 8, '#05060a'); // the dark drop below
+    },
+  },
+  waystone: {
+    desc: 'Respawn anchor. Lights with REAL fire — bring a flame, get a checkpoint.',
+    draw: (g) => {
+      px(g, 10, 8, 8, 16, '#6b7280'); px(g, 8, 22, 12, 3, '#4b5563');
+      px(g, 12, 4, 4, 4, '#ff9a3c'); px(g, 13, 2, 2, 2, '#ffd27a');
+    },
+  },
+  cauldron: {
+    desc: 'Brewing basin: real reagents in the bowl + real fire against it = an elixir.',
+    draw: (g) => {
+      px(g, 6, 20, 16, 3, '#6b7280'); px(g, 5, 13, 3, 8, '#6b7280'); px(g, 20, 13, 3, 8, '#6b7280');
+      px(g, 8, 16, 12, 4, '#3cc86e');
+    },
+  },
+  bossMarker: {
+    desc: 'The Kiln Colossus spawns here. Water is the strategy.',
+    draw: (g) => {
+      px(g, 8, 6, 12, 12, '#b91c1c'); px(g, 10, 10, 3, 4, '#1a0505'); px(g, 15, 10, 3, 4, '#1a0505');
+      px(g, 10, 18, 8, 4, '#7f1d1d');
+    },
+  },
+  hazardEmitter: {
+    desc: 'Drips ONE real cell every `rate` frames — lava pools, acid eats, water floods.',
+    draw: (g) => {
+      px(g, 10, 3, 8, 5, '#374151'); px(g, 12, 8, 4, 2, '#4b5563');
+      px(g, 13, 13, 2, 3, '#3a7bd5'); px(g, 13, 19, 2, 3, '#3a7bd5');
+    },
+  },
+  decor: {
+    desc: 'A designer note pinned to the world. Never compiles — annotation only.',
+    draw: (g) => {
+      px(g, 7, 5, 14, 18, '#d6cfa8'); px(g, 9, 9, 10, 1, '#6b6450'); px(g, 9, 13, 10, 1, '#6b6450');
+      px(g, 9, 17, 6, 1, '#6b6450');
+    },
+  },
+  door: {
+    desc: 'A real metal gate. Opens when its linked triggers say so — logic AND / OR / SEQUENCE.',
+    draw: (g) => {
+      px(g, 11, 2, 6, 24, '#606c8e'); px(g, 12, 5, 1, 1, '#9aa8d0'); px(g, 14, 9, 1, 1, '#9aa8d0');
+      px(g, 13, 14, 1, 1, '#9aa8d0'); px(g, 12, 19, 1, 1, '#9aa8d0');
+    },
+  },
+  plate: {
+    desc: 'A brass pressure sill — weighs real cells AND bodies. Link it to a door (K).',
+    draw: (g) => {
+      px(g, 6, 18, 16, 3, '#948446'); px(g, 10, 12, 8, 5, '#3f3f46');
+    },
+  },
+  lever: {
+    desc: 'Hand-pulled (E) or flipped by concussion. Needs footing or it shakes loose.',
+    draw: (g) => {
+      px(g, 8, 21, 12, 3, '#374151'); px(g, 13, 17, 2, 4, '#4b5563');
+      px(g, 14, 9, 2, 2, '#fcd34d'); px(g, 14, 11, 2, 2, '#d9a93c'); px(g, 13, 13, 2, 2, '#b8862b'); px(g, 13, 15, 2, 2, '#96691f');
+    },
+  },
+  brazier: {
+    desc: 'Latches forever when REAL fire reaches the bowl. The flame keeps itself lit.',
+    draw: (g) => {
+      px(g, 8, 18, 12, 3, '#6b7280'); px(g, 7, 15, 2, 3, '#6b7280'); px(g, 19, 15, 2, 3, '#6b7280');
+      px(g, 11, 10, 6, 6, '#e65c00'); px(g, 13, 6, 3, 5, '#ffb347'); px(g, 14, 4, 1, 2, '#ffe066');
+    },
+  },
+  scale: {
+    desc: 'A sand scale: wants poured material WEIGHT in its pan (bodies do not count).',
+    draw: (g) => {
+      px(g, 6, 18, 16, 2, '#a88e40'); px(g, 4, 12, 2, 8, '#948446'); px(g, 22, 12, 2, 8, '#948446');
+      px(g, 9, 13, 10, 5, '#d4af37');
+    },
+  },
+  buoy: {
+    desc: 'A sluice float: rises when enough liquid pools in its basin.',
+    draw: (g) => {
+      px(g, 5, 20, 18, 3, '#6b7280'); px(g, 4, 12, 2, 9, '#6b7280'); px(g, 22, 12, 2, 9, '#6b7280');
+      px(g, 6, 15, 16, 5, '#2d6fc4'); px(g, 12, 12, 4, 3, '#e8d5b5');
+    },
+  },
+  chargeLatch: {
+    desc: 'A coil that latches FOREVER on the first spark — lightning, charged water, anything.',
+    draw: (g) => {
+      px(g, 8, 20, 12, 3, '#68748a'); px(g, 13, 16, 2, 4, '#4b5563');
+      px(g, 15, 4, 2, 4, '#7dd3fc'); px(g, 12, 8, 3, 3, '#7dd3fc'); px(g, 15, 11, 2, 4, '#38bdf8');
+    },
+  },
+  runeGlyph: {
+    desc: 'Strike it — blast, bolt, dig beam — and its linked rune door dissolves.',
+    draw: (g) => {
+      px(g, 12, 6, 4, 4, '#86efac'); px(g, 9, 10, 10, 6, '#22c55e'); px(g, 12, 16, 4, 4, '#86efac');
+      px(g, 13, 11, 2, 3, '#dcfce7');
+    },
+  },
+  runeDoor: {
+    desc: 'A stone slab keyed to a distant glyph. Dissolves bottom-up when the rune is struck.',
+    draw: (g) => {
+      px(g, 10, 2, 8, 24, '#6e7d6e'); px(g, 12, 6, 4, 2, '#86efac'); px(g, 13, 13, 2, 2, '#86efac');
+      px(g, 11, 20, 3, 2, '#86efac');
+    },
+  },
+  light: {
+    desc: 'A designer light: color, radius, flicker, falloff; occluded lights cast real shadows.',
+    draw: (g) => {
+      px(g, 10, 10, 8, 8, '#ffdf9e'); px(g, 7, 7, 14, 14, 'rgba(255,200,110,0.25)');
+      px(g, 4, 4, 20, 20, 'rgba(255,200,110,0.12)'); px(g, 13, 13, 2, 2, '#fff7df');
+    },
+  },
+};
+
+/** One line per tool — what it does and how to drive it. */
+const TOOL_INFO: Partial<Record<string, { name: string; desc: string }>> = {
+  select: { name: 'Select / Move (V)', desc: 'Click selects (grouped objects select together), shift-click adds, dragging empty space marquees, dragging a selection moves it.' },
+  paint: { name: 'Paint (B)', desc: 'Freehand brush with the armed material at the brush radius. RMB anywhere eyedrops.' },
+  line: { name: 'Line (L)', desc: 'Drag a straight stroke at the brush radius.' },
+  rect: { name: 'Rectangle', desc: 'Drag a 1-cell rectangle outline.' },
+  rectFill: { name: 'Filled Rectangle', desc: 'Drag a solid rectangle of the armed material.' },
+  ellipse: { name: 'Ellipse', desc: 'Drag an ellipse outline inscribed in the box.' },
+  ellipseFill: { name: 'Filled Ellipse', desc: 'Drag a solid ellipse of the armed material.' },
+  fill: { name: 'Flood Fill (G)', desc: 'Fill the connected same-material area under the click. Refuses oversized areas atomically.' },
+  replace: { name: 'Replace Material', desc: 'Swap EVERY cell of the clicked material for the armed one (bounded by the region when one is set).' },
+  smooth: { name: 'Smooth', desc: 'Majority-rule smoothing under the brush — lone spurs erode, pits and notches fill.' },
+  roughen: { name: 'Roughen', desc: 'Jitters the rock/air boundary so hand-carved walls stop looking like CAD.' },
+  region: { name: 'Region (R)', desc: 'Drag a rectangle: passes, replace, and bake operate inside it. ESC clears.' },
+  polyRegion: { name: 'Polygon Region', desc: 'Click vertices; Enter (or clicking near the first vertex) closes the polygon.' },
+  regionMagic: { name: 'Magic Region', desc: 'Click an open area to select that whole connected cavern as the region.' },
+  link: { name: 'Link (K)', desc: 'Click a trigger (or rune glyph), then its door. Several triggers on ONE door = AND gate.' },
+};
+
 interface PendingPreview {
   before: CellPatch;
   after: CellPatch;
@@ -261,8 +441,7 @@ export class Builder {
   private snapStep: 0 | 8 | 16 = 0;
   /** Palette drag-to-place: armed on button mousedown, live once a ghost exists. */
   private palDrag: {
-    kind: EditorObjectKind | 'light' | 'material';
-    material?: number;
+    kind: EditorObjectKind | 'light';
     startX: number;
     startY: number;
     ghost: HTMLDivElement | null;
@@ -617,6 +796,30 @@ export class Builder {
       });
     }
 
+    // every palette button explains itself on hover: placeables get a
+    // pixel preview + the one rule that matters; tools get their drive line
+    const kindLabel = new Map<string, string>(
+      [...PLACE_GAMEPLAY, ...PLACE_MECH].map((p) => [p.kind, p.label] as const),
+    );
+    for (const btn of this.root.querySelectorAll<HTMLButtonElement>('.bp-tool')) {
+      const kind = btn.dataset.kind as EditorObjectKind | undefined;
+      const tool = btn.dataset.tool;
+      const objInfo = kind ? OBJECT_INFO[kind] : tool === 'light' ? OBJECT_INFO.light : undefined;
+      if (objInfo) {
+        const name = kind ? (kindLabel.get(kind) ?? kind) : 'Authored Light';
+        this.attachPopover(btn, (pop) => {
+          this.popHead(pop, previewCanvas(objInfo.draw), name);
+          this.popDesc(pop, objInfo.desc);
+        });
+      } else if (tool && TOOL_INFO[tool]) {
+        const info = TOOL_INFO[tool]!;
+        this.attachPopover(btn, (pop) => {
+          this.popHead(pop, null, info.name);
+          this.popDesc(pop, info.desc);
+        });
+      }
+    }
+
     // MATERIALS: cloned from the Sandbox toolbar's buttons (one source of
     // truth in index.html) — the Builder owns the whole left edge now —
     // plus authoring-only extras the Sandbox doesn't paint (Stone: well
@@ -633,14 +836,59 @@ export class Builder {
     this.addMaterialSwatch(matGrid, 12, 'Stone', '#8a8a92');
   }
 
+  /* ---------- the instant popover (every palette button gets one) ---------- */
+
+  private popShow(anchor: HTMLElement, fill: (pop: HTMLDivElement) => void): void {
+    if (this.palDrag?.ghost) return; // no popover noise mid-drag
+    const pop = this.el<HTMLDivElement>('bp-matpop');
+    pop.innerHTML = '';
+    fill(pop);
+    const rootRect = this.root.getBoundingClientRect();
+    const palRect = this.el<HTMLDivElement>('builder-palette').getBoundingClientRect();
+    const aRect = anchor.getBoundingClientRect();
+    pop.style.left = palRect.right - rootRect.left + 8 + 'px';
+    pop.style.top = Math.max(4, aRect.top - rootRect.top - 6) + 'px';
+    pop.style.display = '';
+    // keep it on screen when hovering near the bottom of the palette
+    const overflow = pop.getBoundingClientRect().bottom - rootRect.bottom + 8;
+    if (overflow > 0) {
+      pop.style.top = Math.max(4, parseFloat(pop.style.top) - overflow) + 'px';
+    }
+  }
+
+  private popHide(): void {
+    this.el<HTMLDivElement>('bp-matpop').style.display = 'none';
+  }
+
+  private attachPopover(el: HTMLElement, fill: (pop: HTMLDivElement) => void): void {
+    el.addEventListener('mouseenter', () => this.popShow(el, fill));
+    el.addEventListener('mouseleave', () => this.popHide());
+  }
+
+  /** Head row: picture + name. */
+  private popHead(pop: HTMLDivElement, visual: HTMLElement | null, name: string): void {
+    const head = document.createElement('div');
+    head.className = 'bp-pop-head';
+    if (visual) head.appendChild(visual);
+    const label = document.createElement('span');
+    label.textContent = name;
+    head.appendChild(label);
+    pop.appendChild(head);
+  }
+
+  private popDesc(pop: HTMLDivElement, text: string): void {
+    const d = document.createElement('div');
+    d.className = 'bp-pop-desc';
+    d.textContent = text;
+    pop.appendChild(d);
+  }
+
   /**
    * One material swatch: real pixel icon when one exists (color dot
-   * otherwise), an INSTANT hover popover with the full-size icon + name
-   * (no squinting at colors, no tooltip delay), click to arm, drag onto
-   * the canvas to arm AND land the first dab.
+   * otherwise); the popover shows the full icon, name, classification,
+   * and the live tunable properties. Click to arm.
    */
   private addMaterialSwatch(grid: HTMLDivElement, id: number, name: string, color: string): void {
-    const pop = this.el<HTMLDivElement>('bp-matpop');
     const swatch = document.createElement('button');
     swatch.className = 'bp-swatch';
     swatch.dataset.el = String(id);
@@ -657,34 +905,37 @@ export class Builder {
       swatch.appendChild(d);
     }
     swatch.addEventListener('click', () => this.selectMaterial(id));
-    swatch.addEventListener('mouseenter', () => {
-      if (this.palDrag?.ghost) return; // no popover noise mid-drag
-      pop.innerHTML = '';
+    this.attachPopover(swatch, (pop) => {
       const big = makeIconCanvas(ELEMENT_ICON[id] ?? '', 4);
-      if (big) pop.appendChild(big);
-      else {
+      let visual: HTMLElement | null = big;
+      if (!visual) {
         const d = document.createElement('span');
         d.className = 'bp-matpop-dot';
         d.style.background = color;
-        pop.appendChild(d);
+        visual = d;
       }
-      const label = document.createElement('span');
-      label.textContent = name;
-      pop.appendChild(label);
-      const rootRect = this.root.getBoundingClientRect();
-      const palRect = this.el<HTMLDivElement>('builder-palette').getBoundingClientRect();
-      const swRect = swatch.getBoundingClientRect();
-      pop.style.left = palRect.right - rootRect.left + 8 + 'px';
-      pop.style.top = Math.max(4, swRect.top - rootRect.top - 6) + 'px';
-      pop.style.display = '';
-    });
-    swatch.addEventListener('mouseleave', () => {
-      pop.style.display = 'none';
-    });
-    swatch.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      this.palDrag = { kind: 'material', material: id, startX: e.clientX, startY: e.clientY, ghost: null };
-      e.preventDefault();
+      this.popHead(pop, visual, name);
+      // classification straight from the sim predicates — the grid's truth
+      const tags: string[] = [];
+      if (isLiquid(id)) tags.push('liquid');
+      else if (isGas(id)) tags.push('gas');
+      else if (isSolid(id)) tags.push('solid');
+      else if (blocksEntity(id)) tags.push('powder');
+      if (id === Cell.Fire || id === Cell.Ember) tags.push('burns');
+      if (tags.length > 0) this.popDesc(pop, tags.join(' · '));
+      const profile = this.ctx.params.materials[id] as unknown as Record<string, number> | undefined;
+      if (profile) {
+        for (const key of Object.keys(profile)) {
+          if (key === 'name') continue;
+          const spec = paramSliderSpec(key);
+          const row = document.createElement('div');
+          row.className = 'bp-pop-prop';
+          const value =
+            key === 'bloomWeight' ? (profile[key] * 100).toFixed(0) + '%' : String(profile[key]);
+          row.innerHTML = `<span>${spec.label.replace(/([A-Z])/g, ' $1')}</span><b>${value}</b>`;
+          pop.appendChild(row);
+        }
+      }
     });
     grid.appendChild(swatch);
   }
@@ -708,8 +959,8 @@ export class Builder {
     const isTerrainTool =
       this.tool === 'paint' || SHAPE_TOOLS.has(this.tool) || this.tool === 'fill' || this.tool === 'replace';
     if (!isTerrainTool) this.setTool('paint');
-    // the MATERIAL window follows the armed material
-    if (this.el<HTMLDivElement>('builder-matparams').style.display !== 'none') this.buildMatPanel();
+    // arming a material brings up its tuning window (it follows reselection)
+    this.openSidePanel('mat');
     const name = ctx.params.materials[id]?.name ?? 'Material ' + id;
     this.status('ARMED: ' + name.toUpperCase());
   }
@@ -2222,12 +2473,7 @@ export class Builder {
         if (Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) < 6) return;
         const ghost = document.createElement('div');
         ghost.className = 'b-dnd-ghost';
-        if (d.kind === 'material') {
-          const sw = this.root.querySelector<HTMLButtonElement>(`.bp-swatch[data-el="${d.material}"]`);
-          ghost.style.background = sw?.dataset.color ?? '#888';
-        } else {
-          ghost.textContent = d.kind === 'light' ? '*' : (GLYPH[d.kind] ?? '?');
-        }
+        ghost.textContent = d.kind === 'light' ? '*' : (GLYPH[d.kind] ?? '?');
         document.body.appendChild(ghost);
         d.ghost = ghost;
       }
@@ -2246,20 +2492,6 @@ export class Builder {
         return;
       }
       const pos = this.mouseToWorld(e);
-      if (d.kind === 'material') {
-        // arm the material AND land the first dab where it dropped
-        if (this.previewBlocks()) return;
-        this.selectMaterial(d.material!);
-        const w = this.ctx.world;
-        const rec = new PatchRecorder(w);
-        stampLine(w, rec, pos.x, pos.y, pos.x, pos.y, this.ctx.state.brushSize, d.material!);
-        const patch = rec.finish();
-        if (patch) {
-          this.cmds.run(paintTerrainCmd(w, patch.before, patch.after));
-          this.paintDirty = true;
-        }
-        return;
-      }
       if (d.kind === 'light') this.placeLight(pos.x, pos.y);
       else this.place(d.kind, pos.x, pos.y);
     });

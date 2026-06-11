@@ -116,29 +116,37 @@ await page.hover('.bp-swatch[data-el="11"]'); // lava
 await page.waitForTimeout(120);
 const matPop = await page.evaluate(() => {
   const el = document.getElementById('bp-matpop');
-  return { visible: el.style.display !== 'none', text: el.textContent };
+  return {
+    visible: el.style.display !== 'none',
+    text: el.textContent,
+    props: el.querySelectorAll('.bp-pop-prop').length,
+  };
 });
-check('hover popover shows the material name instantly', matPop.visible && matPop.text.includes('Lava'), JSON.stringify(matPop));
-// drag a STONE swatch onto the canvas: arms it AND paints a first dab
-const stoneSw = await page.evaluate(() => {
-  const b = document.querySelector('.bp-swatch[data-el="12"]');
-  b.scrollIntoView({ block: 'center' });
-  const r = b.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+check('hover popover shows the material name instantly', matPop.visible && matPop.text.includes('Lava'), JSON.stringify({ visible: matPop.visible }));
+check('material popover lists the live properties', matPop.props >= 1, `got ${matPop.props}`);
+// object buttons get popovers too: pixel preview + behavior note
+await page.hover('.bp-tool[data-kind="waystone"]');
+await page.waitForTimeout(120);
+const objPop = await page.evaluate(() => {
+  const el = document.getElementById('bp-matpop');
+  return {
+    visible: el.style.display !== 'none',
+    text: el.textContent,
+    hasPreview: !!el.querySelector('canvas'),
+  };
 });
-const dabAt = await toClient(700, 450);
-await page.mouse.move(stoneSw.x, stoneSw.y);
-await page.mouse.down();
-await page.mouse.move(dabAt.x, dabAt.y, { steps: 8 });
-await page.mouse.up();
-await page.waitForTimeout(150);
-const dab = await page.evaluate(() => ({
-  cell: window.__game.ctx.world.types[window.__game.ctx.world.idx(700, 450)],
-  el: window.__game.ctx.state.currentElement,
-}));
-check('dragging a swatch paints a dab and arms the material', dab.cell === 12 && dab.el === 12, JSON.stringify(dab));
-await page.keyboard.press('Control+z'); // clean the dab away
-await page.waitForTimeout(100);
+check('object popover shows a preview image + info', objPop.visible && objPop.text.includes('Waystone') && objPop.hasPreview, JSON.stringify({ v: objPop.visible, p: objPop.hasPreview }));
+// arming a material draws an unmissable bounding box on its swatch
+await page.evaluate(() => {
+  document.querySelector('.bp-swatch[data-el="12"]').click();
+});
+await page.waitForTimeout(120);
+const activeBox = await page.evaluate(() => {
+  const sw = document.querySelector('.bp-swatch.active');
+  const cs = sw ? getComputedStyle(sw) : null;
+  return { el: sw?.dataset.el ?? null, outline: cs?.outlineWidth ?? null };
+});
+check('armed swatch shows a bounding selection box', activeBox.el === '12' && activeBox.outline === '2px', JSON.stringify(activeBox));
 
 /* ---------- parameter windows (the right inspector yields to the builder) ---------- */
 console.log('-- parameter windows');
@@ -169,13 +177,11 @@ await page.evaluate(() => {
   // restore the default so later light checks aren't washed out
   window.__game.ctx.params.global.ambient = 0.18;
 });
-// arm LAVA (it has tunable params; stone is name-only) and open its window
+// arming LAVA AUTO-OPENS its tuning window (no extra click needed)
 await page.evaluate(() => {
   document.querySelector('.bp-swatch[data-el="11"]').click();
 });
-await page.waitForTimeout(80);
-await page.click('#bp-mat-btn');
-await page.waitForTimeout(120);
+await page.waitForTimeout(150);
 const matPanel = await page.evaluate(() => {
   const panel = document.getElementById('builder-matparams');
   const world = document.getElementById('builder-world');
