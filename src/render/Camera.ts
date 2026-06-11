@@ -23,7 +23,9 @@ export class Camera implements CameraApi {
     const { player, state, input } = ctx;
     if (state.mode === 'play' && !player.dead) {
       this.tx = player.x - VIEW_W / 2 + player.facing * 26;
-      this.ty = player.y - 9 - VIEW_H / 2;
+      // Crouch-peek: holding the stance tilts the view below the ledge
+      // (the lerp below turns the offset into a smooth glance down).
+      this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48;
     } else if (state.mode === 'build') {
       const pan = 9;
       if (input.keys.left) this.tx -= pan;

@@ -72,7 +72,8 @@ const P = () =>
       stretchT: p.stretchT, skidT: p.skidT, skidDir: p.skidDir, swapT: p.swapT,
       recoilT: p.recoilT, staggerT: p.staggerT, staggerDir: p.staggerDir,
       fidgetT: p.fidgetT, robeOx: p.robe.ox, vy: p.vy, grounded: p.grounded,
-      svx: p._svx,
+      svx: p._svx, crouchT: p.crouchT, diveT: p.diveT,
+      camY: window.__game.ctx.camera.ty,
     };
   });
 
@@ -138,6 +139,46 @@ await pause(true);
 await shot('falling');
 await pause(false);
 await page.waitForTimeout(800); // land + settle
+
+/* 1b) crouch & peek: hold S on the ground */
+await park(630);
+const beforeCrouch = await P();
+await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS' })));
+await page.waitForTimeout(400);
+s = await P();
+check('hold S crouches (crouchT ramps to cap)', s.crouchT === 10, JSON.stringify(s));
+check('crouch peeks the camera down', s.camY > beforeCrouch.camY + 30, `camY ${beforeCrouch.camY} -> ${s.camY}`);
+await pause(true);
+await shot('crouch');
+await pause(false);
+await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyS' })));
+await page.waitForTimeout(300);
+s = await P();
+check('release stands back up', s.crouchT === 0, JSON.stringify(s));
+
+/* 1c) dive slam: jump, then S mid-air */
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  ctx.player.y -= 60; // good drop height
+  ctx.player.vy = 0;
+});
+await page.waitForTimeout(50);
+await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS' })));
+await page.waitForTimeout(80);
+s = await P();
+check('S in the air starts the dive', s.diveT > 0 && s.vy > 4, JSON.stringify(s));
+await pause(true);
+await shot('dive');
+await pause(false);
+let slamSeen = false;
+for (let i = 0; i < 20; i++) {
+  await page.waitForTimeout(50);
+  s = await P();
+  if (s.grounded && s.diveT === 0) { slamSeen = true; break; }
+}
+check('dive ends in a landing slam', slamSeen && s.diveT === 0, JSON.stringify(s));
+await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyS' })));
+await page.waitForTimeout(400);
 
 /* 2) turn skid: sprint right from mid-floor, slam left (away from walls
    so the freeze-frame isn't washed by wall-adjacent glow) */

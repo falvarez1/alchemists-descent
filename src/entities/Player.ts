@@ -66,6 +66,8 @@ export function createPlayer(): PlayerState {
     staggerT: 0,
     staggerDir: 1,
     fidgetT: 0,
+    crouchT: 0,
+    diveT: 0,
     robe: { ox: 0, vx: 0 },
   };
 }
@@ -354,12 +356,33 @@ export class PlayerControl implements PlayerControlApi {
     // DRINK (X held): gulp the flask's contents — a potion is real cells swallowed
     if (ctx.input.drinkHeld) this.drink(ctx);
 
+    // CROUCH (hold S on the ground): knees bend, steps shorten to a creep,
+    // and the camera peeks below the ledge — scouting the next drop is a
+    // stance, not a guess. Camera reads crouchT for the peek.
+    const crouching =
+      keys.down &&
+      player.grounded &&
+      !player.inLiquid &&
+      player.pullT === 0 &&
+      player.recharge === 0;
+    if (crouching) {
+      if (player.crouchT === 0) {
+        // settle-down puff at the heels
+        ctx.particles.burst(player.x, player.y, 3, null, () => {
+          const g = 120 + Math.floor(Math.random() * 50);
+          return packRGB(g, g, g - 8);
+        }, 0.5, { grav: 0.05 });
+      }
+      player.crouchT = Math.min(10, player.crouchT + 1);
+    } else player.crouchT = 0;
+
     // air control: stronger mid-air acceleration for Ori-like corrections.
     // Swift potion (x1.5) and Swift Soles boon (x1.18) stack on top.
     const speedK =
       (player.status.swift > 0 ? 1.5 : 1) * (player.perks.swiftfoot ? 1.18 : 1);
-    const accel = (player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK,
-      maxRun = 2.6 * speedK;
+    const stanceK = crouching ? 0.38 : 1; // crouch-creep
+    const accel = (player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK,
+      maxRun = 2.6 * speedK * stanceK;
     if (keys.left) {
       player.vx -= accel;
       player.facing = -1;
@@ -488,7 +511,7 @@ export class PlayerControl implements PlayerControlApi {
         this.framesSinceGrounded = 99; // consumed — no double coyote jumps
         this.jumpBufferFrames = 0;
         ctx.audio.jump();
-      } else if (player.levit > 0) {
+      } else if (player.levit > 0 && player.diveT === 0) {
         levitating = true;
         // levitation response curve: thrust eases 0.40 -> 0.62 over the first 10 frames
         const t = Math.min(this.levitFrames / 10, 1);
@@ -531,7 +554,43 @@ export class PlayerControl implements PlayerControlApi {
     }
     if (!levitating) this.levitFrames = 0;
     if (player.grounded || player.inLiquid) player.levit = Math.min(player.maxLevit, player.levit + 1.7);
-    player.vy = clamp(player.vy, -4.6, 5.0);
+
+    // DIVE SLAM (press S in the air): commit to the fall. The body locks
+    // into a spear, horizontal drift bleeds off, and the landing pays it
+    // all back (see the slam in updatePlayerAnimation).
+    if (
+      keys.down &&
+      !player.grounded &&
+      !player.inLiquid &&
+      player.diveT === 0 &&
+      player.vy > -1
+    ) {
+      player.diveT = 1;
+      player.vy = Math.max(player.vy, 5.6);
+      player.hat.vy -= 2.6; // the hat objects to the decision
+      ctx.audio.noiseBurst(0.12, 320, 0.1);
+    }
+    if (player.diveT > 0) {
+      player.diveT++;
+      player.vy = Math.max(player.vy, 4.6); // stays committed
+      player.vx *= 0.86;
+      if (player.inLiquid) player.diveT = 0; // water catches you (splash plays)
+      else if (ctx.state.frameCount % 2 === 0) {
+        // speed streaks peeling off the shoulders
+        ctx.particles.spawn(
+          player.x + (Math.random() - 0.5) * 5,
+          player.y - 13 - Math.random() * 4,
+          0,
+          -0.7,
+          null,
+          packRGB(140, 170, 210),
+          8,
+          { grav: -0.01 },
+        );
+      }
+    }
+    // dive overrides the normal terminal velocity (5.0)
+    player.vy = clamp(player.vy, -4.6, player.diveT > 0 ? 6.4 : 5.0);
 
     // Mana regen
     player.mana = Math.min(player.maxMana, player.mana + 0.45);
@@ -767,6 +826,62 @@ export class PlayerControl implements PlayerControlApi {
       }
     }
 
+    // SLAM: a dive that meets the ground pays out in cells and bodies —
+    // max squash, a dust ring, popped powder grains, and shoved foes.
+    if (player.grounded && player.diveT > 0) {
+      player.diveT = 0;
+      player.landTimer = 10;
+      ctx.audio.landThud(1);
+      ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.014, 0.04);
+      for (const dir of [-1, 1]) {
+        for (let k = 0; k < 6; k++) {
+          ctx.particles.spawn(
+            player.x + dir * (2 + k),
+            player.y,
+            dir * (0.8 + Math.random() * 0.9),
+            -0.5 - Math.random() * 0.7,
+            null,
+            packRGB(120 + Math.floor(Math.random() * 70), 130, 115),
+            18,
+            { grav: 0.07 },
+          );
+        }
+      }
+      // the impact bursts the soft top layer into real ballistic grains
+      const ws = ctx.world;
+      let popped = 0;
+      for (let dy2 = 1; dy2 <= 2 && popped < 12; dy2++) {
+        for (let dx2 = -4; dx2 <= 4 && popped < 12; dx2++) {
+          const X2 = Math.floor(player.x) + dx2,
+            Y2 = Math.floor(player.y) + dy2;
+          if (!ws.inBounds(X2, Y2)) continue;
+          const ci4 = ws.idx(X2, Y2);
+          const t4 = ws.types[ci4];
+          if (
+            t4 === Cell.Sand ||
+            t4 === Cell.Snow ||
+            t4 === Cell.Ash ||
+            t4 === Cell.Gold ||
+            t4 === Cell.Coal
+          ) {
+            const col4 = ws.colors[ci4];
+            ws.types[ci4] = Cell.Empty;
+            ws.colors[ci4] = EMPTY_COLOR;
+            ctx.particles.spawn(X2, Y2, (dx2 / 4) * 1.4, -1.2 - Math.random(), t4, col4, 40, {
+              grav: 0.12,
+            });
+            popped++;
+          }
+        }
+      }
+      // grounded foes near the impact get knocked off their feet
+      for (const e of ctx.enemies) {
+        if (Math.abs(e.x - player.x) < 26 && Math.abs(e.y - player.y) < 10) {
+          ctx.enemyCtl.damage(e, 1, Math.sign(e.x - player.x || 1) * 1.6, -1.8);
+        }
+      }
+    }
+
     // Landing squash: triggered by how hard we hit the ground
     if (player.grounded && !player.prevGrounded && player.fallPeak > 2.2) {
       player.landTimer = Math.min(10, 4 + Math.floor(player.fallPeak * 1.4));
@@ -808,7 +923,8 @@ export class PlayerControl implements PlayerControlApi {
       !player.firing &&
       player.pullT === 0 &&
       player.recharge === 0 &&
-      player.staggerT === 0;
+      player.staggerT === 0 &&
+      player.crouchT === 0; // a crouch is a stance, not boredom
     if (!idle) {
       this.idleFrames = 0;
       player.fidgetT = 0;

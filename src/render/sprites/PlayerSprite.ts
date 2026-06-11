@@ -69,9 +69,15 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   if (player.staggerT > 0)
     lean = clamp(lean + player.staggerDir * (player.staggerT > 6 ? 2 : 1), -3, 3);
   if (skid) lean = player.skidDir * (player.skidT > 5 ? 3 : 2);
-  const sq = player.landTimer > 0 ? Math.min(3, Math.ceil(player.landTimer / 3)) : 0; // landing squash
-  // launch stretch: the first jump frames elongate — squash's opposite pole
-  const stretch = sq === 0 && player.stretchT > 0 ? (player.stretchT > 3 ? 2 : 1) : 0;
+  // Crouch reads like a held landing squash: knees bent, body sunk.
+  const crouch = player.crouchT > 0 ? Math.min(3, Math.ceil(player.crouchT / 3)) : 0;
+  const sq = Math.max(
+    player.landTimer > 0 ? Math.min(3, Math.ceil(player.landTimer / 3)) : 0,
+    crouch,
+  );
+  const diving = player.diveT > 0 && !player.grounded;
+  // launch stretch elongates; a dive locks the body into a falling spear
+  const stretch = sq === 0 && (player.stretchT > 0 || diving) ? (player.stretchT > 3 || diving ? 2 : 1) : 0;
   const bob = moving ? -Math.round(Math.abs(Math.sin(stride)) * 1.4) : 0;
   const breathe = (!moving && player.grounded) ? (Math.sin(frameCount * 0.045) > 0.2 ? -1 : 0) : 0;
   const py = player.y;
@@ -87,13 +93,17 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   let footA = 0, footB = 0, footAy = 0, footBy = 0;
   if (skid) {
     footA = player.skidDir * 3; footB = player.skidDir;  // braced stance
+  } else if (crouch > 0 && !moving) {
+    footA = 1; footB = -1;                               // crouch: feet planted wide
   } else if (moving) {
     footA = Math.round(Math.sin(stride) * 2.6);
     footB = -footA;
     footAy = Math.sin(stride) > 0.55 ? -1 : 0;       // lifting foot clears the ground
     footBy = Math.sin(stride) < -0.55 ? -1 : 0;
   } else if (!player.grounded) {
-    if (svy < -0.8) {
+    if (diving) {
+      footA = 0; footB = 0; footAy = 0; footBy = 0;           // dive: legs speared tight
+    } else if (svy < -0.8) {
       footA = f; footB = -f; footAy = -2; footBy = -2;        // rising: tight tuck
     } else if (svy > 1.6) {
       footA = f * 2; footB = -f * 2; footAy = -1; footBy = 0; // falling: legs trail apart

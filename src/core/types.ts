@@ -107,6 +107,10 @@ export interface PlayerState {
   staggerDir: number;
   /** Idle fidget routine (frames left: hat adjust, then a wand twirl). */
   fidgetT: number;
+  /** Crouch & peek (frames held, capped at 10; eases pose + camera). */
+  crouchT: number;
+  /** Dive slam: >0 while committed to the fast-fall, cleared by the landing. */
+  diveT: number;
   /** Robe hem cloth spring: lagged horizontal offset (same idea as the hat). */
   robe: { ox: number; vx: number };
 }
