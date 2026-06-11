@@ -8,6 +8,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, PlayerControlApi, PlayerState, Projectile } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
+import { makePickup } from '@/game/Pickups';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { bloodColor, EMPTY_COLOR, packRGB, smokeColor } from '@/sim/colors';
 
@@ -54,6 +55,7 @@ export function createPlayer(): PlayerState {
     status: createDefaultStatus(),
     perks: {},
     tpCool: 0,
+    recharge: 0,
   };
 }
 
@@ -92,6 +94,11 @@ export class PlayerControl implements PlayerControlApi {
     const stoneskinned = player.status.stoneskin > 0;
     if (stoneskinned) amount *= 0.5;
     amount = Math.max(0.5, amount);
+    // A blow shatters heart communion — the unhealed remainder is lost
+    if (player.recharge > 0) {
+      player.recharge = 0;
+      ctx.events.emit('toast', { text: 'COMMUNION BROKEN' });
+    }
     player.hp -= amount;
     if (!stoneskinned) {
       player.vx += kx || 0;
@@ -114,11 +121,29 @@ export class PlayerControl implements PlayerControlApi {
     if (player.dead) return;
     player.dead = true;
     player.hp = 0;
+    player.recharge = 0;
     ctx.particles.burst(player.x, player.y - 7, 56, Cell.Blood, bloodColor, 4.2);
     ctx.particles.burst(player.x, player.y - 7, 10, null, () => packRGB(168, 85, 247), 3.4, {
       glow: 2.4,
       grav: 0.04,
     });
+    // The Noita way: most of your gold spills where you fell — go get it back.
+    const runtime = ctx.levels.current;
+    const spill = Math.floor(ctx.state.score * 0.75);
+    if (runtime && spill > 0) {
+      ctx.state.score -= spill;
+      ctx.events.emit('scoreChanged', { score: ctx.state.score });
+      const piles = Math.min(7, 3 + Math.floor(spill / 60));
+      for (let i = 0; i < piles; i++) {
+        const gp = makePickup('goldpile', player.x + (Math.random() - 0.5) * 10, player.y - 6, {
+          amount: Math.floor(spill / piles) + (i === 0 ? spill % piles : 0),
+        });
+        gp.vx = (Math.random() - 0.5) * 2.2;
+        gp.vy = -1.2 - Math.random() * 1.4;
+        runtime.pickups.push(gp);
+      }
+      ctx.events.emit('toast', { text: `${spill} oz SCATTERS WHERE YOU FELL` });
+    }
     ctx.audio.squelch();
     ctx.audio.boom(10);
     ctx.fx.screenShake = 0.05;
@@ -163,7 +188,8 @@ export class PlayerControl implements PlayerControlApi {
 
     // Descent (Wave B): come back at the last lit waystone (or the level
     // spawn) with the world UNTOUCHED — enemies, scars, and hostile fire all
-    // persist. The only toll is 15% of carried gold.
+    // persist. The toll already happened: the spilled gold waits where you
+    // fell, guarded by whatever killed you.
     if (ctx.levels.current) {
       const rp = ctx.levels.respawnPoint()!;
       player.x = rp.x;
@@ -178,8 +204,6 @@ export class PlayerControl implements PlayerControlApi {
       player.dead = false;
       player.invuln = 90;
       ctx.events.emit('playerRespawned');
-      ctx.state.score = Math.floor(ctx.state.score * 0.85);
-      ctx.events.emit('scoreChanged', { score: ctx.state.score });
       ctx.telemetry.count('death.goldLost');
       ctx.particles.burst(rp.x, rp.y - 7, 20, null, () => packRGB(200, 160, 255), 2.7, {
         glow: 2.2,
@@ -218,9 +242,41 @@ export class PlayerControl implements PlayerControlApi {
   /** Original: updatePlayer() — lines 1621-1721. */
   update(ctx: Ctx): void {
     const player = ctx.player;
-    const keys = ctx.input.keys;
     const world = ctx.world;
     if (ctx.state.mode !== 'play' || player.dead) return;
+
+    // HEART COMMUNION: restoring vitality roots the alchemist. Movement and
+    // casting lock while the charge runs — drink hearts somewhere safe.
+    const channeling = player.recharge > 0;
+    const keys = channeling
+      ? { left: false, right: false, jump: false, down: false }
+      : ctx.input.keys;
+    if (channeling) {
+      player.recharge--;
+      player.hp = Math.min(player.maxHp, player.hp + 0.19);
+      player.vx *= 0.7;
+      if (ctx.state.frameCount % 3 === 0) {
+        ctx.particles.spawn(
+          player.x + (Math.random() - 0.5) * 9,
+          player.y - 2 - Math.random() * 14,
+          (Math.random() - 0.5) * 0.2,
+          -0.6 - Math.random() * 0.4,
+          null,
+          packRGB(255, 110 + Math.floor(Math.random() * 60), 140),
+          26,
+          { glow: 2.2, grav: -0.01 },
+        );
+      }
+      if (player.recharge % 24 === 0) ctx.audio.tone(520 + (110 - player.recharge) * 3, 660, 0.1, 'sine', 0.05);
+      if (player.recharge === 0) {
+        // communion complete: a rose-gold ring blooms off the alchemist
+        ctx.particles.burst(player.x, player.y - 8, 22, null, () => packRGB(255, 150, 170), 2.6, {
+          glow: 2.6,
+          grav: -0.005,
+        });
+        ctx.audio.chest();
+      }
+    }
     if (player.invuln > 0) player.invuln--;
 
     // Sim-sampled statuses (Wave C, pillar 5): the cells touching the body
@@ -242,7 +298,22 @@ export class PlayerControl implements PlayerControlApi {
           return;
         }
       }
-      if (player.status.regen > 0) player.hp = Math.min(player.maxHp, player.hp + 0.15);
+      if (player.status.regen > 0) {
+        player.hp = Math.min(player.maxHp, player.hp + 0.15);
+        // visible mending: soft green motes rise while the potion works
+        if (player.hp < player.maxHp && ctx.state.frameCount % 6 === 0) {
+          ctx.particles.spawn(
+            player.x + (Math.random() - 0.5) * 8,
+            player.y - 4 - Math.random() * 10,
+            (Math.random() - 0.5) * 0.15,
+            -0.45 - Math.random() * 0.3,
+            null,
+            packRGB(110, 230, 130),
+            22,
+            { glow: 1.6, grav: -0.008 },
+          );
+        }
+      }
     }
 
     // DRINK (X held): gulp the flask's contents — a potion is real cells swallowed

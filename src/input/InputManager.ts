@@ -20,6 +20,8 @@ export class InputManager {
     canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
     canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
     window.addEventListener('mouseup', () => this.onMouseUp());
+    // RMB belongs to the game (flask throw / eyedropper), not the browser.
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     // Wave D: the wheel swaps the held wand in play mode.
     canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: true });
 
@@ -53,6 +55,30 @@ export class InputManager {
     const coords = this.getMouseGridCoords(e);
     ctx.input.mouse.x = coords.x;
     ctx.input.mouse.y = coords.y;
+
+    // Right mouse: a game verb, never the browser menu.
+    if (e.button === 2) {
+      if (ctx.state.mode === 'play') {
+        // Same grip as the reference build: RMB hurls the flask.
+        if (!ctx.player.dead) ctx.flask.throwFlask(ctx);
+      } else {
+        // Sandbox eyedropper: pick up whatever material is under the cursor.
+        if (ctx.world.inBounds(coords.x, coords.y)) {
+          const t = ctx.world.types[ctx.world.idx(coords.x, coords.y)];
+          const btn = document.querySelector<HTMLButtonElement>(
+            `.tool-btn[data-mode="element"][data-id="${t}"]`,
+          );
+          if (btn) btn.click();
+          else {
+            ctx.state.currentElement = t as never;
+            ctx.state.activeInputMode = 'element';
+          }
+          const name = ctx.params.materials[t]?.name ?? 'Material ' + t;
+          ctx.events.emit('toast', { text: 'PICKED: ' + name.toUpperCase() });
+        }
+      }
+      return;
+    }
 
     if (ctx.state.mode === 'play') {
       if (!ctx.player.dead) ctx.player.firing = true;

@@ -83,6 +83,11 @@ export interface PlayerState {
   perks: Partial<Record<PerkId, true>>;
   /** Teleportium contact cooldown (frames). */
   tpCool: number;
+  /**
+   * Heart communion (frames left): restoring vitality roots the alchemist —
+   * movement and casting are locked while the charge runs.
+   */
+  recharge: number;
 }
 
 export const PLAYER_HALF_W = 4;
@@ -146,6 +151,8 @@ export interface Enemy {
   fusing?: number;
   /** Bat roosts (Wave F): hangs dormant from the ceiling until disturbed. */
   sleeping?: boolean;
+  /** Golem: frames of wall-punch animation remaining. */
+  punching?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */

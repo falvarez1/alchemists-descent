@@ -1,3 +1,4 @@
+import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, ExplosionApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { crystalColor, EMPTY_COLOR, fireColor, glassColor, smokeColor } from '@/sim/colors';
@@ -22,9 +23,17 @@ export class Explosions implements ExplosionApi {
       speed: 3.5,
       strength: 12,
     });
-    ctx.fx.bloomKick = Math.min(0.95, ctx.fx.bloomKick + radius * 0.026);
-    ctx.fx.screenShake = Math.min(ctx.fx.screenShake + radius * 0.0022, 0.045);
-    ctx.audio.boom(radius);
+    // Lens kick + shake + boom belong to blasts you can SEE (or nearly so) —
+    // a bomber meeting lava three screens away should not rattle the camera.
+    const camX = Math.floor(ctx.camera.x),
+      camY = Math.floor(ctx.camera.y);
+    const visible =
+      cx > camX - 40 && cx < camX + VIEW_W + 40 && cy > camY - 40 && cy < camY + VIEW_H + 40;
+    if (visible) {
+      ctx.fx.bloomKick = Math.min(0.95, ctx.fx.bloomKick + radius * 0.026);
+      ctx.fx.screenShake = Math.min(ctx.fx.screenShake + radius * 0.0022, 0.045);
+      ctx.audio.boom(radius);
+    }
     // Concussion is a valid puzzle input: levers and rune switches listen.
     ctx.events.emit('structureStrike', { x: cx, y: cy, radius: radius + 4 });
 

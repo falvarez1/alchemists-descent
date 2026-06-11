@@ -162,6 +162,8 @@ export class WandSystem implements WandsApi {
 
   fire(ctx: Ctx): void {
     if (ctx.state.mode !== 'play' || ctx.player.dead) return;
+    // Heart communion roots the wand arm too — no casting mid-charge.
+    if (ctx.player.recharge > 0) return;
     const wand = this.wands[this._active];
     if (wand.cooldown > 0) return;
     const program = this.program(this._active);

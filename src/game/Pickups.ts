@@ -98,9 +98,11 @@ export class Pickups implements PickupsApi {
       ctx.events.emit('toast', { text: `+${amount} oz GOLD` });
       ctx.audio.pickup();
     } else if (p.kind === 'heart') {
+      // The vessel grows at once; refilling it is a COMMUNION — the alchemist
+      // roots in place, glowing, while ~20 HP charges in (see Player.update).
       player.maxHp += 20;
-      player.hp = Math.min(player.maxHp, player.hp + 20);
-      ctx.events.emit('toast', { text: '+20 MAX HP' });
+      player.recharge = 110;
+      ctx.events.emit('toast', { text: '+20 MAX HP — COMMUNION, HOLD FAST' });
       ctx.audio.chest();
       ctx.particles.burst(p.x, p.y - 2, 14, null, () => packRGB(255, 90, 120), 1.8, {
         glow: 1.8,

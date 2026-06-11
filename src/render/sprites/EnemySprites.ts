@@ -343,17 +343,41 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
         P(dx, dy + B, ...(Math.abs(dx) === 4 ? SD : S));
       }
     }
-    // arms swing opposite the legs
-    for (let dy = 5; dy <= 12; dy++) {
-      const sw = dy <= 7 ? armSwing : Math.round(armSwing * 0.5);
-      P(-6 + (dy <= 7 ? -sw : 0) * 0 - (dy <= 7 ? Math.round(armSwing * 0.6) : 0), dy + B, ...SD);
-      P(-7, dy + B, ...(dy >= 11 ? SL : SD));
-      P(6 + (dy <= 7 ? Math.round(armSwing * 0.6) : 0), dy + B, ...SD);
-      P(7, dy + B, ...(dy >= 11 ? SL : SD));
+    // WALL POUND: wind-up then a two-fisted haymaker into the rock face —
+    // the whole frame reads as work: lean, drawn fists, impact sparks
+    const punch = e.punching ?? 0;
+    if (punch > 0) {
+      const windup = punch > 10; // first frames rear back, then SLAM
+      const reach = windup ? -2 : 5;
+      const lean = windup ? -1 : 1;
+      for (let dy = 7; dy <= 11; dy++) {
+        P(look * (6 + (windup ? 0 : 2)) , dy + B + lean, ...SD);
+        P(-look * 5, dy + B - lean, ...SD);
+      }
+      // both fists thrown at wall height
+      const fxp = look * (7 + reach);
+      P(fxp, 8 + B, ...SL); P(fxp + look, 8 + B, ...SL);
+      P(fxp, 9 + B, ...SL); P(fxp + look, 9 + B, ...SL);
+      P(fxp, 10 + B, ...SL); P(fxp + look, 10 + B, ...SL);
+      if (!windup && frameCount % 2 === 0) {
+        // impact grit sparking off the knuckles
+        PE(fxp + look * 2, 9 + B, 0.8, 0.7, 0.4);
+        PE(fxp + look * 2, 7 + B, 0.5, 0.45, 0.25);
+        PE(fxp + look * 2, 11 + B, 0.5, 0.45, 0.25);
+      }
+    } else {
+      // arms swing opposite the legs
+      for (let dy = 5; dy <= 12; dy++) {
+        const sw = dy <= 7 ? armSwing : Math.round(armSwing * 0.5);
+        P(-6 + (dy <= 7 ? -sw : 0) * 0 - (dy <= 7 ? Math.round(armSwing * 0.6) : 0), dy + B, ...SD);
+        P(-7, dy + B, ...(dy >= 11 ? SL : SD));
+        P(6 + (dy <= 7 ? Math.round(armSwing * 0.6) : 0), dy + B, ...SD);
+        P(7, dy + B, ...(dy >= 11 ? SL : SD));
+      }
+      // fists
+      P(-7 - Math.round(armSwing * 0.6), 4 + B, ...SL); P(-6 - Math.round(armSwing * 0.6), 4 + B, ...SL);
+      P(7 + Math.round(armSwing * 0.6), 4 + B, ...SL); P(6 + Math.round(armSwing * 0.6), 4 + B, ...SL);
     }
-    // fists
-    P(-7 - Math.round(armSwing * 0.6), 4 + B, ...SL); P(-6 - Math.round(armSwing * 0.6), 4 + B, ...SL);
-    P(7 + Math.round(armSwing * 0.6), 4 + B, ...SL); P(6 + Math.round(armSwing * 0.6), 4 + B, ...SL);
     // shoulders breathe
     for (let dx = -7; dx <= 7; dx++) P(dx, 14 + B + breathe, ...(Math.abs(dx) >= 6 ? SD : SL));
     // head, eyes track

@@ -1,4 +1,4 @@
-import { HEIGHT, WIDTH } from '@/config/constants';
+import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
@@ -235,8 +235,21 @@ export class Enemies implements EnemyControlApi {
       ctx.player.hp = Math.min(ctx.player.maxHp, ctx.player.hp + 2);
     }
     ctx.audio.squelch();
-    ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.012, 0.04);
+    this.shakeAt(e.x, e.y, 0.012, 0.04);
     ctx.waves.kills++;
+  }
+
+  /**
+   * Screen shake you can SEE: only world positions inside the viewport get
+   * to rattle the camera. Off-screen deaths, pounds, and volleys stay felt
+   * in the world, not in your hands.
+   */
+  private shakeAt(x: number, y: number, amount: number, cap: number): void {
+    const ctx = this.ctx;
+    const camX = Math.floor(ctx.camera.x),
+      camY = Math.floor(ctx.camera.y);
+    if (x < camX - 8 || x > camX + VIEW_W + 8 || y < camY - 8 || y > camY + VIEW_H + 8) return;
+    ctx.fx.screenShake = Math.min(ctx.fx.screenShake + amount, cap);
   }
 
   /** Felled foes sometimes drop a potion (golems are walking apothecaries). */
@@ -324,7 +337,7 @@ export class Enemies implements EnemyControlApi {
     }
     if (n > 0) {
       ctx.audio.tone(240, 70, 0.3, 'sawtooth', 0.12);
-      ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.006, 0.04);
+      this.shakeAt(e.x, e.y, 0.006, 0.04);
     }
   }
 
@@ -753,7 +766,7 @@ export class Enemies implements EnemyControlApi {
         }
         e.vx = clamp(e.vx, -0.42, 0.42);
         if (e.grounded && !e.prevG) {
-          ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.02, 0.05);
+          this.shakeAt(e.x, e.y, 0.02, 0.05);
           ctx.audio.hollowKnock();
         }
 
@@ -800,6 +813,7 @@ export class Enemies implements EnemyControlApi {
       } else if (e.kind === 'golem') {
         e.vy += 0.33;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+        if (e.punching !== undefined && e.punching > 0) e.punching--;
         if (targetAlive && e.timer % 3 === 0) {
           e.vx += Math.sign(pdx) * 0.12;
         }
@@ -871,9 +885,19 @@ export class Enemies implements EnemyControlApi {
                 const fy2 = Math.floor(e.y - 8);
                 ctx.spells.erodeAt(fx2, fy2, 6);
                 ctx.particles.burst(fx2, fy2, 9, Cell.Sand, stoneColor, 1.9);
-                ctx.audio.tone(60 + Math.random() * 25, 90, 0.2, 'square', 0.16);
-                ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.008, 0.05);
-                e.stuckT = 26; // keep a pounding rhythm until it breaks through
+                e.punching = 16; // wind-up + haymaker (sprite reads this)
+                // The thud is only felt where it is SEEN: no off-screen
+                // rumble, and a gentler hand than before.
+                const camX = Math.floor(ctx.camera.x),
+                  camY = Math.floor(ctx.camera.y);
+                const visible =
+                  e.x > camX - 8 &&
+                  e.x < camX + VIEW_W + 8 &&
+                  e.y > camY - 8 &&
+                  e.y < camY + VIEW_H + 8;
+                if (visible) ctx.audio.tone(60 + Math.random() * 25, 90, 0.2, 'square', 0.16);
+                this.shakeAt(e.x, e.y, 0.006, 0.03);
+                e.stuckT = 4; // a slower, heavier pounding rhythm (~46 frames)
               }
             }
           } else {

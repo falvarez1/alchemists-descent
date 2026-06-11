@@ -33,6 +33,7 @@ import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
 import { HelpOverlay } from '@/ui/HelpOverlay';
+import { PauseOverlay } from '@/ui/PauseOverlay';
 import { Hud } from '@/ui/Hud';
 import { Inspector } from '@/ui/Inspector';
 import { LevelStore } from '@/ui/LevelStore';
@@ -149,7 +150,9 @@ export class Game {
     new WandBench(ctx);
     // Wires the Level Library buttons; lives for the page lifetime.
     new LevelStore(ctx);
-    // The Handbook (H); lives for the page lifetime.
+    // ESC pause + the Handbook (H); pause registers FIRST so its keydown
+    // handler sees the help overlay still open and yields ESC to it.
+    new PauseOverlay(ctx);
     new HelpOverlay(ctx);
     this.inspector = new Inspector(ctx);
     this.toolbar = new Toolbar(ctx, (id, mode) => this.inspector.generateContextInspector(id, mode));
