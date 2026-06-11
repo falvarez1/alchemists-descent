@@ -395,6 +395,38 @@ export class Enemies implements EnemyControlApi {
         pdy = player.y - 9 - (e.y - 5);
       const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
 
+      // THE NOTICE: the first time a foe clocks you, it says so — a blip and
+      // a spark of attention over its head. The colossus announces itself
+      // rather more thoroughly.
+      if (!e.alerted && targetAlive && pDist < 300 && e.kind !== 'eggs' && !e.sleeping) {
+        e.alerted = true;
+        if (e.kind === 'colossus') {
+          ctx.audio.tone(46, 110, 0.9, 'sawtooth', 0.22);
+          ctx.audio.groan();
+          this.shakeAt(e.x, e.y, 0.025, 0.04);
+        } else {
+          ctx.audio.alert();
+          ctx.particles.burst(e.x, e.y - def.h - 3, 3, null, () => packRGB(255, 245, 200), 0.8, {
+            glow: 1.6,
+            grav: -0.02,
+          });
+        }
+      }
+
+      // WOUNDED TELLS: under 30% a body leaks — you can read who is nearly done.
+      if (e.hp < e.maxHp * 0.3 && e.timer % 26 === 0 && e.kind !== 'eggs') {
+        ctx.particles.spawn(
+          e.x + (Math.random() - 0.5) * def.halfW,
+          e.y - Math.random() * def.h * 0.6,
+          (Math.random() - 0.5) * 0.2,
+          0.4,
+          null,
+          def.goreFn(),
+          30,
+          { grav: 0.1 },
+        );
+      }
+
       if (e.kind === 'slime' || e.kind === 'acidslime') {
         e.vy += 0.3;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);

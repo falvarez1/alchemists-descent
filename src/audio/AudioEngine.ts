@@ -134,6 +134,22 @@ export class AudioEngine implements AudioApi {
 
   cardSlot(): void { if (!this.throttled('cards', 80)) return; this.tone(240, 180, 0.05, 'square', 0.12); this.noiseBurst(0.02, 2000, 0.04, true); }
 
+  footstep(surface: 'stone' | 'soft' | 'wet' | 'wood'): void {
+    if (!this.throttled('step', 90)) return;
+    if (surface === 'stone') { this.noiseBurst(0.016, 1100 + Math.random() * 300, 0.045, true); this.tone(160 + Math.random() * 30, 120, 0.03, 'square', 0.025); }
+    else if (surface === 'soft') this.noiseBurst(0.03, 420 + Math.random() * 120, 0.05);
+    else if (surface === 'wet') { this.tone(300 + Math.random() * 80, 170, 0.04, 'sine', 0.05); this.noiseBurst(0.025, 600, 0.035); }
+    else { this.tone(220 + Math.random() * 40, 150, 0.035, 'square', 0.055); }
+  }
+
+  landThud(intensity: number): void { if (!this.throttled('land', 150)) return; const k = Math.max(0.15, Math.min(1, intensity)); this.tone(95 - 35 * k, 45, 0.09 + 0.07 * k, 'sine', 0.07 + 0.13 * k); this.noiseBurst(0.04 + 0.05 * k, 320, 0.04 + 0.09 * k); }
+
+  splash(intensity: number): void { if (!this.throttled('splash', 200)) return; const k = Math.max(0.2, Math.min(1, intensity)); this.noiseBurst(0.09 + 0.1 * k, 750, 0.09 + 0.1 * k); this.tone(440, 170, 0.12, 'sine', 0.04 + 0.06 * k); }
+
+  alert(): void { if (!this.throttled('alert', 320)) return; this.tone(620, 930, 0.06, 'square', 0.045); }
+
+  gong(): void { this.tone(196, 193, 1.5, 'sine', 0.22); this.tone(392, 388, 1.0, 'sine', 0.09); this.tone(98, 97, 1.8, 'sine', 0.12); this.noiseBurst(0.06, 2400, 0.05, true); }
+
   flame(): void {
     if (!this.throttled('flame', 70)) return;
     this.noiseBurst(0.22, 550 + Math.random() * 300, 0.18);          // body of the roar

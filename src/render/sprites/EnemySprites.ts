@@ -195,16 +195,22 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     P(-3, 2, 0.5, 0.75, 0.5);
     P(1, 4, 0.5, 0.75, 0.5);
   } else if (e.kind === 'bat' && e.sleeping) {
-    // --- Roosting bat: folded teardrop hanging from the ceiling ---
+    // --- Roosting bat: folded teardrop hanging from the ceiling.
+    //     It STIRS when you get close — the shiver is your last warning. ---
+    const pdx2 = ctx.player.x - e.x,
+      pdy2 = ctx.player.y - e.y;
+    const near = !ctx.player.dead && pdx2 * pdx2 + pdy2 * pdy2 < 110 * 110;
+    const tr = near && frameCount % 7 < 2 ? (frameCount % 14 < 7 ? 1 : -1) : 0;
     const V2: RGB = [0.3, 0.18, 0.38],
       VD2: RGB = [0.17, 0.1, 0.23];
-    P(0, 4, ...VD2); // ceiling grip
-    P(-1, 3, ...V2); P(0, 3, ...V2); P(1, 3, ...V2);
-    P(-1, 2, ...V2); P(0, 2, ...VD2); P(1, 2, ...V2);
-    P(-1, 1, ...VD2); P(0, 1, ...V2); P(1, 1, ...VD2);
-    P(0, 0, ...VD2);
-    // the faintest breathing shimmer
+    P(tr, 4, ...VD2); // ceiling grip
+    P(-1 + tr, 3, ...V2); P(tr, 3, ...V2); P(1 + tr, 3, ...V2);
+    P(-1 + tr, 2, ...V2); P(tr, 2, ...VD2); P(1 + tr, 2, ...V2);
+    P(-1 + tr, 1, ...VD2); P(tr, 1, ...V2); P(1 + tr, 1, ...VD2);
+    P(tr, 0, ...VD2);
+    // breathing shimmer; one red eye cracks open at your approach
     if (frameCount % 90 < 6) PE(0, 2, 0.12, 0.03, 0.03);
+    if (near && frameCount % 30 < 18) PE(tr, 2, 0.5, 0.06, 0.06);
   } else if (e.kind === 'bat') {
     // --- Cave bat: 2-pose wing snap, glinting red eyes ---
     const hover = Math.round(Math.sin(e.bobPhase) * 1.2);

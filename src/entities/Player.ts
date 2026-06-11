@@ -78,6 +78,10 @@ export class PlayerControl implements PlayerControlApi {
   private prevJumpHeld = false;
   /** Sustained levitation frames (drives the thrust response curve). */
   private levitFrames = 0;
+  /** Last half-turn of the stride wheel that produced a footstep. */
+  private lastStrideStep = 0;
+  /** Was the body submerged last frame (splash edge detector). */
+  private prevInLiquid = false;
   /** Horizontal accel multiplier from the status engine (frozen = 0.55). */
   private statusSlow = 1;
 
@@ -385,6 +389,28 @@ export class PlayerControl implements PlayerControlApi {
       }
     }
     player.inLiquid = liquidCount >= 13;
+    // SPLASH: breaking the surface at speed throws up droplets of whatever
+    // you fell into (the pool's own colors — the grid explains the splash).
+    if (player.inLiquid && !this.prevInLiquid && player.vy > 1.2) {
+      const li2 = world.idx(Math.floor(player.x), Math.floor(player.y));
+      const splashColor = world.inBounds(Math.floor(player.x), Math.floor(player.y))
+        ? world.colors[li2]
+        : packRGB(60, 140, 220);
+      for (let d = 0; d < 10; d++) {
+        ctx.particles.spawn(
+          player.x + (Math.random() - 0.5) * 8,
+          player.y - 14,
+          (Math.random() - 0.5) * 2.2,
+          -1.2 - Math.random() * 1.6,
+          null,
+          splashColor,
+          26,
+          { grav: 0.12 },
+        );
+      }
+      ctx.audio.splash(Math.min(1, player.vy / 4));
+    }
+    this.prevInLiquid = player.inLiquid;
     // Wave F: brushing through glowcap colonies puffs a little spore cloud
     if (
       fungusBrush &&
@@ -659,13 +685,39 @@ export class PlayerControl implements PlayerControlApi {
     player._svy = player._svy * 0.55 + rvy * 0.45;
 
     // Stride wheel turns with actual ground speed; drifts slowly in the air
-    if (player.grounded && Math.abs(player._svx) > 0.2) player.stridePhase += Math.abs(player._svx) * 0.16;
-    else if (!player.grounded) player.stridePhase += 0.05;
+    if (player.grounded && Math.abs(player._svx) > 0.2) {
+      player.stridePhase += Math.abs(player._svx) * 0.16;
+      // FOOTSTEPS: each half-turn of the wheel is a foot meeting the ground,
+      // and the ground decides the sound — stone ticks, sand hushes, wood
+      // knocks, shallows slosh.
+      const step = Math.floor(player.stridePhase / Math.PI);
+      if (step !== this.lastStrideStep) {
+        this.lastStrideStep = step;
+        const w2 = ctx.world;
+        const fx2 = Math.floor(player.x),
+          fy2 = Math.floor(player.y);
+        const at = w2.inBounds(fx2, fy2) ? w2.types[w2.idx(fx2, fy2)] : Cell.Empty;
+        const under = w2.inBounds(fx2, fy2 + 1) ? w2.types[w2.idx(fx2, fy2 + 1)] : Cell.Empty;
+        let surface: 'stone' | 'soft' | 'wet' | 'wood' = 'stone';
+        if (isLiquid(at)) surface = 'wet';
+        else if (
+          under === Cell.Sand ||
+          under === Cell.Snow ||
+          under === Cell.Ash ||
+          under === Cell.Gold ||
+          under === Cell.Coal
+        )
+          surface = 'soft';
+        else if (under === Cell.Wood || under === Cell.Vines) surface = 'wood';
+        ctx.audio.footstep(surface);
+      }
+    } else if (!player.grounded) player.stridePhase += 0.05;
 
     // Landing squash: triggered by how hard we hit the ground
     if (player.grounded && !player.prevGrounded && player.fallPeak > 2.2) {
       player.landTimer = Math.min(10, 4 + Math.floor(player.fallPeak * 1.4));
-      // landing feedback: dust puff, shake pulse, and a soft thud on hard landings
+      // landing feedback: thud scaled to the fall; dust + shake on hard hits
+      ctx.audio.landThud((player.fallPeak - 2.2) / 4);
       if (player.fallPeak > 3.5) {
         ctx.particles.burst(
           player.x,
@@ -680,7 +732,6 @@ export class PlayerControl implements PlayerControlApi {
           { grav: 0.05 },
         );
         ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.006 + player.fallPeak * 0.0015, 0.03);
-        ctx.audio.tone(90, 40, 0.08, 'sine', 0.12);
       }
     }
     player.fallPeak = player.grounded ? 0 : Math.max(player.fallPeak, player.vy);

@@ -701,6 +701,22 @@ export class Levels implements LevelsApi {
     if (order) order.push(index);
     else this.litOrder.set(runtime.def.id, [index]);
 
+    // The ignition is an EVENT: a bronze gong rolls through the caves and a
+    // column of embers climbs off the bowl.
+    ctx.audio.gong();
+    for (let k = 0; k < 18; k++) {
+      ctx.particles.spawn(
+        ws.x + (Math.random() - 0.5) * 5,
+        ws.y - 3 - Math.random() * 3,
+        (Math.random() - 0.5) * 0.3,
+        -1.0 - Math.random() * 1.6,
+        null,
+        packRGB(255, 140 + Math.floor(Math.random() * 90), 30),
+        50 + Math.floor(Math.random() * 40),
+        { glow: 2.2, grav: -0.012 },
+      );
+    }
+
     // Checkpoint reward: full vitals
     const player = ctx.player;
     player.hp = player.maxHp;

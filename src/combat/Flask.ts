@@ -43,8 +43,12 @@ export class Flask implements FlaskApi {
   }
 
   throwFlask(ctx: Ctx): void {
-    if (this.bottle || this.state.count === 0) return;
     if (ctx.state.mode !== 'play' || ctx.player.dead) return;
+    if (this.state.count === 0 && !this.bottle) {
+      this.refuse(ctx); // hurling an empty bottle helps no one
+      return;
+    }
+    if (this.bottle || this.state.count === 0) return;
     const tip = ctx.spells.wandTip();
     const a = Math.atan2(ctx.input.mouse.y - tip.y, ctx.input.mouse.x - tip.x);
     this.bottle = {
@@ -59,11 +63,23 @@ export class Flask implements FlaskApi {
     }
   }
 
+  /** Refused flask verb: hollow click + the FLSK bar flinches (throttled). */
+  private lastRefuse = -99;
+  private refuse(ctx: Ctx): void {
+    if (ctx.state.frameCount - this.lastRefuse < 30) return;
+    this.lastRefuse = ctx.state.frameCount;
+    ctx.audio.dryFire();
+    ctx.events.emit('flaskDry');
+  }
+
   // ===================== Siphon =====================
   private siphon(ctx: Ctx): void {
     const { world, player, input } = ctx;
     const s = this.state;
-    if (s.count >= s.capacity) return;
+    if (s.count >= s.capacity) {
+      this.refuse(ctx); // tank's full — the slurp has nowhere to go
+      return;
+    }
     const mx = input.mouse.x, my = input.mouse.y;
     // Reach check against the wand-height body point, same anchor the streaks fly to.
     const rx = mx - player.x, ry = my - (player.y - 9);
@@ -108,7 +124,10 @@ export class Flask implements FlaskApi {
   // ===================== Pour =====================
   private pour(ctx: Ctx): void {
     const s = this.state;
-    if (s.count === 0 || s.material === null) return;
+    if (s.count === 0 || s.material === null) {
+      this.refuse(ctx); // tipping an empty flask
+      return;
+    }
     const { world } = ctx;
     const tip = ctx.spells.wandTip();
     const cx = Math.round(tip.x), cy = Math.round(tip.y);

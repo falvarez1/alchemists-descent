@@ -157,6 +157,8 @@ export interface Enemy {
   sleeping?: boolean;
   /** Golem: frames of wall-punch animation remaining. */
   punching?: number;
+  /** Has noticed the alchemist at least once (alert blip fired). */
+  alerted?: boolean;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
@@ -478,6 +480,16 @@ export interface AudioApi {
   cardPick(): void;
   /** Firm clack: a card seated into a wand slot. */
   cardSlot(): void;
+  /** Material-aware footfall (stride-driven, very quiet). */
+  footstep(surface: 'stone' | 'soft' | 'wet' | 'wood'): void;
+  /** Landing thud scaled by fall hardness (0..1). */
+  landThud(intensity: number): void;
+  /** Breaking the surface of a pool (0..1 by entry speed). */
+  splash(intensity: number): void;
+  /** A foe notices you: one short rising blip. */
+  alert(): void;
+  /** Waystone ignition: a deep bronze gong with overtones. */
+  gong(): void;
   coin(): void;
   hurt(): void;
   jump(): void;

@@ -40,6 +40,8 @@ export interface EventMap {
   runComplete: { gold: number };
   /** A cast was refused for lack of mana (HUD flashes the mana bar). */
   dryFire: undefined;
+  /** Flask verb refused (empty pour/throw, siphon into a full flask). */
+  flaskDry: undefined;
 }
 
 type Handler<T> = (payload: T) => void;

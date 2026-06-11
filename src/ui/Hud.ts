@@ -39,6 +39,14 @@ export class Hud {
       this.dryFlashUntil = this.ctx.state.frameCount + 18;
       el('mana-fill').parentElement?.classList.add('mana-dry');
     });
+    // Same language for refused flask verbs: the FLSK track flinches.
+    ctx.events.on('flaskDry', () => {
+      const track = el('flask-fill').parentElement;
+      track?.classList.remove('mana-dry');
+      void track?.offsetWidth; // restart the one-shot animation
+      track?.classList.add('mana-dry');
+      window.setTimeout(() => track?.classList.remove('mana-dry'), 320);
+    });
 
     ctx.events.on('waveStarted', ({ num }) => {
       el('wave-num').textContent = 'WAVE ' + num;
