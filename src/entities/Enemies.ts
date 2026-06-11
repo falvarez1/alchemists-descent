@@ -413,6 +413,25 @@ export class Enemies implements EnemyControlApi {
         }
       }
 
+      // AUTHORED PATROLS EARN DE-ALERT (Rain World texture): a patroller
+      // that loses you for ~5 seconds shrugs and returns to its route.
+      // Strictly gated on Builder-authored patrol — generated enemies keep
+      // their one-way alert exactly as before.
+      if (e.alerted && e.patrol && e.patrol.length > 0 && e.kind !== 'colossus') {
+        if (!targetAlive || pDist > 300) {
+          e.calmT = (e.calmT ?? 0) + 1;
+          if (e.calmT > 300) {
+            e.alerted = false;
+            e.calmT = 0;
+            // a dim gray puff: the scent went cold
+            ctx.particles.burst(e.x, e.y - def.h - 3, 2, null, () => packRGB(150, 158, 170), 0.6, {
+              glow: 1.1,
+              grav: -0.015,
+            });
+          }
+        } else e.calmT = 0;
+      }
+
       // WOUNDED TELLS: under 30% a body leaks — you can read who is nearly done.
       if (e.hp < e.maxHp * 0.3 && e.timer % 26 === 0 && e.kind !== 'eggs') {
         ctx.particles.spawn(

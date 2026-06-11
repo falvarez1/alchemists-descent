@@ -24,6 +24,9 @@ npm run verify:findability # multi-seed BFS audit of generated content (gate for
 npm run lint               # eslint src
 node scripts/verify-game.mjs   # headless browser smoke test (needs dev server running + Edge)
 node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs saved baseline)
+# Builder end-to-end probes (dev server running): verify-builder.mjs,
+# verify-builder-suite.mjs, verify-builder-expedition.mjs,
+# verify-builder-pro.mjs, verify-builder-ux.mjs
 ```
 
 Headless verification uses `playwright-core` driving system Edge (channel `'msedge'`) against the

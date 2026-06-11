@@ -482,6 +482,7 @@ export class Builder {
         <button id="b-restore" title="Re-decode the document's captured terrain into the live world (clears undo)">RESTORE</button>
         <button id="b-validate">VALIDATE</button>
         <button id="b-playtest" class="b-accent">PLAYTEST</button>
+        <button id="b-zen" title="Hide all side panels for a clear view of the canvas (\`)">PANELS</button>
         <button id="b-exit">EXIT</button>
       </div>
       <div id="builder-overlay"><canvas id="builder-canvas"></canvas><div id="builder-markers"></div></div>
@@ -817,7 +818,14 @@ export class Builder {
     });
 
     this.el('b-playtest').addEventListener('click', () => this.playtest());
+    this.el('b-zen').addEventListener('click', () => this.toggleZen());
     this.el('b-exit').addEventListener('click', () => this.close());
+  }
+
+  /** Focus mode: every floating panel out of the way; the canvas breathes. */
+  private toggleZen(): void {
+    const zen = this.root.classList.toggle('b-zen');
+    this.status(zen ? 'PANELS HIDDEN — ` OR THE PANELS BUTTON BRINGS THEM BACK' : 'PANELS BACK');
   }
 
   /**
@@ -1694,7 +1702,9 @@ export class Builder {
     for (const o of this.doc.objects) {
       if (!this.selectedIds.has(o.id) || o.kind !== clip.kind || o.locked) continue;
       for (const [key, value] of Object.entries(clip.params)) {
-        edits.push(editParamCmd(o, key, value));
+        // deep-clone per target so pasted arrays (patrol routes) never alias
+        const own = value !== null && typeof value === 'object' ? (JSON.parse(JSON.stringify(value)) as unknown) : value;
+        edits.push(editParamCmd(o, key, own));
       }
       count++;
     }
@@ -2221,6 +2231,20 @@ export class Builder {
       return;
     }
     const w = this.ctx.world;
+    // Compiled mechanism cells must NOT fossilize into terrain: every
+    // current object's structural footprint is excluded from the bake (the
+    // compiler re-stamps them anyway; a deleted door must not leave a slab).
+    const skip = new Uint8Array(w.types.length);
+    for (const o of this.doc.objects) {
+      if (o.hidden) continue;
+      const f = objectFootprint(o);
+      if (!f) continue;
+      for (let y = Math.max(0, f.y0); y <= Math.min(w.height - 1, f.y1); y++) {
+        for (let x = Math.max(0, f.x0); x <= Math.min(w.width - 1, f.x1); x++) {
+          skip[w.idx(x, y)] = 1;
+        }
+      }
+    }
     if (this.region) {
       const rec = new PatchRecorder(w);
       const r = this.region;
@@ -2230,6 +2254,7 @@ export class Builder {
         for (let x = Math.max(0, r.x0); x <= Math.min(w.width - 1, r.x1); x++) {
           if (this.regionMask && this.regionMask[x - r.x0 + (y - r.y0) * rw] !== 1) continue;
           const i = w.idx(x, y);
+          if (skip[i]) continue;
           if (w.types[i] === scars.types[i] && w.life[i] === scars.life[i] && w.charge[i] === scars.charge[i])
             continue;
           rec.touch(i);
@@ -2248,22 +2273,23 @@ export class Builder {
       }
       this.cmds.run(paintTerrainCmd(w, patch.before, patch.after));
       this.paintDirty = true;
-      this.status(`BAKED ${n} SCARRED CELLS FROM THE PLAYTEST (UNDOABLE)`);
+      this.status(`BAKED ${n} SCARRED CELLS (MECHANISM FOOTPRINTS SKIPPED, UNDOABLE)`);
       return;
     }
     if (
       !window.confirm(
-        'Bake the ENTIRE playtest world over the document terrain? This includes compiled mechanism cells and cannot be undone (RESTORE returns to the captured layer). Set a region first for a precise, undoable bake.',
+        'Bake the ENTIRE playtest world over the document terrain? Mechanism footprints are skipped, but this cannot be undone (RESTORE returns to the captured layer). Set a region first for a precise, undoable bake.',
       )
     )
       return;
-    w.types.set(scars.types);
     for (let i = 0; i < w.types.length; i++) {
+      if (skip[i]) continue;
+      w.types[i] = scars.types[i];
       const fn = COLOR_FN[w.types[i]];
       w.colors[i] = fn ? fn() : EMPTY_COLOR;
+      w.life[i] = scars.life[i];
+      w.charge[i] = scars.charge[i];
     }
-    w.life.set(scars.life);
-    w.charge.set(scars.charge);
     this.cmds.clear();
     this.paintDirty = true;
     this.status('PLAYTEST WORLD BAKED (UNDO CLEARED — RESTORE IS THE WAY BACK)');
@@ -2439,6 +2465,7 @@ export class Builder {
       { label: 'Settle preview (2s of physics)', run: () => this.startSettle() },
       { label: 'Bake playtest scars', run: () => this.bakePlaytestScars() },
       { label: 'Toggle light preview', run: click('bp-light-toggle') },
+      { label: 'Toggle panels / zen (`)', run: () => this.toggleZen() },
       { label: 'Cycle readability overlay (O)', run: () => this.cycleOverlay() },
       { label: 'Cycle snap grid', run: click('bp-snap-btn') },
       { label: 'Generate caves (whole world)', run: () => this.guardedWorldGen('caves') },
@@ -2656,6 +2683,9 @@ export class Builder {
     } else if (e.code === 'KeyF') {
       e.stopPropagation();
       this.frameSelection();
+    } else if (e.code === 'Backquote') {
+      e.stopPropagation();
+      this.toggleZen();
     } else if (e.code === 'Delete') {
       e.stopPropagation();
       this.deleteSelection();

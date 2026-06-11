@@ -190,6 +190,9 @@ export interface Enemy {
    *  these instead of free-wandering (generated levels never set this). */
   patrol?: Array<[number, number]>;
   patrolIdx?: number;
+  /** Patrollers only: frames since losing the player; ~5s of calm de-alerts
+   *  so the authored route survives a disengaged skirmish. */
+  calmT?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */

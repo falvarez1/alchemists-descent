@@ -183,6 +183,16 @@ await page.keyboard.press('Enter');
 await page.waitForTimeout(120);
 const overlayLabel = await page.evaluate(() => document.getElementById('bp-overlay-btn').textContent);
 check('palette runs the matched command', overlayLabel.includes('LIGHT'), overlayLabel);
+
+/* zen mode: every panel yields to the canvas */
+await page.keyboard.press('Backquote');
+await page.waitForTimeout(120);
+let zenHidden = await page.evaluate(() => getComputedStyle(document.getElementById('builder-palette')).display === 'none');
+check('zen mode hides the side panels', zenHidden);
+await page.keyboard.press('Backquote');
+await page.waitForTimeout(120);
+zenHidden = await page.evaluate(() => getComputedStyle(document.getElementById('builder-palette')).display === 'none');
+check('zen toggles back', !zenHidden);
 await page.keyboard.press('o');
 await page.keyboard.press('o');
 await page.keyboard.press('o'); // back to NONE
@@ -306,6 +316,24 @@ check('mood ambient applies in the playtest', pt.ambient === 0.5, `got ${pt.ambi
 check('hazard emitter compiled and drips real water', pt.emitters === 1 && pt.water >= 3, JSON.stringify(pt));
 check('patrol route compiled onto the golem', pt.patrol === 2, `got ${pt.patrol}`);
 
+/* de-alert: a patroller that loses you beyond notice range calms in ~5s */
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const golem = ctx.enemies.find((e) => e.kind === 'golem');
+  golem.alerted = true;
+  golem.x = 440; // max separation inside the arena (and inside the sim window)
+  ctx.player.x = 750;
+  ctx.player.y = 616;
+  ctx.player.vx = 0;
+  ctx.player.vy = 0;
+});
+await page.waitForTimeout(5600); // 300 calm frames + margin
+const calm = await page.evaluate(() => {
+  const golem = window.__game.ctx.enemies.find((e) => e.kind === 'golem');
+  return { alerted: golem.alerted, dist: Math.abs(golem.x - window.__game.ctx.player.x) };
+});
+check('patroller de-alerts after ~5s beyond notice range', calm.alerted === false, JSON.stringify(calm));
+
 /* scar the world, return, bake the scar region */
 await page.evaluate(() => {
   const w = window.__game.ctx.world;
@@ -317,6 +345,10 @@ await page.evaluate(() => {
 });
 await page.click('#mode-builder-btn');
 await page.waitForTimeout(400);
+// the de-alert teleport parked the camera right of center - re-center so
+// the later region drags and placements land on the canvas, not the panels
+await page.evaluate(() => window.__game.ctx.camera.snapTo(600, 500));
+await page.waitForTimeout(120);
 const ambBack = await page.evaluate(() => window.__game.ctx.params.global.ambient);
 check('ambient restored on return from playtest', ambBack === preAmbient, `got ${ambBack} want ${preAmbient}`);
 let scarGold = await page.evaluate(() => {

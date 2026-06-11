@@ -440,6 +440,14 @@ body.builder-open #left-toolbar { display: none; }
 .bp-brushrow input[type="range"] { flex: 1; min-width: 0; }
 .bp-brushrow b { color: #9fb6cc; min-width: 14px; text-align: right; }
 
+/* zen / focus mode: every floating panel yields to the canvas */
+#builder-root.b-zen #builder-palette,
+#builder-root.b-zen #builder-inspector,
+#builder-root.b-zen #builder-proc,
+#builder-root.b-zen #builder-issues,
+#builder-root.b-zen #builder-minimap { display: none !important; }
+#builder-root.b-zen ~ * .b-marker { opacity: 0.9; }
+
 /* command palette (Ctrl+K) */
 #builder-cmdk {
     position: absolute; left: 50%; top: 84px; transform: translateX(-50%); z-index: 8;

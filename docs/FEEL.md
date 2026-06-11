@@ -249,6 +249,20 @@ Layered, bottom to top:
   sand scale, sluice, and charge coil read raw cells as their sensors.
 - **Fail-open groan:** wreck a mechanism's trigger body and its gate groans
   open ~30 s later — physics never locks you out.
+- **Sequence doors** (Builder-authored): each correct step chimes a rising
+  triangle tone (300 + 90·step Hz); a wrong-order firing breaks the chain
+  with a sour 120 Hz sawtooth and audibly spits the resettable mechanisms
+  back out (plate/scale/buoy latches and lever flips zeroed). Completion
+  latches the gate open forever. Edges, not levels: a lingering plate latch
+  never re-fires the chain. Fully broken steps auto-complete (fail-open per
+  step; all wrecked = the chain itself gives way).
+- **Hazard emitters** (Builder-authored): one real cell dripped every `rate`
+  frames — the lava pools, the acid eats, the water floods; the grid is the
+  whole effect.
+- **Patrols** (Builder-authored): slimes hop and golems pace their waypoint
+  loops while un-alerted; after ~5 s with the player beyond notice range a patroller shrugs
+  (dim gray puff) and returns to its route — generated enemies keep their
+  one-way alert.
 - Golden key glints on the minimap; the portal pings when it opens; objective
   HUD + toasts narrate progression; waystones gong and hold an ember column
   once lit.
@@ -266,6 +280,8 @@ slam: 26-cell knock radius, 1 dmg, ≤12 powder cells popped
 skid: trigger |svx|>1.1 on reversal, 9f · stagger 12f · recoil 5f/7f
 swap draw 12f (gleam f5-7) · fidget arms at 420f idle, routine 90f
 slime windup 7f chase / 12f wander · wounded hop 0.55-0.85x at <40% hp
+patrol: advance <14 cells (slime) / <10 (golem) · de-alert 300f beyond 300 cells
+sequence chime 300+90·step Hz / break 120 Hz saw · emitter rate clamp ≥2f
 bat flare 8f at <64 cells · swoop 12f cap 2.6 · tumble 14f, ~1.2%/f at <40% hp
 player eye seeks threats <80 cells · enemy gaze locks only when alerted
 shake falloff dead at 420 cells · hitstop 3f at ≥8 dmg · heartbeat <25% hp
