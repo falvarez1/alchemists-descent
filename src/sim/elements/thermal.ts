@@ -70,7 +70,7 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
       w.types[ci] = Cell.Steam;
       w.life[ci] = 28;
       w.colors[ci] = steamColor();
-      w.moved[ci] = 1;
+      w.moved[ci] = w.movedTick;
       if (n === Cell.Water && Math.random() < 0.4) {
         w.types[ni] = Cell.Steam;
         w.life[ni] = 24;
@@ -97,12 +97,12 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
     const ty = y + 1;
     if (w.inBounds(tx, ty) && (w.types[w.idx(tx, ty)] === Cell.Empty || isGas(w.types[w.idx(tx, ty)]))) {
       w.swap(x, y, tx, ty);
-      w.moved[w.idx(tx, ty)] = 1;
+      w.moved[w.idx(tx, ty)] = w.movedTick;
       return;
     }
     if (w.inBounds(x, ty) && (w.types[w.idx(x, ty)] === Cell.Empty || isGas(w.types[w.idx(x, ty)]))) {
       w.swap(x, y, x, ty);
-      w.moved[w.idx(x, ty)] = 1;
+      w.moved[w.idx(x, ty)] = w.movedTick;
       return;
     }
   }

@@ -61,6 +61,17 @@ export class Particles implements ParticlesApi {
     }
   }
 
+  /**
+   * O(1) removal: overwrite slot i with the tail and pop. Draw order of
+   * ballistic debris is visually irrelevant, and the backward loop has
+   * already processed the tail element this frame, so nothing is skipped.
+   */
+  private removeAt(i: number): void {
+    const last = this.list.length - 1;
+    if (i !== last) this.list[i] = this.list[last];
+    this.list.pop();
+  }
+
   update(ctx: Ctx): void {
     const world = ctx.world;
     const player = ctx.player;
@@ -81,7 +92,7 @@ export class Particles implements ParticlesApi {
           ctx.state.score += 10;
           ctx.events.emit('scoreChanged', { score: ctx.state.score });
           ctx.audio.coin();
-          this.list.splice(i, 1);
+          this.removeAt(i);
           continue;
         }
       } else {
@@ -94,7 +105,7 @@ export class Particles implements ParticlesApi {
         gy = Math.floor(p.y);
 
       if (!world.inBounds(gx, gy) || p.life <= 0) {
-        this.list.splice(i, 1);
+        this.removeAt(i);
         continue;
       }
 
@@ -104,7 +115,7 @@ export class Particles implements ParticlesApi {
           dy = player.y - 3 - p.y;
         if (dx * dx + dy * dy < 9) {
           ctx.playerCtl.damage(p.hostileDmg, p.vx * 1.5, -1);
-          this.list.splice(i, 1);
+          this.removeAt(i);
           continue;
         }
       }
@@ -125,7 +136,7 @@ export class Particles implements ParticlesApi {
             }
           }
         }
-        this.list.splice(i, 1);
+        this.removeAt(i);
       }
     }
   }

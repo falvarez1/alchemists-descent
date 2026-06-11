@@ -184,7 +184,35 @@ export class Game {
     requestAnimationFrame(this.step);
   }
 
-  private step = (): void => {
+  /** Fixed-timestep accumulator (the game is authored in 60Hz frames). */
+  private lastStepTime = 0;
+  private stepDebt = 0;
+  private static readonly STEP_MS = 1000 / 60;
+
+  /**
+   * FRAME PACING: rAF fires at the monitor's refresh rate, but every timer,
+   * probability, and velocity in this game is a per-60Hz-frame constant. With
+   * no pacing, a 144Hz monitor ran the WORLD 2.4x faster (and burned 2.4x
+   * the CPU). The accumulator runs ticks at 60Hz wall time wherever rAF
+   * lands; at most 2 catch-up ticks so a long hitch slows time instead of
+   * spiraling.
+   */
+  private step = (now: number): void => {
+    requestAnimationFrame(this.step);
+    if (this.lastStepTime === 0) this.lastStepTime = now;
+    this.stepDebt += Math.min(100, now - this.lastStepTime);
+    this.lastStepTime = now;
+    if (this.stepDebt < Game.STEP_MS) return; // high-refresh idle rAF: free
+    let ticks = 0;
+    while (this.stepDebt >= Game.STEP_MS && ticks < 2) {
+      this.stepDebt -= Game.STEP_MS;
+      ticks++;
+      this.tick();
+    }
+    if (this.stepDebt >= Game.STEP_MS) this.stepDebt = 0; // drop unpayable debt
+  };
+
+  private tick = (): void => {
     const ctx = this.ctx;
     const tFrame = performance.now();
     ctx.state.frameCount++;
@@ -238,7 +266,6 @@ export class Game {
     if (ctx.fx.digBeam && ctx.fx.digBeam.life > 0) ctx.fx.digBeam.life--;
 
     this.perfHud.mark('frame', performance.now() - tFrame);
-    requestAnimationFrame(this.step);
   };
 
   /** Build-mode dig/flame streams while the mouse is held (original lines 3250-3262). */

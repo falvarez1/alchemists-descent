@@ -54,11 +54,17 @@ export class Simulation implements SimulationApi {
       if (w.currentRadius >= w.maxRadius) ctx.shockwaves.splice(i, 1);
     }
 
-    for (let x = sim.x0; x < sim.x1; x++) {
-      for (let y = sim.y0; y < sim.y1; y++) {
-        world.moved[x + y * world.width] = 0;
-      }
+    // New substep = new moved-epoch (see World.movedTick). The old code
+    // zeroed every window cell here, column-major, every substep.
+    world.movedTick++;
+    if (world.movedTick > 255) {
+      world.moved.fill(0);
+      world.movedTick = 1;
     }
+    // Hoisted for the hot loop: handlers run inside it, so V8 cannot prove
+    // these fields stable and would reload them per cell otherwise.
+    const movedArr = world.moved;
+    const tick = world.movedTick;
 
     const spanW = sim.x1 - sim.x0;
     for (let y = sim.y1 - 1; y >= sim.y0; y--) {
@@ -66,7 +72,7 @@ export class Simulation implements SimulationApi {
       for (let i = 0; i < spanW; i++) {
         const x = leftToRight ? sim.x0 + i : sim.x1 - 1 - i;
         const ci = x + y * world.width;
-        if (world.moved[ci]) continue;
+        if (movedArr[ci] === tick) continue;
 
         const type = world.types[ci] as Cell;
         if (
@@ -142,10 +148,13 @@ export class Simulation implements SimulationApi {
     for (let y = sim.y1 - 1; y >= sim.y0; y--) {
       for (let x = sim.x0; x < sim.x1; x++) {
         const ci = x + y * world.width;
-        if (world.types[ci] === Cell.Ice && !world.moved[ci]) handleIce(ctx, x, y);
-        if (world.types[ci] === Cell.Vines && !world.moved[ci]) handleVines(ctx, x, y);
-        if (world.types[ci] === Cell.Fungus && !world.moved[ci]) handleFungus(ctx, x, y);
-        if (world.types[ci] === Cell.Moss && !world.moved[ci]) handleMoss(ctx, x, y);
+        // Type check FIRST: these materials are sparse, so the moved-epoch
+        // load short-circuits away for almost every cell.
+        const t2 = world.types[ci];
+        if (t2 === Cell.Ice && movedArr[ci] !== tick) handleIce(ctx, x, y);
+        else if (t2 === Cell.Vines && movedArr[ci] !== tick) handleVines(ctx, x, y);
+        else if (t2 === Cell.Fungus && movedArr[ci] !== tick) handleFungus(ctx, x, y);
+        else if (t2 === Cell.Moss && movedArr[ci] !== tick) handleMoss(ctx, x, y);
       }
     }
   }

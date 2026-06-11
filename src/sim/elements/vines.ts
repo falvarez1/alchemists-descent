@@ -29,7 +29,7 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
         w.types[si] = Cell.Vines;
         w.colors[si] = vineColor();
         w.life[si] = Math.min(130, energy + 45);
-        w.moved[si] = 1;
+        w.moved[si] = w.movedTick;
       } else {
         w.types[si] = Cell.Empty;
         w.colors[si] = EMPTY_COLOR;
@@ -56,7 +56,7 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
     w.colors[si] = vineColor();
     const child = energy - (11 + Math.floor(Math.random() * 12));
     w.life[si] = child > 6 ? child : -1;
-    w.moved[si] = 1;
+    w.moved[si] = w.movedTick;
     energy -= 4;
     w.life[ci] = energy > 6 ? energy : -1;
   };

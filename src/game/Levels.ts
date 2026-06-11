@@ -232,6 +232,13 @@ export class Levels implements LevelsApi {
 
   /** Lazily-restorable blobs for levels saved but not yet revisited this session. */
   private savedBlobs = new Map<string, SavedLevelBlob>();
+  /**
+   * Serialized-blob cache for visited levels. A level only mutates while it
+   * is CURRENT, so every autosave used to re-RLE all visited worlds for
+   * nothing (~120ms hitch by depth 5). Now only the current level pays;
+   * enterLevel invalidates the one that is about to start changing.
+   */
+  private blobCache = new Map<string, SavedLevelBlob>();
 
   saveExpedition(ctx: Ctx): void {
     if (!this.currentId || this.currentId === 'custom') return;
@@ -240,7 +247,16 @@ export class Levels implements LevelsApi {
     const blobs: SavedLevelBlob[] = [];
     for (const [id, rt] of this.levels) {
       if (id === 'custom') continue;
-      blobs.push(this.serializeLevel(id, rt));
+      if (id === this.currentId) {
+        blobs.push(this.serializeLevel(id, rt));
+        continue;
+      }
+      let blob = this.blobCache.get(id);
+      if (!blob) {
+        blob = this.serializeLevel(id, rt);
+        this.blobCache.set(id, blob);
+      }
+      blobs.push(blob);
     }
     // Levels saved earlier but not visited this session keep their old blobs.
     for (const [id, blob] of this.savedBlobs) {
@@ -488,6 +504,9 @@ export class Levels implements LevelsApi {
       curtain.classList.add('visible');
       void curtain.offsetHeight;
     }
+
+    // This level is about to become CURRENT and mutate — its cached blob dies.
+    this.blobCache.delete(id);
 
     let runtime = this.levels.get(id);
     if (runtime) {

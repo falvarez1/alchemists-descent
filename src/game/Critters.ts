@@ -1,4 +1,11 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
+
+/** O(1) removal for the critter pool (backward loops, order-free). */
+function swapRemove<T>(list: T[], i: number): void {
+  const last = list.length - 1;
+  if (i !== last) list[i] = list[last];
+  list.pop();
+}
 import type { Critter, CritterKind, CrittersApi, Ctx } from '@/core/types';
 import { blocksEntity, Cell, isLiquid, isSolid } from '@/sim/CellType';
 import { packRGB, waterColor } from '@/sim/colors';
@@ -52,7 +59,7 @@ export class Critters implements CrittersApi {
         ctx.particles.burst(c.x, c.y, 3, null, () => packRGB(120, 110, 90), 0.9, {
           grav: 0.05,
         });
-        this.list.splice(i, 1);
+        swapRemove(this.list, i);
       }
     }
   }
@@ -85,7 +92,7 @@ export class Critters implements CrittersApi {
         c.y < camY - 160 ||
         c.y > camY + VIEW_H + 160
       )
-        this.list.splice(i, 1);
+        swapRemove(this.list, i);
     }
 
     // A few placement attempts per tick; each spawns at most one critter.
@@ -165,7 +172,7 @@ export class Critters implements CrittersApi {
       const xi = Math.floor(c.x),
         yi = Math.floor(c.y);
       if (!w.inBounds(xi, yi)) {
-        this.list.splice(idx, 1);
+        swapRemove(this.list, idx);
         continue;
       }
       const here = w.types[w.idx(xi, yi)];
@@ -173,7 +180,7 @@ export class Critters implements CrittersApi {
       // The small things die to heat and corrosion like everything else
       if (here === Cell.Fire || here === Cell.Lava || here === Cell.Acid || here === Cell.Toxic) {
         ctx.particles.burst(c.x, c.y, 3, null, () => packRGB(140, 120, 80), 1.0, { grav: 0.04 });
-        this.list.splice(idx, 1);
+        swapRemove(this.list, idx);
         continue;
       }
 
@@ -228,7 +235,7 @@ export class Critters implements CrittersApi {
           if (c.gasp % 22 === 0) c.vy = -1.4 - Math.random();
           if (c.gasp > 260) {
             ctx.particles.burst(c.x, c.y, 4, Cell.Blood, () => packRGB(180, 40, 50), 1.1);
-            this.list.splice(idx, 1);
+            swapRemove(this.list, idx);
             continue;
           }
         }

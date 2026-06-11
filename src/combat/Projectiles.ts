@@ -281,6 +281,13 @@ export class Projectiles implements ProjectilesApi {
 
     const world = ctx.world;
     const projectiles = ctx.projectiles;
+    // O(1) swap-remove: the backward loop already visited the tail, and
+    // projectile identity (WeakMap card marks, black-hole refs) survives.
+    const removeAt = (idx: number): void => {
+      const last = projectiles.length - 1;
+      if (idx !== last) projectiles[idx] = projectiles[last];
+      projectiles.pop();
+    };
     for (let i = projectiles.length - 1; i >= 0; i--) {
       const p = projectiles[i];
       p.life--;
@@ -297,14 +304,14 @@ export class Projectiles implements ProjectilesApi {
       if (p.type === 'blackhole' && p.life <= 0) {
         this.implosionCollapse(ctx, p);
         releaseTriggered(ctx, p);
-        projectiles.splice(i, 1);
+        removeAt(i);
         continue;
       }
 
       if (p.type === 'bomb' && p.life <= 0) {
         ctx.explosions.trigger(p.x, p.y, Math.floor(ctx.params.spells.bomb.explosionRadius!));
         releaseTriggered(ctx, p);
-        projectiles.splice(i, 1);
+        removeAt(i);
         continue;
       }
 
@@ -390,7 +397,7 @@ export class Projectiles implements ProjectilesApi {
                 grav: -0.01,
               });
           }
-          projectiles.splice(i, 1);
+          removeAt(i);
           removed = true;
           break;
         }
@@ -458,7 +465,7 @@ export class Projectiles implements ProjectilesApi {
               ctx.playerCtl.damage(11, p.vx * 1.7, -2.3, 'explosion');
               ctx.explosions.trigger(p.x, p.y, 10);
             }
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
             break;
           }
@@ -495,7 +502,7 @@ export class Projectiles implements ProjectilesApi {
                 ctx.explosions.trigger(p.x, p.y, 40);
               }
               releaseTriggered(ctx, p);
-              projectiles.splice(i, 1);
+              removeAt(i);
               hit = true;
               break;
             }
@@ -578,36 +585,36 @@ export class Projectiles implements ProjectilesApi {
               grav: 0.06,
             });
             ctx.audio.tone(1600, 160, 0.14, 'triangle', 0.1);
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
           } else if (p.type === 'pellet') {
             ctx.explosions.trigger(gx, gy, 6);
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
           } else if (p.type === 'iceshard') {
             freezeSplash(ctx, gx, gy, 7);
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
           } else if (p.type === 'wisp') {
             ctx.explosions.trigger(gx, gy, 5);
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
           } else if (p.type === 'meteor') {
             ctx.explosions.trigger(gx, gy, 40);
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
           } else if (p.type === 'acidglob') {
             splashLiquid(ctx, gx, gy, Cell.Acid, acidColor, 3);
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
           } else if (p.type === 'bolt') {
             ctx.explosions.trigger(gx, gy, ctx.params.spells.bolt.explosionRadius!);
             world.charge[world.idx(gx, gy)] = 20;
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
           } else if (p.type === 'fireball') {
             ctx.explosions.trigger(gx, gy, 10);
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
           } else if (p.type === 'frostbolt') {
             // No blast — the impact frost-locks nearby water into real ice
@@ -628,7 +635,7 @@ export class Projectiles implements ProjectilesApi {
             }
             ctx.particles.burst(gx, gy, 10, null, iceColor, 1.3, { glow: 1.5, grav: 0.02 });
             ctx.audio.tone(900, 400, 0.1, 'sine', 0.1);
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
           } else if (p.type === 'warp') {
             if (!ctx.spells.executeWarp(p))
@@ -636,7 +643,7 @@ export class Projectiles implements ProjectilesApi {
                 glow: 2.2,
                 grav: -0.01,
               });
-            projectiles.splice(i, 1);
+            removeAt(i);
             removed = true;
           } else if (p.type === 'bomb') {
             p.vx *= -0.3;
@@ -668,7 +675,7 @@ export class Projectiles implements ProjectilesApi {
         } else if (p.type === 'meteor') {
           ctx.explosions.trigger(p.x, p.y, 40);
         }
-        projectiles.splice(i, 1);
+        removeAt(i);
         continue;
       }
 

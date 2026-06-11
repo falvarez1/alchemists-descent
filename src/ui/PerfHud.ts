@@ -83,11 +83,26 @@ export class PerfHud {
     if (this._visible) this.refresh();
   }
 
+  /** Per-frame scratch for the profiling hook (no cost unless recording). */
+  private pending: Record<PerfPhase, number> = { sim: 0, entities: 0, render: 0, frame: 0 };
+
   mark(phase: PerfPhase, ms: number): void {
     const prev = this.ema[phase];
     this.ema[phase] = prev === 0 ? ms : prev + (ms - prev) * EMA_ALPHA;
+    this.pending[phase] = ms;
     if (phase !== 'frame') return;
     this.frameMarks++;
+    // Profiling hook: scripts set window.__perfRecord and read __perfSamples —
+    // raw per-frame bucket times, no EMA smoothing, no overhead when off.
+    const w = window as unknown as {
+      __perfRecord?: boolean;
+      __perfSamples?: Array<Record<PerfPhase, number>>;
+    };
+    if (w.__perfRecord) {
+      (w.__perfSamples ??= []).push({ ...this.pending });
+      this.pending.sim = 0;
+      this.pending.entities = 0;
+    }
     if (this._visible && this.frameMarks % 10 === 0) this.refresh();
   }
 

@@ -29,7 +29,16 @@ export class Renderer implements RenderTarget {
 
   constructor(holder: HTMLElement) {
     // ===================== Three.js WebGL Setup =====================
-    this.renderer = new THREE.WebGLRenderer({ antialias: false });
+    // A 2D quad pipeline needs no depth/stencil/alpha on the default
+    // framebuffer (the composer owns its own targets), and the discrete GPU
+    // is worth asking for on dual-GPU laptops.
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      depth: false,
+      stencil: false,
+      alpha: false,
+      powerPreference: 'high-performance',
+    });
     this.renderer.setSize(RENDER_W, RENDER_H);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;

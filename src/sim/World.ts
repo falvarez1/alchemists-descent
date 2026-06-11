@@ -68,6 +68,14 @@ export class World {
     this.charge[i] = 0;
   }
 
+  /**
+   * Epoch stamp for the moved plane: instead of zeroing ~250k window cells
+   * every substep, the substep increments this tick and "moved this substep"
+   * means moved[i] === movedTick. One real fill(0) every 255 substeps when
+   * the Uint8 wraps. Same semantics, none of the memory traffic.
+   */
+  movedTick = 1;
+
   /** Swap the full state of two cells and flag both as moved this tick. */
   swap(x1: number, y1: number, x2: number, y2: number): void {
     const a = x1 + y1 * this.width;
@@ -84,8 +92,8 @@ export class World {
     const q = this.charge[a];
     this.charge[a] = this.charge[b];
     this.charge[b] = q;
-    this.moved[a] = 1;
-    this.moved[b] = 1;
+    this.moved[a] = this.movedTick;
+    this.moved[b] = this.movedTick;
   }
 
   /** Wipe the whole grid back to empty space. */
