@@ -11,8 +11,11 @@ import {
 import type { EditorDocument, EditorObject, EditorObjectKind } from '@/builder/document';
 import {
   floodFill,
+  magicRegion,
   PatchRecorder,
+  rasterizePolygon,
   replaceMaterial,
+  smoothDisc,
   stampEllipse,
   stampLine,
   stampRect,
@@ -114,6 +117,67 @@ describe('builder terrain tools', () => {
     const rec2 = new PatchRecorder(w2);
     expect(floodFill(w2, rec2, 103, 103, Cell.Water, 10)).toBe(-1);
     expect(w2.types[w2.idx(103, 103)]).toBe(Cell.Empty); // nothing written
+  });
+
+  it('smooth erodes lone spurs and fills lone gaps', () => {
+    const w = new World();
+    w.types.fill(Cell.Wall);
+    carveBox(w, 100, 100, 140, 140);
+    w.types[w.idx(120, 120)] = Cell.Wall; // a lone floating spur in open air
+    w.types[w.idx(90, 120)] = Cell.Empty; // a lone 1-cell pit inside rock
+    const rec = new PatchRecorder(w);
+    smoothDisc(w, rec, 120, 120, 6);
+    smoothDisc(w, rec, 90, 120, 6);
+    expect(w.types[w.idx(120, 120)]).toBe(Cell.Empty); // spur eroded
+    expect(w.types[w.idx(90, 120)]).toBe(Cell.Wall); // pit filled
+  });
+
+  it('rasterizes polygons with even-odd fill', () => {
+    // a right triangle: (10,10) (30,10) (10,30)
+    const result = rasterizePolygon([
+      [10, 10],
+      [30, 10],
+      [10, 30],
+    ]);
+    expect(result).not.toBeNull();
+    const { region, mask } = result!;
+    const rw = region.x1 - region.x0 + 1;
+    const at = (x: number, y: number) => mask[x - region.x0 + (y - region.y0) * rw];
+    expect(at(12, 12)).toBe(1); // inside, near the right-angle corner
+    expect(at(28, 28)).toBe(0); // outside the hypotenuse
+    let cells = 0;
+    for (const v of mask) cells += v;
+    expect(cells).toBeGreaterThan(120); // ~half the 21x21 bbox
+    expect(cells).toBeLessThan(280);
+  });
+
+  it('magic region selects exactly the connected cavern', () => {
+    const w = new World();
+    w.types.fill(Cell.Wall);
+    carveBox(w, 100, 100, 119, 109); // a 20x10 sealed room
+    carveBox(w, 300, 100, 309, 109); // an unrelated room far away
+    const found = magicRegion(w, 105, 105, 100000);
+    expect(found).not.toBeNull();
+    expect(found!.cells).toBe(200);
+    expect(found!.region).toEqual({ x0: 100, y0: 100, x1: 119, y1: 109 });
+    expect(magicRegion(w, 50, 50, 100000)).toBeNull(); // clicked solid rock
+  });
+
+  it('mask-gated replace only touches cells inside the mask', () => {
+    const w = new World();
+    for (let x = 10; x < 40; x++) w.types[w.idx(x, 20)] = Cell.Wood;
+    const region = { x0: 10, y0: 15, x1: 39, y1: 25 };
+    const rw = region.x1 - region.x0 + 1;
+    const mask = new Uint8Array(rw * (region.y1 - region.y0 + 1));
+    // mask covers only x 10..19
+    for (let y = region.y0; y <= region.y1; y++) {
+      for (let x = 10; x <= 19; x++) mask[x - region.x0 + (y - region.y0) * rw] = 1;
+    }
+    const rec = new PatchRecorder(w);
+    const n = replaceMaterial(w, rec, 12, 20, Cell.Stone, region, 99999, mask);
+    expect(n).toBe(10);
+    expect(w.types[w.idx(15, 20)]).toBe(Cell.Stone);
+    expect(w.types[w.idx(25, 20)]).toBe(Cell.Wood); // in region, outside mask
   });
 
   it('replace material honors the region bounds', () => {

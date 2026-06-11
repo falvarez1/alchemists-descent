@@ -19,6 +19,8 @@ export interface PassInput {
   rec: PatchRecorder;
   rng: Rng;
   region: Region;
+  /** True when (x, y) is inside the target (bbox + optional polygon/magic mask). */
+  inRegion(x: number, y: number): boolean;
   /** 0..1 strength/coverage knob. */
   density: number;
   /** Current sandbox material, for passes that paint one. */
@@ -62,7 +64,7 @@ function cavesPass(p: PassInput): PassResult {
     for (let x = 0; x < w; x++) {
       const t = world.types[world.idx(region.x0 + x, region.y0 + y)];
       const i = x + y * w;
-      if (!remodelable(t)) {
+      if (!p.inRegion(region.x0 + x, region.y0 + y) || !remodelable(t)) {
         locked[i] = 1;
         grid[i] = blocksEntity(t) ? 1 : 0;
       } else {
@@ -124,7 +126,7 @@ function veinsPass(p: PassInput): PassResult {
     for (let t = 0; t < 60; t++) {
       const x = region.x0 + rng.int(region.x1 - region.x0 + 1);
       const y = region.y0 + rng.int(region.y1 - region.y0 + 1);
-      if (isSolid(world.types[world.idx(x, y)])) {
+      if (p.inRegion(x, y) && isSolid(world.types[world.idx(x, y)])) {
         sx = x;
         sy = y;
         break;
@@ -144,7 +146,7 @@ function veinsPass(p: PassInput): PassResult {
       if (ix < region.x0 || ix > region.x1 || iy < region.y0 || iy > region.y1) break;
       for (let dy = 0; dy <= (rng.next() < 0.4 ? 1 : 0); dy++) {
         for (let dx = 0; dx <= (rng.next() < 0.4 ? 1 : 0); dx++) {
-          if (isSolid(world.types[world.idx(ix + dx, iy + dy)])) {
+          if (p.inRegion(ix + dx, iy + dy) && isSolid(world.types[world.idx(ix + dx, iy + dy)])) {
             writeCell(world, rec, ix + dx, iy + dy, material);
             placed++;
           }
@@ -165,7 +167,7 @@ function pocketsPass(p: PassInput): PassResult {
     for (let t = 0; t < 60; t++) {
       const x = region.x0 + rng.int(region.x1 - region.x0 + 1);
       const y = region.y0 + rng.int(region.y1 - region.y0 + 1);
-      if (isSolid(world.types[world.idx(x, y)])) {
+      if (p.inRegion(x, y) && isSolid(world.types[world.idx(x, y)])) {
         cx = x;
         cy = y;
         break;
@@ -180,7 +182,7 @@ function pocketsPass(p: PassInput): PassResult {
         const X = cx + dx,
           Y = cy + dy;
         if (X < region.x0 || X > region.x1 || Y < region.y0 || Y > region.y1) continue;
-        if (isSolid(world.types[world.idx(X, Y)])) {
+        if (p.inRegion(X, Y) && isSolid(world.types[world.idx(X, Y)])) {
           writeCell(world, rec, X, Y, material);
           placed++;
         }
@@ -197,7 +199,7 @@ function vegetationPass(p: PassInput): PassResult {
   for (let y = Math.max(1, region.y0); y <= Math.min(world.height - 2, region.y1); y++) {
     for (let x = Math.max(1, region.x0); x <= Math.min(world.width - 2, region.x1); x++) {
       const i = world.idx(x, y);
-      if (world.types[i] !== Cell.Empty) continue;
+      if (!p.inRegion(x, y) || world.types[i] !== Cell.Empty) continue;
       // moss carpets sunlit floors
       const below = world.types[world.idx(x, y + 1)];
       if ((below === Cell.Wall || below === Cell.Stone) && rng.next() < density * 0.4) {
@@ -226,7 +228,7 @@ function scatterPass(p: PassInput): PassResult {
   let placed = 0;
   for (let y = Math.max(1, region.y0); y <= Math.min(world.height - 2, region.y1); y++) {
     for (let x = Math.max(1, region.x0); x <= Math.min(world.width - 2, region.x1); x++) {
-      if (world.types[world.idx(x, y)] !== Cell.Empty) continue;
+      if (!p.inRegion(x, y) || world.types[world.idx(x, y)] !== Cell.Empty) continue;
       if (!blocksEntity(world.types[world.idx(x, y + 1)])) continue;
       if (rng.next() < density * 0.18) {
         writeCell(world, rec, x, y, material);
@@ -238,7 +240,13 @@ function scatterPass(p: PassInput): PassResult {
 }
 
 /** Floor spots with standing headroom, spaced out so spawns don't clump. */
-function floorSpots(world: World, region: Region, rng: Rng, spacing: number): Array<[number, number]> {
+function floorSpots(
+  world: World,
+  region: Region,
+  rng: Rng,
+  spacing: number,
+  inRegion: (x: number, y: number) => boolean,
+): Array<[number, number]> {
   const found: Array<[number, number]> = [];
   const xs: number[] = [];
   for (let x = Math.max(4, region.x0); x <= Math.min(world.width - 5, region.x1); x++) xs.push(x);
@@ -249,6 +257,7 @@ function floorSpots(world: World, region: Region, rng: Rng, spacing: number): Ar
   }
   for (const x of xs) {
     for (let y = Math.max(12, region.y0 + 10); y <= Math.min(world.height - 3, region.y1); y++) {
+      if (!inRegion(x, y)) continue;
       if (!blocksEntity(world.types[world.idx(x, y + 1)])) continue;
       if (world.types[world.idx(x, y)] !== Cell.Empty) continue;
       let clear = true;
@@ -272,7 +281,7 @@ function floorSpots(world: World, region: Region, rng: Rng, spacing: number): Ar
 
 function enemiesPass(p: PassInput): PassResult {
   const { world, rng, region, density } = p;
-  const spots = floorSpots(world, region, rng, 40);
+  const spots = floorSpots(world, region, rng, 40, p.inRegion);
   const want = Math.max(1, Math.min(30, Math.round((area(region) / 30000) * (0.5 + density * 3))));
   const kinds: Array<[string, number]> = [
     ['slime', 3],
@@ -300,7 +309,7 @@ function enemiesPass(p: PassInput): PassResult {
 
 function pickupsPass(p: PassInput): PassResult {
   const { world, rng, region, density } = p;
-  const spots = floorSpots(world, region, rng, 55);
+  const spots = floorSpots(world, region, rng, 55, p.inRegion);
   const want = Math.max(1, Math.min(20, Math.round((area(region) / 40000) * (0.5 + density * 3))));
   const objects: PassResult['objects'] = [];
   for (const [x, y] of spots.slice(0, want)) {
@@ -339,6 +348,12 @@ export function runPass(
   region: Region,
   density: number,
   material: number,
+  mask: Uint8Array | null = null,
 ): PassResult {
-  return def.run({ world, rec, rng: new Rng(seed >>> 0), region, density, material });
+  const rw = region.x1 - region.x0 + 1;
+  const inRegion = (x: number, y: number): boolean => {
+    if (x < region.x0 || x > region.x1 || y < region.y0 || y > region.y1) return false;
+    return !mask || mask[x - region.x0 + (y - region.y0) * rw] === 1;
+  };
+  return def.run({ world, rec, rng: new Rng(seed >>> 0), region, inRegion, density, material });
 }

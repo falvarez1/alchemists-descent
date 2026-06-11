@@ -365,6 +365,10 @@ const doorSel = await page.evaluate(() => {
   return true;
 });
 check('returned to builder with doc intact', doorSel === true);
+// the camera parked at the spawn — re-center so the door's screen position
+// isn't underneath the floating inspector panel
+await page.evaluate(() => window.__game.ctx.camera.snapTo(600, 500));
+await page.waitForTimeout(120);
 await page.evaluate(() => {
   // flip the door's logic param directly through the inspector path
   const markers = document.querySelectorAll('.b-marker.k-door');

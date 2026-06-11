@@ -19,6 +19,35 @@ export class Toolbar {
     this.wireToolButtons();
     this.wireWorldGen();
     this.wireEnemyDroppers();
+    this.wireFilter();
+  }
+
+  /** Live tool filter: hides non-matching buttons and emptied section titles. */
+  private wireFilter(): void {
+    const filter = document.getElementById('toolbar-filter') as HTMLInputElement | null;
+    const bar = document.getElementById('left-toolbar');
+    if (!filter || !bar) return;
+    filter.addEventListener('input', () => {
+      const q = filter.value.trim().toLowerCase();
+      let title: HTMLElement | null = null;
+      let titleHasHit = false;
+      const flushTitle = (): void => {
+        if (title) title.style.display = titleHasHit ? '' : 'none';
+      };
+      for (const el of Array.from(bar.children) as HTMLElement[]) {
+        if (el.id === 'toolbar-filter' || el.id === 'level-import') continue; // the input stays; the file input stays hidden
+        if (el.classList.contains('section-title')) {
+          flushTitle();
+          title = el;
+          titleHasHit = false;
+          continue;
+        }
+        const hit = q === '' || (el.textContent ?? '').toLowerCase().includes(q);
+        el.style.display = hit ? '' : 'none';
+        if (hit) titleHasHit = true;
+      }
+      flushTitle();
+    });
   }
 
   injectToolbarIcons(): void {

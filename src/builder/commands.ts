@@ -161,6 +161,22 @@ export function paintTerrainCmd(world: World, before: CellPatch, after: CellPatc
   };
 }
 
+/** Undoable group assignment (Ctrl+G / Ctrl+Shift+G). */
+export function setObjectGroupCmd(obj: EditorObject, group: string | undefined): Command {
+  const prev = obj.group;
+  return {
+    label: group ? 'group' : 'ungroup',
+    do: () => {
+      if (group === undefined) delete obj.group;
+      else obj.group = group;
+    },
+    undo: () => {
+      if (prev === undefined) delete obj.group;
+      else obj.group = prev;
+    },
+  };
+}
+
 /** Undoable locked/hidden flips so object flags match the light commands. */
 export function setObjectFlagCmd(
   obj: EditorObject,

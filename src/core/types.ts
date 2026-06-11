@@ -186,6 +186,10 @@ export interface Enemy {
   swoop?: number;
   /** Wounded bat: frames of flutter-tumble (the wings failing). */
   tumble?: number;
+  /** Builder-authored patrol waypoints: un-alerted walkers/hoppers loop
+   *  these instead of free-wandering (generated levels never set this). */
+  patrol?: Array<[number, number]>;
+  patrolIdx?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
@@ -1092,6 +1096,8 @@ export interface LevelRuntime {
   boss?: { x: number; y: number } | null;
   /** Designer-placed lights from a compiled Builder document (custom playtests). */
   authoredLights?: AuthoredLight[];
+  /** Builder hazard emitters: drip a real cell every `rate` frames. */
+  emitters?: Array<{ x: number; y: number; cell: number; rate: number }>;
 }
 
 export interface LevelsApi {

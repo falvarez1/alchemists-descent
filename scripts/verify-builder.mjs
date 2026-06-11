@@ -163,7 +163,7 @@ await page.mouse.click(ed.x, ed.y, { button: 'right' });
 await page.waitForTimeout(80);
 const picked = await page.evaluate(() => window.__game.ctx.state.currentElement);
 check('RMB eyedropper picks the cell under the cursor', picked === 0, `element ${picked}`);
-await page.click('.tool-btn[data-mode="element"][data-id="3"]'); // Wall
+await page.click('.bp-swatch[data-el="3"]'); // Wall (the Builder's own material grid)
 const wallsIn = () =>
   page.evaluate(() => {
     const w = window.__game.ctx.world;

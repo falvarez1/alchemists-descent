@@ -1,7 +1,7 @@
 import type { Ctx, Mechanism, MechanismsApi } from '@/core/types';
 import { hash2 } from '@/core/math';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
-import { EMPTY_COLOR, fireColor, packRGB, stoneColor } from '@/sim/colors';
+import { COLOR_FN, EMPTY_COLOR, fireColor, packRGB, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
 
 /**
@@ -578,6 +578,22 @@ export class Mechanisms implements MechanismsApi {
         }
       }
       if (v.door.length === 0) ctx.audio.tone(520, 300, 0.3, 'triangle', 0.12);
+    }
+
+    // Builder hazard emitters: drip ONE real cell on their cadence — the
+    // grid does the rest (lava pools, acid eats, water floods).
+    if (runtime.emitters) {
+      for (const em of runtime.emitters) {
+        if (ctx.state.frameCount % em.rate !== 0) continue;
+        if (!world.inBounds(em.x, em.y)) continue;
+        const i = world.idx(em.x, em.y);
+        if (world.types[i] !== Cell.Empty) continue;
+        world.types[i] = em.cell;
+        const fn = COLOR_FN[em.cell];
+        world.colors[i] = fn ? fn() : EMPTY_COLOR;
+        if (em.cell === Cell.Fire) world.life[i] = 15 + Math.floor(Math.random() * 30);
+        else if (em.cell === Cell.Smoke) world.life[i] = 30 + Math.floor(Math.random() * 40);
+      }
     }
   }
 

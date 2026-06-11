@@ -23,7 +23,21 @@ import {
 } from '@/builder/stamps';
 import type { CellSetter } from '@/builder/stamps';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
+import { Cell } from '@/sim/CellType';
 import { HEIGHT } from '@/config/constants';
+
+/** Hazard emitter material names -> cell ids (the inspector's choices). */
+export const EMITTER_CELLS: Record<string, number> = {
+  water: Cell.Water,
+  oil: Cell.Oil,
+  acid: Cell.Acid,
+  lava: Cell.Lava,
+  fire: Cell.Fire,
+  ember: Cell.Ember,
+  sand: Cell.Sand,
+  snow: Cell.Snow,
+  smoke: Cell.Smoke,
+};
 
 /**
  * Playtest compiler (docs/BUILDER.md Phase 9): EditorDocument -> custom
@@ -50,6 +64,11 @@ export function compileAndPlaytest(
   //    the layer itself is untouched by whatever the playtest does to cells).
   if (doc.world) applyWorldLayer(ctx, doc.world);
   ctx.state.currentBiome = doc.biome;
+  // mood: the document may own the ambient light level for its playtest
+  // (the Builder snapshots and restores the global on return)
+  if (doc.mood && doc.mood.ambient !== null && Number.isFinite(doc.mood.ambient)) {
+    ctx.params.global.ambient = doc.mood.ambient;
+  }
 
   // 2) Fresh combat state, then wrap the world as the custom runtime.
   ctx.enemies.length = 0;
@@ -99,6 +118,22 @@ export function compileAndPlaytest(
         e.x = ox;
         e.y = oy;
       }
+      if (e && Array.isArray(o.params.patrol) && (o.params.patrol as unknown[]).length > 0) {
+        e.patrol = (o.params.patrol as Array<[number, number]>).map(([px, py]) => [
+          Math.floor(px),
+          Math.floor(py),
+        ]);
+        e.patrolIdx = 0;
+      }
+    } else if (o.kind === 'hazardEmitter') {
+      (runtime.emitters ??= []).push({
+        x: ox,
+        y: oy,
+        cell: EMITTER_CELLS[String(o.params.cell ?? 'water')] ?? Cell.Water,
+        rate: Math.max(2, paramNum(o, 'rate', 30)),
+      });
+    } else if (o.kind === 'decor') {
+      // designer annotation only — never compiles
     } else if (o.kind === 'pickup') {
       const kind = (o.params.kind as PickupKind) ?? 'goldpile';
       runtime.pickups.push(

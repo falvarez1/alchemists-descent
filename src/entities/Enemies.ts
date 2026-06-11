@@ -445,6 +445,13 @@ export class Enemies implements EnemyControlApi {
               if (targetAlive && pDist < 260) {
                 e.vx = Math.sign(pdx) * (1.8 + Math.random() * 0.9) * hurtK;
                 e.vy = (-3.1 - Math.random() * 1.0) * hurtK;
+              } else if (!e.alerted && e.patrol && e.patrol.length > 0) {
+                // PATROL (Builder-authored): hop along the waypoint loop
+                const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
+                if (Math.abs(wp[0] - e.x) < 14)
+                  e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
+                e.vx = (Math.sign(wp[0] - e.x) || 1) * (1.5 + Math.random() * 0.7) * hurtK;
+                e.vy = (-2.6 - Math.random() * 0.6) * hurtK;
               } else {
                 e.vx = (Math.random() - 0.5) * 2.8 * hurtK;
                 e.vy = -2.4 * hurtK;
@@ -882,7 +889,12 @@ export class Enemies implements EnemyControlApi {
         e.vy += 0.33;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
         if (e.punching !== undefined && e.punching > 0) e.punching--;
-        if (targetAlive && e.timer % 3 === 0) {
+        if (!e.alerted && e.patrol && e.patrol.length > 0) {
+          // PATROL (Builder-authored): pace the waypoint loop until alerted
+          const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
+          if (Math.abs(wp[0] - e.x) < 10) e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
+          else if (e.timer % 3 === 0) e.vx += Math.sign(wp[0] - e.x) * 0.1;
+        } else if (targetAlive && e.timer % 3 === 0) {
           e.vx += Math.sign(pdx) * 0.12;
         }
         e.vx = clamp(e.vx, -0.78, 0.78);

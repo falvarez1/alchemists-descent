@@ -47,6 +47,8 @@ export interface EditorObject {
   rotation: 0 | 90 | 180 | 270;
   locked: boolean;
   hidden: boolean;
+  /** Group membership: selecting one member selects the whole group. */
+  group?: string;
   params: Record<string, unknown>;
 }
 
@@ -100,6 +102,9 @@ export interface EditorDocument {
   lights: EditorLight[];
   proceduralHistory: ProceduralPass[];
   validation: { at: string; errors: number; warnings: number } | null;
+  /** Aesthetics metadata: ambient override (null = game default) and a
+   *  free-form ambience tag. Compiled playtests apply the ambient. */
+  mood?: { ambient: number | null; ambience: string };
 }
 
 let idCounter = 0;
@@ -163,6 +168,7 @@ export function createEmptyDocument(name: string, biome: BiomeId): EditorDocumen
     lights: [],
     proceduralHistory: [],
     validation: null,
+    mood: { ambient: null, ambience: '' },
   };
 }
 
@@ -272,6 +278,7 @@ export function sanitizeImportedDoc(parsed: unknown): EditorDocument | null {
   doc.lights = Array.isArray(doc.lights) ? doc.lights : [];
   doc.proceduralHistory = Array.isArray(doc.proceduralHistory) ? doc.proceduralHistory : [];
   doc.validation = doc.validation ?? null;
+  doc.mood = doc.mood && typeof doc.mood === 'object' ? doc.mood : { ambient: null, ambience: '' };
   if (doc.world) {
     if (typeof doc.world.rle !== 'string') return null;
     if (doc.size.w !== WIDTH || doc.size.h !== HEIGHT) return null;

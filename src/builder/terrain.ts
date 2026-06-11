@@ -1,5 +1,5 @@
 import type { World } from '@/sim/World';
-import { Cell } from '@/sim/CellType';
+import { blocksEntity, Cell, isGas } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import type { CellPatch } from '@/builder/commands';
 
@@ -228,8 +228,9 @@ export function floodFill(
 
 /**
  * Replace every cell of the material under (x, y) with `type`, inside the
- * region (or the whole world when region is null). Counted before written;
- * -1 if over the cap (nothing written).
+ * region (or the whole world when region is null; a mask narrows the region
+ * to a polygon/connected shape). Counted before written; -1 if over the cap
+ * (nothing written).
  */
 export function replaceMaterial(
   w: World,
@@ -239,6 +240,7 @@ export function replaceMaterial(
   type: number,
   region: Region | null,
   cap: number,
+  mask: Uint8Array | null = null,
 ): number {
   if (!w.inBounds(x, y)) return 0;
   const from = w.types[w.idx(x, y)];
@@ -247,17 +249,196 @@ export function replaceMaterial(
   const y0 = region ? Math.max(0, region.y0) : 0;
   const x1 = region ? Math.min(w.width - 1, region.x1) : w.width - 1;
   const y1 = region ? Math.min(w.height - 1, region.y1) : w.height - 1;
+  const rw = region ? region.x1 - region.x0 + 1 : 0;
+  const inMask = (xx: number, yy: number): boolean =>
+    !mask || !region || mask[xx - region.x0 + (yy - region.y0) * rw] === 1;
   let count = 0;
   for (let yy = y0; yy <= y1; yy++) {
     const row = yy * w.width;
     for (let xx = x0; xx <= x1; xx++) {
-      if (w.types[row + xx] === from && ++count > cap) return -1;
+      if (w.types[row + xx] === from && inMask(xx, yy) && ++count > cap) return -1;
     }
   }
   for (let yy = y0; yy <= y1; yy++) {
     for (let xx = x0; xx <= x1; xx++) {
-      if (w.types[w.idx(xx, yy)] === from) writeCell(w, rec, xx, yy, type);
+      if (w.types[w.idx(xx, yy)] === from && inMask(xx, yy)) writeCell(w, rec, xx, yy, type);
     }
   }
   return count;
+}
+
+/**
+ * Majority-rule smoothing over a brush disc: lone spurs erode, pits and
+ * notches fill with the most common neighboring solid. One application per
+ * stamped point; decisions are computed before any write so the pass can't
+ * feed on itself within one disc.
+ */
+export function smoothDisc(w: World, rec: PatchRecorder, cx: number, cy: number, r: number): void {
+  const writes: Array<[number, number, number]> = [];
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy > r * r) continue;
+      const x = cx + dx,
+        y = cy + dy;
+      if (x < 1 || y < 1 || x >= w.width - 1 || y >= w.height - 1) continue;
+      const self = w.types[w.idx(x, y)];
+      // liquids and authored exotics are not the smoother's business
+      if (!(self === Cell.Empty || isGas(self) || blocksEntity(self))) continue;
+      let solid = 0;
+      const counts = new Map<number, number>();
+      for (let ny = -1; ny <= 1; ny++) {
+        for (let nx = -1; nx <= 1; nx++) {
+          if (nx === 0 && ny === 0) continue;
+          const t = w.types[w.idx(x + nx, y + ny)];
+          if (blocksEntity(t)) {
+            solid++;
+            counts.set(t, (counts.get(t) ?? 0) + 1);
+          }
+        }
+      }
+      if (solid >= 5 && !blocksEntity(self)) {
+        let best = Cell.Wall as number,
+          bestN = 0;
+        for (const [t, n] of counts) {
+          if (n > bestN) {
+            best = t;
+            bestN = n;
+          }
+        }
+        writes.push([x, y, best]);
+      } else if (solid <= 2 && blocksEntity(self)) {
+        writes.push([x, y, Cell.Empty]);
+      }
+    }
+  }
+  for (const [x, y, t] of writes) writeCell(w, rec, x, y, t);
+}
+
+/** Jitter the solid/air boundary inside the disc — hand-carved walls stop
+ *  looking like CAD. Flips ~1/3 of boundary cells per application. */
+export function roughenDisc(w: World, rec: PatchRecorder, cx: number, cy: number, r: number): void {
+  const writes: Array<[number, number, number]> = [];
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy > r * r) continue;
+      const x = cx + dx,
+        y = cy + dy;
+      if (x < 1 || y < 1 || x >= w.width - 1 || y >= w.height - 1) continue;
+      const self = w.types[w.idx(x, y)];
+      const selfSolid = blocksEntity(self);
+      if (!selfSolid && self !== Cell.Empty) continue;
+      let solidNeighbor = 0;
+      let sampleType: number = Cell.Wall;
+      for (const [nx, ny] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const t = w.types[w.idx(x + nx, y + ny)];
+        if (blocksEntity(t)) {
+          solidNeighbor++;
+          sampleType = t;
+        }
+      }
+      const onBoundary = selfSolid ? solidNeighbor < 4 : solidNeighbor > 0;
+      if (!onBoundary || Math.random() > 0.33) continue;
+      writes.push([x, y, selfSolid ? Cell.Empty : sampleType]);
+    }
+  }
+  for (const [x, y, t] of writes) writeCell(w, rec, x, y, t);
+}
+
+/** Even-odd scanline rasterization of a closed polygon into a bbox mask. */
+export function rasterizePolygon(
+  points: Array<[number, number]>,
+): { region: Region; mask: Uint8Array } | null {
+  if (points.length < 3) return null;
+  let x0 = Infinity,
+    y0 = Infinity,
+    x1 = -Infinity,
+    y1 = -Infinity;
+  for (const [px, py] of points) {
+    x0 = Math.min(x0, Math.floor(px));
+    y0 = Math.min(y0, Math.floor(py));
+    x1 = Math.max(x1, Math.floor(px));
+    y1 = Math.max(y1, Math.floor(py));
+  }
+  const rw = x1 - x0 + 1,
+    rh = y1 - y0 + 1;
+  if (rw < 2 || rh < 2) return null;
+  const mask = new Uint8Array(rw * rh);
+  for (let y = y0; y <= y1; y++) {
+    const xs: number[] = [];
+    for (let n = 0; n < points.length; n++) {
+      const [ax, ay] = points[n];
+      const [bx, by] = points[(n + 1) % points.length];
+      if (ay <= y + 0.5 === by <= y + 0.5) continue; // edge doesn't cross this scanline
+      xs.push(ax + ((y + 0.5 - ay) / (by - ay)) * (bx - ax));
+    }
+    xs.sort((a, b) => a - b);
+    for (let n = 0; n + 1 < xs.length; n += 2) {
+      const sx = Math.max(x0, Math.ceil(xs[n]));
+      const ex = Math.min(x1, Math.floor(xs[n + 1]));
+      for (let x = sx; x <= ex; x++) mask[x - x0 + (y - y0) * rw] = 1;
+    }
+  }
+  return { region: { x0, y0, x1, y1 }, mask };
+}
+
+/**
+ * "Magic" region: the connected OPEN area under the click (BFS over
+ * non-blocking cells) as a bbox + mask — "run this pass over this cavern".
+ * Null when the click is inside solid or the area exceeds the cap.
+ */
+export function magicRegion(
+  w: World,
+  x: number,
+  y: number,
+  cap: number,
+): { region: Region; mask: Uint8Array; cells: number } | null {
+  if (!w.inBounds(x, y) || blocksEntity(w.types[w.idx(x, y)])) return null;
+  const seen = new Set<number>();
+  const stack = [w.idx(x, y)];
+  seen.add(stack[0]);
+  const found: number[] = [];
+  while (stack.length > 0) {
+    const i = stack.pop()!;
+    found.push(i);
+    if (found.length > cap) return null;
+    const ix = i % w.width,
+      iy = (i / w.width) | 0;
+    for (const [nx, ny] of [
+      [ix + 1, iy],
+      [ix - 1, iy],
+      [ix, iy + 1],
+      [ix, iy - 1],
+    ]) {
+      if (nx < 1 || ny < 1 || nx >= w.width - 1 || ny >= w.height - 1) continue;
+      const ni = nx + ny * w.width;
+      if (seen.has(ni) || blocksEntity(w.types[ni])) continue;
+      seen.add(ni);
+      stack.push(ni);
+    }
+  }
+  let x0 = Infinity,
+    y0 = Infinity,
+    x1 = -Infinity,
+    y1 = -Infinity;
+  for (const i of found) {
+    const ix = i % w.width,
+      iy = (i / w.width) | 0;
+    x0 = Math.min(x0, ix);
+    y0 = Math.min(y0, iy);
+    x1 = Math.max(x1, ix);
+    y1 = Math.max(y1, iy);
+  }
+  const rw = x1 - x0 + 1;
+  const mask = new Uint8Array(rw * (y1 - y0 + 1));
+  for (const i of found) {
+    const ix = i % w.width,
+      iy = (i / w.width) | 0;
+    mask[ix - x0 + (iy - y0) * rw] = 1;
+  }
+  return { region: { x0, y0, x1, y1 }, mask, cells: found.length };
 }

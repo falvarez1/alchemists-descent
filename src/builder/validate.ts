@@ -440,11 +440,14 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     if (blocked) push('error', 'Spawn is embedded in blocking cells', s.id);
   }
 
-  // embedded enemies/pickups (against the world as first compiled)
+  // embedded enemies/pickups/emitters (against the world as first compiled)
   for (const o of doc.objects) {
     if (o.hidden) continue;
     if ((o.kind === 'enemy' || o.kind === 'pickup') && blockedAt(closed, o.x, o.y - 2)) {
       push('warning', o.kind + ' embedded in blocking cells', o.id);
+    }
+    if (o.kind === 'hazardEmitter' && blockedAt(closed, o.x, o.y)) {
+      push('warning', 'hazard emitter buried in blocking cells — it will never drip', o.id);
     }
   }
 

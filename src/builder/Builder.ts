@@ -35,9 +35,11 @@ import {
   moveObjectCmd,
   paintTerrainCmd,
   setObjectFlagCmd,
+  setObjectGroupCmd,
 } from '@/builder/commands';
 import type { CellPatch, Command } from '@/builder/commands';
 import { drawLine, spawnCircle } from '@/sim/brush';
+import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { blocksEntity } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
@@ -54,8 +56,12 @@ import { TRIGGER_KINDS, validateDocument } from '@/builder/validate';
 import type { DocIssue } from '@/builder/validate';
 import {
   floodFill,
+  magicRegion,
   PatchRecorder,
+  rasterizePolygon,
   replaceMaterial,
+  roughenDisc,
+  smoothDisc,
   stampEllipse,
   stampLine,
   stampRect,
@@ -89,6 +95,8 @@ const PLACE_GAMEPLAY: Array<{ kind: EditorObjectKind; label: string; glyph: stri
   { kind: 'waystone', label: 'Waystone', glyph: 'W' },
   { kind: 'cauldron', label: 'Cauldron', glyph: 'U' },
   { kind: 'bossMarker', label: 'Boss', glyph: 'B' },
+  { kind: 'hazardEmitter', label: 'Emitter', glyph: '!' },
+  { kind: 'decor', label: 'Note', glyph: 'N' },
 ];
 
 const PLACE_MECH: Array<{ kind: EditorObjectKind; label: string; glyph: string }> = [
@@ -125,6 +133,8 @@ const DEFAULT_PARAMS: Partial<Record<EditorObjectKind, () => Record<string, unkn
   chargeLatch: () => ({}),
   runeGlyph: () => ({}),
   runeDoor: () => ({ w: 2, h: 11 }),
+  hazardEmitter: () => ({ cell: 'water', rate: 30 }),
+  decor: () => ({ text: 'note' }),
 };
 
 const ENEMY_KINDS: EnemyKind[] = [
@@ -153,11 +163,23 @@ type BuilderTool =
   | 'ellipseFill'
   | 'fill'
   | 'replace'
+  | 'smooth'
+  | 'roughen'
   | 'region'
+  | 'polyRegion'
+  | 'regionMagic'
   | 'link'
   | 'light'
   | 'stamp'
   | EditorObjectKind;
+
+/** Editor layer families (visibility/locking are EDITOR-side only:
+ *  a hidden layer still compiles — that's what object `hidden` is for). */
+type LayerFamily = 'gameplay' | 'mech' | 'links' | 'lights';
+const MECH_KINDS: ReadonlySet<EditorObjectKind> = new Set([
+  'door', 'plate', 'lever', 'brazier', 'scale', 'buoy', 'chargeLatch', 'runeGlyph', 'runeDoor',
+] as EditorObjectKind[]);
+const familyOf = (o: EditorObject): LayerFamily => (MECH_KINDS.has(o.kind) ? 'mech' : 'gameplay');
 
 const OVERLAY_MODES = ['none', 'light', 'danger', 'loot'] as const;
 type OverlayMode = (typeof OVERLAY_MODES)[number];
@@ -209,13 +231,39 @@ export class Builder {
   private marquee: { x0: number; y0: number; x1: number; y1: number } | null = null;
   private clipboard: { kind: EditorObjectKind; params: Record<string, unknown> } | null = null;
   private stroke: { seen: Set<number>; before: CellPatch; lastX: number; lastY: number } | null = null;
+  /** Smooth/roughen strokes: one PatchRecorder for the whole drag. */
+  private terraStroke: { rec: PatchRecorder; tool: 'smooth' | 'roughen' } | null = null;
   private shapeDrag: { x0: number; y0: number; x1: number; y1: number } | null = null;
   private region: Region | null = null;
+  /** Region narrowing: polygon/magic masks (bbox-relative). */
+  private regionMask: Uint8Array | null = null;
+  /** Polygon-region tool: vertices collected so far. */
+  private polyPoints: Array<[number, number]> = [];
+  /** Editor layer toggles. */
+  private layerHidden = new Set<LayerFamily>();
+  private layerLocked = new Set<LayerFamily>();
+  /** Scarred planes captured on playtest return, for BAKE. */
+  private playtestScars: { types: Uint8Array; life: Int16Array; charge: Uint8Array } | null = null;
+  /** Ambient as it stood before a mood-overridden playtest. */
+  private prevAmbient: number | null = null;
+  /** Light preview solo (null = all). */
+  private soloLightId: string | null = null;
+  /** Enemy whose patrol waypoints are being clicked in. */
+  private patrolEditId: string | null = null;
   private linkFrom: string | null = null;
   private pendingPreview: PendingPreview | null = null;
   private lastMouse = { x: 0, y: 0 };
   private zoomTarget = 1;
   private lightPreviewOn = true;
+  /** Placement/drag snap step in cells (0 = off). */
+  private snapStep: 0 | 8 | 16 = 0;
+  /** Palette drag-to-place: armed on button mousedown, live once a ghost exists. */
+  private palDrag: {
+    kind: EditorObjectKind | 'light';
+    startX: number;
+    startY: number;
+    ghost: HTMLDivElement | null;
+  } | null = null;
   private overlayMode: OverlayMode = 'none';
   private stampsList: StampDef[] = [];
   private armedStamp: StampDef | null = null;
@@ -255,6 +303,8 @@ export class Builder {
     this.wireProcPanel();
     this.wirePointer();
     this.wireExtras();
+    this.wireCmdk();
+    this.wireLayers();
     window.addEventListener('keydown', this.onKeyDown, true);
     // Entering play (PLAY button) while authoring closes the overlay; the
     // document survives for the next open.
@@ -329,12 +379,22 @@ export class Builder {
       this.status('EXPEDITION PARKED — THE BUILDER WORKS ON ITS OWN WORLD');
     }
     if (this.returningFromPlaytest && this.doc.world) {
-      // The compiled playtest scarred a COPY; re-decode the authored layer.
+      // Hold the scarred planes for BAKE, then re-decode the authored layer.
+      this.playtestScars = {
+        types: this.ctx.world.types.slice(),
+        life: this.ctx.world.life.slice(),
+        charge: this.ctx.world.charge.slice(),
+      };
       applyWorldLayer(this.ctx, this.doc.world);
       this.ctx.enemies.length = 0;
       this.ctx.projectiles.length = 0;
       this.ctx.particles.clear();
-      this.status('PLAYTEST DISCARDED — DOCUMENT TERRAIN RESTORED');
+      this.status('PLAYTEST DISCARDED — "BAKE PLAYTEST SCARS" (CTRL+K) CAN KEEP THEM');
+    }
+    if (this.returningFromPlaytest && this.prevAmbient !== null) {
+      // a mood-overridden playtest restores the global ambient on return
+      this.ctx.params.global.ambient = this.prevAmbient;
+      this.prevAmbient = null;
     }
     this.returningFromPlaytest = false;
     this.root.style.display = '';
@@ -430,9 +490,22 @@ export class Builder {
           ${toolBtn('ellipseFill', '●', 'Filled ellipse')}
           ${toolBtn('fill', 'G', 'Flood fill the clicked area (G)')}
           ${toolBtn('replace', '⇄', 'Replace clicked material everywhere (respects region)')}
-          ${toolBtn('region', '▦', 'Select a region for passes & replace (R)')}
+          ${toolBtn('smooth', '∿', 'Smooth terrain (majority rule under the brush)')}
+          ${toolBtn('roughen', '≈', 'Roughen terrain (jitter the rock/air boundary)')}
+          ${toolBtn('region', '▦', 'Rectangle region for passes & replace (R)')}
+          ${toolBtn('polyRegion', '⬠', 'Polygon region: click vertices, Enter/near-first closes')}
+          ${toolBtn('regionMagic', '✦', 'Magic region: click an open area to select the whole cavern')}
         </div>
-        <div id="bp-mat-row" class="bp-hint" title="Active material & brush — RMB eyedrops; pick in the Sandbox panel"></div>
+        <div id="bp-mat-row" class="bp-hint" title="Active material, brush radius and zoom"></div>
+        <div class="bp-head">MATERIALS</div>
+        <div id="bp-materials" class="bp-grid bp-grid6"></div>
+        <div class="bp-brushrow"><span>brush</span><input type="range" id="bp-brush" min="1" max="24" value="6"><b id="bp-brush-val">6</b></div>
+        <div class="bp-head">WORLD GEN</div>
+        <div class="bp-grid bp-grid3">
+          <button id="bp-gen-caves" title="Regenerate caves in the document's biome (whole world)">CAVES</button>
+          <button id="bp-gen-fort" title="Stamp a fortress into the world">FORT</button>
+          <button id="bp-gen-clear" title="Clear the whole world">CLEAR</button>
+        </div>
         <div class="bp-head">PLACE</div>
         <div class="bp-grid bp-grid2">${PLACE_GAMEPLAY.map(placeBtn).join('')}</div>
         <div class="bp-head">MECHANISMS</div>
@@ -450,8 +523,18 @@ export class Builder {
           <button id="bp-settle-keep" style="display:none">KEEP</button>
           <button id="bp-settle-revert" style="display:none">REVERT</button>
         </div>
+        <div class="bp-head">LAYERS</div>
+        <div id="bp-layers">
+          ${(['gameplay', 'mech', 'links', 'lights'] as const)
+            .map(
+              (f) =>
+                `<div class="bp-layer" data-layer="${f}"><span>${f}</span><button data-vis title="Show/hide in the editor (still compiles)">&#128065;</button><button data-lock title="Lock against selection">&#128275;</button></div>`,
+            )
+            .join('')}
+        </div>
         <div class="bp-head">VIEW</div>
         <button id="bp-overlay-btn" title="Readability overlays (O)">OVERLAY: NONE</button>
+        <button id="bp-snap-btn" title="Snap placements and drags to a grid">SNAP: OFF</button>
         <div class="bp-head">PROCEDURAL</div>
         <button id="bp-proc-btn">SEEDED PASSES&hellip;</button>
         <div class="bp-hint">RMB eyedrops &middot; wheel zooms.<br>Shift-click multi-selects,<br>drag empty = marquee.<br>Ctrl+D duplicate &middot; Ctrl+C/V<br>copy/paste params.<br>T playtests at the cursor.<br>Stamp armed: Q rotate, E flip.<br>ESC steps back &middot; DEL removes.</div>
@@ -476,6 +559,10 @@ export class Builder {
       <div id="builder-issues" style="display:none"></div>
       <canvas id="builder-minimap" width="${WIDTH >> 3}" height="${Math.ceil(HEIGHT / 8)}"
         title="Click to jump the camera"></canvas>
+      <div id="builder-cmdk" style="display:none">
+        <input id="bp-cmdk-input" placeholder="type a command&hellip; (Esc closes)" spellcheck="false">
+        <div id="bp-cmdk-list"></div>
+      </div>
       <div id="builder-status"></div>`;
     holder?.appendChild(this.root);
 
@@ -505,6 +592,48 @@ export class Builder {
         this.setTool(this.tool === t && t !== 'select' ? 'select' : t);
       });
     }
+
+    // MATERIALS: cloned from the Sandbox toolbar's buttons (one source of
+    // truth in index.html) — the Builder owns the whole left edge now.
+    const matGrid = this.el<HTMLDivElement>('bp-materials');
+    for (const src of document.querySelectorAll<HTMLButtonElement>('.tool-btn[data-mode="element"]')) {
+      const id = Number(src.dataset.id);
+      const name = (src.textContent ?? '').trim();
+      const dot = src.querySelector<HTMLElement>('.color-indicator');
+      const swatch = document.createElement('button');
+      swatch.className = 'bp-swatch';
+      swatch.dataset.el = String(id);
+      swatch.title = name;
+      const d = document.createElement('span');
+      d.className = 'dot';
+      d.style.background = dot?.style.background ?? '#888';
+      swatch.appendChild(d);
+      swatch.addEventListener('click', () => this.selectMaterial(id));
+      matGrid.appendChild(swatch);
+    }
+  }
+
+  private snap(v: number): number {
+    return this.snapStep === 0 ? v : Math.round(v / this.snapStep) * this.snapStep;
+  }
+
+  /** Arm a material for every terrain tool (and mirror it to the Sandbox UI). */
+  private selectMaterial(id: number): void {
+    const ctx = this.ctx;
+    ctx.state.currentElement = id as never;
+    ctx.state.activeInputMode = 'element';
+    for (const sw of this.root.querySelectorAll<HTMLButtonElement>('.bp-swatch')) {
+      sw.classList.toggle('active', Number(sw.dataset.el) === id);
+    }
+    // keep the (hidden) Sandbox toolbar consistent for when the Builder closes
+    for (const b of document.querySelectorAll<HTMLButtonElement>('.tool-btn')) {
+      b.classList.toggle('active', b.dataset.mode === 'element' && Number(b.dataset.id) === id);
+    }
+    const isTerrainTool =
+      this.tool === 'paint' || SHAPE_TOOLS.has(this.tool) || this.tool === 'fill' || this.tool === 'replace';
+    if (!isTerrainTool) this.setTool('paint');
+    const name = ctx.params.materials[id]?.name ?? 'Material ' + id;
+    this.status('ARMED: ' + name.toUpperCase());
   }
 
   private el<T extends HTMLElement>(id: string): T {
@@ -701,6 +830,7 @@ export class Builder {
       return;
     }
     this.returningFromPlaytest = true;
+    this.prevAmbient = this.ctx.params.global.ambient;
     this.close();
     compileAndPlaytest(this.ctx, this.doc);
     (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
@@ -764,9 +894,36 @@ export class Builder {
         return;
       }
       if (e.button !== 0) return;
+      // patrol authoring eats clicks until ESC ends it
+      if (this.patrolEditId) {
+        this.addPatrolPoint(pos.x, pos.y);
+        return;
+      }
       if (this.tool === 'paint') {
         if (this.previewBlocks()) return;
         this.beginStroke(pos.x, pos.y);
+        return;
+      }
+      if (this.tool === 'smooth' || this.tool === 'roughen') {
+        if (this.previewBlocks()) return;
+        this.terraStroke = { rec: new PatchRecorder(this.ctx.world), tool: this.tool };
+        this.applyTerraStroke(pos.x, pos.y);
+        return;
+      }
+      if (this.tool === 'polyRegion') {
+        this.polyClick(pos.x, pos.y);
+        return;
+      }
+      if (this.tool === 'regionMagic') {
+        const found = magicRegion(this.ctx.world, pos.x, pos.y, 600000);
+        if (!found) {
+          this.status('CLICK AN OPEN AREA (CAVERN) — SOLID OR TOO-HUGE AREAS REFUSE', true);
+          return;
+        }
+        this.region = found.region;
+        this.regionMask = found.mask;
+        this.syncProcPanel();
+        this.status(`MAGIC REGION: ${found.cells} CONNECTED OPEN CELLS`);
         return;
       }
       if (SHAPE_TOOLS.has(this.tool) || this.tool === 'region') {
@@ -833,8 +990,18 @@ export class Builder {
         this.renderInspector();
         return;
       }
-      if (!this.selectedIds.has(hit.id)) this.select(hit.id);
-      else {
+      if (!this.selectedIds.has(hit.id)) {
+        // grouped objects select as one unit
+        const obj = hit.isLight ? null : (hit.target as EditorObject);
+        if (obj?.group) {
+          this.selectedIds = new Set(
+            this.doc.objects.filter((o) => o.group === obj.group).map((o) => o.id),
+          );
+          this.selectedId = hit.id;
+          this.syncMarkers();
+          this.renderInspector();
+        } else this.select(hit.id);
+      } else {
         this.selectedId = hit.id;
         this.renderInspector();
       }
@@ -855,6 +1022,10 @@ export class Builder {
         this.strokeMove(pos.x, pos.y);
         return;
       }
+      if (this.terraStroke) {
+        this.applyTerraStroke(pos.x, pos.y);
+        return;
+      }
       if (this.shapeDrag) {
         this.shapeDrag.x1 = pos.x;
         this.shapeDrag.y1 = pos.y;
@@ -869,13 +1040,24 @@ export class Builder {
       const dx = pos.x - this.drag.grabX;
       const dy = pos.y - this.drag.grabY;
       for (const m of this.drag.targets) {
-        m.t.x = m.ox + dx;
-        m.t.y = m.oy + dy;
+        m.t.x = this.snap(m.ox + dx);
+        m.t.y = this.snap(m.oy + dy);
       }
     });
     window.addEventListener('mouseup', () => {
       if (this.stroke) {
         this.endStroke();
+        return;
+      }
+      if (this.terraStroke) {
+        const t = this.terraStroke;
+        this.terraStroke = null;
+        const patch = t.rec.finish();
+        if (patch) {
+          this.cmds.run(paintTerrainCmd(this.ctx.world, patch.before, patch.after));
+          this.paintDirty = true;
+          this.status(`${t.tool.toUpperCase()}: ${patch.before.idxs.length} CELLS`);
+        }
         return;
       }
       if (this.shapeDrag) {
@@ -923,14 +1105,17 @@ export class Builder {
     }
     const ids: string[] = [];
     for (const o of this.doc.objects) {
+      if (!this.layerSelectableObj(o)) continue;
       const f = objectFootprint(o);
       const inside = f
         ? f.x1 >= x0 && f.x0 <= x1 && f.y1 >= y0 && f.y0 <= y1
         : o.x >= x0 && o.x <= x1 && o.y >= y0 && o.y <= y1;
       if (inside) ids.push(o.id);
     }
-    for (const l of this.doc.lights) {
-      if (l.x >= x0 && l.x <= x1 && l.y >= y0 && l.y <= y1) ids.push(l.id);
+    if (!this.layerHidden.has('lights') && !this.layerLocked.has('lights')) {
+      for (const l of this.doc.lights) {
+        if (l.x >= x0 && l.x <= x1 && l.y >= y0 && l.y <= y1) ids.push(l.id);
+      }
     }
     this.selectedIds = new Set(ids);
     this.selectedId = ids[0] ?? null;
@@ -1063,6 +1248,7 @@ export class Builder {
       x1 = Math.max(s.x0, s.x1);
     const y0 = Math.min(s.y0, s.y1),
       y1 = Math.max(s.y0, s.y1);
+    this.regionMask = null;
     if (x1 - x0 < 3 || y1 - y0 < 3) {
       this.region = null;
       this.status('REGION CLEARED');
@@ -1071,6 +1257,43 @@ export class Builder {
       this.status(`REGION SET: ${x1 - x0 + 1}×${y1 - y0 + 1} — PASSES & REPLACE USE IT`);
     }
     this.syncProcPanel();
+  }
+
+  /** Polygon region: collect vertices; closing happens near the first vertex
+   *  (or with Enter). The rasterized mask narrows passes/replace/bake. */
+  private polyClick(x: number, y: number): void {
+    const first = this.polyPoints[0];
+    if (this.polyPoints.length >= 3 && first && Math.abs(first[0] - x) + Math.abs(first[1] - y) < 8) {
+      this.closePolyRegion();
+      return;
+    }
+    this.polyPoints.push([x, y]);
+    this.status(`POLYGON: ${this.polyPoints.length} VERTICES — CLICK NEAR THE FIRST (OR ENTER) TO CLOSE`);
+  }
+
+  private closePolyRegion(): void {
+    const result = rasterizePolygon(this.polyPoints);
+    this.polyPoints = [];
+    if (!result) {
+      this.status('POLYGON TOO SMALL — NEEDS 3+ SPREAD-OUT VERTICES', true);
+      return;
+    }
+    this.region = result.region;
+    this.regionMask = result.mask;
+    this.setTool('select');
+    this.syncProcPanel();
+    let cells = 0;
+    for (const v of result.mask) cells += v;
+    this.status(`POLYGON REGION SET: ${cells} CELLS — PASSES & REPLACE USE IT`);
+  }
+
+  /** One smoothing/roughening application per pointer sample. */
+  private applyTerraStroke(x: number, y: number): void {
+    const t = this.terraStroke;
+    if (!t) return;
+    const r = Math.max(3, this.ctx.state.brushSize);
+    if (t.tool === 'smooth') smoothDisc(this.ctx.world, t.rec, x, y, r);
+    else roughenDisc(this.ctx.world, t.rec, x, y, r);
   }
 
   private commitFlood(x: number, y: number): void {
@@ -1097,7 +1320,7 @@ export class Builder {
     if (!w.inBounds(x, y)) return;
     const from = w.types[w.idx(x, y)];
     const rec = new PatchRecorder(w);
-    const n = replaceMaterial(w, rec, x, y, type, this.region, REPLACE_CAP);
+    const n = replaceMaterial(w, rec, x, y, type, this.region, REPLACE_CAP, this.regionMask);
     if (n === -1) {
       this.status('TOO MANY CELLS — SET A REGION FIRST (R)', true);
       return;
@@ -1113,25 +1336,39 @@ export class Builder {
     this.status(`REPLACED ${n} ${name.toUpperCase()} CELLS${this.region ? ' IN REGION' : ''}`);
   }
 
-  /** Sandbox-parity RMB: pick the material under the cursor, arm the brush. */
+  /** RMB eyedropper: pick the material under the cursor, arm the brush. */
   private eyedrop(x: number, y: number): void {
     const ctx = this.ctx;
     if (!ctx.world.inBounds(x, y)) return;
     const t = ctx.world.types[ctx.world.idx(x, y)];
-    const btn = document.querySelector<HTMLButtonElement>(
-      `.tool-btn[data-mode="element"][data-id="${t}"]`,
-    );
-    if (btn) btn.click();
-    else {
-      ctx.state.currentElement = t as never;
-      ctx.state.activeInputMode = 'element';
-    }
-    if (this.tool !== 'paint' && !SHAPE_TOOLS.has(this.tool) && this.tool !== 'fill' && this.tool !== 'replace') {
-      this.setTool('paint');
-    }
+    this.selectMaterial(t);
     const name = ctx.params.materials[t]?.name ?? 'Material ' + t;
     this.status('PICKED: ' + name.toUpperCase());
     this.syncProcPanel();
+  }
+
+  /** Whole-world reshapes from inside the Builder (confirm when work exists). */
+  private guardedWorldGen(action: 'caves' | 'fortress' | 'clear'): void {
+    if (this.previewBlocks()) return;
+    const hasWork = this.doc.world !== null || this.cmds.depth > 0 || this.paintDirty;
+    if (
+      hasWork &&
+      !window.confirm(
+        'This reshapes the ENTIRE world under the open document and cannot be undone. ' +
+          '(RESTORE re-decodes the last captured terrain.) Continue?',
+      )
+    )
+      return;
+    if (action === 'caves') {
+      this.ctx.state.currentBiome = this.doc.biome; // the document drives the look
+      this.ctx.worldgen.regenerate(this.ctx);
+    } else if (action === 'fortress') {
+      this.ctx.worldgen.spawnFortress(this.ctx);
+    } else {
+      this.ctx.world.clear();
+    }
+    this.paintDirty = true;
+    this.status(action.toUpperCase() + ' DONE — CAPTURE TERRAIN OR SAVE WHEN HAPPY');
   }
 
   /* ---------- objects, links, lights ---------- */
@@ -1149,8 +1386,8 @@ export class Builder {
     }
     const params = DEFAULT_PARAMS[kind]?.() ?? {};
     // Door slabs anchor top-left; center them on the click for placement.
-    let px = x,
-      py = y;
+    let px = this.snap(x),
+      py = this.snap(y);
     if (kind === 'door' || kind === 'runeDoor') {
       px = x - Math.floor(((params.w as number) ?? 3) / 2);
       py = y - Math.floor(((params.h as number) ?? 13) / 2);
@@ -1176,8 +1413,8 @@ export class Builder {
   private placeLight(x: number, y: number): void {
     const light: EditorLight = {
       id: freshId('light'),
-      x,
-      y,
+      x: this.snap(x),
+      y: this.snap(y),
       color: '#ffb45a',
       intensity: 1.2,
       radius: 48,
@@ -1253,23 +1490,28 @@ export class Builder {
   ): { id: string; target: EditorObject | EditorLight; isLight: boolean } | null {
     let best: { id: string; target: EditorObject | EditorLight; isLight: boolean } | null = null;
     let bestD = PICK_RADIUS * PICK_RADIUS;
+    const lightsSelectable = !this.layerHidden.has('lights') && !this.layerLocked.has('lights');
     for (const o of this.doc.objects) {
+      if (!this.layerSelectableObj(o)) continue;
       const d = (o.x - x) * (o.x - x) + (o.y - y) * (o.y - y);
       if (d <= bestD) {
         bestD = d;
         best = { id: o.id, target: o, isLight: false };
       }
     }
-    for (const l of this.doc.lights) {
-      const d = (l.x - x) * (l.x - x) + (l.y - y) * (l.y - y);
-      if (d <= bestD) {
-        bestD = d;
-        best = { id: l.id, target: l, isLight: true };
+    if (lightsSelectable) {
+      for (const l of this.doc.lights) {
+        const d = (l.x - x) * (l.x - x) + (l.y - y) * (l.y - y);
+        if (d <= bestD) {
+          bestD = d;
+          best = { id: l.id, target: l, isLight: true };
+        }
       }
     }
     if (best) return best;
     // No marker nearby — fall back to footprint containment (door slabs etc.)
     for (const o of this.doc.objects) {
+      if (!this.layerSelectableObj(o)) continue;
       const f = objectFootprint(o);
       if (f && x >= f.x0 && x <= f.x1 && y >= f.y0 && y <= f.y1) {
         return { id: o.id, target: o, isLight: false };
@@ -1328,6 +1570,83 @@ export class Builder {
     this.syncMarkers();
     this.renderInspector();
     this.status(`DUPLICATED ${newIds.length} — DRAG TO PLACE`);
+  }
+
+  /** Ctrl+G: bind the selected objects into a group; Ctrl+Shift+G dissolves. */
+  private groupSelection(ungroup: boolean): void {
+    const members = this.doc.objects.filter((o) => this.selectedIds.has(o.id));
+    if (ungroup) {
+      const cmds = members.filter((o) => o.group).map((o) => setObjectGroupCmd(o, undefined));
+      if (cmds.length === 0) {
+        this.status('NOTHING GROUPED HERE');
+        return;
+      }
+      this.cmds.run(compositeCmd('ungroup ' + cmds.length, cmds));
+      this.status('UNGROUPED');
+      return;
+    }
+    if (members.length < 2) {
+      this.status('SELECT 2+ OBJECTS TO GROUP (MARQUEE OR SHIFT-CLICK)', true);
+      return;
+    }
+    const gid = freshId('grp');
+    this.cmds.run(compositeCmd('group ' + members.length, members.map((o) => setObjectGroupCmd(o, gid))));
+    this.status(`GROUPED ${members.length} — CLICK ANY MEMBER TO SELECT THEM ALL`);
+  }
+
+  /** Align the selection to the primary; spread distributes evenly between ends. */
+  private alignSelection(mode: 'x' | 'y' | 'spreadX' | 'spreadY'): void {
+    const targets: Array<{ t: EditorObject | EditorLight; isLight: boolean }> = [];
+    for (const o of this.doc.objects) {
+      if (this.selectedIds.has(o.id) && !o.locked) targets.push({ t: o, isLight: false });
+    }
+    for (const l of this.doc.lights) {
+      if (this.selectedIds.has(l.id) && !l.locked) targets.push({ t: l, isLight: true });
+    }
+    const moves: Command[] = [];
+    if (mode === 'x' || mode === 'y') {
+      const primary = (this.selected() ?? this.selectedLight()) as EditorObject | EditorLight | null;
+      if (!primary) return;
+      for (const m of targets) {
+        if (m.t.id === primary.id) continue;
+        const nx = mode === 'x' ? primary.x : m.t.x;
+        const ny = mode === 'y' ? primary.y : m.t.y;
+        if (nx === m.t.x && ny === m.t.y) continue;
+        moves.push(
+          m.isLight
+            ? moveLightCmd(m.t as EditorLight, nx, ny)
+            : moveObjectCmd(m.t as EditorObject, nx, ny),
+        );
+      }
+    } else {
+      if (targets.length < 3) {
+        this.status('DISTRIBUTE NEEDS 3+ UNLOCKED THINGS', true);
+        return;
+      }
+      const horizontal = mode === 'spreadX';
+      const sorted = [...targets].sort((a, b) => (horizontal ? a.t.x - b.t.x : a.t.y - b.t.y));
+      const first = horizontal ? sorted[0].t.x : sorted[0].t.y;
+      const last = horizontal ? sorted[sorted.length - 1].t.x : sorted[sorted.length - 1].t.y;
+      const step = (last - first) / (sorted.length - 1);
+      sorted.forEach((m, n) => {
+        const v = Math.round(first + step * n);
+        const nx = horizontal ? v : m.t.x;
+        const ny = horizontal ? m.t.y : v;
+        if (nx === m.t.x && ny === m.t.y) return;
+        moves.push(
+          m.isLight
+            ? moveLightCmd(m.t as EditorLight, nx, ny)
+            : moveObjectCmd(m.t as EditorObject, nx, ny),
+        );
+      });
+    }
+    if (moves.length === 0) {
+      this.status('ALREADY ALIGNED');
+      return;
+    }
+    this.cmds.run(moves.length === 1 ? moves[0] : compositeCmd(mode + ' ' + moves.length, moves));
+    this.syncMarkers();
+    this.status(mode.toUpperCase() + ': ' + moves.length + ' MOVED');
   }
 
   /** Ctrl+C: copy the primary object's params; Ctrl+V pastes onto same-kind selection. */
@@ -1405,7 +1724,10 @@ export class Builder {
     for (const l of this.doc.lights) {
       if (!this.selectedIds.has(l.id)) continue;
       if (l.locked) lockedSkipped++;
-      else dels.push(deleteLightCmd(l));
+      else {
+        if (this.soloLightId === l.id) this.soloLightId = null;
+        dels.push(deleteLightCmd(l));
+      }
     }
     if (dels.length === 0) {
       if (lockedSkipped > 0) this.status('LOCKED — UNLOCK TO DELETE', true);
@@ -1493,7 +1815,7 @@ export class Builder {
       }
       const w = this.ctx.world;
       const rec = new PatchRecorder(w);
-      const result = runPass(def, w, rec, seed, region, density, material);
+      const result = runPass(def, w, rec, seed, region, density, material, this.region ? this.regionMask : null);
       const adds: Command[] = (result.objects ?? []).map((spec) =>
         addObjectCmd({
           id: freshId(spec.kind),
@@ -1523,7 +1845,7 @@ export class Builder {
     this.discardPreview();
     const w = this.ctx.world;
     const rec = new PatchRecorder(w);
-    const result = runPass(def, w, rec, seed, region, density, material);
+    const result = runPass(def, w, rec, seed, region, density, material, this.region ? this.regionMask : null);
     const patch = rec.finish();
     if (!patch) {
       this.procStatus('PASS CHANGED NOTHING');
@@ -1659,6 +1981,59 @@ export class Builder {
       this.el('bp-light-toggle').textContent = `PREVIEW LIGHTS: ${this.lightPreviewOn ? 'ON' : 'OFF'}`;
     });
 
+    this.el<HTMLInputElement>('bp-brush').addEventListener('input', () => {
+      const v = Number(this.el<HTMLInputElement>('bp-brush').value);
+      if (Number.isFinite(v)) this.ctx.state.brushSize = v;
+      this.el('bp-brush-val').textContent = String(this.ctx.state.brushSize);
+    });
+    this.el('bp-gen-caves').addEventListener('click', () => this.guardedWorldGen('caves'));
+    this.el('bp-gen-fort').addEventListener('click', () => this.guardedWorldGen('fortress'));
+    this.el('bp-gen-clear').addEventListener('click', () => this.guardedWorldGen('clear'));
+
+    // DRAG-TO-PLACE: object/light buttons can be dragged straight onto the
+    // canvas (the intuitive gesture); a plain click still arms the tool.
+    const dragSources = [
+      ...this.root.querySelectorAll<HTMLButtonElement>('.bp-tool[data-kind]'),
+      this.root.querySelector<HTMLButtonElement>('.bp-tool[data-tool="light"]')!,
+    ];
+    for (const btn of dragSources) {
+      btn.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        const kind = (btn.dataset.kind ?? 'light') as EditorObjectKind | 'light';
+        this.palDrag = { kind, startX: e.clientX, startY: e.clientY, ghost: null };
+        e.preventDefault(); // no text selection while dragging
+      });
+    }
+    window.addEventListener('mousemove', (e) => {
+      const d = this.palDrag;
+      if (!d) return;
+      if (!d.ghost) {
+        if (Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) < 6) return;
+        const ghost = document.createElement('div');
+        ghost.className = 'b-dnd-ghost';
+        ghost.textContent = d.kind === 'light' ? '*' : (GLYPH[d.kind] ?? '?');
+        document.body.appendChild(ghost);
+        d.ghost = ghost;
+      }
+      d.ghost.style.left = e.clientX + 'px';
+      d.ghost.style.top = e.clientY + 'px';
+    });
+    window.addEventListener('mouseup', (e) => {
+      const d = this.palDrag;
+      if (!d) return;
+      this.palDrag = null;
+      if (!d.ghost) return; // plain click: the button's click handler arms the tool
+      d.ghost.remove();
+      const r = this.overlay.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) {
+        this.status('DROPPED OUTSIDE THE CANVAS');
+        return;
+      }
+      const pos = this.mouseToWorld(e);
+      if (d.kind === 'light') this.placeLight(pos.x, pos.y);
+      else this.place(d.kind, pos.x, pos.y);
+    });
+
     this.el('bp-stamp-capture').addEventListener('click', () => {
       if (this.previewBlocks()) return;
       if (!this.region) {
@@ -1683,6 +2058,11 @@ export class Builder {
     this.el('bp-settle-revert').addEventListener('click', () => this.finishSettle(false));
 
     this.el('bp-overlay-btn').addEventListener('click', () => this.cycleOverlay());
+    this.el('bp-snap-btn').addEventListener('click', () => {
+      this.snapStep = this.snapStep === 0 ? 8 : this.snapStep === 8 ? 16 : 0;
+      this.el('bp-snap-btn').textContent = 'SNAP: ' + (this.snapStep === 0 ? 'OFF' : this.snapStep);
+      this.status(this.snapStep === 0 ? 'SNAP OFF' : `SNAP TO ${this.snapStep}-CELL GRID`);
+    });
 
     this.el('b-share').addEventListener('click', () => {
       if (this.previewBlocks()) return;
@@ -1746,6 +2126,123 @@ export class Builder {
       });
       list.appendChild(row);
     }
+  }
+
+  /* ---------- editor layers (visibility/locking, editor-side only) ---------- */
+
+  private wireLayers(): void {
+    for (const row of this.root.querySelectorAll<HTMLDivElement>('.bp-layer')) {
+      const family = row.dataset.layer as LayerFamily;
+      row.querySelector('[data-vis]')?.addEventListener('click', () => {
+        if (this.layerHidden.has(family)) this.layerHidden.delete(family);
+        else this.layerHidden.add(family);
+        this.syncLayers();
+        this.syncMarkers();
+      });
+      row.querySelector('[data-lock]')?.addEventListener('click', () => {
+        if (this.layerLocked.has(family)) this.layerLocked.delete(family);
+        else this.layerLocked.add(family);
+        this.syncLayers();
+      });
+    }
+  }
+
+  private syncLayers(): void {
+    for (const row of this.root.querySelectorAll<HTMLDivElement>('.bp-layer')) {
+      const family = row.dataset.layer as LayerFamily;
+      row.classList.toggle('off', this.layerHidden.has(family));
+      row.classList.toggle('locked', this.layerLocked.has(family));
+    }
+  }
+
+  private layerVisibleObj(o: EditorObject): boolean {
+    return !this.layerHidden.has(familyOf(o));
+  }
+
+  private layerSelectableObj(o: EditorObject): boolean {
+    const f = familyOf(o);
+    return !this.layerHidden.has(f) && !this.layerLocked.has(f);
+  }
+
+  /* ---------- bake from playtest ---------- */
+
+  /**
+   * Re-apply the scars the last playtest left, on top of the document
+   * terrain. With a region set this is a precise, UNDOABLE patch ("keep
+   * that lava burn"); without one it replaces the whole world (no undo —
+   * RESTORE remains the way back). Mind that scars include compiled
+   * mechanism cells (doors, basins) — region bakes are the intended tool.
+   */
+  private bakePlaytestScars(): void {
+    if (this.previewBlocks()) return;
+    const scars = this.playtestScars;
+    if (!scars) {
+      this.status('NO PLAYTEST SCARS HELD — PLAYTEST FIRST, THEN BAKE ON RETURN', true);
+      return;
+    }
+    const w = this.ctx.world;
+    if (this.region) {
+      const rec = new PatchRecorder(w);
+      const r = this.region;
+      const rw = r.x1 - r.x0 + 1;
+      let n = 0;
+      for (let y = Math.max(0, r.y0); y <= Math.min(w.height - 1, r.y1); y++) {
+        for (let x = Math.max(0, r.x0); x <= Math.min(w.width - 1, r.x1); x++) {
+          if (this.regionMask && this.regionMask[x - r.x0 + (y - r.y0) * rw] !== 1) continue;
+          const i = w.idx(x, y);
+          if (w.types[i] === scars.types[i] && w.life[i] === scars.life[i] && w.charge[i] === scars.charge[i])
+            continue;
+          rec.touch(i);
+          w.types[i] = scars.types[i];
+          const fn = COLOR_FN[scars.types[i]];
+          w.colors[i] = fn ? fn() : EMPTY_COLOR;
+          w.life[i] = scars.life[i];
+          w.charge[i] = scars.charge[i];
+          n++;
+        }
+      }
+      const patch = rec.finish();
+      if (!patch) {
+        this.status('NO SCAR DIFFERENCES INSIDE THE REGION');
+        return;
+      }
+      this.cmds.run(paintTerrainCmd(w, patch.before, patch.after));
+      this.paintDirty = true;
+      this.status(`BAKED ${n} SCARRED CELLS FROM THE PLAYTEST (UNDOABLE)`);
+      return;
+    }
+    if (
+      !window.confirm(
+        'Bake the ENTIRE playtest world over the document terrain? This includes compiled mechanism cells and cannot be undone (RESTORE returns to the captured layer). Set a region first for a precise, undoable bake.',
+      )
+    )
+      return;
+    w.types.set(scars.types);
+    for (let i = 0; i < w.types.length; i++) {
+      const fn = COLOR_FN[w.types[i]];
+      w.colors[i] = fn ? fn() : EMPTY_COLOR;
+    }
+    w.life.set(scars.life);
+    w.charge.set(scars.charge);
+    this.cmds.clear();
+    this.paintDirty = true;
+    this.status('PLAYTEST WORLD BAKED (UNDO CLEARED — RESTORE IS THE WAY BACK)');
+  }
+
+  /* ---------- patrol authoring ---------- */
+
+  private addPatrolPoint(x: number, y: number): void {
+    const obj = this.doc.objects.find((o) => o.id === this.patrolEditId);
+    if (!obj) {
+      this.patrolEditId = null;
+      return;
+    }
+    const points = Array.isArray(obj.params.patrol)
+      ? ([...(obj.params.patrol as Array<[number, number]>)] as Array<[number, number]>)
+      : [];
+    points.push([Math.floor(x), Math.floor(y)]);
+    this.cmds.run(editParamCmd(obj, 'patrol', points));
+    this.status(`PATROL POINT ${points.length} — ESC WHEN DONE`);
   }
 
   /* ---------- settle preview: run real physics, then keep or revert ---------- */
@@ -1880,6 +2377,120 @@ export class Builder {
     }
   }
 
+  /* ---------- command palette (Ctrl+K) ---------- */
+
+  /** Every action the bar/palette exposes, searchable in one place. */
+  private cmdkActions(): Array<{ label: string; run: () => void }> {
+    const click = (id: string) => () => this.el<HTMLButtonElement>(id).click();
+    const tool = (t: BuilderTool, label: string) => ({ label, run: () => this.setTool(t) });
+    return [
+      { label: 'Find invalid object', run: () => this.findInvalid() },
+      { label: 'Frame selection (F)', run: () => this.frameSelection() },
+      { label: 'Validate document', run: click('b-validate') },
+      { label: 'Playtest (compile & play)', run: click('b-playtest') },
+      { label: 'Playtest from cursor (T)', run: () => this.playtestHere() },
+      { label: 'Save document', run: click('b-save') },
+      { label: 'Export document (.json)', run: click('b-export') },
+      { label: 'Share code (copy)', run: click('b-share') },
+      { label: 'Import from share code', run: click('b-code') },
+      { label: 'Capture terrain into document', run: click('b-capture') },
+      { label: 'Restore document terrain', run: click('b-restore') },
+      { label: 'New document', run: click('b-new') },
+      { label: 'Settle preview (2s of physics)', run: () => this.startSettle() },
+      { label: 'Bake playtest scars', run: () => this.bakePlaytestScars() },
+      { label: 'Toggle light preview', run: click('bp-light-toggle') },
+      { label: 'Cycle readability overlay (O)', run: () => this.cycleOverlay() },
+      { label: 'Cycle snap grid', run: click('bp-snap-btn') },
+      { label: 'Generate caves (whole world)', run: () => this.guardedWorldGen('caves') },
+      { label: 'Spawn fortress', run: () => this.guardedWorldGen('fortress') },
+      { label: 'Clear world', run: () => this.guardedWorldGen('clear') },
+      { label: 'Group selection (Ctrl+G)', run: () => this.groupSelection(false) },
+      { label: 'Ungroup selection (Ctrl+Shift+G)', run: () => this.groupSelection(true) },
+      { label: 'Duplicate selection (Ctrl+D)', run: () => this.duplicateSelection() },
+      tool('select', 'Tool: Select (V)'),
+      tool('paint', 'Tool: Paint (B)'),
+      tool('line', 'Tool: Line (L)'),
+      tool('rect', 'Tool: Rectangle'),
+      tool('rectFill', 'Tool: Filled rectangle'),
+      tool('ellipse', 'Tool: Ellipse'),
+      tool('ellipseFill', 'Tool: Filled ellipse'),
+      tool('fill', 'Tool: Flood fill (G)'),
+      tool('replace', 'Tool: Replace material'),
+      tool('region', 'Tool: Region select (R)'),
+      tool('smooth', 'Tool: Smooth terrain'),
+      tool('roughen', 'Tool: Roughen terrain'),
+      tool('link', 'Tool: Link trigger to door (K)'),
+      tool('light', 'Tool: Place light'),
+    ];
+  }
+
+  private openCmdk(): void {
+    const box = this.el<HTMLDivElement>('builder-cmdk');
+    box.style.display = '';
+    const input = this.el<HTMLInputElement>('bp-cmdk-input');
+    input.value = '';
+    this.renderCmdk('');
+    input.focus();
+  }
+
+  private closeCmdk(): void {
+    this.el<HTMLDivElement>('builder-cmdk').style.display = 'none';
+  }
+
+  private renderCmdk(query: string): void {
+    const list = this.el<HTMLDivElement>('bp-cmdk-list');
+    const q = query.trim().toLowerCase();
+    const hits = this.cmdkActions().filter((a) => a.label.toLowerCase().includes(q)).slice(0, 12);
+    list.innerHTML = '';
+    hits.forEach((a, n) => {
+      const row = document.createElement('div');
+      row.className = 'bp-cmdk-row' + (n === 0 ? ' first' : '');
+      row.textContent = a.label;
+      row.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // beat the input blur
+        this.closeCmdk();
+        a.run();
+      });
+      list.appendChild(row);
+    });
+    if (hits.length === 0) {
+      list.innerHTML = '<div class="bp-cmdk-row none">no matching command</div>';
+    }
+  }
+
+  private wireCmdk(): void {
+    const input = this.el<HTMLInputElement>('bp-cmdk-input');
+    input.addEventListener('input', () => this.renderCmdk(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape') {
+        this.closeCmdk();
+        e.stopPropagation();
+      } else if (e.code === 'Enter') {
+        const q = input.value.trim().toLowerCase();
+        const first = this.cmdkActions().find((a) => a.label.toLowerCase().includes(q));
+        this.closeCmdk();
+        first?.run();
+      }
+    });
+    input.addEventListener('blur', () => this.closeCmdk());
+  }
+
+  /** Run validation and jump straight to the first issue with a location. */
+  private findInvalid(): void {
+    if (this.previewBlocks()) return;
+    this.ensureCaptured();
+    const issues = validateDocument(this.doc);
+    this.renderIssues(issues);
+    const target = issues.find((i) => i.objId);
+    if (!target) {
+      this.status(issues.length === 0 ? 'NOTHING INVALID — ALL CLEAN' : `${issues.length} ISSUE(S), NONE LOCATABLE`);
+      return;
+    }
+    this.select(target.objId!);
+    this.frameSelection();
+    this.status(`[${target.severity.toUpperCase()}] ${target.what}`.slice(0, 90), target.severity === 'error');
+  }
+
   /* ---------- playtest from here ---------- */
 
   private playtestHere(): void {
@@ -1906,6 +2517,7 @@ export class Builder {
     }
     const at = { x: this.lastMouse.x, y: this.lastMouse.y };
     this.returningFromPlaytest = true;
+    this.prevAmbient = this.ctx.params.global.ambient;
     this.close();
     compileAndPlaytest(this.ctx, this.doc, { spawnAt: at });
     (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
@@ -1929,6 +2541,13 @@ export class Builder {
       if (this.settling || this.settleSnap) {
         this.finishSettle(false);
         this.status('SETTLE CANCELLED');
+      } else if (this.patrolEditId) {
+        this.patrolEditId = null;
+        this.renderInspector();
+        this.status('PATROL EDITING DONE');
+      } else if (this.polyPoints.length > 0) {
+        this.polyPoints = [];
+        this.status('POLYGON CANCELLED');
       } else if (this.linkFrom) {
         this.linkFrom = null;
         this.status('LINK CANCELLED');
@@ -1940,9 +2559,13 @@ export class Builder {
         this.setTool('select');
       } else if (this.region) {
         this.region = null;
+        this.regionMask = null;
         this.status('REGION CLEARED');
         this.syncProcPanel();
       } else this.select(null);
+    } else if (e.code === 'Enter' && this.polyPoints.length >= 3) {
+      e.stopPropagation();
+      this.closePolyRegion();
     } else if (e.code === 'KeyQ' && this.armedStamp) {
       e.stopPropagation();
       this.armedStamp = rotateStamp(this.armedStamp);
@@ -1955,6 +2578,14 @@ export class Builder {
       e.preventDefault();
       e.stopPropagation();
       this.duplicateSelection();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyG') {
+      e.preventDefault();
+      e.stopPropagation();
+      this.groupSelection(e.shiftKey);
+    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
+      e.preventDefault();
+      e.stopPropagation();
+      this.openCmdk();
     } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC') {
       e.stopPropagation();
       this.copyParams();
@@ -2023,6 +2654,16 @@ export class Builder {
     if (text !== this.matRowText) {
       this.matRowText = text;
       this.el<HTMLDivElement>('bp-mat-row').textContent = text;
+      // brush size can also change via [ ] in the sandbox layer — mirror it
+      this.el<HTMLInputElement>('bp-brush').value = String(state.brushSize);
+      this.el('bp-brush-val').textContent = String(state.brushSize);
+      // material may have changed via eyedrop/sandbox — mirror the swatch
+      for (const sw of this.root.querySelectorAll<HTMLButtonElement>('.bp-swatch')) {
+        sw.classList.toggle(
+          'active',
+          state.activeInputMode === 'element' && Number(sw.dataset.el) === state.currentElement,
+        );
+      }
     }
 
     // settle preview clock: re-freeze the world when the run completes
@@ -2034,9 +2675,12 @@ export class Builder {
     }
 
     // live light preview: authored lights feed the real light field
+    // (solo narrows the feed to one light for isolation work)
     state.editorLights =
       this.lightPreviewOn && this.doc.lights.length > 0
-        ? this.doc.lights.filter((l) => !l.hidden).map((l, n) => toAuthoredLight(l, n))
+        ? this.doc.lights
+            .filter((l) => !l.hidden && (this.soloLightId === null || l.id === this.soloLightId))
+            .map((l, n) => toAuthoredLight(l, n))
         : null;
 
     if (state.frameCount % 12 === 0) this.drawMinimap();
@@ -2123,6 +2767,7 @@ export class Builder {
 
     // footprint boxes for sized objects
     for (const o of this.doc.objects) {
+      if (!this.layerVisibleObj(o)) continue;
       const f = objectFootprint(o);
       if (!f) continue;
       const a = toS(f.x0, f.y0);
@@ -2147,6 +2792,9 @@ export class Builder {
     }
 
     // link wires: trigger -> door amber, glyph -> runeDoor green
+    if (this.layerHidden.has('links')) {
+      // links layer hidden: skip the wires entirely
+    } else
     for (const l of this.doc.links) {
       const from = this.doc.objects.find((o) => o.id === l.fromId);
       const to = this.doc.objects.find((o) => o.id === l.toId);
@@ -2186,14 +2834,80 @@ export class Builder {
     }
 
     // authored light rings
-    for (const l of this.doc.lights) {
-      const c = toS(l.x, l.y);
-      const sel = l.id === this.selectedId;
-      g.strokeStyle = sel ? l.color : l.color + '55';
-      g.lineWidth = sel ? 2 : 1;
+    if (!this.layerHidden.has('lights')) {
+      for (const l of this.doc.lights) {
+        const c = toS(l.x, l.y);
+        const sel = l.id === this.selectedId;
+        const solo = this.soloLightId === l.id;
+        g.strokeStyle = sel || solo ? l.color : l.color + '55';
+        g.lineWidth = sel || solo ? 2 : 1;
+        g.beginPath();
+        g.ellipse(c.x, c.y, l.radius * cellW, l.radius * cellH, 0, 0, Math.PI * 2);
+        g.stroke();
+        if (solo) {
+          g.fillStyle = l.color;
+          g.font = '700 9px monospace';
+          g.fillText('SOLO', c.x + 6, c.y - 6);
+        }
+      }
+    }
+
+    // patrol paths (enemy waypoint loops) + designer notes
+    for (const o of this.doc.objects) {
+      if (!this.layerVisibleObj(o)) continue;
+      if (o.kind === 'enemy' && Array.isArray(o.params.patrol) && (o.params.patrol as unknown[]).length > 0) {
+        const pts = o.params.patrol as Array<[number, number]>;
+        g.strokeStyle = this.patrolEditId === o.id ? 'rgba(248,113,113,0.95)' : 'rgba(248,113,113,0.45)';
+        g.lineWidth = 1;
+        g.setLineDash([3, 3]);
+        g.beginPath();
+        const start = toS(o.x, o.y);
+        g.moveTo(start.x, start.y);
+        for (const [px, py] of pts) {
+          const p = toS(px, py);
+          g.lineTo(p.x, p.y);
+        }
+        g.stroke();
+        g.setLineDash([]);
+        g.fillStyle = 'rgba(248,113,113,0.85)';
+        pts.forEach(([px, py], n) => {
+          const p = toS(px, py);
+          g.fillRect(p.x - 2, p.y - 2, 4, 4);
+          g.font = '700 8px monospace';
+          g.fillText(String(n + 1), p.x + 4, p.y - 3);
+        });
+      } else if (o.kind === 'decor') {
+        const p = toS(o.x, o.y);
+        g.fillStyle = 'rgba(214,230,245,0.85)';
+        g.font = '600 9px monospace';
+        g.fillText(String(o.params.text ?? 'note').slice(0, 40), p.x + 10, p.y + 3);
+      }
+    }
+
+    // polygon region in progress
+    if (this.polyPoints.length > 0) {
+      g.strokeStyle = 'rgba(125,211,252,0.9)';
+      g.lineWidth = 1.5;
+      g.setLineDash([5, 4]);
       g.beginPath();
-      g.ellipse(c.x, c.y, l.radius * cellW, l.radius * cellH, 0, 0, Math.PI * 2);
+      const p0 = toS(this.polyPoints[0][0], this.polyPoints[0][1]);
+      g.moveTo(p0.x, p0.y);
+      for (const [px, py] of this.polyPoints.slice(1)) {
+        const p = toS(px, py);
+        g.lineTo(p.x, p.y);
+      }
+      const m = toS(this.lastMouse.x, this.lastMouse.y);
+      g.lineTo(m.x, m.y);
       g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = 'rgba(125,211,252,0.95)';
+      g.fillRect(p0.x - 3, p0.y - 3, 6, 6); // close target
+    }
+    if (this.region && this.regionMask) {
+      const a = toS(this.region.x0, this.region.y0);
+      g.fillStyle = 'rgba(125,211,252,0.9)';
+      g.font = '700 9px monospace';
+      g.fillText('MASKED REGION', a.x + 2, a.y - 4);
     }
 
     // shape drag preview
@@ -2319,22 +3033,25 @@ export class Builder {
     this.markerLayer.innerHTML = '';
     this.markers.clear();
     for (const o of this.doc.objects) {
+      if (!this.layerVisibleObj(o)) continue;
       const m = document.createElement('div');
       m.className = `b-marker k-${o.kind}`
         + (this.selectedIds.has(o.id) ? ' sel' : '')
         + (o.hidden ? ' ghost' : '');
       m.textContent = GLYPH[o.kind] ?? '?';
-      m.title = o.kind;
+      m.title = o.kind === 'decor' ? String(o.params.text ?? 'note') : o.kind;
       this.markers.set(o.id, m);
       this.markerLayer.appendChild(m);
     }
-    for (const l of this.doc.lights) {
-      const m = document.createElement('div');
-      m.className = 'b-marker k-light' + (this.selectedIds.has(l.id) ? ' sel' : '') + (l.hidden ? ' ghost' : '');
-      m.textContent = '*';
-      m.title = 'light';
-      this.markers.set(l.id, m);
-      this.markerLayer.appendChild(m);
+    if (!this.layerHidden.has('lights')) {
+      for (const l of this.doc.lights) {
+        const m = document.createElement('div');
+        m.className = 'b-marker k-light' + (this.selectedIds.has(l.id) ? ' sel' : '') + (l.hidden ? ' ghost' : '');
+        m.textContent = '*';
+        m.title = 'light';
+        this.markers.set(l.id, m);
+        this.markerLayer.appendChild(m);
+      }
     }
   }
 
@@ -2354,8 +3071,17 @@ export class Builder {
         ${[...byKind.entries()]
           .map(([k, n]) => `<div class="bi-row"><span>${k}</span><b>${n}</b></div>`)
           .join('')}
-        <div class="bi-empty">Drag moves the group.<br>Ctrl+D duplicates it.<br>Ctrl+C copies the primary's<br>params, Ctrl+V pastes them<br>onto same-kind members.</div>
+        <div class="bp-grid bp-grid2" style="margin-top:4px">
+          <button data-align="x" title="Align to the primary's column">ALIGN X</button>
+          <button data-align="y" title="Align to the primary's row">ALIGN Y</button>
+          <button data-align="spreadX" title="Distribute evenly between the leftmost and rightmost">SPREAD H</button>
+          <button data-align="spreadY" title="Distribute evenly between the topmost and bottommost">SPREAD V</button>
+        </div>
+        <div class="bi-empty">Drag moves the group.<br>Ctrl+D duplicates &middot; Ctrl+G<br>groups (Shift+G dissolves).<br>Ctrl+C/V copies/pastes the<br>primary's params.</div>
         <button id="bi-delete">DELETE ALL (DEL)</button>`;
+      for (const b of panel.querySelectorAll<HTMLButtonElement>('button[data-align]')) {
+        b.addEventListener('click', () => this.alignSelection(b.dataset.align as 'x' | 'y' | 'spreadX' | 'spreadY'));
+      }
       panel.querySelector('#bi-delete')?.addEventListener('click', () => this.deleteSelection());
       return;
     }
@@ -2366,14 +3092,30 @@ export class Builder {
     }
     const obj = this.selected();
     if (!obj) {
+      const mood = (this.doc.mood ??= { ambient: null, ambience: '' });
       panel.innerHTML = `<div class="bi-head">INSPECTOR</div>
-        <div class="bi-empty">Nothing selected.<br>Click a marker, or pick a<br>tool and click the canvas.</div>
+        <div class="bi-empty">Nothing selected.<br>Click a marker, or pick a<br>tool and click the canvas.<br>Ctrl+K = command palette.</div>
         <div class="bi-row"><span>objects</span><b>${this.doc.objects.length}</b></div>
         <div class="bi-row"><span>links</span><b>${this.doc.links.length}</b></div>
         <div class="bi-row"><span>lights</span><b>${this.doc.lights.length}</b></div>
         <div class="bi-row"><span>passes</span><b>${this.doc.proceduralHistory.length}</b></div>
         <div class="bi-row"><span>terrain</span><b>${this.doc.world ? 'captured' : '—'}</b></div>
-        <div class="bi-row"><span>undo depth</span><b>${this.cmds.depth}</b></div>`;
+        <div class="bi-row"><span>undo depth</span><b>${this.cmds.depth}</b></div>
+        <div class="bi-head" style="margin-top:6px">DOCUMENT MOOD</div>
+        <div class="bi-row"><span>ambient</span><input type="number" step="0.02" min="0.02" max="0.6" id="bi-mood-ambient" placeholder="default" value="${
+          mood.ambient ?? ''
+        }"></div>
+        <div class="bi-row"><span>ambience</span><input type="text" id="bi-mood-ambience" placeholder="tag (e.g. drips)" value="${mood.ambience ?? ''}"></div>
+        <div class="bi-empty">Ambient overrides the global<br>light level in playtests<br>(restored on return).</div>`;
+      panel.querySelector<HTMLInputElement>('#bi-mood-ambient')?.addEventListener('change', (e) => {
+        const v = (e.target as HTMLInputElement).value.trim();
+        mood.ambient = v === '' ? null : Number(v);
+        if (mood.ambient !== null && !Number.isFinite(mood.ambient)) mood.ambient = null;
+        this.status(mood.ambient === null ? 'MOOD AMBIENT: GAME DEFAULT' : `MOOD AMBIENT: ${mood.ambient}`);
+      });
+      panel.querySelector<HTMLInputElement>('#bi-mood-ambience')?.addEventListener('change', (e) => {
+        mood.ambience = (e.target as HTMLInputElement).value;
+      });
       return;
     }
 
@@ -2389,6 +3131,26 @@ export class Builder {
       if (obj.params.kind === 'bat') {
         rows += this.checkRow(obj, 'sleeping', 'roosting');
       }
+      if (obj.params.kind === 'slime' || obj.params.kind === 'acidslime' || obj.params.kind === 'golem') {
+        const n = Array.isArray(obj.params.patrol) ? (obj.params.patrol as unknown[]).length : 0;
+        rows +=
+          this.patrolEditId === obj.id
+            ? `<button id="bi-patrol" class="bi-armed">PATROL: CLICK POINTS — ESC ENDS</button>`
+            : `<button id="bi-patrol">${n > 0 ? `EDIT PATROL (${n} PTS)` : 'ADD PATROL ROUTE'}</button>`;
+        if (n > 0) rows += `<button id="bi-patrol-clear">CLEAR PATROL</button>`;
+      }
+    } else if (obj.kind === 'hazardEmitter') {
+      const cells = ['water', 'oil', 'acid', 'lava', 'fire', 'ember', 'sand', 'snow', 'smoke'];
+      rows += `<div class="bi-row"><span>material</span><select data-p="cell">${cells
+        .map((c) => `<option value="${c}"${obj.params.cell === c ? ' selected' : ''}>${c}</option>`)
+        .join('')}</select></div>`;
+      rows += this.numRow(obj, 'rate', 'rate (frames)', 30);
+      rows += `<div class="bi-empty">Drips one real cell every<br>"rate" frames — the grid<br>does the rest.</div>`;
+    } else if (obj.kind === 'decor') {
+      rows += `<div class="bi-row"><span>note</span><input type="text" data-p="text" value="${String(
+        obj.params.text ?? '',
+      ).replace(/"/g, '&quot;')}"></div>`;
+      rows += `<div class="bi-empty">Designer annotation only —<br>never compiles into the level.</div>`;
     } else if (obj.kind === 'pickup') {
       rows += `<div class="bi-row"><span>kind</span><select data-p="kind">${PICKUP_KINDS.map(
         (k) => `<option value="${k}"${obj.params.kind === k ? ' selected' : ''}>${k}</option>`,
@@ -2422,9 +3184,11 @@ export class Builder {
       )
         .map((v) => `<option value="${v}"${lg === v ? ' selected' : ''}>${v.toUpperCase()}</option>`)
         .join('')}</select></div>`;
+      rows += `<button id="bi-rotate" title="Swap width and height">ROTATE 90&deg;</button>`;
       rows += this.linkRows(obj, 'in');
     } else if (obj.kind === 'runeDoor') {
       rows += this.numRow(obj, 'w', 'width', 2) + this.numRow(obj, 'h', 'height', 11);
+      rows += `<button id="bi-rotate" title="Swap width and height">ROTATE 90&deg;</button>`;
       rows += this.linkRows(obj, 'in');
     } else if (obj.kind === 'plate') {
       rows += this.numRow(obj, 'w', 'width', 5) + this.linkRows(obj, 'out');
@@ -2468,6 +3232,7 @@ export class Builder {
         if (value === '') value = undefined;
         this.cmds.run(editParamCmd(obj, key, value));
         this.renderInspector(); // kind switches change which param rows exist
+        this.syncMarkers(); // glyphs/tooltips can depend on params (kind, note text)
       });
     }
     for (const flag of panel.querySelectorAll<HTMLInputElement>('input[data-f="locked"],input[data-f="hidden"]')) {
@@ -2476,6 +3241,33 @@ export class Builder {
         this.syncMarkers();
       });
     }
+    panel.querySelector('#bi-patrol')?.addEventListener('click', () => {
+      if (this.patrolEditId === obj.id) {
+        this.patrolEditId = null;
+        this.status('PATROL EDITING DONE');
+      } else {
+        this.patrolEditId = obj.id;
+        this.status('PATROL: CLICK WAYPOINTS ON THE CANVAS — ESC ENDS');
+      }
+      this.renderInspector();
+    });
+    panel.querySelector('#bi-patrol-clear')?.addEventListener('click', () => {
+      this.cmds.run(editParamCmd(obj, 'patrol', undefined));
+      this.patrolEditId = null;
+      this.renderInspector();
+      this.status('PATROL CLEARED');
+    });
+    panel.querySelector('#bi-rotate')?.addEventListener('click', () => {
+      const dw = obj.kind === 'door' ? 3 : 2;
+      const dh = obj.kind === 'door' ? 13 : 11;
+      const w = paramNum(obj, 'w', dw);
+      const h = paramNum(obj, 'h', dh);
+      this.cmds.run(
+        compositeCmd('rotate ' + obj.kind, [editParamCmd(obj, 'w', h), editParamCmd(obj, 'h', w)]),
+      );
+      this.renderInspector();
+      this.status('ROTATED — NOW ' + h + '×' + w);
+    });
     for (const unlink of panel.querySelectorAll<HTMLButtonElement>('button[data-unlink]')) {
       unlink.addEventListener('click', () => {
         const link = this.doc.links.find((l) => l.id === unlink.dataset.unlink);
@@ -2536,6 +3328,9 @@ export class Builder {
         <label><input type="checkbox" data-lf="hidden"${light.hidden ? ' checked' : ''}>hidden</label>
       </div>
       <div class="bi-empty">Occluded lights cast real<br>shadows via the sweeps;<br>non-occluded paint their<br>whole falloff disk.</div>
+      <button id="bi-solo"${this.soloLightId === light.id ? ' class="bi-armed"' : ''}>${
+        this.soloLightId === light.id ? 'SOLO ON — CLICK TO HEAR ALL' : 'SOLO THIS LIGHT'
+      }</button>
       <button id="bi-delete">DELETE (DEL)</button>`;
 
     for (const field of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-lf]')) {
@@ -2557,6 +3352,11 @@ export class Builder {
         if (key === 'hidden' || key === 'locked') this.syncMarkers();
       });
     }
+    panel.querySelector('#bi-solo')?.addEventListener('click', () => {
+      this.soloLightId = this.soloLightId === light.id ? null : light.id;
+      this.renderLightInspector(panel, light);
+      this.status(this.soloLightId ? 'PREVIEWING ONLY THIS LIGHT' : 'PREVIEWING ALL LIGHTS');
+    });
     panel.querySelector<HTMLSelectElement>('[data-preset]')?.addEventListener('change', (e) => {
       const preset = LIGHT_PRESETS[(e.target as HTMLSelectElement).value];
       if (!preset) return;

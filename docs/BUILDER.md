@@ -576,15 +576,23 @@ Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not start
 - [x] Phase 2 — Builder shell (overlay, pause claim, markers, inspector)
 - [x] Phase 3 — Document, save/load/export/import, command undo/redo
 - [x] Phase 4 — Terrain tools: paint, line, rect/filled, ellipse/filled,
-      flood fill, replace-in-region, region select, plus a SETTLE preview
+      flood fill, replace-in-region, SMOOTH (majority rule) and ROUGHEN
+      (boundary jitter) brushes, region select, plus a SETTLE preview
       (run real physics on the visible area for 2s, then keep — undoable —
-      or revert). Deferred: smooth/roughen, dedicated spray-parameter tools
-      (Sandbox spray remains available), per-layer visibility toggles.
+      or revert). Editor LAYERS panel: per-family visibility/locking
+      (gameplay/mech/links/lights; editor-side — a hidden layer still
+      compiles). Deferred: dedicated spray-parameter tools (Sandbox spray
+      remains available).
 - [x] Phase 5 — Objects: spawn, enemy, pickup, portal, exit well, waystone,
-      cauldron, boss marker, all persisted. Multi-select (shift-click +
-      marquee), group drag, Ctrl+D duplicate (links between selected pairs
-      come along), Ctrl+C/V param copy/paste. Deferred: rotation, patrol
-      points, hazardEmitter/decor kinds.
+      cauldron, boss marker, HAZARD EMITTER (drips a real cell on a
+      cadence) and NOTE (designer annotation, never compiles), all
+      persisted. Multi-select (shift-click + marquee), group drag, Ctrl+D
+      duplicate (links between selected pairs come along), Ctrl+C/V param
+      copy/paste, Ctrl+G group / Shift+G ungroup (clicking a member selects
+      the group), ALIGN X/Y + SPREAD H/V, snap-to-grid (off/8/16), door
+      ROTATE (swap w/h), enemy PATROL routes (waypoint loops for slimes/
+      acid slimes/golems while un-alerted), drag-and-drop placement from
+      the palette.
 - [x] Phase 6 — Mechanisms & links: door, plate, lever, brazier, scale, buoy,
       charge latch, rune glyph/door; LINK tool with live wires; inspector
       wiring rows with unlink; compiles to runtime Mechanism[] and
@@ -594,13 +602,17 @@ Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not start
 - [x] Phase 7 — Lighting: placement, full inspector (color/intensity/radius/
       bloom/flicker/falloff/occluded) with six presets, editor rings, LIVE
       PREVIEW (authored lights feed the real light field while editing),
-      runtime seeding in Lighting.build. Deferred: solo/toggle-all.
+      SOLO (preview one light in isolation), toggle-all, runtime seeding in
+      Lighting.build.
 - [x] Phase 8 — Procedural: seeded passes (caves CA, veins, pockets,
-      vegetation, scatter, enemy/pickup population) over whole level or
-      region, preview/apply/discard, history persisted. Stamps: capture a
-      region as a reusable chunk, rotate (Q) / mirror (E), paste through
-      undo. Deferred: polygon / connected-region targets,
-      bake-from-playtest.
+      vegetation, scatter, enemy/pickup population) over the whole level, a
+      RECTANGLE region, a POLYGON region (click vertices, Enter closes), or
+      the CONNECTED CAVERN under a click (magic region) — masks narrow
+      passes, replace, and bake. Preview/apply/discard, history persisted.
+      Stamps: capture a region as a reusable chunk, rotate (Q) / mirror (E),
+      paste through undo. BAKE-FROM-PLAYTEST: scars held on return; a
+      region bake is a precise undoable patch, whole-world bake replaces
+      the layer (RESTORE is the way back).
 - [x] Phase 9 — Playtest compiler (document -> custom LevelRuntime; scars
       never flow back; custom portals award a "level clear" toast).
       Playtest-from-here: T compiles and spawns at the cursor for tight
@@ -620,9 +632,13 @@ Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not start
       5x9 eroded box warns "too tight for the alchemist". Plus: wheel zoom
       (1-4x) with a clickable true-color minimap, readability overlays
       (light coverage / danger / loot, O cycles), autosaved drafts every 30s
-      with restore-on-open, and shareable level codes (SHARE/CODE — deflate
-      + base64, 'PLLD1.' prefix). New probe:
-      scripts/verify-builder-pro.mjs (29 asserts).
+      with restore-on-open, shareable level codes (SHARE/CODE — deflate
+      + base64, 'PLLD1.' prefix), a COMMAND PALETTE (Ctrl+K — every action
+      searchable, incl. "find invalid object"), and document MOOD metadata
+      (ambient override applied in playtests + ambience tag). The Builder
+      owns the whole left edge: its own material swatches/brush/world-gen
+      panel (the Sandbox toolbar yields while it's open). Probes:
+      scripts/verify-builder-pro.mjs (34) and verify-builder-ux.mjs (28).
 
 ### Phase 1 - Rename Existing Build To Sandbox
 
