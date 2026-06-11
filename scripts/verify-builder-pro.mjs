@@ -426,6 +426,32 @@ const failOpen = await page.evaluate(async () => {
 });
 check('wrecking every sequence trigger fails the chain OPEN', failOpen.done && failOpen.state === 1, JSON.stringify(failOpen));
 
+/* wreck-BEHIND-the-cursor: breaking an already-fired step must not wedge */
+await page.click('#mode-builder-btn');
+await page.waitForTimeout(400);
+await page.click('#b-playtest');
+await page.waitForFunction(
+  () => window.__game.ctx.levels.current && !window.__game.ctx.levels.transitioning,
+  { timeout: 10000 },
+);
+await page.waitForTimeout(400);
+const wreckBehind = await page.evaluate(async () => {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const rt = window.__game.ctx.levels.current;
+  const door = rt.mechanisms.find((m) => m.kind === 'door');
+  const plates = rt.mechanisms.filter((m) => m.kind === 'plate');
+  plates[0].state = 420; // fire step 1
+  await wait(300);
+  const mid = { seq: door.seq ?? 0 };
+  plates[0].broken = 0; // combat wrecks the plate the player already used
+  plates[0].state = 0;
+  await wait(300);
+  plates[1].state = 420; // the genuinely remaining step must still complete
+  await wait(400);
+  return { mid, done: door.seqDone === true, state: door.state };
+});
+check('wrecking an already-fired step cannot wedge the chain', wreckBehind.mid.seq === 1 && wreckBehind.done && wreckBehind.state === 1, JSON.stringify(wreckBehind));
+
 /* ---------- playtest-from-here (T) ---------- */
 console.log('-- playtest from here');
 await page.click('#mode-builder-btn');

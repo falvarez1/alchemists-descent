@@ -751,12 +751,16 @@ export interface Mechanism {
    * in link order — wrong order resets, completion latches the door open.
    */
   logic?: 'and' | 'or' | 'sequence';
-  /** sequence doors: steps completed so far, and the completion latch. */
+  /** sequence doors: DERIVED cursor (first unfired chain step), for HUD/probes. */
   seq?: number;
   seqDone?: boolean;
   /** sequence doors: per-trigger edge memory (keyed by trigger id) so only
    *  NEW activations advance/reset the chain — lingering latches don't. */
   seqPrev?: Record<number, boolean>;
+  /** sequence doors: completion BY IDENTITY (trigger id -> fired), so a
+   *  wrecked already-fired trigger collapses its slot instead of stranding
+   *  an index-based cursor past the end of the shortened chain. */
+  seqFired?: Record<number, boolean>;
   /** Plate weight currently on the sill (transient, not persisted semantics). */
   pressed?: boolean;
   /** Lever: frames left of the hand-pull animation; flips when it hits 0. */
