@@ -99,6 +99,18 @@ the sim: liquids flow away, fire rises, projectiles die in frames — contain
 test materials in metal cups and poll, don't single-sample. F3 = perf overlay
 (budgets: sim 6ms / entities 2.5ms / render 5ms).
 
+**Mechanism-correct is NOT player-findable.** Forced factory probes prove a
+system works; they prove nothing about whether generated content is placed,
+connected, or discoverable. Any generated structure must pass the
+FINDABILITY audit: multi-seed (≥3 seeds × all depths) BFS from spawn over
+`!blocksEntity` cells, asserting every interactive thing (door fronts,
+sensors, glyphs, arenas) lies in the spawn-reachable component. Carved
+structures must call `connectToCaves()` (world/structures.ts) targeting a
+MAIN-PATH region — "nearest open area" can be an isolated pocket. Placement
+loops must degrade criteria progressively, never silently skip. New
+landmarks get minimap dots. Use real Cell ids in probes (Water=2, Wall=3,
+Fire=5, Stone=12, Metal=13) — don't guess.
+
 ## Game-feel principles
 
 - Fun-per-effort first; every change shippable. Feel beats features: coyote
