@@ -1,0 +1,68 @@
+import { describe, expect, it } from 'vitest';
+import { createDefaultPostFxSettings } from '@/config/params';
+import type { Ctx, GameStateData } from '@/core/types';
+import { Cell } from '@/sim/CellType';
+import { World } from '@/sim/World';
+import { WorldGen } from '@/world/CaveGenerator';
+
+/**
+ * Golden-hash lock for the earthen cave skeleton. The worldgen overhaul
+ * (config extraction, carve primitives, skeleton strategies) is a move-only
+ * refactor for the baseline biome: these hashes are the tripwire that proves
+ * each step consumed the SAME rng stream in the SAME order. If a change
+ * trips this test, either revert it or — for a DELIBERATE generation change
+ * (flagged in the commit per CLAUDE.md invariant #4) — re-record the hashes.
+ *
+ * Colors are randomized paint (Math.random) and deliberately not hashed;
+ * cell types + spawn hint are the deterministic contract.
+ */
+
+function makeCtx(world: World, worldSeed: number): Ctx {
+  const state: GameStateData = {
+    mode: 'build',
+    score: 0,
+    frameCount: 0,
+    activeInputMode: 'element',
+    currentElement: Cell.Sand,
+    currentSpell: 'bolt',
+    currentBiome: 'earthen',
+    brushSize: 6,
+    playerSpawned: false,
+    worldSeed,
+    paused: false,
+    postFx: createDefaultPostFxSettings(),
+    editorLights: null,
+  };
+  return { world, state } as Ctx;
+}
+
+function fnv1a(bytes: Uint8Array): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i];
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/** Recorded from the pre-overhaul generator. Re-record ONLY for deliberate,
+ *  commit-flagged generation changes. */
+const GOLDEN: Record<number, { hash: string; spawn: { x: number; y: number } }> = {
+  1: { hash: '523194be', spawn: { x: 800, y: 550 } },
+  5: { hash: '4c7a31b8', spawn: { x: 800, y: 413 } },
+  1337: { hash: '47797577', spawn: { x: 800, y: 396 } },
+  123456789: { hash: '44ae5a2a', spawn: { x: 800, y: 542 } },
+};
+
+describe('earthen generateCaves golden hashes', () => {
+  for (const seedKey of Object.keys(GOLDEN)) {
+    const seed = Number(seedKey);
+    it(`seed ${seed} reproduces the locked world`, () => {
+      const world = new World();
+      const gen = new WorldGen();
+      gen.generateCaves(makeCtx(world, seed));
+      expect(fnv1a(world.types)).toBe(GOLDEN[seed].hash);
+      expect(gen.spawnHint).toEqual(GOLDEN[seed].spawn);
+    });
+  }
+});
