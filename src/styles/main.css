@@ -88,7 +88,10 @@ header .engine-status { font-size: 11px; color: var(--accent-purple); font-weigh
 #game-hud { position: absolute; inset: 0; pointer-events: none; font-family: var(--mono); display: none; }
 #game-hud.visible { display: block; }
 
-.vitals { position: absolute; top: 66px; left: 12px; display: flex; flex-direction: column; gap: 5px; width: 190px; }
+/* Left HUD column: hotbar stacks above vitals in flow — they can never
+   overlap, however many wand rows the hotbar grows. */
+#hud-left { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 9px; }
+.vitals { display: flex; flex-direction: column; gap: 5px; width: 190px; }
 .vital-row { display: flex; align-items: center; gap: 7px; }
 .vital-label { font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: rgba(255,255,255,0.55); width: 34px; text-shadow: 0 1px 3px #000; }
 .vital-track {
@@ -133,7 +136,7 @@ header .engine-status { font-size: 11px; color: var(--accent-purple); font-weigh
 }
 
 /* Noita-style inventory bar (play mode, top-left): the active wand's program */
-#spell-hotbar { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+#spell-hotbar { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .wand-slots { display: flex; gap: 5px; }
 /* Cards aren't selectable in play (the bench owns editing) — tiles are read-only. */
 .wand-slots .hot-slot { cursor: default; }
