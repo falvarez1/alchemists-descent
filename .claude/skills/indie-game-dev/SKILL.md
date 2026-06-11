@@ -34,8 +34,8 @@ really burns. When designing anything new, first ask: "what cells is this?"
 
 ## Hard invariants
 
-1. **Cell IDs are append-only forever** (save-format ABI). Next free id: 34.
-   `CELL_COUNT` must match. Never renumber, never reuse.
+1. **Cell IDs are append-only forever** (save-format ABI). Next free id: 35
+   (Moss=34 is taken). `CELL_COUNT` must match. Never renumber, never reuse.
 2. Colors are packed `0xRRGGBB` numbers (`packRGB`/`unpack*` in `sim/colors`).
 3. Entity arrays (`ctx.enemies`, `ctx.projectiles`) are mutated in place —
    never reassign (`length = 0`, `push(...)`); systems hold the references.
