@@ -452,7 +452,14 @@ export class Builder {
 
     this.el('b-new').addEventListener('click', () => {
       if (this.previewBlocks()) return;
-      if (this.doc.objects.length > 0 && !window.confirm('Discard the current document?')) return;
+      // anything worth keeping guards the discard — not just objects
+      const hasWork =
+        this.doc.objects.length > 0 ||
+        this.doc.lights.length > 0 ||
+        this.doc.world !== null ||
+        this.cmds.depth > 0 ||
+        this.paintDirty;
+      if (hasWork && !window.confirm('Discard the current document?')) return;
       this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
       this.cmds.clear();
       this.selectedId = null;
