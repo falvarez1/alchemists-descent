@@ -21,6 +21,8 @@ export class Hud {
   private flaskMaterial: number | null | undefined = undefined;
   /** Filled hotbar tiles of the ACTIVE wand (+ costs and slot positions). */
   private hotbarSlots: Array<{ tile: HTMLElement; cost: number; slotIdx: number }> = [];
+  /** The active wand's recharge bar fill (rebuilt with the hotbar). */
+  private rechargeFill: HTMLElement | null = null;
 
   constructor(private ctx: Ctx) {
     ctx.events.on('scoreChanged', ({ score }) => {
@@ -174,6 +176,18 @@ export class Hud {
         row.appendChild(slot);
       });
       bar.appendChild(row);
+
+      // Cast rhythm bar: drains over the cooldown — a short blip between
+      // cards, a long visible draw when the cycle wraps into recharge.
+      if (isActive) {
+        const track = document.createElement('div');
+        track.className = 'wand-recharge';
+        const fill = document.createElement('div');
+        fill.className = 'wand-recharge-fill';
+        track.appendChild(fill);
+        bar.appendChild(track);
+        this.rechargeFill = fill;
+      }
     }
   }
 
@@ -206,10 +220,18 @@ export class Hud {
 
     // Cast cursor: the cards the NEXT click will fire pulse amber, so the
     // left-to-right cast cycle is something you can watch, not guess at.
+    const wand = ctx.wands.wands[ctx.wands.active];
+    const cooling = wand.cooldown > 0;
     const next = ctx.wands.nextCastSlots();
     for (const s of this.hotbarSlots) {
       s.tile.classList.toggle('unaffordable', player.mana < s.cost);
-      s.tile.classList.toggle('next-cast', next.includes(s.slotIdx));
+      s.tile.classList.toggle('next-cast', !cooling && next.includes(s.slotIdx));
+    }
+    // Recharge bar: drains while the wand catches its breath
+    if (this.rechargeFill) {
+      const max = wand.cooldownMax ?? 0;
+      this.rechargeFill.style.width =
+        cooling && max > 0 ? Math.min(100, (wand.cooldown / max) * 100) + '%' : '0%';
     }
   }
 }

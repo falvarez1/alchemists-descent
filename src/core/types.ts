@@ -841,6 +841,8 @@ export interface WandState {
   cooldown: number;
   /** Pointer into the compiled program (wraps + triggers recharge). */
   castIndex: number;
+  /** What `cooldown` started from on the last cast (HUD recharge bar). */
+  cooldownMax?: number;
 }
 
 /**

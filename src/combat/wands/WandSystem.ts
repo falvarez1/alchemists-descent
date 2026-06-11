@@ -179,6 +179,7 @@ export class WandSystem implements WandsApi {
     if (wrapped) wand.castIndex = 0;
     // Recharge stacks onto the cast delay when the cycle wraps to the top.
     wand.cooldown = wand.frame.castDelay + (wrapped ? wand.frame.recharge : 0);
+    wand.cooldownMax = wand.cooldown;
 
     const tip = ctx.spells.wandTip();
     for (const action of group.actions) {
