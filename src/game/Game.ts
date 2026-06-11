@@ -78,6 +78,7 @@ export class Game {
       playerSpawned: false,
       worldSeed: randomSeed(),
       paused: false,
+      editorLights: null,
     };
     const input: InputState = {
       keys: { left: false, right: false, jump: false, down: false },

@@ -292,7 +292,7 @@ describe('builder validation', () => {
     ).toBe(true);
   });
 
-  it('rejects unsupported link logic', () => {
+  it('notes that link-level logic is ignored (the door owns logic now)', () => {
     const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
     const spawn = makeObj('spawn', 120, 158);
     const plate = makeObj('plate', 140, 159, { w: 5 });
@@ -300,7 +300,44 @@ describe('builder validation', () => {
     doc.objects.push(spawn, plate, door);
     doc.links.push({ id: freshId('link'), fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'or' });
     expect(
-      validateDocument(doc).some((i) => i.severity === 'error' && i.what.includes("logic 'or'")),
+      validateDocument(doc).some((i) => i.severity === 'info' && i.what.includes('link-level logic')),
+    ).toBe(true);
+  });
+
+  it('OR doors open from any reachable trigger; AND doors need them all', () => {
+    // plate A before the door, plate B sealed BEHIND it: with OR the door is
+    // earnable from A alone; with AND the fixpoint never opens it.
+    const build = (logic: 'and' | 'or') => {
+      const { doc } = worldDoc((w) => carveBox(w, 100, 100, 300, 159));
+      const spawn = makeObj('spawn', 110, 158);
+      const plateA = makeObj('plate', 130, 159, { w: 5 });
+      const door = makeObj('door', 180, 100, { w: 3, h: 60, logic });
+      const plateB = makeObj('plate', 220, 159, { w: 5 });
+      const key = makeObj('pickup', 280, 158, { kind: 'key' });
+      doc.objects.push(spawn, plateA, door, plateB, key);
+      doc.links.push(
+        { id: freshId('link'), fromId: plateA.id, toId: door.id, kind: 'triggerDoor', logic: 'and' },
+        { id: freshId('link'), fromId: plateB.id, toId: door.id, kind: 'triggerDoor', logic: 'and' },
+      );
+      return validateDocument(doc);
+    };
+    expect(errors(build('or'))).toEqual([]);
+    const andIssues = build('and');
+    expect(andIssues.some((i) => i.severity === 'error' && i.what.includes('key unreachable'))).toBe(true);
+    expect(andIssues.some((i) => i.severity === 'error' && i.what.includes('plate unreachable'))).toBe(true);
+  });
+
+  it('warns when an earnable target sits behind a too-tight crawlway', () => {
+    const { doc } = worldDoc((w) => {
+      carveBox(w, 100, 100, 200, 159);
+      carveBox(w, 201, 156, 260, 158); // a 3-tall crawl tunnel off the chamber
+    });
+    doc.objects.push(makeObj('spawn', 120, 158));
+    doc.objects.push(makeObj('waystone', 255, 158));
+    const issues = validateDocument(doc);
+    expect(issues.some((i) => i.what.includes('waystone unreachable'))).toBe(false); // cells reach it
+    expect(
+      issues.some((i) => i.severity === 'warning' && i.what.includes('too tight')),
     ).toBe(true);
   });
 
@@ -314,6 +351,45 @@ describe('builder validation', () => {
     expect(
       validateDocument(doc).some((i) => i.severity === 'warning' && i.what.includes('footing')),
     ).toBe(true);
+  });
+});
+
+describe('stamp library', () => {
+  it('rotates 90cw and mirrors correctly', async () => {
+    const { captureStamp, decodeStamp, mirrorStamp, rotateStamp } = await import('@/builder/stamplib');
+    const w = new World();
+    // a 3x2 block: rows [1,2,3] / [4,5,6] at (10,10)
+    const vals = [1, 2, 3, 4, 5, 6];
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 3; x++) w.types[w.idx(10 + x, 10 + y)] = vals[x + y * 3];
+    const s = captureStamp(w, { x0: 10, y0: 10, x1: 12, y1: 11 }, 't')!;
+    expect(Array.from(decodeStamp(s))).toEqual(vals);
+    const r = rotateStamp(s); // 90cw: columns become rows bottom-up
+    expect(r.w).toBe(2);
+    expect(r.h).toBe(3);
+    expect(Array.from(decodeStamp(r))).toEqual([4, 1, 5, 2, 6, 3]);
+    const m = mirrorStamp(s);
+    expect(Array.from(decodeStamp(m))).toEqual([3, 2, 1, 6, 5, 4]);
+    // four rotations come home
+    const r4 = rotateStamp(rotateStamp(rotateStamp(rotateStamp(s))));
+    expect(Array.from(decodeStamp(r4))).toEqual(vals);
+  });
+});
+
+describe('share codes', () => {
+  it('round-trips a document through the compressed code', async () => {
+    if (typeof CompressionStream === 'undefined') return; // older node: browser-only feature
+    const { docToShareCode, shareCodeToDoc } = await import('@/builder/document');
+    const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
+    doc.objects.push(makeObj('spawn', 120, 158));
+    doc.objects.push(makeObj('waystone', 150, 158));
+    const code = await docToShareCode(doc);
+    expect(code.startsWith('PLLD1.')).toBe(true);
+    const back = await shareCodeToDoc(code);
+    expect(back).not.toBeNull();
+    expect(back!.objects.length).toBe(2);
+    expect(back!.world?.rle).toBe(doc.world!.rle);
+    expect(await shareCodeToDoc('PLLD1.not-actually-base64!!')).toBeNull();
+    expect(await shareCodeToDoc('garbage')).toBeNull();
   });
 });
 

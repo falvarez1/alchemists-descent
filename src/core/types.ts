@@ -401,6 +401,12 @@ export interface GameStateData {
   worldSeed: number;
   /** Gameplay frozen behind a modal (Sanctum); rendering continues. */
   paused: boolean;
+  /**
+   * Builder light preview: authored lights seeded into the live light field
+   * while the editor is open (null outside the Builder). Lighting.build
+   * reads this in build mode so mood authoring doesn't need a playtest.
+   */
+  editorLights: AuthoredLight[] | null;
 }
 
 export interface Keys {
@@ -622,6 +628,8 @@ export interface CameraApi {
   tx: number;
   ty: number;
   zoom: number;
+  /** Editor zoom override: when set, zoom lerps here instead of idle-zoom. */
+  zoomLock: number | null;
   idleFrames: number;
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
   renderX: number;
@@ -737,6 +745,15 @@ export interface Mechanism {
    * plate/scale/buoy: latch frames left.
    */
   state: number;
+  /**
+   * Door trigger aggregation (Builder-authored; generated levels leave it
+   * unset = 'and'). 'or': any trigger opens. 'sequence': triggers must fire
+   * in link order — wrong order resets, completion latches the door open.
+   */
+  logic?: 'and' | 'or' | 'sequence';
+  /** sequence doors: triggers satisfied so far, and the completion latch. */
+  seq?: number;
+  seqDone?: boolean;
   /** Plate weight currently on the sill (transient, not persisted semantics). */
   pressed?: boolean;
   /** Lever: frames left of the hand-pull animation; flips when it hits 0. */

@@ -1,5 +1,5 @@
 import type { BiomeId, Ctx } from '@/core/types';
-import { base64ToBytes, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
+import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
@@ -294,6 +294,34 @@ export function migrateSandboxSave(
   const doc = createEmptyDocument(name, save.biome as BiomeId);
   doc.world = { rle: save.rle, life: save.life, charge: save.charge };
   return doc;
+}
+
+/* ---------------- shareable level codes ---------------- */
+
+const SHARE_PREFIX = 'PLLD1.';
+
+/** Compress the document into a pasteable code (deflate + base64). */
+export async function docToShareCode(doc: EditorDocument): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(doc));
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  const packed = new Uint8Array(await new Response(stream).arrayBuffer());
+  return SHARE_PREFIX + bytesToBase64(packed);
+}
+
+/** Decode + sanitize a share code; null on anything malformed. */
+export async function shareCodeToDoc(code: string): Promise<EditorDocument | null> {
+  try {
+    const trimmed = code.trim();
+    if (!trimmed.startsWith(SHARE_PREFIX)) return null;
+    const bin = atob(trimmed.slice(SHARE_PREFIX.length));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    const json = await new Response(stream).text();
+    return sanitizeImportedDoc(JSON.parse(json));
+  } catch {
+    return null;
+  }
 }
 
 /* ---------------- explicit world-index helpers for probes/tests ---------------- */

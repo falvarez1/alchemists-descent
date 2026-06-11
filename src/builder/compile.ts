@@ -38,7 +38,11 @@ import { HEIGHT } from '@/config/constants';
 export { validateDocument };
 export type { DocIssue };
 
-export function compileAndPlaytest(ctx: Ctx, doc: EditorDocument): boolean {
+export function compileAndPlaytest(
+  ctx: Ctx,
+  doc: EditorDocument,
+  opts?: { spawnAt?: { x: number; y: number } },
+): boolean {
   const issues = validateDocument(doc);
   if (issues.some((i) => i.severity === 'error')) return false;
 
@@ -67,10 +71,13 @@ export function compileAndPlaytest(ctx: Ctx, doc: EditorDocument): boolean {
     world.charge[i] = 0;
   };
 
-  // 3) Player to the authored spawn FIRST (see header note).
+  // 3) Player to the spawn FIRST (see header note). "Playtest from here"
+  //    overrides the authored spawn so iteration loops start at the cursor
+  //    (and death respawns there too).
   const spawn = doc.objects.find((o) => o.kind === 'spawn');
-  if (spawn) {
-    runtime.spawn = { x: Math.floor(spawn.x), y: Math.floor(spawn.y) };
+  const at = opts?.spawnAt ?? (spawn ? { x: spawn.x, y: spawn.y } : null);
+  if (at) {
+    runtime.spawn = { x: Math.floor(at.x), y: Math.floor(at.y) };
     ctx.player.x = runtime.spawn.x;
     ctx.player.y = runtime.spawn.y;
     ctx.player.vx = 0;
@@ -133,6 +140,7 @@ export function compileAndPlaytest(ctx: Ctx, doc: EditorDocument): boolean {
       paramNum(o, 'h', 13),
     );
     if (o.params.initialOpen === true) setDoorCells(ctx, door, true);
+    if (o.params.logic === 'or' || o.params.logic === 'sequence') door.logic = o.params.logic;
     doorByObj.set(o.id, door);
   }
   const objById = new Map(doc.objects.map((o) => [o.id, o] as const));

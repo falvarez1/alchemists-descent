@@ -14,6 +14,8 @@ export class Camera implements CameraApi {
   tx = 0;
   ty = 0;
   zoom = 1;
+  /** Editor zoom override (Builder wheel); null = the game's idle-zoom. */
+  zoomLock: number | null = null;
   idleFrames = 0;
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
   renderX = 0;
@@ -27,7 +29,8 @@ export class Camera implements CameraApi {
       // (the lerp below turns the offset into a smooth glance down).
       this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48;
     } else if (state.mode === 'build') {
-      const pan = 9;
+      // pan in SCREEN distance: zoomed in, the world moves proportionally less
+      const pan = 9 / this.zoom;
       if (input.keys.left) this.tx -= pan;
       if (input.keys.right) this.tx += pan;
       if (input.keys.jump) this.ty -= pan;
@@ -46,8 +49,8 @@ export class Camera implements CameraApi {
       !player.grounded ||
       player.firing;
     this.idleFrames = busy ? 0 : this.idleFrames + 1;
-    const zTarget = this.idleFrames > 55 ? 1.13 : 1.0;
-    this.zoom += (zTarget - this.zoom) * 0.035;
+    const zTarget = this.zoomLock ?? (this.idleFrames > 55 ? 1.13 : 1.0);
+    this.zoom += (zTarget - this.zoom) * (this.zoomLock !== null ? 0.16 : 0.035);
   }
 
   updateSimBounds(world: World): void {

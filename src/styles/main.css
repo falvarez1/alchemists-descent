@@ -488,6 +488,28 @@ button#clear-btn:hover { background: var(--accent-danger); color: white; border-
 #builder-proc #bp-density { width: 100px; }
 #builder-proc #bp-pass { width: 124px; }
 .bi-warn { color: #fbbf24; }
+
+#builder-palette .bp-grid3 { grid-template-columns: 1fr 1fr 1fr; }
+#bp-settle-keep { border-color: #166534; color: #86efac; background: #0c1f12; }
+#bp-settle-revert { border-color: #78350f; color: #fcd34d; background: #1d1407; }
+.bp-stamp {
+    display: flex; align-items: center; gap: 4px; padding: 3px 5px; cursor: pointer;
+    border: 1px solid #25303d; border-radius: 3px; background: #14181f; font-size: 8px; color: #9fb6cc;
+}
+.bp-stamp:hover { background: #1d2733; }
+.bp-stamp.armed { border-color: #f0abfc; color: #fbe6ff; background: #2a1430; }
+.bp-stamp-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-stamp-size { color: #50596b; }
+.bp-stamp button { padding: 0 4px; font-size: 9px; }
+#bp-stamp-list { display: flex; flex-direction: column; gap: 2px; }
+
+/* double-id selector: must out-rank `#canvas-holder canvas { width:100% !important }` */
+#builder-root #builder-minimap {
+    position: absolute; left: auto; top: auto; right: 8px; bottom: 34px; z-index: 2; pointer-events: auto;
+    width: 200px !important; height: 133px !important; image-rendering: pixelated; cursor: crosshair;
+    border: 1px solid #1d2733; border-radius: 4px; background: #0a0d12;
+}
+body.builder-open #builder-issues { bottom: 182px; }
 #builder-palette .bp-head { font-size: 8px; font-weight: 800; letter-spacing: 2px; color: #5b7187; margin-bottom: 2px; }
 #builder-palette .bp-tool { display: flex; align-items: center; gap: 6px; text-align: left; padding: 5px 6px; }
 #builder-palette .bp-tool.active { border-color: #4ade80; color: #d9fbe5; background: #122a1c; }

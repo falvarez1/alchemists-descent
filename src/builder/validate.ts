@@ -147,6 +147,64 @@ function bfsMask(types: Uint8Array, sx: number, sy: number): Uint8Array {
   return seen;
 }
 
+/**
+ * Player-clearance erosion: marks feet positions where a 5-wide x 9-tall
+ * clear box fits (half the wizard's 9x17 — forgiving on purpose; this feeds
+ * WARNINGS for chokepoints, not errors). Two separable sliding-window
+ * passes, O(cells).
+ */
+function erodePassable(types: Uint8Array): Uint8Array {
+  const pass = new Uint8Array(WIDTH * HEIGHT);
+  for (let i = 0; i < pass.length; i++) pass[i] = blocksEntity(types[i]) ? 0 : 1;
+  const h = new Uint8Array(WIDTH * HEIGHT);
+  for (let y = 0; y < HEIGHT; y++) {
+    const row = y * WIDTH;
+    let run = 0;
+    for (let x = 0; x < WIDTH; x++) {
+      run = pass[row + x] ? run + 1 : 0;
+      if (run >= 5) h[row + x - 2] = 1;
+    }
+  }
+  const eroded = new Uint8Array(WIDTH * HEIGHT);
+  for (let x = 0; x < WIDTH; x++) {
+    let run = 0;
+    for (let y = 0; y < HEIGHT; y++) {
+      run = h[x + y * WIDTH] ? run + 1 : 0;
+      if (run >= 9) eroded[x + y * WIDTH] = 1; // feet row of a clear column
+    }
+  }
+  return eroded;
+}
+
+/** BFS over a precomputed passability mask (1 = passable). */
+function bfsOverMask(passable: Uint8Array, sx: number, sy: number): Uint8Array {
+  const seen = new Uint8Array(WIDTH * HEIGHT);
+  const qx = new Int32Array(WIDTH * HEIGHT);
+  const qy = new Int32Array(WIDTH * HEIGHT);
+  let head = 0,
+    tail = 0;
+  const push = (x: number, y: number): void => {
+    if (x < 1 || y < 1 || x >= WIDTH - 1 || y >= HEIGHT - 1) return;
+    const i = x + y * WIDTH;
+    if (seen[i] || !passable[i]) return;
+    seen[i] = 1;
+    qx[tail] = x;
+    qy[tail] = y;
+    tail++;
+  };
+  push(sx, sy);
+  while (head < tail) {
+    const x = qx[head],
+      y = qy[head];
+    head++;
+    push(x + 1, y);
+    push(x - 1, y);
+    push(x, y + 1);
+    push(x, y - 1);
+  }
+  return seen;
+}
+
 function near(mask: Uint8Array, x: number, y: number, r: number): boolean {
   for (let dy = -r; dy <= r; dy++) {
     for (let dx = -r; dx <= r; dx++) {
@@ -225,7 +283,7 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
         push('error', 'rune glyph linked to ' + to.kind + ' — glyphs open rune doors', to.id);
     }
     if (l.logic !== undefined && l.logic !== 'and') {
-      push('error', `link logic '${l.logic}' is not supported by the compiler (AND only)`, from.id);
+      push('info', "link-level logic is ignored — set AND/OR/SEQUENCE on the door's logic field", from.id);
     }
     if (from.hidden || to.hidden) {
       push(
@@ -266,6 +324,9 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
           'initialOpen is overridden by trigger logic — the runtime slams this door shut at playtest start',
           o.id,
         );
+      const lg = o.params.logic;
+      if (lg !== undefined && lg !== 'and' && lg !== 'or' && lg !== 'sequence')
+        push('warning', `unknown door logic '${String(lg)}' — it will compile as AND`, o.id);
     } else if (o.kind === 'runeGlyph') {
       if (!liveLinks.some((l) => l.fromId === o.id && l.kind === 'runeDoor'))
         push('error', 'rune glyph opens nothing — link it to a rune door', o.id);
@@ -397,8 +458,14 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
         .filter((l) => l.kind === 'triggerDoor' && l.toId === d.id)
         .map((l) => byId.get(l.fromId)!)
         .filter((t) => !t.hidden);
-      // the runtime AND gate: EVERY wired trigger must be operable
-      if (triggers.length > 0 && triggers.every((t) => triggerReachable(mask, t))) {
+      // OR doors open from ANY operable trigger; AND and SEQUENCE need the
+      // full set (a sequence completes only if every step can be fired).
+      const earnable =
+        triggers.length > 0 &&
+        (d.params.logic === 'or'
+          ? triggers.some((t) => triggerReachable(mask, t))
+          : triggers.every((t) => triggerReachable(mask, t)));
+      if (earnable) {
         openIds.add(d.id);
         opened = true;
       }
@@ -456,6 +523,43 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     } else if (o.kind === 'enemy') {
       if (!near(mask, o.x, o.y - 2, 6)) push('info', 'enemy sealed away from the player', o.id);
     }
+  }
+
+  // ---- clearance: cell-reachable is not wizard-walkable (he is 9x17). ----
+  // Re-walk the earned world with an eroded mask; anything reachable by
+  // cells but not by the eroded box gets a "too tight" WARNING.
+  const finalGrid = baseTypes.slice();
+  stampObjects(finalGrid, doc, openIds);
+  const eroded = erodePassable(finalGrid);
+  let seedX = -1,
+    seedY = -1;
+  for (let dy = 0; dy >= -6 && seedX < 0; dy--) {
+    for (let dx = -2; dx <= 2 && seedX < 0; dx++) {
+      const X = Math.floor(spawn.x) + dx,
+        Y = Math.floor(spawn.y) + dy;
+      if (X > 0 && Y > 0 && X < WIDTH && Y < HEIGHT && eroded[X + Y * WIDTH]) {
+        seedX = X;
+        seedY = Y;
+      }
+    }
+  }
+  if (seedX < 0) {
+    push('info', 'spawn chamber too tight to evaluate player clearance', spawn.id);
+    return issues;
+  }
+  const tight = bfsOverMask(eroded, seedX, seedY);
+  const tightWarn = (o: { id: string }, x: number, y: number, r: number, label: string): void => {
+    if (near(mask, x, y, r) && !near(tight, x, y, r + 3))
+      push('warning', label + ' is cell-reachable, but the path looks too tight for the alchemist (9x17)', o.id);
+  };
+  for (const o of visible) {
+    if (TRIGGER_KINDS.has(o.kind)) tightWarn(o, o.x, o.y - 2, 4, o.kind);
+    else if (o.kind === 'runeGlyph') tightWarn(o, o.x, o.y - 3, 5, 'rune glyph');
+    else if (o.kind === 'pickup' && o.params.kind === 'key') tightWarn(o, o.x, o.y - 2, 6, 'golden key');
+    else if (o.kind === 'exitPortal') tightWarn(o, o.x, o.y - 2, 6, 'exit portal');
+    else if (o.kind === 'exitWell') tightWarn(o, o.x, o.y - 8, 6, 'exit well mouth');
+    else if (o.kind === 'waystone') tightWarn(o, o.x, o.y - 3, 6, 'waystone');
+    else if (o.kind === 'cauldron') tightWarn(o, o.x, o.y - 3, 6, 'cauldron');
   }
 
   return issues;

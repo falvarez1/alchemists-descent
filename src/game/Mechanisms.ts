@@ -470,14 +470,47 @@ export class Mechanisms implements MechanismsApi {
         if (door.dissolve.length === 0) door.dissolve = undefined;
       }
 
-      let hasTrigger = false;
-      let want = true;
+      // Gather this door's triggers in LIST ORDER (sequence doors read it).
+      const triggers: Mechanism[] = [];
       for (const t of list) {
-        if (t.kind === 'door' || t.targetId !== door.id) continue;
-        hasTrigger = true;
-        if (!this.satisfied(t)) {
-          want = false;
-          break;
+        if (t.kind !== 'door' && t.targetId === door.id) triggers.push(t);
+      }
+      const hasTrigger = triggers.length > 0;
+      let want = false;
+      if (hasTrigger) {
+        if (door.logic === 'or') {
+          // ANY satisfied trigger opens (and it closes again when none are)
+          want = triggers.some((t) => this.satisfied(t));
+        } else if (door.logic === 'sequence') {
+          // Triggers must FIRE IN ORDER; a later trigger firing early resets
+          // the chain; completing it latches the door open forever.
+          if (door.seqDone !== true) {
+            const seq = door.seq ?? 0;
+            let early = false;
+            for (let n = seq + 1; n < triggers.length && !early; n++) {
+              if (this.satisfied(triggers[n])) early = true;
+            }
+            if (early) {
+              if (seq > 0) {
+                door.seq = 0;
+                ctx.audio.tone(120, 200, 0.14, 'sawtooth', 0.1); // the chain breaks
+              }
+            } else if (seq < triggers.length && this.satisfied(triggers[seq])) {
+              door.seq = seq + 1;
+              ctx.audio.tone(300 + seq * 90, 110, 0.1, 'triangle', 0.12); // step chime
+              if (door.seq === triggers.length) door.seqDone = true;
+            }
+          }
+          want = door.seqDone === true;
+        } else {
+          // default AND: every trigger must be satisfied (generated levels)
+          want = true;
+          for (const t of triggers) {
+            if (!this.satisfied(t)) {
+              want = false;
+              break;
+            }
+          }
         }
       }
       if (hasTrigger && (door.state === 1) !== want) {

@@ -1,6 +1,6 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
-import type { Ctx } from '@/core/types';
+import type { AuthoredLight, Ctx } from '@/core/types';
 import type { LightField, LightSample } from '@/render/pixels';
 
 /* ===================== Dynamic Lighting =====================
@@ -75,6 +75,65 @@ export class Lighting implements LightField {
     f = (AMBIENT + Math.min(2.2, Lb)) * vg;
     this.lit.b = Math.min(1.8, f * f);
     return this.lit;
+  }
+
+  /**
+   * Authored lights (Builder): occluded lights seed a point cluster and let
+   * the directional sweeps carve shadows; non-occluded lights paint their
+   * whole falloff disk straight into the field.
+   */
+  private seedAuthoredSet(
+    ctx: Ctx,
+    lights: readonly AuthoredLight[],
+    renderCamX: number,
+    renderCamY: number,
+  ): void {
+    const { LW, LH } = this;
+    for (const al of lights) {
+      const flick =
+        al.flicker > 0
+          ? 1 -
+            al.flicker *
+              (0.3 +
+                0.2 * Math.sin(ctx.state.frameCount * 0.11 + al.flickerPhase) +
+                0.15 * Math.sin(ctx.state.frameCount * 0.043 + al.flickerPhase * 2.7))
+          : 1;
+      const I = al.intensity * flick;
+      if (I <= 0) continue;
+      if (al.occluded) {
+        const core = I * (1 + al.bloom);
+        this.seedLight(al.x, al.y, core * al.r, core * al.g, core * al.b);
+        this.seedLight(al.x - 2, al.y, I * al.r, I * al.g, I * al.b);
+        this.seedLight(al.x + 2, al.y, I * al.r, I * al.g, I * al.b);
+        this.seedLight(al.x, al.y - 2, I * al.r, I * al.g, I * al.b);
+        this.seedLight(al.x, al.y + 2, I * al.r, I * al.g, I * al.b);
+        continue;
+      }
+      const R = Math.max(2, al.radius >> 1); // light-field pixels (half-res)
+      const clx = (al.x - renderCamX) >> 1,
+        cly = (al.y - renderCamY) >> 1;
+      if (clx < -R || clx > LW + R || cly < -R || cly > LH + R) continue;
+      for (let dy = -R; dy <= R; dy++) {
+        const py = cly + dy;
+        if (py < 0 || py >= LH) continue;
+        for (let dx = -R; dx <= R; dx++) {
+          const px = clx + dx;
+          if (px < 0 || px >= LW) continue;
+          const t = Math.sqrt(dx * dx + dy * dy) / R;
+          if (t > 1) continue;
+          let f: number;
+          if (al.falloff === 'linear') f = 1 - t;
+          else if (al.falloff === 'sharp') f = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+          else f = (1 - t * t) * 0.8; // soft: gentle dome
+          if (t < 0.15) f *= 1 + al.bloom; // hot core feeds the bloom pass
+          const i = py * LW + px;
+          const v = I * f;
+          if (v * al.r > this.lightR[i]) this.lightR[i] = v * al.r;
+          if (v * al.g > this.lightG[i]) this.lightG[i] = v * al.g;
+          if (v * al.b > this.lightB[i]) this.lightB[i] = v * al.b;
+        }
+      }
+    }
   }
 
   private seedLight(wx: number, wy: number, r: number, g: number, b: number): void {
@@ -288,56 +347,15 @@ export class Lighting implements LightField {
       for (const m of runtime.mechanisms) {
         if (m.kind === 'brazier' && m.state === 1) this.seedLight(m.x, m.y - 2, 0.8, 0.5, 0.12);
       }
-      // Designer-placed lights (Builder Phase 7). Occluded lights seed a
-      // point and let the sweeps carve shadows; non-occluded lights paint
-      // their whole falloff disk straight into the field.
+      // Designer-placed lights (Builder Phase 7).
       if (runtime.authoredLights) {
-        for (const al of runtime.authoredLights) {
-          const flick =
-            al.flicker > 0
-              ? 1 -
-                al.flicker *
-                  (0.3 +
-                    0.2 * Math.sin(ctx.state.frameCount * 0.11 + al.flickerPhase) +
-                    0.15 * Math.sin(ctx.state.frameCount * 0.043 + al.flickerPhase * 2.7))
-              : 1;
-          const I = al.intensity * flick;
-          if (I <= 0) continue;
-          if (al.occluded) {
-            const core = I * (1 + al.bloom);
-            this.seedLight(al.x, al.y, core * al.r, core * al.g, core * al.b);
-            this.seedLight(al.x - 2, al.y, I * al.r, I * al.g, I * al.b);
-            this.seedLight(al.x + 2, al.y, I * al.r, I * al.g, I * al.b);
-            this.seedLight(al.x, al.y - 2, I * al.r, I * al.g, I * al.b);
-            this.seedLight(al.x, al.y + 2, I * al.r, I * al.g, I * al.b);
-            continue;
-          }
-          const R = Math.max(2, al.radius >> 1); // light-field pixels (half-res)
-          const clx = (al.x - renderCamX) >> 1,
-            cly = (al.y - renderCamY) >> 1;
-          if (clx < -R || clx > LW + R || cly < -R || cly > LH + R) continue;
-          for (let dy = -R; dy <= R; dy++) {
-            const py = cly + dy;
-            if (py < 0 || py >= LH) continue;
-            for (let dx = -R; dx <= R; dx++) {
-              const px = clx + dx;
-              if (px < 0 || px >= LW) continue;
-              const t = Math.sqrt(dx * dx + dy * dy) / R;
-              if (t > 1) continue;
-              let f: number;
-              if (al.falloff === 'linear') f = 1 - t;
-              else if (al.falloff === 'sharp') f = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
-              else f = (1 - t * t) * 0.8; // soft: gentle dome
-              if (t < 0.15) f *= 1 + al.bloom; // hot core feeds the bloom pass
-              const i = py * LW + px;
-              const v = I * f;
-              if (v * al.r > this.lightR[i]) this.lightR[i] = v * al.r;
-              if (v * al.g > this.lightG[i]) this.lightG[i] = v * al.g;
-              if (v * al.b > this.lightB[i]) this.lightB[i] = v * al.b;
-            }
-          }
-        }
+        this.seedAuthoredSet(ctx, runtime.authoredLights, renderCamX, renderCamY);
       }
+    }
+    // Builder light PREVIEW: while the editor is open it feeds its authored
+    // lights here so mood reads live without a playtest round-trip.
+    if (ctx.state.editorLights && ctx.state.mode === 'build') {
+      this.seedAuthoredSet(ctx, ctx.state.editorLights, renderCamX, renderCamY);
     }
     // Living light: golem cores pulse (synced to the sprite), imps smoulder,
     // wisps carry their own cold halo, mage hands throb purple

@@ -575,27 +575,36 @@ Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not start
 - [x] Phase 1 — Sandbox rename
 - [x] Phase 2 — Builder shell (overlay, pause claim, markers, inspector)
 - [x] Phase 3 — Document, save/load/export/import, command undo/redo
-- [~] Phase 4 — Terrain tools: paint, line, rect/filled, ellipse/filled,
-      flood fill, replace-in-region, region select. Deferred: smooth/roughen,
-      dedicated spray-parameter tools (Sandbox spray remains available),
-      per-layer visibility toggles.
-- [~] Phase 5 — Objects: spawn, enemy, pickup, portal, exit well, waystone,
-      cauldron, boss marker, all persisted. Deferred: rotation/duplicate/
-      multi-select, patrol points, terrainStamp/vegetationStamp/hazardEmitter/
-      decor kinds.
+- [x] Phase 4 — Terrain tools: paint, line, rect/filled, ellipse/filled,
+      flood fill, replace-in-region, region select, plus a SETTLE preview
+      (run real physics on the visible area for 2s, then keep — undoable —
+      or revert). Deferred: smooth/roughen, dedicated spray-parameter tools
+      (Sandbox spray remains available), per-layer visibility toggles.
+- [x] Phase 5 — Objects: spawn, enemy, pickup, portal, exit well, waystone,
+      cauldron, boss marker, all persisted. Multi-select (shift-click +
+      marquee), group drag, Ctrl+D duplicate (links between selected pairs
+      come along), Ctrl+C/V param copy/paste. Deferred: rotation, patrol
+      points, hazardEmitter/decor kinds.
 - [x] Phase 6 — Mechanisms & links: door, plate, lever, brazier, scale, buoy,
       charge latch, rune glyph/door; LINK tool with live wires; inspector
-      wiring rows with unlink; compiles to runtime Mechanism[] (multi-trigger
-      = AND) and RuneVault[].
-- [~] Phase 7 — Lighting: placement, full inspector (color/intensity/radius/
-      bloom/flicker/falloff/occluded), editor rings, runtime seeding in
-      Lighting.build. Deferred: presets, solo/toggle-all.
-- [~] Phase 8 — Procedural: seeded passes (caves CA, veins, pockets,
+      wiring rows with unlink; compiles to runtime Mechanism[] and
+      RuneVault[]. Door logic is authorable: AND (default), OR (any trigger),
+      SEQUENCE (triggers in link order; wrong order resets; completion
+      latches the door open).
+- [x] Phase 7 — Lighting: placement, full inspector (color/intensity/radius/
+      bloom/flicker/falloff/occluded) with six presets, editor rings, LIVE
+      PREVIEW (authored lights feed the real light field while editing),
+      runtime seeding in Lighting.build. Deferred: solo/toggle-all.
+- [x] Phase 8 — Procedural: seeded passes (caves CA, veins, pockets,
       vegetation, scatter, enemy/pickup population) over whole level or
-      region, preview/apply/discard, history persisted. Deferred: polygon /
-      connected-region targets, bake-from-playtest.
+      region, preview/apply/discard, history persisted. Stamps: capture a
+      region as a reusable chunk, rotate (Q) / mirror (E), paste through
+      undo. Deferred: polygon / connected-region targets,
+      bake-from-playtest.
 - [x] Phase 9 — Playtest compiler (document -> custom LevelRuntime; scars
       never flow back; custom portals award a "level clear" toast).
+      Playtest-from-here: T compiles and spawns at the cursor for tight
+      iteration loops (death respawns there too).
 - [x] Phase 10 — Validation service: ids/links/wiring/bounds/embedding/
       capacity/footing checks plus FIXPOINT findability — BFS from spawn,
       open every door whose full visible trigger set became reachable
@@ -607,6 +616,13 @@ Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not start
       scripts/verify-builder.mjs, scripts/verify-builder-suite.mjs, and
       scripts/verify-builder-expedition.mjs (mid-expedition the Builder
       detaches onto a scratch world; PLAY re-attaches the real level).
+      Player-clearance pass: anything cell-reachable but not walkable by a
+      5x9 eroded box warns "too tight for the alchemist". Plus: wheel zoom
+      (1-4x) with a clickable true-color minimap, readability overlays
+      (light coverage / danger / loot, O cycles), autosaved drafts every 30s
+      with restore-on-open, and shareable level codes (SHARE/CODE — deflate
+      + base64, 'PLLD1.' prefix). New probe:
+      scripts/verify-builder-pro.mjs (29 asserts).
 
 ### Phase 1 - Rename Existing Build To Sandbox
 

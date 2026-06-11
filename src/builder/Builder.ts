@@ -4,12 +4,14 @@ import {
   applyWorldLayer,
   captureWorldLayer,
   createEmptyDocument,
+  docToShareCode,
   freshId,
   loadDocLibrary,
   objectFootprint,
   paramNum,
   sanitizeImportedDoc,
   saveDocToLibrary,
+  shareCodeToDoc,
 } from '@/builder/document';
 import type {
   EditorDocument,
@@ -37,7 +39,16 @@ import {
 import type { CellPatch, Command } from '@/builder/commands';
 import { drawLine, spawnCircle } from '@/sim/brush';
 import { World } from '@/sim/World';
-import { compileAndPlaytest } from '@/builder/compile';
+import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
+import {
+  captureStamp,
+  loadStamps,
+  mirrorStamp,
+  pasteStamp,
+  rotateStamp,
+  saveStamps,
+} from '@/builder/stamplib';
+import type { StampDef } from '@/builder/stamplib';
 import { TRIGGER_KINDS, validateDocument } from '@/builder/validate';
 import type { DocIssue } from '@/builder/validate';
 import {
@@ -144,7 +155,25 @@ type BuilderTool =
   | 'region'
   | 'link'
   | 'light'
+  | 'stamp'
   | EditorObjectKind;
+
+const OVERLAY_MODES = ['none', 'light', 'danger', 'loot'] as const;
+type OverlayMode = (typeof OVERLAY_MODES)[number];
+
+const DRAFT_KEY = 'noita-builder-draft';
+/** Settle previews bigger than this commit without undo (memory honesty). */
+const SETTLE_UNDO_CAP = 400000;
+
+/** Light presets: one click of mood (applied through the undo stack). */
+const LIGHT_PRESETS: Record<string, Partial<EditorLight>> = {
+  torch: { color: '#ffb45a', intensity: 1.3, radius: 48, bloom: 0.4, flicker: 0.4, falloff: 'soft', occluded: true },
+  brazier: { color: '#ff8a3c', intensity: 1.8, radius: 64, bloom: 0.6, flicker: 0.3, falloff: 'soft', occluded: true },
+  crystal: { color: '#7fd4ff', intensity: 1.0, radius: 40, bloom: 0.5, flicker: 0.05, falloff: 'sharp', occluded: true },
+  moonlight: { color: '#9db8e8', intensity: 0.7, radius: 120, bloom: 0.1, flicker: 0, falloff: 'linear', occluded: false },
+  treasure: { color: '#ffd75e', intensity: 0.9, radius: 28, bloom: 0.7, flicker: 0.15, falloff: 'sharp', occluded: true },
+  warning: { color: '#ff4444', intensity: 1.2, radius: 56, bloom: 0.5, flicker: 0.55, falloff: 'soft', occluded: false },
+};
 
 interface PendingPreview {
   before: CellPatch;
@@ -166,27 +195,48 @@ export class Builder {
   /** Live world has terrain edits the document hasn't captured yet. */
   private paintDirty = false;
 
+  /** Primary selection (drives the inspector); selectedIds is the full set. */
   private selectedId: string | null = null;
+  private selectedIds = new Set<string>();
   private tool: BuilderTool = 'select';
+  /** Group drag: every unlocked member of the selection moves together. */
   private drag: {
-    target: EditorObject | EditorLight;
-    isLight: boolean;
-    origX: number;
-    origY: number;
+    targets: Array<{ t: EditorObject | EditorLight; isLight: boolean; ox: number; oy: number }>;
     grabX: number;
     grabY: number;
   } | null = null;
+  private marquee: { x0: number; y0: number; x1: number; y1: number } | null = null;
+  private clipboard: { kind: EditorObjectKind; params: Record<string, unknown> } | null = null;
   private stroke: { seen: Set<number>; before: CellPatch; lastX: number; lastY: number } | null = null;
   private shapeDrag: { x0: number; y0: number; x1: number; y1: number } | null = null;
   private region: Region | null = null;
   private linkFrom: string | null = null;
   private pendingPreview: PendingPreview | null = null;
   private lastMouse = { x: 0, y: 0 };
+  private zoomTarget = 1;
+  private lightPreviewOn = true;
+  private overlayMode: OverlayMode = 'none';
+  private stampsList: StampDef[] = [];
+  private armedStamp: StampDef | null = null;
+  /** Settle preview: full-plane snapshot while physics runs, then keep/revert. */
+  private settleSnap: {
+    types: Uint8Array;
+    colors: Uint32Array;
+    life: Int16Array;
+    charge: Uint8Array;
+  } | null = null;
+  private settling = false;
+  private settleEndFrame = 0;
+  private autosaveTimer = 0;
+  private draftOffered = false;
 
   private root!: HTMLDivElement;
   private overlay!: HTMLDivElement;
   private canvas!: HTMLCanvasElement;
   private cctx!: CanvasRenderingContext2D;
+  private minimap!: HTMLCanvasElement;
+  private minimapCtx!: CanvasRenderingContext2D;
+  private minimapImage: ImageData | null = null;
   private markerLayer!: HTMLDivElement;
   private markers = new Map<string, HTMLDivElement>();
   private modeBtn!: HTMLButtonElement;
@@ -195,10 +245,12 @@ export class Builder {
 
   constructor(private ctx: Ctx) {
     this.doc = createEmptyDocument('untitled', ctx.state.currentBiome);
+    this.stampsList = loadStamps();
     this.buildDom();
     this.wireBar();
     this.wireProcPanel();
     this.wirePointer();
+    this.wireExtras();
     window.addEventListener('keydown', this.onKeyDown, true);
     // Entering play (PLAY button) while authoring closes the overlay; the
     // document survives for the next open.
@@ -284,16 +336,25 @@ export class Builder {
     this.root.style.display = '';
     this.modeBtn.classList.add('active');
     document.body.classList.add('builder-open');
+    this.ctx.camera.zoomLock = this.zoomTarget;
     this.refreshDocSelect();
     this.syncAll();
+    this.syncStamps();
+    this.syncSettleButtons();
+    this.autosaveTimer = window.setInterval(() => this.autosaveDraft(), 30000);
+    this.offerDraft();
     this.rafId = requestAnimationFrame(this.loop);
   }
 
   close(): void {
     if (!this.isOpen) return;
+    if (this.settling || this.settleSnap) this.finishSettle(false);
     this.discardPreview(true);
     this.isOpen = false;
     cancelAnimationFrame(this.rafId);
+    window.clearInterval(this.autosaveTimer);
+    this.ctx.camera.zoomLock = null;
+    this.ctx.state.editorLights = null;
     if (this.ownsPause) {
       this.ctx.state.paused = false;
       this.ownsPause = false;
@@ -302,6 +363,8 @@ export class Builder {
     this.drag = null;
     this.stroke = null;
     this.shapeDrag = null;
+    this.marquee = null;
+    this.armedStamp = null;
     this.linkFrom = null;
     this.root.style.display = 'none';
     this.modeBtn.classList.remove('active');
@@ -338,6 +401,8 @@ export class Builder {
         <button id="b-export">EXPORT</button>
         <label for="b-import" class="b-filebtn">IMPORT</label>
         <input type="file" id="b-import" accept=".json" hidden>
+        <button id="b-share" title="Compress the document into a pasteable share code">SHARE</button>
+        <button id="b-code" title="Import a level from a share code">CODE</button>
         <span class="b-sep"></span>
         <button id="b-undo" title="Ctrl+Z">&#8617;</button>
         <button id="b-redo" title="Ctrl+Y">&#8618;</button>
@@ -371,9 +436,21 @@ export class Builder {
         <button class="bp-tool" data-tool="link"><span class="bp-glyph k-link">K</span>Link trigger &rarr; door (K)</button>
         <div class="bp-head">LIGHTING</div>
         <button class="bp-tool" data-tool="light"><span class="bp-glyph k-light">*</span>Authored Light</button>
+        <button id="bp-light-toggle" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>
+        <div class="bp-head">STAMPS</div>
+        <button id="bp-stamp-capture" title="Save the selected region's cells as a reusable stamp">CAPTURE REGION</button>
+        <div id="bp-stamp-list"></div>
+        <div class="bp-head">SIMULATE</div>
+        <div class="bp-grid bp-grid3">
+          <button id="bp-settle" title="Run physics on the visible area for 2s, then keep or revert">SETTLE</button>
+          <button id="bp-settle-keep" style="display:none">KEEP</button>
+          <button id="bp-settle-revert" style="display:none">REVERT</button>
+        </div>
+        <div class="bp-head">VIEW</div>
+        <button id="bp-overlay-btn" title="Readability overlays (O)">OVERLAY: NONE</button>
         <div class="bp-head">PROCEDURAL</div>
         <button id="bp-proc-btn">SEEDED PASSES&hellip;</button>
-        <div class="bp-hint">RMB eyedrops. Shapes use<br>the Sandbox material; paint<br>uses brush radius too.<br>Several triggers on ONE<br>door = AND gate.<br>ESC steps back &middot; DEL removes.</div>
+        <div class="bp-hint">RMB eyedrops &middot; wheel zooms.<br>Shift-click multi-selects,<br>drag empty = marquee.<br>Ctrl+D duplicate &middot; Ctrl+C/V<br>copy/paste params.<br>T playtests at the cursor.<br>Stamp armed: Q rotate, E flip.<br>ESC steps back &middot; DEL removes.</div>
       </div>
       <div id="builder-inspector"></div>
       <div id="builder-proc" style="display:none">
@@ -393,12 +470,16 @@ export class Builder {
         <div class="bp-hint" id="bp-status">Cell passes preview before<br>committing; population passes<br>apply directly (undoable).</div>
       </div>
       <div id="builder-issues" style="display:none"></div>
+      <canvas id="builder-minimap" width="${WIDTH >> 3}" height="${Math.ceil(HEIGHT / 8)}"
+        title="Click to jump the camera"></canvas>
       <div id="builder-status"></div>`;
     holder?.appendChild(this.root);
 
     this.overlay = this.root.querySelector('#builder-overlay') as HTMLDivElement;
     this.canvas = this.root.querySelector('#builder-canvas') as HTMLCanvasElement;
     this.cctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
+    this.minimap = this.root.querySelector('#builder-minimap') as HTMLCanvasElement;
+    this.minimapCtx = this.minimap.getContext('2d') as CanvasRenderingContext2D;
     this.markerLayer = this.root.querySelector('#builder-markers') as HTMLDivElement;
 
     const biome = this.el<HTMLSelectElement>('b-biome');
@@ -429,14 +510,22 @@ export class Builder {
   private setTool(t: BuilderTool): void {
     this.tool = t;
     if (t !== 'link') this.linkFrom = null;
+    if (t !== 'stamp' && this.armedStamp) {
+      this.armedStamp = null;
+      this.syncStamps();
+    }
     this.syncPalette();
     if (t === 'link') this.status('LINK: CLICK A TRIGGER OR RUNE GLYPH, THEN ITS DOOR');
   }
 
   /* ===================== top bar actions ===================== */
 
-  /** True (and complains) while a procedural preview awaits a decision. */
+  /** True (and complains) while a preview — procedural or settle — awaits a decision. */
   private previewBlocks(): boolean {
+    if (this.settling || this.settleSnap) {
+      this.status('FINISH THE SETTLE PREVIEW FIRST (KEEP / REVERT)', true);
+      return true;
+    }
     if (!this.pendingPreview) return false;
     this.status('APPLY OR DISCARD THE PROCEDURAL PREVIEW FIRST', true);
     return true;
@@ -462,7 +551,7 @@ export class Builder {
       if (hasWork && !window.confirm('Discard the current document?')) return;
       this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
       this.cmds.clear();
-      this.selectedId = null;
+      this.select(null);
       this.paintDirty = false;
       this.region = null;
       this.syncAll();
@@ -472,8 +561,10 @@ export class Builder {
     this.el('b-save').addEventListener('click', () => {
       if (this.previewBlocks()) return;
       this.ensureCaptured();
-      if (saveDocToLibrary(this.doc)) this.status(`SAVED "${this.doc.name.toUpperCase()}"`);
-      else this.status('STORAGE FULL — USE EXPORT', true);
+      if (saveDocToLibrary(this.doc)) {
+        this.status(`SAVED "${this.doc.name.toUpperCase()}"`);
+        localStorage.removeItem(DRAFT_KEY); // an explicit save retires the draft
+      } else this.status('STORAGE FULL — USE EXPORT', true);
       this.refreshDocSelect();
     });
 
@@ -485,7 +576,7 @@ export class Builder {
       // Clone so edits never mutate the library copy until the next SAVE.
       this.doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
       this.cmds.clear();
-      this.selectedId = null;
+      this.select(null);
       this.paintDirty = false;
       this.region = null;
       this.applyDocTerrain();
@@ -526,7 +617,7 @@ export class Builder {
         } else {
           this.doc = doc;
           this.cmds.clear();
-          this.selectedId = null;
+          this.select(null);
           this.paintDirty = false;
           this.applyDocTerrain();
           this.syncAll();
@@ -691,6 +782,18 @@ export class Builder {
         this.placeLight(pos.x, pos.y);
         return;
       }
+      if (this.tool === 'stamp') {
+        if (this.previewBlocks() || !this.armedStamp) return;
+        const rec = new PatchRecorder(this.ctx.world);
+        pasteStamp(this.ctx.world, rec, this.armedStamp, pos.x, pos.y);
+        const patch = rec.finish();
+        if (patch) {
+          this.cmds.run(paintTerrainCmd(this.ctx.world, patch.before, patch.after));
+          this.paintDirty = true;
+          this.status(`STAMPED "${this.armedStamp.name.toUpperCase()}"`);
+        }
+        return; // stays armed: stamping comes in runs; ESC is done
+      }
       if (this.tool !== 'select') {
         // every non-object tool was handled above; what's left is a placement.
         // Population kinds stay armed (placing ten slimes shouldn't be twenty
@@ -701,17 +804,38 @@ export class Builder {
         return;
       }
       const hit = this.hitTest(pos.x, pos.y);
-      this.select(hit?.id ?? null);
-      if (hit && !hit.target.locked) {
-        this.drag = {
-          target: hit.target,
-          isLight: hit.isLight,
-          origX: hit.target.x,
-          origY: hit.target.y,
-          grabX: pos.x - hit.target.x,
-          grabY: pos.y - hit.target.y,
-        };
+      if (!hit) {
+        // empty space: drag a marquee (mouseup with a tiny one just deselects)
+        this.marquee = { x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y };
+        return;
       }
+      if (e.shiftKey) {
+        // toggle membership; primary follows the latest addition
+        if (this.selectedIds.has(hit.id)) {
+          this.selectedIds.delete(hit.id);
+          if (this.selectedId === hit.id) this.selectedId = [...this.selectedIds][0] ?? null;
+        } else {
+          this.selectedIds.add(hit.id);
+          this.selectedId = hit.id;
+        }
+        this.syncMarkers();
+        this.renderInspector();
+        return;
+      }
+      if (!this.selectedIds.has(hit.id)) this.select(hit.id);
+      else {
+        this.selectedId = hit.id;
+        this.renderInspector();
+      }
+      // group drag: every unlocked member of the selection moves together
+      const targets: Array<{ t: EditorObject | EditorLight; isLight: boolean; ox: number; oy: number }> = [];
+      for (const o of this.doc.objects) {
+        if (this.selectedIds.has(o.id) && !o.locked) targets.push({ t: o, isLight: false, ox: o.x, oy: o.y });
+      }
+      for (const l of this.doc.lights) {
+        if (this.selectedIds.has(l.id) && !l.locked) targets.push({ t: l, isLight: true, ox: l.x, oy: l.y });
+      }
+      if (targets.length > 0) this.drag = { targets, grabX: pos.x, grabY: pos.y };
     });
     window.addEventListener('mousemove', (e) => {
       const pos = this.mouseToWorld(e);
@@ -725,9 +849,18 @@ export class Builder {
         this.shapeDrag.y1 = pos.y;
         return;
       }
+      if (this.marquee) {
+        this.marquee.x1 = pos.x;
+        this.marquee.y1 = pos.y;
+        return;
+      }
       if (!this.drag) return;
-      this.drag.target.x = pos.x - this.drag.grabX;
-      this.drag.target.y = pos.y - this.drag.grabY;
+      const dx = pos.x - this.drag.grabX;
+      const dy = pos.y - this.drag.grabY;
+      for (const m of this.drag.targets) {
+        m.t.x = m.ox + dx;
+        m.t.y = m.oy + dy;
+      }
     });
     window.addEventListener('mouseup', () => {
       if (this.stroke) {
@@ -741,22 +874,58 @@ export class Builder {
         else this.commitShape(s);
         return;
       }
+      if (this.marquee) {
+        const m = this.marquee;
+        this.marquee = null;
+        this.commitMarquee(m);
+        return;
+      }
       if (!this.drag) return;
-      const { target, isLight, origX, origY } = this.drag;
-      const toX = target.x;
-      const toY = target.y;
+      const { targets } = this.drag;
       this.drag = null;
-      if (toX === origX && toY === origY) return;
-      // Rewind the live preview, then land the move as one undoable command.
-      target.x = origX;
-      target.y = origY;
-      this.cmds.run(
-        isLight
-          ? moveLightCmd(target as EditorLight, toX, toY)
-          : moveObjectCmd(target as EditorObject, toX, toY),
-      );
+      const moved = targets.filter((m) => m.t.x !== m.ox || m.t.y !== m.oy);
+      if (moved.length === 0) return;
+      // Rewind the live preview, then land the group move as ONE command.
+      const cmds: Command[] = moved.map((m) => {
+        const nx = m.t.x,
+          ny = m.t.y;
+        m.t.x = m.ox;
+        m.t.y = m.oy;
+        return m.isLight
+          ? moveLightCmd(m.t as EditorLight, nx, ny)
+          : moveObjectCmd(m.t as EditorObject, nx, ny);
+      });
+      this.cmds.run(cmds.length === 1 ? cmds[0] : compositeCmd('move ' + cmds.length + ' things', cmds));
       this.renderInspector();
     });
+  }
+
+  /** Marquee select: everything whose anchor falls in the box (tiny box = deselect). */
+  private commitMarquee(m: { x0: number; y0: number; x1: number; y1: number }): void {
+    const x0 = Math.min(m.x0, m.x1),
+      x1 = Math.max(m.x0, m.x1);
+    const y0 = Math.min(m.y0, m.y1),
+      y1 = Math.max(m.y0, m.y1);
+    if (x1 - x0 < 3 && y1 - y0 < 3) {
+      this.select(null);
+      return;
+    }
+    const ids: string[] = [];
+    for (const o of this.doc.objects) {
+      const f = objectFootprint(o);
+      const inside = f
+        ? f.x1 >= x0 && f.x0 <= x1 && f.y1 >= y0 && f.y0 <= y1
+        : o.x >= x0 && o.x <= x1 && o.y >= y0 && o.y <= y1;
+      if (inside) ids.push(o.id);
+    }
+    for (const l of this.doc.lights) {
+      if (l.x >= x0 && l.x <= x1 && l.y >= y0 && l.y <= y1) ids.push(l.id);
+    }
+    this.selectedIds = new Set(ids);
+    this.selectedId = ids[0] ?? null;
+    this.syncMarkers();
+    this.renderInspector();
+    if (ids.length > 0) this.status(`${ids.length} SELECTED — DRAG MOVES, CTRL+D DUPLICATES`);
   }
 
   /* ---------- terrain painting (brush stroke; live world is the layer) ---------- */
@@ -1100,8 +1269,92 @@ export class Builder {
 
   private select(id: string | null): void {
     this.selectedId = id;
+    this.selectedIds = id ? new Set([id]) : new Set();
     this.syncMarkers();
     this.renderInspector();
+  }
+
+  /** Duplicate the selection (Ctrl+D): fresh ids, +8/+8 offset; links whose
+   *  BOTH endpoints are selected come along with remapped ids. Spawn stays
+   *  unique and is skipped. */
+  private duplicateSelection(): void {
+    const idMap = new Map<string, string>();
+    const adds: Command[] = [];
+    const newIds: string[] = [];
+    for (const o of this.doc.objects) {
+      if (!this.selectedIds.has(o.id) || o.kind === 'spawn') continue;
+      const clone: EditorObject = {
+        ...o,
+        id: freshId(o.kind),
+        x: o.x + 8,
+        y: o.y + 8,
+        params: JSON.parse(JSON.stringify(o.params)) as Record<string, unknown>,
+      };
+      idMap.set(o.id, clone.id);
+      newIds.push(clone.id);
+      adds.push(addObjectCmd(clone));
+    }
+    for (const l of this.doc.lights) {
+      if (!this.selectedIds.has(l.id)) continue;
+      const clone: EditorLight = { ...l, id: freshId('light'), x: l.x + 8, y: l.y + 8 };
+      newIds.push(clone.id);
+      adds.push(addLightCmd(clone));
+    }
+    for (const link of this.doc.links) {
+      const nf = idMap.get(link.fromId);
+      const nt = idMap.get(link.toId);
+      if (nf && nt) {
+        adds.push(addLinkCmd({ ...link, id: freshId('link'), fromId: nf, toId: nt }));
+      }
+    }
+    if (adds.length === 0) {
+      this.status('NOTHING TO DUPLICATE');
+      return;
+    }
+    this.cmds.run(compositeCmd('duplicate ' + newIds.length, adds));
+    this.selectedIds = new Set(newIds);
+    this.selectedId = newIds[0] ?? null;
+    this.syncMarkers();
+    this.renderInspector();
+    this.status(`DUPLICATED ${newIds.length} — DRAG TO PLACE`);
+  }
+
+  /** Ctrl+C: copy the primary object's params; Ctrl+V pastes onto same-kind selection. */
+  private copyParams(): void {
+    const obj = this.selected();
+    if (!obj) {
+      this.status('SELECT AN OBJECT TO COPY ITS PARAMS');
+      return;
+    }
+    this.clipboard = {
+      kind: obj.kind,
+      params: JSON.parse(JSON.stringify(obj.params)) as Record<string, unknown>,
+    };
+    this.status('COPIED ' + obj.kind.toUpperCase() + ' PARAMS — CTRL+V ON SAME-KIND OBJECTS');
+  }
+
+  private pasteParams(): void {
+    const clip = this.clipboard;
+    if (!clip) {
+      this.status('NOTHING COPIED YET (CTRL+C)');
+      return;
+    }
+    const edits: Command[] = [];
+    let count = 0;
+    for (const o of this.doc.objects) {
+      if (!this.selectedIds.has(o.id) || o.kind !== clip.kind || o.locked) continue;
+      for (const [key, value] of Object.entries(clip.params)) {
+        edits.push(editParamCmd(o, key, value));
+      }
+      count++;
+    }
+    if (edits.length === 0) {
+      this.status(`NO UNLOCKED ${clip.kind.toUpperCase()} IN THE SELECTION`, true);
+      return;
+    }
+    this.cmds.run(compositeCmd('paste params ×' + count, edits));
+    this.renderInspector();
+    this.status(`PASTED ${clip.kind.toUpperCase()} PARAMS ONTO ${count}`);
   }
 
   private selected(): EditorObject | null {
@@ -1131,27 +1384,27 @@ export class Builder {
   }
 
   private deleteSelection(): void {
-    const obj = this.selected();
-    if (obj) {
-      if (obj.locked) {
-        this.status('LOCKED — UNLOCK IT TO DELETE', true);
-        return;
-      }
-      this.cmds.run(deleteObjectCmd(obj));
-      this.select(null);
-      this.status('DELETED ' + obj.kind.toUpperCase());
+    const dels: Command[] = [];
+    let lockedSkipped = 0;
+    for (const o of this.doc.objects) {
+      if (!this.selectedIds.has(o.id)) continue;
+      if (o.locked) lockedSkipped++;
+      else dels.push(deleteObjectCmd(o));
+    }
+    for (const l of this.doc.lights) {
+      if (!this.selectedIds.has(l.id)) continue;
+      if (l.locked) lockedSkipped++;
+      else dels.push(deleteLightCmd(l));
+    }
+    if (dels.length === 0) {
+      if (lockedSkipped > 0) this.status('LOCKED — UNLOCK TO DELETE', true);
       return;
     }
-    const light = this.selectedLight();
-    if (light) {
-      if (light.locked) {
-        this.status('LOCKED — UNLOCK IT TO DELETE', true);
-        return;
-      }
-      this.cmds.run(deleteLightCmd(light));
-      this.select(null);
-      this.status('DELETED LIGHT');
-    }
+    this.cmds.run(dels.length === 1 ? dels[0] : compositeCmd('delete ' + dels.length + ' things', dels));
+    this.select(null);
+    this.status(
+      `DELETED ${dels.length}` + (lockedSkipped > 0 ? ` (${lockedSkipped} LOCKED SKIPPED)` : ''),
+    );
   }
 
   /* ===================== procedural panel (Phase 8) ===================== */
@@ -1353,6 +1606,282 @@ export class Builder {
     };
   }
 
+  /* ============= zoom, minimap, stamps, settle, share, overlays ============= */
+
+  private wireExtras(): void {
+    // Wheel = editor zoom (1x-4x); the minimap is the wide view.
+    this.overlay.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.zoomTarget = Math.min(4, Math.max(1, this.zoomTarget * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+        this.ctx.camera.zoomLock = this.zoomTarget;
+      },
+      { passive: false },
+    );
+
+    // Minimap: click (or drag) jumps the camera.
+    let mmDown = false;
+    const mmJump = (e: MouseEvent): void => {
+      const r = this.minimap.getBoundingClientRect();
+      const wx = ((e.clientX - r.left) / r.width) * WIDTH;
+      const wy = ((e.clientY - r.top) / r.height) * HEIGHT;
+      this.ctx.camera.snapTo(wx, wy);
+    };
+    this.minimap.addEventListener('mousedown', (e) => {
+      mmDown = true;
+      mmJump(e);
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (mmDown) mmJump(e);
+    });
+    window.addEventListener('mouseup', () => {
+      mmDown = false;
+    });
+
+    this.el('bp-light-toggle').addEventListener('click', () => {
+      this.lightPreviewOn = !this.lightPreviewOn;
+      this.el('bp-light-toggle').textContent = `PREVIEW LIGHTS: ${this.lightPreviewOn ? 'ON' : 'OFF'}`;
+    });
+
+    this.el('bp-stamp-capture').addEventListener('click', () => {
+      if (this.previewBlocks()) return;
+      if (!this.region) {
+        this.status('SELECT A REGION FIRST (R), THEN CAPTURE IT', true);
+        return;
+      }
+      const name = window.prompt('Stamp name:', 'stamp ' + (this.stampsList.length + 1));
+      if (name === null) return;
+      const stamp = captureStamp(this.ctx.world, this.region, name.trim());
+      if (!stamp) {
+        this.status('REGION TOO LARGE FOR A STAMP (MAX ~40K CELLS)', true);
+        return;
+      }
+      this.stampsList.push(stamp);
+      if (!saveStamps(this.stampsList)) this.status('STAMP STORAGE FULL', true);
+      this.syncStamps();
+      this.status(`STAMP "${stamp.name.toUpperCase()}" CAPTURED (${stamp.w}×${stamp.h})`);
+    });
+
+    this.el('bp-settle').addEventListener('click', () => this.startSettle());
+    this.el('bp-settle-keep').addEventListener('click', () => this.finishSettle(true));
+    this.el('bp-settle-revert').addEventListener('click', () => this.finishSettle(false));
+
+    this.el('bp-overlay-btn').addEventListener('click', () => this.cycleOverlay());
+
+    this.el('b-share').addEventListener('click', () => {
+      if (this.previewBlocks()) return;
+      this.ensureCaptured();
+      void docToShareCode(this.doc).then(async (code) => {
+        let copied = false;
+        try {
+          await navigator.clipboard.writeText(code);
+          copied = true;
+        } catch {
+          copied = false;
+        }
+        window.prompt(
+          copied ? 'Share code (already on the clipboard):' : 'Share code (Ctrl+C to copy):',
+          code,
+        );
+        this.status(`SHARE CODE READY — ${Math.max(1, Math.round(code.length / 1024))} KB`);
+      });
+    });
+
+    this.el('b-code').addEventListener('click', () => {
+      if (this.previewBlocks()) return;
+      const code = window.prompt('Paste a share code:');
+      if (!code) return;
+      void shareCodeToDoc(code).then((doc) => {
+        if (!doc) {
+          this.status('NOT A VALID SHARE CODE', true);
+          return;
+        }
+        this.doc = doc;
+        this.cmds.clear();
+        this.select(null);
+        this.paintDirty = false;
+        this.applyDocTerrain();
+        this.syncAll();
+        this.status(`IMPORTED "${this.doc.name.toUpperCase()}" FROM CODE`);
+      });
+    });
+  }
+
+  /** Rebuild the stamp list UI (armed stamp highlighted; × deletes). */
+  private syncStamps(): void {
+    const list = this.el<HTMLDivElement>('bp-stamp-list');
+    list.innerHTML = '';
+    for (const s of this.stampsList) {
+      const row = document.createElement('div');
+      row.className = 'bp-stamp' + (this.armedStamp?.id === s.id ? ' armed' : '');
+      row.innerHTML = `<span class="bp-stamp-name">${s.name}</span><span class="bp-stamp-size">${s.w}×${s.h}</span><button title="Delete stamp">&times;</button>`;
+      row.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).tagName === 'BUTTON') {
+          this.stampsList = this.stampsList.filter((x) => x.id !== s.id);
+          if (this.armedStamp?.id === s.id) this.armedStamp = null;
+          saveStamps(this.stampsList);
+          this.syncStamps();
+          return;
+        }
+        this.armedStamp = s;
+        this.setTool('stamp');
+        this.syncStamps();
+        this.status(`STAMP ARMED: "${s.name.toUpperCase()}" — Q ROTATES, E FLIPS, ESC DONE`);
+      });
+      list.appendChild(row);
+    }
+  }
+
+  /* ---------- settle preview: run real physics, then keep or revert ---------- */
+
+  private startSettle(): void {
+    if (this.previewBlocks()) return;
+    const w = this.ctx.world;
+    this.settleSnap = {
+      types: w.types.slice(),
+      colors: w.colors.slice(),
+      life: w.life.slice(),
+      charge: w.charge.slice(),
+    };
+    this.settling = true;
+    this.settleEndFrame = this.ctx.state.frameCount + 120;
+    this.ctx.state.paused = false; // the sim runs for real — that IS the preview
+    this.status('SETTLING THE VISIBLE AREA (2s)…');
+    this.syncSettleButtons();
+  }
+
+  private finishSettle(keep: boolean): void {
+    const snap = this.settleSnap;
+    if (!snap) return;
+    if (this.settling) {
+      // mid-run decision: stop the clock first
+      this.settling = false;
+      this.ctx.state.paused = true;
+    }
+    this.settleSnap = null;
+    const w = this.ctx.world;
+    if (!keep) {
+      w.types.set(snap.types);
+      w.colors.set(snap.colors);
+      w.life.set(snap.life);
+      w.charge.set(snap.charge);
+      this.status('SETTLE REVERTED');
+      this.syncSettleButtons();
+      return;
+    }
+    // diff into an undoable patch when it's small enough to retain
+    const before: CellPatch = { idxs: [], types: [], colors: [], life: [], charge: [] };
+    const after: CellPatch = { idxs: [], types: [], colors: [], life: [], charge: [] };
+    let overCap = false;
+    for (let i = 0; i < w.types.length; i++) {
+      if (
+        w.types[i] === snap.types[i] &&
+        w.colors[i] === snap.colors[i] &&
+        w.life[i] === snap.life[i] &&
+        w.charge[i] === snap.charge[i]
+      )
+        continue;
+      if (before.idxs.length >= SETTLE_UNDO_CAP) {
+        overCap = true;
+        break;
+      }
+      before.idxs.push(i);
+      before.types.push(snap.types[i]);
+      before.colors.push(snap.colors[i]);
+      before.life.push(snap.life[i]);
+      before.charge.push(snap.charge[i]);
+      after.idxs.push(i);
+      after.types.push(w.types[i]);
+      after.colors.push(w.colors[i]);
+      after.life.push(w.life[i]);
+      after.charge.push(w.charge[i]);
+    }
+    this.paintDirty = true;
+    if (overCap) {
+      this.status('SETTLED — TOO LARGE TO UNDO, CAPTURED ON NEXT SAVE');
+    } else if (before.idxs.length > 0) {
+      this.cmds.run(paintTerrainCmd(w, before, after));
+      this.status(`SETTLED ${before.idxs.length} CELLS (UNDOABLE)`);
+    } else {
+      this.status('NOTHING MOVED');
+      this.paintDirty = false;
+    }
+    this.syncSettleButtons();
+    this.renderInspector();
+  }
+
+  private syncSettleButtons(): void {
+    const deciding = this.settleSnap !== null && !this.settling;
+    this.el('bp-settle').style.display = this.settleSnap === null ? '' : 'none';
+    this.el('bp-settle-keep').style.display = deciding ? '' : 'none';
+    this.el('bp-settle-revert').style.display = deciding ? '' : 'none';
+  }
+
+  /* ---------- readability overlays ---------- */
+
+  private cycleOverlay(): void {
+    const next = OVERLAY_MODES[(OVERLAY_MODES.indexOf(this.overlayMode) + 1) % OVERLAY_MODES.length];
+    this.overlayMode = next;
+    this.el('bp-overlay-btn').textContent = 'OVERLAY: ' + next.toUpperCase();
+  }
+
+  /* ---------- autosave drafts ---------- */
+
+  private autosaveDraft(): void {
+    if (!this.isOpen || this.settling || this.settleSnap || this.pendingPreview) return;
+    if (this.cmds.depth === 0 && !this.paintDirty) return;
+    try {
+      this.ensureCaptured();
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), doc: this.doc }));
+      this.status('DRAFT AUTOSAVED');
+    } catch {
+      // quota — the explicit SAVE path reports storage problems loudly
+    }
+  }
+
+  private offerDraft(): void {
+    if (this.draftOffered) return;
+    this.draftOffered = true;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as { at: number; doc: unknown };
+      const restored = sanitizeImportedDoc(draft.doc);
+      if (!restored) return;
+      const when = new Date(draft.at).toLocaleTimeString();
+      if (!window.confirm(`Restore the autosaved draft "${restored.name}" from ${when}?`)) return;
+      this.doc = restored;
+      this.cmds.clear();
+      this.select(null);
+      this.paintDirty = false;
+      this.applyDocTerrain();
+      this.syncAll();
+      this.status('DRAFT RESTORED');
+    } catch {
+      // a corrupt draft is just gone
+    }
+  }
+
+  /* ---------- playtest from here ---------- */
+
+  private playtestHere(): void {
+    if (this.previewBlocks()) return;
+    this.ensureCaptured();
+    const issues = validateDocument(this.doc);
+    this.renderIssues(issues);
+    if (issues.some((i) => i.severity === 'error')) {
+      this.status('FIX ERRORS BEFORE PLAYTEST', true);
+      return;
+    }
+    const at = { x: this.lastMouse.x, y: this.lastMouse.y };
+    this.returningFromPlaytest = true;
+    this.close();
+    compileAndPlaytest(this.ctx, this.doc, { spawnAt: at });
+    (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
+  }
+
   /* ===================== keyboard (capture phase) ===================== */
 
   private onKeyDown = (e: KeyboardEvent): void => {
@@ -1368,11 +1897,16 @@ export class Builder {
       e.stopPropagation();
     } else if (e.code === 'Escape') {
       e.stopPropagation();
-      if (this.linkFrom) {
+      if (this.settling || this.settleSnap) {
+        this.finishSettle(false);
+        this.status('SETTLE CANCELLED');
+      } else if (this.linkFrom) {
         this.linkFrom = null;
         this.status('LINK CANCELLED');
       } else if (this.shapeDrag) {
         this.shapeDrag = null;
+      } else if (this.marquee) {
+        this.marquee = null;
       } else if (this.tool !== 'select') {
         this.setTool('select');
       } else if (this.region) {
@@ -1380,6 +1914,30 @@ export class Builder {
         this.status('REGION CLEARED');
         this.syncProcPanel();
       } else this.select(null);
+    } else if (e.code === 'KeyQ' && this.armedStamp) {
+      e.stopPropagation();
+      this.armedStamp = rotateStamp(this.armedStamp);
+      this.status(`ROTATED — NOW ${this.armedStamp.w}×${this.armedStamp.h}`);
+    } else if (e.code === 'KeyE' && this.armedStamp) {
+      e.stopPropagation();
+      this.armedStamp = mirrorStamp(this.armedStamp);
+      this.status('MIRRORED');
+    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD') {
+      e.preventDefault();
+      e.stopPropagation();
+      this.duplicateSelection();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC') {
+      e.stopPropagation();
+      this.copyParams();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV') {
+      e.stopPropagation();
+      this.pasteParams();
+    } else if (e.code === 'KeyO') {
+      e.stopPropagation();
+      this.cycleOverlay();
+    } else if (e.code === 'KeyT') {
+      e.stopPropagation();
+      this.playtestHere();
     } else if (e.code === 'KeyV' || e.code === 'KeyB') {
       e.stopPropagation();
       this.setTool(e.code === 'KeyV' ? 'select' : 'paint');
@@ -1432,11 +1990,27 @@ export class Builder {
       state.activeInputMode === 'spell'
         ? 'SPELL (pick a material!)'
         : (this.ctx.params.materials[state.currentElement]?.name ?? 'material ' + state.currentElement);
-    const text = `MAT ${matName.toUpperCase()} · BRUSH ${state.brushSize}`;
+    const text = `MAT ${matName.toUpperCase()} · BRUSH ${state.brushSize} · ZOOM ${this.ctx.camera.zoom.toFixed(1)}x`;
     if (text !== this.matRowText) {
       this.matRowText = text;
       this.el<HTMLDivElement>('bp-mat-row').textContent = text;
     }
+
+    // settle preview clock: re-freeze the world when the run completes
+    if (this.settling && state.frameCount >= this.settleEndFrame) {
+      this.settling = false;
+      state.paused = true;
+      this.status('SETTLED — KEEP OR REVERT');
+      this.syncSettleButtons();
+    }
+
+    // live light preview: authored lights feed the real light field
+    state.editorLights =
+      this.lightPreviewOn && this.doc.lights.length > 0
+        ? this.doc.lights.filter((l) => !l.hidden).map((l, n) => toAuthoredLight(l, n))
+        : null;
+
+    if (state.frameCount % 12 === 0) this.drawMinimap();
 
     // markers glue to world positions (sized kinds anchor at footprint center)
     for (const [id, el] of this.markers) {
@@ -1475,6 +2049,37 @@ export class Builder {
     const cellH = (rect.height / VIEW_H) * this.ctx.camera.zoom;
     const toS = (wx: number, wy: number): { x: number; y: number } =>
       this.worldToScreen(wx, wy, rect);
+
+    // readability overlays (under everything else)
+    if (this.overlayMode !== 'none') {
+      const blob = (wx: number, wy: number, r: number, color: string): void => {
+        const c = toS(wx, wy);
+        const grad = g.createRadialGradient(c.x, c.y, 0, c.x, c.y, Math.max(4, r * cellW));
+        grad.addColorStop(0, color);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(c.x, c.y, Math.max(4, r * cellW), 0, Math.PI * 2);
+        g.fill();
+      };
+      if (this.overlayMode === 'light') {
+        for (const l of this.doc.lights) {
+          if (!l.hidden) blob(l.x, l.y, l.radius, l.color + '40');
+        }
+      } else if (this.overlayMode === 'danger') {
+        for (const o of this.doc.objects) {
+          if (o.kind === 'enemy' && !o.hidden) blob(o.x, o.y, 60, 'rgba(248,113,113,0.22)');
+          if (o.kind === 'bossMarker' && !o.hidden) blob(o.x, o.y, 90, 'rgba(248,113,113,0.3)');
+        }
+      } else if (this.overlayMode === 'loot') {
+        for (const o of this.doc.objects) {
+          if (o.kind === 'pickup' && !o.hidden) blob(o.x, o.y, 26, 'rgba(251,191,36,0.28)');
+        }
+      }
+      g.fillStyle = 'rgba(125,211,252,0.9)';
+      g.font = '700 10px monospace';
+      g.fillText('OVERLAY: ' + this.overlayMode.toUpperCase() + ' (O CYCLES)', 12, 16);
+    }
 
     // selection region (dashed cyan)
     if (this.region) {
@@ -1595,12 +2200,89 @@ export class Builder {
       g.setLineDash([]);
     }
 
+    // marquee select box
+    if (this.marquee) {
+      const a = toS(Math.min(this.marquee.x0, this.marquee.x1), Math.min(this.marquee.y0, this.marquee.y1));
+      const b = toS(Math.max(this.marquee.x0, this.marquee.x1) + 1, Math.max(this.marquee.y0, this.marquee.y1) + 1);
+      g.setLineDash([4, 3]);
+      g.strokeStyle = 'rgba(214,230,245,0.9)';
+      g.lineWidth = 1;
+      g.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+      g.setLineDash([]);
+    }
+
+    // armed stamp ghost at the cursor
+    if (this.tool === 'stamp' && this.armedStamp) {
+      const s = this.armedStamp;
+      const a = toS(this.lastMouse.x - Math.floor(s.w / 2), this.lastMouse.y - Math.floor(s.h / 2));
+      g.setLineDash([5, 3]);
+      g.strokeStyle = 'rgba(240,171,252,0.9)';
+      g.lineWidth = 1.5;
+      g.strokeRect(a.x, a.y, s.w * cellW, s.h * cellH);
+      g.setLineDash([]);
+      g.fillStyle = 'rgba(240,171,252,0.8)';
+      g.font = '700 10px monospace';
+      g.fillText(s.name + ' (Q/E)', a.x + 2, a.y - 4);
+    }
+
     // pending procedural preview badge
     if (this.pendingPreview) {
       g.fillStyle = 'rgba(251,191,36,0.95)';
       g.font = '700 11px monospace';
       g.fillText('PROCEDURAL PREVIEW — APPLY OR DISCARD', 12, ch - 12);
     }
+    if (this.settling) {
+      g.fillStyle = 'rgba(125,211,252,0.95)';
+      g.font = '700 11px monospace';
+      g.fillText('SETTLING… (ESC CANCELS)', 12, ch - 12);
+    }
+  }
+
+  /** True-color world overview + camera box + object dots; click jumps. */
+  private drawMinimap(): void {
+    const mmW = this.minimap.width,
+      mmH = this.minimap.height;
+    const mm = this.minimapCtx;
+    const w = this.ctx.world;
+    if (!this.minimapImage) this.minimapImage = mm.createImageData(mmW, mmH);
+    const data = this.minimapImage.data;
+    for (let y = 0; y < mmH; y++) {
+      const wy = Math.min(HEIGHT - 1, y * 8 + 4);
+      for (let x = 0; x < mmW; x++) {
+        const wi = x * 8 + 4 + wy * WIDTH;
+        const o = (x + y * mmW) * 4;
+        if (w.types[wi] === 0) {
+          data[o] = 10;
+          data[o + 1] = 12;
+          data[o + 2] = 17;
+        } else {
+          const c = w.colors[wi];
+          data[o] = (c >> 16) & 255;
+          data[o + 1] = (c >> 8) & 255;
+          data[o + 2] = c & 255;
+        }
+        data[o + 3] = 255;
+      }
+    }
+    mm.putImageData(this.minimapImage, 0, 0);
+    // object + light dots
+    for (const o of this.doc.objects) {
+      mm.fillStyle = o.kind === 'spawn' ? '#4ade80' : '#fcd34d';
+      mm.fillRect(o.x / 8 - 1, o.y / 8 - 1, 2, 2);
+    }
+    for (const l of this.doc.lights) {
+      mm.fillStyle = l.color;
+      mm.fillRect(l.x / 8 - 1, l.y / 8 - 1, 2, 2);
+    }
+    // camera box (zoom crops around the view center)
+    const cam = this.ctx.camera;
+    const vw = VIEW_W / cam.zoom,
+      vh = VIEW_H / cam.zoom;
+    const vx = cam.renderX + (VIEW_W - vw) / 2,
+      vy = cam.renderY + (VIEW_H - vh) / 2;
+    mm.strokeStyle = 'rgba(74,222,128,0.95)';
+    mm.lineWidth = 1;
+    mm.strokeRect(vx / 8, vy / 8, vw / 8, vh / 8);
   }
 
   /** Rebuild the marker DOM from the document (object/light set changed). */
@@ -1610,7 +2292,7 @@ export class Builder {
     for (const o of this.doc.objects) {
       const m = document.createElement('div');
       m.className = `b-marker k-${o.kind}`
-        + (o.id === this.selectedId ? ' sel' : '')
+        + (this.selectedIds.has(o.id) ? ' sel' : '')
         + (o.hidden ? ' ghost' : '');
       m.textContent = GLYPH[o.kind] ?? '?';
       m.title = o.kind;
@@ -1619,7 +2301,7 @@ export class Builder {
     }
     for (const l of this.doc.lights) {
       const m = document.createElement('div');
-      m.className = 'b-marker k-light' + (l.id === this.selectedId ? ' sel' : '') + (l.hidden ? ' ghost' : '');
+      m.className = 'b-marker k-light' + (this.selectedIds.has(l.id) ? ' sel' : '') + (l.hidden ? ' ghost' : '');
       m.textContent = '*';
       m.title = 'light';
       this.markers.set(l.id, m);
@@ -1631,6 +2313,23 @@ export class Builder {
 
   private renderInspector(): void {
     const panel = this.el<HTMLDivElement>('builder-inspector');
+    if (this.selectedIds.size > 1) {
+      const byKind = new Map<string, number>();
+      for (const o of this.doc.objects) {
+        if (this.selectedIds.has(o.id)) byKind.set(o.kind, (byKind.get(o.kind) ?? 0) + 1);
+      }
+      let lightCount = 0;
+      for (const l of this.doc.lights) if (this.selectedIds.has(l.id)) lightCount++;
+      if (lightCount > 0) byKind.set('light', lightCount);
+      panel.innerHTML = `<div class="bi-head">${this.selectedIds.size} SELECTED</div>
+        ${[...byKind.entries()]
+          .map(([k, n]) => `<div class="bi-row"><span>${k}</span><b>${n}</b></div>`)
+          .join('')}
+        <div class="bi-empty">Drag moves the group.<br>Ctrl+D duplicates it.<br>Ctrl+C copies the primary's<br>params, Ctrl+V pastes them<br>onto same-kind members.</div>
+        <button id="bi-delete">DELETE ALL (DEL)</button>`;
+      panel.querySelector('#bi-delete')?.addEventListener('click', () => this.deleteSelection());
+      return;
+    }
     const light = this.selectedLight();
     if (light) {
       this.renderLightInspector(panel, light);
@@ -1688,6 +2387,12 @@ export class Builder {
     } else if (obj.kind === 'door') {
       rows += this.numRow(obj, 'w', 'width', 3) + this.numRow(obj, 'h', 'height', 13);
       rows += this.checkRow(obj, 'initialOpen', 'starts open');
+      const lg = typeof obj.params.logic === 'string' ? obj.params.logic : 'and';
+      rows += `<div class="bi-row"><span>logic</span><select data-p="logic">${(
+        ['and', 'or', 'sequence'] as const
+      )
+        .map((v) => `<option value="${v}"${lg === v ? ' selected' : ''}>${v.toUpperCase()}</option>`)
+        .join('')}</select></div>`;
       rows += this.linkRows(obj, 'in');
     } else if (obj.kind === 'runeDoor') {
       rows += this.numRow(obj, 'w', 'width', 2) + this.numRow(obj, 'h', 'height', 11);
@@ -1777,6 +2482,12 @@ export class Builder {
   private renderLightInspector(panel: HTMLDivElement, light: EditorLight): void {
     panel.innerHTML = `<div class="bi-head">AUTHORED LIGHT</div>
       <div class="bi-id">${light.id}</div>
+      <div class="bi-row"><span>preset</span><select data-preset>
+        <option value="">&mdash;</option>
+        ${Object.keys(LIGHT_PRESETS)
+          .map((p) => `<option value="${p}">${p}</option>`)
+          .join('')}
+      </select></div>
       <div class="bi-row"><span>x</span><input type="number" data-lf="x" value="${Math.round(light.x)}"></div>
       <div class="bi-row"><span>y</span><input type="number" data-lf="y" value="${Math.round(light.y)}"></div>
       <div class="bi-row"><span>color</span><input type="color" data-lf="color" value="${light.color}"></div>
@@ -1814,6 +2525,12 @@ export class Builder {
         if (key === 'hidden' || key === 'locked') this.syncMarkers();
       });
     }
+    panel.querySelector<HTMLSelectElement>('[data-preset]')?.addEventListener('change', (e) => {
+      const preset = LIGHT_PRESETS[(e.target as HTMLSelectElement).value];
+      if (!preset) return;
+      this.cmds.run(editLightCmd(light, preset));
+      this.renderLightInspector(panel, light); // reflect the new values
+    });
     panel.querySelector('#bi-delete')?.addEventListener('click', () => this.deleteSelection());
   }
 

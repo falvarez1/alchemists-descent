@@ -30,11 +30,15 @@ into the live simulation, generate biomes, drop quick test enemies, cast test
 spells, and tune parameters live in the right panel. WASD pans the camera.
 
 **Builder** — the level-authoring tool (BUILDER button in the header): terrain
-shape tools (paint/line/rect/ellipse/flood fill/replace), gameplay objects,
-mechanisms wired with a link tool (multiple triggers on one door = AND gate),
-authored lights, seeded procedural passes with preview/apply/discard, and a
-validation pass with BFS findability — then PLAYTEST compiles the document
-into a disposable custom level. See `docs/BUILDER.md`.
+shape tools (paint/line/rect/ellipse/flood fill/replace) plus a settle preview
+that runs real physics and reverts, gameplay objects with multi-select /
+duplicate / param copy-paste, mechanisms wired with a link tool (door logic:
+AND / OR / SEQUENCE), authored lights with live in-editor preview and presets,
+a reusable stamp library, seeded procedural passes with preview/apply/discard,
+wheel zoom + clickable minimap, readability overlays, shareable level codes,
+and a fixpoint-findability validation pass — then PLAYTEST (or T, from the
+cursor) compiles the document into a disposable custom level. See
+`docs/BUILDER.md`.
 
 **Play mode** (TAB or the PLAY button) — descend through the persistent biome
 stack. Find the sealed well in each floor, break the stone plug, and drop deeper.
