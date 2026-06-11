@@ -871,6 +871,11 @@ export interface WandsApi {
    * unknown or already equipped on that wand.
    */
   upgradeFrame(ctx: Ctx, wand: 0 | 1, frameId: string): boolean;
+  /**
+   * Slot indices of the cards the NEXT click will cast (the cast cycle's
+   * cursor) — the HUD highlights them so the cycle is visible.
+   */
+  nextCastSlots(): number[];
 }
 
 export interface WandLoadoutSave {

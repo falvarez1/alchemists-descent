@@ -126,9 +126,15 @@ describe('compileWand', () => {
     expect(program[0].manaCost).toBe(2);
   });
 
-  it('skips null slots entirely', () => {
+  it('skips null slots entirely (slot indices still point at the real slots)', () => {
     const sparse = compileWand([null, 'speed', null, 'spark', null]);
-    expect(sparse).toEqual(compileWand(['speed', 'spark']));
+    const dense = compileWand(['speed', 'spark']);
+    // identical PROGRAM (slots differ by design: the HUD cursor must point
+    // at the cards' true positions in the wand, gaps included)
+    const stripSlots = (gs: typeof sparse) => gs.map(({ slots: _slots, ...g }) => g);
+    expect(stripSlots(sparse)).toEqual(stripSlots(dense));
+    expect(sparse[0].slots).toEqual([1, 3]);
+    expect(dense[0].slots).toEqual([0, 1]);
   });
 
   it('marks spread/infuser/bounce on the action it modifies', () => {

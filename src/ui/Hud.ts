@@ -19,8 +19,8 @@ function el(id: string): HTMLElement {
 export class Hud {
   /** Last flask material rendered (undefined = never rendered), so the palette lookup runs once per change. */
   private flaskMaterial: number | null | undefined = undefined;
-  /** Filled hotbar tiles + their card mana costs, rebuilt by buildHotbar. */
-  private hotbarSlots: Array<{ tile: HTMLElement; cost: number }> = [];
+  /** Filled hotbar tiles of the ACTIVE wand (+ costs and slot positions). */
+  private hotbarSlots: Array<{ tile: HTMLElement; cost: number; slotIdx: number }> = [];
 
   constructor(private ctx: Ctx) {
     ctx.events.on('scoreChanged', ({ score }) => {
@@ -121,39 +121,60 @@ export class Hud {
    * not selectable in play (the program runs left-to-right; the bench owns
    * editing), so the tiles carry no click handlers and no digit keys.
    */
+  /**
+   * The hotbar shows BOTH wands: the active one full size with the cast
+   * cursor riding its cards (each click casts the next group left-to-right,
+   * then wraps), the holstered one beneath, dimmed — so the wheel/1/2 swap
+   * reads as "switching wands", not rows teleporting.
+   */
   buildHotbar(): void {
     const bar = el('spell-hotbar');
     bar.innerHTML = '';
     this.hotbarSlots = [];
 
     const wands = this.ctx.wands;
-    const wand = wands.wands[wands.active];
+    for (const wi of [wands.active, (1 - wands.active) as 0 | 1]) {
+      const wand = wands.wands[wi];
+      const isActive = wi === wands.active;
 
-    const label = document.createElement('div');
-    label.className = 'wand-label';
-    label.textContent = wand.frame.name;
-    bar.appendChild(label);
+      const label = document.createElement('div');
+      label.className = 'wand-label' + (isActive ? '' : ' holstered');
+      label.textContent =
+        (wi === 0 ? 'I · ' : 'II · ') + wand.frame.name + (isActive ? '' : '   (wheel / ' + (wi + 1) + ')');
+      bar.appendChild(label);
 
-    const row = document.createElement('div');
-    row.className = 'wand-slots';
-    wand.cards.forEach((id) => {
-      const slot = document.createElement('div');
-      slot.className = 'hot-slot';
-      if (id === null) {
-        slot.classList.add('empty');
-        slot.title = 'Empty slot';
-      } else {
-        const def = CARD_DEFS[id];
-        slot.title = def.name + ' — ' + def.manaCost + ' mana';
-        const icon = makeIconCanvas(cardIconName(id), 3);
-        if (icon) slot.appendChild(icon);
-        const cost = document.createElement('div'); cost.className = 'cost'; cost.textContent = String(def.manaCost);
-        slot.appendChild(cost);
-        this.hotbarSlots.push({ tile: slot, cost: def.manaCost });
+      const row = document.createElement('div');
+      row.className = 'wand-slots' + (isActive ? '' : ' holstered');
+      if (!isActive) {
+        row.title = 'Holstered — mouse wheel or key ' + (wi + 1) + ' to draw';
+        row.addEventListener('click', () => {
+          this.ctx.wands.active = wi;
+          this.ctx.events.emit('wandChanged');
+        });
       }
-      row.appendChild(slot);
-    });
-    bar.appendChild(row);
+      wand.cards.forEach((id, slotIdx) => {
+        const slot = document.createElement('div');
+        slot.className = 'hot-slot';
+        if (id === null) {
+          slot.classList.add('empty');
+          slot.title = 'Empty slot';
+        } else {
+          const def = CARD_DEFS[id];
+          slot.title = def.name + ' — ' + def.manaCost + ' mana';
+          const icon = makeIconCanvas(cardIconName(id), isActive ? 3 : 2);
+          if (icon) slot.appendChild(icon);
+          if (isActive) {
+            const cost = document.createElement('div');
+            cost.className = 'cost';
+            cost.textContent = String(def.manaCost);
+            slot.appendChild(cost);
+            this.hotbarSlots.push({ tile: slot, cost: def.manaCost, slotIdx });
+          }
+        }
+        row.appendChild(slot);
+      });
+      bar.appendChild(row);
+    }
   }
 
   update(ctx: Ctx): void {
@@ -183,8 +204,12 @@ export class Hud {
     const hurt = 1 - (player.hp / player.maxHp);
     el('damage-vignette').style.opacity = String(player.dead ? 0.85 : Math.max(0, (hurt - 0.4) * 1.3));
 
+    // Cast cursor: the cards the NEXT click will fire pulse amber, so the
+    // left-to-right cast cycle is something you can watch, not guess at.
+    const next = ctx.wands.nextCastSlots();
     for (const s of this.hotbarSlots) {
       s.tile.classList.toggle('unaffordable', player.mana < s.cost);
+      s.tile.classList.toggle('next-cast', next.includes(s.slotIdx));
     }
   }
 }

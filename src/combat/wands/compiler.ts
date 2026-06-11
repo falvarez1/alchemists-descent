@@ -43,6 +43,9 @@ export interface CastGroup {
   actions: CastAction[];
   /** Sum of every card consumed building the group (payload included). */
   manaCost: number;
+  /** Wand slot indices of every card consumed by this group — the HUD
+   *  highlights these so the player can SEE what the next click casts. */
+  slots: number[];
 }
 
 const MAX_DMG_MUL = 4;
@@ -58,20 +61,35 @@ interface ModPack {
   trigger: boolean;
   /** Mana of the modifier cards in the pack, charged to the consuming group. */
   mana: number;
+  /** Wand slot indices of the pack's modifier cards. */
+  slots: number[];
 }
 
 function freshPack(): ModPack {
-  return { speedMul: 1, dmgMul: 1, spreadAdd: 0, infused: false, bounces: 0, trigger: false, mana: 0 };
+  return {
+    speedMul: 1,
+    dmgMul: 1,
+    spreadAdd: 0,
+    infused: false,
+    bounces: 0,
+    trigger: false,
+    mana: 0,
+    slots: [],
+  };
 }
 
 /** Pass-1 group: actions still carrying their compile-time trigger flags. */
 interface RawGroup {
   actions: Array<{ action: CastAction; trig: boolean }>;
   mana: number;
+  slots: number[];
 }
 
 export function compileWand(cards: (CardId | null)[]): CastGroup[] {
-  const deck = cards.filter((c): c is CardId => c !== null);
+  const deck: Array<{ id: CardId; slot: number }> = [];
+  cards.forEach((c, slot) => {
+    if (c !== null) deck.push({ id: c, slot });
+  });
 
   // ---- Pass 1: left-to-right walk into raw groups (mods + multicast + clamps)
   const raw: RawGroup[] = [];
@@ -79,12 +97,14 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
   let owed = 0; // projectile casts still owed to the open group
   let pendingSize = 0; // multicast size waiting for its first projectile
   let pendingMana = 0; // multicast mana waiting for its group to open
+  let pendingSlots: number[] = []; // multicast slots waiting likewise
   let pack = freshPack();
 
-  for (const id of deck) {
+  for (const { id, slot } of deck) {
     const def = CARD_DEFS[id];
     if (def.kind === 'modifier') {
       pack.mana += def.manaCost;
+      pack.slots.push(slot);
       if (id === 'speed') pack.speedMul *= 1.6;
       else if (id === 'heavy') {
         pack.dmgMul *= 1.7;
@@ -98,17 +118,20 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
       if (cur) {
         owed += n;
         cur.mana += def.manaCost;
+        cur.slots.push(slot);
       } else {
         pendingSize += n;
         pendingMana += def.manaCost;
+        pendingSlots.push(slot);
       }
     } else {
       // projectile card
       if (!cur) {
-        cur = { actions: [], mana: pendingMana };
+        cur = { actions: [], mana: pendingMana, slots: [...pendingSlots] };
         owed = Math.max(1, pendingSize);
         pendingSize = 0;
         pendingMana = 0;
+        pendingSlots = [];
       }
       cur.actions.push({
         action: {
@@ -123,12 +146,13 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
         trig: pack.trigger,
       });
       cur.mana += pack.mana + def.manaCost;
+      cur.slots.push(...pack.slots, slot);
       pack = freshPack();
       owed--;
       if (cur.actions.length >= MAX_ACTIONS_PER_GROUP && owed > 0) {
         // Group is full but the multicast still owes casts: spill onward.
         raw.push(cur);
-        cur = { actions: [], mana: 0 };
+        cur = { actions: [], mana: 0, slots: [] };
       }
       if (owed <= 0) {
         raw.push(cur);
@@ -146,6 +170,7 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
     const g = raw[i];
     const hosts = g.actions.filter((a) => a.trig);
     let mana = g.mana;
+    const slots = [...g.slots];
     if (hosts.length > 0 && i + 1 < raw.length) {
       // The FOLLOWING group becomes the impact payload and leaves the program.
       // Its trig flags are dropped: triggers inside a payload are ignored.
@@ -153,10 +178,11 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
       const payloadActions = payload.actions.map((a) => a.action);
       for (const h of hosts) h.action.triggered = payloadActions;
       mana += payload.mana;
+      slots.push(...payload.slots);
       i++;
     }
     // Trigger armed with nothing after it: an honest dud (triggered stays null).
-    groups.push({ actions: g.actions.map((a) => a.action), manaCost: mana });
+    groups.push({ actions: g.actions.map((a) => a.action), manaCost: mana, slots });
   }
   return groups;
 }

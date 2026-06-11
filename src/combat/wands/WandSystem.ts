@@ -417,6 +417,14 @@ export class WandSystem implements WandsApi {
     ctx.events.emit('cardGranted', { id, name: CARD_DEFS[id].name });
   }
 
+  nextCastSlots(): number[] {
+    const wand = this.wands[this._active];
+    const program = this.program(this._active);
+    if (program.length === 0) return [];
+    const idx = wand.castIndex >= program.length ? 0 : wand.castIndex;
+    return program[idx].slots;
+  }
+
   upgradeFrame(ctx: Ctx, wand: 0 | 1, frameId: string): boolean {
     const frame = WAND_FRAMES[frameId];
     const w = this.wands[wand];
