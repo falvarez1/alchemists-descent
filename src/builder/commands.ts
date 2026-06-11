@@ -1,9 +1,10 @@
 import type { EditorDocument, EditorObject } from '@/builder/document';
+import type { World } from '@/sim/World';
 
 /**
  * Command-based undo/redo (docs/BUILDER.md): every edit is a do/undo pair
- * over the document — no whole-world snapshots. Terrain paint commands
- * arrive with Phase 4; object commands cover Phases 2-3.
+ * over the document — no whole-world snapshots. Object commands cover
+ * Phases 2-3; paint commands carry sparse before/after cell patches.
  */
 
 export interface Command {
@@ -95,6 +96,34 @@ export function moveObjectCmd(obj: EditorObject, toX: number, toY: number): Comm
       obj.y = fromY;
     },
   };
+}
+
+/* ---------------- terrain paint command ---------------- */
+
+/** Sparse cell patch: parallel arrays over the same index list. */
+export interface CellPatch {
+  idxs: number[];
+  types: number[];
+  colors: number[];
+  life: number[];
+  charge: number[];
+}
+
+/**
+ * One paint stroke over the LIVE world (the pre-Phase-4 terrain layer).
+ * Both patches share the changed-cell index set; do/undo just replay them.
+ */
+export function paintTerrainCmd(world: World, before: CellPatch, after: CellPatch): Command {
+  const apply = (p: CellPatch): void => {
+    for (let n = 0; n < p.idxs.length; n++) {
+      const i = p.idxs[n];
+      world.types[i] = p.types[n];
+      world.colors[i] = p.colors[n];
+      world.life[i] = p.life[n];
+      world.charge[i] = p.charge[n];
+    }
+  };
+  return { label: 'paint', do: () => apply(after), undo: () => apply(before) };
 }
 
 export function editParamCmd(obj: EditorObject, key: string, value: unknown): Command {

@@ -15,7 +15,10 @@ import {
   deleteObjectCmd,
   editParamCmd,
   moveObjectCmd,
+  paintTerrainCmd,
 } from '@/builder/commands';
+import type { CellPatch } from '@/builder/commands';
+import { drawLine, spawnCircle } from '@/sim/brush';
 import { compileAndPlaytest, validateDocument } from '@/builder/compile';
 import type { DocIssue } from '@/builder/compile';
 
@@ -63,16 +66,24 @@ const BIOMES: BiomeId[] = [
 /** How close (in cells) an overlay click must be to count as selecting an object. */
 const PICK_RADIUS = 7;
 
+/** Beyond this many touched cells a stroke still paints, but won't undo. */
+const STROKE_UNDO_CAP = 150000;
+
+type BuilderTool = 'select' | 'paint' | EditorObjectKind;
+
 export class Builder {
   private doc: EditorDocument;
   private readonly cmds = new CommandStack(() => this.doc);
   private isOpen = false;
   private ownsPause = false;
   private returningFromPlaytest = false;
+  /** Live world has terrain edits the document hasn't captured yet. */
+  private paintDirty = false;
 
   private selectedId: string | null = null;
-  private placeKind: EditorObjectKind | null = null;
+  private tool: BuilderTool = 'select';
   private drag: { obj: EditorObject; origX: number; origY: number; grabX: number; grabY: number } | null = null;
+  private stroke: { seen: Set<number>; before: CellPatch; lastX: number; lastY: number } | null = null;
 
   private root!: HTMLDivElement;
   private overlay!: HTMLDivElement;
@@ -93,6 +104,13 @@ export class Builder {
     ctx.events.on('modeChanged', ({ mode }) => {
       if (mode === 'play' && this.isOpen) this.close();
     });
+    // Sandbox world-shaping buttons also edit terrain — the document must
+    // re-capture before the next validate/playtest/save.
+    for (const id of ['btn-caves', 'btn-fortress', 'clear-btn']) {
+      document.getElementById(id)?.addEventListener('click', () => {
+        if (this.isOpen) this.paintDirty = true;
+      });
+    }
   }
 
   /* ===================== open / close ===================== */
@@ -133,8 +151,9 @@ export class Builder {
       this.ctx.state.paused = false;
       this.ownsPause = false;
     }
-    this.placeKind = null;
+    this.tool = 'select';
     this.drag = null;
+    this.stroke = null;
     this.root.style.display = 'none';
     this.modeBtn.classList.remove('active');
     document.body.classList.remove('builder-open');
@@ -177,11 +196,14 @@ export class Builder {
       </div>
       <div id="builder-overlay"><div id="builder-markers"></div></div>
       <div id="builder-palette">
+        <div class="bp-head">TOOLS</div>
+        <button class="bp-tool active" data-tool="select"><span class="bp-glyph k-select">V</span>Select / Move</button>
+        <button class="bp-tool" data-tool="paint"><span class="bp-glyph k-paint">B</span>Paint Cells</button>
         <div class="bp-head">PLACE</div>
         ${PLACEABLE.map(
           (p) => `<button class="bp-tool" data-kind="${p.kind}"><span class="bp-glyph k-${p.kind}">${p.glyph}</span>${p.label}</button>`,
         ).join('')}
-        <div class="bp-hint">Click canvas to place.<br>ESC cancels &middot; DEL removes.<br>Terrain: paint in Sandbox,<br>then CAPTURE TERRAIN.</div>
+        <div class="bp-hint">PAINT uses the Sandbox<br>material + brush radius;<br>RMB eyedrops. Sim is<br>frozen — cells stay put.<br>Strokes undo with Ctrl+Z.<br>ESC to select &middot; DEL removes.</div>
       </div>
       <div id="builder-inspector"></div>
       <div id="builder-issues" style="display:none"></div>
@@ -206,8 +228,8 @@ export class Builder {
 
     for (const btn of this.root.querySelectorAll<HTMLButtonElement>('.bp-tool')) {
       btn.addEventListener('click', () => {
-        const kind = btn.dataset.kind as EditorObjectKind;
-        this.placeKind = this.placeKind === kind ? null : kind;
+        const t = (btn.dataset.tool ?? btn.dataset.kind) as BuilderTool;
+        this.tool = this.tool === t && t !== 'select' ? 'select' : t;
         this.syncPalette();
       });
     }
@@ -232,11 +254,13 @@ export class Builder {
       this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
       this.cmds.clear();
       this.selectedId = null;
+      this.paintDirty = false;
       this.syncAll();
       this.status('NEW DOCUMENT');
     });
 
     this.el('b-save').addEventListener('click', () => {
+      this.ensureCaptured();
       const lib = loadDocLibrary();
       lib[this.doc.id] = this.doc;
       if (saveDocLibrary(lib)) this.status(`SAVED "${this.doc.name.toUpperCase()}"`);
@@ -252,12 +276,14 @@ export class Builder {
       this.doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
       this.cmds.clear();
       this.selectedId = null;
+      this.paintDirty = false;
       this.applyDocTerrain();
       this.syncAll();
       this.status(`LOADED "${this.doc.name.toUpperCase()}"`);
     });
 
     this.el('b-export').addEventListener('click', () => {
+      this.ensureCaptured();
       const blob = new Blob([JSON.stringify(this.doc)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -277,6 +303,7 @@ export class Builder {
           this.doc = parsed;
           this.cmds.clear();
           this.selectedId = null;
+          this.paintDirty = false;
           this.applyDocTerrain();
           this.syncAll();
           this.status(`IMPORTED "${this.doc.name.toUpperCase()}"`);
@@ -292,10 +319,12 @@ export class Builder {
 
     this.el('b-capture').addEventListener('click', () => {
       this.doc.world = captureWorldLayer(this.ctx);
+      this.paintDirty = false;
       this.status('TERRAIN CAPTURED INTO DOCUMENT');
     });
 
     this.el('b-validate').addEventListener('click', () => {
+      this.ensureCaptured();
       const issues = validateDocument(this.doc);
       this.doc.validation = {
         at: new Date().toISOString(),
@@ -310,7 +339,18 @@ export class Builder {
     this.el('b-exit').addEventListener('click', () => this.close());
   }
 
+  /**
+   * Lazy terrain sync: in-builder paint edits the LIVE world; the document
+   * re-captures right before anything reads doc.world as the truth.
+   */
+  private ensureCaptured(): void {
+    if (!this.paintDirty) return;
+    this.doc.world = captureWorldLayer(this.ctx);
+    this.paintDirty = false;
+  }
+
   private playtest(): void {
+    this.ensureCaptured();
     const issues = validateDocument(this.doc);
     this.renderIssues(issues);
     if (issues.some((i) => i.severity === 'error')) {
@@ -334,12 +374,14 @@ export class Builder {
 
   private undo(): void {
     const label = this.cmds.undo();
+    if (label === 'paint') this.paintDirty = true;
     this.status(label ? 'UNDID ' + label.toUpperCase() : 'NOTHING TO UNDO');
     this.syncAll();
   }
 
   private redo(): void {
     const label = this.cmds.redo();
+    if (label === 'paint') this.paintDirty = true;
     this.status(label ? 'REDID ' + label.toUpperCase() : 'NOTHING TO REDO');
     this.syncAll();
   }
@@ -360,12 +402,22 @@ export class Builder {
   }
 
   private wirePointer(): void {
+    // RMB is the eyedropper, never the browser menu (Sandbox parity).
+    this.overlay.addEventListener('contextmenu', (e) => e.preventDefault());
     this.overlay.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
       const pos = this.mouseToWorld(e);
-      if (this.placeKind) {
-        this.place(this.placeKind, pos.x, pos.y);
-        this.placeKind = null;
+      if (e.button === 2) {
+        this.eyedrop(pos.x, pos.y);
+        return;
+      }
+      if (e.button !== 0) return;
+      if (this.tool === 'paint') {
+        this.beginStroke(pos.x, pos.y);
+        return;
+      }
+      if (this.tool !== 'select') {
+        this.place(this.tool, pos.x, pos.y);
+        this.tool = 'select';
         this.syncPalette();
         return;
       }
@@ -376,12 +428,21 @@ export class Builder {
       }
     });
     window.addEventListener('mousemove', (e) => {
+      if (this.stroke) {
+        const pos = this.mouseToWorld(e);
+        this.strokeMove(pos.x, pos.y);
+        return;
+      }
       if (!this.drag) return;
       const pos = this.mouseToWorld(e);
       this.drag.obj.x = pos.x - this.drag.grabX;
       this.drag.obj.y = pos.y - this.drag.grabY;
     });
     window.addEventListener('mouseup', () => {
+      if (this.stroke) {
+        this.endStroke();
+        return;
+      }
       if (!this.drag) return;
       const { obj, origX, origY } = this.drag;
       const toX = obj.x;
@@ -394,6 +455,117 @@ export class Builder {
       this.cmds.run(moveObjectCmd(obj, toX, toY));
       this.renderInspector();
     });
+  }
+
+  /* ---------- terrain painting (pre-Phase-4: live world is the layer) ---------- */
+
+  private beginStroke(x: number, y: number): void {
+    const state = this.ctx.state;
+    if (state.activeInputMode === 'spell') {
+      this.status('SPELLS NEED THE LIVE SANDBOX — PICK A MATERIAL TO PAINT', true);
+      return;
+    }
+    this.stroke = {
+      seen: new Set(),
+      before: { idxs: [], types: [], colors: [], life: [], charge: [] },
+      lastX: x,
+      lastY: y,
+    };
+    this.recordAround(x, y, x, y);
+    spawnCircle(this.ctx, x, y, state.currentElement);
+  }
+
+  private strokeMove(x: number, y: number): void {
+    const s = this.stroke;
+    if (!s) return;
+    this.recordAround(s.lastX, s.lastY, x, y);
+    drawLine(this.ctx, s.lastX, s.lastY, x, y, this.ctx.state.currentElement);
+    s.lastX = x;
+    s.lastY = y;
+  }
+
+  /** Snapshot pre-stroke cell state around a segment (once per cell per stroke). */
+  private recordAround(x0: number, y0: number, x1: number, y1: number): void {
+    const s = this.stroke;
+    if (!s || s.seen.size > STROKE_UNDO_CAP) return;
+    const w = this.ctx.world;
+    const r = this.ctx.state.brushSize + 2;
+    const minX = Math.max(0, Math.min(x0, x1) - r);
+    const maxX = Math.min(w.width - 1, Math.max(x0, x1) + r);
+    const minY = Math.max(0, Math.min(y0, y1) - r);
+    const maxY = Math.min(w.height - 1, Math.max(y0, y1) + r);
+    const b = s.before;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const i = w.idx(x, y);
+        if (s.seen.has(i)) continue;
+        s.seen.add(i);
+        b.idxs.push(i);
+        b.types.push(w.types[i]);
+        b.colors.push(w.colors[i]);
+        b.life.push(w.life[i]);
+        b.charge.push(w.charge[i]);
+      }
+    }
+  }
+
+  private endStroke(): void {
+    const s = this.stroke;
+    this.stroke = null;
+    if (!s) return;
+    this.paintDirty = true;
+    if (s.seen.size > STROKE_UNDO_CAP) {
+      this.status('HUGE STROKE — PAINTED WITHOUT UNDO', true);
+      return;
+    }
+    // Keep only the cells the stroke actually changed.
+    const w = this.ctx.world;
+    const before: CellPatch = { idxs: [], types: [], colors: [], life: [], charge: [] };
+    const after: CellPatch = { idxs: [], types: [], colors: [], life: [], charge: [] };
+    for (let n = 0; n < s.before.idxs.length; n++) {
+      const i = s.before.idxs[n];
+      if (
+        w.types[i] === s.before.types[n] &&
+        w.colors[i] === s.before.colors[n] &&
+        w.life[i] === s.before.life[n] &&
+        w.charge[i] === s.before.charge[n]
+      )
+        continue;
+      before.idxs.push(i);
+      before.types.push(s.before.types[n]);
+      before.colors.push(s.before.colors[n]);
+      before.life.push(s.before.life[n]);
+      before.charge.push(s.before.charge[n]);
+      after.idxs.push(i);
+      after.types.push(w.types[i]);
+      after.colors.push(w.colors[i]);
+      after.life.push(w.life[i]);
+      after.charge.push(w.charge[i]);
+    }
+    if (before.idxs.length === 0) return;
+    this.cmds.run(paintTerrainCmd(w, before, after));
+    this.renderInspector(); // undo-depth row
+  }
+
+  /** Sandbox-parity RMB: pick the material under the cursor, arm the brush. */
+  private eyedrop(x: number, y: number): void {
+    const ctx = this.ctx;
+    if (!ctx.world.inBounds(x, y)) return;
+    const t = ctx.world.types[ctx.world.idx(x, y)];
+    const btn = document.querySelector<HTMLButtonElement>(
+      `.tool-btn[data-mode="element"][data-id="${t}"]`,
+    );
+    if (btn) btn.click();
+    else {
+      ctx.state.currentElement = t as never;
+      ctx.state.activeInputMode = 'element';
+    }
+    if (this.tool !== 'paint') {
+      this.tool = 'paint';
+      this.syncPalette();
+    }
+    const name = ctx.params.materials[t]?.name ?? 'Material ' + t;
+    this.status('PICKED: ' + name.toUpperCase());
   }
 
   private place(kind: EditorObjectKind, x: number, y: number): void {
@@ -468,10 +640,14 @@ export class Builder {
       e.stopPropagation();
     } else if (e.code === 'Escape') {
       e.stopPropagation();
-      if (this.placeKind) {
-        this.placeKind = null;
+      if (this.tool !== 'select') {
+        this.tool = 'select';
         this.syncPalette();
       } else this.select(null);
+    } else if (e.code === 'KeyV' || e.code === 'KeyB') {
+      e.stopPropagation();
+      this.tool = e.code === 'KeyV' ? 'select' : 'paint';
+      this.syncPalette();
     } else if (e.code === 'Delete') {
       e.stopPropagation();
       this.deleteSelection();
@@ -484,8 +660,8 @@ export class Builder {
       e.preventDefault();
       e.stopPropagation();
       this.redo();
-    } else if (e.code === 'KeyB' || e.code === 'KeyM' || e.code === 'KeyH') {
-      // Keep play-mode overlays (bench/map/handbook) out of authoring.
+    } else if (e.code === 'KeyM' || e.code === 'KeyH') {
+      // Keep play-mode overlays (map/handbook) out of authoring.
       e.stopPropagation();
     }
   };
@@ -661,7 +837,7 @@ export class Builder {
 
   private syncPalette(): void {
     for (const btn of this.root.querySelectorAll<HTMLButtonElement>('.bp-tool')) {
-      btn.classList.toggle('active', btn.dataset.kind === this.placeKind);
+      btn.classList.toggle('active', (btn.dataset.tool ?? btn.dataset.kind) === this.tool);
     }
   }
 

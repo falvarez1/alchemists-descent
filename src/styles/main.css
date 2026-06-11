@@ -443,6 +443,8 @@ button#clear-btn:hover { background: var(--accent-danger); color: white; border-
 }
 .b-marker.sel { box-shadow: 0 0 0 2px rgba(74,222,128,0.85), 0 0 14px rgba(74,222,128,0.5); }
 .b-marker.ghost { opacity: 0.35; }
+.k-select { color: #93c5fd; border-color: #1e40af; }
+.k-paint { color: #f0abfc; border-color: #701a75; }
 .k-spawn { color: #4ade80; border-color: #166534; }
 .k-enemy { color: #f87171; border-color: #7f1d1d; }
 .k-pickup { color: #fbbf24; border-color: #78350f; }

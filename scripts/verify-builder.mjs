@@ -154,6 +154,48 @@ const issues = await page.evaluate(() => {
 });
 check('validation finds no errors', issues.errors === 0, issues.text.slice(0, 200));
 
+/* ---------- in-builder terrain painting ---------- */
+console.log('-- paint');
+await page.click('.bp-tool[data-tool="paint"]');
+// RMB eyedrops like the Sandbox: an empty cell arms the Eraser (element 0).
+const ed = at(0.5, 0.6);
+await page.mouse.click(ed.x, ed.y, { button: 'right' });
+await page.waitForTimeout(80);
+const picked = await page.evaluate(() => window.__game.ctx.state.currentElement);
+check('RMB eyedropper picks the cell under the cursor', picked === 0, `element ${picked}`);
+await page.click('.tool-btn[data-mode="element"][data-id="3"]'); // Wall
+const wallsIn = () =>
+  page.evaluate(() => {
+    const w = window.__game.ctx.world;
+    let n = 0;
+    for (let y = 473; y <= 489; y++)
+      for (let x = 592; x <= 630; x++) if (w.types[w.idx(x, y)] === 3) n++;
+    return n;
+  });
+const st0 = at(0.5, 0.42);
+const st1 = at(0.56, 0.42);
+await page.mouse.move(st0.x, st0.y);
+await page.mouse.down();
+await page.mouse.move(st1.x, st1.y, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(80);
+let walls = await wallsIn();
+check('paint stroke writes cells', walls > 20, `got ${walls}`);
+await page.keyboard.press('Control+z');
+await page.waitForTimeout(80);
+walls = await wallsIn();
+check('ctrl+z erases the stroke', walls === 0, `got ${walls}`);
+await page.keyboard.press('Control+y');
+await page.waitForTimeout(80);
+walls = await wallsIn();
+check('ctrl+y repaints it', walls > 20, `got ${walls}`);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(80);
+const toolNow = await page.evaluate(
+  () => document.querySelector('.bp-tool.active')?.dataset.tool,
+);
+check('esc returns to the select tool', toolNow === 'select', String(toolNow));
+
 /* ---------- save to library ---------- */
 console.log('-- save/load');
 await page.fill('#b-doc-name', 'probe-level');
@@ -228,6 +270,8 @@ check('return restores build mode paused', s.mode === 'build' && s.paused, JSON.
 check('document objects intact after playtest', s.markers === 5, `got ${s.markers}`);
 check('playtest combat state cleared', s.enemies === 0, `got ${s.enemies}`);
 check('playtest scars discarded (terrain re-decoded)', s.scar === 0, `cell ${s.scar}`);
+walls = await wallsIn();
+check('in-builder paint auto-captured through playtest', walls > 20, `got ${walls}`);
 
 /* ---------- load round-trip ---------- */
 await page.click('#b-new');
