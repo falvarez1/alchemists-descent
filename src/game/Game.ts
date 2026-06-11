@@ -5,6 +5,7 @@ import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
 import type { Ctx, FxState, GameStateData, InputState } from '@/core/types';
 import { AudioEngine } from '@/audio/AudioEngine';
+import { Builder } from '@/builder/Builder';
 import { Flask } from '@/combat/Flask';
 import { Lightning } from '@/combat/Lightning';
 import { WandSystem } from '@/combat/wands/WandSystem';
@@ -150,6 +151,8 @@ export class Game {
     new WandBench(ctx);
     // Wires the Level Library buttons; lives for the page lifetime.
     new LevelStore(ctx);
+    // The authoring overlay (injects its own DOM + header button).
+    new Builder(ctx);
     // ESC pause + the Handbook (H); pause registers FIRST so its keydown
     // handler sees the help overlay still open and yields ESC to it.
     new PauseOverlay(ctx);

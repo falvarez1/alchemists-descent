@@ -403,6 +403,100 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
 button#clear-btn { background: #221212; border: 1px solid #441a1a; color: #ff6666; font-weight: 600; padding: 10px; border-radius: 5px; cursor: pointer; margin-top: auto; transition: all 0.15s ease; }
 button#clear-btn:hover { background: var(--accent-danger); color: white; border-color: transparent; }
 
+/* ---------- Builder authoring overlay (src/builder/Builder.ts) ---------- */
+.mode-switch button#mode-builder-btn.active { background: #122a1c; color: #86efac; }
+
+#builder-root { position: absolute; inset: 0; z-index: 7; font-family: var(--mono); pointer-events: none; }
+#builder-root button, #builder-root .b-filebtn {
+    background: #14181f; border: 1px solid #25303d; color: #9fb6cc; font-family: var(--mono);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.6px; padding: 4px 8px; border-radius: 3px;
+    cursor: pointer; transition: all 0.1s ease;
+}
+#builder-root button:hover, #builder-root .b-filebtn:hover { background: #1d2733; color: #d6e6f5; border-color: #3a4c61; }
+#builder-root input, #builder-root select {
+    background: #0c0f14; border: 1px solid #25303d; color: #d6e6f5; font-family: var(--mono);
+    font-size: 10px; padding: 4px 6px; border-radius: 3px; outline: none;
+}
+#builder-root input:focus, #builder-root select:focus { border-color: #4ade80; }
+
+#builder-bar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 3; pointer-events: auto;
+    display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 6px 8px;
+    background: rgba(10,13,18,0.94); border-bottom: 1px solid #1d2733;
+}
+#builder-bar .b-title { font-size: 10px; font-weight: 800; letter-spacing: 2px; color: #4ade80; margin-right: 4px; }
+#builder-bar .b-sep { width: 1px; height: 16px; background: #25303d; margin: 0 3px; }
+#builder-bar #b-doc-name { width: 110px; }
+#builder-bar #b-doc-select { max-width: 120px; }
+#builder-bar .b-accent { border-color: #78350f; color: #fcd34d; background: #1d1407; }
+#builder-bar .b-accent:hover { background: #78350f; color: #fff7da; }
+#builder-bar #b-exit { border-color: #441a1a; color: #ff8a8a; background: #160c0c; }
+#builder-bar #b-exit:hover { background: #441a1a; color: #ffd9d9; }
+
+#builder-overlay { position: absolute; inset: 0; z-index: 1; pointer-events: auto; cursor: crosshair; }
+#builder-markers { position: absolute; inset: 0; pointer-events: none; }
+.b-marker {
+    position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; pointer-events: none;
+    display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+    font-size: 9px; font-weight: 800; border-radius: 3px; border: 1px solid;
+    background: rgba(8,10,14,0.78); text-shadow: none;
+}
+.b-marker.sel { box-shadow: 0 0 0 2px rgba(74,222,128,0.85), 0 0 14px rgba(74,222,128,0.5); }
+.b-marker.ghost { opacity: 0.35; }
+.k-spawn { color: #4ade80; border-color: #166534; }
+.k-enemy { color: #f87171; border-color: #7f1d1d; }
+.k-pickup { color: #fbbf24; border-color: #78350f; }
+.k-exitPortal { color: #c084fc; border-color: #581c87; }
+.k-waystone { color: #ff9a3c; border-color: #7c2d12; }
+
+#builder-palette {
+    position: absolute; left: 8px; top: 44px; z-index: 2; pointer-events: auto; width: 132px;
+    display: flex; flex-direction: column; gap: 3px; padding: 7px;
+    background: rgba(10,13,18,0.92); border: 1px solid #1d2733; border-radius: 5px;
+}
+#builder-palette .bp-head { font-size: 8px; font-weight: 800; letter-spacing: 2px; color: #5b7187; margin-bottom: 2px; }
+#builder-palette .bp-tool { display: flex; align-items: center; gap: 6px; text-align: left; padding: 5px 6px; }
+#builder-palette .bp-tool.active { border-color: #4ade80; color: #d9fbe5; background: #122a1c; }
+#builder-palette .bp-glyph {
+    width: 14px; height: 14px; border: 1px solid; border-radius: 3px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 800;
+    background: rgba(8,10,14,0.78);
+}
+#builder-palette .bp-hint { font-size: 8px; line-height: 1.7; color: #50596b; margin-top: 5px; }
+
+#builder-inspector, #builder-issues {
+    position: absolute; right: 8px; top: 44px; z-index: 2; pointer-events: auto; width: 168px;
+    display: flex; flex-direction: column; gap: 4px; padding: 8px;
+    background: rgba(10,13,18,0.92); border: 1px solid #1d2733; border-radius: 5px;
+    font-size: 10px; color: #9fb6cc;
+}
+#builder-issues { top: auto; bottom: 34px; max-height: 40%; overflow-y: auto; width: 230px; }
+.bi-head { font-size: 8px; font-weight: 800; letter-spacing: 2px; color: #5b7187; display: flex; justify-content: space-between; align-items: center; }
+.bi-id { font-size: 8px; color: #3e4a5c; word-break: break-all; }
+.bi-empty { font-size: 9px; line-height: 1.7; color: #50596b; padding: 4px 0; }
+.bi-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.bi-row span { color: #5b7187; font-size: 9px; }
+.bi-row input[type="number"], .bi-row input[type="text"] { width: 76px; }
+.bi-row select { width: 88px; }
+.bi-flags { display: flex; gap: 10px; font-size: 9px; color: #5b7187; margin-top: 2px; }
+.bi-flags label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+#bi-delete { margin-top: 6px; border-color: #441a1a; color: #ff8a8a; background: #160c0c; }
+#bi-delete:hover { background: #441a1a; color: #ffd9d9; }
+.b-issue { cursor: pointer; padding: 3px 4px; border-radius: 3px; line-height: 1.4; }
+.b-issue:hover { background: #161d27; }
+.b-issue.error { color: #f87171; }
+.b-issue.warning { color: #fbbf24; }
+.b-issue.info { color: #7dd3fc; }
+
+#builder-status {
+    position: absolute; left: 8px; bottom: 8px; z-index: 3; pointer-events: none;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.8px; color: #86efac;
+    background: rgba(10,13,18,0.92); border: 1px solid #1d2733; border-radius: 4px;
+    padding: 5px 10px; opacity: 0; transition: opacity 0.2s ease;
+}
+#builder-status.show { opacity: 1; }
+#builder-status.warn { color: #fbbf24; }
+
 @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; }
 }
