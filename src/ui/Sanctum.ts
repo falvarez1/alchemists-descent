@@ -143,6 +143,32 @@ export class Sanctum implements SanctumApi {
           ctx.audio.drinkPotion();
         },
       },
+      // Wandwright: the gold sink that finally hands out the better frames.
+      // Each offer disappears once any wand carries the frame.
+      ...(ctx.wands.wands.some((w) => w.frame.id === 'brass')
+        ? []
+        : [
+            {
+              name: 'WANDWRIGHT: BRASS INJECTOR',
+              desc: 'Refit wand I — 5 slots, fast cycle, deep tanks',
+              cost: 240,
+              act: (): void => {
+                ctx.wands.upgradeFrame(ctx, 0, 'brass');
+              },
+            },
+          ]),
+      ...(ctx.wands.wands.some((w) => w.frame.id === 'void')
+        ? []
+        : [
+            {
+              name: 'WANDWRIGHT: VOID LATTICE',
+              desc: 'Refit wand II — 5 slots, perfect aim, vast mana',
+              cost: 380,
+              act: (): void => {
+                ctx.wands.upgradeFrame(ctx, 1, 'void');
+              },
+            },
+          ]),
       {
         name: 'LOST PAGES',
         desc: 'Learn a random unknown spell card',

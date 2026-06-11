@@ -230,6 +230,20 @@ body.play-active #viewport-container { padding: 0; }
 .bench-empty { font-size: 9px; color: rgba(255,255,255,0.35); letter-spacing: 1px; align-self: center; }
 .bench-hint { margin-top: auto; font-size: 8px; letter-spacing: 1.5px; color: rgba(255,255,255,0.35); }
 
+#help-overlay {
+    position: absolute; inset: 0; background: rgba(5,3,10,0.92); backdrop-filter: blur(3px);
+    display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+    pointer-events: auto; z-index: 9; font-family: var(--mono); padding: 30px;
+}
+#help-overlay.visible { display: flex; }
+#help-overlay .help-title { font-size: 18px; font-weight: 800; letter-spacing: 6px; color: #e9d5ff; text-shadow: 0 0 18px rgba(168,85,247,0.6); }
+#help-overlay .help-grid { display: flex; gap: 26px; max-width: 860px; }
+#help-overlay .help-col { flex: 1; }
+#help-overlay .help-h { font-size: 10px; font-weight: 800; letter-spacing: 3px; color: #fcd34d; margin: 12px 0 4px; }
+#help-overlay p { font-size: 10px; line-height: 1.7; color: rgba(255,255,255,0.72); margin: 4px 0; }
+#help-overlay p b { color: #fff; }
+#help-overlay .help-close { font-size: 9px; letter-spacing: 2px; color: rgba(255,255,255,0.4); }
+
 #victory-overlay {
     position: absolute; inset: 0; background: radial-gradient(circle at 50% 45%, rgba(50,20,4,0.88), rgba(4,2,8,0.96));
     display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px;

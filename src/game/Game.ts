@@ -31,6 +31,7 @@ import { Cell } from '@/sim/CellType';
 import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
+import { HelpOverlay } from '@/ui/HelpOverlay';
 import { Hud } from '@/ui/Hud';
 import { Inspector } from '@/ui/Inspector';
 import { LevelStore } from '@/ui/LevelStore';
@@ -146,6 +147,8 @@ export class Game {
     new WandBench(ctx);
     // Wires the Level Library buttons; lives for the page lifetime.
     new LevelStore(ctx);
+    // The Handbook (H); lives for the page lifetime.
+    new HelpOverlay(ctx);
     this.inspector = new Inspector(ctx);
     this.toolbar = new Toolbar(ctx, (id, mode) => this.inspector.generateContextInspector(id, mode));
     // Wires its DOM listeners in the constructor; lives for the page lifetime.

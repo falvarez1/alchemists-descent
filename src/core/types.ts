@@ -817,6 +817,12 @@ export interface WandsApi {
   /** Save-game support: capture / restore the full wand loadout. */
   snapshotLoadout(): WandLoadoutSave;
   loadLoadout(data: WandLoadoutSave): void;
+  /**
+   * Wandwright progression (Sanctum shop): rebuild a wand around a better
+   * frame. Slotted cards are kept, mana refills. False if the frame id is
+   * unknown or already equipped on that wand.
+   */
+  upgradeFrame(ctx: Ctx, wand: 0 | 1, frameId: string): boolean;
 }
 
 export interface WandLoadoutSave {

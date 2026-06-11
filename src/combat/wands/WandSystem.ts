@@ -415,6 +415,23 @@ export class WandSystem implements WandsApi {
     ctx.events.emit('cardGranted', { id, name: CARD_DEFS[id].name });
   }
 
+  upgradeFrame(ctx: Ctx, wand: 0 | 1, frameId: string): boolean {
+    const frame = WAND_FRAMES[frameId];
+    const w = this.wands[wand];
+    if (!frame || w.frame.id === frameId) return false;
+    w.frame = frame;
+    while (w.cards.length < frame.capacity) w.cards.push(null);
+    w.cards.length = frame.capacity;
+    w.mana = frame.manaMax;
+    w.cooldown = 0;
+    w.castIndex = 0;
+    this.compiled[wand] = null;
+    ctx.audio.learn();
+    ctx.events.emit('toast', { text: frame.name.toUpperCase() + ' FITTED' });
+    ctx.events.emit('wandChanged');
+    return true;
+  }
+
   /* ---------------- save-game support ---------------- */
 
   snapshotLoadout(): WandLoadoutSave {

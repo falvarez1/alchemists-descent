@@ -32,6 +32,8 @@ import type {
   Waystone,
 } from '@/core/types';
 import { createDefaultStatus } from '@/entities/status';
+import { makeLevelRuntime } from '@/game/runtime';
+import { validateFindability } from '@/world/validate';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, emberColor, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
@@ -202,22 +204,13 @@ export class Levels implements LevelsApi {
       nextLevelId: null,
     };
     const spawn = ctx.playerCtl.findSpawnPoint();
-    const runtime: LevelRuntime = {
+    const runtime: LevelRuntime = makeLevelRuntime({
       def,
       world: ctx.world,
       enemies: ctx.enemies.slice(),
-      waystones: [],
-      exit: null,
-      explored: new Uint8Array(MINIMAP_W * MINIMAP_H),
       spawn,
       regions: extractRegionGraph(ctx.world, spawn, spawn),
-      cauldron: null,
-      pickups: [],
-      portal: null,
-      keyTaken: false,
-      mechanisms: [],
-      runeVaults: [],
-    };
+    });
     this.levels.set('custom', runtime);
     this.currentId = 'custom';
     this.waystoneHeat = [];
@@ -402,7 +395,7 @@ export class Levels implements LevelsApi {
       ? { x: pristine.portal.x, y: pristine.portal.y, open: blob.portalOpen }
       : null;
 
-    return {
+    return makeLevelRuntime({
       def,
       world,
       enemies: ctx.enemies.slice(),
@@ -422,7 +415,7 @@ export class Levels implements LevelsApi {
       runeVaults: blob.runeVaults,
       // Alive-or-dead truth lives in blob.enemies; the arena marker is static.
       boss: pristine.boss,
-    };
+    });
   }
 
   /** A saved hostile rejoins the living with full kit but its saved wounds. */
@@ -577,7 +570,7 @@ export class Levels implements LevelsApi {
     if (boss) ctx.enemyCtl.spawn('colossus', boss.x, boss.y);
     this.litOrder.set(def.id, []);
 
-    return {
+    const runtime = makeLevelRuntime({
       def,
       world,
       // Detached snapshot array: synced from ctx.enemies on leave, copied
@@ -585,17 +578,28 @@ export class Levels implements LevelsApi {
       enemies: ctx.enemies.slice(),
       waystones,
       exit,
-      explored: new Uint8Array(MINIMAP_W * MINIMAP_H),
       spawn,
       regions,
       cauldron,
       pickups,
       portal,
-      keyTaken: false,
       mechanisms,
       runeVaults,
       boss,
-    };
+    });
+
+    // DEV tripwire: a freshly generated level with anything unreachable
+    // is a generator regression — shout immediately, not at playtest.
+    if (import.meta.env.DEV) {
+      const issues = validateFindability(runtime);
+      if (issues.length) {
+        console.warn(
+          `[findability] ${def.id}: ${issues.map((i) => `${i.what}@${i.x},${i.y}`).join(' ')}`,
+        );
+      }
+    }
+
+    return runtime;
   }
 
   /** Placed populations (finite, readable) — the descent's replacement for endless waves. */

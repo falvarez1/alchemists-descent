@@ -47,6 +47,7 @@ export function placeStructures(
   exit: { x: number; sealY: number },
   waystones: Waystone[],
   spawn: { x: number; y: number },
+  cauldron: { x: number; y: number } | null,
 ): {
   pickups: Pickup[];
   portal: ExitPortal | null;
@@ -109,13 +110,32 @@ export function placeStructures(
       if (best) break;
     }
     if (!best) return;
+    // A concave region's centroid can sit in solid rock — resolve to the
+    // nearest actually-open cell so the tunnel provably touches the cave.
+    let tx = Math.floor(best.cx),
+      ty = Math.floor(best.cy);
+    if (w.inBounds(tx, ty) && w.types[w.idx(tx, ty)] !== Cell.Empty) {
+      outer: for (let r = 2; r <= 50; r += 2) {
+        for (const [ddx, ddy] of [
+          [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1],
+        ]) {
+          const X = tx + ddx * r,
+            Y = ty + ddy * r;
+          if (w.inBounds(X, Y) && w.types[w.idx(X, Y)] === Cell.Empty) {
+            tx = X;
+            ty = Y;
+            break outer;
+          }
+        }
+      }
+    }
     let x = fromX,
       y = fromY,
       guard = 0;
-    while ((Math.abs(x - best.cx) > 5 || Math.abs(y - best.cy) > 5) && guard < 900) {
+    while ((Math.abs(x - tx) > 3 || Math.abs(y - ty) > 3) && guard < 900) {
       guard++;
-      x += Math.sign(best.cx - x) * (rng.next() < 0.8 ? 1 : 0) + Math.floor((rng.next() - 0.5) * 2);
-      y += Math.sign(best.cy - y) * (rng.next() < 0.8 ? 1 : 0);
+      x += Math.sign(tx - x) * (rng.next() < 0.8 ? 1 : 0) + Math.floor((rng.next() - 0.5) * 2);
+      y += Math.sign(ty - y) * (rng.next() < 0.8 ? 1 : 0);
       x = Math.floor(clamp(x, 6, WIDTH - 7));
       y = Math.floor(clamp(y, 26, HEIGHT - 12));
       carvePocket(x, y, 4, 4);
@@ -165,6 +185,8 @@ export function placeStructures(
       }
     }
     pickups.push(makePickup('key', kx, ky - 2));
+    // The key gates progression: its vault is always walkable, never a dig
+    connectToCaves(kx - 8, kyBase);
   }
 
   // ---- One heart container in a quiet pocket ----
@@ -236,6 +258,11 @@ export function placeStructures(
       makePickup('goldpile', waystones[1].x + 6, waystones[1].y - 2, { amount: 20 }),
     );
   }
+
+  // Checkpoints are promises: every waystone (and the cauldron beside the
+  // first one) must be walkable, not an archaeology project.
+  for (const ws of waystones) connectToCaves(ws.x, ws.y - 4);
+  if (cauldron) connectToCaves(cauldron.x, cauldron.y - 4);
 
   // ---- Mechanism-gated treasure vault: a sealed room whose metal door obeys
   //      a pressure plate, a lever, or a fire brazier placed just outside ----

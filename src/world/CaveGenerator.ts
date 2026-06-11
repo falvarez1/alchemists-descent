@@ -922,6 +922,7 @@ export class WorldGen implements WorldGenApi {
       { x: wellX, sealY },
       waystones,
       spawn,
+      cauldron,
     );
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
