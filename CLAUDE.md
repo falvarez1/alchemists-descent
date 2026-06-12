@@ -105,6 +105,10 @@ Hard-won probe gotchas:
   drive everything through `window.__game.ctx`.
 - Probes must respect the sim: liquids flow, fire rises — contain test materials in metal cups
   and poll, don't single-sample.
+- Click UI with REAL clicks (boundingBox + `page.mouse.click`), never synthetic
+  `dispatchEvent(new MouseEvent(...))` — synthetic events bypass hit-testing and will happily
+  "pass" on a panel that real clicks fall straight through (`#builder-root` is
+  `pointer-events: none`; every Builder panel must opt back in with `pointer-events: auto`).
 
 **Mechanism-correct is NOT player-findable.** Any generated/placed content must pass the
 findability audit (`npm run verify:findability`): multi-seed BFS from spawn over `!blocksEntity`
