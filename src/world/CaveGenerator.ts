@@ -1,5 +1,6 @@
 import { BIOMES } from '@/config/biomes';
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { GEN } from '@/config/gen';
 import { clamp, hash2, valueNoise } from '@/core/math';
 import { Rng, randomSeed } from '@/core/rng';
 import type {
@@ -34,6 +35,8 @@ import {
 } from '@/sim/colors';
 import { applyBiomeExtras } from '@/world/biomeExtras';
 import { spawnFortress as stampFortress } from '@/world/fortress';
+import { SKELETONS } from '@/world/skeleton';
+import type { SkeletonIO } from '@/world/skeleton';
 import { extractRegionGraph } from '@/world/regions';
 import { stampSecrets } from '@/world/secrets';
 import { placeStructures } from '@/world/structures';
@@ -65,207 +68,30 @@ export class WorldGen implements WorldGenApi {
     this.rng = new Rng(ctx.state.worldSeed >>> 0);
     const world = ctx.world;
     const B = BIOMES[ctx.state.currentBiome] || BIOMES.earthen;
+    const G = GEN[ctx.state.currentBiome] || GEN.earthen;
     const FLOOR_BAND = HEIGHT - 52; // open strip at the bottom
     const MIN_Y = 2;
 
-    // --- 1) Noise field (true = wall) ---
-    // work[x][y] flattened to x + y * WIDTH (1 = wall, 0 = open)
-    let work = new Uint8Array(WIDTH * HEIGHT);
-    for (let x = 0; x < WIDTH; x += 2) {
-      for (let y = 0; y < HEIGHT; y += 2) {
-        const v = y >= FLOOR_BAND ? 0 : this.rng.next() < 0.54 ? 1 : 0;
-        work[x + y * WIDTH] = v;
-        if (x + 1 < WIDTH) work[x + 1 + y * WIDTH] = v;
-        if (y + 1 < HEIGHT) {
-          work[x + (y + 1) * WIDTH] = v;
-          if (x + 1 < WIDTH) work[x + 1 + (y + 1) * WIDTH] = v;
-        }
-      }
-    }
-    for (let x = 0; x < WIDTH; x++) for (let y = FLOOR_BAND; y < HEIGHT; y++) work[x + y * WIDTH] = 0;
-
-    // --- 2) Cellular automata, 5 smoothing passes (OOB counts as wall) ---
-    for (let pass = 0; pass < 5; pass++) {
-      const next = new Uint8Array(WIDTH * HEIGHT);
-      for (let x = 0; x < WIDTH; x++) {
-        for (let y = 0; y < FLOOR_BAND; y++) {
-          let n = 0;
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              if (dx === 0 && dy === 0) continue;
-              const X = x + dx,
-                Y = y + dy;
-              if (X < 0 || X >= WIDTH || Y < 0) {
-                n++;
-                continue;
-              }
-              if (Y >= FLOOR_BAND) continue;
-              if (work[X + Y * WIDTH]) n++;
-            }
-          }
-          next[x + y * WIDTH] = n >= 5 ? 1 : n <= 3 ? 0 : work[x + y * WIDTH];
-        }
-      }
-      work = next;
-    }
-
-    // --- 3) Carve a guaranteed traversable tunnel network ---
-    const carveDisc = (cx: number, cy: number, r: number): void => {
-      cx = Math.floor(cx);
-      cy = Math.floor(cy);
-      for (let dy = -r; dy <= r; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (dx * dx + dy * dy <= r * r) {
-            const X = cx + dx,
-              Y = cy + dy;
-            if (X > 1 && X < WIDTH - 2 && Y > MIN_Y && Y < HEIGHT) work[X + Y * WIDTH] = 0;
-          }
-        }
-      }
+    // --- 1-3) Skeleton: noise fill + CA smoothing + carve network ---
+    // work[x][y] flattened to x + y * WIDTH (1 = wall, 0 = open). The
+    // strategy consumes this.rng directly, so the paint/decoration draws
+    // below continue the same stream in the same order as the original
+    // single-function generator (golden-hash locked for baseline).
+    const work = new Uint8Array(WIDTH * HEIGHT);
+    const io: SkeletonIO = {
+      work,
+      rng: this.rng,
+      floorBand: FLOOR_BAND,
+      minY: MIN_Y,
+      worldSeed: ctx.state.worldSeed >>> 0,
     };
-
-    // Two meandering horizontal arteries (upper + lower)
-    const tunnelY: number[] = new Array<number>(WIDTH).fill(0);
-    {
-      const ph1 = this.rng.next() * Math.PI * 2,
-        ph2 = this.rng.next() * Math.PI * 2;
-      const base = HEIGHT * 0.4 + (this.rng.next() - 0.5) * 64;
-      for (let x = 2; x < WIDTH - 2; x++) {
-        let ty = base + Math.sin(x * 0.0075 + ph1) * 88 + Math.sin(x * 0.0021 + ph2) * 116;
-        ty = clamp(ty, 60, FLOOR_BAND - 92);
-        tunnelY[x] = Math.floor(ty);
-        if (x % 4 === 0) carveDisc(x, ty, 16);
-      }
-    }
-    {
-      const ph1 = this.rng.next() * Math.PI * 2,
-        ph2 = this.rng.next() * Math.PI * 2;
-      const base = HEIGHT * 0.74;
-      for (let x = 2; x < WIDTH - 2; x++) {
-        let ty = base + Math.sin(x * 0.0065 + ph1) * 52 + Math.sin(x * 0.0025 + ph2) * 68;
-        ty = clamp(ty, HEIGHT * 0.58, FLOOR_BAND - 28);
-        if (x % 4 === 0) carveDisc(x, ty, 14);
-      }
-    }
-
-    // Upper gallery artery
-    {
-      const ph1 = this.rng.next() * Math.PI * 2,
-        ph2 = this.rng.next() * Math.PI * 2;
-      const base = HEIGHT * 0.14;
-      for (let x = 2; x < WIDTH - 2; x++) {
-        let ty = base + Math.sin(x * 0.0085 + ph1) * 36 + Math.sin(x * 0.003 + ph2) * 44;
-        ty = clamp(ty, 32, HEIGHT * 0.26);
-        if (x % 4 === 0) carveDisc(x, ty, 14);
-      }
-    }
-
-    // Mid gallery artery
-    {
-      const ph1 = this.rng.next() * Math.PI * 2,
-        ph2 = this.rng.next() * Math.PI * 2;
-      const base = HEIGHT * 0.57;
-      for (let x = 2; x < WIDTH - 2; x++) {
-        let ty = base + Math.sin(x * 0.007 + ph1) * 48 + Math.sin(x * 0.0024 + ph2) * 60;
-        ty = clamp(ty, HEIGHT * 0.46, HEIGHT * 0.68);
-        if (x % 4 === 0) carveDisc(x, ty, 14);
-      }
-    }
-
-    // Vertical shafts stitching ceiling, all arteries, and the floor band together
-    const shaftXs = [
-      WIDTH * 0.08,
-      WIDTH * 0.22,
-      WIDTH * 0.36,
-      WIDTH * 0.5,
-      WIDTH * 0.64,
-      WIDTH * 0.78,
-      WIDTH * 0.92,
-    ].map((v) => Math.floor(v + (this.rng.next() - 0.5) * 36));
-    for (const sx of shaftXs) {
-      const ph = this.rng.next() * Math.PI * 2;
-      const amp = 24 + this.rng.next() * 32;
-      let jitter = 0;
-      for (let y = 20; y < FLOOR_BAND - 6; y += 3) {
-        jitter += (this.rng.next() - 0.5) * 4.6;
-        jitter = clamp(jitter, -28, 28);
-        const wx = Math.floor(clamp(sx + Math.sin(y * 0.0125 + ph) * amp + jitter, 20, WIDTH - 20));
-        carveDisc(wx, y, 11);
-      }
-    }
-
-    // A handful of open chambers off the main routes
-    for (let i = 0; i < 18; i++) {
-      const cx = 48 + this.rng.next() * (WIDTH - 96);
-      const cy = 80 + this.rng.next() * (FLOOR_BAND - 144);
-      const rx = 26 + this.rng.next() * 20,
-        ry = 17 + this.rng.next() * 13;
-      for (let dy = -Math.ceil(ry); dy <= ry; dy++) {
-        for (let dx = -Math.ceil(rx); dx <= rx; dx++) {
-          if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) {
-            const X = Math.floor(cx + dx),
-              Y = Math.floor(cy + dy);
-            if (X > 1 && X < WIDTH - 2 && Y > MIN_Y && Y < FLOOR_BAND) work[X + Y * WIDTH] = 0;
-          }
-        }
-      }
-    }
-
-    // Spawn chamber dead center on the upper artery
-    carveDisc(WIDTH / 2, tunnelY[Math.floor(WIDTH / 2)], 24);
-    this.spawnHint = { x: Math.floor(WIDTH / 2), y: tunnelY[Math.floor(WIDTH / 2)] };
-
-    // Stalactites dripping into the larger caverns (and a few stalagmites rising to meet them)
-    for (let x = 8; x < WIDTH - 8; x++) {
-      for (let y = MIN_Y + 1; y < FLOOR_BAND - 62; y++) {
-        if (!(work[x + y * WIDTH] && !work[x + (y + 1) * WIDTH])) continue; // ceiling surface
-        let depth = 0;
-        while (depth < 90 && y + 1 + depth < FLOOR_BAND && !work[x + (y + 1 + depth) * WIDTH]) depth++;
-        if (depth >= 52 && this.rng.next() < 0.35) {
-          const len = 11 + Math.floor(this.rng.next() * Math.min(13, depth - 36));
-          let hw = Math.round(len * 0.42);
-          for (let s = 1; s <= len; s++) {
-            const wob = this.rng.next() < 0.3 ? 1 : 0;
-            for (let dx = -hw - wob; dx <= hw + wob; dx++) {
-              const X = x + dx;
-              if (X > 1 && X < WIDTH - 2) work[X + (y + s) * WIDTH] = 1;
-            }
-            if (this.rng.next() < 0.75) hw = Math.max(0, hw - 1);
-          }
-          // occasional stalagmite below
-          if (this.rng.next() < 0.4 && depth >= 70) {
-            const fy = y + depth; // floor surface row is open; ground at fy+1
-            const slen = 6 + Math.floor(this.rng.next() * 7);
-            let shw = Math.round(slen * 0.7);
-            for (let s = 0; s < slen; s++) {
-              for (let dx = -shw; dx <= shw; dx++) {
-                const X = x + dx,
-                  Y = fy - s;
-                if (X > 1 && X < WIDTH - 2 && Y > MIN_Y) work[X + Y * WIDTH] = 1;
-              }
-              if (this.rng.next() < 0.8) shw = Math.max(0, shw - 1);
-            }
-          }
-          x += 24 + Math.floor(this.rng.next() * 30);
-        }
-        break; // only the topmost ceiling per column
-      }
-    }
-
-    // Strip orphaned 1-2 cell rock specks floating in open space
-    for (let pass = 0; pass < 2; pass++) {
-      for (let x = 1; x < WIDTH - 1; x++) {
-        for (let y = 1; y < HEIGHT - 1; y++) {
-          if (!work[x + y * WIDTH]) continue;
-          let n = 0;
-          if (work[x - 1 + y * WIDTH]) n++;
-          if (work[x + 1 + y * WIDTH]) n++;
-          if (work[x + (y - 1) * WIDTH]) n++;
-          if (work[x + (y + 1) * WIDTH]) n++;
-          if (n === 0 || (n === 1 && this.rng.next() < 0.7)) work[x + y * WIDTH] = 0;
-        }
-      }
-    }
+    const skel = SKELETONS[G.skeleton.kind](io, G.skeleton);
+    this.spawnHint = skel.spawnHint;
+    // skel.tunnelY (the baseline primary-artery profile) has no remaining
+    // consumers in the shared stages — the spawn chamber is carved inside the
+    // skeleton, and generateLevel anchors everything on spawnHint. Non-baseline
+    // skeletons return null; any future tunnelY dependency must fall back to
+    // spawnHint.y or an open-cell scan.
 
     // --- 4) Commit with layered material palette + depth shading ---
     const seed = Math.floor(this.rng.next() * 100000);
@@ -428,7 +254,7 @@ export class WorldGen implements WorldGenApi {
     // Gold: a limited number of discrete pockets, buried but adjacent to open space
     let goldPlaced = 0,
       goldTries = 0;
-    while (goldPlaced < 100 && goldTries < 30000) {
+    while (goldPlaced < G.goldPockets && goldTries < G.goldTriesCap) {
       goldTries++;
       const x = 14 + Math.floor(this.rng.next() * (WIDTH - 28));
       const y = 40 + Math.floor(this.rng.next() * (FLOOR_BAND - 70));
@@ -489,7 +315,7 @@ export class WorldGen implements WorldGenApi {
 
     // Combustible seeds tucked into lower-half pockets
     let seeds = 0;
-    for (let attempt = 0; attempt < 3600 && seeds < 60; attempt++) {
+    for (let attempt = 0; attempt < 3600 && seeds < G.seedPockets; attempt++) {
       const x = 8 + Math.floor(this.rng.next() * (WIDTH - 16));
       const y = Math.floor(HEIGHT / 2) + Math.floor(this.rng.next() * (FLOOR_BAND - HEIGHT / 2 - 6));
       if (world.types[x + y * WIDTH] !== Cell.Empty) continue;

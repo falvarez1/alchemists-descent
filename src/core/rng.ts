@@ -34,3 +34,29 @@ export class Rng {
 export function randomSeed(): number {
   return (Math.random() * 4294967296) >>> 0;
 }
+
+/**
+ * FNV-1a fold of a label into a seed; returns a uint32.
+ *
+ * Use this to FORK deterministic sub-streams for additive generation passes:
+ * a new pass seeds its own `new Rng(hashSeed(worldSeed, 'my-pass'))` instead
+ * of consuming draws from the main stream, so every existing pass keeps
+ * byte-identical output on old seeds.
+ */
+export function hashSeed(seed: number, label: string): number {
+  let h = 0x811c9dc5;
+  let s = seed >>> 0;
+  for (let i = 0; i < 4; i++) {
+    h ^= s & 0xff;
+    h = Math.imul(h, 0x01000193);
+    s >>>= 8;
+  }
+  for (let i = 0; i < label.length; i++) {
+    const c = label.charCodeAt(i);
+    h ^= c & 0xff;
+    h = Math.imul(h, 0x01000193);
+    h ^= c >>> 8;
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
