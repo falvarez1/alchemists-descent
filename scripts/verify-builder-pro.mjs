@@ -132,8 +132,24 @@ const countWaterAt = () =>
   });
 const beforeSettle = await countWaterAt();
 check('water blob authored mid-air', beforeSettle.inBlob === 128, JSON.stringify(beforeSettle));
-await page.click('#bp-settle');
-await page.waitForTimeout(2600); // 120 frames + margin
+// settle is HOLD-to-run now: press, hold ~2.2s of real physics, release.
+// Raw mouse.down does NOT auto-scroll like page.click — bring the button
+// into view first (the palette scrolls; PREFABS above can push it under
+// the fold).
+const holdSettle = async (ms) => {
+  const sb = await page.evaluate(() => {
+    const el = document.getElementById('bp-settle');
+    el.scrollIntoView({ block: 'center' });
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  await page.mouse.move(sb.x, sb.y);
+  await page.mouse.down();
+  await page.waitForTimeout(ms);
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+};
+await holdSettle(2200);
 const settled = await countWaterAt();
 check('settle runs real physics (water left the blob)', settled.inBlob < 30, JSON.stringify(settled));
 check('water pooled on the floor', settled.onFloor > 60, JSON.stringify(settled));
@@ -195,8 +211,7 @@ const rle1 = await readSavedRle();
 // stone never moves, so KEEP reports "nothing moved" — and must NOT launder
 // away block B's dirty flag
 await paintBlock(660, 500, 670, 510);
-await page.click('#bp-settle');
-await page.waitForTimeout(2600); // run completes; KEEP/REVERT pending
+await holdSettle(1200); // hold-to-run; release leaves KEEP/REVERT pending
 await page.click('#bp-proc-btn'); // open the procedural panel
 const sumBefore = await arenaChecksum();
 await page.click('#bp-apply'); // must be REFUSED while the settle decision is pending
