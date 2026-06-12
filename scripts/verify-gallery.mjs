@@ -74,23 +74,38 @@ const snap = () =>
     return { lit, sum };
   });
 
-const selectItem = async (name) => {
-  await page.evaluate((want) => {
-    const rows = [...document.querySelectorAll('#builder-gallery .bg-item')];
-    const row = rows.find((r) => r.querySelector('.bg-name')?.textContent === want);
-    row?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  }, name);
+// REAL clicks only: synthetic dispatchEvent bypasses hit-testing and once
+// hid a pointer-events:none bug that made every control dead in actual use.
+const realClick = async (selector, textOf, want) => {
+  const box = await page.evaluate(
+    ({ sel, prop, text }) => {
+      const el = [...document.querySelectorAll(sel)].find(
+        (e) => (prop ? e.querySelector(prop)?.textContent : e.textContent) === text,
+      );
+      if (!el) return null;
+      el.scrollIntoView({ block: 'nearest' });
+      const r = el.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    },
+    { sel: selector, prop: textOf, text: want },
+  );
+  if (!box) return false;
+  await page.mouse.click(box.x, box.y);
   await page.waitForTimeout(250);
+  return true;
 };
-const clickChip = async (label) => {
-  await page.evaluate((want) => {
-    const chips = [...document.querySelectorAll('#builder-gallery .bg-chip')];
-    chips.find((c) => c.textContent === want)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  }, label);
-  await page.waitForTimeout(250);
-};
+const selectItem = (name) => realClick('#builder-gallery .bg-item', '.bg-name', name);
+const clickChip = (label) => realClick('#builder-gallery .bg-chip', null, label);
 
-await selectItem('Brazier');
+const brazierClicked = await selectItem('Brazier');
+const selName = await page.evaluate(
+  () => document.querySelector('#builder-gallery .bg-item.sel .bg-name')?.textContent,
+);
+check('REAL mouse clicks land on the modal (pointer-events)', brazierClicked && selName === 'Brazier', String(selName));
+const h1 = await page.evaluate(() => document.querySelector('#bg-stage').height);
+await page.waitForTimeout(900);
+const h2 = await page.evaluate(() => document.querySelector('#bg-stage').height);
+check('stage layout is stable (no downward drift)', h1 === h2, `${h1} -> ${h2}`);
 await clickChip('LIT');
 const a1 = await snap();
 await page.waitForTimeout(300);

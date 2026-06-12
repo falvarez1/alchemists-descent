@@ -763,6 +763,8 @@ body.builder-open #builder-issues { bottom: 182px; }
 /* ===================== Builder gallery (asset browser) ===================== */
 #builder-gallery {
     position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column;
+    /* #builder-root is pointer-events:none (panels opt back in) — so must we */
+    pointer-events: auto;
     background: #07090d; color: #c8d4e4;
     font-family: 'Segoe UI', system-ui, sans-serif; font-size: 11px;
 }
@@ -810,9 +812,11 @@ body.builder-open #builder-issues { bottom: 182px; }
 #builder-gallery .bg-name { font-weight: 700; color: #dbe6f3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #builder-gallery .bg-meta { font-size: 9px; color: #5a6878; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #builder-gallery .bg-empty { padding: 18px 12px; color: #5a6878; }
-#builder-gallery .bg-stagewrap { position: relative; display: flex; flex-direction: column; min-width: 0; }
-/* !important: out-rank `#canvas-holder canvas` so the bitmap maps 1:1 (caption keeps its 28px) */
-#builder-gallery #bg-stage { flex: 1; display: block; image-rendering: pixelated; width: 100% !important; height: calc(100% - 28px) !important; }
+#builder-gallery .bg-stagewrap { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+/* Absolutely positioned so the per-frame bitmap resize can NEVER feed back
+   into layout (the grid row would otherwise grow each frame — visible as the
+   stage slowly drifting down). !important out-ranks `#canvas-holder canvas`. */
+#builder-gallery #bg-stage { position: absolute; inset: 0 0 28px 0; display: block; image-rendering: pixelated; width: 100% !important; height: calc(100% - 28px) !important; }
 #builder-gallery .bg-zoom { position: absolute; top: 8px; right: 10px; display: flex; gap: 4px; }
 #builder-gallery .bg-zoom button {
     background: rgba(12,16,23,0.9); border: 1px solid #1d2733; border-radius: 4px;
@@ -820,6 +824,7 @@ body.builder-open #builder-issues { bottom: 182px; }
 }
 #builder-gallery .bg-zoom button:hover { border-color: #7dd3fc; color: #dbe6f3; }
 #builder-gallery #bg-caption {
+    position: absolute; left: 0; right: 0; bottom: 0;
     height: 28px; line-height: 28px; padding: 0 12px; border-top: 1px solid #141b24;
     font-size: 10px; font-weight: 700; letter-spacing: 0.6px; color: #93a4b8;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
