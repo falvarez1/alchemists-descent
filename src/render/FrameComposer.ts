@@ -1,4 +1,4 @@
-import type { Ctx, Enemy } from '@/core/types';
+import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
 import type { LightField, ParallaxLayers, PixelSurface, RenderTarget } from '@/render/pixels';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { PICKUP_COLOR } from '@/game/Pickups';
@@ -30,6 +30,12 @@ export class FrameComposer implements PixelSurface {
     private readonly layers: ParallaxLayers,
     private readonly drawPlayer: (s: PixelSurface, light: LightField, ctx: Ctx) => void,
     private readonly drawEnemy: (s: PixelSurface, light: LightField, ctx: Ctx, e: Enemy) => void,
+    private readonly drawDecorFn: (
+      s: PixelSurface,
+      light: LightField,
+      ctx: Ctx,
+      d: RuntimeDecor,
+    ) => void,
   ) {}
 
   // ===================== Render Buffer + Pixel Sprites =====================
@@ -457,6 +463,10 @@ export class FrameComposer implements PixelSurface {
       }
     }
 
+    // Animated decor first among the overlays: visual-only set dressing sits
+    // just above terrain and UNDER every gameplay-readable overlay — a torch
+    // sprite must never mask a pickup glyph, a portal ring, or a lever arm.
+    this.drawDecors(ctx);
     // Landmarks, pickups + the exit portal (under entities so foes read on top)
     this.drawLandmarks(ctx);
     this.drawPickupsAndPortal(ctx);
@@ -517,6 +527,13 @@ export class FrameComposer implements PixelSurface {
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
 
     this.target.markTextureDirty();
+  }
+
+  /** Animated sprite decor (visual-only; per-decor culling in drawDecor). */
+  private drawDecors(ctx: Ctx): void {
+    const runtime = ctx.levels.current;
+    if (!runtime?.decors || ctx.state.mode !== 'play') return;
+    for (const d of runtime.decors) this.drawDecorFn(this, this.light, ctx, d);
   }
 
   /** Checkpoints, cauldrons, and the exit well get small state-readable motion. */

@@ -16,6 +16,7 @@ import type {
   PlacedPrefab,
   PrefabEnemy,
   RuneVault,
+  RuntimeDecor,
   Waystone,
   WorldGenApi,
 } from '@/core/types';
@@ -471,6 +472,7 @@ export class WorldGen implements WorldGenApi {
     placedPrefabs: PlacedPrefab[];
     authoredLights: AuthoredLight[];
     emitters: HazardEmitter[];
+    decors: RuntimeDecor[];
   } {
     // DEV stage timing — generation runs synchronously behind the curtain,
     // so a slow stage is a felt hitch; shout when the total crosses 400ms.
@@ -859,6 +861,7 @@ export class WorldGen implements WorldGenApi {
       placedPrefabs,
       authoredLights: sink.authoredLights,
       emitters: sink.emitters,
+      decors: sink.decors,
     };
   }
 }

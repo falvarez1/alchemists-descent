@@ -59,9 +59,26 @@ import {
 } from '@/builder/prefablib';
 import type { PrefabAnchor, PrefabDef } from '@/builder/prefablib';
 import { PrefabPanel, showImportReport } from '@/builder/prefabPanel';
+import { SpritePanel } from '@/builder/spritePanel';
 import { downloadJson, downloadText, download, pickFiles } from '@/builder/assets/io';
 import { cellsToRgba, rgbaToCells, snapUnknown } from '@/builder/assets/pixmap';
 import { pngBlobToRgba, rgbaToPngBlob } from '@/builder/assets/png';
+import {
+  decodeFramePx,
+  parseAsepriteJson,
+  resolveLoopTag,
+  sliceSheet,
+  sliceUniformGrid,
+  spriteToSheet,
+} from '@/builder/assets/sprites';
+import type { SpriteAsset } from '@/builder/assets/sprites';
+import {
+  deleteSprite,
+  embedSprites,
+  loadSprites,
+  mergeEmbeddedSprites,
+  saveSprite,
+} from '@/builder/assets/spritelib';
 import { paletteAsGpl } from '@/sim/cellPalette';
 import { TRIGGER_KINDS, validateDocument } from '@/builder/validate';
 import type { DocIssue } from '@/builder/validate';
@@ -509,6 +526,16 @@ export class Builder {
    *  armed — never the library record itself. */
   private armedPrefab: PrefabDef | null = null;
   private prefabPanel!: PrefabPanel;
+  /** Animated sprite library (Aseprite pipeline). Armed sprite makes the
+   *  decor tool place sprite decor instead of designer notes. */
+  private sprites: SpriteAsset[] = [];
+  private armedSprite: SpriteAsset | null = null;
+  private spritePanel!: SpritePanel;
+  /** Frame-0 canvases for the editor overlay (id -> canvas; null = unresolvable). */
+  private spriteFrameCache = new Map<string, HTMLCanvasElement | null>();
+  /** The decor inspector's animated preview (setTimeout chain, torn down on
+   *  every inspector rebuild / close). */
+  private decorPreviewTimer = 0;
   /** Settle preview: full-plane snapshot while physics runs, then keep/revert. */
   private settleSnap: {
     types: Uint8Array;
@@ -539,8 +566,10 @@ export class Builder {
   constructor(private ctx: Ctx) {
     this.doc = createEmptyDocument('untitled', ctx.state.currentBiome);
     this.prefabs = loadPrefabs();
+    this.sprites = loadSprites();
     this.buildDom();
     this.wirePrefabPanel();
+    this.wireSpritePanel();
     this.wireBar();
     this.wireProcPanel();
     this.wirePointer();
@@ -683,6 +712,8 @@ export class Builder {
     this.floatDrag = null;
     this.waypointDrag = null;
     this.armedPrefab = null;
+    this.armedSprite = null;
+    window.clearTimeout(this.decorPreviewTimer);
     this.patrolEditId = null;
     this.linkFrom = null;
     this.root.style.display = 'none';
@@ -774,6 +805,8 @@ export class Builder {
         <button id="bp-light-toggle" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>
         <div class="bp-head">PREFABS</div>
         <div id="bp-prefab-host"></div>
+        <div class="bp-head">SPRITES</div>
+        <div id="bp-sprite-host"></div>
         <div class="bp-head">SIMULATE</div>
         <div class="bp-grid bp-grid3">
           <button id="bp-settle" aria-label="Hold to run physics; release to keep or revert">SETTLE</button>
@@ -1057,6 +1090,10 @@ export class Builder {
       this.armedPrefab = null;
       this.refreshPrefabs();
     }
+    if (t !== 'decor' && this.armedSprite) {
+      this.armedSprite = null;
+      this.refreshSprites();
+    }
     this.syncPalette();
     if (t === 'link') this.status('LINK: CLICK A TRIGGER OR RUNE GLYPH, THEN ITS DOOR');
   }
@@ -1124,6 +1161,8 @@ export class Builder {
     this.el('b-save').addEventListener('click', () => {
       if (this.previewBlocks()) return;
       this.ensureCaptured();
+      // the saved document carries exactly the sprites its decor references
+      embedSprites(this.doc, this.sprites);
       if (saveDocToLibrary(this.doc)) {
         this.status(`SAVED "${this.doc.name.toUpperCase()}"`);
         localStorage.removeItem(DRAFT_KEY); // an explicit save retires the draft
@@ -1138,6 +1177,8 @@ export class Builder {
       if (!saved) return;
       // Clone so edits never mutate the library copy until the next SAVE.
       this.doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
+      // embedded sprites may be missing locally (deleted, or another profile)
+      this.adoptDocSprites();
       this.playtestScars = null;
       this.mutedLightIds.clear();
       this.cmds.clear();
@@ -1152,6 +1193,7 @@ export class Builder {
     this.el('b-export').addEventListener('click', () => {
       if (this.previewBlocks()) return;
       this.ensureCaptured();
+      embedSprites(this.doc, this.sprites);
       const blob = new Blob([JSON.stringify(this.doc)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -1181,6 +1223,7 @@ export class Builder {
           this.status('NOT A BUILDER DOCUMENT', true);
         } else {
           this.doc = doc;
+          this.adoptDocSprites();
           this.playtestScars = null;
           this.mutedLightIds.clear();
           this.cmds.clear();
@@ -1940,7 +1983,17 @@ export class Builder {
         return;
       }
     }
-    const params = DEFAULT_PARAMS[kind]?.() ?? {};
+    let params = DEFAULT_PARAMS[kind]?.() ?? {};
+    // An armed sprite turns the decor tool into animated-decor placement
+    // (no sprite armed = the legacy designer note, annotation only).
+    if (kind === 'decor' && this.armedSprite) {
+      params = {
+        spriteId: this.armedSprite.id,
+        loopTag: this.armedSprite.tags[0]?.name ?? '',
+        fps: 0,
+        flipX: false,
+      };
+    }
     // Door slabs anchor top-left; center them on the click for placement.
     let px = this.snap(x),
       py = this.snap(y);
@@ -1963,6 +2016,9 @@ export class Builder {
     this.status('PLACED ' + kind.toUpperCase());
     if (TRIGGER_KINDS.has(kind) || kind === 'runeGlyph') {
       this.status('PLACED ' + kind.toUpperCase() + ' — LINK IT TO A DOOR (K)');
+    }
+    if (kind === 'decor' && typeof obj.params.spriteId === 'string') {
+      this.status('PLACED ANIMATED DECOR — VISUAL ONLY, THE GRID DOESN\'T KNOW IT\'S THERE');
     }
   }
 
@@ -2753,6 +2809,7 @@ export class Builder {
     this.el('b-share').addEventListener('click', () => {
       if (this.previewBlocks()) return;
       this.ensureCaptured();
+      embedSprites(this.doc, this.sprites);
       void docToShareCode(this.doc).then(async (code) => {
         let copied = false;
         try {
@@ -2779,6 +2836,7 @@ export class Builder {
           return;
         }
         this.doc = doc;
+        this.adoptDocSprites();
         this.playtestScars = null;
         this.mutedLightIds.clear();
         this.cmds.clear();
@@ -3080,6 +3138,182 @@ export class Builder {
     if (this.armedPrefab?.id === p.id) this.armedPrefab = structuredClone(p);
     this.refreshPrefabs();
     this.status(dirs.length === 0 ? 'ANCHORS CLEARED' : `ANCHORS: ${dirs.join(', ').toUpperCase()}`);
+  }
+
+  /* ===================== sprite library (Aseprite pipeline) ===================== */
+
+  private wireSpritePanel(): void {
+    this.spritePanel = new SpritePanel(this.el<HTMLDivElement>('bp-sprite-host'), {
+      onArm: (s) => {
+        if (!s) {
+          this.armedSprite = null;
+          if (this.tool === 'decor') this.setTool('select');
+          this.refreshSprites();
+          return;
+        }
+        this.armedSprite = s;
+        this.setTool('decor');
+        this.refreshSprites();
+        this.status(
+          `SPRITE ARMED: "${s.name.toUpperCase()}" — CLICK PLACES ANIMATED DECOR (VISUAL ONLY), ESC DONE`,
+        );
+      },
+      onImport: () => void this.importSpriteFiles(),
+      onExport: (s) => void this.exportSprite(s),
+      onDelete: (s) => {
+        if (!window.confirm(`Delete sprite "${s.name}"? Decor referencing it stops rendering.`)) {
+          return;
+        }
+        deleteSprite(s.id);
+        this.sprites = this.sprites.filter((x) => x.id !== s.id);
+        this.spriteFrameCache.delete(s.id);
+        if (this.armedSprite?.id === s.id) this.armedSprite = null;
+        this.refreshSprites();
+      },
+    });
+    this.refreshSprites();
+  }
+
+  private refreshSprites(): void {
+    this.spritePanel.refresh(this.sprites, this.armedSprite?.id ?? null);
+  }
+
+  private registerSprite(asset: SpriteAsset): void {
+    if (!saveSprite(asset)) this.status('SPRITE STORAGE FULL — USE EXPORT', true);
+    this.sprites = this.sprites.filter((x) => x.id !== asset.id);
+    this.sprites.push(asset);
+    this.sprites.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    this.spriteFrameCache.delete(asset.id);
+    this.refreshSprites();
+  }
+
+  /**
+   * IMPORT SPRITE: multi-select .json + .png. Pairs by basename (Aseprite's
+   * `torch.json` + `torch.png`, and our own `torch.sprite.json` +
+   * `torch.sheet.png` both reduce to "torch"); a lone PNG falls back to the
+   * uniform-grid prompt.
+   */
+  private async importSpriteFiles(): Promise<void> {
+    const files = await pickFiles('.json,.png', true);
+    if (files.length === 0) return;
+    const base = (n: string): string =>
+      n.replace(/\.(png|json)$/i, '').replace(/\.(sheet|sprite)$/i, '');
+    const jsons = new Map<string, File>();
+    const pngs = new Map<string, File>();
+    for (const f of files) {
+      if (/\.png$/i.test(f.name)) pngs.set(base(f.name), f);
+      else if (/\.json$/i.test(f.name)) jsons.set(base(f.name), f);
+    }
+    for (const [key, jf] of jsons) {
+      const pf = pngs.get(key);
+      if (!pf) {
+        this.status(`"${jf.name}" HAS NO MATCHING SHEET PNG (PAIR BY BASENAME)`, true);
+        continue;
+      }
+      pngs.delete(key);
+      await this.importAsepritePair(key, jf, pf);
+    }
+    for (const pf of pngs.values()) await this.importLonePng(base(pf.name), pf);
+  }
+
+  private async importAsepritePair(name: string, jsonFile: File, pngFile: File): Promise<void> {
+    try {
+      const parsed = parseAsepriteJson(JSON.parse(await jsonFile.text()));
+      const decoded = await pngBlobToRgba(pngFile);
+      const asset = sliceSheet(decoded.rgba, decoded.w, decoded.h, parsed, name);
+      this.registerSprite(asset);
+      this.status(
+        `SPRITE "${asset.name.toUpperCase()}" IMPORTED — ${asset.frames.length} FRAME(S)` +
+          (asset.tags.length > 0 ? `, TAGS: ${asset.tags.map((t) => t.name).join(', ')}` : ''),
+      );
+    } catch (err) {
+      this.status(
+        `"${jsonFile.name}": ${err instanceof Error ? err.message : 'NOT AN ASEPRITE SHEET'}`,
+        true,
+      );
+    }
+  }
+
+  /** A sheet PNG without JSON: ask for the uniform frame grid + fps. */
+  private async importLonePng(name: string, pngFile: File): Promise<void> {
+    try {
+      const decoded = await pngBlobToRgba(pngFile);
+      const guess = Math.min(decoded.h, decoded.w);
+      const raw = window.prompt(
+        `"${pngFile.name}" has no sheet JSON — slice a uniform grid.\n` +
+          `Frame size and speed as WxH@FPS (sheet is ${decoded.w}x${decoded.h}):`,
+        `${guess}x${decoded.h}@8`,
+      );
+      if (raw === null) return;
+      const m = /^\s*(\d+)\s*[x×]\s*(\d+)\s*(?:@\s*(\d+))?\s*$/i.exec(raw);
+      if (!m) {
+        this.status('FRAME GRID NOT UNDERSTOOD — USE WxH@FPS, E.G. 16x16@8', true);
+        return;
+      }
+      const asset = sliceUniformGrid(
+        decoded.rgba,
+        decoded.w,
+        decoded.h,
+        Number(m[1]),
+        Number(m[2]),
+        m[3] ? Number(m[3]) : 8,
+        name,
+      );
+      this.registerSprite(asset);
+      this.status(`SPRITE "${asset.name.toUpperCase()}" SLICED — ${asset.frames.length} FRAME(S)`);
+    } catch (err) {
+      this.status(
+        `"${pngFile.name}": ${err instanceof Error ? err.message : 'NOT A PNG'}`,
+        true,
+      );
+    }
+  }
+
+  /** EXPORT: name.sheet.png + name.sprite.json (Aseprite array form — both
+   *  Aseprite and our own importer read it; the round-trip is closed). */
+  private async exportSprite(s: SpriteAsset): Promise<void> {
+    const sheet = spriteToSheet(s);
+    const blob = await rgbaToPngBlob(sheet.rgba, sheet.w, sheet.h);
+    download(blob, `${s.name || 'sprite'}.sheet.png`);
+    downloadJson(sheet.json, `${s.name || 'sprite'}.sprite.json`);
+    this.status('SPRITE EXPORTED — THE PNG OPENS IN ASEPRITE, THE JSON CARRIES TIMING/TAGS');
+  }
+
+  /** Merge a freshly imported/loaded document's embedded sprites into the
+   *  local library (content mismatch re-ids; references remapped). */
+  private adoptDocSprites(): void {
+    const got = mergeEmbeddedSprites(this.doc);
+    if (got.added > 0) {
+      this.sprites = loadSprites();
+      this.spriteFrameCache.clear();
+      this.refreshSprites();
+      this.status(
+        `${got.added} EMBEDDED SPRITE(S) MERGED INTO THE LIBRARY` +
+          (got.reIded > 0 ? ` (${got.reIded} RE-IDENTIFIED — CONTENT DIFFERED)` : ''),
+      );
+    }
+  }
+
+  /** Frame-0 canvas for the build-mode overlay (cached; null = unresolvable). */
+  private spriteFrameCanvas(spriteId: string): HTMLCanvasElement | null {
+    const hit = this.spriteFrameCache.get(spriteId);
+    if (hit !== undefined) return hit;
+    const asset =
+      this.sprites.find((s) => s.id === spriteId) ??
+      this.doc.assets?.sprites.find((s) => s.id === spriteId) ??
+      null;
+    let canvas: HTMLCanvasElement | null = null;
+    if (asset) {
+      canvas = document.createElement('canvas');
+      canvas.width = asset.w;
+      canvas.height = asset.h;
+      const g = canvas.getContext('2d')!;
+      const img = g.createImageData(asset.w, asset.h);
+      img.data.set(decodeFramePx(asset.frames[0].px, asset.w, asset.h));
+      g.putImageData(img, 0, 0);
+    }
+    this.spriteFrameCache.set(spriteId, canvas);
+    return canvas;
   }
 
   /* ---------- editor layers (visibility/locking, editor-side only) ---------- */
@@ -4070,9 +4304,21 @@ export class Builder {
         });
       } else if (o.kind === 'decor') {
         const p = toS(o.x, o.y);
-        g.fillStyle = typeof o.params.color === 'string' ? o.params.color : 'rgba(214,230,245,0.85)';
-        g.font = '600 9px monospace';
-        g.fillText(String(o.params.text ?? 'note').slice(0, 40), p.x + 10, p.y + 3);
+        const sid = typeof o.params.spriteId === 'string' ? o.params.spriteId : '';
+        const img = sid ? this.spriteFrameCanvas(sid) : null;
+        if (img) {
+          // sprite decor shows its first frame in place (center-anchored,
+          // matching the runtime renderer) — build mode draws no animation
+          const a = toS(o.x - img.width / 2, o.y - img.height / 2);
+          const prevSmooth = g.imageSmoothingEnabled;
+          g.imageSmoothingEnabled = false;
+          g.drawImage(img, a.x, a.y, img.width * cellW, img.height * cellH);
+          g.imageSmoothingEnabled = prevSmooth;
+        } else {
+          g.fillStyle = typeof o.params.color === 'string' ? o.params.color : 'rgba(214,230,245,0.85)';
+          g.font = '600 9px monospace';
+          g.fillText(String(o.params.text ?? (sid ? 'sprite?' : 'note')).slice(0, 40), p.x + 10, p.y + 3);
+        }
       }
     }
 
@@ -4323,7 +4569,12 @@ export class Builder {
         + (this.selectedIds.has(o.id) ? ' sel' : '')
         + (o.hidden ? ' ghost' : '');
       m.textContent = GLYPH[o.kind] ?? '?';
-      m.title = o.kind === 'decor' ? String(o.params.text ?? 'note') : o.kind;
+      m.title =
+        o.kind === 'decor'
+          ? typeof o.params.spriteId === 'string' && o.params.spriteId !== ''
+            ? 'sprite decor (visual only)'
+            : String(o.params.text ?? 'note')
+          : o.kind;
       if (o.kind === 'decor' && typeof o.params.color === 'string') {
         m.style.color = o.params.color; // the note wears its authored tint
       }
@@ -4345,6 +4596,8 @@ export class Builder {
   /* ===================== inspector ===================== */
 
   private renderInspector(): void {
+    // any decor preview animation dies with the inspector DOM it drew into
+    window.clearTimeout(this.decorPreviewTimer);
     const panel = this.el<HTMLDivElement>('builder-inspector');
     if (this.selectedIds.size > 1) {
       const byKind = new Map<string, number>();
@@ -4439,13 +4692,57 @@ export class Builder {
       rows += this.numRow(obj, 'phase', 'phase (frames)', 0);
       rows += `<div class="bi-empty">Drips "burst" real cells every<br>"rate" frames (offset by phase),<br>aimed by rotation — the grid<br>does the rest.</div>`;
     } else if (obj.kind === 'decor') {
+      // legacy note UI stays — a decor WITHOUT a sprite is the designer note
       rows += `<div class="bi-row"><span>note</span><input type="text" data-p="text" value="${String(
         obj.params.text ?? '',
       ).replace(/"/g, '&quot;')}"></div>`;
       rows += `<div class="bi-row"><span>color</span><input type="color" data-p="color" value="${
         typeof obj.params.color === 'string' ? obj.params.color : '#d6e6f5'
       }"></div>`;
-      rows += `<div class="bi-empty">Designer annotation only —<br>never compiles into the level.</div>`;
+      const sid = typeof obj.params.spriteId === 'string' ? obj.params.spriteId : '';
+      const spriteAssets = [...this.sprites];
+      for (const s of this.doc.assets?.sprites ?? []) {
+        if (!spriteAssets.some((x) => x.id === s.id)) spriteAssets.push(s);
+      }
+      const asset = sid ? (spriteAssets.find((s) => s.id === sid) ?? null) : null;
+      rows += `<div class="bi-row"><span>sprite</span><select data-p="spriteId">
+        <option value="">&mdash; none (note) &mdash;</option>
+        ${spriteAssets
+          .map(
+            (s) =>
+              `<option value="${s.id}"${sid === s.id ? ' selected' : ''}>${escAttr(s.name)}</option>`,
+          )
+          .join('')}</select></div>`;
+      if (sid && !asset) {
+        rows += `<div class="bi-row"><span>asset</span><b class="bi-warn">missing — skipped at compile</b></div>`;
+      }
+      if (asset) {
+        const lt = typeof obj.params.loopTag === 'string' ? obj.params.loopTag : '';
+        rows += `<div class="bi-row"><span>loop tag</span><select data-p="loopTag">
+          <option value=""${lt === '' ? ' selected' : ''}>all frames</option>
+          ${asset.tags
+            .map(
+              (t) =>
+                `<option value="${escAttr(t.name)}"${lt === t.name ? ' selected' : ''}>${escAttr(
+                  t.name,
+                )} (${t.from}&ndash;${t.to} ${t.dir})</option>`,
+            )
+            .join('')}</select></div>`;
+        rows += this.numRow(obj, 'fps', 'fps (0 = authored)', 0);
+        rows += this.checkRow(obj, 'flipX', 'flip X');
+        rows += `<div class="bi-row"><span>emissive</span><input type="checkbox" id="bi-sprite-emissive"${
+          asset.emissive ? ' checked' : ''
+        } title="Sprite-level: drawn raw, never light-multiplied (saved to the library, not undoable)"></div>`;
+        const pScale = Math.max(1, Math.min(4, Math.floor(96 / Math.max(asset.w, asset.h))));
+        rows += `<canvas id="bi-sprite-prev" width="${asset.w * pScale}" height="${
+          asset.h * pScale
+        }" style="display:block;margin:4px auto;image-rendering:pixelated;background:#0a0c11"></canvas>`;
+      }
+      rows += `<div class="bi-empty">${
+        asset
+          ? "Visual only &mdash; the grid doesn't<br>know it's there."
+          : 'Designer annotation only &mdash;<br>never compiles into the level.'
+      }</div>`;
     } else if (obj.kind === 'pickup') {
       rows += `<div class="bi-row"><span>kind</span><select data-p="kind">${PICKUP_KINDS.map(
         (k) => `<option value="${k}"${obj.params.kind === k ? ' selected' : ''}>${k}</option>`,
@@ -4594,7 +4891,79 @@ export class Builder {
         }
       });
     }
+    if (obj.kind === 'decor') this.wireDecorSpriteExtras(panel, obj);
     panel.querySelector('#bi-delete')?.addEventListener('click', () => this.deleteSelection());
+  }
+
+  /** Decor sprite extras: the asset-level emissive toggle (library edit,
+   *  deliberately NOT on the undo stack — it edits the sprite, not the
+   *  document) and the small animated preview honoring frame durations. */
+  private wireDecorSpriteExtras(panel: HTMLDivElement, obj: EditorObject): void {
+    const sid = typeof obj.params.spriteId === 'string' ? obj.params.spriteId : '';
+    if (!sid) return;
+    const asset =
+      this.sprites.find((s) => s.id === sid) ??
+      this.doc.assets?.sprites.find((s) => s.id === sid);
+    if (!asset) return;
+
+    panel.querySelector<HTMLInputElement>('#bi-sprite-emissive')?.addEventListener('change', (e) => {
+      const on = (e.target as HTMLInputElement).checked;
+      asset.emissive = on;
+      const lib = this.sprites.find((s) => s.id === sid);
+      if (lib && lib !== asset) lib.emissive = on;
+      if (lib) saveSprite(lib);
+      else saveSprite(asset);
+      const emb = this.doc.assets?.sprites.find((s) => s.id === sid);
+      if (emb && emb !== asset) emb.emissive = on;
+      this.refreshSprites();
+      this.status(
+        (on ? 'SPRITE NOW EMISSIVE (DRAWN RAW)' : 'SPRITE NO LONGER EMISSIVE') +
+          ' — LIBRARY EDIT, NOT UNDOABLE',
+      );
+    });
+
+    const canvas = panel.querySelector<HTMLCanvasElement>('#bi-sprite-prev');
+    if (!canvas) return;
+    const g = canvas.getContext('2d')!;
+    g.imageSmoothingEnabled = false;
+    const frames = asset.frames.map((f) => {
+      const img = new ImageData(asset.w, asset.h);
+      img.data.set(decodeFramePx(f.px, asset.w, asset.h));
+      return img;
+    });
+    const stage = document.createElement('canvas');
+    stage.width = asset.w;
+    stage.height = asset.h;
+    const sg = stage.getContext('2d')!;
+    const loop = resolveLoopTag(asset, typeof obj.params.loopTag === 'string' ? obj.params.loopTag : '');
+    const n = loop.to - loop.from + 1;
+    const steps = loop.dir === 'pingpong' && n > 1 ? 2 * n - 2 : n;
+    const fps = paramNum(obj, 'fps', 0);
+    const flip = obj.params.flipX === true;
+    let k = 0;
+    const tick = (): void => {
+      const f =
+        loop.dir === 'reverse'
+          ? loop.to - k
+          : loop.dir === 'pingpong' && k >= n
+            ? loop.to - (k - n + 1)
+            : loop.from + k;
+      sg.putImageData(frames[f], 0, 0);
+      g.clearRect(0, 0, canvas.width, canvas.height);
+      if (flip) {
+        g.save();
+        g.translate(canvas.width, 0);
+        g.scale(-1, 1);
+        g.drawImage(stage, 0, 0, canvas.width, canvas.height);
+        g.restore();
+      } else {
+        g.drawImage(stage, 0, 0, canvas.width, canvas.height);
+      }
+      k = (k + 1) % Math.max(1, steps);
+      const delay = fps > 0 ? 1000 / Math.min(60, fps) : asset.frames[f].durationMs;
+      this.decorPreviewTimer = window.setTimeout(tick, Math.max(16, delay));
+    };
+    tick();
   }
 
   /** Wiring summary rows: who drives me / what do I drive, with unlink
@@ -4778,4 +5147,13 @@ export class Builder {
     this.renderInspector();
     this.syncProcPanel();
   }
+}
+
+/** Minimal HTML/attribute escape for values interpolated into inspector markup. */
+function escAttr(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

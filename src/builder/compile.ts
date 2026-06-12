@@ -92,6 +92,9 @@ export function compileAndPlaytest(
   sink.waystones = runtime.waystones;
   instantiateObjects(ctx, sink, doc.objects, doc.links, doc.lights, 0, 0, set, {
     spawnEnemy: (rec) => spawnPrefabEnemy(ctx, rec),
+    // sprite decor resolves from the document's embedded assets first, then
+    // the local library (decoded once; instances share frame buffers)
+    docSprites: doc.assets?.sprites,
   });
   if (sink.portal !== undefined) runtime.portal = sink.portal;
   if (sink.keyTaken === true) runtime.keyTaken = true;
@@ -99,6 +102,8 @@ export function compileAndPlaytest(
   if (sink.cauldron !== undefined) runtime.cauldron = sink.cauldron;
   if (sink.boss !== undefined) runtime.boss = sink.boss;
   if (sink.emitters.length > 0) (runtime.emitters ??= []).push(...sink.emitters);
+  // Animated decor — visual-only; the runtime list only feeds the renderer.
+  if (sink.decors.length > 0) runtime.decors = sink.decors;
 
   // 7) Authored lights onto the runtime for Lighting.build.
   if (sink.authoredLights.length > 0) {

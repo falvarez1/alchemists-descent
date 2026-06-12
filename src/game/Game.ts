@@ -27,6 +27,7 @@ import { Camera } from '@/render/Camera';
 import { FrameComposer } from '@/render/FrameComposer';
 import { Lighting } from '@/render/Lighting';
 import { Renderer } from '@/render/Renderer';
+import { drawDecor } from '@/render/sprites/DecorSprites';
 import { drawEnemySprite } from '@/render/sprites/EnemySprites';
 import { drawPlayerSprite } from '@/render/sprites/PlayerSprite';
 import { Cell } from '@/sim/CellType';
@@ -147,6 +148,7 @@ export class Game {
       new Background(),
       drawPlayerSprite,
       drawEnemySprite,
+      drawDecor,
     );
 
     this.hud = new Hud(ctx);

@@ -10,10 +10,15 @@ import type {
   PickupKind,
   PrefabEnemy,
   RuneVault,
+  RuntimeDecor,
   Waystone,
 } from '@/core/types';
 import type { EditorLight, EditorLink, EditorObject } from '@/builder/document';
 import { paramNum } from '@/builder/document';
+import { resolveLoopTag, spritePhase } from '@/builder/assets/sprites';
+import type { SpriteAsset } from '@/builder/assets/sprites';
+import { resolveRuntimeSprite } from '@/builder/assets/spritelib';
+import type { ResolvedSprite } from '@/builder/assets/spritelib';
 import { makePickup } from '@/game/Pickups';
 import {
   makeBrazier,
@@ -71,6 +76,8 @@ export interface InstantiationSink {
   emitters: HazardEmitter[];
   enemies: PrefabEnemy[];
   waystones: Waystone[];
+  /** Animated sprite decor (visual-only — see the decor branch below). */
+  decors: RuntimeDecor[];
   portal?: ExitPortal | null;
   keyTaken?: boolean;
   exit?: LevelExitWell | null;
@@ -87,6 +94,7 @@ export function makeInstantiationSink(): InstantiationSink {
     emitters: [],
     enemies: [],
     waystones: [],
+    decors: [],
   };
 }
 
@@ -123,8 +131,15 @@ export function instantiateObjects(
   originX: number,
   originY: number,
   set: CellSetter,
-  opts?: { spawnEnemy?: (rec: PrefabEnemy) => void },
+  opts?: {
+    spawnEnemy?: (rec: PrefabEnemy) => void;
+    /** Document-embedded sprite assets (Builder compile passes doc.assets). */
+    docSprites?: SpriteAsset[];
+    /** Shared decode cache — worldgen threads one across all its prefabs. */
+    spriteCache?: Map<string, ResolvedSprite | null>;
+  },
 ): void {
+  const spriteCache = opts?.spriteCache ?? new Map<string, ResolvedSprite | null>();
   // 1) Simple objects + structural landmarks.
   for (const o of objects) {
     if (o.hidden) continue;
@@ -155,7 +170,34 @@ export function instantiateObjects(
         phase: Math.max(0, Math.floor(paramNum(o, 'phase', 0))),
       });
     } else if (o.kind === 'decor') {
-      // designer annotation only — never compiles
+      // VISUAL-ONLY INVARIANT: animated decor is presentation, the same
+      // class as enemy sprites and pickup glyphs. It never writes cells,
+      // never collides, never blocks, never gates progression — the grid
+      // doesn't know it's there. A decor WITHOUT a spriteId is the legacy
+      // designer note: annotation only, never compiles. An UNRESOLVABLE
+      // spriteId is silently skipped — a missing visual must never break
+      // compile or generation (sprites resolve from the document's embedded
+      // assets first, then the local sprite library).
+      const spriteId = typeof o.params.spriteId === 'string' ? o.params.spriteId : '';
+      if (spriteId !== '') {
+        const resolved = resolveRuntimeSprite(spriteId, opts?.docSprites, spriteCache);
+        if (resolved) {
+          const loopTag = typeof o.params.loopTag === 'string' ? o.params.loopTag : '';
+          const { from, to, dir } = resolveLoopTag(resolved.asset, loopTag);
+          const fps = paramNum(o, 'fps', 0);
+          sink.decors.push({
+            x: ox,
+            y: oy,
+            sprite: resolved.sprite,
+            from,
+            to,
+            dir,
+            flipX: o.params.flipX === true,
+            phase: spritePhase(o.id),
+            tickScale: fps > 0 ? Math.min(60, fps) / 60 : 0,
+          });
+        }
+      }
     } else if (o.kind === 'pickup') {
       const kind = (o.params.kind as PickupKind) ?? 'goldpile';
       sink.pickups.push(

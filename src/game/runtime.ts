@@ -31,6 +31,7 @@ export function makeLevelRuntime(
       | 'authoredLights'
       | 'emitters'
       | 'placedPrefabs'
+      | 'decors'
     >
   >,
 ): LevelRuntime {

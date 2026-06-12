@@ -7,6 +7,7 @@ import type { PrefabAnchor, PrefabDef } from '@/builder/prefablib';
 import type { CellSetter } from '@/builder/stamps';
 import { instantiateObjects } from '@/game/instantiate';
 import type { InstantiationSink } from '@/game/instantiate';
+import type { ResolvedSprite } from '@/builder/assets/spritelib';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import type { World } from '@/sim/World';
@@ -75,6 +76,11 @@ export function placePrefabs(
   };
 
   const usedIds = new Set<string>();
+  // One decode cache across every prefab in the level: sprite decor in two
+  // placed prefabs referencing the same asset shares one set of frame
+  // buffers (resolution falls back to the local sprite library; built-in
+  // prefabs that reference no sprites never touch it).
+  const spriteCache = new Map<string, ResolvedSprite | null>();
   for (let slot = 0; slot < slots; slot++) {
     // Avoid repeating a prefab id within the level while alternatives remain.
     const fresh = candidates.filter((p) => !usedIds.has(p.id));
@@ -110,6 +116,7 @@ export function placePrefabs(
       at.x0,
       at.y0,
       set,
+      { spriteCache },
     );
     placed.push({
       id: prefab.id,

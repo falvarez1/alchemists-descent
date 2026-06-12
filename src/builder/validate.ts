@@ -2,6 +2,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { decodeTypes, paramNum } from '@/builder/document';
 import type { EditorDocument, EditorObject, EditorObjectKind } from '@/builder/document';
+import { getStoredSprite } from '@/builder/assets/spritelib';
 import {
   stampBuoyBasin,
   stampCauldron,
@@ -30,6 +31,11 @@ export interface DocIssue {
   what: string;
   objId?: string;
 }
+
+/** Animated-decor volume thresholds (warnings, never errors — decor is
+ *  visual-only; the worst it can do is cost frame time). */
+export const DECOR_COUNT_WARN = 48;
+export const DECOR_FRAME_WARN = 96;
 
 /** Object kinds that compile to door-driving runtime triggers. */
 export const TRIGGER_KINDS: ReadonlySet<EditorObjectKind> = new Set([
@@ -387,6 +393,38 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
       push('warning', 'light radius ' + l.radius + ' outside sane range 4-160', l.id);
     if (l.intensity <= 0 || l.intensity > 4)
       push('warning', 'light intensity ' + l.intensity + ' outside sane range 0-4', l.id);
+  }
+
+  // ---- animated decor volume (visual-only by invariant, but not free to draw) ----
+  const spriteDecors = doc.objects.filter(
+    (o) =>
+      !o.hidden &&
+      o.kind === 'decor' &&
+      typeof o.params.spriteId === 'string' &&
+      o.params.spriteId !== '',
+  );
+  if (spriteDecors.length > DECOR_COUNT_WARN) {
+    push(
+      'warning',
+      `${spriteDecors.length} animated decors — above ~${DECOR_COUNT_WARN} the sprite pass costs real frame time`,
+    );
+  }
+  {
+    const seen = new Set<string>();
+    for (const o of spriteDecors) {
+      const id = o.params.spriteId as string;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const asset =
+        doc.assets?.sprites.find((s) => s.id === id) ?? getStoredSprite(id);
+      if (asset && (asset.w > DECOR_FRAME_WARN || asset.h > DECOR_FRAME_WARN)) {
+        push(
+          'warning',
+          `sprite "${asset.name}" is ${asset.w}x${asset.h} — frames above ${DECOR_FRAME_WARN}px are a lot of setPx per instance`,
+          o.id,
+        );
+      }
+    }
   }
 
   // ---- win condition ----

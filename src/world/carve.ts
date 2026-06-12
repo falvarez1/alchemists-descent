@@ -429,7 +429,7 @@ export function carveWalkTunnels(
       const r = opts.radiusMin + rng.next() * (opts.radiusMax - opts.radiusMin);
       carveDisc(work, w, h, x, y, Math.floor(r), opts.minY);
       ang += (rng.next() - 0.5) * opts.turn;
-      let dx = Math.cos(ang),
+      const dx = Math.cos(ang),
         dy = Math.sin(ang) + opts.gravityBias;
       const inv = 1 / (Math.hypot(dx, dy) || 1);
       const step = Math.max(2, r * 0.45);

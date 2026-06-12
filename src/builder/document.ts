@@ -3,6 +3,8 @@ import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from 
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
+import { sanitizeSpriteAsset } from '@/builder/assets/sprites';
+import type { SpriteAsset } from '@/builder/assets/sprites';
 
 /**
  * EditorDocument v2 (docs/BUILDER.md): the durable authoring layer. The
@@ -105,6 +107,12 @@ export interface EditorDocument {
   /** Aesthetics metadata: ambient override (null = game default) and a
    *  free-form ambience tag. Compiled playtests apply the ambient. */
   mood?: { ambient: number | null; ambience: string };
+  /** Embedded assets (additive, v stays 2 — old loaders ignore the field).
+   *  SAVE/EXPORT/SHARE embed exactly the sprites referenced by decor
+   *  objects (spritelib.embedSprites); IMPORT merges them into the local
+   *  library. Old builds open such docs fine — sprite decor compiles to
+   *  nothing there, which is safe: decor is visual-only by invariant. */
+  assets?: { sprites: SpriteAsset[] };
 }
 
 let idCounter = 0;
@@ -320,6 +328,17 @@ export function sanitizeImportedDoc(parsed: unknown): EditorDocument | null {
   doc.proceduralHistory = Array.isArray(doc.proceduralHistory) ? doc.proceduralHistory : [];
   doc.validation = doc.validation ?? null;
   doc.mood = doc.mood && typeof doc.mood === 'object' ? doc.mood : { ambient: null, ambience: '' };
+  // Embedded sprite assets: validate-then-accept each one; garbage entries
+  // drop out individually, an empty/invalid block drops the field entirely.
+  if (doc.assets && Array.isArray((doc.assets as { sprites?: unknown }).sprites)) {
+    const sprites = ((doc.assets as { sprites: unknown[] }).sprites)
+      .map(sanitizeSpriteAsset)
+      .filter((s): s is SpriteAsset => s !== null);
+    if (sprites.length > 0) doc.assets = { sprites };
+    else delete doc.assets;
+  } else {
+    delete doc.assets;
+  }
   if (doc.world) {
     if (typeof doc.world.rle !== 'string') return null;
     if (doc.size.w !== WIDTH || doc.size.h !== HEIGHT) return null;

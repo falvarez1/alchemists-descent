@@ -730,6 +730,8 @@ export interface WorldGenApi {
     /** Prefab-authored lights / hazard emitters for the runtime. */
     authoredLights: AuthoredLight[];
     emitters: HazardEmitter[];
+    /** Prefab-authored animated decor (visual-only). */
+    decors: RuntimeDecor[];
   };
 }
 
@@ -1161,6 +1163,46 @@ export interface PlacedPrefab {
 }
 
 /**
+ * A decoded, render-ready animated sprite (Aseprite pipeline). Shared by
+ * reference: every decor instance pointing at the same asset holds the SAME
+ * RuntimeSprite — one decode per compile, thirty torches share buffers.
+ */
+export interface RuntimeSprite {
+  w: number;
+  h: number;
+  /** Per-frame 60Hz tick duration + raw RGBA (alpha thresholded at 128 when drawn). */
+  frames: Array<{ ticks: number; data: Uint8ClampedArray }>;
+  /** Cumulative tick offset where frame i starts (starts[i] <= t < starts[i] + ticks). */
+  starts: number[];
+  totalTicks: number;
+  /** Emissive sprites are their own light source: drawn raw, never light-multiplied. */
+  emissive: boolean;
+}
+
+/**
+ * One placed animated decor instance. VISUAL-ONLY by invariant: decor never
+ * writes cells, never collides, never blocks, never gates progression — the
+ * grid doesn't know it's there (same class as enemy sprites and critters).
+ * Frame timing is STATELESS off ctx.state.frameCount (no tick hook): it
+ * animates through pause/hitstop like fire flicker, correct for ambience.
+ */
+export interface RuntimeDecor {
+  x: number;
+  y: number;
+  sprite: RuntimeSprite;
+  /** Loop-tag frame range (inclusive) within the sprite's strip. */
+  from: number;
+  to: number;
+  dir: 'forward' | 'reverse' | 'pingpong';
+  flipX: boolean;
+  /** Stable per-decor tick offset (object-id hash) so identical decors desync. */
+  phase: number;
+  /** 0 = authored frame durations at native speed; >0 = uniform stepping at
+   *  tickScale frames-of-animation per game tick (the fps override / 60). */
+  tickScale: number;
+}
+
+/**
  * Everything that persists for a visited level. Worlds are kept live in RAM
  * for the whole expedition (v1) — your scars stay exactly as you left them.
  */
@@ -1195,6 +1237,8 @@ export interface LevelRuntime {
   emitters?: HazardEmitter[];
   /** Authored prefabs stamped into this level by worldgen (audit/debug). */
   placedPrefabs?: PlacedPrefab[];
+  /** Animated sprite decor (visual-only — see RuntimeDecor). */
+  decors?: RuntimeDecor[];
 }
 
 export interface LevelsApi {
