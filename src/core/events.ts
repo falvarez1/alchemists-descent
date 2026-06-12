@@ -38,6 +38,8 @@ export interface EventMap {
   objectiveChanged: { text: string };
   /** The Kiln Colossus is slain: the expedition is complete. */
   runComplete: { gold: number };
+  /** Crawler wants to stand but the ceiling says no — HUD CRAMPED glyph. */
+  crampedChanged: { cramped: boolean };
   /** A cast was refused for lack of mana (HUD flashes the mana bar). */
   dryFire: undefined;
   /** Flask verb refused (empty pour/throw, siphon into a full flask). */

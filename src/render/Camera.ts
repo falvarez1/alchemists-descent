@@ -24,7 +24,10 @@ export class Camera implements CameraApi {
   update(ctx: Ctx): void {
     const { player, state, input } = ctx;
     if (state.mode === 'play' && !player.dead) {
-      this.tx = player.x - VIEW_W / 2 + player.facing * 26;
+      // Crawl: a mild extra forward lead — you want to see down the tunnel,
+      // not under your own knees (crouchT decays in a crawl, so the peek
+      // below hands itself over to the lead as the stance changes).
+      this.tx = player.x - VIEW_W / 2 + player.facing * (26 + (player.crawlT / 10) * 14);
       // Crouch-peek: holding the stance tilts the view below the ledge
       // (the lerp below turns the offset into a smooth glance down).
       this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48;

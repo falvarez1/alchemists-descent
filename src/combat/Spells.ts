@@ -21,9 +21,11 @@ export class Spells implements SpellsApi {
 
   wandTip(): { x: number; y: number } {
     const { player } = this.ctx;
+    // Crawling drops the shoulder to prone height (~4 above the feet): you
+    // cast from the floor, so floor lips block lines a standing cast clears.
     return {
       x: player.x + Math.cos(player.aimAngle) * 9,
-      y: (player.y - 9) + Math.sin(player.aimAngle) * 9,
+      y: (player.y - (player.crawling ? 4 : 9)) + Math.sin(player.aimAngle) * 9,
     };
   }
 

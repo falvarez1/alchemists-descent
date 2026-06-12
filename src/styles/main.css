@@ -124,6 +124,15 @@ header .engine-status { font-size: 11px; color: var(--accent-purple); font-weigh
 #levit-fill { background: repeating-linear-gradient(90deg, var(--levit) 0 4px, #92400e 4px 5px, rgba(0,0,0,0.55) 5px 6px); box-shadow: 0 0 8px rgba(251,191,36,0.3); }
 /* Neutral amber base; Hud.update retints background-color to the stored material */
 #flask-fill { background-color: #b45309; background-image: repeating-linear-gradient(90deg, transparent 0 4px, rgba(0,0,0,0.3) 4px 5px, rgba(0,0,0,0.55) 5px 6px); box-shadow: 0 0 8px rgba(212,175,55,0.3); }
+/* CRAMPED: crawling, wants up, the ceiling says no (crampedChanged event) */
+#cramped-glyph {
+    display: none; align-self: flex-start; margin-top: 2px; padding: 1px 6px;
+    font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: #fbbf24;
+    border: 1px dashed #92400e; border-radius: 3px; background: rgba(34,24,17,0.85);
+    text-shadow: 0 1px 3px #000;
+}
+#cramped-glyph.visible { display: block; animation: cramped-pulse 1.1s ease-in-out infinite; }
+@keyframes cramped-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 #flask-fill.flask-sloshing { animation: flask-slosh 1.25s ease-in-out infinite; }
 @keyframes flask-slosh {
     0%, 100% { background-position: 0 0; filter: brightness(1); }

@@ -452,9 +452,12 @@ export class Projectiles implements ProjectilesApi {
         // Hostile projectiles: fireballs detonate on the player, frostbolts
         // hit lighter but soak in as a real frozen status, acid globs splash
         if (p.hostile && ctx.state.mode === 'play' && !ctx.player.dead) {
+          // A crawler is a smaller, lower target — shots at standing-head
+          // height pass clean over the 9x9 body (CRAWL.md: a real dodge).
+          const crawl = ctx.player.crawling;
           const dx = ctx.player.x - p.x,
-            dy = ctx.player.y - 9 - p.y;
-          if (dx * dx + dy * dy < 85) {
+            dy = ctx.player.y - (crawl ? 4 : 9) - p.y;
+          if (dx * dx + dy * dy < (crawl ? 45 : 85)) {
             if (p.type === 'frostbolt') {
               ctx.playerCtl.damage(6, p.vx * 0.8, -0.6);
               ctx.player.status.frozen = Math.max(ctx.player.status.frozen, 120);

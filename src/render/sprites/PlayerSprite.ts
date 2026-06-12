@@ -60,6 +60,239 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   };
 
   const svx = player._svx || 0, svy = player._svy || 0;
+
+  const row = (x0: number, x1: number, yy: number, c: RGB): void => {
+    for (let xx = x0; xx <= x1; xx++) s.setPx(xx, yy, c[0], c[1], c[2]);
+  };
+
+  // --- The staff, drawn TIP-FIRST (shared by every pose that casts) ---
+  // wandTip() is the gameplay muzzle (projectile spawn + light seed); the
+  // shaft is laid backward from that exact point through the gripping hand,
+  // so the glow always sits ON the staff's end — no more drifting apart.
+  // The butt extends behind the grip to keep a constant ~11-cell Gandalf
+  // length whatever the pose did to the hand position.
+  // Swap: the staff sweeps a quadratically-eased draw arc up into the aim.
+  // Recoil: a cast kicks the WHOLE staff back along the aim for a few frames.
+  const drawStaff = (gripX: number, gripY: number): void => {
+    const tipBase = ctx.spells.wandTip();
+    const drawT = player.swapT > 0 ? player.swapT / 12 : 0;
+    const a = Math.atan2(tipBase.y - gripY, tipBase.x - gripX) + drawT * drawT * 2.2 * f;
+    const shaftLen = Math.max(4, Math.round(Math.hypot(tipBase.x - gripX, tipBase.y - gripY)));
+    const buttLen = Math.max(2, 11 - shaftLen);
+    const rec = player.recoilT > 0 ? (player.recoilT > 3 ? 2 : 1) : 0;
+    const wsx = gripX - Math.cos(a) * rec;
+    const wsy = gripY - Math.sin(a) * rec;
+    // staff end (the recoiled, possibly mid-draw muzzle the visuals attach to)
+    const endX = wsx + Math.cos(a) * shaftLen;
+    const endY = wsy + Math.sin(a) * shaftLen;
+    // One-sided drop shadow (underside only) — pops the shaft off the
+    // background without the fattening of a full outline.
+    const wandKeys = new Set<number>();
+    const wandPx = (d: number, r: number, g: number, b: number): void => {
+      const wx2 = wsx + Math.cos(a) * d;
+      const wy2 = wsy + Math.sin(a) * d;
+      wandKeys.add((Math.round(wx2) & 0xfff) | ((Math.round(wy2) & 0xfff) << 12));
+      s.setPx(wx2, wy2, r, g, b);
+    };
+    for (let d = -buttLen; d <= shaftLen; d++) {
+      if (d === 0) continue; // the hand owns this cell
+      const t = (d + buttLen) / (shaftLen + buttLen); // dark butt -> bright head
+      wandPx(d, 0.26 + 0.46 * t, 0.16 + 0.36 * t, 0.10 + 0.20 * t);
+    }
+    // the gripping hand sits over the shaft
+    s.setPx(wsx, wsy, ...SKIN);
+    for (const key of wandKeys) {
+      const sx2 = key & 0xfff;
+      const sy2 = ((key >> 12) & 0xfff) + 1;
+      const skey = (sx2 & 0xfff) | ((sy2 & 0xfff) << 12);
+      if (!wandKeys.has(skey) && !marks.has(skey)) out.setPx(sx2, sy2, 0.02, 0.03, 0.07);
+    }
+    if (player.swapT >= 5 && player.swapT <= 7) {
+      // mid-draw gleam: the staff head catches the light as it comes up
+      s.setPx(endX, endY, 1.0, 1.0, 0.85);
+    }
+    // Charged throw meter: dots march out along the aim as power builds
+    const bombCharge = ctx.input.bombCharge;
+    if (bombCharge >= 0) {
+      const ca = player.aimAngle;
+      const steps = Math.floor(bombCharge * 8 + 0.001);
+      for (let k = 0; k < steps; k++) {
+        const t = (k + 1) / 8;
+        // meter dots march out PAST the staff tip (the shaft now owns 1..8)
+        const ddx = gripX + Math.cos(ca) * (11 + k * 2.6);
+        const ddy = gripY + Math.sin(ca) * (11 + k * 2.6);
+        const bst = ctx.params.global.maxBrightness * (0.5 + bombCharge * 0.5);
+        s.setPx(ddx, ddy, (0.7 + t * 0.8) * bst, (1.0 - t * 0.85) * bst, 0.06 * bst);
+      }
+    }
+
+    // Tip glow stays dark through the first half of a draw — the staff isn't
+    // up yet, so the muzzle has nothing to say. It rides the VISUAL staff end
+    // (recoil and all); projectiles still spawn at the wandTip contract point.
+    if (player.swapT <= 6) {
+      const boost = ctx.params.global.maxBrightness;
+      // At rest the tip smolders instead of flaring — the constant bloom halo
+      // was washing the character's silhouette out. Full brightness returns
+      // the moment the trigger is down.
+      const pulse = (0.8 + Math.sin(frameCount * 0.3) * 0.2) * (player.firing ? 1 : 0.55);
+      s.setPx(endX, endY, 0.5 * boost * pulse, 0.9 * boost * pulse, 1.0 * boost * pulse);
+      if (player.firing && frameCount % 4 < 2) {
+        s.setPx(endX + Math.cos(a), endY + Math.sin(a), 0.9 * boost, 0.95 * boost, 1.0 * boost);
+        s.setPx(endX + Math.cos(a) * 2, endY + Math.sin(a) * 2, 0.6 * boost, 0.7 * boost, 0.8 * boost);
+      }
+    }
+  };
+
+  // ---- CRAWL pose (docs/CRAWL.md): all fours, head leading, hat last.
+  // The collision box stays an axis-aligned 9x9; only the DRAWING tilts —
+  // the figure lays along the smoothed travel slope (quantized to ~16
+  // steps), so a diagonal chute reads as diagonal crawling.
+  if (player.crawling) {
+    const ease = clamp(player.crawlT / 10, 0, 1);
+    const settle = Math.round((1 - ease) * 5); // dropping down onto all fours
+    const q = Math.round(player.crawlSlope * 8) / 8;
+    const stride = player.stridePhase;
+    const hat = player.hat;
+    const py = player.y;
+    const cu = (u: number): number => px + u * f;
+    const cy = (u: number, up: number): number => py - up - settle + Math.round(q * u * f);
+    // ceiling at exactly crawl gauge: the hat has nowhere to stand up
+    const lowCeiling = !ctx.physics.entityFree(player.x, player.y, 4, 10);
+
+    // rear leg: boot pads down, knee tucked under the hip
+    s.setPx(cu(-4), cy(-4, 0), ...BOOT);
+    s.setPx(cu(-3), cy(-3, 0), ...BOOT);
+    s.setPx(cu(-3), cy(-3, 1), ...BOOT_L);
+    s.setPx(cu(-2), cy(-2, 0), ...BOOT_L);
+
+    // robe arched over the back, trailing edge dark
+    for (let u = -3; u <= 2; u++) {
+      const top = u <= -2 ? 3 : 4;
+      for (let up = 1; up <= top; up++) {
+        const c = up === top || u === -3 ? ROBE_D : ROBE;
+        s.setPx(cu(u), cy(u, up), ...c);
+      }
+    }
+    s.setPx(cu(-1), cy(-1, 2), ...BAND); // belt glint low on the belly
+    s.setPx(cu(1), cy(1, 3), ...TRIM); // chest trim
+
+    // hand-over-hand keyed to the stride wheel (real x-progress)
+    const reach = Math.round(Math.sin(stride) * 1.2);
+    const lift = Math.abs(Math.sin(stride)) > 0.7 ? 1 : 0;
+    s.setPx(cu(3), cy(3, 1), ...SKIN_D); // forearm
+    s.setPx(cu(4 + reach), cy(4 + reach, reach > 0 ? lift : 0), ...SKIN);
+    s.setPx(cu(4 - reach), cy(4 - reach, reach < 0 ? lift : 0), ...SKIN_D);
+
+    // head leading: face block, brow shaded under the brim
+    for (let up = 2; up <= 4; up++) {
+      s.setPx(cu(3), cy(3, up), ...(up === 4 ? SHADE : SKIN_D));
+      s.setPx(cu(4), cy(4, up), ...(up === 4 ? SHADE : SKIN));
+    }
+    if (player.blinkTimer === 0) {
+      s.setPx(cu(4), cy(4, 3), 1.0, 1.0, 1.0);
+      s.setPx(cu(3), cy(3, 3), 0.08, 0.08, 0.12);
+    }
+
+    // the hat rides pushed back — and presses FLAT when the ceiling says so
+    for (let u = 1; u <= 4; u++) {
+      s.setPx(cu(u), cy(u, 5), ...(u === 1 || u === 4 ? HAT_D : HAT));
+    }
+    s.setPx(cu(3), cy(3, 5), ...BAND);
+    const coneUp = lowCeiling ? 5 : 6;
+    s.setPx(cu(0), cy(0, coneUp), ...HAT);
+    s.setPx(cu(-1), cy(-1, coneUp), ...HAT);
+    s.setPx(
+      cu(-2) + Math.round(hat.ox * 0.6),
+      cy(-2, coneUp) + (lowCeiling ? 0 : Math.round(hat.oy * 0.5)),
+      ...HAT_D,
+    );
+
+    stampOutline();
+    drawStaff(cu(2), cy(2, 2)); // prone grip: the muzzle rides low
+    return;
+  }
+
+  // ---- WALL GRAB pose (bouldering): grounded on nothing but a lip of the
+  // cliff face. Both hands find holds on the rock, the feet brace against
+  // it, and the body hangs in a climber's lock-off instead of standing on
+  // thin air. Pose only — the pixel-catch physics is exactly as it plays.
+  if (
+    player.wallGrabT >= 5 &&
+    player.grounded &&
+    Math.abs(svx) < 0.6 &&
+    player.pullT === 0 &&
+    player.recharge === 0
+  ) {
+    const wd = player.wallGrabDir;
+    const py = player.y;
+    const hat = player.hat;
+    // hands trade holds now and then — reading the face for the next move
+    const shift = Math.floor(frameCount / 50) % 2;
+
+    // feet: one toe on the lip, the other jammed into the face higher up
+    s.setPx(px + wd * 3, py, ...BOOT);
+    s.setPx(px + wd * 2, py, ...BOOT);
+    s.setPx(px + wd * 2, py - 1, ...BOOT_L);
+    s.setPx(px + wd * 3, py - 4, ...BOOT);
+    s.setPx(px + wd * 2, py - 4, ...BOOT_L);
+
+    // bent legs holding the hips off the rock
+    s.setPx(px + wd, py - 2, ...ROBE_D);
+    s.setPx(px + wd, py - 5, ...ROBE_D);
+
+    // the skirt hangs PLUMB off the hips — gravity owns it, not the stride
+    for (const [dy, hw] of [[3, 3], [4, 3], [5, 2], [6, 2]] as const) {
+      for (let dx = -hw; dx <= hw; dx++) {
+        const edge = Math.abs(dx) === hw;
+        s.setPx(px - wd + dx, py - dy, ...(edge ? ROBE_D : ROBE));
+      }
+    }
+
+    // torso pressed in toward the face
+    for (let dy = 7; dy <= 10; dy++) {
+      const shiftX = dy >= 9 ? wd : 0;
+      for (let dx = -2; dx <= 2; dx++) {
+        const c = dx === 0 ? TRIM : Math.abs(dx) === 2 ? ROBE_D : ROBE;
+        s.setPx(px + shiftX + dx, py - dy, ...c);
+      }
+    }
+    row(px + wd - 2, px + wd + 2, py - 11, ROBE); // shoulders
+
+    // both arms up the wall: a high lock-off and a mid hold, trading places
+    s.setPx(px + wd * 2, py - 12, ...ROBE_D);
+    s.setPx(px + wd * 3, py - 13 + shift, ...ROBE_D);
+    s.setPx(px + wd * 4, py - 14 + shift, ...SKIN);
+    s.setPx(px + wd * 3, py - 11, ...ROBE_D);
+    s.setPx(px + wd * 4, py - 10 - shift, ...SKIN_D);
+
+    // head tight to the rock, eyes UP the route
+    const hx = px + wd;
+    for (let dy = 12; dy <= 14; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const c = dy === 14 ? SHADE : dx * wd > 0 ? SKIN : SKIN_D;
+        s.setPx(hx + dx, py - dy, ...c);
+      }
+    }
+    if (player.blinkTimer === 0) {
+      s.setPx(hx + wd, py - 13, 1.0, 1.0, 1.0);
+      s.setPx(hx + wd * 2, py - 13, 0.08, 0.08, 0.12);
+    }
+
+    // hat tipped back off the brow — he's reading the wall above
+    const hatY = py - 15;
+    for (let dx = -4; dx <= 4; dx++) {
+      s.setPx(hx - wd + dx, hatY, ...(Math.abs(dx) === 4 ? HAT_D : HAT));
+    }
+    row(hx - wd - 1, hx - wd + 1, hatY - 1, BAND);
+    row(hx - wd * 2 - 1, hx - wd * 2 + 1, hatY - 2, HAT);
+    s.setPx(hx - wd * 3 + Math.round(hat.ox * 0.5), hatY - 3 + Math.round(hat.oy * 0.5), ...HAT_D);
+
+    stampOutline();
+    // both hands are on the rock; the trigger breaks one free to cast
+    if (player.firing) drawStaff(px - wd * 2, py - 10);
+    return;
+  }
+
   const moving = player.grounded && Math.abs(svx) > 0.2;
   const stride = player.stridePhase;
   const skid = player.skidT > 0 && player.grounded;
@@ -88,10 +321,6 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   const crouchShift = (dy: number): number =>
     crouch > 0 ? Math.round(crouch * clamp((dy - 3) / 6, 0, 1)) : 0;
   const poseY = (dy: number): number => py - dy - lift + crouchShift(dy);
-
-  const row = (x0: number, x1: number, yy: number, c: RGB): void => {
-    for (let xx = x0; xx <= x1; xx++) s.setPx(xx, yy, c[0], c[1], c[2]);
-  };
 
   // --- Boots: alternate fore/aft with the stride wheel; the air gets three
   // distinct poses (rising tuck / apex drift / falling sprawl); a skid
@@ -299,83 +528,5 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     return; // no wand, no charge meter — both hands are busy
   }
   stampOutline();
-
-  // --- The staff, drawn TIP-FIRST ---
-  // wandTip() is the gameplay muzzle (projectile spawn + light seed); the
-  // shaft is laid backward from that exact point through the gripping hand,
-  // so the glow always sits ON the staff's end — no more drifting apart.
-  // The butt extends behind the grip to keep a constant ~11-cell Gandalf
-  // length whatever the lean/bob did to the hand position.
-  // Swap: the staff sweeps a quadratically-eased draw arc up into the aim.
-  // Recoil: a cast kicks the WHOLE staff back along the aim for a few frames.
-  const tipBase = ctx.spells.wandTip();
-  const gripX = px + f * 3 + lean;
-  const gripY = poseY(10);
-  const drawT = player.swapT > 0 ? player.swapT / 12 : 0;
-  const a = Math.atan2(tipBase.y - gripY, tipBase.x - gripX) + drawT * drawT * 2.2 * f;
-  const shaftLen = Math.max(4, Math.round(Math.hypot(tipBase.x - gripX, tipBase.y - gripY)));
-  const buttLen = Math.max(2, 11 - shaftLen);
-  const rec = player.recoilT > 0 ? (player.recoilT > 3 ? 2 : 1) : 0;
-  const wsx = gripX - Math.cos(a) * rec;
-  const wsy = gripY - Math.sin(a) * rec;
-  // staff end (the recoiled, possibly mid-draw muzzle the visuals attach to)
-  const endX = wsx + Math.cos(a) * shaftLen;
-  const endY = wsy + Math.sin(a) * shaftLen;
-  // One-sided drop shadow (underside only) — pops the shaft off the
-  // background without the fattening of a full outline.
-  const wandKeys = new Set<number>();
-  const wandPx = (d: number, r: number, g: number, b: number): void => {
-    const wx2 = wsx + Math.cos(a) * d;
-    const wy2 = wsy + Math.sin(a) * d;
-    wandKeys.add((Math.round(wx2) & 0xfff) | ((Math.round(wy2) & 0xfff) << 12));
-    s.setPx(wx2, wy2, r, g, b);
-  };
-  for (let d = -buttLen; d <= shaftLen; d++) {
-    if (d === 0) continue; // the hand owns this cell
-    const t = (d + buttLen) / (shaftLen + buttLen); // dark butt -> bright head
-    wandPx(d, 0.26 + 0.46 * t, 0.16 + 0.36 * t, 0.10 + 0.20 * t);
-  }
-  // the gripping hand sits over the shaft
-  s.setPx(wsx, wsy, ...SKIN);
-  for (const key of wandKeys) {
-    const sx2 = key & 0xfff;
-    const sy2 = ((key >> 12) & 0xfff) + 1;
-    const skey = (sx2 & 0xfff) | ((sy2 & 0xfff) << 12);
-    if (!wandKeys.has(skey) && !marks.has(skey)) out.setPx(sx2, sy2, 0.02, 0.03, 0.07);
-  }
-  if (player.swapT >= 5 && player.swapT <= 7) {
-    // mid-draw gleam: the staff head catches the light as it comes up
-    s.setPx(endX, endY, 1.0, 1.0, 0.85);
-  }
-  // Charged throw meter: dots march out along the aim as power builds
-  const bombCharge = ctx.input.bombCharge;
-  if (bombCharge >= 0) {
-    const ca = player.aimAngle;
-    const sx0 = px + f * 3 + lean, sy0 = poseY(10);
-    const steps = Math.floor(bombCharge * 8 + 0.001);
-    for (let k = 0; k < steps; k++) {
-      const t = (k + 1) / 8;
-      // meter dots march out PAST the staff tip (the shaft now owns 1..8)
-      const ddx = sx0 + Math.cos(ca) * (11 + k * 2.6);
-      const ddy = sy0 + Math.sin(ca) * (11 + k * 2.6);
-      const bst = ctx.params.global.maxBrightness * (0.5 + bombCharge * 0.5);
-      s.setPx(ddx, ddy, (0.7 + t * 0.8) * bst, (1.0 - t * 0.85) * bst, 0.06 * bst);
-    }
-  }
-
-  // Tip glow stays dark through the first half of a draw — the staff isn't
-  // up yet, so the muzzle has nothing to say. It rides the VISUAL staff end
-  // (recoil and all); projectiles still spawn at the wandTip contract point.
-  if (player.swapT <= 6) {
-    const boost = ctx.params.global.maxBrightness;
-    // At rest the tip smolders instead of flaring — the constant bloom halo
-    // was washing the character's silhouette out. Full brightness returns
-    // the moment the trigger is down.
-    const pulse = (0.8 + Math.sin(frameCount * 0.3) * 0.2) * (player.firing ? 1 : 0.55);
-    s.setPx(endX, endY, 0.5 * boost * pulse, 0.9 * boost * pulse, 1.0 * boost * pulse);
-    if (player.firing && frameCount % 4 < 2) {
-      s.setPx(endX + Math.cos(a), endY + Math.sin(a), 0.9 * boost, 0.95 * boost, 1.0 * boost);
-      s.setPx(endX + Math.cos(a) * 2, endY + Math.sin(a) * 2, 0.6 * boost, 0.7 * boost, 0.8 * boost);
-    }
-  }
+  drawStaff(px + f * 3 + lean, poseY(10));
 }

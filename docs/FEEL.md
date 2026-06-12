@@ -43,6 +43,42 @@ The house principles, in order of authority:
 - The idle fidget is suppressed while crouching; the eye glances down (§3).
 - State: `player.crouchT` 0–10. `Player.ts` (stance), `render/Camera.ts` (peek).
 
+### Crawl (hold S on the ground and move — docs/CRAWL.md)
+
+- The creep flows into the **9×9 second collision tier**: step-up 2, speed
+  0.32×, jump/levitate/dive disabled (W is a stand attempt first). S is intent,
+  geometry is law — release the key under a low ceiling and you keep crawling
+  until the headroom probe (`entityFree 4,17`) lets you up.
+- **Enter:** 3–4 frame settle onto all fours (`crawlT` 0→10 at +3/frame), dust
+  puffs at hands and knees, the hat bobs hard.
+- **Loop:** hand-over-hand keyed to real x-progress (stride wheel ×0.3), cloth
+  shuffle + pebble flecks at the hands; ceiling at exactly gauge (solid at y−9)
+  scrapes the hat with falling grit. The sprite lays along the smoothed travel
+  slope (quantized ~16 steps) so diagonal chutes read as diagonal crawling —
+  the box never rotates.
+- **Cramped** (released but can't stand): HUD glyph under the meters
+  (`crampedChanged` event) and a hat-bump on the ceiling every ~40 ticks with
+  a muffled thud and grit-fleck.
+- **Stand:** reverse squash overshoot (`stretchT` 6), hat flips, shake-off dust.
+- Camera trades the crouch's downward peek for a +14-cell forward lead;
+  `wandTip` drops to ~4 above the feet (prone muzzle); hostile-projectile
+  overlap shrinks (r² 85→45 at body center y−4) — ducking a volley is a dodge.
+- State: `player.crawling` / `crawlT` / `crawlSlope`. `Player.ts` (stance
+  machine), `PlayerSprite.ts` (pose), `Camera.ts`, `Projectiles.ts`.
+
+### Wall grab (bouldering pose)
+
+- Detection: grounded with the ONLY feet-row support at the body's edge
+  (|dx| ≥ 3, one side) plus a solid face beside the body (≥3 of 8 samples at
+  x±5) — i.e. he caught a pixel lip of a cliff, not a floor. Hysteresis
+  `wallGrabT` 0–10 (+2 hit / −1 decay; pose above 5) rides out the airborne
+  beats of a climb.
+- Pose: feet braced on the rock (one toe on the lip, one jammed higher), skirt
+  hanging plumb, torso pressed to the face, **both hands on holds** trading
+  places every ~50 frames, eyes up the route, hat tipped back.
+- Pose state ONLY — the pixel-catch physics that lets him cling is untouched.
+  Firing breaks one hand free to cast. State: `player.wallGrabT`/`wallGrabDir`.
+
 ### Dive slam (press S in the air)
 
 - Commit point: `vy > -1` (apex or falling), not in liquid. Levitation yields.

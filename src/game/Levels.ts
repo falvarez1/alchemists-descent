@@ -670,6 +670,10 @@ export class Levels implements LevelsApi {
     player.fx = 0;
     player.fy = 0;
     player.invuln = 60;
+    // Stance is transient: spawn chambers guarantee standing headroom
+    player.crawling = false;
+    player.crawlT = 0;
+    player.wallGrabT = 0;
     ctx.camera.snapTo(player.x, player.y);
 
     this.currentId = id;

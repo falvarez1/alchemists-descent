@@ -39,6 +39,12 @@ export class Hud {
       this.dryFlashUntil = this.ctx.state.frameCount + 18;
       el('mana-fill').parentElement?.classList.add('mana-dry');
     });
+    // CRAMPED: the crawler wants to stand but the ceiling says no — a small
+    // glyph under the meters for as long as the world refuses (CRAWL.md).
+    ctx.events.on('crampedChanged', ({ cramped }) => {
+      el('cramped-glyph').classList.toggle('visible', cramped);
+    });
+
     // Same language for refused flask verbs: the FLSK track flinches.
     ctx.events.on('flaskDry', () => {
       const track = el('flask-fill').parentElement;

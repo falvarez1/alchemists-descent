@@ -111,6 +111,24 @@ export interface PlayerState {
   crouchT: number;
   /** Dive slam: >0 while committed to the fast-fall, cleared by the landing. */
   diveT: number;
+  /**
+   * CRAWL (docs/CRAWL.md): the second collision tier is active — the body is
+   * the 9x9 box. The key expresses intent; geometry decides this flag, and it
+   * may never desync from the world (release S under a low ceiling and you
+   * stay crawling until the headroom probe lets you up).
+   */
+  crawling: boolean;
+  /** Crawl pose ease (0-10 like crouchT); also drives the camera's forward lead. */
+  crawlT: number;
+  /** Smoothed travel slope (dy per dx, -1..1) — tilts the crawl SPRITE only. */
+  crawlSlope: number;
+  /**
+   * Wall-grab pose hysteresis (0-10): grounded on nothing but the lip of a
+   * cliff face. Pose state only — the pixel-catch physics is untouched.
+   */
+  wallGrabT: number;
+  /** Side of the held wall face (+-1). */
+  wallGrabDir: number;
   /** Robe hem cloth spring: lagged horizontal offset (same idea as the hat). */
   robe: { ox: number; vx: number };
 }
@@ -118,6 +136,10 @@ export interface PlayerState {
 export const PLAYER_HALF_W = 4;
 export const PLAYER_H = 17;
 export const PLAYER_STEP_UP = 5;
+/** Crawl gauge (CRAWL.md rule zero): 9 in any direction — optional tier only. */
+export const PLAYER_CRAWL_H = 9;
+/** Crawl step-up: knees, not legs. */
+export const PLAYER_CRAWL_STEP_UP = 2;
 
 export type EnemyKind =
   | 'slime'
@@ -566,6 +588,10 @@ export interface AudioApi {
   cardSlot(): void;
   /** Material-aware footfall (stride-driven, very quiet). */
   footstep(surface: 'stone' | 'soft' | 'wet' | 'wood'): void;
+  /** Soft cloth shuffle of the crawl (stride-driven, quieter than footsteps). */
+  crawlShuffle(): void;
+  /** Hat bumping a low ceiling: muffled thud (the cramped "no" of the world). */
+  crampedBump(): void;
   /** Landing thud scaled by fall hardness (0..1). */
   landThud(intensity: number): void;
   /** Breaking the surface of a pool (0..1 by entry speed). */
@@ -660,7 +686,8 @@ export interface EnemyControlApi {
 }
 
 export interface SpellsApi {
-  /** Wand muzzle: 9 cells along aimAngle from (player.x, player.y - 9). */
+  /** Wand muzzle: 9 cells along aimAngle from the shoulder (player.y - 9
+   *  standing, player.y - 4 while crawling — the prone cast is a low muzzle). */
   wandTip(): { x: number; y: number };
   digRay(ox: number, oy: number, angle: number, range: number): { x: number; y: number } | null;
   erodeAt(cx: number, cy: number, rad: number): void;

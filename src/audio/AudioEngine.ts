@@ -142,6 +142,10 @@ export class AudioEngine implements AudioApi {
     else { this.tone(220 + Math.random() * 40, 150, 0.035, 'square', 0.055); }
   }
 
+  crawlShuffle(): void { if (!this.throttled('crawl', 130)) return; this.noiseBurst(0.05, 300 + Math.random() * 120, 0.035); }
+
+  crampedBump(): void { if (!this.throttled('cramped', 300)) return; this.tone(120, 70, 0.06, 'sine', 0.1); this.noiseBurst(0.04, 500, 0.05); }
+
   landThud(intensity: number): void { if (!this.throttled('land', 150)) return; const k = Math.max(0.15, Math.min(1, intensity)); this.tone(95 - 35 * k, 45, 0.09 + 0.07 * k, 'sine', 0.07 + 0.13 * k); this.noiseBurst(0.04 + 0.05 * k, 320, 0.04 + 0.09 * k); }
 
   splash(intensity: number): void { if (!this.throttled('splash', 200)) return; const k = Math.max(0.2, Math.min(1, intensity)); this.noiseBurst(0.09 + 0.1 * k, 750, 0.09 + 0.1 * k); this.tone(440, 170, 0.12, 'sine', 0.04 + 0.06 * k); }

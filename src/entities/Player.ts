@@ -7,9 +7,10 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, PerkId, PlayerControlApi, PlayerState, Projectile } from '@/core/types';
+import { PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_STEP_UP } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup } from '@/game/Pickups';
-import { Cell, isLiquid } from '@/sim/CellType';
+import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
 import { bloodColor, EMPTY_COLOR, packRGB, smokeColor } from '@/sim/colors';
 
 const REVIEW_STATUS_FRAMES = 3600;
@@ -97,6 +98,11 @@ export function createPlayer(): PlayerState {
     fidgetT: 0,
     crouchT: 0,
     diveT: 0,
+    crawling: false,
+    crawlT: 0,
+    crawlSlope: 0,
+    wallGrabT: 0,
+    wallGrabDir: 1,
     robe: { ox: 0, vx: 0 },
   };
 }
@@ -126,6 +132,8 @@ export class PlayerControl implements PlayerControlApi {
   private prevInLiquid = false;
   /** Horizontal accel multiplier from the status engine (frozen = 0.55). */
   private statusSlow = 1;
+  /** Edge detector for the CRAMPED HUD glyph (crawling, wants up, can't). */
+  private prevCramped = false;
 
   constructor(private ctx: Ctx) {}
 
@@ -256,6 +264,9 @@ export class PlayerControl implements PlayerControlApi {
       player.levit = player.maxLevit;
       player.dead = false;
       player.invuln = 90;
+      player.crawling = false; // waystone arrivals are standing-safe
+      player.crawlT = 0;
+      player.wallGrabT = 0;
       ctx.events.emit('playerRespawned');
       ctx.telemetry.count('death.goldLost');
       ctx.particles.burst(rp.x, rp.y - 7, 20, null, () => packRGB(200, 160, 255), 2.7, {
@@ -278,6 +289,9 @@ export class PlayerControl implements PlayerControlApi {
     player.levit = player.maxLevit;
     player.dead = false;
     player.invuln = 90;
+    player.crawling = false;
+    player.crawlT = 0;
+    player.wallGrabT = 0;
     ctx.events.emit('playerRespawned');
     // Clear hostile projectiles, restart current wave
     const kept: Projectile[] = ctx.projectiles.filter((p) => !p.hostile);
@@ -345,6 +359,82 @@ export class PlayerControl implements PlayerControlApi {
     }
     if (player.invuln > 0) player.invuln--;
 
+    // ---- CRAWL stance machine (docs/CRAWL.md): S is intent, geometry is law.
+    // The key expresses what you want; the world decides the actual stance,
+    // and the stance may never desync from the ceiling above it.
+    let cramped = false;
+    if (!player.crawling) {
+      // Enter: the crouch-creep flows into a crawl the moment you push
+      // sideways — voluntarily in the open (staying small under fire), and
+      // it is the only shape that fits a 9-tall gap. Stationary S stays the
+      // crouch-peek; S in the air stays the dive slam.
+      if (
+        keys.down &&
+        (keys.left || keys.right) &&
+        !keys.jump &&
+        player.grounded &&
+        !player.inLiquid &&
+        !restrained
+      ) {
+        player.crawling = true;
+        // going down on all fours: dust at the hands and knees, hat bobs hard
+        player.hat.vy -= 1.8;
+        for (const u of [3, -2]) {
+          ctx.particles.burst(player.x + player.facing * u, player.y, 2, null, () => {
+            const g = 115 + Math.floor(Math.random() * 50);
+            return packRGB(g, g, g - 8);
+          }, 0.55, { grav: 0.05 });
+        }
+        ctx.audio.crawlShuffle();
+      }
+    } else {
+      // Wants-to-stand: S released, W pressed (a stand attempt comes before
+      // any jump), swimming preempting the stance, or a restraint (communion,
+      // lever) demanding the full posture. Geometry has the final word.
+      const wantsStand = !keys.down || keys.jump || player.inLiquid || restrained;
+      if (wantsStand) {
+        if (ctx.physics.entityFree(player.x, player.y, 4, PLAYER_H)) {
+          // POP upright: reverse squash overshoot, the hat flips, dust shakes off
+          player.crawling = false;
+          player.stretchT = 6;
+          player.hat.vy -= 2.4;
+          player.hat.vx += player.facing * 1.2;
+          ctx.particles.burst(player.x, player.y - 10, 4, null, () => {
+            const g = 120 + Math.floor(Math.random() * 50);
+            return packRGB(g, g, g - 8);
+          }, 0.7, { grav: 0.04 });
+        } else {
+          // CRAMPED: the world says no — visibly and audibly. Every ~40
+          // ticks the hat bumps the ceiling and a grit-fleck falls.
+          cramped = true;
+          if (ctx.state.frameCount % 40 === 0) {
+            player.hat.vy -= 1.4;
+            ctx.audio.crampedBump();
+            ctx.particles.spawn(
+              player.x + (Math.random() - 0.5) * 4,
+              player.y - PLAYER_CRAWL_H,
+              (Math.random() - 0.5) * 0.3,
+              0.4,
+              null,
+              packRGB(122, 112, 98),
+              14,
+              { grav: 0.08 },
+            );
+          }
+        }
+      }
+    }
+    if (cramped !== this.prevCramped) {
+      this.prevCramped = cramped;
+      ctx.events.emit('crampedChanged', { cramped });
+    }
+    // Crawl pose ease, 0->10 like crouchT (a 3-4 frame squash either way)
+    player.crawlT = player.crawling
+      ? Math.min(10, player.crawlT + 3)
+      : Math.max(0, player.crawlT - 3);
+    const bodyH = player.crawling ? PLAYER_CRAWL_H : PLAYER_H;
+    const stepUp = player.crawling ? PLAYER_CRAWL_STEP_UP : PLAYER_STEP_UP;
+
     // Sim-sampled statuses (Wave C, pillar 5): the cells touching the body
     // decide what you ARE — wet, oiled, burning, frozen, electrified.
     // Sampled every 2nd frame; status DPS bypasses invuln like hazard DPS.
@@ -353,7 +443,7 @@ export class PlayerControl implements PlayerControlApi {
         ctx,
         player,
         4,
-        17,
+        bodyH,
         player.perks.flameward ? { burning: true } : undefined,
       );
       this.statusSlow = slowFactor;
@@ -392,6 +482,7 @@ export class PlayerControl implements PlayerControlApi {
       keys.down &&
       player.grounded &&
       !player.inLiquid &&
+      !player.crawling &&
       player.pullT === 0 &&
       player.recharge === 0;
     if (crouching) {
@@ -410,7 +501,8 @@ export class PlayerControl implements PlayerControlApi {
     // Swift potion (x1.5) and Swift Soles boon (x1.18) stack on top.
     const speedK =
       (player.status.swift > 0 ? 1.5 : 1) * (player.perks.swiftfoot ? 1.18 : 1);
-    const stanceK = crouching ? 0.38 : 1; // crouch-creep
+    // crouch-creep 0.38; crawl 0.32 — slow is the crawl's whole cost
+    const stanceK = player.crawling ? 0.32 : crouching ? 0.38 : 1;
     const accel = (player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK,
       maxRun = 2.6 * speedK * stanceK;
     if (keys.left) {
@@ -433,7 +525,7 @@ export class PlayerControl implements PlayerControlApi {
       healTouch = 0,
       tpTouch = false,
       fungusBrush = false;
-    for (let dy = 0; dy < 17; dy += 2) {
+    for (let dy = 0; dy < bodyH; dy += 2) {
       for (let dx = -4; dx <= 4; dx += 2) {
         const X = player.x + dx,
           Y = player.y - dy;
@@ -457,7 +549,8 @@ export class PlayerControl implements PlayerControlApi {
         if (c === Cell.Fungus || c === Cell.Glowshroom) fungusBrush = true;
       }
     }
-    player.inLiquid = liquidCount >= 13;
+    // submersion threshold scales to the sampled body (13/45 -> 7/25 crawling)
+    player.inLiquid = liquidCount >= (player.crawling ? 7 : 13);
     // SPLASH: breaking the surface at speed throws up droplets of whatever
     // you fell into (the pool's own colors — the grid explains the splash).
     if (player.inLiquid && !this.prevInLiquid && player.vy > 1.2) {
@@ -525,13 +618,14 @@ export class PlayerControl implements PlayerControlApi {
     if (player.inLiquid) player.vy *= 0.88;
 
     // jump buffer: remember a fresh press for up to 8 frames before touchdown
+    // (a press while crawling is a stand attempt, never a buffered jump)
     const jumpPressed = keys.jump && !this.prevJumpHeld;
     this.prevJumpHeld = keys.jump;
-    if (jumpPressed) this.jumpBufferFrames = 8;
+    if (jumpPressed && !player.crawling) this.jumpBufferFrames = 8;
     else if (this.jumpBufferFrames > 0) this.jumpBufferFrames--;
 
     let levitating = false;
-    if (keys.jump) {
+    if (keys.jump && !player.crawling) {
       // coyote time: a press within 6 frames of walking off a ledge still gets the full jump
       const coyote = jumpPressed && this.framesSinceGrounded <= 6;
       if (player.grounded || player.inLiquid || coyote) {
@@ -600,6 +694,7 @@ export class PlayerControl implements PlayerControlApi {
       keys.down &&
       !player.grounded &&
       !player.inLiquid &&
+      !player.crawling && // S held off a ledge keeps the crawl, never a slam
       player.diveT === 0 &&
       player.vy > -1
     ) {
@@ -634,10 +729,10 @@ export class PlayerControl implements PlayerControlApi {
     player.mana = Math.min(player.maxMana, player.mana + 0.45);
     if (player.cooldown > 0) player.cooldown--;
 
-    // Move horizontally (sub-cell accumulator, with 2-cell step-up)
+    // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling)
     player.fx += player.vx;
     while (player.fx >= 1) {
-      if (!ctx.physics.tryMoveEntity(player, 1, 0, 4, 17, 5)) {
+      if (!ctx.physics.tryMoveEntity(player, 1, 0, 4, bodyH, stepUp)) {
         player.vx = 0;
         player.fx = 0;
         break;
@@ -645,7 +740,7 @@ export class PlayerControl implements PlayerControlApi {
       player.fx -= 1;
     }
     while (player.fx <= -1) {
-      if (!ctx.physics.tryMoveEntity(player, -1, 0, 4, 17, 5)) {
+      if (!ctx.physics.tryMoveEntity(player, -1, 0, 4, bodyH, stepUp)) {
         player.vx = 0;
         player.fx = 0;
         break;
@@ -656,7 +751,7 @@ export class PlayerControl implements PlayerControlApi {
     // Move vertically
     player.fy += player.vy;
     while (player.fy >= 1) {
-      if (!ctx.physics.tryMoveEntity(player, 0, 1, 4, 17, 0)) {
+      if (!ctx.physics.tryMoveEntity(player, 0, 1, 4, bodyH, 0)) {
         player.vy = 0;
         player.fy = 0;
         break;
@@ -664,7 +759,7 @@ export class PlayerControl implements PlayerControlApi {
       player.fy -= 1;
     }
     while (player.fy <= -1) {
-      if (!ctx.physics.tryMoveEntity(player, 0, -1, 4, 17, 0)) {
+      if (!ctx.physics.tryMoveEntity(player, 0, -1, 4, bodyH, 0)) {
         player.vy = 0;
         player.fy = 0;
         break;
@@ -674,7 +769,7 @@ export class PlayerControl implements PlayerControlApi {
     player.grounded = !ctx.physics.entityFree(player.x, player.y + 1, 4, 1);
     if (player.grounded) {
       // jump buffer: a press made just before touchdown fires on the landing frame
-      if (this.jumpBufferFrames > 0) {
+      if (this.jumpBufferFrames > 0 && !player.crawling) {
         player.vy = -3.7;
         player.grounded = false;
         player.fallPeak = 0; // this landing was consumed by the jump
@@ -689,13 +784,60 @@ export class PlayerControl implements PlayerControlApi {
       this.framesSinceGrounded++;
     }
 
-    // Aim and continuous fire
-    player.aimAngle = Math.atan2(ctx.input.mouse.y - (player.y - 9), ctx.input.mouse.x - player.x);
+    // ---- WALL GRAB (bouldering): "grounded" on nothing but the lip of a
+    // cliff — the only support under the 9-wide feet row sits at the body's
+    // edge, with a rock face rising beside it. Pose state ONLY: the
+    // pixel-catch mechanic that lets him cling and climb is untouched.
+    let grabSide = 0;
+    if (player.grounded && !player.crawling && !player.inLiquid && player.pullT === 0) {
+      let center = false,
+        leftEdge = false,
+        rightEdge = false;
+      const fy = player.y + 1;
+      for (let dx = -4; dx <= 4; dx++) {
+        const X = player.x + dx;
+        if (X < 0 || X >= WIDTH || fy >= HEIGHT) {
+          center = true; // the world border is a floor, not a hold
+          break;
+        }
+        if (!ctx.physics.cellBlocks(X, fy)) continue;
+        if (dx <= -3) leftEdge = true;
+        else if (dx >= 3) rightEdge = true;
+        else {
+          center = true;
+          break;
+        }
+      }
+      if (!center && leftEdge !== rightEdge) {
+        const side = leftEdge ? -1 : 1;
+        // a face worth gripping: solid rock beside the body through its height
+        let face = 0;
+        for (let dy = 1; dy <= 15; dy += 2) {
+          const X = player.x + side * 5,
+            Y = player.y - dy;
+          if (world.inBounds(X, Y) && blocksEntity(world.types[world.idx(X, Y)])) face++;
+        }
+        if (face >= 3) grabSide = side;
+      }
+    }
+    if (grabSide !== 0) {
+      player.wallGrabDir = grabSide;
+      player.wallGrabT = Math.min(10, player.wallGrabT + 2);
+    } else {
+      // slow decay: the airborne beats of a hand-over-hand climb keep the pose
+      player.wallGrabT = Math.max(0, player.wallGrabT - 1);
+    }
+
+    // Aim and continuous fire (the shoulder rides at prone height in a crawl)
+    player.aimAngle = Math.atan2(
+      ctx.input.mouse.y - (player.y - (player.crawling ? 4 : 9)),
+      ctx.input.mouse.x - player.x,
+    );
     if (Math.cos(player.aimAngle) !== 0) player.facing = Math.cos(player.aimAngle) >= 0 ? 1 : -1;
     // Absorb glowing goo: slime residue heals on contact
     if (player.hp < player.maxHp) {
       let absorbed = 0;
-      outerGoo: for (let dy = 0; dy < 17; dy++) {
+      outerGoo: for (let dy = 0; dy < bodyH; dy++) {
         for (let dx = -5; dx <= 5; dx++) {
           const gx = Math.floor(player.x) + dx,
             gy = Math.floor(player.y) - dy;
@@ -769,6 +911,8 @@ export class PlayerControl implements PlayerControlApi {
         player.y = ty;
         player.vx = 0;
         player.vy = 0;
+        player.crawling = false; // the arrival spot fits the full stance
+        player.wallGrabT = 0;
         ctx.particles.burst(tx, ty - 8, 18, null, () => packRGB(185, 110, 255), 2.6, {
           glow: 2.4,
           grav: 0,
@@ -799,34 +943,83 @@ export class PlayerControl implements PlayerControlApi {
     player._svx = player._svx * 0.55 + rvx * 0.45;
     player._svy = player._svy * 0.55 + rvy * 0.45;
 
-    // Stride wheel turns with actual ground speed; drifts slowly in the air
+    // Crawl sprite tilt: the body lays along the smoothed travel slope
+    // (dy per dx) so a diagonal chute reads as diagonal crawling. The
+    // collision box stays an axis-aligned square — only the drawing tilts.
+    const slopeTarget =
+      player.crawling && Math.abs(player._svx) > 0.25
+        ? clamp(player._svy / (Math.sign(player._svx) * Math.max(0.5, Math.abs(player._svx))), -1, 1)
+        : 0;
+    player.crawlSlope += (slopeTarget - player.crawlSlope) * 0.18;
+
+    // Stride wheel turns with actual ground speed; drifts slowly in the air.
+    // Crawling, the wheel is the hand-over-hand cycle (hands beat faster
+    // than boots at the same crawl speed).
     if (player.grounded && Math.abs(player._svx) > 0.2) {
-      player.stridePhase += Math.abs(player._svx) * 0.16;
+      player.stridePhase += Math.abs(player._svx) * (player.crawling ? 0.3 : 0.16);
       // FOOTSTEPS: each half-turn of the wheel is a foot meeting the ground,
       // and the ground decides the sound — stone ticks, sand hushes, wood
       // knocks, shallows slosh.
       const step = Math.floor(player.stridePhase / Math.PI);
       if (step !== this.lastStrideStep) {
         this.lastStrideStep = step;
-        const w2 = ctx.world;
-        const fx2 = Math.floor(player.x),
-          fy2 = Math.floor(player.y);
-        const at = w2.inBounds(fx2, fy2) ? w2.types[w2.idx(fx2, fy2)] : Cell.Empty;
-        const under = w2.inBounds(fx2, fy2 + 1) ? w2.types[w2.idx(fx2, fy2 + 1)] : Cell.Empty;
-        let surface: 'stone' | 'soft' | 'wet' | 'wood' = 'stone';
-        if (isLiquid(at)) surface = 'wet';
-        else if (
-          under === Cell.Sand ||
-          under === Cell.Snow ||
-          under === Cell.Ash ||
-          under === Cell.Gold ||
-          under === Cell.Coal
-        )
-          surface = 'soft';
-        else if (under === Cell.Wood || under === Cell.Vines) surface = 'wood';
-        ctx.audio.footstep(surface);
+        if (player.crawling) {
+          // hand-over-hand: a soft cloth shuffle, a pebble fleck at the hands
+          ctx.audio.crawlShuffle();
+          if (step % 2 === 0) {
+            ctx.particles.spawn(
+              player.x + player.facing * (3 + Math.floor(Math.random() * 2)),
+              player.y,
+              player.facing * 0.3,
+              -0.25,
+              null,
+              packRGB(135, 128, 118),
+              9,
+              { grav: 0.07 },
+            );
+          }
+        } else {
+          const w2 = ctx.world;
+          const fx2 = Math.floor(player.x),
+            fy2 = Math.floor(player.y);
+          const at = w2.inBounds(fx2, fy2) ? w2.types[w2.idx(fx2, fy2)] : Cell.Empty;
+          const under = w2.inBounds(fx2, fy2 + 1) ? w2.types[w2.idx(fx2, fy2 + 1)] : Cell.Empty;
+          let surface: 'stone' | 'soft' | 'wet' | 'wood' = 'stone';
+          if (isLiquid(at)) surface = 'wet';
+          else if (
+            under === Cell.Sand ||
+            under === Cell.Snow ||
+            under === Cell.Ash ||
+            under === Cell.Gold ||
+            under === Cell.Coal
+          )
+            surface = 'soft';
+          else if (under === Cell.Wood || under === Cell.Vines) surface = 'wood';
+          ctx.audio.footstep(surface);
+        }
       }
     } else if (!player.grounded) player.stridePhase += 0.05;
+
+    // Ceiling at exactly crawl gauge (solid at y-9): the hat scrapes along
+    // it now and then, shedding grit — you HEAR how tight the squeeze is.
+    if (
+      player.crawling &&
+      Math.abs(player._svx) > 0.3 &&
+      Math.random() < 0.03 &&
+      !ctx.physics.entityFree(player.x, player.y, 4, PLAYER_CRAWL_H + 1)
+    ) {
+      player.hat.vy += 0.5;
+      ctx.particles.spawn(
+        player.x + player.facing * 2,
+        player.y - PLAYER_CRAWL_H + 1,
+        -player.facing * 0.2,
+        0.3,
+        null,
+        packRGB(128, 120, 106),
+        12,
+        { grav: 0.08 },
+      );
+    }
 
     // TURN SKID: reversing at speed plants both heels — a beat of
     // anticipation (Dead Cells style) with scuffed dust and a hat whip.
@@ -962,7 +1155,9 @@ export class PlayerControl implements PlayerControlApi {
       player.pullT === 0 &&
       player.recharge === 0 &&
       player.staggerT === 0 &&
-      player.crouchT === 0; // a crouch is a stance, not boredom
+      player.crouchT === 0 && // a crouch is a stance, not boredom
+      player.crawlT === 0 &&
+      player.wallGrabT < 5; // and hanging off a cliff is no time to fidget
     if (!idle) {
       this.idleFrames = 0;
       player.fidgetT = 0;

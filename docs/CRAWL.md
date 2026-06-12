@@ -1,7 +1,11 @@
 # CRAWL — the second collision tier (design spec)
 
-**Status: PROPOSAL — not implemented.** Companion to docs/DESIGN.md (canonical design)
-and docs/FEEL.md (tuning numbers); merge the relevant sections into those on ship.
+**Status: VERB SHIPPED (June 2026).** The stance machine, 9×9 tier, feel pass,
+camera lead, prone muzzle, cramped feedback, and smaller projectile target are
+implemented (feel numbers merged into docs/FEEL.md). Per open question 4, the
+**crawl-pockets worldgen pass + `crawlMask` validator tier (§Level design rules
+2–5) are a follow-up** — verb first. The Limber Draught / Mole's Knees
+enhancements are also not yet in. Companion to docs/DESIGN.md.
 
 ## Why (and why now)
 
