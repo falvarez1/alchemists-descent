@@ -247,6 +247,27 @@ check(
   JSON.stringify(genProbe),
 );
 
+console.log('— wizard scale: the player FITS inside placed prefabs (real physics) —');
+const fitProbe = await page.evaluate(() => {
+  // entityFree(x, y, 4, 17) is the REAL collision test the player moves
+  // with: every placed prefab must offer standable 9x17 positions inside
+  const ctx = window.__game.ctx;
+  const out = [];
+  for (const p of ctx.levels.current.placedPrefabs ?? []) {
+    let standable = 0;
+    for (let y = p.y0 + 17; y <= p.y1; y++) {
+      for (let x = p.x0 + 4; x <= p.x1 - 4; x += 2) {
+        if (ctx.physics.entityFree(x, y, 4, 17)) standable++;
+      }
+    }
+    out.push({ id: p.id, standable });
+  }
+  return out;
+});
+for (const f of fitProbe) {
+  check(`the wizard can stand inside ${f.id}`, f.standable > 40, `standable=${f.standable}`);
+}
+
 await page.screenshot({ path: 'verify-out/machines-final.png' });
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 

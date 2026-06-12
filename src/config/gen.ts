@@ -18,8 +18,10 @@ import type { BiomeId } from '@/core/types';
  * means a stale save against new generation silently desyncs otherwise).
  * v2: per-biome skeleton flip + authored prefab placement pass.
  * v3: machine structure rooms (chain-reaction prefabs, 'machines' stream).
+ * v4: WIZARD-SCALE prefabs — interiors >= 22 tall (the player's collision
+ *     box is 9x17), anchors halfW 10 with walk-in connector tunnels.
  */
-export const GEN_VERSION = 3;
+export const GEN_VERSION = 4;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)

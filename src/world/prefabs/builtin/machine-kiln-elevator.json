@@ -8,22 +8,22 @@
     "kilnelevator",
     "builtin"
   ],
-  "w": 72,
-  "h": 56,
-  "rle": "kgADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADJgAMCQABFQAMBAADJgAMCQABFQAMBAADJgAMCQABFQAMBAADJgAMCQABFQAMBAADJgAMCQABFQAMBAADEAAMEQACBQAMCQABFQAMBAADEAAMEQACBQAMCQABFQAMBAADEAAMEQACBQAMCQABFQAMBAADEAAMEQACBQAMCQABFQAMBAADEAAMEQACBQAMBgAAGAAMBAADEAAMEQACBQAMBgAAGAAMBAADEAAMEQACBQAMBgAAGAAMBAADFgAMBQAACwAMBgAAGAAMBAADFgAMBQAACwAMBgAAGAAMBAADJgAMBgAAGAAMBAADJgAMBgAAGAAMBAADBgAMJQAAAwAMEQAABQAMBAADBgAMJQAAAwAMEQAABQAMBAADBgAMJQAAAQAMEwAABQAMBAADBgAMJQAAAQAMEwAABQAMBAADBgAMJQAAAQAMDAAABQAMAgAABQAMBAADBgAMJQAAAQAMDAAABQAMAgAABQAMAgADLQAAAQAMRwAAAQAMRwAAAQAMRwAAAQAMKAAAFQAcCgAAAQAMKAAAFQAcCgAAAQAMKAAAFQAcCgAAAQAMKAAAFQAcCgAAAQAMGgAAAgADRAAMBAADRAAMBAADRAAMBAADRAAMkgAD",
+  "w": 96,
+  "h": 74,
+  "rle": "wgADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADLAAMEQABHwAMBAADLAAMEQABHwAMBAADLAAMEQABHwAMBAADLAAMEQABHwAMBAADDgAMFwACBwAMEQABHwAMBAADDgAMFwACBwAMEQABHwAMBAADDgAMFwACBwAMEQABHwAMBAADDgAMFwACBwAMEQABHwAMBAADDgAMFwACBwAMEQABHwAMBAADDgAMFwACBwAMEQABHwAMBAADDgAMFwACBwAMEQABHwAMBAADDgAMFwACBwAMEQABHwAMBAADDgAMFwACBwAMEQABHwAMBAADDgAMFwACBwAMEQABHwAMBAADDgAMFwACBwAMCAAAKAAMBAADDgAMFwACBwAMCAAAKAAMBAADFgAMBgAAEAAMCAAAKAAMBAADFgAMBgAAEAAMCAAAKAAMBAADFgAMBgAAEAAMCAAAKAAMBAADFgAMBgAAEAAMCAAAKAAMBAADBgAMLwAABAAMGwAACAAMBAADBgAMLwAABAAMGwAACAAMAgAD0AYAGQAcGwAABQAMJwAAGQAcGwAABQAMJwAAGQAcRwAAGQAcNwAAAgADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMwgAD",
   "objects": [
     {
       "id": "s0",
       "kind": "sensor",
-      "x": 24,
-      "y": 44,
+      "x": 26,
+      "y": 62,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
         "type": "heat",
         "threshold": 8,
-        "zoneW": 16,
+        "zoneW": 18,
         "zoneH": 6,
         "latch": "permanent"
       }
@@ -32,12 +32,12 @@
       "id": "valve0",
       "kind": "valve",
       "x": 24,
-      "y": 32,
+      "y": 38,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
-        "w": 5,
+        "w": 6,
         "h": 2,
         "material": "metal"
       }
@@ -46,7 +46,7 @@
       "id": "s1",
       "kind": "sensor",
       "x": 11,
-      "y": 48,
+      "y": 66,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -61,8 +61,8 @@
     {
       "id": "relay0",
       "kind": "relay",
-      "x": 37,
-      "y": 49,
+      "x": 44,
+      "y": 65,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -74,13 +74,13 @@
     {
       "id": "plug0",
       "kind": "plug",
-      "x": 40,
-      "y": 29,
+      "x": 46,
+      "y": 36,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
-        "w": 6,
+        "w": 8,
         "h": 2,
         "material": "ash"
       }
@@ -88,34 +88,34 @@
     {
       "id": "cw0",
       "kind": "counterweight",
-      "x": 42,
-      "y": 49,
+      "x": 49,
+      "y": 65,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
-        "w": 7,
+        "w": 9,
         "threshold": 24
       }
     },
     {
       "id": "door0",
       "kind": "door",
-      "x": 46,
-      "y": 38,
+      "x": 55,
+      "y": 44,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
-        "w": 2,
-        "h": 12
+        "w": 4,
+        "h": 22
       }
     },
     {
       "id": "tome0",
       "kind": "pickup",
-      "x": 60,
-      "y": 39,
+      "x": 70,
+      "y": 61,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -126,8 +126,8 @@
     {
       "id": "gold0",
       "kind": "pickup",
-      "x": 54,
-      "y": 48,
+      "x": 78,
+      "y": 64,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -166,11 +166,11 @@
   "lights": [
     {
       "id": "L0",
-      "x": 24,
-      "y": 42,
+      "x": 26,
+      "y": 50,
       "color": "#ff8a3c",
       "intensity": 1.6,
-      "radius": 70,
+      "radius": 75,
       "bloom": 0.6,
       "flicker": 0.35,
       "falloff": "soft",
@@ -180,11 +180,11 @@
     },
     {
       "id": "L1",
-      "x": 56,
-      "y": 42,
+      "x": 72,
+      "y": 50,
       "color": "#9fd4ff",
       "intensity": 1,
-      "radius": 55,
+      "radius": 60,
       "bloom": 0.3,
       "flicker": 0.1,
       "falloff": "soft",
@@ -197,18 +197,18 @@
     {
       "id": "aw",
       "x": 0,
-      "y": 46,
+      "y": 54,
       "dir": "w",
       "kind": "open",
-      "halfW": 4
+      "halfW": 10
     },
     {
       "id": "ae",
-      "x": 71,
-      "y": 46,
+      "x": 95,
+      "y": 54,
       "dir": "e",
       "kind": "sealed",
-      "halfW": 3
+      "halfW": 10
     }
   ]
 }

@@ -58,47 +58,112 @@ describe('builtin prefab registry', () => {
 
 /* ---------------- earnability ---------------- */
 
-/** BFS over !blocksEntity cells of the prefab-local grid; closed gates
- *  (doors, rune doors, valves) and intact plugs are stamped solid (their
- *  material IS solid until earned). Relays chain as pure logic; plugs earn
- *  at their face or by relay detonation — mirrors builder/validate.ts. */
+/**
+ * WIZARD-CLEARANCE earnability audit. The player's collision box is 9x17
+ * cells and entityFree demands EVERY cell of it clear — so cell-BFS
+ * reachability is meaningless for walkability (the bug this audit replaces:
+ * rooms 12-16 tall passed CI that the wizard could never stand in).
+ *
+ * The grid gets an open APRON beyond each anchor (worldgen carves a tunnel
+ * of the anchor's gauge there). Two masks per round:
+ *  - cellSeen: plain open-cell BFS (the medium's view — water/sand/fire);
+ *  - feetSeen: positions where the 9x17 box FITS, connected by walking
+ *    (1-col steps) and jumps (up to 12 cells of rise per step).
+ * Hands-on triggers (plate/lever/brazier/scale/buoy/chargeLatch) and plug
+ * faces must be FEET-reachable; sensors/counterweights are machine-fed
+ * (cell-reachable); relays chain as logic; gates open per round; pickups
+ * must ALL be feet-reachable (loot inside our rooms is earnable, not
+ * buried). Mirrors builder/validate.ts semantics, with the body size made
+ * honest.
+ */
+const PW = 4; // player halfW (entities/physics.ts tryMoveEntity calls)
+const PH = 17; // player height — all 17 rows must be clear
+const JUMP = 12; // conservative standing-jump rise
+const APRON = 26; // open exterior carved beyond each anchor
+
 function earnabilityAudit(p: PrefabDef): {
   triggersReachable: boolean;
   doorsEarned: boolean;
   pickupReachable: boolean;
 } {
   const cells = decodePrefabCells(p);
-  const doors = p.objects.filter(
+  const GW = p.w + APRON * 2,
+    GH = p.h + APRON * 2;
+  const OX = APRON,
+    OY = APRON; // prefab-local -> padded grid offset
+  const gates = p.objects.filter(
     (o) => o.kind === 'door' || o.kind === 'runeDoor' || o.kind === 'valve',
   );
   const plugs = p.objects.filter((o) => o.kind === 'plug');
   const relays = p.objects.filter((o) => o.kind === 'relay');
   const trigLinks = p.links.filter((l) => l.kind === 'triggerDoor');
-  const openDoors = new Set<string>(); // earned gates AND broken plugs
+  const HANDS_ON = new Set(['plate', 'lever', 'brazier', 'scale', 'buoy', 'chargeLatch']);
+  const openDoors = new Set<string>();
   const firedRelays = new Set<string>();
 
   const buildBlocked = (): Uint8Array => {
-    const blocked = new Uint8Array(p.w * p.h);
-    for (let i = 0; i < cells.length; i++) blocked[i] = blocksEntity(cells[i]) ? 1 : 0;
-    for (const d of [...doors, ...plugs]) {
+    const blocked = new Uint8Array(GW * GH).fill(1);
+    for (let y = 0; y < p.h; y++) {
+      for (let x = 0; x < p.w; x++) {
+        blocked[OX + x + (OY + y) * GW] = blocksEntity(cells[x + y * p.w]) ? 1 : 0;
+      }
+    }
+    // anchor aprons: an open corridor of the anchor's gauge running outward
+    for (const a of p.anchors ?? []) {
+      const half = a.halfW ?? 4;
+      const dx = a.dir === 'e' ? 1 : a.dir === 'w' ? -1 : 0;
+      const dy = a.dir === 's' ? 1 : a.dir === 'n' ? -1 : 0;
+      for (let step = 0; step <= APRON; step++) {
+        const cx = OX + a.x + dx * step,
+          cy = OY + a.y + dy * step;
+        for (let o = -half; o <= half; o++) {
+          const X = cx + (dy !== 0 ? o : 0),
+            Y = cy + (dx !== 0 ? o : 0);
+          if (X >= 0 && X < GW && Y >= 0 && Y < GH) blocked[X + Y * GW] = 0;
+        }
+      }
+    }
+    for (const d of [...gates, ...plugs]) {
       if (openDoors.has(d.id)) continue;
       const fp = objectFootprint(d);
       if (!fp) continue;
-      for (let y = Math.max(0, fp.y0); y <= Math.min(p.h - 1, fp.y1); y++) {
-        for (let x = Math.max(0, fp.x0); x <= Math.min(p.w - 1, fp.x1); x++) {
-          blocked[x + y * p.w] = 1;
+      for (let y = fp.y0; y <= fp.y1; y++) {
+        for (let x = fp.x0; x <= fp.x1; x++) {
+          const X = OX + x,
+            Y = OY + y;
+          if (X >= 0 && X < GW && Y >= 0 && Y < GH) blocked[X + Y * GW] = 1;
         }
       }
     }
     return blocked;
   };
 
-  const bfs = (): Uint8Array => {
-    const blocked = buildBlocked();
-    const seen = new Uint8Array(p.w * p.h);
+  /** Feet positions where the full 9x17 body fits (strict erosion). */
+  const erodeFeet = (blocked: Uint8Array): Uint8Array => {
+    const hRun = new Uint8Array(GW * GH);
+    for (let y = 0; y < GH; y++) {
+      let run = 0;
+      for (let x = 0; x < GW; x++) {
+        run = blocked[x + y * GW] ? 0 : run + 1;
+        if (run >= PW * 2 + 1) hRun[x - PW + y * GW] = 1; // center of the last 9
+      }
+    }
+    const feet = new Uint8Array(GW * GH);
+    for (let x = 0; x < GW; x++) {
+      let run = 0;
+      for (let y = 0; y < GH; y++) {
+        run = hRun[x + y * GW] ? run + 1 : 0;
+        if (run >= PH) feet[x + y * GW] = 1; // feet at the bottom of the 17
+      }
+    }
+    return feet;
+  };
+
+  const bfsCells = (blocked: Uint8Array): Uint8Array => {
+    const seen = new Uint8Array(GW * GH);
     const queue: number[] = [];
     for (const a of p.anchors ?? []) {
-      const i = a.x + a.y * p.w;
+      const i = OX + a.x + (OY + a.y) * GW;
       if (!blocked[i] && !seen[i]) {
         seen[i] = 1;
         queue.push(i);
@@ -106,15 +171,13 @@ function earnabilityAudit(p: PrefabDef): {
     }
     for (let qi = 0; qi < queue.length; qi++) {
       const i = queue[qi];
-      const x = i % p.w,
-        y = (i - x) / p.w;
-      for (const [dx, dy] of [
-        [1, 0], [-1, 0], [0, 1], [0, -1],
-      ] as const) {
+      const x = i % GW,
+        y = (i - x) / GW;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
         const X = x + dx,
           Y = y + dy;
-        if (X < 0 || X >= p.w || Y < 0 || Y >= p.h) continue;
-        const j = X + Y * p.w;
+        if (X < 0 || X >= GW || Y < 0 || Y >= GH) continue;
+        const j = X + Y * GW;
         if (seen[j] || blocked[j]) continue;
         seen[j] = 1;
         queue.push(j);
@@ -123,28 +186,81 @@ function earnabilityAudit(p: PrefabDef): {
     return seen;
   };
 
+  /** Walk + jump over the feet mask: 1-col steps, rise up to JUMP, any fall. */
+  const bfsFeet = (feet: Uint8Array): Uint8Array => {
+    const seen = new Uint8Array(GW * GH);
+    const queue: number[] = [];
+    // seed every valid feet position inside the anchor aprons
+    for (const a of p.anchors ?? []) {
+      const dx = a.dir === 'e' ? 1 : a.dir === 'w' ? -1 : 0;
+      const dy = a.dir === 's' ? 1 : a.dir === 'n' ? -1 : 0;
+      const half = a.halfW ?? 4;
+      for (let step = 0; step <= APRON; step++) {
+        const cx = OX + a.x + dx * step,
+          cy = OY + a.y + dy * step;
+        for (let o = -half; o <= half; o++) {
+          const X = cx + (dy !== 0 ? o : 0),
+            Y = cy + (dx !== 0 ? o : 0);
+          if (X < 0 || X >= GW || Y < 0 || Y >= GH) continue;
+          const i = X + Y * GW;
+          if (feet[i] && !seen[i]) {
+            seen[i] = 1;
+            queue.push(i);
+          }
+        }
+      }
+    }
+    for (let qi = 0; qi < queue.length; qi++) {
+      const i = queue[qi];
+      const x = i % GW,
+        y = (i - x) / GW;
+      for (const dx of [-1, 0, 1]) {
+        const X = x + dx;
+        if (X < 0 || X >= GW) continue;
+        for (let dy = -JUMP; dy < GH - y; dy++) {
+          const Y = y + dy;
+          if (Y < 0 || Y >= GH) continue;
+          const j = X + Y * GW;
+          if (!seen[j] && feet[j]) {
+            seen[j] = 1;
+            queue.push(j);
+          }
+        }
+      }
+    }
+    return seen;
+  };
+
   const near = (seen: Uint8Array, x: number, y: number, r: number): boolean => {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
-        const X = Math.floor(x) + dx,
-          Y = Math.floor(y) + dy;
-        if (X >= 0 && Y >= 0 && X < p.w && Y < p.h && seen[X + Y * p.w]) return true;
+        const X = OX + Math.floor(x) + dx,
+          Y = OY + Math.floor(y) + dy;
+        if (X >= 0 && Y >= 0 && X < GW && Y < GH && seen[X + Y * GW]) return true;
       }
     }
     return false;
   };
 
-  // How a trigger earns: hands-on kinds need the player beside them; a plug
-  // counts once broken; a relay once its inputs chained through.
-  const trigEarnable = (t: PrefabDef['objects'][number], seen: Uint8Array): boolean =>
+  let blocked = buildBlocked();
+  let cellSeen = bfsCells(blocked);
+  let feetSeen = bfsFeet(erodeFeet(blocked));
+  const rebuild = (): void => {
+    blocked = buildBlocked();
+    cellSeen = bfsCells(blocked);
+    feetSeen = bfsFeet(erodeFeet(blocked));
+  };
+
+  type O = PrefabDef['objects'][number];
+  const trigEarnable = (t: O): boolean =>
     t.kind === 'plug'
       ? openDoors.has(t.id)
       : t.kind === 'relay'
         ? firedRelays.has(t.id)
-        : near(seen, t.x, t.y - 2, 4);
+        : HANDS_ON.has(t.kind)
+          ? near(feetSeen, t.x, t.y - 1, 6) // the wizard must STAND here
+          : near(cellSeen, t.x, t.y - 2, 5); // machine-fed (sensor/counterweight)
 
-  // Fixpoint: relays chain, plugs break, gates open -> repeat until stable.
-  let seen = bfs();
   let changed = true;
   while (changed) {
     changed = false;
@@ -153,12 +269,10 @@ function earnabilityAudit(p: PrefabDef): {
       const ins = trigLinks
         .filter((l) => l.toId === r.id)
         .map((l) => p.objects.find((o) => o.id === l.fromId))
-        .filter((t): t is PrefabDef['objects'][number] => t !== undefined);
+        .filter((t): t is O => t !== undefined);
       const ok =
         ins.length > 0 &&
-        (r.params.logic === 'or'
-          ? ins.some((t) => trigEarnable(t, seen))
-          : ins.every((t) => trigEarnable(t, seen)));
+        (r.params.logic === 'or' ? ins.some(trigEarnable) : ins.every(trigEarnable));
       if (ok) {
         firedRelays.add(r.id);
         changed = true;
@@ -168,19 +282,19 @@ function earnabilityAudit(p: PrefabDef): {
       if (openDoors.has(pl.id)) continue;
       const fp = objectFootprint(pl)!;
       const faceable = near(
-        seen,
+        feetSeen,
         (fp.x0 + fp.x1) / 2,
         (fp.y0 + fp.y1) / 2,
-        Math.ceil(Math.max(fp.x1 - fp.x0, fp.y1 - fp.y0) / 2) + 4,
+        Math.ceil(Math.max(fp.x1 - fp.x0, fp.y1 - fp.y0) / 2) + 6,
       );
       const detonated = trigLinks.some((l) => l.toId === pl.id && firedRelays.has(l.fromId));
       if (faceable || detonated) {
         openDoors.add(pl.id);
-        seen = bfs();
+        rebuild();
         changed = true;
       }
     }
-    for (const d of doors) {
+    for (const d of gates) {
       if (openDoors.has(d.id)) continue;
       const trigs = trigLinks
         .filter((l) => l.toId === d.id)
@@ -188,11 +302,11 @@ function earnabilityAudit(p: PrefabDef): {
       if (trigs.length === 0 || trigs.some((t) => t === undefined)) continue;
       const ok =
         d.params.logic === 'or'
-          ? trigs.some((t) => trigEarnable(t!, seen))
-          : trigs.every((t) => trigEarnable(t!, seen));
+          ? trigs.some((t) => trigEarnable(t!))
+          : trigs.every((t) => trigEarnable(t!));
       if (ok) {
         openDoors.add(d.id);
-        seen = bfs();
+        rebuild();
         changed = true;
       }
     }
@@ -200,13 +314,15 @@ function earnabilityAudit(p: PrefabDef): {
 
   const triggersReachable = trigLinks.every((l) => {
     const t = p.objects.find((o) => o.id === l.fromId);
-    return t !== undefined && trigEarnable(t, seen);
+    return t !== undefined && trigEarnable(t);
   });
   const doorsEarned =
-    doors.every((d) => openDoors.has(d.id)) && plugs.every((pl) => openDoors.has(pl.id));
-  const pickupReachable = p.objects
-    .filter((o) => o.kind === 'pickup')
-    .some((o) => near(seen, o.x, o.y - 1, 3));
+    gates.every((d) => openDoors.has(d.id)) && plugs.every((pl) => openDoors.has(pl.id));
+  // EVERY pickup must be wizard-reachable: loot inside an authored room is
+  // a promise, not buried treasure
+  const pickups = p.objects.filter((o) => o.kind === 'pickup');
+  const pickupReachable =
+    pickups.length === 0 || pickups.every((o) => near(feetSeen, o.x, o.y - 1, 6));
   return { triggersReachable, doorsEarned, pickupReachable };
 }
 
@@ -224,6 +340,53 @@ describe('builtin prefab earnability', () => {
       expect(audit.pickupReachable).toBe(true);
     });
   }
+});
+
+describe('the clearance audit has teeth', () => {
+  it('a 14-tall corridor (the old bug) FAILS the wizard-clearance audit', () => {
+    // hand-built regression shape: anchor throat + corridor only 14 tall
+    // (cell-BFS sails through; a 9x17 body cannot)
+    const w = 60,
+      h = 30;
+    const cells = new Uint8Array(w * h).fill(Cell.Wall);
+    for (let y = 10; y <= 23; y++) {
+      for (let x = 0; x < w; x++) cells[x + y * w] = Cell.Empty; // 14 tall
+    }
+    const rleEncode = (types: Uint8Array): string => {
+      const out: number[] = [];
+      let run = 1;
+      for (let i = 1; i <= types.length; i++) {
+        if (i < types.length && types[i] === types[i - 1] && run < 0xffff) {
+          run++;
+          continue;
+        }
+        out.push(run & 0xff, (run >> 8) & 0xff, types[i - 1]);
+        run = 1;
+      }
+      return btoa(String.fromCharCode(...out));
+    };
+    const tight: PrefabDef = {
+      v: 1,
+      kind: 'prefab',
+      id: 'test-too-tight',
+      name: 'too tight',
+      tags: [],
+      w,
+      h,
+      rle: rleEncode(cells),
+      objects: [
+        {
+          id: 'gold0', kind: 'pickup', x: 50, y: 22, rotation: 0,
+          locked: false, hidden: false, params: { kind: 'goldpile', amount: 10 },
+        },
+      ],
+      links: [],
+      lights: [],
+      anchors: [{ id: 'aw', x: 0, y: 16, dir: 'w', kind: 'open', halfW: 10 }],
+    };
+    const audit = earnabilityAudit(tight);
+    expect(audit.pickupReachable).toBe(false); // the wizard cannot stand in 14 rows
+  });
 });
 
 /* ---------------- placement ---------------- */

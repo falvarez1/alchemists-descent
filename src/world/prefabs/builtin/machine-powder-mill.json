@@ -8,46 +8,46 @@
     "powdermill",
     "builtin"
   ],
-  "w": 84,
-  "h": 48,
-  "rle": "qgADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADHQAMBQAALgAMBAADHQAMBQAALgAMBAADAgAMHQAAAQAEGwAAAwAMEAAAAgAMBAADAgAMHQAAAQAEGwAAAwAMEAAAAgAMBAADAgAMHQAAAQAELgAAAgAMBAADAgAMHQAAAQAELgAAAgAMBAADAgAMHQAAAQAELgAAAgAMBAADAgAMHQAAAQAELgAAAgAMAgADIQAAAQAEfgIAUAEMqAAD",
+  "w": 96,
+  "h": 66,
+  "rle": "wgADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADHAAMEQABLwAMBAADIQAMBwAANAAMBAADIQAMBwAANAAMBAADAgAMIgAAAQAEHgAABAAMEQAABAAMBAADAgAMIgAAAQAEHgAABAAMEQAABAAMAgADJgAAAQAEXwAAAQAEXwAAAQAEWQcAXgAMAgADXgAMAgADXgAMAgADXgAMBAADXAAMBAADXAAMBAADXAAMBAADXAAMwgAD",
   "objects": [
     {
       "id": "door0",
       "kind": "door",
-      "x": 61,
-      "y": 30,
+      "x": 69,
+      "y": 34,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
-        "w": 3,
-        "h": 12
+        "w": 4,
+        "h": 22
       }
     },
     {
       "id": "cw0",
       "kind": "counterweight",
-      "x": 33,
-      "y": 41,
+      "x": 38,
+      "y": 55,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
-        "w": 7,
+        "w": 9,
         "threshold": 24
       }
     },
     {
       "id": "plug0",
       "kind": "plug",
-      "x": 31,
-      "y": 26,
+      "x": 35,
+      "y": 30,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
-        "w": 5,
+        "w": 7,
         "h": 2,
         "material": "wood"
       }
@@ -56,7 +56,7 @@
       "id": "braz0",
       "kind": "brazier",
       "x": 28,
-      "y": 41,
+      "y": 55,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -65,8 +65,8 @@
     {
       "id": "relay0",
       "kind": "relay",
-      "x": 30,
-      "y": 41,
+      "x": 31,
+      "y": 55,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -78,8 +78,8 @@
     {
       "id": "gold0",
       "kind": "pickup",
-      "x": 70,
-      "y": 40,
+      "x": 78,
+      "y": 54,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -91,8 +91,8 @@
     {
       "id": "chest0",
       "kind": "pickup",
-      "x": 75,
-      "y": 40,
+      "x": 84,
+      "y": 54,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -124,11 +124,11 @@
   "lights": [
     {
       "id": "L0",
-      "x": 30,
-      "y": 32,
+      "x": 34,
+      "y": 40,
       "color": "#ffb060",
       "intensity": 1.4,
-      "radius": 80,
+      "radius": 85,
       "bloom": 0.5,
       "flicker": 0.4,
       "falloff": "soft",
@@ -141,18 +141,18 @@
     {
       "id": "aw",
       "x": 0,
-      "y": 38,
+      "y": 44,
       "dir": "w",
       "kind": "open",
-      "halfW": 4
+      "halfW": 10
     },
     {
       "id": "ae",
-      "x": 83,
-      "y": 38,
+      "x": 95,
+      "y": 44,
       "dir": "e",
       "kind": "sealed",
-      "halfW": 3
+      "halfW": 10
     }
   ]
 }

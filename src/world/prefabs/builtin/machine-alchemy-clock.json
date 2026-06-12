@@ -8,20 +8,20 @@
     "alchemyclock",
     "builtin"
   ],
-  "w": 64,
-  "h": 58,
-  "rle": "HAADBwAAOQADBwAAHwADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADFgAMDwAAAwAMCQACCwAMBAADFgAMDwAAAwAMCQACCwAMBAADFgAMDwAAAQAMAgAACQACCwAMBAADFgAMDwAAAQAMAgAACQACCwAMBAADFgAMDwAAAQAMAgAACQACCwAMBAADFgAMDwAAAQAMAgAACQACCwAMBAADFgAMDwAAAwAMCQACCwAMBAADFgAMDwAAFwAMBAADFgAMDwAAFwAMBAADGwAMBQAAHAAMBAADGwAMBQAAHAAMBAADDAAMHQAAEwAMBAADDAAMHQAAEwAMBAADDAAMAgAAAgAMGQAAEwAMBAADDAAMAgAAAgAMGQAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAALgAMBAADDAAMAgAALgAMBAADDAAMAgAALgAMBAADCgAMKAAACgAMBAADCgAMKAAACgAMBAADCgAMMAAAAgAMBAADCgAMMAAAAgAMBAADCgAMMAAAAgAMBAADCgAMMAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMBAADPAAMBAADPAAMBAADPAAMBAADPAAMBAADPAAMBAADPAAMBAADPAAMBAADPAAMggAD",
+  "w": 84,
+  "h": 88,
+  "rle": "JgADCQAASwADCQAAJwADJAAMCQAAIwAMBAADJAAMCQAAIwAMBAADJAAMCQAAIwAMBAADJAAMCQAAIwAMBAADJAAMCQAAIwAMBAADJAAMCQAAIwAMBAADJAAMCQAAIwAMBAADJAAMCQAAIwAMBAADJAAMCQAAIwAMBAADJAAMCQAAIwAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADIAAMFwAAGQAMBAADKAAMBgAAIgAMBAADKAAMBgAAIgAMBAADUAAMBAADUAAMBAADHAAMHwAAFQAMBAADHAAMHwAAFQAMBAADAgAMOQAAFQAMBAADAgAMOQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAAAgAMHQAAFQAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMBAADAgAMGgAANAAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADPwAAEwAMAgADUgAMAgADUgAMAgADUgAMAgADUgAMBAADUAAMBAADUAAMqgAD",
   "objects": [
     {
       "id": "valve0",
       "kind": "valve",
-      "x": 29,
-      "y": 19,
+      "x": 42,
+      "y": 24,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
-        "w": 5,
+        "w": 6,
         "h": 2,
         "material": "glass"
       }
@@ -29,15 +29,15 @@
     {
       "id": "s0",
       "kind": "sensor",
-      "x": 31,
-      "y": 19,
+      "x": 52,
+      "y": 24,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
         "type": "liquid",
         "threshold": 10,
-        "zoneW": 11,
+        "zoneW": 13,
         "zoneH": 5,
         "latch": "permanent"
       }
@@ -45,15 +45,15 @@
     {
       "id": "s1",
       "kind": "sensor",
-      "x": 31,
-      "y": 31,
+      "x": 46,
+      "y": 43,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
         "type": "liquid",
         "threshold": 10,
-        "zoneW": 11,
+        "zoneW": 13,
         "zoneH": 5,
         "latch": "permanent"
       }
@@ -61,8 +61,8 @@
     {
       "id": "relay0",
       "kind": "relay",
-      "x": 24,
-      "y": 47,
+      "x": 12,
+      "y": 79,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -73,35 +73,21 @@
     {
       "id": "door0",
       "kind": "door",
-      "x": 52,
-      "y": 36,
+      "x": 30,
+      "y": 58,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
-        "w": 2,
-        "h": 12
-      }
-    },
-    {
-      "id": "plug0",
-      "kind": "plug",
-      "x": 40,
-      "y": 12,
-      "rotation": 0,
-      "locked": false,
-      "hidden": false,
-      "params": {
-        "w": 2,
-        "h": 4,
-        "material": "glass"
+        "w": 4,
+        "h": 22
       }
     },
     {
       "id": "pot0",
       "kind": "pickup",
-      "x": 56,
-      "y": 46,
+      "x": 44,
+      "y": 78,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -112,14 +98,26 @@
     {
       "id": "gold0",
       "kind": "pickup",
-      "x": 58,
-      "y": 46,
+      "x": 52,
+      "y": 78,
       "rotation": 0,
       "locked": false,
       "hidden": false,
       "params": {
         "kind": "goldpile",
         "amount": 55
+      }
+    },
+    {
+      "id": "pot1",
+      "kind": "pickup",
+      "x": 57,
+      "y": 78,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "potion"
       }
     }
   ],
@@ -146,11 +144,11 @@
   "lights": [
     {
       "id": "L0",
-      "x": 31,
-      "y": 14,
+      "x": 16,
+      "y": 40,
       "color": "#9fd4ff",
       "intensity": 1.2,
-      "radius": 70,
+      "radius": 75,
       "bloom": 0.4,
       "flicker": 0.15,
       "falloff": "soft",
@@ -160,11 +158,11 @@
     },
     {
       "id": "L1",
-      "x": 36,
-      "y": 42,
+      "x": 45,
+      "y": 16,
       "color": "#5eead4",
       "intensity": 1,
-      "radius": 55,
+      "radius": 60,
       "bloom": 0.3,
       "flicker": 0.12,
       "falloff": "soft",
@@ -176,19 +174,19 @@
   "anchors": [
     {
       "id": "an",
-      "x": 31,
+      "x": 42,
       "y": 0,
       "dir": "n",
       "kind": "open",
-      "halfW": 3
+      "halfW": 4
     },
     {
       "id": "aw",
       "x": 0,
-      "y": 44,
+      "y": 68,
       "dir": "w",
       "kind": "open",
-      "halfW": 4
+      "halfW": 10
     }
   ]
 }

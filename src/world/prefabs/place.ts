@@ -278,17 +278,22 @@ function openAnchors(
     const mx = Math.min(WIDTH - 7, Math.max(6, ax + dx * (halfW + 1)));
     const my = Math.min(HEIGHT - 12, Math.max(26, ay + dy * (halfW + 1)));
     carvePocket(world, mx, my, halfW, halfW);
-    const steps = connectToCaves(world, rng, graph, mx, my);
+    // the connector inherits the anchor's gauge: the player's collision box
+    // is 9x17, so a WALK-IN anchor (halfW >= 9) gets a walk-in tunnel
+    const steps = connectToCaves(world, rng, graph, mx, my, Math.max(4, halfW - 1));
 
     if (a.kind === 'sealed') {
       const skin = breachSkinCell(ctx.state.currentBiome);
       const skinColor = breachSkinColorFn(ctx.state.currentBiome, rng);
+      // the reseal plug scales with the mouth — a wide tunnel needs a wide
+      // skin or the BFS (and the player's eye) slips around it
+      const plugR = Math.max(PLUG_RADIUS, halfW + 1);
       const plug: Array<[number, number]> =
         steps.length > 0 ? steps.slice(0, PLUG_STEPS) : [[mx, my]];
       for (const [sx, sy] of plug) {
-        for (let oy = -PLUG_RADIUS; oy <= PLUG_RADIUS; oy++) {
-          for (let ox = -PLUG_RADIUS; ox <= PLUG_RADIUS; ox++) {
-            if (ox * ox + oy * oy > PLUG_RADIUS * PLUG_RADIUS) continue;
+        for (let oy = -plugR; oy <= plugR; oy++) {
+          for (let ox = -plugR; ox <= plugR; ox++) {
+            if (ox * ox + oy * oy > plugR * plugR) continue;
             const X = sx + ox,
               Y = sy + oy;
             if (!world.inBounds(X, Y)) continue;

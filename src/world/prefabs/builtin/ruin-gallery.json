@@ -7,15 +7,15 @@
     "setpiece",
     "builtin"
   ],
-  "w": 90,
-  "h": 40,
-  "rle": "0gIDGAAAAgAMGAAAAgAMIgAABAADGAAAAgAMGAAAAgAMIgAABAADGAAAAgAMGAAAAgAMIgAABAADGAAAAgAMGAAAAgAMIgAABAADGAAAAgAMGAAAAgAMIgAABAADGAAAAgAMPAAABAADEgAADwAENQAABAADEgAADwAENQAABAADLAAADwAEGwAABAADLAAADwAEGwAABAADJAAAAwAMLwAABAADJAAAAwAMLwAABAADJAAAAwAMLwAABAADJAAAAwAMLwAABAADDAAAAwAMFQAAAwAMLwAABAADDAAAAwAMFQAAAwAMLwAABAADDAAAAwAMFQAAAwAMFQAAAwAMFwAABAADDAAAAwAMFQAAAwAMFQAAAwAMFwAAAgADDgAAAwAMFQAAAwAMFQAAAwAMJwAAAwAMFQAAAwAMFQAAAwAMJwAAAwAMFQAAAwAMFQAAAwAMJwAAAwAMFQAAAwAMFQAAAwAMJwAAAwAMFQAAAwAMFQAAAwAMJwAAAwAMFQAAAwAMFQAAAwAMBQAABQAEHQAAAwAMFQAAAwAMFQAAAwAMBQAABQAEHQAAAwAMFQAAAwAMFQAAAwAMBQAABQAEDwAAaAEMtAAD",
+  "w": 104,
+  "h": 52,
+  "rle": "4gQDHgAAAgAMHgAAAgAMJAAABAADHgAAAgAMHgAAAgAMJAAABAADHgAAAgAMHgAAAgAMJAAABAADHgAAAgAMHgAAAgAMJAAABAADHgAAAgAMHgAAAgAMJAAABAADHgAAAgAMRAAABAADZAAABAADZAAABAADZAAABAADZAAAAgADcAMAAwAMZQAAAwAMRwAAAwAMGwAAAwAMRwAAAwAMGwAAAwAMRwAAAwAMGwAAAwAMGwAAAwAMKQAAAwAMGwAAAwAMGwAAAwAMKQAAAwAMGwAAAwAMGwAAAwAMKQAAAwAMGwAAAwAMGwAAAwAMKQAAAwAMGwAAAwAMGwAAAwAMKQAAAwAMGwAAAwAMGwAAAwAMKQAAAwAMGwAAAwAMGwAAAwAMKQAAAwAMBQAADQAECQAAAwAMGwAAAwAMBQAABwAEHQAAAwAMBQAADQAECQAAAwAMBQAACwAECwAAAwAMBQAABwAEHQAAAwAMGwAAAwAMBQAACwAECwAAAwAMBQAABwAECwAAoAEMoAED",
   "objects": [
     {
       "id": "gold0",
       "kind": "pickup",
-      "x": 30,
-      "y": 32,
+      "x": 42,
+      "y": 42,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -27,8 +27,8 @@
     {
       "id": "gold1",
       "kind": "pickup",
-      "x": 58,
-      "y": 32,
+      "x": 70,
+      "y": 41,
       "rotation": 0,
       "locked": false,
       "hidden": false,
@@ -42,8 +42,8 @@
   "lights": [
     {
       "id": "L0",
-      "x": 24,
-      "y": 12,
+      "x": 28,
+      "y": 18,
       "color": "#ffb060",
       "intensity": 1.2,
       "radius": 75,
@@ -56,8 +56,8 @@
     },
     {
       "id": "L1",
-      "x": 66,
-      "y": 13,
+      "x": 76,
+      "y": 20,
       "color": "#ffb060",
       "intensity": 1.2,
       "radius": 75,
@@ -73,18 +73,18 @@
     {
       "id": "aw",
       "x": 0,
-      "y": 30,
+      "y": 32,
       "dir": "w",
       "kind": "open",
-      "halfW": 4
+      "halfW": 10
     },
     {
       "id": "ae",
-      "x": 89,
-      "y": 30,
+      "x": 103,
+      "y": 32,
       "dir": "e",
       "kind": "open",
-      "halfW": 4
+      "halfW": 10
     }
   ]
 }

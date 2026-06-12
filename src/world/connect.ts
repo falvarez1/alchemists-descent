@@ -37,9 +37,13 @@ export function carvePocket(
 
 /**
  * REACHABILITY GUARANTEE: every carved structure must join the cave network.
- * Winds a 4-radius tunnel from a structure's mouth to the nearest sizable
- * open region's centroid (Metal is never breached, so vault shells and water
+ * Winds a tunnel from a structure's mouth to the nearest sizable open
+ * region's centroid (Metal is never breached, so vault shells and water
  * tanks survive their own approach tunnels).
+ *
+ * `radius` defaults to the legacy 4 (a 9-tall crawl — fine for secrets and
+ * loot pockets the player digs into). WALKABLE connections need >= 9: the
+ * player's collision box is 9x17, every cell of it must be clear.
  *
  * Returns the carve-step centers in walk order (first = nearest the mouth),
  * so callers can reseal part of the tunnel (sealed prefab anchors).
@@ -50,6 +54,7 @@ export function connectToCaves(
   graph: RegionGraph,
   fromX: number,
   fromY: number,
+  radius = 4,
 ): Array<[number, number]> {
   const steps: Array<[number, number]> = [];
   // Target the nearest MAIN-PATH region: those form the spawn<->exit artery,
@@ -96,9 +101,9 @@ export function connectToCaves(
     guard++;
     x += Math.sign(tx - x) * (rng.next() < 0.8 ? 1 : 0) + Math.floor((rng.next() - 0.5) * 2);
     y += Math.sign(ty - y) * (rng.next() < 0.8 ? 1 : 0);
-    x = Math.floor(clamp(x, 6, WIDTH - 7));
+    x = Math.floor(clamp(x, radius + 2, WIDTH - radius - 3));
     y = Math.floor(clamp(y, 26, HEIGHT - 12));
-    carvePocket(world, x, y, 4, 4);
+    carvePocket(world, x, y, radius, radius);
     steps.push([x, y]);
   }
   return steps;
