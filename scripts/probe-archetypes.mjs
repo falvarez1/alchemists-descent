@@ -80,6 +80,9 @@ if (freezeSeed > 0) {
     const drip = (rt.emitters ?? []).find(
       (e) => e.cell === 16 && Math.abs(e.x - (px2 - 2)) <= 2 && Math.abs(e.y - (py2 - 9)) <= 2,
     );
+    // resident mobs maul the parked wizard (knockback shoves him off the
+    // apron and their blood pollutes the chamber) — clear them, in place
+    ctx.enemies.length = 0;
     // park the wizard in the chamber so the sim window covers it
     ctx.player.x = px2 + 9;
     ctx.player.y = py2 + 2;
@@ -89,9 +92,11 @@ if (freezeSeed > 0) {
     // channel must stay essentially liquid
     await new Promise((r) => setTimeout(r, 5000));
     const iceTrayIntact = count(10, z.x0, z.y0, z.x1, z.y1);
-    // break the catch-tray
+    // break the catch-tray (floor + both 2-high brim walls)
     for (let dx = -4; dx <= 0; dx++) w.types[w.idx(px2 + dx, py2 - 6)] = 0;
-    for (const dx of [-4, 0]) w.types[w.idx(px2 + dx, py2 - 7)] = 0;
+    for (const dx of [-4, 0]) {
+      for (const dy of [-7, -8]) w.types[w.idx(px2 + dx, py2 + dy)] = 0;
+    }
     // poll up to 30s for the crust -> latch -> door retraction
     let ice = 0,
       latched = false,
@@ -200,12 +205,26 @@ if (circuit) {
     const levers = rt.mechanisms.filter(
       (m) => m.kind === 'lever' && valves.some((v) => v.id === m.targetId),
     );
+    // resident mobs maul the parked wizard: a golem's knockback shoved him
+    // into a valve column at the close edge (the safe-close rule skips
+    // body-occupied cells, permanently holing the gate) and combat blood is
+    // a CONDUCTOR that bridged the open gap — clear them, in place
+    ctx.enemies.length = 0;
     // park the wizard on the apron so the sim window covers the chamber
     ctx.player.x = px2 + 10;
     ctx.player.y = py2 + 2;
     ctx.player.vx = 0;
     ctx.player.vy = 0;
     await new Promise((r) => setTimeout(r, 1000));
+    // scrub stray liquids out of the switch slots: the dry hunt tolerates
+    // up to 2 wet cells in the window, and a conductive drop sitting in a
+    // gap slot would both fake a bridge and dodge the close stamp
+    for (const gx of [px2 - 3, px2 + 2]) {
+      for (let Y = railY - 1; Y <= railY + 1; Y++) {
+        const t = w.types[w.idx(gx, Y)];
+        if (t === 2 || t === 6 || t === 18) w.types[w.idx(gx, Y)] = 0;
+      }
+    }
     const gapMetal = () =>
       (w.types[w.idx(px2 - 3, railY)] === 13 ? 1 : 0) +
       (w.types[w.idx(px2 + 2, railY)] === 13 ? 1 : 0);

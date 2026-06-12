@@ -24,8 +24,11 @@ import type { BiomeId } from '@/core/types';
  *     six-way, biome-biased archetype roll (consumes one extra rng draw).
  * v6: the Refuge — a hewn rest alcove off the portal shrine on every level
  *     (its gallery consumes rng draws ahead of all later placements).
+ * v7: Freeze Bridge catch-tray walls raised to the drop-cell row — the brim
+ *     is the fill line, so a saturated cup chokes the emitter instead of
+ *     overflowing a drop into the trench (the tray-intact puzzle leaked).
  */
-export const GEN_VERSION = 6;
+export const GEN_VERSION = 7;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)

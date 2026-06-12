@@ -870,7 +870,12 @@ export function placeStructures(
         emitters.push({ x: px2 - 2, y: py2 - 9, cell: Cell.Nitrogen, rate: 9, dir: 0, burst: 1, phase: 0 });
         // the catch-tray: a stone cup under the drip; drops pool inside and
         // evaporate before they matter. Dig or blast it away to let the
-        // cold reach the channel.
+        // cold reach the channel. The walls rise to the drop cell's row so
+        // the brim IS the fill line: a full cup occupies the drop cell and
+        // the emitter self-chokes (the refuge cistern trick) — with 1-high
+        // walls a drop landing on a saturated cup drifted one cell over the
+        // brim and free-fell into the trench, freezing the channel in
+        // seconds with the tray intact.
         for (let dx = -2; dx <= 2; dx++) {
           const i = w.idx(px2 - 2 + dx, py2 - 6);
           if (w.types[i] !== Cell.Metal) {
@@ -879,10 +884,12 @@ export function placeStructures(
           }
         }
         for (const dx of [-2, 2]) {
-          const i = w.idx(px2 - 2 + dx, py2 - 7);
-          if (w.types[i] !== Cell.Metal) {
-            w.types[i] = Cell.Stone;
-            w.colors[i] = stoneColor();
+          for (const dy of [-7, -8]) {
+            const i = w.idx(px2 - 2 + dx, py2 + dy);
+            if (w.types[i] !== Cell.Metal) {
+              w.types[i] = Cell.Stone;
+              w.colors[i] = stoneColor();
+            }
           }
         }
         makeSensor(
