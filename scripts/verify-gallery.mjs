@@ -56,7 +56,7 @@ const counts = await page.evaluate(() => {
 });
 check('13 mechanism items', counts.mech === 13, JSON.stringify(counts));
 check('all 7 builtin prefabs listed', counts.prefab >= 7, String(counts.prefab));
-check('player + 11 enemies listed', counts.entity === 12, String(counts.entity));
+check('player + 12 enemies listed', counts.entity === 13, String(counts.entity));
 
 /* ---------- the stage is alive ---------- */
 const snap = () =>

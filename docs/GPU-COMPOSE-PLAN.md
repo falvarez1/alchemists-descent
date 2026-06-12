@@ -1,9 +1,18 @@
 # GPU Frame Composition — implementation plan (perf ticket #8)
 
-**Status: PROPOSAL — approved by Frank June 2026, deferred "until frame budget
-actually hurts." Not implemented.** This document is the complete brief for the
-session that picks it up. Read `ARCHITECTURE.md` (frame-order contract) and the
-perf notes below before writing code.
+**Status: IMPLEMENTED June 2026 — behind `postFx.gpuCompose`, default OFF
+pending Frank's eyeball pass** (flip the default in `config/params.ts`).
+All four phases landed in one pass: `src/render/ComposeShader.ts` (shader +
+window packer + overlay), Renderer material swap, FrameComposer gating, PerfHud
+compose/gl sub-buckets. Parity probe `scripts/probe-compose-parity.mjs` is 8/8
+green (static scene 99.999% pixel-exact / max delta 1 LSB, flicker
+distribution-identical, postFx-ON chain bit-exact); same-session A/B lives in
+`scripts/perf-ab-compose.mjs`. Deviations from this plan, all measured-safe:
+pad P = 64 (not 40 — singularity strength −16 stacks with a max lens to ~49
+cells), bgNear uploads as R32F not R8 (exactness; 6.8MB VRAM once), window
+texture is RGBA8UI (integer fetches, no unorm rounding risk), overlay is
+RGBA16F with written-index-only f16 conversion. The plan below is kept as the
+reference brief.
 
 ## The problem, measured
 

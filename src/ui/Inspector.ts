@@ -34,7 +34,7 @@ export function paramSliderSpec(propKey: string): {
   return { min, max, step, label };
 }
 
-type BooleanPostFxKey = 'enabled' | 'bloomEnabled' | 'lensEnabled';
+type BooleanPostFxKey = 'enabled' | 'gpuCompose' | 'bloomEnabled' | 'lensEnabled';
 type NumberPostFxKey = Exclude<keyof PostFxSettings, BooleanPostFxKey>;
 
 /**
@@ -125,6 +125,7 @@ export class Inspector {
 
     const checkboxSpecs: Array<[string, BooleanPostFxKey]> = [
       ['post-enabled', 'enabled'],
+      ['post-gpu-compose', 'gpuCompose'],
       ['post-bloom-enabled', 'bloomEnabled'],
       ['post-lens-enabled', 'lensEnabled'],
     ];

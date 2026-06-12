@@ -113,6 +113,9 @@ export function createGameParams(): GameParams {
 export function createDefaultPostFxSettings(): PostFxSettings {
   return {
     enabled: true,
+    // Default OFF until the GPU-compose acceptance gate + Frank's eyeball
+    // pass (docs/GPU-COMPOSE-PLAN.md); flip here once approved.
+    gpuCompose: false,
     bloomEnabled: true,
     bloomStrength: 0.35,
     bloomRadius: 0.2,

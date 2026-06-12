@@ -47,10 +47,49 @@ export interface ParallaxLayers {
   readonly bgNear: Float32Array;
 }
 
+/** A black-hole image lens as the composer feeds it to the distortion pass. */
+export interface CompositorLens {
+  cx: number;
+  cy: number;
+  /** Influence radius (vortexRad * 2.1). */
+  R: number;
+  /** Pinch strength (4 + vortexRad * 0.16). */
+  K: number;
+}
+
+/**
+ * The sprite layer of a GPU-composed frame (perf ticket #8). Same Float RGBA
+ * layout and Y-flipped indexing as `pixelData`; alpha 1 = "setPx replaced the
+ * terrain here", alpha 0 = additive only. Writers must `mark()` every pixel
+ * they touch — only marked pixels are cleared next frame and uploaded.
+ */
+export interface OverlaySurface {
+  /** Float RGBA staging, VIEW_W x VIEW_H, Y-flipped rows. */
+  readonly data: Float32Array;
+  /** Record a touched pixel (pixel index, not float offset). Idempotent. */
+  mark(pixelIdx: number): void;
+}
+
 /** The CPU-side framebuffer the composer writes into (owned by the Three.js renderer). */
 export interface RenderTarget {
   /** Float RGBA, VIEW_W x VIEW_H, Y-flipped rows for GL texture orientation. */
   readonly pixelData: Float32Array;
-  /** Flag the GPU texture for re-upload after the buffer was written. */
+  /** Flag the GPU texture for re-upload after the buffer was written (CPU path). */
   markTextureDirty(): void;
+  /** WebGL2 + shader path usable; false = the CPU loop is the permanent fallback. */
+  readonly gpuComposeAvailable: boolean;
+  /**
+   * Start a GPU-composed frame: packs the world window texture, feeds the
+   * lighting/LUT/distortion uniforms, and clears last frame's overlay writes.
+   * Returns the overlay surface this frame's sprites draw into.
+   */
+  beginGpuCompose(
+    ctx: Ctx,
+    light: LightField,
+    layers: ParallaxLayers,
+    lenses: readonly CompositorLens[],
+    lightRebuilt: boolean,
+  ): OverlaySurface;
+  /** Finish a GPU-composed frame: stage written overlay pixels for upload. */
+  commitGpuCompose(): void;
 }

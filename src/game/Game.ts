@@ -267,9 +267,13 @@ export class Game {
     // Compose the frame, sync the HUD on even frames, then present.
     const tRender = performance.now();
     this.composer.compose(ctx);
+    const tCompose = performance.now();
+    this.perfHud.mark('compose', tCompose - tRender);
     if (ctx.state.mode === 'play' && ctx.state.frameCount % 2 === 0) this.hud.update(ctx);
     this.minimap.update(ctx);
+    const tGl = performance.now();
     this.renderer.render(ctx);
+    this.perfHud.mark('gl', performance.now() - tGl);
     this.perfHud.mark('render', performance.now() - tRender);
 
     // Dig beam fades after 3 drawn frames (decay moved out of the renderer —

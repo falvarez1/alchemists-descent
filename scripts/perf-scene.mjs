@@ -2,6 +2,9 @@
 // Usage: node scripts/perf-scene.mjs <label> [url] [runs] [frames]
 // Writes verify-out/perf-<label>.json. If verify-out/perf-before.json exists
 // and label !== "before", prints a Welch t-test comparison per bucket.
+// PERF_GPU_COMPOSE=1 enables the GPU frame-composition flag for the run
+// (cross-session comparison only — scripts/perf-ab-compose.mjs is the
+// drift-proof same-session A/B).
 import { chromium } from 'playwright-core';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 
@@ -20,9 +23,10 @@ for (let run = 0; run < RUNS; run++) {
   await page.waitForTimeout(2000);
 
   const result = await page.evaluate(
-    async ({ FRAMES }) => {
+    async ({ FRAMES, GPU_COMPOSE }) => {
       localStorage.removeItem('noita-expedition');
       const ctx = window.__game.ctx;
+      if (GPU_COMPOSE) ctx.state.postFx.gpuCompose = true;
       ctx.state.worldSeed = 777; // same world every run
       document.getElementById('mode-play-btn').click();
       await new Promise((r) => setTimeout(r, 1500));
@@ -138,7 +142,7 @@ for (let run = 0; run < RUNS; run++) {
       }
       return { samples, saves, particles: ctx.particles.list?.length ?? -1 };
     },
-    { FRAMES },
+    { FRAMES, GPU_COMPOSE: process.env.PERF_GPU_COMPOSE === '1' },
   );
 
   for (const s of result.samples) {

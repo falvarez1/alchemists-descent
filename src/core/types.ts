@@ -403,6 +403,13 @@ export interface GlobalParams {
 export interface PostFxSettings {
   /** Master post-processing bypass. Off renders the pixel buffer directly. */
   enabled: boolean;
+  /**
+   * GPU frame composition (perf ticket #8): the FrameComposer terrain loop
+   * runs as a fragment shader; sprites draw into a CPU overlay texture.
+   * Runtime-flippable for same-session A/B; silently falls back to the CPU
+   * path when WebGL2 is unavailable.
+   */
+  gpuCompose: boolean;
   /** UnrealBloomPass layer: emissive cells, blasts, and hot materials. */
   bloomEnabled: boolean;
   bloomStrength: number;

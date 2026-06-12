@@ -55,6 +55,13 @@ export const Cell = {
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
 
+/**
+ * NOTE: the GPU compose path (render/ComposeShader.ts) packs each cell's type
+ * into a texture byte as `type | 0x80` when the cell is charged. That is an
+ * internal texture format, NOT a save format — but it means cell ids must
+ * stay <= 127. Ids are append-only and top out at 35 today, so there is room
+ * for 92 more materials; if id 128 is ever near, the charge bit moves first.
+ */
 export const CELL_COUNT = 36;
 
 /**

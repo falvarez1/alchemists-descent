@@ -1,11 +1,16 @@
-export type PerfPhase = 'sim' | 'entities' | 'render' | 'frame';
+export type PerfPhase = 'sim' | 'entities' | 'render' | 'compose' | 'gl' | 'frame';
 
 const EMA_ALPHA = 0.1;
-/** Per-phase budgets in ms (DESIGN.md frame-budget ledger). */
+/** Per-phase budgets in ms (DESIGN.md frame-budget ledger). The combined
+ *  `render` bucket keeps emitting so old perf baselines stay comparable;
+ *  `compose` (FrameComposer.compose) and `gl` (Renderer.render) are its
+ *  sub-buckets, added for the GPU-compose ticket. */
 const BUDGETS: Record<Exclude<PerfPhase, 'frame'>, number> = {
   sim: 6,
   entities: 2.5,
   render: 5,
+  compose: 3.5,
+  gl: 2.5,
 };
 const COLOR_OK = '#3ad55a';
 const COLOR_OVER = '#ef4444';
@@ -23,7 +28,7 @@ export class PerfHud {
   private root: HTMLDivElement;
   private fpsEl: HTMLSpanElement;
   private phaseEls: Record<Exclude<PerfPhase, 'frame'>, HTMLSpanElement>;
-  private ema: Record<PerfPhase, number> = { sim: 0, entities: 0, render: 0, frame: 0 };
+  private ema: Record<PerfPhase, number> = { sim: 0, entities: 0, render: 0, compose: 0, gl: 0, frame: 0 };
   private frameMarks = 0;
   private _visible = false;
 
@@ -60,7 +65,12 @@ export class PerfHud {
     const entities = span('ent 0.0ms');
     span(' | ');
     const render = span('rnd 0.0ms');
-    this.phaseEls = { sim, entities, render };
+    span(' (');
+    const compose = span('cmp 0.0ms');
+    span(' + ');
+    const gl = span('gl 0.0ms');
+    span(')');
+    this.phaseEls = { sim, entities, render, compose, gl };
 
     document.body.appendChild(root);
     this.root = root;
@@ -84,7 +94,7 @@ export class PerfHud {
   }
 
   /** Per-frame scratch for the profiling hook (no cost unless recording). */
-  private pending: Record<PerfPhase, number> = { sim: 0, entities: 0, render: 0, frame: 0 };
+  private pending: Record<PerfPhase, number> = { sim: 0, entities: 0, render: 0, compose: 0, gl: 0, frame: 0 };
 
   mark(phase: PerfPhase, ms: number): void {
     const prev = this.ema[phase];
@@ -108,8 +118,8 @@ export class PerfHud {
 
   private refresh(): void {
     this.fpsEl.textContent = 'fps ' + (this.ema.frame > 0 ? Math.round(1000 / this.ema.frame) : 0);
-    const labels = { sim: 'sim', entities: 'ent', render: 'rnd' } as const;
-    for (const phase of ['sim', 'entities', 'render'] as const) {
+    const labels = { sim: 'sim', entities: 'ent', render: 'rnd', compose: 'cmp', gl: 'gl' } as const;
+    for (const phase of ['sim', 'entities', 'render', 'compose', 'gl'] as const) {
       const el = this.phaseEls[phase];
       el.textContent = labels[phase] + ' ' + this.ema[phase].toFixed(1) + 'ms';
       el.style.color = this.ema[phase] > BUDGETS[phase] ? COLOR_OVER : COLOR_OK;

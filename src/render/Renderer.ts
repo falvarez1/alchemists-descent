@@ -5,8 +5,15 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 
 import { RENDER_H, RENDER_W, VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx } from '@/core/types';
+import { GpuCompose } from '@/render/ComposeShader';
 import { PostFx } from '@/render/PostFx';
-import type { RenderTarget } from '@/render/pixels';
+import type {
+  CompositorLens,
+  LightField,
+  OverlaySurface,
+  ParallaxLayers,
+  RenderTarget,
+} from '@/render/pixels';
 
 /**
  * Three.js WebGL presentation layer: a full-screen orthographic quad textured
@@ -23,9 +30,14 @@ export class Renderer implements RenderTarget {
   private readonly camera: THREE.OrthographicCamera;
   private readonly texture: THREE.DataTexture;
   private readonly quadMesh: THREE.Mesh;
+  private readonly basicMaterial: THREE.MeshBasicMaterial;
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
   private readonly postFx: PostFx;
+  /** GPU frame composition (perf ticket #8) — built on first use of the flag. */
+  private gpu: GpuCompose | null = null;
+  /** True while the current frame was composed by the shader path. */
+  private gpuFrame = false;
 
   constructor(holder: HTMLElement) {
     // ===================== Three.js WebGL Setup =====================
@@ -59,9 +71,9 @@ export class Renderer implements RenderTarget {
     this.texture.minFilter = THREE.NearestFilter;
     this.texture.magFilter = THREE.NearestFilter;
 
-    const material = new THREE.MeshBasicMaterial({ map: this.texture });
+    this.basicMaterial = new THREE.MeshBasicMaterial({ map: this.texture });
     const geometry = new THREE.PlaneGeometry(2, 2);
-    this.quadMesh = new THREE.Mesh(geometry, material);
+    this.quadMesh = new THREE.Mesh(geometry, this.basicMaterial);
     this.quadMesh.scale.set(1 + 4 / VIEW_W, 1 + 4 / VIEW_H, 1); // overscan hides sub-cell camera offsets
     this.scene.add(this.quadMesh);
 
@@ -82,6 +94,28 @@ export class Renderer implements RenderTarget {
   /** Flag the GPU texture for re-upload after the buffer was written. */
   markTextureDirty(): void {
     this.texture.needsUpdate = true;
+    this.gpuFrame = false;
+  }
+
+  /** WebGL2 is required (integer textures, R8/R32F); CPU path is the fallback. */
+  get gpuComposeAvailable(): boolean {
+    return this.renderer.capabilities.isWebGL2;
+  }
+
+  beginGpuCompose(
+    ctx: Ctx,
+    light: LightField,
+    layers: ParallaxLayers,
+    lenses: readonly CompositorLens[],
+    lightRebuilt: boolean,
+  ): OverlaySurface {
+    this.gpu ??= new GpuCompose(layers, light);
+    this.gpuFrame = true;
+    return this.gpu.beginFrame(ctx, light, lenses, lightRebuilt);
+  }
+
+  commitGpuCompose(): void {
+    this.gpu?.commit();
   }
 
   /** The WebGL canvas (the input module attaches its mouse listeners here). */
@@ -90,6 +124,12 @@ export class Renderer implements RenderTarget {
   }
 
   render(ctx: Ctx): void {
+    // Quad material follows however this frame was composed (the flag is
+    // runtime-flippable for same-session A/B). The overscan geometry,
+    // sub-cell offset, shake jitter, and zoom transform below are shared.
+    this.quadMesh.material =
+      this.gpuFrame && this.gpu !== null ? this.gpu.material : this.basicMaterial;
+
     // Sub-cell camera smoothing + screen shake + idle zoom on the render quad
     let ox = -(ctx.camera.x - Math.floor(ctx.camera.x)) * (2 / VIEW_W);
     let oy = (ctx.camera.y - Math.floor(ctx.camera.y)) * (2 / VIEW_H);

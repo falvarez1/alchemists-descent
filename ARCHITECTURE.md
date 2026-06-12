@@ -65,6 +65,10 @@ src/
     Background.ts         Parallax backdrop layers (baked once)
     Lighting.ts           Half-res RGB light field, directional sweeps, wand raycast
     FrameComposer.ts      Per-pixel frame composition into the GPU DataTexture
+    ComposeShader.ts      GPU terrain pass (postFx.gpuCompose): the FrameComposer
+                          loop as a fragment shader + world-window packer + sprite
+                          overlay texture; CPU loop stays the look reference
+                          (docs/GPU-COMPOSE-PLAN.md, parity-probed)
     sprites/              Procedural pixel sprites (player wizard, enemies)
   audio/
     AudioEngine.ts        Procedural WebAudio SFX synthesis

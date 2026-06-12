@@ -1,17 +1,17 @@
 import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
-import type { LightField, ParallaxLayers, PixelSurface, RenderTarget } from '@/render/pixels';
+import type {
+  CompositorLens,
+  LightField,
+  OverlaySurface,
+  ParallaxLayers,
+  PixelSurface,
+  RenderTarget,
+} from '@/render/pixels';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { PICKUP_COLOR } from '@/game/Pickups';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
-
-interface Lens {
-  cx: number;
-  cy: number;
-  R: number;
-  K: number;
-}
 
 /**
  * Composes each frame's CPU-side pixel buffer (original updateWebGLBuffers):
@@ -24,6 +24,13 @@ export class FrameComposer implements PixelSurface {
   /** Integer camera snapshot for the current frame (original renderCamX/renderCamY). */
   private renderCamX = 0;
   private renderCamY = 0;
+
+  /**
+   * Non-null while composing a GPU frame (postFx.gpuCompose): the terrain
+   * loop ran as a fragment shader and setPx/addPx write the sprite overlay
+   * instead of pixelData. Null = the original CPU path, byte for byte.
+   */
+  private overlay: OverlaySurface | null = null;
 
   constructor(
     private readonly target: RenderTarget,
@@ -40,11 +47,25 @@ export class FrameComposer implements PixelSurface {
   ) {}
 
   // ===================== Render Buffer + Pixel Sprites =====================
+  // setPx writes rgb + a=1, addPx accumulates rgb and leaves a alone. On the
+  // GPU path the same writes land in the overlay (a=1 tells the shader to
+  // drop the terrain underneath — exactly what overwriting the buffer did).
   setPx(x: number, y: number, r: number, g: number, b: number): void {
     const vx = Math.round(x) - this.renderCamX,
       vy = Math.round(y) - this.renderCamY;
     if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
-    const idx = ((VIEW_H - 1 - vy) * VIEW_W + vx) * 4;
+    const pi = (VIEW_H - 1 - vy) * VIEW_W + vx;
+    const idx = pi * 4;
+    const overlay = this.overlay;
+    if (overlay !== null) {
+      const d = overlay.data;
+      d[idx] = r;
+      d[idx + 1] = g;
+      d[idx + 2] = b;
+      d[idx + 3] = 1.0;
+      overlay.mark(pi);
+      return;
+    }
     const pixelData = this.target.pixelData;
     pixelData[idx] = r;
     pixelData[idx + 1] = g;
@@ -56,7 +77,17 @@ export class FrameComposer implements PixelSurface {
     const vx = Math.round(x) - this.renderCamX,
       vy = Math.round(y) - this.renderCamY;
     if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
-    const idx = ((VIEW_H - 1 - vy) * VIEW_W + vx) * 4;
+    const pi = (VIEW_H - 1 - vy) * VIEW_W + vx;
+    const idx = pi * 4;
+    const overlay = this.overlay;
+    if (overlay !== null) {
+      const d = overlay.data;
+      d[idx] += r;
+      d[idx + 1] += g;
+      d[idx + 2] += b;
+      overlay.mark(pi);
+      return;
+    }
     const pixelData = this.target.pixelData;
     pixelData[idx] += r;
     pixelData[idx + 1] += g;
@@ -96,11 +127,44 @@ export class FrameComposer implements PixelSurface {
   compose(ctx: Ctx): void {
     ctx.camera.renderX = Math.floor(ctx.camera.x);
     ctx.camera.renderY = Math.floor(ctx.camera.y);
-    const renderCamX = ctx.camera.renderX;
-    const renderCamY = ctx.camera.renderY;
-    this.renderCamX = renderCamX;
-    this.renderCamY = renderCamY;
+    this.renderCamX = ctx.camera.renderX;
+    this.renderCamY = ctx.camera.renderY;
 
+    const frameCount = ctx.state.frameCount;
+    // Active singularities bend the image around them (inward pull + swirl)
+    const lenses: CompositorLens[] = [];
+    for (const pr of ctx.projectiles) {
+      if (pr.type === 'blackhole') {
+        lenses.push({ cx: pr.x, cy: pr.y, R: pr.vortexRad! * 2.1, K: 4 + pr.vortexRad! * 0.16 });
+      }
+    }
+    const lightRebuilt = frameCount % 2 === 0 || frameCount < 5;
+    if (lightRebuilt) this.light.build(ctx);
+
+    // GPU frame composition (perf ticket #8): the terrain pass runs as a
+    // fragment shader; sprites keep drawing through setPx/addPx into the
+    // overlay. Flag off (or no WebGL2) = the original CPU loop, untouched.
+    if (ctx.state.postFx.gpuCompose && this.target.gpuComposeAvailable) {
+      this.overlay = this.target.beginGpuCompose(ctx, this.light, this.layers, lenses, lightRebuilt);
+    } else {
+      this.overlay = null;
+      this.composeTerrainCpu(ctx, lenses);
+    }
+
+    this.composeOverlays(ctx);
+
+    if (this.overlay !== null) this.target.commitGpuCompose();
+    else this.target.markTextureDirty();
+  }
+
+  /**
+   * The original CPU terrain pass — THE reference implementation of the look
+   * (the GPU shader in render/ComposeShader.ts is held pixel-equal to this
+   * loop, never the reverse; fix look bugs here first, then re-port).
+   */
+  private composeTerrainCpu(ctx: Ctx, lenses: readonly CompositorLens[]): void {
+    const renderCamX = this.renderCamX;
+    const renderCamY = this.renderCamY;
     const frameCount = ctx.state.frameCount;
     const ambient = ctx.params.global.ambient;
     const world = ctx.world;
@@ -111,17 +175,8 @@ export class FrameComposer implements PixelSurface {
     const { lightR, lightG, lightB, vignette, LW } = this.light;
     const { bgFar, bgNear } = this.layers;
     const pixelData = this.target.pixelData;
-
     const wavesLen = ctx.shockwaves.length;
-    // Active singularities bend the image around them (inward pull + swirl)
-    const lenses: Lens[] = [];
-    for (const pr of ctx.projectiles) {
-      if (pr.type === 'blackhole') {
-        lenses.push({ cx: pr.x, cy: pr.y, R: pr.vortexRad! * 2.1, K: 4 + pr.vortexRad! * 0.16 });
-      }
-    }
     const lensLen = lenses.length;
-    if (frameCount % 2 === 0 || frameCount < 5) this.light.build(ctx);
     const boostG = ctx.params.global.maxBrightness;
     const farOX = Math.floor(renderCamX * 0.35),
       farOY = Math.floor(renderCamY * 0.35);
@@ -310,6 +365,18 @@ export class FrameComposer implements PixelSurface {
         pixelData[bufferIdx + 3] = 1.0;
       }
     }
+  }
+
+  /**
+   * Particles, arcs, projectiles, decor, landmarks, mechanisms, critters,
+   * enemies, beams, the player — the irregular overlay pass. It touches a few
+   * thousand pixels, reads game state, and mutates entity animation fields
+   * (EnemySprites/PlayerSprite contract): this stays CPU on BOTH compose paths.
+   */
+  private composeOverlays(ctx: Ctx): void {
+    const world = ctx.world;
+    const types = world.types;
+    const frameCount = ctx.state.frameCount;
 
     // Ballistic debris / embers / coins
     const boost = ctx.params.global.maxBrightness;
@@ -526,8 +593,6 @@ export class FrameComposer implements PixelSurface {
     }
 
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
-
-    this.target.markTextureDirty();
   }
 
   /** Animated sprite decor (visual-only; per-decor culling in drawDecor). */
