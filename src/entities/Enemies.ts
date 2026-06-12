@@ -652,6 +652,13 @@ export class Enemies implements EnemyControlApi {
             if (targetAlive && pDist < 300 && e.timer % 32 === 0) {
               e.vx = Math.sign(pdx) * (2.4 + Math.random() * 0.8);
               e.vy = -2.8 - Math.random() * 0.8;
+            } else if (!e.alerted && e.patrol && e.patrol.length > 0 && e.timer % 110 === 0) {
+              // PATROL (Builder-authored): hop along the waypoint loop
+              const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
+              if (Math.abs(wp[0] - e.x) < 14)
+                e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
+              e.vx = (Math.sign(wp[0] - e.x) || 1) * (2.0 + Math.random() * 0.6);
+              e.vy = -2.2;
             } else if (e.timer % 110 === 0) {
               e.vx = (Math.random() - 0.5) * 3.0;
               e.vy = -2.2;

@@ -155,6 +155,47 @@ export function objectFootprint(
   }
 }
 
+/**
+ * Cells the playtest-scar BAKE must never fossilize into terrain: the
+ * compiler re-stamps every mechanism, so a baked door slab would outlive a
+ * deleted door. Footprinted kinds use their structural box; the exit well
+ * extends to the world floor (its cased shaft runs all the way down, plus
+ * the approach pocket above the footprint); footprint-less mechanism
+ * fixtures (lever bracket, brazier bowl, charge pedestal, rune pedestal)
+ * get a small box around their stamped bodies.
+ */
+export function bakeExclusionMask(
+  objects: EditorObject[],
+  width: number,
+  height: number,
+): Uint8Array {
+  const skip = new Uint8Array(width * height);
+  const mark = (x0: number, y0: number, x1: number, y1: number): void => {
+    for (let y = Math.max(0, y0); y <= Math.min(height - 1, y1); y++) {
+      for (let x = Math.max(0, x0); x <= Math.min(width - 1, x1); x++) {
+        skip[x + y * width] = 1;
+      }
+    }
+  };
+  for (const o of objects) {
+    if (o.hidden) continue;
+    const f = objectFootprint(o);
+    if (f) {
+      // stampExitWell carves/cases from the approach pocket to the bottom
+      if (o.kind === 'exitWell') mark(f.x0, f.y0 - 4, f.x1, height - 1);
+      else mark(f.x0, f.y0, f.x1, f.y1);
+    } else if (
+      o.kind === 'lever' ||
+      o.kind === 'brazier' ||
+      o.kind === 'chargeLatch' ||
+      o.kind === 'runeGlyph'
+    ) {
+      mark(o.x - 3, o.y - 2, o.x + 3, o.y + 1);
+    }
+  }
+  return skip;
+}
+
 export function createEmptyDocument(name: string, biome: BiomeId): EditorDocument {
   return {
     v: 2,

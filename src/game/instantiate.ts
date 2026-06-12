@@ -3,6 +3,7 @@ import type {
   Ctx,
   EnemyKind,
   ExitPortal,
+  HazardEmitter,
   LevelExitWell,
   Mechanism,
   Pickup,
@@ -67,7 +68,7 @@ export interface InstantiationSink {
   mechanisms: Mechanism[];
   runeVaults: RuneVault[];
   authoredLights: AuthoredLight[];
-  emitters: Array<{ x: number; y: number; cell: number; rate: number }>;
+  emitters: HazardEmitter[];
   enemies: PrefabEnemy[];
   waystones: Waystone[];
   portal?: ExitPortal | null;
@@ -147,6 +148,11 @@ export function instantiateObjects(
         y: oy,
         cell: EMITTER_CELLS[String(o.params.cell ?? 'water')] ?? Cell.Water,
         rate: Math.max(2, paramNum(o, 'rate', 30)),
+        // the object's rotation is the drip direction (0=down, 90=left,
+        // 180=up, 270=right); burst/phase let banks of emitters stagger
+        dir: o.rotation,
+        burst: Math.max(1, Math.min(8, Math.floor(paramNum(o, 'burst', 1)))),
+        phase: Math.max(0, Math.floor(paramNum(o, 'phase', 0))),
       });
     } else if (o.kind === 'decor') {
       // designer annotation only — never compiles

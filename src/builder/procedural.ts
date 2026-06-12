@@ -1,6 +1,14 @@
 import { Rng } from '@/core/rng';
-import { blocksEntity, Cell, isSolid } from '@/sim/CellType';
+import { blocksEntity, Cell, isLiquid, isSolid } from '@/sim/CellType';
 import type { World } from '@/sim/World';
+import type { BiomeId } from '@/core/types';
+import { BIOMES } from '@/config/biomes';
+import {
+  crownDeepTint,
+  crownFringeTint,
+  crownTopColor,
+  mossUnderColor,
+} from '@/world/crownPalette';
 import { writeCell } from '@/builder/terrain';
 import type { PatchRecorder, Region } from '@/builder/terrain';
 
@@ -18,6 +26,9 @@ export interface PassInput {
   world: World;
   rec: PatchRecorder;
   rng: Rng;
+  /** The raw seed, for passes that hash coordinates (crownTint) instead of
+   *  consuming the stream. */
+  seed: number;
   region: Region;
   /** True when (x, y) is inside the target (bbox + optional polygon/magic mask). */
   inRegion(x: number, y: number): boolean;
@@ -25,6 +36,8 @@ export interface PassInput {
   density: number;
   /** Current sandbox material, for passes that paint one. */
   material: number;
+  /** Document biome — drives biome-aware paints (crown palette). */
+  biome: BiomeId;
 }
 
 export interface PassResult {
@@ -330,12 +343,111 @@ function pickupsPass(p: PassInput): PassResult {
   return { summary: `pickups: ${objects.length} placed`, objects };
 }
 
+/**
+ * Material crowns: seeded-chance writes of the ARMED material onto the open
+ * cell above each solid top surface (Moss carpets, Snow caps, Ember rims —
+ * grid-honest: the crown is real cells). A crowned left neighbor raises the
+ * chance so growth clumps into patches instead of lone freckles; surfaces
+ * sitting under liquid are skipped (nothing grows at the bottom of a pond).
+ */
+function crownsPass(p: PassInput): PassResult {
+  const { world, rec, rng, region, density, material } = p;
+  let placed = 0;
+  for (let y = Math.max(1, region.y0); y <= Math.min(world.height - 2, region.y1); y++) {
+    for (let x = Math.max(1, region.x0); x <= Math.min(world.width - 2, region.x1); x++) {
+      if (!p.inRegion(x, y)) continue;
+      const i = world.idx(x, y);
+      if (world.types[i] !== Cell.Empty) continue;
+      const below = world.types[world.idx(x, y + 1)];
+      if (!isSolid(below) || below === material) continue; // solid top surfaces only
+      if (isLiquid(world.types[world.idx(x, y - 1)])) continue; // submerged surface
+      // clump bonus: rows scan left-to-right, so the left neighbor is decided
+      const clump = world.types[world.idx(x - 1, y)] === material;
+      if (rng.next() < density * 0.35 + (clump ? 0.3 : 0)) {
+        writeCell(world, rec, x, y, material);
+        placed++;
+      }
+    }
+  }
+  return { summary: `crowns: ${placed} cells` };
+}
+
+/** Top-surface rock for the crown passes: the generator only crowns Wall;
+ *  authored levels are often built from Stone, so both count as rock here. */
+const crownRock = (t: number): boolean => t === Cell.Wall || t === Cell.Stone;
+
+/**
+ * Crown tint: COLOR-ONLY recolor of top-surface rock with the biome crown
+ * palette (src/world/crownPalette.ts — the transcription of CaveGenerator's
+ * crown stage). Cell types never change; undo restores the old colors.
+ * The topish/neighbor-top gates mirror the generator's exactly.
+ */
+function crownTintPass(p: PassInput): PassResult {
+  const { world, rec, region, seed } = p;
+  const B = BIOMES[p.biome] ?? BIOMES.earthen;
+  const tint = (x: number, y: number, color: number): void => {
+    const i = world.idx(x, y);
+    rec.touch(i);
+    world.colors[i] = color;
+  };
+  let tinted = 0;
+  for (let y = Math.max(1, region.y0); y <= Math.min(world.height - 2, region.y1); y++) {
+    for (let x = Math.max(1, region.x0); x <= Math.min(world.width - 1, region.x1); x++) {
+      if (!p.inRegion(x, y)) continue;
+      if (!crownRock(world.types[world.idx(x, y)])) continue;
+      const topish =
+        world.types[world.idx(x, y - 1)] === Cell.Empty &&
+        (y < 2 || world.types[world.idx(x, y - 2)] === Cell.Empty);
+      const nbTop = (xx: number): boolean =>
+        xx >= 0 &&
+        xx < world.width &&
+        crownRock(world.types[world.idx(xx, y)]) &&
+        world.types[world.idx(xx, y - 1)] === Cell.Empty;
+      if (topish && (nbTop(x - 1) || nbTop(x + 1))) {
+        tint(x, y, crownTopColor(x, y, seed, B.crown, B.flowerChance));
+        tinted++;
+        // underlayers, exactly as the generator stacks them (mask-gated)
+        if (B.crown === 'moss') {
+          if (crownRock(world.types[world.idx(x, y + 1)]) && p.inRegion(x, y + 1)) {
+            tint(x, y + 1, mossUnderColor(x, seed));
+          }
+          if (
+            y + 2 < world.height &&
+            crownRock(world.types[world.idx(x, y + 2)]) &&
+            p.inRegion(x, y + 2)
+          ) {
+            const c = crownDeepTint(world.colors[world.idx(x, y + 2)], x, y, seed, B.crown);
+            if (c !== null) tint(x, y + 2, c);
+          }
+        } else if (B.crown === 'frost') {
+          if (crownRock(world.types[world.idx(x, y + 1)]) && p.inRegion(x, y + 1)) {
+            const c = crownDeepTint(world.colors[world.idx(x, y + 1)], x, y, seed, B.crown);
+            if (c !== null) tint(x, y + 1, c);
+          }
+        }
+      } else if (
+        world.types[world.idx(x, y + 1)] === Cell.Empty &&
+        world.types[world.idx(x, Math.min(world.height - 1, y + 2))] === Cell.Empty
+      ) {
+        const c = crownFringeTint(world.colors[world.idx(x, y)], x, y, seed, B.crown);
+        if (c !== null) {
+          tint(x, y, c);
+          tinted++;
+        }
+      }
+    }
+  }
+  return { summary: `crown tint: ${tinted} surfaces recolored (${B.crown})` };
+}
+
 export const PASSES: PassDef[] = [
   { id: 'caves', label: 'Caves (CA remodel)', usesMaterial: false, cells: true, run: cavesPass },
   { id: 'veins', label: 'Material veins', usesMaterial: true, cells: true, run: veinsPass },
   { id: 'pockets', label: 'Material pockets', usesMaterial: true, cells: true, run: pocketsPass },
   { id: 'vegetation', label: 'Moss & vines', usesMaterial: false, cells: true, run: vegetationPass },
   { id: 'scatter', label: 'Floor scatter', usesMaterial: true, cells: true, run: scatterPass },
+  { id: 'crowns', label: 'Surface crowns (material)', usesMaterial: true, cells: true, run: crownsPass },
+  { id: 'crownTint', label: 'Crown tint (color only)', usesMaterial: false, cells: true, run: crownTintPass },
   { id: 'enemies', label: 'Enemy population', usesMaterial: false, cells: false, run: enemiesPass },
   { id: 'pickups', label: 'Pickup distribution', usesMaterial: false, cells: false, run: pickupsPass },
 ];
@@ -349,11 +461,22 @@ export function runPass(
   density: number,
   material: number,
   mask: Uint8Array | null = null,
+  biome: BiomeId = 'earthen',
 ): PassResult {
   const rw = region.x1 - region.x0 + 1;
   const inRegion = (x: number, y: number): boolean => {
     if (x < region.x0 || x > region.x1 || y < region.y0 || y > region.y1) return false;
     return !mask || mask[x - region.x0 + (y - region.y0) * rw] === 1;
   };
-  return def.run({ world, rec, rng: new Rng(seed >>> 0), region, inRegion, density, material });
+  return def.run({
+    world,
+    rec,
+    rng: new Rng(seed >>> 0),
+    seed: seed >>> 0,
+    region,
+    inRegion,
+    density,
+    material,
+    biome,
+  });
 }

@@ -2,6 +2,7 @@ import type { BiomeId, Ctx, EnemyKind, PickupKind } from '@/core/types';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import {
   applyWorldLayer,
+  bakeExclusionMask,
   captureWorldLayer,
   createEmptyDocument,
   docToShareCode,
@@ -36,6 +37,7 @@ import {
   paintTerrainCmd,
   setObjectFlagCmd,
   setObjectGroupCmd,
+  setObjectRotationCmd,
 } from '@/builder/commands';
 import type { CellPatch, Command } from '@/builder/commands';
 import { rleEncode } from '@/core/rle';
@@ -76,6 +78,17 @@ import {
   stampRect,
 } from '@/builder/terrain';
 import type { Region } from '@/builder/terrain';
+import {
+  cancelFloating,
+  commitFloating,
+  floatPreview,
+  liftSelection,
+  mirrorFloating,
+  rotateFloating,
+} from '@/builder/selection';
+import type { FloatingSelection } from '@/builder/selection';
+import { mirrorPairs, mirrorPoints, symAxes, SYM_MODES } from '@/builder/symmetry';
+import type { SymmetryMode } from '@/builder/symmetry';
 import { PASSES, runPass } from '@/builder/procedural';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { paramSliderSpec } from '@/ui/Inspector';
@@ -144,9 +157,21 @@ const DEFAULT_PARAMS: Partial<Record<EditorObjectKind, () => Record<string, unkn
   chargeLatch: () => ({}),
   runeGlyph: () => ({}),
   runeDoor: () => ({ w: 2, h: 11 }),
-  hazardEmitter: () => ({ cell: 'water', rate: 30 }),
-  decor: () => ({ text: 'note' }),
+  hazardEmitter: () => ({ cell: 'water', rate: 30, burst: 1, phase: 0 }),
+  decor: () => ({ text: 'note', color: '#d6e6f5' }),
 };
+
+/** Point kinds whose rotation is a meaningful authored fact (emitters aim
+ *  their drip with it; the rest carry it into prefabs/compilers). */
+const POINT_ROTATE_KINDS: ReadonlySet<EditorObjectKind> = new Set([
+  'enemy', 'hazardEmitter', 'decor', 'pickup',
+] as EditorObjectKind[]);
+
+/** Ground walkers/hoppers that can follow an authored patrol route. */
+const PATROL_KINDS = new Set(['slime', 'acidslime', 'golem', 'bomber']);
+
+/** Emitter drip direction, by rotation (the inspector's readout). */
+const EMITTER_DIR: Record<number, string> = { 0: 'down', 90: 'left', 180: 'up', 270: 'right' };
 
 const ENEMY_KINDS: EnemyKind[] = [
   'slime', 'imp', 'golem', 'acidslime', 'wisp', 'mage', 'bat', 'spitter', 'bomber', 'eggs', 'colossus',
@@ -179,6 +204,7 @@ type BuilderTool =
   | 'region'
   | 'polyRegion'
   | 'regionMagic'
+  | 'lassoRegion'
   | 'link'
   | 'light'
   | 'stamp'
@@ -386,6 +412,7 @@ const TOOL_INFO: Partial<Record<string, { name: string; desc: string }>> = {
   region: { name: 'Region (R)', desc: 'Drag a rectangle: passes, replace, and bake operate inside it. ESC clears.' },
   polyRegion: { name: 'Polygon Region', desc: 'Click vertices; Enter (or clicking near the first vertex) closes the polygon.' },
   regionMagic: { name: 'Magic Region', desc: 'Click an open area to select that whole connected cavern as the region.' },
+  lassoRegion: { name: 'Lasso Region', desc: 'Drag a freehand loop; releasing closes it into a masked region. X then lifts it as a floating selection.' },
   link: { name: 'Link (K)', desc: 'Click a trigger (or rune glyph), then its door. Several triggers on ONE door = AND gate.' },
 };
 
@@ -430,6 +457,27 @@ export class Builder {
   private regionMask: Uint8Array | null = null;
   /** Polygon-region tool: vertices collected so far. */
   private polyPoints: Array<[number, number]> = [];
+  /** Lasso-region tool: freehand points collected while the button is down. */
+  private lassoPoints: Array<[number, number]> | null = null;
+  /** Masked-region cell count (cached for the proc panel's target label). */
+  private regionMaskCells = 0;
+  /** Floating cell selection (modal: gates every world/document mutation). */
+  private floating: FloatingSelection | null = null;
+  /** Scaled-canvas cache of the float preview (rebuilt on transform). */
+  private floatCanvas: HTMLCanvasElement | null = null;
+  private floatDrag: { grabX: number; grabY: number; origX: number; origY: number } | null = null;
+  /** Symmetry painting mode (axis = world center, recentered by region). */
+  private symmetry: SymmetryMode = 'off';
+  /** Patrol waypoint being dragged in the select tool (live preview;
+   *  rewound and landed as one editParamCmd on mouseup). */
+  private waypointDrag: {
+    obj: EditorObject;
+    index: number;
+    orig: Array<[number, number]>;
+  } | null = null;
+  /** Editor-side light mutes: excluded from the live preview feed, still
+   *  compile (SOLO's quieter sibling). */
+  private mutedLightIds = new Set<string>();
   /** Editor layer toggles. */
   private layerHidden = new Set<LayerFamily>();
   private layerLocked = new Set<LayerFamily>();
@@ -523,6 +571,7 @@ export class Builder {
           const hasWork = this.doc.world !== null || this.cmds.depth > 0 || this.paintDirty;
           if (
             this.pendingPreview ||
+            this.floating ||
             (hasWork &&
               !window.confirm(
                 'This reshapes the ENTIRE world under the open document and cannot be undone. ' +
@@ -530,6 +579,7 @@ export class Builder {
               ))
           ) {
             if (this.pendingPreview) this.status('APPLY OR DISCARD THE PROCEDURAL PREVIEW FIRST', true);
+            if (this.floating) this.status('LAND OR CANCEL THE FLOATING SELECTION FIRST', true);
             e.stopImmediatePropagation();
             e.preventDefault();
             return;
@@ -613,6 +663,7 @@ export class Builder {
   close(): void {
     if (!this.isOpen) return;
     if (this.settling || this.settleSnap) this.finishSettle(false);
+    if (this.floating) this.cancelFloat(true);
     this.discardPreview(true);
     this.isOpen = false;
     cancelAnimationFrame(this.rafId);
@@ -628,6 +679,9 @@ export class Builder {
     this.stroke = null;
     this.shapeDrag = null;
     this.marquee = null;
+    this.lassoPoints = null;
+    this.floatDrag = null;
+    this.waypointDrag = null;
     this.armedPrefab = null;
     this.patrolEditId = null;
     this.linkFrom = null;
@@ -675,6 +729,7 @@ export class Builder {
         <button id="b-capture" title="Snapshot the live sandbox cells into the document">CAPTURE TERRAIN</button>
         <button id="b-restore" title="Re-decode the document's captured terrain into the live world (clears undo)">RESTORE</button>
         <button id="b-validate">VALIDATE</button>
+        <button id="b-bake" style="display:none" title="Re-apply the held playtest scars onto the document terrain (region = precise, undoable)">BAKE</button>
         <button id="b-playtest" class="b-accent">PLAYTEST</button>
         <button id="b-zen" title="Hide all side panels for a clear view of the canvas (\`)">PANELS</button>
         <button id="b-exit">EXIT</button>
@@ -697,6 +752,7 @@ export class Builder {
           ${toolBtn('region', '▦', 'Rectangle region for passes & replace (R)')}
           ${toolBtn('polyRegion', '⬠', 'Polygon region: click vertices, Enter/near-first closes')}
           ${toolBtn('regionMagic', '✦', 'Magic region: click an open area to select the whole cavern')}
+          ${toolBtn('lassoRegion', '➰', 'Lasso region: drag a freehand loop; release closes it')}
         </div>
         <div id="bp-mat-row" class="bp-hint" title="Active material, brush radius and zoom"></div>
         <div class="bp-head">MATERIALS</div>
@@ -736,12 +792,13 @@ export class Builder {
         <div class="bp-head">VIEW</div>
         <button id="bp-overlay-btn" title="Readability overlays (O)">OVERLAY: NONE</button>
         <button id="bp-snap-btn" title="Snap placements and drags to a grid">SNAP: OFF</button>
+        <button id="bp-sym-btn" title="Mirror terrain painting across the axis (world center; a region recenters it)">SYM: OFF</button>
         <div class="bp-head">PARAMETERS</div>
         <button id="bp-world-btn" title="Global sim/light tuning (live params)">WORLD&hellip;</button>
         <button id="bp-mat-btn" title="Tuning sliders for the armed material">MATERIAL&hellip;</button>
         <div class="bp-head">PROCEDURAL</div>
         <button id="bp-proc-btn">SEEDED PASSES&hellip;</button>
-        <div class="bp-hint">RMB eyedrops &middot; wheel zooms.<br>Shift-click multi-selects,<br>drag empty = marquee.<br>Ctrl+D duplicate &middot; Ctrl+C/V<br>copy/paste params.<br>T playtests at the cursor.<br>Prefab armed: Q rotate, E flip.<br>ESC steps back &middot; DEL removes.</div>
+        <div class="bp-hint">RMB eyedrops &middot; wheel zooms.<br>Shift-click multi-selects,<br>drag empty = marquee.<br>Ctrl+D duplicate &middot; Ctrl+C/V<br>copy/paste params.<br>T playtests at the cursor.<br>Prefab armed: Q rotate, E flip.<br>X floats a region (Enter lands,<br>arrows nudge, Q/E spin).<br>ESC steps back &middot; DEL removes.</div>
       </div>
       <div id="bp-matpop" style="display:none"></div>
       <div id="builder-inspector"></div>
@@ -1016,9 +1073,20 @@ export class Builder {
     return false;
   }
 
-  /** True (and complains) while a preview — procedural or settle — awaits a decision. */
+  /** True (and complains) while a floating selection is held. The world has
+   *  a lifted hole and NO command on the stack — capture/save/undo/paint
+   *  must all wait for ENTER (commit) or ESC (cancel). */
+  private floatingBlocks(): boolean {
+    if (!this.floating) return false;
+    this.status('LAND OR CANCEL THE FLOATING SELECTION FIRST (ENTER / ESC)', true);
+    return true;
+  }
+
+  /** True (and complains) while a preview — settle, floating selection, or
+   *  procedural — awaits a decision. Every modal gate funnels through here. */
   private previewBlocks(): boolean {
     if (this.settleBlocks()) return true;
+    if (this.floatingBlocks()) return true;
     if (!this.pendingPreview) return false;
     this.status('APPLY OR DISCARD THE PROCEDURAL PREVIEW FIRST', true);
     return true;
@@ -1044,6 +1112,7 @@ export class Builder {
       if (hasWork && !window.confirm('Discard the current document?')) return;
       this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
       this.playtestScars = null; // scars belong to the old document
+      this.mutedLightIds.clear();
       this.cmds.clear();
       this.select(null);
       this.paintDirty = false;
@@ -1070,6 +1139,7 @@ export class Builder {
       // Clone so edits never mutate the library copy until the next SAVE.
       this.doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
       this.playtestScars = null;
+      this.mutedLightIds.clear();
       this.cmds.clear();
       this.select(null);
       this.paintDirty = false;
@@ -1112,6 +1182,7 @@ export class Builder {
         } else {
           this.doc = doc;
           this.playtestScars = null;
+          this.mutedLightIds.clear();
           this.cmds.clear();
           this.select(null);
           this.paintDirty = false;
@@ -1162,6 +1233,7 @@ export class Builder {
       this.status(issues.length === 0 ? 'VALID — NO ISSUES' : `${issues.length} ISSUE(S)`);
     });
 
+    this.el('b-bake').addEventListener('click', () => this.bakePlaytestScars());
     this.el('b-playtest').addEventListener('click', () => this.playtest());
     this.el('b-zen').addEventListener('click', () => this.toggleZen());
     this.el('b-exit').addEventListener('click', () => this.close());
@@ -1178,6 +1250,9 @@ export class Builder {
    * re-captures right before anything reads doc.world as the truth.
    */
   private ensureCaptured(): void {
+    // A world with a lifted hole must never be captured (every caller is
+    // already previewBlocks-gated; this is the defense-in-depth backstop).
+    if (this.floating) return;
     if (!this.paintDirty) return;
     this.doc.world = captureWorldLayer(this.ctx);
     this.paintDirty = false;
@@ -1253,13 +1328,30 @@ export class Builder {
     this.overlay.addEventListener('mousedown', (e) => {
       const pos = this.mouseToWorld(e);
       if (e.button === 2) {
+        // patrol-edit mode: RMB on a waypoint removes it; elsewhere eyedrops
+        if (this.patrolEditId && this.deletePatrolPointAt(pos.x, pos.y)) return;
         this.eyedrop(pos.x, pos.y);
         return;
       }
       if (e.button !== 0) return;
+      // FLOATING SELECTION is modal on the canvas: inside the block starts
+      // a drag; anywhere else just reminds (Enter lands, ESC cancels).
+      if (this.floating) {
+        const f = this.floating;
+        if (pos.x >= f.x && pos.x < f.x + f.w && pos.y >= f.y && pos.y < f.y + f.h) {
+          this.floatDrag = { grabX: pos.x, grabY: pos.y, origX: f.x, origY: f.y };
+        } else {
+          this.status('FLOATING SELECTION — DRAG IT, ENTER LANDS, ESC CANCELS');
+        }
+        return;
+      }
       // patrol authoring eats clicks until ESC ends it
       if (this.patrolEditId) {
         this.addPatrolPoint(pos.x, pos.y);
+        return;
+      }
+      if (this.tool === 'lassoRegion') {
+        this.lassoPoints = [[pos.x, pos.y]];
         return;
       }
       if (this.tool === 'paint') {
@@ -1285,6 +1377,7 @@ export class Builder {
         }
         this.region = found.region;
         this.regionMask = found.mask;
+        this.regionMaskCells = found.cells;
         this.syncProcPanel();
         this.status(`MAGIC REGION: ${found.cells} CONNECTED OPEN CELLS`);
         return;
@@ -1326,6 +1419,20 @@ export class Builder {
         this.place(kind, pos.x, pos.y);
         if (kind !== 'enemy' && kind !== 'pickup') this.setTool('select');
         return;
+      }
+      // a selected enemy's patrol waypoints drag directly in the select tool
+      const sel = this.selected();
+      if (sel && sel.kind === 'enemy' && !sel.locked && Array.isArray(sel.params.patrol)) {
+        const idx = this.hitPatrolPoint(sel, pos.x, pos.y);
+        if (idx !== null) {
+          const pts = sel.params.patrol as Array<[number, number]>;
+          this.waypointDrag = {
+            obj: sel,
+            index: idx,
+            orig: pts.map(([px, py]) => [px, py] as [number, number]),
+          };
+          return;
+        }
       }
       const hit = this.hitTest(pos.x, pos.y);
       if (!hit) {
@@ -1377,6 +1484,26 @@ export class Builder {
     window.addEventListener('mousemove', (e) => {
       const pos = this.mouseToWorld(e);
       this.lastMouse = pos;
+      if (this.floatDrag && this.floating) {
+        const d = this.floatDrag;
+        this.floating.x = this.snap(d.origX + pos.x - d.grabX);
+        this.floating.y = this.snap(d.origY + pos.y - d.grabY);
+        return;
+      }
+      if (this.lassoPoints) {
+        // decimate: keep a point only once it strays >= 2 cells from the last
+        const last = this.lassoPoints[this.lassoPoints.length - 1];
+        if (Math.abs(pos.x - last[0]) >= 2 || Math.abs(pos.y - last[1]) >= 2) {
+          this.lassoPoints.push([pos.x, pos.y]);
+        }
+        return;
+      }
+      if (this.waypointDrag) {
+        const d = this.waypointDrag;
+        const pts = d.obj.params.patrol as Array<[number, number]>;
+        pts[d.index] = [this.snap(Math.floor(pos.x)), this.snap(Math.floor(pos.y))];
+        return;
+      }
       if (this.stroke) {
         this.strokeMove(pos.x, pos.y);
         return;
@@ -1404,6 +1531,30 @@ export class Builder {
       }
     });
     window.addEventListener('mouseup', () => {
+      if (this.floatDrag) {
+        this.floatDrag = null;
+        return;
+      }
+      if (this.lassoPoints) {
+        const pts = this.lassoPoints;
+        this.lassoPoints = null;
+        this.commitLasso(pts);
+        return;
+      }
+      if (this.waypointDrag) {
+        const d = this.waypointDrag;
+        this.waypointDrag = null;
+        const pts = d.obj.params.patrol as Array<[number, number]>;
+        const moved = pts[d.index];
+        const orig = d.orig[d.index];
+        if (moved[0] === orig[0] && moved[1] === orig[1]) return;
+        // Rewind the live preview, then land the move as ONE command.
+        const next = pts.map(([px, py]) => [px, py] as [number, number]);
+        d.obj.params.patrol = d.orig;
+        this.cmds.run(editParamCmd(d.obj, 'patrol', next));
+        this.status(`WAYPOINT ${d.index + 1} MOVED`);
+        return;
+      }
       if (this.stroke) {
         this.endStroke();
         return;
@@ -1503,15 +1654,22 @@ export class Builder {
       lastX: x,
       lastY: y,
     };
-    this.recordAround(x, y, x, y);
-    spawnCircle(this.ctx, x, y, this.ctx.state.currentElement);
+    // symmetry: every mirrored image dabs into the SAME stroke record,
+    // so the whole symmetric gesture stays one undo
+    for (const [px, py] of this.symPoints(x, y)) {
+      this.recordAround(px, py, px, py);
+      spawnCircle(this.ctx, px, py, this.ctx.state.currentElement);
+    }
   }
 
   private strokeMove(x: number, y: number): void {
     const s = this.stroke;
     if (!s) return;
-    this.recordAround(s.lastX, s.lastY, x, y);
-    drawLine(this.ctx, s.lastX, s.lastY, x, y, this.ctx.state.currentElement);
+    const ax = this.symAxis();
+    for (const [x0, y0, x1, y1] of mirrorPairs(s.lastX, s.lastY, x, y, this.symmetry, ax.x, ax.y)) {
+      this.recordAround(x0, y0, x1, y1);
+      drawLine(this.ctx, x0, y0, x1, y1, this.ctx.state.currentElement);
+    }
     s.lastX = x;
     s.lastY = y;
   }
@@ -1587,12 +1745,19 @@ export class Builder {
     if (type === null) return;
     const w = this.ctx.world;
     const rec = new PatchRecorder(w);
-    if (this.tool === 'line') {
-      stampLine(w, rec, s.x0, s.y0, s.x1, s.y1, this.ctx.state.brushSize, type);
-    } else if (this.tool === 'rect' || this.tool === 'rectFill') {
-      stampRect(w, rec, s.x0, s.y0, s.x1, s.y1, type, this.tool === 'rectFill');
-    } else if (this.tool === 'ellipse' || this.tool === 'ellipseFill') {
-      stampEllipse(w, rec, s.x0, s.y0, s.x1, s.y1, type, this.tool === 'ellipseFill');
+    // symmetry: stamp every mirrored copy into the SAME recorder (one undo)
+    const ax = this.symAxis();
+    const isBox = this.tool !== 'line'; // boxes dedupe by bbox; lines keep their diagonal
+    for (const [x0, y0, x1, y1] of mirrorPairs(
+      s.x0, s.y0, s.x1, s.y1, this.symmetry, ax.x, ax.y, isBox,
+    )) {
+      if (this.tool === 'line') {
+        stampLine(w, rec, x0, y0, x1, y1, this.ctx.state.brushSize, type);
+      } else if (this.tool === 'rect' || this.tool === 'rectFill') {
+        stampRect(w, rec, x0, y0, x1, y1, type, this.tool === 'rectFill');
+      } else if (this.tool === 'ellipse' || this.tool === 'ellipseFill') {
+        stampEllipse(w, rec, x0, y0, x1, y1, type, this.tool === 'ellipseFill');
+      }
     }
     const patch = rec.finish();
     if (!patch) return;
@@ -1608,6 +1773,7 @@ export class Builder {
     const y0 = Math.min(s.y0, s.y1),
       y1 = Math.max(s.y0, s.y1);
     this.regionMask = null;
+    this.regionMaskCells = 0;
     if (x1 - x0 < 3 || y1 - y0 < 3) {
       this.region = null;
       this.status('REGION CLEARED');
@@ -1640,19 +1806,40 @@ export class Builder {
     this.region = result.region;
     this.regionMask = result.mask;
     this.setTool('select');
-    this.syncProcPanel();
     let cells = 0;
     for (const v of result.mask) cells += v;
+    this.regionMaskCells = cells;
+    this.syncProcPanel();
     this.status(`POLYGON REGION SET: ${cells} CELLS — PASSES & REPLACE USE IT`);
   }
 
-  /** One smoothing/roughening application per pointer sample. */
+  /** Lasso region: the freehand loop closes on release and rasterizes into
+   *  a masked region — the same machinery as the polygon tool, one gesture. */
+  private commitLasso(points: Array<[number, number]>): void {
+    const result = points.length >= 3 ? rasterizePolygon(points) : null;
+    if (!result) {
+      this.status('LASSO TOO SMALL — DRAG A WIDER LOOP', true);
+      return;
+    }
+    this.region = result.region;
+    this.regionMask = result.mask;
+    this.setTool('select');
+    let cells = 0;
+    for (const v of result.mask) cells += v;
+    this.regionMaskCells = cells;
+    this.syncProcPanel();
+    this.status(`LASSO REGION SET: ${cells} CELLS — X LIFTS IT, PASSES USE IT`);
+  }
+
+  /** One smoothing/roughening application per pointer sample (mirrored). */
   private applyTerraStroke(x: number, y: number): void {
     const t = this.terraStroke;
     if (!t) return;
     const r = Math.max(3, this.ctx.state.brushSize);
-    if (t.tool === 'smooth') smoothDisc(this.ctx.world, t.rec, x, y, r);
-    else roughenDisc(this.ctx.world, t.rec, x, y, r);
+    for (const [px, py] of this.symPoints(x, y)) {
+      if (t.tool === 'smooth') smoothDisc(this.ctx.world, t.rec, px, py, r);
+      else roughenDisc(this.ctx.world, t.rec, px, py, r);
+    }
   }
 
   private commitFlood(x: number, y: number): void {
@@ -1660,16 +1847,26 @@ export class Builder {
     if (type === null) return;
     const w = this.ctx.world;
     const rec = new PatchRecorder(w);
-    const n = floodFill(w, rec, x, y, type, FLOOD_CAP);
-    if (n === -1) {
-      this.status('AREA TOO LARGE TO FLOOD FILL', true);
+    // symmetry: flood from every mirrored seed into the SAME recorder; a
+    // seed whose area is over-cap (or already filled) skips, never partials
+    let total = 0;
+    let refused = 0;
+    for (const [sx, sy] of this.symPoints(x, y)) {
+      const n = floodFill(w, rec, sx, sy, type, FLOOD_CAP);
+      if (n === -1) refused++;
+      else total += n;
+    }
+    if (total === 0) {
+      this.status(refused > 0 ? 'AREA TOO LARGE TO FLOOD FILL' : 'NOTHING TO FILL', refused > 0);
       return;
     }
     const patch = rec.finish();
     if (!patch) return;
     this.cmds.run(paintTerrainCmd(w, patch.before, patch.after));
     this.paintDirty = true;
-    this.status(`FLOOD FILLED ${n} CELLS`);
+    this.status(
+      `FLOOD FILLED ${total} CELLS` + (refused > 0 ? ` (${refused} MIRRORED SEED(S) OVER CAP)` : ''),
+    );
   }
 
   private commitReplace(x: number, y: number): void {
@@ -2094,6 +2291,7 @@ export class Builder {
       if (l.locked) lockedSkipped++;
       else {
         if (this.soloLightId === l.id) this.soloLightId = null;
+        this.mutedLightIds.delete(l.id);
         dels.push(deleteLightCmd(l));
       }
     }
@@ -2268,14 +2466,16 @@ export class Builder {
   private syncProcPanel(): void {
     const def = this.procDef();
     this.el<HTMLElement>('bp-target').textContent = this.region
-      ? `region ${this.region.x1 - this.region.x0 + 1}×${this.region.y1 - this.region.y0 + 1}`
+      ? this.regionMask
+        ? `masked region (~${this.regionMaskCells} cells)`
+        : `region ${this.region.x1 - this.region.x0 + 1}×${this.region.y1 - this.region.y0 + 1}`
       : 'whole level';
     const mat = this.ctx.params.materials[this.ctx.state.currentElement]?.name ?? '—';
     this.el<HTMLElement>('bp-material').textContent = def.usesMaterial ? mat : 'n/a';
   }
 
   private procRun(previewOnly: boolean): void {
-    if (this.settleBlocks()) return;
+    if (this.settleBlocks() || this.floatingBlocks()) return;
     const def = this.procDef();
     const seed = Number(this.el<HTMLInputElement>('bp-seed').value) || 1;
     const density = Number(this.el<HTMLInputElement>('bp-density').value) / 100;
@@ -2294,7 +2494,10 @@ export class Builder {
       }
       const w = this.ctx.world;
       const rec = new PatchRecorder(w);
-      const result = runPass(def, w, rec, seed, region, density, material, this.region ? this.regionMask : null);
+      const result = runPass(
+        def, w, rec, seed, region, density, material,
+        this.region ? this.regionMask : null, this.doc.biome,
+      );
       const adds: Command[] = (result.objects ?? []).map((spec) =>
         addObjectCmd({
           id: freshId(spec.kind),
@@ -2324,7 +2527,10 @@ export class Builder {
     this.discardPreview();
     const w = this.ctx.world;
     const rec = new PatchRecorder(w);
-    const result = runPass(def, w, rec, seed, region, density, material, this.region ? this.regionMask : null);
+    const result = runPass(
+      def, w, rec, seed, region, density, material,
+      this.region ? this.regionMask : null, this.doc.biome,
+    );
     const patch = rec.finish();
     if (!patch) {
       this.procStatus('PASS CHANGED NOTHING');
@@ -2542,6 +2748,7 @@ export class Builder {
       this.el('bp-snap-btn').textContent = 'SNAP: ' + (this.snapStep === 0 ? 'OFF' : this.snapStep);
       this.status(this.snapStep === 0 ? 'SNAP OFF' : `SNAP TO ${this.snapStep}-CELL GRID`);
     });
+    this.el('bp-sym-btn').addEventListener('click', () => this.cycleSymmetry());
 
     this.el('b-share').addEventListener('click', () => {
       if (this.previewBlocks()) return;
@@ -2573,6 +2780,7 @@ export class Builder {
         }
         this.doc = doc;
         this.playtestScars = null;
+        this.mutedLightIds.clear();
         this.cmds.clear();
         this.select(null);
         this.paintDirty = false;
@@ -2663,10 +2871,32 @@ export class Builder {
 
   /** Paste = ONE composite command: terrain patch (already live — the
    *  idempotent-do convention) plus object/link/light adds (NOT pre-applied;
-   *  their do() does the push). */
+   *  their do() does the push). Under symmetry the mirrored copies stamp
+   *  TERRAIN ONLY into the same recorder — gameplay objects never duplicate
+   *  silently. */
   private pastePrefabAt(p: PrefabDef, x: number, y: number): void {
     const rec = new PatchRecorder(this.ctx.world);
-    const out = pastePrefab(this.ctx.world, rec, p, this.snap(x), this.snap(y));
+    const cx = this.snap(x),
+      cy = this.snap(y);
+    const out = pastePrefab(this.ctx.world, rec, p, cx, cy);
+    let mirrored = 0;
+    if (this.symmetry !== 'off') {
+      const ax = this.symAxis();
+      for (const [mx, my] of mirrorPoints(cx, cy, this.symmetry, ax.x, ax.y)) {
+        if (mx === cx && my === cy) continue;
+        // pick the prefab image matching the reflection (fx = horizontal
+        // mirror; fy = vertical = mirrorH∘rot180; both = rot180)
+        const fx = mx !== cx,
+          fy = my !== cy;
+        const image = fx && fy
+          ? rotatePrefab(rotatePrefab(p))
+          : fx
+            ? mirrorPrefab(p)
+            : mirrorPrefab(rotatePrefab(rotatePrefab(p)));
+        pastePrefab(this.ctx.world, rec, image, mx, my); // records ignored
+        mirrored++;
+      }
+    }
     const patch = rec.finish();
     const cmds: Command[] = [];
     if (patch) cmds.push(paintTerrainCmd(this.ctx.world, patch.before, patch.after));
@@ -2682,7 +2912,10 @@ export class Builder {
       this.syncMarkers();
       this.renderInspector();
     }
-    this.status(`PASTED "${p.name.toUpperCase()}"`);
+    this.status(
+      `PASTED "${p.name.toUpperCase()}"` +
+        (mirrored > 0 ? ` +${mirrored} MIRRORED (TERRAIN ONLY — OBJECTS NOT DUPLICATED)` : ''),
+    );
   }
 
   /* ---------------- PNG / JSON interchange ---------------- */
@@ -2921,20 +3154,11 @@ export class Builder {
       return;
     }
     const w = this.ctx.world;
-    // Compiled mechanism cells must NOT fossilize into terrain: every
-    // current object's structural footprint is excluded from the bake (the
-    // compiler re-stamps them anyway; a deleted door must not leave a slab).
-    const skip = new Uint8Array(w.types.length);
-    for (const o of this.doc.objects) {
-      if (o.hidden) continue;
-      const f = objectFootprint(o);
-      if (!f) continue;
-      for (let y = Math.max(0, f.y0); y <= Math.min(w.height - 1, f.y1); y++) {
-        for (let x = Math.max(0, f.x0); x <= Math.min(w.width - 1, f.x1); x++) {
-          skip[w.idx(x, y)] = 1;
-        }
-      }
-    }
+    // Compiled mechanism cells must NOT fossilize into terrain: footprints,
+    // the exit well's full cased shaft, and the footprint-less fixture
+    // bodies (lever/brazier/latch/pedestal) are all excluded — the compiler
+    // re-stamps them anyway; a deleted door must not leave a slab.
+    const skip = bakeExclusionMask(this.doc.objects, w.width, w.height);
     if (this.region) {
       const rec = new PatchRecorder(w);
       const r = this.region;
@@ -2999,6 +3223,145 @@ export class Builder {
     points.push([Math.floor(x), Math.floor(y)]);
     this.cmds.run(editParamCmd(obj, 'patrol', points));
     this.status(`PATROL POINT ${points.length} — ESC WHEN DONE`);
+  }
+
+  /** Index of the selected enemy's patrol waypoint under (x, y), if any. */
+  private hitPatrolPoint(obj: EditorObject, x: number, y: number): number | null {
+    if (!Array.isArray(obj.params.patrol)) return null;
+    const pts = obj.params.patrol as Array<[number, number]>;
+    let best: number | null = null;
+    let bestD = PICK_RADIUS * PICK_RADIUS;
+    pts.forEach(([px, py], n) => {
+      const d = (px - x) * (px - x) + (py - y) * (py - y);
+      if (d <= bestD) {
+        bestD = d;
+        best = n;
+      }
+    });
+    return best;
+  }
+
+  /** RMB in patrol-edit mode: remove the waypoint under the cursor. */
+  private deletePatrolPointAt(x: number, y: number): boolean {
+    const obj = this.doc.objects.find((o) => o.id === this.patrolEditId);
+    if (!obj) return false;
+    const idx = this.hitPatrolPoint(obj, x, y);
+    if (idx === null) return false;
+    const pts = obj.params.patrol as Array<[number, number]>;
+    const next = pts.filter((_, n) => n !== idx).map(([px, py]) => [px, py] as [number, number]);
+    this.cmds.run(editParamCmd(obj, 'patrol', next.length > 0 ? next : undefined));
+    this.status(`WAYPOINT ${idx + 1} REMOVED${next.length === 0 ? ' — PATROL CLEARED' : ''}`);
+    return true;
+  }
+
+  /* ---------- floating cell selection (X lifts, Enter lands) ---------- */
+
+  /** X with a region set: lift its cells off the world (consumes the region). */
+  private liftFloat(): void {
+    if (this.previewBlocks()) return;
+    if (!this.region) {
+      this.status('SELECT A REGION FIRST (R / POLYGON / LASSO), THEN X LIFTS IT', true);
+      return;
+    }
+    const f = liftSelection(this.ctx.world, this.region, this.regionMask);
+    if (!f) {
+      this.status('REGION TOO LARGE TO FLOAT (MAX 250K CELLS) — NOTHING TOUCHED', true);
+      return;
+    }
+    this.floating = f;
+    this.floatCanvas = null;
+    this.region = null;
+    this.regionMask = null;
+    this.regionMaskCells = 0;
+    this.syncProcPanel();
+    this.status(
+      `FLOATING ${f.w}×${f.h} — DRAG/ARROWS MOVE · Q/E ROTATE/FLIP · ENTER LANDS · ESC CANCELS`,
+    );
+  }
+
+  /** Land the float as ONE composite command (lift patch + paste patch). */
+  private commitFloat(): void {
+    const f = this.floating;
+    if (!f) return;
+    this.floating = null;
+    this.floatCanvas = null;
+    this.floatDrag = null;
+    if (!f.transformed && f.x === f.origX && f.y === f.origY) {
+      // untouched: landing where it lifted is a cancel, not an undo entry
+      cancelFloating(this.ctx.world, f);
+      this.status('NOTHING MOVED — SELECTION PUT BACK');
+      return;
+    }
+    const cmd = commitFloating(this.ctx.world, f);
+    if (cmd) {
+      this.cmds.run(cmd);
+      this.paintDirty = true;
+    }
+    this.status(`LANDED ${f.w}×${f.h} CELLS (ONE UNDO REVERTS THE WHOLE MOVE)`);
+    this.renderInspector();
+  }
+
+  /** ESC: put the lifted cells back exactly; no command. */
+  private cancelFloat(silent = false): void {
+    const f = this.floating;
+    if (!f) return;
+    this.floating = null;
+    this.floatCanvas = null;
+    this.floatDrag = null;
+    cancelFloating(this.ctx.world, f);
+    if (!silent) this.status('FLOAT CANCELLED — CELLS RESTORED');
+  }
+
+  /** Q on a plain selection: spin every unlocked member 90° as ONE command.
+   *  Door slabs swap w/h (footprint-true) AND advance their rotation. */
+  private rotateSelectedObjects(): boolean {
+    const targets = this.doc.objects.filter(
+      (o) => this.selectedIds.has(o.id) && !o.locked && this.layerSelectableObj(o),
+    );
+    if (targets.length === 0) return false;
+    const cmds: Command[] = [];
+    for (const o of targets) {
+      const next = ((o.rotation + 90) % 360) as EditorObject['rotation'];
+      if (o.kind === 'door' || o.kind === 'runeDoor') {
+        const dw = o.kind === 'door' ? 3 : 2;
+        const dh = o.kind === 'door' ? 13 : 11;
+        const w = paramNum(o, 'w', dw);
+        const h = paramNum(o, 'h', dh);
+        cmds.push(editParamCmd(o, 'w', h), editParamCmd(o, 'h', w), setObjectRotationCmd(o, next));
+      } else {
+        cmds.push(setObjectRotationCmd(o, next));
+      }
+    }
+    this.cmds.run(
+      cmds.length === 1 ? cmds[0] : compositeCmd('rotate ' + targets.length, cmds),
+    );
+    this.renderInspector();
+    this.syncMarkers();
+    this.status(`ROTATED ${targets.length} OBJECT(S) 90°`);
+    return true;
+  }
+
+  /* ---------- symmetry painting ---------- */
+
+  /** Axis center: world center, recentered by the active region. */
+  private symAxis(): { x: number; y: number } {
+    return symAxes(this.region, WIDTH, HEIGHT);
+  }
+
+  /** Mirrored images of a point under the current mode (original first). */
+  private symPoints(x: number, y: number): Array<[number, number]> {
+    const ax = this.symAxis();
+    return mirrorPoints(x, y, this.symmetry, ax.x, ax.y);
+  }
+
+  private cycleSymmetry(): void {
+    this.symmetry = SYM_MODES[(SYM_MODES.indexOf(this.symmetry) + 1) % SYM_MODES.length];
+    this.el('bp-sym-btn').textContent = 'SYM: ' + this.symmetry.toUpperCase();
+    this.status(
+      this.symmetry === 'off'
+        ? 'SYMMETRY OFF'
+        : `SYMMETRY ${this.symmetry.toUpperCase()} — TERRAIN TOOLS MIRROR ACROSS THE AXIS`,
+    );
   }
 
   /* ---------- settle preview: run real physics, then keep or revert ---------- */
@@ -3110,7 +3473,8 @@ export class Builder {
   /* ---------- autosave drafts ---------- */
 
   private autosaveDraft(): void {
-    if (!this.isOpen || this.settling || this.settleSnap || this.pendingPreview) return;
+    if (!this.isOpen || this.settling || this.settleSnap || this.pendingPreview || this.floating)
+      return;
     if (this.cmds.depth === 0 && !this.paintDirty) return;
     try {
       this.ensureCaptured();
@@ -3133,6 +3497,7 @@ export class Builder {
       const when = new Date(draft.at).toLocaleTimeString();
       if (!window.confirm(`Restore the autosaved draft "${restored.name}" from ${when}?`)) return;
       this.doc = restored;
+      this.mutedLightIds.clear();
       this.cmds.clear();
       this.select(null);
       this.paintDirty = false;
@@ -3172,6 +3537,8 @@ export class Builder {
         },
       },
       { label: 'Bake playtest scars', run: () => this.bakePlaytestScars() },
+      { label: 'Lift region as floating selection (X)', run: () => this.liftFloat() },
+      { label: 'Cycle symmetry painting', run: () => this.cycleSymmetry() },
       { label: 'Capture region as prefab', run: () => this.capturePrefabFromRegion() },
       { label: 'Import prefab (.json / .png)', run: () => void this.importPrefabFiles() },
       { label: 'Export region as PNG', run: () => void this.exportRegionPng() },
@@ -3198,6 +3565,7 @@ export class Builder {
       tool('fill', 'Tool: Flood fill (G)'),
       tool('replace', 'Tool: Replace material'),
       tool('region', 'Tool: Region select (R)'),
+      tool('lassoRegion', 'Tool: Lasso region'),
       tool('smooth', 'Tool: Smooth terrain'),
       tool('roughen', 'Tool: Roughen terrain'),
       tool('link', 'Tool: Link trigger to door (K)'),
@@ -3322,6 +3690,8 @@ export class Builder {
       if (this.settling || this.settleSnap) {
         this.finishSettle(false);
         this.status('SETTLE CANCELLED');
+      } else if (this.floating) {
+        this.cancelFloat();
       } else if (this.patrolEditId) {
         this.patrolEditId = null;
         this.renderInspector();
@@ -3332,6 +3702,9 @@ export class Builder {
       } else if (this.linkFrom) {
         this.linkFrom = null;
         this.status('LINK CANCELLED');
+      } else if (this.lassoPoints) {
+        this.lassoPoints = null;
+        this.status('LASSO CANCELLED');
       } else if (this.shapeDrag) {
         this.shapeDrag = null;
       } else if (this.marquee) {
@@ -3341,20 +3714,53 @@ export class Builder {
       } else if (this.region) {
         this.region = null;
         this.regionMask = null;
+        this.regionMaskCells = 0;
         this.status('REGION CLEARED');
         this.syncProcPanel();
       } else this.select(null);
+    } else if (e.code === 'Enter' && this.floating) {
+      e.stopPropagation();
+      this.commitFloat();
     } else if (e.code === 'Enter' && this.polyPoints.length >= 3) {
       e.stopPropagation();
       this.closePolyRegion();
-    } else if (e.code === 'KeyQ' && this.armedPrefab) {
+    } else if (e.code === 'KeyX' && !e.ctrlKey && !e.metaKey) {
       e.stopPropagation();
-      this.armedPrefab = rotatePrefab(this.armedPrefab);
-      this.status(`ROTATED — NOW ${this.armedPrefab.w}×${this.armedPrefab.h}`);
-    } else if (e.code === 'KeyE' && this.armedPrefab) {
+      // X is the float toggle: lifts the region, or lands a held float
+      if (this.floating) this.commitFloat();
+      else this.liftFloat();
+    } else if (e.code.startsWith('Arrow') && this.floating) {
+      e.preventDefault();
       e.stopPropagation();
-      this.armedPrefab = mirrorPrefab(this.armedPrefab);
-      this.status('MIRRORED');
+      const step = e.shiftKey ? 8 : 1;
+      if (e.code === 'ArrowLeft') this.floating.x -= step;
+      else if (e.code === 'ArrowRight') this.floating.x += step;
+      else if (e.code === 'ArrowUp') this.floating.y -= step;
+      else if (e.code === 'ArrowDown') this.floating.y += step;
+    } else if (e.code === 'KeyQ' || e.code === 'KeyE') {
+      // precedence: floating selection > armed prefab > selected objects
+      if (this.floating) {
+        e.stopPropagation();
+        this.floating =
+          e.code === 'KeyQ' ? rotateFloating(this.floating) : mirrorFloating(this.floating);
+        this.floatCanvas = null;
+        this.status(
+          e.code === 'KeyQ'
+            ? `ROTATED — NOW ${this.floating.w}×${this.floating.h}`
+            : 'MIRRORED',
+        );
+      } else if (this.armedPrefab) {
+        e.stopPropagation();
+        if (e.code === 'KeyQ') {
+          this.armedPrefab = rotatePrefab(this.armedPrefab);
+          this.status(`ROTATED — NOW ${this.armedPrefab.w}×${this.armedPrefab.h}`);
+        } else {
+          this.armedPrefab = mirrorPrefab(this.armedPrefab);
+          this.status('MIRRORED');
+        }
+      } else if (e.code === 'KeyQ' && this.rotateSelectedObjects()) {
+        e.stopPropagation();
+      }
     } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD') {
       e.preventDefault();
       e.stopPropagation();
@@ -3451,11 +3857,17 @@ export class Builder {
     }
 
     // live light preview: authored lights feed the real light field
-    // (solo narrows the feed to one light for isolation work)
+    // (solo narrows the feed to one light; MUTE drops a light from the
+    // preview only — muted lights still compile)
     state.editorLights =
       this.lightPreviewOn && this.doc.lights.length > 0
         ? this.doc.lights
-            .filter((l) => !l.hidden && (this.soloLightId === null || l.id === this.soloLightId))
+            .filter(
+              (l) =>
+                !l.hidden &&
+                !this.mutedLightIds.has(l.id) &&
+                (this.soloLightId === null || l.id === this.soloLightId),
+            )
             .map((l, n) => toAuthoredLight(l, n))
         : null;
 
@@ -3609,21 +4021,25 @@ export class Builder {
       }
     }
 
-    // authored light rings
+    // authored light rings (muted: dimmed ring + "M" tag)
     if (!this.layerHidden.has('lights')) {
       for (const l of this.doc.lights) {
         const c = toS(l.x, l.y);
         const sel = l.id === this.selectedId;
         const solo = this.soloLightId === l.id;
-        g.strokeStyle = sel || solo ? l.color : l.color + '55';
+        const muted = this.mutedLightIds.has(l.id);
+        g.strokeStyle = muted ? l.color + '22' : sel || solo ? l.color : l.color + '55';
         g.lineWidth = sel || solo ? 2 : 1;
         g.beginPath();
         g.ellipse(c.x, c.y, l.radius * cellW, l.radius * cellH, 0, 0, Math.PI * 2);
         g.stroke();
+        g.font = '700 9px monospace';
         if (solo) {
           g.fillStyle = l.color;
-          g.font = '700 9px monospace';
           g.fillText('SOLO', c.x + 6, c.y - 6);
+        } else if (muted) {
+          g.fillStyle = l.color + '88';
+          g.fillText('M', c.x + 6, c.y - 6);
         }
       }
     }
@@ -3654,9 +4070,57 @@ export class Builder {
         });
       } else if (o.kind === 'decor') {
         const p = toS(o.x, o.y);
-        g.fillStyle = 'rgba(214,230,245,0.85)';
+        g.fillStyle = typeof o.params.color === 'string' ? o.params.color : 'rgba(214,230,245,0.85)';
         g.font = '600 9px monospace';
         g.fillText(String(o.params.text ?? 'note').slice(0, 40), p.x + 10, p.y + 3);
+      }
+    }
+
+    // lasso loop in progress
+    if (this.lassoPoints && this.lassoPoints.length > 1) {
+      g.strokeStyle = 'rgba(125,211,252,0.9)';
+      g.lineWidth = 1.5;
+      g.setLineDash([4, 3]);
+      g.beginPath();
+      const l0 = toS(this.lassoPoints[0][0], this.lassoPoints[0][1]);
+      g.moveTo(l0.x, l0.y);
+      for (const [px, py] of this.lassoPoints.slice(1)) {
+        const p = toS(px, py);
+        g.lineTo(p.x, p.y);
+      }
+      g.lineTo(l0.x, l0.y); // releasing closes the loop — show it closed
+      g.stroke();
+      g.setLineDash([]);
+    }
+
+    // symmetry axis (dashed) while a terrain tool could mirror
+    if (this.symmetry !== 'off') {
+      const terrainTool =
+        this.tool === 'paint' || SHAPE_TOOLS.has(this.tool) || this.tool === 'fill' ||
+        this.tool === 'smooth' || this.tool === 'roughen' || this.tool === 'stamp';
+      if (terrainTool) {
+        const ax = this.symAxis();
+        g.strokeStyle = 'rgba(240,171,252,0.55)';
+        g.lineWidth = 1;
+        g.setLineDash([8, 6]);
+        if (this.symmetry === 'x' || this.symmetry === 'quad') {
+          const v = toS(ax.x + 0.5, 0);
+          g.beginPath();
+          g.moveTo(v.x, 0);
+          g.lineTo(v.x, ch);
+          g.stroke();
+        }
+        if (this.symmetry === 'y' || this.symmetry === 'quad') {
+          const hz = toS(0, ax.y + 0.5);
+          g.beginPath();
+          g.moveTo(0, hz.y);
+          g.lineTo(cw, hz.y);
+          g.stroke();
+        }
+        g.setLineDash([]);
+        g.fillStyle = 'rgba(240,171,252,0.8)';
+        g.font = '700 9px monospace';
+        g.fillText('SYM:' + this.symmetry.toUpperCase(), 12, 28);
       }
     }
 
@@ -3758,6 +4222,36 @@ export class Builder {
       }
     }
 
+    // floating selection: the carried cells ride the cursor at full color
+    if (this.floating) {
+      const f = this.floating;
+      if (!this.floatCanvas) {
+        // cache the preview pixels on a canvas so each frame is one drawImage
+        const c = document.createElement('canvas');
+        c.width = f.w;
+        c.height = f.h;
+        c.getContext('2d')!.putImageData(floatPreview(f), 0, 0);
+        this.floatCanvas = c;
+      }
+      const a = toS(f.x, f.y);
+      const prevSmooth = g.imageSmoothingEnabled;
+      g.imageSmoothingEnabled = false;
+      g.drawImage(this.floatCanvas, a.x, a.y, f.w * cellW, f.h * cellH);
+      g.imageSmoothingEnabled = prevSmooth;
+      g.setLineDash([5, 3]);
+      g.strokeStyle = 'rgba(125,211,252,0.95)';
+      g.lineWidth = 1.5;
+      g.strokeRect(a.x, a.y, f.w * cellW, f.h * cellH);
+      g.setLineDash([]);
+      g.fillStyle = 'rgba(125,211,252,0.95)';
+      g.font = '700 10px monospace';
+      g.fillText(
+        `FLOATING ${f.w}×${f.h} — ENTER LANDS · Q/E SPIN · ESC CANCELS`,
+        a.x + 2,
+        a.y - 4,
+      );
+    }
+
     // pending procedural preview badge
     if (this.pendingPreview) {
       g.fillStyle = 'rgba(251,191,36,0.95)';
@@ -3830,6 +4324,9 @@ export class Builder {
         + (o.hidden ? ' ghost' : '');
       m.textContent = GLYPH[o.kind] ?? '?';
       m.title = o.kind === 'decor' ? String(o.params.text ?? 'note') : o.kind;
+      if (o.kind === 'decor' && typeof o.params.color === 'string') {
+        m.style.color = o.params.color; // the note wears its authored tint
+      }
       this.markers.set(o.id, m);
       this.markerLayer.appendChild(m);
     }
@@ -3921,13 +4418,16 @@ export class Builder {
       if (obj.params.kind === 'bat') {
         rows += this.checkRow(obj, 'sleeping', 'roosting');
       }
-      if (obj.params.kind === 'slime' || obj.params.kind === 'acidslime' || obj.params.kind === 'golem') {
+      if (PATROL_KINDS.has(String(obj.params.kind))) {
         const n = Array.isArray(obj.params.patrol) ? (obj.params.patrol as unknown[]).length : 0;
         rows +=
           this.patrolEditId === obj.id
             ? `<button id="bi-patrol" class="bi-armed">PATROL: CLICK POINTS — ESC ENDS</button>`
             : `<button id="bi-patrol">${n > 0 ? `EDIT PATROL (${n} PTS)` : 'ADD PATROL ROUTE'}</button>`;
         if (n > 0) rows += `<button id="bi-patrol-clear">CLEAR PATROL</button>`;
+        if (n > 0 && this.patrolEditId !== obj.id) {
+          rows += `<div class="bi-empty">Drag waypoints in the select<br>tool; in patrol edit, RMB<br>deletes one.</div>`;
+        }
       }
     } else if (obj.kind === 'hazardEmitter') {
       const cells = ['water', 'oil', 'acid', 'lava', 'fire', 'ember', 'sand', 'snow', 'smoke'];
@@ -3935,11 +4435,16 @@ export class Builder {
         .map((c) => `<option value="${c}"${obj.params.cell === c ? ' selected' : ''}>${c}</option>`)
         .join('')}</select></div>`;
       rows += this.numRow(obj, 'rate', 'rate (frames)', 30);
-      rows += `<div class="bi-empty">Drips one real cell every<br>"rate" frames — the grid<br>does the rest.</div>`;
+      rows += this.numRow(obj, 'burst', 'burst (cells)', 1);
+      rows += this.numRow(obj, 'phase', 'phase (frames)', 0);
+      rows += `<div class="bi-empty">Drips "burst" real cells every<br>"rate" frames (offset by phase),<br>aimed by rotation — the grid<br>does the rest.</div>`;
     } else if (obj.kind === 'decor') {
       rows += `<div class="bi-row"><span>note</span><input type="text" data-p="text" value="${String(
         obj.params.text ?? '',
       ).replace(/"/g, '&quot;')}"></div>`;
+      rows += `<div class="bi-row"><span>color</span><input type="color" data-p="color" value="${
+        typeof obj.params.color === 'string' ? obj.params.color : '#d6e6f5'
+      }"></div>`;
       rows += `<div class="bi-empty">Designer annotation only —<br>never compiles into the level.</div>`;
     } else if (obj.kind === 'pickup') {
       rows += `<div class="bi-row"><span>kind</span><select data-p="kind">${PICKUP_KINDS.map(
@@ -3997,6 +4502,13 @@ export class Builder {
       rows += this.linkRows(obj, 'out');
     }
 
+    // point kinds spin in place (emitters aim their drip with it)
+    if (POINT_ROTATE_KINDS.has(obj.kind)) {
+      const dir = obj.kind === 'hazardEmitter' ? ` (${EMITTER_DIR[obj.rotation] ?? 'down'})` : '';
+      rows += `<div class="bi-row"><span>rotation</span><b>${obj.rotation}&deg;${dir}</b></div>`;
+      rows += `<button id="bi-rotate-pt" title="Q also rotates the selection">ROTATE 90&deg;</button>`;
+    }
+
     rows += `<div class="bi-flags">
         <label><input type="checkbox" data-f="locked"${obj.locked ? ' checked' : ''}>locked</label>
         <label><input type="checkbox" data-f="hidden"${obj.hidden ? ' checked' : ''}>hidden</label>
@@ -4048,15 +4560,29 @@ export class Builder {
       this.status('PATROL CLEARED');
     });
     panel.querySelector('#bi-rotate')?.addEventListener('click', () => {
+      // slabs swap w/h (footprint-true) AND advance rotation in one composite
       const dw = obj.kind === 'door' ? 3 : 2;
       const dh = obj.kind === 'door' ? 13 : 11;
       const w = paramNum(obj, 'w', dw);
       const h = paramNum(obj, 'h', dh);
       this.cmds.run(
-        compositeCmd('rotate ' + obj.kind, [editParamCmd(obj, 'w', h), editParamCmd(obj, 'h', w)]),
+        compositeCmd('rotate ' + obj.kind, [
+          editParamCmd(obj, 'w', h),
+          editParamCmd(obj, 'h', w),
+          setObjectRotationCmd(obj, ((obj.rotation + 90) % 360) as EditorObject['rotation']),
+        ]),
       );
       this.renderInspector();
       this.status('ROTATED — NOW ' + h + '×' + w);
+    });
+    panel.querySelector('#bi-rotate-pt')?.addEventListener('click', () => {
+      const next = ((obj.rotation + 90) % 360) as EditorObject['rotation'];
+      this.cmds.run(setObjectRotationCmd(obj, next));
+      this.renderInspector();
+      this.status(
+        `ROTATION ${next}°` +
+          (obj.kind === 'hazardEmitter' ? ` — DRIPS ${(EMITTER_DIR[next] ?? 'down').toUpperCase()}` : ''),
+      );
     });
     for (const unlink of panel.querySelectorAll<HTMLButtonElement>('button[data-unlink]')) {
       unlink.addEventListener('click', () => {
@@ -4121,6 +4647,9 @@ export class Builder {
       <button id="bi-solo"${this.soloLightId === light.id ? ' class="bi-armed"' : ''}>${
         this.soloLightId === light.id ? 'SOLO ON — CLICK TO HEAR ALL' : 'SOLO THIS LIGHT'
       }</button>
+      <button id="bi-mute"${this.mutedLightIds.has(light.id) ? ' class="bi-armed"' : ''} title="Drop this light from the live preview only — it still compiles">${
+        this.mutedLightIds.has(light.id) ? 'MUTED — CLICK TO UNMUTE' : 'MUTE THIS LIGHT'
+      }</button>
       <button id="bi-delete">DELETE (DEL)</button>`;
 
     for (const field of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-lf]')) {
@@ -4146,6 +4675,16 @@ export class Builder {
       this.soloLightId = this.soloLightId === light.id ? null : light.id;
       this.renderLightInspector(panel, light);
       this.status(this.soloLightId ? 'PREVIEWING ONLY THIS LIGHT' : 'PREVIEWING ALL LIGHTS');
+    });
+    panel.querySelector('#bi-mute')?.addEventListener('click', () => {
+      if (this.mutedLightIds.has(light.id)) this.mutedLightIds.delete(light.id);
+      else this.mutedLightIds.add(light.id);
+      this.renderLightInspector(panel, light);
+      this.status(
+        this.mutedLightIds.has(light.id)
+          ? 'LIGHT MUTED IN THE PREVIEW (STILL COMPILES)'
+          : 'LIGHT UNMUTED',
+      );
     });
     panel.querySelector<HTMLSelectElement>('[data-preset]')?.addEventListener('change', (e) => {
       const preset = LIGHT_PRESETS[(e.target as HTMLSelectElement).value];
@@ -4232,6 +4771,8 @@ export class Builder {
   private syncAll(): void {
     this.el<HTMLInputElement>('b-doc-name').value = this.doc.name;
     this.el<HTMLSelectElement>('b-biome').value = this.doc.biome;
+    // BAKE only shows while playtest scars are actually held
+    this.el('b-bake').style.display = this.playtestScars ? '' : 'none';
     this.syncMarkers();
     this.syncPalette();
     this.renderInspector();

@@ -617,19 +617,27 @@ export class Mechanisms implements MechanismsApi {
       if (v.door.length === 0) ctx.audio.tone(520, 300, 0.3, 'triangle', 0.12);
     }
 
-    // Builder hazard emitters: drip ONE real cell on their cadence — the
-    // grid does the rest (lava pools, acid eats, water floods).
+    // Builder hazard emitters: drip `burst` real cells on their cadence —
+    // the grid does the rest (lava pools, acid eats, water floods). The
+    // drip lands one step along `dir` (the object's rotation: 0=down,
+    // 90=left, 180=up, 270=right); `phase` staggers banks of emitters.
     if (runtime.emitters) {
       for (const em of runtime.emitters) {
-        if (ctx.state.frameCount % em.rate !== 0) continue;
-        if (!world.inBounds(em.x, em.y)) continue;
-        const i = world.idx(em.x, em.y);
-        if (world.types[i] !== Cell.Empty) continue;
-        world.types[i] = em.cell;
-        const fn = COLOR_FN[em.cell];
-        world.colors[i] = fn ? fn() : EMPTY_COLOR;
-        if (em.cell === Cell.Fire) world.life[i] = 15 + Math.floor(Math.random() * 30);
-        else if (em.cell === Cell.Smoke) world.life[i] = 30 + Math.floor(Math.random() * 40);
+        if ((ctx.state.frameCount + em.phase) % em.rate !== 0) continue;
+        const dx = em.dir === 90 ? -1 : em.dir === 270 ? 1 : 0;
+        const dy = em.dir === 180 ? -1 : em.dir === 0 ? 1 : 0;
+        for (let k = 1; k <= em.burst; k++) {
+          const X = em.x + dx * k,
+            Y = em.y + dy * k;
+          if (!world.inBounds(X, Y)) break;
+          const i = world.idx(X, Y);
+          if (world.types[i] !== Cell.Empty) continue;
+          world.types[i] = em.cell;
+          const fn = COLOR_FN[em.cell];
+          world.colors[i] = fn ? fn() : EMPTY_COLOR;
+          if (em.cell === Cell.Fire) world.life[i] = 15 + Math.floor(Math.random() * 30);
+          else if (em.cell === Cell.Smoke) world.life[i] = 30 + Math.floor(Math.random() * 40);
+        }
       }
     }
   }

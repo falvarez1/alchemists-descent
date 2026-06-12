@@ -8,6 +8,7 @@ import type {
   AuthoredLight,
   Ctx,
   ExitPortal,
+  HazardEmitter,
   LevelDef,
   LevelExitWell,
   Mechanism,
@@ -168,6 +169,9 @@ export class WorldGen implements WorldGenApi {
     }
 
     // Moss + grass crowns on top surfaces, wildflowers, mossy ceiling fringe
+    // (TRANSCRIBED in src/world/crownPalette.ts for the Builder's crownTint
+    // pass. This stage is locked bit-for-bit by tests/gen-golden.test.ts —
+    // never refactor it to call the transcription; sync both by hand.)
     for (let x = 0; x < WIDTH; x++) {
       for (let y = 1; y < HEIGHT - 1; y++) {
         const i = x + y * WIDTH;
@@ -466,7 +470,7 @@ export class WorldGen implements WorldGenApi {
     prefabEnemies: PrefabEnemy[];
     placedPrefabs: PlacedPrefab[];
     authoredLights: AuthoredLight[];
-    emitters: Array<{ x: number; y: number; cell: number; rate: number }>;
+    emitters: HazardEmitter[];
   } {
     // DEV stage timing — generation runs synchronously behind the curtain,
     // so a slow stage is a felt hitch; shout when the total crosses 400ms.

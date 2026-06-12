@@ -142,6 +142,11 @@ export interface CellPatch {
 /**
  * One paint stroke over the LIVE world (the pre-Phase-4 terrain layer).
  * Both patches share the changed-cell index set; do/undo just replay them.
+ *
+ * IDEMPOTENT-DO CONVENTION (load-bearing): callers apply the cells live
+ * FIRST (PatchRecorder diffs them), then run this command — its do() simply
+ * replays `after`, so the initial run is a no-op re-stamp. Composite
+ * commands (prefab paste, floating-selection moves) depend on this.
  */
 export function paintTerrainCmd(world: World, before: CellPatch, after: CellPatch): Command {
   const apply = (p: CellPatch): void => {
@@ -173,6 +178,24 @@ export function setObjectGroupCmd(obj: EditorObject, group: string | undefined):
     undo: () => {
       if (prev === undefined) delete obj.group;
       else obj.group = prev;
+    },
+  };
+}
+
+/** Undoable rotation step (point kinds spin in place; door slabs pair this
+ *  with their w/h param swap inside one composite). */
+export function setObjectRotationCmd(
+  obj: EditorObject,
+  rotation: EditorObject['rotation'],
+): Command {
+  const prev = obj.rotation;
+  return {
+    label: 'rotate ' + obj.kind,
+    do: () => {
+      obj.rotation = rotation;
+    },
+    undo: () => {
+      obj.rotation = prev;
     },
   };
 }

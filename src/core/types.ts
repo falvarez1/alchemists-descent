@@ -729,8 +729,24 @@ export interface WorldGenApi {
     placedPrefabs: PlacedPrefab[];
     /** Prefab-authored lights / hazard emitters for the runtime. */
     authoredLights: AuthoredLight[];
-    emitters: Array<{ x: number; y: number; cell: number; rate: number }>;
+    emitters: HazardEmitter[];
   };
+}
+
+/**
+ * Builder/prefab hazard emitter spec: drips `burst` real cells of `cell`
+ * every `rate` frames (staggered by `phase`), one step along `dir` from its
+ * anchor. `dir` comes from the editor object's rotation: 0=down (default),
+ * 90=left, 180=up, 270=right.
+ */
+export interface HazardEmitter {
+  x: number;
+  y: number;
+  cell: number;
+  rate: number;
+  dir: 0 | 90 | 180 | 270;
+  burst: number;
+  phase: number;
 }
 
 export interface WaveDirectorApi {
@@ -1175,8 +1191,8 @@ export interface LevelRuntime {
   boss?: { x: number; y: number } | null;
   /** Designer-placed lights from a compiled Builder document or worldgen prefabs. */
   authoredLights?: AuthoredLight[];
-  /** Builder/prefab hazard emitters: drip a real cell every `rate` frames. */
-  emitters?: Array<{ x: number; y: number; cell: number; rate: number }>;
+  /** Builder/prefab hazard emitters: drip real cells on their cadence. */
+  emitters?: HazardEmitter[];
   /** Authored prefabs stamped into this level by worldgen (audit/debug). */
   placedPrefabs?: PlacedPrefab[];
 }
