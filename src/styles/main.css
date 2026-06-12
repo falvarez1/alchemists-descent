@@ -638,8 +638,9 @@ body.builder-open #right-inspector { display: none; }
 #builder-palette .bp-mini .bp-glyph { width: 12px; height: 12px; font-size: 7px; }
 
 #builder-proc, #builder-world, #builder-matparams {
-    /* the shared right-hand side-panel slot: one of these at a time */
-    position: absolute; right: 184px; top: 78px; z-index: 2; pointer-events: auto; width: 196px;
+    /* the shared right-hand side-panel slot: one of these at a time, docked
+       FLUSH RIGHT; .b-params-open slides the inspector left of it (no overlap) */
+    position: absolute; right: 8px; top: 78px; z-index: 3; pointer-events: auto; width: 196px;
     display: flex; flex-direction: column; gap: 4px; padding: 8px;
     background: rgba(10,13,18,0.94); border: 1px solid #1d2733; border-radius: 5px;
     font-size: 10px; color: #9fb6cc; max-height: calc(100% - 120px); overflow-y: auto;
@@ -683,7 +684,9 @@ body.builder-open #right-inspector { display: none; }
 }
 .bp-prefab-card:hover { background: #1d2733; }
 .bp-prefab-card.armed { border-color: #f0abfc; color: #fbe6ff; background: #2a1430; }
-.bp-prefab-thumb { width: 48px; height: 36px; flex: none; border: 1px solid #1b232e; border-radius: 2px; image-rendering: pixelated; }
+/* id-scoped + !important: must out-rank `#canvas-holder canvas { width:100% !important }`
+   (specificity (1,1,0) beats (1,0,1) — the minimap plays the same trick) */
+#builder-root .bp-prefab-thumb { width: 48px !important; height: 36px !important; flex: none; border: 1px solid #1b232e; border-radius: 2px; image-rendering: pixelated; }
 .bp-prefab-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .bp-prefab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
 .bp-prefab-meta { color: #50596b; }
@@ -725,11 +728,13 @@ body.builder-open #builder-issues { bottom: 182px; }
 
 #builder-inspector, #builder-issues {
     position: absolute; right: 8px; top: 78px; z-index: 2; pointer-events: auto; width: 168px;
+    transition: right 0.12s ease;
     display: flex; flex-direction: column; gap: 4px; padding: 8px;
     background: rgba(10,13,18,0.92); border: 1px solid #1d2733; border-radius: 5px;
     font-size: 10px; color: #9fb6cc;
 }
 #builder-issues { top: auto; bottom: 34px; max-height: 40%; overflow-y: auto; width: 230px; }
+#builder-root.b-params-open #builder-inspector { right: 228px; }
 .bi-head { font-size: 8px; font-weight: 800; letter-spacing: 2px; color: #5b7187; display: flex; justify-content: space-between; align-items: center; }
 .bi-id { font-size: 8px; color: #3e4a5c; word-break: break-all; }
 .bi-empty { font-size: 9px; line-height: 1.7; color: #50596b; padding: 4px 0; }
@@ -842,3 +847,19 @@ body.builder-open #builder-issues { bottom: 182px; }
 }
 #builder-gallery .bg-chip:hover { border-color: #7dd3fc; color: #dbe6f3; }
 #builder-gallery .bg-chip.on { background: #12202c; border-color: #7dd3fc; color: #7dd3fc; }
+
+/* prefab popover (replaces tooltips): big preview + details beside the card */
+#bp-prefab-pop {
+    position: fixed; z-index: 40; pointer-events: none; max-width: 224px;
+    background: #0b0e14; border: 1px solid #2a3644; border-radius: 5px; padding: 8px;
+    display: flex; flex-direction: column; gap: 6px;
+    font-family: var(--mono); font-size: 10px; color: #9fb6cc;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.55);
+}
+.bp-pop-thumb { border: 1px solid #1d2733; border-radius: 3px; image-rendering: pixelated; align-self: center; }
+.bp-pop-name { font-size: 11px; font-weight: 800; color: #dbe6f3; }
+.bp-pop-badge { font-size: 8px; font-weight: 800; letter-spacing: 1px; color: #7dd3fc; border: 1px solid #234; border-radius: 3px; padding: 1px 4px; vertical-align: middle; }
+.bp-pop-meta { color: #5b7187; }
+.bp-pop-tags { color: #7dd3fc; }
+.bp-pop-hint { color: #50596b; line-height: 1.5; }
+.bp-prefab-subhead { font-size: 8px; font-weight: 800; letter-spacing: 2px; color: #5b7187; margin: 8px 0 2px; }

@@ -296,7 +296,14 @@ await page.waitForTimeout(120);
 nextPromptAnswer = 'test-block';
 await page.click('#bp-prefab-capture');
 await page.waitForTimeout(150);
-let prefabCount = await page.evaluate(() => document.querySelectorAll('.bp-prefab-card').length);
+// library cards only — built-ins also list as cards now (2 action buttons
+// instead of the library's 4: no delete, no anchor editing)
+let prefabCount = await page.evaluate(
+  () =>
+    [...document.querySelectorAll('.bp-prefab-card')].filter(
+      (c) => c.querySelectorAll('.bp-prefab-actions button').length === 4,
+    ).length,
+);
 check('prefab captured into the library', prefabCount === 1, `got ${prefabCount}`);
 await page.click('.bp-prefab-card');
 await page.waitForTimeout(100);

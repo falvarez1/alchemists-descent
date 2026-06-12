@@ -139,6 +139,10 @@ export class Gallery {
   private caption = '';
   private captionT = 0;
   private warned = new Set<string>();
+  /** Cursor position in WORLD cells over the stage — alerted entities track
+   *  it (a STABLE object: rigs capture the reference, the loop mutates). */
+  private cursorWorld = { x: RX + 26, y: FY - 6 };
+  private mousePx: { x: number; y: number } | null = null;
 
   // ---- the live micro-sim: ONE scratch world + real Mechanisms runtime ----
   private world = new World();
@@ -211,6 +215,13 @@ export class Gallery {
     this.searchEl = this.root.querySelector('#bg-search')!;
     this.captionEl = this.root.querySelector('#bg-caption')!;
     this.root.querySelector('#bg-close')!.addEventListener('click', () => this.close());
+    this.stage.addEventListener('mousemove', (e) => {
+      const r = this.stage.getBoundingClientRect();
+      this.mousePx = { x: e.clientX - r.left, y: e.clientY - r.top };
+    });
+    this.stage.addEventListener('mouseleave', () => {
+      this.mousePx = null;
+    });
     this.searchEl.addEventListener('input', () => this.applyFilter());
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('.bg-zoom button')) {
       b.addEventListener('click', () => {
@@ -373,13 +384,19 @@ export class Gallery {
     g.fillRect(0, 0, this.stage.width, this.stage.height);
 
     if (rig) {
-      rig.step?.(this.frame);
       const b = rig.bounds;
       const bw = b.x1 - b.x0 + 1,
         bh = b.y1 - b.y0 + 1;
       const z = this.zoom === 0 ? this.fitZoom() : this.zoom;
       const ox = Math.floor((this.stage.width - bw * z) / 2);
       const oy = Math.floor((this.stage.height - bh * z) / 2);
+      // the cursor in world cells BEFORE the rig thinks (alerted gaze)
+      if (this.mousePx) {
+        this.cursorWorld.x = b.x0 + (this.mousePx.x - ox) / z;
+        this.cursorWorld.y = b.y0 + (this.mousePx.y - oy) / z;
+        this.stage.dataset.cursor = `${Math.round(this.cursorWorld.x)},${Math.round(this.cursorWorld.y)}`;
+      }
+      rig.step?.(this.frame);
 
       // backdrop checker so transparency reads as transparency
       g.fillStyle = '#0a0d13';
@@ -968,19 +985,20 @@ export class Gallery {
       id: 'ent-player',
       section: 'ENTITIES',
       name: 'The Alchemist',
-      meta: 'player · 9×17',
+      meta: 'player · 9×17 · 6 states',
       desc:
         'The procedural wizard: stride-wheel boots, swaying robe, 4-segment spring hat, wand glow toward the aim. ' +
-        'Fully self-lit with a near-black rim so he cuts against any background.',
+        'He faces your cursor; CAST aims the wand straight at it.',
       glyph: '@',
       glyphCss: '#c084fc',
-      states: ['IDLE', 'RUN', 'CAST'],
+      states: ['IDLE', 'RUN', 'CAST', 'JUMP', 'HURT', 'PULL'],
       build: (st) => {
         this.stageFloor(RX - 30, RX + 30);
         const fake = createPlayer();
         fake.x = RX;
         fake.y = FY;
         fake.facing = 1;
+        const cursor = this.cursorWorld;
         const ctx = this.entityCtx(fake);
         // the sprite asks the spells service for the wand muzzle and the
         // input manager for the bomb charge — give the preview honest stubs
@@ -990,8 +1008,8 @@ export class Gallery {
         };
         x.spells = {
           wandTip: () => ({
-            x: fake.x + fake.facing * 6 + Math.cos(fake.aimAngle) * 3,
-            y: fake.y - 9 + Math.sin(fake.aimAngle) * 3,
+            x: fake.x + Math.cos(fake.aimAngle) * 7,
+            y: fake.y - 9 + Math.sin(fake.aimAngle) * 7,
           }),
         };
         x.input = { bombCharge: 0 };
@@ -1003,43 +1021,192 @@ export class Gallery {
             // the rig drives just enough of them for each pose
             if (fake.blinkTimer > 0) fake.blinkTimer--;
             else if (Math.random() < 0.006) fake.blinkTimer = 8;
+            fake.facing = cursor.x >= fake.x ? 1 : -1;
             fake._svx = 0;
             fake.firing = false;
+            fake.grounded = true;
+            fake.y = FY;
             if (st === 1) {
-              fake._svx = 1.5;
+              fake._svx = 1.5 * fake.facing;
               fake.stridePhase += 0.24;
-              fake.facing = 1;
             } else if (st === 2) {
               fake.firing = true;
-              fake.aimAngle = -0.35 + Math.sin(f * 0.025) * 0.45;
+              fake.aimAngle = Math.atan2(cursor.y - (fake.y - 9), cursor.x - fake.x);
+            } else if (st === 3) {
+              const t = f % 80;
+              if (t < 40) {
+                fake.grounded = false;
+                fake.y = FY - Math.round(14 * Math.sin((Math.PI * t) / 40));
+                fake._svy = t < 20 ? -1.6 : 1.6;
+              } else fake._svy = 0;
+            } else if (st === 4) {
+              fake.staggerT = Math.max(0, 16 - (f % 80));
+              fake.staggerDir = -fake.facing;
+            } else if (st === 5) {
+              if (f % 90 === 0) fake.pullT = 26;
+              if (fake.pullT > 0) fake.pullT--;
+              fake.pullDir = fake.facing;
             }
           },
           draw: (s) => this.safeDraw('player', () => drawPlayerSprite(s, FULLBRIGHT, ctx)),
         };
       },
     });
+
+    // Per-kind ANIMATION STATES beyond CALM/ALERTED: each drives the same
+    // entity fields the game AI drives, so the gallery shows the sprite's
+    // real procedural poses (hops, pounds, fuses, channels...). `alerted`
+    // states gaze at the live cursor.
+    type StateDef = {
+      label: string;
+      alerted?: boolean;
+      setup?: (e: Enemy & Record<string, number | boolean>) => void;
+      step?: (e: Enemy & Record<string, number | boolean>, f: number) => void;
+    };
+    const hop: StateDef = {
+      label: 'HOP (loop)',
+      alerted: true,
+      step: (e, f) => {
+        const t = f % 110;
+        if (t < 20) {
+          e.windup = 20 - t;
+          e.grounded = true;
+          e.vy = 0;
+          e.y = FY;
+        } else if (t < 50) {
+          const p = (t - 20) / 30;
+          e.windup = 0;
+          e.grounded = false;
+          e.vy = -3 + 6 * p;
+          e.y = FY - Math.round(16 * Math.sin(Math.PI * p));
+        } else {
+          e.grounded = true;
+          e.vy = 0;
+          e.y = FY; // the sprite itself lands the splat (prevG edge)
+        }
+      },
+    };
+    const walk = (amp: number, speed: number): StateDef => ({
+      label: 'WALK (loop)',
+      step: (e, f) => {
+        // the sprite computes stride from REAL displacement — so displace it
+        e.x = RX + Math.sin(f * speed) * amp;
+      },
+    });
+    const EXTRA: Partial<Record<EnemyKind, StateDef[]>> = {
+      slime: [hop],
+      acidslime: [hop],
+      imp: [
+        {
+          label: 'SWOOP (loop)',
+          alerted: true,
+          step: (e, f) => {
+            e.x = RX + Math.sin(f * 0.05) * 12;
+            e.vx = Math.cos(f * 0.05) * 1.4; // the lean reads from vx
+            e.y = FY - 6 + Math.round(Math.sin(f * 0.1) * 3);
+            (e as { bobPhase: number }).bobPhase += 0.07;
+          },
+        },
+      ],
+      mage: [
+        {
+          label: 'CHANNEL (loop)',
+          alerted: true,
+          step: (e, f) => {
+            e.blink = Math.max(0, 45 - (f % 100)); // the telekinesis telegraph
+          },
+        },
+      ],
+      bat: [
+        {
+          label: 'SLEEPING',
+          setup: (e) => {
+            e.sleeping = true;
+            e.y = FY - 22;
+            this.paint(RX - 8, FY - 27, RX + 8, FY - 25, Cell.Stone); // its ceiling
+          },
+        },
+        {
+          label: 'FLARE (loop)',
+          alerted: true,
+          setup: (e) => {
+            e.y = FY - 12;
+            e.grounded = false;
+          },
+          step: (e, f) => {
+            e.windup = Math.max(0, 14 - (f % 70));
+          },
+        },
+      ],
+      spitter: [
+        {
+          label: 'SPIT (loop)',
+          alerted: true,
+          step: (e, f) => {
+            const t = f % 90;
+            e.attackCd = 90 - t; // the maw glows brighter as the shot charges
+            e.recoil = t < 14 ? 14 - t : 0; // ...and recoils right after it
+          },
+        },
+      ],
+      bomber: [
+        hop,
+        {
+          label: 'FUSING (loop)',
+          alerted: true,
+          step: (e, f) => {
+            e.fusing = Math.max(1, 100 - (f % 130)); // strobe speeds toward boom
+          },
+        },
+      ],
+      golem: [
+        walk(12, 0.045),
+        {
+          label: 'POUND (loop)',
+          alerted: true,
+          step: (e, f) => {
+            e.punching = Math.max(0, 24 - (f % 80)); // wind-up, then the slam
+          },
+        },
+      ],
+      colossus: [
+        walk(14, 0.03),
+        {
+          label: 'DOUSED',
+          step: (e) => {
+            (e as unknown as { status: { wet: number } }).status.wet = 120; // dark basalt + steam
+          },
+        },
+      ],
+    };
+
     for (const kind of ENEMY_KINDS) {
+      const extra = EXTRA[kind] ?? [];
       items.push({
         id: 'ent-' + kind,
         section: 'ENTITIES',
         name: kind.charAt(0).toUpperCase() + kind.slice(1),
-        meta: 'enemy',
+        meta: `enemy · ${2 + extra.length} states`,
         desc: (ENEMY_DESC[kind] ?? 'A cave dweller.') +
-          ' CALM creatures scan the room on a slow wander; ALERTED ones lock their gaze (Rain World eyes).',
+          ' CALM creatures scan the room on a slow wander; ALERTED ones lock their gaze onto YOUR CURSOR over the stage.',
         glyph: 'E',
         glyphCss: '#f87171',
-        states: ['CALM', 'ALERTED'],
+        states: ['CALM', 'ALERTED', ...extra.map((s) => s.label)],
         build: (st) => {
           this.stageFloor(RX - 30, RX + 30);
-          const e = this.fakeEnemy(kind, RX, FY, st === 1);
-          const gaze = { x: RX + 26, y: FY - 4 };
-          const ctx = this.entityCtx(gaze);
           const def = this.hooks.ctx.enemyCtl.defs[kind] as { halfW?: number; h?: number } | undefined;
+          const sdef = st >= 2 ? extra[st - 2] : null;
+          const alerted = st === 1 || sdef?.alerted === true;
+          const e = this.fakeEnemy(kind, RX, FY, alerted) as Enemy & Record<string, number | boolean>;
+          sdef?.setup?.(e);
+          // alerted gaze follows the live cursor (a stable mutated object)
+          const ctx = this.entityCtx(alerted ? this.cursorWorld : { x: -500, y: -500 });
           const hw = (def?.halfW ?? 6) + 10,
             hh = (def?.h ?? 12) + 9;
           return {
-            bounds: { x0: RX - Math.max(20, hw), y0: FY - Math.max(20, hh), x1: RX + Math.max(20, hw), y1: FY + 4 },
+            bounds: { x0: RX - Math.max(20, hw), y0: FY - Math.max(28, hh), x1: RX + Math.max(20, hw), y1: FY + 4 },
             cells: true,
+            step: (f) => sdef?.step?.(e, f),
             draw: (s) => this.safeDraw('enemy-' + kind, () => drawEnemySprite(s, FULLBRIGHT, ctx, e)),
           };
         },

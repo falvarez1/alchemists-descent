@@ -26,6 +26,7 @@ export interface PrefabPanelHooks {
 
 export class PrefabPanel {
   private list: PrefabDef[] = [];
+  private builtins: PrefabDef[] = [];
   private armedId: string | null = null;
   private search = '';
   private tagFilter = new Set<string>();
@@ -36,6 +37,9 @@ export class PrefabPanel {
   private searchEl: HTMLInputElement;
   private tagsEl: HTMLDivElement;
   private listEl: HTMLDivElement;
+  /** The hover popover: a big preview + details card (replaces tooltips).
+   *  pointer-events: none — it can never trap the mouse. */
+  private popEl: HTMLDivElement;
 
   constructor(
     host: HTMLElement,
@@ -54,6 +58,10 @@ export class PrefabPanel {
     this.searchEl = host.querySelector('#bp-prefab-search') as HTMLInputElement;
     this.tagsEl = host.querySelector('#bp-prefab-tags') as HTMLDivElement;
     this.listEl = host.querySelector('#bp-prefab-list') as HTMLDivElement;
+    this.popEl = document.createElement('div');
+    this.popEl.id = 'bp-prefab-pop';
+    this.popEl.style.display = 'none';
+    document.body.appendChild(this.popEl);
 
     host.querySelector('#bp-prefab-capture')!.addEventListener('click', () => hooks.onCapture());
     host.querySelector('#bp-prefab-import')!.addEventListener('click', () => hooks.onImport());
@@ -65,18 +73,22 @@ export class PrefabPanel {
     });
   }
 
-  refresh(list: PrefabDef[], armedId: string | null): void {
+  refresh(list: PrefabDef[], armedId: string | null, builtins: PrefabDef[] = []): void {
     this.list = list;
+    this.builtins = builtins;
     this.armedId = armedId;
+    this.popEl.style.display = 'none';
     for (const t of [...this.tagFilter]) {
-      if (!list.some((p) => p.tags.includes(t))) this.tagFilter.delete(t);
+      if (!list.some((p) => p.tags.includes(t)) && !builtins.some((p) => p.tags.includes(t))) {
+        this.tagFilter.delete(t);
+      }
     }
     this.renderTags();
     this.renderList();
   }
 
   private renderTags(): void {
-    const all = [...new Set(this.list.flatMap((p) => p.tags))].sort();
+    const all = [...new Set([...this.list, ...this.builtins].flatMap((p) => p.tags))].sort();
     this.tagsEl.innerHTML = '';
     for (const tag of all) {
       const chip = document.createElement('button');
@@ -92,31 +104,38 @@ export class PrefabPanel {
     }
   }
 
-  private visible(): PrefabDef[] {
-    return this.list.filter((p) => {
-      if (this.search && !p.name.toLowerCase().includes(this.search)) return false;
-      if (this.tagFilter.size > 0 && !p.tags.some((t) => this.tagFilter.has(t))) return false;
-      return true;
-    });
+  private matches(p: PrefabDef): boolean {
+    if (this.search && !p.name.toLowerCase().includes(this.search)) return false;
+    if (this.tagFilter.size > 0 && !p.tags.some((t) => this.tagFilter.has(t))) return false;
+    return true;
   }
 
   private renderList(): void {
     this.listEl.innerHTML = '';
-    const visible = this.visible();
-    if (visible.length === 0) {
+    const mine = this.list.filter((p) => this.matches(p));
+    const stock = this.builtins.filter((p) => this.matches(p));
+    if (mine.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'bp-hint';
       empty.textContent =
         this.list.length === 0
           ? 'Select a region, then CAPTURE — objects, links and lights inside come along.'
-          : 'No prefabs match the filter.';
+          : 'No library prefabs match the filter.';
       this.listEl.appendChild(empty);
-      return;
     }
-    for (const p of visible) this.listEl.appendChild(this.card(p));
+    for (const p of mine) this.listEl.appendChild(this.card(p, false));
+    // the built-in set ships with the game (worldgen places these): armable
+    // and exportable here, but not deletable
+    if (stock.length > 0) {
+      const head = document.createElement('div');
+      head.className = 'bp-prefab-subhead';
+      head.textContent = 'BUILT-INS';
+      this.listEl.appendChild(head);
+      for (const p of stock) this.listEl.appendChild(this.card(p, true));
+    }
   }
 
-  private card(p: PrefabDef): HTMLDivElement {
+  private card(p: PrefabDef, builtin: boolean): HTMLDivElement {
     const card = document.createElement('div');
     card.className = 'bp-prefab-card' + (this.armedId === p.id ? ' armed' : '');
     card.appendChild(this.thumb(p));
@@ -149,14 +168,76 @@ export class PrefabPanel {
     };
     act('PNG', 'Export terrain as paintable PNG', () => this.hooks.onExportPng(p));
     act('JSON', 'Export full prefab (.prefab.json)', () => this.hooks.onExportJson(p));
-    act('⚓', 'Edit worldgen anchors', () => this.hooks.onEditAnchors(p));
-    act('×', 'Delete prefab', () => this.hooks.onDelete(p));
+    if (!builtin) {
+      act('⚓', 'Edit worldgen anchors', () => this.hooks.onEditAnchors(p));
+      act('×', 'Delete prefab', () => this.hooks.onDelete(p));
+    }
     card.appendChild(actions);
 
     card.addEventListener('click', () => {
       this.hooks.onArm(this.armedId === p.id ? null : p);
     });
+    card.addEventListener('mouseenter', () => this.showPopover(card, p, builtin));
+    card.addEventListener('mouseleave', () => {
+      this.popEl.style.display = 'none';
+    });
     return card;
+  }
+
+  /** Big hover preview: rendered terrain + name/details (no native tooltips). */
+  private showPopover(card: HTMLElement, p: PrefabDef, builtin: boolean): void {
+    this.popEl.innerHTML = '';
+    const big = this.bigThumb(p);
+    this.popEl.appendChild(big);
+    const body = document.createElement('div');
+    body.className = 'bp-pop-body';
+    const meta: string[] = [`${p.w}×${p.h} cells`];
+    if (p.objects.length > 0) meta.push(`${p.objects.length} objects`);
+    if (p.links.length > 0) meta.push(`${p.links.length} links`);
+    if (p.lights.length > 0) meta.push(`${p.lights.length} lights`);
+    if (p.anchors && p.anchors.length > 0) meta.push(`${p.anchors.length} anchors`);
+    body.innerHTML =
+      `<div class="bp-pop-name">${escapeHtml(p.name)}${builtin ? ' <span class="bp-pop-badge">BUILT-IN</span>' : ''}</div>` +
+      `<div class="bp-pop-meta">${meta.join(' · ')}</div>` +
+      (p.tags.length > 0
+        ? `<div class="bp-pop-tags">${p.tags.map((t) => '#' + escapeHtml(t)).join(' ')}</div>`
+        : '') +
+      `<div class="bp-pop-hint">click arms it — then click the canvas to stamp · Q rotates · E flips</div>`;
+    this.popEl.appendChild(body);
+    this.popEl.style.display = '';
+    // beside the card, toward the canvas; clamped to the viewport
+    const r = card.getBoundingClientRect();
+    this.popEl.style.left = `${Math.round(r.right + 10)}px`;
+    const h = this.popEl.offsetHeight || 160;
+    this.popEl.style.top = `${Math.round(Math.max(8, Math.min(window.innerHeight - h - 8, r.top - 20)))}px`;
+  }
+
+  /** Popover preview: palette-marked terrain at up to 192px wide. */
+  private bigThumb(p: PrefabDef): HTMLCanvasElement {
+    const cells = decodePrefabCells(p);
+    const src = document.createElement('canvas');
+    src.width = p.w;
+    src.height = p.h;
+    const sg = src.getContext('2d')!;
+    const img = sg.createImageData(p.w, p.h);
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i] === 0 ? paletteColor(0) : CELL_PALETTE[cells[i]];
+      const o = i * 4;
+      img.data[o] = unpackR(c);
+      img.data[o + 1] = unpackG(c);
+      img.data[o + 2] = unpackB(c);
+      img.data[o + 3] = 255;
+    }
+    sg.putImageData(img, 0, 0);
+    const out = document.createElement('canvas');
+    out.className = 'bp-pop-thumb';
+    const scale = Math.max(1, Math.min(192 / p.w, 140 / p.h));
+    out.width = Math.max(1, Math.round(p.w * scale));
+    out.height = Math.max(1, Math.round(p.h * scale));
+    const og = out.getContext('2d')!;
+    og.imageSmoothingEnabled = false;
+    og.drawImage(src, 0, 0, out.width, out.height);
+    return out;
   }
 
   private thumb(p: PrefabDef): HTMLCanvasElement {

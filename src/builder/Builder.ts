@@ -2491,6 +2491,9 @@ export class Builder {
     for (const [key, id] of Object.entries(Builder.SIDE_PANELS)) {
       this.el<HTMLDivElement>(id).style.display = which === key ? '' : 'none';
     }
+    // the open panel docks flush-right; the inspector slides left to make
+    // room (CSS .b-params-open) — the two never overlap
+    this.root.classList.toggle('b-params-open', which !== null);
     if (which === 'proc') this.syncProcPanel();
     else if (which === 'world') this.buildWorldPanel();
     else if (which === 'mat') this.buildMatPanel();
@@ -2976,7 +2979,7 @@ export class Builder {
   }
 
   private refreshPrefabs(): void {
-    this.prefabPanel.refresh(this.prefabs, this.armedPrefab?.id ?? null);
+    this.prefabPanel.refresh(this.prefabs, this.armedPrefab?.id ?? null, [...builtinPrefabs()]);
   }
 
   private capturePrefabFromRegion(): void {

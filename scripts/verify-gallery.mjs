@@ -51,7 +51,7 @@ const counts = await page.evaluate(() => {
   return {
     mech: items.filter((t) => t === 'mechanism').length,
     prefab: items.filter((t) => t.includes('builtin') || t.includes('library')).length,
-    entity: items.filter((t) => t === 'enemy' || t.startsWith('player')).length,
+    entity: items.filter((t) => t.startsWith('enemy') || t.startsWith('player')).length,
   };
 });
 check('13 mechanism items', counts.mech === 13, JSON.stringify(counts));
@@ -151,7 +151,7 @@ const entityNames = await page.evaluate(() =>
   [...document.querySelectorAll('#builder-gallery .bg-item')]
     .filter((r) => {
       const m = r.querySelector('.bg-meta')?.textContent ?? '';
-      return m === 'enemy' || m.startsWith('player');
+      return m.startsWith('enemy') || m.startsWith('player');
     })
     .map((r) => r.querySelector('.bg-name')?.textContent ?? ''),
 );
@@ -175,6 +175,46 @@ const r2 = await snap();
 await page.waitForTimeout(300);
 const r3 = await snap();
 check('the alchemist runs (stride animates)', r1.sum !== r2.sum || r2.sum !== r3.sum);
+
+/* ---------- animation states + cursor gaze ---------- */
+const chipsOf = () =>
+  page.$$eval('#builder-gallery .bg-chip', (els) => els.map((e) => e.textContent));
+await selectItem('Slime');
+const slimeChips = await chipsOf();
+check('slime carries its HOP state', slimeChips.includes('HOP (loop)'), JSON.stringify(slimeChips));
+await clickChip('HOP (loop)');
+const hop1 = await snap();
+await page.waitForTimeout(400);
+const hop2 = await snap();
+check('the slime hop loop animates', hop1.sum !== hop2.sum);
+await selectItem('Golem');
+const golemChips = await chipsOf();
+check(
+  'golem carries WALK + POUND states',
+  golemChips.includes('WALK (loop)') && golemChips.includes('POUND (loop)'),
+  JSON.stringify(golemChips),
+);
+await selectItem('Bomber');
+check('bomber carries its FUSING state', (await chipsOf()).includes('FUSING (loop)'));
+
+// alerted gaze: the stage maps the mouse to world cells (dataset readout)
+await selectItem('Slime');
+await clickChip('ALERTED');
+const sb = await page.evaluate(() => {
+  const r = document.querySelector('#bg-stage').getBoundingClientRect();
+  return { x: r.x, y: r.y, w: r.width, h: r.height };
+});
+await page.mouse.move(sb.x + sb.w * 0.18, sb.y + sb.h * 0.5);
+await page.waitForTimeout(250);
+const cwLeft = await page.evaluate(() => document.querySelector('#bg-stage').dataset.cursor);
+await page.mouse.move(sb.x + sb.w * 0.85, sb.y + sb.h * 0.5);
+await page.waitForTimeout(250);
+const cwRight = await page.evaluate(() => document.querySelector('#bg-stage').dataset.cursor);
+check(
+  'cursor maps to world cells for the alerted gaze',
+  Boolean(cwLeft && cwRight) && Number(cwLeft.split(',')[0]) < Number(cwRight.split(',')[0]),
+  `${cwLeft} -> ${cwRight}`,
+);
 
 /* ---------- search + keyboard + close ---------- */
 await page.fill('#bg-search', 'valve');

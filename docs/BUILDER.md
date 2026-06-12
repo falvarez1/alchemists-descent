@@ -253,10 +253,15 @@ footprint-correct through transforms, patrol points and anchors travel.
 
 The PREFABS panel (`src/builder/prefabPanel.ts`) shows generated thumbnails
 (never stored), name/size/content badges, tag chips (`#tag` words in the
-capture prompt), and search. Per-prefab actions: PNG export, JSON export,
-anchor editing (worldgen connection points: edge midpoints n/s/e/w, open or
-sealed), delete. Legacy terrain-only stamps migrate to prefabs tagged
-`terrain` on first load (lossless; old key removed).
+capture prompt), and search — your library first, then a **BUILT-INS**
+section listing every prefab that ships with the game (the same ones
+worldgen places), armable and exportable but not deletable. Hovering any
+card raises a POPOVER (no native tooltips): a big rendered preview plus
+name, dimensions, object/link/light/anchor counts, tags, and the arming
+hint. Per-library-prefab actions: PNG export, JSON export, anchor editing
+(worldgen connection points: edge midpoints n/s/e/w, open or sealed),
+delete. Legacy terrain-only stamps migrate to prefabs tagged `terrain` on
+first load (lossless; old key removed).
 
 Three pipelines consume the same format:
 
@@ -497,8 +502,13 @@ everything the game can show — and nothing in it is a mockup:
   room's inhabitants standing where generation would put them. The MARKERS
   chip overlays worldgen anchors (cyan open / ember sealed), mechanism
   footprints, and pickup spots.
-- **ENTITIES** — the Alchemist (IDLE / RUN / CAST) and every enemy kind
-  (CALM / ALERTED gaze), drawn through the real sprite functions.
+- **ENTITIES** — the Alchemist (IDLE / RUN / CAST / JUMP / HURT / PULL; he
+  faces your cursor, and CAST aims the wand straight at it) and every enemy
+  kind with its full set of procedural animation states: CALM / ALERTED
+  (the gaze locks onto YOUR CURSOR over the stage) plus the kind-specific
+  loops — slime/bomber HOP, imp SWOOP, mage CHANNEL, bat SLEEPING/FLARE,
+  spitter SPIT, bomber FUSING, golem WALK/POUND, colossus WALK/DOUSED. The
+  rigs drive the same entity fields the game AI drives.
 - **SPRITES** — animated decor assets playing per loop tag.
 
 Keyboard: ↑↓ browse · ←→ states · `+`/`−` zoom (FIT default) · `/` search ·
