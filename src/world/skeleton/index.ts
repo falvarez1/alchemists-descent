@@ -115,6 +115,11 @@ const fungalPockets: SkeletonFn = (io, spec) => {
   const p = spec.params;
   const { work, rng, floorBand, minY } = io;
   fillNoise(work, WIDTH, HEIGHT, rng, p.fillDensity, floorBand);
+  // CA BEFORE carving: blends the raw block noise into organic blobs.
+  // (After carving it erodes the bubble throats — thousands of severed
+  // pockets, which the connectivity pass then drills with parallel
+  // tunnels. The audit caught exactly that on d2.)
+  smoothCA(work, WIDTH, HEIGHT, p.caPasses, floorBand);
   carveBubbleChains(work, WIDTH, HEIGHT, rng, {
     chains: p.chains,
     links: p.links,
@@ -125,11 +130,9 @@ const fungalPockets: SkeletonFn = (io, spec) => {
     minY,
   });
   carveSineArtery(work, WIDTH, HEIGHT, rng, p.artery, floorBand, minY, null);
-  // CA AFTER carving: blends pockets and noise into organic blobs.
-  smoothCA(work, WIDTH, HEIGHT, p.caPasses, floorBand);
   const spawnHint = carveSpawnChamber(work, WIDTH / 2, Math.floor(HEIGHT * 0.42), p.spawnRadius, minY);
   sealBorders(work, WIDTH, floorBand, minY);
-  ensureConnectivity(work, WIDTH, HEIGHT, rng, {
+  ensureConnectivity(work, WIDTH, HEIGHT, {
     minArea: p.minArea,
     tunnelRadius: p.tunnelRadius,
     floorBand,
@@ -184,7 +187,7 @@ const frozenCrevasses: SkeletonFn = (io, spec) => {
   }
   const spawnHint = carveSpawnChamber(work, WIDTH / 2, Math.floor(HEIGHT * 0.35), p.spawnRadius, minY);
   sealBorders(work, WIDTH, floorBand, minY);
-  ensureConnectivity(work, WIDTH, HEIGHT, rng, {
+  ensureConnectivity(work, WIDTH, HEIGHT, {
     minArea: p.minArea,
     tunnelRadius: p.tunnelRadius,
     floorBand,
@@ -213,7 +216,7 @@ const floodedGalleries: SkeletonFn = (io, spec) => {
   carveShafts(work, WIDTH, HEIGHT, rng, p.shafts, floorBand, minY);
   const spawnHint = carveSpawnChamber(work, WIDTH / 2, Math.floor(HEIGHT * 0.44), p.spawnRadius, minY);
   sealBorders(work, WIDTH, floorBand, minY);
-  ensureConnectivity(work, WIDTH, HEIGHT, rng, {
+  ensureConnectivity(work, WIDTH, HEIGHT, {
     minArea: p.minArea,
     tunnelRadius: p.tunnelRadius,
     floorBand,
@@ -253,7 +256,7 @@ const timberScaffold: SkeletonFn = (io, spec) => {
   }
   const spawnHint = carveSpawnChamber(work, best.x, best.y, p.spawnRadius, minY);
   sealBorders(work, WIDTH, floorBand, minY);
-  ensureConnectivity(work, WIDTH, HEIGHT, rng, {
+  ensureConnectivity(work, WIDTH, HEIGHT, {
     minArea: p.minArea,
     tunnelRadius: p.tunnelRadius,
     floorBand,
@@ -301,7 +304,7 @@ const crystalVaults: SkeletonFn = (io, spec) => {
   carveShafts(work, WIDTH, HEIGHT, rng, p.shafts, floorBand, minY);
   const spawnHint = carveSpawnChamber(work, WIDTH / 2, Math.floor(HEIGHT * 0.4), p.spawnRadius, minY);
   sealBorders(work, WIDTH, floorBand, minY);
-  ensureConnectivity(work, WIDTH, HEIGHT, rng, {
+  ensureConnectivity(work, WIDTH, HEIGHT, {
     minArea: p.minArea,
     tunnelRadius: p.tunnelRadius,
     floorBand,
@@ -353,7 +356,7 @@ const volcanicTubes: SkeletonFn = (io, spec) => {
   }
   const spawnHint = carveSpawnChamber(work, WIDTH / 2, Math.floor(HEIGHT * 0.32), p.spawnRadius, minY);
   sealBorders(work, WIDTH, floorBand, minY);
-  ensureConnectivity(work, WIDTH, HEIGHT, rng, {
+  ensureConnectivity(work, WIDTH, HEIGHT, {
     minArea: p.minArea,
     tunnelRadius: p.tunnelRadius,
     floorBand,

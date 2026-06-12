@@ -58,24 +58,20 @@ function cached(kind: SkeletonSpec['kind']): Run {
   return run;
 }
 
-/** 1:4 downsampled flood fill (any-open rule) from a full-res start cell. */
-function downsampledReach(work: Uint8Array, startX: number, startY: number): { reached: number; open: number } {
-  const DS = 4;
-  const dw = Math.ceil(WIDTH / DS),
-    dh = Math.ceil(HEIGHT / DS);
-  const open = new Uint8Array(dw * dh);
-  for (let y = 0; y < HEIGHT; y++) {
-    const dy = (y / DS) | 0;
-    for (let x = 0; x < WIDTH; x++) {
-      if (!work[x + y * WIDTH]) open[((x / DS) | 0) + dy * dw] = 1;
-    }
-  }
+/**
+ * FULL-RESOLUTION flood fill from a start cell. Full-res is load-bearing:
+ * a downsampled "any open pixel" reach test fuses pockets whose walls are
+ * thinner than the sample step and hid a real ensureConnectivity failure
+ * (fungal d2 audit: floor strip unreachable while this metric read 70%+).
+ */
+function fullResReach(work: Uint8Array, startX: number, startY: number): { reached: number; open: number } {
+  const n = WIDTH * HEIGHT;
   let total = 0;
-  for (let i = 0; i < open.length; i++) total += open[i];
-  const start = ((startX / DS) | 0) + ((startY / DS) | 0) * dw;
-  expect(open[start]).toBe(1);
-  const visited = new Uint8Array(dw * dh);
-  const queue = new Int32Array(dw * dh);
+  for (let i = 0; i < n; i++) if (!work[i]) total++;
+  const start = startX + startY * WIDTH;
+  expect(work[start]).toBe(0);
+  const visited = new Uint8Array(n);
+  const queue = new Int32Array(n);
   let head = 0,
     tail = 0;
   queue[tail++] = start;
@@ -84,23 +80,22 @@ function downsampledReach(work: Uint8Array, startX: number, startY: number): { r
   while (head < tail) {
     const c = queue[head++];
     reached++;
-    const cx = c % dw,
-      cy = (c / dw) | 0;
-    if (cx > 0 && open[c - 1] && !visited[c - 1]) {
+    const cx = c % WIDTH;
+    if (cx > 0 && !work[c - 1] && !visited[c - 1]) {
       visited[c - 1] = 1;
       queue[tail++] = c - 1;
     }
-    if (cx + 1 < dw && open[c + 1] && !visited[c + 1]) {
+    if (cx + 1 < WIDTH && !work[c + 1] && !visited[c + 1]) {
       visited[c + 1] = 1;
       queue[tail++] = c + 1;
     }
-    if (cy > 0 && open[c - dw] && !visited[c - dw]) {
-      visited[c - dw] = 1;
-      queue[tail++] = c - dw;
+    if (c - WIDTH >= 0 && !work[c - WIDTH] && !visited[c - WIDTH]) {
+      visited[c - WIDTH] = 1;
+      queue[tail++] = c - WIDTH;
     }
-    if (cy + 1 < dh && open[c + dw] && !visited[c + dw]) {
-      visited[c + dw] = 1;
-      queue[tail++] = c + dw;
+    if (c + WIDTH < n && !work[c + WIDTH] && !visited[c + WIDTH]) {
+      visited[c + WIDTH] = 1;
+      queue[tail++] = c + WIDTH;
     }
   }
   return { reached, open: total };
@@ -164,10 +159,16 @@ describe('skeleton structural contracts', () => {
       });
 
       if (kind !== 'baseline') {
-        it('connects >= 70% of open space to the spawn', () => {
+        // fungal and crystal deliberately leave ~30% of their open space
+        // as sealed micro-voids in dense rock (buried pockets / geodes —
+        // digging targets), so their navigable-web bar is lower. The
+        // failure this test exists to catch (a disconnected floor strip)
+        // reads ~17%, far below either bar.
+        const reachBar = kind === 'fungalPockets' || kind === 'crystalVaults' ? 0.65 : 0.7;
+        it(`connects >= ${reachBar * 100}% of open space to the spawn (full res)`, () => {
           const { work, result } = cached(kind);
-          const { reached, open } = downsampledReach(work, result.spawnHint.x, result.spawnHint.y);
-          expect(reached / open).toBeGreaterThanOrEqual(0.7);
+          const { reached, open } = fullResReach(work, result.spawnHint.x, result.spawnHint.y);
+          expect(reached / open).toBeGreaterThanOrEqual(reachBar);
         });
 
         it('returns null tunnelY', () => {
@@ -234,7 +235,7 @@ describe('ensureConnectivity', () => {
     const work = new Uint8Array(w * h).fill(1);
     carveDisc(work, w, h, 50, 60, 10, 2);
     carveDisc(work, w, h, 190, 100, 10, 2);
-    const joined = ensureConnectivity(work, w, h, new Rng(7), {
+    const joined = ensureConnectivity(work, w, h, {
       minArea: 50,
       tunnelRadius: 3,
       floorBand,

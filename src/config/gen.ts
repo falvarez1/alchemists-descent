@@ -408,12 +408,15 @@ export function baselineSkeletonParams(): BaselineSkeletonParams {
 
 export function fungalParams(): FungalParams {
   return {
-    fillDensity: 0.58,
-    chains: 9,
-    links: 5,
-    rMin: 8,
-    rMax: 20,
-    throatW: 6,
+    // denser-than-baseline base rock so the BUBBLES read as the level;
+    // CA-blended noise voids are large enough to join the web (minArea)
+    // instead of stippling it with drill tunnels
+    fillDensity: 0.62,
+    chains: 14,
+    links: 6,
+    rMin: 12,
+    rMax: 24,
+    throatW: 8,
     artery: {
       baseFrac: 0.5,
       baseJitter: 60,
@@ -426,9 +429,9 @@ export function fungalParams(): FungalParams {
       radius: 13,
       carveEvery: 4,
     },
-    caPasses: 3,
+    caPasses: 5,
     spawnRadius: 26,
-    minArea: 500,
+    minArea: 350,
     tunnelRadius: 6,
   };
 }
@@ -469,8 +472,11 @@ export function galleryParams(): GalleryParams {
     carveEvery: 4,
   });
   return {
-    fillDensity: 0.62,
-    fillCAPasses: 3,
+    // denser fill + extra CA passes: stray noise pockets close up, so the
+    // open space is dominated by the galleries themselves (the full-res
+    // connectivity contract needs >= 70% of open cells on the main web)
+    fillDensity: 0.66,
+    fillCAPasses: 5,
     galleries: [gallery(0.16, 18), gallery(0.3, 19), gallery(0.44, 20), gallery(0.58, 21), gallery(0.72, 22)],
     chambers: {
       count: 14,
@@ -498,7 +504,7 @@ export function galleryParams(): GalleryParams {
       radius: 13,
     },
     spawnRadius: 26,
-    minArea: 500,
+    minArea: 300,
     tunnelRadius: 7,
   };
 }
@@ -526,17 +532,20 @@ export function scaffoldParams(): ScaffoldParams {
 
 export function vaultParams(): VaultParams {
   return {
-    fillDensity: 0.5,
-    caPasses: 4,
+    // denser-than-baseline rock so the tall vaults ARE the level (0.5 read
+    // as murky half-open noise that drowned them); the extra CA passes
+    // consolidate noise voids into blobs big enough to join the web
+    fillDensity: 0.62,
+    caPasses: 6,
     vaults: {
-      countMin: 6,
-      countMax: 9,
-      rxMin: 16,
-      rxMax: 26,
-      ryMin: 36,
-      ryMax: 60,
-      yFracMin: 0.28,
-      yFracMax: 0.6,
+      countMin: 8,
+      countMax: 12,
+      rxMin: 18,
+      rxMax: 30,
+      ryMin: 40,
+      ryMax: 70,
+      yFracMin: 0.26,
+      yFracMax: 0.62,
       xMargin: 90,
     },
     pillars: { wMin: 3, wMax: 5, spacingMin: 24, spacingMax: 40, heightFrac: 0.9 },
@@ -581,7 +590,8 @@ export function vaultParams(): VaultParams {
       radius: 10,
     },
     spawnRadius: 26,
-    minArea: 500,
+    // CA-consolidated geode blobs cluster just under 500 cells — join them
+    minArea: 220,
     tunnelRadius: 6,
   };
 }
@@ -590,23 +600,26 @@ export function tubeParams(): TubeParams {
   return {
     fillDensity: 0.62,
     caPasses: 3,
+    // denser web reaching closer to the borders: locks placed near the
+    // edges (progressive relaxation goes there on tight seeds) must land
+    // within connectToCaves' walk range of a connected region
     walkers: {
-      countMin: 8,
-      countMax: 12,
+      countMin: 10,
+      countMax: 14,
       steps: 360,
       radiusMin: 8,
       radiusMax: 14,
       turn: 0.7,
       gravityBias: 0.35,
-      branchChance: 0.04,
-      maxBranches: 6,
-      xMargin: 120,
+      branchChance: 0.045,
+      maxBranches: 8,
+      xMargin: 90,
       yFracMin: 0.08,
       yFracMax: 0.3,
     },
     chambers: { count: 20, rMin: 9, rMax: 16, lobes: 4, xMargin: 60, yMin: 100, ySpanOff: 180 },
     spawnRadius: 26,
-    minArea: 500,
+    minArea: 300,
     tunnelRadius: 7,
   };
 }

@@ -607,63 +607,52 @@ export interface ConnectivityOpts {
 }
 
 /**
- * Safety net for non-baseline skeletons (mandatory last step): flood-fill the
- * open space on a 1:4 downsampled grid, then carve an L-shaped tunnel from
- * every component with area >= minArea to the nearest cell of the largest
- * component. Returns the number of components joined.
+ * Safety net for non-baseline skeletons (mandatory last step): label the
+ * open space at FULL resolution (a downsample would fuse separate pockets
+ * whose walls are thinner than the sample step — the exact failure mode a
+ * bubble-field biome produces), then carve a tunnel from every component
+ * with area >= minArea to the nearest cell of the largest component,
+ * walking the gradient of a multi-source distance field so each tunnel
+ * takes the shortest gap. Deterministic — no rng. Returns components joined.
  */
 export function ensureConnectivity(
   work: Uint8Array,
   w: number,
   h: number,
-  rng: Rng,
   opts: ConnectivityOpts,
 ): number {
-  const DS = 4;
-  const dw = Math.ceil(w / DS),
-    dh = Math.ceil(h / DS);
-  const openCount = new Int32Array(dw * dh);
-  for (let y = 0; y < h; y++) {
-    const dy = (y / DS) | 0;
-    const row = y * w;
-    for (let x = 0; x < w; x++) {
-      if (!work[x + row]) openCount[((x / DS) | 0) + dy * dw]++;
-    }
-  }
+  const n = w * h;
 
-  // Label 4-connected components of down-cells containing any open space.
-  const label = new Int32Array(dw * dh).fill(-1);
-  const stack = new Int32Array(dw * dh);
+  // 1) Full-res 4-connected components of open cells.
+  const label = new Int32Array(n).fill(-1);
+  const stack = new Int32Array(n);
   const compArea: number[] = [];
-  const compSeed: number[] = [];
-  for (let i = 0; i < dw * dh; i++) {
-    if (openCount[i] === 0 || label[i] >= 0) continue;
+  for (let i = 0; i < n; i++) {
+    if (work[i] || label[i] >= 0) continue;
     const id = compArea.length;
     compArea.push(0);
-    compSeed.push(i);
     let sp = 0;
     stack[sp++] = i;
     label[i] = id;
     while (sp > 0) {
       const c = stack[--sp];
-      compArea[id] += openCount[c];
-      const cx = c % dw,
-        cy = (c / dw) | 0;
-      if (cx > 0 && openCount[c - 1] > 0 && label[c - 1] < 0) {
+      compArea[id]++;
+      const cx = c % w;
+      if (cx > 0 && !work[c - 1] && label[c - 1] < 0) {
         label[c - 1] = id;
         stack[sp++] = c - 1;
       }
-      if (cx + 1 < dw && openCount[c + 1] > 0 && label[c + 1] < 0) {
+      if (cx + 1 < w && !work[c + 1] && label[c + 1] < 0) {
         label[c + 1] = id;
         stack[sp++] = c + 1;
       }
-      if (cy > 0 && openCount[c - dw] > 0 && label[c - dw] < 0) {
-        label[c - dw] = id;
-        stack[sp++] = c - dw;
+      if (c - w >= 0 && !work[c - w] && label[c - w] < 0) {
+        label[c - w] = id;
+        stack[sp++] = c - w;
       }
-      if (cy + 1 < dh && openCount[c + dw] > 0 && label[c + dw] < 0) {
-        label[c + dw] = id;
-        stack[sp++] = c + dw;
+      if (c + w < n && !work[c + w] && label[c + w] < 0) {
+        label[c + w] = id;
+        stack[sp++] = c + w;
       }
     }
   }
@@ -672,56 +661,73 @@ export function ensureConnectivity(
   let largest = 0;
   for (let i = 1; i < compArea.length; i++) if (compArea[i] > compArea[largest]) largest = i;
 
-  // BFS scratch (geometric, walls ignored) reused across components.
-  const visited = new Int32Array(dw * dh);
-  const bfs = new Int32Array(dw * dh);
-  let generation = 0;
+  // 2) Multi-source geometric BFS from the whole largest component, through
+  //    walls, with parent pointers — a "how do I get home" field. Stays off
+  //    the outermost ring so carved paths never breach the border seal.
+  const dist = new Int32Array(n).fill(-1);
+  const parent = new Int32Array(n).fill(-1);
+  const queue = stack; // reuse: labeling is done with it
+  let head = 0,
+    tail = 0;
+  for (let i = 0; i < n; i++) {
+    if (label[i] === largest) {
+      dist[i] = 0;
+      queue[tail++] = i;
+    }
+  }
+  while (head < tail) {
+    const c = queue[head++];
+    const cx = c % w,
+      cy = (c / w) | 0;
+    const d = dist[c] + 1;
+    if (cx > 1 && dist[c - 1] < 0) {
+      dist[c - 1] = d;
+      parent[c - 1] = c;
+      queue[tail++] = c - 1;
+    }
+    if (cx < w - 2 && dist[c + 1] < 0) {
+      dist[c + 1] = d;
+      parent[c + 1] = c;
+      queue[tail++] = c + 1;
+    }
+    if (cy > 1 && dist[c - w] < 0) {
+      dist[c - w] = d;
+      parent[c - w] = c;
+      queue[tail++] = c - w;
+    }
+    if (cy < h - 2 && dist[c + w] < 0) {
+      dist[c + w] = d;
+      parent[c + w] = c;
+      queue[tail++] = c + w;
+    }
+  }
+
+  // 3) Per qualifying component: its cell nearest the largest component.
+  const bestCell = new Array<number>(compArea.length).fill(-1);
+  const bestDist = new Array<number>(compArea.length).fill(Infinity);
+  for (let i = 0; i < n; i++) {
+    const id = label[i];
+    if (id < 0 || id === largest || dist[i] < 0) continue;
+    if (dist[i] < bestDist[id]) {
+      bestDist[id] = dist[i];
+      bestCell[id] = i;
+    }
+  }
+
+  // 4) Carve home along the parent chain (shortest gap, no detours).
   let joined = 0;
   for (let id = 0; id < compArea.length; id++) {
-    if (id === largest || compArea[id] < opts.minArea) continue;
-    generation++;
-    let head = 0,
-      tail = 0;
-    bfs[tail++] = compSeed[id];
-    visited[compSeed[id]] = generation;
-    let target = -1;
-    while (head < tail && target < 0) {
-      const c = bfs[head++];
-      if (label[c] === largest) {
-        target = c;
-        break;
+    if (id === largest || compArea[id] < opts.minArea || bestCell[id] < 0) continue;
+    let c = bestCell[id];
+    let step = 0;
+    while (c >= 0 && dist[c] > 0) {
+      if (step % 2 === 0) {
+        carveDisc(work, w, h, c % w, (c / w) | 0, opts.tunnelRadius, opts.minY);
       }
-      const cx = c % dw,
-        cy = (c / dw) | 0;
-      if (cx > 0 && visited[c - 1] !== generation) {
-        visited[c - 1] = generation;
-        bfs[tail++] = c - 1;
-      }
-      if (cx + 1 < dw && visited[c + 1] !== generation) {
-        visited[c + 1] = generation;
-        bfs[tail++] = c + 1;
-      }
-      if (cy > 0 && visited[c - dw] !== generation) {
-        visited[c - dw] = generation;
-        bfs[tail++] = c - dw;
-      }
-      if (cy + 1 < dh && visited[c + dw] !== generation) {
-        visited[c + dw] = generation;
-        bfs[tail++] = c + dw;
-      }
+      c = parent[c];
+      step++;
     }
-    if (target < 0) continue;
-    const sx = (compSeed[id] % dw) * DS + 2,
-      sy = ((compSeed[id] / dw) | 0) * DS + 2;
-    const tx = (target % dw) * DS + 2,
-      ty = ((target / dw) | 0) * DS + 2;
-    if (rng.next() < 0.5) {
-      carveStroke(work, w, h, sx, sy, tx, sy, opts.tunnelRadius, opts.minY);
-      carveStroke(work, w, h, tx, sy, tx, ty, opts.tunnelRadius, opts.minY);
-    } else {
-      carveStroke(work, w, h, sx, sy, sx, ty, opts.tunnelRadius, opts.minY);
-      carveStroke(work, w, h, sx, ty, tx, ty, opts.tunnelRadius, opts.minY);
-    }
+    if (c >= 0) carveDisc(work, w, h, c % w, (c / w) | 0, opts.tunnelRadius, opts.minY);
     joined++;
   }
   return joined;
