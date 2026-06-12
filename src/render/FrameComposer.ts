@@ -819,6 +819,65 @@ export class FrameComposer implements PixelSurface {
         this.setPx(m.x + 1, m.y - 3, 0.22 * p2, 0.5 * p2, 0.8 * p2);
         this.setPx(m.x, m.y - 4, 0.35 * p2, 0.75 * p2, 1.2 * p2);
         if (latched && frame % 9 < 2) this.addPx(m.x, m.y - 5, 0.5, 0.9, 1.4);
+      } else if (m.kind === 'valve') {
+        // closed: faint amber pips at the slab corners hint "this moves";
+        // open: the gap itself is the read
+        if (m.state === 0 && frame % 50 < 25) {
+          this.addPx(m.x, m.y, 0.5, 0.38, 0.1);
+          this.addPx(m.x + m.w - 1, m.y, 0.5, 0.38, 0.1);
+          this.addPx(m.x, m.y + m.h - 1, 0.5, 0.38, 0.1);
+          this.addPx(m.x + m.w - 1, m.y + m.h - 1, 0.5, 0.38, 0.1);
+        }
+      } else if (m.kind === 'plug') {
+        // a damaged seal sheds the occasional dust mote — the cells
+        // themselves carry the rest of the story
+        if (
+          m.state === 0 &&
+          m.body &&
+          (m.reading ?? m.body.length) < m.body.length &&
+          frame % 30 < 4
+        ) {
+          this.addPx(m.x + (m.w >> 1), m.y - 1, 0.4, 0.3, 0.2);
+        }
+      } else if (m.kind === 'sensor') {
+        // a tuned crystal node: teal idle blink, green steady when satisfied
+        const on = m.state > 0;
+        const p2 = on ? 0.9 + Math.sin(frame * 0.2) * 0.15 : 0.35 + Math.sin(frame * 0.09 + m.id) * 0.2;
+        if (on) {
+          this.setPx(m.x, m.y - 1, 0.2 * p2, 1.1 * p2, 0.5 * p2);
+          this.setPx(m.x, m.y - 2, 0.3 * p2, 1.3 * p2, 0.6 * p2);
+        } else {
+          this.setPx(m.x, m.y - 1, 0.15 * p2, 0.7 * p2, 0.65 * p2);
+          this.setPx(m.x, m.y - 2, 0.2 * p2, 0.85 * p2, 0.8 * p2);
+        }
+      } else if (m.kind === 'counterweight' && m.zone) {
+        // fill gauge: notches climb amber toward the tip-over point; latched
+        // reads as a steady green ingot on the pan
+        const frac = Math.min(1, (m.reading ?? 0) / (m.threshold ?? 30));
+        for (let n = 0; n < 5; n++) {
+          const gy = m.y - 9 - n;
+          if (m.state === 1 || frac * 5 > n) this.setPx(m.x - 2, gy, 0.85, 0.62, 0.12);
+          else this.setPx(m.x - 2, gy, 0.14, 0.12, 0.08);
+        }
+        if (m.state === 1) {
+          const g = 0.6 + Math.sin(frame * 0.16) * 0.25;
+          this.addPx(m.x + (m.w >> 1), m.y - 1, 0.25 * g, 1.1 * g, 0.45 * g);
+        }
+      } else if (m.kind === 'relay') {
+        // the rune-gear node: dim violet idle, fast amber blink while the
+        // fuse burns, steady green once fired
+        const burning = m.fuseT !== undefined && m.state === 0;
+        if (m.state === 1) {
+          this.setPx(m.x, m.y - 2, 0.25, 1.0, 0.45);
+          this.setPx(m.x, m.y - 3, 0.18, 0.75, 0.34);
+        } else if (burning && frame % 6 < 3) {
+          this.setPx(m.x, m.y - 2, 1.2, 0.8, 0.25);
+          this.addPx(m.x, m.y - 3, 0.9, 0.55, 0.15);
+        } else {
+          const p2 = 0.4 + Math.sin(frame * 0.11 + m.x) * 0.18;
+          this.setPx(m.x, m.y - 2, 0.55 * p2, 0.45 * p2, 1.0 * p2);
+          this.setPx(m.x, m.y - 3, 0.4 * p2, 0.32 * p2, 0.75 * p2);
+        }
       }
       // a broken mechanism strobes a dying red cross while it groans
       if (m.broken !== undefined && m.broken > 0 && frame % 20 < 10) {

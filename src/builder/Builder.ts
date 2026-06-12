@@ -150,6 +150,12 @@ const PLACE_MECH: Array<{ kind: EditorObjectKind; label: string; glyph: string }
   { kind: 'chargeLatch', label: 'Latch', glyph: 'Z' },
   { kind: 'runeGlyph', label: 'Rune', glyph: 'R' },
   { kind: 'runeDoor', label: 'RuneDoor', glyph: 'G' },
+  // machine primitives (docs/MACHINE-PRIMITIVES-AND-STRUCTURES-PLAN.md)
+  { kind: 'valve', label: 'Valve', glyph: 'V' },
+  { kind: 'plug', label: 'Plug', glyph: '%' },
+  { kind: 'sensor', label: 'Sensor', glyph: '?' },
+  { kind: 'counterweight', label: 'Cweight', glyph: 'C' },
+  { kind: 'relay', label: 'Relay', glyph: '&' },
 ];
 
 const GLYPH: Partial<Record<EditorObjectKind, string>> = Object.fromEntries(
@@ -176,6 +182,11 @@ const DEFAULT_PARAMS: Partial<Record<EditorObjectKind, () => Record<string, unkn
   runeDoor: () => ({ w: 2, h: 11 }),
   hazardEmitter: () => ({ cell: 'water', rate: 30, burst: 1, phase: 0 }),
   decor: () => ({ text: 'note', color: '#d6e6f5' }),
+  valve: () => ({ w: 5, h: 2, material: 'metal', oneShot: false, autoClose: 0, logic: 'and' }),
+  plug: () => ({ w: 3, h: 3, material: 'wood', breakFrac: 0.5 }),
+  sensor: () => ({ type: 'heat', threshold: 6, zoneW: 9, zoneH: 7, latch: 'timed', latchFrames: 420, filter: '' }),
+  counterweight: () => ({ w: 7, threshold: 30 }),
+  relay: () => ({ delay: 0, action: 'activate', logic: 'and' }),
 };
 
 /** Point kinds whose rotation is a meaningful authored fact (emitters aim
@@ -232,6 +243,7 @@ type BuilderTool =
 type LayerFamily = 'gameplay' | 'mech' | 'links' | 'lights';
 const MECH_KINDS: ReadonlySet<EditorObjectKind> = new Set([
   'door', 'plate', 'lever', 'brazier', 'scale', 'buoy', 'chargeLatch', 'runeGlyph', 'runeDoor',
+  'valve', 'plug', 'sensor', 'counterweight', 'relay',
 ] as EditorObjectKind[]);
 const familyOf = (o: EditorObject): LayerFamily => (MECH_KINDS.has(o.kind) ? 'mech' : 'gameplay');
 
@@ -404,6 +416,40 @@ const OBJECT_INFO: Partial<Record<EditorObjectKind | 'light', { desc: string; dr
       px(g, 11, 20, 3, 2, '#86efac');
     },
   },
+  valve: {
+    desc: 'A small material gate in a channel (a sluice is a wide valve). Opens like a door; one-shot and timed auto-close are options.',
+    draw: (g) => {
+      px(g, 4, 12, 20, 4, '#5eead4'); px(g, 11, 8, 6, 12, '#374151'); px(g, 13, 4, 2, 6, '#9ca3af');
+    },
+  },
+  plug: {
+    desc: 'Real cells that FIRE a signal once destroyed — by anything. The material is the break profile (wood burns, glass shatters...).',
+    draw: (g) => {
+      px(g, 8, 8, 12, 12, '#8a5a2b'); px(g, 10, 10, 3, 3, '#a9743c'); px(g, 15, 14, 3, 3, '#6e4517');
+      px(g, 18, 6, 3, 3, '#ff7b3c');
+    },
+  },
+  sensor: {
+    desc: 'Reads a bounded zone: heat, liquid, weight, charge, or an exact material. Latch: momentary / timed / permanent.',
+    draw: (g) => {
+      px(g, 6, 6, 16, 10, 'rgba(94,234,212,0.25)'); px(g, 12, 18, 4, 4, '#0f766e');
+      px(g, 13, 19, 2, 2, '#5eead4');
+    },
+  },
+  counterweight: {
+    desc: 'An iron pan that latches PERMANENTLY once enough material mass stays poured into it.',
+    draw: (g) => {
+      px(g, 6, 16, 16, 3, '#605848'); px(g, 4, 8, 2, 11, '#4a4438'); px(g, 22, 8, 2, 11, '#4a4438');
+      px(g, 9, 11, 10, 5, '#caa64a');
+    },
+  },
+  relay: {
+    desc: 'One-shot handoff: inputs satisfied, wait, FIRE once. On fire: activate its target, ignite, break a plug, or strike.',
+    draw: (g) => {
+      px(g, 11, 11, 6, 6, '#7c6df2'); px(g, 13, 7, 2, 4, '#a78bfa'); px(g, 13, 17, 2, 4, '#a78bfa');
+      px(g, 7, 13, 4, 2, '#a78bfa'); px(g, 17, 13, 4, 2, '#a78bfa'); px(g, 13, 13, 2, 2, '#ddd6fe');
+    },
+  },
   light: {
     desc: 'A designer light: color, radius, flicker, falloff; occluded lights cast real shadows.',
     draw: (g) => {
@@ -430,7 +476,7 @@ const TOOL_INFO: Partial<Record<string, { name: string; desc: string }>> = {
   polyRegion: { name: 'Polygon Region', desc: 'Click vertices; Enter (or clicking near the first vertex) closes the polygon.' },
   regionMagic: { name: 'Magic Region', desc: 'Click an open area to select that whole connected cavern as the region.' },
   lassoRegion: { name: 'Lasso Region', desc: 'Drag a freehand loop; releasing closes it into a masked region. X then lifts it as a floating selection.' },
-  link: { name: 'Link (K)', desc: 'Click a trigger (or rune glyph), then its door. Several triggers on ONE door = AND gate.' },
+  link: { name: 'Link (K)', desc: 'Click a trigger (or rune glyph), then its target — door, valve, or relay (relays can also detonate plugs). Several triggers on ONE target = AND gate.' },
 };
 
 interface PendingPreview {
@@ -1994,10 +2040,10 @@ export class Builder {
         flipX: false,
       };
     }
-    // Door slabs anchor top-left; center them on the click for placement.
+    // Slab kinds anchor top-left; center them on the click for placement.
     let px = this.snap(x),
       py = this.snap(y);
-    if (kind === 'door' || kind === 'runeDoor') {
+    if (kind === 'door' || kind === 'runeDoor' || kind === 'valve' || kind === 'plug') {
       px = this.snap(x) - Math.floor(((params.w as number) ?? 3) / 2);
       py = this.snap(y) - Math.floor(((params.h as number) ?? 13) / 2);
     }
@@ -2014,8 +2060,12 @@ export class Builder {
     this.cmds.run(addObjectCmd(obj));
     this.select(obj.id);
     this.status('PLACED ' + kind.toUpperCase());
-    if (TRIGGER_KINDS.has(kind) || kind === 'runeGlyph') {
-      this.status('PLACED ' + kind.toUpperCase() + ' — LINK IT TO A DOOR (K)');
+    if (kind === 'relay') {
+      this.status('PLACED RELAY — LINK ITS INPUTS TO IT, THEN LINK IT TO ITS TARGET (K)');
+    } else if (kind === 'plug') {
+      this.status('PLACED PLUG — A BREAKABLE SEAL; OPTIONALLY LINK IT TO A DOOR/VALVE/RELAY (K)');
+    } else if (TRIGGER_KINDS.has(kind) || kind === 'runeGlyph') {
+      this.status('PLACED ' + kind.toUpperCase() + ' — LINK IT TO A DOOR/VALVE/RELAY (K)');
     }
     if (kind === 'decor' && typeof obj.params.spriteId === 'string') {
       this.status('PLACED ANIMATED DECOR — VISUAL ONLY, THE GRID DOESN\'T KNOW IT\'S THERE');
@@ -2051,14 +2101,29 @@ export class Builder {
     }
     const obj = hit.target as EditorObject;
     const isSource = TRIGGER_KINDS.has(obj.kind) || obj.kind === 'runeGlyph';
+    /** What a given source may drive (mirrors validate.ts link rules). */
+    const targetOk = (src: EditorObject, dst: EditorObject): boolean =>
+      src.kind === 'runeGlyph'
+        ? dst.kind === 'runeDoor'
+        : dst.kind === 'door' ||
+          dst.kind === 'valve' ||
+          dst.kind === 'relay' ||
+          (dst.kind === 'plug' && src.kind === 'relay');
     if (!this.linkFrom) {
       if (!isSource) {
-        this.status('LINK STARTS AT A TRIGGER (PLATE/LEVER/BRAZIER/SCALE/BUOY/LATCH) OR RUNE GLYPH', true);
+        this.status('LINK STARTS AT A TRIGGER (PLATE/LEVER/BRAZIER/SCALE/BUOY/LATCH/SENSOR/CWEIGHT/PLUG/RELAY) OR RUNE GLYPH', true);
         return;
       }
       this.linkFrom = obj.id;
       this.select(obj.id);
-      this.status('NOW CLICK THE TARGET ' + (obj.kind === 'runeGlyph' ? 'RUNE DOOR' : 'DOOR'));
+      this.status(
+        'NOW CLICK THE TARGET ' +
+          (obj.kind === 'runeGlyph'
+            ? 'RUNE DOOR'
+            : obj.kind === 'relay'
+              ? 'DOOR/VALVE/RELAY/PLUG'
+              : 'DOOR/VALVE/RELAY'),
+      );
       return;
     }
     const from = this.doc.objects.find((o) => o.id === this.linkFrom);
@@ -2066,16 +2131,19 @@ export class Builder {
       this.linkFrom = null;
       return;
     }
-    // Clicking another valid source restarts the link from it.
-    if (isSource && obj.id !== from.id) {
+    // A valid target COMPLETES the link (a relay is both source and target —
+    // completion wins); clicking another pure source restarts from it.
+    if (obj.id !== from.id && !targetOk(from, obj) && isSource) {
       this.linkFrom = obj.id;
       this.select(obj.id);
-      this.status('LINK SOURCE CHANGED — NOW CLICK ITS DOOR');
+      this.status('LINK SOURCE CHANGED — NOW CLICK ITS TARGET');
       return;
     }
-    const wantKind = from.kind === 'runeGlyph' ? 'runeDoor' : 'door';
-    if (obj.kind !== wantKind) {
-      this.status(`${from.kind.toUpperCase()} LINKS TO A ${wantKind.toUpperCase()}`, true);
+    if (obj.id === from.id || !targetOk(from, obj)) {
+      this.status(
+        `${from.kind.toUpperCase()} LINKS TO A ${from.kind === 'runeGlyph' ? 'RUNE DOOR' : 'DOOR/VALVE/RELAY'}`,
+        true,
+      );
       return;
     }
     if (this.doc.links.some((l) => l.fromId === from.id && l.toId === obj.id)) {
@@ -3556,9 +3624,9 @@ export class Builder {
     const cmds: Command[] = [];
     for (const o of targets) {
       const next = ((o.rotation + 90) % 360) as EditorObject['rotation'];
-      if (o.kind === 'door' || o.kind === 'runeDoor') {
-        const dw = o.kind === 'door' ? 3 : 2;
-        const dh = o.kind === 'door' ? 13 : 11;
+      if (o.kind === 'door' || o.kind === 'runeDoor' || o.kind === 'valve' || o.kind === 'plug') {
+        const dw = o.kind === 'door' ? 3 : o.kind === 'valve' ? 5 : o.kind === 'plug' ? 3 : 2;
+        const dh = o.kind === 'door' ? 13 : o.kind === 'valve' ? 2 : o.kind === 'plug' ? 3 : 11;
         const w = paramNum(o, 'w', dw);
         const h = paramNum(o, 'h', dh);
         cmds.push(editParamCmd(o, 'w', h), editParamCmd(o, 'h', w), setObjectRotationCmd(o, next));
@@ -4190,6 +4258,20 @@ export class Builder {
     // footprint boxes for sized objects
     for (const o of this.doc.objects) {
       if (!this.layerVisibleObj(o)) continue;
+      // sensor read zones are virtual (no stamped footprint): dashed box
+      if (o.kind === 'sensor') {
+        const zw = Math.max(1, paramNum(o, 'zoneW', 9));
+        const zh = Math.max(1, paramNum(o, 'zoneH', 7));
+        const za = toS(o.x - Math.floor(zw / 2), o.y - zh);
+        const zb = toS(o.x - Math.floor(zw / 2) + zw, o.y);
+        g.setLineDash([3, 3]);
+        g.strokeStyle =
+          o.id === this.selectedId ? 'rgba(94,234,212,0.9)' : 'rgba(94,234,212,0.35)';
+        g.lineWidth = 1;
+        g.strokeRect(za.x, za.y, zb.x - za.x, zb.y - za.y);
+        g.setLineDash([]);
+        continue;
+      }
       const f = objectFootprint(o);
       if (!f) continue;
       const a = toS(f.x0, f.y0);
@@ -4200,11 +4282,15 @@ export class Builder {
           ? sel ? 'rgba(147,197,253,0.95)' : 'rgba(147,197,253,0.45)'
           : o.kind === 'runeDoor'
             ? sel ? 'rgba(134,239,172,0.95)' : 'rgba(134,239,172,0.45)'
-            : sel ? 'rgba(251,191,36,0.9)' : 'rgba(251,191,36,0.35)';
+            : o.kind === 'valve'
+              ? sel ? 'rgba(94,234,212,0.95)' : 'rgba(94,234,212,0.45)'
+              : o.kind === 'plug'
+                ? sel ? 'rgba(251,146,60,0.95)' : 'rgba(251,146,60,0.45)'
+                : sel ? 'rgba(251,191,36,0.9)' : 'rgba(251,191,36,0.35)';
       g.lineWidth = sel ? 2 : 1;
       g.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
       // sensor zones read as faint inner boxes
-      if (o.kind === 'scale' || o.kind === 'buoy' || o.kind === 'chargeLatch') {
+      if (o.kind === 'scale' || o.kind === 'buoy' || o.kind === 'chargeLatch' || o.kind === 'counterweight') {
         g.setLineDash([3, 3]);
         g.strokeStyle = 'rgba(125,211,252,0.4)';
         g.lineWidth = 1;
@@ -4225,10 +4311,19 @@ export class Builder {
       const a = toS(from.x, from.y - 2);
       const b = tf ? toS((tf.x0 + tf.x1) / 2, (tf.y0 + tf.y1) / 2) : toS(to.x, to.y);
       const sel = from.id === this.selectedId || to.id === this.selectedId;
-      g.strokeStyle =
+      // wire color says what KIND of signal travels: rune green, relay
+      // violet, sensor/counterweight teal, plug ember, plain triggers amber
+      const tint =
         l.kind === 'runeDoor'
-          ? sel ? 'rgba(134,239,172,0.95)' : 'rgba(134,239,172,0.45)'
-          : sel ? 'rgba(252,211,77,0.95)' : 'rgba(252,211,77,0.45)';
+          ? 'rgba(134,239,172,'
+          : from.kind === 'relay'
+            ? 'rgba(196,181,253,'
+            : from.kind === 'sensor' || from.kind === 'counterweight'
+              ? 'rgba(94,234,212,'
+              : from.kind === 'plug'
+                ? 'rgba(251,146,60,'
+                : 'rgba(252,211,77,';
+      g.strokeStyle = tint + (sel ? '0.95)' : '0.45)');
       g.lineWidth = sel ? 2 : 1;
       g.beginPath();
       g.moveTo(a.x, a.y);
@@ -4797,6 +4892,45 @@ export class Builder {
       rows += this.linkRows(obj, 'out');
     } else if (obj.kind === 'runeGlyph') {
       rows += this.linkRows(obj, 'out');
+    } else if (obj.kind === 'valve') {
+      rows += this.numRow(obj, 'w', 'width', 5) + this.numRow(obj, 'h', 'height', 2);
+      rows += this.selectRow(obj, 'material', 'material', ['metal', 'stone', 'wood', 'glass'], 'metal');
+      rows += this.checkRow(obj, 'oneShot', 'one-shot (stays open)');
+      rows += this.numRow(obj, 'autoClose', 'auto-close frames', 0);
+      rows += this.selectRow(obj, 'logic', 'logic', ['and', 'or', 'sequence'], 'and');
+      rows += `<button id="bi-rotate" title="Swap width and height">ROTATE 90&deg;</button>`;
+      rows += this.linkRows(obj, 'in');
+    } else if (obj.kind === 'plug') {
+      rows += this.numRow(obj, 'w', 'width', 3) + this.numRow(obj, 'h', 'height', 3);
+      rows += this.selectRow(obj, 'material', 'material', ['wood', 'ash', 'glass', 'coal', 'stone', 'sand', 'metal'], 'wood');
+      rows += this.numRow(obj, 'breakFrac', 'break fraction', 0.5);
+      rows += `<div class="bi-empty">The material IS the break profile:<br>wood burns, glass shatters,<br>stone resists fire, metal needs<br>a relay 'break'.</div>`;
+      rows += `<button id="bi-rotate" title="Swap width and height">ROTATE 90&deg;</button>`;
+      rows += this.linkRows(obj, 'in') + this.linkRows(obj, 'out');
+    } else if (obj.kind === 'sensor') {
+      rows += this.selectRow(obj, 'type', 'reads', ['heat', 'liquid', 'weight', 'charge', 'material'], 'heat');
+      rows += this.selectRow(
+        obj, 'filter', 'filter',
+        ['', 'water', 'oil', 'acid', 'lava', 'sand', 'snow', 'gold', 'gunpowder', 'coal', 'ash', 'slime', 'healium', 'teleportium'],
+        '',
+      );
+      rows += this.numRow(obj, 'threshold', 'threshold', 6);
+      rows += this.numRow(obj, 'zoneW', 'zone width', 9) + this.numRow(obj, 'zoneH', 'zone height', 7);
+      rows += this.selectRow(obj, 'latch', 'latch', ['momentary', 'timed', 'permanent'], 'timed');
+      if (obj.params.latch !== 'permanent' && obj.params.latch !== 'momentary') {
+        rows += this.numRow(obj, 'latchFrames', 'latch frames', 420);
+      }
+      rows += this.linkRows(obj, 'out');
+    } else if (obj.kind === 'counterweight') {
+      rows += this.numRow(obj, 'w', 'pan width', 7) + this.numRow(obj, 'threshold', 'threshold', 30);
+      rows += `<div class="bi-empty">Latches PERMANENTLY once enough<br>material mass stays poured.</div>`;
+      rows += this.linkRows(obj, 'out');
+    } else if (obj.kind === 'relay') {
+      rows += this.numRow(obj, 'delay', 'delay frames', 0);
+      rows += this.selectRow(obj, 'action', 'on fire', ['activate', 'ignite', 'break', 'strike'], 'activate');
+      rows += this.selectRow(obj, 'logic', 'input logic', ['and', 'or', 'sequence'], 'and');
+      rows += `<div class="bi-empty">One-shot: inputs satisfied &rarr; wait<br>&rarr; fire once &rarr; latched forever.</div>`;
+      rows += this.linkRows(obj, 'in') + this.linkRows(obj, 'out');
     }
 
     // point kinds spin in place (emitters aim their drip with it)
@@ -4858,8 +4992,16 @@ export class Builder {
     });
     panel.querySelector('#bi-rotate')?.addEventListener('click', () => {
       // slabs swap w/h (footprint-true) AND advance rotation in one composite
-      const dw = obj.kind === 'door' ? 3 : 2;
-      const dh = obj.kind === 'door' ? 13 : 11;
+      const dims =
+        obj.kind === 'door'
+          ? [3, 13]
+          : obj.kind === 'valve'
+            ? [5, 2]
+            : obj.kind === 'plug'
+              ? [3, 3]
+              : [2, 11];
+      const dw = dims[0];
+      const dh = dims[1];
       const w = paramNum(obj, 'w', dw);
       const h = paramNum(obj, 'h', dh);
       this.cmds.run(
@@ -5068,6 +5210,22 @@ export class Builder {
     return `<div class="bi-row"><span>${label}</span><input type="checkbox" data-p="${key}"${
       obj.params[key] === true ? ' checked' : ''
     }></div>`;
+  }
+
+  private selectRow(
+    obj: EditorObject,
+    key: string,
+    label: string,
+    options: string[],
+    fallback: string,
+  ): string {
+    const cur = typeof obj.params[key] === 'string' ? (obj.params[key] as string) : fallback;
+    return `<div class="bi-row"><span>${label}</span><select data-p="${key}">${options
+      .map(
+        (v) =>
+          `<option value="${v}"${cur === v ? ' selected' : ''}>${v === '' ? '&mdash;' : v.toUpperCase()}</option>`,
+      )
+      .join('')}</select></div>`;
   }
 
   private numRow(obj: EditorObject, key: string, label: string, fallback: number): string {
