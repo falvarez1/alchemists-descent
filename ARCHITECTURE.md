@@ -102,10 +102,13 @@ cave network and instantiating their objects through the SAME
 **Worldgen pipeline order** (generateLevel): caves (per-biome skeleton from
 `config/gen.ts` → shared paint + decoration stages) → bedrock/well/waystones →
 biome extras → region graph → ledger pre-reserves → prefab placement (forked
-rng stream — the main stream stays golden-hash locked) → graph re-extract →
-secrets → cauldron/onboarding → structures. Expedition saves record
-`GEN_VERSION`; resume retires mismatched saves (restoreLevel regenerates the
-pristine world from seed, so stale saves would silently desync).
+'prefabs' stream — the main stream stays golden-hash locked) → machine
+structure placement (a second placePrefabs pass on the forked 'machines'
+stream: chain-reaction rooms built from the machine mechanism vocabulary,
+biome-gated by `GEN[biome].machines` tags) → graph re-extract → secrets →
+cauldron/onboarding → structures. Expedition saves record `GEN_VERSION`;
+resume retires mismatched saves (restoreLevel regenerates the pristine world
+from seed, so stale saves would silently desync).
 
 ## Key design decisions
 

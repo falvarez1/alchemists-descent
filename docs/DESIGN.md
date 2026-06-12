@@ -81,6 +81,21 @@ physics lock at the chokepoint → break the floor seal, drop down the well.
     samples live World.types (your lava spill IS the map); secret walls made of real
     breachable materials with crack-pixel/audio tells; one relic secret guaranteed
     per level.
+11. **Machine primitives + chain-reaction structures** (shipped June 2026, plan:
+    docs/MACHINE-PRIMITIVES-AND-STRUCTURES-PLAN.md) — a reusable machine vocabulary
+    (valves, breakable plugs, generic sensors, counterweights, one-shot relays)
+    where actuators aggregate triggers with the door's AND/OR/SEQUENCE logic, and
+    four generated structure families built from it as builtin prefabs, one room
+    attempted per level, biome-gated: **Powder Mill** (fire → wooden hopper plug →
+    sand ballast → counterweight → gate; earthen/timber/scorched), **Alchemy
+    Clock** (stacked basins, liquid sensors, glass valves, overflow drains;
+    flooded/fungal/crystal), **Kiln Elevator** (heat → boiler valve → flood →
+    relay breaks the ash plug → ballast gate; scorched/volcanic/timber), and
+    **Crystal Relay Vault** (charge latch → reservoir valve → conductor channel →
+    relay → vault; crystal/frozen/earthen). Every chain is real cells — burning
+    the fuse directly, blasting the tank, or flooding the channel yourself all
+    count. Fail-open holds per stage; the CI earnability fixpoint + multi-seed
+    findability audit gate every family.
 
 ## New materials (curated, append-only)
 

@@ -440,6 +440,47 @@ Puzzle validation:
 - Reward chamber is reachable after solving.
 - Destruction fallback is present for progression-critical locks.
 
+### Machine Primitives (chain reactions)
+
+The machine vocabulary (docs/MACHINE-PRIMITIVES-AND-STRUCTURES-PLAN.md) makes
+Rube-Goldberg authoring explicit. The model: **actuators** (door, VALVE,
+RELAY) aggregate the triggers linked to them with the door's AND/OR/SEQUENCE
+logic; everything else emits one output through the LINK tool.
+
+- **Valve** — a small material gate (Metal/Stone/Wood/Glass slab, w×h) that
+  opens like a door. A *sluice* is just a wide valve. Options: one-shot
+  (stays open) and auto-close frames (force-closes, reopens only on a fresh
+  trigger edge). Fail-open is physical: destroyed valve cells ARE the open
+  channel.
+- **Plug** — real cells that FIRE once when `breakFrac` (default 0.5) of
+  their body is destroyed or transformed, by any cause. The material is the
+  break profile: wood burns, glass shatters, ash collapses, stone resists
+  fire, metal yields only to a relay 'break'. A plug with no out-link is a
+  legitimate pure seal.
+- **Sensor** — a bounded zone read (heat / liquid / weight / charge /
+  material with a filter), threshold, and a latch mode: momentary / timed
+  (the 420-frame plate convention) / permanent. Zones scan on a staggered
+  4-frame cadence; keep them under ~200 cells (sense a drain channel, not
+  the reservoir) — validation warns above that.
+- **Counterweight** — a weight pan that latches PERMANENTLY once enough
+  material mass stays poured (pure cells, bodies don't count).
+- **Relay** — one-shot handoff: inputs satisfied → wait `delay` frames →
+  fire once and latch. On fire it can simply activate its target, IGNITE
+  real fire at it, BREAK a target plug into debris, or STRIKE (a concussive
+  pulse that flips levers and wakes rune glyphs). Relays are the only
+  things allowed to drive plugs.
+
+Link rules (enforced): triggers drive doors/valves/relays; plugs receive
+only from relays; one out-link per trigger; sequence chains refuse anything
+that can never un-fire (brazier, charge latch, plug, counterweight, relay,
+permanent sensors). Wire colors say what signal travels: relay violet,
+sensor/counterweight teal, plug ember, rune green, plain triggers amber.
+
+The validation fixpoint understands the whole vocabulary: valves stamp and
+open like doors, plugs earn at their reachable face or by detonation,
+relays chain as pure logic (a relay buried in rock is fine — its INPUTS
+carry the reachability requirement). Relay cycles are flagged as errors.
+
 ### Lighting
 
 Manual lights should be a major Builder surface.

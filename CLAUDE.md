@@ -27,9 +27,10 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # Builder end-to-end probes (dev server running): verify-builder.mjs,
 # verify-builder-suite.mjs, verify-builder-expedition.mjs,
 # verify-builder-pro.mjs, verify-builder-ux.mjs, verify-builder-prefabs.mjs,
-# verify-builder-power.mjs, verify-sprites.mjs
+# verify-builder-power.mjs, verify-sprites.mjs, verify-machines.mjs
 # Worldgen eyeball/diag: shot-biomes.mjs (overview PNGs), diag-biome.mjs
 node scripts/gen-builtin-prefabs.mjs   # regenerate src/world/prefabs/builtin/*.json
+node scripts/gen-machine-prefabs.mjs   # regenerate the machine-*.json structure prefabs
 ```
 
 Headless verification uses `playwright-core` driving system Edge (channel `'msedge'`) against the

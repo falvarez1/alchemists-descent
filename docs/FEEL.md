@@ -274,6 +274,20 @@ Layered, bottom to top:
   latches the gate open forever. Edges, not levels: a lingering plate latch
   never re-fires the chain. Fully broken steps auto-complete (fail-open per
   step; all wrecked = the chain itself gives way).
+- **Machine primitives** (valves, plugs, sensors, counterweights, relays —
+  the chain-reaction vocabulary): a closed valve blinks faint amber corner
+  pips ("this moves"), opens with the door's grind + retraction dust, and a
+  spark line races trigger → gate. A damaged plug sheds dust motes; breaking
+  one crunches a 140 Hz sawtooth, bursts debris in its own material's color,
+  and toasts "A SEAL GIVES WAY". Sensors are tuned-crystal nodes — teal idle
+  blink, steady green when satisfied, with a one-shot chime + mote burst on
+  the rising edge. Counterweights climb an amber 5-notch fill gauge toward
+  the tip-over, then toast "THE COUNTERWEIGHT SETTLES — SOMETHING SHIFTS"
+  and hold a green ingot glow forever. Relays read as rune-gear nodes: dim
+  violet idle, fast amber blink while the fuse burns (an audible armed
+  tick), steady green once fired — the handoff *visibly travels* (one frame
+  per hop, plus the spark line to the target). Relay 'ignite' seeds real
+  fire; 'break' detonates its plug; 'strike' is a real concussive pulse.
 - **Hazard emitters** (Builder-authored): one real cell dripped every `rate`
   frames — the lava pools, the acid eats, the water floods; the grid is the
   whole effect.
