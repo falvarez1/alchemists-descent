@@ -385,6 +385,10 @@ body.play-active #viewport-container { padding: 0; }
 .perk-card .pk-desc { font-size: 12px; line-height: 1.6; color: rgba(255,255,255,0.6); }
 .perk-card.taken { border: 2px solid #e8c15a; box-shadow: 0 0 18px rgba(232,193,90,0.4); }
 .perk-card.faded { opacity: 0.35; pointer-events: none; }
+.sanc-note {
+    padding: 14px 18px; font-size: 12px; letter-spacing: 1.5px; text-align: center;
+    color: rgba(252,211,77,0.55); border: 1px dashed rgba(110,70,50,0.6); border-radius: 6px;
+}
 #sanc-shop { display: flex; flex-direction: column; gap: 5px; min-width: 380px; }
 .shop-row {
     display: flex; justify-content: space-between; align-items: center; gap: 14px;

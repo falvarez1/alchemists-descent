@@ -2,6 +2,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp, hash2 } from '@/core/math';
 import type { Rng } from '@/core/rng';
 import type {
+  AuthoredLight,
   Ctx,
   ExitPortal,
   HazardEmitter,
@@ -32,6 +33,7 @@ import {
   carvePocket as carvePocketCells,
   carveRect as carveRectCells,
   connectToCaves as connectToCavesFrom,
+  tunnelTo,
 } from '@/world/connect';
 import type { PlacementLedger } from '@/world/connect';
 
@@ -67,12 +69,16 @@ export function placeStructures(
   runeVaults: RuneVault[];
   boss: { x: number; y: number } | null;
   emitters: HazardEmitter[];
+  authoredLights: AuthoredLight[];
+  refuge: { x: number; y: number } | null;
 } {
   const w = ctx.world;
   const pickups: Pickup[] = [];
   const mechanisms: Mechanism[] = [];
   const runeVaults: RuneVault[] = [];
   const emitters: HazardEmitter[] = [];
+  const authoredLights: AuthoredLight[] = [];
+  let refuge: { x: number; y: number } | null = null;
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
     carvePocketCells(w, cx, cy, rx, ry);
@@ -116,6 +122,244 @@ export function placeStructures(
   }
   const portal: ExitPortal | null = def.nextLevelId ? { x: portalX, y: portalY, open: false } : null;
 
+  // ---- The Refuge: a hewn rest alcove off the portal shrine ----
+  // One per level, hanging from the shrine's own flank ramp (so it inherits
+  // the shrine's guaranteed connectivity). Fixtures are real cells:
+  //  - a healing spring whose spout is an eternal Healium drip emitter set
+  //    AT the pool's full line — emitters only stamp into Empty, so a full
+  //    pool stops the drip and a drink re-starts it ("springs re-drip" is
+  //    the physics-mulligan BY CONSTRUCTION, and the spring can be flask-
+  //    siphoned dry by greedy alchemists exactly as the design intends);
+  //  - a gold-flecked offering shrine: E in reach opens the Sanctum's shop
+  //    (boons stay at the portal); the gold is real, diggable, and stealing
+  //    it is between you and the old ones;
+  //  - a wood-and-anvil work bench (the B-key bench's physical home);
+  //  - one warm authored light, because a refuge must read as shelter.
+  {
+    const candidates: Array<[number, number]> = [
+      [portalX + 44, portalY - 6],
+      [portalX - 44, portalY - 6],
+    ];
+    for (const [rx, ry] of candidates) {
+      if (rx - 13 < 4 || rx + 13 > WIDTH - 4 || ry - 12 < 4 || ry + 12 > HEIGHT - 16) continue;
+      if (ledger.intersects(rx - 12, ry - 12, rx + 12, ry + 12)) continue;
+      let metal = 0,
+        loose = 0;
+      for (let Y = ry - 14; Y <= ry + 14; Y++) {
+        for (let X = rx - 14; X <= rx + 14; X++) {
+          if (!w.inBounds(X, Y)) continue;
+          const t = w.types[w.idx(X, Y)];
+          if (t === Cell.Metal) metal++;
+          else if (
+            t === Cell.Water ||
+            t === Cell.Oil ||
+            t === Cell.Gunpowder ||
+            t === Cell.Sand ||
+            t === Cell.Coal ||
+            t === Cell.Ash ||
+            t === Cell.Snow ||
+            t === Cell.Lava
+          ) {
+            loose++;
+          }
+        }
+      }
+      if (metal > 0) continue; // never hew through a casing or a vault
+      if (loose > 25) continue; // a seed pocket would pour into the alcove
+      const s = Math.sign(rx - portalX);
+      carveRectCells(w, rx - 10, ry - 10, rx + 10, ry + 10);
+      // SOLID SHELL, unconditional (except casings): the portal cavern is
+      // heavily carved, so a candidate site can stand in OPEN AIR — and an
+      // oil/gunpowder reservoir anywhere above rains straight in and
+      // buries the spring for minutes (observed). A hewn refuge gets a
+      // real roof, real walls, and a sealed underfloor; the gallery's
+      // start disc blows the doorway through the near wall afterwards.
+      const hew = (X: number, Y: number): void => {
+        if (!w.inBounds(X, Y)) return;
+        const i = w.idx(X, Y);
+        if (w.types[i] !== Cell.Metal) {
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      };
+      for (let X = rx - 12; X <= rx + 12; X++) {
+        hew(X, ry - 11);
+        hew(X, ry - 10);
+        hew(X, ry + 11);
+        hew(X, ry + 12);
+      }
+      for (let Y = ry - 11; Y <= ry + 12; Y++) {
+        for (const X of [rx - 12, rx - 11, rx + 11, rx + 12]) hew(X, Y);
+      }
+      // re-open the interior (the shell loop just sealed its rim rows)
+      carveRectCells(w, rx - 10, ry - 9, rx + 10, ry + 9);
+      // gauge-guaranteed gallery to the shrine's flank ramp. It STARTS 22
+      // cells out so the swept rect (up 21!) can never notch the roof; the
+      // start disc alone opens a walk-height doorway through the wall.
+      const gallery = tunnelTo(
+        w,
+        rng,
+        rx - s * 22,
+        ry + 4,
+        portalX + s * 22,
+        portalY + 2,
+        12,
+        { halfW: 7, up: 21, down: 9 },
+      );
+      // seal every seed seam the sweep grazed — at generation time nothing
+      // has flowed yet, so a stone skin one cell beyond the swept perimeter
+      // closes each pocket before it can spill (openings stay open: the
+      // skin skips Empty)
+      const skin = (X: number, Y: number): void => {
+        if (!w.inBounds(X, Y)) return;
+        const i = w.idx(X, Y);
+        const t = w.types[i];
+        if (t !== Cell.Metal && t !== Cell.Empty) {
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      };
+      for (const [gx, gy] of gallery) {
+        for (let X = gx - 8; X <= gx + 8; X++) {
+          skin(X, gy - 22);
+          skin(X, gy + 10);
+        }
+        for (let Y = gy - 22; Y <= gy + 10; Y++) {
+          skin(gx - 8, Y);
+          skin(gx + 8, Y);
+        }
+      }
+      // floor, AFTER the tunnel (its start disc eats the near half)
+      for (let X = rx - 10; X <= rx + 10; X++) {
+        const i = w.idx(X, ry + 10);
+        if (w.types[i] !== Cell.Metal) {
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      }
+      // Layout is MIRRORED away from the mouth: the gallery's tall aperture
+      // channels whatever its sweep grazed (gunpowder seams, water) into
+      // the alcove, so the pool lives on the FAR side and a drain between
+      // mouth and fixtures swallows the inflow. The drain MUST be
+      // bottomless in practice: a fixed-depth shaft silts full in seconds
+      // of sustained inflow, the alcove floods over the pool rim, and
+      // standing water then chokes the healium seep forever (emitters only
+      // stamp into Empty). So each shaft digs until it breaches existing
+      // cave air below — true drainage into the dark, which the grid
+      // explains better than any plumbing.
+      for (const dxD of [7, 8, 9]) {
+        const X = rx - s * dxD;
+        let opened = false;
+        let bottom = ry + 60;
+        for (let Y = ry + 14; Y <= ry + 80 && Y < HEIGHT - 8; Y++) {
+          if (w.types[w.idx(X, Y)] === Cell.Empty) {
+            let run = 0;
+            while (run < 3 && Y + run < HEIGHT - 4 && w.types[w.idx(X, Y + run)] === Cell.Empty) run++;
+            if (run >= 3) {
+              bottom = Y;
+              opened = true;
+              break;
+            }
+          }
+        }
+        if (!opened) bottom = Math.min(ry + 80, HEIGHT - 8);
+        for (let Y = ry + 11; Y <= bottom; Y++) {
+          const i = w.idx(X, Y);
+          if (w.types[i] === Cell.Metal) break; // never breach a casing
+          w.types[i] = Cell.Empty;
+          w.colors[i] = EMPTY_COLOR;
+        }
+      }
+      // spring: a RAISED stone cistern on the far side (9 wide inside —
+      // the wizard is 9 — and two deep, under the swim threshold so he
+      // stands with his boots in the cure). Raised is the load-bearing
+      // word: a floor-level pit eventually takes whatever the caves send
+      // (water dilutes and CHOKES the seep — emitters only stamp into
+      // Empty — and oil caps it; both observed), but with the basin lip
+      // five cells above the floor and the drain keeping floods shallow,
+      // no spill can ever climb in. The seep drips from one cell above
+      // the fill line, so a full basin stops the drip and a drink
+      // restarts it. Rate 3 outpaces healium's self-evaporation and the
+      // wading wizard's consumption (healing drinks the pool at 12% per
+      // touch).
+      {
+        const pLo = Math.min(rx + s * 2, rx + s * 11),
+          pHi = Math.max(rx + s * 2, rx + s * 11);
+        for (let X = pLo - 1; X <= pHi + 1; X++) {
+          for (let Y = ry + 9; Y <= ry + 10; Y++) {
+            const i = w.idx(X, Y); // plinth
+            if (w.types[i] !== Cell.Metal) {
+              w.types[i] = Cell.Stone;
+              w.colors[i] = stoneColor();
+            }
+          }
+        }
+        for (let Y = ry + 5; Y <= ry + 8; Y++) {
+          for (let X = pLo - 1; X <= pHi + 1; X++) {
+            if (!w.inBounds(X, Y)) continue;
+            const i = w.idx(X, Y);
+            if (w.types[i] === Cell.Metal) continue;
+            if (X === pLo - 1 || X === pHi + 1) {
+              w.types[i] = Cell.Stone;
+              w.colors[i] = stoneColor();
+            } else {
+              w.types[i] = Cell.Empty;
+              w.colors[i] = EMPTY_COLOR;
+            }
+          }
+        }
+        emitters.push({
+          x: rx + s * 6,
+          y: ry + 6,
+          cell: Cell.Healium,
+          rate: 3,
+          dir: 0,
+          burst: 1,
+          phase: 1,
+        });
+      }
+      // offering shrine at the heart: stone altar, gold-flecked crown
+      for (let X = rx - 2; X <= rx + 2; X++) {
+        const i = w.idx(X, ry + 9);
+        w.types[i] = Cell.Stone;
+        w.colors[i] = stoneColor();
+      }
+      for (let X = rx - 1; X <= rx + 1; X++) {
+        const i = w.idx(X, ry + 8);
+        w.types[i] = Cell.Gold;
+        w.colors[i] = goldColor();
+      }
+      // work bench between drain and shrine: wood slab + anvil block
+      for (let X = rx - s * 5 - 1; X <= rx - s * 5 + 1; X++) {
+        const i = w.idx(X, ry + 9);
+        w.types[i] = Cell.Wood;
+        w.colors[i] = packRGB(124, 92, 56);
+      }
+      {
+        const i = w.idx(rx - s * 5, ry + 8);
+        w.types[i] = Cell.Metal;
+        w.colors[i] = packRGB(96, 102, 112);
+      }
+      authoredLights.push({
+        x: rx,
+        y: ry + 1,
+        r: 1.0,
+        g: 0.7,
+        b: 0.35,
+        intensity: 1.1,
+        radius: 44,
+        bloom: 0.35,
+        flicker: 0.3,
+        flickerPhase: 2.4,
+        falloff: 'soft',
+        occluded: true,
+      });
+      ledger.reserve(rx - 12, ry - 12, rx + 12, ry + 12, 'refuge');
+      refuge = { x: rx, y: ry + 7 };
+      break;
+    }
+  }
+
   // ---- Golden key vault: the main-path region farthest from the spawn ----
   if (portal) {
     let best = null as { cx: number; cy: number } | null;
@@ -148,8 +392,10 @@ export function placeStructures(
       }
     }
     pickups.push(makePickup('key', kx, ky - 2));
-    // The key gates progression: its vault is always walkable, never a dig
-    connectToCaves(kx - 8, kyBase);
+    // The key gates progression: its vault is always walkable, never a dig —
+    // and it gets the SWEPT gauge gallery, because a disc-chain connector
+    // only promises 9x17 clearance on its centerline
+    connectToCavesFrom(w, rng, graph, kx - 8, kyBase, 12, fits, { halfW: 7, up: 21, down: 9 });
   }
 
   // ---- One heart container in a quiet pocket ----
@@ -808,5 +1054,5 @@ export function placeStructures(
     connectToCaves(cx + 39, cy + 6);
   }
 
-  return { pickups, portal, mechanisms, runeVaults, boss, emitters };
+  return { pickups, portal, mechanisms, runeVaults, boss, emitters, authoredLights, refuge };
 }

@@ -511,6 +511,7 @@ export class Levels implements LevelsApi {
         : {}),
       ...(pristine.emitters.length > 0 ? { emitters: pristine.emitters } : {}),
       ...(pristine.decors.length > 0 ? { decors: pristine.decors } : {}),
+      ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
     });
   }
 
@@ -711,6 +712,7 @@ export class Levels implements LevelsApi {
       authoredLights,
       emitters,
       decors,
+      refuge,
     } = ctx.worldgen.generateLevel(ctx, def, seed);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
@@ -742,6 +744,7 @@ export class Levels implements LevelsApi {
       ...(authoredLights.length > 0 ? { authoredLights } : {}),
       ...(emitters.length > 0 ? { emitters } : {}),
       ...(decors.length > 0 ? { decors } : {}),
+      ...(refuge ? { refuge } : {}),
     });
 
     // DEV tripwire: a freshly generated level with anything unreachable

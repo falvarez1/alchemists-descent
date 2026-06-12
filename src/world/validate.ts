@@ -259,6 +259,10 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
   for (const ws of runtime.waystones) {
     check(near(wiz, W, H, ws.x, ws.y, 10), 'waystone', ws.x, ws.y);
   }
+  if (runtime.refuge) {
+    // shelter, not progression: surfaced for diagnostics, never a gate
+    check(near(wiz, W, H, runtime.refuge.x, runtime.refuge.y, 10), 'refuge', runtime.refuge.x, runtime.refuge.y, 'info');
+  }
   if (runtime.cauldron) {
     check(
       near(wiz, W, H, runtime.cauldron.x, runtime.cauldron.y, 10),

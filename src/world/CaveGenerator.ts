@@ -474,6 +474,7 @@ export class WorldGen implements WorldGenApi {
     authoredLights: AuthoredLight[];
     emitters: HazardEmitter[];
     decors: RuntimeDecor[];
+    refuge: { x: number; y: number } | null;
   } {
     // DEV stage timing — generation runs synchronously behind the curtain,
     // so a slow stage is a felt hitch; shout when the total crosses 400ms.
@@ -832,7 +833,16 @@ export class WorldGen implements WorldGenApi {
 
     // 8) Landmark structures (upgrade-port meta layer): the exit portal above
     //    the seal plug, the golden key vault, hearts, tomes, chests, gold.
-    const { pickups, portal, mechanisms, runeVaults, boss, emitters: structEmitters } = placeStructures(
+    const {
+      pickups,
+      portal,
+      mechanisms,
+      runeVaults,
+      boss,
+      emitters: structEmitters,
+      authoredLights: structLights,
+      refuge,
+    } = placeStructures(
       ctx,
       this.rng,
       graph,
@@ -954,6 +964,17 @@ export class WorldGen implements WorldGenApi {
           rescueAt(m.x, m.y, pass);
         }
       }
+      // The golden key gates progression and the wizard must WALK to it —
+      // it gets the same guarantee as the hands-on locks.
+      for (const p of pickups) {
+        if (p.kind !== 'key') continue;
+        const kx = Math.floor(p.x),
+          ky = Math.floor(p.y);
+        const pass = (): boolean => wizNear(kx, ky, 10);
+        if (pass()) continue;
+        rescued.push(`key@${kx},${ky}`);
+        rescueAt(kx, ky, pass);
+      }
       if (import.meta.env.DEV && rescued.length > 0) {
         console.warn(`[gen] ${def.id}: gauge-rescued ${rescued.length} cut-off lock(s): ${rescued.join(' ')}`);
       }
@@ -983,9 +1004,10 @@ export class WorldGen implements WorldGenApi {
       boss,
       prefabEnemies: sink.enemies,
       placedPrefabs,
-      authoredLights: sink.authoredLights,
+      authoredLights: [...sink.authoredLights, ...structLights],
       emitters: [...sink.emitters, ...structEmitters],
       decors: sink.decors,
+      refuge,
     };
   }
 }

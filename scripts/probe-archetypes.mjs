@@ -135,14 +135,27 @@ outer: for (const id of ['d6', 'd7', 'd5']) {
   for (let seed = 1; seed <= 10; seed++) {
     await loadDepth(seed, id);
     const found = await page.evaluate(() => {
-      const rt = window.__game.ctx.levels.current;
+      const ctx = window.__game.ctx;
+      const rt = ctx.levels.current;
+      const w = ctx.world;
       const valves = rt.mechanisms.filter((m) => m.kind === 'valve' && m.w === 1 && m.h === 3);
       for (const a of valves) {
         for (const b of valves) {
           if (b.x - a.x !== 5 || a.y !== b.y) continue;
           const la = rt.mechanisms.find((m) => m.kind === 'lever' && m.targetId === a.id);
           const lb = rt.mechanisms.find((m) => m.kind === 'lever' && m.targetId === b.id);
-          if (la && lb) return { px2: a.x + 3, py2: a.y - 10 };
+          if (!la || !lb) continue;
+          // a flooded chamber pre-bridges the rail (sim-honest, but it
+          // invalidates the dry-gap negative test) — hunt for a dry one
+          const px2 = a.x + 3,
+            py2 = a.y - 10;
+          let wet = 0;
+          for (let X = px2 - 8; X <= px2 + 12; X++)
+            for (let Y = py2 + 8; Y <= py2 + 21; Y++) {
+              const t = w.types[w.idx(X, Y)];
+              if (t === 2 || t === 6 || t === 18) wet++; // water/oil/blood
+            }
+          if (wet <= 2) return { px2, py2 };
         }
       }
       return null;

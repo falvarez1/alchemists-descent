@@ -69,6 +69,7 @@ export const EMITTER_CELLS: Record<string, number> = {
   snow: Cell.Snow,
   smoke: Cell.Smoke,
   nitrogen: Cell.Nitrogen,
+  healium: Cell.Healium,
 };
 
 /** Valve gate material names -> cell ids (rigid, channel-blocking). */

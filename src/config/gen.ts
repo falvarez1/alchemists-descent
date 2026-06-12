@@ -22,8 +22,10 @@ import type { BiomeId } from '@/core/types';
  *     box is 9x17), anchors halfW 10 with walk-in connector tunnels.
  * v5: two new Wave E puzzle archetypes (Freeze Bridge, Live Circuit) and a
  *     six-way, biome-biased archetype roll (consumes one extra rng draw).
+ * v6: the Refuge — a hewn rest alcove off the portal shrine on every level
+ *     (its gallery consumes rng draws ahead of all later placements).
  */
-export const GEN_VERSION = 5;
+export const GEN_VERSION = 6;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)

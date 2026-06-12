@@ -1374,6 +1374,18 @@ export class Mechanisms implements MechanismsApi {
         return true;
       }
     }
+    // The Refuge's offering shrine: kneel and trade. Shop only — boons are
+    // bargained at the portal between depths.
+    const shrine = runtime.refuge;
+    if (shrine) {
+      const dx = shrine.x - ctx.player.x,
+        dy = shrine.y - (ctx.player.y - 4);
+      if (dx * dx + dy * dy < 16 * 16) {
+        ctx.audio.tone(660, 220, 0.18, 'triangle', 0.1);
+        ctx.sanctum.openShop(ctx);
+        return true;
+      }
+    }
     return false;
   }
 

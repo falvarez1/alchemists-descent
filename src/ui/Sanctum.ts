@@ -109,6 +109,23 @@ export class Sanctum implements SanctumApi {
     el('sanctum-overlay').classList.add('visible');
   }
 
+  /** The Refuge shrine's trade: shop only — boons are bargained at the portal. */
+  openShop(ctx: Ctx): void {
+    if (this._open) return;
+    this._open = true;
+    this.onDescend = null;
+    ctx.state.paused = true;
+    el('sanc-depth').textContent = String(ctx.levels.current?.def.depth ?? 1);
+    el('sanc-gold').textContent = String(ctx.state.score);
+    const dBtn = el('descend-btn') as HTMLButtonElement;
+    dBtn.disabled = false;
+    dBtn.textContent = 'RETURN TO THE DEPTHS';
+    el('perk-row').innerHTML =
+      '<div class="sanc-note">THE OLD ONES ONLY TRADE HERE — BOONS ARE BARGAINED AT THE PORTAL.</div>';
+    this.buildShop(ctx);
+    el('sanctum-overlay').classList.add('visible');
+  }
+
   private buildShop(ctx: Ctx): void {
     const shop = el('sanc-shop');
     shop.innerHTML = '';

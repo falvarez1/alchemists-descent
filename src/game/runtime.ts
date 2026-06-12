@@ -32,6 +32,7 @@ export function makeLevelRuntime(
       | 'emitters'
       | 'placedPrefabs'
       | 'decors'
+      | 'refuge'
     >
   >,
 ): LevelRuntime {

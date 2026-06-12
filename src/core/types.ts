@@ -732,6 +732,8 @@ export interface WorldGenApi {
     emitters: HazardEmitter[];
     /** Prefab-authored animated decor (visual-only). */
     decors: RuntimeDecor[];
+    /** The Refuge's offering shrine (E opens the Sanctum shop), if hewn. */
+    refuge: { x: number; y: number } | null;
   };
 }
 
@@ -966,6 +968,8 @@ export interface SanctumApi {
   readonly isOpen: boolean;
   /** Open the between-depths pause: perk draft + shop. onDescend fires on close. */
   open(ctx: Ctx, onDescend: () => void): void;
+  /** Open the SHOP alone (the Refuge shrine's trade) — closing just resumes. */
+  openShop(ctx: Ctx): void;
 }
 
 /* ============================================================
@@ -1278,6 +1282,8 @@ export interface LevelRuntime {
   placedPrefabs?: PlacedPrefab[];
   /** Animated sprite decor (visual-only — see RuntimeDecor). */
   decors?: RuntimeDecor[];
+  /** The Refuge's offering shrine point — E in reach opens the Sanctum shop. */
+  refuge?: { x: number; y: number };
 }
 
 export interface LevelsApi {
