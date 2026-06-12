@@ -355,6 +355,7 @@ export function makeValve(
 /** Open/close a valve's real cells (setDoorCells with the valve's material). */
 export function setValveCells(ctx: Ctx, valve: Mechanism, open: boolean): void {
   const world = ctx.world;
+  const wasOpen = valve.state === 1;
   valve.state = open ? 1 : 0;
   const mat = valve.material ?? Cell.Metal;
   if (open) {
@@ -400,6 +401,21 @@ export function setValveCells(ctx: Ctx, valve: Mechanism, open: boolean): void {
       }
       world.life[i] = 0;
       world.charge[i] = 0;
+    }
+  }
+  // a slamming valve shakes dust off the channel (the door-close puff)
+  if (wasOpen && ctx.state.mode === 'play') {
+    for (let k = 0; k < 5; k++) {
+      ctx.particles.spawn(
+        valve.x + Math.random() * valve.w,
+        valve.y + Math.random() * valve.h,
+        (Math.random() - 0.5) * 0.3,
+        -0.15 - Math.random() * 0.3,
+        null,
+        packRGB(140, 135, 118),
+        16 + Math.floor(Math.random() * 10),
+        { grav: 0.04, glow: 0.5 },
+      );
     }
   }
 }
