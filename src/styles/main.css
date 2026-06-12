@@ -759,3 +759,81 @@ body.builder-open #builder-issues { bottom: 182px; }
 @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; }
 }
+
+/* ===================== Builder gallery (asset browser) ===================== */
+#builder-gallery {
+    position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column;
+    background: #07090d; color: #c8d4e4;
+    font-family: 'Segoe UI', system-ui, sans-serif; font-size: 11px;
+}
+#builder-gallery .bg-head {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    border-bottom: 1px solid #1d2733; background: #0b0e14;
+}
+#builder-gallery .bg-title { font-weight: 800; letter-spacing: 1.6px; color: #7dd3fc; }
+#builder-gallery #bg-search {
+    width: 220px; background: #0e1219; border: 1px solid #1d2733; border-radius: 4px;
+    color: #c8d4e4; padding: 4px 8px; font-size: 11px; outline: none;
+}
+#builder-gallery #bg-search:focus { border-color: #7dd3fc; }
+#builder-gallery .bg-hint { margin-left: auto; color: #5a6878; font-size: 10px; letter-spacing: 0.4px; }
+#builder-gallery #bg-close {
+    background: none; border: 1px solid #1d2733; border-radius: 4px; color: #93a4b8;
+    font-size: 14px; line-height: 1; padding: 3px 9px; cursor: pointer;
+}
+#builder-gallery #bg-close:hover { color: #fff; border-color: #f87171; }
+#builder-gallery .bg-body {
+    flex: 1; display: grid; grid-template-columns: 262px 1fr 250px; min-height: 0;
+}
+#builder-gallery #bg-list { position: relative; overflow-y: auto; border-right: 1px solid #141b24; padding: 4px 0 16px; }
+#builder-gallery .bg-section {
+    padding: 9px 12px 4px; font-size: 9px; font-weight: 800; letter-spacing: 1.4px; color: #5a6878;
+    position: sticky; top: 0; background: #07090d; z-index: 1;
+}
+#builder-gallery .bg-item {
+    display: flex; align-items: center; gap: 8px; padding: 4px 10px; cursor: pointer;
+    border-left: 2px solid transparent;
+}
+#builder-gallery .bg-item:hover { background: #10151d; }
+#builder-gallery .bg-item.sel { background: #121a25; border-left-color: #7dd3fc; }
+/* !important: must out-rank `#canvas-holder canvas { width:100% !important }` */
+#builder-gallery .bg-thumb {
+    width: 44px !important; height: 32px !important; border: 1px solid #1d2733; border-radius: 3px;
+    image-rendering: pixelated; flex: none;
+}
+#builder-gallery .bg-badge {
+    width: 44px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center;
+    border: 1px solid #1d2733; border-radius: 3px; background: #0c1017;
+    font-family: monospace; font-weight: 800; font-size: 15px;
+}
+#builder-gallery .bg-itembody { display: flex; flex-direction: column; min-width: 0; }
+#builder-gallery .bg-name { font-weight: 700; color: #dbe6f3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#builder-gallery .bg-meta { font-size: 9px; color: #5a6878; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#builder-gallery .bg-empty { padding: 18px 12px; color: #5a6878; }
+#builder-gallery .bg-stagewrap { position: relative; display: flex; flex-direction: column; min-width: 0; }
+/* !important: out-rank `#canvas-holder canvas` so the bitmap maps 1:1 (caption keeps its 28px) */
+#builder-gallery #bg-stage { flex: 1; display: block; image-rendering: pixelated; width: 100% !important; height: calc(100% - 28px) !important; }
+#builder-gallery .bg-zoom { position: absolute; top: 8px; right: 10px; display: flex; gap: 4px; }
+#builder-gallery .bg-zoom button {
+    background: rgba(12,16,23,0.9); border: 1px solid #1d2733; border-radius: 4px;
+    color: #93a4b8; font-size: 10px; font-weight: 700; padding: 3px 8px; cursor: pointer;
+}
+#builder-gallery .bg-zoom button:hover { border-color: #7dd3fc; color: #dbe6f3; }
+#builder-gallery #bg-caption {
+    height: 28px; line-height: 28px; padding: 0 12px; border-top: 1px solid #141b24;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.6px; color: #93a4b8;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#builder-gallery #bg-caption.bg-toast { color: #86efac; }
+#builder-gallery #bg-info { overflow-y: auto; border-left: 1px solid #141b24; padding: 12px; }
+#builder-gallery .bg-iname { font-size: 14px; font-weight: 800; color: #dbe6f3; margin-bottom: 2px; }
+#builder-gallery .bg-imeta { font-size: 9px; color: #5a6878; margin-bottom: 10px; }
+#builder-gallery .bg-idesc { line-height: 1.55; color: #aebccd; margin-bottom: 14px; }
+#builder-gallery .bg-ihead { font-size: 9px; font-weight: 800; letter-spacing: 1.4px; color: #5a6878; margin-bottom: 6px; }
+#builder-gallery .bg-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+#builder-gallery .bg-chip {
+    background: #0e1219; border: 1px solid #1d2733; border-radius: 10px; color: #93a4b8;
+    font-size: 10px; font-weight: 700; padding: 3px 10px; cursor: pointer;
+}
+#builder-gallery .bg-chip:hover { border-color: #7dd3fc; color: #dbe6f3; }
+#builder-gallery .bg-chip.on { background: #12202c; border-color: #7dd3fc; color: #7dd3fc; }

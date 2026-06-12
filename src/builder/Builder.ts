@@ -59,6 +59,8 @@ import {
 } from '@/builder/prefablib';
 import type { PrefabAnchor, PrefabDef } from '@/builder/prefablib';
 import { PrefabPanel, showImportReport } from '@/builder/prefabPanel';
+import { Gallery } from '@/builder/gallery';
+import { builtinPrefabs } from '@/world/prefabs/registry';
 import { SpritePanel } from '@/builder/spritePanel';
 import { downloadJson, downloadText, download, pickFiles } from '@/builder/assets/io';
 import { cellsToRgba, rgbaToCells, snapUnknown } from '@/builder/assets/pixmap';
@@ -568,6 +570,7 @@ export class Builder {
   } | null = null;
   private overlayMode: OverlayMode = 'none';
   private prefabs: PrefabDef[] = [];
+  private gallery: Gallery | null = null;
   /** A transformed (Q/E) copy of a library prefab while the stamp tool is
    *  armed — never the library record itself. */
   private armedPrefab: PrefabDef | null = null;
@@ -808,6 +811,7 @@ export class Builder {
         <button id="b-validate">VALIDATE</button>
         <button id="b-bake" style="display:none" title="Re-apply the held playtest scars onto the document terrain (region = precise, undoable)">BAKE</button>
         <button id="b-playtest" class="b-accent">PLAYTEST</button>
+        <button id="b-gallery" title="Browse and preview every prefab, mechanism, entity and sprite — live and animated">GALLERY</button>
         <button id="b-zen" title="Hide all side panels for a clear view of the canvas (\`)">PANELS</button>
         <button id="b-exit">EXIT</button>
       </div>
@@ -1324,8 +1328,22 @@ export class Builder {
 
     this.el('b-bake').addEventListener('click', () => this.bakePlaytestScars());
     this.el('b-playtest').addEventListener('click', () => this.playtest());
+    this.el('b-gallery').addEventListener('click', () => this.openGallery());
     this.el('b-zen').addEventListener('click', () => this.toggleZen());
     this.el('b-exit').addEventListener('click', () => this.close());
+  }
+
+  /** The asset gallery: browse and preview everything, live and animated. */
+  private openGallery(): void {
+    this.gallery ??= new Gallery(this.root, {
+      ctx: this.ctx,
+      userPrefabs: () => this.prefabs,
+      builtinPrefabs: () => builtinPrefabs(),
+      sprites: () => this.sprites,
+      docSprites: () => this.doc.assets?.sprites,
+    });
+    this.gallery.open();
+    this.status('GALLERY — ↑↓ BROWSE · ←→ STATES · ESC CLOSES');
   }
 
   /** Focus mode: every floating panel out of the way; the canvas breathes. */

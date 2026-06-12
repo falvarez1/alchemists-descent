@@ -1,0 +1,188 @@
+// Gallery probe: the Builder asset browser presents prefabs, mechanisms,
+// entities, and sprites LIVE — animated stages, working state chips, search,
+// keyboard nav. Asserts pixels change over time (animation is real), state
+// chips change the stage, and every entity kind draws without a preview
+// failure. Usage: node scripts/verify-gallery.mjs [url]  (dev server running)
+import { chromium } from 'playwright-core';
+
+const url = process.argv[2] || 'http://localhost:5173/';
+let pass = 0;
+let fail = 0;
+const check = (name, ok, detail = '') => {
+  if (ok) { pass++; console.log(`  ok    ${name}`); }
+  else { fail++; console.log(`  FAIL  ${name} ${detail}`); }
+};
+
+const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+page.on('dialog', (d) => d.accept());
+const pageErrors = [];
+page.on('pageerror', (err) => pageErrors.push(String(err)));
+const drawWarnings = [];
+page.on('console', (msg) => {
+  if (msg.text().includes('[gallery] preview draw failed')) drawWarnings.push(msg.text());
+});
+
+await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
+await page.waitForTimeout(2200);
+
+await page.click('#mode-builder-btn');
+await page.waitForTimeout(400);
+
+/* ---------- open ---------- */
+await page.click('#b-gallery');
+await page.waitForTimeout(500);
+check('gallery opens', await page.isVisible('#builder-gallery'));
+
+const sections = await page.$$eval('#builder-gallery .bg-section', (els) => els.map((e) => e.textContent));
+check(
+  'all four sections present',
+  ['MECHANISMS', 'PREFABS', 'ENTITIES', 'SPRITES'].every((s) => sections.includes(s)) ||
+    // SPRITES section only exists when sprite assets do; the rest are mandatory
+    ['MECHANISMS', 'PREFABS', 'ENTITIES'].every((s) => sections.includes(s)),
+  JSON.stringify(sections),
+);
+
+const counts = await page.evaluate(() => {
+  const items = [...document.querySelectorAll('#builder-gallery .bg-item .bg-meta')].map(
+    (e) => e.textContent ?? '',
+  );
+  return {
+    mech: items.filter((t) => t === 'mechanism').length,
+    prefab: items.filter((t) => t.includes('builtin') || t.includes('library')).length,
+    entity: items.filter((t) => t === 'enemy' || t.startsWith('player')).length,
+  };
+});
+check('13 mechanism items', counts.mech === 13, JSON.stringify(counts));
+check('all 7 builtin prefabs listed', counts.prefab >= 7, String(counts.prefab));
+check('player + 11 enemies listed', counts.entity === 12, String(counts.entity));
+
+/* ---------- the stage is alive ---------- */
+const snap = () =>
+  page.evaluate(() => {
+    const c = document.querySelector('#bg-stage');
+    const g = c.getContext('2d');
+    const d = g.getImageData(0, 0, c.width, c.height).data;
+    let lit = 0,
+      sum = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = d[i] + d[i + 1] + d[i + 2];
+      if (v > 40) lit++;
+      sum = (sum + v * ((i >> 2) % 9973)) >>> 0;
+    }
+    return { lit, sum };
+  });
+
+const selectItem = async (name) => {
+  await page.evaluate((want) => {
+    const rows = [...document.querySelectorAll('#builder-gallery .bg-item')];
+    const row = rows.find((r) => r.querySelector('.bg-name')?.textContent === want);
+    row?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  }, name);
+  await page.waitForTimeout(250);
+};
+const clickChip = async (label) => {
+  await page.evaluate((want) => {
+    const chips = [...document.querySelectorAll('#builder-gallery .bg-chip')];
+    chips.find((c) => c.textContent === want)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  }, label);
+  await page.waitForTimeout(250);
+};
+
+await selectItem('Brazier');
+await clickChip('LIT');
+const a1 = await snap();
+await page.waitForTimeout(300);
+const a2 = await snap();
+await page.waitForTimeout(300);
+const a3 = await snap();
+check('stage renders pixels', a1.lit > 200, `lit=${a1.lit}`);
+check('a lit brazier ANIMATES (frames differ)', a1.sum !== a2.sum || a2.sum !== a3.sum);
+
+/* ---------- state chips drive the real runtime ---------- */
+await selectItem('Valve');
+const closed = await snap();
+await clickChip('OPEN');
+await page.waitForTimeout(600); // the slab retracts cell by cell
+const opened = await snap();
+check('valve OPEN chip changes the stage', closed.sum !== opened.sum);
+
+await selectItem('Counterweight');
+await clickChip('TIPPED');
+await page.waitForTimeout(600);
+const toast = await page.$eval('#bg-caption', (e) => e.textContent ?? '');
+check('a tipped counterweight raises its toast in the caption', toast.includes('COUNTERWEIGHT'), toast);
+
+await selectItem('Relay');
+await clickChip('FUSE');
+const f1 = await snap();
+await page.waitForTimeout(300);
+const f2 = await snap();
+await page.waitForTimeout(300);
+const f3 = await snap();
+check('relay fuse burns visibly', f1.sum !== f2.sum || f2.sum !== f3.sum);
+
+/* ---------- prefabs: live room with markers ---------- */
+await selectItem('Powder Mill');
+const pm = await snap();
+check('a machine prefab renders its room', pm.lit > 1500, `lit=${pm.lit}`);
+await clickChip('MARKERS');
+const pmMarked = await snap();
+check('MARKERS overlays anchors/footprints', pm.sum !== pmMarked.sum);
+
+/* ---------- entities: every kind draws ---------- */
+const entityNames = await page.evaluate(() =>
+  [...document.querySelectorAll('#builder-gallery .bg-item')]
+    .filter((r) => {
+      const m = r.querySelector('.bg-meta')?.textContent ?? '';
+      return m === 'enemy' || m.startsWith('player');
+    })
+    .map((r) => r.querySelector('.bg-name')?.textContent ?? ''),
+);
+let allDrew = true;
+for (const name of entityNames) {
+  await selectItem(name);
+  const s = await snap();
+  if (s.lit < 120) {
+    allDrew = false;
+    console.log(`        entity stage looked empty for: ${name} (lit=${s.lit})`);
+  }
+}
+check(`all ${entityNames.length} entities render a body`, allDrew);
+check('no preview draw failures', drawWarnings.length === 0, drawWarnings.join(' | '));
+
+await selectItem('The Alchemist');
+await clickChip('RUN');
+const r1 = await snap();
+await page.waitForTimeout(300);
+const r2 = await snap();
+await page.waitForTimeout(300);
+const r3 = await snap();
+check('the alchemist runs (stride animates)', r1.sum !== r2.sum || r2.sum !== r3.sum);
+
+/* ---------- search + keyboard + close ---------- */
+await page.fill('#bg-search', 'valve');
+await page.waitForTimeout(200);
+const filtered = await page.$$eval('#builder-gallery .bg-item', (els) => els.length);
+check('search filters the catalog', filtered >= 1 && filtered <= 4, String(filtered));
+await page.fill('#bg-search', '');
+await page.waitForTimeout(200);
+
+await page.keyboard.press('ArrowDown');
+await page.waitForTimeout(150);
+const selIdx = await page.evaluate(() =>
+  [...document.querySelectorAll('#builder-gallery .bg-item')].findIndex((r) => r.classList.contains('sel')),
+);
+check('arrow keys navigate items', selIdx === 1, String(selIdx));
+
+await page.keyboard.press('Escape');
+await page.waitForTimeout(200);
+check('ESC closes the gallery', !(await page.isVisible('#builder-gallery')));
+check('builder still up behind it', await page.isVisible('#builder-bar'));
+
+check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
+
+console.log(`\ngallery probe: ${pass} passed, ${fail} failed`);
+await browser.close();
+process.exit(fail > 0 ? 1 : 0);
