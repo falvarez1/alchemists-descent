@@ -109,6 +109,15 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
     blurb: 'A fountain of drifting embers that smoulder where they land',
   },
 
+  // ------- the Gilded Vault's unique prize (never in a grant pool) -------
+  vitrify: {
+    id: 'vitrify',
+    name: 'Vitric Seal',
+    kind: 'projectile',
+    manaCost: 22,
+    blurb: 'Transmutes liquids to solid glass — bridge a lava sea, cap an acid pool',
+  },
+
   // ---------------- modifier cards ----------------
   speed: {
     id: 'speed',

@@ -8,7 +8,7 @@ import type {
   WandState,
 } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
-import { acidColor, emberColor, fireColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
+import { acidColor, emberColor, fireColor, glassColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
 import { ALL_CARD_IDS, CARD_DEFS } from './cards';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 
@@ -370,6 +370,41 @@ export class WandSystem implements WandsApi {
       }
       ctx.particles.burst(cxx, cyy - 4, 8, null, stoneColor, 1.2, { grav: 0.08 });
       ctx.audio.tone(180, 60, 0.18, 'triangle', 0.2);
+    } else if (action.card === 'vitrify') {
+      // The Gilded Vault's prize: transmute LIQUID into load-bearing glass
+      // at the cursor (the conjure grammar, liquid-only — air stays air, so
+      // it can cap and bridge but never wall off dry space).
+      let tx = ctx.input.mouse.x,
+        ty = ctx.input.mouse.y;
+      const dx = tx - x,
+        dy = ty - y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 130) {
+        tx = x + (dx / dist) * 130;
+        ty = y + (dy / dist) * 130;
+      }
+      const world = ctx.world;
+      const cxx = Math.floor(tx),
+        cyy = Math.floor(ty);
+      const r = action.dmgMul > 1 ? 8 : 7;
+      for (let oy = -r; oy <= r; oy++) {
+        for (let ox = -r; ox <= r; ox++) {
+          if (ox * ox + oy * oy > r * r) continue;
+          const X = cxx + ox,
+            Y = cyy + oy;
+          if (!world.inBounds(X, Y)) continue;
+          const ci = world.idx(X, Y);
+          if (isLiquid(world.types[ci])) {
+            world.types[ci] = Cell.Glass;
+            world.colors[ci] = glassColor();
+            world.life[ci] = 0;
+            world.charge[ci] = 0;
+          }
+        }
+      }
+      ctx.particles.burst(cxx, cyy - 3, 10, null, glassColor, 1.1, { grav: 0.06 });
+      ctx.audio.tone(1250, 300, 0.14, 'triangle', 0.14);
+      ctx.audio.tone(640, 90, 0.2, 'sine', 0.1);
     } else if (action.card === 'emberstorm') {
       // A fountain of real embers that smoulder where they land.
       const count = 16 + Math.max(0, Math.round(action.dmgMul) - 1) * 6;

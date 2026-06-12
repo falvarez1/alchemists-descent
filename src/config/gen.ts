@@ -27,8 +27,11 @@ import type { BiomeId } from '@/core/types';
  * v7: Freeze Bridge catch-tray walls raised to the drop-cell row — the brim
  *     is the fill line, so a saturated cup chokes the emitter instead of
  *     overflowing a drop into the trench (the tray-intact puzzle leaked).
+ * v8: the Gilded Vault branch — a hidden arch alcove generates in one
+ *     mid-descent host level (d2-d4 by expedition seed), and the 'gilded'
+ *     branch biome joins the graph off the spine.
  */
-export const GEN_VERSION = 7;
+export const GEN_VERSION = 8;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)
@@ -753,5 +756,15 @@ export const GEN: Record<BiomeId, GenDef> = {
     ...baselineDef(),
     skeleton: { kind: 'volcanicTubes', params: tubeParams() },
     machines: machineBudget(['kilnelevator']),
+  },
+  // The Gilded Vault: crystal-vault pillared halls re-dressed as a treasury,
+  // gold-saturated (the hoard IS the decoration — see applyBiomeExtras' gold
+  // veins + catalyst seams and the 'gilded' BiomeDef's acid pools).
+  gilded: {
+    ...baselineDef(),
+    skeleton: { kind: 'crystalVaults', params: vaultParams() },
+    goldPockets: 260,
+    prefabs: { ...defaultPrefabBudget(), count: [1, 2], tags: ['vault', 'setpiece'] },
+    machines: machineBudget(['crystalrelay']),
   },
 };

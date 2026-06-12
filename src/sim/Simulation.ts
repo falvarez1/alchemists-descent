@@ -91,7 +91,8 @@ export class Simulation implements SimulationApi {
         )
           continue;
 
-        if (type === Cell.Sand || type === Cell.Gold) handleSand(ctx, x, y, type);
+        if (type === Cell.Sand || type === Cell.Gold || type === Cell.Catalyst)
+          handleSand(ctx, x, y, type);
         else if (type === Cell.Water) handleWater(ctx, x, y);
         else if (type === Cell.Fire) handleFire(ctx, x, y);
         else if (type === Cell.Ember) handleEmber(ctx, x, y);

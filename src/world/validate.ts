@@ -263,6 +263,18 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
     // shelter, not progression: surfaced for diagnostics, never a gate
     check(near(wiz, W, H, runtime.refuge.x, runtime.refuge.y, 10), 'refuge', runtime.refuge.x, runtime.refuge.y, 'info');
   }
+  if (runtime.vaultArch) {
+    const a = runtime.vaultArch;
+    if (runtime.def.branch) {
+      // the way HOME from a branch level — the wizard must be able to walk
+      // into it, or the vault is a one-way trap
+      check(near(wiz, W, H, a.x, a.y - 2, 10), 'vault-arch', a.x, a.y);
+    } else {
+      // the hidden entrance on a host level is SEALED by design: buried
+      // treasure, not a reachability failure (digging to it is the game)
+      check(near(seen, W, H, a.x, a.y - 2, 18), 'vault-arch', a.x, a.y, 'info');
+    }
+  }
   if (runtime.cauldron) {
     check(
       near(wiz, W, H, runtime.cauldron.x, runtime.cauldron.y, 10),

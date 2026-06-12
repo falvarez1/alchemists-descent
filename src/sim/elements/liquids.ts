@@ -211,6 +211,15 @@ function hasWaterNeighbor(w: Ctx['world'], x: number, y: number): boolean {
   );
 }
 
+/** Index of a touching Aurum Catalyst cell, or -1 (4-neighborhood). */
+function catalystNeighbor(w: Ctx['world'], x: number, y: number): number {
+  if (w.inBounds(x + 1, y) && w.types[w.idx(x + 1, y)] === Cell.Catalyst) return w.idx(x + 1, y);
+  if (w.inBounds(x - 1, y) && w.types[w.idx(x - 1, y)] === Cell.Catalyst) return w.idx(x - 1, y);
+  if (w.inBounds(x, y + 1) && w.types[w.idx(x, y + 1)] === Cell.Catalyst) return w.idx(x, y + 1);
+  if (w.inBounds(x, y - 1) && w.types[w.idx(x, y - 1)] === Cell.Catalyst) return w.idx(x, y - 1);
+  return -1;
+}
+
 export function handleAcid(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const targets = [
@@ -228,19 +237,34 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
         n !== Cell.Acid &&
         n !== Cell.Steam &&
         n !== Cell.Metal &&
-        n !== Cell.Smoke
+        n !== Cell.Smoke &&
+        n !== Cell.Catalyst // acid cannot eat the philosopher's dust
       ) {
         if (Math.random() < ctx.params.materials[Cell.Acid].corrosiveSpeed!) {
           // Alchemy needs a solvent: transmutation only fires next to water, and
           // rarely (economy guard — portable acid in flasks made 10% an
-          // infinite-money hose; see DESIGN.md "acid->gold nerf").
+          // infinite-money hose; see DESIGN.md "acid->gold nerf"). The Gilded
+          // Vault's Aurum Catalyst supercharges the reaction in water's place —
+          // and is CONSUMED grain for grain, so the amplification is exactly as
+          // finite as the dust you found (never a global rule change).
+          const cat =
+            n === Cell.Wall || n === Cell.Wood || n === Cell.Stone
+              ? catalystNeighbor(w, t.x, t.y)
+              : -1;
           if (
             (n === Cell.Wall || n === Cell.Wood || n === Cell.Stone) &&
-            Math.random() < 0.03 &&
-            hasWaterNeighbor(w, t.x, t.y)
+            (cat >= 0
+              ? Math.random() < 0.45
+              : Math.random() < 0.03 && hasWaterNeighbor(w, t.x, t.y))
           ) {
             w.types[ti] = Cell.Gold;
             w.colors[ti] = goldColor();
+            if (cat >= 0) {
+              // the spent grain puffs away as a golden wisp — visible chemistry
+              w.types[cat] = Cell.Smoke;
+              w.life[cat] = 18;
+              w.colors[cat] = smokeColor();
+            }
           } else {
             w.types[ti] = Cell.Steam;
             w.life[ti] = 25;

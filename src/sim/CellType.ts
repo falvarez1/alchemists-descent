@@ -46,11 +46,16 @@ export const Cell = {
   Glowshroom: 33,
   // Wave F "The Caves Breathe"
   Moss: 34,
+  // The Gilded Vault: the philosopher's dust. A glittering powder that
+  // supercharges acid->gold transmutation on contact and is CONSUMED by it
+  // (the economy guard: amplification is local and finite, never a rule
+  // change — see handleAcid).
+  Catalyst: 35,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
 
-export const CELL_COUNT = 35;
+export const CELL_COUNT = 36;
 
 /**
  * Classification predicates take plain numbers so values read straight out of
@@ -117,6 +122,7 @@ export function blocksEntity(t: number): boolean {
     t === Cell.Gunpowder ||
     t === Cell.Snow ||
     t === Cell.Coal ||
-    t === Cell.Ash
+    t === Cell.Ash ||
+    t === Cell.Catalyst
   );
 }

@@ -33,6 +33,7 @@ export function makeLevelRuntime(
       | 'placedPrefabs'
       | 'decors'
       | 'refuge'
+      | 'vaultArch'
     >
   >,
 ): LevelRuntime {

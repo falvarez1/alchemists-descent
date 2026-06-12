@@ -78,6 +78,11 @@ export const ashColor = () => {
 };
 export const glowshroomColor = () => packRGB(120 + rand(40), 230 + rand(25), 140 + rand(50));
 export const mossColor = () => packRGB(38 + rand(20), 96 + rand(44), 42 + rand(18));
+// philosopher's dust: rose-gold grains with the occasional white-hot glint
+export const catalystColor = () =>
+  Math.random() < 0.12
+    ? packRGB(255, 235 + rand(20), 200 + rand(40))
+    : packRGB(240 + rand(15), 140 + rand(40), 70 + rand(30));
 
 /** Fresh randomized color for a newly placed cell of the given material. */
 export const COLOR_FN: Record<number, () => number> = {
@@ -116,4 +121,5 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.Ash]: ashColor,
   [Cell.Glowshroom]: glowshroomColor,
   [Cell.Moss]: mossColor,
+  [Cell.Catalyst]: catalystColor,
 };

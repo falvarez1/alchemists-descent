@@ -58,6 +58,7 @@ export const CELL_PALETTE: readonly number[] = [
   packRGB(95, 91, 89), //   32 Ash
   packRGB(120, 230, 140), // 33 Glowshroom
   packRGB(38, 96, 42), //   34 Moss
+  packRGB(255, 150, 60), // 35 Catalyst
 ];
 
 /** Display names, indexed by cell id (import reports, .gpl swatch labels). */
@@ -97,6 +98,7 @@ export const CELL_NAME: readonly string[] = [
   'Ash',
   'Glowshroom',
   'Moss',
+  'Catalyst',
 ];
 
 export function paletteColor(t: number): number {

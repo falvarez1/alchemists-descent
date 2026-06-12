@@ -2,7 +2,10 @@ import type { EnemyKind, LevelDef } from '@/core/types';
 
 /**
  * The descent: a vertical stack of persistent levels connected by sealed
- * wells in each floor. v1 is linear; branches arrive post-spine (DESIGN.md).
+ * wells in each floor — plus the first BRANCH: the Gilded Vault, a secret
+ * level off the spine. Its hidden arch generates in one mid-descent host
+ * (d2-d4, picked per expedition seed — vaultHostId) and its own arch leads
+ * back to that host at the same depth. No well reaches it; no well leaves it.
  */
 export const LEVELS: Record<string, LevelDef> = {
   d1: { id: 'd1', name: 'EARTHEN HOLLOWS', biome: 'earthen', depth: 1, nextLevelId: 'd2' },
@@ -13,9 +16,26 @@ export const LEVELS: Record<string, LevelDef> = {
   d6: { id: 'd6', name: 'CRYSTAL HOLLOWS', biome: 'crystal', depth: 6, nextLevelId: 'd7' },
   d7: { id: 'd7', name: 'SCORCHED WASTES', biome: 'scorched', depth: 7, nextLevelId: 'd8' },
   d8: { id: 'd8', name: 'VOLCANIC MAW', biome: 'volcanic', depth: 8, nextLevelId: null },
+  vault: {
+    id: 'vault',
+    name: 'THE GILDED VAULT',
+    biome: 'gilded',
+    depth: 4,
+    nextLevelId: null,
+    branch: true,
+  },
 };
 
 export const START_LEVEL = 'd1';
+
+/**
+ * Which spine level hides the Gilded Vault's arch this expedition. Pure
+ * function of the expedition seed so save-resume's pristine regeneration
+ * reproduces the same host without storing anything new in the save.
+ */
+export function vaultHostId(expeditionSeed: number): string {
+  return 'd' + (2 + ((expeditionSeed >>> 0) % 3));
+}
 
 /** Placed hostile population per level: base + per-depth growth, kind weights shift down. */
 export function populationForDepth(depth: number): Partial<Record<EnemyKind, number>> {

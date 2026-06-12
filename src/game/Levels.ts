@@ -17,7 +17,7 @@
 
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_VERSION } from '@/config/gen';
-import { LEVELS, START_LEVEL, populationForLevel } from '@/config/worldgraph';
+import { LEVELS, START_LEVEL, populationForLevel, vaultHostId } from '@/config/worldgraph';
 import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
 import type {
   Ctx,
@@ -220,6 +220,48 @@ export class Levels implements LevelsApi {
       }
       if (near && !runtime.keyTaken && ctx.state.frameCount % 90 === 0) {
         ctx.events.emit('toast', { text: 'SEALED — THE GOLDEN KEY IS MISSING' });
+      }
+    }
+
+    // GILDED ARCH: the two-way branch gate. Stepping between the pillars
+    // crosses over; the destination's own arch is the way back. Arrival uses
+    // the arch's authored back-spot (outside the trigger circle), never the
+    // level spawn — "returning to the same depth" must mean the same SPOT.
+    const arch = runtime.vaultArch;
+    if (arch) {
+      const adx = player.x - arch.x;
+      const ady = player.y - arch.y;
+      if (adx * adx + ady * ady < 49) {
+        const destId = runtime.def.branch ? vaultHostId(this.expeditionSeed) : 'vault';
+        if (LEVELS[destId]) {
+          ctx.audio.portalWhoosh();
+          this.leaveLevel();
+          this.enterLevel(ctx, destId);
+          const dest = this.current;
+          if (dest?.vaultArch) {
+            player.x = dest.vaultArch.backX;
+            player.y = dest.vaultArch.backY;
+            player.vx = 0;
+            player.vy = 0;
+            player.fx = 0;
+            player.fy = 0;
+            ctx.camera.snapTo(player.x, player.y);
+          }
+          return;
+        }
+      }
+      // the arch breathes: a slow shimmer of golden motes (in-view only)
+      if (ctx.state.frameCount % 9 === 0 && Math.abs(player.x - arch.x) < 300) {
+        ctx.particles.spawn(
+          arch.x - 5 + Math.random() * 10,
+          arch.y - 1 - Math.random() * 5,
+          (Math.random() - 0.5) * 0.15,
+          -0.2 - Math.random() * 0.25,
+          null,
+          packRGB(255, 210 + Math.floor(Math.random() * 40), 120),
+          26 + Math.floor(Math.random() * 18),
+          { glow: 1.0, grav: -0.002 },
+        );
       }
     }
 
@@ -454,7 +496,9 @@ export class Levels implements LevelsApi {
     ctx.enemies.length = 0;
 
     const seed = (this.expeditionSeed ^ this.hashString(def.id)) >>> 0;
-    const pristine = ctx.worldgen.generateLevel(ctx, def, seed);
+    const pristine = ctx.worldgen.generateLevel(ctx, def, seed, {
+      hostArch: def.id === vaultHostId(this.expeditionSeed),
+    });
 
     const savedTypes = new Uint8Array(world.types.length);
     rleDecode(blob.rle, savedTypes);
@@ -512,6 +556,7 @@ export class Levels implements LevelsApi {
       ...(pristine.emitters.length > 0 ? { emitters: pristine.emitters } : {}),
       ...(pristine.decors.length > 0 ? { decors: pristine.decors } : {}),
       ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
+      ...(pristine.vaultArch ? { vaultArch: pristine.vaultArch } : {}),
     });
   }
 
@@ -643,7 +688,9 @@ export class Levels implements LevelsApi {
           : 'FIND THE GOLDEN KEY'
         : runtime.boss
           ? 'SLAY THE KILN COLOSSUS'
-          : 'THE DEPTHS END HERE — SURVIVE',
+          : def.branch
+            ? 'PLUNDER THE HOARD — THE ARCH LEADS HOME'
+            : 'THE DEPTHS END HERE — SURVIVE',
     });
 
     window.setTimeout(() => {
@@ -713,13 +760,31 @@ export class Levels implements LevelsApi {
       emitters,
       decors,
       refuge,
-    } = ctx.worldgen.generateLevel(ctx, def, seed);
+      vaultArch,
+      vaultHoard,
+    } = ctx.worldgen.generateLevel(ctx, def, seed, {
+      hostArch: def.id === vaultHostId(this.expeditionSeed),
+    });
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, { x: exit.x, y: exit.sealY - 12 });
     this.placePopulation(ctx, def, spawn);
     // The bottom of the run: the Kiln Colossus waits in its arena.
     if (boss) ctx.enemyCtl.spawn('colossus', boss.x, boss.y);
+    // The Gilded Vault's hoard guards: a pair of elite golems, posted at the
+    // chamber flanks (their boosted stats persist through saves — the blob
+    // roster records hp/maxHp/dmgK).
+    if (vaultHoard) {
+      for (const side of [-10, 10]) {
+        ctx.enemyCtl.spawn('golem', vaultHoard.x + side, vaultHoard.y);
+        const g = ctx.enemies[ctx.enemies.length - 1];
+        if (g && g.kind === 'golem') {
+          g.maxHp = Math.round(g.maxHp * 2.6);
+          g.hp = g.maxHp;
+          g.dmgK = (g.dmgK ?? 1) * 1.6;
+        }
+      }
+    }
     // Prefab-authored enemies (sleeping/patrol fixups applied at spawn).
     for (const rec of prefabEnemies) spawnPrefabEnemy(ctx, rec);
     this.litOrder.set(def.id, []);
@@ -745,6 +810,7 @@ export class Levels implements LevelsApi {
       ...(emitters.length > 0 ? { emitters } : {}),
       ...(decors.length > 0 ? { decors } : {}),
       ...(refuge ? { refuge } : {}),
+      ...(vaultArch ? { vaultArch } : {}),
     });
 
     // DEV tripwire: a freshly generated level with anything unreachable

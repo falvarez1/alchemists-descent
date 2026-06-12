@@ -168,6 +168,17 @@ export class Minimap {
       g.fillStyle = '#4ade80';
       g.fillRect((level.cauldron.x >> 3) - 1, (level.cauldron.y >> 3) - 1, 2, 2);
     }
+    if (level.vaultArch) {
+      // the gilded arch: always shown on the branch side (the way home is a
+      // promise), but a host's hidden arch only once its alcove was SEEN —
+      // a discovered secret stays on your map, an unfound one stays secret
+      const ax = level.vaultArch.x >> 3,
+        ay = level.vaultArch.y >> 3;
+      if (level.def.branch || level.explored[ax + ay * MINIMAP_W] > 0) {
+        g.fillStyle = '#fcd34d';
+        g.fillRect(ax - 1, ay - 1, 3, 3);
+      }
+    }
     for (const p of level.pickups) {
       if (p.taken) continue;
       if (p.kind === 'key') g.fillStyle = '#fde047';

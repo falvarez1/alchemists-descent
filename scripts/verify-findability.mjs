@@ -7,7 +7,7 @@ import { chromium } from 'playwright-core';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const seeds = (process.argv[3] ?? '1,5,1337,42').split(',').map(Number);
-const DEPTHS = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8'];
+const DEPTHS = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'vault'];
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 let failures = 0;
@@ -45,8 +45,9 @@ for (const seed of seeds) {
           .filter((i) => i.severity === 'error')
           .map((i) => `${i.what}@${i.x},${i.y}`);
         const buried = all.filter((i) => i.severity === 'info').length;
+        // 'sensor' joined the lock roster with the Freeze Bridge (archetype 4)
         const sensors = rt.mechanisms.filter((m) =>
-          ['scale', 'buoy', 'chargelatch'].includes(m.kind),
+          ['scale', 'buoy', 'chargelatch', 'sensor'].includes(m.kind),
         ).length;
         const braziersByDoor = {};
         for (const m of rt.mechanisms) {

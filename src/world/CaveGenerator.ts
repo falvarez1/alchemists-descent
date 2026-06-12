@@ -17,6 +17,7 @@ import type {
   PrefabEnemy,
   RuneVault,
   RuntimeDecor,
+  VaultArch,
   Waystone,
   WorldGenApi,
 } from '@/core/types';
@@ -459,6 +460,7 @@ export class WorldGen implements WorldGenApi {
     ctx: Ctx,
     def: LevelDef,
     seed: number,
+    opts?: { hostArch?: boolean },
   ): {
     exit: LevelExitWell;
     waystones: Waystone[];
@@ -475,6 +477,8 @@ export class WorldGen implements WorldGenApi {
     emitters: HazardEmitter[];
     decors: RuntimeDecor[];
     refuge: { x: number; y: number } | null;
+    vaultArch: VaultArch | null;
+    vaultHoard: { x: number; y: number } | null;
   } {
     // DEV stage timing — generation runs synchronously behind the curtain,
     // so a slow stage is a felt hitch; shout when the total crosses 400ms.
@@ -842,6 +846,8 @@ export class WorldGen implements WorldGenApi {
       emitters: structEmitters,
       authoredLights: structLights,
       refuge,
+      vaultArch,
+      vaultHoard,
     } = placeStructures(
       ctx,
       this.rng,
@@ -853,6 +859,7 @@ export class WorldGen implements WorldGenApi {
       cauldron,
       ledger,
       fits,
+      { hostArch: opts?.hostArch === true },
     );
     stage('structures');
 
@@ -1008,6 +1015,8 @@ export class WorldGen implements WorldGenApi {
       emitters: [...sink.emitters, ...structEmitters],
       decors: sink.decors,
       refuge,
+      vaultArch,
+      vaultHoard,
     };
   }
 }

@@ -59,6 +59,9 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Glass]: { name: 'Glass' },
   [Cell.Ash]: { name: 'Ash', friction: 0.2 },
   [Cell.Moss]: { name: 'Cave Moss', flammability: 0.25, bloomWeight: 0.08 },
+  // The Gilded Vault's philosopher's dust: a heavy glittering powder whose
+  // bloom IS the discovery tell (light is information).
+  [Cell.Catalyst]: { name: 'Aurum Catalyst', friction: 0.55, densityWeight: 0.96, bloomWeight: 0.5 },
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };

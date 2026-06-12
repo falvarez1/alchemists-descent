@@ -4,10 +4,12 @@ import type { BiomeId, Ctx, EnemyKind } from '@/core/types';
 import { Cell, isSolid } from '@/sim/CellType';
 import {
   ashColor,
+  catalystColor,
   coalColor,
   crystalColor,
   fungusColor,
   glowshroomColor,
+  goldColor,
   healiumColor,
   mossColor,
   snowColor,
@@ -34,6 +36,10 @@ export interface BiomeExtras {
   snowDrifts?: number;
   /** Cave-moss seed patches near standing water (Wave F: damp rock greens over). */
   mossPatches?: number;
+  /** Gold veins threaded through wall rock (the Gilded Vault's hoard look). */
+  goldVeins?: number;
+  /** Aurum Catalyst seams embedded in wall rock — mine the philosopher's dust. */
+  catalystSeams?: number;
 }
 
 export const EXTRAS: Record<BiomeId, BiomeExtras> = {
@@ -76,6 +82,16 @@ export const EXTRAS: Record<BiomeId, BiomeExtras> = {
     coalSeams: 90,
     shrooms: 0,
     crystals: 2,
+  },
+  // The Gilded Vault: golem-patrolled treasury. Gold threads every wall,
+  // catalyst seams are the real prize, braziers keep it lit (BiomeDef fires).
+  gilded: {
+    foes: { golem: 6, imp: 2, bat: 2 },
+    goldBonus: 2.5,
+    goldVeins: 90,
+    catalystSeams: 16,
+    crystals: 10,
+    shrooms: 8,
   },
 };
 
@@ -276,6 +292,58 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
         }
       }
       cs++;
+    }
+  }
+
+  // Gold veins: glittering threads wandering through the treasury's rock
+  // (the coal-seam walker re-tuned — longer, thinner, brighter)
+  if (B.goldVeins) {
+    let gv = 0;
+    for (let attempt = 0; attempt < B.goldVeins * 40 && gv < B.goldVeins; attempt++) {
+      let x = 10 + Math.floor(rng.next() * (WIDTH - 20));
+      let y = 30 + Math.floor(rng.next() * (FLOOR_BAND - 50));
+      if (w.types[w.idx(x, y)] !== Cell.Wall) continue;
+      const len = 12 + Math.floor(rng.next() * 20);
+      let a = rng.next() * Math.PI * 2;
+      for (let s = 0; s < len; s++) {
+        a += (rng.next() - 0.5) * 0.9;
+        x = Math.round(x + Math.cos(a));
+        y = Math.round(y + Math.sin(a) * 0.7);
+        if (!w.inBounds(x, y)) break;
+        if (w.types[w.idx(x, y)] === Cell.Wall && rng.next() < 0.85) {
+          set(x, y, Cell.Gold, goldColor());
+        }
+      }
+      gv++;
+    }
+  }
+
+  // Aurum Catalyst seams: small embedded pockets of the philosopher's dust.
+  // Buried in wall rock on purpose — mining them out is the game, and the
+  // rock cradle keeps the powder from sliding into acid pools at gen time.
+  if (B.catalystSeams) {
+    let cseam = 0;
+    for (let attempt = 0; attempt < B.catalystSeams * 60 && cseam < B.catalystSeams; attempt++) {
+      const x = 12 + Math.floor(rng.next() * (WIDTH - 24));
+      const y = 30 + Math.floor(rng.next() * (FLOOR_BAND - 50));
+      // demand a solid pocket: every cell of the blob must replace Wall
+      let solid = true;
+      for (let dy = -2; dy <= 2 && solid; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          if (!w.inBounds(x + dx, y + dy) || w.types[w.idx(x + dx, y + dy)] !== Cell.Wall) {
+            solid = false;
+            break;
+          }
+        }
+      }
+      if (!solid) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          if (dx * dx + dy * dy * 3 > 5) continue;
+          set(x + dx, y + dy, Cell.Catalyst, catalystColor());
+        }
+      }
+      cseam++;
     }
   }
 

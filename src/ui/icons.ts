@@ -181,7 +181,11 @@ export const PIXEL_ICONS: Record<string, PixelIconDef> = {
     ".....aaaaa.","....baaaaa.",".....aaaa..","......bb...","..........."]},
   conjure: { p: { a: '#565060', b: '#8d8699', c: '#b8b2c4' }, g: [
     "...........","....c......","...aaaa....","..abbbba...",".abbcbbba..",".abbbbbba..",
-    ".aabbbbaa..","..aaaaaa...",".aaaaaaaa..","...........","..........."]}
+    ".aabbbbaa..","..aaaaaa...",".aaaaaaaa..","...........","..........."]},
+  // the Gilded Vault's prize: a faceted pane crystallizing out of liquid
+  vitrify: { p: { a: '#3b6b74', b: '#9fd8e0', c: '#ecfdff' }, g: [
+    ".....a.....","....aba....","...abcba...","..abbcbba..",".abbcccbba.","..abbcbba..",
+    "...abcba...","....aba....",".....a.....",".b.bb.bb.b.","..bb.bb.bb."]}
 };
 
 /** Cell id → icon name for the element toolbar buttons. */
@@ -202,7 +206,7 @@ const LEGACY_CARD_ICON: Record<string, string> = {
   dig: 'dig', warp: 'warp', blackhole: 'blackhole',
   // Upgrade-port payload cards: every one now has dedicated pixel art.
   vitriol: 'vitriol', frostshard: 'frostshard', icelance: 'icelance', wisp: 'wisp',
-  meteor: 'meteor', conjure: 'conjure', emberstorm: 'emberstorm',
+  meteor: 'meteor', conjure: 'conjure', emberstorm: 'emberstorm', vitrify: 'vitrify',
 };
 
 /** Card id → PIXEL_ICONS key (modifier/multicast cards live under 'card-*'). */

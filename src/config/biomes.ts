@@ -147,4 +147,25 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
     flood: 0,
     iceClusters: 0,
   },
+  // The secret branch: warm treasury rock, brazier-lit, pooled with ACID —
+  // the transmutation reagent delivered on site, because the vault's whole
+  // payoff is acid + catalyst + stone = gold (locally, finitely).
+  gilded: {
+    name: 'The Gilded Vault',
+    bands: [
+      [96, 78, 44],
+      [70, 56, 34],
+      [124, 96, 48],
+      [148, 118, 62],
+    ],
+    crown: 'ember',
+    flowerChance: 0.01,
+    pools: 22,
+    poolElement: () => Cell.Acid,
+    seedsOilBias: 0.4,
+    beams: 18,
+    fires: 64,
+    flood: 0,
+    iceClusters: 0,
+  },
 };

@@ -424,7 +424,9 @@ export type BiomeId =
   | 'scorched'
   | 'fungal'
   | 'crystal'
-  | 'volcanic';
+  | 'volcanic'
+  // the secret branch biome (the Gilded Vault) — never on the descent spine
+  | 'gilded';
 
 /* ============================================================
  * Shared mutable game state
@@ -712,6 +714,12 @@ export interface WorldGenApi {
     ctx: Ctx,
     def: LevelDef,
     seed: number,
+    opts?: {
+      /** This level hosts the hidden gilded arch to the vault branch
+       *  (decided by Levels from the expedition seed — deterministic, so
+       *  save-resume's pristine regeneration reproduces it). */
+      hostArch?: boolean;
+    },
   ): {
     exit: LevelExitWell;
     waystones: Waystone[];
@@ -722,6 +730,11 @@ export interface WorldGenApi {
     mechanisms: Mechanism[];
     runeVaults: RuneVault[];
     boss: { x: number; y: number } | null;
+    /** The gilded arch (two-way branch gate) if this level carries one;
+     *  back* is the safe arrival spot for travelers stepping OUT of it. */
+    vaultArch: VaultArch | null;
+    /** Branch-level hoard center — createLevel posts the elite guards here. */
+    vaultHoard: { x: number; y: number } | null;
     /** Deferred prefab enemies — createLevel spawns them; restoreLevel
      *  IGNORES them (the saved blob's roster is the truth). */
     prefabEnemies: PrefabEnemy[];
@@ -993,6 +1006,8 @@ export type CardId =
   | 'meteor'
   | 'conjure'
   | 'emberstorm'
+  // the Gilded Vault's unique prize (never in a grant pool)
+  | 'vitrify'
   // modifier / multicast cards
   | 'double'
   | 'triple'
@@ -1139,6 +1154,22 @@ export interface LevelDef {
   depth: number;
   /** Level reached by breaking this level's floor well, or null for the last floor. */
   nextLevelId: string | null;
+  /**
+   * A branch level hangs OFF the descent spine: it is entered through a
+   * hidden gilded arch in its host level and its own arch returns to that
+   * host at the same depth. Branch levels never roll the finale arena.
+   */
+  branch?: boolean;
+}
+
+/** A two-way gilded arch linking a host level and its branch level. */
+export interface VaultArch {
+  x: number;
+  y: number;
+  /** Arrival spot for travelers stepping out of this arch (kept clear of the
+   *  trigger radius so a transition never bounces straight back). */
+  backX: number;
+  backY: number;
 }
 
 /** A fire-lit checkpoint brazier. Lights when Fire cells touch its bowl. */
@@ -1284,6 +1315,8 @@ export interface LevelRuntime {
   decors?: RuntimeDecor[];
   /** The Refuge's offering shrine point — E in reach opens the Sanctum shop. */
   refuge?: { x: number; y: number };
+  /** The gilded arch: hidden branch entrance (host) / way home (branch). */
+  vaultArch?: VaultArch;
 }
 
 export interface LevelsApi {
