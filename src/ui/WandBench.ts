@@ -1,6 +1,8 @@
-import type { CardId, Ctx } from '@/core/types';
+import type { CardId, Ctx, PerkId } from '@/core/types';
 import { CARD_DEFS } from '@/combat/wands/cards';
-import { cardIconName, makeIconCanvas } from '@/ui/icons';
+import { POTION_DEFS, POTION_KINDS } from '@/game/Pickups';
+import { Cell } from '@/sim/CellType';
+import { cardIconName, ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 
 /** Non-null getElementById — the bench root exists statically in index.html. */
 function el(id: string): HTMLElement {
@@ -12,6 +14,35 @@ function cardTitle(id: CardId): string {
   const def = CARD_DEFS[id];
   return def.name + ' — ' + def.manaCost + ' mana — ' + def.blurb;
 }
+
+const BENCH_STATUS_CAP = 3600;
+
+const POTION_ICON: Record<string, string> = {
+  vigor: 'elixirLife',
+  levity: 'elixirLevity',
+  stoneskin: 'elixirStone',
+  swift: 'card-speed',
+  torch: 'fire',
+};
+
+const ELIXIR_TESTS = [
+  { name: 'Life', label: 'LIFE', cell: Cell.ElixirLife },
+  { name: 'Levity', label: 'LEV', cell: Cell.ElixirLevity },
+  { name: 'Stone', label: 'STONE', cell: Cell.ElixirStone },
+] as const;
+
+const PERK_LABELS: Array<{ id: PerkId; name: string }> = [
+  { id: 'might', name: 'MIGHT' },
+  { id: 'vampirism', name: 'VAMP' },
+  { id: 'featherweight', name: 'FEATHER' },
+  { id: 'manafont', name: 'MANA' },
+  { id: 'swiftfoot', name: 'SWIFT' },
+  { id: 'torchbearer', name: 'TORCH' },
+  { id: 'ironhide', name: 'IRON' },
+  { id: 'flameward', name: 'FIRE' },
+  { id: 'toxinward', name: 'TOXIN' },
+  { id: 'goldmagnet', name: 'GOLD' },
+];
 
 // ===================== Wand Bench =====================
 /**
@@ -109,11 +140,92 @@ export class WandBench {
     wands.collection.forEach((id, i) => grid.appendChild(this.makeCollectionTile(id, i)));
     root.appendChild(grid);
 
+    if (this.ctx.state.debugGodMode) this.appendReviewTools(root);
+
     const hint = document.createElement('div');
     hint.className = 'bench-hint';
     hint.textContent =
       'CLICK A CARD, THEN A SLOT · CLICK A FILLED SLOT TO UNSLOT · B / ESC CLOSES · THE CAVES DO NOT WAIT';
     root.appendChild(hint);
+  }
+
+  private appendReviewTools(root: HTMLElement): void {
+    this.appendSection(root, 'POTION BELT');
+    const potions = document.createElement('div');
+    potions.className = 'bench-collection';
+    POTION_KINDS.forEach((kind) => potions.appendChild(this.makePotionTile(kind)));
+    root.appendChild(potions);
+
+    this.appendSection(root, 'ELIXIR FLASK FILLS');
+    const elixirs = document.createElement('div');
+    elixirs.className = 'bench-collection';
+    ELIXIR_TESTS.forEach((elixir) => elixirs.appendChild(this.makeElixirTile(elixir)));
+    root.appendChild(elixirs);
+
+    this.appendSection(root, 'ACTIVE POWERS');
+    const powers = document.createElement('div');
+    powers.className = 'bench-powers';
+    PERK_LABELS.forEach(({ id, name }) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'bench-power' + (this.ctx.player.perks[id] ? ' active' : '');
+      chip.textContent = name;
+      chip.setAttribute('aria-label', name + ' power is active');
+      chip.addEventListener('click', () => {
+        this.ctx.player.perks[id] = true;
+        this.ctx.events.emit('toast', { text: name + ' POWER READY' });
+        this.render();
+      });
+      powers.appendChild(chip);
+    });
+    root.appendChild(powers);
+  }
+
+  private appendSection(root: HTMLElement, label: string): void {
+    const section = document.createElement('div');
+    section.className = 'bench-section';
+    section.textContent = label;
+    root.appendChild(section);
+  }
+
+  private makePotionTile(kind: string): HTMLElement {
+    const def = POTION_DEFS[kind] ?? POTION_DEFS.vigor;
+    const tile = this.makeTestTile(POTION_ICON[kind] ?? 'elixirLife', kind.slice(0, 3).toUpperCase());
+    tile.setAttribute('aria-label', def.name + ' refreshes ' + def.status);
+    tile.addEventListener('click', () => {
+      const status = this.ctx.player.status;
+      status[def.status] = Math.min(BENCH_STATUS_CAP, status[def.status] + def.frames);
+      this.ctx.audio.drinkPotion();
+      this.ctx.events.emit('toast', { text: def.name });
+    });
+    return tile;
+  }
+
+  private makeElixirTile(elixir: (typeof ELIXIR_TESTS)[number]): HTMLElement {
+    const icon = ELEMENT_ICON[elixir.cell] ?? 'elixirLife';
+    const tile = this.makeTestTile(icon, elixir.label);
+    tile.setAttribute('aria-label', 'Fill flask with Elixir of ' + elixir.name);
+    tile.addEventListener('click', () => {
+      const flask = this.ctx.flask.state;
+      flask.material = elixir.cell;
+      flask.count = flask.capacity;
+      this.ctx.audio.drinkPotion();
+      this.ctx.events.emit('toast', { text: 'ELIXIR OF ' + elixir.name.toUpperCase() + ' FILLS THE FLASK' });
+    });
+    return tile;
+  }
+
+  private makeTestTile(iconName: string, label: string): HTMLElement {
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'bench-card bench-test-card';
+    const icon = makeIconCanvas(iconName, 2);
+    if (icon) tile.appendChild(icon);
+    const text = document.createElement('span');
+    text.className = 'bench-card-label';
+    text.textContent = label;
+    tile.appendChild(text);
+    return tile;
   }
 
   /** Slot to flash on the next render (CSS animation runs on the fresh tile). */

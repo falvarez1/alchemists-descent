@@ -256,8 +256,8 @@ markers = await page.evaluate(() => document.querySelectorAll('.b-marker').lengt
 check('duplicate undoes as ONE command', markers === 4, `got ${markers}`);
 await page.keyboard.press('Escape');
 
-/* ---------- stamps: region -> capture -> paste ---------- */
-console.log('-- stamps');
+/* ---------- prefabs: region -> capture -> paste ---------- */
+console.log('-- prefabs');
 // paint a small stone block to capture
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -279,11 +279,11 @@ await page.mouse.move(rb.x, rb.y, { steps: 3 });
 await page.mouse.up();
 await page.waitForTimeout(120);
 nextPromptAnswer = 'test-block';
-await page.click('#bp-stamp-capture');
+await page.click('#bp-prefab-capture');
 await page.waitForTimeout(150);
-let stampCount = await page.evaluate(() => document.querySelectorAll('.bp-stamp').length);
-check('stamp captured into the library', stampCount === 1, `got ${stampCount}`);
-await page.click('.bp-stamp');
+let prefabCount = await page.evaluate(() => document.querySelectorAll('.bp-prefab-card').length);
+check('prefab captured into the library', prefabCount === 1, `got ${prefabCount}`);
+await page.click('.bp-prefab-card');
 await page.waitForTimeout(100);
 const paste = await toClient(700, 480);
 await page.mouse.click(paste.x, paste.y);
@@ -294,10 +294,16 @@ const pasted = await page.evaluate(() => {
   for (let y = 475; y < 486; y++) for (let x = 695; x < 706; x++) if (w.types[w.idx(x, y)] === 12) n++;
   return n;
 });
-check('stamp pastes its cells (centered on click)', pasted === 100, `got ${pasted}`);
+check('prefab pastes its cells (centered on click)', pasted === 100, `got ${pasted}`);
 await page.keyboard.press('Control+z');
 await page.keyboard.press('Escape');
 await page.keyboard.press('Escape'); // clear region
+// clean up the library so re-runs start from zero
+await page.evaluate(() => {
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith('noita-builder-prefab:')) localStorage.removeItem(key);
+  }
+});
 
 /* ---------- OR and SEQUENCE doors, live in the runtime ---------- */
 console.log('-- door logic live');

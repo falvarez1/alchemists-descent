@@ -34,6 +34,10 @@ export class Flask implements FlaskApi {
   /** The thrown bottle in flight, or null (at most one). */
   private bottle: { x: number; y: number; vx: number; vy: number } | null = null;
 
+  bottleView(): { x: number; y: number; vx: number; vy: number } | null {
+    return this.bottle ? { ...this.bottle } : null;
+  }
+
   update(ctx: Ctx): void {
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
       if (ctx.input.siphonHeld) this.siphon(ctx);
@@ -124,14 +128,15 @@ export class Flask implements FlaskApi {
   // ===================== Pour =====================
   private pour(ctx: Ctx): void {
     const s = this.state;
-    if (s.count === 0 || s.material === null) {
+    const material = s.material;
+    if (s.count === 0 || material === null) {
       this.refuse(ctx); // tipping an empty flask
       return;
     }
     const { world } = ctx;
     const tip = ctx.spells.wandTip();
     const cx = Math.round(tip.x), cy = Math.round(tip.y);
-    const colorFn = COLOR_FN[s.material];
+    const colorFn = COLOR_FN[material];
 
     let released = 0;
     for (let dy = -POUR_RADIUS; dy <= POUR_RADIUS && released < POUR_RATE; dy++) {
@@ -143,7 +148,7 @@ export class Flask implements FlaskApi {
         const i = world.idx(x, y);
         const t = world.types[i];
         if (t !== Cell.Empty && !isGas(t)) continue;
-        world.types[i] = s.material;
+        world.types[i] = material;
         world.colors[i] = colorFn();
         world.life[i] = 0;
         world.charge[i] = 0;
@@ -152,8 +157,23 @@ export class Flask implements FlaskApi {
       }
     }
     if (released === 0) return;
+    if (ctx.state.frameCount % 2 === 0) {
+      const aim = ctx.player.aimAngle;
+      for (let j = 0; j < Math.min(3, released); j++) {
+        ctx.particles.spawn(
+          tip.x + Math.cos(aim) * j,
+          tip.y + Math.sin(aim) * j,
+          Math.cos(aim) * (0.45 + Math.random() * 0.25),
+          Math.sin(aim) * (0.45 + Math.random() * 0.25) + 0.2,
+          null,
+          colorFn(),
+          12 + Math.floor(Math.random() * 7),
+          { grav: isLiquid(material) ? 0.08 : 0.13, glow: 0.6 },
+        );
+      }
+    }
     if (ctx.state.frameCount % 8 === 0) ctx.audio.noiseBurst(0.06, 600, 0.035);
-    ctx.telemetry.count('flask.pour.' + this.materialName(ctx, s.material), released);
+    ctx.telemetry.count('flask.pour.' + this.materialName(ctx, material), released);
     if (s.count === 0) s.material = null;
   }
 
@@ -180,8 +200,21 @@ export class Flask implements FlaskApi {
         return;
       }
     }
-    // Glassy glint trail so the throw reads on screen (the bottle has no sprite).
+    // Glassy glint trail so the throw reads before the renderer draws the bottle body.
+    const spin = ctx.state.frameCount * 0.45;
     ctx.particles.spawn(b.x, b.y, 0, 0, null, GLASS_COLOR, 6, { grav: 0, glow: 0.9 });
+    if (ctx.state.frameCount % 3 === 0) {
+      ctx.particles.spawn(
+        b.x + Math.cos(spin) * 1.4,
+        b.y + Math.sin(spin) * 1.4,
+        -b.vx * 0.02,
+        -b.vy * 0.02,
+        null,
+        GLASS_COLOR,
+        8,
+        { grav: 0, glow: 1.2 },
+      );
+    }
   }
 
   private shatter(ctx: Ctx, ix: number, iy: number): void {

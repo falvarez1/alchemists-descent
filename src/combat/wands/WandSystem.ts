@@ -9,7 +9,7 @@ import type {
 } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { acidColor, emberColor, fireColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
-import { CARD_DEFS } from './cards';
+import { ALL_CARD_IDS, CARD_DEFS } from './cards';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 
 /**
@@ -82,6 +82,11 @@ const STACK_JITTER = 0.06;
 /** Flame card: frames of stream burst per cast / hard cap while spamming. */
 const FLAME_BURST_FRAMES = 4;
 const FLAME_BURST_CAP = 16;
+
+const REVIEW_WAND_CARDS: [CardId[], CardId[]] = [
+  ['spark', 'double', 'speed', 'flame', 'lightning'],
+  ['dig', 'conjure', 'vitriol', 'blackhole', 'warp'],
+];
 
 /**
  * The wand engine (DESIGN.md pillar 6): frames + slotted spell cards + the
@@ -503,6 +508,30 @@ export class WandSystem implements WandsApi {
       this.compiled[i as 0 | 1] = null;
     }
     this.ctx.events.emit('wandChanged');
+  }
+
+  grantReviewLoadout(): void {
+    this.applyReviewLoadout();
+    this.ctx.events.emit('wandChanged');
+  }
+
+  private applyReviewLoadout(): void {
+    const frames = [WAND_FRAMES.brass, WAND_FRAMES.void] as const;
+    for (let i = 0; i < this.wands.length; i++) {
+      const wand = this.wands[i];
+      const frame = frames[i];
+      wand.frame = frame;
+      wand.cards.length = 0;
+      wand.cards.push(...REVIEW_WAND_CARDS[i]);
+      while (wand.cards.length < frame.capacity) wand.cards.push(null);
+      wand.cards.length = frame.capacity;
+      wand.mana = frame.manaMax;
+      wand.cooldown = 0;
+      wand.castIndex = 0;
+      this.compiled[i as 0 | 1] = null;
+    }
+    this.collection.length = 0;
+    this.collection.push(...ALL_CARD_IDS);
   }
 
   slotCard(wand: 0 | 1, slot: number, id: CardId | null): void {

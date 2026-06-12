@@ -108,13 +108,20 @@ export class Renderer implements RenderTarget {
       1,
     );
 
-    // Blast-wave bloom surge decays back to baseline.
-    // PostFx reads bloomKick/screenShake BEFORE decay so kicks land this frame.
-    this.bloomPass.strength = 1.2 + ctx.fx.bloomKick;
+    // Blast-wave bloom surge decays back to baseline. PostFx reads
+    // bloomKick/screenShake BEFORE decay so kicks land this frame.
+    const post = ctx.state.postFx;
+    this.renderer.toneMappingExposure = post.enabled ? post.exposure : 1.0;
+    this.bloomPass.enabled = post.enabled && post.bloomEnabled;
+    this.bloomPass.strength = post.bloomStrength + ctx.fx.bloomKick * post.bloomKickScale;
+    this.bloomPass.radius = post.bloomRadius;
+    this.bloomPass.threshold = post.bloomThreshold;
+    this.postFx.pass.enabled = post.enabled && post.lensEnabled;
     this.postFx.update(ctx);
     if (ctx.fx.bloomKick > 0.001) ctx.fx.bloomKick *= 0.86;
     else ctx.fx.bloomKick = 0;
 
-    this.composer.render();
+    if (post.enabled) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
   }
 }

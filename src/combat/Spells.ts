@@ -1,6 +1,14 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
-import { EMPTY_COLOR, fireColor, packRGB, smokeColor } from '@/sim/colors';
+import {
+  EMPTY_COLOR,
+  acidColor,
+  emberColor,
+  fireColor,
+  packRGB,
+  smokeColor,
+  stoneColor,
+} from '@/sim/colors';
 import type { Ctx, Projectile, SpellId, SpellsApi } from '@/core/types';
 
 /**
@@ -58,6 +66,99 @@ export class Spells implements SpellsApi {
     return chewed;
   }
 
+  private conjureStone(tx: number, ty: number, originX: number, originY: number): void {
+    const sp = this.ctx.params.spells.conjure;
+    const dx = tx - originX,
+      dy = ty - originY;
+    const dist = Math.hypot(dx, dy) || 1;
+    if (dist > sp.range!) {
+      tx = originX + (dx / dist) * sp.range!;
+      ty = originY + (dy / dist) * sp.range!;
+    }
+    const cx = Math.floor(tx),
+      cy = Math.floor(ty),
+      radius = sp.radius!;
+    const { world } = this.ctx;
+    for (let oy = -radius; oy <= radius; oy++) {
+      for (let ox = -radius; ox <= radius; ox++) {
+        if (ox * ox + oy * oy > radius * radius) continue;
+        const X = cx + ox,
+          Y = cy + oy;
+        if (!world.inBounds(X, Y)) continue;
+        const i = world.idx(X, Y);
+        const t = world.types[i];
+        if (t === Cell.Empty || isLiquid(t) || isGas(t)) {
+          world.types[i] = Cell.Stone;
+          world.colors[i] = stoneColor();
+          world.life[i] = 0;
+          world.charge[i] = 0;
+        }
+      }
+    }
+    this.ctx.particles.burst(cx, cy - 4, 8, null, stoneColor, 1.2, { grav: 0.08 });
+    this.ctx.audio.dig();
+  }
+
+  private castScatter(x: number, y: number, angle: number, mul = 1): void {
+    const sp = this.ctx.params.spells.scatter;
+    for (let i = 0; i < sp.pellets!; i++) {
+      const sa = angle + (Math.random() - 0.5) * sp.spread!;
+      const sv = sp.velocityForce! * (0.85 + Math.random() * 0.3);
+      this.ctx.projectiles.push({
+        x,
+        y,
+        vx: Math.cos(sa) * sv,
+        vy: Math.sin(sa) * sv,
+        type: 'pellet',
+        life: 70,
+        age: 0,
+        charging: false,
+        hostile: false,
+        mul,
+      });
+    }
+    this.ctx.audio.zap();
+    this.ctx.audio.noiseBurst(0.06, 800, 0.05);
+  }
+
+  private castVitriolSpray(x: number, y: number, angle: number, carryVx = 0): void {
+    const sp = this.ctx.params.spells.vitriol;
+    this.ctx.audio.flame();
+    for (let j = 0; j < 3; j++) {
+      const spreadA = angle + (Math.random() - 0.5) * sp.spread!;
+      const speed = 3.0 + Math.random() * 2.0;
+      this.ctx.particles.spawn(
+        x,
+        y,
+        Math.cos(spreadA) * speed + carryVx,
+        Math.sin(spreadA) * speed,
+        Cell.Acid,
+        acidColor(),
+        30 + Math.floor(Math.random() * 16),
+        { grav: 0.06, glow: 1.4 },
+      );
+    }
+  }
+
+  private castEmberStorm(x: number, y: number, angle: number): void {
+    const sp = this.ctx.params.spells.emberstorm;
+    this.ctx.audio.flame();
+    for (let j = 0; j < sp.count!; j++) {
+      const ea = angle + (Math.random() - 0.5) * 0.55;
+      const speed = 2.6 + Math.random() * 2.2;
+      this.ctx.particles.spawn(
+        x,
+        y,
+        Math.cos(ea) * speed,
+        Math.sin(ea) * speed - 0.8,
+        Cell.Ember,
+        emberColor(),
+        200 + Math.floor(Math.random() * 120),
+        { grav: 0.05, glow: 2.0 },
+      );
+    }
+  }
+
   // --- Warp: blink the wizard to where the bolt struck ---
   executeWarp(p: Projectile): boolean {
     const { player } = this.ctx;
@@ -97,6 +198,9 @@ export class Spells implements SpellsApi {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'bolt', life: 180, age: 0, charging: false, hostile: false });
       this.ctx.audio.zap();
+    } else if (player.spell === 'scatter') {
+      player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
+      this.castScatter(tip.x, tip.y, a);
     } else if (player.spell === 'bomb') {
       // Worms-style: holding charges the throw; release happens on mouseup
       if (input.bombCharge < 0) input.bombCharge = 0;
@@ -115,6 +219,24 @@ export class Spells implements SpellsApi {
           Math.sin(spreadA) * spd, Cell.Fire, fireColor(),
           14 + Math.floor(Math.random() * 12), { grav: -0.015, glow: 2.2 });
       }
+    } else if (player.spell === 'vitriol') {
+      player.mana -= sp.manaCost;
+      this.castVitriolSpray(tip.x, tip.y, a, player.vx * 0.4);
+    } else if (player.spell === 'emberstorm') {
+      player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
+      this.castEmberStorm(tip.x, tip.y, a);
+    } else if (player.spell === 'frostshard') {
+      player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
+      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'iceshard', life: 140, age: 0, charging: false, hostile: false });
+      this.ctx.audio.zap();
+    } else if (player.spell === 'icelance') {
+      player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
+      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'icelance', life: 90, age: 0, charging: false, hostile: false });
+      this.ctx.audio.tone(1400, 220, 0.16, 'sine', 0.10);
+    } else if (player.spell === 'wisp') {
+      player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
+      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'wisp', life: 260, age: 0, charging: false, hostile: false });
+      this.ctx.audio.zap();
     } else if (player.spell === 'dig') {
       player.mana -= sp.manaCost;
       const hit = this.digRay(tip.x, tip.y, a, sp.range!);
@@ -129,6 +251,13 @@ export class Spells implements SpellsApi {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'warp', life: 90, age: 0, charging: false, hostile: false });
       this.ctx.audio.zap();
+    } else if (player.spell === 'conjure') {
+      player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
+      this.conjureStone(input.mouse.x, input.mouse.y, player.x, player.y - 9);
+    } else if (player.spell === 'meteor') {
+      player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
+      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce! - 1.0, type: 'meteor', life: 300, age: 0, charging: false, hostile: false });
+      this.ctx.audio.boom(8);
     } else if (player.spell === 'blackhole') {
       if (input.activeChargingBlackHole) return;
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
@@ -167,15 +296,55 @@ export class Spells implements SpellsApi {
       this.ctx.lightning.cast(startX, startY - 1, Math.atan2(targetY - startY, targetX - startX));
     } else if (type === 'flame') {
       this.emitBuildFlame();
+    } else if (type === 'vitriol') {
+      const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
+      this.castVitriolSpray(startX, startY, Math.atan2(targetY - startY, targetX - startX));
+    } else if (type === 'conjure') {
+      const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
+      this.conjureStone(targetX, targetY, startX, startY);
+    } else if (type === 'emberstorm') {
+      const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
+      this.castEmberStorm(startX, startY, Math.atan2(targetY - startY, targetX - startX));
+    } else if (type === 'icelance') {
+      const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
+      const angle = Math.atan2(targetY - startY, targetX - startX);
+      projectiles.push({ x: startX, y: startY, vx: Math.cos(angle) * spells.icelance.velocityForce!, vy: Math.sin(angle) * spells.icelance.velocityForce!, type: 'icelance', life: 90, age: 0, charging: false, hostile: false });
+      this.ctx.audio.tone(1400, 220, 0.16, 'sine', 0.10);
+    } else if (type === 'scatter') {
+      const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
+      this.castScatter(startX, startY, Math.atan2(targetY - startY, targetX - startX));
     } else if (type === 'dig') {
       // handled continuously by the held-tool loop
     } else {
       const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
       const angle = Math.atan2(targetY - startY, targetX - startX);
-      const force = (type === 'bolt') ? spells.bolt.velocityForce!
-        : (type === 'warp') ? spells.warp.velocityForce! : spells.bomb.velocityForce!;
-      projectiles.push({ x: startX, y: startY, vx: Math.cos(angle) * force, vy: Math.sin(angle) * force, type: type, life: type === 'bomb' ? Math.floor(spells.bomb.fuseTicks!) : 180, age: 0, charging: false, hostile: false });
-      if (type === 'bolt') this.ctx.audio.zap();
+      const projectileType = type === 'frostshard' ? 'iceshard' : type;
+      const force =
+        type === 'bolt' ? spells.bolt.velocityForce!
+        : type === 'warp' ? spells.warp.velocityForce!
+        : type === 'frostshard' ? spells.frostshard.velocityForce!
+        : type === 'wisp' ? spells.wisp.velocityForce!
+        : type === 'meteor' ? spells.meteor.velocityForce!
+        : spells.bomb.velocityForce!;
+      const life =
+        type === 'bomb' ? Math.floor(spells.bomb.fuseTicks!)
+        : type === 'wisp' ? 260
+        : type === 'meteor' ? 300
+        : type === 'frostshard' ? 140
+        : 180;
+      projectiles.push({
+        x: startX,
+        y: startY,
+        vx: Math.cos(angle) * force,
+        vy: Math.sin(angle) * force - (type === 'meteor' ? 1.0 : 0),
+        type: projectileType,
+        life,
+        age: 0,
+        charging: false,
+        hostile: false,
+      });
+      if (type === 'bolt' || type === 'frostshard' || type === 'wisp') this.ctx.audio.zap();
+      if (type === 'meteor') this.ctx.audio.boom(8);
     }
   }
 }

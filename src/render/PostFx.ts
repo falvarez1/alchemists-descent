@@ -78,14 +78,17 @@ export class PostFx {
 
   update(ctx: Ctx): void {
     const u = this.pass.uniforms;
+    const post = ctx.state.postFx;
     u.uTime.value = ctx.state.frameCount;
     // Detonations split the lens for a few frames (bloomKick already decays).
-    u.uAberration.value = 0.0005 + ctx.fx.bloomKick * 0.006 + ctx.fx.screenShake * 0.05;
+    u.uAberration.value =
+      post.aberration + ctx.fx.bloomKick * post.aberrationKick + ctx.fx.screenShake * post.shakeAberration;
+    u.uGrain.value = post.grain;
     // Creeps in below 35% HP; full pulse near death. Zero outside play mode.
     const hurt =
       ctx.state.mode === 'play' && !ctx.player.dead
         ? Math.max(0, 0.35 - ctx.player.hp / ctx.player.maxHp) / 0.35
         : 0;
-    u.uHurt.value = hurt;
+    u.uHurt.value = hurt * post.hurtPulse;
   }
 }

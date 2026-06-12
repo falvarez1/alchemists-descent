@@ -31,7 +31,9 @@ import type {
   WandLoadoutSave,
   Waystone,
 } from '@/core/types';
+import { grantFullReviewKit } from '@/entities/Player';
 import { createDefaultStatus } from '@/entities/status';
+import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { makeLevelRuntime } from '@/game/runtime';
 import { validateFindability } from '@/world/validate';
 import { Cell } from '@/sim/CellType';
@@ -50,6 +52,22 @@ const POPULATION_SPAWN_CLEARANCE = 220;
 /* ---------------- expedition save format (localStorage) ---------------- */
 
 const EXPEDITION_KEY = 'noita-expedition';
+const LEGACY_REVIEW_PERKS = [
+  'might',
+  'vampirism',
+  'featherweight',
+  'manafont',
+  'swiftfoot',
+  'torchbearer',
+  'ironhide',
+  'flameward',
+  'toxinward',
+  'goldmagnet',
+];
+const LEGACY_REVIEW_WANDS = [
+  { frameId: 'brass', cards: ['spark', 'double', 'speed', 'flame', 'lightning'] },
+  { frameId: 'void', cards: ['dig', 'conjure', 'vitriol', 'blackhole', 'warp'] },
+];
 
 interface SavedEnemy {
   kind: EnemyKind;
@@ -114,6 +132,8 @@ export class Levels implements LevelsApi {
   private litOrder = new Map<string, number[]>();
   /** Last hostile count emitted via enemiesLeft. */
   private lastEnemiesEmit = -1;
+  /** Levels already topped up with the review potion belt this session. */
+  private reviewKitSeeded = new Set<string>();
 
   constructor(private ctx: Ctx) {}
 
@@ -240,6 +260,10 @@ export class Levels implements LevelsApi {
     player.fx = 0;
     player.fy = 0;
     ctx.camera.snapTo(player.x, player.y);
+    if (ctx.state.debugGodMode) {
+      grantFullReviewKit(player);
+      this.seedRuntimeReviewKit(ctx, runtime);
+    }
     ctx.events.emit('levelChanged', { depth: 1, name: def.name });
     ctx.events.emit('objectiveChanged', { text: 'YOUR LEVEL — YOUR RULES' });
   }
@@ -258,6 +282,7 @@ export class Levels implements LevelsApi {
 
   saveExpedition(ctx: Ctx): void {
     if (!this.currentId || this.currentId === 'custom') return;
+    if (ctx.state.debugGodMode) return;
     // Sync the live hostile roster into the current runtime before reading it.
     this.leaveLevel();
     const blobs: SavedLevelBlob[] = [];
@@ -365,6 +390,7 @@ export class Levels implements LevelsApi {
       save = null;
     }
     if (!save || save.v !== 1 || !LEVELS[save.currentId]) return false;
+    if (this.isLegacyReviewSave(save)) return false;
 
     this.expeditionSeed = save.expeditionSeed >>> 0;
     for (const blob of save.levels) this.savedBlobs.set(blob.id, blob);
@@ -386,6 +412,20 @@ export class Levels implements LevelsApi {
     ctx.camera.snapTo(p.x, p.y);
     ctx.events.emit('toast', { text: 'EXPEDITION RESUMED' });
     return true;
+  }
+
+  private isLegacyReviewSave(save: ExpeditionSave): boolean {
+    if (save.player.maxHp < 180 || save.player.maxLevit < 140) return false;
+    if (!LEGACY_REVIEW_PERKS.every((perk) => save.player.perks[perk])) return false;
+    for (let i = 0; i < LEGACY_REVIEW_WANDS.length; i++) {
+      const expected = LEGACY_REVIEW_WANDS[i];
+      const actual = save.loadout.wands[i];
+      if (!actual || actual.frameId !== expected.frameId) return false;
+      for (let s = 0; s < expected.cards.length; s++) {
+        if (actual.cards[s] !== expected.cards[s]) return false;
+      }
+    }
+    return save.loadout.collection.length >= 22;
   }
 
   /**
@@ -565,6 +605,10 @@ export class Levels implements LevelsApi {
     this.currentId = id;
     this.waystoneHeat = new Array<number>(runtime.waystones.length).fill(0);
     this.lastEnemiesEmit = ctx.enemies.length;
+    if (ctx.state.debugGodMode) {
+      grantFullReviewKit(player);
+      this.seedRuntimeReviewKit(ctx, runtime);
+    }
     ctx.events.emit('levelChanged', { depth: def.depth, name: def.name });
     ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
     ctx.events.emit('objectiveChanged', {
@@ -584,6 +628,39 @@ export class Levels implements LevelsApi {
 
     // Crossing a threshold is a natural checkpoint.
     this.saveExpedition(ctx);
+  }
+
+  seedReviewKit(ctx: Ctx): void {
+    const runtime = this.current;
+    if (!runtime) return;
+    this.seedRuntimeReviewKit(ctx, runtime);
+  }
+
+  private seedRuntimeReviewKit(ctx: Ctx, runtime: LevelRuntime): void {
+    const key = runtime.def.id;
+    if (this.reviewKitSeeded.has(key)) return;
+    this.reviewKitSeeded.add(key);
+
+    const present = new Set(
+      runtime.pickups
+        .filter((p) => !p.taken && p.kind === 'potion' && p.data.potion)
+        .map((p) => p.data.potion!),
+    );
+    const missing = POTION_KINDS.filter((kind) => !present.has(kind));
+    if (missing.length === 0) return;
+
+    const spacing = 10;
+    const width = (missing.length - 1) * spacing;
+    const baseX = Math.max(18, Math.min(WIDTH - width - 18, runtime.spawn.x + 36));
+    const y = Math.max(24, runtime.spawn.y - 30);
+    missing.forEach((potion, i) => {
+      const p = makePickup('potion', baseX + i * spacing, y, { potion });
+      p.vx = (i - (missing.length - 1) / 2) * 0.04;
+      p.vy = -0.35;
+      runtime.pickups.push(p);
+    });
+
+    ctx.events.emit('toast', { text: 'REVIEW POTION BELT STOCKED' });
   }
 
   /** Generate a fresh level World into ctx and place its hostile population. */
@@ -725,6 +802,18 @@ export class Levels implements LevelsApi {
         }
       }
       this.waystoneHeat[i] = fire > 0 ? this.waystoneHeat[i] + 1 : 0;
+      if (fire > 0 && ctx.state.frameCount % 16 === 0) {
+        ctx.particles.spawn(
+          ws.x + (Math.random() - 0.5) * 4,
+          ws.y - 3,
+          (Math.random() - 0.5) * 0.2,
+          -0.45 - Math.random() * 0.35,
+          null,
+          emberColor(),
+          24 + Math.floor(Math.random() * 16),
+          { glow: 1.8, grav: -0.01 },
+        );
+      }
       if (this.waystoneHeat[i] >= WAYSTONE_LIGHT_TICKS) this.lightWaystone(ctx, runtime, i);
     }
   }

@@ -170,6 +170,9 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
   },
 };
 
+/** Stable catalogue order for review kits, shops, and random grants. */
+export const ALL_CARD_IDS = Object.keys(CARD_DEFS) as CardId[];
+
 /** Multicast group sizes (how many following projectile casts get grouped). */
 export const MULTICAST_SIZE: Partial<Record<CardId, number>> = {
   double: 2,

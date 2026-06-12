@@ -556,7 +556,9 @@ Builder should feel like a developer tool:
 - Dense, predictable panels.
 - Searchable command palette.
 - Keyboard shortcuts for common edit commands.
-- Tooltips on unfamiliar icons.
+- Custom popovers on unfamiliar icons. Do not add native browser `title`
+  tooltips to Tools, Place, or Mechanisms buttons; those palettes already show
+  their own icon/name/description popover.
 - Precise numeric fields in the inspector.
 - Drag handles for position, bounds, radius, and sensor zones.
 - Hover outlines and ids for linked objects.
@@ -578,8 +580,9 @@ Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not start
 - [x] Phase 4 — Terrain tools: paint, line, rect/filled, ellipse/filled,
       flood fill, replace-in-region, SMOOTH (majority rule) and ROUGHEN
       (boundary jitter) brushes, region select, plus a SETTLE preview
-      (run real physics on the visible area for 2s, then keep — undoable —
-      or revert). Editor LAYERS panel: per-family visibility/locking
+      (hold SETTLE to run real physics; release pauses the sim and offers
+      KEEP — undoable when the diff is small enough — or REVERT). Editor
+      LAYERS panel: per-family visibility/locking
       (gameplay/mech/links/lights; editor-side — a hidden layer still
       compiles). Deferred: dedicated spray-parameter tools (Sandbox spray
       remains available).
@@ -637,7 +640,9 @@ Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not start
       searchable, incl. "find invalid object"), and document MOOD metadata
       (ambient override applied in playtests + ambience tag). The Builder
       owns the whole left edge: its own material swatches/brush/world-gen
-      panel (the Sandbox toolbar yields while it's open). Probes:
+      panel (the Sandbox toolbar yields while it's open). Material swatches
+      reuse the same restored pixel icons as the Sandbox toolbar, including
+      potions/elixirs and the remapped exotic materials. Probes:
       scripts/verify-builder-pro.mjs (34) and verify-builder-ux.mjs (28).
 
 ### Phase 1 - Rename Existing Build To Sandbox
@@ -719,4 +724,3 @@ Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not start
   record is more appropriate.
 - Builder should not depend on random runtime generation for shippable authored
   puzzles without storing the seed and pass params.
-

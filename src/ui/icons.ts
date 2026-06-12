@@ -63,9 +63,57 @@ export const PIXEL_ICONS: Record<string, PixelIconDef> = {
   wall: { p: { a: '#3a3a42', b: '#6b6b76' }, g: [
     "...........",".aaaaaaaaa.",".abbabbaba.",".aaaaaaaaa.",".ababbabba.",".aaaaaaaaa.",
     ".abbabbaba.",".aaaaaaaaa.",".ababbabba.",".aaaaaaaaa.","..........."]},
+  stone: { p: { a: '#565060', b: '#7d7689', c: '#3b3742' }, g: [
+    "...........","...........","...aaaa....","..abbbba...",".abbbcbba..",".abbbbbba..",
+    ".acbbbbca..","..abbbba...","...aaaa....","...........","..........."]},
+  snow: { p: { a: '#cbd5e1', b: '#f1f5f9', c: '#ffffff' }, g: [
+    "..b.....b..","......c....","...b.......",".....bb....","..c.bccb...","...bbccbb..",
+    "..bbcccbb..",".bbbbbbbbb.","abbbbbbbbba","...........","..........."]},
+  coal: { p: { a: '#1c1917', b: '#3f3a36', c: '#57534e' }, g: [
+    "...........","...........","....aab....","...abbba...","..abcbba...","..abbbcba..",
+    ".abbcbbba..","..ababba...","...aaaa....","...........","..........."]},
+  ash: { p: { a: '#78716c', b: '#a8a29e', c: '#57534e' }, g: [
+    "...........","..b........",".....a.....","...........",".a...b.....","....bab....",
+    "...babab...","..ababbab..",".babbabbab.","...........","..........."]},
+  toxic: { p: { a: '#365314', b: '#65a30d', c: '#bef264' }, g: [
+    ".....a.....",".....a.....","....aba....","....aba....","...abbba...","...abcba...",
+    "..abbbbba..","..abbcbba..","...abbba...","....aaa....","..........."]},
+  healium: { p: { a: '#9d174d', b: '#f472b6', c: '#fce7f3' }, g: [
+    ".....a.....",".....a.....","....aba....","....aba....","...abbba...","...abcba...",
+    "..abbbcba..","..abbbbba..","...abbba...","....aaa....","..........."]},
+  teleportium: { p: { a: '#581c87', b: '#a855f7', c: '#e9d5ff' }, g: [
+    ".....a.....",".....a.....","....aba....","....aba....","...abcba...","...abbba...",
+    "..abcbcba..","..abbbbba..","...abbba...","....aaa....","..........."]},
+  crystal: { p: { a: '#0e4f5e', b: '#41c8e0', c: '#bdf3ff' }, g: [
+    "...........","....c......","...cbc.....","...aba..c..","..cabac.cb.","..ababa.ab.",
+    ".cabababab.",".aabababaa.","..aaabaaa..","...aaaaa...","..........."]},
+  glass: { p: { a: '#7dd3fc', b: '#e0f2fe', c: '#ffffff' }, g: [
+    "...........",".aaaaaaaaa.",".ab......a.",".a.b...c.a.",".a..b....a.",".a...b...a.",
+    ".a....b..a.",".a.c...b.a.",".a......ba.",".aaaaaaaaa.","..........."]},
+  fungus: { p: { a: '#0f766e', b: '#2dd4bf', c: '#99f6e4' }, g: [
+    "...........","....bbb....","...bbcbb...","..bbcbcbb..","..bbbbbbb..","....a.a....",
+    "....a.a....","...aa.aa...","..a.....a..","...........","..........."]},
+  glowshroom: { p: { a: '#1d5c32', b: '#54d676', c: '#c9ffd6' }, g: [
+    "...........","....bbb....","..bbcccbb..",".bbcccccbb.",".bbbbbbbbb.","....aaa....",
+    "....aaa....","....aaa....","...aaaaa...","...........","..........."]},
+  moss: { p: { a: '#1d5c32', b: '#54d676', c: '#c9ffd6' }, g: [
+    "...........","...........","....b......","..bb.b..b..",".babbb.b...",".bbbbbbb...",
+    "..bbabbb.b.","...bbbbbb..",".b..bbabbb.","...........","..........."]},
+  elixirLife: { p: { a: '#9d174d', b: '#fb7185', c: '#ffe4e6' }, g: [
+    "....c.c....",".....b.....","....aba....","...ababa...","..abbcbba..","..abbbbba..",
+    "..abcbbba..","...abbba...","....aaa....","...........","..........."]},
+  elixirLevity: { p: { a: '#0e7490', b: '#67e8f9', c: '#ecfeff' }, g: [
+    "....c.c....",".....b.....","....aba....","...abcba...","..abbcbba..","..abbbbba..",
+    "..abcbcba..","...abbba...","....aaa....","...........","..........."]},
+  elixirStone: { p: { a: '#57534e', b: '#a8a29e', c: '#fde68a' }, g: [
+    "....c.c....",".....b.....","....aba....","...ababa...","..abbcbba..","..abbbbba..",
+    "..abcbbba..","...abbba...","....aaa....","...........","..........."]},
   eraser: { p: { a: '#8c2f4f', b: '#f472b6', c: '#fbcfe8' }, g: [
     "...........","......aaa..",".....abbba.","....abbcba.","...abbcba..","..abbcba...",
     ".abbcba....",".abcba.....",".aaaa......","...........","..........."]},
+  scatter: { p: { a: '#0ea5e9', b: '#7dd3fc', c: '#e0f2fe' }, g: [
+    "...........","..b.....b..","....c......","......b....",".b...a...c.","....aca....",
+    ".c...a...b.","......c....","....b......","..c.....b..","..........."]},
   bolt: { p: { a: '#0ea5e9', b: '#38bdf8', c: '#e0f2fe' }, g: [
     ".....a.....",".....b.....",".....b.....","..b..c..b..","...bccb....",".abcccccba.",
     "...bccb....","..b..c..b..",".....b.....",".....b.....",".....a....."]},
@@ -131,9 +179,9 @@ export const PIXEL_ICONS: Record<string, PixelIconDef> = {
   meteor: { p: { a: '#7c2d12', b: '#fb923c', c: '#fde68a' }, g: [
     "c..........",".cb........","..cb.......","...cbb.....","....bbaa...","....baaaa..",
     ".....aaaaa.","....baaaaa.",".....aaaa..","......bb...","..........."]},
-  conjure: { p: { a: '#57534e', b: '#a8a29e', c: '#fcd34d' }, g: [
-    "...........","....c......","...........",".aabaabaab.",".aabaabaab.","...........",
-    ".baabaabaa.",".baabaabaa.","...........",".aabaabaab.",".aabaabaab."]}
+  conjure: { p: { a: '#565060', b: '#8d8699', c: '#b8b2c4' }, g: [
+    "...........","....c......","...aaaa....","..abbbba...",".abbcbbba..",".abbbbbba..",
+    ".aabbbbaa..","..aaaaaa...",".aaaaaaaa..","...........","..........."]}
 };
 
 /** Cell id → icon name for the element toolbar buttons. */
@@ -141,7 +189,11 @@ export const ELEMENT_ICON: Record<number, string> = {
   1: 'sand', 8: 'gunpowder', 4: 'wood', 15: 'vines', 17: 'gold',
   2: 'water', 6: 'oil', 11: 'lava', 16: 'nitrogen', 7: 'acid',
   18: 'blood', 19: 'slime', 5: 'fire', 14: 'smoke', 20: 'ember',
-  10: 'ice', 13: 'metal', 3: 'wall', 0: 'eraser'
+  21: 'elixirLife', 22: 'elixirLevity', 23: 'elixirStone',
+  10: 'ice', 13: 'metal', 3: 'wall', 0: 'eraser',
+  12: 'stone', 24: 'toxic', 25: 'healium', 26: 'teleportium',
+  27: 'snow', 28: 'coal', 29: 'crystal', 30: 'fungus', 31: 'glass',
+  32: 'ash', 33: 'glowshroom', 34: 'moss',
 };
 
 /** Legacy projectile cards reuse the spell icons they were reborn from. */

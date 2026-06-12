@@ -38,20 +38,29 @@ import {
   setObjectGroupCmd,
 } from '@/builder/commands';
 import type { CellPatch, Command } from '@/builder/commands';
+import { rleEncode } from '@/core/rle';
 import { drawLine, spawnCircle } from '@/sim/brush';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { blocksEntity, Cell, isGas, isLiquid, isSolid } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
 import {
-  captureStamp,
-  loadStamps,
-  mirrorStamp,
-  pasteStamp,
-  rotateStamp,
-  saveStamps,
-} from '@/builder/stamplib';
-import type { StampDef } from '@/builder/stamplib';
+  capturePrefab,
+  decodePrefabCells,
+  deletePrefab,
+  loadPrefabs,
+  mirrorPrefab,
+  pastePrefab,
+  rotatePrefab,
+  sanitizePrefab,
+  savePrefab,
+} from '@/builder/prefablib';
+import type { PrefabAnchor, PrefabDef } from '@/builder/prefablib';
+import { PrefabPanel, showImportReport } from '@/builder/prefabPanel';
+import { downloadJson, downloadText, download, pickFiles } from '@/builder/assets/io';
+import { cellsToRgba, rgbaToCells, snapUnknown } from '@/builder/assets/pixmap';
+import { pngBlobToRgba, rgbaToPngBlob } from '@/builder/assets/png';
+import { paletteAsGpl } from '@/sim/cellPalette';
 import { TRIGGER_KINDS, validateDocument } from '@/builder/validate';
 import type { DocIssue } from '@/builder/validate';
 import {
@@ -447,8 +456,11 @@ export class Builder {
     ghost: HTMLDivElement | null;
   } | null = null;
   private overlayMode: OverlayMode = 'none';
-  private stampsList: StampDef[] = [];
-  private armedStamp: StampDef | null = null;
+  private prefabs: PrefabDef[] = [];
+  /** A transformed (Q/E) copy of a library prefab while the stamp tool is
+   *  armed — never the library record itself. */
+  private armedPrefab: PrefabDef | null = null;
+  private prefabPanel!: PrefabPanel;
   /** Settle preview: full-plane snapshot while physics runs, then keep/revert. */
   private settleSnap: {
     types: Uint8Array;
@@ -457,7 +469,6 @@ export class Builder {
     charge: Uint8Array;
   } | null = null;
   private settling = false;
-  private settleEndFrame = 0;
   /** paintDirty as it stood when the settle began — a zero-diff KEEP must
    *  not launder away dirt earned by earlier uncaptured painting. */
   private settleWasDirty = false;
@@ -479,8 +490,9 @@ export class Builder {
 
   constructor(private ctx: Ctx) {
     this.doc = createEmptyDocument('untitled', ctx.state.currentBiome);
-    this.stampsList = loadStamps();
+    this.prefabs = loadPrefabs();
     this.buildDom();
+    this.wirePrefabPanel();
     this.wireBar();
     this.wireProcPanel();
     this.wirePointer();
@@ -591,7 +603,7 @@ export class Builder {
     this.ctx.camera.zoomLock = this.zoomTarget;
     this.refreshDocSelect();
     this.syncAll();
-    this.syncStamps();
+    this.refreshPrefabs();
     this.syncSettleButtons();
     this.autosaveTimer = window.setInterval(() => this.autosaveDraft(), 30000);
     this.offerDraft();
@@ -616,7 +628,7 @@ export class Builder {
     this.stroke = null;
     this.shapeDrag = null;
     this.marquee = null;
-    this.armedStamp = null;
+    this.armedPrefab = null;
     this.patrolEditId = null;
     this.linkFrom = null;
     this.root.style.display = 'none';
@@ -638,10 +650,10 @@ export class Builder {
     this.root = document.createElement('div');
     this.root.id = 'builder-root';
     this.root.style.display = 'none';
-    const toolBtn = (tool: string, glyph: string, title: string): string =>
-      `<button class="bp-tool bp-icon" data-tool="${tool}" title="${title}"><span class="bp-glyph k-${tool}">${glyph}</span></button>`;
+    const toolBtn = (tool: string, glyph: string, label: string): string =>
+      `<button class="bp-tool bp-icon" data-tool="${tool}" aria-label="${label}"><span class="bp-glyph k-${tool}">${glyph}</span></button>`;
     const placeBtn = (p: { kind: EditorObjectKind; label: string; glyph: string }): string =>
-      `<button class="bp-tool bp-mini" data-kind="${p.kind}" title="${p.label}"><span class="bp-glyph k-${p.kind}">${p.glyph}</span>${p.label}</button>`;
+      `<button class="bp-tool bp-mini" data-kind="${p.kind}" aria-label="${p.label}"><span class="bp-glyph k-${p.kind}">${p.glyph}</span>${p.label}</button>`;
     this.root.innerHTML = `
       <div id="builder-bar">
         <span class="b-title">BUILDER</span>
@@ -704,12 +716,11 @@ export class Builder {
         <div class="bp-head">LIGHTING</div>
         <button class="bp-tool" data-tool="light"><span class="bp-glyph k-light">*</span>Authored Light</button>
         <button id="bp-light-toggle" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>
-        <div class="bp-head">STAMPS</div>
-        <button id="bp-stamp-capture" title="Save the selected region's cells as a reusable stamp">CAPTURE REGION</button>
-        <div id="bp-stamp-list"></div>
+        <div class="bp-head">PREFABS</div>
+        <div id="bp-prefab-host"></div>
         <div class="bp-head">SIMULATE</div>
         <div class="bp-grid bp-grid3">
-          <button id="bp-settle" title="Run physics on the visible area for 2s, then keep or revert">SETTLE</button>
+          <button id="bp-settle" aria-label="Hold to run physics; release to keep or revert">SETTLE</button>
           <button id="bp-settle-keep" style="display:none">KEEP</button>
           <button id="bp-settle-revert" style="display:none">REVERT</button>
         </div>
@@ -730,7 +741,7 @@ export class Builder {
         <button id="bp-mat-btn" title="Tuning sliders for the armed material">MATERIAL&hellip;</button>
         <div class="bp-head">PROCEDURAL</div>
         <button id="bp-proc-btn">SEEDED PASSES&hellip;</button>
-        <div class="bp-hint">RMB eyedrops &middot; wheel zooms.<br>Shift-click multi-selects,<br>drag empty = marquee.<br>Ctrl+D duplicate &middot; Ctrl+C/V<br>copy/paste params.<br>T playtests at the cursor.<br>Stamp armed: Q rotate, E flip.<br>ESC steps back &middot; DEL removes.</div>
+        <div class="bp-hint">RMB eyedrops &middot; wheel zooms.<br>Shift-click multi-selects,<br>drag empty = marquee.<br>Ctrl+D duplicate &middot; Ctrl+C/V<br>copy/paste params.<br>T playtests at the cursor.<br>Prefab armed: Q rotate, E flip.<br>ESC steps back &middot; DEL removes.</div>
       </div>
       <div id="bp-matpop" style="display:none"></div>
       <div id="builder-inspector"></div>
@@ -766,6 +777,7 @@ export class Builder {
         <input id="bp-cmdk-input" placeholder="type a command&hellip; (Esc closes)" spellcheck="false">
         <div id="bp-cmdk-list"></div>
       </div>
+      <div id="builder-import-host" style="display:none"></div>
       <div id="builder-status"></div>`;
     holder?.appendChild(this.root);
 
@@ -802,6 +814,10 @@ export class Builder {
       [...PLACE_GAMEPLAY, ...PLACE_MECH].map((p) => [p.kind, p.label] as const),
     );
     for (const btn of this.root.querySelectorAll<HTMLButtonElement>('.bp-tool')) {
+      if (btn.title) {
+        btn.setAttribute('aria-label', btn.title);
+        btn.removeAttribute('title');
+      }
       const kind = btn.dataset.kind as EditorObjectKind | undefined;
       const tool = btn.dataset.tool;
       const objInfo = kind ? OBJECT_INFO[kind] : tool === 'light' ? OBJECT_INFO.light : undefined;
@@ -825,15 +841,19 @@ export class Builder {
     // plus authoring-only extras the Sandbox doesn't paint (Stone: well
     // plugs, basins, and rune doors are made of it).
     const matGrid = this.el<HTMLDivElement>('bp-materials');
+    const materialIds = new Set<number>();
     for (const src of document.querySelectorAll<HTMLButtonElement>('.tool-btn[data-mode="element"]')) {
+      const id = Number(src.dataset.id);
+      if (materialIds.has(id)) continue;
+      materialIds.add(id);
       this.addMaterialSwatch(
         matGrid,
-        Number(src.dataset.id),
+        id,
         (src.textContent ?? '').trim(),
         src.querySelector<HTMLElement>('.color-indicator')?.style.background ?? '#888',
       );
     }
-    this.addMaterialSwatch(matGrid, 12, 'Stone', '#8a8a92');
+    if (!materialIds.has(12)) this.addMaterialSwatch(matGrid, 12, 'Stone', '#8a8a92');
   }
 
   /* ---------- the instant popover (every palette button gets one) ---------- */
@@ -861,6 +881,10 @@ export class Builder {
   }
 
   private attachPopover(el: HTMLElement, fill: (pop: HTMLDivElement) => void): void {
+    if (el.title) {
+      el.setAttribute('aria-label', el.title);
+      el.removeAttribute('title');
+    }
     el.addEventListener('mouseenter', () => this.popShow(el, fill));
     el.addEventListener('mouseleave', () => this.popHide());
   }
@@ -972,9 +996,9 @@ export class Builder {
   private setTool(t: BuilderTool): void {
     this.tool = t;
     if (t !== 'link') this.linkFrom = null;
-    if (t !== 'stamp' && this.armedStamp) {
-      this.armedStamp = null;
-      this.syncStamps();
+    if (t !== 'stamp' && this.armedPrefab) {
+      this.armedPrefab = null;
+      this.refreshPrefabs();
     }
     this.syncPalette();
     if (t === 'link') this.status('LINK: CLICK A TRIGGER OR RUNE GLYPH, THEN ITS DOOR');
@@ -1290,15 +1314,8 @@ export class Builder {
         return;
       }
       if (this.tool === 'stamp') {
-        if (this.previewBlocks() || !this.armedStamp) return;
-        const rec = new PatchRecorder(this.ctx.world);
-        pasteStamp(this.ctx.world, rec, this.armedStamp, pos.x, pos.y);
-        const patch = rec.finish();
-        if (patch) {
-          this.cmds.run(paintTerrainCmd(this.ctx.world, patch.before, patch.after));
-          this.paintDirty = true;
-          this.status(`STAMPED "${this.armedStamp.name.toUpperCase()}"`);
-        }
+        if (this.previewBlocks() || !this.armedPrefab) return;
+        this.pastePrefabAt(this.armedPrefab, pos.x, pos.y);
         return; // stays armed: stamping comes in runs; ESC is done
       }
       if (this.tool !== 'select') {
@@ -2496,26 +2513,26 @@ export class Builder {
       else this.place(d.kind, pos.x, pos.y);
     });
 
-    this.el('bp-stamp-capture').addEventListener('click', () => {
-      if (this.previewBlocks()) return;
-      if (!this.region) {
-        this.status('SELECT A REGION FIRST (R), THEN CAPTURE IT', true);
-        return;
-      }
-      const name = window.prompt('Stamp name:', 'stamp ' + (this.stampsList.length + 1));
-      if (name === null) return;
-      const stamp = captureStamp(this.ctx.world, this.region, name.trim());
-      if (!stamp) {
-        this.status('REGION TOO LARGE FOR A STAMP (MAX ~40K CELLS)', true);
-        return;
-      }
-      this.stampsList.push(stamp);
-      if (!saveStamps(this.stampsList)) this.status('STAMP STORAGE FULL', true);
-      this.syncStamps();
-      this.status(`STAMP "${stamp.name.toUpperCase()}" CAPTURED (${stamp.w}×${stamp.h})`);
+    const settle = this.el<HTMLButtonElement>('bp-settle');
+    settle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      settle.setPointerCapture(e.pointerId);
+      this.startSettle();
     });
-
-    this.el('bp-settle').addEventListener('click', () => this.startSettle());
+    const releaseSettle = (e: PointerEvent): void => {
+      this.stopSettleRun();
+      if (settle.hasPointerCapture(e.pointerId)) settle.releasePointerCapture(e.pointerId);
+    };
+    settle.addEventListener('pointerup', releaseSettle);
+    settle.addEventListener('pointercancel', releaseSettle);
+    settle.addEventListener('lostpointercapture', () => this.stopSettleRun());
+    settle.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      this.startSettle();
+    });
+    window.addEventListener('mouseup', () => this.stopSettleRun());
     this.el('bp-settle-keep').addEventListener('click', () => this.finishSettle(true));
     this.el('bp-settle-revert').addEventListener('click', () => this.finishSettle(false));
 
@@ -2566,29 +2583,270 @@ export class Builder {
     });
   }
 
-  /** Rebuild the stamp list UI (armed stamp highlighted; × deletes). */
-  private syncStamps(): void {
-    const list = this.el<HTMLDivElement>('bp-stamp-list');
-    list.innerHTML = '';
-    for (const s of this.stampsList) {
-      const row = document.createElement('div');
-      row.className = 'bp-stamp' + (this.armedStamp?.id === s.id ? ' armed' : '');
-      row.innerHTML = `<span class="bp-stamp-name">${s.name}</span><span class="bp-stamp-size">${s.w}×${s.h}</span><button title="Delete stamp">&times;</button>`;
-      row.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).tagName === 'BUTTON') {
-          this.stampsList = this.stampsList.filter((x) => x.id !== s.id);
-          if (this.armedStamp?.id === s.id) this.armedStamp = null;
-          saveStamps(this.stampsList);
-          this.syncStamps();
+  /* ===================== prefab library ===================== */
+
+  private wirePrefabPanel(): void {
+    this.prefabPanel = new PrefabPanel(this.el<HTMLDivElement>('bp-prefab-host'), {
+      onArm: (p) => {
+        if (!p) {
+          this.armedPrefab = null;
+          if (this.tool === 'stamp') this.setTool('select');
+          this.refreshPrefabs();
           return;
         }
-        this.armedStamp = s;
+        // arm a CLONE: Q/E transform the armed copy, never the library record
+        this.armedPrefab = structuredClone(p);
         this.setTool('stamp');
-        this.syncStamps();
-        this.status(`STAMP ARMED: "${s.name.toUpperCase()}" — Q ROTATES, E FLIPS, ESC DONE`);
-      });
-      list.appendChild(row);
+        this.refreshPrefabs();
+        this.status(`PREFAB ARMED: "${p.name.toUpperCase()}" — Q ROTATES, E FLIPS, ESC DONE`);
+      },
+      onCapture: () => this.capturePrefabFromRegion(),
+      onRegionPng: () => void this.exportRegionPng(),
+      onImport: () => void this.importPrefabFiles(),
+      onPalette: () => {
+        downloadText(paletteAsGpl(), 'alchemists-descent-cells.gpl');
+        this.status('PALETTE EXPORTED — LOAD THE .GPL IN ASEPRITE/GIMP');
+      },
+      onExportPng: (p) => void this.exportPrefabPng(p),
+      onExportJson: (p) => {
+        downloadJson(p, `${p.name || 'prefab'}.prefab.json`);
+        this.status(`EXPORTED "${p.name.toUpperCase()}" AS JSON`);
+      },
+      onEditAnchors: (p) => this.editPrefabAnchors(p),
+      onDelete: (p) => {
+        if (!window.confirm(`Delete prefab "${p.name}"?`)) return;
+        deletePrefab(p.id);
+        this.prefabs = this.prefabs.filter((x) => x.id !== p.id);
+        if (this.armedPrefab?.id === p.id) this.armedPrefab = null;
+        this.refreshPrefabs();
+      },
+    });
+  }
+
+  private refreshPrefabs(): void {
+    this.prefabPanel.refresh(this.prefabs, this.armedPrefab?.id ?? null);
+  }
+
+  private capturePrefabFromRegion(): void {
+    if (this.previewBlocks()) return;
+    if (!this.region) {
+      this.status('SELECT A REGION FIRST (R), THEN CAPTURE IT', true);
+      return;
     }
+    const raw = window.prompt(
+      'Prefab name (#tags after the name):',
+      'prefab ' + (this.prefabs.length + 1),
+    );
+    if (raw === null) return;
+    // "gate room #vault #mech" — words after # become tags
+    const tags = [...raw.matchAll(/#([\w-]+)/g)].map((m) => m[1].toLowerCase());
+    const name = raw.replace(/#[\w-]+/g, '').trim();
+    const got = capturePrefab(this.ctx.world, this.region, this.doc, name, tags);
+    if (!got) {
+      this.status('REGION TOO LARGE FOR A PREFAB (MAX ~40K CELLS)', true);
+      return;
+    }
+    if (!savePrefab(got.prefab)) this.status('PREFAB STORAGE FULL — USE EXPORT', true);
+    this.prefabs.push(got.prefab);
+    this.prefabs.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    this.refreshPrefabs();
+    const extras =
+      got.prefab.objects.length > 0 || got.prefab.lights.length > 0
+        ? ` +${got.prefab.objects.length} OBJ +${got.prefab.lights.length} LIGHT`
+        : '';
+    const dropped = got.droppedLinks > 0 ? ` — ${got.droppedLinks} OUTSIDE LINK(S) DROPPED` : '';
+    this.status(
+      `PREFAB "${got.prefab.name.toUpperCase()}" CAPTURED (${got.prefab.w}×${got.prefab.h}${extras})${dropped}`,
+      got.droppedLinks > 0,
+    );
+  }
+
+  /** Paste = ONE composite command: terrain patch (already live — the
+   *  idempotent-do convention) plus object/link/light adds (NOT pre-applied;
+   *  their do() does the push). */
+  private pastePrefabAt(p: PrefabDef, x: number, y: number): void {
+    const rec = new PatchRecorder(this.ctx.world);
+    const out = pastePrefab(this.ctx.world, rec, p, this.snap(x), this.snap(y));
+    const patch = rec.finish();
+    const cmds: Command[] = [];
+    if (patch) cmds.push(paintTerrainCmd(this.ctx.world, patch.before, patch.after));
+    for (const o of out.objects) cmds.push(addObjectCmd(o));
+    for (const l of out.links) cmds.push(addLinkCmd(l));
+    for (const lt of out.lights) cmds.push(addLightCmd(lt));
+    if (cmds.length === 0) return;
+    this.cmds.run(compositeCmd(`paste "${p.name}"`, cmds));
+    if (patch) this.paintDirty = true;
+    if (out.objects.length > 0) {
+      this.selectedIds = new Set(out.objects.map((o) => o.id));
+      this.selectedId = out.objects[0].id;
+      this.syncMarkers();
+      this.renderInspector();
+    }
+    this.status(`PASTED "${p.name.toUpperCase()}"`);
+  }
+
+  /* ---------------- PNG / JSON interchange ---------------- */
+
+  private async exportPrefabPng(p: PrefabDef): Promise<void> {
+    const blob = await rgbaToPngBlob(cellsToRgba(decodePrefabCells(p), p.w, p.h), p.w, p.h);
+    download(blob, `${p.name || 'prefab'}.terrain.png`);
+    this.status('TERRAIN PNG EXPORTED — EACH COLOR IS A MATERIAL (.GPL HAS THE SWATCHES)');
+  }
+
+  private async exportRegionPng(): Promise<void> {
+    if (!this.region) {
+      this.status('SELECT A REGION FIRST (R), THEN EXPORT IT', true);
+      return;
+    }
+    const r = this.region;
+    const w = r.x1 - r.x0 + 1,
+      h = r.y1 - r.y0 + 1;
+    const world = this.ctx.world;
+    const cells = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (world.inBounds(r.x0 + x, r.y0 + y)) {
+          cells[x + y * w] = world.types[world.idx(r.x0 + x, r.y0 + y)];
+        }
+      }
+    }
+    const blob = await rgbaToPngBlob(cellsToRgba(cells, w, h), w, h);
+    download(blob, `region-${w}x${h}.terrain.png`);
+    this.status('REGION PNG EXPORTED');
+  }
+
+  private async importPrefabFiles(): Promise<void> {
+    const files = await pickFiles('.json,.png', true);
+    for (const file of files) {
+      if (/\.png$/i.test(file.name)) await this.importTerrainPng(file);
+      else await this.importPrefabJson(file);
+    }
+  }
+
+  private async importPrefabJson(file: File): Promise<void> {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      parsed = null;
+    }
+    const got = parsed === null ? null : sanitizePrefab(parsed);
+    if (!got) {
+      this.status(`"${file.name}" IS NOT A PREFAB FILE`, true);
+      return;
+    }
+    // an import with an id we already hold is an update; otherwise it lands new
+    const existing = this.prefabs.findIndex((x) => x.id === got.prefab.id);
+    if (existing >= 0) this.prefabs[existing] = got.prefab;
+    else this.prefabs.push(got.prefab);
+    savePrefab(got.prefab);
+    this.prefabs.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    this.refreshPrefabs();
+    this.status(
+      `IMPORTED PREFAB "${got.prefab.name.toUpperCase()}"` +
+        (got.warnings.length > 0 ? ` — ${got.warnings.length} RECORD(S) DROPPED` : ''),
+      got.warnings.length > 0,
+    );
+  }
+
+  /**
+   * Terrain PNG import. Clean colors land directly; stray colors open the
+   * import report (SNAP ALL / CANCEL). If the ARMED prefab matches the PNG's
+   * size, the pixels can update its terrain in place (objects/lights kept) —
+   * the round-trip for "export PNG, repaint in Aseprite, re-import".
+   */
+  private async importTerrainPng(file: File): Promise<void> {
+    let decoded: { rgba: Uint8ClampedArray; w: number; h: number };
+    try {
+      decoded = await pngBlobToRgba(file);
+    } catch (err) {
+      this.status(`"${file.name}": ${err instanceof Error ? err.message : 'NOT A PNG'}`, true);
+      return;
+    }
+    if (decoded.w * decoded.h > 40000) {
+      this.status(`"${file.name}" EXCEEDS THE 40K-CELL PREFAB CAP`, true);
+      return;
+    }
+    const result = rgbaToCells(decoded.rgba, decoded.w, decoded.h);
+    const accept = (cells: Uint8Array): void =>
+      this.acceptTerrainPng(file.name, cells, decoded.w, decoded.h);
+    if (result.unknown.length === 0) {
+      if (result.semiTransparent > 0) {
+        this.status(`${result.semiTransparent} SEMI-TRANSPARENT PIXEL(S) THRESHOLDED`, true);
+      }
+      accept(result.cells);
+      return;
+    }
+    showImportReport(this.el<HTMLDivElement>('builder-import-host'), file.name, result, {
+      onSnapAll: () => accept(snapUnknown(decoded.rgba, decoded.w, decoded.h)),
+      onCancel: () => this.status('PNG IMPORT CANCELLED'),
+    });
+  }
+
+  private acceptTerrainPng(filename: string, cells: Uint8Array, w: number, h: number): void {
+    const armedLib = this.armedPrefab
+      ? this.prefabs.find((x) => x.id === this.armedPrefab!.id)
+      : undefined;
+    if (
+      armedLib &&
+      armedLib.w === w &&
+      armedLib.h === h &&
+      window.confirm(`Update the terrain of armed prefab "${armedLib.name}" from this PNG?`)
+    ) {
+      armedLib.rle = rleEncode(cells);
+      savePrefab(armedLib);
+      this.armedPrefab = structuredClone(armedLib);
+      this.refreshPrefabs();
+      this.status(`PREFAB "${armedLib.name.toUpperCase()}" TERRAIN UPDATED FROM PNG`);
+      return;
+    }
+    const name = filename.replace(/\.(terrain\.)?png$/i, '') || 'imported';
+    const prefab: PrefabDef = {
+      v: 1,
+      kind: 'prefab',
+      id: freshId('prefab'),
+      name,
+      tags: ['terrain'],
+      w,
+      h,
+      rle: rleEncode(cells),
+      objects: [],
+      links: [],
+      lights: [],
+      createdAt: new Date().toISOString(),
+    };
+    savePrefab(prefab);
+    this.prefabs.push(prefab);
+    this.prefabs.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    this.refreshPrefabs();
+    this.status(`PNG IMPORTED AS PREFAB "${name.toUpperCase()}" (${w}×${h})`);
+  }
+
+  /** Minimal anchor authoring: edge-midpoint anchors from a dir list. */
+  private editPrefabAnchors(p: PrefabDef): void {
+    const current = (p.anchors ?? []).map((a) => a.dir).join(',');
+    const raw = window.prompt(
+      'Worldgen anchors as edge directions (n/s/e/w, comma-separated; empty clears).\n' +
+        'Each becomes an opening at that edge midpoint for the cave tunneler:',
+      current,
+    );
+    if (raw === null) return;
+    const dirs = raw
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter((s): s is PrefabAnchor['dir'] => s === 'n' || s === 's' || s === 'e' || s === 'w');
+    const at: Record<PrefabAnchor['dir'], { x: number; y: number }> = {
+      n: { x: Math.floor(p.w / 2), y: 0 },
+      s: { x: Math.floor(p.w / 2), y: p.h - 1 },
+      w: { x: 0, y: Math.floor(p.h / 2) },
+      e: { x: p.w - 1, y: Math.floor(p.h / 2) },
+    };
+    if (dirs.length === 0) delete p.anchors;
+    else p.anchors = dirs.map((dir, n) => ({ id: 'a' + n, ...at[dir], dir, kind: 'open' }));
+    savePrefab(p);
+    if (this.armedPrefab?.id === p.id) this.armedPrefab = structuredClone(p);
+    this.refreshPrefabs();
+    this.status(dirs.length === 0 ? 'ANCHORS CLEARED' : `ANCHORS: ${dirs.join(', ').toUpperCase()}`);
   }
 
   /* ---------- editor layers (visibility/locking, editor-side only) ---------- */
@@ -2746,6 +3004,7 @@ export class Builder {
   /* ---------- settle preview: run real physics, then keep or revert ---------- */
 
   private startSettle(): void {
+    if (this.settling || this.settleSnap) return;
     if (this.previewBlocks()) return;
     const w = this.ctx.world;
     this.settleWasDirty = this.paintDirty;
@@ -2756,9 +3015,16 @@ export class Builder {
       charge: w.charge.slice(),
     };
     this.settling = true;
-    this.settleEndFrame = this.ctx.state.frameCount + 120;
     this.ctx.state.paused = false; // the sim runs for real — that IS the preview
-    this.status('SETTLING THE VISIBLE AREA (2s)…');
+    this.status('SETTLING — HOLD TO CONTINUE, RELEASE TO DECIDE');
+    this.syncSettleButtons();
+  }
+
+  private stopSettleRun(): void {
+    if (!this.settling || !this.settleSnap) return;
+    this.settling = false;
+    this.ctx.state.paused = true;
+    this.status('SETTLED — KEEP OR REVERT');
     this.syncSettleButtons();
   }
 
@@ -2825,7 +3091,10 @@ export class Builder {
 
   private syncSettleButtons(): void {
     const deciding = this.settleSnap !== null && !this.settling;
-    this.el('bp-settle').style.display = this.settleSnap === null ? '' : 'none';
+    const settle = this.el<HTMLButtonElement>('bp-settle');
+    settle.style.display = deciding ? 'none' : '';
+    settle.textContent = this.settling ? 'SETTLING...' : 'SETTLE';
+    settle.classList.toggle('active', this.settling);
     this.el('bp-settle-keep').style.display = deciding ? '' : 'none';
     this.el('bp-settle-revert').style.display = deciding ? '' : 'none';
   }
@@ -2894,8 +3163,19 @@ export class Builder {
       { label: 'Capture terrain into document', run: click('b-capture') },
       { label: 'Restore document terrain', run: click('b-restore') },
       { label: 'New document', run: click('b-new') },
-      { label: 'Settle preview (2s of physics)', run: () => this.startSettle() },
+      {
+        label: 'Focus settle button (hold to run)',
+        run: () => {
+          const settle = this.el<HTMLButtonElement>('bp-settle');
+          settle.focus();
+          this.status('HOLD SETTLE TO RUN PHYSICS, RELEASE TO DECIDE');
+        },
+      },
       { label: 'Bake playtest scars', run: () => this.bakePlaytestScars() },
+      { label: 'Capture region as prefab', run: () => this.capturePrefabFromRegion() },
+      { label: 'Import prefab (.json / .png)', run: () => void this.importPrefabFiles() },
+      { label: 'Export region as PNG', run: () => void this.exportRegionPng() },
+      { label: 'Export material palette (.gpl)', run: click('bp-prefab-gpl') },
       { label: 'Toggle light preview', run: click('bp-light-toggle') },
       { label: 'World parameters…', run: () => this.toggleSidePanel('world') },
       { label: 'Material parameters…', run: () => this.toggleSidePanel('mat') },
@@ -3067,13 +3347,13 @@ export class Builder {
     } else if (e.code === 'Enter' && this.polyPoints.length >= 3) {
       e.stopPropagation();
       this.closePolyRegion();
-    } else if (e.code === 'KeyQ' && this.armedStamp) {
+    } else if (e.code === 'KeyQ' && this.armedPrefab) {
       e.stopPropagation();
-      this.armedStamp = rotateStamp(this.armedStamp);
-      this.status(`ROTATED — NOW ${this.armedStamp.w}×${this.armedStamp.h}`);
-    } else if (e.code === 'KeyE' && this.armedStamp) {
+      this.armedPrefab = rotatePrefab(this.armedPrefab);
+      this.status(`ROTATED — NOW ${this.armedPrefab.w}×${this.armedPrefab.h}`);
+    } else if (e.code === 'KeyE' && this.armedPrefab) {
       e.stopPropagation();
-      this.armedStamp = mirrorStamp(this.armedStamp);
+      this.armedPrefab = mirrorPrefab(this.armedPrefab);
       this.status('MIRRORED');
     } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD') {
       e.preventDefault();
@@ -3168,14 +3448,6 @@ export class Builder {
           state.activeInputMode === 'element' && Number(sw.dataset.el) === state.currentElement,
         );
       }
-    }
-
-    // settle preview clock: re-freeze the world when the run completes
-    if (this.settling && state.frameCount >= this.settleEndFrame) {
-      this.settling = false;
-      state.paused = true;
-      this.status('SETTLED — KEEP OR REVERT');
-      this.syncSettleButtons();
     }
 
     // live light preview: authored lights feed the real light field
@@ -3458,10 +3730,12 @@ export class Builder {
       g.setLineDash([]);
     }
 
-    // armed stamp ghost at the cursor
-    if (this.tool === 'stamp' && this.armedStamp) {
-      const s = this.armedStamp;
-      const a = toS(this.lastMouse.x - Math.floor(s.w / 2), this.lastMouse.y - Math.floor(s.h / 2));
+    // armed prefab ghost at the cursor (+ object glyphs, lights, anchors)
+    if (this.tool === 'stamp' && this.armedPrefab) {
+      const s = this.armedPrefab;
+      const gx = this.snap(this.lastMouse.x),
+        gy = this.snap(this.lastMouse.y);
+      const a = toS(gx - Math.floor(s.w / 2), gy - Math.floor(s.h / 2));
       g.setLineDash([5, 3]);
       g.strokeStyle = 'rgba(240,171,252,0.9)';
       g.lineWidth = 1.5;
@@ -3470,6 +3744,18 @@ export class Builder {
       g.fillStyle = 'rgba(240,171,252,0.8)';
       g.font = '700 10px monospace';
       g.fillText(s.name + ' (Q/E)', a.x + 2, a.y - 4);
+      for (const o of s.objects) {
+        g.fillStyle = 'rgba(252,211,77,0.9)';
+        g.fillText(GLYPH[o.kind] ?? '?', a.x + o.x * cellW - 3, a.y + o.y * cellH + 4);
+      }
+      for (const lt of s.lights) {
+        g.fillStyle = 'rgba(125,211,252,0.9)';
+        g.fillText('*', a.x + lt.x * cellW - 3, a.y + lt.y * cellH + 4);
+      }
+      for (const an of s.anchors ?? []) {
+        g.fillStyle = 'rgba(74,222,128,0.95)';
+        g.fillText('⚓', a.x + an.x * cellW - 4, a.y + an.y * cellH + 4);
+      }
     }
 
     // pending procedural preview badge

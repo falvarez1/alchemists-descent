@@ -243,6 +243,7 @@ export class Hud {
     const flask = ctx.flask.state;
     const flaskFill = el('flask-fill');
     flaskFill.style.width = Math.max(0, (flask.count / flask.capacity) * 100) + '%';
+    flaskFill.classList.toggle('flask-sloshing', flask.count > 0);
     if (flask.material !== this.flaskMaterial) {
       this.flaskMaterial = flask.material;
       if (flask.material === null) {

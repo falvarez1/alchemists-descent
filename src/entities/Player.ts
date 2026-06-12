@@ -6,11 +6,40 @@
 
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
-import type { Ctx, PlayerControlApi, PlayerState, Projectile } from '@/core/types';
+import type { Ctx, PerkId, PlayerControlApi, PlayerState, Projectile } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup } from '@/game/Pickups';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { bloodColor, EMPTY_COLOR, packRGB, smokeColor } from '@/sim/colors';
+
+const REVIEW_STATUS_FRAMES = 3600;
+const REVIEW_PERKS: PerkId[] = [
+  'might',
+  'vampirism',
+  'featherweight',
+  'manafont',
+  'swiftfoot',
+  'torchbearer',
+  'ironhide',
+  'flameward',
+  'toxinward',
+  'goldmagnet',
+];
+
+export function grantFullReviewKit(player: PlayerState): void {
+  player.maxHp = Math.max(player.maxHp, 180);
+  player.hp = player.maxHp;
+  player.maxMana = Math.max(player.maxMana, 220);
+  player.mana = player.maxMana;
+  player.maxLevit = Math.max(player.maxLevit, 140);
+  player.levit = player.maxLevit;
+  player.status.regen = Math.max(player.status.regen, REVIEW_STATUS_FRAMES);
+  player.status.levity = Math.max(player.status.levity, REVIEW_STATUS_FRAMES);
+  player.status.stoneskin = Math.max(player.status.stoneskin, REVIEW_STATUS_FRAMES);
+  player.status.swift = Math.max(player.status.swift, REVIEW_STATUS_FRAMES);
+  player.status.torch = Math.max(player.status.torch, REVIEW_STATUS_FRAMES);
+  for (const perk of REVIEW_PERKS) player.perks[perk] = true;
+}
 
 /**
  * The player initializer (original lines 1475-1484). `_px/_py/_svx/_svy` are
@@ -372,9 +401,10 @@ export class PlayerControl implements PlayerControlApi {
           const g = 120 + Math.floor(Math.random() * 50);
           return packRGB(g, g, g - 8);
         }, 0.5, { grav: 0.05 });
+        player.hat.vy -= 0.8;
       }
-      player.crouchT = Math.min(10, player.crouchT + 1);
-    } else player.crouchT = 0;
+      player.crouchT = Math.min(10, player.crouchT + 2);
+    } else if (player.crouchT > 0) player.crouchT = Math.max(0, player.crouchT - 2);
 
     // air control: stronger mid-air acceleration for Ori-like corrections.
     // Swift potion (x1.5) and Swift Soles boon (x1.18) stack on top.

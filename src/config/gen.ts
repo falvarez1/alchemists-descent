@@ -641,17 +641,18 @@ function baselineDef(): GenDef {
 }
 
 /**
- * All 8 biomes currently run the baseline skeleton with identical params
- * (output is bit-identical to the pre-overhaul generator for every biome).
- * A later step flips individual biomes to their bespoke skeletons.
+ * Per-biome skeleton selection. earthen (the golden-hash-locked baseline)
+ * and scorched keep the original cave shape; the other six run bespoke
+ * topologies — a DELIBERATE generation change (old seeds produce new worlds
+ * on those depths; the expedition genVersion guard retires stale saves).
  */
 export const GEN: Record<BiomeId, GenDef> = {
   earthen: baselineDef(),
-  frozen: baselineDef(),
-  flooded: baselineDef(),
-  timber: baselineDef(),
+  frozen: { ...baselineDef(), skeleton: { kind: 'frozenCrevasses', params: crevasseParams() } },
+  flooded: { ...baselineDef(), skeleton: { kind: 'floodedGalleries', params: galleryParams() } },
+  timber: { ...baselineDef(), skeleton: { kind: 'timberScaffold', params: scaffoldParams() } },
   scorched: baselineDef(),
-  fungal: baselineDef(),
-  crystal: baselineDef(),
-  volcanic: baselineDef(),
+  fungal: { ...baselineDef(), skeleton: { kind: 'fungalPockets', params: fungalParams() } },
+  crystal: { ...baselineDef(), skeleton: { kind: 'crystalVaults', params: vaultParams() } },
+  volcanic: { ...baselineDef(), skeleton: { kind: 'volcanicTubes', params: tubeParams() } },
 };

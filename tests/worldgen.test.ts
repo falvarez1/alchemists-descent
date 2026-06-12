@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { createDefaultPostFxSettings } from '@/config/params';
 import type { Ctx, GameStateData } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
@@ -21,6 +22,9 @@ function makeCtx(world: World, worldSeed: number): Ctx {
     brushSize: 6,
     playerSpawned: false,
     worldSeed,
+    paused: false,
+    postFx: createDefaultPostFxSettings(),
+    editorLights: null,
   };
   return { world, state } as Ctx;
 }

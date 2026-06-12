@@ -92,10 +92,16 @@
             <button class="tool-btn" data-mode="element" data-id="5"><span class="color-indicator" style="background:#e65c00"></span>Fire</button>
             <button class="tool-btn" data-mode="element" data-id="14"><span class="color-indicator" style="background:#55555d"></span>Smoke</button>
 
+            <div class="section-title">Potions &amp; Elixirs</div>
+            <button class="tool-btn" data-mode="element" data-id="21"><span class="color-indicator" style="background:#fb7185"></span>Elixir of Life</button>
+            <button class="tool-btn" data-mode="element" data-id="22"><span class="color-indicator" style="background:#67e8f9"></span>Elixir of Levity</button>
+            <button class="tool-btn" data-mode="element" data-id="23"><span class="color-indicator" style="background:#a8a29e"></span>Elixir of Stone</button>
+
             <div class="section-title">Structural Frameworks</div>
             <button class="tool-btn" data-mode="element" data-id="10"><span class="color-indicator" style="background:#7cd0ff"></span>Ice</button>
             <button class="tool-btn" data-mode="element" data-id="13"><span class="color-indicator" style="background:#7a8a99"></span>Metal</button>
             <button class="tool-btn" data-mode="element" data-id="3"><span class="color-indicator" style="background:#555555"></span>Wall</button>
+            <button class="tool-btn" data-mode="element" data-id="12"><span class="color-indicator" style="background:#8a8a92"></span>Stone</button>
             <button class="tool-btn" data-mode="element" data-id="29"><span class="color-indicator" style="background:#7ce8ff"></span>Mana Crystal</button>
             <button class="tool-btn" data-mode="element" data-id="31"><span class="color-indicator" style="background:#c8dce6"></span>Glass</button>
             <button class="tool-btn" data-mode="element" data-id="30"><span class="color-indicator" style="background:#3cc8a0"></span>Glowcap Fungus</button>
@@ -105,11 +111,19 @@
 
             <div class="section-title">Tactical Spells</div>
             <button class="tool-btn spell-mode" data-mode="spell" data-id="bolt"><span class="color-indicator" style="background:#00d2ff"></span>Spark Bolt</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="scatter"><span class="color-indicator" style="background:#ffb347"></span>Scatter Hex</button>
             <button class="tool-btn spell-mode" data-mode="spell" data-id="bomb"><span class="color-indicator" style="background:#ff3b3b"></span>Cast Bomb</button>
             <button class="tool-btn spell-mode" data-mode="spell" data-id="lightning"><span class="color-indicator" style="background:#e0f2ff"></span>Chain Lightning</button>
             <button class="tool-btn spell-mode" data-mode="spell" data-id="flame"><span class="color-indicator" style="background:#ff7a18"></span>Flamethrower</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="emberstorm"><span class="color-indicator" style="background:#ffae42"></span>Ember Storm</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="vitriol"><span class="color-indicator" style="background:#84e63f"></span>Vitriol Spray</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="frostshard"><span class="color-indicator" style="background:#7dd3fc"></span>Frost Shard</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="icelance"><span class="color-indicator" style="background:#38bdf8"></span>Ice Lance</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="wisp"><span class="color-indicator" style="background:#2dd4bf"></span>Seeker Wisp</button>
             <button class="tool-btn spell-mode" data-mode="spell" data-id="dig"><span class="color-indicator" style="background:#fbbf24"></span>Excavate Ray</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="conjure"><span class="color-indicator" style="background:#9b9388"></span>Conjure Stone</button>
             <button class="tool-btn spell-mode" data-mode="spell" data-id="warp"><span class="color-indicator" style="background:#c084fc"></span>Warp Bolt</button>
+            <button class="tool-btn spell-mode" data-mode="spell" data-id="meteor"><span class="color-indicator" style="background:#ff5a1e"></span>Meteor</button>
             <button class="tool-btn spell-mode" data-mode="spell" data-id="blackhole"><span class="color-indicator" style="background:#a855f7"></span>Black Hole</button>
 
             <div class="section-title">Hostiles (Sandbox)</div>
@@ -152,8 +166,8 @@
                     <div id="toast-stack"></div>
                     <div id="controls-hint">
                         <b>A / D</b> move &nbsp; <b>SPACE</b> jump / levitate &nbsp; <b>S</b> crouch &middot; air: dive<br>
-                        <b>MOUSE</b> aim + fire &nbsp; <b>1&ndash;7</b> spells &nbsp; <b>TAB</b> sandbox<br>
-                        <b>E</b> siphon / lever &nbsp; <b>Q</b> pour &nbsp; <b>F/RMB</b> throw flask &nbsp; <b>X</b> drink &nbsp; <b>M</b> map &nbsp; <b>H</b> help &nbsp; <b>ESC</b> pause &nbsp; <b>B</b> wand bench
+                        <b>MOUSE</b> aim + fire &nbsp; <b>1/2</b> wands &nbsp; <b>TAB</b> sandbox<br>
+                        <b>E</b> siphon / lever &nbsp; <b>Q</b> pour &nbsp; <b>F/RMB</b> throw flask &nbsp; <b>X</b> drink &nbsp; <b>M</b> map &nbsp; <b>H</b> help &nbsp; <b>ESC</b> pause &nbsp; <b>B</b> wand bench &nbsp; <b>&#96;</b> god kit
                     </div>
                     <div id="wave-banner"><div class="big" id="banner-big">WAVE 1</div><div class="small" id="banner-small">HOSTILES INBOUND</div></div>
                     <div id="damage-vignette"></div>
@@ -183,7 +197,7 @@
                             <div class="help-h">THE MAP</div>
                             <p><b>M</b> for the full chart. Dots: <span style="color:#fde047">key</span> &middot; <span style="color:#fbbf24">sealed gate</span> &middot; <span style="color:#a78bfa">rune glyph</span> &middot; <span style="color:#c084fc">portal</span> &middot; <span style="color:#ff9a3c">lit waystone</span> &middot; <span style="color:#4ade80">cauldron</span> &middot; <span style="color:#fb7185">heart</span> &middot; <span style="color:#7dd3fc">tome</span>.</p>
                             <div class="help-h">CONTROLS</div>
-                            <p>A/D move &middot; SPACE jump / levitate &middot; S crouch &amp; peek (in air: dive slam) &middot; LMB cast &middot; RMB/F flask &middot; R respawn &middot; H this handbook</p>
+                            <p>A/D move &middot; SPACE jump / levitate &middot; S crouch &amp; peek (in air: dive slam) &middot; LMB cast &middot; RMB/F flask &middot; R respawn &middot; H this handbook &middot; &#96; enables the transient QA god kit</p>
                         </div>
                     </div>
                     <div class="help-close">H or ESC to close</div>
@@ -228,9 +242,66 @@
                     <input type="range" id="g-ambient" min="0.02" max="0.50" step="0.02" value="0.18">
                 </div>
                 <div>
-                    <div class="control-label-wrapper"><label>Brush Radius</label><span id="brush-value" class="val-display">4px</span></div>
+                    <div class="control-label-wrapper"><label>Brush Radius</label><span id="brush-value" class="val-display">6px</span></div>
                     <input type="range" id="brush-size" min="1" max="24" value="6">
                 </div>
+            </div>
+
+            <div class="section-title">Post Processing</div>
+            <div class="control-panel-group post-fx-panel">
+                <label class="toggle-control" for="post-enabled">
+                    <span>Post FX</span>
+                    <input type="checkbox" id="post-enabled" checked>
+                </label>
+                <label class="toggle-control" for="post-bloom-enabled">
+                    <span>Bloom</span>
+                    <input type="checkbox" id="post-bloom-enabled" checked>
+                </label>
+                <div>
+                    <div class="control-label-wrapper"><label>Exposure</label><span id="post-exposure-value" class="val-display">1.05</span></div>
+                    <input type="range" id="post-exposure" min="0.5" max="1.8" step="0.05" value="1.05">
+                </div>
+                <div>
+                    <div class="control-label-wrapper"><label>Bloom Strength</label><span id="post-bloom-strength-value" class="val-display">0.35</span></div>
+                    <input type="range" id="post-bloom-strength" min="0" max="3" step="0.05" value="0.35">
+                </div>
+                <div>
+                    <div class="control-label-wrapper"><label>Bloom Radius</label><span id="post-bloom-radius-value" class="val-display">0.20</span></div>
+                    <input type="range" id="post-bloom-radius" min="0" max="1" step="0.01" value="0.20">
+                </div>
+                <div>
+                    <div class="control-label-wrapper"><label>Bloom Threshold</label><span id="post-bloom-threshold-value" class="val-display">0.85</span></div>
+                    <input type="range" id="post-bloom-threshold" min="0" max="2" step="0.05" value="0.85">
+                </div>
+                <div>
+                    <div class="control-label-wrapper"><label>Bloom Kick</label><span id="post-bloom-kick-value" class="val-display">1.00x</span></div>
+                    <input type="range" id="post-bloom-kick" min="0" max="3" step="0.05" value="1.0">
+                </div>
+                <label class="toggle-control" for="post-lens-enabled">
+                    <span>Lens Layer</span>
+                    <input type="checkbox" id="post-lens-enabled" checked>
+                </label>
+                <div>
+                    <div class="control-label-wrapper"><label>Base Split</label><span id="post-aberration-value" class="val-display">0.0005</span></div>
+                    <input type="range" id="post-aberration" min="0" max="0.004" step="0.0001" value="0.0005">
+                </div>
+                <div>
+                    <div class="control-label-wrapper"><label>Blast Split</label><span id="post-aberration-kick-value" class="val-display">0.0060</span></div>
+                    <input type="range" id="post-aberration-kick" min="0" max="0.02" step="0.0005" value="0.006">
+                </div>
+                <div>
+                    <div class="control-label-wrapper"><label>Shake Split</label><span id="post-shake-aberration-value" class="val-display">0.050</span></div>
+                    <input type="range" id="post-shake-aberration" min="0" max="0.15" step="0.005" value="0.05">
+                </div>
+                <div>
+                    <div class="control-label-wrapper"><label>Film Grain</label><span id="post-grain-value" class="val-display">0.028</span></div>
+                    <input type="range" id="post-grain" min="0" max="0.12" step="0.002" value="0.028">
+                </div>
+                <div>
+                    <div class="control-label-wrapper"><label>Hurt Pulse</label><span id="post-hurt-pulse-value" class="val-display">1.00x</span></div>
+                    <input type="range" id="post-hurt-pulse" min="0" max="2" step="0.05" value="1.0">
+                </div>
+                <button type="button" class="post-reset-btn" id="post-reset">RESET POST FX</button>
             </div>
 
             <div class="section-title" id="context-inspector-header">Context Parameters</div>

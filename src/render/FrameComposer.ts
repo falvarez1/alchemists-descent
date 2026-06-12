@@ -2,8 +2,8 @@ import type { Ctx, Enemy } from '@/core/types';
 import type { LightField, ParallaxLayers, PixelSurface, RenderTarget } from '@/render/pixels';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { PICKUP_COLOR } from '@/game/Pickups';
-import { Cell } from '@/sim/CellType';
-import { unpackB, unpackG, unpackR } from '@/sim/colors';
+import { Cell, isLiquid } from '@/sim/CellType';
+import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 
 interface Lens {
   cx: number;
@@ -54,6 +54,36 @@ export class FrameComposer implements PixelSurface {
     pixelData[idx] += r;
     pixelData[idx + 1] += g;
     pixelData[idx + 2] += b;
+  }
+
+  private unpack01(c: number): { r: number; g: number; b: number } {
+    return { r: unpackR(c) / 255, g: unpackG(c) / 255, b: unpackB(c) / 255 };
+  }
+
+  private isHotCell(t: number): boolean {
+    return t === Cell.Fire || t === Cell.Lava || t === Cell.Ember;
+  }
+
+  private isBrewableMass(t: number): boolean {
+    return isLiquid(t) || t === Cell.Sand || t === Cell.Gold || t === Cell.Gunpowder;
+  }
+
+  private drawDottedLine(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    steps: number,
+    phase: number,
+    r: number,
+    g: number,
+    b: number,
+  ): void {
+    for (let k = 0; k < steps; k++) {
+      const t = (k + phase) / steps;
+      const wobble = Math.sin(t * Math.PI * 2 + phase * 4) * 0.7;
+      this.addPx(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t + wobble, r, g, b);
+    }
   }
 
   compose(ctx: Ctx): void {
@@ -203,6 +233,25 @@ export class FrameComposer implements PixelSurface {
           const fl = 0.7 + Math.random() * 0.55;
           r *= fl;
           g *= fl * 0.95;
+        } else if ((type === Cell.Water || type === Cell.Healium || type === Cell.Teleportium) && wy > 0 && types[ci - WIDTH] === Cell.Empty) {
+          const wave = 0.88 + Math.sin(frameCount * 0.16 + wx * 0.42) * 0.12;
+          r *= wave;
+          g *= 0.94 + (wave - 0.88) * 0.45;
+          b *= 1.08 + (wave - 0.88) * 0.55;
+        } else if (type === Cell.Crystal) {
+          if (((wx * 17 + wy * 31 + frameCount) % 97) === 0) {
+            r *= 1.65;
+            g *= 1.45;
+            b *= 1.95;
+          }
+        } else if (type === Cell.Glowshroom) {
+          const breath = 0.9 + Math.sin(frameCount * 0.045 + wx * 0.21 + wy * 0.17) * 0.16;
+          r *= breath;
+          g *= 1.02 + (breath - 0.9) * 0.9;
+          b *= breath;
+        } else if (type === Cell.Vines || type === Cell.Moss || type === Cell.Fungus) {
+          const living = 0.94 + Math.sin(frameCount * 0.035 + wx * 0.13 + wy * 0.29) * 0.08;
+          g *= living;
         }
 
         let scalar = 0.0;
@@ -408,10 +457,12 @@ export class FrameComposer implements PixelSurface {
       }
     }
 
-    // World pickups + the exit portal (under entities so foes read on top)
+    // Landmarks, pickups + the exit portal (under entities so foes read on top)
+    this.drawLandmarks(ctx);
     this.drawPickupsAndPortal(ctx);
     this.drawMechanismsAndRunes(ctx);
     this.drawCritters(ctx);
+    this.drawFlaskEffects(ctx);
 
     // Entities on top
     for (const e of ctx.enemies) this.drawEnemy(this, this.light, ctx, e);
@@ -466,6 +517,162 @@ export class FrameComposer implements PixelSurface {
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
 
     this.target.markTextureDirty();
+  }
+
+  /** Checkpoints, cauldrons, and the exit well get small state-readable motion. */
+  private drawLandmarks(ctx: Ctx): void {
+    const runtime = ctx.levels.current;
+    if (!runtime || ctx.state.mode !== 'play') return;
+    const frame = ctx.state.frameCount;
+    const world = ctx.world;
+    const camX = ctx.camera.renderX,
+      camY = ctx.camera.renderY;
+
+    for (const ws of runtime.waystones) {
+      if (ws.x < camX - 12 || ws.x > camX + VIEW_W + 12 || ws.y < camY - 12 || ws.y > camY + VIEW_H + 12)
+        continue;
+      let hot = 0;
+      for (let dy = -3; dy <= -1; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const X = ws.x + dx,
+            Y = ws.y + dy;
+          if (!world.inBounds(X, Y)) continue;
+          if (this.isHotCell(world.types[world.idx(X, Y)])) hot++;
+        }
+      }
+
+      const litPulse = 0.72 + Math.sin(frame * 0.07 + ws.x) * 0.22;
+      const heatPulse = Math.min(1, hot / 8) * (0.55 + Math.sin(frame * 0.2 + ws.y) * 0.25);
+      for (let dx = -4; dx <= 4; dx++) {
+        this.setPx(ws.x + dx, ws.y, 0.18, 0.16, 0.14);
+        if (Math.abs(dx) <= 2) this.setPx(ws.x + dx, ws.y - 1, 0.33, 0.28, 0.2);
+      }
+      this.setPx(ws.x - 3, ws.y - 2, 0.23, 0.2, 0.16);
+      this.setPx(ws.x + 3, ws.y - 2, 0.23, 0.2, 0.16);
+      if (ws.lit) {
+        for (let k = 0; k < 5; k++) {
+          const a = frame * 0.05 + k * 1.26;
+          this.addPx(ws.x + Math.round(Math.cos(a) * 2), ws.y - 4 + Math.round(Math.sin(a) * 1.2), 0.5 * litPulse, 0.28 * litPulse, 0.05);
+        }
+        this.addPx(ws.x, ws.y - 3, 1.0 * litPulse, 0.62 * litPulse, 0.12);
+      } else if (hot > 0) {
+        for (let k = 0; k < Math.min(5, hot); k++) {
+          const y = ws.y - 3 - ((frame + k * 5) % 12) / 3;
+          this.addPx(ws.x + ((k % 3) - 1), y, 0.75 * heatPulse, 0.42 * heatPulse, 0.08);
+        }
+      } else if (frame % 80 < 22) {
+        this.addPx(ws.x, ws.y - 3, 0.12, 0.08, 0.04);
+      }
+    }
+
+    const cauldron = runtime.cauldron;
+    if (cauldron && cauldron.x >= camX - 14 && cauldron.x <= camX + VIEW_W + 14 && cauldron.y >= camY - 14 && cauldron.y <= camY + VIEW_H + 14) {
+      let mass = 0,
+        sumR = 0,
+        sumG = 0,
+        sumB = 0;
+      for (let dy = -2; dy <= 0; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          const X = cauldron.x + dx,
+            Y = cauldron.y + dy;
+          if (!world.inBounds(X, Y)) continue;
+          const i = world.idx(X, Y);
+          const t = world.types[i];
+          if (!this.isBrewableMass(t)) continue;
+          const c = this.unpack01(world.colors[i]);
+          sumR += c.r;
+          sumG += c.g;
+          sumB += c.b;
+          mass++;
+        }
+      }
+      let heated = false;
+      for (let dy = -2; dy <= 4 && !heated; dy++) {
+        for (let dx = -6; dx <= 6 && !heated; dx++) {
+          if (Math.abs(dx) <= 3 && dy >= -2 && dy <= 0) continue;
+          const X = cauldron.x + dx,
+            Y = cauldron.y + dy;
+          if (world.inBounds(X, Y) && this.isHotCell(world.types[world.idx(X, Y)])) heated = true;
+        }
+      }
+      for (let dx = -4; dx <= 4; dx++) this.setPx(cauldron.x + dx, cauldron.y + 1, 0.25, 0.22, 0.19);
+      this.setPx(cauldron.x - 4, cauldron.y, 0.2, 0.18, 0.16);
+      this.setPx(cauldron.x + 4, cauldron.y, 0.2, 0.18, 0.16);
+      if (mass > 0) {
+        const inv = 1 / mass;
+        const r = sumR * inv,
+          g = sumG * inv,
+          b = sumB * inv;
+        const simmer = heated ? 0.9 + Math.sin(frame * 0.22) * 0.25 : 0.72 + Math.sin(frame * 0.06) * 0.12;
+        for (let dx = -3; dx <= 3; dx++) {
+          const slosh = Math.round(Math.sin(frame * 0.12 + dx * 0.9) * (heated ? 1 : 0.35));
+          this.setPx(cauldron.x + dx, cauldron.y - 1 + slosh, r * simmer, g * simmer, b * simmer);
+        }
+        if (heated) {
+          for (let k = 0; k < 3; k++) {
+            const lift = ((frame + k * 11) % 30) / 6;
+            this.addPx(cauldron.x - 2 + k * 2, cauldron.y - 3 - lift, r * 0.32, g * 0.32, b * 0.32);
+          }
+        }
+      }
+    }
+
+    const exit = runtime.exit;
+    if (exit && exit.x >= camX - 24 && exit.x <= camX + VIEW_W + 24 && exit.sealY >= camY - 24 && exit.sealY <= camY + VIEW_H + 24) {
+      const mouthY = exit.sealY - 8;
+      for (let k = 0; k < 4; k++) {
+        const drift = ((frame + k * 19) % 90) / 90;
+        const x = exit.x + Math.round(Math.sin(frame * 0.025 + k * 1.9) * (exit.halfW + 4));
+        const y = mouthY - Math.round(drift * 12);
+        this.addPx(x, y, 0.07, 0.06, 0.05);
+      }
+      if (frame % 48 < 12) this.addPx(exit.x, exit.sealY - 12, 0.16, 0.12, 0.06);
+    }
+  }
+
+  /** Hand-tool tells: flask siphon/pour beams and the bottle in flight. */
+  private drawFlaskEffects(ctx: Ctx): void {
+    if (ctx.state.mode !== 'play' || ctx.player.dead) return;
+    const frame = ctx.state.frameCount;
+    const flask = ctx.flask.state;
+    const mat = flask.material;
+    const tint = mat === null ? { r: 0.45, g: 0.72, b: 1.0 } : this.unpack01(COLOR_FN[mat]());
+    const tip = ctx.spells.wandTip();
+
+    if (ctx.input.siphonHeld) {
+      const target = ctx.input.mouse;
+      const reach = Math.hypot(target.x - ctx.player.x, target.y - (ctx.player.y - 9));
+      if (reach < 72) {
+        const phase = ((frame % 14) / 14);
+        this.drawDottedLine(target.x, target.y, ctx.player.x, ctx.player.y - 9, 11, phase, tint.r * 0.15, tint.g * 0.2, tint.b * 0.22);
+      }
+    }
+
+    if (ctx.input.pourHeld && mat !== null && flask.count > 0) {
+      const a = ctx.player.aimAngle;
+      for (let k = 0; k < 8; k++) {
+        const t = (k + ((frame % 6) / 6)) / 8;
+        this.addPx(
+          tip.x + Math.cos(a) * (2 + t * 10),
+          tip.y + Math.sin(a) * (2 + t * 10) + t * t * 3,
+          tint.r * (0.3 - t * 0.18),
+          tint.g * (0.3 - t * 0.18),
+          tint.b * (0.3 - t * 0.18),
+        );
+      }
+    }
+
+    const bottle = ctx.flask.bottleView();
+    if (!bottle) return;
+    const x = Math.round(bottle.x),
+      y = Math.round(bottle.y);
+    const spin = frame * 0.5 + bottle.x * 0.03;
+    const sx = Math.round(Math.cos(spin));
+    const sy = Math.round(Math.sin(spin));
+    this.setPx(x, y, 0.72, 0.9, 1.0);
+    this.setPx(x + sx, y + sy, 0.45, 0.65, 0.8);
+    this.setPx(x - sx, y - sy, 0.18, 0.28, 0.36);
+    if (mat !== null) this.addPx(x, y + 1, tint.r * 0.55, tint.g * 0.55, tint.b * 0.55);
   }
 
   /** Wave F: the critter layer — tiny, alive, mostly ignorable. */
@@ -540,16 +747,31 @@ export class FrameComposer implements PixelSurface {
         if (pulling) this.setPx(kx, ky, 1.1, 1.0, 0.7);
         else if (m.state === 1) this.setPx(kx, ky, 0.2 * g, 1.6 * g, 0.4 * g);
         else this.setPx(kx, ky, 1.6 * g, 0.3 * g, 0.15 * g);
-      } else if (m.kind === 'plate' && (m.pressed || m.state > 0)) {
-        // pressed plates glow along the sill
-        const g = 0.5 + Math.sin(frame * 0.18) * 0.25;
-        for (let dx = 0; dx < m.w; dx += 2) this.addPx(m.x + dx, m.y - 1, 0.9 * g, 0.75 * g, 0.2 * g);
-      } else if (m.kind === 'brazier' && m.state === 0) {
-        // dark bowls hint at what they want
-        if (frame % 40 < 20) this.addPx(m.x, m.y - 2, 0.25, 0.12, 0.04);
+      } else if (m.kind === 'plate') {
+        // pressure plates physically dip before the amber latch glow takes over
+        const sink = m.pressed ? 1 : 0;
+        for (let dx = 0; dx < m.w; dx++) this.setPx(m.x + dx, m.y + sink, 0.52, 0.45, 0.22);
+        if (m.pressed || m.state > 0) {
+          const g = 0.5 + Math.sin(frame * 0.18) * 0.25;
+          for (let dx = 0; dx < m.w; dx += 2) this.addPx(m.x + dx, m.y - 1 + sink, 0.9 * g, 0.75 * g, 0.2 * g);
+        }
+      } else if (m.kind === 'brazier') {
+        if (m.state === 0) {
+          // dark bowls hint at what they want
+          if (frame % 40 < 20) this.addPx(m.x, m.y - 2, 0.25, 0.12, 0.04);
+        } else {
+          const flame = 0.7 + Math.sin(frame * 0.21 + m.x) * 0.25 + Math.random() * 0.18;
+          this.addPx(m.x, m.y - 3, 1.0 * flame, 0.48 * flame, 0.08);
+          this.addPx(m.x - 1, m.y - 2, 0.65 * flame, 0.28 * flame, 0.05);
+          this.addPx(m.x + 1, m.y - 2, 0.65 * flame, 0.28 * flame, 0.05);
+        }
       } else if (m.kind === 'scale') {
         // weight gauge: notches above the pan fill amber toward the threshold
         const frac = Math.min(1, (m.reading ?? 0) / (m.threshold ?? 24));
+        const sag = Math.round(frac * 2);
+        for (let dx = 0; dx < m.w; dx++) this.setPx(m.x + dx, m.y + sag, 0.55, 0.43, 0.18);
+        this.setPx(m.x - 1, m.y - 1 + sag, 0.32, 0.25, 0.12);
+        this.setPx(m.x + m.w, m.y - 1 + sag, 0.32, 0.25, 0.12);
         for (let n = 0; n < 5; n++) {
           const gy = m.y - 9 - n;
           if (frac * 5 > n) this.setPx(m.x - 2, gy, 0.95, 0.7, 0.15);
@@ -583,11 +805,12 @@ export class FrameComposer implements PixelSurface {
       }
       // a broken mechanism strobes a dying red cross while it groans
       if (m.broken !== undefined && m.broken > 0 && frame % 20 < 10) {
-        this.addPx(m.x, m.y - 4, 0.9, 0.12, 0.08);
-        this.addPx(m.x - 1, m.y - 3, 0.5, 0.07, 0.04);
-        this.addPx(m.x + 1, m.y - 5, 0.5, 0.07, 0.04);
-        this.addPx(m.x + 1, m.y - 3, 0.5, 0.07, 0.04);
-        this.addPx(m.x - 1, m.y - 5, 0.5, 0.07, 0.04);
+        const sh = frame % 4 < 2 ? -1 : 1;
+        this.addPx(m.x + sh, m.y - 4, 0.9, 0.12, 0.08);
+        this.addPx(m.x - 1 + sh, m.y - 3, 0.5, 0.07, 0.04);
+        this.addPx(m.x + 1 + sh, m.y - 5, 0.5, 0.07, 0.04);
+        this.addPx(m.x + 1 + sh, m.y - 3, 0.5, 0.07, 0.04);
+        this.addPx(m.x - 1 + sh, m.y - 5, 0.5, 0.07, 0.04);
       }
     }
 
@@ -624,19 +847,61 @@ export class FrameComposer implements PixelSurface {
       const b = (c & 0xff) / 255;
       const pulse = 0.8 + Math.sin(frame * 0.12 + p.y) * 0.25;
       if (p.kind === 'chest') {
-        // squat banded coffer
+        // squat banded coffer; the lid twitches when the alchemist is close
+        const near =
+          (ctx.player.x - p.x) * (ctx.player.x - p.x) + (ctx.player.y - p.y) * (ctx.player.y - p.y) < 44 * 44;
+        const lid = near && frame % 40 < 8 ? -1 : 0;
         for (let dx = -2; dx <= 2; dx++) {
-          this.setPx(x + dx, y, r * 0.8, g * 0.8, b * 0.8);
+          this.setPx(x + dx, y + lid, r * 0.8, g * 0.8, b * 0.8);
           this.setPx(x + dx, y + 1, r * 0.55, g * 0.5, b * 0.4);
         }
-        this.setPx(x, y, 1.2, 1.1, 0.5); // clasp glint
+        this.setPx(x, y + lid, 1.2, 1.1, 0.5); // clasp glint
       } else if (p.kind === 'key') {
-        // bright sparkling key
-        this.setPx(x, y, r * pulse * 1.6, g * pulse * 1.6, b * pulse * 0.9);
-        this.setPx(x + 1, y, r * pulse * 1.3, g * pulse * 1.3, b * 0.6);
-        this.setPx(x - 1, y, r * pulse * 1.3, g * pulse * 1.3, b * 0.6);
-        this.setPx(x, y - 1, r * pulse, g * pulse, b * 0.5);
-        if (frame % 14 < 3) this.addPx(x + 2, y - 2, 0.8, 0.8, 0.6);
+        // bright sparkling key; its bow twitches like it wants the portal
+        const twitch = frame % 50 < 6 ? Math.round(Math.sin(frame * 1.7)) : 0;
+        const dir = runtime.portal && runtime.portal.x < p.x ? -1 : 1;
+        this.setPx(x - dir + twitch, y - 1, r * pulse * 1.5, g * pulse * 1.45, b * pulse * 0.8);
+        this.setPx(x + twitch, y - 1, r * pulse * 1.5, g * pulse * 1.45, b * pulse * 0.8);
+        for (let s = 0; s < 4; s++) this.setPx(x + dir * s + twitch, y, r * pulse * 1.35, g * pulse * 1.3, b * 0.7);
+        this.setPx(x + dir * 3 + twitch, y + 1, r, g * 0.9, b * 0.45);
+        if (frame % 14 < 3) this.addPx(x + dir * 4, y - 2, 0.8, 0.8, 0.6);
+      } else if (p.kind === 'heart') {
+        // double-beat heart: a quick lub-dub instead of a generic bobbing gem
+        const beat = (frame + Math.floor(p.x)) % 70;
+        const thump = beat < 6 || (beat > 13 && beat < 19) ? 1.35 : 1.0;
+        this.setPx(x - 1, y - 1, r * thump, g * 0.7 * thump, b * 0.8 * thump);
+        this.setPx(x + 1, y - 1, r * thump, g * 0.7 * thump, b * 0.8 * thump);
+        this.setPx(x - 2, y, r * 0.9 * thump, g * 0.45 * thump, b * 0.55 * thump);
+        this.setPx(x, y, r * 1.4 * thump, g * 0.75 * thump, b * 0.8 * thump);
+        this.setPx(x + 2, y, r * 0.9 * thump, g * 0.45 * thump, b * 0.55 * thump);
+        this.setPx(x, y + 1, r * 0.85 * thump, g * 0.35 * thump, b * 0.45 * thump);
+      } else if (p.kind === 'tome') {
+        // page flutter: the spell book is awake before you pick it up
+        const flip = Math.sin(frame * 0.18 + p.x) > 0 ? 1 : 0;
+        this.setPx(x - 2, y, r * 0.55, g * 0.65, b * 0.8);
+        this.setPx(x - 1, y - flip, r * pulse, g * pulse, b * pulse);
+        this.setPx(x, y, 0.08, 0.12, 0.22);
+        this.setPx(x + 1, y - (1 - flip), r * pulse, g * pulse, b * pulse);
+        this.setPx(x + 2, y, r * 0.45, g * 0.55, b * 0.75);
+        if (frame % 24 < 4) this.addPx(x, y - 2, 0.16, 0.28, 0.45);
+      } else if (p.kind === 'potion') {
+        // tiny flask: glass outline, colored liquid sloshing one cell side to side
+        const slosh = Math.round(Math.sin(frame * 0.15 + p.x));
+        this.setPx(x, y - 2, 0.65, 0.82, 0.95);
+        this.setPx(x - 1, y - 1, 0.45, 0.6, 0.75);
+        this.setPx(x + 1, y - 1, 0.45, 0.6, 0.75);
+        this.setPx(x - 1, y, r * pulse, g * pulse, b * pulse);
+        this.setPx(x + slosh, y, r * pulse * 1.3, g * pulse * 1.3, b * pulse * 1.3);
+        this.setPx(x + 1, y, r * 0.7, g * 0.7, b * 0.7);
+        this.addPx(x - slosh, y - 1, 0.1, 0.13, 0.16);
+      } else if (p.kind === 'goldpile') {
+        // coin tumble: a tiny pile flashes edge-on every few frames
+        const spin = (frame + Math.floor(p.x)) % 24;
+        const narrow = spin < 5 || spin > 18;
+        const hw = narrow ? 1 : 2;
+        for (let dx = -hw; dx <= hw; dx++) this.setPx(x + dx, y, r * pulse * 1.3, g * pulse * 1.15, b * 0.7);
+        this.setPx(x - 1, y + 1, r * 0.7, g * 0.5, b * 0.22);
+        this.setPx(x + 1, y + 1, r * 0.8, g * 0.55, b * 0.25);
       } else {
         // diamond glyph (heart/tome/potion/goldpile)
         this.setPx(x, y, r * pulse * 1.4, g * pulse * 1.4, b * pulse * 1.4);
@@ -649,14 +914,21 @@ export class FrameComposer implements PixelSurface {
 
     const portal = runtime.portal;
     if (portal) {
-      const lit = runtime.keyTaken ? 1.6 : 0.55;
-      const ringR = 6;
+      const pdx = ctx.player.x - portal.x,
+        pdy = ctx.player.y - 6 - portal.y;
+      const near = pdx * pdx + pdy * pdy < 70 * 70;
+      const lit = runtime.keyTaken ? (near ? 2.0 : 1.6) : near ? 0.75 : 0.5;
+      const ringR = 6 + (runtime.keyTaken ? Math.sin(frame * 0.08) * 0.7 : frame % 120 < 8 ? 1 : 0);
       for (let k = 0; k < 14; k++) {
-        const a = (k / 14) * Math.PI * 2 + frame * 0.04;
-        const px = Math.round(portal.x + Math.cos(a) * ringR);
+        const a = (k / 14) * Math.PI * 2 + frame * (runtime.keyTaken ? 0.065 : 0.025);
+        const twitch = runtime.keyTaken ? 0 : Math.sin(frame * 0.11 + k) * 0.7;
+        const px = Math.round(portal.x + Math.cos(a) * (ringR + twitch));
         const py = Math.round(portal.y - 4 + Math.sin(a) * (ringR + 2));
         const tw = 0.6 + Math.sin(frame * 0.2 + k) * 0.4;
         this.setPx(px, py, 0.55 * lit * tw, 0.18 * lit * tw, 0.95 * lit * tw);
+      }
+      if (runtime.keyTaken && near) {
+        this.drawDottedLine(ctx.player.x, ctx.player.y - 8, portal.x, portal.y - 4, 9, (frame % 18) / 18, 0.16, 0.05, 0.28);
       }
       if (runtime.keyTaken && frame % 3 === 0) {
         this.addPx(

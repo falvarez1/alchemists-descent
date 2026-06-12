@@ -42,6 +42,7 @@ export function makeDoor(
 
 export function setDoorCells(ctx: Ctx, door: Mechanism, open: boolean): void {
   const world = ctx.world;
+  const wasOpen = door.state === 1;
   door.state = open ? 1 : 0;
   if (open) {
     // RETRACTION, not teleportation: queue the door's cells bottom-row-first
@@ -82,6 +83,20 @@ export function setDoorCells(ctx: Ctx, door: Mechanism, open: boolean): void {
         const rs = 0.85 + hash2(X, Y, 311) * 0.3;
         world.colors[i] = packRGB(Math.floor(96 * rs), Math.floor(108 * rs), Math.floor(142 * rs));
       }
+    }
+  }
+  if (wasOpen && ctx.state.mode === 'play') {
+    for (let k = 0; k < 8; k++) {
+      ctx.particles.spawn(
+        door.x + Math.random() * door.w,
+        door.y + Math.random() * door.h,
+        (Math.random() - 0.5) * 0.35,
+        -0.2 - Math.random() * 0.35,
+        null,
+        packRGB(130, 140, 155),
+        18 + Math.floor(Math.random() * 12),
+        { grav: 0.04, glow: 0.6 },
+      );
     }
   }
 }
@@ -330,7 +345,12 @@ export class Mechanisms implements MechanismsApi {
       }
       if (m.broken !== undefined && m.broken > 0) {
         m.broken--;
-        if (m.broken % 360 === 0) ctx.audio.groan();
+        if (m.broken % 360 === 0) {
+          ctx.audio.groan();
+          ctx.particles.burst(m.x, m.y - 3, 4, null, () => packRGB(130, 95, 80), 0.6, {
+            grav: 0.06,
+          });
+        }
         if (m.broken === 0) {
           ctx.events.emit('toast', { text: 'THE BROKEN GATE FALLS OPEN' });
         }
@@ -349,7 +369,12 @@ export class Mechanisms implements MechanismsApi {
         m.pressed = this.sensePlate(ctx, m);
         if (m.pressed) m.state = 420; // stays open ~7s after weight lifts
         else if (m.state > 0) m.state--;
-        if (m.pressed && !was) ctx.audio.tone(140, 90, 0.1, 'square', 0.14);
+        if (m.pressed && !was) {
+          ctx.audio.tone(140, 90, 0.1, 'square', 0.14);
+          ctx.particles.burst(m.x + m.w / 2, m.y - 1, 3, null, () => packRGB(190, 160, 80), 0.45, {
+            grav: 0.04,
+          });
+        }
       } else if (m.kind === 'scale' && m.zone) {
         // SAND SCALE: pure material weight in the pan — bodies don't count,
         // only what you pour or drop stays poured
@@ -363,7 +388,13 @@ export class Mechanisms implements MechanismsApi {
         }
         m.reading = weight;
         const enough = weight >= (m.threshold ?? 24);
-        if (enough && m.state === 0) ctx.audio.tone(180, 120, 0.14, 'square', 0.15);
+        if (enough && m.state === 0) {
+          ctx.audio.tone(180, 120, 0.14, 'square', 0.15);
+          ctx.particles.burst(m.x + m.w / 2, m.y - 2, 4, null, () => packRGB(220, 170, 65), 0.55, {
+            grav: 0.05,
+            glow: 0.8,
+          });
+        }
         if (enough) m.state = 420;
         else if (m.state > 0) m.state--;
       } else if (m.kind === 'buoy' && m.zone) {
@@ -377,7 +408,13 @@ export class Mechanisms implements MechanismsApi {
         }
         m.reading = liquid;
         const afloat = liquid >= (m.threshold ?? 28);
-        if (afloat && m.state === 0) ctx.audio.bubble();
+        if (afloat && m.state === 0) {
+          ctx.audio.bubble();
+          ctx.particles.burst(m.x, m.y - 3, 5, null, () => packRGB(130, 205, 255), 0.6, {
+            grav: -0.02,
+            glow: 0.8,
+          });
+        }
         if (afloat) m.state = 600; // generous latch: pools drain slowly anyway
         else if (m.state > 0) m.state--;
       } else if (m.kind === 'chargelatch' && m.zone) {

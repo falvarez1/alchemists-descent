@@ -69,19 +69,25 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   if (player.staggerT > 0)
     lean = clamp(lean + player.staggerDir * (player.staggerT > 6 ? 2 : 1), -3, 3);
   if (skid) lean = player.skidDir * (player.skidT > 5 ? 3 : 2);
-  // Crouch reads like a held landing squash: knees bent, body sunk.
-  const crouch = player.crouchT > 0 ? Math.min(3, Math.ceil(player.crouchT / 3)) : 0;
-  const sq = Math.max(
-    player.landTimer > 0 ? Math.min(3, Math.ceil(player.landTimer / 3)) : 0,
-    crouch,
-  );
+  // Crouch has its own low silhouette instead of borrowing the landing squash:
+  // planted boots, folded robe, dropped shoulders/head, and a slight forward hunch.
+  const crouchPose = player.grounded && player.crouchT > 0;
+  const crouchRaw = crouchPose ? clamp(player.crouchT / 10, 0, 1) : 0;
+  const crouchEase = crouchRaw * crouchRaw * (3 - 2 * crouchRaw);
+  const crouch = crouchPose ? Math.max(1, Math.round(crouchEase * 4)) : 0;
+  if (crouch > 0 && !skid) lean = clamp(lean + f, -3, 3);
+  const landSquash = player.landTimer > 0 ? Math.min(3, Math.ceil(player.landTimer / 3)) : 0;
+  const sq = Math.max(landSquash, crouch > 0 ? 2 : 0);
   const diving = player.diveT > 0 && !player.grounded;
   // launch stretch elongates; a dive locks the body into a falling spear
   const stretch = sq === 0 && (player.stretchT > 0 || diving) ? (player.stretchT > 3 || diving ? 2 : 1) : 0;
   const bob = moving ? -Math.round(Math.abs(Math.sin(stride)) * 1.4) : 0;
-  const breathe = (!moving && player.grounded) ? (Math.sin(frameCount * 0.045) > 0.2 ? -1 : 0) : 0;
+  const breathe = (!moving && player.grounded && crouch === 0) ? (Math.sin(frameCount * 0.045) > 0.2 ? -1 : 0) : 0;
   const py = player.y;
-  const lift = bob + breathe + sq - stretch; // sq compresses the body, stretch elongates it
+  const lift = bob + breathe + landSquash - stretch;
+  const crouchShift = (dy: number): number =>
+    crouch > 0 ? Math.round(crouch * clamp((dy - 3) / 6, 0, 1)) : 0;
+  const poseY = (dy: number): number => py - dy - lift + crouchShift(dy);
 
   const row = (x0: number, x1: number, yy: number, c: RGB): void => {
     for (let xx = x0; xx <= x1; xx++) s.setPx(xx, yy, c[0], c[1], c[2]);
@@ -93,8 +99,11 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   let footA = 0, footB = 0, footAy = 0, footBy = 0;
   if (skid) {
     footA = player.skidDir * 3; footB = player.skidDir;  // braced stance
-  } else if (crouch > 0 && !moving) {
-    footA = 1; footB = -1;                               // crouch: feet planted wide
+  } else if (crouch > 0) {
+    const creep = moving ? Math.round(Math.sin(stride) * 1.1) : 0;
+    footA = -2 + creep; footB = 2 - creep;                // crouch: feet planted wide
+    footAy = moving && Math.sin(stride) > 0.75 ? -1 : 0;
+    footBy = moving && Math.sin(stride) < -0.75 ? -1 : 0;
   } else if (moving) {
     footA = Math.round(Math.sin(stride) * 2.6);
     footB = -footA;
@@ -115,6 +124,11 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   row(px - 3 + footA, px - 2 + footA, py - 1 + footAy, BOOT_L);
   row(px + 1 + footB, px + 3 + footB, py + footBy, BOOT);
   row(px + 2 + footB, px + 3 + footB, py - 1 + footBy, BOOT_L);
+  if (crouch > 0) {
+    row(px - 2, px + 2, py - 2, ROBE_D);
+    s.setPx(px - 4, py - 1, ...BOOT_L);
+    s.setPx(px + 4, py - 1, ...BOOT_L);
+  }
 
   // --- Robe skirt: real cloth now — part instant wind, part the lagged
   // hem spring, so it swings past a stop and settles instead of snapping.
@@ -122,15 +136,23 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   let hemSway = clamp(Math.round(-svx * 0.6 - player.robe.ox * 1.1), -3, 3);
   if (skid) hemSway = clamp(hemSway + player.skidDir * 2, -4, 4);
   const falling = !player.grounded && svy > 1.6;
-  const skirt = [
-    { dy: 2, hw: 4 + (sq > 0 ? 1 : 0) - (stretch > 0 ? 1 : 0) },
-    { dy: 3, hw: 4 },
-    { dy: 4, hw: 3 },
-    { dy: 5, hw: 3 },
-    { dy: 6, hw: 3 }
-  ];
+  const skirt = crouch > 0
+    ? [
+      { dy: 2, hw: 5 },
+      { dy: 3, hw: 5 },
+      { dy: 4, hw: 4 },
+      { dy: 5, hw: 4 },
+      { dy: 6, hw: 3 },
+    ]
+    : [
+      { dy: 2, hw: 4 + (sq > 0 ? 1 : 0) - (stretch > 0 ? 1 : 0) },
+      { dy: 3, hw: 4 },
+      { dy: 4, hw: 3 },
+      { dy: 5, hw: 3 },
+      { dy: 6, hw: 3 },
+    ];
   for (const sRow of skirt) {
-    const yy = py - sRow.dy - lift + (falling && sRow.dy <= 3 ? -1 : 0);
+    const yy = poseY(sRow.dy) + (falling && sRow.dy <= 3 ? -1 : 0);
     const off = sRow.dy <= 3 ? hemSway : Math.round(hemSway * 0.5);
     const hw = sRow.hw + (falling && sRow.dy <= 3 ? 1 : 0);
     for (let dx = -hw; dx <= hw; dx++) {
@@ -140,13 +162,13 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   }
 
   // --- Belt ---
-  row(px - 3 + lean, px - 1 + lean, py - 7 - lift, ROBE_D);
-  s.setPx(px + lean, py - 7 - lift, ...BAND);
-  row(px + 1 + lean, px + 3 + lean, py - 7 - lift, ROBE_D);
+  row(px - 3 + lean, px - 1 + lean, poseY(7), ROBE_D);
+  s.setPx(px + lean, poseY(7), ...BAND);
+  row(px + 1 + lean, px + 3 + lean, poseY(7), ROBE_D);
 
   // --- Torso with trim, leaning into the run ---
   for (let dy = 8; dy <= 10; dy++) {
-    const yy = py - dy - lift;
+    const yy = poseY(dy);
     for (let dx = -3; dx <= 3; dx++) {
       const c = dx === 0 ? TRIM : (Math.abs(dx) === 3 ? ROBE_D : ROBE);
       s.setPx(px + dx + lean, yy, ...c);
@@ -156,25 +178,29 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   // to straighten the hat during the idle fidget.
   const reachUp = player.fidgetT > 58 && player.fidgetT <= 88;
   if (reachUp) {
-    s.setPx(px - f * 3 + lean, py - 11 - lift, ...ROBE_D);
-    s.setPx(px - f * 3 + lean, py - 13 - lift, ...SKIN_D);
-    s.setPx(px - f * 2 + lean, py - 15 - lift, ...SKIN);
+    s.setPx(px - f * 3 + lean, poseY(11), ...ROBE_D);
+    s.setPx(px - f * 3 + lean, poseY(13), ...SKIN_D);
+    s.setPx(px - f * 2 + lean, poseY(15), ...SKIN);
+  } else if (crouch > 0) {
+    s.setPx(px - f * 4 + lean, poseY(9), ...ROBE_D);
+    s.setPx(px - f * 5 + lean, poseY(8), ...SKIN_D);
+    s.setPx(px - f * 4 + lean, poseY(8), ...SKIN);
   } else if (falling) {
-    s.setPx(px - f * 4 + lean, py - 11 - lift, ...ROBE_D);
-    s.setPx(px - f * 5 + lean, py - 12 - lift, ...SKIN_D);
+    s.setPx(px - f * 4 + lean, poseY(11), ...ROBE_D);
+    s.setPx(px - f * 5 + lean, poseY(12), ...SKIN_D);
   } else {
     const armSwing = moving ? Math.round(Math.sin(stride + Math.PI) * 2) : 0;
-    s.setPx(px - f * 4 + lean + armSwing, py - 9 - lift, ...ROBE_D);
-    s.setPx(px - f * 4 + lean + armSwing, py - 8 - lift, ...SKIN_D);
+    s.setPx(px - f * 4 + lean + armSwing, poseY(9), ...ROBE_D);
+    s.setPx(px - f * 4 + lean + armSwing, poseY(8), ...SKIN_D);
   }
 
   // --- Shoulders ---
-  row(px - 3 + lean, px + 3 + lean, py - 11 - lift, ROBE);
+  row(px - 3 + lean, px + 3 + lean, poseY(11), ROBE);
 
   // --- Head with blinking, directionally lit; the brim shades the brow ---
   const hx = px + lean;
   for (let dy = 12; dy <= 14; dy++) {
-    const yy = py - dy - lift;
+    const yy = poseY(dy);
     for (let dx = -2; dx <= 2; dx++) {
       const c = dy === 14 ? SHADE : (dx * f) < 0 ? SKIN_D : SKIN;
       s.setPx(hx + dx, yy, ...c);
@@ -198,14 +224,14 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
         drop = ddy < -14 ? -1 : ddy > 14 ? 1 : 0;
       }
     }
-    const ey = py - 13 - lift + drop;
+    const ey = poseY(13) + drop;
     s.setPx(hx + side, ey, 1.0, 1.0, 1.0);
     s.setPx(hx + side * 2, ey, 0.08, 0.08, 0.12);
   }
 
   // --- The floppy hat: brim barely moves, segments lean progressively, tip whips ---
   const h = player.hat;
-  const hatY = py - 15 - lift;
+  const hatY = poseY(15);
   const seg = (t: number): { x: number; y: number } => ({ x: Math.round(h.ox * t), y: Math.round(h.oy * t) });
   const s0 = seg(0.25), s1 = seg(0.5), s2 = seg(0.75), s3 = seg(1.0);
   // brim
@@ -225,11 +251,44 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   s.setPx(hx + s3.x - f * restDroop, hatY - 4 + s3.y + restDroop, ...HAT);
   s.setPx(hx + s3.x - f * (restDroop + 1), hatY - 4 + s3.y + restDroop + (restDroop ? 1 : 0), ...HAT_D);
 
+  // --- Status skin: tiny readable tells layered onto the existing pose ---
+  const st = player.status;
+  if (st.wet > 0 && frameCount % 10 < 5) {
+    const dripX = px + ((frameCount >> 3) % 5) - 2;
+    s.addPx(dripX, poseY(3) + 1, 0.06, 0.16, 0.28);
+    if (frameCount % 20 < 5) s.addPx(px - f * 2, poseY(12), 0.04, 0.12, 0.22);
+  }
+  if (st.oiled > 0) {
+    const sheen = 0.08 + Math.sin(frameCount * 0.12) * 0.03;
+    s.addPx(px - 2 + lean, poseY(9), sheen * 0.8, sheen * 0.7, sheen * 0.45);
+    s.addPx(px + 3 + lean, poseY(6), sheen, sheen * 0.8, sheen * 0.45);
+  }
+  if (st.frozen > 0) {
+    const chill = frameCount % 16 < 8 ? 1 : 0.65;
+    s.setPx(px - 4 + lean, poseY(9), 0.55 * chill, 0.82 * chill, 1.0 * chill);
+    s.setPx(px + 4 + lean, poseY(7), 0.45 * chill, 0.75 * chill, 1.0 * chill);
+    if (frameCount % 18 < 5) s.addPx(hx + f * 4, poseY(12) - 1, 0.12, 0.2, 0.26);
+  }
+  if (st.stoneskin > 0) {
+    const crust = frameCount % 20 < 10 ? 0.46 : 0.36;
+    s.setPx(px - 3 + lean, poseY(11), crust, crust, crust * 1.05);
+    s.setPx(px + 3 + lean, poseY(8), crust * 0.85, crust * 0.85, crust * 0.95);
+    s.setPx(px - 1, py - 2, crust * 0.75, crust * 0.72, crust * 0.68);
+  }
+  if (st.swift > 0 && Math.abs(svx) > 0.55 && frameCount % 3 === 0) {
+    const tx = px - Math.sign(svx) * 5;
+    s.addPx(tx, poseY(6), 0.08, 0.24, 0.32);
+    s.addPx(tx - Math.sign(svx) * 2, poseY(4), 0.05, 0.16, 0.24);
+  }
+  if (st.torch > 0 && frameCount % 6 < 3) {
+    s.addPx(hx + s0.x, hatY - 1 + s0.y, 0.16, 0.1, 0.03);
+  }
+
   // --- Lever pull: wand stowed, both arms out to the iron, body heaving ---
   if (player.pullT > 0) {
     const pd = player.pullDir;
     const haul = Math.sin((26 - player.pullT) * 0.24) * 1.2; // strain bob
-    const ay = py - 9 - lift + Math.round(haul * 0.5);
+    const ay = poseY(9) + Math.round(haul * 0.5);
     // two reaching arms, hands stacked on the lever side
     s.setPx(px + pd * 4 + lean, ay, ...ROBE_D);
     s.setPx(px + pd * 5 + lean, ay, ...SKIN_D);
@@ -251,7 +310,7 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   // Recoil: a cast kicks the WHOLE staff back along the aim for a few frames.
   const tipBase = ctx.spells.wandTip();
   const gripX = px + f * 3 + lean;
-  const gripY = py - 10 - lift;
+  const gripY = poseY(10);
   const drawT = player.swapT > 0 ? player.swapT / 12 : 0;
   const a = Math.atan2(tipBase.y - gripY, tipBase.x - gripX) + drawT * drawT * 2.2 * f;
   const shaftLen = Math.max(4, Math.round(Math.hypot(tipBase.x - gripX, tipBase.y - gripY)));
@@ -292,7 +351,7 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   const bombCharge = ctx.input.bombCharge;
   if (bombCharge >= 0) {
     const ca = player.aimAngle;
-    const sx0 = px + f * 3 + lean, sy0 = py - 10 - lift;
+    const sx0 = px + f * 3 + lean, sy0 = poseY(10);
     const steps = Math.floor(bombCharge * 8 + 0.001);
     for (let k = 0; k < steps; k++) {
       const t = (k + 1) / 8;

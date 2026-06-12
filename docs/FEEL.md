@@ -195,6 +195,14 @@ Layered, bottom to top:
   waystone and walk back to reclaim it.
 - **Charged bomb throw:** power meter dots march out along the aim past the
   staff head as the charge builds.
+- **Flask handling:** siphon draws a faint dotted material-colored line from
+  the source back to the alchemist; pouring emits a short arcing stream from
+  the wand tip; thrown bottles spin with a glass glint trail before impact.
+- **QA god kit:** pressing backquote in Play mode enables a transient debug kit:
+  upgraded wands, every card in the bench collection, every Sanctum power
+  active, long potion timers, stocked potion pickups, and bench-only potion
+  refresh / elixir flask-fill tiles. Normal starts remain progression-driven,
+  and debug-modified runs are not autosaved.
 
 ---
 
@@ -224,6 +232,10 @@ Layered, bottom to top:
 - **Weather of the deep:** ceiling drips are real water cells; ember falls,
   spore drift, dust motes, heal-spring bubbles.
 - **Cave moss** creeps only on damp stone (real moisture check).
+- **Cell-surface micro motion:** exposed Water, Healium, and Teleportium get a
+  one-cell wave shimmer; Crystal occasionally catches a hard twinkle;
+  Glowshrooms breathe brighter on a slow sine; Vines, Moss, and Fungus pulse
+  subtly green so living surfaces do not read as static wallpaper.
 - Enemies outside the sim window (camera ± 60 cells) freeze — the world
   simulates where you are.
 
@@ -238,6 +250,12 @@ Layered, bottom to top:
   uniform emissive self-glow floor (no vignetted emissives), lit-cell soft knee
   (1.25/0.3/2.0) so bright floors don't bloom-wash, PostFx chromatic
   aberration + grain + low-HP pulse.
+- **Post-FX tuning surface:** the right panel can toggle all post-processing,
+  bloom, and the lens layer independently. Defaults: exposure 1.05, bloom
+  strength 0.35, radius 0.20, threshold 0.85, bloom kick 1.00x, base split
+  0.0005, blast split 0.0060, shake split 0.050, film grain 0.028, hurt pulse
+  1.00x. These controls exist for visual inspection as much as player-facing
+  tuning; turning Post FX off should show the raw pixel-composed scene.
 - Level banners rise in; overlays rise in; gameplay fonts sized for readability.
 
 ---
@@ -266,6 +284,12 @@ Layered, bottom to top:
 - Golden key glints on the minimap; the portal pings when it opens; objective
   HUD + toasts narrate progression; waystones gong and hold an ember column
   once lit.
+- Waystones show three readable states in the frame composer: dark idle coal,
+  heat motes while real fire is nearby, and orbiting amber motes once lit.
+  Cauldrons average the real materials in the bowl into their simmer color and
+  bubble only when heated; exit wells breathe faint dust before the seal opens.
+- Door opening throws a small metal/stone dust lift; plates, scales, and buoys
+  emit one-shot particles when their physical sensor first becomes true.
 
 ---
 

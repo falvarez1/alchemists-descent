@@ -1,4 +1,5 @@
-import type { Ctx, MaterialParams, SpellId, SpellParams } from '@/core/types';
+import { createDefaultPostFxSettings } from '@/config/params';
+import type { Ctx, MaterialParams, PostFxSettings, SpellId, SpellParams } from '@/core/types';
 
 // ===================== Adaptive UI Form Inspectors =====================
 
@@ -20,6 +21,9 @@ export function paramSliderSpec(propKey: string): {
   if (propKey === 'velocityForce' || propKey === 'explosionRadius') { min = 1; max = 20; step = 0.5; }
   if (propKey === 'range') { min = 20; max = 250; step = 5; }
   if (propKey === 'branches') { min = 0; max = 6; step = 1; }
+  if (propKey === 'pellets') { min = 1; max = 9; step = 1; }
+  if (propKey === 'freezeRadius' || propKey === 'radius') { min = 1; max = 24; step = 1; }
+  if (propKey === 'count') { min = 1; max = 32; step = 1; }
   if (propKey === 'damage') { min = 1; max = 100; step = 1; }
   if (propKey === 'manaCost') { min = 0; max = 100; step = 1; }
   if (propKey === 'cooldown') { min = 0; max = 180; step = 1; }
@@ -30,6 +34,9 @@ export function paramSliderSpec(propKey: string): {
   return { min, max, step, label };
 }
 
+type BooleanPostFxKey = 'enabled' | 'bloomEnabled' | 'lensEnabled';
+type NumberPostFxKey = Exclude<keyof PostFxSettings, BooleanPostFxKey>;
+
 /**
  * Right-hand inspector panel: per-material / per-spell parameter sliders
  * (mutating the live `ctx.params` profiles in place), the global sim
@@ -38,6 +45,7 @@ export function paramSliderSpec(propKey: string): {
 export class Inspector {
   constructor(private ctx: Ctx) {
     this.wireGlobalControls();
+    this.wirePostFxControls();
     this.wireClearButton();
     this.wireSoundToggle();
   }
@@ -110,6 +118,85 @@ export class Inspector {
       ctx.params.global.ambient = parseFloat((e.target as HTMLInputElement).value);
       document.getElementById('g-ambient-value')!.textContent = ctx.params.global.ambient.toFixed(2);
     });
+  }
+
+  private wirePostFxControls(): void {
+    const post = this.ctx.state.postFx;
+
+    const checkboxSpecs: Array<[string, BooleanPostFxKey]> = [
+      ['post-enabled', 'enabled'],
+      ['post-bloom-enabled', 'bloomEnabled'],
+      ['post-lens-enabled', 'lensEnabled'],
+    ];
+    const sliderSpecs: Array<{
+      id: string;
+      valueId: string;
+      key: NumberPostFxKey;
+      format: (value: number) => string;
+    }> = [
+      { id: 'post-exposure', valueId: 'post-exposure-value', key: 'exposure', format: (v) => v.toFixed(2) },
+      {
+        id: 'post-bloom-strength',
+        valueId: 'post-bloom-strength-value',
+        key: 'bloomStrength',
+        format: (v) => v.toFixed(2),
+      },
+      { id: 'post-bloom-radius', valueId: 'post-bloom-radius-value', key: 'bloomRadius', format: (v) => v.toFixed(2) },
+      {
+        id: 'post-bloom-threshold',
+        valueId: 'post-bloom-threshold-value',
+        key: 'bloomThreshold',
+        format: (v) => v.toFixed(2),
+      },
+      { id: 'post-bloom-kick', valueId: 'post-bloom-kick-value', key: 'bloomKickScale', format: (v) => v.toFixed(2) + 'x' },
+      { id: 'post-aberration', valueId: 'post-aberration-value', key: 'aberration', format: (v) => v.toFixed(4) },
+      {
+        id: 'post-aberration-kick',
+        valueId: 'post-aberration-kick-value',
+        key: 'aberrationKick',
+        format: (v) => v.toFixed(4),
+      },
+      {
+        id: 'post-shake-aberration',
+        valueId: 'post-shake-aberration-value',
+        key: 'shakeAberration',
+        format: (v) => v.toFixed(3),
+      },
+      { id: 'post-grain', valueId: 'post-grain-value', key: 'grain', format: (v) => v.toFixed(3) },
+      { id: 'post-hurt-pulse', valueId: 'post-hurt-pulse-value', key: 'hurtPulse', format: (v) => v.toFixed(2) + 'x' },
+    ];
+
+    const syncControls = (): void => {
+      for (const [id, key] of checkboxSpecs) {
+        (document.getElementById(id) as HTMLInputElement).checked = post[key];
+      }
+      for (const spec of sliderSpecs) {
+        const input = document.getElementById(spec.id) as HTMLInputElement;
+        input.value = String(post[spec.key]);
+        document.getElementById(spec.valueId)!.textContent = spec.format(post[spec.key]);
+      }
+    };
+
+    for (const [id, key] of checkboxSpecs) {
+      document.getElementById(id)!.addEventListener('change', (e) => {
+        post[key] = (e.target as HTMLInputElement).checked;
+      });
+    }
+
+    for (const spec of sliderSpecs) {
+      document.getElementById(spec.id)!.addEventListener('input', (e) => {
+        const value = parseFloat((e.target as HTMLInputElement).value);
+        post[spec.key] = value;
+        document.getElementById(spec.valueId)!.textContent = spec.format(value);
+      });
+    }
+
+    document.getElementById('post-reset')!.addEventListener('click', () => {
+      Object.assign(post, createDefaultPostFxSettings());
+      syncControls();
+    });
+
+    syncControls();
   }
 
   private wireClearButton(): void {

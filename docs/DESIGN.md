@@ -82,12 +82,19 @@ physics lock at the chokepoint → break the floor seal, drop down the well.
     breachable materials with crack-pixel/audio tells; one relic secret guaranteed
     per level.
 
-## New materials (curated, ~10 for year one)
+## New materials (curated, append-only)
 
-Glass (sand+heat), Ash, Slag, Toxic Gas, Toxic Sludge, Spores, Brimstone, Obsidian
-(blast-proof, acid-soluble), Honey, Void Salt (liquid annihilation). Tar folds into
-an Oil variant. Gate materials capped at 2-3 total. Mercury: cut (five rules in one
-ID). Every new cell uses an existing behavior template.
+The current engine roster is 35 append-only cell ids. The original 21-cell set is
+extended with the three elixirs (Life, Levity, Stone), the remapped
+`alchemists-descent` port set (Toxic Sludge, Healium, Teleportium, Snow, Coal,
+Crystal, Fungus, Glass, Ash, Glowshroom), and Cave Moss. The ported ids stay
+remapped because 21-23 already belong to elixirs.
+
+Year-one design candidates beyond the shipped sandbox set remain: Slag, Toxic Gas,
+Spores, Brimstone, Obsidian (blast-proof, acid-soluble), Honey, and Void Salt
+(liquid annihilation). Tar folds into an Oil variant. Gate materials are capped at
+2-3 total. Mercury remains cut (five rules in one ID). Every new cell uses an
+existing behavior template.
 
 ## Explicit cuts (do not resurrect without new evidence)
 

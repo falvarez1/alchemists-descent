@@ -1,5 +1,5 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
-import { createGameParams } from '@/config/params';
+import { createDefaultPostFxSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
 import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
@@ -38,6 +38,7 @@ import { PauseOverlay } from '@/ui/PauseOverlay';
 import { Hud } from '@/ui/Hud';
 import { Inspector } from '@/ui/Inspector';
 import { LevelStore } from '@/ui/LevelStore';
+import { DebugConsole } from '@/ui/DebugConsole';
 import { Minimap } from '@/ui/Minimap';
 import { Sanctum } from '@/ui/Sanctum';
 import { PerfHud } from '@/ui/PerfHud';
@@ -78,6 +79,8 @@ export class Game {
       playerSpawned: false,
       worldSeed: randomSeed(),
       paused: false,
+      debugGodMode: false,
+      postFx: createDefaultPostFxSettings(),
       editorLights: null,
     };
     const input: InputState = {
@@ -150,6 +153,8 @@ export class Game {
     this.minimap = new Minimap(ctx);
     // Self-binds the B key; lives for the page lifetime.
     new WandBench(ctx);
+    // Backquote debug command surface; future home of typed QA commands.
+    new DebugConsole(ctx);
     // Wires the Level Library buttons; lives for the page lifetime.
     new LevelStore(ctx);
     // The authoring overlay (injects its own DOM + header button).
@@ -297,6 +302,9 @@ export class Game {
     }
     if (ctx.state.currentSpell === 'flame') {
       ctx.spells.emitBuildFlame();
+    }
+    if (ctx.state.currentSpell === 'vitriol') {
+      ctx.spells.castBuildSpell('vitriol', ctx.input.mouse.x, ctx.input.mouse.y);
     }
   }
 }

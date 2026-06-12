@@ -220,7 +220,22 @@ export interface CrittersApi {
   killAt(ctx: Ctx, x: number, y: number, radius: number): void;
 }
 
-export type SpellId = 'bolt' | 'bomb' | 'lightning' | 'flame' | 'dig' | 'warp' | 'blackhole';
+export type SpellId =
+  | 'bolt'
+  | 'scatter'
+  | 'bomb'
+  | 'lightning'
+  | 'flame'
+  | 'emberstorm'
+  | 'vitriol'
+  | 'frostshard'
+  | 'icelance'
+  | 'wisp'
+  | 'dig'
+  | 'conjure'
+  | 'warp'
+  | 'meteor'
+  | 'blackhole';
 
 export type ProjectileType =
   | SpellId
@@ -338,9 +353,13 @@ export interface SpellParams {
   fuseTicks?: number;
   range?: number;
   branches?: number;
+  pellets?: number;
   damage?: number;
+  freezeRadius?: number;
   heat?: number;
   spread?: number;
+  radius?: number;
+  count?: number;
   baseRadius?: number;
   chargeRate?: number;
   collapseLimit?: number;
@@ -351,6 +370,26 @@ export interface GlobalParams {
   maxBrightness: number;
   /** Base ambient light level (original top-level `AMBIENT`). */
   ambient: number;
+}
+
+export interface PostFxSettings {
+  /** Master post-processing bypass. Off renders the pixel buffer directly. */
+  enabled: boolean;
+  /** UnrealBloomPass layer: emissive cells, blasts, and hot materials. */
+  bloomEnabled: boolean;
+  bloomStrength: number;
+  bloomRadius: number;
+  bloomThreshold: number;
+  /** Multiplier for transient blast-wave bloom surges. */
+  bloomKickScale: number;
+  /** Final shader layer: lens split, grain, and low-health pulse. */
+  lensEnabled: boolean;
+  aberration: number;
+  aberrationKick: number;
+  shakeAberration: number;
+  grain: number;
+  hurtPulse: number;
+  exposure: number;
 }
 
 export interface GameParams {
@@ -408,6 +447,9 @@ export interface GameStateData {
   worldSeed: number;
   /** Gameplay frozen behind a modal (Sanctum); rendering continues. */
   paused: boolean;
+  /** Transient QA mode enabled by the debug console key; never autosaved. */
+  debugGodMode: boolean;
+  postFx: PostFxSettings;
   /**
    * Builder light preview: authored lights seeded into the live light field
    * while the editor is open (null outside the Builder). Lighting.build
@@ -711,6 +753,8 @@ export interface FlaskApi {
   update(ctx: Ctx): void;
   /** Lob the bottle toward the cursor; shatters on impact, releasing the cells. */
   throwFlask(ctx: Ctx): void;
+  /** Read-only visual position for the currently thrown bottle. */
+  bottleView(): { x: number; y: number; vx: number; vy: number } | null;
 }
 
 /** Local gameplay counters (deaths by cause, material usage, ...). */
@@ -952,6 +996,8 @@ export interface WandsApi {
   /** Save-game support: capture / restore the full wand loadout. */
   snapshotLoadout(): WandLoadoutSave;
   loadLoadout(data: WandLoadoutSave): void;
+  /** QA/debug command: upgrade both wands and expose every card. */
+  grantReviewLoadout(): void;
   /**
    * Wandwright progression (Sanctum shop): rebuild a wand around a better
    * frame. Slotted cards are kept, mana refills. False if the frame id is
@@ -1122,6 +1168,8 @@ export interface LevelsApi {
    * enemies placed in build mode are kept.
    */
   playCurrentWorld(ctx: Ctx): void;
+  /** QA/debug command: stock visible potion pickups in the current level. */
+  seedReviewKit(ctx: Ctx): void;
   /** Persist the whole expedition (visited levels + hero) to localStorage. */
   saveExpedition(ctx: Ctx): void;
   hasSavedExpedition(): boolean;

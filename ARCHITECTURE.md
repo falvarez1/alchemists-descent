@@ -14,14 +14,14 @@ src/
   styles/main.css       All styling (extracted from the original <style>)
   config/               Tunable data, no logic
     constants.ts          World/view dimensions, sim margin, particle cap
-    params.ts             GLOBAL/MATERIAL/SPELL params (live-mutated by inspector UI)
+    params.ts             GLOBAL/MATERIAL/SPELL/PostFx params (live-mutated by inspector UI)
     biomes.ts             Biome generation profiles
   core/
     types.ts              THE contract file: entity shapes + service APIs + Ctx
     events.ts             Typed synchronous EventBus (gameplay → UI decoupling)
     math.ts               clamp, hash2, valueNoise
   sim/                  Cellular automata
-    CellType.ts           Cell enum + material classification predicates
+    CellType.ts           Append-only Cell ids + material classification predicates
     World.ts              Flat typed-array grid state (types/colors/life/moved/charge)
     colors.ts             Packed-RGB color factories per material
     Simulation.ts         Fixed-step accumulator + per-tick dispatcher (bottom-up sweep)
@@ -36,19 +36,19 @@ src/
   combat/
     Lightning.ts          Chain lightning raycast + arc visuals
     Projectiles.ts        Spell projectiles, bombs, black holes, gravity wells
-    Spells.ts             Wand tip, dig ray, warp, per-frame casting dispatch
+    Spells.ts             Wand tip, dig ray, warp, tactical spell dispatch
   entities/
     physics.ts            Entity-vs-grid collision with the loose-rubble cluster rule
-    Player.ts             Player state/factory, damage/death/respawn, movement, animation
+    Player.ts             Player state/factory, review kit, damage/death/respawn, movement, animation
     Enemies.ts            Enemy defs, spawn/damage/kill, slime/imp/golem AI
   game/
     Game.ts               Composition root: builds Ctx, owns the frame order
     WaveDirector.ts       Wave spawning state machine
   world/
     CaveGenerator.ts      Biome-driven CA caves, tunnel arteries, decorations
-    fortress.ts           Prefab fortress stamp
+    fortress.ts           Multi-material real-cell fortress stamp
   render/
-    Renderer.ts           Three.js renderer/composer/bloom + camera quad transforms
+    Renderer.ts           Three.js renderer/composer/bloom/PostFx + camera quad transforms
     Camera.ts             Lerp follow, idle zoom, sim-bounds derivation
     Background.ts         Parallax backdrop layers (baked once)
     Lighting.ts           Half-res RGB light field, directional sweeps, wand raycast
@@ -61,8 +61,10 @@ src/
   ui/
     icons.ts              Hand-authored pixel-art icon set
     Toolbar.ts            Left panel: materials, spells, world gen, enemy droppers
-    Inspector.ts          Right panel: global sliders + dynamic per-material/spell params
+    Inspector.ts          Right panel: global/PostFx sliders + dynamic per-material/spell params
     Hud.ts                In-canvas HUD: vitals, hotbar, banners, game-over overlay
+    WandBench.ts          Card slotting plus debug-only potion/elixir/power controls
+    DebugConsole.ts       Backquote QA command hook (god kit now, typed console later)
 ```
 
 ## Authoring modes
@@ -112,8 +114,10 @@ Several behaviors silently depend on this order (sim bounds derive from camera; 
 aim with the *previous* frame's render snapshot; lighting rebuilds on even frames).
 
 **Live-tunable params.** `config/params.ts` objects are intentionally mutable: the
-inspector UI writes straight into them and the simulation reads them every tick. They
-are data, not constants.
+inspector UI writes straight into them and the simulation/rendering layers read
+them every tick. They are data, not constants. Post-processing follows the same
+rule: `createDefaultPostFxSettings()` seeds bloom, exposure, lens, grain, and
+hurt-pulse controls; the Inspector mutates `ctx.state.postFx` live.
 
 ## Original-quirk notes (preserved on purpose)
 
