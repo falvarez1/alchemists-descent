@@ -832,7 +832,7 @@ export class WorldGen implements WorldGenApi {
 
     // 8) Landmark structures (upgrade-port meta layer): the exit portal above
     //    the seal plug, the golden key vault, hearts, tomes, chests, gold.
-    const { pickups, portal, mechanisms, runeVaults, boss } = placeStructures(
+    const { pickups, portal, mechanisms, runeVaults, boss, emitters: structEmitters } = placeStructures(
       ctx,
       this.rng,
       graph,
@@ -937,25 +937,25 @@ export class WorldGen implements WorldGenApi {
         wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
         return pass();
       };
-      let rescued = 0;
+      const rescued: string[] = [];
       for (const m of mechanisms) {
         if (m.kind === 'door') {
           const pass = (): boolean =>
             wizNear(m.x - 2, m.y + m.h - 2, 8) || wizNear(m.x + m.w + 1, m.y + m.h - 2, 8);
           if (pass()) continue;
-          rescued++;
+          rescued.push(`${m.kind}@${m.x},${m.y}`);
           if (!rescueAt(m.x - 6, m.y + m.h - 2, pass)) {
             rescueAt(m.x + m.w + 5, m.y + m.h - 2, pass);
           }
         } else if (HANDS_ON.has(m.kind)) {
           const pass = (): boolean => wizNear(m.x, m.y - 2, 6);
           if (pass()) continue;
-          rescued++;
+          rescued.push(`${m.kind}@${m.x},${m.y}`);
           rescueAt(m.x, m.y, pass);
         }
       }
-      if (import.meta.env.DEV && rescued > 0) {
-        console.warn(`[gen] ${def.id}: gauge-rescued ${rescued} cut-off lock(s)`);
+      if (import.meta.env.DEV && rescued.length > 0) {
+        console.warn(`[gen] ${def.id}: gauge-rescued ${rescued.length} cut-off lock(s): ${rescued.join(' ')}`);
       }
       stage('gauge-rescue');
     }
@@ -984,7 +984,7 @@ export class WorldGen implements WorldGenApi {
       prefabEnemies: sink.enemies,
       placedPrefabs,
       authoredLights: sink.authoredLights,
-      emitters: sink.emitters,
+      emitters: [...sink.emitters, ...structEmitters],
       decors: sink.decors,
     };
   }

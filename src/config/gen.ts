@@ -20,8 +20,10 @@ import type { BiomeId } from '@/core/types';
  * v3: machine structure rooms (chain-reaction prefabs, 'machines' stream).
  * v4: WIZARD-SCALE prefabs — interiors >= 22 tall (the player's collision
  *     box is 9x17), anchors halfW 10 with walk-in connector tunnels.
+ * v5: two new Wave E puzzle archetypes (Freeze Bridge, Live Circuit) and a
+ *     six-way, biome-biased archetype roll (consumes one extra rng draw).
  */
-export const GEN_VERSION = 4;
+export const GEN_VERSION = 5;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)

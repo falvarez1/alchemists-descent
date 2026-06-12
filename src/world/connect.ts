@@ -87,6 +87,7 @@ export function connectToCaves(
   fromY: number,
   radius = 12,
   fits?: Uint8Array,
+  sweep?: { halfW: number; up: number; down: number },
 ): Array<[number, number]> {
   const steps: Array<[number, number]> = [];
   // Target the nearest MAIN-PATH region: those form the spawn<->exit artery,
@@ -148,7 +149,7 @@ export function connectToCaves(
       }
     }
   }
-  return tunnelTo(world, rng, fromX, fromY, tx, ty, radius);
+  return tunnelTo(world, rng, fromX, fromY, tx, ty, radius, sweep);
 }
 
 /** The raw tunnel walk: jittered march from (fromX, fromY) to an EXPLICIT

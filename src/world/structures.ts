@@ -4,6 +4,7 @@ import type { Rng } from '@/core/rng';
 import type {
   Ctx,
   ExitPortal,
+  HazardEmitter,
   LevelDef,
   Mechanism,
   Pickup,
@@ -19,6 +20,9 @@ import {
   makeLever,
   makePlate,
   makeScale,
+  makeSensor,
+  makeValve,
+  setValveCells,
 } from '@/game/Mechanisms';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { Cell } from '@/sim/CellType';
@@ -26,6 +30,7 @@ import { EMPTY_COLOR, goldColor, packRGB, sandColor, stoneColor } from '@/sim/co
 import type { CardId } from '@/core/types';
 import {
   carvePocket as carvePocketCells,
+  carveRect as carveRectCells,
   connectToCaves as connectToCavesFrom,
 } from '@/world/connect';
 import type { PlacementLedger } from '@/world/connect';
@@ -61,11 +66,13 @@ export function placeStructures(
   mechanisms: Mechanism[];
   runeVaults: RuneVault[];
   boss: { x: number; y: number } | null;
+  emitters: HazardEmitter[];
 } {
   const w = ctx.world;
   const pickups: Pickup[] = [];
   const mechanisms: Mechanism[] = [];
   const runeVaults: RuneVault[] = [];
+  const emitters: HazardEmitter[] = [];
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
     carvePocketCells(w, cx, cy, rx, ry);
@@ -437,7 +444,18 @@ export function placeStructures(
       break;
     }
     if (px2 >= 0) {
-      const archetype = (def.depth + Math.floor(rng.next() * 2)) % 4;
+      // Six archetypes now; the cold biome leans toward the Freeze Bridge
+      // and the conductive ones toward the Live Circuit. The bias roll is
+      // consumed unconditionally so the rng stream stays aligned across
+      // biomes at the same depth.
+      const bias = rng.next();
+      let archetype = (def.depth + Math.floor(rng.next() * 2)) % 6;
+      if (def.biome === 'frozen' && bias < 0.5) archetype = 4;
+      else if ((def.biome === 'crystal' || def.biome === 'scorched') && bias < 0.5) archetype = 5;
+      // A flooded level drowns both new locks (nitrogen freezes the flood's
+      // surface far above the trench; floodwater pre-bridges the circuit's
+      // gaps) — fall back to the sluice, which water can only help.
+      if (def.biome === 'flooded' && archetype >= 4) archetype = 2;
       // main chamber + sealed loot pocket on the right
       carvePocket(px2, py2, 16, 12); // floor at the pocket BOTTOM
       for (let dx = -16; dx <= 16; dx++) {
@@ -449,6 +467,19 @@ export function placeStructures(
         }
       }
       carvePocket(px2 + 26, py2 + 1, 10, 12);
+      // Door-front apron: the bowl's ellipse pinches at the door column, so
+      // a 9x17 wizard never fits there organically — which made the
+      // gauge-rescue pass fire for EVERY chamber, and its stone-eating
+      // carves vandalized freshly stamped puzzle interiors. A standing
+      // shelf guaranteed by construction retires that whole failure family.
+      carveRectCells(w, px2 + 5, py2 - 11, px2 + 14, py2 + 10);
+      for (let X = px2 + 5; X <= px2 + 14; X++) {
+        const i = w.idx(X, py2 + 11);
+        if (w.types[i] !== Cell.Metal) {
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      }
       const door = makeDoor(ctx, mechanisms, px2 + 15, py2 - 9, 3, 20);
       pickups.push(makePickup('chest', px2 + 26, py2 + 9));
       pickups.push(
@@ -459,6 +490,19 @@ export function placeStructures(
           card: TOME_POOL[Math.floor(rng.next() * TOME_POOL.length)],
         }),
       );
+
+      // The chamber joins the cave network through its left mouth BEFORE the
+      // archetype interiors are stamped, and with the SWEPT gauge gallery
+      // (the rescue pass's own proven rect): a plain disc chain only
+      // promises 9x17 clearance on its centerline, so every chamber door
+      // was failing the wizard audit and the gauge rescue "fixed" it by
+      // tunneling through the chamber floor — vandalizing stamped stone.
+      // A walk-in mouth plus the door-front apron retires that entirely.
+      connectToCavesFrom(w, rng, graph, px2 - 17, py2 + 3, 12, fits, {
+        halfW: 7,
+        up: 21,
+        down: 9,
+      });
 
       const floorY = py2 + 10;
       if (archetype === 0) {
@@ -536,14 +580,159 @@ export function placeStructures(
           w.types[i] = Cell.Stone;
           w.colors[i] = stoneColor();
         }
-      } else {
+      } else if (archetype === 3) {
         // CHARGE LATCH: bring the coil a spark — lightning, charged water,
         // anything the conductors will carry
         makeChargeLatch(w, mechanisms, px2 - 8, floorY, door);
+      } else if (archetype === 4) {
+        // FREEZE BRIDGE: a metal-lined trench of open water sunk into the
+        // bowl floor, and a brass eye above it that counts ICE. An icicle
+        // drips liquid nitrogen forever — but a stone catch-tray collects
+        // every drop, where it pools and flash-evaporates (bulk nitrogen
+        // cannot exist in this sim; the tray weaponizes that). Break the
+        // tray and the drops reach the water: each one random-walks the
+        // crust and freezes the first open surface it finds, so the channel
+        // genuinely freezes over — the crust is the key AND the crossing.
+        // (Frostshard/icelance tomes and flask-carried biome nitrogen are
+        // alternate sources; the latch is permanent, so a melt can never
+        // re-seal the loot.)
+        const tx0 = px2 - 8,
+          tx1 = px2 + 4;
+        for (let X = tx0; X <= tx1; X++) {
+          for (let Y = py2 + 10; Y <= py2 + 15; Y++) {
+            if (!w.inBounds(X, Y)) continue;
+            const i = w.idx(X, Y);
+            if (w.types[i] === Cell.Metal) continue; // never breach a casing
+            const liner = X === tx0 || X === tx1 || Y === py2 + 15;
+            if (liner) {
+              w.types[i] = Cell.Metal;
+              w.colors[i] = packRGB(96, 102, 112);
+            } else {
+              w.types[i] = Cell.Water;
+              w.colors[i] = packRGB(28, 140, 224);
+            }
+          }
+        }
+        // the icicle: a frozen fang on the ceiling, dripping from its tip
+        for (let dy = -12; dy <= -10; dy++) {
+          const i = w.idx(px2 - 2, py2 + dy);
+          if (w.types[i] !== Cell.Metal) {
+            w.types[i] = Cell.Ice;
+            w.colors[i] = packRGB(168, 216, 248);
+          }
+        }
+        emitters.push({ x: px2 - 2, y: py2 - 9, cell: Cell.Nitrogen, rate: 9, dir: 0, burst: 1, phase: 0 });
+        // the catch-tray: a stone cup under the drip; drops pool inside and
+        // evaporate before they matter. Dig or blast it away to let the
+        // cold reach the channel.
+        for (let dx = -2; dx <= 2; dx++) {
+          const i = w.idx(px2 - 2 + dx, py2 - 6);
+          if (w.types[i] !== Cell.Metal) {
+            w.types[i] = Cell.Stone;
+            w.colors[i] = stoneColor();
+          }
+        }
+        for (const dx of [-2, 2]) {
+          const i = w.idx(px2 - 2 + dx, py2 - 7);
+          if (w.types[i] !== Cell.Metal) {
+            w.types[i] = Cell.Stone;
+            w.colors[i] = stoneColor();
+          }
+        }
+        makeSensor(
+          mechanisms,
+          px2 - 2,
+          py2 + 9,
+          {
+            sensorType: 'material',
+            materialFilter: [Cell.Ice],
+            threshold: 8,
+            zone: { x0: tx0 + 1, y0: py2 + 9, x1: tx1 - 1, y1: py2 + 14 },
+            latch: 'permanent',
+          },
+          door,
+        );
+      } else {
+        // LIVE CIRCUIT: the coil sleeps in an iron vault under the door
+        // apron — no spark can reach it directly. A copper rail runs from
+        // an exposed strike-knob on the left slope, broken by two air gaps
+        // where KNIFE-SWITCH valves stand open. Throw both levers and the
+        // gates slam INTO the rail; then put any spark on the knob — bolt,
+        // bomb splash, electrified water — and the pulse runs home. Every
+        // working part is metal or runtime-stamped valve cells, so no
+        // later carve (gauge rescue, secrets, chaos) can sever the
+        // circuit. The one-cell port shaft through the apron floor keeps
+        // the vault on the seen-path and remains the universal pour-and-
+        // zap fallback (a wrecked lever fail-opens its valve, which jams
+        // the gap OPEN — the port is the fail-open for that). Charge
+        // spreads down and sideways but never up-right
+        // (sim/electrical.ts), so the whole run descends toward the coil.
+        const COPPER = packRGB(186, 124, 58);
+        const COPPER_D = packRGB(150, 96, 44);
+        const IRON = packRGB(96, 88, 74);
+        const railY = py2 + 11;
+        const put = (X: number, Y: number, t: number, c: number): void => {
+          if (!w.inBounds(X, Y)) return;
+          const i = w.idx(X, Y);
+          if (w.types[i] === Cell.Metal && t !== Cell.Metal) return; // keep casings
+          w.types[i] = t;
+          w.colors[i] = c;
+        };
+        // the buried vault: iron shell, hollow heart, port hole in the roof
+        for (let X = px2 + 3; X <= px2 + 11; X++) {
+          for (let Y = py2 + 12; Y <= py2 + 21; Y++) {
+            if (X === px2 + 9 && Y === py2 + 12) continue; // port hole
+            const edge = X === px2 + 3 || X === px2 + 11 || Y === py2 + 12 || Y === py2 + 21;
+            if (edge) put(X, Y, Cell.Metal, IRON);
+            else put(X, Y, Cell.Empty, EMPTY_COLOR);
+          }
+        }
+        // interior drop-feed: an iron fang from the roof down into the
+        // coil's sensing zone — the shell IS the circuit's final node
+        for (let Y = py2 + 13; Y <= py2 + 15; Y++) put(px2 + 6, Y, Cell.Metal, IRON);
+        // strike-knob half-embedded in the left slope + its feed wire
+        for (const [X, Y] of [
+          [px2 - 13, py2 + 6],
+          [px2 - 12, py2 + 6],
+          [px2 - 13, py2 + 7],
+          [px2 - 12, py2 + 7],
+        ]) {
+          put(X, Y, Cell.Metal, COPPER);
+        }
+        for (let Y = py2 + 8; Y <= railY; Y++) put(px2 - 12, Y, Cell.Metal, COPPER_D);
+        for (let X = px2 - 11; X <= px2 - 7; X++) put(X, railY, Cell.Metal, COPPER_D);
+        // copper floor strip, broken by the two switch gaps
+        for (let X = px2 - 6; X <= px2 - 4; X++) put(X, railY, Cell.Metal, COPPER); // segment A
+        put(px2 - 3, railY, Cell.Empty, EMPTY_COLOR); // switch gap 1
+        for (let X = px2 - 2; X <= px2 + 1; X++) put(X, railY, Cell.Metal, COPPER); // segment B
+        put(px2 + 2, railY, Cell.Empty, EMPTY_COLOR); // switch gap 2
+        // cosmetic walk surface between gap 2 and the apron floor
+        for (const X of [px2 + 3, px2 + 4]) put(X, railY, Cell.Stone, stoneColor());
+        // port shaft: one open cell, down through the apron floor
+        for (let Y = py2 + 10; Y <= py2 + 11; Y++) put(px2 + 9, Y, Cell.Empty, EMPTY_COLOR);
+        // knife-switch valves standing OPEN in the gaps; their levers on
+        // the apron are created PRE-THROWN, so pulling one CLOSES its gate
+        // into the rail. V2's closed body reaches the vault roof corner.
+        const v1 = makeValve(ctx, mechanisms, px2 - 3, railY - 1, 1, 3);
+        const v2 = makeValve(ctx, mechanisms, px2 + 2, railY - 1, 1, 3);
+        setValveCells(ctx, v1, true);
+        setValveCells(ctx, v2, true);
+        // iron footing pads: the lever body-watch reads these three cells,
+        // and a gauge-rescue tunnel through the apron must not count as
+        // "wrecked" (a broken lever fail-opens its valve, which for THIS
+        // inverted switch means jamming the gap open)
+        for (const lx of [px2 + 7, px2 + 12]) {
+          for (let dx = -1; dx <= 1; dx++) {
+            put(lx + dx, py2 + 11, Cell.Metal, IRON);
+          }
+        }
+        const l1 = makeLever(mechanisms, px2 + 7, py2 + 10, v1);
+        const l2 = makeLever(mechanisms, px2 + 12, py2 + 10, v2);
+        l1.state = 1;
+        l2.state = 1;
+        // the coil itself, asleep on its pedestal at the vault floor
+        makeChargeLatch(w, mechanisms, px2 + 7, py2 + 20, door);
       }
-
-      // The chamber joins the cave network through its left mouth.
-      connectToCaves(px2 - 17, py2 + 3);
     }
   }
 
@@ -619,5 +808,5 @@ export function placeStructures(
     connectToCaves(cx + 39, cy + 6);
   }
 
-  return { pickups, portal, mechanisms, runeVaults, boss };
+  return { pickups, portal, mechanisms, runeVaults, boss, emitters };
 }

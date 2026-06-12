@@ -311,6 +311,18 @@ Layered, bottom to top:
   bubble only when heated; exit wells breathe faint dust before the seal opens.
 - Door opening throws a small metal/stone dust lift; plates, scales, and buoys
   emit one-shot particles when their physical sensor first becomes true.
+- Freeze Bridge (puzzle archetype 4): the nitrogen drip is an eternal emitter
+  (1 cell / 9f) off a 3-cell ceiling icicle; drops pool in the stone catch-tray
+  and flash-evaporate (bulk nitrogen cannot exist — evap 0.05/substep IS the
+  disposal). Tray broken: each drop random-walks the crust (flow 0.8 vs evap
+  0.05) and freezes the first open water; the ICE census latches permanently at
+  8 of the trench's ~11 surface cells. The crust is the key AND the crossing.
+- Live Circuit (puzzle archetype 5): knife-switch levers are created
+  PRE-THROWN (state 1), so the E-pull reads as throwing the switch DOWN into
+  contact — the 1x3 valve gate slams INTO the rail with the door-grind +
+  spark-line language. Charge spreads down/sideways/up-left only, so the whole
+  run descends knob -> rail -> vault; a struck knob (2x2 + wire junction)
+  self-oscillates, keeping the rail visibly live while you work the switches.
 
 ---
 

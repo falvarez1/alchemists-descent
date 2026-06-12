@@ -180,3 +180,16 @@ thermal shock, pylon lightning stun — a physics puzzle wearing a health bar).
 ### Post-spine content drips
 Branch biomes (Flooded Caverns, Fungal Gloom), Gilded Vault, Freeze Bridge + Live
 Circuit puzzle archetypes, second boss, more cards/frames/potions/relics.
+
+SHIPPED so far: **Freeze Bridge** (frozen-biased archetype 4 — a metal-lined water
+trench, an eternal nitrogen drip off a ceiling icicle, and a diggable stone
+catch-tray that disposes of every drop by pooling it to evaporation; break the
+tray and each drop random-walks the crust and freezes the first open water it
+finds until the ICE-census sensor at threshold 8 latches permanently) and
+**Live Circuit** (crystal/scorched-biased archetype 5 — a copper rail from an
+exposed strike-knob, two knife-switch valves standing open in 1-cell rail gaps,
+their pre-thrown levers on the door apron, and a buried all-iron coil vault;
+throw both switches, then land any spark on the knob. Every working part is
+metal or runtime-stamped, so no carve can sever it; a 1-cell port shaft is the
+universal pour-and-zap fallback). Both ride the existing sensor framework with
+zero new mechanism kinds.
