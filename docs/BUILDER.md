@@ -481,6 +481,31 @@ open like doors, plugs earn at their reachable face or by detonation,
 relays chain as pure logic (a relay buried in rock is fine — its INPUTS
 carry the reachability requirement). Relay cycles are flagged as errors.
 
+### The Gallery (asset browser)
+
+The GALLERY button (Builder bar) opens a Storybook-style browser for
+everything the game can show — and nothing in it is a mockup:
+
+- **MECHANISMS** (13 items) — each runs the REAL `Mechanisms` runtime on a
+  scratch world. State chips drive real transitions: the lever pull sweeps
+  on loop, the valve retracts its actual cells (TIMED valves slam back
+  shut), the plug shows intact/damaged/broken crack stages, the relay's
+  fuse visibly burns down and fires, the counterweight tips and raises its
+  real toast into the caption strip.
+- **PREFABS** (builtins + your library) — actual cells with factory colors,
+  authored light halos, idling mechanism overlays, animated decor, and the
+  room's inhabitants standing where generation would put them. The MARKERS
+  chip overlays worldgen anchors (cyan open / ember sealed), mechanism
+  footprints, and pickup spots.
+- **ENTITIES** — the Alchemist (IDLE / RUN / CAST) and every enemy kind
+  (CALM / ALERTED gaze), drawn through the real sprite functions.
+- **SPRITES** — animated decor assets playing per loop tag.
+
+Keyboard: ↑↓ browse · ←→ states · `+`/`−` zoom (FIT default) · `/` search ·
+ESC close. Previews share their drawing code with the renderer
+(`render/sprites/MechanismSprites.ts` etc.), so the gallery can never drift
+from what the game shows.
+
 ### Lighting
 
 Manual lights should be a major Builder surface.

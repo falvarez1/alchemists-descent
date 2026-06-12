@@ -275,17 +275,24 @@ Layered, bottom to top:
   never re-fires the chain. Fully broken steps auto-complete (fail-open per
   step; all wrecked = the chain itself gives way).
 - **Machine primitives** (valves, plugs, sensors, counterweights, relays —
-  the chain-reaction vocabulary): a closed valve blinks faint amber corner
-  pips ("this moves"), opens with the door's grind + retraction dust, and a
-  spark line races trigger → gate. A damaged plug sheds dust motes; breaking
-  one crunches a 140 Hz sawtooth, bursts debris in its own material's color,
-  and toasts "A SEAL GIVES WAY". Sensors are tuned-crystal nodes — teal idle
-  blink, steady green when satisfied, with a one-shot chime + mote burst on
-  the rising edge. Counterweights climb an amber 5-notch fill gauge toward
-  the tip-over, then toast "THE COUNTERWEIGHT SETTLES — SOMETHING SHIFTS"
-  and hold a green ingot glow forever. Relays read as rune-gear nodes: dim
-  violet idle, fast amber blink while the fuse burns (an audible armed
-  tick), steady green once fired — the handoff *visibly travels* (one frame
+  the chain-reaction vocabulary; pixel art shared via
+  `render/sprites/MechanismSprites.ts` so the Builder gallery previews the
+  exact same animation): a closed valve blinks faint amber corner pips
+  ("this moves"), opens with the door's grind, a shimmer dancing along the
+  retracting slab, and dust on the slam; a TIMED valve about to slam blinks
+  an urgent red-amber line across its gap. A damaged plug grows hash-stable
+  crack pixels and sheds dust motes faster as its body is eaten toward the
+  break fraction; breaking crunches a 140 Hz sawtooth, bursts debris in its
+  own material's color, and toasts "A SEAL GIVES WAY". Sensors are
+  tuned-crystal nodes — teal idle blink that RAMPS toward amber as the
+  reading climbs on the threshold, steady green once satisfied, one-shot
+  chime + mote burst on the rising edge. Counterweight pans sag under the
+  pour (the scale convention) while an amber 5-notch gauge climbs; tipping
+  toasts "THE COUNTERWEIGHT SETTLES — SOMETHING SHIFTS" and holds a green
+  ingot glow forever. Relays read as rune-gear nodes: dim violet idle; while
+  the fuse burns, three sparks CONVERGE on the core (orbit radius shrinking
+  with the remaining delay) over a fast amber blink and an audible armed
+  tick; steady green once fired — the handoff *visibly travels* (one frame
   per hop, plus the spark line to the target). Relay 'ignite' seeds real
   fire; 'break' detonates its plug; 'strike' is a real concussive pulse.
 - **Hazard emitters** (Builder-authored): one real cell dripped every `rate`
