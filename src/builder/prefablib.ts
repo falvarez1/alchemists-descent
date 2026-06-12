@@ -202,6 +202,8 @@ export function decodePrefabCells(p: PrefabDef): Uint8Array {
 const SLAB_DEFAULTS: Partial<Record<EditorObjectKind, { w: number; h: number }>> = {
   door: { w: 3, h: 13 },
   runeDoor: { w: 2, h: 11 },
+  valve: { w: 5, h: 2 },
+  plug: { w: 3, h: 3 },
 };
 
 function slabDims(o: EditorObject): { w: number; h: number } | null {

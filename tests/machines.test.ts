@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Ctx, Mechanism } from '@/core/types';
 import { EventBus } from '@/core/events';
+import { rleEncode } from '@/core/rle';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import {
@@ -14,6 +15,11 @@ import {
   makeSensor,
   makeValve,
 } from '@/game/Mechanisms';
+import { instantiateObjects, makeInstantiationSink } from '@/game/instantiate';
+import { createEmptyDocument, freshId } from '@/builder/document';
+import type { EditorDocument, EditorObject, EditorObjectKind } from '@/builder/document';
+import { validateDocument } from '@/builder/validate';
+import { capturePrefab, rotatePrefab } from '@/builder/prefablib';
 
 /**
  * Machine primitive contracts (docs/MACHINE-PRIMITIVES-AND-STRUCTURES-PLAN.md):
@@ -404,5 +410,213 @@ describe('regressions: old mechanisms unchanged', () => {
     step(h.ctx, mech, 2);
     expect(door.seqDone).toBe(true);
     expect(door.state).toBe(1);
+  });
+});
+
+/* ---------------- authoring contracts: instantiate, validate, prefab ---------------- */
+
+function obj(
+  kind: EditorObjectKind,
+  x: number,
+  y: number,
+  params: Record<string, unknown> = {},
+): EditorObject {
+  return { id: freshId(kind), kind, x, y, rotation: 0, locked: false, hidden: false, params };
+}
+
+type LinkSpec = { fromId: string; toId: string };
+function structuralDoc(objects: EditorObject[], links: LinkSpec[]): EditorDocument {
+  const d = createEmptyDocument('machines', 'earthen');
+  d.objects = [obj('spawn', 100, 100), ...objects];
+  d.links = links.map((l) => ({
+    id: freshId('link'),
+    fromId: l.fromId,
+    toId: l.toId,
+    kind: 'triggerDoor' as const,
+    logic: 'and' as const,
+  }));
+  return d; // world stays null -> structural checks only
+}
+const errsOf = (d: EditorDocument): ReturnType<typeof validateDocument> =>
+  validateDocument(d).filter((i) => i.severity === 'error');
+
+describe('instantiateObjects wires machine kinds', () => {
+  it('sensor -> valve, counterweight -> relay -> door, plate -> valve, plug standalone', () => {
+    const sink = makeInstantiationSink();
+    const valveO = obj('valve', 100, 100, { w: 4, h: 2, material: 'glass' });
+    const doorO = obj('door', 200, 100, { w: 3, h: 13 });
+    const sensorO = obj('sensor', 120, 140, { type: 'liquid', threshold: 10, zoneW: 11, zoneH: 5, filter: 'water' });
+    const cwO = obj('counterweight', 140, 140, { w: 7, threshold: 25 });
+    const relayO = obj('relay', 160, 140, { delay: 12, action: 'ignite' });
+    const plugO = obj('plug', 180, 140, { w: 2, h: 2, material: 'glass' });
+    const plateO = obj('plate', 150, 160, { w: 5 });
+    const links = [
+      { id: freshId('link'), fromId: sensorO.id, toId: valveO.id, kind: 'triggerDoor' as const },
+      { id: freshId('link'), fromId: cwO.id, toId: relayO.id, kind: 'triggerDoor' as const },
+      { id: freshId('link'), fromId: relayO.id, toId: doorO.id, kind: 'triggerDoor' as const },
+      { id: freshId('link'), fromId: plateO.id, toId: valveO.id, kind: 'triggerDoor' as const },
+    ];
+    const set = (x: number, y: number, t: number): void => {
+      if (h.world.inBounds(x, y)) h.world.types[h.world.idx(x, y)] = t;
+    };
+    instantiateObjects(
+      h.ctx, sink,
+      [valveO, doorO, sensorO, cwO, relayO, plugO, plateO],
+      links, [], 0, 0, set,
+    );
+    const one = (k: string): Mechanism => sink.mechanisms.find((m) => m.kind === k)!;
+    const valve = one('valve'), door = one('door'), sensor = one('sensor');
+    const cw = one('counterweight'), relay = one('relay'), plug = one('plug'), plate = one('plate');
+    expect(valve.material).toBe(Cell.Glass);
+    expect(sensor.targetId).toBe(valve.id);
+    expect(sensor.sensorType).toBe('liquid');
+    expect(sensor.materialFilter).toEqual([Cell.Water]);
+    expect(cw.targetId).toBe(relay.id);
+    expect(relay.targetId).toBe(door.id);
+    expect(relay.delayFrames).toBe(12);
+    expect(relay.outputAction).toBe('ignite');
+    expect(plate.targetId).toBe(valve.id);
+    expect(plug.targetId).toBe(-1); // a pure breakable seal signals nothing
+    expect(plug.material).toBe(Cell.Glass);
+    expect(countCells(h.world, 100, 100, 103, 101, Cell.Glass)).toBe(8); // closed valve cells
+    expect(plug.body!.length).toBe(4);
+  });
+});
+
+describe('validateDocument machine rules (structural)', () => {
+  it('sensors must link out; a plug may stand alone', () => {
+    const s = obj('sensor', 120, 120, {});
+    expect(errsOf(structuralDoc([s], [])).some((e) => e.what.includes('not linked'))).toBe(true);
+    const p = obj('plug', 120, 120, {});
+    expect(errsOf(structuralDoc([p], []))).toEqual([]);
+  });
+
+  it('relays need inputs, and relay cycles are errors', () => {
+    const d1Door = obj('door', 200, 120, {});
+    const r1 = obj('relay', 150, 120, {});
+    const issues1 = errsOf(structuralDoc([d1Door, r1], [{ fromId: r1.id, toId: d1Door.id }]));
+    expect(issues1.some((e) => e.what.includes('no inputs'))).toBe(true);
+
+    const a = obj('relay', 150, 120, {});
+    const b = obj('relay', 170, 120, {});
+    const issues2 = errsOf(
+      structuralDoc([a, b], [
+        { fromId: a.id, toId: b.id },
+        { fromId: b.id, toId: a.id },
+      ]),
+    );
+    expect(issues2.some((e) => e.what.includes('relay cycle'))).toBe(true);
+  });
+
+  it('plugs receive only from relays', () => {
+    const plate = obj('plate', 120, 120, {});
+    const plug = obj('plug', 150, 120, {});
+    const bad = errsOf(structuralDoc([plate, plug], [{ fromId: plate.id, toId: plug.id }]));
+    expect(bad.some((e) => e.what.includes('triggers drive doors, valves, or relays'))).toBe(true);
+
+    const lever = obj('lever', 110, 120, {});
+    const relay = obj('relay', 130, 120, { action: 'break' });
+    const ok = errsOf(
+      structuralDoc([lever, relay, plug], [
+        { fromId: lever.id, toId: relay.id },
+        { fromId: relay.id, toId: plug.id },
+      ]),
+    );
+    expect(ok.filter((e) => e.what.includes('linked'))).toEqual([]);
+  });
+
+  it('sequence chains refuse one-way machine triggers', () => {
+    const cw = obj('counterweight', 120, 120, {});
+    const valve = obj('valve', 180, 120, { logic: 'sequence' });
+    const issues = errsOf(structuralDoc([cw, valve], [{ fromId: cw.id, toId: valve.id }]));
+    expect(issues.some((e) => e.what.includes('never un-fire'))).toBe(true);
+  });
+});
+
+describe('validateDocument machine fixpoint', () => {
+  /** All-rock world with one open arena, captured into a document. */
+  function arenaDoc(): EditorDocument {
+    const w = new World();
+    w.types.fill(Cell.Wall);
+    for (let y = 100; y <= 159; y++) {
+      for (let x = 100; x <= 300; x++) w.types[w.idx(x, y)] = Cell.Empty;
+    }
+    const d = createEmptyDocument('machines', 'earthen');
+    d.world = { rle: rleEncode(w.types), life: [], charge: [] };
+    return d;
+  }
+
+  it('a sensor-fed valve wall is earnable: the key behind it validates clean', () => {
+    const d = arenaDoc();
+    const spawn = obj('spawn', 120, 158);
+    const sensor = obj('sensor', 140, 158, { type: 'heat', threshold: 4 });
+    const valve = obj('valve', 180, 100, { w: 3, h: 60 });
+    const key = obj('pickup', 280, 158, { kind: 'key' });
+    d.objects.push(spawn, sensor, valve, key);
+    d.links.push({
+      id: freshId('link'), fromId: sensor.id, toId: valve.id, kind: 'triggerDoor', logic: 'and',
+    });
+    expect(errsOf(d)).toEqual([]);
+  });
+
+  it('a reachable plug wall is breakable by design: loot behind it is earnable', () => {
+    const d = arenaDoc();
+    const spawn = obj('spawn', 120, 158);
+    const plug = obj('plug', 180, 100, { w: 3, h: 60, material: 'wood' });
+    const key = obj('pickup', 280, 158, { kind: 'key' });
+    d.objects.push(spawn, plug, key);
+    expect(errsOf(d)).toEqual([]);
+  });
+
+  it('relays are logic, not positions: a buried relay chained from a lever still earns the door', () => {
+    const d = arenaDoc();
+    const spawn = obj('spawn', 120, 158);
+    const lever = obj('lever', 140, 158, {});
+    const relay = obj('relay', 180, 300, {}); // deep in solid rock
+    const door = obj('door', 220, 100, { w: 3, h: 60 });
+    const key = obj('pickup', 280, 158, { kind: 'key' });
+    d.objects.push(spawn, lever, relay, door, key);
+    d.links.push(
+      { id: freshId('link'), fromId: lever.id, toId: relay.id, kind: 'triggerDoor', logic: 'and' },
+      { id: freshId('link'), fromId: relay.id, toId: door.id, kind: 'triggerDoor', logic: 'and' },
+    );
+    expect(errsOf(d)).toEqual([]);
+  });
+
+  it('an unearnable sensor valve seals the key: flagged', () => {
+    const d = arenaDoc();
+    const spawn = obj('spawn', 120, 158);
+    const sensor = obj('sensor', 180, 400, { type: 'heat', threshold: 4 }); // sealed in rock
+    const valve = obj('valve', 220, 100, { w: 3, h: 60 });
+    const key = obj('pickup', 280, 158, { kind: 'key' });
+    d.objects.push(spawn, sensor, valve, key);
+    d.links.push({
+      id: freshId('link'), fromId: sensor.id, toId: valve.id, kind: 'triggerDoor', logic: 'and',
+    });
+    const issues = validateDocument(d);
+    expect(issues.some((i) => i.severity === 'error' && i.what.includes('key unreachable'))).toBe(true);
+    expect(issues.some((i) => i.severity === 'warning' && i.what.includes('sensor unreachable'))).toBe(true);
+  });
+});
+
+describe('prefab capture of machine objects', () => {
+  it('captures valve + sensor + their link; rotation swaps the valve slab', () => {
+    const w = new World();
+    const d = createEmptyDocument('machines', 'earthen');
+    const valveO = obj('valve', 110, 120, { w: 6, h: 2 });
+    const sensorO = obj('sensor', 120, 130, { type: 'heat', threshold: 4 });
+    d.objects.push(valveO, sensorO);
+    d.links.push({
+      id: freshId('link'), fromId: sensorO.id, toId: valveO.id, kind: 'triggerDoor', logic: 'and',
+    });
+    const got = capturePrefab(w, { x0: 100, y0: 100, x1: 149, y1: 149 }, d, 'machine bit');
+    expect(got).not.toBeNull();
+    const p = got!.prefab;
+    expect(p.objects.length).toBe(2);
+    expect(p.links.length).toBe(1);
+    const r = rotatePrefab(p);
+    const valve2 = r.objects.find((o) => o.kind === 'valve')!;
+    expect(valve2.params.w).toBe(2);
+    expect(valve2.params.h).toBe(6);
   });
 });

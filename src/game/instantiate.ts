@@ -24,10 +24,15 @@ import {
   makeBrazier,
   makeBuoy,
   makeChargeLatch,
+  makeCounterweight,
   makeDoor,
   makeLever,
   makePlate,
+  makePlug,
+  makeRelay,
   makeScale,
+  makeSensor,
+  makeValve,
   setDoorCells,
 } from '@/game/Mechanisms';
 import {
@@ -64,6 +69,50 @@ export const EMITTER_CELLS: Record<string, number> = {
   snow: Cell.Snow,
   smoke: Cell.Smoke,
 };
+
+/** Valve gate material names -> cell ids (rigid, channel-blocking). */
+export const VALVE_CELLS: Record<string, number> = {
+  metal: Cell.Metal,
+  stone: Cell.Stone,
+  wood: Cell.Wood,
+  glass: Cell.Glass,
+};
+
+/** Plug body material names -> cell ids. The material IS the break profile:
+ *  wood burns, glass shatters, ash/sand collapse, stone resists fire, metal
+ *  resists everything (relay 'break' only). */
+export const PLUG_CELLS: Record<string, number> = {
+  wood: Cell.Wood,
+  ash: Cell.Ash,
+  glass: Cell.Glass,
+  coal: Cell.Coal,
+  stone: Cell.Stone,
+  sand: Cell.Sand,
+  metal: Cell.Metal,
+};
+
+/** Sensor 'liquid'/'material' filter names -> cell ids. */
+export const SENSOR_FILTER_CELLS: Record<string, number> = {
+  water: Cell.Water,
+  oil: Cell.Oil,
+  acid: Cell.Acid,
+  lava: Cell.Lava,
+  sand: Cell.Sand,
+  snow: Cell.Snow,
+  gold: Cell.Gold,
+  gunpowder: Cell.Gunpowder,
+  coal: Cell.Coal,
+  ash: Cell.Ash,
+  slime: Cell.Slime,
+  healium: Cell.Healium,
+  teleportium: Cell.Teleportium,
+};
+
+const SENSOR_TYPES = new Set(['heat', 'liquid', 'weight', 'charge', 'material']);
+const LATCH_MODES = new Set(['momentary', 'timed', 'permanent']);
+const RELAY_ACTIONS = new Set(['activate', 'ignite', 'break', 'strike']);
+/** Machine trigger kinds instantiated object-first, wired from their out-link. */
+const MACHINE_TRIGGER_KINDS = new Set(['sensor', 'counterweight', 'plug']);
 
 /** Everything instantiation can produce. Arrays are pushed into; landmark
  *  slots (portal/exit/cauldron/boss/keyTaken) are set when the matching
@@ -227,30 +276,109 @@ export function instantiateObjects(
     }
   }
 
-  // 2) Mechanisms: doors first, then triggers wired through the link records.
-  //    Several triggers on one door compile to the runtime's AND gate.
-  const doorByObj = new Map<string, Mechanism>();
+  // 2) Mechanisms: ACTUATORS first (doors, valves, relays — they receive
+  //    links), then machine triggers (sensor/counterweight/plug exist with
+  //    or without a link: a plug is a real seal even when it signals
+  //    nothing), then legacy triggers wired per-link, then one final wiring
+  //    pass resolving every machine-trigger/relay output. Several triggers
+  //    on one actuator compile to the runtime's AND gate.
+  const mechByObj = new Map<string, Mechanism>();
   for (const o of objects) {
-    if (o.hidden || o.kind !== 'door') continue;
-    const door = makeDoor(
-      ctx,
-      sink.mechanisms,
-      Math.floor(o.x) + originX,
-      Math.floor(o.y) + originY,
-      paramNum(o, 'w', 3),
-      paramNum(o, 'h', 13),
-    );
-    if (o.params.initialOpen === true) setDoorCells(ctx, door, true);
-    if (o.params.logic === 'or' || o.params.logic === 'sequence') door.logic = o.params.logic;
-    doorByObj.set(o.id, door);
+    if (o.hidden) continue;
+    const ox = Math.floor(o.x) + originX,
+      oy = Math.floor(o.y) + originY;
+    if (o.kind === 'door') {
+      const door = makeDoor(ctx, sink.mechanisms, ox, oy, paramNum(o, 'w', 3), paramNum(o, 'h', 13));
+      if (o.params.initialOpen === true) setDoorCells(ctx, door, true);
+      if (o.params.logic === 'or' || o.params.logic === 'sequence') door.logic = o.params.logic;
+      mechByObj.set(o.id, door);
+    } else if (o.kind === 'valve') {
+      const logic = o.params.logic;
+      const valve = makeValve(ctx, sink.mechanisms, ox, oy, paramNum(o, 'w', 5), paramNum(o, 'h', 2), {
+        material: VALVE_CELLS[String(o.params.material ?? 'metal')] ?? Cell.Metal,
+        oneShot: o.params.oneShot === true,
+        autoCloseFrames: Math.max(0, Math.floor(paramNum(o, 'autoClose', 0))),
+        logic: logic === 'or' || logic === 'sequence' ? logic : undefined,
+      });
+      mechByObj.set(o.id, valve);
+    } else if (o.kind === 'relay') {
+      const logic = o.params.logic;
+      const action = String(o.params.action ?? 'activate');
+      const relay = makeRelay(sink.mechanisms, ox, oy, {
+        delayFrames: Math.max(0, Math.floor(paramNum(o, 'delay', 0))),
+        outputAction: RELAY_ACTIONS.has(action)
+          ? (action as NonNullable<Mechanism['outputAction']>)
+          : undefined,
+        logic: logic === 'or' || logic === 'sequence' ? logic : undefined,
+      });
+      mechByObj.set(o.id, relay);
+    } else if (o.kind === 'sensor') {
+      const zw = Math.max(1, Math.floor(paramNum(o, 'zoneW', 9)));
+      const zh = Math.max(1, Math.floor(paramNum(o, 'zoneH', 7)));
+      const zx0 = ox - Math.floor(zw / 2);
+      const stype = String(o.params.type ?? 'heat');
+      const latch = String(o.params.latch ?? 'timed');
+      const filterName = String(o.params.filter ?? '');
+      const filterCell = SENSOR_FILTER_CELLS[filterName];
+      const sensor = makeSensor(
+        sink.mechanisms,
+        ox,
+        oy,
+        {
+          sensorType: SENSOR_TYPES.has(stype)
+            ? (stype as NonNullable<Mechanism['sensorType']>)
+            : 'heat',
+          threshold: Math.max(1, Math.floor(paramNum(o, 'threshold', 6))),
+          // the zone sits above the sensor node, like a scale's pan zone
+          zone: { x0: zx0, y0: oy - zh, x1: zx0 + zw - 1, y1: oy - 1 },
+          latch: LATCH_MODES.has(latch) ? (latch as NonNullable<Mechanism['latch']>) : undefined,
+          latchFrames: paramNum(o, 'latchFrames', 0) > 0 ? Math.floor(paramNum(o, 'latchFrames', 0)) : undefined,
+          materialFilter: filterCell !== undefined ? [filterCell] : undefined,
+        },
+        null,
+      );
+      mechByObj.set(o.id, sensor);
+    } else if (o.kind === 'counterweight') {
+      const w = Math.max(3, Math.floor(paramNum(o, 'w', 7)));
+      const cw = makeCounterweight(
+        ctx.world,
+        sink.mechanisms,
+        ox - Math.floor(w / 2),
+        oy,
+        w,
+        Math.max(1, Math.floor(paramNum(o, 'threshold', 30))),
+        null,
+      );
+      mechByObj.set(o.id, cw);
+    } else if (o.kind === 'plug') {
+      const plug = makePlug(
+        ctx.world,
+        sink.mechanisms,
+        ox,
+        oy,
+        Math.max(1, Math.floor(paramNum(o, 'w', 3))),
+        Math.max(1, Math.floor(paramNum(o, 'h', 3))),
+        PLUG_CELLS[String(o.params.material ?? 'wood')] ?? Cell.Wood,
+        null,
+        paramNum(o, 'breakFrac', 0.5),
+      );
+      mechByObj.set(o.id, plug);
+    }
   }
   const objById = new Map(objects.map((o) => [o.id, o] as const));
   for (const link of links) {
     if (link.kind !== 'triggerDoor') continue;
     const trig = objById.get(link.fromId);
-    const door = doorByObj.get(link.toId);
-    if (!trig || trig.hidden || !door) continue;
-    instantiateTrigger(ctx, sink.mechanisms, trig, door, set, originX, originY);
+    const target = mechByObj.get(link.toId);
+    if (!trig || trig.hidden || !target) continue;
+    // machine triggers + relays already exist; their output resolves below
+    if (MACHINE_TRIGGER_KINDS.has(trig.kind) || trig.kind === 'relay') {
+      const src = mechByObj.get(trig.id);
+      if (src) src.targetId = target.id;
+      continue;
+    }
+    const m = instantiateTrigger(ctx, sink.mechanisms, trig, target, set, originX, originY);
+    if (m) mechByObj.set(trig.id, m);
   }
 
   // 3) Rune vaults: glyph pedestal + dissolving stone door per rune link.
@@ -292,19 +420,19 @@ function instantiateTrigger(
   set: CellSetter,
   originX: number,
   originY: number,
-): void {
+): Mechanism | null {
   const x = Math.floor(o.x) + originX,
     y = Math.floor(o.y) + originY;
   if (o.kind === 'plate') {
     const w = paramNum(o, 'w', 5);
-    makePlate(ctx.world, list, x - Math.floor(w / 2), y, w, door);
+    return makePlate(ctx.world, list, x - Math.floor(w / 2), y, w, door);
   } else if (o.kind === 'lever') {
-    makeLever(list, x, y, door);
+    return makeLever(list, x, y, door);
   } else if (o.kind === 'brazier') {
-    makeBrazier(ctx.world, list, x, y, door);
+    return makeBrazier(ctx.world, list, x, y, door);
   } else if (o.kind === 'scale') {
     const w = paramNum(o, 'w', 7);
-    makeScale(ctx.world, list, x - Math.floor(w / 2), y, w, paramNum(o, 'threshold', 24), door);
+    return makeScale(ctx.world, list, x - Math.floor(w / 2), y, w, paramNum(o, 'threshold', 24), door);
   } else if (o.kind === 'buoy') {
     const { body, zone } = stampBuoyBasin(
       set,
@@ -313,10 +441,11 @@ function instantiateTrigger(
       paramNum(o, 'w', 13),
       paramNum(o, 'depth', 4),
     );
-    makeBuoy(list, x, y - 1, zone, paramNum(o, 'threshold', 26), door, body);
+    return makeBuoy(list, x, y - 1, zone, paramNum(o, 'threshold', 26), door, body);
   } else if (o.kind === 'chargeLatch') {
-    makeChargeLatch(ctx.world, list, x, y, door);
+    return makeChargeLatch(ctx.world, list, x, y, door);
   }
+  return null;
 }
 
 /** EditorLight (authoring record) -> AuthoredLight (runtime seeding data). */

@@ -3,6 +3,7 @@ import { blocksEntity, Cell } from '@/sim/CellType';
 import { decodeTypes, paramNum } from '@/builder/document';
 import type { EditorDocument, EditorObject, EditorObjectKind } from '@/builder/document';
 import { getStoredSprite } from '@/builder/assets/spritelib';
+import { PLUG_CELLS, SENSOR_FILTER_CELLS, VALVE_CELLS } from '@/game/instantiate';
 import {
   stampBuoyBasin,
   stampCauldron,
@@ -37,7 +38,8 @@ export interface DocIssue {
 export const DECOR_COUNT_WARN = 48;
 export const DECOR_FRAME_WARN = 96;
 
-/** Object kinds that compile to door-driving runtime triggers. */
+/** Object kinds that compile to actuator-driving runtime triggers (valid
+ *  LINK sources). A relay is both: it receives links AND emits one. */
 export const TRIGGER_KINDS: ReadonlySet<EditorObjectKind> = new Set([
   'plate',
   'lever',
@@ -45,6 +47,30 @@ export const TRIGGER_KINDS: ReadonlySet<EditorObjectKind> = new Set([
   'scale',
   'buoy',
   'chargeLatch',
+  // machine primitives
+  'sensor',
+  'counterweight',
+  'plug',
+  'relay',
+] as EditorObjectKind[]);
+
+/** Hands-on triggers the player must physically reach to operate (plugs,
+ *  sensors, and relays earn differently in the fixpoint). */
+const POSITIONAL_TRIGGER_KINDS: ReadonlySet<EditorObjectKind> = new Set([
+  'plate',
+  'lever',
+  'brazier',
+  'scale',
+  'buoy',
+  'chargeLatch',
+  'counterweight',
+] as EditorObjectKind[]);
+
+/** Valid LINK receivers (plugs only from relays — the detonator pattern). */
+export const ACTUATOR_KINDS: ReadonlySet<EditorObjectKind> = new Set([
+  'door',
+  'valve',
+  'relay',
 ] as EditorObjectKind[]);
 
 /* ---------------- scratch grid: document terrain + compile stamps ---------------- */
@@ -102,6 +128,32 @@ function stampObjects(types: Uint8Array, doc: EditorDocument, openIds: ReadonlyS
       for (let dx = 0; dx < w; dx++) set(left + dx, y, Cell.Metal);
       for (const dx of [-1, w]) {
         for (let dy = 0; dy <= 2; dy++) set(left + dx, y - dy, Cell.Metal);
+      }
+    } else if (o.kind === 'valve') {
+      // mirror makeValve: a material slab, cleared when earned open
+      const w = paramNum(o, 'w', 5),
+        h = paramNum(o, 'h', 2);
+      const mat = VALVE_CELLS[String(o.params.material ?? 'metal')] ?? Cell.Metal;
+      const open = openIds.has(o.id);
+      for (let dy = 0; dy < h; dy++) {
+        for (let dx = 0; dx < w; dx++) set(x + dx, y + dy, open ? Cell.Empty : mat);
+      }
+    } else if (o.kind === 'plug') {
+      // mirror makePlug: a material block, cleared once breakable/earned
+      const w = paramNum(o, 'w', 3),
+        h = paramNum(o, 'h', 3);
+      const mat = PLUG_CELLS[String(o.params.material ?? 'wood')] ?? Cell.Wood;
+      const open = openIds.has(o.id);
+      for (let dy = 0; dy < h; dy++) {
+        for (let dx = 0; dx < w; dx++) set(x + dx, y + dy, open ? Cell.Empty : mat);
+      }
+    } else if (o.kind === 'counterweight') {
+      // mirror makeCounterweight: pan row + 4-tall lip columns at both ends
+      const w = paramNum(o, 'w', 7);
+      const left = x - Math.floor(w / 2);
+      for (let dx = 0; dx < w; dx++) set(left + dx, y, Cell.Metal);
+      for (const dx of [-1, w]) {
+        for (let dy = 0; dy <= 3; dy++) set(left + dx, y - dy, Cell.Metal);
       }
     } else if (o.kind === 'chargeLatch') {
       // mirror makeChargeLatch: a 5-wide conductive pedestal
@@ -280,8 +332,18 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     if (l.kind === 'triggerDoor') {
       if (!TRIGGER_KINDS.has(from.kind))
         push('error', 'link source ' + from.kind + ' is not a trigger', from.id);
-      if (to.kind !== 'door')
-        push('error', 'trigger linked to ' + to.kind + ' — triggers drive doors', to.id);
+      const toOk =
+        ACTUATOR_KINDS.has(to.kind) || (to.kind === 'plug' && from.kind === 'relay');
+      if (!toOk) {
+        push(
+          'error',
+          from.kind === 'relay'
+            ? 'relay linked to ' + to.kind + ' — relays drive doors, valves, relays, or plugs'
+            : 'trigger linked to ' + to.kind + ' — triggers drive doors, valves, or relays',
+          to.id,
+        );
+      }
+      if (l.fromId === l.toId) push('error', 'mechanism linked to itself', from.id);
     } else if (l.kind === 'runeDoor') {
       if (from.kind !== 'runeGlyph')
         push('error', 'rune link source must be a rune glyph', from.id);
@@ -307,17 +369,64 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     return from && to && !from.hidden && !to.hidden;
   });
 
+  // sequence chains advance on rising edges — a trigger that can never
+  // un-fire jams the chain forever after one wrong order (doors, valves,
+  // and relays can all carry sequence logic)
+  const checkSequenceChain = (o: EditorObject): void => {
+    if (o.params.logic !== 'sequence') return;
+    const chain = liveLinks
+      .filter((l) => l.kind === 'triggerDoor' && l.toId === o.id)
+      .map((l) => byId.get(l.fromId)!)
+      .filter((t) => !t.hidden);
+    const oneWay = chain.find(
+      (t) =>
+        t.kind === 'brazier' ||
+        t.kind === 'chargeLatch' ||
+        t.kind === 'plug' ||
+        t.kind === 'counterweight' ||
+        t.kind === 'relay' ||
+        (t.kind === 'sensor' && t.params.latch === 'permanent'),
+    );
+    if (oneWay)
+      push(
+        'error',
+        `sequence chain contains a ${oneWay.kind} — it can never un-fire, so one wrong order jams the chain forever (use plates/levers/scales/buoys/timed sensors, or AND)`,
+        o.id,
+      );
+    if (chain.some((t) => t.kind === 'scale' || t.kind === 'buoy'))
+      push(
+        'warning',
+        'sequence chain contains a scale/buoy — retrying a broken order means physically removing the poured material',
+        o.id,
+      );
+  };
+
   // ---- per-object wiring requirements (hidden objects don't compile: skip) ----
   for (const o of doc.objects) {
     if (o.hidden) continue;
-    if (TRIGGER_KINDS.has(o.kind)) {
+    if (o.kind === 'relay') {
+      // a relay is both receiver and trigger: it needs inputs to ever fire,
+      // and at most one output (its fire is a single handoff)
       const outs = liveLinks.filter((l) => l.fromId === o.id && l.kind === 'triggerDoor');
+      const ins = liveLinks.filter((l) => l.toId === o.id && l.kind === 'triggerDoor');
+      if (ins.length === 0) push('error', 'relay has no inputs — it can never fire', o.id);
       if (outs.length === 0)
-        push('error', o.kind + ' is not linked to any door (use the LINK tool)', o.id);
+        push('warning', 'relay drives nothing — its fire has no effect', o.id);
+      if (outs.length > 1)
+        push('error', 'relay drives several targets — one relay fires one output', o.id);
+      checkSequenceChain(o);
+    } else if (TRIGGER_KINDS.has(o.kind)) {
+      const outs = liveLinks.filter((l) => l.fromId === o.id && l.kind === 'triggerDoor');
+      if (outs.length === 0) {
+        if (o.kind === 'plug')
+          push('info', 'plug signals nothing — a pure breakable seal (that is fine)', o.id);
+        else
+          push('error', o.kind + ' is not linked to any door/valve/relay (use the LINK tool)', o.id);
+      }
       if (outs.length > 1)
         push(
           'error',
-          o.kind + ' drives several doors — one trigger drives one door (AND = many triggers on ONE door)',
+          o.kind + ' drives several targets — one trigger drives one (AND = many triggers on ONE actuator)',
           o.id,
         );
     } else if (o.kind === 'door') {
@@ -333,27 +442,11 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
       const lg = o.params.logic;
       if (lg !== undefined && lg !== 'and' && lg !== 'or' && lg !== 'sequence')
         push('warning', `unknown door logic '${String(lg)}' — it will compile as AND`, o.id);
-      if (lg === 'sequence') {
-        // sequence chains advance on rising edges — a trigger that can never
-        // un-fire jams the chain forever after one wrong order
-        const chainKinds = liveLinks
-          .filter((l) => l.kind === 'triggerDoor' && l.toId === o.id)
-          .map((l) => byId.get(l.fromId)!)
-          .filter((t) => !t.hidden)
-          .map((t) => t.kind);
-        if (chainKinds.includes('brazier') || chainKinds.includes('chargeLatch'))
-          push(
-            'error',
-            'sequence chain contains a brazier/charge latch — they can never un-fire, so one wrong order jams the chain forever (use plates/levers/scales/buoys, or AND)',
-            o.id,
-          );
-        if (chainKinds.includes('scale') || chainKinds.includes('buoy'))
-          push(
-            'warning',
-            'sequence chain contains a scale/buoy — retrying a broken order means physically removing the poured material',
-            o.id,
-          );
-      }
+      checkSequenceChain(o);
+    } else if (o.kind === 'valve') {
+      const hasTrigger = liveLinks.some((l) => l.toId === o.id && l.kind === 'triggerDoor');
+      if (!hasTrigger) push('warning', 'valve has no trigger — it can never open', o.id);
+      checkSequenceChain(o);
     } else if (o.kind === 'runeGlyph') {
       if (!liveLinks.some((l) => l.fromId === o.id && l.kind === 'runeDoor'))
         push('error', 'rune glyph opens nothing — link it to a rune door', o.id);
@@ -363,10 +456,66 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     }
   }
 
+  // ---- relays that can never fire even if every hands-on trigger were
+  //      earned: pure relay cycles (empty inputs already errored above) ----
+  {
+    const relayObjs = doc.objects.filter((o) => !o.hidden && o.kind === 'relay');
+    const fired = new Set<string>();
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const r of relayObjs) {
+        if (fired.has(r.id)) continue;
+        const ins = liveLinks
+          .filter((l) => l.kind === 'triggerDoor' && l.toId === r.id)
+          .map((l) => byId.get(l.fromId)!)
+          .filter((t) => !t.hidden);
+        const ok =
+          ins.length > 0 &&
+          (r.params.logic === 'or'
+            ? ins.some((t) => t.kind !== 'relay' || fired.has(t.id))
+            : ins.every((t) => t.kind !== 'relay' || fired.has(t.id)));
+        if (ok) {
+          fired.add(r.id);
+          grew = true;
+        }
+      }
+    }
+    for (const r of relayObjs) {
+      const hasIns = liveLinks.some((l) => l.kind === 'triggerDoor' && l.toId === r.id);
+      if (hasIns && !fired.has(r.id))
+        push('error', 'relay can never fire — its inputs form a relay cycle', r.id);
+    }
+  }
+
   // ---- sensor capacity: a threshold its zone cannot physically hold ----
   for (const o of doc.objects) {
     if (o.hidden) continue;
-    if (o.kind === 'scale') {
+    if (o.kind === 'sensor') {
+      const area = paramNum(o, 'zoneW', 9) * paramNum(o, 'zoneH', 7);
+      if (area > 200)
+        push(
+          'warning',
+          `sensor zone ~${area} cells — keep zones under ~200 (sense a drain channel, not the whole reservoir)`,
+          o.id,
+        );
+      if (
+        String(o.params.type ?? 'heat') === 'material' &&
+        SENSOR_FILTER_CELLS[String(o.params.filter ?? '')] === undefined
+      )
+        push('error', 'material sensor needs a filter material', o.id);
+      const cap = Math.max(1, area);
+      if (paramNum(o, 'threshold', 6) > cap)
+        push('warning', `sensor threshold ${paramNum(o, 'threshold', 6)} exceeds its zone area (~${cap} cells)`, o.id);
+    } else if (o.kind === 'counterweight') {
+      const capacity = paramNum(o, 'w', 7) * 7; // zone is w wide x 7 rows tall
+      if (paramNum(o, 'threshold', 30) > capacity)
+        push(
+          'warning',
+          `counterweight threshold ${paramNum(o, 'threshold', 30)} exceeds its pan capacity (~${capacity} cells)`,
+          o.id,
+        );
+    } else if (o.kind === 'scale') {
       const capacity = paramNum(o, 'w', 7) * 7; // zone is w wide x 7 rows tall
       if (paramNum(o, 'threshold', 24) > capacity)
         push(
@@ -514,27 +663,68 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   const spawn = spawns[0];
 
   const visible = doc.objects.filter((o) => !o.hidden);
-  const doors = visible.filter((o) => o.kind === 'door');
+  const gates = visible.filter((o) => o.kind === 'door' || o.kind === 'valve');
+  const plugObjs = visible.filter((o) => o.kind === 'plug');
+  const relayObjs2 = visible.filter((o) => o.kind === 'relay');
   const runeDoors = visible.filter((o) => o.kind === 'runeDoor');
   const openIds = new Set(initialOpen);
+  const earnedRelays = new Set<string>();
 
   let mask = bfsMask(closed, spawn.x, spawn.y - 2);
-  const maxRounds = doors.length + runeDoors.length + 1;
+  /** How a trigger becomes earnable: hands-on kinds need the player beside
+   *  them; a plug is earnable once breakable/detonated (openIds); a relay
+   *  once its own inputs chained through. */
+  const trigEarnable = (t: EditorObject): boolean =>
+    t.kind === 'plug'
+      ? openIds.has(t.id)
+      : t.kind === 'relay'
+        ? earnedRelays.has(t.id)
+        : triggerReachable(mask, t);
+
+  const maxRounds = gates.length + runeDoors.length + plugObjs.length + relayObjs2.length + 1;
   for (let round = 0; round < maxRounds; round++) {
     let opened = false;
-    for (const d of doors) {
+    // relays chain: inputs earnable per logic -> the relay counts as fired
+    for (const r of relayObjs2) {
+      if (earnedRelays.has(r.id)) continue;
+      const ins = liveLinks
+        .filter((l) => l.kind === 'triggerDoor' && l.toId === r.id)
+        .map((l) => byId.get(l.fromId)!)
+        .filter((t) => !t.hidden);
+      const ok =
+        ins.length > 0 &&
+        (r.params.logic === 'or' ? ins.some(trigEarnable) : ins.every(trigEarnable));
+      if (ok) {
+        earnedRelays.add(r.id);
+        opened = true;
+      }
+    }
+    // plugs are breakable real cells: earnable when the player can reach the
+    // seal face, or when an earned relay detonates them
+    for (const p of plugObjs) {
+      if (openIds.has(p.id)) continue;
+      const w = paramNum(p, 'w', 3),
+        h = paramNum(p, 'h', 3);
+      const faceable = near(mask, p.x + w / 2, p.y + h / 2, Math.ceil(Math.max(w, h) / 2) + 4);
+      const detonated = liveLinks.some(
+        (l) => l.kind === 'triggerDoor' && l.toId === p.id && earnedRelays.has(l.fromId),
+      );
+      if (faceable || detonated) {
+        openIds.add(p.id);
+        opened = true;
+      }
+    }
+    for (const d of gates) {
       if (openIds.has(d.id)) continue;
       const triggers = liveLinks
         .filter((l) => l.kind === 'triggerDoor' && l.toId === d.id)
         .map((l) => byId.get(l.fromId)!)
         .filter((t) => !t.hidden);
-      // OR doors open from ANY operable trigger; AND and SEQUENCE need the
+      // OR gates open from ANY earnable trigger; AND and SEQUENCE need the
       // full set (a sequence completes only if every step can be fired).
       const earnable =
         triggers.length > 0 &&
-        (d.params.logic === 'or'
-          ? triggers.some((t) => triggerReachable(mask, t))
-          : triggers.every((t) => triggerReachable(mask, t)));
+        (d.params.logic === 'or' ? triggers.some(trigEarnable) : triggers.every(trigEarnable));
       if (earnable) {
         openIds.add(d.id);
         opened = true;
@@ -561,19 +751,37 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   // it into openIds stays closed forever in this document — its rewards are
   // genuinely sealed, and the checks below say so.
   for (const o of visible) {
-    if (TRIGGER_KINDS.has(o.kind)) {
+    if (POSITIONAL_TRIGGER_KINDS.has(o.kind)) {
       if (!triggerReachable(mask, o))
         push('error', o.kind + ' unreachable from spawn (even after opening every earnable door)', o.id);
+    } else if (o.kind === 'sensor') {
+      // a sensor zone can legitimately be fed by world flows the player
+      // never touches (lava reaching a heat sensor) — warn, don't error
+      if (!triggerReachable(mask, o))
+        push(
+          'warning',
+          'sensor unreachable from spawn — only world flows (floods, lava, charge) can feed its zone',
+          o.id,
+        );
+    } else if (o.kind === 'plug') {
+      if (!openIds.has(o.id))
+        push('warning', 'plug can never be reached or detonated — the seal will never break', o.id);
+    } else if (o.kind === 'relay') {
+      if (
+        !earnedRelays.has(o.id) &&
+        liveLinks.some((l) => l.kind === 'triggerDoor' && l.toId === o.id)
+      )
+        push('warning', 'relay never fires in this document (its inputs are unreachable)', o.id);
     } else if (o.kind === 'runeGlyph') {
       if (!glyphReachable(mask, o)) push('error', 'rune glyph unreachable from spawn', o.id);
     } else if (o.kind === 'exitWell') {
       if (!near(mask, o.x, o.y - 8, 6))
         push('error', 'exit well mouth unreachable from spawn', o.id);
-    } else if (o.kind === 'door') {
-      const w = paramNum(o, 'w', 3),
-        h = paramNum(o, 'h', 13);
+    } else if (o.kind === 'door' || o.kind === 'valve') {
+      const w = paramNum(o, 'w', o.kind === 'door' ? 3 : 5),
+        h = paramNum(o, 'h', o.kind === 'door' ? 13 : 2);
       if (!near(mask, o.x - 2, o.y + h / 2, 4) && !near(mask, o.x + w + 1, o.y + h / 2, 4))
-        push('warning', 'no side of this door is reachable from spawn', o.id);
+        push('warning', `no side of this ${o.kind} is reachable from spawn`, o.id);
     } else if (o.kind === 'pickup') {
       if (!near(mask, o.x, o.y - 2, 6)) {
         if (o.params.kind === 'key')
@@ -623,7 +831,7 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
       push('warning', label + ' is cell-reachable, but the path looks too tight for the alchemist (9x17)', o.id);
   };
   for (const o of visible) {
-    if (TRIGGER_KINDS.has(o.kind)) tightWarn(o, o.x, o.y - 2, 4, o.kind);
+    if (POSITIONAL_TRIGGER_KINDS.has(o.kind)) tightWarn(o, o.x, o.y - 2, 4, o.kind);
     else if (o.kind === 'runeGlyph') tightWarn(o, o.x, o.y - 3, 5, 'rune glyph');
     else if (o.kind === 'pickup' && o.params.kind === 'key') tightWarn(o, o.x, o.y - 2, 6, 'golden key');
     else if (o.kind === 'exitPortal') tightWarn(o, o.x, o.y - 2, 6, 'exit portal');

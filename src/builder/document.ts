@@ -39,7 +39,14 @@ export type EditorObjectKind =
   | 'terrainStamp'
   | 'vegetationStamp'
   | 'hazardEmitter'
-  | 'decor';
+  | 'decor'
+  // machine primitives (docs/MACHINE-PRIMITIVES-AND-STRUCTURES-PLAN.md):
+  // valve/relay receive links like doors; sensor/counterweight/plug emit
+  | 'valve'
+  | 'plug'
+  | 'sensor'
+  | 'counterweight'
+  | 'relay';
 
 export interface EditorObject {
   id: string;
@@ -158,6 +165,15 @@ export function objectFootprint(
     }
     case 'cauldron':
       return { x0: o.x - 4, y0: o.y - 5, x1: o.x + 4, y1: o.y };
+    case 'valve':
+      return { x0: o.x, y0: o.y, x1: o.x + paramNum(o, 'w', 5) - 1, y1: o.y + paramNum(o, 'h', 2) - 1 };
+    case 'plug':
+      return { x0: o.x, y0: o.y, x1: o.x + paramNum(o, 'w', 3) - 1, y1: o.y + paramNum(o, 'h', 3) - 1 };
+    case 'counterweight': {
+      // mirrors makeCounterweight: pan row + 4-tall lips at both ends
+      const hw = Math.floor(paramNum(o, 'w', 7) / 2);
+      return { x0: o.x - hw - 1, y0: o.y - 7, x1: o.x - hw + paramNum(o, 'w', 7), y1: o.y };
+    }
     default:
       return null;
   }
@@ -196,7 +212,8 @@ export function bakeExclusionMask(
       o.kind === 'lever' ||
       o.kind === 'brazier' ||
       o.kind === 'chargeLatch' ||
-      o.kind === 'runeGlyph'
+      o.kind === 'runeGlyph' ||
+      o.kind === 'relay'
     ) {
       mark(o.x - 3, o.y - 2, o.x + 3, o.y + 1);
     }
