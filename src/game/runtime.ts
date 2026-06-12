@@ -28,6 +28,9 @@ export function makeLevelRuntime(
       | 'mechanisms'
       | 'runeVaults'
       | 'boss'
+      | 'authoredLights'
+      | 'emitters'
+      | 'placedPrefabs'
     >
   >,
 ): LevelRuntime {

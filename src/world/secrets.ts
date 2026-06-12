@@ -1,5 +1,6 @@
 import type { Rng } from '@/core/rng';
 import type { BiomeId, Ctx, Region, RegionGraph } from '@/core/types';
+import type { PlacementLedger } from '@/world/connect';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import {
   EMPTY_COLOR,
@@ -63,14 +64,47 @@ export function probeHollow(
 }
 
 /**
+ * Thin breachable skin material, per biome — the shared "secret wall" table.
+ * Also consumed by sealed prefab anchors (world/prefabs/place.ts), so a
+ * resealed prefab tunnel reads exactly like a secret connector.
+ */
+export function breachSkinCell(biome: BiomeId): Cell {
+  return biome === 'frozen'
+    ? Cell.Ice
+    : biome === 'timber' || biome === 'flooded'
+      ? Cell.Wood
+      : biome === 'scorched'
+        ? Cell.Wall
+        : Cell.Sand;
+}
+
+/** Color factory for the breach skin; scorched draws rng per call (gold flecks). */
+export function breachSkinColorFn(biome: BiomeId, rng: Rng): () => number {
+  return (): number => {
+    if (biome === 'frozen') return iceColor();
+    if (biome === 'timber' || biome === 'flooded') return woodColor();
+    if (biome === 'scorched') return rng.next() < 0.12 ? goldColor() : wallColor();
+    return sandColor();
+  };
+}
+
+/**
  * Stamp 4-7 sealed secret chambers into the rock flanking the main path.
  * Every secret is real cells (THE ONE COMMANDMENT): an elliptical hollow, a
  * 5-wide connector whose last stretch is refilled with the biome's breachable
  * skin (sand/wood/ice/flecked wall), a faint recolored tell beside the skin,
  * and a payload pile that obeys gravity the moment the wall opens.
  * All layout randomness flows through the passed rng. Returns the count placed.
+ * Reserved-ledger ground (prefab footprints etc.) is rejected; the guard is
+ * inert while the ledger is empty or absent.
  */
-export function stampSecrets(ctx: Ctx, rng: Rng, graph: RegionGraph, biome: BiomeId): number {
+export function stampSecrets(
+  ctx: Ctx,
+  rng: Rng,
+  graph: RegionGraph,
+  biome: BiomeId,
+  ledger?: PlacementLedger,
+): number {
   const world = ctx.world;
   const W = world.width;
   const H = world.height;
@@ -88,21 +122,9 @@ export function stampSecrets(ctx: Ctx, rng: Rng, graph: RegionGraph, biome: Biom
   if (pool.length === 0) for (const r of graph.regions) pool.push(r);
   if (pool.length === 0) return 0;
 
-  // Thin breachable skin material, per biome.
-  const breachCell: Cell =
-    biome === 'frozen'
-      ? Cell.Ice
-      : biome === 'timber' || biome === 'flooded'
-        ? Cell.Wood
-        : biome === 'scorched'
-          ? Cell.Wall
-          : Cell.Sand;
-  const breachColor = (): number => {
-    if (biome === 'frozen') return iceColor();
-    if (biome === 'timber' || biome === 'flooded') return woodColor();
-    if (biome === 'scorched') return rng.next() < 0.12 ? goldColor() : wallColor();
-    return sandColor();
-  };
+  // Thin breachable skin material, per biome (shared table above).
+  const breachCell: Cell = breachSkinCell(biome);
+  const breachColor = breachSkinColorFn(biome, rng);
 
   const allWall = (cx: number, cy: number, r: number): boolean => {
     for (let dy = -r; dy <= r; dy++) {
@@ -129,6 +151,7 @@ export function stampSecrets(ctx: Ctx, rng: Rng, graph: RegionGraph, biome: Biom
     const rx = 14 + rng.int(9); // 14-22
     const ry = 9 + rng.int(6); // 9-14
     if (cx - rx < 3 || cx + rx >= W - 3 || cy - ry < 3 || cy + ry >= H - 8) continue;
+    if (ledger && ledger.intersects(cx - rx - 2, cy - ry - 2, cx + rx + 2, cy + ry + 2)) continue;
     if (!allWall(cx, cy, 10)) continue;
 
     // Chamber: elliptical hollow (bedrock metal is never carved).

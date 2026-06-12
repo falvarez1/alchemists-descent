@@ -24,6 +24,11 @@ import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { Cell } from '@/sim/CellType';
 import { EMPTY_COLOR, goldColor, packRGB, sandColor, stoneColor } from '@/sim/colors';
 import type { CardId } from '@/core/types';
+import {
+  carvePocket as carvePocketCells,
+  connectToCaves as connectToCavesFrom,
+} from '@/world/connect';
+import type { PlacementLedger } from '@/world/connect';
 
 /**
  * Landmark structures placed after generation (upgrade-port meta layer):
@@ -48,6 +53,7 @@ export function placeStructures(
   waystones: Waystone[],
   spawn: { x: number; y: number },
   cauldron: { x: number; y: number } | null,
+  ledger: PlacementLedger,
 ): {
   pickups: Pickup[];
   portal: ExitPortal | null;
@@ -60,21 +66,8 @@ export function placeStructures(
   const mechanisms: Mechanism[] = [];
   const runeVaults: RuneVault[] = [];
 
-  const carvePocket = (cx: number, cy: number, rx: number, ry: number): void => {
-    for (let dy = -ry; dy <= ry; dy++) {
-      for (let dx = -rx; dx <= rx; dx++) {
-        if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) > 1) continue;
-        const X = cx + dx,
-          Y = cy + dy;
-        if (X < 2 || X >= WIDTH - 2 || Y < 2 || Y >= HEIGHT - 8) continue;
-        const i = w.idx(X, Y);
-        if (w.types[i] !== Cell.Metal) {
-          w.types[i] = Cell.Empty;
-          w.colors[i] = 0x08080c;
-        }
-      }
-    }
-  };
+  const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
+    carvePocketCells(w, cx, cy, rx, ry);
 
   /** Drop to the first standable floor below (cap 60 cells). */
   const settleY = (x: number, y: number): number => {
@@ -86,60 +79,11 @@ export function placeStructures(
   };
 
   /**
-   * REACHABILITY GUARANTEE: every carved structure must join the cave
-   * network. Winds a 4-radius tunnel from a structure's mouth to the nearest
-   * sizable open region's centroid (Metal is never breached, so vault shells
-   * and water tanks survive their own approach tunnels).
+   * REACHABILITY GUARANTEE (shared primitive, see world/connect.ts): every
+   * carved structure must join the cave network.
    */
   const connectToCaves = (fromX: number, fromY: number): void => {
-    // Target the nearest MAIN-PATH region: those form the spawn<->exit artery,
-    // so the tunnel provably joins the network the player actually walks.
-    // (Nearest "open area" is not enough — isolated pockets are open too.)
-    let best: { cx: number; cy: number } | null = null;
-    let bestD = Infinity;
-    for (const onlyMain of [true, false]) {
-      for (const reg of graph.regions) {
-        if (onlyMain && !reg.onMainPath) continue;
-        if (!onlyMain && reg.area < 60) continue;
-        const d = (reg.cx - fromX) * (reg.cx - fromX) + (reg.cy - fromY) * (reg.cy - fromY);
-        if (d < bestD) {
-          bestD = d;
-          best = { cx: reg.cx, cy: reg.cy };
-        }
-      }
-      if (best) break;
-    }
-    if (!best) return;
-    // A concave region's centroid can sit in solid rock — resolve to the
-    // nearest actually-open cell so the tunnel provably touches the cave.
-    let tx = Math.floor(best.cx),
-      ty = Math.floor(best.cy);
-    if (w.inBounds(tx, ty) && w.types[w.idx(tx, ty)] !== Cell.Empty) {
-      outer: for (let r = 2; r <= 50; r += 2) {
-        for (const [ddx, ddy] of [
-          [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1],
-        ]) {
-          const X = tx + ddx * r,
-            Y = ty + ddy * r;
-          if (w.inBounds(X, Y) && w.types[w.idx(X, Y)] === Cell.Empty) {
-            tx = X;
-            ty = Y;
-            break outer;
-          }
-        }
-      }
-    }
-    let x = fromX,
-      y = fromY,
-      guard = 0;
-    while ((Math.abs(x - tx) > 3 || Math.abs(y - ty) > 3) && guard < 900) {
-      guard++;
-      x += Math.sign(tx - x) * (rng.next() < 0.8 ? 1 : 0) + Math.floor((rng.next() - 0.5) * 2);
-      y += Math.sign(ty - y) * (rng.next() < 0.8 ? 1 : 0);
-      x = Math.floor(clamp(x, 6, WIDTH - 7));
-      y = Math.floor(clamp(y, 26, HEIGHT - 12));
-      carvePocket(x, y, 4, 4);
-    }
+    connectToCavesFrom(w, rng, graph, fromX, fromY);
   };
 
   // ---- Exit portal: a carved shrine right above the well's seal plug ----
@@ -162,6 +106,9 @@ export function placeStructures(
     let bestD = -1;
     for (const reg of graph.regions) {
       if (!reg.onMainPath && reg.area < 250) continue;
+      // Never seat the key on reserved ground: door-gated prefab interiors
+      // are reserved rects, and the findability BFS does not open doors.
+      if (ledger.intersects(reg.cx, reg.cy, reg.cx, reg.cy)) continue;
       const d = Math.abs(reg.cx - spawn.x) + Math.abs(reg.cy - spawn.y) * 0.6;
       if (d > bestD) {
         bestD = d;
@@ -273,7 +220,14 @@ export function placeStructures(
       if (Math.abs(vx - spawn.x) > 220 && Math.abs(vx - portalX) > 160) break;
       vx = 80 + Math.floor(rng.next() * (WIDTH - 160));
     }
-    const vy = Math.floor(HEIGHT * (0.3 + rng.next() * 0.42));
+    let vy = Math.floor(HEIGHT * (0.3 + rng.next() * 0.42));
+    // Reserved-ground dodge (inert while the ledger is empty): re-roll the
+    // vault site while its widest possible extent overlaps a reserved rect.
+    // Bounded, then place anyway — a vault is never silently skipped.
+    for (let a = 0; a < 24 && ledger.intersects(vx - 44, vy - 8, vx + 44, vy + 12); a++) {
+      vx = 80 + Math.floor(rng.next() * (WIDTH - 160));
+      vy = Math.floor(HEIGHT * (0.3 + rng.next() * 0.42));
+    }
     // chamber: carved room with a stone floor
     carvePocket(vx, vy + 2, 13, 9);
     for (let dx = -13; dx <= 13; dx++) {
@@ -326,6 +280,8 @@ export function placeStructures(
     vTries++;
     const vx = 40 + Math.floor(rng.next() * (WIDTH - 80));
     const vy = 90 + Math.floor(rng.next() * (FLOOR_BAND - 150));
+    // reserved ground (prefab footprints etc.) is off limits
+    if (ledger.intersects(vx - 12, vy - 9, vx + 12, vy + 9)) continue;
     // need a MOSTLY solid region for the shell (>=90% rock, never overlap metal)
     let rock = 0,
       cells = 0,
@@ -445,6 +401,8 @@ export function placeStructures(
       const candY = 100 + Math.floor(rng.next() * (HEIGHT - 280));
       if (Math.abs(cand - spawn.x) < clearMin || Math.abs(cand - portalX) < clearMin * 0.75)
         continue;
+      // reserved ground (prefab footprints etc.) is off limits at every tier
+      if (ledger.intersects(cand - 20, candY - 12, cand + 20, candY + 12)) continue;
       // no metal collisions; rock fraction per current relaxation tier
       let rock = 0,
         cells = 0,
@@ -586,8 +544,13 @@ export function placeStructures(
   // Flood the kiln, thermal-shock the colossus.
   let boss: { x: number; y: number } | null = null;
   if (!def.nextLevelId) {
-    const cx = Math.floor(WIDTH * (0.42 + rng.next() * 0.16));
+    let cx = Math.floor(WIDTH * (0.42 + rng.next() * 0.16));
     const cy = HEIGHT - 116;
+    // Reserved-ground dodge (inert while the ledger is empty); bounded, then
+    // the arena is carved regardless — the kiln must exist.
+    for (let a = 0; a < 12 && ledger.intersects(cx - 40, cy - 26, cx + 40, cy + 24); a++) {
+      cx = Math.floor(WIDTH * (0.42 + rng.next() * 0.16));
+    }
     carvePocket(cx, cy, 38, 24);
     // stone floor band
     for (let dx = -38; dx <= 38; dx++) {

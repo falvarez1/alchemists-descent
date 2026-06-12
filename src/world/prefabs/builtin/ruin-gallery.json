@@ -1,0 +1,90 @@
+{
+  "v": 1,
+  "kind": "prefab",
+  "id": "builtin-ruin-gallery",
+  "name": "Ruin Gallery",
+  "tags": [
+    "setpiece",
+    "builtin"
+  ],
+  "w": 90,
+  "h": 40,
+  "rle": "0gIDGAAAAgAMGAAAAgAMIgAABAADGAAAAgAMGAAAAgAMIgAABAADGAAAAgAMGAAAAgAMIgAABAADGAAAAgAMGAAAAgAMIgAABAADGAAAAgAMGAAAAgAMIgAABAADGAAAAgAMPAAABAADEgAADwAENQAABAADEgAADwAENQAABAADLAAADwAEGwAABAADLAAADwAEGwAABAADJAAAAwAMLwAABAADJAAAAwAMLwAABAADJAAAAwAMLwAABAADJAAAAwAMLwAABAADDAAAAwAMFQAAAwAMLwAABAADDAAAAwAMFQAAAwAMLwAABAADDAAAAwAMFQAAAwAMFQAAAwAMFwAABAADDAAAAwAMFQAAAwAMFQAAAwAMFwAAAgADDgAAAwAMFQAAAwAMFQAAAwAMJwAAAwAMFQAAAwAMFQAAAwAMJwAAAwAMFQAAAwAMFQAAAwAMJwAAAwAMFQAAAwAMFQAAAwAMJwAAAwAMFQAAAwAMFQAAAwAMJwAAAwAMFQAAAwAMFQAAAwAMBQAABQAEHQAAAwAMFQAAAwAMFQAAAwAMBQAABQAEHQAAAwAMFQAAAwAMFQAAAwAMBQAABQAEDwAAaAEMtAAD",
+  "objects": [
+    {
+      "id": "gold0",
+      "kind": "pickup",
+      "x": 30,
+      "y": 32,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "goldpile",
+        "amount": 25
+      }
+    },
+    {
+      "id": "gold1",
+      "kind": "pickup",
+      "x": 58,
+      "y": 32,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "goldpile",
+        "amount": 30
+      }
+    }
+  ],
+  "links": [],
+  "lights": [
+    {
+      "id": "L0",
+      "x": 24,
+      "y": 12,
+      "color": "#ffb060",
+      "intensity": 1.2,
+      "radius": 75,
+      "bloom": 0.4,
+      "flicker": 0.3,
+      "falloff": "soft",
+      "occluded": true,
+      "locked": false,
+      "hidden": false
+    },
+    {
+      "id": "L1",
+      "x": 66,
+      "y": 13,
+      "color": "#ffb060",
+      "intensity": 1.2,
+      "radius": 75,
+      "bloom": 0.4,
+      "flicker": 0.3,
+      "falloff": "soft",
+      "occluded": true,
+      "locked": false,
+      "hidden": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "aw",
+      "x": 0,
+      "y": 30,
+      "dir": "w",
+      "kind": "open",
+      "halfW": 4
+    },
+    {
+      "id": "ae",
+      "x": 89,
+      "y": 30,
+      "dir": "e",
+      "kind": "open",
+      "halfW": 4
+    }
+  ]
+}

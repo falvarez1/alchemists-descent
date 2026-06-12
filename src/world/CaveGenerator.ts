@@ -2,14 +2,18 @@ import { BIOMES } from '@/config/biomes';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { GEN } from '@/config/gen';
 import { clamp, hash2, valueNoise } from '@/core/math';
-import { Rng, randomSeed } from '@/core/rng';
+import { Rng, hashSeed, randomSeed } from '@/core/rng';
+import { makeInstantiationSink } from '@/game/instantiate';
 import type {
+  AuthoredLight,
   Ctx,
   ExitPortal,
   LevelDef,
   LevelExitWell,
   Mechanism,
   Pickup,
+  PlacedPrefab,
+  PrefabEnemy,
   RuneVault,
   Waystone,
   WorldGenApi,
@@ -34,10 +38,12 @@ import {
   woodColor,
 } from '@/sim/colors';
 import { applyBiomeExtras } from '@/world/biomeExtras';
+import { PlacementLedger } from '@/world/connect';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
 import { extractRegionGraph } from '@/world/regions';
+import { placePrefabs } from '@/world/prefabs/place';
 import { stampSecrets } from '@/world/secrets';
 import { placeStructures } from '@/world/structures';
 
@@ -457,11 +463,28 @@ export class WorldGen implements WorldGenApi {
     mechanisms: Mechanism[];
     runeVaults: RuneVault[];
     boss: { x: number; y: number } | null;
+    prefabEnemies: PrefabEnemy[];
+    placedPrefabs: PlacedPrefab[];
+    authoredLights: AuthoredLight[];
+    emitters: Array<{ x: number; y: number; cell: number; rate: number }>;
   } {
+    // DEV stage timing — generation runs synchronously behind the curtain,
+    // so a slow stage is a felt hitch; shout when the total crosses 400ms.
+    const tStart = performance.now();
+    let tPrev = tStart;
+    const stages: Array<[string, number]> = [];
+    const stage = (label: string): void => {
+      if (!import.meta.env.DEV) return;
+      const now = performance.now();
+      stages.push([label, now - tPrev]);
+      tPrev = now;
+    };
+
     // 1) Base caves for the level's biome, replayable from the seed.
     ctx.state.currentBiome = def.biome;
     ctx.state.worldSeed = seed >>> 0;
     this.generateCaves(ctx);
+    stage('caves');
 
     const world = ctx.world;
     const spawn = this.spawnHint ?? { x: Math.floor(WIDTH / 2), y: Math.floor(HEIGHT / 2) };
@@ -586,13 +609,50 @@ export class WorldGen implements WorldGenApi {
         stampBrazier(cx, HEIGHT - 7);
       }
     }
+    stage('dressing');
 
     // 5) Biome extras first (fungus colonies, crystal clusters, snow drifts,
     //    coal seams, healing springs), so secrets can still find untouched
-    //    thick wall masses afterward; then the placement brain + secrets.
+    //    thick wall masses afterward; then the placement brain.
     applyBiomeExtras(ctx, this.rng, def.biome);
-    const graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
-    stampSecrets(ctx, this.rng, graph, def.biome);
+    let graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+    stage('extras+graph');
+
+    // 5b) Authored prefabs (forked rng stream — the main stream above keeps
+    //     byte-identical output per seed). The ledger pre-reserves the level's
+    //     fixed landmarks so prefabs keep clear; every later placement pass
+    //     respects the prefab footprints recorded into it.
+    const ledger = new PlacementLedger();
+    ledger.reserve(spawn.x - 60, spawn.y - 60, spawn.x + 60, spawn.y + 60, 'spawn');
+    ledger.reserve(wellX - halfW - 6, 0, wellX + halfW + 6, HEIGHT - 1, 'exit-well');
+    for (let n = 0; n < waystones.length; n++) {
+      const ws = waystones[n];
+      const rx = n === 0 ? 34 : 12; // ws[0]'s wider margin also covers the cauldron site
+      ledger.reserve(ws.x - rx, ws.y - 12, ws.x + rx, ws.y + 12, 'waystone');
+    }
+    if (def.depth === 1) {
+      // the two onboarding lessons sweep spawn±(120..124)x / ±84y for sites
+      ledger.reserve(spawn.x - 140, spawn.y - 100, spawn.x + 140, spawn.y + 100, 'onboarding');
+    }
+    const sink = makeInstantiationSink();
+    const placedPrefabs = placePrefabs(
+      ctx,
+      new Rng(hashSeed(seed >>> 0, 'prefabs')),
+      graph,
+      ledger,
+      sink,
+      (GEN[def.biome] || GEN.earthen).prefabs,
+      { spawn, wellX },
+    );
+    // Prefab interiors are rooms: re-extract so secrets and the structure
+    // brain place against the world as it now actually is.
+    if (placedPrefabs.length > 0) {
+      graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+    }
+    stage('prefabs');
+
+    stampSecrets(ctx, this.rng, graph, def.biome, ledger);
+    stage('secrets');
 
     // 6) Cauldron: a stone brewing basin on the first waystone's ground row —
     //    9 wide, 1-row stone base, 2-tall side walls, open 7x3 interior bowl.
@@ -738,6 +798,8 @@ export class WorldGen implements WorldGenApi {
       }
     }
 
+    stage('cauldron+onboarding');
+
     // 8) Landmark structures (upgrade-port meta layer): the exit portal above
     //    the seal plug, the golden key vault, hearts, tomes, chests, gold.
     const { pickups, portal, mechanisms, runeVaults, boss } = placeStructures(
@@ -749,7 +811,34 @@ export class WorldGen implements WorldGenApi {
       waystones,
       spawn,
       cauldron,
+      ledger,
     );
+    stage('structures');
+
+    // 8b) Merge the prefab sink into the structure outputs. Mechanism ids are
+    //     list-scoped (allocId), so the two independently-built lists collide
+    //     on ids — shift the prefab ones past the structures' max. Both lists
+    //     are internally consistent, so shifting id+targetId together is safe.
+    let maxMechId = 0;
+    for (const m of mechanisms) maxMechId = Math.max(maxMechId, m.id);
+    for (const m of sink.mechanisms) {
+      m.id += maxMechId;
+      if (m.targetId >= 0) m.targetId += maxMechId;
+    }
+    mechanisms.push(...sink.mechanisms);
+    pickups.push(...sink.pickups);
+    runeVaults.push(...sink.runeVaults);
+    waystones.push(...sink.waystones);
+
+    if (import.meta.env.DEV) {
+      const total = performance.now() - tStart;
+      if (total > 400) {
+        console.warn(
+          `[gen] ${def.id} generateLevel ${total.toFixed(0)}ms — ` +
+            stages.map(([label, ms]) => `${label} ${ms.toFixed(0)}ms`).join(', '),
+        );
+      }
+    }
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
     return {
@@ -762,6 +851,10 @@ export class WorldGen implements WorldGenApi {
       mechanisms,
       runeVaults,
       boss,
+      prefabEnemies: sink.enemies,
+      placedPrefabs,
+      authoredLights: sink.authoredLights,
+      emitters: sink.emitters,
     };
   }
 }

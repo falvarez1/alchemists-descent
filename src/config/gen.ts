@@ -12,8 +12,13 @@ import type { BiomeId } from '@/core/types';
  * one value at a time, flagged in the commit (CLAUDE.md invariant #4).
  */
 
-/** Bumps with deliberate generation changes (expedition save guard, wired later). */
-export const GEN_VERSION = 1;
+/**
+ * Bumps with deliberate generation changes; the expedition save records it
+ * and resume retires mismatched saves (restoreLevel's pristine-regen coupling
+ * means a stale save against new generation silently desyncs otherwise).
+ * v2: per-biome skeleton flip + authored prefab placement pass.
+ */
+export const GEN_VERSION = 2;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)
@@ -280,6 +285,18 @@ export type SkeletonSpec =
   | { kind: 'crystalVaults'; params: VaultParams }
   | { kind: 'volcanicTubes'; params: TubeParams };
 
+/** Authored-prefab placement budget for one biome's levels. */
+export interface PrefabBudget {
+  /** Slots rolled per level: rng.int within [min, max] inclusive. */
+  count: [number, number];
+  /** Registry tags eligible for this biome (any-of match). */
+  tags: string[];
+  /** Minimum center distance (cells) between two placed prefabs. */
+  minSpacing: number;
+  /** Minimum center distance (cells) from the spawn chamber. */
+  minSpawnDist: number;
+}
+
 export interface GenDef {
   skeleton: SkeletonSpec;
   /** Discrete gold pocket count (decoration stage). */
@@ -288,6 +305,8 @@ export interface GenDef {
   goldTriesCap: number;
   /** Combustible seed pocket count (oil/gunpowder). */
   seedPockets: number;
+  /** Authored prefab placement budget (worldgen pass after the region graph). */
+  prefabs: PrefabBudget;
 }
 
 /* ============================================================
@@ -644,12 +663,22 @@ export function defaultSkeletonSpec(kind: SkeletonSpec['kind']): SkeletonSpec {
   }
 }
 
+function defaultPrefabBudget(): PrefabBudget {
+  return {
+    count: [1, 3],
+    tags: ['vault', 'shrine', 'setpiece'],
+    minSpacing: 180,
+    minSpawnDist: 200,
+  };
+}
+
 function baselineDef(): GenDef {
   return {
     skeleton: { kind: 'baseline', params: baselineSkeletonParams() },
     goldPockets: 100,
     goldTriesCap: 30000,
     seedPockets: 60,
+    prefabs: defaultPrefabBudget(),
   };
 }
 
@@ -660,7 +689,8 @@ function baselineDef(): GenDef {
  * on those depths; the expedition genVersion guard retires stale saves).
  */
 export const GEN: Record<BiomeId, GenDef> = {
-  earthen: baselineDef(),
+  // d1 keeps a lighter prefab budget — the onboarding depth stays readable.
+  earthen: { ...baselineDef(), prefabs: { ...defaultPrefabBudget(), count: [1, 2] } },
   frozen: { ...baselineDef(), skeleton: { kind: 'frozenCrevasses', params: crevasseParams() } },
   flooded: { ...baselineDef(), skeleton: { kind: 'floodedGalleries', params: galleryParams() } },
   timber: { ...baselineDef(), skeleton: { kind: 'timberScaffold', params: scaffoldParams() } },

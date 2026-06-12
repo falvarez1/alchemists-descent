@@ -722,6 +722,14 @@ export interface WorldGenApi {
     mechanisms: Mechanism[];
     runeVaults: RuneVault[];
     boss: { x: number; y: number } | null;
+    /** Deferred prefab enemies — createLevel spawns them; restoreLevel
+     *  IGNORES them (the saved blob's roster is the truth). */
+    prefabEnemies: PrefabEnemy[];
+    /** Footprints of the authored prefabs stamped into this level. */
+    placedPrefabs: PlacedPrefab[];
+    /** Prefab-authored lights / hazard emitters for the runtime. */
+    authoredLights: AuthoredLight[];
+    emitters: Array<{ x: number; y: number; cell: number; rate: number }>;
   };
 }
 
@@ -1115,6 +1123,28 @@ export interface AuthoredLight {
 }
 
 /**
+ * A deferred enemy record produced by object instantiation (Builder compile
+ * spawns these immediately; worldgen prefab placement returns them so the
+ * levels manager spawns them alongside the placed population).
+ */
+export interface PrefabEnemy {
+  kind: EnemyKind;
+  x: number;
+  y: number;
+  sleeping?: boolean;
+  patrol?: Array<[number, number]>;
+}
+
+/** Footprint of one authored prefab stamped into a generated level. */
+export interface PlacedPrefab {
+  id: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/**
  * Everything that persists for a visited level. Worlds are kept live in RAM
  * for the whole expedition (v1) — your scars stay exactly as you left them.
  */
@@ -1143,10 +1173,12 @@ export interface LevelRuntime {
   runeVaults: RuneVault[];
   /** Boss arena center (bottom level only); the colossus spawns here. */
   boss?: { x: number; y: number } | null;
-  /** Designer-placed lights from a compiled Builder document (custom playtests). */
+  /** Designer-placed lights from a compiled Builder document or worldgen prefabs. */
   authoredLights?: AuthoredLight[];
-  /** Builder hazard emitters: drip a real cell every `rate` frames. */
+  /** Builder/prefab hazard emitters: drip a real cell every `rate` frames. */
   emitters?: Array<{ x: number; y: number; cell: number; rate: number }>;
+  /** Authored prefabs stamped into this level by worldgen (audit/debug). */
+  placedPrefabs?: PlacedPrefab[];
 }
 
 export interface LevelsApi {

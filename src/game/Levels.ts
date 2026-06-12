@@ -16,6 +16,7 @@
 //   world floor instead of falling out.
 
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
+import { GEN_VERSION } from '@/config/gen';
 import { LEVELS, START_LEVEL, populationForLevel } from '@/config/worldgraph';
 import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
 import type {
@@ -33,6 +34,7 @@ import type {
 } from '@/core/types';
 import { grantFullReviewKit } from '@/entities/Player';
 import { createDefaultStatus } from '@/entities/status';
+import { spawnPrefabEnemy } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { makeLevelRuntime } from '@/game/runtime';
 import { validateFindability } from '@/world/validate';
@@ -97,6 +99,10 @@ interface SavedLevelBlob {
 
 interface ExpeditionSave {
   v: 1;
+  /** GEN_VERSION at save time; resume retires saves from other generations
+   *  (restoreLevel regenerates pristine worlds from seed — a stale save
+   *  against new generation silently desyncs). Absent = pre-guard save. */
+  genVersion?: number;
   expeditionSeed: number;
   currentId: string;
   score: number;
@@ -305,6 +311,7 @@ export class Levels implements LevelsApi {
     }
     const save: ExpeditionSave = {
       v: 1,
+      genVersion: GEN_VERSION,
       expeditionSeed: this.expeditionSeed,
       currentId: this.currentId,
       score: ctx.state.score,
@@ -390,6 +397,14 @@ export class Levels implements LevelsApi {
       save = null;
     }
     if (!save || save.v !== 1 || !LEVELS[save.currentId]) return false;
+    // Generation-version guard: a save from another generation would resume
+    // against regenerated worlds that no longer match its blobs. Retire it
+    // honestly instead of silently desyncing.
+    if (save.genVersion !== GEN_VERSION) {
+      this.abandonExpedition();
+      ctx.events.emit('toast', { text: 'THE DEPTHS HAVE SHIFTED — EXPEDITION RETIRED' });
+      return false;
+    }
     if (this.isLegacyReviewSave(save)) return false;
 
     this.expeditionSeed = save.expeditionSeed >>> 0;
@@ -487,6 +502,14 @@ export class Levels implements LevelsApi {
       runeVaults: blob.runeVaults,
       // Alive-or-dead truth lives in blob.enemies; the arena marker is static.
       boss: pristine.boss,
+      // Static authored data regenerates with the pristine world. The blob's
+      // enemy roster is the truth — pristine.prefabEnemies is deliberately
+      // IGNORED here (those hostiles were already saved, alive or dead).
+      placedPrefabs: pristine.placedPrefabs,
+      ...(pristine.authoredLights.length > 0
+        ? { authoredLights: pristine.authoredLights }
+        : {}),
+      ...(pristine.emitters.length > 0 ? { emitters: pristine.emitters } : {}),
     });
   }
 
@@ -672,14 +695,29 @@ export class Levels implements LevelsApi {
     ctx.enemies.length = 0;
 
     const seed = (this.expeditionSeed ^ this.hashString(def.id)) >>> 0;
-    const { exit, waystones, spawn, cauldron, pickups, portal, mechanisms, runeVaults, boss } =
-      ctx.worldgen.generateLevel(ctx, def, seed);
+    const {
+      exit,
+      waystones,
+      spawn,
+      cauldron,
+      pickups,
+      portal,
+      mechanisms,
+      runeVaults,
+      boss,
+      prefabEnemies,
+      placedPrefabs,
+      authoredLights,
+      emitters,
+    } = ctx.worldgen.generateLevel(ctx, def, seed);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, { x: exit.x, y: exit.sealY - 12 });
     this.placePopulation(ctx, def, spawn);
     // The bottom of the run: the Kiln Colossus waits in its arena.
     if (boss) ctx.enemyCtl.spawn('colossus', boss.x, boss.y);
+    // Prefab-authored enemies (sleeping/patrol fixups applied at spawn).
+    for (const rec of prefabEnemies) spawnPrefabEnemy(ctx, rec);
     this.litOrder.set(def.id, []);
 
     const runtime = makeLevelRuntime({
@@ -698,6 +736,9 @@ export class Levels implements LevelsApi {
       mechanisms,
       runeVaults,
       boss,
+      placedPrefabs,
+      ...(authoredLights.length > 0 ? { authoredLights } : {}),
+      ...(emitters.length > 0 ? { emitters } : {}),
     });
 
     // DEV tripwire: a freshly generated level with anything unreachable

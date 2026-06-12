@@ -1,0 +1,107 @@
+{
+  "v": 1,
+  "kind": "prefab",
+  "id": "builtin-plate-vault",
+  "name": "Plate Vault",
+  "tags": [
+    "vault",
+    "builtin"
+  ],
+  "w": 70,
+  "h": 50,
+  "rle": "jgADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADQgAMBAADAgAMFAAAAgAMBAAAJgAMBAADAgAMFAAAAgAMBAAAJgAMBAADAgAMFAAAAgAMBAAAJgAMBAADAgAMFAAAAgAMBAAAJgAMBAADAgAMFAAAAgAMBAAAJgAMBAADAgAMGgAAJgAMBAADAgAMGgAACAAMCAAAAgAMDgAABgAMBAADAgAMGgAACAAMCAAAAgAMDgAABgAMBAADAgAMGgAACAAMCAAAAgAMDgAABgAMBAADAgAMGgAACAAMCAAAAgAMDgAABgAMBAADAgAMKgAAAgAMDgAABgAMBAADAgAMKgAAAgAMDgAABgAMBAADAgAMOgAABgAMBAADAgAMOgAABgAMAgADMAIAGAEMAgADQgAMBAADQgAMjgAD",
+  "objects": [
+    {
+      "id": "door0",
+      "kind": "door",
+      "x": 32,
+      "y": 28,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 3,
+        "h": 14
+      }
+    },
+    {
+      "id": "plate0",
+      "kind": "plate",
+      "x": 16,
+      "y": 42,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 7
+      }
+    },
+    {
+      "id": "gold0",
+      "kind": "pickup",
+      "x": 48,
+      "y": 40,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "goldpile",
+        "amount": 80
+      }
+    },
+    {
+      "id": "chest0",
+      "kind": "pickup",
+      "x": 54,
+      "y": 40,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "chest"
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "k0",
+      "fromId": "plate0",
+      "toId": "door0",
+      "kind": "triggerDoor"
+    }
+  ],
+  "lights": [
+    {
+      "id": "L0",
+      "x": 46,
+      "y": 30,
+      "color": "#9fd4ff",
+      "intensity": 1.1,
+      "radius": 70,
+      "bloom": 0.3,
+      "flicker": 0.1,
+      "falloff": "soft",
+      "occluded": true,
+      "locked": false,
+      "hidden": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "aw",
+      "x": 0,
+      "y": 38,
+      "dir": "w",
+      "kind": "open",
+      "halfW": 4
+    },
+    {
+      "id": "ae",
+      "x": 69,
+      "y": 38,
+      "dir": "e",
+      "kind": "sealed",
+      "halfW": 3
+    }
+  ]
+}
