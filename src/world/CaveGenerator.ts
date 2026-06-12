@@ -40,13 +40,14 @@ import {
   woodColor,
 } from '@/sim/colors';
 import { applyBiomeExtras } from '@/world/biomeExtras';
-import { PlacementLedger } from '@/world/connect';
+import { PlacementLedger, carveRect, tunnelTo } from '@/world/connect';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
 import { stampSecrets } from '@/world/secrets';
+import { computeFits, wizardMask } from '@/world/validate';
 import { placeStructures } from '@/world/structures';
 
 /* ===================== Procedural Generation Map Engines ===================== */
@@ -622,6 +623,11 @@ export class WorldGen implements WorldGenApi {
     //    thick wall masses afterward; then the placement brain.
     applyBiomeExtras(ctx, this.rng, def.biome);
     let graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+    // Wizard-fit mask (9x17 erosion): connect tunnels target FIT cells, so
+    // every guaranteed connection joins space the player can actually occupy
+    // (carving only ADDS open space, so the mask stays valid as a target
+    // hint through the whole placement phase).
+    const fits = computeFits(ctx.world);
     stage('extras+graph');
 
     // 5b) Authored prefabs (forked rng stream — the main stream above keeps
@@ -650,6 +656,7 @@ export class WorldGen implements WorldGenApi {
       sink,
       genDef.prefabs,
       { spawn, wellX },
+      fits,
     );
     // Machine structure rooms: a SECOND placement pass on its own forked
     // stream — chain-reaction prefabs (valves, plugs, sensors, relays)
@@ -664,6 +671,7 @@ export class WorldGen implements WorldGenApi {
         sink,
         genDef.machines,
         { spawn, wellX },
+        fits,
       ),
     );
     // Prefab interiors are rooms: re-extract so secrets and the structure
@@ -834,6 +842,7 @@ export class WorldGen implements WorldGenApi {
       spawn,
       cauldron,
       ledger,
+      fits,
     );
     stage('structures');
 
@@ -851,6 +860,105 @@ export class WorldGen implements WorldGenApi {
     pickups.push(...sink.pickups);
     runeVaults.push(...sink.runeVaults);
     waystones.push(...sink.waystones);
+    stage('merge');
+
+    // 8c) GAUGE RESCUE: run the same wizard-connectivity audit the validator
+    //     runs (9x17 fits, spawn-connected). Any hands-on lock or door front
+    //     still cut off gets a guaranteed STANDING CHAMBER plus a tunnel
+    //     into the spawn-connected component, verified by recomputing the
+    //     mask. This closes the long tail of organic-junction rolls no
+    //     static geometry can promise away.
+    {
+      let wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
+      const wizNear = (x: number, y: number, r: number): boolean => {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const X = Math.floor(x) + dx,
+              Y = Math.floor(y) + dy;
+            if (X > 0 && Y > 0 && X < WIDTH && Y < HEIGHT && wiz[X + Y * WIDTH]) return true;
+          }
+        }
+        return false;
+      };
+      // mirrors the validator's hands-on class exactly: sensor/counterweight/
+      // plug/buoy are machine-fed, chargelatch answers to projectiles
+      const HANDS_ON = new Set(['plate', 'lever', 'brazier', 'scale']);
+      // nearest spawn-connected wizard cell whose STRAIGHT LINE from the
+      // lock crosses no Metal — carvePocket spares Metal, so a tunnel aimed
+      // through a door slab / vault shell / well casing is silently severed
+      const metalOnLine = (x0: number, y0: number, x1: number, y1: number): boolean => {
+        const steps2 = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 2));
+        for (let k = 0; k <= steps2; k++) {
+          const X = Math.round(x0 + ((x1 - x0) * k) / steps2);
+          const Y = Math.round(y0 + ((y1 - y0) * k) / steps2);
+          for (let dy = -6; dy <= 6; dy += 3) {
+            for (let dx = -6; dx <= 6; dx += 3) {
+              const XX = X + dx,
+                YY = Y + dy;
+              if (XX < 0 || XX >= WIDTH || YY < 0 || YY >= HEIGHT) continue;
+              if (ctx.world.types[XX + YY * WIDTH] === Cell.Metal) return true;
+            }
+          }
+        }
+        return false;
+      };
+      const nearestWiz = (x: number, y: number): { x: number; y: number } | null => {
+        let fallback: { x: number; y: number } | null = null;
+        for (let r = 6; r <= 1200; r += 3) {
+          for (let a = 0; a < 24; a++) {
+            const ang = (a / 24) * Math.PI * 2;
+            const X = Math.floor(x + Math.cos(ang) * r),
+              Y = Math.floor(y + Math.sin(ang) * r);
+            if (X > 1 && Y > 1 && X < WIDTH - 1 && Y < HEIGHT - 1 && wiz[X + Y * WIDTH]) {
+              if (!metalOnLine(x, y, X, Y)) return { x: X, y: Y };
+              fallback ??= { x: X, y: Y };
+            }
+          }
+        }
+        return fallback;
+      };
+      // Rescue one STANDING point: a 15x20 rect chamber above it guarantees
+      // fitting feet BY CONSTRUCTION (a disc tunnel only guarantees fits on
+      // its centerline — a Metal pedestal in the tube mouth or a rock spire
+      // a row above disc reach silently voids it; both happened). Then a
+      // tunnel from the chamber joins the spawn component; verify by
+      // recomputing the mask, and fall back to a tunnel aimed at the spawn.
+      const SWEEP = { halfW: 7, up: 21, down: 9 }; // gauge-guaranteed gallery
+      const rescueAt = (px: number, py: number, pass: () => boolean): boolean => {
+        carveRect(ctx.world, px - 7, py - 20, px + 7, py - 1);
+        const target = nearestWiz(px, py - 10) ?? {
+          x: Math.floor(spawn.x),
+          y: Math.floor(spawn.y) - 4,
+        };
+        tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP);
+        wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
+        if (pass()) return true;
+        tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP);
+        wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
+        return pass();
+      };
+      let rescued = 0;
+      for (const m of mechanisms) {
+        if (m.kind === 'door') {
+          const pass = (): boolean =>
+            wizNear(m.x - 2, m.y + m.h - 2, 8) || wizNear(m.x + m.w + 1, m.y + m.h - 2, 8);
+          if (pass()) continue;
+          rescued++;
+          if (!rescueAt(m.x - 6, m.y + m.h - 2, pass)) {
+            rescueAt(m.x + m.w + 5, m.y + m.h - 2, pass);
+          }
+        } else if (HANDS_ON.has(m.kind)) {
+          const pass = (): boolean => wizNear(m.x, m.y - 2, 6);
+          if (pass()) continue;
+          rescued++;
+          rescueAt(m.x, m.y, pass);
+        }
+      }
+      if (import.meta.env.DEV && rescued > 0) {
+        console.warn(`[gen] ${def.id}: gauge-rescued ${rescued} cut-off lock(s)`);
+      }
+      stage('gauge-rescue');
+    }
 
     if (import.meta.env.DEV) {
       const total = performance.now() - tStart;

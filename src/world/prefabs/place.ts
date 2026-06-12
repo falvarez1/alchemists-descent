@@ -53,6 +53,7 @@ export function placePrefabs(
   sink: InstantiationSink,
   budget: PrefabBudget,
   site: { spawn: { x: number; y: number }; wellX: number },
+  fits?: Uint8Array,
 ): PlacedPrefab[] {
   const world = ctx.world;
   const placed: PlacedPrefab[] = [];
@@ -106,7 +107,7 @@ export function placePrefabs(
       at.y0 + prefab.h + 1,
       'prefab:' + prefab.id,
     );
-    openAnchors(ctx, rng, graph, prefab, at.x0, at.y0);
+    openAnchors(ctx, rng, graph, prefab, at.x0, at.y0, fits);
     instantiateObjects(
       ctx,
       sink,
@@ -267,6 +268,7 @@ function openAnchors(
   prefab: PrefabDef,
   x0: number,
   y0: number,
+  fits?: Uint8Array,
 ): void {
   const world = ctx.world;
   for (const a of prefab.anchors ?? []) {
@@ -274,13 +276,15 @@ function openAnchors(
     const [dx, dy] = DIRS[a.dir];
     const ax = x0 + a.x,
       ay = y0 + a.y;
-    carvePocket(world, ax, ay, halfW, halfW);
+    // ellipse law: a 9x17 box needs (4.5/rx)^2 + (8.5/ry)^2 <= 1 — circular
+    // mouths at the anchor gauge are marginal, so stretch them vertically
+    carvePocket(world, ax, ay, halfW, halfW + 2);
     const mx = Math.min(WIDTH - 7, Math.max(6, ax + dx * (halfW + 1)));
     const my = Math.min(HEIGHT - 12, Math.max(26, ay + dy * (halfW + 1)));
-    carvePocket(world, mx, my, halfW, halfW);
+    carvePocket(world, mx, my, halfW, halfW + 2);
     // the connector inherits the anchor's gauge: the player's collision box
     // is 9x17, so a WALK-IN anchor (halfW >= 9) gets a walk-in tunnel
-    const steps = connectToCaves(world, rng, graph, mx, my, Math.max(4, halfW - 1));
+    const steps = connectToCaves(world, rng, graph, mx, my, Math.max(4, halfW + 1), fits);
 
     if (a.kind === 'sealed') {
       const skin = breachSkinCell(ctx.state.currentBiome);

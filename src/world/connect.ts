@@ -36,14 +36,45 @@ export function carvePocket(
 }
 
 /**
+ * Rectangular hollow; Metal survives, same bounds guard as carvePocket.
+ * A RECT (not an ellipse) is the standing-room primitive: a disc of radius r
+ * guarantees a 9x17 clear box only at its exact center, but a 15x20 rect
+ * guarantees fitting feet across its whole middle — the gauge-rescue pass
+ * carves one above a cut-off lock so the wizard provably has somewhere to
+ * STAND inside the validator's check window.
+ */
+export function carveRect(
+  world: World,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): void {
+  for (let Y = y0; Y <= y1; Y++) {
+    for (let X = x0; X <= x1; X++) {
+      if (X < 2 || X >= WIDTH - 2 || Y < 2 || Y >= HEIGHT - 8) continue;
+      const i = world.idx(X, Y);
+      if (world.types[i] !== Cell.Metal) {
+        world.types[i] = Cell.Empty;
+        world.colors[i] = 0x08080c;
+      }
+    }
+  }
+}
+
+/**
  * REACHABILITY GUARANTEE: every carved structure must join the cave network.
  * Winds a tunnel from a structure's mouth to the nearest sizable open
  * region's centroid (Metal is never breached, so vault shells and water
  * tanks survive their own approach tunnels).
  *
- * `radius` defaults to the legacy 4 (a 9-tall crawl — fine for secrets and
- * loot pockets the player digs into). WALKABLE connections need >= 9: the
- * player's collision box is 9x17, every cell of it must be clear.
+ * `radius` defaults to 11: the player's collision box is 9x17 and EVERY
+ * cell of it must be clear — an axis-aligned 9x17 box needs a circle of
+ * radius >= 9.62 just to EXIST inside it, and the walk's jitter plus
+ * diagonal runs eat the rest of the margin (radius 9 fragments into
+ * disconnected fit-islands; the legacy radius-4 crawl stranded the player
+ * outside his own checkpoints). Pass a smaller radius only for connections
+ * that are deliberately dig-gated.
  *
  * Returns the carve-step centers in walk order (first = nearest the mouth),
  * so callers can reseal part of the tunnel (sealed prefab anchors).
@@ -54,7 +85,8 @@ export function connectToCaves(
   graph: RegionGraph,
   fromX: number,
   fromY: number,
-  radius = 4,
+  radius = 12,
+  fits?: Uint8Array,
 ): Array<[number, number]> {
   const steps: Array<[number, number]> = [];
   // Target the nearest MAIN-PATH region: those form the spawn<->exit artery,
@@ -75,10 +107,32 @@ export function connectToCaves(
     if (best) break;
   }
   if (!best) return steps;
-  // A concave region's centroid can sit in solid rock — resolve to the
-  // nearest actually-open cell so the tunnel provably touches the cave.
   let tx = Math.floor(best.cx),
     ty = Math.floor(best.cy);
+  // The centroid of a sprawling region can sit in rock OR in a box-thin
+  // appendix the player cannot occupy. With a fits mask, resolve to the
+  // nearest WIZARD-FIT cell — the tunnel then provably joins the network
+  // where the player can actually BE.
+  if (fits) {
+    let fx = -1,
+      fy = -1;
+    outerF: for (let r = 0; r <= 90; r += 2) {
+      for (let a = 0; a < 16; a++) {
+        const ang = (a / 16) * Math.PI * 2;
+        const X = Math.floor(tx + Math.cos(ang) * r),
+          Y = Math.floor(ty + Math.sin(ang) * r);
+        if (X > 1 && Y > 1 && X < WIDTH - 1 && Y < HEIGHT - 1 && fits[X + Y * WIDTH]) {
+          fx = X;
+          fy = Y;
+          break outerF;
+        }
+      }
+    }
+    if (fx >= 0) {
+      tx = fx;
+      ty = fy;
+    }
+  }
   if (world.inBounds(tx, ty) && world.types[world.idx(tx, ty)] !== Cell.Empty) {
     outer: for (let r = 2; r <= 50; r += 2) {
       for (const [ddx, ddy] of [
@@ -94,6 +148,31 @@ export function connectToCaves(
       }
     }
   }
+  return tunnelTo(world, rng, fromX, fromY, tx, ty, radius);
+}
+
+/** The raw tunnel walk: jittered march from (fromX, fromY) to an EXPLICIT
+ *  target, carving radius-sized pockets each step (Metal survives).
+ *
+ *  `sweep` additionally drags a rect along the path — a GAUGE-GUARANTEED
+ *  gallery. A disc chain only promises 9x17 clearance exactly on its
+ *  centerline, so a thin Metal survivor (a latch pedestal) or a rock spire
+ *  one row above disc reach silently severs the fits corridor. A swept rect
+ *  with a flat ceiling `up` rows above the centerline lets the wizard step
+ *  OVER bumps the carve must spare: feet on a 1-tall Metal pedestal still
+ *  have 17 clear rows overhead. Used by the gauge-rescue pass; ordinary
+ *  connectors stay disc-carved for the organic look. */
+export function tunnelTo(
+  world: World,
+  rng: Rng,
+  fromX: number,
+  fromY: number,
+  tx: number,
+  ty: number,
+  radius: number,
+  sweep?: { halfW: number; up: number; down: number },
+): Array<[number, number]> {
+  const steps: Array<[number, number]> = [];
   let x = fromX,
     y = fromY,
     guard = 0;
@@ -104,6 +183,9 @@ export function connectToCaves(
     x = Math.floor(clamp(x, radius + 2, WIDTH - radius - 3));
     y = Math.floor(clamp(y, 26, HEIGHT - 12));
     carvePocket(world, x, y, radius, radius);
+    if (sweep) {
+      carveRect(world, x - sweep.halfW, y - sweep.up, x + sweep.halfW, y + sweep.down);
+    }
     steps.push([x, y]);
   }
   return steps;

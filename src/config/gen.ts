@@ -442,7 +442,7 @@ export function fungalParams(): FungalParams {
     links: 6,
     rMin: 12,
     rMax: 24,
-    throatW: 8,
+    throatW: 25, // radius 12: a 9x17 box needs r >= 9.62 + wobble slack
     artery: {
       baseFrac: 0.5,
       baseJitter: 60,
@@ -458,7 +458,7 @@ export function fungalParams(): FungalParams {
     caPasses: 5,
     spawnRadius: 26,
     minArea: 350,
-    tunnelRadius: 6,
+    tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
   };
 }
 
@@ -468,8 +468,8 @@ export function crevasseParams(): CrevasseParams {
     tunnels: {
       countMin: 6,
       countMax: 9,
-      radiusMin: 6,
-      radiusMax: 9,
+      radiusMin: 11,
+      radiusMax: 13,
       turn: 0.9,
       gravityBias: 1.3,
       branchChance: 0.015,
@@ -480,7 +480,7 @@ export function crevasseParams(): CrevasseParams {
     shelves: { count: 26, lenMin: 26, lenMax: 60, radius: 4 },
     spawnRadius: 26,
     minArea: 500,
-    tunnelRadius: 6,
+    tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
   };
 }
 
@@ -531,7 +531,7 @@ export function galleryParams(): GalleryParams {
     },
     spawnRadius: 26,
     minArea: 300,
-    tunnelRadius: 7,
+    tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
   };
 }
 
@@ -543,16 +543,16 @@ export function scaffoldParams(): ScaffoldParams {
       jitter: 22,
       roomWFrac: 0.62,
       roomHFrac: 0.55,
-      corridorW: 9,
+      corridorW: 26, // CA roughening eats ~3 per edge; >= 20 must survive
       skipChance: 0.1,
     },
     sprinkle: 0.05,
     caPasses: 2,
     shaftEvery: 2,
-    shaftHalfW: 5,
+    shaftHalfW: 10,
     spawnRadius: 26,
     minArea: 500,
-    tunnelRadius: 6,
+    tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
   };
 }
 
@@ -618,7 +618,7 @@ export function vaultParams(): VaultParams {
     spawnRadius: 26,
     // CA-consolidated geode blobs cluster just under 500 cells — join them
     minArea: 220,
-    tunnelRadius: 6,
+    tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
   };
 }
 
@@ -633,7 +633,7 @@ export function tubeParams(): TubeParams {
       countMin: 10,
       countMax: 14,
       steps: 360,
-      radiusMin: 8,
+      radiusMin: 11,
       radiusMax: 14,
       turn: 0.7,
       gravityBias: 0.35,
@@ -646,7 +646,7 @@ export function tubeParams(): TubeParams {
     chambers: { count: 20, rMin: 9, rMax: 16, lobes: 4, xMargin: 60, yMin: 100, ySpanOff: 180 },
     spawnRadius: 26,
     minArea: 300,
-    tunnelRadius: 7,
+    tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
   };
 }
 

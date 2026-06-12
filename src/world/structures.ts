@@ -54,6 +54,7 @@ export function placeStructures(
   spawn: { x: number; y: number },
   cauldron: { x: number; y: number } | null,
   ledger: PlacementLedger,
+  fits?: Uint8Array,
 ): {
   pickups: Pickup[];
   portal: ExitPortal | null;
@@ -83,13 +84,21 @@ export function placeStructures(
    * carved structure must join the cave network.
    */
   const connectToCaves = (fromX: number, fromY: number): void => {
-    connectToCavesFrom(w, rng, graph, fromX, fromY);
+    connectToCavesFrom(w, rng, graph, fromX, fromY, 12, fits);
   };
 
   // ---- Exit portal: a carved shrine right above the well's seal plug ----
   const portalX = exit.x;
   const portalY = exit.sealY - 10;
-  carvePocket(portalX, portalY, 11, 8);
+  carvePocket(portalX, portalY, 26, 12); // wide: spans the well casing columns
+  // walk-in ramps: open channels from the floor strip up into the shrine on
+  // both flanks, OUTSIDE the casing (carvePocket never breaches its Metal)
+  carvePocket(portalX - 22, portalY + 6, 8, 15);
+  carvePocket(portalX + 22, portalY + 6, 8, 15);
+  // ...and the shrine earns its own tunnel to the network — the floor strip
+  // is not guaranteed to be wizard-connected to spawn on every seed
+  connectToCaves(portalX - 22, portalY - 2);
+  connectToCaves(portalX + 22, portalY - 2);
   // stone frame pillars
   for (let dy = 0; dy < 9; dy++) {
     for (const side of [-7, 7]) {
@@ -117,7 +126,7 @@ export function placeStructures(
     }
     const kx = Math.floor(best ? best.cx : WIDTH - spawn.x);
     const kyBase = Math.floor(best ? best.cy : HEIGHT * 0.5);
-    carvePocket(kx, kyBase, 9, 7);
+    carvePocket(kx, kyBase, 11, 12); // walk-in promise (ellipse law 0.67)
     const ky = settleY(kx, kyBase);
     // gilded tell: a ring of gold flecks around the vault mouth
     for (let i = 0; i < 14; i++) {
@@ -215,23 +224,23 @@ export function placeStructures(
   //      a pressure plate, a lever, or a fire brazier placed just outside ----
   const FLOOR_BAND = HEIGHT - 52;
   for (let vaultIdx = 0; vaultIdx < 1 + (rng.next() < 0.5 ? 1 : 0); vaultIdx++) {
-    let vx = 80 + Math.floor(rng.next() * (WIDTH - 160));
+    let vx = 130 + Math.floor(rng.next() * (WIDTH - 260));
     for (let a = 0; a < 12; a++) {
       if (Math.abs(vx - spawn.x) > 220 && Math.abs(vx - portalX) > 160) break;
-      vx = 80 + Math.floor(rng.next() * (WIDTH - 160));
+      vx = 130 + Math.floor(rng.next() * (WIDTH - 260));
     }
     let vy = Math.floor(HEIGHT * (0.3 + rng.next() * 0.42));
     // Reserved-ground dodge (inert while the ledger is empty): re-roll the
     // vault site while its widest possible extent overlaps a reserved rect.
     // Bounded, then place anyway — a vault is never silently skipped.
     for (let a = 0; a < 24 && ledger.intersects(vx - 44, vy - 8, vx + 44, vy + 12); a++) {
-      vx = 80 + Math.floor(rng.next() * (WIDTH - 160));
+      vx = 130 + Math.floor(rng.next() * (WIDTH - 260));
       vy = Math.floor(HEIGHT * (0.3 + rng.next() * 0.42));
     }
     // chamber: carved room with a stone floor
-    carvePocket(vx, vy + 2, 13, 9);
+    carvePocket(vx, vy, 14, 12); // floor at the pocket BOTTOM: >= 22 above it
     for (let dx = -13; dx <= 13; dx++) {
-      const Y = vy + 9;
+      const Y = vy + 11;
       if (w.inBounds(vx + dx, Y) && w.types[w.idx(vx + dx, Y)] === Cell.Empty) {
         const i = w.idx(vx + dx, Y);
         w.types[i] = Cell.Stone;
@@ -239,32 +248,32 @@ export function placeStructures(
       }
     }
     // loot
-    pickups.push(makePickup('chest', vx, vy + 8));
-    if (rng.next() < 0.5) pickups.push(makePickup('heart', vx + 6, vy + 8));
+    pickups.push(makePickup('chest', vx, vy + 10));
+    if (rng.next() < 0.5) pickups.push(makePickup('heart', vx + 6, vy + 10));
 
     // entry corridor on a random side, sealed with a metal door
     const side = rng.next() < 0.5 ? -1 : 1;
     const doorX = vx + side * 13;
     for (let s = 0; s < 16; s++) {
-      carvePocket(doorX + side * s, vy + 4 + Math.floor(Math.sin(s * 0.4) * 2), 5, 5);
+      carvePocket(doorX + side * s, vy + 2 + Math.floor(Math.sin(s * 0.4) * 2), 10, 12);
     }
-    const door = makeDoor(ctx, mechanisms, Math.min(doorX, doorX + side * 2) - 1, vy - 2, 4, 12);
+    const door = makeDoor(ctx, mechanisms, Math.min(doorX, doorX + side * 2) - 1, vy - 8, 4, 22);
     // mechanism alternates: plate puzzles and lever/brazier puzzles.
     // The trigger gets its own carved antechamber with a stone shelf —
     // contiguous with the corridor, so it is always standing in walkable
     // space instead of wherever settleY happened to drop it.
     const mechRoll = (vaultIdx + (rng.next() < 0.5 ? 0 : 1)) % 3;
     const mx = Math.floor(clamp(doorX + side * 22, 10, WIDTH - 11));
-    carvePocket(mx, vy + 1, 8, 8);
-    for (let dx = -8; dx <= 8; dx++) {
-      const Y = vy + 8;
+    carvePocket(mx, vy, 11, 12); // shelf at the pocket BOTTOM (no mid-bar)
+    for (let dx = -10; dx <= 10; dx++) {
+      const Y = vy + 11;
       if (w.inBounds(mx + dx, Y) && w.types[w.idx(mx + dx, Y)] === Cell.Empty) {
         const i = w.idx(mx + dx, Y);
         w.types[i] = Cell.Stone;
         w.colors[i] = stoneColor();
       }
     }
-    const my = vy + 7;
+    const my = vy + 10;
     if (mechRoll === 0) makePlate(w, mechanisms, Math.floor(clamp(mx - 3, 4, WIDTH - 12)), my + 1, 7, door);
     else if (mechRoll === 1) makeLever(mechanisms, mx, my, door);
     else makeBrazier(w, mechanisms, mx, my, door);
@@ -281,13 +290,13 @@ export function placeStructures(
     const vx = 40 + Math.floor(rng.next() * (WIDTH - 80));
     const vy = 90 + Math.floor(rng.next() * (FLOOR_BAND - 150));
     // reserved ground (prefab footprints etc.) is off limits
-    if (ledger.intersects(vx - 12, vy - 9, vx + 12, vy + 9)) continue;
+    if (ledger.intersects(vx - 14, vy - 13, vx + 14, vy + 13)) continue;
     // need a MOSTLY solid region for the shell (>=90% rock, never overlap metal)
     let rock = 0,
       cells = 0,
       collide = false;
-    for (let dy = -9; dy <= 9 && !collide; dy++) {
-      for (let dx = -12; dx <= 12; dx++) {
+    for (let dy = -13; dy <= 13 && !collide; dy++) {
+      for (let dx = -14; dx <= 14; dx++) {
         if (!w.inBounds(vx + dx, vy + dy)) {
           collide = true;
           break;
@@ -303,12 +312,12 @@ export function placeStructures(
     }
     if (collide || rock / cells < 0.9) continue;
     // shell: metal box, interior hollow, stone door on the left wall
-    for (let dy = -8; dy <= 8; dy++) {
-      for (let dx = -11; dx <= 11; dx++) {
+    for (let dy = -12; dy <= 12; dy++) {
+      for (let dx = -13; dx <= 13; dx++) {
         const ax2 = vx + dx,
           ay2 = vy + dy;
         const i = w.idx(ax2, ay2);
-        const edge = Math.abs(dx) > 9 || Math.abs(dy) > 6;
+        const edge = Math.abs(dx) > 11 || Math.abs(dy) > 10;
         if (edge) {
           w.types[i] = Cell.Metal;
           const m2 = 0.8 + hash2(ax2, ay2, 99) * 0.3;
@@ -320,8 +329,8 @@ export function placeStructures(
       }
     }
     const doorCells: Array<[number, number]> = [];
-    for (let dy = -4; dy <= 6; dy++) {
-      for (let dx = -11; dx <= -10; dx++) {
+    for (let dy = -6; dy <= 10; dy++) {
+      for (let dx = -13; dx <= -12; dx++) {
         const ax2 = vx + dx,
           ay2 = vy + dy;
         const i = w.idx(ax2, ay2);
@@ -331,16 +340,16 @@ export function placeStructures(
       }
     }
     // loot inside
-    pickups.push(makePickup('chest', vx + 3, vy + 5));
+    pickups.push(makePickup('chest', vx + 3, vy + 9));
     pickups.push(
-      makePickup('potion', vx - 3, vy + 5, {
+      makePickup('potion', vx - 3, vy + 9, {
         potion: POTION_KINDS[Math.floor(rng.next() * POTION_KINDS.length)],
       }),
     );
-    if (rng.next() < 0.5) pickups.push(makePickup('heart', vx, vy + 5));
+    if (rng.next() < 0.5) pickups.push(makePickup('heart', vx, vy + 9));
     for (let g3 = 0; g3 < 14; g3++) {
       const gx2 = vx - 6 + Math.floor(rng.next() * 13),
-        gy2 = vy + 5 + Math.floor(rng.next() * 2);
+        gy2 = vy + 9 + Math.floor(rng.next() * 2);
       if (w.inBounds(gx2, gy2) && w.types[w.idx(gx2, gy2)] === Cell.Empty) {
         const i = w.idx(gx2, gy2);
         w.types[i] = Cell.Gold;
@@ -377,8 +386,8 @@ export function placeStructures(
     runeVaults.push({ rx, ry: ry - 2, door: doorCells, active: false });
     // approach antechamber outside the stone door, tunneled to the caves —
     // once the rune is struck and the door dissolves, you walk straight in
-    carvePocket(vx - 15, vy + 2, 4, 5);
-    connectToCaves(vx - 16, vy + 2);
+    carvePocket(vx - 20, vy + 2, 9, 12);
+    connectToCaves(vx - 21, vy + 2);
     vPlaced++;
   }
 
@@ -397,7 +406,7 @@ export function placeStructures(
       pTries++;
       const rockMin = pTries < 4000 ? 0.82 : pTries < 7000 ? 0.5 : 0;
       const clearMin = pTries < 4000 ? 160 : pTries < 7000 ? 100 : 60;
-      const cand = 60 + Math.floor(rng.next() * (WIDTH - 120));
+      const cand = 130 + Math.floor(rng.next() * (WIDTH - 260));
       const candY = 100 + Math.floor(rng.next() * (HEIGHT - 280));
       if (Math.abs(cand - spawn.x) < clearMin || Math.abs(cand - portalX) < clearMin * 0.75)
         continue;
@@ -430,28 +439,28 @@ export function placeStructures(
     if (px2 >= 0) {
       const archetype = (def.depth + Math.floor(rng.next() * 2)) % 4;
       // main chamber + sealed loot pocket on the right
-      carvePocket(px2, py2, 16, 9);
+      carvePocket(px2, py2, 16, 12); // floor at the pocket BOTTOM
       for (let dx = -16; dx <= 16; dx++) {
-        const Y = py2 + 9;
+        const Y = py2 + 11;
         if (w.inBounds(px2 + dx, Y) && w.types[w.idx(px2 + dx, Y)] === Cell.Empty) {
           const i = w.idx(px2 + dx, Y);
           w.types[i] = Cell.Stone;
           w.colors[i] = stoneColor();
         }
       }
-      carvePocket(px2 + 24, py2 + 2, 7, 6);
-      const door = makeDoor(ctx, mechanisms, px2 + 15, py2 - 4, 3, 13);
-      pickups.push(makePickup('chest', px2 + 24, py2 + 6));
+      carvePocket(px2 + 26, py2 + 1, 10, 12);
+      const door = makeDoor(ctx, mechanisms, px2 + 15, py2 - 9, 3, 20);
+      pickups.push(makePickup('chest', px2 + 26, py2 + 9));
       pickups.push(
-        makePickup('goldpile', px2 + 27, py2 + 6, { amount: 30 + Math.floor(rng.next() * 30) }),
+        makePickup('goldpile', px2 + 29, py2 + 9, { amount: 30 + Math.floor(rng.next() * 30) }),
       );
       pickups.push(
-        makePickup('tome', px2 + 21, py2 + 6, {
+        makePickup('tome', px2 + 23, py2 + 9, {
           card: TOME_POOL[Math.floor(rng.next() * TOME_POOL.length)],
         }),
       );
 
-      const floorY = py2 + 8;
+      const floorY = py2 + 10;
       if (archetype === 0) {
         // SAND SCALE + a diggable sand hopper in the ceiling above the pan
         makeScale(w, mechanisms, px2 - 10, floorY, 7, 24, door);
