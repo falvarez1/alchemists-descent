@@ -507,6 +507,68 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     if (doused && frameCount % 3 === 0) {
       P(((frameCount / 3) % 17) - 8, 20 + ((frameCount / 7) % 3), 0.7, 0.74, 0.78);
     }
+  } else if (e.kind === 'leviathan') {
+    // --- THE SUNKEN LEVIATHAN: an armored deep-fish with an angler's lamp ---
+    const lx2 = e.x + (e.fx || 0);
+    const ldrv = lx2 - (e._px === undefined ? lx2 : e._px);
+    e._px = lx2;
+    e._svx = (e._svx || 0) * 0.6 + ldrv * 0.4;
+    const dir = Math.abs(e._svx) > 0.05 ? Math.sign(e._svx) : look;
+    const sub = e.submerged === true;
+    // swimming undulates; beached flops in heaving spasms
+    const swim = Math.sin(frameCount * (sub ? 0.12 : 0.3) + e.bobPhase);
+    const flop = sub ? 0 : Math.round(Math.abs(swim) * 2);
+    const coiled = (e.windup ?? 0) > 0;
+    const A: RGB = [0.1, 0.3, 0.34], AD: RGB = [0.05, 0.18, 0.22], AL: RGB = [0.2, 0.46, 0.5];
+    const BELLY: RGB = [0.5, 0.62, 0.6];
+
+    // body: a long armored hull, dy 2..12, tapering toward the tail
+    for (let dy = 2; dy <= 12; dy++) {
+      const t = (dy - 7) / 5.5; // -1 top .. +1 (rows from spine)
+      const w2 = Math.max(2, Math.round(9 * Math.sqrt(Math.max(0, 1 - t * t)))) - (coiled ? 1 : 0);
+      for (let dx = -w2; dx <= w2; dx++) {
+        const edge = Math.abs(dx) >= w2 - 0;
+        const belly = dy <= 4;
+        P(dx + (sub ? 0 : (frameCount % 19 < 9 ? flop : -flop)), dy, ...(edge ? AD : belly ? BELLY : A));
+      }
+    }
+    // armor ridge plates along the spine
+    for (let k = -7; k <= 7; k += 2) P(k, 12, ...AL);
+    // dorsal spines
+    for (const sx2 of [-5, -1, 3]) {
+      P(sx2, 13, ...AD);
+      P(sx2, 14, ...AL);
+    }
+    // tail fin at the rear, sweeping with the swim phase
+    const tailY = Math.round(swim * (sub ? 3 : 1));
+    for (let k = 0; k <= 3; k++) {
+      P(-dir * (10 + k), 7 + tailY + (k % 2), ...AD);
+      P(-dir * (10 + k), 9 + tailY - (k % 2), ...AD);
+      P(-dir * (10 + k), 8 + tailY, ...A);
+    }
+    // pectoral fin
+    P(dir * 2, 1 + (frameCount % 14 < 7 ? 0 : 1), ...AD);
+    P(dir * 3, 1, ...AD);
+    // jaw: shut while cruising, agape while coiled or mid-swoop
+    const agape = coiled || (e.swoop ?? 0) > 0;
+    for (let k = 0; k <= 2; k++) P(dir * (8 + k), agape ? 7 : 5, ...AD);
+    if (agape) {
+      for (let k = 0; k <= 2; k++) P(dir * (8 + k), 3, ...AD);
+      P(dir * 8, 6, 0.85, 0.9, 0.88); // teeth glint
+      P(dir * 9, 4, 0.85, 0.9, 0.88);
+    }
+    // the eye: a cold ember that locks on
+    PE(dir * 5, 9, 0.95 * boost, 0.6 * boost, 0.18);
+    // THE LURE: a stalk over the brow, bulb pulsing cyan — its own light
+    const lure = 0.65 + Math.sin(frameCount * 0.07 + e.bobPhase) * 0.35;
+    P(dir * 4, 13, ...AD);
+    P(dir * 5, 14, ...AD);
+    PE(dir * 6, 15, 0.25 * lure * boost, 0.85 * lure * boost, lure * boost);
+    PE(dir * 7, 15, 0.18 * lure * boost, 0.6 * lure * boost, 0.8 * lure * boost);
+    // beached: it leaks — dark water sweats off the hull
+    if (!sub && frameCount % 4 === 0) {
+      P(((frameCount / 4) % 15) - 7, 1, 0.3, 0.5, 0.62);
+    }
   }
 
   // HP bar above damaged enemies

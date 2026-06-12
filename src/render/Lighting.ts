@@ -366,6 +366,10 @@ export class Lighting implements LightField {
           e.status.wet > 0 ? 0.3 : 0.85 + Math.sin(ctx.state.frameCount * 0.09 + e.bobPhase) * 0.25;
         this.seedLight(e.x, e.y - 12, heat * 2.0, heat * 1.2, heat * 0.25);
         this.seedLight(e.x, e.y - 22, heat * 0.9, heat * 0.55, heat * 0.12);
+      } else if (e.kind === 'leviathan') {
+        // the angler's lamp: a cold pulse that betrays it through the water
+        const lure = 0.65 + Math.sin(ctx.state.frameCount * 0.07 + e.bobPhase) * 0.35;
+        this.seedLight(e.x, e.y - 14, lure * 0.4, lure * 1.1, lure * 1.4);
       } else if (e.kind === 'golem') {
         const pulse = 0.7 + Math.sin(ctx.state.frameCount * 0.12 + e.bobPhase) * 0.3;
         this.seedLight(e.x, e.y - 10, pulse * 1.25, pulse * 0.95, pulse * 0.2);

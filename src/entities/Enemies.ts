@@ -1,6 +1,6 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
-import type { Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
+import type { CardId, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { Cell } from '@/sim/CellType';
@@ -36,6 +36,9 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   colossus: { hp: 520, halfW: 13, h: 26, bounty: 600, gore: Cell.Stone, goreFn: stoneColor },
   // Wave F: slime egg clutch — destroy it now or fight what hatches later
   eggs: { hp: 14, halfW: 4, h: 5, bounty: 25, gore: Cell.Slime, goreFn: slimeColor },
+  // The Sunken Leviathan: d4's mid-boss. Water is its armor — drain the
+  // cistern or electrify it (it bleeds CONDUCTOR into its own pool).
+  leviathan: { hp: 460, halfW: 9, h: 14, bounty: 450, gore: Cell.Blood, goreFn: bloodColor },
 };
 
 /** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
@@ -46,6 +49,8 @@ const STATUS_IMMUNE: Partial<
   wisp: { frozen: true },
   // The kiln cannot burn or freeze — but it CAN be doused (wet = thermal shock)
   colossus: { burning: true, frozen: true },
+  // A soaked hide never catches — but cold stiffens it and charge cooks it
+  leviathan: { burning: true },
 };
 
 export class Enemies implements EnemyControlApi {
@@ -107,6 +112,17 @@ export class Enemies implements EnemyControlApi {
 
   damage(e: Enemy, amount: number, kx: number, ky: number): void {
     const ctx = this.ctx;
+    // WATER IS THE LEVIATHAN'S ARMOR: while the body is actually in water
+    // (cell census, not the wet meter) hits glance off — and SAY so, every
+    // time, with a cold shimmer and a dull plink. Drain the pool.
+    if (e.kind === 'leviathan' && e.submerged === true) {
+      amount *= 0.25;
+      ctx.particles.burst(e.x, e.y - 7, 3, null, () => packRGB(120, 220, 255), 1.2, {
+        glow: 1.8,
+        grav: -0.01,
+      });
+      ctx.audio.tone(820, 520, 0.05, 'triangle', 0.07);
+    }
     e.hp -= amount;
     e.flash = 6;
     e.vx += kx || 0;
@@ -165,6 +181,35 @@ export class Enemies implements EnemyControlApi {
         ctx.player.hp = Math.min(ctx.player.maxHp, ctx.player.hp + 2);
       }
       ctx.waves.kills++;
+      return;
+    }
+    // The Sunken Leviathan: a MID-boss — the run continues, richer by a
+    // heart and a card. The pool it dies in inherits a final bloom of gore.
+    if (e.kind === 'leviathan') {
+      ctx.particles.burst(e.x, e.y - 6, 46, Cell.Water, () => packRGB(40, 130, 210), 4.4);
+      ctx.particles.burst(e.x, e.y - 6, 34, Cell.Blood, bloodColor, 3.6);
+      ctx.particles.burst(e.x, e.y - 10, 18, null, () => packRGB(140, 230, 255), 3.0, {
+        glow: 2.2,
+        grav: -0.01,
+      });
+      splatterStain(ctx.world, e.x, e.y - 5, 12);
+      this.dropBounty(e, def);
+      const runtime = ctx.levels.current;
+      if (runtime && ctx.state.mode === 'play') {
+        const REWARD_CARDS: CardId[] = ['icelance', 'meteor', 'blackhole', 'triple', 'trigger'];
+        runtime.pickups.push(makePickup('heart', e.x - 5, e.y - 8));
+        runtime.pickups.push(
+          makePickup('tome', e.x + 5, e.y - 8, {
+            card: REWARD_CARDS[Math.floor(Math.random() * REWARD_CARDS.length)],
+          }),
+        );
+      }
+      ctx.audio.groan();
+      ctx.audio.squelch();
+      this.shakeAt(e.x, e.y, 0.035, 0.06);
+      ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 1.2);
+      ctx.waves.kills++;
+      ctx.events.emit('toast', { text: 'THE SUMP FALLS STILL' });
       return;
     }
     // The Kiln Colossus: the run ends here, loudly.
@@ -343,6 +388,51 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
+  /**
+   * The leviathan's ranged arm: it TEARS WATER OUT OF ITS OWN POOL and
+   * throws it (the powder mage's trick, aimed through a liquid). The level
+   * is the ammunition — every volley thins the very armor it hides in, and
+   * a drained basin leaves it nothing to throw.
+   */
+  private poolVolley(e: Enemy): void {
+    const ctx = this.ctx;
+    const world = ctx.world;
+    const player = ctx.player;
+    const ex = Math.floor(e.x),
+      ey = Math.floor(e.y) - 6;
+    const found: Array<{ x: number; y: number; d2: number }> = [];
+    for (let dy = -26; dy <= 26; dy += 2) {
+      for (let dx = -26; dx <= 26; dx += 2) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 > 676) continue;
+        const nx = ex + dx,
+          ny = ey + dy;
+        if (!world.inBounds(nx, ny)) continue;
+        if (world.types[world.idx(nx, ny)] === Cell.Water) found.push({ x: nx, y: ny, d2 });
+      }
+    }
+    found.sort((a, b) => a.d2 - b.d2);
+    const n = Math.min(12, found.length);
+    for (let k = 0; k < n; k++) {
+      const c = found[k];
+      const ci = world.idx(c.x, c.y);
+      const color = world.colors[ci];
+      world.types[ci] = Cell.Empty;
+      world.colors[ci] = EMPTY_COLOR;
+      const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (Math.random() - 0.5) * 0.2;
+      const spd = 3.2 + Math.random() * 0.9;
+      ctx.particles.spawn(c.x, c.y, Math.cos(aim) * spd, Math.sin(aim) * spd - 0.4, Cell.Water, color, 170, {
+        hostileDmg: 5,
+        glow: 0.5,
+        grav: 0.03,
+      });
+    }
+    if (n > 0) {
+      ctx.audio.noiseBurst(0.14, 900, 0.1, true);
+      this.shakeAt(e.x, e.y, 0.005, 0.03);
+    }
+  }
+
   private enemyEnvironmentDamage(e: Enemy): void {
     const ctx = this.ctx;
     const def = this.defs[e.kind];
@@ -404,6 +494,15 @@ export class Enemies implements EnemyControlApi {
           ctx.audio.tone(46, 110, 0.9, 'sawtooth', 0.22);
           ctx.audio.groan();
           this.shakeAt(e.x, e.y, 0.025, 0.04);
+        } else if (e.kind === 'leviathan') {
+          // a deep churn under the surface — the pool itself announces it
+          ctx.audio.tone(58, 30, 0.8, 'sine', 0.2);
+          ctx.audio.groan();
+          ctx.particles.burst(e.x, e.y - 14, 16, null, () => packRGB(150, 220, 255), 1.8, {
+            glow: 1.4,
+            grav: -0.03,
+          });
+          this.shakeAt(e.x, e.y, 0.02, 0.04);
         } else {
           ctx.audio.alert();
           ctx.particles.burst(e.x, e.y - def.h - 3, 3, null, () => packRGB(255, 245, 200), 0.8, {
@@ -911,6 +1010,157 @@ export class Enemies implements EnemyControlApi {
             e.attackCd = 170 + Math.floor(Math.random() * 50);
           }
         }
+      } else if (e.kind === 'leviathan') {
+        // ===== THE SUNKEN LEVIATHAN =====
+        // d4's mid-boss, the Kiln's mirror: WATER IS ITS ARMOR. Submerged it
+        // shrugs off hits (damage() reads e.submerged), swims fast, lunges,
+        // and throws its own pool at you. The cistern floor carries three
+        // sealed drain plugs — empty the basin and it is just meat gasping
+        // on the tiles. The pool is also one big conductor (so is the blood
+        // it sheds into it): a spark in the water cooks it from inside.
+        if (e.timer % 4 === 0) {
+          let waterN = 0;
+          for (let dy = 0; dy < def.h; dy += 3) {
+            for (let dx = -def.halfW; dx <= def.halfW; dx += 3) {
+              const X = e.x + dx,
+                Y = e.y - dy;
+              if (ctx.world.inBounds(X, Y) && ctx.world.types[ctx.world.idx(X, Y)] === Cell.Water)
+                waterN++;
+            }
+          }
+          e.submerged = waterN >= 8;
+        }
+        const sub = e.submerged === true;
+
+        // ELECTROCUTION: the doused-kiln mirror. Direct hp (bypasses the
+        // submersion shield — the water IS the delivery), visible arcs.
+        if (sub && e.status.electrified > 0) {
+          e.hp -= 1.1;
+          e.flash = Math.max(e.flash, 2);
+          if (e.hp <= 0) {
+            this.kill(e, 0, 0);
+            continue;
+          }
+          e.attackCd = Math.max(e.attackCd, 30);
+        }
+
+        if (sub) {
+          // weightless pursuit; a slow patrol sway when unaware
+          e.vx *= 0.96;
+          e.vy = e.vy * 0.9;
+          if (targetAlive && e.alerted && (e.windup ?? 0) === 0) {
+            if (e.timer % 2 === 0) {
+              e.vx += Math.sign(pdx) * 0.09;
+              e.vy += Math.sign(player.y - 6 - e.y) * 0.07;
+            }
+          } else {
+            e.vx += Math.cos(e.timer * 0.02 + e.bobPhase) * 0.02;
+            e.vy += Math.sin(e.timer * 0.05 + e.bobPhase) * 0.015;
+          }
+          e.vx = clamp(e.vx, -1.5, 1.5);
+          e.vy = clamp(e.vy, -0.9, 0.9);
+          // wake bubbles when it moves with intent
+          if (ctx.state.frameCount % 7 === 0 && Math.abs(e.vx) > 0.5) {
+            ctx.particles.spawn(
+              e.x - Math.sign(e.vx) * def.halfW,
+              e.y - 6 - Math.random() * 6,
+              -e.vx * 0.2,
+              -0.3 - Math.random() * 0.3,
+              null,
+              packRGB(170, 220, 250),
+              14,
+              { grav: -0.04 },
+            );
+          }
+        } else {
+          // BEACHED: gravity owns it. Heaving flops, each one a dying gasp.
+          e.vy += 0.34;
+          e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+          e.vx *= 0.92;
+          if (e.grounded && e.timer % 38 === 0) {
+            e.vy = -1.8;
+            e.vx = (targetAlive ? Math.sign(pdx) || 1 : Math.random() < 0.5 ? -1 : 1) * 0.85;
+            ctx.audio.squelch();
+            this.shakeAt(e.x, e.y, 0.012, 0.04);
+          }
+          if (ctx.state.frameCount % 11 === 0) {
+            ctx.particles.spawn(
+              e.x + (Math.random() - 0.5) * 10,
+              e.y - def.h + 2,
+              (Math.random() - 0.5) * 0.4,
+              -0.4,
+              null,
+              packRGB(150, 200, 230),
+              16,
+              { grav: -0.02 },
+            );
+          }
+        }
+
+        // LUNGE: a coiled flare, then a committed dart (can breach the
+        // surface — gravity reels the leap back into the pool)
+        if (
+          sub &&
+          targetAlive &&
+          e.attackCd === 0 &&
+          pDist < 90 &&
+          (e.windup ?? 0) === 0 &&
+          (e.swoop ?? 0) === 0
+        ) {
+          e.windup = 16;
+          ctx.audio.tone(70, 160, 0.5, 'sawtooth', 0.14);
+        }
+        if ((e.windup ?? 0) > 0) {
+          e.windup = (e.windup ?? 1) - 1;
+          e.vx *= 0.8;
+          e.vy *= 0.8;
+          if (e.windup === 0 && targetAlive) {
+            e.swoop = 18;
+            const a = Math.atan2(player.y - 8 - e.y, player.x - e.x);
+            e.vx = Math.cos(a) * 3.4;
+            e.vy = Math.sin(a) * 2.6;
+            ctx.audio.noiseBurst(0.18, 700, 0.12, true);
+          }
+        }
+        if ((e.swoop ?? 0) > 0) {
+          e.swoop = (e.swoop ?? 1) - 1;
+          if (!sub) e.vy += 0.12; // a breaching arc falls back home
+          if (targetAlive && e.attackCd === 0 && Math.abs(pdx) < 12 && Math.abs(pdy) < 16) {
+            // THE BITE
+            ctx.playerCtl.damage(16 * (e.dmgK ?? 1), Math.sign(pdx) * -4.2, -2.8);
+            e.attackCd = 140;
+            e.swoop = 0;
+          } else if (e.swoop === 0) {
+            e.attackCd = Math.max(e.attackCd, 90 + Math.floor(Math.random() * 40));
+          }
+        }
+
+        // POOL VOLLEY: the ranged arm — only while it HAS a pool
+        if (
+          sub &&
+          targetAlive &&
+          e.alerted &&
+          e.attackCd === 0 &&
+          pDist >= 90 &&
+          pDist < 320 &&
+          (e.windup ?? 0) === 0 &&
+          (e.swoop ?? 0) === 0
+        ) {
+          this.poolVolley(e);
+          e.attackCd = 150 + Math.floor(Math.random() * 40);
+        }
+
+        // contact graze outside the committed bite
+        if (
+          targetAlive &&
+          (e.swoop ?? 0) === 0 &&
+          e.attackCd < 100 &&
+          Math.abs(pdx) < 11 &&
+          Math.abs(pdy) < 14
+        ) {
+          ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * -3.0, -2.0);
+          e.attackCd = Math.max(e.attackCd, 120);
+        }
       } else if (e.kind === 'golem') {
         e.vy += 0.33;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
@@ -1072,7 +1322,8 @@ export class Enemies implements EnemyControlApi {
           e.fy -= sy;
         }
       } else {
-        const stepUp = e.kind === 'colossus' ? 3 : e.kind === 'golem' ? 2 : 1;
+        const stepUp =
+          e.kind === 'colossus' ? 3 : e.kind === 'golem' || e.kind === 'leviathan' ? 2 : 1;
         e.fx += e.vx;
         while (e.fx >= 1) {
           if (!ctx.physics.tryMoveEntity(e, 1, 0, def.halfW, def.h, stepUp)) {

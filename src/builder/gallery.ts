@@ -113,10 +113,12 @@ const ENEMY_DESC: Partial<Record<EnemyKind, string>> = {
   bomber: 'Walks its payload to you, fuse first.',
   eggs: 'A clutch. It is not dormant.',
   colossus: 'The Kiln Colossus. Water is the strategy.',
+  leviathan: 'The Sunken Leviathan. Water is its armor — take the water away.',
 };
 
 const ENEMY_KINDS: EnemyKind[] = [
   'slime', 'imp', 'golem', 'acidslime', 'wisp', 'mage', 'bat', 'spitter', 'bomber', 'eggs', 'colossus',
+  'leviathan',
 ];
 
 export class Gallery {

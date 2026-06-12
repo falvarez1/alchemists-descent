@@ -153,7 +153,9 @@ export type EnemyKind =
   | 'bomber'
   | 'colossus'
   // Wave F: a glistening slime egg clutch — destroy it or it hatches
-  | 'eggs';
+  | 'eggs'
+  // The d4 mid-boss: water is its armor; drain the arena or electrify it
+  | 'leviathan';
 
 export interface EnemyDef {
   hp: number;
@@ -215,6 +217,10 @@ export interface Enemy {
   /** Patrollers only: frames since losing the player; ~5s of calm de-alerts
    *  so the authored route survives a disengaged skirmish. */
   calmT?: number;
+  /** Leviathan: the body is actually IN water right now (cell census, every
+   *  4th frame) — its damage shield and swim physics read THIS, never a
+   *  lingering wet meter. The grid is the armor. */
+  submerged?: boolean;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
@@ -756,7 +762,7 @@ export interface WorldGenApi {
     portal: ExitPortal | null;
     mechanisms: Mechanism[];
     runeVaults: RuneVault[];
-    boss: { x: number; y: number } | null;
+    boss: { x: number; y: number; kind?: EnemyKind } | null;
     /** The gilded arch (two-way branch gate) if this level carries one;
      *  back* is the safe arrival spot for travelers stepping OUT of it. */
     vaultArch: VaultArch | null;
@@ -1330,8 +1336,9 @@ export interface LevelRuntime {
   mechanisms: Mechanism[];
   /** Sealed strongrooms with remote rune switches. */
   runeVaults: RuneVault[];
-  /** Boss arena center (bottom level only); the colossus spawns here. */
-  boss?: { x: number; y: number } | null;
+  /** Boss arena center; `kind` picks the resident (default 'colossus' —
+   *  the d8 finale; d4's flooded arena seats the leviathan). */
+  boss?: { x: number; y: number; kind?: EnemyKind } | null;
   /** Designer-placed lights from a compiled Builder document or worldgen prefabs. */
   authoredLights?: AuthoredLight[];
   /** Builder/prefab hazard emitters: drip real cells on their cadence. */

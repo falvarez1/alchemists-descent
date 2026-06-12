@@ -7,6 +7,7 @@ import { makeInstantiationSink } from '@/game/instantiate';
 import type {
   AuthoredLight,
   Ctx,
+  EnemyKind,
   ExitPortal,
   HazardEmitter,
   LevelDef,
@@ -470,7 +471,7 @@ export class WorldGen implements WorldGenApi {
     portal: ExitPortal | null;
     mechanisms: Mechanism[];
     runeVaults: RuneVault[];
-    boss: { x: number; y: number } | null;
+    boss: { x: number; y: number; kind?: EnemyKind } | null;
     prefabEnemies: PrefabEnemy[];
     placedPrefabs: PlacedPrefab[];
     authoredLights: AuthoredLight[];
@@ -848,6 +849,7 @@ export class WorldGen implements WorldGenApi {
       refuge,
       vaultArch,
       vaultHoard,
+      sumpRepair,
     } = placeStructures(
       ctx,
       this.rng,
@@ -987,6 +989,14 @@ export class WorldGen implements WorldGenApi {
       }
       stage('gauge-rescue');
     }
+
+    // 8d) The Sump self-repairs AFTER the rescue pass: rescue tunnels eat all
+    //     stone and spare only metal, and a wandering carve through the d4
+    //     arena pre-opened every drain plug (observed on seed 1). The metal
+    //     casing survives on its own; this puts back the parts that can't
+    //     be armored (plugs, gold tells, the pool itself).
+    sumpRepair?.();
+    stage('sump-repair');
 
     if (import.meta.env.DEV) {
       const total = performance.now() - tStart;

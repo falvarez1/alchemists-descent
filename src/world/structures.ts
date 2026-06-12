@@ -5,6 +5,7 @@ import type {
   AuthoredLight,
   CardId,
   Ctx,
+  EnemyKind,
   ExitPortal,
   HazardEmitter,
   LevelDef,
@@ -77,12 +78,18 @@ export function placeStructures(
   portal: ExitPortal | null;
   mechanisms: Mechanism[];
   runeVaults: RuneVault[];
-  boss: { x: number; y: number } | null;
+  boss: { x: number; y: number; kind?: EnemyKind } | null;
   emitters: HazardEmitter[];
   authoredLights: AuthoredLight[];
   refuge: { x: number; y: number } | null;
   vaultArch: VaultArch | null;
   vaultHoard: { x: number; y: number } | null;
+  /** Re-asserts the Sump's casing, plugs, and pool AFTER the gauge-rescue
+   *  pass — rescue tunnels eat all stone and spare only metal, and one
+   *  wandering carve through the arena pre-opened all three drains
+   *  (observed). The casing is metal and survives; this puts back what
+   *  can't be armored. */
+  sumpRepair: (() => void) | null;
 } {
   const w = ctx.world;
   const pickups: Pickup[] = [];
@@ -93,6 +100,7 @@ export function placeStructures(
   let refuge: { x: number; y: number } | null = null;
   let vaultArch: VaultArch | null = null;
   let vaultHoard: { x: number; y: number } | null = null;
+  let sumpRepair: (() => void) | null = null;
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
     carvePocketCells(w, cx, cy, rx, ry);
@@ -1007,7 +1015,7 @@ export function placeStructures(
   // A vast scorched chamber with lava moats, and the strategy hanging from
   // the ceiling: a metal-cased water tank sealed by a breakable stone plug.
   // Flood the kiln, thermal-shock the colossus.
-  let boss: { x: number; y: number } | null = null;
+  let boss: { x: number; y: number; kind?: EnemyKind } | null = null;
   if (!def.nextLevelId && !def.branch) {
     let cx = Math.floor(WIDTH * (0.42 + rng.next() * 0.16));
     const cy = HEIGHT - 116;
@@ -1073,6 +1081,169 @@ export function placeStructures(
     // both arena flanks join the cave network — the kiln must be findable
     connectToCaves(cx - 39, cy + 6);
     connectToCaves(cx + 39, cy + 6);
+  }
+
+  // ---- The Sump (depth 4 only): the leviathan's cistern ----
+  // The mid-descent boss, built as the Kiln's mirror: where the colossus
+  // hides its weakness in a ceiling tank you must OPEN, the leviathan hides
+  // in a basin you must EMPTY. A metal-cased pool with three stone drain
+  // plugs in its floor (gold dust marks them): dig the plugs and the water
+  // falls away into the caves below — a beached leviathan is just meat.
+  // The pool is also one big conductor, and so is the blood it sheds into
+  // it. The cistern PERCHES above d4's flood line on purpose: every drop
+  // drained runs downhill to the ocean and can never climb back.
+  if (def.depth === 4 && !def.branch) {
+    let cx = Math.floor(WIDTH * (0.3 + rng.next() * 0.4));
+    const cy = Math.floor(HEIGHT * 0.52);
+    for (let a = 0; a < 24; a++) {
+      const clear =
+        Math.abs(cx - spawn.x) > 200 &&
+        Math.abs(cx - portalX) > 160 &&
+        !ledger.intersects(cx - 44, cy - 26, cx + 44, cy + 36);
+      if (clear) break;
+      cx = Math.floor(WIDTH * (0.3 + rng.next() * 0.4));
+    }
+    carvePocket(cx, cy, 42, 26);
+    // dry shores either side of the basin mouth
+    for (let dx = -42; dx <= 42; dx++) {
+      for (let dy = 17; dy <= 20; dy++) {
+        const X = cx + dx,
+          Y = cy + dy;
+        if (!w.inBounds(X, Y)) continue;
+        const i = w.idx(X, Y);
+        if (w.types[i] !== Cell.Metal) {
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      }
+    }
+    // the basin: hollow the tub, then the metal casing (chaos-proof except
+    // where the plugs are authored)
+    carveRectCells(w, cx - 26, cy + 15, cx + 26, cy + 32);
+    for (let Y = cy + 16; Y <= cy + 33; Y++) {
+      for (const X of [cx - 27, cx + 27]) {
+        const i = w.idx(X, Y);
+        w.types[i] = Cell.Metal;
+        w.colors[i] = packRGB(96, 102, 112);
+      }
+    }
+    for (let X = cx - 27; X <= cx + 27; X++) {
+      const i = w.idx(X, cy + 33);
+      w.types[i] = Cell.Metal;
+      w.colors[i] = packRGB(96, 102, 112);
+    }
+    // three drain plugs through the casing floor, shafts dug until they
+    // breach cave air OR flood water below (either way the basin sits
+    // uphill — the refuge's bottomless-drain rule, aimed at an ocean)
+    for (const px of [cx - 16, cx, cx + 16]) {
+      for (let dx = -1; dx <= 1; dx++) {
+        for (const Y of [cy + 33, cy + 34]) {
+          const i = w.idx(px + dx, Y);
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      }
+      let bottom = Math.min(HEIGHT - 8, cy + 35 + 120);
+      for (let Y = cy + 38; Y <= cy + 35 + 120 && Y < HEIGHT - 8; Y++) {
+        let open = 0;
+        while (
+          open < 3 &&
+          Y + open < HEIGHT - 4 &&
+          (w.types[w.idx(px, Y + open)] === Cell.Empty || w.types[w.idx(px, Y + open)] === Cell.Water)
+        )
+          open++;
+        if (open >= 3) {
+          bottom = Y;
+          break;
+        }
+      }
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let Y = cy + 35; Y <= bottom; Y++) {
+          const i = w.idx(px + dx, Y);
+          if (w.types[i] === Cell.Metal) break; // never breach a casing
+          w.types[i] = Cell.Empty;
+          w.colors[i] = EMPTY_COLOR;
+        }
+      }
+      // gold dust settled beside the plug: the diggers' tell, underwater
+      for (const gx of [px - 2, px + 2]) {
+        const i = w.idx(gx, cy + 32);
+        w.types[i] = Cell.Gold;
+        w.colors[i] = goldColor();
+      }
+    }
+    // fill the tub — surface one row below the shore lip, so nothing spills
+    for (let X = cx - 26; X <= cx + 26; X++) {
+      for (let Y = cy + 18; Y <= cy + 32; Y++) {
+        const i = w.idx(X, Y);
+        if (w.types[i] === Cell.Empty) {
+          w.types[i] = Cell.Water;
+          w.colors[i] = packRGB(24, 110 + Math.floor(rng.next() * 50), 200);
+        }
+      }
+    }
+    // a cold gleam over the water: the arena reads from the approach
+    authoredLights.push({
+      x: cx,
+      y: cy + 10,
+      r: 0.35,
+      g: 0.7,
+      b: 1.0,
+      intensity: 0.9,
+      radius: 48,
+      bloom: 0.35,
+      flicker: 0.2,
+      flickerPhase: 0.6,
+      falloff: 'soft',
+      occluded: true,
+    });
+    boss = { x: cx, y: cy + 26, kind: 'leviathan' };
+    ledger.reserve(cx - 44, cy - 26, cx + 44, cy + 36, 'sump-arena');
+    connectToCaves(cx - 38, cy + 12);
+    connectToCaves(cx + 38, cy + 12);
+    // The arena's fragile organs, re-assertable after the gauge-rescue pass
+    // (whose stone-eating tunnels pre-opened all three drains on seed 1).
+    // Idempotent: casing, plugs, gold tells, and a refill of whatever water
+    // a wandering carve deleted. Shores stay as the rescue left them — a
+    // tunnel through a shore is connectivity, not vandalism.
+    sumpRepair = (): void => {
+      for (let Y = cy + 16; Y <= cy + 33; Y++) {
+        for (const X of [cx - 27, cx + 27]) {
+          const i = w.idx(X, Y);
+          w.types[i] = Cell.Metal;
+          w.colors[i] = packRGB(96, 102, 112);
+        }
+      }
+      for (let X = cx - 27; X <= cx + 27; X++) {
+        const i = w.idx(X, cy + 33);
+        w.types[i] = Cell.Metal;
+        w.colors[i] = packRGB(96, 102, 112);
+      }
+      // ...and the plugs overwrite their slots back to diggable stone
+      for (const px of [cx - 16, cx, cx + 16]) {
+        for (let dx = -1; dx <= 1; dx++) {
+          for (const Y of [cy + 33, cy + 34]) {
+            const i = w.idx(px + dx, Y);
+            w.types[i] = Cell.Stone;
+            w.colors[i] = stoneColor();
+          }
+        }
+        for (const gx of [px - 2, px + 2]) {
+          const i = w.idx(gx, cy + 32);
+          w.types[i] = Cell.Gold;
+          w.colors[i] = goldColor();
+        }
+      }
+      for (let X = cx - 26; X <= cx + 26; X++) {
+        for (let Y = cy + 18; Y <= cy + 32; Y++) {
+          const i = w.idx(X, Y);
+          if (w.types[i] === Cell.Empty) {
+            w.types[i] = Cell.Water;
+            w.colors[i] = packRGB(24, 130, 200);
+          }
+        }
+      }
+    };
   }
 
   // ---- The Gilded Vault's arches (the first BRANCH off the spine) ----
@@ -1321,5 +1492,6 @@ export function placeStructures(
     refuge,
     vaultArch,
     vaultHoard,
+    sumpRepair,
   };
 }

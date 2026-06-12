@@ -205,10 +205,11 @@ const EMITTER_DIR: Record<number, string> = { 0: 'down', 90: 'left', 180: 'up', 
 
 const ENEMY_KINDS: EnemyKind[] = [
   'slime', 'imp', 'golem', 'acidslime', 'wisp', 'mage', 'bat', 'spitter', 'bomber', 'eggs', 'colossus',
+  'leviathan',
 ];
 const PICKUP_KINDS: PickupKind[] = ['goldpile', 'heart', 'tome', 'chest', 'potion', 'key'];
 const BIOMES: BiomeId[] = [
-  'earthen', 'frozen', 'flooded', 'timber', 'scorched', 'fungal', 'crystal', 'volcanic',
+  'earthen', 'frozen', 'flooded', 'timber', 'scorched', 'fungal', 'crystal', 'volcanic', 'gilded',
 ];
 
 /** How close (in cells) an overlay click must be to count as selecting. */

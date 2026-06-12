@@ -30,8 +30,11 @@ import type { BiomeId } from '@/core/types';
  * v8: the Gilded Vault branch — a hidden arch alcove generates in one
  *     mid-descent host level (d2-d4 by expedition seed), and the 'gilded'
  *     branch biome joins the graph off the spine.
+ * v9: the Sump — the leviathan's perched cistern arena on every depth-4
+ *     level (metal-cased pool, three stone drain plugs, above the flood
+ *     line so the drains empty downhill forever).
  */
-export const GEN_VERSION = 8;
+export const GEN_VERSION = 9;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)

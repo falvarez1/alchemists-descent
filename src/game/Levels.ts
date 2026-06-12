@@ -773,8 +773,9 @@ export class Levels implements LevelsApi {
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, { x: exit.x, y: exit.sealY - 12 });
     this.placePopulation(ctx, def, spawn);
-    // The bottom of the run: the Kiln Colossus waits in its arena.
-    if (boss) ctx.enemyCtl.spawn('colossus', boss.x, boss.y);
+    // Boss arenas: the Kiln Colossus at the bottom of the run; the Sunken
+    // Leviathan in d4's perched cistern (the marker carries the kind).
+    if (boss) ctx.enemyCtl.spawn(boss.kind ?? 'colossus', boss.x, boss.y);
     // The Gilded Vault's hoard guards: a pair of elite golems, posted at the
     // chamber flanks (their boosted stats persist through saves — the blob
     // roster records hp/maxHp/dmgK).
