@@ -17,8 +17,9 @@ import type { BiomeId } from '@/core/types';
  * and resume retires mismatched saves (restoreLevel's pristine-regen coupling
  * means a stale save against new generation silently desyncs otherwise).
  * v2: per-biome skeleton flip + authored prefab placement pass.
+ * v3: machine structure rooms (chain-reaction prefabs, 'machines' stream).
  */
-export const GEN_VERSION = 2;
+export const GEN_VERSION = 3;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)
@@ -307,6 +308,10 @@ export interface GenDef {
   seedPockets: number;
   /** Authored prefab placement budget (worldgen pass after the region graph). */
   prefabs: PrefabBudget;
+  /** Machine structure budget (second placePrefabs pass on the forked
+   *  'machines' stream — chain-reaction rooms gated per biome by family
+   *  tags; docs/MACHINE-PRIMITIVES-AND-STRUCTURES-PLAN.md). */
+  machines: PrefabBudget;
 }
 
 /* ============================================================
@@ -672,6 +677,16 @@ function defaultPrefabBudget(): PrefabBudget {
   };
 }
 
+/** One machine room attempted per level; the family list is the biome gate. */
+function machineBudget(tags: string[]): PrefabBudget {
+  return {
+    count: [1, 1],
+    tags,
+    minSpacing: 200,
+    minSpawnDist: 220,
+  };
+}
+
 function baselineDef(): GenDef {
   return {
     skeleton: { kind: 'baseline', params: baselineSkeletonParams() },
@@ -679,6 +694,7 @@ function baselineDef(): GenDef {
     goldTriesCap: 30000,
     seedPockets: 60,
     prefabs: defaultPrefabBudget(),
+    machines: machineBudget(['powdermill']),
   };
 }
 
@@ -690,12 +706,43 @@ function baselineDef(): GenDef {
  */
 export const GEN: Record<BiomeId, GenDef> = {
   // d1 keeps a lighter prefab budget — the onboarding depth stays readable.
-  earthen: { ...baselineDef(), prefabs: { ...defaultPrefabBudget(), count: [1, 2] } },
-  frozen: { ...baselineDef(), skeleton: { kind: 'frozenCrevasses', params: crevasseParams() } },
-  flooded: { ...baselineDef(), skeleton: { kind: 'floodedGalleries', params: galleryParams() } },
-  timber: { ...baselineDef(), skeleton: { kind: 'timberScaffold', params: scaffoldParams() } },
-  scorched: baselineDef(),
-  fungal: { ...baselineDef(), skeleton: { kind: 'fungalPockets', params: fungalParams() } },
-  crystal: { ...baselineDef(), skeleton: { kind: 'crystalVaults', params: vaultParams() } },
-  volcanic: { ...baselineDef(), skeleton: { kind: 'volcanicTubes', params: tubeParams() } },
+  // Machine family gating per biome follows the plan's matrix: Powder Mill
+  // earthen/timber/scorched, Alchemy Clock flooded/fungal/crystal, Kiln
+  // Elevator scorched/volcanic/timber, Crystal Relay crystal/frozen/earthen.
+  earthen: {
+    ...baselineDef(),
+    prefabs: { ...defaultPrefabBudget(), count: [1, 2] },
+    machines: machineBudget(['powdermill', 'crystalrelay']),
+  },
+  frozen: {
+    ...baselineDef(),
+    skeleton: { kind: 'frozenCrevasses', params: crevasseParams() },
+    machines: machineBudget(['crystalrelay']),
+  },
+  flooded: {
+    ...baselineDef(),
+    skeleton: { kind: 'floodedGalleries', params: galleryParams() },
+    machines: machineBudget(['alchemyclock']),
+  },
+  timber: {
+    ...baselineDef(),
+    skeleton: { kind: 'timberScaffold', params: scaffoldParams() },
+    machines: machineBudget(['powdermill', 'kilnelevator']),
+  },
+  scorched: { ...baselineDef(), machines: machineBudget(['powdermill', 'kilnelevator']) },
+  fungal: {
+    ...baselineDef(),
+    skeleton: { kind: 'fungalPockets', params: fungalParams() },
+    machines: machineBudget(['alchemyclock']),
+  },
+  crystal: {
+    ...baselineDef(),
+    skeleton: { kind: 'crystalVaults', params: vaultParams() },
+    machines: machineBudget(['alchemyclock', 'crystalrelay']),
+  },
+  volcanic: {
+    ...baselineDef(),
+    skeleton: { kind: 'volcanicTubes', params: tubeParams() },
+    machines: machineBudget(['kilnelevator']),
+  },
 };

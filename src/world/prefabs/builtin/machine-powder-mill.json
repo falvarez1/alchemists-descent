@@ -1,0 +1,158 @@
+{
+  "v": 1,
+  "kind": "prefab",
+  "id": "machine-powder-mill",
+  "name": "Powder Mill",
+  "tags": [
+    "machine",
+    "powdermill",
+    "builtin"
+  ],
+  "w": 84,
+  "h": 48,
+  "rle": "qgADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADUAAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADGgAMCwABKwAMBAADHQAMBQAALgAMBAADHQAMBQAALgAMBAADAgAMHQAAAQAEGwAAAwAMEAAAAgAMBAADAgAMHQAAAQAEGwAAAwAMEAAAAgAMBAADAgAMHQAAAQAELgAAAgAMBAADAgAMHQAAAQAELgAAAgAMBAADAgAMHQAAAQAELgAAAgAMBAADAgAMHQAAAQAELgAAAgAMAgADIQAAAQAEfgIAUAEMqAAD",
+  "objects": [
+    {
+      "id": "door0",
+      "kind": "door",
+      "x": 61,
+      "y": 30,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 3,
+        "h": 12
+      }
+    },
+    {
+      "id": "cw0",
+      "kind": "counterweight",
+      "x": 33,
+      "y": 41,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 7,
+        "threshold": 24
+      }
+    },
+    {
+      "id": "plug0",
+      "kind": "plug",
+      "x": 31,
+      "y": 26,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 5,
+        "h": 2,
+        "material": "wood"
+      }
+    },
+    {
+      "id": "braz0",
+      "kind": "brazier",
+      "x": 28,
+      "y": 41,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {}
+    },
+    {
+      "id": "relay0",
+      "kind": "relay",
+      "x": 30,
+      "y": 41,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "delay": 60,
+        "action": "ignite"
+      }
+    },
+    {
+      "id": "gold0",
+      "kind": "pickup",
+      "x": 70,
+      "y": 40,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "goldpile",
+        "amount": 70
+      }
+    },
+    {
+      "id": "chest0",
+      "kind": "pickup",
+      "x": 75,
+      "y": 40,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "chest"
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "k0",
+      "fromId": "braz0",
+      "toId": "relay0",
+      "kind": "triggerDoor"
+    },
+    {
+      "id": "k1",
+      "fromId": "relay0",
+      "toId": "plug0",
+      "kind": "triggerDoor"
+    },
+    {
+      "id": "k2",
+      "fromId": "cw0",
+      "toId": "door0",
+      "kind": "triggerDoor"
+    }
+  ],
+  "lights": [
+    {
+      "id": "L0",
+      "x": 30,
+      "y": 32,
+      "color": "#ffb060",
+      "intensity": 1.4,
+      "radius": 80,
+      "bloom": 0.5,
+      "flicker": 0.4,
+      "falloff": "soft",
+      "occluded": true,
+      "locked": false,
+      "hidden": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "aw",
+      "x": 0,
+      "y": 38,
+      "dir": "w",
+      "kind": "open",
+      "halfW": 4
+    },
+    {
+      "id": "ae",
+      "x": 83,
+      "y": 38,
+      "dir": "e",
+      "kind": "sealed",
+      "halfW": 3
+    }
+  ]
+}

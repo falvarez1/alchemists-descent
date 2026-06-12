@@ -1,0 +1,214 @@
+{
+  "v": 1,
+  "kind": "prefab",
+  "id": "machine-kiln-elevator",
+  "name": "Kiln Elevator",
+  "tags": [
+    "machine",
+    "kilnelevator",
+    "builtin"
+  ],
+  "w": 72,
+  "h": 56,
+  "rle": "kgADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADJgAMCQABFQAMBAADJgAMCQABFQAMBAADJgAMCQABFQAMBAADJgAMCQABFQAMBAADJgAMCQABFQAMBAADEAAMEQACBQAMCQABFQAMBAADEAAMEQACBQAMCQABFQAMBAADEAAMEQACBQAMCQABFQAMBAADEAAMEQACBQAMCQABFQAMBAADEAAMEQACBQAMBgAAGAAMBAADEAAMEQACBQAMBgAAGAAMBAADEAAMEQACBQAMBgAAGAAMBAADFgAMBQAACwAMBgAAGAAMBAADFgAMBQAACwAMBgAAGAAMBAADJgAMBgAAGAAMBAADJgAMBgAAGAAMBAADBgAMJQAAAwAMEQAABQAMBAADBgAMJQAAAwAMEQAABQAMBAADBgAMJQAAAQAMEwAABQAMBAADBgAMJQAAAQAMEwAABQAMBAADBgAMJQAAAQAMDAAABQAMAgAABQAMBAADBgAMJQAAAQAMDAAABQAMAgAABQAMAgADLQAAAQAMRwAAAQAMRwAAAQAMRwAAAQAMKAAAFQAcCgAAAQAMKAAAFQAcCgAAAQAMKAAAFQAcCgAAAQAMKAAAFQAcCgAAAQAMGgAAAgADRAAMBAADRAAMBAADRAAMBAADRAAMkgAD",
+  "objects": [
+    {
+      "id": "s0",
+      "kind": "sensor",
+      "x": 24,
+      "y": 44,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "type": "heat",
+        "threshold": 8,
+        "zoneW": 16,
+        "zoneH": 6,
+        "latch": "permanent"
+      }
+    },
+    {
+      "id": "valve0",
+      "kind": "valve",
+      "x": 24,
+      "y": 32,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 5,
+        "h": 2,
+        "material": "metal"
+      }
+    },
+    {
+      "id": "s1",
+      "kind": "sensor",
+      "x": 11,
+      "y": 48,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "type": "liquid",
+        "threshold": 8,
+        "zoneW": 7,
+        "zoneH": 5,
+        "latch": "permanent"
+      }
+    },
+    {
+      "id": "relay0",
+      "kind": "relay",
+      "x": 37,
+      "y": 49,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "delay": 30,
+        "action": "break"
+      }
+    },
+    {
+      "id": "plug0",
+      "kind": "plug",
+      "x": 40,
+      "y": 29,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 6,
+        "h": 2,
+        "material": "ash"
+      }
+    },
+    {
+      "id": "cw0",
+      "kind": "counterweight",
+      "x": 42,
+      "y": 49,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 7,
+        "threshold": 24
+      }
+    },
+    {
+      "id": "door0",
+      "kind": "door",
+      "x": 46,
+      "y": 38,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 2,
+        "h": 12
+      }
+    },
+    {
+      "id": "tome0",
+      "kind": "pickup",
+      "x": 60,
+      "y": 39,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "tome"
+      }
+    },
+    {
+      "id": "gold0",
+      "kind": "pickup",
+      "x": 54,
+      "y": 48,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "goldpile",
+        "amount": 60
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "k0",
+      "fromId": "s0",
+      "toId": "valve0",
+      "kind": "triggerDoor"
+    },
+    {
+      "id": "k1",
+      "fromId": "s1",
+      "toId": "relay0",
+      "kind": "triggerDoor"
+    },
+    {
+      "id": "k2",
+      "fromId": "relay0",
+      "toId": "plug0",
+      "kind": "triggerDoor"
+    },
+    {
+      "id": "k3",
+      "fromId": "cw0",
+      "toId": "door0",
+      "kind": "triggerDoor"
+    }
+  ],
+  "lights": [
+    {
+      "id": "L0",
+      "x": 24,
+      "y": 42,
+      "color": "#ff8a3c",
+      "intensity": 1.6,
+      "radius": 70,
+      "bloom": 0.6,
+      "flicker": 0.35,
+      "falloff": "soft",
+      "occluded": true,
+      "locked": false,
+      "hidden": false
+    },
+    {
+      "id": "L1",
+      "x": 56,
+      "y": 42,
+      "color": "#9fd4ff",
+      "intensity": 1,
+      "radius": 55,
+      "bloom": 0.3,
+      "flicker": 0.1,
+      "falloff": "soft",
+      "occluded": true,
+      "locked": false,
+      "hidden": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "aw",
+      "x": 0,
+      "y": 46,
+      "dir": "w",
+      "kind": "open",
+      "halfW": 4
+    },
+    {
+      "id": "ae",
+      "x": 71,
+      "y": 46,
+      "dir": "e",
+      "kind": "sealed",
+      "halfW": 3
+    }
+  ]
+}

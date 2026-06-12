@@ -95,6 +95,24 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
         m.x,
         m.y,
       );
+    } else if (m.kind === 'valve') {
+      // A valve is a gate, not a hand-trigger: it needs an approachable
+      // FRONT on any of its four sides. Machine reservoirs legitimately
+      // seal the slab's top face (the water side); the channel below is
+      // the player-facing side.
+      check(
+        near(seen, W, H, m.x - 2, m.y + m.h / 2, 4) ||
+          near(seen, W, H, m.x + m.w + 1, m.y + m.h / 2, 4) ||
+          near(seen, W, H, m.x + m.w / 2, m.y - 2, 4) ||
+          near(seen, W, H, m.x + m.w / 2, m.y + m.h + 1, 4),
+        'valvefront',
+        m.x,
+        m.y,
+      );
+    } else if (m.kind === 'relay') {
+      // pure logic node — its INPUTS carry the reachability requirement
+      // (the prefab earnability fixpoint enforces that in CI)
+      continue;
     } else {
       check(near(seen, W, H, m.x, m.y - 2, 4), m.kind, m.x, m.y);
     }

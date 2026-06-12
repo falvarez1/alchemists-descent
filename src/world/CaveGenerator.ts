@@ -641,14 +641,30 @@ export class WorldGen implements WorldGenApi {
       ledger.reserve(spawn.x - 140, spawn.y - 100, spawn.x + 140, spawn.y + 100, 'onboarding');
     }
     const sink = makeInstantiationSink();
+    const genDef = GEN[def.biome] || GEN.earthen;
     const placedPrefabs = placePrefabs(
       ctx,
       new Rng(hashSeed(seed >>> 0, 'prefabs')),
       graph,
       ledger,
       sink,
-      (GEN[def.biome] || GEN.earthen).prefabs,
+      genDef.prefabs,
       { spawn, wellX },
+    );
+    // Machine structure rooms: a SECOND placement pass on its own forked
+    // stream — chain-reaction prefabs (valves, plugs, sensors, relays)
+    // gated per biome by family tags. Same ledger, same sink, same anchors
+    // pipeline; the 'prefabs' stream stays byte-identical per seed.
+    placedPrefabs.push(
+      ...placePrefabs(
+        ctx,
+        new Rng(hashSeed(seed >>> 0, 'machines')),
+        graph,
+        ledger,
+        sink,
+        genDef.machines,
+        { spawn, wellX },
+      ),
     );
     // Prefab interiors are rooms: re-extract so secrets and the structure
     // brain place against the world as it now actually is.

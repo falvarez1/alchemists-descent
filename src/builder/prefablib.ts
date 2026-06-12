@@ -527,6 +527,12 @@ const OBJECT_KINDS = new Set<EditorObjectKind>([
   'vegetationStamp',
   'hazardEmitter',
   'decor',
+  // machine primitives (docs/MACHINE-PRIMITIVES-AND-STRUCTURES-PLAN.md)
+  'valve',
+  'plug',
+  'sensor',
+  'counterweight',
+  'relay',
 ]);
 
 const LINK_KINDS = new Set(['triggerDoor', 'runeDoor', 'keyPortal', 'bossGate', 'logic']);

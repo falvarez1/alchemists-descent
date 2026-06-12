@@ -1,0 +1,194 @@
+{
+  "v": 1,
+  "kind": "prefab",
+  "id": "machine-alchemy-clock",
+  "name": "Alchemy Clock",
+  "tags": [
+    "machine",
+    "alchemyclock",
+    "builtin"
+  ],
+  "w": 64,
+  "h": 58,
+  "rle": "HAADBwAAOQADBwAAHwADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADGgAMBwAAGwAMBAADFgAMDwAAAwAMCQACCwAMBAADFgAMDwAAAwAMCQACCwAMBAADFgAMDwAAAQAMAgAACQACCwAMBAADFgAMDwAAAQAMAgAACQACCwAMBAADFgAMDwAAAQAMAgAACQACCwAMBAADFgAMDwAAAQAMAgAACQACCwAMBAADFgAMDwAAAwAMCQACCwAMBAADFgAMDwAAFwAMBAADFgAMDwAAFwAMBAADGwAMBQAAHAAMBAADGwAMBQAAHAAMBAADDAAMHQAAEwAMBAADDAAMHQAAEwAMBAADDAAMAgAAAgAMGQAAEwAMBAADDAAMAgAAAgAMGQAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAABAAMFwAAEwAMBAADDAAMAgAALgAMBAADDAAMAgAALgAMBAADDAAMAgAALgAMBAADCgAMKAAACgAMBAADCgAMKAAACgAMBAADCgAMMAAAAgAMBAADCgAMMAAAAgAMBAADCgAMMAAAAgAMBAADCgAMMAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMAgADPAAAAgAMBAADPAAMBAADPAAMBAADPAAMBAADPAAMBAADPAAMBAADPAAMBAADPAAMBAADPAAMggAD",
+  "objects": [
+    {
+      "id": "valve0",
+      "kind": "valve",
+      "x": 29,
+      "y": 19,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 5,
+        "h": 2,
+        "material": "glass"
+      }
+    },
+    {
+      "id": "s0",
+      "kind": "sensor",
+      "x": 31,
+      "y": 19,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "type": "liquid",
+        "threshold": 10,
+        "zoneW": 11,
+        "zoneH": 5,
+        "latch": "permanent"
+      }
+    },
+    {
+      "id": "s1",
+      "kind": "sensor",
+      "x": 31,
+      "y": 31,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "type": "liquid",
+        "threshold": 10,
+        "zoneW": 11,
+        "zoneH": 5,
+        "latch": "permanent"
+      }
+    },
+    {
+      "id": "relay0",
+      "kind": "relay",
+      "x": 24,
+      "y": 47,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "delay": 45
+      }
+    },
+    {
+      "id": "door0",
+      "kind": "door",
+      "x": 52,
+      "y": 36,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 2,
+        "h": 12
+      }
+    },
+    {
+      "id": "plug0",
+      "kind": "plug",
+      "x": 40,
+      "y": 12,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 2,
+        "h": 4,
+        "material": "glass"
+      }
+    },
+    {
+      "id": "pot0",
+      "kind": "pickup",
+      "x": 56,
+      "y": 46,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "potion"
+      }
+    },
+    {
+      "id": "gold0",
+      "kind": "pickup",
+      "x": 58,
+      "y": 46,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "goldpile",
+        "amount": 55
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "k0",
+      "fromId": "s0",
+      "toId": "valve0",
+      "kind": "triggerDoor"
+    },
+    {
+      "id": "k1",
+      "fromId": "s1",
+      "toId": "relay0",
+      "kind": "triggerDoor"
+    },
+    {
+      "id": "k2",
+      "fromId": "relay0",
+      "toId": "door0",
+      "kind": "triggerDoor"
+    }
+  ],
+  "lights": [
+    {
+      "id": "L0",
+      "x": 31,
+      "y": 14,
+      "color": "#9fd4ff",
+      "intensity": 1.2,
+      "radius": 70,
+      "bloom": 0.4,
+      "flicker": 0.15,
+      "falloff": "soft",
+      "occluded": true,
+      "locked": false,
+      "hidden": false
+    },
+    {
+      "id": "L1",
+      "x": 36,
+      "y": 42,
+      "color": "#5eead4",
+      "intensity": 1,
+      "radius": 55,
+      "bloom": 0.3,
+      "flicker": 0.12,
+      "falloff": "soft",
+      "occluded": true,
+      "locked": false,
+      "hidden": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "an",
+      "x": 31,
+      "y": 0,
+      "dir": "n",
+      "kind": "open",
+      "halfW": 3
+    },
+    {
+      "id": "aw",
+      "x": 0,
+      "y": 44,
+      "dir": "w",
+      "kind": "open",
+      "halfW": 4
+    }
+  ]
+}

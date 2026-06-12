@@ -26,10 +26,14 @@ import { breachSkinCell } from '@/world/secrets';
 /* ---------------- registry ---------------- */
 
 describe('builtin prefab registry', () => {
-  it('loads the three builtins, sanitized and filename-sorted', () => {
+  it('loads the seven builtins, sanitized and filename-sorted', () => {
     const all = builtinPrefabs();
     expect(all.map((p) => p.id)).toEqual([
       'builtin-brazier-shrine',
+      'machine-alchemy-clock',
+      'machine-crystal-relay-vault',
+      'machine-kiln-elevator',
+      'machine-powder-mill',
       'builtin-plate-vault',
       'builtin-ruin-gallery',
     ]);
@@ -46,28 +50,37 @@ describe('builtin prefab registry', () => {
     expect(queryPrefabs(['vault']).map((p) => p.id)).toEqual(['builtin-plate-vault']);
     expect(queryPrefabs(['shrine']).map((p) => p.id)).toEqual(['builtin-brazier-shrine']);
     expect(queryPrefabs(['vault', 'shrine', 'setpiece']).length).toBe(3);
+    expect(queryPrefabs(['machine']).length).toBe(4);
+    expect(queryPrefabs(['powdermill', 'kilnelevator']).length).toBe(2);
     expect(queryPrefabs(['no-such-tag']).length).toBe(0);
   });
 });
 
 /* ---------------- earnability ---------------- */
 
-/** BFS over !blocksEntity cells of the prefab-local grid; closed doors are
- *  stamped solid (their metal IS solid until earned). */
+/** BFS over !blocksEntity cells of the prefab-local grid; closed gates
+ *  (doors, rune doors, valves) and intact plugs are stamped solid (their
+ *  material IS solid until earned). Relays chain as pure logic; plugs earn
+ *  at their face or by relay detonation — mirrors builder/validate.ts. */
 function earnabilityAudit(p: PrefabDef): {
   triggersReachable: boolean;
   doorsEarned: boolean;
   pickupReachable: boolean;
 } {
   const cells = decodePrefabCells(p);
-  const doors = p.objects.filter((o) => o.kind === 'door' || o.kind === 'runeDoor');
+  const doors = p.objects.filter(
+    (o) => o.kind === 'door' || o.kind === 'runeDoor' || o.kind === 'valve',
+  );
+  const plugs = p.objects.filter((o) => o.kind === 'plug');
+  const relays = p.objects.filter((o) => o.kind === 'relay');
   const trigLinks = p.links.filter((l) => l.kind === 'triggerDoor');
-  const openDoors = new Set<string>();
+  const openDoors = new Set<string>(); // earned gates AND broken plugs
+  const firedRelays = new Set<string>();
 
   const buildBlocked = (): Uint8Array => {
     const blocked = new Uint8Array(p.w * p.h);
     for (let i = 0; i < cells.length; i++) blocked[i] = blocksEntity(cells[i]) ? 1 : 0;
-    for (const d of doors) {
+    for (const d of [...doors, ...plugs]) {
       if (openDoors.has(d.id)) continue;
       const fp = objectFootprint(d);
       if (!fp) continue;
@@ -121,18 +134,63 @@ function earnabilityAudit(p: PrefabDef): {
     return false;
   };
 
-  // Fixpoint: triggers reachable -> their doors open -> repeat until stable.
+  // How a trigger earns: hands-on kinds need the player beside them; a plug
+  // counts once broken; a relay once its inputs chained through.
+  const trigEarnable = (t: PrefabDef['objects'][number], seen: Uint8Array): boolean =>
+    t.kind === 'plug'
+      ? openDoors.has(t.id)
+      : t.kind === 'relay'
+        ? firedRelays.has(t.id)
+        : near(seen, t.x, t.y - 2, 4);
+
+  // Fixpoint: relays chain, plugs break, gates open -> repeat until stable.
   let seen = bfs();
   let changed = true;
   while (changed) {
     changed = false;
+    for (const r of relays) {
+      if (firedRelays.has(r.id)) continue;
+      const ins = trigLinks
+        .filter((l) => l.toId === r.id)
+        .map((l) => p.objects.find((o) => o.id === l.fromId))
+        .filter((t): t is PrefabDef['objects'][number] => t !== undefined);
+      const ok =
+        ins.length > 0 &&
+        (r.params.logic === 'or'
+          ? ins.some((t) => trigEarnable(t, seen))
+          : ins.every((t) => trigEarnable(t, seen)));
+      if (ok) {
+        firedRelays.add(r.id);
+        changed = true;
+      }
+    }
+    for (const pl of plugs) {
+      if (openDoors.has(pl.id)) continue;
+      const fp = objectFootprint(pl)!;
+      const faceable = near(
+        seen,
+        (fp.x0 + fp.x1) / 2,
+        (fp.y0 + fp.y1) / 2,
+        Math.ceil(Math.max(fp.x1 - fp.x0, fp.y1 - fp.y0) / 2) + 4,
+      );
+      const detonated = trigLinks.some((l) => l.toId === pl.id && firedRelays.has(l.fromId));
+      if (faceable || detonated) {
+        openDoors.add(pl.id);
+        seen = bfs();
+        changed = true;
+      }
+    }
     for (const d of doors) {
       if (openDoors.has(d.id)) continue;
       const trigs = trigLinks
         .filter((l) => l.toId === d.id)
         .map((l) => p.objects.find((o) => o.id === l.fromId));
       if (trigs.length === 0 || trigs.some((t) => t === undefined)) continue;
-      if (trigs.every((t) => near(seen, t!.x, t!.y - 2, 4))) {
+      const ok =
+        d.params.logic === 'or'
+          ? trigs.some((t) => trigEarnable(t!, seen))
+          : trigs.every((t) => trigEarnable(t!, seen));
+      if (ok) {
         openDoors.add(d.id);
         seen = bfs();
         changed = true;
@@ -142,9 +200,10 @@ function earnabilityAudit(p: PrefabDef): {
 
   const triggersReachable = trigLinks.every((l) => {
     const t = p.objects.find((o) => o.id === l.fromId);
-    return t !== undefined && near(seen, t.x, t.y - 2, 4);
+    return t !== undefined && trigEarnable(t, seen);
   });
-  const doorsEarned = doors.every((d) => openDoors.has(d.id));
+  const doorsEarned =
+    doors.every((d) => openDoors.has(d.id)) && plugs.every((pl) => openDoors.has(pl.id));
   const pickupReachable = p.objects
     .filter((o) => o.kind === 'pickup')
     .some((o) => near(seen, o.x, o.y - 1, 3));
@@ -253,6 +312,42 @@ describe('placePrefabs', () => {
       expect(ledger.intersects(p.x0, p.y0, p.x1, p.y1)).toBe(false);
       expect(p.x0).toBeGreaterThanOrEqual(0);
       expect(p.x1).toBeLessThan(WIDTH);
+    }
+  });
+
+  it('machine budget places a chain-reaction room with fully wired mechanisms', () => {
+    const world = new World();
+    world.types.fill(Cell.Wall);
+    const ctx = stubCtx(world);
+    const sink = makeInstantiationSink();
+    const placed = placePrefabs(
+      ctx,
+      new Rng(hashSeed(11, 'machines')),
+      stubGraph(800, 500),
+      new PlacementLedger(),
+      sink,
+      { count: [1, 1], tags: ['powdermill'], minSpacing: 200, minSpawnDist: 150 },
+      SITE,
+    );
+    expect(placed.length).toBe(1);
+    expect(placed[0].id).toBe('machine-powder-mill');
+    const one = (k: string) => sink.mechanisms.find((m) => m.kind === k)!;
+    const relay = one('relay'),
+      plug = one('plug'),
+      cw = one('counterweight'),
+      door = one('door'),
+      brazier = one('brazier');
+    expect(relay && plug && cw && door && brazier).toBeTruthy();
+    // the chain is wired: brazier -> relay -IGNITE-> plug; counterweight -> door
+    expect(brazier.targetId).toBe(relay.id);
+    expect(relay.targetId).toBe(plug.id);
+    expect(relay.outputAction).toBe('ignite');
+    expect(cw.targetId).toBe(door.id);
+    // and the hopper is real sand sitting on the stamped wooden plug
+    expect(plug.material).toBe(Cell.Wood);
+    expect(plug.body!.length).toBeGreaterThan(0);
+    for (const [bx, by] of plug.body!) {
+      expect(world.types[world.idx(bx, by)]).toBe(Cell.Wood);
     }
   });
 

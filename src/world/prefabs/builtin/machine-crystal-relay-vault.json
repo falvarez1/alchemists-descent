@@ -1,0 +1,175 @@
+{
+  "v": 1,
+  "kind": "prefab",
+  "id": "machine-crystal-relay-vault",
+  "name": "Crystal Relay Vault",
+  "tags": [
+    "machine",
+    "crystalrelay",
+    "builtin"
+  ],
+  "w": 72,
+  "h": 44,
+  "rle": "kgADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADRAAMBAADFAAMDQACIwAMBAADFAAMDQACIwAMBAADFAAMDQACIwAMBAADFAAMDQACIwAMBAADFAAMDQACIwAMBAADFAAMDQACIwAMBAADFAAMDQACIwAMBAADGAAMBQAAJwAMBAADGAAMBQAAJwAMBAADRAAMBAADRAAMBAADRAAMBAADAgAMLQAAFQAMBAADAgAMLQAAFQAMBAADAgAMLQAAAgAMDgAABQAMBAADAgAMLQAAAgAMDgAABQAMBAADAgAMPQAABQAMBAADAgAMPQAABQAMBAADAgAMPQAABQAMBAADAgAMPQAABQAMAgADfgEAAgAMCgAAAgAMOgAAAgAMCgAAAgAMOgAAAgAMCgANAgAMJAAAIAEMkAAD",
+  "objects": [
+    {
+      "id": "cl0",
+      "kind": "chargeLatch",
+      "x": 14,
+      "y": 37,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {}
+    },
+    {
+      "id": "valve0",
+      "kind": "valve",
+      "x": 26,
+      "y": 17,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 5,
+        "h": 2,
+        "material": "glass"
+      }
+    },
+    {
+      "id": "s0",
+      "kind": "sensor",
+      "x": 28,
+      "y": 36,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "type": "liquid",
+        "threshold": 8,
+        "zoneW": 11,
+        "zoneH": 6,
+        "latch": "permanent",
+        "filter": "water"
+      }
+    },
+    {
+      "id": "relay0",
+      "kind": "relay",
+      "x": 40,
+      "y": 37,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "delay": 30
+      }
+    },
+    {
+      "id": "door0",
+      "kind": "door",
+      "x": 49,
+      "y": 26,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "w": 2,
+        "h": 12
+      }
+    },
+    {
+      "id": "gold0",
+      "kind": "pickup",
+      "x": 56,
+      "y": 36,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "goldpile",
+        "amount": 90
+      }
+    },
+    {
+      "id": "chest0",
+      "kind": "pickup",
+      "x": 60,
+      "y": 36,
+      "rotation": 0,
+      "locked": false,
+      "hidden": false,
+      "params": {
+        "kind": "chest"
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "k0",
+      "fromId": "cl0",
+      "toId": "valve0",
+      "kind": "triggerDoor"
+    },
+    {
+      "id": "k1",
+      "fromId": "s0",
+      "toId": "relay0",
+      "kind": "triggerDoor"
+    },
+    {
+      "id": "k2",
+      "fromId": "relay0",
+      "toId": "door0",
+      "kind": "triggerDoor"
+    }
+  ],
+  "lights": [
+    {
+      "id": "L0",
+      "x": 14,
+      "y": 32,
+      "color": "#7fd4ff",
+      "intensity": 1.2,
+      "radius": 55,
+      "bloom": 0.5,
+      "flicker": 0.1,
+      "falloff": "soft",
+      "occluded": true,
+      "locked": false,
+      "hidden": false
+    },
+    {
+      "id": "L1",
+      "x": 56,
+      "y": 30,
+      "color": "#c084fc",
+      "intensity": 1.1,
+      "radius": 60,
+      "bloom": 0.4,
+      "flicker": 0.15,
+      "falloff": "soft",
+      "occluded": true,
+      "locked": false,
+      "hidden": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "aw",
+      "x": 0,
+      "y": 34,
+      "dir": "w",
+      "kind": "open",
+      "halfW": 4
+    },
+    {
+      "id": "ae",
+      "x": 71,
+      "y": 34,
+      "dir": "e",
+      "kind": "sealed",
+      "halfW": 3
+    }
+  ]
+}
