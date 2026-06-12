@@ -801,7 +801,16 @@ export type MechanismKind =
   // Wave E sensors — each reads raw cells, so emergent solutions always count
   | 'scale' // PRESSURE: enough material weight in the pan zone
   | 'buoy' // BUOY: enough liquid cells pooled in the basin zone
-  | 'chargelatch'; // CHARGE-LATCH: any electrified cell in the zone latches it forever
+  | 'chargelatch' // CHARGE-LATCH: any electrified cell in the zone latches it forever
+  // Machine primitives (docs/MACHINE-PRIMITIVES-AND-STRUCTURES-PLAN.md).
+  // valve/relay are ACTUATORS: they aggregate linked triggers exactly like
+  // doors (logic 'and'/'or'/'sequence'); sensor/plug/counterweight are
+  // triggers with one output (targetId) like plates and braziers.
+  | 'valve' // a small material gate in a channel; a sluice is a wide valve
+  | 'plug' // real cells that FIRE once when enough of them are destroyed
+  | 'sensor' // generic bounded-zone reader: heat/liquid/weight/charge/material
+  | 'counterweight' // weight pan that latches permanently at its threshold
+  | 'relay'; // one-shot event handoff: inputs satisfied -> delay -> fire
 
 /**
  * A placed contraption. Doors are real Metal-cell spans that retract row by
@@ -858,9 +867,39 @@ export interface Mechanism {
    * Fail-open rule: structural cells recorded at construction. When most are
    * destroyed the mechanism breaks, groans, and its gate falls open 30s later.
    * broken = frames left on the groan timer (0 = gate forced open forever).
+   * Plugs are EXEMPT: their body being destroyed is their job (they fire).
    */
   body?: Array<[number, number]>;
   broken?: number;
+  /* ---- machine primitives (all optional: old saves stay valid) ---- */
+  /** valve: cell type stamped when closed (default Metal); plug: the
+   *  recorded body material (default Stone). */
+  material?: number;
+  /** valve: stays open once fired. */
+  oneShot?: boolean;
+  /** valve: force-close N frames after opening; reopens only on a fresh
+   *  rising edge of its trigger aggregate (ignored when oneShot). */
+  autoCloseFrames?: number;
+  /** valve: auto-close countdown while open (transient, serializable). */
+  closeT?: number;
+  /** valve: last frame's trigger aggregate (rising-edge memory). */
+  prevWant?: boolean;
+  /** plug: fraction of body cells gone/transformed that fires it (0.5). */
+  breakFrac?: number;
+  /** sensor: what the zone reads. */
+  sensorType?: 'heat' | 'liquid' | 'weight' | 'charge' | 'material';
+  /** sensor 'material': cell ids that count toward the reading. */
+  materialFilter?: number[];
+  /** sensor: how a satisfied reading latches (default 'timed'). */
+  latch?: 'momentary' | 'timed' | 'permanent';
+  /** sensor 'timed': frames held after the reading passes (default 420). */
+  latchFrames?: number;
+  /** relay: frames between inputs-satisfied and firing (default 0). */
+  delayFrames?: number;
+  /** relay: live fuse countdown once armed (undefined = not armed). */
+  fuseT?: number;
+  /** relay: world effect at its target on fire (default 'activate'). */
+  outputAction?: 'activate' | 'ignite' | 'break' | 'strike';
 }
 
 /**
