@@ -45,8 +45,20 @@ src/
     Game.ts               Composition root: builds Ctx, owns the frame order
     WaveDirector.ts       Wave spawning state machine
   world/
-    CaveGenerator.ts      Biome-driven CA caves, tunnel arteries, decorations
+    CaveGenerator.ts      Generation pipeline host: skeleton dispatch + paint + decorations
+    carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)
+    skeleton/             Per-biome cave topology strategies (baseline + six bespoke)
+    connect.ts            connectToCaves/carvePocket + PlacementLedger (reserved rects)
+    prefabs/              Built-in PrefabDef registry + seeded placement pass into levels
+    crownPalette.ts       Transcribed crown tint math (Builder crownTint pass)
     fortress.ts           Multi-material real-cell fortress stamp
+  builder/                The Builder authoring tool (see docs/BUILDER.md)
+    Builder.ts            Editor overlay: tools, canvas, panels, dispatch
+    document.ts           EditorDocument v2 schema, library, share codes
+    prefablib.ts          PrefabDef v1: capture/rotate/mirror/paste/sanitize (shared contract)
+    selection.ts          Floating cell selection (lift/transform/commit)
+    symmetry.ts           Mirror painting math
+    assets/               PNG codec, cell<->RGBA pixmap, SpriteAsset + Aseprite parser, file IO
   render/
     Renderer.ts           Three.js renderer/composer/bloom/PostFx + camera quad transforms
     Camera.ts             Lerp follow, idle zoom, sim-bounds derivation
@@ -69,16 +81,31 @@ src/
 
 ## Authoring modes
 
-The current `build` mode is a live simulation sandbox: it paints cells into the
-active `World`, casts test spells, and saves raw grid data. Long term, this should
-be user-facing **Sandbox** mode.
+The `build` mode is the live-simulation **Sandbox**: it paints cells into the
+active `World`, casts test spells, and saves raw grid data (v1).
 
-The planned **Builder** is a separate developer tool. It should edit a durable
-`EditorDocument` containing terrain, objects, links, lights, procedural pass
-history, and validation state, then compile that authored document into a
-temporary `LevelRuntime` for playtest. Do not grow the current sandbox save format
-into the Builder format; Sandbox saves, Builder documents, and expedition saves
-serve different purposes. See `docs/BUILDER.md`.
+The **Builder** is the authoring tool: it edits a durable `EditorDocument` (v2 —
+terrain layer, objects, links, lights, procedural history, embedded sprite
+assets) and compiles it into a disposable `LevelRuntime` for playtest. Do not
+grow one save format into another's job; Sandbox saves, Builder documents, and
+expedition saves serve different purposes. See `docs/BUILDER.md`.
+
+**The prefab pipeline ties authoring to generation.** `PrefabDef` v1
+(`src/builder/prefablib.ts`) is one shared contract with three consumers: the
+Builder prefab library (capture/paste with objects+links+lights), the asset
+pipeline (terrain ⇄ palette-marked PNG for external pixel editors, plus
+`.prefab.json`), and worldgen (`src/world/prefabs/` places built-in prefabs
+into generated levels through the region graph, tunneling their anchors to the
+cave network and instantiating their objects through the SAME
+`src/game/instantiate.ts` path the playtest compiler uses).
+
+**Worldgen pipeline order** (generateLevel): caves (per-biome skeleton from
+`config/gen.ts` → shared paint + decoration stages) → bedrock/well/waystones →
+biome extras → region graph → ledger pre-reserves → prefab placement (forked
+rng stream — the main stream stays golden-hash locked) → graph re-extract →
+secrets → cauldron/onboarding → structures. Expedition saves record
+`GEN_VERSION`; resume retires mismatched saves (restoreLevel regenerates the
+pristine world from seed, so stale saves would silently desync).
 
 ## Key design decisions
 

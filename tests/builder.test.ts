@@ -439,24 +439,27 @@ describe('builder validation', () => {
   });
 });
 
-describe('stamp library', () => {
+describe('prefab cell transforms (exact values)', () => {
   it('rotates 90cw and mirrors correctly', async () => {
-    const { captureStamp, decodeStamp, mirrorStamp, rotateStamp } = await import('@/builder/stamplib');
+    const { capturePrefab, decodePrefabCells, mirrorPrefab, rotatePrefab } = await import(
+      '@/builder/prefablib'
+    );
     const w = new World();
     // a 3x2 block: rows [1,2,3] / [4,5,6] at (10,10)
     const vals = [1, 2, 3, 4, 5, 6];
     for (let y = 0; y < 2; y++) for (let x = 0; x < 3; x++) w.types[w.idx(10 + x, 10 + y)] = vals[x + y * 3];
-    const s = captureStamp(w, { x0: 10, y0: 10, x1: 12, y1: 11 }, 't')!;
-    expect(Array.from(decodeStamp(s))).toEqual(vals);
-    const r = rotateStamp(s); // 90cw: columns become rows bottom-up
+    const doc = createEmptyDocument('t', 'earthen');
+    const p = capturePrefab(w, { x0: 10, y0: 10, x1: 12, y1: 11 }, doc, 't')!.prefab;
+    expect(Array.from(decodePrefabCells(p))).toEqual(vals);
+    const r = rotatePrefab(p); // 90cw: columns become rows bottom-up
     expect(r.w).toBe(2);
     expect(r.h).toBe(3);
-    expect(Array.from(decodeStamp(r))).toEqual([4, 1, 5, 2, 6, 3]);
-    const m = mirrorStamp(s);
-    expect(Array.from(decodeStamp(m))).toEqual([3, 2, 1, 6, 5, 4]);
+    expect(Array.from(decodePrefabCells(r))).toEqual([4, 1, 5, 2, 6, 3]);
+    const m = mirrorPrefab(p);
+    expect(Array.from(decodePrefabCells(m))).toEqual([3, 2, 1, 6, 5, 4]);
     // four rotations come home
-    const r4 = rotateStamp(rotateStamp(rotateStamp(rotateStamp(s))));
-    expect(Array.from(decodeStamp(r4))).toEqual(vals);
+    const r4 = rotatePrefab(rotatePrefab(rotatePrefab(rotatePrefab(p))));
+    expect(Array.from(decodePrefabCells(r4))).toEqual(vals);
   });
 });
 

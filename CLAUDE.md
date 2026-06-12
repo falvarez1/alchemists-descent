@@ -26,7 +26,10 @@ node scripts/verify-game.mjs   # headless browser smoke test (needs dev server r
 node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs saved baseline)
 # Builder end-to-end probes (dev server running): verify-builder.mjs,
 # verify-builder-suite.mjs, verify-builder-expedition.mjs,
-# verify-builder-pro.mjs, verify-builder-ux.mjs
+# verify-builder-pro.mjs, verify-builder-ux.mjs, verify-builder-prefabs.mjs,
+# verify-builder-power.mjs, verify-sprites.mjs
+# Worldgen eyeball/diag: shot-biomes.mjs (overview PNGs), diag-biome.mjs
+node scripts/gen-builtin-prefabs.mjs   # regenerate src/world/prefabs/builtin/*.json
 ```
 
 Headless verification uses `playwright-core` driving system Edge (channel `'msedge'`) against the
@@ -60,6 +63,9 @@ dev server. `scripts/verify-*.mjs` show the pattern.
 
 1. **Cell IDs are append-only forever** (save-format ABI). `CELL_COUNT` in `sim/CellType.ts`
    must match (currently 35; Moss=34 is the highest taken id). Never renumber or reuse.
+   The marker palette in `sim/cellPalette.ts` is the same kind of ABI (it identifies
+   materials in every exported terrain PNG): one appended color per new cell type,
+   ≥12 Manhattan RGB from every existing entry, never edited (test-enforced).
 2. Entity arrays (`ctx.enemies`, `ctx.projectiles`) are mutated in place — `length = 0` and
    `push(...)`, never reassigned; systems hold the references.
 3. `world.swap` is the only safe cell-movement primitive (moves type/color/life/charge in
@@ -69,7 +75,9 @@ dev server. `scripts/verify-*.mjs` show the pattern.
 4. Magic numbers are load-bearing (probabilities, asymmetric neighbor lists, cadence throttles
    like `frameCount % 4`). The port preserved them exactly; change deliberately, one at a time,
    and say so in the commit. Approved deviations are listed in `docs/PORTING.md` — don't "fix
-   them back".
+   them back". The earthen cave generator is locked by `tests/gen-golden.test.ts` (FNV-1a
+   hashes); a deliberate generation change re-records the hashes AND bumps `GEN_VERSION` in
+   `config/gen.ts` (expedition saves record it; resume retires mismatched saves).
 5. Levels persist as live `World` instances per expedition; anything on `LevelRuntime` survives
    leave-and-return. Transient combat state is cleared on transitions (`Levels.enterLevel`).
 6. `config/params.ts` objects are intentionally mutable live-tuning data, not constants.

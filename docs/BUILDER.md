@@ -241,21 +241,73 @@ For live-material authoring:
 Sprayed materials are baked into cells. This is appropriate for sand piles,
 liquid pools, gas pockets, fire starts, debris, and stains.
 
-### Stamp
+### Prefabs (stamps grown up)
 
-For reusable authored chunks:
+Reusable authored chunks are **prefabs** (`PrefabDef` v1, `src/builder/prefablib.ts`):
+a rectangular terrain block PLUS the objects, internal links, and lights inside
+it, in local coordinates. CAPTURE REGION takes everything inside the region
+(spawn excluded; links to outside objects dropped with a warning); paste lands
+as ONE undoable composite (terrain patch + object/link/light adds with fresh
+ids and remapped links). Q rotates / E mirrors the armed copy — door slabs stay
+footprint-correct through transforms, patrol points and anchors travel.
 
-- Terrain stamps.
-- Puzzle room stamps.
-- Vegetation clumps.
-- Ruins and props.
-- Arena pieces.
-- Door frames.
-- Sensor basins.
-- Light rigs.
+The PREFABS panel (`src/builder/prefabPanel.ts`) shows generated thumbnails
+(never stored), name/size/content badges, tag chips (`#tag` words in the
+capture prompt), and search. Per-prefab actions: PNG export, JSON export,
+anchor editing (worldgen connection points: edge midpoints n/s/e/w, open or
+sealed), delete. Legacy terrain-only stamps migrate to prefabs tagged
+`terrain` on first load (lossless; old key removed).
 
-Stamps should support rotate, mirror, preview, and apply. Some stamps can remain
-as editable `terrainStamp` objects until baked.
+Three pipelines consume the same format:
+
+1. **The library** (this panel; per-prefab localStorage keys).
+2. **The asset pipeline**: terrain exports as a paintable PNG where each
+   opaque color is a material marker (`src/sim/cellPalette.ts` — APPEND-ONLY
+   ABI like cell ids; Empty round-trips as transparency; `.GPL` exports the
+   named swatches for Aseprite/GIMP). Re-import maps exact colors back to
+   cells; stray colors open the import report with nearest-material
+   suggestions and SNAP ALL / CANCEL. `.prefab.json` carries the full record
+   (kind:'prefab' discriminator); a PNG re-import into the armed prefab
+   updates terrain ONLY, keeping objects/links/lights — the
+   export → repaint in Aseprite → re-import loop.
+3. **Worldgen** (`src/world/prefabs/`): built-in prefabs (repo JSON, built by
+   `scripts/gen-builtin-prefabs.mjs`) are placed into generated descent
+   levels — see ARCHITECTURE.md. Placement requires at least one anchor.
+
+### Sprites (animated decor)
+
+Pixel animations authored in a dedicated tool (Aseprite is the target) import
+as `SpriteAsset` v1 (`src/builder/assets/sprites.ts`): the standard "Export
+Sprite Sheet" pair (sheet PNG + JSON — hash or array layout, frame tags,
+trimmed frames; rotation must be off) or any uniform-grid sheet PNG. Sprites
+keep true RGBA art colors (NOT the cell marker palette); alpha is binary at
+50% in the renderer. Arming a sprite places a `decor` object with
+`{spriteId, loopTag, fps, flipX}`; the inspector previews the animation live.
+EXPORT writes the sheet + Aseprite-array JSON back out (round-trip).
+
+**Animated decor is visual-only** — the same class of thing as enemy sprites
+and pickup glyphs. It never collides, blocks, emits, or gates progression:
+"if the grid can't explain it, it doesn't ship" governs mechanics, and decor
+has none. Anything that should burn, block, or flow must be real cells (use a
+prefab instead). Documents embed exactly the sprites their decor references
+(`EditorDocument.assets`), so exports and share codes stay self-contained.
+
+### Power editing
+
+- **Floating selection**: X lifts the selected region as a floating block
+  (types, colors, life, charge all travel — hand-tints survive); drag or
+  arrow keys move it (Shift = 8), Q/E rotate/mirror, Enter or X commits as
+  one undoable command, ESC cancels. Capped at 250k cells. While a float is
+  up, save/capture/playtest/settle/proc are gated — a world with a lifted
+  hole never gets captured.
+- **Symmetry**: SYM cycles off/x/y/quad; strokes, shapes, flood, and
+  smooth/roughen mirror live across the axis (one gesture = one undo). The
+  axis recenters on the active region. Prefab paste mirrors terrain only.
+- **Lasso region**: freehand region select, complementing rect/polygon/magic.
+- **Decoration passes**: `crowns` writes the armed material onto solid top
+  surfaces (clump-biased, skips underwater); `crownTint` recolors surface
+  rock with the biome crown palette (colors only, types untouched) via
+  `src/world/crownPalette.ts`.
 
 ### Procedural
 
