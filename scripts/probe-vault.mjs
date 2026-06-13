@@ -42,7 +42,7 @@ const r1 = await page.evaluate(
     ctx.levels.enterLevel(ctx, HOST);
     await new Promise((r) => setTimeout(r, 600));
     const rt = ctx.levels.current;
-    const arch = rt.vaultArch ?? null;
+    const arch = rt?.vaultArch ?? null;
     if (!arch) return { d1Arch, arch: null };
     // the secret must be sealed: the arch alcove is not in the spawn-reachable
     // component until dug (validator covers this as info — here we just cross)
@@ -78,16 +78,13 @@ check(r1.backOk === true, 'arrival lands at the vault arch back-spot (not level 
 check(r1.portal === null, 'the vault has no exit portal (the arch is the way home)');
 
 // ---------------- vault contents ----------------
-const r2 = await page.evaluate(() => {
+const r2 = await page.evaluate(async () => {
   const ctx = window.__game.ctx;
   const rt = ctx.levels.current;
-  const w = ctx.world;
-  let gold = 0,
-    catalyst = 0;
-  for (let i = 0; i < w.types.length; i++) {
-    if (w.types[i] === 17) gold++;
-    else if (w.types[i] === 35) catalyst++;
-  }
+  const [goldCount, catalystCount] = await Promise.all([
+    ctx.console.exec('count 17'),
+    ctx.console.exec('count 35'),
+  ]);
   const golems = ctx.enemies.filter((e) => e.kind === 'golem');
   const minHp = Math.min(...golems.map((g) => g.maxHp));
   const maxHp = Math.max(...golems.map((g) => g.maxHp));
@@ -97,8 +94,10 @@ const r2 = await page.evaluate(() => {
     ['scale', 'buoy', 'chargelatch', 'sensor', 'brazier'].includes(m.kind),
   ).length;
   return {
-    gold,
-    catalyst,
+    gold: goldCount.data?.count ?? 0,
+    catalyst: catalystCount.data?.count ?? 0,
+    goldCount,
+    catalystCount,
     golems: golems.length,
     minHp,
     maxHp,
@@ -109,8 +108,8 @@ const r2 = await page.evaluate(() => {
     refuge: !!rt.refuge,
   };
 });
-check(r2.gold >= 800, 'the vault is gilded (gold veins + pockets)', `gold=${r2.gold}`);
-check(r2.catalyst >= 50, 'catalyst seams + hoard piles present', `catalyst=${r2.catalyst}`);
+check(r2.goldCount?.ok && r2.gold >= 800, 'the vault is gilded (gold veins + pockets)', `gold=${r2.gold}`);
+check(r2.catalystCount?.ok && r2.catalyst >= 50, 'catalyst seams + hoard piles present', `catalyst=${r2.catalyst}`);
 check(
   r2.golems >= 2 && r2.maxHp >= r2.minHp * 2.2,
   'elite golem guards posted at the hoard',

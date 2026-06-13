@@ -15,6 +15,7 @@ import { Enemies } from '@/entities/Enemies';
 import { createPlayer, PlayerControl } from '@/entities/Player';
 import { Physics } from '@/entities/physics';
 import { Brewing } from '@/game/Brewing';
+import { createConsoleApi } from '@/game/console/commands';
 import { Critters } from '@/game/Critters';
 import { Levels } from '@/game/Levels';
 import { Mechanisms } from '@/game/Mechanisms';
@@ -36,10 +37,10 @@ import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
 import { HelpOverlay } from '@/ui/HelpOverlay';
 import { PauseOverlay } from '@/ui/PauseOverlay';
+import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
 import { Hud } from '@/ui/Hud';
 import { Inspector } from '@/ui/Inspector';
 import { LevelStore } from '@/ui/LevelStore';
-import { DebugConsole } from '@/ui/DebugConsole';
 import { Minimap } from '@/ui/Minimap';
 import { Sanctum } from '@/ui/Sanctum';
 import { PerfHud } from '@/ui/PerfHud';
@@ -136,6 +137,8 @@ export class Game {
     ctx.mechanisms = new Mechanisms(ctx);
     ctx.sanctum = new Sanctum(ctx);
     ctx.critters = new Critters(ctx);
+    ctx.perf = this.perfHud;
+    ctx.console = createConsoleApi(ctx);
     this.ctx = ctx;
 
     ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
@@ -155,8 +158,8 @@ export class Game {
     this.minimap = new Minimap(ctx);
     // Self-binds the B key; lives for the page lifetime.
     new WandBench(ctx);
-    // Backquote debug command surface; future home of typed QA commands.
-    new DebugConsole(ctx);
+    // Transitional dev console: typed QA commands + automation adapter.
+    new ConsoleOverlay(ctx);
     // Wires the Level Library buttons; lives for the page lifetime.
     new LevelStore(ctx);
     // The authoring overlay (injects its own DOM + header button).

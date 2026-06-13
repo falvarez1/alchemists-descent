@@ -552,6 +552,10 @@ export class Builder {
   private layerLocked = new Set<LayerFamily>();
   /** Scarred planes captured on playtest return, for BAKE. */
   private playtestScars: { types: Uint8Array; life: Int16Array; charge: Uint8Array } | null = null;
+  /** True while the disposable custom runtime came from Builder, not header PLAY. */
+  private builderPlaytestActive = false;
+  /** Last explicit test spawn for RESTART PLAYTEST. Null = authored spawn. */
+  private lastPlaytestSpawn: { x: number; y: number } | null = null;
   /** Ambient as it stood before a mood-overridden playtest. */
   private prevAmbient: number | null = null;
   /** Light preview solo (null = all). */
@@ -610,6 +614,7 @@ export class Builder {
   private overlay!: HTMLDivElement;
   private canvas!: HTMLCanvasElement;
   private cctx!: CanvasRenderingContext2D;
+  private playtestBanner!: HTMLDivElement;
   private minimap!: HTMLCanvasElement;
   private minimapCtx!: CanvasRenderingContext2D;
   private minimapImage: ImageData | null = null;
@@ -645,6 +650,11 @@ export class Builder {
         ctx.params.global.ambient = this.prevAmbient;
         this.prevAmbient = null;
       }
+    });
+    ctx.events.on('worldEdited', (edit) => {
+      if (!this.isOpen) return;
+      this.paintDirty = true;
+      this.status(`${edit.command.toUpperCase()} EDITED ${edit.cells} LIVE CELLS`, true);
     });
     // Sandbox world-shaping buttons reshape the WHOLE world under the open
     // document with no undo. While the Builder is open they must confirm
@@ -753,12 +763,20 @@ export class Builder {
       this.ctx.enemies.length = 0;
       this.ctx.projectiles.length = 0;
       this.ctx.particles.clear();
+      this.ctx.levels.exitCustomPlaytest(this.ctx);
       openStatus = { text: 'PLAYTEST DISCARDED - "BAKE PLAYTEST SCARS" (CTRL+K) CAN KEEP THEM' };
+    } else if (this.returningFromPlaytest) {
+      this.ctx.levels.exitCustomPlaytest(this.ctx);
     }
     if (this.returningFromPlaytest && this.prevAmbient !== null) {
       // a mood-overridden playtest restores the global ambient on return
       this.ctx.params.global.ambient = this.prevAmbient;
       this.prevAmbient = null;
+    }
+    if (this.returningFromPlaytest) {
+      this.builderPlaytestActive = false;
+      this.lastPlaytestSpawn = null;
+      this.setPlaytestBanner(false);
     }
     this.returningFromPlaytest = false;
     this.root.style.display = '';
@@ -803,6 +821,7 @@ export class Builder {
     this.patrolEditId = null;
     this.linkFrom = null;
     this.root.style.display = 'none';
+    if (!this.builderPlaytestActive) this.setPlaytestBanner(false);
     this.modeBtn.classList.remove('active');
     document.body.classList.remove('builder-open');
   }
@@ -991,7 +1010,8 @@ export class Builder {
         <button id="b-restore" title="Re-decode the document's captured terrain into the live world (clears undo)">RESTORE</button>
         <button id="b-validate">VALIDATE</button>
         <button id="b-bake" style="display:none" title="Re-apply the held playtest scars onto the document terrain (region = precise, undoable)">BAKE</button>
-        <button id="b-playtest" class="b-accent">PLAYTEST</button>
+        <button id="b-playtest" class="b-accent">BUILDER PLAYTEST</button>
+        <button id="b-playtest-here" class="b-accent" title="Compile this document and spawn at the cursor">PLAYTEST HERE</button>
         <button id="b-gallery" title="Browse and preview every prefab, mechanism, entity and sprite — live and animated">GALLERY</button>
         <button id="b-zen" title="Hide all side panels for a clear view of the canvas (\`)">PANELS</button>
         <button id="b-exit">EXIT</button>
@@ -1101,6 +1121,21 @@ export class Builder {
       <div id="builder-import-host" style="display:none"></div>
       <div id="builder-status"></div>`;
     holder?.appendChild(this.root);
+    this.playtestBanner = document.createElement('div');
+    this.playtestBanner.id = 'builder-playtest-banner';
+    this.playtestBanner.style.display = 'none';
+    this.playtestBanner.innerHTML = `
+      <div class="bpt-title">BUILDER PLAYTEST</div>
+      <div class="bpt-sub">DISPOSABLE CUSTOM RUNTIME</div>
+      <button id="bpt-return" type="button">RETURN TO BUILDER</button>
+      <button id="bpt-restart" type="button">RESTART</button>`;
+    holder?.appendChild(this.playtestBanner);
+    this.playtestBanner
+      .querySelector<HTMLButtonElement>('#bpt-return')
+      ?.addEventListener('click', () => this.open());
+    this.playtestBanner
+      .querySelector<HTMLButtonElement>('#bpt-restart')
+      ?.addEventListener('click', () => this.restartBuilderPlaytest());
 
     this.overlay = this.root.querySelector('#builder-overlay') as HTMLDivElement;
     this.canvas = this.root.querySelector('#builder-canvas') as HTMLCanvasElement;
@@ -1460,6 +1495,7 @@ export class Builder {
 
     this.el('b-bake').addEventListener('click', () => void this.bakePlaytestScars());
     this.el('b-playtest').addEventListener('click', () => this.playtest());
+    this.el('b-playtest-here').addEventListener('click', () => this.playtestHere());
     this.el('b-gallery').addEventListener('click', () => this.openGallery());
     this.el('b-zen').addEventListener('click', () => this.toggleZen());
     this.el('b-exit').addEventListener('click', () => this.close());
@@ -1506,11 +1542,36 @@ export class Builder {
       this.status('FIX ERRORS BEFORE PLAYTEST', true);
       return;
     }
+    this.startBuilderPlaytest(null);
+  }
+
+  private startBuilderPlaytest(spawnAt: { x: number; y: number } | null): void {
     this.returningFromPlaytest = true;
-    this.prevAmbient = this.ctx.params.global.ambient;
+    this.builderPlaytestActive = true;
+    this.lastPlaytestSpawn = spawnAt ? { ...spawnAt } : null;
+    if (this.prevAmbient === null) this.prevAmbient = this.ctx.params.global.ambient;
     this.close();
-    compileAndPlaytest(this.ctx, this.doc);
+    compileAndPlaytest(this.ctx, this.doc, spawnAt ? { spawnAt } : undefined);
+    this.setPlaytestBanner(true);
     (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
+  }
+
+  private restartBuilderPlaytest(): void {
+    if (!this.builderPlaytestActive) return;
+    if (this.prevAmbient !== null) this.ctx.params.global.ambient = this.prevAmbient;
+    compileAndPlaytest(
+      this.ctx,
+      this.doc,
+      this.lastPlaytestSpawn ? { spawnAt: this.lastPlaytestSpawn } : undefined,
+    );
+    this.setPlaytestBanner(true);
+    (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
+  }
+
+  private setPlaytestBanner(show: boolean): void {
+    if (!this.playtestBanner) return;
+    this.playtestBanner.style.display = show ? '' : 'none';
+    document.body.classList.toggle('builder-playtest-active', show);
   }
 
   /** Re-decode the authored terrain into the live world (fresh combat state). */
@@ -2939,23 +3000,35 @@ export class Builder {
       { passive: false },
     );
 
-    // Minimap: click (or drag) jumps the camera.
-    let mmDown = false;
-    const mmJump = (e: MouseEvent): void => {
+    // Minimap: click (or drag) jumps the camera. Pointer capture keeps the
+    // drag stream attached to the minimap instead of relying on window mousemove.
+    let mmPointerId: number | null = null;
+    const mmJump = (e: PointerEvent): void => {
       const r = this.minimap.getBoundingClientRect();
       const wx = ((e.clientX - r.left) / r.width) * WIDTH;
       const wy = ((e.clientY - r.top) / r.height) * HEIGHT;
       this.ctx.camera.snapTo(wx, wy);
+      this.drawMinimap();
     };
-    this.minimap.addEventListener('mousedown', (e) => {
-      mmDown = true;
+    this.minimap.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      mmPointerId = e.pointerId;
+      this.minimap.setPointerCapture(e.pointerId);
       mmJump(e);
     });
-    window.addEventListener('mousemove', (e) => {
-      if (mmDown) mmJump(e);
+    this.minimap.addEventListener('pointermove', (e) => {
+      if (mmPointerId === e.pointerId) mmJump(e);
     });
-    window.addEventListener('mouseup', () => {
-      mmDown = false;
+    const releaseMinimapPointer = (e: PointerEvent): void => {
+      if (mmPointerId !== e.pointerId) return;
+      mmPointerId = null;
+      if (this.minimap.hasPointerCapture(e.pointerId)) this.minimap.releasePointerCapture(e.pointerId);
+    };
+    this.minimap.addEventListener('pointerup', releaseMinimapPointer);
+    this.minimap.addEventListener('pointercancel', releaseMinimapPointer);
+    this.minimap.addEventListener('lostpointercapture', () => {
+      mmPointerId = null;
     });
 
     this.el('bp-light-toggle').addEventListener('click', () => {
@@ -4190,17 +4263,17 @@ export class Builder {
       return;
     }
     const at = { x: this.lastMouse.x, y: this.lastMouse.y };
-    this.returningFromPlaytest = true;
-    this.prevAmbient = this.ctx.params.global.ambient;
-    this.close();
-    compileAndPlaytest(this.ctx, this.doc, { spawnAt: at });
-    (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
+    this.startBuilderPlaytest(at);
   }
 
   /* ===================== keyboard (capture phase) ===================== */
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (!this.isOpen) return;
+    // Transitional focus guard until the Builder workspace Keymap owns
+    // priority surfaces. The console also captures on window, so Builder must
+    // explicitly yield while it is visible.
+    if (document.getElementById('dev-console')?.classList.contains('open')) return;
     if (document.querySelector('.app-dialog-root')) return;
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) {
@@ -4397,7 +4470,8 @@ export class Builder {
             .map((l, n) => toAuthoredLight(l, n))
         : null;
 
-    if (state.frameCount % 12 === 0) this.drawMinimap();
+    if (!this.minimapImage || state.frameCount % 12 === 0) this.refreshMinimapTerrain();
+    this.drawMinimap();
 
     // markers glue to world positions (sized kinds anchor at footprint center)
     for (const [id, el] of this.markers) {
@@ -4830,8 +4904,8 @@ export class Builder {
     }
   }
 
-  /** True-color world overview + camera box + object dots; click jumps. */
-  private drawMinimap(): void {
+  /** Refresh the cached true-color world overview; camera/dots redraw every RAF. */
+  private refreshMinimapTerrain(): void {
     const mmW = this.minimap.width,
       mmH = this.minimap.height;
     const mm = this.minimapCtx;
@@ -4856,6 +4930,13 @@ export class Builder {
         data[o + 3] = 255;
       }
     }
+  }
+
+  /** True-color world overview + camera box + object dots; click jumps. */
+  private drawMinimap(): void {
+    if (!this.minimapImage) this.refreshMinimapTerrain();
+    if (!this.minimapImage) return;
+    const mm = this.minimapCtx;
     mm.putImageData(this.minimapImage, 0, 0);
     // object + light dots
     for (const o of this.doc.objects) {
@@ -4870,11 +4951,11 @@ export class Builder {
     const cam = this.ctx.camera;
     const vw = VIEW_W / cam.zoom,
       vh = VIEW_H / cam.zoom;
-    const vx = cam.renderX + (VIEW_W - vw) / 2,
-      vy = cam.renderY + (VIEW_H - vh) / 2;
+    const vx = cam.x + (VIEW_W - vw) / 2,
+      vy = cam.y + (VIEW_H - vh) / 2;
     mm.strokeStyle = 'rgba(74,222,128,0.95)';
     mm.lineWidth = 1;
-    mm.strokeRect(vx / 8, vy / 8, vw / 8, vh / 8);
+    mm.strokeRect(vx / 8 + 0.5, vy / 8 + 0.5, Math.max(1, vw / 8), Math.max(1, vh / 8));
   }
 
   /** Rebuild the marker DOM from the document (object/light set changed). */

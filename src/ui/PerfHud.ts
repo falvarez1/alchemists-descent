@@ -95,11 +95,16 @@ export class PerfHud {
     return this._visible;
   }
 
-  toggle(): void {
-    this._visible = !this._visible;
+  toggle(): boolean {
+    return this.setVisible(!this._visible);
+  }
+
+  setVisible(visible: boolean): boolean {
+    this._visible = visible;
     this.root.style.display = this._visible ? 'block' : 'none';
     this.headerBtn?.classList.toggle('lit', this._visible);
     if (this._visible) this.refresh();
+    return this._visible;
   }
 
   /** Per-frame scratch for the profiling hook (no cost unless recording). */

@@ -234,6 +234,8 @@ export class Levels implements LevelsApi {
   /** Every level visited this expedition, kept live (keyed by LevelDef.id). */
   private levels = new Map<string, LevelRuntime>();
   private currentId: string | null = null;
+  /** Previous expedition pointer while a disposable custom playtest is current. */
+  private preCustomCurrentId: string | null = null;
   private _transitioning = false;
 
   /**
@@ -391,6 +393,7 @@ export class Levels implements LevelsApi {
    */
   playCurrentWorld(ctx: Ctx): void {
     if (this.expeditionSeed === 0) this.expeditionSeed = ctx.state.worldSeed >>> 0;
+    if (this.currentId !== 'custom') this.preCustomCurrentId = this.currentId;
     const def: LevelDef = {
       id: 'custom',
       name: 'CUSTOM LEVEL',
@@ -425,6 +428,22 @@ export class Levels implements LevelsApi {
     }
     ctx.events.emit('levelChanged', { depth: 1, name: def.name });
     ctx.events.emit('objectiveChanged', { text: 'YOUR LEVEL — YOUR RULES' });
+  }
+
+  exitCustomPlaytest(ctx: Ctx): void {
+    if (this.currentId !== 'custom') {
+      this.levels.delete('custom');
+      this.preCustomCurrentId = null;
+      return;
+    }
+    this.levels.delete('custom');
+    this.currentId =
+      this.preCustomCurrentId && this.levels.has(this.preCustomCurrentId)
+        ? this.preCustomCurrentId
+        : null;
+    this.preCustomCurrentId = null;
+    this.waystoneHeat = [];
+    this.lastEnemiesEmit = ctx.enemies.length;
   }
 
   /* ---------------- expedition persistence ---------------- */
@@ -502,6 +521,15 @@ export class Levels implements LevelsApi {
       /* nothing to drop */
     }
     this.savedBlobs.clear();
+  }
+
+  debugEnterLevel(ctx: Ctx, id: string): boolean {
+    if (!LEVELS[id]) return false;
+    if (ctx.state.mode !== 'play') return false;
+    if (!this.currentId) this.startDescent(ctx);
+    this.leaveLevel();
+    this.enterLevel(ctx, id);
+    return this.current?.def.id === id;
   }
 
   private serializeLevel(id: string, rt: LevelRuntime): SavedLevelBlob {

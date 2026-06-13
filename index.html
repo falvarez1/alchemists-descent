@@ -43,6 +43,7 @@
     <header>
         <div><h1>Purple Llama Studio <span class="title-sub">| Alchemist's Descent</span></h1></div>
         <div class="hud-wrapper">
+            <button class="sound-btn" id="dev-console-toggle" title="Developer console (`)">CONSOLE</button>
             <button class="sound-btn" id="gpu-compose-toggle" title="GPU frame composition: A/B the terrain shader live (also in the Post Processing panel)">GPU FX</button>
             <button class="sound-btn" id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">PERF</button>
             <button class="sound-btn" id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">FULLSCREEN PLAY</button>
@@ -177,7 +178,7 @@
                         <b>A / D</b> move &nbsp; <b>SPACE</b> jump / levitate &nbsp; <b>S</b> crouch &middot; +move: crawl &middot; air: dive<br>
                         <b>SHIFT / C</b> grab wall &middot; <b>W / S</b> climb while grabbed &nbsp; <b>FULLSCREEN PLAY</b> attempts key lock<br>
                         <b>MOUSE</b> aim + fire &nbsp; <b>1/2</b> wands &nbsp; <b>TAB</b> sandbox<br>
-                        <b>E</b> siphon / lever &nbsp; <b>Q</b> pour &nbsp; <b>F/RMB</b> throw flask &nbsp; <b>X</b> drink &nbsp; <b>M</b> map &nbsp; <b>H</b> help &nbsp; <b>ESC</b> pause &nbsp; <b>B</b> wand bench &nbsp; <b>&#96;</b> god kit
+                        <b>E</b> siphon / lever &nbsp; <b>Q</b> pour &nbsp; <b>F/RMB</b> throw flask &nbsp; <b>X</b> drink &nbsp; <b>M</b> map &nbsp; <b>H</b> help &nbsp; <b>ESC</b> pause &nbsp; <b>B</b> wand bench &nbsp; <b>&#96;</b> console
                     </div>
                     <div id="wave-banner"><div class="big" id="banner-big">WAVE 1</div><div class="small" id="banner-small">HOSTILES INBOUND</div></div>
                     <div id="damage-vignette"></div>
@@ -208,7 +209,7 @@
                             <div class="help-h">THE MAP</div>
                             <p><b>M</b> for the full chart. Dots: <span style="color:#fde047">key</span> &middot; <span style="color:#fbbf24">sealed gate</span> &middot; <span style="color:#a78bfa">rune glyph</span> &middot; <span style="color:#c084fc">portal</span> &middot; <span style="color:#ff9a3c">lit waystone</span> &middot; <span style="color:#4ade80">cauldron</span> &middot; <span style="color:#fb7185">heart</span> &middot; <span style="color:#7dd3fc">tome</span>.</p>
                             <div class="help-h">CONTROLS</div>
-                            <p>A/D move &middot; SPACE jump / levitate &middot; S crouch &amp; peek (in air: dive slam) &middot; SHIFT/C wall grab, W/S climb &middot; LMB cast &middot; RMB/F flask &middot; R respawn &middot; H this handbook &middot; &#96; enables the transient QA god kit</p>
+                            <p>A/D move &middot; SPACE jump / levitate &middot; S crouch &amp; peek (in air: dive slam) &middot; SHIFT/C wall grab, W/S climb &middot; LMB cast &middot; RMB/F flask &middot; R respawn &middot; H this handbook &middot; &#96; opens the developer console</p>
                         </div>
                     </div>
                     <div class="help-close">H or ESC to close</div>

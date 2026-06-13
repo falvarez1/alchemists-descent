@@ -865,6 +865,40 @@ export interface TelemetryApi {
 }
 
 /* ============================================================
+ * Developer console command surface
+ * ============================================================ */
+
+export interface CommandResult {
+  ok: boolean;
+  /** Human-readable line for the overlay log. */
+  text: string;
+  /** Structured facts for probes and scripts. */
+  data?: unknown;
+}
+
+export interface CommandInfo {
+  id: string;
+  label: string;
+  category: 'console' | 'game' | 'builder' | 'workspace';
+  usage: string;
+  description: string;
+  shortcut?: string;
+  enabled: boolean;
+}
+
+export interface ConsoleApi {
+  exec(line: string): Promise<CommandResult>;
+  complete(partial: string): string[];
+  list(): CommandInfo[];
+}
+
+export interface PerfApi {
+  readonly visible: boolean;
+  setVisible(visible: boolean): boolean;
+  toggle(): boolean;
+}
+
+/* ============================================================
  * Upgrade port: mechanisms, pickups, portal progression, sanctum
  * ============================================================ */
 
@@ -1401,6 +1435,8 @@ export interface LevelsApi {
    * enemies placed in build mode are kept.
    */
   playCurrentWorld(ctx: Ctx): void;
+  /** Leave a disposable Builder/Sandbox custom runtime so header PLAY resumes the expedition path. */
+  exitCustomPlaytest(ctx: Ctx): void;
   /** QA/debug command: stock visible potion pickups in the current level. */
   seedReviewKit(ctx: Ctx): void;
   /** Persist the whole expedition (visited levels + hero) to localStorage. */
@@ -1408,6 +1444,8 @@ export interface LevelsApi {
   hasSavedExpedition(): boolean;
   /** Drop the save; the next play entry starts a fresh expedition. */
   abandonExpedition(): void;
+  /** QA/dev console level jump. The Levels system owns the transition semantics. */
+  debugEnterLevel(ctx: Ctx, id: string): boolean;
 }
 
 /* ============================================================
@@ -1443,6 +1481,8 @@ export interface Ctx {
   waveCtl: WaveDirectorApi;
   flask: FlaskApi;
   telemetry: TelemetryApi;
+  perf: PerfApi;
+  console: ConsoleApi;
   levels: LevelsApi;
   wands: WandsApi;
   pickups: PickupsApi;

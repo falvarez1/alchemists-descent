@@ -44,6 +44,17 @@ export interface EventMap {
   dryFire: undefined;
   /** Flask verb refused (empty pour/throw, siphon into a full flask). */
   flaskDry: undefined;
+  /**
+   * Transitional bridge: raw live-world edits from dev tools can mark Builder
+   * divergence without importing Builder into gameplay code.
+   */
+  worldEdited: {
+    source: 'console';
+    command: string;
+    target: string;
+    bounds: { x0: number; y0: number; x1: number; y1: number };
+    cells: number;
+  };
 }
 
 type Handler<T> = (payload: T) => void;

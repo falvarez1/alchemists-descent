@@ -37,11 +37,28 @@ systems and probes call; the overlay is one of its clients (events outward,
 calls inward — the registry never touches the DOM).
 
 ```
-src/game/console/registry.ts   CommandRegistry: parse, dispatch, complete
-src/game/console/commands.ts   Command definitions (handlers close over ctx)
+src/game/console/registry.ts   ConsoleCommandRegistry: parse, dispatch, complete
+src/game/console/commands.ts   Console command definitions (handlers close over ctx)
 src/ui/ConsoleOverlay.ts       Quake shell: slide-down panel, log, input,
                                history, completion UI (replaces DebugConsole.ts)
 ```
+
+The console registry is the headless command executor and automation adapter.
+It must not become a second UI command framework beside the Builder workspace
+command system in `docs/BUILDER-LIVE-UI-SPEC.md`. The long-term command
+contract is shared and namespaced:
+
+- `console.*` for overlay/history/completion commands.
+- `game.*` for runtime QA commands such as spawn, level, teleport, perf.
+- `builder.*` for document-authoring commands.
+- `workspace.*` for panels, docks, overlays, focus, and layout.
+
+Phase 1 may ship with a local console registry, but it should expose command
+metadata in the same shape expected by the future editor `CommandRegistry`
+(`id`, `label`, `category`, `shortcut`, `enabled`, `run`). When the Builder UI
+framework lands, the console overlay and the Builder command palette should
+consume one shared command catalog instead of maintaining parallel shortcut and
+menu wiring.
 
 - `ctx.console: ConsoleApi` (types.ts append) —
   `exec(line): Promise<CommandResult>` (ALWAYS a promise, even for sync
@@ -113,40 +130,130 @@ blocking Phase 3.
 **Phase 3 (automation):** `exec <name>` — run a named script (newline
 command lists in `localStorage` `noita-console-scripts`, importable via the
 overlay); `assert <paramPath> <op> <value>` — returns ok/fail for script
-gating; structured-result contract documented in this file; **migrate two
-real probes** (the probe-archetypes arena rig and probe-vault's gold-counting
-setup are the candidates) to prove the API earns its keep, plus
+gating; `count <material> [x y w h]` — a read-only material census helper for
+probe setup/readback; structured-result contract documented in this file;
+**migrate two real probes** (the probe-archetypes arena rig and probe-vault's
+gold-counting setup are the candidates) to prove the API earns its keep, plus
 `scripts/verify-console.mjs` (the console's own gate).
+
+Phase 3 automation contract:
+
+- `localStorage["noita-console-scripts"]` is JSON object storage:
+  `{ "smoke": "set global.simSpeed 0.9\nassert global.simSpeed == 0.9" }`.
+  Values may be a newline string or an array of command strings. Script names
+  normalize to lowercase `a-z0-9._-` ids so probes and imported files use the
+  same lookup.
+- `exec <name>` loads that script, ignores blank/comment lines (`#` or `//`),
+  runs each line through `ctx.console.exec(...)`, and stops on the first
+  `ok:false`. Its `data` is `{ code, name, commands, results }`; failures add
+  `{ lineNumber, line }` for the failed command.
+- `assert <paramPath> <op> <value>` is read-only and supports `==`, `!=`, `>`,
+  `>=`, `<`, `<=`, and `includes`. Its `data` is `{ code, path, op, expected,
+  actual }`; failed assertions intentionally return `ok:false` so scripts can
+  gate later commands.
+- `count <material> [x y w h]` uses the same read-target policy as `dump`.
+  It returns `{ target, material, requestedBounds, bounds, count }` and never
+  exposes Builder Author terrain under a fake `sandbox` target while Builder
+  is open.
 
 **Phase 4 (polish, optional):** `watch <paramPath>` pins live values to a
 HUD corner; `bind <key> <command...>`; toast/JS-error mirroring into the
 log; `screenshot` (async, rAF readback — the parity-probe pattern).
 
+Phase 4 polish contract:
+
+- `watch <paramPath>|list|clear` stores canonical param paths in
+  `localStorage["noita-console-watches"]`. The overlay renders a compact
+  read-only watch HUD by polling `get <path>`; watches are editor preferences,
+  not document or expedition state.
+- `bind <F4-F10|F12> <command...>|clear|list` stores console-local shortcuts in
+  `localStorage["noita-console-binds"]`. This is intentionally narrow and
+  transitional: no movement/tool keys, no Builder command ownership, no final
+  Keymap design. The future workspace `Keymap` should replace this listener.
+- Toast and browser JS error mirroring append diagnostic lines to the console
+  log but do not change gameplay state.
+- `screenshot` waits one animation frame, copies the current game canvas into a
+  temporary 2D canvas, and returns `{ width, height, type, dataUrl }` for
+  probes. It does not write files or touch renderer internals.
+
 ### Overlay UX
 
-Backquote slides a half-screen monospace panel from the top (over the canvas,
-`pointer-events: auto`, canvas keeps rendering). Log = scrollback where the
-command ECHO is dim and the RESULT renders bright (the result is the payload
-QA reads — `pos` coords must not be the dim part); errors red; text
+Backquote slides a half-screen monospace panel from the top in Play and
+Sandbox (over the map/game viewport, `pointer-events: auto`, viewport keeps
+rendering). In Builder, the same console surface should first integrate as a
+dockable bottom/floating workspace panel when the docking shell from
+`docs/BUILDER-LIVE-UI-SPEC.md` exists; until then, the temporary slide-down
+overlay is acceptable but must be treated as transitional UI. Log = scrollback
+where the command ECHO is dim and the RESULT renders bright (the result is the
+payload QA reads — `pos` coords must not be the dim part); errors red; text
 selectable (`user-select: text`) for pasting into bug reports. Input line at
 the bottom; ↑/↓ history (localStorage, 100 entries) that PRESERVES the
-half-typed draft when you arrow away and back. Tab completion cycles
-in-place through candidates (command names first, then the typed-arg
-candidates — cell/enemy/level names); Shift+Tab cycles backward; the
-candidate list renders as a one-line hint row above the input, never a
-popup. A header CONSOLE button (the PERF/GPU FX family, lit while open)
-mirrors Backquote — discoverable, and the layout-safe fallback for non-US
-keyboards where `Backquote` is a dead key.
+half-typed draft when you arrow away and back. Tab completion cycles in-place
+through candidates (command names first, then the typed-arg candidates —
+cell/enemy/level names); Shift+Tab cycles backward; the candidate list renders
+as a one-line hint row above the input, never a popup. A header CONSOLE button
+(the PERF/GPU FX family, lit while open) mirrors Backquote — discoverable, and
+the layout-safe fallback for non-US keyboards where `Backquote` is a dead key.
 
 Mode-agnostic: works in Sandbox, play, AND while the Builder is open.
 Builder's capture-phase handler must yield when the console is open — one
 guard line at the top of Builder.onKeyDown, same pattern as its existing
 B/M/H shields. The guard checks console visibility the way PauseOverlay
 checks `#help-overlay` (a DOM `classList.contains` probe), so Builder gains
-no import. **The guard is mandatory, not defensive**: Builder and the
-console both listen capture-phase on `window`, and `stopPropagation` does
-NOT silence other listeners already attached to the same node — without the
-guard, Builder's Tab/ESC/Q/E handlers still fire under the console.
+no import. **This DOM guard is a transitional implementation detail.** The
+Builder live workspace end-state is centralized focus ownership through the
+shared `Keymap`/workspace focus manager: console input, modals, command
+palette, text fields, help, and pause overlays all preempt Builder shortcuts
+through one priority system. The guard is still mandatory until that exists:
+Builder and the console both listen capture-phase on `window`, and
+`stopPropagation` does NOT silence other listeners already attached to the
+same node — without the guard, Builder's Tab/ESC/Q/E handlers still fire under
+the console.
+
+### Builder Live Workspace compatibility
+
+The console must cooperate with `docs/BUILDER-LIVE-UI-SPEC.md`; it should not
+define a parallel UX architecture.
+
+- **One command model:** console commands and Builder/workspace commands share
+  one command metadata shape and namespaces. `ctx.console.exec(line)` remains
+  the string-command automation API, but parsed commands should map onto the
+  shared command registry where possible.
+- **One keymap/focus owner:** the Phase 1 DOM guard is acceptable only before
+  the editor `Keymap` exists. Once the workspace shell lands, the console
+  registers as a high-priority focus surface instead of asking Builder to check
+  DOM visibility.
+- **Presentation by mode/session:** Play and Sandbox use the slide-down
+  overlay. Builder uses a dockable bottom panel by default, can float by user
+  choice, and should not cover the map/game viewport as a persistent panel.
+- **Explicit command target:** world-mutating commands must resolve a target
+  before they run: `sandbox`, `expedition`, `builder-document`,
+  `builder-live-preview`, or `builder-playtest`. Ambiguous commands return
+  `ok:false` with the available target choices.
+- **Builder document mutations go through Builder commands:** commands that
+  intentionally edit `EditorDocument` must call Builder-owned commands so undo,
+  validation, selection, layers, and dirty state stay coherent. Raw
+  `ctx.world` writes are allowed for Sandbox/expedition/playtest QA, not as a
+  back door into authored source data.
+- **Builder playtest is not normal Play:** commands inside a Builder playtest
+  target the disposable custom runtime unless the user explicitly targets the
+  saved Builder document. They must not trigger expedition autosave or level
+  progression assumptions.
+- **Live preview is disposable:** console commands may inspect live-preview
+  state; destructive commands require an explicit `builder-live-preview`
+  target and never bake changes back to the document.
+- **Workspace output:** command logs, watches, and pinned values should be
+  routeable to the Builder bottom dock/status area once the dock system exists.
+
+Session policy:
+
+| Command family | Sandbox | Play/expedition | Builder Author | Builder Live Preview | Builder Playtest |
+|---|---|---|---|---|---|
+| Read-only (`pos`, `dump`, `get`, `tele`, `perf`) | allowed | allowed | allowed against selected target | allowed | allowed |
+| Runtime mutation (`tp`, `spawn`, `kill`, `give`, `level`) | allowed when meaningful | allowed and taints | blocked unless explicit preview/playtest target | allowed only as preview mutation | allowed on disposable runtime |
+| Cell mutation (`cell`, `fill`) | writes live sandbox world | writes expedition world and taints | document edit only through Builder command, else blocked | explicit preview mutation only | writes disposable playtest runtime |
+| Param tuning (`set`, `get`, `time`, `gpu`) | allowed, untainted unless gameplay-mutating | allowed, untainted unless gameplay-mutating | allowed for editor/runtime params with command metadata | allowed | allowed |
+| Builder authoring (`builder.*`) | blocked | blocked unless Builder document is open | allowed through Builder commands | allowed only for non-destructive view/session changes | allowed only for return/restart/bake/inspect commands |
 
 ### Safety rails
 
@@ -159,12 +266,13 @@ guard, Builder's Tab/ESC/Q/E handlers still fire under the console.
   panel already performs untainted. The first gameplay-mutating command in a
   clean run logs a "this run will no longer autosave" line. Read-only
   commands (`pos`, `dump`, `get`, `tele`, `perf`) never taint.
-- Builder documents are NOT touched by console commands (the Builder owns
-  its own document; `cell`/`fill` write the live world only). `paintDirty`
-  is set only by the Builder's OWN actions, so an external edit would
-  silently diverge doc from world — therefore every world-writing command
-  emits a typed `worldEdited` EventBus event, and the Builder subscribes and
-  sets `paintDirty` while open. Events outward; no Builder import.
+- Builder documents are NOT touched by raw console world commands. The Builder
+  owns its document; any command that edits authored source data must execute a
+  Builder command and be undo/validation/layer aware. `cell`/`fill` default to
+  the active live runtime target, never the document. For legacy/transitional
+  world-writing commands, emit a typed `worldEdited` EventBus event so Builder
+  can mark any live-world divergence while open. Events outward; no Builder
+  import.
 - `spawn` count cap (32/command), `fill` area cap (the Builder's 150k-cell
   paint budget, reused) — a typo must not freeze the tab.
 
@@ -173,9 +281,11 @@ guard, Builder's Tab/ESC/Q/E handlers still fire under the console.
 1. **Registry + shell.** `ConsoleApi` on Ctx, registry with typed parsers,
    the 10 core commands, the overlay (open/close/log/history), Backquote
    rebind (god kit becomes `god`), keyboard claim verified by a real-click
-   probe (type `wasd` with console open → player must not move).
+   probe (type `wasd` with console open → player must not move), command
+   metadata shaped for the future shared Builder/workspace command catalog.
 2. **Full command set + completion.** Tab completion, `dump`, params
-   get/set, the QA readouts.
+   get/set, the QA readouts, explicit target resolution for world-mutating
+   commands in Sandbox/Play/Builder Author/Live Preview/Playtest.
 3. **Automation surface.** Scripts, `assert`, the probe migrations,
    `verify-console.mjs` joins the battery, contract docs.
 4. **Polish.** `watch`, `bind`, error mirroring. Only if 1-3 prove out.
@@ -187,11 +297,17 @@ guard, Builder's Tab/ESC/Q/E handlers still fire under the console.
   `npm run lint`, `npm run verify:findability` (must be untouched).
 - `scripts/verify-console.mjs`: real-click + typed-text probe — open/close,
   command round-trips with `data` asserts, **input isolation** (the wasd
-  test), history, completion, Builder-open coexistence, god-kit parity with
-  the old Backquote behavior.
+  test), history, completion, Builder-open coexistence, target resolution
+  matrix, god-kit parity with the old Backquote behavior.
+- Builder compatibility probes: console open while Builder Author is active
+  must preempt Builder shortcuts; header Play remains the normal game escape
+  hatch; `cell`/`fill` in Builder Author must either route through a Builder
+  document command with undo or fail with an explicit target-choice error;
+  `cell`/`fill` in Builder Playtest may mutate only the disposable runtime.
 - Existing battery unchanged: probe-anim, verify-builder, verify-sprites
   (the console must be inert while closed — zero per-frame cost).
-- Frank eyeball: feel of the slide-down, font size, log readability.
+- Frank eyeball: feel of the slide-down in Play/Sandbox, docked/floating
+  behavior in Builder, font size, log readability.
 
 ## Risks / open questions
 
@@ -203,24 +319,28 @@ guard, Builder's Tab/ESC/Q/E handlers still fire under the console.
 - **Async commands** (`perfrec` in Phase 2, `screenshot` in Phase 4): exec
   always returns a Promise; the overlay prints "…" then replaces it with the
   result; the input line stays live while a command runs.
-- **Parallel sessions**: registry + commands are new files; only Game.ts,
-  types.ts, Builder.ts (one guard line) are shared-file touches. Low collision
-  risk, same discipline as ticket #8.
+- **Parallel sessions**: Phase 1 can stay low-collision by keeping registry
+  and commands new, with Game.ts/types.ts/Builder.ts as the only mandatory
+  shared touches. Once the Builder workspace shell lands, console integration
+  must deliberately touch the shared editor command/keymap layer instead of
+  preserving a parallel registry forever.
 
 ## File map
 
 | File | Change |
 |---|---|
-| `src/game/console/registry.ts` (new) | CommandRegistry, parsers, completion |
-| `src/game/console/commands.ts` (new) | command definitions |
-| `src/ui/ConsoleOverlay.ts` (new) | the Quake shell (replaces DebugConsole.ts) |
+| `src/game/console/registry.ts` (new) | ConsoleCommandRegistry, parsers, completion, shared command metadata adapter |
+| `src/game/console/commands.ts` (new) | console/game command definitions with explicit target policies |
+| `src/ui/ConsoleOverlay.ts` (new) | the Quake shell (replaces DebugConsole.ts); transitional overlay until dockable workspace panel exists |
 | `src/ui/DebugConsole.ts` | deleted (god logic moves into the `god` command) |
 | `src/core/types.ts` | `ConsoleApi`, `CommandResult`, `ctx.console` |
-| `src/core/events.ts` | `worldEdited` event (console world writes → Builder paintDirty) |
+| `src/core/events.ts` | `worldEdited` event (transitional live-world writes → Builder divergence/dirty handling) |
 | `src/game/Game.ts` | wire registry + overlay |
-| `src/builder/Builder.ts` | yield-guard line in onKeyDown + `worldEdited` subscription |
+| `src/builder/Builder.ts` | transitional yield-guard line in onKeyDown + `worldEdited` subscription |
+| `src/ui/editor/CommandRegistry.ts` | future shared command catalog; console registers/adapts into it when Builder workspace lands |
+| `src/ui/editor/Keymap.ts` | future shared focus/keymap owner; replaces DOM visibility guards when available |
 | `index.html` | header CONSOLE button (PERF/GPU FX family) |
-| `src/styles/main.css` | console panel styles |
+| `src/styles/main.css` | console panel styles; later workspace dock/floating panel styles |
 | `tests/console.test.ts` (new) | parser/dispatch/completion units |
 | `scripts/verify-console.mjs` (new) | headless gate |
 

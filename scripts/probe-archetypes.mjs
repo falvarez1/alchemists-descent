@@ -30,13 +30,14 @@ async function loadDepth(seed, id) {
       ctx.state.worldSeed = SEED;
       document.getElementById('mode-play-btn').click();
       await new Promise((r) => setTimeout(r, 1800));
+      let levelResult = null;
       if (ID !== 'd1') {
-        ctx.levels.leaveLevel();
-        ctx.levels.enterLevel(ctx, ID);
+        levelResult = await ctx.console.exec(`level ${ID}`);
         await new Promise((r) => setTimeout(r, 400));
       }
       const rt = ctx.levels.current;
-      return rt ? { ok: true, id: rt.def.id } : { ok: false };
+      const levelOk = ID === 'd1' || (levelResult?.ok === true && rt?.def.id === ID);
+      return rt ? { ok: levelOk, id: rt.def.id, levelResult } : { ok: false, levelResult };
     },
     { SEED: seed, ID: id },
   );
@@ -45,8 +46,13 @@ async function loadDepth(seed, id) {
 // ---------------- FREEZE BRIDGE ----------------
 // d3 is frozen; bias < 0.5 forces archetype 4, so ~half of all seeds carry it.
 let freezeSeed = -1;
+let freezeLoadFailed = null;
 for (let seed = 1; seed <= 14 && freezeSeed < 0; seed++) {
-  await loadDepth(seed, 'd3');
+  const loaded = await loadDepth(seed, 'd3');
+  if (!loaded.ok) {
+    freezeLoadFailed = { seed, loaded };
+    break;
+  }
   const found = await page.evaluate(() => {
     const rt = window.__game.ctx.levels.current;
     const s = rt.mechanisms.find(
@@ -56,6 +62,7 @@ for (let seed = 1; seed <= 14 && freezeSeed < 0; seed++) {
   });
   if (found) freezeSeed = seed;
 }
+check(!freezeLoadFailed, 'console level command enters d3 during freeze search', freezeLoadFailed ? JSON.stringify(freezeLoadFailed) : '');
 check(freezeSeed > 0, 'freeze bridge generates on d3 within 14 seeds', `seed=${freezeSeed}`);
 
 if (freezeSeed > 0) {
@@ -68,15 +75,13 @@ if (freezeSeed > 0) {
     );
     const door = rt.mechanisms.find((m) => m.kind === 'door' && m.id === sensor.targetId);
     const z = sensor.zone;
-    const count = (t, x0, y0, x1, y1) => {
-      let n = 0;
-      for (let Y = y0; Y <= y1; Y++)
-        for (let X = x0; X <= x1; X++) if (w.types[w.idx(X, Y)] === t) n++;
-      return n;
+    const countZone = async (material) => {
+      const res = await ctx.console.exec(`count ${material} ${z.x0} ${z.y0} ${z.x1 - z.x0 + 1} ${z.y1 - z.y0 + 1}`);
+      return { ok: res.ok, count: res.data?.count ?? 0, res };
     };
     const px2 = sensor.x + 2, // chamber center from sensor placement
       py2 = sensor.y - 9;
-    const water0 = count(2, z.x0, z.y0, z.x1, z.y1); // Water=2
+    const water0 = await countZone('water');
     const drip = (rt.emitters ?? []).find(
       (e) => e.cell === 16 && Math.abs(e.x - (px2 - 2)) <= 2 && Math.abs(e.y - (py2 - 9)) <= 2,
     );
@@ -91,7 +96,7 @@ if (freezeSeed > 0) {
     // NEGATIVE: with the tray intact the drops pool and evaporate — the
     // channel must stay essentially liquid
     await new Promise((r) => setTimeout(r, 5000));
-    const iceTrayIntact = count(10, z.x0, z.y0, z.x1, z.y1);
+    const iceTrayIntact = await countZone('ice');
     // break the catch-tray (floor + both 2-high brim walls)
     for (let dx = -4; dx <= 0; dx++) w.types[w.idx(px2 + dx, py2 - 6)] = 0;
     for (const dx of [-4, 0]) {
@@ -103,26 +108,29 @@ if (freezeSeed > 0) {
       doorOpen = false;
     for (let t = 0; t < 150; t++) {
       await new Promise((r) => setTimeout(r, 200));
-      ice = count(10, z.x0, z.y0, z.x1, z.y1); // Ice=10
+      const iceCount = await countZone('ice');
+      ice = iceCount.count;
       latched = sensor.state > 0;
       doorOpen = door.state === 1;
       if (doorOpen) break;
     }
     return {
-      water0,
+      water0: water0.count,
+      waterCountOk: water0.ok,
       hasDrip: !!drip,
-      iceTrayIntact,
+      iceTrayIntact: iceTrayIntact.count,
+      iceTrayCountOk: iceTrayIntact.ok,
       ice,
       latched,
       doorOpen,
       threshold: sensor.threshold,
     };
   });
-  check(res.water0 >= 20, 'trench holds open water', `water=${res.water0}`);
+  check(res.waterCountOk && res.water0 >= 20, 'trench holds open water via console count', `water=${res.water0}`);
   check(res.hasDrip, 'nitrogen drip emitter present');
   check(
-    res.iceTrayIntact < res.threshold,
-    'tray intact: channel stays liquid (negative test)',
+    res.iceTrayCountOk && res.iceTrayIntact < res.threshold,
+    'tray intact: channel stays liquid via console count (negative test)',
     `ice=${res.iceTrayIntact}`,
   );
   check(res.ice >= res.threshold, 'broken tray: the drip froze the channel', `ice=${res.ice}`);
@@ -136,9 +144,14 @@ if (freezeSeed > 0) {
 // driven by a lever — unique to the knife-switch rail (machine prefabs also
 // carry chargelatches, so coil-sniffing alone can grab the wrong machine).
 let circuit = null;
+let circuitLoadFailed = null;
 outer: for (const id of ['d6', 'd7', 'd5']) {
   for (let seed = 1; seed <= 10; seed++) {
-    await loadDepth(seed, id);
+    const loaded = await loadDepth(seed, id);
+    if (!loaded.ok) {
+      circuitLoadFailed = { id, seed, loaded };
+      break outer;
+    }
     const found = await page.evaluate(() => {
       const ctx = window.__game.ctx;
       const rt = ctx.levels.current;
@@ -171,6 +184,7 @@ outer: for (const id of ['d6', 'd7', 'd5']) {
     }
   }
 }
+check(!circuitLoadFailed, 'console level command enters searched circuit depths', circuitLoadFailed ? JSON.stringify(circuitLoadFailed) : '');
 check(!!circuit, 'live circuit generates on d5/d6/d7', circuit ? `${circuit.id} seed=${circuit.seed}` : '');
 
 if (circuit) {
