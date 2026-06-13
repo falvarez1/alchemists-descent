@@ -167,6 +167,20 @@ export class Inspector {
       { id: 'post-hurt-pulse', valueId: 'post-hurt-pulse-value', key: 'hurtPulse', format: (v) => v.toFixed(2) + 'x' },
     ];
 
+    // Header GPU FX toggle: the same flag as the panel checkbox, reachable
+    // mid-play so the shader/CPU compose paths can be A/B'd against the live
+    // perf overlay without leaving the game.
+    const gpuBtn = document.getElementById('gpu-compose-toggle') as HTMLButtonElement;
+    const syncGpuBtn = (): void => {
+      gpuBtn.classList.toggle('lit', post.gpuCompose);
+    };
+    gpuBtn.addEventListener('click', () => {
+      post.gpuCompose = !post.gpuCompose;
+      (document.getElementById('post-gpu-compose') as HTMLInputElement).checked = post.gpuCompose;
+      syncGpuBtn();
+      gpuBtn.blur(); // a focused button would eat Space/Enter mid-play
+    });
+
     const syncControls = (): void => {
       for (const [id, key] of checkboxSpecs) {
         (document.getElementById(id) as HTMLInputElement).checked = post[key];
@@ -176,11 +190,13 @@ export class Inspector {
         input.value = String(post[spec.key]);
         document.getElementById(spec.valueId)!.textContent = spec.format(post[spec.key]);
       }
+      syncGpuBtn();
     };
 
     for (const [id, key] of checkboxSpecs) {
       document.getElementById(id)!.addEventListener('change', (e) => {
         post[key] = (e.target as HTMLInputElement).checked;
+        if (key === 'gpuCompose') syncGpuBtn();
       });
     }
 

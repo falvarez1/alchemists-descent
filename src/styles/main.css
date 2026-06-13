@@ -50,6 +50,8 @@ header .engine-status { font-size: 11px; color: var(--accent-purple); font-weigh
 .sound-btn { background: #14141c; border: 1px solid var(--panel-border); color: var(--text-muted); font-size: 11px; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-family: var(--mono); }
 .sound-btn:hover { color: var(--text-main); border-color: #2e2e3f; }
 .sound-btn.muted { color: #4a4a58; text-decoration: line-through; }
+/* Header A/B toggles (GPU FX / PERF): lit = engaged, same family as SND */
+.sound-btn.lit { background: #0f1f18; border-color: #1f4d3a; color: #6ee7b7; }
 
 #workbench { display: flex; flex: 1; height: calc(100vh - 49px); }
 

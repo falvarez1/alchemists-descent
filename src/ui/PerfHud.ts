@@ -27,6 +27,7 @@ const COLOR_OVER = '#ef4444';
 export class PerfHud {
   private root: HTMLDivElement;
   private fpsEl: HTMLSpanElement;
+  private headerBtn: HTMLElement | null = null;
   private phaseEls: Record<Exclude<PerfPhase, 'frame'>, HTMLSpanElement>;
   private ema: Record<PerfPhase, number> = { sim: 0, entities: 0, render: 0, compose: 0, gl: 0, frame: 0 };
   private frameMarks = 0;
@@ -81,6 +82,13 @@ export class PerfHud {
         this.toggle();
       }
     });
+
+    // Header PERF button mirrors F3 (lit while the overlay is up).
+    this.headerBtn = document.getElementById('perf-hud-toggle');
+    this.headerBtn?.addEventListener('click', (e) => {
+      this.toggle();
+      (e.currentTarget as HTMLButtonElement).blur(); // keep Space/Enter for the game
+    });
   }
 
   get visible(): boolean {
@@ -90,6 +98,7 @@ export class PerfHud {
   toggle(): void {
     this._visible = !this._visible;
     this.root.style.display = this._visible ? 'block' : 'none';
+    this.headerBtn?.classList.toggle('lit', this._visible);
     if (this._visible) this.refresh();
   }
 
