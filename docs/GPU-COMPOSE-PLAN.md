@@ -1,7 +1,6 @@
 # GPU Frame Composition — implementation plan (perf ticket #8)
 
-**Status: IMPLEMENTED June 2026 — behind `postFx.gpuCompose`, default OFF
-pending Frank's eyeball pass** (flip the default in `config/params.ts`).
+**Status: IMPLEMENTED June 2026 — behind `postFx.gpuCompose`, default ON.**
 All four phases landed in one pass: `src/render/ComposeShader.ts` (shader +
 window packer + overlay), Renderer material swap, FrameComposer gating, PerfHud
 compose/gl sub-buckets. Parity probe `scripts/probe-compose-parity.mjs` is 8/8
@@ -187,7 +186,7 @@ Phase 4 acceptance. The flag must be flippable at runtime for same-session A/B
 4. **Overlay split + kill the 3MB upload.** setPx/addPx retarget to the
    overlay buffer; written-index clearing; Float path deleted from the hot
    loop (`pixelData` stays as the CPU-fallback buffer behind the flag).
-   Acceptance gate, then flip the default ON.
+   Acceptance gate completed; the default is now ON.
 
 ## Acceptance gate (all of it)
 

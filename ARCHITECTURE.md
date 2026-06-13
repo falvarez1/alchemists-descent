@@ -80,7 +80,7 @@ src/
     Inspector.ts          Right panel: global/PostFx sliders + dynamic per-material/spell params
     Hud.ts                In-canvas HUD: vitals, hotbar, banners, game-over overlay
     WandBench.ts          Card slotting plus debug-only potion/elixir/power controls
-    DebugConsole.ts       Backquote QA command hook (god kit now, typed console later)
+    ConsoleOverlay.ts     Backquote dev-console shell backed by game/console commands
 ```
 
 ## Authoring modes
@@ -131,6 +131,11 @@ APIs (synchronous, ordered), but never touch the DOM. Anything presentation-shap
 (score readouts, banners, overlays, mode classes) is an `EventBus` event the UI layer
 subscribes to. Audio stays a direct API (`ctx.audio.boom(r)`) because SFX are
 parameterized and timing-sensitive.
+
+**Runtime indexes are transient.** `LevelRuntime` may carry compiled lookup tables
+derived from serializable data, such as `mechanismTriggers` (`targetId -> triggers`).
+Save files store the source lists only; restored levels rebuild transient indexes
+through `makeLevelRuntime`.
 
 **Two clocks, preserved.** The cell simulation runs on a fixed-step accumulator
 (`simSpeed` substeps per render frame, capped at 6); rendering, sprite animation, and

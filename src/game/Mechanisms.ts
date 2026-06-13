@@ -1,5 +1,6 @@
-import type { Ctx, Mechanism, MechanismsApi } from '@/core/types';
+import type { Ctx, LevelRuntime, Mechanism, MechanismsApi } from '@/core/types';
 import { hash2 } from '@/core/math';
+import { mechanismTriggersFor } from '@/core/mechanisms';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, fireColor, packRGB, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
@@ -635,6 +636,9 @@ export function makeRelay(
 /* ---------------- the runtime system ---------------- */
 
 export class Mechanisms implements MechanismsApi {
+  private readonly sequenceScratch: Mechanism[] = [];
+  private readonly edgeScratch: boolean[] = [];
+
   constructor(private ctx: Ctx) {
     // Explosions / projectile impacts / dig hits all announce themselves here.
     ctx.events.on('structureStrike', ({ x, y, radius }) => this.strike(this.ctx, x, y, radius));
@@ -868,11 +872,11 @@ export class Mechanisms implements MechanismsApi {
     //         triggers count as satisfied once their groan timer runs out.
     for (const door of list) {
       if (door.kind === 'valve') {
-        this.updateValve(ctx, door, list);
+        this.updateValve(ctx, door, runtime);
         continue;
       }
       if (door.kind === 'relay') {
-        this.updateRelay(ctx, door, list);
+        this.updateRelay(ctx, door, runtime);
         continue;
       }
       if (door.kind !== 'door') continue;
@@ -904,19 +908,15 @@ export class Mechanisms implements MechanismsApi {
         if (door.dissolve.length === 0) door.dissolve = undefined;
       }
 
-      // Gather this door's triggers in LIST ORDER (sequence doors read it).
-      const triggers: Mechanism[] = [];
-      for (const t of list) {
-        if (t.kind !== 'door' && t.targetId === door.id) triggers.push(t);
-      }
+      // Trigger index preserves LIST ORDER (sequence doors read it).
+      const triggers = mechanismTriggersFor(runtime, door.id);
       const hasTrigger = triggers.length > 0;
       const want = hasTrigger && this.aggregateWant(ctx, door, triggers);
       if (hasTrigger && (door.state === 1) !== want) {
         if (want) {
           // The circuit closes: a spark races from each satisfied trigger to
           // its gate — the wiring teaches itself.
-          for (const t of list) {
-            if (t.kind === 'door' || t.targetId !== door.id) continue;
+          for (const t of triggers) {
             this.sparkLine(ctx, t.x, t.y - 2, door.x + door.w / 2, door.y + door.h / 2);
           }
         }
@@ -991,7 +991,11 @@ export class Mechanisms implements MechanismsApi {
       // trigger auto-completes its slot (all broken = the chain itself
       // fails open). Completion latches the door open forever.
       if (actuator.seqDone !== true) {
-        const chain = triggers.filter((t) => t.broken !== 0);
+        const chain = this.sequenceScratch;
+        chain.length = 0;
+        for (const t of triggers) {
+          if (t.broken !== 0) chain.push(t);
+        }
         // Completion is tracked BY IDENTITY: the cursor is derived each
         // frame as the first chain member not yet fired, so a wrecked
         // trigger collapses its slot whether it sat ahead of the cursor
@@ -1003,7 +1007,8 @@ export class Mechanisms implements MechanismsApi {
           actuator.seqDone = true; // includes the every-step-wrecked chain
         } else {
           const prev = (actuator.seqPrev ??= {});
-          const edges: boolean[] = [];
+          const edges = this.edgeScratch;
+          edges.length = 0;
           for (const t of chain) {
             const sat = this.satisfied(t);
             edges.push(sat && prev[t.id] !== true);
@@ -1051,7 +1056,7 @@ export class Mechanisms implements MechanismsApi {
    * a door, honor oneShot / autoClose. A valve with no triggers is inert
    * (Builder validation flags it).
    */
-  private updateValve(ctx: Ctx, m: Mechanism, list: Mechanism[]): void {
+  private updateValve(ctx: Ctx, m: Mechanism, runtime: LevelRuntime): void {
     // retraction in progress: the gate slides away, 4 cells a frame
     if (m.dissolve && m.dissolve.length > 0) {
       const world = ctx.world;
@@ -1080,10 +1085,7 @@ export class Mechanisms implements MechanismsApi {
       if (m.dissolve.length === 0) m.dissolve = undefined;
     }
 
-    const triggers: Mechanism[] = [];
-    for (const t of list) {
-      if (t !== m && t.kind !== 'door' && t.targetId === m.id) triggers.push(t);
-    }
+    const triggers = mechanismTriggersFor(runtime, m.id, m);
     if (triggers.length === 0) return;
     const want = this.aggregateWant(ctx, m, triggers);
     const rising = want && m.prevWant !== true;
@@ -1125,14 +1127,11 @@ export class Mechanisms implements MechanismsApi {
    * target; a destroyed relay reaches the same state through the generic
    * fail-open watch (broken 0 = satisfied).
    */
-  private updateRelay(ctx: Ctx, m: Mechanism, list: Mechanism[]): void {
+  private updateRelay(ctx: Ctx, m: Mechanism, runtime: LevelRuntime): void {
     if (m.state === 1) return; // fired forever
     if (m.broken !== undefined) return; // groaning/dead: the watch owns it
     if (m.fuseT === undefined) {
-      const triggers: Mechanism[] = [];
-      for (const t of list) {
-        if (t !== m && t.kind !== 'door' && t.targetId === m.id) triggers.push(t);
-      }
+      const triggers = mechanismTriggersFor(runtime, m.id, m);
       if (triggers.length === 0) return;
       if (this.aggregateWant(ctx, m, triggers)) {
         m.fuseT = Math.max(0, Math.floor(m.delayFrames ?? 0));
@@ -1144,7 +1143,7 @@ export class Mechanisms implements MechanismsApi {
         m.fuseT--;
         return;
       }
-      this.fireRelay(ctx, m, list);
+      this.fireRelay(ctx, m, runtime.mechanisms);
     }
   }
 

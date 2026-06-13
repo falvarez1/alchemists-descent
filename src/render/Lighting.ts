@@ -221,6 +221,13 @@ export class Lighting implements LightField {
             lightG[i] = Math.max(lightG[i], cf2 * 0.85);
             lightB[i] = cf2;
           }
+        } else if (t === Cell.Catalyst) {
+          const f = 0.26 + Math.sin(ctx.state.frameCount * 0.045 + wx * 0.31 + wy * 0.17) * 0.06;
+          if (lightR[i] < f) {
+            lightR[i] = f;
+            lightG[i] = Math.max(lightG[i], f * 0.42);
+            lightB[i] = Math.max(lightB[i], f * 0.12);
+          }
         } else if (t === Cell.Glowshroom) {
           if (lightG[i] < 0.4) {
             lightR[i] = Math.max(lightR[i], 0.16);

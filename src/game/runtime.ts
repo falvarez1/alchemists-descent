@@ -1,4 +1,5 @@
 import { MINIMAP_H, MINIMAP_W } from '@/config/constants';
+import { buildMechanismTriggerIndex } from '@/core/mechanisms';
 import type { LevelDef, LevelRuntime } from '@/core/types';
 import type { World } from '@/sim/World';
 
@@ -37,7 +38,7 @@ export function makeLevelRuntime(
     >
   >,
 ): LevelRuntime {
-  return {
+  const runtime: LevelRuntime = {
     enemies: [],
     waystones: [],
     exit: null,
@@ -51,4 +52,6 @@ export function makeLevelRuntime(
     boss: null,
     ...base,
   };
+  runtime.mechanismTriggers = buildMechanismTriggerIndex(runtime.mechanisms);
+  return runtime;
 }

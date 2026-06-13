@@ -18,6 +18,7 @@
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_VERSION } from '@/config/gen';
 import { LEVELS, START_LEVEL, populationForLevel, vaultHostId } from '@/config/worldgraph';
+import { Rng, hashSeed } from '@/core/rng';
 import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
 import type {
   Ctx,
@@ -37,7 +38,7 @@ import { createDefaultStatus } from '@/entities/status';
 import { spawnPrefabEnemy } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { makeLevelRuntime } from '@/game/runtime';
-import { validateFindability } from '@/world/validate';
+import { validateFindability, wizardMask } from '@/world/validate';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, emberColor, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
@@ -50,6 +51,19 @@ const CURTAIN_HOLD_MS = 450;
 const WAYSTONE_LIGHT_TICKS = 30;
 /** Minimum placement distance (cells) between a placed enemy and the level spawn. */
 const POPULATION_SPAWN_CLEARANCE = 220;
+const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, 80, 0] as const;
+const POPULATION_ATTEMPTS_PER_PASS = 36;
+const ROOST_ATTEMPTS_PER_PASS = 160;
+
+interface PopulationSpotOptions {
+  minY?: number;
+  maxY?: number;
+  xMargin?: number;
+  attempts?: number;
+  clearances?: readonly number[];
+  preferMainPath?: boolean;
+  extra?: (x: number, y: number) => boolean;
+}
 
 /* ---------------- expedition save format (localStorage) ---------------- */
 
@@ -71,13 +85,28 @@ const LEGACY_REVIEW_WANDS = [
   { frameId: 'void', cards: ['dig', 'conjure', 'vitriol', 'blackhole', 'warp'] },
 ];
 
-interface SavedEnemy {
+export interface SavedEnemyState {
   kind: EnemyKind;
   x: number;
   y: number;
   hp: number;
   maxHp: number;
   dmgK: number;
+  timer?: number;
+  attackCd?: number;
+  bobPhase?: number;
+  sleeping?: boolean;
+  alerted?: boolean;
+  patrol?: Array<[number, number]>;
+  patrolIdx?: number;
+  calmT?: number;
+  recoil?: number;
+  fusing?: number;
+  punching?: number;
+  windup?: number;
+  swoop?: number;
+  tumble?: number;
+  submerged?: boolean;
 }
 
 interface SavedLevelBlob {
@@ -94,7 +123,7 @@ interface SavedLevelBlob {
   keyTaken: boolean;
   portalOpen: boolean;
   litOrder: number[];
-  enemies: SavedEnemy[];
+  enemies: SavedEnemyState[];
 }
 
 interface ExpeditionSave {
@@ -117,6 +146,88 @@ interface ExpeditionSave {
   };
   loadout: WandLoadoutSave;
   levels: SavedLevelBlob[];
+}
+
+function nonNegativeInt(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.floor(value));
+}
+
+function finiteNumber(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return value;
+}
+
+export function snapshotEnemyForSave(e: Enemy): SavedEnemyState {
+  const saved: SavedEnemyState = {
+    kind: e.kind,
+    x: e.x,
+    y: e.y,
+    hp: e.hp,
+    maxHp: e.maxHp,
+    dmgK: e.dmgK ?? 1,
+    timer: e.timer,
+    attackCd: e.attackCd,
+    bobPhase: e.bobPhase,
+  };
+  if (e.sleeping === true) saved.sleeping = true;
+  if (e.alerted === true) saved.alerted = true;
+  if (e.patrol && e.patrol.length > 0) {
+    saved.patrol = e.patrol.map(([x, y]) => [x, y] as [number, number]);
+  }
+  if (e.patrolIdx !== undefined) saved.patrolIdx = e.patrolIdx;
+  if (e.calmT !== undefined) saved.calmT = e.calmT;
+  if (e.recoil !== undefined) saved.recoil = e.recoil;
+  if (e.fusing !== undefined) saved.fusing = e.fusing;
+  if (e.punching !== undefined) saved.punching = e.punching;
+  if (e.windup !== undefined) saved.windup = e.windup;
+  if (e.swoop !== undefined) saved.swoop = e.swoop;
+  if (e.tumble !== undefined) saved.tumble = e.tumble;
+  if (e.submerged === true) saved.submerged = true;
+  return saved;
+}
+
+export function reviveSavedEnemy(se: SavedEnemyState): Enemy {
+  const enemy: Enemy = {
+    kind: se.kind,
+    x: se.x,
+    y: se.y,
+    fx: 0,
+    fy: 0,
+    vx: 0,
+    vy: 0,
+    hp: se.hp,
+    maxHp: se.maxHp,
+    dmgK: finiteNumber(se.dmgK, 1),
+    flash: 0,
+    timer: nonNegativeInt(se.timer, 0),
+    attackCd: nonNegativeInt(se.attackCd, 60),
+    bobPhase: finiteNumber(se.bobPhase, 0),
+    grounded: false,
+    stride: 0,
+    splat: 0,
+    prevG: false,
+    blink: 0,
+    jetFuel: 0,
+    jetCd: 0,
+    stuckT: 0,
+    status: createDefaultStatus(),
+  };
+  if (se.sleeping === true) enemy.sleeping = true;
+  if (se.alerted === true) enemy.alerted = true;
+  if (se.patrol && se.patrol.length > 0) {
+    enemy.patrol = se.patrol.map(([x, y]) => [x, y] as [number, number]);
+    enemy.patrolIdx = nonNegativeInt(se.patrolIdx, 0) % enemy.patrol.length;
+  }
+  if (se.calmT !== undefined) enemy.calmT = nonNegativeInt(se.calmT, 0);
+  if (se.recoil !== undefined) enemy.recoil = nonNegativeInt(se.recoil, 0);
+  if (se.fusing !== undefined) enemy.fusing = nonNegativeInt(se.fusing, 0);
+  if (se.punching !== undefined) enemy.punching = nonNegativeInt(se.punching, 0);
+  if (se.windup !== undefined) enemy.windup = nonNegativeInt(se.windup, 0);
+  if (se.swoop !== undefined) enemy.swoop = nonNegativeInt(se.swoop, 0);
+  if (se.tumble !== undefined) enemy.tumble = nonNegativeInt(se.tumble, 0);
+  if (se.submerged === true) enemy.submerged = true;
+  return enemy;
 }
 
 export class Levels implements LevelsApi {
@@ -418,14 +529,7 @@ export class Levels implements LevelsApi {
       keyTaken: rt.keyTaken,
       portalOpen: rt.portal?.open ?? false,
       litOrder: this.litOrder.get(id) ?? [],
-      enemies: rt.enemies.map((e) => ({
-        kind: e.kind,
-        x: e.x,
-        y: e.y,
-        hp: e.hp,
-        maxHp: e.maxHp,
-        dmgK: e.dmgK ?? 1,
-      })),
+      enemies: rt.enemies.map(snapshotEnemyForSave),
     };
   }
 
@@ -515,7 +619,7 @@ export class Levels implements LevelsApi {
     for (const [i, v] of blob.charge) world.charge[i] = v;
 
     for (const se of blob.enemies) {
-      ctx.enemies.push(this.reviveEnemy(ctx, se));
+      ctx.enemies.push(reviveSavedEnemy(se));
     }
 
     const explored = new Uint8Array(MINIMAP_W * MINIMAP_H);
@@ -558,36 +662,6 @@ export class Levels implements LevelsApi {
       ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
       ...(pristine.vaultArch ? { vaultArch: pristine.vaultArch } : {}),
     });
-  }
-
-  /** A saved hostile rejoins the living with full kit but its saved wounds. */
-  private reviveEnemy(ctx: Ctx, se: SavedEnemy): Enemy {
-    void ctx;
-    return {
-      kind: se.kind,
-      x: se.x,
-      y: se.y,
-      fx: 0,
-      fy: 0,
-      vx: 0,
-      vy: 0,
-      hp: se.hp,
-      maxHp: se.maxHp,
-      dmgK: se.dmgK,
-      flash: 0,
-      timer: Math.floor(Math.random() * 80),
-      attackCd: 60,
-      bobPhase: Math.random() * Math.PI * 2,
-      grounded: false,
-      stride: 0,
-      splat: 0,
-      prevG: false,
-      blink: 0,
-      jetFuel: 0,
-      jetCd: 0,
-      stuckT: 0,
-      status: createDefaultStatus(),
-    };
   }
 
   /** Respawn anchor: last lit waystone in the current level, else level spawn. */
@@ -772,7 +846,8 @@ export class Levels implements LevelsApi {
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, { x: exit.x, y: exit.sealY - 12 });
-    this.placePopulation(ctx, def, spawn);
+    const populationReach = wizardMask(makeLevelRuntime({ def, world, spawn, regions }));
+    this.placePopulation(ctx, def, spawn, regions, populationReach, new Rng(hashSeed(seed, 'population')));
     // Boss arenas: the Kiln Colossus at the bottom of the run; the Sunken
     // Leviathan in d4's perched cistern (the marker carries the kind).
     if (boss) ctx.enemyCtl.spawn(boss.kind ?? 'colossus', boss.x, boss.y);
@@ -833,70 +908,177 @@ export class Levels implements LevelsApi {
   }
 
   /** Placed populations (finite, readable) — the descent's replacement for endless waves. */
-  private placePopulation(ctx: Ctx, def: LevelDef, spawn: { x: number; y: number }): void {
+  private placePopulation(
+    ctx: Ctx,
+    def: LevelDef,
+    spawn: { x: number; y: number },
+    regions: LevelRuntime['regions'],
+    reachable: Uint8Array,
+    rng: Rng,
+  ): void {
     // Depth sets the headcount; the biome's foes table sets the mix.
     const foes = EXTRAS[def.biome].foes;
     const pop = populationForLevel(def, foes);
     for (const [kind, count] of Object.entries(pop) as Array<[EnemyKind, number]>) {
+      const enemyDef = ctx.enemyCtl.defs[kind];
       for (let i = 0; i < count; i++) {
-        for (let attempt = 0; attempt < 30; attempt++) {
-          const x = 40 + Math.floor(Math.random() * (WIDTH - 80));
-          const y = 60 + Math.floor(Math.random() * (HEIGHT - 140));
-          const dx = x - spawn.x,
-            dy = y - spawn.y;
-          if (dx * dx + dy * dy < POPULATION_SPAWN_CLEARANCE * POPULATION_SPAWN_CLEARANCE)
-            continue;
-          if (!ctx.physics.entityFree(x, y, 6, 12)) continue;
-          ctx.enemyCtl.spawn(kind, x, y);
-          break;
-        }
+        const spot = this.findPopulationSpot(
+          ctx,
+          rng,
+          spawn,
+          regions,
+          reachable,
+          enemyDef.halfW,
+          enemyDef.h,
+        );
+        if (spot) this.spawnSeededEnemy(ctx, kind, spot.x, spot.y, rng);
       }
     }
 
     // Wave F nests — life that implies more life.
     // Bat roosts: sleeping clusters hanging from cave ceilings.
     if (foes.bat) {
-      const roosts = 1 + (Math.random() < 0.5 ? 1 : 0);
+      const roosts = 1 + rng.int(2);
       for (let r = 0; r < roosts; r++) {
-        for (let attempt = 0; attempt < 400; attempt++) {
-          const x = 40 + Math.floor(Math.random() * (WIDTH - 80));
-          const y = 50 + Math.floor(Math.random() * (HEIGHT - 200));
-          const dx = x - spawn.x;
-          if (Math.abs(dx) < 200) continue;
-          // ceiling: solid above, open air below
-          const w = ctx.world;
-          if (w.types[w.idx(x, y - 1)] === Cell.Empty || w.types[w.idx(x, y)] !== Cell.Empty)
-            continue;
-          if (w.types[w.idx(x, y + 1)] !== Cell.Empty || w.types[w.idx(x, y + 4)] !== Cell.Empty)
-            continue;
-          const brood = 3 + Math.floor(Math.random() * 2);
-          for (let b = 0; b < brood; b++) {
-            ctx.enemyCtl.spawn('bat', x + (b - 1) * 5, y + 4);
-            const bat = ctx.enemies[ctx.enemies.length - 1];
-            if (bat && bat.kind === 'bat') {
-              bat.sleeping = true;
-              bat.y = y + 4; // hang just under the ceiling
-              bat.x = x + (b - 1) * 5;
-            }
+        const roost = this.findRoostSpot(ctx, rng, spawn, regions, reachable);
+        if (!roost) continue;
+        const brood = 3 + rng.int(2);
+        for (let b = 0; b < brood; b++) {
+          const bat = this.spawnSeededEnemy(ctx, 'bat', roost.x + (b - 1) * 5, roost.y + 4, rng);
+          if (bat && bat.kind === 'bat') {
+            bat.sleeping = true;
+            bat.y = roost.y + 4; // hang just under the ceiling
+            bat.x = roost.x + (b - 1) * 5;
           }
-          break;
         }
       }
     }
     // Slime egg clutches: glistening on the cave floor, ticking quietly.
     if (foes.slime) {
-      const clutches = 1 + (Math.random() < 0.5 ? 1 : 0);
+      const clutches = 1 + rng.int(2);
+      const eggsDef = ctx.enemyCtl.defs.eggs;
       for (let c = 0; c < clutches; c++) {
-        for (let attempt = 0; attempt < 40; attempt++) {
-          const x = 40 + Math.floor(Math.random() * (WIDTH - 80));
-          const y = 60 + Math.floor(Math.random() * (HEIGHT - 140));
-          if (Math.abs(x - spawn.x) < 180) continue;
-          if (!ctx.physics.entityFree(x, y, 5, 6)) continue;
-          ctx.enemyCtl.spawn('eggs', x, y);
-          break;
+        const spot = this.findPopulationSpot(
+          ctx,
+          rng,
+          spawn,
+          regions,
+          reachable,
+          eggsDef.halfW,
+          eggsDef.h,
+          { clearances: [180, 100, 0] },
+        );
+        if (spot) this.spawnSeededEnemy(ctx, 'eggs', spot.x, spot.y, rng);
+      }
+    }
+  }
+
+  private findPopulationSpot(
+    ctx: Ctx,
+    rng: Rng,
+    spawn: { x: number; y: number },
+    regions: LevelRuntime['regions'],
+    reachable: Uint8Array,
+    halfW: number,
+    h: number,
+    opts: PopulationSpotOptions = {},
+  ): { x: number; y: number } | null {
+    const world = ctx.world;
+    const xMargin = opts.xMargin ?? 40;
+    const minX = Math.max(Math.ceil(halfW) + 2, xMargin);
+    const maxX = Math.min(WIDTH - Math.ceil(halfW) - 3, WIDTH - xMargin - 1);
+    const minY = Math.max(h, opts.minY ?? 60);
+    const maxY = Math.min(HEIGHT - 3, opts.maxY ?? HEIGHT - 140);
+    if (maxX < minX || maxY < minY) return null;
+    const clearances = opts.clearances ?? POPULATION_CLEARANCE_STEPS;
+    const attempts = opts.attempts ?? POPULATION_ATTEMPTS_PER_PASS;
+    const regionPasses =
+      opts.preferMainPath !== false && regions && regions.mainPath.length > 0
+        ? [true, false]
+        : [false];
+
+    for (const mainPathOnly of regionPasses) {
+      for (const clearance of clearances) {
+        const clearanceSq = clearance * clearance;
+        for (let attempt = 0; attempt < attempts; attempt++) {
+          const x = minX + rng.int(maxX - minX + 1);
+          const y = minY + rng.int(maxY - minY + 1);
+          const dx = x - spawn.x;
+          const dy = y - spawn.y;
+          if (clearance > 0 && dx * dx + dy * dy < clearanceSq) continue;
+          if (!world.inBounds(x, y) || reachable[world.idx(x, y)] === 0) continue;
+          if (mainPathOnly && !this.inMainPathRegion(regions, x, y)) continue;
+          if (opts.extra && !opts.extra(x, y)) continue;
+          if (!ctx.physics.entityFree(x, y, halfW, h)) continue;
+          return { x, y };
         }
       }
     }
+    return null;
+  }
+
+  private findRoostSpot(
+    ctx: Ctx,
+    rng: Rng,
+    spawn: { x: number; y: number },
+    regions: LevelRuntime['regions'],
+    reachable: Uint8Array,
+  ): { x: number; y: number } | null {
+    const world = ctx.world;
+    const batDef = ctx.enemyCtl.defs.bat;
+    const regionPasses = regions && regions.mainPath.length > 0 ? [true, false] : [false];
+    for (const mainPathOnly of regionPasses) {
+      for (const clearance of [200, 120, 0]) {
+        const clearanceSq = clearance * clearance;
+        for (let attempt = 0; attempt < ROOST_ATTEMPTS_PER_PASS; attempt++) {
+          const x = 40 + rng.int(WIDTH - 80);
+          const y = 50 + rng.int(Math.max(1, HEIGHT - 200));
+          const footY = y + 4;
+          const dx = x - spawn.x;
+          const dy = footY - spawn.y;
+          if (clearance > 0 && dx * dx + dy * dy < clearanceSq) continue;
+          if (!world.inBounds(x, y - 1) || !world.inBounds(x, footY)) continue;
+          if (reachable[world.idx(x, footY)] === 0) continue;
+          if (mainPathOnly && !this.inMainPathRegion(regions, x, footY)) continue;
+          // ceiling: solid above, open air below
+          if (world.types[world.idx(x, y - 1)] === Cell.Empty || world.types[world.idx(x, y)] !== Cell.Empty)
+            continue;
+          if (world.types[world.idx(x, y + 1)] !== Cell.Empty || world.types[world.idx(x, footY)] !== Cell.Empty)
+            continue;
+          let broodFits = true;
+          for (let b = 0; b < 4; b++) {
+            const bx = x + (b - 1) * 5;
+            if (!world.inBounds(bx, footY) || !ctx.physics.entityFree(bx, footY, batDef.halfW, batDef.h)) {
+              broodFits = false;
+              break;
+            }
+          }
+          if (!broodFits) continue;
+          return { x, y };
+        }
+      }
+    }
+    return null;
+  }
+
+  private inMainPathRegion(regions: LevelRuntime['regions'], x: number, y: number): boolean {
+    if (!regions) return true;
+    const rx = Math.floor(x / regions.scale);
+    const ry = Math.floor(y / regions.scale);
+    if (rx < 0 || ry < 0 || rx >= regions.w || ry >= regions.h) return false;
+    const id = regions.labels[rx + ry * regions.w];
+    if (id < 0) return false;
+    return regions.regions[id]?.onMainPath === true;
+  }
+
+  private spawnSeededEnemy(ctx: Ctx, kind: EnemyKind, x: number, y: number, rng: Rng): Enemy | null {
+    const before = ctx.enemies.length;
+    ctx.enemyCtl.spawn(kind, x, y);
+    const enemy = ctx.enemies[before] ?? null;
+    if (!enemy) return null;
+    enemy.timer = rng.int(80);
+    enemy.bobPhase = rng.next() * Math.PI * 2;
+    return enemy;
   }
 
   /* ---------------- waystones ---------------- */

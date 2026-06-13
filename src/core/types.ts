@@ -1361,6 +1361,8 @@ export interface LevelRuntime {
   keyTaken: boolean;
   /** Doors/plates/levers/braziers guarding this level's treasure. */
   mechanisms: Mechanism[];
+  /** Transient actuator lookup: target mechanism id -> triggers in list order. */
+  mechanismTriggers?: Map<number, Mechanism[]>;
   /** Sealed strongrooms with remote rune switches. */
   runeVaults: RuneVault[];
   /** Boss arena center; `kind` picks the resident (default 'colossus' —

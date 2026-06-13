@@ -1,5 +1,5 @@
 import type { CastAction } from '@/combat/wands/compiler';
-import { BOUNCE_COUNTS, INFUSED, TRIGGERED } from '@/combat/wands/WandSystem';
+import { BOUNCE_COUNTS, INFUSED, TRIGGERED } from '@/combat/wands/projectileMarks';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, Projectile, ProjectilesApi } from '@/core/types';

@@ -21,10 +21,10 @@ results.
 3. **Player-facing later, maybe.** Cheats/sandbox commands are a genre
    tradition; nothing here precludes shipping a curated subset.
 
-## What exists today (all of it gets absorbed)
+## What exists today
 
-- `src/ui/DebugConsole.ts` — Backquote grants the god kit in play mode
-  ("god kit now, typed console later" — this ticket is the "later").
+- `src/ui/ConsoleOverlay.ts` — Backquote opens the Quake-style typed console;
+  the old DebugConsole god-kit hook has been removed.
 - `window.__game.ctx` — the raw probe handle (stays; console is sugar on it).
 - `window.__perfRecord` / `__perfSamples` — perf sampling hook.
 - `core/telemetry.ts` — local counters, `all()` dump.
@@ -80,7 +80,7 @@ true). On open, force-clear all held input flags exactly as
 the wizard running while you type. The Phase 1 probe includes the hold case:
 hold W, press Backquote, release W, type — the player must not move.
 
-The Backquote toggle keeps DebugConsole's `isTextEntry` guard: it is inert
+The Backquote toggle keeps the console overlay's `isTextEntry` guard: it is inert
 while focus is in any INPUT/TEXTAREA/SELECT/contentEditable other than the
 console's own input (today's behavior — a backtick typed into a Builder name
 field must not pop the console). Inside the console's own input, Backquote
@@ -248,7 +248,7 @@ plan-review-skill); every finding was code-verified before consolidation.
 | H1 | Keyboard claim now covers keyup + force-clears held input flags on open; probe gains the hold-W case |
 | H2 | `paintDirty` claim was FALSE (Builder only sets it from its own actions) → `worldEdited` EventBus event, Builder subscribes |
 | H3 | `seed` gated on a real reseed API; `time` scoped to the existing `global.simSpeed` dial; `screenshot` moved from risks into Phase 4 |
-| H4 | Backquote toggle keeps DebugConsole's `isTextEntry` guard (focus-steal regression) |
+| H4 | Backquote toggle keeps ConsoleOverlay's `isTextEntry` guard (focus-steal regression) |
 | H5 | Builder yield-guard mechanism specified (DOM visibility check); same-node capture-listener fact documented — the guard is mandatory, not defensive |
 | M | `exec` always returns `Promise<CommandResult>`; Tab-completion + history-draft interaction spec'd; result lines bright / echo dim + selectable text; header CONSOLE button (also the non-US-layout fallback — the Shift+Backquote line was wrong and is gone) |
 

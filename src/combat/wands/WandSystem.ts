@@ -11,6 +11,7 @@ import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { acidColor, emberColor, fireColor, glassColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
 import { ALL_CARD_IDS, CARD_DEFS } from './cards';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
+import { BOUNCE_COUNTS, INFUSED, TRIGGERED } from './projectileMarks';
 
 /**
  * Wand frames available at launch. Only 'oak' and 'bone' exist as actual
@@ -23,37 +24,6 @@ export const WAND_FRAMES: Record<string, WandFrame> = {
   brass: { id: 'brass', name: 'Brass Injector', capacity: 5, castDelay: 6, recharge: 60, manaMax: 160, manaRegen: 0.8, spread: 0.08 },
   void: { id: 'void', name: 'Void Lattice', capacity: 5, castDelay: 16, recharge: 20, manaMax: 220, manaRegen: 1.1, spread: 0 },
 };
-
-/*
- * Projectile side-channel marks. The frozen Projectile contract has no card
- * fields, so card effects that must survive until IMPACT travel in these
- * module-level WeakMaps keyed by the live projectile object. WandSystem
- * writes them at spawn; the Projectiles.ts impact code (owned by the
- * integration work) reads and consumes them. Entries vanish with their
- * projectile — no cleanup pass needed.
- */
-
-/**
- * Terrain bounces remaining for a marked projectile. On terrain impact the
- * consumer should reflect the velocity and decrement; at 0 the projectile
- * detonates as normal. Never set above 2 (compiler clamp).
- */
-export const BOUNCE_COUNTS: WeakMap<Projectile, number> = new WeakMap();
-
-/**
- * Infused trail: the flask cell type this projectile sheds while flying
- * (~2 cells per frame, deposited by the consumer in Projectiles.ts). The
- * flask already paid 2 stored cells per cast when the mark was written.
- */
-export const INFUSED: WeakMap<Projectile, number> = new WeakMap();
-
-/**
- * Depth-1 trigger payload: the cast actions to execute AT THE IMPACT POINT
- * when this projectile lands. Consumer side: import the WandSystem class and
- * `if (ctx.wands instanceof WandSystem) ctx.wands.castActionAt(ctx, a, x, y, angle)`
- * for each action (payload actions never carry further triggers — compiler clamp).
- */
-export const TRIGGERED: WeakMap<Projectile, CastAction[]> = new WeakMap();
 
 /** Cards a lit waystone can gift (weighted toward build-shaping mods). */
 const MOD_POOL: CardId[] = ['speed', 'heavy', 'spread', 'bounce', 'trigger', 'infuser', 'double', 'triple'];
