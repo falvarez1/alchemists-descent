@@ -40,22 +40,25 @@ same feet anchor. The square is load-bearing:
 - **Diagonal tunnels need no rotated physics.** An axis-aligned square fits a 45°
   corridor of perpendicular width ≥ 9·√2 ≈ 13 — versus ≈ 18.4 for the standing
   box. Rotating a collision box is a lie the cell grid can't explain; the square
-  is the honest primitive. Only the **sprite** tilts: the crawl pose draws along
-  the smoothed velocity angle (head leading, hat last), so in a diagonal chute
-  the wizard *looks* tilted to the tunnel's angle while the box stays square.
+  is the honest primitive. Only the **sprite** tilts: the crawl pose lies along
+  the sampled TERRAIN slope (floor-surface heights under nose and tail — not
+  velocity, which dies to horizontal the moment you stall or stop), so in a
+  diagonal chute the wizard *looks* tilted to the tunnel's angle while the box
+  stays square.
 - **One number, any direction.** 9 is already the body width, so "wizard gauge"
   becomes simply *9 in any direction*: a passage you can levitate up (9-wide
   shaft) is the same gauge you can crawl through. Validation, worldgen, and
   level-design vocabulary all collapse to two numbers: 17 standing, 9 crawling.
-- 17-tall wizard on all fours ≈ half height — visually plausible without a new
-  proportion system.
+- 17-tall wizard flat on his belly — the prone sprite draws ~17 long × ~4 tall
+  (mass conserved; it overflows the 9 box horizontally the way the standing hat
+  overflows it vertically — the box is law, the drawing isn't).
 
 Crawl physics deltas:
 
 | Property | Standing | Crawling |
 |---|---|---|
 | Box (halfW, h) | 4, 17 | 4, 9 |
-| Step-up | 5 | 2 (knees, not legs) |
+| Step-up | 5 | 5 (parity: hands climb what boots climb — jagged floors are 3-5 cell lips, and step-up 2 wedged crawlers where runners strolled; the box-fit test still gates every step under tight ceilings) |
 | Speed (`stanceK`) | 1.0 (crouch-creep 0.38) | **0.32** |
 | Jump / levitate / dive | normal | **disabled** (W = stand attempt first) |
 

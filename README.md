@@ -52,6 +52,8 @@ stack. Find the sealed well in each floor, break the stone plug, and drop deeper
 Light waystone braziers with real fire to set your respawn; death keeps the world
 exactly as you scarred it and costs 15% of your gold.
 - `A`/`D` move, `SPACE` jump / levitate (coyote time + jump buffering included)
+- `S` crouches, crawls with movement, or dives in air; `Shift`/`C` grabs walls
+  and `W`/`S` climbs while grabbed
 - Mouse aims and fires your **wand** — a frame slotted with spell cards
   (multicasts, modifiers, impact triggers, the flask-fed Infuser); earn cards by
   lighting waystones, descending, and brewing
@@ -59,6 +61,9 @@ exactly as you scarred it and costs 15% of your gold.
 - `E` siphon materials into your flask, `Q` pour, `F` throw the bottle, `X` drink
   (brew elixirs at cauldrons: real reagents in the bowl + real fire against it)
 - `M` fog-of-war map, `R` rise again when dead, `F3` perf overlay
+- `FULLSCREEN PLAY` starts play mode in fullscreen and requests keyboard lock
+  when the browser supports it; the non-reserved controls above remain the
+  fallback
 - ``` ` ``` enables transient QA god mode in Play: upgraded wands, every spell
   card, all Sanctum powers, stocked potion pickups, and bench potion/elixir test
   controls. Debug-modified runs are not autosaved.

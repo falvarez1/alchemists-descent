@@ -1,10 +1,26 @@
-import type { Ctx, Enemy, EnemyKind, Mechanism, RuneVault, RuntimeDecor } from '@/core/types';
+import type {
+  Ctx,
+  Enemy,
+  EnemyKind,
+  ExplosionApi,
+  LightningApi,
+  Mechanism,
+  PhysicsApi,
+  Projectile,
+  ProjectilesApi,
+  RuneVault,
+  RuntimeDecor,
+  SpellId,
+  SpellsApi,
+} from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { EventBus } from '@/core/events';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
-import { COLOR_FN, EMPTY_COLOR, stoneColor, unpackB, unpackG, unpackR } from '@/sim/colors';
+import { bloodColor, COLOR_FN, EMPTY_COLOR, packRGB, stoneColor, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { CELL_PALETTE, paletteColor } from '@/sim/cellPalette';
+import { SPELL_ORDER } from '@/config/params';
+import { VIEW_H, VIEW_W } from '@/config/constants';
 // Concrete game/render imports follow the compile.ts -> game/instantiate
 // precedent: the gallery IS a consumer of the real runtime — previews must
 // animate with the same code the game runs, or they drift into fiction.
@@ -38,8 +54,23 @@ import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/Mecha
 import { drawPlayerSprite } from '@/render/sprites/PlayerSprite';
 import { drawEnemySprite } from '@/render/sprites/EnemySprites';
 import { drawDecor } from '@/render/sprites/DecorSprites';
+import {
+  drawDigBeam,
+  drawLightningArcs,
+  drawParticles,
+  drawProjectiles,
+} from '@/render/sprites/FxSprites';
 import { createPlayer } from '@/entities/Player';
 import { createDefaultStatus } from '@/entities/status';
+// The combat micro-sim: the REAL casting/projectile/explosion/cell-sim stack
+// run against the gallery's scratch world (same precedent as Mechanisms above).
+import { Spells } from '@/combat/Spells';
+import { Projectiles } from '@/combat/Projectiles';
+import { Lightning } from '@/combat/Lightning';
+import { Explosions } from '@/sim/explosion';
+import { Particles } from '@/particles/Particles';
+import { Physics } from '@/entities/physics';
+import { Simulation } from '@/sim/Simulation';
 
 /**
  * THE GALLERY (docs/BUILDER.md): a Storybook-style browser for everything
@@ -78,6 +109,10 @@ interface GalleryItem {
   glyph: string;
   glyphCss: string;
   states: string[];
+  /** Live-fire demos (the Alchemist's tactical spells): chip labels... */
+  spells?: string[];
+  /** ...and the rig factory a spell chip switches the stage to. */
+  buildSpell?: (spellIdx: number) => StageRig;
   thumb?: () => HTMLCanvasElement | null;
   build: (state: number) => StageRig;
 }
@@ -121,6 +156,18 @@ const ENEMY_KINDS: EnemyKind[] = [
   'leviathan',
 ];
 
+/**
+ * Where each tactical-spell demo aims: 'foe' fires at the target dummy,
+ * 'fort' at the practice structure — terrain wreckers (meteor, black hole,
+ * bomb, dig...) read far better against something they can visibly destroy.
+ */
+const SPELL_TARGET: Record<SpellId, 'foe' | 'fort'> = {
+  bolt: 'foe', scatter: 'foe', bomb: 'fort', lightning: 'foe', flame: 'foe',
+  emberstorm: 'foe', vitriol: 'foe', frostshard: 'foe', icelance: 'foe',
+  wisp: 'foe', dig: 'fort', conjure: 'fort', warp: 'fort', meteor: 'fort',
+  blackhole: 'fort',
+};
+
 export class Gallery {
   private root: HTMLDivElement;
   private stage!: HTMLCanvasElement;
@@ -133,6 +180,8 @@ export class Gallery {
   private filtered: GalleryItem[] = [];
   private selected = 0;
   private state = 0;
+  /** Selected spell-demo chip (-1 = showing a STATE, not a spell). */
+  private spellSel = -1;
   private rig: StageRig | null = null;
   private zoom = 0; // 0 = FIT
   private frame = 1;
@@ -154,7 +203,8 @@ export class Gallery {
     runeVaults: [],
     emitters: [],
   };
-  private stubState = { mode: 'play', paused: false, frameCount: 1, currentBiome: 'earthen' };
+  // (score backs the gold-coin homing the firing range can trigger)
+  private stubState = { mode: 'play', paused: false, frameCount: 1, currentBiome: 'earthen', score: 0 };
   private stub: Ctx;
   private mech: Mechanisms;
   private spriteCache = new Map<string, ResolvedSprite | null>();
@@ -186,6 +236,8 @@ export class Gallery {
       this.caption = text;
       this.captionT = 160;
     });
+    // headless-probe handle (the window.__game convention)
+    (window as unknown as { __gallery?: Gallery }).__gallery = this;
 
     this.root = document.createElement('div');
     this.root.id = 'builder-gallery';
@@ -282,8 +334,11 @@ export class Gallery {
       this.select((this.selected + d + this.filtered.length) % Math.max(1, this.filtered.length));
     } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       const it = this.filtered[this.selected];
-      if (it && it.states.length > 1) {
-        const d = e.key === 'ArrowRight' ? 1 : -1;
+      const d = e.key === 'ArrowRight' ? 1 : -1;
+      if (it && this.spellSel >= 0 && it.spells) {
+        // browsing the spell demos: arrows walk the spell list instead
+        this.setSpell((this.spellSel + d + it.spells.length) % it.spells.length);
+      } else if (it && it.states.length > 1) {
         this.setState((this.state + d + it.states.length) % it.states.length);
       }
     } else if (e.key === '+' || e.key === '=') {
@@ -331,6 +386,7 @@ export class Gallery {
   private select(n: number): void {
     this.selected = Math.max(0, Math.min(this.filtered.length - 1, n));
     this.state = 0;
+    this.spellSel = -1;
     this.rebuild();
     this.renderList();
     this.renderInfo();
@@ -348,6 +404,13 @@ export class Gallery {
 
   private setState(s: number): void {
     this.state = s;
+    this.spellSel = -1;
+    this.rebuild();
+    this.renderInfo();
+  }
+
+  private setSpell(n: number): void {
+    this.spellSel = n;
     this.rebuild();
     this.renderInfo();
   }
@@ -364,7 +427,13 @@ export class Gallery {
     this.runtime.runeVaults.length = 0;
     this.caption = '';
     this.captionT = 0;
-    this.rig = it.build(this.state);
+    // full-world sim window by default; the spell rig narrows it to its stage
+    this.world.simBounds.x0 = 0;
+    this.world.simBounds.y0 = 0;
+    this.world.simBounds.x1 = this.world.width;
+    this.world.simBounds.y1 = this.world.height;
+    this.rig =
+      this.spellSel >= 0 && it.buildSpell ? it.buildSpell(this.spellSel) : it.build(this.state);
   }
 
   /* ===================== rendering ===================== */
@@ -491,10 +560,16 @@ export class Gallery {
       }
     }
 
-    // caption strip: state name, overridden by live toasts from the rig
+    // caption strip: state/spell name, overridden by live toasts from the rig
     if (this.captionT > 0) this.captionT--;
     const it = this.filtered[this.selected];
-    const base = it ? `${it.name}${it.states.length > 1 ? ' — ' + it.states[this.state] : ''}` : '';
+    const sub =
+      it && this.spellSel >= 0 && it.spells
+        ? ' — ' + it.spells[this.spellSel]
+        : it && it.states.length > 1
+          ? ' — ' + it.states[this.state]
+          : '';
+    const base = it ? `${it.name}${sub}` : '';
     this.captionEl.textContent = this.captionT > 0 ? this.caption : base;
     this.captionEl.classList.toggle('bg-toast', this.captionT > 0);
 
@@ -557,16 +632,28 @@ export class Gallery {
     const chips = it.states
       .map(
         (s, n) =>
-          `<button class="bg-chip${n === this.state ? ' on' : ''}" data-s="${n}">${escapeHtml(s)}</button>`,
+          `<button class="bg-chip${n === this.state && this.spellSel < 0 ? ' on' : ''}" data-s="${n}">${escapeHtml(s)}</button>`,
+      )
+      .join('');
+    const spellChips = (it.spells ?? [])
+      .map(
+        (s, n) =>
+          `<button class="bg-chip${n === this.spellSel ? ' on' : ''}" data-sp="${n}">${escapeHtml(s)}</button>`,
       )
       .join('');
     this.infoEl.innerHTML =
       `<div class="bg-iname">${escapeHtml(it.name)}</div>` +
       `<div class="bg-imeta">${escapeHtml(it.meta)}</div>` +
       `<div class="bg-idesc">${escapeHtml(it.desc)}</div>` +
-      (it.states.length > 1 ? `<div class="bg-ihead">STATES</div><div class="bg-chips">${chips}</div>` : '');
-    for (const b of this.infoEl.querySelectorAll<HTMLButtonElement>('.bg-chip')) {
+      (it.states.length > 1 ? `<div class="bg-ihead">STATES</div><div class="bg-chips">${chips}</div>` : '') +
+      (it.spells
+        ? `<div class="bg-ihead">TACTICAL SPELLS</div><div class="bg-chips bg-spellchips">${spellChips}</div>`
+        : '');
+    for (const b of this.infoEl.querySelectorAll<HTMLButtonElement>('.bg-chip[data-s]')) {
       b.addEventListener('click', () => this.setState(Number(b.dataset.s)));
+    }
+    for (const b of this.infoEl.querySelectorAll<HTMLButtonElement>('.bg-chip[data-sp]')) {
+      b.addEventListener('click', () => this.setSpell(Number(b.dataset.sp)));
     }
   }
 
@@ -983,40 +1070,55 @@ export class Gallery {
 
   private entityItems(): GalleryItem[] {
     const items: GalleryItem[] = [];
+    const PLAYER_STATES = [
+      'IDLE', 'RUN', 'CAST', 'JUMP', 'HURT', 'PULL', 'CROUCH', 'CRAWL (loop)',
+      'CRAWL · CRAMPED', 'WALL GRAB', 'CLIMB CATCH', 'CLIMB UP', 'CLIMB DOWN',
+      'CLIMB HOLD', 'WALL JUMP', 'DIVE', 'SKID (loop)', 'STATUS TELLS (loop)',
+    ];
+    const SPELL_LABELS = SPELL_ORDER.map((id) =>
+      this.hooks.ctx.params.spells[id].name.toUpperCase(),
+    );
     items.push({
       id: 'ent-player',
       section: 'ENTITIES',
       name: 'The Alchemist',
-      meta: 'player · 9×17 · 6 states',
+      meta: `player · 9×17 · ${PLAYER_STATES.length} states`,
       desc:
         'The procedural wizard: stride-wheel boots, swaying robe, 4-segment spring hat, wand glow toward the aim. ' +
-        'He faces your cursor; CAST aims the wand straight at it.',
+        'He faces your cursor; CAST aims the wand straight at it. ' +
+        'TACTICAL SPELLS put him on a firing range — live casts against a target dummy or the practice fort, real cells and all.',
       glyph: '@',
       glyphCss: '#c084fc',
-      states: ['IDLE', 'RUN', 'CAST', 'JUMP', 'HURT', 'PULL'],
+      states: PLAYER_STATES,
+      spells: SPELL_LABELS,
+      buildSpell: (n) => this.buildSpellRig(SPELL_ORDER[n]),
       build: (st) => {
         this.stageFloor(RX - 30, RX + 30);
+        // the poses that live against rock bring their rock along
+        if (st === 8) this.paint(RX - 22, FY - 13, RX + 22, FY - 11, Cell.Stone); // crawl-gauge ceiling
+        if (st >= 9 && st <= 14) this.paint(RX + 5, FY - 30, RX + 14, FY + 3, Cell.Stone); // the climbing face
         const fake = createPlayer();
         fake.x = RX;
         fake.y = FY;
         fake.facing = 1;
         const cursor = this.cursorWorld;
         const ctx = this.entityCtx(fake);
-        // the sprite asks the spells service for the wand muzzle and the
-        // input manager for the bomb charge — give the preview honest stubs
+        // the sprite asks the spells service for the wand muzzle, the input
+        // manager for the bomb charge, and physics for crawl headroom — the
+        // muzzle comes from the REAL Spells service (it reads only player
+        // fields), the rest are honest stubs
         const x = ctx as unknown as {
-          spells: { wandTip: () => { x: number; y: number } };
+          spells: Spells;
           input: { bombCharge: number };
+          physics: { entityFree: () => boolean; cellBlocks: () => boolean };
         };
-        x.spells = {
-          wandTip: () => ({
-            x: fake.x + Math.cos(fake.aimAngle) * 7,
-            y: fake.y - 9 + Math.sin(fake.aimAngle) * 7,
-          }),
-        };
+        x.spells = new Spells(ctx);
         x.input = { bombCharge: 0 };
+        const cramped = st === 8;
+        x.physics = { entityFree: () => !cramped, cellBlocks: () => false };
+        const TELLS = ['WET', 'OILED', 'FROZEN', 'STONESKIN', 'SWIFT', 'TORCHBEARER'] as const;
         return {
-          bounds: { x0: RX - 24, y0: FY - 24, x1: RX + 24, y1: FY + 4 },
+          bounds: { x0: RX - 24, y0: FY - 28, x1: RX + 24, y1: FY + 4 },
           cells: true,
           step: (f) => {
             // the sprite reads fields the Player controller normally drives;
@@ -1028,7 +1130,10 @@ export class Gallery {
             fake.firing = false;
             fake.grounded = true;
             fake.y = FY;
-            if (st === 1) {
+            if (st === 0) {
+              // idle fidget: every few seconds he reaches up to straighten the hat
+              fake.fidgetT = f % 170;
+            } else if (st === 1) {
               fake._svx = 1.5 * fake.facing;
               fake.stridePhase += 0.24;
             } else if (st === 2) {
@@ -1048,6 +1153,111 @@ export class Gallery {
               if (f % 90 === 0) fake.pullT = 26;
               if (fake.pullT > 0) fake.pullT--;
               fake.pullDir = fake.facing;
+            } else if (st === 6) {
+              // crouch & peek: planted boots, folded robe, eyes down the ledge
+              fake.crouchT = Math.min(10, fake.crouchT + 1);
+            } else if (st === 7 || st === 8) {
+              // prone low crawl (CRAWL.md) — CRAMPED presses even the head flat
+              fake.crawling = true;
+              fake.crawlT = Math.min(10, fake.crawlT + 1);
+              fake.crawlSlope = 0;
+              fake.stridePhase += 0.16;
+              fake.aimAngle = fake.facing === 1 ? 0 : Math.PI;
+            } else if (st === 9) {
+              // bouldering lock-off on the painted face (pose gate: grounded,
+              // still, hands free)
+              fake.facing = 1;
+              fake.wallGrabDir = 1;
+              fake.wallGrabT = 10;
+            } else if (st === 10) {
+              // first-class climb catch: one hand slaps the wall, feet swing in
+              fake.grounded = false;
+              fake.facing = -1;
+              fake.climbing = true;
+              fake.climbDir = 1;
+              fake.climbT = Math.min(10, fake.climbT + 2);
+              fake.climbIntentY = 0;
+              fake.climbPhase = f % 12;
+              fake.wallGrabDir = 1;
+              fake.wallGrabT = 10;
+            } else if (st === 11 || st === 12 || st === 13) {
+              // slow bouldering cycle: up/down/hold share the same key poses
+              fake.grounded = false;
+              fake.facing = -1;
+              fake.climbing = true;
+              fake.climbDir = 1;
+              fake.climbT = 10;
+              fake.climbIntentY = st === 11 ? -1 : st === 12 ? 1 : 0;
+              fake.climbMoveT = f % (fake.climbIntentY < 0 ? 5 : 4);
+              fake.climbPhase = Math.floor(f / (fake.climbIntentY === 0 ? 12 : 5)) % 24;
+              fake.wallGrabDir = 1;
+              fake.wallGrabT = 10;
+            } else if (st === 14) {
+              // wall jump: brace, kick away, then show the airborne escape arc
+              const t = f % 80;
+              fake.facing = -1;
+              if (t < 26) {
+                fake.grounded = false;
+                fake.climbing = true;
+                fake.climbDir = 1;
+                fake.climbT = 10;
+                fake.climbIntentY = 0;
+                fake.climbPhase = t;
+                fake.wallGrabDir = 1;
+                fake.wallGrabT = 10;
+              } else {
+                fake.climbing = false;
+                fake.wallGrabT = 0;
+                fake.grounded = false;
+                fake.facing = -1;
+                fake._svx = -1.8;
+                const p = (t - 26) / 54;
+                fake.y = FY - Math.round(20 * Math.sin(Math.PI * Math.min(1, p)));
+                fake._svy = p < 0.5 ? -1.8 : 1.6;
+              }
+            } else if (st === 15) {
+              // dive slam: a falling spear, then the landing squash
+              const t = f % 90;
+              if (t < 64) {
+                fake.grounded = false;
+                fake.diveT = 10;
+                fake._svy = 2.4;
+                fake.y = FY - 26 + Math.round((t / 64) * 24);
+              } else {
+                fake.diveT = 0;
+                if (t === 64) fake.landTimer = 9;
+                if (fake.landTimer > 0) fake.landTimer--;
+              }
+            } else if (st === 16) {
+              // sprint, then heels down: the skid throws the torso back
+              const t = f % 84;
+              if (t < 26) {
+                fake._svx = 2.0 * fake.facing;
+                fake.stridePhase += 0.26;
+                fake.skidT = 0;
+              } else if (t < 44) {
+                fake.skidT = 44 - t;
+                fake.skidDir = fake.facing;
+                fake._svx = ((44 - t) / 18) * fake.facing;
+              } else {
+                fake.skidT = 0;
+              }
+            } else if (st === 17) {
+              // status skins, one at a time: the readable tells layered on the pose
+              const seg = Math.floor(f / 70) % TELLS.length;
+              const stt = fake.status;
+              stt.wet = stt.oiled = stt.frozen = stt.stoneskin = stt.swift = stt.torch = 0;
+              if (seg === 0) stt.wet = 70;
+              else if (seg === 1) stt.oiled = 70;
+              else if (seg === 2) stt.frozen = 70;
+              else if (seg === 3) stt.stoneskin = 70;
+              else if (seg === 4) {
+                stt.swift = 70; // the speed trail needs real velocity
+                fake._svx = 1.6 * fake.facing;
+                fake.stridePhase += 0.22;
+              } else stt.torch = 70;
+              this.caption = 'TELL — ' + TELLS[seg];
+              this.captionT = 2;
             }
           },
           draw: (s) => this.safeDraw('player', () => drawPlayerSprite(s, FULLBRIGHT, ctx)),
@@ -1217,6 +1427,285 @@ export class Gallery {
     return items;
   }
 
+  /* ===================== the firing range (tactical spells) ===================== */
+
+  /**
+   * A live-fire diorama: the Alchemist on the left, a target dummy mid-field
+   * (foe spells) or a stone-and-timber practice fort (terrain wreckers), a
+   * thick backstop, and the REAL combat stack — Spells casts from the wand
+   * tip, Projectiles flies and detonates, Explosions carves the scratch
+   * world, Particles ride the wind, and the cell sim makes the wreckage
+   * burn, flow, and settle. Terrain repaints at the top of every cast cycle
+   * so each shot lands on a fresh stage.
+   */
+  private buildSpellRig(spell: SpellId): StageRig {
+    const cinematic = spell === 'meteor' || spell === 'blackhole';
+    const PXC = RX - (cinematic ? 76 : 52); // the caster's mark
+    const FCX = RX + (cinematic ? 82 : 58), FCY = FY - 12; // practice-fort center
+    const bounds = {
+      x0: PXC - (cinematic ? 20 : 18),
+      y0: FY - (cinematic ? 62 : 50),
+      x1: FCX + (cinematic ? 32 : 28),
+      y1: FY + 6,
+    };
+    const fortTarget = SPELL_TARGET[spell] === 'fort';
+
+    const paintStage = (): void => {
+      this.paint(bounds.x0, bounds.y0, bounds.x1, bounds.y1, Cell.Empty);
+      this.paint(bounds.x0, FY + 1, bounds.x1, FY + 5, Cell.Stone); // floor
+      this.paint(FCX + 24, FY - 44, FCX + 29, FY, Cell.Stone); // backstop
+      // containment wall behind the caster: a bounced bomb stays on the range
+      this.paint(bounds.x0, FY - 44, bounds.x0 + 3, FY, Cell.Stone);
+      // the practice fort: stone shell, timber interior, a gold seam to loot loose
+      this.paint(FCX - 7, FY - 26, FCX + 7, FY, Cell.Stone);
+      this.paint(FCX - 5, FY - 24, FCX + 5, FY - 2, Cell.Wood);
+      this.paint(FCX - 1, FY - 16, FCX + 1, FY - 12, Cell.Gold);
+    };
+    paintStage();
+
+    // sim window = this stage (the cell sim only breathes inside it)
+    const sb = this.world.simBounds;
+    sb.x0 = Math.max(0, bounds.x0 - 2);
+    sb.y0 = Math.max(0, bounds.y0 - 2);
+    sb.x1 = Math.min(this.world.width, bounds.x1 + 3);
+    sb.y1 = Math.min(this.world.height, FY + 8);
+
+    const fake = createPlayer();
+    fake.x = PXC;
+    fake.y = FY;
+    fake.facing = 1;
+    fake.spell = spell;
+    fake.mana = fake.maxMana = 9999;
+
+    const enemies: Enemy[] = [];
+    const dummyHome = { x: RX + 24, y: FY };
+    const dummy = fortTarget ? null : this.fakeEnemy('golem', dummyHome.x, dummyHome.y, true);
+    if (dummy) enemies.push(dummy);
+    let downT = 0; // frames until the felled dummy respawns
+
+    // where this spell aims (conjure wants open air; dig chews the fort's base)
+    const aim =
+      spell === 'conjure'
+        ? { x: RX + 12, y: FY - 14 }
+        : spell === 'dig'
+          ? { x: FCX, y: FY - 6 }
+          : fortTarget
+            ? { x: FCX, y: FCY }
+            : { x: dummyHome.x, y: FY - 6 };
+
+    const noop = (): void => undefined;
+    const particles = new Particles();
+    const projectiles: Projectile[] = [];
+    const demoParams = {
+      ...this.hooks.ctx.params,
+      global: { ...this.hooks.ctx.params.global, simSpeed: 1.0 },
+    };
+    const input = {
+      keys: {}, mouse: aim, isDrawing: false, lastX: null, lastY: null,
+      buildSpellHeld: false, bombCharge: -1,
+      activeChargingBlackHole: null as Projectile | null,
+      siphonHeld: false, pourHeld: false, drinkHeld: false,
+    };
+    const ctx = {
+      world: this.world,
+      events: this.events,
+      enemies,
+      player: fake,
+      playerCtl: { damage: noop, kill: noop, respawn: noop },
+      enemyCtl: {
+        defs: this.hooks.ctx.enemyCtl.defs,
+        spawn: noop,
+        damage: (e: Enemy, dmg: number) => {
+          e.hp -= dmg;
+          e.flash = 8;
+          if (e.hp <= 0 && downT === 0) {
+            // the dummy goes down the Noita way, then walks back on
+            particles.burst(e.x, e.y - 6, 26, Cell.Blood, bloodColor, 3.2);
+            particles.burst(e.x, e.y - 6, 10, null, () => packRGB(255, 120, 150), 2.4, {
+              glow: 2.0, grav: -0.01,
+            });
+            downT = 110;
+            e.x = -900;
+            e.y = -900;
+            this.caption = 'TARGET DOWN';
+            this.captionT = 80;
+          }
+        },
+      },
+      // explosion feel scales with distance from the camera heart — center it here
+      camera: {
+        x: RX - Math.floor(VIEW_W / 2), y: FY - Math.floor(VIEW_H / 2),
+        renderX: 0, renderY: 0,
+      },
+      state: this.stubState,
+      params: demoParams,
+      audio: {
+        tone: noop, zap: noop, flame: noop, dig: noop, boom: noop, noiseBurst: noop,
+        shatter: noop, implode: noop, lightning: noop, hollowKnock: noop, coin: noop,
+        bubble: noop, groan: noop, brazier: noop, lever: noop, doorGrind: noop,
+      },
+      particles,
+      projectiles,
+      shockwaves: [],
+      input,
+      fx: { screenShake: 0, bloomKick: 0, digBeam: null, hitstop: 0 },
+      levels: { current: this.runtime },
+    } as unknown as Ctx;
+    // the real combat stack, wired to the scratch ctx (constructor-injected)
+    (ctx as { spells: SpellsApi }).spells = new Spells(ctx);
+    (ctx as { lightning: LightningApi }).lightning = new Lightning(ctx);
+    (ctx as { explosions: ExplosionApi }).explosions = new Explosions(ctx);
+    (ctx as { physics: PhysicsApi }).physics = new Physics(ctx);
+    (ctx as { projectileCtl: ProjectilesApi }).projectileCtl = new Projectiles();
+    const sim = new Simulation();
+
+    // cast cadence: one-shots on a cycle; streams hold the trigger; bomb
+    // charges then releases; the black hole charges, detaches, and collapses
+    const mode =
+      spell === 'flame' || spell === 'vitriol' || spell === 'dig'
+        ? 'held'
+        : spell === 'bomb' || spell === 'blackhole'
+          ? spell
+          : 'single';
+    const cycle =
+      spell === 'blackhole' ? 460 : spell === 'meteor' ? 300 : mode === 'bomb' ? 250 : mode === 'held' ? 170 : 120;
+    let startF = -1;
+    let bombReleased = false;
+    let bombDetonated = false;
+
+    return {
+      bounds,
+      cells: true,
+      step: (f) => {
+        if (startF < 0) startF = f;
+        const t = (f - startF) % cycle;
+        if (t === 0) {
+          // fresh stage for every cast: repaint terrain, walk the caster home
+          paintStage();
+          fake.x = PXC;
+          fake.y = FY;
+          fake.vx = fake.vy = 0;
+          fake.cooldown = 0;
+          fake.firing = false;
+          input.bombCharge = -1;
+          bombReleased = false;
+          bombDetonated = false;
+          projectiles.length = 0;
+          particles.clear();
+          ctx.shockwaves.length = 0;
+          ctx.fx.digBeam = null;
+          if (input.activeChargingBlackHole) {
+            input.activeChargingBlackHole.charging = false;
+            input.activeChargingBlackHole = null;
+          }
+        }
+        fake.mana = 9999;
+        if (fake.cooldown > 0) fake.cooldown--;
+        if (fake.blinkTimer > 0) fake.blinkTimer--;
+        else if (Math.random() < 0.006) fake.blinkTimer = 8;
+        if (fake.invuln > 0) fake.invuln--; // warp grants mercy frames; let them tick
+        if (fake.recoilT > 0) fake.recoilT--;
+        if (fake.swapT > 0) fake.swapT--;
+        fake.grounded = true;
+        fake._svx = 0;
+        fake._svy = 0;
+        fake.aimAngle = Math.atan2(aim.y - (fake.y - 9), aim.x - fake.x);
+        fake.facing = aim.x >= fake.x ? 1 : -1;
+
+        const inBurst =
+          mode === 'held' ? t >= 12 && t < 96
+          : mode === 'bomb' ? t >= 12 && t < 64
+          : mode === 'blackhole' ? t >= 12 && t < 42
+          : t >= 10 && t < 34;
+        fake.firing = inBurst;
+        if (mode === 'single') {
+          if (t === 12) {
+            fake.cooldown = 0;
+            ctx.spells.firePlayerSpell();
+            fake.recoilT = 6;
+          }
+        } else if (mode === 'held') {
+          if (inBurst) {
+            fake.cooldown = 0;
+            ctx.spells.firePlayerSpell();
+          }
+        } else if (mode === 'bomb') {
+          if (inBurst) {
+            // Gallery-specific choreography: show the same charge meter the
+            // sprite uses, then throw on a deterministic beat.
+            input.bombCharge = Math.min(1, Math.max(0, (t - 12) / 52));
+          }
+          if (!bombReleased && t >= 64) {
+            const sp = ctx.params.spells.bomb;
+            const tip = ctx.spells.wandTip();
+            const a = fake.aimAngle;
+            const charge = Math.max(0.65, input.bombCharge);
+            const power = sp.velocityForce! * (0.35 + charge * 1.25);
+            projectiles.push({
+              x: tip.x, y: tip.y,
+              vx: Math.cos(a) * power, vy: Math.sin(a) * power - 0.6,
+              type: 'bomb', life: 70, age: 0,
+              charging: false, hostile: false,
+            });
+            input.bombCharge = -1;
+            fake.recoilT = 6;
+            bombReleased = true;
+          }
+          if (!bombDetonated && t >= 118) {
+            // The preview needs the payoff inside one gallery cycle; the
+            // damage itself is still the real explosion implementation.
+            ctx.explosions.trigger(FCX, FCY, Math.floor(ctx.params.spells.bomb.explosionRadius!));
+            projectiles.length = 0;
+            bombDetonated = true;
+            this.caption = 'BOOM — CAST BOMB';
+            this.captionT = 50;
+          }
+        } else {
+          // blackhole: open the well, hold the channel, then let go
+          if (t === 12) {
+            fake.cooldown = 0;
+            ctx.spells.firePlayerSpell();
+          }
+          if (t === 42 && input.activeChargingBlackHole) {
+            input.activeChargingBlackHole.charging = false;
+            input.activeChargingBlackHole = null;
+          }
+        }
+
+        // the real frame order in miniature: cells+projectiles+shockwaves,
+        // then ballistic particles, then arc decay, then the beam's tail
+        sim.update(ctx);
+        particles.update(ctx);
+        ctx.lightning.update();
+        if (ctx.fx.digBeam && --ctx.fx.digBeam.life <= 0) ctx.fx.digBeam = null;
+
+        if (dummy) {
+          if (dummy.flash > 0) dummy.flash--;
+          if (downT > 0 && --downT === 0) {
+            dummy.hp = dummy.maxHp;
+            dummy.x = dummyHome.x;
+            dummy.y = dummyHome.y;
+            dummy.flash = 10;
+            particles.burst(dummy.x, dummy.y - 6, 12, null, () => packRGB(160, 220, 255), 2.0, {
+              glow: 1.8, grav: -0.01,
+            });
+          }
+        }
+      },
+      draw: (s, f) => {
+        void f;
+        drawParticles(s, FULLBRIGHT, ctx);
+        drawLightningArcs(s, ctx);
+        drawProjectiles(s, ctx);
+        if (dummy && downT === 0) {
+          this.safeDraw('enemy-golem', () => drawEnemySprite(s, FULLBRIGHT, ctx, dummy));
+        }
+        drawDigBeam(s, ctx);
+        this.safeDraw('player', () => drawPlayerSprite(s, FULLBRIGHT, ctx));
+      },
+    };
+  }
+
   /* ===================== sprite items ===================== */
 
   private spriteItems(): GalleryItem[] {
@@ -1299,4 +1788,3 @@ function prefabThumb(p: PrefabDef): HTMLCanvasElement {
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-

@@ -45,17 +45,32 @@ The house principles, in order of authority:
 
 ### Crawl (hold S on the ground and move — docs/CRAWL.md)
 
-- The creep flows into the **9×9 second collision tier**: step-up 2, speed
-  0.32×, jump/levitate/dive disabled (W is a stand attempt first). S is intent,
-  geometry is law — release the key under a low ceiling and you keep crawling
-  until the headroom probe (`entityFree 4,17`) lets you up.
-- **Enter:** 3–4 frame settle onto all fours (`crawlT` 0→10 at +3/frame), dust
-  puffs at hands and knees, the hat bobs hard.
-- **Loop:** hand-over-hand keyed to real x-progress (stride wheel ×0.3), cloth
-  shuffle + pebble flecks at the hands; ceiling at exactly gauge (solid at y−9)
-  scrapes the hat with falling grit. The sprite lays along the smoothed travel
-  slope (quantized ~16 steps) so diagonal chutes read as diagonal crawling —
-  the box never rotates.
+- The creep flows into the **9×9 second collision tier**: step-up 5 (parity
+  with standing — hands climb what boots climb, so jagged 3-5 cell lips never
+  wedge a crawler where a runner strolls), speed 0.32×, jump/levitate/dive
+  disabled (W is a stand attempt first). S is intent, geometry is law —
+  release the key under a low ceiling and you keep crawling until the
+  headroom probe (`entityFree 4,17`) lets you up.
+- **Enter:** 3–4 frame settle flat onto the belly (`crawlT` 0→10 at +3/frame),
+  dust puffs at hands and knees, the hat bobs hard.
+- **Loop (prone low crawl):** the 17-tall wizard laid out FULL LENGTH — ~17
+  cells nose to toes, ~4 tall (conservation of mass; the 9×9 box is collision
+  law, the drawing overflows it like the standing hat does). A wedge
+  silhouette: flat trailing legs → two-cell torso → humped shoulders → head.
+  Elbow-drag keyed to real x-progress (stride wheel ×0.3): the lead hand
+  reaches and rakes back, the pulling elbow pops above the back on the power
+  stroke, the push-knee cocks above the hemline on the back-beat; the hat
+  lies along the spine, cone trailing, tip on the spring. Cloth shuffle +
+  pebble flecks at the hands; ceiling at exactly gauge (solid at y−9) presses
+  the head cheek-flat (`headUp` 1→0) and pins the elbow — not even the chin
+  comes up. A dead-end wall scrunches the head group back 1–2 cells
+  (nose-to-the-rock probe via `cellBlocks`) instead of burying the face. The
+  sprite lies along the sampled TERRAIN slope — floor-surface heights under
+  nose and tail (±6), lerp 0.18, clamp ±1.1, quantized ~16 steps — so he
+  stays inclined on a slope even parked or stalled (velocity-based tilt died
+  to horizontal the moment a lip stopped you); the box never rotates. (The
+  original hands-and-knees creep pose is retired but kept whole behind
+  `CRAWL_POSE` in `PlayerSprite.ts`, awaiting a new verb.)
 - **Cramped** (released but can't stand): HUD glyph under the meters
   (`crampedChanged` event) and a hat-bump on the ceiling every ~40 ticks with
   a muffled thud and grit-fleck.

@@ -6,6 +6,11 @@ test spells, drops a few enemies, and saves raw grid data. That should become
 Sandbox mode. Builder is a separate developer tool for authoring shippable levels,
 rooms, encounters, puzzles, lighting, mood, and procedural dressing.
 
+Companion spec: `docs/BUILDER-LIVE-UI-SPEC.md` covers the next Builder workspace
+direction: WYSIWYG authoring, live preview, Builder-owned playtest UX, reusable
+editor UI framework controls, docked panels, menus, commands, keymaps, overlays,
+and workspace persistence.
+
 ## Product Intent
 
 Builder is not a cheat panel and not just a material brush. It is a production

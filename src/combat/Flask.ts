@@ -39,7 +39,7 @@ export class Flask implements FlaskApi {
   }
 
   update(ctx: Ctx): void {
-    if (ctx.state.mode === 'play' && !ctx.player.dead) {
+    if (ctx.state.mode === 'play' && !ctx.player.dead && !ctx.player.climbing) {
       if (ctx.input.siphonHeld) this.siphon(ctx);
       if (ctx.input.pourHeld) this.pour(ctx);
     }
@@ -47,7 +47,7 @@ export class Flask implements FlaskApi {
   }
 
   throwFlask(ctx: Ctx): void {
-    if (ctx.state.mode !== 'play' || ctx.player.dead) return;
+    if (ctx.state.mode !== 'play' || ctx.player.dead || ctx.player.climbing) return;
     if (this.state.count === 0 && !this.bottle) {
       this.refuse(ctx); // hurling an empty bottle helps no one
       return;

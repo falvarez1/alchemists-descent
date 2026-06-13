@@ -2,6 +2,7 @@ import type { BiomeId, Ctx, EnemyKind, InputMode, SpellId } from '@/core/types';
 import type { Cell } from '@/sim/CellType';
 import { WIDTH } from '@/config/constants';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
+import { fillMaterialPopover } from '@/ui/materialInfo';
 
 export type SelectionChangedFn = (id: string | number, mode: 'element' | 'spell') => void;
 
@@ -12,6 +13,8 @@ export type SelectionChangedFn = (id: string | number, mode: 'element' | 'spell'
  * context inspector via the `onSelectionChanged` callback (wired by Game).
  */
 export class Toolbar {
+  private matpop: HTMLDivElement | null = null;
+
   constructor(
     private ctx: Ctx,
     private onSelectionChanged: SelectionChangedFn,
@@ -20,6 +23,53 @@ export class Toolbar {
     this.wireWorldGen();
     this.wireEnemyDroppers();
     this.wireFilter();
+    this.wireMaterialPopovers();
+  }
+
+  /**
+   * Instant material popover (same content as the Builder palette's): icon,
+   * name, sim classification, gameplay description, live tunables. Fixed-
+   * positioned at the toolbar's right edge so it floats over the viewport.
+   */
+  private wireMaterialPopovers(): void {
+    const bar = document.getElementById('left-toolbar');
+    if (!bar) return;
+    const pop = document.createElement('div');
+    pop.id = 'lt-matpop';
+    pop.style.display = 'none';
+    document.body.appendChild(pop);
+    this.matpop = pop;
+    // the buttons move under the cursor on scroll — drop the popover
+    bar.addEventListener('scroll', () => this.hideMatPopover(), { passive: true });
+    for (const btn of document.querySelectorAll<HTMLButtonElement>(
+      '.tool-btn[data-mode="element"]',
+    )) {
+      const id = Number(btn.dataset.id);
+      btn.addEventListener('mouseenter', () => this.showMatPopover(btn, id));
+      btn.addEventListener('mouseleave', () => this.hideMatPopover());
+    }
+  }
+
+  private showMatPopover(btn: HTMLButtonElement, id: number): void {
+    const pop = this.matpop;
+    if (!pop) return;
+    pop.innerHTML = '';
+    const name = this.ctx.params.materials[id]?.name ?? (btn.textContent ?? '').trim();
+    const color = btn.querySelector<HTMLElement>('.color-indicator')?.style.background ?? '#888';
+    fillMaterialPopover(pop, id, name, color, this.ctx.params.materials[id]);
+    const r = btn.getBoundingClientRect();
+    pop.style.left = r.right + 10 + 'px';
+    pop.style.top = Math.max(4, r.top - 6) + 'px';
+    pop.style.display = '';
+    // keep it on screen when hovering near the bottom of the toolbar
+    const overflow = pop.getBoundingClientRect().bottom - window.innerHeight + 8;
+    if (overflow > 0) {
+      pop.style.top = Math.max(4, parseFloat(pop.style.top) - overflow) + 'px';
+    }
+  }
+
+  private hideMatPopover(): void {
+    if (this.matpop) this.matpop.style.display = 'none';
   }
 
   /** Live tool filter: hides non-matching buttons and emptied section titles. */

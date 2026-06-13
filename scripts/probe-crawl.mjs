@@ -69,6 +69,7 @@ const P = () =>
     return {
       x: p.x, y: p.y, vy: p.vy, grounded: p.grounded,
       crawling: p.crawling, crawlT: p.crawlT, stretchT: p.stretchT,
+      crawlSlope: p.crawlSlope,
       wallGrabT: p.wallGrabT, wallGrabDir: p.wallGrabDir,
       cramped: document.getElementById('cramped-glyph').classList.contains('visible'),
     };
@@ -222,6 +223,129 @@ await page.evaluate(() => {
 await page.waitForTimeout(600);
 s = await P();
 check('flat floor clears the grab state', s.wallGrabT === 0, JSON.stringify(s));
+
+/* 10) JAGGED OPEN ASCENT (the crevice law, the field report's exact case):
+   a rising 45-degree staircase of 3-5 cell lips under OPEN sky — terrain a
+   runner strolls up — crawled voluntarily with S held. Every lip is taller
+   than the retired crawl step-up of 2; parity (5) says hands climb what
+   boots climb, so the crawl may never wedge where the run did not. */
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const w = ctx.world;
+  for (let y = 360; y <= 540; y++)
+    for (let x = 510; x <= 750; x++) {
+      const i = w.idx(x, y);
+      w.types[i] = 0; w.colors[i] = 0; w.life[i] = 0; w.charge[i] = 0;
+    }
+  const solid = (x0, x1, y0, y1) => {
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) {
+        const i = w.idx(x, y);
+        w.types[i] = 13; w.colors[i] = 0x7a8a99;
+      }
+  };
+  solid(510, 559, 536, 540); // approach floor
+  const rises = [4, 5, 3, 5, 4, 4, 5, 3, 5, 4, 5, 4, 3, 5]; // 14 lips, total 59
+  let feetRow = 535;
+  for (let k = 0; k <= 14; k++) {
+    if (k > 0) feetRow -= rises[k - 1];
+    solid(560 + k * 6, 565 + k * 6, feetRow + 1, 540);
+  }
+  solid(650, 750, feetRow + 1, 540); // top landing
+  const p = ctx.player;
+  p.x = 535; p.y = 535; p.vx = 0; p.vy = 0;
+  ctx.camera.snapTo(620, 470);
+});
+await key('KeyS', true);
+await key('KeyD', true);
+let climbedOpen = false;
+for (let i = 0; i < 24 && !climbedOpen; i++) {
+  await page.waitForTimeout(500);
+  s = await P();
+  if (s.x > 655) climbedOpen = true;
+}
+check(
+  'crawls UP the open jagged 3-5 lip staircase (x > 655)',
+  climbedOpen && s.crawling && s.y <= 480,
+  JSON.stringify(s),
+);
+await key('KeyD', false);
+await key('KeyS', false);
+await page.waitForTimeout(400);
+
+/* 11) GAUGE-TIGHT RISING TUNNEL: the same lips inside a 14-tall bore
+   (blocks the 17-box, admits the 9-box one lip at a time — runs are wider
+   than the box so it never straddles two). He must crawl the whole bore. */
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const w = ctx.world;
+  for (let y = 360; y <= 540; y++)
+    for (let x = 510; x <= 750; x++) {
+      const i = w.idx(x, y);
+      w.types[i] = 0; w.colors[i] = 0; w.life[i] = 0; w.charge[i] = 0;
+    }
+  const solid = (x0, x1, y0, y1) => {
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) {
+        const i = w.idx(x, y);
+        w.types[i] = 13; w.colors[i] = 0x7a8a99;
+      }
+  };
+  solid(510, 750, 536, 540); // approach floor
+  solid(560, 750, 360, 540); // the mountain the bore is carved through
+  const rises = [4, 5, 4, 5, 3, 5, 4]; // 7 lips over run-10 steps, total 30
+  let feetRow = 535;
+  for (let k = 0; k <= 7; k++) {
+    if (k > 0) feetRow -= rises[k - 1];
+    const x0 = 560 + k * 10;
+    for (let x = x0; x <= x0 + 9; x++)
+      for (let y = feetRow - 13; y <= feetRow; y++) {
+        const i = w.idx(x, y);
+        w.types[i] = 0; w.colors[i] = 0;
+      }
+  }
+  for (let x = 640; x <= 720; x++) // exit chamber: full headroom at the top
+    for (let y = 360; y <= feetRow; y++) {
+      const i = w.idx(x, y);
+      w.types[i] = 0; w.colors[i] = 0;
+    }
+  const p = ctx.player;
+  p.x = 535; p.y = 535; p.vx = 0; p.vy = 0;
+  ctx.camera.snapTo(600, 490);
+});
+await key('KeyS', true);
+await key('KeyD', true);
+let midSlope = 0;
+let bored = false;
+for (let i = 0; i < 24 && !bored; i++) {
+  await page.waitForTimeout(500);
+  s = await P();
+  if (s.x > 585 && s.x < 635 && s.crawlSlope < midSlope) midSlope = s.crawlSlope;
+  if (s.x > 645) bored = true;
+}
+check('crawls UP the gauge-tight rising bore (x > 645)', bored && s.y <= 510, JSON.stringify(s));
+check('body lay along the ascent mid-bore (slope < -0.3)', midSlope < -0.3, `midSlope=${midSlope}`);
+
+/* 12) the tilt is TERRAIN, not velocity: parked mid-slope the body keeps
+   lying along the incline instead of decaying flat */
+await key('KeyD', false);
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const p = ctx.player;
+  p.x = 600; p.y = 515; p.vx = 0; p.vy = 0; // step 4 of the bore (feet row 517)
+  ctx.camera.snapTo(600, 495);
+});
+await page.waitForTimeout(800); // settle onto the step, tilt converges
+s = await P();
+check(
+  'parked on the slope the body stays inclined (terrain tilt)',
+  s.crawling && s.crawlSlope < -0.3,
+  JSON.stringify(s),
+);
+await pause(true);
+await shot('pose-slope');
+await pause(false);
+await key('KeyS', false);
 
 check('no page errors logged above', true);
 await browser.close();

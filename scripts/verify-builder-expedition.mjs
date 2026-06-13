@@ -42,6 +42,10 @@ check('expedition running on its own live world', d1.id !== 'custom' && d1.attac
 /* ---------- open the Builder: must detach, not adopt, the level ---------- */
 console.log('-- open builder mid-expedition');
 await page.click('#mode-builder-btn');
+await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });
+const modalShown = await page.locator('#builder-intent-modal').isVisible();
+check('builder asks for play-to-builder intent', modalShown);
+await page.click('#builder-intent-modal [data-intent="continue-document"]');
 await page.waitForTimeout(400);
 const det = await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -85,6 +89,7 @@ check('the expedition level is untouched', after.sum === before, `before ${befor
 
 /* ---------- PLAY re-attaches the expedition's own world ---------- */
 console.log('-- back to the descent');
+await page.click('#b-exit');
 await page.click('#mode-play-btn');
 await page.waitForFunction(
   () => {
@@ -107,6 +112,58 @@ const back = await page.evaluate(() => {
 });
 check('play re-attaches the expedition world', back.attached, JSON.stringify(back));
 check('no scratch metal bled into the level', back.probeSum === before, `before ${before} after ${back.probeSum}`);
+
+/* ---------- edit current scene: snapshot the live play map into Builder ---------- */
+console.log('-- edit current scene');
+const playSpot = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  let sum = 0;
+  const w = ctx.world;
+  for (let y = 200; y < 240; y++) for (let x = 200; x < 240; x++) sum += w.types[w.idx(x, y)];
+  return { x: Math.round(ctx.player.x), y: Math.round(ctx.player.y), sum };
+});
+await page.click('#mode-builder-btn');
+await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });
+await page.click('#builder-intent-modal [data-intent="current-scene"]');
+await page.waitForTimeout(400);
+const adopted = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  let sum = 0;
+  const w = ctx.world;
+  for (let y = 200; y < 240; y++) for (let x = 200; x < 240; x++) sum += w.types[w.idx(x, y)];
+  return {
+    mode: ctx.state.mode,
+    detached: ctx.world !== ctx.levels.current.world,
+    name: document.getElementById('b-doc-name')?.value,
+    probeSum: sum,
+  };
+});
+check('edit current scene opens Builder on a detached snapshot', adopted.mode === 'build' && adopted.detached, JSON.stringify(adopted));
+check('current scene snapshot matches the visible play terrain', adopted.probeSum === playSpot.sum, `play ${playSpot.sum} builder ${adopted.probeSum}`);
+check('scene snapshot gets a named Builder document', /scene edit/i.test(adopted.name ?? ''), String(adopted.name));
+
+/* ---------- PLAY from inside Builder exits to the game, even with an invalid doc ---------- */
+console.log('-- header play exits builder');
+await page.click('#b-new'); // no terrain / no spawn: invalid for Builder playtest, still fine for game Play
+await page.click('#mode-play-btn');
+await page.waitForFunction(
+  () => {
+    const ctx = window.__game.ctx;
+    return ctx.state.mode === 'play' && ctx.levels.current?.def?.id !== 'custom' && !ctx.levels.transitioning;
+  },
+  { timeout: 30000 },
+);
+await page.waitForTimeout(500);
+const playAgain = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const rt = ctx.levels.current;
+  return {
+    id: rt?.def?.id,
+    rootHidden: document.getElementById('builder-root')?.style.display === 'none',
+    attached: rt ? ctx.world === rt.world : false,
+  };
+});
+check('header Play exits Builder and resumes the game', playAgain.id !== 'custom' && playAgain.rootHidden && playAgain.attached, JSON.stringify(playAgain));
 
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 

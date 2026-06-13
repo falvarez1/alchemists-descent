@@ -135,6 +135,10 @@ export const PIXEL_ICONS: Record<string, PixelIconDef> = {
   blackhole: { p: { a: '#7c3aed', b: '#c084fc', c: '#0a0312' }, g: [
     "...........","....aaa....","..aabbbaa..","..ab...ba..",".ab..c..ba.",".ab.ccc.ba.",
     ".ab..c..ba.","..ab...ba..","..aabbbaa..","....aaa....","..........."]},
+  // The card satchel (HUD treasure row): a spell tome in the pickup's blues
+  tome: { p: { a: '#1e3a8a', b: '#60a5fa', c: '#e0f2fe' }, g: [
+    "...........","..aaaaaaa..","..abbbbba..","..abcbbba..","..abbbbba..","..abbcbba..",
+    "..abbbbba..","..abcccba..","..abbbbba..","..aaaaaaa..","..........."]},
   'card-double': { p: { a: '#0e7490', b: '#38bdf8', c: '#e0f2fe' }, g: [
     "...........","...........",".abbbbc....","..abbc.....","...........","...........",
     "....abbbbc.",".....abbc..","...........","...........","..........."]},

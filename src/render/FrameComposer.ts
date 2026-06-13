@@ -12,6 +12,12 @@ import { PICKUP_COLOR } from '@/game/Pickups';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
+import {
+  drawDigBeam,
+  drawLightningArcs,
+  drawParticles,
+  drawProjectiles,
+} from '@/render/sprites/FxSprites';
 
 /**
  * Composes each frame's CPU-side pixel buffer (original updateWebGLBuffers):
@@ -374,162 +380,11 @@ export class FrameComposer implements PixelSurface {
    * (EnemySprites/PlayerSprite contract): this stays CPU on BOTH compose paths.
    */
   private composeOverlays(ctx: Ctx): void {
-    const world = ctx.world;
-    const types = world.types;
-    const frameCount = ctx.state.frameCount;
-
-    // Ballistic debris / embers / coins
-    const boost = ctx.params.global.maxBrightness;
-    for (const fp of ctx.particles.list) {
-      const glow = fp.glow || 1.0;
-      if (glow > 1.01) {
-        this.setPx(
-          fp.x,
-          fp.y,
-          (unpackR(fp.color) / 255) * glow,
-          (unpackG(fp.color) / 255) * glow,
-          (unpackB(fp.color) / 255) * glow,
-        );
-      } else {
-        const lt = this.light.sample(fp.x, fp.y);
-        this.setPx(
-          fp.x,
-          fp.y,
-          (unpackR(fp.color) / 255) * lt.r,
-          (unpackG(fp.color) / 255) * lt.g,
-          (unpackB(fp.color) / 255) * lt.b,
-        );
-      }
-    }
-
-    // Lightning arcs: white-hot core
-    for (const arc of ctx.lightning.arcs) {
-      const k = (arc.life / 8) * arc.intensity * boost * 1.3;
-      for (const pt of arc.pts) {
-        this.setPx(pt.x, pt.y, 0.9 * k, 0.97 * k, 1.0 * k);
-        this.setPx(pt.x, pt.y - 1, 0.35 * k, 0.55 * k, 0.8 * k);
-      }
-    }
-
-    // Projectiles
-    for (const p of ctx.projectiles) {
-      const gx = Math.floor(p.x),
-        gy = Math.floor(p.y);
-      if (world.inBounds(gx, gy)) {
-        if (p.type === 'bolt') {
-          const nx = p.vx / (Math.abs(p.vx) + Math.abs(p.vy) + 0.001),
-            ny = p.vy / (Math.abs(p.vx) + Math.abs(p.vy) + 0.001);
-          this.setPx(gx, gy, 0.4 * boost, 0.95 * boost, 1.0 * boost);
-          this.setPx(gx - nx * 2, gy - ny * 2, 0.0, 0.55 * boost, 0.75 * boost);
-          this.setPx(gx - nx * 4, gy - ny * 4, 0.0, 0.28 * boost, 0.42 * boost);
-          this.setPx(gx - nx * 6, gy - ny * 6, 0.0, 0.12 * boost, 0.2 * boost);
-        } else if (p.type === 'bomb') {
-          const fuse = p.life < 30 && frameCount % 8 < 4 ? 1.8 : 1.0;
-          this.setPx(gx, gy, 0.16, 0.17, 0.22);
-          this.setPx(gx + 1, gy, 0.16, 0.17, 0.22);
-          this.setPx(gx, gy - 1, 0.24, 0.26, 0.32);
-          this.setPx(gx + 1, gy - 1, 0.16, 0.17, 0.22);
-          this.setPx(gx, gy - 2, 1.0 * boost * fuse * 0.4, 0.65 * boost * fuse * 0.4, 0.1);
-        } else if (p.type === 'warp') {
-          const nx = p.vx / (Math.abs(p.vx) + Math.abs(p.vy) + 0.001),
-            ny = p.vy / (Math.abs(p.vx) + Math.abs(p.vy) + 0.001);
-          this.setPx(gx, gy, 0.85 * boost, 0.55 * boost, 1.0 * boost);
-          this.setPx(gx - nx * 2, gy - ny * 2, 0.55 * boost, 0.3 * boost, 0.8 * boost);
-          this.setPx(gx - nx * 4, gy - ny * 4, 0.3 * boost, 0.12 * boost, 0.5 * boost);
-          if (frameCount % 2 === 0)
-            this.setPx(
-              gx + ((Math.random() * 3) | 0) - 1,
-              gy + ((Math.random() * 3) | 0) - 1,
-              0.5,
-              0.25,
-              0.7,
-            );
-        } else if (p.type === 'fireball') {
-          const fl = 0.8 + Math.random() * 0.5;
-          this.setPx(gx, gy, 1.0 * boost * fl, 0.45 * boost * fl, 0.05);
-          this.setPx(gx + 1, gy, 0.9 * boost * fl, 0.35 * boost * fl, 0.04);
-          this.setPx(gx, gy - 1, 0.85 * fl, 0.3 * fl, 0.03);
-          this.setPx(gx + 1, gy - 1, 0.7 * fl, 0.22 * fl, 0.02);
-        } else if (p.type === 'frostbolt') {
-          // 2x2 pale-cyan core with a small additive halo
-          const fl = 0.8 + Math.random() * 0.35;
-          this.setPx(gx, gy, 0.55 * boost * fl, 0.9 * boost * fl, 1.0 * boost * fl);
-          this.setPx(gx + 1, gy, 0.45 * boost * fl, 0.8 * boost * fl, 0.95 * boost * fl);
-          this.setPx(gx, gy - 1, 0.45 * fl, 0.8 * fl, 0.95 * fl);
-          this.setPx(gx + 1, gy - 1, 0.35 * fl, 0.65 * fl, 0.85 * fl);
-          this.addPx(gx - 1, gy, 0.05, 0.16, 0.24);
-          this.addPx(gx + 2, gy, 0.05, 0.16, 0.24);
-          this.addPx(gx, gy + 1, 0.05, 0.16, 0.24);
-          this.addPx(gx, gy - 2, 0.05, 0.16, 0.24);
-        } else if (p.type === 'iceshard' || p.type === 'icelance') {
-          // Pale crystal dart; the lance trails extra segments along its flight line
-          const fl = 0.85 + Math.random() * 0.3;
-          const seg = p.type === 'icelance' ? 3 : 1;
-          const spd = Math.hypot(p.vx, p.vy) || 1;
-          for (let sgi = 0; sgi <= seg; sgi++) {
-            const lx = gx - Math.round((p.vx / spd) * sgi);
-            const ly = gy - Math.round((p.vy / spd) * sgi);
-            const fade = 1 - sgi / (seg + 1);
-            this.setPx(
-              lx,
-              ly,
-              0.5 * boost * fl * fade,
-              0.85 * boost * fl * fade,
-              1.0 * boost * fl * fade,
-            );
-          }
-          this.addPx(gx, gy - 1, 0.06, 0.14, 0.22);
-          this.addPx(gx, gy + 1, 0.06, 0.14, 0.22);
-        } else if (p.type === 'pellet') {
-          const fl = 0.8 + Math.random() * 0.4;
-          this.setPx(gx, gy, 0.35 * boost * fl, 0.85 * boost * fl, 1.0 * boost * fl);
-          this.addPx(gx + 1, gy, 0.05, 0.14, 0.2);
-        } else if (p.type === 'wisp') {
-          // A guttering self-lit mote with an orbiting glint
-          const fl = 0.9 + Math.random() * 0.5;
-          this.setPx(gx, gy, 0.35 * boost * fl, 0.95 * boost * fl, 1.1 * boost * fl);
-          const oa = frameCount * 0.35;
-          this.addPx(
-            gx + Math.round(Math.cos(oa) * 2),
-            gy + Math.round(Math.sin(oa) * 2),
-            0.1,
-            0.28,
-            0.34,
-          );
-        } else if (p.type === 'meteor') {
-          // Burning boulder: 3x3 molten core inside a ragged dark crust
-          for (let dy = -1; dy <= 1; dy++)
-            for (let dx = -1; dx <= 1; dx++) {
-              const hot = (dx === 0 && dy === 0) || Math.random() < 0.5;
-              if (hot) this.setPx(gx + dx, gy + dy, 1.3 * boost, 0.5 * boost, 0.08);
-              else this.setPx(gx + dx, gy + dy, 0.25, 0.12, 0.08);
-            }
-          this.addPx(gx, gy - 2, 0.3, 0.12, 0.02);
-        } else if (p.type === 'acidglob') {
-          const fl = 0.75 + Math.random() * 0.3;
-          this.setPx(gx, gy, 0.15 * fl, 0.8 * boost * fl, 0.12 * fl);
-          this.setPx(gx, gy - 1, 0.1 * fl, 0.6 * fl, 0.08 * fl);
-          this.addPx(gx + 1, gy, 0.03, 0.16, 0.03);
-        } else if (p.type === 'blackhole') {
-          const drawRad = Math.max(2, Math.floor(p.vortexRad! / 6));
-          for (let dy = -drawRad - 1; dy <= drawRad + 1; dy++) {
-            for (let dx = -drawRad - 1; dx <= drawRad + 1; dx++) {
-              const rx = gx + dx,
-                ry = gy + dy;
-              if (!world.inBounds(rx, ry)) continue;
-              const d2 = dx * dx + dy * dy;
-              const rim2 = (drawRad + 1) * (drawRad + 1);
-              if (d2 <= drawRad * drawRad * 0.45) {
-                this.setPx(rx, ry, 0.01, 0.0, 0.03); // event horizon: near-black core
-              } else if (d2 <= rim2) {
-                const swirl = 0.7 + Math.sin(frameCount * 0.25 + Math.atan2(dy, dx) * 3) * 0.3;
-                this.setPx(rx, ry, 0.6 * boost * swirl, 0.1 * boost * swirl, 1.0 * boost * swirl);
-              }
-            }
-          }
-        }
-      }
-    }
+    // Ballistic debris / embers / coins, lightning arcs, projectiles — the
+    // combat FX overlays live in sprites/FxSprites (shared with the gallery).
+    drawParticles(this, this.light, ctx);
+    drawLightningArcs(this, ctx);
+    drawProjectiles(this, ctx);
 
     // Animated decor first among the overlays: visual-only set dressing sits
     // just above terrain and UNDER every gameplay-readable overlay — a torch
@@ -545,52 +400,7 @@ export class FrameComposer implements PixelSurface {
     // Entities on top
     for (const e of ctx.enemies) this.drawEnemy(this, this.light, ctx, e);
     // Excavation beam: white-hot core, tight amber sheath, light cast onto nearby rock
-    const digBeam = ctx.fx.digBeam;
-    if (digBeam && digBeam.life > 0) {
-      // (life is decremented by Game at the frame tail — approved deviation 7)
-      const dxL = digBeam.x1 - digBeam.x0,
-        dyL = digBeam.y1 - digBeam.y0;
-      const lenL = Math.hypot(dxL, dyL) || 1;
-      const steps = Math.max(2, Math.floor(lenL));
-      const pxn = -dyL / lenL,
-        pyn = dxL / lenL; // beam-perpendicular
-      const bb = ctx.params.global.maxBrightness * 0.55;
-      for (let s = 0; s <= steps; s++) {
-        const t = s / steps;
-        const bxp = digBeam.x0 + dxL * t;
-        const byp = digBeam.y0 + dyL * t;
-        const w = 0.75 + Math.random() * 0.35;
-        this.setPx(bxp, byp, 1.15 * bb * w, 0.85 * bb * w, 0.3 * bb * w);
-        // tight falloff sheath, one pixel either side
-        this.addPx(bxp + pxn, byp + pyn, 0.16 * bb * w, 0.1 * bb * w, 0.02);
-        this.addPx(bxp - pxn, byp - pyn, 0.16 * bb * w, 0.1 * bb * w, 0.02);
-      }
-      // white-hot cutting point + sputtering sparks
-      this.setPx(digBeam.x1, digBeam.y1, 1.6 * bb, 1.4 * bb, 0.9 * bb);
-      this.setPx(
-        digBeam.x1 + ((Math.random() * 3) | 0) - 1,
-        digBeam.y1 + ((Math.random() * 3) | 0) - 1,
-        1.1 * bb,
-        0.85 * bb,
-        0.35 * bb,
-      );
-      // projected glow: warm light splashed across the surrounding rock face
-      const GR = 12;
-      const ix = Math.floor(digBeam.x1),
-        iy = Math.floor(digBeam.y1);
-      for (let gdy = -GR; gdy <= GR; gdy++) {
-        for (let gdx = -GR; gdx <= GR; gdx++) {
-          const d2 = gdx * gdx + gdy * gdy;
-          if (d2 > GR * GR || d2 === 0) continue;
-          const wxg = ix + gdx,
-            wyg = iy + gdy;
-          if (!world.inBounds(wxg, wyg) || types[wxg + wyg * WIDTH] === Cell.Empty) continue;
-          const fall = 1 - Math.sqrt(d2) / GR;
-          const lum = fall * fall * 0.55;
-          this.addPx(wxg, wyg, lum * 1.0, lum * 0.66, lum * 0.18);
-        }
-      }
-    }
+    drawDigBeam(this, ctx);
 
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
   }

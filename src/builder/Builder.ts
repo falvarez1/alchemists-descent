@@ -43,7 +43,7 @@ import type { CellPatch, Command } from '@/builder/commands';
 import { rleEncode } from '@/core/rle';
 import { drawLine, spawnCircle } from '@/sim/brush';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
-import { blocksEntity, Cell, isGas, isLiquid, isSolid } from '@/sim/CellType';
+import { blocksEntity } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
 import {
@@ -65,6 +65,7 @@ import { SpritePanel } from '@/builder/spritePanel';
 import { downloadJson, downloadText, download, pickFiles } from '@/builder/assets/io';
 import { cellsToRgba, rgbaToCells, snapUnknown } from '@/builder/assets/pixmap';
 import { pngBlobToRgba, rgbaToPngBlob } from '@/builder/assets/png';
+import { appDialog } from '@/ui/AppDialog';
 import {
   decodeFramePx,
   parseAsepriteJson,
@@ -111,6 +112,7 @@ import type { SymmetryMode } from '@/builder/symmetry';
 import { PASSES, runPass } from '@/builder/procedural';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { paramSliderSpec } from '@/ui/Inspector';
+import { fillMaterialPopover } from '@/ui/materialInfo';
 
 /**
  * The Builder (docs/BUILDER.md Phases 2-10): an authoring overlay on top of
@@ -240,6 +242,7 @@ type BuilderTool =
   | 'light'
   | 'stamp'
   | EditorObjectKind;
+type BuilderOpenIntent = 'continue-document' | 'current-scene';
 
 /** Editor layer families (visibility/locking are EDITOR-side only:
  *  a hidden layer still compiles — that's what object `hidden` is for). */
@@ -599,6 +602,9 @@ export class Builder {
   private settleWasDirty = false;
   private autosaveTimer = 0;
   private draftOffered = false;
+  private allowingSandboxWorldShape = false;
+  private shareBusy = false;
+  private codeBusy = false;
 
   private root!: HTMLDivElement;
   private overlay!: HTMLDivElement;
@@ -610,6 +616,8 @@ export class Builder {
   private markerLayer!: HTMLDivElement;
   private markers = new Map<string, HTMLDivElement>();
   private modeBtn!: HTMLButtonElement;
+  private intentModal: HTMLDivElement | null = null;
+  private intentModalPaused = false;
   private rafId = 0;
   private statusTimer = 0;
 
@@ -647,20 +655,32 @@ export class Builder {
         'click',
         (e) => {
           if (!this.isOpen) return;
+          if (this.allowingSandboxWorldShape) {
+            this.allowingSandboxWorldShape = false;
+            this.paintDirty = true;
+            return;
+          }
           const hasWork = this.doc.world !== null || this.cmds.depth > 0 || this.paintDirty;
-          if (
-            this.pendingPreview ||
-            this.floating ||
-            (hasWork &&
-              !window.confirm(
-                'This reshapes the ENTIRE world under the open document and cannot be undone. ' +
-                  '(RESTORE re-decodes the last captured terrain.) Continue?',
-              ))
-          ) {
-            if (this.pendingPreview) this.status('APPLY OR DISCARD THE PROCEDURAL PREVIEW FIRST', true);
-            if (this.floating) this.status('LAND OR CANCEL THE FLOATING SELECTION FIRST', true);
+          if (this.previewBlocks()) {
             e.stopImmediatePropagation();
             e.preventDefault();
+            return;
+          }
+          if (hasWork) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            const target = e.currentTarget as HTMLElement | null;
+            void appDialog
+              .confirm(
+                'This reshapes the ENTIRE world under the open document and cannot be undone. ' +
+                  '(RESTORE re-decodes the last captured terrain.) Continue?',
+                { title: 'Reshape World', confirmText: 'Continue', tone: 'danger' },
+              )
+              .then((ok) => {
+                if (!ok) return;
+                this.allowingSandboxWorldShape = true;
+                target?.click();
+              });
             return;
           }
           this.paintDirty = true;
@@ -680,15 +700,27 @@ export class Builder {
 
   open(): void {
     if (this.isOpen) return;
+    if (this.ctx.state.mode === 'play' && !this.returningFromPlaytest) {
+      this.showOpenIntentModal();
+      return;
+    }
+    this.openWithIntent('continue-document', false);
+  }
+
+  private openWithIntent(intent: BuilderOpenIntent, inheritPause = false): void {
+    if (this.isOpen) return;
+    this.hideOpenIntentModal(false);
     // The Builder rides on build mode; leave the descent first if needed.
     if (this.ctx.state.mode === 'play') {
       (document.getElementById('mode-build-btn') as HTMLButtonElement | null)?.click();
     }
+    if (intent === 'current-scene') this.adoptCurrentSceneAsDocument();
     // EXPEDITION PROTECTION: levels persist as live World instances. If the
     // canvas still shows an expedition level, the Builder must NOT edit it
     // in place (LOAD/IMPORT would wipe a depth and autosave would keep it).
     // Detach onto a scratch world; PLAY re-attaches the expedition's own.
     let detached = false;
+    let openStatus: { text: string; warn?: boolean } | null = null;
     const rt = this.ctx.levels.current;
     if (rt && rt.def.id !== 'custom' && this.ctx.world === rt.world) {
       this.ctx.world = new World();
@@ -699,13 +731,16 @@ export class Builder {
       detached = true;
     }
     this.isOpen = true;
-    if (!this.ctx.state.paused) {
+    if (!this.ctx.state.paused || inheritPause) {
       this.ctx.state.paused = true;
       this.ownsPause = true;
     }
     if (detached) {
       this.root.style.display = '';
-      this.status('EXPEDITION PARKED — THE BUILDER WORKS ON ITS OWN WORLD');
+      openStatus = { text: 'EXPEDITION PARKED - THE BUILDER WORKS ON ITS OWN WORLD' };
+    }
+    if (intent === 'current-scene') {
+      openStatus = { text: 'CURRENT PLAY SCENE SNAPSHOTTED - PLAYTEST RETURNS TO THIS SPAWN' };
     }
     if (this.returningFromPlaytest && this.doc.world) {
       // Hold the scarred planes for BAKE, then re-decode the authored layer.
@@ -718,7 +753,7 @@ export class Builder {
       this.ctx.enemies.length = 0;
       this.ctx.projectiles.length = 0;
       this.ctx.particles.clear();
-      this.status('PLAYTEST DISCARDED — "BAKE PLAYTEST SCARS" (CTRL+K) CAN KEEP THEM');
+      openStatus = { text: 'PLAYTEST DISCARDED - "BAKE PLAYTEST SCARS" (CTRL+K) CAN KEEP THEM' };
     }
     if (this.returningFromPlaytest && this.prevAmbient !== null) {
       // a mood-overridden playtest restores the global ambient on return
@@ -735,7 +770,8 @@ export class Builder {
     this.refreshPrefabs();
     this.syncSettleButtons();
     this.autosaveTimer = window.setInterval(() => this.autosaveDraft(), 30000);
-    this.offerDraft();
+    if (intent !== 'current-scene') void this.offerDraft();
+    if (openStatus) this.status(openStatus.text, openStatus.warn);
     this.rafId = requestAnimationFrame(this.loop);
   }
 
@@ -769,6 +805,150 @@ export class Builder {
     this.root.style.display = 'none';
     this.modeBtn.classList.remove('active');
     document.body.classList.remove('builder-open');
+  }
+
+  private showOpenIntentModal(): void {
+    if (this.intentModal) return;
+    if (!this.ctx.levels.current) {
+      this.openWithIntent('continue-document', false);
+      return;
+    }
+
+    this.intentModalPaused = false;
+    if (!this.ctx.state.paused) {
+      this.ctx.state.paused = true;
+      this.intentModalPaused = true;
+    }
+
+    const rt = this.ctx.levels.current;
+    const hasWork = this.hasAuthoringWork();
+    const modal = document.createElement('div');
+    modal.id = 'builder-intent-modal';
+    modal.innerHTML = `
+      <div class="bi-modal" role="dialog" aria-modal="true" aria-labelledby="builder-intent-title">
+        <div class="bi-kicker">OPEN BUILDER</div>
+        <div id="builder-intent-title" class="bi-title">What do you want to build?</div>
+        <div class="bi-copy">
+          You are currently playing ${escHtml(rt.def.name)}. Choose whether Builder should snapshot this scene or reopen the existing Builder document.
+        </div>
+        ${hasWork ? '<div class="bi-warn">Editing the current scene replaces the in-memory Builder document. A draft is kept before the swap.</div>' : ''}
+        <div class="bi-actions">
+          <button type="button" class="bi-primary" data-intent="current-scene">EDIT CURRENT SCENE</button>
+          <button type="button" data-intent="continue-document">CONTINUE BUILDER DOC</button>
+          <button type="button" data-intent="cancel">CANCEL</button>
+        </div>
+      </div>`;
+
+    const choose = (intent: BuilderOpenIntent | 'cancel') => {
+      if (intent === 'cancel') {
+        this.hideOpenIntentModal(true);
+        return;
+      }
+      const inheritPause = this.intentModalPaused;
+      this.hideOpenIntentModal(false);
+      this.openWithIntent(intent, inheritPause);
+    };
+
+    modal
+      .querySelector<HTMLButtonElement>('[data-intent="current-scene"]')
+      ?.addEventListener('click', () => choose('current-scene'));
+    modal
+      .querySelector<HTMLButtonElement>('[data-intent="continue-document"]')
+      ?.addEventListener('click', () => choose('continue-document'));
+    modal.querySelector<HTMLButtonElement>('[data-intent="cancel"]')?.addEventListener('click', () => choose('cancel'));
+    modal.addEventListener('mousedown', (e) => {
+      if (e.target === modal) choose('cancel');
+    });
+    modal.addEventListener('keydown', (e) => {
+      if (e.code !== 'Escape') return;
+      e.preventDefault();
+      choose('cancel');
+    });
+
+    document.body.appendChild(modal);
+    this.intentModal = modal;
+    modal.querySelector<HTMLButtonElement>('[data-intent="current-scene"]')?.focus();
+  }
+
+  private hideOpenIntentModal(restorePause: boolean): void {
+    if (!this.intentModal) return;
+    this.intentModal.remove();
+    this.intentModal = null;
+    if (restorePause && this.intentModalPaused) this.ctx.state.paused = false;
+    this.intentModalPaused = false;
+  }
+
+  private hasAuthoringWork(): boolean {
+    return (
+      this.doc.objects.length > 0 ||
+      this.doc.lights.length > 0 ||
+      this.doc.world !== null ||
+      this.cmds.depth > 0 ||
+      this.paintDirty
+    );
+  }
+
+  private adoptCurrentSceneAsDocument(): void {
+    this.keepCurrentDocDraft();
+    const rt = this.ctx.levels.current;
+    const name = rt ? `${rt.def.name} scene edit` : 'play scene edit';
+    const doc = createEmptyDocument(name, (rt?.def.biome ?? this.ctx.state.currentBiome) as BiomeId);
+    doc.world = captureWorldLayer(this.ctx);
+    doc.objects.push({
+      id: freshId('spawn'),
+      kind: 'spawn',
+      x: Math.floor(this.ctx.player.x),
+      y: Math.floor(this.ctx.player.y),
+      rotation: 0,
+      locked: false,
+      hidden: false,
+      params: {},
+    });
+    this.doc = doc;
+    this.playtestScars = null;
+    this.mutedLightIds.clear();
+    this.cmds.clear();
+    this.select(null);
+    this.paintDirty = false;
+    this.region = null;
+    this.regionMask = null;
+    this.regionMaskCells = 0;
+  }
+
+  private keepCurrentDocDraft(): void {
+    if (!this.hasAuthoringWork()) return;
+    if (this.floating || this.settling || this.settleSnap || this.pendingPreview) return;
+    this.ensureCaptured();
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), doc: this.doc }));
+    } catch {
+      // quota: the explicit SAVE/EXPORT paths remain the reliable archive
+    }
+  }
+
+  private async confirmDiscardCurrentDocument(title: string): Promise<boolean> {
+    if (!this.hasAuthoringWork()) return true;
+    return appDialog.confirm('Discard the current document?', {
+      title,
+      confirmText: 'Discard',
+      tone: 'danger',
+    });
+  }
+
+  private replaceDocument(doc: EditorDocument, statusText: string): void {
+    this.doc = doc;
+    this.adoptDocSprites();
+    this.playtestScars = null;
+    this.mutedLightIds.clear();
+    this.cmds.clear();
+    this.select(null);
+    this.paintDirty = false;
+    this.region = null;
+    this.regionMask = null;
+    this.regionMaskCells = 0;
+    this.applyDocTerrain();
+    this.syncAll();
+    this.status(statusText);
   }
 
   /* ===================== DOM scaffold ===================== */
@@ -1070,38 +1250,9 @@ export class Builder {
       swatch.appendChild(d);
     }
     swatch.addEventListener('click', () => this.selectMaterial(id));
-    this.attachPopover(swatch, (pop) => {
-      const big = makeIconCanvas(ELEMENT_ICON[id] ?? '', 4);
-      let visual: HTMLElement | null = big;
-      if (!visual) {
-        const d = document.createElement('span');
-        d.className = 'bp-matpop-dot';
-        d.style.background = color;
-        visual = d;
-      }
-      this.popHead(pop, visual, name);
-      // classification straight from the sim predicates — the grid's truth
-      const tags: string[] = [];
-      if (isLiquid(id)) tags.push('liquid');
-      else if (isGas(id)) tags.push('gas');
-      else if (isSolid(id)) tags.push('solid');
-      else if (blocksEntity(id)) tags.push('powder');
-      if (id === Cell.Fire || id === Cell.Ember) tags.push('burns');
-      if (tags.length > 0) this.popDesc(pop, tags.join(' · '));
-      const profile = this.ctx.params.materials[id] as unknown as Record<string, number> | undefined;
-      if (profile) {
-        for (const key of Object.keys(profile)) {
-          if (key === 'name') continue;
-          const spec = paramSliderSpec(key);
-          const row = document.createElement('div');
-          row.className = 'bp-pop-prop';
-          const value =
-            key === 'bloomWeight' ? (profile[key] * 100).toFixed(0) + '%' : String(profile[key]);
-          row.innerHTML = `<span>${spec.label.replace(/([A-Z])/g, ' $1')}</span><b>${value}</b>`;
-          pop.appendChild(row);
-        }
-      }
-    });
+    this.attachPopover(swatch, (pop) =>
+      fillMaterialPopover(pop, id, name, color, this.ctx.params.materials[id]),
+    );
     grid.appendChild(swatch);
   }
 
@@ -1188,16 +1339,9 @@ export class Builder {
       this.doc.biome = (e.target as HTMLSelectElement).value as BiomeId;
     });
 
-    this.el('b-new').addEventListener('click', () => {
+    this.el('b-new').addEventListener('click', async () => {
       if (this.previewBlocks()) return;
-      // anything worth keeping guards the discard — not just objects
-      const hasWork =
-        this.doc.objects.length > 0 ||
-        this.doc.lights.length > 0 ||
-        this.doc.world !== null ||
-        this.cmds.depth > 0 ||
-        this.paintDirty;
-      if (hasWork && !window.confirm('Discard the current document?')) return;
+      if (!(await this.confirmDiscardCurrentDocument('New Document'))) return;
       this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
       this.playtestScars = null; // scars belong to the old document
       this.mutedLightIds.clear();
@@ -1221,24 +1365,15 @@ export class Builder {
       this.refreshDocSelect();
     });
 
-    this.el('b-load').addEventListener('click', () => {
+    this.el('b-load').addEventListener('click', async () => {
       if (this.previewBlocks()) return;
       const id = this.el<HTMLSelectElement>('b-doc-select').value;
       const saved = loadDocLibrary()[id];
       if (!saved) return;
       // Clone so edits never mutate the library copy until the next SAVE.
-      this.doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
-      // embedded sprites may be missing locally (deleted, or another profile)
-      this.adoptDocSprites();
-      this.playtestScars = null;
-      this.mutedLightIds.clear();
-      this.cmds.clear();
-      this.select(null);
-      this.paintDirty = false;
-      this.region = null;
-      this.applyDocTerrain();
-      this.syncAll();
-      this.status(`LOADED "${this.doc.name.toUpperCase()}"`);
+      const doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
+      if (!(await this.confirmDiscardCurrentDocument('Load Document'))) return;
+      this.replaceDocument(doc, `LOADED "${doc.name.toUpperCase()}"`);
     });
 
     this.el('b-export').addEventListener('click', () => {
@@ -1261,10 +1396,11 @@ export class Builder {
         input.value = '';
         return;
       }
-      file.text().then((text) => {
+      void (async () => {
         // Validate-then-swap: the previous document survives any garbage.
         let parsed: unknown = null;
         try {
+          const text = await file.text();
           parsed = JSON.parse(text);
         } catch {
           parsed = null;
@@ -1273,19 +1409,14 @@ export class Builder {
         if (!doc) {
           this.status('NOT A BUILDER DOCUMENT', true);
         } else {
-          this.doc = doc;
-          this.adoptDocSprites();
-          this.playtestScars = null;
-          this.mutedLightIds.clear();
-          this.cmds.clear();
-          this.select(null);
-          this.paintDirty = false;
-          this.applyDocTerrain();
-          this.syncAll();
-          this.status(`IMPORTED "${this.doc.name.toUpperCase()}"`);
+          if (!(await this.confirmDiscardCurrentDocument('Import Document'))) {
+            input.value = '';
+            return;
+          }
+          this.replaceDocument(doc, `IMPORTED "${doc.name.toUpperCase()}"`);
         }
         input.value = '';
-      });
+      })();
     });
 
     this.el('b-undo').addEventListener('click', () => this.undo());
@@ -1327,7 +1458,7 @@ export class Builder {
       this.status(issues.length === 0 ? 'VALID — NO ISSUES' : `${issues.length} ISSUE(S)`);
     });
 
-    this.el('b-bake').addEventListener('click', () => this.bakePlaytestScars());
+    this.el('b-bake').addEventListener('click', () => void this.bakePlaytestScars());
     this.el('b-playtest').addEventListener('click', () => this.playtest());
     this.el('b-gallery').addEventListener('click', () => this.openGallery());
     this.el('b-zen').addEventListener('click', () => this.toggleZen());
@@ -2012,15 +2143,16 @@ export class Builder {
   }
 
   /** Whole-world reshapes from inside the Builder (confirm when work exists). */
-  private guardedWorldGen(action: 'caves' | 'fortress' | 'clear'): void {
+  private async guardedWorldGen(action: 'caves' | 'fortress' | 'clear'): Promise<void> {
     if (this.previewBlocks()) return;
     const hasWork = this.doc.world !== null || this.cmds.depth > 0 || this.paintDirty;
     if (
       hasWork &&
-      !window.confirm(
+      !(await appDialog.confirm(
         'This reshapes the ENTIRE world under the open document and cannot be undone. ' +
           '(RESTORE re-decodes the last captured terrain.) Continue?',
-      )
+        { title: 'Reshape World', confirmText: 'Continue', tone: 'danger' },
+      ))
     )
       return;
     if (action === 'caves') {
@@ -2421,13 +2553,17 @@ export class Builder {
     return this.doc.lights.find((l) => l.id === this.selectedId) ?? null;
   }
 
-  private deleteSelection(): void {
+  private async deleteSelection(): Promise<void> {
     const dels: Command[] = [];
     let lockedSkipped = 0;
+    let deletesSpawn = false;
     for (const o of this.doc.objects) {
       if (!this.selectedIds.has(o.id)) continue;
       if (o.locked) lockedSkipped++;
-      else dels.push(deleteObjectCmd(o));
+      else {
+        if (o.kind === 'spawn') deletesSpawn = true;
+        dels.push(deleteObjectCmd(o));
+      }
     }
     for (const l of this.doc.lights) {
       if (!this.selectedIds.has(l.id)) continue;
@@ -2440,6 +2576,21 @@ export class Builder {
     }
     if (dels.length === 0) {
       if (lockedSkipped > 0) this.status('LOCKED — UNLOCK TO DELETE', true);
+      return;
+    }
+    if (
+      (dels.length > 1 || deletesSpawn) &&
+      !(await appDialog.confirm(
+        deletesSpawn
+          ? `Delete the spawn${dels.length > 1 ? ` and ${dels.length - 1} other item(s)` : ''}?`
+          : `Delete ${dels.length} selected items?`,
+        {
+          title: 'Delete Selection',
+          confirmText: 'Delete',
+          tone: 'danger',
+        },
+      ))
+    ) {
       return;
     }
     this.cmds.run(dels.length === 1 ? dels[0] : compositeCmd('delete ' + dels.length + ' things', dels));
@@ -2817,9 +2968,9 @@ export class Builder {
       if (Number.isFinite(v)) this.ctx.state.brushSize = v;
       this.el('bp-brush-val').textContent = String(this.ctx.state.brushSize);
     });
-    this.el('bp-gen-caves').addEventListener('click', () => this.guardedWorldGen('caves'));
-    this.el('bp-gen-fort').addEventListener('click', () => this.guardedWorldGen('fortress'));
-    this.el('bp-gen-clear').addEventListener('click', () => this.guardedWorldGen('clear'));
+    this.el('bp-gen-caves').addEventListener('click', () => void this.guardedWorldGen('caves'));
+    this.el('bp-gen-fort').addEventListener('click', () => void this.guardedWorldGen('fortress'));
+    this.el('bp-gen-clear').addEventListener('click', () => void this.guardedWorldGen('clear'));
 
     // DRAG-TO-PLACE: object/light buttons can be dragged straight onto the
     // canvas (the intuitive gesture); a plain click still arms the tool.
@@ -2896,11 +3047,14 @@ export class Builder {
     });
     this.el('bp-sym-btn').addEventListener('click', () => this.cycleSymmetry());
 
-    this.el('b-share').addEventListener('click', () => {
+    this.el('b-share').addEventListener('click', async () => {
       if (this.previewBlocks()) return;
-      this.ensureCaptured();
-      embedSprites(this.doc, this.sprites);
-      void docToShareCode(this.doc).then(async (code) => {
+      if (this.shareBusy) return;
+      this.shareBusy = true;
+      try {
+        this.ensureCaptured();
+        embedSprites(this.doc, this.sprites);
+        const code = await docToShareCode(this.doc);
         let copied = false;
         try {
           await navigator.clipboard.writeText(code);
@@ -2908,34 +3062,48 @@ export class Builder {
         } catch {
           copied = false;
         }
-        window.prompt(
+        await appDialog.prompt(
           copied ? 'Share code (already on the clipboard):' : 'Share code (Ctrl+C to copy):',
           code,
+          {
+            title: 'Share Code',
+            confirmText: 'Done',
+            cancelText: 'Close',
+            multiline: true,
+            readOnly: true,
+          },
         );
         this.status(`SHARE CODE READY — ${Math.max(1, Math.round(code.length / 1024))} KB`);
-      });
+      } catch {
+        this.status('SHARE CODE FAILED', true);
+      } finally {
+        this.shareBusy = false;
+      }
     });
 
-    this.el('b-code').addEventListener('click', () => {
+    this.el('b-code').addEventListener('click', async () => {
       if (this.previewBlocks()) return;
-      const code = window.prompt('Paste a share code:');
-      if (!code) return;
-      void shareCodeToDoc(code).then((doc) => {
+      if (this.codeBusy) return;
+      this.codeBusy = true;
+      try {
+        const code = await appDialog.prompt('Paste a share code:', '', {
+          title: 'Import Code',
+          confirmText: 'Import',
+          multiline: true,
+        });
+        if (!code) return;
+        const doc = await shareCodeToDoc(code);
         if (!doc) {
           this.status('NOT A VALID SHARE CODE', true);
           return;
         }
-        this.doc = doc;
-        this.adoptDocSprites();
-        this.playtestScars = null;
-        this.mutedLightIds.clear();
-        this.cmds.clear();
-        this.select(null);
-        this.paintDirty = false;
-        this.applyDocTerrain();
-        this.syncAll();
-        this.status(`IMPORTED "${this.doc.name.toUpperCase()}" FROM CODE`);
-      });
+        if (!(await this.confirmDiscardCurrentDocument('Import Code'))) return;
+        this.replaceDocument(doc, `IMPORTED "${doc.name.toUpperCase()}" FROM CODE`);
+      } catch {
+        this.status('CODE IMPORT FAILED', true);
+      } finally {
+        this.codeBusy = false;
+      }
     });
   }
 
@@ -2956,7 +3124,7 @@ export class Builder {
         this.refreshPrefabs();
         this.status(`PREFAB ARMED: "${p.name.toUpperCase()}" — Q ROTATES, E FLIPS, ESC DONE`);
       },
-      onCapture: () => this.capturePrefabFromRegion(),
+      onCapture: () => void this.capturePrefabFromRegion(),
       onRegionPng: () => void this.exportRegionPng(),
       onImport: () => void this.importPrefabFiles(),
       onPalette: () => {
@@ -2968,9 +3136,16 @@ export class Builder {
         downloadJson(p, `${p.name || 'prefab'}.prefab.json`);
         this.status(`EXPORTED "${p.name.toUpperCase()}" AS JSON`);
       },
-      onEditAnchors: (p) => this.editPrefabAnchors(p),
-      onDelete: (p) => {
-        if (!window.confirm(`Delete prefab "${p.name}"?`)) return;
+      onEditAnchors: (p) => void this.editPrefabAnchors(p),
+      onDelete: async (p) => {
+        if (
+          !(await appDialog.confirm(`Delete prefab "${p.name}"?`, {
+            title: 'Delete Prefab',
+            confirmText: 'Delete',
+            tone: 'danger',
+          }))
+        )
+          return;
         deletePrefab(p.id);
         this.prefabs = this.prefabs.filter((x) => x.id !== p.id);
         if (this.armedPrefab?.id === p.id) this.armedPrefab = null;
@@ -2983,15 +3158,16 @@ export class Builder {
     this.prefabPanel.refresh(this.prefabs, this.armedPrefab?.id ?? null, [...builtinPrefabs()]);
   }
 
-  private capturePrefabFromRegion(): void {
+  private async capturePrefabFromRegion(): Promise<void> {
     if (this.previewBlocks()) return;
     if (!this.region) {
       this.status('SELECT A REGION FIRST (R), THEN CAPTURE IT', true);
       return;
     }
-    const raw = window.prompt(
+    const raw = await appDialog.prompt(
       'Prefab name (#tags after the name):',
       'prefab ' + (this.prefabs.length + 1),
+      { title: 'Capture Prefab', confirmText: 'Capture' },
     );
     if (raw === null) return;
     // "gate room #vault #mech" — words after # become tags
@@ -3149,13 +3325,14 @@ export class Builder {
       return;
     }
     const result = rgbaToCells(decoded.rgba, decoded.w, decoded.h);
-    const accept = (cells: Uint8Array): void =>
-      this.acceptTerrainPng(file.name, cells, decoded.w, decoded.h);
+    const accept = (cells: Uint8Array): void => {
+      void this.acceptTerrainPng(file.name, cells, decoded.w, decoded.h);
+    };
     if (result.unknown.length === 0) {
       if (result.semiTransparent > 0) {
         this.status(`${result.semiTransparent} SEMI-TRANSPARENT PIXEL(S) THRESHOLDED`, true);
       }
-      accept(result.cells);
+      await this.acceptTerrainPng(file.name, result.cells, decoded.w, decoded.h);
       return;
     }
     showImportReport(this.el<HTMLDivElement>('builder-import-host'), file.name, result, {
@@ -3164,7 +3341,7 @@ export class Builder {
     });
   }
 
-  private acceptTerrainPng(filename: string, cells: Uint8Array, w: number, h: number): void {
+  private async acceptTerrainPng(filename: string, cells: Uint8Array, w: number, h: number): Promise<void> {
     const armedLib = this.armedPrefab
       ? this.prefabs.find((x) => x.id === this.armedPrefab!.id)
       : undefined;
@@ -3172,7 +3349,10 @@ export class Builder {
       armedLib &&
       armedLib.w === w &&
       armedLib.h === h &&
-      window.confirm(`Update the terrain of armed prefab "${armedLib.name}" from this PNG?`)
+      (await appDialog.confirm(`Update the terrain of armed prefab "${armedLib.name}" from this PNG?`, {
+        title: 'Update Prefab Terrain',
+        confirmText: 'Update',
+      }))
     ) {
       armedLib.rle = rleEncode(cells);
       savePrefab(armedLib);
@@ -3204,18 +3384,25 @@ export class Builder {
   }
 
   /** Minimal anchor authoring: edge-midpoint anchors from a dir list. */
-  private editPrefabAnchors(p: PrefabDef): void {
+  private async editPrefabAnchors(p: PrefabDef): Promise<void> {
     const current = (p.anchors ?? []).map((a) => a.dir).join(',');
-    const raw = window.prompt(
+    const raw = await appDialog.prompt(
       'Worldgen anchors as edge directions (n/s/e/w, comma-separated; empty clears).\n' +
         'Each becomes an opening at that edge midpoint for the cave tunneler:',
       current,
+      { title: 'Prefab Anchors', confirmText: 'Apply' },
     );
     if (raw === null) return;
-    const dirs = raw
-      .split(',')
-      .map((s) => s.trim().toLowerCase())
-      .filter((s): s is PrefabAnchor['dir'] => s === 'n' || s === 's' || s === 'e' || s === 'w');
+    const trimmed = raw.trim();
+    const tokens = trimmed.length === 0 ? [] : trimmed.split(',').map((s) => s.trim().toLowerCase());
+    const invalid = tokens.filter((s) => s !== 'n' && s !== 's' && s !== 'e' && s !== 'w');
+    if (invalid.length > 0) {
+      await appDialog.alert(`Unknown anchor direction: ${invalid.join(', ')}.\nUse n, s, e, or w.`, 'Invalid Anchors');
+      return;
+    }
+    const dirs = tokens.filter(
+      (s): s is PrefabAnchor['dir'] => s === 'n' || s === 's' || s === 'e' || s === 'w',
+    );
     const at: Record<PrefabAnchor['dir'], { x: number; y: number }> = {
       n: { x: Math.floor(p.w / 2), y: 0 },
       s: { x: Math.floor(p.w / 2), y: p.h - 1 },
@@ -3250,8 +3437,14 @@ export class Builder {
       },
       onImport: () => void this.importSpriteFiles(),
       onExport: (s) => void this.exportSprite(s),
-      onDelete: (s) => {
-        if (!window.confirm(`Delete sprite "${s.name}"? Decor referencing it stops rendering.`)) {
+      onDelete: async (s) => {
+        if (
+          !(await appDialog.confirm(`Delete sprite "${s.name}"? Decor referencing it stops rendering.`, {
+            title: 'Delete Sprite',
+            confirmText: 'Delete',
+            tone: 'danger',
+          }))
+        ) {
           return;
         }
         deleteSprite(s.id);
@@ -3329,10 +3522,11 @@ export class Builder {
     try {
       const decoded = await pngBlobToRgba(pngFile);
       const guess = Math.min(decoded.h, decoded.w);
-      const raw = window.prompt(
+      const raw = await appDialog.prompt(
         `"${pngFile.name}" has no sheet JSON — slice a uniform grid.\n` +
           `Frame size and speed as WxH@FPS (sheet is ${decoded.w}x${decoded.h}):`,
         `${guess}x${decoded.h}@8`,
+        { title: 'Slice Sprite Sheet', confirmText: 'Import' },
       );
       if (raw === null) return;
       const m = /^\s*(\d+)\s*[x×]\s*(\d+)\s*(?:@\s*(\d+))?\s*$/i.exec(raw);
@@ -3470,7 +3664,7 @@ export class Builder {
    * RESTORE remains the way back). Mind that scars include compiled
    * mechanism cells (doors, basins) — region bakes are the intended tool.
    */
-  private bakePlaytestScars(): void {
+  private async bakePlaytestScars(): Promise<void> {
     if (this.previewBlocks()) return;
     const scars = this.playtestScars;
     if (!scars) {
@@ -3515,9 +3709,10 @@ export class Builder {
       return;
     }
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         'Bake the ENTIRE playtest world over the document terrain? Mechanism footprints are skipped, but this cannot be undone (RESTORE returns to the captured layer). Set a region first for a precise, undoable bake.',
-      )
+        { title: 'Bake Playtest World', confirmText: 'Bake World', tone: 'danger' },
+      ))
     )
       return;
     for (let i = 0; i < w.types.length; i++) {
@@ -3809,7 +4004,7 @@ export class Builder {
     }
   }
 
-  private offerDraft(): void {
+  private async offerDraft(): Promise<void> {
     if (this.draftOffered) return;
     this.draftOffered = true;
     try {
@@ -3819,7 +4014,13 @@ export class Builder {
       const restored = sanitizeImportedDoc(draft.doc);
       if (!restored) return;
       const when = new Date(draft.at).toLocaleTimeString();
-      if (!window.confirm(`Restore the autosaved draft "${restored.name}" from ${when}?`)) return;
+      if (
+        !(await appDialog.confirm(`Restore the autosaved draft "${restored.name}" from ${when}?`, {
+          title: 'Restore Draft',
+          confirmText: 'Restore',
+        }))
+      )
+        return;
       this.doc = restored;
       this.mutedLightIds.clear();
       this.cmds.clear();
@@ -3860,10 +4061,10 @@ export class Builder {
           this.status('HOLD SETTLE TO RUN PHYSICS, RELEASE TO DECIDE');
         },
       },
-      { label: 'Bake playtest scars', run: () => this.bakePlaytestScars() },
+      { label: 'Bake playtest scars', run: () => void this.bakePlaytestScars() },
       { label: 'Lift region as floating selection (X)', run: () => this.liftFloat() },
       { label: 'Cycle symmetry painting', run: () => this.cycleSymmetry() },
-      { label: 'Capture region as prefab', run: () => this.capturePrefabFromRegion() },
+      { label: 'Capture region as prefab', run: () => void this.capturePrefabFromRegion() },
       { label: 'Import prefab (.json / .png)', run: () => void this.importPrefabFiles() },
       { label: 'Export region as PNG', run: () => void this.exportRegionPng() },
       { label: 'Export material palette (.gpl)', run: click('bp-prefab-gpl') },
@@ -3873,9 +4074,9 @@ export class Builder {
       { label: 'Toggle panels / zen (`)', run: () => this.toggleZen() },
       { label: 'Cycle readability overlay (O)', run: () => this.cycleOverlay() },
       { label: 'Cycle snap grid', run: click('bp-snap-btn') },
-      { label: 'Generate caves (whole world)', run: () => this.guardedWorldGen('caves') },
-      { label: 'Spawn fortress', run: () => this.guardedWorldGen('fortress') },
-      { label: 'Clear world', run: () => this.guardedWorldGen('clear') },
+      { label: 'Generate caves (whole world)', run: () => void this.guardedWorldGen('caves') },
+      { label: 'Spawn fortress', run: () => void this.guardedWorldGen('fortress') },
+      { label: 'Clear world', run: () => void this.guardedWorldGen('clear') },
       { label: 'Group selection (Ctrl+G)', run: () => this.groupSelection(false) },
       { label: 'Ungroup selection (Ctrl+Shift+G)', run: () => this.groupSelection(true) },
       { label: 'Duplicate selection (Ctrl+D)', run: () => this.duplicateSelection() },
@@ -4000,6 +4201,7 @@ export class Builder {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (!this.isOpen) return;
+    if (document.querySelector('.app-dialog-root')) return;
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) {
       if (e.code === 'Escape') (t as HTMLInputElement).blur();
@@ -4008,7 +4210,7 @@ export class Builder {
     if (e.code === 'Tab') {
       // The Builder owns Tab — no silent mode flip mid-edit.
       e.preventDefault();
-      e.stopPropagation();
+      e.stopImmediatePropagation();
     } else if (e.code === 'Escape') {
       e.stopPropagation();
       if (this.settling || this.settleSnap) {
@@ -4132,7 +4334,7 @@ export class Builder {
       this.toggleZen();
     } else if (e.code === 'Delete') {
       e.stopPropagation();
-      this.deleteSelection();
+      void this.deleteSelection();
     } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
       e.preventDefault();
       e.stopPropagation();
@@ -4739,7 +4941,7 @@ export class Builder {
       for (const b of panel.querySelectorAll<HTMLButtonElement>('button[data-align]')) {
         b.addEventListener('click', () => this.alignSelection(b.dataset.align as 'x' | 'y' | 'spreadX' | 'spreadY'));
       }
-      panel.querySelector('#bi-delete')?.addEventListener('click', () => this.deleteSelection());
+      panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
       return;
     }
     const light = this.selectedLight();
@@ -5056,7 +5258,7 @@ export class Builder {
       });
     }
     if (obj.kind === 'decor') this.wireDecorSpriteExtras(panel, obj);
-    panel.querySelector('#bi-delete')?.addEventListener('click', () => this.deleteSelection());
+    panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
   }
 
   /** Decor sprite extras: the asset-level emissive toggle (library edit,
@@ -5225,7 +5427,7 @@ export class Builder {
       this.cmds.run(editLightCmd(light, preset));
       this.renderLightInspector(panel, light); // reflect the new values
     });
-    panel.querySelector('#bi-delete')?.addEventListener('click', () => this.deleteSelection());
+    panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
   }
 
   private checkRow(obj: EditorObject, key: string, label: string): string {
@@ -5327,6 +5529,11 @@ export class Builder {
     this.renderInspector();
     this.syncProcPanel();
   }
+}
+
+/** Minimal HTML escape for text interpolated into Builder-owned markup. */
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /** Minimal HTML/attribute escape for values interpolated into inspector markup. */

@@ -115,8 +115,10 @@ manipulated `[r,g,b]` channels (coagulation darkening, stains, shading), use
    spells dependency. If the wand-tip formula ever changes, change both.
 10. Entering play mode shows `WAVE n` in the wave readout; the original wrote the
     bare number there (its own inconsistency vs the in-wave `WAVE n` format).
-11. `scoreChanged` updates both `#score-val` and `#hud-gold`; the original refreshed
-    `#hud-gold` only on the even-frame HUD cadence. Same value, marginally fresher.
+11. The original's header score box (`#score-val`, "GOLD PURSED") was removed
+    2026-06-12; gold lives only in the in-canvas HUD treasure row (`#hud-gold`),
+    which rolls toward `ctx.state.score` every frame instead of waiting for the
+    original's even-frame HUD cadence. Same value, marginally fresher.
 
 Everything else: identical behavior — confirmed by a 13-agent adversarial fidelity
 audit (zero critical/major divergences) on 2026-06-10.

@@ -115,7 +115,7 @@ export function createDefaultPostFxSettings(): PostFxSettings {
     enabled: true,
     // Default OFF until the GPU-compose acceptance gate + Frank's eyeball
     // pass (docs/GPU-COMPOSE-PLAN.md); flip here once approved.
-    gpuCompose: false,
+    gpuCompose: true,
     bloomEnabled: true,
     bloomStrength: 0.35,
     bloomRadius: 0.2,

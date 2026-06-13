@@ -4,6 +4,61 @@ import { SPELL_ORDER } from '@/config/params';
 import { packRGB } from '@/sim/colors';
 import { spawnCircle, drawLine } from '@/sim/brush';
 
+type KeyboardLockApi = {
+  lock?: (keyCodes?: string[]) => Promise<void>;
+  unlock?: () => void;
+};
+
+type FullscreenOptionsWithKeyboardLock = FullscreenOptions & {
+  keyboardLock?: 'browser' | 'none';
+};
+
+const GRAB_KEY_CODES = new Set(['ShiftLeft', 'ShiftRight', 'KeyC']);
+const LEFT_KEY_CODES = new Set(['KeyA', 'ArrowLeft']);
+const RIGHT_KEY_CODES = new Set(['KeyD', 'ArrowRight']);
+const UP_KEY_CODES = new Set(['KeyW', 'ArrowUp']);
+const DOWN_KEY_CODES = new Set(['KeyS', 'ArrowDown']);
+const JUMP_KEY_CODES = new Set(['Space', 'KeyW', 'ArrowUp']);
+
+const GAMEPLAY_KEY_CODES = new Set([
+  'KeyA',
+  'KeyD',
+  'KeyW',
+  'KeyS',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  'Space',
+  'ShiftLeft',
+  'ShiftRight',
+  'KeyC',
+  'KeyE',
+  'KeyQ',
+  'KeyX',
+  'KeyF',
+  'KeyR',
+  'Digit1',
+  'Digit2',
+  'Tab',
+]);
+
+const KEYBOARD_LOCK_CODES = [
+  ...GAMEPLAY_KEY_CODES,
+  'KeyB',
+  'KeyH',
+  'KeyM',
+  'Escape',
+  'Backquote',
+];
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const el = target;
+  if (el.isContentEditable) return true;
+  return Boolean(el.closest('input, textarea, select, [contenteditable="true"]'));
+}
+
 /**
  * Mouse + keyboard input and build/play mode switching.
  *
@@ -12,6 +67,9 @@ import { spawnCircle, drawLine } from '@/sim/brush';
  * (mode buttons, HUD visibility, banners, depth readout) is emitted as events.
  */
 export class InputManager {
+  private keyboardLocked = false;
+  private readonly heldKeyCodes = new Set<string>();
+
   constructor(
     private canvas: HTMLCanvasElement,
     private ctx: Ctx,
@@ -23,18 +81,32 @@ export class InputManager {
     // RMB belongs to the game (flask throw / eyedropper), not the browser.
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     // Wave D: the wheel swaps the held wand in play mode.
-    canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: true });
+    canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
 
     // ===================== Input: Keyboard =====================
-    window.addEventListener('keydown', (e) => this.onKeyDown(e));
-    window.addEventListener('keyup', (e) => this.onKeyUp(e));
+    window.addEventListener('keydown', (e) => this.onKeyDown(e), true);
+    window.addEventListener('keyup', (e) => this.onKeyUp(e), true);
+    window.addEventListener('blur', () => this.clearHeldInput());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.clearHeldInput();
+    });
+    document.addEventListener('fullscreenchange', () => this.onFullscreenChange());
 
     // Header mode buttons drive game state directly.
-    document.getElementById('mode-build-btn')?.addEventListener('click', () => this.setMode('build'));
-    document.getElementById('mode-play-btn')?.addEventListener('click', () => {
+    document.getElementById('mode-build-btn')?.addEventListener('click', (e) => {
+      (e.currentTarget as HTMLElement).blur();
+      this.setMode('build');
+    });
+    document.getElementById('mode-play-btn')?.addEventListener('click', (e) => {
+      (e.currentTarget as HTMLElement).blur();
       this.ctx.audio.ensure();
       this.setMode('play');
     });
+    document.getElementById('immersive-play-btn')?.addEventListener('click', (e) => {
+      (e.currentTarget as HTMLElement).blur();
+      void this.enterImmersivePlay();
+    });
+    this.syncImmersiveButton();
   }
 
   private getMouseGridCoords(e: MouseEvent): { x: number; y: number } {
@@ -81,6 +153,7 @@ export class InputManager {
     }
 
     if (ctx.state.mode === 'play') {
+      if (ctx.player.climbing) return;
       if (!ctx.player.dead) ctx.player.firing = true;
       return;
     }
@@ -127,6 +200,7 @@ export class InputManager {
       ctx.input.bombCharge >= 0 &&
       ctx.state.mode === 'play' &&
       !ctx.player.dead &&
+      !ctx.player.climbing &&
       ctx.player.spell === 'bomb'
     ) {
       const sp = ctx.params.spells.bomb;
@@ -161,6 +235,7 @@ export class InputManager {
   private onWheel(e: WheelEvent): void {
     const { ctx } = this;
     if (ctx.state.mode !== 'play' || e.deltaY === 0) return;
+    e.preventDefault();
     this.selectWand(ctx.wands.active === 0 ? 1 : 0);
   }
 
@@ -172,8 +247,87 @@ export class InputManager {
     ctx.events.emit('wandChanged');
   }
 
-  private onKeyDown(e: KeyboardEvent): void {
+  private shouldIgnoreKeyboard(e: KeyboardEvent): boolean {
+    return e.isComposing || Boolean(document.querySelector('.app-dialog-root')) || isEditableTarget(e.target);
+  }
+
+  private isGameplayKey(code: string): boolean {
+    return GAMEPLAY_KEY_CODES.has(code) || code.startsWith('Digit');
+  }
+
+  private claimPlayKey(e: KeyboardEvent): void {
+    if (this.ctx.state.mode !== 'play') return;
+    if (!this.isGameplayKey(e.code)) return;
+    e.preventDefault();
+  }
+
+  private isTrackedHeldKey(code: string): boolean {
+    return (
+      LEFT_KEY_CODES.has(code) ||
+      RIGHT_KEY_CODES.has(code) ||
+      UP_KEY_CODES.has(code) ||
+      DOWN_KEY_CODES.has(code) ||
+      JUMP_KEY_CODES.has(code) ||
+      GRAB_KEY_CODES.has(code)
+    );
+  }
+
+  private setKeyHeld(code: string, held: boolean): void {
+    if (!this.isTrackedHeldKey(code)) return;
+    if (held) this.heldKeyCodes.add(code);
+    else this.heldKeyCodes.delete(code);
+    this.syncHeldKeys();
+  }
+
+  private anyHeld(codes: Set<string>): boolean {
+    for (const code of codes) if (this.heldKeyCodes.has(code)) return true;
+    return false;
+  }
+
+  private syncHeldKeys(): void {
+    const keys = this.ctx.input.keys;
+    keys.left = this.anyHeld(LEFT_KEY_CODES);
+    keys.right = this.anyHeld(RIGHT_KEY_CODES);
+    keys.up = this.anyHeld(UP_KEY_CODES);
+    keys.down = this.anyHeld(DOWN_KEY_CODES);
+    keys.jump = this.anyHeld(JUMP_KEY_CODES);
+    keys.wallJump = this.heldKeyCodes.has('Space');
+    keys.grab = this.anyHeld(GRAB_KEY_CODES);
+  }
+
+  private clearHeldInput(): void {
     const { ctx } = this;
+    const keys = ctx.input.keys;
+    keys.left = false;
+    keys.right = false;
+    keys.up = false;
+    keys.jump = false;
+    keys.wallJump = false;
+    keys.down = false;
+    keys.grab = false;
+    this.heldKeyCodes.clear();
+    ctx.input.isDrawing = false;
+    ctx.input.lastX = null;
+    ctx.input.lastY = null;
+    ctx.input.buildSpellHeld = false;
+    ctx.input.bombCharge = -1;
+    ctx.input.siphonHeld = false;
+    ctx.input.pourHeld = false;
+    ctx.input.drinkHeld = false;
+    ctx.player.firing = false;
+    ctx.player.climbing = false;
+    if (ctx.input.activeChargingBlackHole) {
+      ctx.input.activeChargingBlackHole.charging = false;
+      ctx.input.activeChargingBlackHole = null;
+    }
+  }
+
+  private onKeyDown(e: KeyboardEvent): void {
+    if (e.defaultPrevented) return;
+    if (this.shouldIgnoreKeyboard(e)) return;
+    const { ctx } = this;
+    this.claimPlayKey(e);
+
     ctx.audio.ensure();
     if (e.code === 'Tab') {
       e.preventDefault();
@@ -181,43 +335,181 @@ export class InputManager {
       return;
     }
 
-    if (e.code === 'KeyA' || e.code === 'ArrowLeft') ctx.input.keys.left = true;
-    else if (e.code === 'KeyD' || e.code === 'ArrowRight') ctx.input.keys.right = true;
-    else if (e.code === 'Space' || e.code === 'KeyW' || e.code === 'ArrowUp') {
-      e.preventDefault();
-      ctx.input.keys.jump = true;
-    } else if (e.code === 'KeyS' || e.code === 'ArrowDown') ctx.input.keys.down = true;
-    else if (e.code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
-    else if (e.code === 'KeyE' && ctx.state.mode === 'play') {
-      // Context-sensitive E: a lever in reach starts the hand-pull (both
-      // hands busy — no siphon); otherwise the hold siphons the flask.
-      const pulling = !e.repeat && ctx.mechanisms.interact(ctx);
-      if (!pulling) ctx.input.siphonHeld = true;
+    if (ctx.state.mode !== 'play') {
+      if (e.code === 'KeyA' || e.code === 'ArrowLeft') {
+        e.preventDefault();
+        this.setKeyHeld(e.code, true);
+      } else if (e.code === 'KeyD' || e.code === 'ArrowRight') {
+        e.preventDefault();
+        this.setKeyHeld(e.code, true);
+      } else if (e.code === 'Space' || e.code === 'KeyW' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        this.setKeyHeld(e.code, true);
+      } else if (e.code === 'KeyS' || e.code === 'ArrowDown') {
+        e.preventDefault();
+        this.setKeyHeld(e.code, true);
+      } else if (e.code.startsWith('Digit')) {
+        const n = parseInt(e.code.slice(5)) - 1;
+        if (n >= 0 && n < SPELL_ORDER.length) {
+          ctx.player.spell = SPELL_ORDER[n];
+          ctx.input.bombCharge = -1;
+        }
+      }
+      return;
     }
-    else if (e.code === 'KeyQ' && ctx.state.mode === 'play') ctx.input.pourHeld = true;
-    else if (e.code === 'KeyX' && ctx.state.mode === 'play') ctx.input.drinkHeld = true;
-    else if (e.code === 'KeyF' && ctx.state.mode === 'play' && !ctx.player.dead) ctx.flask.throwFlask(ctx);
-    else if (e.code.startsWith('Digit')) {
-      const n = parseInt(e.code.slice(5)) - 1;
-      if (ctx.state.mode === 'play') {
+
+    if (ctx.state.mode === 'play') {
+      if (
+        e.code === 'KeyA' ||
+        e.code === 'ArrowLeft' ||
+        e.code === 'KeyD' ||
+        e.code === 'ArrowRight' ||
+        e.code === 'Space' ||
+        e.code === 'KeyW' ||
+        e.code === 'ArrowUp' ||
+        e.code === 'KeyS' ||
+        e.code === 'ArrowDown' ||
+        GRAB_KEY_CODES.has(e.code)
+      )
+        this.setKeyHeld(e.code, true);
+      else if (e.code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
+      else if (e.code === 'KeyE' && !ctx.player.climbing) {
+        // Context-sensitive E: a lever in reach starts the hand-pull (both
+        // hands busy — no siphon); otherwise the hold siphons the flask.
+        const pulling = !e.repeat && ctx.mechanisms.interact(ctx);
+        if (!pulling) ctx.input.siphonHeld = true;
+      }
+      else if (e.code === 'KeyQ' && !ctx.player.climbing) ctx.input.pourHeld = true;
+      else if (e.code === 'KeyX' && !ctx.player.climbing) ctx.input.drinkHeld = true;
+      else if (e.code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing)
+        ctx.flask.throwFlask(ctx);
+      else if (e.code.startsWith('Digit')) {
+        const n = parseInt(e.code.slice(5)) - 1;
         // Wave D: digits pick wands in play, not spells — 1/2 only, 3-7 are dead keys
         if (n === 0 || n === 1) this.selectWand(n);
-      } else if (n >= 0 && n < SPELL_ORDER.length) {
-        ctx.player.spell = SPELL_ORDER[n];
-        ctx.input.bombCharge = -1;
       }
+      return;
     }
   }
 
   private onKeyUp(e: KeyboardEvent): void {
     const { ctx } = this;
-    if (e.code === 'KeyA' || e.code === 'ArrowLeft') ctx.input.keys.left = false;
-    else if (e.code === 'KeyD' || e.code === 'ArrowRight') ctx.input.keys.right = false;
-    else if (e.code === 'Space' || e.code === 'KeyW' || e.code === 'ArrowUp') ctx.input.keys.jump = false;
-    else if (e.code === 'KeyS' || e.code === 'ArrowDown') ctx.input.keys.down = false;
+    if (!this.shouldIgnoreKeyboard(e)) this.claimPlayKey(e);
+
+    if (this.isTrackedHeldKey(e.code)) this.setKeyHeld(e.code, false);
     else if (e.code === 'KeyE') ctx.input.siphonHeld = false;
     else if (e.code === 'KeyQ') ctx.input.pourHeld = false;
     else if (e.code === 'KeyX') ctx.input.drinkHeld = false;
+  }
+
+  private stageElement(): HTMLElement | null {
+    return document.getElementById('canvas-holder');
+  }
+
+  private isStageFullscreen(): boolean {
+    const stage = this.stageElement();
+    return Boolean(stage && document.fullscreenElement === stage);
+  }
+
+  private async requestStageFullscreen(target: HTMLElement): Promise<void> {
+    if (document.fullscreenElement === target) return;
+    if (document.fullscreenElement) {
+      this.ctx.events.emit('toast', { text: 'EXIT OTHER FULLSCREEN FIRST' });
+      return;
+    }
+    if (!target.requestFullscreen) {
+      this.ctx.events.emit('toast', { text: 'FULLSCREEN UNAVAILABLE' });
+      return;
+    }
+
+    try {
+      await target.requestFullscreen({
+        navigationUI: 'hide',
+        keyboardLock: 'browser',
+      } as FullscreenOptionsWithKeyboardLock);
+    } catch (firstError) {
+      const name = firstError instanceof DOMException ? firstError.name : '';
+      if (name !== 'NotSupportedError' && name !== 'TypeError') {
+        console.warn('Fullscreen request failed', firstError);
+        this.ctx.events.emit('toast', { text: 'FULLSCREEN BLOCKED' });
+        return;
+      }
+      try {
+        await target.requestFullscreen({ navigationUI: 'hide' });
+      } catch (fallbackError) {
+        console.warn('Fullscreen fallback failed', { firstError, fallbackError });
+        this.ctx.events.emit('toast', { text: 'FULLSCREEN BLOCKED' });
+      }
+    }
+  }
+
+  private async enterImmersivePlay(): Promise<void> {
+    this.ctx.audio.ensure();
+    const target = this.stageElement() ?? this.canvas;
+    await this.requestStageFullscreen(target);
+
+    this.setMode('play');
+    await this.lockKeyboard();
+    this.syncImmersiveButton();
+  }
+
+  private async lockKeyboard(): Promise<void> {
+    if (!this.isStageFullscreen()) {
+      this.keyboardLocked = false;
+      return;
+    }
+    const keyboard = (navigator as Navigator & { keyboard?: KeyboardLockApi }).keyboard;
+    if (!keyboard?.lock) {
+      this.keyboardLocked = false;
+      this.ctx.events.emit('toast', { text: 'FULLSCREEN ACTIVE' });
+      return;
+    }
+    try {
+      await keyboard.lock(KEYBOARD_LOCK_CODES);
+      this.keyboardLocked = true;
+      this.ctx.events.emit('toast', { text: 'KEYBOARD LOCK ACTIVE' });
+    } catch {
+      this.keyboardLocked = false;
+      this.ctx.events.emit('toast', { text: 'FULLSCREEN ACTIVE' });
+    }
+  }
+
+  private unlockKeyboard(): void {
+    const keyboard = (navigator as Navigator & { keyboard?: KeyboardLockApi }).keyboard;
+    keyboard?.unlock?.();
+    this.keyboardLocked = false;
+  }
+
+  private exitImmersive(): void {
+    this.unlockKeyboard();
+    const stage = this.stageElement();
+    if (stage && document.fullscreenElement === stage) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+    this.syncImmersiveButton();
+  }
+
+  private onFullscreenChange(): void {
+    if (!this.isStageFullscreen()) {
+      this.unlockKeyboard();
+      this.clearHeldInput();
+    }
+    this.syncImmersiveButton();
+  }
+
+  private syncImmersiveButton(): void {
+    const btn = document.getElementById('immersive-play-btn');
+    if (!btn) return;
+    const fullscreen = this.isStageFullscreen();
+    btn.classList.toggle('lit', fullscreen);
+    btn.textContent = fullscreen
+      ? this.keyboardLocked
+        ? 'KEYS LOCKED'
+        : 'FULLSCREEN'
+      : 'FULLSCREEN PLAY';
+    btn.title = fullscreen
+      ? 'Fullscreen play is active. Long-press Esc or leave play mode to exit.'
+      : 'Enter fullscreen play with keyboard lock when the browser supports it';
   }
 
   // ===================== Mode Switching =====================
@@ -253,9 +545,8 @@ export class InputManager {
         });
       }
     } else {
-      ctx.player.firing = false;
-      ctx.input.keys.left = ctx.input.keys.right = ctx.input.keys.jump = false;
-      ctx.input.siphonHeld = ctx.input.pourHeld = ctx.input.drinkHeld = false;
+      this.clearHeldInput();
+      this.exitImmersive();
     }
   }
 }

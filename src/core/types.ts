@@ -129,6 +129,18 @@ export interface PlayerState {
   wallGrabT: number;
   /** Side of the held wall face (+-1). */
   wallGrabDir: number;
+  /** True while the grab key is holding the alchemist to a solid vertical face. */
+  climbing: boolean;
+  /** Side of the climbable wall face (+-1, relative to the body). */
+  climbDir: number;
+  /** Climb pose ease (0-10): catch/settle into the bouldering stance. */
+  climbT: number;
+  /** Procedural hand-over-hand phase, advanced only by climb movement. */
+  climbPhase: number;
+  /** Staged movement accumulator: slow, keyed one-cell climb steps. */
+  climbMoveT: number;
+  /** Last vertical climb intent (-1 up, 0 hold, +1 down), for animation. */
+  climbIntentY: number;
   /** Robe hem cloth spring: lagged horizontal offset (same idea as the hat). */
   robe: { ox: number; vx: number };
 }
@@ -138,8 +150,13 @@ export const PLAYER_H = 17;
 export const PLAYER_STEP_UP = 5;
 /** Crawl gauge (CRAWL.md rule zero): 9 in any direction — optional tier only. */
 export const PLAYER_CRAWL_H = 9;
-/** Crawl step-up: knees, not legs. */
-export const PLAYER_CRAWL_STEP_UP = 2;
+/**
+ * Crawl step-up: PARITY with standing. If your boots can climb a lip, your
+ * hands can climb it prone — natural cave floors are nothing but 3-5 cell
+ * lips, and the original 2 wedged crawlers where runners strolled (the box
+ * fit at y-s still gates every step, so tight ceilings keep their law).
+ */
+export const PLAYER_CRAWL_STEP_UP = 5;
 
 export type EnemyKind =
   | 'slime'
@@ -498,8 +515,11 @@ export interface GameStateData {
 export interface Keys {
   left: boolean;
   right: boolean;
+  up: boolean;
   jump: boolean;
+  wallJump: boolean;
   down: boolean;
+  grab: boolean;
 }
 
 export interface InputState {

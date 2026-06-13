@@ -34,7 +34,6 @@ header {
 header h1 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0.5px; }
 header h1 .title-sub { color: var(--text-muted); }
 .hud-wrapper { display: flex; gap: 12px; align-items: center; }
-.score-box { font-size: 13px; font-weight: 700; color: var(--accent-gold); background: #2a2005; padding: 4px 10px; border-radius: 4px; border: 1px solid #78350f; font-family: var(--mono); }
 header .engine-status { font-size: 11px; color: var(--accent-purple); font-weight: bold; background: #1a102f; padding: 2px 8px; border-radius: 4px; }
 
 /* Mode segmented control */
@@ -52,6 +51,8 @@ header .engine-status { font-size: 11px; color: var(--accent-purple); font-weigh
 .sound-btn.muted { color: #4a4a58; text-decoration: line-through; }
 /* Header A/B toggles (GPU FX / PERF): lit = engaged, same family as SND */
 .sound-btn.lit { background: #0f1f18; border-color: #1f4d3a; color: #6ee7b7; }
+#immersive-play-btn { border-color: #3b2a13; color: #fcd34d; }
+#immersive-play-btn.lit { background: #2a1d08; border-color: #9c6a22; color: #fde68a; }
 
 #workbench { display: flex; flex: 1; height: calc(100vh - 49px); }
 
@@ -144,12 +145,26 @@ header .engine-status { font-size: 11px; color: var(--accent-purple); font-weigh
 .wave-readout { position: absolute; top: 12px; right: 14px; text-align: right; text-shadow: 0 1px 4px #000; }
 .wave-readout .wave-num { font-size: 24px; font-weight: 800; color: #e9d5ff; letter-spacing: 2px; }
 .wave-readout .sub { font-size: 13px; color: rgba(255,255,255,0.5); letter-spacing: 1px; margin-top: 2px; }
-.wave-readout .gold { color: var(--accent-gold); font-weight: 700; }
 .wave-readout .objective { font-size: 13px; color: #fcd34d; letter-spacing: 1.6px; font-weight: 700; }
 .objective-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 4px; }
-/* The golden key: hidden until held, then a steady gleam beside the objective */
-#key-indicator { display: none; font-size: 16px; color: #fde047; text-shadow: 0 0 8px rgba(253,224,71,0.8); }
-#key-indicator.visible { display: inline; animation: key-gleam 2.2s ease-in-out infinite; }
+/* Treasure row: everything pursed rides together under the depth readout */
+#treasure-row { display: flex; justify-content: flex-end; align-items: stretch; gap: 6px; margin-top: 6px; }
+.treasure-chip {
+    display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px;
+    background: rgba(18,14,4,0.78); border: 1px solid rgba(251,191,36,0.4); border-radius: 4px;
+    font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--accent-gold);
+    text-shadow: 0 0 6px rgba(251,191,36,0.35); box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.treasure-chip .t-icon { display: inline-flex; }
+.treasure-chip .t-icon canvas { display: block; image-rendering: pixelated; }
+.treasure-chip .t-unit { font-size: 10px; font-weight: 600; letter-spacing: 1px; color: rgba(251,191,36,0.65); align-self: flex-end; padding-bottom: 1px; }
+/* The card satchel reads in the tome's blues */
+#cards-chip { border-color: rgba(96,165,250,0.4); color: #93c5fd; text-shadow: 0 0 6px rgba(96,165,250,0.3); }
+#cards-chip.flash { animation: chip-flash 0.9s ease-out; }
+@keyframes chip-flash { 0% { box-shadow: 0 0 16px rgba(96,165,250,0.95); } 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.5); } }
+/* The golden key: hidden until held, then a steady gleam in the treasure row */
+#key-indicator { display: none; font-size: 15px; color: #fde047; text-shadow: 0 0 8px rgba(253,224,71,0.8); }
+#key-indicator.visible { display: inline-flex; animation: key-gleam 2.2s ease-in-out infinite; }
 @keyframes key-gleam { 0%,100% { text-shadow: 0 0 5px rgba(253,224,71,0.5); } 50% { text-shadow: 0 0 12px rgba(253,224,71,1); } }
 /* Bar language for critical states */
 #hp-fill.critical { animation: hp-critical 0.8s ease-in-out infinite; }
@@ -344,6 +359,63 @@ body.play-active #viewport-container { padding: 0; }
 #pause-overlay.visible { display: flex; }
 #pause-overlay .pause-title { font-size: 30px; font-weight: 800; letter-spacing: 10px; color: #e9d5ff; text-shadow: 0 0 22px rgba(168,85,247,0.7); }
 #pause-overlay .pause-sub { font-size: 13px; letter-spacing: 2px; color: rgba(255,255,255,0.5); }
+#pause-exit-fullscreen {
+    display: none; margin-top: 8px; padding: 9px 18px;
+    background: #17111f; border: 1px dashed #7c3aed; color: #d8b4fe;
+    border-radius: 4px; cursor: pointer; font-family: var(--mono);
+    font-size: 12px; font-weight: 800; letter-spacing: 2px;
+}
+#pause-exit-fullscreen.visible { display: block; }
+#pause-exit-fullscreen:hover { background: #2a1640; color: #f5f3ff; }
+
+.app-dialog-root {
+    position: fixed; inset: 0; z-index: 120;
+    display: flex; align-items: center; justify-content: center;
+    padding: 22px; box-sizing: border-box;
+    background: rgba(4,3,8,0.68); backdrop-filter: blur(2px);
+    font-family: var(--mono); pointer-events: auto;
+}
+.app-dialog-panel {
+    width: min(560px, calc(100vw - 44px)); max-height: calc(100vh - 44px);
+    display: flex; flex-direction: column; gap: 12px; box-sizing: border-box;
+    padding: 18px; overflow: auto;
+    background: linear-gradient(180deg, rgba(20,15,24,0.98), rgba(9,7,13,0.98));
+    border: 1px dashed #6e4632; border-radius: 6px;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.75), inset 0 0 18px rgba(0,0,0,0.42);
+}
+.app-dialog-panel.danger { border-color: #7f1d1d; }
+.app-dialog-title {
+    color: #fcd34d; font-size: 14px; font-weight: 900;
+    letter-spacing: 2.5px; text-transform: uppercase;
+}
+.app-dialog-message {
+    color: rgba(255,255,255,0.72); font-size: 13px; line-height: 1.55;
+    white-space: pre-wrap;
+}
+.app-dialog-input {
+    width: 100%; min-height: 34px; box-sizing: border-box;
+    background: #090b0f; border: 1px solid #25303d; color: #f3f3f6;
+    border-radius: 4px; padding: 8px 9px; outline: none;
+    font-family: var(--mono); font-size: 12px; line-height: 1.4;
+}
+textarea.app-dialog-input { min-height: 150px; resize: vertical; }
+.app-dialog-input:focus { border-color: #60a5fa; box-shadow: 0 0 0 1px rgba(96,165,250,0.35); }
+.app-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+.app-dialog-btn {
+    min-width: 92px; min-height: 34px; padding: 0 14px;
+    border-radius: 4px; cursor: pointer; font-family: var(--mono);
+    font-size: 11px; font-weight: 900; letter-spacing: 1.5px;
+}
+.app-dialog-btn.secondary {
+    background: #10131a; border: 1px solid #25303d; color: #93a4b8;
+}
+.app-dialog-btn.primary {
+    background: #1d1407; border: 1px solid #9c6a22; color: #fde68a;
+}
+.app-dialog-btn.primary.danger {
+    background: #2a0f12; border-color: #991b1b; color: #fecaca;
+}
+.app-dialog-btn:hover { filter: brightness(1.18); }
 
 #help-overlay {
     position: absolute; inset: 0; background: rgba(5,3,10,0.92); backdrop-filter: blur(3px);
@@ -477,6 +549,41 @@ button#clear-btn:hover { background: var(--accent-danger); color: white; border-
 /* ---------- Builder authoring overlay (src/builder/Builder.ts) ---------- */
 .mode-switch button#mode-builder-btn.active { background: #122a1c; color: #86efac; }
 
+#builder-intent-modal {
+    position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center;
+    padding: 24px; background: rgba(2,6,12,0.68); font-family: var(--mono);
+}
+#builder-intent-modal .bi-modal {
+    width: min(520px, calc(100vw - 32px)); background: rgba(10,13,18,0.98);
+    border: 1px solid #2c3a4c; border-radius: 6px; padding: 18px;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.85);
+}
+#builder-intent-modal .bi-kicker {
+    font-size: 9px; font-weight: 800; letter-spacing: 2px; color: #4ade80; margin-bottom: 8px;
+}
+#builder-intent-modal .bi-title {
+    font-size: 16px; font-weight: 800; color: #eef6ff; margin-bottom: 8px; letter-spacing: 0;
+}
+#builder-intent-modal .bi-copy {
+    font-size: 11px; line-height: 1.6; color: #9fb6cc; margin-bottom: 12px;
+}
+#builder-intent-modal .bi-warn {
+    font-size: 10px; line-height: 1.5; color: #fbbf24; background: #1d1407;
+    border: 1px solid #78350f; border-radius: 4px; padding: 8px; margin-bottom: 12px;
+}
+#builder-intent-modal .bi-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+#builder-intent-modal button {
+    background: #14181f; border: 1px solid #25303d; color: #d6e6f5; font-family: var(--mono);
+    font-size: 10px; font-weight: 800; letter-spacing: 0.6px; padding: 8px 10px; border-radius: 4px;
+    cursor: pointer;
+}
+#builder-intent-modal button:hover, #builder-intent-modal button:focus {
+    background: #1d2733; border-color: #7dd3fc; outline: none;
+}
+#builder-intent-modal button.bi-primary {
+    background: #122a1c; color: #d9fbe5; border-color: #4ade80;
+}
+
 /* The Builder owns BOTH side panels — the Sandbox toolbar AND the right
    inspector yield entirely (the Builder has its own WORLD/MATERIAL windows) */
 body.builder-open #left-toolbar { display: none; }
@@ -499,16 +606,20 @@ body.builder-open #right-inspector { display: none; }
 .bp-swatch .bp-swatch-icon { width: 14px !important; height: 14px !important; image-rendering: pixelated; }
 
 /* instant popover: picture + name + the rule that matters, no tooltip lag */
-#bp-matpop {
+#bp-matpop,
+#lt-matpop {
     position: absolute; z-index: 9; pointer-events: none;
     display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 10px;
     width: 190px; background: rgba(10,13,18,0.97); border: 1px solid #2c3a4c; border-radius: 5px;
     font-family: var(--mono); font-size: 11px; color: #d6e6f5;
     box-shadow: 0 10px 30px rgba(0,0,0,0.7);
 }
-#bp-matpop canvas { width: 28px !important; height: 28px !important; image-rendering: pixelated; flex-shrink: 0; }
-#bp-matpop .bp-matpop-dot { width: 18px; height: 18px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+/* the Sandbox toolbar's popover floats over the viewport, not inside a panel */
+#lt-matpop { position: fixed; z-index: 60; }
+#bp-matpop canvas, #lt-matpop canvas { width: 28px !important; height: 28px !important; image-rendering: pixelated; flex-shrink: 0; }
+#bp-matpop .bp-matpop-dot, #lt-matpop .bp-matpop-dot { width: 18px; height: 18px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
 .bp-pop-head { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.bp-pop-tags { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: #5b7187; }
 .bp-pop-desc { font-size: 9px; line-height: 1.5; color: #8fa3b8; }
 .bp-pop-prop {
     display: flex; justify-content: space-between; gap: 8px;
@@ -862,6 +973,10 @@ body.builder-open #builder-issues { bottom: 182px; }
 }
 #builder-gallery .bg-chip:hover { border-color: #7dd3fc; color: #dbe6f3; }
 #builder-gallery .bg-chip.on { background: #12202c; border-color: #7dd3fc; color: #7dd3fc; }
+/* spell demos fire live rounds — they read amber, not chip blue */
+#builder-gallery .bg-spellchips { margin-bottom: 14px; }
+#builder-gallery .bg-spellchips .bg-chip:hover { border-color: #fbbf24; color: #fde68a; }
+#builder-gallery .bg-spellchips .bg-chip.on { background: #2a2005; border-color: #fbbf24; color: #fde047; }
 
 /* prefab popover (replaces tooltips): big preview + details beside the card */
 #bp-prefab-pop {

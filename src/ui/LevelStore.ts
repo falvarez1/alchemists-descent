@@ -2,6 +2,7 @@ import type { Ctx } from '@/core/types';
 import { rleDecode, rleEncode } from '@/core/rle';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
+import { appDialog } from '@/ui/AppDialog';
 
 /**
  * The Level Library (build mode): save the painted world to localStorage,
@@ -71,10 +72,10 @@ export class LevelStore {
     };
   }
 
-  private applySave(save: SavedLevel): void {
+  private applySave(save: SavedLevel): boolean {
     const ctx = this.ctx;
     const w = ctx.world;
-    if (save.w !== w.width || save.h !== w.height) return;
+    if (save.w !== w.width || save.h !== w.height) return false;
     w.clear();
     rleDecode(save.rle, w.types);
     // Regenerate per-material colors (the save stores no color channel).
@@ -90,36 +91,66 @@ export class LevelStore {
     ctx.projectiles.length = 0;
     ctx.particles.clear();
     ctx.events.emit('toast', { text: 'LEVEL LOADED' });
+    return true;
   }
 
   /* ---------------- DOM wiring ---------------- */
 
   private wire(): void {
-    document.getElementById('btn-level-save')?.addEventListener('click', () => {
-      const name = window.prompt('Level name:', 'my-level');
+    document.getElementById('btn-level-save')?.addEventListener('click', async () => {
+      const name = await appDialog.prompt('Level name:', 'my-level', { title: 'Save Level' });
       if (!name) return;
       const lib = loadLibrary();
+      if (
+        lib[name] &&
+        !(await appDialog.confirm(`Overwrite saved level "${name}"?`, {
+          title: 'Overwrite Level',
+          confirmText: 'Overwrite',
+          tone: 'danger',
+        }))
+      ) {
+        return;
+      }
       lib[name] = this.serialize();
       if (saveLibrary(lib)) this.ctx.events.emit('toast', { text: `SAVED "${name.toUpperCase()}"` });
-      else window.alert('Storage is full — use Export to keep this level as a file.');
+      else await appDialog.alert('Storage is full — use Export to keep this level as a file.', 'Storage Full');
       this.refreshList();
     });
 
-    document.getElementById('btn-level-load')?.addEventListener('click', () => {
+    document.getElementById('btn-level-load')?.addEventListener('click', async () => {
       const select = document.getElementById('level-select') as HTMLSelectElement | null;
       const name = select?.value;
       if (!name) return;
       const save = loadLibrary()[name];
-      if (save) this.applySave(save);
+      if (!save) return;
+      if (
+        !(await appDialog.confirm(`Load saved level "${name}" and replace the current Sandbox world?`, {
+          title: 'Load Level',
+          confirmText: 'Load',
+          tone: 'danger',
+        }))
+      ) {
+        return;
+      }
+      if (!this.applySave(save)) await appDialog.alert('That level was saved for a different world size.', 'Load Failed');
     });
 
-    document.getElementById('btn-level-delete')?.addEventListener('click', () => {
+    document.getElementById('btn-level-delete')?.addEventListener('click', async () => {
       const select = document.getElementById('level-select') as HTMLSelectElement | null;
       const name = select?.value;
       if (!name) return;
+      if (
+        !(await appDialog.confirm(`Delete saved level "${name}"?`, {
+          title: 'Delete Level',
+          confirmText: 'Delete',
+          tone: 'danger',
+        }))
+      ) {
+        return;
+      }
       const lib = loadLibrary();
       delete lib[name];
-      saveLibrary(lib);
+      if (!saveLibrary(lib)) await appDialog.alert('Could not update local storage.', 'Delete Failed');
       this.refreshList();
     });
 
@@ -136,15 +167,27 @@ export class LevelStore {
       const input = e.target as HTMLInputElement;
       const file = input.files?.[0];
       if (!file) return;
-      file.text().then((text) => {
+      void (async () => {
         try {
+          const text = await file.text();
           const save = JSON.parse(text) as SavedLevel;
-          if (save.v === 1 && typeof save.rle === 'string') this.applySave(save);
+          if (save.v === 1 && typeof save.rle === 'string') {
+            const ok = await appDialog.confirm('Import this level file and replace the current Sandbox world?', {
+              title: 'Import Level',
+              confirmText: 'Import',
+              tone: 'danger',
+            });
+            if (ok && !this.applySave(save)) {
+              await appDialog.alert('That level file was saved for a different world size.', 'Import Failed');
+            }
+          } else {
+            await appDialog.alert('Not a valid level file.', 'Import Failed');
+          }
         } catch {
-          window.alert('Not a valid level file.');
+          await appDialog.alert('Not a valid level file.', 'Import Failed');
         }
         input.value = '';
-      });
+      })();
     });
 
     document.getElementById('btn-level-playtest')?.addEventListener('click', () => {
@@ -152,12 +195,17 @@ export class LevelStore {
       (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
     });
 
-    document.getElementById('btn-expedition-abandon')?.addEventListener('click', () => {
+    document.getElementById('btn-expedition-abandon')?.addEventListener('click', async () => {
       if (!this.ctx.levels.hasSavedExpedition()) {
         this.ctx.events.emit('toast', { text: 'NO SAVED EXPEDITION' });
         return;
       }
-      if (!window.confirm('Abandon the saved expedition? The next descent starts fresh.')) return;
+      const ok = await appDialog.confirm('Abandon the saved expedition? The next descent starts fresh.', {
+        title: 'Abandon Expedition',
+        confirmText: 'Abandon',
+        tone: 'danger',
+      });
+      if (!ok) return;
       this.ctx.levels.abandonExpedition();
       this.ctx.events.emit('toast', { text: 'EXPEDITION ABANDONED' });
     });

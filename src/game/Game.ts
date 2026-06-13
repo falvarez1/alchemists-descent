@@ -85,7 +85,7 @@ export class Game {
       editorLights: null,
     };
     const input: InputState = {
-      keys: { left: false, right: false, jump: false, down: false },
+      keys: { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false },
       mouse: { x: 0, y: 0 },
       isDrawing: false,
       lastX: null,

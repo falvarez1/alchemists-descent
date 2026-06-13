@@ -7,13 +7,16 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, PerkId, PlayerControlApi, PlayerState, Projectile } from '@/core/types';
-import { PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_STEP_UP } from '@/core/types';
+import { PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup } from '@/game/Pickups';
 import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
 import { bloodColor, EMPTY_COLOR, packRGB, smokeColor } from '@/sim/colors';
 
 const REVIEW_STATUS_FRAMES = 3600;
+const CLIMB_FACE_REACHES = [PLAYER_HALF_W + 1, PLAYER_HALF_W + 2, PLAYER_HALF_W + 3, PLAYER_HALF_W + 4];
+const CLIMB_X_NUDGES = [0, 1, 2];
+const CLIMB_BRUSH_MAX = 8;
 const REVIEW_PERKS: PerkId[] = [
   'might',
   'vampirism',
@@ -103,6 +106,12 @@ export function createPlayer(): PlayerState {
     crawlSlope: 0,
     wallGrabT: 0,
     wallGrabDir: 1,
+    climbing: false,
+    climbDir: 1,
+    climbT: 0,
+    climbPhase: 0,
+    climbMoveT: 0,
+    climbIntentY: 0,
     robe: { ox: 0, vx: 0 },
   };
 }
@@ -122,6 +131,12 @@ export class PlayerControl implements PlayerControlApi {
   private jumpBufferFrames = 0;
   /** Edge detector for the jump key. */
   private prevJumpHeld = false;
+  /** Edge detector for the Space-only wall-jump key. */
+  private prevWallJumpHeld = false;
+  /** Grab input buffer, so near-miss wall catches feel intentional. */
+  private grabBufferFrames = 0;
+  /** Edge detector for grab. */
+  private prevGrabHeld = false;
   /** Sustained levitation frames (drives the thrust response curve). */
   private levitFrames = 0;
   /** Last half-turn of the stride wheel that produced a footstep. */
@@ -134,6 +149,149 @@ export class PlayerControl implements PlayerControlApi {
   private statusSlow = 1;
   /** Edge detector for the CRAMPED HUD glyph (crawling, wants up, can't). */
   private prevCramped = false;
+
+  private findClimbFace(ctx: Ctx, bodyH: number): number {
+    const { player } = ctx;
+    const wantSide = ctx.input.keys.right ? 1 : ctx.input.keys.left ? -1 : player.facing || 1;
+    const sides = [wantSide, -wantSide];
+    for (const side of sides) {
+      if (this.hasClimbFaceAt(ctx, side, bodyH, player.x, player.y)) return side;
+    }
+    return 0;
+  }
+
+  private hasClimbFace(ctx: Ctx, side: number, bodyH: number): boolean {
+    const { player } = ctx;
+    return this.hasClimbFaceAt(ctx, side, bodyH, player.x, player.y);
+  }
+
+  private hasClimbFaceAt(ctx: Ctx, side: number, bodyH: number, x: number, y: number): boolean {
+    const { world } = ctx;
+    const clearance = this.climbClearance(ctx, x, y, side, bodyH);
+    if (!clearance.ok) return false;
+
+    let anchored = 0;
+    let samples = 0;
+    for (let dy = 2; dy <= bodyH - 2; dy += 3) {
+      let hasHold = false;
+      for (const reach of CLIMB_FACE_REACHES) {
+        const sx = x + side * reach;
+        const sy = y - dy;
+        if (!world.inBounds(sx, sy)) continue;
+        hasHold ||= ctx.physics.cellBlocks(sx, sy);
+      }
+      samples++;
+      if (hasHold) anchored++;
+    }
+    return samples >= 4 && anchored >= 2;
+  }
+
+  private climbClearance(
+    ctx: Ctx,
+    x: number,
+    y: number,
+    side: number,
+    bodyH: number,
+  ): { ok: boolean; brush: Array<[number, number]> } {
+    const { world } = ctx;
+    const brush: Array<[number, number]> = [];
+    for (let dx = -PLAYER_HALF_W; dx <= PLAYER_HALF_W; dx++) {
+      for (let dy = 0; dy < bodyH; dy++) {
+        const sx = x + dx;
+        const sy = y - dy;
+        if (sx < 0 || sx >= WIDTH || sy >= HEIGHT) return { ok: false, brush: [] };
+        if (sy < 0) continue;
+        if (!ctx.physics.cellBlocks(sx, sy)) continue;
+
+        const onWallShoulder = dx * side >= PLAYER_HALF_W - 1;
+        const t = world.types[world.idx(sx, sy)];
+        if (!onWallShoulder || t === Cell.Metal) return { ok: false, brush: [] };
+
+        brush.push([sx, sy]);
+        if (brush.length > CLIMB_BRUSH_MAX) return { ok: false, brush: [] };
+      }
+    }
+    return { ok: true, brush };
+  }
+
+  private brushClimbDebris(ctx: Ctx, cells: Array<[number, number]>, side: number): void {
+    const { world } = ctx;
+    for (const [x, y] of cells) {
+      if (!world.inBounds(x, y)) continue;
+      const i = world.idx(x, y);
+      const t = world.types[i];
+      if (!blocksEntity(t) || t === Cell.Metal) continue;
+      ctx.particles.spawn(
+        x,
+        y,
+        -side * (0.25 + Math.random() * 0.35),
+        -0.25 - Math.random() * 0.35,
+        t === Cell.Gold ? Cell.Gold : null,
+        world.colors[i],
+        t === Cell.Gold ? 180 : 32,
+        t === Cell.Gold ? { homing: ctx.state.mode === 'play', glow: 2.0, grav: 0 } : { grav: 0.06 },
+      );
+      world.types[i] = Cell.Empty;
+      world.colors[i] = EMPTY_COLOR;
+    }
+  }
+
+  private tryClimbStep(ctx: Ctx, dy: number): boolean {
+    const { player } = ctx;
+    const side = player.climbDir || 1;
+    for (const nudge of CLIMB_X_NUDGES) {
+      const nx = player.x - side * nudge;
+      const ny = player.y + dy;
+      const clearance = this.climbClearance(ctx, nx, ny, side, PLAYER_H);
+      if (!clearance.ok || !this.hasClimbFaceAt(ctx, side, PLAYER_H, nx, ny)) continue;
+      player.x = nx;
+      player.y = ny;
+      this.brushClimbDebris(ctx, clearance.brush, side);
+      return true;
+    }
+    return false;
+  }
+
+  private startClimb(ctx: Ctx, side: number): void {
+    const { player } = ctx;
+    player.climbing = true;
+    player.climbDir = side;
+    player.climbT = Math.max(player.climbT, 2);
+    player.climbMoveT = 0;
+    player.climbIntentY = 0;
+    player.wallGrabDir = side;
+    player.wallGrabT = 10;
+    player.crawling = false;
+    player.crawlT = 0;
+    player.diveT = 0;
+    player.vx = 0;
+    player.vy = 0;
+    player.fx = 0;
+    player.fy = 0;
+    player.firing = false;
+    ctx.input.siphonHeld = ctx.input.pourHeld = ctx.input.drinkHeld = false;
+    const clearance = this.climbClearance(ctx, player.x, player.y, side, PLAYER_H);
+    if (clearance.ok) this.brushClimbDebris(ctx, clearance.brush, side);
+    player.hat.vx += side * 0.9;
+    player.hat.vy -= 1.0;
+    ctx.audio.noiseBurst(0.04, 420, 0.06, true);
+  }
+
+  private stopClimb(player: PlayerState): void {
+    player.climbing = false;
+    player.climbMoveT = 0;
+    player.climbIntentY = 0;
+  }
+
+  private resetClimbState(player: PlayerState): void {
+    player.climbing = false;
+    player.climbDir = player.wallGrabDir || 1;
+    player.climbT = 0;
+    player.climbPhase = 0;
+    player.climbMoveT = 0;
+    player.climbIntentY = 0;
+    player.wallGrabT = 0;
+  }
 
   constructor(private ctx: Ctx) {}
 
@@ -183,6 +341,7 @@ export class PlayerControl implements PlayerControlApi {
     player.dead = true;
     player.hp = 0;
     player.recharge = 0;
+    this.resetClimbState(player);
     ctx.particles.burst(player.x, player.y - 7, 56, Cell.Blood, bloodColor, 4.2);
     ctx.particles.burst(player.x, player.y - 7, 10, null, () => packRGB(168, 85, 247), 3.4, {
       glow: 2.4,
@@ -266,7 +425,7 @@ export class PlayerControl implements PlayerControlApi {
       player.invuln = 90;
       player.crawling = false; // waystone arrivals are standing-safe
       player.crawlT = 0;
-      player.wallGrabT = 0;
+      this.resetClimbState(player);
       ctx.events.emit('playerRespawned');
       ctx.telemetry.count('death.goldLost');
       ctx.particles.burst(rp.x, rp.y - 7, 20, null, () => packRGB(200, 160, 255), 2.7, {
@@ -291,7 +450,7 @@ export class PlayerControl implements PlayerControlApi {
     player.invuln = 90;
     player.crawling = false;
     player.crawlT = 0;
-    player.wallGrabT = 0;
+    this.resetClimbState(player);
     ctx.events.emit('playerRespawned');
     // Clear hostile projectiles, restart current wave
     const kept: Projectile[] = ctx.projectiles.filter((p) => !p.hostile);
@@ -329,7 +488,7 @@ export class PlayerControl implements PlayerControlApi {
     const channeling = player.recharge > 0;
     const restrained = channeling || player.pullT > 0;
     const keys = restrained
-      ? { left: false, right: false, jump: false, down: false }
+      ? { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false }
       : ctx.input.keys;
     if (channeling) {
       player.recharge--;
@@ -374,6 +533,7 @@ export class PlayerControl implements PlayerControlApi {
         !keys.jump &&
         player.grounded &&
         !player.inLiquid &&
+        !player.climbing &&
         !restrained
       ) {
         player.crawling = true;
@@ -473,7 +633,7 @@ export class PlayerControl implements PlayerControlApi {
     }
 
     // DRINK (X held): gulp the flask's contents — a potion is real cells swallowed
-    if (ctx.input.drinkHeld) this.drink(ctx);
+    if (ctx.input.drinkHeld && !player.climbing) this.drink(ctx);
 
     // CROUCH (hold S on the ground): knees bend, steps shorten to a creep,
     // and the camera peeks below the ledge — scouting the next drop is a
@@ -483,6 +643,7 @@ export class PlayerControl implements PlayerControlApi {
       player.grounded &&
       !player.inLiquid &&
       !player.crawling &&
+      !player.climbing &&
       player.pullT === 0 &&
       player.recharge === 0;
     if (crouching) {
@@ -505,16 +666,21 @@ export class PlayerControl implements PlayerControlApi {
     const stanceK = player.crawling ? 0.32 : crouching ? 0.38 : 1;
     const accel = (player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK,
       maxRun = 2.6 * speedK * stanceK;
-    if (keys.left) {
-      player.vx -= accel;
-      player.facing = -1;
+    if (!player.climbing) {
+      if (keys.left) {
+        player.vx -= accel;
+        player.facing = -1;
+      }
+      if (keys.right) {
+        player.vx += accel;
+        player.facing = 1;
+      }
+      if (!keys.left && !keys.right) player.vx *= 0.72;
+      player.vx = clamp(player.vx, -maxRun, maxRun);
+    } else {
+      player.vx = 0;
+      player.fx = 0;
     }
-    if (keys.right) {
-      player.vx += accel;
-      player.facing = 1;
-    }
-    if (!keys.left && !keys.right) player.vx *= 0.72;
-    player.vx = clamp(player.vx, -maxRun, maxRun);
 
     // Sample body cells for liquid and hazards (Pyro Skin / Toxicology resist)
     if (player.tpCool > 0) player.tpCool--;
@@ -612,176 +778,273 @@ export class PlayerControl implements PlayerControlApi {
       }
     }
 
-    // Gravity / levitation
-    const grav = player.inLiquid ? 0.12 : 0.28;
-    player.vy += grav;
-    if (player.inLiquid) player.vy *= 0.88;
-
-    // jump buffer: remember a fresh press for up to 8 frames before touchdown
-    // (a press while crawling is a stand attempt, never a buffered jump)
     const jumpPressed = keys.jump && !this.prevJumpHeld;
     this.prevJumpHeld = keys.jump;
-    if (jumpPressed && !player.crawling) this.jumpBufferFrames = 8;
+    const wallJumpPressed = keys.wallJump && !this.prevWallJumpHeld;
+    this.prevWallJumpHeld = keys.wallJump;
+    const grabPressed = keys.grab && !this.prevGrabHeld;
+    this.prevGrabHeld = keys.grab;
+    if (grabPressed) this.grabBufferFrames = 10;
+    else if (this.grabBufferFrames > 0) this.grabBufferFrames--;
+
+    // jump buffer: remember a fresh press for up to 8 frames before touchdown
+    // (a press while crawling stands, and Space while climbing wall-jumps)
+    if (jumpPressed && !player.crawling && !player.climbing) this.jumpBufferFrames = 8;
     else if (this.jumpBufferFrames > 0) this.jumpBufferFrames--;
-
-    let levitating = false;
-    if (keys.jump && !player.crawling) {
-      // coyote time: a press within 6 frames of walking off a ledge still gets the full jump
-      const coyote = jumpPressed && this.framesSinceGrounded <= 6;
-      if (player.grounded || player.inLiquid || coyote) {
-        player.vy = -3.7;
-        player.grounded = false;
-        player.stretchT = 6; // launch stretch (anti-squash)
-        this.framesSinceGrounded = 99; // consumed — no double coyote jumps
-        this.jumpBufferFrames = 0;
-        ctx.audio.jump();
-      } else if (player.levit > 0 && player.diveT === 0) {
-        levitating = true;
-        // levitation response: the jet SPOOLS. Thrust starts at a near-hover
-        // 0.34 (gravity is 0.28 — the first frames barely arrest the fall)
-        // and builds t-squared to the full 0.62 over 20 frames, so a tap
-        // feathers your height and a hold winds up into a climb. Releasing
-        // resets the spool (levitFrames), which is what makes tapping a
-        // hover instrument instead of an on/off rocket.
-        const t = Math.min(this.levitFrames / 20, 1);
-        const thrust = 0.34 + 0.28 * t * t;
-        player.vy -= thrust;
-        // Levity potion (Wave C): levitation burns no levit while the timer runs
-        if (player.status.levity <= 0)
-          player.levit -= 1.15 * (player.perks.featherweight ? 0.55 : 1);
-        this.levitFrames++;
-        // SPUTTER WARNING: below 20% fuel the jet coughs — gaps in the
-        // exhaust, a put-put under the hum — panic BEFORE the fall starts.
-        const sputtering = player.levit / player.maxLevit < 0.2 && player.status.levity <= 0;
-        if (sputtering) {
-          ctx.audio.sputter();
-          if (ctx.state.frameCount % 9 < 4) {
-            ctx.particles.spawn(
-              player.x + (Math.random() - 0.5) * 3,
-              player.y + 1,
-              (Math.random() - 0.5) * 0.4,
-              0.8,
-              null,
-              packRGB(110, 100, 90),
-              12,
-            );
-          }
-        }
-        ctx.audio.levitate();
-        if (ctx.state.frameCount % 3 === 0 && !(sputtering && ctx.state.frameCount % 9 >= 4)) {
-          // the plume reads the spool: soft puffs while winding up, a full
-          // hard exhaust once the jet is at speed
-          ctx.particles.spawn(
-            player.x + (Math.random() - 0.5) * 2,
-            player.y + 0.5,
-            (Math.random() - 0.5) * 0.4,
-            (0.7 + Math.random() * 0.5) * (0.55 + 0.45 * t),
-            null,
-            packRGB(255, 150 + Math.floor(Math.random() * 80), 30),
-            14,
-            { grav: 0.02, glow: 2.2 },
-          );
-        }
-      }
-    }
-    if (!levitating) this.levitFrames = 0;
-    if (player.grounded || player.inLiquid) player.levit = Math.min(player.maxLevit, player.levit + 1.7);
-
-    // DIVE SLAM (press S in the air): commit to the fall. The body locks
-    // into a spear, horizontal drift bleeds off, and the landing pays it
-    // all back (see the slam in updatePlayerAnimation).
-    if (
-      keys.down &&
-      !player.grounded &&
-      !player.inLiquid &&
-      !player.crawling && // S held off a ledge keeps the crawl, never a slam
-      player.diveT === 0 &&
-      player.vy > -1
-    ) {
-      player.diveT = 1;
-      player.vy = Math.max(player.vy, 5.6);
-      player.hat.vy -= 2.6; // the hat objects to the decision
-      ctx.audio.noiseBurst(0.12, 320, 0.1);
-    }
-    if (player.diveT > 0) {
-      player.diveT++;
-      player.vy = Math.max(player.vy, 4.6); // stays committed
-      player.vx *= 0.86;
-      if (player.inLiquid) player.diveT = 0; // water catches you (splash plays)
-      else if (ctx.state.frameCount % 2 === 0) {
-        // speed streaks peeling off the shoulders
-        ctx.particles.spawn(
-          player.x + (Math.random() - 0.5) * 5,
-          player.y - 13 - Math.random() * 4,
-          0,
-          -0.7,
-          null,
-          packRGB(140, 170, 210),
-          8,
-          { grav: -0.01 },
-        );
-      }
-    }
-    // dive overrides the normal terminal velocity (5.0)
-    player.vy = clamp(player.vy, -4.6, player.diveT > 0 ? 6.4 : 5.0);
 
     // Mana regen
     player.mana = Math.min(player.maxMana, player.mana + 0.45);
     if (player.cooldown > 0) player.cooldown--;
 
-    // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling)
-    player.fx += player.vx;
-    while (player.fx >= 1) {
-      if (!ctx.physics.tryMoveEntity(player, 1, 0, 4, bodyH, stepUp)) {
-        player.vx = 0;
-        player.fx = 0;
-        break;
-      }
-      player.fx -= 1;
-    }
-    while (player.fx <= -1) {
-      if (!ctx.physics.tryMoveEntity(player, -1, 0, 4, bodyH, stepUp)) {
-        player.vx = 0;
-        player.fx = 0;
-        break;
-      }
-      player.fx += 1;
+    const canClimb =
+      !player.dead &&
+      !player.crawling &&
+      !player.inLiquid &&
+      !restrained &&
+      (keys.grab || this.grabBufferFrames > 0);
+    if (!player.climbing && canClimb) {
+      const side = this.findClimbFace(ctx, PLAYER_H);
+      if (side !== 0) this.startClimb(ctx, side);
     }
 
-    // Move vertically
-    player.fy += player.vy;
-    while (player.fy >= 1) {
-      if (!ctx.physics.tryMoveEntity(player, 0, 1, 4, bodyH, 0)) {
-        player.vy = 0;
-        player.fy = 0;
-        break;
-      }
-      player.fy -= 1;
-    }
-    while (player.fy <= -1) {
-      if (!ctx.physics.tryMoveEntity(player, 0, -1, 4, bodyH, 0)) {
-        player.vy = 0;
-        player.fy = 0;
-        break;
-      }
-      player.fy += 1;
-    }
-    player.grounded = !ctx.physics.entityFree(player.x, player.y + 1, 4, 1);
-    if (player.grounded) {
-      // jump buffer: a press made just before touchdown fires on the landing frame
-      if (this.jumpBufferFrames > 0 && !player.crawling) {
-        player.vy = -3.7;
+    let handledByClimb = false;
+    if (player.climbing) {
+      const stillOnFace = this.hasClimbFace(ctx, player.climbDir, PLAYER_H);
+      if (!keys.grab || player.inLiquid || restrained) {
+        this.stopClimb(player);
+      } else if (wallJumpPressed || keys.wallJump) {
+        const away = -player.climbDir;
+        this.stopClimb(player);
+        player.vx = away * 2.4;
+        player.vy = -3.85;
+        player.facing = away;
         player.grounded = false;
-        player.fallPeak = 0; // this landing was consumed by the jump
         player.stretchT = 6;
-        this.jumpBufferFrames = 0;
+        player.wallGrabT = 0;
+        player.hat.vx += away * 2.0;
+        player.hat.vy -= 2.0;
         this.framesSinceGrounded = 99;
+        this.jumpBufferFrames = 0;
+        this.grabBufferFrames = 0;
         ctx.audio.jump();
+        ctx.particles.burst(player.x - player.climbDir * 3, player.y - 8, 5, null, () => {
+          const g = 128 + Math.floor(Math.random() * 50);
+          return packRGB(g, g, g - 12);
+        }, 0.75, { grav: 0.04 });
+      } else if (!stillOnFace) {
+        this.stopClimb(player);
       } else {
-        this.framesSinceGrounded = 0; // coyote time anchor
+        const climbIntent = keys.up === keys.down ? 0 : keys.up ? -1 : 1;
+        player.climbIntentY = climbIntent;
+        player.climbT = Math.min(10, player.climbT + 2);
+        player.wallGrabDir = player.climbDir;
+        player.wallGrabT = 10;
+        player.facing = -player.climbDir;
+        player.grounded = false;
+        player.vx = 0;
+        player.vy = 0;
+        player.fx = 0;
+        player.fy = 0;
+        player.diveT = 0;
+        player.firing = false;
+        ctx.input.siphonHeld = ctx.input.pourHeld = ctx.input.drinkHeld = false;
+
+        if (climbIntent !== 0) {
+          player.climbMoveT++;
+          const stepFrames = climbIntent < 0 ? 5 : 4;
+          if (player.climbMoveT >= stepFrames) {
+            player.climbMoveT = 0;
+            if (this.tryClimbStep(ctx, climbIntent)) {
+              player.climbPhase = (player.climbPhase + 1) % 24;
+              player.hat.vy += climbIntent < 0 ? -0.35 : 0.25;
+              if (ctx.state.frameCount % 8 === 0) {
+                ctx.particles.spawn(
+                  player.x + player.climbDir * (PLAYER_HALF_W + 1),
+                  player.y - 7 - Math.random() * 7,
+                  -player.climbDir * (0.15 + Math.random() * 0.25),
+                  0.15 + Math.random() * 0.25,
+                  null,
+                  packRGB(118, 111, 98),
+                  14,
+                  { grav: 0.06 },
+                );
+              }
+            }
+          }
+        } else {
+          player.climbMoveT = 0;
+        }
+        this.levitFrames = 0;
+        this.framesSinceGrounded++;
+        handledByClimb = true;
       }
-    } else {
-      this.framesSinceGrounded++;
+    }
+    if (!player.climbing) {
+      player.climbT = Math.max(0, player.climbT - 2);
+      player.climbIntentY = 0;
+    }
+
+    if (!handledByClimb) {
+      // Gravity / levitation
+      const grav = player.inLiquid ? 0.12 : 0.28;
+      player.vy += grav;
+      if (player.inLiquid) player.vy *= 0.88;
+
+      let levitating = false;
+      if (keys.jump && !player.crawling) {
+        // coyote time: a press within 6 frames of walking off a ledge still gets the full jump
+        const coyote = jumpPressed && this.framesSinceGrounded <= 6;
+        if (player.grounded || player.inLiquid || coyote) {
+          player.vy = -3.7;
+          player.grounded = false;
+          player.stretchT = 6; // launch stretch (anti-squash)
+          this.framesSinceGrounded = 99; // consumed — no double coyote jumps
+          this.jumpBufferFrames = 0;
+          ctx.audio.jump();
+        } else if (player.levit > 0 && player.diveT === 0) {
+          levitating = true;
+          // levitation response: the jet SPOOLS. Thrust starts at a near-hover
+          // 0.34 (gravity is 0.28 — the first frames barely arrest the fall)
+          // and builds t-squared to the full 0.62 over 20 frames, so a tap
+          // feathers your height and a hold winds up into a climb. Releasing
+          // resets the spool (levitFrames), which is what makes tapping a
+          // hover instrument instead of an on/off rocket.
+          const t = Math.min(this.levitFrames / 20, 1);
+          const thrust = 0.34 + 0.28 * t * t;
+          player.vy -= thrust;
+          // Levity potion (Wave C): levitation burns no levit while the timer runs
+          if (player.status.levity <= 0)
+            player.levit -= 1.15 * (player.perks.featherweight ? 0.55 : 1);
+          this.levitFrames++;
+          // SPUTTER WARNING: below 20% fuel the jet coughs — gaps in the
+          // exhaust, a put-put under the hum — panic BEFORE the fall starts.
+          const sputtering = player.levit / player.maxLevit < 0.2 && player.status.levity <= 0;
+          if (sputtering) {
+            ctx.audio.sputter();
+            if (ctx.state.frameCount % 9 < 4) {
+              ctx.particles.spawn(
+                player.x + (Math.random() - 0.5) * 3,
+                player.y + 1,
+                (Math.random() - 0.5) * 0.4,
+                0.8,
+                null,
+                packRGB(110, 100, 90),
+                12,
+              );
+            }
+          }
+          ctx.audio.levitate();
+          if (ctx.state.frameCount % 3 === 0 && !(sputtering && ctx.state.frameCount % 9 >= 4)) {
+            // the plume reads the spool: soft puffs while winding up, a full
+            // hard exhaust once the jet is at speed
+            ctx.particles.spawn(
+              player.x + (Math.random() - 0.5) * 2,
+              player.y + 0.5,
+              (Math.random() - 0.5) * 0.4,
+              (0.7 + Math.random() * 0.5) * (0.55 + 0.45 * t),
+              null,
+              packRGB(255, 150 + Math.floor(Math.random() * 80), 30),
+              14,
+              { grav: 0.02, glow: 2.2 },
+            );
+          }
+        }
+      }
+      if (!levitating) this.levitFrames = 0;
+      if (player.grounded || player.inLiquid) player.levit = Math.min(player.maxLevit, player.levit + 1.7);
+
+      // DIVE SLAM (press S in the air): commit to the fall. The body locks
+      // into a spear, horizontal drift bleeds off, and the landing pays it
+      // all back (see the slam in updatePlayerAnimation).
+      if (
+        keys.down &&
+        !player.grounded &&
+        !player.inLiquid &&
+        !player.crawling && // S held off a ledge keeps the crawl, never a slam
+        player.diveT === 0 &&
+        player.vy > -1
+      ) {
+        player.diveT = 1;
+        player.vy = Math.max(player.vy, 5.6);
+        player.hat.vy -= 2.6; // the hat objects to the decision
+        ctx.audio.noiseBurst(0.12, 320, 0.1);
+      }
+      if (player.diveT > 0) {
+        player.diveT++;
+        player.vy = Math.max(player.vy, 4.6); // stays committed
+        player.vx *= 0.86;
+        if (player.inLiquid) player.diveT = 0; // water catches you (splash plays)
+        else if (ctx.state.frameCount % 2 === 0) {
+          // speed streaks peeling off the shoulders
+          ctx.particles.spawn(
+            player.x + (Math.random() - 0.5) * 5,
+            player.y - 13 - Math.random() * 4,
+            0,
+            -0.7,
+            null,
+            packRGB(140, 170, 210),
+            8,
+            { grav: -0.01 },
+          );
+        }
+      }
+      // dive overrides the normal terminal velocity (5.0)
+      player.vy = clamp(player.vy, -4.6, player.diveT > 0 ? 6.4 : 5.0);
+
+      // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling)
+      player.fx += player.vx;
+      while (player.fx >= 1) {
+        if (!ctx.physics.tryMoveEntity(player, 1, 0, PLAYER_HALF_W, bodyH, stepUp)) {
+          player.vx = 0;
+          player.fx = 0;
+          break;
+        }
+        player.fx -= 1;
+      }
+      while (player.fx <= -1) {
+        if (!ctx.physics.tryMoveEntity(player, -1, 0, PLAYER_HALF_W, bodyH, stepUp)) {
+          player.vx = 0;
+          player.fx = 0;
+          break;
+        }
+        player.fx += 1;
+      }
+
+      // Move vertically
+      player.fy += player.vy;
+      while (player.fy >= 1) {
+        if (!ctx.physics.tryMoveEntity(player, 0, 1, PLAYER_HALF_W, bodyH, 0)) {
+          player.vy = 0;
+          player.fy = 0;
+          break;
+        }
+        player.fy -= 1;
+      }
+      while (player.fy <= -1) {
+        if (!ctx.physics.tryMoveEntity(player, 0, -1, PLAYER_HALF_W, bodyH, 0)) {
+          player.vy = 0;
+          player.fy = 0;
+          break;
+        }
+        player.fy += 1;
+      }
+      player.grounded = !ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1);
+      if (player.grounded) {
+        // jump buffer: a press made just before touchdown fires on the landing frame
+        if (this.jumpBufferFrames > 0 && !player.crawling) {
+          player.vy = -3.7;
+          player.grounded = false;
+          player.fallPeak = 0; // this landing was consumed by the jump
+          player.stretchT = 6;
+          this.jumpBufferFrames = 0;
+          this.framesSinceGrounded = 99;
+          ctx.audio.jump();
+        } else {
+          this.framesSinceGrounded = 0; // coyote time anchor
+        }
+      } else {
+        this.framesSinceGrounded++;
+      }
     }
 
     // ---- WALL GRAB (bouldering): "grounded" on nothing but the lip of a
@@ -820,7 +1083,10 @@ export class PlayerControl implements PlayerControlApi {
         if (face >= 3) grabSide = side;
       }
     }
-    if (grabSide !== 0) {
+    if (player.climbing) {
+      player.wallGrabDir = player.climbDir;
+      player.wallGrabT = 10;
+    } else if (grabSide !== 0) {
       player.wallGrabDir = grabSide;
       player.wallGrabT = Math.min(10, player.wallGrabT + 2);
     } else {
@@ -912,7 +1178,7 @@ export class PlayerControl implements PlayerControlApi {
         player.vx = 0;
         player.vy = 0;
         player.crawling = false; // the arrival spot fits the full stance
-        player.wallGrabT = 0;
+        this.resetClimbState(player);
         ctx.particles.burst(tx, ty - 8, 18, null, () => packRGB(185, 110, 255), 2.6, {
           glow: 2.4,
           grav: 0,
@@ -943,13 +1209,35 @@ export class PlayerControl implements PlayerControlApi {
     player._svx = player._svx * 0.55 + rvx * 0.45;
     player._svy = player._svy * 0.55 + rvy * 0.45;
 
-    // Crawl sprite tilt: the body lays along the smoothed travel slope
-    // (dy per dx) so a diagonal chute reads as diagonal crawling. The
+    // Crawl sprite tilt: the body lies along the TERRAIN under it — sampled
+    // floor-surface heights below nose and tail. (It used to follow the
+    // travel velocity, which dies to horizontal the moment a lip stalls you
+    // or you stop: a wizard lying flat ACROSS a 45-degree slope.) A floor
+    // surface is a blocking cell with air above it, so a ceiling dipping
+    // into the scan ahead can't hijack the read. World-space dy/dx; the
     // collision box stays an axis-aligned square — only the drawing tilts.
-    const slopeTarget =
-      player.crawling && Math.abs(player._svx) > 0.25
-        ? clamp(player._svy / (Math.sign(player._svx) * Math.max(0.5, Math.abs(player._svx))), -1, 1)
-        : 0;
+    let slopeTarget = 0;
+    if (player.crawling) {
+      const world = ctx.world;
+      const floorAt = (col: number): number => {
+        if (col < 1 || col >= WIDTH - 1) return NaN;
+        for (let Y = player.y - 7; Y <= player.y + 9; Y++) {
+          if (Y < 1 || Y >= HEIGHT) break;
+          if (
+            blocksEntity(world.types[world.idx(col, Y)]) &&
+            !blocksEntity(world.types[world.idx(col, Y - 1)])
+          )
+            return Y;
+        }
+        return NaN;
+      };
+      const gFront = floorAt(Math.round(player.x + 6));
+      const gRear = floorAt(Math.round(player.x - 6));
+      slopeTarget =
+        Number.isNaN(gFront) || Number.isNaN(gRear)
+          ? player.crawlSlope // straddling a void or a dead end: hold the line
+          : clamp((gFront - gRear) / 12, -1.1, 1.1);
+    }
     player.crawlSlope += (slopeTarget - player.crawlSlope) * 0.18;
 
     // Stride wheel turns with actual ground speed; drifts slowly in the air.

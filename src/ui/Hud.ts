@@ -29,10 +29,12 @@ export class Hud {
   private dryFlashUntil = 0;
 
   constructor(private ctx: Ctx) {
-    ctx.events.on('scoreChanged', ({ score }) => {
-      el('score-val').textContent = String(score);
-      // hud-gold rolls toward the target in update() — income you can watch
-    });
+    // Treasure-row pixel icons (hud-gold itself rolls toward the score in
+    // update() — income you can watch).
+    const goldIcon = makeIconCanvas('gold', 2);
+    if (goldIcon) el('gold-chip-icon').appendChild(goldIcon);
+    const tomeIcon = makeIconCanvas('tome', 2);
+    if (tomeIcon) el('cards-chip-icon').appendChild(tomeIcon);
 
     // Dry fire: the mana bar itself flinches red so the WHY is unmissable.
     ctx.events.on('dryFire', () => {
@@ -75,8 +77,13 @@ export class Hud {
     });
 
     // Wandsmith: a found card announces itself; the bench (B) slots it.
+    // The satchel chip flashes so the income lands in the treasure row too.
     ctx.events.on('cardGranted', ({ name }) => {
       this.showBanner(name + ' ACQUIRED', 'NEW SPELL CARD — PRESS B');
+      const chip = el('cards-chip');
+      chip.classList.remove('flash');
+      void chip.offsetWidth; // restart the one-shot animation
+      chip.classList.add('flash');
     });
 
     // Descent meta layer: the objective line + short center toasts.
@@ -245,6 +252,11 @@ export class Hud {
 
     // The golden key rides the HUD once held — you never wonder again.
     el('key-indicator').classList.toggle('visible', ctx.levels.current?.keyTaken === true);
+
+    // Satchel count: spell cards collected from tomes, waystones, descents.
+    const cards = String(ctx.wands.collection.length);
+    const cardsEl = el('hud-cards');
+    if (cardsEl.textContent !== cards) cardsEl.textContent = cards;
 
     const flask = ctx.flask.state;
     const flaskFill = el('flask-fill');

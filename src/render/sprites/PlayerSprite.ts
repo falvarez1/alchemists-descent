@@ -5,6 +5,16 @@ import { clamp } from '@/core/math';
 type RGB = readonly [number, number, number];
 
 /**
+ * Crawl pose selector. 'prone' is the shipped low crawl (belly to the floor,
+ * elbow-drag); 'allfours' is the retired hands-and-knees creep, kept intact
+ * for a future verb (downed-crawl revive and heavy-landing recovery are the
+ * leading candidates) — flip here to A/B both poses in dev.
+ * The cast keeps TS from narrowing the const to its literal (the comparison
+ * below must stay legal).
+ */
+const CRAWL_POSE = 'prone' as 'prone' | 'allfours';
+
+/**
  * Procedural wizard sprite (original drawPlayerSprite): boots ride a stride
  * wheel, the robe sways and flares, the torso leans with smoothed velocity,
  * the 4-segment spring hat whips, and the wand glows toward the aim.
@@ -143,102 +153,205 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     }
   };
 
-  // ---- CRAWL pose (docs/CRAWL.md): all fours, head leading, hat last.
-  // The collision box stays an axis-aligned 9x9; only the DRAWING tilts —
-  // the figure lays along the smoothed travel slope (quantized to ~16
-  // steps), so a diagonal chute reads as diagonal crawling.
+  // ---- CRAWL pose (docs/CRAWL.md). The collision box stays an axis-aligned
+  // 9x9; only the DRAWING tilts — the figure lays along the smoothed travel
+  // slope (quantized to ~16 steps), so a diagonal chute reads as diagonal
+  // crawling. CRAWL_POSE (module top) picks prone vs the retired all-fours.
   if (player.crawling) {
     const ease = clamp(player.crawlT / 10, 0, 1);
-    const settle = Math.round((1 - ease) * 5); // dropping down onto all fours
+    const settle = Math.round((1 - ease) * 5); // dropping down flat
     const q = Math.round(player.crawlSlope * 8) / 8;
     const stride = player.stridePhase;
     const hat = player.hat;
     const py = player.y;
     const cu = (u: number): number => px + u * f;
     const cy = (u: number, up: number): number => py - up - settle + Math.round(q * u * f);
-    // ceiling at exactly crawl gauge: the hat has nowhere to stand up
+    // ceiling at exactly crawl gauge: not even the head gets to come up
     const lowCeiling = !ctx.physics.entityFree(player.x, player.y, 4, 10);
 
-    // rear leg: boot pads down, knee tucked under the hip
-    s.setPx(cu(-4), cy(-4, 0), ...BOOT);
-    s.setPx(cu(-3), cy(-3, 0), ...BOOT);
-    s.setPx(cu(-3), cy(-3, 1), ...BOOT_L);
-    s.setPx(cu(-2), cy(-2, 0), ...BOOT_L);
+    if (CRAWL_POSE === 'allfours') {
+      // RESERVED hands-and-knees creep (the original crawl pose) — see the
+      // CRAWL_POSE note. Kept verbatim so its future verb inherits it whole.
+      // rear leg: boot pads down, knee tucked under the hip
+      s.setPx(cu(-4), cy(-4, 0), ...BOOT);
+      s.setPx(cu(-3), cy(-3, 0), ...BOOT);
+      s.setPx(cu(-3), cy(-3, 1), ...BOOT_L);
+      s.setPx(cu(-2), cy(-2, 0), ...BOOT_L);
 
-    // robe arched over the back, trailing edge dark
-    for (let u = -3; u <= 2; u++) {
-      const top = u <= -2 ? 3 : 4;
-      for (let up = 1; up <= top; up++) {
-        const c = up === top || u === -3 ? ROBE_D : ROBE;
-        s.setPx(cu(u), cy(u, up), ...c);
+      // robe arched over the back, trailing edge dark
+      for (let u = -3; u <= 2; u++) {
+        const top = u <= -2 ? 3 : 4;
+        for (let up = 1; up <= top; up++) {
+          const c = up === top || u === -3 ? ROBE_D : ROBE;
+          s.setPx(cu(u), cy(u, up), ...c);
+        }
+      }
+      s.setPx(cu(-1), cy(-1, 2), ...BAND); // belt glint low on the belly
+      s.setPx(cu(1), cy(1, 3), ...TRIM); // chest trim
+
+      // hand-over-hand keyed to the stride wheel (real x-progress)
+      const reach = Math.round(Math.sin(stride) * 1.2);
+      const lift = Math.abs(Math.sin(stride)) > 0.7 ? 1 : 0;
+      s.setPx(cu(3), cy(3, 1), ...SKIN_D); // forearm
+      s.setPx(cu(4 + reach), cy(4 + reach, reach > 0 ? lift : 0), ...SKIN);
+      s.setPx(cu(4 - reach), cy(4 - reach, reach < 0 ? lift : 0), ...SKIN_D);
+
+      // head leading: face block, brow shaded under the brim
+      for (let up = 2; up <= 4; up++) {
+        s.setPx(cu(3), cy(3, up), ...(up === 4 ? SHADE : SKIN_D));
+        s.setPx(cu(4), cy(4, up), ...(up === 4 ? SHADE : SKIN));
+      }
+      if (player.blinkTimer === 0) {
+        s.setPx(cu(4), cy(4, 3), 1.0, 1.0, 1.0);
+        s.setPx(cu(3), cy(3, 3), 0.08, 0.08, 0.12);
+      }
+
+      // the hat rides pushed back — and presses FLAT when the ceiling says so
+      for (let u = 1; u <= 4; u++) {
+        s.setPx(cu(u), cy(u, 5), ...(u === 1 || u === 4 ? HAT_D : HAT));
+      }
+      s.setPx(cu(3), cy(3, 5), ...BAND);
+      const coneUp = lowCeiling ? 5 : 6;
+      s.setPx(cu(0), cy(0, coneUp), ...HAT);
+      s.setPx(cu(-1), cy(-1, coneUp), ...HAT);
+      s.setPx(
+        cu(-2) + Math.round(hat.ox * 0.6),
+        cy(-2, coneUp) + (lowCeiling ? 0 : Math.round(hat.oy * 0.5)),
+        ...HAT_D,
+      );
+
+      stampOutline();
+      drawStaff(cu(2), cy(2, 2));
+      return;
+    }
+
+    // ---- PRONE low crawl: the 17-tall wizard laid out FULL LENGTH — the
+    // sprite spans ~17 cells nose to toes (conservation of mass; the 9x9
+    // box is collision law, the drawing overflows it just like the standing
+    // hat does). A wedge silhouette: flat trailing legs, two-cell torso,
+    // humped shoulders, the head leading. Only the head leaves the ground —
+    // and under a gauge-tight ceiling not even that (cheek pressed to the
+    // floor is the CRAMPED tell).
+    const headUp = lowCeiling ? 0 : 1; // how far he dares lift his chin
+
+    // nose-to-the-rock: probe the chin row ahead and scrunch the head group
+    // back at a dead end instead of burying the face in the wall
+    let front = 9;
+    for (let u = 4; u <= 8; u++) {
+      if (ctx.physics.cellBlocks(Math.round(cu(u)), py - 1 + Math.round(q * u * f))) {
+        front = u;
+        break;
       }
     }
-    s.setPx(cu(-1), cy(-1, 2), ...BAND); // belt glint low on the belly
-    s.setPx(cu(1), cy(1, 3), ...TRIM); // chest trim
+    const scrunch = clamp(7 - front, 0, 2);
+    const hu = (u: number): number => u - scrunch; // head-group slide
 
-    // hand-over-hand keyed to the stride wheel (real x-progress)
-    const reach = Math.round(Math.sin(stride) * 1.2);
-    const lift = Math.abs(Math.sin(stride)) > 0.7 ? 1 : 0;
-    s.setPx(cu(3), cy(3, 1), ...SKIN_D); // forearm
-    s.setPx(cu(4 + reach), cy(4 + reach, reach > 0 ? lift : 0), ...SKIN);
-    s.setPx(cu(4 - reach), cy(4 - reach, reach < 0 ? lift : 0), ...SKIN_D);
+    // legs trail straight back, toes down; the push-leg shoves on the
+    // stride's back-beat, its knee cocking a pixel above the hemline
+    const push = Math.sin(stride + Math.PI);
+    const kick = push < -0.55 ? 1 : 0;
+    s.setPx(cu(-8 + kick), cy(-8 + kick, 0), ...BOOT); // trailing toe drags
+    s.setPx(cu(-7 + kick), cy(-7 + kick, 0), ...BOOT_L);
+    s.setPx(cu(-7), cy(-7, push > 0.55 ? 1 : 0), ...BOOT); // push-knee cocks
 
-    // head leading: face block, brow shaded under the brim
-    for (let up = 2; up <= 4; up++) {
-      s.setPx(cu(3), cy(3, up), ...(up === 4 ? SHADE : SKIN_D));
-      s.setPx(cu(4), cy(4, up), ...(up === 4 ? SHADE : SKIN));
+    // the robe is ONE continuous bright mass that thickens tail-to-chest —
+    // 1 cell over the calves, 2 over the hips, 3 at the chest/shoulders —
+    // so the silhouette reads as a wedge of wizard, not a plank
+    for (let u = -6; u <= 3; u++) {
+      s.setPx(cu(u), cy(u, 0), ...(u === -6 ? ROBE_D : ROBE));
+      if (u >= -4) s.setPx(cu(u), cy(u, 1), ...(u === -4 ? ROBE_D : ROBE));
+      if (u >= 0) s.setPx(cu(u), cy(u, 2), ...(u === 0 ? ROBE_D : ROBE));
+    }
+    s.setPx(cu(-3), cy(-3, 1), ...BAND); // belt glint where the hips rise
+    s.setPx(cu(2), cy(2, 2), ...TRIM); // chest trim behind the head
+
+    // head low and leading, chin skimming the floor — cheek-flat when CRAMPED
+    for (let u = 4; u <= 6; u++) {
+      for (let up = headUp; up <= headUp + 1; up++) {
+        s.setPx(cu(hu(u)), cy(hu(u), up), ...(u === 4 ? SKIN_D : SKIN));
+      }
     }
     if (player.blinkTimer === 0) {
-      s.setPx(cu(4), cy(4, 3), 1.0, 1.0, 1.0);
-      s.setPx(cu(3), cy(3, 3), 0.08, 0.08, 0.12);
+      s.setPx(cu(hu(5)), cy(hu(5), headUp + 1), 1.0, 1.0, 1.0);
+      s.setPx(cu(hu(6)), cy(hu(6), headUp + 1), 0.08, 0.08, 0.12);
     }
 
-    // the hat rides pushed back — and presses FLAT when the ceiling says so
-    for (let u = 1; u <= 4; u++) {
-      s.setPx(cu(u), cy(u, 5), ...(u === 1 || u === 4 ? HAT_D : HAT));
-    }
-    s.setPx(cu(3), cy(3, 5), ...BAND);
-    const coneUp = lowCeiling ? 5 : 6;
-    s.setPx(cu(0), cy(0, coneUp), ...HAT);
-    s.setPx(cu(-1), cy(-1, coneUp), ...HAT);
+    // the hat CROWNS the skull (it does not carpet the spine): a dark brim
+    // lip over the eyes, the band glint, a short cone trailing onto the
+    // shoulders, the tip riding the spring
+    const hatUp = headUp + 2;
+    s.setPx(cu(hu(6)), cy(hu(6), hatUp), ...HAT_D); // brim over the eyes
+    s.setPx(cu(hu(5)), cy(hu(5), hatUp), ...HAT_D);
+    s.setPx(cu(hu(4)), cy(hu(4), hatUp), ...BAND);
+    s.setPx(cu(hu(3)), cy(hu(3), hatUp), ...HAT);
+    s.setPx(cu(hu(2)), cy(hu(2), hatUp), ...HAT);
     s.setPx(
-      cu(-2) + Math.round(hat.ox * 0.6),
-      cy(-2, coneUp) + (lowCeiling ? 0 : Math.round(hat.oy * 0.5)),
+      cu(hu(1)) + Math.round(hat.ox * 0.6),
+      cy(hu(1), hatUp) + (lowCeiling ? 0 : Math.round(hat.oy * 0.5)),
       ...HAT_D,
-    );
+    ); // tip wags with the spring
+
+    // arms LAST — the near-side arm crosses in front of the body. Elbow-drag
+    // keyed to the stride wheel: the lead hand reaches out and rakes back
+    // along the floor; the pulling elbow pops above the back on the power
+    // stroke (never under a gauge-tight ceiling)
+    const reach = Math.round(Math.sin(stride) * 1.5);
+    const elbowUp = !lowCeiling && Math.sin(stride) < -0.2 ? 3 : 2;
+    s.setPx(cu(3), cy(3, elbowUp), ...SKIN_D); // crooked elbow
+    s.setPx(cu(hu(4)), cy(hu(4), 0), ...SKIN_D); // forearm flat on the floor
+    s.setPx(cu(hu(5)), cy(hu(5), 0), ...SKIN_D);
+    const handU = Math.min(6 + reach - scrunch, front - 1);
+    s.setPx(cu(handU), cy(handU, 0), ...SKIN); // lead hand pulls
 
     stampOutline();
-    drawStaff(cu(2), cy(2, 2)); // prone grip: the muzzle rides low
+    drawStaff(cu(hu(5)), cy(hu(5), headUp)); // prone grip: muzzle rides low
     return;
   }
 
-  // ---- WALL GRAB pose (bouldering): grounded on nothing but a lip of the
-  // cliff face. Both hands find holds on the rock, the feet brace against
-  // it, and the body hangs in a climber's lock-off instead of standing on
-  // thin air. Pose only — the pixel-catch physics is exactly as it plays.
+  // ---- WALL CLIMB / WALL GRAB pose (bouldering). Keyed climbing is a
+  // first-class verb; the older lip-grab still borrows the same silhouette.
+  // Both hands find holds, feet brace, and the body moves in visible
+  // catch -> brace -> reach -> pull -> step -> settle beats.
   if (
-    player.wallGrabT >= 5 &&
-    player.grounded &&
-    Math.abs(svx) < 0.6 &&
-    player.pullT === 0 &&
-    player.recharge === 0
+    player.climbing ||
+    (
+      player.wallGrabT >= 5 &&
+      player.grounded &&
+      Math.abs(svx) < 0.6 &&
+      player.pullT === 0 &&
+      player.recharge === 0
+    )
   ) {
-    const wd = player.wallGrabDir;
-    const py = player.y;
+    const wd = player.climbing ? player.climbDir : player.wallGrabDir;
+    const movingClimb = player.climbing && player.climbIntentY !== 0;
+    const phase = player.climbing
+      ? (player.climbPhase + player.climbMoveT) % 24
+      : (Math.floor(frameCount / 50) % 2) * 12;
+    const beat = Math.floor(phase / 4) % 6;
+    const up = player.climbIntentY < 0;
+    const bodyBob = movingClimb
+      ? up
+        ? beat < 2 ? 1 : beat < 5 ? 0 : -1
+        : beat < 2 ? -1 : beat < 5 ? 0 : 1
+      : 0;
+    const py = player.y + bodyBob;
     const hat = player.hat;
-    // hands trade holds now and then — reading the face for the next move
-    const shift = Math.floor(frameCount / 50) % 2;
+    // hands and feet trade holds across the six-beat bouldering cycle
+    const shift = beat >= 2 && beat <= 4 ? 1 : 0;
+    const reach = movingClimb && beat === 2 ? (up ? 2 : -1) : 0;
+    const pull = movingClimb && beat === 3 ? (up ? 1 : -1) : 0;
+    const step = movingClimb && beat >= 4 ? (up ? 1 : -1) : 0;
 
     // feet: one toe on the lip, the other jammed into the face higher up
     s.setPx(px + wd * 3, py, ...BOOT);
     s.setPx(px + wd * 2, py, ...BOOT);
     s.setPx(px + wd * 2, py - 1, ...BOOT_L);
-    s.setPx(px + wd * 3, py - 4, ...BOOT);
-    s.setPx(px + wd * 2, py - 4, ...BOOT_L);
+    s.setPx(px + wd * 3, py - 4 - step, ...BOOT);
+    s.setPx(px + wd * 2, py - 4 - step, ...BOOT_L);
 
     // bent legs holding the hips off the rock
     s.setPx(px + wd, py - 2, ...ROBE_D);
-    s.setPx(px + wd, py - 5, ...ROBE_D);
+    s.setPx(px + wd, py - 5 - Math.max(0, step), ...ROBE_D);
 
     // the skirt hangs PLUMB off the hips — gravity owns it, not the stride
     for (const [dy, hw] of [[3, 3], [4, 3], [5, 2], [6, 2]] as const) {
@@ -259,11 +372,11 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     row(px + wd - 2, px + wd + 2, py - 11, ROBE); // shoulders
 
     // both arms up the wall: a high lock-off and a mid hold, trading places
-    s.setPx(px + wd * 2, py - 12, ...ROBE_D);
-    s.setPx(px + wd * 3, py - 13 + shift, ...ROBE_D);
-    s.setPx(px + wd * 4, py - 14 + shift, ...SKIN);
-    s.setPx(px + wd * 3, py - 11, ...ROBE_D);
-    s.setPx(px + wd * 4, py - 10 - shift, ...SKIN_D);
+    s.setPx(px + wd * 2, py - 12 - pull, ...ROBE_D);
+    s.setPx(px + wd * 3, py - 13 + shift - reach, ...ROBE_D);
+    s.setPx(px + wd * 4, py - 14 + shift - reach, ...SKIN);
+    s.setPx(px + wd * 3, py - 11 - shift + pull, ...ROBE_D);
+    s.setPx(px + wd * 4, py - 10 - shift + pull, ...SKIN_D);
 
     // head tight to the rock, eyes UP the route
     const hx = px + wd;
