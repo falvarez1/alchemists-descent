@@ -1,6 +1,7 @@
 // Wave A runtime probes: flask siphon/pour/throw, perf HUD, movement feel.
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -17,17 +18,48 @@ const canvasBox = await page.locator('#canvas-holder > canvas').boundingBox();
 const cx = canvasBox.x + canvasBox.width / 2;
 const cy = canvasBox.y + canvasBox.height / 2;
 
-// Paint a generous pool of water in build mode near the center.
-await page.click('button.tool-btn[data-id="2"]');
-await page.mouse.move(cx - 60, cy - 40);
-await page.mouse.down();
-for (let i = 0; i <= 12; i++) await page.mouse.move(cx - 60 + i * 10, cy - 40, { steps: 2 });
-await page.mouse.up();
-await page.waitForTimeout(1500); // let it pool
+await startConsoleTestRun(page, { settleMs: 1200 });
 
-// Enter play mode.
-await page.click('#mode-play-btn');
-await page.waitForTimeout(2000);
+// Seed a generous runtime water pool near the screen area used by the siphon probe.
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const w = ctx.world;
+  const px = Math.floor(ctx.player.x);
+  const py = Math.floor(ctx.player.y);
+  const x0 = px - 95;
+  const x1 = px + 80;
+  const y0 = py - 48;
+  const y1 = py - 16;
+  for (let y = y0 - 6; y <= y1 + 4; y++) {
+    for (let x = x0 - 4; x <= x1 + 4; x++) {
+      if (!w.inBounds(x, y)) continue;
+      const i = w.idx(x, y);
+      w.types[i] = 0;
+      w.colors[i] = 0;
+      w.life[i] = 0;
+      w.charge[i] = 0;
+    }
+  }
+  for (let x = x0; x <= x1; x++) {
+    const floor = w.idx(x, y1 + 1);
+    w.types[floor] = 13;
+    w.colors[floor] = 0x7a8a99;
+    for (let y = y0; y <= y1; y++) {
+      const i = w.idx(x, y);
+      w.types[i] = 2;
+      w.colors[i] = 0x1e8ce6;
+    }
+  }
+  for (let y = y0; y <= y1 + 1; y++) {
+    for (const x of [x0 - 1, x1 + 1]) {
+      const i = w.idx(x, y);
+      w.types[i] = 13;
+      w.colors[i] = 0x7a8a99;
+    }
+  }
+  ctx.camera.snapTo(ctx.player.x, ctx.player.y);
+});
+await page.waitForTimeout(800);
 
 // --- Probe 1: siphon water with E held at the cursor over the pool ---
 // Wizard spawns near world center; the painted pool was near the camera center,

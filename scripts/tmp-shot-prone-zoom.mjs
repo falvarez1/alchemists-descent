@@ -2,6 +2,7 @@
 // ceiling (cheek-flat CRAMPED variant), and a dead-end scrunch. Throwaway.
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -10,12 +11,7 @@ const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1500);
-await page.click('#mode-play-btn');
-await page.waitForFunction(() => {
-  const l = window.__game.ctx.levels;
-  return l.current !== null && !l.transitioning;
-}, { timeout: 15000 });
-await page.waitForTimeout(400);
+await startConsoleTestRun(page, { settleMs: 400 });
 
 const setup = (slab, endWall) => page.evaluate(({ slab, endWall }) => {
   const ctx = window.__game.ctx;

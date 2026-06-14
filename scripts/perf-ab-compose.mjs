@@ -3,6 +3,7 @@
 // drift (±3-5% between sessions) cancels out. Welch t-test per bucket.
 // Usage: node scripts/perf-ab-compose.mjs [url] [framesPerBlock] [blocks]
 import { chromium } from 'playwright-core';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const FRAMES = Number(process.argv[3] ?? 360);
@@ -13,14 +14,11 @@ const page = await (await browser.newContext()).newPage();
 page.on('pageerror', (e) => console.error('PAGE ERROR:', String(e)));
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(2000);
+await startConsoleTestRun(page, { seed: 777, settleMs: 1500 });
 
 const result = await page.evaluate(
   async ({ FRAMES, BLOCKS }) => {
-    localStorage.removeItem('noita-expedition');
     const ctx = window.__game.ctx;
-    ctx.state.worldSeed = 777;
-    document.getElementById('mode-play-btn').click();
-    await new Promise((r) => setTimeout(r, 1500));
 
     const w = ctx.world;
     const px = Math.floor(ctx.player.x);

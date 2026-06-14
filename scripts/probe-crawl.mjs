@@ -5,6 +5,7 @@
 // a carved cliff lip. Freeze-frames land in verify-out/crawl-*.png.
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -23,15 +24,7 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2000);
 
-await page.click('#mode-play-btn');
-await page.waitForFunction(
-  () => {
-    const l = window.__game.ctx.levels;
-    return l.current !== null && !l.transitioning;
-  },
-  { timeout: 15000 },
-);
-await page.waitForTimeout(400);
+await startConsoleTestRun(page, { settleMs: 400 });
 
 // Arena: metal floor with a 9-tall crawl slab over x 600-700 (interior rows
 // 527-535 — admits the 9-box, blocks the 17-box) and open air either side.

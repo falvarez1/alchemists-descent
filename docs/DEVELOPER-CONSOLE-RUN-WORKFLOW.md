@@ -16,15 +16,20 @@ a Developer Console command first.
   starts normal progression at D1 with a fresh starter kit.
 - `run test [--level d3] [--seed n] [--loadout fresh|advanced|review]`
   starts a disposable test run. Test runs set `playtestSource: "test"` and
-  never overwrite expedition saves.
-- `run test --world virtual-world` is reserved for the chunked virtual-world
-  runtime. The Builder World Map panel can preview this world today, but Play
-  mode materialization still needs to land before this command can start it.
+  never overwrite expedition saves. Add granular setup options such as
+  `--gold 250`, `--hp 140`, `--max-hp 160`, `--levit 180`,
+  `--cards spark,bomb`, `--perks torchbearer,swiftfoot`, and
+  `--flask water:300`.
+- `run test --world virtual-world` starts the chunked virtual-world prototype
+  as a disposable materialized test window. It is intentionally not persisted
+  until streaming and save support are implemented.
 - `run save` checkpoints the current normal, untainted expedition.
 - `run abandon` removes the saved expedition. Use `run new` when the live
   runtime should also be reset.
 
-The Play launcher uses the same `Levels.startRun` API as these commands. Any
+The Play launcher uses the same `Levels.startRun` API as these commands. Normal
+launcher runs expose only the progression-safe options; Test Run unlocks world,
+level, profile, card, perk, vitals, flask, and virtual-world controls. Any
 future launcher option must have an equivalent Developer Console command path,
 and any future console command that affects run lifecycle must route through
 the same API rather than reimplementing persistence behavior.

@@ -3,6 +3,7 @@
 // freeze-frame screenshots of the key poses (verify-out/rw-*.png).
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -20,12 +21,7 @@ page.on('pageerror', (e) => console.log('PAGEERROR', String(e)));
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2000);
-await page.click('#mode-play-btn');
-await page.waitForFunction(() => {
-  const l = window.__game.ctx.levels;
-  return l.current !== null && !l.transitioning;
-}, { timeout: 15000 });
-await page.waitForTimeout(400);
+await startConsoleTestRun(page, { settleMs: 400 });
 
 await page.evaluate(() => {
   const ctx = window.__game.ctx;

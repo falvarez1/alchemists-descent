@@ -1,6 +1,7 @@
 // Wave C probes: post-fx render, statuses, brewing e2e, drinking, new enemies.
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -12,8 +13,7 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
 
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(2500);
-await page.click('#mode-play-btn');
-await page.waitForTimeout(2200);
+await startConsoleTestRun(page, { settleMs: 2200 });
 
 // --- 0: post-fx pass renders (not black, not washed out) ---
 const px = await page.evaluate(

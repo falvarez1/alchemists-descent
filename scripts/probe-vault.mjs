@@ -10,6 +10,7 @@
 //   - the Vitric Seal card turns a lava pool into solid glass
 // Usage: node scripts/probe-vault.mjs [url]
 import { chromium } from 'playwright-core';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const SEED = 1; // host = 'd' + (2 + SEED % 3) = d3
@@ -27,15 +28,12 @@ const check = (ok, name, extra = '') => {
 
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1500);
+await startConsoleTestRun(page, { seed: SEED, settleMs: 600 });
 
 // ---------------- host arch placement + crossing over ----------------
 const r1 = await page.evaluate(
-  async ({ SEED, HOST }) => {
-    localStorage.removeItem('noita-expedition');
+  async ({ HOST }) => {
     const ctx = window.__game.ctx;
-    ctx.state.worldSeed = SEED;
-    document.getElementById('mode-play-btn').click();
-    await new Promise((r) => setTimeout(r, 1800));
     // d1 must NOT carry the arch (host is d2..d4)
     const d1Arch = ctx.levels.current.vaultArch ?? null;
     ctx.levels.leaveLevel();
@@ -68,7 +66,7 @@ const r1 = await page.evaluate(
       name: after.def.name,
     };
   },
-  { SEED, HOST },
+  { HOST },
 );
 check(r1.d1Arch === null, 'd1 carries no arch (host is mid-descent)');
 check(!!r1.arch, `hidden arch generates in host ${HOST}`, r1.arch ? `@${r1.arch.x},${r1.arch.y}` : '');

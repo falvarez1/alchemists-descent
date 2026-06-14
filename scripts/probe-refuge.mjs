@@ -6,6 +6,7 @@
 //     resumes the same level (no descend)
 // Usage: node scripts/probe-refuge.mjs [url]
 import { chromium } from 'playwright-core';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -27,14 +28,10 @@ let seedUsed = -1;
 for (let seed = 1; seed <= 8 && seedUsed < 0; seed++) {
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
-  const has = await page.evaluate(async (SEED) => {
-    localStorage.removeItem('noita-expedition');
-    const ctx = window.__game.ctx;
-    ctx.state.worldSeed = SEED;
-    document.getElementById('mode-play-btn').click();
-    await new Promise((r) => setTimeout(r, 1800));
+  await startConsoleTestRun(page, { seed, settleMs: 600 });
+  const has = await page.evaluate(async () => {
     return !!window.__game.ctx.levels.current?.refuge;
-  }, seed);
+  });
   if (has) seedUsed = seed;
 }
 check(seedUsed > 0, 'refuge generates on d1 within 8 seeds', `seed=${seedUsed}`);

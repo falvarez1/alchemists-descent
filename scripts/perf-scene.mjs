@@ -7,6 +7,7 @@
 // drift-proof same-session A/B).
 import { chromium } from 'playwright-core';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const label = process.argv[2] ?? 'before';
 const url = process.argv[3] ?? 'http://localhost:5173/';
@@ -21,15 +22,14 @@ for (let run = 0; run < RUNS; run++) {
   page.on('pageerror', (e) => console.error('PAGE ERROR:', String(e)));
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
+  await page.evaluate((gpuCompose) => {
+    if (gpuCompose) window.__game.ctx.state.postFx.gpuCompose = true;
+  }, process.env.PERF_GPU_COMPOSE === '1');
+  await startConsoleTestRun(page, { seed: 777, settleMs: 1500 });
 
   const result = await page.evaluate(
-    async ({ FRAMES, GPU_COMPOSE }) => {
-      localStorage.removeItem('noita-expedition');
+    async ({ FRAMES }) => {
       const ctx = window.__game.ctx;
-      if (GPU_COMPOSE) ctx.state.postFx.gpuCompose = true;
-      ctx.state.worldSeed = 777; // same world every run
-      document.getElementById('mode-play-btn').click();
-      await new Promise((r) => setTimeout(r, 1500));
 
       const w = ctx.world;
       const px = Math.floor(ctx.player.x);
@@ -142,7 +142,7 @@ for (let run = 0; run < RUNS; run++) {
       }
       return { samples, saves, particles: ctx.particles.list?.length ?? -1 };
     },
-    { FRAMES, GPU_COMPOSE: process.env.PERF_GPU_COMPOSE === '1' },
+    { FRAMES },
   );
 
   for (const s of result.samples) {

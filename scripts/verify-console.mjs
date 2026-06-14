@@ -1,6 +1,7 @@
 // Dev console end-to-end gate.
 // Usage: node scripts/verify-console.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -310,8 +311,7 @@ await page.evaluate(async () => {
   await ctx.console.exec('time 1');
 });
 
-await page.click('#mode-play-btn');
-await page.waitForFunction(() => window.__game.ctx.state.mode === 'play', { timeout: 6000 });
+await startConsoleTestRun(page, { settleMs: 400 });
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const w = ctx.world;
@@ -451,8 +451,7 @@ check(
 );
 await page.keyboard.press('Escape');
 await page.waitForFunction(() => document.querySelector('.app-dialog-root') === null, { timeout: 5000 });
-await page.click('#mode-play-btn');
-await page.waitForFunction(() => window.__game.ctx.state.mode === 'play', { timeout: 5000 });
+await startConsoleTestRun(page, { settleMs: 150 });
 
 await page.click('#mode-builder-btn');
 await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });

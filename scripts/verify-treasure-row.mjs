@@ -3,6 +3,7 @@
 // Usage: node scripts/verify-treasure-row.mjs [url]  (dev server running)
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const outDir = 'verify-out';
@@ -25,8 +26,7 @@ await page.waitForTimeout(3000);
 check('header score box removed', await page.evaluate(() => !document.querySelector('.score-box') && !document.getElementById('score-val')));
 
 // Enter play mode so the HUD shows.
-await page.click('#mode-play-btn');
-await page.waitForTimeout(1200);
+await startConsoleTestRun(page, { settleMs: 1200 });
 
 let s = await page.evaluate(() => {
   const row = document.getElementById('treasure-row');

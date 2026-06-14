@@ -3,6 +3,7 @@
 // The Builder detaches onto a scratch world; PLAY re-attaches the real one.
 // Usage: node scripts/verify-builder-expedition.mjs [url]
 import { chromium } from 'playwright-core';
+import { startConsolePlayRun, waitForRunReady } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -24,14 +25,7 @@ await page.waitForTimeout(2000);
 
 /* ---------- enter the descent (a REAL expedition level, d1) ---------- */
 console.log('-- descend');
-await page.click('#mode-play-btn');
-await page.waitForFunction(
-  () => {
-    const ctx = window.__game.ctx;
-    return ctx.state.mode === 'play' && ctx.levels.current && !ctx.levels.transitioning;
-  },
-  { timeout: 30000 },
-);
+await startConsolePlayRun(page, { seed: 777 });
 await page.waitForTimeout(800);
 const d1 = await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -91,13 +85,9 @@ check('the expedition level is untouched', after.sum === before, `before ${befor
 console.log('-- back to the descent');
 await page.click('#b-exit');
 await page.click('#mode-play-btn');
-await page.waitForFunction(
-  () => {
-    const ctx = window.__game.ctx;
-    return ctx.state.mode === 'play' && ctx.levels.current && !ctx.levels.transitioning;
-  },
-  { timeout: 30000 },
-);
+await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
+await page.evaluate(() => document.querySelector('#run-launcher [data-action="continue"]')?.click());
+await waitForRunReady(page);
 await page.waitForTimeout(500);
 const back = await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -145,6 +135,10 @@ check('scene snapshot gets a named Builder document', /scene edit/i.test(adopted
 /* ---------- PLAY from inside Builder exits to the game, even with an invalid doc ---------- */
 console.log('-- header play exits builder');
 await page.click('#b-new'); // no terrain / no spawn: invalid for Builder playtest, still fine for game Play
+const newDialog = page.locator('.app-dialog-root');
+if (await newDialog.isVisible({ timeout: 1000 }).catch(() => false)) {
+  await newDialog.locator('.app-dialog-btn.primary').click();
+}
 await page.click('#mode-play-btn');
 await page.waitForFunction(
   () => {

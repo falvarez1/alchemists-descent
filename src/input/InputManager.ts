@@ -102,6 +102,7 @@ export class InputManager {
     document.getElementById('mode-play-btn')?.addEventListener('click', (e) => {
       (e.currentTarget as HTMLElement).blur();
       this.ctx.audio.ensure();
+      if (!document.body.classList.contains('builder-open') && this.ctx.state.playtestSource !== 'builder' && this.requestRunLauncher('play-button')) return;
       this.setMode('play');
     });
     document.getElementById('immersive-play-btn')?.addEventListener('click', (e) => {
@@ -328,6 +329,15 @@ export class InputManager {
     }
   }
 
+  private requestRunLauncher(source: 'play-button' | 'tab' | 'fullscreen'): boolean {
+    const event = new CustomEvent('run-launcher-request', {
+      cancelable: true,
+      detail: { source },
+    });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  }
+
   private onKeyDown(e: KeyboardEvent): void {
     if (e.defaultPrevented) return;
     if (this.shouldIgnoreKeyboard(e)) return;
@@ -337,6 +347,14 @@ export class InputManager {
     ctx.audio.ensure();
     if (e.code === 'Tab') {
       e.preventDefault();
+      if (
+        ctx.state.mode === 'build' &&
+        !document.body.classList.contains('builder-open') &&
+        ctx.state.playtestSource !== 'builder' &&
+        this.requestRunLauncher('tab')
+      ) {
+        return;
+      }
       this.setMode(ctx.state.mode === 'build' ? 'play' : 'build');
       return;
     }
@@ -451,6 +469,15 @@ export class InputManager {
 
   private async enterImmersivePlay(): Promise<void> {
     this.ctx.audio.ensure();
+    if (
+      this.ctx.state.mode !== 'play' &&
+      !document.body.classList.contains('builder-open') &&
+      this.ctx.state.playtestSource !== 'builder' &&
+      this.requestRunLauncher('fullscreen')
+    ) {
+      this.syncImmersiveButton();
+      return;
+    }
     const target = this.stageElement() ?? this.canvas;
     await this.requestStageFullscreen(target);
 

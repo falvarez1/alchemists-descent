@@ -6,6 +6,7 @@
 //   both slots and the same spark runs the rail home and latches the coil.
 // Usage: node scripts/probe-archetypes.mjs [url]
 import { chromium } from 'playwright-core';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -23,13 +24,10 @@ const check = (ok, name, extra = '') => {
 async function loadDepth(seed, id) {
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1500);
+  await startConsoleTestRun(page, { seed, settleMs: 400 });
   return await page.evaluate(
-    async ({ SEED, ID }) => {
-      localStorage.removeItem('noita-expedition');
+    async ({ ID }) => {
       const ctx = window.__game.ctx;
-      ctx.state.worldSeed = SEED;
-      document.getElementById('mode-play-btn').click();
-      await new Promise((r) => setTimeout(r, 1800));
       let levelResult = null;
       if (ID !== 'd1') {
         levelResult = await ctx.console.exec(`level ${ID}`);
@@ -39,7 +37,7 @@ async function loadDepth(seed, id) {
       const levelOk = ID === 'd1' || (levelResult?.ok === true && rt?.def.id === ID);
       return rt ? { ok: levelOk, id: rt.def.id, levelResult } : { ok: false, levelResult };
     },
-    { SEED: seed, ID: id },
+    { ID: id },
   );
 }
 

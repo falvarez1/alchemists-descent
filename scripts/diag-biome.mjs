@@ -3,6 +3,7 @@
 // S spawn, P portal) plus reach stats. Usage:
 //   node scripts/diag-biome.mjs [depth] [seed] [url]
 import { chromium } from 'playwright-core';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const depth = process.argv[2] ?? 'd2';
 const seed = Number(process.argv[3] ?? 5);
@@ -13,15 +14,12 @@ const page = await (await browser.newContext()).newPage();
 page.on('pageerror', (e) => console.error('PAGE ERROR:', String(e)));
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(2000);
+await startConsoleTestRun(page, { seed, settleMs: 350 });
 
 const out = await page.evaluate(
-  async ({ SEED, ID }) => {
-    localStorage.removeItem('noita-expedition');
+  async ({ ID }) => {
     const ctx = window.__game.ctx;
-    ctx.state.worldSeed = SEED;
     const { reachableMask } = await import('/src/world/validate.ts');
-    document.getElementById('mode-play-btn').click();
-    await new Promise((r) => setTimeout(r, 1800));
     if (ID !== 'd1') {
       ctx.levels.leaveLevel();
       ctx.levels.enterLevel(ctx, ID);
@@ -80,7 +78,7 @@ const out = await page.evaluate(
       map: rows.join('\n'),
     };
   },
-  { SEED: seed, ID: depth },
+  { ID: depth },
 );
 
 console.log(`spawn ${JSON.stringify(out.spawn)} portal ${JSON.stringify(out.portal)} exit ${JSON.stringify(out.exit)}`);

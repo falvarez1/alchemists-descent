@@ -1,9 +1,9 @@
 import { sanitizeBackdropSettings, saveBackdropSettings } from '@/config/backdrop';
 import { LEVELS } from '@/config/worldgraph';
-import type { CommandInfo, CommandResult, ConsoleApi, Ctx, EnemyKind, LevelRuntime, Mechanism, Pickup } from '@/core/types';
+import type { CardId, CommandInfo, CommandResult, ConsoleApi, Ctx, EnemyKind, LevelRuntime, Mechanism, PerkId, Pickup, RunTestKitConfig } from '@/core/types';
 import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { grantFullReviewKit } from '@/entities/Player';
-import { CARD_DEFS } from '@/combat/wands/cards';
+import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { Cell, CELL_COUNT } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { ConsoleCommandRegistry, parseConsoleLine } from '@/game/console/registry';
@@ -38,6 +38,18 @@ const SCRIPT_MAX_DEPTH = 4;
 const RUN_SUBCOMMANDS = ['status', 'continue', 'resume', 'new', 'fresh', 'test', 'save', 'abandon'] as const;
 const RUN_WORLD_SOURCES = ['campaign', 'campaign-level', 'virtual-world', 'virtual'] as const;
 const RUN_LOADOUTS = ['fresh', 'advanced', 'review'] as const;
+const RUN_PERKS: PerkId[] = [
+  'might',
+  'vampirism',
+  'featherweight',
+  'manafont',
+  'swiftfoot',
+  'torchbearer',
+  'ironhide',
+  'flameward',
+  'toxinward',
+  'goldmagnet',
+];
 
 type Bounds = { x0: number; y0: number; x1: number; y1: number };
 type PerfPhase = 'sim' | 'entities' | 'render' | 'compose' | 'gl' | 'frame';
@@ -48,6 +60,7 @@ type ParsedRunOptions = {
   seed?: number;
   loadout?: 'fresh' | 'advanced' | 'review';
   worldSource?: 'campaign' | 'campaign-level' | 'virtual-world';
+  kit?: RunTestKitConfig;
 };
 type PerfWindow = Window & {
   __perfRecord?: boolean;
@@ -444,6 +457,12 @@ function parseCardId(raw: string): keyof typeof CARD_DEFS | CommandResult {
   const key = raw.toLowerCase();
   if (Object.prototype.hasOwnProperty.call(CARD_DEFS, key)) return key as keyof typeof CARD_DEFS;
   return result(false, `Unknown card "${raw}"`, { code: 'parse-card', raw, expected: Object.keys(CARD_DEFS).sort() });
+}
+
+function parsePerkId(raw: string): PerkId | CommandResult {
+  const key = raw.toLowerCase();
+  if (RUN_PERKS.includes(key as PerkId)) return key as PerkId;
+  return result(false, `Unknown perk "${raw}"`, { code: 'parse-perk', raw, expected: RUN_PERKS });
 }
 
 function parseLevelId(raw: string): string | CommandResult {
@@ -1063,11 +1082,32 @@ function isParsedRunOptions(parsed: ParsedRunOptions | CommandResult): parsed is
   return parsed.ok === true && !('text' in parsed);
 }
 
-function parseRunOptions(args: string[]): ParsedRunOptions | CommandResult {
+function parseRunList(raw: string): string[] {
+  return raw.split(',').map((part) => part.trim()).filter(Boolean);
+}
+
+function parseRunNumber(raw: string, name: string, min: number, max: number): number | CommandResult {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < min || n > max) {
+    return result(false, `Expected ${name} to be an integer from ${min} to ${max}, got "${raw}"`, {
+      code: 'parse-run-number',
+      raw,
+      name,
+      min,
+      max,
+    });
+  }
+  return n;
+}
+
+function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandResult {
   let levelId: string | undefined;
   let seed: number | undefined;
   let loadout: 'fresh' | 'advanced' | 'review' | undefined;
   let worldSource: 'campaign' | 'campaign-level' | 'virtual-world' | undefined;
+  let flaskMaterial: number | null | undefined;
+  let flaskCount: number | undefined;
+  const kit: RunTestKitConfig = {};
 
   const readValue = (arg: string, i: number): { value?: string; next: number } => {
     const eq = arg.indexOf('=');
@@ -1089,13 +1129,8 @@ function parseRunOptions(args: string[]): ParsedRunOptions | CommandResult {
     if (arg === '--seed' || arg.startsWith('--seed=')) {
       const parsed = readValue(arg, i);
       if (!parsed.value) return result(false, 'Usage: --seed <uint32>', { code: 'usage' });
-      const n = Number(parsed.value);
-      if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) {
-        return result(false, `Expected seed to be an integer from 0 to 4294967295, got "${parsed.value}"`, {
-          code: 'parse-seed',
-          raw: parsed.value,
-        });
-      }
+      const n = parseRunNumber(parsed.value, 'seed', 0, 0xffffffff);
+      if (typeof n !== 'number') return n;
       seed = n >>> 0;
       i = parsed.next;
       continue;
@@ -1124,13 +1159,121 @@ function parseRunOptions(args: string[]): ParsedRunOptions | CommandResult {
       i = parsed.next;
       continue;
     }
+    if (arg === '--gold' || arg.startsWith('--gold=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --gold <amount>', { code: 'usage' });
+      const n = parseRunNumber(parsed.value, 'gold', 0, 999999);
+      if (typeof n !== 'number') return n;
+      kit.gold = n;
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--hp' || arg.startsWith('--hp=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --hp <amount>', { code: 'usage' });
+      const n = parseRunNumber(parsed.value, 'hp', 1, 9999);
+      if (typeof n !== 'number') return n;
+      kit.hp = n;
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--max-hp' || arg.startsWith('--max-hp=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --max-hp <amount>', { code: 'usage' });
+      const n = parseRunNumber(parsed.value, 'max-hp', 1, 9999);
+      if (typeof n !== 'number') return n;
+      kit.maxHp = n;
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--levit' || arg === '--max-levit' || arg.startsWith('--levit=') || arg.startsWith('--max-levit=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --levit <amount>', { code: 'usage' });
+      const n = parseRunNumber(parsed.value, 'levit', 1, 9999);
+      if (typeof n !== 'number') return n;
+      kit.maxLevit = n;
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--cards' || arg.startsWith('--cards=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --cards <all|card,card,...>', { code: 'usage' });
+      if (parsed.value.toLowerCase() === 'all') {
+        kit.cards = [...ALL_CARD_IDS];
+      } else {
+        const cards: CardId[] = [];
+        for (const raw of parseRunList(parsed.value)) {
+          const card = parseCardId(raw);
+          if (typeof card !== 'string') return card;
+          cards.push(card as CardId);
+        }
+        kit.cards = cards;
+      }
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--perks' || arg.startsWith('--perks=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --perks <all|perk,perk,...>', { code: 'usage' });
+      if (parsed.value.toLowerCase() === 'all') {
+        kit.perks = [...RUN_PERKS];
+      } else {
+        const perks: PerkId[] = [];
+        for (const raw of parseRunList(parsed.value)) {
+          const perk = parsePerkId(raw);
+          if (typeof perk !== 'string') return perk;
+          perks.push(perk);
+        }
+        kit.perks = perks;
+      }
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--flask' || arg.startsWith('--flask=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --flask <empty|material[:count]>', { code: 'usage' });
+      const [rawMaterial, rawCount] = parsed.value.split(':', 2);
+      if (rawMaterial.toLowerCase() === 'empty' || rawMaterial.toLowerCase() === 'none') {
+        flaskMaterial = null;
+      } else {
+        const material = parseCellType(ctx, rawMaterial);
+        if (typeof material !== 'number') return material;
+        flaskMaterial = material;
+      }
+      if (rawCount !== undefined) {
+        const n = parseRunNumber(rawCount, 'flask count', 0, 600);
+        if (typeof n !== 'number') return n;
+        flaskCount = n;
+      }
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--flask-count' || arg.startsWith('--flask-count=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --flask-count <cells>', { code: 'usage' });
+      const n = parseRunNumber(parsed.value, 'flask count', 0, 600);
+      if (typeof n !== 'number') return n;
+      flaskCount = n;
+      i = parsed.next;
+      continue;
+    }
     return result(false, `Unknown run option "${arg}".`, {
       code: 'usage',
-      usage: 'run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--loadout preset] [--world source]',
+      usage: 'run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--loadout preset] [--world source] [--gold n] [--cards list] [--perks list]',
     });
   }
 
-  return { ok: true, levelId, seed, loadout, worldSource };
+  if (flaskMaterial !== undefined || flaskCount !== undefined) {
+    kit.flask = { material: flaskMaterial ?? null, count: flaskCount ?? (flaskMaterial === null ? 0 : 600) };
+  }
+  return {
+    ok: true,
+    levelId,
+    seed,
+    loadout,
+    worldSource,
+    kit: Object.keys(kit).length > 0 ? kit : undefined,
+  };
 }
 
 function runCommandCompletions(req: CompletionRequest): string[] {
@@ -1140,10 +1283,31 @@ function runCommandCompletions(req: CompletionRequest): string[] {
   if (prev === '--level') return matching(Object.keys(LEVELS), token);
   if (prev === '--loadout') return matching(RUN_LOADOUTS, token);
   if (prev === '--world') return matching(RUN_WORLD_SOURCES, token);
+  if (prev === '--cards') return matching(['all', ...Object.keys(CARD_DEFS)], token);
+  if (prev === '--perks') return matching(['all', ...RUN_PERKS], token);
+  if (prev === '--flask') return matching(['empty', 'water', 'acid', 'lava', 'oil'], token);
   if (token.startsWith('--level=')) return matching(Object.keys(LEVELS).map((id) => '--level=' + id), token);
   if (token.startsWith('--loadout=')) return matching(RUN_LOADOUTS.map((id) => '--loadout=' + id), token);
   if (token.startsWith('--world=')) return matching(RUN_WORLD_SOURCES.map((id) => '--world=' + id), token);
-  if (token.startsWith('--')) return matching(['--level', '--seed', '--loadout', '--world'], token);
+  if (token.startsWith('--cards=')) return matching(['--cards=all', ...Object.keys(CARD_DEFS).map((id) => '--cards=' + id)], token);
+  if (token.startsWith('--perks=')) return matching(['--perks=all', ...RUN_PERKS.map((id) => '--perks=' + id)], token);
+  if (token.startsWith('--flask=')) return matching(['--flask=empty', '--flask=water:600', '--flask=acid:300', '--flask=lava:300', '--flask=oil:300'], token);
+  if (token.startsWith('--')) {
+    return matching([
+      '--level',
+      '--seed',
+      '--loadout',
+      '--world',
+      '--gold',
+      '--hp',
+      '--max-hp',
+      '--levit',
+      '--cards',
+      '--perks',
+      '--flask',
+      '--flask-count',
+    ], token);
+  }
   return [];
 }
 
@@ -1294,7 +1458,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
     info: info(
       'game.run',
       'Run Control',
-      'run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--loadout fresh|advanced|review] [--world campaign|campaign-level|virtual-world]',
+      'run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--loadout fresh|advanced|review] [--world campaign|campaign-level|virtual-world] [--gold n] [--cards all|id,id] [--perks all|id,id]',
       'Canonical start/reset/save/test-run workflow for expeditions.',
       'game',
     ),
@@ -1303,7 +1467,8 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
       if (sub === 'status') {
         const status = ctx.levels.runStatus(ctx);
         const level = status.level ? `${status.level.id} ${status.level.name}` : 'none';
-        return result(true, `mode=${status.mode} level=${level} save=${status.savedExpedition ? 'yes' : 'no'} autosave=${status.autosaveEnabled ? 'on' : 'off'}`, {
+        const blocked = status.autosaveBlockReason ? ` block=${status.autosaveBlockReason}` : '';
+        return result(true, `mode=${status.mode} level=${level} seed=${status.worldSeed} save=${status.savedExpedition ? 'yes' : 'no'} autosave=${status.autosaveEnabled ? 'on' : 'off'}${blocked}`, {
           action: 'status',
           ...status,
         });
@@ -1333,11 +1498,10 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
         return result(started.ok, started.message, { action: 'continue', run: started, status: ctx.levels.runStatus(ctx) });
       }
       if (sub === 'new' || sub === 'fresh' || sub === 'test') {
-        const parsed = parseRunOptions(args.slice(1));
+        const parsed = parseRunOptions(ctx, args.slice(1));
         if (!isParsedRunOptions(parsed)) return parsed;
         const test = sub === 'test';
-        const worldSource =
-          parsed.worldSource ?? (test ? (parsed.levelId ? 'campaign-level' : 'campaign') : 'campaign');
+        const worldSource = parsed.worldSource ?? (parsed.levelId ? 'campaign-level' : 'campaign');
         ctx.audio.ensure();
         const started = ctx.levels.startRun(ctx, {
           mode: test ? 'test' : 'normal',
@@ -1345,6 +1509,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
           levelId: parsed.levelId,
           seed: parsed.seed,
           loadout: parsed.loadout ?? (test ? 'advanced' : 'fresh'),
+          kit: parsed.kit,
           continueSave: false,
         });
         return result(started.ok, started.message, {
@@ -1353,7 +1518,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
           status: ctx.levels.runStatus(ctx),
         });
       }
-      return result(false, 'Usage: run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--loadout preset] [--world source]', {
+      return result(false, 'Usage: run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--loadout preset] [--world source] [--gold n] [--cards list] [--perks list]', {
         code: 'usage',
         subcommand: sub,
       });

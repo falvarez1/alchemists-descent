@@ -191,6 +191,7 @@ export class LevelStore {
     });
 
     document.getElementById('btn-level-playtest')?.addEventListener('click', () => {
+      this.ctx.state.playtestSource = 'builder';
       this.ctx.levels.playCurrentWorld(this.ctx);
       (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
     });

@@ -3,6 +3,7 @@
 // poses for visual review (verify-out/anim-*.png).
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -21,17 +22,9 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2000);
 
-await page.click('#mode-play-btn');
 // The descent enters d1 behind a curtain; carving before the world swap
 // lands means the new level erases the arena. Wait it out.
-await page.waitForFunction(
-  () => {
-    const l = window.__game.ctx.levels;
-    return l.current !== null && !l.transitioning;
-  },
-  { timeout: 15000 },
-);
-await page.waitForTimeout(400);
+await startConsoleTestRun(page, { settleMs: 400 });
 
 // Flat metal arena, player parked inside, invulnerable to ambient chaos.
 await page.evaluate(() => {

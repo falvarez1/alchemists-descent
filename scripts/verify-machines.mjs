@@ -5,6 +5,7 @@
 // dev server up:  node scripts/verify-machines.mjs
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -28,8 +29,7 @@ function check(name, ok, detail = '') {
 
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(2500);
-await page.click('#mode-play-btn');
-await page.waitForTimeout(2500);
+await startConsoleTestRun(page, { settleMs: 2500 });
 
 /* The arena helper: carve a sealed stone test chamber near the player,
  * teleport him onto its floor (>= 24 cells of headroom), snap the camera so

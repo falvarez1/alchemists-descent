@@ -29,10 +29,12 @@ import type {
   LevelsApi,
   Mechanism,
   Pickup,
+  CardId,
   RunLoadoutPreset,
   RunStartConfig,
   RunStartResult,
   RunStatus,
+  RunTestKitConfig,
   RuneVault,
   WandLoadoutSave,
   Waystone,
@@ -43,11 +45,12 @@ import { spawnPrefabEnemy } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { makeLevelRuntime } from '@/game/runtime';
 import { validateFindability, wizardMask } from '@/world/validate';
-import { Cell } from '@/sim/CellType';
+import { blocksEntity, Cell } from '@/sim/CellType';
 import { COLOR_FN, emberColor, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
 import { EXTRAS } from '@/world/biomeExtras';
 import { extractRegionGraph } from '@/world/regions';
+import { createDefaultVirtualWorldDef, generateVirtualWindow, materializeChunks } from '@/world/virtual';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
 const CURTAIN_HOLD_MS = 450;
@@ -247,7 +250,7 @@ export class Levels implements LevelsApi {
    * this, not the live state.worldSeed, so build-mode regenerations mid-
    * session cannot shift the seeds of levels not yet generated.
    */
-  private expeditionSeed = 0;
+  private expeditionSeed: number | null = null;
 
   /** Per-waystone accumulated hot ticks for the CURRENT level (reset on enter). */
   private waystoneHeat: number[] = [];
@@ -272,14 +275,37 @@ export class Levels implements LevelsApi {
     const mode = config.mode;
     const worldSource = config.worldSource;
     if (worldSource === 'virtual-world') {
+      if (mode !== 'test') {
+        return {
+          ok: false,
+          message: 'Chunked virtual worlds are playable as disposable test runs only until streaming persistence lands.',
+          mode,
+          worldSource,
+          levelId: null,
+          seed: ctx.state.worldSeed >>> 0,
+          reason: 'virtual-runtime-unavailable',
+        };
+      }
+      this.enterPlayMode(ctx);
+      const seed = config.seed !== undefined && Number.isFinite(config.seed)
+        ? config.seed >>> 0
+        : randomSeed();
+      this.resetRunState(ctx, { clearSave: false });
+      ctx.state.worldSeed = seed;
+      this.expeditionSeed = seed;
+      ctx.state.playtestSource = 'test';
+      this.applyLoadoutPreset(ctx, config.loadout ?? 'advanced');
+      if (config.kit) this.applyTestKit(ctx, config.kit);
+      const runtime = this.createVirtualTestRuntime(ctx, seed);
+      this.enterAdHocRuntime(ctx, runtime, 'EXPLORE THE CHUNKED WORLD PROTOTYPE');
+      ctx.events.emit('toast', { text: 'TEST RUN: CHUNKED VIRTUAL WORLD' });
       return {
-        ok: false,
-        message: 'Chunked virtual worlds are available in the Builder World Map preview, but are not materialized into Play mode yet.',
+        ok: true,
+        message: 'Test run started in the chunked virtual world prototype.',
         mode,
         worldSource,
-        levelId: null,
-        seed: ctx.state.worldSeed >>> 0,
-        reason: 'virtual-runtime-unavailable',
+        levelId: runtime.def.id,
+        seed,
       };
     }
 
@@ -301,7 +327,7 @@ export class Levels implements LevelsApi {
     this.enterPlayMode(ctx);
 
     if (mode === 'normal' && worldSource === 'campaign' && config.continueSave !== false) {
-      if (ctx.state.playtestSource !== null) {
+      if (ctx.state.playtestSource !== null || ctx.state.debugGodMode) {
         this.resetRunState(ctx, { clearSave: false });
       }
       ctx.state.playtestSource = null;
@@ -312,7 +338,7 @@ export class Levels implements LevelsApi {
         mode,
         worldSource,
         levelId: this.current?.def.id ?? null,
-        seed: this.expeditionSeed >>> 0,
+        seed: this.activeExpeditionSeed(ctx),
       };
     }
 
@@ -325,10 +351,11 @@ export class Levels implements LevelsApi {
     ctx.state.playtestSource = mode === 'test' ? 'test' : null;
 
     const preset = config.loadout ?? 'fresh';
-    if (mode === 'normal' && (worldSource !== 'campaign' || levelId !== START_LEVEL || preset !== 'fresh')) {
+    if (mode === 'normal' && (worldSource !== 'campaign' || levelId !== START_LEVEL || preset !== 'fresh' || config.kit)) {
       ctx.state.debugGodMode = true;
     }
     this.applyLoadoutPreset(ctx, preset);
+    if (config.kit) this.applyTestKit(ctx, config.kit);
     this.enterLevel(ctx, levelId);
 
     const runtime = this.current;
@@ -347,13 +374,23 @@ export class Levels implements LevelsApi {
 
   runStatus(ctx: Ctx): RunStatus {
     const rt = this.current;
+    const autosaveBlockReason: RunStatus['autosaveBlockReason'] =
+      ctx.state.mode !== 'play'
+        ? 'not-play'
+        : ctx.state.playtestSource !== null
+          ? 'playtest'
+          : ctx.state.debugGodMode
+            ? 'debug-tainted'
+            : null;
     return {
       mode: ctx.state.mode,
       playtestSource: ctx.state.playtestSource,
       savedExpedition: this.hasSavedExpedition(),
-      autosaveEnabled: ctx.state.mode === 'play' && ctx.state.playtestSource === null && !ctx.state.debugGodMode,
+      autosaveEnabled: autosaveBlockReason === null,
+      autosaveBlockReason,
       debugGodMode: ctx.state.debugGodMode,
-      worldSeed: (this.expeditionSeed || ctx.state.worldSeed) >>> 0,
+      expeditionSeed: this.expeditionSeed,
+      worldSeed: (this.expeditionSeed ?? ctx.state.worldSeed) >>> 0,
       level: rt ? { id: rt.def.id, name: rt.def.name, depth: rt.def.depth } : null,
       player: {
         x: ctx.player.x,
@@ -447,7 +484,7 @@ export class Levels implements LevelsApi {
       const adx = player.x - arch.x;
       const ady = player.y - arch.y;
       if (adx * adx + ady * ady < 49) {
-        const destId = runtime.def.branch ? vaultHostId(this.expeditionSeed) : 'vault';
+        const destId = runtime.def.branch ? vaultHostId(this.activeExpeditionSeed(ctx)) : 'vault';
         if (LEVELS[destId]) {
           ctx.audio.portalWhoosh();
           this.leaveLevel();
@@ -494,7 +531,7 @@ export class Levels implements LevelsApi {
    * no generation, hand-placed enemies kept, no exit (the level IS the game).
    */
   playCurrentWorld(ctx: Ctx): void {
-    if (this.expeditionSeed === 0) this.expeditionSeed = ctx.state.worldSeed >>> 0;
+    if (this.expeditionSeed === null) this.expeditionSeed = ctx.state.worldSeed >>> 0;
     if (this.currentId !== 'custom') this.preCustomCurrentId = this.currentId;
     const def: LevelDef = {
       id: 'custom',
@@ -584,10 +621,11 @@ export class Levels implements LevelsApi {
     for (const [id, blob] of this.savedBlobs) {
       if (!this.levels.has(id)) blobs.push(blob);
     }
+    const expeditionSeed = this.activeExpeditionSeed(ctx);
     const save: ExpeditionSave = {
       v: 1,
       genVersion: GEN_VERSION,
-      expeditionSeed: this.expeditionSeed,
+      expeditionSeed,
       currentId: this.currentId,
       score: ctx.state.score,
       player: {
@@ -642,6 +680,11 @@ export class Levels implements LevelsApi {
     ctx.events.emit('modeChanged', { mode: 'play' });
   }
 
+  private activeExpeditionSeed(ctx: Ctx): number {
+    if (this.expeditionSeed === null) this.expeditionSeed = ctx.state.worldSeed >>> 0;
+    return this.expeditionSeed >>> 0;
+  }
+
   private resetRunState(ctx: Ctx, options: { clearSave: boolean }): void {
     if (options.clearSave) this.abandonExpedition();
     this.levels.clear();
@@ -654,7 +697,7 @@ export class Levels implements LevelsApi {
     this.waystoneHeat = [];
     this.lastEnemiesEmit = -1;
     this._transitioning = false;
-    this.expeditionSeed = 0;
+    this.expeditionSeed = null;
 
     Object.assign(ctx.player, createPlayer());
     ctx.state.score = 0;
@@ -711,6 +754,174 @@ export class Levels implements LevelsApi {
     ctx.state.debugGodMode = true;
     grantFullReviewKit(ctx.player);
     ctx.wands.grantReviewLoadout();
+  }
+
+  private applyTestKit(ctx: Ctx, kit: RunTestKitConfig): void {
+    if (kit.gold !== undefined) {
+      ctx.state.score = Math.max(0, Math.floor(kit.gold));
+      ctx.events.emit('scoreChanged', { score: ctx.state.score });
+    }
+    if (kit.maxHp !== undefined) {
+      ctx.player.maxHp = Math.max(1, Math.floor(kit.maxHp));
+      ctx.player.hp = Math.min(ctx.player.maxHp, Math.max(1, Math.floor(kit.hp ?? ctx.player.maxHp)));
+    } else if (kit.hp !== undefined) {
+      ctx.player.hp = Math.min(ctx.player.maxHp, Math.max(1, Math.floor(kit.hp)));
+    }
+    if (kit.maxLevit !== undefined) {
+      ctx.player.maxLevit = Math.max(1, Math.floor(kit.maxLevit));
+      ctx.player.levit = ctx.player.maxLevit;
+    }
+    if (kit.perks) {
+      for (const perk of kit.perks) ctx.player.perks[perk] = true;
+    }
+    if (kit.cards) {
+      for (const card of kit.cards) {
+        if (!this.hasCard(ctx, card)) ctx.wands.grantCard(ctx, card);
+      }
+    }
+    if (kit.flask) {
+      ctx.flask.state.material = kit.flask.material;
+      ctx.flask.state.count = kit.flask.material === null ? 0 : Math.max(0, Math.min(ctx.flask.state.capacity, Math.floor(kit.flask.count)));
+    }
+  }
+
+  private hasCard(ctx: Ctx, card: CardId): boolean {
+    if (ctx.wands.collection.includes(card)) return true;
+    return ctx.wands.wands.some((wand) => wand.cards.includes(card));
+  }
+
+  private createVirtualTestRuntime(ctx: Ctx, seed: number): LevelRuntime {
+    const def = createDefaultVirtualWorldDef(seed);
+    const chunks = generateVirtualWindow(def, -3, -1, 3, 4);
+    const materialized = materializeChunks(chunks);
+    const world = new World();
+    const srcX = Math.max(0, Math.floor((materialized.world.width - WIDTH) / 2));
+    const srcY = Math.max(0, Math.floor((materialized.world.height - HEIGHT) / 2));
+    for (let y = 0; y < HEIGHT; y++) {
+      const sy = Math.min(materialized.world.height - 1, srcY + y);
+      const dstOff = y * WIDTH;
+      const srcOff = srcX + sy * materialized.world.width;
+      world.types.set(materialized.world.types.subarray(srcOff, srcOff + WIDTH), dstOff);
+      world.colors.set(materialized.world.colors.subarray(srcOff, srcOff + WIDTH), dstOff);
+    }
+    ctx.world = world;
+    ctx.worldgen.spawnHint = null;
+    const spawn = this.findVirtualSpawn(world);
+    this.carveVirtualSpawn(world, spawn.x, spawn.y);
+    ctx.worldgen.spawnHint = spawn;
+    const runtimeDef: LevelDef = {
+      id: 'virtual-test',
+      name: 'CHUNKED VIRTUAL WORLD',
+      biome: 'earthen',
+      depth: 0,
+      nextLevelId: null,
+    };
+    return makeLevelRuntime({
+      def: runtimeDef,
+      world,
+      spawn,
+      regions: extractRegionGraph(world, spawn, spawn),
+      placedPrefabs: materialized.chunks.map((chunk) => ({
+        id: `virtual:${chunk.cx},${chunk.cy}:${chunk.hash}`,
+        x0: (chunk.cx + 3) * def.chunkSize,
+        y0: (chunk.cy + 1) * def.chunkSize,
+        x1: (chunk.cx + 4) * def.chunkSize - 1,
+        y1: (chunk.cy + 2) * def.chunkSize - 1,
+      })),
+    });
+  }
+
+  private findVirtualSpawn(world: World): { x: number; y: number } {
+    const candidates = [Math.floor(WIDTH / 2), Math.floor(WIDTH * 0.35), Math.floor(WIDTH * 0.65)];
+    for (const cx of candidates) {
+      for (let y = 60; y < HEIGHT - 40; y++) {
+        if (this.virtualEntityFree(world, cx, y) && this.virtualFooting(world, cx, y + 1)) {
+          return { x: cx, y };
+        }
+      }
+    }
+    return { x: Math.floor(WIDTH / 2), y: Math.floor(HEIGHT / 2) };
+  }
+
+  private virtualEntityFree(world: World, cx: number, cy: number): boolean {
+    for (let y = cy - 17; y <= cy; y++) {
+      for (let x = cx - 4; x <= cx + 4; x++) {
+        if (!world.inBounds(x, y)) return false;
+        if (blocksEntity(world.types[world.idx(x, y)])) return false;
+      }
+    }
+    return true;
+  }
+
+  private virtualFooting(world: World, cx: number, y: number): boolean {
+    for (let x = cx - 4; x <= cx + 4; x++) {
+      if (world.inBounds(x, y) && blocksEntity(world.types[world.idx(x, y)])) return true;
+    }
+    return false;
+  }
+
+  private carveVirtualSpawn(world: World, cx: number, cy: number): void {
+    for (let y = cy - 28; y <= cy + 6; y++) {
+      for (let x = cx - 22; x <= cx + 22; x++) {
+        if (!world.inBounds(x, y)) continue;
+        const i = world.idx(x, y);
+        if (y >= cy + 2 && y <= cy + 5) {
+          world.types[i] = Cell.Stone;
+          world.colors[i] = packRGB(82, 78, 86);
+        } else {
+          world.types[i] = Cell.Empty;
+          world.colors[i] = EMPTY_COLOR;
+        }
+        world.life[i] = 0;
+        world.charge[i] = 0;
+      }
+    }
+  }
+
+  private enterAdHocRuntime(ctx: Ctx, runtime: LevelRuntime, objective: string): void {
+    this._transitioning = true;
+    const curtain = document.getElementById('level-curtain');
+    if (curtain) {
+      curtain.classList.add('visible');
+      void curtain.offsetHeight;
+    }
+
+    this.levels.set(runtime.def.id, runtime);
+    this.currentId = runtime.def.id;
+    ctx.world = runtime.world;
+    ctx.enemies.length = 0;
+    ctx.enemies.push(...runtime.enemies);
+    ctx.projectiles.length = 0;
+    ctx.shockwaves.length = 0;
+    ctx.particles.clear();
+    ctx.lightning.clear();
+    ctx.input.activeChargingBlackHole = null;
+    ctx.fx.digBeam = null;
+
+    const player = ctx.player;
+    player.x = runtime.spawn.x;
+    player.y = runtime.spawn.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.fx = 0;
+    player.fy = 0;
+    player.dead = false;
+    player.invuln = 60;
+    player.crawling = false;
+    player.crawlT = 0;
+    player.wallGrabT = 0;
+    ctx.camera.snapTo(player.x, player.y);
+
+    this.waystoneHeat = [];
+    this.lastEnemiesEmit = ctx.enemies.length;
+    ctx.events.emit('levelChanged', { depth: runtime.def.depth, name: runtime.def.name });
+    ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
+    ctx.events.emit('objectiveChanged', { text: objective });
+
+    window.setTimeout(() => {
+      curtain?.classList.remove('visible');
+      this._transitioning = false;
+    }, CURTAIN_HOLD_MS);
   }
 
   private serializeLevel(id: string, rt: LevelRuntime): SavedLevelBlob {
@@ -808,9 +1019,10 @@ export class Levels implements LevelsApi {
     ctx.world = world;
     ctx.enemies.length = 0;
 
-    const seed = (this.expeditionSeed ^ this.hashString(def.id)) >>> 0;
+    const expeditionSeed = this.activeExpeditionSeed(ctx);
+    const seed = (expeditionSeed ^ this.hashString(def.id)) >>> 0;
     const pristine = ctx.worldgen.generateLevel(ctx, def, seed, {
-      hostArch: def.id === vaultHostId(this.expeditionSeed),
+      hostArch: def.id === vaultHostId(expeditionSeed),
     });
 
     const savedTypes = new Uint8Array(world.types.length);
@@ -1030,7 +1242,8 @@ export class Levels implements LevelsApi {
     ctx.world = world;
     ctx.enemies.length = 0;
 
-    const seed = (this.expeditionSeed ^ this.hashString(def.id)) >>> 0;
+    const expeditionSeed = this.activeExpeditionSeed(ctx);
+    const seed = (expeditionSeed ^ this.hashString(def.id)) >>> 0;
     const {
       exit,
       waystones,
@@ -1050,7 +1263,7 @@ export class Levels implements LevelsApi {
       vaultArch,
       vaultHoard,
     } = ctx.worldgen.generateLevel(ctx, def, seed, {
-      hostArch: def.id === vaultHostId(this.expeditionSeed),
+      hostArch: def.id === vaultHostId(expeditionSeed),
     });
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.

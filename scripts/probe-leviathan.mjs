@@ -7,6 +7,7 @@
 //   - death pays out a heart + a card tome and does NOT end the run
 // Usage: node scripts/probe-leviathan.mjs [url]
 import { chromium } from 'playwright-core';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -22,14 +23,11 @@ const check = (ok, name, extra = '') => {
 
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1500);
+await startConsoleTestRun(page, { seed: 1, settleMs: 600 });
 
 // ---------------- arena generation + parking ----------------
 const r1 = await page.evaluate(async () => {
-  localStorage.removeItem('noita-expedition');
   const ctx = window.__game.ctx;
-  ctx.state.worldSeed = 1;
-  document.getElementById('mode-play-btn').click();
-  await new Promise((r) => setTimeout(r, 1800));
   ctx.levels.leaveLevel();
   ctx.levels.enterLevel(ctx, 'd4');
   await new Promise((r) => setTimeout(r, 600));

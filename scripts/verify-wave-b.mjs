@@ -2,6 +2,7 @@
 // transition through the well, waystone lighting, waystone respawn.
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { startConsolePlayRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -15,8 +16,7 @@ await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(2500);
 
 // Enter play -> descent starts in D1.
-await page.click('#mode-play-btn');
-await page.waitForTimeout(2500);
+await startConsolePlayRun(page, { settleMs: 2500 });
 
 const d1 = await page.evaluate(() => {
   const g = window.__game;

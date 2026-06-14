@@ -4,6 +4,7 @@
 //   node scripts/verify-findability.mjs [url] [seedCsv]
 // Defaults: http://localhost:5173/  seeds 1,5,1337,42
 import { chromium } from 'playwright-core';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const seeds = (process.argv[3] ?? '1,5,1337,42').split(',').map(Number);
@@ -22,15 +23,12 @@ for (const seed of seeds) {
   });
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
+  await startConsoleTestRun(page, { seed, settleMs: 350 });
 
   const results = await page.evaluate(
-    async ({ SEED, IDS }) => {
-      localStorage.removeItem('noita-expedition');
+    async ({ IDS }) => {
       const ctx = window.__game.ctx;
-      ctx.state.worldSeed = SEED;
       const { validateFindability } = await import('/src/world/validate.ts');
-      document.getElementById('mode-play-btn').click();
-      await new Promise((r) => setTimeout(r, 1800));
 
       const out = [];
       for (const id of IDS) {
@@ -61,7 +59,7 @@ for (const seed of seeds) {
       }
       return out;
     },
-    { SEED: seed, IDS: DEPTHS },
+    { IDS: DEPTHS },
   );
 
   for (const lv of results) {

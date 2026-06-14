@@ -559,6 +559,16 @@ export type RunMode = 'normal' | 'test';
 export type RunWorldSource = 'campaign' | 'campaign-level' | 'virtual-world';
 export type RunLoadoutPreset = 'fresh' | 'advanced' | 'review';
 
+export interface RunTestKitConfig {
+  gold?: number;
+  maxHp?: number;
+  hp?: number;
+  maxLevit?: number;
+  cards?: CardId[];
+  perks?: PerkId[];
+  flask?: { material: number | null; count: number };
+}
+
 export interface RunStartConfig {
   /** Normal progression persists; test mode is disposable and never autosaved. */
   mode: RunMode;
@@ -570,6 +580,8 @@ export interface RunStartConfig {
   seed?: number;
   /** Fresh starter kit, an advanced mid-run kit, or the full review kit. */
   loadout?: RunLoadoutPreset;
+  /** Optional granular test inventory/progression setup layered after the preset. */
+  kit?: RunTestKitConfig;
   /** Normal campaign only: resume local expedition save when one exists. */
   continueSave?: boolean;
 }
@@ -589,7 +601,9 @@ export interface RunStatus {
   playtestSource: PlaytestSource | null;
   savedExpedition: boolean;
   autosaveEnabled: boolean;
+  autosaveBlockReason: 'not-play' | 'playtest' | 'debug-tainted' | null;
   debugGodMode: boolean;
+  expeditionSeed: number | null;
   worldSeed: number;
   level: { id: string; name: string; depth: number } | null;
   player: { x: number; y: number; hp: number; maxHp: number; dead: boolean };

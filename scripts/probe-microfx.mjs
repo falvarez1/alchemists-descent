@@ -1,6 +1,7 @@
 // One-off audit: are the feel-pass micro-interactions actually firing?
 // Spies on ctx.audio methods + EventBus, then drives the trigger conditions.
 import { chromium } from 'playwright-core';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -12,8 +13,7 @@ await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2000);
 
 // Enter play mode and install spies.
-await page.click('#mode-play-btn');
-await page.waitForTimeout(1200);
+await startConsoleTestRun(page, { settleMs: 1200 });
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
   window.__spy = { wandSwap: 0, dryFire: 0, sputter: 0, heartbeat: 0, evWandChanged: 0, evDryFire: 0 };

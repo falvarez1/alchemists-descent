@@ -245,7 +245,15 @@ function makeCtx(): Ctx {
         playtestSource: ctx.state.playtestSource,
         savedExpedition: false,
         autosaveEnabled: ctx.state.mode === 'play' && ctx.state.playtestSource === null && !ctx.state.debugGodMode,
+        autosaveBlockReason: ctx.state.mode !== 'play'
+          ? 'not-play'
+          : ctx.state.playtestSource !== null
+            ? 'playtest'
+            : ctx.state.debugGodMode
+              ? 'debug-tainted'
+              : null,
         debugGodMode: ctx.state.debugGodMode,
+        expeditionSeed: ctx.state.mode === 'play' ? ctx.state.worldSeed : null,
         worldSeed: ctx.state.worldSeed,
         level: current ? { id: current.def.id, name: current.def.name, depth: current.def.depth } : null,
         player: { x: ctx.player.x, y: ctx.player.y, hp: ctx.player.hp, maxHp: ctx.player.maxHp, dead: ctx.player.dead },
@@ -667,7 +675,7 @@ describe('console registry', () => {
   it('starts disposable test runs through the canonical run command', async () => {
     const ctx = makeCtx();
 
-    const started = await ctx.console.exec('run test --level d3 --seed 123 --loadout review');
+    const started = await ctx.console.exec('run test --level d3 --seed 123 --loadout review --gold 250 --cards spark,bomb --perks torchbearer --flask water:300');
     const status = await ctx.console.exec('run status');
 
     expect(started).toMatchObject({
@@ -681,6 +689,21 @@ describe('console registry', () => {
     expect(status).toMatchObject({
       ok: true,
       data: { action: 'status', mode: 'play', playtestSource: 'test', autosaveEnabled: false },
+    });
+  });
+
+  it('treats an explicit level on run new as a selected campaign level', async () => {
+    const ctx = makeCtx();
+
+    const started = await ctx.console.exec('run new --level d3 --seed 0');
+
+    expect(started).toMatchObject({
+      ok: true,
+      data: {
+        action: 'new',
+        run: { mode: 'normal', worldSource: 'campaign-level', levelId: 'd3', seed: 0 },
+        status: { mode: 'play', worldSeed: 0, expeditionSeed: 0 },
+      },
     });
   });
 

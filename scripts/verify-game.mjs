@@ -2,6 +2,7 @@
 // Usage: node scripts/verify-game.mjs [url]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { waitForRunReady } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const outDir = 'verify-out';
@@ -127,10 +128,12 @@ await page.keyboard.press('Tab');
 await page.waitForTimeout(400);
 const backInBuild = await page.evaluate(() => !document.body.classList.contains('play-active'));
 await page.keyboard.press('Tab');
-await page.waitForTimeout(600);
+await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
+await page.evaluate(() => document.querySelector('#run-launcher [data-action="continue"]')?.click());
+await waitForRunReady(page);
 const backInPlay = await page.evaluate(() => document.body.classList.contains('play-active'));
 console.log('tab toggle: backInBuild=', backInBuild, 'backInPlay=', backInPlay);
-if (!backInBuild || !backInPlay) throw new Error('TAB mode roundtrip failed.');
+if (!backInBuild || !backInPlay) throw new Error('TAB launcher roundtrip failed.');
 await page.screenshot({ path: `${outDir}/07-after-tab-roundtrip.png` });
 
 // --- 8) FPS sample ---

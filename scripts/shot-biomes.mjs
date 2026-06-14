@@ -3,6 +3,7 @@
 //   node scripts/shot-biomes.mjs [seed] [url]
 import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const seed = Number(process.argv[2] ?? 7);
 const url = process.argv[3] ?? 'http://localhost:5173/';
@@ -13,13 +14,7 @@ const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await (await browser.newContext()).newPage();
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(2000);
-
-await page.evaluate((SEED) => {
-  localStorage.removeItem('noita-expedition');
-  window.__game.ctx.state.worldSeed = SEED;
-  document.getElementById('mode-play-btn').click();
-}, seed);
-await page.waitForTimeout(1800);
+await startConsoleTestRun(page, { seed, settleMs: 400 });
 
 for (const id of DEPTHS) {
   const dataUrl = await page.evaluate(async (ID) => {
