@@ -1502,8 +1502,10 @@ export class Builder {
     const bottomOpen = !zen && this.workspaceLayout.panels.some((p) => p.dock === 'bottom' && p.open && !(p.id === DEV_CONSOLE_PANEL_ID && devConsoleMaximized));
     const bottomSize = this.openBottomDockSize();
     bottom.style.display = bottomOpen ? 'flex' : 'none';
-    this.el<HTMLDivElement>('builder-workspace').style.gridTemplateRows =
-      bottomOpen ? `auto minmax(0, 1fr) ${bottomSize}px` : 'auto minmax(0, 1fr) 0';
+    // The bottom dock lives in the body grid's center column (row 2), so the
+    // side docks keep their full height; size only the body's stage/bottom rows.
+    this.el<HTMLDivElement>('builder-workspace-body').style.gridTemplateRows =
+      bottomOpen ? `minmax(0, 1fr) ${bottomSize}px` : 'minmax(0, 1fr) 0';
     this.lastWorkspaceSize = { w: Math.round(rootWidth), h: Math.round(this.root.getBoundingClientRect().height || window.innerHeight) };
     let floatingIndex = 0;
     const canClampFloating = this.isOpen && floating.clientWidth > 0 && floating.clientHeight > 0;
@@ -2250,8 +2252,8 @@ export class Builder {
         <div id="builder-dock-guide-right" class="builder-dock-guide bdg-right" data-dock="right"><span>RIGHT</span></div>
         <div id="builder-dock-guide-bottom" class="builder-dock-guide bdg-bottom" data-dock="bottom"><span>BOTTOM</span></div>
       </div>
-      </div>
       <div id="builder-dock-bottom" class="builder-dock" data-dock="bottom"></div>
+      </div>
       <div id="builder-link-graph" style="display:none"></div>
       <div id="builder-assets" style="display:none"></div>
       <div id="builder-virtual-world" style="display:none"></div>
