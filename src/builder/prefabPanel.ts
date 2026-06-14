@@ -51,12 +51,13 @@ export class PrefabPanel {
         <button id="bp-prefab-png" aria-label="Export the selected region's cells as a paintable PNG">PNG&#8599;</button>
         <button id="bp-prefab-gpl" aria-label="Export the material palette as a .gpl swatch file (Aseprite/GIMP)">.GPL</button>
       </div>
-      <input id="bp-prefab-search" placeholder="search prefabs&hellip;" spellcheck="false">
+      <input id="bp-prefab-search" type="search" class="editor-search" placeholder="search prefabs" spellcheck="false">
       <div id="bp-prefab-tags"></div>
       <div id="bp-prefab-list"></div>`;
     this.searchEl = host.querySelector('#bp-prefab-search') as HTMLInputElement;
     this.tagsEl = host.querySelector('#bp-prefab-tags') as HTMLDivElement;
     this.listEl = host.querySelector('#bp-prefab-list') as HTMLDivElement;
+    this.listEl.setAttribute('role', 'listbox');
 
     host.querySelector('#bp-prefab-capture')!.addEventListener('click', () => hooks.onCapture());
     host.querySelector('#bp-prefab-import')!.addEventListener('click', () => hooks.onImport());
@@ -87,7 +88,9 @@ export class PrefabPanel {
     this.tagsEl.innerHTML = '';
     for (const tag of all) {
       const chip = document.createElement('button');
-      chip.className = 'bp-prefab-tag' + (this.tagFilter.has(tag) ? ' active' : '');
+      const tagActive = this.tagFilter.has(tag);
+      chip.className = 'bp-prefab-tag' + (tagActive ? ' active' : '');
+      chip.setAttribute('aria-pressed', tagActive ? 'true' : 'false');
       chip.textContent = '#' + tag;
       chip.addEventListener('click', () => {
         if (this.tagFilter.has(tag)) this.tagFilter.delete(tag);
@@ -111,11 +114,13 @@ export class PrefabPanel {
     const stock = this.builtins.filter((p) => this.matches(p));
     if (mine.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'bp-hint';
-      empty.textContent =
-        this.list.length === 0
-          ? 'Select a region, then CAPTURE — objects, links and lights inside come along.'
-          : 'No library prefabs match the filter.';
+      const isFilterEmpty = this.list.length > 0;
+      // only the filter-empty state is the consistency "no matching" empty —
+      // the capture hint is long-form instructional copy, left as a plain hint
+      empty.className = isFilterEmpty ? 'bp-hint b-empty' : 'bp-hint';
+      empty.textContent = isFilterEmpty
+        ? 'No matching prefabs.'
+        : 'Select a region, then CAPTURE — objects, links and lights inside come along.';
       this.listEl.appendChild(empty);
     }
     for (const p of mine) this.listEl.appendChild(this.card(p, false));
@@ -132,7 +137,12 @@ export class PrefabPanel {
 
   private card(p: PrefabDef, builtin: boolean): HTMLDivElement {
     const card = document.createElement('div');
-    card.className = 'bp-prefab-card' + (this.armedId === p.id ? ' armed' : '');
+    const armed = this.armedId === p.id;
+    card.className = 'bp-prefab-card' + (armed ? ' armed' : '');
+    card.setAttribute('role', 'option');
+    card.setAttribute('tabindex', '-1');
+    card.setAttribute('aria-selected', armed ? 'true' : 'false');
+    card.dataset.prefabId = p.id;
     card.appendChild(this.thumb(p));
 
     const body = document.createElement('div');
@@ -151,10 +161,11 @@ export class PrefabPanel {
 
     const actions = document.createElement('div');
     actions.className = 'bp-prefab-actions';
-    const act = (label: string, title: string, fn: () => void): void => {
+    const act = (label: string, title: string, fn: () => void, cls?: string): void => {
       const b = document.createElement('button');
       b.textContent = label;
       b.setAttribute('aria-label', title);
+      if (cls) b.classList.add(cls);
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         fn();
@@ -165,7 +176,7 @@ export class PrefabPanel {
     act('JSON', 'Export full prefab (.prefab.json)', () => this.hooks.onExportJson(p));
     if (!builtin) {
       act('⚓', 'Edit worldgen anchors', () => this.hooks.onEditAnchors(p));
-      act('×', 'Delete prefab', () => this.hooks.onDelete(p));
+      act('×', 'Delete prefab', () => this.hooks.onDelete(p), 'b-danger');
     }
     card.appendChild(actions);
 

@@ -1,6 +1,8 @@
 import type { DocIssue } from '@/builder/validate';
 import { assessEditorLink } from '@/builder/validate';
 import type { EditorDocument, EditorLink, EditorObject } from '@/builder/document';
+import { builderPanelHeader } from '@/ui/editor/PanelChrome';
+import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 
 export interface LinkGraphEndpoint {
   id: string;
@@ -156,29 +158,29 @@ export function buildLinkGraphModel(options: BuildLinkGraphOptions): LinkGraphMo
 export function renderLinkGraphPanel(model: LinkGraphModel): string {
   const actuatorRows = model.visibleActuators.length > 0
     ? model.visibleActuators.map(renderActuator).join('')
-    : '<div class="bo-empty">No matching actuators</div>';
+    : '<div class="bo-empty b-empty">No matching actuators</div>';
   const brokenRows = model.visibleLinks
     .filter((row) => row.severity !== null || !row.live)
     .map(renderLink)
     .join('');
   const allRows = model.visibleLinks.length > 0
     ? model.visibleLinks.map(renderLink).join('')
-    : '<div class="bo-empty">No matching links</div>';
+    : '<div class="bo-empty b-empty">No matching links</div>';
   return `
-    <div class="bi-head" data-panel-handle>LINK GRAPH <button id="blg-close" type="button">&times;</button></div>
+    ${builderPanelHeader({ title: builderPanelTitle('builder-link-graph'), closeId: 'blg-close', closeLabel: 'Close link graph' })}
     <div class="bo-summary">${model.counts.links} links - ${model.counts.live} live - ${model.counts.dead} dead - ${model.counts.actuators} actuators</div>
-    <div class="bo-search"><input id="blg-search" type="search" spellcheck="false" placeholder="search endpoints, links, warnings" value="${escAttr(model.query)}"></div>
+    <div class="bo-search"><input id="blg-search" class="editor-search" type="search" spellcheck="false" placeholder="search endpoints, links, warnings" value="${escAttr(model.query)}"></div>
     <section class="bo-section">
       <div class="bo-section-title">Actuators</div>
-      <div class="blg-actuators">${actuatorRows}</div>
+      <div class="blg-actuators" role="listbox">${actuatorRows}</div>
     </section>
     <section class="bo-section">
       <div class="bo-section-title">Dead Or Invalid Links</div>
-      <div class="blg-links">${brokenRows || '<div class="bo-empty">No dead links</div>'}</div>
+      <div class="blg-links" role="listbox">${brokenRows || '<div class="bo-empty b-empty">No dead links</div>'}</div>
     </section>
     <section class="bo-section">
       <div class="bo-section-title">All Links</div>
-      <div class="blg-links">${allRows}</div>
+      <div class="blg-links" role="listbox">${allRows}</div>
     </section>`;
 }
 
@@ -188,7 +190,7 @@ function renderActuator(row: LinkGraphActuatorRow): string {
     ? 'no inputs'
     : row.inputs.map((input) => `${input.sequenceIndex ? `${input.sequenceIndex}. ` : ''}${input.from?.kind ?? 'missing'}`).join(', ');
   const outputText = row.outputs.length === 0 ? 'no outputs' : row.outputs.map((output) => output.to?.kind ?? 'missing').join(', ');
-  return `<div class="blg-actuator${row.selected ? ' selected' : ''}${row.severity ? ` ${row.severity}` : ''}" data-select-id="${escAttr(row.endpoint.id)}" data-frame-id="${escAttr(row.endpoint.id)}">
+  return `<div class="blg-actuator${row.selected ? ' selected' : ''}${row.severity ? ` ${row.severity}` : ''}" role="option" tabindex="-1" aria-selected="${row.selected ? 'true' : 'false'}" data-select-id="${escAttr(row.endpoint.id)}" data-frame-id="${escAttr(row.endpoint.id)}">
     <div class="bo-row-title">${esc(row.endpoint.label)} <span class="bo-badge">${esc(row.logic.toUpperCase())}</span>${row.relay ? '<span class="bo-badge">relay</span>' : ''}</div>
     <div class="bo-row-sub">in: ${esc(inputText)}</div>
     <div class="bo-row-sub">out: ${esc(outputText)}</div>
@@ -200,14 +202,14 @@ function renderLink(row: LinkGraphLinkRow): string {
   const status = row.severity ?? (row.live ? 'live' : 'dead');
   const messages = row.messages.length > 0 ? `<div class="blg-msg">${esc(row.messages.join(' | '))}</div>` : '';
   const sequence = row.sequenceIndex ? `<span class="bo-badge">seq ${row.sequenceIndex}</span>` : '';
-  return `<div class="blg-link${row.selected ? ' selected' : ''}${row.severity ? ` ${row.severity}` : ''}" data-link-id="${escAttr(row.id)}" data-select-id="${escAttr(row.to?.id ?? row.from?.id ?? '')}" data-frame-id="${escAttr(row.to?.id ?? row.from?.id ?? '')}">
+  return `<div class="blg-link${row.selected ? ' selected' : ''}${row.severity ? ` ${row.severity}` : ''}" role="option" tabindex="-1" aria-selected="${row.selected ? 'true' : 'false'}" data-link-id="${escAttr(row.id)}" data-select-id="${escAttr(row.to?.id ?? row.from?.id ?? '')}" data-frame-id="${escAttr(row.to?.id ?? row.from?.id ?? '')}">
     <div class="bo-row-title">${esc(row.from?.label ?? `Missing ${row.link.fromId}`)} -&gt; ${esc(row.to?.label ?? `Missing ${row.link.toId}`)}</div>
     <div class="bo-row-sub">${esc(row.link.kind)} - ${esc(row.id)} <span class="bo-badge">${esc(status)}</span>${sequence}</div>
     ${messages}
     <div class="bo-row-actions">
       ${row.from ? `<button type="button" data-select-id="${escAttr(row.from.id)}">Source</button>` : ''}
       ${row.to ? `<button type="button" data-select-id="${escAttr(row.to.id)}">Target</button>` : ''}
-      <button type="button" data-unlink="${escAttr(row.id)}">Unlink</button>
+      <button type="button" class="b-danger" aria-label="Unlink" data-unlink="${escAttr(row.id)}">Unlink</button>
     </div>
   </div>`;
 }

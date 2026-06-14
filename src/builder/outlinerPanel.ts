@@ -3,6 +3,8 @@ import { assessEditorLink } from '@/builder/validate';
 import type { EditorDocument, EditorLight, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
 import type { PrefabDef } from '@/builder/prefablib';
 import type { SpriteAsset } from '@/builder/assets/sprites';
+import { builderPanelHeader } from '@/ui/editor/PanelChrome';
+import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 
 export type OutlinerFilter =
   | 'gameplay'
@@ -158,11 +160,16 @@ export function renderOutlinerPanel(model: OutlinerModel): string {
   const layerRows = model.layers.map(renderLayerRow).join('');
   const rows = model.visibleRows.length > 0
     ? model.visibleRows.map(renderOutlinerRow).join('')
-    : '<div class="bo-empty">No matching rows</div>';
+    : '<div class="bo-empty b-empty">No matching rows</div>';
+  const header = builderPanelHeader({
+    title: builderPanelTitle('builder-outliner'),
+    closeId: 'bo-close',
+    closeLabel: 'Close object outliner',
+  });
   return `
-    <div class="bi-head" data-panel-handle>OUTLINER <button id="bo-close" type="button">&times;</button></div>
+    ${header}
     <div class="bo-summary">${model.counts.objects} objects - ${model.counts.lights} lights - ${model.counts.links} links</div>
-    <div class="bo-search"><input id="bo-search" type="search" spellcheck="false" placeholder="search objects, links, params" value="${escAttr(model.query)}"></div>
+    <div class="bo-search"><input id="bo-search" type="search" class="editor-search" spellcheck="false" placeholder="search objects, links, params" value="${escAttr(model.query)}"></div>
     <div class="bo-chips">${chips}</div>
     <section class="bo-section">
       <div class="bo-section-title">Layer Manager</div>
@@ -170,7 +177,7 @@ export function renderOutlinerPanel(model: OutlinerModel): string {
     </section>
     <section class="bo-section">
       <div class="bo-section-title">Document Rows</div>
-      <div class="bo-rows">${rows}</div>
+      <div class="bo-rows" role="listbox">${rows}</div>
     </section>`;
 }
 
@@ -197,7 +204,7 @@ function renderOutlinerRow(row: OutlinerRow): string {
           <button type="button" data-row-toggle="locked" data-row-id="${escAttr(row.objectId ?? row.lightId ?? '')}" data-row-kind="${row.objectId ? 'object' : 'light'}" data-command-id="builder.toggleSelectedLocked">${row.locked ? 'Unlock' : 'Lock'}</button>
         </div>`
       : '';
-  return `<div class="bo-row ${row.type}${row.selected ? ' selected' : ''}${row.invalid ? ' invalid' : ''}${row.hidden ? ' hidden-row' : ''}" data-row-type="${row.type}"${selectAttr}${selectIdsAttr}${frameAttr}${linkAttr}>
+  return `<div class="bo-row ${row.type}${row.selected ? ' selected' : ''}${row.invalid ? ' invalid' : ''}${row.hidden ? ' hidden-row' : ''}" role="option" tabindex="-1" aria-selected="${row.selected ? 'true' : 'false'}" data-row-type="${row.type}"${selectAttr}${selectIdsAttr}${frameAttr}${linkAttr}>
     <div class="bo-row-main">
       <div class="bo-row-title">${esc(row.label)}</div>
       <div class="bo-row-sub">${esc(row.sublabel)}</div>

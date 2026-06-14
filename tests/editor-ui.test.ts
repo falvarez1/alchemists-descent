@@ -7,7 +7,7 @@ import { overlayLabel, sanitizeOverlayVisibility } from '@/builder/render/Overla
 import { checkboxField, numberField, selectField, vec2Field } from '@/ui/editor/Fields';
 import { MIXED_VALUE, renderInspectorItems, sharedValue } from '@/ui/editor/InspectorSchema';
 import { Keymap, normalizeShortcut, shortcutFromEvent } from '@/ui/editor/Keymap';
-import { normalizePanelChromeHandles, panelChromeHtml } from '@/ui/editor/PanelChrome';
+import { builderPanelHeader, normalizePanelChromeHandles } from '@/ui/editor/PanelChrome';
 import { BUILDER_PANEL_SPECS, createBuilderPanelRegistry, PanelRegistry } from '@/ui/editor/PanelRegistry';
 import { placePopover } from '@/ui/editor/PopoverHost';
 import {
@@ -980,15 +980,18 @@ describe('editor panel registry and chrome', () => {
     expect(host.snapshot().layout.panels[0].dock).toBe('left');
   });
 
-  it('renders panel chrome and normalizes handle elements', () => {
-    const html = panelChromeHtml({
+  it('renders the shared panel header and normalizes handle elements', () => {
+    const html = builderPanelHeader({
       title: 'Danger <Panel>',
-      dock: 'right',
-      actions: [{ id: 'close', label: 'Close <panel>', icon: 'x' }],
+      closeId: 'danger-close',
+      closeLabel: 'Close <panel>',
     });
 
-    expect(html).toContain('Danger &lt;Panel&gt;');
-    expect(html).toContain('data-panel-dock="right"');
+    expect(html).toContain('DANGER &lt;PANEL&gt;');
+    expect(html).toContain('data-panel-handle');
+    expect(html).toContain('class="bi-head"');
+    expect(html).toContain('id="danger-close"');
+    expect(html).toContain('class="b-close"');
     expect(html).toContain('aria-label="Close &lt;panel&gt;"');
 
     if (typeof document !== 'undefined') {

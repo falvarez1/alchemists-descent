@@ -28,8 +28,8 @@ export class SpritePanel {
     private hooks: SpritePanelHooks,
   ) {
     host.innerHTML = `
-      <button id="bp-sprite-import" aria-label="Import animated sprites: Aseprite sheet JSON + PNG paired by basename; a lone PNG asks for a frame grid">IMPORT SPRITE</button>
-      <div id="bp-sprite-list"></div>`;
+      <button id="bp-sprite-import" aria-label="Import animated sprites: Aseprite sheet JSON + PNG paired by basename; a lone PNG asks for a frame grid">Import Sprite</button>
+      <div id="bp-sprite-list" role="listbox"></div>`;
     this.listEl = host.querySelector('#bp-sprite-list') as HTMLDivElement;
     host.querySelector('#bp-sprite-import')!.addEventListener('click', () => hooks.onImport());
   }
@@ -44,7 +44,7 @@ export class SpritePanel {
     this.listEl.innerHTML = '';
     if (this.list.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'bp-hint';
+      empty.className = 'bp-hint b-empty';
       empty.textContent =
         'Aseprite: Export Sprite Sheet with JSON Data, import both files. Arming places animated decor — visual only.';
       this.listEl.appendChild(empty);
@@ -55,7 +55,12 @@ export class SpritePanel {
 
   private row(s: SpriteAsset): HTMLDivElement {
     const row = document.createElement('div');
-    row.className = 'bp-prefab-card bp-sprite-row' + (this.armedId === s.id ? ' armed' : '');
+    const armed = this.armedId === s.id;
+    row.className = 'bp-prefab-card bp-sprite-row' + (armed ? ' armed' : '');
+    row.setAttribute('role', 'option');
+    row.setAttribute('tabindex', '-1');
+    row.setAttribute('aria-selected', armed ? 'true' : 'false');
+    row.dataset.spriteId = s.id;
     row.appendChild(this.thumb(s));
 
     const body = document.createElement('div');
@@ -73,20 +78,21 @@ export class SpritePanel {
 
     const actions = document.createElement('div');
     actions.className = 'bp-prefab-actions';
-    const act = (label: string, title: string, fn: () => void): void => {
+    const act = (label: string, title: string, fn: () => void, cls?: string): void => {
       const b = document.createElement('button');
       b.textContent = label;
       b.setAttribute('aria-label', title);
+      if (cls) b.classList.add(cls);
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         fn();
       });
       actions.appendChild(b);
     };
-    act('EXPORT', 'Export name.sheet.png + name.sprite.json (Aseprite-readable)', () =>
+    act('Export', 'Export name.sheet.png + name.sprite.json (Aseprite-readable)', () =>
       this.hooks.onExport(s),
     );
-    act('×', 'Delete sprite', () => this.hooks.onDelete(s));
+    act('×', 'Delete sprite', () => this.hooks.onDelete(s), 'b-danger');
     row.appendChild(actions);
 
     row.addEventListener('click', () => {

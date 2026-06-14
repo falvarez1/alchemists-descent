@@ -1,6 +1,8 @@
 import type { DocIssue } from '@/builder/validate';
 import { validationRepairActions } from '@/builder/validationActions';
 import { escapeAttr, escapeHtml } from '@/ui/editor/Fields';
+import { builderPanelHeader } from '@/ui/editor/PanelChrome';
+import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 
 const GROUPS: Array<{ severity: DocIssue['severity']; label: string }> = [
   { severity: 'error', label: 'Errors' },
@@ -31,13 +33,13 @@ export function renderValidationPanel(issues: DocIssue[], options: ValidationPan
           <span>${blockerKeys.size} compile blocker${blockerKeys.size === 1 ? '' : 's'} must be repaired first.</span>
         </div>`
       : '';
-  return `<div class="bi-head" data-panel-handle>VALIDATION <button id="b-issues-close" type="button">&times;</button></div>
+  return `${builderPanelHeader({ title: builderPanelTitle('builder-issues'), closeId: 'b-issues-close', closeLabel: 'Close validation issues' })}
     ${blockerBanner}
     <div class="bv-summary">${issues.length} issue${issues.length === 1 ? '' : 's'} - ${count(issues, 'error')} errors - ${count(issues, 'warning')} warnings</div>
-    <div class="bv-filters" role="tablist" aria-label="Validation filters">
+    <div class="bv-filters" role="group" aria-label="Validation filters">
       ${filterButton('all', 'All', 'All issues', issues.length, true)}
-      ${filterButton('error', 'Err', 'Errors', count(issues, 'error'))}
-      ${filterButton('warning', 'Warn', 'Warnings', count(issues, 'warning'))}
+      ${filterButton('error', 'Errors', 'Errors', count(issues, 'error'))}
+      ${filterButton('warning', 'Warnings', 'Warnings', count(issues, 'warning'))}
       ${filterButton('info', 'Info', 'Info', count(issues, 'info'))}
     </div>
     <div class="bv-groups">${groups}</div>`;

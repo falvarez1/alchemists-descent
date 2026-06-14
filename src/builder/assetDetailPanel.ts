@@ -1,6 +1,8 @@
 import { renderAssetPreviewMarkup } from '@/builder/assets/AssetPreview';
 import type { AssetDeletePlan, AssetRecord } from '@/builder/assets/AssetTypes';
 import type { ContentItem } from '@/content/types';
+import { builderPanelHeader } from '@/ui/editor/PanelChrome';
+import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 
 export interface AssetDetailModel {
   asset: AssetRecord | null;
@@ -10,8 +12,8 @@ export interface AssetDetailModel {
 export function renderAssetDetailPanel(model: AssetDetailModel): string {
   if (!model.asset) {
     return `
-      <div class="bi-head" data-panel-handle>ASSET DETAILS <button id="bad-close" type="button">&times;</button></div>
-      <div class="ba-empty">Select an asset to inspect metadata, dependencies, usages, and operations.</div>`;
+      ${builderPanelHeader({ title: builderPanelTitle('builder-asset-details'), closeId: 'bad-close', closeLabel: 'Close asset details' })}
+      <div class="ba-empty b-empty">Select an asset to inspect metadata, dependencies, usages, and operations.</div>`;
   }
   const asset = model.asset;
   const validation = asset.validation.messages.length > 0
@@ -38,7 +40,7 @@ export function renderAssetDetailPanel(model: AssetDetailModel): string {
   const exportLabel = asset.source.storage === 'content-registry' ? 'Export Metadata' : 'Export';
   const openAvailable = asset.kind === 'document' || asset.kind === 'template';
   return `
-    <div class="bi-head" data-panel-handle>ASSET DETAILS <button id="bad-close" type="button">&times;</button></div>
+    ${builderPanelHeader({ title: builderPanelTitle('builder-asset-details'), closeId: 'bad-close', closeLabel: 'Close asset details' })}
     <div class="bad-hero">
       ${renderAssetPreviewMarkup(asset)}
       <div class="bad-title">
@@ -52,7 +54,7 @@ export function renderAssetDetailPanel(model: AssetDetailModel): string {
       <button type="button" data-asset-action="duplicate" data-asset-id="${escAttr(asset.assetId)}" ${duplicateDisabled ? 'disabled' : ''}>Duplicate</button>
       <button type="button" data-asset-action="reimport" data-asset-id="${escAttr(asset.assetId)}" ${reimportDisabled ? 'disabled' : ''}>Reimport</button>
       <button type="button" data-asset-action="export" data-asset-id="${escAttr(asset.assetId)}">${exportLabel}</button>
-      <button type="button" data-asset-action="delete" data-asset-id="${escAttr(asset.assetId)}" ${model.deletePlan?.allowed === false ? 'disabled' : ''}>Delete</button>
+      <button type="button" class="b-danger" data-asset-action="delete" data-asset-id="${escAttr(asset.assetId)}" ${model.deletePlan?.allowed === false ? 'disabled' : ''}>Delete</button>
     </div>
     ${deleteReasons}
     <section class="bad-section">

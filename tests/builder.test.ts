@@ -23,7 +23,6 @@ import {
 } from '@/builder/terrain';
 import { CommandStack, compositeCmd, editDocumentMoodCmd, paintTerrainCmd } from '@/builder/commands';
 import { buildValidationOverlayDiagnostics, playtestBlockingIssues, validateDocument } from '@/builder/validate';
-import { renderIssueRows } from '@/builder/issuePanel';
 import { renderValidationPanel } from '@/builder/validationPanel';
 import { toAuthoredLight } from '@/builder/compile';
 import { PreviewRuntime } from '@/builder/PreviewRuntime';
@@ -369,7 +368,7 @@ describe('builder document', () => {
 
 describe('builder validation', () => {
   it('escapes validation issue text before rendering the issue panel', () => {
-    const html = renderIssueRows([
+    const html = renderValidationPanel([
       { severity: 'error', what: 'duplicate id: "><img src=x onerror=alert(1)>', objId: 'bad' },
     ]);
 

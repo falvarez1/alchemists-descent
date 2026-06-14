@@ -124,7 +124,7 @@ export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
   const deleteTitle = model.batchDeleteBlockedReason ?? 'Delete selected local assets';
   const cards = model.records.length > 0
     ? model.records.map((record) => model.view === 'grid' ? renderAssetCard(record, model.selectedId, model.selectedIds) : renderAssetListRow(record, model.selectedId, model.selectedIds)).join('')
-    : '<div class="ba-empty">No matching assets</div>';
+    : '<div class="ba-empty b-empty">No matching assets</div>';
   return `
     <div class="ba-browser">
       <div class="bi-head ba-head" data-panel-handle>
@@ -186,7 +186,7 @@ export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
         <section class="ba-content" aria-label="Assets">
           <div class="ba-toolbar">
             <button type="button" id="ba-import" class="ba-tool">Import</button>
-            <input id="ba-search" type="search" spellcheck="false" placeholder="Search assets" value="${escAttr(model.query)}">
+            <input id="ba-search" type="search" class="editor-search" spellcheck="false" placeholder="search assets" value="${escAttr(model.query)}">
             <select id="ba-sort" title="Sort assets">
               ${sortOption(model.sort, 'name', 'Name')}
               ${sortOption(model.sort, 'kind', 'Kind')}

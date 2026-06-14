@@ -1,6 +1,7 @@
 import { LEVELS } from '@/config/worldgraph';
 import { randomSeed } from '@/core/rng';
 import type { LevelDef } from '@/core/types';
+import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 import {
   createDefaultVirtualWorldDef,
   TsWorkerBackend,
@@ -102,8 +103,8 @@ export class VirtualWorldPanel {
   private renderShell(): string {
     return `
       <div class="bi-head vw-head" data-panel-handle>
-        <span>WORLD MAP</span>
-        <button id="vw-close" type="button" aria-label="Close world map">&times;</button>
+        <span>${builderPanelTitle('builder-virtual-world').toUpperCase()}</span>
+        <button id="vw-close" type="button" class="b-close" aria-label="Close world map">&times;</button>
       </div>
       <div class="vw-body">
         <aside class="vw-controls" id="vw-controls"></aside>
@@ -159,10 +160,10 @@ export class VirtualWorldPanel {
         <div class="vw-actions">
           <button id="vw-generate" type="button">GENERATE</button>
           <button id="vw-frame" type="button">FRAME</button>
-          <button id="vw-cancel" type="button"${this.status === 'generating' ? '' : ' disabled'}>CANCEL</button>
+          <button id="vw-cancel" type="button" title="Cancel is only available while a window is generating"${this.status === 'generating' ? '' : ' disabled'}>CANCEL</button>
           <button id="vw-clear" type="button">CLEAR CACHE</button>
           <button id="vw-validate" type="button">VALIDATE</button>
-          <button id="vw-materialize" type="button" disabled>MATERIALIZE</button>
+          <button id="vw-materialize" type="button" title="Materialize is not available yet — disabled until fixed-world crop mapping is implemented" disabled>MATERIALIZE</button>
         </div>
       </section>`;
     this.must<HTMLSelectElement>('#vw-profile').value = this.selectedProfile;

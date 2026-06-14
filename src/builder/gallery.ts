@@ -247,15 +247,15 @@ export class Gallery {
     this.root.innerHTML = `
       <div class="bg-head">
         <span class="bg-title">GALLERY</span>
-        <input id="bg-search" placeholder="search… ( / )" spellcheck="false">
-        <span class="bg-hint">&uarr;&darr; browse &middot; &larr;&rarr; states &middot; +/&minus; zoom &middot; ESC close</span>
+        <input id="bg-search" type="search" placeholder="search" spellcheck="false">
+        <span class="bg-hint">/ focus &middot; &uarr;&darr; browse &middot; &larr;&rarr; states &middot; +/&minus; zoom &middot; ESC close</span>
         <div class="bg-actions">
           <button id="bg-view-toggle" type="button" aria-label="Maximize gallery" title="Maximize gallery"></button>
           <button id="bg-close" type="button" aria-label="Close gallery">&times;</button>
         </div>
       </div>
       <div class="bg-body">
-        <div id="bg-list"></div>
+        <div id="bg-list" role="listbox" aria-label="Gallery items"></div>
         <div class="bg-stagewrap">
           <canvas id="bg-stage"></canvas>
           <div class="bg-zoom">
@@ -615,8 +615,12 @@ export class Gallery {
         this.listEl.appendChild(head);
       }
       const row = document.createElement('div');
-      row.className = 'bg-item' + (n === this.selected ? ' sel' : '');
+      const isSel = n === this.selected;
+      row.className = 'bg-item' + (isSel ? ' sel' : '');
       row.dataset.n = String(n);
+      row.setAttribute('role', 'option');
+      row.tabIndex = -1;
+      row.setAttribute('aria-selected', String(isSel));
       const thumb = it.thumb?.();
       if (thumb) {
         thumb.className = 'bg-thumb';
@@ -636,7 +640,7 @@ export class Gallery {
       this.listEl.appendChild(row);
     });
     if (this.filtered.length === 0) {
-      this.listEl.innerHTML = '<div class="bg-empty">nothing matches</div>';
+      this.listEl.innerHTML = '<div class="bg-empty">No matching items</div>';
     }
   }
 
@@ -649,13 +653,13 @@ export class Gallery {
     const chips = it.states
       .map(
         (s, n) =>
-          `<button class="bg-chip${n === this.state && this.spellSel < 0 ? ' on' : ''}" data-s="${n}">${escapeHtml(s)}</button>`,
+          `<button class="bg-chip${n === this.state && this.spellSel < 0 ? ' on' : ''}" data-s="${n}" aria-pressed="${n === this.state && this.spellSel < 0}">${escapeHtml(s)}</button>`,
       )
       .join('');
     const spellChips = (it.spells ?? [])
       .map(
         (s, n) =>
-          `<button class="bg-chip${n === this.spellSel ? ' on' : ''}" data-sp="${n}">${escapeHtml(s)}</button>`,
+          `<button class="bg-chip${n === this.spellSel ? ' on' : ''}" data-sp="${n}" aria-pressed="${n === this.spellSel}">${escapeHtml(s)}</button>`,
       )
       .join('');
     this.infoEl.innerHTML =

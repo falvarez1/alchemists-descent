@@ -159,8 +159,8 @@ import { Keymap } from '@/ui/editor/Keymap';
 import { MenuHost } from '@/ui/editor/MenuHost';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
 import { renderInspectorItems } from '@/ui/editor/InspectorSchema';
-import { normalizePanelChromeHandles } from '@/ui/editor/PanelChrome';
-import { createBuilderPanelRegistry } from '@/ui/editor/PanelRegistry';
+import { builderPanelHeader, normalizePanelChromeHandles } from '@/ui/editor/PanelChrome';
+import { builderPanelTitle, createBuilderPanelRegistry } from '@/ui/editor/PanelRegistry';
 import type { CommandSpec } from '@/ui/editor/CommandRegistry';
 import {
   documentInspectorSchema,
@@ -1003,6 +1003,9 @@ export class Builder {
     // The Builder rides on build mode; leave the descent first if needed.
     if (this.ctx.state.mode === 'play') {
       (document.getElementById('mode-build-btn') as HTMLButtonElement | null)?.click();
+    }
+    if (!this.returningFromPlaytest && this.ctx.state.playtestSource === 'test') {
+      this.ctx.state.playtestSource = null;
     }
     if (intent === 'current-scene') this.adoptCurrentSceneAsDocument();
     this.syncDocBackdropToLive();
@@ -2045,8 +2048,8 @@ export class Builder {
         <button id="b-share" title="Compress the document into a pasteable share code">SHARE</button>
         <button id="b-code" title="Import a level from a share code">CODE</button>
         <span class="b-sep"></span>
-        <button id="b-undo" title="Ctrl+Z">&#8617;</button>
-        <button id="b-redo" title="Ctrl+Y">&#8618;</button>
+        <button id="b-undo" title="Ctrl+Z" aria-label="Undo">&#8617;</button>
+        <button id="b-redo" title="Ctrl+Y" aria-label="Redo">&#8618;</button>
         <span class="b-sep"></span>
         <button id="b-capture" title="Snapshot the live sandbox cells into the document">CAPTURE TERRAIN</button>
         <button id="b-restore" title="Re-decode the document's captured terrain into the live world (clears undo)">RESTORE</button>
@@ -2103,7 +2106,7 @@ export class Builder {
           `<div class="bp-grid bp-grid3">
           <button id="bp-gen-caves" title="Regenerate caves in the document's biome (whole world)">CAVES</button>
           <button id="bp-gen-fort" title="Stamp a fortress into the world">FORT</button>
-          <button id="bp-gen-clear" title="Clear the whole world">CLEAR</button>
+          <button id="bp-gen-clear" class="b-danger" title="Clear the whole world">CLEAR</button>
           <button id="bp-world-map-btn" title="Open the Noita-like virtual chunk world map">MAP</button>
         </div>`,
         )}
@@ -2118,8 +2121,8 @@ export class Builder {
           'palette.lighting',
           'LIGHTING',
           `<button class="bp-tool" data-tool="light"><span class="bp-glyph k-light">*</span>Authored Light</button>
-        <button id="bp-light-toggle" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>
-        <button id="bp-wand-light-toggle" title="Use the mouse cursor as the live player wand light">WAND LIGHT: OFF</button>
+        <button id="bp-light-toggle" aria-pressed="true" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>
+        <button id="bp-wand-light-toggle" aria-pressed="false" title="Use the mouse cursor as the live player wand light">WAND LIGHT: OFF</button>
         <button id="bp-wand-params-btn" title="Open wand light tuning in Global Controls">WAND PARAMS&hellip;</button>`,
         )}
         ${paletteSection('palette.prefabs', 'PREFABS', '<div id="bp-prefab-host"></div>')}
@@ -2140,9 +2143,9 @@ export class Builder {
           `<button id="bp-overlay-btn" title="Readability overlays (O)">OVERLAY: NONE</button>
         <button id="bp-snap-btn" title="Snap placements and drags to a grid">SNAP: OFF</button>
         <button id="bp-sym-btn" title="Mirror terrain painting across the axis (world center; a region recenters it)">SYM: OFF</button>
-        <button id="bp-assets-btn" title="Open the Project Asset Browser">ASSETS...</button>
-        <button id="bp-outliner-btn" title="Find, select, hide, and lock authored records">OUTLINER...</button>
-        <button id="bp-link-graph-btn" title="Inspect trigger, relay, rune, and actuator links">LINK GRAPH...</button>`,
+        <button id="bp-assets-btn" title="Open the Project Asset Browser">ASSETS&hellip;</button>
+        <button id="bp-outliner-btn" title="Find, select, hide, and lock authored records">OUTLINER&hellip;</button>
+        <button id="bp-link-graph-btn" title="Inspect trigger, relay, rune, and actuator links">LINK GRAPH&hellip;</button>`,
         )}
         ${paletteSection(
           'palette.parameters',
@@ -2209,33 +2212,33 @@ export class Builder {
       <div id="builder-asset-details" style="display:none"></div>
       <div id="builder-prefab-details" style="display:none"></div>
       <div id="builder-world" style="display:none">
-        <div class="bi-head" data-panel-handle>WORLD GENERATION <button id="bw-close">&times;</button></div>
+        ${builderPanelHeader({ title: builderPanelTitle('builder-world'), closeId: 'bw-close', closeLabel: 'Close world generation' })}
         <div id="bw-controls"></div>
       </div>
       <div id="builder-matparams" style="display:none">
-        <div class="bi-head" data-panel-handle>MATERIAL PARAMETERS <button id="bm-close">&times;</button></div>
+        ${builderPanelHeader({ title: builderPanelTitle('builder-matparams'), closeId: 'bm-close', closeLabel: 'Close material parameters' })}
         <div id="bm-controls"></div>
       </div>
       <div id="builder-global" style="display:none">
-        <div class="bi-head" data-panel-handle>GLOBAL CONTROLS <button id="bg-close">&times;</button></div>
+        ${builderPanelHeader({ title: builderPanelTitle('builder-global'), closeId: 'bgl-close', closeLabel: 'Close global controls' })}
         <div id="bg-controls"></div>
       </div>
       <div id="builder-postfx" style="display:none">
-        <div class="bi-head" data-panel-handle>POST PROCESSING <button id="bf-close">&times;</button></div>
+        ${builderPanelHeader({ title: builderPanelTitle('builder-postfx'), closeId: 'bf-close', closeLabel: 'Close post processing' })}
         <div id="bf-controls"></div>
       </div>
       <div id="builder-proc" style="display:none">
-        <div class="bi-head" data-panel-handle>PROCEDURAL PASS <button id="bp-proc-close">&times;</button></div>
+        ${builderPanelHeader({ title: builderPanelTitle('builder-proc'), closeId: 'bp-proc-close', closeLabel: 'Close procedural pass' })}
         <div class="bi-row"><span>pass</span><select id="bp-pass">${PASSES.map(
           (p) => `<option value="${p.id}">${p.label}</option>`,
         ).join('')}</select></div>
-        <div class="bi-row"><span>seed</span><input id="bp-seed" type="number" value="1337"><button id="bp-dice" title="Re-roll seed">&#9860;</button></div>
-        <div class="bi-row"><span>density</span><input id="bp-density" type="range" min="5" max="100" value="50"></div>
+        <div class="bi-row"><span>seed</span><input id="bp-seed" type="number" value="1337" min="0" step="1"><button id="bp-dice" class="b-icon" title="Re-roll seed" aria-label="Re-roll seed">&#9860;</button></div>
+        <div class="bi-row"><span>density</span><input id="bp-density" type="range" min="5" max="100" value="50" aria-label="Procedural density"><b id="bp-density-val">50</b></div>
         <div class="bi-row"><span>target</span><b id="bp-target">whole level</b></div>
         <div class="bi-row"><span>material</span><b id="bp-material">&mdash;</b></div>
         <div class="bp-actions">
           <button id="bp-preview">PREVIEW</button>
-          <button id="bp-apply" class="b-accent">APPLY</button>
+          <button id="bp-apply" class="b-primary">APPLY</button>
           <button id="bp-discard">DISCARD</button>
         </div>
         <div class="bp-hint" id="bp-status">Cell passes preview before<br>committing; population passes<br>apply directly (undoable).</div>
@@ -4704,13 +4707,16 @@ export class Builder {
     this.el('bp-world-map-btn').addEventListener('click', () => this.runUiCommand('builder.virtualWorldPanel'));
     this.el('bw-close').addEventListener('click', () => this.closeSidePanel('world'));
     this.el('bp-global-btn').addEventListener('click', () => this.runUiCommand('builder.globalControlsPanel'));
-    this.el('bg-close').addEventListener('click', () => this.closeSidePanel('global'));
+    this.el('bgl-close').addEventListener('click', () => this.closeSidePanel('global'));
     this.el('bp-postfx-btn').addEventListener('click', () => this.runUiCommand('builder.postProcessingPanel'));
     this.el('bf-close').addEventListener('click', () => this.closeSidePanel('post'));
     this.el('bp-mat-btn').addEventListener('click', () => this.runUiCommand('builder.materialPanel'));
     this.el('bm-close').addEventListener('click', () => this.closeSidePanel('mat'));
     this.el('bp-dice').addEventListener('click', () => {
       this.el<HTMLInputElement>('bp-seed').value = String(1 + Math.floor(Math.random() * 999999));
+    });
+    this.el('bp-density').addEventListener('input', () => {
+      this.el('bp-density-val').textContent = this.el<HTMLInputElement>('bp-density').value;
     });
     this.el('bp-pass').addEventListener('change', () => this.syncProcPanel());
     this.el('bp-preview').addEventListener('click', () => this.procRun(true));

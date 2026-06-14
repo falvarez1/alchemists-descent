@@ -1,32 +1,40 @@
-import type { DockRegion } from '@/ui/editor/Workspace';
 import { escapeAttr, escapeHtml } from '@/ui/editor/Fields';
 
-export interface PanelChromeAction {
-  id: string;
-  label: string;
-  icon?: string;
-  pressed?: boolean;
-  disabled?: boolean;
-}
-
-export interface PanelChromeRenderOptions {
+export interface BuilderPanelHeaderOptions {
+  /** Visible title. Pass the registry title (see `builderPanelTitle`); rendered upper-cased. */
   title: string;
-  dock?: DockRegion;
+  /** Stable id for the close button, kept for existing wiring + headless probes (e.g. `bo-close`). */
+  closeId?: string;
+  /** Accessible label for the icon-only close button. Defaults to `Close <title>`. */
+  closeLabel?: string;
+  /** Optional command id stamped on the close button. */
+  closeCommandId?: string;
+  /** Render the drag-handle affordance (default true). */
   handle?: boolean;
-  actions?: readonly PanelChromeAction[];
+  /** Extra header-trailing markup (e.g. action buttons) rendered before the close button. */
+  actions?: string;
 }
 
 export interface NormalizePanelChromeOptions {
   fallbackHandleSelectors?: readonly string[];
 }
 
-export function panelChromeHtml(options: PanelChromeRenderOptions): string {
+/**
+ * The single shared Builder panel title bar. Emits the real convention used
+ * across every docked panel (`.bi-head` + `data-panel-handle`) so the registry
+ * handle-selectors and headless probes keep working, plus a consistent
+ * ARIA-labelled `.b-close` button. Title text is upper-cased from one source
+ * (callers pass the registry title) to stop OUTLINER/VALIDATION drift.
+ */
+export function builderPanelHeader(options: BuilderPanelHeaderOptions): string {
   const handle = options.handle === false ? '' : ' data-panel-handle';
-  const dock = options.dock ? ` data-panel-dock="${escapeAttr(options.dock)}"` : '';
-  const actions = (options.actions ?? []).map(panelActionHtml).join('');
-  return `<div class="editor-panel-chrome"${handle}${dock}><span class="editor-panel-title">${escapeHtml(
-    options.title,
-  )}</span>${actions ? `<span class="editor-panel-actions">${actions}</span>` : ''}</div>`;
+  const close = options.closeId
+    ? `<button id="${escapeAttr(options.closeId)}" type="button" class="b-close" aria-label="${escapeAttr(
+        options.closeLabel ?? `Close ${options.title}`,
+      )}"${options.closeCommandId ? ` data-command-id="${escapeAttr(options.closeCommandId)}"` : ''}>&times;</button>`
+    : '';
+  const trailing = `${options.actions ?? ''}${close}`;
+  return `<div class="bi-head"${handle}>${escapeHtml(options.title.toUpperCase())}${trailing ? ` ${trailing}` : ''}</div>`;
 }
 
 export function normalizePanelChromeHandles(panel: HTMLElement, options: NormalizePanelChromeOptions = {}): HTMLElement[] {
@@ -40,13 +48,4 @@ export function normalizePanelChromeHandles(panel: HTMLElement, options: Normali
     handle.draggable = false;
   }
   return handles;
-}
-
-function panelActionHtml(action: PanelChromeAction): string {
-  const classes = ['editor-panel-action'];
-  if (action.pressed) classes.push('pressed');
-  const icon = action.icon ? `<span aria-hidden="true">${escapeHtml(action.icon)}</span>` : '';
-  return `<button type="button" class="${classes.join(' ')}" data-panel-action="${escapeAttr(action.id)}" aria-label="${escapeAttr(
-    action.label,
-  )}"${action.disabled ? ' disabled aria-disabled="true"' : ''}>${icon}</button>`;
 }

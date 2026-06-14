@@ -304,6 +304,17 @@ export function createBuilderPanelRegistry(): PanelRegistry {
   return registry;
 }
 
+const BUILDER_PANEL_TITLES = new Map(BUILDER_PANEL_SPECS.map((spec) => [spec.id, spec.title]));
+
+/**
+ * The single source of truth for a panel's visible title. Panel headers render
+ * from this (via `builderPanelHeader`) so hand-rolled header text cannot drift
+ * from the registry / command palette / focus commands.
+ */
+export function builderPanelTitle(id: string): string {
+  return BUILDER_PANEL_TITLES.get(id) ?? id;
+}
+
 function normalizePanelSpec(spec: PanelSpec): PanelSpec {
   return {
     ...spec,

@@ -277,7 +277,7 @@ body.play-active #viewport-container { padding: 0; }
 }
 .run-launcher.visible { display: flex; animation: overlay-in 0.12s ease; }
 .run-launcher-panel {
-    width: min(760px, 96vw); max-height: min(640px, 92vh); display: grid;
+    width: min(980px, 96vw); max-height: min(720px, 92vh); display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden;
     border: 1px solid #263442; border-radius: 7px;
     background: rgba(9, 13, 19, 0.98); box-shadow: 0 24px 70px rgba(0,0,0,0.66);
@@ -296,7 +296,7 @@ body.play-active #viewport-container { padding: 0; }
 }
 .run-launcher-close:hover { border-color: #f87171; color: #ffd9d9; }
 .run-launcher-body {
-    min-height: 0; display: grid; grid-template-columns: minmax(190px, 0.78fr) minmax(260px, 1.22fr);
+    min-height: 0; display: grid; grid-template-columns: minmax(190px, 0.62fr) minmax(420px, 1.38fr);
     gap: 14px; padding: 14px; overflow: auto;
 }
 .run-launcher-column { display: grid; gap: 8px; align-content: start; }
@@ -311,7 +311,8 @@ body.play-active #viewport-container { padding: 0; }
     border-color: #38bdf8; background: rgba(16, 27, 37, 0.96);
 }
 .run-launcher-choice:disabled { opacity: 0.45; cursor: not-allowed; }
-.run-launcher-form { display: grid; gap: 11px; align-content: start; }
+.run-launcher-form { display: grid; gap: 12px; align-content: start; }
+.run-launcher-form-grid, .run-launcher-kit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
 .run-launcher-form label { display: grid; gap: 6px; color: #8ea6bd; font: 900 10px/1 var(--mono); letter-spacing: 1.4px; text-transform: uppercase; }
 .run-launcher-form select, .run-launcher-form input {
     min-width: 0; height: 34px; border: 1px solid #2c3c4d; border-radius: 4px;
@@ -321,6 +322,28 @@ body.play-active #viewport-container { padding: 0; }
 .run-launcher-form input { padding: 0 9px; box-sizing: border-box; }
 .run-launcher-form select:disabled, .run-launcher-form input:disabled { opacity: 0.55; }
 .run-launcher-seed { display: grid; grid-template-columns: minmax(0, 1fr) 82px; gap: 8px; }
+.run-launcher-kit {
+    display: grid; gap: 12px; padding-top: 12px; border-top: 1px solid #1d2935;
+}
+.run-launcher-kit.disabled { opacity: 0.48; }
+.run-launcher-fieldset {
+    min-width: 0; margin: 0; padding: 9px; border: 1px solid #223140; border-radius: 5px;
+}
+.run-launcher-fieldset legend {
+    padding: 0 5px; color: #7dd3fc; font: 900 10px/1 var(--mono); letter-spacing: 1.5px; text-transform: uppercase;
+}
+.run-launcher-check-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;
+}
+.run-launcher-check-grid.perks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.run-launcher-form .run-launcher-check {
+    min-width: 0; display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: 6px;
+    min-height: 28px; padding: 5px 6px; border: 1px solid #1c2a37; border-radius: 4px;
+    background: rgba(10, 15, 22, 0.72); color: #d8e7f6; letter-spacing: 0;
+    font: 800 10px/1.15 var(--mono); text-transform: none;
+}
+.run-launcher-form .run-launcher-check input { width: 13px; height: 13px; margin: 0; accent-color: #38bdf8; }
+.run-launcher-form .run-launcher-check span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-launcher-seed button, .run-launcher-start {
     height: 34px; border: 1px solid #365168; border-radius: 4px;
     background: #101620; color: #dbeafe; font: 900 10px/1 var(--mono); letter-spacing: 1.2px;
@@ -334,6 +357,7 @@ body.play-active #viewport-container { padding: 0; }
 }
 @media (max-width: 720px) {
     .run-launcher-body { grid-template-columns: 1fr; }
+    .run-launcher-form-grid, .run-launcher-kit-grid, .run-launcher-check-grid, .run-launcher-check-grid.perks { grid-template-columns: 1fr; }
     .run-launcher-choice { min-height: 58px; }
 }
 
@@ -2566,3 +2590,232 @@ body.builder-playtest-active #mode-play-btn.active {
 .bp-pop-tags { color: #7dd3fc; }
 .bp-pop-hint { color: #50596b; line-height: 1.5; }
 .bp-prefab-subhead { font-size: 8px; font-weight: 800; letter-spacing: 2px; color: #5b7187; margin: 8px 0 2px; }
+
+/* ============================================================
+   BUILDER UI CONSISTENCY LAYER  (audit remediation, 2026-06-14)
+   ------------------------------------------------------------
+   One shared visual vocabulary across the per-panel class
+   families (bp-/bi-/bo-/blg-/ba-/bad-/bpd-/bv-/vw-). Implemented
+   as a token set + grouped overrides appended LAST so existing
+   class names keep working (headless probes + vitest assert
+   dozens of them). New shared classes (.b-close/.b-empty/
+   .b-primary/.b-danger/.editor-popover/.editor-search) back
+   changed markup. gallery (#builder-gallery) and backdrop
+   (#builder-backdrop) are a deliberately separate sans-serif
+   "modal browser" surface and are unified only with each other.
+   ============================================================ */
+#builder-root, #builder-gallery, #builder-backdrop, #dev-console {
+    --bui-section-fz: 9px;
+    --bui-section-fw: 800;
+    --bui-section-ls: 1px;
+    --bui-section-color: #5b7187;
+    --bui-panel-title-fz: 9px;
+    --bui-panel-title-color: #7c90a6;
+    --bui-empty-color: #5b7187;
+    --bui-accent: #38bdf8;
+    --bui-danger-border: #441a1a;
+    --bui-danger-bg: #160c0c;
+    --bui-danger-color: #ff8a8a;
+    --bui-danger-hi-bg: #441a1a;
+    --bui-danger-hi-color: #ffd9d9;
+    --bui-primary-border: #22c55e;
+    --bui-primary-bg: #0c1f12;
+    --bui-primary-color: #86efac;
+    --bui-primary-hi-bg: #122a1c;
+    --bui-primary-hi-color: #d9fbe5;
+}
+
+/* ---- Interior section headings: ONE mono micro-caps token ----
+   Collapses bp-head / bi-head(section) / bp-prefab-subhead /
+   bo-/bad-/bpd-section-title / bv-group-title onto one spec.
+   bi-head used as a panel drag handle keeps its handle styling
+   (:not([data-panel-handle]) excludes it). */
+#builder-root .bp-head,
+#builder-root .bi-head:not([data-panel-handle]),
+#builder-root .bp-prefab-subhead,
+#builder-root .bo-section-title,
+#builder-root .bad-section-title,
+#builder-root .bpd-section-title,
+#builder-root .bv-group-title {
+    font-family: var(--mono);
+    font-size: var(--bui-section-fz);
+    font-weight: var(--bui-section-fw);
+    letter-spacing: var(--bui-section-ls);
+    color: var(--bui-section-color);
+    text-transform: uppercase;
+    margin: 0;
+}
+/* gallery + backdrop section headers: keep the sans modal-browser
+   family, but make the two consistent with each other. */
+#builder-gallery .bg-section,
+#builder-gallery .bg-ihead,
+#builder-backdrop .bb-section-title {
+    font-size: var(--bui-section-fz);
+    font-weight: var(--bui-section-fw);
+    letter-spacing: 1.2px;
+    color: #5a6878;
+    text-transform: uppercase;
+}
+
+/* ---- "Primary / emphasis section" accent-bar header ----
+   Unifies the two accent-bar idioms (bw-title + vw-title). */
+#builder-root .bw-title,
+#builder-root .vw-title {
+    font-size: 10px; font-weight: 800; color: #d6e6f5;
+    letter-spacing: 0.4px; text-transform: none;
+    border-left: 2px solid var(--bui-accent); background: #111720;
+    border-radius: 0 3px 3px 0; padding: 3px 6px; margin-bottom: 4px;
+}
+
+/* ---- Panel title bars: unify the docked editor-chrome headers ----
+   builder-panel-title + [data-panel-handle] already share a rule;
+   pull dev-console + virtual-world heads onto the same type ramp. */
+#builder-root [data-panel-handle],
+#builder-root .builder-panel-title,
+#dev-console .dev-console-head,
+#builder-root #builder-virtual-world .vw-head {
+    font-size: var(--bui-panel-title-fz);
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+/* ---- Shared close button (docked editor panels) ----
+   Square, ARIA-labelled in markup, consistent red destructive hover. */
+#builder-root .b-close {
+    width: 20px; height: 20px; min-width: 20px; flex: 0 0 auto; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid transparent; border-radius: 3px; background: transparent;
+    color: #63768a; font-size: 14px; line-height: 1; cursor: pointer;
+}
+#builder-root .b-close:hover,
+#builder-root .b-close:focus-visible {
+    border-color: #f87171; color: #ffd9d9; background: #1b0f12; outline: none;
+}
+
+/* ---- Shared empty / hint state ---- */
+#builder-root .b-empty,
+#builder-root .bi-empty,
+#builder-root .bo-empty,
+#builder-root .ba-empty,
+#builder-root .bpd-empty,
+#builder-root .bad-message,
+#builder-root .bpd-message,
+#builder-root .bp-hint {
+    color: var(--bui-empty-color);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.6;
+    padding: 6px;
+    text-transform: none;
+}
+#builder-root .bad-message, #builder-root .bpd-message { padding: 0; }
+
+/* ---- Shared list count / summary line ---- */
+#builder-root .bo-summary,
+#builder-root .bv-summary,
+#builder-root .ba-summary {
+    color: #6f8090; font-family: var(--mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.4px; text-transform: uppercase;
+}
+
+/* ---- Destructive (danger) buttons: ONE treatment ----
+   .b-danger backs new markup; existing destructive buttons are
+   grouped onto the same token so every delete/remove/clear matches. */
+#builder-root .b-danger,
+#builder-root #bi-delete,
+#builder-root #builder-bar #b-exit,
+#builder-root .ba-tool.danger,
+#builder-root .bad-actions button[data-asset-action="delete"] {
+    border-color: var(--bui-danger-border);
+    color: var(--bui-danger-color);
+    background: var(--bui-danger-bg);
+}
+#builder-root .b-danger:hover,
+#builder-root #bi-delete:hover,
+#builder-root #builder-bar #b-exit:hover,
+#builder-root .ba-tool.danger:hover:not(:disabled),
+#builder-root .bad-actions button[data-asset-action="delete"]:hover:not(:disabled) {
+    background: var(--bui-danger-hi-bg);
+    color: var(--bui-danger-hi-color);
+    border-color: var(--bui-danger-border);
+}
+
+/* ---- Primary (confirm) buttons: ONE treatment ----
+   Green = confirm/apply/generate. (Toolbar .b-accent amber stays
+   the distinct "playtest" affordance.) */
+#builder-root .b-primary {
+    border-color: var(--bui-primary-border);
+    color: var(--bui-primary-color);
+    background: var(--bui-primary-bg);
+}
+#builder-root .b-primary:hover:not(:disabled) {
+    background: var(--bui-primary-hi-bg);
+    color: var(--bui-primary-hi-color);
+    border-color: var(--bui-primary-border);
+}
+
+/* ---- Shared popover chrome (PopoverHost adds .editor-popover) ----
+   Base chrome so matpop / prefab-pop / command menu share one look;
+   per-#id rules still layer size/content specifics on top. */
+.editor-popover {
+    position: fixed; box-sizing: border-box;
+    background: rgba(10,13,18,0.97); border: 1px solid #2c3a4c; border-radius: 5px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+    font-family: var(--mono); color: #d6e6f5;
+}
+
+/* ---- Search inputs: unify the docked editor-chrome search fields ----
+   .editor-search backs new markup; existing fields grouped to match
+   the canonical .bo-search look. (gallery #bg-search stays sans family.) */
+#builder-root .editor-search,
+#builder-root .bo-search input,
+#builder-root #bp-prefab-search,
+#builder-root #ba-search {
+    width: 100%; box-sizing: border-box; min-width: 0;
+    background: #070b10; border: 1px solid #1b2735; border-radius: 3px;
+    color: #d6e6f5; font-family: var(--mono); font-size: 10px; padding: 4px 6px;
+}
+#builder-root .editor-search:focus,
+#builder-root .bo-search input:focus,
+#builder-root #bp-prefab-search:focus,
+#builder-root #ba-search:focus { border-color: var(--bui-accent); outline: none; }
+
+/* ---- Filter chips: unify the docked editor-chrome chips ----
+   One shape + typography; active state = accent. (Prefab tags keep
+   their magenta theme via active color only; gallery chips stay sans.) */
+#builder-root .bo-chip,
+#builder-root .bp-prefab-tag,
+#builder-root .ba-chip,
+#builder-root .bv-filters button {
+    border-radius: 4px;
+    font-family: var(--mono); font-size: 9px; font-weight: 800;
+    letter-spacing: 0.3px; text-transform: uppercase;
+    padding: 2px 6px;
+}
+#builder-root .bo-chip[aria-pressed="true"],
+#builder-root .ba-chip[aria-pressed="true"],
+#builder-root .bv-filters button[aria-pressed="true"] {
+    border-color: var(--bui-accent); color: #d9f4ff; background: #0b2330;
+}
+
+/* ---- List rows: consistent selected + hover affordance ----
+   bo-/blg- and ba-card/ba-row already pair up; align selected colour. */
+#builder-root .bo-row.selected,
+#builder-root .blg-link.selected,
+#builder-root .blg-actuator.selected,
+#builder-root .ba-card.selected,
+#builder-root .ba-row.selected {
+    border-color: var(--bui-accent); background: #0b1e2b;
+}
+
+/* Interactive rows that are keyboard-focusable get a consistent ring. */
+#builder-root .bo-row:focus-visible,
+#builder-root .blg-link:focus-visible,
+#builder-root .blg-actuator:focus-visible,
+#builder-root .ba-card:focus-visible,
+#builder-root .ba-row:focus-visible,
+#builder-root .bp-prefab-card:focus-visible {
+    outline: 1px solid var(--bui-accent); outline-offset: -1px;
+}

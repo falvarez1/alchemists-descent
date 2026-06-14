@@ -1,6 +1,8 @@
 import type { AssetRecord } from '@/builder/assets/AssetTypes';
 import { PREFAB_VARIANTS } from '@/builder/prefablib';
 import type { PrefabAnchor, PrefabDef, PrefabVariantId } from '@/builder/prefablib';
+import { builderPanelHeader } from '@/ui/editor/PanelChrome';
+import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 
 export interface PrefabDetailModel {
   prefab: PrefabDef | null;
@@ -12,8 +14,8 @@ export interface PrefabDetailModel {
 export function renderPrefabDetailPanel(model: PrefabDetailModel): string {
   if (!model.prefab) {
     return `
-      <div class="bi-head" data-panel-handle>PREFAB DETAILS <button id="bpd-close" type="button">&times;</button></div>
-      <div class="bpd-empty">Select a prefab from the prefab palette or Asset Browser.</div>`;
+      ${builderPanelHeader({ title: builderPanelTitle('builder-prefab-details'), closeId: 'bpd-close', closeLabel: 'Close prefab details' })}
+      <div class="bpd-empty b-empty">Select a prefab from the prefab palette or Asset Browser.</div>`;
   }
   const prefab = model.prefab;
   const validation = model.asset?.validation;
@@ -23,7 +25,7 @@ export function renderPrefabDetailPanel(model: PrefabDetailModel): string {
   const anchors = prefab.anchors ?? [];
   const anchorDots = anchors.map((anchor) => ({ anchor, position: anchorPreviewPosition(anchor, prefab, 220, 140) }));
   return `
-    <div class="bi-head" data-panel-handle>PREFAB DETAILS <button id="bpd-close" type="button">&times;</button></div>
+    ${builderPanelHeader({ title: builderPanelTitle('builder-prefab-details'), closeId: 'bpd-close', closeLabel: 'Close prefab details' })}
     <div class="bpd-panel">
       <div class="bpd-hero">
         <div class="bpd-preview-shell">

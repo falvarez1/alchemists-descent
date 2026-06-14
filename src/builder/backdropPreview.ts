@@ -110,9 +110,9 @@ export class BackdropPreview {
         </div>
       </div>
       <div class="bb-body">
-        <div class="bb-profile-list">
+        <div class="bb-profile-list" role="listbox" aria-label="Backdrop profiles">
           <div class="bb-section-title">PROFILES</div>
-          <button class="bb-profile" data-profile="global" type="button">GLOBAL DEFAULT</button>
+          <button class="bb-profile" data-profile="global" type="button" role="option" tabindex="-1" aria-selected="false">GLOBAL DEFAULT</button>
           ${this.profiles.map((level) => this.profileButton(level)).join('')}
         </div>
         <div class="bb-controls">
@@ -201,7 +201,7 @@ export class BackdropPreview {
 
   private profileButton(level: LevelDef): string {
     const label = level.branch ? level.name : `D${level.depth} ${level.name}`;
-    return `<button class="bb-profile" data-profile="${level.id}" type="button">
+    return `<button class="bb-profile" data-profile="${level.id}" type="button" role="option" tabindex="-1" aria-selected="false">
       <span>${label}</span><small>${level.biome}</small>
     </button>`;
   }
@@ -213,8 +213,8 @@ export class BackdropPreview {
         <div class="bb-layer-head">
           <img class="bb-layer-thumb" src="${spec.src}" alt="">
           <label><input type="checkbox" data-bb-visible> ${spec.label}</label>
-          <button type="button" data-bb-solo>SOLO</button>
-          <button type="button" data-bb-layer-reset>RESET</button>
+          <button type="button" data-bb-solo aria-label="Solo this layer">SOLO</button>
+          <button type="button" data-bb-layer-reset aria-label="Reset this layer">RESET</button>
         </div>
         <div class="bb-layer-file">${spec.file}</div>
         ${this.numberControl('speed', '0', '1.5', '0.01', 'data-bb-speed', 'data-bb-speed-num')}
@@ -540,18 +540,28 @@ export class BackdropPreview {
     const playtestProfile = this.hooks?.getPlaytestProfileId?.() ?? null;
     for (const btn of this.root.querySelectorAll<HTMLButtonElement>('[data-profile]')) {
       const id = btn.dataset.profile as BackdropProfileId;
-      btn.classList.toggle('active', id === this.selectedProfile);
+      const selected = id === this.selectedProfile;
+      btn.classList.toggle('active', selected);
+      btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+      btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
       btn.classList.toggle('overridden', id !== 'global' && settings.levels[id]?.enabled === true);
       btn.classList.toggle('playtest', id !== 'global' && id === playtestProfile);
     }
   }
 
   private syncToggles(): void {
-    this.root.querySelector('#bb-follow')?.classList.toggle('active', this.followCamera);
-    this.root.querySelector('#bb-terrain')?.classList.toggle('active', this.showTerrain);
-    this.root.querySelector('#bb-copy-all')?.classList.toggle('active', this.copyAllPending);
+    this.setTogglePressed('#bb-follow', this.followCamera);
+    this.setTogglePressed('#bb-terrain', this.showTerrain);
+    this.setTogglePressed('#bb-copy-all', this.copyAllPending);
     this.root.querySelector('#bb-apply')?.toggleAttribute('disabled', !this.dirty);
     this.root.querySelector('#bb-revert')?.toggleAttribute('disabled', !this.dirty);
+  }
+
+  private setTogglePressed(selector: string, on: boolean): void {
+    const btn = this.root.querySelector(selector);
+    if (!btn) return;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 
   private syncRow(row: HTMLElement, id: BackdropLayerId, disabled: boolean): void {
@@ -559,7 +569,11 @@ export class BackdropPreview {
     row.classList.toggle('solo', this.soloLayer === id);
     row.classList.toggle('muted', this.soloLayer !== null && this.soloLayer !== id);
     for (const input of row.querySelectorAll<HTMLInputElement>('input')) input.disabled = disabled;
-    for (const btn of row.querySelectorAll<HTMLButtonElement>('button')) btn.disabled = disabled;
+    for (const btn of row.querySelectorAll<HTMLButtonElement>('button')) {
+      btn.disabled = disabled;
+      if (disabled) btn.title = 'Enable the level override to edit this layer';
+      else btn.removeAttribute('title');
+    }
     const visible = row.querySelector<HTMLInputElement>('[data-bb-visible]');
     const speed = row.querySelector<HTMLInputElement>('[data-bb-speed]');
     const speedNum = row.querySelector<HTMLInputElement>('[data-bb-speed-num]');
