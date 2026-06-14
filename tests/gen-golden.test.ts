@@ -48,10 +48,10 @@ function fnv1a(bytes: Uint8Array): string {
 /** Recorded from the pre-overhaul generator. Re-record ONLY for deliberate,
  *  commit-flagged generation changes. */
 const GOLDEN: Record<number, { hash: string; spawn: { x: number; y: number } }> = {
-  1: { hash: '523194be', spawn: { x: 800, y: 550 } },
-  5: { hash: '4c7a31b8', spawn: { x: 800, y: 413 } },
-  1337: { hash: '47797577', spawn: { x: 800, y: 396 } },
-  123456789: { hash: '44ae5a2a', spawn: { x: 800, y: 542 } },
+  1: { hash: '3f8861f4', spawn: { x: 800, y: 550 } },
+  5: { hash: '496f57e3', spawn: { x: 800, y: 413 } },
+  1337: { hash: 'e8e81b0d', spawn: { x: 800, y: 396 } },
+  123456789: { hash: '52d2a4e0', spawn: { x: 800, y: 542 } },
 };
 
 describe('earthen generateCaves golden hashes', () => {

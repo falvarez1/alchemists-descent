@@ -1,3 +1,4 @@
+import { sanitizeBackdropSettings, saveBackdropSettings } from '@/config/backdrop';
 import { LEVELS } from '@/config/worldgraph';
 import type { CommandInfo, CommandResult, ConsoleApi, Ctx, EnemyKind, LevelRuntime, Mechanism, Pickup } from '@/core/types';
 import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
@@ -130,7 +131,8 @@ function resolveTarget(ctx: Ctx, args: string[], command: string): TargetedArgs 
 
   const builderOpen = isBuilderOpen();
   const current = ctx.levels.current;
-  const inCustomPlaytest = ctx.state.mode === 'play' && current?.def.id === 'custom';
+  const builderPlaytestActive = isBuilderPlaytestActive(ctx);
+  const builderPlaytestRuntime = isBuilderPlaytestRuntime(ctx);
   let target = parsed.target;
   const explicit = target !== undefined;
 
@@ -150,7 +152,7 @@ function resolveTarget(ctx: Ctx, args: string[], command: string): TargetedArgs 
         ),
       };
     }
-    target = ctx.state.mode === 'play' ? (inCustomPlaytest ? 'builder-playtest' : 'expedition') : 'sandbox';
+    target = ctx.state.mode === 'play' ? (builderPlaytestActive ? 'builder-playtest' : 'expedition') : 'sandbox';
   }
 
   if (target === 'builder-document') {
@@ -185,7 +187,7 @@ function resolveTarget(ctx: Ctx, args: string[], command: string): TargetedArgs 
       }),
     };
   }
-  if (target === 'expedition' && (ctx.state.mode !== 'play' || inCustomPlaytest)) {
+  if (target === 'expedition' && (ctx.state.mode !== 'play' || builderPlaytestActive)) {
     return {
       ok: false,
       result: result(false, `${command} target expedition requires normal Play, not Sandbox or Builder Playtest.`, {
@@ -194,18 +196,20 @@ function resolveTarget(ctx: Ctx, args: string[], command: string): TargetedArgs 
         target,
         mode: ctx.state.mode,
         level: current?.def.id ?? null,
+        playtestSource: ctx.state.playtestSource,
       }),
     };
   }
-  if (target === 'builder-playtest' && !inCustomPlaytest) {
+  if (target === 'builder-playtest' && !builderPlaytestRuntime) {
     return {
       ok: false,
-      result: result(false, `${command} target builder-playtest requires a disposable custom runtime.`, {
+      result: result(false, `${command} target builder-playtest requires an active Builder-owned disposable custom runtime.`, {
         code: 'target-inactive',
         command,
         target,
         mode: ctx.state.mode,
         level: current?.def.id ?? null,
+        playtestSource: ctx.state.playtestSource,
       }),
     };
   }
@@ -219,7 +223,8 @@ function resolveReadTarget(ctx: Ctx, args: string[], command: string): TargetedA
 
   const builderOpen = isBuilderOpen();
   const current = ctx.levels.current;
-  const inCustomPlaytest = ctx.state.mode === 'play' && current?.def.id === 'custom';
+  const builderPlaytestActive = isBuilderPlaytestActive(ctx);
+  const builderPlaytestRuntime = isBuilderPlaytestRuntime(ctx);
   let target = parsed.target;
   const explicit = target !== undefined;
 
@@ -235,7 +240,7 @@ function resolveReadTarget(ctx: Ctx, args: string[], command: string): TargetedA
         }),
       };
     }
-    target = ctx.state.mode === 'play' ? (inCustomPlaytest ? 'builder-playtest' : 'expedition') : 'sandbox';
+    target = ctx.state.mode === 'play' ? (builderPlaytestActive ? 'builder-playtest' : 'expedition') : 'sandbox';
   }
 
   if (target === 'builder-document') {
@@ -282,7 +287,7 @@ function resolveReadTarget(ctx: Ctx, args: string[], command: string): TargetedA
       }),
     };
   }
-  if (target === 'expedition' && (ctx.state.mode !== 'play' || inCustomPlaytest)) {
+  if (target === 'expedition' && (ctx.state.mode !== 'play' || builderPlaytestActive)) {
     return {
       ok: false,
       result: result(false, `${command} target expedition requires normal Play, not Sandbox or Builder Playtest.`, {
@@ -291,18 +296,20 @@ function resolveReadTarget(ctx: Ctx, args: string[], command: string): TargetedA
         target,
         mode: ctx.state.mode,
         level: current?.def.id ?? null,
+        playtestSource: ctx.state.playtestSource,
       }),
     };
   }
-  if (target === 'builder-playtest' && !inCustomPlaytest) {
+  if (target === 'builder-playtest' && !builderPlaytestRuntime) {
     return {
       ok: false,
-      result: result(false, `${command} target builder-playtest requires a disposable custom runtime.`, {
+      result: result(false, `${command} target builder-playtest requires an active Builder-owned disposable custom runtime.`, {
         code: 'target-inactive',
         command,
         target,
         mode: ctx.state.mode,
         level: current?.def.id ?? null,
+        playtestSource: ctx.state.playtestSource,
       }),
     };
   }
@@ -329,6 +336,14 @@ function blockBuilderPlaytestPersistentState(command: string, target: ConsoleTar
 
 function requireNoBuilderPlaytestPersistentState(command: string, target: ConsoleTarget): CommandResult | null {
   return blockBuilderPlaytestPersistentState(command, target);
+}
+
+function isBuilderPlaytestActive(ctx: Ctx): boolean {
+  return ctx.state.mode === 'play' && ctx.state.playtestSource === 'builder';
+}
+
+function isBuilderPlaytestRuntime(ctx: Ctx): boolean {
+  return isBuilderPlaytestActive(ctx) && ctx.levels.current?.def.id === 'custom';
 }
 
 function coordBase(ctx: Ctx, target: ConsoleTarget): { x: number; y: number } {
@@ -629,6 +644,7 @@ function activePlayRuntime(ctx: Ctx): LevelRuntime | null {
 
 function runtimeForTarget(ctx: Ctx, target: ConsoleTarget, command: string): LevelRuntime | CommandResult {
   const runtime = ctx.levels.current;
+  const builderPlaytestActive = isBuilderPlaytestActive(ctx);
   if (target === 'sandbox') {
     return result(false, `${command} target sandbox has no level-runtime metadata source.`, {
       code: 'runtime-unavailable',
@@ -639,20 +655,22 @@ function runtimeForTarget(ctx: Ctx, target: ConsoleTarget, command: string): Lev
   if (!runtime) {
     return result(false, `No active ${target} runtime to inspect.`, { code: 'runtime-missing', command, target });
   }
-  if (target === 'expedition' && runtime.def.id === 'custom') {
+  if (target === 'expedition' && builderPlaytestActive) {
     return result(false, `${command} target expedition cannot inspect Builder Playtest runtime.`, {
       code: 'target-inactive',
       command,
       target,
       level: runtime.def.id,
+      playtestSource: ctx.state.playtestSource,
     });
   }
-  if (target === 'builder-playtest' && runtime.def.id !== 'custom') {
-    return result(false, `${command} target builder-playtest requires the custom runtime.`, {
+  if (target === 'builder-playtest' && (!builderPlaytestActive || runtime.def.id !== 'custom')) {
+    return result(false, `${command} target builder-playtest requires an active Builder-owned custom runtime.`, {
       code: 'target-inactive',
       command,
       target,
       level: runtime.def.id,
+      playtestSource: ctx.state.playtestSource,
     });
   }
   return runtime;
@@ -859,6 +877,12 @@ function resolveParamPath(ctx: Ctx, path: string): ResolvedParamPath | CommandRe
     if (!(key in owner)) return result(false, `Unknown postFx parameter "${key}"`, { code: 'parse-param-path', path });
     return { owner, key, current: owner[key], canonical: `postFx.${key}` };
   }
+  if (parts[0] === 'backdrop' && parts[1] === 'layers' && parts.length >= 4) {
+    const owner = ctx.params.backdrop.layers[parts[2] as keyof typeof ctx.params.backdrop.layers] as unknown as ParamOwner | undefined;
+    const key = parts[3];
+    if (!owner || !(key in owner)) return result(false, `Unknown backdrop parameter "${parts.slice(1).join('.')}"`, { code: 'parse-param-path', path });
+    return { owner, key, current: owner[key], canonical: `backdrop.layers.${parts[2]}.${key}` };
+  }
   return result(false, `Unknown parameter path "${path}"`, { code: 'parse-param-path', path });
 }
 
@@ -980,6 +1004,9 @@ function paramSuggestions(ctx: Ctx, prefix: string): string[] {
   }
   for (const [spell, params] of Object.entries(ctx.params.spells)) {
     for (const key of Object.keys(params)) paths.push(`spells.${spell}.${key}`);
+  }
+  for (const [layer, params] of Object.entries(ctx.params.backdrop.layers)) {
+    for (const key of Object.keys(params)) paths.push(`backdrop.layers.${layer}.${key}`);
   }
   return matching(paths, prefix);
 }
@@ -1644,11 +1671,18 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
       const next = parseParamValue(args[1], resolved.current);
       if (isCommandResult(next)) return next;
       resolved.owner[resolved.key] = next;
-      syncKnownParamInputs(resolved.canonical, next);
-      return result(true, `${resolved.canonical}: ${String(resolved.current)} -> ${String(next)}`, {
+      let value = next;
+      if (resolved.canonical.startsWith('backdrop.')) {
+        ctx.params.backdrop = sanitizeBackdropSettings(ctx.params.backdrop);
+        saveBackdropSettings(ctx.params.backdrop);
+        const reread = resolveParamPath(ctx, resolved.canonical);
+        if (!isCommandResult(reread)) value = reread.current;
+      }
+      syncKnownParamInputs(resolved.canonical, value);
+      return result(true, `${resolved.canonical}: ${String(resolved.current)} -> ${String(value)}`, {
         path: resolved.canonical,
         oldValue: resolved.current,
-        value: next,
+        value,
         tainted: false,
       });
     },

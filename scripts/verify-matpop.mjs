@@ -45,6 +45,7 @@ const popState = (sel) =>
       tags: pop.querySelector('.bp-pop-tags')?.textContent ?? '',
       desc: pop.querySelector('.bp-pop-desc')?.textContent ?? '',
       props: pop.querySelectorAll('.bp-pop-prop').length,
+      parent: pop.parentElement?.tagName ?? '',
       onScreen: r.left >= 0 && r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth,
     };
   }, sel);
@@ -52,6 +53,7 @@ const popState = (sel) =>
 await hoverToolbarMat(35); // Aurum Catalyst
 let s = await popState('#lt-matpop');
 check('toolbar popover appears on hover', !!s, 'popover missing/hidden');
+check('toolbar popover is portal-mounted', !!s && s.parent === 'BODY', JSON.stringify(s));
 check('catalyst: name', !!s && s.head.includes('Aurum Catalyst'), JSON.stringify(s));
 check('catalyst: classification', !!s && s.tags.includes('powder'), JSON.stringify(s));
 check('catalyst: description', !!s && s.desc.includes('Gold Powder'), JSON.stringify(s));
@@ -91,6 +93,7 @@ if (box) {
   await page.waitForTimeout(120);
   s = await popState('#bp-matpop');
   check('builder popover appears on hover', !!s, 'popover missing/hidden');
+  check('builder popover is portal-mounted', !!s && s.parent === 'BODY', JSON.stringify(s));
   check(
     'builder catalyst: name + description + props',
     !!s && s.head.includes('Aurum Catalyst') && s.desc.includes('Gold Powder') && s.props >= 3,

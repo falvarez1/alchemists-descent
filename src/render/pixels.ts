@@ -1,4 +1,4 @@
-import type { Ctx } from '@/core/types';
+import type { BackdropLayerId, Ctx } from '@/core/types';
 
 /**
  * Render-layer interfaces. Sprites, the frame composer, lighting, background,
@@ -41,10 +41,23 @@ export interface LightField {
   sample(wx: number, wy: number): LightSample;
 }
 
-/** Parallax backdrop layers baked at world size (bgFar 0.35x, bgNear 0.62x scroll). */
+export interface ParallaxBitmapLayer {
+  readonly id: BackdropLayerId;
+  readonly label: string;
+  readonly file: string;
+  readonly src: string;
+  readonly defaultSpeed: number;
+  version: number;
+  width: number;
+  height: number;
+  pixels: Uint8ClampedArray;
+  loaded: boolean;
+}
+
+/** Image-backed parallax backdrop layers. Each PNG carries its own alpha. */
 export interface ParallaxLayers {
-  readonly bgFar: Float32Array;
-  readonly bgNear: Float32Array;
+  readonly backdropLayers: readonly ParallaxBitmapLayer[];
+  readonly ready: boolean;
 }
 
 /** A black-hole image lens as the composer feeds it to the distortion pass. */

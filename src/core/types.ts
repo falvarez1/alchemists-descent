@@ -444,8 +444,37 @@ export interface PostFxSettings {
   exposure: number;
 }
 
+export type BackdropLayerId = 'back' | 'second' | 'third' | 'fourth' | 'front';
+
+export interface BackdropLayerSettings {
+  /** Camera multiplier: lower = farther away, higher = closer to the playfield. */
+  speed: number;
+  /** Per-layer alpha multiplier for art-direction tweaks without re-exporting PNGs. */
+  opacity: number;
+  /** Source-pixel offset before wrapping. */
+  offsetX: number;
+  offsetY: number;
+  /** Image scale in screen pixels per source pixel. */
+  scale: number;
+  visible: boolean;
+}
+
+export interface BackdropProfile {
+  layers: Record<BackdropLayerId, BackdropLayerSettings>;
+}
+
+export interface BackdropLevelProfile extends BackdropProfile {
+  /** False or missing = inherit the global profile. */
+  enabled: boolean;
+}
+
+export interface BackdropSettings extends BackdropProfile {
+  levels: Partial<Record<string, BackdropLevelProfile>>;
+}
+
 export interface GameParams {
   global: GlobalParams;
+  backdrop: BackdropSettings;
   materials: Record<number, MaterialParams>;
   spells: Record<SpellId, SpellParams>;
 }
@@ -510,6 +539,8 @@ export interface GameStateData {
    * reads this in build mode so mood authoring doesn't need a playtest.
    */
   editorLights: AuthoredLight[] | null;
+  /** Transient source for disposable playtest runtimes. Null for normal Play/Sandbox. */
+  playtestSource: 'builder' | null;
 }
 
 export interface Keys {
@@ -541,6 +572,8 @@ export interface InputState {
   pourHeld: boolean;
   /** Held while X is down (play mode): drink the flask's contents. */
   drinkHeld: boolean;
+  /** Release all held gameplay inputs through the owning input manager. */
+  releaseHeldInput?: () => void;
 }
 
 export interface FxState {
@@ -1171,6 +1204,8 @@ export interface WandsApi {
   grantCard(ctx: Ctx, id: CardId): void;
   /** Move a card between collection and a wand slot (bench UI). */
   slotCard(wand: 0 | 1, slot: number, id: CardId | null): void;
+  /** Invalidate cached spell programs after tooling restores wand state in place. */
+  invalidatePrograms(): void;
   /** Save-game support: capture / restore the full wand loadout. */
   snapshotLoadout(): WandLoadoutSave;
   loadLoadout(data: WandLoadoutSave): void;
@@ -1404,6 +1439,10 @@ export interface LevelRuntime {
   boss?: { x: number; y: number; kind?: EnemyKind } | null;
   /** Designer-placed lights from a compiled Builder document or worldgen prefabs. */
   authoredLights?: AuthoredLight[];
+  /** Optional document-owned backdrop profile for custom/playtest runtimes. */
+  backdrop?: BackdropSettings;
+  /** Level profile used when resolving `backdrop.levels` for custom runtimes. */
+  backdropLevelId?: string | null;
   /** Builder/prefab hazard emitters: drip real cells on their cadence. */
   emitters?: HazardEmitter[];
   /** Authored prefabs stamped into this level by worldgen (audit/debug). */

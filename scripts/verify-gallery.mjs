@@ -34,6 +34,60 @@ await page.waitForTimeout(400);
 await page.click('#b-gallery');
 await page.waitForTimeout(500);
 check('gallery opens', await page.isVisible('#builder-gallery'));
+const modalRect = await page.evaluate(() => {
+  const gallery = document.getElementById('builder-gallery');
+  const toggle = document.getElementById('bg-view-toggle');
+  const close = document.getElementById('bg-close');
+  const r = gallery.getBoundingClientRect();
+  const tr = toggle.getBoundingClientRect();
+  const cr = close.getBoundingClientRect();
+  return {
+    w: Math.round(r.width),
+    h: Math.round(r.height),
+    max: gallery.classList.contains('maximized'),
+    toggleText: toggle.textContent,
+    toggleLabel: toggle.getAttribute('aria-label'),
+    toggleW: Math.round(tr.width),
+    toggleH: Math.round(tr.height),
+    closeW: Math.round(cr.width),
+    closeH: Math.round(cr.height),
+  };
+});
+check('gallery opens as a smaller modal by default', !modalRect.max && modalRect.w < 1450 && modalRect.h < 870, JSON.stringify(modalRect));
+check(
+  'gallery view toggle is an icon-sized button',
+  modalRect.toggleText === '' &&
+    modalRect.toggleLabel === 'Maximize gallery' &&
+    modalRect.toggleW === modalRect.closeW &&
+    modalRect.toggleH === modalRect.closeH,
+  JSON.stringify(modalRect),
+);
+await page.click('#bg-view-toggle');
+await page.waitForTimeout(150);
+const maxRect = await page.evaluate(() => {
+  const el = document.getElementById('builder-gallery');
+  const toggle = document.getElementById('bg-view-toggle');
+  const r = el.getBoundingClientRect();
+  return { w: Math.round(r.width), h: Math.round(r.height), max: el.classList.contains('maximized'), label: toggle.getAttribute('aria-label'), text: toggle.textContent };
+});
+check('gallery view toggle expands to the Builder workspace', maxRect.max && maxRect.w >= 1490 && maxRect.h >= 840 && maxRect.label === 'Restore gallery' && maxRect.text === '', JSON.stringify(maxRect));
+await page.click('#bg-view-toggle');
+await page.waitForTimeout(150);
+const restoredRect = await page.evaluate(() => {
+  const el = document.getElementById('builder-gallery');
+  const toggle = document.getElementById('bg-view-toggle');
+  const r = el.getBoundingClientRect();
+  return { w: Math.round(r.width), h: Math.round(r.height), max: el.classList.contains('maximized'), label: toggle.getAttribute('aria-label'), text: toggle.textContent };
+});
+check(
+  'gallery view toggle restores the smaller modal',
+  !restoredRect.max &&
+    Math.abs(restoredRect.w - modalRect.w) <= 2 &&
+    Math.abs(restoredRect.h - modalRect.h) <= 2 &&
+    restoredRect.label === 'Maximize gallery' &&
+    restoredRect.text === '',
+  JSON.stringify({ modalRect, restoredRect }),
+);
 
 const sections = await page.$$eval('#builder-gallery .bg-section', (els) => els.map((e) => e.textContent));
 check(

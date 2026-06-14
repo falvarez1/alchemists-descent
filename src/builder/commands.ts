@@ -310,6 +310,26 @@ export function editLightCmd(light: EditorLight, patch: Partial<EditorLight>): C
   };
 }
 
+export function editDocumentMoodCmd(patch: Partial<NonNullable<EditorDocument['mood']>>): Command {
+  let prev: EditorDocument['mood'] | undefined;
+  let captured = false;
+  return {
+    label: 'edit document mood',
+    do: (doc) => {
+      if (!captured) {
+        prev = doc.mood ? { ...doc.mood } : undefined;
+        captured = true;
+      }
+      const current = doc.mood ?? { ambient: null, ambience: '' };
+      doc.mood = { ...current, ...patch };
+    },
+    undo: (doc) => {
+      if (prev === undefined) delete doc.mood;
+      else doc.mood = { ...prev };
+    },
+  };
+}
+
 /* ---------------- composite (procedural population passes) ---------------- */
 
 export function compositeCmd(label: string, cmds: Command[]): Command {

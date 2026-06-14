@@ -158,11 +158,11 @@ export interface ResolvedSprite {
 }
 
 /**
- * Resolve a decor's spriteId for instantiation: document-embedded assets
- * first (a shared/imported level must look right even before its sprites
- * are merged), then the localStorage library. Decoded ONCE per cache —
- * thirty torches share one set of frame buffers. Unresolvable ids cache
- * null: a missing visual must never break compile or generation.
+ * Resolve a decor's spriteId for instantiation: local library first (the
+ * freshest copy for Builder-side sprite edits), then document-embedded assets
+ * as the shared/imported fallback. Decoded ONCE per cache — thirty torches
+ * share one set of frame buffers. Unresolvable ids cache null: a missing
+ * visual must never break compile or generation.
  */
 export function resolveRuntimeSprite(
   spriteId: string,
@@ -171,7 +171,7 @@ export function resolveRuntimeSprite(
 ): ResolvedSprite | null {
   const hit = cache.get(spriteId);
   if (hit !== undefined) return hit;
-  const asset = docSprites?.find((s) => s.id === spriteId) ?? getStoredSprite(spriteId);
+  const asset = getStoredSprite(spriteId) ?? docSprites?.find((s) => s.id === spriteId);
   const resolved = asset ? { asset, sprite: decodeRuntimeSprite(asset) } : null;
   cache.set(spriteId, resolved);
   return resolved;

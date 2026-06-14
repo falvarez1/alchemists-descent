@@ -1,4 +1,5 @@
 import { Cell } from '@/sim/CellType';
+import { loadBackdropSettings } from '@/config/backdrop';
 import type {
   GameParams,
   GlobalParams,
@@ -105,6 +106,7 @@ export const SPELL_ORDER: SpellId[] = [
 export function createGameParams(): GameParams {
   return {
     global: GLOBAL_PARAMS,
+    backdrop: loadBackdropSettings(),
     materials: MATERIAL_PARAMS,
     spells: SPELL_PARAMS,
   };

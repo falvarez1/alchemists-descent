@@ -175,6 +175,7 @@ export class Gallery {
   private infoEl!: HTMLDivElement;
   private searchEl!: HTMLInputElement;
   private captionEl!: HTMLDivElement;
+  private viewToggleEl!: HTMLButtonElement;
 
   private items: GalleryItem[] = [];
   private filtered: GalleryItem[] = [];
@@ -187,6 +188,7 @@ export class Gallery {
   private frame = 1;
   private raf = 0;
   private openFlag = false;
+  private maximized = false;
   private caption = '';
   private captionT = 0;
   private warned = new Set<string>();
@@ -247,7 +249,10 @@ export class Gallery {
         <span class="bg-title">GALLERY</span>
         <input id="bg-search" placeholder="search… ( / )" spellcheck="false">
         <span class="bg-hint">&uarr;&darr; browse &middot; &larr;&rarr; states &middot; +/&minus; zoom &middot; ESC close</span>
-        <button id="bg-close" aria-label="Close gallery">&times;</button>
+        <div class="bg-actions">
+          <button id="bg-view-toggle" type="button" aria-label="Maximize gallery" title="Maximize gallery"></button>
+          <button id="bg-close" type="button" aria-label="Close gallery">&times;</button>
+        </div>
       </div>
       <div class="bg-body">
         <div id="bg-list"></div>
@@ -268,6 +273,8 @@ export class Gallery {
     this.infoEl = this.root.querySelector('#bg-info')!;
     this.searchEl = this.root.querySelector('#bg-search')!;
     this.captionEl = this.root.querySelector('#bg-caption')!;
+    this.viewToggleEl = this.root.querySelector('#bg-view-toggle')!;
+    this.viewToggleEl.addEventListener('click', () => this.setMaximized(!this.maximized));
     this.root.querySelector('#bg-close')!.addEventListener('click', () => this.close());
     this.stage.addEventListener('mousemove', (e) => {
       const r = this.stage.getBoundingClientRect();
@@ -289,6 +296,7 @@ export class Gallery {
       });
     }
     document.addEventListener('keydown', this.onKey, true);
+    this.setMaximized(false);
   }
 
   get isOpen(): boolean {
@@ -309,6 +317,15 @@ export class Gallery {
     this.root.style.display = 'none';
     cancelAnimationFrame(this.raf);
     this.rig = null;
+  }
+
+  private setMaximized(maximized: boolean): void {
+    this.maximized = maximized;
+    this.root.classList.toggle('maximized', maximized);
+    this.viewToggleEl.classList.toggle('restore-icon', maximized);
+    this.viewToggleEl.title = maximized ? 'Restore gallery' : 'Maximize gallery';
+    this.viewToggleEl.setAttribute('aria-label', this.viewToggleEl.title);
+    this.viewToggleEl.setAttribute('aria-pressed', String(maximized));
   }
 
   private onKey = (e: KeyboardEvent): void => {

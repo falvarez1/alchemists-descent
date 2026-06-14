@@ -46,6 +46,7 @@ import { PlacementLedger, carveRect, tunnelTo } from '@/world/connect';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
+import { polishCaveTerrain } from '@/world/terrainPolish';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
 import { stampSecrets } from '@/world/secrets';
@@ -445,6 +446,15 @@ export class WorldGen implements WorldGenApi {
           world.colors[x + y * WIDTH] = waterColor();
         }
       }
+    }
+
+    // Final terrain polish runs after all rng-driven cave dressing so it
+    // cannot perturb rejection-loop draw counts. It only fills terrain-shaped
+    // air defects, using neighboring painted rock/crown colors. The lock-dense
+    // Gilded Vault and timber scaffold routes keep their original thin-route
+    // topology because generated locks are tuned tightly around them.
+    if (ctx.state.currentBiome !== 'gilded' && ctx.state.currentBiome !== 'timber') {
+      polishCaveTerrain(world, { seed, minY: MIN_Y, floorBand: FLOOR_BAND });
     }
   }
 

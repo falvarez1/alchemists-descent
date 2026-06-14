@@ -74,6 +74,8 @@ export class InputManager {
     private canvas: HTMLCanvasElement,
     private ctx: Ctx,
   ) {
+    ctx.input.releaseHeldInput = () => this.clearHeldInput();
+
     // ===================== Input: Mouse =====================
     canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
     canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
@@ -248,7 +250,11 @@ export class InputManager {
   }
 
   private shouldIgnoreKeyboard(e: KeyboardEvent): boolean {
-    return e.isComposing || Boolean(document.querySelector('.app-dialog-root')) || isEditableTarget(e.target);
+    return (
+      e.isComposing ||
+      Boolean(document.querySelector('.app-dialog-root, .editor-command-menu.open, .editor-popover.interactive')) ||
+      isEditableTarget(e.target)
+    );
   }
 
   private isGameplayKey(code: string): boolean {

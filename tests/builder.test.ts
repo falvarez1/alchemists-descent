@@ -20,8 +20,9 @@ import {
   stampLine,
   stampRect,
 } from '@/builder/terrain';
-import { paintTerrainCmd } from '@/builder/commands';
+import { CommandStack, editDocumentMoodCmd, paintTerrainCmd } from '@/builder/commands';
 import { validateDocument } from '@/builder/validate';
+import { renderIssueRows } from '@/builder/issuePanel';
 import { toAuthoredLight } from '@/builder/compile';
 import { PASSES, runPass } from '@/builder/procedural';
 
@@ -210,9 +211,35 @@ describe('builder document', () => {
     const door = makeObj('door', 100, 50, { w: 3, h: 20 });
     expect(objectFootprint(door)).toEqual({ x0: 100, y0: 50, x1: 102, y1: 69 });
   });
+
+  it('edits document mood through undoable metadata commands', () => {
+    const doc = createEmptyDocument('mood', 'earthen');
+    doc.mood = { ambient: null, ambience: '' };
+    const stack = new CommandStack(() => doc);
+
+    stack.run(editDocumentMoodCmd({ ambient: 0.34 }));
+    stack.run(editDocumentMoodCmd({ ambience: 'drips' }));
+    expect(doc.mood).toEqual({ ambient: 0.34, ambience: 'drips' });
+
+    expect(stack.undo()).toBe('edit document mood');
+    expect(doc.mood).toEqual({ ambient: 0.34, ambience: '' });
+    expect(stack.undo()).toBe('edit document mood');
+    expect(doc.mood).toEqual({ ambient: null, ambience: '' });
+    expect(stack.redo()).toBe('edit document mood');
+    expect(doc.mood).toEqual({ ambient: 0.34, ambience: '' });
+  });
 });
 
 describe('builder validation', () => {
+  it('escapes validation issue text before rendering the issue panel', () => {
+    const html = renderIssueRows([
+      { severity: 'error', what: 'duplicate id: "><img src=x onerror=alert(1)>', objId: 'bad' },
+    ]);
+
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;');
+  });
+
   it('flags missing spawn, missing terrain, and missing exit', () => {
     const doc = createEmptyDocument('v', 'earthen');
     const issues = validateDocument(doc);

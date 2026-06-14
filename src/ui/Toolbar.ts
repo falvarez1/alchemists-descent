@@ -3,6 +3,7 @@ import type { Cell } from '@/sim/CellType';
 import { WIDTH } from '@/config/constants';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { fillMaterialPopover } from '@/ui/materialInfo';
+import { PopoverHost } from '@/ui/editor/PopoverHost';
 
 export type SelectionChangedFn = (id: string | number, mode: 'element' | 'spell') => void;
 
@@ -13,7 +14,7 @@ export type SelectionChangedFn = (id: string | number, mode: 'element' | 'spell'
  * context inspector via the `onSelectionChanged` callback (wired by Game).
  */
 export class Toolbar {
-  private matpop: HTMLDivElement | null = null;
+  private readonly popovers = new PopoverHost();
 
   constructor(
     private ctx: Ctx,
@@ -34,11 +35,6 @@ export class Toolbar {
   private wireMaterialPopovers(): void {
     const bar = document.getElementById('left-toolbar');
     if (!bar) return;
-    const pop = document.createElement('div');
-    pop.id = 'lt-matpop';
-    pop.style.display = 'none';
-    document.body.appendChild(pop);
-    this.matpop = pop;
     // the buttons move under the cursor on scroll — drop the popover
     bar.addEventListener('scroll', () => this.hideMatPopover(), { passive: true });
     for (const btn of document.querySelectorAll<HTMLButtonElement>(
@@ -51,25 +47,19 @@ export class Toolbar {
   }
 
   private showMatPopover(btn: HTMLButtonElement, id: number): void {
-    const pop = this.matpop;
-    if (!pop) return;
-    pop.innerHTML = '';
     const name = this.ctx.params.materials[id]?.name ?? (btn.textContent ?? '').trim();
     const color = btn.querySelector<HTMLElement>('.color-indicator')?.style.background ?? '#888';
-    fillMaterialPopover(pop, id, name, color, this.ctx.params.materials[id]);
-    const r = btn.getBoundingClientRect();
-    pop.style.left = r.right + 10 + 'px';
-    pop.style.top = Math.max(4, r.top - 6) + 'px';
-    pop.style.display = '';
-    // keep it on screen when hovering near the bottom of the toolbar
-    const overflow = pop.getBoundingClientRect().bottom - window.innerHeight + 8;
-    if (overflow > 0) {
-      pop.style.top = Math.max(4, parseFloat(pop.style.top) - overflow) + 'px';
-    }
+    this.popovers.show({
+      id: 'lt-matpop',
+      anchor: btn,
+      preferredSide: 'right',
+      offsetY: -6,
+      render: (pop) => fillMaterialPopover(pop, id, name, color, this.ctx.params.materials[id]),
+    });
   }
 
   private hideMatPopover(): void {
-    if (this.matpop) this.matpop.style.display = 'none';
+    this.popovers.hide('lt-matpop');
   }
 
   /** Live tool filter: hides non-matching buttons and emptied section titles. */

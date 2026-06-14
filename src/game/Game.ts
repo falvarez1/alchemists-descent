@@ -84,6 +84,7 @@ export class Game {
       debugGodMode: false,
       postFx: createDefaultPostFxSettings(),
       editorLights: null,
+      playtestSource: null,
     };
     const input: InputState = {
       keys: { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false },
@@ -190,7 +191,11 @@ export class Game {
 
     // A hidden tab is the most likely prelude to a closed one — checkpoint.
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden && this.ctx.state.mode === 'play') {
+      if (
+        document.hidden &&
+        this.ctx.state.mode === 'play' &&
+        this.ctx.state.playtestSource !== 'builder'
+      ) {
         this.ctx.levels.saveExpedition(this.ctx);
       }
     });
@@ -232,7 +237,12 @@ export class Game {
     ctx.state.frameCount++;
 
     // Expedition autosave: every ~30s of play, a closed tab costs nothing.
-    if (ctx.state.mode === 'play' && !ctx.state.paused && ctx.state.frameCount % 1800 === 0) {
+    if (
+      ctx.state.mode === 'play' &&
+      ctx.state.playtestSource !== 'builder' &&
+      !ctx.state.paused &&
+      ctx.state.frameCount % 1800 === 0
+    ) {
       ctx.levels.saveExpedition(ctx);
     }
 

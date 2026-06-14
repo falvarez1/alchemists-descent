@@ -1,4 +1,4 @@
-import type { BiomeId, Ctx, EnemyKind, PickupKind } from '@/core/types';
+import type { BiomeId, CardId, Ctx, PlayerState, WandFrame } from '@/core/types';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import {
   applyWorldLayer,
@@ -30,6 +30,7 @@ import {
   deleteLightCmd,
   deleteLinkCmd,
   deleteObjectCmd,
+  editDocumentMoodCmd,
   editLightCmd,
   editParamCmd,
   moveLightCmd,
@@ -59,6 +60,8 @@ import {
 } from '@/builder/prefablib';
 import type { PrefabAnchor, PrefabDef } from '@/builder/prefablib';
 import { PrefabPanel, showImportReport } from '@/builder/prefabPanel';
+import { sanitizeBackdropSettings } from '@/config/backdrop';
+import { BackdropPreview } from '@/builder/backdropPreview';
 import { Gallery } from '@/builder/gallery';
 import { builtinPrefabs } from '@/world/prefabs/registry';
 import { SpritePanel } from '@/builder/spritePanel';
@@ -83,6 +86,14 @@ import {
   saveSprite,
 } from '@/builder/assets/spritelib';
 import { paletteAsGpl } from '@/sim/cellPalette';
+import { drawObjectPreview } from '@/builder/render/ObjectPreview';
+import {
+  BUILDER_OVERLAY_IDS,
+  drawBuilderOverlays,
+  overlayLabel,
+  sanitizeOverlayVisibility,
+} from '@/builder/render/OverlayRegistry';
+import type { BuilderOverlayId } from '@/builder/render/OverlayRegistry';
 import { TRIGGER_KINDS, validateDocument } from '@/builder/validate';
 import type { DocIssue } from '@/builder/validate';
 import {
@@ -113,6 +124,31 @@ import { PASSES, runPass } from '@/builder/procedural';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { paramSliderSpec } from '@/ui/Inspector';
 import { fillMaterialPopover } from '@/ui/materialInfo';
+import { CommandRegistry } from '@/ui/editor/CommandRegistry';
+import { DockHost } from '@/ui/editor/DockHost';
+import { FocusRouter } from '@/ui/editor/FocusRouter';
+import { Keymap } from '@/ui/editor/Keymap';
+import { MenuHost } from '@/ui/editor/MenuHost';
+import { PopoverHost } from '@/ui/editor/PopoverHost';
+import { renderInspectorItems } from '@/ui/editor/InspectorSchema';
+import { normalizePanelChromeHandles } from '@/ui/editor/PanelChrome';
+import { createBuilderPanelRegistry } from '@/ui/editor/PanelRegistry';
+import type { CommandSpec } from '@/ui/editor/CommandRegistry';
+import {
+  documentInspectorSchema,
+  EMITTER_DIR,
+  LIGHT_PRESETS,
+  lightInspectorSchema,
+  multiSelectionInspectorSchema,
+  objectInspectorSchema,
+} from '@/builder/inspectorSchemas';
+import { renderIssueRows } from '@/builder/issuePanel';
+import {
+  loadWorkspaceLayout,
+  saveWorkspaceLayout,
+  workspacePresetLayout,
+} from '@/ui/editor/Workspace';
+import type { DockRegion, WorkspaceLayout, WorkspacePreset } from '@/ui/editor/Workspace';
 
 /**
  * The Builder (docs/BUILDER.md Phases 2-10): an authoring overlay on top of
@@ -130,6 +166,28 @@ import { fillMaterialPopover } from '@/ui/materialInfo';
  * the build-mode Camera branch). All Builder DOM is injected here so the
  * tool owns its markup end to end.
  */
+
+const DEV_CONSOLE_PANEL_ID = 'dev-console';
+const DEV_CONSOLE_COMMAND_EVENT = 'dev-console-command';
+const DEV_CONSOLE_STATE_EVENT = 'dev-console-state';
+const CRAMPED_DOCK_RAIL_WIDTH = 42;
+const MIN_BUILDER_CENTER_WIDTH = 260;
+const PREFERRED_BUILDER_CENTER_WIDTH = 320;
+const BUILDER_VIEWPORT_PAD = 20;
+
+interface PanelDropPoint {
+  clientX: number;
+  clientY: number;
+}
+
+interface PanelPointerDrag {
+  id: string;
+  pointerId: number;
+  el: HTMLElement;
+  startX: number;
+  startY: number;
+  active: boolean;
+}
 
 const PLACE_GAMEPLAY: Array<{ kind: EditorObjectKind; label: string; glyph: string }> = [
   { kind: 'spawn', label: 'Spawn', glyph: 'S' },
@@ -193,23 +251,6 @@ const DEFAULT_PARAMS: Partial<Record<EditorObjectKind, () => Record<string, unkn
   relay: () => ({ delay: 0, action: 'activate', logic: 'and' }),
 };
 
-/** Point kinds whose rotation is a meaningful authored fact (emitters aim
- *  their drip with it; the rest carry it into prefabs/compilers). */
-const POINT_ROTATE_KINDS: ReadonlySet<EditorObjectKind> = new Set([
-  'enemy', 'hazardEmitter', 'decor', 'pickup',
-] as EditorObjectKind[]);
-
-/** Ground walkers/hoppers that can follow an authored patrol route. */
-const PATROL_KINDS = new Set(['slime', 'acidslime', 'golem', 'bomber']);
-
-/** Emitter drip direction, by rotation (the inspector's readout). */
-const EMITTER_DIR: Record<number, string> = { 0: 'down', 90: 'left', 180: 'up', 270: 'right' };
-
-const ENEMY_KINDS: EnemyKind[] = [
-  'slime', 'imp', 'golem', 'acidslime', 'wisp', 'mage', 'bat', 'spitter', 'bomber', 'eggs', 'colossus',
-  'leviathan',
-];
-const PICKUP_KINDS: PickupKind[] = ['goldpile', 'heart', 'tome', 'chest', 'potion', 'key'];
 const BIOMES: BiomeId[] = [
   'earthen', 'frozen', 'flooded', 'timber', 'scorched', 'fungal', 'crystal', 'volcanic', 'gilded',
 ];
@@ -243,6 +284,18 @@ type BuilderTool =
   | 'stamp'
   | EditorObjectKind;
 type BuilderOpenIntent = 'continue-document' | 'current-scene';
+interface BuilderWandSnapshot {
+  active: 0 | 1;
+  collection: CardId[];
+  wands: Array<{
+    frame: WandFrame;
+    cards: (CardId | null)[];
+    mana: number;
+    cooldown: number;
+    cooldownMax?: number;
+    castIndex: number;
+  }>;
+}
 
 /** Editor layer families (visibility/locking are EDITOR-side only:
  *  a hidden layer still compiles — that's what object `hidden` is for). */
@@ -253,22 +306,9 @@ const MECH_KINDS: ReadonlySet<EditorObjectKind> = new Set([
 ] as EditorObjectKind[]);
 const familyOf = (o: EditorObject): LayerFamily => (MECH_KINDS.has(o.kind) ? 'mech' : 'gameplay');
 
-const OVERLAY_MODES = ['none', 'light', 'danger', 'loot'] as const;
-type OverlayMode = (typeof OVERLAY_MODES)[number];
-
 const DRAFT_KEY = 'noita-builder-draft';
 /** Settle previews bigger than this commit without undo (memory honesty). */
 const SETTLE_UNDO_CAP = 400000;
-
-/** Light presets: one click of mood (applied through the undo stack). */
-const LIGHT_PRESETS: Record<string, Partial<EditorLight>> = {
-  torch: { color: '#ffb45a', intensity: 1.3, radius: 48, bloom: 0.4, flicker: 0.4, falloff: 'soft', occluded: true },
-  brazier: { color: '#ff8a3c', intensity: 1.8, radius: 64, bloom: 0.6, flicker: 0.3, falloff: 'soft', occluded: true },
-  crystal: { color: '#7fd4ff', intensity: 1.0, radius: 40, bloom: 0.5, flicker: 0.05, falloff: 'sharp', occluded: true },
-  moonlight: { color: '#9db8e8', intensity: 0.7, radius: 120, bloom: 0.1, flicker: 0, falloff: 'linear', occluded: false },
-  treasure: { color: '#ffd75e', intensity: 0.9, radius: 28, bloom: 0.7, flicker: 0.15, falloff: 'sharp', occluded: true },
-  warning: { color: '#ff4444', intensity: 1.2, radius: 56, bloom: 0.5, flicker: 0.55, falloff: 'soft', occluded: false },
-};
 
 /** Tiny procedural pixel previews for the palette popovers (28x28). */
 type PreviewDraw = (g: CanvasRenderingContext2D) => void;
@@ -499,6 +539,12 @@ interface PendingPreview {
 export class Builder {
   private doc: EditorDocument;
   private readonly cmds = new CommandStack(() => this.doc);
+  private readonly uiCommands = new CommandRegistry();
+  private readonly keymap = new Keymap(this.uiCommands);
+  private readonly focusRouter = new FocusRouter();
+  private readonly menus = new MenuHost();
+  private readonly popovers = new PopoverHost();
+  private readonly panelRegistry = createBuilderPanelRegistry();
   private isOpen = false;
   private ownsPause = false;
   private returningFromPlaytest = false;
@@ -554,8 +600,14 @@ export class Builder {
   private playtestScars: { types: Uint8Array; life: Int16Array; charge: Uint8Array } | null = null;
   /** True while the disposable custom runtime came from Builder, not header PLAY. */
   private builderPlaytestActive = false;
+  /** Header BUILDER / banner return path; header SANDBOX deliberately abandons instead. */
+  private builderReturnRequested = false;
   /** Last explicit test spawn for RESTART PLAYTEST. Null = authored spawn. */
   private lastPlaytestSpawn: { x: number; y: number } | null = null;
+  /** Player state before the disposable playtest mutates ctx.player. */
+  private prePlaytestPlayer: PlayerState | null = null;
+  /** Wand runtime state before the disposable playtest mutates ctx.wands. */
+  private prePlaytestWands: BuilderWandSnapshot | null = null;
   /** Ambient as it stood before a mood-overridden playtest. */
   private prevAmbient: number | null = null;
   /** Light preview solo (null = all). */
@@ -567,6 +619,7 @@ export class Builder {
   private lastMouse = { x: 0, y: 0 };
   private zoomTarget = 1;
   private lightPreviewOn = true;
+  private sessionMode: 'author' | 'live' = 'author';
   /** Placement/drag snap step in cells (0 = off). */
   private snapStep: 0 | 8 | 16 = 0;
   /** Palette drag-to-place: armed on button mousedown, live once a ghost exists. */
@@ -576,9 +629,12 @@ export class Builder {
     startY: number;
     ghost: HTMLDivElement | null;
   } | null = null;
-  private overlayMode: OverlayMode = 'none';
+  private overlayMode: BuilderOverlayId | 'none' = 'none';
+  private lastIssues: DocIssue[] = [];
   private prefabs: PrefabDef[] = [];
   private gallery: Gallery | null = null;
+  private backdropPreview: BackdropPreview | null = null;
+  private backdropDirty = false;
   /** A transformed (Q/E) copy of a library prefab while the stamp tool is
    *  armed — never the library record itself. */
   private armedPrefab: PrefabDef | null = null;
@@ -609,8 +665,19 @@ export class Builder {
   private allowingSandboxWorldShape = false;
   private shareBusy = false;
   private codeBusy = false;
+  private builderHelpOpen = false;
+  private builderHelpReturnFocus: HTMLElement | null = null;
+  private workspaceLayout: WorkspaceLayout = loadWorkspaceLayout();
+  private dockHost!: DockHost;
+  private draggingPanelId: string | null = null;
+  private panelPointerDrag: PanelPointerDrag | null = null;
+  private panelDragOffset = { x: 18, y: 12 };
+  private lastWorkspaceSize = { w: 0, h: 0 };
 
   private root!: HTMLDivElement;
+  private centerSlot!: HTMLDivElement;
+  private originalHolderParent: HTMLElement | null = null;
+  private originalHolderNext: ChildNode | null = null;
   private overlay!: HTMLDivElement;
   private canvas!: HTMLCanvasElement;
   private cctx!: CanvasRenderingContext2D;
@@ -623,6 +690,7 @@ export class Builder {
   private modeBtn!: HTMLButtonElement;
   private intentModal: HTMLDivElement | null = null;
   private intentModalPaused = false;
+  private intentModalKeydown: ((e: KeyboardEvent) => void) | null = null;
   private rafId = 0;
   private statusTimer = 0;
 
@@ -630,7 +698,19 @@ export class Builder {
     this.doc = createEmptyDocument('untitled', ctx.state.currentBiome);
     this.prefabs = loadPrefabs();
     this.sprites = loadSprites();
+    this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
+    this.dockHost = new DockHost(this.panelRegistry, this.workspaceLayout);
+    this.workspaceLayout = this.dockHost.snapshot().layout;
+    this.snapStep = this.workspaceLayout.snapStep as 0 | 8 | 16;
+    this.overlayMode = BUILDER_OVERLAY_IDS.find((id) => this.workspaceLayout.overlayVisibility[id]) ?? 'none';
     this.buildDom();
+    this.wireCollapsibleSections();
+    this.wireBuilderHelp();
+    this.el('bp-snap-btn').textContent = 'SNAP: ' + (this.snapStep === 0 ? 'OFF' : this.snapStep);
+    this.syncOverlayButton();
+    this.wireWorkspace();
+    this.applyWorkspaceLayout();
+    this.registerCommands();
     this.wirePrefabPanel();
     this.wireSpritePanel();
     this.wireBar();
@@ -640,10 +720,15 @@ export class Builder {
     this.wireCmdk();
     this.wireLayers();
     window.addEventListener('keydown', this.onKeyDown, true);
+    window.addEventListener(DEV_CONSOLE_STATE_EVENT, this.onDevConsoleState as EventListener);
     // Entering play (PLAY button) while authoring closes the overlay; the
     // document survives for the next open.
     ctx.events.on('modeChanged', ({ mode }) => {
       if (mode === 'play' && this.isOpen) this.close();
+      if (mode === 'build' && this.builderPlaytestActive && !this.isOpen && !this.builderReturnRequested) {
+        this.abandonBuilderPlaytest();
+        return;
+      }
       // a mood-overridden playtest must not leak its ambient into the
       // sandbox if the user abandons it without reopening the Builder
       if (mode === 'build' && this.prevAmbient !== null && !this.isOpen) {
@@ -700,7 +785,7 @@ export class Builder {
     }
     // Unsaved authoring work guards the tab close.
     window.addEventListener('beforeunload', (e) => {
-      if (this.isOpen && (this.cmds.depth > 0 || this.paintDirty || this.pendingPreview)) {
+      if (this.isOpen && (this.cmds.depth > 0 || this.paintDirty || this.backdropDirty || this.pendingPreview)) {
         e.preventDefault();
       }
     });
@@ -710,6 +795,7 @@ export class Builder {
 
   open(): void {
     if (this.isOpen) return;
+    if (this.builderPlaytestActive && this.ctx.state.mode === 'play') this.builderReturnRequested = true;
     if (this.ctx.state.mode === 'play' && !this.returningFromPlaytest) {
       this.showOpenIntentModal();
       return;
@@ -725,6 +811,7 @@ export class Builder {
       (document.getElementById('mode-build-btn') as HTMLButtonElement | null)?.click();
     }
     if (intent === 'current-scene') this.adoptCurrentSceneAsDocument();
+    this.syncDocBackdropToLive();
     // EXPEDITION PROTECTION: levels persist as live World instances. If the
     // canvas still shows an expedition level, the Builder must NOT edit it
     // in place (LOAD/IMPORT would wipe a depth and autosave would keep it).
@@ -741,6 +828,10 @@ export class Builder {
       detached = true;
     }
     this.isOpen = true;
+    this.attachWorkspace();
+    this.sessionMode = 'author';
+    this.ctx.state.editorLights = null;
+    this.syncSessionButtons();
     if (!this.ctx.state.paused || inheritPause) {
       this.ctx.state.paused = true;
       this.ownsPause = true;
@@ -774,14 +865,20 @@ export class Builder {
       this.prevAmbient = null;
     }
     if (this.returningFromPlaytest) {
+      this.restorePrePlaytestPlayer();
+      this.restorePrePlaytestWands();
       this.builderPlaytestActive = false;
+      this.builderReturnRequested = false;
       this.lastPlaytestSpawn = null;
+      this.ctx.state.playtestSource = null;
       this.setPlaytestBanner(false);
     }
     this.returningFromPlaytest = false;
     this.root.style.display = '';
     this.modeBtn.classList.add('active');
     document.body.classList.add('builder-open');
+    this.syncConsoleForBuilderOpen();
+    this.applyWorkspaceLayout();
     this.ctx.camera.zoomLock = this.zoomTarget;
     this.refreshDocSelect();
     this.syncAll();
@@ -808,10 +905,13 @@ export class Builder {
       this.ownsPause = false;
     }
     this.tool = 'select';
+    this.setBuilderHelp(false);
+    this.backdropPreview?.close();
     this.drag = null;
     this.stroke = null;
     this.shapeDrag = null;
     this.marquee = null;
+    this.cancelPanelPointerDrag();
     this.lassoPoints = null;
     this.floatDrag = null;
     this.waypointDrag = null;
@@ -820,10 +920,650 @@ export class Builder {
     window.clearTimeout(this.decorPreviewTimer);
     this.patrolEditId = null;
     this.linkFrom = null;
+    this.clearViewportFrame();
+    this.restoreExternalPanels();
     this.root.style.display = 'none';
+    this.detachWorkspace();
     if (!this.builderPlaytestActive) this.setPlaytestBanner(false);
     this.modeBtn.classList.remove('active');
     document.body.classList.remove('builder-open');
+  }
+
+  private attachWorkspace(): void {
+    const holder = document.getElementById('canvas-holder');
+    if (!holder || holder.parentElement === this.centerSlot) return;
+    this.originalHolderParent = holder.parentElement;
+    this.originalHolderNext = holder.nextSibling;
+    this.centerSlot.appendChild(holder);
+  }
+
+  private detachWorkspace(): void {
+    const holder = document.getElementById('canvas-holder');
+    if (!holder || !this.originalHolderParent) return;
+    if (this.originalHolderNext && this.originalHolderNext.parentNode === this.originalHolderParent) {
+      this.originalHolderParent.insertBefore(holder, this.originalHolderNext);
+    } else {
+      this.originalHolderParent.appendChild(holder);
+    }
+    this.originalHolderParent = null;
+    this.originalHolderNext = null;
+  }
+
+  private wireWorkspace(): void {
+    for (const panel of this.workspaceLayout.panels) {
+      const el = this.panelEl(panel.id);
+      if (!el) continue;
+      el.classList.add('builder-panel');
+      el.draggable = false;
+      el.dataset.panelId = panel.id;
+      this.refreshPanelDragHandles(el);
+      el.addEventListener('pointerdown', (e) => this.onPanelPointerDown(e, panel.id, el));
+    }
+    for (const dock of this.workspaceDropTargets()) {
+      dock.addEventListener('dragover', (e) => {
+        if (!this.draggingPanelId) return;
+        e.preventDefault();
+        this.clearDropTargetHighlights(dock);
+        dock.classList.add('drop-target');
+        const region = dock.dataset.dock as DockRegion | undefined;
+        if (region) this.markDockInsertion(dock, region, e);
+      });
+      dock.addEventListener('dragleave', () => dock.classList.remove('drop-target'));
+      dock.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dock.classList.remove('drop-target');
+        const id = this.draggingPanelId ?? e.dataTransfer?.getData('text/plain');
+        const region = dock.dataset.dock as DockRegion | undefined;
+        this.draggingPanelId = null;
+        this.clearWorkspaceDropState();
+        if (!id || !region) return;
+        this.moveWorkspacePanel(id, region, {
+          beforeId: region === 'floating' ? null : this.dropInsertBeforeId(region, dock, id, e),
+          floating: region === 'floating' ? this.floatingDropPosition(id, e) : undefined,
+        });
+        this.applyWorkspaceLayout();
+        this.saveWorkspacePrefs();
+        requestAnimationFrame(() => this.panelEl(id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+        this.status(`PANEL DOCKED ${region.toUpperCase()}`);
+      });
+    }
+  }
+
+  private wireCollapsibleSections(): void {
+    for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-section-toggle]')) {
+      button.addEventListener('click', () => {
+        const id = button.dataset.sectionToggle;
+        const section = button.closest<HTMLElement>('.bp-section');
+        if (!id || !section) return;
+        const collapsed = !section.classList.contains('collapsed');
+        section.classList.toggle('collapsed', collapsed);
+        button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        this.workspaceLayout.collapsedSections[id] = collapsed;
+        this.saveWorkspacePrefs();
+      });
+    }
+  }
+
+  private syncCollapsedSections(): void {
+    for (const section of this.root.querySelectorAll<HTMLElement>('.bp-section[data-section]')) {
+      const id = section.dataset.section;
+      if (!id) continue;
+      const collapsed = this.workspaceLayout.collapsedSections[id] === true;
+      section.classList.toggle('collapsed', collapsed);
+      section.querySelector<HTMLButtonElement>('[data-section-toggle]')?.setAttribute(
+        'aria-expanded',
+        collapsed ? 'false' : 'true',
+      );
+    }
+  }
+
+  private wireBuilderHelp(): void {
+    const help = this.el<HTMLDivElement>('builder-help');
+    this.el<HTMLButtonElement>('builder-help-close').addEventListener('click', () => this.setBuilderHelp(false));
+    help.addEventListener('pointerdown', (e) => {
+      if (e.target === help) this.setBuilderHelp(false);
+    });
+  }
+
+  private setBuilderHelp(open: boolean): void {
+    const wasOpen = this.builderHelpOpen;
+    this.builderHelpOpen = open;
+    const help = this.el<HTMLDivElement>('builder-help');
+    help.style.display = open ? 'flex' : 'none';
+    help.classList.toggle('open', open);
+    help.setAttribute('aria-hidden', open ? 'false' : 'true');
+    this.root.classList.toggle('b-help-open', open);
+    if (open && !wasOpen) {
+      this.builderHelpReturnFocus =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      this.el<HTMLButtonElement>('builder-help-close').focus({ preventScroll: true });
+    } else if (!open && wasOpen) {
+      const returnFocus = this.builderHelpReturnFocus;
+      this.builderHelpReturnFocus = null;
+      if (returnFocus && document.contains(returnFocus)) returnFocus.focus({ preventScroll: true });
+    }
+  }
+
+  private cycleBuilderHelpFocus(backward: boolean): void {
+    const help = this.el<HTMLDivElement>('builder-help');
+    const focusable = [...help.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]')]
+      .filter((el) => el.tabIndex >= 0 && !el.hasAttribute('disabled') && getComputedStyle(el).display !== 'none');
+    if (focusable.length === 0) {
+      help.focus({ preventScroll: true });
+      return;
+    }
+    const index = focusable.indexOf(document.activeElement as HTMLElement);
+    const next = backward
+      ? (index <= 0 ? focusable.length : index) - 1
+      : (index + 1) % focusable.length;
+    focusable[next].focus({ preventScroll: true });
+  }
+
+  private refreshPanelDragHandles(panel: HTMLElement): void {
+    const spec = this.panelRegistry.get(panel.dataset.panelId ?? panel.id);
+    const handles = normalizePanelChromeHandles(panel, { fallbackHandleSelectors: spec?.handleSelectors });
+    for (const handle of handles) {
+      if (handle.dataset.menuWired === 'true') continue;
+      handle.dataset.menuWired = 'true';
+      handle.addEventListener('contextmenu', (event) => this.openPanelContextMenu(event, panel));
+    }
+  }
+
+  private openPanelContextMenu(event: MouseEvent, panel: HTMLElement): void {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('button, input, textarea, select, label, [contenteditable="true"]')) return;
+    const panelId = panel.dataset.panelId ?? panel.id;
+    const commandIds = this.panelContextCommands(panelId);
+    if (commandIds.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.menus.showCommandMenu({
+      id: `panel:${panelId}`,
+      registry: this.uiCommands,
+      commandIds,
+      cursor: { x: event.clientX, y: event.clientY },
+      onStatus: (message, error) => this.status(message, error),
+    });
+  }
+
+  private panelContextCommands(panelId: string): readonly string[] {
+    const common = ['builder.commandPalette', 'builder.help', 'builder.resetWorkspace', 'builder.togglePanels'];
+    if (panelId === 'builder-palette') {
+      return [...common, 'builder.delete', 'builder.duplicate'];
+    }
+    if (panelId === 'builder-inspector') {
+      return ['builder.frameSelection', 'builder.validate', ...common, 'builder.delete', 'builder.duplicate'];
+    }
+    if (panelId === 'builder-world') return ['builder.worldPanel', ...common];
+    if (panelId === 'builder-matparams') return ['builder.materialPanel', ...common];
+    if (panelId === 'builder-proc') return ['builder.proceduralPanel', ...common];
+    if (panelId === 'builder-issues') return ['builder.findInvalid', 'builder.validate', ...common];
+    return [];
+  }
+
+  private onPanelPointerDown(e: PointerEvent, id: string, panel: HTMLElement): void {
+    if (!this.isOpen || e.button !== 0) return;
+    if (panel.classList.contains('maximized')) return;
+    const target = e.target as HTMLElement | null;
+    if (panel.classList.contains('floating')) this.raiseFloatingPanel(id);
+    if (!target?.closest('[data-panel-handle]')) return;
+    if (target.closest('button, input, textarea, select, label, [contenteditable="true"]')) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = panel.getBoundingClientRect();
+    this.panelDragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    this.panelPointerDrag = { id, pointerId: e.pointerId, el: panel, startX: e.clientX, startY: e.clientY, active: false };
+    window.addEventListener('pointermove', this.onPanelPointerMove, true);
+    window.addEventListener('pointerup', this.onPanelPointerUp, true);
+    window.addEventListener('pointercancel', this.onPanelPointerCancel, true);
+  }
+
+  private onPanelPointerMove = (e: PointerEvent): void => {
+    const drag = this.panelPointerDrag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    e.preventDefault();
+    if (!drag.active) {
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      if (dx * dx + dy * dy < 16) return;
+      this.startPanelLiveDrag(drag, e);
+    }
+    this.moveFloatingPanelPreview(drag.id, e);
+    this.updatePanelDropTarget(e);
+  };
+
+  private onPanelPointerUp = (e: PointerEvent): void => {
+    const drag = this.panelPointerDrag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    e.preventDefault();
+    if (!drag.active) {
+      this.cancelPanelPointerDrag();
+      return;
+    }
+    this.finishPanelPointerDrag(e);
+  };
+
+  private onPanelPointerCancel = (e: PointerEvent): void => {
+    const drag = this.panelPointerDrag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    if (!drag.active) {
+      this.cancelPanelPointerDrag();
+      return;
+    }
+    this.finishPanelPointerDrag(e);
+  };
+
+  private startPanelLiveDrag(drag: PanelPointerDrag, point: PanelDropPoint): void {
+    drag.active = true;
+    this.draggingPanelId = drag.id;
+    this.root.classList.add('b-dragging-panel');
+    const floating = this.floatingPointFromClient(drag.id, point);
+    this.moveWorkspacePanel(drag.id, 'floating', { floating });
+    this.applyWorkspaceLayout();
+    drag.el = this.panelEl(drag.id) ?? drag.el;
+    drag.el.classList.add('dragging-live');
+  }
+
+  private finishPanelPointerDrag(e: PanelDropPoint): void {
+    const drag = this.panelPointerDrag;
+    if (!drag) return;
+    drag.el.classList.remove('dragging-live');
+    const target = this.panelDropTargetAt(e);
+    const region = target?.dataset.dock as DockRegion | undefined;
+    if (target && region) {
+      this.moveWorkspacePanel(drag.id, region, {
+        beforeId: region === 'floating' ? null : this.dropInsertBeforeId(region, target, drag.id, e),
+        floating: region === 'floating' ? this.floatingPointFromClient(drag.id, e) : undefined,
+      });
+      this.status(`PANEL DOCKED ${region.toUpperCase()}`);
+    }
+    this.panelPointerDrag = null;
+    this.draggingPanelId = null;
+    this.clearWorkspaceDropState();
+    window.removeEventListener('pointermove', this.onPanelPointerMove, true);
+    window.removeEventListener('pointerup', this.onPanelPointerUp, true);
+    window.removeEventListener('pointercancel', this.onPanelPointerCancel, true);
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
+  }
+
+  private cancelPanelPointerDrag(): void {
+    this.panelPointerDrag?.el.classList.remove('dragging-live');
+    this.panelPointerDrag = null;
+    this.draggingPanelId = null;
+    this.clearWorkspaceDropState();
+    window.removeEventListener('pointermove', this.onPanelPointerMove, true);
+    window.removeEventListener('pointerup', this.onPanelPointerUp, true);
+    window.removeEventListener('pointercancel', this.onPanelPointerCancel, true);
+  }
+
+  private moveFloatingPanelPreview(id: string, point: PanelDropPoint): void {
+    const pos = this.floatingPointFromClient(id, point);
+    const panel = this.workspaceLayout.panels.find((p) => p.id === id);
+    if (panel) panel.floating = pos;
+    const el = this.panelEl(id);
+    el?.style.setProperty('--builder-floating-left', `${pos.x}px`);
+    el?.style.setProperty('--builder-floating-top', `${pos.y}px`);
+  }
+
+  private updatePanelDropTarget(point: PanelDropPoint): void {
+    const target = this.panelDropTargetAt(point);
+    this.clearDropTargetHighlights(target ?? undefined);
+    if (!target) return;
+    target.classList.add('drop-target');
+    const region = target.dataset.dock as DockRegion | undefined;
+    if (region) this.markDockInsertion(target, region, point);
+  }
+
+  private panelDropTargetAt(point: PanelDropPoint): HTMLElement | null {
+    const targets = new Set(this.workspaceDropTargets());
+    for (const el of document.elementsFromPoint(point.clientX, point.clientY)) {
+      if (el instanceof HTMLElement && targets.has(el)) return el;
+    }
+    return null;
+  }
+
+  private applyWorkspaceLayout(): void {
+    const left = this.el<HTMLDivElement>('builder-dock-left');
+    const right = this.el<HTMLDivElement>('builder-dock-right');
+    const bottom = this.el<HTMLDivElement>('builder-dock-bottom');
+    const floating = this.el<HTMLDivElement>('builder-stage');
+    const dockFor = (dock: DockRegion): HTMLElement =>
+      dock === 'left' ? left : dock === 'right' ? right : dock === 'bottom' ? bottom : floating;
+    const floatingPanels: Array<{ panel: WorkspaceLayout['panels'][number]; el: HTMLElement }> = [];
+    for (const panel of this.workspaceLayout.panels) {
+      if (panel.id === DEV_CONSOLE_PANEL_ID && !this.isOpen) continue;
+      const el = this.panelEl(panel.id);
+      if (!el) continue;
+      const consoleMaximized = panel.id === DEV_CONSOLE_PANEL_ID && el.classList.contains('maximized');
+      (consoleMaximized ? floating : dockFor(panel.dock)).appendChild(el);
+      el.classList.add('builder-panel');
+      el.classList.toggle('floating', panel.dock === 'floating' && !consoleMaximized);
+      el.draggable = false;
+      el.dataset.panelId = panel.id;
+      this.refreshPanelDragHandles(el);
+      el.style.display = panel.open ? '' : 'none';
+      if (panel.dock === 'floating' && !consoleMaximized) {
+        const z = Math.max(0, Math.min(1_000_000, panel.z ?? 0));
+        el.style.zIndex = String((panel.id === DEV_CONSOLE_PANEL_ID ? 20 : 10) + z);
+        floatingPanels.push({ panel, el });
+      } else {
+        el.style.removeProperty('--builder-floating-left');
+        el.style.removeProperty('--builder-floating-top');
+        el.style.removeProperty('z-index');
+      }
+    }
+    let leftSize = this.openDockSize('left');
+    let rightSize = this.openDockSize('right');
+    const rootWidth = this.root.getBoundingClientRect().width || window.innerWidth;
+    const cramped = rootWidth < 520;
+    this.root.classList.toggle('b-cramped', cramped);
+    if (cramped) {
+      leftSize = leftSize > 0 ? CRAMPED_DOCK_RAIL_WIDTH : 0;
+      rightSize = rightSize > 0 ? CRAMPED_DOCK_RAIL_WIDTH : 0;
+    }
+    const centerMin = rootWidth < 760 ? MIN_BUILDER_CENTER_WIDTH : PREFERRED_BUILDER_CENTER_WIDTH;
+    const sideBudget = Math.max(0, rootWidth - centerMin);
+    const sideTotal = leftSize + rightSize;
+    if (sideTotal > sideBudget && sideTotal > 0) {
+      const scale = sideBudget / sideTotal;
+      leftSize = Math.floor(leftSize * scale);
+      rightSize = Math.floor(rightSize * scale);
+    }
+    const zen = this.root.classList.contains('b-zen');
+    this.el<HTMLDivElement>('builder-workspace-body').style.gridTemplateColumns =
+      zen ? '0 minmax(0, 1fr) 0' : `${leftSize}px minmax(0, 1fr) ${rightSize}px`;
+    const devConsoleMaximized = document.getElementById(DEV_CONSOLE_PANEL_ID)?.classList.contains('maximized') === true;
+    const bottomOpen = !zen && this.workspaceLayout.panels.some((p) => p.dock === 'bottom' && p.open && !(p.id === DEV_CONSOLE_PANEL_ID && devConsoleMaximized));
+    const bottomSize = this.openBottomDockSize();
+    bottom.style.display = bottomOpen ? 'flex' : 'none';
+    this.el<HTMLDivElement>('builder-workspace').style.gridTemplateRows =
+      bottomOpen ? `auto minmax(0, 1fr) ${bottomSize}px` : 'auto minmax(0, 1fr) 0';
+    this.lastWorkspaceSize = { w: Math.round(rootWidth), h: Math.round(this.root.getBoundingClientRect().height || window.innerHeight) };
+    let floatingIndex = 0;
+    const canClampFloating = this.isOpen && floating.clientWidth > 0 && floating.clientHeight > 0;
+    for (const { panel, el } of floatingPanels) {
+      const rawPos = panel.floating ?? this.defaultFloatingPosition(floatingIndex);
+      const pos = canClampFloating ? this.clampedFloatingPosition(rawPos, el) : rawPos;
+      el.style.setProperty('--builder-floating-left', `${pos.x}px`);
+      el.style.setProperty('--builder-floating-top', `${pos.y}px`);
+      floatingIndex += 1;
+    }
+    this.syncViewportFrame();
+  }
+
+  private syncWorkspaceFrame(): void {
+    const rect = this.root.getBoundingClientRect();
+    const size = { w: Math.round(rect.width || window.innerWidth), h: Math.round(rect.height || window.innerHeight) };
+    if (size.w !== this.lastWorkspaceSize.w || size.h !== this.lastWorkspaceSize.h) {
+      this.applyWorkspaceLayout();
+      return;
+    }
+    this.syncViewportFrame();
+  }
+
+  private workspaceDropTargets(): HTMLElement[] {
+    return [
+      ...this.root.querySelectorAll<HTMLElement>('.builder-dock'),
+      ...this.root.querySelectorAll<HTMLElement>('.builder-dock-guide'),
+      this.el<HTMLDivElement>('builder-stage'),
+    ];
+  }
+
+  private clearWorkspaceDropState(): void {
+    this.root.classList.remove('b-dragging-panel');
+    this.clearDropTargetHighlights();
+  }
+
+  private clearDropTargetHighlights(active?: HTMLElement): void {
+    for (const dock of this.workspaceDropTargets()) {
+      if (dock !== active) dock.classList.remove('drop-target');
+      dock.classList.remove('drop-at-end');
+    }
+    for (const panel of this.root.querySelectorAll<HTMLElement>('.builder-panel.drop-before')) {
+      panel.classList.remove('drop-before');
+    }
+  }
+
+  private markDockInsertion(dock: HTMLElement, region: DockRegion, e: PanelDropPoint): void {
+    if (region === 'floating' || dock.classList.contains('builder-dock-guide')) return;
+    const beforeId = this.dropInsertBeforeId(region, dock, this.draggingPanelId, e);
+    if (beforeId) this.panelEl(beforeId)?.classList.add('drop-before');
+    else dock.classList.add('drop-at-end');
+  }
+
+  private dropInsertBeforeId(region: DockRegion, dock: HTMLElement, draggedId: string | null, e: PanelDropPoint): string | null {
+    if (region === 'floating') return null;
+    const horizontal = region === 'bottom';
+    const cursor = horizontal ? e.clientX : e.clientY;
+    const panels = this.workspaceLayout.panels
+      .filter((panel) => panel.dock === region && panel.open && panel.id !== draggedId)
+      .map((panel) => this.panelEl(panel.id))
+      .filter((panel): panel is HTMLElement => panel !== null && panel.parentElement === dock && panel.style.display !== 'none');
+    const dockRect = dock.getBoundingClientRect();
+    if (panels.length > 0 && horizontal && cursor < dockRect.left + 48) return panels[0].dataset.panelId ?? panels[0].id;
+    if (panels.length > 0 && !horizontal && cursor < dockRect.top + 48) return panels[0].dataset.panelId ?? panels[0].id;
+    for (const panel of panels) {
+      const rect = panel.getBoundingClientRect();
+      const midpoint = horizontal ? rect.left + rect.width / 2 : rect.top + rect.height / 2;
+      if (cursor < midpoint) return panel.dataset.panelId ?? panel.id;
+    }
+    return null;
+  }
+
+  private floatingDropPosition(id: string, e: PanelDropPoint): { x: number; y: number } {
+    return this.floatingPointFromClient(id, e);
+  }
+
+  private floatingPointFromClient(id: string, e: PanelDropPoint): { x: number; y: number } {
+    const panel = this.panelEl(id);
+    const rect = this.el<HTMLDivElement>('builder-stage').getBoundingClientRect();
+    const shiftedRect = this.predictedStageRectAfterFloating(id, rect);
+    const panelRect = panel?.getBoundingClientRect();
+    const width = panelRect?.width ?? 280;
+    const height = Math.min(panelRect?.height ?? 260, 380, Math.max(180, shiftedRect.height - 28));
+    return this.clampFloatingPoint(
+      {
+        x: e.clientX - shiftedRect.left - Math.min(this.panelDragOffset.x, Math.max(16, width - 16)),
+        y: e.clientY - shiftedRect.top - Math.min(this.panelDragOffset.y, Math.max(16, height - 16)),
+      },
+      width,
+      height,
+    );
+  }
+
+  private predictedStageRectAfterFloating(id: string, current: DOMRect): { left: number; top: number; width: number; height: number } {
+    const panel = this.workspaceLayout.panels.find((p) => p.id === id);
+    if (!panel || panel.dock !== 'left') {
+      return { left: current.left, top: current.top, width: current.width, height: current.height };
+    }
+    const dockWillEmpty = !this.workspaceLayout.panels.some((p) => p.id !== id && p.dock === 'left' && p.open);
+    if (!dockWillEmpty) return { left: current.left, top: current.top, width: current.width, height: current.height };
+    const leftWidth = this.el<HTMLDivElement>('builder-dock-left').getBoundingClientRect().width;
+    return {
+      left: current.left - leftWidth,
+      top: current.top,
+      width: current.width + leftWidth,
+      height: current.height,
+    };
+  }
+
+  private defaultFloatingPosition(index: number): { x: number; y: number } {
+    return { x: 24 + index * 34, y: 54 + index * 34 };
+  }
+
+  private clampedFloatingPosition(pos: { x: number; y: number }, panel: HTMLElement): { x: number; y: number } {
+    const rect = panel.getBoundingClientRect();
+    const stage = this.el<HTMLDivElement>('builder-stage');
+    return this.clampFloatingPoint(pos, rect.width || 280, Math.min(rect.height || 260, 380, Math.max(180, stage.clientHeight - 28)));
+  }
+
+  private clampFloatingPoint(pos: { x: number; y: number }, width: number, height: number): { x: number; y: number } {
+    const stage = this.el<HTMLDivElement>('builder-stage');
+    const maxX = Math.max(8, stage.clientWidth - Math.min(width, stage.clientWidth - 16) - 8);
+    const maxY = Math.max(8, stage.clientHeight - Math.min(height, stage.clientHeight - 16) - 8);
+    return {
+      x: Math.max(8, Math.min(maxX, Math.round(pos.x))),
+      y: Math.max(8, Math.min(maxY, Math.round(pos.y))),
+    };
+  }
+
+  private panelEl(id: string): HTMLElement | null {
+    return (this.root.querySelector('#' + id) as HTMLElement | null) ?? document.getElementById(id);
+  }
+
+  private raiseFloatingPanel(id: string): void {
+    if (!this.workspaceLayout.panels.some((panel) => panel.id === id && panel.dock === 'floating')) return;
+    this.dockHost.replaceLayout(this.workspaceLayout);
+    this.workspaceLayout = this.dockHost.raisePanel(id);
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
+  }
+
+  private openDockSize(dock: 'left' | 'right'): number {
+    const sizes = this.workspaceLayout.panels
+      .filter((panel) => panel.dock === dock && panel.open)
+      .map((panel) => panel.size);
+    return sizes.length === 0 ? 0 : Math.max(...sizes);
+  }
+
+  private openBottomDockSize(): number {
+    const sizes = this.workspaceLayout.panels
+      .filter((panel) => panel.dock === 'bottom' && panel.open)
+      .map((panel) => panel.size);
+    if (sizes.length === 0) return 0;
+    const rootHeight = this.root.getBoundingClientRect().height || window.innerHeight;
+    const maxBottom = Math.max(180, Math.min(520, Math.floor(rootHeight * 0.5)));
+    return Math.max(140, Math.min(maxBottom, Math.max(...sizes)));
+  }
+
+  private syncConsolePanelOpen(open = document.getElementById(DEV_CONSOLE_PANEL_ID)?.classList.contains('open') === true): void {
+    const panel = this.workspaceLayout.panels.find((p) => p.id === DEV_CONSOLE_PANEL_ID);
+    if (panel) this.setWorkspacePanelOpen(DEV_CONSOLE_PANEL_ID, open);
+  }
+
+  private setDevConsoleOpen(open: boolean): void {
+    window.dispatchEvent(new CustomEvent(DEV_CONSOLE_COMMAND_EVENT, { detail: { open } }));
+    this.syncConsolePanelOpen(open);
+  }
+
+  private syncConsoleForBuilderOpen(): void {
+    const panel = this.workspaceLayout.panels.find((p) => p.id === DEV_CONSOLE_PANEL_ID);
+    const open = panel?.open === true || document.getElementById(DEV_CONSOLE_PANEL_ID)?.classList.contains('open') === true;
+    this.setDevConsoleOpen(open);
+  }
+
+  private onDevConsoleState = (event: Event): void => {
+    if (!this.isOpen) return;
+    const open = (event as CustomEvent<{ open?: unknown }>).detail?.open === true;
+    this.syncConsolePanelOpen(open);
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
+  };
+
+  private restoreExternalPanels(): void {
+    const holder = document.getElementById('canvas-holder');
+    const devConsole = document.getElementById(DEV_CONSOLE_PANEL_ID);
+    if (!holder || !devConsole) return;
+    devConsole.classList.remove('builder-panel', 'floating', 'drop-target');
+    devConsole.style.display = '';
+    devConsole.style.removeProperty('--builder-floating-left');
+    devConsole.style.removeProperty('--builder-floating-top');
+    devConsole.style.removeProperty('z-index');
+    devConsole.draggable = false;
+    delete devConsole.dataset.panelId;
+    if (devConsole.parentElement !== holder) holder.appendChild(devConsole);
+  }
+
+  private clearViewportFrame(): void {
+    const holder = document.getElementById('canvas-holder');
+    if (holder) holder.style.width = '';
+    this.overlay.style.left = '';
+    this.overlay.style.top = '';
+    this.overlay.style.width = '';
+    this.overlay.style.height = '';
+    this.overlay.style.transform = '';
+  }
+
+  private syncViewportFrame(): void {
+    if (!this.isOpen || !this.centerSlot || !this.overlay) return;
+    const holder = document.getElementById('canvas-holder');
+    if (!holder) return;
+    const centerRect = this.centerSlot.getBoundingClientRect();
+    if (centerRect.width <= 0 || centerRect.height <= 0) return;
+    this.root.classList.toggle('b-small-stage', centerRect.width < 520 || centerRect.height < 420);
+    const ratio = WIDTH / HEIGHT;
+    const maxW = Math.max(80, centerRect.width - BUILDER_VIEWPORT_PAD);
+    const maxH = Math.max(60, centerRect.height - BUILDER_VIEWPORT_PAD);
+    const width = Math.max(80, Math.min(maxW, maxH * ratio));
+    holder.style.width = `${Math.floor(width)}px`;
+
+    const stageRect = this.el<HTMLDivElement>('builder-stage').getBoundingClientRect();
+    const renderRect =
+      [...holder.querySelectorAll('canvas')]
+        .map((canvas) => canvas.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+        .sort((a, b) => b.width * b.height - a.width * a.height)[0] ?? holder.getBoundingClientRect();
+    this.overlay.style.transform = 'none';
+    this.overlay.style.left = `${Math.round(renderRect.left - stageRect.left)}px`;
+    this.overlay.style.top = `${Math.round(renderRect.top - stageRect.top)}px`;
+    this.overlay.style.width = `${Math.round(renderRect.width)}px`;
+    this.overlay.style.height = `${Math.round(renderRect.height)}px`;
+  }
+
+  private saveWorkspacePrefs(): void {
+    this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
+    this.workspaceLayout = this.dockHost.replaceLayout(this.workspaceLayout);
+    saveWorkspaceLayout(this.workspaceLayout);
+  }
+
+  private replaceWorkspaceLayout(layout: WorkspaceLayout): void {
+    this.workspaceLayout = this.dockHost.replaceLayout(layout);
+  }
+
+  private moveWorkspacePanel(
+    id: string,
+    dock: DockRegion,
+    options: { beforeId?: string | null; floating?: { x: number; y: number } } = {},
+  ): void {
+    this.dockHost.replaceLayout(this.workspaceLayout);
+    this.workspaceLayout = this.dockHost.movePanel(id, dock, options);
+  }
+
+  private setWorkspacePanelOpen(id: string, open: boolean): void {
+    this.dockHost.replaceLayout(this.workspaceLayout);
+    this.workspaceLayout = open ? this.dockHost.openPanel(id) : this.dockHost.closePanel(id);
+  }
+
+  private resetWorkspace(): void {
+    this.root.classList.remove('b-zen');
+    this.replaceWorkspaceLayout(this.panelRegistry.sanitizeLayout(null));
+    this.syncCollapsedSections();
+    this.setDevConsoleOpen(false);
+    this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
+    this.snapStep = 0;
+    this.el('bp-snap-btn').textContent = 'SNAP: OFF';
+    this.syncOverlayButton();
+    this.setTool('select');
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
+    this.status('WORKSPACE RESET');
+  }
+
+  private applyWorkspacePreset(preset: WorkspacePreset): void {
+    this.root.classList.remove('b-zen');
+    this.replaceWorkspaceLayout(workspacePresetLayout(preset));
+    this.syncCollapsedSections();
+    this.setDevConsoleOpen(false);
+    this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
+    this.snapStep = this.workspaceLayout.snapStep as 0 | 8 | 16;
+    this.el('bp-snap-btn').textContent = 'SNAP: ' + (this.snapStep === 0 ? 'OFF' : this.snapStep);
+    this.syncOverlayButton();
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
+    this.status(`WORKSPACE PRESET: ${preset.toUpperCase()}`);
   }
 
   private showOpenIntentModal(): void {
@@ -843,6 +1583,7 @@ export class Builder {
     const hasWork = this.hasAuthoringWork();
     const modal = document.createElement('div');
     modal.id = 'builder-intent-modal';
+    modal.className = 'app-dialog-root';
     modal.innerHTML = `
       <div class="bi-modal" role="dialog" aria-modal="true" aria-labelledby="builder-intent-title">
         <div class="bi-kicker">OPEN BUILDER</div>
@@ -878,11 +1619,49 @@ export class Builder {
     modal.addEventListener('mousedown', (e) => {
       if (e.target === modal) choose('cancel');
     });
-    modal.addEventListener('keydown', (e) => {
-      if (e.code !== 'Escape') return;
-      e.preventDefault();
-      choose('cancel');
-    });
+    const focusIntentButton = (backward: boolean) => {
+      const buttons = [...modal.querySelectorAll<HTMLButtonElement>('button')].filter(
+        (button) => !button.disabled && getComputedStyle(button).display !== 'none',
+      );
+      if (buttons.length === 0) {
+        modal.focus({ preventScroll: true });
+        return;
+      }
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next = backward
+        ? (index <= 0 ? buttons.length : index) - 1
+        : (index + 1) % buttons.length;
+      buttons[next].focus({ preventScroll: true });
+    };
+    this.intentModalKeydown = (e: KeyboardEvent) => {
+      if (!this.intentModal) return;
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        choose('cancel');
+        return;
+      }
+      if (e.code === 'KeyH') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+      if (e.code === 'Tab') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        focusIntentButton(e.shiftKey);
+        return;
+      }
+      if (e.code === 'Enter' || e.code === 'Space') {
+        const active = document.activeElement;
+        if (active instanceof HTMLButtonElement && modal.contains(active)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          active.click();
+        }
+      }
+    };
+    window.addEventListener('keydown', this.intentModalKeydown, true);
 
     document.body.appendChild(modal);
     this.intentModal = modal;
@@ -891,6 +1670,10 @@ export class Builder {
 
   private hideOpenIntentModal(restorePause: boolean): void {
     if (!this.intentModal) return;
+    if (this.intentModalKeydown) {
+      window.removeEventListener('keydown', this.intentModalKeydown, true);
+      this.intentModalKeydown = null;
+    }
     this.intentModal.remove();
     this.intentModal = null;
     if (restorePause && this.intentModalPaused) this.ctx.state.paused = false;
@@ -903,7 +1686,8 @@ export class Builder {
       this.doc.lights.length > 0 ||
       this.doc.world !== null ||
       this.cmds.depth > 0 ||
-      this.paintDirty
+      this.paintDirty ||
+      this.backdropDirty
     );
   }
 
@@ -912,6 +1696,8 @@ export class Builder {
     const rt = this.ctx.levels.current;
     const name = rt ? `${rt.def.name} scene edit` : 'play scene edit';
     const doc = createEmptyDocument(name, (rt?.def.biome ?? this.ctx.state.currentBiome) as BiomeId);
+    doc.backdrop = sanitizeBackdropSettings(rt?.backdrop ?? this.ctx.params.backdrop);
+    doc.backdropProfileId = rt?.backdropLevelId ?? rt?.def.id ?? null;
     doc.world = captureWorldLayer(this.ctx);
     doc.objects.push({
       id: freshId('spawn'),
@@ -924,6 +1710,7 @@ export class Builder {
       params: {},
     });
     this.doc = doc;
+    this.backdropDirty = false;
     this.playtestScars = null;
     this.mutedLightIds.clear();
     this.cmds.clear();
@@ -932,12 +1719,14 @@ export class Builder {
     this.region = null;
     this.regionMask = null;
     this.regionMaskCells = 0;
+    this.syncDocBackdropToLive();
   }
 
   private keepCurrentDocDraft(): void {
     if (!this.hasAuthoringWork()) return;
     if (this.floating || this.settling || this.settleSnap || this.pendingPreview) return;
     this.ensureCaptured();
+    this.ensureDocBackdrop();
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), doc: this.doc }));
     } catch {
@@ -962,9 +1751,11 @@ export class Builder {
     this.cmds.clear();
     this.select(null);
     this.paintDirty = false;
+    this.backdropDirty = false;
     this.region = null;
     this.regionMask = null;
     this.regionMaskCells = 0;
+    this.syncDocBackdropToLive();
     this.applyDocTerrain();
     this.syncAll();
     this.status(statusText);
@@ -981,6 +1772,7 @@ export class Builder {
     document.querySelector('.mode-switch')?.appendChild(this.modeBtn);
 
     const holder = document.getElementById('canvas-holder');
+    const viewport = document.getElementById('viewport-container');
     this.root = document.createElement('div');
     this.root.id = 'builder-root';
     this.root.style.display = 'none';
@@ -988,9 +1780,29 @@ export class Builder {
       `<button class="bp-tool bp-icon" data-tool="${tool}" aria-label="${label}"><span class="bp-glyph k-${tool}">${glyph}</span></button>`;
     const placeBtn = (p: { kind: EditorObjectKind; label: string; glyph: string }): string =>
       `<button class="bp-tool bp-mini" data-kind="${p.kind}" aria-label="${p.label}"><span class="bp-glyph k-${p.kind}">${p.glyph}</span>${p.label}</button>`;
+    const paletteSection = (id: string, label: string, body: string): string => {
+      const collapsed = this.workspaceLayout.collapsedSections[id] === true;
+      return `<section class="bp-section${collapsed ? ' collapsed' : ''}" data-section="${id}">
+        <button type="button" class="bp-head bp-section-head" data-section-toggle="${id}" aria-expanded="${collapsed ? 'false' : 'true'}">
+          <span class="bp-chevron" aria-hidden="true"></span><span>${label}</span>
+        </button>
+        <div class="bp-section-body">${body}</div>
+      </section>`;
+    };
+    const layerRows = (['gameplay', 'mech', 'links', 'lights'] as const)
+      .map(
+        (f) =>
+          `<div class="bp-layer" data-layer="${f}"><span>${f}</span><button data-vis title="Show/hide in the editor (still compiles)">&#128065;</button><button data-lock title="Lock against selection">&#128275;</button></div>`,
+      )
+      .join('');
     this.root.innerHTML = `
+      <div id="builder-workspace">
       <div id="builder-bar">
         <span class="b-title">BUILDER</span>
+        <div id="b-session-tabs" class="b-segment" aria-label="Builder session">
+          <button id="b-session-author" class="active" title="Static authoring view">AUTHOR</button>
+          <button id="b-session-live" title="Preview animation without gameplay mutation">LIVE PREVIEW</button>
+        </div>
         <input id="b-doc-name" value="untitled" spellcheck="false" title="Document name">
         <select id="b-biome" title="Document biome"></select>
         <button id="b-new" title="New document">NEW</button>
@@ -1013,13 +1825,19 @@ export class Builder {
         <button id="b-playtest" class="b-accent">BUILDER PLAYTEST</button>
         <button id="b-playtest-here" class="b-accent" title="Compile this document and spawn at the cursor">PLAYTEST HERE</button>
         <button id="b-gallery" title="Browse and preview every prefab, mechanism, entity and sprite — live and animated">GALLERY</button>
-        <button id="b-zen" title="Hide all side panels for a clear view of the canvas (\`)">PANELS</button>
+        <button id="b-backdrop" title="Preview and tune parallax backdrop layers">BACKDROP</button>
+        <button id="b-reset-workspace" title="Reset dock layout, open panels, and workspace preferences">RESET WORKSPACE</button>
+        <button id="b-zen" title="Hide all side panels for a clear view of the canvas">PANELS</button>
         <button id="b-exit">EXIT</button>
       </div>
-      <div id="builder-overlay"><canvas id="builder-canvas"></canvas><div id="builder-markers"></div></div>
+      <div id="builder-workspace-body">
+      <div id="builder-dock-left" class="builder-dock" data-dock="left">
       <div id="builder-palette">
-        <div class="bp-head">TOOLS</div>
-        <div class="bp-grid bp-grid5">
+        <div class="builder-panel-title" data-panel-handle>PALETTE</div>
+        ${paletteSection(
+          'palette.tools',
+          'TOOLS',
+          `<div class="bp-grid bp-grid5">
           ${toolBtn('select', 'V', 'Select / Move (V)')}
           ${toolBtn('paint', 'B', 'Paint cells — Sandbox material & brush (B)')}
           ${toolBtn('line', '\\', 'Line (L)')}
@@ -1035,68 +1853,126 @@ export class Builder {
           ${toolBtn('polyRegion', '⬠', 'Polygon region: click vertices, Enter/near-first closes')}
           ${toolBtn('regionMagic', '✦', 'Magic region: click an open area to select the whole cavern')}
           ${toolBtn('lassoRegion', '➰', 'Lasso region: drag a freehand loop; release closes it')}
-        </div>
+        </div>`,
+        )}
         <div id="bp-mat-row" class="bp-hint" title="Active material, brush radius and zoom"></div>
-        <div class="bp-head">MATERIALS</div>
-        <div id="bp-materials" class="bp-grid bp-grid6"></div>
-        <div class="bp-brushrow"><span>brush</span><input type="range" id="bp-brush" min="1" max="24" value="6"><b id="bp-brush-val">6</b></div>
-        <div class="bp-head">WORLD GEN</div>
-        <div class="bp-grid bp-grid3">
+        ${paletteSection(
+          'palette.materials',
+          'MATERIALS',
+          `<div id="bp-materials" class="bp-grid bp-grid6"></div>
+        <div class="bp-brushrow"><span>brush</span><input type="range" id="bp-brush" min="1" max="24" value="6"><b id="bp-brush-val">6</b></div>`,
+        )}
+        ${paletteSection(
+          'palette.worldgen',
+          'WORLD GEN',
+          `<div class="bp-grid bp-grid3">
           <button id="bp-gen-caves" title="Regenerate caves in the document's biome (whole world)">CAVES</button>
           <button id="bp-gen-fort" title="Stamp a fortress into the world">FORT</button>
           <button id="bp-gen-clear" title="Clear the whole world">CLEAR</button>
-        </div>
-        <div class="bp-head">PLACE</div>
-        <div class="bp-grid bp-grid2">${PLACE_GAMEPLAY.map(placeBtn).join('')}</div>
-        <div class="bp-head">MECHANISMS</div>
-        <div class="bp-grid bp-grid2">${PLACE_MECH.map(placeBtn).join('')}</div>
-        <button class="bp-tool" data-tool="link"><span class="bp-glyph k-link">K</span>Link trigger &rarr; door (K)</button>
-        <div class="bp-head">LIGHTING</div>
-        <button class="bp-tool" data-tool="light"><span class="bp-glyph k-light">*</span>Authored Light</button>
-        <button id="bp-light-toggle" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>
-        <div class="bp-head">PREFABS</div>
-        <div id="bp-prefab-host"></div>
-        <div class="bp-head">SPRITES</div>
-        <div id="bp-sprite-host"></div>
-        <div class="bp-head">SIMULATE</div>
-        <div class="bp-grid bp-grid3">
+        </div>`,
+        )}
+        ${paletteSection('palette.place', 'PLACE', `<div class="bp-grid bp-grid2">${PLACE_GAMEPLAY.map(placeBtn).join('')}</div>`)}
+        ${paletteSection(
+          'palette.mechanisms',
+          'MECHANISMS',
+          `<div class="bp-grid bp-grid2">${PLACE_MECH.map(placeBtn).join('')}</div>
+        <button class="bp-tool" data-tool="link"><span class="bp-glyph k-link">K</span>Link trigger &rarr; door (K)</button>`,
+        )}
+        ${paletteSection(
+          'palette.lighting',
+          'LIGHTING',
+          `<button class="bp-tool" data-tool="light"><span class="bp-glyph k-light">*</span>Authored Light</button>
+        <button id="bp-light-toggle" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>`,
+        )}
+        ${paletteSection('palette.prefabs', 'PREFABS', '<div id="bp-prefab-host"></div>')}
+        ${paletteSection('palette.sprites', 'SPRITES', '<div id="bp-sprite-host"></div>')}
+        ${paletteSection(
+          'palette.simulate',
+          'SIMULATE',
+          `<div class="bp-grid bp-grid3">
           <button id="bp-settle" aria-label="Hold to run physics; release to keep or revert">SETTLE</button>
           <button id="bp-settle-keep" style="display:none">KEEP</button>
           <button id="bp-settle-revert" style="display:none">REVERT</button>
-        </div>
-        <div class="bp-head">LAYERS</div>
-        <div id="bp-layers">
-          ${(['gameplay', 'mech', 'links', 'lights'] as const)
-            .map(
-              (f) =>
-                `<div class="bp-layer" data-layer="${f}"><span>${f}</span><button data-vis title="Show/hide in the editor (still compiles)">&#128065;</button><button data-lock title="Lock against selection">&#128275;</button></div>`,
-            )
-            .join('')}
-        </div>
-        <div class="bp-head">VIEW</div>
-        <button id="bp-overlay-btn" title="Readability overlays (O)">OVERLAY: NONE</button>
+        </div>`,
+        )}
+        ${paletteSection('palette.layers', 'LAYERS', `<div id="bp-layers">${layerRows}</div>`)}
+        ${paletteSection(
+          'palette.view',
+          'VIEW',
+          `<button id="bp-overlay-btn" title="Readability overlays (O)">OVERLAY: NONE</button>
         <button id="bp-snap-btn" title="Snap placements and drags to a grid">SNAP: OFF</button>
-        <button id="bp-sym-btn" title="Mirror terrain painting across the axis (world center; a region recenters it)">SYM: OFF</button>
-        <div class="bp-head">PARAMETERS</div>
-        <button id="bp-world-btn" title="Global sim/light tuning (live params)">WORLD&hellip;</button>
-        <button id="bp-mat-btn" title="Tuning sliders for the armed material">MATERIAL&hellip;</button>
-        <div class="bp-head">PROCEDURAL</div>
-        <button id="bp-proc-btn">SEEDED PASSES&hellip;</button>
-        <div class="bp-hint">RMB eyedrops &middot; wheel zooms.<br>Shift-click multi-selects,<br>drag empty = marquee.<br>Ctrl+D duplicate &middot; Ctrl+C/V<br>copy/paste params.<br>T playtests at the cursor.<br>Prefab armed: Q rotate, E flip.<br>X floats a region (Enter lands,<br>arrows nudge, Q/E spin).<br>ESC steps back &middot; DEL removes.</div>
+        <button id="bp-sym-btn" title="Mirror terrain painting across the axis (world center; a region recenters it)">SYM: OFF</button>`,
+        )}
+        ${paletteSection(
+          'palette.parameters',
+          'PARAMETERS',
+          `<button id="bp-world-btn" title="Global sim/light tuning (live params)">WORLD&hellip;</button>
+        <button id="bp-mat-btn" title="Tuning sliders for the armed material">MATERIAL&hellip;</button>`,
+        )}
+        ${paletteSection('palette.procedural', 'PROCEDURAL', '<button id="bp-proc-btn">SEEDED PASSES&hellip;</button>')}
       </div>
+      </div>
+      <div id="builder-stage" data-dock="floating">
+      <div id="builder-center-slot"></div>
+      <div id="builder-overlay"><canvas id="builder-canvas"></canvas><div id="builder-markers"></div></div>
       <div id="bp-matpop" style="display:none"></div>
+      <canvas id="builder-minimap" width="${WIDTH >> 3}" height="${Math.ceil(HEIGHT / 8)}"
+        title="Click to jump the camera"></canvas>
+      <div id="builder-cmdk" style="display:none">
+        <input id="bp-cmdk-input" placeholder="type a command&hellip; (Esc closes)" spellcheck="false">
+        <div id="bp-cmdk-list"></div>
+      </div>
+      <div id="builder-import-host" style="display:none"></div>
+      <div id="builder-status"></div>
+      <div id="builder-help" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="builder-help-title" style="display:none">
+        <div class="builder-help-card">
+          <div class="builder-help-titlebar">
+            <div>
+              <div class="builder-help-kicker">BUILDER HELP</div>
+              <div id="builder-help-title" class="builder-help-title">Authoring controls</div>
+            </div>
+            <button id="builder-help-close" type="button" aria-label="Close Builder help">&times;</button>
+          </div>
+          <div class="builder-help-grid">
+            <div>
+              <div class="builder-help-section">Canvas</div>
+              <p><b>RMB</b> eyedrops material under the cursor.</p>
+              <p><b>Mouse wheel</b> zooms the Builder camera.</p>
+              <p><b>Drag empty canvas</b> creates a selection marquee.</p>
+              <p><b>Shift-click</b> adds to the current selection.</p>
+            </div>
+            <div>
+              <div class="builder-help-section">Editing</div>
+              <p><b>Ctrl+D</b> duplicates selection.</p>
+              <p><b>Ctrl+C / Ctrl+V</b> copies and pastes parameters.</p>
+              <p><b>Delete</b> removes the selected object or light.</p>
+              <p><b>Esc</b> steps back or closes transient Builder UI.</p>
+            </div>
+            <div>
+              <div class="builder-help-section">Testing</div>
+              <p><b>T</b> playtests at the cursor.</p>
+              <p><b>Q</b> rotates an armed prefab.</p>
+              <p><b>E</b> flips an armed prefab.</p>
+              <p><b>X</b> floats a region; <b>Enter</b> lands it.</p>
+            </div>
+          </div>
+          <div class="builder-help-close-hint">Press H or Esc to close.</div>
+        </div>
+      </div>
+      </div>
+      <div id="builder-dock-right" class="builder-dock" data-dock="right">
       <div id="builder-inspector"></div>
       <div id="builder-world" style="display:none">
-        <div class="bi-head">WORLD PARAMETERS <button id="bw-close">&times;</button></div>
+        <div class="bi-head" data-panel-handle>WORLD PARAMETERS <button id="bw-close">&times;</button></div>
         <div id="bw-controls"></div>
         <div class="bp-hint">Live tuning data — changes<br>apply to the sim immediately<br>(document MOOD sets the<br>playtest ambient).</div>
       </div>
       <div id="builder-matparams" style="display:none">
-        <div class="bi-head">MATERIAL PARAMETERS <button id="bm-close">&times;</button></div>
+        <div class="bi-head" data-panel-handle>MATERIAL PARAMETERS <button id="bm-close">&times;</button></div>
         <div id="bm-controls"></div>
       </div>
       <div id="builder-proc" style="display:none">
-        <div class="bi-head">PROCEDURAL PASS <button id="bp-proc-close">&times;</button></div>
+        <div class="bi-head" data-panel-handle>PROCEDURAL PASS <button id="bp-proc-close">&times;</button></div>
         <div class="bi-row"><span>pass</span><select id="bp-pass">${PASSES.map(
           (p) => `<option value="${p.id}">${p.label}</option>`,
         ).join('')}</select></div>
@@ -1112,15 +1988,16 @@ export class Builder {
         <div class="bp-hint" id="bp-status">Cell passes preview before<br>committing; population passes<br>apply directly (undoable).</div>
       </div>
       <div id="builder-issues" style="display:none"></div>
-      <canvas id="builder-minimap" width="${WIDTH >> 3}" height="${Math.ceil(HEIGHT / 8)}"
-        title="Click to jump the camera"></canvas>
-      <div id="builder-cmdk" style="display:none">
-        <input id="bp-cmdk-input" placeholder="type a command&hellip; (Esc closes)" spellcheck="false">
-        <div id="bp-cmdk-list"></div>
       </div>
-      <div id="builder-import-host" style="display:none"></div>
-      <div id="builder-status"></div>`;
-    holder?.appendChild(this.root);
+      <div id="builder-dock-guides" aria-hidden="true">
+        <div id="builder-dock-guide-left" class="builder-dock-guide bdg-left" data-dock="left"><span>LEFT</span></div>
+        <div id="builder-dock-guide-right" class="builder-dock-guide bdg-right" data-dock="right"><span>RIGHT</span></div>
+        <div id="builder-dock-guide-bottom" class="builder-dock-guide bdg-bottom" data-dock="bottom"><span>BOTTOM</span></div>
+      </div>
+      </div>
+      <div id="builder-dock-bottom" class="builder-dock" data-dock="bottom"></div>
+      </div>`;
+    viewport?.appendChild(this.root);
     this.playtestBanner = document.createElement('div');
     this.playtestBanner.id = 'builder-playtest-banner';
     this.playtestBanner.style.display = 'none';
@@ -1132,11 +2009,15 @@ export class Builder {
     holder?.appendChild(this.playtestBanner);
     this.playtestBanner
       .querySelector<HTMLButtonElement>('#bpt-return')
-      ?.addEventListener('click', () => this.open());
+      ?.addEventListener('click', () => {
+        this.builderReturnRequested = true;
+        this.open();
+      });
     this.playtestBanner
       .querySelector<HTMLButtonElement>('#bpt-restart')
       ?.addEventListener('click', () => this.restartBuilderPlaytest());
 
+    this.centerSlot = this.root.querySelector('#builder-center-slot') as HTMLDivElement;
     this.overlay = this.root.querySelector('#builder-overlay') as HTMLDivElement;
     this.canvas = this.root.querySelector('#builder-canvas') as HTMLCanvasElement;
     this.cctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
@@ -1214,35 +2095,17 @@ export class Builder {
 
   /* ---------- the instant popover (every palette button gets one) ---------- */
 
-  private popShow(anchor: HTMLElement, fill: (pop: HTMLDivElement) => void): void {
-    if (this.palDrag?.ghost) return; // no popover noise mid-drag
-    const pop = this.el<HTMLDivElement>('bp-matpop');
-    pop.innerHTML = '';
-    fill(pop);
-    const rootRect = this.root.getBoundingClientRect();
-    const palRect = this.el<HTMLDivElement>('builder-palette').getBoundingClientRect();
-    const aRect = anchor.getBoundingClientRect();
-    pop.style.left = palRect.right - rootRect.left + 8 + 'px';
-    pop.style.top = Math.max(4, aRect.top - rootRect.top - 6) + 'px';
-    pop.style.display = '';
-    // keep it on screen when hovering near the bottom of the palette
-    const overflow = pop.getBoundingClientRect().bottom - rootRect.bottom + 8;
-    if (overflow > 0) {
-      pop.style.top = Math.max(4, parseFloat(pop.style.top) - overflow) + 'px';
-    }
-  }
-
-  private popHide(): void {
-    this.el<HTMLDivElement>('bp-matpop').style.display = 'none';
-  }
-
   private attachPopover(el: HTMLElement, fill: (pop: HTMLDivElement) => void): void {
     if (el.title) {
       el.setAttribute('aria-label', el.title);
       el.removeAttribute('title');
     }
-    el.addEventListener('mouseenter', () => this.popShow(el, fill));
-    el.addEventListener('mouseleave', () => this.popHide());
+    this.popovers.attachHover(el, {
+      id: 'bp-matpop',
+      offsetY: -6,
+      shouldShow: () => !this.palDrag?.ghost,
+      render: fill,
+    });
   }
 
   /** Head row: picture + name. */
@@ -1335,7 +2198,190 @@ export class Builder {
     if (t === 'link') this.status('LINK: CLICK A TRIGGER OR RUNE GLYPH, THEN ITS DOOR');
   }
 
+  private registerCommands(): void {
+    const blocked = () => this.previewBlockReason() !== null;
+    const blockReason = () => this.previewBlockReason() ?? 'Command unavailable';
+    const add = (spec: CommandSpec) => this.uiCommands.register(spec);
+    const tool = (id: string, t: BuilderTool, label: string, shortcut?: string) =>
+      add({
+        id,
+        label,
+        category: 'Tools',
+        shortcut,
+        run: () => this.setTool(t),
+      });
+
+    add({ id: 'builder.findInvalid', label: 'Find Invalid Object', category: 'Validation', run: () => this.findInvalid() });
+    add({ id: 'builder.frameSelection', label: 'Frame Selection', category: 'View', shortcut: 'F', run: () => this.frameSelection() });
+    add({ id: 'builder.help', label: 'Builder Help', category: 'Help', shortcut: 'H', run: () => this.setBuilderHelp(true) });
+    add({
+      id: 'builder.validate',
+      label: 'Validate Document',
+      category: 'Validation',
+      enabled: () => !blocked(),
+      disabledReason: blockReason,
+      run: () => this.validateCurrentDocument(),
+    });
+    add({
+      id: 'builder.playtest',
+      label: 'Builder Playtest',
+      category: 'Playtest',
+      enabled: () => !blocked(),
+      disabledReason: blockReason,
+      run: () => this.playtest(),
+    });
+    add({
+      id: 'builder.playtestHere',
+      label: 'Playtest Here',
+      category: 'Playtest',
+      shortcut: 'T',
+      enabled: () => !blocked(),
+      disabledReason: blockReason,
+      run: () => this.playtestHere(),
+    });
+    add({ id: 'builder.save', label: 'Save Document', category: 'Document', enabled: () => !blocked(), disabledReason: blockReason, run: () => this.saveDocument() });
+    add({ id: 'builder.load', label: 'Load Selected Document', category: 'Document', enabled: () => !blocked(), disabledReason: blockReason, run: () => void this.loadSelectedDocument() });
+    add({ id: 'builder.export', label: 'Export Document (.json)', category: 'Document', enabled: () => !blocked(), disabledReason: blockReason, run: () => this.exportDocument() });
+    add({ id: 'builder.share', label: 'Share Code', category: 'Document', enabled: () => !blocked(), disabledReason: blockReason, run: () => void this.shareDocument() });
+    add({ id: 'builder.importCode', label: 'Import From Share Code', category: 'Document', enabled: () => !blocked(), disabledReason: blockReason, run: () => void this.importShareCode() });
+    add({ id: 'builder.captureTerrain', label: 'Capture Terrain Into Document', category: 'Document', enabled: () => !blocked(), disabledReason: blockReason, run: () => this.captureTerrain() });
+    add({ id: 'builder.restoreTerrain', label: 'Restore Document Terrain', category: 'Document', enabled: () => !blocked(), disabledReason: blockReason, run: () => this.restoreTerrain() });
+    add({ id: 'builder.newDocument', label: 'New Document', category: 'Document', enabled: () => !blocked(), disabledReason: blockReason, run: () => void this.newDocument() });
+    add({ id: 'builder.undo', label: 'Undo', category: 'Edit', shortcut: 'Ctrl+Z', enabled: () => !blocked(), disabledReason: blockReason, run: () => this.undo() });
+    add({ id: 'builder.redo', label: 'Redo', category: 'Edit', shortcut: 'Ctrl+Y', enabled: () => !blocked(), disabledReason: blockReason, run: () => this.redo() });
+    add({ id: 'builder.redoAlt', label: 'Redo', category: 'Edit', shortcut: 'Ctrl+Shift+Z', enabled: () => !blocked(), disabledReason: blockReason, visible: () => false, run: () => this.redo() });
+    add({ id: 'builder.commandPalette', label: 'Command Palette', category: 'View', shortcut: 'Ctrl+K', run: () => this.openCmdk() });
+    add({ id: 'builder.session.author', label: 'Author View', category: 'Session', run: () => this.setBuilderSession('author') });
+    add({ id: 'builder.session.live', label: 'Live Preview', category: 'Session', run: () => this.setBuilderSession('live') });
+    add({ id: 'builder.copyParams', label: 'Copy Parameters', category: 'Edit', shortcut: 'Ctrl+C', enabled: () => this.selected() !== null, disabledReason: () => 'Select an object first', run: () => this.copyParams() });
+    add({ id: 'builder.pasteParams', label: 'Paste Parameters', category: 'Edit', shortcut: 'Ctrl+V', enabled: () => this.selected() !== null && this.clipboard !== null, disabledReason: () => (this.selected() === null ? 'Select an object first' : 'Copy parameters first'), run: () => this.pasteParams() });
+    add({ id: 'builder.duplicate', label: 'Duplicate Selection', category: 'Edit', shortcut: 'Ctrl+D', enabled: () => !blocked() && this.selectedIds.size > 0, disabledReason: () => blockReasonOr(this.selectedIds.size === 0 ? 'Select one or more objects first' : null), run: () => this.duplicateSelection() });
+    add({ id: 'builder.group', label: 'Group Selection', category: 'Edit', shortcut: 'Ctrl+G', enabled: () => this.selectedIds.size > 1, disabledReason: () => 'Select at least two objects first', run: () => this.groupSelection(false) });
+    add({ id: 'builder.ungroup', label: 'Ungroup Selection', category: 'Edit', shortcut: 'Ctrl+Shift+G', enabled: () => this.selectedIds.size > 0, disabledReason: () => 'Select a grouped object first', run: () => this.groupSelection(true) });
+    add({ id: 'builder.delete', label: 'Delete Selection', category: 'Edit', shortcut: 'Delete', enabled: () => !blocked() && this.selectedIds.size > 0, disabledReason: () => blockReasonOr(this.selectedIds.size === 0 ? 'Select one or more objects first' : null), run: () => void this.deleteSelection() });
+    add({
+      id: 'builder.bakeScars',
+      label: 'Bake Playtest Scars',
+      category: 'Playtest',
+      enabled: () => !blocked() && this.playtestScars !== null,
+      disabledReason: () => blockReasonOr(this.playtestScars === null ? 'No returned playtest scars to bake' : null),
+      run: () => void this.bakePlaytestScars(),
+    });
+    add({
+      id: 'builder.liftRegion',
+      label: 'Lift Region As Floating Selection',
+      category: 'Edit',
+      shortcut: 'X',
+      enabled: () => !blocked() && this.region !== null,
+      disabledReason: () => blockReasonOr(this.region === null ? 'Select a region first' : null),
+      run: () => this.liftFloat(),
+    });
+    add({ id: 'builder.symmetryCycle', label: 'Cycle Symmetry Painting', category: 'View', run: () => this.cycleSymmetry() });
+    add({
+      id: 'builder.capturePrefab',
+      label: 'Capture Region As Prefab',
+      category: 'Prefabs',
+      enabled: () => !blocked() && this.region !== null,
+      disabledReason: () => blockReasonOr(this.region === null ? 'Select a region first' : null),
+      run: () => void this.capturePrefabFromRegion(),
+    });
+    add({ id: 'builder.importPrefab', label: 'Import Prefab (.json / .png)', category: 'Prefabs', enabled: () => !blocked(), disabledReason: blockReason, run: () => void this.importPrefabFiles() });
+    add({
+      id: 'builder.exportRegionPng',
+      label: 'Export Region As PNG',
+      category: 'Prefabs',
+      enabled: () => !blocked() && this.region !== null,
+      disabledReason: () => blockReasonOr(this.region === null ? 'Select a region first' : null),
+      run: () => void this.exportRegionPng(),
+    });
+    add({ id: 'builder.exportPalette', label: 'Export Material Palette (.gpl)', category: 'Prefabs', run: () => this.exportMaterialPalette() });
+    add({ id: 'builder.lightPreviewToggle', label: 'Toggle Light Preview', category: 'View', run: () => this.toggleLightPreview() });
+    add({ id: 'builder.worldPanel', label: 'World Parameters', category: 'Panels', run: () => this.toggleSidePanel('world') });
+    add({ id: 'builder.materialPanel', label: 'Material Parameters', category: 'Panels', run: () => this.toggleSidePanel('mat') });
+    add({ id: 'builder.proceduralPanel', label: 'Seeded Procedural Passes', category: 'Panels', run: () => this.toggleSidePanel('proc') });
+    add({ id: 'builder.resetWorkspace', label: 'Reset Workspace', category: 'Panels', run: () => this.resetWorkspace() });
+    for (const preset of ['compact', 'wide', 'validation', 'lighting', 'prefab'] as const) {
+      add({
+        id: `builder.workspace.${preset}`,
+        label: `Workspace Preset: ${preset.toUpperCase()}`,
+        category: 'Panels',
+        run: () => this.applyWorkspacePreset(preset),
+      });
+    }
+    add({ id: 'builder.togglePanels', label: 'Toggle Panels / Zen', category: 'View', run: () => this.toggleZen() });
+    add({ id: 'builder.overlayCycle', label: 'Cycle Readability Overlay', category: 'Overlays', shortcut: 'O', run: () => this.cycleOverlay() });
+    for (const id of BUILDER_OVERLAY_IDS) {
+      add({
+        id: `builder.overlay.${id}`,
+        label: `Toggle ${overlayLabel(id)}`,
+        category: 'Overlays',
+        run: () => this.toggleOverlay(id),
+      });
+    }
+    add({ id: 'builder.snapCycle', label: 'Cycle Snap Grid', category: 'View', run: () => this.cycleSnapGrid() });
+    add({ id: 'builder.generateCaves', label: 'Generate Caves', category: 'World', enabled: () => !blocked(), disabledReason: blockReason, run: () => void this.guardedWorldGen('caves') });
+    add({ id: 'builder.spawnFortress', label: 'Spawn Fortress', category: 'World', enabled: () => !blocked(), disabledReason: blockReason, run: () => void this.guardedWorldGen('fortress') });
+    add({ id: 'builder.clearWorld', label: 'Clear World', category: 'World', enabled: () => !blocked(), disabledReason: blockReason, run: () => void this.guardedWorldGen('clear') });
+    tool('builder.tool.select', 'select', 'Tool: Select', 'V');
+    tool('builder.tool.paint', 'paint', 'Tool: Paint', 'B');
+    tool('builder.tool.line', 'line', 'Tool: Line', 'L');
+    tool('builder.tool.rect', 'rect', 'Tool: Rectangle');
+    tool('builder.tool.rectFill', 'rectFill', 'Tool: Filled Rectangle');
+    tool('builder.tool.ellipse', 'ellipse', 'Tool: Ellipse');
+    tool('builder.tool.ellipseFill', 'ellipseFill', 'Tool: Filled Ellipse');
+    tool('builder.tool.fill', 'fill', 'Tool: Flood Fill', 'G');
+    tool('builder.tool.replace', 'replace', 'Tool: Replace Material');
+    tool('builder.tool.region', 'region', 'Tool: Region Select', 'R');
+    tool('builder.tool.lassoRegion', 'lassoRegion', 'Tool: Lasso Region');
+    tool('builder.tool.smooth', 'smooth', 'Tool: Smooth Terrain');
+    tool('builder.tool.roughen', 'roughen', 'Tool: Roughen Terrain');
+    tool('builder.tool.link', 'link', 'Tool: Link Trigger To Door', 'K');
+    tool('builder.tool.light', 'light', 'Tool: Place Light');
+
+    const conflicts = this.keymap.conflicts();
+    if (conflicts.length > 0) {
+      console.warn(
+        '[builder keymap] shortcut conflicts: ' +
+          conflicts.map((c) => `${c.shortcut} = ${c.commandIds.join(', ')}`).join('; '),
+      );
+    }
+
+    function blockReasonOr(reason: string | null): string {
+      return reason ?? blockReason();
+    }
+  }
+
+  private runUiCommand(id: string): void {
+    const result = this.uiCommands.run(id);
+    if (!result.ok) this.status(result.reason ?? 'COMMAND UNAVAILABLE', true);
+  }
+
+  private setBuilderSession(mode: 'author' | 'live'): void {
+    if (this.sessionMode === mode) return;
+    this.sessionMode = mode;
+    this.syncSessionButtons();
+    if (mode === 'author') {
+      // Live Preview is visual-only; returning to Author clears transient preview feeds.
+      this.ctx.state.editorLights = null;
+      this.status('AUTHOR VIEW');
+    } else {
+      this.status('LIVE PREVIEW - ANIMATION ONLY, DOCUMENT UNCHANGED');
+    }
+  }
+
+  private syncSessionButtons(): void {
+    this.el('b-session-author').classList.toggle('active', this.sessionMode === 'author');
+    this.el('b-session-live').classList.toggle('active', this.sessionMode === 'live');
+  }
+
   /* ===================== top bar actions ===================== */
+
+  private previewBlockReason(): string | null {
+    if (this.settling || this.settleSnap) return 'Finish the settle preview first';
+    if (this.floating) return 'Land or cancel the floating selection first';
+    if (this.pendingPreview) return 'Apply or discard the procedural preview first';
+    return null;
+  }
 
   /** True (and complains) while a settle run/decision is pending. The
    *  procedural panel gates on THIS (it owns its own pendingPreview). */
@@ -1366,6 +2412,169 @@ export class Builder {
     return true;
   }
 
+  private async newDocument(): Promise<void> {
+    if (this.previewBlocks()) return;
+    if (!(await this.confirmDiscardCurrentDocument('New Document'))) return;
+    this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
+    this.playtestScars = null;
+    this.mutedLightIds.clear();
+    this.cmds.clear();
+    this.select(null);
+    this.paintDirty = false;
+    this.backdropDirty = false;
+    this.region = null;
+    this.syncDocBackdropToLive();
+    this.syncAll();
+    this.status('NEW DOCUMENT');
+  }
+
+  private saveDocument(): void {
+    if (this.previewBlocks()) return;
+    this.ensureCaptured();
+    this.ensureDocBackdrop();
+    embedSprites(this.doc, this.sprites);
+    if (saveDocToLibrary(this.doc)) {
+      this.backdropDirty = false;
+      this.status(`SAVED "${this.doc.name.toUpperCase()}"`);
+      localStorage.removeItem(DRAFT_KEY);
+    } else this.status('STORAGE FULL — USE EXPORT', true);
+    this.refreshDocSelect();
+  }
+
+  private async loadSelectedDocument(): Promise<void> {
+    if (this.previewBlocks()) return;
+    const id = this.el<HTMLSelectElement>('b-doc-select').value;
+    const saved = loadDocLibrary()[id];
+    if (!saved) return;
+    const doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
+    if (!(await this.confirmDiscardCurrentDocument('Load Document'))) return;
+    this.replaceDocument(doc, `LOADED "${doc.name.toUpperCase()}"`);
+  }
+
+  private exportDocument(): void {
+    if (this.previewBlocks()) return;
+    this.ensureCaptured();
+    this.ensureDocBackdrop();
+    embedSprites(this.doc, this.sprites);
+    const blob = new Blob([JSON.stringify(this.doc)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${this.doc.name || 'level'}.builder.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  private captureTerrain(): void {
+    if (this.previewBlocks()) return;
+    this.doc.world = captureWorldLayer(this.ctx);
+    this.paintDirty = false;
+    this.status('TERRAIN CAPTURED INTO DOCUMENT');
+  }
+
+  private restoreTerrain(): void {
+    if (this.previewBlocks()) return;
+    if (!this.doc.world) {
+      this.status('NOTHING CAPTURED YET — THE DOCUMENT HAS NO TERRAIN', true);
+      return;
+    }
+    this.applyDocTerrain();
+    this.cmds.clear();
+    this.paintDirty = false;
+    this.syncAll();
+    this.status('DOCUMENT TERRAIN RESTORED (UNDO HISTORY CLEARED)');
+  }
+
+  private validateCurrentDocument(): void {
+    if (this.previewBlocks()) return;
+    this.ensureCaptured();
+    const issues = validateDocument(this.doc);
+    this.doc.validation = {
+      at: new Date().toISOString(),
+      errors: issues.filter((i) => i.severity === 'error').length,
+      warnings: issues.filter((i) => i.severity === 'warning').length,
+    };
+    this.renderIssues(issues);
+    this.status(issues.length === 0 ? 'VALID — NO ISSUES' : `${issues.length} ISSUE(S)`);
+  }
+
+  private async shareDocument(): Promise<void> {
+    if (this.previewBlocks()) return;
+    if (this.shareBusy) return;
+    this.shareBusy = true;
+    try {
+      this.ensureCaptured();
+      this.ensureDocBackdrop();
+      embedSprites(this.doc, this.sprites);
+      const code = await docToShareCode(this.doc);
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(code);
+        copied = true;
+      } catch {
+        copied = false;
+      }
+      await appDialog.prompt(
+        copied ? 'Share code (already on the clipboard):' : 'Share code (Ctrl+C to copy):',
+        code,
+        {
+          title: 'Share Code',
+          confirmText: 'Done',
+          cancelText: 'Close',
+          multiline: true,
+          readOnly: true,
+        },
+      );
+      this.status(`SHARE CODE READY — ${Math.max(1, Math.round(code.length / 1024))} KB`);
+    } catch {
+      this.status('SHARE CODE FAILED', true);
+    } finally {
+      this.shareBusy = false;
+    }
+  }
+
+  private async importShareCode(): Promise<void> {
+    if (this.previewBlocks()) return;
+    if (this.codeBusy) return;
+    this.codeBusy = true;
+    try {
+      const code = await appDialog.prompt('Paste a share code:', '', {
+        title: 'Import Code',
+        confirmText: 'Import',
+        multiline: true,
+      });
+      if (!code) return;
+      const doc = await shareCodeToDoc(code);
+      if (!doc) {
+        this.status('NOT A VALID SHARE CODE', true);
+        return;
+      }
+      if (!(await this.confirmDiscardCurrentDocument('Import Code'))) return;
+      this.replaceDocument(doc, `IMPORTED "${doc.name.toUpperCase()}" FROM CODE`);
+    } catch {
+      this.status('CODE IMPORT FAILED', true);
+    } finally {
+      this.codeBusy = false;
+    }
+  }
+
+  private async importDocumentFile(file: File): Promise<void> {
+    if (this.previewBlocks()) return;
+    let parsed: unknown = null;
+    try {
+      const text = await file.text();
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+    const doc = parsed === null ? null : sanitizeImportedDoc(parsed);
+    if (!doc) {
+      this.status('NOT A BUILDER DOCUMENT', true);
+      return;
+    }
+    if (!(await this.confirmDiscardCurrentDocument('Import Document'))) return;
+    this.replaceDocument(doc, `IMPORTED "${doc.name.toUpperCase()}"`);
+  }
+
   private wireBar(): void {
     this.el<HTMLInputElement>('b-doc-name').addEventListener('change', (e) => {
       this.doc.name = (e.target as HTMLInputElement).value.trim() || 'untitled';
@@ -1374,54 +2583,12 @@ export class Builder {
       this.doc.biome = (e.target as HTMLSelectElement).value as BiomeId;
     });
 
-    this.el('b-new').addEventListener('click', async () => {
-      if (this.previewBlocks()) return;
-      if (!(await this.confirmDiscardCurrentDocument('New Document'))) return;
-      this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
-      this.playtestScars = null; // scars belong to the old document
-      this.mutedLightIds.clear();
-      this.cmds.clear();
-      this.select(null);
-      this.paintDirty = false;
-      this.region = null;
-      this.syncAll();
-      this.status('NEW DOCUMENT');
-    });
-
-    this.el('b-save').addEventListener('click', () => {
-      if (this.previewBlocks()) return;
-      this.ensureCaptured();
-      // the saved document carries exactly the sprites its decor references
-      embedSprites(this.doc, this.sprites);
-      if (saveDocToLibrary(this.doc)) {
-        this.status(`SAVED "${this.doc.name.toUpperCase()}"`);
-        localStorage.removeItem(DRAFT_KEY); // an explicit save retires the draft
-      } else this.status('STORAGE FULL — USE EXPORT', true);
-      this.refreshDocSelect();
-    });
-
-    this.el('b-load').addEventListener('click', async () => {
-      if (this.previewBlocks()) return;
-      const id = this.el<HTMLSelectElement>('b-doc-select').value;
-      const saved = loadDocLibrary()[id];
-      if (!saved) return;
-      // Clone so edits never mutate the library copy until the next SAVE.
-      const doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
-      if (!(await this.confirmDiscardCurrentDocument('Load Document'))) return;
-      this.replaceDocument(doc, `LOADED "${doc.name.toUpperCase()}"`);
-    });
-
-    this.el('b-export').addEventListener('click', () => {
-      if (this.previewBlocks()) return;
-      this.ensureCaptured();
-      embedSprites(this.doc, this.sprites);
-      const blob = new Blob([JSON.stringify(this.doc)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${this.doc.name || 'level'}.builder.json`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    });
+    this.el('b-session-author').addEventListener('click', () => this.runUiCommand('builder.session.author'));
+    this.el('b-session-live').addEventListener('click', () => this.runUiCommand('builder.session.live'));
+    this.el('b-new').addEventListener('click', () => this.runUiCommand('builder.newDocument'));
+    this.el('b-save').addEventListener('click', () => this.runUiCommand('builder.save'));
+    this.el('b-load').addEventListener('click', () => this.runUiCommand('builder.load'));
+    this.el('b-export').addEventListener('click', () => this.runUiCommand('builder.export'));
 
     this.el<HTMLInputElement>('b-import').addEventListener('change', (e) => {
       const input = e.target as HTMLInputElement;
@@ -1432,72 +2599,29 @@ export class Builder {
         return;
       }
       void (async () => {
-        // Validate-then-swap: the previous document survives any garbage.
-        let parsed: unknown = null;
-        try {
-          const text = await file.text();
-          parsed = JSON.parse(text);
-        } catch {
-          parsed = null;
-        }
-        const doc = parsed === null ? null : sanitizeImportedDoc(parsed);
-        if (!doc) {
-          this.status('NOT A BUILDER DOCUMENT', true);
-        } else {
-          if (!(await this.confirmDiscardCurrentDocument('Import Document'))) {
-            input.value = '';
-            return;
-          }
-          this.replaceDocument(doc, `IMPORTED "${doc.name.toUpperCase()}"`);
-        }
+        await this.importDocumentFile(file);
         input.value = '';
       })();
     });
 
-    this.el('b-undo').addEventListener('click', () => this.undo());
-    this.el('b-redo').addEventListener('click', () => this.redo());
+    this.el('b-undo').addEventListener('click', () => this.runUiCommand('builder.undo'));
+    this.el('b-redo').addEventListener('click', () => this.runUiCommand('builder.redo'));
 
-    this.el('b-capture').addEventListener('click', () => {
-      if (this.previewBlocks()) return;
-      this.doc.world = captureWorldLayer(this.ctx);
-      this.paintDirty = false;
-      this.status('TERRAIN CAPTURED INTO DOCUMENT');
-    });
+    this.el('b-capture').addEventListener('click', () => this.runUiCommand('builder.captureTerrain'));
 
     // The recovery path for "I just wiped the world": re-decode the layer
     // the document already holds. Undo clears — cell patches recorded
     // against the wiped world would lie against the restored one.
-    this.el('b-restore').addEventListener('click', () => {
-      if (this.previewBlocks()) return;
-      if (!this.doc.world) {
-        this.status('NOTHING CAPTURED YET — THE DOCUMENT HAS NO TERRAIN', true);
-        return;
-      }
-      this.applyDocTerrain();
-      this.cmds.clear();
-      this.paintDirty = false;
-      this.syncAll();
-      this.status('DOCUMENT TERRAIN RESTORED (UNDO HISTORY CLEARED)');
-    });
+    this.el('b-restore').addEventListener('click', () => this.runUiCommand('builder.restoreTerrain'));
+    this.el('b-validate').addEventListener('click', () => this.runUiCommand('builder.validate'));
 
-    this.el('b-validate').addEventListener('click', () => {
-      if (this.previewBlocks()) return;
-      this.ensureCaptured();
-      const issues = validateDocument(this.doc);
-      this.doc.validation = {
-        at: new Date().toISOString(),
-        errors: issues.filter((i) => i.severity === 'error').length,
-        warnings: issues.filter((i) => i.severity === 'warning').length,
-      };
-      this.renderIssues(issues);
-      this.status(issues.length === 0 ? 'VALID — NO ISSUES' : `${issues.length} ISSUE(S)`);
-    });
-
-    this.el('b-bake').addEventListener('click', () => void this.bakePlaytestScars());
-    this.el('b-playtest').addEventListener('click', () => this.playtest());
-    this.el('b-playtest-here').addEventListener('click', () => this.playtestHere());
+    this.el('b-bake').addEventListener('click', () => this.runUiCommand('builder.bakeScars'));
+    this.el('b-playtest').addEventListener('click', () => this.runUiCommand('builder.playtest'));
+    this.el('b-playtest-here').addEventListener('click', () => this.runUiCommand('builder.playtestHere'));
     this.el('b-gallery').addEventListener('click', () => this.openGallery());
-    this.el('b-zen').addEventListener('click', () => this.toggleZen());
+    this.el('b-backdrop').addEventListener('click', () => this.openBackdropPreview());
+    this.el('b-reset-workspace').addEventListener('click', () => this.runUiCommand('builder.resetWorkspace'));
+    this.el('b-zen').addEventListener('click', () => this.runUiCommand('builder.togglePanels'));
     this.el('b-exit').addEventListener('click', () => this.close());
   }
 
@@ -1514,9 +2638,44 @@ export class Builder {
     this.status('GALLERY — ↑↓ BROWSE · ←→ STATES · ESC CLOSES');
   }
 
+  /** Live preview for the image-backed parallax cave backdrop. */
+  private openBackdropPreview(): void {
+    this.syncDocBackdropToLive();
+    this.backdropPreview ??= new BackdropPreview(this.root, this.ctx, {
+      getSettings: () => this.ensureDocBackdrop(),
+      commitSettings: (settings, playtestProfileId) => {
+        this.doc.backdrop = sanitizeBackdropSettings(settings);
+        this.doc.backdropProfileId = playtestProfileId;
+        this.ctx.params.backdrop = this.doc.backdrop;
+        this.backdropDirty = true;
+        this.status(
+          playtestProfileId
+            ? `BACKDROP APPLIED TO DOCUMENT - PLAYTEST USES ${playtestProfileId.toUpperCase()}`
+            : 'BACKDROP APPLIED TO DOCUMENT',
+        );
+      },
+      getPlaytestProfileId: () => this.doc.backdropProfileId ?? null,
+    });
+    this.backdropPreview.open();
+    this.status('BACKDROP — DRAG OR WASD TO PAN · ESC CLOSES');
+  }
+
+  private ensureDocBackdrop(): NonNullable<EditorDocument['backdrop']> {
+    this.doc.backdrop = sanitizeBackdropSettings(this.doc.backdrop ?? this.ctx.params.backdrop);
+    this.doc.backdropProfileId =
+      typeof this.doc.backdropProfileId === 'string' && this.doc.backdropProfileId ? this.doc.backdropProfileId : null;
+    return this.doc.backdrop;
+  }
+
+  private syncDocBackdropToLive(): void {
+    this.ctx.params.backdrop = this.ensureDocBackdrop();
+  }
+
   /** Focus mode: every floating panel out of the way; the canvas breathes. */
   private toggleZen(): void {
     const zen = this.root.classList.toggle('b-zen');
+    if (zen) this.setDevConsoleOpen(false);
+    this.applyWorkspaceLayout();
     this.status(zen ? 'PANELS HIDDEN — ` OR THE PANELS BUTTON BRINGS THEM BACK' : 'PANELS BACK');
   }
 
@@ -1549,6 +2708,10 @@ export class Builder {
     this.returningFromPlaytest = true;
     this.builderPlaytestActive = true;
     this.lastPlaytestSpawn = spawnAt ? { ...spawnAt } : null;
+    this.playtestScars = null;
+    this.ctx.state.playtestSource = 'builder';
+    this.prePlaytestPlayer = structuredClone(this.ctx.player);
+    this.prePlaytestWands = this.snapshotWands();
     if (this.prevAmbient === null) this.prevAmbient = this.ctx.params.global.ambient;
     this.close();
     compileAndPlaytest(this.ctx, this.doc, spawnAt ? { spawnAt } : undefined);
@@ -1559,6 +2722,7 @@ export class Builder {
   private restartBuilderPlaytest(): void {
     if (!this.builderPlaytestActive) return;
     if (this.prevAmbient !== null) this.ctx.params.global.ambient = this.prevAmbient;
+    this.ctx.state.playtestSource = 'builder';
     compileAndPlaytest(
       this.ctx,
       this.doc,
@@ -1566,6 +2730,75 @@ export class Builder {
     );
     this.setPlaytestBanner(true);
     (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
+  }
+
+  private abandonBuilderPlaytest(): void {
+    if (!this.builderPlaytestActive) return;
+    if (this.prevAmbient !== null) {
+      this.ctx.params.global.ambient = this.prevAmbient;
+      this.prevAmbient = null;
+    }
+    this.ctx.levels.exitCustomPlaytest(this.ctx);
+    this.builderPlaytestActive = false;
+    this.builderReturnRequested = false;
+    this.returningFromPlaytest = false;
+    this.lastPlaytestSpawn = null;
+    this.playtestScars = null;
+    this.ctx.state.playtestSource = null;
+    this.setPlaytestBanner(false);
+    this.ctx.state.editorLights = null;
+    this.ctx.enemies.length = 0;
+    this.ctx.projectiles.length = 0;
+    this.ctx.particles.clear();
+    if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
+    else this.ctx.world = new World();
+    this.restorePrePlaytestPlayer();
+    this.restorePrePlaytestWands();
+  }
+
+  private restorePrePlaytestPlayer(): void {
+    if (!this.prePlaytestPlayer) return;
+    const snapshot = structuredClone(this.prePlaytestPlayer);
+    Object.assign(this.ctx.player, snapshot);
+    this.prePlaytestPlayer = null;
+    if (!snapshot.dead) this.ctx.events.emit('playerDeathCleared');
+  }
+
+  private snapshotWands(): BuilderWandSnapshot {
+    return {
+      active: this.ctx.wands.active,
+      collection: [...this.ctx.wands.collection],
+      wands: this.ctx.wands.wands.map((w) => ({
+        frame: w.frame,
+        cards: [...w.cards],
+        mana: w.mana,
+        cooldown: w.cooldown,
+        cooldownMax: w.cooldownMax,
+        castIndex: w.castIndex,
+      })),
+    };
+  }
+
+  private restorePrePlaytestWands(): void {
+    const snapshot = this.prePlaytestWands;
+    if (!snapshot) return;
+    this.ctx.wands.active = snapshot.active;
+    this.ctx.wands.collection.length = 0;
+    this.ctx.wands.collection.push(...snapshot.collection);
+    snapshot.wands.forEach((saved, index) => {
+      const wand = this.ctx.wands.wands[index as 0 | 1];
+      if (!wand) return;
+      wand.frame = saved.frame;
+      wand.cards.length = 0;
+      wand.cards.push(...saved.cards);
+      wand.mana = saved.mana;
+      wand.cooldown = saved.cooldown;
+      wand.castIndex = saved.castIndex;
+      if (saved.cooldownMax === undefined) delete wand.cooldownMax;
+      else wand.cooldownMax = saved.cooldownMax;
+    });
+    this.prePlaytestWands = null;
+    this.ctx.wands.invalidatePrograms();
   }
 
   private setPlaytestBanner(show: boolean): void {
@@ -2381,12 +3614,13 @@ export class Builder {
     y: number,
   ): { id: string; target: EditorObject | EditorLight; isLight: boolean } | null {
     let best: { id: string; target: EditorObject | EditorLight; isLight: boolean } | null = null;
-    let bestD = PICK_RADIUS * PICK_RADIUS;
+    let bestD = Number.POSITIVE_INFINITY;
     const lightsSelectable = !this.layerHidden.has('lights') && !this.layerLocked.has('lights');
     for (const o of this.doc.objects) {
       if (!this.layerSelectableObj(o)) continue;
+      const radius = this.previewPickRadius(o);
       const d = (o.x - x) * (o.x - x) + (o.y - y) * (o.y - y);
-      if (d <= bestD) {
+      if (d <= radius * radius && d <= bestD) {
         bestD = d;
         best = { id: o.id, target: o, isLight: false };
       }
@@ -2394,7 +3628,7 @@ export class Builder {
     if (lightsSelectable) {
       for (const l of this.doc.lights) {
         const d = (l.x - x) * (l.x - x) + (l.y - y) * (l.y - y);
-        if (d <= bestD) {
+        if (d <= PICK_RADIUS * PICK_RADIUS && d <= bestD) {
           bestD = d;
           best = { id: l.id, target: l, isLight: true };
         }
@@ -2664,12 +3898,12 @@ export class Builder {
   /* ===================== procedural panel (Phase 8) ===================== */
 
   private wireProcPanel(): void {
-    this.el('bp-proc-btn').addEventListener('click', () => this.toggleSidePanel('proc'));
-    this.el('bp-proc-close').addEventListener('click', () => this.openSidePanel(null));
-    this.el('bp-world-btn').addEventListener('click', () => this.toggleSidePanel('world'));
-    this.el('bw-close').addEventListener('click', () => this.openSidePanel(null));
-    this.el('bp-mat-btn').addEventListener('click', () => this.toggleSidePanel('mat'));
-    this.el('bm-close').addEventListener('click', () => this.openSidePanel(null));
+    this.el('bp-proc-btn').addEventListener('click', () => this.runUiCommand('builder.proceduralPanel'));
+    this.el('bp-proc-close').addEventListener('click', () => this.closeSidePanel('proc'));
+    this.el('bp-world-btn').addEventListener('click', () => this.runUiCommand('builder.worldPanel'));
+    this.el('bw-close').addEventListener('click', () => this.closeSidePanel('world'));
+    this.el('bp-mat-btn').addEventListener('click', () => this.runUiCommand('builder.materialPanel'));
+    this.el('bm-close').addEventListener('click', () => this.closeSidePanel('mat'));
     this.el('bp-dice').addEventListener('click', () => {
       this.el<HTMLInputElement>('bp-seed').value = String(1 + Math.floor(Math.random() * 999999));
     });
@@ -2692,7 +3926,7 @@ export class Builder {
     });
   }
 
-  /* ---------- the right-hand side-panel slot (proc / world / material) ---------- */
+  /* ---------- dockable parameter panels (proc / world / material) ---------- */
 
   private static readonly SIDE_PANELS = {
     proc: 'builder-proc',
@@ -2701,20 +3935,49 @@ export class Builder {
   } as const;
 
   private openSidePanel(which: 'proc' | 'world' | 'mat' | null): void {
-    for (const [key, id] of Object.entries(Builder.SIDE_PANELS)) {
-      this.el<HTMLDivElement>(id).style.display = which === key ? '' : 'none';
+    if (which === null) {
+      for (const id of Object.values(Builder.SIDE_PANELS)) {
+        this.el<HTMLDivElement>(id).style.display = 'none';
+        this.setWorkspacePanelOpen(id, false);
+      }
+      this.root.classList.remove('b-params-open');
+      this.applyWorkspaceLayout();
+      this.saveWorkspacePrefs();
+      return;
     }
-    // the open panel docks flush-right; the inspector slides left to make
-    // room (CSS .b-params-open) — the two never overlap
-    this.root.classList.toggle('b-params-open', which !== null);
+    const id = Builder.SIDE_PANELS[which];
+    this.el<HTMLDivElement>(id).style.display = '';
+    this.setWorkspacePanelOpen(id, true);
+    this.root.classList.toggle(
+      'b-params-open',
+      Object.values(Builder.SIDE_PANELS).some((panelId) => this.workspaceLayout.panels.some((panel) => panel.id === panelId && panel.open)),
+    );
     if (which === 'proc') this.syncProcPanel();
     else if (which === 'world') this.buildWorldPanel();
     else if (which === 'mat') this.buildMatPanel();
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
   }
 
   private toggleSidePanel(which: 'proc' | 'world' | 'mat'): void {
-    const open = this.el<HTMLDivElement>(Builder.SIDE_PANELS[which]).style.display !== 'none';
-    this.openSidePanel(open ? null : which);
+    const id = Builder.SIDE_PANELS[which];
+    const open = this.workspaceLayout.panels.some((panel) => panel.id === id && panel.open);
+    if (open) return this.closeSidePanel(which);
+    this.openSidePanel(which);
+  }
+
+  private closeSidePanel(which: 'proc' | 'world' | 'mat'): void {
+    const id = Builder.SIDE_PANELS[which];
+    this.el<HTMLDivElement>(id).style.display = 'none';
+    this.setWorkspacePanelOpen(id, false);
+    this.root.classList.toggle(
+      'b-params-open',
+      Object.values(Builder.SIDE_PANELS).some((panelId) =>
+        this.workspaceLayout.panels.some((panel) => panel.id === panelId && panel.open),
+      ),
+    );
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
   }
 
   /** One live-param slider row (writes straight into the shared object). */
@@ -3031,19 +4294,16 @@ export class Builder {
       mmPointerId = null;
     });
 
-    this.el('bp-light-toggle').addEventListener('click', () => {
-      this.lightPreviewOn = !this.lightPreviewOn;
-      this.el('bp-light-toggle').textContent = `PREVIEW LIGHTS: ${this.lightPreviewOn ? 'ON' : 'OFF'}`;
-    });
+    this.el('bp-light-toggle').addEventListener('click', () => this.runUiCommand('builder.lightPreviewToggle'));
 
     this.el<HTMLInputElement>('bp-brush').addEventListener('input', () => {
       const v = Number(this.el<HTMLInputElement>('bp-brush').value);
       if (Number.isFinite(v)) this.ctx.state.brushSize = v;
       this.el('bp-brush-val').textContent = String(this.ctx.state.brushSize);
     });
-    this.el('bp-gen-caves').addEventListener('click', () => void this.guardedWorldGen('caves'));
-    this.el('bp-gen-fort').addEventListener('click', () => void this.guardedWorldGen('fortress'));
-    this.el('bp-gen-clear').addEventListener('click', () => void this.guardedWorldGen('clear'));
+    this.el('bp-gen-caves').addEventListener('click', () => this.runUiCommand('builder.generateCaves'));
+    this.el('bp-gen-fort').addEventListener('click', () => this.runUiCommand('builder.spawnFortress'));
+    this.el('bp-gen-clear').addEventListener('click', () => this.runUiCommand('builder.clearWorld'));
 
     // DRAG-TO-PLACE: object/light buttons can be dragged straight onto the
     // canvas (the intuitive gesture); a plain click still arms the tool.
@@ -3112,72 +4372,12 @@ export class Builder {
     this.el('bp-settle-keep').addEventListener('click', () => this.finishSettle(true));
     this.el('bp-settle-revert').addEventListener('click', () => this.finishSettle(false));
 
-    this.el('bp-overlay-btn').addEventListener('click', () => this.cycleOverlay());
-    this.el('bp-snap-btn').addEventListener('click', () => {
-      this.snapStep = this.snapStep === 0 ? 8 : this.snapStep === 8 ? 16 : 0;
-      this.el('bp-snap-btn').textContent = 'SNAP: ' + (this.snapStep === 0 ? 'OFF' : this.snapStep);
-      this.status(this.snapStep === 0 ? 'SNAP OFF' : `SNAP TO ${this.snapStep}-CELL GRID`);
-    });
-    this.el('bp-sym-btn').addEventListener('click', () => this.cycleSymmetry());
+    this.el('bp-overlay-btn').addEventListener('click', () => this.runUiCommand('builder.overlayCycle'));
+    this.el('bp-snap-btn').addEventListener('click', () => this.runUiCommand('builder.snapCycle'));
+    this.el('bp-sym-btn').addEventListener('click', () => this.runUiCommand('builder.symmetryCycle'));
 
-    this.el('b-share').addEventListener('click', async () => {
-      if (this.previewBlocks()) return;
-      if (this.shareBusy) return;
-      this.shareBusy = true;
-      try {
-        this.ensureCaptured();
-        embedSprites(this.doc, this.sprites);
-        const code = await docToShareCode(this.doc);
-        let copied = false;
-        try {
-          await navigator.clipboard.writeText(code);
-          copied = true;
-        } catch {
-          copied = false;
-        }
-        await appDialog.prompt(
-          copied ? 'Share code (already on the clipboard):' : 'Share code (Ctrl+C to copy):',
-          code,
-          {
-            title: 'Share Code',
-            confirmText: 'Done',
-            cancelText: 'Close',
-            multiline: true,
-            readOnly: true,
-          },
-        );
-        this.status(`SHARE CODE READY — ${Math.max(1, Math.round(code.length / 1024))} KB`);
-      } catch {
-        this.status('SHARE CODE FAILED', true);
-      } finally {
-        this.shareBusy = false;
-      }
-    });
-
-    this.el('b-code').addEventListener('click', async () => {
-      if (this.previewBlocks()) return;
-      if (this.codeBusy) return;
-      this.codeBusy = true;
-      try {
-        const code = await appDialog.prompt('Paste a share code:', '', {
-          title: 'Import Code',
-          confirmText: 'Import',
-          multiline: true,
-        });
-        if (!code) return;
-        const doc = await shareCodeToDoc(code);
-        if (!doc) {
-          this.status('NOT A VALID SHARE CODE', true);
-          return;
-        }
-        if (!(await this.confirmDiscardCurrentDocument('Import Code'))) return;
-        this.replaceDocument(doc, `IMPORTED "${doc.name.toUpperCase()}" FROM CODE`);
-      } catch {
-        this.status('CODE IMPORT FAILED', true);
-      } finally {
-        this.codeBusy = false;
-      }
-    });
+    this.el('b-share').addEventListener('click', () => this.runUiCommand('builder.share'));
+    this.el('b-code').addEventListener('click', () => this.runUiCommand('builder.importCode'));
   }
 
   /* ===================== prefab library ===================== */
@@ -3200,10 +4400,7 @@ export class Builder {
       onCapture: () => void this.capturePrefabFromRegion(),
       onRegionPng: () => void this.exportRegionPng(),
       onImport: () => void this.importPrefabFiles(),
-      onPalette: () => {
-        downloadText(paletteAsGpl(), 'alchemists-descent-cells.gpl');
-        this.status('PALETTE EXPORTED — LOAD THE .GPL IN ASEPRITE/GIMP');
-      },
+      onPalette: () => this.runUiCommand('builder.exportPalette'),
       onExportPng: (p) => void this.exportPrefabPng(p),
       onExportJson: (p) => {
         downloadJson(p, `${p.name || 'prefab'}.prefab.json`);
@@ -3651,9 +4848,33 @@ export class Builder {
     }
   }
 
-  /** Frame-0 canvas for the build-mode overlay (cached; null = unresolvable). */
-  private spriteFrameCanvas(spriteId: string): HTMLCanvasElement | null {
-    const hit = this.spriteFrameCache.get(spriteId);
+  private decorSpritePreviewCanvas(obj: EditorObject, frame: number): HTMLCanvasElement | null {
+    const spriteId = typeof obj.params.spriteId === 'string' ? obj.params.spriteId : '';
+    if (!spriteId) return null;
+    const asset =
+      this.sprites.find((s) => s.id === spriteId) ??
+      this.doc.assets?.sprites.find((s) => s.id === spriteId) ??
+      null;
+    if (!asset) return null;
+    const loop = resolveLoopTag(asset, typeof obj.params.loopTag === 'string' ? obj.params.loopTag : '');
+    const n = loop.to - loop.from + 1;
+    const steps = loop.dir === 'pingpong' && n > 1 ? 2 * n - 2 : n;
+    const fps = paramNum(obj, 'fps', 0);
+    const cadence = fps > 0 ? Math.max(1, Math.round(60 / Math.min(60, fps))) : 8;
+    const k = this.sessionMode === 'live' ? Math.floor(frame / cadence) % Math.max(1, steps) : 0;
+    const frameIndex =
+      loop.dir === 'reverse'
+        ? loop.to - k
+        : loop.dir === 'pingpong' && k >= n
+          ? loop.to - (k - n + 1)
+          : loop.from + k;
+    return this.spriteFrameCanvas(spriteId, frameIndex, obj.params.flipX === true);
+  }
+
+  /** Sprite-frame canvas for the build-mode overlay (cached; null = unresolvable). */
+  private spriteFrameCanvas(spriteId: string, frameIndex = 0, flipX = false): HTMLCanvasElement | null {
+    const key = `${spriteId}:${frameIndex}:${flipX ? 'flip' : 'normal'}`;
+    const hit = this.spriteFrameCache.get(key);
     if (hit !== undefined) return hit;
     const asset =
       this.sprites.find((s) => s.id === spriteId) ??
@@ -3666,10 +4887,21 @@ export class Builder {
       canvas.height = asset.h;
       const g = canvas.getContext('2d')!;
       const img = g.createImageData(asset.w, asset.h);
-      img.data.set(decodeFramePx(asset.frames[0].px, asset.w, asset.h));
-      g.putImageData(img, 0, 0);
+      const safeFrame = Math.max(0, Math.min(asset.frames.length - 1, frameIndex));
+      img.data.set(decodeFramePx(asset.frames[safeFrame].px, asset.w, asset.h));
+      if (flipX) {
+        const src = document.createElement('canvas');
+        src.width = asset.w;
+        src.height = asset.h;
+        src.getContext('2d')!.putImageData(img, 0, 0);
+        g.translate(asset.w, 0);
+        g.scale(-1, 1);
+        g.drawImage(src, 0, 0);
+      } else {
+        g.putImageData(img, 0, 0);
+      }
     }
-    this.spriteFrameCache.set(spriteId, canvas);
+    this.spriteFrameCache.set(key, canvas);
     return canvas;
   }
 
@@ -3725,7 +4957,14 @@ export class Builder {
 
   private layerSelectableObj(o: EditorObject): boolean {
     const f = familyOf(o);
-    return !this.layerHidden.has(f) && !this.layerLocked.has(f);
+    return !this.layerHidden.has(f) && !this.layerLocked.has(f) && !o.hidden && !o.locked;
+  }
+
+  private previewPickRadius(o: EditorObject): number {
+    if (o.kind === 'exitPortal' || o.kind === 'bossMarker') return 14;
+    if (o.kind === 'enemy' || o.kind === 'pickup' || o.kind === 'waystone' || o.kind === 'cauldron') return 10;
+    if (o.kind === 'spawn' || o.kind === 'hazardEmitter' || o.kind === 'relay' || o.kind === 'sensor') return 8;
+    return PICK_RADIUS;
   }
 
   /* ---------- bake from playtest ---------- */
@@ -4056,16 +5295,72 @@ export class Builder {
 
   /* ---------- readability overlays ---------- */
 
+  private exportMaterialPalette(): void {
+    downloadText(paletteAsGpl(), 'alchemists-descent-cells.gpl');
+    this.status('PALETTE EXPORTED - LOAD THE .GPL IN ASEPRITE/GIMP');
+  }
+
+  private toggleLightPreview(): void {
+    this.lightPreviewOn = !this.lightPreviewOn;
+    this.el('bp-light-toggle').textContent = `PREVIEW LIGHTS: ${this.lightPreviewOn ? 'ON' : 'OFF'}`;
+    this.status(`LIGHT PREVIEW ${this.lightPreviewOn ? 'ON' : 'OFF'}`);
+  }
+
   private cycleOverlay(): void {
-    const next = OVERLAY_MODES[(OVERLAY_MODES.indexOf(this.overlayMode) + 1) % OVERLAY_MODES.length];
+    const modes: Array<BuilderOverlayId | 'none'> = ['none', ...BUILDER_OVERLAY_IDS];
+    const next = modes[(modes.indexOf(this.overlayMode) + 1) % modes.length];
     this.overlayMode = next;
-    this.el('bp-overlay-btn').textContent = 'OVERLAY: ' + next.toUpperCase();
+    this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility({});
+    if (next !== 'none') this.workspaceLayout.overlayVisibility[next] = true;
+    this.syncOverlayButton();
+    this.saveWorkspacePrefs();
+    this.status(next === 'none' ? 'OVERLAYS OFF' : `OVERLAY: ${overlayLabel(next).toUpperCase()}`);
+  }
+
+  private toggleOverlay(id: BuilderOverlayId): void {
+    this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
+    this.workspaceLayout.overlayVisibility[id] = !this.workspaceLayout.overlayVisibility[id];
+    this.overlayMode = this.workspaceLayout.overlayVisibility[id] ? id : 'none';
+    this.syncOverlayButton();
+    this.saveWorkspacePrefs();
+    this.status(
+      `${overlayLabel(id).toUpperCase()} OVERLAY ${this.workspaceLayout.overlayVisibility[id] ? 'ON' : 'OFF'}`,
+    );
+  }
+
+  private syncOverlayButton(): void {
+    const active = BUILDER_OVERLAY_IDS.filter((id) => this.workspaceLayout.overlayVisibility[id]);
+    this.overlayMode = active[0] ?? 'none';
+    const label =
+      active.length === 0 ? 'NONE' : active.length === 1 ? overlayLabel(active[0]).toUpperCase() : `${active.length} ON`;
+    this.el('bp-overlay-btn').textContent = 'OVERLAY: ' + label;
+  }
+
+  private cycleSnapGrid(): void {
+    this.snapStep = this.snapStep === 0 ? 8 : this.snapStep === 8 ? 16 : 0;
+    this.workspaceLayout.snapStep = this.snapStep;
+    this.el('bp-snap-btn').textContent = 'SNAP: ' + (this.snapStep === 0 ? 'OFF' : this.snapStep);
+    this.saveWorkspacePrefs();
+    this.status(this.snapStep === 0 ? 'SNAP OFF' : `SNAP TO ${this.snapStep}-CELL GRID`);
   }
 
   /* ---------- autosave drafts ---------- */
 
   private autosaveDraft(): void {
-    if (!this.isOpen || this.settling || this.settleSnap || this.pendingPreview || this.floating)
+    if (
+      !this.isOpen ||
+      this.settling ||
+      this.settleSnap ||
+      this.pendingPreview ||
+      this.floating ||
+      this.drag ||
+      this.floatDrag ||
+      this.waypointDrag ||
+      this.shapeDrag ||
+      this.marquee ||
+      this.stroke ||
+      this.terraStroke
+    )
       return;
     if (this.cmds.depth === 0 && !this.paintDirty) return;
     try {
@@ -4109,66 +5404,9 @@ export class Builder {
 
   /* ---------- command palette (Ctrl+K) ---------- */
 
-  /** Every action the bar/palette exposes, searchable in one place. */
-  private cmdkActions(): Array<{ label: string; run: () => void }> {
-    const click = (id: string) => () => this.el<HTMLButtonElement>(id).click();
-    const tool = (t: BuilderTool, label: string) => ({ label, run: () => this.setTool(t) });
-    return [
-      { label: 'Find invalid object', run: () => this.findInvalid() },
-      { label: 'Frame selection (F)', run: () => this.frameSelection() },
-      { label: 'Validate document', run: click('b-validate') },
-      { label: 'Playtest (compile & play)', run: click('b-playtest') },
-      { label: 'Playtest from cursor (T)', run: () => this.playtestHere() },
-      { label: 'Save document', run: click('b-save') },
-      { label: 'Export document (.json)', run: click('b-export') },
-      { label: 'Share code (copy)', run: click('b-share') },
-      { label: 'Import from share code', run: click('b-code') },
-      { label: 'Capture terrain into document', run: click('b-capture') },
-      { label: 'Restore document terrain', run: click('b-restore') },
-      { label: 'New document', run: click('b-new') },
-      {
-        label: 'Focus settle button (hold to run)',
-        run: () => {
-          const settle = this.el<HTMLButtonElement>('bp-settle');
-          settle.focus();
-          this.status('HOLD SETTLE TO RUN PHYSICS, RELEASE TO DECIDE');
-        },
-      },
-      { label: 'Bake playtest scars', run: () => void this.bakePlaytestScars() },
-      { label: 'Lift region as floating selection (X)', run: () => this.liftFloat() },
-      { label: 'Cycle symmetry painting', run: () => this.cycleSymmetry() },
-      { label: 'Capture region as prefab', run: () => void this.capturePrefabFromRegion() },
-      { label: 'Import prefab (.json / .png)', run: () => void this.importPrefabFiles() },
-      { label: 'Export region as PNG', run: () => void this.exportRegionPng() },
-      { label: 'Export material palette (.gpl)', run: click('bp-prefab-gpl') },
-      { label: 'Toggle light preview', run: click('bp-light-toggle') },
-      { label: 'World parameters…', run: () => this.toggleSidePanel('world') },
-      { label: 'Material parameters…', run: () => this.toggleSidePanel('mat') },
-      { label: 'Toggle panels / zen (`)', run: () => this.toggleZen() },
-      { label: 'Cycle readability overlay (O)', run: () => this.cycleOverlay() },
-      { label: 'Cycle snap grid', run: click('bp-snap-btn') },
-      { label: 'Generate caves (whole world)', run: () => void this.guardedWorldGen('caves') },
-      { label: 'Spawn fortress', run: () => void this.guardedWorldGen('fortress') },
-      { label: 'Clear world', run: () => void this.guardedWorldGen('clear') },
-      { label: 'Group selection (Ctrl+G)', run: () => this.groupSelection(false) },
-      { label: 'Ungroup selection (Ctrl+Shift+G)', run: () => this.groupSelection(true) },
-      { label: 'Duplicate selection (Ctrl+D)', run: () => this.duplicateSelection() },
-      tool('select', 'Tool: Select (V)'),
-      tool('paint', 'Tool: Paint (B)'),
-      tool('line', 'Tool: Line (L)'),
-      tool('rect', 'Tool: Rectangle'),
-      tool('rectFill', 'Tool: Filled rectangle'),
-      tool('ellipse', 'Tool: Ellipse'),
-      tool('ellipseFill', 'Tool: Filled ellipse'),
-      tool('fill', 'Tool: Flood fill (G)'),
-      tool('replace', 'Tool: Replace material'),
-      tool('region', 'Tool: Region select (R)'),
-      tool('lassoRegion', 'Tool: Lasso region'),
-      tool('smooth', 'Tool: Smooth terrain'),
-      tool('roughen', 'Tool: Roughen terrain'),
-      tool('link', 'Tool: Link trigger to door (K)'),
-      tool('light', 'Tool: Place light'),
-    ];
+  /** Every action the bar/palette exposes, searchable in one registry. */
+  private cmdkActions(): CommandSpec[] {
+    return this.uiCommands.list();
   }
 
   private openCmdk(): void {
@@ -4184,19 +5422,37 @@ export class Builder {
     this.el<HTMLDivElement>('builder-cmdk').style.display = 'none';
   }
 
+  private isCommandPaletteOpen(): boolean {
+    return this.el<HTMLDivElement>('builder-cmdk').style.display !== 'none';
+  }
+
   private renderCmdk(query: string): void {
     const list = this.el<HTMLDivElement>('bp-cmdk-list');
     const q = query.trim().toLowerCase();
     const hits = this.cmdkActions().filter((a) => a.label.toLowerCase().includes(q)).slice(0, 12);
     list.innerHTML = '';
     hits.forEach((a, n) => {
+      const enabled = this.uiCommands.isEnabled(a.id);
+      const reason = enabled ? null : this.uiCommands.disabledReason(a.id);
       const row = document.createElement('div');
-      row.className = 'bp-cmdk-row' + (n === 0 ? ' first' : '');
-      row.textContent = a.label;
+      row.className = 'bp-cmdk-row' + (n === 0 ? ' first' : '') + (enabled ? '' : ' disabled');
+      const label = document.createElement('span');
+      label.className = 'bp-cmdk-label';
+      label.textContent = a.label;
+      row.appendChild(label);
+      const meta = document.createElement('span');
+      meta.className = 'bp-cmdk-meta';
+      meta.textContent = reason ?? (a.shortcut ? a.shortcut : a.category);
+      row.appendChild(meta);
+      if (reason) row.title = reason;
       row.addEventListener('mousedown', (e) => {
         e.preventDefault(); // beat the input blur
+        if (!enabled) {
+          this.status(reason ?? 'COMMAND UNAVAILABLE', true);
+          return;
+        }
         this.closeCmdk();
-        a.run();
+        this.runUiCommand(a.id);
       });
       list.appendChild(row);
     });
@@ -4210,13 +5466,23 @@ export class Builder {
     input.addEventListener('input', () => this.renderCmdk(input.value));
     input.addEventListener('keydown', (e) => {
       if (e.code === 'Escape') {
+        e.preventDefault();
         this.closeCmdk();
         e.stopPropagation();
+      } else if (e.code === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        input.focus({ preventScroll: true });
       } else if (e.code === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
         const q = input.value.trim().toLowerCase();
-        const first = this.cmdkActions().find((a) => a.label.toLowerCase().includes(q));
+        if (!q) {
+          return;
+        }
+        const first = this.cmdkActions().find((a) => a.label.toLowerCase().includes(q) && this.uiCommands.isEnabled(a.id));
         this.closeCmdk();
-        first?.run();
+        if (first) this.runUiCommand(first.id);
       }
     });
     input.addEventListener('blur', () => this.closeCmdk());
@@ -4270,15 +5536,46 @@ export class Builder {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (!this.isOpen) return;
-    // Transitional focus guard until the Builder workspace Keymap owns
-    // priority surfaces. The console also captures on window, so Builder must
-    // explicitly yield while it is visible.
-    if (document.getElementById('dev-console')?.classList.contains('open')) return;
-    if (document.querySelector('.app-dialog-root')) return;
-    const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) {
-      if (e.code === 'Escape') (t as HTMLInputElement).blur();
-      return; // let the field receive the key; root handlers shield InputManager
+    const appDialogOpen = document.querySelector('.app-dialog-root') !== null;
+    const consoleOpen = document.getElementById('dev-console')?.classList.contains('open') === true;
+    const focusClaim = this.focusRouter.claimKeyDown(e, {
+      appDialogOpen,
+      builderHelpOpen: this.builderHelpOpen,
+      commandPaletteOpen: this.isCommandPaletteOpen(),
+      menuOpen: document.querySelector('.editor-command-menu.open') !== null,
+      interactivePopoverOpen: document.querySelector('.editor-popover.interactive') !== null,
+      consoleOpen,
+      consoleInputFocused: document.activeElement?.id === 'dev-console-input',
+      builderOpen: true,
+      target: e.target,
+    });
+    if (focusClaim.surface === 'app-dialog') return;
+    if (this.builderHelpOpen) {
+      if (e.code === 'Escape' || e.code === 'KeyH') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (e.code !== 'KeyH' || !e.repeat) this.setBuilderHelp(false);
+      } else if (e.code === 'Tab') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this.cycleBuilderHelpFocus(e.shiftKey);
+      } else {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      return;
+    }
+    if (consoleOpen && e.code === 'KeyH' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      this.runUiCommand('builder.help');
+      return;
+    }
+    if (consoleOpen) return;
+    if (focusClaim.surface === 'command-palette' || focusClaim.surface === 'menu' || focusClaim.surface === 'interactive-popover') return;
+    if (this.focusRouter.isTextEntryTarget(e.target)) {
+      if (e.code === 'Escape' && e.target instanceof HTMLElement) e.target.blur();
+      return;
     }
     if (e.code === 'Tab') {
       // The Builder owns Tab — no silent mode flip mid-edit.
@@ -4360,66 +5657,12 @@ export class Builder {
       } else if (e.code === 'KeyQ' && this.rotateSelectedObjects()) {
         e.stopPropagation();
       }
-    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD') {
-      e.preventDefault();
+    } else if (e.code === 'KeyM') {
+      // Keep play-mode overlays out of authoring.
       e.stopPropagation();
-      this.duplicateSelection();
-    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyG') {
-      e.preventDefault();
-      e.stopPropagation();
-      this.groupSelection(e.shiftKey);
-    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
-      e.preventDefault();
-      e.stopPropagation();
-      this.openCmdk();
-    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC') {
-      e.stopPropagation();
-      this.copyParams();
-    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV') {
-      e.stopPropagation();
-      this.pasteParams();
-    } else if (e.code === 'KeyO') {
-      e.stopPropagation();
-      this.cycleOverlay();
-    } else if (e.code === 'KeyT') {
-      e.stopPropagation();
-      this.playtestHere();
-    } else if (e.code === 'KeyV' || e.code === 'KeyB') {
-      e.stopPropagation();
-      this.setTool(e.code === 'KeyV' ? 'select' : 'paint');
-    } else if (e.code === 'KeyL') {
-      e.stopPropagation();
-      this.setTool('line');
-    } else if (e.code === 'KeyK') {
-      e.stopPropagation();
-      this.setTool('link');
-    } else if (e.code === 'KeyG') {
-      e.stopPropagation();
-      this.setTool('fill');
-    } else if (e.code === 'KeyR') {
-      e.stopPropagation();
-      this.setTool('region');
-    } else if (e.code === 'KeyF') {
-      e.stopPropagation();
-      this.frameSelection();
-    } else if (e.code === 'Backquote') {
-      e.stopPropagation();
-      this.toggleZen();
-    } else if (e.code === 'Delete') {
-      e.stopPropagation();
-      void this.deleteSelection();
-    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.shiftKey) this.redo();
-      else this.undo();
-    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') {
-      e.preventDefault();
-      e.stopPropagation();
-      this.redo();
-    } else if (e.code === 'KeyM' || e.code === 'KeyH') {
-      // Keep play-mode overlays (map/handbook) out of authoring.
-      e.stopPropagation();
+    } else {
+      const result = this.keymap.handleKeyDown(e, { scope: this.sessionMode === 'live' ? 'builder.livePreview' : 'builder.author' });
+      if (result.handled && result.ok === false && result.reason) this.status(result.reason, true);
     }
   };
 
@@ -4430,6 +5673,7 @@ export class Builder {
   private loop = (): void => {
     if (!this.isOpen) return;
     this.rafId = requestAnimationFrame(this.loop);
+    this.syncWorkspaceFrame();
     const rect = this.overlay.getBoundingClientRect();
     if (rect.width === 0) return;
 
@@ -4467,7 +5711,10 @@ export class Builder {
                 !this.mutedLightIds.has(l.id) &&
                 (this.soloLightId === null || l.id === this.soloLightId),
             )
-            .map((l, n) => toAuthoredLight(l, n))
+            .map((l, n) => {
+              const authored = toAuthoredLight(l, n);
+              return this.sessionMode === 'live' ? authored : { ...authored, flicker: 0 };
+            })
         : null;
 
     if (!this.minimapImage || state.frameCount % 12 === 0) this.refreshMinimapTerrain();
@@ -4511,35 +5758,29 @@ export class Builder {
     const toS = (wx: number, wy: number): { x: number; y: number } =>
       this.worldToScreen(wx, wy, rect);
 
-    // readability overlays (under everything else)
-    if (this.overlayMode !== 'none') {
-      const blob = (wx: number, wy: number, r: number, color: string): void => {
-        const c = toS(wx, wy);
-        const grad = g.createRadialGradient(c.x, c.y, 0, c.x, c.y, Math.max(4, r * cellW));
-        grad.addColorStop(0, color);
-        grad.addColorStop(1, 'rgba(0,0,0,0)');
-        g.fillStyle = grad;
-        g.beginPath();
-        g.arc(c.x, c.y, Math.max(4, r * cellW), 0, Math.PI * 2);
-        g.fill();
-      };
-      if (this.overlayMode === 'light') {
-        for (const l of this.doc.lights) {
-          if (!l.hidden) blob(l.x, l.y, l.radius, l.color + '40');
-        }
-      } else if (this.overlayMode === 'danger') {
-        for (const o of this.doc.objects) {
-          if (o.kind === 'enemy' && !o.hidden) blob(o.x, o.y, 60, 'rgba(248,113,113,0.22)');
-          if (o.kind === 'bossMarker' && !o.hidden) blob(o.x, o.y, 90, 'rgba(248,113,113,0.3)');
-        }
-      } else if (this.overlayMode === 'loot') {
-        for (const o of this.doc.objects) {
-          if (o.kind === 'pickup' && !o.hidden) blob(o.x, o.y, 26, 'rgba(251,191,36,0.28)');
-        }
-      }
+    // registered overlays (under object previews and editor gizmos)
+    const activeOverlays = new Set(BUILDER_OVERLAY_IDS.filter((id) => this.workspaceLayout.overlayVisibility[id]));
+    if (activeOverlays.size > 0) {
+      drawBuilderOverlays(g, { doc: this.doc, issues: this.lastIssues, cellW, cellH, toScreen: toS }, activeOverlays);
       g.fillStyle = 'rgba(125,211,252,0.9)';
       g.font = '700 10px monospace';
-      g.fillText('OVERLAY: ' + this.overlayMode.toUpperCase() + ' (O CYCLES)', 12, 16);
+      g.fillText(
+        `OVERLAY: ${[...activeOverlays].map((id) => overlayLabel(id as BuilderOverlayId).toUpperCase()).join(', ')} (O CYCLES)`,
+        12,
+        16,
+      );
+    }
+
+    for (const o of this.doc.objects) {
+      if (!this.layerVisibleObj(o)) continue;
+      drawObjectPreview(g, o, {
+        cellW,
+        cellH,
+        frame: this.sessionMode === 'live' ? this.ctx.state.frameCount : 0,
+        selected: this.selectedIds.has(o.id),
+        toScreen: toS,
+        spriteFrame: (obj, frame) => this.decorSpritePreviewCanvas(obj, frame),
+      });
     }
 
     // selection region (dashed cyan)
@@ -4695,23 +5936,6 @@ export class Builder {
           g.font = '700 8px monospace';
           g.fillText(String(n + 1), p.x + 4, p.y - 3);
         });
-      } else if (o.kind === 'decor') {
-        const p = toS(o.x, o.y);
-        const sid = typeof o.params.spriteId === 'string' ? o.params.spriteId : '';
-        const img = sid ? this.spriteFrameCanvas(sid) : null;
-        if (img) {
-          // sprite decor shows its first frame in place (center-anchored,
-          // matching the runtime renderer) — build mode draws no animation
-          const a = toS(o.x - img.width / 2, o.y - img.height / 2);
-          const prevSmooth = g.imageSmoothingEnabled;
-          g.imageSmoothingEnabled = false;
-          g.drawImage(img, a.x, a.y, img.width * cellW, img.height * cellH);
-          g.imageSmoothingEnabled = prevSmooth;
-        } else {
-          g.fillStyle = typeof o.params.color === 'string' ? o.params.color : 'rgba(214,230,245,0.85)';
-          g.font = '600 9px monospace';
-          g.fillText(String(o.params.text ?? (sid ? 'sprite?' : 'note')).slice(0, 40), p.x + 10, p.y + 3);
-        }
       }
     }
 
@@ -4896,6 +6120,10 @@ export class Builder {
       g.fillStyle = 'rgba(251,191,36,0.95)';
       g.font = '700 11px monospace';
       g.fillText('PROCEDURAL PREVIEW — APPLY OR DISCARD', 12, ch - 12);
+    } else if (this.sessionMode === 'live') {
+      g.fillStyle = 'rgba(74,222,128,0.92)';
+      g.font = '700 11px monospace';
+      g.fillText('LIVE PREVIEW', 12, ch - 12);
     }
     if (this.settling) {
       g.fillStyle = 'rgba(125,211,252,0.95)';
@@ -5000,28 +6228,18 @@ export class Builder {
     window.clearTimeout(this.decorPreviewTimer);
     const panel = this.el<HTMLDivElement>('builder-inspector');
     if (this.selectedIds.size > 1) {
-      const byKind = new Map<string, number>();
-      for (const o of this.doc.objects) {
-        if (this.selectedIds.has(o.id)) byKind.set(o.kind, (byKind.get(o.kind) ?? 0) + 1);
-      }
-      let lightCount = 0;
-      for (const l of this.doc.lights) if (this.selectedIds.has(l.id)) lightCount++;
-      if (lightCount > 0) byKind.set('light', lightCount);
-      panel.innerHTML = `<div class="bi-head">${this.selectedIds.size} SELECTED</div>
-        ${[...byKind.entries()]
-          .map(([k, n]) => `<div class="bi-row"><span>${k}</span><b>${n}</b></div>`)
-          .join('')}
-        <div class="bp-grid bp-grid2" style="margin-top:4px">
-          <button data-align="x" title="Align to the primary's column">ALIGN X</button>
-          <button data-align="y" title="Align to the primary's row">ALIGN Y</button>
-          <button data-align="spreadX" title="Distribute evenly between the leftmost and rightmost">SPREAD H</button>
-          <button data-align="spreadY" title="Distribute evenly between the topmost and bottommost">SPREAD V</button>
-        </div>
-        <div class="bi-empty">Drag moves the group.<br>Ctrl+D duplicates &middot; Ctrl+G<br>groups (Shift+G dissolves).<br>Ctrl+C/V copies/pastes the<br>primary's params.</div>
-        <button id="bi-delete">DELETE ALL (DEL)</button>`;
+      panel.innerHTML = renderInspectorItems(
+        multiSelectionInspectorSchema(
+          this.doc.objects.filter((obj) => this.selectedIds.has(obj.id)),
+          this.doc.lights.filter((light) => this.selectedIds.has(light.id)),
+        ),
+      );
+      this.refreshPanelDragHandles(panel);
+      this.applyInspectorMixedState(panel);
       for (const b of panel.querySelectorAll<HTMLButtonElement>('button[data-align]')) {
         b.addEventListener('click', () => this.alignSelection(b.dataset.align as 'x' | 'y' | 'spreadX' | 'spreadY'));
       }
+      this.wireMultiSelectionInspector(panel);
       panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
       return;
     }
@@ -5032,225 +6250,22 @@ export class Builder {
     }
     const obj = this.selected();
     if (!obj) {
-      const mood = (this.doc.mood ??= { ambient: null, ambience: '' });
-      panel.innerHTML = `<div class="bi-head">INSPECTOR</div>
-        <div class="bi-empty">Nothing selected.<br>Click a marker, or pick a<br>tool and click the canvas.<br>Ctrl+K = command palette.</div>
-        <div class="bi-row"><span>objects</span><b>${this.doc.objects.length}</b></div>
-        <div class="bi-row"><span>links</span><b>${this.doc.links.length}</b></div>
-        <div class="bi-row"><span>lights</span><b>${this.doc.lights.length}</b></div>
-        <div class="bi-row"><span>passes</span><b>${this.doc.proceduralHistory.length}</b></div>
-        <div class="bi-row"><span>terrain</span><b>${this.doc.world ? 'captured' : '—'}</b></div>
-        <div class="bi-row"><span>undo depth</span><b>${this.cmds.depth}</b></div>
-        <div class="bi-head" style="margin-top:6px">DOCUMENT MOOD</div>
-        <div class="bi-row"><span>ambient</span><input type="number" step="0.02" min="0.02" max="0.6" id="bi-mood-ambient" placeholder="default" value="${
-          mood.ambient ?? ''
-        }"></div>
-        <div class="bi-row"><span>ambience</span><input type="text" id="bi-mood-ambience" placeholder="tag (e.g. drips)" value="${mood.ambience ?? ''}"></div>
-        <div class="bi-empty">Ambient overrides the global<br>light level in playtests<br>(restored on return).</div>`;
-      panel.querySelector<HTMLInputElement>('#bi-mood-ambient')?.addEventListener('change', (e) => {
-        const v = (e.target as HTMLInputElement).value.trim();
-        mood.ambient = v === '' ? null : Number(v);
-        if (mood.ambient !== null && !Number.isFinite(mood.ambient)) mood.ambient = null;
-        this.status(mood.ambient === null ? 'MOOD AMBIENT: GAME DEFAULT' : `MOOD AMBIENT: ${mood.ambient}`);
-      });
-      panel.querySelector<HTMLInputElement>('#bi-mood-ambience')?.addEventListener('change', (e) => {
-        mood.ambience = (e.target as HTMLInputElement).value;
-      });
+      panel.innerHTML = renderInspectorItems(documentInspectorSchema(this.doc, this.cmds.depth));
+      this.refreshPanelDragHandles(panel);
+      this.wireDocumentInspector(panel);
       return;
     }
 
-    let rows = `<div class="bi-head">${obj.kind.toUpperCase()}</div>
-      <div class="bi-id">${obj.id}</div>
-      <div class="bi-row"><span>x</span><input type="number" data-f="x" value="${Math.round(obj.x)}"></div>
-      <div class="bi-row"><span>y</span><input type="number" data-f="y" value="${Math.round(obj.y)}"></div>`;
-
-    if (obj.kind === 'enemy') {
-      rows += `<div class="bi-row"><span>kind</span><select data-p="kind">${ENEMY_KINDS.map(
-        (k) => `<option value="${k}"${obj.params.kind === k ? ' selected' : ''}>${k}</option>`,
-      ).join('')}</select></div>`;
-      if (obj.params.kind === 'bat') {
-        rows += this.checkRow(obj, 'sleeping', 'roosting');
-      }
-      if (PATROL_KINDS.has(String(obj.params.kind))) {
-        const n = Array.isArray(obj.params.patrol) ? (obj.params.patrol as unknown[]).length : 0;
-        rows +=
-          this.patrolEditId === obj.id
-            ? `<button id="bi-patrol" class="bi-armed">PATROL: CLICK POINTS — ESC ENDS</button>`
-            : `<button id="bi-patrol">${n > 0 ? `EDIT PATROL (${n} PTS)` : 'ADD PATROL ROUTE'}</button>`;
-        if (n > 0) rows += `<button id="bi-patrol-clear">CLEAR PATROL</button>`;
-        if (n > 0 && this.patrolEditId !== obj.id) {
-          rows += `<div class="bi-empty">Drag waypoints in the select<br>tool; in patrol edit, RMB<br>deletes one.</div>`;
-        }
-      }
-    } else if (obj.kind === 'hazardEmitter') {
-      const cells = ['water', 'oil', 'acid', 'lava', 'fire', 'ember', 'sand', 'snow', 'smoke'];
-      rows += `<div class="bi-row"><span>material</span><select data-p="cell">${cells
-        .map((c) => `<option value="${c}"${obj.params.cell === c ? ' selected' : ''}>${c}</option>`)
-        .join('')}</select></div>`;
-      rows += this.numRow(obj, 'rate', 'rate (frames)', 30);
-      rows += this.numRow(obj, 'burst', 'burst (cells)', 1);
-      rows += this.numRow(obj, 'phase', 'phase (frames)', 0);
-      rows += `<div class="bi-empty">Drips "burst" real cells every<br>"rate" frames (offset by phase),<br>aimed by rotation — the grid<br>does the rest.</div>`;
-    } else if (obj.kind === 'decor') {
-      // legacy note UI stays — a decor WITHOUT a sprite is the designer note
-      rows += `<div class="bi-row"><span>note</span><input type="text" data-p="text" value="${String(
-        obj.params.text ?? '',
-      ).replace(/"/g, '&quot;')}"></div>`;
-      rows += `<div class="bi-row"><span>color</span><input type="color" data-p="color" value="${
-        typeof obj.params.color === 'string' ? obj.params.color : '#d6e6f5'
-      }"></div>`;
-      const sid = typeof obj.params.spriteId === 'string' ? obj.params.spriteId : '';
-      const spriteAssets = [...this.sprites];
-      for (const s of this.doc.assets?.sprites ?? []) {
-        if (!spriteAssets.some((x) => x.id === s.id)) spriteAssets.push(s);
-      }
-      const asset = sid ? (spriteAssets.find((s) => s.id === sid) ?? null) : null;
-      rows += `<div class="bi-row"><span>sprite</span><select data-p="spriteId">
-        <option value="">&mdash; none (note) &mdash;</option>
-        ${spriteAssets
-          .map(
-            (s) =>
-              `<option value="${s.id}"${sid === s.id ? ' selected' : ''}>${escAttr(s.name)}</option>`,
-          )
-          .join('')}</select></div>`;
-      if (sid && !asset) {
-        rows += `<div class="bi-row"><span>asset</span><b class="bi-warn">missing — skipped at compile</b></div>`;
-      }
-      if (asset) {
-        const lt = typeof obj.params.loopTag === 'string' ? obj.params.loopTag : '';
-        rows += `<div class="bi-row"><span>loop tag</span><select data-p="loopTag">
-          <option value=""${lt === '' ? ' selected' : ''}>all frames</option>
-          ${asset.tags
-            .map(
-              (t) =>
-                `<option value="${escAttr(t.name)}"${lt === t.name ? ' selected' : ''}>${escAttr(
-                  t.name,
-                )} (${t.from}&ndash;${t.to} ${t.dir})</option>`,
-            )
-            .join('')}</select></div>`;
-        rows += this.numRow(obj, 'fps', 'fps (0 = authored)', 0);
-        rows += this.checkRow(obj, 'flipX', 'flip X');
-        rows += `<div class="bi-row"><span>emissive</span><input type="checkbox" id="bi-sprite-emissive"${
-          asset.emissive ? ' checked' : ''
-        } title="Sprite-level: drawn raw, never light-multiplied (saved to the library, not undoable)"></div>`;
-        const pScale = Math.max(1, Math.min(4, Math.floor(96 / Math.max(asset.w, asset.h))));
-        rows += `<canvas id="bi-sprite-prev" width="${asset.w * pScale}" height="${
-          asset.h * pScale
-        }" style="display:block;margin:4px auto;image-rendering:pixelated;background:#0a0c11"></canvas>`;
-      }
-      rows += `<div class="bi-empty">${
-        asset
-          ? "Visual only &mdash; the grid doesn't<br>know it's there."
-          : 'Designer annotation only &mdash;<br>never compiles into the level.'
-      }</div>`;
-    } else if (obj.kind === 'pickup') {
-      rows += `<div class="bi-row"><span>kind</span><select data-p="kind">${PICKUP_KINDS.map(
-        (k) => `<option value="${k}"${obj.params.kind === k ? ' selected' : ''}>${k}</option>`,
-      ).join('')}</select></div>`;
-      const pk = obj.params.kind;
-      if (pk === 'goldpile' || pk === 'chest') {
-        rows += this.numRow(obj, 'amount', 'amount', 30);
-      }
-      if (pk === 'tome') {
-        rows += `<div class="bi-row"><span>card</span><input type="text" data-p="card" placeholder="random" value="${
-          typeof obj.params.card === 'string' ? obj.params.card : ''
-        }"></div>`;
-      }
-      if (pk === 'potion') {
-        rows += `<div class="bi-row"><span>potion</span><input type="text" data-p="potion" placeholder="random" value="${
-          typeof obj.params.potion === 'string' ? obj.params.potion : ''
-        }"></div>`;
-      }
-    } else if (obj.kind === 'exitPortal') {
-      rows += this.checkRow(obj, 'alwaysOpen', 'always open');
-    } else if (obj.kind === 'waystone') {
-      rows += this.checkRow(obj, 'lit', 'pre-lit');
-    } else if (obj.kind === 'exitWell') {
-      rows += this.numRow(obj, 'halfW', 'half width', 14);
-    } else if (obj.kind === 'door') {
-      rows += this.numRow(obj, 'w', 'width', 3) + this.numRow(obj, 'h', 'height', 13);
-      rows += this.checkRow(obj, 'initialOpen', 'starts open');
-      const lg = typeof obj.params.logic === 'string' ? obj.params.logic : 'and';
-      rows += `<div class="bi-row"><span>logic</span><select data-p="logic">${(
-        ['and', 'or', 'sequence'] as const
-      )
-        .map((v) => `<option value="${v}"${lg === v ? ' selected' : ''}>${v.toUpperCase()}</option>`)
-        .join('')}</select></div>`;
-      rows += `<button id="bi-rotate" title="Swap width and height">ROTATE 90&deg;</button>`;
-      rows += this.linkRows(obj, 'in');
-    } else if (obj.kind === 'runeDoor') {
-      rows += this.numRow(obj, 'w', 'width', 2) + this.numRow(obj, 'h', 'height', 11);
-      rows += `<button id="bi-rotate" title="Swap width and height">ROTATE 90&deg;</button>`;
-      rows += this.linkRows(obj, 'in');
-    } else if (obj.kind === 'plate') {
-      rows += this.numRow(obj, 'w', 'width', 5) + this.linkRows(obj, 'out');
-    } else if (obj.kind === 'scale') {
-      rows += this.numRow(obj, 'w', 'pan width', 7) + this.numRow(obj, 'threshold', 'threshold', 24);
-      rows += this.linkRows(obj, 'out');
-    } else if (obj.kind === 'buoy') {
-      rows +=
-        this.numRow(obj, 'w', 'basin width', 13) +
-        this.numRow(obj, 'depth', 'basin depth', 4) +
-        this.numRow(obj, 'threshold', 'threshold', 26);
-      rows += this.linkRows(obj, 'out');
-    } else if (obj.kind === 'lever' || obj.kind === 'brazier' || obj.kind === 'chargeLatch') {
-      rows += this.linkRows(obj, 'out');
-    } else if (obj.kind === 'runeGlyph') {
-      rows += this.linkRows(obj, 'out');
-    } else if (obj.kind === 'valve') {
-      rows += this.numRow(obj, 'w', 'width', 5) + this.numRow(obj, 'h', 'height', 2);
-      rows += this.selectRow(obj, 'material', 'material', ['metal', 'stone', 'wood', 'glass'], 'metal');
-      rows += this.checkRow(obj, 'oneShot', 'one-shot (stays open)');
-      rows += this.numRow(obj, 'autoClose', 'auto-close frames', 0);
-      rows += this.selectRow(obj, 'logic', 'logic', ['and', 'or', 'sequence'], 'and');
-      rows += `<button id="bi-rotate" title="Swap width and height">ROTATE 90&deg;</button>`;
-      rows += this.linkRows(obj, 'in');
-    } else if (obj.kind === 'plug') {
-      rows += this.numRow(obj, 'w', 'width', 3) + this.numRow(obj, 'h', 'height', 3);
-      rows += this.selectRow(obj, 'material', 'material', ['wood', 'ash', 'glass', 'coal', 'stone', 'sand', 'metal'], 'wood');
-      rows += this.numRow(obj, 'breakFrac', 'break fraction', 0.5);
-      rows += `<div class="bi-empty">The material IS the break profile:<br>wood burns, glass shatters,<br>stone resists fire, metal needs<br>a relay 'break'.</div>`;
-      rows += `<button id="bi-rotate" title="Swap width and height">ROTATE 90&deg;</button>`;
-      rows += this.linkRows(obj, 'in') + this.linkRows(obj, 'out');
-    } else if (obj.kind === 'sensor') {
-      rows += this.selectRow(obj, 'type', 'reads', ['heat', 'liquid', 'weight', 'charge', 'material'], 'heat');
-      rows += this.selectRow(
-        obj, 'filter', 'filter',
-        ['', 'water', 'oil', 'acid', 'lava', 'sand', 'snow', 'gold', 'gunpowder', 'coal', 'ash', 'slime', 'healium', 'teleportium'],
-        '',
-      );
-      rows += this.numRow(obj, 'threshold', 'threshold', 6);
-      rows += this.numRow(obj, 'zoneW', 'zone width', 9) + this.numRow(obj, 'zoneH', 'zone height', 7);
-      rows += this.selectRow(obj, 'latch', 'latch', ['momentary', 'timed', 'permanent'], 'timed');
-      if (obj.params.latch !== 'permanent' && obj.params.latch !== 'momentary') {
-        rows += this.numRow(obj, 'latchFrames', 'latch frames', 420);
-      }
-      rows += this.linkRows(obj, 'out');
-    } else if (obj.kind === 'counterweight') {
-      rows += this.numRow(obj, 'w', 'pan width', 7) + this.numRow(obj, 'threshold', 'threshold', 30);
-      rows += `<div class="bi-empty">Latches PERMANENTLY once enough<br>material mass stays poured.</div>`;
-      rows += this.linkRows(obj, 'out');
-    } else if (obj.kind === 'relay') {
-      rows += this.numRow(obj, 'delay', 'delay frames', 0);
-      rows += this.selectRow(obj, 'action', 'on fire', ['activate', 'ignite', 'break', 'strike'], 'activate');
-      rows += this.selectRow(obj, 'logic', 'input logic', ['and', 'or', 'sequence'], 'and');
-      rows += `<div class="bi-empty">One-shot: inputs satisfied &rarr; wait<br>&rarr; fire once &rarr; latched forever.</div>`;
-      rows += this.linkRows(obj, 'in') + this.linkRows(obj, 'out');
-    }
-
-    // point kinds spin in place (emitters aim their drip with it)
-    if (POINT_ROTATE_KINDS.has(obj.kind)) {
-      const dir = obj.kind === 'hazardEmitter' ? ` (${EMITTER_DIR[obj.rotation] ?? 'down'})` : '';
-      rows += `<div class="bi-row"><span>rotation</span><b>${obj.rotation}&deg;${dir}</b></div>`;
-      rows += `<button id="bi-rotate-pt" title="Q also rotates the selection">ROTATE 90&deg;</button>`;
-    }
-
-    rows += `<div class="bi-flags">
-        <label><input type="checkbox" data-f="locked"${obj.locked ? ' checked' : ''}>locked</label>
-        <label><input type="checkbox" data-f="hidden"${obj.hidden ? ' checked' : ''}>hidden</label>
-      </div>
-      <button id="bi-delete">DELETE (DEL)</button>`;
-    panel.innerHTML = rows;
+    panel.innerHTML = renderInspectorItems(
+      objectInspectorSchema(obj, {
+        objects: this.doc.objects,
+        links: this.doc.links,
+        sprites: this.sprites,
+        documentSprites: this.doc.assets?.sprites ?? [],
+        patrolEditId: this.patrolEditId,
+      }),
+    );
+    this.refreshPanelDragHandles(panel);
 
     // x/y commit as move commands; params as edit-param commands.
     for (const input of panel.querySelectorAll<HTMLInputElement>('input[data-f="x"],input[data-f="y"]')) {
@@ -5266,8 +6281,11 @@ export class Builder {
         const key = field.dataset.p as string;
         let value: unknown =
           field instanceof HTMLInputElement && field.type === 'checkbox' ? field.checked : field.value;
-        if (field.dataset.num) value = Number(field.value);
-        if (value === '') value = undefined;
+        if (field instanceof HTMLInputElement && (field.dataset.num || field.type === 'number')) {
+          const parsed = this.parseInspectorNumber(field, key, true);
+          if (!parsed.ok) return;
+          value = parsed.value;
+        } else if (value === '') value = undefined;
         this.cmds.run(editParamCmd(obj, key, value));
         this.renderInspector(); // kind switches change which param rows exist
         this.syncMarkers(); // glyphs/tooltips can depend on params (kind, note text)
@@ -5342,6 +6360,94 @@ export class Builder {
     panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
   }
 
+  private wireDocumentInspector(panel: HTMLDivElement): void {
+    panel.querySelector<HTMLInputElement>('#bi-mood-ambient')?.addEventListener('change', (e) => {
+      const raw = (e.target as HTMLInputElement).value.trim();
+      const ambient = raw === '' ? null : Number(raw);
+      if (ambient !== null && (!Number.isFinite(ambient) || ambient < 0.02 || ambient > 0.6)) {
+        this.status('MOOD AMBIENT MUST BE BLANK OR 0.02-0.60', true);
+        this.renderInspector();
+        return;
+      }
+      const prev = this.doc.mood?.ambient ?? null;
+      if (ambient === prev) return;
+      this.cmds.run(editDocumentMoodCmd({ ambient }));
+      this.renderInspector();
+      this.status(ambient === null ? 'MOOD AMBIENT: GAME DEFAULT' : `MOOD AMBIENT: ${ambient}`);
+    });
+    panel.querySelector<HTMLInputElement>('#bi-mood-ambience')?.addEventListener('change', (e) => {
+      const ambience = (e.target as HTMLInputElement).value;
+      if (ambience === (this.doc.mood?.ambience ?? '')) return;
+      this.cmds.run(editDocumentMoodCmd({ ambience }));
+      this.renderInspector();
+      this.status(ambience.trim() ? `MOOD AMBIENCE: ${ambience}` : 'MOOD AMBIENCE CLEARED');
+    });
+  }
+
+  private wireMultiSelectionInspector(panel: HTMLDivElement): void {
+    for (const flag of panel.querySelectorAll<HTMLInputElement>('input[data-mf]')) {
+      flag.addEventListener('change', () => {
+        const key = flag.dataset.mf as 'locked' | 'hidden';
+        const value = flag.checked;
+        const cmds: Command[] = [];
+        for (const obj of this.doc.objects) {
+          if (!this.selectedIds.has(obj.id) || obj[key] === value) continue;
+          cmds.push(setObjectFlagCmd(obj, key, value));
+        }
+        for (const light of this.doc.lights) {
+          if (!this.selectedIds.has(light.id) || light[key] === value) continue;
+          cmds.push(editLightCmd(light, { [key]: value } as Partial<EditorLight>));
+        }
+        if (cmds.length === 0) return;
+        this.cmds.run(cmds.length === 1 ? cmds[0] : compositeCmd(`${key} selection ${cmds.length}`, cmds));
+        this.syncMarkers();
+        this.renderInspector();
+        this.status(`${key.toUpperCase()}: ${cmds.length} UPDATED`);
+      });
+    }
+  }
+
+  private applyInspectorMixedState(panel: HTMLDivElement): void {
+    for (const input of panel.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-mixed="true"]')) {
+      input.indeterminate = true;
+    }
+  }
+
+  private parseInspectorNumber(
+    input: HTMLInputElement,
+    label: string,
+    allowBlank: boolean,
+  ): { ok: true; value: number | undefined } | { ok: false } {
+    const raw = input.value.trim();
+    if (raw === '') {
+      if (allowBlank) return { ok: true, value: undefined };
+      this.status(`${label.toUpperCase()} REQUIRES A NUMBER`, true);
+      this.renderInspector();
+      return { ok: false };
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+      this.status(`${label.toUpperCase()} MUST BE A NUMBER`, true);
+      this.renderInspector();
+      return { ok: false };
+    }
+    const minAttr = input.getAttribute('min');
+    const maxAttr = input.getAttribute('max');
+    const min = minAttr === null || minAttr === '' ? null : Number(minAttr);
+    const max = maxAttr === null || maxAttr === '' ? null : Number(maxAttr);
+    if (min !== null && Number.isFinite(min) && value < min) {
+      this.status(`${label.toUpperCase()} MUST BE >= ${min}`, true);
+      this.renderInspector();
+      return { ok: false };
+    }
+    if (max !== null && Number.isFinite(max) && value > max) {
+      this.status(`${label.toUpperCase()} MUST BE <= ${max}`, true);
+      this.renderInspector();
+      return { ok: false };
+    }
+    return { ok: true, value };
+  }
+
   /** Decor sprite extras: the asset-level emissive toggle (library edit,
    *  deliberately NOT on the undo stack — it edits the sprite, not the
    *  document) and the small animated preview honoring frame durations. */
@@ -5355,13 +6461,16 @@ export class Builder {
 
     panel.querySelector<HTMLInputElement>('#bi-sprite-emissive')?.addEventListener('change', (e) => {
       const on = (e.target as HTMLInputElement).checked;
-      asset.emissive = on;
-      const lib = this.sprites.find((s) => s.id === sid);
-      if (lib && lib !== asset) lib.emissive = on;
-      if (lib) saveSprite(lib);
-      else saveSprite(asset);
-      const emb = this.doc.assets?.sprites.find((s) => s.id === sid);
-      if (emb && emb !== asset) emb.emissive = on;
+      let lib = this.sprites.find((s) => s.id === sid);
+      if (!lib) {
+        // Asset-library edit: import/embedded fallback is cloned into the local
+        // library, but the document's embedded asset is not mutated here.
+        lib = { ...asset, frames: [...asset.frames], tags: [...asset.tags] };
+        this.sprites.push(lib);
+        this.sprites.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+      }
+      lib.emissive = on;
+      saveSprite(lib);
       this.refreshSprites();
       this.status(
         (on ? 'SPRITE NOW EMISSIVE (DRAWN RAW)' : 'SPRITE NO LONGER EMISSIVE') +
@@ -5413,60 +6522,15 @@ export class Builder {
     tick();
   }
 
-  /** Wiring summary rows: who drives me / what do I drive, with unlink
-   *  buttons. Sequence doors number their steps in firing (link) order. */
-  private linkRows(obj: EditorObject, dir: 'in' | 'out'): string {
-    const links = this.doc.links.filter((l) =>
-      dir === 'in' ? l.toId === obj.id : l.fromId === obj.id,
-    );
-    if (links.length === 0) {
-      return `<div class="bi-row"><span>${dir === 'in' ? 'triggers' : 'drives'}</span><b class="bi-warn">unlinked (K)</b></div>`;
-    }
-    const numbered = dir === 'in' && obj.kind === 'door' && obj.params.logic === 'sequence';
-    return links
-      .map((l, n) => {
-        const otherId = dir === 'in' ? l.fromId : l.toId;
-        const other = this.doc.objects.find((o) => o.id === otherId);
-        const prefix = numbered ? `${n + 1}. ` : dir === 'in' ? '← ' : '→ ';
-        return `<div class="bi-row"><span>${prefix}${
-          other?.kind ?? '?'
-        }</span><button data-unlink="${l.id}" title="Remove link">&times;</button></div>`;
-      })
-      .join('');
-  }
-
   private renderLightInspector(panel: HTMLDivElement, light: EditorLight): void {
-    panel.innerHTML = `<div class="bi-head">AUTHORED LIGHT</div>
-      <div class="bi-id">${light.id}</div>
-      <div class="bi-row"><span>preset</span><select data-preset>
-        <option value="">&mdash;</option>
-        ${Object.keys(LIGHT_PRESETS)
-          .map((p) => `<option value="${p}">${p}</option>`)
-          .join('')}
-      </select></div>
-      <div class="bi-row"><span>x</span><input type="number" data-lf="x" value="${Math.round(light.x)}"></div>
-      <div class="bi-row"><span>y</span><input type="number" data-lf="y" value="${Math.round(light.y)}"></div>
-      <div class="bi-row"><span>color</span><input type="color" data-lf="color" value="${light.color}"></div>
-      <div class="bi-row"><span>intensity</span><input type="number" step="0.1" min="0.1" max="4" data-lf="intensity" value="${light.intensity}"></div>
-      <div class="bi-row"><span>radius</span><input type="number" min="4" max="160" data-lf="radius" value="${light.radius}"></div>
-      <div class="bi-row"><span>bloom</span><input type="number" step="0.05" min="0" max="1" data-lf="bloom" value="${light.bloom}"></div>
-      <div class="bi-row"><span>flicker</span><input type="number" step="0.05" min="0" max="1" data-lf="flicker" value="${light.flicker}"></div>
-      <div class="bi-row"><span>falloff</span><select data-lf="falloff">${(['soft', 'linear', 'sharp'] as const)
-        .map((f) => `<option value="${f}"${light.falloff === f ? ' selected' : ''}>${f}</option>`)
-        .join('')}</select></div>
-      <div class="bi-row"><span>occluded</span><input type="checkbox" data-lf="occluded"${light.occluded ? ' checked' : ''}></div>
-      <div class="bi-flags">
-        <label><input type="checkbox" data-lf="locked"${light.locked ? ' checked' : ''}>locked</label>
-        <label><input type="checkbox" data-lf="hidden"${light.hidden ? ' checked' : ''}>hidden</label>
-      </div>
-      <div class="bi-empty">Occluded lights cast real<br>shadows via the sweeps;<br>non-occluded paint their<br>whole falloff disk.</div>
-      <button id="bi-solo"${this.soloLightId === light.id ? ' class="bi-armed"' : ''}>${
-        this.soloLightId === light.id ? 'SOLO ON — CLICK TO HEAR ALL' : 'SOLO THIS LIGHT'
-      }</button>
-      <button id="bi-mute"${this.mutedLightIds.has(light.id) ? ' class="bi-armed"' : ''} title="Drop this light from the live preview only — it still compiles">${
-        this.mutedLightIds.has(light.id) ? 'MUTED — CLICK TO UNMUTE' : 'MUTE THIS LIGHT'
-      }</button>
-      <button id="bi-delete">DELETE (DEL)</button>`;
+    panel.innerHTML = renderInspectorItems(
+      lightInspectorSchema(light, {
+        presetIds: Object.keys(LIGHT_PRESETS),
+        solo: this.soloLightId === light.id,
+        muted: this.mutedLightIds.has(light.id),
+      }),
+    );
+    this.refreshPanelDragHandles(panel);
 
     for (const field of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-lf]')) {
       field.addEventListener('change', () => {
@@ -5480,8 +6544,10 @@ export class Builder {
         let value: unknown =
           field instanceof HTMLInputElement && field.type === 'checkbox' ? field.checked : field.value;
         if (key === 'intensity' || key === 'radius' || key === 'bloom' || key === 'flicker') {
-          value = Number(field.value);
-          if (!Number.isFinite(value as number)) return;
+          if (!(field instanceof HTMLInputElement)) return;
+          const parsed = this.parseInspectorNumber(field, String(key), false);
+          if (!parsed.ok) return;
+          value = parsed.value;
         }
         this.cmds.run(editLightCmd(light, { [key]: value } as Partial<EditorLight>));
         if (key === 'hidden' || key === 'locked') this.syncMarkers();
@@ -5511,55 +6577,31 @@ export class Builder {
     panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
   }
 
-  private checkRow(obj: EditorObject, key: string, label: string): string {
-    return `<div class="bi-row"><span>${label}</span><input type="checkbox" data-p="${key}"${
-      obj.params[key] === true ? ' checked' : ''
-    }></div>`;
-  }
-
-  private selectRow(
-    obj: EditorObject,
-    key: string,
-    label: string,
-    options: string[],
-    fallback: string,
-  ): string {
-    const cur = typeof obj.params[key] === 'string' ? (obj.params[key] as string) : fallback;
-    return `<div class="bi-row"><span>${label}</span><select data-p="${key}">${options
-      .map(
-        (v) =>
-          `<option value="${v}"${cur === v ? ' selected' : ''}>${v === '' ? '&mdash;' : v.toUpperCase()}</option>`,
-      )
-      .join('')}</select></div>`;
-  }
-
-  private numRow(obj: EditorObject, key: string, label: string, fallback: number): string {
-    return `<div class="bi-row"><span>${label}</span><input type="number" data-p="${key}" data-num="1" value="${paramNum(
-      obj,
-      key,
-      fallback,
-    )}"></div>`;
-  }
-
   /* ===================== issues / status / sync ===================== */
 
   private renderIssues(issues: DocIssue[]): void {
+    this.lastIssues = [...issues];
     const panel = this.el<HTMLDivElement>('builder-issues');
     if (issues.length === 0) {
       panel.style.display = 'none';
+      this.setWorkspacePanelOpen('builder-issues', false);
+      this.applyWorkspaceLayout();
+      this.saveWorkspacePrefs();
       return;
     }
     panel.style.display = '';
+    this.setWorkspacePanelOpen('builder-issues', true);
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
     panel.innerHTML =
       `<div class="bi-head">ISSUES <button id="b-issues-close">&times;</button></div>` +
-      issues
-        .map(
-          (i, n) =>
-            `<div class="b-issue ${i.severity}" data-n="${n}">[${i.severity.slice(0, 4).toUpperCase()}] ${i.what}</div>`,
-        )
-        .join('');
+      renderIssueRows(issues);
+    this.refreshPanelDragHandles(panel);
     panel.querySelector('#b-issues-close')?.addEventListener('click', () => {
       panel.style.display = 'none';
+      this.setWorkspacePanelOpen('builder-issues', false);
+      this.applyWorkspaceLayout();
+      this.saveWorkspacePrefs();
     });
     for (const row of panel.querySelectorAll<HTMLDivElement>('.b-issue')) {
       row.addEventListener('click', () => {
@@ -5608,6 +6650,13 @@ export class Builder {
     this.syncMarkers();
     this.syncPalette();
     this.renderInspector();
+    this.syncWorkspacePanelContent();
+  }
+
+  private syncWorkspacePanelContent(): void {
+    const open = (id: string): boolean => this.workspaceLayout.panels.some((panel) => panel.id === id && panel.open);
+    if (open('builder-world')) this.buildWorldPanel();
+    if (open('builder-matparams')) this.buildMatPanel();
     this.syncProcPanel();
   }
 }
@@ -5615,13 +6664,4 @@ export class Builder {
 /** Minimal HTML escape for text interpolated into Builder-owned markup. */
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-/** Minimal HTML/attribute escape for values interpolated into inspector markup. */
-function escAttr(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

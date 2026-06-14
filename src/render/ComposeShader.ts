@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { DataUtils } from 'three';
 
+import { resolveBackdropLayersForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import type { Ctx, MaterialParams } from '@/core/types';
 import type {
   CompositorLens,
   LightField,
   OverlaySurface,
+  ParallaxBitmapLayer,
   ParallaxLayers,
 } from '@/render/pixels';
 import { Cell } from '@/sim/CellType';
@@ -24,7 +26,7 @@ import type { World } from '@/sim/World';
  *                    to CELL_COUNT in sim/CellType.ts)
  *  - light field   : RGBA32F at half view res, re-fed only when light.build ran
  *  - bloom LUT     : R32F 256x1, re-fed every frame (params are live-tunable)
- *  - parallax      : bgFar R8 / bgNear R32F at world size, uploaded once
+ *  - parallax      : five ordered PNG layers, each with its own alpha + speed
  *  - overlay       : RGBA16F sprite layer (CPU setPx/addPx writes, see pixels.ts)
  *  - distortion    : shockwave + black-hole lens uniform arrays
  */
@@ -75,14 +77,30 @@ layout(location = 0) out highp vec4 pc_fragColor;
 uniform usampler2D uWin;
 uniform sampler2D uLight;
 uniform sampler2D uLut;
-uniform sampler2D uBgFar;
-uniform sampler2D uBgNear;
+uniform sampler2D uBackdrop0;
+uniform sampler2D uBackdrop1;
+uniform sampler2D uBackdrop2;
+uniform sampler2D uBackdrop3;
+uniform sampler2D uBackdrop4;
 uniform sampler2D uOverlay;
 
 uniform ivec2 uCam;        // integer camera snapshot (renderCamX/Y)
 uniform ivec2 uWinOrigin;  // world coords of window texel (0,0)
-uniform ivec2 uFarOff;     // floor(cam * 0.35)
-uniform ivec2 uNearOff;    // floor(cam * 0.62)
+uniform vec4 uBackdropCfg0; // speed, opacity, visible, scale
+uniform vec4 uBackdropCfg1;
+uniform vec4 uBackdropCfg2;
+uniform vec4 uBackdropCfg3;
+uniform vec4 uBackdropCfg4;
+uniform vec2 uBackdropInv0;
+uniform vec2 uBackdropInv1;
+uniform vec2 uBackdropInv2;
+uniform vec2 uBackdropInv3;
+uniform vec2 uBackdropInv4;
+uniform vec2 uBackdropOff0;
+uniform vec2 uBackdropOff1;
+uniform vec2 uBackdropOff2;
+uniform vec2 uBackdropOff3;
+uniform vec2 uBackdropOff4;
 uniform float uAmbient;
 uniform float uBoost;      // maxBrightness
 uniform int uGlintFrame;   // frameCount % 97 (crystal glint is integer math)
@@ -112,6 +130,14 @@ float hash12(vec2 p) {
 float flickerRand(vec2 p, float salt) {
   if (uFlickerMid > 0.5) return 0.5;
   return hash12(p + uFlickerSeed * salt);
+}
+
+void overBackdrop(inout vec3 c, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offset, int vx, int vy) {
+  if (cfg.z < 0.5 || cfg.y <= 0.0 || cfg.w <= 0.0) return;
+  vec2 p = ((floor(vec2(uCam) * cfg.x) + vec2(float(vx), float(vy))) / max(cfg.w, 0.25) + offset + vec2(0.5)) * invSize;
+  vec4 s = texture(tex, p);
+  float a = clamp(s.a * cfg.y, 0.0, 1.0);
+  c = mix(c, s.rgb, a);
 }
 
 void main() {
@@ -185,25 +211,28 @@ void main() {
     float vg = 1.0 - 0.52 * ((dxv * dxv + dyv * dyv) / ${VIG_MAXR2.toFixed(1)});
 
     if (type == ${Cell.Empty}) {
-      // Parallax composite: near rock texture, carved darker by far silhouettes
-      float nearTex = texelFetch(uBgNear, ivec2(uNearOff.x + vx, uNearOff.y + vy), 0).r;
-      float farTex = texelFetch(uBgFar, ivec2(uFarOff.x + vx, uFarOff.y + vy), 0).r;
-      float base = 0.022 + nearTex * 0.085;
-      if (farTex > 0.5) base *= 0.4;
-      base *= 0.86 + 0.14 * (1.0 - float(wy) / ${HEIGHT.toFixed(1)});
-      float r = base * 0.8;
-      float g = base * 0.9;
-      float b = base * 1.25;
+      // Ordered PNG parallax composite. Every layer carries its own alpha and
+      // scrolls with its own multiplier, so texture and cutout never drift.
+      vec3 bg = vec3(0.004, 0.005, 0.009);
+      overBackdrop(bg, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, vx, vy);
+      overBackdrop(bg, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, vx, vy);
+      overBackdrop(bg, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, vx, vy);
+      overBackdrop(bg, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, vx, vy);
+      overBackdrop(bg, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, vx, vy);
+      float depthShade = 0.78 + 0.22 * (1.0 - float(wy) / ${HEIGHT.toFixed(1)});
+      float r = bg.r * depthShade;
+      float g = bg.g * depthShade;
+      float b = bg.b * depthShade;
       float lf0 = min(2.2, light.r) * vg;
-      r = (r * 0.45 + uAmbient * 0.03) * vg + r * lf0 * lf0;
+      r = (r * 0.62 + uAmbient * 0.022) * vg + r * lf0 * lf0 * 0.72;
       lf0 = min(2.2, light.g) * vg;
-      g = (g * 0.45 + uAmbient * 0.03) * vg + g * lf0 * lf0;
+      g = (g * 0.62 + uAmbient * 0.022) * vg + g * lf0 * lf0 * 0.72;
       lf0 = min(2.2, light.b) * vg;
-      b = (b * 0.45 + uAmbient * 0.06) * vg + b * lf0 * lf0;
+      b = (b * 0.62 + uAmbient * 0.032) * vg + b * lf0 * lf0 * 0.72;
       // air itself catches the glow near strong light
-      r += max(0.0, light.r - 0.25) * 0.1 * vg;
-      g += max(0.0, light.g - 0.25) * 0.085 * vg;
-      b += max(0.0, light.b - 0.25) * 0.07 * vg;
+      r += max(0.0, light.r - 0.25) * 0.045 * vg;
+      g += max(0.0, light.g - 0.25) * 0.04 * vg;
+      b += max(0.0, light.b - 0.25) * 0.035 * vg;
       c = vec3(r, g, b) + ringGlow * vec3(0.55, 0.42, 0.26);
     } else {
       float r = float(cell.r) / 255.0;
@@ -372,6 +401,9 @@ export class GpuCompose {
   private readonly lutData = new Float32Array(256);
   private readonly lutTex: THREE.DataTexture;
 
+  private readonly backdropTex: THREE.DataTexture[] = [];
+  private readonly backdropVersions = new Int32Array(5).fill(-1);
+
   private readonly overlayTex: THREE.DataTexture;
   private readonly overlay = new Overlay();
 
@@ -379,7 +411,7 @@ export class GpuCompose {
   private readonly waveS = new Float32Array(MAX_WAVES);
   private readonly lensV: THREE.Vector4[] = [];
 
-  constructor(layers: ParallaxLayers, light: LightField) {
+  constructor(private readonly layers: ParallaxLayers, light: LightField) {
     // World window: RGBA8UI so type/charge reads are exact integer fetches
     // and colors come back as the same float(n)/255 the CPU computes.
     this.winTex = new THREE.DataTexture(
@@ -414,23 +446,8 @@ export class GpuCompose {
     );
     this.lutTex.minFilter = this.lutTex.magFilter = THREE.NearestFilter;
 
-    // Parallax layers: seed-independent statics, uploaded once at first use.
-    // bgFar is binary (R8 exact); bgNear feeds `0.022 + near*0.085` so it
-    // stays R32F to keep the empty-cell path bit-comparable to the CPU.
-    const far8 = new Uint8Array(WIDTH * HEIGHT);
-    for (let i = 0; i < far8.length; i++) far8[i] = layers.bgFar[i] > 0.5 ? 255 : 0;
-    const bgFarTex = new THREE.DataTexture(far8, WIDTH, HEIGHT, THREE.RedFormat, THREE.UnsignedByteType);
-    bgFarTex.minFilter = bgFarTex.magFilter = THREE.NearestFilter;
-    bgFarTex.needsUpdate = true;
-    const bgNearTex = new THREE.DataTexture(
-      layers.bgNear as Float32Array<ArrayBuffer>,
-      WIDTH,
-      HEIGHT,
-      THREE.RedFormat,
-      THREE.FloatType,
-    );
-    bgNearTex.minFilter = bgNearTex.magFilter = THREE.NearestFilter;
-    bgNearTex.needsUpdate = true;
+    for (let i = 0; i < 5; i++) this.backdropTex.push(this.createBackdropTexture(layers.backdropLayers[i]));
+    for (let i = 0; i < 5; i++) this.backdropVersions[i] = layers.backdropLayers[i]?.version ?? -1;
 
     this.overlayTex = new THREE.DataTexture(
       this.overlay.half,
@@ -453,13 +470,29 @@ export class GpuCompose {
         uWin: { value: this.winTex },
         uLight: { value: this.lightTex },
         uLut: { value: this.lutTex },
-        uBgFar: { value: bgFarTex },
-        uBgNear: { value: bgNearTex },
+        uBackdrop0: { value: this.backdropTex[0] },
+        uBackdrop1: { value: this.backdropTex[1] },
+        uBackdrop2: { value: this.backdropTex[2] },
+        uBackdrop3: { value: this.backdropTex[3] },
+        uBackdrop4: { value: this.backdropTex[4] },
         uOverlay: { value: this.overlayTex },
         uCam: { value: new THREE.Vector2() },
         uWinOrigin: { value: new THREE.Vector2() },
-        uFarOff: { value: new THREE.Vector2() },
-        uNearOff: { value: new THREE.Vector2() },
+        uBackdropCfg0: { value: new THREE.Vector4() },
+        uBackdropCfg1: { value: new THREE.Vector4() },
+        uBackdropCfg2: { value: new THREE.Vector4() },
+        uBackdropCfg3: { value: new THREE.Vector4() },
+        uBackdropCfg4: { value: new THREE.Vector4() },
+        uBackdropInv0: { value: new THREE.Vector2() },
+        uBackdropInv1: { value: new THREE.Vector2() },
+        uBackdropInv2: { value: new THREE.Vector2() },
+        uBackdropInv3: { value: new THREE.Vector2() },
+        uBackdropInv4: { value: new THREE.Vector2() },
+        uBackdropOff0: { value: new THREE.Vector2() },
+        uBackdropOff1: { value: new THREE.Vector2() },
+        uBackdropOff2: { value: new THREE.Vector2() },
+        uBackdropOff3: { value: new THREE.Vector2() },
+        uBackdropOff4: { value: new THREE.Vector2() },
         uAmbient: { value: 0 },
         uBoost: { value: 1 },
         uGlintFrame: { value: 0 },
@@ -494,12 +527,12 @@ export class GpuCompose {
 
     if (lightRebuilt) this.uploadLight(light);
     this.updateLut(ctx.params.materials);
+    this.syncBackdropTextures();
 
     const u = this.material.uniforms;
     (u.uCam.value as THREE.Vector2).set(camX, camY);
     (u.uWinOrigin.value as THREE.Vector2).set(camX - COMPOSE_PAD, camY - COMPOSE_PAD);
-    (u.uFarOff.value as THREE.Vector2).set(Math.floor(camX * 0.35), Math.floor(camY * 0.35));
-    (u.uNearOff.value as THREE.Vector2).set(Math.floor(camX * 0.62), Math.floor(camY * 0.62));
+    this.updateBackdropUniforms(ctx);
     u.uAmbient.value = ctx.params.global.ambient;
     u.uBoost.value = ctx.params.global.maxBrightness;
 
@@ -537,6 +570,56 @@ export class GpuCompose {
   /** Stage this frame's overlay writes for upload. */
   commit(): void {
     if (this.overlay.commit()) this.overlayTex.needsUpdate = true;
+  }
+
+  private createBackdropTexture(layer: ParallaxBitmapLayer | undefined): THREE.DataTexture {
+    const tex = new THREE.DataTexture(
+      layer ? new Uint8Array(layer.pixels) : new Uint8Array([0, 0, 0, 0]),
+      layer?.width ?? 1,
+      layer?.height ?? 1,
+      THREE.RGBAFormat,
+      THREE.UnsignedByteType,
+    );
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.minFilter = tex.magFilter = THREE.NearestFilter;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  private syncBackdropTextures(): void {
+    const sourceLayers = this.layers.backdropLayers;
+    for (let i = 0; i < this.backdropTex.length; i++) {
+      const layer = sourceLayers[i];
+      const nextVersion = layer?.version ?? -1;
+      if (this.backdropVersions[i] === nextVersion) continue;
+      this.backdropTex[i].dispose();
+      const tex = this.createBackdropTexture(layer);
+      this.backdropTex[i] = tex;
+      this.material.uniforms[`uBackdrop${i}`].value = tex;
+      this.backdropVersions[i] = nextVersion;
+    }
+  }
+
+  private updateBackdropUniforms(ctx: Ctx): void {
+    const u = this.material.uniforms;
+    const settings = resolveBackdropLayersForRuntime(ctx.params.backdrop, ctx.levels.current);
+    for (let i = 0; i < 5; i++) {
+      const layer = this.layers.backdropLayers[i];
+      const cfg = u[`uBackdropCfg${i}`].value as THREE.Vector4;
+      const inv = u[`uBackdropInv${i}`].value as THREE.Vector2;
+      const off = u[`uBackdropOff${i}`].value as THREE.Vector2;
+      if (!layer) {
+        cfg.set(0, 0, 0, 0);
+        inv.set(1, 1);
+        off.set(0, 0);
+        continue;
+      }
+      const setting = settings[layer.id];
+      const scale = Math.max(0.25, setting.scale);
+      cfg.set(setting.speed, setting.opacity, setting.visible ? 1 : 0, scale);
+      inv.set(1 / Math.max(1, layer.width), 1 / Math.max(1, layer.height));
+      off.set(setting.offsetX, setting.offsetY);
+    }
   }
 
   /**

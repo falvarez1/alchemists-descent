@@ -1,42 +1,98 @@
-import { HEIGHT, WIDTH } from '@/config/constants';
-import { valueNoise } from '@/core/math';
-import type { ParallaxLayers } from '@/render/pixels';
+import { BACKDROP_LAYER_SPECS } from '@/config/backdrop';
+import type { ParallaxBitmapLayer, ParallaxLayers } from '@/render/pixels';
+
+function fallbackPixel(alpha: number): Uint8ClampedArray {
+  return new Uint8ClampedArray([4, 5, 9, alpha]);
+}
 
 /**
- * Two parallax backdrop layers, baked at world size:
- *   bgFar  — distant silhouette spires/stalactites (scrolls at 0.35x camera)
- *   bgNear — dim rock texture (scrolls at 0.62x camera)
+ * Image-backed parallax backdrop.
+ *
+ * Each layer remains a separate RGBA bitmap so its alpha and texture move with
+ * the same camera multiplier. The renderer samples these bitmaps directly;
+ * there is no shared noise mask or generated cutout pass.
  */
 export class Background implements ParallaxLayers {
-  readonly bgFar: Float32Array;
-  readonly bgNear: Float32Array;
+  readonly backdropLayers: ParallaxBitmapLayer[];
+
+  private loadedCount = 0;
 
   constructor() {
-    this.bgFar = new Float32Array(WIDTH * HEIGHT);
-    this.bgNear = new Float32Array(WIDTH * HEIGHT);
+    this.backdropLayers = BACKDROP_LAYER_SPECS.map((spec, index) => ({
+      id: spec.id,
+      label: spec.label,
+      file: spec.file,
+      src: spec.src,
+      defaultSpeed: spec.defaultSpeed,
+      version: 0,
+      width: 1,
+      height: 1,
+      pixels: fallbackPixel(index === 0 ? 255 : 0),
+      loaded: false,
+    }));
 
-    const S = 1337;
-    // Far layer: jagged skyline of hanging and rising rock masses
-    for (let x = 0; x < WIDTH; x++) {
-      const ridge = valueNoise(x, 0, 0.007, S + 1);
-      const jag = valueNoise(x, 9, 0.03, S + 2);
-      const topLen = 46 + ridge * 250 + jag * jag * 175;
-      const botRidge = valueNoise(x, 3, 0.006, S + 3);
-      const botJag = valueNoise(x, 5, 0.025, S + 4);
-      const botLen = 70 + botRidge * 290 + botJag * botJag * 135;
-      for (let y = 0; y < HEIGHT; y++) {
-        const i = y * WIDTH + x;
-        this.bgFar[i] = y < topLen || y > HEIGHT - botLen ? 1 : 0;
-      }
+    if (typeof document === 'undefined' || typeof Image === 'undefined') return;
+    for (const layer of this.backdropLayers) this.loadLayer(layer);
+  }
+
+  get ready(): boolean {
+    return this.loadedCount === this.backdropLayers.length;
+  }
+
+  private loadLayer(layer: ParallaxBitmapLayer): void {
+    if (typeof fetch === 'function' && typeof createImageBitmap === 'function') {
+      void this.loadLayerBitmap(layer);
+      return;
     }
-    // Near layer: layered rock texture
-    for (let y = 0; y < HEIGHT; y++) {
-      for (let x = 0; x < WIDTH; x++) {
-        const n1 = valueNoise(x, y, 0.009, S + 7);
-        const n2 = valueNoise(x, y, 0.028, S + 11);
-        const n3 = valueNoise(x, y, 0.08, S + 13);
-        this.bgNear[y * WIDTH + x] = n1 * 0.55 + n2 * 0.30 + n3 * 0.15;
-      }
+    this.loadLayerImage(layer);
+  }
+
+  private async loadLayerBitmap(layer: ParallaxBitmapLayer): Promise<void> {
+    try {
+      const response = await fetch(layer.src);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const bitmap = await createImageBitmap(await response.blob());
+      this.commitLayerPixels(layer, bitmap, bitmap.width, bitmap.height);
+      bitmap.close();
+    } catch {
+      this.loadLayerImage(layer);
     }
+  }
+
+  private loadLayerImage(layer: ParallaxBitmapLayer): void {
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => {
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      this.commitLayerPixels(layer, img, w, h);
+    };
+    img.onerror = () => {
+      console.warn(`[background] failed to load ${layer.file}`);
+    };
+    img.src = layer.src;
+  }
+
+  private commitLayerPixels(
+    layer: ParallaxBitmapLayer,
+    source: CanvasImageSource,
+    width: number,
+    height: number,
+  ): void {
+    const w = Math.max(1, Math.floor(width));
+    const h = Math.max(1, Math.floor(height));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(source, 0, 0, w, h);
+    layer.width = w;
+    layer.height = h;
+    layer.pixels = ctx.getImageData(0, 0, w, h).data;
+    if (!layer.loaded) this.loadedCount++;
+    layer.loaded = true;
+    layer.version++;
   }
 }

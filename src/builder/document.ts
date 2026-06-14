@@ -1,6 +1,7 @@
-import type { BiomeId, Ctx } from '@/core/types';
+import type { BackdropSettings, BiomeId, Ctx } from '@/core/types';
 import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { createDefaultBackdropSettings, sanitizeBackdropSettings } from '@/config/backdrop';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { sanitizeSpriteAsset } from '@/builder/assets/sprites';
@@ -114,6 +115,10 @@ export interface EditorDocument {
   /** Aesthetics metadata: ambient override (null = game default) and a
    *  free-form ambience tag. Compiled playtests apply the ambient. */
   mood?: { ambient: number | null; ambience: string };
+  /** Document-owned parallax backdrop tuning; exported/shared with the level. */
+  backdrop?: BackdropSettings;
+  /** Optional level profile id used by Builder playtests of this document. */
+  backdropProfileId?: string | null;
   /** Embedded assets (additive, v stays 2 — old loaders ignore the field).
    *  SAVE/EXPORT/SHARE embed exactly the sprites referenced by decor
    *  objects (spritelib.embedSprites); IMPORT merges them into the local
@@ -235,6 +240,8 @@ export function createEmptyDocument(name: string, biome: BiomeId): EditorDocumen
     proceduralHistory: [],
     validation: null,
     mood: { ambient: null, ambience: '' },
+    backdrop: createDefaultBackdropSettings(),
+    backdropProfileId: null,
   };
 }
 
@@ -307,7 +314,7 @@ export function loadDocLibrary(): Record<string, EditorDocument> {
       const storageKey = localStorage.key(n);
       if (!storageKey || !storageKey.startsWith(DOC_PREFIX)) continue;
       try {
-        const doc = JSON.parse(localStorage.getItem(storageKey)!) as EditorDocument;
+        const doc = sanitizeImportedDoc(JSON.parse(localStorage.getItem(storageKey)!));
         if (doc && doc.v === 2) lib[doc.id] = doc;
       } catch {
         // one corrupt document must not take the library down
@@ -345,6 +352,9 @@ export function sanitizeImportedDoc(parsed: unknown): EditorDocument | null {
   doc.proceduralHistory = Array.isArray(doc.proceduralHistory) ? doc.proceduralHistory : [];
   doc.validation = doc.validation ?? null;
   doc.mood = doc.mood && typeof doc.mood === 'object' ? doc.mood : { ambient: null, ambience: '' };
+  doc.backdrop = sanitizeBackdropSettings(doc.backdrop);
+  doc.backdropProfileId =
+    typeof doc.backdropProfileId === 'string' && doc.backdropProfileId ? doc.backdropProfileId : null;
   // Embedded sprite assets: validate-then-accept each one; garbage entries
   // drop out individually, an empty/invalid block drops the field entirely.
   if (doc.assets && Array.isArray((doc.assets as { sprites?: unknown }).sprites)) {

@@ -4,6 +4,7 @@ import { CELL_PALETTE, paletteColor } from '@/sim/cellPalette';
 import { unpackB, unpackG, unpackR } from '@/sim/colors';
 import type { RgbaDecodeResult } from '@/builder/assets/pixmap';
 import { cellDisplayName, colorHex } from '@/builder/assets/pixmap';
+import { PopoverHost } from '@/ui/editor/PopoverHost';
 
 /**
  * The PREFABS palette section (replaces the terrain-only STAMPS list):
@@ -37,9 +38,7 @@ export class PrefabPanel {
   private searchEl: HTMLInputElement;
   private tagsEl: HTMLDivElement;
   private listEl: HTMLDivElement;
-  /** The hover popover: a big preview + details card (replaces tooltips).
-   *  pointer-events: none — it can never trap the mouse. */
-  private popEl: HTMLDivElement;
+  private readonly popovers = new PopoverHost();
 
   constructor(
     host: HTMLElement,
@@ -58,10 +57,6 @@ export class PrefabPanel {
     this.searchEl = host.querySelector('#bp-prefab-search') as HTMLInputElement;
     this.tagsEl = host.querySelector('#bp-prefab-tags') as HTMLDivElement;
     this.listEl = host.querySelector('#bp-prefab-list') as HTMLDivElement;
-    this.popEl = document.createElement('div');
-    this.popEl.id = 'bp-prefab-pop';
-    this.popEl.style.display = 'none';
-    document.body.appendChild(this.popEl);
 
     host.querySelector('#bp-prefab-capture')!.addEventListener('click', () => hooks.onCapture());
     host.querySelector('#bp-prefab-import')!.addEventListener('click', () => hooks.onImport());
@@ -77,7 +72,7 @@ export class PrefabPanel {
     this.list = list;
     this.builtins = builtins;
     this.armedId = armedId;
-    this.popEl.style.display = 'none';
+    this.popovers.hide('bp-prefab-pop');
     for (const t of [...this.tagFilter]) {
       if (!list.some((p) => p.tags.includes(t)) && !builtins.some((p) => p.tags.includes(t))) {
         this.tagFilter.delete(t);
@@ -179,37 +174,37 @@ export class PrefabPanel {
     });
     card.addEventListener('mouseenter', () => this.showPopover(card, p, builtin));
     card.addEventListener('mouseleave', () => {
-      this.popEl.style.display = 'none';
+      this.popovers.hide('bp-prefab-pop');
     });
     return card;
   }
 
   /** Big hover preview: rendered terrain + name/details (no native tooltips). */
   private showPopover(card: HTMLElement, p: PrefabDef, builtin: boolean): void {
-    this.popEl.innerHTML = '';
-    const big = this.bigThumb(p);
-    this.popEl.appendChild(big);
-    const body = document.createElement('div');
-    body.className = 'bp-pop-body';
-    const meta: string[] = [`${p.w}×${p.h} cells`];
-    if (p.objects.length > 0) meta.push(`${p.objects.length} objects`);
-    if (p.links.length > 0) meta.push(`${p.links.length} links`);
-    if (p.lights.length > 0) meta.push(`${p.lights.length} lights`);
-    if (p.anchors && p.anchors.length > 0) meta.push(`${p.anchors.length} anchors`);
-    body.innerHTML =
-      `<div class="bp-pop-name">${escapeHtml(p.name)}${builtin ? ' <span class="bp-pop-badge">BUILT-IN</span>' : ''}</div>` +
-      `<div class="bp-pop-meta">${meta.join(' · ')}</div>` +
-      (p.tags.length > 0
-        ? `<div class="bp-pop-tags">${p.tags.map((t) => '#' + escapeHtml(t)).join(' ')}</div>`
-        : '') +
-      `<div class="bp-pop-hint">click arms it — then click the canvas to stamp · Q rotates · E flips</div>`;
-    this.popEl.appendChild(body);
-    this.popEl.style.display = '';
-    // beside the card, toward the canvas; clamped to the viewport
-    const r = card.getBoundingClientRect();
-    this.popEl.style.left = `${Math.round(r.right + 10)}px`;
-    const h = this.popEl.offsetHeight || 160;
-    this.popEl.style.top = `${Math.round(Math.max(8, Math.min(window.innerHeight - h - 8, r.top - 20)))}px`;
+    this.popovers.show({
+      id: 'bp-prefab-pop',
+      anchor: card,
+      offsetY: -20,
+      render: (pop) => {
+        const big = this.bigThumb(p);
+        pop.appendChild(big);
+        const body = document.createElement('div');
+        body.className = 'bp-pop-body';
+        const meta: string[] = [`${p.w}×${p.h} cells`];
+        if (p.objects.length > 0) meta.push(`${p.objects.length} objects`);
+        if (p.links.length > 0) meta.push(`${p.links.length} links`);
+        if (p.lights.length > 0) meta.push(`${p.lights.length} lights`);
+        if (p.anchors && p.anchors.length > 0) meta.push(`${p.anchors.length} anchors`);
+        body.innerHTML =
+          `<div class="bp-pop-name">${escapeHtml(p.name)}${builtin ? ' <span class="bp-pop-badge">BUILT-IN</span>' : ''}</div>` +
+          `<div class="bp-pop-meta">${meta.join(' · ')}</div>` +
+          (p.tags.length > 0
+            ? `<div class="bp-pop-tags">${p.tags.map((t) => '#' + escapeHtml(t)).join(' ')}</div>`
+            : '') +
+          `<div class="bp-pop-hint">click arms it — then click the canvas to stamp · Q rotates · E flips</div>`;
+        pop.appendChild(body);
+      },
+    });
   }
 
   /** Popover preview: palette-marked terrain at up to 192px wide. */

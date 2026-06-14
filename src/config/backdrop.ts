@@ -1,0 +1,210 @@
+import type {
+  BackdropLayerId,
+  BackdropLayerSettings,
+  BackdropLevelProfile,
+  BackdropProfile,
+  BackdropSettings,
+  LevelRuntime,
+} from '@/core/types';
+
+export interface BackdropLayerSpec {
+  id: BackdropLayerId;
+  label: string;
+  file: string;
+  src: string;
+  defaultSpeed: number;
+  defaultOpacity: number;
+}
+
+export const BACKDROP_SETTINGS_KEY = 'noita-backdrop-settings';
+
+export const BACKDROP_LAYER_SPECS: readonly BackdropLayerSpec[] = [
+  {
+    id: 'back',
+    label: 'Back layer',
+    file: 'back-layer.png',
+    src: new URL('../../backdrop/back-layer.png', import.meta.url).href,
+    defaultSpeed: 0.1,
+    defaultOpacity: 1,
+  },
+  {
+    id: 'second',
+    label: 'Second layer',
+    file: 'second-layer.png',
+    src: new URL('../../backdrop/second-layer.png', import.meta.url).href,
+    defaultSpeed: 0.18,
+    defaultOpacity: 1,
+  },
+  {
+    id: 'third',
+    label: 'Third layer',
+    file: 'third-layer.png',
+    src: new URL('../../backdrop/third-layer.png', import.meta.url).href,
+    defaultSpeed: 0.3,
+    defaultOpacity: 1,
+  },
+  {
+    id: 'fourth',
+    label: 'Fourth layer',
+    file: 'fourth-layer.png',
+    src: new URL('../../backdrop/fourth-layer.png', import.meta.url).href,
+    defaultSpeed: 0.48,
+    defaultOpacity: 1,
+  },
+  {
+    id: 'front',
+    label: 'Front layer',
+    file: 'front-layer.png',
+    src: new URL('../../backdrop/front-layer.png', import.meta.url).href,
+    defaultSpeed: 0.72,
+    defaultOpacity: 1,
+  },
+] as const;
+
+function storageOrNull(): Storage | null {
+  if (typeof localStorage === 'undefined') return null;
+  return localStorage;
+}
+
+function createDefaultLayer(spec: BackdropLayerSpec): BackdropLayerSettings {
+  return {
+    speed: spec.defaultSpeed,
+    opacity: spec.defaultOpacity,
+    offsetX: 0,
+    offsetY: 0,
+    scale: 1,
+    visible: true,
+  };
+}
+
+export function createDefaultBackdropProfile(): BackdropProfile {
+  const layers = {} as BackdropProfile['layers'];
+  for (const spec of BACKDROP_LAYER_SPECS) layers[spec.id] = createDefaultLayer(spec);
+  return { layers };
+}
+
+export function cloneBackdropProfile(profile: BackdropProfile): BackdropProfile {
+  const layers = {} as BackdropProfile['layers'];
+  for (const spec of BACKDROP_LAYER_SPECS) {
+    const layer = profile.layers[spec.id] ?? createDefaultLayer(spec);
+    layers[spec.id] = {
+      speed: clampBackdropSpeed(layer.speed),
+      opacity: clampBackdropOpacity(layer.opacity),
+      offsetX: clampBackdropOffset(layer.offsetX),
+      offsetY: clampBackdropOffset(layer.offsetY),
+      scale: clampBackdropScale(layer.scale),
+      visible: layer.visible !== false,
+    };
+  }
+  return { layers };
+}
+
+export function createDefaultBackdropSettings(): BackdropSettings {
+  return {
+    ...createDefaultBackdropProfile(),
+    levels: {},
+  };
+}
+
+export function cloneBackdropSettings(settings: BackdropSettings): BackdropSettings {
+  return sanitizeBackdropSettings(settings);
+}
+
+export function copyBackdropSettingsInto(target: BackdropSettings, source: unknown): BackdropSettings {
+  const clean = sanitizeBackdropSettings(source);
+  target.layers = clean.layers;
+  target.levels = clean.levels;
+  return target;
+}
+
+export function resolveBackdropLayers(
+  settings: BackdropSettings,
+  levelId?: string | null,
+): Record<BackdropLayerId, BackdropLayerSettings> {
+  const level = levelId ? settings.levels[levelId] : undefined;
+  return level?.enabled ? level.layers : settings.layers;
+}
+
+export function resolveBackdropLayersForRuntime(
+  settings: BackdropSettings,
+  runtime?: LevelRuntime | null,
+): Record<BackdropLayerId, BackdropLayerSettings> {
+  const source = runtime?.backdrop ?? settings;
+  return resolveBackdropLayers(source, runtime?.backdropLevelId ?? runtime?.def.id);
+}
+
+export function setBackdropLevelOverride(settings: BackdropSettings, levelId: string, enabled: boolean): void {
+  if (enabled) {
+    const existing = settings.levels[levelId];
+    settings.levels[levelId] = {
+      ...cloneBackdropProfile(existing?.enabled ? existing : { layers: settings.layers }),
+      enabled: true,
+    };
+  } else {
+    delete settings.levels[levelId];
+  }
+}
+
+export function sanitizeBackdropSettings(raw: unknown): BackdropSettings {
+  const defaults = createDefaultBackdropSettings();
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
+  const source = raw as Partial<BackdropSettings>;
+  const globalProfile = cloneBackdropProfile({
+    layers: (source.layers ?? defaults.layers) as BackdropProfile['layers'],
+  });
+  const levels: BackdropSettings['levels'] = {};
+  if (source.levels && typeof source.levels === 'object' && !Array.isArray(source.levels)) {
+    for (const [levelId, value] of Object.entries(source.levels)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const profile = value as Partial<BackdropLevelProfile>;
+      if (profile.enabled !== true) continue;
+      levels[levelId] = {
+        ...cloneBackdropProfile({ layers: (profile.layers ?? globalProfile.layers) as BackdropProfile['layers'] }),
+        enabled: true,
+      };
+    }
+  }
+  return { ...globalProfile, levels };
+}
+
+export function loadBackdropSettings(): BackdropSettings {
+  const store = storageOrNull();
+  if (!store) return createDefaultBackdropSettings();
+  try {
+    const raw = store.getItem(BACKDROP_SETTINGS_KEY);
+    return raw ? sanitizeBackdropSettings(JSON.parse(raw)) : createDefaultBackdropSettings();
+  } catch {
+    return createDefaultBackdropSettings();
+  }
+}
+
+export function saveBackdropSettings(settings: BackdropSettings): boolean {
+  const store = storageOrNull();
+  if (!store) return false;
+  try {
+    store.setItem(BACKDROP_SETTINGS_KEY, JSON.stringify(sanitizeBackdropSettings(settings)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clampBackdropSpeed(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1.5, value));
+}
+
+export function clampBackdropOpacity(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(0, Math.min(1, value));
+}
+
+export function clampBackdropOffset(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(-8192, Math.min(8192, value));
+}
+
+export function clampBackdropScale(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(0.25, Math.min(4, value));
+}

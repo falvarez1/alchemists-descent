@@ -30,6 +30,8 @@ export function makeLevelRuntime(
       | 'runeVaults'
       | 'boss'
       | 'authoredLights'
+      | 'backdrop'
+      | 'backdropLevelId'
       | 'emitters'
       | 'placedPrefabs'
       | 'decors'

@@ -68,6 +68,7 @@ function makeCtx(): Ctx {
     debugGodMode: false,
     postFx: createDefaultPostFxSettings(),
     editorLights: null,
+    playtestSource: null,
   };
   const input: InputState = {
     keys: { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false },
@@ -357,9 +358,34 @@ describe('console registry', () => {
     }
   });
 
+  it('does not infer Builder playtest target from a non-Builder custom runtime', async () => {
+    const ctx = makeCtx();
+    ctx.state.mode = 'play';
+    ctx.levels.debugEnterLevel(ctx, 'custom');
+
+    const implicit = await ctx.console.exec('count sand');
+    const builderTarget = await ctx.console.exec('count sand --target builder-playtest');
+    const expeditionRuntime = await ctx.console.exec('find pickup --target expedition');
+
+    expect(implicit.ok).toBe(true);
+    expect(implicit.data).toMatchObject({ target: 'expedition' });
+    expect(builderTarget.ok).toBe(false);
+    expect(builderTarget.data).toMatchObject({
+      code: 'target-inactive',
+      command: 'count',
+      target: 'builder-playtest',
+      mode: 'play',
+      level: 'custom',
+      playtestSource: null,
+    });
+    expect(expeditionRuntime.ok).toBe(false);
+    expect(expeditionRuntime.data).toMatchObject({ code: 'not-found', kind: 'pickup', target: 'expedition' });
+  });
+
   it('blocks persistent-state commands in Builder playtest target', async () => {
     const ctx = makeCtx();
     ctx.state.mode = 'play';
+    ctx.state.playtestSource = 'builder';
     ctx.levels.debugEnterLevel(ctx, 'custom');
 
     const before = {

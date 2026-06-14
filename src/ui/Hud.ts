@@ -127,6 +127,9 @@ export class Hud {
     ctx.events.on('playerRespawned', () => {
       el('gameover-overlay').classList.remove('visible');
     });
+    ctx.events.on('playerDeathCleared', () => {
+      el('gameover-overlay').classList.remove('visible');
+    });
 
     ctx.events.on('modeChanged', ({ mode }) => {
       el('mode-build-btn').classList.toggle('active', mode === 'build');

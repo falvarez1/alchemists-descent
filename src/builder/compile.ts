@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import type { EditorDocument } from '@/builder/document';
 import { applyWorldLayer } from '@/builder/document';
+import { sanitizeBackdropSettings } from '@/config/backdrop';
 import { validateDocument } from '@/builder/validate';
 import type { DocIssue } from '@/builder/validate';
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/game/instantiate';
 import type { CellSetter } from '@/builder/stamps';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
+import { createDefaultStatus } from '@/entities/status';
 
 // Re-exported for existing consumers (Builder UI, inspector choices); the
 // shared implementations live in game/instantiate.ts now.
@@ -56,6 +58,8 @@ export function compileAndPlaytest(
   ctx.levels.playCurrentWorld(ctx);
   const runtime = ctx.levels.current;
   if (!runtime) return false;
+  runtime.backdrop = sanitizeBackdropSettings(doc.backdrop ?? ctx.params.backdrop);
+  runtime.backdropLevelId = doc.backdropProfileId ?? null;
 
   const world = ctx.world;
   // Structural stamps write real cells with their factory colors.
@@ -80,8 +84,11 @@ export function compileAndPlaytest(
     ctx.player.y = runtime.spawn.y;
     ctx.player.vx = 0;
     ctx.player.vy = 0;
+    ctx.player.fx = 0;
+    ctx.player.fy = 0;
     ctx.camera.snapTo(runtime.spawn.x, runtime.spawn.y);
   }
+  resetPlayerForPlaytest(ctx);
 
   // 4-6) Objects, doors-then-triggers, rune links, lights — the shared
   //      instantiation pass, pushing straight into the runtime's arrays.
@@ -92,8 +99,8 @@ export function compileAndPlaytest(
   sink.waystones = runtime.waystones;
   instantiateObjects(ctx, sink, doc.objects, doc.links, doc.lights, 0, 0, set, {
     spawnEnemy: (rec) => spawnPrefabEnemy(ctx, rec),
-    // sprite decor resolves from the document's embedded assets first, then
-    // the local library (decoded once; instances share frame buffers)
+    // sprite decor resolves from the local library first, then the document's
+    // embedded fallback (decoded once; instances share frame buffers)
     docSprites: doc.assets?.sprites,
   });
   if (sink.portal !== undefined) runtime.portal = sink.portal;
@@ -114,4 +121,66 @@ export function compileAndPlaytest(
   runtime.enemies.length = 0;
   runtime.enemies.push(...ctx.enemies);
   return true;
+}
+
+function resetPlayerForPlaytest(ctx: Ctx): void {
+  const p = ctx.player;
+  p.hp = p.maxHp;
+  p.mana = p.maxMana;
+  p.levit = p.maxLevit;
+  p.dead = false;
+  p.invuln = 90;
+  p.cooldown = 0;
+  p.firing = false;
+  p.tpCool = 0;
+  p.vx = 0;
+  p.vy = 0;
+  p.fx = 0;
+  p.fy = 0;
+  p.aimAngle = 0;
+  p.inLiquid = false;
+  p.grounded = false;
+  p.prevGrounded = false;
+  p.recharge = 0;
+  p.pullT = 0;
+  p.pullDir = 1;
+  p.stridePhase = 0;
+  p.landTimer = 0;
+  p.blinkTimer = 0;
+  p.fallPeak = p.y;
+  p.hat = { ox: 0, oy: 0, vx: 0, vy: 0, pvx: 0, pvy: 0 };
+  p._px = p.x;
+  p._py = p.y;
+  p._svx = 0;
+  p._svy = 0;
+  p.crouchT = 0;
+  p.diveT = 0;
+  p.crawling = false;
+  p.crawlT = 0;
+  p.crawlSlope = 0;
+  p.wallGrabT = 0;
+  p.wallGrabDir = 1;
+  p.climbing = false;
+  p.climbDir = 1;
+  p.climbT = 0;
+  p.climbPhase = 0;
+  p.climbMoveT = 0;
+  p.climbIntentY = 0;
+  p.stretchT = 0;
+  p.skidT = 0;
+  p.skidDir = 1;
+  p.swapT = 0;
+  p.recoilT = 0;
+  p.staggerT = 0;
+  p.staggerDir = 1;
+  p.fidgetT = 0;
+  p.robe = { ox: 0, vx: 0 };
+  p.status = createDefaultStatus();
+  ctx.input.buildSpellHeld = false;
+  ctx.input.bombCharge = -1;
+  ctx.input.activeChargingBlackHole = null;
+  ctx.input.siphonHeld = false;
+  ctx.input.pourHeld = false;
+  ctx.input.drinkHeld = false;
+  ctx.events.emit('playerDeathCleared');
 }

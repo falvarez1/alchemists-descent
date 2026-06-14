@@ -1,20 +1,23 @@
 import type { CommandResult, Ctx } from '@/core/types';
 import { loadConsoleBinds, loadConsoleWatches, normalizeBindKey, saveConsoleWatches } from '@/game/console/prefs';
 import { upsertConsoleScript } from '@/game/console/scripts';
+import { FocusRouter, isEditorTextEntryTarget } from '@/ui/editor/FocusRouter';
 
 const HISTORY_KEY = 'noita-console-history';
 const HISTORY_LIMIT = 100;
 const LOG_LIMIT = 240;
+const DEV_CONSOLE_COMMAND_EVENT = 'dev-console-command';
+const DEV_CONSOLE_STATE_EVENT = 'dev-console-state';
 
 function isTextEntry(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+  return isEditorTextEntryTarget(target);
 }
 
 function canRunConsoleBind(target: EventTarget | null): boolean {
   if (isTextEntry(target)) return false;
   if (document.body.classList.contains('builder-open')) return false;
   if (document.getElementById('builder-intent-modal')) return false;
+  if (document.querySelector('.app-dialog-root')) return false;
   if (document.getElementById('help-overlay')?.classList.contains('visible')) return false;
   if (document.getElementById('pause-overlay')?.classList.contains('visible')) return false;
   const element = target instanceof HTMLElement ? target : null;
@@ -52,6 +55,7 @@ export class ConsoleOverlay {
   private readonly hintEl: HTMLDivElement;
   private readonly watchEl: HTMLDivElement;
   private readonly scriptFile: HTMLInputElement;
+  private readonly viewToggle: HTMLButtonElement;
   private readonly button: HTMLButtonElement | null;
   private history = loadHistory();
   private historyCursor = -1;
@@ -60,8 +64,10 @@ export class ConsoleOverlay {
   private completions: string[] = [];
   private completionIndex = -1;
   private openState = false;
+  private maximized = false;
   private watchRefreshId = 0;
   private watchRefreshBusy = false;
+  private readonly focusRouter = new FocusRouter();
 
   constructor(private readonly ctx: Ctx) {
     const holder = document.getElementById('canvas-holder') ?? document.body;
@@ -73,6 +79,7 @@ export class ConsoleOverlay {
       <div class="dev-console-head">
         <span>DEV CONSOLE</span>
         <div class="dev-console-actions">
+          <button type="button" class="dev-console-view-toggle" title="Maximize console" aria-label="Maximize console"></button>
           <button type="button" class="dev-console-import" title="Import console script file">IMPORT</button>
           <button type="button" class="dev-console-close" title="Close console">&times;</button>
         </div>
@@ -96,10 +103,26 @@ export class ConsoleOverlay {
     this.hintEl = root.querySelector<HTMLDivElement>('.dev-console-hints')!;
     this.watchEl = watchEl;
     this.scriptFile = root.querySelector<HTMLInputElement>('.dev-console-file')!;
+    this.viewToggle = root.querySelector<HTMLButtonElement>('.dev-console-view-toggle')!;
     this.button = document.getElementById('dev-console-toggle') as HTMLButtonElement | null;
 
-    root.querySelector<HTMLButtonElement>('.dev-console-close')?.addEventListener('click', () => this.close());
-    root.querySelector<HTMLButtonElement>('.dev-console-import')?.addEventListener('click', () => {
+    const stopActionEvent = (event: Event) => event.stopPropagation();
+    for (const button of root.querySelectorAll<HTMLButtonElement>('.dev-console-actions button')) {
+      button.addEventListener('pointerdown', stopActionEvent);
+      button.addEventListener('pointerup', stopActionEvent);
+      button.addEventListener('mousedown', stopActionEvent);
+      button.addEventListener('mouseup', stopActionEvent);
+    }
+    root.querySelector<HTMLButtonElement>('.dev-console-close')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.close();
+    });
+    this.viewToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setMaximized(!this.maximized);
+    });
+    root.querySelector<HTMLButtonElement>('.dev-console-import')?.addEventListener('click', (e) => {
+      e.stopPropagation();
       this.scriptFile.value = '';
       this.scriptFile.click();
     });
@@ -121,6 +144,11 @@ export class ConsoleOverlay {
     window.addEventListener('error', (e) => {
       this.appendLine('error', `JS ERROR: ${e.message}${e.filename ? ` (${e.filename}:${e.lineno})` : ''}`);
     });
+    window.addEventListener(DEV_CONSOLE_COMMAND_EVENT, (event) => {
+      const open = (event as CustomEvent<{ open?: unknown }>).detail?.open;
+      if (open === true) this.open();
+      else if (open === false) this.close();
+    });
     window.addEventListener('unhandledrejection', (e) => {
       const reason = e.reason instanceof Error ? e.reason.message : String(e.reason);
       this.appendLine('error', 'JS REJECTION: ' + reason);
@@ -129,6 +157,7 @@ export class ConsoleOverlay {
     window.addEventListener('keydown', (e) => this.onKeyDown(e), true);
     window.addEventListener('keyup', (e) => this.onKeyUp(e), true);
     window.setInterval(() => void this.refreshWatchHud(), 500);
+    this.setMaximized(false);
     void this.refreshWatchHud();
   }
 
@@ -141,9 +170,11 @@ export class ConsoleOverlay {
     if (this.openState) return;
     this.openState = true;
     this.clearHeldInput();
+    this.root.style.display = '';
     this.root.classList.add('open');
     this.root.setAttribute('aria-hidden', 'false');
     this.button?.classList.add('lit');
+    this.emitState();
     requestAnimationFrame(() => {
       if (this.openState) this.input.focus();
     });
@@ -154,6 +185,15 @@ export class ConsoleOverlay {
 
   private close(): void {
     if (!this.openState) return;
+    if (this.maximized) {
+      this.maximized = false;
+      this.root.classList.remove('maximized');
+      this.viewToggle.classList.remove('restore-icon');
+      this.viewToggle.textContent = '';
+      this.viewToggle.title = 'Maximize console';
+      this.viewToggle.setAttribute('aria-label', this.viewToggle.title);
+      this.viewToggle.setAttribute('aria-pressed', 'false');
+    }
     this.openState = false;
     this.root.classList.remove('open');
     this.root.setAttribute('aria-hidden', 'true');
@@ -161,12 +201,32 @@ export class ConsoleOverlay {
     this.resetCompletion();
     this.renderHints([]);
     if (document.activeElement === this.input) this.input.blur();
+    this.emitState();
+  }
+
+  private emitState(): void {
+    window.dispatchEvent(new CustomEvent(DEV_CONSOLE_STATE_EVENT, { detail: { open: this.openState, maximized: this.maximized } }));
+  }
+
+  private setMaximized(maximized: boolean): void {
+    this.maximized = maximized;
+    this.root.classList.toggle('maximized', maximized);
+    this.viewToggle.classList.toggle('restore-icon', maximized);
+    this.viewToggle.textContent = '';
+    this.viewToggle.title = maximized ? 'Restore console' : 'Maximize console';
+    this.viewToggle.setAttribute('aria-label', this.viewToggle.title);
+    this.viewToggle.setAttribute('aria-pressed', String(maximized));
+    this.emitState();
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    const builderOpen = document.body.classList.contains('builder-open');
+    const builderHelpOpen = document.getElementById('builder-help')?.classList.contains('open') === true;
+    const builderHelpKey = e.code === 'KeyH' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey;
+    const focusClaim = this.focusRouter.claimKeyDown(e, this.focusState(e.target));
     if (!this.openState) {
       const bindKey = normalizeBindKey(e.key || e.code);
-      if (!e.repeat && bindKey && isUnmodifiedKey(e) && canRunConsoleBind(e.target)) {
+      if (!e.repeat && bindKey && isUnmodifiedKey(e) && !focusClaim.claimed && canRunConsoleBind(e.target)) {
         const command = loadConsoleBinds()[bindKey];
         if (command) {
           e.preventDefault();
@@ -175,10 +235,30 @@ export class ConsoleOverlay {
           return;
         }
       }
-      if (e.repeat || e.code !== 'Backquote' || isTextEntry(e.target)) return;
+      if (e.repeat || e.code !== 'Backquote' || this.focusRouter.isTextEntryTarget(e.target)) {
+        return;
+      }
+      if (focusClaim.surface === 'builder-help') {
+        e.preventDefault();
+        return;
+      }
+      if (focusClaim.claimed) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       this.open();
+      return;
+    }
+
+    if (focusClaim.surface === 'app-dialog') {
+      e.preventDefault();
+      return;
+    }
+
+    if (builderOpen && (builderHelpOpen || (!this.focusRouter.isTextEntryTarget(e.target) && builderHelpKey))) {
+      if (builderHelpOpen || builderHelpKey) e.preventDefault();
+      return;
+    }
+    if (focusClaim.surface === 'command-palette' || focusClaim.surface === 'menu' || focusClaim.surface === 'interactive-popover' || focusClaim.surface === 'text-entry') {
       return;
     }
 
@@ -218,12 +298,33 @@ export class ConsoleOverlay {
 
   private onKeyUp(e: KeyboardEvent): void {
     if (!this.openState) return;
+    if (this.focusRouter.claimKeyUp(e, this.focusState(e.target)).surface === 'app-dialog') return;
+    this.clearHeldInput();
     e.preventDefault();
     e.stopImmediatePropagation();
   }
 
+  private focusState(target: EventTarget | null) {
+    const commandPalette = document.getElementById('builder-cmdk');
+    return {
+      appDialogOpen: document.getElementById('builder-intent-modal') !== null || document.querySelector('.app-dialog-root') !== null,
+      builderHelpOpen: document.getElementById('builder-help')?.classList.contains('open') === true,
+      commandPaletteOpen: commandPalette !== null && getComputedStyle(commandPalette).display !== 'none',
+      menuOpen: document.querySelector('.editor-command-menu.open') !== null,
+      interactivePopoverOpen: document.querySelector('.editor-popover.interactive') !== null,
+      consoleOpen: this.openState,
+      consoleInputFocused: document.activeElement === this.input,
+      builderOpen: document.body.classList.contains('builder-open'),
+      target,
+    };
+  }
+
   private clearHeldInput(): void {
     const { ctx } = this;
+    if (ctx.input.releaseHeldInput) {
+      ctx.input.releaseHeldInput();
+      return;
+    }
     const keys = ctx.input.keys;
     keys.left = false;
     keys.right = false;

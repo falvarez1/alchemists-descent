@@ -5,3 +5,4 @@ dist/
 coverage/
 verify-out/
 .agents/
+.codex-vite-*.log

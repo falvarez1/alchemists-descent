@@ -37,6 +37,57 @@ let state = await page.evaluate(() => ({
   focused: document.activeElement?.id,
 }));
 check('header CONSOLE button opens and lights', state.open && state.lit && state.focused === 'dev-console-input', JSON.stringify(state));
+const consoleSmallRect = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  const toggle = el.querySelector('.dev-console-view-toggle');
+  const close = el.querySelector('.dev-console-close');
+  const r = el.getBoundingClientRect();
+  const tr = toggle.getBoundingClientRect();
+  const cr = close.getBoundingClientRect();
+  return {
+    h: Math.round(r.height),
+    max: el.classList.contains('maximized'),
+    label: toggle.getAttribute('aria-label'),
+    text: toggle.textContent,
+    toggleW: Math.round(tr.width),
+    toggleH: Math.round(tr.height),
+    closeW: Math.round(cr.width),
+    closeH: Math.round(cr.height),
+  };
+});
+check(
+  'developer console opens in the smaller view with an icon-sized toggle',
+  !consoleSmallRect.max &&
+    consoleSmallRect.h > 300 &&
+    consoleSmallRect.h < 520 &&
+    consoleSmallRect.label === 'Maximize console' &&
+    consoleSmallRect.text === '' &&
+    consoleSmallRect.toggleW === consoleSmallRect.closeW &&
+    consoleSmallRect.toggleH === consoleSmallRect.closeH,
+  JSON.stringify(consoleSmallRect),
+);
+await page.click('#dev-console .dev-console-view-toggle');
+await page.waitForTimeout(120);
+const consoleMaxRect = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  const toggle = el.querySelector('.dev-console-view-toggle');
+  const r = el.getBoundingClientRect();
+  return { h: Math.round(r.height), max: el.classList.contains('maximized'), label: toggle.getAttribute('aria-label'), text: toggle.textContent };
+});
+check('developer console view toggle expands the panel', consoleMaxRect.max && consoleMaxRect.h > consoleSmallRect.h + 200 && consoleMaxRect.label === 'Restore console' && consoleMaxRect.text === '', JSON.stringify({ consoleSmallRect, consoleMaxRect }));
+await page.click('#dev-console .dev-console-view-toggle');
+await page.waitForTimeout(120);
+const consoleRestoredRect = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  const toggle = el.querySelector('.dev-console-view-toggle');
+  const r = el.getBoundingClientRect();
+  return { h: Math.round(r.height), max: el.classList.contains('maximized'), label: toggle.getAttribute('aria-label'), text: toggle.textContent };
+});
+check(
+  'developer console view toggle restores the smaller panel',
+  !consoleRestoredRect.max && Math.abs(consoleRestoredRect.h - consoleSmallRect.h) <= 2 && consoleRestoredRect.label === 'Maximize console' && consoleRestoredRect.text === '',
+  JSON.stringify({ consoleSmallRect, consoleRestoredRect }),
+);
 
 await page.keyboard.type('help');
 let inputValue = await page.locator('#dev-console-input').inputValue();
@@ -330,6 +381,34 @@ check(
 check('keyup while console open does not stick held verbs', Object.values(afterType.keys).every((v) => v === false) && !afterType.siphonHeld, JSON.stringify(afterType));
 await page.keyboard.press('Backquote');
 await page.waitForFunction(() => !document.getElementById('dev-console')?.classList.contains('open'));
+const afterConsoleCloseBaseline = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  ctx.player.x = 600;
+  ctx.player.y = 500;
+  ctx.player.vx = 0;
+  ctx.player.vy = 0;
+  ctx.player.fx = 0;
+  ctx.player.fy = 0;
+  ctx.camera.snapTo(ctx.player.x, ctx.player.y);
+  return { x: ctx.player.x, y: ctx.player.y, keys: { ...ctx.input.keys } };
+});
+await page.keyboard.down('KeyA');
+await page.waitForTimeout(80);
+await page.keyboard.up('KeyA');
+await page.waitForTimeout(180);
+const afterConsoleCloseResync = await page.evaluate(() => ({
+  x: window.__game.ctx.player.x,
+  y: window.__game.ctx.player.y,
+  keys: { ...window.__game.ctx.input.keys },
+  siphonHeld: window.__game.ctx.input.siphonHeld,
+}));
+check(
+  'console release drains the physical held-key cache after close',
+  Object.values(afterConsoleCloseResync.keys).every((v) => v === false) &&
+    !afterConsoleCloseResync.siphonHeld &&
+    Math.abs(afterConsoleCloseResync.y - afterConsoleCloseBaseline.y) <= 3,
+  JSON.stringify({ afterConsoleCloseBaseline, afterConsoleCloseResync }),
+);
 
 const findRuntime = await page.evaluate(async () => {
   const ctx = window.__game.ctx;
@@ -352,17 +431,142 @@ check(
   JSON.stringify(findRuntime),
 );
 
+await page.click('#mode-build-btn');
+await page.waitForFunction(() => window.__game.ctx.state.mode === 'build', { timeout: 5000 });
+await page.evaluate(() => document.getElementById('btn-level-save')?.click());
+await page.waitForSelector('.app-dialog-root', { timeout: 5000 });
+await page.keyboard.press('h');
+await page.keyboard.press('Backquote');
+await page.waitForTimeout(120);
+const appDialogPriorityGuard = await page.evaluate(() => ({
+  dialogVisible: document.querySelector('.app-dialog-root') !== null,
+  globalHelp: document.getElementById('help-overlay')?.classList.contains('visible') === true,
+  consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+  activeClass: document.activeElement instanceof HTMLElement ? document.activeElement.className : '',
+}));
+check(
+  'generic app dialogs block global Help and console Backquote',
+  appDialogPriorityGuard.dialogVisible && !appDialogPriorityGuard.globalHelp && !appDialogPriorityGuard.consoleOpen,
+  JSON.stringify(appDialogPriorityGuard),
+);
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => document.querySelector('.app-dialog-root') === null, { timeout: 5000 });
+await page.click('#mode-play-btn');
+await page.waitForFunction(() => window.__game.ctx.state.mode === 'play', { timeout: 5000 });
+
 await page.click('#mode-builder-btn');
 await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });
-await page.click('#builder-intent-modal [data-intent="current-scene"]');
+await page.keyboard.press('h');
+await page.waitForTimeout(100);
+const intentModalHelpGuard = await page.evaluate(() => ({
+  intentVisible: !!document.getElementById('builder-intent-modal'),
+  globalHelp: document.getElementById('help-overlay')?.classList.contains('visible') === true,
+}));
+check(
+  'Builder intent modal blocks the global Help overlay',
+  intentModalHelpGuard.intentVisible && !intentModalHelpGuard.globalHelp,
+  JSON.stringify(intentModalHelpGuard),
+);
+await page.keyboard.press('Backquote');
+await page.waitForTimeout(100);
+const intentModalBackquoteGuard = await page.evaluate(() => ({
+  intentVisible: !!document.getElementById('builder-intent-modal'),
+  consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+}));
+check(
+  'Builder intent modal blocks console Backquote open',
+  intentModalBackquoteGuard.intentVisible && !intentModalBackquoteGuard.consoleOpen,
+  JSON.stringify(intentModalBackquoteGuard),
+);
+await page.keyboard.press('Tab');
+await page.keyboard.press('e');
+await page.waitForTimeout(100);
+const intentModalClosedConsoleKeyGuard = await page.evaluate(() => ({
+  intentVisible: !!document.getElementById('builder-intent-modal'),
+  consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+  mode: window.__game.ctx.state.mode,
+  builderOpen: document.body.classList.contains('builder-open'),
+}));
+check(
+  'Builder intent modal blocks closed-console mode and gameplay keys',
+  intentModalClosedConsoleKeyGuard.intentVisible &&
+    !intentModalClosedConsoleKeyGuard.consoleOpen &&
+    intentModalClosedConsoleKeyGuard.mode === 'play' &&
+    !intentModalClosedConsoleKeyGuard.builderOpen,
+  JSON.stringify(intentModalClosedConsoleKeyGuard),
+);
+await page.evaluate(() => {
+  window.dispatchEvent(new CustomEvent('dev-console-command', { detail: { open: true } }));
+  const input = document.getElementById('dev-console-input');
+  if (input instanceof HTMLInputElement) {
+    input.value = '';
+    input.focus();
+  }
+});
+await page.waitForFunction(() => document.getElementById('dev-console')?.classList.contains('open'));
+await page.keyboard.press('x');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(100);
+const intentModalConsoleKeyGuard = await page.evaluate(() => {
+  const input = document.getElementById('dev-console-input');
+  const log = document.querySelector('#dev-console .dev-console-log')?.textContent ?? '';
+  return {
+    intentVisible: !!document.getElementById('builder-intent-modal'),
+    consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+    input: input instanceof HTMLInputElement ? input.value : '',
+    submittedX: log.includes('> x'),
+  };
+});
+check(
+  'Builder intent modal blocks console printable keys and Enter',
+  intentModalConsoleKeyGuard.intentVisible &&
+    intentModalConsoleKeyGuard.consoleOpen &&
+    intentModalConsoleKeyGuard.input === '' &&
+    !intentModalConsoleKeyGuard.submittedX,
+  JSON.stringify(intentModalConsoleKeyGuard),
+);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(120);
+const intentModalEscGuard = await page.evaluate(() => ({
+  intentVisible: !!document.getElementById('builder-intent-modal'),
+  consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+  globalHelp: document.getElementById('help-overlay')?.classList.contains('visible') === true,
+}));
+check(
+  'Builder intent modal captures Escape before an open console',
+  !intentModalEscGuard.intentVisible && intentModalEscGuard.consoleOpen && !intentModalEscGuard.globalHelp,
+  JSON.stringify(intentModalEscGuard),
+);
+await page.click('#mode-builder-btn');
+await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });
+await page.keyboard.press('Enter');
 await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 5000 });
+const intentModalEnterGuard = await page.evaluate(() => ({
+  builderOpen: document.body.classList.contains('builder-open'),
+  consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+  mode: window.__game.ctx.state.mode,
+}));
+check(
+  'Builder intent modal Enter activates focused choice over console',
+  intentModalEnterGuard.builderOpen && intentModalEnterGuard.consoleOpen && intentModalEnterGuard.mode === 'build',
+  JSON.stringify(intentModalEnterGuard),
+);
+await page.keyboard.press('Backquote');
+await page.waitForFunction(() => !document.getElementById('dev-console')?.classList.contains('open'));
 const builderPlaytestBefore = await page.evaluate(() => ({
   mode: window.__game.ctx.state.mode,
   builderOpen: document.body.classList.contains('builder-open'),
   level: window.__game.ctx.levels.current?.def.id ?? null,
+  playtestSource: window.__game.ctx.state.playtestSource,
 }));
 await page.click('#b-playtest');
-await page.waitForFunction(() => window.__game.ctx.state.mode === 'play' && window.__game.ctx.levels.current?.def.id === 'custom', { timeout: 8000 });
+await page.waitForFunction(
+  () =>
+    window.__game.ctx.state.mode === 'play' &&
+    window.__game.ctx.state.playtestSource === 'builder' &&
+    window.__game.ctx.levels.current?.def.id === 'custom',
+  { timeout: 8000 },
+);
 const realPlaytest = await page.evaluate(async () => {
   const ctx = window.__game.ctx;
   const anchor = { x: Math.floor(ctx.player.x), y: Math.floor(ctx.player.y - 9) };
@@ -392,6 +596,7 @@ const realPlaytest = await page.evaluate(async () => {
   return {
     mode: ctx.state.mode,
     level: ctx.levels.current?.def.id ?? null,
+    playtestSource: ctx.state.playtestSource,
     anchor,
     beforeType,
     paintType,
@@ -408,9 +613,11 @@ const realPlaytest = await page.evaluate(async () => {
 });
 check(
   'real Builder PLAYTEST enters disposable builder-playtest runtime',
-  builderPlaytestBefore.mode === 'build' &&
+    builderPlaytestBefore.mode === 'build' &&
+    builderPlaytestBefore.playtestSource === null &&
     builderPlaytestBefore.builderOpen &&
     realPlaytest.mode === 'play' &&
+    realPlaytest.playtestSource === 'builder' &&
     realPlaytest.level === 'custom' &&
     realPlaytest.cell.ok &&
     realPlaytest.beforeType !== realPlaytest.paintType &&
@@ -441,6 +648,7 @@ const playtestReturn = await page.evaluate(async (anchor) => {
     mode: ctx.state.mode,
     builderOpen: document.body.classList.contains('builder-open'),
     level: ctx.levels.current?.def.id ?? null,
+    playtestSource: ctx.state.playtestSource,
     returnedType,
     bakeVisible: bake ? getComputedStyle(bake).display !== 'none' : false,
     docTarget,
@@ -449,6 +657,7 @@ const playtestReturn = await page.evaluate(async (anchor) => {
 check(
   'Builder playtest scars are not auto-applied to authored terrain',
     playtestReturn.mode === 'build' &&
+    playtestReturn.playtestSource === null &&
     playtestReturn.builderOpen &&
     realPlaytest.beforeType !== realPlaytest.paintType &&
     playtestReturn.returnedType === realPlaytest.beforeType &&
@@ -504,6 +713,86 @@ check(
 );
 await page.keyboard.press('Backquote');
 await page.waitForFunction(() => document.getElementById('dev-console')?.classList.contains('open'));
+const builderConsoleSmall = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  const r = el.getBoundingClientRect();
+  return {
+    max: el.classList.contains('maximized'),
+    parent: el.parentElement?.id ?? '',
+    h: Math.round(r.height),
+    bottomDock: getComputedStyle(document.getElementById('builder-dock-bottom')).display,
+  };
+});
+await page.click('#dev-console .dev-console-view-toggle');
+await page.waitForFunction(() => document.getElementById('dev-console')?.classList.contains('maximized'));
+const builderConsoleMax = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  const toggle = el.querySelector('.dev-console-view-toggle');
+  const r = el.getBoundingClientRect();
+  return {
+    max: el.classList.contains('maximized'),
+    parent: el.parentElement?.id ?? '',
+    h: Math.round(r.height),
+    bottomDock: getComputedStyle(document.getElementById('builder-dock-bottom')).display,
+    label: toggle.getAttribute('aria-label'),
+    text: toggle.textContent,
+  };
+});
+check(
+  'Builder console view toggle covers the workspace',
+  !builderConsoleSmall.max &&
+    builderConsoleMax.max &&
+    builderConsoleMax.parent === 'builder-stage' &&
+    builderConsoleMax.h > builderConsoleSmall.h + 200 &&
+    (builderConsoleSmall.parent !== 'builder-dock-bottom' || builderConsoleMax.bottomDock === 'none') &&
+    builderConsoleMax.label === 'Restore console' &&
+    builderConsoleMax.text === '',
+  JSON.stringify({ builderConsoleSmall, builderConsoleMax }),
+);
+await page.click('#b-reset-workspace');
+await page.waitForFunction(() => !document.getElementById('dev-console')?.classList.contains('open'));
+await page.keyboard.press('Backquote');
+await page.waitForFunction(() => document.getElementById('dev-console')?.classList.contains('open'));
+const resetMaxConsole = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  return {
+    open: el.classList.contains('open'),
+    max: el.classList.contains('maximized'),
+    parent: el.parentElement?.id ?? '',
+  };
+});
+check(
+  'workspace reset clears hidden maximized console state',
+  resetMaxConsole.open && !resetMaxConsole.max,
+  JSON.stringify(resetMaxConsole),
+);
+await page.click('#dev-console .dev-console-view-toggle');
+await page.waitForFunction(() => document.getElementById('dev-console')?.classList.contains('maximized'));
+await page.click('#dev-console .dev-console-view-toggle');
+await page.waitForFunction(() => !document.getElementById('dev-console')?.classList.contains('maximized'));
+const builderConsoleRestored = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  const toggle = el.querySelector('.dev-console-view-toggle');
+  const r = el.getBoundingClientRect();
+  return {
+    max: el.classList.contains('maximized'),
+    parent: el.parentElement?.id ?? '',
+    h: Math.round(r.height),
+    bottomDock: getComputedStyle(document.getElementById('builder-dock-bottom')).display,
+    label: toggle.getAttribute('aria-label'),
+    text: toggle.textContent,
+  };
+});
+check(
+  'Builder console view toggle returns to its prior smaller panel',
+  !builderConsoleRestored.max &&
+    builderConsoleRestored.parent === builderConsoleSmall.parent &&
+    (builderConsoleSmall.parent !== 'builder-dock-bottom' || builderConsoleRestored.bottomDock !== 'none') &&
+    Math.abs(builderConsoleRestored.h - builderConsoleSmall.h) <= 2 &&
+    builderConsoleRestored.label === 'Maximize console' &&
+    builderConsoleRestored.text === '',
+  JSON.stringify({ builderConsoleSmall, builderConsoleRestored }),
+);
 await page.keyboard.press('Tab');
 const builderDuringConsole = await page.evaluate(async () => {
   const ctx = window.__game.ctx;
@@ -528,6 +817,136 @@ check(
     builderDuringConsole.tool === builderBefore.tool,
   JSON.stringify({ builderBefore, builderDuringConsole }),
 );
+await page.evaluate(() => {
+  const input = document.getElementById('dev-console-input');
+  if (input instanceof HTMLInputElement) {
+    input.value = '';
+    input.focus();
+  }
+});
+await page.keyboard.press('h');
+await page.waitForTimeout(100);
+const consoleFocusedH = await page.evaluate(() => {
+  const help = document.getElementById('builder-help');
+  const input = document.getElementById('dev-console-input');
+  return {
+    helpOpen: help?.classList.contains('open') === true && getComputedStyle(help).display !== 'none',
+    consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+    input: input instanceof HTMLInputElement ? input.value : '',
+    globalHelp: document.getElementById('help-overlay')?.classList.contains('visible') === true,
+  };
+});
+check(
+  'focused console input keeps normal H typing precedence',
+  !consoleFocusedH.helpOpen && consoleFocusedH.consoleOpen && consoleFocusedH.input === 'h' && !consoleFocusedH.globalHelp,
+  JSON.stringify(consoleFocusedH),
+);
+await page.evaluate(() => {
+  const input = document.getElementById('dev-console-input');
+  if (input instanceof HTMLInputElement) input.blur();
+});
+await page.mouse.click(360, 160);
+await page.keyboard.press('h');
+await page.waitForTimeout(100);
+const builderHelpFromConsole = await page.evaluate(() => {
+  const help = document.getElementById('builder-help');
+  const input = document.getElementById('dev-console-input');
+  return {
+    helpOpen: help?.classList.contains('open') === true && getComputedStyle(help).display !== 'none',
+    consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+    inputFocused: document.activeElement === input,
+    input: input instanceof HTMLInputElement ? input.value : '',
+    globalHelp: document.getElementById('help-overlay')?.classList.contains('visible') === true,
+  };
+});
+check(
+  'Builder Help takes precedence when console input is not focused',
+  builderHelpFromConsole.helpOpen &&
+    builderHelpFromConsole.consoleOpen &&
+    !builderHelpFromConsole.inputFocused &&
+    builderHelpFromConsole.input === 'h' &&
+    !builderHelpFromConsole.globalHelp,
+  JSON.stringify(builderHelpFromConsole),
+);
+await page.evaluate(() => {
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyH', key: 'h', repeat: true, bubbles: true }));
+});
+await page.waitForTimeout(50);
+const builderHelpAfterRepeat = await page.evaluate(() => ({
+  helpOpen: document.getElementById('builder-help')?.classList.contains('open') === true,
+  consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+}));
+check(
+  'held H does not toggle Builder Help closed over console',
+  builderHelpAfterRepeat.helpOpen && builderHelpAfterRepeat.consoleOpen,
+  JSON.stringify(builderHelpAfterRepeat),
+);
+await page.keyboard.press('a');
+await page.waitForTimeout(50);
+const builderHelpPrintableGuard = await page.evaluate(() => {
+  const input = document.getElementById('dev-console-input');
+  return {
+    helpOpen: document.getElementById('builder-help')?.classList.contains('open') === true,
+    focusInsideHelp: Boolean(document.activeElement?.closest?.('#builder-help')),
+    input: input instanceof HTMLInputElement ? input.value : '',
+  };
+});
+check(
+  'Builder Help consumes printable keys over console',
+  builderHelpPrintableGuard.helpOpen &&
+    builderHelpPrintableGuard.focusInsideHelp &&
+    builderHelpPrintableGuard.input === 'h',
+  JSON.stringify(builderHelpPrintableGuard),
+);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(100);
+const builderHelpClosedConsoleOpen = await page.evaluate(() => ({
+  helpOpen: document.getElementById('builder-help')?.classList.contains('open') === true,
+  consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+}));
+check(
+  'Builder Help closes before the console while console is focused',
+  !builderHelpClosedConsoleOpen.helpOpen && builderHelpClosedConsoleOpen.consoleOpen,
+  JSON.stringify(builderHelpClosedConsoleOpen),
+);
+const consoleUnfocusedRuntimeBaseline = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  ctx.player.x = 600;
+  ctx.player.y = 500;
+  ctx.player.vx = 0;
+  ctx.player.vy = 0;
+  ctx.player.fx = 0;
+  ctx.player.fy = 0;
+  ctx.camera.snapTo(ctx.player.x, ctx.player.y);
+  const input = document.getElementById('dev-console-input');
+  if (input instanceof HTMLInputElement) {
+    input.value = '';
+    input.blur();
+  }
+  return { x: ctx.player.x, y: ctx.player.y, mode: ctx.state.mode, input: input instanceof HTMLInputElement ? input.value : '' };
+});
+for (const key of ['KeyW', 'KeyA', 'Tab', 'Enter']) {
+  await page.evaluate(() => document.getElementById('dev-console-input')?.blur());
+  await page.keyboard.press(key);
+  await page.waitForTimeout(60);
+}
+const consoleUnfocusedRuntimeAfter = await page.evaluate(() => ({
+  x: window.__game.ctx.player.x,
+  y: window.__game.ctx.player.y,
+  mode: window.__game.ctx.state.mode,
+  keys: { ...window.__game.ctx.input.keys },
+  input: document.getElementById('dev-console-input')?.value ?? '',
+  consoleOpen: document.getElementById('dev-console')?.classList.contains('open') === true,
+}));
+check(
+  'unfocused open console consumes runtime keys without game leaks',
+  consoleUnfocusedRuntimeAfter.consoleOpen &&
+    consoleUnfocusedRuntimeAfter.mode === consoleUnfocusedRuntimeBaseline.mode &&
+    Object.values(consoleUnfocusedRuntimeAfter.keys).every((v) => v === false) &&
+    Math.abs(consoleUnfocusedRuntimeAfter.x - consoleUnfocusedRuntimeBaseline.x) <= 1 &&
+    Math.abs(consoleUnfocusedRuntimeAfter.y - consoleUnfocusedRuntimeBaseline.y) <= 3,
+  JSON.stringify({ consoleUnfocusedRuntimeBaseline, consoleUnfocusedRuntimeAfter }),
+);
 check('Builder-open world mutation requires explicit target choice', !builderDuringConsole.res.ok && builderDuringConsole.res.data?.code === 'target-ambiguous', JSON.stringify(builderDuringConsole.res));
 check('Builder document remains blocked even when target is explicit', !builderDuringConsole.docTarget.ok && builderDuringConsole.docTarget.data?.code === 'target-blocked', JSON.stringify(builderDuringConsole.docTarget));
 check(
@@ -537,7 +956,79 @@ check(
     builderDuringConsole.dumpSandbox.data?.reason === 'builder-open',
   JSON.stringify(builderDuringConsole.dumpSandbox),
 );
-await page.keyboard.press('Backquote');
+const floatingConsoleStart = await page.evaluate(() => {
+  const head = document.querySelector('#dev-console .dev-console-head');
+  const r = head.getBoundingClientRect();
+  return { x: r.left + 60, y: r.top + r.height / 2 };
+});
+const floatingConsoleDrop = await page.evaluate(() => {
+  const r = document.getElementById('builder-stage').getBoundingClientRect();
+  return { x: r.left + r.width * 0.42, y: r.top + r.height * 0.34 };
+});
+await page.mouse.move(floatingConsoleStart.x, floatingConsoleStart.y);
+await page.mouse.down();
+await page.mouse.move(floatingConsoleDrop.x, floatingConsoleDrop.y, { steps: 10 });
+await page.waitForTimeout(100);
+await page.mouse.up();
+await page.waitForTimeout(150);
+const floatingConsole = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  return {
+    open: el.classList.contains('open'),
+    floating: el.classList.contains('floating'),
+    parent: el.parentElement?.id ?? '',
+  };
+});
+await page.click('#dev-console .dev-console-view-toggle');
+await page.waitForTimeout(150);
+const floatingConsoleMax = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  return {
+    open: el.classList.contains('open'),
+    maximized: el.classList.contains('maximized'),
+    parent: el.parentElement?.id ?? '',
+  };
+});
+await page.click('#dev-console .dev-console-view-toggle');
+await page.waitForTimeout(150);
+const floatingConsoleRestored = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  return {
+    open: el.classList.contains('open'),
+    floating: el.classList.contains('floating'),
+    maximized: el.classList.contains('maximized'),
+    parent: el.parentElement?.id ?? '',
+  };
+});
+await page.click('#dev-console .dev-console-close');
+await page.waitForTimeout(150);
+const floatingConsoleClosed = await page.evaluate(() => {
+  const el = document.getElementById('dev-console');
+  return {
+    open: el.classList.contains('open'),
+    display: getComputedStyle(el).display,
+    parent: el.parentElement?.id ?? '',
+  };
+});
+check(
+  'floating Builder console buttons maximize, restore, and close',
+  floatingConsole.open &&
+    floatingConsole.floating &&
+    floatingConsole.parent === 'builder-stage' &&
+    floatingConsoleMax.open &&
+    floatingConsoleMax.maximized &&
+    floatingConsoleMax.parent === 'builder-stage' &&
+    floatingConsoleRestored.open &&
+    floatingConsoleRestored.floating &&
+    !floatingConsoleRestored.maximized &&
+    floatingConsoleRestored.parent === 'builder-stage' &&
+    !floatingConsoleClosed.open &&
+    floatingConsoleClosed.display === 'none',
+  JSON.stringify({ floatingConsole, floatingConsoleMax, floatingConsoleRestored, floatingConsoleClosed }),
+);
+if (await page.evaluate(() => document.getElementById('dev-console')?.classList.contains('open') === true)) {
+  await page.keyboard.press('Backquote');
+}
 await page.click('#b-exit');
 await page.waitForTimeout(150);
 

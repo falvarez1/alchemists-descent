@@ -12,6 +12,8 @@ export interface EventMap {
   playerDied: { wave: number; gold: number };
   /** Player came back — UI hides the game-over overlay. */
   playerRespawned: undefined;
+  /** Death UI should clear without triggering gameplay respawn side effects. */
+  playerDeathCleared: undefined;
   /** Build/play switch — UI swaps panels and HUD visibility. */
   modeChanged: { mode: 'build' | 'play' };
   /** A wave began — HUD updates the wave number readout. */

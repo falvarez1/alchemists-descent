@@ -8,6 +8,7 @@ import type {
   RenderTarget,
 } from '@/render/pixels';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
+import { resolveBackdropLayersForRuntime } from '@/config/backdrop';
 import { PICKUP_COLOR } from '@/game/Pickups';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -37,6 +38,8 @@ export class FrameComposer implements PixelSurface {
    * instead of pixelData. Null = the original CPU path, byte for byte.
    */
   private overlay: OverlaySurface | null = null;
+  private readonly backdropSampleX = Array.from({ length: 5 }, () => new Int32Array(VIEW_W));
+  private readonly backdropSampleY = Array.from({ length: 5 }, () => new Int32Array(VIEW_H));
 
   constructor(
     private readonly target: RenderTarget,
@@ -179,15 +182,46 @@ export class FrameComposer implements PixelSurface {
     const charge = world.charge;
     const materials = ctx.params.materials;
     const { lightR, lightG, lightB, vignette, LW } = this.light;
-    const { bgFar, bgNear } = this.layers;
+    const backdropLayers = this.layers.backdropLayers;
+    const backdropSettings = resolveBackdropLayersForRuntime(ctx.params.backdrop, ctx.levels.current);
+    const activeBackdropLayers: Array<{
+      pixels: Uint8ClampedArray;
+      width: number;
+      opacity: number;
+      xSamples: Int32Array;
+      ySamples: Int32Array;
+    }> = [];
+    for (let i = 0; i < backdropLayers.length; i++) {
+      const layer = backdropLayers[i];
+      const setting = backdropSettings[layer.id];
+      if (!setting.visible || setting.opacity <= 0 || layer.width <= 0 || layer.height <= 0) continue;
+      const scale = Math.max(0.25, setting.scale);
+      const xSamples = this.backdropSampleX[i];
+      const ySamples = this.backdropSampleY[i];
+      const camX = Math.floor(renderCamX * setting.speed);
+      const camY = Math.floor(renderCamY * setting.speed);
+      for (let vx = 0; vx < VIEW_W; vx++) {
+        let sx = Math.floor((camX + vx) / scale + setting.offsetX) % layer.width;
+        if (sx < 0) sx += layer.width;
+        xSamples[vx] = sx;
+      }
+      for (let vy = 0; vy < VIEW_H; vy++) {
+        let sy = Math.floor((camY + vy) / scale + setting.offsetY) % layer.height;
+        if (sy < 0) sy += layer.height;
+        ySamples[vy] = sy;
+      }
+      activeBackdropLayers.push({
+        pixels: layer.pixels,
+        width: layer.width,
+        opacity: setting.opacity,
+        xSamples,
+        ySamples,
+      });
+    }
     const pixelData = this.target.pixelData;
     const wavesLen = ctx.shockwaves.length;
     const lensLen = lenses.length;
     const boostG = ctx.params.global.maxBrightness;
-    const farOX = Math.floor(renderCamX * 0.35),
-      farOY = Math.floor(renderCamY * 0.35);
-    const nearOX = Math.floor(renderCamX * 0.62),
-      nearOY = Math.floor(renderCamY * 0.62);
 
     for (let vy = 0; vy < VIEW_H; vy++) {
       const wy = renderCamY + vy;
@@ -248,28 +282,38 @@ export class FrameComposer implements PixelSurface {
 
         let r: number, g: number, b: number;
         if (type === Cell.Empty) {
-          // Parallax composite: near rock texture, carved darker by far silhouettes
-          const fi = (farOY + vy) * WIDTH + (farOX + vx);
-          const ni = (nearOY + vy) * WIDTH + (nearOX + vx);
-          let base = 0.022 + bgNear[ni] * 0.085;
-          if (bgFar[fi] > 0.5) base *= 0.4;
-          base *= 0.86 + 0.14 * (1 - wy / HEIGHT);
-          r = base * 0.8;
-          g = base * 0.9;
-          b = base * 1.25;
+          // Ordered PNG parallax composite. Every layer carries its own alpha
+          // and scrolls with its own multiplier, so texture and cutout never
+          // drift apart.
+          r = 0.004;
+          g = 0.005;
+          b = 0.009;
+          for (const active of activeBackdropLayers) {
+            const si = (active.ySamples[vy] * active.width + active.xSamples[vx]) * 4;
+            const a = (active.pixels[si + 3] / 255) * active.opacity;
+            if (a <= 0.001) continue;
+            const ia = 1 - a;
+            r = r * ia + (active.pixels[si] / 255) * a;
+            g = g * ia + (active.pixels[si + 1] / 255) * a;
+            b = b * ia + (active.pixels[si + 2] / 255) * a;
+          }
+          const depthShade = 0.78 + 0.22 * (1 - wy / HEIGHT);
+          r *= depthShade;
+          g *= depthShade;
+          b *= depthShade;
           {
             const li = (vy >> 1) * LW + (vx >> 1);
             const vg = vignette[vy * VIEW_W + vx];
             let lf0 = Math.min(2.2, lightR[li]) * vg;
-            r = (r * 0.45 + ambient * 0.03) * vg + r * lf0 * lf0;
+            r = (r * 0.62 + ambient * 0.022) * vg + r * lf0 * lf0 * 0.72;
             lf0 = Math.min(2.2, lightG[li]) * vg;
-            g = (g * 0.45 + ambient * 0.03) * vg + g * lf0 * lf0;
+            g = (g * 0.62 + ambient * 0.022) * vg + g * lf0 * lf0 * 0.72;
             lf0 = Math.min(2.2, lightB[li]) * vg;
-            b = (b * 0.45 + ambient * 0.06) * vg + b * lf0 * lf0;
+            b = (b * 0.62 + ambient * 0.032) * vg + b * lf0 * lf0 * 0.72;
             // air itself catches the glow near strong light
-            r += Math.max(0, lightR[li] - 0.25) * 0.1 * vg;
-            g += Math.max(0, lightG[li] - 0.25) * 0.085 * vg;
-            b += Math.max(0, lightB[li] - 0.25) * 0.07 * vg;
+            r += Math.max(0, lightR[li] - 0.25) * 0.045 * vg;
+            g += Math.max(0, lightG[li] - 0.25) * 0.04 * vg;
+            b += Math.max(0, lightB[li] - 0.25) * 0.035 * vg;
           }
           if (ringGlow > 0) {
             r += ringGlow * 0.55;

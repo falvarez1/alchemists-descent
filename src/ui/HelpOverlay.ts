@@ -11,6 +11,8 @@ export class HelpOverlay {
 
   constructor(private ctx: Ctx) {
     window.addEventListener('keydown', (e) => {
+      if ((document.getElementById('builder-intent-modal') || document.querySelector('.app-dialog-root')) && !this.visible) return;
+      if (document.body.classList.contains('builder-open') && !this.visible) return;
       if (e.code === 'KeyH' && !e.repeat && !this.ctx.sanctum.isOpen) this.toggle();
       else if (e.code === 'Escape' && this.visible) this.toggle();
     });

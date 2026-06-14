@@ -530,6 +530,28 @@ describe('decor instantiation', () => {
     );
     expect(sink.decors.length).toBe(1);
   });
+
+  it('prefers the local library copy over an embedded stale copy at runtime', () => {
+    const embedded = makeAsset('fresh', 8, 8, [[1, 2, 3]]);
+    const library = { ...embedded, emissive: true };
+    saveSprite(library);
+    const sink = makeInstantiationSink();
+
+    instantiateObjects(
+      noCtx,
+      sink,
+      [makeObj('decor', 'idG', 5, 5, { spriteId: embedded.id })],
+      [],
+      [],
+      0,
+      0,
+      noSet,
+      { docSprites: [embedded] },
+    );
+
+    expect(sink.decors.length).toBe(1);
+    expect(sink.decors[0].sprite.emissive).toBe(true);
+  });
 });
 
 /* ---------------- stateless frame timing ---------------- */

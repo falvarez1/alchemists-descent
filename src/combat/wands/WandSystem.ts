@@ -559,6 +559,12 @@ export class WandSystem implements WandsApi {
     this.ctx.events.emit('wandChanged');
   }
 
+  invalidatePrograms(): void {
+    this.compiled[0] = null;
+    this.compiled[1] = null;
+    this.ctx.events.emit('wandChanged');
+  }
+
   /** Lazily (re)compiled program for a wand; invalidated by slotCard. */
   private program(wand: 0 | 1): CastGroup[] {
     let p = this.compiled[wand];
