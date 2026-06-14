@@ -76,6 +76,8 @@ const REVIEW_WAND_CARDS: [CardId[], CardId[]] = [
   REVIEW_WAND_LOADOUTS[1].cards,
 ];
 
+const STARTING_COLLECTION: CardId[] = ['double', 'flame', 'icelance', 'emberstorm', 'blackhole', 'warp'];
+
 /**
  * The wand engine (DESIGN.md pillar 6): frames + slotted spell cards + the
  * deterministic cast compiler replace the fixed 7-spell loadout in PLAY mode
@@ -102,7 +104,7 @@ export class WandSystem implements WandsApi {
   // Starting kit: utility/multicast basics plus the four signature payloads
   // the (15) build shipped in its active inventory — Ice Lance, Ember Storm,
   // Black Hole, and Warp Bolt are equippable from the first bench visit.
-  readonly collection: CardId[] = ['double', 'flame', 'icelance', 'emberstorm', 'blackhole', 'warp'];
+  readonly collection: CardId[] = [...STARTING_COLLECTION];
 
   /** Compiled programs, rebuilt lazily when a wand's slots change. */
   private readonly compiled: [CastGroup[] | null, CastGroup[] | null] = [null, null];
@@ -530,6 +532,32 @@ export class WandSystem implements WandsApi {
       w.castIndex = 0;
       this.compiled[i as 0 | 1] = null;
     }
+    this.ctx.events.emit('wandChanged');
+  }
+
+  resetLoadout(): void {
+    const frames = [WAND_FRAMES.oak, WAND_FRAMES.bone] as const;
+    const cards: [CardId[], CardId[]] = [['spark'], ['dig']];
+    for (let i = 0; i < this.wands.length; i++) {
+      const wand = this.wands[i];
+      const frame = frames[i];
+      wand.frame = frame;
+      wand.cards.length = 0;
+      wand.cards.push(...cards[i]);
+      while (wand.cards.length < frame.capacity) wand.cards.push(null);
+      wand.cards.length = frame.capacity;
+      wand.mana = frame.manaMax;
+      wand.cooldown = 0;
+      wand.castIndex = 0;
+      this.compiled[i as 0 | 1] = null;
+    }
+    this.collection.length = 0;
+    this.collection.push(...STARTING_COLLECTION);
+    this.depthsGranted.clear();
+    this.infuserGranted = false;
+    this.flameBurst = 0;
+    this.lastDryFire = -99;
+    this._active = 0;
     this.ctx.events.emit('wandChanged');
   }
 

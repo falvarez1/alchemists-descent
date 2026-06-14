@@ -554,6 +554,47 @@ export type BiomeId =
 
 export type GameMode = 'build' | 'play';
 export type InputMode = 'element' | 'spell';
+export type PlaytestSource = 'builder' | 'test';
+export type RunMode = 'normal' | 'test';
+export type RunWorldSource = 'campaign' | 'campaign-level' | 'virtual-world';
+export type RunLoadoutPreset = 'fresh' | 'advanced' | 'review';
+
+export interface RunStartConfig {
+  /** Normal progression persists; test mode is disposable and never autosaved. */
+  mode: RunMode;
+  /** Campaign starts/resumes the authored descent; campaign-level jumps to one authored level. */
+  worldSource: RunWorldSource;
+  /** Used by campaign-level starts and test runs. */
+  levelId?: string;
+  /** Optional deterministic seed for fresh generated worlds. */
+  seed?: number;
+  /** Fresh starter kit, an advanced mid-run kit, or the full review kit. */
+  loadout?: RunLoadoutPreset;
+  /** Normal campaign only: resume local expedition save when one exists. */
+  continueSave?: boolean;
+}
+
+export interface RunStartResult {
+  ok: boolean;
+  message: string;
+  mode: RunMode;
+  worldSource: RunWorldSource;
+  levelId?: string | null;
+  seed?: number;
+  reason?: 'level-invalid' | 'virtual-runtime-unavailable';
+}
+
+export interface RunStatus {
+  mode: GameMode;
+  playtestSource: PlaytestSource | null;
+  savedExpedition: boolean;
+  autosaveEnabled: boolean;
+  debugGodMode: boolean;
+  worldSeed: number;
+  level: { id: string; name: string; depth: number } | null;
+  player: { x: number; y: number; hp: number; maxHp: number; dead: boolean };
+  score: number;
+}
 
 export interface GameStateData {
   mode: GameMode;
@@ -583,7 +624,7 @@ export interface GameStateData {
   /** Builder-only cursor light preview that uses the same raycast path as the player wand. */
   builderWandLightPreview: BuilderWandLightPreview;
   /** Transient source for disposable playtest runtimes. Null for normal Play/Sandbox. */
-  playtestSource: 'builder' | null;
+  playtestSource: PlaytestSource | null;
 }
 
 export interface Keys {
@@ -1252,6 +1293,8 @@ export interface WandsApi {
   /** Save-game support: capture / restore the full wand loadout. */
   snapshotLoadout(): WandLoadoutSave;
   loadLoadout(data: WandLoadoutSave): void;
+  /** Start-run support: restore the launch starter wands/collection in place. */
+  resetLoadout(): void;
   /** QA/debug command: upgrade both wands and expose every card. */
   grantReviewLoadout(): void;
   /**
@@ -1502,6 +1545,10 @@ export interface LevelsApi {
   /** Null until the descent starts (first play-mode entry). */
   readonly current: LevelRuntime | null;
   readonly transitioning: boolean;
+  /** Canonical launcher/dev-console run entrypoint. */
+  startRun(ctx: Ctx, config: RunStartConfig): RunStartResult;
+  /** Canonical status for launcher/dev-console run workflows. */
+  runStatus(ctx: Ctx): RunStatus;
   /** Generate D1 (or resume) and swap it into ctx. Idempotent. */
   startDescent(ctx: Ctx): void;
   /**

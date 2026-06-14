@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createDefaultPostFxSettings, createGameParams } from '@/config/params';
+import { createDefaultPostFxSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
 import type {
   Ctx,
@@ -67,7 +67,9 @@ function makeCtx(): Ctx {
     paused: false,
     debugGodMode: false,
     postFx: createDefaultPostFxSettings(),
+    wandLight: createDefaultWandLightSettings(),
     editorLights: null,
+    builderWandLightPreview: { enabled: false, x: 0, y: 0 },
     playtestSource: null,
   };
   const input: InputState = {
@@ -105,6 +107,9 @@ function makeCtx(): Ctx {
     slotCard: () => undefined,
     snapshotLoadout: () => ({ active: 0, collection: [], wands: [] }),
     loadLoadout: () => undefined,
+    resetLoadout: () => {
+      collection.length = 0;
+    },
     grantReviewLoadout: () => undefined,
     upgradeFrame: () => false,
     nextCastSlots: () => [],
@@ -227,6 +232,25 @@ function makeCtx(): Ctx {
       get transitioning() {
         return false;
       },
+      startRun: (_ctx, config) => {
+        ctx.state.mode = 'play';
+        ctx.state.playtestSource = config.mode === 'test' ? 'test' : null;
+        ctx.state.worldSeed = config.seed ?? ctx.state.worldSeed;
+        const id = config.worldSource === 'campaign-level' ? (config.levelId ?? 'd1') : 'd1';
+        current = { def: { id, name: id.toUpperCase(), biome: 'earthen', depth: 1, nextLevelId: null }, world, enemies: [], waystones: [], exit: null, explored: new Uint8Array(1), spawn: { x: 100, y: 120 }, regions: null, cauldron: null, pickups: [], portal: null, keyTaken: false, mechanisms: [], runeVaults: [] };
+        return { ok: true, message: 'mock run started', mode: config.mode, worldSource: config.worldSource, levelId: id, seed: ctx.state.worldSeed };
+      },
+      runStatus: (_ctx) => ({
+        mode: ctx.state.mode,
+        playtestSource: ctx.state.playtestSource,
+        savedExpedition: false,
+        autosaveEnabled: ctx.state.mode === 'play' && ctx.state.playtestSource === null && !ctx.state.debugGodMode,
+        debugGodMode: ctx.state.debugGodMode,
+        worldSeed: ctx.state.worldSeed,
+        level: current ? { id: current.def.id, name: current.def.name, depth: current.def.depth } : null,
+        player: { x: ctx.player.x, y: ctx.player.y, hp: ctx.player.hp, maxHp: ctx.player.maxHp, dead: ctx.player.dead },
+        score: ctx.state.score,
+      }),
       startDescent: () => undefined,
       update: () => undefined,
       respawnPoint: () => null,
@@ -638,6 +662,26 @@ describe('console registry', () => {
     expect(badKind.ok).toBe(false);
     expect(ctx.state.score).toBe(0);
     expect(ctx.state.debugGodMode).toBe(false);
+  });
+
+  it('starts disposable test runs through the canonical run command', async () => {
+    const ctx = makeCtx();
+
+    const started = await ctx.console.exec('run test --level d3 --seed 123 --loadout review');
+    const status = await ctx.console.exec('run status');
+
+    expect(started).toMatchObject({
+      ok: true,
+      data: {
+        action: 'test',
+        run: { mode: 'test', worldSource: 'campaign-level', levelId: 'd3', seed: 123 },
+        status: { mode: 'play', playtestSource: 'test', autosaveEnabled: false },
+      },
+    });
+    expect(status).toMatchObject({
+      ok: true,
+      data: { action: 'status', mode: 'play', playtestSource: 'test', autosaveEnabled: false },
+    });
   });
 
   it('caps enemy spawn count', async () => {

@@ -35,10 +35,20 @@ const FILL_CELL_CAP = 150_000;
 const DUMP_CELL_CAP = 4_096;
 const PERFREC_MAX_FRAMES = 600;
 const SCRIPT_MAX_DEPTH = 4;
+const RUN_SUBCOMMANDS = ['status', 'continue', 'resume', 'new', 'fresh', 'test', 'save', 'abandon'] as const;
+const RUN_WORLD_SOURCES = ['campaign', 'campaign-level', 'virtual-world', 'virtual'] as const;
+const RUN_LOADOUTS = ['fresh', 'advanced', 'review'] as const;
 
 type Bounds = { x0: number; y0: number; x1: number; y1: number };
 type PerfPhase = 'sim' | 'entities' | 'render' | 'compose' | 'gl' | 'frame';
 type PerfSample = Record<PerfPhase, number>;
+type ParsedRunOptions = {
+  ok: true;
+  levelId?: string;
+  seed?: number;
+  loadout?: 'fresh' | 'advanced' | 'review';
+  worldSource?: 'campaign' | 'campaign-level' | 'virtual-world';
+};
 type PerfWindow = Window & {
   __perfRecord?: boolean;
   __perfSamples?: PerfSample[];
@@ -1037,6 +1047,106 @@ function commandTargetCompletions(req: CompletionRequest): string[] {
   return [];
 }
 
+function normalizeRunWorldSource(raw: string): 'campaign' | 'campaign-level' | 'virtual-world' | CommandResult {
+  const key = raw.toLowerCase();
+  if (key === 'campaign' || key === 'descent' || key === 'progression') return 'campaign';
+  if (key === 'campaign-level' || key === 'level' || key === 'current') return 'campaign-level';
+  if (key === 'virtual' || key === 'virtual-world' || key === 'chunked') return 'virtual-world';
+  return result(false, `Unknown run world "${raw}".`, {
+    code: 'parse-run-world',
+    raw,
+    expected: ['campaign', 'campaign-level', 'virtual-world'],
+  });
+}
+
+function isParsedRunOptions(parsed: ParsedRunOptions | CommandResult): parsed is ParsedRunOptions {
+  return parsed.ok === true && !('text' in parsed);
+}
+
+function parseRunOptions(args: string[]): ParsedRunOptions | CommandResult {
+  let levelId: string | undefined;
+  let seed: number | undefined;
+  let loadout: 'fresh' | 'advanced' | 'review' | undefined;
+  let worldSource: 'campaign' | 'campaign-level' | 'virtual-world' | undefined;
+
+  const readValue = (arg: string, i: number): { value?: string; next: number } => {
+    const eq = arg.indexOf('=');
+    if (eq >= 0) return { value: arg.slice(eq + 1), next: i };
+    return { value: args[i + 1], next: i + 1 };
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--level' || arg.startsWith('--level=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --level <id>', { code: 'usage' });
+      const id = parseLevelId(parsed.value);
+      if (typeof id !== 'string') return id;
+      levelId = id;
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--seed' || arg.startsWith('--seed=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --seed <uint32>', { code: 'usage' });
+      const n = Number(parsed.value);
+      if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) {
+        return result(false, `Expected seed to be an integer from 0 to 4294967295, got "${parsed.value}"`, {
+          code: 'parse-seed',
+          raw: parsed.value,
+        });
+      }
+      seed = n >>> 0;
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--loadout' || arg.startsWith('--loadout=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --loadout <fresh|advanced|review>', { code: 'usage' });
+      const key = parsed.value.toLowerCase();
+      if (!RUN_LOADOUTS.includes(key as (typeof RUN_LOADOUTS)[number])) {
+        return result(false, `Unknown loadout "${parsed.value}".`, {
+          code: 'parse-loadout',
+          raw: parsed.value,
+          expected: RUN_LOADOUTS,
+        });
+      }
+      loadout = key as 'fresh' | 'advanced' | 'review';
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--world' || arg.startsWith('--world=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --world <campaign|campaign-level|virtual-world>', { code: 'usage' });
+      const source = normalizeRunWorldSource(parsed.value);
+      if (typeof source !== 'string') return source;
+      worldSource = source;
+      i = parsed.next;
+      continue;
+    }
+    return result(false, `Unknown run option "${arg}".`, {
+      code: 'usage',
+      usage: 'run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--loadout preset] [--world source]',
+    });
+  }
+
+  return { ok: true, levelId, seed, loadout, worldSource };
+}
+
+function runCommandCompletions(req: CompletionRequest): string[] {
+  const token = currentToken(req);
+  if (req.completingArg === 0) return matching(RUN_SUBCOMMANDS, token);
+  const prev = req.args[req.args.length - 2];
+  if (prev === '--level') return matching(Object.keys(LEVELS), token);
+  if (prev === '--loadout') return matching(RUN_LOADOUTS, token);
+  if (prev === '--world') return matching(RUN_WORLD_SOURCES, token);
+  if (token.startsWith('--level=')) return matching(Object.keys(LEVELS).map((id) => '--level=' + id), token);
+  if (token.startsWith('--loadout=')) return matching(RUN_LOADOUTS.map((id) => '--loadout=' + id), token);
+  if (token.startsWith('--world=')) return matching(RUN_WORLD_SOURCES.map((id) => '--world=' + id), token);
+  if (token.startsWith('--')) return matching(['--level', '--seed', '--loadout', '--world'], token);
+  return [];
+}
+
 export function createConsoleApi(ctx: Ctx): ConsoleApi {
   const definitions: ConsoleCommandDefinition[] = [];
   const add = (def: ConsoleCommandDefinition): void => {
@@ -1176,6 +1286,79 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
       if (req.completingArg === 1) return matching(['clear'], currentToken(req));
       return [];
     },
+  });
+
+  add({
+    name: 'run',
+    aliases: ['expedition'],
+    info: info(
+      'game.run',
+      'Run Control',
+      'run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--loadout fresh|advanced|review] [--world campaign|campaign-level|virtual-world]',
+      'Canonical start/reset/save/test-run workflow for expeditions.',
+      'game',
+    ),
+    run: (ctx, args) => {
+      const sub = (args[0] ?? 'status').toLowerCase();
+      if (sub === 'status') {
+        const status = ctx.levels.runStatus(ctx);
+        const level = status.level ? `${status.level.id} ${status.level.name}` : 'none';
+        return result(true, `mode=${status.mode} level=${level} save=${status.savedExpedition ? 'yes' : 'no'} autosave=${status.autosaveEnabled ? 'on' : 'off'}`, {
+          action: 'status',
+          ...status,
+        });
+      }
+      if (sub === 'abandon') {
+        ctx.levels.abandonExpedition();
+        return result(true, 'Saved expedition abandoned. Use `run new` to reset the live run too.', {
+          action: 'abandon',
+          status: ctx.levels.runStatus(ctx),
+        });
+      }
+      if (sub === 'save') {
+        const status = ctx.levels.runStatus(ctx);
+        if (!status.autosaveEnabled) {
+          return result(false, 'Current run is disposable or debug-tainted; it will not be saved.', {
+            code: 'save-disabled',
+            action: 'save',
+            status,
+          });
+        }
+        ctx.levels.saveExpedition(ctx);
+        return result(true, 'Expedition saved.', { action: 'save', status: ctx.levels.runStatus(ctx) });
+      }
+      if (sub === 'continue' || sub === 'resume') {
+        ctx.audio.ensure();
+        const started = ctx.levels.startRun(ctx, { mode: 'normal', worldSource: 'campaign', continueSave: true });
+        return result(started.ok, started.message, { action: 'continue', run: started, status: ctx.levels.runStatus(ctx) });
+      }
+      if (sub === 'new' || sub === 'fresh' || sub === 'test') {
+        const parsed = parseRunOptions(args.slice(1));
+        if (!isParsedRunOptions(parsed)) return parsed;
+        const test = sub === 'test';
+        const worldSource =
+          parsed.worldSource ?? (test ? (parsed.levelId ? 'campaign-level' : 'campaign') : 'campaign');
+        ctx.audio.ensure();
+        const started = ctx.levels.startRun(ctx, {
+          mode: test ? 'test' : 'normal',
+          worldSource,
+          levelId: parsed.levelId,
+          seed: parsed.seed,
+          loadout: parsed.loadout ?? (test ? 'advanced' : 'fresh'),
+          continueSave: false,
+        });
+        return result(started.ok, started.message, {
+          action: test ? 'test' : 'new',
+          run: started,
+          status: ctx.levels.runStatus(ctx),
+        });
+      }
+      return result(false, 'Usage: run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--loadout preset] [--world source]', {
+        code: 'usage',
+        subcommand: sub,
+      });
+    },
+    complete: (_ctx, req) => runCommandCompletions(req),
   });
 
   add({

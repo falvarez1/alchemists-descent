@@ -269,6 +269,74 @@ body.play-active #viewport-container { padding: 0; }
 #controls-hint { position: absolute; bottom: 12px; left: 12px; font-size: 12px; color: rgba(255,255,255,0.42); line-height: 1.7; text-shadow: 0 1px 3px #000; letter-spacing: 0.4px; }
 #controls-hint b { color: rgba(255,255,255,0.75); }
 
+/* ---------- Run launcher ---------- */
+.run-launcher {
+    position: fixed; inset: 0; z-index: 31; display: none; align-items: center; justify-content: center;
+    padding: 20px; box-sizing: border-box; background: rgba(2, 4, 8, 0.72);
+    font-family: var(--mono); color: #dbeafe;
+}
+.run-launcher.visible { display: flex; animation: overlay-in 0.12s ease; }
+.run-launcher-panel {
+    width: min(760px, 96vw); max-height: min(640px, 92vh); display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden;
+    border: 1px solid #263442; border-radius: 7px;
+    background: rgba(9, 13, 19, 0.98); box-shadow: 0 24px 70px rgba(0,0,0,0.66);
+}
+.run-launcher-head, .run-launcher-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 14px; border-color: #1f2a36;
+}
+.run-launcher-head { border-bottom: 1px solid #1f2a36; background: rgba(13,18,25,0.98); }
+.run-launcher-foot { border-top: 1px solid #1f2a36; background: rgba(8,11,16,0.98); }
+.run-launcher-title { font-size: 15px; font-weight: 900; letter-spacing: 3px; color: #f8fafc; text-transform: uppercase; }
+.run-launcher-subtitle { margin-top: 3px; font-size: 10px; font-weight: 800; letter-spacing: 2px; color: #7dd3fc; text-transform: uppercase; }
+.run-launcher-close {
+    width: 28px; height: 28px; border: 1px solid #314257; border-radius: 4px;
+    background: #101620; color: #bdd2e8; font: 900 16px/1 var(--mono); cursor: pointer;
+}
+.run-launcher-close:hover { border-color: #f87171; color: #ffd9d9; }
+.run-launcher-body {
+    min-height: 0; display: grid; grid-template-columns: minmax(190px, 0.78fr) minmax(260px, 1.22fr);
+    gap: 14px; padding: 14px; overflow: auto;
+}
+.run-launcher-column { display: grid; gap: 8px; align-content: start; }
+.run-launcher-choice {
+    min-height: 72px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 5px;
+    padding: 11px; border: 1px solid #263442; border-radius: 6px;
+    background: rgba(13,18,25,0.92); color: #dbeafe; cursor: pointer; text-align: left;
+}
+.run-launcher-choice span { font-size: 12px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+.run-launcher-choice small { color: #8ea6bd; font: 700 10px/1.45 var(--mono); }
+.run-launcher-choice:hover:not(:disabled), .run-launcher-choice.selected {
+    border-color: #38bdf8; background: rgba(16, 27, 37, 0.96);
+}
+.run-launcher-choice:disabled { opacity: 0.45; cursor: not-allowed; }
+.run-launcher-form { display: grid; gap: 11px; align-content: start; }
+.run-launcher-form label { display: grid; gap: 6px; color: #8ea6bd; font: 900 10px/1 var(--mono); letter-spacing: 1.4px; text-transform: uppercase; }
+.run-launcher-form select, .run-launcher-form input {
+    min-width: 0; height: 34px; border: 1px solid #2c3c4d; border-radius: 4px;
+    background: #0b1119; color: #e5f2ff; font: 800 11px/1 var(--mono);
+}
+.run-launcher-form select { padding: 0 9px; }
+.run-launcher-form input { padding: 0 9px; box-sizing: border-box; }
+.run-launcher-form select:disabled, .run-launcher-form input:disabled { opacity: 0.55; }
+.run-launcher-seed { display: grid; grid-template-columns: minmax(0, 1fr) 82px; gap: 8px; }
+.run-launcher-seed button, .run-launcher-start {
+    height: 34px; border: 1px solid #365168; border-radius: 4px;
+    background: #101620; color: #dbeafe; font: 900 10px/1 var(--mono); letter-spacing: 1.2px;
+    cursor: pointer;
+}
+.run-launcher-seed button:hover, .run-launcher-start:hover:not(:disabled) { border-color: #7dd3fc; color: #f8fafc; }
+.run-launcher-start { width: 108px; background: #142018; border-color: #2f8f54; color: #b9f6cf; }
+.run-launcher-start:disabled { opacity: 0.45; cursor: not-allowed; }
+.run-launcher-status {
+    min-width: 0; color: #9fb6cc; font: 800 10px/1.45 var(--mono); overflow-wrap: anywhere;
+}
+@media (max-width: 720px) {
+    .run-launcher-body { grid-template-columns: 1fr; }
+    .run-launcher-choice { min-height: 58px; }
+}
+
 #wave-banner {
     position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); text-align: center;
     opacity: 0; pointer-events: none; transition: opacity 0.4s ease;

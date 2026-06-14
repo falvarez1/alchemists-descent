@@ -18,7 +18,7 @@
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_VERSION } from '@/config/gen';
 import { LEVELS, START_LEVEL, populationForLevel, vaultHostId } from '@/config/worldgraph';
-import { Rng, hashSeed } from '@/core/rng';
+import { Rng, hashSeed, randomSeed } from '@/core/rng';
 import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
 import type {
   Ctx,
@@ -29,11 +29,15 @@ import type {
   LevelsApi,
   Mechanism,
   Pickup,
+  RunLoadoutPreset,
+  RunStartConfig,
+  RunStartResult,
+  RunStatus,
   RuneVault,
   WandLoadoutSave,
   Waystone,
 } from '@/core/types';
-import { grantFullReviewKit } from '@/entities/Player';
+import { createPlayer, grantFullReviewKit } from '@/entities/Player';
 import { createDefaultStatus } from '@/entities/status';
 import { spawnPrefabEnemy } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
@@ -264,6 +268,104 @@ export class Levels implements LevelsApi {
     return this._transitioning;
   }
 
+  startRun(ctx: Ctx, config: RunStartConfig): RunStartResult {
+    const mode = config.mode;
+    const worldSource = config.worldSource;
+    if (worldSource === 'virtual-world') {
+      return {
+        ok: false,
+        message: 'Chunked virtual worlds are available in the Builder World Map preview, but are not materialized into Play mode yet.',
+        mode,
+        worldSource,
+        levelId: null,
+        seed: ctx.state.worldSeed >>> 0,
+        reason: 'virtual-runtime-unavailable',
+      };
+    }
+
+    const levelId = worldSource === 'campaign'
+      ? START_LEVEL
+      : (config.levelId ?? START_LEVEL).toLowerCase();
+    if (!LEVELS[levelId]) {
+      return {
+        ok: false,
+        message: `Unknown level "${config.levelId ?? ''}".`,
+        mode,
+        worldSource,
+        levelId,
+        seed: ctx.state.worldSeed >>> 0,
+        reason: 'level-invalid',
+      };
+    }
+
+    this.enterPlayMode(ctx);
+
+    if (mode === 'normal' && worldSource === 'campaign' && config.continueSave !== false) {
+      if (ctx.state.playtestSource !== null) {
+        this.resetRunState(ctx, { clearSave: false });
+      }
+      ctx.state.playtestSource = null;
+      this.startDescent(ctx);
+      return {
+        ok: true,
+        message: this.current ? `Continuing ${this.current.def.name}.` : 'Continuing descent.',
+        mode,
+        worldSource,
+        levelId: this.current?.def.id ?? null,
+        seed: this.expeditionSeed >>> 0,
+      };
+    }
+
+    const seed = config.seed !== undefined && Number.isFinite(config.seed)
+      ? config.seed >>> 0
+      : randomSeed();
+    this.resetRunState(ctx, { clearSave: mode === 'normal' });
+    ctx.state.worldSeed = seed;
+    this.expeditionSeed = seed;
+    ctx.state.playtestSource = mode === 'test' ? 'test' : null;
+
+    const preset = config.loadout ?? 'fresh';
+    if (mode === 'normal' && (worldSource !== 'campaign' || levelId !== START_LEVEL || preset !== 'fresh')) {
+      ctx.state.debugGodMode = true;
+    }
+    this.applyLoadoutPreset(ctx, preset);
+    this.enterLevel(ctx, levelId);
+
+    const runtime = this.current;
+    const label = runtime?.def.name ?? levelId.toUpperCase();
+    const prefix = mode === 'test' ? 'Test run' : 'Fresh expedition';
+    ctx.events.emit('toast', { text: `${prefix.toUpperCase()}: ${label}` });
+    return {
+      ok: true,
+      message: `${prefix} started at ${label}.`,
+      mode,
+      worldSource,
+      levelId: runtime?.def.id ?? levelId,
+      seed,
+    };
+  }
+
+  runStatus(ctx: Ctx): RunStatus {
+    const rt = this.current;
+    return {
+      mode: ctx.state.mode,
+      playtestSource: ctx.state.playtestSource,
+      savedExpedition: this.hasSavedExpedition(),
+      autosaveEnabled: ctx.state.mode === 'play' && ctx.state.playtestSource === null && !ctx.state.debugGodMode,
+      debugGodMode: ctx.state.debugGodMode,
+      worldSeed: (this.expeditionSeed || ctx.state.worldSeed) >>> 0,
+      level: rt ? { id: rt.def.id, name: rt.def.name, depth: rt.def.depth } : null,
+      player: {
+        x: ctx.player.x,
+        y: ctx.player.y,
+        hp: ctx.player.hp,
+        maxHp: ctx.player.maxHp,
+        dead: ctx.player.dead,
+      },
+      score: ctx.state.score,
+    };
+  }
+
   /** Generate D1 (or resume the saved expedition) and swap it into ctx. Idempotent. */
   startDescent(ctx: Ctx): void {
     if (this.currentId) {
@@ -460,6 +562,7 @@ export class Levels implements LevelsApi {
 
   saveExpedition(ctx: Ctx): void {
     if (!this.currentId || this.currentId === 'custom') return;
+    if (ctx.state.playtestSource !== null) return;
     if (ctx.state.debugGodMode) return;
     // Sync the live hostile roster into the current runtime before reading it.
     this.leaveLevel();
@@ -521,6 +624,7 @@ export class Levels implements LevelsApi {
       /* nothing to drop */
     }
     this.savedBlobs.clear();
+    this.blobCache.clear();
   }
 
   debugEnterLevel(ctx: Ctx, id: string): boolean {
@@ -530,6 +634,83 @@ export class Levels implements LevelsApi {
     this.leaveLevel();
     this.enterLevel(ctx, id);
     return this.current?.def.id === id;
+  }
+
+  private enterPlayMode(ctx: Ctx): void {
+    if (ctx.state.mode === 'play') return;
+    ctx.state.mode = 'play';
+    ctx.events.emit('modeChanged', { mode: 'play' });
+  }
+
+  private resetRunState(ctx: Ctx, options: { clearSave: boolean }): void {
+    if (options.clearSave) this.abandonExpedition();
+    this.levels.clear();
+    this.currentId = null;
+    this.preCustomCurrentId = null;
+    this.savedBlobs.clear();
+    this.blobCache.clear();
+    this.litOrder.clear();
+    this.reviewKitSeeded.clear();
+    this.waystoneHeat = [];
+    this.lastEnemiesEmit = -1;
+    this._transitioning = false;
+    this.expeditionSeed = 0;
+
+    Object.assign(ctx.player, createPlayer());
+    ctx.state.score = 0;
+    ctx.state.playerSpawned = false;
+    ctx.state.paused = false;
+    ctx.state.debugGodMode = false;
+    ctx.events.emit('scoreChanged', { score: ctx.state.score });
+    ctx.events.emit('playerDeathCleared');
+
+    ctx.enemies.length = 0;
+    ctx.projectiles.length = 0;
+    ctx.shockwaves.length = 0;
+    ctx.particles.clear();
+    ctx.lightning.clear();
+    ctx.critters.list.length = 0;
+    ctx.input.keys.left = false;
+    ctx.input.keys.right = false;
+    ctx.input.keys.up = false;
+    ctx.input.keys.jump = false;
+    ctx.input.keys.wallJump = false;
+    ctx.input.keys.down = false;
+    ctx.input.keys.grab = false;
+    ctx.input.isDrawing = false;
+    ctx.input.buildSpellHeld = false;
+    ctx.input.bombCharge = -1;
+    ctx.input.activeChargingBlackHole = null;
+    ctx.input.siphonHeld = false;
+    ctx.input.pourHeld = false;
+    ctx.input.drinkHeld = false;
+    ctx.fx.digBeam = null;
+    ctx.fx.hitstop = 0;
+    ctx.flask.state.material = null;
+    ctx.flask.state.count = 0;
+    ctx.waves.num = 1;
+    ctx.waves.active = false;
+    ctx.waves.intermission = 0;
+    ctx.waves.kills = 0;
+    ctx.wands.resetLoadout();
+  }
+
+  private applyLoadoutPreset(ctx: Ctx, preset: RunLoadoutPreset): void {
+    ctx.wands.resetLoadout();
+    if (preset === 'fresh') return;
+    if (preset === 'advanced') {
+      ctx.player.maxHp = 140;
+      ctx.player.hp = ctx.player.maxHp;
+      ctx.player.maxLevit = 125;
+      ctx.player.levit = ctx.player.maxLevit;
+      for (const card of ['lightning', 'bomb', 'speed', 'heavy', 'bounce', 'trigger'] as const) {
+        ctx.wands.grantCard(ctx, card);
+      }
+      return;
+    }
+    ctx.state.debugGodMode = true;
+    grantFullReviewKit(ctx.player);
+    ctx.wands.grantReviewLoadout();
   }
 
   private serializeLevel(id: string, rt: LevelRuntime): SavedLevelBlob {

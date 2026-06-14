@@ -80,6 +80,9 @@ console.log('switched biome to frozen');
 
 // --- 4) PLAY mode ---
 await page.click('#mode-play-btn');
+await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
+await page.click('#run-launcher .run-launcher-start');
+await page.waitForFunction(() => document.body.classList.contains('play-active'), null, { timeout: 30000 });
 await page.waitForTimeout(2500);
 const hudState = await page.evaluate(() => ({
   hudVisible: document.getElementById('game-hud')?.classList.contains('visible'),
@@ -90,6 +93,9 @@ const hudState = await page.evaluate(() => ({
   hpWidth: document.getElementById('hp-fill')?.style.width,
 }));
 console.log('play mode state:', JSON.stringify(hudState));
+if (!hudState.hudVisible || !hudState.playActive || hudState.hotbarSlots <= 0) {
+  throw new Error('Play launcher did not enter a usable play mode: ' + JSON.stringify(hudState));
+}
 await page.screenshot({ path: `${outDir}/04-play-mode.png` });
 
 // --- 5) Move + jump + fire a spark bolt at the terrain ---
@@ -124,6 +130,7 @@ await page.keyboard.press('Tab');
 await page.waitForTimeout(600);
 const backInPlay = await page.evaluate(() => document.body.classList.contains('play-active'));
 console.log('tab toggle: backInBuild=', backInBuild, 'backInPlay=', backInPlay);
+if (!backInBuild || !backInPlay) throw new Error('TAB mode roundtrip failed.');
 await page.screenshot({ path: `${outDir}/07-after-tab-roundtrip.png` });
 
 // --- 8) FPS sample ---

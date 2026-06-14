@@ -44,6 +44,7 @@ import { LevelStore } from '@/ui/LevelStore';
 import { Minimap } from '@/ui/Minimap';
 import { Sanctum } from '@/ui/Sanctum';
 import { PerfHud } from '@/ui/PerfHud';
+import { RunLauncher } from '@/ui/RunLauncher';
 import { Toolbar } from '@/ui/Toolbar';
 import { WandBench } from '@/ui/WandBench';
 import { WorldGen } from '@/world/CaveGenerator';
@@ -165,6 +166,8 @@ export class Game {
     new ConsoleOverlay(ctx);
     // Wires the Level Library buttons; lives for the page lifetime.
     new LevelStore(ctx);
+    // Header PLAY opens the canonical run launcher; Builder playtests bypass it.
+    new RunLauncher(ctx);
     // The authoring overlay (injects its own DOM + header button).
     new Builder(ctx);
     // ESC pause + the Handbook (H); pause registers FIRST so its keydown
@@ -196,7 +199,7 @@ export class Game {
       if (
         document.hidden &&
         this.ctx.state.mode === 'play' &&
-        this.ctx.state.playtestSource !== 'builder'
+        this.ctx.state.playtestSource === null
       ) {
         this.ctx.levels.saveExpedition(this.ctx);
       }
@@ -241,7 +244,7 @@ export class Game {
     // Expedition autosave: every ~30s of play, a closed tab costs nothing.
     if (
       ctx.state.mode === 'play' &&
-      ctx.state.playtestSource !== 'builder' &&
+      ctx.state.playtestSource === null &&
       !ctx.state.paused &&
       ctx.state.frameCount % 1800 === 0
     ) {
