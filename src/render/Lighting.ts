@@ -270,9 +270,13 @@ export class Lighting implements LightField {
     // A faint fill around the wizard keeps him readable even in self-shadow;
     // the wand itself is raycast after the sweeps so its shadows stay crisp
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
+      const wand = ctx.state.wandLight;
       this.wandFlicker += (this.wandFlickerTarget - this.wandFlicker) * 0.25;
-      if (ctx.state.frameCount % 5 === 0) this.wandFlickerTarget = 0.8 + Math.random() * 0.48;
-      this.seedLight(ctx.player.x, ctx.player.y - 9, 0.5, 0.45, 0.36);
+      if (ctx.state.frameCount % 5 === 0) {
+        const spread = Math.max(0, wand.flicker);
+        this.wandFlickerTarget = spread > 0 ? 1.04 - spread + Math.random() * spread * 2 : 1;
+      }
+      this.seedLight(ctx.player.x, ctx.player.y - 9, wand.fillR, wand.fillG, wand.fillB);
     }
 
     // Projectiles glow in their own colors
@@ -471,11 +475,33 @@ export class Lighting implements LightField {
       const tipX = ctx.player.x + Math.cos(ctx.player.aimAngle) * 9;
       const tipY = ctx.player.y - 9 + Math.sin(ctx.player.aimAngle) * 9;
       // Torchbearer (tonic or boon): brighter, steadier, longer wand light
+      const wand = ctx.state.wandLight;
       const torch = ctx.player.status.torch > 0 || ctx.player.perks.torchbearer === true;
-      const flick = torch ? Math.max(this.wandFlicker, 1.05) : this.wandFlicker;
-      const s = (torch ? 5.6 : 4.6) * flick;
-      this.raycastLight(tipX, tipY, s, s * 0.84, s * 0.6, torch ? 76 : 56);
+      const flick = torch ? Math.max(this.wandFlicker, wand.torchMinFlicker) : this.wandFlicker;
+      this.raycastWandLight(
+        tipX,
+        tipY,
+        (torch ? wand.torchIntensity : wand.intensity) * flick,
+        torch ? wand.torchRadius : wand.radius,
+      );
+    } else if (ctx.state.mode === 'build' && ctx.state.builderWandLightPreview.enabled) {
+      const preview = ctx.state.builderWandLightPreview;
+      const wand = ctx.state.wandLight;
+      this.raycastWandLight(preview.x, preview.y, wand.intensity, wand.radius);
     }
+  }
+
+  private raycastWandLight(wx: number, wy: number, intensity: number, radius: number): void {
+    const wand = this.ctx.state.wandLight;
+    const s = Math.max(0, intensity);
+    this.raycastLight(
+      wx,
+      wy,
+      s * wand.r,
+      s * wand.g,
+      s * wand.b,
+      Math.max(1, Math.round(Math.max(1, radius) * 0.5)),
+    );
   }
 
   private raycastLight(

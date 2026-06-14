@@ -25,6 +25,7 @@ import { validateDocument } from '@/builder/validate';
 import { renderIssueRows } from '@/builder/issuePanel';
 import { toAuthoredLight } from '@/builder/compile';
 import { PASSES, runPass } from '@/builder/procedural';
+import { sanitizeBackdropSettings } from '@/config/backdrop';
 
 /**
  * Builder regression suite (docs/BUILDER.md Phase 10): terrain tools produce
@@ -193,6 +194,19 @@ describe('builder terrain tools', () => {
 });
 
 describe('builder document', () => {
+  it('sanitizes legacy backdrop settings with clamped grade defaults', () => {
+    const clean = sanitizeBackdropSettings({
+      layers: {},
+      grade: { exposure: 99, brightness: -9, contrast: 99, gamma: 0, saturation: 99 },
+      levels: {
+        d1: { enabled: true, layers: {}, grade: { exposure: -99, brightness: 9, contrast: 0, gamma: 99, saturation: -1 } },
+      },
+    });
+
+    expect(clean.grade).toEqual({ exposure: 2, brightness: -0.5, contrast: 2.5, gamma: 0.35, saturation: 2.5 });
+    expect(clean.levels.d1?.grade).toEqual({ exposure: -3, brightness: 0.5, contrast: 0.25, gamma: 3, saturation: 0 });
+  });
+
   it('round-trips through JSON with objects, links, and lights intact', () => {
     const doc = createEmptyDocument('rt', 'earthen');
     const plate = makeObj('plate', 100, 100, { w: 5 });

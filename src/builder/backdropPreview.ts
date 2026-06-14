@@ -1,8 +1,13 @@
 import {
   BACKDROP_LAYER_SPECS,
+  clampBackdropBrightness,
+  clampBackdropContrast,
+  clampBackdropExposure,
+  clampBackdropGamma,
   clampBackdropOffset,
   clampBackdropOpacity,
   clampBackdropScale,
+  clampBackdropSaturation,
   clampBackdropSpeed,
   cloneBackdropProfile,
   createDefaultBackdropProfile,
@@ -17,6 +22,7 @@ import type {
   BackdropLayerId,
   BackdropLayerSettings,
   BackdropSettings,
+  BackdropGradeSettings,
   Ctx,
   LevelDef,
 } from '@/core/types';
@@ -60,6 +66,8 @@ export class BackdropPreview {
   private readonly terrainOverlay: ImageData;
   private readonly terrainCanvas: HTMLCanvasElement;
   private readonly terrainCtx: CanvasRenderingContext2D;
+  private readonly backdropCanvas: HTMLCanvasElement;
+  private readonly backdropCtx: CanvasRenderingContext2D;
   private readonly profiles = levelEntries();
   private raf = 0;
   private openState = false;
@@ -120,6 +128,14 @@ export class BackdropPreview {
               <button id="bb-fit" type="button">FIT</button>
             </div>
           </div>
+          <section class="bb-grade">
+            <div class="bb-section-title">COLOR</div>
+            ${this.numberControl('exposure', '-3', '2', '0.01', 'data-bb-exposure', 'data-bb-exposure-num')}
+            ${this.numberControl('brightness', '-0.5', '0.5', '0.005', 'data-bb-brightness', 'data-bb-brightness-num')}
+            ${this.numberControl('contrast', '0.25', '2.5', '0.01', 'data-bb-contrast', 'data-bb-contrast-num')}
+            ${this.numberControl('gamma', '0.35', '3', '0.01', 'data-bb-gamma', 'data-bb-gamma-num')}
+            ${this.numberControl('saturation', '0', '2.5', '0.01', 'data-bb-saturation', 'data-bb-saturation-num')}
+          </section>
           <div class="bb-layer-list">
             ${BACKDROP_LAYER_SPECS.map((spec) => this.layerRow(spec.id)).join('')}
           </div>
@@ -144,6 +160,12 @@ export class BackdropPreview {
     if (!terrainCtx) throw new Error('missing backdrop terrain canvas context');
     this.terrainCtx = terrainCtx;
     this.terrainOverlay = terrainCtx.createImageData(VIEW_W, VIEW_H);
+    this.backdropCanvas = document.createElement('canvas');
+    this.backdropCanvas.width = VIEW_W;
+    this.backdropCanvas.height = VIEW_H;
+    const backdropCtx = this.backdropCanvas.getContext('2d', { willReadFrequently: true });
+    if (!backdropCtx) throw new Error('missing backdrop canvas context');
+    this.backdropCtx = backdropCtx;
 
     this.loadImages();
     this.wire();
@@ -351,12 +373,13 @@ export class BackdropPreview {
     this.copyAllPending = false;
     if (this.selectedProfile === 'global') {
       this.levelOverrideEnabled = true;
-      this.draft = cloneBackdropProfile({ layers: settings.layers });
+      this.draft = cloneBackdropProfile({ layers: settings.layers, grade: settings.grade });
     } else {
       const level = settings.levels[this.selectedProfile];
       this.levelOverrideEnabled = level?.enabled === true;
       this.draft = cloneBackdropProfile({
         layers: this.levelOverrideEnabled && level ? level.layers : resolveBackdropLayers(settings, this.selectedProfile),
+        grade: this.levelOverrideEnabled && level ? level.grade : settings.grade,
       });
     }
     this.applied = cloneBackdropProfile(this.draft);
@@ -371,6 +394,7 @@ export class BackdropPreview {
     const profile = cloneBackdropProfile(this.draft);
     if (this.selectedProfile === 'global') {
       settings.layers = profile.layers;
+      settings.grade = profile.grade;
     } else if (this.levelOverrideEnabled) {
       settings.levels[this.selectedProfile] = { ...profile, enabled: true };
     } else {
@@ -437,9 +461,14 @@ export class BackdropPreview {
     if (target.id === 'bb-override') {
       this.levelOverrideEnabled = target.checked;
       if (!this.levelOverrideEnabled && this.selectedProfile !== 'global') {
-        this.draft = cloneBackdropProfile({ layers: this.activeSettings().layers });
+        const settings = this.activeSettings();
+        this.draft = cloneBackdropProfile({ layers: settings.layers, grade: settings.grade });
       }
       this.markDirty(this.levelOverrideEnabled ? 'OVERRIDE ENABLED' : 'INHERITING GLOBAL');
+      return;
+    }
+    if (this.applyGradeInput(target)) {
+      this.markDirty('COLOR GRADE');
       return;
     }
     const row = target.closest<HTMLElement>('.bb-layer');
@@ -455,6 +484,20 @@ export class BackdropPreview {
     this.markDirty('DRAFT');
   }
 
+  private applyGradeInput(target: HTMLInputElement): boolean {
+    const grade = this.draft.grade;
+    if (target.matches('[data-bb-exposure], [data-bb-exposure-num]')) grade.exposure = clampBackdropExposure(target.valueAsNumber);
+    else if (target.matches('[data-bb-brightness], [data-bb-brightness-num]')) {
+      grade.brightness = clampBackdropBrightness(target.valueAsNumber);
+    } else if (target.matches('[data-bb-contrast], [data-bb-contrast-num]')) {
+      grade.contrast = clampBackdropContrast(target.valueAsNumber);
+    } else if (target.matches('[data-bb-gamma], [data-bb-gamma-num]')) grade.gamma = clampBackdropGamma(target.valueAsNumber);
+    else if (target.matches('[data-bb-saturation], [data-bb-saturation-num]')) {
+      grade.saturation = clampBackdropSaturation(target.valueAsNumber);
+    } else return false;
+    return true;
+  }
+
   private syncControls(): void {
     (this.root.querySelector('#bb-active-profile') as HTMLElement).textContent =
       `${profileLabel(this.selectedProfile)}${this.dirty ? ' *' : ''}`;
@@ -466,12 +509,30 @@ export class BackdropPreview {
     const overrideLabel = this.root.querySelector<HTMLElement>('#bb-override-label');
     if (overrideLabel) overrideLabel.textContent = this.selectedProfile === 'global' ? 'GLOBAL PROFILE' : 'LEVEL OVERRIDE';
     const controlsDisabled = this.selectedProfile !== 'global' && !this.levelOverrideEnabled;
+    this.syncGradeControls(controlsDisabled);
     for (const spec of BACKDROP_LAYER_SPECS) {
       const row = this.root.querySelector<HTMLElement>(`.bb-layer[data-layer="${spec.id}"]`);
       if (row) this.syncRow(row, spec.id, controlsDisabled);
     }
     this.syncProfileButtons();
     this.syncToggles();
+  }
+
+  private syncGradeControls(disabled: boolean): void {
+    const grade = this.draft.grade;
+    const host = this.root.querySelector<HTMLElement>('.bb-grade');
+    if (!host) return;
+    for (const input of host.querySelectorAll<HTMLInputElement>('input')) input.disabled = disabled;
+    this.setInput(host.querySelector<HTMLInputElement>('[data-bb-exposure]'), grade.exposure);
+    this.setInput(host.querySelector<HTMLInputElement>('[data-bb-exposure-num]'), grade.exposure);
+    this.setInput(host.querySelector<HTMLInputElement>('[data-bb-brightness]'), grade.brightness, 3);
+    this.setInput(host.querySelector<HTMLInputElement>('[data-bb-brightness-num]'), grade.brightness, 3);
+    this.setInput(host.querySelector<HTMLInputElement>('[data-bb-contrast]'), grade.contrast);
+    this.setInput(host.querySelector<HTMLInputElement>('[data-bb-contrast-num]'), grade.contrast);
+    this.setInput(host.querySelector<HTMLInputElement>('[data-bb-gamma]'), grade.gamma);
+    this.setInput(host.querySelector<HTMLInputElement>('[data-bb-gamma-num]'), grade.gamma);
+    this.setInput(host.querySelector<HTMLInputElement>('[data-bb-saturation]'), grade.saturation);
+    this.setInput(host.querySelector<HTMLInputElement>('[data-bb-saturation-num]'), grade.saturation);
   }
 
   private syncProfileButtons(): void {
@@ -561,21 +622,38 @@ export class BackdropPreview {
     ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
+    this.drawGradedBackdrop();
+    ctx.drawImage(this.backdropCanvas, 0, 0);
+    if (this.showTerrain) {
+      ctx.save();
+      ctx.translate(VIEW_W / 2, VIEW_H / 2);
+      ctx.scale(this.zoom, this.zoom);
+      ctx.translate(-VIEW_W / 2, -VIEW_H / 2);
+      this.drawTerrainOverlay(ctx);
+      ctx.restore();
+    }
+
+    const coords = this.root.querySelector('#bb-coords');
+    if (coords) coords.textContent = `x ${Math.round(this.camX)}  y ${Math.round(this.camY)}  ${this.zoom.toFixed(2)}x`;
+  }
+
+  private drawGradedBackdrop(): void {
+    const ctx = this.backdropCtx;
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
     ctx.fillStyle = '#040509';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     ctx.save();
     ctx.translate(VIEW_W / 2, VIEW_H / 2);
     ctx.scale(this.zoom, this.zoom);
     ctx.translate(-VIEW_W / 2, -VIEW_H / 2);
-    this.drawBackdrop(ctx);
-    if (this.showTerrain) this.drawTerrainOverlay(ctx);
+    this.drawBackdropLayers(ctx);
     ctx.restore();
-
-    const coords = this.root.querySelector('#bb-coords');
-    if (coords) coords.textContent = `x ${Math.round(this.camX)}  y ${Math.round(this.camY)}  ${this.zoom.toFixed(2)}x`;
+    this.applyGrade(ctx, this.draft.grade);
   }
 
-  private drawBackdrop(ctx: CanvasRenderingContext2D): void {
+  private drawBackdropLayers(ctx: CanvasRenderingContext2D): void {
     for (const spec of BACKDROP_LAYER_SPECS) {
       if (this.soloLayer !== null && this.soloLayer !== spec.id) continue;
       const setting = this.draft.layers[spec.id];
@@ -591,6 +669,32 @@ export class BackdropPreview {
       }
     }
     ctx.globalAlpha = 1;
+  }
+
+  private applyGrade(ctx: CanvasRenderingContext2D, grade: BackdropGradeSettings): void {
+    const image = ctx.getImageData(0, 0, VIEW_W, VIEW_H);
+    const data = image.data;
+    const exposure = 2 ** grade.exposure;
+    const brightness = grade.brightness;
+    const contrast = grade.contrast;
+    const invGamma = 1 / grade.gamma;
+    const saturation = grade.saturation;
+    for (let i = 0; i < data.length; i += 4) {
+      let r = data[i] / 255;
+      let g = data[i + 1] / 255;
+      let b = data[i + 2] / 255;
+      r = (r * exposure + brightness - 0.5) * contrast + 0.5;
+      g = (g * exposure + brightness - 0.5) * contrast + 0.5;
+      b = (b * exposure + brightness - 0.5) * contrast + 0.5;
+      const luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
+      r = luma + (r - luma) * saturation;
+      g = luma + (g - luma) * saturation;
+      b = luma + (b - luma) * saturation;
+      data[i] = Math.round((r <= 0 ? 0 : r >= 1 ? 1 : r ** invGamma) * 255);
+      data[i + 1] = Math.round((g <= 0 ? 0 : g >= 1 ? 1 : g ** invGamma) * 255);
+      data[i + 2] = Math.round((b <= 0 ? 0 : b >= 1 ? 1 : b ** invGamma) * 255);
+    }
+    ctx.putImageData(image, 0, 0);
   }
 
   private layerDraws(setting: BackdropLayerSettings, img: HTMLImageElement | undefined): img is HTMLImageElement {

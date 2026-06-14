@@ -7,6 +7,7 @@ import type {
   PostFxSettings,
   SpellId,
   SpellParams,
+  WandLightSettings,
 } from '@/core/types';
 
 /**
@@ -130,5 +131,22 @@ export function createDefaultPostFxSettings(): PostFxSettings {
     grain: 0.028,
     hurtPulse: 1.0,
     exposure: 1.05,
+  };
+}
+
+export function createDefaultWandLightSettings(): WandLightSettings {
+  return {
+    intensity: 4.6,
+    radius: 112,
+    r: 1.0,
+    g: 0.84,
+    b: 0.6,
+    flicker: 0.24,
+    fillR: 0.5,
+    fillG: 0.45,
+    fillB: 0.36,
+    torchIntensity: 5.6,
+    torchRadius: 152,
+    torchMinFlicker: 1.05,
   };
 }

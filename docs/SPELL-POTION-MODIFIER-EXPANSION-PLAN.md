@@ -72,6 +72,33 @@ The repo already has the core pieces this plan should build on:
 8. Trigger payloads must share the same semantics as normal casts. A payload
    cast should not silently lose new modifier behavior.
 
+## Builder And Asset Management Compatibility
+
+This plan owns runtime behavior. The Builder integration is governed by
+`docs/SPELL-POTION-MODIFIER-BUILDER-ADDENDUM.md` and the shared Asset Database
+in `docs/BUILDER-ENHANCEMENT-IMPLEMENTATION-PLAN.md`.
+
+Runtime work should expose enough metadata for Builder without creating a
+second editor asset system:
+
+- New repo-defined cards, modifiers, potion pickups, elixir recipes, wand
+  frames, review loadouts, and built-in scenarios must be discoverable through
+  `ContentRegistry` adapters. Local/project scenarios remain `AssetStore`
+  records indexed by `AssetDatabase`.
+- `ContentRegistry` is a read-only provider into the Builder `AssetDatabase`.
+  The Builder Content Browser is an Asset Browser mode, not a separate storage
+  or dependency framework.
+- Runtime IDs remain code contracts such as `CardId` and potion IDs. Builder
+  documents and tools should use scoped typed refs such as
+  `{ kind: 'card', id: 'critwet', origin: 'builtIn' }`; compact keys like
+  `card:critwet`, `potion:swift`, and `wandLoadout:wet-crit-review` are useful
+  display/search shorthand for built-in content.
+- Runtime modules should not import Builder asset code. The dependency direction
+  is one way: Builder/content adapters read runtime definitions and add
+  metadata, validation, previews, and review status.
+- Visual assets remain optional presentation data. A missing icon or sprite is a
+  validation/cook issue, not a reason to hide the grid-first runtime behavior.
+
 ## Target Player Outcome
 
 The player should start thinking in "spell sentences":
@@ -832,6 +859,10 @@ Rendering and UI:
   - Add card icons.
 - `src/ui/WandBench.ts`
   - Review tools should expose the new cards/potions.
+- `src/content/registry.ts` and content adapters
+  - Expose new cards, potions, recipes, loadouts, scenarios, icons, validation
+    status, and probe coverage to the Builder Asset Database provider.
+  - Do not duplicate runtime behavior in content metadata.
 
 Tests and probes:
 
@@ -855,6 +886,8 @@ Before merge:
 
 - `npm test`
 - `npm run build`
+- `npx vitest run tests/content-registry.test.ts` once Builder metadata adapters
+  are added for the new content.
 
 ### Runtime Probe
 
@@ -888,6 +921,8 @@ simulation is supposed to move them.
 - Does it behave under multicast?
 - Does it behave with `heavy`, `speed`, `spread`, `bounce`, and `infuser`?
 - Does it avoid minting valuable materials?
+- Does the Builder content registry expose the new card/potion with a typed ref,
+  icon/preview status, dependency summary, and review/probe status?
 - Does it avoid self-trapping the player by default?
 
 ## Balance Guardrails

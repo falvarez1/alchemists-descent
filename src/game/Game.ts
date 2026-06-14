@@ -1,5 +1,5 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
-import { createDefaultPostFxSettings, createGameParams } from '@/config/params';
+import { createDefaultPostFxSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
 import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
@@ -83,7 +83,9 @@ export class Game {
       paused: false,
       debugGodMode: false,
       postFx: createDefaultPostFxSettings(),
+      wandLight: createDefaultWandLightSettings(),
       editorLights: null,
+      builderWandLightPreview: { enabled: false, x: 0, y: 0 },
       playtestSource: null,
     };
     const input: InputState = {

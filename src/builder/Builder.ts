@@ -1,5 +1,11 @@
-import type { BiomeId, CardId, Ctx, PlayerState, WandFrame } from '@/core/types';
+import type { BiomeId, CardId, Ctx, LevelDef, PlayerState, WandFrame } from '@/core/types';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
+import { BIOMES as BIOME_DEFS } from '@/config/biomes';
+import { GEN, defaultSkeletonSpec } from '@/config/gen';
+import type { SkeletonSpec } from '@/config/gen';
+import { createDefaultPostFxSettings, createDefaultWandLightSettings } from '@/config/params';
+import { LEVELS } from '@/config/worldgraph';
+import { randomSeed } from '@/core/rng';
 import {
   applyWorldLayer,
   bakeExclusionMask,
@@ -60,7 +66,14 @@ import {
 } from '@/builder/prefablib';
 import type { PrefabAnchor, PrefabDef } from '@/builder/prefablib';
 import { PrefabPanel, showImportReport } from '@/builder/prefabPanel';
-import { sanitizeBackdropSettings } from '@/config/backdrop';
+import {
+  clampBackdropBrightness,
+  clampBackdropContrast,
+  clampBackdropExposure,
+  clampBackdropGamma,
+  clampBackdropSaturation,
+  sanitizeBackdropSettings,
+} from '@/config/backdrop';
 import { BackdropPreview } from '@/builder/backdropPreview';
 import { Gallery } from '@/builder/gallery';
 import { builtinPrefabs } from '@/world/prefabs/registry';
@@ -68,6 +81,12 @@ import { SpritePanel } from '@/builder/spritePanel';
 import { downloadJson, downloadText, download, pickFiles } from '@/builder/assets/io';
 import { cellsToRgba, rgbaToCells, snapUnknown } from '@/builder/assets/pixmap';
 import { pngBlobToRgba, rgbaToPngBlob } from '@/builder/assets/png';
+import { buildAssetDatabase } from '@/builder/assets/AssetDatabase';
+import type { AssetDatabase } from '@/builder/assets/AssetDatabase';
+import { importJsonAsset } from '@/builder/assets/AssetImportPipeline';
+import { LocalStorageAssetStore } from '@/builder/assets/AssetStore';
+import { paintAssetPreview } from '@/builder/assets/AssetPreview';
+import type { AssetKind, AssetOrigin, AssetSmartCollection, AssetSortMode } from '@/builder/assets/AssetTypes';
 import { appDialog } from '@/ui/AppDialog';
 import {
   decodeFramePx,
@@ -144,6 +163,18 @@ import {
 } from '@/builder/inspectorSchemas';
 import { renderIssueRows } from '@/builder/issuePanel';
 import {
+  buildOutlinerModel,
+  renderOutlinerPanel,
+} from '@/builder/outlinerPanel';
+import type { OutlinerFilter, OutlinerLayerState } from '@/builder/outlinerPanel';
+import {
+  buildLinkGraphModel,
+  renderLinkGraphPanel,
+} from '@/builder/linkGraphPanel';
+import { renderAssetBrowserPanel } from '@/builder/assetBrowserPanel';
+import type { AssetBrowserView } from '@/builder/assetBrowserPanel';
+import { renderAssetDetailPanel } from '@/builder/assetDetailPanel';
+import {
   loadWorkspaceLayout,
   saveWorkspaceLayout,
   workspacePresetLayout,
@@ -174,6 +205,18 @@ const CRAMPED_DOCK_RAIL_WIDTH = 42;
 const MIN_BUILDER_CENTER_WIDTH = 260;
 const PREFERRED_BUILDER_CENTER_WIDTH = 320;
 const BUILDER_VIEWPORT_PAD = 20;
+const BIOME_IDS = Object.keys(BIOME_DEFS) as BiomeId[];
+type BuilderWorkspacePanelId = 'builder-outliner' | 'builder-link-graph' | 'builder-assets' | 'builder-asset-details';
+type BuilderSidePanel = 'proc' | 'world' | 'mat' | 'post' | 'global';
+const SKELETON_KINDS: Array<SkeletonSpec['kind']> = [
+  'baseline',
+  'fungalPockets',
+  'frozenCrevasses',
+  'floodedGalleries',
+  'timberScaffold',
+  'crystalVaults',
+  'volcanicTubes',
+];
 
 interface PanelDropPoint {
   clientX: number;
@@ -300,6 +343,9 @@ interface BuilderWandSnapshot {
 /** Editor layer families (visibility/locking are EDITOR-side only:
  *  a hidden layer still compiles — that's what object `hidden` is for). */
 type LayerFamily = 'gameplay' | 'mech' | 'links' | 'lights';
+const LAYER_FAMILIES = ['gameplay', 'mech', 'links', 'lights'] as const satisfies readonly LayerFamily[];
+const layerLabel = (family: LayerFamily): string =>
+  family === 'mech' ? 'Mechanisms' : family[0].toUpperCase() + family.slice(1);
 const MECH_KINDS: ReadonlySet<EditorObjectKind> = new Set([
   'door', 'plate', 'lever', 'brazier', 'scale', 'buoy', 'chargeLatch', 'runeGlyph', 'runeDoor',
   'valve', 'plug', 'sensor', 'counterweight', 'relay',
@@ -596,6 +642,19 @@ export class Builder {
   /** Editor layer toggles. */
   private layerHidden = new Set<LayerFamily>();
   private layerLocked = new Set<LayerFamily>();
+  private outlinerQuery = '';
+  private outlinerFilters = new Set<OutlinerFilter>();
+  private linkGraphQuery = '';
+  private readonly assetStore = new LocalStorageAssetStore();
+  private assetQuery = '';
+  private assetView: AssetBrowserView = 'grid';
+  private assetSort: AssetSortMode = 'name';
+  private assetCollection: AssetSmartCollection = 'all';
+  private assetKindFilters = new Set<AssetKind>();
+  private assetOriginFilters = new Set<AssetOrigin>();
+  private assetSelectedId: string | null = null;
+  private pendingAssetBrowserSourceScroll: number | null = null;
+  private pendingAssetBrowserListScroll: number | null = null;
   /** Scarred planes captured on playtest return, for BAKE. */
   private playtestScars: { types: Uint8Array; life: Int16Array; charge: Uint8Array } | null = null;
   /** True while the disposable custom runtime came from Builder, not header PLAY. */
@@ -617,8 +676,10 @@ export class Builder {
   private linkFrom: string | null = null;
   private pendingPreview: PendingPreview | null = null;
   private lastMouse = { x: 0, y: 0 };
+  private lastMouseClient: { x: number; y: number } | null = null;
   private zoomTarget = 1;
   private lightPreviewOn = true;
+  private wandLightPreviewOn = false;
   private sessionMode: 'author' | 'live' = 'author';
   /** Placement/drag snap step in cells (0 = off). */
   private snapStep: 0 | 8 | 16 = 0;
@@ -635,6 +696,7 @@ export class Builder {
   private gallery: Gallery | null = null;
   private backdropPreview: BackdropPreview | null = null;
   private backdropDirty = false;
+  private worldgenLevelId: string | null = null;
   /** A transformed (Q/E) copy of a library prefab while the stamp tool is
    *  armed — never the library record itself. */
   private armedPrefab: PrefabDef | null = null;
@@ -696,11 +758,13 @@ export class Builder {
 
   constructor(private ctx: Ctx) {
     this.doc = createEmptyDocument('untitled', ctx.state.currentBiome);
+    this.worldgenLevelId = this.levelIdForBiome(this.doc.biome);
     this.prefabs = loadPrefabs();
     this.sprites = loadSprites();
     this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
     this.dockHost = new DockHost(this.panelRegistry, this.workspaceLayout);
     this.workspaceLayout = this.dockHost.snapshot().layout;
+    this.restoreLayerStateFromWorkspace();
     this.snapStep = this.workspaceLayout.snapStep as 0 | 8 | 16;
     this.overlayMode = BUILDER_OVERLAY_IDS.find((id) => this.workspaceLayout.overlayVisibility[id]) ?? 'none';
     this.buildDom();
@@ -719,6 +783,7 @@ export class Builder {
     this.wireExtras();
     this.wireCmdk();
     this.wireLayers();
+    this.syncLayers();
     window.addEventListener('keydown', this.onKeyDown, true);
     window.addEventListener(DEV_CONSOLE_STATE_EVENT, this.onDevConsoleState as EventListener);
     // Entering play (PLAY button) while authoring closes the overlay; the
@@ -831,6 +896,7 @@ export class Builder {
     this.attachWorkspace();
     this.sessionMode = 'author';
     this.ctx.state.editorLights = null;
+    this.syncWandLightPreview();
     this.syncSessionButtons();
     if (!this.ctx.state.paused || inheritPause) {
       this.ctx.state.paused = true;
@@ -900,6 +966,7 @@ export class Builder {
     window.clearInterval(this.autosaveTimer);
     this.ctx.camera.zoomLock = null;
     this.ctx.state.editorLights = null;
+    this.ctx.state.builderWandLightPreview.enabled = false;
     if (this.ownsPause) {
       this.ctx.state.paused = false;
       this.ownsPause = false;
@@ -970,9 +1037,10 @@ export class Builder {
       });
       dock.addEventListener('dragleave', () => dock.classList.remove('drop-target'));
       dock.addEventListener('drop', (e) => {
+        if (!this.draggingPanelId) return;
         e.preventDefault();
         dock.classList.remove('drop-target');
-        const id = this.draggingPanelId ?? e.dataTransfer?.getData('text/plain');
+        const id = this.draggingPanelId;
         const region = dock.dataset.dock as DockRegion | undefined;
         this.draggingPanelId = null;
         this.clearWorkspaceDropState();
@@ -989,9 +1057,11 @@ export class Builder {
     }
   }
 
-  private wireCollapsibleSections(): void {
-    for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-section-toggle]')) {
-      button.addEventListener('click', () => {
+  private wireCollapsibleSections(root: ParentNode = this.root): void {
+    for (const button of root.querySelectorAll<HTMLElement>('[data-section-toggle]')) {
+      if (button.dataset.sectionToggleWired === 'true') continue;
+      button.dataset.sectionToggleWired = 'true';
+      const toggle = (): void => {
         const id = button.dataset.sectionToggle;
         const section = button.closest<HTMLElement>('.bp-section');
         if (!id || !section) return;
@@ -1000,6 +1070,12 @@ export class Builder {
         button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
         this.workspaceLayout.collapsedSections[id] = collapsed;
         this.saveWorkspacePrefs();
+      };
+      button.addEventListener('click', toggle);
+      button.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        toggle();
       });
     }
   }
@@ -1010,7 +1086,7 @@ export class Builder {
       if (!id) continue;
       const collapsed = this.workspaceLayout.collapsedSections[id] === true;
       section.classList.toggle('collapsed', collapsed);
-      section.querySelector<HTMLButtonElement>('[data-section-toggle]')?.setAttribute(
+      section.querySelector<HTMLElement>('[data-section-toggle]')?.setAttribute(
         'aria-expanded',
         collapsed ? 'false' : 'true',
       );
@@ -1095,9 +1171,15 @@ export class Builder {
       return ['builder.frameSelection', 'builder.validate', ...common, 'builder.delete', 'builder.duplicate'];
     }
     if (panelId === 'builder-world') return ['builder.worldPanel', ...common];
+    if (panelId === 'builder-global') return ['builder.globalControlsPanel', 'builder.wandLightPreviewToggle', ...common];
+    if (panelId === 'builder-postfx') return ['builder.postProcessingPanel', ...common];
     if (panelId === 'builder-matparams') return ['builder.materialPanel', ...common];
     if (panelId === 'builder-proc') return ['builder.proceduralPanel', ...common];
     if (panelId === 'builder-issues') return ['builder.findInvalid', 'builder.validate', ...common];
+    if (panelId === 'builder-assets') return ['builder.assetsPanel', 'builder.assetDetailsPanel', 'builder.assetImport', ...common];
+    if (panelId === 'builder-asset-details') return ['builder.assetDetailsPanel', 'builder.assetsPanel', ...common];
+    if (panelId === 'builder-outliner') return ['builder.outlinerPanel', 'builder.linkGraphPanel', ...common];
+    if (panelId === 'builder-link-graph') return ['builder.linkGraphPanel', 'builder.outlinerPanel', 'builder.validate', ...common];
     return [];
   }
 
@@ -1411,7 +1493,7 @@ export class Builder {
   }
 
   private panelEl(id: string): HTMLElement | null {
-    return (this.root.querySelector('#' + id) as HTMLElement | null) ?? document.getElementById(id);
+    return (this.root.querySelector(`[id="${cssString(id)}"]`) as HTMLElement | null) ?? document.getElementById(id);
   }
 
   private raiseFloatingPanel(id: string): void {
@@ -1540,12 +1622,14 @@ export class Builder {
   private resetWorkspace(): void {
     this.root.classList.remove('b-zen');
     this.replaceWorkspaceLayout(this.panelRegistry.sanitizeLayout(null));
+    this.restoreLayerStateFromWorkspace();
     this.syncCollapsedSections();
     this.setDevConsoleOpen(false);
     this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
     this.snapStep = 0;
     this.el('bp-snap-btn').textContent = 'SNAP: OFF';
     this.syncOverlayButton();
+    this.syncLayers();
     this.setTool('select');
     this.applyWorkspaceLayout();
     this.saveWorkspacePrefs();
@@ -1555,12 +1639,14 @@ export class Builder {
   private applyWorkspacePreset(preset: WorkspacePreset): void {
     this.root.classList.remove('b-zen');
     this.replaceWorkspaceLayout(workspacePresetLayout(preset));
+    this.restoreLayerStateFromWorkspace();
     this.syncCollapsedSections();
     this.setDevConsoleOpen(false);
     this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
     this.snapStep = this.workspaceLayout.snapStep as 0 | 8 | 16;
     this.el('bp-snap-btn').textContent = 'SNAP: ' + (this.snapStep === 0 ? 'OFF' : this.snapStep);
     this.syncOverlayButton();
+    this.syncLayers();
     this.applyWorkspaceLayout();
     this.saveWorkspacePrefs();
     this.status(`WORKSPACE PRESET: ${preset.toUpperCase()}`);
@@ -1745,6 +1831,7 @@ export class Builder {
 
   private replaceDocument(doc: EditorDocument, statusText: string): void {
     this.doc = doc;
+    this.worldgenLevelId = this.levelIdForBiome(doc.biome);
     this.adoptDocSprites();
     this.playtestScars = null;
     this.mutedLightIds.clear();
@@ -1757,6 +1844,7 @@ export class Builder {
     this.regionMaskCells = 0;
     this.syncDocBackdropToLive();
     this.applyDocTerrain();
+    this.refreshDocSelect();
     this.syncAll();
     this.status(statusText);
   }
@@ -1789,10 +1877,10 @@ export class Builder {
         <div class="bp-section-body">${body}</div>
       </section>`;
     };
-    const layerRows = (['gameplay', 'mech', 'links', 'lights'] as const)
+    const layerRows = LAYER_FAMILIES
       .map(
         (f) =>
-          `<div class="bp-layer" data-layer="${f}"><span>${f}</span><button data-vis title="Show/hide in the editor (still compiles)">&#128065;</button><button data-lock title="Lock against selection">&#128275;</button></div>`,
+          `<div class="bp-layer" data-layer="${f}"><span>${layerLabel(f)}</span><button data-vis title="Show/hide in the editor (still compiles)">&#128065;</button><button data-lock title="Lock against selection">&#128275;</button></div>`,
       )
       .join('');
     this.root.innerHTML = `
@@ -1824,7 +1912,11 @@ export class Builder {
         <button id="b-bake" style="display:none" title="Re-apply the held playtest scars onto the document terrain (region = precise, undoable)">BAKE</button>
         <button id="b-playtest" class="b-accent">BUILDER PLAYTEST</button>
         <button id="b-playtest-here" class="b-accent" title="Compile this document and spawn at the cursor">PLAYTEST HERE</button>
+        <button id="b-worldgen" title="Generate and tune procedural worlds">WORLDGEN</button>
+        <button id="b-global" title="Global simulation and wand light controls">GLOBAL</button>
+        <button id="b-postfx" title="Post processing controls">POST FX</button>
         <button id="b-gallery" title="Browse and preview every prefab, mechanism, entity and sprite — live and animated">GALLERY</button>
+        <button id="b-assets" title="Project Asset Browser: documents, prefabs, sprites, imports and dependencies">ASSETS</button>
         <button id="b-backdrop" title="Preview and tune parallax backdrop layers">BACKDROP</button>
         <button id="b-reset-workspace" title="Reset dock layout, open panels, and workspace preferences">RESET WORKSPACE</button>
         <button id="b-zen" title="Hide all side panels for a clear view of the canvas">PANELS</button>
@@ -1882,7 +1974,9 @@ export class Builder {
           'palette.lighting',
           'LIGHTING',
           `<button class="bp-tool" data-tool="light"><span class="bp-glyph k-light">*</span>Authored Light</button>
-        <button id="bp-light-toggle" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>`,
+        <button id="bp-light-toggle" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>
+        <button id="bp-wand-light-toggle" title="Use the mouse cursor as the live player wand light">WAND LIGHT: OFF</button>
+        <button id="bp-wand-params-btn" title="Open wand light tuning in Global Controls">WAND PARAMS&hellip;</button>`,
         )}
         ${paletteSection('palette.prefabs', 'PREFABS', '<div id="bp-prefab-host"></div>')}
         ${paletteSection('palette.sprites', 'SPRITES', '<div id="bp-sprite-host"></div>')}
@@ -1901,12 +1995,17 @@ export class Builder {
           'VIEW',
           `<button id="bp-overlay-btn" title="Readability overlays (O)">OVERLAY: NONE</button>
         <button id="bp-snap-btn" title="Snap placements and drags to a grid">SNAP: OFF</button>
-        <button id="bp-sym-btn" title="Mirror terrain painting across the axis (world center; a region recenters it)">SYM: OFF</button>`,
+        <button id="bp-sym-btn" title="Mirror terrain painting across the axis (world center; a region recenters it)">SYM: OFF</button>
+        <button id="bp-assets-btn" title="Open the Project Asset Browser">ASSETS...</button>
+        <button id="bp-outliner-btn" title="Find, select, hide, and lock authored records">OUTLINER...</button>
+        <button id="bp-link-graph-btn" title="Inspect trigger, relay, rune, and actuator links">LINK GRAPH...</button>`,
         )}
         ${paletteSection(
           'palette.parameters',
           'PARAMETERS',
-          `<button id="bp-world-btn" title="Global sim/light tuning (live params)">WORLD&hellip;</button>
+          `<button id="bp-world-btn" title="World generation, biome, seed, and live params">WORLDGEN&hellip;</button>
+        <button id="bp-global-btn" title="Simulation, brush, and wand light settings">GLOBAL&hellip;</button>
+        <button id="bp-postfx-btn" title="Exposure, bloom, lens, and GPU composition settings">POST FX&hellip;</button>
         <button id="bp-mat-btn" title="Tuning sliders for the armed material">MATERIAL&hellip;</button>`,
         )}
         ${paletteSection('palette.procedural', 'PROCEDURAL', '<button id="bp-proc-btn">SEEDED PASSES&hellip;</button>')}
@@ -1962,14 +2061,23 @@ export class Builder {
       </div>
       <div id="builder-dock-right" class="builder-dock" data-dock="right">
       <div id="builder-inspector"></div>
+      <div id="builder-outliner" style="display:none"></div>
+      <div id="builder-asset-details" style="display:none"></div>
       <div id="builder-world" style="display:none">
-        <div class="bi-head" data-panel-handle>WORLD PARAMETERS <button id="bw-close">&times;</button></div>
+        <div class="bi-head" data-panel-handle>WORLD GENERATION <button id="bw-close">&times;</button></div>
         <div id="bw-controls"></div>
-        <div class="bp-hint">Live tuning data — changes<br>apply to the sim immediately<br>(document MOOD sets the<br>playtest ambient).</div>
       </div>
       <div id="builder-matparams" style="display:none">
         <div class="bi-head" data-panel-handle>MATERIAL PARAMETERS <button id="bm-close">&times;</button></div>
         <div id="bm-controls"></div>
+      </div>
+      <div id="builder-global" style="display:none">
+        <div class="bi-head" data-panel-handle>GLOBAL CONTROLS <button id="bg-close">&times;</button></div>
+        <div id="bg-controls"></div>
+      </div>
+      <div id="builder-postfx" style="display:none">
+        <div class="bi-head" data-panel-handle>POST PROCESSING <button id="bf-close">&times;</button></div>
+        <div id="bf-controls"></div>
       </div>
       <div id="builder-proc" style="display:none">
         <div class="bi-head" data-panel-handle>PROCEDURAL PASS <button id="bp-proc-close">&times;</button></div>
@@ -1996,6 +2104,8 @@ export class Builder {
       </div>
       </div>
       <div id="builder-dock-bottom" class="builder-dock" data-dock="bottom"></div>
+      <div id="builder-link-graph" style="display:none"></div>
+      <div id="builder-assets" style="display:none"></div>
       </div>`;
     viewport?.appendChild(this.root);
     this.playtestBanner = document.createElement('div');
@@ -2180,7 +2290,7 @@ export class Builder {
   }
 
   private el<T extends HTMLElement>(id: string): T {
-    return this.root.querySelector('#' + id) as T;
+    return this.root.querySelector(`[id="${cssString(id)}"]`) as T;
   }
 
   private setTool(t: BuilderTool): void {
@@ -2296,9 +2406,32 @@ export class Builder {
     });
     add({ id: 'builder.exportPalette', label: 'Export Material Palette (.gpl)', category: 'Prefabs', run: () => this.exportMaterialPalette() });
     add({ id: 'builder.lightPreviewToggle', label: 'Toggle Light Preview', category: 'View', run: () => this.toggleLightPreview() });
-    add({ id: 'builder.worldPanel', label: 'World Parameters', category: 'Panels', run: () => this.toggleSidePanel('world') });
+    add({ id: 'builder.wandLightPreviewToggle', label: 'Toggle Wand Cursor Light', category: 'View', run: () => this.toggleWandLightPreview() });
+    add({ id: 'builder.worldPanel', label: 'World Generation', category: 'Panels', run: () => this.toggleSidePanel('world') });
+    add({ id: 'builder.globalControlsPanel', label: 'Global Controls', category: 'Panels', run: () => this.toggleSidePanel('global') });
+    add({ id: 'builder.postProcessingPanel', label: 'Post Processing', category: 'Panels', run: () => this.toggleSidePanel('post') });
     add({ id: 'builder.materialPanel', label: 'Material Parameters', category: 'Panels', run: () => this.toggleSidePanel('mat') });
     add({ id: 'builder.proceduralPanel', label: 'Seeded Procedural Passes', category: 'Panels', run: () => this.toggleSidePanel('proc') });
+    add({ id: 'builder.assetsPanel', label: 'Project Asset Browser', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-assets') });
+    add({ id: 'builder.assetDetailsPanel', label: 'Asset Details', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-asset-details') });
+    add({ id: 'builder.assetImport', label: 'Import Asset JSON', category: 'Assets', run: () => void this.importAssetJsonFiles() });
+    add({ id: 'builder.outlinerPanel', label: 'Object Outliner', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-outliner') });
+    add({ id: 'builder.linkGraphPanel', label: 'Link Graph', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-link-graph') });
+    for (const layer of LAYER_FAMILIES) {
+      const label = layerLabel(layer);
+      add({
+        id: `builder.layer.${layer}.visibility`,
+        label: `Toggle ${label} Layer Visibility`,
+        category: 'Layers',
+        run: () => this.toggleLayerVisibility(layer),
+      });
+      add({
+        id: `builder.layer.${layer}.lock`,
+        label: `Toggle ${label} Layer Lock`,
+        category: 'Layers',
+        run: () => this.toggleLayerLock(layer),
+      });
+    }
     add({ id: 'builder.resetWorkspace', label: 'Reset Workspace', category: 'Panels', run: () => this.resetWorkspace() });
     for (const preset of ['compact', 'wide', 'validation', 'lighting', 'prefab'] as const) {
       add({
@@ -2416,6 +2549,7 @@ export class Builder {
     if (this.previewBlocks()) return;
     if (!(await this.confirmDiscardCurrentDocument('New Document'))) return;
     this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
+    this.worldgenLevelId = this.levelIdForBiome(this.doc.biome);
     this.playtestScars = null;
     this.mutedLightIds.clear();
     this.cmds.clear();
@@ -2424,6 +2558,8 @@ export class Builder {
     this.backdropDirty = false;
     this.region = null;
     this.syncDocBackdropToLive();
+    this.applyDocTerrain();
+    this.refreshDocSelect();
     this.syncAll();
     this.status('NEW DOCUMENT');
   }
@@ -2445,9 +2581,15 @@ export class Builder {
     if (this.previewBlocks()) return;
     const id = this.el<HTMLSelectElement>('b-doc-select').value;
     const saved = loadDocLibrary()[id];
-    if (!saved) return;
+    if (!saved) {
+      this.refreshDocSelect();
+      return;
+    }
     const doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
-    if (!(await this.confirmDiscardCurrentDocument('Load Document'))) return;
+    if (!(await this.confirmDiscardCurrentDocument('Load Document'))) {
+      this.refreshDocSelect();
+      return;
+    }
     this.replaceDocument(doc, `LOADED "${doc.name.toUpperCase()}"`);
   }
 
@@ -2578,9 +2720,14 @@ export class Builder {
   private wireBar(): void {
     this.el<HTMLInputElement>('b-doc-name').addEventListener('change', (e) => {
       this.doc.name = (e.target as HTMLInputElement).value.trim() || 'untitled';
+      this.refreshDocSelect();
     });
     this.el<HTMLSelectElement>('b-biome').addEventListener('change', (e) => {
-      this.doc.biome = (e.target as HTMLSelectElement).value as BiomeId;
+      const biome = (e.target as HTMLSelectElement).value as BiomeId;
+      this.doc.biome = biome;
+      this.ctx.state.currentBiome = biome;
+      this.worldgenLevelId = this.levelIdForBiome(biome);
+      this.syncWorkspacePanelContent();
     });
 
     this.el('b-session-author').addEventListener('click', () => this.runUiCommand('builder.session.author'));
@@ -2588,6 +2735,9 @@ export class Builder {
     this.el('b-new').addEventListener('click', () => this.runUiCommand('builder.newDocument'));
     this.el('b-save').addEventListener('click', () => this.runUiCommand('builder.save'));
     this.el('b-load').addEventListener('click', () => this.runUiCommand('builder.load'));
+    this.el<HTMLSelectElement>('b-doc-select').addEventListener('change', () => {
+      void this.loadSelectedDocument();
+    });
     this.el('b-export').addEventListener('click', () => this.runUiCommand('builder.export'));
 
     this.el<HTMLInputElement>('b-import').addEventListener('change', (e) => {
@@ -2618,7 +2768,11 @@ export class Builder {
     this.el('b-bake').addEventListener('click', () => this.runUiCommand('builder.bakeScars'));
     this.el('b-playtest').addEventListener('click', () => this.runUiCommand('builder.playtest'));
     this.el('b-playtest-here').addEventListener('click', () => this.runUiCommand('builder.playtestHere'));
+    this.el('b-worldgen').addEventListener('click', () => this.runUiCommand('builder.worldPanel'));
+    this.el('b-global').addEventListener('click', () => this.runUiCommand('builder.globalControlsPanel'));
+    this.el('b-postfx').addEventListener('click', () => this.runUiCommand('builder.postProcessingPanel'));
     this.el('b-gallery').addEventListener('click', () => this.openGallery());
+    this.el('b-assets').addEventListener('click', () => this.runUiCommand('builder.assetsPanel'));
     this.el('b-backdrop').addEventListener('click', () => this.openBackdropPreview());
     this.el('b-reset-workspace').addEventListener('click', () => this.runUiCommand('builder.resetWorkspace'));
     this.el('b-zen').addEventListener('click', () => this.runUiCommand('builder.togglePanels'));
@@ -2747,6 +2901,7 @@ export class Builder {
     this.ctx.state.playtestSource = null;
     this.setPlaytestBanner(false);
     this.ctx.state.editorLights = null;
+    this.ctx.state.builderWandLightPreview.enabled = false;
     this.ctx.enemies.length = 0;
     this.ctx.projectiles.length = 0;
     this.ctx.particles.clear();
@@ -2809,8 +2964,8 @@ export class Builder {
 
   /** Re-decode the authored terrain into the live world (fresh combat state). */
   private applyDocTerrain(): void {
-    if (!this.doc.world) return;
-    applyWorldLayer(this.ctx, this.doc.world);
+    if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
+    else this.ctx.world.clear();
     this.ctx.enemies.length = 0;
     this.ctx.projectiles.length = 0;
     this.ctx.particles.clear();
@@ -2834,17 +2989,22 @@ export class Builder {
 
   /* ===================== pointer: tools ===================== */
 
-  /** Screen -> world cells; the inverse of InputManager.getMouseGridCoords. */
-  private mouseToWorld(e: MouseEvent): { x: number; y: number } {
+  private clientToWorld(clientX: number, clientY: number): { x: number; y: number } {
     const rect = this.overlay.getBoundingClientRect();
-    const u = (e.clientX - rect.left) / rect.width;
-    const v = (e.clientY - rect.top) / rect.height;
+    if (rect.width <= 0 || rect.height <= 0) return this.lastMouse;
+    const u = (clientX - rect.left) / rect.width;
+    const v = (clientY - rect.top) / rect.height;
     const zx = 0.5 + (u - 0.5) / this.ctx.camera.zoom;
     const zy = 0.5 + (v - 0.5) / this.ctx.camera.zoom;
     return {
       x: Math.floor(zx * VIEW_W) + this.ctx.camera.renderX,
       y: Math.floor(zy * VIEW_H) + this.ctx.camera.renderY,
     };
+  }
+
+  /** Screen -> world cells; the inverse of InputManager.getMouseGridCoords. */
+  private mouseToWorld(e: MouseEvent): { x: number; y: number } {
+    return this.clientToWorld(e.clientX, e.clientY);
   }
 
   /** World cells -> overlay pixels (forward transform; used by the canvas). */
@@ -2858,6 +3018,17 @@ export class Builder {
   private wirePointer(): void {
     // RMB is the eyedropper, never the browser menu (Sandbox parity).
     this.overlay.addEventListener('contextmenu', (e) => e.preventDefault());
+    this.overlay.addEventListener('dragover', (e) => {
+      if (!this.draggedAssetId(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    });
+    this.overlay.addEventListener('drop', (e) => {
+      const assetId = this.draggedAssetId(e);
+      if (!assetId) return;
+      e.preventDefault();
+      this.placeAssetDrop(assetId, e);
+    });
     this.overlay.addEventListener('mousedown', (e) => {
       const pos = this.mouseToWorld(e);
       if (e.button === 2) {
@@ -3016,7 +3187,9 @@ export class Builder {
     });
     window.addEventListener('mousemove', (e) => {
       const pos = this.mouseToWorld(e);
+      this.lastMouseClient = { x: e.clientX, y: e.clientY };
       this.lastMouse = pos;
+      this.syncWandLightPreview();
       if (this.floatDrag && this.floating) {
         const d = this.floatDrag;
         this.floating.x = this.snap(d.origX + pos.x - d.grabX);
@@ -3437,18 +3610,36 @@ export class Builder {
   }
 
   /** Whole-world reshapes from inside the Builder (confirm when work exists). */
+  private async confirmWholeWorldReshape(title: string): Promise<boolean> {
+    const hasWork = this.doc.world !== null || this.cmds.depth > 0 || this.paintDirty;
+    if (!hasWork) return true;
+    return appDialog.confirm(
+      'This reshapes the ENTIRE world under the open document and cannot be undone. ' +
+        '(RESTORE re-decodes the last captured terrain.) Continue?',
+      { title, confirmText: 'Continue', tone: 'danger' },
+    );
+  }
+
+  private async generateConfiguredWorld(reroll: boolean): Promise<void> {
+    if (this.previewBlocks()) return;
+    const previousSeed = this.ctx.state.worldSeed;
+    if (reroll) this.ctx.state.worldSeed = randomSeed();
+    if (!(await this.confirmWholeWorldReshape('Generate World'))) {
+      this.ctx.state.worldSeed = previousSeed;
+      this.buildWorldPanel();
+      return;
+    }
+    this.ctx.state.currentBiome = this.doc.biome;
+    this.ctx.worldgen.generateCaves(this.ctx);
+    if (this.ctx.worldgen.spawnHint) this.ctx.camera.snapTo(this.ctx.worldgen.spawnHint.x, this.ctx.worldgen.spawnHint.y);
+    this.paintDirty = true;
+    this.syncAll();
+    this.status(`GENERATED ${BIOME_DEFS[this.doc.biome].name.toUpperCase()} — SEED ${this.ctx.state.worldSeed >>> 0}`);
+  }
+
   private async guardedWorldGen(action: 'caves' | 'fortress' | 'clear'): Promise<void> {
     if (this.previewBlocks()) return;
-    const hasWork = this.doc.world !== null || this.cmds.depth > 0 || this.paintDirty;
-    if (
-      hasWork &&
-      !(await appDialog.confirm(
-        'This reshapes the ENTIRE world under the open document and cannot be undone. ' +
-          '(RESTORE re-decodes the last captured terrain.) Continue?',
-        { title: 'Reshape World', confirmText: 'Continue', tone: 'danger' },
-      ))
-    )
-      return;
+    if (!(await this.confirmWholeWorldReshape('Reshape World'))) return;
     if (action === 'caves') {
       this.ctx.state.currentBiome = this.doc.biome; // the document drives the look
       this.ctx.worldgen.regenerate(this.ctx);
@@ -3515,6 +3706,7 @@ export class Builder {
     if (kind === 'decor' && typeof obj.params.spriteId === 'string') {
       this.status('PLACED ANIMATED DECOR — VISUAL ONLY, THE GRID DOESN\'T KNOW IT\'S THERE');
     }
+    this.syncAssetPanels();
   }
 
   private placeLight(x: number, y: number): void {
@@ -3902,6 +4094,10 @@ export class Builder {
     this.el('bp-proc-close').addEventListener('click', () => this.closeSidePanel('proc'));
     this.el('bp-world-btn').addEventListener('click', () => this.runUiCommand('builder.worldPanel'));
     this.el('bw-close').addEventListener('click', () => this.closeSidePanel('world'));
+    this.el('bp-global-btn').addEventListener('click', () => this.runUiCommand('builder.globalControlsPanel'));
+    this.el('bg-close').addEventListener('click', () => this.closeSidePanel('global'));
+    this.el('bp-postfx-btn').addEventListener('click', () => this.runUiCommand('builder.postProcessingPanel'));
+    this.el('bf-close').addEventListener('click', () => this.closeSidePanel('post'));
     this.el('bp-mat-btn').addEventListener('click', () => this.runUiCommand('builder.materialPanel'));
     this.el('bm-close').addEventListener('click', () => this.closeSidePanel('mat'));
     this.el('bp-dice').addEventListener('click', () => {
@@ -3932,9 +4128,11 @@ export class Builder {
     proc: 'builder-proc',
     world: 'builder-world',
     mat: 'builder-matparams',
+    global: 'builder-global',
+    post: 'builder-postfx',
   } as const;
 
-  private openSidePanel(which: 'proc' | 'world' | 'mat' | null): void {
+  private openSidePanel(which: BuilderSidePanel | null): void {
     if (which === null) {
       for (const id of Object.values(Builder.SIDE_PANELS)) {
         this.el<HTMLDivElement>(id).style.display = 'none';
@@ -3955,18 +4153,20 @@ export class Builder {
     if (which === 'proc') this.syncProcPanel();
     else if (which === 'world') this.buildWorldPanel();
     else if (which === 'mat') this.buildMatPanel();
+    else if (which === 'global') this.buildGlobalPanel();
+    else if (which === 'post') this.buildPostProcessingPanel();
     this.applyWorkspaceLayout();
     this.saveWorkspacePrefs();
   }
 
-  private toggleSidePanel(which: 'proc' | 'world' | 'mat'): void {
+  private toggleSidePanel(which: BuilderSidePanel): void {
     const id = Builder.SIDE_PANELS[which];
     const open = this.workspaceLayout.panels.some((panel) => panel.id === id && panel.open);
     if (open) return this.closeSidePanel(which);
     this.openSidePanel(which);
   }
 
-  private closeSidePanel(which: 'proc' | 'world' | 'mat'): void {
+  private closeSidePanel(which: BuilderSidePanel): void {
     const id = Builder.SIDE_PANELS[which];
     this.el<HTMLDivElement>(id).style.display = 'none';
     this.setWorkspacePanelOpen(id, false);
@@ -3978,6 +4178,34 @@ export class Builder {
     );
     this.applyWorkspaceLayout();
     this.saveWorkspacePrefs();
+  }
+
+  private toggleWorkspacePanel(id: BuilderWorkspacePanelId): void {
+    const open = this.workspaceLayout.panels.some((panel) => panel.id === id && panel.open);
+    if (open) this.closeWorkspacePanel(id);
+    else this.openWorkspacePanel(id);
+  }
+
+  private openWorkspacePanel(id: BuilderWorkspacePanelId): void {
+    this.el<HTMLDivElement>(id).style.display = '';
+    this.setWorkspacePanelOpen(id, true);
+    this.applyWorkspaceLayout();
+    this.renderWorkspacePanelContent(id);
+    this.saveWorkspacePrefs();
+  }
+
+  private closeWorkspacePanel(id: BuilderWorkspacePanelId): void {
+    this.el<HTMLDivElement>(id).style.display = 'none';
+    this.setWorkspacePanelOpen(id, false);
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
+  }
+
+  private renderWorkspacePanelContent(id: BuilderWorkspacePanelId): void {
+    if (id === 'builder-outliner') this.renderOutliner();
+    else if (id === 'builder-link-graph') this.renderLinkGraph();
+    else if (id === 'builder-assets') this.renderAssetBrowser();
+    else this.renderAssetDetails();
   }
 
   /** One live-param slider row (writes straight into the shared object). */
@@ -4005,23 +4233,554 @@ export class Builder {
     host.appendChild(row);
   }
 
-  /** WORLD window: the Sandbox global controls, builder-side. */
+  private worldSection(host: HTMLElement, title: string): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'bw-section';
+    const heading = document.createElement('div');
+    heading.className = 'bw-title';
+    heading.textContent = title;
+    section.appendChild(heading);
+    host.appendChild(section);
+    return section;
+  }
+
+  private worldActionRow(host: HTMLElement, actions: Array<{ label: string; title?: string; run: () => void }>): void {
+    const row = document.createElement('div');
+    row.className = 'bw-actions';
+    for (const action of actions) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = action.label;
+      if (action.title) btn.title = action.title;
+      btn.addEventListener('click', action.run);
+      row.appendChild(btn);
+    }
+    host.appendChild(row);
+  }
+
+  private selectRow<T extends string>(
+    host: HTMLElement,
+    label: string,
+    value: T,
+    options: Array<{ value: T; label: string }>,
+    onChange: (value: T) => void,
+  ): void {
+    const row = document.createElement('label');
+    row.className = 'bw-field';
+    const span = document.createElement('span');
+    span.textContent = label;
+    const select = document.createElement('select');
+    for (const opt of options) {
+      const el = document.createElement('option');
+      el.value = opt.value;
+      el.textContent = opt.label;
+      select.appendChild(el);
+    }
+    select.value = value;
+    select.addEventListener('change', () => onChange(select.value as T));
+    row.append(span, select);
+    host.appendChild(row);
+  }
+
+  private textRow(host: HTMLElement, label: string, value: string, onInput: (value: string) => void): void {
+    const row = document.createElement('label');
+    row.className = 'bw-field';
+    const span = document.createElement('span');
+    span.textContent = label;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = value;
+    input.addEventListener('change', () => onInput(input.value));
+    row.append(span, input);
+    host.appendChild(row);
+  }
+
+  private checkboxRow(host: HTMLElement, label: string, value: boolean, onInput: (value: boolean) => void): void {
+    const row = document.createElement('label');
+    row.className = 'bw-field bw-check';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = value;
+    input.addEventListener('change', () => onInput(input.checked));
+    const span = document.createElement('span');
+    span.textContent = label;
+    row.append(input, span);
+    host.appendChild(row);
+  }
+
+  private numberRow(
+    host: HTMLElement,
+    label: string,
+    value: number,
+    min: number,
+    max: number,
+    step: number,
+    fmt: (v: number) => string,
+    onInput: (v: number) => void,
+  ): void {
+    const row = document.createElement('div');
+    row.className = 'bw-row bw-numrow';
+    const lo = Math.min(min, value);
+    const hi = Math.max(max, value);
+    row.innerHTML = `<div class="bw-label"><span>${escHtml(label)}</span><b>${escHtml(fmt(value))}</b></div>
+      <div class="bw-numline"><input type="range" min="${lo}" max="${hi}" step="${step}" value="${value}">
+      <input type="number" min="${lo}" max="${hi}" step="${step}" value="${value}"></div>`;
+    const range = row.querySelector<HTMLInputElement>('input[type="range"]')!;
+    const number = row.querySelector<HTMLInputElement>('input[type="number"]')!;
+    const out = row.querySelector('b')!;
+    const integral = step >= 1 && Number.isInteger(value);
+    const apply = (raw: number, source: HTMLInputElement): void => {
+      if (!Number.isFinite(raw)) return;
+      const next = integral ? Math.round(raw) : raw;
+      onInput(next);
+      out.textContent = fmt(next);
+      if (source !== range) range.value = String(next);
+      if (source !== number) number.value = String(next);
+    };
+    range.addEventListener('input', () => apply(Number(range.value), range));
+    number.addEventListener('change', () => apply(Number(number.value), number));
+    host.appendChild(row);
+  }
+
+  private worldSeedRow(host: HTMLElement): void {
+    const row = document.createElement('div');
+    row.className = 'bw-field bw-seed';
+    row.innerHTML = `<span>seed</span><input type="number" min="0" max="4294967295" step="1"><button type="button">REROLL</button>`;
+    const input = row.querySelector<HTMLInputElement>('input')!;
+    const reroll = row.querySelector<HTMLButtonElement>('button')!;
+    input.value = String(this.ctx.state.worldSeed >>> 0);
+    input.addEventListener('change', () => {
+      const next = Number(input.value);
+      if (Number.isFinite(next)) this.ctx.state.worldSeed = next >>> 0;
+      input.value = String(this.ctx.state.worldSeed >>> 0);
+    });
+    reroll.addEventListener('click', () => {
+      this.ctx.state.worldSeed = randomSeed();
+      input.value = String(this.ctx.state.worldSeed >>> 0);
+    });
+    host.appendChild(row);
+  }
+
   private buildWorldPanel(): void {
     const host = this.el<HTMLDivElement>('bw-controls');
     host.innerHTML = '';
+    const levels = this.levelEntries();
+    if (!this.worldgenLevelId) this.worldgenLevelId = this.levelIdForBiome(this.doc.biome);
+    const levelSection = this.worldSection(host, 'TARGET');
+    this.selectRow(
+      levelSection,
+      'level',
+      this.worldgenLevelId ?? 'custom',
+      [
+        ...levels.map((level) => ({
+          value: level.id,
+          label: `${level.branch ? 'BR' : `D${level.depth}`} ${level.name}`,
+        })),
+        { value: 'custom', label: 'CUSTOM DOCUMENT' },
+      ],
+      (levelId) => {
+        this.worldgenLevelId = levelId === 'custom' ? null : levelId;
+        const level = levelId === 'custom' ? null : LEVELS[levelId];
+        if (level) {
+          this.doc.biome = level.biome;
+          this.ctx.state.currentBiome = level.biome;
+          this.el<HTMLSelectElement>('b-biome').value = level.biome;
+        }
+        this.buildWorldPanel();
+      },
+    );
+    this.selectRow(
+      levelSection,
+      'biome',
+      this.doc.biome,
+      BIOME_IDS.map((id) => ({ value: id, label: BIOME_DEFS[id].name })),
+      (biome) => {
+        this.doc.biome = biome;
+        this.ctx.state.currentBiome = biome;
+        this.worldgenLevelId = this.levelIdForBiome(biome);
+        this.el<HTMLSelectElement>('b-biome').value = biome;
+        this.buildWorldPanel();
+      },
+    );
+    this.worldSeedRow(levelSection);
+    this.worldActionRow(levelSection, [
+      { label: 'GENERATE', title: 'Regenerate with the current seed', run: () => void this.generateConfiguredWorld(false) },
+      { label: 'ROLL + GENERATE', title: 'Reroll seed, then regenerate', run: () => void this.generateConfiguredWorld(true) },
+      { label: 'CAPTURE', title: 'Capture live terrain into this Builder document', run: () => this.captureTerrain() },
+      { label: 'CLEAR', title: 'Clear the live terrain', run: () => void this.guardedWorldGen('clear') },
+    ]);
+
+    const gen = GEN[this.doc.biome] ?? GEN.earthen;
+    const skeletonSection = this.worldSection(host, 'SKELETON');
+    this.selectRow(
+      skeletonSection,
+      'kind',
+      gen.skeleton.kind,
+      SKELETON_KINDS.map((kind) => ({ value: kind, label: this.humanizeParamKey(kind) })),
+      (kind) => {
+        gen.skeleton = defaultSkeletonSpec(kind);
+        this.buildWorldPanel();
+      },
+    );
+    this.editableTree(skeletonSection, gen.skeleton.params, 'params', (next) => {
+      gen.skeleton.params = next as SkeletonSpec['params'];
+    });
+
+    const decoration = this.worldSection(host, 'DECORATION');
+    this.editableTree(decoration, gen.goldPockets, 'goldPockets', (next) => {
+      gen.goldPockets = Number(next);
+    });
+    this.editableTree(decoration, gen.goldTriesCap, 'goldTriesCap', (next) => {
+      gen.goldTriesCap = Number(next);
+    });
+    this.editableTree(decoration, gen.seedPockets, 'seedPockets', (next) => {
+      gen.seedPockets = Number(next);
+    });
+    this.editableTree(decoration, gen.prefabs, 'prefabs', (next) => {
+      gen.prefabs = next as typeof gen.prefabs;
+    });
+    this.editableTree(decoration, gen.machines, 'machines', (next) => {
+      gen.machines = next as typeof gen.machines;
+    });
+
+    const biomeSection = this.worldSection(host, 'BIOME SURFACE');
+    this.editBiomeControls(biomeSection, this.doc.biome);
+
+    const backdropSection = this.worldSection(host, 'BACKDROP GRADE');
+    this.editBackdropGradeControls(backdropSection);
+    this.worldActionRow(backdropSection, [
+      { label: 'OPEN BACKDROP', title: 'Open the visual parallax editor', run: () => this.openBackdropPreview() },
+    ]);
+
+    const simSection = this.worldSection(host, 'LIVE SIM');
     const g = this.ctx.params.global;
-    this.sliderRow(host, 'Simulation Speed', g.simSpeed, 0, 2, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
+    this.sliderRow(simSection, 'Simulation Speed', g.simSpeed, 0, 2, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
       g.simSpeed = v;
     });
-    this.sliderRow(host, 'Max Brightness', g.maxBrightness, 1, 10, 0.5, (v) => v.toFixed(1), (v) => {
+    this.sliderRow(simSection, 'Max Brightness', g.maxBrightness, 1, 10, 0.5, (v) => v.toFixed(1), (v) => {
       g.maxBrightness = v;
     });
-    this.sliderRow(host, 'Ambient Light', g.ambient, 0.02, 0.5, 0.02, (v) => v.toFixed(2), (v) => {
+    this.sliderRow(simSection, 'Ambient Light', g.ambient, 0.02, 0.5, 0.02, (v) => v.toFixed(2), (v) => {
       g.ambient = v;
     });
-    this.sliderRow(host, 'Brush Radius', this.ctx.state.brushSize, 1, 24, 1, (v) => v + 'px', (v) => {
+    this.sliderRow(simSection, 'Brush Radius', this.ctx.state.brushSize, 1, 24, 1, (v) => v + 'px', (v) => {
       this.ctx.state.brushSize = v;
     });
+  }
+
+  private buildGlobalPanel(): void {
+    const host = this.el<HTMLDivElement>('bg-controls');
+    host.innerHTML = '';
+    const g = this.ctx.params.global;
+    const simSection = this.worldSection(host, 'SIMULATION');
+    this.sliderRow(simSection, 'Simulation Speed', g.simSpeed, 0, 2, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
+      g.simSpeed = v;
+    });
+    this.sliderRow(simSection, 'Max Brightness', g.maxBrightness, 1, 10, 0.5, (v) => v.toFixed(1), (v) => {
+      g.maxBrightness = v;
+    });
+    this.sliderRow(simSection, 'Ambient Light', g.ambient, 0.02, 0.5, 0.02, (v) => v.toFixed(2), (v) => {
+      g.ambient = v;
+    });
+    this.sliderRow(simSection, 'Brush Radius', this.ctx.state.brushSize, 1, 24, 1, (v) => v + 'px', (v) => {
+      this.ctx.state.brushSize = v;
+      this.el<HTMLInputElement>('bp-brush').value = String(v);
+      this.el('bp-brush-val').textContent = String(v);
+    });
+
+    const previewSection = this.worldSection(host, 'WAND PREVIEW');
+    this.checkboxRow(previewSection, 'Cursor Wand Light', this.wandLightPreviewOn, (value) => {
+      this.wandLightPreviewOn = value;
+      this.syncWandLightPreview();
+      this.syncWandLightPreviewButton();
+    });
+    const wand = this.ctx.state.wandLight;
+    const wandSection = this.worldSection(host, 'WAND LIGHT');
+    this.numberRow(wandSection, 'Intensity', wand.intensity, 0, 10, 0.05, (v) => v.toFixed(2), (v) => {
+      wand.intensity = v;
+    });
+    this.numberRow(wandSection, 'Radius', wand.radius, 16, 240, 1, (v) => Math.round(v) + 'px', (v) => {
+      wand.radius = Math.max(1, v);
+    });
+    this.numberRow(wandSection, 'Red', wand.r, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
+      wand.r = v;
+    });
+    this.numberRow(wandSection, 'Green', wand.g, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
+      wand.g = v;
+    });
+    this.numberRow(wandSection, 'Blue', wand.b, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
+      wand.b = v;
+    });
+    this.numberRow(wandSection, 'Flicker', wand.flicker, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => {
+      wand.flicker = v;
+    });
+    this.numberRow(wandSection, 'Player Fill R', wand.fillR, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
+      wand.fillR = v;
+    });
+    this.numberRow(wandSection, 'Player Fill G', wand.fillG, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
+      wand.fillG = v;
+    });
+    this.numberRow(wandSection, 'Player Fill B', wand.fillB, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
+      wand.fillB = v;
+    });
+
+    const torchSection = this.worldSection(host, 'TORCH WAND');
+    this.numberRow(torchSection, 'Intensity', wand.torchIntensity, 0, 14, 0.05, (v) => v.toFixed(2), (v) => {
+      wand.torchIntensity = v;
+    });
+    this.numberRow(torchSection, 'Radius', wand.torchRadius, 16, 320, 1, (v) => Math.round(v) + 'px', (v) => {
+      wand.torchRadius = Math.max(1, v);
+    });
+    this.numberRow(torchSection, 'Min Flicker', wand.torchMinFlicker, 0.5, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
+      wand.torchMinFlicker = v;
+    });
+    this.worldActionRow(torchSection, [
+      {
+        label: 'RESET WAND',
+        title: 'Restore the current shipped wand-light values',
+        run: () => {
+          Object.assign(this.ctx.state.wandLight, createDefaultWandLightSettings());
+          this.buildGlobalPanel();
+          this.status('WAND LIGHT RESET');
+        },
+      },
+    ]);
+  }
+
+  private buildPostProcessingPanel(): void {
+    const host = this.el<HTMLDivElement>('bf-controls');
+    host.innerHTML = '';
+    const post = this.ctx.state.postFx;
+    const section = this.worldSection(host, 'COMPOSITION');
+    this.checkboxRow(section, 'Post FX', post.enabled, (value) => {
+      post.enabled = value;
+    });
+    this.checkboxRow(section, 'GPU Compose', post.gpuCompose, (value) => {
+      post.gpuCompose = value;
+      this.syncGpuComposeButton();
+    });
+    this.numberRow(section, 'Exposure', post.exposure, 0.5, 1.8, 0.05, (v) => v.toFixed(2), (v) => {
+      post.exposure = v;
+    });
+
+    const bloom = this.worldSection(host, 'BLOOM');
+    this.checkboxRow(bloom, 'Bloom', post.bloomEnabled, (value) => {
+      post.bloomEnabled = value;
+    });
+    this.numberRow(bloom, 'Strength', post.bloomStrength, 0, 3, 0.05, (v) => v.toFixed(2), (v) => {
+      post.bloomStrength = v;
+    });
+    this.numberRow(bloom, 'Radius', post.bloomRadius, 0, 1, 0.01, (v) => v.toFixed(2), (v) => {
+      post.bloomRadius = v;
+    });
+    this.numberRow(bloom, 'Threshold', post.bloomThreshold, 0, 2, 0.05, (v) => v.toFixed(2), (v) => {
+      post.bloomThreshold = v;
+    });
+    this.numberRow(bloom, 'Bloom Kick', post.bloomKickScale, 0, 3, 0.05, (v) => v.toFixed(2) + 'x', (v) => {
+      post.bloomKickScale = v;
+    });
+
+    const lens = this.worldSection(host, 'LENS');
+    this.checkboxRow(lens, 'Lens Layer', post.lensEnabled, (value) => {
+      post.lensEnabled = value;
+    });
+    this.numberRow(lens, 'Base Split', post.aberration, 0, 0.004, 0.0001, (v) => v.toFixed(4), (v) => {
+      post.aberration = v;
+    });
+    this.numberRow(lens, 'Blast Split', post.aberrationKick, 0, 0.02, 0.0005, (v) => v.toFixed(4), (v) => {
+      post.aberrationKick = v;
+    });
+    this.numberRow(lens, 'Shake Split', post.shakeAberration, 0, 0.15, 0.005, (v) => v.toFixed(3), (v) => {
+      post.shakeAberration = v;
+    });
+    this.numberRow(lens, 'Film Grain', post.grain, 0, 0.12, 0.002, (v) => v.toFixed(3), (v) => {
+      post.grain = v;
+    });
+    this.numberRow(lens, 'Hurt Pulse', post.hurtPulse, 0, 2, 0.05, (v) => v.toFixed(2) + 'x', (v) => {
+      post.hurtPulse = v;
+    });
+    this.worldActionRow(lens, [
+      {
+        label: 'RESET POST FX',
+        title: 'Restore default post-processing settings',
+        run: () => {
+          Object.assign(post, createDefaultPostFxSettings());
+          this.syncGpuComposeButton();
+          this.buildPostProcessingPanel();
+          this.status('POST FX RESET');
+        },
+      },
+    ]);
+  }
+
+  private editBiomeControls(host: HTMLElement, biomeId: BiomeId): void {
+    const biome = BIOME_DEFS[biomeId];
+    this.textRow(host, 'name', biome.name, (value) => {
+      biome.name = value.trim() || biome.name;
+      this.buildWorldPanel();
+    });
+    this.selectRow(
+      host,
+      'crown',
+      biome.crown,
+      [
+        { value: 'moss', label: 'moss' },
+        { value: 'frost', label: 'frost' },
+        { value: 'ember', label: 'ember' },
+      ],
+      (value) => {
+        biome.crown = value;
+      },
+    );
+    this.editableTree(host, biome.bands, 'bands', (next) => {
+      biome.bands = next as typeof biome.bands;
+    });
+    for (const key of ['flowerChance', 'pools', 'seedsOilBias', 'beams', 'fires', 'flood', 'iceClusters'] as const) {
+      this.editableTree(host, biome[key], key, (next) => {
+        biome[key] = Number(next);
+      });
+    }
+  }
+
+  private editBackdropGradeControls(host: HTMLElement): void {
+    const settings = this.ensureDocBackdrop();
+    const grade = settings.grade;
+    const update = (mutate: (grade: typeof settings.grade) => void): void => {
+      const backdrop = this.ensureDocBackdrop();
+      mutate(backdrop.grade);
+      this.ctx.params.backdrop = backdrop;
+      this.backdropDirty = true;
+    };
+    this.numberRow(host, 'Exposure', grade.exposure, -3, 2, 0.01, (v) => v.toFixed(2), (v) => {
+      update((live) => {
+        live.exposure = clampBackdropExposure(v);
+      });
+    });
+    this.numberRow(host, 'Brightness', grade.brightness, -0.5, 0.5, 0.005, (v) => v.toFixed(3), (v) => {
+      update((live) => {
+        live.brightness = clampBackdropBrightness(v);
+      });
+    });
+    this.numberRow(host, 'Contrast', grade.contrast, 0.25, 2.5, 0.01, (v) => v.toFixed(2), (v) => {
+      update((live) => {
+        live.contrast = clampBackdropContrast(v);
+      });
+    });
+    this.numberRow(host, 'Gamma', grade.gamma, 0.35, 3, 0.01, (v) => v.toFixed(2), (v) => {
+      update((live) => {
+        live.gamma = clampBackdropGamma(v);
+      });
+    });
+    this.numberRow(host, 'Saturation', grade.saturation, 0, 2.5, 0.01, (v) => v.toFixed(2), (v) => {
+      update((live) => {
+        live.saturation = clampBackdropSaturation(v);
+      });
+    });
+  }
+
+  private editableTree(host: HTMLElement, value: unknown, label: string, onSet: (next: unknown) => void, depth = 0): void {
+    if (typeof value === 'number') {
+      const spec = this.inferNumberSpec(label, value);
+      this.numberRow(host, this.humanizeParamKey(label), value, spec.min, spec.max, spec.step, spec.fmt, onSet);
+      return;
+    }
+    if (typeof value === 'string') {
+      if (label === 'kind') {
+        this.selectRow(
+          host,
+          this.humanizeParamKey(label),
+          value,
+          [
+            { value: 'abs', label: 'abs' },
+            { value: 'hfrac', label: 'hfrac' },
+            { value: 'floorOff', label: 'floorOff' },
+          ],
+          onSet,
+        );
+      } else {
+        this.textRow(host, this.humanizeParamKey(label), value, onSet);
+      }
+      return;
+    }
+    if (typeof value === 'boolean') {
+      this.checkboxRow(host, this.humanizeParamKey(label), value, onSet);
+      return;
+    }
+    if (Array.isArray(value)) {
+      if (value.every((item) => typeof item === 'number')) {
+        value.forEach((item, index) => {
+          this.editableTree(host, item, `${label} ${index + 1}`, (next) => {
+            value[index] = Number(next);
+            onSet(value);
+          }, depth);
+        });
+        return;
+      }
+      if (value.every((item) => typeof item === 'string')) {
+        this.textRow(host, this.humanizeParamKey(label), value.join(', '), (next) => {
+          onSet(next.split(',').map((item) => item.trim()).filter(Boolean));
+        });
+        return;
+      }
+      value.forEach((item, index) => {
+        this.editableGroup(host, `${label} ${index + 1}`, item, (next) => {
+          value[index] = next;
+          onSet(value);
+        }, depth);
+      });
+      return;
+    }
+    if (value && typeof value === 'object') {
+      this.editableGroup(host, label, value, onSet, depth);
+    }
+  }
+
+  private editableGroup(host: HTMLElement, label: string, value: unknown, onSet: (next: unknown) => void, depth: number): void {
+    const details = document.createElement('details');
+    details.className = 'bw-group';
+    details.open = depth < 2;
+    const summary = document.createElement('summary');
+    summary.textContent = this.humanizeParamKey(label);
+    details.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'bw-group-body';
+    const record = value as Record<string, unknown>;
+    for (const [key, child] of Object.entries(record)) {
+      if (typeof child === 'function') continue;
+      this.editableTree(body, child, key, (next) => {
+        record[key] = next;
+        onSet(record);
+      }, depth + 1);
+    }
+    details.appendChild(body);
+    host.appendChild(details);
+  }
+
+  private inferNumberSpec(
+    key: string,
+    value: number,
+  ): { min: number; max: number; step: number; fmt: (v: number) => string } {
+    const lower = key.toLowerCase();
+    if (lower.includes('chance') || lower.includes('density') || lower.includes('frac') || lower === 'flood' || lower === 'threshold') {
+      return { min: 0, max: 1, step: 0.01, fmt: (v) => v.toFixed(2) };
+    }
+    if (lower.includes('freq') || lower === 'scalex' || lower === 'scaley') {
+      return { min: 0, max: Math.max(0.1, value * 3), step: 0.0005, fmt: (v) => v.toFixed(4) };
+    }
+    if (lower.includes('triescap')) return { min: 0, max: 60000, step: 100, fmt: (v) => String(Math.round(v)) };
+    if (Number.isInteger(value)) {
+      const max = Math.max(10, value * 2 + 20);
+      return { min: 0, max, step: 1, fmt: (v) => String(Math.round(v)) };
+    }
+    const span = Math.max(1, Math.abs(value) * 2);
+    return { min: Math.min(0, value - span), max: value + span, step: 0.05, fmt: (v) => v.toFixed(2) };
+  }
+
+  private humanizeParamKey(key: string): string {
+    return key
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/[-_]/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   /** MATERIAL window: tuning sliders for the armed material (same live
@@ -4295,6 +5054,8 @@ export class Builder {
     });
 
     this.el('bp-light-toggle').addEventListener('click', () => this.runUiCommand('builder.lightPreviewToggle'));
+    this.el('bp-wand-light-toggle').addEventListener('click', () => this.runUiCommand('builder.wandLightPreviewToggle'));
+    this.el('bp-wand-params-btn').addEventListener('click', () => this.runUiCommand('builder.globalControlsPanel'));
 
     this.el<HTMLInputElement>('bp-brush').addEventListener('input', () => {
       const v = Number(this.el<HTMLInputElement>('bp-brush').value);
@@ -4375,6 +5136,9 @@ export class Builder {
     this.el('bp-overlay-btn').addEventListener('click', () => this.runUiCommand('builder.overlayCycle'));
     this.el('bp-snap-btn').addEventListener('click', () => this.runUiCommand('builder.snapCycle'));
     this.el('bp-sym-btn').addEventListener('click', () => this.runUiCommand('builder.symmetryCycle'));
+    this.el('bp-assets-btn').addEventListener('click', () => this.runUiCommand('builder.assetsPanel'));
+    this.el('bp-outliner-btn').addEventListener('click', () => this.runUiCommand('builder.outlinerPanel'));
+    this.el('bp-link-graph-btn').addEventListener('click', () => this.runUiCommand('builder.linkGraphPanel'));
 
     this.el('b-share').addEventListener('click', () => this.runUiCommand('builder.share'));
     this.el('b-code').addEventListener('click', () => this.runUiCommand('builder.importCode'));
@@ -4426,6 +5190,7 @@ export class Builder {
 
   private refreshPrefabs(): void {
     this.prefabPanel.refresh(this.prefabs, this.armedPrefab?.id ?? null, [...builtinPrefabs()]);
+    this.syncAssetPanels();
   }
 
   private async capturePrefabFromRegion(): Promise<void> {
@@ -4510,6 +5275,7 @@ export class Builder {
       `PASTED "${p.name.toUpperCase()}"` +
         (mirrored > 0 ? ` +${mirrored} MIRRORED (TERRAIN ONLY — OBJECTS NOT DUPLICATED)` : ''),
     );
+    this.syncAssetPanels();
   }
 
   /* ---------------- PNG / JSON interchange ---------------- */
@@ -4729,6 +5495,7 @@ export class Builder {
 
   private refreshSprites(): void {
     this.spritePanel.refresh(this.sprites, this.armedSprite?.id ?? null);
+    this.syncAssetPanels();
   }
 
   private registerSprite(asset: SpriteAsset): void {
@@ -4911,22 +5678,34 @@ export class Builder {
     for (const row of this.root.querySelectorAll<HTMLDivElement>('.bp-layer')) {
       const family = row.dataset.layer as LayerFamily;
       row.querySelector('[data-vis]')?.addEventListener('click', () => {
-        if (this.layerHidden.has(family)) this.layerHidden.delete(family);
-        else this.layerHidden.add(family);
-        this.syncLayers();
-        this.pruneSelection();
-        this.syncMarkers();
-        this.renderInspector();
+        this.runUiCommand(`builder.layer.${family}.visibility`);
       });
       row.querySelector('[data-lock]')?.addEventListener('click', () => {
-        if (this.layerLocked.has(family)) this.layerLocked.delete(family);
-        else this.layerLocked.add(family);
-        this.syncLayers();
-        this.pruneSelection();
-        this.syncMarkers();
-        this.renderInspector();
+        this.runUiCommand(`builder.layer.${family}.lock`);
       });
     }
+  }
+
+  private toggleLayerVisibility(family: LayerFamily): void {
+    if (this.layerHidden.has(family)) this.layerHidden.delete(family);
+    else this.layerHidden.add(family);
+    this.afterLayerStateChanged(`${layerLabel(family).toUpperCase()} LAYER ${this.layerHidden.has(family) ? 'HIDDEN' : 'VISIBLE'}`);
+  }
+
+  private toggleLayerLock(family: LayerFamily): void {
+    if (this.layerLocked.has(family)) this.layerLocked.delete(family);
+    else this.layerLocked.add(family);
+    this.afterLayerStateChanged(`${layerLabel(family).toUpperCase()} LAYER ${this.layerLocked.has(family) ? 'LOCKED' : 'UNLOCKED'}`);
+  }
+
+  private afterLayerStateChanged(message: string): void {
+    this.persistLayerStateToWorkspace();
+    this.syncLayers();
+    this.pruneSelection();
+    this.syncMarkers();
+    this.renderInspector();
+    this.saveWorkspacePrefs();
+    this.status(message);
   }
 
   private syncLayers(): void {
@@ -4935,6 +5714,27 @@ export class Builder {
       row.classList.toggle('off', this.layerHidden.has(family));
       row.classList.toggle('locked', this.layerLocked.has(family));
     }
+  }
+
+  private restoreLayerStateFromWorkspace(): void {
+    this.layerHidden.clear();
+    this.layerLocked.clear();
+    for (const family of LAYER_FAMILIES) {
+      const state = this.workspaceLayout.layerState[family];
+      if (state?.hidden) this.layerHidden.add(family);
+      if (state?.locked) this.layerLocked.add(family);
+    }
+  }
+
+  private persistLayerStateToWorkspace(): void {
+    const layerState: WorkspaceLayout['layerState'] = {};
+    for (const family of LAYER_FAMILIES) {
+      layerState[family] = {
+        hidden: this.layerHidden.has(family),
+        locked: this.layerLocked.has(family),
+      };
+    }
+    this.workspaceLayout.layerState = layerState;
   }
 
   /** Drop selection members that just became unselectable (layer hide/lock). */
@@ -5304,6 +6104,32 @@ export class Builder {
     this.lightPreviewOn = !this.lightPreviewOn;
     this.el('bp-light-toggle').textContent = `PREVIEW LIGHTS: ${this.lightPreviewOn ? 'ON' : 'OFF'}`;
     this.status(`LIGHT PREVIEW ${this.lightPreviewOn ? 'ON' : 'OFF'}`);
+  }
+
+  private toggleWandLightPreview(): void {
+    this.wandLightPreviewOn = !this.wandLightPreviewOn;
+    this.syncWandLightPreview();
+    this.syncWandLightPreviewButton();
+    this.status(`WAND CURSOR LIGHT ${this.wandLightPreviewOn ? 'ON' : 'OFF'}`);
+  }
+
+  private syncWandLightPreview(): void {
+    const preview = this.ctx.state.builderWandLightPreview;
+    preview.enabled = this.isOpen && this.wandLightPreviewOn;
+    if (!preview.enabled) return;
+    if (this.lastMouseClient) this.lastMouse = this.clientToWorld(this.lastMouseClient.x, this.lastMouseClient.y);
+    preview.x = this.lastMouse.x;
+    preview.y = this.lastMouse.y;
+  }
+
+  private syncWandLightPreviewButton(): void {
+    const btn = this.el<HTMLButtonElement>('bp-wand-light-toggle');
+    btn.textContent = `WAND LIGHT: ${this.wandLightPreviewOn ? 'ON' : 'OFF'}`;
+    btn.classList.toggle('active', this.wandLightPreviewOn);
+  }
+
+  private syncGpuComposeButton(): void {
+    document.getElementById('gpu-compose-toggle')?.classList.toggle('lit', this.ctx.state.postFx.gpuCompose);
   }
 
   private cycleOverlay(): void {
@@ -5676,6 +6502,7 @@ export class Builder {
     this.syncWorkspaceFrame();
     const rect = this.overlay.getBoundingClientRect();
     if (rect.width === 0) return;
+    this.syncWandLightPreview();
 
     // active material + brush readout (the tools depend on Sandbox state)
     const state = this.ctx.state;
@@ -6241,11 +7068,13 @@ export class Builder {
       }
       this.wireMultiSelectionInspector(panel);
       panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
+      this.syncNavigationPanels();
       return;
     }
     const light = this.selectedLight();
     if (light) {
       this.renderLightInspector(panel, light);
+      this.syncNavigationPanels();
       return;
     }
     const obj = this.selected();
@@ -6253,6 +7082,7 @@ export class Builder {
       panel.innerHTML = renderInspectorItems(documentInspectorSchema(this.doc, this.cmds.depth));
       this.refreshPanelDragHandles(panel);
       this.wireDocumentInspector(panel);
+      this.syncNavigationPanels();
       return;
     }
 
@@ -6295,6 +7125,7 @@ export class Builder {
       flag.addEventListener('change', () => {
         this.cmds.run(setObjectFlagCmd(obj, flag.dataset.f as 'locked' | 'hidden', flag.checked));
         this.syncMarkers();
+        this.syncNavigationPanels();
       });
     }
     panel.querySelector('#bi-patrol')?.addEventListener('click', () => {
@@ -6358,6 +7189,7 @@ export class Builder {
     }
     if (obj.kind === 'decor') this.wireDecorSpriteExtras(panel, obj);
     panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
+    this.syncNavigationPanels();
   }
 
   private wireDocumentInspector(panel: HTMLDivElement): void {
@@ -6550,7 +7382,10 @@ export class Builder {
           value = parsed.value;
         }
         this.cmds.run(editLightCmd(light, { [key]: value } as Partial<EditorLight>));
-        if (key === 'hidden' || key === 'locked') this.syncMarkers();
+        if (key === 'hidden' || key === 'locked') {
+          this.syncMarkers();
+          this.syncNavigationPanels();
+        }
       });
     }
     panel.querySelector('#bi-solo')?.addEventListener('click', () => {
@@ -6577,10 +7412,526 @@ export class Builder {
     panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
   }
 
+  private renderOutliner(): void {
+    const panel = this.el<HTMLDivElement>('builder-outliner');
+    const model = buildOutlinerModel({
+      doc: this.doc,
+      issues: this.lastIssues,
+      selectedIds: this.selectedIds,
+      sprites: this.sprites,
+      documentSprites: this.doc.assets?.sprites ?? [],
+      prefabs: this.prefabs,
+      query: this.outlinerQuery,
+      filters: this.outlinerFilters,
+      layers: this.outlinerLayerStates(),
+    });
+    panel.innerHTML = renderOutlinerPanel(model);
+    this.refreshPanelDragHandles(panel);
+    panel.querySelector('#bo-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-outliner'));
+    panel.querySelector<HTMLInputElement>('#bo-search')?.addEventListener('input', (event) => {
+      this.outlinerQuery = (event.target as HTMLInputElement).value;
+      this.renderOutliner();
+      this.el<HTMLInputElement>('bo-search')?.focus({ preventScroll: true });
+    });
+    for (const chip of panel.querySelectorAll<HTMLButtonElement>('button[data-outliner-filter]')) {
+      chip.addEventListener('click', () => {
+        const filter = chip.dataset.outlinerFilter as OutlinerFilter;
+        if (this.outlinerFilters.has(filter)) this.outlinerFilters.delete(filter);
+        else this.outlinerFilters.add(filter);
+        this.renderOutliner();
+      });
+    }
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-layer-vis]')) {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.runUiCommand(`builder.layer.${button.dataset.layerVis}.visibility`);
+      });
+    }
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-layer-lock]')) {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.runUiCommand(`builder.layer.${button.dataset.layerLock}.lock`);
+      });
+    }
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-row-toggle]')) {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.toggleOutlinerRecordFlag(
+          button.dataset.rowKind as 'object' | 'light',
+          button.dataset.rowId ?? '',
+          button.dataset.rowToggle as 'hidden' | 'locked',
+        );
+      });
+    }
+    this.wireSelectAndFrameRows(panel);
+  }
+
+  private renderLinkGraph(): void {
+    const panel = this.el<HTMLDivElement>('builder-link-graph');
+    const model = buildLinkGraphModel({
+      doc: this.doc,
+      issues: this.lastIssues,
+      selectedIds: this.selectedIds,
+      query: this.linkGraphQuery,
+    });
+    panel.innerHTML = renderLinkGraphPanel(model);
+    this.refreshPanelDragHandles(panel);
+    panel.querySelector('#blg-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-link-graph'));
+    panel.querySelector<HTMLInputElement>('#blg-search')?.addEventListener('input', (event) => {
+      this.linkGraphQuery = (event.target as HTMLInputElement).value;
+      this.renderLinkGraph();
+      this.el<HTMLInputElement>('blg-search')?.focus({ preventScroll: true });
+    });
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-unlink]')) {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const link = this.doc.links.find((item) => item.id === button.dataset.unlink);
+        if (!link) return;
+        this.cmds.run(deleteLinkCmd(link));
+        this.status('UNLINKED');
+        this.renderInspector();
+        this.syncMarkers();
+      });
+    }
+    this.wireSelectAndFrameRows(panel);
+  }
+
+  private createAssetDatabase(): AssetDatabase {
+    return buildAssetDatabase({
+      currentDocument: this.doc,
+      documents: loadDocLibrary(),
+      prefabs: this.prefabs,
+      builtinPrefabs: builtinPrefabs(),
+      sprites: this.sprites,
+      embeddedSprites: this.doc.assets?.sprites ?? [],
+      importReports: this.assetStore.listImportReports(),
+      materials: this.ctx.params.materials,
+      procPresets: PASSES.map((pass) => ({ id: pass.id, label: pass.label, usesMaterial: pass.usesMaterial })),
+      lightPresets: Object.entries(LIGHT_PRESETS).map(([id, preset]) => ({
+        id,
+        label: id.replace(/-/g, ' '),
+        color: preset.color,
+        radius: preset.radius,
+      })),
+      backdropProfiles: [
+        { id: 'global', label: 'Global Backdrop', builtIn: true },
+        ...Object.values(LEVELS).map((level) => ({ id: level.id, label: level.name, builtIn: true })),
+      ],
+    });
+  }
+
+  private renderAssetBrowser(): void {
+    const panel = this.el<HTMLDivElement>('builder-assets');
+    const previousSourceScroll = this.pendingAssetBrowserSourceScroll ?? panel.querySelector<HTMLElement>('.ba-sources')?.scrollTop ?? 0;
+    const previousListScroll = this.pendingAssetBrowserListScroll ?? panel.querySelector<HTMLElement>('#ba-list')?.scrollTop ?? 0;
+    this.pendingAssetBrowserSourceScroll = null;
+    this.pendingAssetBrowserListScroll = null;
+    const database = this.createAssetDatabase();
+    const records = database.query({
+      text: this.assetQuery,
+      kinds: this.assetKindFilters.size > 0 ? [...this.assetKindFilters] : undefined,
+      origins: this.assetOriginFilters.size > 0 ? [...this.assetOriginFilters] : undefined,
+      collection: this.assetCollection,
+      sort: this.assetSort,
+    });
+    if (this.assetSelectedId && !database.get(this.assetSelectedId)) this.assetSelectedId = null;
+    panel.innerHTML = renderAssetBrowserPanel({
+      query: this.assetQuery,
+      view: this.assetView,
+      sort: this.assetSort,
+      collection: this.assetCollection,
+      kindFilters: this.assetKindFilters,
+      originFilters: this.assetOriginFilters,
+      records,
+      selectedId: this.assetSelectedId,
+      stats: database.stats(),
+      collapsedSections: this.workspaceLayout.collapsedSections,
+    });
+    this.refreshPanelDragHandles(panel);
+    this.wireCollapsibleSections(panel);
+    this.paintAssetPreviews(panel, database);
+    const restoreScroll = (): void => {
+      panel.querySelector<HTMLElement>('.ba-sources')?.scrollTo({ top: previousSourceScroll });
+      panel.querySelector<HTMLElement>('#ba-list')?.scrollTo({ top: previousListScroll });
+    };
+    restoreScroll();
+    queueMicrotask(restoreScroll);
+    requestAnimationFrame(() => {
+      restoreScroll();
+      requestAnimationFrame(restoreScroll);
+    });
+    window.setTimeout(restoreScroll, 0);
+    window.setTimeout(restoreScroll, 80);
+    panel.querySelector('#ba-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-assets'));
+    panel.querySelector('#ba-import')?.addEventListener('click', () => this.runUiCommand('builder.assetImport'));
+    panel.querySelector('#ba-view')?.addEventListener('click', () => {
+      this.assetView = this.assetView === 'grid' ? 'list' : 'grid';
+      this.renderAssetBrowser();
+    });
+    panel.querySelector<HTMLSelectElement>('#ba-sort')?.addEventListener('change', (event) => {
+      this.assetSort = (event.target as HTMLSelectElement).value as AssetSortMode;
+      this.renderAssetBrowser();
+    });
+    panel.querySelector<HTMLInputElement>('#ba-search')?.addEventListener('input', (event) => {
+      this.assetQuery = (event.target as HTMLInputElement).value;
+      this.renderAssetBrowser();
+      this.el<HTMLInputElement>('ba-search')?.focus({ preventScroll: true });
+    });
+    for (const tab of panel.querySelectorAll<HTMLButtonElement>('button[data-asset-tab]')) {
+      tab.addEventListener('click', () => {
+        const next = tab.dataset.assetTab;
+        if (next === 'imports') this.assetCollection = 'imported';
+        else if (next === 'current') this.assetCollection = 'usedByCurrentDocument';
+        else this.assetCollection = 'all';
+        this.renderAssetBrowser();
+      });
+    }
+    for (const chip of panel.querySelectorAll<HTMLElement>('[data-asset-collection]')) {
+      const activate = (): void => {
+        this.assetCollection = chip.dataset.assetCollection as AssetSmartCollection;
+        this.renderAssetBrowser();
+      };
+      chip.addEventListener('click', activate);
+      chip.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        activate();
+      });
+    }
+    for (const chip of panel.querySelectorAll<HTMLElement>('[data-asset-kind-filter]')) {
+      const activate = (): void => {
+        const kind = chip.dataset.assetKindFilter as AssetKind;
+        if (this.assetKindFilters.has(kind)) this.assetKindFilters.delete(kind);
+        else this.assetKindFilters.add(kind);
+        this.renderAssetBrowser();
+      };
+      chip.addEventListener('click', activate);
+      chip.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        activate();
+      });
+    }
+    for (const chip of panel.querySelectorAll<HTMLElement>('[data-asset-origin-filter]')) {
+      const activate = (): void => {
+        const origin = chip.dataset.assetOriginFilter as AssetOrigin;
+        if (this.assetOriginFilters.has(origin)) this.assetOriginFilters.delete(origin);
+        else this.assetOriginFilters.add(origin);
+        this.renderAssetBrowser();
+      };
+      chip.addEventListener('click', activate);
+      chip.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        activate();
+      });
+    }
+    for (const row of panel.querySelectorAll<HTMLElement>('.ba-card[data-asset-id], .ba-row[data-asset-id]')) {
+      row.addEventListener('click', () => {
+        const assetId = row.dataset.assetId;
+        if (!assetId) return;
+        this.capturePendingAssetBrowserScroll(panel);
+        this.assetSelectedId = assetId;
+        this.setWorkspacePanelOpen('builder-asset-details', true);
+        this.el<HTMLDivElement>('builder-asset-details').style.display = '';
+        this.applyWorkspaceLayout();
+        this.renderAssetBrowser();
+        this.renderAssetDetails();
+        this.saveWorkspacePrefs();
+      });
+      row.addEventListener('dragstart', (event) => {
+        const assetId = row.dataset.assetId;
+        if (!assetId || !event.dataTransfer) return;
+        event.dataTransfer.effectAllowed = 'copy';
+        event.dataTransfer.setData('application/x-noita-asset-id', assetId);
+      });
+    }
+  }
+
+  private capturePendingAssetBrowserScroll(panel = this.el<HTMLDivElement>('builder-assets')): void {
+    this.pendingAssetBrowserSourceScroll = panel.querySelector<HTMLElement>('.ba-sources')?.scrollTop ?? 0;
+    this.pendingAssetBrowserListScroll = panel.querySelector<HTMLElement>('#ba-list')?.scrollTop ?? 0;
+  }
+
+  private renderAssetDetails(): void {
+    const panel = this.el<HTMLDivElement>('builder-asset-details');
+    const database = this.createAssetDatabase();
+    const asset = this.assetSelectedId ? database.get(this.assetSelectedId) : null;
+    panel.innerHTML = renderAssetDetailPanel({
+      asset,
+      deletePlan: asset ? database.deletePlan(asset.assetId) : undefined,
+    });
+    this.refreshPanelDragHandles(panel);
+    this.paintAssetPreviews(panel, database);
+    panel.querySelector('#bad-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-asset-details'));
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-asset-action]')) {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const assetId = button.dataset.assetId;
+        if (!assetId) return;
+        void this.runAssetAction(button.dataset.assetAction ?? '', assetId);
+      });
+    }
+    for (const usage of panel.querySelectorAll<HTMLButtonElement>('button[data-reveal-usage]')) {
+      usage.addEventListener('click', () => {
+        const sourceId = usage.dataset.revealUsage;
+        const source = sourceId ? database.get(sourceId) : null;
+        if (!source) return;
+        this.assetSelectedId = source.assetId;
+        this.renderAssetDetails();
+        this.status(`USAGE: ${source.name.toUpperCase()}`);
+      });
+    }
+  }
+
+  private paintAssetPreviews(panel: HTMLElement, database: AssetDatabase): void {
+    for (const canvas of panel.querySelectorAll<HTMLCanvasElement>('canvas[data-asset-id]')) {
+      const asset = database.get(canvas.dataset.assetId ?? '');
+      if (asset) paintAssetPreview(canvas, asset);
+    }
+  }
+
+  private syncAssetPanels(): void {
+    if (this.isWorkspacePanelOpen('builder-assets')) this.renderAssetBrowser();
+    if (this.isWorkspacePanelOpen('builder-asset-details')) this.renderAssetDetails();
+  }
+
+  private refreshAssetLibraries(): void {
+    this.prefabs = loadPrefabs();
+    this.sprites = loadSprites();
+    if (this.armedPrefab && !this.prefabs.some((prefab) => prefab.id === this.armedPrefab?.id)) this.armedPrefab = null;
+    if (this.armedSprite && !this.sprites.some((sprite) => sprite.id === this.armedSprite?.id)) this.armedSprite = null;
+    this.spriteFrameCache.clear();
+    this.refreshPrefabs();
+    this.refreshSprites();
+    this.refreshDocSelect();
+    this.syncAssetPanels();
+  }
+
+  private async importAssetJsonFiles(): Promise<void> {
+    const files = await pickFiles('.json', true);
+    if (files.length === 0) return;
+    let imported = 0;
+    for (const file of files) {
+      const result = importJsonAsset(
+        { fileName: file.name, text: await file.text() },
+        this.assetStore,
+        this.createAssetDatabase(),
+      );
+      if (result.ok && result.report.decision !== 'duplicate') imported++;
+      this.status(result.message, !result.ok || result.report.warnings.length > 0);
+    }
+    this.refreshAssetLibraries();
+    if (imported > 0) this.assetCollection = 'recent';
+  }
+
+  private async runAssetAction(action: string, assetId: string): Promise<void> {
+    const database = this.createAssetDatabase();
+    const record = database.get(assetId);
+    if (!record) {
+      this.status('ASSET NOT FOUND', true);
+      return;
+    }
+    if (record.source.storage === 'document' && action !== 'export') {
+      this.status('CURRENT DOCUMENT ASSET ACTIONS USE BUILDER DOCUMENT COMMANDS', true);
+      this.renderAssetDetails();
+      return;
+    }
+    if (action === 'rename') {
+      const name = await appDialog.prompt(`Rename "${record.name}" without changing its stable id:`, record.name, {
+        title: 'Rename Asset',
+        confirmText: 'Rename',
+      });
+      if (name === null) return;
+      const result = this.assetStore.rename(record, name);
+      this.status(result.message, !result.ok);
+      if (result.ok) this.refreshAssetLibraries();
+      return;
+    }
+    if (action === 'duplicate') {
+      const result = this.assetStore.duplicate(record);
+      this.status(result.message, !result.ok);
+      if (result.ok) this.refreshAssetLibraries();
+      return;
+    }
+    if (action === 'export') {
+      if (record.kind === 'document' && isDocumentAsset(record.payload)) {
+        const sourceDoc = record.source.storage === 'document' ? this.doc : record.payload;
+        const doc = structuredClone(sourceDoc);
+        embedSprites(doc, this.sprites);
+        downloadJson(doc, `${doc.name || 'level'}.builder.json`);
+        this.status('EXPORTED DOCUMENT WITH REFERENCED PORTABLE ASSETS');
+        return;
+      }
+      const exported = this.assetStore.export(record);
+      if (!exported) {
+        this.status(`${record.kind.toUpperCase()} EXPORT IS NOT AVAILABLE`, true);
+        return;
+      }
+      downloadText(exported.text, exported.filename, exported.mime);
+      this.status(`EXPORTED ${record.name.toUpperCase()}`);
+      return;
+    }
+    if (action === 'delete') {
+      const plan = database.deletePlan(record.assetId);
+      if (!plan.allowed) {
+        this.status(plan.reasons.join(' | ').toUpperCase(), true);
+        this.renderAssetDetails();
+        return;
+      }
+      if (
+        !(await appDialog.confirm(`Delete "${record.name}"?`, {
+          title: 'Delete Asset',
+          confirmText: 'Delete',
+          tone: 'danger',
+        }))
+      )
+        return;
+      const result = this.assetStore.delete(record);
+      this.status(result.message, !result.ok);
+      if (result.ok) {
+        this.assetSelectedId = null;
+        this.refreshAssetLibraries();
+      }
+    }
+  }
+
+  private placeAssetDrop(assetId: string, event: DragEvent): void {
+    const record = this.createAssetDatabase().get(assetId);
+    if (!record) return;
+    const pos = this.mouseToWorld(event);
+    if (record.kind === 'prefab' && isPrefabAsset(record.payload)) {
+      this.pastePrefabAt(structuredClone(record.payload), pos.x, pos.y);
+      return;
+    }
+    if (record.kind === 'sprite' && isSpriteAsset(record.payload)) {
+      this.placeSpriteAsset(record.payload, pos.x, pos.y);
+    }
+  }
+
+  private draggedAssetId(event: DragEvent): string | null {
+    const transfer = event.dataTransfer;
+    if (!transfer) return null;
+    const types = [...transfer.types];
+    if (!types.includes('application/x-noita-asset-id')) return null;
+    return transfer.getData('application/x-noita-asset-id') || (event.type === 'dragover' ? 'pending' : null);
+  }
+
+  private placeSpriteAsset(sprite: SpriteAsset, x: number, y: number): void {
+    const obj: EditorObject = {
+      id: freshId('decor'),
+      kind: 'decor',
+      x: this.snap(x),
+      y: this.snap(y),
+      rotation: 0,
+      locked: false,
+      hidden: false,
+      params: {
+        spriteId: sprite.id,
+        loopTag: sprite.tags[0]?.name ?? '',
+        fps: 0,
+        flipX: false,
+      },
+    };
+    this.cmds.run(addObjectCmd(obj));
+    this.select(obj.id);
+    this.status('PLACED ANIMATED DECOR FROM ASSET BROWSER');
+    this.syncAssetPanels();
+  }
+
+  private wireSelectAndFrameRows(panel: HTMLElement): void {
+    for (const row of panel.querySelectorAll<HTMLElement>('[data-select-id]')) {
+      row.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('button, input, textarea, select, label, [contenteditable="true"]')) return;
+        const id = row.dataset.selectId;
+        if (id) this.select(id);
+      });
+      row.addEventListener('dblclick', (event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('button, input, textarea, select, label, [contenteditable="true"]')) return;
+        const id = row.dataset.frameId || row.dataset.selectId;
+        if (id) {
+          this.select(id);
+          this.frameSelection();
+        }
+      });
+    }
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-select-id]')) {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const id = button.dataset.selectId;
+        if (id) this.select(id);
+      });
+    }
+  }
+
+  private toggleOutlinerRecordFlag(kind: 'object' | 'light', id: string, flag: 'hidden' | 'locked'): void {
+    if (kind === 'object') {
+      const object = this.doc.objects.find((item) => item.id === id);
+      if (!object) return;
+      this.cmds.run(setObjectFlagCmd(object, flag, !object[flag]));
+      this.status(`${flag.toUpperCase()} ${object.kind.toUpperCase()}: ${object[flag] ? 'ON' : 'OFF'}`);
+    } else {
+      const light = this.doc.lights.find((item) => item.id === id);
+      if (!light) return;
+      this.cmds.run(editLightCmd(light, { [flag]: !light[flag] } as Partial<EditorLight>));
+      this.status(`${flag.toUpperCase()} LIGHT: ${light[flag] ? 'ON' : 'OFF'}`);
+    }
+    this.syncMarkers();
+    this.renderInspector();
+  }
+
+  private outlinerLayerStates(): OutlinerLayerState[] {
+    const objects = this.doc.objects;
+    return [
+      {
+        id: 'gameplay',
+        label: 'Gameplay',
+        hidden: this.layerHidden.has('gameplay'),
+        locked: this.layerLocked.has('gameplay'),
+        count: objects.filter((object) => familyOf(object) === 'gameplay').length,
+      },
+      {
+        id: 'mech',
+        label: 'Mechanisms',
+        hidden: this.layerHidden.has('mech'),
+        locked: this.layerLocked.has('mech'),
+        count: objects.filter((object) => familyOf(object) === 'mech').length,
+      },
+      {
+        id: 'links',
+        label: 'Links',
+        hidden: this.layerHidden.has('links'),
+        locked: this.layerLocked.has('links'),
+        count: this.doc.links.length,
+      },
+      {
+        id: 'lights',
+        label: 'Lights',
+        hidden: this.layerHidden.has('lights'),
+        locked: this.layerLocked.has('lights'),
+        count: this.doc.lights.length,
+      },
+    ];
+  }
+
+  private syncNavigationPanels(): void {
+    if (this.isWorkspacePanelOpen('builder-outliner')) this.renderOutliner();
+    if (this.isWorkspacePanelOpen('builder-link-graph')) this.renderLinkGraph();
+    if (this.isWorkspacePanelOpen('builder-assets')) this.renderAssetBrowser();
+    if (this.isWorkspacePanelOpen('builder-asset-details')) this.renderAssetDetails();
+  }
+
+  private isWorkspacePanelOpen(id: string): boolean {
+    return this.workspaceLayout.panels.some((panel) => panel.id === id && panel.open);
+  }
+
   /* ===================== issues / status / sync ===================== */
 
   private renderIssues(issues: DocIssue[]): void {
     this.lastIssues = [...issues];
+    this.syncNavigationPanels();
     const panel = this.el<HTMLDivElement>('builder-issues');
     if (issues.length === 0) {
       panel.style.display = 'none';
@@ -6633,13 +7984,29 @@ export class Builder {
     const select = this.el<HTMLSelectElement>('b-doc-select');
     const lib = loadDocLibrary();
     select.innerHTML = '';
-    for (const [id, d] of Object.entries(lib)) {
+    const entries = Object.entries(lib).sort((a, b) => a[1].name.localeCompare(b[1].name));
+    const currentSaved = lib[this.doc.id];
+    const addOption = (id: string, label: string): void => {
       const opt = document.createElement('option');
       opt.value = id;
-      opt.textContent = d.name;
+      opt.textContent = label;
       select.appendChild(opt);
-    }
-    select.disabled = select.options.length === 0;
+    };
+    if (!currentSaved) addOption(this.doc.id, `${this.doc.name || 'untitled'} *`);
+    for (const [id, d] of entries) addOption(id, id === this.doc.id ? this.doc.name || d.name : d.name);
+    select.value = this.doc.id;
+    select.disabled = false;
+  }
+
+  private levelEntries(): LevelDef[] {
+    return Object.values(LEVELS).sort((a, b) => {
+      if (a.branch !== b.branch) return a.branch ? 1 : -1;
+      return a.depth - b.depth;
+    });
+  }
+
+  private levelIdForBiome(biome: BiomeId): string | null {
+    return this.levelEntries().find((level) => level.biome === biome)?.id ?? null;
   }
 
   private syncAll(): void {
@@ -6649,6 +8016,8 @@ export class Builder {
     this.el('b-bake').style.display = this.playtestScars ? '' : 'none';
     this.syncMarkers();
     this.syncPalette();
+    this.syncWandLightPreviewButton();
+    this.syncGpuComposeButton();
     this.renderInspector();
     this.syncWorkspacePanelContent();
   }
@@ -6656,7 +8025,13 @@ export class Builder {
   private syncWorkspacePanelContent(): void {
     const open = (id: string): boolean => this.workspaceLayout.panels.some((panel) => panel.id === id && panel.open);
     if (open('builder-world')) this.buildWorldPanel();
+    if (open('builder-global')) this.buildGlobalPanel();
+    if (open('builder-postfx')) this.buildPostProcessingPanel();
     if (open('builder-matparams')) this.buildMatPanel();
+    if (open('builder-outliner')) this.renderOutliner();
+    if (open('builder-link-graph')) this.renderLinkGraph();
+    if (open('builder-assets')) this.renderAssetBrowser();
+    if (open('builder-asset-details')) this.renderAssetDetails();
     this.syncProcPanel();
   }
 }
@@ -6664,4 +8039,20 @@ export class Builder {
 /** Minimal HTML escape for text interpolated into Builder-owned markup. */
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function cssString(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\a ');
+}
+
+function isPrefabAsset(value: unknown): value is PrefabDef {
+  return !!value && typeof value === 'object' && (value as PrefabDef).kind === 'prefab';
+}
+
+function isSpriteAsset(value: unknown): value is SpriteAsset {
+  return !!value && typeof value === 'object' && (value as SpriteAsset).kind === 'sprite';
+}
+
+function isDocumentAsset(value: unknown): value is EditorDocument {
+  return !!value && typeof value === 'object' && (value as EditorDocument).v === 2;
 }

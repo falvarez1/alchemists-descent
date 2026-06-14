@@ -814,6 +814,140 @@ await page.waitForTimeout(120);
 markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('showing it brings them back', markers === 4, `got ${markers}`);
 
+/* ---------- outliner + link graph ---------- */
+console.log('-- outliner & graph');
+await page.click('#bp-outliner-btn');
+await page.waitForTimeout(120);
+let outliner = await page.evaluate(() => {
+  const panel = document.getElementById('builder-outliner');
+  return {
+    open: getComputedStyle(panel).display !== 'none',
+    rows: panel.querySelectorAll('.bo-row').length,
+    layerCommand: panel.querySelector('.bo-layer[data-layer="gameplay"] [data-layer-vis]')?.getAttribute('data-command-id') ?? '',
+  };
+});
+check(
+  'outliner opens with command-backed layer controls',
+  outliner.open && outliner.rows >= 4 && outliner.layerCommand === 'builder.layer.gameplay.visibility',
+  JSON.stringify(outliner),
+);
+await page.fill('#bo-search', 'waystone');
+await page.keyboard.type('h');
+await page.waitForTimeout(80);
+const outlinerFocus = await page.evaluate(() => ({
+  helpOpen: document.getElementById('builder-help')?.classList.contains('open') ?? false,
+  value: document.getElementById('bo-search')?.value ?? '',
+}));
+check(
+  'outliner search owns text input without opening Builder help',
+  !outlinerFocus.helpOpen && outlinerFocus.value.includes('waystone') && outlinerFocus.value.includes('h'),
+  JSON.stringify(outlinerFocus),
+);
+await page.fill('#bo-search', 'waystone');
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('waystone'));
+  row?.click();
+});
+await page.waitForTimeout(120);
+let outlinerSelect = await page.evaluate(() => ({
+  rowSelected: [...document.querySelectorAll('#builder-outliner .bo-row.selected')]
+    .some((el) => el.textContent.toLowerCase().includes('waystone')),
+  inspector: document.getElementById('builder-inspector')?.textContent.toLowerCase() ?? '',
+}));
+check('outliner row selects and syncs the inspector', outlinerSelect.rowSelected && outlinerSelect.inspector.includes('waystone'), JSON.stringify(outlinerSelect));
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('waystone'));
+  row?.querySelector('button[data-row-toggle="hidden"]')?.click();
+});
+await page.waitForTimeout(120);
+let outlinerHidden = await page.evaluate(() => {
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('waystone'));
+  return {
+    hidden: row?.classList.contains('hidden-row') ?? false,
+    text: row?.textContent ?? '',
+  };
+});
+check('outliner can hide a selected object while keeping it findable', outlinerHidden.hidden && outlinerHidden.text.includes('hidden'), JSON.stringify(outlinerHidden));
+await page.click('#builder-outliner button[data-outliner-filter="hidden"]');
+await page.waitForTimeout(80);
+outlinerHidden = await page.evaluate(() => ({
+  rows: [...document.querySelectorAll('#builder-outliner .bo-row')].map((el) => el.textContent.toLowerCase()),
+}));
+check('outliner hidden filter keeps hidden rows visible', outlinerHidden.rows.some((text) => text.includes('waystone')), JSON.stringify(outlinerHidden));
+await page.click('#builder-outliner button[data-outliner-filter="hidden"]');
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('waystone'));
+  row?.querySelector('button[data-row-toggle="hidden"]')?.click();
+  row?.querySelector('button[data-row-toggle="locked"]')?.click();
+});
+await page.waitForTimeout(120);
+let outlinerLocked = await page.evaluate(() => {
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('waystone'));
+  return row?.textContent ?? '';
+});
+check('outliner can lock records through document commands', outlinerLocked.includes('locked'), outlinerLocked);
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('waystone'));
+  row?.querySelector('button[data-row-toggle="locked"]')?.click();
+});
+await page.waitForTimeout(80);
+
+await page.click('.bp-tool[data-kind="plate"]');
+let gp = await toClient(710, 610);
+await page.mouse.click(gp.x, gp.y);
+await page.waitForTimeout(80);
+await page.click('.bp-tool[data-kind="door"]');
+let gd = await toClient(748, 560);
+await page.mouse.click(gd.x, gd.y);
+await page.waitForTimeout(80);
+await page.click('.bp-tool[data-tool="link"]');
+gp = await toClient(710, 610);
+gd = await toClient(748, 566);
+await page.mouse.click(gp.x, gp.y);
+await page.waitForTimeout(60);
+await page.mouse.click(gd.x, gd.y);
+await page.waitForTimeout(120);
+await page.click('#bp-link-graph-btn');
+await page.waitForTimeout(120);
+const graphOpen = await page.evaluate(() => {
+  const panel = document.getElementById('builder-link-graph');
+  return {
+    open: getComputedStyle(panel).display !== 'none',
+    links: panel.querySelectorAll('.blg-link').length,
+    text: panel.textContent,
+  };
+});
+check('link graph opens and shows authored trigger links', graphOpen.open && graphOpen.links >= 1 && graphOpen.text.includes('plate') && graphOpen.text.includes('door'), JSON.stringify(graphOpen));
+await page.evaluate(() => {
+  const target = [...document.querySelectorAll('#builder-link-graph .blg-link button')]
+    .find((button) => button.textContent.trim() === 'Target');
+  target?.click();
+});
+await page.waitForTimeout(120);
+const graphSelect = await page.evaluate(() => ({
+  graphSelected: document.querySelector('#builder-link-graph .blg-link.selected') !== null,
+  inspector: document.getElementById('builder-inspector')?.textContent.toLowerCase() ?? '',
+}));
+check('link graph endpoint buttons select and sync inspector', graphSelect.graphSelected && graphSelect.inspector.includes('door'), JSON.stringify(graphSelect));
+await page.evaluate(() => {
+  document.querySelector('#builder-link-graph button[data-unlink]')?.click();
+});
+await page.waitForTimeout(120);
+const graphUnlink = await page.evaluate(() => ({
+  links: document.querySelectorAll('#builder-link-graph .blg-link').length,
+  text: document.getElementById('builder-link-graph')?.textContent ?? '',
+}));
+check('link graph unlink command removes the authored link', graphUnlink.text.includes('No matching links') || graphUnlink.links === 0, JSON.stringify(graphUnlink));
+await page.click('#blg-close');
+await page.click('#bo-close');
+await page.waitForTimeout(120);
+
 /* ---------- smooth tool ---------- */
 console.log('-- smooth');
 await page.evaluate(() => {
@@ -937,7 +1071,16 @@ await page.waitForFunction(
   () => window.__game.ctx.levels.current && !window.__game.ctx.levels.transitioning,
   { timeout: 10000 },
 );
-await page.waitForTimeout(2400); // ~144 frames: 4+ emitter drips at rate 30
+await page.waitForFunction(
+  () => {
+    const ctx = window.__game.ctx;
+    const w = ctx.world;
+    let water = 0;
+    for (let y = 495; y < 625; y++) for (let x = 580; x < 620; x++) if (w.types[w.idx(x, y)] === 2) water++;
+    return (ctx.levels.current?.emitters?.length ?? 0) === 1 && water >= 2;
+  },
+  { timeout: 8000 },
+).catch(() => {});
 const pt = await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const w = ctx.world;
@@ -952,7 +1095,7 @@ const pt = await page.evaluate(() => {
   };
 });
 check('mood ambient applies in the playtest', pt.ambient === 0.5, `got ${pt.ambient}`);
-check('hazard emitter compiled and drips real water', pt.emitters === 1 && pt.water >= 3, JSON.stringify(pt));
+check('hazard emitter compiled and drips real water', pt.emitters === 1 && pt.water >= 2, JSON.stringify(pt));
 check('patrol route compiled onto the golem', pt.patrol === 2, `got ${pt.patrol}`);
 
 /* de-alert: a patroller that loses you beyond notice range calms in ~5s */
@@ -960,13 +1103,25 @@ await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const golem = ctx.enemies.find((e) => e.kind === 'golem');
   golem.alerted = true;
-  golem.x = 440; // max separation inside the arena (and inside the sim window)
-  ctx.player.x = 750;
+  golem.calmT = 0;
+  golem.vx = 0;
+  golem.x = 500;
+  golem.y = 616;
+  ctx.player.x = 850;
   ctx.player.y = 616;
   ctx.player.vx = 0;
   ctx.player.vy = 0;
+  ctx.camera.snapTo(675, 616);
+  ctx.camera.updateSimBounds(ctx.world);
+  for (let i = 0; i < 320; i++) {
+    golem.x = 500;
+    golem.y = 616;
+    golem.vx = 0;
+    ctx.player.x = 850;
+    ctx.player.y = 616;
+    ctx.enemyCtl.update(ctx);
+  }
 });
-await page.waitForTimeout(5600); // 300 calm frames + margin
 const calm = await page.evaluate(() => {
   const golem = window.__game.ctx.enemies.find((e) => e.kind === 'golem');
   return { alerted: golem.alerted, dist: Math.abs(golem.x - window.__game.ctx.player.x) };

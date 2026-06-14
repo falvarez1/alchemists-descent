@@ -44,7 +44,7 @@
         <div><h1>Purple Llama Studio <span class="title-sub">| Alchemist's Descent</span></h1></div>
         <div class="hud-wrapper">
             <button class="sound-btn" id="dev-console-toggle" title="Developer console (`)">CONSOLE</button>
-            <button class="sound-btn" id="gpu-compose-toggle" title="GPU frame composition: A/B the terrain shader live (also in the Post Processing panel)">GPU FX</button>
+            <button class="sound-btn" id="gpu-compose-toggle" title="GPU frame composition: A/B the terrain shader live (full controls are in the Builder Post Processing panel)">GPU FX</button>
             <button class="sound-btn" id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">PERF</button>
             <button class="sound-btn" id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">FULLSCREEN PLAY</button>
             <div class="mode-switch">
@@ -256,67 +256,6 @@
                     <div class="control-label-wrapper"><label>Brush Radius</label><span id="brush-value" class="val-display">6px</span></div>
                     <input type="range" id="brush-size" min="1" max="24" value="6">
                 </div>
-            </div>
-
-            <div class="section-title">Post Processing</div>
-            <div class="control-panel-group post-fx-panel">
-                <label class="toggle-control" for="post-enabled">
-                    <span>Post FX</span>
-                    <input type="checkbox" id="post-enabled" checked>
-                </label>
-                <label class="toggle-control" for="post-gpu-compose">
-                    <span>GPU Compose</span>
-                    <input type="checkbox" id="post-gpu-compose">
-                </label>
-                <label class="toggle-control" for="post-bloom-enabled">
-                    <span>Bloom</span>
-                    <input type="checkbox" id="post-bloom-enabled" checked>
-                </label>
-                <div>
-                    <div class="control-label-wrapper"><label>Exposure</label><span id="post-exposure-value" class="val-display">1.05</span></div>
-                    <input type="range" id="post-exposure" min="0.5" max="1.8" step="0.05" value="1.05">
-                </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Bloom Strength</label><span id="post-bloom-strength-value" class="val-display">0.35</span></div>
-                    <input type="range" id="post-bloom-strength" min="0" max="3" step="0.05" value="0.35">
-                </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Bloom Radius</label><span id="post-bloom-radius-value" class="val-display">0.20</span></div>
-                    <input type="range" id="post-bloom-radius" min="0" max="1" step="0.01" value="0.20">
-                </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Bloom Threshold</label><span id="post-bloom-threshold-value" class="val-display">0.85</span></div>
-                    <input type="range" id="post-bloom-threshold" min="0" max="2" step="0.05" value="0.85">
-                </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Bloom Kick</label><span id="post-bloom-kick-value" class="val-display">1.00x</span></div>
-                    <input type="range" id="post-bloom-kick" min="0" max="3" step="0.05" value="1.0">
-                </div>
-                <label class="toggle-control" for="post-lens-enabled">
-                    <span>Lens Layer</span>
-                    <input type="checkbox" id="post-lens-enabled" checked>
-                </label>
-                <div>
-                    <div class="control-label-wrapper"><label>Base Split</label><span id="post-aberration-value" class="val-display">0.0005</span></div>
-                    <input type="range" id="post-aberration" min="0" max="0.004" step="0.0001" value="0.0005">
-                </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Blast Split</label><span id="post-aberration-kick-value" class="val-display">0.0060</span></div>
-                    <input type="range" id="post-aberration-kick" min="0" max="0.02" step="0.0005" value="0.006">
-                </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Shake Split</label><span id="post-shake-aberration-value" class="val-display">0.050</span></div>
-                    <input type="range" id="post-shake-aberration" min="0" max="0.15" step="0.005" value="0.05">
-                </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Film Grain</label><span id="post-grain-value" class="val-display">0.028</span></div>
-                    <input type="range" id="post-grain" min="0" max="0.12" step="0.002" value="0.028">
-                </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Hurt Pulse</label><span id="post-hurt-pulse-value" class="val-display">1.00x</span></div>
-                    <input type="range" id="post-hurt-pulse" min="0" max="2" step="0.05" value="1.0">
-                </div>
-                <button type="button" class="post-reset-btn" id="post-reset">RESET POST FX</button>
             </div>
 
             <div class="section-title" id="context-inspector-header">Context Parameters</div>

@@ -80,6 +80,13 @@ const placeAt = async (kind, wx, wy) => {
   await page.keyboard.press('Escape');
 };
 
+const acceptAppPrompt = async (value) => {
+  await page.waitForSelector('.app-dialog-root .app-dialog-input', { timeout: 5000 });
+  await page.fill('.app-dialog-root .app-dialog-input', value);
+  await page.click('.app-dialog-root .app-dialog-btn.primary');
+  await page.waitForSelector('.app-dialog-root', { state: 'detached', timeout: 5000 });
+};
+
 /* ---------- author a wired room inside the arena ---------- */
 console.log('-- capture (objects + link + light travel with the prefab)');
 await placeAt('lever', 520, 612);
@@ -116,20 +123,23 @@ await page.mouse.down();
 await page.mouse.move(rb.x, rb.y, { steps: 3 });
 await page.mouse.up();
 await page.waitForTimeout(120);
-nextPromptAnswer = 'gate room #arena #mech';
 await page.click('#bp-prefab-capture');
+await acceptAppPrompt('gate room #arena #mech');
 await page.waitForTimeout(200);
 
 const card = await page.evaluate(() => {
-  const c = document.querySelector('.bp-prefab-card');
+  const c = [...document.querySelectorAll('.bp-prefab-card')]
+    .find((el) => el.textContent.toLowerCase().includes('gate room'));
   return c ? { meta: c.querySelector('.bp-prefab-meta')?.textContent, tags: c.querySelector('.bp-prefab-tagline')?.textContent } : null;
 });
 check('prefab card appears with object badge', !!card && /3 obj/.test(card.meta ?? ''), JSON.stringify(card));
 check('tags parsed from #words', !!card && /#arena/.test(card.tags ?? ''), JSON.stringify(card));
 
 const stored = await page.evaluate(() => {
-  const key = Object.keys(localStorage).find((k) => k.startsWith('noita-builder-prefab:'));
-  return key ? JSON.parse(localStorage.getItem(key)) : null;
+  return Object.keys(localStorage)
+    .filter((k) => k.startsWith('noita-builder-prefab:'))
+    .map((key) => JSON.parse(localStorage.getItem(key)))
+    .find((prefab) => String(prefab?.name ?? '').toLowerCase().includes('gate room')) ?? null;
 });
 check('stored prefab carries objects+links+lights', !!stored && stored.objects.length === 3 && stored.links.length === 1 && stored.lights.length === 1,
   stored ? `obj ${stored.objects.length} links ${stored.links.length} lights ${stored.lights.length}` : 'missing');
@@ -142,7 +152,12 @@ const before = await page.evaluate(() => {
   // count via markers; the doc object counts equal marker counts here
   return { markers: document.querySelectorAll('.b-marker').length, types: null };
 });
-await page.click('.bp-prefab-card');
+await page.evaluate(() => {
+  const card = [...document.querySelectorAll('.bp-prefab-card')]
+    .find((el) => el.textContent.toLowerCase().includes('gate room'));
+  card?.scrollIntoView({ block: 'center' });
+  card?.click();
+});
 await page.waitForTimeout(100);
 pt = await toClient(600, 500);
 await page.mouse.click(pt.x, pt.y);

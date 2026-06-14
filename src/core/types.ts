@@ -444,6 +444,33 @@ export interface PostFxSettings {
   exposure: number;
 }
 
+export interface WandLightSettings {
+  /** Shadow-casting wand-tip strength before flicker is applied. */
+  intensity: number;
+  /** Normal wand-tip reach in world cells. */
+  radius: number;
+  /** Shadow-casting channel multipliers. */
+  r: number;
+  g: number;
+  b: number;
+  /** Random flicker amount around 1.0; 0 keeps the light steady. */
+  flicker: number;
+  /** Faint non-raycast player fill, kept separate to preserve the current look. */
+  fillR: number;
+  fillG: number;
+  fillB: number;
+  /** Torchbearer / torch tonic override values. */
+  torchIntensity: number;
+  torchRadius: number;
+  torchMinFlicker: number;
+}
+
+export interface BuilderWandLightPreview {
+  enabled: boolean;
+  x: number;
+  y: number;
+}
+
 export type BackdropLayerId = 'back' | 'second' | 'third' | 'fourth' | 'front';
 
 export interface BackdropLayerSettings {
@@ -459,8 +486,20 @@ export interface BackdropLayerSettings {
   visible: boolean;
 }
 
+export interface BackdropGradeSettings {
+  /** Stops relative to exported PNG color; negative darkens, positive brightens. */
+  exposure: number;
+  /** Additive brightness in normalized RGB space. */
+  brightness: number;
+  contrast: number;
+  /** Display gamma; 1 = authored PNG values. */
+  gamma: number;
+  saturation: number;
+}
+
 export interface BackdropProfile {
   layers: Record<BackdropLayerId, BackdropLayerSettings>;
+  grade: BackdropGradeSettings;
 }
 
 export interface BackdropLevelProfile extends BackdropProfile {
@@ -533,12 +572,16 @@ export interface GameStateData {
   /** Transient QA mode enabled by the debug console key; never autosaved. */
   debugGodMode: boolean;
   postFx: PostFxSettings;
+  /** Runtime-tunable wand light defaults shared by Play and Builder preview. */
+  wandLight: WandLightSettings;
   /**
    * Builder light preview: authored lights seeded into the live light field
    * while the editor is open (null outside the Builder). Lighting.build
    * reads this in build mode so mood authoring doesn't need a playtest.
    */
   editorLights: AuthoredLight[] | null;
+  /** Builder-only cursor light preview that uses the same raycast path as the player wand. */
+  builderWandLightPreview: BuilderWandLightPreview;
   /** Transient source for disposable playtest runtimes. Null for normal Play/Sandbox. */
   playtestSource: 'builder' | null;
 }

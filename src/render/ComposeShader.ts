@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { DataUtils } from 'three';
 
-import { resolveBackdropLayersForRuntime } from '@/config/backdrop';
+import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import type { Ctx, MaterialParams } from '@/core/types';
 import type {
@@ -101,6 +101,8 @@ uniform vec2 uBackdropOff1;
 uniform vec2 uBackdropOff2;
 uniform vec2 uBackdropOff3;
 uniform vec2 uBackdropOff4;
+uniform vec4 uBackdropGrade; // exposure, brightness, contrast, inverse gamma
+uniform float uBackdropSaturation;
 uniform float uAmbient;
 uniform float uBoost;      // maxBrightness
 uniform int uGlintFrame;   // frameCount % 97 (crystal glint is integer math)
@@ -138,6 +140,13 @@ void overBackdrop(inout vec3 c, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offs
   vec4 s = texture(tex, p);
   float a = clamp(s.a * cfg.y, 0.0, 1.0);
   c = mix(c, s.rgb, a);
+}
+
+vec3 gradeBackdrop(vec3 c) {
+  c = (c * exp2(uBackdropGrade.x) + uBackdropGrade.y - 0.5) * uBackdropGrade.z + 0.5;
+  float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = mix(vec3(luma), c, uBackdropSaturation);
+  return pow(clamp(c, vec3(0.0), vec3(1.0)), vec3(uBackdropGrade.w));
 }
 
 void main() {
@@ -219,6 +228,7 @@ void main() {
       overBackdrop(bg, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, vx, vy);
       overBackdrop(bg, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, vx, vy);
       overBackdrop(bg, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, vx, vy);
+      bg = gradeBackdrop(bg);
       float depthShade = 0.78 + 0.22 * (1.0 - float(wy) / ${HEIGHT.toFixed(1)});
       float r = bg.r * depthShade;
       float g = bg.g * depthShade;
@@ -493,6 +503,8 @@ export class GpuCompose {
         uBackdropOff2: { value: new THREE.Vector2() },
         uBackdropOff3: { value: new THREE.Vector2() },
         uBackdropOff4: { value: new THREE.Vector2() },
+        uBackdropGrade: { value: new THREE.Vector4(0, 0, 1, 1) },
+        uBackdropSaturation: { value: 1 },
         uAmbient: { value: 0 },
         uBoost: { value: 1 },
         uGlintFrame: { value: 0 },
@@ -602,7 +614,15 @@ export class GpuCompose {
 
   private updateBackdropUniforms(ctx: Ctx): void {
     const u = this.material.uniforms;
-    const settings = resolveBackdropLayersForRuntime(ctx.params.backdrop, ctx.levels.current);
+    const profile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
+    const settings = profile.layers;
+    (u.uBackdropGrade.value as THREE.Vector4).set(
+      profile.grade.exposure,
+      profile.grade.brightness,
+      profile.grade.contrast,
+      1 / profile.grade.gamma,
+    );
+    u.uBackdropSaturation.value = profile.grade.saturation;
     for (let i = 0; i < 5; i++) {
       const layer = this.layers.backdropLayers[i];
       const cfg = u[`uBackdropCfg${i}`].value as THREE.Vector4;

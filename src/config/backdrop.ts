@@ -1,4 +1,5 @@
 import type {
+  BackdropGradeSettings,
   BackdropLayerId,
   BackdropLayerSettings,
   BackdropLevelProfile,
@@ -17,6 +18,14 @@ export interface BackdropLayerSpec {
 }
 
 export const BACKDROP_SETTINGS_KEY = 'noita-backdrop-settings';
+
+export const DEFAULT_BACKDROP_GRADE: BackdropGradeSettings = {
+  exposure: -0.35,
+  brightness: -0.015,
+  contrast: 1,
+  gamma: 1,
+  saturation: 0.95,
+};
 
 export const BACKDROP_LAYER_SPECS: readonly BackdropLayerSpec[] = [
   {
@@ -80,7 +89,7 @@ function createDefaultLayer(spec: BackdropLayerSpec): BackdropLayerSettings {
 export function createDefaultBackdropProfile(): BackdropProfile {
   const layers = {} as BackdropProfile['layers'];
   for (const spec of BACKDROP_LAYER_SPECS) layers[spec.id] = createDefaultLayer(spec);
-  return { layers };
+  return { layers, grade: { ...DEFAULT_BACKDROP_GRADE } };
 }
 
 export function cloneBackdropProfile(profile: BackdropProfile): BackdropProfile {
@@ -96,7 +105,7 @@ export function cloneBackdropProfile(profile: BackdropProfile): BackdropProfile 
       visible: layer.visible !== false,
     };
   }
-  return { layers };
+  return { layers, grade: sanitizeBackdropGrade(profile.grade) };
 }
 
 export function createDefaultBackdropSettings(): BackdropSettings {
@@ -113,31 +122,46 @@ export function cloneBackdropSettings(settings: BackdropSettings): BackdropSetti
 export function copyBackdropSettingsInto(target: BackdropSettings, source: unknown): BackdropSettings {
   const clean = sanitizeBackdropSettings(source);
   target.layers = clean.layers;
+  target.grade = clean.grade;
   target.levels = clean.levels;
   return target;
+}
+
+export function resolveBackdropProfile(
+  settings: BackdropSettings,
+  levelId?: string | null,
+): BackdropProfile {
+  const level = levelId ? settings.levels[levelId] : undefined;
+  return level?.enabled ? level : settings;
 }
 
 export function resolveBackdropLayers(
   settings: BackdropSettings,
   levelId?: string | null,
 ): Record<BackdropLayerId, BackdropLayerSettings> {
-  const level = levelId ? settings.levels[levelId] : undefined;
-  return level?.enabled ? level.layers : settings.layers;
+  return resolveBackdropProfile(settings, levelId).layers;
+}
+
+export function resolveBackdropProfileForRuntime(
+  settings: BackdropSettings,
+  runtime?: LevelRuntime | null,
+): BackdropProfile {
+  const source = runtime?.backdrop ?? settings;
+  return resolveBackdropProfile(source, runtime?.backdropLevelId ?? runtime?.def.id);
 }
 
 export function resolveBackdropLayersForRuntime(
   settings: BackdropSettings,
   runtime?: LevelRuntime | null,
 ): Record<BackdropLayerId, BackdropLayerSettings> {
-  const source = runtime?.backdrop ?? settings;
-  return resolveBackdropLayers(source, runtime?.backdropLevelId ?? runtime?.def.id);
+  return resolveBackdropProfileForRuntime(settings, runtime).layers;
 }
 
 export function setBackdropLevelOverride(settings: BackdropSettings, levelId: string, enabled: boolean): void {
   if (enabled) {
     const existing = settings.levels[levelId];
     settings.levels[levelId] = {
-      ...cloneBackdropProfile(existing?.enabled ? existing : { layers: settings.layers }),
+      ...cloneBackdropProfile(existing?.enabled ? existing : { layers: settings.layers, grade: settings.grade }),
       enabled: true,
     };
   } else {
@@ -151,6 +175,7 @@ export function sanitizeBackdropSettings(raw: unknown): BackdropSettings {
   const source = raw as Partial<BackdropSettings>;
   const globalProfile = cloneBackdropProfile({
     layers: (source.layers ?? defaults.layers) as BackdropProfile['layers'],
+    grade: source.grade ?? defaults.grade,
   });
   const levels: BackdropSettings['levels'] = {};
   if (source.levels && typeof source.levels === 'object' && !Array.isArray(source.levels)) {
@@ -159,7 +184,10 @@ export function sanitizeBackdropSettings(raw: unknown): BackdropSettings {
       const profile = value as Partial<BackdropLevelProfile>;
       if (profile.enabled !== true) continue;
       levels[levelId] = {
-        ...cloneBackdropProfile({ layers: (profile.layers ?? globalProfile.layers) as BackdropProfile['layers'] }),
+        ...cloneBackdropProfile({
+          layers: (profile.layers ?? globalProfile.layers) as BackdropProfile['layers'],
+          grade: profile.grade ?? globalProfile.grade,
+        }),
         enabled: true,
       };
     }
@@ -189,6 +217,17 @@ export function saveBackdropSettings(settings: BackdropSettings): boolean {
   }
 }
 
+export function sanitizeBackdropGrade(raw: unknown): BackdropGradeSettings {
+  const source = raw as Partial<BackdropGradeSettings> | null;
+  return {
+    exposure: clampBackdropExposure(source?.exposure ?? DEFAULT_BACKDROP_GRADE.exposure),
+    brightness: clampBackdropBrightness(source?.brightness ?? DEFAULT_BACKDROP_GRADE.brightness),
+    contrast: clampBackdropContrast(source?.contrast ?? DEFAULT_BACKDROP_GRADE.contrast),
+    gamma: clampBackdropGamma(source?.gamma ?? DEFAULT_BACKDROP_GRADE.gamma),
+    saturation: clampBackdropSaturation(source?.saturation ?? DEFAULT_BACKDROP_GRADE.saturation),
+  };
+}
+
 export function clampBackdropSpeed(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1.5, value));
@@ -207,4 +246,29 @@ export function clampBackdropOffset(value: number): number {
 export function clampBackdropScale(value: number): number {
   if (!Number.isFinite(value)) return 1;
   return Math.max(0.25, Math.min(4, value));
+}
+
+export function clampBackdropExposure(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_BACKDROP_GRADE.exposure;
+  return Math.max(-3, Math.min(2, value));
+}
+
+export function clampBackdropBrightness(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_BACKDROP_GRADE.brightness;
+  return Math.max(-0.5, Math.min(0.5, value));
+}
+
+export function clampBackdropContrast(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_BACKDROP_GRADE.contrast;
+  return Math.max(0.25, Math.min(2.5, value));
+}
+
+export function clampBackdropGamma(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_BACKDROP_GRADE.gamma;
+  return Math.max(0.35, Math.min(3, value));
+}
+
+export function clampBackdropSaturation(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_BACKDROP_GRADE.saturation;
+  return Math.max(0, Math.min(2.5, value));
 }

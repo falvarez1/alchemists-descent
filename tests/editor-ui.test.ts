@@ -17,8 +17,10 @@ import {
   multiSelectionInspectorSchema,
   objectInspectorSchema,
 } from '@/builder/inspectorSchemas';
+import { buildOutlinerModel, renderOutlinerPanel } from '@/builder/outlinerPanel';
+import { buildLinkGraphModel, renderLinkGraphPanel } from '@/builder/linkGraphPanel';
 import { createEmptyDocument } from '@/builder/document';
-import type { EditorLight, EditorObject } from '@/builder/document';
+import type { EditorLight, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
 import {
   BUILDER_WORKSPACE_KEY,
   cloneDefaultBuilderLayout,
@@ -76,6 +78,42 @@ function keyboard(code: string, init: Partial<KeyboardEventInit> = {}): Keyboard
     },
   };
   return event as unknown as KeyboardEvent;
+}
+
+function makeEditorObject(
+  kind: EditorObjectKind,
+  id: string,
+  patch: Partial<EditorObject> = {},
+): EditorObject {
+  return {
+    id,
+    kind,
+    x: 10,
+    y: 20,
+    rotation: 0,
+    locked: false,
+    hidden: false,
+    params: {},
+    ...patch,
+  };
+}
+
+function makeEditorLight(id: string, patch: Partial<EditorLight> = {}): EditorLight {
+  return {
+    id,
+    x: 30,
+    y: 40,
+    color: '#ffaa00',
+    intensity: 1,
+    radius: 32,
+    bloom: 0.2,
+    flicker: 0,
+    falloff: 'soft',
+    occluded: true,
+    locked: false,
+    hidden: false,
+    ...patch,
+  };
 }
 
 describe('editor command registry', () => {
@@ -537,6 +575,92 @@ describe('inspector schema rendering', () => {
   });
 });
 
+describe('builder outliner and link graph models', () => {
+  it('keeps hidden and locked records findable, filterable, and escaped', () => {
+    const doc = createEmptyDocument('outliner', 'earthen');
+    const plate = makeEditorObject('plate', 'plate-1', { params: { w: 5 }, group: 'grp-a' });
+    const door = makeEditorObject('door', 'door-1', { hidden: true, params: { label: '<gate>' } });
+    const decor = makeEditorObject('decor', 'decor-1', {
+      locked: true,
+      params: { spriteId: 'sprite-1', text: 'fallback' },
+    });
+    doc.objects.push(plate, door, decor);
+    doc.lights.push(makeEditorLight('light-1', { hidden: true }));
+    doc.links.push({ id: 'link-1', fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
+
+    const model = buildOutlinerModel({
+      doc,
+      selectedIds: new Set([door.id]),
+      issues: [{ severity: 'error', what: 'bad <door>', objId: door.id }],
+      sprites: [
+        {
+          v: 1,
+          kind: 'sprite',
+          id: 'sprite-1',
+          name: 'Rune Sprite',
+          w: 4,
+          h: 4,
+          frames: [{ px: '', durationMs: 100 }],
+          tags: [],
+          emissive: false,
+        },
+      ],
+      query: 'rune',
+      filters: new Set(['decor']),
+      layers: [{ id: 'gameplay', label: 'Gameplay', hidden: false, locked: false, count: 1 }],
+    });
+
+    expect(model.visibleRows.map((row) => row.id)).toEqual(['object:decor-1']);
+    expect(buildOutlinerModel({ doc, selectedIds: new Set(), issues: [], filters: ['hidden'] }).visibleRows.map((row) => row.id)).toEqual([
+      'object:door-1',
+      'light:light-1',
+      'link:link-1',
+    ]);
+    const html = renderOutlinerPanel(buildOutlinerModel({
+      doc,
+      selectedIds: new Set([door.id]),
+      issues: [{ severity: 'error', what: 'bad <door>', objId: door.id }],
+    }));
+    expect(html).toContain('data-row-toggle="hidden"');
+    expect(html).toContain('data-select-id="door-1"');
+    expect(html).not.toContain('bad <door>');
+    expect(html).toContain('bad &lt;door&gt;');
+  });
+
+  it('models live, dead, invalid, relay, and sequence graph rows from document links', () => {
+    const doc = createEmptyDocument('graph', 'earthen');
+    const plateA = makeEditorObject('plate', 'plate-a');
+    const plateB = makeEditorObject('plate', 'plate-b');
+    const hiddenLever = makeEditorObject('lever', 'lever-hidden', { hidden: true });
+    const door = makeEditorObject('door', 'door-1', { params: { logic: 'sequence' } });
+    const relay = makeEditorObject('relay', 'relay-1', { params: { logic: 'and' } });
+    const badTarget = makeEditorObject('pickup', 'pickup-1');
+    doc.objects.push(plateA, plateB, hiddenLever, door, relay, badTarget);
+    const links: EditorLink[] = [
+      { id: 'link-b', fromId: plateB.id, toId: door.id, kind: 'triggerDoor', logic: 'and' },
+      { id: 'link-a', fromId: plateA.id, toId: door.id, kind: 'triggerDoor', logic: 'and' },
+      { id: 'link-hidden', fromId: hiddenLever.id, toId: relay.id, kind: 'triggerDoor', logic: 'and' },
+      { id: 'link-bad', fromId: plateA.id, toId: badTarget.id, kind: 'triggerDoor', logic: 'and' },
+      { id: 'link-missing', fromId: 'missing', toId: door.id, kind: 'triggerDoor', logic: 'and' },
+    ];
+    doc.links.push(...links);
+
+    const model = buildLinkGraphModel({
+      doc,
+      selectedIds: new Set([door.id]),
+      issues: [{ severity: 'warning', what: 'door warning <x>', objId: door.id }],
+    });
+
+    expect(model.links.find((row) => row.id === 'link-b')?.sequenceIndex).toBe(1);
+    expect(model.links.find((row) => row.id === 'link-a')?.sequenceIndex).toBe(2);
+    expect(model.links.find((row) => row.id === 'link-hidden')).toMatchObject({ live: false, severity: 'warning' });
+    expect(model.links.find((row) => row.id === 'link-bad')?.messages.join(' ')).toContain('trigger cannot drive pickup');
+    expect(model.links.find((row) => row.id === 'link-missing')).toMatchObject({ live: false, severity: 'error' });
+    expect(model.actuators.find((row) => row.id === door.id)?.inputs.map((row) => row.id)).toEqual(['link-b', 'link-a', 'link-missing']);
+    expect(renderLinkGraphPanel(model)).toContain('door warning &lt;x&gt;');
+  });
+});
+
 describe('editor workspace layout', () => {
   it('sanitizes corrupt layouts back to known Builder panels', () => {
     const layout = sanitizeWorkspaceLayout({
@@ -568,6 +692,21 @@ describe('editor workspace layout', () => {
       dock: 'bottom',
       open: false,
       size: 260,
+    });
+    expect(layout.panels.find((panel) => panel.id === 'builder-assets')).toMatchObject({
+      dock: 'bottom',
+      open: false,
+      size: 360,
+    });
+    expect(layout.panels.find((panel) => panel.id === 'builder-global')).toMatchObject({
+      dock: 'right',
+      open: false,
+      size: 252,
+    });
+    expect(layout.panels.find((panel) => panel.id === 'builder-postfx')).toMatchObject({
+      dock: 'right',
+      open: false,
+      size: 252,
     });
     expect(layout.activePanelId).toBe('builder-palette');
     expect(layout.snapStep).toBe(0);
@@ -660,7 +799,10 @@ describe('editor workspace layout', () => {
     expect(validation.overlayVisibility.validation).toBe(true);
     expect(validation.overlayVisibility.clearance).toBe(true);
     expect(lighting.panels.find((panel) => panel.id === 'builder-world')?.open).toBe(true);
+    expect(lighting.panels.find((panel) => panel.id === 'builder-global')?.open).toBe(true);
     expect(lighting.overlayVisibility.light).toBe(true);
+    expect(workspacePresetLayout('prefab').panels.find((panel) => panel.id === 'builder-assets')?.open).toBe(true);
+    expect(workspacePresetLayout('prefab').panels.find((panel) => panel.id === 'builder-asset-details')?.open).toBe(true);
   });
 
   it('treats the Dev Console as a dockable workspace panel', () => {
@@ -692,6 +834,25 @@ describe('editor panel registry and chrome', () => {
     expect(registry.get('dev-console')?.commandIds).toMatchObject({
       open: 'console.open',
       close: 'console.close',
+    });
+    expect(registry.get('builder-assets')).toMatchObject({
+      title: 'Asset Browser',
+      defaultDock: 'bottom',
+      commandIds: { open: 'builder.assetsPanel' },
+    });
+    expect(registry.get('builder-asset-details')).toMatchObject({
+      title: 'Asset Details',
+      defaultDock: 'right',
+    });
+    expect(registry.get('builder-global')).toMatchObject({
+      title: 'Global Controls',
+      defaultDock: 'right',
+      commandIds: { open: 'builder.globalControlsPanel' },
+    });
+    expect(registry.get('builder-postfx')).toMatchObject({
+      title: 'Post Processing',
+      defaultDock: 'right',
+      commandIds: { open: 'builder.postProcessingPanel' },
     });
     expect(registry.canDock('dev-console', 'floating')).toBe(true);
     expect(registry.defaultLayouts()).toEqual(

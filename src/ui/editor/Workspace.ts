@@ -19,6 +19,7 @@ export interface WorkspaceLayout {
   panels: PanelLayout[];
   overlayVisibility: Record<string, boolean>;
   collapsedSections: Record<string, boolean>;
+  layerState: Record<string, { hidden: boolean; locked: boolean }>;
   snapStep: number;
   lastTool: string;
   activePanelId?: string | null;
@@ -46,13 +47,20 @@ export const DEFAULT_BUILDER_LAYOUT: WorkspaceLayout = {
     { id: 'builder-palette', dock: 'left', open: true, size: 214 },
     { id: 'builder-inspector', dock: 'right', open: true, size: 252 },
     { id: 'builder-world', dock: 'right', open: false, size: 252 },
+    { id: 'builder-global', dock: 'right', open: false, size: 252 },
+    { id: 'builder-postfx', dock: 'right', open: false, size: 252 },
+    { id: 'builder-assets', dock: 'bottom', open: false, size: 360 },
+    { id: 'builder-asset-details', dock: 'right', open: false, size: 300 },
     { id: 'builder-matparams', dock: 'right', open: false, size: 252 },
     { id: 'builder-proc', dock: 'right', open: false, size: 252 },
     { id: 'builder-issues', dock: 'right', open: false, size: 252 },
+    { id: 'builder-outliner', dock: 'right', open: false, size: 292 },
+    { id: 'builder-link-graph', dock: 'bottom', open: false, size: 300 },
     { id: 'dev-console', dock: 'bottom', open: false, size: 260 },
   ],
   overlayVisibility: {},
   collapsedSections: {},
+  layerState: {},
   snapStep: 0,
   lastTool: 'select',
   activePanelId: 'builder-palette',
@@ -135,6 +143,7 @@ export function sanitizeWorkspaceLayout(
       raw.collapsedSections && typeof raw.collapsedSections === 'object'
         ? { ...(raw.collapsedSections as Record<string, boolean>) }
         : {},
+    layerState: sanitizeLayerState(raw.layerState),
     snapStep: raw.snapStep === 8 || raw.snapStep === 16 ? raw.snapStep : 0,
     lastTool: typeof raw.lastTool === 'string' && raw.lastTool ? raw.lastTool : 'select',
     activePanelId,
@@ -239,23 +248,37 @@ export function workspacePresetLayout(preset: WorkspacePreset): WorkspaceLayout 
   } else if (preset === 'validation') {
     layout.panels = layout.panels.map((panel) => ({
       ...panel,
-      dock: panel.id === 'builder-issues' ? 'bottom' : panel.dock,
-      open: panel.id === 'builder-palette' || panel.id === 'builder-inspector' || panel.id === 'builder-issues',
-      size: panel.id === 'builder-issues' ? 520 : panel.size,
+      dock: panel.id === 'builder-issues' || panel.id === 'builder-link-graph' ? 'bottom' : panel.dock,
+      open:
+        panel.id === 'builder-palette' ||
+        panel.id === 'builder-inspector' ||
+        panel.id === 'builder-issues' ||
+        panel.id === 'builder-outliner' ||
+        panel.id === 'builder-link-graph',
+      size: panel.id === 'builder-issues' ? 520 : panel.id === 'builder-link-graph' ? 360 : panel.size,
     }));
     layout.overlayVisibility.validation = true;
     layout.overlayVisibility.clearance = true;
   } else if (preset === 'lighting') {
     layout.panels = layout.panels.map((panel) => ({
       ...panel,
-      open: panel.id === 'builder-palette' || panel.id === 'builder-inspector' || panel.id === 'builder-world',
-      size: panel.id === 'builder-world' ? 292 : panel.size,
+      open:
+        panel.id === 'builder-palette' ||
+        panel.id === 'builder-inspector' ||
+        panel.id === 'builder-world' ||
+        panel.id === 'builder-global',
+      size: panel.id === 'builder-world' || panel.id === 'builder-global' ? 292 : panel.size,
     }));
     layout.overlayVisibility.light = true;
   } else if (preset === 'prefab') {
     layout.panels = layout.panels.map((panel) => ({
       ...panel,
-      open: panel.id === 'builder-palette' || panel.id === 'builder-inspector' || panel.id === 'builder-proc',
+      open:
+        panel.id === 'builder-palette' ||
+        panel.id === 'builder-inspector' ||
+        panel.id === 'builder-proc' ||
+        panel.id === 'builder-assets' ||
+        panel.id === 'builder-asset-details',
       size: panel.id === 'builder-palette' ? 260 : panel.size,
     }));
   }
@@ -318,6 +341,20 @@ function isPanelLayoutArray(value: WorkspaceSanitizeOptions | readonly PanelLayo
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function sanitizeLayerState(value: unknown): Record<string, { hidden: boolean; locked: boolean }> {
+  if (!value || typeof value !== 'object') return {};
+  const out: Record<string, { hidden: boolean; locked: boolean }> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const state = raw as { hidden?: unknown; locked?: unknown };
+    out[key] = {
+      hidden: state.hidden === true,
+      locked: state.locked === true,
+    };
+  }
+  return out;
 }
 
 function nextZ(panels: readonly PanelLayout[]): number {

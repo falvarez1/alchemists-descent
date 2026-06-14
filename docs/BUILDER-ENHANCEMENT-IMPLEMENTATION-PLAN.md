@@ -2,6 +2,12 @@
 
 Date: 2026-06-13
 
+Revision: 2026-06-14 - Project Asset Browser and Asset Database promoted to
+first-class P1 scope. This is now a canonical dependency for outliner,
+validation, preview, prefab, import/export, and document portability work.
+Spell, potion, modifier, and scenario content must integrate through this same
+Asset Database surface instead of creating a parallel content-browser stack.
+
 ## Purpose
 
 This plan turns the Builder enhancement audit into a prioritized implementation
@@ -40,6 +46,10 @@ The main weakness is framework maturity:
 - Dev Console is now dockable, but it still has transitional keyboard and
   command ownership that should be merged into the shared framework at the
   correct time.
+- Assets are still split across document library storage, prefab storage,
+  sprite storage, built-in prefab generation, Gallery browsing, and individual
+  Builder panels. That is not enough for a world-class Builder competing with
+  GameMaker's Asset Browser, Unity's Project window, or Godot's FileSystem dock.
 - Several UI surfaces still build HTML strings and then rebind events with
   `querySelector`, which makes focus, accessibility, popover ownership, and
   command drift harder to control.
@@ -73,10 +83,11 @@ The plan is based on the current checkout, not only the desired end state:
 - `src/builder/validate.ts` already emits severity-based issues and performs
   reachability checks, but issues do not yet have stable codes, grouped repair
   metadata, overlay metadata, or first-class quick-fix commands.
-- Builder document storage and drafts are still localStorage/share-code
-  oriented. That is good enough for iteration, but asset-heavy production work
-  needs quota handling, export recovery, duplicate detection, and stronger
-  import diagnostics.
+- Builder document, prefab, sprite, and built-in asset storage are still
+  localStorage/share-code/panel oriented. That is good enough for iteration, but
+  asset-heavy production work needs a typed asset database, stable ids,
+  dependency tracking, quota handling, export recovery, duplicate detection,
+  reimport metadata, and stronger import diagnostics.
 
 ## Implementation Boundaries
 
@@ -98,6 +109,13 @@ The plan is based on the current checkout, not only the desired end state:
 - Do not hide runtime/gameplay semantics inside purely visual Builder widgets.
   If a mechanic matters to gameplay, the authored cells, objects, links, or
   runtime compiler must explain it.
+- Do not build a second asset/content browser for spells, potions, modifiers, or
+  scenarios. Built-in gameplay content should enter Builder through a read-only
+  content-registry provider indexed by the Asset Database; Content Browser views
+  are filtered Asset Browser views.
+- Do not let Builder mutate canonical runtime content definitions. Builder may
+  reference, preview, validate, tag locally, and produce promotion/cook reports,
+  but source gameplay behavior remains in the runtime modules.
 
 ## Guiding Rules
 
@@ -123,7 +141,9 @@ The plan is based on the current checkout, not only the desired end state:
 Priority meanings:
 
 - P0: Framework stability. Required before more feature work.
-- P1: Core authoring productivity. High value and blocks larger levels.
+- P1: Core authoring productivity. High value and blocks larger levels. The
+  Asset Database and Asset Browser belong here because many later editor
+  features need stable asset references and dependency metadata.
 - P2: Preview correctness and WYSIWYG confidence.
 - P3: Advanced composition and polish.
 - P4: Nice-to-have, performance, documentation, and long-tail refinement.
@@ -150,18 +170,38 @@ Priority meanings:
   rows escape imported validation text, sprite emissive remains an asset-library
   edit instead of mutating embedded document assets, and numeric handlers enforce
   schema validation at the command boundary.
+- 2026-06-14 planning update: Phase 5 is now reserved for Project Asset Browser
+  and Asset Database work. The former Phase 9 asset-manager subsection was too
+  late and too narrow for GameMaker/Godot/Unity-class production workflows.
+- Phase 5A Asset Database/Browser core: complete. The Builder now has a typed
+  asset model, stable asset ids, a localStorage compatibility store, import
+  reports, duplicate/collision reporting, preview rendering, dependency/usage
+  indexing, safe-delete planning, Asset Browser and Asset Details workspace
+  panels, prefab/sprite drag-to-stage placement, and targeted probes. Expert
+  and critic review findings were addressed for current-document action
+  ownership, durable import report rollback, canonical import report asset ids,
+  text-drag isolation, missing dependency usages, saved-document embedded
+  sprites, and document export portable embedding.
+- Phase 5B Content Asset Provider: pending. This is the compatibility extension
+  for spell, potion, modifier, material, enemy, scenario, and cook-report
+  content. It must extend the existing Asset Database/Browser instead of
+  creating a parallel content browser. Other deliberately deferred Phase 5 work
+  remains deferred: true multi-select asset batch operations, IndexedDB/File
+  System Access stores, final reimport apply UX, material/light/procedural/
+  document drag actions, and full prefab/sprite panel replacement by filtered
+  Asset Browser views.
 
-Latest validation for the Phase 4 checkpoint:
+Latest validation for the Phase 5A checkpoint:
 
 - `npm run typecheck`
-- `npx vitest run tests/editor-ui.test.ts tests/builder.test.ts tests/sprites.test.ts`
-- `node scripts/verify-builder-ux.mjs http://127.0.0.1:5180/` (78 checks)
-- `node scripts/verify-console.mjs http://127.0.0.1:5180/` (63 checks)
-- `node scripts/verify-matpop.mjs http://127.0.0.1:5180/`
-- `node scripts/verify-app-dialogs.mjs http://127.0.0.1:5180/`
+- `npx vitest run tests/asset-database.test.ts tests/assets.test.ts tests/prefabs.test.ts tests/builder.test.ts tests/editor-ui.test.ts` (103 tests)
 - `npm run lint`
-- `npm test` (16 files, 288 tests)
+- `npm test` (18 files, 306 tests)
 - `npm run build`
+- `node scripts/verify-builder-assets.mjs http://127.0.0.1:5184/` (9 checks)
+- `node scripts/verify-builder-ux.mjs http://127.0.0.1:5184/` (87 checks)
+- `node scripts/verify-builder-prefabs.mjs http://127.0.0.1:5184/` (9 checks)
+- `node scripts/verify-console.mjs http://127.0.0.1:5184/` (63 checks)
 
 ## Phase 0 - Baseline And Worktree Safety
 
@@ -485,7 +525,224 @@ support validation, mixed values, undoable commands, and reusable controls.
 Expert review checks command and document ownership. Critic review checks
 multi-select edge cases, invalid input, undo/redo, and schema drift.
 
-## Phase 5 - Object Outliner, Layer Manager, And Link Graph
+## Phase 5 - Project Asset Browser And Asset Database
+
+Priority: P1
+
+### Goal
+
+Create a world-class project asset surface: a unified Asset Browser backed by a
+typed Asset Database, not just a prefab/sprite list. This is the Builder's
+equivalent of GameMaker's Asset Browser, Unity's Project window, and Godot's
+FileSystem dock, adapted to a browser-hosted falling-sand editor.
+
+### Why Before Outliner And Validation
+
+Large levels are built from reusable assets. Outliner rows, validation issues,
+prefab composition, sprite placement, import reports, playtest packaging, and
+document portability all need stable asset ids and dependency metadata. If this
+stays as localStorage keys and per-panel lists, later phases will keep
+duplicating lookup, preview, import, delete, and usage logic.
+
+### Work
+
+- Add `src/builder/assets/AssetTypes.ts`.
+  - Define asset kinds:
+    - `document`
+    - `prefab`
+    - `sprite`
+    - `materialPalette`
+    - `materialProfile`
+    - `lightPreset`
+    - `backdrop`
+    - `procPreset`
+    - `template`
+    - `importReport`
+    - `card`
+    - `modifier`
+    - `wandFrame`
+    - `wandLoadout`
+    - `potion`
+    - `elixir`
+    - `recipe`
+    - `material`
+    - `enemy`
+    - `encounterScenario`
+    - `spellLabScenario`
+    - `cookReport`
+  - Content-backed kinds may be represented internally as asset entries with a
+    `contentKind` discriminator, but they must still use the same browser,
+    details, dependency, validation, and safe-operation surfaces.
+  - Define a typed reference contract for asset/content references. Durable refs
+    should include kind and scope, such as
+    `{ kind: 'card', id: 'critwet', origin: 'builtIn' }`, or use compact
+    built-in display keys like `card:critwet`. Durable Asset Database keys must
+    include enough scope so card IDs, prefab IDs, sprite IDs, and scenario IDs
+    cannot collide.
+  - Define stable asset id, display name, folder path, tags, origin, timestamps,
+    source metadata, validation summary, dependency summary, and preview summary.
+- Add `src/builder/assets/AssetDatabase.ts`.
+  - Central index over built-in assets, project/library assets, and
+    document-embedded assets.
+  - Accept read-only providers for built-in gameplay content such as cards,
+    modifiers, wand frames, potions, materials, enemies, built-in prefabs,
+    sprites, encounters, and scenarios.
+  - Stable id references; never use name/path as the durable reference.
+  - Query by kind, content kind, tag, text, origin, content status, validation
+    state, dependency state, and usage count.
+  - Track dependencies:
+    - Documents reference prefabs, sprites, light presets, material profiles,
+      procedural presets, and backdrops where applicable.
+    - Documents may also reference content IDs such as tome cards, potion
+      pickups, enemy kinds, wand loadouts, encounter scenarios, and Spell Lab
+      scenarios.
+    - Prefabs reference sprites and local object/link/light records.
+    - Decor objects reference sprites.
+    - Procedural presets reference material profiles where applicable.
+    - Content items reference runtime code, icons, probes, tests, cells,
+      statuses, recipes, review loadouts, and validation scenarios where
+      applicable.
+  - Track usages so delete/rename/re-id cannot silently break documents.
+- Add `src/builder/assets/AssetStore.ts`.
+  - `AssetStore` interface with `list`, `get`, `put`, `delete`, `rename`,
+    `export`, `import`, `quota`, and `recover` operations.
+  - `LocalStorageAssetStore` compatibility layer for existing document, prefab,
+    and sprite storage.
+  - Reserve an `IndexedDbAssetStore` implementation path for larger/binary
+    assets and future browser persistence.
+  - Reserve a future File System Access API store for real project-folder
+    workflows where supported.
+- Add `src/builder/assets/AssetImportPipeline.ts`.
+  - Validate-then-accept imports.
+  - Produce import reports as assets.
+  - Preserve source file metadata for reimport.
+  - Detect duplicate content.
+  - Handle id collisions by re-id/remap with explicit reporting.
+  - Provide reimport diff summaries before applying changes.
+- Add `src/builder/assets/AssetPreview.ts`.
+  - Generate thumbnails/previews for prefabs, sprites, materials, lights,
+    backdrops, documents, and procedural presets.
+  - Use compiler/runtime preview helpers where possible so thumbnails do not
+    drift from the game.
+  - Cache stable previews and invalidate by content signature.
+- Add `builder-assets` panel.
+  - Tree view for folders/smart collections.
+  - Grid/list toggle.
+  - Search and type filters.
+  - Origin filters: built-in, project/library, document-embedded, imported,
+    broken/missing.
+  - Sort by name, kind, modified time, usage count, validation status, and size.
+  - Multi-select for export/delete/tag operations.
+- Add `builder-asset-details` panel.
+  - Large preview.
+  - Metadata.
+  - Dependencies.
+  - Usages.
+  - Validation/import status.
+  - Rename, duplicate, export, delete, reveal usages, and reimport actions.
+- Add drag/drop actions.
+  - Prefab asset to stage places prefab with footprint and anchor preview.
+  - Sprite asset to stage creates decor.
+  - Material profile to selection applies material-related params where safe.
+  - Light preset to stage creates authored light, or applies to selected light.
+  - Procedural preset opens/seeds the procedural panel.
+  - Document/template opens or creates a document through an explicit command.
+- Add safe delete and rename.
+  - Show usage count and affected documents/prefabs.
+  - Offer remove, reassign, embed, or cancel paths where applicable.
+  - Built-in assets are immutable but exportable.
+- Add smart collections.
+  - Recent.
+  - Missing dependencies.
+  - Unused.
+  - Used by current document.
+  - Built-ins.
+  - Imported.
+  - Broken imports.
+  - Validation warnings.
+- Integrate existing surfaces.
+  - Prefab panel becomes either a filtered Asset Browser view or a thin
+    placement-focused panel backed by the Asset Database.
+  - Sprite panel becomes a filtered Asset Browser view or placement-focused
+    panel backed by the Asset Database.
+  - Spell/potion/modifier Content Browser becomes a filtered Asset Browser view
+    or a thin content-focused panel backed by the Asset Database.
+  - Spell Lab scenario browser and encounter browser read/write scenario assets
+    through the Asset Database and AssetStore.
+  - Gallery can read Asset Database entries for authored assets while still
+    showcasing runtime/game built-ins.
+  - Save/export/share embeds only referenced portable assets.
+
+### Source Targets
+
+- New: `src/builder/assets/AssetTypes.ts`
+- New: `src/builder/assets/AssetDatabase.ts`
+- New: `src/builder/assets/AssetStore.ts`
+- New: `src/builder/assets/AssetImportPipeline.ts`
+- New: `src/builder/assets/AssetPreview.ts`
+- New: `src/builder/assets/ContentAssetProvider.ts`
+- New: `src/builder/assetBrowserPanel.ts`
+- New: `src/builder/assetDetailPanel.ts`
+- New: `src/builder/assetDependencyGraph.ts`
+- New: `src/content/registry.ts`
+- New: `src/content/types.ts`
+- Update: `src/builder/document.ts`
+- Update: `src/builder/prefablib.ts`
+- Update: `src/builder/prefabPanel.ts`
+- Update: `src/builder/spritePanel.ts`
+- Update: `src/builder/assets/spritelib.ts`
+- Update: `src/builder/assets/sprites.ts`
+- Update: `src/builder/gallery.ts`
+- Update: `src/ui/editor/PanelRegistry.ts`
+- Update: `src/ui/editor/CommandRegistry.ts`
+- Update: `tests/assets.test.ts`
+- Update: `tests/prefabs.test.ts`
+- New: `tests/asset-database.test.ts`
+- New: `scripts/verify-builder-assets.mjs`
+- Update: `scripts/verify-builder-prefabs.mjs`
+- Update: `scripts/verify-builder-ux.mjs`
+
+### Acceptance Criteria
+
+- Asset Browser can show existing documents, library prefabs, built-in prefabs,
+  sprites, cards, modifiers, wand frames, potions, materials, enemies,
+  scenarios, cook reports, and import reports through one indexed surface.
+- Spell/potion/modifier content does not create a parallel browser, details
+  panel, dependency graph, or storage model.
+- Assets have stable ids, typed metadata, origin labels, tags, thumbnails, and
+  dependency/usage summaries.
+- Browsing, filtering, tagging, renaming, and revealing usages do not dirty the
+  Builder document.
+- Dragging a prefab or sprite from the Asset Browser to the stage performs the
+  same placement behavior as existing Builder placement tools.
+- Safe delete blocks or explains deletion of referenced assets.
+- Built-in assets are immutable but exportable.
+- Existing localStorage libraries migrate or mirror into the Asset Database
+  without data loss.
+- Imported assets produce durable reports and can be reimported with a visible
+  diff before applying changes.
+- Documents/share codes embed exactly the referenced portable assets needed for
+  portability, not the whole library.
+
+### Verification
+
+- Unit tests for asset id stability, query/filter behavior, dependency graph,
+  usage tracking, safe delete, rename, duplicate detection, and storage
+  migration.
+- Unit tests for document export/embed behavior with referenced sprites/prefabs.
+- Browser probe for Asset Browser open/search/filter/grid/list/detail flows.
+- Browser probe for dragging prefab and sprite assets to the stage.
+- Browser probe for safe delete on a referenced sprite/prefab.
+- Browser probe for import report, duplicate detection, and reimport diff.
+
+### Review Gate
+
+Expert review checks asset source-of-truth boundaries, document portability, and
+compiler/runtime compatibility. Critic review checks deletion hazards, stale
+thumbnails, broken references, storage quota failures, reimport surprises, and
+whether the browser feels powerful enough for production use.
+
+## Phase 6 - Object Outliner, Layer Manager, And Link Graph
 
 Priority: P1
 
@@ -541,7 +798,7 @@ canvas markers.
 Expert review checks graph semantics against compiler/runtime links. Critic
 review checks dense-level usability and selection synchronization.
 
-## Phase 6 - Validation Workbench And Guided Repair Actions
+## Phase 7 - Validation Workbench And Guided Repair Actions
 
 Priority: P1
 
@@ -611,7 +868,7 @@ Turn validation from a report into an authoring workflow.
 Expert review checks validation against compiler/runtime behavior. Critic review
 checks that repairs do not silently mutate more than advertised.
 
-## Phase 7 - PreviewRuntime And Live Preview Session
+## Phase 8 - PreviewRuntime And Live Preview Session
 
 Priority: P2
 
@@ -674,7 +931,7 @@ Make Live Preview a real Builder-owned session instead of scattered previews.
 Expert review checks sim/runtime boundaries and frame-order safety. Critic
 review checks silent mutation, stale preview state, and performance cliffs.
 
-## Phase 8 - Spatial Authoring Gizmos And Measurement Tools
+## Phase 9 - Spatial Authoring Gizmos And Measurement Tools
 
 Priority: P2
 
@@ -737,13 +994,14 @@ Make canvas editing feel like a real level editor instead of marker clicking.
 Expert review checks authored footprint consistency. Critic review checks
 mis-clicks, tiny handles, zoom scaling, and undo grouping.
 
-## Phase 9 - Prefab Composition, Anchors, And Asset Manager
+## Phase 10 - Prefab Composition, Anchors, And Asset Workflows
 
 Priority: P2
 
 ### Goal
 
-Turn prefabs and sprites from lists into a composition workflow.
+Turn indexed prefab assets into a composition workflow with variants, anchors,
+dependency-aware previews, and stage placement tools.
 
 ### Work
 
@@ -767,17 +1025,19 @@ Turn prefabs and sprites from lists into a composition workflow.
   - Broken local links.
   - Spawn objects rejected from prefabs.
   - Oversized room warnings.
-- Add asset manager panel.
-  - Sprites, prefabs, documents, imports.
-  - Storage quota status.
-  - Duplicate content detection.
-  - Re-id collision report.
-  - Per-asset export/delete/rename/tag.
+- Use Asset Database metadata.
+  - Read dependency and usage data from the Asset Database.
+  - Report missing or stale asset references before placement/playtest.
+  - Keep prefab thumbnails and variant previews invalidated by content
+    signatures.
+  - Preserve built-in immutability while allowing export/duplicate into project
+    assets.
 
 ### Source Targets
 
-- New: `src/builder/assetManagerPanel.ts`
 - New: `src/builder/prefabDetailPanel.ts`
+- Update: `src/builder/assets/AssetDatabase.ts`
+- Update: `src/builder/assets/AssetPreview.ts`
 - Update: `src/builder/prefablib.ts`
 - Update: `src/builder/prefabPanel.ts`
 - Update: `src/builder/assets/spritelib.ts`
@@ -790,21 +1050,25 @@ Turn prefabs and sprites from lists into a composition workflow.
 
 - Prefab anchors can snap to compatible world or prefab anchors.
 - Prefab variants preview before placement.
-- Missing assets are reported before playtest.
-- Asset storage problems are isolated per asset and shown clearly.
+- Missing or stale asset dependencies are reported before placement and
+  playtest.
+- Prefab workflows use the Asset Browser/Asset Database for search, details,
+  usage, export, duplicate, and dependency status.
 - Built-in prefabs remain immutable but exportable.
 
 ### Verification
 
 - Unit tests for anchor transforms and variant transforms.
-- Browser probe for anchor snapping, detail preview, and asset manager actions.
+- Browser probe for anchor snapping, detail preview, variant preview, and Asset
+  Browser handoff actions.
 
 ### Review Gate
 
 Expert review checks prefab transform math and compiler compatibility. Critic
-review checks storage failure behavior, corrupted assets, and import UX.
+review checks stale dependency metadata, corrupted prefabs, import UX, and
+whether the workflow remains fast enough for repeated room composition.
 
-## Phase 10 - Menus, Toolbar Binding, And Panel Search
+## Phase 11 - Menus, Toolbar Binding, And Panel Search
 
 Priority: P3
 
@@ -871,7 +1135,7 @@ Make commands discoverable without adding more permanent toolbar clutter.
 Expert review checks command namespace design. Critic review checks drift,
 disabled states, and keyboard-only operation.
 
-## Phase 11 - Advanced Overlays And Authoring Diagnostics
+## Phase 12 - Advanced Overlays And Authoring Diagnostics
 
 Priority: P3
 
@@ -921,7 +1185,7 @@ Give authors high-signal visual diagnostics without replacing real visuals.
 Expert review checks that overlays encode truthful runtime/compiler data.
 Critic review checks visual clutter and stale overlay state.
 
-## Phase 12 - Performance, Accessibility, And Polish Pass
+## Phase 13 - Performance, Accessibility, And Polish Pass
 
 Priority: P4
 
@@ -1015,6 +1279,37 @@ cycles.
 - Workspace reset restores a usable default layout even after corrupt storage.
 - Docked panels must keep the stage useful at smaller viewports.
 
+### Asset Requirements
+
+- Asset references must use stable ids, not display names or folder paths.
+- Content references must use the same typed reference model as asset
+  references. Prefer `{ kind, id, origin }` for typed refs and reserve compact
+  kind-qualified IDs such as `card:critwet`, `potion:swift`,
+  `sprite:torch_idle`, and `prefab:altar` for built-in display/search
+  shorthand.
+- Asset metadata must distinguish built-in, project/library, document-embedded,
+  imported, missing, and broken origins.
+- Built-in gameplay definitions enter Builder as read-only Asset Database
+  entries through a content-registry provider. They can be previewed, referenced,
+  validated, and reported, but not edited in place by Builder.
+- Local Builder libraries, saved Spell Lab scenarios, encounter scenarios, and
+  promoted review metadata should use `AssetStore` adapters rather than direct
+  localStorage calls.
+- Asset browsing, filtering, tagging, renaming, previewing, and revealing usages
+  must not dirty the Builder document.
+- Asset mutations must be commandable or explicit asset-library operations with
+  clear undo/recovery boundaries.
+- Asset delete/rename/re-id operations must consult dependency and usage data
+  before applying.
+- Asset imports must be validate-then-accept and produce durable import reports.
+- Reimport must show a diff/impact summary before replacing any existing asset.
+- Documents and share codes should embed only referenced portable assets, not
+  the whole project library.
+- Asset previews should reuse compiler/runtime preview helpers where practical
+  so thumbnails do not drift from authored behavior.
+- The storage layer must remain abstract enough to support localStorage,
+  IndexedDB, and future project-folder/File System Access workflows.
+
 ### Validation Requirements
 
 - Validation remains pure and independent from UI.
@@ -1054,9 +1349,11 @@ when behavior is visible.
 | Keymap/focus | `tests/editor-ui.test.ts` | `verify-console`, `verify-input-capture` |
 | Popovers/menus | `tests/editor-ui.test.ts` | `verify-matpop`, `verify-builder-ux` |
 | Inspector schema | `tests/editor-ui.test.ts`, `tests/builder.test.ts` | `verify-builder-ux` |
+| Asset Database / Browser | `tests/asset-database.test.ts`, `tests/assets.test.ts`, `tests/prefabs.test.ts` | `verify-builder-assets`, `verify-builder-prefabs` |
+| Content registry / pickers | `tests/content-registry.test.ts`, `tests/builder-content-validation.test.ts`, `tests/wands.test.ts` | `verify-builder-content-browser`, `verify-spell-lab` |
 | Validation repair | `tests/builder.test.ts` | `verify-builder-suite`, `verify-builder-ux` |
 | Live Preview | targeted unit tests | `verify-builder-pro`, new preview probe |
-| Prefabs/assets | `tests/prefabs.test.ts`, `tests/assets.test.ts` | `verify-builder-prefabs` |
+| Prefab composition | `tests/prefabs.test.ts`, `tests/assets.test.ts` | `verify-builder-prefabs`, `verify-builder-assets` |
 | Console integration | `tests/console.test.ts` if needed | `verify-console` |
 
 ## Recommended PR Slices
@@ -1071,10 +1368,15 @@ Use small, shippable slices instead of one large rewrite:
 6. PopoverHost migration for prefab/sprite/import surfaces.
 7. InspectorSchema for lights first.
 8. InspectorSchema for one object family, then the rest.
-9. Outliner read-only, then commandable.
-10. Validation issue codes, then repair actions.
-11. PreviewRuntime skeleton, then one preview system at a time.
-12. Spatial gizmos one object family at a time.
+9. AssetTypes/AssetStore/AssetDatabase model with migration tests.
+10. Asset Browser read-only over existing documents/prefabs/sprites/built-ins.
+11. Asset details, usage tracking, and safe delete/rename.
+12. Asset drag/drop placement and import/reimport reports.
+13. Outliner read-only, then commandable.
+14. Validation issue codes, then repair actions.
+15. PreviewRuntime skeleton, then one preview system at a time.
+16. Spatial gizmos one object family at a time.
+17. Prefab variants/anchors once Asset Database dependencies are stable.
 
 ## Defect Classes This Plan Should Eliminate
 
@@ -1089,6 +1391,8 @@ Use small, shippable slices instead of one large rewrite:
 - Console open but unfocused steals Builder help or shortcut behavior.
 - Modals leak gameplay or console keys.
 - Inspector fields silently clamp or mutate outside undo.
+- Asset delete, rename, import, or re-id silently breaks documents or prefabs.
+- Prefab/sprite/browser panels drift into separate asset lookup logic.
 - Validation explains problems but does not help fix them.
 - Live preview mutates document or runtime state implicitly.
 
@@ -1101,9 +1405,13 @@ This roadmap is complete when:
 - Builder, Console, Help, AppDialog, command palette, menus, and text inputs
   use one focus priority model.
 - Inspector controls are schema-driven and support mixed values.
+- Asset Browser provides a unified indexed view of documents, prefabs, sprites,
+  built-ins, spell/potion/modifier content, scenarios, import reports,
+  dependencies, usages, previews, and safe asset operations.
 - Validation issues can be filtered, framed, overlaid, and repaired.
 - Live Preview is a disposable capped runtime with explicit apply/discard.
-- Prefab and sprite libraries have detail/composition workflows.
+- Prefab and sprite workflows are backed by Asset Database metadata and have
+  detail/composition workflows.
 - Browser probes cover the previous docking, popover, console, and focus
   defects plus the new workflows.
 - Expert and critic review gates pass after each implementation phase.

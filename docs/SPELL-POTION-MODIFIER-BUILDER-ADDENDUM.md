@@ -8,6 +8,7 @@ Related Builder docs:
 
 - `docs/BUILDER.md`
 - `docs/BUILDER-LIVE-UI-SPEC.md`
+- `docs/BUILDER-ENHANCEMENT-IMPLEMENTATION-PLAN.md`
 
 ## Purpose
 
@@ -27,11 +28,13 @@ playtest workflows.**
 
 ## Executive Summary
 
-Add a Builder-side content-management layer with:
+Extend the Builder Asset Database with a content-management layer:
 
 1. A read-only built-in content registry generated from canonical game data.
-2. A searchable Content Browser for cards, wands, potions, materials, enemies,
-   prefabs, sprites, and encounter scenarios.
+2. A searchable Content Browser mode for cards, wands, potions, materials,
+   enemies, prefabs, sprites, and encounter scenarios. This must be a filtered
+   Asset Browser view backed by the Asset Database, not a separate browser,
+   details panel, dependency graph, or storage model.
 3. Typed pickers in inspectors so authored objects reference valid IDs instead
    of free-text strings.
 4. A Spell Lab for testing wand/card/potion/flask combinations in contained
@@ -68,7 +71,10 @@ patterns:
   editor-only, what is review-only, and what is blocked.
 
 Builder should adopt those patterns in a lightweight TypeScript-native way
-instead of importing a whole external editor architecture.
+instead of importing a whole external editor architecture. The shared
+implementation point is the Asset Database from the Builder enhancement plan:
+spell, potion, modifier, and scenario content becomes one set of indexed asset
+entries among documents, prefabs, sprites, import reports, and templates.
 
 ## Non-Goals
 
@@ -102,7 +108,14 @@ Canonical game content shipped with the repo:
 - Built-in sprites, icons, and procedural visual renderers.
 
 Builder reads this content through a generated or manually maintained
-`ContentRegistry`. It does not edit it.
+`ContentRegistry` provider. The provider feeds read-only entries into the
+Builder Asset Database. Builder does not edit canonical runtime definitions in
+place.
+
+`ContentRegistry` is only for canonical built-in/runtime content. Project,
+library, imported, and document-embedded prefabs, sprites, scenarios, and visual
+assets are `AssetStore` records indexed directly by `AssetDatabase`, not mutable
+registry rows.
 
 ### 2. Local Builder Libraries
 
@@ -114,8 +127,10 @@ Designer-local assets:
 - Saved encounter test rooms.
 - Saved view/layout presets.
 
-These can live in localStorage or explicit exported JSON files. They are not
-authoritative game content until promoted into repo data.
+These should use the Builder `AssetStore` abstraction. The first adapter may
+mirror existing localStorage or exported JSON, but content tools should not add
+new direct localStorage paths. Local libraries are not authoritative game
+content until promoted into repo data.
 
 ### 3. Editor Documents
 
@@ -128,8 +143,8 @@ authoritative game content until promoted into repo data.
 - Procedural history.
 - Validation snapshot.
 - Embedded visual assets required by decor.
-- References to built-in IDs, such as `card: "critwet"` or
-  `potion: "swift"`.
+- References to built-in IDs, such as `{ kind: "card", id: "critwet" }` or
+  `{ kind: "potion", id: "swift" }`.
 
 The document should not copy full built-in definitions. It should reference
 stable IDs.
@@ -150,6 +165,24 @@ document where appropriate.
 
 Add a read-only registry that normalizes all built-in content for Builder.
 
+### Asset Database Integration Contract
+
+`ContentRegistry` is not a second asset database. It is a read-only source
+provider for built-in/runtime content in `AssetDatabase`.
+
+Rules:
+
+- Every built-in `ContentItem` can be projected into an Asset Database entry.
+- Content Browser is a filtered Asset Browser mode.
+- Content Details is the normal Asset Details panel with content-specific
+  sections.
+- Content dependency and used-by data goes through the Asset Database dependency
+  graph.
+- Local scenarios, encounter rooms, local prefabs, imported sprites/models, and
+  review metadata are stored through `AssetStore`, not `ContentRegistry`.
+- Canonical behavior remains in runtime code; Builder stores refs, previews,
+  validation state, local scenarios, and reports.
+
 Recommended file map:
 
 - `src/content/registry.ts`
@@ -158,9 +191,12 @@ Recommended file map:
 - `src/content/potions.ts` or generated potion adapters.
 - `src/content/materials.ts` or generated material adapters.
 - `src/content/enemies.ts` or generated enemy adapters.
-- `src/content/prefabs.ts` or adapters over the existing prefab library.
-- `src/builder/content/ContentBrowser.ts`
-- `src/builder/content/ContentDetails.ts`
+- `src/content/prefabs.ts` or adapters over built-in prefab definitions.
+- `src/builder/assets/ContentAssetProvider.ts`
+- `src/builder/content/ContentBrowser.ts` only as a thin Asset Browser mode, if
+  the existing `builder-assets` panel cannot host the view directly.
+- `src/builder/content/ContentDetails.ts` only as content-specific sections for
+  the shared Asset Details panel.
 - `src/builder/content/contentValidation.ts`
 
 The registry should adapt existing runtime data rather than duplicate it.
@@ -170,6 +206,7 @@ The registry should adapt existing runtime data rather than duplicate it.
 ```ts
 export type ContentKind =
   | 'card'
+  | 'modifier'
   | 'wandFrame'
   | 'wandLoadout'
   | 'potion'
@@ -179,8 +216,8 @@ export type ContentKind =
   | 'enemy'
   | 'prefab'
   | 'sprite'
-  | 'encounter'
-  | 'scenario';
+  | 'encounterScenario'
+  | 'spellLabScenario';
 
 export type ContentStatus =
   | 'live'
@@ -202,7 +239,6 @@ export interface ContentItem {
   rarity?: 'common' | 'uncommon' | 'rare' | 'unique';
   biomeTags?: string[];
   dependencies: ContentDependency[];
-  usedBy: ContentDependency[];
   validation: ContentValidationSummary;
 }
 
@@ -221,7 +257,35 @@ export interface ContentValidationSummary {
 ```
 
 The registry can start small. The important part is the stable interface and
-the habit of exposing content through one surface.
+the habit of exposing content through one Asset Database surface.
+
+Scenario taxonomy:
+
+- `spellLabScenario` means a contained spell/potion/flask test setup that can
+  become a probe fixture.
+- `encounterScenario` means an authored room or combat setup with terrain,
+  enemies, rewards, and tutorial/review intent.
+- Do not add a generic `scenario` kind unless it has an explicit subtype that
+  maps back to one of these Asset Database categories.
+
+Recommended reference shape:
+
+```ts
+export interface ContentRef {
+  kind: ContentKind;
+  id: string;
+  origin: 'builtIn' | 'project' | 'documentEmbedded' | 'missing';
+}
+
+export const contentAssetKey = (ref: ContentRef): string =>
+  `${ref.origin}:${ref.kind}:${ref.id}`;
+```
+
+Built-in content may still be displayed in compact form, such as
+`card:critwet`, but durable Asset Database keys must include enough scope to
+avoid collisions. Project/library/document-embedded content-like assets should
+normally use `AssetRef`/`assetId`; use `ContentRef` only when a typed gameplay
+content reference is required.
 
 ## Stable IDs and Deprecation
 
@@ -236,6 +300,10 @@ Rules:
 - Export should preserve deprecated IDs so old documents still open.
 - Cook/build should decide whether deprecated content is allowed in shipped
   levels.
+- Asset Database keys should be kind-qualified. A card, potion, prefab, and
+  sprite may have the same short ID without colliding if stored as typed refs.
+- Non-built-in refs must include origin/scope or use the existing Asset Database
+  `assetId` so a project asset cannot collide with a built-in content ID.
 
 Recommended alias shape:
 
@@ -245,14 +313,17 @@ export const CONTENT_ID_ALIASES: Record<string, string> = {
 };
 ```
 
-For cards, `CardId` remains the TypeScript contract. The registry adds metadata
-and validation around it.
+For cards, `CardId` remains the TypeScript contract. The registry adds metadata,
+Asset Database indexing, dependency visibility, and validation around it.
 
 ## Builder UI Surfaces
 
 ### Content Browser
 
-Add a Content Browser panel to the Builder workspace.
+Add Content Browser as a Builder Asset Browser mode. It may have a dedicated
+panel entry if that improves navigation, but it must reuse the Asset Database,
+Asset Details, search/filter infrastructure, dependency graph, and storage
+interfaces.
 
 Tabs:
 
@@ -512,7 +583,7 @@ Builder needs two wand concepts.
 Built-in wand frames:
 
 - Read from runtime definitions.
-- Browsable in Content Browser.
+- Browsable in the Asset Browser content mode.
 - Not editable in Builder unless a future tuning mode is explicitly added.
 
 ### Wand Loadout Assets
@@ -540,12 +611,13 @@ export interface WandLoadoutAsset {
   v: 1;
   id: string;
   name: string;
-  frameId: string;
-  cards: Array<CardId | null>;
-  collection?: CardId[];
+  frame: ContentRef; // kind: 'wandFrame'
+  cards: Array<ContentRef | null>; // kind: 'card'
+  collection?: ContentRef[];
   tags: string[];
   notes?: string;
-  status: 'review' | 'example' | 'shipping';
+  status: ContentStatus;
+  usageTags?: Array<'example' | 'shipping' | 'bossTest' | 'tutorial'>;
 }
 ```
 
@@ -560,7 +632,7 @@ Builder should expose potions in three related ways:
 2. **Elixir cells** as real liquids in the world.
 3. **Recipes** as cauldron-transmutation logic.
 
-The Content Browser should make the relationship explicit.
+The Asset Browser content mode should make the relationship explicit.
 
 For example:
 
@@ -650,7 +722,7 @@ Rules:
 
 If 3D models or richer 2D rigs are added later:
 
-- Store them in a visual asset library parallel to sprites.
+- Store them as AssetDatabase-backed visual asset kinds alongside sprites.
 - Preview them in Builder.
 - Reference them from decor or authored runtime objects.
 - Do not infer gameplay bounds from mesh geometry.
@@ -668,8 +740,9 @@ that appears to block or burn but has no grid explanation.
 
 ## Prefabs and Content Composition
 
-Prefabs are already the right abstraction for authored structures. The content
-registry should expose both local and built-in prefabs as content items.
+Prefabs are already the right abstraction for authored structures. Built-in
+prefabs may enter through `ContentRegistry`, but local/imported/document
+prefabs are `AssetStore` records indexed by `AssetDatabase`.
 
 Add metadata:
 
@@ -753,6 +826,8 @@ Errors:
 - Shipping document references review-only content.
 - Deprecated content appears without migration.
 - Required sprite asset is missing from document export.
+- Shipping/share export references a local-only asset that cannot be embedded or
+  resolved.
 - Puzzle object uses a missing material or cell ID.
 
 Warnings:
@@ -762,12 +837,13 @@ Warnings:
 - Potion recipe requires material not present in biome.
 - Spell Lab scenario is missing for a new card used in the document.
 - No reachable pickup for a staged tutorial reward.
+- Document uses local-only assets that must be embedded, promoted, or replaced
+  before sharing/cooking.
 
 Infos:
 
 - Content item is valid but has no thumbnail.
 - Content item has no tags.
-- Document uses local-only assets.
 
 ### Cook Report
 
@@ -788,7 +864,10 @@ This report becomes the equivalent of an editor "submit gate".
 
 ## Dependency Graph
 
-Builder should expose dependencies both ways.
+Builder should expose dependencies both ways through the Asset Database
+dependency graph. Content-specific validators may compute extra facts, but they
+should publish dependency and usage records into the shared graph so safe
+delete, rename, details, validation, and cook reports agree.
 
 For `critwet`:
 
@@ -831,22 +910,29 @@ export interface EditorDocument {
     allowExperimentalContent: boolean;
     targetStage?: number;
   };
-  scenarioRefs?: string[];
+  scenarioRefs?: Array<ContentRef | AssetRef>; // spellLabScenario or encounterScenario
 }
 ```
+
+Use `ContentRef` for built-in scenarios and `AssetRef`/`assetId` for local or
+project scenario assets stored through `AssetStore`.
 
 For object params, use stable IDs:
 
 ```ts
 // tome pickup
-{ kind: 'pickup', params: { kind: 'tome', card: 'critwet' } }
+{ kind: 'pickup', params: { kind: 'tome', card: { kind: 'card', id: 'critwet', origin: 'builtIn' } } }
 
 // potion pickup
-{ kind: 'pickup', params: { kind: 'potion', potion: 'swift' } }
+{ kind: 'pickup', params: { kind: 'potion', potion: { kind: 'potion', id: 'swift', origin: 'builtIn' } } }
 
 // future wand fixture
-{ kind: 'pickup', params: { kind: 'wand', loadout: 'wet-crit-review' } }
+{ kind: 'pickup', params: { kind: 'wand', loadout: { kind: 'wandLoadout', id: 'wet-crit-review', origin: 'builtIn' } } }
 ```
+
+Legacy string refs should continue to load and should be normalized at the
+Builder command boundary. Save migration can stay conservative until the typed
+ref shape is accepted as an `EditorDocument` contract.
 
 Validation owns whether the referenced IDs are valid and shippable.
 
@@ -906,14 +992,20 @@ Builder should make every missing step visible.
 Deliver:
 
 - `ContentItem` types.
-- Registry adapters for cards, potions, materials, enemies, prefabs, and sprites.
+- Registry adapters for built-in cards, modifiers, potions, materials, enemies,
+  prefabs, and sprites.
+- Asset Database provider that projects registry items into read-only asset
+  entries.
 - Simple debug panel or console command to dump registry counts.
 
 Acceptance:
 
-- Registry reflects `CARD_DEFS`, `POTION_DEFS`, `Cell`, and Builder sprite/prefab
-  libraries without duplicating definitions.
+- Registry reflects `CARD_DEFS`, `POTION_DEFS`, `Cell`, and built-in sprite/
+  prefab definitions without duplicating definitions. Local sprite/prefab
+  libraries remain AssetStore data.
 - Missing or duplicate IDs are reported.
+- Asset Database can query content entries by kind, status, tag, validation
+  state, and dependency state.
 
 ### Phase B - Typed Pickers
 
@@ -923,21 +1015,28 @@ Deliver:
 - Potion picker for potion pickups.
 - Enemy picker for enemy objects.
 - Material picker for emitters and future recipe helpers.
-- Sprite picker reuse through the content browser.
+- Sprite picker reuse through the Asset Browser or Content Browser mode.
 
 Acceptance:
 
 - Free-text card/potion authoring is no longer the default path.
 - Invalid IDs cannot be selected through normal UI.
 - Existing documents with string IDs still load.
+- Pickers emit typed refs or normalize legacy string refs through one adapter.
 
 ### Phase C - Content Browser
 
+Dependency:
+
+- Depends on Builder Phase 5B `ContentAssetProvider` and the filtered Asset
+  Browser view work. Do not implement this as a standalone browser while those
+  pieces are missing.
+
 Deliver:
 
-- Builder panel for browsing content.
+- Builder Asset Browser mode for browsing content.
 - Search, filters, tags, validation badges.
-- Details drawer with dependencies and source paths.
+- Shared Asset Details sections with dependencies and source paths.
 - "Place", "Inspect", "Open in Spell Lab", and "Show uses" actions where
   applicable.
 
@@ -946,6 +1045,8 @@ Acceptance:
 - Designers can find all live and review cards without reading source files.
 - Content status is visible.
 - Review-only and experimental items are clearly marked.
+- No separate content dependency graph, storage layer, or browser search model is
+  introduced.
 
 ### Phase D - Spell Lab MVP
 
@@ -987,7 +1088,7 @@ Deliver:
 
 - Saved Spell Lab scenarios.
 - Encounter scenarios with terrain/enemies/rewards.
-- Scenario browser in Content Browser.
+- Scenario smart collection in the Asset Browser / Content Browser mode.
 - Scenario-to-probe export stub.
 
 Acceptance:
@@ -1017,8 +1118,11 @@ New:
 - `src/content/types.ts`
 - `src/content/registry.ts`
 - `src/content/validate.ts`
-- `src/builder/content/ContentBrowser.ts`
-- `src/builder/content/ContentDetails.ts`
+- `src/builder/assets/ContentAssetProvider.ts`
+- `src/builder/content/ContentBrowser.ts` only if implemented as a thin view
+  around `builder-assets`
+- `src/builder/content/ContentDetails.ts` only for content-specific sections in
+  the shared Asset Details panel
 - `src/builder/content/TypedPicker.ts`
 - `src/builder/spell-lab/SpellLab.ts`
 - `src/builder/spell-lab/scenarios.ts`
@@ -1054,6 +1158,7 @@ Static:
 Runtime/browser:
 
 - Builder opens Content Browser.
+- Content Browser uses Asset Database entries and shared Asset Details.
 - Card search finds `spark`, `infuser`, and new review cards.
 - Tome inspector uses card picker.
 - Potion inspector uses potion picker.
@@ -1071,12 +1176,12 @@ Suggested probes:
 
 1. Should built-in content registry metadata live beside runtime definitions, or
    in a separate generated manifest?
-2. Should local Spell Lab scenarios stay localStorage-only, or be exportable as
-   repo JSON from day one?
+2. Which `AssetStore` adapters should save Spell Lab scenarios first: existing
+   local browser storage only, exported JSON, or future project-folder storage?
 3. Should review-only content be selectable in normal Builder documents with a
    warning, or hidden unless review mode is enabled?
-4. Should Content Browser replace the current Gallery, or should Gallery remain
-   visual preview while Content Browser handles searchable data?
+4. Which content filters deserve first-class Asset Browser smart collections,
+   versus simple saved filters?
 5. Should the first Spell Lab simulate inside the main `World`, a disposable
    mini `World`, or a clipped region of the current document?
 6. Should scenario assertions be authored in UI, or only generated from probes
@@ -1093,7 +1198,8 @@ Build the smallest useful version:
 2. Replace tome card and potion pickup free-text inspector fields with typed
    pickers.
 3. Add validation for unknown card and potion IDs.
-4. Add a basic Content Browser panel with Cards and Potions tabs.
+4. Add Cards and Potions smart collections in the Asset Browser, or a thin
+   Content Browser mode backed by the same panel.
 5. Add "Open in Spell Lab" as a disabled/placeholder action on card details.
 
 This gives immediate value, reduces typo risk, and creates the foundation for
@@ -1104,7 +1210,8 @@ Spell Lab without touching runtime spell behavior.
 This addendum is successful when:
 
 - A designer can browse every card, wand frame, potion, material, enemy, prefab,
-  sprite, and scenario from Builder.
+  sprite, and scenario from Builder through the shared Asset Browser/content
+  mode.
 - Authored documents store stable content references instead of copied runtime
   definitions.
 - Builder catches invalid or unshippable content references before playtest.

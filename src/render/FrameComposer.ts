@@ -8,7 +8,7 @@ import type {
   RenderTarget,
 } from '@/render/pixels';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
-import { resolveBackdropLayersForRuntime } from '@/config/backdrop';
+import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { PICKUP_COLOR } from '@/game/Pickups';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -183,7 +183,14 @@ export class FrameComposer implements PixelSurface {
     const materials = ctx.params.materials;
     const { lightR, lightG, lightB, vignette, LW } = this.light;
     const backdropLayers = this.layers.backdropLayers;
-    const backdropSettings = resolveBackdropLayersForRuntime(ctx.params.backdrop, ctx.levels.current);
+    const backdropProfile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
+    const backdropSettings = backdropProfile.layers;
+    const backdropGrade = backdropProfile.grade;
+    const backdropExposure = 2 ** backdropGrade.exposure;
+    const backdropBrightness = backdropGrade.brightness;
+    const backdropContrast = backdropGrade.contrast;
+    const backdropInvGamma = 1 / backdropGrade.gamma;
+    const backdropSaturation = backdropGrade.saturation;
     const activeBackdropLayers: Array<{
       pixels: Uint8ClampedArray;
       width: number;
@@ -297,6 +304,16 @@ export class FrameComposer implements PixelSurface {
             g = g * ia + (active.pixels[si + 1] / 255) * a;
             b = b * ia + (active.pixels[si + 2] / 255) * a;
           }
+          r = (r * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+          g = (g * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+          b = (b * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+          const luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
+          r = luma + (r - luma) * backdropSaturation;
+          g = luma + (g - luma) * backdropSaturation;
+          b = luma + (b - luma) * backdropSaturation;
+          r = r <= 0 ? 0 : r >= 1 ? 1 : r ** backdropInvGamma;
+          g = g <= 0 ? 0 : g >= 1 ? 1 : g ** backdropInvGamma;
+          b = b <= 0 ? 0 : b >= 1 ? 1 : b ** backdropInvGamma;
           const depthShade = 0.78 + 0.22 * (1 - wy / HEIGHT);
           r *= depthShade;
           g *= depthShade;
