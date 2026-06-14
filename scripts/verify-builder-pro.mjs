@@ -69,6 +69,22 @@ const toClient = async (wx, wy) =>
     return { x: r.left + ux * r.width, y: r.top + uy * r.height };
   }, [wx, wy]);
 
+const acceptAppPrompt = async (value) => {
+  await page.waitForSelector('.app-dialog-root .app-dialog-input', { timeout: 5000 });
+  await page.fill('.app-dialog-root .app-dialog-input', value);
+  await page.click('.app-dialog-root .app-dialog-btn.primary');
+};
+const readAppPromptAndAccept = async () => {
+  await page.waitForSelector('.app-dialog-root .app-dialog-input', { timeout: 5000 });
+  const value = await page.$eval('.app-dialog-root .app-dialog-input', (el) => el.value);
+  await page.click('.app-dialog-root .app-dialog-btn.primary');
+  return value;
+};
+const acceptAppConfirm = async () => {
+  await page.waitForSelector('.app-dialog-root .app-dialog-btn.primary', { timeout: 5000 });
+  await page.click('.app-dialog-root .app-dialog-btn.primary');
+};
+
 /* ---------- zoom + minimap ---------- */
 console.log('-- zoom & minimap');
 const mid = await toClient(600, 500);
@@ -188,6 +204,21 @@ const arenaChecksum = () =>
     for (let y = 375; y <= 625; y++) for (let x = 430; x <= 770; x++) sum += w.types[w.idx(x, y)];
     return sum;
   });
+const sampleBuilderCanvas = (wx, wy) =>
+  page.evaluate(([wx, wy]) => {
+    const ctx = window.__game.ctx;
+    const overlay = document.getElementById('builder-overlay');
+    const canvas = document.getElementById('builder-canvas');
+    const r = overlay.getBoundingClientRect();
+    const VIEW_W = 525, VIEW_H = 357;
+    const ux = ((wx - ctx.camera.renderX) / VIEW_W - 0.5) * ctx.camera.zoom + 0.5;
+    const uy = ((wy - ctx.camera.renderY) / VIEW_H - 0.5) * ctx.camera.zoom + 0.5;
+    const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(ux * canvas.width)));
+    const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(uy * canvas.height)));
+    if (ux < 0 || ux > 1 || uy < 0 || uy > 1 || r.width === 0 || r.height === 0) return { r: 0, g: 0, b: 0, a: 0 };
+    const p = canvas.getContext('2d').getImageData(x, y, 1, 1).data;
+    return { r: p[0], g: p[1], b: p[2], a: p[3] };
+  }, [wx, wy]);
 // paint STATIC stone block A through the UI, then snapshot it into a save
 await page.evaluate(() => {
   window.__game.ctx.state.currentElement = 12;
@@ -293,19 +324,17 @@ await page.mouse.down();
 await page.mouse.move(rb.x, rb.y, { steps: 3 });
 await page.mouse.up();
 await page.waitForTimeout(120);
-nextPromptAnswer = 'test-block';
 await page.click('#bp-prefab-capture');
+await acceptAppPrompt('test-block');
 await page.waitForTimeout(150);
 // library cards only — built-ins also list as cards now (2 action buttons
 // instead of the library's 4: no delete, no anchor editing)
 let prefabCount = await page.evaluate(
   () =>
-    [...document.querySelectorAll('.bp-prefab-card')].filter(
-      (c) => c.querySelectorAll('.bp-prefab-actions button').length === 4,
-    ).length,
+    document.querySelectorAll('#bp-prefab-host .ba-placement-row[data-asset-id^="prefab:library:"]').length,
 );
 check('prefab captured into the library', prefabCount === 1, `got ${prefabCount}`);
-await page.click('.bp-prefab-card');
+await page.click('#bp-prefab-host .ba-placement-row[data-asset-id^="prefab:library:"]');
 await page.waitForTimeout(100);
 const paste = await toClient(700, 480);
 await page.mouse.click(paste.x, paste.y);
@@ -331,6 +360,7 @@ await page.evaluate(() => {
 console.log('-- door logic live');
 // wipe markers/doc state via NEW, then author: spawn + 2 plates + OR door
 await page.click('#b-new');
+await acceptAppConfirm();
 await page.waitForTimeout(150);
 await placeAt('spawn', 470, 616);
 await placeAt('plate', 510, 619);
@@ -484,18 +514,124 @@ const wreckBehind = await page.evaluate(async () => {
 });
 check('wrecking an already-fired step cannot wedge the chain', wreckBehind.mid.seq === 1 && wreckBehind.done && wreckBehind.state === 1, JSON.stringify(wreckBehind));
 
-/* ---------- playtest-from-here (T) ---------- */
-console.log('-- playtest from here');
+/* ---------- live preview session: disposable, Builder-owned ---------- */
+console.log('-- live preview session');
 await page.click('#mode-builder-btn');
 await page.waitForTimeout(400);
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  ctx.camera.zoomLock = 1;
+  ctx.camera.snapTo(600, 500);
+  ctx.state.currentElement = 12;
+  ctx.state.activeInputMode = 'element';
+});
+await page.waitForTimeout(200);
+// Weight one authored plate through the normal terrain tool. Live Preview
+// should read this unsaved paint from a local snapshot, not by mutating the
+// document or swapping the real world into a preview runtime.
+await paintBlock(506, 617, 514, 618);
+const livePreviewChecksum = await arenaChecksum();
+await page.click('#b-session-live');
+await page.waitForTimeout(700);
+const livePreviewState = await page.evaluate(() => ({
+  mode: window.__game.ctx.state.mode,
+  active: document.getElementById('b-session-live').classList.contains('active'),
+  restartDisabled: document.getElementById('b-session-restart').disabled,
+  discardDisabled: document.getElementById('b-session-discard').disabled,
+  checksum: (() => {
+    const w = window.__game.ctx.world;
+    let sum = 0;
+    for (let y = 375; y <= 625; y++) for (let x = 430; x <= 770; x++) sum += w.types[w.idx(x, y)];
+    return sum;
+  })(),
+}));
+check('Live Preview stays in Builder mode', livePreviewState.mode === 'build' && livePreviewState.active, JSON.stringify(livePreviewState));
+check('Live Preview does not mutate the live world', livePreviewState.checksum === livePreviewChecksum, `${livePreviewState.checksum} vs ${livePreviewChecksum}`);
+check('Live Preview enables restart/discard controls', !livePreviewState.restartDisabled && !livePreviewState.discardDisabled, JSON.stringify(livePreviewState));
+const platePixel = await sampleBuilderCanvas(510, 619);
+check('Live Preview draws preview-only mechanism cells', platePixel.a > 0, JSON.stringify(platePixel));
+const livePreviewBudget = await page.evaluate(async () => {
+  const frames = [];
+  let last = performance.now();
+  for (let i = 0; i < 36; i++) {
+    const now = await new Promise((resolve) => requestAnimationFrame(resolve));
+    frames.push(now - last);
+    last = now;
+  }
+  const avg = frames.reduce((sum, value) => sum + value, 0) / frames.length;
+  return { avg, max: Math.max(...frames), samples: frames.length };
+});
+check(
+  'Live Preview frame budget remains bounded',
+  livePreviewBudget.avg < 50 && livePreviewBudget.max < 180,
+  JSON.stringify(livePreviewBudget),
+);
+await page.evaluate(() => document.getElementById('bp-preview')?.click());
+await page.waitForTimeout(120);
+const livePreviewGate = await page.evaluate(() => ({
+  status: document.getElementById('builder-status')?.textContent ?? '',
+  active: document.getElementById('b-session-live').classList.contains('active'),
+}));
+check(
+  'Live Preview blocks procedural cell previews',
+  livePreviewGate.active && /AUTHOR-ONLY/.test(livePreviewGate.status),
+  JSON.stringify(livePreviewGate),
+);
+await page.click('#b-session-restart');
+await page.waitForTimeout(250);
+const restartState = await page.evaluate(() => ({
+  active: document.getElementById('b-session-live').classList.contains('active'),
+  checksum: (() => {
+    const w = window.__game.ctx.world;
+    let sum = 0;
+    for (let y = 375; y <= 625; y++) for (let x = 430; x <= 770; x++) sum += w.types[w.idx(x, y)];
+    return sum;
+  })(),
+}));
+check('Restart Preview keeps the authored world stable', restartState.active && restartState.checksum === livePreviewChecksum, JSON.stringify(restartState));
+await page.click('#b-session-discard');
+await page.waitForTimeout(250);
+const discardState = await page.evaluate(() => ({
+  author: document.getElementById('b-session-author').classList.contains('active'),
+  restartDisabled: document.getElementById('b-session-restart').disabled,
+}));
+check('Discard Preview returns to Author controls', discardState.author && discardState.restartDisabled, JSON.stringify(discardState));
+await page.keyboard.press('Escape');
+
+/* ---------- playtest-from-here (T) ---------- */
+console.log('-- playtest from here');
+if (!(await page.evaluate(() => document.body.classList.contains('builder-open')))) {
+  await page.click('#mode-builder-btn');
+  await page.waitForTimeout(400);
+}
+await page.keyboard.press('Escape');
+await page.waitForTimeout(60);
+await page.evaluate(() => {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+});
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  ctx.camera.zoomLock = 1;
+  ctx.camera.snapTo(600, 500);
+});
+await page.waitForTimeout(200);
 const here = await toClient(700, 600);
+await page.mouse.click(here.x, here.y);
+await page.waitForTimeout(80);
 await page.mouse.move(here.x, here.y);
 await page.waitForTimeout(100);
 await page.keyboard.press('t');
 await page.waitForFunction(
   () => window.__game.ctx.state.mode === 'play' && !window.__game.ctx.levels.transitioning,
   { timeout: 10000 },
-);
+).catch(async (err) => {
+  const state = await page.evaluate(() => ({
+    mode: window.__game.ctx.state.mode,
+    status: document.getElementById('builder-status')?.textContent ?? '',
+    active: document.activeElement?.id ?? document.activeElement?.tagName ?? '',
+  }));
+  throw new Error(`${err.message} ${JSON.stringify(state)}`);
+});
 await page.waitForTimeout(400);
 const tpos = await page.evaluate(() => ({
   x: window.__game.ctx.player.x,
@@ -514,17 +650,16 @@ await page.keyboard.press('o');
 await page.keyboard.press('o');
 await page.keyboard.press('o'); // back to NONE
 
-lastDialog = null;
 await page.click('#b-share');
-await page.waitForTimeout(800);
-const code = lastDialog?.value ?? '';
+const code = await readAppPromptAndAccept();
 check('SHARE produces a PLLD1 code', typeof code === 'string' && code.startsWith('PLLD1.'), String(code).slice(0, 24));
 await page.click('#b-new');
+await acceptAppConfirm();
 await page.waitForTimeout(150);
 let count = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('NEW cleared the document', count === 0, `got ${count}`);
-nextPromptAnswer = code;
 await page.click('#b-code');
+await acceptAppPrompt(code);
 await page.waitForTimeout(800);
 count = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('CODE import restores the level (4 markers)', count === 4, `got ${count}`);

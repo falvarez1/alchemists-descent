@@ -1,6 +1,7 @@
 import type { EditorDocument } from '@/builder/document';
 import type { PrefabDef } from '@/builder/prefablib';
 import type { SpriteAsset } from '@/builder/assets/sprites';
+import type { ContentItem } from '@/content/types';
 
 export type AssetKind =
   | 'document'
@@ -12,7 +13,19 @@ export type AssetKind =
   | 'backdrop'
   | 'procPreset'
   | 'template'
-  | 'importReport';
+  | 'importReport'
+  | 'card'
+  | 'modifier'
+  | 'wandFrame'
+  | 'wandLoadout'
+  | 'potion'
+  | 'elixir'
+  | 'recipe'
+  | 'material'
+  | 'enemy'
+  | 'encounterScenario'
+  | 'spellLabScenario'
+  | 'cookReport';
 
 export type AssetOrigin =
   | 'built-in'
@@ -69,7 +82,15 @@ export interface AssetPreviewSummary {
 }
 
 export interface AssetSourceMetadata {
-  storage: 'builtin' | 'localStorage' | 'document' | 'generated' | 'import-report';
+  storage:
+    | 'builtin'
+    | 'localStorage'
+    | 'indexedDB'
+    | 'fileSystem'
+    | 'document'
+    | 'generated'
+    | 'import-report'
+    | 'content-registry';
   key?: string;
   documentId?: string;
   fileName?: string;
@@ -82,6 +103,7 @@ export type AssetPayload =
   | PrefabDef
   | SpriteAsset
   | AssetImportReport
+  | ContentItem
   | Record<string, unknown>
   | null;
 
@@ -181,6 +203,18 @@ export const ASSET_KINDS: readonly AssetKind[] = [
   'procPreset',
   'template',
   'importReport',
+  'card',
+  'modifier',
+  'wandFrame',
+  'wandLoadout',
+  'potion',
+  'elixir',
+  'recipe',
+  'material',
+  'enemy',
+  'encounterScenario',
+  'spellLabScenario',
+  'cookReport',
 ];
 
 export const ASSET_ORIGINS: readonly AssetOrigin[] = [

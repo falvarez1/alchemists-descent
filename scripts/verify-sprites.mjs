@@ -148,12 +148,12 @@ await (await chooser).setFiles([
 await page.waitForTimeout(600);
 
 const row = await page.evaluate(() => {
-  const r = document.querySelector('.bp-sprite-row');
+  const r = document.querySelector('#bp-sprite-host .ba-placement-row[data-asset-id^="sprite:"]');
   return r
-    ? { name: r.querySelector('.bp-prefab-name')?.textContent, meta: r.querySelector('.bp-prefab-meta')?.textContent }
+    ? { name: r.querySelector('.ba-name')?.textContent, meta: r.querySelector('.ba-meta')?.textContent }
     : null;
 });
-check('sprite row appears with name + 8x8x2 badge', !!row && row.name === 'probe' && /8×8×2/.test(row.meta ?? ''), JSON.stringify(row));
+check('sprite row appears with name + 8x8x2 badge', !!row && row.name === 'probe' && /8x8x2/.test(row.meta ?? ''), JSON.stringify(row));
 const stored = await page.evaluate(() => {
   const key = Object.keys(localStorage).find((k) => k.startsWith('noita-builder-sprite:'));
   return key ? JSON.parse(localStorage.getItem(key)) : null;
@@ -164,7 +164,7 @@ check('sprite stored per-key with frames + tag', !!stored && stored.frames.lengt
 /* ---------- place a sprite decor + spawn ---------- */
 console.log('-- placement (armed sprite -> decor with sprite params)');
 const DECOR = { x: 600, y: 560 };
-await page.click('.bp-sprite-row');
+await page.click('#bp-sprite-host .ba-placement-row[data-asset-id^="sprite:"]');
 await page.waitForTimeout(120);
 let pt = await toClient(DECOR.x, DECOR.y);
 await page.mouse.click(pt.x, pt.y);
@@ -273,7 +273,9 @@ console.log('-- export (name.sheet.png + name.sprite.json)');
 await page.click('#mode-builder-btn');
 await page.waitForTimeout(600);
 const dl1p = page.waitForEvent('download', { timeout: 10000 });
-await page.click('.bp-sprite-row button[aria-label^="Export"]');
+await page.click('#bp-sprite-host .ba-placement-row[data-asset-id^="sprite:"] [data-asset-placement-details]');
+await page.waitForTimeout(150);
+await page.click('#builder-asset-details button[data-asset-action="export"]');
 const dl1 = await dl1p;
 const dl2 = await page.waitForEvent('download', { timeout: 10000 }).catch(() => null);
 const names = [dl1.suggestedFilename(), dl2?.suggestedFilename()].sort();

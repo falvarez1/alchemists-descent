@@ -14,7 +14,7 @@ import { PopoverHost } from '@/ui/editor/PopoverHost';
  */
 
 export interface PrefabPanelHooks {
-  onArm(p: PrefabDef | null): void;
+  onArm(p: PrefabDef | null, builtin: boolean): void;
   onCapture(): void;
   onRegionPng(): void;
   onImport(): void;
@@ -170,7 +170,7 @@ export class PrefabPanel {
     card.appendChild(actions);
 
     card.addEventListener('click', () => {
-      this.hooks.onArm(this.armedId === p.id ? null : p);
+      this.hooks.onArm(this.armedId === p.id ? null : p, builtin);
     });
     card.addEventListener('mouseenter', () => this.showPopover(card, p, builtin));
     card.addEventListener('mouseleave', () => {

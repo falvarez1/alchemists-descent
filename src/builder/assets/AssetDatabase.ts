@@ -1,4 +1,5 @@
 import type { MaterialParams } from '@/core/types';
+import { CARD_DEFS } from '@/combat/wands/cards';
 import type { EditorDocument, EditorObject } from '@/builder/document';
 import type { PrefabDef } from '@/builder/prefablib';
 import type { SpriteAsset } from '@/builder/assets/sprites';
@@ -32,15 +33,19 @@ import type {
   AssetDeletePlan,
   AssetImportReport,
 } from '@/builder/assets/AssetTypes';
+import { isAssetContentKind } from '@/content/types';
+import type { ContentItem } from '@/content/types';
 
 export interface AssetDatabaseInput {
   currentDocument?: EditorDocument;
   documents?: Record<string, EditorDocument>;
+  templates?: Record<string, EditorDocument>;
   prefabs?: readonly PrefabDef[];
   builtinPrefabs?: readonly PrefabDef[];
   sprites?: readonly SpriteAsset[];
   embeddedSprites?: readonly SpriteAsset[];
   importReports?: readonly AssetImportReport[];
+  contentAssets?: readonly AssetRecord[];
   materials?: Record<number, MaterialParams>;
   procPresets?: readonly { id: string; label: string; usesMaterial?: boolean }[];
   lightPresets?: readonly { id: string; label: string; color?: string; radius?: number }[];
@@ -60,9 +65,10 @@ export class AssetDatabase {
   private readonly records = new Map<string, AssetRecord>();
 
   constructor(input: AssetDatabaseInput = {}) {
+    const importTimes = importTimestampIndex(input.importReports ?? []);
     indexBuiltInMetadata(this, input);
     for (const prefab of input.builtinPrefabs ?? []) this.add(makePrefabRecord(prefab, 'built-in'));
-    for (const prefab of input.prefabs ?? []) this.add(makePrefabRecord(prefab, 'library'));
+    for (const prefab of input.prefabs ?? []) this.add(makePrefabRecord(prefab, 'library', importTimes.get(`prefab:${prefab.id}`)));
     for (const doc of Object.values(input.documents ?? {})) {
       for (const sprite of doc.assets?.sprites ?? []) this.add(makeSpriteRecord(sprite, 'document-embedded', doc.id));
     }
@@ -70,9 +76,11 @@ export class AssetDatabase {
       for (const sprite of input.currentDocument.assets?.sprites ?? []) this.add(makeSpriteRecord(sprite, 'document-embedded', input.currentDocument.id));
     }
     for (const sprite of input.embeddedSprites ?? []) this.add(makeSpriteRecord(sprite, 'document-embedded', input.currentDocument?.id));
-    for (const sprite of input.sprites ?? []) this.add(makeSpriteRecord(sprite, 'library'));
+    for (const sprite of input.sprites ?? []) this.add(makeSpriteRecord(sprite, 'library', undefined, importTimes.get(`sprite:${sprite.id}`)));
+    for (const record of input.contentAssets ?? []) this.add(record);
+    for (const doc of Object.values(input.templates ?? {})) this.add(makeTemplateRecord(doc));
     for (const doc of Object.values(input.documents ?? {})) {
-      if (doc.id !== input.currentDocument?.id) this.add(makeDocumentRecord(doc, false));
+      if (doc.id !== input.currentDocument?.id) this.add(makeDocumentRecord(doc, false, importTimes.get(`document:${doc.id}`)));
     }
     if (input.currentDocument) this.add(makeDocumentRecord(input.currentDocument, true));
     for (const report of input.importReports ?? []) this.add(makeImportReportRecord(report));
@@ -111,7 +119,7 @@ export class AssetDatabase {
         if (text && !assetSearchText(record).includes(text)) return false;
         return collectionMatches(record, collection);
       })
-      .sort(compareAssets(query.sort ?? 'name'));
+      .sort(compareAssets(query.sort ?? (collection === 'recent' ? 'modified' : 'name')));
   }
 
   usageFor(assetId: string): AssetUsage[] {
@@ -134,7 +142,11 @@ export class AssetDatabase {
       };
     }
     const reasons: string[] = [];
-    if (record.immutable) reasons.push('Built-in assets are immutable; duplicate or export them first');
+    if (record.source.storage === 'content-registry') {
+      reasons.push('Built-in gameplay content is read-only; export metadata for reference or review');
+    } else if (record.immutable) {
+      reasons.push('Built-in assets are immutable; duplicate or export them first');
+    }
     if (record.source.storage === 'document') {
       reasons.push('Current Builder document edits must use Builder document commands or the document toolbar');
     }
@@ -252,7 +264,30 @@ function indexBuiltInMetadata(db: AssetDatabase, input: AssetDatabaseInput): voi
   }
 }
 
-function makeDocumentRecord(doc: EditorDocument, current: boolean): AssetRecord<EditorDocument> {
+function makeTemplateRecord(doc: EditorDocument): AssetRecord<EditorDocument> {
+  const signature = stableContentSignature(doc);
+  return finalizeRecord({
+    assetId: stableAssetId('template', 'built-in', doc.id),
+    kind: 'template',
+    sourceId: doc.id,
+    name: doc.name || 'template',
+    folder: 'Built-ins/Templates',
+    tags: ['template', 'document', doc.biome],
+    origin: 'built-in',
+    source: { storage: 'builtin', documentId: doc.id },
+    validation: validSummary(['Template opens as a new Builder document']),
+    dependencies: emptyDependencies(),
+    usages: [],
+    preview: { kind: 'document', label: 'Builder template', glyph: 'T', contentSignature: signature },
+    payload: doc,
+    immutable: true,
+    portable: true,
+    sizeBytes: estimatedJsonBytes(doc),
+    contentSignature: signature,
+  });
+}
+
+function makeDocumentRecord(doc: EditorDocument, current: boolean, importedAt?: string): AssetRecord<EditorDocument> {
   const issues = validateDocument(doc);
   const errors = issues.filter((issue) => issue.severity === 'error');
   const warnings = issues.filter((issue) => issue.severity === 'warning');
@@ -271,7 +306,7 @@ function makeDocumentRecord(doc: EditorDocument, current: boolean): AssetRecord<
     tags: ['document', doc.biome, current ? 'current' : 'saved'],
     origin: 'project',
     createdAt: undefined,
-    updatedAt: doc.validation?.at,
+    updatedAt: importedAt ?? doc.validation?.at,
     source: { storage: current ? 'document' : 'localStorage', key: `noita-builder-doc:${doc.id}`, documentId: doc.id },
     validation,
     dependencies: emptyDependencies(),
@@ -285,7 +320,7 @@ function makeDocumentRecord(doc: EditorDocument, current: boolean): AssetRecord<
   });
 }
 
-function makePrefabRecord(prefab: PrefabDef, origin: 'built-in' | 'library'): AssetRecord<PrefabDef> {
+function makePrefabRecord(prefab: PrefabDef, origin: 'built-in' | 'library', importedAt?: string): AssetRecord<PrefabDef> {
   const signature = prefabContentSignature(prefab);
   return finalizeRecord({
     assetId: stableAssetId('prefab', origin, prefab.id),
@@ -296,7 +331,7 @@ function makePrefabRecord(prefab: PrefabDef, origin: 'built-in' | 'library'): As
     tags: ['prefab', ...prefab.tags],
     origin,
     createdAt: prefab.createdAt,
-    updatedAt: prefab.createdAt,
+    updatedAt: importedAt ?? prefab.createdAt,
     source: { storage: origin === 'built-in' ? 'builtin' : 'localStorage', key: origin === 'built-in' ? undefined : `noita-builder-prefab:${prefab.id}` },
     validation: validSummary(),
     dependencies: emptyDependencies(),
@@ -310,7 +345,7 @@ function makePrefabRecord(prefab: PrefabDef, origin: 'built-in' | 'library'): As
   });
 }
 
-function makeSpriteRecord(sprite: SpriteAsset, origin: 'library' | 'document-embedded', documentId?: string): AssetRecord<SpriteAsset> {
+function makeSpriteRecord(sprite: SpriteAsset, origin: 'library' | 'document-embedded', documentId?: string, importedAt?: string): AssetRecord<SpriteAsset> {
   const signature = spriteAssetContentSignature(sprite);
   return finalizeRecord({
     assetId: stableAssetId('sprite', origin, sprite.id),
@@ -320,6 +355,8 @@ function makeSpriteRecord(sprite: SpriteAsset, origin: 'library' | 'document-emb
     folder: origin === 'document-embedded' ? 'Document Embedded/Sprites' : 'Sprites',
     tags: ['sprite', sprite.emissive ? 'emissive' : 'lit', ...sprite.tags.map((tag) => tag.name)],
     origin,
+    createdAt: importedAt,
+    updatedAt: importedAt,
     source: {
       storage: origin === 'document-embedded' ? 'document' : 'localStorage',
       key: origin === 'library' ? `noita-builder-sprite:${sprite.id}` : undefined,
@@ -365,6 +402,18 @@ function makeImportReportRecord(report: AssetImportReport): AssetRecord<AssetImp
     sizeBytes: estimatedJsonBytes(report),
     contentSignature: signature,
   });
+}
+
+function importTimestampIndex(reports: readonly AssetImportReport[]): Map<string, string> {
+  const times = new Map<string, string>();
+  for (const report of reports) {
+    if (!report.importedKind || !report.finalSourceId) continue;
+    if (report.decision !== 'accepted' && report.decision !== 'collision-reid' && report.decision !== 'collision-replace') continue;
+    const key = `${report.importedKind}:${report.finalSourceId}`;
+    const previous = times.get(key);
+    if (!previous || report.importedAt > previous) times.set(key, report.importedAt);
+  }
+  return times;
 }
 
 function makeSyntheticRecord(
@@ -430,6 +479,7 @@ function dependencyRefs(record: AssetRecord): AssetRef[] {
   if (record.kind === 'document' && isDocument(record.payload)) {
     return [
       ...spriteRefs(record.payload.objects, record),
+      ...contentRefs(record.payload.objects, record),
       ...record.payload.proceduralHistory.map((pass) => ({
         assetId: stableAssetId('procPreset', 'built-in', pass.pass),
         kind: 'procPreset' as const,
@@ -457,7 +507,19 @@ function dependencyRefs(record: AssetRecord): AssetRef[] {
         : []),
     ];
   }
-  if (record.kind === 'prefab' && isPrefab(record.payload)) return spriteRefs(record.payload.objects, record);
+  if (record.kind === 'prefab' && isPrefab(record.payload)) {
+    return [...spriteRefs(record.payload.objects, record), ...contentRefs(record.payload.objects, record)];
+  }
+  if (isContentItem(record.payload)) {
+    return record.payload.dependencies
+      .filter((dep) => isAssetContentKind(dep.kind))
+      .map((dep) => ({
+        assetId: stableAssetId(dep.kind as AssetKind, 'built-in', dep.id),
+        kind: dep.kind as AssetKind,
+        sourceId: dep.id,
+        label: dep.reason,
+      }));
+  }
   return [];
 }
 
@@ -475,6 +537,43 @@ function spriteRefs(objects: readonly EditorObject[], source: AssetRecord): Asse
   }));
 }
 
+function contentRefs(objects: readonly EditorObject[], source: AssetRecord): AssetRef[] {
+  const refs = new Map<string, AssetRef>();
+  const addRef = (kind: AssetKind, sourceId: string, label: string): void => {
+    const key = `${kind}:${sourceId}`;
+    if (refs.has(key)) return;
+    refs.set(key, {
+      assetId: stableAssetId(kind, 'built-in', sourceId),
+      kind,
+      sourceId,
+      label,
+    });
+  };
+  for (const object of objects) {
+    if (object.kind === 'enemy') {
+      const enemy = typeof object.params.kind === 'string' ? object.params.kind : 'slime';
+      addRef('enemy', enemy, `${source.name} enemy`);
+    } else if (object.kind === 'bossMarker') {
+      addRef('enemy', 'colossus', `${source.name} boss marker`);
+    } else if (object.kind === 'pickup') {
+      const pickupKind = typeof object.params.kind === 'string' ? object.params.kind : 'goldpile';
+      if (pickupKind === 'tome') {
+        const card = typeof object.params.card === 'string' ? object.params.card : 'spark';
+        addRef(cardAssetKind(card), card, `${source.name} tome card`);
+      } else if (pickupKind === 'potion') {
+        const potion = typeof object.params.potion === 'string' ? object.params.potion : 'vigor';
+        addRef('potion', potion, `${source.name} potion pickup`);
+      }
+    }
+  }
+  return [...refs.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.sourceId.localeCompare(b.sourceId));
+}
+
+function cardAssetKind(id: string): 'card' | 'modifier' {
+  const def = CARD_DEFS[id as keyof typeof CARD_DEFS];
+  return def && def.kind !== 'projectile' ? 'modifier' : 'card';
+}
+
 function makeUsage(record: AssetRecord, ref: AssetRef, currentDocumentId: string | null): AssetUsage {
   const current = record.kind === 'document' && record.sourceId === currentDocumentId;
   return {
@@ -490,7 +589,13 @@ function collectionMatches(record: AssetRecord, collection: AssetSmartCollection
   if (collection === 'all') return true;
   if (collection === 'recent') return record.updatedAt !== undefined || record.createdAt !== undefined;
   if (collection === 'missing') return record.origin === 'missing' || record.dependencies.missing.length > 0;
-  if (collection === 'unused') return record.usages.length === 0 && record.kind !== 'document' && record.origin !== 'missing';
+  if (collection === 'unused') {
+    return record.usages.length === 0 &&
+      record.kind !== 'document' &&
+      record.origin !== 'missing' &&
+      !record.immutable &&
+      record.source.storage !== 'content-registry';
+  }
   if (collection === 'usedByCurrentDocument') return record.usages.some((usage) => usage.label.startsWith('Current '));
   if (collection === 'builtins') return record.origin === 'built-in';
   if (collection === 'imported') return record.origin === 'imported';
@@ -541,4 +646,14 @@ function isDocument(value: unknown): value is EditorDocument {
 
 function isPrefab(value: unknown): value is PrefabDef {
   return !!value && typeof value === 'object' && (value as PrefabDef).kind === 'prefab';
+}
+
+function isContentItem(value: unknown): value is ContentItem {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Partial<ContentItem>;
+  return typeof item.id === 'string' &&
+    typeof item.kind === 'string' &&
+    typeof item.name === 'string' &&
+    Array.isArray(item.dependencies) &&
+    item.validation !== undefined;
 }

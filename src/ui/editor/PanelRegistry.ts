@@ -119,6 +119,22 @@ export const BUILDER_PANEL_SPECS = [
     handleSelectors: [':scope > .bi-head'],
   },
   {
+    id: 'builder-virtual-world',
+    title: 'World Map',
+    category: 'Builder',
+    defaultDock: 'bottom',
+    defaultSize: 420,
+    minSize: 300,
+    maxSize: 760,
+    closePolicy: 'hide',
+    commandIds: {
+      open: 'builder.virtualWorldPanel',
+      close: 'builder.virtualWorldPanel',
+      focus: 'builder.virtualWorldPanel',
+    },
+    handleSelectors: [':scope > .bi-head'],
+  },
+  {
     id: 'builder-global',
     title: 'Global Controls',
     category: 'Builder',
@@ -183,6 +199,22 @@ export const BUILDER_PANEL_SPECS = [
     handleSelectors: [':scope > .bi-head'],
   },
   {
+    id: 'builder-prefab-details',
+    title: 'Prefab Details',
+    category: 'Builder',
+    defaultDock: 'right',
+    defaultSize: 300,
+    minSize: 248,
+    maxSize: 480,
+    closePolicy: 'hide',
+    commandIds: {
+      open: 'builder.prefabDetailsPanel',
+      close: 'builder.prefabDetailsPanel',
+      focus: 'builder.prefabDetailsPanel',
+    },
+    handleSelectors: [':scope > .bi-head'],
+  },
+  {
     id: 'builder-matparams',
     title: 'Material Parameters',
     category: 'Builder',
@@ -224,6 +256,11 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 240,
     maxSize: 440,
     closePolicy: 'hide',
+    commandIds: {
+      open: 'builder.outlinerPanel',
+      close: 'builder.outlinerPanel',
+      focus: 'builder.outlinerPanel',
+    },
     handleSelectors: [':scope > .bi-head'],
   },
   {
@@ -235,6 +272,11 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 220,
     maxSize: 620,
     closePolicy: 'hide',
+    commandIds: {
+      open: 'builder.linkGraphPanel',
+      close: 'builder.linkGraphPanel',
+      focus: 'builder.linkGraphPanel',
+    },
     handleSelectors: [':scope > .bi-head'],
   },
   {

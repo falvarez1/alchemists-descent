@@ -1,5 +1,3 @@
-import type { EditorLight, EditorLink, EditorObject } from '@/builder/document';
-
 export const VIRTUAL_CHUNK_SIZE = 256 as const;
 export const VIRTUAL_BIOME_CHUNK_SIZE = 512 as const;
 export const VIRTUAL_TILE_SIZE = 256 as const;
@@ -97,9 +95,9 @@ export interface PixelSceneDef {
   colorOverrides?: Uint32Array;
   visual?: Uint8ClampedArray;
   background?: Uint8ClampedArray;
-  objects: EditorObject[];
-  links: EditorLink[];
-  lights: EditorLight[];
+  objects: VirtualSceneObject[];
+  links: VirtualSceneLink[];
+  lights: VirtualSceneLight[];
 }
 
 export interface PixelScenePlacementDef {
@@ -108,6 +106,30 @@ export interface PixelScenePlacementDef {
   x: number;
   y: number;
   priority: number;
+}
+
+export interface VirtualSceneObject {
+  id: string;
+  kind: string;
+  x: number;
+  y: number;
+  params: Record<string, unknown>;
+}
+
+export interface VirtualSceneLink {
+  id: string;
+  fromId: string;
+  toId: string;
+  kind: string;
+}
+
+export interface VirtualSceneLight {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  intensity: number;
+  radius: number;
 }
 
 export interface VirtualMaterialPalette {
@@ -127,6 +149,9 @@ export interface VirtualGenerationParams {
   noiseScale: number;
   noiseThreshold: number;
   borderSeal: number;
+  edgeRoughness: number;
+  pocketDensity: number;
+  crackDensity: number;
 }
 
 export interface VirtualChunkMeta {
@@ -158,6 +183,26 @@ export interface VirtualWindow {
   cy1: number;
 }
 
+export type VirtualChunkPlane = 'types' | 'colors' | 'life' | 'charge' | 'previewRgba';
+
+export interface GenerateChunkRequest {
+  jobId: number;
+  cx: number;
+  cy: number;
+  requestedPlanes: VirtualChunkPlane[];
+}
+
+export interface GenerateWindowRequest {
+  jobId: number;
+  cx0: number;
+  cy0: number;
+  cx1: number;
+  cy1: number;
+  centerCx: number;
+  centerCy: number;
+  requestedPlanes: VirtualChunkPlane[];
+}
+
 export interface ChunkMetrics {
   cx: number;
   cy: number;
@@ -169,4 +214,19 @@ export interface WindowMetrics {
   chunks: number;
   generatedMs: number;
   bytes: number;
+}
+
+export interface TransferableVirtualChunk {
+  cx: number;
+  cy: number;
+  originX: number;
+  originY: number;
+  size: number;
+  types?: ArrayBufferLike;
+  colors?: ArrayBufferLike;
+  life?: ArrayBufferLike;
+  charge?: ArrayBufferLike;
+  previewRgba?: ArrayBufferLike;
+  meta: VirtualChunkMeta;
+  metrics: ChunkMetrics;
 }

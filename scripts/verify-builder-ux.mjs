@@ -1,8 +1,8 @@
 // Backlog + sidebar wave probe: two-column filtered Sandbox toolbar, the
 // Builder-native left panel (materials/brush/world-gen), drag-to-place,
-// snap, group/align, command palette, layers, smooth, polygon/magic regions,
-// patrol, hazard emitters, notes, mood ambient, bake-from-playtest, rotate,
-// solo lights.
+// snap, spatial gizmos, group/align, command palette, layers, smooth,
+// polygon/magic regions, patrol, hazard emitters, notes, mood ambient,
+// bake-from-playtest, rotate, solo lights.
 // Usage: node scripts/verify-builder-ux.mjs [url]  (dev server must be running)
 import { chromium } from 'playwright-core';
 
@@ -544,42 +544,100 @@ const objPop = await page.evaluate(() => {
   };
 });
 check('object popover shows a preview image + info', objPop.visible && objPop.text.includes('Waystone') && objPop.hasPreview, JSON.stringify({ v: objPop.visible, p: objPop.hasPreview }));
-const prefabCards = await page.locator('#bp-prefab-list .bp-prefab-card').count();
-check('prefab cards are available for popover coverage', prefabCards > 0, `got ${prefabCards}`);
-if (prefabCards > 0) {
-  const prefabCard = page.locator('#bp-prefab-list .bp-prefab-card').first();
-  await prefabCard.scrollIntoViewIfNeeded();
-  await prefabCard.hover();
-  await page.waitForTimeout(140);
-  const prefabPop = await page.evaluate(() => {
-    const el = document.getElementById('bp-prefab-pop');
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    return {
-      visible: el.style.display !== 'none',
-      parent: el.parentElement?.tagName ?? '',
-      text: el.textContent ?? '',
-      left: r.left,
-      top: r.top,
-      right: r.right,
-      bottom: r.bottom,
-      vw: innerWidth,
-      vh: innerHeight,
-    };
-  });
-  check(
-    'prefab popover uses the shared portal and stays onscreen',
-    !!prefabPop &&
-      prefabPop.visible &&
-      prefabPop.parent === 'BODY' &&
-      prefabPop.text.includes('click arms it') &&
-      prefabPop.left >= 0 &&
-      prefabPop.top >= 0 &&
-      prefabPop.right <= prefabPop.vw &&
-      prefabPop.bottom <= prefabPop.vh,
-    JSON.stringify(prefabPop),
-  );
-}
+const compactPalette = await page.evaluate(() => {
+  const prefabHost = document.getElementById('bp-prefab-host');
+  const spriteHost = document.getElementById('bp-sprite-host');
+  const prefabRows = [...(prefabHost?.querySelectorAll('.ba-placement-row') ?? [])];
+  const firstPrefab = prefabRows[0] ?? null;
+  return {
+    prefabRows: prefabRows.length,
+    spriteRows: spriteHost?.querySelectorAll('.ba-placement-row').length ?? 0,
+    hasCapture: Boolean(prefabHost?.querySelector('#bp-prefab-capture')),
+    hasImport: Boolean(spriteHost?.querySelector('#bp-sprite-import')),
+    detailButtons: prefabHost?.querySelectorAll('[data-asset-placement-details]').length ?? 0,
+    draggable: firstPrefab?.getAttribute('draggable') ?? '',
+    fakeTreeRows: prefabHost?.querySelectorAll('[role="treeitem"], .ba-chip').length ?? 0,
+    rowText: firstPrefab?.textContent ?? '',
+  };
+});
+check(
+  'prefab and sprite palettes use compact Asset Browser rows',
+  compactPalette.prefabRows > 0 &&
+    compactPalette.hasCapture &&
+    compactPalette.hasImport &&
+    compactPalette.detailButtons > 0 &&
+    compactPalette.draggable === 'true' &&
+    compactPalette.fakeTreeRows === 0,
+  JSON.stringify(compactPalette),
+);
+await page.fill('#bp-prefab-host [data-asset-placement-search]', 'brazier');
+await page.waitForTimeout(100);
+const compactSearch = await page.evaluate(() => ({
+  activeSearch: document.activeElement?.matches('#bp-prefab-host [data-asset-placement-search]') ?? false,
+  rows: [...document.querySelectorAll('#bp-prefab-host .ba-placement-row')].map((el) => el.textContent.toLowerCase()),
+}));
+check(
+  'compact prefab palette search keeps focus and narrows results',
+  compactSearch.activeSearch &&
+    compactSearch.rows.length > 0 &&
+    compactSearch.rows.every((row) => row.includes('brazier')),
+  JSON.stringify(compactSearch),
+);
+await page.fill('#bp-prefab-host [data-asset-placement-search]', '');
+await page.waitForTimeout(80);
+const compactScrollSetup = await page.evaluate(() => {
+  const list = document.querySelector('#bp-prefab-host .ba-placement-list');
+  if (!(list instanceof HTMLElement)) return { missing: true };
+  list.scrollTop = Math.min(120, list.scrollHeight);
+  const before = list.scrollTop;
+  const row = [...document.querySelectorAll('#bp-prefab-host .ba-placement-row')]
+    .map((el) => {
+      const rect = el.getBoundingClientRect();
+      const listRect = list.getBoundingClientRect();
+      return { el, top: rect.top, bottom: rect.bottom, x: rect.left + 10, y: rect.top + 10, listTop: listRect.top, listBottom: listRect.bottom };
+    })
+    .find((entry) => entry.top >= entry.listTop && entry.bottom <= entry.listBottom);
+  return { before, click: row ? { x: row.x, y: row.y } : null };
+});
+if (compactScrollSetup.click) await page.mouse.click(compactScrollSetup.click.x, compactScrollSetup.click.y);
+await page.waitForTimeout(100);
+const compactScrollAfter = await page.evaluate((setup) => {
+  const list = document.querySelector('#bp-prefab-host .ba-placement-list');
+  return {
+    ...setup,
+    after: list instanceof HTMLElement ? list.scrollTop : -1,
+  };
+}, compactScrollSetup);
+check(
+  'compact prefab palette keeps scroll position after row activation',
+  compactScrollAfter.before > 0 &&
+    compactScrollAfter.click !== null &&
+    compactScrollAfter.after >= compactScrollAfter.before - 2,
+  JSON.stringify(compactScrollAfter),
+);
+const compactKeyboardFocus = await page.evaluate(() => {
+  const row = document.querySelector('#bp-prefab-host .ba-placement-row[data-asset-id]');
+  if (!(row instanceof HTMLElement)) return { missing: true };
+  row.focus();
+  return { before: row.dataset.assetId ?? '', activeBefore: document.activeElement === row };
+});
+await page.keyboard.press('Enter');
+await page.waitForTimeout(120);
+const compactKeyboardFocusAfter = await page.evaluate((before) => {
+  const active = document.activeElement;
+  return {
+    ...before,
+    after: active instanceof HTMLElement ? active.dataset.assetId ?? '' : '',
+    rowFocused: active instanceof HTMLElement && active.matches('#bp-prefab-host .ba-placement-row[data-asset-id]'),
+  };
+}, compactKeyboardFocus);
+check(
+  'compact prefab palette restores keyboard row focus after activation',
+  compactKeyboardFocusAfter.activeBefore &&
+    compactKeyboardFocusAfter.rowFocused &&
+    compactKeyboardFocusAfter.after === compactKeyboardFocusAfter.before,
+  JSON.stringify(compactKeyboardFocusAfter),
+);
 // arming a material draws an unmissable bounding box on its swatch
 await page.evaluate(() => {
   document.querySelector('.bp-swatch[data-el="12"]').click();
@@ -674,12 +732,28 @@ check('dragging an object button onto the canvas places it', markers === 1, `got
 
 /* ---------- snap ---------- */
 console.log('-- snap');
-await page.click('#bp-snap-btn'); // SNAP 8
+await page.click('#bp-snap-btn'); // SNAP 4
+let snapLabel = await page.evaluate(() => document.getElementById('bp-snap-btn')?.textContent ?? '');
+check('snap cycle includes the 4-cell grid', snapLabel.includes('4'), snapLabel);
 await page.click('.bp-tool[data-kind="waystone"]');
 const oddSpot = await toClient(563, 611);
 await page.mouse.click(oddSpot.x, oddSpot.y);
 await page.waitForTimeout(120);
-const snapped = await page.evaluate(() => {
+let snapped = await page.evaluate(() => {
+  const xi = document.querySelector('#builder-inspector input[data-f="x"]');
+  const yi = document.querySelector('#builder-inspector input[data-f="y"]');
+  return { x: Number(xi.value), y: Number(yi.value) };
+});
+check('snap grid quantizes placement to 4 cells', snapped.x % 4 === 0 && snapped.y % 4 === 0, JSON.stringify(snapped));
+await page.click('#bp-snap-btn'); // SNAP 8
+const snapDragStart = await toClient(snapped.x, snapped.y);
+const oddSpot8 = await toClient(571, 617);
+await page.mouse.move(snapDragStart.x, snapDragStart.y);
+await page.mouse.down();
+await page.mouse.move(oddSpot8.x, oddSpot8.y, { steps: 6 });
+await page.mouse.up();
+await page.waitForTimeout(120);
+snapped = await page.evaluate(() => {
   const xi = document.querySelector('#builder-inspector input[data-f="x"]');
   const yi = document.querySelector('#builder-inspector input[data-f="y"]');
   return { x: Number(xi.value), y: Number(yi.value) };
@@ -687,11 +761,187 @@ const snapped = await page.evaluate(() => {
 check('snap grid quantizes placement to 8 cells', snapped.x % 8 === 0 && snapped.y % 8 === 0, JSON.stringify(snapped));
 await page.click('#bp-snap-btn'); // 16
 await page.click('#bp-snap-btn'); // OFF
+snapLabel = await page.evaluate(() => document.getElementById('bp-snap-btn')?.textContent ?? '');
+check('snap cycle returns to off after 16', snapLabel.includes('OFF'), snapLabel);
+
+/* ---------- spatial gizmos ---------- */
+console.log('-- spatial gizmos');
+await page.click('.bp-tool[data-kind="door"]');
+let p = await toClient(735, 580);
+await page.mouse.click(p.x, p.y);
+await page.waitForTimeout(120);
+let doorBox = await page.evaluate(() => {
+  const n = (sel) => Number(document.querySelector(sel)?.value ?? 0);
+  return {
+    x: n('#builder-inspector input[data-f="x"]'),
+    y: n('#builder-inspector input[data-f="y"]'),
+    w: n('#builder-inspector input[data-p="w"]'),
+    h: n('#builder-inspector input[data-p="h"]'),
+  };
+});
+let handle = await toClient(doorBox.x + doorBox.w, doorBox.y + doorBox.h);
+let gizmoTarget = await toClient(doorBox.x + 18, doorBox.y + 28);
+await page.mouse.move(handle.x, handle.y);
+const resizeCursor = await page.evaluate(() => document.getElementById('builder-overlay')?.style.cursor ?? '');
+check('resize handle advertises a resize cursor on hover', resizeCursor.includes('resize'), resizeCursor);
+let cancelTarget = await toClient(doorBox.x + 12, doorBox.y + 18);
+await page.mouse.down();
+await page.mouse.move(cancelTarget.x, cancelTarget.y, { steps: 5 });
+await page.keyboard.press('Escape');
+await page.mouse.up();
+await page.waitForTimeout(120);
+const cancelledDoorResize = await page.evaluate(() => ({
+  w: Number(document.querySelector('#builder-inspector input[data-p="w"]')?.value ?? 0),
+  h: Number(document.querySelector('#builder-inspector input[data-p="h"]')?.value ?? 0),
+  status: document.getElementById('builder-status')?.textContent ?? '',
+}));
+check(
+  'Escape cancels an in-flight resize handle without committing params',
+  cancelledDoorResize.w === doorBox.w && cancelledDoorResize.h === doorBox.h,
+  JSON.stringify(cancelledDoorResize),
+);
+handle = await toClient(doorBox.x + doorBox.w, doorBox.y + doorBox.h);
+cancelTarget = await toClient(doorBox.x + 14, doorBox.y + 20);
+await page.mouse.move(handle.x, handle.y);
+await page.mouse.down();
+await page.mouse.move(cancelTarget.x, cancelTarget.y, { steps: 5 });
+await page.keyboard.press('Control+k');
+await page.keyboard.press('Escape');
+await page.mouse.up();
+await page.waitForTimeout(120);
+const focusStealResize = await page.evaluate(() => ({
+  w: Number(document.querySelector('#builder-inspector input[data-p="w"]')?.value ?? 0),
+  h: Number(document.querySelector('#builder-inspector input[data-p="h"]')?.value ?? 0),
+  cmdkOpen: document.getElementById('builder-cmdk')?.style.display !== 'none',
+  status: document.getElementById('builder-status')?.textContent ?? '',
+}));
+check(
+  'active resize handles block command-palette focus stealing before Escape cancel',
+  focusStealResize.w === doorBox.w && focusStealResize.h === doorBox.h && !focusStealResize.cmdkOpen,
+  JSON.stringify(focusStealResize),
+);
+handle = await toClient(doorBox.x + doorBox.w, doorBox.y + doorBox.h);
+await page.mouse.move(handle.x, handle.y);
+await page.mouse.down();
+await page.mouse.move(gizmoTarget.x, gizmoTarget.y, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(160);
+let resizedDoor = await page.evaluate(() => ({
+  w: Number(document.querySelector('#builder-inspector input[data-p="w"]')?.value ?? 0),
+  h: Number(document.querySelector('#builder-inspector input[data-p="h"]')?.value ?? 0),
+  status: document.getElementById('builder-status')?.textContent ?? '',
+}));
+check(
+  'canvas resize handle commits door footprint through inspector state',
+  resizedDoor.w >= 17 && resizedDoor.w <= 18 && resizedDoor.h >= 27 && resizedDoor.h <= 28,
+  JSON.stringify(resizedDoor),
+);
+doorBox = { ...doorBox, w: resizedDoor.w, h: resizedDoor.h };
+handle = await toClient(doorBox.x + doorBox.w / 2, doorBox.y);
+handle.y -= 18;
+await page.mouse.click(handle.x, handle.y);
+await page.waitForTimeout(160);
+const rotatedDoor = await page.evaluate(() => ({
+  w: Number(document.querySelector('#builder-inspector input[data-p="w"]')?.value ?? 0),
+  h: Number(document.querySelector('#builder-inspector input[data-p="h"]')?.value ?? 0),
+}));
+check('canvas rotate handle swaps slab width and height as one command', rotatedDoor.w === resizedDoor.h && rotatedDoor.h === resizedDoor.w, JSON.stringify(rotatedDoor));
+
+await page.click('.bp-tool[data-tool="light"]');
+p = await toClient(700, 540);
+await page.mouse.click(p.x, p.y);
+await page.waitForTimeout(120);
+await page.keyboard.press('Escape');
+let lightState = await page.evaluate(() => {
+  const n = (sel) => Number(document.querySelector(sel)?.value ?? 0);
+  return {
+    x: n('#builder-inspector input[data-lf="x"]'),
+    y: n('#builder-inspector input[data-lf="y"]'),
+    radius: n('#builder-inspector input[data-lf="radius"]'),
+    falloff: document.querySelector('#builder-inspector select[data-lf="falloff"]')?.value ?? '',
+  };
+});
+handle = await toClient(lightState.x + lightState.radius, lightState.y);
+gizmoTarget = await toClient(lightState.x + 82, lightState.y);
+await page.mouse.move(handle.x, handle.y);
+const radiusCursor = await page.evaluate(() => document.getElementById('builder-overlay')?.style.cursor ?? '');
+check('light radius handle advertises a resize cursor on hover', radiusCursor.includes('resize'), radiusCursor);
+await page.mouse.down();
+await page.mouse.move(gizmoTarget.x, gizmoTarget.y, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(160);
+lightState = await page.evaluate(() => {
+  const n = (sel) => Number(document.querySelector(sel)?.value ?? 0);
+  return {
+    x: n('#builder-inspector input[data-lf="x"]'),
+    y: n('#builder-inspector input[data-lf="y"]'),
+    radius: n('#builder-inspector input[data-lf="radius"]'),
+    falloff: document.querySelector('#builder-inspector select[data-lf="falloff"]')?.value ?? '',
+  };
+});
+check('canvas light-radius handle commits radius through light command', Math.abs(lightState.radius - 82) <= 1, JSON.stringify(lightState));
+handle = await toClient(lightState.x + lightState.radius * 0.707, lightState.y - lightState.radius * 0.707);
+await page.mouse.click(handle.x, handle.y);
+await page.waitForTimeout(120);
+const falloffAfterHandle = await page.evaluate(() => document.querySelector('#builder-inspector select[data-lf="falloff"]')?.value ?? '');
+check('canvas light-falloff handle cycles falloff', falloffAfterHandle !== lightState.falloff && falloffAfterHandle !== '', falloffAfterHandle);
+const hiddenLightStart = await toClient(lightState.x, lightState.y);
+const hiddenLightDragTarget = await toClient(lightState.x + 34, lightState.y);
+await page.click('#builder-inspector input[data-lf="hidden"]');
+await page.waitForTimeout(120);
+await page.mouse.move(hiddenLightStart.x, hiddenLightStart.y);
+await page.mouse.down();
+await page.mouse.move(hiddenLightDragTarget.x, hiddenLightDragTarget.y, { steps: 5 });
+await page.mouse.up();
+await page.waitForTimeout(120);
+await page.keyboard.press('Control+z');
+await page.waitForTimeout(160);
+await page.mouse.click(hiddenLightStart.x, hiddenLightStart.y);
+await page.waitForTimeout(120);
+const hiddenLightDrag = await page.evaluate(() => ({
+  x: Number(document.querySelector('#builder-inspector input[data-lf="x"]')?.value ?? 0),
+  y: Number(document.querySelector('#builder-inspector input[data-lf="y"]')?.value ?? 0),
+  selectedLights: document.querySelectorAll('.b-marker.k-light.sel').length,
+}));
+check(
+  'hidden lights refuse canvas click/drag until visible again',
+  hiddenLightDrag.x === lightState.x && hiddenLightDrag.y === lightState.y && hiddenLightDrag.selectedLights === 1,
+  JSON.stringify(hiddenLightDrag),
+);
+
+await page.keyboard.press('Control+k');
+await page.waitForTimeout(80);
+await page.fill('#bp-cmdk-input', 'fit authored');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(160);
+const fitZoom = await page.evaluate(() => window.__game.ctx.camera.zoomLock ?? window.__game.ctx.camera.zoom);
+check('command palette runs Fit Authored Bounds view command', fitZoom >= 0.5 && fitZoom <= 4, `zoom ${fitZoom}`);
+await page.keyboard.press('Control+k');
+await page.waitForTimeout(80);
+await page.fill('#bp-cmdk-input', 'reset zoom');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(120);
+const resetZoom = await page.evaluate(() => window.__game.ctx.camera.zoomLock ?? window.__game.ctx.camera.zoom);
+check('command palette runs Reset Zoom view command', Math.abs(resetZoom - 1) < 0.01, `zoom ${resetZoom}`);
+await page.evaluate(() => window.__game.ctx.camera.snapTo(600, 500));
+await page.waitForTimeout(80);
+await page.keyboard.press('Delete'); // remove the temporary light
+await page.waitForTimeout(80);
+const doorCenter = await toClient(doorBox.x + rotatedDoor.w / 2, doorBox.y + rotatedDoor.h / 2);
+await page.mouse.click(doorCenter.x, doorCenter.y);
+await page.waitForTimeout(80);
+await page.keyboard.press('Delete'); // remove the temporary door
+await page.waitForTimeout(120);
+const emptyCanvasPoint = await toClient(900, 450);
+await page.mouse.move(emptyCanvasPoint.x, emptyCanvasPoint.y);
+await page.waitForTimeout(50);
+const idleCursor = await page.evaluate(() => document.getElementById('builder-overlay')?.style.cursor ?? '');
+check('idle select canvas uses an arrow cursor, not a paint crosshair', idleCursor === 'default' || idleCursor === '', idleCursor);
 
 /* ---------- group + align ---------- */
 console.log('-- group & align');
 await page.click('.bp-tool[data-kind="enemy"]');
-let p = await toClient(620, 590);
+p = await toClient(620, 590);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(80);
 p = await toClient(660, 605);
@@ -824,13 +1074,30 @@ let outliner = await page.evaluate(() => {
     open: getComputedStyle(panel).display !== 'none',
     rows: panel.querySelectorAll('.bo-row').length,
     layerCommand: panel.querySelector('.bo-layer[data-layer="gameplay"] [data-layer-vis]')?.getAttribute('data-command-id') ?? '',
+    rowCommand: panel.querySelector('.bo-row button[data-row-toggle="hidden"]')?.getAttribute('data-command-id') ?? '',
   };
 });
 check(
   'outliner opens with command-backed layer controls',
-  outliner.open && outliner.rows >= 4 && outliner.layerCommand === 'builder.layer.gameplay.visibility',
+  outliner.open &&
+    outliner.rows >= 4 &&
+    outliner.layerCommand === 'builder.layer.gameplay.visibility' &&
+    outliner.rowCommand === 'builder.toggleSelectedHidden',
   JSON.stringify(outliner),
 );
+await page.click('#builder-outliner .bo-layer[data-layer="gameplay"] button[data-layer-vis]');
+await page.waitForTimeout(80);
+const layerPersist = await page.evaluate(() => {
+  const raw = localStorage.getItem('noita-builder-workspace-v1');
+  const workspace = raw ? JSON.parse(raw) : null;
+  return {
+    persisted: workspace?.layerState?.gameplay?.hidden === true,
+    rowOff: document.querySelector('#builder-outliner .bo-layer[data-layer="gameplay"]')?.classList.contains('off') ?? false,
+  };
+});
+check('outliner layer controls persist workspace-only visibility', layerPersist.persisted && layerPersist.rowOff, JSON.stringify(layerPersist));
+await page.click('#builder-outliner .bo-layer[data-layer="gameplay"] button[data-layer-vis]');
+await page.waitForTimeout(80);
 await page.fill('#bo-search', 'waystone');
 await page.keyboard.type('h');
 await page.waitForTimeout(80);
@@ -856,6 +1123,58 @@ let outlinerSelect = await page.evaluate(() => ({
   inspector: document.getElementById('builder-inspector')?.textContent.toLowerCase() ?? '',
 }));
 check('outliner row selects and syncs the inspector', outlinerSelect.rowSelected && outlinerSelect.inspector.includes('waystone'), JSON.stringify(outlinerSelect));
+await page.evaluate(() => window.__game.ctx.camera.snapTo(40, 40));
+const frameProbe = await page.evaluate(() => {
+  const before = { x: window.__game.ctx.camera.x, y: window.__game.ctx.camera.y };
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('waystone'));
+  row?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+  return new Promise((resolve) => requestAnimationFrame(() => resolve({
+    before,
+    after: { x: window.__game.ctx.camera.x, y: window.__game.ctx.camera.y },
+  })));
+});
+check(
+  'outliner double-click frames the selected row',
+  Math.abs(frameProbe.after.x - frameProbe.before.x) > 8 || Math.abs(frameProbe.after.y - frameProbe.before.y) > 8,
+  JSON.stringify(frameProbe),
+);
+await page.evaluate(() => window.__game.ctx.camera.snapTo(600, 500));
+const outlinerScroll = await page.evaluate(() => {
+  const panel = document.getElementById('builder-outliner');
+  panel.style.maxHeight = '140px';
+  panel.style.overflow = 'auto';
+  panel.scrollTop = 48;
+  const before = panel.scrollTop;
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('waystone'));
+  row?.click();
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+    before,
+    after: panel.scrollTop,
+    scrollable: panel.scrollHeight > panel.clientHeight,
+  }))));
+});
+check(
+  'outliner preserves scroll position after row selection refresh',
+  outlinerScroll.scrollable && outlinerScroll.before > 0 && outlinerScroll.after === outlinerScroll.before,
+  JSON.stringify(outlinerScroll),
+);
+await page.locator('#builder-outliner .bo-row', { hasText: /waystone/i }).click({ button: 'right' });
+await page.waitForTimeout(80);
+const outlinerMenu = await page.evaluate(() => {
+  const menu = document.getElementById('editor-menu-host');
+  return {
+    open: menu?.classList.contains('open') && getComputedStyle(menu).display !== 'none',
+    text: menu?.textContent ?? '',
+  };
+});
+check(
+  'outliner row context menu exposes command-backed actions',
+  outlinerMenu.open && outlinerMenu.text.includes('Toggle Selected Hidden') && outlinerMenu.text.includes('Frame Selection'),
+  JSON.stringify(outlinerMenu),
+);
+await page.keyboard.press('Escape');
 await page.evaluate(() => {
   const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
     .find((el) => el.textContent.toLowerCase().includes('waystone'));
@@ -935,8 +1254,41 @@ const graphSelect = await page.evaluate(() => ({
   inspector: document.getElementById('builder-inspector')?.textContent.toLowerCase() ?? '',
 }));
 check('link graph endpoint buttons select and sync inspector', graphSelect.graphSelected && graphSelect.inspector.includes('door'), JSON.stringify(graphSelect));
+await page.fill('#bo-search', 'plate');
 await page.evaluate(() => {
-  document.querySelector('#builder-link-graph button[data-unlink]')?.click();
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('plate'));
+  row?.querySelector('button[data-row-toggle="hidden"]')?.click();
+});
+await page.waitForTimeout(120);
+const graphHiddenEndpoint = await page.evaluate(() => ({
+  text: document.getElementById('builder-link-graph')?.textContent ?? '',
+}));
+check(
+  'link graph reflects hidden endpoint warnings after outliner document command',
+  graphHiddenEndpoint.text.includes('hidden endpoint makes this authored link dead at compile time'),
+  JSON.stringify(graphHiddenEndpoint),
+);
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('plate'));
+  row?.querySelector('button[data-row-toggle="hidden"]')?.click();
+});
+await page.waitForTimeout(120);
+await page.locator('#builder-link-graph .blg-link').first().click({ button: 'right' });
+await page.waitForTimeout(80);
+const graphMenu = await page.evaluate(() => {
+  const menu = document.getElementById('editor-menu-host');
+  return {
+    open: menu?.classList.contains('open') && getComputedStyle(menu).display !== 'none',
+    text: menu?.textContent ?? '',
+  };
+});
+check('link graph row context menu exposes unlink command', graphMenu.open && graphMenu.text.includes('Unlink'), JSON.stringify(graphMenu));
+await page.evaluate(() => {
+  [...document.querySelectorAll('#editor-menu-host button')]
+    .find((button) => button.textContent.trim() === 'Unlink')
+    ?.click();
 });
 await page.waitForTimeout(120);
 const graphUnlink = await page.evaluate(() => ({

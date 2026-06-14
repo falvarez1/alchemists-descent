@@ -33,10 +33,13 @@ export function createDefaultVirtualWorldDef(seed = 0x4e4f4954): VirtualWorldDef
     materialProfile: createDefaultMaterialProfile(),
     generation: {
       halo: 32,
-      smoothingPasses: 2,
+      smoothingPasses: 1,
       noiseScale: 0.035,
       noiseThreshold: 0.54,
       borderSeal: 2,
+      edgeRoughness: 0.38,
+      pocketDensity: 0.3,
+      crackDensity: 0.2,
     },
   };
 }

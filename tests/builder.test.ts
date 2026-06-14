@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { WIDTH } from '@/config/constants';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { rleEncode } from '@/core/rle';
@@ -20,10 +21,22 @@ import {
   stampLine,
   stampRect,
 } from '@/builder/terrain';
-import { CommandStack, editDocumentMoodCmd, paintTerrainCmd } from '@/builder/commands';
-import { validateDocument } from '@/builder/validate';
+import { CommandStack, compositeCmd, editDocumentMoodCmd, paintTerrainCmd } from '@/builder/commands';
+import { buildValidationOverlayDiagnostics, playtestBlockingIssues, validateDocument } from '@/builder/validate';
 import { renderIssueRows } from '@/builder/issuePanel';
+import { renderValidationPanel } from '@/builder/validationPanel';
 import { toAuthoredLight } from '@/builder/compile';
+import { PreviewRuntime } from '@/builder/PreviewRuntime';
+import {
+  hitProjectedGizmoHandle,
+  lightGizmoHandles,
+  lightRadiusFromDrag,
+  objectGizmoHandles,
+  projectGizmoHandles,
+  resizeObjectPatchFromDrag,
+} from '@/builder/gizmos';
+import { nextSnapStep, sanitizeSnapStep, snapValue } from '@/builder/spatialGuides';
+import type { Ctx } from '@/core/types';
 import { PASSES, runPass } from '@/builder/procedural';
 import { sanitizeBackdropSettings } from '@/config/backdrop';
 
@@ -56,6 +69,19 @@ function carveBox(w: World, x0: number, y0: number, x1: number, y1: number): voi
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) w.types[w.idx(x, y)] = Cell.Empty;
   }
+}
+
+function previewCtx(world = new World()): Ctx {
+  return {
+    world,
+    player: { x: -999, y: -999 },
+    enemies: [],
+    enemyCtl: { defs: {} },
+    state: { mode: 'build', frameCount: 0 },
+    particles: { spawn: () => undefined, burst: () => undefined },
+    events: { emit: () => undefined },
+    audio: { tone: () => undefined },
+  } as unknown as Ctx;
 }
 
 const errors = (issues: ReturnType<typeof validateDocument>) =>
@@ -226,6 +252,87 @@ describe('builder document', () => {
     expect(objectFootprint(door)).toEqual({ x0: 100, y0: 50, x1: 102, y1: 69 });
   });
 
+  it('cycles and sanitizes Builder snap steps including the 4-cell grid', () => {
+    expect(sanitizeSnapStep(4)).toBe(4);
+    expect(sanitizeSnapStep(8)).toBe(8);
+    expect(sanitizeSnapStep(12)).toBe(0);
+    expect([nextSnapStep(0), nextSnapStep(4), nextSnapStep(8), nextSnapStep(16)]).toEqual([4, 8, 16, 0]);
+    expect(snapValue(18, 4)).toBe(20);
+    expect(snapValue(18, 4, true)).toBe(18);
+  });
+
+  it('builds stable gizmo handles and hit-tests them in screen space', () => {
+    const door = makeObj('door', 100, 50, { w: 3, h: 13 });
+    const handles = projectGizmoHandles(objectGizmoHandles(door), (x, y) => ({ x: x * 2, y: y * 2 }));
+    const resize = handles.find((handle) => handle.kind === 'resize-se');
+    const rotate = handles.find((handle) => handle.kind === 'rotate');
+
+    expect(resize).toMatchObject({ ownerId: door.id, cursor: 'nwse-resize' });
+    expect(rotate).toMatchObject({ ownerId: door.id, cursor: 'crosshair' });
+    expect(hitProjectedGizmoHandle(handles, resize!.sx + 7, resize!.sy + 4)?.kind).toBe('resize-se');
+    expect(hitProjectedGizmoHandle(handles, resize!.sx + 20, resize!.sy + 20)).toBeNull();
+  });
+
+  it('computes undoable resize patches from object gizmo drags', () => {
+    const door = makeObj('door', 100, 50, { w: 3, h: 13 });
+    const sensor = makeObj('sensor', 200, 120, { zoneW: 9, zoneH: 7 });
+    const plate = makeObj('plate', 300, 90, { w: 5 });
+    const scale = makeObj('scale', 320, 100, { w: 7 });
+    const counterweight = makeObj('counterweight', 330, 110, { w: 7 });
+    const buoy = makeObj('buoy', 340, 140, { w: 13, depth: 4 });
+    const exitWell = makeObj('exitWell', 380, 160, { halfW: 14 });
+
+    expect(resizeObjectPatchFromDrag(door, 'resize-se', 110, 80)).toEqual({
+      params: { w: 10, h: 30 },
+    });
+    expect(resizeObjectPatchFromDrag(sensor, 'resize-se', 205, 113)).toEqual({
+      params: { zoneW: 9, zoneH: 7 },
+    });
+    expect(resizeObjectPatchFromDrag(sensor, 'resize-se', 209, 104)).toEqual({
+      params: { zoneW: 17, zoneH: 16 },
+    });
+    expect(resizeObjectPatchFromDrag(plate, 'resize-e', 303, 90)).toEqual({
+      params: { w: 5 },
+    });
+    expect(objectGizmoHandles(scale).find((handle) => handle.kind === 'resize-e')?.worldX).toBe(324);
+    expect(resizeObjectPatchFromDrag(scale, 'resize-e', 324, 100)).toEqual({
+      params: { w: 7 },
+    });
+    expect(objectGizmoHandles(counterweight).find((handle) => handle.kind === 'resize-e')?.worldX).toBe(334);
+    expect(resizeObjectPatchFromDrag(counterweight, 'resize-e', 334, 110)).toEqual({
+      params: { w: 7 },
+    });
+    expect(resizeObjectPatchFromDrag(plate, 'resize-e', 310, 90)).toEqual({
+      params: { w: 19 },
+    });
+    expect(resizeObjectPatchFromDrag(buoy, 'resize-se', 347, 136)).toEqual({
+      params: { w: 13, depth: 4 },
+    });
+    expect(resizeObjectPatchFromDrag(exitWell, 'resize-e', 398, 160)).toEqual({
+      params: { halfW: 14 },
+    });
+  });
+
+  it('exposes light radius and falloff handles with sane radius clamps', () => {
+    const light = {
+      id: 'light-a',
+      x: 50,
+      y: 40,
+      color: '#ffffff',
+      intensity: 1,
+      radius: 32,
+      bloom: 0,
+      flicker: 0,
+      falloff: 'soft' as const,
+      occluded: true,
+      locked: false,
+      hidden: false,
+    };
+    expect(lightGizmoHandles(light).map((handle) => handle.kind)).toEqual(['light-radius', 'light-falloff']);
+    expect(lightRadiusFromDrag(light, 210, 40)).toBe(160);
+    expect(lightRadiusFromDrag(light, 51, 40)).toBe(4);
+  });
+
   it('edits document mood through undoable metadata commands', () => {
     const doc = createEmptyDocument('mood', 'earthen');
     doc.mood = { ambient: null, ambience: '' };
@@ -242,6 +349,22 @@ describe('builder document', () => {
     expect(stack.redo()).toBe('edit document mood');
     expect(doc.mood).toEqual({ ambient: 0.34, ambience: '' });
   });
+
+  it('reports composite terrain cells through command-stack change callbacks', () => {
+    const doc = createEmptyDocument('terrain-callback', 'earthen');
+    const seen: number[] = [];
+    const stack = new CommandStack(() => doc, (cmd) => seen.push(cmd?.cells ?? 0));
+    const cmd = compositeCmd('terrain composite', [
+      { label: 'terrain patch', cells: 6, do: () => undefined, undo: () => undefined },
+      { label: 'metadata', do: () => undefined, undo: () => undefined },
+    ]);
+
+    stack.run(cmd);
+    expect(stack.undo()).toBe('terrain composite');
+    expect(stack.redo()).toBe('terrain composite');
+
+    expect(seen).toEqual([6, 6, 6]);
+  });
 });
 
 describe('builder validation', () => {
@@ -254,12 +377,273 @@ describe('builder validation', () => {
     expect(html).toContain('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;');
   });
 
+  it('renders validation issue codes and repair actions safely', () => {
+    const html = renderValidationPanel([
+      {
+        severity: 'error',
+        code: 'builder.spawn.missing',
+        what: 'No <spawn> placed',
+        actions: ['addSpawnAtCamera', 'showValidationOverlay', 'previewCarveCorridor'],
+      },
+    ]);
+
+    expect(html).toContain('builder.spawn.missing');
+    expect(html).toContain('data-validation-action="addSpawnAtCamera"');
+    expect(html).toContain('data-validation-action="previewCarveCorridor"');
+    expect(html).toContain('data-action-kind="mutate"');
+    expect(html).toContain('data-mutates-document="true"');
+    expect(html).toContain('data-action-kind="inspect"');
+    expect(html).toContain('role="button"');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('No &lt;spawn&gt; placed');
+    expect(html).not.toContain('No <spawn> placed');
+  });
+
+  it('builds reachability diagnostics from the same validation masks', () => {
+    const { doc } = worldDoc((w) => {
+      carveBox(w, 100, 100, 150, 159);
+      carveBox(w, 154, 100, 220, 159);
+    });
+    const spawn = makeObj('spawn', 120, 158);
+    const plate = makeObj('plate', 135, 159, { w: 5 });
+    const door = makeObj('door', 151, 100, { w: 3, h: 60 });
+    const key = makeObj('pickup', 205, 158, { kind: 'key' });
+    doc.objects.push(spawn, plate, door, key);
+    doc.links.push({ id: freshId('link'), fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
+
+    const diagnostics = buildValidationOverlayDiagnostics(doc);
+    const leftIdx = 120 + 158 * WIDTH;
+    const rightIdx = 205 + 158 * WIDTH;
+    expect(diagnostics.initialReachable?.[leftIdx]).toBe(1);
+    expect(diagnostics.initialReachable?.[rightIdx]).toBe(0);
+    expect(diagnostics.earnedReachable?.[rightIdx]).toBe(1);
+    expect(diagnostics.clearanceReachable).toBeTruthy();
+  });
+
+  it('builds and steps PreviewRuntime without mutating the live world or document layer', () => {
+    const live = new World();
+    live.types[live.idx(10, 10)] = Cell.Metal;
+    const ctx = previewCtx(live);
+    const doc = createEmptyDocument('preview-runtime', 'earthen');
+    doc.world = { rle: rleEncode(new World().types), life: [], charge: [] };
+    const originalRle = doc.world?.rle;
+    doc.objects.push(makeObj('spawn', 120, 158));
+    doc.objects.push(makeObj('hazardEmitter', 130, 120, { cell: Cell.Water, rate: 1, burst: 2 }));
+    doc.lights.push({ id: freshId('light'), x: 130, y: 110, radius: 40, intensity: 1, color: '#88ccff', flicker: 0, bloom: 0, falloff: 'soft', occluded: false, hidden: false });
+
+    const preview = new PreviewRuntime(ctx);
+    const status = preview.reset(doc);
+    preview.step(0);
+    preview.step(3);
+
+    expect(status.ready).toBe(true);
+    expect(status.emitters).toBe(1);
+    expect(status.lights).toBe(1);
+    expect(live.types[live.idx(10, 10)]).toBe(Cell.Metal);
+    expect(doc.world?.rle).toBe(originalRle);
+    expect(preview.world.types[preview.world.idx(130, 121)]).toBe(Cell.Water);
+    expect(preview.status().changedCells).toBeGreaterThan(0);
+  });
+
+  it('previews linked mechanism state in a disposable world', () => {
+    const live = new World();
+    live.types[live.idx(10, 10)] = Cell.Metal;
+    const source = new World();
+    for (let y = 128; y <= 129; y++) {
+      for (let x = 128; x <= 132; x++) source.types[source.idx(x, y)] = Cell.Stone;
+    }
+    const ctx = previewCtx(live);
+    const doc = createEmptyDocument('preview-mechanism', 'earthen');
+    doc.world = { rle: rleEncode(source.types), life: [], charge: [] };
+    const originalRle = doc.world.rle;
+    const plate = makeObj('plate', 130, 130, { w: 5 });
+    const door = makeObj('door', 150, 110, { w: 3, h: 14 });
+    doc.objects.push(makeObj('spawn', 120, 158), plate, door);
+    doc.links.push({ id: freshId('link'), fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
+
+    const preview = new PreviewRuntime(ctx);
+    const status = preview.reset(doc);
+    const doorBottom = preview.world.idx(150, 123);
+
+    expect(status.ready).toBe(true);
+    expect(status.mechanisms).toBe(2);
+    expect(preview.world.types[doorBottom]).toBe(Cell.Metal);
+
+    preview.step(0);
+    preview.step(20);
+
+    expect(preview.world.types[doorBottom]).toBe(Cell.Empty);
+    expect(live.types[live.idx(10, 10)]).toBe(Cell.Metal);
+    expect(doc.world.rle).toBe(originalRle);
+  });
+
+  it('previews machine primitive triggers and relay outputs', () => {
+    const stepPreview = (preview: PreviewRuntime): void => {
+      for (let frame = 0; frame <= 80; frame += 10) preview.step(frame);
+    };
+
+    const counterSource = new World();
+    for (let y = 124; y <= 128; y++) {
+      for (let x = 197; x <= 203; x++) counterSource.types[counterSource.idx(x, y)] = Cell.Stone;
+    }
+    const counterDoc = createEmptyDocument('preview-counterweight', 'earthen');
+    counterDoc.world = { rle: rleEncode(counterSource.types), life: [], charge: [] };
+    const counter = makeObj('counterweight', 200, 130, { w: 7, threshold: 8 });
+    const counterDoor = makeObj('door', 220, 110, { w: 3, h: 14 });
+    counterDoc.objects.push(makeObj('spawn', 180, 158), counter, counterDoor);
+    counterDoc.links.push({ id: freshId('link'), fromId: counter.id, toId: counterDoor.id, kind: 'triggerDoor', logic: 'and' });
+    const counterPreview = new PreviewRuntime(previewCtx());
+    counterPreview.reset(counterDoc);
+    stepPreview(counterPreview);
+    expect(counterPreview.world.types[counterPreview.world.idx(220, 123)]).toBe(Cell.Empty);
+
+    const chargeSource = new World();
+    const chargeIndex = chargeSource.idx(260, 126);
+    const chargeDoc = createEmptyDocument('preview-charge-latch', 'earthen');
+    chargeDoc.world = { rle: rleEncode(chargeSource.types), life: [], charge: [[chargeIndex, 8]] };
+    const latch = makeObj('chargeLatch', 260, 130);
+    const latchDoor = makeObj('door', 280, 110, { w: 3, h: 14 });
+    chargeDoc.objects.push(makeObj('spawn', 240, 158), latch, latchDoor);
+    chargeDoc.links.push({ id: freshId('link'), fromId: latch.id, toId: latchDoor.id, kind: 'triggerDoor', logic: 'and' });
+    const chargePreview = new PreviewRuntime(previewCtx());
+    chargePreview.reset(chargeDoc);
+    stepPreview(chargePreview);
+    expect(chargePreview.world.types[chargePreview.world.idx(280, 123)]).toBe(Cell.Empty);
+
+    const relaySource = new World();
+    for (let y = 124; y <= 126; y++) {
+      for (let x = 297; x <= 303; x++) relaySource.types[relaySource.idx(x, y)] = Cell.Stone;
+    }
+    const relayDoc = createEmptyDocument('preview-relay', 'earthen');
+    relayDoc.world = { rle: rleEncode(relaySource.types), life: [], charge: [] };
+    const sensor = makeObj('sensor', 300, 130, { type: 'weight', threshold: 3, zoneW: 7, zoneH: 6, latch: 'momentary' });
+    const relay = makeObj('relay', 315, 130, { delay: 0 });
+    const relayDoor = makeObj('door', 330, 110, { w: 3, h: 14 });
+    relayDoc.objects.push(makeObj('spawn', 290, 158), sensor, relay, relayDoor);
+    relayDoc.links.push(
+      { id: freshId('link'), fromId: sensor.id, toId: relay.id, kind: 'triggerDoor', logic: 'and' },
+      { id: freshId('link'), fromId: relay.id, toId: relayDoor.id, kind: 'triggerDoor', logic: 'and' },
+    );
+    const relayPreview = new PreviewRuntime(previewCtx());
+    relayPreview.reset(relayDoc);
+    stepPreview(relayPreview);
+    expect(relayPreview.world.types[relayPreview.world.idx(330, 123)]).toBe(Cell.Empty);
+
+    const plugSource = new World();
+    for (let y = 124; y <= 126; y++) {
+      for (let x = 377; x <= 383; x++) plugSource.types[plugSource.idx(x, y)] = Cell.Stone;
+    }
+    const plugDoc = createEmptyDocument('preview-relay-break', 'earthen');
+    plugDoc.world = { rle: rleEncode(plugSource.types), life: [], charge: [] };
+    const plugSensor = makeObj('sensor', 380, 130, { type: 'weight', threshold: 3, zoneW: 7, zoneH: 6, latch: 'momentary' });
+    const breaker = makeObj('relay', 395, 130, { action: 'break' });
+    const plug = makeObj('plug', 410, 120, { w: 3, h: 3, material: 'wood' });
+    plugDoc.objects.push(makeObj('spawn', 370, 158), plugSensor, breaker, plug);
+    plugDoc.links.push(
+      { id: freshId('link'), fromId: plugSensor.id, toId: breaker.id, kind: 'triggerDoor', logic: 'and' },
+      { id: freshId('link'), fromId: breaker.id, toId: plug.id, kind: 'triggerDoor', logic: 'and' },
+    );
+    const plugPreview = new PreviewRuntime(previewCtx());
+    plugPreview.reset(plugDoc);
+    expect(plugPreview.world.types[plugPreview.world.idx(410, 120)]).not.toBe(Cell.Empty);
+    stepPreview(plugPreview);
+    expect(plugPreview.world.types[plugPreview.world.idx(410, 120)]).toBe(Cell.Empty);
+
+    const strikeSource = new World();
+    for (let y = 124; y <= 126; y++) {
+      for (let x = 457; x <= 463; x++) strikeSource.types[strikeSource.idx(x, y)] = Cell.Stone;
+    }
+    const strikeDoc = createEmptyDocument('preview-relay-strike', 'earthen');
+    strikeDoc.world = { rle: rleEncode(strikeSource.types), life: [], charge: [] };
+    const strikeSensor = makeObj('sensor', 460, 130, { type: 'weight', threshold: 3, zoneW: 7, zoneH: 6, latch: 'momentary' });
+    const striker = makeObj('relay', 475, 130, { action: 'strike' });
+    const struckDoor = makeObj('door', 500, 110, { w: 3, h: 14 });
+    const struckLever = makeObj('lever', 503, 117);
+    const leverDoor = makeObj('door', 520, 110, { w: 3, h: 14 });
+    strikeDoc.objects.push(makeObj('spawn', 450, 158), strikeSensor, striker, struckDoor, struckLever, leverDoor);
+    strikeDoc.links.push(
+      { id: freshId('link'), fromId: strikeSensor.id, toId: striker.id, kind: 'triggerDoor', logic: 'and' },
+      { id: freshId('link'), fromId: striker.id, toId: struckDoor.id, kind: 'triggerDoor', logic: 'and' },
+      { id: freshId('link'), fromId: struckLever.id, toId: leverDoor.id, kind: 'triggerDoor', logic: 'and' },
+    );
+    const strikePreview = new PreviewRuntime(previewCtx());
+    strikePreview.reset(strikeDoc);
+    stepPreview(strikePreview);
+    expect(strikePreview.world.types[strikePreview.world.idx(520, 123)]).toBe(Cell.Empty);
+  });
+
+  it('caps excessive PreviewRuntime rune vault links', () => {
+    const doc = createEmptyDocument('preview-rune-cap', 'earthen');
+    doc.world = { rle: rleEncode(new World().types), life: [], charge: [] };
+    const glyph = makeObj('runeGlyph', 120, 130);
+    const slab = makeObj('runeDoor', 150, 110, { w: 2, h: 11 });
+    doc.objects.push(makeObj('spawn', 100, 158), glyph, slab);
+    for (let n = 0; n < 140; n++) {
+      doc.links.push({ id: freshId('link'), fromId: glyph.id, toId: slab.id, kind: 'runeDoor', logic: 'and' });
+    }
+
+    const preview = new PreviewRuntime(previewCtx());
+    const status = preview.reset(doc);
+    preview.step(80);
+
+    expect(status.ready).toBe(false);
+    expect(status.capped).toBe(true);
+    expect(status.runeVaults).toBe(128);
+  });
+
+  it('keeps validation row indices stable across severity groups', () => {
+    const html = renderValidationPanel([
+      { severity: 'error', code: 'builder.spawn.missing', what: 'No player spawn placed' },
+      {
+        severity: 'warning',
+        code: 'builder.link.hiddenEndpoint',
+        what: 'link touches a hidden object',
+        objIds: ['plate_1', 'door_1'],
+        actions: ['selectIssueTarget'],
+      },
+    ]);
+
+    expect(html).toContain('data-validation-filter="warning"');
+    expect(html).toContain('data-n="1"');
+    expect(html).toContain('data-issue-objs="plate_1,door_1"');
+  });
+
   it('flags missing spawn, missing terrain, and missing exit', () => {
     const doc = createEmptyDocument('v', 'earthen');
     const issues = validateDocument(doc);
-    expect(issues.some((i) => i.severity === 'error' && i.what.includes('spawn'))).toBe(true);
+    const spawnIssue = issues.find((i) => i.severity === 'error' && i.code === 'builder.spawn.missing');
+    expect(spawnIssue).toBeTruthy();
+    expect(spawnIssue?.actions).toContain('addSpawnAtCamera');
     expect(issues.some((i) => i.severity === 'warning' && i.what.includes('terrain'))).toBe(true);
     expect(issues.some((i) => i.severity === 'info' && i.what.includes('win exit'))).toBe(true);
+  });
+
+  it('does not treat hidden spawns as compile-visible spawns', () => {
+    const doc = createEmptyDocument('hidden-spawn', 'earthen');
+    const spawn = makeObj('spawn', 120, 158);
+    spawn.hidden = true;
+    doc.objects.push(spawn);
+    const issues = validateDocument(doc);
+    expect(issues.find((issue) => issue.code === 'builder.spawn.missing')).toBeTruthy();
+    expect(playtestBlockingIssues(issues, 'authored-spawn').map((issue) => issue.code)).toContain(
+      'builder.spawn.missing',
+    );
+  });
+
+  it('keeps playtest blockers narrower than validation errors', () => {
+    const doc = createEmptyDocument('playtest-blockers', 'earthen');
+    const issues = validateDocument(doc);
+    expect(playtestBlockingIssues(issues, 'authored-spawn').map((issue) => issue.code)).toContain(
+      'builder.spawn.missing',
+    );
+    expect(playtestBlockingIssues(issues, 'cursor-spawn')).toEqual([]);
+
+    const { doc: sealedKeyDoc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
+    sealedKeyDoc.objects.push(makeObj('spawn', 120, 158));
+    sealedKeyDoc.objects.push(makeObj('pickup', 600, 600, { kind: 'key' }));
+    const keyIssues = validateDocument(sealedKeyDoc);
+    expect(keyIssues.some((issue) => issue.code === 'builder.key.unreachable')).toBe(true);
+    expect(playtestBlockingIssues(keyIssues, 'authored-spawn')).toEqual([]);
   });
 
   it('accepts a complete wired level: spawn, plate->door, key behind the door', () => {

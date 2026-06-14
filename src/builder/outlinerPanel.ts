@@ -1,4 +1,5 @@
 import type { DocIssue } from '@/builder/validate';
+import { assessEditorLink } from '@/builder/validate';
 import type { EditorDocument, EditorLight, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
 import type { PrefabDef } from '@/builder/prefablib';
 import type { SpriteAsset } from '@/builder/assets/sprites';
@@ -29,6 +30,7 @@ export interface OutlinerRow {
   sublabel: string;
   category: string;
   selectId?: string;
+  selectIds?: string[];
   frameId?: string;
   objectId?: string;
   lightId?: string;
@@ -184,17 +186,18 @@ function renderLayerRow(layer: OutlinerLayerState): string {
 function renderOutlinerRow(row: OutlinerRow): string {
   const badges = row.badges.map((badge) => `<span class="bo-badge">${esc(badge)}</span>`).join('');
   const selectAttr = row.selectId ? ` data-select-id="${escAttr(row.selectId)}"` : '';
+  const selectIdsAttr = row.selectIds && row.selectIds.length > 0 ? ` data-select-ids="${escAttr(row.selectIds.join(','))}"` : '';
   const frameAttr = row.frameId ? ` data-frame-id="${escAttr(row.frameId)}"` : '';
   const linkAttr = row.linkId ? ` data-link-id="${escAttr(row.linkId)}"` : '';
   const issue = row.issueText ? `<div class="bo-row-issue">${esc(row.issueText)}</div>` : '';
   const objectToggle =
     row.objectId || row.lightId
       ? `<div class="bo-row-actions">
-          <button type="button" data-row-toggle="hidden" data-row-id="${escAttr(row.objectId ?? row.lightId ?? '')}" data-row-kind="${row.objectId ? 'object' : 'light'}">${row.hidden ? 'Unhide' : 'Hide'}</button>
-          <button type="button" data-row-toggle="locked" data-row-id="${escAttr(row.objectId ?? row.lightId ?? '')}" data-row-kind="${row.objectId ? 'object' : 'light'}">${row.locked ? 'Unlock' : 'Lock'}</button>
+          <button type="button" data-row-toggle="hidden" data-row-id="${escAttr(row.objectId ?? row.lightId ?? '')}" data-row-kind="${row.objectId ? 'object' : 'light'}" data-command-id="builder.toggleSelectedHidden">${row.hidden ? 'Unhide' : 'Hide'}</button>
+          <button type="button" data-row-toggle="locked" data-row-id="${escAttr(row.objectId ?? row.lightId ?? '')}" data-row-kind="${row.objectId ? 'object' : 'light'}" data-command-id="builder.toggleSelectedLocked">${row.locked ? 'Unlock' : 'Lock'}</button>
         </div>`
       : '';
-  return `<div class="bo-row ${row.type}${row.selected ? ' selected' : ''}${row.invalid ? ' invalid' : ''}${row.hidden ? ' hidden-row' : ''}" data-row-type="${row.type}"${selectAttr}${frameAttr}${linkAttr}>
+  return `<div class="bo-row ${row.type}${row.selected ? ' selected' : ''}${row.invalid ? ' invalid' : ''}${row.hidden ? ' hidden-row' : ''}" data-row-type="${row.type}"${selectAttr}${selectIdsAttr}${frameAttr}${linkAttr}>
     <div class="bo-row-main">
       <div class="bo-row-title">${esc(row.label)}</div>
       <div class="bo-row-sub">${esc(row.sublabel)}</div>
@@ -232,6 +235,7 @@ function groupRows(
       sublabel: `${members.length} object${members.length === 1 ? '' : 's'}`,
       category: 'Group',
       selectId: members[0]?.id,
+      selectIds: members.map((member) => member.id),
       frameId: members[0]?.id,
       hidden: members.every((member) => member.hidden),
       locked: members.every((member) => member.locked),
@@ -337,7 +341,17 @@ function linkRow(
 ): OutlinerRow {
   const from = doc.objects.find((object) => object.id === link.fromId);
   const to = doc.objects.find((object) => object.id === link.toId);
-  const relatedIssues = [...(from ? issuesById.get(from.id) ?? [] : []), ...(to ? issuesById.get(to.id) ?? [] : [])];
+  const assessment = assessEditorLink(link, from ?? null, to ?? null);
+  const linkIssues = assessment.issues.map((item): DocIssue => ({
+    severity: item.severity,
+    what: item.what,
+    ...(item.objId ? { objId: item.objId } : {}),
+  }));
+  const relatedIssues = [
+    ...linkIssues,
+    ...(from ? issuesById.get(from.id) ?? [] : []),
+    ...(to ? issuesById.get(to.id) ?? [] : []),
+  ];
   const issue = strongestIssue(relatedIssues);
   const selected = (from && selectedIds.has(from.id)) || (to && selectedIds.has(to.id)) || false;
   const hidden = from?.hidden === true || to?.hidden === true;
@@ -346,7 +360,7 @@ function linkRow(
   if (hidden) filters.add('hidden');
   if (locked) filters.add('locked');
   if (selected) filters.add('selected');
-  if (issue || !from || !to || hidden) filters.add('invalid');
+  if (issue || !from || !to || hidden || assessment.severity) filters.add('invalid');
   const label = `${from?.kind ?? 'missing'} -> ${to?.kind ?? 'missing'}`;
   const badges = ['link', link.kind];
   if (hidden) badges.push('dead');
@@ -364,12 +378,20 @@ function linkRow(
     hidden,
     locked,
     selected,
-    invalid: issue !== undefined || !from || !to || hidden,
+    invalid: issue !== undefined || !from || !to || hidden || assessment.severity !== null,
     issueSeverity: issue?.severity,
     issueText: issue?.what,
     badges,
     filters,
-    searchText: normalizeSearch([link.id, link.kind, link.fromId, link.toId, label, issue?.what ?? ''].join(' ')),
+    searchText: normalizeSearch([
+      link.id,
+      link.kind,
+      link.fromId,
+      link.toId,
+      label,
+      issue?.what ?? '',
+      assessment.messages.join(' '),
+    ].join(' ')),
   };
 }
 

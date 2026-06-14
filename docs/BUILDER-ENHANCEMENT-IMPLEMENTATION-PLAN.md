@@ -182,26 +182,204 @@ Priority meanings:
   ownership, durable import report rollback, canonical import report asset ids,
   text-drag isolation, missing dependency usages, saved-document embedded
   sprites, and document export portable embedding.
-- Phase 5B Content Asset Provider: pending. This is the compatibility extension
-  for spell, potion, modifier, material, enemy, scenario, and cook-report
-  content. It must extend the existing Asset Database/Browser instead of
-  creating a parallel content browser. Other deliberately deferred Phase 5 work
-  remains deferred: true multi-select asset batch operations, IndexedDB/File
-  System Access stores, final reimport apply UX, material/light/procedural/
-  document drag actions, and full prefab/sprite panel replacement by filtered
-  Asset Browser views.
+- Phase 5B Content Asset Provider: complete. Built-in cards, modifiers, wand
+  frames, wand loadouts, potions, elixirs, recipes, runtime materials, enemies,
+  encounter scenario metadata, Spell Lab scenario metadata, and cook-report
+  metadata now enter the existing Asset Database/Browser as immutable read-only
+  records from runtime source catalogs. Content details reuse the shared Asset
+  Details panel and document/prefab content usages are indexed from legacy
+  enemy, tome-card, and potion string references. Expert and critic re-review
+  approved the source-of-truth, `Unused` collection, metadata export, and content
+  validation-message fixes. Later Phase 5 slices completed the originally
+  deferred reimport, non-prefab action, prefab/sprite replacement, and
+  project-persistence work.
+- Phase 5C Reimport Apply and Import Safety: complete. Mutable localStorage
+  document, prefab, and sprite assets now have an explicit Reimport action in
+  Asset Details. Reimport previews same-kind/same-source JSON diffs, explains
+  usage impact before replacement, preserves stable ids, records
+  `collision-replace` import reports, rejects kind/source mismatches, and rolls
+  back replaced content if the durable report cannot be saved. Store-level
+  delete now refuses document-owned assets, same-batch JSON imports rebuild the
+  database between files to avoid silent overwrites, asset drops respect Builder
+  preview/live blockers, and Recent defaults to modified-time ordering for
+  imported/reimported assets. Expert, UX, and critic re-review approved the
+  replacement semantics, rollback behavior, Recent ordering, visual flow, and
+  corruption guards. Later Phase 5 slices completed material/light/procedural
+  drag actions, document/template explicit actions, prefab/sprite filtered
+  Asset Database views, and async project-persistence foundations.
+- Phase 5D Asset Browser Multi-Select and Batch Operations: complete. The Asset
+  Browser now supports checkbox, Ctrl/Cmd-click, Shift-click, Shift-checkbox,
+  keyboard, and select-visible multi-selection while keeping plain row clicks as
+  inspect/detail actions. A compact docked batch bar shows visible/hidden
+  selection counts, preserves focus and scroll through rerenders, exports
+  selected records as an importable `assetExportBundle`, disables destructive
+  batch delete up front when any selected asset is immutable, document-owned,
+  missing/broken, or referenced, and still preflights every delete through
+  `AssetDatabase.deletePlan()` before touching `AssetStore`. Bundle imports
+  delegate entries through the existing import pipeline, emit durable per-entry
+  reports, refresh local collision state between entries, and preserve caller
+  database authority for current-document, document-embedded, built-in, and
+  content records. Expert, UX, and critic review approved the source-of-truth
+  boundaries, range/focus behavior, disabled-state clarity, and probe coverage.
+- Phase 5E Non-Prefab Asset Actions: complete. Asset Browser stage drops now
+  originate from real row/card drag payloads for prefab, sprite, material
+  profile, light preset, and procedural preset records. Material profile drops
+  arm the material and apply compatible params only to the cursor target,
+  light preset drops create authored lights or apply to the light under the
+  cursor through `addLightCmd`/`editLightCmd`, and procedural preset drops
+  seed the procedural panel without applying destructive changes. Document and
+  template records are deliberately not stage-draggable; they open/create
+  documents only through explicit Asset Details actions, with discard
+  confirmation, stale-record checks, and the existing `replaceDocument`
+  lifecycle. Built-in Builder document templates are indexed as immutable
+  Asset Database records. Expert, UX, and critic re-review approved the phase
+  after fixes for document affordance clarity, cursor-target semantics,
+  probe-owned cleanup safety, row-origin drag coverage, prefab coverage, and
+  template action coverage.
+- Phase 5F Asset-backed Prefab/Sprite Palette Views: complete. The legacy
+  left-palette prefab and sprite browsers no longer maintain parallel browsing
+  UI. They now render compact, placement-focused Asset Database views using the
+  shared Asset Browser preview, metadata, drag payload, and explicit-details
+  affordances. Prefab capture/import/region-PNG/palette export and sprite
+  import keep their existing workflow entry points, while row activation still
+  arms placement through Builder-owned prefab/sprite commands and blockers.
+  Sprite Asset Details export now preserves the previous two-file
+  `.sheet.png` + `.sprite.json` round trip. Browser probes cover compact-row
+  UX, search focus retention, scroll and keyboard focus retention, prefab
+  capture/paste/details/anchors, sprite import/place/playtest/export, durable
+  prefab JSON import reports, and the full docked Asset Browser regression
+  path.
+- Phase 5G Project Asset Persistence Foundation: complete. Asset persistence now
+  has an async `ProjectAssetStore` contract beside the transitional synchronous
+  `LocalStorageAssetStore`, without wiring live Builder UI actions to a parallel
+  command path. The new foundation includes typed project asset entries,
+  explicit original-source versus persistence-backend metadata, strict
+  conversion guards that reject current-document/document-owned, immutable,
+  malformed, missing, broken, and report-as-asset records, a tested in-memory
+  backend, an `IndexedDbAssetStore` path with fail-open list/quota/recovery
+  behavior, and a File System Access project-folder path under
+  `.noita-builder/assets/<kind>/` and `.noita-builder/import-reports/`.
+  Recovery validates stable ids, allowed origin/storage combinations, actual
+  file location, kind-folder consistency, import-report decisions, timestamps,
+  optional refs, string arrays, size metadata, and signatures. Regression tests
+  cover async sorting/cloning/quota, current-document and immutable rejection,
+  IndexedDB schema round trip/recovery/delete, namespaced project-folder
+  persistence, tampered delete-path protection, misplaced asset quarantine, and
+  malformed import-report quarantine. Expert architecture, storage critic, and
+  UX/tooling re-reviews approved the phase after these fixes. Validation:
+  `npm run typecheck`, `npm run lint`, `npm test` (20 files / 356 tests),
+  `npm run build`, and `node scripts/verify-builder-assets.mjs
+  http://127.0.0.1:5184/` (33 checks) all passed.
 
-Latest validation for the Phase 5A checkpoint:
+- Phase 6 Object Outliner, Layer Manager, and Link Graph: complete. The Builder
+  now has registered outliner and link-graph panels with search, filters,
+  group multi-select rows, context-menu command routing, command-backed
+  hidden/locked row toggles, workspace-persisted layer visibility/locking,
+  double-click framing, scroll-preserving rerenders, link graph endpoint
+  navigation, graph unlink through the shared command menu, and shared
+  `assessEditorLink()` diagnostics used by validation, graph rows, and outliner
+  link-row issue text. Expert and critic re-review approved the graph semantics,
+  validation freshness, selection synchronization, scroll behavior, and dense
+  row interaction coverage.
+- Phase 7 Validation Workbench and Guided Repair Actions: complete. Validation
+  issues now carry stable codes, affected object/link ids, locations, overlay
+  metadata, and commandable repair actions. The Builder renders a grouped
+  validation workbench with severity filters, playtest-blocker banners,
+  keyboard-selectable rows, mutating/inspect action metadata, quick repairs for
+  missing spawns, embedded spawns, portal/key setup, and dead links, plus
+  cached reachability and clearance overlays derived from the same fixpoint
+  validation masks. Playtest blocking now uses explicit authored-spawn versus
+  cursor-spawn targets, hidden spawns are not compile-visible, and `Playtest
+  Here` only rejects cursor spawns against cells that actually compile from the
+  authored structure/link graph. Terrain validation freshness is protected by a
+  single lazy-capture invariant: successful captures dirty validation, while
+  floating selection, procedural/repair previews, and settle previews cannot be
+  captured into `EditorDocument` before explicit apply/keep. Expert and critic
+  re-review approved validation purity, compiler/runtime boundaries,
+  preview/apply safety, stale-cache fixes, and cursor-spawn compile semantics.
+- Phase 8 PreviewRuntime and Live Preview Session: complete. Builder Live
+  Preview now owns a disposable capped `PreviewRuntime` with a private `World`,
+  local frame clock, source terrain snapshot, diff-only overlay draw, capped
+  authored lights, capped rune vaults, hazard emitters, linked mechanism
+  previews, machine primitive triggers, valves, relays, relay break/ignite/
+  strike outputs, and rune-door strike dissolution. Entering or restarting
+  Live Preview no longer captures dirty terrain into `EditorDocument`; unsaved
+  terrain is captured into a local preview layer only. Direct terrain mutation
+  paths now dirty validation and preview consistently, and procedural/repair
+  previews are blocked while Live Preview is active so preview layers cannot
+  overlap. Browser coverage verifies Live Preview stays in Builder mode, does
+  not mutate the live world, draws preview-only mechanism cells, preserves
+  restart/discard semantics, blocks procedural previews, keeps frame cadence
+  bounded, and keeps `Playtest Here` separate. Expert and critic re-review
+  approved preview/runtime source-of-truth boundaries, cap coverage, dirty-state
+  invalidation, relay/rune strike semantics, and light mute/solo handling.
+- Phase 9 Spatial Authoring Gizmos and Measurement Tools: complete. Builder
+  now has reusable spatial-guide and gizmo helper modules, snap off/4/8/16
+  workspace persistence, visible snap-grid hierarchy, contextual coordinate
+  readouts, measurement callouts, screen-space transform handles, resize
+  handles for slab/zone/pan/basin objects, rotate handles for directional and
+  slab objects, light radius and falloff handles, waypoint handle visuals, and
+  commandable view controls for fit bounds, frame selection, zoom, spawn
+  centering, and validation issue centering. Gizmo drags are transient live
+  previews that restore before landing a single undoable command, and Escape,
+  close, autosave, beforeunload, pending-preview gates, hidden/locked
+  selectability, and command-palette/help focus priority all respect active
+  gizmo state. Expert, UX, and critic re-review approved the authored-footprint
+  math, source-of-truth boundaries, visual affordances, selection behavior, and
+  focus-safety fixes.
+- Phase 10 Prefab Composition, Anchors, and Asset Workflows: complete. Prefab
+  assets now have a registered `builder-prefab-details` workspace panel with a
+  large active preview, Asset Database dependency/validation metadata, variant
+  previews, anchor selection, Asset Details handoff, JSON/PNG export, and
+  immutable built-in guardrails. Prefab variants use the existing rotate/mirror
+  transform contracts, active variants can be armed from the detail panel or
+  dragged from the Asset Browser, and placed prefab anchors are tracked
+  editor-locally so compatible opposite anchors can snap repeated room
+  composition without mutating the Builder document schema. Dependency guards
+  now block missing/broken prefab drops before placement, terrain-only prefabs
+  can still provide anchor snap targets, anchor previews align to the painted
+  canvas footprint, and document replacement/new/draft-restore paths clear the
+  transient anchor cache. Browser coverage verifies detail-panel handoff,
+  variant preview, anchor authoring, spatial anchor geometry, compatible anchor
+  snapping, complete undo grouping, active-variant Asset Browser drops,
+  dependency refusal, and existing Asset Browser/UX regressions. Expert and
+  critic re-review approved dependency gating, terrain-only anchor targets,
+  variant export identity, built-in duplicate handoff, preview geometry, probe
+  coverage, and document-lifecycle cleanup.
+
+Latest validation for the Phase 10 checkpoint:
 
 - `npm run typecheck`
-- `npx vitest run tests/asset-database.test.ts tests/assets.test.ts tests/prefabs.test.ts tests/builder.test.ts tests/editor-ui.test.ts` (103 tests)
 - `npm run lint`
-- `npm test` (18 files, 306 tests)
+- `npx vitest run tests/prefabs.test.ts` (15 tests)
+- `npm test` (19 files, 342 tests)
 - `npm run build`
-- `node scripts/verify-builder-assets.mjs http://127.0.0.1:5184/` (9 checks)
-- `node scripts/verify-builder-ux.mjs http://127.0.0.1:5184/` (87 checks)
-- `node scripts/verify-builder-prefabs.mjs http://127.0.0.1:5184/` (9 checks)
-- `node scripts/verify-console.mjs http://127.0.0.1:5184/` (63 checks)
+- `node scripts/verify-builder-assets.mjs http://127.0.0.1:5184/` (20 checks)
+- `node scripts/verify-builder-prefabs.mjs http://127.0.0.1:5184/` (24 checks)
+- `node scripts/verify-builder-ux.mjs http://127.0.0.1:5184/` (108 checks)
+
+Latest validation for the Phase 5F checkpoint:
+
+- `npm run typecheck`
+- `npm run lint`
+- `npx vitest run tests/asset-database.test.ts` (25 tests)
+- `npm test` (19 files, 348 tests)
+- `npm run build`
+- `node scripts/verify-builder-assets.mjs http://127.0.0.1:5184/` (33 checks)
+- `node scripts/verify-builder-prefabs.mjs http://127.0.0.1:5184/` (24 checks)
+- `node scripts/verify-sprites.mjs http://127.0.0.1:5184/` (11 checks)
+- `node scripts/verify-builder-pro.mjs http://127.0.0.1:5184/` (42 checks)
+- `node scripts/verify-builder-ux.mjs http://127.0.0.1:5184/` (110 checks)
+
+Latest validation for the Phase 5G checkpoint:
+
+- `npm run typecheck`
+- `npm run lint`
+- `npx vitest run tests/project-asset-store.test.ts` (8 tests)
+- `npx vitest run tests/asset-database.test.ts` (25 tests)
+- `npm test` (20 files, 356 tests)
+- `npm run build`
+- `node scripts/verify-builder-assets.mjs http://127.0.0.1:5184/` (33 checks)
 
 ## Phase 0 - Baseline And Worktree Safety
 

@@ -243,6 +243,10 @@ const MIRROR_DIR: Record<PrefabAnchor['dir'], PrefabAnchor['dir']> = {
   w: 'e',
 };
 
+function mirrorRotation(rotation: EditorObject['rotation']): EditorObject['rotation'] {
+  return (((360 - rotation) % 360) as EditorObject['rotation']);
+}
+
 /** 90 degrees clockwise: src(x, y) -> dst(h-1-y, x); w/h swap. */
 export function rotatePrefab(p: PrefabDef): PrefabDef {
   const src = decodePrefabCells(p);
@@ -322,6 +326,7 @@ export function mirrorPrefab(p: PrefabDef): PrefabDef {
         );
       }
     }
+    clone.rotation = mirrorRotation(o.rotation);
     return clone;
   });
 
@@ -350,6 +355,77 @@ export interface PrefabPasteResult {
   objects: EditorObject[];
   links: EditorLink[];
   lights: EditorLight[];
+}
+
+export type PrefabVariantId =
+  | 'base'
+  | 'rot90'
+  | 'rot180'
+  | 'rot270'
+  | 'mirror'
+  | 'mirrorRot90'
+  | 'mirrorRot180'
+  | 'mirrorRot270';
+
+export const PREFAB_VARIANTS: ReadonlyArray<{ id: PrefabVariantId; label: string }> = [
+  { id: 'base', label: 'Original' },
+  { id: 'rot90', label: 'Rotate 90' },
+  { id: 'rot180', label: 'Rotate 180' },
+  { id: 'rot270', label: 'Rotate 270' },
+  { id: 'mirror', label: 'Mirror' },
+  { id: 'mirrorRot90', label: 'Mirror + 90' },
+  { id: 'mirrorRot180', label: 'Mirror + 180' },
+  { id: 'mirrorRot270', label: 'Mirror + 270' },
+];
+
+export function prefabVariant(prefab: PrefabDef, variant: PrefabVariantId): PrefabDef {
+  const rotate = (p: PrefabDef, turns: number): PrefabDef => {
+    let out = p;
+    for (let n = 0; n < turns; n++) out = rotatePrefab(out);
+    return out;
+  };
+  if (variant === 'base') return structuredClone(prefab);
+  if (variant === 'rot90') return rotate(structuredClone(prefab), 1);
+  if (variant === 'rot180') return rotate(structuredClone(prefab), 2);
+  if (variant === 'rot270') return rotate(structuredClone(prefab), 3);
+  if (variant === 'mirror') return mirrorPrefab(structuredClone(prefab));
+  if (variant === 'mirrorRot90') return rotate(mirrorPrefab(structuredClone(prefab)), 1);
+  if (variant === 'mirrorRot180') return rotate(mirrorPrefab(structuredClone(prefab)), 2);
+  return rotate(mirrorPrefab(structuredClone(prefab)), 3);
+}
+
+export function oppositeAnchorDir(dir: PrefabAnchor['dir']): PrefabAnchor['dir'] {
+  if (dir === 'n') return 's';
+  if (dir === 's') return 'n';
+  if (dir === 'e') return 'w';
+  return 'e';
+}
+
+export function prefabAnchorsCompatible(a: PrefabAnchor, b: PrefabAnchor): boolean {
+  return a.kind === b.kind && oppositeAnchorDir(a.dir) === b.dir;
+}
+
+export function prefabAnchorWorldPoint(
+  prefab: Pick<PrefabDef, 'w' | 'h'>,
+  centerX: number,
+  centerY: number,
+  anchor: Pick<PrefabAnchor, 'x' | 'y'>,
+): { x: number; y: number } {
+  return {
+    x: centerX - Math.floor(prefab.w / 2) + anchor.x,
+    y: centerY - Math.floor(prefab.h / 2) + anchor.y,
+  };
+}
+
+export function alignPrefabAnchorToWorldPoint(
+  prefab: Pick<PrefabDef, 'w' | 'h'>,
+  anchor: Pick<PrefabAnchor, 'x' | 'y'>,
+  target: { x: number; y: number },
+): { x: number; y: number } {
+  return {
+    x: target.x - anchor.x + Math.floor(prefab.w / 2),
+    y: target.y - anchor.y + Math.floor(prefab.h / 2),
+  };
 }
 
 /**

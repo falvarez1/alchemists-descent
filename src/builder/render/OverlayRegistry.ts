@@ -1,12 +1,16 @@
 import { objectFootprint } from '@/builder/document';
 import type { EditorDocument } from '@/builder/document';
 import type { DocIssue } from '@/builder/validate';
+import type { ValidationOverlayDiagnostics } from '@/builder/validate';
+import { HEIGHT, WIDTH } from '@/config/constants';
 
 export interface BuilderOverlayDrawContext {
   doc: EditorDocument;
   issues: readonly DocIssue[];
+  diagnostics?: ValidationOverlayDiagnostics | null;
   cellW: number;
   cellH: number;
+  view: { x0: number; y0: number; x1: number; y1: number };
   toScreen(wx: number, wy: number): { x: number; y: number };
 }
 
@@ -57,6 +61,12 @@ export const BUILDER_OVERLAYS = [
     label: 'Player Clearance',
     defaultVisible: false,
     draw(g, ctx) {
+      if (ctx.diagnostics?.clearanceReachable) {
+        drawMask(g, ctx, ctx.diagnostics.clearanceReachable, 'rgba(125,211,252,0.18)');
+      }
+      if (ctx.diagnostics?.tooTight) {
+        drawMask(g, ctx, ctx.diagnostics.tooTight, 'rgba(251,191,36,0.22)');
+      }
       for (const o of ctx.doc.objects) {
         if (o.kind !== 'spawn' || o.hidden) continue;
         const p = ctx.toScreen(o.x, o.y);
@@ -64,6 +74,21 @@ export const BUILDER_OVERLAYS = [
         g.setLineDash([4, 3]);
         g.strokeRect(p.x - 6 * ctx.cellW, p.y - 12 * ctx.cellH, 12 * ctx.cellW, 14 * ctx.cellH);
         g.setLineDash([]);
+      }
+    },
+  },
+  {
+    id: 'reachability',
+    label: 'Reachability',
+    defaultVisible: false,
+    draw(g, ctx) {
+      const initial = ctx.diagnostics?.initialReachable;
+      const earned = ctx.diagnostics?.earnedReachable;
+      if (!initial || !earned) return;
+      drawMask(g, ctx, initial, 'rgba(56,189,248,0.16)');
+      drawMask(g, ctx, earned, 'rgba(34,197,94,0.16)', initial);
+      if (ctx.diagnostics?.tooTight) {
+        drawMask(g, ctx, ctx.diagnostics.tooTight, 'rgba(251,191,36,0.18)');
       }
     },
   },
@@ -146,4 +171,28 @@ function blob(
   g.beginPath();
   g.arc(c.x, c.y, Math.max(4, r * ctx.cellW), 0, Math.PI * 2);
   g.fill();
+}
+
+function drawMask(
+  g: CanvasRenderingContext2D,
+  ctx: BuilderOverlayDrawContext,
+  mask: Uint8Array,
+  color: string,
+  skipMask?: Uint8Array,
+): void {
+  const x0 = Math.max(0, Math.floor(ctx.view.x0));
+  const y0 = Math.max(0, Math.floor(ctx.view.y0));
+  const x1 = Math.min(WIDTH, Math.ceil(ctx.view.x1));
+  const y1 = Math.min(HEIGHT, Math.ceil(ctx.view.y1));
+  const step = Math.max(1, Math.floor(2 / Math.max(0.01, Math.min(ctx.cellW, ctx.cellH))));
+  g.fillStyle = color;
+  for (let y = y0; y < y1; y += step) {
+    for (let x = x0; x < x1; x += step) {
+      const i = x + y * WIDTH;
+      if (!mask[i] || skipMask?.[i]) continue;
+      const a = ctx.toScreen(x, y);
+      const b = ctx.toScreen(Math.min(x + step, x1), Math.min(y + step, y1));
+      g.fillRect(a.x, a.y, Math.max(1, b.x - a.x), Math.max(1, b.y - a.y));
+    }
+  }
 }

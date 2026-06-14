@@ -53,9 +53,27 @@ const STACK_JITTER = 0.06;
 const FLAME_BURST_FRAMES = 4;
 const FLAME_BURST_CAP = 16;
 
+export interface BuiltInWandLoadout {
+  id: string;
+  name: string;
+  frameId: string;
+  cards: CardId[];
+  status: 'live' | 'review';
+}
+
+export const STARTING_WAND_LOADOUTS: BuiltInWandLoadout[] = [
+  { id: 'starter-oak', name: 'Starter Oak Sprig', frameId: 'oak', cards: ['spark'], status: 'live' },
+  { id: 'starter-bone', name: 'Starter Bone Crook', frameId: 'bone', cards: ['dig'], status: 'live' },
+];
+
+export const REVIEW_WAND_LOADOUTS: BuiltInWandLoadout[] = [
+  { id: 'review-brass-injector', name: 'Review Brass Injector', frameId: 'brass', cards: ['spark', 'double', 'speed', 'flame', 'lightning'], status: 'review' },
+  { id: 'review-void-lattice', name: 'Review Void Lattice', frameId: 'void', cards: ['dig', 'conjure', 'vitriol', 'blackhole', 'warp'], status: 'review' },
+];
+
 const REVIEW_WAND_CARDS: [CardId[], CardId[]] = [
-  ['spark', 'double', 'speed', 'flame', 'lightning'],
-  ['dig', 'conjure', 'vitriol', 'blackhole', 'warp'],
+  REVIEW_WAND_LOADOUTS[0].cards,
+  REVIEW_WAND_LOADOUTS[1].cards,
 ];
 
 /**

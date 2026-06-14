@@ -12,11 +12,15 @@ import {
   deletePrefab,
   loadPrefabs,
   mirrorPrefab,
+  prefabAnchorsCompatible,
+  prefabAnchorWorldPoint,
+  prefabVariant,
   PREFAB_CELL_CAP,
   pastePrefab,
   rotatePrefab,
   sanitizePrefab,
   savePrefab,
+  alignPrefabAnchorToWorldPoint,
 } from '@/builder/prefablib';
 import type { PrefabDef } from '@/builder/prefablib';
 
@@ -192,6 +196,16 @@ describe('prefab transforms', () => {
     expect(m.life).toEqual(p.life);
   });
 
+  it('mirrors directional object rotations', () => {
+    const { world, doc, region } = wiredRoom();
+    doc.objects.push(makeObj('hazardEmitter', 145, 148, { material: Cell.Water }));
+    doc.objects[doc.objects.length - 1].rotation = 90;
+    const p = capturePrefab(world, region, doc, 'room')!.prefab;
+    const emitter = mirrorPrefab(p).objects.find((o) => o.kind === 'hazardEmitter');
+
+    expect(emitter?.rotation).toBe(270);
+  });
+
   it('keeps a door slab covering the same cells through a rotation', () => {
     // a 6x10 prefab: door slab (w2 h4) at local (1,2); Metal marks its cells
     const cells = new Uint8Array(6 * 10);
@@ -216,6 +230,35 @@ describe('prefab transforms', () => {
         expect(rc[x + y * r.w]).toBe(Cell.Metal);
       }
     }
+  });
+
+  it('named prefab variants transform dimensions and anchors consistently', () => {
+    const { world, doc, region } = wiredRoom();
+    const p = capturePrefab(world, region, doc, 'room')!.prefab;
+    p.anchors = [{ id: 'west', x: 0, y: 30, dir: 'w', kind: 'open', halfW: 4 }];
+
+    const rot = prefabVariant(p, 'rot90');
+    const mirror = prefabVariant(p, 'mirror');
+    const mirroredRot = prefabVariant(p, 'mirrorRot180');
+
+    expect([rot.w, rot.h]).toEqual([p.h, p.w]);
+    expect(rot.anchors).toEqual([{ id: 'west', x: p.h - 1 - 30, y: 0, dir: 'n', kind: 'open', halfW: 4 }]);
+    expect([mirror.w, mirror.h]).toEqual([p.w, p.h]);
+    expect(mirror.anchors).toEqual([{ id: 'west', x: p.w - 1, y: 30, dir: 'e', kind: 'open', halfW: 4 }]);
+    expect([mirroredRot.w, mirroredRot.h]).toEqual([p.w, p.h]);
+  });
+
+  it('aligns compatible prefab anchors without changing the source record', () => {
+    const source = { id: 's', x: 0, y: 10, dir: 'w', kind: 'open' } as const;
+    const target = { id: 't', x: 31, y: 10, dir: 'e', kind: 'open' } as const;
+    const blocked = { id: 'b', x: 31, y: 10, dir: 'e', kind: 'sealed' } as const;
+    const prefab = { w: 32, h: 20 };
+
+    expect(prefabAnchorsCompatible(source, target)).toBe(true);
+    expect(prefabAnchorsCompatible(source, blocked)).toBe(false);
+    const center = alignPrefabAnchorToWorldPoint(prefab, source, { x: 400, y: 300 });
+
+    expect(prefabAnchorWorldPoint(prefab, center.x, center.y, source)).toEqual({ x: 400, y: 300 });
   });
 });
 

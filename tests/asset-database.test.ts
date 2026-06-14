@@ -2,14 +2,17 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createEmptyDocument } from '@/builder/document';
 import { rleEncode } from '@/core/rle';
 import { buildAssetDatabase } from '@/builder/assets/AssetDatabase';
-import { previewJsonImport } from '@/builder/assets/AssetImportPipeline';
+import { createBuiltInContentAssetRecords } from '@/builder/assets/ContentAssetProvider';
+import { previewJsonImport, previewReimport } from '@/builder/assets/AssetImportPipeline';
 import { LocalStorageAssetStore } from '@/builder/assets/AssetStore';
+import { MATERIAL_PARAMS } from '@/config/params';
 import type { PrefabDef } from '@/builder/prefablib';
 import { loadPrefabs, savePrefab } from '@/builder/prefablib';
 import { loadSprites, saveSprite } from '@/builder/assets/spritelib';
 import { encodeFramePx } from '@/builder/assets/sprites';
 import type { SpriteAsset } from '@/builder/assets/sprites';
 import { renderAssetDetailPanel } from '@/builder/assetDetailPanel';
+import { renderAssetBrowserPanel, renderAssetPlacementPanel } from '@/builder/assetBrowserPanel';
 
 class StorageStub implements Storage {
   private readonly data = new Map<string, string>();
@@ -180,6 +183,226 @@ describe('asset database', () => {
     expect(html).toMatch(/data-asset-action="duplicate"[^>]+disabled/);
     expect(html).toMatch(/data-asset-action="delete"[^>]+disabled/);
   });
+
+  it('indexes built-in gameplay content as immutable Asset Database records', () => {
+    const db = buildAssetDatabase({
+      materials: MATERIAL_PARAMS,
+      contentAssets: createBuiltInContentAssetRecords({ materials: MATERIAL_PARAMS }),
+    });
+
+    expect(db.get('card:built-in:spark')).toMatchObject({
+      kind: 'card',
+      origin: 'built-in',
+      immutable: true,
+      source: { storage: 'content-registry' },
+    });
+    expect(db.get('modifier:built-in:infuser')).toMatchObject({ kind: 'modifier', immutable: true });
+    expect(db.get('potion:built-in:vigor')).toMatchObject({ kind: 'potion', immutable: true });
+    expect(db.get('recipe:built-in:life')?.dependencies.state).toBe('ok');
+    expect(db.get('elixir:built-in:cell-21')?.dependencies.state).toBe('ok');
+    expect(db.get('material:built-in:cell-2')).toMatchObject({ name: 'Water', immutable: true });
+    expect(db.get('enemy:built-in:slime')).toMatchObject({ kind: 'enemy', immutable: true });
+    expect(db.get('encounterScenario:built-in:d1')).toMatchObject({ kind: 'encounterScenario' });
+    expect(db.get('encounterScenario:built-in:d1')?.dependencies.refs.map((ref) => `${ref.kind}:${ref.sourceId}`)).toEqual(expect.arrayContaining([
+      'enemy:bat',
+      'enemy:eggs',
+    ]));
+    expect(db.get('spellLabScenario:built-in:review-brass-injector-spell-lab')).toMatchObject({ kind: 'spellLabScenario' });
+    expect(db.get('cookReport:built-in:builtin-content-cook')).toMatchObject({ kind: 'cookReport', validation: { state: 'warning' } });
+    expect(db.deletePlan('card:built-in:spark')).toMatchObject({
+      allowed: false,
+      reasons: expect.arrayContaining([expect.stringContaining('read-only')]),
+    });
+    expect(db.query({ collection: 'unused' }).every((record) => record.source.storage !== 'content-registry')).toBe(true);
+    expect(new LocalStorageAssetStore().export(db.get('card:built-in:spark')!)).toMatchObject({
+      filename: 'spark.card.content-metadata.json',
+      text: expect.stringContaining('"metadataOnly":true'),
+    });
+  });
+
+  it('tracks content dependencies and document usages without mutating runtime definitions', () => {
+    const doc = createEmptyDocument('content-doc', 'earthen');
+    doc.objects.push(
+      {
+        id: 'enemy-1',
+        kind: 'enemy',
+        x: 10,
+        y: 10,
+        rotation: 0,
+        locked: false,
+        hidden: false,
+        params: { kind: 'imp' },
+      },
+      {
+        id: 'tome-1',
+        kind: 'pickup',
+        x: 12,
+        y: 10,
+        rotation: 0,
+        locked: false,
+        hidden: false,
+        params: { kind: 'tome', card: 'spark' },
+      },
+      {
+        id: 'potion-1',
+        kind: 'pickup',
+        x: 14,
+        y: 10,
+        rotation: 0,
+        locked: false,
+        hidden: false,
+        params: { kind: 'potion', potion: 'swift' },
+      },
+    );
+    const db = buildAssetDatabase({
+      currentDocument: doc,
+      materials: MATERIAL_PARAMS,
+      contentAssets: createBuiltInContentAssetRecords({ materials: MATERIAL_PARAMS }),
+    });
+
+    expect(db.get(`document:project:${doc.id}`)?.dependencies.refs.map((ref) => `${ref.kind}:${ref.sourceId}`).sort()).toEqual([
+      'card:spark',
+      'enemy:imp',
+      'potion:swift',
+    ]);
+    expect(db.usageFor('enemy:built-in:imp')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ assetId: `document:project:${doc.id}`, label: 'Current content-doc' }),
+    ]));
+    expect(db.usageFor('card:built-in:spark').some((usage) => usage.assetId === `document:project:${doc.id}`)).toBe(true);
+    expect(db.usageFor('potion:built-in:swift')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ assetId: `document:project:${doc.id}` }),
+    ]));
+    expect(db.get('wandLoadout:built-in:review-brass-injector')?.dependencies.refs.map((ref) => `${ref.kind}:${ref.sourceId}`)).toEqual([
+      'wandFrame:brass',
+      'card:spark',
+      'modifier:double',
+      'modifier:speed',
+      'card:flame',
+      'card:lightning',
+    ]);
+  });
+
+  it('keeps editor material profiles distinct from runtime material content', () => {
+    const db = buildAssetDatabase({
+      materials: MATERIAL_PARAMS,
+      contentAssets: createBuiltInContentAssetRecords({ materials: MATERIAL_PARAMS }),
+    });
+
+    expect(db.get('materialProfile:built-in:cell-2')).toMatchObject({ kind: 'materialProfile', name: 'Water' });
+    expect(db.get('material:built-in:cell-2')).toMatchObject({ kind: 'material', name: 'Water' });
+  });
+
+  it('renders Asset Browser multi-select controls without changing single-selection detail state', () => {
+    const sprite = spriteAsset('sprite-batch-a', 'Batch A');
+    const prefab = prefabAsset('prefab-batch-b', 'Batch B');
+    const db = buildAssetDatabase({ sprites: [sprite], prefabs: [prefab] });
+    const selectedIds = new Set(['sprite:library:sprite-batch-a', 'prefab:library:prefab-batch-b']);
+
+    const html = renderAssetBrowserPanel({
+      query: '',
+      view: 'grid',
+      sort: 'name',
+      collection: 'all',
+      kindFilters: new Set(),
+      originFilters: new Set(),
+      records: db.query({ kinds: ['sprite', 'prefab'] }),
+      selectedId: 'sprite:library:sprite-batch-a',
+      selectedIds,
+      hiddenSelectedCount: 0,
+      batchDeleteBlockedReason: undefined,
+      stats: db.stats(),
+      collapsedSections: {},
+    });
+
+    expect(html).toContain('id="ba-select-visible"');
+    expect(html).toContain('id="ba-batch-export"');
+    expect(html).toContain('id="ba-batch-delete"');
+    expect(html).toContain('2 selected');
+    expect(html.match(/data-asset-select="/g)).toHaveLength(2);
+    expect(html).toContain('ba-card selected multi-selected');
+  });
+
+  it('renders compact placement views from Asset Database records', () => {
+    const prefab = prefabAsset('prefab-palette', 'Palette Room');
+    const sprite = spriteAsset('sprite-palette', 'Palette Torch');
+    const db = buildAssetDatabase({ prefabs: [prefab], sprites: [sprite] });
+    const prefabId = 'prefab:library:prefab-palette';
+    const spriteId = 'sprite:library:sprite-palette';
+
+    const html = renderAssetPlacementPanel({
+      title: 'Prefab Assets',
+      query: 'palette',
+      searchPlaceholder: 'Search prefabs',
+      emptyMessage: 'No prefabs',
+      records: db.query({ kinds: ['prefab', 'sprite'], text: 'palette' }),
+      selectedId: prefabId,
+      armedId: spriteId,
+      actions: [
+        { id: 'capture', label: 'Capture', title: 'Capture prefab' },
+        { id: 'import', label: 'Import', title: 'Import assets' },
+      ],
+    });
+
+    expect(html).toContain('class="ba-placement-browser"');
+    expect(html).toContain('data-asset-placement-action="capture"');
+    expect(html).toContain('data-asset-placement-search');
+    expect(html).toMatch(new RegExp(`data-asset-id="${prefabId}"[^>]+draggable="true"`));
+    expect(html).toMatch(new RegExp(`data-asset-id="${spriteId}"[^>]+draggable="true"`));
+    expect(html).toMatch(new RegExp(`class="ba-placement-row selected"[^>]+data-asset-id="${prefabId}"`));
+    expect(html).toMatch(new RegExp(`class="ba-placement-row armed"[^>]+data-asset-id="${spriteId}"`));
+    expect(html).toContain(`data-asset-placement-details="${prefabId}"`);
+    expect(html).not.toContain('role="tree"');
+    expect(html).not.toContain('ba-chip');
+  });
+
+  it('marks non-prefab stage action assets as draggable while documents use explicit open actions', () => {
+    const doc = createEmptyDocument('drop-doc', 'earthen');
+    const db = buildAssetDatabase({
+      currentDocument: doc,
+      templates: { 'template-drop-doc': { ...doc, id: 'template-drop-doc', name: 'Drop Template' } },
+      materials: MATERIAL_PARAMS,
+      procPresets: [{ id: 'crowns', label: 'Surface crowns', usesMaterial: true }],
+      lightPresets: [{ id: 'torch', label: 'Torch' }],
+    });
+
+    const html = renderAssetBrowserPanel({
+      query: '',
+      view: 'grid',
+      sort: 'name',
+      collection: 'all',
+      kindFilters: new Set(),
+      originFilters: new Set(),
+      records: db.query({ kinds: ['document', 'template', 'materialProfile', 'lightPreset', 'procPreset'] }),
+      selectedId: null,
+      selectedIds: new Set(),
+      hiddenSelectedCount: 0,
+      batchDeleteBlockedReason: undefined,
+      stats: db.stats(),
+      collapsedSections: {},
+    });
+
+    expect(html).toMatch(new RegExp(`data-asset-id="document:project:${doc.id}"[^>]+draggable="false"`));
+    expect(html).toMatch(/data-asset-id="template:built-in:template-drop-doc"[^>]+draggable="false"/);
+    for (const assetId of [
+      'materialProfile:built-in:cell-2',
+      'lightPreset:built-in:torch',
+      'procPreset:built-in:crowns',
+    ]) {
+      expect(html).toMatch(new RegExp(`data-asset-id="${assetId}"[^>]+draggable="true"`));
+    }
+
+    const savedDoc = createEmptyDocument('saved-drop-doc', 'earthen');
+    const savedDb = buildAssetDatabase({ documents: { [savedDoc.id]: savedDoc } });
+    const savedRecord = savedDb.get(`document:project:${savedDoc.id}`)!;
+    const detailHtml = renderAssetDetailPanel({ asset: savedRecord, deletePlan: savedDb.deletePlan(savedRecord.assetId) });
+    expect(detailHtml).toMatch(/data-asset-action="open"[^>]*>Open<\/button>/);
+
+    const templateRecord = db.get('template:built-in:template-drop-doc')!;
+    const templateDetailHtml = renderAssetDetailPanel({ asset: templateRecord, deletePlan: db.deletePlan(templateRecord.assetId) });
+    expect(templateRecord).toMatchObject({ kind: 'template', immutable: true, source: { storage: 'builtin' } });
+    expect(templateDetailHtml).toMatch(/data-asset-action="open"[^>]*>Open<\/button>/);
+    expect(templateDetailHtml).toMatch(/data-asset-action="duplicate"[^>]+disabled/);
+  });
 });
 
 describe('localStorage asset store', () => {
@@ -281,6 +504,223 @@ describe('localStorage asset store', () => {
     expect(loadSprites()).toHaveLength(0);
     expect(store.listImportReports()).toHaveLength(0);
   });
+
+  it('previews reimport no-ops, changed content, kind mismatches, and source-id mismatches', () => {
+    const store = new LocalStorageAssetStore();
+    const original = spriteAsset('sprite-reimport', 'Original', [255, 0, 0, 255]);
+    expect(saveSprite(original)).toBe(true);
+    const record = buildAssetDatabase({ sprites: loadSprites() }).get('sprite:library:sprite-reimport')!;
+
+    expect(previewReimport(record, { fileName: 'same.sprite.json', text: JSON.stringify(original) })).toMatchObject({
+      ok: true,
+      sameContent: true,
+      changes: ['No content changes detected'],
+    });
+    expect(previewReimport(record, { fileName: 'changed.sprite.json', text: JSON.stringify(spriteAsset('sprite-reimport', 'Changed', [0, 0, 255, 255])) })).toMatchObject({
+      ok: true,
+      sameContent: false,
+      kind: 'sprite',
+      sourceId: 'sprite-reimport',
+    });
+    expect(previewReimport(record, { fileName: 'wrong-kind.prefab.json', text: JSON.stringify(prefabAsset('sprite-reimport', 'Wrong Kind')) })).toMatchObject({
+      ok: false,
+      errors: expect.arrayContaining([expect.stringContaining('Kind changes')]),
+    });
+    expect(previewReimport(record, { fileName: 'wrong-id.sprite.json', text: JSON.stringify(spriteAsset('sprite-other', 'Other')) })).toMatchObject({
+      ok: false,
+      errors: expect.arrayContaining([expect.stringContaining('Source id changes')]),
+    });
+    expect(store.listImportReports()).toHaveLength(0);
+  });
+
+  it('reimports local sprite content while preserving stable id and recording a replacement report', () => {
+    const store = new LocalStorageAssetStore();
+    const original = spriteAsset('sprite-replace', 'Original', [255, 0, 0, 255]);
+    expect(saveSprite(original)).toBe(true);
+    const record = buildAssetDatabase({ sprites: loadSprites() }).get('sprite:library:sprite-replace')!;
+    const changed = spriteAsset('sprite-replace', 'Changed', [0, 0, 255, 255]);
+
+    const result = store.reimportJson(
+      record,
+      { fileName: 'changed.sprite.json', text: JSON.stringify(changed), acceptedAt: '2026-06-14T00:02:00.000Z' },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.report).toMatchObject({
+      decision: 'collision-replace',
+      importedAssetId: 'sprite:library:sprite-replace',
+      importedKind: 'sprite',
+      originalSourceId: 'sprite-replace',
+      finalSourceId: 'sprite-replace',
+      collisionWith: 'sprite:library:sprite-replace',
+    });
+    expect(loadSprites()).toMatchObject([{ id: 'sprite-replace', name: 'Changed' }]);
+    const db = buildAssetDatabase({ sprites: loadSprites(), importReports: store.listImportReports() });
+    expect(db.get('sprite:library:sprite-replace')?.assetId).toBe('sprite:library:sprite-replace');
+    expect(db.query({ collection: 'recent' }).map((asset) => asset.assetId)).toContain('sprite:library:sprite-replace');
+  });
+
+  it('imports batch export bundles through per-entry import reports', () => {
+    const sourceStore = new LocalStorageAssetStore();
+    const sourceSpriteA = spriteAsset('sprite-bundle-a', 'Bundle A', [10, 20, 30, 255]);
+    const sourceSpriteB = spriteAsset('sprite-bundle-b', 'Bundle B', [40, 50, 60, 255]);
+    expect(saveSprite(sourceSpriteA)).toBe(true);
+    expect(saveSprite(sourceSpriteB)).toBe(true);
+    const sourceDb = buildAssetDatabase({ sprites: loadSprites() });
+    const exports = ['sprite:library:sprite-bundle-a', 'sprite:library:sprite-bundle-b'].map((assetId) => {
+      const record = sourceDb.get(assetId)!;
+      const exported = sourceStore.export(record)!;
+      return {
+        assetId: record.assetId,
+        kind: record.kind,
+        origin: record.origin,
+        sourceId: record.sourceId,
+        filename: exported.filename,
+        mime: exported.mime,
+        text: exported.text,
+      };
+    });
+    (globalThis.localStorage as StorageStub).clear();
+    const targetStore = new LocalStorageAssetStore();
+
+    const result = targetStore.importJson(
+      {
+        fileName: 'bundle.assets.json',
+        text: JSON.stringify({ v: 1, kind: 'assetExportBundle', exportedAt: '2026-06-14T00:20:00.000Z', assets: exports }),
+        acceptedAt: '2026-06-14T00:20:00.000Z',
+      },
+      buildAssetDatabase(),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.report.diff[0]).toBe('Bundle entries: 2');
+    expect(loadSprites().map((sprite) => sprite.id).sort()).toEqual(['sprite-bundle-a', 'sprite-bundle-b']);
+    expect(targetStore.listImportReports().map((report) => report.sourceFile).sort()).toEqual([
+      'Bundle A.sprite.json',
+      'Bundle B.sprite.json',
+      'bundle.assets.json',
+    ]);
+  });
+
+  it('bundle imports keep current document embedded sprite ids authoritative across entries', () => {
+    const store = new LocalStorageAssetStore();
+    const doc = createEmptyDocument('embedded-bundle-doc', 'earthen');
+    doc.assets = { sprites: [spriteAsset('embedded-bundle-sprite', 'Embedded Bundle Sprite', [1, 2, 3, 255])] };
+    const first = spriteAsset('bundle-first', 'Bundle First', [10, 20, 30, 255]);
+    const colliding = spriteAsset('embedded-bundle-sprite', 'Colliding Library Sprite', [90, 100, 110, 255]);
+
+    const result = store.importJson(
+      {
+        fileName: 'embedded-collision.assets.json',
+        text: JSON.stringify({
+          v: 1,
+          kind: 'assetExportBundle',
+          exportedAt: '2026-06-14T00:30:00.000Z',
+          assets: [
+            bundleEntry('sprite:library:bundle-first', first),
+            bundleEntry('sprite:library:embedded-bundle-sprite', colliding),
+          ],
+        }),
+        acceptedAt: '2026-06-14T00:30:00.000Z',
+      },
+      buildAssetDatabase({ currentDocument: doc }),
+    );
+
+    const sprites = loadSprites();
+    const reports = store.listImportReports();
+    expect(result.ok).toBe(true);
+    expect(sprites.some((sprite) => sprite.id === 'bundle-first')).toBe(true);
+    expect(sprites.some((sprite) => sprite.id === 'embedded-bundle-sprite')).toBe(false);
+    expect(sprites.some((sprite) => sprite.id !== 'embedded-bundle-sprite' && sprite.name === 'Colliding Library Sprite')).toBe(true);
+    expect(reports.some((report) =>
+      report.sourceFile === 'Colliding Library Sprite.sprite.json' &&
+      report.decision === 'collision-reid' &&
+      report.collisionWith === 'sprite:document-embedded:embedded-bundle-sprite'
+    )).toBe(true);
+  });
+
+  it('rejects reimport mismatches without replacing existing local assets', () => {
+    const store = new LocalStorageAssetStore();
+    const original = spriteAsset('sprite-guarded', 'Original', [255, 0, 0, 255]);
+    expect(saveSprite(original)).toBe(true);
+    const record = buildAssetDatabase({ sprites: loadSprites() }).get('sprite:library:sprite-guarded')!;
+
+    const wrongId = store.reimportJson(
+      record,
+      { fileName: 'wrong-id.sprite.json', text: JSON.stringify(spriteAsset('sprite-other', 'Other')), acceptedAt: '2026-06-14T00:03:00.000Z' },
+    );
+    const wrongKind = store.reimportJson(
+      record,
+      { fileName: 'wrong-kind.prefab.json', text: JSON.stringify(prefabAsset('sprite-guarded', 'Wrong Kind')), acceptedAt: '2026-06-14T00:04:00.000Z' },
+    );
+
+    expect(wrongId.ok).toBe(false);
+    expect(wrongKind.ok).toBe(false);
+    expect(loadSprites()).toMatchObject([{ id: 'sprite-guarded', name: 'Original' }]);
+    expect(store.listImportReports().map((report) => report.decision)).toEqual(['rejected', 'rejected']);
+  });
+
+  it('restores previous content when a reimport replacement report cannot be saved', () => {
+    const store = new LocalStorageAssetStore();
+    const original = spriteAsset('sprite-rollback-reimport', 'Original', [255, 0, 0, 255]);
+    expect(saveSprite(original)).toBe(true);
+    const record = buildAssetDatabase({ sprites: loadSprites() }).get('sprite:library:sprite-rollback-reimport')!;
+    (globalThis.localStorage as StorageStub).failSetItemForPrefix('noita-builder-import-report:');
+
+    const result = store.reimportJson(
+      record,
+      { fileName: 'changed.sprite.json', text: JSON.stringify(spriteAsset('sprite-rollback-reimport', 'Changed', [0, 0, 255, 255])), acceptedAt: '2026-06-14T00:05:00.000Z' },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('previous asset restored');
+    expect(loadSprites()).toMatchObject([{ id: 'sprite-rollback-reimport', name: 'Original' }]);
+    expect(store.listImportReports()).toHaveLength(0);
+  });
+
+  it('refuses to delete document-owned asset records even when a local asset shares the source id', () => {
+    const store = new LocalStorageAssetStore();
+    const local = spriteAsset('shared-sprite', 'Library Sprite');
+    const embedded = spriteAsset('shared-sprite', 'Embedded Sprite');
+    expect(saveSprite(local)).toBe(true);
+    const doc = createEmptyDocument('embedded-doc', 'earthen');
+    doc.assets = { sprites: [embedded] };
+    const record = buildAssetDatabase({ currentDocument: doc, sprites: loadSprites() }).get('sprite:document-embedded:shared-sprite')!;
+
+    const result = store.delete(record);
+
+    expect(result.ok).toBe(false);
+    expect(loadSprites()).toMatchObject([{ id: 'shared-sprite', name: 'Library Sprite' }]);
+  });
+
+  it('defaults Recent queries to newest modified assets first', () => {
+    const store = new LocalStorageAssetStore();
+    const older = spriteAsset('sprite-recent-old', 'A Recent Older', [255, 0, 0, 255]);
+    const newer = spriteAsset('sprite-recent-new', 'Z Recent Newer', [0, 0, 255, 255]);
+
+    expect(store.importJson(
+      { fileName: 'older.sprite.json', text: JSON.stringify(older), acceptedAt: '2026-06-14T00:00:00.000Z' },
+      buildAssetDatabase(),
+    ).ok).toBe(true);
+    expect(store.importJson(
+      { fileName: 'newer.sprite.json', text: JSON.stringify(newer), acceptedAt: '2026-06-14T00:10:00.000Z' },
+      buildAssetDatabase({ sprites: loadSprites(), importReports: store.listImportReports() }),
+    ).ok).toBe(true);
+
+    const db = buildAssetDatabase({ sprites: loadSprites(), importReports: store.listImportReports() });
+
+    const recentSprites = db.query({ collection: 'recent' }).filter((record) => record.kind === 'sprite');
+    const namedRecentSprites = db.query({ collection: 'recent', sort: 'name' }).filter((record) => record.kind === 'sprite');
+
+    expect(recentSprites.map((record) => record.assetId).slice(0, 2)).toEqual([
+      'sprite:library:sprite-recent-new',
+      'sprite:library:sprite-recent-old',
+    ]);
+    expect(namedRecentSprites.map((record) => record.assetId).slice(0, 2)).toEqual([
+      'sprite:library:sprite-recent-old',
+      'sprite:library:sprite-recent-new',
+    ]);
+  });
 });
 
 function spriteAsset(id: string, name: string, rgba = [255, 128, 0, 255]): SpriteAsset {
@@ -323,5 +763,25 @@ function prefabAsset(id: string, name: string, spriteId?: string): PrefabDef {
       : [],
     links: [],
     lights: [],
+  };
+}
+
+function bundleEntry(assetId: string, sprite: SpriteAsset): {
+  assetId: string;
+  kind: 'sprite';
+  origin: 'library';
+  sourceId: string;
+  filename: string;
+  mime: string;
+  text: string;
+} {
+  return {
+    assetId,
+    kind: 'sprite',
+    origin: 'library',
+    sourceId: sprite.id,
+    filename: `${sprite.name}.sprite.json`,
+    mime: 'application/json',
+    text: JSON.stringify(sprite),
   };
 }

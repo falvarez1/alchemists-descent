@@ -29,6 +29,31 @@ page.on('pageerror', (err) => pageErrors.push(String(err)));
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
+await page.evaluate(() => {
+  const key = 'noita-builder-workspace-v1';
+  const fallback = { panels: [], overlayVisibility: {}, collapsedSections: {}, layerState: {}, snapStep: 0, lastTool: 'select' };
+  const layout = JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+  layout.panels = Array.isArray(layout.panels) ? layout.panels : [];
+  const upsert = (id, dock, open, size) => {
+    let panel = layout.panels.find((item) => item.id === id);
+    if (!panel) {
+      panel = { id, dock, open, size };
+      layout.panels.push(panel);
+    }
+    panel.dock = dock;
+    panel.open = open;
+    panel.size = size;
+    delete panel.floating;
+  };
+  upsert('builder-palette', 'left', true, 214);
+  upsert('builder-inspector', 'right', true, 252);
+  upsert('builder-prefab-details', 'bottom', false, 220);
+  layout.activePanelId = 'builder-palette';
+  localStorage.setItem(key, JSON.stringify(layout));
+});
+await page.reload({ waitUntil: 'networkidle', timeout: 30000 });
+await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
+await page.waitForTimeout(1200);
 
 /* ---------- builder + arena ---------- */
 await page.click('#mode-builder-btn');
@@ -80,6 +105,23 @@ const placeAt = async (kind, wx, wy) => {
   await page.keyboard.press('Escape');
 };
 
+const dispatchAssetDrop = async (assetId, wx, wy) => {
+  const pt = await toClient(wx, wy);
+  return page.evaluate(({ assetId, x, y }) => {
+    const overlay = document.getElementById('builder-overlay');
+    const transfer = new DataTransfer();
+    transfer.setData('application/x-noita-asset-id', assetId);
+    const event = new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      dataTransfer: transfer,
+    });
+    return overlay.dispatchEvent(event);
+  }, { assetId, x: pt.x, y: pt.y });
+};
+
 const acceptAppPrompt = async (value) => {
   await page.waitForSelector('.app-dialog-root .app-dialog-input', { timeout: 5000 });
   await page.fill('.app-dialog-root .app-dialog-input', value);
@@ -128,12 +170,12 @@ await acceptAppPrompt('gate room #arena #mech');
 await page.waitForTimeout(200);
 
 const card = await page.evaluate(() => {
-  const c = [...document.querySelectorAll('.bp-prefab-card')]
+  const c = [...document.querySelectorAll('#bp-prefab-host .ba-placement-row')]
     .find((el) => el.textContent.toLowerCase().includes('gate room'));
-  return c ? { meta: c.querySelector('.bp-prefab-meta')?.textContent, tags: c.querySelector('.bp-prefab-tagline')?.textContent } : null;
+  return c ? { meta: c.querySelector('.ba-meta')?.textContent, text: c.textContent } : null;
 });
 check('prefab card appears with object badge', !!card && /3 obj/.test(card.meta ?? ''), JSON.stringify(card));
-check('tags parsed from #words', !!card && /#arena/.test(card.tags ?? ''), JSON.stringify(card));
+check('tags parsed from #words', !!card && /#arena/.test(card.text ?? ''), JSON.stringify(card));
 
 const stored = await page.evaluate(() => {
   return Object.keys(localStorage)
@@ -145,6 +187,113 @@ check('stored prefab carries objects+links+lights', !!stored && stored.objects.l
   stored ? `obj ${stored.objects.length} links ${stored.links.length} lights ${stored.lights.length}` : 'missing');
 check('captured link endpoints are prefab-local', !!stored && stored.objects.some((o) => o.id === stored.links[0].fromId) && stored.objects.some((o) => o.id === stored.links[0].toId));
 
+/* ---------- details panel: variants, previews, anchors ---------- */
+console.log('-- prefab details, variants, anchors');
+await page.evaluate(() => {
+  const card = [...document.querySelectorAll('#bp-prefab-host .ba-placement-row')]
+    .find((el) => el.textContent.toLowerCase().includes('gate room'));
+  card?.scrollIntoView({ block: 'center' });
+  card?.click();
+});
+await page.waitForTimeout(180);
+let details = await page.evaluate(() => {
+  const panel = document.getElementById('builder-prefab-details');
+  const visible = !!panel && getComputedStyle(panel).display !== 'none';
+  const previews = [...document.querySelectorAll('#builder-prefab-details canvas[data-prefab-variant-preview]')];
+  const large = document.querySelector('#builder-prefab-details canvas[data-prefab-preview]');
+  const largePixels = large ? (() => {
+    const g = large.getContext('2d');
+    const data = g.getImageData(0, 0, large.width, large.height).data;
+    for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return true;
+    return false;
+  })() : false;
+  return {
+    visible,
+    parentId: panel?.parentElement?.id ?? '',
+    width: panel?.getBoundingClientRect().width ?? 0,
+    horizontalFlow: (panel?.getBoundingClientRect().width ?? 0) > 520,
+    title: panel?.textContent ?? '',
+    variants: previews.length,
+    largePixels,
+    anchorDots: document.querySelectorAll('#builder-prefab-details .bpd-anchor-dot').length,
+    activeVariant: document.querySelector('#builder-prefab-details .bpd-variant.active')?.textContent ?? '',
+  };
+});
+check('prefab detail panel opens from prefab card', details.visible && /gate room/i.test(details.title), JSON.stringify(details));
+check('prefab detail panel uses bottom dock horizontal space', details.parentId === 'builder-dock-bottom' && details.horizontalFlow, JSON.stringify(details));
+check('prefab variants render preview canvases', details.variants >= 8 && details.largePixels, JSON.stringify(details));
+const scrollProbe = await page.evaluate(() => {
+  const panel = document.getElementById('builder-prefab-details');
+  const button = document.querySelector('#builder-prefab-details button[data-prefab-variant="rot90"]');
+  if (!panel || !button) return { before: -1, after: -1, focused: null, scrollable: false };
+  panel.scrollTop = 72;
+  const before = panel.scrollTop;
+  button.focus();
+  button.click();
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+    before,
+    after: panel.scrollTop,
+    focused: document.activeElement?.getAttribute('data-prefab-variant') ?? null,
+    scrollable: panel.scrollHeight > panel.clientHeight,
+  }))));
+});
+check('prefab detail rerender preserves scroll and variant focus', (!scrollProbe.scrollable || Math.abs(scrollProbe.after - scrollProbe.before) <= 2) && scrollProbe.focused === 'rot90', JSON.stringify(scrollProbe));
+await page.waitForTimeout(80);
+details = await page.evaluate(() => ({
+  activeVariant: document.querySelector('#builder-prefab-details .bpd-variant.active')?.getAttribute('data-prefab-variant'),
+  summary: document.querySelector('#builder-prefab-details')?.textContent ?? '',
+}));
+check('variant can be previewed before placement', details.activeVariant === 'rot90' && /Rotate 90/i.test(details.summary), JSON.stringify(details));
+await page.click('#builder-prefab-details button[data-prefab-variant="base"]');
+await page.click('#builder-prefab-details button[data-prefab-action="anchors"]');
+await acceptAppPrompt('w,e');
+await page.waitForTimeout(160);
+const anchored = await page.evaluate(() => {
+  const prefab = Object.keys(localStorage)
+    .filter((k) => k.startsWith('noita-builder-prefab:'))
+    .map((key) => JSON.parse(localStorage.getItem(key)))
+    .find((p) => String(p?.name ?? '').toLowerCase().includes('gate room')) ?? null;
+  return {
+    anchors: prefab?.anchors ?? [],
+    detail: document.querySelector('#builder-prefab-details')?.textContent ?? '',
+    anchorDots: document.querySelectorAll('#builder-prefab-details .bpd-anchor-dot').length,
+    selectedAnchor: document.querySelector('#builder-prefab-details .bpd-anchor.active')?.getAttribute('data-prefab-anchor') ?? null,
+  };
+});
+check('prefab anchors are editable from details panel', anchored.anchors.length === 2 && anchored.anchors.map((a) => a.dir).join(',') === 'w,e', JSON.stringify(anchored));
+check('details panel shows spatial anchor affordances', anchored.anchorDots === 2 && /W open/i.test(anchored.detail) && /E open/i.test(anchored.detail) && anchored.selectedAnchor === 'a0', JSON.stringify(anchored));
+const anchorGeometry = await page.evaluate(() => {
+  const canvas = document.querySelector('#builder-prefab-details canvas[data-prefab-preview]');
+  if (!(canvas instanceof HTMLCanvasElement)) return { ok: false, reason: 'no canvas', dots: [] };
+  const canvasRect = canvas.getBoundingClientRect();
+  const dots = [...document.querySelectorAll('#builder-prefab-details .bpd-anchor-dot')].map((dot) => {
+    const rect = dot.getBoundingClientRect();
+    const previewX = Number(dot.getAttribute('data-preview-x'));
+    const previewY = Number(dot.getAttribute('data-preview-y'));
+    const expectedX = canvasRect.left + (previewX / canvas.width) * canvasRect.width;
+    const expectedY = canvasRect.top + (previewY / canvas.height) * canvasRect.height;
+    const centerX = (rect.left + rect.right) / 2;
+    const centerY = (rect.top + rect.bottom) / 2;
+    return {
+      id: dot.getAttribute('data-prefab-anchor'),
+      dx: Number((centerX - expectedX).toFixed(2)),
+      dy: Number((centerY - expectedY).toFixed(2)),
+      insideCanvas: centerX >= canvasRect.left && centerX <= canvasRect.right && centerY >= canvasRect.top && centerY <= canvasRect.bottom,
+    };
+  });
+  return {
+    ok: dots.length === 2 && dots.every((dot) => dot.insideCanvas && Math.abs(dot.dx) <= 5 && Math.abs(dot.dy) <= 5),
+    canvas: {
+      w: Number(canvasRect.width.toFixed(2)),
+      h: Number(canvasRect.height.toFixed(2)),
+    },
+    dots,
+  };
+});
+check('details panel anchor dots align with preview canvas', anchorGeometry.ok, JSON.stringify(anchorGeometry));
+await page.keyboard.press('Escape');
+await page.waitForTimeout(80);
+
 /* ---------- paste: fresh ids, one-undo ---------- */
 console.log('-- paste & single undo');
 const before = await page.evaluate(() => {
@@ -153,7 +302,7 @@ const before = await page.evaluate(() => {
   return { markers: document.querySelectorAll('.b-marker').length, types: null };
 });
 await page.evaluate(() => {
-  const card = [...document.querySelectorAll('.bp-prefab-card')]
+  const card = [...document.querySelectorAll('#bp-prefab-host .ba-placement-row')]
     .find((el) => el.textContent.toLowerCase().includes('gate room'));
   card?.scrollIntoView({ block: 'center' });
   card?.click();
@@ -169,6 +318,90 @@ await page.keyboard.press('Control+z');
 await page.waitForTimeout(150);
 markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('ONE undo removes the whole paste', markers === before.markers, `got ${markers}`);
+
+/* ---------- Asset Browser drop path honors the selected variant ---------- */
+console.log('-- asset browser prefab drop');
+const prefabAssetId = await page.evaluate(() => {
+  const prefab = Object.keys(localStorage)
+    .filter((k) => k.startsWith('noita-builder-prefab:'))
+    .map((key) => JSON.parse(localStorage.getItem(key)))
+    .find((p) => String(p?.name ?? '').toLowerCase().includes('gate room')) ?? null;
+  return prefab ? `prefab:library:${prefab.id}` : null;
+});
+await page.click('#builder-prefab-details button[data-prefab-variant="rot90"]');
+await page.waitForTimeout(80);
+if (prefabAssetId) await dispatchAssetDrop(prefabAssetId, 600, 500);
+await page.waitForTimeout(150);
+markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
+check('Asset Browser prefab drop places the active variant', !!prefabAssetId && markers === before.markers + 4, `asset ${prefabAssetId} markers ${markers}`);
+await page.keyboard.press('Control+z');
+await page.waitForTimeout(150);
+markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
+check('Asset Browser prefab drop undoes as one command', markers === before.markers, `got ${markers}`);
+await page.click('#builder-prefab-details button[data-prefab-variant="base"]');
+await page.waitForTimeout(80);
+
+/* ---------- composition: compatible anchors snap between prefabs ---------- */
+console.log('-- anchor snap composition');
+await page.evaluate(() => {
+  const card = [...document.querySelectorAll('#bp-prefab-host .ba-placement-row')]
+    .find((el) => el.textContent.toLowerCase().includes('gate room'));
+  card?.scrollIntoView({ block: 'center' });
+  card?.click();
+});
+await page.waitForTimeout(100);
+pt = await toClient(600, 500);
+await page.mouse.click(pt.x, pt.y);
+await page.waitForTimeout(120);
+pt = await toClient(835, 500); // near first stamp's east anchor; selected west anchor should snap to it
+await page.mouse.click(pt.x, pt.y);
+await page.waitForTimeout(160);
+const snap = await page.evaluate(() => ({
+  markers: document.querySelectorAll('.b-marker').length,
+  status: document.getElementById('builder-status')?.textContent ?? '',
+}));
+check('compatible prefab anchors snap during composition', /ANCHOR SNAP/.test(snap.status), JSON.stringify(snap));
+check('anchor snap paste still adds full prefab records', snap.markers === before.markers + 8, `got ${snap.markers}`);
+await page.keyboard.press('Control+z');
+await page.keyboard.press('Control+z');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(160);
+markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
+check('anchor snap pastes undo as complete prefab commands', markers === before.markers, `got ${markers}`);
+
+/* ---------- terrain-only prefabs still create compatible snap targets ---------- */
+console.log('-- terrain-only anchor snap');
+await page.click('.bp-tool[data-tool="region"]');
+let ta = await toClient(430, 382);
+let tb = await toClient(500, 618);
+await page.mouse.move(ta.x, ta.y);
+await page.mouse.down();
+await page.mouse.move(tb.x, tb.y, { steps: 3 });
+await page.mouse.up();
+await page.waitForTimeout(100);
+await page.click('#bp-prefab-capture');
+await acceptAppPrompt('terrain seam #terrain');
+await page.waitForTimeout(180);
+await page.click('#builder-prefab-details button[data-prefab-action="anchors"]');
+await acceptAppPrompt('w,e');
+await page.waitForTimeout(120);
+await page.click('#builder-prefab-details button[data-prefab-action="arm"]');
+await page.waitForTimeout(80);
+pt = await toClient(650, 500);
+await page.mouse.click(pt.x, pt.y);
+await page.waitForTimeout(120);
+pt = await toClient(715, 500);
+await page.mouse.click(pt.x, pt.y);
+await page.waitForTimeout(160);
+const terrainSnap = await page.evaluate(() => ({
+  markers: document.querySelectorAll('.b-marker').length,
+  status: document.getElementById('builder-status')?.textContent ?? '',
+}));
+check('terrain-only prefab anchors become snap targets', /ANCHOR SNAP/.test(terrainSnap.status) && terrainSnap.markers === before.markers, JSON.stringify(terrainSnap));
+await page.keyboard.press('Control+z');
+await page.keyboard.press('Control+z');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(160);
 
 /* ---------- PNG round-trip through the real canvas codec ---------- */
 console.log('-- png fidelity (all 35 cell types)');
@@ -215,6 +448,47 @@ const png = await page.evaluate(async () => {
   return { mismatched, total: w * h };
 });
 check('opaque pixels round-trip canvas PNG exactly', png.mismatched === 0, `mismatched ${png.mismatched}/${png.total}`);
+
+/* ---------- dependency guard before placement ---------- */
+console.log('-- dependency guard');
+await page.evaluate(() => {
+  localStorage.setItem('noita-builder-prefab:missing-sprite-prefab', JSON.stringify({
+    v: 1,
+    kind: 'prefab',
+    id: 'missing-sprite-prefab',
+    name: 'missing sprite prefab',
+    tags: ['broken'],
+    w: 8,
+    h: 8,
+    rle: btoa(String.fromCharCode(64, 0, 13)),
+    objects: [{
+      id: 'p0',
+      kind: 'decor',
+      x: 4,
+      y: 4,
+      rotation: 0,
+      locked: false,
+      hidden: false,
+      params: { spriteId: 'definitely-missing-sprite' },
+    }],
+    links: [],
+    lights: [],
+    anchors: [{ id: 'a0', x: 0, y: 4, dir: 'w', kind: 'open' }],
+    createdAt: new Date().toISOString(),
+  }));
+});
+await page.reload({ waitUntil: 'networkidle', timeout: 30000 });
+await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
+await page.waitForTimeout(1200);
+await page.click('#mode-builder-btn');
+await page.waitForTimeout(250);
+await dispatchAssetDrop('prefab:library:missing-sprite-prefab', 600, 500);
+await page.waitForTimeout(160);
+const depGuard = await page.evaluate(() => ({
+  markers: document.querySelectorAll('.b-marker').length,
+  status: document.getElementById('builder-status')?.textContent ?? '',
+}));
+check('prefab drop refuses missing dependencies before placement', /MISSING DEPENDENCIES/.test(depGuard.status) && depGuard.markers === 0, JSON.stringify(depGuard));
 
 /* ---------- cleanup + verdict ---------- */
 await page.evaluate(() => {

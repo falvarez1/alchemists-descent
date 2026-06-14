@@ -23,10 +23,14 @@ export class CommandStack {
   private undone: Command[] = [];
   private retainedCells = 0;
 
-  constructor(private readonly doc: () => EditorDocument) {}
+  constructor(
+    private readonly doc: () => EditorDocument,
+    private readonly onChange?: (cmd?: Command) => void,
+  ) {}
 
   run(cmd: Command): void {
     cmd.do(this.doc());
+    this.onChange?.(cmd);
     this.done.push(cmd);
     this.retainedCells += cmd.cells ?? 0;
     this.undone.length = 0; // a new edit forks history
@@ -45,6 +49,7 @@ export class CommandStack {
     const cmd = this.done.pop();
     if (!cmd) return null;
     cmd.undo(this.doc());
+    this.onChange?.(cmd);
     this.undone.push(cmd);
     return cmd.label;
   }
@@ -53,6 +58,7 @@ export class CommandStack {
     const cmd = this.undone.pop();
     if (!cmd) return null;
     cmd.do(this.doc());
+    this.onChange?.(cmd);
     this.done.push(cmd);
     return cmd.label;
   }
@@ -61,6 +67,7 @@ export class CommandStack {
     this.done.length = 0;
     this.undone.length = 0;
     this.retainedCells = 0;
+    this.onChange?.();
   }
 
   get depth(): number {

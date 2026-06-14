@@ -47,10 +47,12 @@ export const DEFAULT_BUILDER_LAYOUT: WorkspaceLayout = {
     { id: 'builder-palette', dock: 'left', open: true, size: 214 },
     { id: 'builder-inspector', dock: 'right', open: true, size: 252 },
     { id: 'builder-world', dock: 'right', open: false, size: 252 },
+    { id: 'builder-virtual-world', dock: 'bottom', open: false, size: 420 },
     { id: 'builder-global', dock: 'right', open: false, size: 252 },
     { id: 'builder-postfx', dock: 'right', open: false, size: 252 },
     { id: 'builder-assets', dock: 'bottom', open: false, size: 360 },
     { id: 'builder-asset-details', dock: 'right', open: false, size: 300 },
+    { id: 'builder-prefab-details', dock: 'right', open: false, size: 300 },
     { id: 'builder-matparams', dock: 'right', open: false, size: 252 },
     { id: 'builder-proc', dock: 'right', open: false, size: 252 },
     { id: 'builder-issues', dock: 'right', open: false, size: 252 },
@@ -144,7 +146,7 @@ export function sanitizeWorkspaceLayout(
         ? { ...(raw.collapsedSections as Record<string, boolean>) }
         : {},
     layerState: sanitizeLayerState(raw.layerState),
-    snapStep: raw.snapStep === 8 || raw.snapStep === 16 ? raw.snapStep : 0,
+    snapStep: raw.snapStep === 4 || raw.snapStep === 8 || raw.snapStep === 16 ? raw.snapStep : 0,
     lastTool: typeof raw.lastTool === 'string' && raw.lastTool ? raw.lastTool : 'select',
     activePanelId,
   };
@@ -266,8 +268,9 @@ export function workspacePresetLayout(preset: WorkspacePreset): WorkspaceLayout 
         panel.id === 'builder-palette' ||
         panel.id === 'builder-inspector' ||
         panel.id === 'builder-world' ||
+        panel.id === 'builder-virtual-world' ||
         panel.id === 'builder-global',
-      size: panel.id === 'builder-world' || panel.id === 'builder-global' ? 292 : panel.size,
+      size: panel.id === 'builder-virtual-world' ? 420 : panel.id === 'builder-world' || panel.id === 'builder-global' ? 292 : panel.size,
     }));
     layout.overlayVisibility.light = true;
   } else if (preset === 'prefab') {
@@ -278,7 +281,8 @@ export function workspacePresetLayout(preset: WorkspacePreset): WorkspaceLayout 
         panel.id === 'builder-inspector' ||
         panel.id === 'builder-proc' ||
         panel.id === 'builder-assets' ||
-        panel.id === 'builder-asset-details',
+        panel.id === 'builder-asset-details' ||
+        panel.id === 'builder-prefab-details',
       size: panel.id === 'builder-palette' ? 260 : panel.size,
     }));
   }

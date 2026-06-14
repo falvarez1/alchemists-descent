@@ -58,19 +58,7 @@ export function assetPreviewSummary(record: {
       updatedAt: record.updatedAt,
     };
   }
-  const glyph = record.kind === 'materialProfile'
-    ? 'M'
-    : record.kind === 'materialPalette'
-      ? 'P'
-      : record.kind === 'lightPreset'
-        ? 'L'
-        : record.kind === 'backdrop'
-          ? 'B'
-          : record.kind === 'procPreset'
-            ? 'R'
-            : record.kind === 'template'
-              ? 'T'
-              : '?';
+  const glyph = glyphForKind(record.kind);
   return {
     kind: 'glyph',
     label: record.name,
@@ -78,6 +66,24 @@ export function assetPreviewSummary(record: {
     contentSignature: record.contentSignature,
     updatedAt: record.updatedAt,
   };
+}
+
+function glyphForKind(kind: AssetRecord['kind']): string {
+  if (kind === 'materialProfile' || kind === 'material') return 'M';
+  if (kind === 'materialPalette') return 'P';
+  if (kind === 'lightPreset' || kind === 'wandLoadout') return 'L';
+  if (kind === 'backdrop') return 'B';
+  if (kind === 'procPreset' || kind === 'recipe') return 'R';
+  if (kind === 'template' || kind === 'spellLabScenario') return 'T';
+  if (kind === 'card') return 'C';
+  if (kind === 'modifier') return '+';
+  if (kind === 'wandFrame') return 'W';
+  if (kind === 'potion') return 'P';
+  if (kind === 'elixir') return 'E';
+  if (kind === 'enemy') return 'N';
+  if (kind === 'encounterScenario') return 'S';
+  if (kind === 'cookReport') return '!';
+  return '?';
 }
 
 export function renderAssetPreviewMarkup(record: AssetRecord): string {
@@ -108,6 +114,15 @@ export function paintAssetPreview(canvas: HTMLCanvasElement, record: AssetRecord
     return true;
   }
   return false;
+}
+
+export function paintPrefabPreviewCanvas(canvas: HTMLCanvasElement, prefab: PrefabDef): boolean {
+  const g = canvas.getContext('2d');
+  if (!g) return false;
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  g.imageSmoothingEnabled = false;
+  paintPrefabPreview(g, canvas, prefab);
+  return true;
 }
 
 export function prefabContentSignature(prefab: PrefabDef): string {

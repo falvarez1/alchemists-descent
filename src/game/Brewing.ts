@@ -13,7 +13,7 @@ import { COLOR_FN } from '@/sim/colors';
  * gold bounty — recipe knowledge is the part that persists across expeditions.
  */
 
-interface Recipe {
+export interface Recipe {
   /** Stable Grimoire/telemetry key. */
   id: string;
   /** Banner name, upper case to match the banner voice. */
@@ -29,7 +29,7 @@ interface Recipe {
  * bowl reliably holds ~14 cells before overflowing the rim. Requirements must
  * be pourable by a player with one 600-cell flask and an honest aim.
  */
-const RECIPES: Recipe[] = [
+export const RECIPES: Recipe[] = [
   {
     id: 'life',
     name: 'ELIXIR OF LIFE',

@@ -1,5 +1,5 @@
 import type { DocIssue } from '@/builder/validate';
-import { ACTUATOR_KINDS, TRIGGER_KINDS } from '@/builder/validate';
+import { assessEditorLink } from '@/builder/validate';
 import type { EditorDocument, EditorLink, EditorObject } from '@/builder/document';
 
 export interface LinkGraphEndpoint {
@@ -74,7 +74,7 @@ export function buildLinkGraphModel(options: BuildLinkGraphOptions): LinkGraphMo
     const toObject = objectsById.get(link.toId) ?? null;
     const from = fromObject ? endpoint(fromObject, issuesById.get(fromObject.id) ?? []) : null;
     const to = toObject ? endpoint(toObject, issuesById.get(toObject.id) ?? []) : null;
-    const assessed = assessLink(link, fromObject, toObject);
+    const assessed = assessEditorLink(link, fromObject, toObject);
     const selected = options.selectedIds.has(link.fromId) || options.selectedIds.has(link.toId);
     const row: LinkGraphLinkRow = {
       id: link.id,
@@ -220,49 +220,6 @@ function endpoint(object: EditorObject, issues: DocIssue[]): LinkGraphEndpoint {
     hidden: object.hidden,
     locked: object.locked,
     issues,
-  };
-}
-
-function assessLink(
-  link: EditorLink,
-  from: EditorObject | null,
-  to: EditorObject | null,
-): { live: boolean; severity: 'error' | 'warning' | 'info' | null; messages: string[] } {
-  const severities: Array<'error' | 'warning' | 'info'> = [];
-  const messages: string[] = [];
-  const add = (severity: 'error' | 'warning' | 'info', message: string): void => {
-    severities.push(severity);
-    messages.push(message);
-  };
-  if (!from || !to) {
-    add('error', `missing ${from ? 'target' : 'source'} endpoint`);
-    return { live: false, severity: strongestSeverity(severities), messages };
-  }
-  if (link.fromId === link.toId) add('error', 'mechanism is linked to itself');
-  if (link.kind === 'triggerDoor') {
-    if (!TRIGGER_KINDS.has(from.kind)) add('error', `${from.kind} is not a trigger source`);
-    const targetOk = ACTUATOR_KINDS.has(to.kind) || (to.kind === 'plug' && from.kind === 'relay');
-    if (!targetOk) {
-      add('error', from.kind === 'relay'
-        ? `relay cannot drive ${to.kind}`
-        : `trigger cannot drive ${to.kind}`);
-    }
-  } else if (link.kind === 'runeDoor') {
-    if (from.kind !== 'runeGlyph') add('error', 'rune link source must be a rune glyph');
-    if (to.kind !== 'runeDoor') add('error', 'rune link target must be a rune door');
-  } else {
-    add('error', `${link.kind} links are reserved and do not compile yet`);
-  }
-  if (link.logic !== undefined && link.logic !== 'and') {
-    add('info', 'link-level logic is ignored; actuator params own logic');
-  }
-  if (from.hidden || to.hidden) {
-    add('warning', 'hidden endpoint makes this authored link dead at compile time');
-  }
-  return {
-    live: severities.every((severity) => severity === 'info') && !from.hidden && !to.hidden,
-    severity: strongestSeverity(severities),
-    messages,
   };
 }
 

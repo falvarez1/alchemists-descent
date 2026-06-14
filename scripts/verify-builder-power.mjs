@@ -110,7 +110,7 @@ check('lift leaves a hole at the source', holeWhileFloating === 0, `got ${holeWh
 await page.click('#b-save');
 await page.waitForTimeout(120);
 st = await statusText();
-check('SAVE refused while floating', st.includes('FLOATING') || st.includes('LAND'), st);
+check('SAVE refused while floating', /floating|land/i.test(st), st);
 const savedWhileFloating = await page.evaluate(
   () => Object.keys(localStorage).some((k) => k.startsWith('noita-builder-doc:')),
 );

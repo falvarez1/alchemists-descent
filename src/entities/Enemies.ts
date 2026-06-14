@@ -21,7 +21,7 @@ import {
 import { splatterStain } from '@/sim/stains';
 
 // ===================== Enemies =====================
-const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
+export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   slime: { hp: 48, halfW: 5, h: 8, bounty: 30, gore: Cell.Slime, goreFn: slimeColor },
   imp: { hp: 40, halfW: 5, h: 12, bounty: 50, gore: Cell.Fire, goreFn: fireColor },
   golem: { hp: 170, halfW: 7, h: 20, bounty: 150, gore: Cell.Stone, goreFn: stoneColor },

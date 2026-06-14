@@ -24,9 +24,15 @@ export interface AssetImportPreview {
 }
 
 export interface AssetReimportDiff {
+  ok: boolean;
   sameContent: boolean;
+  kind: AssetKind | 'unknown';
+  sourceId: string | null;
+  name: string;
+  contentSignature: string;
   changes: string[];
   warnings: string[];
+  errors: string[];
 }
 
 export function previewJsonImport(input: AssetImportInput, database: Pick<AssetDatabase, 'list'>): AssetImportPreview {
@@ -76,24 +82,53 @@ export function importJsonAsset(
 }
 
 export function previewReimport(existing: AssetRecord, input: AssetImportInput): AssetReimportDiff {
-  const preview = previewJsonImport(input, { list: () => [existing] });
-  if (!preview.ok) {
-    return { sameContent: false, changes: [], warnings: preview.errors };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input.text);
+  } catch {
+    return invalidReimport(input, 'Invalid JSON');
   }
+  const preview = identifyImportPayload(parsed);
+  if (!preview) return invalidReimport(input, 'Unsupported asset JSON');
   if (preview.kind !== existing.kind) {
     return {
+      ok: false,
       sameContent: false,
-      changes: [`Kind changes from ${existing.kind} to ${preview.kind}`],
+      kind: preview.kind,
+      sourceId: preview.sourceId,
+      name: preview.name,
+      contentSignature: preview.contentSignature,
+      changes: [],
       warnings: ['Reimport kind mismatch; use Import as New instead'],
+      errors: [`Kind changes from ${existing.kind} to ${preview.kind}`],
+    };
+  }
+  if (preview.sourceId !== existing.sourceId) {
+    return {
+      ok: false,
+      sameContent: false,
+      kind: preview.kind,
+      sourceId: preview.sourceId,
+      name: preview.name,
+      contentSignature: preview.contentSignature,
+      changes: [],
+      warnings: ['Reimport source id mismatch; use Import as New instead'],
+      errors: [`Source id changes from ${existing.sourceId} to ${preview.sourceId}`],
     };
   }
   return {
+    ok: true,
     sameContent: preview.contentSignature === existing.contentSignature,
+    kind: preview.kind,
+    sourceId: preview.sourceId,
+    name: preview.name,
+    contentSignature: preview.contentSignature,
     changes:
       preview.contentSignature === existing.contentSignature
         ? ['No content changes detected']
         : [`Content signature ${existing.contentSignature} -> ${preview.contentSignature}`],
     warnings: preview.warnings,
+    errors: [],
   };
 }
 
@@ -141,5 +176,19 @@ function invalidPreview(input: AssetImportInput, message: string): AssetImportPr
     warnings: [],
     errors: [message],
     diff: [],
+  };
+}
+
+function invalidReimport(input: AssetImportInput, message: string): AssetReimportDiff {
+  return {
+    ok: false,
+    sameContent: false,
+    kind: 'unknown',
+    sourceId: null,
+    name: input.fileName,
+    contentSignature: stableContentSignature(input.text),
+    changes: [],
+    warnings: [],
+    errors: [message],
   };
 }

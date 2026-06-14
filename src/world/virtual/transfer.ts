@@ -1,0 +1,88 @@
+import { Cell } from '@/sim/CellType';
+import type {
+  TransferableVirtualChunk,
+  VirtualChunk,
+  VirtualChunkPlane,
+} from '@/world/virtual/types';
+
+export function chunkBytes(chunk: VirtualChunk): number {
+  return chunk.types.byteLength + chunk.colors.byteLength + chunk.life.byteLength + chunk.charge.byteLength;
+}
+
+export function toTransferableChunk(
+  chunk: VirtualChunk,
+  requestedPlanes: readonly VirtualChunkPlane[],
+): { chunk: TransferableVirtualChunk; transfer: Transferable[] } {
+  const wants = new Set(requestedPlanes);
+  const transfer: Transferable[] = [];
+  const out: TransferableVirtualChunk = {
+    cx: chunk.cx,
+    cy: chunk.cy,
+    originX: chunk.originX,
+    originY: chunk.originY,
+    size: chunk.size,
+    meta: chunk.meta,
+    metrics: {
+      cx: chunk.cx,
+      cy: chunk.cy,
+      generatedMs: chunk.meta.generatedMs,
+      bytes: chunkBytes(chunk),
+    },
+  };
+  if (wants.has('types')) {
+    const buffer = chunk.types.buffer as ArrayBuffer;
+    out.types = buffer;
+    transfer.push(buffer);
+  }
+  if (wants.has('colors')) {
+    const buffer = chunk.colors.buffer as ArrayBuffer;
+    out.colors = buffer;
+    transfer.push(buffer);
+  }
+  if (wants.has('life')) {
+    const buffer = chunk.life.buffer as ArrayBuffer;
+    out.life = buffer;
+    transfer.push(buffer);
+  }
+  if (wants.has('charge')) {
+    const buffer = chunk.charge.buffer as ArrayBuffer;
+    out.charge = buffer;
+    transfer.push(buffer);
+  }
+  if (wants.has('previewRgba')) {
+    const preview = makePreviewRgba(chunk);
+    const buffer = preview.buffer as ArrayBuffer;
+    out.previewRgba = buffer;
+    transfer.push(buffer);
+  }
+  return { chunk: out, transfer };
+}
+
+export function fromTransferableChunk(input: TransferableVirtualChunk): VirtualChunk {
+  const n = input.size * input.size;
+  return {
+    cx: input.cx,
+    cy: input.cy,
+    originX: input.originX,
+    originY: input.originY,
+    size: input.size,
+    types: input.types ? new Uint8Array(input.types) : new Uint8Array(n),
+    colors: input.colors ? new Uint32Array(input.colors) : new Uint32Array(n),
+    life: input.life ? new Int16Array(input.life) : new Int16Array(n),
+    charge: input.charge ? new Uint8Array(input.charge) : new Uint8Array(n),
+    meta: input.meta,
+  };
+}
+
+export function makePreviewRgba(chunk: VirtualChunk): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(chunk.size * chunk.size * 4);
+  for (let i = 0; i < chunk.types.length; i++) {
+    const color = chunk.colors[i];
+    const oi = i * 4;
+    out[oi] = (color >> 16) & 0xff;
+    out[oi + 1] = (color >> 8) & 0xff;
+    out[oi + 2] = color & 0xff;
+    out[oi + 3] = chunk.types[i] === Cell.Empty ? 16 : 255;
+  }
+  return out;
+}

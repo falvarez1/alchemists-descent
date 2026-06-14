@@ -285,6 +285,262 @@ const procCount2 = await page.evaluate(() => {
 });
 check('procedural history saved with the document', procCount2 === 1, `got ${procCount2}`);
 
+/* ---------- Phase 7: validation repair action smoke, isolated page ---------- */
+console.log('-- validation repairs');
+const repairContext = await browser.newContext({ viewport: { width: 1500, height: 900 } });
+const repairPage = await repairContext.newPage();
+repairPage.on('dialog', (d) => d.accept());
+repairPage.on('pageerror', (err) => pageErrors.push(String(err)));
+await repairPage.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+await repairPage.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
+await repairPage.waitForTimeout(1200);
+await repairPage.click('#mode-builder-btn');
+await repairPage.waitForTimeout(240);
+await repairPage.click('#b-playtest');
+await repairPage.waitForTimeout(180);
+const spawnPlaytestBlock = await repairPage.evaluate(() => ({
+  mode: window.__game.ctx.state.mode,
+  hasBanner: Boolean(document.querySelector('#builder-issues .bv-blocker[data-playtest-blockers="1"]')),
+  hasBlockerRow: Boolean(document.querySelector('#builder-issues .b-issue[data-issue-code="builder.spawn.missing"][data-playtest-blocker="true"]')),
+  status: document.getElementById('builder-status')?.textContent ?? '',
+}));
+check(
+  'playtest shows repairable compile blocker instead of entering play',
+  spawnPlaytestBlock.mode !== 'play' &&
+    spawnPlaytestBlock.hasBanner &&
+    spawnPlaytestBlock.hasBlockerRow &&
+    spawnPlaytestBlock.status.includes('PLAYTEST BLOCKED'),
+  JSON.stringify(spawnPlaytestBlock),
+);
+await repairPage.click('#b-validate');
+await repairPage.waitForTimeout(200);
+const spawnRepairBefore = await repairPage.evaluate(() => {
+  const issue = document.querySelector('#builder-issues .b-issue[data-issue-code="builder.spawn.missing"]');
+  return {
+    hasIssue: Boolean(issue),
+    hasAction: Boolean(issue?.querySelector('[data-validation-action="addSpawnAtCamera"]')),
+    markers: document.querySelectorAll('.b-marker').length,
+  };
+});
+check('validation exposes missing-spawn repair action', spawnRepairBefore.hasIssue && spawnRepairBefore.hasAction, JSON.stringify(spawnRepairBefore));
+await repairPage.click('#builder-issues [data-validation-action="addSpawnAtCamera"]');
+await repairPage.waitForTimeout(160);
+const spawnRepairAfter = await repairPage.evaluate(() => ({
+  markers: document.querySelectorAll('.b-marker').length,
+  issueStillPresent: Boolean(document.querySelector('#builder-issues .b-issue[data-issue-code="builder.spawn.missing"]')),
+  status: document.getElementById('builder-status')?.textContent ?? '',
+}));
+check(
+  'missing-spawn repair adds an undoable spawn and refreshes validation',
+  spawnRepairAfter.markers === spawnRepairBefore.markers + 1 &&
+    !spawnRepairAfter.issueStillPresent &&
+    spawnRepairAfter.status.includes('ADDED SPAWN'),
+  JSON.stringify(spawnRepairAfter),
+);
+await repairPage.keyboard.press('Control+z');
+await repairPage.waitForTimeout(120);
+const spawnRepairUndo = await repairPage.evaluate(() => ({
+  markers: document.querySelectorAll('.b-marker').length,
+}));
+check('missing-spawn repair is undoable', spawnRepairUndo.markers === spawnRepairBefore.markers, JSON.stringify(spawnRepairUndo));
+
+await repairPage.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const w = ctx.world;
+  const Metal = 13;
+  for (let y = 375; y <= 625; y++)
+    for (let x = 430; x <= 770; x++) {
+      const i = w.idx(x, y);
+      w.types[i] = 0; w.colors[i] = 0; w.life[i] = 0; w.charge[i] = 0;
+    }
+  for (let x = 430; x <= 770; x++) {
+    const i = w.idx(x, 620);
+    w.types[i] = Metal; w.colors[i] = 0x7a8a99;
+  }
+  ctx.camera.snapTo(600, 500);
+});
+await repairPage.waitForTimeout(120);
+const repairToClient = async (wx, wy) =>
+  repairPage.evaluate(([wx, wy]) => {
+    const ctx = window.__game.ctx;
+    const r = document.getElementById('builder-overlay').getBoundingClientRect();
+    const VIEW_W = 525, VIEW_H = 357;
+    const ux = ((wx - ctx.camera.renderX) / VIEW_W - 0.5) * ctx.camera.zoom + 0.5;
+    const uy = ((wy - ctx.camera.renderY) / VIEW_H - 0.5) * ctx.camera.zoom + 0.5;
+    return { x: r.left + ux * r.width, y: r.top + uy * r.height };
+  }, [wx, wy]);
+const repairPlaceAt = async (kind, wx, wy) => {
+  await repairPage.click(`.bp-tool[data-kind="${kind}"]`);
+  const p = await repairToClient(wx, wy);
+  await repairPage.mouse.click(p.x, p.y);
+  await repairPage.waitForTimeout(80);
+};
+await repairPlaceAt('spawn', 470, 616);
+await repairPage.click('#b-capture');
+await repairPage.waitForTimeout(100);
+await repairPage.click('#b-validate');
+await repairPage.waitForTimeout(160);
+await repairPage.click('#bp-link-graph-btn');
+await repairPage.waitForTimeout(120);
+await repairPage.evaluate(() => { window.__game.ctx.state.currentElement = 12; });
+await repairPage.click('.bp-tool[data-tool="rectFill"]');
+let terrainA = await repairToClient(466, 600);
+let terrainB = await repairToClient(474, 616);
+await repairPage.mouse.move(terrainA.x, terrainA.y);
+await repairPage.mouse.down();
+await repairPage.mouse.move(terrainB.x, terrainB.y, { steps: 4 });
+await repairPage.mouse.up();
+await repairPage.waitForTimeout(220);
+const terrainRefreshAfterPaint = await repairPage.evaluate(() => ({
+  hasEmbedded: Boolean(document.querySelector('#builder-issues .b-issue[data-issue-code="builder.spawn.embedded"]')),
+}));
+check(
+  'validation panel auto-refresh captures terrain paint before validating with link graph open',
+  terrainRefreshAfterPaint.hasEmbedded,
+  JSON.stringify(terrainRefreshAfterPaint),
+);
+await repairPage.keyboard.press('Control+z');
+await repairPage.waitForTimeout(220);
+const terrainRefreshAfterUndo = await repairPage.evaluate(() => ({
+  hasEmbedded: Boolean(document.querySelector('#builder-issues .b-issue[data-issue-code="builder.spawn.embedded"]')),
+}));
+check(
+  'validation panel auto-refresh captures terrain undo before validating with link graph open',
+  !terrainRefreshAfterUndo.hasEmbedded,
+  JSON.stringify(terrainRefreshAfterUndo),
+);
+await repairPlaceAt('plate', 510, 619);
+await repairPlaceAt('door', 651, 590);
+await repairPage.click('.bp-tool[data-tool="link"]');
+let linkPoint = await repairToClient(510, 619);
+await repairPage.mouse.click(linkPoint.x, linkPoint.y);
+await repairPage.waitForTimeout(60);
+linkPoint = await repairToClient(651, 590);
+await repairPage.mouse.click(linkPoint.x, linkPoint.y);
+await repairPage.waitForTimeout(100);
+const plateSpawnPoint = await repairToClient(510, 619);
+await repairPage.mouse.move(plateSpawnPoint.x, plateSpawnPoint.y);
+await repairPage.keyboard.press('t');
+await repairPage.waitForTimeout(180);
+const plateCursorBlock = await repairPage.evaluate(() => ({
+  mode: window.__game.ctx.state.mode,
+  status: document.getElementById('builder-status')?.textContent ?? '',
+  inspector: document.getElementById('builder-inspector')?.textContent.toLowerCase() ?? '',
+}));
+check(
+  'playtest-here refuses cursor spawns inside linked authored trigger footprints',
+  plateCursorBlock.mode !== 'play' &&
+    plateCursorBlock.status.includes('CURSOR OVERLAPS PLATE FOOTPRINT') &&
+    plateCursorBlock.inspector.includes('plate'),
+  JSON.stringify(plateCursorBlock),
+);
+const doorSpawnPoint = await repairToClient(651, 590);
+await repairPage.mouse.move(doorSpawnPoint.x, doorSpawnPoint.y);
+await repairPage.keyboard.press('t');
+await repairPage.waitForTimeout(180);
+const cursorSpawnBlock = await repairPage.evaluate(() => ({
+  mode: window.__game.ctx.state.mode,
+  status: document.getElementById('builder-status')?.textContent ?? '',
+  inspector: document.getElementById('builder-inspector')?.textContent.toLowerCase() ?? '',
+}));
+check(
+  'playtest-here refuses cursor spawns inside compiled structural footprints',
+  cursorSpawnBlock.mode !== 'play' &&
+    cursorSpawnBlock.status.includes('CURSOR OVERLAPS DOOR FOOTPRINT') &&
+    cursorSpawnBlock.inspector.includes('door'),
+  JSON.stringify(cursorSpawnBlock),
+);
+await repairPlaceAt('exitWell', 690, 560);
+const wellCasingPoint = await repairToClient(706, 600);
+await repairPage.mouse.move(wellCasingPoint.x, wellCasingPoint.y);
+await repairPage.keyboard.press('t');
+await repairPage.waitForTimeout(180);
+const wellCasingBlock = await repairPage.evaluate(() => ({
+  mode: window.__game.ctx.state.mode,
+  status: document.getElementById('builder-status')?.textContent ?? '',
+  inspector: document.getElementById('builder-inspector')?.textContent.toLowerCase() ?? '',
+}));
+check(
+  'playtest-here refuses cursor spawns inside exit-well casing below the plug',
+  wellCasingBlock.mode !== 'play' &&
+    wellCasingBlock.status.includes('CURSOR OVERLAPS EXITWELL FOOTPRINT') &&
+    wellCasingBlock.inspector.includes('exitwell'),
+  JSON.stringify(wellCasingBlock),
+);
+await repairPage.click('#bp-outliner-btn');
+await repairPage.waitForTimeout(120);
+await repairPage.fill('#bo-search', 'plate');
+await repairPage.evaluate(() => {
+  const row = [...document.querySelectorAll('#builder-outliner .bo-row')]
+    .find((el) => el.textContent.toLowerCase().includes('plate'));
+  row?.querySelector('button[data-row-toggle="hidden"]')?.click();
+});
+await repairPage.waitForTimeout(120);
+await repairPage.click('#b-validate');
+await repairPage.waitForTimeout(200);
+const hiddenLinkRepairBefore = await repairPage.evaluate(() => {
+  const issue = document.querySelector('#builder-issues .b-issue[data-issue-code="builder.link.hiddenEndpoint"]');
+  return {
+    hasIssue: Boolean(issue),
+    hasAction: Boolean(issue?.querySelector('[data-validation-action="removeDeadLink"]')),
+    selectedCount: document.querySelectorAll('.b-marker.sel').length,
+  };
+});
+check(
+  'validation exposes hidden-link repair action',
+  hiddenLinkRepairBefore.hasIssue && hiddenLinkRepairBefore.hasAction,
+  JSON.stringify(hiddenLinkRepairBefore),
+);
+await repairPage.click('#builder-issues [data-validation-filter="warning"]');
+await repairPage.waitForTimeout(80);
+const validationFilterBeforeRepair = await repairPage.evaluate(() => ({
+  filter: document.getElementById('builder-issues')?.dataset.validationFilter ?? '',
+  hiddenEndpointVisible: !document.querySelector('#builder-issues .b-issue[data-issue-code="builder.link.hiddenEndpoint"]')?.hidden,
+}));
+check(
+  'validation warning filter is usable before repair',
+  validationFilterBeforeRepair.filter === 'warning' && validationFilterBeforeRepair.hiddenEndpointVisible,
+  JSON.stringify(validationFilterBeforeRepair),
+);
+await repairPage.click('#builder-issues .b-issue[data-issue-code="builder.link.hiddenEndpoint"] [data-validation-action="selectIssueTarget"]');
+await repairPage.waitForTimeout(120);
+const hiddenLinkSelection = await repairPage.evaluate(() => ({
+  selectedCount: document.querySelectorAll('.b-marker.sel').length,
+  inspector: document.getElementById('builder-inspector')?.textContent.toLowerCase() ?? '',
+}));
+check(
+  'hidden-link validation row can select an affected endpoint',
+  hiddenLinkSelection.selectedCount >= 1 && hiddenLinkSelection.inspector.includes('plate'),
+  JSON.stringify(hiddenLinkSelection),
+);
+await repairPage.click('#builder-issues .b-issue[data-issue-code="builder.link.hiddenEndpoint"] [data-validation-action="removeDeadLink"]');
+await repairPage.waitForTimeout(160);
+const hiddenLinkRepairAfter = await repairPage.evaluate(() => ({
+  issueStillPresent: Boolean(document.querySelector('#builder-issues .b-issue[data-issue-code="builder.link.hiddenEndpoint"]')),
+  filter: document.getElementById('builder-issues')?.dataset.validationFilter ?? '',
+  status: document.getElementById('builder-status')?.textContent ?? '',
+}));
+check(
+  'hidden-link repair removes the dead link and refreshes validation',
+  !hiddenLinkRepairAfter.issueStillPresent &&
+    hiddenLinkRepairAfter.filter === 'warning' &&
+    hiddenLinkRepairAfter.status.includes('REMOVED DEAD LINK'),
+  JSON.stringify(hiddenLinkRepairAfter),
+);
+await repairPage.keyboard.press('Control+z');
+await repairPage.waitForTimeout(120);
+const hiddenLinkRepairUndo = await repairPage.evaluate(() => ({
+  hasIssue: Boolean(document.querySelector('#builder-issues .b-issue[data-issue-code="builder.link.hiddenEndpoint"]')),
+  filter: document.getElementById('builder-issues')?.dataset.validationFilter ?? '',
+}));
+check(
+  'hidden-link repair undo refreshes validation without resetting the filter',
+  hiddenLinkRepairUndo.hasIssue && hiddenLinkRepairUndo.filter === 'warning',
+  JSON.stringify(hiddenLinkRepairUndo),
+);
+
+await repairContext.close();
+
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
 console.log(`\n${pass} passed, ${fail} failed`);

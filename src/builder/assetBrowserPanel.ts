@@ -11,6 +11,24 @@ import type { AssetDatabaseStats } from '@/builder/assets/AssetDatabase';
 export type AssetBrowserView = 'grid' | 'list';
 type AssetBrowserTab = 'assets' | 'current' | 'imports';
 
+export interface AssetPlacementAction {
+  id: string;
+  label: string;
+  title: string;
+  elementId?: string;
+}
+
+export interface AssetPlacementPanelModel {
+  title: string;
+  query: string;
+  searchPlaceholder: string;
+  emptyMessage: string;
+  records: readonly AssetRecord[];
+  selectedId: string | null;
+  armedId: string | null;
+  actions: readonly AssetPlacementAction[];
+}
+
 export interface AssetBrowserModel {
   query: string;
   view: AssetBrowserView;
@@ -20,6 +38,9 @@ export interface AssetBrowserModel {
   originFilters: ReadonlySet<AssetOrigin>;
   records: readonly AssetRecord[];
   selectedId: string | null;
+  selectedIds: ReadonlySet<string>;
+  hiddenSelectedCount: number;
+  batchDeleteBlockedReason?: string;
   stats: AssetDatabaseStats;
   collapsedSections?: Readonly<Record<string, boolean>>;
 }
@@ -40,11 +61,24 @@ const KIND_FILTERS: Array<{ id: AssetKind; label: string }> = [
   { id: 'document', label: 'Docs' },
   { id: 'prefab', label: 'Prefabs' },
   { id: 'sprite', label: 'Sprites' },
+  { id: 'template', label: 'Templates' },
   { id: 'materialProfile', label: 'Materials' },
   { id: 'lightPreset', label: 'Lights' },
   { id: 'backdrop', label: 'Backdrops' },
   { id: 'procPreset', label: 'Proc' },
   { id: 'importReport', label: 'Reports' },
+  { id: 'card', label: 'Cards' },
+  { id: 'modifier', label: 'Modifiers' },
+  { id: 'wandFrame', label: 'Wand Frames' },
+  { id: 'wandLoadout', label: 'Loadouts' },
+  { id: 'potion', label: 'Potions' },
+  { id: 'elixir', label: 'Elixirs' },
+  { id: 'recipe', label: 'Recipes' },
+  { id: 'material', label: 'Runtime Materials' },
+  { id: 'enemy', label: 'Enemies' },
+  { id: 'encounterScenario', label: 'Encounters' },
+  { id: 'spellLabScenario', label: 'Spell Labs' },
+  { id: 'cookReport', label: 'Cook Reports' },
 ];
 
 const ORIGIN_FILTERS: Array<{ id: AssetOrigin; label: string }> = [
@@ -57,6 +91,25 @@ const ORIGIN_FILTERS: Array<{ id: AssetOrigin; label: string }> = [
   { id: 'broken', label: 'Broken' },
 ];
 
+export function renderAssetPlacementPanel(model: AssetPlacementPanelModel): string {
+  const rows = model.records.length > 0
+    ? model.records.map((record) => renderAssetPlacementRow(record, model.selectedId, model.armedId)).join('')
+    : `<div class="ba-placement-empty">${esc(model.emptyMessage)}</div>`;
+  return `
+    <div class="ba-placement-browser">
+      <div class="ba-placement-actions" aria-label="${escAttr(model.title)} actions">
+        ${model.actions.map((action) => `<button type="button"${action.elementId ? ` id="${escAttr(action.elementId)}"` : ''} data-asset-placement-action="${escAttr(action.id)}" title="${escAttr(action.title)}">${esc(action.label)}</button>`).join('')}
+      </div>
+      <div class="ba-placement-toolbar">
+        <input type="search" data-asset-placement-search value="${escAttr(model.query)}" placeholder="${escAttr(model.searchPlaceholder)}" spellcheck="false">
+        <span>${model.records.length} shown</span>
+      </div>
+      <div class="ba-placement-list" role="listbox" aria-label="${escAttr(model.title)}">
+        ${rows}
+      </div>
+    </div>`;
+}
+
 export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
   const activeTab = assetBrowserTab(model.collection);
   const collectionLabel = collectionLabelFor(model.collection);
@@ -65,8 +118,12 @@ export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
     ...[...model.originFilters].map(originLabelFor),
   ];
   const pathSegments = ['Project', collectionLabel, ...activeFilters];
+  const selectedCount = model.selectedIds.size;
+  const visibleSelected = model.records.filter((record) => model.selectedIds.has(record.assetId)).length;
+  const allVisibleSelected = model.records.length > 0 && visibleSelected === model.records.length;
+  const deleteTitle = model.batchDeleteBlockedReason ?? 'Delete selected local assets';
   const cards = model.records.length > 0
-    ? model.records.map((record) => model.view === 'grid' ? renderAssetCard(record, model.selectedId) : renderAssetListRow(record, model.selectedId)).join('')
+    ? model.records.map((record) => model.view === 'grid' ? renderAssetCard(record, model.selectedId, model.selectedIds) : renderAssetListRow(record, model.selectedId, model.selectedIds)).join('')
     : '<div class="ba-empty">No matching assets</div>';
   return `
     <div class="ba-browser">
@@ -98,9 +155,24 @@ export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
               treeCollection(model, 'builtins', 'All Built-ins'),
               treeKind(model, 'materialProfile', 'Materials'),
               treeKind(model, 'lightPreset', 'Lights'),
+              treeKind(model, 'template', 'Templates'),
               treeKind(model, 'backdrop', 'Backdrops'),
               treeKind(model, 'procPreset', 'Procedural Presets'),
               treeKind(model, 'importReport', 'Import Reports'),
+            ])}
+            ${treeGroup(model, 'assetBrowser.content', 'Gameplay Content', [
+              treeKind(model, 'card', 'Spell Cards'),
+              treeKind(model, 'modifier', 'Modifiers'),
+              treeKind(model, 'wandFrame', 'Wand Frames'),
+              treeKind(model, 'wandLoadout', 'Wand Loadouts'),
+              treeKind(model, 'potion', 'Potions'),
+              treeKind(model, 'elixir', 'Elixirs'),
+              treeKind(model, 'recipe', 'Recipes'),
+              treeKind(model, 'material', 'Runtime Materials'),
+              treeKind(model, 'enemy', 'Enemies'),
+              treeKind(model, 'encounterScenario', 'Encounters'),
+              treeKind(model, 'spellLabScenario', 'Spell Lab'),
+              treeKind(model, 'cookReport', 'Cook Reports'),
             ])}
             ${treeGroup(model, 'assetBrowser.origins', 'Sources', ORIGIN_FILTERS
               .map((item) => treeOrigin(model, item.id, item.label)))}
@@ -125,13 +197,23 @@ export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
             </select>
             <button type="button" id="ba-view" class="ba-icon-btn" title="Toggle grid/list view" aria-label="Toggle grid/list view">${model.view === 'grid' ? '&#9776;' : '&#9638;'}</button>
           </div>
+          <div class="ba-batchbar" aria-label="Batch asset operations">
+            <label class="ba-select-visible" title="Select all visible assets">
+              <input id="ba-select-visible" type="checkbox" ${allVisibleSelected ? 'checked' : ''} ${model.records.length === 0 ? 'disabled' : ''}>
+              <span>${visibleSelected}/${model.records.length} visible</span>
+            </label>
+            <span class="ba-selected-count">${selectedCount === 1 ? '1 selected' : `${selectedCount} selected`}${model.hiddenSelectedCount > 0 ? ` (${model.hiddenSelectedCount} hidden)` : ''}</span>
+            <button type="button" id="ba-batch-export" class="ba-tool" ${selectedCount === 0 ? 'disabled' : ''}>Export</button>
+            <button type="button" id="ba-batch-delete" class="ba-tool danger" title="${escAttr(deleteTitle)}" ${selectedCount === 0 || model.batchDeleteBlockedReason ? 'disabled' : ''}>Delete</button>
+            <button type="button" id="ba-batch-clear" class="ba-icon-btn" title="Clear selection" aria-label="Clear selection" ${selectedCount === 0 ? 'disabled' : ''}>&times;</button>
+          </div>
           <div class="ba-path-row">
             <div class="ba-path" aria-label="Asset browser path">
               ${pathSegments.map((segment) => `<span>${esc(segment)}</span>`).join('<b>/</b>')}
             </div>
             <div class="ba-count">${model.records.length} shown</div>
           </div>
-          <div id="ba-list" class="ba-list ${model.view}">
+          <div id="ba-list" class="ba-list ${model.view}" role="listbox" aria-multiselectable="true" aria-label="Asset results">
             ${cards}
           </div>
         </section>
@@ -139,9 +221,10 @@ export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
     </div>`;
 }
 
-function renderAssetCard(record: AssetRecord, selectedId: string | null): string {
-  return `<div class="ba-card${record.assetId === selectedId ? ' selected' : ''}${record.validation.state !== 'valid' ? ` ${record.validation.state}` : ''}"
-    data-asset-id="${escAttr(record.assetId)}" draggable="${isPlaceable(record) ? 'true' : 'false'}">
+function renderAssetCard(record: AssetRecord, selectedId: string | null, selectedIds: ReadonlySet<string>): string {
+  return `<div class="ba-card${record.assetId === selectedId ? ' selected' : ''}${selectedIds.has(record.assetId) ? ' multi-selected' : ''}${record.validation.state !== 'valid' ? ` ${record.validation.state}` : ''}"
+    data-asset-id="${escAttr(record.assetId)}" draggable="${isPlaceable(record) ? 'true' : 'false'}" role="option" aria-selected="${selectedIds.has(record.assetId) ? 'true' : 'false'}" tabindex="0">
+    ${assetSelectBox(record, selectedIds)}
     ${renderAssetPreviewMarkup(record)}
     <div class="ba-card-body">
       <div class="ba-name">${esc(record.name)}</div>
@@ -151,9 +234,10 @@ function renderAssetCard(record: AssetRecord, selectedId: string | null): string
   </div>`;
 }
 
-function renderAssetListRow(record: AssetRecord, selectedId: string | null): string {
-  return `<div class="ba-row${record.assetId === selectedId ? ' selected' : ''}${record.validation.state !== 'valid' ? ` ${record.validation.state}` : ''}"
-    data-asset-id="${escAttr(record.assetId)}" draggable="${isPlaceable(record) ? 'true' : 'false'}">
+function renderAssetListRow(record: AssetRecord, selectedId: string | null, selectedIds: ReadonlySet<string>): string {
+  return `<div class="ba-row${record.assetId === selectedId ? ' selected' : ''}${selectedIds.has(record.assetId) ? ' multi-selected' : ''}${record.validation.state !== 'valid' ? ` ${record.validation.state}` : ''}"
+    data-asset-id="${escAttr(record.assetId)}" draggable="${isPlaceable(record) ? 'true' : 'false'}" role="option" aria-selected="${selectedIds.has(record.assetId) ? 'true' : 'false'}" tabindex="0">
+    ${assetSelectBox(record, selectedIds)}
     ${renderAssetPreviewMarkup(record)}
     <div class="ba-row-main">
       <div class="ba-name">${esc(record.name)}</div>
@@ -164,8 +248,20 @@ function renderAssetListRow(record: AssetRecord, selectedId: string | null): str
   </div>`;
 }
 
+function assetSelectBox(record: AssetRecord, selectedIds: ReadonlySet<string>): string {
+  return `<label class="ba-select-box" title="Select ${escAttr(record.name)}">
+    <input type="checkbox" data-asset-select="${escAttr(record.assetId)}" aria-label="Select ${escAttr(record.name)}" ${selectedIds.has(record.assetId) ? 'checked' : ''}>
+  </label>`;
+}
+
 function isPlaceable(record: AssetRecord): boolean {
-  return (record.kind === 'prefab' || record.kind === 'sprite') && record.payload !== null;
+  return (
+    record.kind === 'prefab' ||
+    record.kind === 'sprite' ||
+    record.kind === 'materialProfile' ||
+    record.kind === 'lightPreset' ||
+    record.kind === 'procPreset'
+  ) && record.payload !== null;
 }
 
 function sortOption(current: string, value: string, label: string): string {
@@ -238,6 +334,48 @@ function assetBrowserTab(collection: AssetSmartCollection): AssetBrowserTab {
 
 function collectionLabelFor(collection: AssetSmartCollection): string {
   return COLLECTIONS.find((item) => item.id === collection)?.label ?? 'Assets';
+}
+
+function renderAssetPlacementRow(record: AssetRecord, selectedId: string | null, armedId: string | null): string {
+  const selected = record.assetId === selectedId;
+  const armed = record.assetId === armedId;
+  return `<div class="ba-placement-row${selected ? ' selected' : ''}${armed ? ' armed' : ''}${record.validation.state !== 'valid' ? ` ${record.validation.state}` : ''}"
+    data-asset-id="${escAttr(record.assetId)}" draggable="${isPlaceable(record) ? 'true' : 'false'}" role="option" aria-selected="${selected || armed ? 'true' : 'false'}" tabindex="0">
+    ${renderAssetPreviewMarkup(record)}
+    <div class="ba-placement-main">
+      <div class="ba-name">${esc(record.name)}</div>
+      <div class="ba-meta">${esc(compactAssetMeta(record))}</div>
+    </div>
+    <button type="button" class="ba-placement-detail" data-asset-placement-details="${escAttr(record.assetId)}" aria-label="Inspect ${escAttr(record.name)}">&#8942;</button>
+  </div>`;
+}
+
+function compactAssetMeta(record: AssetRecord): string {
+  const parts: string[] = [record.origin];
+  if (record.kind === 'prefab' && record.payload && typeof record.payload === 'object') {
+    const prefab = record.payload as {
+      w?: unknown;
+      h?: unknown;
+      objects?: unknown[];
+      lights?: unknown[];
+      anchors?: unknown[];
+    };
+    if (typeof prefab.w === 'number' && typeof prefab.h === 'number') parts.push(`${prefab.w}x${prefab.h}`);
+    if (Array.isArray(prefab.objects) && prefab.objects.length > 0) parts.push(`${prefab.objects.length} obj`);
+    if (Array.isArray(prefab.lights) && prefab.lights.length > 0) parts.push(`${prefab.lights.length} light`);
+    if (Array.isArray(prefab.anchors) && prefab.anchors.length > 0) parts.push(`${prefab.anchors.length} anchor`);
+  } else if (record.kind === 'sprite' && record.payload && typeof record.payload === 'object') {
+    const sprite = record.payload as { w?: unknown; h?: unknown; frames?: unknown[] };
+    if (typeof sprite.w === 'number' && typeof sprite.h === 'number' && Array.isArray(sprite.frames)) {
+      parts.push(`${sprite.w}x${sprite.h}x${sprite.frames.length}`);
+    }
+  } else {
+    parts.push(record.folder);
+  }
+  if (record.tags.length > 0) parts.push(record.tags.slice(0, 3).map((tag) => `#${tag}`).join(' '));
+  if (record.usages.length > 0) parts.push(`${record.usages.length} use(s)`);
+  if (record.validation.state !== 'valid') parts.push(record.validation.state);
+  return parts.join(' - ');
 }
 
 function kindLabelFor(kind: AssetKind): string {

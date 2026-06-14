@@ -1,8 +1,9 @@
 import type { Ctx } from '@/core/types';
+import { buildMechanismTriggerIndex } from '@/core/mechanisms';
 import type { EditorDocument } from '@/builder/document';
 import { applyWorldLayer } from '@/builder/document';
 import { sanitizeBackdropSettings } from '@/config/backdrop';
-import { validateDocument } from '@/builder/validate';
+import { playtestBlockingIssues, validateDocument } from '@/builder/validate';
 import type { DocIssue } from '@/builder/validate';
 import {
   instantiateObjects,
@@ -39,7 +40,7 @@ export function compileAndPlaytest(
   opts?: { spawnAt?: { x: number; y: number } },
 ): boolean {
   const issues = validateDocument(doc);
-  if (issues.some((i) => i.severity === 'error')) return false;
+  if (playtestBlockingIssues(issues, opts?.spawnAt ? 'cursor-spawn' : 'authored-spawn').length > 0) return false;
 
   // 1) Terrain: the document layer becomes the live world (decoded by value —
   //    the layer itself is untouched by whatever the playtest does to cells).
@@ -76,7 +77,7 @@ export function compileAndPlaytest(
   // 3) Player to the spawn FIRST (see header note). "Playtest from here"
   //    overrides the authored spawn so iteration loops start at the cursor
   //    (and death respawns there too).
-  const spawn = doc.objects.find((o) => o.kind === 'spawn');
+  const spawn = doc.objects.find((o) => o.kind === 'spawn' && !o.hidden);
   const at = opts?.spawnAt ?? (spawn ? { x: spawn.x, y: spawn.y } : null);
   if (at) {
     runtime.spawn = { x: Math.floor(at.x), y: Math.floor(at.y) };
@@ -103,6 +104,7 @@ export function compileAndPlaytest(
     // embedded fallback (decoded once; instances share frame buffers)
     docSprites: doc.assets?.sprites,
   });
+  runtime.mechanismTriggers = buildMechanismTriggerIndex(runtime.mechanisms);
   if (sink.portal !== undefined) runtime.portal = sink.portal;
   if (sink.keyTaken === true) runtime.keyTaken = true;
   if (sink.exit !== undefined) runtime.exit = sink.exit;

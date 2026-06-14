@@ -579,14 +579,16 @@ describe('builder outliner and link graph models', () => {
   it('keeps hidden and locked records findable, filterable, and escaped', () => {
     const doc = createEmptyDocument('outliner', 'earthen');
     const plate = makeEditorObject('plate', 'plate-1', { params: { w: 5 }, group: 'grp-a' });
+    const lever = makeEditorObject('lever', 'lever-1', { group: 'grp-a' });
     const door = makeEditorObject('door', 'door-1', { hidden: true, params: { label: '<gate>' } });
     const decor = makeEditorObject('decor', 'decor-1', {
       locked: true,
       params: { spriteId: 'sprite-1', text: 'fallback' },
     });
-    doc.objects.push(plate, door, decor);
+    doc.objects.push(plate, lever, door, decor);
     doc.lights.push(makeEditorLight('light-1', { hidden: true }));
     doc.links.push({ id: 'link-1', fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
+    doc.links.push({ id: 'link-missing', fromId: 'missing', toId: plate.id, kind: 'triggerDoor', logic: 'and' });
 
     const model = buildOutlinerModel({
       doc,
@@ -610,6 +612,11 @@ describe('builder outliner and link graph models', () => {
       layers: [{ id: 'gameplay', label: 'Gameplay', hidden: false, locked: false, count: 1 }],
     });
 
+    const allRows = buildOutlinerModel({ doc, selectedIds: new Set([plate.id, lever.id]), issues: [] });
+    expect(allRows.rows.find((row) => row.id === 'group:grp-a')).toMatchObject({
+      selectIds: ['plate-1', 'lever-1'],
+      selected: true,
+    });
     expect(model.visibleRows.map((row) => row.id)).toEqual(['object:decor-1']);
     expect(buildOutlinerModel({ doc, selectedIds: new Set(), issues: [], filters: ['hidden'] }).visibleRows.map((row) => row.id)).toEqual([
       'object:door-1',
@@ -622,7 +629,10 @@ describe('builder outliner and link graph models', () => {
       issues: [{ severity: 'error', what: 'bad <door>', objId: door.id }],
     }));
     expect(html).toContain('data-row-toggle="hidden"');
+    expect(html).toContain('data-command-id="builder.toggleSelectedHidden"');
+    expect(html).toContain('data-select-ids="plate-1,lever-1"');
     expect(html).toContain('data-select-id="door-1"');
+    expect(html).toContain('link endpoint missing (missing)');
     expect(html).not.toContain('bad <door>');
     expect(html).toContain('bad &lt;door&gt;');
   });
@@ -710,6 +720,7 @@ describe('editor workspace layout', () => {
     });
     expect(layout.activePanelId).toBe('builder-palette');
     expect(layout.snapStep).toBe(0);
+    expect(sanitizeWorkspaceLayout({ panels: [], snapStep: 4 }).snapStep).toBe(4);
     expect(layout.lastTool).toBe('select');
     expect(layout.collapsedSections).toEqual({ 'palette.materials': true });
   });
@@ -796,6 +807,13 @@ describe('editor workspace layout', () => {
       dock: 'bottom',
       open: true,
     });
+    expect(validation.panels.find((panel) => panel.id === 'builder-outliner')).toMatchObject({
+      open: true,
+    });
+    expect(validation.panels.find((panel) => panel.id === 'builder-link-graph')).toMatchObject({
+      dock: 'bottom',
+      open: true,
+    });
     expect(validation.overlayVisibility.validation).toBe(true);
     expect(validation.overlayVisibility.clearance).toBe(true);
     expect(lighting.panels.find((panel) => panel.id === 'builder-world')?.open).toBe(true);
@@ -843,6 +861,16 @@ describe('editor panel registry and chrome', () => {
     expect(registry.get('builder-asset-details')).toMatchObject({
       title: 'Asset Details',
       defaultDock: 'right',
+    });
+    expect(registry.get('builder-outliner')).toMatchObject({
+      title: 'Object Outliner',
+      defaultDock: 'right',
+      commandIds: { open: 'builder.outlinerPanel' },
+    });
+    expect(registry.get('builder-link-graph')).toMatchObject({
+      title: 'Link Graph',
+      defaultDock: 'bottom',
+      commandIds: { open: 'builder.linkGraphPanel' },
     });
     expect(registry.get('builder-global')).toMatchObject({
       title: 'Global Controls',
