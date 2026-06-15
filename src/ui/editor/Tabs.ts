@@ -144,9 +144,22 @@ export function wireTabStrip(container: HTMLElement, handlers: TabStripHandlers 
     handlers.onSelect?.(next.dataset.tabId ?? '');
   };
 
+  // Mouse-wheel over the strip scrolls the overflowed tabs horizontally — a
+  // vertical wheel maps to horizontal movement, like VS Code's editor tabs.
+  const onWheel = (event: WheelEvent): void => {
+    if (!list || list.scrollWidth - list.clientWidth <= 1) return; // nothing hidden → let the page scroll
+    const raw = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    if (raw === 0) return;
+    const step = event.deltaMode === 1 ? raw * 16 : event.deltaMode === 2 ? raw * list.clientWidth : raw;
+    event.preventDefault();
+    list.scrollLeft += step;
+    refresh();
+  };
+
   container.addEventListener('click', onClick);
   container.addEventListener('contextmenu', onContextMenu);
   if (handlers.onTabPointerDown) container.addEventListener('pointerdown', onPointerDown);
+  container.addEventListener('wheel', onWheel, { passive: false });
   if (list) list.addEventListener('keydown', onKeyDown);
   if (list) list.addEventListener('scroll', refresh, { passive: true });
 
@@ -165,6 +178,7 @@ export function wireTabStrip(container: HTMLElement, handlers: TabStripHandlers 
       container.removeEventListener('click', onClick);
       container.removeEventListener('contextmenu', onContextMenu);
       container.removeEventListener('pointerdown', onPointerDown);
+      container.removeEventListener('wheel', onWheel);
       list?.removeEventListener('keydown', onKeyDown);
       list?.removeEventListener('scroll', refresh);
       observer?.disconnect();

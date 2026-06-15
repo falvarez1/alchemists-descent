@@ -1499,6 +1499,7 @@ export class Builder {
     } else {
       activeId = open.at(-1)?.id;
     }
+    const prevActive = this.dockActive[dock];
     this.dockActive[dock] = activeId;
     const existing = this.dockTabStrips.get(dock) ?? null;
     if (open.length <= 1) {
@@ -1516,6 +1517,10 @@ export class Builder {
       const spec = this.panelRegistry.get(panel.id);
       return { id: panel.id, label: spec?.title ?? panel.id, closable: spec?.closePolicy !== 'required' };
     });
+    // Rebuilding the strip's innerHTML resets the list's horizontal scroll, so
+    // capture it first: a re-sync (e.g. clicking an overflowed right-side tab)
+    // must not snap back to the start and hide the tab that was just clicked.
+    const prevScroll = group.host.querySelector<HTMLElement>('.editor-tabs-list')?.scrollLeft ?? 0;
     group.host.innerHTML = tabStripHtml(tabs, activeId ?? '', { ariaLabel: `${dock} dock panels` });
     if (dockEl.firstChild !== group.host) dockEl.insertBefore(group.host, dockEl.firstChild);
     group.wired?.dispose();
@@ -1536,6 +1541,13 @@ export class Builder {
           onTabPointerDown: (id, event) => this.startPanelDragFromTab(event, id),
         })
       : null;
+    // Restore the prior scroll offset across the rebuild, then ensure a newly
+    // activated tab is visible (only nudges when the active tab actually changed,
+    // so manually browsing the overflow with the arrows is left untouched).
+    const newList = group.host.querySelector<HTMLElement>('.editor-tabs-list');
+    if (newList) newList.scrollLeft = prevScroll;
+    if (activeId !== prevActive) group.wired?.scrollIntoView(activeId);
+    else group.wired?.refresh();
   }
 
   private createDockTabStrip(dock: DockRegion): { host: HTMLElement; wired: ReturnType<typeof wireTabStrip> | null } {
