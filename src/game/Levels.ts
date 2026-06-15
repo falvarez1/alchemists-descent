@@ -710,7 +710,7 @@ export class Levels implements LevelsApi {
 
     ctx.enemies.length = 0;
     resetCombatTransients(ctx);
-    ctx.critters.list.length = 0;
+    ctx.critters.clear();
     ctx.input.keys.left = false;
     ctx.input.keys.right = false;
     ctx.input.keys.up = false;

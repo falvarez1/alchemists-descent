@@ -1,4 +1,5 @@
 import type { Ctx, FlyingParticle, ParticleOpts, ParticlesApi } from '@/core/types';
+import { EntityPool } from '@/entities/ecs';
 import { MAX_PARTICLES } from '@/config/constants';
 import { Cell, isGas } from '@/sim/CellType';
 
@@ -8,7 +9,8 @@ import { Cell, isGas } from '@/sim/CellType';
  * updateFlyingParticles (noita-sandbox.html lines 649-716).
  */
 export class Particles implements ParticlesApi {
-  readonly list: FlyingParticle[] = [];
+  private readonly pool = new EntityPool<FlyingParticle>({ max: MAX_PARTICLES });
+  readonly list = this.pool.list;
 
   spawn(
     x: number,
@@ -20,8 +22,7 @@ export class Particles implements ParticlesApi {
     life: number,
     opts?: ParticleOpts,
   ): void {
-    if (this.list.length >= MAX_PARTICLES) return;
-    this.list.push({
+    this.pool.add({
       x,
       y,
       vx,
@@ -67,9 +68,7 @@ export class Particles implements ParticlesApi {
    * already processed the tail element this frame, so nothing is skipped.
    */
   private removeAt(i: number): void {
-    const last = this.list.length - 1;
-    if (i !== last) this.list[i] = this.list[last];
-    this.list.pop();
+    this.pool.removeAt(i);
   }
 
   update(ctx: Ctx): void {
@@ -142,6 +141,6 @@ export class Particles implements ParticlesApi {
   }
 
   clear(): void {
-    this.list.length = 0;
+    this.pool.clear();
   }
 }

@@ -259,10 +259,13 @@ export interface Critter {
 }
 
 export interface CrittersApi {
-  readonly list: Critter[];
+  readonly list: readonly Critter[];
   update(ctx: Ctx): void;
   /** Concussion/heat kills the small things too (splat + remove). */
   killAt(ctx: Ctx, x: number, y: number, radius: number): void;
+  /** O(1) owner-managed removal; critter draw order is intentionally unstable. */
+  removeAt(index: number): Critter | undefined;
+  clear(): void;
 }
 
 export type SpellId =
@@ -786,7 +789,7 @@ export interface AudioApi {
 }
 
 export interface ParticlesApi {
-  readonly list: FlyingParticle[];
+  readonly list: readonly FlyingParticle[];
   spawn(
     x: number,
     y: number,

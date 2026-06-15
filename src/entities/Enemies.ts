@@ -661,7 +661,7 @@ export class Enemies implements EnemyControlApi {
             if (cd < 4) {
               // gulp: a puff of wing dust and the moth is gone
               ctx.particles.burst(prey.x, prey.y, 3, null, () => packRGB(150, 140, 110), 0.8);
-              critters.splice(preyIdx, 1);
+              ctx.critters.removeAt(preyIdx);
             }
           }
         }
