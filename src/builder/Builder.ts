@@ -8415,7 +8415,29 @@ export class Builder {
 
   /* ===================== inspector ===================== */
 
+  /**
+   * When the Inspector shares a dock as tabs and an object/light is selected,
+   * bring it to the front so the selection's properties are visible. Guarded so
+   * it doesn't thrash during live drags (returns early once it's already the
+   * active tab) and is re-entrancy safe (dockActive is set before re-layout).
+   */
+  private revealInspectorIfTabbed(): void {
+    if (this.selectedIds.size === 0) return;
+    const panel = this.workspaceLayout.panels.find((p) => p.id === 'builder-inspector');
+    if (!panel || !panel.open || panel.dock === 'floating') return;
+    const active = this.dockActive[panel.dock];
+    if (active === 'builder-inspector') return;
+    // Don't steal focus from panels you select FROM (the outliner/link graph).
+    if (active === 'builder-outliner' || active === 'builder-link-graph') return;
+    const openInDock = this.workspaceLayout.panels.filter((p) => p.dock === panel.dock && p.open).length;
+    if (openInDock <= 1) return;
+    this.dockActive[panel.dock] = 'builder-inspector';
+    this.workspaceLayout.activePanelId = 'builder-inspector';
+    this.applyWorkspaceLayout();
+  }
+
   private renderInspector(): void {
+    this.revealInspectorIfTabbed();
     // any decor preview animation dies with the inspector DOM it drew into
     window.clearTimeout(this.decorPreviewTimer);
     const panel = this.el<HTMLDivElement>('builder-inspector');

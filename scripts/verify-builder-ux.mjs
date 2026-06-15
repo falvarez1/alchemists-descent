@@ -14,6 +14,18 @@ const check = (name, ok, detail = '') => {
   else { fail++; console.log(`  FAIL  ${name} ${detail}`); }
 };
 
+// A dock with 2+ open panels shows them as a VS Code-style tab group: only the
+// active panel is visible. Click a panel's dock tab (if present) so it is the
+// visible/active one before interacting with it.
+const activatePanel = async (id) => {
+  await page.evaluate((pid) => {
+    document
+      .querySelector(`#builder-workspace-body .builder-dock-tabs .editor-tab[data-tab-id="${pid}"]`)
+      ?.click();
+  }, id);
+  await page.waitForTimeout(70);
+};
+
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 page.on('dialog', (d) => d.accept());
@@ -416,13 +428,14 @@ check(
     rightPopover.bottom <= rightPopover.vh,
   JSON.stringify(rightPopover),
 );
+// With palette + inspector tabbed together in the right dock, dragging the
+// palette tab to the dock bottom re-docks it last (VS Code tab reorder).
+await activatePanel('builder-palette');
 const rightOrderBefore = await page.evaluate(() =>
-  [...document.querySelectorAll('#builder-dock-right > .builder-panel')]
-    .filter((el) => getComputedStyle(el).display !== 'none')
-    .map((el) => el.id),
+  [...document.querySelectorAll('#builder-dock-right .builder-dock-tabs .editor-tab')].map((el) => el.dataset.tabId),
 );
 const reorderStart = await page.evaluate(() => {
-  const handle = document.querySelector('#builder-palette [data-panel-handle]');
+  const handle = document.querySelector('#builder-dock-right .builder-dock-tabs .editor-tab[data-tab-id="builder-palette"]');
   const r = handle.getBoundingClientRect();
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 });
@@ -436,14 +449,14 @@ await page.mouse.move(reorderDrop.x, reorderDrop.y, { steps: 10 });
 await page.mouse.up();
 await page.waitForTimeout(150);
 const rightOrderAfter = await page.evaluate(() =>
-  [...document.querySelectorAll('#builder-dock-right > .builder-panel')]
-    .filter((el) => getComputedStyle(el).display !== 'none')
-    .map((el) => el.id),
+  [...document.querySelectorAll('#builder-dock-right .builder-dock-tabs .editor-tab')].map((el) => el.dataset.tabId),
 );
 check(
   'panels can reorder inside the same dock',
-  rightOrderBefore.indexOf('builder-palette') < rightOrderBefore.indexOf('builder-inspector') &&
-    rightOrderAfter.indexOf('builder-palette') > rightOrderAfter.indexOf('builder-inspector'),
+  rightOrderAfter.length === rightOrderBefore.length &&
+    rightOrderAfter.includes('builder-palette') &&
+    rightOrderAfter.includes('builder-inspector') &&
+    rightOrderAfter.at(-1) === 'builder-palette',
   JSON.stringify({ rightOrderBefore, rightOrderAfter }),
 );
 const scrollbarStyles = await page.evaluate(() =>
@@ -702,13 +715,13 @@ const matPanel = await page.evaluate(() => {
   }
   return {
     visible: panel.style.display !== 'none',
-    worldStillOpen: world.style.display !== 'none',
+    worldStillOpen: world.parentElement?.id === 'builder-dock-right',
     title,
     tweaked,
   };
 });
 check('MATERIAL window shows the armed material', matPanel.visible && matPanel.title.includes('Config'), JSON.stringify(matPanel));
-check('parameter panels can stack independently', matPanel.worldStillOpen);
+check('parameter panels tab independently in a dock', matPanel.worldStillOpen);
 check('material slider drives the live profile', matPanel.tweaked?.key != null, JSON.stringify(matPanel.tweaked));
 await page.click('#bm-close');
 await page.waitForTimeout(80);
@@ -852,6 +865,7 @@ p = await toClient(700, 540);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(120);
 await page.keyboard.press('Escape');
+await activatePanel('builder-inspector');
 let lightState = await page.evaluate(() => {
   const n = (sel) => Number(document.querySelector(sel)?.value ?? 0);
   return {
@@ -1042,11 +1056,12 @@ await page.click('#b-zen');
 await page.waitForTimeout(120);
 let zenHidden = await page.evaluate(() => getComputedStyle(document.getElementById('builder-palette')).display === 'none');
 check('zen mode hides the side panels', zenHidden);
-await page.click('[data-menu="view"]');
+// #b-zen is a checkmarked toggle, so the View menu stays open — click it again directly.
 await page.click('#b-zen');
 await page.waitForTimeout(120);
 zenHidden = await page.evaluate(() => getComputedStyle(document.getElementById('builder-palette')).display === 'none');
 check('zen toggles back', !zenHidden);
+await page.keyboard.press('Escape');
 await page.keyboard.press('o');
 await page.keyboard.press('o');
 await page.keyboard.press('o'); // back to NONE
@@ -1539,6 +1554,7 @@ check('region bake undoes as one command', scarGold === 0, `got ${scarGold}`);
 
 /* ---------- rotate + note + solo ---------- */
 console.log('-- rotate, note, solo');
+await activatePanel('builder-inspector');
 await placeAt('door', 600, 560);
 await page.click('#bi-rotate');
 await page.waitForTimeout(120);
