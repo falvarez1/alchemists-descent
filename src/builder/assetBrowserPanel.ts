@@ -7,9 +7,10 @@ import type {
   AssetSortMode,
 } from '@/builder/assets/AssetTypes';
 import type { AssetDatabaseStats } from '@/builder/assets/AssetDatabase';
+import { builderPanelHeader } from '@/ui/editor/PanelChrome';
+import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 
 export type AssetBrowserView = 'grid' | 'list';
-type AssetBrowserTab = 'assets' | 'current' | 'imports';
 
 export interface AssetPlacementAction {
   id: string;
@@ -111,7 +112,6 @@ export function renderAssetPlacementPanel(model: AssetPlacementPanelModel): stri
 }
 
 export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
-  const activeTab = assetBrowserTab(model.collection);
   const collectionLabel = collectionLabelFor(model.collection);
   const activeFilters = [
     ...[...model.kindFilters].map(kindLabelFor),
@@ -127,14 +127,7 @@ export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
     : '<div class="ba-empty b-empty">No matching assets</div>';
   return `
     <div class="ba-browser">
-      <div class="bi-head ba-head" data-panel-handle>
-        <div class="ba-tabs" role="tablist" aria-label="Asset browser views">
-          ${tabButton('assets', 'Assets Browser', activeTab)}
-          ${tabButton('current', 'Current Doc', activeTab)}
-          ${tabButton('imports', 'Imports', activeTab)}
-        </div>
-        <button id="ba-close" type="button" aria-label="Close asset browser">&times;</button>
-      </div>
+      ${builderPanelHeader({ title: builderPanelTitle('builder-assets'), closeId: 'ba-close', closeLabel: 'Close asset browser' })}
       <div class="ba-shell">
         <aside class="ba-sources" aria-label="Asset sources and filters">
           <div class="ba-summary">${model.stats.total} assets - ${model.stats.missing} missing - ${model.stats.errors} errors</div>
@@ -268,10 +261,6 @@ function sortOption(current: string, value: string, label: string): string {
   return `<option value="${escAttr(value)}" ${current === value ? 'selected' : ''}>${esc(label)}</option>`;
 }
 
-function tabButton(tab: AssetBrowserTab, label: string, active: AssetBrowserTab): string {
-  return `<button type="button" class="ba-tab${tab === active ? ' active' : ''}" data-asset-tab="${tab}" role="tab" aria-selected="${tab === active ? 'true' : 'false'}">${esc(label)}</button>`;
-}
-
 function treeGroup(model: AssetBrowserModel, id: string, label: string, rows: readonly string[]): string {
   const collapsed = model.collapsedSections?.[id] === true;
   return `<section class="ba-tree-group bp-section${collapsed ? ' collapsed' : ''}" data-section="${escAttr(id)}">
@@ -324,12 +313,6 @@ function treeRow(options: {
   return `<div class="ba-tree-row ba-tree-leaf${options.active ? ' active' : ''}" data-${options.dataName}="${escAttr(options.id)}" aria-selected="${options.active ? 'true' : 'false'}" role="treeitem" aria-level="2" tabindex="0" style="--tree-depth:1">
     <span class="ba-tree-spacer" aria-hidden="true"></span><span class="ba-tree-icon ${options.icon}" aria-hidden="true"></span><span class="ba-tree-label">${esc(options.label)}</span>${options.count === undefined ? '' : `<span class="ba-tree-count">${options.count}</span>`}
   </div>`;
-}
-
-function assetBrowserTab(collection: AssetSmartCollection): AssetBrowserTab {
-  if (collection === 'imported') return 'imports';
-  if (collection === 'usedByCurrentDocument') return 'current';
-  return 'assets';
 }
 
 function collectionLabelFor(collection: AssetSmartCollection): string {

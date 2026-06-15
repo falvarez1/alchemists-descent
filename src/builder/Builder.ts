@@ -8893,15 +8893,6 @@ export class Builder {
       this.renderAssetBrowser();
       this.el<HTMLInputElement>('ba-search')?.focus({ preventScroll: true });
     });
-    for (const tab of panel.querySelectorAll<HTMLButtonElement>('button[data-asset-tab]')) {
-      tab.addEventListener('click', () => {
-        const next = tab.dataset.assetTab;
-        if (next === 'imports') this.setAssetCollection('imported');
-        else if (next === 'current') this.setAssetCollection('usedByCurrentDocument');
-        else this.setAssetCollection('all');
-        this.renderAssetBrowser();
-      });
-    }
     for (const chip of panel.querySelectorAll<HTMLElement>('[data-asset-collection]')) {
       const activate = (): void => {
         this.setAssetCollection(chip.dataset.assetCollection as AssetSmartCollection);
