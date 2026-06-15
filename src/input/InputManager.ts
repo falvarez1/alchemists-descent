@@ -42,6 +42,10 @@ const GAMEPLAY_KEY_CODES = new Set([
   'KeyR',
   'Digit1',
   'Digit2',
+  'Digit3',
+  'Digit4',
+  'Digit5',
+  'Digit6',
   'Tab',
 ]);
 
@@ -259,6 +263,15 @@ export class InputManager {
     ctx.events.emit('wandChanged');
   }
 
+  private selectFlaskSlot(idx: number): void {
+    if (!this.ctx.flask.selectSlot(idx)) return;
+    const slot = this.ctx.flask.state;
+    const material = slot.material === null
+      ? 'EMPTY'
+      : (this.ctx.params.materials[slot.material]?.name ?? `MATERIAL ${slot.material}`).toUpperCase();
+    this.ctx.events.emit('toast', { text: `FLASK ${idx + 1}: ${material}` });
+  }
+
   private shouldIgnoreKeyboard(e: KeyboardEvent): boolean {
     return (
       e.isComposing ||
@@ -411,8 +424,9 @@ export class InputManager {
         ctx.flask.throwFlask(ctx);
       else if (e.code.startsWith('Digit')) {
         const n = parseInt(e.code.slice(5)) - 1;
-        // Wave D: digits pick wands in play, not spells — 1/2 only, 3-7 are dead keys
+        // Wave D: digits pick wands first, then the Noita-like potion belt.
         if (n === 0 || n === 1) this.selectWand(n);
+        else if (n >= 2 && n <= 5) this.selectFlaskSlot(n - 2);
       }
       return;
     }

@@ -647,9 +647,10 @@ export class GpuCompose {
     try {
       this.overlayUploadPos.set(dirty.x, dirty.y);
       this.renderer.copyTextureToTexture(
-        this.overlayUploadPos,
         this.overlayUploadTex!,
         this.overlayTex,
+        null,
+        this.overlayUploadPos,
       );
     } catch (error) {
       this.overlaySubUploadFailed = true;

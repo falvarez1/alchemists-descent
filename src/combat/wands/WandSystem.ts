@@ -654,6 +654,50 @@ export class WandSystem implements WandsApi {
     this.ctx.events.emit('wandChanged');
   }
 
+  slotCollectionCard(collectionIndex: number, wand: 0 | 1, slot: number): void {
+    const w = this.wands[wand];
+    if (slot < 0 || slot >= w.frame.capacity) return;
+    if (collectionIndex < 0 || collectionIndex >= this.collection.length) return;
+    const id = this.collection[collectionIndex];
+    const prev = w.cards[slot] ?? null;
+    this.collection.splice(collectionIndex, 1);
+    w.cards[slot] = id;
+    if (prev !== null) this.collection.push(prev);
+    this.compiled[wand] = null;
+    w.castIndex = 0;
+    this.ctx.events.emit('wandChanged');
+  }
+
+  swapSlots(sourceWand: 0 | 1, sourceSlot: number, targetWand: 0 | 1, targetSlot: number): void {
+    const source = this.wands[sourceWand];
+    const target = this.wands[targetWand];
+    if (sourceSlot < 0 || sourceSlot >= source.frame.capacity) return;
+    if (targetSlot < 0 || targetSlot >= target.frame.capacity) return;
+    if (sourceWand === targetWand && sourceSlot === targetSlot) return;
+    const sourceCard = source.cards[sourceSlot] ?? null;
+    const targetCard = target.cards[targetSlot] ?? null;
+    source.cards[sourceSlot] = targetCard;
+    target.cards[targetSlot] = sourceCard;
+    this.compiled[sourceWand] = null;
+    this.compiled[targetWand] = null;
+    source.castIndex = 0;
+    target.castIndex = 0;
+    this.ctx.events.emit('wandChanged');
+  }
+
+  moveSlotToCollection(wand: 0 | 1, slot: number, collectionIndex = this.collection.length): void {
+    const w = this.wands[wand];
+    if (slot < 0 || slot >= w.frame.capacity) return;
+    const card = w.cards[slot] ?? null;
+    if (card === null) return;
+    w.cards[slot] = null;
+    const insertAt = Math.max(0, Math.min(this.collection.length, Math.floor(collectionIndex)));
+    this.collection.splice(insertAt, 0, card);
+    this.compiled[wand] = null;
+    w.castIndex = 0;
+    this.ctx.events.emit('wandChanged');
+  }
+
   invalidatePrograms(): void {
     this.compiled[0] = null;
     this.compiled[1] = null;

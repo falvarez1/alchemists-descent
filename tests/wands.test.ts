@@ -200,3 +200,31 @@ describe('WandSystem runtime snapshots', () => {
     expect(wands.collection.filter((card) => card === 'infuser')).toHaveLength(1);
   });
 });
+
+describe('WandSystem bench transfers', () => {
+  it('supports indexed collection placement, slot swaps, and slot returns', () => {
+    const events = new EventBus();
+    let changed = 0;
+    events.on('wandChanged', () => changed++);
+    const ctx = {
+      events,
+      telemetry: { count: () => undefined },
+      audio: { wandSwap: () => undefined },
+      state: { mode: 'build' },
+      player: {},
+    } as unknown as Ctx;
+    const wands = new WandSystem(ctx);
+
+    wands.slotCollectionCard(1, 0, 1);
+    expect(wands.wands[0].cards).toEqual(['spark', 'flame', null]);
+    expect(wands.collection).not.toContain('flame');
+
+    wands.swapSlots(0, 0, 0, 1);
+    expect(wands.wands[0].cards).toEqual(['flame', 'spark', null]);
+
+    wands.moveSlotToCollection(0, 1, 0);
+    expect(wands.wands[0].cards).toEqual(['flame', null, null]);
+    expect(wands.collection[0]).toBe('spark');
+    expect(changed).toBe(3);
+  });
+});

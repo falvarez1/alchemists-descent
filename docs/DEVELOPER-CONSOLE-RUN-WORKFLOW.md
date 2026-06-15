@@ -21,6 +21,9 @@ a Developer Console command first.
   `--gold 250`, `--hp 140`, `--max-hp 160`, `--levit 180`,
   `--cards spark,bomb`, `--perks torchbearer,swiftfoot`, and
   `--flask water:300`.
+- `run test --flasks water:450,acid:200 --active-flask 2` configures the
+  Noita-like potion belt. `--flask material:count` remains a slot-1 shortcut
+  for older scripts.
 - `run test --world virtual-world` starts the chunked virtual-world prototype
   as a disposable materialized test window. It is intentionally not persisted
   until streaming and save support are implemented.

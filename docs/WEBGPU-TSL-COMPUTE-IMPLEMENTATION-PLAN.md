@@ -10,7 +10,8 @@ weather, status effects, and biome-specific visual systems.
 
 ## Current Ground Truth
 
-- `package.json` currently pins `three` / `@types/three` at `^0.160.0`.
+- `package.json` currently pins `three` exactly at `0.184.0` and
+  `@types/three` exactly at `0.184.1`.
 - `src/render/Renderer.ts` currently imports `three`, constructs
   `THREE.WebGLRenderer`, and uses WebGL-only `EffectComposer`,
   `UnrealBloomPass`, and `ShaderMaterial` paths.

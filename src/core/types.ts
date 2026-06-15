@@ -558,6 +558,12 @@ export type PlaytestSource = 'builder' | 'test';
 export type RunMode = 'normal' | 'test';
 export type RunWorldSource = 'campaign' | 'campaign-level' | 'virtual-world';
 export type RunLoadoutPreset = 'fresh' | 'advanced' | 'review';
+export const FLASK_SLOT_COUNT = 4;
+
+export interface FlaskSlotConfig {
+  material: number | null;
+  count: number;
+}
 
 export interface RunTestKitConfig {
   gold?: number;
@@ -566,7 +572,11 @@ export interface RunTestKitConfig {
   maxLevit?: number;
   cards?: CardId[];
   perks?: PerkId[];
-  flask?: { material: number | null; count: number };
+  /** Back-compat single-flask setup; maps to slot 0 when `flasks` is absent. */
+  flask?: FlaskSlotConfig;
+  /** Noita-like potion inventory setup. Empty/null entries clear those slots. */
+  flasks?: Array<FlaskSlotConfig | null | undefined>;
+  activeFlaskIndex?: number;
 }
 
 export interface RunStartConfig {
@@ -980,13 +990,20 @@ export interface FlaskState {
  * material keeps its identity (a flask of blood is a portable conductor).
  */
 export interface FlaskApi {
+  /** Active flask. Existing callers use this as "the held potion". */
   readonly state: FlaskState;
+  /** Item-belt potion slots. Slot contents mutate in place. */
+  readonly slots: readonly FlaskState[];
+  readonly activeIndex: number;
+  selectSlot(index: number): boolean;
+  setSlot(index: number, material: number | null, count: number): void;
+  clearSlots(): void;
   /** Per-frame: handles siphon/pour holds and any in-flight thrown bottle. */
   update(ctx: Ctx): void;
   /** Lob the bottle toward the cursor; shatters on impact, releasing the cells. */
   throwFlask(ctx: Ctx): void;
   /** Read-only visual position for the currently thrown bottle. */
-  bottleView(): { x: number; y: number; vx: number; vy: number } | null;
+  bottleView(): { x: number; y: number; vx: number; vy: number; material: number | null; count: number } | null;
 }
 
 /** Local gameplay counters (deaths by cause, material usage, ...). */
@@ -1302,6 +1319,12 @@ export interface WandsApi {
   grantCard(ctx: Ctx, id: CardId): void;
   /** Move a card between collection and a wand slot (bench UI). */
   slotCard(wand: 0 | 1, slot: number, id: CardId | null): void;
+  /** Drag/drop bench support: place a specific collection index into a slot. */
+  slotCollectionCard(collectionIndex: number, wand: 0 | 1, slot: number): void;
+  /** Drag/drop bench support: swap or move slotted cards without touching collection order. */
+  swapSlots(sourceWand: 0 | 1, sourceSlot: number, targetWand: 0 | 1, targetSlot: number): void;
+  /** Drag/drop bench support: return a slotted card to the collection. */
+  moveSlotToCollection(wand: 0 | 1, slot: number, collectionIndex?: number): void;
   /** Invalidate cached spell programs after tooling restores wand state in place. */
   invalidatePrograms(): void;
   /** Save-game support: capture / restore the full wand loadout. */

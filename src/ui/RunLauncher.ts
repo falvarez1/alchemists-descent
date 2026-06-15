@@ -1,6 +1,6 @@
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { LEVELS } from '@/config/worldgraph';
-import type { CardId, Ctx, PerkId, RunLoadoutPreset, RunMode, RunStatus, RunTestKitConfig, RunWorldSource } from '@/core/types';
+import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskSlotConfig, type PerkId, type RunLoadoutPreset, type RunMode, type RunStatus, type RunTestKitConfig, type RunWorldSource } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { appDialog } from '@/ui/AppDialog';
 
@@ -43,6 +43,8 @@ type TestPrefs = {
   maxLevit?: string;
   flaskMaterial?: string;
   flaskCount?: string;
+  flasks?: FlaskSlotConfig[];
+  activeFlaskIndex?: number;
   cards?: CardId[];
   perks?: PerkId[];
   cardFilter?: CardFilter;
@@ -94,6 +96,9 @@ function parseLegacyPrefs(raw: string | null): LauncherPrefs | null {
         maxLevit: parsed.maxLevit,
         flaskMaterial: parsed.flaskMaterial,
         flaskCount: parsed.flaskCount,
+        flasks: parsed.flaskMaterial
+          ? [{ material: Number(parsed.flaskMaterial), count: Number(parsed.flaskCount ?? 0) }]
+          : undefined,
         cards: parsed.cards,
         perks: parsed.perks,
       },
@@ -138,6 +143,7 @@ export class RunLauncher {
   private readonly maxHpInput: HTMLInputElement;
   private readonly hpInput: HTMLInputElement;
   private readonly maxLevitInput: HTMLInputElement;
+  private readonly flaskSlotButtons: HTMLButtonElement[];
   private readonly flaskSummary: HTMLElement;
   private readonly flaskEmptyButton: HTMLButtonElement;
   private readonly flaskRows: HTMLElement[];
@@ -155,6 +161,11 @@ export class RunLauncher {
   private readonly statusEl: HTMLDivElement;
   private mode: RunMode = 'normal';
   private activeKitTab: KitTab = 'vitals';
+  private activeFlaskSlot = 0;
+  private readonly flaskSlotConfigs: FlaskSlotConfig[] = Array.from({ length: FLASK_SLOT_COUNT }, () => ({
+    material: null,
+    count: 0,
+  }));
   private lastFocused: HTMLElement | null = null;
   private pendingSource: LauncherSource = 'play-button';
   private suppressPresetApply = false;
@@ -282,6 +293,7 @@ export class RunLauncher {
                   <div class="run-launcher-check-grid perks" data-field="perks"></div>
                 </div>
                 <div class="run-launcher-kit-panel" data-kit-panel="flask" role="tabpanel">
+                  <div class="run-launcher-flask-slots" data-field="flask-slots" role="tablist" aria-label="Potion slots"></div>
                   <div class="run-launcher-flask-head">
                     <button type="button" data-action="flask-empty">EMPTY</button>
                     <span data-field="flask-summary">Empty flask</span>
@@ -323,6 +335,7 @@ export class RunLauncher {
     this.statusEl = this.root.querySelector<HTMLDivElement>('.run-launcher-status')!;
 
     this.populateLevels();
+    this.flaskSlotButtons = this.populateFlaskSlots();
     const flaskControls = this.populateMaterials();
     this.flaskRows = flaskControls.rows;
     this.flaskRadios = flaskControls.radios;
@@ -367,7 +380,7 @@ export class RunLauncher {
     });
     for (const input of this.kitInputs()) input.addEventListener('input', () => this.sync());
     this.flaskEmptyButton.addEventListener('click', () => {
-      this.setFlaskPreset(null, 0);
+      this.setFlaskSlot(this.activeFlaskSlot, null, 0);
       this.sync();
     });
     for (const input of [...this.cardChecks, ...this.perkChecks]) input.addEventListener('change', () => this.sync());
@@ -456,6 +469,27 @@ export class RunLauncher {
     return document.body.classList.contains('builder-open');
   }
 
+  private populateFlaskSlots(): HTMLButtonElement[] {
+    const host = this.root.querySelector<HTMLDivElement>('[data-field="flask-slots"]')!;
+    const buttons: HTMLButtonElement[] = [];
+    for (let i = 0; i < FLASK_SLOT_COUNT; i++) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.flaskSlot = String(i);
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', i === this.activeFlaskSlot ? 'true' : 'false');
+      button.textContent = `Flask ${i + 1}`;
+      button.addEventListener('click', () => {
+        this.activeFlaskSlot = i;
+        this.updateFlaskRows();
+        this.sync();
+      });
+      host.appendChild(button);
+      buttons.push(button);
+    }
+    return buttons;
+  }
+
   private populateMaterials(): {
     rows: HTMLElement[];
     radios: HTMLInputElement[];
@@ -505,21 +539,21 @@ export class RunLauncher {
       radio.addEventListener('change', () => {
         if (!radio.checked) return;
         const count = this.readFlaskSlider(index) || 300;
-        this.selectFlask(index, count);
+        this.selectFlaskMaterial(index, count);
         this.sync();
       });
       row.addEventListener('click', (event) => {
         if (event.target === slider || event.target === radio) return;
         const count = this.readFlaskSlider(index) || 300;
-        this.selectFlask(index, count);
+        this.selectFlaskMaterial(index, count);
         this.sync();
       });
       slider.addEventListener('input', () => {
         const count = this.readFlaskSlider(index);
         if (count > 0) {
-          this.selectFlask(index, count);
-        } else if (radio.checked) {
-          this.setFlaskPreset(null, 0);
+          this.selectFlaskMaterial(index, count);
+        } else if (this.materialIndexFor(this.flaskSlotConfigs[this.activeFlaskSlot].material) === index) {
+          this.setFlaskSlot(this.activeFlaskSlot, null, 0);
         } else {
           this.updateFlaskRows();
         }
@@ -580,6 +614,7 @@ export class RunLauncher {
       this.hpInput,
       this.maxLevitInput,
       this.flaskEmptyButton,
+      ...this.flaskSlotButtons,
       ...this.flaskRadios,
       ...this.flaskSliders,
       this.cardFilterSelect,
@@ -702,7 +737,17 @@ export class RunLauncher {
     this.maxHpInput.value = preset === 'review' ? '999' : preset === 'advanced' ? '140' : '100';
     this.hpInput.value = this.maxHpInput.value;
     this.maxLevitInput.value = preset === 'review' ? '400' : preset === 'advanced' ? '125' : '100';
-    this.setFlaskPreset(preset === 'fresh' ? null : Cell.Water, preset === 'fresh' ? 0 : preset === 'review' ? 600 : 300);
+    this.clearFlaskSlots();
+    if (preset === 'advanced') {
+      this.setFlaskSlot(0, Cell.Water, 300);
+    } else if (preset === 'review') {
+      this.setFlaskSlot(0, Cell.Water, 600);
+      this.setFlaskSlot(1, Cell.ElixirLife, 600);
+      this.setFlaskSlot(2, Cell.ElixirLevity, 600);
+      this.setFlaskSlot(3, Cell.Acid, 600);
+    }
+    this.activeFlaskSlot = 0;
+    this.updateFlaskRows();
     this.setChecked(this.cardChecks, cards);
     this.setChecked(this.perkChecks, perks);
   }
@@ -730,33 +775,68 @@ export class RunLauncher {
     return this.clampFlaskCount(Number(this.flaskSliders[index]?.value ?? 0));
   }
 
-  private selectedFlaskIndex(): number {
-    return this.flaskRadios.findIndex((input) => input.checked);
+  private materialIndexFor(material: number | null): number {
+    if (material === null) return -1;
+    return this.flaskRadios.findIndex((input) => input.value === String(material));
   }
 
-  private setFlaskPreset(material: number | null, count: number): void {
-    const materialValue = material === null ? null : String(material);
-    const selectedIndex = materialValue === null || count <= 0
-      ? -1
-      : this.flaskRadios.findIndex((input) => input.value === materialValue);
-    this.selectFlask(selectedIndex, count);
+  private clearFlaskSlots(): void {
+    for (let i = 0; i < this.flaskSlotConfigs.length; i++) {
+      this.flaskSlotConfigs[i] = { material: null, count: 0 };
+    }
   }
 
-  private selectFlask(index: number, count: number): void {
-    const clamped = index < 0 ? 0 : this.clampFlaskCount(count);
-    for (let i = 0; i < this.flaskRadios.length; i++) {
-      const selected = i === index && clamped > 0;
-      this.flaskRadios[i].checked = selected;
-      this.flaskSliders[i].value = selected ? String(clamped) : '0';
+  private setFlaskSlot(slotIndex: number, material: number | null, count: number): void {
+    if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= this.flaskSlotConfigs.length) return;
+    const clamped = material === null ? 0 : this.clampFlaskCount(count);
+    this.flaskSlotConfigs[slotIndex] = {
+      material: clamped > 0 ? material : null,
+      count: clamped,
+    };
+    this.updateFlaskRows();
+  }
+
+  private selectFlaskMaterial(materialIndex: number, count: number): void {
+    const material = Number(this.flaskRadios[materialIndex]?.value);
+    this.setFlaskSlot(this.activeFlaskSlot, Number.isInteger(material) ? material : null, count);
+  }
+
+  private readFlasks(): FlaskSlotConfig[] {
+    return this.flaskSlotConfigs.map((slot) => ({
+      material: slot.material,
+      count: this.clampFlaskCount(slot.count),
+    }));
+  }
+
+  private restoreFlasks(flasks: Array<FlaskSlotConfig | null | undefined> | undefined): void {
+    this.clearFlaskSlots();
+    if (flasks) {
+      for (let i = 0; i < Math.min(FLASK_SLOT_COUNT, flasks.length); i++) {
+        const flask = flasks[i];
+        if (!flask) continue;
+        this.setFlaskSlot(i, flask.material, flask.count);
+      }
     }
     this.updateFlaskRows();
   }
 
   private updateFlaskRows(): void {
-    const selectedIndex = this.selectedFlaskIndex();
+    const active = this.flaskSlotConfigs[this.activeFlaskSlot];
+    const selectedIndex = this.materialIndexFor(active.material);
+    for (let i = 0; i < this.flaskSlotButtons.length; i++) {
+      const slot = this.flaskSlotConfigs[i];
+      const activeButton = i === this.activeFlaskSlot;
+      this.flaskSlotButtons[i].classList.toggle('active', activeButton);
+      this.flaskSlotButtons[i].setAttribute('aria-selected', activeButton ? 'true' : 'false');
+      const name = slot.material === null ? 'Empty' : (this.ctx.params.materials[slot.material]?.name ?? `Material ${slot.material}`);
+      this.flaskSlotButtons[i].textContent = `${i + 1}: ${name}${slot.count > 0 ? ` ${slot.count}` : ''}`;
+      this.flaskSlotButtons[i].title = `Flask ${i + 1}: ${name}${slot.count > 0 ? ` (${slot.count}/600)` : ''}`;
+    }
     for (let i = 0; i < this.flaskRows.length; i++) {
-      const count = this.readFlaskSlider(i);
-      const selected = i === selectedIndex && count > 0;
+      const selected = i === selectedIndex && active.count > 0;
+      const count = selected ? active.count : 0;
+      this.flaskRadios[i].checked = selected;
+      this.flaskSliders[i].value = String(count);
       this.flaskRows[i].classList.toggle('selected', selected);
       this.flaskRows[i].classList.toggle('filled', count > 0);
       this.flaskRows[i].classList.toggle('disabled', this.flaskSliders[i].disabled);
@@ -764,22 +844,12 @@ export class RunLauncher {
       this.flaskOutputs[i].value = String(count);
       this.flaskOutputs[i].textContent = String(count);
     }
-    if (selectedIndex < 0) {
-      this.flaskSummary.textContent = 'Empty flask';
+    if (selectedIndex < 0 || active.material === null || active.count <= 0) {
+      this.flaskSummary.textContent = `Flask ${this.activeFlaskSlot + 1}: Empty`;
       return;
     }
-    const material = Number(this.flaskRadios[selectedIndex].value);
-    const name = this.ctx.params.materials[material]?.name ?? `Material ${material}`;
-    this.flaskSummary.textContent = `${name} - ${this.readFlaskSlider(selectedIndex)} / 600 cells`;
-  }
-
-  private readFlask(): { material: number | null; count: number } {
-    const selectedIndex = this.selectedFlaskIndex();
-    if (selectedIndex < 0) return { material: null, count: 0 };
-    const material = Number(this.flaskRadios[selectedIndex].value);
-    const count = this.readFlaskSlider(selectedIndex);
-    if (!Number.isInteger(material) || count <= 0) return { material: null, count: 0 };
-    return { material, count };
+    const name = this.ctx.params.materials[active.material]?.name ?? `Material ${active.material}`;
+    this.flaskSummary.textContent = `Flask ${this.activeFlaskSlot + 1}: ${name} - ${active.count} / 600 cells`;
   }
 
   private readKit(): RunTestKitConfig {
@@ -790,7 +860,8 @@ export class RunLauncher {
       maxLevit: this.readNumber(this.maxLevitInput),
       cards: this.checkedValues<CardId>(this.cardChecks),
       perks: this.checkedValues<PerkId>(this.perkChecks),
-      flask: this.readFlask(),
+      flasks: this.readFlasks(),
+      activeFlaskIndex: this.activeFlaskSlot,
     };
   }
 
@@ -816,7 +887,8 @@ export class RunLauncher {
   }
 
   private currentTestPrefs(): TestPrefs {
-    const flask = this.readFlask();
+    const flasks = this.readFlasks();
+    const first = flasks[0];
     return {
       world: this.worldSelect.value as RunWorldSource,
       level: this.levelSelect.value,
@@ -826,8 +898,10 @@ export class RunLauncher {
       maxHp: this.maxHpInput.value,
       hp: this.hpInput.value,
       maxLevit: this.maxLevitInput.value,
-      flaskMaterial: flask.material === null ? '' : String(flask.material),
-      flaskCount: String(flask.count),
+      flaskMaterial: first.material === null ? '' : String(first.material),
+      flaskCount: String(first.count),
+      flasks,
+      activeFlaskIndex: this.activeFlaskSlot,
       cards: this.checkedValues<CardId>(this.cardChecks),
       perks: this.checkedValues<PerkId>(this.perkChecks),
       cardFilter: this.cardFilterSelect.value as CardFilter,
@@ -873,11 +947,18 @@ export class RunLauncher {
     ] as Array<[HTMLInputElement, string | undefined]>) {
       if (value !== undefined) input.value = value;
     }
-    if (test.flaskMaterial !== undefined || test.flaskCount !== undefined) {
+    if (Array.isArray(test.flasks)) {
+      this.restoreFlasks(test.flasks);
+    } else if (test.flaskMaterial !== undefined || test.flaskCount !== undefined) {
       const material = test.flaskMaterial === undefined || test.flaskMaterial === '' ? null : Number(test.flaskMaterial);
       const count = Number(test.flaskCount ?? 0);
-      this.setFlaskPreset(material === null || Number.isInteger(material) ? material : null, count);
+      this.restoreFlasks([{ material: material === null || Number.isInteger(material) ? material : null, count }]);
     }
+    const activeFlaskIndex = test.activeFlaskIndex;
+    if (typeof activeFlaskIndex === 'number' && Number.isInteger(activeFlaskIndex) && activeFlaskIndex >= 0 && activeFlaskIndex < FLASK_SLOT_COUNT) {
+      this.activeFlaskSlot = activeFlaskIndex;
+    }
+    this.updateFlaskRows();
     if (validCardFilter(test.cardFilter)) this.cardFilterSelect.value = test.cardFilter;
     if (validKitTab(test.kitTab)) this.activeKitTab = test.kitTab;
     if (test.cards) this.setChecked(this.cardChecks, test.cards);

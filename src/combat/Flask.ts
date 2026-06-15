@@ -1,5 +1,5 @@
 import { clamp } from '@/core/math';
-import type { Ctx, FlaskApi, FlaskState } from '@/core/types';
+import { FLASK_SLOT_COUNT, type Ctx, type FlaskApi, type FlaskState } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, packRGB } from '@/sim/colors';
 
@@ -29,12 +29,51 @@ const GLASS_COLOR = packRGB(200, 230, 255);
  * Play mode only.
  */
 export class Flask implements FlaskApi {
-  readonly state: FlaskState = { material: null, count: 0, capacity: 600 };
+  private readonly _slots: FlaskState[] = Array.from({ length: FLASK_SLOT_COUNT }, () => ({
+    material: null,
+    count: 0,
+    capacity: 600,
+  }));
+  private _activeIndex = 0;
 
   /** The thrown bottle in flight, or null (at most one). */
-  private bottle: { x: number; y: number; vx: number; vy: number } | null = null;
+  private bottle: { x: number; y: number; vx: number; vy: number; material: number | null; count: number } | null = null;
 
-  bottleView(): { x: number; y: number; vx: number; vy: number } | null {
+  get state(): FlaskState {
+    return this._slots[this._activeIndex];
+  }
+
+  get slots(): readonly FlaskState[] {
+    return this._slots;
+  }
+
+  get activeIndex(): number {
+    return this._activeIndex;
+  }
+
+  selectSlot(index: number): boolean {
+    if (!Number.isInteger(index) || index < 0 || index >= this._slots.length) return false;
+    this._activeIndex = index;
+    return true;
+  }
+
+  setSlot(index: number, material: number | null, count: number): void {
+    if (!Number.isInteger(index) || index < 0 || index >= this._slots.length) return;
+    const slot = this._slots[index];
+    const clamped = material === null ? 0 : Math.max(0, Math.min(slot.capacity, Math.floor(count)));
+    slot.material = clamped > 0 ? material : null;
+    slot.count = clamped;
+  }
+
+  clearSlots(): void {
+    for (const slot of this._slots) {
+      slot.material = null;
+      slot.count = 0;
+    }
+    this._activeIndex = 0;
+  }
+
+  bottleView(): { x: number; y: number; vx: number; vy: number; material: number | null; count: number } | null {
     return this.bottle ? { ...this.bottle } : null;
   }
 
@@ -53,6 +92,7 @@ export class Flask implements FlaskApi {
       return;
     }
     if (this.bottle || this.state.count === 0) return;
+    const s = this.state;
     const tip = ctx.spells.wandTip();
     const a = Math.atan2(ctx.input.mouse.y - tip.y, ctx.input.mouse.x - tip.x);
     this.bottle = {
@@ -60,11 +100,15 @@ export class Flask implements FlaskApi {
       y: tip.y,
       vx: Math.cos(a) * THROW_FORCE,
       vy: Math.sin(a) * THROW_FORCE,
+      material: s.material,
+      count: s.count,
     };
     ctx.audio.tone(520, 320, 0.08, 'sine', 0.06);
-    if (this.state.material !== null) {
-      ctx.telemetry.count('flask.throw.' + this.materialName(ctx, this.state.material));
+    if (s.material !== null) {
+      ctx.telemetry.count('flask.throw.' + this.materialName(ctx, s.material));
     }
+    s.material = null;
+    s.count = 0;
   }
 
   /** Refused flask verb: hollow click + the FLSK bar flinches (throttled). */
@@ -218,12 +262,10 @@ export class Flask implements FlaskApi {
   }
 
   private shatter(ctx: Ctx, ix: number, iy: number): void {
+    const bottle = this.bottle!;
     this.bottle = null;
-    const s = this.state;
-    const material = s.material;
-    let remaining = s.count;
-    s.material = null;
-    s.count = 0;
+    const material = bottle.material;
+    let remaining = bottle.count;
 
     for (let j = 0; j < 8; j++) {
       const a = Math.random() * Math.PI * 2;

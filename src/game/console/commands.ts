@@ -1,6 +1,6 @@
 import { sanitizeBackdropSettings, saveBackdropSettings } from '@/config/backdrop';
 import { LEVELS } from '@/config/worldgraph';
-import type { CardId, CommandInfo, CommandResult, ConsoleApi, Ctx, EnemyKind, LevelRuntime, Mechanism, PerkId, Pickup, RunTestKitConfig } from '@/core/types';
+import { FLASK_SLOT_COUNT, type CardId, type CommandInfo, type CommandResult, type ConsoleApi, type Ctx, type EnemyKind, type FlaskSlotConfig, type LevelRuntime, type Mechanism, type PerkId, type Pickup, type RunTestKitConfig } from '@/core/types';
 import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { grantFullReviewKit } from '@/entities/Player';
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
@@ -1101,6 +1101,27 @@ function parseRunNumber(raw: string, name: string, min: number, max: number): nu
   return n;
 }
 
+function parseRunFlaskSpec(ctx: Ctx, raw: string): FlaskSlotConfig | CommandResult {
+  const [rawMaterial, rawCount] = raw.split(':', 2);
+  if (!rawMaterial) return result(false, 'Usage: flask spec must be <empty|material[:count]>', { code: 'usage' });
+  let material: number | null;
+  if (rawMaterial.toLowerCase() === 'empty' || rawMaterial.toLowerCase() === 'none') {
+    material = null;
+  } else {
+    const parsed = parseCellType(ctx, rawMaterial);
+    if (typeof parsed !== 'number') return parsed;
+    material = parsed;
+  }
+  const count = rawCount === undefined
+    ? material === null ? 0 : 600
+    : parseRunNumber(rawCount, 'flask count', 0, 600);
+  if (typeof count !== 'number') return count;
+  if (material === null && count > 0) {
+    return result(false, 'Empty flask cannot have cells.', { code: 'run-empty-flask-with-cells', flaskCount: count });
+  }
+  return { material, count };
+}
+
 function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandResult {
   let levelId: string | undefined;
   let seed: number | undefined;
@@ -1108,6 +1129,8 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
   let worldSource: 'campaign' | 'campaign-level' | 'virtual-world' | undefined;
   let flaskMaterial: number | null | undefined;
   let flaskCount: number | undefined;
+  let flaskSlots: FlaskSlotConfig[] | undefined;
+  let activeFlaskIndex: number | undefined;
   let hasTestOnlySetup = false;
   const kit: RunTestKitConfig = {};
 
@@ -1258,6 +1281,37 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
       i = parsed.next;
       continue;
     }
+    if (arg === '--flasks' || arg.startsWith('--flasks=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --flasks <slot1,slot2,...> where each slot is empty or material[:count]', { code: 'usage' });
+      const specs = parseRunList(parsed.value);
+      if (specs.length > FLASK_SLOT_COUNT) {
+        return result(false, `Expected at most ${FLASK_SLOT_COUNT} flask slots, got ${specs.length}`, {
+          code: 'run-flask-slot-count',
+          slots: specs.length,
+          max: FLASK_SLOT_COUNT,
+        });
+      }
+      flaskSlots = [];
+      for (const spec of specs) {
+        const flask = parseRunFlaskSpec(ctx, spec);
+        if ('ok' in flask) return flask;
+        flaskSlots.push(flask);
+      }
+      hasTestOnlySetup = true;
+      i = parsed.next;
+      continue;
+    }
+    if (arg === '--active-flask' || arg.startsWith('--active-flask=')) {
+      const parsed = readValue(arg, i);
+      if (!parsed.value) return result(false, 'Usage: --active-flask <1-4>', { code: 'usage' });
+      const n = parseRunNumber(parsed.value, 'active flask', 1, FLASK_SLOT_COUNT);
+      if (typeof n !== 'number') return n;
+      activeFlaskIndex = n - 1;
+      hasTestOnlySetup = true;
+      i = parsed.next;
+      continue;
+    }
     if (arg === '--flask-count' || arg.startsWith('--flask-count=')) {
       const parsed = readValue(arg, i);
       if (!parsed.value) return result(false, 'Usage: --flask-count <cells>', { code: 'usage' });
@@ -1286,9 +1340,12 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
       flaskCount,
     });
   }
-  if (flaskMaterial !== undefined || flaskCount !== undefined) {
+  if (flaskSlots) {
+    kit.flasks = flaskSlots;
+  } else if (flaskMaterial !== undefined || flaskCount !== undefined) {
     kit.flask = { material: flaskMaterial ?? null, count: flaskCount ?? (flaskMaterial === null ? 0 : 600) };
   }
+  if (activeFlaskIndex !== undefined) kit.activeFlaskIndex = activeFlaskIndex;
   return {
     ok: true,
     levelId,
@@ -1310,6 +1367,8 @@ function runCommandCompletions(req: CompletionRequest): string[] {
   if (prev === '--cards') return matching(['all', ...Object.keys(CARD_DEFS)], token);
   if (prev === '--perks') return matching(['all', ...RUN_PERKS], token);
   if (prev === '--flask') return matching(['empty', 'water', 'acid', 'lava', 'oil'], token);
+  if (prev === '--flasks') return matching(['water:600', 'water:450,acid:200', 'empty,water:300'], token);
+  if (prev === '--active-flask') return matching(['1', '2', '3', '4'], token);
   if (token.startsWith('--level=')) return matching(Object.keys(LEVELS).map((id) => '--level=' + id), token);
   if (token.startsWith('--loadout=')) return matching(RUN_LOADOUTS.map((id) => '--loadout=' + id), token);
   if (token.startsWith('--world=')) return matching(RUN_WORLD_SOURCES.map((id) => '--world=' + id), token);
@@ -1330,6 +1389,8 @@ function runCommandCompletions(req: CompletionRequest): string[] {
       '--perks',
       '--flask',
       '--flask-count',
+      '--flasks',
+      '--active-flask',
     ], token);
   }
   return [];
@@ -1482,7 +1543,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
     info: info(
       'game.run',
       'Run Control',
-      'run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--world campaign|campaign-level|virtual-world] [test-only: --loadout preset --gold n --cards all|id,id --perks all|id,id --flask material:count]',
+      'run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--world campaign|campaign-level|virtual-world] [test-only: --loadout preset --gold n --cards all|id,id --perks all|id,id --flask material:count --flasks slot1,slot2 --active-flask 1-4]',
       'Canonical start/reset/save/test-run workflow for expeditions.',
       'game',
     ),

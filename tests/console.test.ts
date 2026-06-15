@@ -105,6 +105,9 @@ function makeCtx(): Ctx {
       collection.push(id);
     },
     slotCard: () => undefined,
+    slotCollectionCard: () => undefined,
+    swapSlots: () => undefined,
+    moveSlotToCollection: () => undefined,
     snapshotLoadout: () => ({ active: 0, collection: [], wands: [] }),
     loadLoadout: () => undefined,
     snapshotRuntimeState: () => ({
@@ -215,7 +218,34 @@ function makeCtx(): Ctx {
     simulation: { accumulator: 0, update: () => undefined, processFrame: () => undefined },
     worldgen: { spawnHint: null, generateCaves: () => undefined, regenerate: () => undefined, spawnFortress: () => undefined, generateLevel: () => ({}) },
     waveCtl: { start: () => undefined, update: () => undefined },
-    flask: { state: { material: null, count: 0, capacity: 100 }, update: () => undefined, throwFlask: () => undefined, bottleView: () => null },
+    flask: {
+      get state() {
+        return this.slots[this.activeIndex];
+      },
+      slots: Array.from({ length: 4 }, () => ({ material: null, count: 0, capacity: 100 })),
+      activeIndex: 0,
+      selectSlot(index: number) {
+        if (index < 0 || index >= this.slots.length) return false;
+        this.activeIndex = index;
+        return true;
+      },
+      setSlot(index: number, material: number | null, count: number) {
+        const slot = this.slots[index];
+        if (!slot) return;
+        slot.material = count > 0 ? material : null;
+        slot.count = material === null ? 0 : Math.max(0, Math.floor(count));
+      },
+      clearSlots() {
+        for (const slot of this.slots) {
+          slot.material = null;
+          slot.count = 0;
+        }
+        this.activeIndex = 0;
+      },
+      update: () => undefined,
+      throwFlask: () => undefined,
+      bottleView: () => null,
+    },
     telemetry: {
       count: (key, n = 1) => {
         counters[key] = (counters[key] ?? 0) + n;
@@ -246,6 +276,17 @@ function makeCtx(): Ctx {
         ctx.state.mode = 'play';
         ctx.state.playtestSource = config.mode === 'test' ? 'test' : null;
         ctx.state.worldSeed = config.seed ?? ctx.state.worldSeed;
+        if (config.kit?.flasks) {
+          ctx.flask.clearSlots();
+          config.kit.flasks.forEach((flask, index) => {
+            if (flask) ctx.flask.setSlot(index, flask.material, flask.count);
+          });
+          ctx.flask.selectSlot(config.kit.activeFlaskIndex ?? 0);
+        } else if (config.kit?.flask) {
+          ctx.flask.clearSlots();
+          ctx.flask.setSlot(0, config.kit.flask.material, config.kit.flask.count);
+          ctx.flask.selectSlot(0);
+        }
         const id = config.worldSource === 'campaign-level' ? (config.levelId ?? 'd1') : 'd1';
         current = { def: { id, name: id.toUpperCase(), biome: 'earthen', depth: 1, nextLevelId: null }, world, enemies: [], waystones: [], exit: null, explored: new Uint8Array(1), spawn: { x: 100, y: 120 }, regions: null, cauldron: null, pickups: [], portal: null, keyTaken: false, mechanisms: [], runeVaults: [] };
         return { ok: true, message: 'mock run started', mode: config.mode, worldSource: config.worldSource, levelId: id, seed: ctx.state.worldSeed };
@@ -700,6 +741,23 @@ describe('console registry', () => {
       ok: true,
       data: { action: 'status', mode: 'play', playtestSource: 'test', autosaveEnabled: false },
     });
+  });
+
+  it('starts test runs with a Noita-like potion belt', async () => {
+    const ctx = makeCtx();
+
+    const started = await ctx.console.exec('run test --seed 123 --flasks water:450,acid:200 --active-flask 2');
+
+    expect(started).toMatchObject({
+      ok: true,
+      data: {
+        action: 'test',
+        status: { mode: 'play', playtestSource: 'test' },
+      },
+    });
+    expect(ctx.flask.activeIndex).toBe(1);
+    expect(ctx.flask.state).toMatchObject({ material: 7, count: 200 });
+    expect(ctx.flask.slots[0]).toMatchObject({ material: 2, count: 450 });
   });
 
   it('keeps loadout and granular kit setup scoped to disposable test runs', async () => {

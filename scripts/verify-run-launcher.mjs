@@ -120,18 +120,30 @@ await page.locator('#run-launcher [data-flask-material="2"] input[type="range"]'
   slider.value = '450';
   slider.dispatchEvent(new Event('input', { bubbles: true }));
 });
+await page.click('#run-launcher [data-flask-slot="1"]');
+await page.locator('#run-launcher [data-flask-material="7"] input[type="range"]').evaluate((slider) => {
+  slider.value = '200';
+  slider.dispatchEvent(new Event('input', { bubbles: true }));
+});
 const flaskState = await page.evaluate(() => ({
   activePanel: document.querySelector('.run-launcher-kit-panel.active')?.getAttribute('data-kit-panel'),
-  selectedMaterial: document.querySelector('#run-launcher [data-flask-material="2"] input[type="radio"]')?.checked ?? false,
-  sliderValue: document.querySelector('#run-launcher [data-flask-material="2"] input[type="range"]')?.value ?? '',
+  activeSlot: document.querySelector('#run-launcher .run-launcher-flask-slots button.active')?.getAttribute('data-flask-slot'),
+  selectedMaterial: document.querySelector('#run-launcher [data-flask-material="7"] input[type="radio"]')?.checked ?? false,
+  sliderValue: document.querySelector('#run-launcher [data-flask-material="7"] input[type="range"]')?.value ?? '',
+  slot1: document.querySelector('#run-launcher [data-flask-slot="0"]')?.textContent ?? '',
+  slot2: document.querySelector('#run-launcher [data-flask-slot="1"]')?.textContent ?? '',
   summary: document.querySelector('#run-launcher [data-field="flask-summary"]')?.textContent ?? '',
 }));
 check(
-  'Flask material rows select with per-material quantity sliders',
+  'Flask slots preserve independent material quantities',
   flaskState.activePanel === 'flask' &&
+    flaskState.activeSlot === '1' &&
     flaskState.selectedMaterial &&
-    flaskState.sliderValue === '450' &&
-    flaskState.summary.includes('450 / 600'),
+    flaskState.sliderValue === '200' &&
+    flaskState.slot1.includes('Water') &&
+    flaskState.slot1.includes('450') &&
+    flaskState.slot2.includes('Acid') &&
+    flaskState.summary.includes('200 / 600'),
   JSON.stringify(flaskState),
 );
 
@@ -153,11 +165,21 @@ await page.waitForFunction(
 const virtualState = await page.evaluate(() => ({
   levelId: window.__game.ctx.levels.current?.def.id,
   playtestSource: window.__game.ctx.state.playtestSource,
+  activeFlaskIndex: window.__game.ctx.flask.activeIndex,
   flask: { ...window.__game.ctx.flask.state },
+  flaskSlots: window.__game.ctx.flask.slots.map((slot) => ({ ...slot })),
   world: { width: window.__game.ctx.world.width, height: window.__game.ctx.world.height },
 }));
 check('Launcher starts disposable virtual-world test run', virtualState.levelId === 'virtual-test' && virtualState.playtestSource === 'test', JSON.stringify(virtualState));
-check('Launcher applies selected flask setup', virtualState.flask.material === 2 && virtualState.flask.count === 450, JSON.stringify(virtualState.flask));
+check(
+  'Launcher applies potion belt setup',
+  virtualState.activeFlaskIndex === 1 &&
+    virtualState.flask.material === 7 &&
+    virtualState.flask.count === 200 &&
+    virtualState.flaskSlots[0]?.material === 2 &&
+    virtualState.flaskSlots[0]?.count === 450,
+  JSON.stringify({ active: virtualState.activeFlaskIndex, state: virtualState.flask, slots: virtualState.flaskSlots }),
+);
 
 await resetLauncherStorageAndReload();
 await page.click('#immersive-play-btn');

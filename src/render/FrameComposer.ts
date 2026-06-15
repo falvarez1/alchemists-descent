@@ -639,6 +639,8 @@ export class FrameComposer implements PixelSurface {
 
     const bottle = ctx.flask.bottleView();
     if (!bottle) return;
+    const bottleMat = bottle.material;
+    const bottleTint = bottleMat === null ? tint : this.unpack01(COLOR_FN[bottleMat]());
     const x = Math.round(bottle.x),
       y = Math.round(bottle.y);
     const spin = frame * 0.5 + bottle.x * 0.03;
@@ -647,7 +649,7 @@ export class FrameComposer implements PixelSurface {
     this.setPx(x, y, 0.72, 0.9, 1.0);
     this.setPx(x + sx, y + sy, 0.45, 0.65, 0.8);
     this.setPx(x - sx, y - sy, 0.18, 0.28, 0.36);
-    if (mat !== null) this.addPx(x, y + 1, tint.r * 0.55, tint.g * 0.55, tint.b * 0.55);
+    if (bottleMat !== null) this.addPx(x, y + 1, bottleTint.r * 0.55, bottleTint.g * 0.55, bottleTint.b * 0.55);
   }
 
   /** Wave F: the critter layer — tiny, alive, mostly ignorable. */

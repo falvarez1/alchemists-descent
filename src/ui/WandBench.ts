@@ -1,4 +1,4 @@
-import type { CardId, Ctx, PerkId } from '@/core/types';
+import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskState, type PerkId } from '@/core/types';
 import { CARD_DEFS } from '@/combat/wands/cards';
 import { POTION_DEFS, POTION_KINDS } from '@/game/Pickups';
 import { Cell } from '@/sim/CellType';
@@ -25,10 +25,14 @@ const POTION_ICON: Record<string, string> = {
   torch: 'fire',
 };
 
-const ELIXIR_TESTS = [
-  { name: 'Life', label: 'LIFE', cell: Cell.ElixirLife },
-  { name: 'Levity', label: 'LEV', cell: Cell.ElixirLevity },
-  { name: 'Stone', label: 'STONE', cell: Cell.ElixirStone },
+const FLASK_FILL_CHOICES = [
+  { id: 'water', name: 'Water', label: 'WATER', cell: Cell.Water },
+  { id: 'acid', name: 'Acid', label: 'ACID', cell: Cell.Acid },
+  { id: 'lava', name: 'Lava', label: 'LAVA', cell: Cell.Lava },
+  { id: 'nitrogen', name: 'Liquid Nitrogen', label: 'N2', cell: Cell.Nitrogen },
+  { id: 'life', name: 'Elixir of Life', label: 'LIFE', cell: Cell.ElixirLife },
+  { id: 'levity', name: 'Elixir of Levity', label: 'LEV', cell: Cell.ElixirLevity },
+  { id: 'stone', name: 'Elixir of Stone', label: 'STONE', cell: Cell.ElixirStone },
 ] as const;
 
 const PERK_LABELS: Array<{ id: PerkId; name: string }> = [
@@ -43,6 +47,10 @@ const PERK_LABELS: Array<{ id: PerkId; name: string }> = [
   { id: 'toxinward', name: 'TOXIN' },
   { id: 'goldmagnet', name: 'GOLD' },
 ];
+
+type BenchDragSource =
+  | { kind: 'collection'; index: number; id: CardId }
+  | { kind: 'slot'; wand: 0 | 1; slot: number; id: CardId };
 
 // ===================== Wand Bench =====================
 /**
@@ -61,6 +69,7 @@ export class WandBench {
   private visible = false;
   /** Index into ctx.wands.collection of the card held by the cursor, or -1. */
   private heldIdx = -1;
+  private dragSource: BenchDragSource | null = null;
 
   constructor(private ctx: Ctx) {
     window.addEventListener('keydown', (e) => {
@@ -130,7 +139,8 @@ export class WandBench {
     root.appendChild(section);
 
     const grid = document.createElement('div');
-    grid.className = 'bench-collection';
+    grid.className = 'bench-collection bench-card-collection';
+    this.installCollectionDropTarget(grid);
     if (wands.collection.length === 0) {
       const none = document.createElement('div');
       none.className = 'bench-empty';
@@ -150,17 +160,14 @@ export class WandBench {
   }
 
   private appendReviewTools(root: HTMLElement): void {
-    this.appendSection(root, 'POTION BELT');
+    this.appendSection(root, 'STATUS POTIONS');
     const potions = document.createElement('div');
     potions.className = 'bench-collection';
     POTION_KINDS.forEach((kind) => potions.appendChild(this.makePotionTile(kind)));
     root.appendChild(potions);
 
-    this.appendSection(root, 'ELIXIR FLASK FILLS');
-    const elixirs = document.createElement('div');
-    elixirs.className = 'bench-collection';
-    ELIXIR_TESTS.forEach((elixir) => elixirs.appendChild(this.makeElixirTile(elixir)));
-    root.appendChild(elixirs);
+    this.appendSection(root, 'POTION INVENTORY');
+    this.appendFlaskInventory(root);
 
     this.appendSection(root, 'ACTIVE POWERS');
     const powers = document.createElement('div');
@@ -201,18 +208,141 @@ export class WandBench {
     return tile;
   }
 
-  private makeElixirTile(elixir: (typeof ELIXIR_TESTS)[number]): HTMLElement {
-    const icon = ELEMENT_ICON[elixir.cell] ?? 'elixirLife';
-    const tile = this.makeTestTile(icon, elixir.label);
-    tile.setAttribute('aria-label', 'Fill flask with Elixir of ' + elixir.name);
-    tile.addEventListener('click', () => {
-      const flask = this.ctx.flask.state;
-      flask.material = elixir.cell;
-      flask.count = flask.capacity;
-      this.ctx.audio.drinkPotion();
-      this.ctx.events.emit('toast', { text: 'ELIXIR OF ' + elixir.name.toUpperCase() + ' FILLS THE FLASK' });
+  private appendFlaskInventory(root: HTMLElement): void {
+    const grid = document.createElement('div');
+    grid.className = 'bench-flask-grid';
+    for (let i = 0; i < FLASK_SLOT_COUNT; i++) {
+      grid.appendChild(this.makeFlaskSlotEditor(i));
+    }
+    root.appendChild(grid);
+  }
+
+  private makeFlaskSlotEditor(index: number): HTMLElement {
+    const slot = this.ctx.flask.slots[index];
+    const card = document.createElement('div');
+    card.className = 'bench-flask-slot' + (index === this.ctx.flask.activeIndex ? ' active' : '');
+    card.dataset.benchFlaskSlot = String(index);
+
+    const head = document.createElement('div');
+    head.className = 'bench-flask-head';
+    const title = document.createElement('button');
+    title.type = 'button';
+    title.textContent = 'FLASK ' + (index + 1);
+    title.setAttribute('aria-label', 'Select flask ' + (index + 1) + ' as active');
+    title.addEventListener('click', () => {
+      this.ctx.flask.selectSlot(index);
+      this.ctx.events.emit('toast', { text: 'FLASK ' + (index + 1) + ' ACTIVE' });
+      this.render();
     });
-    return tile;
+    const key = document.createElement('span');
+    key.textContent = 'KEY ' + (index + 3);
+    head.appendChild(title);
+    head.appendChild(key);
+    card.appendChild(head);
+
+    const readout = document.createElement('div');
+    readout.className = 'bench-flask-readout';
+    readout.title = this.flaskMaterialName(slot);
+    const iconWrap = document.createElement('div');
+    iconWrap.className = 'bench-flask-icon';
+    const icon = makeIconCanvas(this.flaskIcon(slot), 3);
+    if (icon) iconWrap.appendChild(icon);
+    readout.appendChild(iconWrap);
+    card.appendChild(readout);
+
+    const controls = document.createElement('div');
+    controls.className = 'bench-flask-controls';
+
+    const select = document.createElement('select');
+    select.dataset.benchFlaskMaterial = String(index);
+    select.setAttribute('aria-label', 'Flask ' + (index + 1) + ' potion');
+    const emptyOption = document.createElement('option');
+    emptyOption.value = '';
+    emptyOption.textContent = 'Empty';
+    select.appendChild(emptyOption);
+    for (const fill of FLASK_FILL_CHOICES) {
+      const option = document.createElement('option');
+      option.value = String(fill.cell);
+      option.textContent = fill.name;
+      select.appendChild(option);
+    }
+    select.value = slot.material === null ? '' : String(slot.material);
+    select.addEventListener('change', () => {
+      const material = select.value === '' ? null : Number(select.value);
+      this.setFlaskMaterial(index, material);
+    });
+    controls.appendChild(select);
+
+    const output = document.createElement('output');
+    output.className = 'bench-flask-count';
+    output.value = String(slot.count);
+    output.textContent = this.flaskCountLabel(slot);
+    controls.appendChild(output);
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = String(slot.capacity);
+    slider.step = '25';
+    slider.value = String(slot.count);
+    slider.className = 'bench-flask-slider';
+    slider.dataset.benchFlaskCount = String(index);
+    slider.disabled = slot.material === null;
+    slider.setAttribute('aria-label', 'Flask ' + (index + 1) + ' cell count');
+    slider.addEventListener('input', () => {
+      this.setFlaskCount(index, Number(slider.value), false);
+      output.value = String(this.ctx.flask.slots[index].count);
+      output.textContent = this.flaskCountLabel(this.ctx.flask.slots[index]);
+    });
+    slider.addEventListener('change', () => this.render());
+    controls.appendChild(slider);
+    card.appendChild(controls);
+
+    return card;
+  }
+
+  private setFlaskMaterial(index: number, material: number | null): void {
+    const slot = this.ctx.flask.slots[index];
+    if (material === null) {
+      this.emptyFlaskSlot(index);
+      return;
+    }
+    const count = slot && slot.count > 0 ? slot.count : (slot?.capacity ?? 600);
+    this.ctx.flask.setSlot(index, material, count);
+    this.ctx.flask.selectSlot(index);
+    this.ctx.audio.drinkPotion();
+    this.ctx.events.emit('toast', { text: 'FLASK ' + (index + 1) + ': ' + this.flaskMaterialName(this.ctx.flask.slots[index]).toUpperCase() });
+    this.render();
+  }
+
+  private emptyFlaskSlot(index: number): void {
+    this.ctx.flask.setSlot(index, null, 0);
+    this.ctx.flask.selectSlot(index);
+    this.ctx.audio.drinkPotion();
+    this.ctx.events.emit('toast', { text: 'FLASK ' + (index + 1) + ' EMPTIED' });
+    this.render();
+  }
+
+  private setFlaskCount(index: number, count: number, rerender = true): void {
+    const slot = this.ctx.flask.slots[index];
+    if (!slot || slot.material === null) return;
+    this.ctx.flask.setSlot(index, slot.material, count);
+    this.ctx.flask.selectSlot(index);
+    if (rerender) this.render();
+  }
+
+  private flaskIcon(slot: FlaskState): string {
+    if (slot.material === null) return 'glass';
+    return ELEMENT_ICON[slot.material] ?? 'elixirLife';
+  }
+
+  private flaskMaterialName(slot: FlaskState): string {
+    if (slot.material === null || slot.count <= 0) return 'Empty';
+    return this.ctx.params.materials[slot.material]?.name ?? 'Material ' + slot.material;
+  }
+
+  private flaskCountLabel(slot: FlaskState): string {
+    return slot.count + '/' + slot.capacity;
   }
 
   private makeTestTile(iconName: string, label: string): HTMLElement {
@@ -228,12 +358,52 @@ export class WandBench {
     return tile;
   }
 
+  private installCollectionDropTarget(grid: HTMLElement): void {
+    grid.addEventListener('dragover', (event) => {
+      if (!this.dragSource) return;
+      event.preventDefault();
+      grid.classList.add('drag-over');
+    });
+    grid.addEventListener('dragleave', (event) => {
+      if (!grid.contains(event.relatedTarget as Node | null)) grid.classList.remove('drag-over');
+    });
+    grid.addEventListener('drop', (event) => {
+      event.preventDefault();
+      grid.classList.remove('drag-over');
+      if (this.dragSource?.kind !== 'slot') {
+        this.clearDragSource();
+        return;
+      }
+      this.ctx.wands.moveSlotToCollection(this.dragSource.wand, this.dragSource.slot);
+      this.ctx.audio.cardPick();
+      this.clearDragSource();
+      this.render();
+    });
+  }
+
+  private onDragStart(event: DragEvent, source: BenchDragSource): void {
+    this.dragSource = source;
+    this.heldIdx = -1;
+    event.dataTransfer?.setData('text/plain', source.id);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  }
+
+  private onDragEnd(): void {
+    this.clearDragSource();
+  }
+
+  private clearDragSource(): void {
+    this.dragSource = null;
+  }
+
   /** Slot to flash on the next render (CSS animation runs on the fresh tile). */
   private flashSlot: { w: 0 | 1; s: number } | null = null;
 
   private makeSlotTile(w: 0 | 1, s: number, id: CardId | null): HTMLElement {
     const tile = document.createElement('div');
     tile.className = 'bench-slot' + (id === null ? ' empty' : '');
+    tile.dataset.benchWand = String(w);
+    tile.dataset.benchSlot = String(s);
     if (this.flashSlot && this.flashSlot.w === w && this.flashSlot.s === s) {
       tile.classList.add('just-slotted');
     }
@@ -247,7 +417,21 @@ export class WandBench {
       cost.className = 'cost';
       cost.textContent = String(CARD_DEFS[id].manaCost);
       tile.appendChild(cost);
+      tile.draggable = true;
+      tile.addEventListener('dragstart', (event) => this.onDragStart(event, { kind: 'slot', wand: w, slot: s, id }));
+      tile.addEventListener('dragend', () => this.onDragEnd());
     }
+    tile.addEventListener('dragover', (event) => {
+      if (!this.dragSource) return;
+      event.preventDefault();
+      tile.classList.add('drag-over');
+    });
+    tile.addEventListener('dragleave', () => tile.classList.remove('drag-over'));
+    tile.addEventListener('drop', (event) => {
+      event.preventDefault();
+      tile.classList.remove('drag-over');
+      this.onSlotDrop(w, s);
+    });
     tile.addEventListener('click', () => this.onSlotClick(w, s, id));
     return tile;
   }
@@ -255,6 +439,8 @@ export class WandBench {
   private makeCollectionTile(id: CardId, i: number): HTMLElement {
     const tile = document.createElement('div');
     tile.className = 'bench-card' + (i === this.heldIdx ? ' held' : '');
+    tile.draggable = true;
+    tile.dataset.benchCollectionIndex = String(i);
     tile.title = cardTitle(id);
     const icon = makeIconCanvas(cardIconName(id), 3);
     if (icon) tile.appendChild(icon);
@@ -262,6 +448,8 @@ export class WandBench {
     cost.className = 'cost';
     cost.textContent = String(CARD_DEFS[id].manaCost);
     tile.appendChild(cost);
+    tile.addEventListener('dragstart', (event) => this.onDragStart(event, { kind: 'collection', index: i, id }));
+    tile.addEventListener('dragend', () => this.onDragEnd());
     // Click toggles 'held' — clicking the held card again puts it down.
     tile.addEventListener('click', () => {
       this.heldIdx = this.heldIdx === i ? -1 : i;
@@ -269,6 +457,23 @@ export class WandBench {
       this.render();
     });
     return tile;
+  }
+
+  private onSlotDrop(w: 0 | 1, s: number): void {
+    const source = this.dragSource;
+    if (!source) return;
+    if (source.kind === 'collection') {
+      this.ctx.wands.slotCollectionCard(source.index, w, s);
+      this.flashSlot = { w, s };
+      this.ctx.audio.cardSlot();
+    } else {
+      this.ctx.wands.swapSlots(source.wand, source.slot, w, s);
+      this.flashSlot = { w, s };
+      this.ctx.audio.cardSlot();
+    }
+    this.clearDragSource();
+    this.render();
+    this.flashSlot = null;
   }
 
   private onSlotClick(w: 0 | 1, s: number, id: CardId | null): void {

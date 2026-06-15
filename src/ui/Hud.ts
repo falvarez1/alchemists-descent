@@ -19,6 +19,7 @@ function el(id: string): HTMLElement {
 export class Hud {
   /** Last flask material rendered (undefined = never rendered), so the palette lookup runs once per change. */
   private flaskMaterial: number | null | undefined = undefined;
+  private readonly flaskSlots: Array<{ root: HTMLElement; fill: HTMLElement; count: HTMLElement }> = [];
   /** Filled hotbar tiles of the ACTIVE wand (+ costs and slot positions). */
   private hotbarSlots: Array<{ tile: HTMLElement; cost: number; slotIdx: number }> = [];
   /** The active wand's recharge bar fill (rebuilt with the hotbar). */
@@ -35,6 +36,7 @@ export class Hud {
     if (goldIcon) el('gold-chip-icon').appendChild(goldIcon);
     const tomeIcon = makeIconCanvas('tome', 2);
     if (tomeIcon) el('cards-chip-icon').appendChild(tomeIcon);
+    this.buildFlaskBelt();
 
     // Dry fire: the mana bar itself flinches red so the WHY is unmissable.
     ctx.events.on('dryFire', () => {
@@ -141,6 +143,27 @@ export class Hud {
     });
 
     el('respawn-btn').addEventListener('click', () => { ctx.audio.ensure(); ctx.playerCtl.respawn(); });
+  }
+
+  private buildFlaskBelt(): void {
+    const belt = el('flask-belt');
+    belt.replaceChildren();
+    for (let i = 0; i < this.ctx.flask.slots.length; i++) {
+      const root = document.createElement('div');
+      root.className = 'flask-slot';
+      root.title = `Flask ${i + 1}`;
+      const fill = document.createElement('div');
+      fill.className = 'flask-slot-fill';
+      const key = document.createElement('div');
+      key.className = 'flask-slot-key';
+      key.textContent = String(i + 3);
+      const count = document.createElement('div');
+      count.className = 'flask-slot-count';
+      count.textContent = '0';
+      root.append(fill, key, count);
+      belt.appendChild(root);
+      this.flaskSlots.push({ root, fill, count });
+    }
   }
 
   private showBanner(big: string, small: string): void {
@@ -274,6 +297,23 @@ export class Hud {
         const c = COLOR_FN[flask.material]();
         flaskFill.style.backgroundColor = 'rgb(' + unpackR(c) + ', ' + unpackG(c) + ', ' + unpackB(c) + ')';
         flaskFill.title = ctx.params.materials[flask.material]?.name ?? 'Unknown material';
+      }
+    }
+    for (let i = 0; i < this.flaskSlots.length; i++) {
+      const slot = ctx.flask.slots[i];
+      const rendered = this.flaskSlots[i];
+      const pct = Math.max(0, Math.min(1, slot.count / slot.capacity));
+      rendered.root.classList.toggle('active', i === ctx.flask.activeIndex);
+      rendered.fill.style.height = `${pct * 100}%`;
+      rendered.count.textContent = slot.count > 0 ? String(slot.count) : '';
+      if (slot.material === null || slot.count === 0) {
+        rendered.fill.style.backgroundColor = '';
+        rendered.root.title = `Flask ${i + 1}: Empty`;
+      } else {
+        const c = COLOR_FN[slot.material]();
+        rendered.fill.style.backgroundColor = 'rgb(' + unpackR(c) + ', ' + unpackG(c) + ', ' + unpackB(c) + ')';
+        const name = ctx.params.materials[slot.material]?.name ?? 'Unknown material';
+        rendered.root.title = `Flask ${i + 1}: ${name} (${slot.count}/${slot.capacity})`;
       }
     }
 

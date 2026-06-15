@@ -720,8 +720,7 @@ export class Levels implements LevelsApi {
     ctx.input.keys.grab = false;
     ctx.input.isDrawing = false;
     ctx.fx.hitstop = 0;
-    ctx.flask.state.material = null;
-    ctx.flask.state.count = 0;
+    ctx.flask.clearSlots();
     ctx.waves.num = 1;
     ctx.waves.active = false;
     ctx.waves.intermission = 0;
@@ -770,9 +769,18 @@ export class Levels implements LevelsApi {
         if (!this.hasCard(ctx, card)) ctx.wands.grantCard(ctx, card);
       }
     }
-    if (kit.flask) {
-      ctx.flask.state.material = kit.flask.material;
-      ctx.flask.state.count = kit.flask.material === null ? 0 : Math.max(0, Math.min(ctx.flask.state.capacity, Math.floor(kit.flask.count)));
+    if (kit.flasks) {
+      ctx.flask.clearSlots();
+      kit.flasks.forEach((flask, index) => {
+        if (!flask) return;
+        ctx.flask.setSlot(index, flask.material, flask.count);
+      });
+      const preferred = kit.activeFlaskIndex ?? kit.flasks.findIndex((flask) => flask && flask.material !== null && flask.count > 0);
+      ctx.flask.selectSlot(preferred);
+    } else if (kit.flask) {
+      ctx.flask.clearSlots();
+      ctx.flask.setSlot(0, kit.flask.material, kit.flask.count);
+      ctx.flask.selectSlot(0);
     }
   }
 

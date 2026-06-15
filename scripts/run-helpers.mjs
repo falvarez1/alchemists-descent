@@ -17,6 +17,15 @@ function appendListOption(parts, name, value) {
 }
 
 function appendFlaskOptions(parts, options) {
+  if (Array.isArray(options.flasks)) {
+    const specs = options.flasks.map((flask) => {
+      if (!flask || flask.material === null || flask.material === undefined) return 'empty';
+      return flask.count !== undefined ? `${flask.material}:${flask.count}` : String(flask.material);
+    });
+    appendOption(parts, '--flasks', specs.join(','));
+    appendOption(parts, '--active-flask', options.activeFlaskIndex !== undefined ? Number(options.activeFlaskIndex) + 1 : undefined);
+    return;
+  }
   const flask = options.flask;
   if (flask && typeof flask === 'object' && !Array.isArray(flask)) {
     const material = flask.material === null ? 'empty' : flask.material;

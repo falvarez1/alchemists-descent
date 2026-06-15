@@ -159,7 +159,7 @@ import { FocusRouter } from '@/ui/editor/FocusRouter';
 import { Keymap } from '@/ui/editor/Keymap';
 import { MenuHost } from '@/ui/editor/MenuHost';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
-import { TabView } from '@/ui/editor/Tabs';
+import { TabView, tabStripHtml, wireTabStrip } from '@/ui/editor/Tabs';
 import { renderInspectorItems } from '@/ui/editor/InspectorSchema';
 import { builderPanelHeader, normalizePanelChromeHandles } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle, createBuilderPanelRegistry } from '@/ui/editor/PanelRegistry';
@@ -1435,6 +1435,76 @@ export class Builder {
     return null;
   }
 
+  private readonly dockActive: Partial<Record<DockRegion, string>> = {};
+  private readonly dockTabStrips = new Map<DockRegion, { host: HTMLElement; wired: ReturnType<typeof wireTabStrip> | null }>();
+
+  /**
+   * VS Code-style dock tab group: when a left/right dock holds 2+ open panels,
+   * show only the active one full-height and present the rest as a tab strip.
+   * The active panel keeps its own header, so dragging it still tears off or
+   * re-docks. Single-panel docks render normally (no strip).
+   */
+  private syncDockTabs(dock: DockRegion, dockEl: HTMLElement): void {
+    const open = this.workspaceLayout.panels.filter(
+      (panel) => panel.dock === dock && panel.open && this.panelEl(panel.id) !== null,
+    );
+    // The most-recently-activated panel (opened, moved into this dock, or a
+    // clicked tab) wins; otherwise keep this dock's remembered tab; else last.
+    const globalActive = this.workspaceLayout.activePanelId ?? undefined;
+    let activeId: string | undefined;
+    if (globalActive !== undefined && open.some((panel) => panel.id === globalActive)) {
+      activeId = globalActive;
+    } else if (this.dockActive[dock] !== undefined && open.some((panel) => panel.id === this.dockActive[dock])) {
+      activeId = this.dockActive[dock];
+    } else {
+      activeId = open.at(-1)?.id;
+    }
+    this.dockActive[dock] = activeId;
+    const existing = this.dockTabStrips.get(dock) ?? null;
+    if (open.length <= 1) {
+      existing?.wired?.dispose();
+      existing?.host.remove();
+      if (existing) existing.wired = null;
+      return;
+    }
+    for (const panel of open) {
+      const el = this.panelEl(panel.id);
+      if (el) el.style.display = panel.id === activeId ? '' : 'none';
+    }
+    const group = existing ?? this.createDockTabStrip(dock);
+    const tabs = open.map((panel) => {
+      const spec = this.panelRegistry.get(panel.id);
+      return { id: panel.id, label: spec?.title ?? panel.id, closable: spec?.closePolicy !== 'required' };
+    });
+    group.host.innerHTML = tabStripHtml(tabs, activeId ?? '', { ariaLabel: `${dock} dock panels` });
+    if (dockEl.firstChild !== group.host) dockEl.insertBefore(group.host, dockEl.firstChild);
+    group.wired?.dispose();
+    const stripEl = group.host.querySelector<HTMLElement>('.editor-tabs');
+    group.wired = stripEl
+      ? wireTabStrip(stripEl, {
+          onSelect: (id) => {
+            this.dockActive[dock] = id;
+            this.workspaceLayout.activePanelId = id;
+            this.applyWorkspaceLayout();
+            this.saveWorkspacePrefs();
+          },
+          onClose: (id) => {
+            this.setWorkspacePanelOpen(id, false);
+            this.applyWorkspaceLayout();
+            this.saveWorkspacePrefs();
+          },
+        })
+      : null;
+  }
+
+  private createDockTabStrip(dock: DockRegion): { host: HTMLElement; wired: ReturnType<typeof wireTabStrip> | null } {
+    const host = document.createElement('div');
+    host.className = 'builder-dock-tabs';
+    const group: { host: HTMLElement; wired: ReturnType<typeof wireTabStrip> | null } = { host, wired: null };
+    this.dockTabStrips.set(dock, group);
+    return group;
+  }
+
   private applyWorkspaceLayout(): void {
     const left = this.el<HTMLDivElement>('builder-dock-left');
     const right = this.el<HTMLDivElement>('builder-dock-right');
@@ -1465,6 +1535,8 @@ export class Builder {
         el.style.removeProperty('z-index');
       }
     }
+    this.syncDockTabs('left', left);
+    this.syncDockTabs('right', right);
     let leftSize = this.openDockSize('left');
     let rightSize = this.openDockSize('right');
     const rootWidth = this.root.getBoundingClientRect().width || window.innerWidth;
