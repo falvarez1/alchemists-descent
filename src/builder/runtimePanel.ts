@@ -8,6 +8,7 @@ import type { RuntimeOverlayState } from '@/builder/runtimeOverlay';
 import { filterRuntimeRows } from '@/game/runtimeSnapshot';
 import { builderPanelHeader } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
+import { editorSectionHtml } from '@/ui/editor/Section';
 
 export interface RuntimePanelModel {
   snapshot: RuntimeEntitySnapshot;
@@ -18,6 +19,7 @@ export interface RuntimePanelModel {
   showFocusActions?: boolean;
   showCameraControls?: boolean;
   cameraFollowEnabled?: boolean;
+  collapsedSections?: Readonly<Record<string, boolean>>;
 }
 
 const GROUPS: RuntimeEntityGroup[] = [
@@ -69,35 +71,48 @@ export function renderRuntimePanel(model: RuntimePanelModel): string {
       <em>frame ${snapshot.frame}${snapshot.level ? ` · ${esc(snapshot.level.name)} d${snapshot.level.depth}` : ''}</em>
     </div>
     ${sourceNote ? `<div class="bo-empty b-empty brt-source-note">${esc(sourceNote)}</div>` : ''}
-    ${showCameraControls ? renderRuntimeCameraControls(model.cameraFollowEnabled === true) : ''}
+    ${showCameraControls ? renderRuntimeCameraControls(model, model.cameraFollowEnabled === true) : ''}
     <div class="brt-counts">${countCards}</div>
-    <section class="bo-section brt-particles">
-      <div class="bo-section-title">Particle Aggregate</div>
+    ${section(model, 'runtime.particles', 'Particle Aggregate', `
       ${renderParticleAggregate(snapshot)}
-    </section>
-    ${showOverlayControls ? `<section class="bo-section brt-overlays">
-      <div class="bo-section-title">Viewport Overlays</div>
+    `, 'brt-particles')}
+    ${showOverlayControls ? section(model, 'runtime.overlays', 'Viewport Overlays', `
       ${renderRuntimeOverlayControls(overlays)}
-    </section>` : ''}
+    `, 'brt-overlays') : ''}
     <div class="bo-search"><input id="brt-search" type="search" class="editor-search" spellcheck="false" placeholder="search runtime rows" value="${escAttr(model.query)}"></div>
     <div class="bo-chips">${chips}</div>
-    <section class="bo-section">
-      <div class="bo-section-title">Runtime Rows${snapshot.capped ? ' · sampled' : ''}</div>
+    ${section(model, 'runtime.rows', `Runtime Rows${snapshot.capped ? ' · sampled' : ''}`, `
       <div class="bo-rows brt-rows" role="listbox">${rowHtml}</div>
-    </section>
-    <section class="bo-section brt-detail">
-      <div class="bo-section-title">Selection</div>
+    `)}
+    ${section(model, 'runtime.selection', 'Selection', `
       ${selected ? renderRuntimeDetail(selected, showFocusActions) : snapshot.selectedMissing ? '<div class="bo-empty b-empty">Selected runtime row was removed</div>' : '<div class="bo-empty b-empty">Select a runtime row</div>'}
-    </section>`;
+    `, 'brt-detail')}`;
 }
 
-function renderRuntimeCameraControls(cameraFollowEnabled: boolean): string {
-  return `<section class="bo-section brt-camera">
+function renderRuntimeCameraControls(model: RuntimePanelModel, cameraFollowEnabled: boolean): string {
+  return section(
+    model,
+    'runtime.camera',
+    'Camera',
+    `
     <label class="brt-toggle">
       <input id="brt-follow-selected" type="checkbox"${cameraFollowEnabled ? ' checked' : ''}>
       <span>Follow Entity</span>
-    </label>
-  </section>`;
+    </label>`,
+    'brt-camera',
+  );
+}
+
+function section(model: Pick<RuntimePanelModel, 'collapsedSections'>, id: string, title: string, body: string, extraClass = ''): string {
+  return editorSectionHtml({
+    id,
+    title,
+    body,
+    className: ['bo-section', extraClass].filter(Boolean).join(' '),
+    titleClassName: 'bo-section-title',
+    bodyClassName: 'bo-section-body',
+    collapsed: model.collapsedSections?.[id] === true,
+  });
 }
 
 function runtimeEmptyRows(snapshot: RuntimeEntitySnapshot): string {

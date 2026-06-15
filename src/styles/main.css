@@ -1402,12 +1402,38 @@ body.builder-open #builder-issues { bottom: 182px; }
     text-align: left; cursor: pointer;
 }
 #builder-palette .bp-head:hover { color: #8aa0b8; background: #101822; }
+.editor-section-head {
+    width: 100%; min-width: 0; display: flex; align-items: center; gap: 5px;
+    border: 0; border-radius: 0; background: transparent; color: inherit;
+    padding: 0; text-align: left; cursor: pointer;
+}
+.editor-section-head:hover,
+.editor-section-head:focus-visible {
+    color: #8aa0b8; background: #101822; outline: none;
+}
+.editor-section-label {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.editor-section-count {
+    margin-left: auto; color: #6f839b;
+}
 .bp-chevron {
     width: 8px; flex: 0 0 8px; color: #7c90a6; font-size: 9px; line-height: 1;
 }
 .bp-chevron::before { content: "▾"; }
 .bp-section.collapsed .bp-chevron::before { content: "▸"; }
 .bp-section.collapsed .bp-section-body { display: none; }
+.editor-section.collapsed > .editor-section-head .bp-chevron::before { content: "▸"; }
+.editor-section.collapsed > .editor-section-body { display: none !important; }
+.bo-section-body,
+.bad-section-body,
+.bpd-section-body,
+.bv-group-body {
+    display: grid; gap: 5px; min-width: 0;
+}
+.bw-section-body {
+    display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
 #builder-palette .bp-tool { display: flex; align-items: center; gap: 6px; text-align: left; padding: 5px 6px; }
 #builder-palette .bp-tool.active { border-color: #4ade80; color: #d9fbe5; background: #122a1c; }
 #builder-palette .bp-glyph {
@@ -1592,8 +1618,8 @@ body.builder-open #builder-issues { bottom: 182px; }
 }
 #builder-dock-bottom #builder-assets.builder-panel,
 #builder-dock-bottom #builder-prefab-details.builder-panel {
-    flex: 1 1 0; min-width: 0; max-width: none; width: 100%; height: 100%; max-height: none;
-    border-right: 1px solid #223044; box-shadow: inset 1px 0 0 rgba(148, 163, 184, 0.08);
+    flex: 1 1 0; min-width: 0; max-width: none; width: 100%; height: auto; max-height: none;
+    border-right: 0; box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
 }
 #builder-dock-left #builder-assets.builder-panel,
 #builder-dock-right #builder-assets.builder-panel {
@@ -1621,8 +1647,8 @@ body.builder-open #builder-issues { bottom: 182px; }
     max-height: none;
 }
 #builder-dock-bottom #builder-virtual-world.builder-panel {
-    flex: 1 1 0; min-width: 0; max-width: none; width: 100%; height: 100%;
-    border-right: 1px solid #223044; box-shadow: inset 1px 0 0 rgba(148, 163, 184, 0.08);
+    flex: 1 1 0; min-width: 0; max-width: none; width: 100%; height: auto;
+    border-right: 0; box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
 }
 #builder-dock-left #builder-virtual-world.builder-panel,
 #builder-dock-right #builder-virtual-world.builder-panel {
@@ -2459,7 +2485,7 @@ body.builder-open #canvas-holder {
     box-shadow: inset 0 -3px 0 rgba(74, 222, 128, 0.72);
 }
 #builder-dock-bottom.drop-at-end {
-    box-shadow: inset -3px 0 0 rgba(74, 222, 128, 0.72);
+    box-shadow: inset 0 -3px 0 rgba(74, 222, 128, 0.72);
 }
 #builder-dock-guides {
     position: absolute; inset: 0; z-index: 75; display: none; pointer-events: none;
@@ -2519,18 +2545,26 @@ body.builder-open #canvas-holder {
 #builder-dock-left { border-right: 1px solid #1d2733; }
 #builder-dock-right { border-left: 1px solid #1d2733; overflow-y: auto; scrollbar-width: thin; }
 #builder-dock-bottom {
-    border-top: 1px solid #1d2733; display: none; overflow-x: auto; overflow-y: hidden;
-    flex-direction: row; align-items: stretch;
+    border-top: 1px solid #1d2733; display: none; overflow: hidden;
+    flex-direction: column; align-items: stretch; gap: 0;
+}
+#builder-dock-bottom .builder-dock-tabs,
+#builder-dock-left .builder-dock-tabs,
+#builder-dock-right .builder-dock-tabs {
+    flex: 0 0 auto; min-width: 0;
 }
 #builder-dock-bottom .builder-panel {
-    min-width: 220px; max-width: none; height: 100%; overflow: auto;
-    border-right: 1px solid #223044; box-shadow: inset 1px 0 0 rgba(148, 163, 184, 0.08);
+    flex: 1 1 auto; min-width: 0; max-width: none; width: 100%; min-height: 0; height: auto; overflow: auto;
+    border-top: 1px solid #223044; box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+}
+#builder-dock-bottom:not(.has-tabs) > .builder-panel {
+    border-top: 0;
 }
 #builder-dock-bottom #builder-issues {
-    width: min(520px, 70vw); min-width: min(420px, 70vw); max-height: none;
+    width: auto; min-width: 0; max-height: none;
 }
 #builder-dock-bottom .builder-panel.drop-before {
-    box-shadow: inset 3px 0 0 rgba(74, 222, 128, 0.86), inset 1px 0 0 rgba(148, 163, 184, 0.08);
+    box-shadow: inset 0 3px 0 rgba(74, 222, 128, 0.86), inset 0 1px 0 rgba(148, 163, 184, 0.08);
 }
 #builder-stage {
     position: relative; min-width: 0; min-height: 0; overflow: hidden;
@@ -2563,7 +2597,7 @@ body.builder-open #canvas-holder {
     height: 360px; min-height: 220px; border-bottom: 1px solid #141b24;
 }
 #builder-dock-bottom #dev-console.builder-panel {
-    min-width: 360px; max-width: none; width: min(620px, 70vw);
+    flex: 1 1 auto; min-width: 0; max-width: none; width: 100%; height: auto; min-height: 0;
 }
 #builder-root #dev-console.builder-panel.floating {
     position: absolute; left: var(--builder-floating-left, 24px); right: auto;
@@ -2589,11 +2623,12 @@ body.builder-open #canvas-holder {
     background: transparent; box-shadow: none; transition: none;
 }
 #builder-palette {
-    height: 100%; padding: 8px; box-sizing: border-box;
+    height: 100%; min-height: 0; padding: 8px; box-sizing: border-box;
 }
 #builder-dock-left #builder-palette,
 #builder-dock-right #builder-palette {
-    height: auto; overflow: visible; scrollbar-gutter: auto;
+    flex: 1 1 auto; align-self: stretch; height: 100%; min-height: 0; max-height: 100%;
+    overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable;
 }
 #builder-inspector, #builder-world, #builder-matparams, #builder-proc, #builder-global, #builder-postfx {
     padding: 8px; border-bottom: 1px solid #141b24;
@@ -3174,6 +3209,9 @@ body.builder-playtest-active #mode-play-btn.active {
 #builder-root .editor-tab.active {
     color: #e0edf8; background: #0d141e;
     border-color: #2b3a4d; box-shadow: inset 0 2px 0 var(--bui-accent);
+}
+#builder-root .editor-tab.drop-before {
+    box-shadow: inset 3px 0 0 rgba(74, 222, 128, 0.86);
 }
 #builder-root .editor-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #builder-root .editor-tab-icon { flex: 0 0 auto; display: inline-flex; }

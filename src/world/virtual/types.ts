@@ -21,6 +21,7 @@ export interface VirtualWorldDef {
   tileset: HerringboneTilesetDef;
   pixelScenes: PixelScenePlacementDef[];
   materialProfile: VirtualMaterialProfile;
+  dressing: VirtualDressingProfile;
   generation: VirtualGenerationParams;
 }
 
@@ -143,6 +144,37 @@ export interface VirtualMaterialPalette {
 
 export interface VirtualMaterialProfile {
   palettes: Record<VirtualBiomeId, VirtualMaterialPalette>;
+}
+
+export interface VirtualDressingControls {
+  detailDensity: number;
+  materialRichness: number;
+  liquidRichness: number;
+  glowDensity: number;
+  floorDebris: number;
+  hangingGrowth: number;
+}
+
+export interface VirtualBiomeDressingRecipe {
+  ore: number;
+  oreDensity: number;
+  secondary: number;
+  secondaryDensity: number;
+  pocket: number;
+  pocketDensity: number;
+  liquid: number;
+  liquidDensity: number;
+  glow: number;
+  glowDensity: number;
+  rubble: number;
+  rubbleDensity: number;
+  hanging: number;
+  hangingDensity: number;
+}
+
+export interface VirtualDressingProfile {
+  controls: VirtualDressingControls;
+  biomes: Record<VirtualBiomeId, VirtualBiomeDressingRecipe>;
 }
 
 export interface VirtualGenerationParams {

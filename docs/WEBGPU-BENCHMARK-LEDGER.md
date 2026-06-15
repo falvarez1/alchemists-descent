@@ -258,3 +258,79 @@ Notes:
   assertions.
 - The raw artifacts disclose the shared dirty checkout through `git.dirty` and
   full `git.status` metadata.
+
+## Phase 3 - WebGPU Presentation Shell
+
+Task: add a boot-gated `WebGPURenderer` presentation backend with a TSL
+`RenderPipeline` post chain while keeping the existing WebGL renderer as the
+default fallback.
+
+Commit: `f0859d8` plus working-tree fixes for WebGPU init fallback,
+independent bloom/lens controls, and rollback of the failed widened-bloom
+tuning.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for Phases 0-2.
+
+Requested backend: probe boots both `renderBackend=webgl` and
+`renderBackend=webgpu`.
+
+Actual backend: WebGL variants report `WebGLRenderBackend` / WebGL2; WebGPU
+variants report `WebGPURenderBackend` / actual WebGPU.
+
+Scene / seed / resolution: deterministic Phase 3 fixed presentation scene,
+`1050x714` renderer canvas, screenshots captured at `898x611` CSS pixels.
+
+Command:
+
+```powershell
+npm run probe:webgpu-presentation
+```
+
+Baseline: Phase 2 default WebGL renderer. The Phase 3 probe compares WebGL and
+WebGPU in the same script with the same deterministic scene and records post
+off/on screenshots plus PerfHud `gl` samples.
+
+After: WebGPU boot rendered nonblank pixels, reported actual WebGPU, preserved
+one direct `#canvas-holder` canvas, kept finite mouse input state, and executed
+the TSL post chain. The kept probe artifact is
+`verify-out/webgpu-presentation/probe-1781510673320.json`.
+
+Expected result: actual WebGPU presentation, expected canvas size, stable input
+ownership, explicit output-transform contract, and no default post-on
+presentation regression large enough to block a boot-gated shell.
+
+Actual result: keep boot-gated with warnings. Post-off screenshot parity
+improved after the UV-flip fix to mean channel delta `3.404` with `18.10%`
+differing pixels. Post-on mean channel delta was `12.367`; the difference is
+documented as the Phase 3 single-pass TSL bloom approximation. WebGPU post-on
+`gl` measured `0.665 ms` versus WebGL `0.637 ms` (+4.3%). WebGPU post-off
+measured `0.600 ms` versus WebGL `0.451 ms` (+33.0%), so the no-post path
+remains a warning and the backend stays explicit/boot-gated rather than
+default. The probe also verified `postFx.bloomEnabled=true` remains active when
+`postFx.lensEnabled=false` and simulated WebGPU init failure falls back to
+WebGL2 on the same canvas with finite input state.
+
+Visual/quality evidence:
+
+- `verify-out/webgpu-presentation/webgl-post-off-1781510673320.png`
+- `verify-out/webgpu-presentation/webgpu-post-off-1781510673320.png`
+- `verify-out/webgpu-presentation/webgl-post-on-1781510673320.png`
+- `verify-out/webgpu-presentation/webgpu-post-on-1781510673320.png`
+- `verify-out/webgpu-presentation/webgpu-bloom-on-lens-off-1781510673320.png`
+- `verify-out/webgpu-presentation/webgpu-init-fallback-1781510673320.png`
+
+Decision: keep boot-gated. Do not make WebGPU presentation default from this
+phase alone. A wider TSL bloom kernel was attempted and rolled back because it
+did not materially improve visual parity and worsened the `gl` bucket.
+
+Notes:
+
+- Output contract: `docs/WEBGPU-PRESENTATION-CONTRACT.md`.
+- `renderBackend=auto` remains on WebGL during Phase 3; WebGPU is entered only
+  through an explicit boot-time request.
+- Validation passed: `node --check scripts/probe-webgpu-presentation.mjs`,
+  `npm run typecheck`, `npm run lint`, and
+  `npm run probe:webgpu-presentation`.
+- The passing probe artifact records a dirty checkout because the external
+  `f0859d8` checkpoint preceded the local post-review fixes.

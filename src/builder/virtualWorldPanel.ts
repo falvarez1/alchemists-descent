@@ -6,6 +6,7 @@ import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 import {
   biomeIndexFromId,
   createDefaultVirtualWorldDef,
+  createDefaultDressingProfile,
   TsWorkerBackend,
   WasmBackend,
   WebGpuPreviewBackend,
@@ -22,6 +23,7 @@ type VirtualWorldProfileId = 'global' | string;
 type VirtualWorldStatus = 'idle' | 'generating' | 'ready' | 'stale' | 'canceled' | 'error';
 type CaveStylePresetId = 'structured' | 'natural' | 'wild' | 'custom';
 type GenerationParams = VirtualWorldDef['generation'];
+type DressingControls = VirtualWorldDef['dressing']['controls'];
 
 interface CachedPreviewChunk {
   chunk: TransferableVirtualChunk;
@@ -205,6 +207,79 @@ const PROFILE_GENERATION_PRESETS: Record<BiomeId, Partial<GenerationParams>> = {
     noiseThreshold: 0.53,
   },
 };
+const DRESSING_DEFAULTS: DressingControls = {
+  detailDensity: 1,
+  materialRichness: 1,
+  liquidRichness: 1,
+  glowDensity: 1,
+  floorDebris: 1,
+  hangingGrowth: 1,
+};
+const PROFILE_DRESSING_PRESETS: Record<BiomeId, Partial<DressingControls>> = {
+  earthen: {
+    materialRichness: 1,
+    liquidRichness: 0.75,
+    glowDensity: 0.78,
+    floorDebris: 1.05,
+    hangingGrowth: 0.85,
+  },
+  fungal: {
+    materialRichness: 0.82,
+    liquidRichness: 1.05,
+    glowDensity: 1.45,
+    floorDebris: 1.2,
+    hangingGrowth: 1.5,
+  },
+  frozen: {
+    materialRichness: 1.05,
+    liquidRichness: 0.45,
+    glowDensity: 1.1,
+    floorDebris: 1,
+    hangingGrowth: 0.52,
+  },
+  flooded: {
+    materialRichness: 0.72,
+    liquidRichness: 1.65,
+    glowDensity: 0.95,
+    floorDebris: 1.25,
+    hangingGrowth: 1.55,
+  },
+  timber: {
+    materialRichness: 0.9,
+    liquidRichness: 0.55,
+    glowDensity: 0.75,
+    floorDebris: 1.45,
+    hangingGrowth: 1.35,
+  },
+  crystal: {
+    materialRichness: 1.35,
+    liquidRichness: 0.45,
+    glowDensity: 1.55,
+    floorDebris: 0.8,
+    hangingGrowth: 1.12,
+  },
+  scorched: {
+    materialRichness: 1.12,
+    liquidRichness: 0.7,
+    glowDensity: 0.72,
+    floorDebris: 1.28,
+    hangingGrowth: 0.18,
+  },
+  volcanic: {
+    materialRichness: 1.05,
+    liquidRichness: 1.45,
+    glowDensity: 1.15,
+    floorDebris: 0.9,
+    hangingGrowth: 0.18,
+  },
+  gilded: {
+    materialRichness: 1.75,
+    liquidRichness: 0.78,
+    glowDensity: 1.15,
+    floorDebris: 0.82,
+    hangingGrowth: 0.42,
+  },
+};
 
 export class VirtualWorldPanel {
   private readonly canvas: HTMLCanvasElement;
@@ -339,6 +414,13 @@ export class VirtualWorldPanel {
         ${this.sliderHtml('surface-cover', 'surface cover', def.generation.surfaceCover, 0, 1, 0.01)}
         ${this.sliderHtml('surface-depth', 'cap depth', def.generation.surfaceDepth, 0, 6, 1)}
         ${this.sliderHtml('vegetation-density', 'vegetation', def.generation.vegetationDensity, 0, 1, 0.01)}
+        <div class="vw-subtitle">Dressing</div>
+        ${this.sliderHtml('detail-density', 'detail density', def.dressing.controls.detailDensity, 0, 2, 0.01)}
+        ${this.sliderHtml('material-richness', 'ore + veins', def.dressing.controls.materialRichness, 0, 2, 0.01)}
+        ${this.sliderHtml('liquid-richness', 'liquid pockets', def.dressing.controls.liquidRichness, 0, 2, 0.01)}
+        ${this.sliderHtml('glow-density', 'glow accents', def.dressing.controls.glowDensity, 0, 2, 0.01)}
+        ${this.sliderHtml('floor-debris', 'floor debris', def.dressing.controls.floorDebris, 0, 2, 0.01)}
+        ${this.sliderHtml('hanging-growth', 'hanging growth', def.dressing.controls.hangingGrowth, 0, 2, 0.01)}
         <details class="vw-advanced">
           <summary>Advanced</summary>
           ${this.sliderHtml('base-cell-size', 'cell grain', def.generation.baseCellSize, 1, 4, 1)}
@@ -460,7 +542,7 @@ export class VirtualWorldPanel {
       });
     }
     this.must<HTMLButtonElement>('#vw-reset-generation').addEventListener('click', () => {
-      this.mutateDef((def) => resetProfileGeneration(def, this.selectedProfile));
+      this.mutateDef((def) => resetProfileTuning(def, this.selectedProfile));
       this.renderControls();
     });
     this.must<HTMLButtonElement>('#vw-generate').addEventListener('click', () => void this.generateWindow());
@@ -493,6 +575,12 @@ export class VirtualWorldPanel {
       'surface-cover': def.generation.surfaceCover,
       'surface-depth': def.generation.surfaceDepth,
       'vegetation-density': def.generation.vegetationDensity,
+      'detail-density': def.dressing.controls.detailDensity,
+      'material-richness': def.dressing.controls.materialRichness,
+      'liquid-richness': def.dressing.controls.liquidRichness,
+      'glow-density': def.dressing.controls.glowDensity,
+      'floor-debris': def.dressing.controls.floorDebris,
+      'hanging-growth': def.dressing.controls.hangingGrowth,
       'edge-roughness': def.generation.edgeRoughness,
       'pocket-density': def.generation.pocketDensity,
       'crack-density': def.generation.crackDensity,
@@ -525,6 +613,12 @@ export class VirtualWorldPanel {
       else if (id === 'surface-cover') def.generation.surfaceCover = next;
       else if (id === 'surface-depth') def.generation.surfaceDepth = Math.round(next);
       else if (id === 'vegetation-density') def.generation.vegetationDensity = next;
+      else if (id === 'detail-density') def.dressing.controls.detailDensity = next;
+      else if (id === 'material-richness') def.dressing.controls.materialRichness = next;
+      else if (id === 'liquid-richness') def.dressing.controls.liquidRichness = next;
+      else if (id === 'glow-density') def.dressing.controls.glowDensity = next;
+      else if (id === 'floor-debris') def.dressing.controls.floorDebris = next;
+      else if (id === 'hanging-growth') def.dressing.controls.hangingGrowth = next;
       else if (id === 'edge-roughness') def.generation.edgeRoughness = next;
       else if (id === 'pocket-density') def.generation.pocketDensity = next;
       else if (id === 'crack-density') def.generation.crackDensity = next;
@@ -941,7 +1035,7 @@ export class VirtualWorldPanel {
   private currentDef(): VirtualWorldDef {
     const existing = this.defs.get(this.selectedProfile);
     if (existing) {
-      normalizeGeneration(existing);
+      normalizeVirtualDef(existing);
       return existing;
     }
     const def = createDefaultVirtualWorldDef(this.profileSeed(this.selectedProfile));
@@ -949,7 +1043,7 @@ export class VirtualWorldPanel {
     def.name = this.selectedProfile === 'global' ? 'Global Virtual World' : `${LEVELS[this.selectedProfile]?.name ?? this.selectedProfile} Virtual World`;
     const level = LEVELS[this.selectedProfile];
     if (level) applyVirtualLevelProfile(def, level);
-    normalizeGeneration(def);
+    normalizeVirtualDef(def);
     this.defs.set(this.selectedProfile, def);
     return def;
   }
@@ -1057,10 +1151,32 @@ export class VirtualWorldPanel {
   }
 }
 
+function normalizeVirtualDef(def: VirtualWorldDef): void {
+  normalizeGeneration(def);
+  normalizeDressing(def);
+}
+
 function normalizeGeneration(def: VirtualWorldDef): void {
   const generation = def.generation as GenerationParams & Partial<Record<keyof GenerationParams, number>>;
   for (const [key, fallback] of Object.entries(GENERATION_DEFAULTS) as Array<[keyof GenerationParams, number]>) {
     if (!Number.isFinite(generation[key])) generation[key] = fallback;
+  }
+}
+
+function normalizeDressing(def: VirtualWorldDef): void {
+  if (!def.dressing) def.dressing = createDefaultDressingProfile();
+  const fallback = createDefaultDressingProfile();
+  def.dressing.biomes = {
+    ...fallback.biomes,
+    ...(def.dressing.biomes ?? {}),
+  };
+  def.dressing.controls = {
+    ...DRESSING_DEFAULTS,
+    ...(def.dressing.controls ?? {}),
+  };
+  for (const [key, fallbackValue] of Object.entries(DRESSING_DEFAULTS) as Array<[keyof DressingControls, number]>) {
+    const value = def.dressing.controls[key];
+    def.dressing.controls[key] = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : fallbackValue;
   }
 }
 
@@ -1072,11 +1188,12 @@ function applyVirtualLevelProfile(def: VirtualWorldDef, level: LevelDef): void {
   const biome = level.biome as VirtualBiomeId;
   def.name = `${level.name} Virtual World`;
   def.map.cells.fill(biomeIndexFromId(biome));
-  resetProfileGeneration(def, level.id);
+  resetProfileTuning(def, level.id);
 }
 
-function resetProfileGeneration(def: VirtualWorldDef, profile: VirtualWorldProfileId): void {
+function resetProfileTuning(def: VirtualWorldDef, profile: VirtualWorldProfileId): void {
   Object.assign(def.generation, generationDefaultsForProfile(profile));
+  Object.assign(def.dressing.controls, dressingDefaultsForProfile(profile));
 }
 
 function generationDefaultsForProfile(profile: VirtualWorldProfileId): GenerationParams {
@@ -1084,6 +1201,14 @@ function generationDefaultsForProfile(profile: VirtualWorldProfileId): Generatio
   return {
     ...GENERATION_DEFAULTS,
     ...(level ? PROFILE_GENERATION_PRESETS[level.biome] : {}),
+  };
+}
+
+function dressingDefaultsForProfile(profile: VirtualWorldProfileId): DressingControls {
+  const level = LEVELS[profile];
+  return {
+    ...DRESSING_DEFAULTS,
+    ...(level ? PROFILE_DRESSING_PRESETS[level.biome] : {}),
   };
 }
 

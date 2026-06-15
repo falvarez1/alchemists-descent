@@ -3,10 +3,12 @@ import type { AssetDeletePlan, AssetRecord } from '@/builder/assets/AssetTypes';
 import type { ContentItem } from '@/content/types';
 import { builderPanelHeader } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
+import { editorSectionHtml } from '@/ui/editor/Section';
 
 export interface AssetDetailModel {
   asset: AssetRecord | null;
   deletePlan?: AssetDeletePlan;
+  collapsedSections?: Readonly<Record<string, boolean>>;
 }
 
 export function renderAssetDetailPanel(model: AssetDetailModel): string {
@@ -57,8 +59,7 @@ export function renderAssetDetailPanel(model: AssetDetailModel): string {
       <button type="button" class="b-danger" data-asset-action="delete" data-asset-id="${escAttr(asset.assetId)}" ${model.deletePlan?.allowed === false ? 'disabled' : ''}>Delete</button>
     </div>
     ${deleteReasons}
-    <section class="bad-section">
-      <div class="bad-section-title">Metadata</div>
+    ${section(model, 'assetDetails.metadata', 'Metadata', `
       ${metaRow('Kind', asset.kind)}
       ${metaRow('Origin', asset.origin)}
       ${metaRow('Folder', asset.folder)}
@@ -67,40 +68,48 @@ export function renderAssetDetailPanel(model: AssetDetailModel): string {
       ${metaRow('Size', `${asset.sizeBytes} bytes`)}
       ${metaRow('Signature', asset.contentSignature)}
       <div class="bad-tags">${asset.tags.map((tag) => `<span>${esc(tag)}</span>`).join('')}</div>
-    </section>
-    ${content ? renderContentSection(content) : ''}
-    <section class="bad-section">
-      <div class="bad-section-title">Validation</div>
+    `)}
+    ${content ? renderContentSection(model, content) : ''}
+    ${section(model, 'assetDetails.validation', 'Validation', `
       <div class="bad-state ${asset.validation.state}">${esc(asset.validation.state.toUpperCase())}</div>
       ${validation}
-    </section>
-    <section class="bad-section">
-      <div class="bad-section-title">Dependencies</div>
+    `)}
+    ${section(model, 'assetDetails.dependencies', 'Dependencies', `
       ${dependencies}
-    </section>
-    <section class="bad-section">
-      <div class="bad-section-title">Usages</div>
+    `)}
+    ${section(model, 'assetDetails.usages', 'Usages', `
       ${usages}
-    </section>`;
+    `)}`;
 }
 
-function renderContentSection(content: ContentItem): string {
+function renderContentSection(model: AssetDetailModel, content: ContentItem): string {
   const deps = content.dependencies.length > 0
     ? content.dependencies.map((dep) => `<div class="bad-row">
         <span>${esc(dep.kind)}:${esc(dep.id)}</span><b>${esc(dep.reason)}</b>
       </div>`).join('')
     : '<div class="bad-message ok">No content dependencies</div>';
-  return `<section class="bad-section">
-    <div class="bad-section-title">Content</div>
+  return section(model, 'assetDetails.content', 'Content', `
     ${metaRow('Status', content.status)}
     ${metaRow('Source', content.source)}
     <div class="bad-message">${esc(content.description)}</div>
     ${deps}
-  </section>`;
+  `);
 }
 
 function metaRow(label: string, value: string): string {
   return `<div class="bad-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
+}
+
+function section(model: AssetDetailModel, id: string, title: string, body: string): string {
+  return editorSectionHtml({
+    id,
+    title,
+    body,
+    className: 'bad-section',
+    titleClassName: 'bad-section-title',
+    bodyClassName: 'bad-section-body',
+    collapsed: model.collapsedSections?.[id] === true,
+  });
 }
 
 function canDuplicate(asset: AssetRecord): boolean {

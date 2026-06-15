@@ -4,6 +4,7 @@ import type {
   HerringboneTileDef,
   TileAnchor,
   TileCarveInstruction,
+  VirtualBiomeDressingRecipe,
   VirtualBiomeId,
   VirtualChunk,
   VirtualWorldDef,
@@ -58,6 +59,7 @@ export function generateVirtualChunk(def: VirtualWorldDef, cx: number, cy: numbe
   smoothTerrain(def, scratch);
   roundCaveCorners(def, scratch, biomeAt);
   dressSurfaceTerrain(def, scratch, biomeAt);
+  dressBiomeFeatures(def, scratch, biomeAt);
   sealOuterBorder(def, scratch);
 
   const types = new Uint8Array(size * size);
@@ -532,6 +534,398 @@ function dressSurfaceTerrain(
       }
     }
   }
+}
+
+function dressBiomeFeatures(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  if (!def.dressing) return;
+  dressMaterialVeins(def, scratch, biomeAt);
+  dressMaterialPockets(def, scratch, biomeAt);
+  dressFloorDebris(def, scratch, biomeAt);
+  dressHangingGrowth(def, scratch, biomeAt);
+  dressLiquidBasins(def, scratch, biomeAt);
+  dressGlowAccents(def, scratch, biomeAt);
+}
+
+function dressMaterialVeins(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  const detail = dressingControl(def, 'detailDensity');
+  const richness = dressingControl(def, 'materialRichness');
+  if (detail <= 0 || richness <= 0) return;
+
+  const spacing = 58;
+  const reach = 92;
+  const gx0 = Math.floor((scratch.originX - reach) / spacing);
+  const gy0 = Math.floor((scratch.originY - reach) / spacing);
+  const gx1 = Math.ceil((scratch.originX + scratch.size + reach) / spacing);
+  const gy1 = Math.ceil((scratch.originY + scratch.size + reach) / spacing);
+  for (let gy = gy0; gy <= gy1; gy++) {
+    for (let gx = gx0; gx <= gx1; gx++) {
+      const wx = Math.floor((gx + 0.16 + unitHash2i(def.seed ^ 0x48bf3a17, gx, gy) * 0.68) * spacing);
+      const wy = Math.floor((gy + 0.16 + unitHash2i(def.seed ^ 0x1d91e6af, gx, gy) * 0.68) * spacing);
+      const biome = biomeAt(wx, wy);
+      const recipe = dressingRecipe(def, biome);
+      const materialRoll = unitHash2i(def.seed ^ 0xf1987a91, gx, gy);
+      const useSecondary =
+        recipe.secondaryDensity > 0 &&
+        materialRoll < recipe.secondaryDensity / Math.max(0.001, recipe.oreDensity + recipe.secondaryDensity);
+      const density = clamp01((useSecondary ? recipe.secondaryDensity : recipe.oreDensity) * richness * detail);
+      if (unitHash2i(def.seed ^ 0x5d2f6d37, gx, gy) > density * 0.18) continue;
+      const material = useSecondary ? recipe.secondary : recipe.ore;
+      const angle = unitHash2i(def.seed ^ 0x8f4f3f47, gx, gy) * Math.PI * 2;
+      const length = 22 + unitHash2i(def.seed ^ 0x9fb21c69, gx, gy) * 56;
+      const radius = 1.1 + unitHash2i(def.seed ^ 0x747c15df, gx, gy) * (useSecondary ? 1.6 : 1.2);
+      paintWanderingVein(def, scratch, biomeAt, wx, wy, angle, length, radius, material);
+    }
+  }
+}
+
+function paintWanderingVein(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+  startX: number,
+  startY: number,
+  angle: number,
+  length: number,
+  radius: number,
+  material: number,
+): void {
+  const steps = Math.max(5, Math.ceil(length / 4));
+  let x = startX;
+  let y = startY;
+  const seed = def.seed ^ 0xb3c41d7a ^ material;
+  for (let step = 0; step <= steps; step++) {
+    const t = step / steps;
+    const wobble = signedUnitHash2i(seed, Math.floor(startX / 4) + step, Math.floor(startY / 4)) * 0.72;
+    const localAngle = angle + wobble + Math.sin(t * Math.PI * 2 + startX * 0.013) * 0.25;
+    x += Math.cos(localAngle) * 4;
+    y += Math.sin(localAngle) * 3;
+    paintTerrainDisc(def, scratch, biomeAt, x, y, radius * (0.8 + Math.sin(t * Math.PI) * 0.45), material);
+  }
+}
+
+function dressMaterialPockets(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  const detail = dressingControl(def, 'detailDensity');
+  const richness = dressingControl(def, 'materialRichness');
+  if (detail <= 0 || richness <= 0) return;
+
+  const spacing = 64;
+  const reach = 28;
+  const gx0 = Math.floor((scratch.originX - reach) / spacing);
+  const gy0 = Math.floor((scratch.originY - reach) / spacing);
+  const gx1 = Math.ceil((scratch.originX + scratch.size + reach) / spacing);
+  const gy1 = Math.ceil((scratch.originY + scratch.size + reach) / spacing);
+  for (let gy = gy0; gy <= gy1; gy++) {
+    for (let gx = gx0; gx <= gx1; gx++) {
+      const wx = Math.floor((gx + 0.18 + unitHash2i(def.seed ^ 0xe6217d21, gx, gy) * 0.64) * spacing);
+      const wy = Math.floor((gy + 0.18 + unitHash2i(def.seed ^ 0x1128a3bd, gx, gy) * 0.64) * spacing);
+      const biome = biomeAt(wx, wy);
+      const recipe = dressingRecipe(def, biome);
+      const density = clamp01(recipe.pocketDensity * richness * detail);
+      if (unitHash2i(def.seed ^ 0x66f0b67d, gx, gy) > density * 0.13) continue;
+      const rx = 3 + unitHash2i(def.seed ^ 0x4cd41233, gx, gy) * 10;
+      const ry = 2 + unitHash2i(def.seed ^ 0xb07a6f19, gx, gy) * 7;
+      paintTerrainEllipse(def, scratch, biomeAt, wx, wy, rx, ry, recipe.pocket);
+    }
+  }
+}
+
+function dressFloorDebris(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  const detail = dressingControl(def, 'detailDensity');
+  const debris = dressingControl(def, 'floorDebris');
+  if (detail <= 0 || debris <= 0) return;
+
+  for (let y = 2; y < scratch.size - 3; y += 2) {
+    const wy = scratch.originY + y;
+    for (let x = 1; x < scratch.size - 1; x += 2) {
+      const i = x + y * scratch.size;
+      if (!isTerrainSolid(scratch.types[i]) || scratch.types[i - scratch.size] !== Cell.Empty) continue;
+      const wx = scratch.originX + x;
+      const biome = biomeAt(wx, wy);
+      const recipe = dressingRecipe(def, biome);
+      const density = clamp01(recipe.rubbleDensity * debris * detail);
+      if (unitHash2i(def.seed ^ 0x72bd61d5, Math.floor(wx / 3), Math.floor(wy / 3)) > density * 0.18) continue;
+      const width = 1 + Math.floor(unitHash2i(def.seed ^ 0x9a3511fd, wx, wy) * 4);
+      for (let dx = -width; dx <= width; dx++) {
+        const xx = x + dx;
+        if (xx <= 0 || xx >= scratch.size - 1) continue;
+        const ii = xx + y * scratch.size;
+        if (!isTerrainSolid(scratch.types[ii]) || scratch.types[ii - scratch.size] !== Cell.Empty) continue;
+        const worldX = scratch.originX + xx;
+        scratch.types[ii] = recipe.rubble;
+        scratch.colors[ii] = materialColor(def, biome, recipe.rubble, worldX, wy);
+      }
+    }
+  }
+}
+
+function dressHangingGrowth(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  const detail = dressingControl(def, 'detailDensity');
+  const hanging = dressingControl(def, 'hangingGrowth');
+  if (detail <= 0 || hanging <= 0) return;
+
+  for (let y = 2; y < scratch.size - 8; y += 2) {
+    const wy = scratch.originY + y;
+    for (let x = 1; x < scratch.size - 1; x += 3) {
+      const i = x + y * scratch.size;
+      if (scratch.types[i] !== Cell.Empty || !isTerrainSolid(scratch.types[i - scratch.size])) continue;
+      const wx = scratch.originX + x;
+      const biome = biomeAt(wx, wy);
+      const recipe = dressingRecipe(def, biome);
+      const density = clamp01(recipe.hangingDensity * hanging * detail);
+      if (unitHash2i(def.seed ^ 0xb67db631, Math.floor(wx / 3), Math.floor(wy / 3)) > density * 0.12) continue;
+      const length = 2 + Math.floor(unitHash2i(def.seed ^ 0xf6249a83, wx, wy) * 6);
+      for (let d = 0; d < length; d++) {
+        const yy = y + d;
+        const ii = x + yy * scratch.size;
+        if (yy >= scratch.size - 1 || scratch.types[ii] !== Cell.Empty) break;
+        const worldY = scratch.originY + yy;
+        scratch.types[ii] = recipe.hanging;
+        scratch.colors[ii] = materialColor(def, biome, recipe.hanging, wx, worldY);
+      }
+    }
+  }
+}
+
+function dressLiquidBasins(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  const detail = dressingControl(def, 'detailDensity');
+  const liquids = dressingControl(def, 'liquidRichness');
+  if (detail <= 0 || liquids <= 0) return;
+
+  for (let y = 3; y < scratch.size - 3; y += 4) {
+    const wy = scratch.originY + y;
+    for (let x = 4; x < scratch.size - 4; x += 5) {
+      const i = x + y * scratch.size;
+      if (scratch.types[i] !== Cell.Empty || !isTerrainSolid(scratch.types[i + scratch.size])) continue;
+      if (scratch.types[i - scratch.size] !== Cell.Empty) continue;
+      const wx = scratch.originX + x;
+      const biome = biomeAt(wx, wy);
+      const recipe = dressingRecipe(def, biome);
+      const density = clamp01(recipe.liquidDensity * liquids * detail);
+      if (unitHash2i(def.seed ^ 0xafca7d55, Math.floor(wx / 5), Math.floor(wy / 5)) > density * 0.045) continue;
+      const width = 2 + Math.floor(unitHash2i(def.seed ^ 0x49b7a42d, wx, wy) * 7);
+      for (let dx = -width; dx <= width; dx++) {
+        const xx = x + dx;
+        const taper = Math.abs(dx) / Math.max(1, width);
+        if (xx <= 0 || xx >= scratch.size - 1) continue;
+        if (taper > 0.8 && unitHash2i(def.seed ^ 0x19a7b93f, wx + dx, wy) > 0.45) continue;
+        const ii = xx + y * scratch.size;
+        if (scratch.types[ii] !== Cell.Empty || !isTerrainSolid(scratch.types[ii + scratch.size])) continue;
+        const worldX = scratch.originX + xx;
+        scratch.types[ii] = recipe.liquid;
+        scratch.colors[ii] = materialColor(def, biome, recipe.liquid, worldX, wy);
+      }
+    }
+  }
+}
+
+function dressGlowAccents(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  const detail = dressingControl(def, 'detailDensity');
+  const glow = dressingControl(def, 'glowDensity');
+  if (detail <= 0 || glow <= 0) return;
+
+  for (let y = 2; y < scratch.size - 3; y += 3) {
+    const wy = scratch.originY + y;
+    for (let x = 2; x < scratch.size - 2; x += 3) {
+      const i = x + y * scratch.size;
+      if (scratch.types[i] !== Cell.Empty) continue;
+      const floor = isTerrainSolid(scratch.types[i + scratch.size]);
+      const wall = isTerrainSolid(scratch.types[i - 1]) || isTerrainSolid(scratch.types[i + 1]);
+      const ceiling = isTerrainSolid(scratch.types[i - scratch.size]);
+      if (!floor && !wall && !ceiling) continue;
+      const wx = scratch.originX + x;
+      const biome = biomeAt(wx, wy);
+      const recipe = dressingRecipe(def, biome);
+      const density = clamp01(recipe.glowDensity * glow * detail);
+      const exposurePenalty = floor ? 1 : wall ? 0.62 : 0.46;
+      if (unitHash2i(def.seed ^ 0xc2b24165, Math.floor(wx / 3), Math.floor(wy / 3)) > density * 0.055 * exposurePenalty) {
+        continue;
+      }
+      scratch.types[i] = recipe.glow;
+      scratch.colors[i] = materialColor(def, biome, recipe.glow, wx, wy);
+    }
+  }
+}
+
+function paintTerrainDisc(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+  wx: number,
+  wy: number,
+  radius: number,
+  material: number,
+): void {
+  const cx = Math.round(wx - scratch.originX);
+  const cy = Math.round(wy - scratch.originY);
+  const r = Math.max(1, Math.ceil(radius));
+  const r2 = radius * radius;
+  for (let y = cy - r; y <= cy + r; y++) {
+    if (y < 1 || y >= scratch.size - 1) continue;
+    const worldY = scratch.originY + y;
+    for (let x = cx - r; x <= cx + r; x++) {
+      if (x < 1 || x >= scratch.size - 1) continue;
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy > r2) continue;
+      const i = x + y * scratch.size;
+      if (!isTerrainSolid(scratch.types[i])) continue;
+      const worldX = scratch.originX + x;
+      const biome = biomeAt(worldX, worldY);
+      scratch.types[i] = material;
+      scratch.colors[i] = materialColor(def, biome, material, worldX, worldY);
+    }
+  }
+}
+
+function paintTerrainEllipse(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+  wx: number,
+  wy: number,
+  rx: number,
+  ry: number,
+  material: number,
+): void {
+  const cx = Math.round(wx - scratch.originX);
+  const cy = Math.round(wy - scratch.originY);
+  const xRad = Math.ceil(rx);
+  const yRad = Math.ceil(ry);
+  for (let y = cy - yRad; y <= cy + yRad; y++) {
+    if (y < 1 || y >= scratch.size - 1) continue;
+    const worldY = scratch.originY + y;
+    for (let x = cx - xRad; x <= cx + xRad; x++) {
+      if (x < 1 || x >= scratch.size - 1) continue;
+      const nx = (x - cx) / Math.max(1, rx);
+      const ny = (y - cy) / Math.max(1, ry);
+      if (nx * nx + ny * ny > 1) continue;
+      const i = x + y * scratch.size;
+      if (!isTerrainSolid(scratch.types[i])) continue;
+      const worldX = scratch.originX + x;
+      const biome = biomeAt(worldX, worldY);
+      scratch.types[i] = material;
+      scratch.colors[i] = materialColor(def, biome, material, worldX, worldY);
+    }
+  }
+}
+
+function isTerrainSolid(type: number): boolean {
+  return (
+    type === Cell.Wall ||
+    type === Cell.Stone ||
+    type === Cell.Ice ||
+    type === Cell.Moss ||
+    type === Cell.Fungus ||
+    type === Cell.Glowshroom ||
+    type === Cell.Crystal ||
+    type === Cell.Glass ||
+    type === Cell.Wood ||
+    type === Cell.Metal
+  );
+}
+
+function dressingRecipe(def: VirtualWorldDef, biome: VirtualBiomeId): VirtualBiomeDressingRecipe {
+  return def.dressing.biomes[biome] ?? def.dressing.biomes.earthen;
+}
+
+function dressingControl(def: VirtualWorldDef, key: keyof VirtualWorldDef['dressing']['controls']): number {
+  const value = def.dressing.controls[key];
+  return Math.max(0, Math.min(2, Number.isFinite(value) ? value : 1));
+}
+
+function materialColor(def: VirtualWorldDef, biome: VirtualBiomeId, material: number, x: number, y: number): number {
+  const grain = 0.86 + unitHash2i(def.seed ^ 0x27731d45 ^ material, x, y) * 0.24;
+  let base: number;
+  switch (material) {
+    case Cell.Wood:
+      base = packRGB(94, 62, 34);
+      break;
+    case Cell.Gold:
+      base = packRGB(226, 176, 42);
+      break;
+    case Cell.Coal:
+      base = packRGB(34, 34, 38);
+      break;
+    case Cell.Crystal:
+      base = packRGB(95, 206, 232);
+      break;
+    case Cell.Glass:
+      base = packRGB(160, 192, 212);
+      break;
+    case Cell.Ice:
+      base = packRGB(132, 184, 222);
+      break;
+    case Cell.Snow:
+      base = packRGB(214, 224, 232);
+      break;
+    case Cell.Fungus:
+      base = packRGB(48, 156, 118);
+      break;
+    case Cell.Glowshroom:
+      base = packRGB(116, 218, 138);
+      break;
+    case Cell.Moss:
+      base = packRGB(52, 112, 48);
+      break;
+    case Cell.Vines:
+      base = packRGB(42, 138, 58);
+      break;
+    case Cell.Water:
+      base = packRGB(40, 110, 184);
+      break;
+    case Cell.Nitrogen:
+      base = packRGB(182, 232, 242);
+      break;
+    case Cell.Toxic:
+      base = packRGB(70, 126, 38);
+      break;
+    case Cell.Acid:
+      base = packRGB(68, 210, 42);
+      break;
+    case Cell.Lava:
+      base = packRGB(238, 66, 12);
+      break;
+    case Cell.Ash:
+      base = packRGB(84, 80, 76);
+      break;
+    case Cell.Catalyst:
+      base = packRGB(232, 126, 68);
+      break;
+    case Cell.Stone:
+      base = packRGB(82, 80, 84);
+      break;
+    default:
+      base = (def.materialProfile.palettes[biome] ?? def.materialProfile.palettes.earthen).accent;
+  }
+  return scaleColor(base, grain);
 }
 
 function openAbove(types: Uint8Array, size: number, x: number, y: number): number {

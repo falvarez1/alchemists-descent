@@ -178,9 +178,12 @@ function diffPng(before, after) {
   };
 }
 
-function pageUrl(baseUrl, backend) {
+function pageUrl(baseUrl, backend, extraSearch = {}) {
   const url = new URL(baseUrl);
   url.searchParams.set('renderBackend', backend);
+  for (const [key, value] of Object.entries(extraSearch)) {
+    if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
+  }
   return url.toString();
 }
 
@@ -200,8 +203,19 @@ async function waitForFrames(page, frames) {
   });
 }
 
-async function runVariant(browser, baseUrl, { backend, postEnabled }) {
-  const label = `${backend}-${postEnabled ? 'post-on' : 'post-off'}`;
+async function runVariant(
+  browser,
+  baseUrl,
+  {
+    backend,
+    postEnabled,
+    label = `${backend}-${postEnabled ? 'post-on' : 'post-off'}`,
+    bloomEnabled = true,
+    lensEnabled = true,
+    measurePerf = true,
+    query = {},
+  },
+) {
   const page = await newBenchmarkPage(browser, { diagnosticsLabel: `webgpu-presentation-${label}` });
   page.setDefaultTimeout(30000);
   const consoleErrors = [];
@@ -214,11 +228,11 @@ async function runVariant(browser, baseUrl, { backend, postEnabled }) {
   });
   page.on('pageerror', (error) => pageErrors.push(String(error)));
 
-  await page.goto(pageUrl(baseUrl, backend), { waitUntil: 'networkidle', timeout: 30000 });
+  await page.goto(pageUrl(baseUrl, backend, query), { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForFunction(() => window.__game?.ctx?.console, null, { timeout: 30000 });
   await startConsoleTestRun(page, { seed: 777, settleMs: 900 });
 
-  await page.evaluate((enabled) => {
+  await page.evaluate(({ enabled, bloomEnabled, lensEnabled }) => {
     const ctx = window.__game.ctx;
     const w = ctx.world;
     w.clear();
@@ -304,14 +318,14 @@ async function runVariant(browser, baseUrl, { backend, postEnabled }) {
 
     ctx.state.postFx.gpuCompose = false;
     ctx.state.postFx.enabled = enabled;
-    ctx.state.postFx.bloomEnabled = true;
-    ctx.state.postFx.lensEnabled = true;
+    ctx.state.postFx.bloomEnabled = enabled && bloomEnabled;
+    ctx.state.postFx.lensEnabled = enabled && lensEnabled;
     ctx.state.postFx.grain = 0;
     ctx.fx.bloomKick = 0;
     ctx.fx.screenShake = 0;
     ctx.player.hp = ctx.player.maxHp;
     ctx.state.paused = true;
-  }, postEnabled);
+  }, { enabled: postEnabled, bloomEnabled, lensEnabled });
 
   await page.waitForFunction(
     (expectedBackend) => {
@@ -331,19 +345,22 @@ async function runVariant(browser, baseUrl, { backend, postEnabled }) {
   const pngBuffer = await page.locator('#canvas-holder > canvas').screenshot({ path: screenshotPath });
   const png = decodePng(pngBuffer);
 
-  await page.evaluate(() => {
-    window.__game.ctx.state.paused = false;
-  });
-  await page.waitForTimeout(300);
-  const samples = await waitForFrames(page, PERF_FRAMES);
-  const summary = summarizeBuckets({
-    sim: samples.map((sample) => sample.sim),
-    entities: samples.map((sample) => sample.entities),
-    compose: samples.map((sample) => sample.compose),
-    gl: samples.map((sample) => sample.gl),
-    render: samples.map((sample) => sample.render),
-    frame: samples.map((sample) => sample.frame),
-  });
+  let summary = null;
+  if (measurePerf) {
+    await page.evaluate(() => {
+      window.__game.ctx.state.paused = false;
+    });
+    await page.waitForTimeout(300);
+    const samples = await waitForFrames(page, PERF_FRAMES);
+    summary = summarizeBuckets({
+      sim: samples.map((sample) => sample.sim),
+      entities: samples.map((sample) => sample.entities),
+      compose: samples.map((sample) => sample.compose),
+      gl: samples.map((sample) => sample.gl),
+      render: samples.map((sample) => sample.render),
+      frame: samples.map((sample) => sample.frame),
+    });
+  }
 
   const status = await page.evaluate(() => window.__game.getRenderBackendStatus());
   const identity = await page.evaluate(() => {
@@ -374,9 +391,65 @@ async function runVariant(browser, baseUrl, { backend, postEnabled }) {
     postEnabled,
     status,
     identity,
-    perf: { frames: PERF_FRAMES, summary },
+    perf: measurePerf ? { frames: PERF_FRAMES, summary } : null,
     screenshot: { path: screenshotPath, stats: png.stats },
     png,
+    consoleErrors,
+    pageErrors,
+  };
+}
+
+async function runFallbackProbe(browser, baseUrl) {
+  const page = await newBenchmarkPage(browser, { diagnosticsLabel: 'webgpu-presentation-fallback' });
+  const consoleErrors = [];
+  const pageErrors = [];
+  page.on('console', (message) => {
+    const text = message.text();
+    if (message.type() === 'error' && !text.includes('[vite] failed to connect to websocket')) {
+      consoleErrors.push(text);
+    }
+  });
+  page.on('pageerror', (error) => pageErrors.push(String(error)));
+  await page.goto(pageUrl(baseUrl, 'webgpu', { simulateWebGpuInitFailure: 1 }), {
+    waitUntil: 'networkidle',
+    timeout: 30000,
+  });
+  await page.waitForFunction(() => window.__game?.ctx?.console, null, { timeout: 30000 });
+  await page.waitForFunction(
+    () => {
+      const status = window.__game?.getRenderBackendStatus?.();
+      return status?.implementation === 'WebGLRenderBackend' && status.actual === 'webgl2';
+    },
+    null,
+    { timeout: 30000 },
+  );
+  await page.waitForTimeout(500);
+  const status = await page.evaluate(() => window.__game.getRenderBackendStatus());
+  const identity = await page.evaluate(() => {
+    const ctx = window.__game.ctx;
+    const holder = document.getElementById('canvas-holder');
+    const canvases = Array.from(holder?.children ?? []).filter((child) => child instanceof HTMLCanvasElement);
+    const canvas = canvases[0] ?? null;
+    canvas?.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true,
+      clientX: Math.max(1, canvas.getBoundingClientRect().left + 10),
+      clientY: Math.max(1, canvas.getBoundingClientRect().top + 10),
+    }));
+    return {
+      holderConnected: holder?.isConnected === true,
+      holderCanvasCount: canvases.length,
+      canvasSize: canvas ? { width: canvas.width, height: canvas.height } : null,
+      mouseFinite: Number.isFinite(ctx.input.mouse.x) && Number.isFinite(ctx.input.mouse.y),
+    };
+  });
+  const screenshotPath = join(outDir, `webgpu-init-fallback-${timestamp}.png`);
+  const pngBuffer = await page.locator('#canvas-holder > canvas').screenshot({ path: screenshotPath });
+  const png = decodePng(pngBuffer);
+  await page.context().close();
+  return {
+    status,
+    identity,
+    screenshot: { path: screenshotPath, stats: png.stats },
     consoleErrors,
     pageErrors,
   };
@@ -399,6 +472,14 @@ try {
   const webgpuOff = await runVariant(browser, baseUrl, { backend: 'webgpu', postEnabled: false });
   const webglOn = await runVariant(browser, baseUrl, { backend: 'webgl', postEnabled: true });
   const webgpuOn = await runVariant(browser, baseUrl, { backend: 'webgpu', postEnabled: true });
+  const webgpuLensOff = await runVariant(browser, baseUrl, {
+    backend: 'webgpu',
+    postEnabled: true,
+    label: 'webgpu-bloom-on-lens-off',
+    lensEnabled: false,
+    measurePerf: false,
+  });
+  const fallbackProbe = await runFallbackProbe(browser, baseUrl);
 
   const postOffDiff = diffPng(webglOff.png, webgpuOff.png);
   const postOnDiff = diffPng(webglOn.png, webgpuOn.png);
@@ -425,7 +506,17 @@ try {
     },
   };
 
-  const variants = [webglOff, webgpuOff, webglOn, webgpuOn].map(({ png, ...variant }) => variant);
+  const variants = [webglOff, webgpuOff, webglOn, webgpuOn].map(({ png: _png, ...variant }) => variant);
+  const postControls = {
+    lensOffBloomOn: {
+      label: webgpuLensOff.label,
+      status: webgpuLensOff.status,
+      identity: webgpuLensOff.identity,
+      screenshot: webgpuLensOff.screenshot,
+      consoleErrors: webgpuLensOff.consoleErrors,
+      pageErrors: webgpuLensOff.pageErrors,
+    },
+  };
   const failures = [];
   const warnings = [];
   for (const variant of [webglOff, webgpuOff, webglOn, webgpuOn]) {
@@ -444,6 +535,24 @@ try {
   }
   if (webgpuOff.status.actual !== 'webgpu' || webgpuOn.status.actual !== 'webgpu') {
     failures.push('WebGPU variants did not report actual WebGPU backend');
+  }
+  if (fallbackProbe.status.actual !== 'webgl2' || fallbackProbe.status.implementation !== 'WebGLRenderBackend') {
+    failures.push('simulated WebGPU init failure did not fall back to WebGL2');
+  }
+  if (!fallbackProbe.status.fallback || !fallbackProbe.status.reason.includes('webgpu-init-failed')) {
+    failures.push('simulated WebGPU init fallback did not report fallback reason');
+  }
+  if (fallbackProbe.identity.holderCanvasCount !== 1 || !fallbackProbe.identity.mouseFinite) {
+    failures.push('simulated WebGPU init fallback did not preserve canvas/input ownership');
+  }
+  if (fallbackProbe.screenshot.stats.nonBlackPixels <= 0 || fallbackProbe.screenshot.stats.maxChannel <= 32) {
+    failures.push('simulated WebGPU init fallback screenshot is blank');
+  }
+  if (webgpuLensOff.status.actual !== 'webgpu') {
+    failures.push('WebGPU lens-off control variant did not report actual WebGPU backend');
+  }
+  if (webgpuLensOff.screenshot.stats.avgRgb <= webgpuOff.screenshot.stats.avgRgb + 0.25) {
+    failures.push('WebGPU lens-off control appears to suppress bloom/exposure');
   }
   if (postOffDiff.meanChannelDelta > 6 || postOffDiff.differingPixelPct > 25) {
     failures.push('post-off WebGPU screenshot diverged beyond tolerance');
@@ -469,6 +578,8 @@ try {
     generatedAt: new Date().toISOString(),
     baseUrl,
     variants,
+    postControls,
+    fallbackProbe,
     diffs: { postOff: postOffDiff, postOn: postOnDiff },
     presentation,
     failures,
@@ -488,7 +599,11 @@ try {
   writeJson(jsonPath, payload);
   payload.artifacts = {
     json: jsonPath,
-    screenshots: variants.map((variant) => variant.screenshot.path),
+    screenshots: [
+      ...variants.map((variant) => variant.screenshot.path),
+      postControls.lensOffBloomOn.screenshot.path,
+      fallbackProbe.screenshot.path,
+    ],
   };
   console.log(JSON.stringify(payload, null, 2));
   if (payload.status !== 'passed') throw new Error('WebGPU presentation probe failed');

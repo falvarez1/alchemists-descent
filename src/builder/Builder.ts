@@ -161,6 +161,7 @@ import { MenuHost } from '@/ui/editor/MenuHost';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
 import { TabView, tabStripHtml, wireTabStrip } from '@/ui/editor/Tabs';
 import { renderInspectorItems } from '@/ui/editor/InspectorSchema';
+import type { InspectorSchemaItem } from '@/ui/editor/InspectorSchema';
 import { builderPanelHeader, normalizePanelChromeHandles } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle, createBuilderPanelRegistry } from '@/ui/editor/PanelRegistry';
 import type { CommandSpec } from '@/ui/editor/CommandRegistry';
@@ -277,6 +278,7 @@ const PLAYTEST_CURSOR_MECHANISM_TARGETS: ReadonlySet<EditorObjectKind> = new Set
   'plug',
 ] as EditorObjectKind[]);
 type BuilderWorkspacePanelId =
+  | 'builder-inspector'
   | 'builder-outliner'
   | 'builder-runtime'
   | 'builder-link-graph'
@@ -1252,7 +1254,7 @@ export class Builder {
       button.dataset.sectionToggleWired = 'true';
       const toggle = (): void => {
         const id = button.dataset.sectionToggle;
-        const section = button.closest<HTMLElement>('.bp-section');
+        const section = button.closest<HTMLElement>('.bp-section, .editor-section');
         if (!id || !section) return;
         const collapsed = !section.classList.contains('collapsed');
         section.classList.toggle('collapsed', collapsed);
@@ -1270,7 +1272,7 @@ export class Builder {
   }
 
   private syncCollapsedSections(): void {
-    for (const section of this.root.querySelectorAll<HTMLElement>('.bp-section[data-section]')) {
+    for (const section of this.root.querySelectorAll<HTMLElement>('.bp-section[data-section], .editor-section[data-section]')) {
       const id = section.dataset.section;
       if (!id) continue;
       const collapsed = this.workspaceLayout.collapsedSections[id] === true;
@@ -1359,7 +1361,7 @@ export class Builder {
       return [...common, 'builder.delete', 'builder.duplicate'];
     }
     if (panelId === 'builder-inspector') {
-      return ['builder.frameSelection', 'builder.validate', ...common, 'builder.delete', 'builder.duplicate'];
+      return ['builder.inspectorPanel', 'builder.frameSelection', 'builder.validate', ...common, 'builder.delete', 'builder.duplicate'];
     }
     if (panelId === 'builder-world') return ['builder.worldPanel', ...common];
     if (panelId === 'builder-virtual-world') return ['builder.virtualWorldPanel', ...common];
@@ -1544,6 +1546,7 @@ export class Builder {
     const prevActive = this.dockActive[dock];
     this.dockActive[dock] = activeId;
     const existing = this.dockTabStrips.get(dock) ?? null;
+    dockEl.classList.toggle('has-tabs', open.length > 1);
     if (open.length <= 1) {
       existing?.wired?.dispose();
       existing?.host.remove();
@@ -1729,6 +1732,7 @@ export class Builder {
     }
     this.syncDockTabs('left', left);
     this.syncDockTabs('right', right);
+    this.syncDockTabs('bottom', bottom);
     let leftSize = this.openDockSize('left');
     let rightSize = this.openDockSize('right');
     const rootWidth = this.root.getBoundingClientRect().width || window.innerWidth;
@@ -1802,17 +1806,39 @@ export class Builder {
     for (const panel of this.root.querySelectorAll<HTMLElement>('.builder-panel.drop-before')) {
       panel.classList.remove('drop-before');
     }
+    for (const tab of this.root.querySelectorAll<HTMLElement>('.editor-tab.drop-before')) {
+      tab.classList.remove('drop-before');
+    }
   }
 
   private markDockInsertion(dock: HTMLElement, region: DockRegion, e: PanelDropPoint): void {
     if (region === 'floating' || dock.classList.contains('builder-dock-guide')) return;
     const beforeId = this.dropInsertBeforeId(region, dock, this.draggingPanelId, e);
-    if (beforeId) this.panelEl(beforeId)?.classList.add('drop-before');
+    if (beforeId) {
+      const tab = dock.querySelector<HTMLElement>(`.editor-tab[data-tab-id="${cssString(beforeId)}"]`);
+      if (tab) tab.classList.add('drop-before');
+      else this.panelEl(beforeId)?.classList.add('drop-before');
+    }
     else dock.classList.add('drop-at-end');
   }
 
   private dropInsertBeforeId(region: DockRegion, dock: HTMLElement, draggedId: string | null, e: PanelDropPoint): string | null {
     if (region === 'floating') return null;
+    const tabList = dock.querySelector<HTMLElement>('.builder-dock-tabs .editor-tabs-list');
+    const tabs = [...dock.querySelectorAll<HTMLElement>('.builder-dock-tabs .editor-tab[data-tab-id]')]
+      .filter((tab) => tab.dataset.tabId !== draggedId);
+    if (tabList && tabs.length > 0) {
+      const listRect = tabList.getBoundingClientRect();
+      const inTabBand = e.clientY >= listRect.top - 12 && e.clientY <= listRect.bottom + 12;
+      if (inTabBand) {
+        if (e.clientX < listRect.left + 24) return tabs[0].dataset.tabId ?? null;
+        for (const tab of tabs) {
+          const rect = tab.getBoundingClientRect();
+          if (e.clientX < rect.left + rect.width / 2) return tab.dataset.tabId ?? null;
+        }
+        return null;
+      }
+    }
     const horizontal = region === 'bottom';
     const cursor = horizontal ? e.clientX : e.clientY;
     const panels = this.workspaceLayout.panels
@@ -2268,11 +2294,12 @@ export class Builder {
       `<button class="bp-tool bp-mini" data-kind="${p.kind}" aria-label="${p.label}"><span class="bp-glyph k-${p.kind}">${p.glyph}</span>${p.label}</button>`;
     const paletteSection = (id: string, label: string, body: string): string => {
       const collapsed = this.workspaceLayout.collapsedSections[id] === true;
+      const bodyId = `bp-section-body-${id.replace(/[^A-Za-z0-9_-]/g, '-')}`;
       return `<section class="bp-section${collapsed ? ' collapsed' : ''}" data-section="${id}">
-        <button type="button" class="bp-head bp-section-head" data-section-toggle="${id}" aria-expanded="${collapsed ? 'false' : 'true'}">
+        <button type="button" class="bp-head bp-section-head" data-section-toggle="${id}" aria-expanded="${collapsed ? 'false' : 'true'}" aria-controls="${bodyId}">
           <span class="bp-chevron" aria-hidden="true"></span><span>${label}</span>
         </button>
-        <div class="bp-section-body">${body}</div>
+        <div id="${bodyId}" class="bp-section-body">${body}</div>
       </section>`;
     };
     const layerRows = LAYER_FAMILIES
@@ -2327,6 +2354,7 @@ export class Builder {
           <button id="b-validate">Validate</button>
         </div>
         <div class="builder-menu-dropdown" data-menu-panel="view" role="menu" aria-label="View" hidden>
+          <button id="b-inspector" title="Inspect the current document, selection, or light">Inspector</button>
           <button id="b-worldgen" title="Generate and tune procedural worlds">World Generation</button>
           <button id="b-world-map" title="Preview and tune the virtual chunk world map">World Map</button>
           <button id="b-global" title="Global simulation and wand light controls">Global Controls</button>
@@ -2671,18 +2699,23 @@ export class Builder {
    */
   private addMaterialSwatch(grid: HTMLDivElement, id: number, name: string, color: string): void {
     const swatch = document.createElement('button');
+    swatch.type = 'button';
     swatch.className = 'bp-swatch';
     swatch.dataset.el = String(id);
     swatch.dataset.name = name;
     swatch.dataset.color = color;
+    swatch.setAttribute('aria-label', `Arm material: ${name}`);
+    swatch.setAttribute('aria-pressed', 'false');
     const icon = makeIconCanvas(ELEMENT_ICON[id] ?? '', 2);
     if (icon) {
       icon.className = 'bp-swatch-icon';
+      icon.setAttribute('aria-hidden', 'true');
       swatch.appendChild(icon);
     } else {
       const d = document.createElement('span');
       d.className = 'dot';
       d.style.background = color;
+      d.setAttribute('aria-hidden', 'true');
       swatch.appendChild(d);
     }
     swatch.addEventListener('click', () => this.selectMaterial(id));
@@ -2713,7 +2746,9 @@ export class Builder {
     ctx.state.currentElement = id as never;
     ctx.state.activeInputMode = 'element';
     for (const sw of this.root.querySelectorAll<HTMLButtonElement>('.bp-swatch')) {
-      sw.classList.toggle('active', Number(sw.dataset.el) === id);
+      const active = Number(sw.dataset.el) === id;
+      sw.classList.toggle('active', active);
+      sw.setAttribute('aria-pressed', active ? 'true' : 'false');
     }
     // keep the (hidden) Sandbox toolbar consistent for when the Builder closes
     for (const b of document.querySelectorAll<HTMLButtonElement>('.tool-btn')) {
@@ -2878,6 +2913,7 @@ export class Builder {
     add({ id: 'builder.exportPalette', label: 'Export Material Palette (.gpl)', category: 'Prefabs', run: () => this.exportMaterialPalette() });
     add({ id: 'builder.lightPreviewToggle', label: 'Toggle Light Preview', category: 'View', run: () => this.toggleLightPreview() }, INSPECT_SCOPES);
     add({ id: 'builder.wandLightPreviewToggle', label: 'Toggle Wand Cursor Light', category: 'View', run: () => this.toggleWandLightPreview() }, INSPECT_SCOPES);
+    add({ id: 'builder.inspectorPanel', label: 'Inspector', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-inspector') }, INSPECT_SCOPES);
     add({ id: 'builder.worldPanel', label: 'World Generation', category: 'Panels', run: () => this.toggleSidePanel('world') });
     add({ id: 'builder.virtualWorldPanel', label: 'World Map', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-virtual-world') });
     add({ id: 'builder.globalControlsPanel', label: 'Global Controls', category: 'Panels', run: () => this.toggleSidePanel('global') });
@@ -3364,6 +3400,7 @@ export class Builder {
     this.el('b-bake').addEventListener('click', () => this.runUiCommand('builder.bakeScars'));
     this.el('b-playtest').addEventListener('click', () => this.runUiCommand('builder.playtest'));
     this.el('b-playtest-here').addEventListener('click', () => this.runUiCommand('builder.playtestHere'));
+    this.el('b-inspector').addEventListener('click', () => this.runUiCommand('builder.inspectorPanel'));
     this.el('b-worldgen').addEventListener('click', () => this.runUiCommand('builder.worldPanel'));
     this.el('b-world-map').addEventListener('click', () => this.runUiCommand('builder.virtualWorldPanel'));
     this.el('b-global').addEventListener('click', () => this.runUiCommand('builder.globalControlsPanel'));
@@ -3464,6 +3501,7 @@ export class Builder {
       return el !== null && el.offsetParent !== null;
     };
     const checks: Array<[string, boolean]> = [
+      ['b-inspector', panelOpen('builder-inspector')],
       ['b-worldgen', panelOpen('builder-world')],
       ['b-world-map', panelOpen('builder-virtual-world')],
       ['b-global', panelOpen('builder-global')],
@@ -5340,7 +5378,8 @@ export class Builder {
   }
 
   private renderWorkspacePanelContent(id: BuilderWorkspacePanelId): void {
-    if (id === 'builder-outliner') this.renderOutliner();
+    if (id === 'builder-inspector') this.renderInspector();
+    else if (id === 'builder-outliner') this.renderOutliner();
     else if (id === 'builder-runtime') this.renderRuntimePanel();
     else if (id === 'builder-link-graph') this.renderLinkGraph();
     else if (id === 'builder-assets') this.renderAssetBrowser();
@@ -5386,14 +5425,27 @@ export class Builder {
   }
 
   private worldSection(host: HTMLElement, title: string): HTMLElement {
+    const id = `${host.id || 'world'}.${title.toLowerCase().replace(/[^a-z0-9]+/g, '.')}`;
+    const collapsed = this.workspaceLayout.collapsedSections[id] === true;
     const section = document.createElement('section');
-    section.className = 'bw-section';
-    const heading = document.createElement('div');
-    heading.className = 'bw-title';
-    heading.textContent = title;
+    section.className = `bw-section editor-section${collapsed ? ' collapsed' : ''}`;
+    section.dataset.section = id;
+    const heading = document.createElement('button');
+    heading.type = 'button';
+    heading.className = 'bw-title editor-section-head';
+    heading.dataset.sectionToggle = id;
+    heading.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    const bodyId = `editor-section-body-${id.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+    heading.setAttribute('aria-controls', bodyId);
+    heading.innerHTML = `<span class="bp-chevron" aria-hidden="true"></span><span class="editor-section-label">${escHtml(title)}</span>`;
     section.appendChild(heading);
+    const body = document.createElement('div');
+    body.id = bodyId;
+    body.className = 'bw-section-body editor-section-body';
+    section.appendChild(body);
     host.appendChild(section);
-    return section;
+    this.wireCollapsibleSections(section);
+    return body;
   }
 
   private worldActionRow(host: HTMLElement, actions: Array<{ label: string; title?: string; run: () => void }>): void {
@@ -8163,10 +8215,9 @@ export class Builder {
       this.el('bp-brush-val').textContent = String(state.brushSize);
       // material may have changed via eyedrop/sandbox — mirror the swatch
       for (const sw of this.root.querySelectorAll<HTMLButtonElement>('.bp-swatch')) {
-        sw.classList.toggle(
-          'active',
-          state.activeInputMode === 'element' && Number(sw.dataset.el) === state.currentElement,
-        );
+        const active = state.activeInputMode === 'element' && Number(sw.dataset.el) === state.currentElement;
+        sw.classList.toggle('active', active);
+        sw.setAttribute('aria-pressed', active ? 'true' : 'false');
       }
     }
 
@@ -9298,10 +9349,12 @@ export class Builder {
       query: this.outlinerQuery,
       filters: this.outlinerFilters,
       layers: this.outlinerLayerStates(),
+      collapsedSections: this.workspaceLayout.collapsedSections,
     });
     panel.innerHTML = renderOutlinerPanel(model);
     this.restoreStructurePanelScroll(panel, panelScroll, [['.bo-rows', rowsScroll]]);
     this.refreshPanelDragHandles(panel);
+    this.wireCollapsibleSections(panel);
     panel.querySelector('#bo-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-outliner'));
     panel.querySelector<HTMLInputElement>('#bo-search')?.addEventListener('input', (event) => {
       this.outlinerQuery = (event.target as HTMLInputElement).value;
@@ -9350,9 +9403,11 @@ export class Builder {
       query: this.runtimeQuery,
       filters: this.runtimeFilters,
       overlays: this.runtimeOverlays,
+      collapsedSections: this.workspaceLayout.collapsedSections,
     });
     this.restoreStructurePanelScroll(panel, panelScroll, [['.brt-rows', rowsScroll]]);
     this.refreshPanelDragHandles(panel);
+    this.wireCollapsibleSections(panel);
     panel.querySelector('#brt-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-runtime'));
     panel.querySelector<HTMLInputElement>('#brt-search')?.addEventListener('input', (event) => {
       this.runtimeQuery = (event.target as HTMLInputElement).value;
@@ -9486,6 +9541,7 @@ export class Builder {
       issues: this.currentValidationIssues(),
       selectedIds: this.selectedIds,
       query: this.linkGraphQuery,
+      collapsedSections: this.workspaceLayout.collapsedSections,
     });
     panel.innerHTML = renderLinkGraphPanel(model);
     this.restoreStructurePanelScroll(
@@ -9494,6 +9550,7 @@ export class Builder {
       [...panel.querySelectorAll<HTMLElement>('.blg-actuators, .blg-links')].map((el, index) => [el, linkScrolls[index] ?? 0]),
     );
     this.refreshPanelDragHandles(panel);
+    this.wireCollapsibleSections(panel);
     panel.querySelector('#blg-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-link-graph'));
     panel.querySelector<HTMLInputElement>('#blg-search')?.addEventListener('input', (event) => {
       this.linkGraphQuery = (event.target as HTMLInputElement).value;
@@ -9953,8 +10010,10 @@ export class Builder {
     panel.innerHTML = renderAssetDetailPanel({
       asset,
       deletePlan: asset ? database.deletePlan(asset.assetId) : undefined,
+      collapsedSections: this.workspaceLayout.collapsedSections,
     });
     this.refreshPanelDragHandles(panel);
+    this.wireCollapsibleSections(panel);
     this.paintAssetPreviews(panel, database);
     panel.querySelector('#bad-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-asset-details'));
     for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-asset-action]')) {
@@ -9993,8 +10052,10 @@ export class Builder {
       asset: record,
       activeVariant: this.prefabActiveVariant,
       selectedAnchorId: this.prefabSelectedAnchorId,
+      collapsedSections: this.workspaceLayout.collapsedSections,
     });
     this.refreshPanelDragHandles(panel);
+    this.wireCollapsibleSections(panel);
     panel.querySelector('#bpd-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-prefab-details'));
     this.restorePrefabDetailsView(panel, previousScroll, focusTarget);
     if (!base || !record) return;
@@ -10927,8 +10988,12 @@ export class Builder {
     this.setWorkspacePanelOpen('builder-issues', true);
     this.applyWorkspaceLayout();
     this.saveWorkspacePrefs();
-    panel.innerHTML = renderValidationPanel(issues, options);
+    panel.innerHTML = renderValidationPanel(issues, {
+      ...options,
+      collapsedSections: this.workspaceLayout.collapsedSections,
+    });
     this.refreshPanelDragHandles(panel);
+    this.wireCollapsibleSections(panel);
     panel.querySelector('#b-issues-close')?.addEventListener('click', () => {
       panel.style.display = 'none';
       this.setWorkspacePanelOpen('builder-issues', false);

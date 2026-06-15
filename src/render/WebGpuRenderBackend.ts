@@ -95,6 +95,14 @@ function hasLifecycleDevice(
   return Boolean(device?.lost);
 }
 
+function shouldSimulateInitFailure(): boolean {
+  return (
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('simulateWebGpuInitFailure') === '1'
+  );
+}
+
 /**
  * Phase 3 WebGPU presentation backend. It deliberately keeps terrain
  * composition on the existing CPU path; Phase 4 owns the WebGPU compose port.
@@ -122,7 +130,6 @@ export class WebGpuRenderBackend implements RendererBackend {
   private readonly lensEnabled = uniform(1);
   private readonly exposure = uniform(1.0);
   private readonly bloomStrength = uniform(0.35);
-  private readonly bloomRadius = uniform(0.2);
   private readonly bloomThreshold = uniform(0.85);
   private readonly aberration = uniform(0.0005);
   private readonly grain = uniform(0.028);
@@ -184,6 +191,23 @@ export class WebGpuRenderBackend implements RendererBackend {
     void this.initialize();
   }
 
+  get initializationFailed(): boolean {
+    return this.initState === 'failed';
+  }
+
+  get failureReason(): string | null {
+    return this.initError ? `${this.initReason}: ${this.initError}` : this.initReason;
+  }
+
+  releaseCanvasForWebGlFallback(): HTMLCanvasElement {
+    this.basePipeline.dispose();
+    this.postPipeline.dispose();
+    this.texture.dispose();
+    this.renderer.dispose();
+    this.canvas.dataset.renderBackend = 'webgl-fallback';
+    return this.canvas;
+  }
+
   private pixelUv() {
     const p = uv();
     const ndc = p.mul(2).sub(1);
@@ -216,21 +240,13 @@ export class WebGpuRenderBackend implements RendererBackend {
         texture(source, p.add(aberrationShift)).b,
       );
 
-      const near = texel.mul(float(1).add(this.bloomRadius.mul(14.0)));
-      const far = texel.mul(float(4).add(this.bloomRadius.mul(28.0)));
       const c0 = brightColor(base).mul(0.28);
-      const c1 = brightColor(sampleRgb(p.add(vec2(near.x, 0)))).mul(0.16);
-      const c2 = brightColor(sampleRgb(p.sub(vec2(near.x, 0)))).mul(0.16);
-      const c3 = brightColor(sampleRgb(p.add(vec2(0, near.y)))).mul(0.16);
-      const c4 = brightColor(sampleRgb(p.sub(vec2(0, near.y)))).mul(0.16);
-      const c5 = brightColor(sampleRgb(p.add(near))).mul(0.10);
-      const c6 = brightColor(sampleRgb(p.sub(near))).mul(0.10);
-      const c7 = brightColor(sampleRgb(p.add(vec2(near.x, near.y.negate())))).mul(0.08);
-      const c8 = brightColor(sampleRgb(p.add(vec2(near.x.negate(), near.y)))).mul(0.08);
-      const c9 = brightColor(sampleRgb(p.add(vec2(far.x, 0)))).mul(0.07);
-      const c10 = brightColor(sampleRgb(p.sub(vec2(far.x, 0)))).mul(0.07);
-      const c11 = brightColor(sampleRgb(p.add(vec2(0, far.y)))).mul(0.07);
-      const c12 = brightColor(sampleRgb(p.sub(vec2(0, far.y)))).mul(0.07);
+      const c1 = brightColor(sampleRgb(p.add(vec2(texel.x, 0)))).mul(0.12);
+      const c2 = brightColor(sampleRgb(p.sub(vec2(texel.x, 0)))).mul(0.12);
+      const c3 = brightColor(sampleRgb(p.add(vec2(0, texel.y)))).mul(0.12);
+      const c4 = brightColor(sampleRgb(p.sub(vec2(0, texel.y)))).mul(0.12);
+      const c5 = brightColor(sampleRgb(p.add(texel.mul(2)))).mul(0.06);
+      const c6 = brightColor(sampleRgb(p.sub(texel.mul(2)))).mul(0.06);
       const bloom = c0
         .add(c1)
         .add(c2)
@@ -238,16 +254,10 @@ export class WebGpuRenderBackend implements RendererBackend {
         .add(c4)
         .add(c5)
         .add(c6)
-        .add(c7)
-        .add(c8)
-        .add(c9)
-        .add(c10)
-        .add(c11)
-        .add(c12)
         .mul(this.bloomStrength)
-        .mul(1.35)
         .mul(this.bloomEnabled);
 
+      const bloomBase = base.add(bloom);
       const lensBase = aberrated.add(bloom);
       const grainHash = fract(
         sin(dot(p.mul(vec2(RENDER_W, RENDER_H)).add(this.time.mul(17.0)), vec2(12.9898, 78.233)))
@@ -262,7 +272,7 @@ export class WebGpuRenderBackend implements RendererBackend {
         .mul(sin(this.time.mul(0.12)).mul(0.25).add(0.75))
         .mul(0.6);
       const lensed = mix(withGrain, vec3(0.45, 0.02, 0.04), hurtMix);
-      const post = mix(base, lensed, this.lensEnabled).mul(this.exposure);
+      const post = mix(bloomBase, lensed, this.lensEnabled).mul(this.exposure);
       return vec4(post, 1.0);
     })();
 
@@ -271,6 +281,9 @@ export class WebGpuRenderBackend implements RendererBackend {
 
   private async initialize(): Promise<void> {
     try {
+      if (shouldSimulateInitFailure()) {
+        throw new Error('simulated WebGPU init failure');
+      }
       if (!secureContext()) {
         throw new Error('WebGPU requires a secure context');
       }
@@ -369,7 +382,6 @@ export class WebGpuRenderBackend implements RendererBackend {
     this.lensEnabled.value = post.enabled && post.lensEnabled ? 1 : 0;
     this.exposure.value = post.enabled ? post.exposure : 1.0;
     this.bloomStrength.value = post.bloomStrength + ctx.fx.bloomKick * post.bloomKickScale;
-    this.bloomRadius.value = post.bloomRadius;
     this.bloomThreshold.value = post.bloomThreshold;
     this.aberration.value =
       post.aberration + ctx.fx.bloomKick * post.aberrationKick + ctx.fx.screenShake * post.shakeAberration;

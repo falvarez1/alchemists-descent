@@ -3,6 +3,7 @@ import { validationRepairActions } from '@/builder/validationActions';
 import { escapeAttr, escapeHtml } from '@/ui/editor/Fields';
 import { builderPanelHeader } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
+import { editorSectionHtml } from '@/ui/editor/Section';
 
 const GROUPS: Array<{ severity: DocIssue['severity']; label: string }> = [
   { severity: 'error', label: 'Errors' },
@@ -12,6 +13,7 @@ const GROUPS: Array<{ severity: DocIssue['severity']; label: string }> = [
 
 export interface ValidationPanelOptions {
   playtestBlockers?: readonly DocIssue[];
+  collapsedSections?: Readonly<Record<string, boolean>>;
 }
 
 export function renderValidationPanel(issues: DocIssue[], options: ValidationPanelOptions = {}): string {
@@ -23,6 +25,7 @@ export function renderValidationPanel(issues: DocIssue[], options: ValidationPan
         group.label,
         indexed.filter(({ issue }) => issue.severity === group.severity),
         blockerKeys,
+        options.collapsedSections,
       ),
     )
     .join('');
@@ -49,13 +52,22 @@ function renderGroup(
   label: string,
   issues: Array<{ issue: DocIssue; index: number }>,
   blockerKeys: ReadonlySet<string>,
+  collapsedSections: Readonly<Record<string, boolean>> | undefined,
 ): string {
   if (issues.length === 0) return '';
   const severity = issues[0]?.issue.severity ?? 'info';
-  return `<section class="bv-group" data-validation-group="${escapeAttr(severity)}">
-    <div class="bv-group-title">${escapeHtml(label)} <span>${issues.length}</span></div>
-    ${issues.map(({ issue, index }) => renderIssueRow(issue, index, blockerKeys.has(issueKey(issue)))).join('')}
-  </section>`;
+  const id = `validation.${severity}`;
+  return editorSectionHtml({
+    id,
+    title: label,
+    count: issues.length,
+    body: issues.map(({ issue, index }) => renderIssueRow(issue, index, blockerKeys.has(issueKey(issue)))).join(''),
+    className: 'bv-group',
+    titleClassName: 'bv-group-title',
+    bodyClassName: 'bv-group-body',
+    collapsed: collapsedSections?.[id] === true,
+    attrs: `data-validation-group="${escapeAttr(severity)}"`,
+  });
 }
 
 function renderIssueRow(issue: DocIssue, index: number, playtestBlocker: boolean): string {

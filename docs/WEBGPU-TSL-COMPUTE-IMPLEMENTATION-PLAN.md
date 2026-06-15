@@ -1,7 +1,8 @@
 # WebGPU, TSL, and WGSL Compute Implementation Plan
 
-Status: in progress. Phases 0-2 are implemented and benchmark-gated; Phase 3+
-remain pending.
+Status: in progress. Phases 0-2 are implemented and benchmark-gated. Phase 3
+is implemented as a boot-gated diagnostic shell with documented presentation
+warnings; it is not promoted as the default renderer. Phase 4+ remain pending.
 
 This plan turns the current WebGL2 GPU frame-composition work into a staged
 WebGPU platform migration. The goal is not to swap APIs for novelty; the goal is

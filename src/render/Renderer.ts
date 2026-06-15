@@ -41,6 +41,7 @@ class WebGLRenderBackend implements RendererBackend {
   private readonly postFx: PostFx;
   private requestedBackend: RenderSettings['backend'];
   private featureFlags: RenderBackendFeatureFlags;
+  private fallbackReason: string | null;
   private contextLost = false;
   private contextLostCount = 0;
   private contextRestoredCount = 0;
@@ -49,8 +50,14 @@ class WebGLRenderBackend implements RendererBackend {
   /** True while the current frame was composed by the shader path. */
   private gpuFrame = false;
 
-  constructor(holder: HTMLElement, settings: RenderSettings) {
+  constructor(
+    holder: HTMLElement,
+    settings: RenderSettings,
+    canvas?: HTMLCanvasElement,
+    fallbackReason: string | null = null,
+  ) {
     this.requestedBackend = settings.backend;
+    this.fallbackReason = fallbackReason;
     this.featureFlags = {
       compose: settings.compose,
       lighting: settings.lighting,
@@ -62,6 +69,7 @@ class WebGLRenderBackend implements RendererBackend {
     // framebuffer (the composer owns its own targets), and the discrete GPU
     // is worth asking for on dual-GPU laptops.
     this.renderer = new THREE.WebGLRenderer({
+      canvas,
       antialias: false,
       depth: false,
       stencil: false,
@@ -73,7 +81,9 @@ class WebGLRenderBackend implements RendererBackend {
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
     this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
-    holder.appendChild(this.renderer.domElement);
+    if (this.renderer.domElement.parentElement !== holder) {
+      holder.appendChild(this.renderer.domElement);
+    }
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -193,8 +203,8 @@ class WebGLRenderBackend implements RendererBackend {
       actual: this.contextLost ? 'none' : decision.actual,
       implementation: 'WebGLRenderBackend',
       health: this.contextLost ? 'lost' : this.contextRestoredCount > 0 ? 'recovered' : 'active',
-      reason: this.contextLost ? 'webgl-context-lost' : decision.reason,
-      fallback: decision.fallback,
+      reason: this.contextLost ? 'webgl-context-lost' : this.fallbackReason ?? decision.reason,
+      fallback: this.fallbackReason !== null || decision.fallback,
       canvas: {
         width: this.renderer.domElement.width,
         height: this.renderer.domElement.height,
@@ -278,13 +288,46 @@ class WebGLRenderBackend implements RendererBackend {
 }
 
 export class Renderer implements RenderTarget {
-  private readonly backend: RendererBackend;
+  private backend: RendererBackend;
+  private readonly holder: HTMLElement;
 
   constructor(holder: HTMLElement, settings: RenderSettings) {
-    this.backend =
-      settings.backend === 'webgpu' || settings.backend === 'auto'
-        ? new WebGpuRenderBackend(holder, settings)
-        : new WebGLRenderBackend(holder, settings);
+    this.holder = holder;
+    this.backend = this.createBackend(settings);
+  }
+
+  private canAttemptWebGpu(): boolean {
+    return (
+      typeof window !== 'undefined' &&
+      window.isSecureContext === true &&
+      typeof navigator !== 'undefined' &&
+      'gpu' in navigator
+    );
+  }
+
+  private createBackend(settings: RenderSettings): RendererBackend {
+    if (settings.backend !== 'webgpu') {
+      return new WebGLRenderBackend(this.holder, settings);
+    }
+    if (!this.canAttemptWebGpu()) {
+      const reason =
+        typeof window !== 'undefined' && window.isSecureContext !== true
+          ? 'webgpu-insecure-context-webgl-fallback'
+          : 'navigator-gpu-absent-webgl-fallback';
+      return new WebGLRenderBackend(this.holder, settings, undefined, reason);
+    }
+    return new WebGpuRenderBackend(this.holder, settings);
+  }
+
+  private fallBackFromFailedWebGpu(settings: RenderSettings): void {
+    if (!(this.backend instanceof WebGpuRenderBackend) || !this.backend.initializationFailed) return;
+    const canvas = this.backend.releaseCanvasForWebGlFallback();
+    this.backend = new WebGLRenderBackend(
+      this.holder,
+      settings,
+      canvas,
+      this.backend.failureReason ?? 'webgpu-init-failed-webgl-fallback',
+    );
   }
 
   get pixelData(): Float32Array {
@@ -319,6 +362,8 @@ export class Renderer implements RenderTarget {
   }
 
   render(ctx: Ctx): void {
+    this.backend.syncSettings(ctx.state.render);
+    this.fallBackFromFailedWebGpu(ctx.state.render);
     this.backend.syncSettings(ctx.state.render);
     this.backend.render(ctx);
   }

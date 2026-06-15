@@ -3,6 +3,7 @@ import { assessEditorLink } from '@/builder/validate';
 import type { EditorDocument, EditorLink, EditorObject } from '@/builder/document';
 import { builderPanelHeader } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
+import { editorSectionHtml } from '@/ui/editor/Section';
 
 export interface LinkGraphEndpoint {
   id: string;
@@ -53,6 +54,7 @@ export interface LinkGraphModel {
     warnings: number;
     actuators: number;
   };
+  collapsedSections?: Readonly<Record<string, boolean>>;
 }
 
 export interface BuildLinkGraphOptions {
@@ -60,6 +62,7 @@ export interface BuildLinkGraphOptions {
   issues: readonly DocIssue[];
   selectedIds: ReadonlySet<string>;
   query?: string;
+  collapsedSections?: Readonly<Record<string, boolean>>;
 }
 
 const ACTUATOR_ROW_KINDS = new Set(['door', 'valve', 'relay', 'runeDoor', 'plug']);
@@ -152,6 +155,7 @@ export function buildLinkGraphModel(options: BuildLinkGraphOptions): LinkGraphMo
       warnings: linkRows.filter((row) => row.severity === 'warning').length,
       actuators: actuators.length,
     },
+    collapsedSections: options.collapsedSections,
   };
 }
 
@@ -170,18 +174,27 @@ export function renderLinkGraphPanel(model: LinkGraphModel): string {
     ${builderPanelHeader({ title: builderPanelTitle('builder-link-graph'), closeId: 'blg-close', closeLabel: 'Close link graph' })}
     <div class="bo-summary">${model.counts.links} links - ${model.counts.live} live - ${model.counts.dead} dead - ${model.counts.actuators} actuators</div>
     <div class="bo-search"><input id="blg-search" class="editor-search" type="search" spellcheck="false" placeholder="search endpoints, links, warnings" value="${escAttr(model.query)}"></div>
-    <section class="bo-section">
-      <div class="bo-section-title">Actuators</div>
+    ${section(model, 'linkGraph.actuators', 'Actuators', `
       <div class="blg-actuators" role="listbox">${actuatorRows}</div>
-    </section>
-    <section class="bo-section">
-      <div class="bo-section-title">Dead Or Invalid Links</div>
+    `)}
+    ${section(model, 'linkGraph.invalid', 'Dead Or Invalid Links', `
       <div class="blg-links" role="listbox">${brokenRows || '<div class="bo-empty b-empty">No dead links</div>'}</div>
-    </section>
-    <section class="bo-section">
-      <div class="bo-section-title">All Links</div>
+    `)}
+    ${section(model, 'linkGraph.all', 'All Links', `
       <div class="blg-links" role="listbox">${allRows}</div>
-    </section>`;
+    `)}`;
+}
+
+function section(model: LinkGraphModel, id: string, title: string, body: string): string {
+  return editorSectionHtml({
+    id,
+    title,
+    body,
+    className: 'bo-section',
+    titleClassName: 'bo-section-title',
+    bodyClassName: 'bo-section-body',
+    collapsed: model.collapsedSections?.[id] === true,
+  });
 }
 
 function renderActuator(row: LinkGraphActuatorRow): string {

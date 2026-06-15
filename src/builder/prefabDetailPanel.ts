@@ -3,12 +3,14 @@ import { PREFAB_VARIANTS } from '@/builder/prefablib';
 import type { PrefabAnchor, PrefabDef, PrefabVariantId } from '@/builder/prefablib';
 import { builderPanelHeader } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
+import { editorSectionHtml } from '@/ui/editor/Section';
 
 export interface PrefabDetailModel {
   prefab: PrefabDef | null;
   asset: AssetRecord | null;
   activeVariant: PrefabVariantId;
   selectedAnchorId: string | null;
+  collapsedSections?: Readonly<Record<string, boolean>>;
 }
 
 export function renderPrefabDetailPanel(model: PrefabDetailModel): string {
@@ -58,17 +60,15 @@ export function renderPrefabDetailPanel(model: PrefabDetailModel): string {
         <button type="button" data-prefab-action="export-png">Export PNG</button>
         <button type="button" data-prefab-action="anchors">Edit Anchors</button>
       </div>
-      <section class="bpd-section">
-        <div class="bpd-section-title">Summary</div>
+      ${section(model, 'prefabDetails.summary', 'Summary', `
         ${row('Size', `${prefab.w} x ${prefab.h}`)}
         ${row('Objects', String(prefab.objects.length))}
         ${row('Links', String(prefab.links.length))}
         ${row('Lights', String(prefab.lights.length))}
         ${row('Origin', model.asset?.origin ?? 'library')}
         <div class="bpd-tags">${prefab.tags.map((tag) => `<span>${esc(tag)}</span>`).join('')}</div>
-      </section>
-      <section class="bpd-section">
-        <div class="bpd-section-title">Variants</div>
+      `)}
+      ${section(model, 'prefabDetails.variants', 'Variants', `
         <div class="bpd-variants" role="radiogroup" aria-label="Prefab variants">
           ${PREFAB_VARIANTS.map((variant) => `
             <button type="button" role="radio" aria-checked="${variant.id === model.activeVariant ? 'true' : 'false'}" aria-pressed="${variant.id === model.activeVariant ? 'true' : 'false'}" class="bpd-variant${variant.id === model.activeVariant ? ' active' : ''}" data-prefab-variant="${variant.id}">
@@ -76,36 +76,45 @@ export function renderPrefabDetailPanel(model: PrefabDetailModel): string {
               <span>${esc(variant.label)}</span>
             </button>`).join('')}
         </div>
-      </section>
-      <section class="bpd-section">
-        <div class="bpd-section-title">Anchors</div>
+      `)}
+      ${section(model, 'prefabDetails.anchors', 'Anchors', `
         ${anchors.length > 0
           ? `<div class="bpd-anchor-list">${anchors.map((anchor) => `
               <button type="button" class="bpd-anchor${anchor.id === model.selectedAnchorId ? ' active' : ''}" data-prefab-anchor="${escAttr(anchor.id)}">
                 <b>${esc(anchor.id)}</b><span>${anchor.dir.toUpperCase()} ${anchor.kind} snaps to ${oppositeDir(anchor.dir).toUpperCase()} @ ${anchor.x},${anchor.y}</span>
               </button>`).join('')}</div>`
           : '<div class="bpd-message">No anchors. Add n/s/e/w anchors before composition snapping.</div>'}
-      </section>
-      <section class="bpd-section">
-        <div class="bpd-section-title">Dependencies</div>
+      `)}
+      ${section(model, 'prefabDetails.dependencies', 'Dependencies', `
         ${dependencies
           ? dependencies.refs.length > 0
             ? dependencies.refs.map((ref) => `<div class="bpd-row${missing.includes(ref) || broken.includes(ref) ? ' bad' : ''}"><span>${esc(ref.kind)}</span><b>${esc(ref.sourceId)}</b></div>`).join('')
             : '<div class="bpd-message ok">No dependencies</div>'
           : '<div class="bpd-message">Asset Database metadata unavailable</div>'}
-      </section>
-      <section class="bpd-section">
-        <div class="bpd-section-title">Validation</div>
+      `)}
+      ${section(model, 'prefabDetails.validation', 'Validation', `
         <div class="bpd-state ${validation?.state ?? 'unknown'}">${esc((validation?.state ?? 'unknown').toUpperCase())}</div>
         ${(validation?.messages.length ?? 0) > 0
           ? validation!.messages.map((message) => `<div class="bpd-message">${esc(message)}</div>`).join('')
           : '<div class="bpd-message ok">No validation messages</div>'}
-      </section>
+      `)}
     </div>`;
 }
 
 function row(label: string, value: string): string {
   return `<div class="bpd-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
+}
+
+function section(model: PrefabDetailModel, id: string, title: string, body: string): string {
+  return editorSectionHtml({
+    id,
+    title,
+    body,
+    className: 'bpd-section',
+    titleClassName: 'bpd-section-title',
+    bodyClassName: 'bpd-section-body',
+    collapsed: model.collapsedSections?.[id] === true,
+  });
 }
 
 function anchorPreviewPosition(

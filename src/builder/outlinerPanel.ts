@@ -5,6 +5,7 @@ import type { PrefabDef } from '@/builder/prefablib';
 import type { SpriteAsset } from '@/builder/assets/sprites';
 import { builderPanelHeader } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
+import { editorSectionHtml } from '@/ui/editor/Section';
 
 export type OutlinerFilter =
   | 'gameplay'
@@ -64,6 +65,7 @@ export interface OutlinerModel {
     hidden: number;
     locked: number;
   };
+  collapsedSections?: Readonly<Record<string, boolean>>;
 }
 
 export interface BuildOutlinerOptions {
@@ -76,6 +78,7 @@ export interface BuildOutlinerOptions {
   query?: string;
   filters?: ReadonlySet<OutlinerFilter> | readonly OutlinerFilter[];
   layers?: readonly OutlinerLayerState[];
+  collapsedSections?: Readonly<Record<string, boolean>>;
 }
 
 const FILTER_LABELS: Array<{ id: OutlinerFilter; label: string }> = [
@@ -149,6 +152,7 @@ export function buildOutlinerModel(options: BuildOutlinerOptions): OutlinerModel
       hidden: options.doc.objects.filter((object) => object.hidden).length + options.doc.lights.filter((light) => light.hidden).length,
       locked: options.doc.objects.filter((object) => object.locked).length + options.doc.lights.filter((light) => light.locked).length,
     },
+    collapsedSections: options.collapsedSections,
   };
 }
 
@@ -171,14 +175,24 @@ export function renderOutlinerPanel(model: OutlinerModel): string {
     <div class="bo-summary">${model.counts.objects} objects - ${model.counts.lights} lights - ${model.counts.links} links</div>
     <div class="bo-search"><input id="bo-search" type="search" class="editor-search" spellcheck="false" placeholder="search objects, links, params" value="${escAttr(model.query)}"></div>
     <div class="bo-chips">${chips}</div>
-    <section class="bo-section">
-      <div class="bo-section-title">Layer Manager</div>
+    ${section(model, 'outliner.layers', 'Layer Manager', `
       <div class="bo-layers">${layerRows}</div>
-    </section>
-    <section class="bo-section">
-      <div class="bo-section-title">Document Rows</div>
+    `)}
+    ${section(model, 'outliner.rows', 'Document Rows', `
       <div class="bo-rows" role="listbox">${rows}</div>
-    </section>`;
+    `)}`;
+}
+
+function section(model: OutlinerModel, id: string, title: string, body: string): string {
+  return editorSectionHtml({
+    id,
+    title,
+    body,
+    className: 'bo-section',
+    titleClassName: 'bo-section-title',
+    bodyClassName: 'bo-section-body',
+    collapsed: model.collapsedSections?.[id] === true,
+  });
 }
 
 function renderLayerRow(layer: OutlinerLayerState): string {

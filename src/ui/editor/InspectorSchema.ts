@@ -1,5 +1,6 @@
 import type { EditorField, Vec2Field } from '@/ui/editor/Fields';
 import { escapeAttr, escapeHtml, fieldRow } from '@/ui/editor/Fields';
+import { editorSectionHtml } from '@/ui/editor/Section';
 
 export type InspectorTargetScope =
   | 'sandbox'
@@ -107,6 +108,10 @@ export type InspectorSchemaItem =
   | InspectorHelpItem
   | InspectorCustomItem;
 
+export interface RenderInspectorOptions {
+  collapsedSections?: Readonly<Record<string, boolean>>;
+}
+
 export const MIXED_VALUE: unique symbol = Symbol('inspector.mixed');
 export type MixedValue<T> = T | typeof MIXED_VALUE;
 
@@ -120,8 +125,44 @@ export function isMixedValue<T>(value: MixedValue<T> | undefined): value is type
   return value === MIXED_VALUE;
 }
 
-export function renderInspectorItems(items: InspectorSchemaItem[]): string {
-  return items.map(renderInspectorItem).join('');
+export function renderInspectorItems(items: InspectorSchemaItem[], options: RenderInspectorOptions = {}): string {
+  const chunks: string[] = [];
+  let current: InspectorSectionItem | null = null;
+  let body: string[] = [];
+  const flush = (): void => {
+    if (!current) {
+      if (body.length > 0) {
+        chunks.push(body.join(''));
+        body = [];
+      }
+      return;
+    }
+    const id = `inspector.${current.id ?? sectionDomId(current.label)}`;
+    chunks.push(
+      editorSectionHtml({
+        id,
+        title: current.label,
+        body: body.join(''),
+        className: 'bi-section',
+        titleClassName: 'bi-head',
+        bodyClassName: 'bi-section-body',
+        collapsed: options.collapsedSections?.[id] === true,
+      }),
+    );
+    current = null;
+    body = [];
+  };
+  for (const item of items) {
+    if (item.kind === 'section') {
+      flush();
+      current = item;
+      body = [];
+      continue;
+    }
+    body.push(renderInspectorItem(item));
+  }
+  flush();
+  return chunks.join('');
 }
 
 export function commandDataset(command: InspectorCommandRef): Record<string, string | number | boolean> {
@@ -161,6 +202,10 @@ function renderInspectorItem(item: InspectorSchemaItem): string {
         item.html
       }</div>`;
   }
+}
+
+function sectionDomId(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '') || 'section';
 }
 
 function renderReadout(item: InspectorReadoutItem): string {

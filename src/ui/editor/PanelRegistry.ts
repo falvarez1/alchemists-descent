@@ -82,6 +82,9 @@ export class PanelRegistry {
   }
 }
 
+const ALL_DOCKS = ['left', 'right', 'bottom', 'floating'] as const;
+const SIDE_DOCKS = ['left', 'right', 'floating'] as const;
+
 export const BUILDER_PANEL_SPECS = [
   {
     id: 'builder-palette',
@@ -93,6 +96,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 188,
     maxSize: 320,
     closePolicy: 'required',
+    allowedDocks: SIDE_DOCKS,
     handleSelectors: [':scope > .builder-panel-title'],
   },
   {
@@ -104,7 +108,13 @@ export const BUILDER_PANEL_SPECS = [
     defaultSize: 252,
     minSize: 220,
     maxSize: 360,
-    closePolicy: 'required',
+    closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
+    commandIds: {
+      open: 'builder.inspectorPanel',
+      close: 'builder.inspectorPanel',
+      focus: 'builder.inspectorPanel',
+    },
     handleSelectors: [':scope > .bi-head'],
   },
   {
@@ -116,6 +126,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 220,
     maxSize: 360,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     handleSelectors: [':scope > .bi-head'],
   },
   {
@@ -127,6 +138,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 300,
     maxSize: 760,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     commandIds: {
       open: 'builder.virtualWorldPanel',
       close: 'builder.virtualWorldPanel',
@@ -143,6 +155,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 220,
     maxSize: 380,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     commandIds: {
       open: 'builder.globalControlsPanel',
       close: 'builder.globalControlsPanel',
@@ -159,6 +172,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 220,
     maxSize: 380,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     commandIds: {
       open: 'builder.postProcessingPanel',
       close: 'builder.postProcessingPanel',
@@ -175,6 +189,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 260,
     maxSize: 720,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     commandIds: {
       open: 'builder.assetsPanel',
       close: 'builder.assetsPanel',
@@ -191,6 +206,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 240,
     maxSize: 460,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     commandIds: {
       open: 'builder.assetDetailsPanel',
       close: 'builder.assetDetailsPanel',
@@ -207,6 +223,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 248,
     maxSize: 480,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     commandIds: {
       open: 'builder.prefabDetailsPanel',
       close: 'builder.prefabDetailsPanel',
@@ -223,6 +240,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 220,
     maxSize: 360,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     handleSelectors: [':scope > .bi-head'],
   },
   {
@@ -234,6 +252,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 220,
     maxSize: 360,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     handleSelectors: [':scope > .bi-head'],
   },
   {
@@ -245,6 +264,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 220,
     maxSize: 520,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     handleSelectors: [':scope > .bi-head'],
   },
   {
@@ -256,6 +276,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 240,
     maxSize: 440,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     commandIds: {
       open: 'builder.outlinerPanel',
       close: 'builder.outlinerPanel',
@@ -272,6 +293,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 260,
     maxSize: 520,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     commandIds: {
       open: 'builder.runtimePanel',
       close: 'builder.runtimePanel',
@@ -288,6 +310,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 220,
     maxSize: 620,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     commandIds: {
       open: 'builder.linkGraphPanel',
       close: 'builder.linkGraphPanel',
@@ -304,6 +327,7 @@ export const BUILDER_PANEL_SPECS = [
     minSize: 180,
     maxSize: 620,
     closePolicy: 'hide',
+    allowedDocks: ALL_DOCKS,
     commandIds: {
       open: 'console.open',
       close: 'console.close',
@@ -335,8 +359,12 @@ function normalizePanelSpec(spec: PanelSpec): PanelSpec {
   return {
     ...spec,
     closePolicy: spec.closePolicy ?? 'hide',
-    allowedDocks: spec.allowedDocks ?? ['left', 'right', 'bottom', 'floating'],
+    allowedDocks: spec.allowedDocks ?? defaultAllowedDocks(spec.defaultDock),
     handleSelectors: spec.handleSelectors ?? [':scope > .bi-head', ':scope > .builder-panel-title'],
     defaultOpen: spec.defaultOpen === true,
   };
+}
+
+function defaultAllowedDocks(defaultDock: DockRegion): readonly DockRegion[] {
+  return defaultDock === 'floating' ? ['floating'] : [defaultDock, 'floating'];
 }

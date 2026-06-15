@@ -263,11 +263,12 @@ function sortOption(current: string, value: string, label: string): string {
 
 function treeGroup(model: AssetBrowserModel, id: string, label: string, rows: readonly string[]): string {
   const collapsed = model.collapsedSections?.[id] === true;
+  const bodyId = `ba-tree-body-${id.replace(/[^A-Za-z0-9_-]/g, '-')}`;
   return `<section class="ba-tree-group bp-section${collapsed ? ' collapsed' : ''}" data-section="${escAttr(id)}">
-    <div class="ba-tree-row ba-tree-folder bp-head bp-section-head" data-section-toggle="${escAttr(id)}" aria-expanded="${collapsed ? 'false' : 'true'}" role="treeitem" aria-level="1" tabindex="0">
+    <div class="ba-tree-row ba-tree-folder bp-head bp-section-head" data-section-toggle="${escAttr(id)}" aria-expanded="${collapsed ? 'false' : 'true'}" aria-controls="${escAttr(bodyId)}" role="treeitem" aria-level="1" tabindex="0">
       <span class="bp-chevron" aria-hidden="true"></span><span class="ba-tree-icon folder" aria-hidden="true"></span><span class="ba-tree-label">${esc(label)}</span>
     </div>
-    <div class="bp-section-body ba-tree-children" role="group">${rows.join('')}</div>
+    <div id="${escAttr(bodyId)}" class="bp-section-body ba-tree-children" role="group">${rows.join('')}</div>
   </section>`;
 }
 

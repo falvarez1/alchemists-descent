@@ -45,3 +45,22 @@ checklist for future WebGPU post-processing work.
   screenshots, Builder layout, and console capture are redesigned together.
 - WebGPU runtime backend hot-swapping is out of scope. Phase 3 selects the
   renderer at boot so the input manager binds to one stable canvas.
+
+## Phase 3 Tolerance Notes
+
+- The WebGPU shell uses a single-pass TSL bloom approximation. It is visibly
+  different from WebGL `UnrealBloomPass` in bright synthetic scenes and is
+  accepted only while WebGPU remains an explicit boot-time probe path.
+- The Phase 3 bloom approximation honors `postFx.bloomEnabled` independently
+  from `postFx.lensEnabled`, but it does not currently honor
+  `postFx.bloomRadius`. A wider radius-aware kernel was attempted and rolled
+  back because it worsened the `gl` bucket without materially improving parity.
+- The `postFx.enabled=false` WebGPU path is slower than WebGL's direct no-post
+  path on the Phase 3 probe. That path is not a default; it is recorded as a
+  warning for future optimization or rollback if WebGPU presentation becomes
+  user-facing.
+- If WebGPU initialization fails, Phase 3 falls back to WebGL on the same
+  canvas so input listeners remain bound. Production WebGPU device-loss
+  recovery is still not claimed by this shell; a lost device is status-reported
+  and must be handled by a later resource-rebuild phase before WebGPU can become
+  default.

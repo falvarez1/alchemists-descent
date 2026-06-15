@@ -26,6 +26,15 @@ function openCellCount(types: Uint8Array): number {
   return open;
 }
 
+function countMaterials(types: Uint8Array, materials: readonly number[]): number {
+  const set = new Set(materials);
+  let count = 0;
+  for (let i = 0; i < types.length; i++) {
+    if (set.has(types[i])) count++;
+  }
+  return count;
+}
+
 describe('virtual world prototype', () => {
   it('generates deterministic chunks by seed and coordinate', () => {
     const def = createDefaultVirtualWorldDef(1234);
@@ -63,6 +72,17 @@ describe('virtual world prototype', () => {
     for (const biome of VIRTUAL_BIOME_IDS) {
       expect(def.materialProfile.palettes[biome]).toBeTruthy();
       expect(def.materialProfile.palettes[biome].wall).not.toBe(0);
+    }
+  });
+
+  it('has virtual dressing recipes for every campaign biome', () => {
+    const def = createDefaultVirtualWorldDef(4321);
+
+    expect(new Set(Object.keys(def.dressing.biomes))).toEqual(new Set(VIRTUAL_BIOME_IDS));
+    for (const biome of VIRTUAL_BIOME_IDS) {
+      const recipe = def.dressing.biomes[biome];
+      expect(recipe.ore).toBeGreaterThan(0);
+      expect(recipe.glowDensity).toBeGreaterThanOrEqual(0);
     }
   });
 
@@ -116,6 +136,53 @@ describe('virtual world prototype', () => {
 
     expect(allPlaneHash(b)).not.toBe(allPlaneHash(a));
     expect(surfaceCells).toBeGreaterThan(80);
+  });
+
+  it('applies tunable rich biome dressing to chunks', () => {
+    const bare = createDefaultVirtualWorldDef(97532);
+    bare.map.cells.fill(biomeIndexFromId('earthen'));
+    Object.assign(bare.dressing.controls, {
+      detailDensity: 0,
+      materialRichness: 0,
+      liquidRichness: 0,
+      glowDensity: 0,
+      floorDebris: 0,
+      hangingGrowth: 0,
+    });
+
+    const rich = createDefaultVirtualWorldDef(97532);
+    rich.map.cells.fill(biomeIndexFromId('earthen'));
+    Object.assign(rich.dressing.controls, {
+      detailDensity: 2,
+      materialRichness: 2,
+      liquidRichness: 2,
+      glowDensity: 2,
+      floorDebris: 2,
+      hangingGrowth: 2,
+    });
+
+    const a = generateVirtualChunk(bare, 0, 2);
+    const b = generateVirtualChunk(rich, 0, 2);
+    const richCells = countMaterials(b.types, [Cell.Gold, Cell.Coal, Cell.Glowshroom, Cell.Vines, Cell.Water]);
+
+    expect(allPlaneHash(b)).not.toBe(allPlaneHash(a));
+    expect(richCells).toBeGreaterThan(20);
+  });
+
+  it('uses biome-specific dressing recipes for material signatures', () => {
+    const fungal = createDefaultVirtualWorldDef(86420);
+    fungal.map.cells.fill(biomeIndexFromId('fungal'));
+    const frozen = createDefaultVirtualWorldDef(86420);
+    frozen.map.cells.fill(biomeIndexFromId('frozen'));
+
+    const a = generateVirtualChunk(fungal, 0, 0);
+    const b = generateVirtualChunk(frozen, 0, 0);
+    const fungalSignature = countMaterials(a.types, [Cell.Fungus, Cell.Glowshroom, Cell.Toxic, Cell.Vines]);
+    const frozenSignature = countMaterials(b.types, [Cell.Ice, Cell.Snow, Cell.Crystal, Cell.Nitrogen]);
+
+    expect(allPlaneHash(b)).not.toBe(allPlaneHash(a));
+    expect(fungalSignature).toBeGreaterThan(40);
+    expect(frozenSignature).toBeGreaterThan(40);
   });
 
   it('handles negative chunk coordinates deterministically', () => {

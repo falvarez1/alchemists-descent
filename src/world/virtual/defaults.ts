@@ -7,6 +7,8 @@ import type {
   PixelSceneDef,
   PixelScenePlacementDef,
   VirtualBiomeId,
+  VirtualBiomeDressingRecipe,
+  VirtualDressingProfile,
   VirtualMaterialPalette,
   VirtualMaterialProfile,
   VirtualWorldDef,
@@ -43,6 +45,7 @@ export function createDefaultVirtualWorldDef(seed = 0x4e4f4954): VirtualWorldDef
     tileset: createDefaultHerringboneTileset(),
     pixelScenes: createDefaultPixelScenePlacements(),
     materialProfile: createDefaultMaterialProfile(),
+    dressing: createDefaultDressingProfile(),
     generation: {
       halo: 32,
       baseCellSize: 3,
@@ -98,6 +101,81 @@ function createDefaultMaterialProfile(): VirtualMaterialProfile {
     VIRTUAL_BIOME_IDS.map((id) => [id, materialPaletteForBiome(id)]),
   ) as Record<VirtualBiomeId, VirtualMaterialPalette>;
   return { palettes };
+}
+
+export function createDefaultDressingProfile(): VirtualDressingProfile {
+  const biomes = Object.fromEntries(
+    VIRTUAL_BIOME_IDS.map((id) => [id, dressingRecipeForBiome(id)]),
+  ) as Record<VirtualBiomeId, VirtualBiomeDressingRecipe>;
+  return {
+    controls: {
+      detailDensity: 1,
+      materialRichness: 1,
+      liquidRichness: 1,
+      glowDensity: 1,
+      floorDebris: 1,
+      hangingGrowth: 1,
+    },
+    biomes,
+  };
+}
+
+function dressingRecipeForBiome(id: VirtualBiomeId): VirtualBiomeDressingRecipe {
+  switch (id) {
+    case 'fungal':
+      return recipe(Cell.Gold, 0.35, Cell.Fungus, 1.2, Cell.Glowshroom, 0.78, Cell.Toxic, 0.34, Cell.Glowshroom, 1.25, Cell.Moss, 1.15, Cell.Vines, 1.15);
+    case 'frozen':
+      return recipe(Cell.Crystal, 0.72, Cell.Ice, 1.05, Cell.Snow, 0.9, Cell.Nitrogen, 0.18, Cell.Crystal, 0.85, Cell.Ice, 0.95, Cell.Ice, 0.38);
+    case 'flooded':
+      return recipe(Cell.Gold, 0.34, Cell.Moss, 1.1, Cell.Fungus, 0.58, Cell.Water, 1.1, Cell.Glowshroom, 0.55, Cell.Moss, 1.25, Cell.Vines, 1.4);
+    case 'timber':
+      return recipe(Cell.Coal, 0.46, Cell.Wood, 1.25, Cell.Moss, 0.8, Cell.Water, 0.2, Cell.Glowshroom, 0.38, Cell.Wood, 1.4, Cell.Vines, 1.35);
+    case 'crystal':
+      return recipe(Cell.Crystal, 1.65, Cell.Glass, 0.58, Cell.Crystal, 1.25, Cell.Water, 0.16, Cell.Crystal, 1.65, Cell.Stone, 0.5, Cell.Crystal, 1.1);
+    case 'scorched':
+      return recipe(Cell.Coal, 1.1, Cell.Ash, 0.75, Cell.Stone, 0.62, Cell.Lava, 0.24, Cell.Gold, 0.34, Cell.Ash, 1.1, Cell.Stone, 0.2);
+    case 'volcanic':
+      return recipe(Cell.Coal, 0.82, Cell.Stone, 0.72, Cell.Lava, 0.8, Cell.Lava, 0.86, Cell.Lava, 0.48, Cell.Stone, 0.7, Cell.Stone, 0.24);
+    case 'gilded':
+      return recipe(Cell.Gold, 1.6, Cell.Catalyst, 0.46, Cell.Gold, 1.1, Cell.Acid, 0.3, Cell.Gold, 0.88, Cell.Stone, 0.6, Cell.Gold, 0.28);
+    case 'earthen':
+    default:
+      return recipe(Cell.Gold, 0.62, Cell.Coal, 0.44, Cell.Stone, 0.52, Cell.Water, 0.18, Cell.Glowshroom, 0.34, Cell.Moss, 0.92, Cell.Vines, 0.62);
+  }
+}
+
+function recipe(
+  ore: number,
+  oreDensity: number,
+  secondary: number,
+  secondaryDensity: number,
+  pocket: number,
+  pocketDensity: number,
+  liquid: number,
+  liquidDensity: number,
+  glow: number,
+  glowDensity: number,
+  rubble: number,
+  rubbleDensity: number,
+  hanging: number,
+  hangingDensity: number,
+): VirtualBiomeDressingRecipe {
+  return {
+    ore,
+    oreDensity,
+    secondary,
+    secondaryDensity,
+    pocket,
+    pocketDensity,
+    liquid,
+    liquidDensity,
+    glow,
+    glowDensity,
+    rubble,
+    rubbleDensity,
+    hanging,
+    hangingDensity,
+  };
 }
 
 function materialPaletteForBiome(id: VirtualBiomeId): VirtualMaterialPalette {
