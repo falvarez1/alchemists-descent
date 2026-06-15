@@ -22,6 +22,7 @@ import { Mechanisms } from '@/game/Mechanisms';
 import { Pickups } from '@/game/Pickups';
 import { createWaveState, WaveDirector } from '@/game/WaveDirector';
 import { InputManager } from '@/input/InputManager';
+import { currentAppMode, saveModeForReload, takeSavedMode } from '@/game/modePersist';
 import { Particles } from '@/particles/Particles';
 import { Background } from '@/render/Background';
 import { Camera } from '@/render/Camera';
@@ -67,7 +68,12 @@ export class Game {
   private readonly inspector: Inspector;
   private readonly perfHud = new PerfHud();
   private readonly brewing = new Brewing();
+  private readonly restoreSavedMode: () => void;
+  private modePersistDisposer: (() => void) | null = null;
+  private visibilityDisposer: (() => void) | null = null;
+  private animationFrameId: number | null = null;
   private started = false;
+  private disposed = false;
 
   constructor(holder: HTMLElement) {
     const state: GameStateData = {
@@ -169,7 +175,7 @@ export class Game {
     // Header PLAY opens the canonical run launcher; Builder playtests bypass it.
     new RunLauncher(ctx);
     // The authoring overlay (injects its own DOM + header button).
-    new Builder(ctx);
+    const builder = new Builder(ctx);
     // ESC pause + the Handbook (H); pause registers FIRST so its keydown
     // handler sees the help overlay still open and yields ESC to it.
     new PauseOverlay(ctx);
@@ -177,12 +183,18 @@ export class Game {
     this.inspector = new Inspector(ctx);
     this.toolbar = new Toolbar(ctx, (id, mode) => this.inspector.generateContextInspector(id, mode));
     // Wires its DOM listeners in the constructor; lives for the page lifetime.
-    new InputManager(this.renderer.domElement, ctx);
+    const inputManager = new InputManager(this.renderer.domElement, ctx);
+    this.restoreSavedMode = () => {
+      const mode = takeSavedMode();
+      if (mode === 'play') inputManager.setMode('play');
+      else if (mode === 'builder') builder.open();
+      // null -> nothing was saved; boot stays in the default Sandbox.
+    };
   }
 
   /** Boot sequence (original lines 4106-4117), then kick off the rAF loop. */
   start(): void {
-    if (this.started) return;
+    if (this.started || this.disposed) return;
     this.started = true;
 
     this.inspector.generateContextInspector(Cell.Sand, 'element');
@@ -195,7 +207,7 @@ export class Game {
     if (hint) this.ctx.camera.snapTo(hint.x, hint.y);
 
     // A hidden tab is the most likely prelude to a closed one — checkpoint.
-    document.addEventListener('visibilitychange', () => {
+    const checkpointOnHidden = (): void => {
       if (
         document.hidden &&
         this.ctx.state.mode === 'play' &&
@@ -203,9 +215,49 @@ export class Game {
       ) {
         this.ctx.levels.saveExpedition(this.ctx);
       }
-    });
+    };
+    document.addEventListener('visibilitychange', checkpointOnHidden);
+    this.visibilityDisposer = () => document.removeEventListener('visibilitychange', checkpointOnHidden);
 
-    requestAnimationFrame(this.step);
+    // Dev-only: return to the mode we were in before a Vite full-reload,
+    // instead of always falling back to the Sandbox.
+    this.restoreSavedMode();
+    this.wireModePersistence();
+
+    this.animationFrameId = requestAnimationFrame(this.step);
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+    this.modePersistDisposer?.();
+    this.modePersistDisposer = null;
+    this.visibilityDisposer?.();
+    this.visibilityDisposer = null;
+  }
+
+  /**
+   * Snapshot the live mode just before a Vite HMR full-reload so the next boot
+   * returns to it (see modePersist). Fires only for Vite's own reloads, so a
+   * manual refresh or a headless page.reload() still boots clean into Sandbox
+   * and the verification suite is unaffected. Inert in production, where
+   * import.meta.hot is undefined.
+   */
+  private wireModePersistence(): void {
+    if (!import.meta.hot || this.modePersistDisposer) return;
+    const save = (): void => saveModeForReload(currentAppMode(this.ctx.state.mode));
+    import.meta.hot.on('vite:beforeFullReload', save);
+    // Dev/test seam: lets a probe drive the real save->reload->restore chain,
+    // since Vite's own reload event can't be dispatched from page scripts.
+    (window as unknown as { __persistModeNow?: () => void }).__persistModeNow = save;
+    this.modePersistDisposer = () => {
+      import.meta.hot?.off('vite:beforeFullReload', save);
+      delete (window as unknown as { __persistModeNow?: () => void }).__persistModeNow;
+    };
   }
 
   /** Fixed-timestep accumulator (the game is authored in 60Hz frames). */
@@ -222,7 +274,8 @@ export class Game {
    * spiraling.
    */
   private step = (now: number): void => {
-    requestAnimationFrame(this.step);
+    if (this.disposed) return;
+    this.animationFrameId = requestAnimationFrame(this.step);
     if (this.lastStepTime === 0) this.lastStepTime = now;
     this.stepDebt += Math.min(100, now - this.lastStepTime);
     this.lastStepTime = now;

@@ -17,7 +17,12 @@ requestAnimationFrame(() =>
 
       if (import.meta.env.DEV) {
         // Debug handle for the console and headless verification scripts.
-        (window as unknown as { __game: Game }).__game = game;
+        const debugWindow = window as unknown as { __game?: Game };
+        debugWindow.__game = game;
+        import.meta.hot?.dispose(() => {
+          game.dispose();
+          if (debugWindow.__game === game) delete debugWindow.__game;
+        });
       }
 
       bootOverlay?.classList.add('done');
