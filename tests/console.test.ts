@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createDefaultPostFxSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
+import { createDefaultPostFxSettings, createDefaultRenderSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
 import type {
   Ctx,
@@ -67,6 +67,7 @@ function makeCtx(): Ctx {
     paused: false,
     debugGodMode: false,
     postFx: createDefaultPostFxSettings(),
+    render: createDefaultRenderSettings(),
     wandLight: createDefaultWandLightSettings(),
     editorLights: null,
     builderWandLightPreview: { enabled: false, x: 0, y: 0 },
@@ -218,7 +219,7 @@ function makeCtx(): Ctx {
       emitBuildFlame: () => undefined,
     },
     simulation: { accumulator: 0, update: () => undefined, processFrame: () => undefined },
-    worldgen: { spawnHint: null, generateCaves: () => undefined, regenerate: () => undefined, spawnFortress: () => undefined, generateLevel: () => ({}) },
+    worldgen: { spawnHint: null, paintSeed: null, generateCaves: () => undefined, regenerate: () => undefined, spawnFortress: () => undefined, generateLevel: () => ({}) },
     waveCtl: { start: () => undefined, update: () => undefined },
     flask: {
       get state() {
@@ -510,6 +511,23 @@ describe('console registry', () => {
     const get = await ctx.console.exec('get global.simSpeed');
     expect(set.ok).toBe(true);
     expect(get).toMatchObject({ ok: true, data: { path: 'global.simSpeed', value: 0.5 } });
+    expect(ctx.state.debugGodMode).toBe(false);
+  });
+
+  it('sets render backend flags through live params without tainting debug saves', async () => {
+    const ctx = makeCtx();
+    const backend = await ctx.console.exec('set render.backend auto');
+    const compose = await ctx.console.exec('set render.compose on');
+    const lighting = await ctx.console.exec('set render.lighting true');
+    const badBackend = await ctx.console.exec('set render.backend metal');
+    const assertBackend = await ctx.console.exec('assert render.backend == auto');
+
+    expect(backend).toMatchObject({ ok: true, data: { path: 'render.backend', oldValue: 'webgl', value: 'auto', tainted: false } });
+    expect(compose).toMatchObject({ ok: true, data: { path: 'render.compose', value: true, tainted: false } });
+    expect(lighting).toMatchObject({ ok: true, data: { path: 'render.lighting', value: true, tainted: false } });
+    expect(badBackend).toMatchObject({ ok: false, data: { code: 'parse-param-value', expected: ['webgl', 'webgpu', 'auto'] } });
+    expect(assertBackend).toMatchObject({ ok: true, data: { path: 'render.backend', expected: 'auto', actual: 'auto' } });
+    expect(ctx.state.render).toMatchObject({ backend: 'auto', compose: true, lighting: true, particles: false, post: false });
     expect(ctx.state.debugGodMode).toBe(false);
   });
 

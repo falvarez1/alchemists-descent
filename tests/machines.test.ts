@@ -157,7 +157,36 @@ describe('valve', () => {
     h.ctx.player.y = 103; // standing inside the channel
     step(h.ctx, mech, 12); // timer expires, valve restamps around the player
     expect(valve.state).toBe(0);
+    expect(valve.closePending).toBe(true);
     expect(countCells(h.world, 100, 100, 102, 103, Cell.Metal)).toBe(0); // all columns within |x-player| <= 5
+    h.ctx.player.x = -500;
+    h.ctx.player.y = -500;
+    step(h.ctx, mech, 2);
+    expect(valve.closePending).toBe(false);
+    expect(countCells(h.world, 100, 100, 102, 103, Cell.Metal)).toBe(12);
+  });
+
+  it('safe-closing doors retry skipped cells after the body leaves', () => {
+    const door = makeDoor(h.ctx, h.list, 100, 100, 3, 4);
+    const lever = placeLever(h, 90, 110, door);
+    lever.state = 1;
+    step(h.ctx, mech, 4); // open + retract
+    expect(door.state).toBe(1);
+    expect(countCells(h.world, 100, 100, 102, 103, Cell.Metal)).toBe(0);
+
+    h.ctx.player.x = 101;
+    h.ctx.player.y = 103;
+    lever.state = 0;
+    step(h.ctx, mech, 2);
+    expect(door.state).toBe(0);
+    expect(door.closePending).toBe(true);
+    expect(countCells(h.world, 100, 100, 102, 103, Cell.Metal)).toBe(0);
+
+    h.ctx.player.x = -500;
+    h.ctx.player.y = -500;
+    step(h.ctx, mech, 2);
+    expect(door.closePending).toBe(false);
+    expect(countCells(h.world, 100, 100, 102, 103, Cell.Metal)).toBe(12);
   });
 });
 

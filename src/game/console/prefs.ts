@@ -34,7 +34,7 @@ function writeJson(key: string, value: unknown, storage?: ConsoleStorage): boole
 
 function normalizeWatchPath(raw: string): string | null {
   const path = raw.trim();
-  if (!/^(global|materials|spells|postFx|backdrop)\.[A-Za-z0-9._-]+$/.test(path)) return null;
+  if (!/^(global|materials|spells|postFx|render|backdrop)\.[A-Za-z0-9._-]+$/.test(path)) return null;
   return path;
 }
 

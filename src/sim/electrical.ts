@@ -1,36 +1,35 @@
 import type { Ctx } from '@/core/types';
 import { Cell, isConductor } from '@/sim/CellType';
 
+const charged: number[] = [];
+const spread: number[] = [];
+
 export function updateElectricalGrid(ctx: Ctx): void {
   const w = ctx.world;
   const sim = w.simBounds;
   // Gather live charges in the active window, then apply spreads + decay in two phases
   const bleed = 1.0 - ctx.params.materials[Cell.Metal].conductivity!;
-  const charged: number[] = [];
-  for (let x = sim.x0; x < sim.x1; x++) {
-    for (let y = sim.y0; y < sim.y1; y++) {
-      if (w.charge[x + y * w.width] > 0) charged.push(x, y);
+  charged.length = 0;
+  spread.length = 0;
+  for (let y = sim.y0; y < sim.y1; y++) {
+    const row = y * w.width;
+    for (let x = sim.x0; x < sim.x1; x++) {
+      if (w.charge[row + x] > 0) charged.push(x, y);
     }
   }
   if (charged.length === 0) return;
-  const spread: number[] = [];
+  const trySpread = (tx: number, ty: number): void => {
+    if (!w.inBounds(tx, ty)) return;
+    const ti = tx + ty * w.width;
+    if (isConductor(w.types[ti]) && w.charge[ti] === 0) spread.push(tx, ty);
+  };
   for (let i = 0; i < charged.length; i += 2) {
     const x = charged[i],
       y = charged[i + 1];
-    const targets = [
-      [x + 1, y],
-      [x - 1, y],
-      [x, y + 1],
-      [x - 1, y - 1],
-    ];
-    for (const [tx, ty] of targets) {
-      if (
-        w.inBounds(tx, ty) &&
-        isConductor(w.types[tx + ty * w.width]) &&
-        w.charge[tx + ty * w.width] === 0
-      )
-        spread.push(tx, ty);
-    }
+    trySpread(x + 1, y);
+    trySpread(x - 1, y);
+    trySpread(x, y + 1);
+    trySpread(x - 1, y - 1);
   }
   for (let i = 0; i < charged.length; i += 2) {
     const x = charged[i],

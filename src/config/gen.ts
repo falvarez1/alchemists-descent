@@ -35,8 +35,12 @@ import type { BiomeId } from '@/core/types';
  *     line so the drains empty downhill forever).
  * v10: terrain polish fills tiny carve notches and shallow walk-surface pits
  *      with neighboring rock, reducing saw-tooth ledges and snaggy ditches.
+ * v11: recompute wizard-fit placement targets between authored-prefab and
+ *      machine-room passes so later connectors use current, stamped terrain.
+ * v12: rescue validator-matched machine-fed/ranged locks with cell-reachable
+ *      tunnels after prefab and machine-room placement.
  */
-export const GEN_VERSION = 10;
+export const GEN_VERSION = 12;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)

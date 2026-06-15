@@ -5,6 +5,7 @@ import type {
   GlobalParams,
   MaterialParams,
   PostFxSettings,
+  RenderSettings,
   SpellId,
   SpellParams,
   WandLightSettings,
@@ -131,6 +132,16 @@ export function createDefaultPostFxSettings(): PostFxSettings {
     grain: 0.028,
     hurtPulse: 1.0,
     exposure: 1.05,
+  };
+}
+
+export function createDefaultRenderSettings(): RenderSettings {
+  return {
+    backend: 'webgl',
+    compose: false,
+    lighting: false,
+    particles: false,
+    post: false,
   };
 }
 

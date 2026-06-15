@@ -165,8 +165,17 @@ describe('editor command registry', () => {
   });
 
   it('reports async command starts and failures without throwing through callers', async () => {
-    const registry = new CommandRegistry();
+    const asyncErrors: string[] = [];
+    const registry = new CommandRegistry((id, reason) => asyncErrors.push(`${id}:${reason}`));
     registry.register({ id: 'async', label: 'Async', category: 'test', run: async () => undefined });
+    registry.register({
+      id: 'asyncReject',
+      label: 'Async Reject',
+      category: 'test',
+      run: async () => {
+        throw new Error('late boom');
+      },
+    });
     registry.register({
       id: 'throws',
       label: 'Throws',
@@ -177,9 +186,31 @@ describe('editor command registry', () => {
     });
 
     expect(registry.run('async')).toEqual({ ok: true, pending: true });
+    expect(registry.run('asyncReject')).toEqual({ ok: true, pending: true });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(asyncErrors).toEqual(['asyncReject:late boom']);
     expect(await registry.runAsync('async')).toEqual({ ok: true });
     expect(registry.run('throws')).toEqual({ ok: false, reason: 'boom' });
     expect(await registry.runAsync('throws')).toEqual({ ok: false, reason: 'boom' });
+  });
+
+  it('searches labels, ids, categories, shortcuts, and keywords', () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      id: 'builder.captureTerrain',
+      label: 'Capture Terrain Into Document',
+      category: 'Document',
+      shortcut: 'Ctrl+Shift+C',
+      keywords: ['snapshot', 'paint'],
+      run: () => undefined,
+    });
+    registry.register({ id: 'builder.playtest', label: 'Builder Playtest', category: 'Playtest', run: () => undefined });
+
+    expect(registry.search('snapshot').map((cmd) => cmd.id)).toEqual(['builder.captureTerrain']);
+    expect(registry.search('document terrain').map((cmd) => cmd.id)).toEqual(['builder.captureTerrain']);
+    expect(registry.search('ctrl shift c').map((cmd) => cmd.id)).toEqual(['builder.captureTerrain']);
+    expect(registry.search('playtest').map((cmd) => cmd.id)).toEqual(['builder.playtest']);
   });
 });
 
@@ -293,6 +324,34 @@ describe('editor keymap', () => {
       commandId: 'global',
     });
     expect(ran).toEqual(['builder', 'global']);
+  });
+
+  it('does not run unscoped shortcuts when a scoped surface is active', () => {
+    const registry = new CommandRegistry();
+    const ran: string[] = [];
+    registry.register({
+      id: 'legacy',
+      label: 'Legacy',
+      category: 'test',
+      shortcut: 'B',
+      run: () => ran.push('legacy'),
+    });
+    registry.register({
+      id: 'builder.tool.paint',
+      label: 'Paint',
+      category: 'test',
+      shortcut: 'B',
+      scopes: ['builder.author'],
+      run: () => ran.push('paint'),
+    });
+    const keymap = new Keymap(registry);
+
+    expect(keymap.handleKeyDown(keyboard('KeyB', { key: 'b' }), { scope: 'builder.livePreview' })).toEqual({ handled: false });
+    expect(keymap.handleKeyDown(keyboard('KeyB', { key: 'b' }), { scope: 'builder.author' })).toMatchObject({
+      handled: true,
+      commandId: 'builder.tool.paint',
+    });
+    expect(ran).toEqual(['paint']);
   });
 });
 

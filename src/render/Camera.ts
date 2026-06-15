@@ -16,6 +16,8 @@ export class Camera implements CameraApi {
   zoom = 1;
   /** Editor zoom override (Builder wheel); null = the game's idle-zoom. */
   zoomLock: number | null = null;
+  /** Runtime inspector/debug focus target; null means normal play follow. */
+  inspectionFocus: { x: number; y: number } | null = null;
   idleFrames = 0;
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
   renderX = 0;
@@ -23,7 +25,10 @@ export class Camera implements CameraApi {
 
   update(ctx: Ctx): void {
     const { player, state, input } = ctx;
-    if (state.mode === 'play' && !player.dead) {
+    if (state.mode === 'play' && this.inspectionFocus !== null) {
+      this.tx = this.inspectionFocus.x - VIEW_W / 2;
+      this.ty = this.inspectionFocus.y - VIEW_H / 2;
+    } else if (state.mode === 'play' && !player.dead) {
       // Crawl: a mild extra forward lead — you want to see down the tunnel,
       // not under your own knees (crouchT decays in a crawl, so the peek
       // below hands itself over to the lead as the stance changes).
@@ -47,6 +52,7 @@ export class Camera implements CameraApi {
     // Idle zoom: lean in when the wizard stands still, pull back the moment he moves
     const busy =
       state.mode !== 'play' ||
+      this.inspectionFocus !== null ||
       player.dead ||
       Math.abs(player.vx) > 0.25 ||
       !player.grounded ||
@@ -63,6 +69,15 @@ export class Camera implements CameraApi {
     world.simBounds.x1 = Math.min(WIDTH, cx + VIEW_W + SIM_MARGIN);
     world.simBounds.y0 = Math.max(0, cy - SIM_MARGIN);
     world.simBounds.y1 = Math.min(HEIGHT, cy + VIEW_H + SIM_MARGIN);
+  }
+
+  setInspectionFocus(x: number, y: number, options: { snap?: boolean } = {}): void {
+    this.inspectionFocus = { x, y };
+    if (options.snap !== false) this.snapTo(x, y);
+  }
+
+  clearInspectionFocus(): void {
+    this.inspectionFocus = null;
   }
 
   /** Hard-snap camera + render snapshot to center on a world position (bypasses smoothing). */

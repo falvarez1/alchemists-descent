@@ -1,5 +1,6 @@
 import type { LevelRuntime } from '@/core/types';
 import { blocksEntity } from '@/sim/CellType';
+import { computeLooseRubbleBlockingMask } from '@/sim/collision';
 
 /**
  * Findability validation: mechanism-correct is NOT player-findable.
@@ -38,38 +39,13 @@ export function computeFits(w: { width: number; height: number; types: Uint8Arra
 function fitsOf(w: { width: number; height: number; types: Uint8Array }): Uint8Array {
   const W = w.width,
     H = w.height;
-  // the LOOSE-RUBBLE rule (entities/physics.ts cellBlocks): connected solid
-  // clusters of fewer than 5 cells are walk-through debris
-  const solid = new Uint8Array(W * H);
-  for (let i = 0; i < solid.length; i++) solid[i] = blocksEntity(w.types[i]) ? 1 : 0;
-  const comp = new Int32Array(W * H);
-  const areas: number[] = [0];
-  const stack: number[] = [];
-  for (let i0 = 0; i0 < solid.length; i0++) {
-    if (!solid[i0] || comp[i0] !== 0) continue;
-    const label = areas.length;
-    let area = 0;
-    comp[i0] = label;
-    stack.push(i0);
-    while (stack.length > 0) {
-      const i = stack.pop()!;
-      area++;
-      const x = i % W,
-        y = (i - x) / W;
-      if (x + 1 < W && solid[i + 1] && comp[i + 1] === 0) { comp[i + 1] = label; stack.push(i + 1); }
-      if (x > 0 && solid[i - 1] && comp[i - 1] === 0) { comp[i - 1] = label; stack.push(i - 1); }
-      if (y + 1 < H && solid[i + W] && comp[i + W] === 0) { comp[i + W] = label; stack.push(i + W); }
-      if (y > 0 && solid[i - W] && comp[i - W] === 0) { comp[i - W] = label; stack.push(i - W); }
-    }
-    areas.push(area);
-  }
-  const blocks = (i: number): boolean => solid[i] === 1 && areas[comp[i]] >= 5;
+  const blocks = computeLooseRubbleBlockingMask(w);
   // separable erosion: where does a 9-wide x 17-tall clear box fit?
   const hRun = new Uint8Array(W * H);
   for (let y = 0; y < H; y++) {
     let run = 0;
     for (let x = 0; x < W; x++) {
-      run = blocks(x + y * W) ? 0 : run + 1;
+      run = blocks[x + y * W] ? 0 : run + 1;
       if (run >= PW * 2 + 1) hRun[x - PW + y * W] = 1;
     }
   }

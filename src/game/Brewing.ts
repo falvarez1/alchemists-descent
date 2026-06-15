@@ -203,11 +203,12 @@ export class Brewing {
     });
     ctx.audio.bubble();
     ctx.audio.tone(360, 720, 0.22, 'sine', 0.10);
-    this.recordDiscovery(ctx, recipe);
+    const firstDiscovery = this.recordDiscovery(ctx, recipe);
+    ctx.events.emit('recipeBrewed', { id: recipe.id, name: recipe.name, firstDiscovery });
   }
 
   /** Grimoire: first-ever brew of a recipe pays a one-time gold bounty. */
-  private recordDiscovery(ctx: Ctx, recipe: Recipe): void {
+  private recordDiscovery(ctx: Ctx, recipe: Recipe): boolean {
     let known: Record<string, boolean> = {};
     try {
       const raw = localStorage.getItem(GRIMOIRE_KEY);
@@ -215,7 +216,7 @@ export class Brewing {
     } catch {
       known = {};
     }
-    if (known[recipe.id]) return;
+    if (known[recipe.id]) return false;
     known[recipe.id] = true;
     try {
       localStorage.setItem(GRIMOIRE_KEY, JSON.stringify(known));
@@ -226,5 +227,6 @@ export class Brewing {
     ctx.events.emit('scoreChanged', { score: ctx.state.score });
     ctx.events.emit('recipeDiscovered', { name: recipe.name, bounty: DISCOVERY_BOUNTY });
     ctx.telemetry.count('brew.' + recipe.id);
+    return true;
   }
 }

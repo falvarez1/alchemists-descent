@@ -627,6 +627,16 @@ export class GpuCompose {
     this.uploadOverlay(dirty);
   }
 
+  dispose(): void {
+    this.material.dispose();
+    this.winTex.dispose();
+    this.lightTex.dispose();
+    this.lutTex.dispose();
+    this.overlayTex.dispose();
+    this.overlayUploadTex?.dispose();
+    for (const tex of this.backdropTex) tex.dispose();
+  }
+
   private uploadOverlay(dirty: DirtyRect): void {
     const dirtyPixels = dirty.w * dirty.h;
     if (

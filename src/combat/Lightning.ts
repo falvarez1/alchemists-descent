@@ -1,11 +1,14 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, LightningApi, LightningArc } from '@/core/types';
+import { EnemySpatialIndex } from '@/entities/enemySpatial';
 import { Cell, isGas } from '@/sim/CellType';
 
 // ===================== Chain Lightning =====================
 export class Lightning implements LightningApi {
   readonly arcs: LightningArc[] = [];
+  private readonly enemyIndex = new EnemySpatialIndex();
+  private readonly enemyScratch: Ctx['enemies'] = [];
 
   constructor(private readonly ctx: Ctx) {}
 
@@ -13,6 +16,7 @@ export class Lightning implements LightningApi {
     const ctx = this.ctx;
     const world = ctx.world;
     const params = ctx.params.spells.lightning;
+    this.enemyIndex.rebuild(ctx.enemies);
     const pts: Array<{ x: number; y: number }> = [{ x: ox, y: oy }];
     let x = ox,
       y = oy,
@@ -30,11 +34,13 @@ export class Lightning implements LightningApi {
       pts.push({ x, y });
 
       // Strike enemy
-      for (const e of ctx.enemies) {
+      for (const e of this.enemyIndex.query(x, y + 5, 12, this.enemyScratch)) {
+        if (!this.enemyIndex.has(e)) continue;
         const dx = e.x - x,
           dy = e.y - 5 - y;
         if (dx * dx + dy * dy < 130) {
           ctx.enemyCtl.damage(e, params.damage!, Math.cos(angle) * 1.4, -0.8);
+          if (e.hp <= 0) this.enemyIndex.syncLive(ctx.enemies);
           for (let j = 0; j < 5; j++) {
             const sx = clamp(gx + ((Math.random() * 5) | 0) - 2, 0, WIDTH - 1);
             const sy = clamp(gy + ((Math.random() * 5) | 0) - 2, 0, HEIGHT - 1);
@@ -50,6 +56,7 @@ export class Lightning implements LightningApi {
       if (c !== Cell.Empty && !isGas(c) && c !== Cell.Fire) {
         world.charge[world.idx(gx, gy)] = 20;
         ctx.explosions.trigger(x, y, 4);
+        this.enemyIndex.syncLive(ctx.enemies);
         struck = true;
       }
     }

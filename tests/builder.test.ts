@@ -22,6 +22,7 @@ import {
   stampRect,
 } from '@/builder/terrain';
 import { CommandStack, compositeCmd, editDocumentMoodCmd, paintTerrainCmd } from '@/builder/commands';
+import { Builder } from '@/builder/Builder';
 import { buildValidationOverlayDiagnostics, playtestBlockingIssues, validateDocument } from '@/builder/validate';
 import { renderValidationPanel } from '@/builder/validationPanel';
 import { toAuthoredLight } from '@/builder/compile';
@@ -451,7 +452,7 @@ describe('builder validation', () => {
     expect(preview.status().changedCells).toBeGreaterThan(0);
   });
 
-  it('does not cap Live Preview solely because captured terrain is dense', () => {
+  it('does not cap Logic Preview solely because captured terrain is dense', () => {
     const source = new World();
     source.types.fill(Cell.Stone);
     const doc = createEmptyDocument('preview-dense-terrain', 'earthen');
@@ -464,10 +465,10 @@ describe('builder validation', () => {
     expect(status.changedCells).toBe(0);
     expect(status.ready).toBe(true);
     expect(status.capped).toBe(false);
-    expect(status.message).toBe('Live Preview running from disposable runtime');
+    expect(status.message).toBe('Logic Preview running from disposable runtime');
   });
 
-  it('surfaces Builder Live Preview rows through a detached runtime snapshot', () => {
+  it('surfaces Builder Logic Preview rows through a detached runtime snapshot', () => {
     const ctx = previewCtx();
     const doc = createEmptyDocument('preview-runtime-snapshot', 'earthen');
     doc.world = { rle: rleEncode(new World().types), life: [], charge: [] };
@@ -483,6 +484,7 @@ describe('builder validation', () => {
     const enemyRow = snapshot.rows.find((row) => row.group === 'enemies');
 
     expect(snapshot.source.id).toBe('builder-live-preview');
+    expect(snapshot.source.label).toBe('Builder Logic Preview');
     expect(snapshot.counts.find((count) => count.group === 'enemies')).toMatchObject({ total: 1, sampled: 1 });
     expect(snapshot.counts.find((count) => count.group === 'mechanisms')).toMatchObject({ total: 2, sampled: 2 });
     expect(snapshot.counts.find((count) => count.group === 'pickups')).toMatchObject({ total: 1, sampled: 1 });
@@ -491,6 +493,40 @@ describe('builder validation', () => {
 
     const selected = preview.snapshot({ selectedId: enemyRow?.id });
     expect(selected.selectedRow?.id).toBe(enemyRow?.id);
+  });
+
+  it('does not capture dirty terrain when Logic Preview inspection reads validation issues', () => {
+    type ValidationHarness = {
+      sessionMode: 'author' | 'live';
+      validationDirty: boolean;
+      lastIssues: ReturnType<typeof validateDocument>;
+      lastValidationOverlay: ReturnType<typeof buildValidationOverlayDiagnostics> | null;
+      doc: EditorDocument;
+      ensureCaptured: () => boolean;
+      currentValidationIssues: (options?: { captureTerrain?: boolean }) => ReturnType<typeof validateDocument>;
+    };
+    const builder = Object.create(Builder.prototype) as ValidationHarness;
+    let captured = false;
+    builder.sessionMode = 'live';
+    builder.validationDirty = true;
+    builder.lastIssues = [];
+    builder.lastValidationOverlay = null;
+    builder.doc = createEmptyDocument('logic-preview-validation', 'earthen');
+    builder.ensureCaptured = () => {
+      captured = true;
+      return true;
+    };
+
+    builder.currentValidationIssues();
+
+    expect(captured).toBe(false);
+    expect(builder.validationDirty).toBe(false);
+
+    builder.sessionMode = 'author';
+    builder.validationDirty = true;
+    builder.currentValidationIssues();
+
+    expect(captured).toBe(true);
   });
 
   it('previews linked mechanism state in a disposable world', () => {

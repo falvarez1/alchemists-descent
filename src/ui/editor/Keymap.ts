@@ -89,7 +89,8 @@ export class Keymap {
 }
 
 function commandMatchesScope(command: CommandSpec, scope: CommandScope | undefined): boolean {
-  if (!scope || !command.scopes || command.scopes.length === 0) return true;
+  if (!scope) return true;
+  if (!command.scopes || command.scopes.length === 0) return false;
   return command.scopes.includes('global') || command.scopes.includes(scope);
 }
 

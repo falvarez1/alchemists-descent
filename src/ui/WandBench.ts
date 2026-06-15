@@ -16,6 +16,7 @@ function cardTitle(id: CardId): string {
 }
 
 const BENCH_STATUS_CAP = 3600;
+const BENCH_REFUGE_RADIUS = 48;
 
 const POTION_ICON: Record<string, string> = {
   vigor: 'elixirLife',
@@ -52,6 +53,17 @@ type BenchDragSource =
   | { kind: 'collection'; index: number; id: CardId }
   | { kind: 'slot'; wand: 0 | 1; slot: number; id: CardId };
 
+export function canOpenWandBench(ctx: Ctx): boolean {
+  if (ctx.state.mode !== 'play' || ctx.player.dead) return false;
+  const runtime = ctx.levels.current;
+  if (!runtime) return false;
+  const refuge = runtime.refuge;
+  if (!refuge) return false;
+  const dx = refuge.x - ctx.player.x;
+  const dy = refuge.y - ctx.player.y;
+  return dx * dx + dy * dy <= BENCH_REFUGE_RADIUS * BENCH_REFUGE_RADIUS;
+}
+
 // ===================== Wand Bench =====================
 /**
  * The wandsmith's bench (B, play mode): a full overlay for moving spell cards
@@ -74,7 +86,7 @@ export class WandBench {
   constructor(private ctx: Ctx) {
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
-      if (e.code === 'KeyB' && this.ctx.state.mode === 'play') this.setVisible(!this.visible);
+      if (e.code === 'KeyB' && this.ctx.state.mode === 'play') this.toggleFromKey();
       else if (e.code === 'Escape' && this.visible) this.setVisible(false);
     });
 
@@ -83,8 +95,16 @@ export class WandBench {
       if (mode !== 'play') this.setVisible(false);
     });
     ctx.events.on('wandChanged', () => {
-      if (this.visible) this.render();
+      if (!this.visible) return;
+      if (!canOpenWandBench(this.ctx)) {
+        this.setVisible(false);
+        return;
+      }
+      this.render();
     });
+    window.setInterval(() => {
+      if (this.visible && !canOpenWandBench(this.ctx)) this.setVisible(false);
+    }, 250);
   }
 
   private setVisible(on: boolean): void {
@@ -93,6 +113,18 @@ export class WandBench {
     this.heldIdx = -1;
     el('wand-bench').classList.toggle('visible', on);
     if (on) this.render();
+  }
+
+  private toggleFromKey(): void {
+    if (this.visible) {
+      this.setVisible(false);
+      return;
+    }
+    if (!canOpenWandBench(this.ctx)) {
+      this.ctx.events.emit('toast', { text: 'WAND BENCH WAITS IN THE REFUGE' });
+      return;
+    }
+    this.setVisible(true);
   }
 
   /** Full rebuild from ctx.wands state — cheap at this element count. */

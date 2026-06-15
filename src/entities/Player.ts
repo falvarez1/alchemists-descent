@@ -348,13 +348,13 @@ export class PlayerControl implements PlayerControlApi {
       glow: 2.4,
       grav: 0.04,
     });
-    // The Noita way: most of your gold spills where you fell — go get it back.
+    // Death is a walk back, not a reset: a small recoverable purse spills.
     const runtime = ctx.levels.current;
-    const spill = Math.floor(ctx.state.score * 0.75);
+    const spill = Math.floor(ctx.state.score * 0.15);
     if (runtime && spill > 0) {
       ctx.state.score -= spill;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
-      const piles = Math.min(7, 3 + Math.floor(spill / 60));
+      const piles = Math.min(spill, 7, 3 + Math.floor(spill / 60));
       for (let i = 0; i < piles; i++) {
         const gp = makePickup('goldpile', player.x + (Math.random() - 0.5) * 10, player.y - 6, {
           amount: Math.floor(spill / piles) + (i === 0 ? spill % piles : 0),

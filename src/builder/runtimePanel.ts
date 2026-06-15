@@ -14,6 +14,10 @@ export interface RuntimePanelModel {
   query: string;
   filters: ReadonlySet<RuntimeEntityGroup>;
   overlays?: RuntimeOverlayState;
+  showOverlayControls?: boolean;
+  showFocusActions?: boolean;
+  showCameraControls?: boolean;
+  cameraFollowEnabled?: boolean;
 }
 
 const GROUPS: RuntimeEntityGroup[] = [
@@ -30,6 +34,9 @@ const GROUPS: RuntimeEntityGroup[] = [
 export function renderRuntimePanel(model: RuntimePanelModel): string {
   const snapshot = model.snapshot;
   const overlays = model.overlays ?? DEFAULT_RUNTIME_OVERLAYS;
+  const showOverlayControls = model.showOverlayControls ?? true;
+  const showFocusActions = model.showFocusActions ?? true;
+  const showCameraControls = model.showCameraControls ?? false;
   const rows = filterRuntimeRows(snapshot.rows, model.query, model.filters);
   const header = builderPanelHeader({
     title: builderPanelTitle('builder-runtime'),
@@ -46,11 +53,10 @@ export function renderRuntimePanel(model: RuntimePanelModel): string {
     <b>${count.total}</b>
     <em>${count.visible} visible${count.sampled < count.total ? ` · ${count.sampled} rows` : ''}</em>
   </div>`).join('');
-  const emptyRows = snapshot.source.id === 'build'
-    ? 'Switch to LIVE PREVIEW to inspect Builder runtime rows'
-    : 'No runtime rows';
+  const emptyRows = runtimeEmptyRows(snapshot);
+  const sourceNote = runtimeSourceNote(snapshot);
   const rowHtml = rows.length > 0
-    ? rows.map((row) => renderRuntimeRow(row, snapshot.selectedId === row.id)).join('')
+    ? rows.map((row) => renderRuntimeRow(row, snapshot.selectedId === row.id, showFocusActions)).join('')
     : `<div class="bo-empty b-empty">${esc(emptyRows)}</div>`;
   const selected = snapshot.selectedRow;
   return `
@@ -62,15 +68,17 @@ export function renderRuntimePanel(model: RuntimePanelModel): string {
       </div>
       <em>frame ${snapshot.frame}${snapshot.level ? ` · ${esc(snapshot.level.name)} d${snapshot.level.depth}` : ''}</em>
     </div>
+    ${sourceNote ? `<div class="bo-empty b-empty brt-source-note">${esc(sourceNote)}</div>` : ''}
+    ${showCameraControls ? renderRuntimeCameraControls(model.cameraFollowEnabled === true) : ''}
     <div class="brt-counts">${countCards}</div>
     <section class="bo-section brt-particles">
       <div class="bo-section-title">Particle Aggregate</div>
       ${renderParticleAggregate(snapshot)}
     </section>
-    <section class="bo-section brt-overlays">
+    ${showOverlayControls ? `<section class="bo-section brt-overlays">
       <div class="bo-section-title">Viewport Overlays</div>
       ${renderRuntimeOverlayControls(overlays)}
-    </section>
+    </section>` : ''}
     <div class="bo-search"><input id="brt-search" type="search" class="editor-search" spellcheck="false" placeholder="search runtime rows" value="${escAttr(model.query)}"></div>
     <div class="bo-chips">${chips}</div>
     <section class="bo-section">
@@ -79,8 +87,29 @@ export function renderRuntimePanel(model: RuntimePanelModel): string {
     </section>
     <section class="bo-section brt-detail">
       <div class="bo-section-title">Selection</div>
-      ${selected ? renderRuntimeDetail(selected) : snapshot.selectedMissing ? '<div class="bo-empty b-empty">Selected runtime row was removed</div>' : '<div class="bo-empty b-empty">Select a runtime row</div>'}
+      ${selected ? renderRuntimeDetail(selected, showFocusActions) : snapshot.selectedMissing ? '<div class="bo-empty b-empty">Selected runtime row was removed</div>' : '<div class="bo-empty b-empty">Select a runtime row</div>'}
     </section>`;
+}
+
+function renderRuntimeCameraControls(cameraFollowEnabled: boolean): string {
+  return `<section class="bo-section brt-camera">
+    <label class="brt-toggle">
+      <input id="brt-follow-selected" type="checkbox"${cameraFollowEnabled ? ' checked' : ''}>
+      <span>Follow Entity</span>
+    </label>
+  </section>`;
+}
+
+function runtimeEmptyRows(snapshot: RuntimeEntitySnapshot): string {
+  if (snapshot.source.id === 'build') return 'Switch to LOGIC PREVIEW to inspect authored preview rows';
+  if (snapshot.source.id === 'builder-live-preview') return 'No authored preview runtime rows';
+  return 'No runtime rows';
+}
+
+function runtimeSourceNote(snapshot: RuntimeEntitySnapshot): string {
+  if (snapshot.source.id !== 'builder-live-preview') return '';
+  if (snapshot.rows.length > 0) return 'Logic Preview is showing authored preview rows only; full player and material simulation appears during Builder Playtest.';
+  return 'Logic Preview is running, but this document has no authored preview entities. Full player and material simulation appears during Builder Playtest.';
 }
 
 function renderRuntimeOverlayControls(overlays: RuntimeOverlayState): string {
@@ -106,26 +135,32 @@ function renderParticleAggregate(snapshot: RuntimeEntitySnapshot): string {
   </div>${mats}`;
 }
 
-function renderRuntimeRow(row: RuntimeEntityRow, selected: boolean): string {
+function renderRuntimeRow(row: RuntimeEntityRow, selected: boolean, showFocusActions: boolean): string {
   const badges = row.badges.map((badge) => `<span class="bo-badge">${esc(badge)}</span>`).join('');
+  const actions = showFocusActions
+    ? `<div class="bo-row-actions">
+      <button type="button" data-runtime-focus="${escAttr(row.id)}">Focus</button>
+    </div>`
+    : '';
   return `<div class="bo-row brt-row ${selected ? ' selected' : ''}${row.visible ? '' : ' hidden-row'}" role="option" tabindex="-1" aria-selected="${selected ? 'true' : 'false'}" data-runtime-id="${escAttr(row.id)}">
     <div class="bo-row-main">
       <div class="bo-row-title">${esc(row.label)}</div>
       <div class="bo-row-sub">${esc(row.sublabel)}</div>
       <div class="bo-badges">${badges}</div>
     </div>
-    <div class="bo-row-actions">
-      <button type="button" data-runtime-focus="${escAttr(row.id)}">Focus</button>
-    </div>
+    ${actions}
   </div>`;
 }
 
-function renderRuntimeDetail(row: RuntimeEntityRow): string {
+function renderRuntimeDetail(row: RuntimeEntityRow, showFocusActions: boolean): string {
   const fields = row.fields.map((field) => `<div class="brt-field"><span>${esc(field.label)}</span><b>${esc(field.value)}</b></div>`).join('');
+  const focus = showFocusActions
+    ? `<button type="button" data-runtime-focus="${escAttr(row.id)}">Focus</button>`
+    : '';
   return `<div class="brt-detail-card">
     <div class="brt-detail-title">
       <b>${esc(row.label)}</b>
-      <button type="button" data-runtime-focus="${escAttr(row.id)}">Focus</button>
+      ${focus}
     </div>
     <div class="bo-row-sub">${esc(row.id)}</div>
     <div class="brt-fields">${fields}</div>

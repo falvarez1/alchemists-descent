@@ -3,10 +3,17 @@ import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from 
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { BIOMES } from '@/config/biomes';
 import { createDefaultBackdropSettings, sanitizeBackdropSettings } from '@/config/backdrop';
+import { clamp, hash2, valueNoise } from '@/core/math';
 import { Cell } from '@/sim/CellType';
-import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
+import { COLOR_FN, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { sanitizeSpriteAsset } from '@/builder/assets/sprites';
 import type { SpriteAsset } from '@/builder/assets/sprites';
+import {
+  crownDeepTint,
+  crownFringeTint,
+  crownTopColor,
+  mossUnderColor,
+} from '@/world/crownPalette';
 
 /**
  * EditorDocument v2 (docs/BUILDER.md): the durable authoring layer. The
@@ -88,6 +95,12 @@ export interface EditorLight {
 
 export interface EditorWorldLayer {
   rle: string;
+  /** Biome used to reconstruct generated terrain paint when the layer is restored. */
+  biome?: BiomeId;
+  /** World seed at capture time; fallback source for old documents with no paintSeed. */
+  seed?: number;
+  /** CaveGenerator's material/crown paint seed for deterministic biome wall colors. */
+  paintSeed?: number;
   life?: Array<[number, number]>;
   charge?: Array<[number, number]>;
   colorOverrides?: Array<[number, number]>;
@@ -249,19 +262,24 @@ export function createEmptyDocument(name: string, biome: BiomeId): EditorDocumen
 /** Snapshot the LIVE world cells into the document's terrain layer. */
 export function captureWorldLayer(ctx: Ctx): EditorWorldLayer {
   const w = ctx.world;
-  // Transient life on fire/smoke is noise; keep authored life (wells, fungus energy).
+  // Transient gas life is noise; keep authored/fire life so generated braziers survive restore.
   const life: Array<[number, number]> = [];
   for (let i = 0; i < w.life.length && life.length < 60000; i++) {
     if (w.life[i] === 0) continue;
     const t = w.types[i];
-    if (t === Cell.Fire || t === Cell.Ember || t === Cell.Smoke || t === Cell.Steam) continue;
+    if (t === Cell.Smoke || t === Cell.Steam) continue;
     life.push([i, w.life[i]]);
   }
-  return {
+  const layer: EditorWorldLayer = {
     rle: rleEncode(w.types),
+    biome: ctx.state.currentBiome,
+    seed: ctx.state.worldSeed >>> 0,
     life,
     charge: sparsePairs(w.charge, 20000),
   };
+  const paintSeed = ctx.worldgen?.paintSeed;
+  if (typeof paintSeed === 'number' && Number.isFinite(paintSeed)) layer.paintSeed = paintSeed;
+  return layer;
 }
 
 /** Decode the document terrain into the LIVE world (colors regenerate). */
@@ -269,15 +287,139 @@ export function applyWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {
   const w = ctx.world;
   w.clear();
   rleDecode(layer.rle, w.types);
-  for (let i = 0; i < w.types.length; i++) {
-    const t = w.types[i];
-    if (t === Cell.Empty) continue;
-    const fn = COLOR_FN[t];
-    w.colors[i] = fn ? fn() : EMPTY_COLOR;
-  }
+  repaintWorldLayer(ctx, layer);
   for (const [i, v] of layer.life ?? []) w.life[i] = v;
   for (const [i, v] of layer.charge ?? []) w.charge[i] = v;
   for (const [i, c] of layer.colorOverrides ?? []) w.colors[i] = c;
+}
+
+function repaintWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {
+  const world = ctx.world;
+  const biome = isBiomeId(layer.biome) ? layer.biome : ctx.state.currentBiome;
+  const B = BIOMES[biome] ?? BIOMES.earthen;
+  const seed = Number.isFinite(layer.paintSeed)
+    ? Math.floor(layer.paintSeed as number)
+    : fallbackPaintSeed(layer.seed ?? ctx.state.worldSeed, biome);
+  const dist = new Uint8Array(WIDTH * HEIGHT).fill(99);
+  const queue = new Int32Array(WIDTH * HEIGHT);
+  let head = 0;
+  let tail = 0;
+
+  for (let x = 0; x < WIDTH; x++) {
+    for (let y = 0; y < HEIGHT; y++) {
+      const i = x + y * WIDTH;
+      if (world.types[i] !== Cell.Wall) {
+        dist[i] = 0;
+        queue[tail++] = i;
+      }
+    }
+  }
+  while (head < tail) {
+    const i = queue[head++];
+    const nextDist = dist[i] + 1;
+    if (nextDist > 13) continue;
+    const x = i % WIDTH;
+    if (x + 1 < WIDTH) tail = enqueueWall(i + 1, nextDist, world.types, dist, queue, tail);
+    if (x > 0) tail = enqueueWall(i - 1, nextDist, world.types, dist, queue, tail);
+    if (i + WIDTH < world.types.length) tail = enqueueWall(i + WIDTH, nextDist, world.types, dist, queue, tail);
+    if (i >= WIDTH) tail = enqueueWall(i - WIDTH, nextDist, world.types, dist, queue, tail);
+  }
+
+  for (let x = 0; x < WIDTH; x++) {
+    for (let y = 0; y < HEIGHT; y++) {
+      const i = x + y * WIDTH;
+      const t = world.types[i];
+      if (t === Cell.Empty) {
+        world.colors[i] = EMPTY_COLOR;
+      } else if (t === Cell.Wall) {
+        world.colors[i] = biomeWallColor(x, y, dist[i], seed, B.bands);
+      } else {
+        const fn = COLOR_FN[t];
+        world.colors[i] = fn ? fn() : EMPTY_COLOR;
+      }
+    }
+  }
+
+  for (let x = 0; x < WIDTH; x++) {
+    for (let y = 1; y < HEIGHT - 1; y++) {
+      const i = x + y * WIDTH;
+      if (world.types[i] !== Cell.Wall) continue;
+      const topish =
+        world.types[x + (y - 1) * WIDTH] === Cell.Empty &&
+        (y < 2 || world.types[x + (y - 2) * WIDTH] === Cell.Empty);
+      const nbTop = (xx: number): boolean =>
+        xx >= 0 &&
+        xx < WIDTH &&
+        world.types[xx + y * WIDTH] === Cell.Wall &&
+        world.types[xx + (y - 1) * WIDTH] === Cell.Empty;
+      if (topish && (nbTop(x - 1) || nbTop(x + 1))) {
+        world.colors[i] = crownTopColor(x, y, seed, B.crown, B.flowerChance);
+        if (B.crown === 'moss') {
+          if (world.types[x + (y + 1) * WIDTH] === Cell.Wall) {
+            world.colors[x + (y + 1) * WIDTH] = mossUnderColor(x, seed);
+          }
+          if (y + 2 < HEIGHT && world.types[x + (y + 2) * WIDTH] === Cell.Wall) {
+            const i2 = x + (y + 2) * WIDTH;
+            const c = crownDeepTint(world.colors[i2], x, y, seed, B.crown);
+            if (c !== null) world.colors[i2] = c;
+          }
+        } else if (B.crown === 'frost' && world.types[x + (y + 1) * WIDTH] === Cell.Wall) {
+          const i2 = x + (y + 1) * WIDTH;
+          const c = crownDeepTint(world.colors[i2], x, y, seed, B.crown);
+          if (c !== null) world.colors[i2] = c;
+        }
+      } else if (
+        world.types[x + (y + 1) * WIDTH] === Cell.Empty &&
+        world.types[x + Math.min(HEIGHT - 1, y + 2) * WIDTH] === Cell.Empty
+      ) {
+        const c = crownFringeTint(world.colors[i], x, y, seed, B.crown);
+        if (c !== null) world.colors[i] = c;
+      }
+    }
+  }
+}
+
+function enqueueWall(
+  i: number,
+  d: number,
+  types: Uint8Array,
+  dist: Uint8Array,
+  queue: Int32Array,
+  tail: number,
+): number {
+  if (types[i] !== Cell.Wall || dist[i] <= d) return tail;
+  dist[i] = d;
+  queue[tail] = i;
+  return tail + 1;
+}
+
+function biomeWallColor(
+  x: number,
+  y: number,
+  dist: number,
+  seed: number,
+  bands: ReadonlyArray<readonly [number, number, number]>,
+): number {
+  let m = valueNoise(x, y, 0.014, seed);
+  m = clamp((m - 0.5) * 2.1 + 0.5, 0, 1);
+  const grain = 0.85 + valueNoise(x, y, 0.12, seed + 5) * 0.3;
+  const band = m < 0.4 ? bands[0] : m < 0.58 ? bands[1] : m < 0.84 ? bands[2] : bands[3];
+  const shade = dist <= 2 ? 1.08 : dist <= 4 ? 0.88 : dist <= 6 ? 0.7 : dist <= 8 ? 0.58 : dist <= 10 ? 0.5 : 0.44;
+  const jit = 0.92 + hash2(x, y, seed + 11) * 0.16;
+  return packRGB(
+    Math.min(255, Math.floor(band[0] * grain * shade * jit)),
+    Math.min(255, Math.floor(band[1] * grain * shade * jit)),
+    Math.min(255, Math.floor(band[2] * grain * shade * jit)),
+  );
+}
+
+function fallbackPaintSeed(seed: number | undefined, biome: BiomeId): number {
+  const s = Number.isFinite(seed) ? (seed as number) >>> 0 : 0;
+  return Math.floor(hash2(s & 0xffff, (s >>> 16) ^ biome.length, 0x51f15e) * 100000);
+}
+
+function isBiomeId(value: unknown): value is BiomeId {
+  return typeof value === 'string' && value in BIOMES;
 }
 
 /* ---------------- document library (localStorage) ---------------- */
@@ -428,6 +570,9 @@ function sanitizeWorldLayer(value: unknown): EditorWorldLayer | null {
   }
   return {
     rle: layer.rle,
+    ...(isBiomeId(layer.biome) ? { biome: layer.biome } : {}),
+    ...(num(layer.seed) ? { seed: Math.floor(layer.seed) >>> 0 } : {}),
+    ...(num(layer.paintSeed) ? { paintSeed: clampInt(layer.paintSeed, 0, 99999) } : {}),
     life: sanitizeSparsePairs(layer.life, DOC_SPARSE_CAP, -32768, 32767),
     charge: sanitizeSparsePairs(layer.charge, DOC_SPARSE_CAP, 0, 255),
     colorOverrides: sanitizeSparsePairs(layer.colorOverrides, DOC_SPARSE_CAP, 0, 0xffffff),

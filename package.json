@@ -12,6 +12,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:findability": "node scripts/verify-findability.mjs",
+    "verify:game": "node scripts/verify-game.mjs",
+    "perf:scene": "node scripts/perf-scene.mjs",
+    "perf:ab": "node scripts/perf-ab-feature.mjs",
+    "probe:webgpu-r184": "node scripts/probe-webgpu-r184.mjs",
+    "probe:render-backend": "node scripts/probe-render-backend-selection.mjs",
     "lint": "eslint src",
     "format": "prettier --write \"src/**/*.{ts,css}\" index.html"
   },

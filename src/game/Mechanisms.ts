@@ -46,6 +46,7 @@ export function setDoorCells(ctx: Ctx, door: Mechanism, open: boolean): void {
   const wasOpen = door.state === 1;
   door.state = open ? 1 : 0;
   if (open) {
+    door.closePending = false;
     // RETRACTION, not teleportation: queue the door's cells bottom-row-first
     // (a gate sliding up into its frame); Mechanisms.update clears a few per
     // frame with dust shaking off the rising edge.
@@ -59,6 +60,7 @@ export function setDoorCells(ctx: Ctx, door: Mechanism, open: boolean): void {
     return;
   }
   door.dissolve = undefined; // a closing door slams shut at once
+  let skipped = false;
   for (let dx = 0; dx < door.w; dx++) {
     for (let dy = 0; dy < door.h; dy++) {
       const X = door.x + dx,
@@ -78,7 +80,10 @@ export function setDoorCells(ctx: Ctx, door: Mechanism, open: boolean): void {
             }
           }
         }
-        if (occupied) continue;
+        if (occupied) {
+          skipped = true;
+          continue;
+        }
         world.types[i] = Cell.Metal;
         // rune-tinted metal so sealed doors read as mechanisms, not plain plate
         const rs = 0.85 + hash2(X, Y, 311) * 0.3;
@@ -86,6 +91,7 @@ export function setDoorCells(ctx: Ctx, door: Mechanism, open: boolean): void {
       }
     }
   }
+  door.closePending = skipped;
   if (wasOpen && ctx.state.mode === 'play') {
     for (let k = 0; k < 8; k++) {
       ctx.particles.spawn(
@@ -360,6 +366,7 @@ export function setValveCells(ctx: Ctx, valve: Mechanism, open: boolean): void {
   valve.state = open ? 1 : 0;
   const mat = valve.material ?? Cell.Metal;
   if (open) {
+    valve.closePending = false;
     // retraction, bottom rows first, cleared a few per frame in update
     const cells: Array<[number, number]> = [];
     for (let dy = 0; dy < valve.h; dy++) {
@@ -373,6 +380,7 @@ export function setValveCells(ctx: Ctx, valve: Mechanism, open: boolean): void {
   }
   valve.dissolve = undefined;
   const fn = COLOR_FN[mat];
+  let skipped = false;
   for (let dx = 0; dx < valve.w; dx++) {
     for (let dy = 0; dy < valve.h; dy++) {
       const X = valve.x + dx,
@@ -390,7 +398,10 @@ export function setValveCells(ctx: Ctx, valve: Mechanism, open: boolean): void {
           }
         }
       }
-      if (occupied) continue;
+      if (occupied) {
+        skipped = true;
+        continue;
+      }
       const i = world.idx(X, Y);
       world.types[i] = mat;
       if (mat === Cell.Metal) {
@@ -404,6 +415,7 @@ export function setValveCells(ctx: Ctx, valve: Mechanism, open: boolean): void {
       world.charge[i] = 0;
     }
   }
+  valve.closePending = skipped;
   // a slamming valve shakes dust off the channel (the door-close puff)
   if (wasOpen && ctx.state.mode === 'play') {
     for (let k = 0; k < 5; k++) {
@@ -912,6 +924,9 @@ export class Mechanisms implements MechanismsApi {
       const triggers = mechanismTriggersFor(runtime, door.id);
       const hasTrigger = triggers.length > 0;
       const want = hasTrigger && this.aggregateWant(ctx, door, triggers);
+      if (door.state === 0 && door.closePending === true && !want) {
+        setDoorCells(ctx, door, false);
+      }
       if (hasTrigger && (door.state === 1) !== want) {
         if (want) {
           // The circuit closes: a spark races from each satisfied trigger to
@@ -1086,7 +1101,10 @@ export class Mechanisms implements MechanismsApi {
     }
 
     const triggers = mechanismTriggersFor(runtime, m.id, m);
-    if (triggers.length === 0) return;
+    if (triggers.length === 0) {
+      if (m.state === 0 && m.closePending === true) setValveCells(ctx, m, false);
+      return;
+    }
     const want = this.aggregateWant(ctx, m, triggers);
     const rising = want && m.prevWant !== true;
     m.prevWant = want;
@@ -1117,6 +1135,8 @@ export class Mechanisms implements MechanismsApi {
         }
         setValveCells(ctx, m, true);
         ctx.audio.doorGrind();
+      } else if (m.closePending === true) {
+        setValveCells(ctx, m, false);
       }
     }
   }

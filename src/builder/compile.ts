@@ -45,8 +45,8 @@ export function compileAndPlaytest(
 
   // 1) Terrain: the document layer becomes the live world (decoded by value —
   //    the layer itself is untouched by whatever the playtest does to cells).
-  if (doc.world) applyWorldLayer(ctx, doc.world);
   ctx.state.currentBiome = doc.biome;
+  if (doc.world) applyWorldLayer(ctx, doc.world);
   // mood: the document may own the ambient light level for its playtest
   // (the Builder snapshots and restores the global on return)
   if (doc.mood && doc.mood.ambient !== null && Number.isFinite(doc.mood.ambient)) {

@@ -37,6 +37,37 @@ await startConsoleTestRun(page, {
   settleMs: 250,
 });
 
+const awayProbe = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const rt = ctx.levels.current;
+  const anchor = rt?.refuge;
+  if (!anchor) return { hasRefuge: false, visible: false };
+  ctx.player.x = anchor.x + 160;
+  ctx.player.y = anchor.y;
+  ctx.player.vx = 0;
+  ctx.player.vy = 0;
+  ctx.camera.snapTo(ctx.player.x, ctx.player.y);
+  return { hasRefuge: true, visible: document.getElementById('wand-bench')?.classList.contains('visible') === true };
+});
+await page.keyboard.press('KeyB');
+await page.waitForTimeout(150);
+const awayVisible = await page.evaluate(() => document.getElementById('wand-bench')?.classList.contains('visible') === true);
+check('Bench refuses to open away from the Refuge', awayProbe.hasRefuge && !awayProbe.visible && !awayVisible, JSON.stringify({ awayProbe, awayVisible }));
+
+const benchAnchor = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const rt = ctx.levels.current;
+  const anchor = rt?.refuge;
+  if (!anchor) return null;
+  ctx.player.x = anchor.x;
+  ctx.player.y = anchor.y;
+  ctx.player.vx = 0;
+  ctx.player.vy = 0;
+  ctx.camera.snapTo(ctx.player.x, ctx.player.y);
+  return { x: Math.round(anchor.x), y: Math.round(anchor.y) };
+});
+check('Bench access anchor exists in the current level', benchAnchor !== null, JSON.stringify(benchAnchor));
+
 await page.keyboard.press('KeyB');
 await page.waitForSelector('#wand-bench.visible', { timeout: 5000 });
 
@@ -95,12 +126,16 @@ check(
 
 const beforePlace = await page.evaluate(() => {
   const ctx = window.__game.ctx;
+  const previousSlot = ctx.wands.wands[0].cards[0];
+  const index = ctx.wands.collection.findIndex((card) => card !== previousSlot);
   return {
-    card: ctx.wands.collection[0],
-    previousSlot: ctx.wands.wands[0].cards[0],
+    index,
+    card: index >= 0 ? ctx.wands.collection[index] : null,
+    previousSlot,
   };
 });
-await page.locator('#wand-bench [data-bench-collection-index="0"]').dragTo(
+check('Bench probe found a distinct collection card to move', beforePlace.index >= 0 && beforePlace.card !== beforePlace.previousSlot, JSON.stringify(beforePlace));
+await page.locator(`#wand-bench [data-bench-collection-index="${beforePlace.index}"]`).dragTo(
   page.locator('#wand-bench [data-bench-wand="0"][data-bench-slot="0"]'),
 );
 const afterPlace = await page.evaluate(() => {

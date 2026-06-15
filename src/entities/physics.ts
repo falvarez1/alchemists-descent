@@ -5,6 +5,7 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Ctx, PhysicsApi } from '@/core/types';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
+import { cellBlocksEntityWithLooseRubble } from '@/sim/collision';
 import { EMPTY_COLOR } from '@/sim/colors';
 
 export class Physics implements PhysicsApi {
@@ -13,55 +14,12 @@ export class Physics implements PhysicsApi {
   // bodies walk straight through it and it disperses as particles.
   private readonly _cfX = new Int32Array(24);
   private readonly _cfY = new Int32Array(24);
-  private readonly CLUSTER_DIRS: ReadonlyArray<readonly [number, number]> = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-    [1, 1],
-    [1, -1],
-    [-1, 1],
-    [-1, -1],
-  ];
+  private readonly _collisionScratch = { x: this._cfX, y: this._cfY };
 
   constructor(private ctx: Ctx) {}
 
   cellBlocks(X: number, Y: number): boolean {
-    const world = this.ctx.world;
-    const t = world.types[world.idx(X, Y)];
-    if (!blocksEntity(t)) return false;
-    if (t === Cell.Metal) return true; // engineered metal never crumbles
-    // flood-count the connected blocking cluster, early-exit at 5
-    const _cfX = this._cfX;
-    const _cfY = this._cfY;
-    _cfX[0] = X;
-    _cfY[0] = Y;
-    let head = 0,
-      tail = 1;
-    while (head < tail) {
-      const cx = _cfX[head],
-        cy = _cfY[head];
-      head++;
-      for (let d = 0; d < 8; d++) {
-        const nx = cx + this.CLUSTER_DIRS[d][0],
-          ny = cy + this.CLUSTER_DIRS[d][1];
-        if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
-        if (!blocksEntity(world.types[world.idx(nx, ny)])) continue;
-        let dup = false;
-        for (let q = 0; q < tail; q++) {
-          if (_cfX[q] === nx && _cfY[q] === ny) {
-            dup = true;
-            break;
-          }
-        }
-        if (dup) continue;
-        _cfX[tail] = nx;
-        _cfY[tail] = ny;
-        tail++;
-        if (tail >= 5) return true; // a real formation
-      }
-    }
-    return false; // cluster of 4 or fewer: loose rubble
+    return cellBlocksEntityWithLooseRubble(this.ctx.world, X, Y, this._collisionScratch);
   }
 
   entityFree(cx: number, cy: number, halfW: number, h: number): boolean {

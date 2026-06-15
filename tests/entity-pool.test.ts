@@ -177,6 +177,47 @@ describe('Particles adapter', () => {
     expect(particles.list[0].x).toBe(5);
     expect(particles.list[0].y).toBe(5);
   });
+
+  it('reuses removed particle objects without leaking stale fields', () => {
+    const particles = new Particles();
+    particles.spawn(-5, 0, 1, 2, Cell.Fire, 0xff6600, 10, {
+      grav: 0,
+      glow: 2,
+      homing: true,
+      hostileDmg: 6,
+    });
+    const first = particles.list[0];
+    const types = new Uint8Array(100);
+    types.fill(Cell.Empty);
+    const ctx = {
+      world: {
+        types,
+        inBounds: (x: number, y: number) => x >= 0 && x < 10 && y >= 0 && y < 10,
+        idx: (x: number, y: number) => x + y * 10,
+      },
+      player: { dead: true },
+      state: { mode: 'play' },
+    } as unknown as Ctx;
+
+    particles.update(ctx);
+    particles.spawn(3, 4, 0, 0, null, 0xffffff, 5, { grav: 0 });
+
+    expect(particles.list).toHaveLength(1);
+    expect(particles.list[0]).toBe(first);
+    expect(particles.list[0]).toMatchObject({
+      x: 3,
+      y: 4,
+      vx: 0,
+      vy: 0,
+      type: null,
+      color: 0xffffff,
+      life: 5,
+      grav: 0,
+      glow: 0,
+      homing: false,
+      hostileDmg: 0,
+    });
+  });
 });
 
 describe('Critters adapter', () => {

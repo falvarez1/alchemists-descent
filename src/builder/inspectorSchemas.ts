@@ -207,7 +207,7 @@ export function lightInspectorSchema(light: EditorLight, context: LightInspector
     action(
       'light.mute',
       context.muted ? 'MUTED - CLICK TO UNMUTE' : 'MUTE THIS LIGHT',
-      'Drop this light from the live preview only; it still compiles',
+      'Drop this light from Logic Preview only; it still compiles',
       {},
       viewCommand('builder.inspector.light.mute', { lightId: light.id }),
       'bi-mute',

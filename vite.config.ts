@@ -13,5 +13,8 @@ export default defineConfig({
   },
   server: {
     open: false,
+    watch: {
+      ignored: ['**/verify-out/**', '**/dist/**', '**/coverage/**'],
+    },
   },
 });

@@ -1,5 +1,5 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
-import { createDefaultPostFxSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
+import { createDefaultPostFxSettings, createDefaultRenderSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
 import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
@@ -29,6 +29,7 @@ import { Camera } from '@/render/Camera';
 import { FrameComposer } from '@/render/FrameComposer';
 import { Lighting } from '@/render/Lighting';
 import { Renderer } from '@/render/Renderer';
+import type { RenderBackendStatus } from '@/render/pixels';
 import { drawDecor } from '@/render/sprites/DecorSprites';
 import { drawEnemySprite } from '@/render/sprites/EnemySprites';
 import { drawPlayerSprite } from '@/render/sprites/PlayerSprite';
@@ -46,6 +47,7 @@ import { Minimap } from '@/ui/Minimap';
 import { Sanctum } from '@/ui/Sanctum';
 import { PerfHud } from '@/ui/PerfHud';
 import { RunLauncher } from '@/ui/RunLauncher';
+import { RuntimeInspector } from '@/ui/RuntimeInspector';
 import { Toolbar } from '@/ui/Toolbar';
 import { WandBench } from '@/ui/WandBench';
 import { WorldGen } from '@/world/CaveGenerator';
@@ -90,9 +92,11 @@ export class Game {
       paused: false,
       debugGodMode: false,
       postFx: createDefaultPostFxSettings(),
+      render: createDefaultRenderSettings(),
       wandLight: createDefaultWandLightSettings(),
       editorLights: null,
       builderWandLightPreview: { enabled: false, x: 0, y: 0 },
+      runtimeInspectionLight: null,
       playtestSource: null,
     };
     const input: InputState = {
@@ -154,7 +158,7 @@ export class Game {
     ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
     ctx.events.on('waveStarted', ({ num }) => ctx.telemetry.count(`wave.reached.${num}`));
 
-    this.renderer = new Renderer(holder);
+    this.renderer = new Renderer(holder, state.render);
     this.composer = new FrameComposer(
       this.renderer,
       new Lighting(),
@@ -170,6 +174,8 @@ export class Game {
     new WandBench(ctx);
     // Transitional dev console: typed QA commands + automation adapter.
     new ConsoleOverlay(ctx);
+    // Top-level runtime inspector for Play and Builder Playtest.
+    new RuntimeInspector(ctx);
     // Wires the Level Library buttons; lives for the page lifetime.
     new LevelStore(ctx);
     // Header PLAY opens the canonical run launcher; Builder playtests bypass it.
@@ -239,6 +245,11 @@ export class Game {
     this.modePersistDisposer = null;
     this.visibilityDisposer?.();
     this.visibilityDisposer = null;
+    this.renderer.dispose();
+  }
+
+  getRenderBackendStatus(): RenderBackendStatus {
+    return this.renderer.getBackendStatus();
   }
 
   /**

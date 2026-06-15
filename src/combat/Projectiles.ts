@@ -2,6 +2,7 @@ import { BOUNCE_COUNTS, INFUSED, TRIGGERED } from '@/combat/wands/projectileMark
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, Projectile, ProjectilesApi } from '@/core/types';
+import { EnemySpatialIndex } from '@/entities/enemySpatial';
 import { Cell, isGas, isSolid } from '@/sim/CellType';
 import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '@/sim/colors';
 import type { World } from '@/sim/World';
@@ -100,6 +101,19 @@ function releaseTriggered(ctx: Ctx, p: Projectile): void {
 
 // ===================== Projectiles & Black Holes =====================
 export class Projectiles implements ProjectilesApi {
+  private readonly enemyIndex = new EnemySpatialIndex();
+  private readonly enemyScratch: Ctx['enemies'] = [];
+
+  private damageEnemy(ctx: Ctx, enemy: Ctx['enemies'][number], amount: number, kx: number, ky: number): void {
+    ctx.enemyCtl.damage(enemy, amount, kx, ky);
+    if (enemy.hp <= 0) this.enemyIndex.syncLive(ctx.enemies);
+  }
+
+  private triggerExplosion(ctx: Ctx, x: number, y: number, radius: number): void {
+    ctx.explosions.trigger(x, y, radius);
+    this.enemyIndex.syncLive(ctx.enemies);
+  }
+
   private implosionCollapse(ctx: Ctx, p: Projectile): void {
     const world = ctx.world;
     const cx = Math.floor(p.x),
@@ -206,14 +220,15 @@ export class Projectiles implements ProjectilesApi {
           }
         }
         // Drag entities toward the singularity
-        for (const e of ctx.enemies) {
+        for (const e of this.enemyIndex.query(p.x, p.y, vortexRad * 1.4, this.enemyScratch)) {
+          if (!this.enemyIndex.has(e)) continue;
           const dx = p.x - e.x,
             dy = p.y - e.y;
           const d = Math.sqrt(dx * dx + dy * dy);
           if (d < vortexRad * 1.4 && d > 0.5) {
             e.vx += (dx / d) * 0.22;
             e.vy += (dy / d) * 0.22;
-            if (d < 4) ctx.enemyCtl.damage(e, 2.2, 0, 0);
+            if (d < 4) this.damageEnemy(ctx, e, 2.2, 0, 0);
           }
         }
         if (ctx.state.mode === 'play' && !ctx.player.dead) {
@@ -230,6 +245,7 @@ export class Projectiles implements ProjectilesApi {
   }
 
   update(ctx: Ctx): void {
+    this.enemyIndex.rebuild(ctx.enemies);
     this.updateSingularityGravityWells(ctx);
 
     const world = ctx.world;
@@ -262,7 +278,7 @@ export class Projectiles implements ProjectilesApi {
       }
 
       if (p.type === 'bomb' && p.life <= 0) {
-        ctx.explosions.trigger(p.x, p.y, Math.floor(ctx.params.spells.bomb.explosionRadius!));
+        this.triggerExplosion(ctx, p.x, p.y, Math.floor(ctx.params.spells.bomb.explosionRadius!));
         releaseTriggered(ctx, p);
         removeAt(i);
         continue;
@@ -278,7 +294,8 @@ export class Projectiles implements ProjectilesApi {
         // Seek the nearest enemy within 240px
         let best = null,
           bestD = 240 * 240;
-        for (const e of ctx.enemies) {
+        for (const e of this.enemyIndex.query(p.x, p.y + 5, 240, this.enemyScratch)) {
+          if (!this.enemyIndex.has(e)) continue;
           const dx = e.x - p.x,
             dy = e.y - 5 - p.y;
           const d2 = dx * dx + dy * dy;
@@ -357,12 +374,13 @@ export class Projectiles implements ProjectilesApi {
 
         // Ice lance: pierce, deep-freeze, keep flying
         if (!p.hostile && p.type === 'icelance') {
-          for (const e of ctx.enemies) {
+          for (const e of this.enemyIndex.query(p.x, p.y + 5, 12, this.enemyScratch)) {
+            if (!this.enemyIndex.has(e)) continue;
             if (e.flash > 2) continue; // already struck by this lance pass
             const dx = e.x - p.x,
               dy = e.y - 5 - p.y;
             if (dx * dx + dy * dy < 130) {
-              ctx.enemyCtl.damage(e, 30 * (p.mul ?? 1), p.vx * 0.4, -0.8);
+              this.damageEnemy(ctx, e, 30 * (p.mul ?? 1), p.vx * 0.4, -0.8);
               e.status.frozen = Math.max(e.status.frozen, 150);
               ctx.particles.burst(e.x, e.y - 5, 10, null, () => packRGB(200, 240, 255), 2.2, {
                 glow: 1.8,
@@ -419,7 +437,7 @@ export class Projectiles implements ProjectilesApi {
               splashLiquid(ctx, p.x, p.y, Cell.Acid, acidColor, 3);
             } else {
               ctx.playerCtl.damage(11, p.vx * 1.7, -2.3, 'explosion');
-              ctx.explosions.trigger(p.x, p.y, 10);
+              this.triggerExplosion(ctx, p.x, p.y, 10);
             }
             removeAt(i);
             removed = true;
@@ -437,25 +455,27 @@ export class Projectiles implements ProjectilesApi {
         ) {
           const mul = p.mul ?? 1;
           let hit = false;
-          for (const e of ctx.enemies) {
+          const hitRadius = p.type === 'meteor' ? 15 : 12;
+          for (const e of this.enemyIndex.query(p.x, p.y + 5, hitRadius, this.enemyScratch)) {
+            if (!this.enemyIndex.has(e)) continue;
             const dx = e.x - p.x,
               dy = e.y - 5 - p.y;
             if (dx * dx + dy * dy < (p.type === 'meteor' ? 200 : 120)) {
               if (p.type === 'bolt') {
-                ctx.enemyCtl.damage(e, 18 * mul, p.vx * 0.8, -1.6);
-                ctx.explosions.trigger(p.x, p.y, ctx.params.spells.bolt.explosionRadius!);
+                this.damageEnemy(ctx, e, 18 * mul, p.vx * 0.8, -1.6);
+                this.triggerExplosion(ctx, p.x, p.y, ctx.params.spells.bolt.explosionRadius!);
               } else if (p.type === 'pellet') {
-                ctx.enemyCtl.damage(e, 8 * mul, p.vx * 0.6, -1.0);
-                ctx.explosions.trigger(p.x, p.y, 6);
+                this.damageEnemy(ctx, e, 8 * mul, p.vx * 0.6, -1.0);
+                this.triggerExplosion(ctx, p.x, p.y, 6);
               } else if (p.type === 'iceshard') {
-                ctx.enemyCtl.damage(e, 16 * mul, p.vx * 0.5, -0.8);
+                this.damageEnemy(ctx, e, 16 * mul, p.vx * 0.5, -0.8);
                 e.status.frozen = Math.max(e.status.frozen, 140);
                 freezeSplash(ctx, p.x, p.y, 7);
               } else if (p.type === 'wisp') {
-                ctx.enemyCtl.damage(e, 13 * mul, p.vx * 0.5, -1.0);
-                ctx.explosions.trigger(p.x, p.y, 5);
+                this.damageEnemy(ctx, e, 13 * mul, p.vx * 0.5, -1.0);
+                this.triggerExplosion(ctx, p.x, p.y, 5);
               } else {
-                ctx.explosions.trigger(p.x, p.y, 40);
+                this.triggerExplosion(ctx, p.x, p.y, 40);
               }
               releaseTriggered(ctx, p);
               removeAt(i);
@@ -544,7 +564,7 @@ export class Projectiles implements ProjectilesApi {
             removeAt(i);
             removed = true;
           } else if (p.type === 'pellet') {
-            ctx.explosions.trigger(gx, gy, 6);
+            this.triggerExplosion(ctx, gx, gy, 6);
             removeAt(i);
             removed = true;
           } else if (p.type === 'iceshard') {
@@ -552,11 +572,11 @@ export class Projectiles implements ProjectilesApi {
             removeAt(i);
             removed = true;
           } else if (p.type === 'wisp') {
-            ctx.explosions.trigger(gx, gy, 5);
+            this.triggerExplosion(ctx, gx, gy, 5);
             removeAt(i);
             removed = true;
           } else if (p.type === 'meteor') {
-            ctx.explosions.trigger(gx, gy, 40);
+            this.triggerExplosion(ctx, gx, gy, 40);
             removeAt(i);
             removed = true;
           } else if (p.type === 'acidglob') {
@@ -564,12 +584,12 @@ export class Projectiles implements ProjectilesApi {
             removeAt(i);
             removed = true;
           } else if (p.type === 'bolt') {
-            ctx.explosions.trigger(gx, gy, ctx.params.spells.bolt.explosionRadius!);
+            this.triggerExplosion(ctx, gx, gy, ctx.params.spells.bolt.explosionRadius!);
             world.charge[world.idx(gx, gy)] = 20;
             removeAt(i);
             removed = true;
           } else if (p.type === 'fireball') {
-            ctx.explosions.trigger(gx, gy, 10);
+            this.triggerExplosion(ctx, gx, gy, 10);
             removeAt(i);
             removed = true;
           } else if (p.type === 'frostbolt') {
@@ -629,7 +649,7 @@ export class Projectiles implements ProjectilesApi {
               grav: -0.01,
             });
         } else if (p.type === 'meteor') {
-          ctx.explosions.trigger(p.x, p.y, 40);
+          this.triggerExplosion(ctx, p.x, p.y, 40);
         }
         removeAt(i);
         continue;

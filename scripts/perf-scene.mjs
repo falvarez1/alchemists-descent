@@ -6,8 +6,22 @@
 // (cross-session comparison only — scripts/perf-ab-compose.mjs is the
 // drift-proof same-session A/B).
 import { chromium } from 'playwright-core';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { startConsoleTestRun } from './run-helpers.mjs';
+import {
+  addSampleBuckets,
+  collectBackendCapabilities,
+  collectWebGpuAdapterCapabilities,
+  currentCommandLine,
+  currentGitCommit,
+  currentGitState,
+  emptyBuckets,
+  newBenchmarkPage,
+  printBucketSummary,
+  summarizeBuckets,
+  welchT,
+  writeJson,
+} from './perf-harness.mjs';
 
 const label = process.argv[2] ?? 'before';
 const url = process.argv[3] ?? 'http://localhost:5173/';
@@ -15,10 +29,12 @@ const RUNS = Number(process.argv[4] ?? 3);
 const FRAMES = Number(process.argv[5] ?? 700);
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
-const all = { sim: [], entities: [], render: [], frame: [], autosaveMs: [] };
+const all = emptyBuckets(['autosaveMs']);
+let firstRunCapabilities = null;
+let webgpuCapabilities = null;
 
 for (let run = 0; run < RUNS; run++) {
-  const page = await (await browser.newContext()).newPage();
+  const page = await newBenchmarkPage(browser, { diagnosticsLabel: `perf-scene-${run + 1}` });
   page.on('pageerror', (e) => console.error('PAGE ERROR:', String(e)));
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
@@ -26,6 +42,8 @@ for (let run = 0; run < RUNS; run++) {
     if (gpuCompose) window.__game.ctx.state.postFx.gpuCompose = true;
   }, process.env.PERF_GPU_COMPOSE === '1');
   await startConsoleTestRun(page, { seed: 777, settleMs: 1500 });
+  firstRunCapabilities ??= await collectBackendCapabilities(page, 'current');
+  webgpuCapabilities ??= await collectWebGpuAdapterCapabilities(page);
 
   const result = await page.evaluate(
     async ({ FRAMES }) => {
@@ -34,9 +52,23 @@ for (let run = 0; run < RUNS; run++) {
       const w = ctx.world;
       const px = Math.floor(ctx.player.x);
       const py = Math.floor(ctx.player.y);
+      const writeCell = (x, y, type, color, life = 0, charge = 0) => {
+        if (!w.inBounds(x, y)) return;
+        const i = w.idx(x, y);
+        w.types[i] = type;
+        w.colors[i] = color;
+        w.life[i] = life;
+        w.charge[i] = charge;
+      };
       ctx.player.hp = 999999;
       ctx.player.maxHp = 999999;
       ctx.player.invuln = 999999;
+      ctx.enemies.length = 0;
+      ctx.projectiles.length = 0;
+      ctx.shockwaves.length = 0;
+      if (ctx.lightning?.arcs) ctx.lightning.arcs.length = 0;
+      ctx.particles.clear();
+      if (ctx.levels.current?.authoredLights) ctx.levels.current.authoredLights.length = 0;
 
       // ---- CHAOS SCENE (fixed layout relative to spawn) ----
       // big cavity so everything interacts on screen
@@ -45,54 +77,40 @@ for (let run = 0; run < RUNS; run++) {
           const X = px + dx,
             Y = py + dy;
           if (!w.inBounds(X, Y)) continue;
-          const i = w.idx(X, Y);
           const edge = Math.abs(dx) === 120 || dy === 20 || dy === -70;
           if (edge) {
-            w.types[i] = 13;
-            w.colors[i] = 0x606870;
-          } else if (w.types[i] !== 0) {
-            w.types[i] = 0;
-            w.colors[i] = 0x08080c;
+            writeCell(X, Y, 13, 0x606870);
+          } else {
+            writeCell(X, Y, 0, 0x08080c);
           }
         }
       }
       // floor
       for (let dx = -119; dx <= 119; dx++) {
-        const i = w.idx(px + dx, py + 19);
-        w.types[i] = 12;
+        writeCell(px + dx, py + 19, 12, 0x8a8a92);
       }
       // water slab (left), lava slab (right) -> permanent steam front
       for (let dx = -110; dx <= -40; dx++)
         for (let dy = -60; dy <= -40; dy++) {
-          const i = w.idx(px + dx, py + dy);
-          w.types[i] = 2;
-          w.colors[i] = 0x1e8ce6;
+          writeCell(px + dx, py + dy, 2, 0x1e8ce6);
         }
       for (let dx = 40; dx <= 110; dx++)
         for (let dy = -60; dy <= -40; dy++) {
-          const i = w.idx(px + dx, py + dy);
-          w.types[i] = 11;
-          w.colors[i] = 0xfc3c08;
+          writeCell(px + dx, py + dy, 11, 0xfc3c08);
         }
       // oil pond + sand columns mid-air
       for (let dx = -30; dx <= 30; dx++)
         for (let dy = 10; dy <= 16; dy++) {
-          const i = w.idx(px + dx, py + dy);
-          w.types[i] = 6;
-          w.colors[i] = 0x55401e;
+          writeCell(px + dx, py + dy, 6, 0x55401e);
         }
       for (const cx of [-70, 0, 70])
         for (let dy = -35; dy <= -20; dy++)
           for (let dx = -3; dx <= 3; dx++) {
-            const i = w.idx(px + cx + dx, py + dy);
-            w.types[i] = 1;
-            w.colors[i] = 0xd2b45e;
+            writeCell(px + cx + dx, py + dy, 1, 0xd2b45e);
           }
       // ignite the oil
       for (let dx = -3; dx <= 3; dx++) {
-        const i = w.idx(px + dx, py + 9);
-        w.types[i] = 5;
-        w.life[i] = 90;
+        writeCell(px + dx, py + 9, 5, 0xe65c00, 90);
       }
       // hostile crowd
       const roster = [
@@ -140,17 +158,19 @@ for (let run = 0; run < RUNS; run++) {
         saves.push(performance.now() - t0);
         await new Promise((r) => setTimeout(r, 120));
       }
-      return { samples, saves, particles: ctx.particles.list?.length ?? -1 };
+      return {
+        samples,
+        saves,
+        particles: ctx.particles.list?.length ?? -1,
+        enemies: ctx.enemies.length,
+        projectiles: ctx.projectiles.length,
+        authoredLights: ctx.levels.current?.authoredLights?.length ?? 0,
+      };
     },
     { FRAMES },
   );
 
-  for (const s of result.samples) {
-    all.sim.push(s.sim);
-    all.entities.push(s.entities);
-    all.render.push(s.render);
-    all.frame.push(s.frame);
-  }
+  addSampleBuckets(all, result.samples);
   all.autosaveMs.push(...result.saves);
   console.log(
     `run ${run + 1}/${RUNS}: ${result.samples.length} frames, autosave [${result.saves
@@ -161,53 +181,44 @@ for (let run = 0; run < RUNS; run++) {
 }
 await browser.close();
 
-const stats = (arr) => {
-  const n = arr.length;
-  const mean = arr.reduce((a, b) => a + b, 0) / n;
-  const sd = Math.sqrt(arr.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1));
-  const sorted = [...arr].sort((a, b) => a - b);
-  return {
-    n,
-    mean,
-    sd,
-    p50: sorted[Math.floor(n * 0.5)],
-    p95: sorted[Math.floor(n * 0.95)],
-    max: sorted[n - 1],
-  };
+const summaryKeys = ['sim', 'entities', 'compose', 'gl', 'render', 'frame', 'autosaveMs'];
+const summary = summarizeBuckets(all, summaryKeys);
+
+const payload = {
+  createdAt: new Date().toISOString(),
+  commit: currentGitCommit(),
+  git: currentGitState(),
+  command: currentCommandLine(),
+  label,
+  url,
+  runs: RUNS,
+  frames: FRAMES,
+  scenario: 'chaos',
+  seed: 777,
+  capabilities: {
+    initial: firstRunCapabilities,
+    webgpuAdapter: webgpuCapabilities,
+  },
+  summary,
+  raw: all,
 };
+writeJson(`verify-out/perf-${label}.json`, payload);
+writeJson(`verify-out/perf-${label}-${Date.now()}.json`, payload);
 
-const summary = {};
-for (const k of ['sim', 'entities', 'render', 'frame', 'autosaveMs']) summary[k] = stats(all[k]);
-
-mkdirSync('verify-out', { recursive: true });
-writeFileSync(`verify-out/perf-${label}.json`, JSON.stringify({ label, summary, raw: all }));
-
-console.log(`\n=== ${label.toUpperCase()} ===`);
-for (const k of ['sim', 'entities', 'render', 'frame', 'autosaveMs']) {
-  const s = summary[k];
-  console.log(
-    `${k.padEnd(10)} mean ${s.mean.toFixed(3)}ms  sd ${s.sd.toFixed(3)}  p50 ${s.p50.toFixed(
-      3,
-    )}  p95 ${s.p95.toFixed(3)}  max ${s.max.toFixed(1)}  n=${s.n}`,
-  );
-}
+printBucketSummary(label, summary, summaryKeys);
 
 if (label !== 'before' && existsSync('verify-out/perf-before.json')) {
   const before = JSON.parse(readFileSync('verify-out/perf-before.json', 'utf8'));
   console.log('\n=== WELCH T-TEST vs BEFORE (negative t = faster now) ===');
-  for (const k of ['sim', 'entities', 'render', 'frame', 'autosaveMs']) {
-    const a = before.raw[k];
+  for (const k of summaryKeys) {
+    const a = before.raw[k] ?? [];
     const b = all[k];
-    const sa = stats(a),
-      sb = stats(b);
-    const t =
-      (sb.mean - sa.mean) / Math.sqrt((sa.sd * sa.sd) / sa.n + (sb.sd * sb.sd) / sb.n);
-    const pct = ((sb.mean - sa.mean) / sa.mean) * 100;
-    const sig = Math.abs(t) > 3.29 ? 'p<0.001 SIGNIFICANT' : Math.abs(t) > 1.96 ? 'p<0.05' : 'ns';
+    if (a.length === 0 || b.length === 0) continue;
+    const result = welchT(a, b);
     console.log(
-      `${k.padEnd(10)} ${sa.mean.toFixed(3)} -> ${sb.mean.toFixed(3)}ms  (${pct >= 0 ? '+' : ''}${pct.toFixed(
-        1,
-      )}%)  t=${t.toFixed(1)}  ${sig}`,
+      `${k.padEnd(10)} ${result.control.mean.toFixed(3)} -> ${result.variant.mean.toFixed(3)}ms  (${
+        result.pct >= 0 ? '+' : ''
+      }${result.pct.toFixed(1)}%)  t=${result.t.toFixed(1)}  ${result.sig}`,
     );
   }
 }

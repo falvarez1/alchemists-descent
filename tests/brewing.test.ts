@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '@/core/types';
 import { Brewing } from '@/game/Brewing';
 import { World } from '@/sim/World';
@@ -54,6 +54,10 @@ function basinCount(world: World, cell: Cell): number {
 }
 
 describe('brewing progress', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('does not carry partial progress into a different recipe', () => {
     const brewing = new Brewing();
     const world = new World();
@@ -92,5 +96,35 @@ describe('brewing progress', () => {
     (ctx.levels.current as { def: { id: string } }).def.id = 'd2';
     advance(ctx, brewing, 1);
     expect(basinCount(world, Cell.ElixirLife)).toBe(0);
+  });
+
+  it('emits recipeBrewed for known recipes without paying discovery bounty again', () => {
+    const storage = new Map<string, string>([['noita-grimoire', JSON.stringify({ life: true })]]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    });
+    const brewing = new Brewing();
+    const world = new World();
+    const emitted: Array<{ event: string; payload: unknown }> = [];
+    const ctx = {
+      ...makeCtx(world),
+      events: {
+        emit: (event: string, payload: unknown) => emitted.push({ event, payload }),
+      },
+    } as unknown as Ctx;
+
+    setBasin(world, [
+      ...Array<Cell>(10).fill(Cell.Water),
+      ...Array<Cell>(3).fill(Cell.Gold),
+    ]);
+    advance(ctx, brewing, 90);
+
+    expect(ctx.state.score).toBe(0);
+    expect(emitted.some((entry) => entry.event === 'recipeDiscovered')).toBe(false);
+    expect(emitted).toContainEqual({
+      event: 'recipeBrewed',
+      payload: { id: 'life', name: 'ELIXIR OF LIFE', firstDiscovery: false },
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { compileWand } from '@/combat/wands/compiler';
 import { WandSystem } from '@/combat/wands/WandSystem';
@@ -8,6 +8,7 @@ import { EventBus } from '@/core/events';
 import type { CardId, CastAction, Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
+import { canOpenWandBench } from '@/ui/WandBench';
 
 /**
  * The cast compiler is a PURE function of the slot list, so every rule that
@@ -186,7 +187,7 @@ describe('WandSystem runtime snapshots', () => {
     const wands = new WandSystem(ctx);
     const before = wands.snapshotRuntimeState();
 
-    events.emit('recipeDiscovered', { name: 'ELIXIR OF LIFE', bounty: 100 });
+    events.emit('recipeBrewed', { id: 'life', name: 'ELIXIR OF LIFE', firstDiscovery: true });
     events.emit('levelChanged', { depth: 2, name: 'D2' });
     expect(wands.collection).toContain('infuser');
     expect(wands.snapshotRuntimeState().infuserGranted).toBe(true);
@@ -199,7 +200,7 @@ describe('WandSystem runtime snapshots', () => {
     expect(restored.depthsGranted).toEqual([]);
     expect(wands.collection).toEqual(before.collection);
 
-    events.emit('recipeDiscovered', { name: 'ELIXIR OF LIFE', bounty: 100 });
+    events.emit('recipeBrewed', { id: 'life', name: 'ELIXIR OF LIFE', firstDiscovery: true });
     expect(wands.collection.filter((card) => card === 'infuser')).toHaveLength(1);
   });
 
@@ -223,10 +224,31 @@ describe('WandSystem runtime snapshots', () => {
       ],
     });
     wands.markDepthGrantsThrough(3);
-    events.emit('recipeDiscovered', { name: 'ELIXIR OF LIFE', bounty: 100 });
+    events.emit('recipeBrewed', { id: 'life', name: 'ELIXIR OF LIFE', firstDiscovery: true });
 
     expect(wands.collection.filter((card) => card === 'infuser')).toHaveLength(1);
     expect(wands.snapshotRuntimeState().infuserGranted).toBe(true);
+  });
+
+  it('keeps Infuser out of waystone random grants', () => {
+    const events = new EventBus();
+    const ctx = {
+      events,
+      telemetry: { count: () => undefined },
+      audio: { wandSwap: () => undefined },
+      state: { mode: 'build' },
+      player: {},
+    } as unknown as Ctx;
+    const wands = new WandSystem(ctx);
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      events.emit('waystoneLit');
+    } finally {
+      random.mockRestore();
+    }
+
+    expect(wands.collection).not.toContain('infuser');
+    expect(wands.snapshotRuntimeState().infuserGranted).toBe(false);
   });
 });
 
@@ -379,8 +401,10 @@ describe('WandSystem bench transfers', () => {
       player: {},
     } as unknown as Ctx;
     const wands = new WandSystem(ctx);
+    wands.grantCard(ctx, 'flame');
+    const flameIndex = wands.collection.indexOf('flame');
 
-    wands.slotCollectionCard(1, 0, 1);
+    wands.slotCollectionCard(flameIndex, 0, 1);
     expect(wands.wands[0].cards).toEqual(['spark', 'flame', null]);
     expect(wands.collection).not.toContain('flame');
 
@@ -391,5 +415,31 @@ describe('WandSystem bench transfers', () => {
     expect(wands.wands[0].cards).toEqual(['flame', null, null]);
     expect(wands.collection[0]).toBe('spark');
     expect(changed).toBe(3);
+  });
+});
+
+describe('wand bench access', () => {
+  function benchCtx(overrides: Partial<Ctx> = {}): Ctx {
+    return {
+      state: { mode: 'play' },
+      player: { x: 100, y: 100, dead: false },
+      levels: {
+        current: {
+          refuge: { x: 120, y: 100 },
+          cauldron: null,
+        },
+      },
+      ...overrides,
+    } as unknown as Ctx;
+  }
+
+  it('opens only in play near the Refuge', () => {
+    expect(canOpenWandBench(benchCtx())).toBe(true);
+    expect(canOpenWandBench(benchCtx({ player: { x: 220, y: 100, dead: false } } as Partial<Ctx>))).toBe(false);
+    expect(canOpenWandBench(benchCtx({ state: { mode: 'build' } } as Partial<Ctx>))).toBe(false);
+    expect(canOpenWandBench(benchCtx({ player: { x: 100, y: 100, dead: true } } as Partial<Ctx>))).toBe(false);
+    expect(canOpenWandBench(benchCtx({
+      levels: { current: { refuge: undefined, cauldron: { x: 110, y: 100 } } },
+    } as Partial<Ctx>))).toBe(false);
   });
 });

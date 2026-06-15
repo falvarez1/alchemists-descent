@@ -1,10 +1,52 @@
-import type { BackdropLayerId, Ctx } from '@/core/types';
+import type { BackdropLayerId, Ctx, RenderBackendMode, RenderSettings } from '@/core/types';
 
 /**
  * Render-layer interfaces. Sprites, the frame composer, lighting, background,
  * and the Three.js renderer reference each other only through these, so the
  * concrete modules stay independent.
  */
+
+export type ActualRenderBackend = 'webgpu' | 'webgl2' | 'webgl' | 'none';
+export type RenderBackendHealth = 'active' | 'lost' | 'recovering' | 'recovered' | 'failed';
+
+export interface RenderBackendFeatureFlags {
+  compose: boolean;
+  lighting: boolean;
+  particles: boolean;
+  post: boolean;
+}
+
+export interface RenderBackendWebGpuStatus {
+  navigatorGpu: boolean;
+  secureContext: boolean;
+  backendImplemented: boolean;
+  adapter: 'unchecked' | 'available' | 'unavailable' | 'failed';
+  device: 'unchecked' | 'available' | 'unavailable' | 'failed' | 'lost' | 'recovered';
+  lostCount: number;
+  lastLossReason: string | null;
+  lastLossMessage: string | null;
+}
+
+export interface RenderBackendWebGlStatus {
+  available: boolean;
+  webgl2: boolean;
+  contextLost: boolean;
+  lostCount: number;
+  restoredCount: number;
+}
+
+export interface RenderBackendStatus {
+  requested: RenderBackendMode;
+  actual: ActualRenderBackend;
+  implementation: 'WebGLRenderBackend' | 'WebGPURenderBackend' | 'none';
+  health: RenderBackendHealth;
+  reason: string;
+  fallback: boolean;
+  canvas: { width: number; height: number; connected: boolean };
+  features: RenderBackendFeatureFlags;
+  webgpu: RenderBackendWebGpuStatus;
+  webgl: RenderBackendWebGlStatus;
+}
 
 /** The two pixel primitives every sprite/particle/beam renderer draws with. */
 export interface PixelSurface {
@@ -105,4 +147,12 @@ export interface RenderTarget {
   ): OverlaySurface;
   /** Finish a GPU-composed frame: stage written overlay pixels for upload. */
   commitGpuCompose(): void;
+}
+
+export interface RendererBackend extends RenderTarget {
+  readonly domElement: HTMLCanvasElement;
+  syncSettings(settings: RenderSettings): void;
+  render(ctx: Ctx): void;
+  getBackendStatus(): RenderBackendStatus;
+  dispose(): void;
 }

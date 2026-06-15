@@ -1,10 +1,10 @@
-import type { BiomeId, Ctx, LevelDef, PlayerState, WandRuntimeSnapshot } from '@/core/types';
+import type { AuthoredLight, BiomeId, Ctx, LevelDef, PlayerState, WandRuntimeSnapshot } from '@/core/types';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { BIOMES as BIOME_DEFS } from '@/config/biomes';
 import { GEN, defaultSkeletonSpec } from '@/config/gen';
 import type { SkeletonSpec } from '@/config/gen';
 import { createDefaultPostFxSettings, createDefaultWandLightSettings } from '@/config/params';
-import { LEVELS } from '@/config/worldgraph';
+import { LEVELS, vaultHostId } from '@/config/worldgraph';
 import { randomSeed } from '@/core/rng';
 import {
   applyWorldLayer,
@@ -251,6 +251,8 @@ const BUILDER_VIEWPORT_PAD = 20;
 const RUNTIME_PANEL_REFRESH_FRAMES = 12;
 const RUNTIME_OVERLAY_REFRESH_FRAMES = 4;
 const BIOME_IDS = Object.keys(BIOME_DEFS) as BiomeId[];
+const WORLDGEN_LIGHT_PREFIX = 'worldgen-light-';
+const SCENE_LIGHT_PREFIX = 'scene-light-';
 const PLAYTEST_CURSOR_ALWAYS_STAMPED_BLOCKERS: ReadonlySet<EditorObjectKind> = new Set([
   'cauldron',
   'counterweight',
@@ -292,6 +294,40 @@ const SKELETON_KINDS: Array<SkeletonSpec['kind']> = [
   'crystalVaults',
   'volcanicTubes',
 ];
+
+/** Tiny FNV-1a over the level id, matching Levels' expedition seed fold. */
+function hashLevelId(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+function campaignLevelSeed(baseSeed: number, levelId: string): number {
+  return ((baseSeed >>> 0) ^ hashLevelId(levelId)) >>> 0;
+}
+
+function authoredLightToEditorLight(light: AuthoredLight, n: number, prefix: string): EditorLight {
+  const toHex = (v: number): string => Math.max(0, Math.min(255, Math.round(v * 255)))
+    .toString(16)
+    .padStart(2, '0');
+  return {
+    id: `${prefix}${n.toString(36)}`,
+    x: Math.floor(light.x),
+    y: Math.floor(light.y),
+    color: `#${toHex(light.r)}${toHex(light.g)}${toHex(light.b)}`,
+    intensity: light.intensity,
+    radius: light.radius,
+    bloom: light.bloom,
+    flicker: light.flicker,
+    falloff: light.falloff,
+    occluded: light.occluded,
+    locked: false,
+    hidden: false,
+  };
+}
 
 interface PanelDropPoint {
   clientX: number;
@@ -695,12 +731,14 @@ type PlacementPaletteFocusTarget = { palette: 'prefab' | 'sprite'; assetId: stri
 export class Builder {
   private doc: EditorDocument;
   private readonly cmds = new CommandStack(() => this.doc, (cmd) => this.markDocumentChanged(cmd));
-  private readonly uiCommands = new CommandRegistry();
+  private readonly uiCommands = new CommandRegistry((id, reason) => this.status(`${id}: ${reason}`, true));
   private readonly keymap = new Keymap(this.uiCommands);
   private readonly focusRouter = new FocusRouter();
   private readonly menus = new MenuHost();
   private readonly popovers = new PopoverHost();
   private readonly panelRegistry = createBuilderPanelRegistry();
+  private cmdkActiveIndex = 0;
+  private cmdkHits: CommandSpec[] = [];
   private isOpen = false;
   private ownsPause = false;
   private returningFromPlaytest = false;
@@ -1032,6 +1070,7 @@ export class Builder {
       this.ctx.world = new World();
       this.ctx.enemies.length = 0;
       resetCombatTransients(this.ctx);
+      this.ctx.state.currentBiome = this.doc.biome;
       if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
       detached = true;
     }
@@ -1061,6 +1100,7 @@ export class Builder {
         life: this.ctx.world.life.slice(),
         charge: this.ctx.world.charge.slice(),
       };
+      this.ctx.state.currentBiome = this.doc.biome;
       applyWorldLayer(this.ctx, this.doc.world);
       this.ctx.enemies.length = 0;
       resetCombatTransients(this.ctx);
@@ -2138,6 +2178,7 @@ export class Builder {
     doc.backdrop = sanitizeBackdropSettings(rt?.backdrop ?? this.ctx.params.backdrop);
     doc.backdropProfileId = rt?.backdropLevelId ?? rt?.def.id ?? null;
     doc.world = captureWorldLayer(this.ctx);
+    doc.lights = (rt?.authoredLights ?? []).map((light, n) => authoredLightToEditorLight(light, n, SCENE_LIGHT_PREFIX));
     doc.objects.push({
       id: freshId('spawn'),
       kind: 'spawn',
@@ -2251,9 +2292,9 @@ export class Builder {
         <span class="b-sep"></span>
         <div id="b-session-tabs" class="b-segment" aria-label="Builder session">
           <button id="b-session-author" class="active" title="Static authoring view">AUTHOR</button>
-          <button id="b-session-live" title="Preview animation without gameplay mutation">LIVE PREVIEW</button>
-          <button id="b-session-restart" title="Reset the disposable Live Preview runtime from the document">RESTART</button>
-          <button id="b-session-discard" title="Discard Live Preview and return to Author">DISCARD</button>
+          <button id="b-session-live" title="Preview authored logic without player gameplay">LOGIC PREVIEW</button>
+          <button id="b-session-restart" title="Reset the disposable Logic Preview runtime from the document">RESTART</button>
+          <button id="b-session-discard" title="Discard Logic Preview and return to Author">DISCARD</button>
         </div>
         <input id="b-doc-name" value="untitled" spellcheck="false" title="Document name">
         <select id="b-doc-select" title="Saved documents"></select>
@@ -2398,9 +2439,10 @@ export class Builder {
       <div id="bp-matpop" style="display:none"></div>
       <canvas id="builder-minimap" width="${WIDTH >> 3}" height="${Math.ceil(HEIGHT / 8)}"
         title="Click to jump the camera"></canvas>
-      <div id="builder-cmdk" style="display:none">
-        <input id="bp-cmdk-input" placeholder="type a command&hellip; (Esc closes)" spellcheck="false">
-        <div id="bp-cmdk-list"></div>
+      <div id="builder-cmdk" role="dialog" aria-modal="true" aria-labelledby="bp-cmdk-label" style="display:none">
+        <label id="bp-cmdk-label" class="sr-only" for="bp-cmdk-input">Command palette</label>
+        <input id="bp-cmdk-input" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="bp-cmdk-list" placeholder="type a command&hellip; (Esc closes)" spellcheck="false">
+        <div id="bp-cmdk-list" role="listbox"></div>
       </div>
       <div id="builder-import-host" style="display:none"></div>
       <div id="builder-status"></div>
@@ -2701,7 +2743,12 @@ export class Builder {
   private registerCommands(): void {
     const blocked = () => this.previewBlockReason() !== null;
     const blockReason = () => this.previewBlockReason() ?? 'Command unavailable';
-    const add = (spec: CommandSpec) => this.uiCommands.register(spec);
+    const AUTHOR_SCOPES = ['builder.author'] as const;
+    const LIVE_SCOPES = ['builder.livePreview'] as const;
+    const SESSION_SCOPES = ['builder.author', 'builder.livePreview'] as const;
+    const INSPECT_SCOPES = SESSION_SCOPES;
+    const add = (spec: CommandSpec, scopes: CommandSpec['scopes'] = AUTHOR_SCOPES) =>
+      this.uiCommands.register({ ...spec, scopes: spec.scopes ?? scopes });
     const tool = (id: string, t: BuilderTool, label: string, shortcut?: string) =>
       add({
         id,
@@ -2712,14 +2759,14 @@ export class Builder {
       });
 
     add({ id: 'builder.findInvalid', label: 'Find Invalid Object', category: 'Validation', run: () => this.findInvalid() });
-    add({ id: 'builder.frameSelection', label: 'Frame Selection', category: 'View', shortcut: 'F', run: () => this.frameSelection() });
-    add({ id: 'builder.view.fitDocument', label: 'Fit Authored Bounds', category: 'View', run: () => this.fitAuthoredBounds() });
-    add({ id: 'builder.view.centerSpawn', label: 'Center On Spawn', category: 'View', run: () => this.centerOnSpawn() });
-    add({ id: 'builder.view.centerValidationIssue', label: 'Center Active Validation Issue', category: 'View', run: () => this.centerActiveValidationIssue() });
-    add({ id: 'builder.view.zoomIn', label: 'Zoom In', category: 'View', run: () => this.setBuilderZoom(this.zoomTarget * 1.2) });
-    add({ id: 'builder.view.zoomOut', label: 'Zoom Out', category: 'View', run: () => this.setBuilderZoom(this.zoomTarget / 1.2) });
-    add({ id: 'builder.view.zoomReset', label: 'Reset Zoom', category: 'View', run: () => this.setBuilderZoom(1) });
-    add({ id: 'builder.help', label: 'Builder Help', category: 'Help', shortcut: 'H', run: () => this.setBuilderHelp(true) });
+    add({ id: 'builder.frameSelection', label: 'Frame Selection', category: 'View', shortcut: 'F', run: () => this.frameSelection() }, INSPECT_SCOPES);
+    add({ id: 'builder.view.fitDocument', label: 'Fit Authored Bounds', category: 'View', run: () => this.fitAuthoredBounds() }, INSPECT_SCOPES);
+    add({ id: 'builder.view.centerSpawn', label: 'Center On Spawn', category: 'View', run: () => this.centerOnSpawn() }, INSPECT_SCOPES);
+    add({ id: 'builder.view.centerValidationIssue', label: 'Center Active Validation Issue', category: 'View', run: () => this.centerActiveValidationIssue() }, INSPECT_SCOPES);
+    add({ id: 'builder.view.zoomIn', label: 'Zoom In', category: 'View', run: () => this.setBuilderZoom(this.zoomTarget * 1.2) }, INSPECT_SCOPES);
+    add({ id: 'builder.view.zoomOut', label: 'Zoom Out', category: 'View', run: () => this.setBuilderZoom(this.zoomTarget / 1.2) }, INSPECT_SCOPES);
+    add({ id: 'builder.view.zoomReset', label: 'Reset Zoom', category: 'View', run: () => this.setBuilderZoom(1) }, INSPECT_SCOPES);
+    add({ id: 'builder.help', label: 'Builder Help', category: 'Help', shortcut: 'H', run: () => this.setBuilderHelp(true) }, INSPECT_SCOPES);
     add({
       id: 'builder.validate',
       label: 'Validate Document',
@@ -2756,11 +2803,11 @@ export class Builder {
     add({ id: 'builder.undo', label: 'Undo', category: 'Edit', shortcut: 'Ctrl+Z', enabled: () => !blocked(), disabledReason: blockReason, run: () => this.undo() });
     add({ id: 'builder.redo', label: 'Redo', category: 'Edit', shortcut: 'Ctrl+Y', enabled: () => !blocked(), disabledReason: blockReason, run: () => this.redo() });
     add({ id: 'builder.redoAlt', label: 'Redo', category: 'Edit', shortcut: 'Ctrl+Shift+Z', enabled: () => !blocked(), disabledReason: blockReason, visible: () => false, run: () => this.redo() });
-    add({ id: 'builder.commandPalette', label: 'Command Palette', category: 'View', shortcut: 'Ctrl+K', run: () => this.openCmdk() });
-    add({ id: 'builder.session.author', label: 'Author View', category: 'Session', run: () => this.setBuilderSession('author') });
-    add({ id: 'builder.session.live', label: 'Live Preview', category: 'Session', run: () => this.setBuilderSession('live') });
-    add({ id: 'builder.session.restartPreview', label: 'Restart Live Preview', category: 'Session', run: () => this.resetPreviewRuntime('PREVIEW RESTARTED') });
-    add({ id: 'builder.session.discardPreview', label: 'Discard Live Preview', category: 'Session', run: () => this.discardPreviewRuntime() });
+    add({ id: 'builder.commandPalette', label: 'Command Palette', category: 'View', shortcut: 'Ctrl+K', run: () => this.openCmdk() }, SESSION_SCOPES);
+    add({ id: 'builder.session.author', label: 'Author View', category: 'Session', run: () => this.setBuilderSession('author') }, SESSION_SCOPES);
+    add({ id: 'builder.session.live', label: 'Logic Preview', category: 'Session', run: () => this.setBuilderSession('live') }, SESSION_SCOPES);
+    add({ id: 'builder.session.restartPreview', label: 'Restart Logic Preview', category: 'Session', run: () => this.resetPreviewRuntime('PREVIEW RESTARTED') }, LIVE_SCOPES);
+    add({ id: 'builder.session.discardPreview', label: 'Discard Logic Preview', category: 'Session', run: () => this.discardPreviewRuntime() }, LIVE_SCOPES);
     add({ id: 'builder.copyParams', label: 'Copy Parameters', category: 'Edit', shortcut: 'Ctrl+C', enabled: () => this.selected() !== null, disabledReason: () => 'Select an object first', run: () => this.copyParams() });
     add({ id: 'builder.pasteParams', label: 'Paste Parameters', category: 'Edit', shortcut: 'Ctrl+V', enabled: () => this.selected() !== null && this.clipboard !== null, disabledReason: () => (this.selected() === null ? 'Select an object first' : 'Copy parameters first'), run: () => this.pasteParams() });
     add({ id: 'builder.duplicate', label: 'Duplicate Selection', category: 'Edit', shortcut: 'Ctrl+D', enabled: () => !blocked() && this.selectedIds.size > 0, disabledReason: () => blockReasonOr(this.selectedIds.size === 0 ? 'Select one or more objects first' : null), run: () => this.duplicateSelection() });
@@ -2827,8 +2874,8 @@ export class Builder {
       run: () => void this.exportRegionPng(),
     });
     add({ id: 'builder.exportPalette', label: 'Export Material Palette (.gpl)', category: 'Prefabs', run: () => this.exportMaterialPalette() });
-    add({ id: 'builder.lightPreviewToggle', label: 'Toggle Light Preview', category: 'View', run: () => this.toggleLightPreview() });
-    add({ id: 'builder.wandLightPreviewToggle', label: 'Toggle Wand Cursor Light', category: 'View', run: () => this.toggleWandLightPreview() });
+    add({ id: 'builder.lightPreviewToggle', label: 'Toggle Light Preview', category: 'View', run: () => this.toggleLightPreview() }, INSPECT_SCOPES);
+    add({ id: 'builder.wandLightPreviewToggle', label: 'Toggle Wand Cursor Light', category: 'View', run: () => this.toggleWandLightPreview() }, INSPECT_SCOPES);
     add({ id: 'builder.worldPanel', label: 'World Generation', category: 'Panels', run: () => this.toggleSidePanel('world') });
     add({ id: 'builder.virtualWorldPanel', label: 'World Map', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-virtual-world') });
     add({ id: 'builder.globalControlsPanel', label: 'Global Controls', category: 'Panels', run: () => this.toggleSidePanel('global') });
@@ -2839,9 +2886,9 @@ export class Builder {
     add({ id: 'builder.assetDetailsPanel', label: 'Asset Details', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-asset-details') });
     add({ id: 'builder.prefabDetailsPanel', label: 'Prefab Details', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-prefab-details') });
     add({ id: 'builder.assetImport', label: 'Import Asset JSON', category: 'Assets', run: () => void this.importAssetJsonFiles() });
-    add({ id: 'builder.outlinerPanel', label: 'Object Outliner', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-outliner') });
-    add({ id: 'builder.runtimePanel', label: 'Runtime', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-runtime') });
-    add({ id: 'builder.linkGraphPanel', label: 'Link Graph', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-link-graph') });
+    add({ id: 'builder.outlinerPanel', label: 'Object Outliner', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-outliner') }, INSPECT_SCOPES);
+    add({ id: 'builder.runtimePanel', label: 'Runtime', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-runtime') }, INSPECT_SCOPES);
+    add({ id: 'builder.linkGraphPanel', label: 'Link Graph', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-link-graph') }, INSPECT_SCOPES);
     for (const layer of LAYER_FAMILIES) {
       const label = layerLabel(layer);
       add({
@@ -2849,32 +2896,32 @@ export class Builder {
         label: `Toggle ${label} Layer Visibility`,
         category: 'Layers',
         run: () => this.toggleLayerVisibility(layer),
-      });
+      }, INSPECT_SCOPES);
       add({
         id: `builder.layer.${layer}.lock`,
         label: `Toggle ${label} Layer Lock`,
         category: 'Layers',
         run: () => this.toggleLayerLock(layer),
-      });
+      }, INSPECT_SCOPES);
     }
-    add({ id: 'builder.resetWorkspace', label: 'Reset Workspace', category: 'Panels', run: () => this.resetWorkspace() });
+    add({ id: 'builder.resetWorkspace', label: 'Reset Workspace', category: 'Panels', run: () => this.resetWorkspace() }, INSPECT_SCOPES);
     for (const preset of ['compact', 'wide', 'validation', 'lighting', 'prefab'] as const) {
       add({
         id: `builder.workspace.${preset}`,
         label: `Workspace Preset: ${preset.toUpperCase()}`,
         category: 'Panels',
         run: () => this.applyWorkspacePreset(preset),
-      });
+      }, INSPECT_SCOPES);
     }
-    add({ id: 'builder.togglePanels', label: 'Toggle Panels / Zen', category: 'View', run: () => this.toggleZen() });
-    add({ id: 'builder.overlayCycle', label: 'Cycle Readability Overlay', category: 'Overlays', shortcut: 'O', run: () => this.cycleOverlay() });
+    add({ id: 'builder.togglePanels', label: 'Toggle Panels / Zen', category: 'View', run: () => this.toggleZen() }, INSPECT_SCOPES);
+    add({ id: 'builder.overlayCycle', label: 'Cycle Readability Overlay', category: 'Overlays', shortcut: 'O', run: () => this.cycleOverlay() }, INSPECT_SCOPES);
     for (const id of BUILDER_OVERLAY_IDS) {
       add({
         id: `builder.overlay.${id}`,
         label: `Toggle ${overlayLabel(id)}`,
         category: 'Overlays',
         run: () => this.toggleOverlay(id),
-      });
+      }, INSPECT_SCOPES);
     }
     add({ id: 'builder.snapCycle', label: 'Cycle Snap Grid', category: 'View', run: () => this.cycleSnapGrid() });
     add({ id: 'builder.generateCaves', label: 'Generate Caves', category: 'World', enabled: () => !blocked(), disabledReason: blockReason, run: () => void this.guardedWorldGen('caves') });
@@ -2910,6 +2957,12 @@ export class Builder {
   }
 
   private runUiCommand(id: string): void {
+    const cmd = this.uiCommands.get(id);
+    const scope = this.sessionMode === 'live' ? 'builder.livePreview' : 'builder.author';
+    if (cmd && cmd.scopes && cmd.scopes.length > 0 && !cmd.scopes.includes('global') && !cmd.scopes.includes(scope)) {
+      this.status(`${cmd.label.toUpperCase()} IS NOT AVAILABLE IN ${this.sessionMode === 'live' ? 'LOGIC PREVIEW' : 'AUTHOR VIEW'}`, true);
+      return;
+    }
     const result = this.uiCommands.run(id);
     if (!result.ok) this.status(result.reason ?? 'COMMAND UNAVAILABLE', true);
   }
@@ -2922,12 +2975,12 @@ export class Builder {
     this.invalidateRuntimeSnapshots();
     this.syncSessionButtons();
     if (mode === 'author') {
-      // Live Preview is visual-only; returning to Author clears transient preview feeds.
+      // Logic Preview is visual-only; returning to Author clears transient preview feeds.
       this.previewRuntime.stop();
       this.ctx.state.editorLights = null;
       this.status('AUTHOR VIEW');
     } else {
-      this.resetPreviewRuntime('LIVE PREVIEW');
+      this.resetPreviewRuntime('LOGIC PREVIEW');
     }
   }
 
@@ -2940,7 +2993,7 @@ export class Builder {
 
   private resetPreviewRuntime(prefix = 'PREVIEW RESET'): void {
     if (this.sessionMode !== 'live') {
-      this.status('LIVE PREVIEW IS NOT ACTIVE', true);
+      this.status('LOGIC PREVIEW IS NOT ACTIVE', true);
       return;
     }
     if (this.previewBlocks()) return;
@@ -2957,7 +3010,7 @@ export class Builder {
 
   private discardPreviewRuntime(): void {
     if (this.sessionMode !== 'live') {
-      this.status('LIVE PREVIEW IS NOT ACTIVE', true);
+      this.status('LOGIC PREVIEW IS NOT ACTIVE', true);
       return;
     }
     this.previewRuntime.stop();
@@ -3015,8 +3068,12 @@ export class Builder {
     return true;
   }
 
+  private authoringActionBlocks(action: string): boolean {
+    return this.livePreviewActionBlocks(action) || this.previewBlocks();
+  }
+
   private async newDocument(): Promise<void> {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('New document')) return;
     if (!(await this.confirmDiscardCurrentDocument('New Document'))) return;
     this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
     this.worldgenLevelId = this.levelIdForBiome(this.doc.biome);
@@ -3038,7 +3095,7 @@ export class Builder {
   }
 
   private saveDocument(): void {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Save document')) return;
     this.ensureCaptured();
     this.ensureDocBackdrop();
     embedSprites(this.doc, this.sprites);
@@ -3051,7 +3108,10 @@ export class Builder {
   }
 
   private async loadSelectedDocument(): Promise<void> {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Load document')) {
+      this.refreshDocSelect();
+      return;
+    }
     const id = this.el<HTMLSelectElement>('b-doc-select').value;
     const saved = loadDocLibrary()[id];
     if (!saved) {
@@ -3067,7 +3127,7 @@ export class Builder {
   }
 
   private exportDocument(): void {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Export document')) return;
     this.ensureCaptured();
     this.ensureDocBackdrop();
     embedSprites(this.doc, this.sprites);
@@ -3080,7 +3140,7 @@ export class Builder {
   }
 
   private captureTerrain(): void {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Capture terrain')) return;
     this.doc.world = captureWorldLayer(this.ctx);
     this.paintDirty = false;
     this.markDocumentChanged();
@@ -3088,7 +3148,7 @@ export class Builder {
   }
 
   private restoreTerrain(): void {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Restore terrain')) return;
     if (!this.doc.world) {
       this.status('NOTHING CAPTURED YET — THE DOCUMENT HAS NO TERRAIN', true);
       return;
@@ -3101,7 +3161,7 @@ export class Builder {
   }
 
   private validateCurrentDocument(): void {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Validate document')) return;
     this.ensureCaptured();
     const issues = validateDocument(this.doc);
     this.lastValidationOverlay = buildValidationOverlayDiagnostics(this.doc);
@@ -3128,8 +3188,9 @@ export class Builder {
     this.scheduleValidationPanelRefresh();
   }
 
-  private currentValidationIssues(): DocIssue[] {
-    if (this.ensureCaptured()) this.validationDirty = true;
+  private currentValidationIssues(options: { captureTerrain?: boolean } = {}): DocIssue[] {
+    const captureTerrain = options.captureTerrain ?? this.sessionMode !== 'live';
+    if (captureTerrain && this.ensureCaptured()) this.validationDirty = true;
     if (this.validationDirty) {
       this.lastIssues = validateDocument(this.doc);
       this.lastValidationOverlay = buildValidationOverlayDiagnostics(this.doc);
@@ -3144,13 +3205,12 @@ export class Builder {
     this.validationRefreshFrame = window.requestAnimationFrame(() => {
       this.validationRefreshFrame = null;
       if (!this.isOpen || !this.isWorkspacePanelOpen('builder-issues')) return;
-      this.ensureCaptured();
       this.renderIssues(this.currentValidationIssues());
     });
   }
 
   private async shareDocument(): Promise<void> {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Share document')) return;
     if (this.shareBusy) return;
     this.shareBusy = true;
     try {
@@ -3185,7 +3245,7 @@ export class Builder {
   }
 
   private async importShareCode(): Promise<void> {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Import share code')) return;
     if (this.codeBusy) return;
     this.codeBusy = true;
     try {
@@ -3210,7 +3270,7 @@ export class Builder {
   }
 
   private async importDocumentFile(file: File): Promise<void> {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Import document')) return;
     let parsed: unknown = null;
     try {
       const text = await file.text();
@@ -3229,11 +3289,21 @@ export class Builder {
 
   private wireBar(): void {
     this.el<HTMLInputElement>('b-doc-name').addEventListener('change', (e) => {
-      this.doc.name = (e.target as HTMLInputElement).value.trim() || 'untitled';
+      const input = e.target as HTMLInputElement;
+      if (this.authoringActionBlocks('Rename document')) {
+        input.value = this.doc.name;
+        return;
+      }
+      this.doc.name = input.value.trim() || 'untitled';
       this.refreshDocSelect();
     });
     this.el<HTMLSelectElement>('b-biome').addEventListener('change', (e) => {
-      const biome = (e.target as HTMLSelectElement).value as BiomeId;
+      const select = e.target as HTMLSelectElement;
+      if (this.authoringActionBlocks('Change biome')) {
+        select.value = this.doc.biome;
+        return;
+      }
+      const biome = select.value as BiomeId;
       this.doc.biome = biome;
       this.ctx.state.currentBiome = biome;
       this.worldgenLevelId = this.levelIdForBiome(biome);
@@ -3256,7 +3326,7 @@ export class Builder {
       const input = e.target as HTMLInputElement;
       const file = input.files?.[0];
       if (!file) return;
-      if (this.previewBlocks()) {
+      if (this.authoringActionBlocks('Import document')) {
         input.value = '';
         return;
       }
@@ -3414,10 +3484,12 @@ export class Builder {
 
   /** Live preview for the image-backed parallax cave backdrop. */
   private openBackdropPreview(): void {
+    if (this.authoringActionBlocks('Backdrop editor')) return;
     this.syncDocBackdropToLive();
     this.backdropPreview ??= new BackdropPreview(this.root, this.ctx, {
       getSettings: () => this.ensureDocBackdrop(),
       commitSettings: (settings, playtestProfileId) => {
+        if (this.authoringActionBlocks('Apply backdrop')) return;
         this.doc.backdrop = sanitizeBackdropSettings(settings);
         this.doc.backdropProfileId = playtestProfileId;
         this.ctx.params.backdrop = this.doc.backdrop;
@@ -3538,6 +3610,7 @@ export class Builder {
     this.ctx.state.builderWandLightPreview.enabled = false;
     this.ctx.enemies.length = 0;
     resetCombatTransients(this.ctx);
+    this.ctx.state.currentBiome = this.doc.biome;
     if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
     else this.ctx.world = new World();
     this.restorePrePlaytestPlayer();
@@ -3571,6 +3644,7 @@ export class Builder {
 
   /** Re-decode the authored terrain into the live world (fresh combat state). */
   private applyDocTerrain(): void {
+    this.ctx.state.currentBiome = this.doc.biome;
     if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
     else this.ctx.world.clear();
     this.ctx.enemies.length = 0;
@@ -3687,6 +3761,7 @@ export class Builder {
   }
 
   private startGizmoInteraction(handle: ProjectedGizmoHandle): boolean {
+    if (this.authoringActionBlocks('Gizmo edit')) return false;
     if (handle.ownerKind === 'object') {
       const obj = this.doc.objects.find((o) => o.id === handle.ownerId);
       if (!obj || !this.layerSelectableObj(obj)) return false;
@@ -3814,6 +3889,10 @@ export class Builder {
       const light = drag.target as EditorLight;
       const nextRadius = light.radius;
       this.restoreGizmoDrag(drag);
+      if (this.authoringActionBlocks('Gizmo edit')) {
+        this.renderInspector();
+        return;
+      }
       if (nextRadius !== light.radius) {
         this.cmds.run(editLightCmd(light, { radius: nextRadius }));
         this.renderInspector();
@@ -3827,6 +3906,11 @@ export class Builder {
     const nextY = obj.y;
     const nextParams = { ...obj.params };
     this.restoreGizmoDrag(drag);
+    if (this.authoringActionBlocks('Gizmo edit')) {
+      this.renderInspector();
+      this.syncMarkers();
+      return;
+    }
 
     const cmds: Command[] = [];
     if (nextX !== drag.origX || nextY !== drag.origY) cmds.push(moveObjectCmd(obj, nextX, nextY));
@@ -3858,12 +3942,17 @@ export class Builder {
     this.overlay.addEventListener('mousedown', (e) => {
       const pos = this.mouseToWorld(e);
       if (e.button === 2) {
+        if (this.livePreviewActionBlocks('Eyedrop')) return;
         // patrol-edit mode: RMB on a waypoint removes it; elsewhere eyedrops
         if (this.patrolEditId && this.deletePatrolPointAt(pos.x, pos.y)) return;
         this.eyedrop(pos.x, pos.y);
         return;
       }
       if (e.button !== 0) return;
+      if (this.sessionMode === 'live' && this.tool !== 'select') {
+        this.livePreviewActionBlocks(TOOL_INFO[this.tool]?.name ?? 'Tool edit');
+        return;
+      }
       // FLOATING SELECTION is modal on the canvas: inside the block starts
       // a drag; anywhere else just reminds (Enter lands, ESC cancels).
       if (this.floating) {
@@ -3877,12 +3966,13 @@ export class Builder {
       }
       // patrol authoring eats clicks until ESC ends it
       if (this.patrolEditId) {
+        if (this.livePreviewActionBlocks('Patrol edit')) return;
         this.addPatrolPoint(pos.x, pos.y);
         return;
       }
       const gizmo = this.hitGizmoAt(e);
       if (gizmo) {
-        if (this.previewBlocks()) return;
+        if (this.previewBlocks() || this.livePreviewActionBlocks('Gizmo edit')) return;
         if (this.startGizmoInteraction(gizmo)) return;
       }
       if (this.tool === 'lassoRegion') {
@@ -3960,6 +4050,7 @@ export class Builder {
       if (sel && sel.kind === 'enemy' && !sel.locked && Array.isArray(sel.params.patrol)) {
         const idx = this.hitPatrolPoint(sel, pos.x, pos.y);
         if (idx !== null) {
+          if (this.livePreviewActionBlocks('Patrol edit')) return;
           const pts = sel.params.patrol as Array<[number, number]>;
           this.waypointDrag = {
             obj: sel,
@@ -4004,6 +4095,7 @@ export class Builder {
         this.renderInspector();
       }
       // group drag: every unlocked member of the selection moves together
+      if (this.sessionMode === 'live') return;
       const targets: Array<{ t: EditorObject | EditorLight; isLight: boolean; ox: number; oy: number }> = [];
       for (const o of this.doc.objects) {
         if (this.selectedIds.has(o.id) && !o.locked && this.layerSelectableObj(o))
@@ -4098,6 +4190,10 @@ export class Builder {
         // Rewind the live preview, then land the move as ONE command.
         const next = pts.map(([px, py]) => [px, py] as [number, number]);
         d.obj.params.patrol = d.orig;
+        if (this.authoringActionBlocks('Patrol edit')) {
+          this.renderInspector();
+          return;
+        }
         this.cmds.run(editParamCmd(d.obj, 'patrol', next));
         this.status(`WAYPOINT ${d.index + 1} MOVED`);
         return;
@@ -4111,6 +4207,17 @@ export class Builder {
         this.terraStroke = null;
         const patch = t.rec.finish();
         if (patch) {
+          if (this.authoringActionBlocks('Terrain stroke')) {
+            for (let n = 0; n < patch.before.idxs.length; n++) {
+              const i = patch.before.idxs[n];
+              this.ctx.world.types[i] = patch.before.types[n];
+              this.ctx.world.colors[i] = patch.before.colors[n];
+              this.ctx.world.life[i] = patch.before.life[n];
+              this.ctx.world.charge[i] = patch.before.charge[n];
+            }
+            this.renderInspector();
+            return;
+          }
           this.cmds.run(paintTerrainCmd(this.ctx.world, patch.before, patch.after));
           this.markTerrainDirty();
           this.status(`${t.tool.toUpperCase()}: ${patch.before.idxs.length} CELLS`);
@@ -4145,6 +4252,11 @@ export class Builder {
           ? moveLightCmd(m.t as EditorLight, nx, ny)
           : moveObjectCmd(m.t as EditorObject, nx, ny);
       });
+      if (this.authoringActionBlocks('Move selection')) {
+        this.renderInspector();
+        this.syncMarkers();
+        return;
+      }
       this.cmds.run(cmds.length === 1 ? cmds[0] : compositeCmd('move ' + cmds.length + ' things', cmds));
       this.renderInspector();
     });
@@ -4195,6 +4307,7 @@ export class Builder {
   }
 
   private beginStroke(x: number, y: number): void {
+    if (this.authoringActionBlocks('Paint terrain')) return;
     if (this.materialOrComplain() === null) return;
     this.stroke = {
       seen: new Set(),
@@ -4251,6 +4364,18 @@ export class Builder {
     const s = this.stroke;
     this.stroke = null;
     if (!s) return;
+    if (this.authoringActionBlocks('Paint terrain')) {
+      const w = this.ctx.world;
+      for (let n = 0; n < s.before.idxs.length; n++) {
+        const i = s.before.idxs[n];
+        w.types[i] = s.before.types[n];
+        w.colors[i] = s.before.colors[n];
+        w.life[i] = s.before.life[n];
+        w.charge[i] = s.before.charge[n];
+      }
+      this.renderInspector();
+      return;
+    }
     this.markTerrainDirty();
     if (s.seen.size > STROKE_UNDO_CAP) {
       this.status('HUGE STROKE — PAINTED WITHOUT UNDO', true);
@@ -4288,7 +4413,7 @@ export class Builder {
   /* ---------- terrain shape tools (Phase 4) ---------- */
 
   private commitShape(s: { x0: number; y0: number; x1: number; y1: number }): void {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Draw shape')) return;
     const type = this.materialOrComplain();
     if (type === null) return;
     const w = this.ctx.world;
@@ -4391,6 +4516,7 @@ export class Builder {
   }
 
   private commitFlood(x: number, y: number): void {
+    if (this.authoringActionBlocks('Flood fill')) return;
     const type = this.materialOrComplain();
     if (type === null) return;
     const w = this.ctx.world;
@@ -4418,6 +4544,7 @@ export class Builder {
   }
 
   private commitReplace(x: number, y: number): void {
+    if (this.authoringActionBlocks('Replace terrain')) return;
     const type = this.materialOrComplain();
     if (type === null) return;
     const w = this.ctx.world;
@@ -4463,24 +4590,69 @@ export class Builder {
   }
 
   private async generateConfiguredWorld(reroll: boolean): Promise<void> {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Generate world')) return;
     const previousSeed = this.ctx.state.worldSeed;
     if (reroll) this.ctx.state.worldSeed = randomSeed();
+    const baseSeed = this.ctx.state.worldSeed >>> 0;
     if (!(await this.confirmWholeWorldReshape('Generate World'))) {
       this.ctx.state.worldSeed = previousSeed;
       this.buildWorldPanel();
       return;
     }
-    this.ctx.state.currentBiome = this.doc.biome;
-    this.ctx.worldgen.generateCaves(this.ctx);
+    const level = this.worldgenLevelId ? LEVELS[this.worldgenLevelId] : null;
+    let statusProfile = BIOME_DEFS[this.doc.biome].name.toUpperCase();
+    if (level) {
+      this.doc.biome = level.biome;
+      this.ctx.state.currentBiome = level.biome;
+      const levelSeed = campaignLevelSeed(baseSeed, level.id);
+      const generated = this.ctx.worldgen.generateLevel(this.ctx, level, levelSeed, {
+        hostArch: level.id === vaultHostId(baseSeed),
+      });
+      this.upsertGeneratedSpawn(generated.spawn);
+      this.doc.lights = [
+        ...this.doc.lights.filter((light) => !light.id.startsWith(WORLDGEN_LIGHT_PREFIX)),
+        ...generated.authoredLights.map((light, n) => authoredLightToEditorLight(light, n, WORLDGEN_LIGHT_PREFIX)),
+      ];
+      this.doc.backdropProfileId = level.id;
+      statusProfile = `${level.name.toUpperCase()} PROFILE`;
+    } else {
+      this.ctx.state.currentBiome = this.doc.biome;
+      this.ctx.worldgen.generateCaves(this.ctx);
+      if (this.ctx.worldgen.spawnHint) this.upsertGeneratedSpawn(this.ctx.worldgen.spawnHint);
+    }
     if (this.ctx.worldgen.spawnHint) this.ctx.camera.snapTo(this.ctx.worldgen.spawnHint.x, this.ctx.worldgen.spawnHint.y);
-    this.markTerrainDirty();
+    this.doc.world = captureWorldLayer(this.ctx);
+    this.paintDirty = false;
+    this.markDocumentChanged();
+    this.ctx.state.worldSeed = baseSeed;
     this.syncAll();
-    this.status(`GENERATED ${BIOME_DEFS[this.doc.biome].name.toUpperCase()} — SEED ${this.ctx.state.worldSeed >>> 0}`);
+    this.status(`GENERATED ${statusProfile} — SEED ${baseSeed}`);
+  }
+
+  private upsertGeneratedSpawn(spawn: { x: number; y: number }): void {
+    const x = Math.floor(spawn.x);
+    const y = Math.floor(spawn.y);
+    const existing = this.doc.objects.find((object) => object.kind === 'spawn');
+    if (existing) {
+      existing.x = x;
+      existing.y = y;
+      existing.hidden = false;
+      return;
+    }
+    this.doc.objects.push({
+      id: freshId('spawn'),
+      kind: 'spawn',
+      x,
+      y,
+      rotation: 0,
+      locked: false,
+      hidden: false,
+      params: {},
+    });
   }
 
   private async guardedWorldGen(action: 'caves' | 'fortress' | 'clear'): Promise<void> {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('World generation')) return;
     if (!(await this.confirmWholeWorldReshape('Reshape World'))) return;
     if (action === 'caves') {
       this.ctx.state.currentBiome = this.doc.biome; // the document drives the look
@@ -4497,6 +4669,7 @@ export class Builder {
   /* ---------- objects, links, lights ---------- */
 
   private place(kind: EditorObjectKind, x: number, y: number): void {
+    if (this.authoringActionBlocks('Place object')) return;
     // A document has exactly one spawn: placing again moves the existing one.
     if (kind === 'spawn') {
       const existing = this.doc.objects.find((o) => o.kind === 'spawn');
@@ -4552,6 +4725,7 @@ export class Builder {
   }
 
   private placeLight(x: number, y: number): void {
+    if (this.authoringActionBlocks('Place light')) return;
     const light: EditorLight = {
       id: freshId('light'),
       x: this.snap(x),
@@ -4573,6 +4747,7 @@ export class Builder {
   }
 
   private linkClick(x: number, y: number): void {
+    if (this.authoringActionBlocks('Link objects')) return;
     const hit = this.hitTest(x, y);
     if (!hit || hit.isLight) {
       this.status('LINK: CLICK A TRIGGER OR RUNE GLYPH', true);
@@ -4704,6 +4879,7 @@ export class Builder {
    *  BOTH endpoints are selected come along with remapped ids. Spawn stays
    *  unique and is skipped. */
   private duplicateSelection(): void {
+    if (this.authoringActionBlocks('Duplicate selection')) return;
     const idMap = new Map<string, string>();
     const adds: Command[] = [];
     const newIds: string[] = [];
@@ -4752,6 +4928,7 @@ export class Builder {
 
   /** Ctrl+G: bind the selected objects into a group; Ctrl+Shift+G dissolves. */
   private groupSelection(ungroup: boolean): void {
+    if (this.authoringActionBlocks(ungroup ? 'Ungroup selection' : 'Group selection')) return;
     const members = this.doc.objects.filter((o) => this.selectedIds.has(o.id));
     if (ungroup) {
       const cmds = members.filter((o) => o.group).map((o) => setObjectGroupCmd(o, undefined));
@@ -4774,6 +4951,7 @@ export class Builder {
 
   /** Align the selection to the primary; spread distributes evenly between ends. */
   private alignSelection(mode: 'x' | 'y' | 'spreadX' | 'spreadY'): void {
+    if (this.authoringActionBlocks('Align selection')) return;
     const targets: Array<{ t: EditorObject | EditorLight; isLight: boolean }> = [];
     for (const o of this.doc.objects) {
       if (this.selectedIds.has(o.id) && !o.locked && this.layerSelectableObj(o))
@@ -4843,6 +5021,7 @@ export class Builder {
   }
 
   private pasteParams(): void {
+    if (this.authoringActionBlocks('Paste parameters')) return;
     const clip = this.clipboard;
     if (!clip) {
       this.status('NOTHING COPIED YET (CTRL+C)');
@@ -4980,6 +5159,7 @@ export class Builder {
   }
 
   private async deleteSelection(): Promise<void> {
+    if (this.authoringActionBlocks('Delete selection')) return;
     const dels: Command[] = [];
     let lockedSkipped = 0;
     let deletesSpawn = false;
@@ -5356,6 +5536,10 @@ export class Builder {
         { value: 'custom', label: 'CUSTOM DOCUMENT' },
       ],
       (levelId) => {
+        if (this.authoringActionBlocks('Change world target')) {
+          this.buildWorldPanel();
+          return;
+        }
         this.worldgenLevelId = levelId === 'custom' ? null : levelId;
         const level = levelId === 'custom' ? null : LEVELS[levelId];
         if (level) {
@@ -5372,6 +5556,10 @@ export class Builder {
       this.doc.biome,
       BIOME_IDS.map((id) => ({ value: id, label: BIOME_DEFS[id].name })),
       (biome) => {
+        if (this.authoringActionBlocks('Change biome')) {
+          this.buildWorldPanel();
+          return;
+        }
         this.doc.biome = biome;
         this.ctx.state.currentBiome = biome;
         this.worldgenLevelId = this.levelIdForBiome(biome);
@@ -5620,9 +5808,17 @@ export class Builder {
   }
 
   private editBackdropGradeControls(host: HTMLElement): void {
+    if (this.sessionMode === 'live') {
+      host.innerHTML = '<div class="bp-hint">Return to Author View to edit backdrop grade.</div>';
+      return;
+    }
     const settings = this.ensureDocBackdrop();
     const grade = settings.grade;
     const update = (mutate: (grade: typeof settings.grade) => void): void => {
+      if (this.authoringActionBlocks('Edit backdrop grade')) {
+        this.buildWorldPanel();
+        return;
+      }
       const backdrop = this.ensureDocBackdrop();
       mutate(backdrop.grade);
       this.ctx.params.backdrop = backdrop;
@@ -5833,6 +6029,7 @@ export class Builder {
 
   private procRun(previewOnly: boolean): void {
     if (previewOnly && this.livePreviewActionBlocks('Preview')) return;
+    if (!previewOnly && this.livePreviewActionBlocks('Apply procedural pass')) return;
     if (this.settleBlocks() || this.floatingBlocks()) return;
     const def = this.procDef();
     const seed = Number(this.el<HTMLInputElement>('bp-seed').value) || 1;
@@ -5923,6 +6120,8 @@ export class Builder {
 
   /** Commit a pending preview through the undo stack. */
   private applyPreview(): void {
+    if (this.livePreviewActionBlocks('Apply preview')) return;
+    if (this.settleBlocks() || this.floatingBlocks()) return;
     const p = this.pendingPreview;
     if (!p) return;
     this.pendingPreview = null;
@@ -6379,6 +6578,7 @@ export class Builder {
    *  TERRAIN ONLY into the same recorder — gameplay objects never duplicate
    *  silently. */
   private pastePrefabAt(p: PrefabDef, x: number, y: number): void {
+    if (this.authoringActionBlocks('Paste prefab')) return;
     const rec = new PatchRecorder(this.ctx.world);
     const desiredX = this.snap(x);
     const desiredY = this.snap(y);
@@ -7024,7 +7224,7 @@ export class Builder {
    * mechanism cells (doors, basins) — region bakes are the intended tool.
    */
   private async bakePlaytestScars(): Promise<void> {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Bake playtest scars')) return;
     const scars = this.playtestScars;
     if (!scars) {
       this.status('NO PLAYTEST SCARS HELD — PLAYTEST FIRST, THEN BAKE ON RETURN', true);
@@ -7090,6 +7290,7 @@ export class Builder {
   /* ---------- patrol authoring ---------- */
 
   private addPatrolPoint(x: number, y: number): void {
+    if (this.authoringActionBlocks('Patrol edit')) return;
     const obj = this.doc.objects.find((o) => o.id === this.patrolEditId);
     if (!obj) {
       this.patrolEditId = null;
@@ -7121,6 +7322,7 @@ export class Builder {
 
   /** RMB in patrol-edit mode: remove the waypoint under the cursor. */
   private deletePatrolPointAt(x: number, y: number): boolean {
+    if (this.authoringActionBlocks('Patrol edit')) return false;
     const obj = this.doc.objects.find((o) => o.id === this.patrolEditId);
     if (!obj) return false;
     const idx = this.hitPatrolPoint(obj, x, y);
@@ -7136,7 +7338,7 @@ export class Builder {
 
   /** X with a region set: lift its cells off the world (consumes the region). */
   private liftFloat(): void {
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Lift region')) return;
     if (!this.region) {
       this.status('SELECT A REGION FIRST (R / POLYGON / LASSO), THEN X LIFTS IT', true);
       return;
@@ -7209,6 +7411,7 @@ export class Builder {
   }
 
   private rotateSelectedObjects(): boolean {
+    if (this.authoringActionBlocks('Rotate selection')) return false;
     const targets = this.doc.objects.filter(
       (o) => this.selectedIds.has(o.id) && !o.locked && this.layerSelectableObj(o),
     );
@@ -7254,7 +7457,7 @@ export class Builder {
 
   private startSettle(): void {
     if (this.settling || this.settleSnap) return;
-    if (this.previewBlocks()) return;
+    if (this.authoringActionBlocks('Settle terrain')) return;
     const w = this.ctx.world;
     this.settleWasDirty = this.paintDirty;
     this.settleSnap = {
@@ -7287,12 +7490,12 @@ export class Builder {
     }
     this.settleSnap = null;
     const w = this.ctx.world;
-    if (!keep) {
+    if (!keep || this.livePreviewActionBlocks('Keep settle')) {
       w.types.set(snap.types);
       w.colors.set(snap.colors);
       w.life.set(snap.life);
       w.charge.set(snap.charge);
-      this.status('SETTLE REVERTED');
+      this.status(keep ? 'SETTLE REVERTED — RETURN TO AUTHOR VIEW BEFORE KEEPING' : 'SETTLE REVERTED', keep);
       this.syncSettleButtons();
       return;
     }
@@ -7487,11 +7690,6 @@ export class Builder {
 
   /* ---------- command palette (Ctrl+K) ---------- */
 
-  /** Every action the bar/palette exposes, searchable in one registry. */
-  private cmdkActions(): CommandSpec[] {
-    return this.uiCommands.list();
-  }
-
   private openCmdk(): void {
     if (this.gizmoDrag) {
       this.status('RELEASE OR ESCAPE THE CANVAS GIZMO FIRST', true);
@@ -7501,12 +7699,17 @@ export class Builder {
     box.style.display = '';
     const input = this.el<HTMLInputElement>('bp-cmdk-input');
     input.value = '';
+    input.setAttribute('aria-expanded', 'true');
+    this.cmdkActiveIndex = 0;
     this.renderCmdk('');
     input.focus();
   }
 
   private closeCmdk(): void {
     this.el<HTMLDivElement>('builder-cmdk').style.display = 'none';
+    const input = this.el<HTMLInputElement>('bp-cmdk-input');
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
   }
 
   private isCommandPaletteOpen(): boolean {
@@ -7516,13 +7719,23 @@ export class Builder {
   private renderCmdk(query: string): void {
     const list = this.el<HTMLDivElement>('bp-cmdk-list');
     const q = query.trim().toLowerCase();
-    const hits = this.cmdkActions().filter((a) => a.label.toLowerCase().includes(q)).slice(0, 12);
+    const hits = this.uiCommands.search(q).slice(0, 12);
+    this.cmdkHits = hits;
+    if (this.cmdkActiveIndex >= hits.length) this.cmdkActiveIndex = Math.max(0, hits.length - 1);
+    const input = this.el<HTMLInputElement>('bp-cmdk-input');
+    list.setAttribute('role', 'listbox');
     list.innerHTML = '';
     hits.forEach((a, n) => {
-      const enabled = this.uiCommands.isEnabled(a.id);
-      const reason = enabled ? null : this.uiCommands.disabledReason(a.id);
+      const scopeReason = this.commandScopeReason(a);
+      const enabled = scopeReason === null && this.uiCommands.isEnabled(a.id);
+      const reason = scopeReason ?? (enabled ? null : this.uiCommands.disabledReason(a.id));
       const row = document.createElement('div');
-      row.className = 'bp-cmdk-row' + (n === 0 ? ' first' : '') + (enabled ? '' : ' disabled');
+      const rowId = `bp-cmdk-option-${n}`;
+      row.id = rowId;
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', n === this.cmdkActiveIndex ? 'true' : 'false');
+      row.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+      row.className = 'bp-cmdk-row' + (n === this.cmdkActiveIndex ? ' active first' : '') + (enabled ? '' : ' disabled');
       const label = document.createElement('span');
       label.className = 'bp-cmdk-label';
       label.textContent = a.label;
@@ -7541,16 +7754,46 @@ export class Builder {
         this.closeCmdk();
         this.runUiCommand(a.id);
       });
+      row.addEventListener('mousemove', () => {
+        if (this.cmdkActiveIndex === n) return;
+        this.cmdkActiveIndex = n;
+        this.renderCmdk(this.el<HTMLInputElement>('bp-cmdk-input').value);
+      });
       list.appendChild(row);
     });
     if (hits.length === 0) {
       list.innerHTML = '<div class="bp-cmdk-row none">no matching command</div>';
+      input.removeAttribute('aria-activedescendant');
+    } else {
+      input.setAttribute('aria-activedescendant', `bp-cmdk-option-${this.cmdkActiveIndex}`);
     }
+  }
+
+  private commandScopeReason(cmd: CommandSpec): string | null {
+    if (!cmd.scopes || cmd.scopes.length === 0 || cmd.scopes.includes('global')) return null;
+    const scope = this.sessionMode === 'live' ? 'builder.livePreview' : 'builder.author';
+    if (cmd.scopes.includes(scope)) return null;
+    return this.sessionMode === 'live' ? 'Return to Author View first' : 'Switch to Logic Preview first';
+  }
+
+  private runCmdkActive(): void {
+    const active = this.cmdkHits[this.cmdkActiveIndex];
+    if (!active) return;
+    const reason = this.commandScopeReason(active) ?? (this.uiCommands.isEnabled(active.id) ? null : this.uiCommands.disabledReason(active.id));
+    this.closeCmdk();
+    if (reason) {
+      this.status(reason, true);
+      return;
+    }
+    this.runUiCommand(active.id);
   }
 
   private wireCmdk(): void {
     const input = this.el<HTMLInputElement>('bp-cmdk-input');
-    input.addEventListener('input', () => this.renderCmdk(input.value));
+    input.addEventListener('input', () => {
+      this.cmdkActiveIndex = 0;
+      this.renderCmdk(input.value);
+    });
     input.addEventListener('keydown', (e) => {
       if (e.code === 'Escape') {
         e.preventDefault();
@@ -7560,16 +7803,18 @@ export class Builder {
         e.preventDefault();
         e.stopPropagation();
         input.focus({ preventScroll: true });
+      } else if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.cmdkHits.length > 0) {
+          const dir = e.code === 'ArrowDown' ? 1 : -1;
+          this.cmdkActiveIndex = (this.cmdkActiveIndex + dir + this.cmdkHits.length) % this.cmdkHits.length;
+          this.renderCmdk(input.value);
+        }
       } else if (e.code === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
-        const q = input.value.trim().toLowerCase();
-        if (!q) {
-          return;
-        }
-        const first = this.cmdkActions().find((a) => a.label.toLowerCase().includes(q) && this.uiCommands.isEnabled(a.id));
-        this.closeCmdk();
-        if (first) this.runUiCommand(first.id);
+        this.runCmdkActive();
       }
     });
     input.addEventListener('blur', () => this.closeCmdk());
@@ -7814,12 +8059,15 @@ export class Builder {
       } else this.select(null);
     } else if (e.code === 'Enter' && this.floating) {
       e.stopPropagation();
+      if (this.livePreviewActionBlocks('Floating selection')) return;
       this.commitFloat();
     } else if (e.code === 'Enter' && this.polyPoints.length >= 3) {
       e.stopPropagation();
+      if (this.livePreviewActionBlocks('Polygon region')) return;
       this.closePolyRegion();
     } else if (e.code === 'KeyX' && !e.ctrlKey && !e.metaKey) {
       e.stopPropagation();
+      if (this.livePreviewActionBlocks('Floating selection')) return;
       // X is the float toggle: lifts the region, or lands a held float
       if (this.floating) this.commitFloat();
       else this.liftFloat();
@@ -7835,6 +8083,7 @@ export class Builder {
       // precedence: floating selection > armed prefab > selected objects
       if (this.floating) {
         e.stopPropagation();
+        if (this.livePreviewActionBlocks('Floating selection')) return;
         this.floating =
           e.code === 'KeyQ' ? rotateFloating(this.floating) : mirrorFloating(this.floating);
         this.floatCanvas = null;
@@ -7845,6 +8094,7 @@ export class Builder {
         );
       } else if (this.armedPrefab) {
         e.stopPropagation();
+        if (this.livePreviewActionBlocks('Prefab transform')) return;
         if (e.code === 'KeyQ') {
           this.armedPrefab = rotatePrefab(this.armedPrefab);
           this.status(`ROTATED — NOW ${this.armedPrefab.w}×${this.armedPrefab.h}`);
@@ -7852,8 +8102,15 @@ export class Builder {
           this.armedPrefab = mirrorPrefab(this.armedPrefab);
           this.status('MIRRORED');
         }
-      } else if (e.code === 'KeyQ' && this.rotateSelectedObjects()) {
-        e.stopPropagation();
+      } else if (e.code === 'KeyQ') {
+        if (this.sessionMode === 'live') {
+          if (this.selectedIds.size > 0) {
+            e.stopPropagation();
+            this.livePreviewActionBlocks('Rotate selection');
+          }
+        } else if (this.rotateSelectedObjects()) {
+          e.stopPropagation();
+        }
       }
     } else if (e.code === 'KeyM') {
       // Keep play-mode overlays out of authoring.
@@ -7899,7 +8156,7 @@ export class Builder {
     }
 
     if (this.sessionMode === 'live') {
-      if (this.previewRuntimeDirty) this.resetPreviewRuntime('LIVE PREVIEW');
+      if (this.previewRuntimeDirty) this.resetPreviewRuntime('LOGIC PREVIEW');
       this.previewRuntime.step(state.frameCount);
     }
     this.refreshRuntimePanelIfOpen();
@@ -8393,7 +8650,7 @@ export class Builder {
       g.font = '700 11px monospace';
       const preview = this.previewRuntime.status();
       g.fillText(
-        `LIVE PREVIEW - ${preview.mechanisms} mech / ${preview.emitters} emit / ${preview.lights} lights`,
+        `LOGIC PREVIEW - ${preview.mechanisms} authored mech / ${preview.emitters} emit / ${preview.lights} lights`,
         12,
         ch - 12,
       );
@@ -8655,6 +8912,10 @@ export class Builder {
     // x/y commit as move commands; params as edit-param commands.
     for (const input of panel.querySelectorAll<HTMLInputElement>('input[data-f="x"],input[data-f="y"]')) {
       input.addEventListener('change', () => {
+        if (this.authoringActionBlocks('Edit object position')) {
+          this.renderInspector();
+          return;
+        }
         const nx = input.dataset.f === 'x' ? Number(input.value) : obj.x;
         const ny = input.dataset.f === 'y' ? Number(input.value) : obj.y;
         if (Number.isFinite(nx) && Number.isFinite(ny)) this.cmds.run(moveObjectCmd(obj, nx, ny));
@@ -8663,6 +8924,10 @@ export class Builder {
     }
     for (const field of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-p]')) {
       field.addEventListener('change', () => {
+        if (this.authoringActionBlocks('Edit object parameter')) {
+          this.renderInspector();
+          return;
+        }
         const key = field.dataset.p as string;
         let value: unknown =
           field instanceof HTMLInputElement && field.type === 'checkbox' ? field.checked : field.value;
@@ -8678,12 +8943,17 @@ export class Builder {
     }
     for (const flag of panel.querySelectorAll<HTMLInputElement>('input[data-f="locked"],input[data-f="hidden"]')) {
       flag.addEventListener('change', () => {
+        if (this.authoringActionBlocks('Edit object flag')) {
+          this.renderInspector();
+          return;
+        }
         this.cmds.run(setObjectFlagCmd(obj, flag.dataset.f as 'locked' | 'hidden', flag.checked));
         this.syncMarkers();
         this.syncNavigationPanels();
       });
     }
     panel.querySelector('#bi-patrol')?.addEventListener('click', () => {
+      if (this.authoringActionBlocks('Patrol edit')) return;
       if (this.patrolEditId === obj.id) {
         this.patrolEditId = null;
         this.status('PATROL EDITING DONE');
@@ -8694,12 +8964,17 @@ export class Builder {
       this.renderInspector();
     });
     panel.querySelector('#bi-patrol-clear')?.addEventListener('click', () => {
+      if (this.authoringActionBlocks('Patrol edit')) {
+        this.renderInspector();
+        return;
+      }
       this.cmds.run(editParamCmd(obj, 'patrol', undefined));
       this.patrolEditId = null;
       this.renderInspector();
       this.status('PATROL CLEARED');
     });
     panel.querySelector('#bi-rotate')?.addEventListener('click', () => {
+      if (this.authoringActionBlocks('Rotate object')) return;
       // slabs swap w/h (footprint-true) AND advance rotation in one composite
       const dims =
         obj.kind === 'door'
@@ -8724,6 +8999,7 @@ export class Builder {
       this.status('ROTATED — NOW ' + h + '×' + w);
     });
     panel.querySelector('#bi-rotate-pt')?.addEventListener('click', () => {
+      if (this.authoringActionBlocks('Rotate object')) return;
       const next = ((obj.rotation + 90) % 360) as EditorObject['rotation'];
       this.cmds.run(setObjectRotationCmd(obj, next));
       this.renderInspector();
@@ -8734,6 +9010,10 @@ export class Builder {
     });
     for (const unlink of panel.querySelectorAll<HTMLButtonElement>('button[data-unlink]')) {
       unlink.addEventListener('click', () => {
+        if (this.authoringActionBlocks('Unlink objects')) {
+          this.renderInspector();
+          return;
+        }
         const link = this.doc.links.find((l) => l.id === unlink.dataset.unlink);
         if (link) {
           this.cmds.run(deleteLinkCmd(link));
@@ -8749,6 +9029,10 @@ export class Builder {
 
   private wireDocumentInspector(panel: HTMLDivElement): void {
     panel.querySelector<HTMLInputElement>('#bi-mood-ambient')?.addEventListener('change', (e) => {
+      if (this.authoringActionBlocks('Edit document mood')) {
+        this.renderInspector();
+        return;
+      }
       const raw = (e.target as HTMLInputElement).value.trim();
       const ambient = raw === '' ? null : Number(raw);
       if (ambient !== null && (!Number.isFinite(ambient) || ambient < 0.02 || ambient > 0.6)) {
@@ -8763,6 +9047,10 @@ export class Builder {
       this.status(ambient === null ? 'MOOD AMBIENT: GAME DEFAULT' : `MOOD AMBIENT: ${ambient}`);
     });
     panel.querySelector<HTMLInputElement>('#bi-mood-ambience')?.addEventListener('change', (e) => {
+      if (this.authoringActionBlocks('Edit document mood')) {
+        this.renderInspector();
+        return;
+      }
       const ambience = (e.target as HTMLInputElement).value;
       if (ambience === (this.doc.mood?.ambience ?? '')) return;
       this.cmds.run(editDocumentMoodCmd({ ambience }));
@@ -8774,6 +9062,10 @@ export class Builder {
   private wireMultiSelectionInspector(panel: HTMLDivElement): void {
     for (const flag of panel.querySelectorAll<HTMLInputElement>('input[data-mf]')) {
       flag.addEventListener('change', () => {
+        if (this.authoringActionBlocks('Edit selection flag')) {
+          this.renderInspector();
+          return;
+        }
         const key = flag.dataset.mf as 'locked' | 'hidden';
         const value = flag.checked;
         const cmds: Command[] = [];
@@ -8921,6 +9213,10 @@ export class Builder {
 
     for (const field of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-lf]')) {
       field.addEventListener('change', () => {
+        if (this.authoringActionBlocks('Edit light')) {
+          this.renderLightInspector(panel, light);
+          return;
+        }
         const key = field.dataset.lf as keyof EditorLight;
         if (key === 'x' || key === 'y') {
           const nx = key === 'x' ? Number(field.value) : light.x;
@@ -8961,6 +9257,10 @@ export class Builder {
       );
     });
     panel.querySelector<HTMLSelectElement>('[data-preset]')?.addEventListener('change', (e) => {
+      if (this.authoringActionBlocks('Apply light preset')) {
+        this.renderLightInspector(panel, light);
+        return;
+      }
       const preset = LIGHT_PRESETS[(e.target as HTMLSelectElement).value];
       if (!preset) return;
       this.cmds.run(editLightCmd(light, preset));
@@ -9060,9 +9360,8 @@ export class Builder {
     }
     for (const row of panel.querySelectorAll<HTMLElement>('[data-runtime-id]')) {
       row.addEventListener('click', () => {
-        this.runtimeSelectedId = row.dataset.runtimeId ?? null;
-        this.invalidateRuntimeOverlaySnapshot();
-        this.renderRuntimePanel(true);
+        const id = row.dataset.runtimeId ?? '';
+        if (id) this.focusRuntimeRow(id);
       });
     }
     for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-runtime-focus]')) {
@@ -9096,7 +9395,7 @@ export class Builder {
 
   private buildCurrentRuntimeSnapshot(options: RuntimeSnapshotOptions = {}): RuntimeEntitySnapshot {
     if (this.sessionMode === 'live') {
-      if (this.previewRuntimeDirty) this.resetPreviewRuntime('LIVE PREVIEW');
+      if (this.previewRuntimeDirty) this.resetPreviewRuntime('LOGIC PREVIEW');
       return this.previewRuntime.snapshot(options);
     }
     return buildRuntimeEntitySnapshot(this.ctx, options);
@@ -10253,6 +10552,7 @@ export class Builder {
   }
 
   private placeSpriteAsset(sprite: SpriteAsset, x: number, y: number): void {
+    if (this.authoringActionBlocks('Place sprite')) return;
     const obj: EditorObject = {
       id: freshId('decor'),
       kind: 'decor',
@@ -10275,6 +10575,7 @@ export class Builder {
   }
 
   private applyMaterialProfileAsset(record: AssetRecord, x: number, y: number): void {
+    if (this.authoringActionBlocks('Apply material profile')) return;
     const materialId = materialProfileCellId(record);
     if (materialId === null || !this.ctx.params.materials[materialId]) {
       this.status(`MATERIAL PROFILE UNAVAILABLE: ${record.sourceId.toUpperCase()}`, true);
@@ -10327,6 +10628,7 @@ export class Builder {
   }
 
   private placeOrApplyLightPresetAsset(record: AssetRecord, x: number, y: number): void {
+    if (this.authoringActionBlocks('Apply light preset')) return;
     const preset = LIGHT_PRESETS[record.sourceId];
     if (!preset) {
       this.status(`LIGHT PRESET UNAVAILABLE: ${record.sourceId.toUpperCase()}`, true);
@@ -10375,6 +10677,7 @@ export class Builder {
   }
 
   private seedProceduralPresetAsset(record: AssetRecord): void {
+    if (this.livePreviewActionBlocks('Seed procedural preset')) return;
     const pass = PASSES.find((candidate) => candidate.id === record.sourceId);
     if (!pass) {
       this.status(`PROCEDURAL PRESET UNAVAILABLE: ${record.sourceId.toUpperCase()}`, true);
@@ -10520,6 +10823,7 @@ export class Builder {
   }
 
   private toggleOutlinerRecordFlag(kind: 'object' | 'light', id: string, flag: 'hidden' | 'locked'): void {
+    if (this.authoringActionBlocks(`Toggle ${flag}`)) return;
     if (kind === 'object') {
       const object = this.doc.objects.find((item) => item.id === id);
       if (!object) return;
@@ -10537,6 +10841,7 @@ export class Builder {
   }
 
   private unlinkContextLink(): void {
+    if (this.authoringActionBlocks('Unlink objects')) return;
     const link = this.doc.links.find((item) => item.id === this.contextLinkId);
     if (!link) return;
     this.cmds.run(deleteLinkCmd(link));
@@ -10700,6 +11005,15 @@ export class Builder {
   }
 
   private runValidationAction(action: string, issue: DocIssue): void {
+    if (
+      (action === 'addSpawnAtCamera' ||
+        action === 'moveSpawnToCamera' ||
+        action === 'markPortalAlwaysOpen' ||
+        action === 'createGoldenKeyNearCamera' ||
+        action === 'removeDeadLink') &&
+      this.authoringActionBlocks('Fix validation issue')
+    )
+      return;
     if (action === 'addSpawnAtCamera') {
       const at = this.cameraCenter();
       const spawn: EditorObject = {

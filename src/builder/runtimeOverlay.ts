@@ -17,7 +17,7 @@ export const DEFAULT_RUNTIME_OVERLAYS: RuntimeOverlayState = {
 
 export const RUNTIME_OVERLAY_OPTIONS = [
   { id: 'bounds', label: 'Bounds', title: 'Draw runtime footprints and anchor markers' },
-  { id: 'labels', label: 'IDs', title: 'Label live runtime rows in the viewport' },
+  { id: 'labels', label: 'IDs', title: 'Label active runtime rows in the viewport' },
   { id: 'velocity', label: 'Velocity', title: 'Draw velocity vectors for moving runtime rows' },
 ] satisfies Array<{ id: RuntimeOverlayKind; label: string; title: string }>;
 

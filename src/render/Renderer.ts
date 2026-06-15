@@ -4,7 +4,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 
 import { RENDER_H, RENDER_W, VIEW_H, VIEW_W } from '@/config/constants';
-import type { Ctx } from '@/core/types';
+import type { Ctx, RenderSettings } from '@/core/types';
+import { chooseRenderBackend } from '@/render/backendSelection';
 import { GpuCompose } from '@/render/ComposeShader';
 import { PostFx } from '@/render/PostFx';
 import type {
@@ -12,7 +13,10 @@ import type {
   LightField,
   OverlaySurface,
   ParallaxLayers,
+  RenderBackendFeatureFlags,
+  RenderBackendStatus,
   RenderTarget,
+  RendererBackend,
 } from '@/render/pixels';
 
 /**
@@ -21,7 +25,7 @@ import type {
  * and UnrealBloom. The frame composer writes `pixelData` and calls
  * `markTextureDirty()` before `render(ctx)` runs each frame.
  */
-export class Renderer implements RenderTarget {
+class WebGLRenderBackend implements RendererBackend {
   /** Float RGBA, VIEW_W x VIEW_H, Y-flipped rows for GL texture orientation. */
   readonly pixelData: Float32Array<ArrayBuffer>;
 
@@ -34,12 +38,24 @@ export class Renderer implements RenderTarget {
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
   private readonly postFx: PostFx;
+  private requestedBackend: RenderSettings['backend'];
+  private featureFlags: RenderBackendFeatureFlags;
+  private contextLost = false;
+  private contextLostCount = 0;
+  private contextRestoredCount = 0;
   /** GPU frame composition (perf ticket #8) — built on first use of the flag. */
   private gpu: GpuCompose | null = null;
   /** True while the current frame was composed by the shader path. */
   private gpuFrame = false;
 
-  constructor(holder: HTMLElement) {
+  constructor(holder: HTMLElement, settings: RenderSettings) {
+    this.requestedBackend = settings.backend;
+    this.featureFlags = {
+      compose: settings.compose,
+      lighting: settings.lighting,
+      particles: settings.particles,
+      post: settings.post,
+    };
     // ===================== Three.js WebGL Setup =====================
     // A 2D quad pipeline needs no depth/stencil/alpha on the default
     // framebuffer (the composer owns its own targets), and the discrete GPU
@@ -54,6 +70,8 @@ export class Renderer implements RenderTarget {
     this.renderer.setSize(RENDER_W, RENDER_H);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
+    this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
     holder.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
@@ -91,6 +109,34 @@ export class Renderer implements RenderTarget {
     this.composer.addPass(this.postFx.pass);
   }
 
+  private readonly onContextLost = (event: Event): void => {
+    event.preventDefault();
+    this.contextLost = true;
+    this.contextLostCount++;
+    this.gpu?.dispose();
+    this.gpu = null;
+    this.gpuFrame = false;
+  };
+
+  private readonly onContextRestored = (): void => {
+    this.contextLost = false;
+    this.contextRestoredCount++;
+    this.texture.needsUpdate = true;
+    this.gpu?.dispose();
+    this.gpu = null;
+    this.gpuFrame = false;
+  };
+
+  syncSettings(settings: RenderSettings): void {
+    this.requestedBackend = settings.backend;
+    this.featureFlags = {
+      compose: settings.compose,
+      lighting: settings.lighting,
+      particles: settings.particles,
+      post: settings.post,
+    };
+  }
+
   /** Flag the GPU texture for re-upload after the buffer was written. */
   markTextureDirty(): void {
     this.texture.needsUpdate = true;
@@ -121,6 +167,57 @@ export class Renderer implements RenderTarget {
   /** The WebGL canvas (the input module attaches its mouse listeners here). */
   get domElement(): HTMLCanvasElement {
     return this.renderer.domElement;
+  }
+
+  getBackendStatus(): RenderBackendStatus {
+    const webgl2 = this.renderer.capabilities.isWebGL2;
+    const navigatorGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
+    const secureContext = typeof window === 'undefined' ? false : window.isSecureContext === true;
+    const decision = chooseRenderBackend({
+      requested: this.requestedBackend,
+      webglAvailable: true,
+      webgl2Available: webgl2,
+      navigatorGpu,
+      secureContext,
+      adapterAvailable: navigatorGpu,
+      deviceAvailable: navigatorGpu,
+      webgpuBackendAvailable: false,
+      forceWebGL: this.requestedBackend === 'webgl',
+      webgpuDisabled: this.requestedBackend === 'webgl',
+      webgpuLost: false,
+      webgpuRecovered: false,
+    });
+    return {
+      requested: this.requestedBackend,
+      actual: this.contextLost ? 'none' : decision.actual,
+      implementation: 'WebGLRenderBackend',
+      health: this.contextLost ? 'lost' : this.contextRestoredCount > 0 ? 'recovered' : 'active',
+      reason: this.contextLost ? 'webgl-context-lost' : decision.reason,
+      fallback: decision.fallback,
+      canvas: {
+        width: this.renderer.domElement.width,
+        height: this.renderer.domElement.height,
+        connected: this.renderer.domElement.isConnected,
+      },
+      features: { ...this.featureFlags },
+      webgpu: {
+        navigatorGpu,
+        secureContext,
+        backendImplemented: false,
+        adapter: navigatorGpu ? 'unchecked' : 'unavailable',
+        device: navigatorGpu ? 'unchecked' : 'unavailable',
+        lostCount: 0,
+        lastLossReason: null,
+        lastLossMessage: null,
+      },
+      webgl: {
+        available: true,
+        webgl2,
+        contextLost: this.contextLost,
+        lostCount: this.contextLostCount,
+        restoredCount: this.contextRestoredCount,
+      },
+    };
   }
 
   render(ctx: Ctx): void {
@@ -163,5 +260,70 @@ export class Renderer implements RenderTarget {
 
     if (post.enabled) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
+  }
+
+  dispose(): void {
+    this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
+    this.gpu?.dispose();
+    this.gpu = null;
+    this.texture.dispose();
+    this.basicMaterial.dispose();
+    this.quadMesh.geometry.dispose();
+    this.composer.dispose();
+    this.renderer.dispose();
+    this.renderer.domElement.remove();
+  }
+}
+
+export class Renderer implements RenderTarget {
+  private readonly backend: RendererBackend;
+
+  constructor(holder: HTMLElement, settings: RenderSettings) {
+    this.backend = new WebGLRenderBackend(holder, settings);
+  }
+
+  get pixelData(): Float32Array {
+    return this.backend.pixelData;
+  }
+
+  markTextureDirty(): void {
+    this.backend.markTextureDirty();
+  }
+
+  get gpuComposeAvailable(): boolean {
+    return this.backend.gpuComposeAvailable;
+  }
+
+  beginGpuCompose(
+    ctx: Ctx,
+    light: LightField,
+    layers: ParallaxLayers,
+    lenses: readonly CompositorLens[],
+    lightRebuilt: boolean,
+  ): OverlaySurface {
+    this.backend.syncSettings(ctx.state.render);
+    return this.backend.beginGpuCompose(ctx, light, layers, lenses, lightRebuilt);
+  }
+
+  commitGpuCompose(): void {
+    this.backend.commitGpuCompose();
+  }
+
+  get domElement(): HTMLCanvasElement {
+    return this.backend.domElement;
+  }
+
+  render(ctx: Ctx): void {
+    this.backend.syncSettings(ctx.state.render);
+    this.backend.render(ctx);
+  }
+
+  getBackendStatus(): RenderBackendStatus {
+    return this.backend.getBackendStatus();
+  }
+
+  dispose(): void {
+    this.backend.dispose();
   }
 }

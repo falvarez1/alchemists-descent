@@ -22,6 +22,7 @@ for (const seed of seeds) {
     failures++;
   });
   await page.goto(url, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => window.__game?.ctx, { timeout: 15000 });
   await page.waitForTimeout(2000);
   await startConsoleTestRun(page, { seed, settleMs: 350 });
 

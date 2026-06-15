@@ -50,7 +50,7 @@ import { polishCaveTerrain } from '@/world/terrainPolish';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
 import { stampSecrets } from '@/world/secrets';
-import { computeFits, wizardMask } from '@/world/validate';
+import { computeFits, reachableMask, wizardMask } from '@/world/validate';
 import { placeStructures } from '@/world/structures';
 
 /* ===================== Procedural Generation Map Engines ===================== */
@@ -58,6 +58,9 @@ import { placeStructures } from '@/world/structures';
 export class WorldGen implements WorldGenApi {
   /** Center of the carved spawn chamber (original caveSpawnHint). */
   spawnHint: { x: number; y: number } | null = null;
+
+  /** Paint seed for the most recent cave commit; captured by Builder docs. */
+  paintSeed: number | null = null;
 
   /** Seeded generation stream; re-seeded from state.worldSeed by generateCaves. */
   private rng = new Rng(0);
@@ -107,6 +110,7 @@ export class WorldGen implements WorldGenApi {
 
     // --- 4) Commit with layered material palette + depth shading ---
     const seed = Math.floor(this.rng.next() * 100000);
+    this.paintSeed = seed;
 
     // Distance-from-air (multi-source BFS, capped) drives rim-light shading
     const dist = new Uint8Array(WIDTH * HEIGHT).fill(99);
@@ -664,7 +668,7 @@ export class WorldGen implements WorldGenApi {
     }
     const sink = makeInstantiationSink();
     const genDef = GEN[def.biome] || GEN.earthen;
-    const placedPrefabs = placePrefabs(
+    let placedPrefabs = placePrefabs(
       ctx,
       new Rng(hashSeed(seed >>> 0, 'prefabs')),
       graph,
@@ -674,26 +678,32 @@ export class WorldGen implements WorldGenApi {
       { spawn, wellX },
       fits,
     );
+    if (placedPrefabs.length > 0) {
+      graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+      fits.set(computeFits(ctx.world));
+    }
     // Machine structure rooms: a SECOND placement pass on its own forked
     // stream — chain-reaction prefabs (valves, plugs, sensors, relays)
     // gated per biome by family tags. Same ledger, same sink, same anchors
-    // pipeline; the 'prefabs' stream stays byte-identical per seed.
-    placedPrefabs.push(
-      ...placePrefabs(
-        ctx,
-        new Rng(hashSeed(seed >>> 0, 'machines')),
-        graph,
-        ledger,
-        sink,
-        genDef.machines,
-        { spawn, wellX },
-        fits,
-      ),
+    // pipeline; the 'prefabs' stream stays byte-identical per seed. Recompute
+    // graph/fits first so machines connect to the world the prefab pass
+    // actually produced, not stale pre-placement openings.
+    const placedMachines = placePrefabs(
+      ctx,
+      new Rng(hashSeed(seed >>> 0, 'machines')),
+      graph,
+      ledger,
+      sink,
+      genDef.machines,
+      { spawn, wellX },
+      fits,
     );
+    placedPrefabs = placedPrefabs.concat(placedMachines);
     // Prefab interiors are rooms: re-extract so secrets and the structure
     // brain place against the world as it now actually is.
-    if (placedPrefabs.length > 0) {
+    if (placedMachines.length > 0) {
       graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+      fits.set(computeFits(ctx.world));
     }
     stage('prefabs');
 
@@ -891,27 +901,42 @@ export class WorldGen implements WorldGenApi {
     waystones.push(...sink.waystones);
     stage('merge');
 
-    // 8c) GAUGE RESCUE: run the same wizard-connectivity audit the validator
-    //     runs (9x17 fits, spawn-connected). Any hands-on lock or door front
-    //     still cut off gets a guaranteed STANDING CHAMBER plus a tunnel
-    //     into the spawn-connected component, verified by recomputing the
-    //     mask. This closes the long tail of organic-junction rolls no
-    //     static geometry can promise away.
+    // 8c) GAUGE RESCUE: run the same connectivity audits the validator runs.
+    //     Hands-on locks and door fronts use wizard connectivity (9x17 fits,
+    //     spawn-connected). Machine-fed/ranged locks use cell connectivity.
+    //     Anything still cut off gets a guaranteed chamber plus a tunnel into
+    //     the spawn-connected component, verified by recomputing the masks.
+    //     This closes the long tail of organic-junction rolls no static
+    //     geometry can promise away.
     {
       let wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
+      let cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
       const wizNear = (x: number, y: number, r: number): boolean => {
+        return wizNearCount(x, y, r) > 0;
+      };
+      const wizNearCount = (x: number, y: number, r: number): number => {
+        let count = 0;
         for (let dy = -r; dy <= r; dy++) {
           for (let dx = -r; dx <= r; dx++) {
             const X = Math.floor(x) + dx,
               Y = Math.floor(y) + dy;
-            if (X > 0 && Y > 0 && X < WIDTH && Y < HEIGHT && wiz[X + Y * WIDTH]) return true;
+            if (X > 0 && Y > 0 && X < WIDTH && Y < HEIGHT && wiz[X + Y * WIDTH]) count++;
+          }
+        }
+        return count;
+      };
+      const cellNear = (x: number, y: number, r: number): boolean => {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const X = Math.floor(x) + dx,
+              Y = Math.floor(y) + dy;
+            if (X > 0 && Y > 0 && X < WIDTH && Y < HEIGHT && cell[X + Y * WIDTH]) return true;
           }
         }
         return false;
       };
-      // mirrors the validator's hands-on class exactly: sensor/counterweight/
-      // plug/buoy are machine-fed, chargelatch answers to projectiles
       const HANDS_ON = new Set(['plate', 'lever', 'brazier', 'scale']);
+      const CELL_REACH = new Set(['sensor', 'counterweight', 'plug', 'buoy', 'chargelatch']);
       // nearest spawn-connected wizard cell whose STRAIGHT LINE from the
       // lock crosses no Metal — carvePocket spares Metal, so a tunnel aimed
       // through a door slab / vault shell / well casing is silently severed
@@ -933,7 +958,7 @@ export class WorldGen implements WorldGenApi {
       };
       const nearestWiz = (x: number, y: number): { x: number; y: number } | null => {
         let fallback: { x: number; y: number } | null = null;
-        for (let r = 6; r <= 1200; r += 3) {
+        for (let r = 24; r <= 1200; r += 3) {
           for (let a = 0; a < 24; a++) {
             const ang = (a / 24) * Math.PI * 2;
             const X = Math.floor(x + Math.cos(ang) * r),
@@ -952,36 +977,70 @@ export class WorldGen implements WorldGenApi {
       // a row above disc reach silently voids it; both happened). Then a
       // tunnel from the chamber joins the spawn component; verify by
       // recomputing the mask, and fall back to a tunnel aimed at the spawn.
-      const SWEEP = { halfW: 7, up: 21, down: 9 }; // gauge-guaranteed gallery
+      const SWEEP = { halfW: 10, up: 25, down: 12 }; // gauge-guaranteed gallery
       const rescueAt = (px: number, py: number, pass: () => boolean): boolean => {
-        carveRect(ctx.world, px - 7, py - 20, px + 7, py - 1);
+        carveRect(ctx.world, px - SWEEP.halfW, py - 24, px + SWEEP.halfW, py + 4);
         const target = nearestWiz(px, py - 10) ?? {
           x: Math.floor(spawn.x),
           y: Math.floor(spawn.y) - 4,
         };
         tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP);
         wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
+        cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
         if (pass()) return true;
         tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP);
         wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
+        cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
         return pass();
       };
       const rescued: string[] = [];
+      const failedRescues: string[] = [];
+      const recordRescue = (label: string, attempt: () => boolean): void => {
+        rescued.push(label);
+        if (!attempt()) failedRescues.push(label);
+      };
       for (const m of mechanisms) {
         if (m.kind === 'door') {
           const pass = (): boolean =>
             wizNear(m.x - 2, m.y + m.h - 2, 8) || wizNear(m.x + m.w + 1, m.y + m.h - 2, 8);
+          const stable = (): boolean =>
+            wizNearCount(m.x - 2, m.y + m.h - 2, 8) + wizNearCount(m.x + m.w + 1, m.y + m.h - 2, 8) >= 64;
+          if (pass() && stable()) continue;
+          recordRescue(
+            `${m.kind}@${m.x},${m.y}`,
+            () => rescueAt(m.x - 6, m.y + m.h - 2, pass) || rescueAt(m.x + m.w + 5, m.y + m.h - 2, pass),
+          );
+        } else if (m.kind === 'valve') {
+          const pass = (): boolean =>
+            cellNear(m.x - 2, m.y + m.h / 2, 4) ||
+            cellNear(m.x + m.w + 1, m.y + m.h / 2, 4) ||
+            cellNear(m.x + m.w / 2, m.y - 2, 4) ||
+            cellNear(m.x + m.w / 2, m.y + m.h + 1, 4);
           if (pass()) continue;
-          rescued.push(`${m.kind}@${m.x},${m.y}`);
-          if (!rescueAt(m.x - 6, m.y + m.h - 2, pass)) {
-            rescueAt(m.x + m.w + 5, m.y + m.h - 2, pass);
-          }
+          recordRescue(
+            `${m.kind}@${m.x},${m.y}`,
+            () =>
+              rescueAt(m.x + m.w / 2, m.y - 2, pass) ||
+              rescueAt(m.x + m.w / 2, m.y + m.h + 1, pass) ||
+              rescueAt(m.x - 2, m.y + m.h / 2, pass) ||
+              rescueAt(m.x + m.w + 1, m.y + m.h / 2, pass),
+          );
         } else if (HANDS_ON.has(m.kind)) {
           const pass = (): boolean => wizNear(m.x, m.y - 2, 6);
+          if (pass() && wizNearCount(m.x, m.y - 2, 6) >= 40) continue;
+          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
+        } else if (CELL_REACH.has(m.kind)) {
+          const pass = (): boolean => cellNear(m.x, m.y - 2, 5);
           if (pass()) continue;
-          rescued.push(`${m.kind}@${m.x},${m.y}`);
-          rescueAt(m.x, m.y, pass);
+          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
         }
+      }
+      for (const v of runeVaults) {
+        const rx = Math.floor(v.rx),
+          ry = Math.floor(v.ry);
+        const pass = (): boolean => cellNear(rx, ry, 5);
+        if (pass()) continue;
+        recordRescue(`rune@${rx},${ry}`, () => rescueAt(rx, ry, pass));
       }
       // The golden key gates progression and the wizard must WALK to it —
       // it gets the same guarantee as the hands-on locks.
@@ -990,12 +1049,27 @@ export class WorldGen implements WorldGenApi {
         const kx = Math.floor(p.x),
           ky = Math.floor(p.y);
         const pass = (): boolean => wizNear(kx, ky, 10);
-        if (pass()) continue;
-        rescued.push(`key@${kx},${ky}`);
-        rescueAt(kx, ky, pass);
+        if (pass() && wizNearCount(kx, ky, 10) >= 64) continue;
+        recordRescue(`key@${kx},${ky}`, () => rescueAt(kx, ky, pass));
+      }
+      for (const ws of waystones) {
+        const wx = Math.floor(ws.x),
+          wy = Math.floor(ws.y);
+        const pass = (): boolean => wizNear(wx, wy, 10);
+        if (pass() && wizNearCount(wx, wy, 10) >= 64) continue;
+        recordRescue(`waystone@${wx},${wy}`, () => rescueAt(wx, wy, pass));
+      }
+      if (cauldron) {
+        const cx = Math.floor(cauldron.x),
+          cy = Math.floor(cauldron.y);
+        const pass = (): boolean => wizNear(cx, cy, 10);
+        if (!pass() || wizNearCount(cx, cy, 10) < 64) {
+          recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass));
+        }
       }
       if (import.meta.env.DEV && rescued.length > 0) {
-        console.warn(`[gen] ${def.id}: gauge-rescued ${rescued.length} cut-off lock(s): ${rescued.join(' ')}`);
+        const suffix = failedRescues.length > 0 ? `; still cut off: ${failedRescues.join(' ')}` : '';
+        console.warn(`[gen] ${def.id}: gauge-rescued ${rescued.length} cut-off feature(s): ${rescued.join(' ')}${suffix}`);
       }
       stage('gauge-rescue');
     }

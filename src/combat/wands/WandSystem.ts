@@ -28,7 +28,7 @@ export const WAND_FRAMES: Record<string, WandFrame> = {
 };
 
 /** Cards a lit waystone can gift (weighted toward build-shaping mods). */
-const MOD_POOL: CardId[] = ['speed', 'heavy', 'spread', 'bounce', 'trigger', 'infuser', 'double', 'triple'];
+const MOD_POOL: CardId[] = ['speed', 'heavy', 'spread', 'bounce', 'trigger', 'double', 'triple'];
 /** Cards a first visit to a new depth can gift. */
 const PROJ_POOL: CardId[] = [
   'spark',
@@ -78,7 +78,7 @@ const REVIEW_WAND_CARDS: [CardId[], CardId[]] = [
   REVIEW_WAND_LOADOUTS[1].cards,
 ];
 
-const STARTING_COLLECTION: CardId[] = ['double', 'flame', 'icelance', 'emberstorm', 'blackhole', 'warp'];
+const STARTING_COLLECTION: CardId[] = ['double', 'speed'];
 
 /**
  * The wand engine (DESIGN.md pillar 6): frames + slotted spell cards + the
@@ -103,9 +103,8 @@ export class WandSystem implements WandsApi {
     { frame: WAND_FRAMES.bone, cards: ['dig', null, null, null], mana: WAND_FRAMES.bone.manaMax, cooldown: 0, castIndex: 0 },
   ];
 
-  // Starting kit: utility/multicast basics plus the four signature payloads
-  // the (15) build shipped in its active inventory — Ice Lance, Ember Storm,
-  // Black Hole, and Warp Bolt are equippable from the first bench visit.
+  // Starting kit: two build-shaping basics. High-impact payloads come from
+  // tomes, waystones, bosses, shops, or test/review loadouts.
   readonly collection: CardId[] = [...STARTING_COLLECTION];
 
   /** Compiled programs, rebuilt lazily when a wand's slots change. */
@@ -130,12 +129,8 @@ export class WandSystem implements WandsApi {
       this.depthsGranted.add(depth);
       this.grantCard(this.ctx, PROJ_POOL[Math.floor(Math.random() * PROJ_POOL.length)]);
     });
-    // The first brewed recipe proves you speak material — the Infuser answers.
-    ctx.events.on('recipeDiscovered', () => {
-      if (this.infuserGranted) return;
-      this.infuserGranted = true;
-      this.grantCard(this.ctx, 'infuser');
-    });
+    // Brewing real materials proves you speak material — the Infuser answers.
+    ctx.events.on('recipeBrewed', () => this.grantInfuser(ctx));
     // Respawn refills the player pool (Levels does); keep the wands in step
     // so death isn't compounded by dry-firing at the waystone.
     ctx.events.on('playerRespawned', () => {
@@ -499,9 +494,17 @@ export class WandSystem implements WandsApi {
   /* ---------------- collection + bench ---------------- */
 
   grantCard(ctx: Ctx, id: CardId): void {
+    if (id === 'infuser') this.infuserGranted = true;
     this.collection.push(id);
     ctx.telemetry.count('card.granted.' + id);
     ctx.events.emit('cardGranted', { id, name: CARD_DEFS[id].name });
+  }
+
+  private grantInfuser(ctx: Ctx): void {
+    if (this.infuserGranted) return;
+    this.infuserGranted = true;
+    if (this.collection.includes('infuser') || this.wands.some((wand) => wand.cards.includes('infuser'))) return;
+    this.grantCard(ctx, 'infuser');
   }
 
   nextCastSlots(): number[] {
@@ -668,6 +671,7 @@ export class WandSystem implements WandsApi {
     }
     this.collection.length = 0;
     this.collection.push(...ALL_CARD_IDS);
+    this.infuserGranted = true;
   }
 
   slotCard(wand: 0 | 1, slot: number, id: CardId | null): void {

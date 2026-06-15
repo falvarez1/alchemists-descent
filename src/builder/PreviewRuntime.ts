@@ -119,13 +119,14 @@ export class PreviewRuntime {
     this.nonEmptyCells = 0;
     this.changedCells = 0;
     if (!sourceLayer) {
-      this.message = 'Capture terrain before Live Preview';
+      this.message = 'Capture terrain before Logic Preview';
       return this.status();
     }
 
     const previewCtx = {
       ...this.ctx,
       world: this.world,
+      state: { ...this.ctx.state, currentBiome: doc.biome },
       player: { ...this.ctx.player, x: -9999, y: -9999 },
       enemies: [],
     } as Ctx;
@@ -168,7 +169,7 @@ export class PreviewRuntime {
     this.ready = !this.capped;
     this.message = this.capped
       ? `Preview capped - reduce ${capReasons.join(', ')}`
-      : 'Live Preview running from disposable runtime';
+      : 'Logic Preview running from disposable runtime';
     return this.status();
   }
 
@@ -325,10 +326,10 @@ export class PreviewRuntime {
       mode: this.ctx.state.mode,
       source: options.source ?? {
         id: 'builder-live-preview',
-        label: 'Builder Live Preview',
+        label: 'Builder Logic Preview',
         detail: this.message,
       },
-      level: { id: 'builder-live-preview', name: 'Live Preview', depth: 0 },
+      level: { id: 'builder-live-preview', name: 'Logic Preview', depth: 0 },
       rows,
       counts: countRows,
       particles: {

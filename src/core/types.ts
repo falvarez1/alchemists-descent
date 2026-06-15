@@ -448,6 +448,24 @@ export interface PostFxSettings {
   exposure: number;
 }
 
+export type RenderBackendMode = 'webgl' | 'webgpu' | 'auto';
+
+export interface RenderSettings {
+  /**
+   * Requested renderer backend. Phase 2 keeps WebGL as the default; `webgpu`
+   * and `auto` are selection/probe flags until the WebGPU backend lands.
+   */
+  backend: RenderBackendMode;
+  /** Request the future WebGPU terrain compose path. Current WebGL compose is still `postFx.gpuCompose`. */
+  compose: boolean;
+  /** Request the future WebGPU lighting path. CPU lighting remains authoritative until measured. */
+  lighting: boolean;
+  /** Request the future visual-only GPU particle path. Material particles stay CPU-owned. */
+  particles: boolean;
+  /** Request the future WebGPU/TSL post-processing path. Current WebGL post stays under `postFx`. */
+  post: boolean;
+}
+
 export interface WandLightSettings {
   /** Shadow-casting wand-tip strength before flicker is applied. */
   intensity: number;
@@ -471,6 +489,11 @@ export interface WandLightSettings {
 
 export interface BuilderWandLightPreview {
   enabled: boolean;
+  x: number;
+  y: number;
+}
+
+export interface RuntimeInspectionLight {
   x: number;
   y: number;
 }
@@ -641,6 +664,7 @@ export interface GameStateData {
   /** Transient QA mode enabled by the debug console key; never autosaved. */
   debugGodMode: boolean;
   postFx: PostFxSettings;
+  render: RenderSettings;
   /** Runtime-tunable wand light defaults shared by Play and Builder preview. */
   wandLight: WandLightSettings;
   /**
@@ -651,6 +675,8 @@ export interface GameStateData {
   editorLights: AuthoredLight[] | null;
   /** Builder-only cursor light preview that uses the same raycast path as the player wand. */
   builderWandLightPreview: BuilderWandLightPreview;
+  /** Runtime-inspector-only selected entity light. Transient, never persisted. */
+  runtimeInspectionLight?: RuntimeInspectionLight | null;
   /** Transient source for disposable playtest runtimes. Null for normal Play/Sandbox. */
   playtestSource: PlaytestSource | null;
 }
@@ -884,6 +910,8 @@ export interface CameraApi {
   tx: number;
   ty: number;
   zoom: number;
+  /** Runtime inspector/debug focus target; when set in Play, camera follows this instead of the player. */
+  inspectionFocus: { x: number; y: number } | null;
   /** Editor zoom override: when set, zoom lerps here instead of idle-zoom. */
   zoomLock: number | null;
   idleFrames: number;
@@ -893,6 +921,10 @@ export interface CameraApi {
   update(ctx: Ctx): void;
   /** Derive world.simBounds from the camera position (+/- SIM_MARGIN). */
   updateSimBounds(world: World): void;
+  /** Hold the Play camera on a runtime/debug inspection target. */
+  setInspectionFocus(x: number, y: number, options?: { snap?: boolean }): void;
+  /** Return Play camera targeting to normal player follow. */
+  clearInspectionFocus(): void;
   /** Hard-snap camera + render snapshot to center on a world position. */
   snapTo(x: number, y: number): void;
 }
@@ -906,6 +938,8 @@ export interface SimulationApi {
 
 export interface WorldGenApi {
   spawnHint: { x: number; y: number } | null;
+  /** Last terrain paint seed consumed by generateCaves; Builder documents use it to restore biome colors. */
+  paintSeed: number | null;
   generateCaves(ctx: Ctx): void;
   /** generateCaves + snap camera onto the spawn hint. */
   regenerate(ctx: Ctx): void;
@@ -1128,6 +1162,8 @@ export interface Mechanism {
   /** Door: remaining cells of the opening retraction (cleared a few per
    *  frame, bottom row first, like a gate sliding up into the frame). */
   dissolve?: Array<[number, number]>;
+  /** door/valve: a safe close skipped occupied cells and must retry. */
+  closePending?: boolean;
   /** Door id driven by this trigger; -1 for doors themselves / unlinked.
    *  A door with SEVERAL triggers opens only when ALL are satisfied. */
   targetId: number;

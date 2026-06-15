@@ -28,6 +28,8 @@ export interface EventMap {
   waystoneLit: undefined;
   /** First-time brew of a recipe — Grimoire entry + gold bounty. */
   recipeDiscovered: { name: string; bounty: number };
+  /** Any completed cauldron recipe, including recipes already known in the Grimoire. */
+  recipeBrewed: { id: string; name: string; firstDiscovery: boolean };
   /** A spell card entered the collection — banner + bench refresh. */
   cardGranted: { id: string; name: string };
   /** Active wand or its loadout changed — HUD wand display refresh. */

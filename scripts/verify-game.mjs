@@ -18,6 +18,20 @@ page.on('console', (msg) => {
 });
 page.on('pageerror', (err) => pageErrors.push(String(err)));
 
+function assertCanvasSample(label, sample, minNonBlackPct = 1, minAvg = 2) {
+  if (sample?.error) throw new Error(`${label} canvas sample failed: ${sample.error}`);
+  const nonBlackPct = Number(sample?.nonBlackPct);
+  const avg = Number(sample?.avg);
+  if (!Number.isFinite(nonBlackPct) || !Number.isFinite(avg)) {
+    throw new Error(`${label} canvas sample was malformed: ${JSON.stringify(sample)}`);
+  }
+  if (nonBlackPct < minNonBlackPct || avg < minAvg) {
+    throw new Error(
+      `${label} canvas appears blank: nonBlackPct=${nonBlackPct.toFixed(1)} avg=${avg.toFixed(1)}`,
+    );
+  }
+}
+
 console.log('navigating to', url);
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForTimeout(3500); // let worldgen + a few hundred frames run
@@ -58,11 +72,14 @@ const samplePixels = () =>
         });
       }),
   );
-console.log('canvas pixels (build):', JSON.stringify(await samplePixels()));
+const buildPixels = await samplePixels();
+console.log('canvas pixels (build):', JSON.stringify(buildPixels));
+assertCanvasSample('build mode', buildPixels);
 
 // --- 2) Paint water with the brush (click-drag on the canvas) ---
 await page.click('button.tool-btn[data-id="2"]'); // Water
 const canvasBox = await page.locator('#canvas-holder > canvas').boundingBox();
+if (!canvasBox) throw new Error('Game canvas has no visible bounding box.');
 const cx = canvasBox.x + canvasBox.width / 2;
 const cy = canvasBox.y + canvasBox.height / 3;
 await page.mouse.move(cx - 80, cy);
@@ -98,6 +115,9 @@ if (!hudState.hudVisible || !hudState.playActive || hudState.hotbarSlots <= 0) {
   throw new Error('Play launcher did not enter a usable play mode: ' + JSON.stringify(hudState));
 }
 await page.screenshot({ path: `${outDir}/04-play-mode.png` });
+const playPixels = await samplePixels();
+console.log('canvas pixels (play):', JSON.stringify(playPixels));
+assertCanvasSample('play mode', playPixels);
 
 // --- 5) Move + jump + fire a spark bolt at the terrain ---
 await page.keyboard.down('d');
@@ -151,8 +171,12 @@ const fps = await page.evaluate(
     }),
 );
 console.log('fps over 2s:', fps.toFixed(1));
+if (fps < 10) throw new Error(`FPS probe too low; render loop may be stalled (${fps.toFixed(1)} fps).`);
 
 console.log('--- console errors:', consoleErrors.length ? JSON.stringify(consoleErrors, null, 1) : 'none');
 console.log('--- page errors:', pageErrors.length ? JSON.stringify(pageErrors, null, 1) : 'none');
 
 await browser.close();
+if (consoleErrors.length > 0 || pageErrors.length > 0) {
+  throw new Error(`Runtime errors during verification: console=${consoleErrors.length} page=${pageErrors.length}`);
+}

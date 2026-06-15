@@ -35,6 +35,7 @@ const FILL_CELL_CAP = 150_000;
 const DUMP_CELL_CAP = 4_096;
 const PERFREC_MAX_FRAMES = 600;
 const SCRIPT_MAX_DEPTH = 4;
+const RENDER_BACKEND_MODES = ['webgl', 'webgpu', 'auto'] as const;
 const RUN_SUBCOMMANDS = ['status', 'continue', 'resume', 'new', 'fresh', 'test', 'save', 'abandon'] as const;
 const RUN_WORLD_SOURCES = ['campaign', 'campaign-level', 'virtual-world', 'virtual'] as const;
 const RUN_LOADOUTS = ['fresh', 'advanced', 'review'] as const;
@@ -857,6 +858,7 @@ interface ResolvedParamPath {
   key: string;
   current: unknown;
   canonical: string;
+  allowed?: readonly string[];
 }
 
 interface ScriptExecutionRow {
@@ -907,6 +909,13 @@ function resolveParamPath(ctx: Ctx, path: string): ResolvedParamPath | CommandRe
     if (!(key in owner)) return result(false, `Unknown postFx parameter "${key}"`, { code: 'parse-param-path', path });
     return { owner, key, current: owner[key], canonical: `postFx.${key}` };
   }
+  if (parts[0] === 'render') {
+    const owner = ctx.state.render as unknown as ParamOwner;
+    const key = parts[1];
+    if (!(key in owner)) return result(false, `Unknown render parameter "${key}"`, { code: 'parse-param-path', path });
+    const allowed = key === 'backend' ? RENDER_BACKEND_MODES : undefined;
+    return { owner, key, current: owner[key], canonical: `render.${key}`, allowed };
+  }
   if (parts[0] === 'backdrop' && parts[1] === 'layers' && parts.length >= 4) {
     const owner = ctx.params.backdrop.layers[parts[2] as keyof typeof ctx.params.backdrop.layers] as unknown as ParamOwner | undefined;
     const key = parts[3];
@@ -916,7 +925,16 @@ function resolveParamPath(ctx: Ctx, path: string): ResolvedParamPath | CommandRe
   return result(false, `Unknown parameter path "${path}"`, { code: 'parse-param-path', path });
 }
 
-function parseParamValue(raw: string, current: unknown): unknown | CommandResult {
+function parseParamValue(raw: string, current: unknown, allowed?: readonly string[]): unknown | CommandResult {
+  if (allowed) {
+    const key = raw.toLowerCase();
+    if (allowed.includes(key)) return key;
+    return result(false, `Expected one of ${allowed.join(', ')}, got "${raw}"`, {
+      code: 'parse-param-value',
+      raw,
+      expected: allowed,
+    });
+  }
   if (typeof current === 'number') {
     const n = Number(raw);
     if (!Number.isFinite(n)) return result(false, `Expected numeric value, got "${raw}"`, { code: 'parse-param-value', raw });
@@ -1025,6 +1043,7 @@ function paramSuggestions(ctx: Ctx, prefix: string): string[] {
   const paths: string[] = [
     ...Object.keys(ctx.params.global).map((k) => `global.${k}`),
     ...Object.keys(ctx.state.postFx).map((k) => `postFx.${k}`),
+    ...Object.keys(ctx.state.render).map((k) => `render.${k}`),
   ];
   for (let id = 0; id < CELL_COUNT; id++) {
     const material = ctx.params.materials[id];
@@ -1445,7 +1464,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
       if (isCommandResult(resolved)) return resolved;
       const op = parseAssertionOp(args[1]);
       if (isCommandResult(op)) return op;
-      const expected = parseParamValue(args[2], resolved.current);
+      const expected = parseParamValue(args[2], resolved.current, resolved.allowed);
       if (isCommandResult(expected)) return expected;
       const pass = compareAssertion(resolved.current, op, expected);
       return result(pass, `assert ${resolved.canonical} ${op} ${String(expected)} ${pass ? 'passed' : `failed (actual ${String(resolved.current)})`}`, {
@@ -2107,7 +2126,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
       if (args.length !== 2) return result(false, 'Usage: set <paramPath> <value>', { code: 'usage' });
       const resolved = resolveParamPath(ctx, args[0]);
       if (isCommandResult(resolved)) return resolved;
-      const next = parseParamValue(args[1], resolved.current);
+      const next = parseParamValue(args[1], resolved.current, resolved.allowed);
       if (isCommandResult(next)) return next;
       resolved.owner[resolved.key] = next;
       let value = next;

@@ -10,6 +10,7 @@ import { Cell, isGas } from '@/sim/CellType';
  */
 export class Particles implements ParticlesApi {
   private readonly pool = new EntityPool<FlyingParticle>({ max: MAX_PARTICLES });
+  private readonly free: FlyingParticle[] = [];
   readonly list = this.pool.list;
 
   spawn(
@@ -22,19 +23,20 @@ export class Particles implements ParticlesApi {
     life: number,
     opts?: ParticleOpts,
   ): void {
-    this.pool.add({
-      x,
-      y,
-      vx,
-      vy,
-      type,
-      color,
-      life,
-      grav: opts && opts.grav !== undefined ? opts.grav : 0.16,
-      glow: (opts && opts.glow) || 0,
-      homing: (opts && opts.homing) || false,
-      hostileDmg: (opts && opts.hostileDmg) || 0,
-    });
+    if (this.pool.full) return;
+    const p = this.free.pop() ?? ({} as FlyingParticle);
+    p.x = x;
+    p.y = y;
+    p.vx = vx;
+    p.vy = vy;
+    p.type = type;
+    p.color = color;
+    p.life = life;
+    p.grav = opts && opts.grav !== undefined ? opts.grav : 0.16;
+    p.glow = (opts && opts.glow) || 0;
+    p.homing = (opts && opts.homing) || false;
+    p.hostileDmg = (opts && opts.hostileDmg) || 0;
+    this.pool.add(p);
   }
 
   burst(
@@ -68,7 +70,8 @@ export class Particles implements ParticlesApi {
    * already processed the tail element this frame, so nothing is skipped.
    */
   private removeAt(i: number): void {
-    this.pool.removeAt(i);
+    const removed = this.pool.removeAt(i);
+    if (removed && this.free.length < MAX_PARTICLES) this.free.push(removed);
   }
 
   update(ctx: Ctx): void {
@@ -141,6 +144,10 @@ export class Particles implements ParticlesApi {
   }
 
   clear(): void {
+    for (const p of this.list) {
+      if (this.free.length >= MAX_PARTICLES) break;
+      this.free.push(p);
+    }
     this.pool.clear();
   }
 }
