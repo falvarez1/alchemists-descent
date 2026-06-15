@@ -196,11 +196,23 @@ import {
   renderOutlinerPanel,
 } from '@/builder/outlinerPanel';
 import type { OutlinerFilter, OutlinerLayerState } from '@/builder/outlinerPanel';
+import { renderRuntimePanel } from '@/builder/runtimePanel';
+import {
+  DEFAULT_RUNTIME_OVERLAYS,
+  RUNTIME_OVERLAY_ROW_LIMITS,
+  drawRuntimeEntityOverlays,
+  runtimeOverlaySummary,
+  runtimeOverlaysActive,
+} from '@/builder/runtimeOverlay';
+import type { RuntimeOverlayKind, RuntimeOverlayState } from '@/builder/runtimeOverlay';
 import {
   buildLinkGraphModel,
   renderLinkGraphPanel,
 } from '@/builder/linkGraphPanel';
+import { buildRuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
+import type { RuntimeEntityGroup, RuntimeEntitySnapshot, RuntimeSnapshotOptions } from '@/game/runtimeSnapshot';
 import { VirtualWorldPanel } from '@/builder/virtualWorldPanel';
+import type { VirtualWorldDef } from '@/world/virtual/types';
 import { renderAssetBrowserPanel, renderAssetPlacementPanel } from '@/builder/assetBrowserPanel';
 import type { AssetBrowserView } from '@/builder/assetBrowserPanel';
 import { renderAssetDetailPanel } from '@/builder/assetDetailPanel';
@@ -236,6 +248,8 @@ const CRAMPED_DOCK_RAIL_WIDTH = 42;
 const MIN_BUILDER_CENTER_WIDTH = 260;
 const PREFERRED_BUILDER_CENTER_WIDTH = 320;
 const BUILDER_VIEWPORT_PAD = 20;
+const RUNTIME_PANEL_REFRESH_FRAMES = 12;
+const RUNTIME_OVERLAY_REFRESH_FRAMES = 4;
 const BIOME_IDS = Object.keys(BIOME_DEFS) as BiomeId[];
 const PLAYTEST_CURSOR_ALWAYS_STAMPED_BLOCKERS: ReadonlySet<EditorObjectKind> = new Set([
   'cauldron',
@@ -262,6 +276,7 @@ const PLAYTEST_CURSOR_MECHANISM_TARGETS: ReadonlySet<EditorObjectKind> = new Set
 ] as EditorObjectKind[]);
 type BuilderWorkspacePanelId =
   | 'builder-outliner'
+  | 'builder-runtime'
   | 'builder-link-graph'
   | 'builder-assets'
   | 'builder-asset-details'
@@ -739,6 +754,14 @@ export class Builder {
   private layerLocked = new Set<LayerFamily>();
   private outlinerQuery = '';
   private outlinerFilters = new Set<OutlinerFilter>();
+  private runtimeQuery = '';
+  private runtimeFilters = new Set<RuntimeEntityGroup>();
+  private runtimeSelectedId: string | null = null;
+  private runtimeSnapshot: RuntimeEntitySnapshot | null = null;
+  private runtimeSnapshotFrame = -1;
+  private runtimeOverlays: RuntimeOverlayState = { ...DEFAULT_RUNTIME_OVERLAYS };
+  private runtimeOverlaySnapshot: RuntimeEntitySnapshot | null = null;
+  private runtimeOverlaySnapshotFrame = -1;
   private linkGraphQuery = '';
   private contextLinkId: string | null = null;
   private readonly assetStore = new LocalStorageAssetStore();
@@ -2256,6 +2279,7 @@ export class Builder {
           <div class="builder-menu-sep"></div>
           <button id="b-gallery" title="Browse and preview every prefab, mechanism, entity and sprite — live and animated">Gallery</button>
           <button id="b-assets" title="Project Asset Browser: documents, prefabs, sprites, imports and dependencies">Asset Browser</button>
+          <button id="b-runtime" title="Inspect the active play runtime without editing authored objects">Runtime</button>
           <button id="b-backdrop" title="Preview and tune parallax backdrop layers">Backdrop</button>
           <div class="builder-menu-sep"></div>
           <button id="b-zen" title="Hide all side panels for a clear view of the canvas">Toggle Panels</button>
@@ -2342,6 +2366,7 @@ export class Builder {
         <button id="bp-sym-btn" title="Mirror terrain painting across the axis (world center; a region recenters it)">SYM: OFF</button>
         <button id="bp-assets-btn" title="Open the Project Asset Browser">ASSETS&hellip;</button>
         <button id="bp-outliner-btn" title="Find, select, hide, and lock authored records">OUTLINER&hellip;</button>
+        <button id="bp-runtime-btn" title="Inspect live playtest entities and runtime counts">RUNTIME&hellip;</button>
         <button id="bp-link-graph-btn" title="Inspect trigger, relay, rune, and actuator links">LINK GRAPH&hellip;</button>`,
         )}
         ${paletteSection(
@@ -2406,6 +2431,7 @@ export class Builder {
       <div id="builder-dock-right" class="builder-dock" data-dock="right">
       <div id="builder-inspector"></div>
       <div id="builder-outliner" style="display:none"></div>
+      <div id="builder-runtime" style="display:none"></div>
       <div id="builder-asset-details" style="display:none"></div>
       <div id="builder-prefab-details" style="display:none"></div>
       <div id="builder-world" style="display:none">
@@ -2802,6 +2828,7 @@ export class Builder {
     add({ id: 'builder.prefabDetailsPanel', label: 'Prefab Details', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-prefab-details') });
     add({ id: 'builder.assetImport', label: 'Import Asset JSON', category: 'Assets', run: () => void this.importAssetJsonFiles() });
     add({ id: 'builder.outlinerPanel', label: 'Object Outliner', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-outliner') });
+    add({ id: 'builder.runtimePanel', label: 'Runtime', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-runtime') });
     add({ id: 'builder.linkGraphPanel', label: 'Link Graph', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-link-graph') });
     for (const layer of LAYER_FAMILIES) {
       const label = layerLabel(layer);
@@ -2879,6 +2906,8 @@ export class Builder {
     if (this.sessionMode === mode) return;
     if (this.previewBlocks()) return;
     this.sessionMode = mode;
+    this.runtimeSelectedId = null;
+    this.invalidateRuntimeSnapshots();
     this.syncSessionButtons();
     if (mode === 'author') {
       // Live Preview is visual-only; returning to Author clears transient preview feeds.
@@ -2905,6 +2934,7 @@ export class Builder {
     if (this.previewBlocks()) return;
     const status = this.previewRuntime.reset(this.doc, this.previewRuntimeSourceLayer());
     this.previewRuntimeDirty = false;
+    this.invalidateRuntimeSnapshots();
     this.status(`${prefix}: ${status.message.toUpperCase()}`, status.capped || !status.ready);
   }
 
@@ -2920,6 +2950,7 @@ export class Builder {
     }
     this.previewRuntime.stop();
     this.previewRuntimeDirty = true;
+    this.invalidateRuntimeSnapshots();
     this.setBuilderSession('author');
   }
 
@@ -3243,6 +3274,7 @@ export class Builder {
     this.el('b-postfx').addEventListener('click', () => this.runUiCommand('builder.postProcessingPanel'));
     this.el('b-gallery').addEventListener('click', () => this.openGallery());
     this.el('b-assets').addEventListener('click', () => this.runUiCommand('builder.assetsPanel'));
+    this.el('b-runtime').addEventListener('click', () => this.runUiCommand('builder.runtimePanel'));
     this.el('b-backdrop').addEventListener('click', () => this.openBackdropPreview());
     this.el('b-reset-workspace').addEventListener('click', () => this.runUiCommand('builder.resetWorkspace'));
     this.el('b-zen').addEventListener('click', () => this.runUiCommand('builder.togglePanels'));
@@ -3342,6 +3374,7 @@ export class Builder {
       ['b-postfx', panelOpen('builder-postfx')],
       ['b-gallery', overlayOpen('builder-gallery')],
       ['b-assets', panelOpen('builder-assets')],
+      ['b-runtime', panelOpen('builder-runtime')],
       ['b-backdrop', overlayOpen('builder-backdrop')],
       ['b-zen', !zen],
     ];
@@ -3464,6 +3497,15 @@ export class Builder {
     );
     this.setPlaytestBanner(true);
     (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
+  }
+
+  private playVirtualWorldWindow(def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void {
+    if (this.previewBlocks()) return;
+    this.builderPlaytestActive = false;
+    this.playtestScars = null;
+    this.close();
+    this.ctx.levels.playVirtualWindow(this.ctx, def, center, previewRadius);
+    this.status(`PLAYING VIRTUAL WINDOW @ ${center.x},${center.y}`);
   }
 
   private abandonBuilderPlaytest(): void {
@@ -5093,6 +5135,7 @@ export class Builder {
 
   private renderWorkspacePanelContent(id: BuilderWorkspacePanelId): void {
     if (id === 'builder-outliner') this.renderOutliner();
+    else if (id === 'builder-runtime') this.renderRuntimePanel();
     else if (id === 'builder-link-graph') this.renderLinkGraph();
     else if (id === 'builder-assets') this.renderAssetBrowser();
     else if (id === 'builder-asset-details') this.renderAssetDetails();
@@ -5104,6 +5147,7 @@ export class Builder {
     const panel = this.el<HTMLDivElement>('builder-virtual-world');
     this.virtualWorldPanel ??= new VirtualWorldPanel(panel, {
       getBaseSeed: () => this.ctx.state.worldSeed >>> 0,
+      onPlayWindow: (def, center, previewRadius) => this.playVirtualWorldWindow(def, center, previewRadius),
       onClose: () => this.closeWorkspacePanel('builder-virtual-world'),
     });
     this.refreshPanelDragHandles(panel);
@@ -6067,6 +6111,7 @@ export class Builder {
     this.el('bp-sym-btn').addEventListener('click', () => this.runUiCommand('builder.symmetryCycle'));
     this.el('bp-assets-btn').addEventListener('click', () => this.runUiCommand('builder.assetsPanel'));
     this.el('bp-outliner-btn').addEventListener('click', () => this.runUiCommand('builder.outlinerPanel'));
+    this.el('bp-runtime-btn').addEventListener('click', () => this.runUiCommand('builder.runtimePanel'));
     this.el('bp-link-graph-btn').addEventListener('click', () => this.runUiCommand('builder.linkGraphPanel'));
 
     this.el('b-share').addEventListener('click', () => this.runUiCommand('builder.share'));
@@ -7845,6 +7890,7 @@ export class Builder {
       if (this.previewRuntimeDirty) this.resetPreviewRuntime('LIVE PREVIEW');
       this.previewRuntime.step(state.frameCount);
     }
+    this.refreshRuntimePanelIfOpen();
 
     // live light preview: authored lights feed the real light field
     // (solo narrows the feed to one light; MUTE drops a light from the
@@ -7968,6 +8014,18 @@ export class Builder {
         selected: this.selectedIds.has(o.id),
         toScreen: toS,
         spriteFrame: (obj, frame) => this.decorSpritePreviewCanvas(obj, frame),
+      });
+    }
+
+    if (runtimeOverlaysActive(this.runtimeOverlays)) {
+      const snapshot = this.sampleRuntimeOverlaySnapshot(false);
+      drawRuntimeEntityOverlays(g, snapshot, this.runtimeOverlays, {
+        cellW,
+        cellH,
+        width: cw,
+        height: ch,
+        labelY: activeOverlays.size > 0 ? 34 : 16,
+        toScreen: toS,
       });
     }
 
@@ -8953,6 +9011,144 @@ export class Builder {
       });
     }
     this.wireSelectAndFrameRows(panel);
+  }
+
+  private renderRuntimePanel(forceSnapshot = false): void {
+    const panel = this.el<HTMLDivElement>('builder-runtime');
+    const panelScroll = panel.scrollTop;
+    const rowsScroll = panel.querySelector<HTMLElement>('.brt-rows')?.scrollTop ?? 0;
+    const snapshot = this.sampleRuntimeSnapshot(forceSnapshot);
+    panel.innerHTML = renderRuntimePanel({
+      snapshot,
+      query: this.runtimeQuery,
+      filters: this.runtimeFilters,
+      overlays: this.runtimeOverlays,
+    });
+    this.restoreStructurePanelScroll(panel, panelScroll, [['.brt-rows', rowsScroll]]);
+    this.refreshPanelDragHandles(panel);
+    panel.querySelector('#brt-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-runtime'));
+    panel.querySelector<HTMLInputElement>('#brt-search')?.addEventListener('input', (event) => {
+      this.runtimeQuery = (event.target as HTMLInputElement).value;
+      this.renderRuntimePanel(false);
+      this.el<HTMLInputElement>('brt-search')?.focus({ preventScroll: true });
+    });
+    for (const chip of panel.querySelectorAll<HTMLButtonElement>('button[data-runtime-filter]')) {
+      chip.addEventListener('click', () => {
+        const filter = chip.dataset.runtimeFilter as RuntimeEntityGroup;
+        if (this.runtimeFilters.has(filter)) this.runtimeFilters.delete(filter);
+        else this.runtimeFilters.add(filter);
+        this.renderRuntimePanel(false);
+      });
+    }
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-runtime-overlay]')) {
+      button.addEventListener('click', () => {
+        const overlay = button.dataset.runtimeOverlay as RuntimeOverlayKind;
+        this.toggleRuntimeOverlay(overlay);
+      });
+    }
+    for (const row of panel.querySelectorAll<HTMLElement>('[data-runtime-id]')) {
+      row.addEventListener('click', () => {
+        this.runtimeSelectedId = row.dataset.runtimeId ?? null;
+        this.invalidateRuntimeOverlaySnapshot();
+        this.renderRuntimePanel(true);
+      });
+    }
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-runtime-focus]')) {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const id = button.dataset.runtimeFocus ?? '';
+        if (id) this.focusRuntimeRow(id);
+      });
+    }
+  }
+
+  private sampleRuntimeSnapshot(force: boolean): RuntimeEntitySnapshot {
+    const frame = this.ctx.state.frameCount;
+    if (
+      force ||
+      this.runtimeSnapshot === null ||
+      this.runtimeSnapshotFrame < 0 ||
+      Math.abs(frame - this.runtimeSnapshotFrame) >= RUNTIME_PANEL_REFRESH_FRAMES
+    ) {
+      this.runtimeSnapshot = this.buildCurrentRuntimeSnapshot({
+        selectedId: this.runtimeSelectedId,
+      });
+      this.runtimeSnapshotFrame = frame;
+      if (this.runtimeSnapshot.selectedMissing) {
+        this.runtimeSelectedId = null;
+        this.invalidateRuntimeOverlaySnapshot();
+      }
+    }
+    return this.runtimeSnapshot;
+  }
+
+  private buildCurrentRuntimeSnapshot(options: RuntimeSnapshotOptions = {}): RuntimeEntitySnapshot {
+    if (this.sessionMode === 'live') {
+      if (this.previewRuntimeDirty) this.resetPreviewRuntime('LIVE PREVIEW');
+      return this.previewRuntime.snapshot(options);
+    }
+    return buildRuntimeEntitySnapshot(this.ctx, options);
+  }
+
+  private toggleRuntimeOverlay(overlay: RuntimeOverlayKind): void {
+    this.runtimeOverlays[overlay] = !this.runtimeOverlays[overlay];
+    this.invalidateRuntimeOverlaySnapshot();
+    this.status(`RUNTIME OVERLAY ${runtimeOverlaySummary(this.runtimeOverlays)}`);
+    this.renderRuntimePanel(false);
+  }
+
+  private invalidateRuntimeOverlaySnapshot(): void {
+    this.runtimeOverlaySnapshotFrame = -1;
+  }
+
+  private invalidateRuntimeSnapshots(): void {
+    this.runtimeSnapshotFrame = -1;
+    this.runtimeOverlaySnapshotFrame = -1;
+  }
+
+  private sampleRuntimeOverlaySnapshot(force: boolean): RuntimeEntitySnapshot {
+    const frame = this.ctx.state.frameCount;
+    if (
+      force ||
+      this.runtimeOverlaySnapshot === null ||
+      this.runtimeOverlaySnapshotFrame < 0 ||
+      Math.abs(frame - this.runtimeOverlaySnapshotFrame) >= RUNTIME_OVERLAY_REFRESH_FRAMES
+    ) {
+      this.runtimeOverlaySnapshot = this.buildCurrentRuntimeSnapshot({
+        selectedId: this.runtimeSelectedId,
+        maxRowsPerGroup: RUNTIME_OVERLAY_ROW_LIMITS,
+      });
+      this.runtimeOverlaySnapshotFrame = frame;
+      if (this.runtimeOverlaySnapshot.selectedMissing) this.runtimeSelectedId = null;
+    }
+    return this.runtimeOverlaySnapshot;
+  }
+
+  private refreshRuntimePanelIfOpen(): void {
+    if (!this.isWorkspacePanelOpen('builder-runtime')) return;
+    const panel = this.el<HTMLDivElement>('builder-runtime');
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && panel.contains(active) && this.focusRouter.isTextEntryTarget(active)) return;
+    const frame = this.ctx.state.frameCount;
+    if (this.runtimeSnapshotFrame >= 0 && Math.abs(frame - this.runtimeSnapshotFrame) < RUNTIME_PANEL_REFRESH_FRAMES) return;
+    this.renderRuntimePanel(true);
+  }
+
+  private focusRuntimeRow(id: string): void {
+    this.runtimeSelectedId = id;
+    this.invalidateRuntimeOverlaySnapshot();
+    const snapshot = this.sampleRuntimeSnapshot(true);
+    const row = snapshot.selectedRow ?? snapshot.rows.find((candidate) => candidate.id === id) ?? null;
+    if (!row) {
+      this.status('RUNTIME ROW NO LONGER EXISTS', true);
+      this.renderRuntimePanel(false);
+      return;
+    }
+    const focusX = row.bounds ? (row.bounds.x0 + row.bounds.x1) / 2 : row.x;
+    const focusY = row.bounds ? (row.bounds.y0 + row.bounds.y1) / 2 : row.y;
+    this.ctx.camera.snapTo(focusX, focusY);
+    this.status(`FOCUSED ${row.label.toUpperCase()} @ ${Math.round(focusX)}, ${Math.round(focusY)}`);
+    this.renderRuntimePanel(false);
   }
 
   private renderLinkGraph(): void {

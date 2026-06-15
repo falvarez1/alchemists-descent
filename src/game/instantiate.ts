@@ -198,7 +198,7 @@ export function instantiateObjects(
       oy = Math.floor(o.y) + originY;
     if (o.kind === 'enemy') {
       const kind = (o.params.kind as EnemyKind) ?? 'slime';
-      const rec: PrefabEnemy = { kind, x: ox, y: oy };
+      const rec: PrefabEnemy = { kind, x: ox, y: oy, sourceId: o.id };
       if (o.params.sleeping === true && kind === 'bat') rec.sleeping = true;
       if (Array.isArray(o.params.patrol) && (o.params.patrol as unknown[]).length > 0) {
         rec.patrol = (o.params.patrol as Array<[number, number]>).map(([px, py]) => [
@@ -272,7 +272,7 @@ export function instantiateObjects(
       sink.cauldron = { x: ox, y: oy - 1 };
     } else if (o.kind === 'bossMarker') {
       sink.boss = { x: ox, y: oy };
-      const rec: PrefabEnemy = { kind: 'colossus', x: ox, y: oy };
+      const rec: PrefabEnemy = { kind: 'colossus', x: ox, y: oy, sourceId: o.id };
       sink.enemies.push(rec);
       opts?.spawnEnemy?.(rec);
     }

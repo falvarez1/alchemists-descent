@@ -641,6 +641,57 @@ describe('localStorage asset store', () => {
     ]);
   });
 
+  it('imports supported bundle entries while rejecting unsupported metadata entries', () => {
+    const sourceStore = new LocalStorageAssetStore();
+    const sourceSprite = spriteAsset('sprite-mixed-bundle', 'Mixed Bundle Sprite', [10, 20, 30, 255]);
+    expect(saveSprite(sourceSprite)).toBe(true);
+    const sourceDb = buildAssetDatabase({ sprites: loadSprites() });
+    const spriteRecord = sourceDb.get('sprite:library:sprite-mixed-bundle')!;
+    const exported = sourceStore.export(spriteRecord)!;
+    (globalThis.localStorage as StorageStub).clear();
+    const targetStore = new LocalStorageAssetStore();
+
+    const result = targetStore.importJson(
+      {
+        fileName: 'mixed.assets.json',
+        text: JSON.stringify({
+          v: 1,
+          kind: 'assetExportBundle',
+          exportedAt: '2026-06-14T00:25:00.000Z',
+          assets: [
+            {
+              assetId: spriteRecord.assetId,
+              kind: spriteRecord.kind,
+              origin: spriteRecord.origin,
+              sourceId: spriteRecord.sourceId,
+              filename: exported.filename,
+              mime: exported.mime,
+              text: exported.text,
+            },
+            {
+              assetId: 'card:built-in:spark',
+              kind: 'card',
+              origin: 'built-in',
+              sourceId: 'spark',
+              filename: 'spark.card.content-metadata.json',
+              mime: 'application/json',
+              text: JSON.stringify({ metadataOnly: true, kind: 'card', id: 'spark' }),
+            },
+          ],
+        }),
+        acceptedAt: '2026-06-14T00:25:00.000Z',
+      },
+      buildAssetDatabase(),
+    );
+
+    const reports = targetStore.listImportReports();
+    expect(result.ok).toBe(false);
+    expect(result.report).toMatchObject({ sourceFile: 'mixed.assets.json', decision: 'rejected' });
+    expect(loadSprites().map((sprite) => sprite.id)).toEqual(['sprite-mixed-bundle']);
+    expect(reports.some((report) => report.sourceFile === 'Mixed Bundle Sprite.sprite.json' && report.decision === 'accepted')).toBe(true);
+    expect(reports.some((report) => report.sourceFile === 'spark.card.content-metadata.json' && report.decision === 'invalid')).toBe(true);
+  });
+
   it('bundle imports keep current document embedded sprite ids authoritative across entries', () => {
     const store = new LocalStorageAssetStore();
     const doc = createEmptyDocument('embedded-bundle-doc', 'earthen');

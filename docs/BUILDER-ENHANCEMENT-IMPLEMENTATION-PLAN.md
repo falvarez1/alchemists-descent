@@ -221,6 +221,10 @@ Priority meanings:
   database authority for current-document, document-embedded, built-in, and
   content records. Expert, UX, and critic review approved the source-of-truth
   boundaries, range/focus behavior, disabled-state clarity, and probe coverage.
+  2026-06-15 follow-up: mixed export bundles that contain immutable content
+  metadata now still restore supported local assets and record unsupported
+  metadata as rejected per-entry import reports instead of aborting the whole
+  bundle during preflight.
 - Phase 5E Non-Prefab Asset Actions: complete. Asset Browser stage drops now
   originate from real row/card drag payloads for prefab, sprite, material
   profile, light preset, and procedural preset records. Material profile drops

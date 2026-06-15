@@ -2,6 +2,7 @@ import type { CommandResult, Ctx } from '@/core/types';
 import { loadConsoleBinds, loadConsoleWatches, normalizeBindKey, saveConsoleWatches } from '@/game/console/prefs';
 import { upsertConsoleScript } from '@/game/console/scripts';
 import { cancelChargingBlackHole, resetHeldSpellInputs } from '@/game/transients';
+import { isRunLauncherOpen } from '@/ui/RunLauncher';
 import { FocusRouter, isEditorTextEntryTarget } from '@/ui/editor/FocusRouter';
 
 const HISTORY_KEY = 'noita-console-history';
@@ -16,6 +17,7 @@ function isTextEntry(target: EventTarget | null): boolean {
 
 function canRunConsoleBind(target: EventTarget | null): boolean {
   if (isTextEntry(target)) return false;
+  if (isRunLauncherOpen()) return false;
   if (document.body.classList.contains('builder-open')) return false;
   if (document.getElementById('builder-intent-modal')) return false;
   if (document.querySelector('.app-dialog-root')) return false;
@@ -221,6 +223,7 @@ export class ConsoleOverlay {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    if (isRunLauncherOpen()) return;
     const builderOpen = document.body.classList.contains('builder-open');
     const builderHelpOpen = document.getElementById('builder-help')?.classList.contains('open') === true;
     const builderHelpKey = e.code === 'KeyH' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey;
@@ -239,6 +242,7 @@ export class ConsoleOverlay {
       if (e.repeat || e.code !== 'Backquote' || this.focusRouter.isTextEntryTarget(e.target)) {
         return;
       }
+      if (isRunLauncherOpen()) return;
       if (focusClaim.surface === 'builder-help') {
         e.preventDefault();
         return;
@@ -298,6 +302,7 @@ export class ConsoleOverlay {
   }
 
   private onKeyUp(e: KeyboardEvent): void {
+    if (isRunLauncherOpen()) return;
     if (!this.openState) return;
     if (this.focusRouter.claimKeyUp(e, this.focusState(e.target)).surface === 'app-dialog') return;
     this.clearHeldInput();

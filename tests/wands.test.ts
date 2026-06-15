@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { compileWand } from '@/combat/wands/compiler';
 import { WandSystem } from '@/combat/wands/WandSystem';
-import { createDefaultWandLightSettings } from '@/config/params';
+import { TRIGGERED } from '@/combat/wands/projectileMarks';
+import { createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
-import type { CardId, Ctx } from '@/core/types';
+import type { CardId, CastAction, Ctx } from '@/core/types';
+import { Cell } from '@/sim/CellType';
+import { World } from '@/sim/World';
 
 /**
  * The cast compiler is a PURE function of the slot list, so every rule that
@@ -198,6 +201,168 @@ describe('WandSystem runtime snapshots', () => {
 
     events.emit('recipeDiscovered', { name: 'ELIXIR OF LIFE', bounty: 100 });
     expect(wands.collection.filter((card) => card === 'infuser')).toHaveLength(1);
+  });
+
+  it('marks legacy loadouts that already contain Infuser as progression-complete', () => {
+    const events = new EventBus();
+    const ctx = {
+      events,
+      telemetry: { count: () => undefined },
+      audio: { wandSwap: () => undefined },
+      state: { mode: 'build' },
+      player: {},
+    } as unknown as Ctx;
+    const wands = new WandSystem(ctx);
+
+    wands.loadLoadout({
+      active: 0,
+      collection: ['infuser'],
+      wands: [
+        { frameId: 'oak', cards: ['spark', null, null], mana: 90 },
+        { frameId: 'bone', cards: ['dig', null, null, null], mana: 120 },
+      ],
+    });
+    wands.markDepthGrantsThrough(3);
+    events.emit('recipeDiscovered', { name: 'ELIXIR OF LIFE', bounty: 100 });
+
+    expect(wands.collection.filter((card) => card === 'infuser')).toHaveLength(1);
+    expect(wands.snapshotRuntimeState().infuserGranted).toBe(true);
+  });
+});
+
+function action(card: CardId, overrides: Partial<CastAction> = {}): CastAction {
+  return {
+    card,
+    speedMul: 1,
+    dmgMul: 1,
+    spreadAdd: 0,
+    infused: false,
+    bounces: 0,
+    triggered: null,
+    ...overrides,
+  };
+}
+
+function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: number | null }> } {
+  const spawned: Array<{ x: number; y: number; type: number | null }> = [];
+  const ctx = {
+    spawned,
+    world: new World(),
+    events: new EventBus(),
+    telemetry: { count: () => undefined },
+    audio: {
+      zap: () => undefined,
+      noiseBurst: () => undefined,
+      tone: () => undefined,
+      flame: () => undefined,
+      dig: () => undefined,
+      learn: () => undefined,
+      wandSwap: () => undefined,
+    },
+    params: createGameParams(),
+    state: { mode: 'play', frameCount: 1 },
+    input: {
+      mouse: { x: 180, y: 180 },
+      activeChargingBlackHole: null,
+    },
+    player: {
+      perks: {},
+      dead: false,
+      aimAngle: 0,
+      vx: 0,
+      mana: 0,
+      maxMana: 0,
+    },
+    projectiles: [],
+    particles: {
+      spawn: (x: number, y: number, _vx: number, _vy: number, type: number | null) => {
+        spawned.push({ x, y, type });
+      },
+      burst: () => undefined,
+    },
+    lightning: { cast: () => undefined },
+    spells: {
+      wandTip: () => ({ x: 10, y: 10 }),
+      digRay: () => null,
+      erodeAt: () => undefined,
+    },
+    fx: { digBeam: null },
+    flask: { state: { material: null, count: 0, capacity: 600 } },
+  } as unknown as Ctx & { spawned: Array<{ x: number; y: number; type: number | null }> };
+  return ctx;
+}
+
+describe('WandSystem trigger executor', () => {
+  it('uses the impact point for triggered conjure instead of the live mouse', () => {
+    const ctx = makeCastCtx();
+    const wands = new WandSystem(ctx);
+
+    wands.castActionAt(ctx, action('conjure'), 24, 25, 0, {
+      origin: 'trigger',
+      target: { x: 24, y: 25 },
+    });
+
+    expect(ctx.world.types[ctx.world.idx(24, 25)]).toBe(Cell.Stone);
+    expect(ctx.world.types[ctx.world.idx(180, 180)]).toBe(Cell.Empty);
+  });
+
+  it('uses the impact point for triggered vitrify instead of the live mouse', () => {
+    const ctx = makeCastCtx();
+    const wands = new WandSystem(ctx);
+    ctx.world.types[ctx.world.idx(35, 36)] = Cell.Water;
+    ctx.world.types[ctx.world.idx(180, 180)] = Cell.Water;
+
+    wands.castActionAt(ctx, action('vitrify'), 35, 36, 0, {
+      origin: 'trigger',
+      target: { x: 35, y: 36 },
+    });
+
+    expect(ctx.world.types[ctx.world.idx(35, 36)]).toBe(Cell.Glass);
+    expect(ctx.world.types[ctx.world.idx(180, 180)]).toBe(Cell.Water);
+  });
+
+  it('emits triggered flame from the impact point immediately', () => {
+    const ctx = makeCastCtx();
+    const wands = new WandSystem(ctx);
+
+    wands.castActionAt(ctx, action('flame'), 40, 41, 0, {
+      origin: 'trigger',
+      target: { x: 40, y: 41 },
+    });
+
+    expect(ctx.spawned.length).toBeGreaterThan(0);
+    expect(ctx.spawned.every((particle) => particle.x === 40 && particle.y === 41 && particle.type === Cell.Fire)).toBe(true);
+  });
+
+  it('marks wand-cast black-hole hosts with trigger payload metadata', () => {
+    const ctx = makeCastCtx();
+    const wands = new WandSystem(ctx);
+    const payload = action('spark');
+
+    wands.castActionAt(ctx, action('blackhole', { triggered: [payload] }), 55, 56, 0);
+
+    expect(ctx.projectiles).toHaveLength(1);
+    expect(ctx.projectiles[0].type).toBe('blackhole');
+    expect(ctx.projectiles[0].charging).toBe(true);
+    expect(ctx.input.activeChargingBlackHole).toBe(ctx.projectiles[0]);
+    expect(TRIGGERED.get(ctx.projectiles[0])).toEqual([payload]);
+  });
+
+  it('spawns triggered black holes without claiming the mouse-up charging lifecycle', () => {
+    const ctx = makeCastCtx();
+    const wands = new WandSystem(ctx);
+    const payload = action('spark');
+
+    wands.castActionAt(ctx, action('blackhole', { triggered: [payload] }), 55, 56, 0, {
+      origin: 'trigger',
+      target: { x: 55, y: 56 },
+    });
+
+    expect(ctx.projectiles).toHaveLength(1);
+    expect(ctx.projectiles[0].type).toBe('blackhole');
+    expect(ctx.projectiles[0].charging).toBe(false);
+    expect(ctx.input.activeChargingBlackHole).toBeNull();
+    expect(TRIGGERED.get(ctx.projectiles[0])).toEqual([payload]);
   });
 });
 

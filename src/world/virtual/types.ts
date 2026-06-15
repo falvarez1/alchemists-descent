@@ -1,8 +1,10 @@
+import type { BiomeId } from '@/core/types';
+
 export const VIRTUAL_CHUNK_SIZE = 256 as const;
 export const VIRTUAL_BIOME_CHUNK_SIZE = 512 as const;
 export const VIRTUAL_TILE_SIZE = 256 as const;
 
-export type VirtualBiomeId = 'earthen' | 'fungal' | 'frozen';
+export type VirtualBiomeId = BiomeId;
 
 export type HerringboneOrientation = 'horizontal' | 'vertical';
 export type TileAnchor = 'n' | 'e' | 's' | 'w';
@@ -145,10 +147,17 @@ export interface VirtualMaterialProfile {
 
 export interface VirtualGenerationParams {
   halo: number;
+  baseCellSize: number;
   smoothingPasses: number;
+  organicSmoothingPasses: number;
   noiseScale: number;
   noiseThreshold: number;
   borderSeal: number;
+  shapeWarp: number;
+  cornerRounding: number;
+  surfaceCover: number;
+  surfaceDepth: number;
+  vegetationDensity: number;
   edgeRoughness: number;
   pocketDensity: number;
   crackDensity: number;

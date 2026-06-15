@@ -1,5 +1,5 @@
-import type { AuthoredLight, Ctx, HazardEmitter, Mechanism, RuneVault } from '@/core/types';
-import { HEIGHT, WIDTH } from '@/config/constants';
+import type { AuthoredLight, Ctx, ExitPortal, HazardEmitter, Mechanism, Pickup, PrefabEnemy, RuneVault } from '@/core/types';
+import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { applyWorldLayer } from '@/builder/document';
 import type { EditorDocument, EditorWorldLayer } from '@/builder/document';
 import { instantiateObjects, makeInstantiationSink } from '@/game/instantiate';
@@ -8,6 +8,13 @@ import { buildMechanismTriggerIndex } from '@/core/mechanisms';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { World } from '@/sim/World';
+import type {
+  RuntimeEntityBounds,
+  RuntimeEntityGroup,
+  RuntimeEntityRow,
+  RuntimeEntitySnapshot,
+  RuntimeSnapshotOptions,
+} from '@/game/runtimeSnapshot';
 
 export interface PreviewRuntimeStatus {
   ready: boolean;
@@ -31,12 +38,35 @@ export interface PreviewRuntimeDrawContext {
   toScreen(wx: number, wy: number): { x: number; y: number };
 }
 
-const MAX_NON_EMPTY_CELLS = 420_000;
 const MAX_MECHANISMS = 256;
 const MAX_RUNE_VAULTS = 128;
 const MAX_EMITTERS = 96;
 const MAX_LIGHTS = 128;
+const MAX_PICKUPS = 256;
+const MAX_PREVIEW_ENEMIES = 256;
 const MAX_CATCHUP_FRAMES = 4;
+
+const PREVIEW_GROUP_LABELS: Record<RuntimeEntityGroup, string> = {
+  player: 'Player',
+  enemies: 'Enemies',
+  projectiles: 'Projectiles',
+  critters: 'Critters',
+  pickups: 'Pickups',
+  mechanisms: 'Mechanisms',
+  portal: 'Portal',
+  particles: 'Particles',
+};
+
+const PREVIEW_ROW_LIMITS: Record<RuntimeEntityGroup, number> = {
+  player: 0,
+  enemies: 160,
+  projectiles: 0,
+  critters: 0,
+  pickups: 160,
+  mechanisms: 200,
+  portal: 1,
+  particles: 0,
+};
 
 export class PreviewRuntime {
   readonly world = new World();
@@ -52,11 +82,13 @@ export class PreviewRuntime {
   private message = 'Preview not started';
   private nonEmptyCells = 0;
   private changedCells = 0;
+  private pickups: Pickup[] = [];
   private mechanisms = makeInstantiationSink().mechanisms;
   private mechanismTriggers = new Map<number, Mechanism[]>();
   private emitters: HazardEmitter[] = [];
-  private enemies = 0;
+  private enemySpawns: PrefabEnemy[] = [];
   private runeVaults: RuneVault[] = [];
+  private portal: ExitPortal | null = null;
   private lights = makeInstantiationSink().authoredLights;
   private lightIds: string[] = [];
 
@@ -77,9 +109,11 @@ export class PreviewRuntime {
     this.message = 'Preview reset';
     this.mechanisms = [];
     this.mechanismTriggers = new Map();
+    this.pickups = [];
     this.emitters = [];
-    this.enemies = 0;
+    this.enemySpawns = [];
     this.runeVaults = [];
+    this.portal = null;
     this.lights = [];
     this.lightIds = [];
     this.nonEmptyCells = 0;
@@ -111,24 +145,29 @@ export class PreviewRuntime {
     instantiateObjects(previewCtx, sink, doc.objects, doc.links, doc.lights, 0, 0, set, {
       docSprites: doc.assets?.sprites,
     });
+    this.pickups = sink.pickups.slice(0, MAX_PICKUPS);
     this.mechanisms = sink.mechanisms;
     this.mechanismTriggers = buildMechanismTriggerIndex(this.mechanisms);
     this.runeVaults = sink.runeVaults.slice(0, MAX_RUNE_VAULTS);
     this.emitters = sink.emitters.slice(0, MAX_EMITTERS);
-    this.enemies = Math.min(sink.enemies.length, 256);
+    this.enemySpawns = sink.enemies.slice(0, MAX_PREVIEW_ENEMIES);
+    this.portal = sink.portal ?? null;
     this.lights = sink.authoredLights.slice(0, MAX_LIGHTS);
     this.lightIds = doc.lights.filter((light) => !light.hidden).slice(0, MAX_LIGHTS).map((light) => light.id);
     this.nonEmptyCells = countNonEmpty(this.world);
     this.changedCells = rebuildChangedMask(this.world, this.sourceTypes, this.sourceColors, this.diffMask);
-    this.capped =
-      this.nonEmptyCells > MAX_NON_EMPTY_CELLS ||
-      this.mechanisms.length > MAX_MECHANISMS ||
-      sink.runeVaults.length > MAX_RUNE_VAULTS ||
-      sink.emitters.length > MAX_EMITTERS ||
-      sink.authoredLights.length > MAX_LIGHTS;
+    const capReasons = previewCapReasons({
+      mechanisms: this.mechanisms.length,
+      pickups: sink.pickups.length,
+      enemies: sink.enemies.length,
+      runeVaults: sink.runeVaults.length,
+      emitters: sink.emitters.length,
+      lights: sink.authoredLights.length,
+    });
+    this.capped = capReasons.length > 0;
     this.ready = !this.capped;
     this.message = this.capped
-      ? 'Preview capped - reduce terrain, mechanisms, rune links, emitters, or lights'
+      ? `Preview capped - reduce ${capReasons.join(', ')}`
       : 'Live Preview running from disposable runtime';
     return this.status();
   }
@@ -175,10 +214,137 @@ export class PreviewRuntime {
       mechanisms: this.mechanisms.length,
       runeVaults: this.runeVaults.length,
       emitters: this.emitters.length,
-      enemies: this.enemies,
+      enemies: this.enemySpawns.length,
       lights: this.lights.length,
       capped: this.capped,
       message: this.message,
+    };
+  }
+
+  snapshot(options: RuntimeSnapshotOptions = {}): RuntimeEntitySnapshot {
+    const limits = { ...PREVIEW_ROW_LIMITS, ...options.maxRowsPerGroup };
+    const selectedId = options.selectedId ?? null;
+    const view = runtimeView(this.ctx);
+    const rows: RuntimeEntityRow[] = [];
+    const counts = new Map<RuntimeEntityGroup, { total: number; visible: number; sampled: number }>();
+    let selectedRow: RuntimeEntityRow | null = null;
+
+    const pushGroup = <T>(
+      group: RuntimeEntityGroup,
+      items: readonly T[],
+      idOf: (item: T, index: number) => string,
+      visibleOf: (item: T) => boolean,
+      rowOf: (item: T, index: number) => RuntimeEntityRow,
+    ): void => {
+      const limit = limits[group];
+      let visible = 0;
+      let selectedItem: T | null = null;
+      let selectedIndex = -1;
+      const visibleItems: Array<{ item: T; index: number }> = [];
+      const offscreenItems: Array<{ item: T; index: number }> = [];
+
+      items.forEach((item, index) => {
+        const isVisible = visibleOf(item);
+        if (isVisible) visible++;
+        if (selectedId !== null && idOf(item, index) === selectedId) {
+          selectedItem = item;
+          selectedIndex = index;
+        }
+        if (limit <= 0) return;
+        const bucket = isVisible ? visibleItems : offscreenItems;
+        if (bucket.length < limit) bucket.push({ item, index });
+      });
+
+      const groupRows: RuntimeEntityRow[] = [];
+      const sampledIds = new Set<string>();
+      for (const entry of visibleItems) {
+        const id = idOf(entry.item, entry.index);
+        sampledIds.add(id);
+        groupRows.push(rowOf(entry.item, entry.index));
+      }
+      for (const entry of offscreenItems) {
+        if (groupRows.length >= limit) break;
+        const id = idOf(entry.item, entry.index);
+        sampledIds.add(id);
+        groupRows.push(rowOf(entry.item, entry.index));
+      }
+      if (selectedItem !== null) {
+        const id = idOf(selectedItem, selectedIndex);
+        const row = rowOf(selectedItem, selectedIndex);
+        selectedRow = row;
+        if (!sampledIds.has(id)) groupRows.push(row);
+      }
+
+      rows.push(...groupRows);
+      counts.set(group, { total: items.length, visible, sampled: groupRows.length });
+    };
+
+    const active = this.ready;
+    pushGroup(
+      'enemies',
+      active ? this.enemySpawns : [],
+      (enemy, index) => previewEnemyId(enemy, index),
+      (enemy) => boundsVisible(view, enemyBounds(this.ctx, enemy)),
+      (enemy, index) => previewEnemyRow(this.ctx, enemy, index, view),
+    );
+    pushGroup(
+      'pickups',
+      active ? this.pickups : [],
+      (pickup, index) => previewPickupId(pickup, index),
+      (pickup) => inView(view, pickup.x, pickup.y),
+      (pickup, index) => previewPickupRow(pickup, index, view),
+    );
+    pushGroup(
+      'mechanisms',
+      active ? this.mechanisms : [],
+      (mechanism) => previewMechanismId(mechanism),
+      (mechanism) => boundsVisible(view, mechanismBounds(mechanism)),
+      (mechanism) => previewMechanismRow(mechanism, view),
+    );
+    pushGroup(
+      'portal',
+      active && this.portal ? [this.portal] : [],
+      () => 'preview-portal',
+      (portal) => inView(view, portal.x, portal.y),
+      (portal) => previewPortalRow(portal, view),
+    );
+
+    const countRows = (Object.keys(PREVIEW_GROUP_LABELS) as RuntimeEntityGroup[]).map((group) => {
+      const count = counts.get(group) ?? { total: 0, visible: 0, sampled: 0 };
+      return {
+        group,
+        label: PREVIEW_GROUP_LABELS[group],
+        total: count.total,
+        visible: count.visible,
+        sampled: count.sampled,
+      };
+    });
+
+    return {
+      frame: this.frame,
+      mode: this.ctx.state.mode,
+      source: options.source ?? {
+        id: 'builder-live-preview',
+        label: 'Builder Live Preview',
+        detail: this.message,
+      },
+      level: { id: 'builder-live-preview', name: 'Live Preview', depth: 0 },
+      rows,
+      counts: countRows,
+      particles: {
+        total: 0,
+        visible: 0,
+        visual: 0,
+        depositing: 0,
+        homing: 0,
+        hostile: 0,
+        glowing: 0,
+        byMaterial: [],
+      },
+      selectedId,
+      selectedRow,
+      selectedMissing: selectedId !== null && selectedRow === null,
+      capped: this.capped || countRows.some((count) => count.group !== 'particles' && count.sampled < count.total),
     };
   }
 
@@ -603,6 +769,238 @@ function countNonEmpty(world: World): number {
     if (world.types[i] !== Cell.Empty) count++;
   }
   return count;
+}
+
+interface PreviewCapCounts {
+  mechanisms: number;
+  pickups: number;
+  enemies: number;
+  runeVaults: number;
+  emitters: number;
+  lights: number;
+}
+
+function previewCapReasons(counts: PreviewCapCounts): string[] {
+  const reasons: string[] = [];
+  if (counts.mechanisms > MAX_MECHANISMS) reasons.push('mechanisms');
+  if (counts.pickups > MAX_PICKUPS) reasons.push('pickups');
+  if (counts.enemies > MAX_PREVIEW_ENEMIES) reasons.push('enemies');
+  if (counts.runeVaults > MAX_RUNE_VAULTS) reasons.push('rune links');
+  if (counts.emitters > MAX_EMITTERS) reasons.push('emitters');
+  if (counts.lights > MAX_LIGHTS) reasons.push('lights');
+  return reasons;
+}
+
+interface RuntimeView {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+function runtimeView(ctx: Ctx): RuntimeView {
+  const cam = ctx.camera;
+  const zoom = Math.max(0.001, cam.zoom);
+  return {
+    x0: cam.renderX + VIEW_W * (0.5 - 0.5 / zoom),
+    y0: cam.renderY + VIEW_H * (0.5 - 0.5 / zoom),
+    x1: cam.renderX + VIEW_W * (0.5 + 0.5 / zoom),
+    y1: cam.renderY + VIEW_H * (0.5 + 0.5 / zoom),
+  };
+}
+
+function inView(view: RuntimeView, x: number, y: number): boolean {
+  return x >= view.x0 && x <= view.x1 && y >= view.y0 && y <= view.y1;
+}
+
+function boundsVisible(view: RuntimeView, bounds: RuntimeEntityBounds): boolean {
+  return bounds.x1 >= view.x0 && bounds.x0 <= view.x1 && bounds.y1 >= view.y0 && bounds.y0 <= view.y1;
+}
+
+function previewEnemyId(enemy: PrefabEnemy, index: number): string {
+  return `preview-enemy:${enemy.sourceId ?? `${enemy.kind}:${Math.round(enemy.x)}:${Math.round(enemy.y)}:${index}`}`;
+}
+
+function previewEnemyRow(ctx: Ctx, enemy: PrefabEnemy, index: number, view: RuntimeView): RuntimeEntityRow {
+  const bounds = enemyBounds(ctx, enemy);
+  return runtimeRow({
+    id: previewEnemyId(enemy, index),
+    group: 'enemies',
+    kind: enemy.kind,
+    label: enemy.kind,
+    sublabel: `${fmt(enemy.x)}, ${fmt(enemy.y)} - preview spawn`,
+    x: enemy.x,
+    y: enemy.y,
+    bounds,
+    visible: boundsVisible(view, bounds),
+    badges: [enemy.sleeping ? 'sleeping' : '', enemy.patrol && enemy.patrol.length > 0 ? 'patrol' : '', 'preview'].filter(Boolean),
+    fields: [
+      field('kind', enemy.kind),
+      field('position', `${fmt(enemy.x)}, ${fmt(enemy.y)}`),
+      field('source', enemy.sourceId ?? '-'),
+      field('patrol points', String(enemy.patrol?.length ?? 0)),
+    ],
+  });
+}
+
+function enemyBounds(ctx: Ctx, enemy: PrefabEnemy): RuntimeEntityBounds {
+  const def = (ctx.enemyCtl as Ctx['enemyCtl'] | undefined)?.defs[enemy.kind];
+  return bodyBounds(enemy.x, enemy.y, def?.halfW ?? 5, def?.h ?? 8);
+}
+
+function previewPickupId(pickup: Pickup, index: number): string {
+  return `preview-pickup:${pickup.kind}:${Math.round(pickup.x)}:${Math.round(pickup.y)}:${index}`;
+}
+
+function previewPickupRow(pickup: Pickup, index: number, view: RuntimeView): RuntimeEntityRow {
+  const data = pickup.data.card ?? pickup.data.potion ?? pickup.data.amount ?? '';
+  const bounds = pointBounds(pickup.x, pickup.y, 3);
+  return runtimeRow({
+    id: previewPickupId(pickup, index),
+    group: 'pickups',
+    kind: pickup.kind,
+    label: pickup.kind,
+    sublabel: `${fmt(pickup.x)}, ${fmt(pickup.y)}${data !== '' ? ` - ${data}` : ''}`,
+    x: pickup.x,
+    y: pickup.y,
+    vx: pickup.vx,
+    vy: pickup.vy,
+    bounds,
+    visible: inView(view, pickup.x, pickup.y),
+    badges: ['preview'],
+    fields: [
+      field('kind', pickup.kind),
+      field('position', `${fmt(pickup.x)}, ${fmt(pickup.y)}`),
+      field('data', data === '' ? '-' : String(data)),
+    ],
+  });
+}
+
+function previewMechanismId(mechanism: Mechanism): string {
+  return `preview-mechanism:${mechanism.id}`;
+}
+
+function previewMechanismRow(mechanism: Mechanism, view: RuntimeView): RuntimeEntityRow {
+  const bounds = mechanismBounds(mechanism);
+  return runtimeRow({
+    id: previewMechanismId(mechanism),
+    group: 'mechanisms',
+    kind: mechanism.kind,
+    label: `${mechanism.kind} #${mechanism.id}`,
+    sublabel: `${fmt(mechanism.x)}, ${fmt(mechanism.y)} - state ${fmt(mechanism.state)}`,
+    x: mechanism.x,
+    y: mechanism.y,
+    state: mechanism.state,
+    bounds,
+    visible: boundsVisible(view, bounds),
+    badges: [
+      mechanism.logic ? `logic ${mechanism.logic}` : '',
+      mechanism.pressed ? 'pressed' : '',
+      mechanism.seqDone ? 'sequence done' : '',
+      'preview',
+    ].filter(Boolean),
+    fields: [
+      field('id', String(mechanism.id)),
+      field('kind', mechanism.kind),
+      field('position', `${fmt(mechanism.x)}, ${fmt(mechanism.y)}`),
+      field('size', `${mechanism.w} x ${mechanism.h}`),
+      field('state', fmt(mechanism.state)),
+      field('target', mechanism.targetId === undefined ? '-' : String(mechanism.targetId)),
+      field('logic', mechanism.logic ?? '-'),
+    ],
+  });
+}
+
+function previewPortalRow(portal: ExitPortal, view: RuntimeView): RuntimeEntityRow {
+  const bounds = { x0: portal.x - 5, y0: portal.y - 14, x1: portal.x + 6, y1: portal.y + 1 };
+  return runtimeRow({
+    id: 'preview-portal',
+    group: 'portal',
+    kind: 'portal',
+    label: 'Exit Portal',
+    sublabel: `${fmt(portal.x)}, ${fmt(portal.y)} - ${portal.open ? 'open' : 'closed'}`,
+    x: portal.x,
+    y: portal.y,
+    bounds,
+    visible: inView(view, portal.x, portal.y),
+    badges: [portal.open ? 'open' : 'closed', 'preview'],
+    fields: [
+      field('position', `${fmt(portal.x)}, ${fmt(portal.y)}`),
+      field('open', portal.open ? 'yes' : 'no'),
+    ],
+  });
+}
+
+function mechanismBounds(mechanism: Mechanism): RuntimeEntityBounds {
+  if (mechanism.body && mechanism.body.length > 0) {
+    let x0 = Number.POSITIVE_INFINITY;
+    let y0 = Number.POSITIVE_INFINITY;
+    let x1 = Number.NEGATIVE_INFINITY;
+    let y1 = Number.NEGATIVE_INFINITY;
+    for (const [x, y] of mechanism.body) {
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x + 1);
+      y1 = Math.max(y1, y + 1);
+    }
+    return { x0, y0, x1, y1 };
+  }
+  if (mechanism.zone) {
+    return {
+      x0: mechanism.zone.x0,
+      y0: mechanism.zone.y0,
+      x1: mechanism.zone.x1 + 1,
+      y1: mechanism.zone.y1 + 1,
+    };
+  }
+  const x0 = Math.min(mechanism.x, mechanism.x + mechanism.w);
+  const x1 = Math.max(mechanism.x, mechanism.x + mechanism.w);
+  const y0 = Math.min(mechanism.y, mechanism.y + mechanism.h);
+  const y1 = Math.max(mechanism.y, mechanism.y + mechanism.h);
+  return { x0, y0, x1, y1 };
+}
+
+function bodyBounds(x: number, y: number, halfW: number, h: number): RuntimeEntityBounds {
+  return {
+    x0: x - halfW,
+    y0: y - h + 1,
+    x1: x + halfW + 1,
+    y1: y + 1,
+  };
+}
+
+function pointBounds(x: number, y: number, radius: number): RuntimeEntityBounds {
+  return {
+    x0: x - radius,
+    y0: y - radius,
+    x1: x + radius + 1,
+    y1: y + radius + 1,
+  };
+}
+
+function runtimeRow(input: Omit<RuntimeEntityRow, 'searchText'>): RuntimeEntityRow {
+  const searchText = normalize([
+    input.id,
+    input.group,
+    input.kind,
+    input.label,
+    input.sublabel,
+    ...input.badges,
+    ...input.fields.map((entry) => `${entry.label} ${entry.value}`),
+  ].join(' '));
+  return { ...input, searchText };
+}
+
+function field(label: string, value: string): { label: string; value: string } {
+  return { label, value };
+}
+
+function fmt(n: number): string {
+  return Number.isFinite(n) ? (Math.round(n * 10) / 10).toString() : String(n);
+}
+
+function normalize(text: string): string {
+  return text.trim().toLowerCase();
 }
 
 function rebuildChangedMask(world: World, sourceTypes: Uint8Array, sourceColors: Uint32Array, diffMask: Uint8Array): number {

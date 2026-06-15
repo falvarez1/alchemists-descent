@@ -1,8 +1,10 @@
 import { LEVELS } from '@/config/worldgraph';
+import { BIOMES } from '@/config/biomes';
 import { randomSeed } from '@/core/rng';
-import type { LevelDef } from '@/core/types';
+import type { BiomeId, LevelDef } from '@/core/types';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 import {
+  biomeIndexFromId,
   createDefaultVirtualWorldDef,
   TsWorkerBackend,
   WasmBackend,
@@ -12,11 +14,14 @@ import type {
   BackendInfo,
   GenerateWindowResult,
   TransferableVirtualChunk,
+  VirtualBiomeId,
   VirtualWorldDef,
 } from '@/world/virtual';
 
 type VirtualWorldProfileId = 'global' | string;
 type VirtualWorldStatus = 'idle' | 'generating' | 'ready' | 'stale' | 'canceled' | 'error';
+type CaveStylePresetId = 'structured' | 'natural' | 'wild' | 'custom';
+type GenerationParams = VirtualWorldDef['generation'];
 
 interface CachedPreviewChunk {
   chunk: TransferableVirtualChunk;
@@ -27,6 +32,7 @@ interface CachedPreviewChunk {
 
 export interface VirtualWorldPanelHooks {
   getBaseSeed(): number;
+  onPlayWindow(def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void;
   onClose(): void;
 }
 
@@ -34,6 +40,171 @@ const ZOOM_MIN = 0.08;
 const ZOOM_MAX = 2.5;
 const MAX_PREVIEW_CACHE_BYTES = 96 * 1024 * 1024;
 const MAX_PREVIEW_CHUNKS_PER_PROFILE = 128;
+const GENERATION_DEFAULTS: GenerationParams = {
+  halo: 32,
+  baseCellSize: 3,
+  smoothingPasses: 1,
+  organicSmoothingPasses: 0,
+  noiseScale: 0.035,
+  noiseThreshold: 0.54,
+  borderSeal: 2,
+  shapeWarp: 0.32,
+  cornerRounding: 0.56,
+  surfaceCover: 0.64,
+  surfaceDepth: 2,
+  vegetationDensity: 0.38,
+  edgeRoughness: 0.38,
+  pocketDensity: 0.3,
+  crackDensity: 0.2,
+};
+const CAVE_STYLE_PRESETS: Record<Exclude<CaveStylePresetId, 'custom'>, Partial<GenerationParams>> = {
+  structured: {
+    baseCellSize: 4,
+    organicSmoothingPasses: 0,
+    shapeWarp: 0.12,
+    cornerRounding: 0.18,
+    surfaceCover: 0.34,
+    surfaceDepth: 1,
+    vegetationDensity: 0.12,
+    edgeRoughness: 0.22,
+    pocketDensity: 0.16,
+    crackDensity: 0.08,
+  },
+  natural: {
+    baseCellSize: 3,
+    organicSmoothingPasses: 0,
+    shapeWarp: 0.32,
+    cornerRounding: 0.56,
+    surfaceCover: 0.64,
+    surfaceDepth: 2,
+    vegetationDensity: 0.38,
+    edgeRoughness: 0.38,
+    pocketDensity: 0.3,
+    crackDensity: 0.2,
+  },
+  wild: {
+    baseCellSize: 2,
+    organicSmoothingPasses: 2,
+    shapeWarp: 0.78,
+    cornerRounding: 0.84,
+    surfaceCover: 0.82,
+    surfaceDepth: 3,
+    vegetationDensity: 0.68,
+    edgeRoughness: 0.58,
+    pocketDensity: 0.48,
+    crackDensity: 0.34,
+  },
+};
+const PROFILE_GENERATION_PRESETS: Record<BiomeId, Partial<GenerationParams>> = {
+  earthen: {
+    ...CAVE_STYLE_PRESETS.natural,
+    noiseThreshold: 0.54,
+  },
+  fungal: {
+    baseCellSize: 2,
+    organicSmoothingPasses: 2,
+    shapeWarp: 0.66,
+    cornerRounding: 0.76,
+    surfaceCover: 0.86,
+    surfaceDepth: 3,
+    vegetationDensity: 0.78,
+    edgeRoughness: 0.48,
+    pocketDensity: 0.48,
+    crackDensity: 0.22,
+    noiseThreshold: 0.52,
+  },
+  frozen: {
+    baseCellSize: 3,
+    organicSmoothingPasses: 1,
+    shapeWarp: 0.3,
+    cornerRounding: 0.62,
+    surfaceCover: 0.58,
+    surfaceDepth: 2,
+    vegetationDensity: 0.22,
+    edgeRoughness: 0.32,
+    pocketDensity: 0.28,
+    crackDensity: 0.28,
+    noiseThreshold: 0.56,
+  },
+  flooded: {
+    baseCellSize: 2,
+    organicSmoothingPasses: 2,
+    shapeWarp: 0.72,
+    cornerRounding: 0.82,
+    surfaceCover: 0.78,
+    surfaceDepth: 3,
+    vegetationDensity: 0.58,
+    edgeRoughness: 0.42,
+    pocketDensity: 0.56,
+    crackDensity: 0.16,
+    noiseThreshold: 0.5,
+  },
+  timber: {
+    baseCellSize: 3,
+    organicSmoothingPasses: 1,
+    shapeWarp: 0.46,
+    cornerRounding: 0.58,
+    surfaceCover: 0.72,
+    surfaceDepth: 2,
+    vegetationDensity: 0.62,
+    edgeRoughness: 0.42,
+    pocketDensity: 0.34,
+    crackDensity: 0.18,
+    noiseThreshold: 0.54,
+  },
+  crystal: {
+    baseCellSize: 3,
+    organicSmoothingPasses: 0,
+    shapeWarp: 0.24,
+    cornerRounding: 0.52,
+    surfaceCover: 0.5,
+    surfaceDepth: 2,
+    vegetationDensity: 0.18,
+    edgeRoughness: 0.3,
+    pocketDensity: 0.28,
+    crackDensity: 0.5,
+    noiseThreshold: 0.56,
+  },
+  scorched: {
+    baseCellSize: 2,
+    organicSmoothingPasses: 1,
+    shapeWarp: 0.58,
+    cornerRounding: 0.64,
+    surfaceCover: 0.26,
+    surfaceDepth: 1,
+    vegetationDensity: 0.04,
+    edgeRoughness: 0.62,
+    pocketDensity: 0.36,
+    crackDensity: 0.46,
+    noiseThreshold: 0.55,
+  },
+  volcanic: {
+    baseCellSize: 2,
+    organicSmoothingPasses: 1,
+    shapeWarp: 0.7,
+    cornerRounding: 0.7,
+    surfaceCover: 0.2,
+    surfaceDepth: 1,
+    vegetationDensity: 0,
+    edgeRoughness: 0.72,
+    pocketDensity: 0.44,
+    crackDensity: 0.62,
+    noiseThreshold: 0.57,
+  },
+  gilded: {
+    baseCellSize: 3,
+    organicSmoothingPasses: 0,
+    shapeWarp: 0.28,
+    cornerRounding: 0.44,
+    surfaceCover: 0.36,
+    surfaceDepth: 1,
+    vegetationDensity: 0.08,
+    edgeRoughness: 0.28,
+    pocketDensity: 0.22,
+    crackDensity: 0.26,
+    noiseThreshold: 0.53,
+  },
+};
 
 export class VirtualWorldPanel {
   private readonly canvas: HTMLCanvasElement;
@@ -123,6 +294,7 @@ export class VirtualWorldPanel {
 
   private renderControls(): void {
     const def = this.currentDef();
+    const style = generationStyle(def);
     const controls = this.must<HTMLElement>('#vw-controls');
     controls.innerHTML = `
       <section class="vw-section">
@@ -150,15 +322,32 @@ export class VirtualWorldPanel {
         <label class="vw-check"><input id="vw-cost" type="checkbox"> Cost heatmap</label>
       </section>
       <section class="vw-section">
-        <div class="vw-title">Generation</div>
-        ${this.sliderHtml('halo', 'halo', def.generation.halo, 0, 64, 1)}
-        ${this.sliderHtml('smooth', 'smooth', def.generation.smoothingPasses, 0, 3, 1)}
-        ${this.sliderHtml('edge-roughness', 'edge roughness', def.generation.edgeRoughness, 0, 1, 0.01)}
-        ${this.sliderHtml('pocket-density', 'pockets', def.generation.pocketDensity, 0, 1, 0.01)}
-        ${this.sliderHtml('crack-density', 'cracks', def.generation.crackDensity, 0, 1, 0.01)}
-        ${this.sliderHtml('noise-scale', 'noise scale', def.generation.noiseScale, 0.008, 0.08, 0.001)}
-        ${this.sliderHtml('noise-threshold', 'threshold', def.generation.noiseThreshold, 0.38, 0.72, 0.005)}
-        ${this.sliderHtml('border-seal', 'border seal', def.generation.borderSeal, 0, 8, 1)}
+        <div class="vw-title-row"><div class="vw-title">Generation</div><button id="vw-reset-generation" type="button">RESET</button></div>
+        <div class="vw-segment" role="group" aria-label="Cave style">
+          ${this.styleButtonHtml('structured', 'Structured', style)}
+          ${this.styleButtonHtml('natural', 'Natural', style)}
+          ${this.styleButtonHtml('wild', 'Wild', style)}
+          ${this.styleButtonHtml('custom', 'Custom', style)}
+        </div>
+        ${this.sliderHtml('shape-warp', 'organic warp', def.generation.shapeWarp, 0, 1, 0.01)}
+        ${this.sliderHtml('corner-rounding', 'rounded edges', def.generation.cornerRounding, 0, 1, 0.01)}
+        ${this.sliderHtml('organic-smooth', 'soften', def.generation.organicSmoothingPasses, 0, 4, 1)}
+        ${this.sliderHtml('edge-roughness', 'rough walls', def.generation.edgeRoughness, 0, 1, 0.01)}
+        ${this.sliderHtml('pocket-density', 'side pockets', def.generation.pocketDensity, 0, 1, 0.01)}
+        ${this.sliderHtml('crack-density', 'fissures', def.generation.crackDensity, 0, 1, 0.01)}
+        <div class="vw-subtitle">Surface</div>
+        ${this.sliderHtml('surface-cover', 'surface cover', def.generation.surfaceCover, 0, 1, 0.01)}
+        ${this.sliderHtml('surface-depth', 'cap depth', def.generation.surfaceDepth, 0, 6, 1)}
+        ${this.sliderHtml('vegetation-density', 'vegetation', def.generation.vegetationDensity, 0, 1, 0.01)}
+        <details class="vw-advanced">
+          <summary>Advanced</summary>
+          ${this.sliderHtml('base-cell-size', 'cell grain', def.generation.baseCellSize, 1, 4, 1)}
+          ${this.sliderHtml('smooth', 'cell smooth', def.generation.smoothingPasses, 0, 3, 1)}
+          ${this.sliderHtml('noise-scale', 'noise scale', def.generation.noiseScale, 0.008, 0.08, 0.001)}
+          ${this.sliderHtml('noise-threshold', 'density', def.generation.noiseThreshold, 0.38, 0.72, 0.005)}
+          ${this.sliderHtml('halo', 'halo', def.generation.halo, 0, 64, 1)}
+          ${this.sliderHtml('border-seal', 'border seal', def.generation.borderSeal, 0, 8, 1)}
+        </details>
       </section>
       <section class="vw-section">
         <div class="vw-title">Actions</div>
@@ -168,7 +357,7 @@ export class VirtualWorldPanel {
           <button id="vw-cancel" type="button" title="Cancel is only available while a window is generating"${this.status === 'generating' ? '' : ' disabled'}>CANCEL</button>
           <button id="vw-clear" type="button">CLEAR CACHE</button>
           <button id="vw-validate" type="button">VALIDATE</button>
-          <button id="vw-materialize" type="button" title="Materialize is not available yet — disabled until fixed-world crop mapping is implemented" disabled>MATERIALIZE</button>
+          <button id="vw-play-window" type="button" title="Play a disposable fixed-size test crop centered on this map view">PLAY WINDOW</button>
         </div>
       </section>`;
     this.must<HTMLSelectElement>('#vw-profile').value = this.selectedProfile;
@@ -195,6 +384,11 @@ export class VirtualWorldPanel {
     </div>`;
   }
 
+  private styleButtonHtml(id: CaveStylePresetId, label: string, active: CaveStylePresetId): string {
+    const preset = id === 'custom' ? '' : ` data-vw-style="${id}"`;
+    return `<button type="button" class="${id === active ? 'active' : ''}" data-vw-style-button="${id}"${preset} aria-pressed="${id === active ? 'true' : 'false'}">${label}</button>`;
+  }
+
   private wire(): void {
     this.must<HTMLButtonElement>('#vw-close').addEventListener('click', () => this.hooks.onClose());
     const stage = this.must<HTMLElement>('#vw-stage');
@@ -210,6 +404,9 @@ export class VirtualWorldPanel {
     this.must<HTMLSelectElement>('#vw-profile').addEventListener('change', (event) => {
       this.cancel();
       this.selectedProfile = (event.currentTarget as HTMLSelectElement).value;
+      this.status = 'idle';
+      this.statusText = profileStatusText(this.selectedProfile);
+      this.lastAutoCenter = '';
       this.renderControls();
       this.requestDraw();
       if (this.autoFill) void this.generateWindow();
@@ -255,6 +452,17 @@ export class VirtualWorldPanel {
       this.showCost = (event.currentTarget as HTMLInputElement).checked;
       this.requestDraw();
     });
+    for (const button of this.host.querySelectorAll<HTMLButtonElement>('[data-vw-style]')) {
+      button.addEventListener('click', () => {
+        const preset = button.dataset.vwStyle as Exclude<CaveStylePresetId, 'custom'>;
+        this.mutateDef((def) => applyGenerationPreset(def, preset));
+        this.renderControls();
+      });
+    }
+    this.must<HTMLButtonElement>('#vw-reset-generation').addEventListener('click', () => {
+      this.mutateDef((def) => resetProfileGeneration(def, this.selectedProfile));
+      this.renderControls();
+    });
     this.must<HTMLButtonElement>('#vw-generate').addEventListener('click', () => void this.generateWindow());
     this.must<HTMLButtonElement>('#vw-frame').addEventListener('click', () => this.frameCachedChunks());
     this.must<HTMLButtonElement>('#vw-cancel').addEventListener('click', () => this.cancel());
@@ -268,6 +476,7 @@ export class VirtualWorldPanel {
       this.requestDraw();
     });
     this.must<HTMLButtonElement>('#vw-validate').addEventListener('click', () => this.validateCachedWindow());
+    this.must<HTMLButtonElement>('#vw-play-window').addEventListener('click', () => this.playWindow());
     for (const input of this.host.querySelectorAll<HTMLInputElement>('[data-vw-range], [data-vw-number]')) {
       input.addEventListener(input.type === 'range' ? 'input' : 'change', () => this.applySlider(input));
     }
@@ -276,7 +485,14 @@ export class VirtualWorldPanel {
   private syncSliderValues(def: VirtualWorldDef): void {
     const values: Record<string, number> = {
       halo: def.generation.halo,
+      'base-cell-size': def.generation.baseCellSize,
       smooth: def.generation.smoothingPasses,
+      'organic-smooth': def.generation.organicSmoothingPasses,
+      'shape-warp': def.generation.shapeWarp,
+      'corner-rounding': def.generation.cornerRounding,
+      'surface-cover': def.generation.surfaceCover,
+      'surface-depth': def.generation.surfaceDepth,
+      'vegetation-density': def.generation.vegetationDensity,
       'edge-roughness': def.generation.edgeRoughness,
       'pocket-density': def.generation.pocketDensity,
       'crack-density': def.generation.crackDensity,
@@ -301,7 +517,14 @@ export class VirtualWorldPanel {
     if (!Number.isFinite(next)) return;
     this.mutateDef((def) => {
       if (id === 'halo') def.generation.halo = Math.round(next);
+      else if (id === 'base-cell-size') def.generation.baseCellSize = Math.round(next);
       else if (id === 'smooth') def.generation.smoothingPasses = Math.round(next);
+      else if (id === 'organic-smooth') def.generation.organicSmoothingPasses = Math.round(next);
+      else if (id === 'shape-warp') def.generation.shapeWarp = next;
+      else if (id === 'corner-rounding') def.generation.cornerRounding = next;
+      else if (id === 'surface-cover') def.generation.surfaceCover = next;
+      else if (id === 'surface-depth') def.generation.surfaceDepth = Math.round(next);
+      else if (id === 'vegetation-density') def.generation.vegetationDensity = next;
       else if (id === 'edge-roughness') def.generation.edgeRoughness = next;
       else if (id === 'pocket-density') def.generation.pocketDensity = next;
       else if (id === 'crack-density') def.generation.crackDensity = next;
@@ -310,6 +533,16 @@ export class VirtualWorldPanel {
       else if (id === 'border-seal') def.generation.borderSeal = Math.round(next);
     });
     this.syncSliderValues(this.currentDef());
+    this.syncStyleButtons(this.currentDef());
+  }
+
+  private syncStyleButtons(def: VirtualWorldDef): void {
+    const style = generationStyle(def);
+    for (const button of this.host.querySelectorAll<HTMLButtonElement>('[data-vw-style-button]')) {
+      const active = button.dataset.vwStyleButton === style;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
   }
 
   private mutateDef(mutator: (def: VirtualWorldDef) => void): void {
@@ -436,6 +669,16 @@ export class VirtualWorldPanel {
       this.statusText = missingPreview === 0 ? `Validated ${active.length} cached preview chunks` : `${missingPreview} chunks missing preview buffers`;
     }
     this.renderControls();
+  }
+
+  private playWindow(): void {
+    this.cancel();
+    const def = structuredClone(this.currentDef());
+    const center = { x: Math.floor(this.camX), y: Math.floor(this.camY) };
+    this.status = 'ready';
+    this.statusText = `Launching play window at ${center.x},${center.y}`;
+    this.renderControls();
+    this.hooks.onPlayWindow(def, center, this.radius);
   }
 
   private beginDrag(event: PointerEvent): void {
@@ -629,6 +872,7 @@ export class VirtualWorldPanel {
   private renderInspector(): void {
     const inspector = this.host.querySelector<HTMLElement>('#vw-inspector');
     if (!inspector) return;
+    const profile = profileInfo(this.selectedProfile);
     const hover = this.hoverWorld ? this.chunkAt(this.hoverWorld.x, this.hoverWorld.y) : null;
     const mem = this.previewBytes();
     inspector.innerHTML = `
@@ -636,6 +880,8 @@ export class VirtualWorldPanel {
         <div class="vw-title">Status</div>
         <div class="vw-stat"><span>state</span><b class="vw-${this.status}">${this.status.toUpperCase()}</b></div>
         <div class="vw-message">${escapeHtml(this.statusText)}</div>
+        <div class="vw-stat"><span>profile</span><b>${escapeHtml(profile.label)}</b></div>
+        <div class="vw-stat"><span>biome</span><b>${escapeHtml(profile.biome)}</b></div>
         <div class="vw-stat"><span>cache</span><b>${this.activeChunks().length} chunks</b></div>
         <div class="vw-stat"><span>memory</span><b>${formatBytes(mem)}</b></div>
         <div class="vw-stat"><span>zoom</span><b>${this.zoom.toFixed(2)}x</b></div>
@@ -663,7 +909,7 @@ export class VirtualWorldPanel {
       </section>
       <section class="vw-section">
         <div class="vw-title">Next</div>
-        <div class="vw-message">Materialize and Play From Here are disabled until fixed-world crop mapping is implemented.</div>
+        <div class="vw-message">PLAY WINDOW launches a disposable fixed-size crop around the current map center using these generation settings.</div>
       </section>`;
   }
 
@@ -694,10 +940,16 @@ export class VirtualWorldPanel {
 
   private currentDef(): VirtualWorldDef {
     const existing = this.defs.get(this.selectedProfile);
-    if (existing) return existing;
+    if (existing) {
+      normalizeGeneration(existing);
+      return existing;
+    }
     const def = createDefaultVirtualWorldDef(this.profileSeed(this.selectedProfile));
     def.id = `virtual-${this.selectedProfile}`;
     def.name = this.selectedProfile === 'global' ? 'Global Virtual World' : `${LEVELS[this.selectedProfile]?.name ?? this.selectedProfile} Virtual World`;
+    const level = LEVELS[this.selectedProfile];
+    if (level) applyVirtualLevelProfile(def, level);
+    normalizeGeneration(def);
     this.defs.set(this.selectedProfile, def);
     return def;
   }
@@ -805,6 +1057,49 @@ export class VirtualWorldPanel {
   }
 }
 
+function normalizeGeneration(def: VirtualWorldDef): void {
+  const generation = def.generation as GenerationParams & Partial<Record<keyof GenerationParams, number>>;
+  for (const [key, fallback] of Object.entries(GENERATION_DEFAULTS) as Array<[keyof GenerationParams, number]>) {
+    if (!Number.isFinite(generation[key])) generation[key] = fallback;
+  }
+}
+
+function applyGenerationPreset(def: VirtualWorldDef, preset: Exclude<CaveStylePresetId, 'custom'>): void {
+  Object.assign(def.generation, CAVE_STYLE_PRESETS[preset]);
+}
+
+function applyVirtualLevelProfile(def: VirtualWorldDef, level: LevelDef): void {
+  const biome = level.biome as VirtualBiomeId;
+  def.name = `${level.name} Virtual World`;
+  def.map.cells.fill(biomeIndexFromId(biome));
+  resetProfileGeneration(def, level.id);
+}
+
+function resetProfileGeneration(def: VirtualWorldDef, profile: VirtualWorldProfileId): void {
+  Object.assign(def.generation, generationDefaultsForProfile(profile));
+}
+
+function generationDefaultsForProfile(profile: VirtualWorldProfileId): GenerationParams {
+  const level = LEVELS[profile];
+  return {
+    ...GENERATION_DEFAULTS,
+    ...(level ? PROFILE_GENERATION_PRESETS[level.biome] : {}),
+  };
+}
+
+function generationStyle(def: VirtualWorldDef): CaveStylePresetId {
+  for (const preset of ['structured', 'natural', 'wild'] as const) {
+    if (matchesGenerationPreset(def.generation, CAVE_STYLE_PRESETS[preset])) return preset;
+  }
+  return 'custom';
+}
+
+function matchesGenerationPreset(generation: GenerationParams, preset: Partial<GenerationParams>): boolean {
+  return (Object.entries(preset) as Array<[keyof GenerationParams, number]>).every(
+    ([key, value]) => Math.abs((generation[key] ?? Number.NaN) - value) < 0.0001,
+  );
+}
+
 function levelEntries(): LevelDef[] {
   return Object.values(LEVELS).sort((a, b) => {
     if (a.branch !== b.branch) return a.branch ? 1 : -1;
@@ -816,10 +1111,29 @@ function profileLabel(level: LevelDef): string {
   return `${level.branch ? 'BR' : `D${level.depth}`} ${level.name}`;
 }
 
+function profileInfo(profile: VirtualWorldProfileId): { label: string; biome: string } {
+  const level = LEVELS[profile];
+  if (!level) return { label: 'Global prototype', biome: 'mixed prototype' };
+  return { label: profileLabel(level), biome: BIOMES[level.biome].name };
+}
+
+function profileStatusText(profile: VirtualWorldProfileId): string {
+  const level = LEVELS[profile];
+  if (!level) return 'Global prototype profile';
+  return `${level.name} profile uses ${BIOMES[level.biome].name}`;
+}
+
 function biomeColor(biome: string): string {
+  if (biome === 'earthen') return '#f7c076';
   if (biome === 'fungal') return '#86efac';
   if (biome === 'frozen') return '#93c5fd';
-  return '#f7c076';
+  if (biome === 'flooded') return '#67e8f9';
+  if (biome === 'timber') return '#a3e635';
+  if (biome === 'crystal') return '#c4b5fd';
+  if (biome === 'scorched') return '#fb923c';
+  if (biome === 'volcanic') return '#f97316';
+  if (biome === 'gilded') return '#facc15';
+  return '#b7c9dc';
 }
 
 function formatBytes(bytes: number): string {

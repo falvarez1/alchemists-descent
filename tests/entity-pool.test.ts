@@ -41,6 +41,15 @@ describe('EntityPool', () => {
     expect(pool.size).toBe(0);
   });
 
+  it('rejects create factories that return an already-active entity', () => {
+    const pool = new EntityPool<Thing>();
+    const a = { name: 'a' };
+    pool.add(a);
+
+    expect(() => pool.create(() => a)).toThrow(/fresh entity/);
+    expect(pool.list).toEqual([a]);
+  });
+
   it('treats adding the same object twice as idempotent', () => {
     const pool = new EntityPool<Thing>();
     const a = { name: 'a' };

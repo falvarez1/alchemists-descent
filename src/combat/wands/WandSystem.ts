@@ -1,5 +1,6 @@
 import type {
   CardId,
+  CastActionExecutionContext,
   Ctx,
   Projectile,
   WandFrame,
@@ -223,13 +224,21 @@ export class WandSystem implements WandsApi {
    * fire() calls this with the wand tip + player aim; the Projectiles.ts
    * trigger-payload consumer calls it with the impact point.
    */
-  castActionAt(ctx: Ctx, actionIn: CastAction, x: number, y: number, angle: number): void {
+  castActionAt(
+    ctx: Ctx,
+    actionIn: CastAction,
+    x: number,
+    y: number,
+    angle: number,
+    options: CastActionExecutionContext = { origin: 'wand' },
+  ): void {
     const frame = this.wands[this._active].frame;
     // Power Surge boon: +25% on every cast's damage multiplier.
     const action: CastAction = ctx.player.perks.might
       ? { ...actionIn, dmgMul: Math.min(4, actionIn.dmgMul * 1.25) }
       : actionIn;
     const jitter = (): number => angle + (Math.random() * 2 - 1) * (frame.spread + action.spreadAdd);
+    const targetPoint = (): { x: number; y: number } => options.target ?? ctx.input.mouse;
     const sp = ctx.params.spells;
     ctx.telemetry.count('card.cast.' + action.card);
 
@@ -257,9 +266,13 @@ export class WandSystem implements WandsApi {
       const casts = Math.min(2, Math.max(1, Math.floor(action.dmgMul)));
       for (let n = 0; n < casts; n++) ctx.lightning.cast(x, y, jitter());
     } else if (action.card === 'flame') {
-      // Stream card: each cast feeds a 4-frame burst sprayed from the live
-      // wand tip in update() (triggered payloads feed the same burst — v1).
-      this.flameBurst = Math.min(FLAME_BURST_CAP, this.flameBurst + FLAME_BURST_FRAMES);
+      if (options.origin === 'trigger') {
+        this.sprayFlameAt(ctx, x, y, angle, action);
+      } else {
+        // Stream card: each cast feeds a 4-frame burst sprayed from the live
+        // wand tip in update().
+        this.flameBurst = Math.min(FLAME_BURST_CAP, this.flameBurst + FLAME_BURST_FRAMES);
+      }
       ctx.audio.flame();
     } else if (action.card === 'dig') {
       const a = jitter();
@@ -283,9 +296,11 @@ export class WandSystem implements WandsApi {
     } else if (action.card === 'blackhole') {
       // One charging singularity at a time (original rule) — extra casts fizzle.
       if (ctx.input.activeChargingBlackHole) return;
-      const p: Projectile = { x, y, vx: 0, vy: 0, type: 'blackhole', vortexRad: sp.blackhole.baseRadius!, life: 240, age: 0, charging: true, hostile: false };
+      const charging = options.origin !== 'trigger';
+      const p: Projectile = { x, y, vx: 0, vy: 0, type: 'blackhole', vortexRad: sp.blackhole.baseRadius!, life: 240, age: 0, charging, hostile: false };
       ctx.projectiles.push(p);
-      ctx.input.activeChargingBlackHole = p;
+      if (charging) ctx.input.activeChargingBlackHole = p;
+      this.markProjectile(ctx, p, action);
     } else if (action.card === 'vitriol') {
       // Stream card: a spray of REAL acid particles that pool where they land.
       const count = 4 + Math.max(0, Math.round(action.dmgMul) - 1) * 2;
@@ -331,8 +346,9 @@ export class WandSystem implements WandsApi {
       ctx.audio.tone(120, 40, 0.4, 'sawtooth', 0.18);
     } else if (action.card === 'conjure') {
       // Raise a disc of real stone at the cursor, clamped to casting range 130.
-      let tx = ctx.input.mouse.x,
-        ty = ctx.input.mouse.y;
+      const target = targetPoint();
+      let tx = target.x,
+        ty = target.y;
       const dx = tx - x,
         dy = ty - y;
       const dist = Math.hypot(dx, dy);
@@ -365,8 +381,9 @@ export class WandSystem implements WandsApi {
       // The Gilded Vault's prize: transmute LIQUID into load-bearing glass
       // at the cursor (the conjure grammar, liquid-only — air stays air, so
       // it can cap and bridge but never wall off dry space).
-      let tx = ctx.input.mouse.x,
-        ty = ctx.input.mouse.y;
+      const target = targetPoint();
+      let tx = target.x,
+        ty = target.y;
       const dx = tx - x,
         dy = ty - y;
       const dist = Math.hypot(dx, dy);
@@ -412,6 +429,17 @@ export class WandSystem implements WandsApi {
         );
       }
       ctx.audio.flame();
+    }
+  }
+
+  private sprayFlameAt(ctx: Ctx, x: number, y: number, angle: number, action: CastAction): void {
+    const flame = ctx.params.spells.flame;
+    const count = FLAME_BURST_FRAMES * 4 * Math.max(1, Math.round(action.dmgMul));
+    for (let j = 0; j < count; j++) {
+      const a = angle + (Math.random() - 0.5) * ((flame.spread ?? 0.28) + action.spreadAdd);
+      const spd = (3.2 + Math.random() * 2.2) * action.speedMul;
+      ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd, Cell.Fire, fireColor(),
+        14 + Math.floor(Math.random() * 12), { grav: -0.015, glow: 2.2 });
     }
   }
 
@@ -582,6 +610,14 @@ export class WandSystem implements WandsApi {
     }
     this.infuserGranted = data.infuserGranted;
     this.ctx.events.emit('wandChanged');
+  }
+
+  markDepthGrantsThrough(depth: number): void {
+    const maxDepth = Math.max(1, Math.floor(depth));
+    for (let d = 2; d <= maxDepth; d++) this.depthsGranted.add(d);
+    if (this.collection.includes('infuser') || this.wands.some((wand) => wand.cards.includes('infuser'))) {
+      this.infuserGranted = true;
+    }
   }
 
   resetLoadout(): void {

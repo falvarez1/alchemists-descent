@@ -36,7 +36,9 @@ import type {
   RunStatus,
   RunTestKitConfig,
   RuneVault,
+  FlaskBottleState,
   WandLoadoutSave,
+  WandRuntimeSnapshot,
   Waystone,
 } from '@/core/types';
 import { createPlayer, grantFullReviewKit } from '@/entities/Player';
@@ -51,7 +53,7 @@ import { COLOR_FN, emberColor, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
 import { EXTRAS } from '@/world/biomeExtras';
 import { extractRegionGraph } from '@/world/regions';
-import { createDefaultVirtualWorldDef, generateVirtualWindow, materializeChunks } from '@/world/virtual';
+import { createDefaultVirtualWorldDef, generateVirtualWindow, materializeChunks, type VirtualWorldDef } from '@/world/virtual';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
 const CURTAIN_HOLD_MS = 450;
@@ -153,7 +155,17 @@ interface ExpeditionSave {
     perks: Record<string, true>;
   };
   loadout: WandLoadoutSave;
+  /** Full wand runtime, including grant guards/cooldowns. Absent in v1 legacy saves. */
+  wands?: WandRuntimeSnapshot;
+  /** Material flask belt inventory. Absent in v1 legacy saves. */
+  flasks?: FlaskInventorySave;
   levels: SavedLevelBlob[];
+}
+
+interface FlaskInventorySave {
+  activeIndex: number;
+  slots: Array<{ material: number | null; count: number; capacity?: number }>;
+  bottle?: FlaskBottleState;
 }
 
 function nonNegativeInt(value: number | undefined, fallback: number): number {
@@ -261,6 +273,8 @@ export class Levels implements LevelsApi {
   private lastEnemiesEmit = -1;
   /** Levels already topped up with the review potion belt this session. */
   private reviewKitSeeded = new Set<string>();
+  /** Resume restores the hero position after enterLevel; suppress that transient checkpoint. */
+  private checkpointSaveSuppression = 0;
 
   constructor(private ctx: Ctx) {}
 
@@ -489,7 +503,12 @@ export class Levels implements LevelsApi {
         if (LEVELS[destId]) {
           ctx.audio.portalWhoosh();
           this.leaveLevel();
-          this.enterLevel(ctx, destId);
+          this.checkpointSaveSuppression++;
+          try {
+            this.enterLevel(ctx, destId);
+          } finally {
+            this.checkpointSaveSuppression--;
+          }
           const dest = this.current;
           if (dest?.vaultArch) {
             player.x = dest.vaultArch.backX;
@@ -500,6 +519,7 @@ export class Levels implements LevelsApi {
             player.fy = 0;
             ctx.camera.snapTo(player.x, player.y);
           }
+          this.saveExpedition(ctx);
           return;
         }
       }
@@ -568,6 +588,18 @@ export class Levels implements LevelsApi {
     }
     ctx.events.emit('levelChanged', { depth: 1, name: def.name });
     ctx.events.emit('objectiveChanged', { text: 'YOUR LEVEL — YOUR RULES' });
+  }
+
+  playVirtualWindow(ctx: Ctx, def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void {
+    this.enterPlayMode(ctx);
+    this.resetRunState(ctx, { clearSave: false });
+    ctx.state.worldSeed = def.seed >>> 0;
+    this.expeditionSeed = ctx.state.worldSeed;
+    ctx.state.playtestSource = 'test';
+    this.applyLoadoutPreset(ctx, 'advanced');
+    const runtime = this.createVirtualWindowRuntime(ctx, def, center, previewRadius);
+    this.enterAdHocRuntime(ctx, runtime, 'EXPLORE THE TUNED CHUNKED WORLD');
+    ctx.events.emit('toast', { text: 'TEST RUN: BUILDER VIRTUAL WORLD' });
   }
 
   exitCustomPlaytest(ctx: Ctx): void {
@@ -639,6 +671,8 @@ export class Levels implements LevelsApi {
         perks: { ...ctx.player.perks } as Record<string, true>,
       },
       loadout: ctx.wands.snapshotLoadout(),
+      wands: ctx.wands.snapshotRuntimeState(),
+      flasks: this.snapshotFlasks(ctx),
       levels: blobs,
     };
     try {
@@ -664,6 +698,61 @@ export class Levels implements LevelsApi {
     }
     this.savedBlobs.clear();
     this.blobCache.clear();
+  }
+
+  private snapshotFlasks(ctx: Ctx): FlaskInventorySave {
+    const slots = ctx.flask.slots.map((slot) => this.sanitizeFlaskSaveSlot(slot));
+    const bottle = this.sanitizeFlaskBottle(ctx.flask.bottleView());
+    return {
+      activeIndex: ctx.flask.activeIndex,
+      slots,
+      ...(bottle ? { bottle } : {}),
+    };
+  }
+
+  private restoreFlasks(ctx: Ctx, save: FlaskInventorySave | undefined): void {
+    ctx.flask.clearSlots();
+    if (!save || !Array.isArray(save.slots)) return;
+    save.slots.forEach((slot, index) => {
+      if (!slot) return;
+      const sanitized = this.sanitizeFlaskSaveSlot(slot);
+      ctx.flask.setSlot(index, sanitized.material, sanitized.count);
+    });
+    if (!ctx.flask.selectSlot(save.activeIndex)) ctx.flask.selectSlot(0);
+    ctx.flask.restoreBottle(this.sanitizeFlaskBottle(save.bottle ?? null));
+  }
+
+  private sanitizeFlaskSaveSlot(slot: unknown): {
+    material: number | null;
+    count: number;
+    capacity?: number;
+  } {
+    if (!slot || typeof slot !== 'object') return { material: null, count: 0, capacity: 600 };
+    const source = slot as { material?: unknown; count?: unknown; capacity?: unknown };
+    const rawCapacity = Number(source.capacity ?? 600);
+    const capacity = Number.isFinite(rawCapacity) ? Math.max(0, Math.floor(rawCapacity)) : 600;
+    if (!this.validFlaskMaterial(source.material)) return { material: null, count: 0, capacity };
+    const rawCount = Number(source.count);
+    const count = Number.isFinite(rawCount) ? Math.min(capacity, Math.max(0, Math.floor(rawCount))) : 0;
+    return count > 0 ? { material: source.material, count, capacity } : { material: null, count: 0, capacity };
+  }
+
+  private sanitizeFlaskBottle(bottle: unknown): FlaskBottleState | null {
+    if (!bottle || typeof bottle !== 'object') return null;
+    const source = bottle as { x?: unknown; y?: unknown; vx?: unknown; vy?: unknown; material?: unknown; count?: unknown };
+    if (!this.validFlaskMaterial(source.material)) return null;
+    const count = Math.max(0, Math.min(600, Math.floor(Number(source.count))));
+    if (!Number.isFinite(count) || count <= 0) return null;
+    const x = Number(source.x);
+    const y = Number(source.y);
+    const vx = Number(source.vx);
+    const vy = Number(source.vy);
+    if (![x, y, vx, vy].every(Number.isFinite)) return null;
+    return { x, y, vx, vy, material: source.material, count };
+  }
+
+  private validFlaskMaterial(material: unknown): material is number {
+    return Number.isInteger(material) && COLOR_FN[material as number] !== undefined;
   }
 
   debugEnterLevel(ctx: Ctx, id: string): boolean {
@@ -775,13 +864,25 @@ export class Levels implements LevelsApi {
         if (!flask) return;
         ctx.flask.setSlot(index, flask.material, flask.count);
       });
-      const preferred = kit.activeFlaskIndex ?? kit.flasks.findIndex((flask) => flask && flask.material !== null && flask.count > 0);
-      ctx.flask.selectSlot(preferred);
+      const firstFilled = kit.flasks.findIndex((flask) => flask && flask.material !== null && flask.count > 0);
+      this.selectFlaskIndex(ctx, kit.activeFlaskIndex, firstFilled >= 0 ? firstFilled : 0);
     } else if (kit.flask) {
       ctx.flask.clearSlots();
-      ctx.flask.setSlot(0, kit.flask.material, kit.flask.count);
-      ctx.flask.selectSlot(0);
+      const target = this.validFlaskIndex(ctx, kit.activeFlaskIndex) ? kit.activeFlaskIndex : 0;
+      ctx.flask.setSlot(target, kit.flask.material, kit.flask.count);
+      ctx.flask.selectSlot(target);
+    } else if (kit.activeFlaskIndex !== undefined) {
+      this.selectFlaskIndex(ctx, kit.activeFlaskIndex, ctx.flask.activeIndex);
     }
+  }
+
+  private selectFlaskIndex(ctx: Ctx, preferred: number | undefined, fallback: number): void {
+    const index = preferred !== undefined && Number.isInteger(preferred) ? preferred : fallback;
+    if (!ctx.flask.selectSlot(index)) ctx.flask.selectSlot(0);
+  }
+
+  private validFlaskIndex(ctx: Ctx, index: number | undefined): index is number {
+    return index !== undefined && Number.isInteger(index) && index >= 0 && index < ctx.flask.slots.length;
   }
 
   private hasCard(ctx: Ctx, card: CardId): boolean {
@@ -792,10 +893,48 @@ export class Levels implements LevelsApi {
   private createVirtualTestRuntime(ctx: Ctx, seed: number): LevelRuntime {
     const def = createDefaultVirtualWorldDef(seed);
     const chunks = generateVirtualWindow(def, -3, -1, 3, 4);
+    return this.createVirtualRuntimeFromChunks(ctx, def, chunks, {
+      x: def.chunkSize / 2,
+      y: def.chunkSize * 1.5,
+    }, 'virtual-test', 'CHUNKED VIRTUAL WORLD');
+  }
+
+  private createVirtualWindowRuntime(
+    ctx: Ctx,
+    def: VirtualWorldDef,
+    center: { x: number; y: number },
+    previewRadius: number,
+  ): LevelRuntime {
+    const centerCx = Math.floor(center.x / def.chunkSize);
+    const centerCy = Math.floor(center.y / def.chunkSize);
+    const radiusX = Math.max(Math.floor(previewRadius), Math.ceil((WIDTH / def.chunkSize - 1) / 2));
+    const radiusY = Math.max(Math.floor(previewRadius), Math.ceil((HEIGHT / def.chunkSize - 1) / 2));
+    const chunks = generateVirtualWindow(
+      def,
+      centerCx - radiusX,
+      centerCy - radiusY,
+      centerCx + radiusX,
+      centerCy + radiusY,
+    );
+    return this.createVirtualRuntimeFromChunks(ctx, def, chunks, center, 'virtual-builder-test', 'BUILDER VIRTUAL WORLD');
+  }
+
+  private createVirtualRuntimeFromChunks(
+    ctx: Ctx,
+    def: VirtualWorldDef,
+    chunks: ReturnType<typeof generateVirtualWindow>,
+    center: { x: number; y: number },
+    id: string,
+    name: string,
+  ): LevelRuntime {
     const materialized = materializeChunks(chunks);
     const world = new World();
-    const srcX = Math.max(0, Math.floor((materialized.world.width - WIDTH) / 2));
-    const srcY = Math.max(0, Math.floor((materialized.world.height - HEIGHT) / 2));
+    const maxSrcX = Math.max(0, materialized.world.width - WIDTH);
+    const maxSrcY = Math.max(0, materialized.world.height - HEIGHT);
+    const wantedSrcX = Math.floor(center.x - materialized.originX - WIDTH / 2);
+    const wantedSrcY = Math.floor(center.y - materialized.originY - HEIGHT / 2);
+    const srcX = Math.max(0, Math.min(maxSrcX, wantedSrcX));
+    const srcY = Math.max(0, Math.min(maxSrcY, wantedSrcY));
     for (let y = 0; y < HEIGHT; y++) {
       const sy = Math.min(materialized.world.height - 1, srcY + y);
       const dstOff = y * WIDTH;
@@ -811,8 +950,8 @@ export class Levels implements LevelsApi {
     this.carveVirtualSpawn(world, spawn.x, spawn.y);
     ctx.worldgen.spawnHint = spawn;
     const runtimeDef: LevelDef = {
-      id: 'virtual-test',
-      name: 'CHUNKED VIRTUAL WORLD',
+      id,
+      name,
       biome: 'earthen',
       depth: 0,
       nextLevelId: null,
@@ -974,6 +1113,8 @@ export class Levels implements LevelsApi {
     if (this.isLegacyReviewSave(save)) return false;
 
     this.expeditionSeed = save.expeditionSeed >>> 0;
+    this.savedBlobs.clear();
+    this.blobCache.clear();
     for (const blob of save.levels) this.savedBlobs.set(blob.id, blob);
 
     ctx.state.score = save.score;
@@ -984,13 +1125,24 @@ export class Levels implements LevelsApi {
     p.maxLevit = save.player.maxLevit;
     p.levit = save.player.levit;
     p.perks = { ...save.player.perks } as typeof p.perks;
-    ctx.wands.loadLoadout(save.loadout);
+    if (save.wands) ctx.wands.restoreRuntimeState(save.wands);
+    else {
+      ctx.wands.loadLoadout(save.loadout);
+      ctx.wands.markDepthGrantsThrough(LEVELS[save.currentId].depth);
+    }
+    this.restoreFlasks(ctx, save.flasks);
 
-    this.enterLevel(ctx, save.currentId);
+    this.checkpointSaveSuppression++;
+    try {
+      this.enterLevel(ctx, save.currentId);
+    } finally {
+      this.checkpointSaveSuppression--;
+    }
     // enterLevel parks the hero at the spawn; the save knows better.
     p.x = save.player.x;
     p.y = save.player.y;
     ctx.camera.snapTo(p.x, p.y);
+    this.saveExpedition(ctx);
     ctx.events.emit('toast', { text: 'EXPEDITION RESUMED' });
     return true;
   }
@@ -1149,6 +1301,7 @@ export class Levels implements LevelsApi {
 
     // Transient combat state never crosses a well
     resetCombatTransients(ctx);
+    ctx.flask.cancelBottle();
 
     // v1: arrival (descending or re-ascending) always places the player at
     // the destination level's spawn chamber — see file header
@@ -1193,7 +1346,7 @@ export class Levels implements LevelsApi {
     }, CURTAIN_HOLD_MS);
 
     // Crossing a threshold is a natural checkpoint.
-    this.saveExpedition(ctx);
+    if (this.checkpointSaveSuppression === 0) this.saveExpedition(ctx);
   }
 
   seedReviewKit(ctx: Ctx): void {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { BIOMES } from '@/config/biomes';
 import { Cell } from '@/sim/CellType';
-import { createDefaultVirtualWorldDef } from '@/world/virtual/defaults';
+import { biomeIndexFromId, createDefaultVirtualWorldDef, VIRTUAL_BIOME_IDS } from '@/world/virtual/defaults';
 import { generateVirtualChunk, generateVirtualWindow } from '@/world/virtual/ChunkGenerator';
 import { validateTileset } from '@/world/virtual/HerringboneTiles';
 import { materializeChunks } from '@/world/virtual/WindowMaterializer';
@@ -15,6 +16,14 @@ function allPlaneHash(chunk: ReturnType<typeof generateVirtualChunk>): string {
     new Uint8Array(chunk.life.buffer),
     chunk.charge,
   ]);
+}
+
+function openCellCount(types: Uint8Array): number {
+  let open = 0;
+  for (let i = 0; i < types.length; i++) {
+    if (types[i] === Cell.Empty) open++;
+  }
+  return open;
 }
 
 describe('virtual world prototype', () => {
@@ -39,9 +48,74 @@ describe('virtual world prototype', () => {
     plain.generation.edgeRoughness = 0;
     plain.generation.pocketDensity = 0;
     plain.generation.crackDensity = 0;
+    plain.generation.shapeWarp = 0;
+    plain.generation.cornerRounding = 0;
+    plain.generation.organicSmoothingPasses = 0;
     const organic = createDefaultVirtualWorldDef(2468);
 
     expect(allPlaneHash(generateVirtualChunk(organic, 0, 0))).not.toBe(allPlaneHash(generateVirtualChunk(plain, 0, 0)));
+  });
+
+  it('has a virtual material palette for every campaign biome', () => {
+    const def = createDefaultVirtualWorldDef(4321);
+
+    expect(new Set(VIRTUAL_BIOME_IDS)).toEqual(new Set(Object.keys(BIOMES)));
+    for (const biome of VIRTUAL_BIOME_IDS) {
+      expect(def.materialProfile.palettes[biome]).toBeTruthy();
+      expect(def.materialProfile.palettes[biome].wall).not.toBe(0);
+    }
+  });
+
+  it('uses the virtual biome map to change generated profile chunks', () => {
+    const earthen = createDefaultVirtualWorldDef(8642);
+    earthen.map.cells.fill(biomeIndexFromId('earthen'));
+    const volcanic = createDefaultVirtualWorldDef(8642);
+    volcanic.map.cells.fill(biomeIndexFromId('volcanic'));
+
+    const a = generateVirtualChunk(earthen, 0, 0);
+    const b = generateVirtualChunk(volcanic, 0, 0);
+
+    expect(a.meta.biome).toBe('earthen');
+    expect(b.meta.biome).toBe('volcanic');
+    expect(allPlaneHash(b)).not.toBe(allPlaneHash(a));
+  });
+
+  it('rounds cave silhouettes without collapsing open space', () => {
+    const blocky = createDefaultVirtualWorldDef(13579);
+    blocky.generation.baseCellSize = 3;
+    blocky.generation.organicSmoothingPasses = 0;
+    blocky.generation.cornerRounding = 0;
+    blocky.generation.shapeWarp = 0.2;
+
+    const rounded = createDefaultVirtualWorldDef(13579);
+    rounded.generation.baseCellSize = 3;
+    rounded.generation.organicSmoothingPasses = 0;
+    rounded.generation.cornerRounding = 1;
+    rounded.generation.shapeWarp = 0.2;
+
+    const a = generateVirtualChunk(blocky, 0, 0);
+    const b = generateVirtualChunk(rounded, 0, 0);
+    const openDelta = Math.abs(openCellCount(a.types) - openCellCount(b.types)) / a.types.length;
+
+    expect(allPlaneHash(b)).not.toBe(allPlaneHash(a));
+    expect(openDelta).toBeLessThan(0.12);
+  });
+
+  it('applies tunable surface dressing to exposed terrain', () => {
+    const bare = createDefaultVirtualWorldDef(97531);
+    bare.generation.surfaceCover = 0;
+    bare.generation.vegetationDensity = 0;
+    const dressed = createDefaultVirtualWorldDef(97531);
+    dressed.generation.surfaceCover = 1;
+    dressed.generation.surfaceDepth = 3;
+    dressed.generation.vegetationDensity = 1;
+
+    const a = generateVirtualChunk(bare, 0, 4);
+    const b = generateVirtualChunk(dressed, 0, 4);
+    const surfaceCells = b.types.filter((type) => type === Cell.Moss || type === Cell.Fungus || type === Cell.Ice).length;
+
+    expect(allPlaneHash(b)).not.toBe(allPlaneHash(a));
+    expect(surfaceCells).toBeGreaterThan(80);
   });
 
   it('handles negative chunk coordinates deterministically', () => {

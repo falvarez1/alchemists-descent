@@ -120,6 +120,8 @@ function makeCtx(): Ctx {
       infuserGranted: false,
     }),
     restoreRuntimeState: () => undefined,
+    markDepthGrantsThrough: () => undefined,
+    castActionAt: () => undefined,
     resetLoadout: () => {
       collection.length = 0;
     },
@@ -244,6 +246,8 @@ function makeCtx(): Ctx {
       },
       update: () => undefined,
       throwFlask: () => undefined,
+      cancelBottle: () => undefined,
+      restoreBottle: () => undefined,
       bottleView: () => null,
     },
     telemetry: {

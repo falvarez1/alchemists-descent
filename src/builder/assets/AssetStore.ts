@@ -374,7 +374,7 @@ export class LocalStorageAssetStore implements AssetStore {
         continue;
       }
       try {
-        if (!parseImportPayload(JSON.parse(entry.text))) preflightErrors.push(`${entry.filename || index}: unsupported asset JSON`);
+        JSON.parse(entry.text);
       } catch {
         preflightErrors.push(`${entry.filename || index}: invalid JSON`);
       }

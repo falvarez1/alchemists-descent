@@ -1,6 +1,7 @@
 import type { World } from '@/sim/World';
 import type { EventBus } from '@/core/events';
 import type { Cell } from '@/sim/CellType';
+import type { VirtualWorldDef } from '@/world/virtual/types';
 
 /* ============================================================
  * Entity data
@@ -575,7 +576,7 @@ export interface RunTestKitConfig {
   maxLevit?: number;
   cards?: CardId[];
   perks?: PerkId[];
-  /** Back-compat single-flask setup; maps to slot 0 when `flasks` is absent. */
+  /** Back-compat single-flask setup; maps to slot 0 unless `activeFlaskIndex` selects another slot. */
   flask?: FlaskSlotConfig;
   /** Noita-like potion inventory setup. Empty/null entries clear those slots. */
   flasks?: Array<FlaskSlotConfig | null | undefined>;
@@ -987,6 +988,15 @@ export interface FlaskState {
   capacity: number;
 }
 
+export interface FlaskBottleState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  material: number | null;
+  count: number;
+}
+
 /**
  * The Material Flask: siphon real cells out of the world, carry them,
  * pour them back, or throw the bottle. Nothing is abstracted — stored
@@ -1005,8 +1015,12 @@ export interface FlaskApi {
   update(ctx: Ctx): void;
   /** Lob the bottle toward the cursor; shatters on impact, releasing the cells. */
   throwFlask(ctx: Ctx): void;
+  /** Cancel any in-flight thrown bottle without changing inventory slots. */
+  cancelBottle(): void;
+  /** Save/load support for an in-flight thrown bottle. */
+  restoreBottle(bottle: FlaskBottleState | null): void;
   /** Read-only visual position for the currently thrown bottle. */
-  bottleView(): { x: number; y: number; vx: number; vy: number; material: number | null; count: number } | null;
+  bottleView(): FlaskBottleState | null;
 }
 
 /** Local gameplay counters (deaths by cause, material usage, ...). */
@@ -1265,6 +1279,26 @@ export type CardId =
 
 export type CardKind = 'projectile' | 'modifier' | 'multicast';
 
+export interface CastAction {
+  card: CardId;
+  speedMul: number;
+  dmgMul: number;
+  /** Extra aim jitter amplitude in radians (added to the frame's spread). */
+  spreadAdd: number;
+  /** Trail the flask's stored material while flying. */
+  infused: boolean;
+  /** Terrain bounces remaining before the projectile detonates. */
+  bounces: number;
+  /** Cast at the impact point (depth-1 trigger payload), or null. */
+  triggered: CastAction[] | null;
+}
+
+export interface CastActionExecutionContext {
+  origin: 'wand' | 'trigger';
+  /** Cursor-target cards use this target instead of the live mouse position. */
+  target?: { x: number; y: number };
+}
+
 export interface CardDef {
   id: CardId;
   name: string;
@@ -1336,6 +1370,10 @@ export interface WandsApi {
   /** Disposable playtest support: capture / restore full wand runtime state. */
   snapshotRuntimeState(): WandRuntimeSnapshot;
   restoreRuntimeState(data: WandRuntimeSnapshot): void;
+  /** Legacy save migration: mark first-visit depth grants already represented by old loadouts. */
+  markDepthGrantsThrough(depth: number): void;
+  /** Execute one compiled action at an arbitrary impact point (trigger payloads, tools). */
+  castActionAt(ctx: Ctx, action: CastAction, x: number, y: number, angle: number, options?: CastActionExecutionContext): void;
   /** Start-run support: restore the launch starter wands/collection in place. */
   resetLoadout(): void;
   /** QA/debug command: upgrade both wands and expose every card. */
@@ -1498,6 +1536,8 @@ export interface PrefabEnemy {
   kind: EnemyKind;
   x: number;
   y: number;
+  /** Authored object id when this came from a Builder document object. */
+  sourceId?: string;
   sleeping?: boolean;
   patrol?: Array<[number, number]>;
 }
@@ -1624,6 +1664,8 @@ export interface LevelsApi {
    * enemies placed in build mode are kept.
    */
   playCurrentWorld(ctx: Ctx): void;
+  /** Builder World Map test run: materialize the tuned virtual world around a global center. */
+  playVirtualWindow(ctx: Ctx, def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void;
   /** Leave a disposable Builder/Sandbox custom runtime so header PLAY resumes the expedition path. */
   exitCustomPlaytest(ctx: Ctx): void;
   /** QA/debug command: stock visible potion pickups in the current level. */

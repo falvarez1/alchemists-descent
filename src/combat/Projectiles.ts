@@ -1,4 +1,3 @@
-import type { CastAction } from '@/combat/wands/compiler';
 import { BOUNCE_COUNTS, INFUSED, TRIGGERED } from '@/combat/wands/projectileMarks';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
@@ -83,57 +82,6 @@ function splashLiquid(
 }
 
 /**
- * Trigger card payload (Wave D): cast one compiled action at an impact point,
- * aimed along the carrier's flight direction. Only the simple payloads are
- * handled — spark/bomb/warp pushes plus a lightning arc; the compiler keeps
- * the exotic cards (dig, flame, blackhole) out of trigger nests.
- */
-function castActionAt(ctx: Ctx, x: number, y: number, angle: number, action: CastAction): void {
-  const spells = ctx.params.spells;
-  if (action.card === 'spark') {
-    ctx.projectiles.push({
-      x,
-      y,
-      vx: Math.cos(angle) * spells.bolt.velocityForce!,
-      vy: Math.sin(angle) * spells.bolt.velocityForce!,
-      type: 'bolt',
-      life: 180,
-      age: 0,
-      charging: false,
-      hostile: false,
-    });
-    ctx.audio.zap();
-  } else if (action.card === 'bomb') {
-    ctx.projectiles.push({
-      x,
-      y,
-      vx: Math.cos(angle) * spells.bomb.velocityForce!,
-      vy: Math.sin(angle) * spells.bomb.velocityForce! - 0.6,
-      type: 'bomb',
-      life: Math.floor(spells.bomb.fuseTicks!),
-      age: 0,
-      charging: false,
-      hostile: false,
-    });
-  } else if (action.card === 'warp') {
-    ctx.projectiles.push({
-      x,
-      y,
-      vx: Math.cos(angle) * spells.warp.velocityForce!,
-      vy: Math.sin(angle) * spells.warp.velocityForce!,
-      type: 'warp',
-      life: 90,
-      age: 0,
-      charging: false,
-      hostile: false,
-    });
-    ctx.audio.zap();
-  } else if (action.card === 'lightning') {
-    ctx.lightning.cast(x, y, angle);
-  }
-}
-
-/**
  * Release a projectile's trigger payload (if any) at its terminal impact.
  * No-op for projectiles the wand system never charged.
  */
@@ -142,7 +90,12 @@ function releaseTriggered(ctx: Ctx, p: Projectile): void {
   if (!actions) return;
   TRIGGERED.delete(p);
   const angle = Math.atan2(p.vy, p.vx);
-  for (const action of actions) castActionAt(ctx, p.x, p.y, angle, action);
+  for (const action of actions) {
+    ctx.wands.castActionAt(ctx, action, p.x, p.y, angle, {
+      origin: 'trigger',
+      target: { x: p.x, y: p.y },
+    });
+  }
 }
 
 // ===================== Projectiles & Black Holes =====================

@@ -264,6 +264,22 @@ export const BUILDER_PANEL_SPECS = [
     handleSelectors: [':scope > .bi-head'],
   },
   {
+    id: 'builder-runtime',
+    title: 'Runtime',
+    category: 'Builder',
+    defaultDock: 'right',
+    defaultSize: 320,
+    minSize: 260,
+    maxSize: 520,
+    closePolicy: 'hide',
+    commandIds: {
+      open: 'builder.runtimePanel',
+      close: 'builder.runtimePanel',
+      focus: 'builder.runtimePanel',
+    },
+    handleSelectors: [':scope > .bi-head'],
+  },
+  {
     id: 'builder-link-graph',
     title: 'Link Graph',
     category: 'Builder',

@@ -1,5 +1,5 @@
 import { clamp } from '@/core/math';
-import { FLASK_SLOT_COUNT, type Ctx, type FlaskApi, type FlaskState } from '@/core/types';
+import { FLASK_SLOT_COUNT, type Ctx, type FlaskApi, type FlaskBottleState, type FlaskState } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, packRGB } from '@/sim/colors';
 
@@ -37,7 +37,7 @@ export class Flask implements FlaskApi {
   private _activeIndex = 0;
 
   /** The thrown bottle in flight, or null (at most one). */
-  private bottle: { x: number; y: number; vx: number; vy: number; material: number | null; count: number } | null = null;
+  private bottle: FlaskBottleState | null = null;
 
   get state(): FlaskState {
     return this._slots[this._activeIndex];
@@ -71,9 +71,18 @@ export class Flask implements FlaskApi {
       slot.count = 0;
     }
     this._activeIndex = 0;
+    this.cancelBottle();
   }
 
-  bottleView(): { x: number; y: number; vx: number; vy: number; material: number | null; count: number } | null {
+  cancelBottle(): void {
+    this.bottle = null;
+  }
+
+  restoreBottle(bottle: FlaskBottleState | null): void {
+    this.bottle = bottle ? { ...bottle, count: Math.max(0, Math.floor(bottle.count)) } : null;
+  }
+
+  bottleView(): FlaskBottleState | null {
     return this.bottle ? { ...this.bottle } : null;
   }
 

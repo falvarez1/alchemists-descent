@@ -244,6 +244,49 @@ check('door slab is real metal', rt.doorCell === 13, `got ${rt.doorCell}`);
 check('authored light compiled', rt.lights === 1, `got ${rt.lights}`);
 check('waystone compiled', rt.waystones === 1, `got ${rt.waystones}`);
 
+/* Runtime panel selection must bypass the cached snapshot. */
+await page.evaluate(() => document.getElementById('bp-runtime-btn')?.click());
+await page.waitForFunction(
+  () => document.querySelectorAll('#builder-runtime [data-runtime-id]').length >= 2,
+  { timeout: 10000 },
+);
+const runtimeSelection = await page.evaluate(() => {
+  const panel = document.getElementById('builder-runtime');
+  if (!panel) return { ok: false, reason: 'missing panel' };
+  const rows = [...panel.querySelectorAll('[data-runtime-id]')];
+  const first = rows[0];
+  const second = rows.find((row) => row.getAttribute('data-runtime-id') !== first?.getAttribute('data-runtime-id'));
+  if (!(first instanceof HTMLElement) || !(second instanceof HTMLElement)) {
+    return { ok: false, reason: 'missing distinct rows', rows: rows.length };
+  }
+  const firstId = first.getAttribute('data-runtime-id');
+  const secondId = second.getAttribute('data-runtime-id');
+  first.click();
+  const afterFirst = {
+    selected: panel.querySelector('.brt-row.selected')?.getAttribute('data-runtime-id') ?? null,
+    detail: panel.querySelector('.brt-detail .bo-row-sub')?.textContent?.trim() ?? '',
+  };
+  const freshSecond = panel.querySelector(`[data-runtime-id="${CSS.escape(secondId ?? '')}"]`);
+  if (!(freshSecond instanceof HTMLElement)) {
+    return { ok: false, reason: 'second row missing after first render', firstId, secondId, afterFirst };
+  }
+  freshSecond.click();
+  const afterSecond = {
+    selected: panel.querySelector('.brt-row.selected')?.getAttribute('data-runtime-id') ?? null,
+    detail: panel.querySelector('.brt-detail .bo-row-sub')?.textContent?.trim() ?? '',
+  };
+  return { ok: true, firstId, secondId, afterFirst, afterSecond };
+});
+check(
+  'runtime panel row clicks refresh selected row and detail immediately',
+  runtimeSelection.ok &&
+    runtimeSelection.afterFirst.selected === runtimeSelection.firstId &&
+    runtimeSelection.afterFirst.detail === runtimeSelection.firstId &&
+    runtimeSelection.afterSecond.selected === runtimeSelection.secondId &&
+    runtimeSelection.afterSecond.detail === runtimeSelection.secondId,
+  JSON.stringify(runtimeSelection),
+);
+
 /* the AND gate, live: stand on the plate, the gate retracts */
 await page.evaluate(() => {
   const ctx = window.__game.ctx;

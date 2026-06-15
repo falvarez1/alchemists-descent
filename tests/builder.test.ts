@@ -75,7 +75,13 @@ function previewCtx(world = new World()): Ctx {
     world,
     player: { x: -999, y: -999 },
     enemies: [],
-    enemyCtl: { defs: {} },
+    enemyCtl: {
+      defs: {
+        slime: { hp: 48, halfW: 5, h: 8, bounty: 30, gore: Cell.Slime, goreFn: () => 0 },
+        bat: { hp: 16, halfW: 3, h: 5, bounty: 15, gore: Cell.Blood, goreFn: () => 0 },
+      },
+    },
+    camera: { renderX: 0, renderY: 0, zoom: 1 },
     state: { mode: 'build', frameCount: 0 },
     particles: { spawn: () => undefined, burst: () => undefined },
     events: { emit: () => undefined },
@@ -445,6 +451,48 @@ describe('builder validation', () => {
     expect(preview.status().changedCells).toBeGreaterThan(0);
   });
 
+  it('does not cap Live Preview solely because captured terrain is dense', () => {
+    const source = new World();
+    source.types.fill(Cell.Stone);
+    const doc = createEmptyDocument('preview-dense-terrain', 'earthen');
+    doc.world = { rle: rleEncode(source.types), life: [], charge: [] };
+
+    const preview = new PreviewRuntime(previewCtx());
+    const status = preview.reset(doc);
+
+    expect(status.nonEmptyCells).toBe(source.types.length);
+    expect(status.changedCells).toBe(0);
+    expect(status.ready).toBe(true);
+    expect(status.capped).toBe(false);
+    expect(status.message).toBe('Live Preview running from disposable runtime');
+  });
+
+  it('surfaces Builder Live Preview rows through a detached runtime snapshot', () => {
+    const ctx = previewCtx();
+    const doc = createEmptyDocument('preview-runtime-snapshot', 'earthen');
+    doc.world = { rle: rleEncode(new World().types), life: [], charge: [] };
+    const enemy = makeObj('enemy', 140, 158, { kind: 'bat' });
+    const plate = makeObj('plate', 160, 159, { w: 5 });
+    const door = makeObj('door', 190, 130, { w: 3, h: 14 });
+    doc.objects.push(makeObj('spawn', 120, 158), enemy, plate, door, makeObj('pickup', 170, 158, { kind: 'key' }));
+    doc.links.push({ id: freshId('link'), fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
+
+    const preview = new PreviewRuntime(ctx);
+    preview.reset(doc);
+    const snapshot = preview.snapshot();
+    const enemyRow = snapshot.rows.find((row) => row.group === 'enemies');
+
+    expect(snapshot.source.id).toBe('builder-live-preview');
+    expect(snapshot.counts.find((count) => count.group === 'enemies')).toMatchObject({ total: 1, sampled: 1 });
+    expect(snapshot.counts.find((count) => count.group === 'mechanisms')).toMatchObject({ total: 2, sampled: 2 });
+    expect(snapshot.counts.find((count) => count.group === 'pickups')).toMatchObject({ total: 1, sampled: 1 });
+    expect(enemyRow?.id).toBe(`preview-enemy:${enemy.id}`);
+    expect(enemyRow?.bounds).toEqual({ x0: 137, y0: 154, x1: 144, y1: 159 });
+
+    const selected = preview.snapshot({ selectedId: enemyRow?.id });
+    expect(selected.selectedRow?.id).toBe(enemyRow?.id);
+  });
+
   it('previews linked mechanism state in a disposable world', () => {
     const live = new World();
     live.types[live.idx(10, 10)] = Cell.Metal;
@@ -589,6 +637,7 @@ describe('builder validation', () => {
     expect(status.ready).toBe(false);
     expect(status.capped).toBe(true);
     expect(status.runeVaults).toBe(128);
+    expect(status.message).toBe('Preview capped - reduce rune links');
   });
 
   it('keeps validation row indices stable across severity groups', () => {

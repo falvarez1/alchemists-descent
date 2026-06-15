@@ -33,6 +33,31 @@ The existing WebGL2 GPU compose work remains the fallback and parity reference.
 The WebGPU work must be additive, flag-gated, and reversible until every phase
 beats its benchmark and visual-quality gate.
 
+## Current Three.js WebGPU API Constraints
+
+Verified against the current Three.js documentation during the 2026-06-15 plan
+review:
+
+- `WebGPURenderer` is the new renderer entry point, but it can target different
+  backends and will fall back to WebGL2 when WebGPU is unavailable. Backend
+  probes therefore must verify the actual backend, not just the requested
+  renderer class.
+- The existing `EffectComposer` addon is WebGLRenderer-only. WebGPU post work
+  must use the WebGPU/TSL render pipeline path instead of trying to reuse the
+  current WebGL pass chain.
+- `ShaderMaterial` is WebGLRenderer-only. The GLSL terrain compose shader cannot
+  be carried into the WebGPU backend as-is; it must be ported to TSL and/or
+  WGSL-backed TSL.
+- For Three r183+ terminology, prefer `RenderPipeline` over the deprecated
+  `PostProcessing` wrapper when documenting or implementing WebGPU post work.
+- TSL compute code must use node assignments (`assign`, property assignment,
+  `toVar`, or `select`) rather than plain JavaScript variable reassignment
+  inside shader control flow.
+- WebGPU limits and optional features are device-specific. Any plan that needs
+  large storage buffers, many storage bindings, f16, timestamp queries, or
+  float32 texture behavior must query adapter limits/features and degrade
+  gracefully before requesting them.
+
 ## Non-Negotiable Benchmark Rule
 
 Every task in this plan must produce a positive quantitative or qualitative
@@ -134,6 +159,10 @@ Tasks:
 - Add worst-case scenes for many emitters, many visual-only particles, many
   projectiles, heavy authored lights, and current chaos benchmark coverage.
 - Add screenshot/diff capture helpers that work for WebGL and WebGPU canvases.
+- Add backend-capability logging to the ledger: requested backend, actual
+  backend, adapter limits needed by the phase, optional features available,
+  timestamp-query availability, browser, GPU/driver string when exposed, and
+  whether WebGPU fell back to WebGL2.
 
 Expected result:
 
@@ -153,24 +182,36 @@ Rollback rule:
 - If the harness adds runtime overhead when not recording, revert the hook and
   record the failed attempt.
 
-## Phase 1 - Three/WebGPU Upgrade Spike
+## Phase 1 - Three/WebGPU API Pin Audit and Spike
 
-Purpose: move from `three ^0.160.0` to a version where `WebGPURenderer`, TSL,
-compute, and WebGPU post-processing APIs are current enough to build on.
+Purpose: prove the repo's pinned Three r184 WebGPU, TSL, compute, and WebGPU
+post-processing APIs are current enough to build on before production renderer
+work starts. The repo already pins `three` `0.184.0` and `@types/three`
+`0.184.1`; do not churn dependencies unless a focused spike proves a required
+API is missing or broken in the pinned version.
 
 Tasks:
 
-- Upgrade `three` and `@types/three` together.
-- Resolve compile/runtime API changes without changing game visuals.
+- Audit `three` and `@types/three` pins against the APIs used by the spike.
+- Upgrade `three` and `@types/three` together only if the spike proves the
+  pinned r184 APIs cannot satisfy a required WebGPU/TSL path.
+- Resolve any compile/runtime API changes without changing game visuals.
 - Verify imports for `three/webgpu`, `three/tsl`, WebGPU capability helpers,
   post-processing replacement APIs, storage buffers, and WGSL function support.
+- Spike the current RenderPipeline/TSL post-processing API with a throwaway
+  non-shipping node chain so later phases do not discover API drift while
+  porting production visuals.
+- Spike a tiny TSL compute kernel that writes a storage buffer and a tiny
+  WGSL-backed helper used from TSL. Record the exact syntax that works in this
+  repo's pinned Three version.
 - Document any version-specific API choices in this file or a focused migration
   note.
 
 Expected result:
 
 - No feature work yet. The game should look and perform the same on the existing
-  WebGL path after the dependency upgrade.
+  WebGL path after the API pin audit. If an upgrade is required, the upgrade PR
+  must remain behavior-neutral.
 
 Acceptance gate:
 
@@ -202,6 +243,12 @@ Tasks:
   flags for compose, lighting, particles, and post.
 - Add device-loss handling that can recreate GPU resources while preserving the
   CPU game state.
+- Register the `GPUDevice.lost` promise for every WebGPU device. All buffers,
+  textures, bind groups, pipelines, and render targets created from a lost
+  device must be treated as invalid and rebuilt from CPU-owned state.
+- Add a dev/test-only simulated device-loss path using `device.destroy()` where
+  available. The probe should verify recovery without page reload before any
+  WebGPU backend becomes default.
 - Add a backend-selection matrix that proves the actual backend in use. Cover:
   `navigator.gpu` absent, insecure context, no adapter, device init failure,
   explicit `forceWebGL`, WebGPU disabled by user flag, WebGPU lost, and WebGPU
@@ -243,6 +290,8 @@ Tasks:
 - Recreate the current post chain in WebGPU/TSL form: base scene pass,
   tonemapping, bloom equivalent, chromatic aberration, film grain, hurt pulse,
   and any enabled/disabled controls.
+- Implement this through WebGPU `RenderPipeline`/TSL nodes, not the WebGL
+  `EffectComposer` addon.
 - Keep the WebGL renderer as the fallback path.
 
 Expected result:
@@ -291,6 +340,9 @@ Tasks:
   equivalent), Y-flipped view rows, padded windows, row-major CPU arrays,
   alignment, bind groups, texture-vs-storage-buffer choices, endian assumptions,
   and update cadence.
+- Include storage texture/buffer limit checks in the ABI table. If the preferred
+  layout exceeds guaranteed limits on any target class, document the fallback
+  layout before implementation.
 
 Expected result:
 
@@ -329,11 +381,21 @@ Tasks:
   mirroring.
 - Use dirty rectangles/chunks where possible, but prove that dirty tracking
   costs less than simple uploads.
+- Before any dirty-rect, row-span, or chunk upload path becomes default, add an
+  authoritative mutation-invalidation contract. Either:
+  - implement a mutation journal that covers `World.set`, `clearCell`, `swap`,
+    direct typed-array writes, bulk writes, Builder imports/terrain edits,
+    worldgen writes, mechanism writes, particle deposits, and simulation hot
+    loops; or
+  - keep full active-window uploads as the default until that journal exists.
 - Add debug assertions comparing sampled CPU cells to GPU mirror contents via
   occasional non-frame-loop readback.
 - Track dirty upload cost separately from CPU packing cost. Any dirty-rect,
   row-span, or chunk strategy must record touched-cell count, uploaded bytes,
   and CPU bookkeeping time so it can be compared against the simple upload path.
+- Keep the first mirror one-way from CPU to GPU. Debug readback may sample cells
+  outside the frame loop, but gameplay, saves, status checks, brewing,
+  mechanisms, and collisions must continue to read the CPU `World`.
 
 Expected result:
 
@@ -345,7 +407,9 @@ Acceptance gate:
 - `compose` bucket improves or remains flat while enabling later GPU lighting
   work.
 - No frame-loop GPU readback.
-- Random sampled cells match the CPU world in debug probes.
+- Random sampled cells match the CPU world in debug probes, and dirty upload
+  validation includes adversarial changed-region checks rather than relying only
+  on random sampling.
 
 Rollback rule:
 
@@ -367,6 +431,12 @@ Tasks:
   from materials/authored/entity lights, attenuation initialization, directional
   dependency sweeps, wand raycast lighting, flicker/random inputs, optional
   sprite-light bridge, and final field normalization for compose/post.
+- Prefer raw WGSL for the directional sweep kernels if TSL control flow or
+  storage access makes the dependency order hard to express. TSL wrappers are
+  acceptable for binding and composition, but the sweep algorithm must remain
+  readable and testable.
+- Avoid per-frame CPU readback for timing or validation. Timestamp queries are
+  optional; if unavailable, label measurements as CPU submit/wall-clock timing.
 - Preserve authored lights, entity lights, material glow, charge glow, wand
   light behavior, and the current even-frame rebuild cadence unless a measured
   alternative wins.
@@ -540,7 +610,7 @@ Likely implementation surfaces:
 
 | Area | Files |
 |---|---|
-| Dependency upgrade | `package.json`, `package-lock.json` if present |
+| Dependency/API pin audit | `package.json`, `package-lock.json` if present |
 | Backend boundary | `src/render/Renderer.ts`, `src/render/pixels.ts`, new backend files under `src/render/` |
 | WebGPU compose | `src/render/ComposeShader.ts`, new WebGPU compose module, `src/render/FrameComposer.ts` |
 | Post-FX | `src/render/PostFx.ts`, WebGPU render pipeline module, `src/ui/Inspector.ts` |
@@ -553,7 +623,8 @@ Likely implementation surfaces:
 ## Recommended First PR Stack
 
 1. Benchmark ledger and generic feature-flag A/B harness.
-2. Three upgrade spike with no behavior change.
+2. Three r184 API pin audit/spike, with a dependency upgrade only if required
+   and no behavior change.
 3. Renderer backend boundary with WebGL backend unchanged.
 4. WebGPU presentation shell with nonblank canvas and post chain parity.
 5. WebGPU compose parity against CPU and WebGL2 GPU compose.

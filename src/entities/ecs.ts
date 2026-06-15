@@ -49,12 +49,19 @@ export class EntityPool<T extends object> {
     return id;
   }
 
+  /**
+   * Create and insert a fresh entity. The factory receives the id that will be
+   * assigned; returning an object already active in this pool is a programmer
+   * error because external component side effects may already reference it.
+   */
   create(factory: (id: EntityId) => T): T | null {
     if (this.full) return null;
     const id = allocateEntityId();
     const entity = factory(id);
     const existing = this.ids.get(entity);
-    if (existing !== undefined && this.slots.has(existing)) return entity;
+    if (existing !== undefined && this.slots.has(existing)) {
+      throw new Error('EntityPool.create factory must return a fresh entity');
+    }
     this.list.push(entity);
     this.ids.set(entity, id);
     this.slots.set(id, this.list.length - 1);

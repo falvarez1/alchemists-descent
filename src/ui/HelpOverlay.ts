@@ -1,4 +1,5 @@
 import type { Ctx } from '@/core/types';
+import { isRunLauncherOpen } from '@/ui/RunLauncher';
 
 /**
  * The Alchemist's Handbook (H): a paused, readable summary of every system —
@@ -11,10 +12,19 @@ export class HelpOverlay {
 
   constructor(private ctx: Ctx) {
     window.addEventListener('keydown', (e) => {
+      if (e.defaultPrevented) return;
+      if (isRunLauncherOpen() && !this.visible) return;
       if ((document.getElementById('builder-intent-modal') || document.querySelector('.app-dialog-root')) && !this.visible) return;
       if (document.body.classList.contains('builder-open') && !this.visible) return;
-      if (e.code === 'KeyH' && !e.repeat && !this.ctx.sanctum.isOpen) this.toggle();
-      else if (e.code === 'Escape' && this.visible) this.toggle();
+      if (e.code === 'KeyH' && !e.repeat && !this.ctx.sanctum.isOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggle();
+      } else if (e.code === 'Escape' && this.visible) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggle();
+      }
     });
   }
 

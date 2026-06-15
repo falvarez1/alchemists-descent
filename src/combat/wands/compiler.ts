@@ -1,5 +1,6 @@
-import type { CardId } from '@/core/types';
+import type { CardId, CastAction } from '@/core/types';
 import { CARD_DEFS, MULTICAST_SIZE } from './cards';
+export type { CastAction } from '@/core/types';
 
 /**
  * The deterministic cast compiler (DESIGN.md pillar 6, "restrained").
@@ -24,20 +25,6 @@ import { CARD_DEFS, MULTICAST_SIZE } from './cards';
  *
  * Pure function of the slot list — unit-tested in tests/wands.test.ts.
  */
-
-export interface CastAction {
-  card: CardId;
-  speedMul: number;
-  dmgMul: number;
-  /** Extra aim jitter amplitude in radians (added to the frame's spread). */
-  spreadAdd: number;
-  /** Trail the flask's stored material while flying. */
-  infused: boolean;
-  /** Terrain bounces remaining before the projectile detonates. */
-  bounces: number;
-  /** Cast at the impact point (depth-1 trigger payload), or null. */
-  triggered: CastAction[] | null;
-}
 
 export interface CastGroup {
   actions: CastAction[];

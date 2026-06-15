@@ -48,6 +48,7 @@ async function resetLauncherStorageAndReload() {
     localStorage.removeItem('noita-expedition');
     localStorage.removeItem('noita-run-launcher-prefs-v2');
     localStorage.removeItem('noita-run-launcher-prefs-v3');
+    sessionStorage.removeItem('ad-mode'); // dev mode-persistence: reset to a clean Sandbox boot
   });
   await page.reload({ waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForFunction(() => window.__game?.ctx?.levels?.runStatus, { timeout: 20000 });
@@ -91,6 +92,56 @@ const testState = await page.evaluate((visibleSource) => {
 }, String(visible));
 check('Test Run reveals world and kit setup', !testState.normalSummary && testState.testFields && testState.kit && !testState.worldDisabled, JSON.stringify(testState));
 check('Test Run start text is clear', testState.startText === 'START TEST', JSON.stringify(testState));
+
+await page.keyboard.press('KeyH');
+await page.waitForTimeout(120);
+const helpLeakState = await page.evaluate(() => ({
+  launcherOpen: document.getElementById('run-launcher')?.classList.contains('visible') ?? false,
+  helpOpen: document.getElementById('help-overlay')?.classList.contains('visible') ?? false,
+  paused: window.__game.ctx.state.paused,
+}));
+check('Run Launcher blocks global Help hotkey while open', helpLeakState.launcherOpen && !helpLeakState.helpOpen && !helpLeakState.paused, JSON.stringify(helpLeakState));
+
+await page.keyboard.press('Backquote');
+await page.waitForTimeout(120);
+const consoleLeakState = await page.evaluate(() => ({
+  launcherOpen: document.getElementById('run-launcher')?.classList.contains('visible') ?? false,
+  consoleOpen: document.getElementById('dev-console')?.classList.contains('open') ?? false,
+}));
+check('Run Launcher blocks dev console hotkey while open', consoleLeakState.launcherOpen && !consoleLeakState.consoleOpen, JSON.stringify(consoleLeakState));
+
+await page.keyboard.press('Escape');
+await page.waitForTimeout(120);
+const escapeState = await page.evaluate(() => ({
+  launcherOpen: document.getElementById('run-launcher')?.classList.contains('visible') ?? false,
+  paused: window.__game.ctx.state.paused,
+  pauseOpen: document.getElementById('pause-overlay')?.classList.contains('visible') ?? false,
+}));
+check('Run Launcher Escape closes only the launcher', !escapeState.launcherOpen && !escapeState.paused && !escapeState.pauseOpen, JSON.stringify(escapeState));
+
+await page.keyboard.press('Backquote');
+await page.waitForTimeout(120);
+await page.click('#mode-play-btn');
+await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
+await page.keyboard.press('Escape');
+await page.waitForTimeout(120);
+const consoleAlreadyOpenEscapeState = await page.evaluate(() => ({
+  launcherOpen: document.getElementById('run-launcher')?.classList.contains('visible') ?? false,
+  consoleOpen: document.getElementById('dev-console')?.classList.contains('open') ?? false,
+  paused: window.__game.ctx.state.paused,
+}));
+check(
+  'Run Launcher Escape wins even when console was already open',
+  !consoleAlreadyOpenEscapeState.launcherOpen && consoleAlreadyOpenEscapeState.consoleOpen && !consoleAlreadyOpenEscapeState.paused,
+  JSON.stringify(consoleAlreadyOpenEscapeState),
+);
+await page.keyboard.press('Backquote');
+await page.waitForTimeout(120);
+
+await page.click('#mode-play-btn');
+await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
+await page.click('#run-launcher [data-mode="test"]');
+await page.waitForTimeout(100);
 
 await page.click('#run-launcher [data-kit-tab="cards"]');
 await page.fill('#run-launcher [data-field="card-search"]', 'bomb');
@@ -182,6 +233,8 @@ check(
 );
 
 await resetLauncherStorageAndReload();
+await page.click('#mode-build-btn');
+await page.waitForFunction(() => window.__game.ctx.state.mode === 'build', { timeout: 5000 });
 await page.click('#immersive-play-btn');
 await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
 await page.click('#run-launcher .run-launcher-start');
@@ -199,6 +252,28 @@ const fullscreenState = await page.evaluate(() => ({
   buttonLit: document.getElementById('immersive-play-btn')?.classList.contains('lit') ?? false,
 }));
 check('Fullscreen Play resumes after launcher start', fullscreenState.fullscreenId === 'canvas-holder' && fullscreenState.buttonLit, JSON.stringify(fullscreenState));
+
+const storagePage = await browser.newPage({ viewport: { width: 1360, height: 860 } });
+storagePage.on('pageerror', (err) => pageErrors.push(`storage-page: ${String(err)}`));
+await storagePage.addInitScript(() => {
+  const original = Storage.prototype.getItem;
+  Storage.prototype.getItem = function getItem(key) {
+    if (String(key).startsWith('noita-run-launcher-prefs')) {
+      throw new DOMException('Launcher prefs blocked for verification', 'SecurityError');
+    }
+    return original.call(this, key);
+  };
+});
+await storagePage.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+await storagePage.waitForFunction(() => window.__game?.ctx?.levels?.runStatus, { timeout: 20000 });
+await storagePage.click('#mode-play-btn');
+await storagePage.waitForSelector('#run-launcher.visible', { timeout: 5000 });
+const storageFailureState = await storagePage.evaluate(() => ({
+  launcherOpen: document.getElementById('run-launcher')?.classList.contains('visible') ?? false,
+  mode: window.__game.ctx.state.mode,
+}));
+check('Run Launcher tolerates storage read failures', storageFailureState.launcherOpen && storageFailureState.mode === 'build', JSON.stringify(storageFailureState));
+await storagePage.close();
 
 check('no native browser dialogs', nativeDialogs.length === 0, nativeDialogs.join(' | '));
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));

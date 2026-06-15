@@ -103,6 +103,10 @@ export class InputManager {
       const source = event instanceof CustomEvent ? event.detail?.source : null;
       if (source === 'fullscreen') void this.enterImmersivePlay();
     });
+    window.addEventListener('run-launcher-state', (event) => {
+      const open = event instanceof CustomEvent ? event.detail?.open : null;
+      if (open === true) this.clearHeldInput();
+    });
 
     // Header mode buttons drive game state directly.
     document.getElementById('mode-build-btn')?.addEventListener('click', (e) => {
@@ -275,7 +279,9 @@ export class InputManager {
   private shouldIgnoreKeyboard(e: KeyboardEvent): boolean {
     return (
       e.isComposing ||
-      Boolean(document.querySelector('.app-dialog-root, .editor-command-menu.open, .editor-popover.interactive')) ||
+      Boolean(document.querySelector(
+        '.app-dialog-root, .editor-command-menu.open, .editor-popover.interactive, #run-launcher.visible, #dev-console.open',
+      )) ||
       isEditableTarget(e.target)
     );
   }

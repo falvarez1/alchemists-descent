@@ -1,4 +1,5 @@
 import type { Ctx } from '@/core/types';
+import { isRunLauncherOpen } from '@/ui/RunLauncher';
 
 /**
  * ESC pause. Owns its own pause claim so it never fights the Sanctum, the
@@ -11,8 +12,10 @@ export class PauseOverlay {
   constructor(private ctx: Ctx) {
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'Escape') return;
+      if (e.defaultPrevented) return;
       // Other modals own ESC (or ignore it) while they are up.
       if (document.querySelector('.app-dialog-root')) return;
+      if (isRunLauncherOpen()) return;
       if (this.ctx.sanctum.isOpen) return;
       if (document.getElementById('help-overlay')?.classList.contains('visible')) return;
       if (document.getElementById('victory-overlay')?.classList.contains('visible')) return;

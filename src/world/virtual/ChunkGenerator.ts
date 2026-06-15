@@ -54,7 +54,10 @@ export function generateVirtualChunk(def: VirtualWorldDef, cx: number, cy: numbe
   roughenCaveEdges(def, scratch, biomeAt);
   carveOrganicPockets(def, scratch);
   carveOrganicCracks(def, scratch);
+  relaxOrganicSilhouette(def, scratch, biomeAt);
   smoothTerrain(def, scratch);
+  roundCaveCorners(def, scratch, biomeAt);
+  dressSurfaceTerrain(def, scratch, biomeAt);
   sealOuterBorder(def, scratch);
 
   const types = new Uint8Array(size * size);
@@ -122,15 +125,13 @@ function fillBaseTerrain(
   scratch: Scratch,
   biomeAt: (x: number, y: number) => VirtualBiomeId,
 ): void {
-  const block = 4;
+  const block = generationInt(def.generation.baseCellSize, 2, 1, 4);
   for (let y = 0; y < scratch.size; y += block) {
     const wy = scratch.originY + y;
     for (let x = 0; x < scratch.size; x += block) {
       const wx = scratch.originX + x;
-      const gx = Math.floor(wx * def.generation.noiseScale);
-      const gy = Math.floor(wy * def.generation.noiseScale);
-      const n = coarseNoise(def.seed, gx, gy);
-      const solid = n <= def.generation.noiseThreshold;
+      const n = terrainNoise(def, wx, wy);
+      const solid = n <= generationNumber(def.generation.noiseThreshold, 0.54);
       const biome = biomeAt(wx, wy);
       const color = solid ? terrainColor(def, biome, wx, wy, n) : EMPTY_COLOR;
       for (let oy = 0; oy < block && y + oy < scratch.size; oy++) {
@@ -146,7 +147,7 @@ function fillBaseTerrain(
 }
 
 function smoothTerrain(def: VirtualWorldDef, scratch: Scratch): void {
-  const passes = Math.max(0, Math.floor(def.generation.smoothingPasses));
+  const passes = generationInt(def.generation.smoothingPasses, 1, 0, 4);
   if (passes === 0) return;
   let cur: Uint8Array = scratch.types;
   let next: Uint8Array = new Uint8Array(cur.length);
@@ -192,7 +193,7 @@ function roughenCaveEdges(
   scratch: Scratch,
   biomeAt: (x: number, y: number) => VirtualBiomeId,
 ): void {
-  const roughness = clamp01(def.generation.edgeRoughness);
+  const roughness = clamp01(generationNumber(def.generation.edgeRoughness, 0.38));
   if (roughness <= 0) return;
   const before = scratch.types;
   const after = new Uint8Array(before);
@@ -229,10 +230,10 @@ function paintOrganicCell(types: Uint8Array, size: number, x: number, y: number,
 }
 
 function carveOrganicPockets(def: VirtualWorldDef, scratch: Scratch): void {
-  const density = clamp01(def.generation.pocketDensity);
+  const density = clamp01(generationNumber(def.generation.pocketDensity, 0.3));
   if (density <= 0) return;
   const spacing = 38;
-  const maxRadius = 18 + Math.floor(clamp01(def.generation.edgeRoughness) * 10);
+  const maxRadius = 18 + Math.floor(clamp01(generationNumber(def.generation.edgeRoughness, 0.38)) * 10);
   const x0 = Math.floor((scratch.originX - maxRadius) / spacing);
   const y0 = Math.floor((scratch.originY - maxRadius) / spacing);
   const x1 = Math.ceil((scratch.originX + scratch.size + maxRadius) / spacing);
@@ -247,13 +248,13 @@ function carveOrganicPockets(def: VirtualWorldDef, scratch: Scratch): void {
       if (!hasSurfaceNear(scratch, lx, ly, maxRadius + 8)) continue;
       const rx = 5 + unitHash2i(def.seed ^ 0xc2b2ae35, gx, gy) * maxRadius;
       const ry = 4 + unitHash2i(def.seed ^ 0x27d4eb2f, gx, gy) * Math.max(7, maxRadius * 0.72);
-      carveEllipse(scratch, wx, wy, rx, ry);
+      carveOrganicEllipse(def, scratch, wx, wy, rx, ry, 0.9);
     }
   }
 }
 
 function carveOrganicCracks(def: VirtualWorldDef, scratch: Scratch): void {
-  const density = clamp01(def.generation.crackDensity);
+  const density = clamp01(generationNumber(def.generation.crackDensity, 0.2));
   if (density <= 0) return;
   const spacing = 84;
   const maxLength = 70;
@@ -280,7 +281,14 @@ function carveOrganicCracks(def: VirtualWorldDef, scratch: Scratch): void {
       for (let s = 0; s <= steps; s++) {
         const t = s / steps;
         const wobble = signedUnitHash2i(def.seed ^ 0xa24baed5, gx * 4096 + s, gy) * 11 * Math.sin(t * Math.PI);
-        carveDisc(scratch, startX + dx * length * t + px * wobble, startY + dy * length * t + py * wobble, radius);
+        carveOrganicDisc(
+          def,
+          scratch,
+          startX + dx * length * t + px * wobble,
+          startY + dy * length * t + py * wobble,
+          radius,
+          0.7,
+        );
       }
     }
   }
@@ -298,12 +306,14 @@ function carveInstruction(
       carveSpline(def, scratch, resolved, instruction, instructionIndex);
       break;
     case 'chamber':
-      carveEllipse(
+      carveOrganicEllipse(
+        def,
         scratch,
         resolved.x0 + instruction.x * def.tileset.tileSize,
         resolved.y0 + instruction.y * def.tileset.tileSize,
         instruction.rx,
         instruction.ry,
+        1,
       );
       break;
     case 'shaft':
@@ -339,7 +349,7 @@ function carveSpline(
       signedUnitHash2i(def.seed ^ instructionIndex ^ 0x5bd1e995, resolved.tx * 997 + s, resolved.ty) *
         instruction.jitter *
         0.58;
-    carveDisc(scratch, wx + px * wobble, wy + py * wobble, instruction.radius);
+    carveOrganicDisc(def, scratch, wx + px * wobble, wy + py * wobble, instruction.radius, 0.75);
   }
 }
 
@@ -359,7 +369,7 @@ function carveShaft(
       signedUnitHash2i(def.seed ^ instructionIndex ^ 0x27d4eb2f, resolved.tx, resolved.ty * 4096 + y) *
         instruction.roughness *
         12;
-    carveDisc(scratch, baseX + wobble, wy, instruction.radius);
+    carveOrganicDisc(def, scratch, baseX + wobble, wy, instruction.radius, 0.65);
   }
 }
 
@@ -378,18 +388,229 @@ function edgePoint(anchor: TileAnchor, size: number, tile: HerringboneTileDef): 
   }
 }
 
-function carveDisc(scratch: Scratch, wx: number, wy: number, radius: number): void {
+function relaxOrganicSilhouette(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  const strength = clamp01(generationNumber(def.generation.shapeWarp, 0.48));
+  const passes = generationInt(def.generation.organicSmoothingPasses, 1, 0, 4);
+  if (passes === 0 || strength <= 0) return;
+
+  let cur: Uint8Array = scratch.types;
+  let next: Uint8Array = new Uint8Array(cur.length);
+  for (let pass = 0; pass < passes; pass++) {
+    next.set(cur);
+    for (let y = 1; y < scratch.size - 1; y++) {
+      const wy = scratch.originY + y;
+      for (let x = 1; x < scratch.size - 1; x++) {
+        const i = x + y * scratch.size;
+        const solid = countSolidNeighbors(cur, scratch.size, x, y);
+        if (cur[i] !== Cell.Empty) {
+          if (solid <= 2) {
+            next[i] = Cell.Empty;
+          } else if (solid <= 4) {
+            const field = organicNoise(def.seed ^ 0x7f4a7c15 ^ pass, scratch.originX + x, wy);
+            if (
+              (solid === 3 && field > 0.78 - strength * 0.24) ||
+              (solid === 4 && field > 0.94 - strength * 0.16)
+            ) {
+              next[i] = Cell.Empty;
+            }
+          }
+        } else if (solid >= 6) {
+          next[i] = Cell.Wall;
+        } else if (solid >= 4) {
+          const field = organicNoise(def.seed ^ 0x7f4a7c15 ^ pass, scratch.originX + x, wy);
+          if ((solid === 5 && field < 0.1 + strength * 0.22) || (solid === 4 && field < strength * 0.07)) {
+            next[i] = Cell.Wall;
+          }
+        }
+      }
+    }
+    const tmp = cur;
+    cur = next;
+    next = tmp;
+  }
+  if (cur !== scratch.types) scratch.types.set(cur);
+  recolorTerrain(def, scratch, biomeAt);
+}
+
+function roundCaveCorners(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  const strength = clamp01(generationNumber(def.generation.cornerRounding, 0.62));
+  if (strength <= 0) return;
+
+  const passes = strength >= 0.7 ? 2 : 1;
+  let cur: Uint8Array = scratch.types;
+  let next: Uint8Array = new Uint8Array(cur.length);
+  for (let pass = 0; pass < passes; pass++) {
+    next.set(cur);
+    for (let y = 1; y < scratch.size - 1; y++) {
+      const wy = scratch.originY + y;
+      for (let x = 1; x < scratch.size - 1; x++) {
+        const i = x + y * scratch.size;
+        const up = cur[i - scratch.size] !== Cell.Empty;
+        const down = cur[i + scratch.size] !== Cell.Empty;
+        const left = cur[i - 1] !== Cell.Empty;
+        const right = cur[i + 1] !== Cell.Empty;
+        const upLeft = cur[i - scratch.size - 1] !== Cell.Empty;
+        const upRight = cur[i - scratch.size + 1] !== Cell.Empty;
+        const downLeft = cur[i + scratch.size - 1] !== Cell.Empty;
+        const downRight = cur[i + scratch.size + 1] !== Cell.Empty;
+
+        if (cur[i] !== Cell.Empty) {
+          const convex =
+            (!up && !left && !upLeft ? 1 : 0) +
+            (!up && !right && !upRight ? 1 : 0) +
+            (!down && !left && !downLeft ? 1 : 0) +
+            (!down && !right && !downRight ? 1 : 0);
+          const openCardinals = (!up ? 1 : 0) + (!down ? 1 : 0) + (!left ? 1 : 0) + (!right ? 1 : 0);
+          if (convex > 0 && openCardinals >= 2) {
+            const field = organicNoise(def.seed ^ 0x2f7c6d31 ^ pass, scratch.originX + x, wy);
+            if (field < 0.18 + strength * 0.5 + Math.min(convex, 2) * 0.08) {
+              next[i] = Cell.Empty;
+            }
+          }
+        } else {
+          const concave =
+            (up && left && upLeft ? 1 : 0) +
+            (up && right && upRight ? 1 : 0) +
+            (down && left && downLeft ? 1 : 0) +
+            (down && right && downRight ? 1 : 0);
+          if (concave > 0) {
+            const solid = countSolidNeighbors(cur, scratch.size, x, y);
+            if (solid >= 5) {
+              const field = organicNoise(def.seed ^ 0x2f7c6d31 ^ pass, scratch.originX + x, wy);
+              if (field < 0.08 + strength * 0.34 + Math.min(concave, 2) * 0.05) {
+                next[i] = Cell.Wall;
+              }
+            }
+          }
+        }
+      }
+    }
+    const tmp = cur;
+    cur = next;
+    next = tmp;
+  }
+  if (cur !== scratch.types) scratch.types.set(cur);
+  recolorTerrain(def, scratch, biomeAt);
+}
+
+function dressSurfaceTerrain(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  const cover = clamp01(generationNumber(def.generation.surfaceCover, 0.64));
+  const depth = generationInt(def.generation.surfaceDepth, 2, 0, 6);
+  const vegetation = clamp01(generationNumber(def.generation.vegetationDensity, 0.38));
+  if (cover <= 0 || depth <= 0) return;
+
+  for (let y = 2; y < scratch.size - depth - 1; y++) {
+    const wy = scratch.originY + y;
+    for (let x = 1; x < scratch.size - 1; x++) {
+      const i = x + y * scratch.size;
+      if (scratch.types[i] === Cell.Empty || scratch.types[i - scratch.size] !== Cell.Empty) continue;
+      const wx = scratch.originX + x;
+      const exposure = openAbove(scratch.types, scratch.size, x, y);
+      if (exposure < 2) continue;
+      const field = organicNoise(def.seed ^ 0x5c13faced, wx, wy);
+      if (field > cover) continue;
+      const biome = biomeAt(wx, wy);
+      const capDepth = Math.min(depth + (field < vegetation * 0.28 ? 1 : 0), scratch.size - y - 1);
+      for (let d = 0; d < capDepth; d++) {
+        const yy = y + d;
+        const ii = x + yy * scratch.size;
+        if (scratch.types[ii] === Cell.Empty) break;
+        scratch.types[ii] = surfaceCellForBiome(biome, d, vegetation, def.seed, wx, scratch.originY + yy);
+        scratch.colors[ii] = surfaceColor(def, biome, wx, scratch.originY + yy, d, capDepth, field);
+      }
+    }
+  }
+}
+
+function openAbove(types: Uint8Array, size: number, x: number, y: number): number {
+  let open = 0;
+  for (let yy = y - 1; yy >= Math.max(0, y - 4); yy--) {
+    if (types[x + yy * size] !== Cell.Empty) break;
+    open++;
+  }
+  return open;
+}
+
+function surfaceCellForBiome(
+  biome: VirtualBiomeId,
+  depth: number,
+  vegetation: number,
+  seed: number,
+  x: number,
+  y: number,
+): Cell {
+  if (depth > 1) return Cell.Wall;
+  const surfaceRoll = unitHash2i(seed ^ 0x1d872b41, x, y);
+  if (biome === 'frozen') return Cell.Ice;
+  if (biome === 'crystal') return surfaceRoll < vegetation * 0.36 ? Cell.Crystal : Cell.Ice;
+  if (biome === 'fungal') {
+    return surfaceRoll < vegetation * 0.55 ? Cell.Fungus : Cell.Moss;
+  }
+  if (biome === 'flooded') return surfaceRoll < vegetation * 0.18 ? Cell.Fungus : Cell.Moss;
+  if (biome === 'timber') return surfaceRoll < vegetation * 0.28 ? Cell.Wood : Cell.Moss;
+  if (biome === 'scorched' || biome === 'volcanic' || biome === 'gilded') return Cell.Stone;
+  return Cell.Moss;
+}
+
+function surfaceColor(
+  def: VirtualWorldDef,
+  biome: VirtualBiomeId,
+  x: number,
+  y: number,
+  depth: number,
+  maxDepth: number,
+  field: number,
+): number {
+  const palette = def.materialProfile.palettes[biome] ?? def.materialProfile.palettes.earthen;
+  const surfaceK = Math.max(0, 1 - depth / Math.max(1, maxDepth));
+  const fleck = 0.84 + unitHash2i(def.seed ^ 0x34b85a73, x, y) * 0.28;
+  const base = depth === 0 || field < 0.42 ? palette.crown : palette.accent;
+  return scaleColor(base, fleck * (0.86 + surfaceK * 0.2));
+}
+
+function carveOrganicDisc(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  wx: number,
+  wy: number,
+  radius: number,
+  strength: number,
+): void {
   const cx = Math.round(wx - scratch.originX);
   const cy = Math.round(wy - scratch.originY);
-  const r = Math.ceil(radius);
-  const r2 = radius * radius;
+  const warp = clamp01(generationNumber(def.generation.shapeWarp, 0.48)) * clamp01(strength);
+  const jitter = (2.2 + radius * 0.18) * warp;
+  const r = Math.ceil(radius + jitter + 1);
+  const inner = Math.max(0, radius - jitter);
+  const inner2 = inner * inner;
+  const outer = radius + jitter;
+  const outer2 = outer * outer;
   for (let y = cy - r; y <= cy + r; y++) {
     if (y < 0 || y >= scratch.size) continue;
+    const worldY = scratch.originY + y;
     for (let x = cx - r; x <= cx + r; x++) {
       if (x < 0 || x >= scratch.size) continue;
       const dx = x - cx;
       const dy = y - cy;
-      if (dx * dx + dy * dy > r2) continue;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > outer2) continue;
+      if (d2 > inner2) {
+        const worldX = scratch.originX + x;
+        const edge = warp > 0 ? (organicNoise(def.seed ^ 0x93d765dd, worldX, worldY) * 2 - 1) * jitter : 0;
+        if (Math.sqrt(d2) > radius + edge) continue;
+      }
       const i = x + y * scratch.size;
       scratch.types[i] = Cell.Empty;
       scratch.colors[i] = EMPTY_COLOR;
@@ -397,18 +618,36 @@ function carveDisc(scratch: Scratch, wx: number, wy: number, radius: number): vo
   }
 }
 
-function carveEllipse(scratch: Scratch, wx: number, wy: number, rx: number, ry: number): void {
+function carveOrganicEllipse(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  wx: number,
+  wy: number,
+  rx: number,
+  ry: number,
+  strength: number,
+): void {
   const cx = Math.round(wx - scratch.originX);
   const cy = Math.round(wy - scratch.originY);
-  const xRad = Math.ceil(rx);
-  const yRad = Math.ceil(ry);
+  const warp = clamp01(generationNumber(def.generation.shapeWarp, 0.48)) * clamp01(strength);
+  const band = 0.18 * warp;
+  const pad = 2 + Math.ceil(Math.max(rx, ry) * band);
+  const xRad = Math.ceil(rx) + pad;
+  const yRad = Math.ceil(ry) + pad;
   for (let y = cy - yRad; y <= cy + yRad; y++) {
     if (y < 0 || y >= scratch.size) continue;
+    const worldY = scratch.originY + y;
     for (let x = cx - xRad; x <= cx + xRad; x++) {
       if (x < 0 || x >= scratch.size) continue;
       const nx = (x - cx) / rx;
       const ny = (y - cy) / ry;
-      if (nx * nx + ny * ny > 1) continue;
+      const d = nx * nx + ny * ny;
+      if (d > 1 + band) continue;
+      if (d > 1 - band) {
+        const worldX = scratch.originX + x;
+        const edge = warp > 0 ? (organicNoise(def.seed ^ 0x4cf5ad43, worldX, worldY) * 2 - 1) * band : 0;
+        if (d > 1 + edge) continue;
+      }
       const i = x + y * scratch.size;
       scratch.types[i] = Cell.Empty;
       scratch.colors[i] = EMPTY_COLOR;
@@ -417,7 +656,7 @@ function carveEllipse(scratch: Scratch, wx: number, wy: number, rx: number, ry: 
 }
 
 function sealOuterBorder(def: VirtualWorldDef, scratch: Scratch): void {
-  const seal = Math.max(0, Math.floor(def.generation.borderSeal));
+  const seal = generationInt(def.generation.borderSeal, 2, 0, 16);
   if (seal === 0) return;
   for (let y = 0; y < scratch.size; y++) {
     const wy = scratch.originY + y;
@@ -486,9 +725,14 @@ function hasSurfaceNear(scratch: Scratch, cx: number, cy: number, radius: number
 }
 
 function organicNoise(seed: number, x: number, y: number): number {
+  return smoothValueNoise(seed, x / 17 + 19.31, y / 17 - 7.73);
+}
+
+function terrainNoise(def: VirtualWorldDef, x: number, y: number): number {
+  const scale = generationNumber(def.generation.noiseScale, 0.035);
   return (
-    unitHash2i(seed, Math.floor(x / 7), Math.floor(y / 7)) * 0.62 +
-    unitHash2i(seed ^ 0x27d4eb2f, Math.floor(x / 23), Math.floor(y / 23)) * 0.38
+    smoothValueNoise(def.seed ^ 0x51ed270b, x * scale, y * scale) * 0.64 +
+    smoothValueNoise(def.seed ^ 0xa24baed5, x * scale * 0.43 + 17.1, y * scale * 0.43 - 9.3) * 0.36
   );
 }
 
@@ -508,16 +752,37 @@ function scaleColor(color: number, k: number): number {
   return packRGB(r, g, b);
 }
 
-function coarseNoise(seed: number, gx: number, gy: number): number {
-  return (
-    unitHash2i(seed ^ 0x51ed270b, gx, gy) * 0.54 +
-    unitHash2i(seed ^ 0xa24baed5, Math.floor(gx / 2), Math.floor(gy / 2)) * 0.3 +
-    unitHash2i(seed ^ 0x9fb21c65, Math.floor(gx / 4), Math.floor(gy / 4)) * 0.16
-  );
-}
-
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+}
+
+function generationNumber(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function generationInt(value: number, fallback: number, min: number, max: number): number {
+  const n = Math.round(generationNumber(value, fallback));
+  return Math.max(min, Math.min(max, n));
+}
+
+function smoothValueNoise(seed: number, x: number, y: number): number {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const fx = smoothstep(x - x0);
+  const fy = smoothstep(y - y0);
+  const a = unitHash2i(seed, x0, y0);
+  const b = unitHash2i(seed, x0 + 1, y0);
+  const c = unitHash2i(seed, x0, y0 + 1);
+  const d = unitHash2i(seed, x0 + 1, y0 + 1);
+  return lerp(lerp(a, b, fx), lerp(c, d, fx), fy);
+}
+
+function smoothstep(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
 }
 
 function now(): number {

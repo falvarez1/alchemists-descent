@@ -2,10 +2,12 @@ import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { LEVELS } from '@/config/worldgraph';
 import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskSlotConfig, type PerkId, type RunLoadoutPreset, type RunMode, type RunStatus, type RunTestKitConfig, type RunWorldSource } from '@/core/types';
 import { Cell } from '@/sim/CellType';
+import { COLOR_FN } from '@/sim/colors';
 import { appDialog } from '@/ui/AppDialog';
 
 const PREFS_KEY = 'noita-run-launcher-prefs-v3';
 const LEGACY_PREFS_KEY = 'noita-run-launcher-prefs-v2';
+const RUN_LAUNCHER_STATE_EVENT = 'run-launcher-state';
 
 const LEVEL_IDS = Object.values(LEVELS).sort((a, b) => {
   if (a.branch !== b.branch) return a.branch ? 1 : -1;
@@ -32,7 +34,7 @@ type LauncherSource = 'play-button' | 'tab' | 'fullscreen';
 type KitTab = (typeof KIT_TABS)[number];
 type CardFilter = 'all' | 'projectile' | 'modifier' | 'multicast';
 
-type TestPrefs = {
+export type TestPrefs = {
   world?: RunWorldSource;
   level?: string;
   seed?: string;
@@ -52,7 +54,7 @@ type TestPrefs = {
   kitTab?: KitTab;
 };
 
-type LauncherPrefs = {
+export type LauncherPrefs = {
   mode?: RunMode;
   normal?: { seed?: string };
   test?: TestPrefs;
@@ -67,11 +69,13 @@ function optionLabel(id: string): string {
   return level ? `${level.id.toUpperCase()} - ${level.name}` : id;
 }
 
+const CARD_ID_SET = new Set<CardId>(ALL_CARD_IDS);
+const PERK_ID_SET = new Set<PerkId>(PERK_CHOICES.map((perk) => perk.id));
+
 function parsePrefs(raw: string | null): LauncherPrefs | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as LauncherPrefs;
-    return parsed && typeof parsed === 'object' ? parsed : null;
+    return sanitizeLauncherPrefs(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -82,7 +86,7 @@ function parseLegacyPrefs(raw: string | null): LauncherPrefs | null {
   try {
     const parsed = JSON.parse(raw) as LegacyLauncherPrefs;
     if (!parsed || typeof parsed !== 'object') return null;
-    return {
+    return sanitizeLauncherPrefs({
       mode: parsed.mode,
       normal: { seed: parsed.mode === 'normal' ? parsed.seed : undefined },
       test: {
@@ -102,10 +106,26 @@ function parseLegacyPrefs(raw: string | null): LauncherPrefs | null {
         cards: parsed.cards,
         perks: parsed.perks,
       },
-    };
+    });
   } catch {
     return null;
   }
+}
+
+function safeStorageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function readStoredLauncherPrefs(): LauncherPrefs | null {
+  return parsePrefs(safeStorageGet(PREFS_KEY)) ?? parseLegacyPrefs(safeStorageGet(LEGACY_PREFS_KEY));
+}
+
+export function isRunLauncherOpen(): boolean {
+  return document.getElementById('run-launcher')?.classList.contains('visible') === true;
 }
 
 function validRunMode(mode: unknown): mode is RunMode {
@@ -126,6 +146,134 @@ function validKitTab(tab: unknown): tab is KitTab {
 
 function validCardFilter(filter: unknown): filter is CardFilter {
   return filter === 'all' || filter === 'projectile' || filter === 'modifier' || filter === 'multicast';
+}
+
+function optionalText(value: unknown, maxLength = 64): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return value.slice(0, maxLength);
+}
+
+function optionalNumberText(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const text = String(value).trim();
+  if (text === '') return '';
+  const n = Number(text);
+  return Number.isFinite(n) ? text.slice(0, 32) : undefined;
+}
+
+function uniqueKnown<T extends string>(value: unknown, known: Set<T>, limit: number): T[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: T[] = [];
+  for (const item of value) {
+    if (typeof item !== 'string' || !known.has(item as T) || out.includes(item as T)) continue;
+    out.push(item as T);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function validFlaskMaterial(material: unknown): material is number {
+  return Number.isInteger(material) && material !== Cell.Empty && COLOR_FN[material as number] !== undefined;
+}
+
+function sanitizeFlaskSlot(value: unknown): FlaskSlotConfig {
+  if (!value || typeof value !== 'object') return { material: null, count: 0 };
+  const source = value as { material?: unknown; count?: unknown };
+  const rawCount = Number(source.count);
+  const count = Number.isFinite(rawCount) ? Math.max(0, Math.min(600, Math.floor(rawCount))) : 0;
+  const material = Number(source.material);
+  if (!validFlaskMaterial(material) || count <= 0) return { material: null, count: 0 };
+  return { material, count };
+}
+
+function sanitizeFlasks(value: unknown): FlaskSlotConfig[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const slots: FlaskSlotConfig[] = [];
+  for (let i = 0; i < Math.min(FLASK_SLOT_COUNT, value.length); i++) {
+    slots.push(sanitizeFlaskSlot(value[i]));
+  }
+  return slots;
+}
+
+function sanitizeActiveFlaskIndex(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < FLASK_SLOT_COUNT ? value : undefined;
+}
+
+export function sanitizeLauncherPrefs(value: unknown): LauncherPrefs | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const source = value as { mode?: unknown; normal?: unknown; test?: unknown };
+  const prefs: LauncherPrefs = {};
+  if (validRunMode(source.mode)) prefs.mode = source.mode;
+  if (source.normal && typeof source.normal === 'object' && !Array.isArray(source.normal)) {
+    const normal = source.normal as { seed?: unknown };
+    const seed = optionalNumberText(normal.seed);
+    if (seed !== undefined) prefs.normal = { seed };
+  }
+  if (source.test && typeof source.test === 'object' && !Array.isArray(source.test)) {
+    const testSource = source.test as Record<string, unknown>;
+    const test: TestPrefs = {};
+    if (validWorldSource(testSource.world)) test.world = testSource.world;
+    if (typeof testSource.level === 'string' && LEVELS[testSource.level]) test.level = testSource.level;
+    const seed = optionalNumberText(testSource.seed);
+    if (seed !== undefined) test.seed = seed;
+    if (validLoadout(testSource.loadout)) test.loadout = testSource.loadout;
+    const gold = optionalNumberText(testSource.gold);
+    if (gold !== undefined) test.gold = gold;
+    const maxHp = optionalNumberText(testSource.maxHp);
+    if (maxHp !== undefined) test.maxHp = maxHp;
+    const hp = optionalNumberText(testSource.hp);
+    if (hp !== undefined) test.hp = hp;
+    const maxLevit = optionalNumberText(testSource.maxLevit);
+    if (maxLevit !== undefined) test.maxLevit = maxLevit;
+    const flasks = sanitizeFlasks(testSource.flasks);
+    if (flasks) test.flasks = flasks;
+    const activeFlaskIndex = sanitizeActiveFlaskIndex(testSource.activeFlaskIndex);
+    if (activeFlaskIndex !== undefined) test.activeFlaskIndex = activeFlaskIndex;
+    const cards = uniqueKnown(testSource.cards, CARD_ID_SET, ALL_CARD_IDS.length);
+    if (cards) test.cards = cards;
+    const perks = uniqueKnown(testSource.perks, PERK_ID_SET, PERK_CHOICES.length);
+    if (perks) test.perks = perks;
+    if (validCardFilter(testSource.cardFilter)) test.cardFilter = testSource.cardFilter;
+    const cardSearch = optionalText(testSource.cardSearch, 80);
+    if (cardSearch !== undefined) test.cardSearch = cardSearch;
+    if (validKitTab(testSource.kitTab)) test.kitTab = testSource.kitTab;
+    const flaskMaterial = optionalNumberText(testSource.flaskMaterial);
+    const flaskCount = optionalNumberText(testSource.flaskCount);
+    if (flaskMaterial !== undefined || flaskCount !== undefined) {
+      const slot = sanitizeFlaskSlot({
+        material: flaskMaterial === undefined || flaskMaterial === '' ? null : Number(flaskMaterial),
+        count: flaskCount === undefined ? 0 : Number(flaskCount),
+      });
+      if (slot.material !== null && slot.count > 0) {
+        test.flaskMaterial = String(slot.material);
+        test.flaskCount = String(slot.count);
+      }
+    }
+    prefs.test = test;
+  }
+  return Object.keys(prefs).length > 0 ? prefs : null;
+}
+
+export function prepareLauncherPrefsForStorage(
+  existing: LauncherPrefs | null | undefined,
+  mode: RunMode,
+  seed: string,
+  testPrefs?: TestPrefs,
+): LauncherPrefs | null {
+  const prefs: LauncherPrefs = {
+    ...(existing ?? {}),
+    mode,
+    normal: {
+      ...(existing?.normal ?? {}),
+      seed: mode === 'normal' ? seed : existing?.normal?.seed,
+    },
+    test: {
+      ...(existing?.test ?? {}),
+      ...(mode === 'test' ? testPrefs ?? {} : {}),
+    },
+  };
+  return sanitizeLauncherPrefs(prefs);
 }
 
 export class RunLauncher {
@@ -436,6 +584,7 @@ export class RunLauncher {
     if (!this.seedInput.value) this.seedInput.value = String(this.ctx.levels.runStatus(this.ctx).worldSeed >>> 0);
     this.root.classList.add('visible');
     this.root.setAttribute('aria-hidden', 'false');
+    this.emitState(true);
     this.sync(false);
     this.primaryFocusTarget().focus({ preventScroll: true });
   }
@@ -444,8 +593,13 @@ export class RunLauncher {
     this.root.classList.remove('visible');
     this.root.setAttribute('aria-hidden', 'true');
     this.pendingSource = 'play-button';
+    this.emitState(false);
     this.lastFocused?.focus({ preventScroll: true });
     this.lastFocused = null;
+  }
+
+  private emitState(open: boolean): void {
+    window.dispatchEvent(new CustomEvent(RUN_LAUNCHER_STATE_EVENT, { detail: { open } }));
   }
 
   private isLauncherSource(source: unknown): source is LauncherSource {
@@ -866,19 +1020,14 @@ export class RunLauncher {
   }
 
   private savePrefs(): void {
-    const existing = parsePrefs(localStorage.getItem(PREFS_KEY)) ?? parseLegacyPrefs(localStorage.getItem(LEGACY_PREFS_KEY)) ?? {};
-    const prefs: LauncherPrefs = {
-      ...existing,
-      mode: this.mode,
-      normal: {
-        ...(existing.normal ?? {}),
-        seed: this.mode === 'normal' ? this.seedInput.value : existing.normal?.seed,
-      },
-      test: {
-        ...(existing.test ?? {}),
-        ...(this.mode === 'test' ? this.currentTestPrefs() : {}),
-      },
-    };
+    const existing = readStoredLauncherPrefs() ?? {};
+    const prefs = prepareLauncherPrefsForStorage(
+      existing,
+      this.mode,
+      this.seedInput.value,
+      this.mode === 'test' ? this.currentTestPrefs() : undefined,
+    );
+    if (!prefs) return;
     try {
       localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
     } catch {
@@ -911,14 +1060,14 @@ export class RunLauncher {
   }
 
   private restorePrefs(): void {
-    const prefs = parsePrefs(localStorage.getItem(PREFS_KEY)) ?? parseLegacyPrefs(localStorage.getItem(LEGACY_PREFS_KEY));
+    const prefs = readStoredLauncherPrefs();
     if (!prefs) return;
     if (validRunMode(prefs.mode)) this.mode = prefs.mode;
     this.restoreModePrefs(this.mode, prefs);
   }
 
   private restoreModePrefs(mode: RunMode, providedPrefs?: LauncherPrefs): void {
-    const prefs = providedPrefs ?? parsePrefs(localStorage.getItem(PREFS_KEY)) ?? parseLegacyPrefs(localStorage.getItem(LEGACY_PREFS_KEY));
+    const prefs = providedPrefs ?? readStoredLauncherPrefs();
     if (!prefs) return;
     this.suppressPresetApply = true;
     if (mode === 'normal') {
@@ -998,6 +1147,7 @@ export class RunLauncher {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    e.stopPropagation();
     if (e.code === 'Escape') {
       e.preventDefault();
       this.close();

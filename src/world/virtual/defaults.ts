@@ -1,3 +1,4 @@
+import { BIOMES } from '@/config/biomes';
 import { Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import type {
@@ -6,6 +7,7 @@ import type {
   PixelSceneDef,
   PixelScenePlacementDef,
   VirtualBiomeId,
+  VirtualMaterialPalette,
   VirtualMaterialProfile,
   VirtualWorldDef,
 } from '@/world/virtual/types';
@@ -15,7 +17,17 @@ import {
   VIRTUAL_TILE_SIZE,
 } from '@/world/virtual/types';
 
-const BIOME_IDS: VirtualBiomeId[] = ['earthen', 'fungal', 'frozen'];
+export const VIRTUAL_BIOME_IDS: VirtualBiomeId[] = [
+  'earthen',
+  'fungal',
+  'frozen',
+  'flooded',
+  'timber',
+  'crystal',
+  'scorched',
+  'volcanic',
+  'gilded',
+];
 
 export function createDefaultVirtualWorldDef(seed = 0x4e4f4954): VirtualWorldDef {
   const map = createDefaultBiomeMap();
@@ -33,10 +45,17 @@ export function createDefaultVirtualWorldDef(seed = 0x4e4f4954): VirtualWorldDef
     materialProfile: createDefaultMaterialProfile(),
     generation: {
       halo: 32,
+      baseCellSize: 3,
       smoothingPasses: 1,
+      organicSmoothingPasses: 0,
       noiseScale: 0.035,
       noiseThreshold: 0.54,
       borderSeal: 2,
+      shapeWarp: 0.32,
+      cornerRounding: 0.56,
+      surfaceCover: 0.64,
+      surfaceDepth: 2,
+      vegetationDensity: 0.38,
       edgeRoughness: 0.38,
       pocketDensity: 0.3,
       crackDensity: 0.2,
@@ -66,37 +85,61 @@ function createDefaultBiomeMap(): VirtualWorldDef['map'] {
 }
 
 export function biomeIdFromIndex(index: number): VirtualBiomeId {
-  return BIOME_IDS[index] ?? 'earthen';
+  return VIRTUAL_BIOME_IDS[index] ?? 'earthen';
 }
 
 export function biomeIndexFromId(id: VirtualBiomeId): number {
-  const index = BIOME_IDS.indexOf(id);
+  const index = VIRTUAL_BIOME_IDS.indexOf(id);
   return index >= 0 ? index : 0;
 }
 
 function createDefaultMaterialProfile(): VirtualMaterialProfile {
+  const palettes = Object.fromEntries(
+    VIRTUAL_BIOME_IDS.map((id) => [id, materialPaletteForBiome(id)]),
+  ) as Record<VirtualBiomeId, VirtualMaterialPalette>;
+  return { palettes };
+}
+
+function materialPaletteForBiome(id: VirtualBiomeId): VirtualMaterialPalette {
+  const biome = BIOMES[id];
+  const wall = biome.bands[0] ?? [110, 100, 90];
+  const mid = biome.bands[1] ?? wall;
+  const accent = biome.bands[2] ?? mid;
+  const bright = biome.bands[3] ?? accent;
   return {
-    palettes: {
-      earthen: {
-        wall: packRGB(67, 57, 48),
-        accent: packRGB(92, 70, 44),
-        crown: packRGB(48, 118, 40),
-        deep: packRGB(27, 30, 34),
-      },
-      fungal: {
-        wall: packRGB(50, 62, 54),
-        accent: packRGB(60, 98, 72),
-        crown: packRGB(60, 150, 112),
-        deep: packRGB(22, 30, 30),
-      },
-      frozen: {
-        wall: packRGB(62, 76, 92),
-        accent: packRGB(102, 130, 150),
-        crown: packRGB(162, 205, 226),
-        deep: packRGB(28, 34, 46),
-      },
-    },
+    wall: packScaled(wall, 0.52),
+    accent: packScaled(mixRgb(mid, accent, 0.58), 0.62),
+    crown: packScaled(crownRgb(id, bright), 0.82),
+    deep: packScaled(mixRgb(wall, [8, 8, 12], 0.58), 0.46),
   };
+}
+
+function crownRgb(id: VirtualBiomeId, bright: [number, number, number]): [number, number, number] {
+  const crown = BIOMES[id].crown;
+  if (id === 'fungal') return mixRgb(bright, [62, 176, 126], 0.66);
+  if (id === 'timber') return mixRgb(bright, [96, 146, 64], 0.56);
+  if (id === 'flooded') return mixRgb(bright, [56, 128, 100], 0.6);
+  if (id === 'gilded') return mixRgb(bright, [188, 144, 64], 0.72);
+  if (crown === 'frost') return mixRgb(bright, [168, 216, 238], 0.62);
+  if (crown === 'ember') return mixRgb(bright, [190, 88, 34], 0.66);
+  return mixRgb(bright, [54, 138, 48], 0.58);
+}
+
+function packScaled(rgb: [number, number, number], k: number): number {
+  return packRGB(
+    Math.max(0, Math.min(255, Math.round(rgb[0] * k))),
+    Math.max(0, Math.min(255, Math.round(rgb[1] * k))),
+    Math.max(0, Math.min(255, Math.round(rgb[2] * k))),
+  );
+}
+
+function mixRgb(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
+  const k = Math.max(0, Math.min(1, t));
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * k),
+    Math.round(a[1] + (b[1] - a[1]) * k),
+    Math.round(a[2] + (b[2] - a[2]) * k),
+  ];
 }
 
 function createDefaultHerringboneTileset(): HerringboneTilesetDef {
@@ -105,7 +148,7 @@ function createDefaultHerringboneTileset(): HerringboneTilesetDef {
     orientation: HerringboneTileDef['orientation'],
     edges: HerringboneTileDef['edges'],
     carve: HerringboneTileDef['carve'],
-    biomeTags: VirtualBiomeId[] = ['earthen', 'fungal', 'frozen'],
+    biomeTags: VirtualBiomeId[] = VIRTUAL_BIOME_IDS,
     weight = 1,
   ): HerringboneTileDef => ({
     id,
@@ -142,7 +185,7 @@ function createDefaultHerringboneTileset(): HerringboneTilesetDef {
       mk('h-fungal', 'horizontal', open, [
         { kind: 'spline', from: 'w', to: 'e', radius: 18, jitter: 20 },
         { kind: 'chamber', x: 0.67, y: 0.58, rx: 42, ry: 32 },
-      ], ['fungal'], 1.5),
+      ], ['fungal', 'flooded', 'timber'], 1.5),
       mk('v-open-a', 'vertical', vertical, [
         { kind: 'spline', from: 'n', to: 's', radius: 14, jitter: 18 },
         { kind: 'chamber', x: 0.45, y: 0.62, rx: 20, ry: 34 },
@@ -155,11 +198,11 @@ function createDefaultHerringboneTileset(): HerringboneTilesetDef {
         { kind: 'spline', from: 'w', to: 'e', radius: 12, jitter: 12 },
         { kind: 'spline', from: 'n', to: 's', radius: 10, jitter: 16 },
         { kind: 'chamber', x: 0.5, y: 0.5, rx: 28, ry: 28 },
-      ], ['earthen', 'fungal'], 0.7),
+      ], ['earthen', 'fungal', 'flooded', 'timber', 'crystal', 'gilded'], 0.7),
       mk('drop-a', 'vertical', drop, [
         { kind: 'spline', from: 'n', to: 's', radius: 10, jitter: 14 },
         { kind: 'chamber', x: 0.5, y: 0.78, rx: 24, ry: 18 },
-      ], ['frozen', 'earthen'], 0.8),
+      ], ['frozen', 'crystal', 'scorched', 'volcanic', 'earthen'], 0.8),
     ],
   };
 }
