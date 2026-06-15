@@ -41,6 +41,11 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   leviathan: { hp: 460, halfW: 9, h: 14, bounty: 450, gore: Cell.Blood, goreFn: bloodColor },
 };
 
+/** Reference enemy footprint (halfW×h) that sprays the baseline gore counts.
+ *  Mid-size foes (~slime/spitter) sit near 1×; a bat barely spatters, a golem
+ *  or colossus gushes. The factor is clamped to a sane band (see goreCount). */
+const GORE_REF_AREA = 50;
+
 /** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
 const STATUS_IMMUNE: Partial<
   Record<EnemyKind, Partial<Record<'burning' | 'frozen' | 'electrified' | 'wet' | 'oiled', boolean>>>
@@ -110,6 +115,31 @@ export class Enemies implements EnemyControlApi {
     ctx.particles.burst(sx, sy, 6, Cell.Smoke, smokeColor, 0.9);
   }
 
+  /** Per-material gore channel for the cell being sprayed (red blood, green
+   *  slime, glowing acid/toxic ooze are tuned discretely; other materials —
+   *  stone, fire, nitrogen — ride the master dial alone). */
+  private goreChannelMul(material: number): number {
+    const g = this.ctx.params.global;
+    if (material === Cell.Blood) return g.goreBlood;
+    if (material === Cell.Slime) return g.goreSlime;
+    if (material === Cell.Acid || material === Cell.Toxic) return g.goreOoze;
+    return 1;
+  }
+
+  /** Scale a baseline gore particle count by: the `bloodAmount` master dial, the
+   *  per-material channel (`material` = the cell being sprayed), and the enemy's
+   *  body size (halfW×h vs GORE_REF_AREA, clamped 0.3–4×) so spray is
+   *  proportional to the foe — a bat barely spatters, a golem gushes.
+   *  Always ≥ 0, integer. */
+  private goreCount(e: Enemy, n: number, material: number): number {
+    const def = this.defs[e.kind];
+    const sizeFactor = Math.max(0.3, Math.min(4, (def.halfW * def.h) / GORE_REF_AREA));
+    return Math.max(
+      0,
+      Math.round(n * this.ctx.params.global.bloodAmount * this.goreChannelMul(material) * sizeFactor),
+    );
+  }
+
   damage(e: Enemy, amount: number, kx: number, ky: number): void {
     const ctx = this.ctx;
     // WATER IS THE LEVIATHAN'S ARMOR: while the body is actually in water
@@ -131,7 +161,7 @@ export class Enemies implements EnemyControlApi {
     ctx.particles.burst(
       e.x,
       e.y - 5,
-      Math.min(13, 4 + amount * 0.35),
+      this.goreCount(e, Math.min(13, 4 + amount * 0.35), def.gore),
       def.gore,
       def.goreFn,
       2.1,
@@ -140,7 +170,7 @@ export class Enemies implements EnemyControlApi {
     // Wounds bleed: a directional spray that pools where it lands
     if (e.kind !== 'imp') {
       if (Math.random() < 0.6) splatterStain(ctx.world, e.x - Math.sign(kx || 0) * 3, e.y - 5, 4);
-      const n = Math.min(22, 5 + Math.floor(amount * 0.8));
+      const n = this.goreCount(e, Math.min(22, 5 + Math.floor(amount * 0.8)), Cell.Blood);
       for (let i = 0; i < n; i++) {
         ctx.particles.spawn(
           e.x + ((Math.random() * 5) | 0) - 2,
@@ -156,7 +186,7 @@ export class Enemies implements EnemyControlApi {
       ctx.particles.burst(
         e.x,
         e.y - 5,
-        Math.min(8, 2 + Math.floor(amount * 0.3)),
+        this.goreCount(e, Math.min(8, 2 + Math.floor(amount * 0.3)), Cell.Fire),
         Cell.Fire,
         fireColor,
         1.8,
@@ -187,7 +217,7 @@ export class Enemies implements EnemyControlApi {
     // heart and a card. The pool it dies in inherits a final bloom of gore.
     if (e.kind === 'leviathan') {
       ctx.particles.burst(e.x, e.y - 6, 46, Cell.Water, () => packRGB(40, 130, 210), 4.4);
-      ctx.particles.burst(e.x, e.y - 6, 34, Cell.Blood, bloodColor, 3.6);
+      ctx.particles.burst(e.x, e.y - 6, this.goreCount(e, 34, Cell.Blood), Cell.Blood, bloodColor, 3.6);
       ctx.particles.burst(e.x, e.y - 10, 18, null, () => packRGB(140, 230, 255), 3.0, {
         glow: 2.2,
         grav: -0.01,
@@ -215,7 +245,7 @@ export class Enemies implements EnemyControlApi {
     // The Kiln Colossus: the run ends here, loudly.
     if (e.kind === 'colossus') {
       ctx.explosions.trigger(e.x, e.y - 10, 28);
-      ctx.particles.burst(e.x, e.y - 12, 40, Cell.Stone, stoneColor, 4.5);
+      ctx.particles.burst(e.x, e.y - 12, this.goreCount(e, 40, Cell.Stone), Cell.Stone, stoneColor, 4.5);
       ctx.particles.burst(e.x, e.y - 12, 24, null, () => packRGB(255, 170, 40), 3.8, {
         glow: 2.6,
         grav: -0.01,
@@ -235,7 +265,7 @@ export class Enemies implements EnemyControlApi {
     ctx.particles.burst(
       e.x,
       e.y - 5,
-      e.kind === 'golem' ? 38 : 22,
+      this.goreCount(e, 22, def.gore),
       def.gore,
       def.goreFn,
       3.6,
@@ -243,23 +273,17 @@ export class Enemies implements EnemyControlApi {
     );
     if (e.kind === 'acidslime') {
       // The membrane ruptures: a shower of real acid rains back into the grid
-      ctx.particles.burst(e.x, e.y - 4, 26, Cell.Acid, acidColor, 3.4);
+      ctx.particles.burst(e.x, e.y - 4, this.goreCount(e, 26, Cell.Acid), Cell.Acid, acidColor, 3.4);
     }
     if (e.kind === 'spitter') {
       // Toxic bulb ruptures — caustic shower instead of blood
-      ctx.particles.burst(e.x, e.y - 5, 40, Cell.Toxic, toxicColor, 3.8);
+      ctx.particles.burst(e.x, e.y - 5, this.goreCount(e, 40, Cell.Toxic), Cell.Toxic, toxicColor, 3.8);
     } else if (e.kind !== 'imp') {
-      // Violent blood splash: fast radial spray + slow wide arc + heavy directional gouts
-      ctx.particles.burst(
-        e.x,
-        e.y - 5,
-        e.kind === 'golem' ? 62 : e.kind === 'bat' ? 24 : 46,
-        Cell.Blood,
-        bloodColor,
-        4.8,
-      );
-      ctx.particles.burst(e.x, e.y - 7, e.kind === 'bat' ? 10 : 24, Cell.Blood, bloodColor, 2.2);
-      for (let i = 0; i < (e.kind === 'bat' ? 7 : 16); i++) {
+      // Violent blood splash: fast radial spray + slow wide arc + heavy directional
+      // gouts. Counts are size-scaled in goreCount, so a golem gushes and a bat dribbles.
+      ctx.particles.burst(e.x, e.y - 5, this.goreCount(e, 46, Cell.Blood), Cell.Blood, bloodColor, 4.8);
+      ctx.particles.burst(e.x, e.y - 7, this.goreCount(e, 24, Cell.Blood), Cell.Blood, bloodColor, 2.2);
+      for (let i = 0; i < this.goreCount(e, 16, Cell.Blood); i++) {
         ctx.particles.spawn(
           e.x,
           e.y - 5,

@@ -36,6 +36,9 @@ await startConsoleTestRun(page, {
   activeFlaskIndex: 0,
   settleMs: 250,
 });
+await page.evaluate(() => {
+  window.__game.ctx.state.debugGodMode = false;
+});
 
 const awayProbe = await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -52,10 +55,16 @@ const awayProbe = await page.evaluate(() => {
 await page.keyboard.press('KeyB');
 await page.waitForTimeout(150);
 const awayVisible = await page.evaluate(() => document.getElementById('wand-bench')?.classList.contains('visible') === true);
-check('Bench refuses to open away from the Refuge', awayProbe.hasRefuge && !awayProbe.visible && !awayVisible, JSON.stringify({ awayProbe, awayVisible }));
+const awayToast = await page.evaluate(() => [...document.querySelectorAll('#toast-stack .toast')].map((el) => el.textContent ?? '').at(-1) ?? '');
+check(
+  'Bench refuses to open away from the Refuge with a directional cue',
+  awayProbe.hasRefuge && !awayProbe.visible && !awayVisible && awayToast.includes('WAND BENCH IN REFUGE'),
+  JSON.stringify({ awayProbe, awayVisible, awayToast }),
+);
 
 const benchAnchor = await page.evaluate(() => {
   const ctx = window.__game.ctx;
+  ctx.state.debugGodMode = true;
   const rt = ctx.levels.current;
   const anchor = rt?.refuge;
   if (!anchor) return null;
@@ -70,6 +79,74 @@ check('Bench access anchor exists in the current level', benchAnchor !== null, J
 
 await page.keyboard.press('KeyB');
 await page.waitForSelector('#wand-bench.visible', { timeout: 5000 });
+
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  ctx.wands.loadLoadout({
+    active: 0,
+    collection: ['speed', 'heavy', 'spread', 'flame', 'lightning', 'conjure', 'vitriol'],
+    wands: [
+      { frameId: 'brass', cards: ['trigger', 'spark', 'bomb', 'double', 'spark'], mana: 0 },
+      { frameId: 'void', cards: ['dig', 'conjure', 'vitriol', 'blackhole', 'warp'], mana: 220 },
+    ],
+  });
+  ctx.player.mana = 0;
+});
+await page.waitForTimeout(180);
+
+const sentenceProbe = await page.evaluate(() => {
+  const bench = document.getElementById('wand-bench');
+  const firstLine = bench?.querySelector('.bench-sentence-line')?.textContent ?? '';
+  const warnings = [...(bench?.querySelectorAll('.bench-sentence-warning') ?? [])].map((el) => el.textContent ?? '');
+  const inspect = bench?.querySelector('.bench-inspect')?.textContent ?? '';
+  const hud = document.querySelector('#spell-hotbar .wand-cast-caption');
+  return {
+    firstLine,
+    warnings,
+    inspect,
+    hud: hud?.textContent ?? '',
+    hudOvermana: hud?.classList.contains('overmana') === true,
+  };
+});
+check(
+  'Bench renders compiled trigger sentence with group mana need',
+  sentenceProbe.firstLine.includes('Next: Spark Bolt -> Cast Bomb at impact') &&
+    sentenceProbe.firstLine.includes('Needs 42 mana') &&
+    sentenceProbe.firstLine.includes('slots 1, 2, 3'),
+  JSON.stringify(sentenceProbe),
+);
+check(
+  'Bench warns about underfilled multicast decks',
+  sentenceProbe.warnings.some((text) => text.includes('Twin Cast in slot 4 wants 2 projectiles, found 1')),
+  JSON.stringify(sentenceProbe.warnings),
+);
+check(
+  'Bench inspect panel shows visible card learning text',
+  sentenceProbe.inspect.includes('Trigger') && sentenceProbe.inspect.includes('MODIFIER') && sentenceProbe.inspect.includes('8 MANA'),
+  JSON.stringify(sentenceProbe.inspect),
+);
+check(
+  'HUD caption mirrors the next compiled cast and group affordability',
+  sentenceProbe.hud.includes('Next: Spark Bolt -> Cast Bomb at impact') &&
+    sentenceProbe.hud.includes('Needs 42 mana') &&
+    sentenceProbe.hudOvermana,
+  JSON.stringify(sentenceProbe),
+);
+
+await page.locator('#wand-bench [data-bench-wand="0"][data-bench-slot="0"]').hover();
+const triggerRelations = await page.evaluate(() => ({
+  host: document.querySelector('#wand-bench [data-bench-wand="0"][data-bench-slot="1"]')?.classList.contains('sentence-related') === true,
+  payload: document.querySelector('#wand-bench [data-bench-wand="0"][data-bench-slot="2"]')?.classList.contains('sentence-related') === true,
+}));
+check('Bench highlights trigger host and payload slots', triggerRelations.host && triggerRelations.payload, JSON.stringify(triggerRelations));
+
+await page.locator('#wand-bench [data-bench-collection-index="0"]').hover();
+const collectionInspect = await page.evaluate(() => document.querySelector('#wand-bench .bench-inspect')?.textContent ?? '');
+check(
+  'Collection cards update the visible inspect panel on hover',
+  collectionInspect.includes('Swift Charm') && collectionInspect.includes('MODIFIER') && collectionInspect.includes('4 MANA'),
+  JSON.stringify(collectionInspect),
+);
 
 const labels = await page.evaluate(() => ({
   hasStatusPotions: [...document.querySelectorAll('#wand-bench .bench-section')]
@@ -138,13 +215,13 @@ check('Bench probe found a distinct collection card to move', beforePlace.index 
 await page.locator(`#wand-bench [data-bench-collection-index="${beforePlace.index}"]`).dragTo(
   page.locator('#wand-bench [data-bench-wand="0"][data-bench-slot="0"]'),
 );
-const afterPlace = await page.evaluate(() => {
+const afterPlace = await page.evaluate((previousSlot) => {
   const ctx = window.__game.ctx;
   return {
     slot: ctx.wands.wands[0].cards[0],
-    collectionHasPrevious: ctx.wands.collection.includes('spark'),
+    collectionHasPrevious: previousSlot === null || ctx.wands.collection.includes(previousSlot),
   };
-});
+}, beforePlace.previousSlot);
 check(
   'Bench drags collection cards into wand slots',
   afterPlace.slot === beforePlace.card && afterPlace.collectionHasPrevious,

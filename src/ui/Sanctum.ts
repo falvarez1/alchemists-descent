@@ -1,4 +1,9 @@
-import { ALL_CARD_IDS } from '@/combat/wands/cards';
+import {
+  buildCardOffer,
+  collectOwnedCards,
+  requestCardOffer,
+  SANCTUM_LOST_PAGES_POOL,
+} from '@/combat/wands/rewardPools';
 import type { CardId, Ctx, PerkId, SanctumApi } from '@/core/types';
 import { POTION_DEFS, POTION_KINDS } from '@/game/Pickups';
 
@@ -38,8 +43,6 @@ const PERKS: SanctumPerk[] = [
   { id: 'swiftfoot', flag: 'swiftfoot', name: 'Swift Soles', desc: 'Move 18% faster', apply: () => {} },
   { id: 'might', flag: 'might', name: 'Power Surge', desc: 'All spell damage +25%', apply: () => {} },
 ];
-
-const SANCTUM_CARD_POOL = ALL_CARD_IDS.filter((id) => id !== 'vitrify');
 
 function el(id: string): HTMLElement {
   return document.getElementById(id)!;
@@ -131,12 +134,13 @@ export class Sanctum implements SanctumApi {
   private buildShop(ctx: Ctx): void {
     const shop = el('sanc-shop');
     shop.innerHTML = '';
-    const items: Array<{ name: string; desc: string; cost: number; act(): void }> = [
+    const items: Array<{ name: string; desc: string; cost: number; act(purchase: () => boolean): void }> = [
       {
         name: 'MEND WOUNDS',
         desc: 'Restore to full HP',
         cost: 40,
-        act: () => {
+        act: (purchase) => {
+          if (!purchase()) return;
           ctx.player.hp = ctx.player.maxHp;
         },
       },
@@ -144,7 +148,8 @@ export class Sanctum implements SanctumApi {
         name: 'TOUGHEN UP',
         desc: '+15 max HP',
         cost: 90,
-        act: () => {
+        act: (purchase) => {
+          if (!purchase()) return;
           ctx.player.maxHp += 15;
           ctx.player.hp += 15;
         },
@@ -153,7 +158,8 @@ export class Sanctum implements SanctumApi {
         name: 'MYSTERY BREW',
         desc: 'Drink a random potent draught',
         cost: 60,
-        act: () => {
+        act: (purchase) => {
+          if (!purchase()) return;
           const id = POTION_KINDS[Math.floor(Math.random() * POTION_KINDS.length)];
           const def = POTION_DEFS[id];
           const st = ctx.player.status;
@@ -171,8 +177,10 @@ export class Sanctum implements SanctumApi {
               name: 'WANDWRIGHT: BRASS INJECTOR',
               desc: 'Refit wand I — 5 slots, fast cycle, deep tanks',
               cost: 240,
-              act: (): void => {
+              act: (purchase: () => boolean): void => {
+                if (!purchase()) return;
                 ctx.wands.upgradeFrame(ctx, 0, 'brass');
+                this.buildShop(ctx);
               },
             },
           ]),
@@ -183,23 +191,30 @@ export class Sanctum implements SanctumApi {
               name: 'WANDWRIGHT: VOID LATTICE',
               desc: 'Refit wand II — 5 slots, perfect aim, vast mana',
               cost: 380,
-              act: (): void => {
+              act: (purchase: () => boolean): void => {
+                if (!purchase()) return;
                 ctx.wands.upgradeFrame(ctx, 1, 'void');
+                this.buildShop(ctx);
               },
             },
           ]),
       {
         name: 'LOST PAGES',
-        desc: 'Learn a random unknown spell card',
+        desc: 'Choose one of three unknown spell cards',
         cost: 160,
-        act: () => {
-          const owned = new Set<CardId>(ctx.wands.collection);
-          for (const w of ctx.wands.wands) for (const c of w.cards) if (c) owned.add(c);
-          const unknown = SANCTUM_CARD_POOL.filter((c) => !owned.has(c));
-          const pick = unknown.length
-            ? unknown[Math.floor(Math.random() * unknown.length)]
-            : SANCTUM_CARD_POOL[Math.floor(Math.random() * SANCTUM_CARD_POOL.length)];
-          ctx.wands.grantCard(ctx, pick);
+        act: (purchase) => {
+          const cards = buildCardOffer(SANCTUM_LOST_PAGES_POOL, collectOwnedCards(ctx.wands));
+          requestCardOffer(ctx, {
+            source: 'sanctum',
+            title: 'LOST PAGES',
+            prompt: 'Choose one page',
+            cards,
+            onChoose: (card: CardId) => {
+              if (!purchase()) return;
+              ctx.wands.grantCard(ctx, card);
+              ctx.audio.learn();
+            },
+          });
         },
       },
     ];
@@ -219,12 +234,18 @@ export class Sanctum implements SanctumApi {
         ' oz</button>';
       rowEl.querySelector('button')!.addEventListener('click', () => {
         if (ctx.state.score < it.cost) return;
-        ctx.state.score -= it.cost;
-        ctx.events.emit('scoreChanged', { score: ctx.state.score });
-        it.act();
-        ctx.audio.coin();
-        el('sanc-gold').textContent = String(ctx.state.score);
-        this.buildShop(ctx);
+        let purchased = false;
+        const purchase = (): boolean => {
+          if (purchased || ctx.state.score < it.cost) return false;
+          purchased = true;
+          ctx.state.score -= it.cost;
+          ctx.events.emit('scoreChanged', { score: ctx.state.score });
+          ctx.audio.coin();
+          el('sanc-gold').textContent = String(ctx.state.score);
+          this.buildShop(ctx);
+          return true;
+        };
+        it.act(purchase);
       });
       shop.appendChild(rowEl);
     }

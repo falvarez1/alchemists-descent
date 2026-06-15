@@ -1,0 +1,256 @@
+import type { CardId } from '@/core/types';
+import { CARD_DEFS, MULTICAST_SIZE } from './cards';
+import { compileWand, type CastGroup } from './compiler';
+
+export interface WandSentenceLine {
+  label: string;
+  detail: string;
+  manaCost: number;
+  slots: number[];
+}
+
+export interface WandSentenceView {
+  lines: WandSentenceLine[];
+  warnings: string[];
+  slotRelations: Partial<Record<number, number[]>>;
+  slotWarnings: Partial<Record<number, string[]>>;
+}
+
+function cardName(id: CardId): string {
+  return CARD_DEFS[id].name;
+}
+
+function slotLabel(slot: number): string {
+  return String(slot + 1);
+}
+
+function isProjectile(id: CardId): boolean {
+  return CARD_DEFS[id].kind === 'projectile';
+}
+
+function nextProjectileSlot(cards: (CardId | null)[], fromSlot: number): number | null {
+  for (let slot = fromSlot + 1; slot < cards.length; slot++) {
+    const id = cards[slot];
+    if (id && isProjectile(id)) return slot;
+  }
+  return null;
+}
+
+function addOneWayRelation(map: Partial<Record<number, number[]>>, from: number, to: number): void {
+  const list = (map[from] ??= []);
+  if (!list.includes(to)) list.push(to);
+}
+
+function addRelation(map: Partial<Record<number, number[]>>, a: number, b: number): void {
+  addOneWayRelation(map, a, b);
+  addOneWayRelation(map, b, a);
+}
+
+function addWarning(map: Partial<Record<number, string[]>>, slot: number, warning: string): void {
+  (map[slot] ??= []).push(warning);
+}
+
+function actionPhrase(action: CastGroup['actions'][number]): string {
+  const parts: string[] = [];
+  if (action.infused) parts.push('Infused');
+  if (action.bounces > 0) parts.push('Bouncing');
+  if (action.speedMul > 1.05) parts.push('Swift');
+  if (action.dmgMul > 1.05) parts.push('Heavy');
+  if (action.spreadAdd > 0.01) parts.push('Scatter');
+  parts.push(cardName(action.card));
+  return parts.join(' ');
+}
+
+function groupPhrase(group: CastGroup): string {
+  const actions = group.actions.map((action) => {
+    const host = actionPhrase(action);
+    if (!action.triggered || action.triggered.length === 0) return host;
+    return `${host} -> ${action.triggered.map(actionPhrase).join(' + ')} at impact`;
+  });
+  if (actions.length === 0) return 'No projectile';
+  if (actions.length === 1) return actions[0];
+  return `${actions.length} casts: ${actions.join(' + ')}`;
+}
+
+function slotList(slots: number[]): string {
+  if (slots.length === 0) return 'no slots';
+  return `slots ${slots.map(slotLabel).join(', ')}`;
+}
+
+function addMulticastWarning(
+  cards: (CardId | null)[],
+  warnings: string[],
+  slotWarnings: Partial<Record<number, string[]>>,
+  multicastSlots: number[],
+  owed: number,
+  found: number,
+): void {
+  if (multicastSlots.length === 0 || found >= owed) return;
+  const firstSlot = multicastSlots[0];
+  const firstId = cards[firstSlot];
+  const firstName = firstId ? cardName(firstId) : 'Multicast';
+  const warning =
+    multicastSlots.length === 1
+      ? `${firstName} in slot ${slotLabel(firstSlot)} wants ${owed} projectiles, found ${found}`
+      : `Stacked multicasts starting slot ${slotLabel(firstSlot)} want ${owed} projectiles, found ${found}`;
+  warnings.push(warning);
+  for (const slot of multicastSlots) addWarning(slotWarnings, slot, warning);
+}
+
+function analyzeMulticastDebt(
+  cards: (CardId | null)[],
+  warnings: string[],
+  slotRelations: Partial<Record<number, number[]>>,
+  slotWarnings: Partial<Record<number, string[]>>,
+): void {
+  let pendingOwed = 0;
+  let pendingSlots: number[] = [];
+  let active: { owed: number; found: number; slots: number[]; actionsInChunk: number } | null = null;
+
+  const warnActive = (): void => {
+    if (!active) return;
+    addMulticastWarning(cards, warnings, slotWarnings, active.slots, active.owed, active.found);
+  };
+
+  for (let slot = 0; slot < cards.length; slot++) {
+    const id = cards[slot];
+    if (!id) continue;
+    const def = CARD_DEFS[id];
+    if (def.kind === 'multicast') {
+      const owed = MULTICAST_SIZE[id] ?? 1;
+      if (active) {
+        active.owed += owed;
+        active.slots.push(slot);
+      } else {
+        pendingOwed += owed;
+        pendingSlots.push(slot);
+      }
+      continue;
+    }
+    if (def.kind !== 'projectile') continue;
+
+    if (!active) {
+      active = {
+        owed: Math.max(1, pendingOwed),
+        found: 0,
+        slots: [...pendingSlots],
+        actionsInChunk: 0,
+      };
+      pendingOwed = 0;
+      pendingSlots = [];
+    }
+
+    active.found++;
+    active.actionsInChunk++;
+    for (const multicastSlot of active.slots) addRelation(slotRelations, multicastSlot, slot);
+    if (active.found >= active.owed) active = null;
+    else if (active.actionsInChunk >= 6) active.actionsInChunk = 0;
+  }
+
+  warnActive();
+  if (pendingSlots.length > 0) addMulticastWarning(cards, warnings, slotWarnings, pendingSlots, pendingOwed, 0);
+}
+
+function analyzeSlots(
+  cards: (CardId | null)[],
+  program: CastGroup[],
+): Pick<WandSentenceView, 'warnings' | 'slotRelations' | 'slotWarnings'> {
+  const warnings: string[] = [];
+  const slotRelations: Partial<Record<number, number[]>> = {};
+  const slotWarnings: Partial<Record<number, string[]>> = {};
+  const pendingModifierSlots: number[] = [];
+
+  for (let slot = 0; slot < cards.length; slot++) {
+    const id = cards[slot];
+    if (!id) continue;
+    const def = CARD_DEFS[id];
+    if (def.kind === 'modifier') {
+      pendingModifierSlots.push(slot);
+      const host = nextProjectileSlot(cards, slot);
+      if (host === null) {
+        const warning = `${def.name} in slot ${slotLabel(slot)} has no projectile after it`;
+        warnings.push(warning);
+        addWarning(slotWarnings, slot, warning);
+      } else {
+        addRelation(slotRelations, slot, host);
+      }
+      continue;
+    }
+
+    if (def.kind === 'multicast') continue;
+
+    for (const modSlot of pendingModifierSlots) addRelation(slotRelations, slot, modSlot);
+    pendingModifierSlots.length = 0;
+  }
+
+  analyzeMulticastDebt(cards, warnings, slotRelations, slotWarnings);
+
+  for (const group of program) {
+    const slots = Array.from(new Set(group.slots));
+    const triggerSlots = slots.filter((slot) => cards[slot] === 'trigger');
+    const multicastSlots = slots.filter((slot) => {
+      const id = cards[slot];
+      return id !== null && CARD_DEFS[id].kind === 'multicast';
+    });
+    const hasTriggerPayload = group.actions.some((action) => action.triggered && action.triggered.length > 0);
+
+    for (const triggerSlot of triggerSlots) {
+      for (const slot of slots) {
+        if (slot !== triggerSlot) addRelation(slotRelations, triggerSlot, slot);
+      }
+      const relatedTriggerSlots = slots.filter((slot) => slot !== triggerSlot);
+      for (let a = 0; a < relatedTriggerSlots.length; a++) {
+        for (let b = a + 1; b < relatedTriggerSlots.length; b++) {
+          addRelation(slotRelations, relatedTriggerSlots[a], relatedTriggerSlots[b]);
+        }
+      }
+      if (!hasTriggerPayload) {
+        const warning = `Trigger in slot ${slotLabel(triggerSlot)} has no payload group after its host`;
+        warnings.push(warning);
+        addWarning(slotWarnings, triggerSlot, warning);
+        const host = nextProjectileSlot(cards, triggerSlot);
+        if (host !== null) addWarning(slotWarnings, host, warning);
+      }
+    }
+
+    for (const multicastSlot of multicastSlots) {
+      for (const slot of slots) {
+        if (slot !== multicastSlot) addRelation(slotRelations, multicastSlot, slot);
+      }
+    }
+  }
+
+  return { warnings, slotRelations, slotWarnings };
+}
+
+function normalizedCastIndex(castIndex: number, programLength: number): number {
+  if (programLength <= 0) return 0;
+  const index = Math.floor(castIndex);
+  return Number.isFinite(index) && index >= 0 ? index % programLength : 0;
+}
+
+export function buildWandSentenceView(cards: (CardId | null)[], castIndex = 0): WandSentenceView {
+  const program = compileWand(cards);
+  const slotAnalysis = analyzeSlots(cards, program);
+  const start = normalizedCastIndex(castIndex, program.length);
+  const ordered = program.map((_, offset) => program[(start + offset) % program.length]);
+  const lines = ordered.map((group, index) => ({
+    label: `${index === 0 ? 'Next' : 'Then'}: ${groupPhrase(group)}`,
+    detail: `${group.manaCost} mana - ${slotList(group.slots)}`,
+    manaCost: group.manaCost,
+    slots: [...group.slots],
+  }));
+  if (lines.length === 0) {
+    lines.push({
+      label: 'No spell ready',
+      detail: 'Slot at least one projectile card',
+      manaCost: 0,
+      slots: [],
+    });
+  }
+  return { lines, ...slotAnalysis };
+}
+
+export function nextWandSentence(cards: (CardId | null)[], castIndex: number): WandSentenceLine {
+  return buildWandSentenceView(cards, castIndex).lines[0];
+}

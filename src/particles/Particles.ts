@@ -2,6 +2,7 @@ import type { Ctx, FlyingParticle, ParticleOpts, ParticlesApi } from '@/core/typ
 import { EntityPool } from '@/entities/ecs';
 import { MAX_PARTICLES } from '@/config/constants';
 import { Cell, isGas } from '@/sim/CellType';
+import { stainCell } from '@/sim/stains';
 
 /**
  * Ballistic flying particles: explosion debris, gore, sparks, homing coins,
@@ -125,6 +126,9 @@ export class Particles implements ParticlesApi {
 
       const cell = world.types[world.idx(gx, gy)];
       if (cell !== Cell.Empty && !isGas(cell)) {
+        // Blood spatter marks the surface it strikes — a red stain soaked into
+        // the wall (stainCell only takes on sturdy materials; sand/etc. churn).
+        if (p.type === Cell.Blood) stainCell(world, gx, gy, 118, 14, 20, 0.35 + Math.random() * 0.25);
         // Deposit at last free position behind us
         if (p.type !== null) {
           const bx = Math.floor(p.x - p.vx),

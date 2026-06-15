@@ -11,7 +11,7 @@ import {
 } from '@/world/virtual/defaults';
 import { generateVirtualChunk, generateVirtualWindow } from '@/world/virtual/ChunkGenerator';
 import { resolveTile, validateTileset } from '@/world/virtual/HerringboneTiles';
-import { materializeChunks } from '@/world/virtual/WindowMaterializer';
+import { cropMaterializedWindow, materializeChunks } from '@/world/virtual/WindowMaterializer';
 import { fnv1aByteArrays, hashCoord } from '@/world/virtual/hash';
 import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
 import { fromTransferableChunk, toTransferableChunk } from '@/world/virtual/transfer';
@@ -19,6 +19,9 @@ import type {
   HerringboneTileDef,
   HerringboneTilesetDef,
   PixelScenePlacementDef,
+  VirtualSceneLight,
+  VirtualSceneObject,
+  VirtualScenePlacementInstance,
   VirtualSceneBudget,
   VirtualWorldDef,
 } from '@/world/virtual/types';
@@ -493,6 +496,237 @@ describe('virtual world prototype', () => {
     expect(materialized.world.simBounds).toEqual({ x0: 0, x1: def.chunkSize * 2, y0: 0, y1: def.chunkSize * 2 });
     expect(materialized.chunks.length).toBe(4);
     expect(materialized.world.types[0]).toBe(chunks[0].types[0]);
+  });
+
+  it('crops materialized windows with exact cell, color, life, and charge parity', () => {
+    const def = createDefaultVirtualWorldDef(5152);
+    const materialized = materializeChunks(generateVirtualWindow(def, 0, 0, 1, 1));
+    const srcX = 17;
+    const srcY = 23;
+    const cropW = 48;
+    const cropH = 32;
+    const markerX = srcX + 5;
+    const markerY = srcY + 7;
+    const marker = markerX + markerY * materialized.world.width;
+    materialized.world.types[marker] = Cell.Fire;
+    materialized.world.colors[marker] = 0xff8844;
+    materialized.world.life[marker] = 321;
+    materialized.world.charge[marker] = 9;
+
+    const crop = cropMaterializedWindow(materialized, srcX, srcY, cropW, cropH);
+
+    expect(crop.srcX).toBe(srcX);
+    expect(crop.srcY).toBe(srcY);
+    for (let y = 0; y < cropH; y++) {
+      const srcOff = srcX + (srcY + y) * materialized.world.width;
+      const dstOff = y * cropW;
+      expect(crop.world.types.subarray(dstOff, dstOff + cropW)).toEqual(
+        materialized.world.types.subarray(srcOff, srcOff + cropW),
+      );
+      expect(crop.world.colors.subarray(dstOff, dstOff + cropW)).toEqual(
+        materialized.world.colors.subarray(srcOff, srcOff + cropW),
+      );
+      expect(crop.world.life.subarray(dstOff, dstOff + cropW)).toEqual(
+        materialized.world.life.subarray(srcOff, srcOff + cropW),
+      );
+      expect(crop.world.charge.subarray(dstOff, dstOff + cropW)).toEqual(
+        materialized.world.charge.subarray(srcOff, srcOff + cropW),
+      );
+    }
+  });
+
+  it('applies virtual scene caps after crop filtering', () => {
+    const def = createDefaultVirtualWorldDef(5154);
+    const chunks = generateVirtualWindow(def, 0, 0, 1, 0);
+    const offscreenObjects: VirtualSceneObject[] = Array.from({ length: 260 }, (_, n) => ({
+      id: `off-obj-${n}`,
+      kind: 'pickup',
+      x: def.chunkSize + (n % def.chunkSize),
+      y: Math.floor(n / def.chunkSize),
+      params: { kind: 'goldpile', amount: 1 },
+    }));
+    const offscreenLights: VirtualSceneLight[] = Array.from({ length: 260 }, (_, n) => ({
+      id: `off-light-${n}`,
+      x: def.chunkSize + (n % def.chunkSize),
+      y: Math.floor(n / def.chunkSize),
+      color: '#ffffff',
+      intensity: 0.5,
+      radius: 32,
+    }));
+    const placement: VirtualScenePlacementInstance = {
+      id: 'crop-cap-scene',
+      x: 0,
+      y: 0,
+      w: def.chunkSize * 2,
+      h: def.chunkSize,
+      objects: [
+        ...offscreenObjects,
+        { id: 'visible-obj', kind: 'pickup', x: 10, y: 12, params: { kind: 'goldpile', amount: 7 } },
+      ],
+      links: [],
+      lights: [
+        ...offscreenLights,
+        { id: 'visible-light', x: 14, y: 18, color: '#ffeeaa', intensity: 0.8, radius: 48 },
+      ],
+    };
+    chunks[0].meta.scenes = [placement.id];
+    chunks[0].meta.scenePlacements = [placement];
+
+    const materialized = materializeChunks(chunks);
+    const crop = cropMaterializedWindow(materialized, 0, 0, 64, 64, { maxSceneObjects: 1, maxSceneLights: 1 });
+
+    expect(crop.scenePlacements).toEqual([
+      expect.objectContaining({
+        id: 'crop-cap-scene',
+        x: 0,
+        y: 0,
+        w: def.chunkSize * 2,
+        h: def.chunkSize,
+        objectCount: 1,
+        lightCount: 1,
+        objects: [expect.objectContaining({ id: 'visible-obj', x: 10, y: 12 })],
+        lights: [expect.objectContaining({ id: 'visible-light', x: 14, y: 18 })],
+      }),
+    ]);
+    expect(crop.sceneObjects.map((object) => object.id)).toEqual(['visible-obj']);
+    expect(crop.sceneObjects[0]).toMatchObject({ x: 10, y: 12 });
+    expect(crop.sceneLights.map((light) => light.id)).toEqual(['visible-light']);
+    expect(crop.sceneLights[0]).toMatchObject({ x: 14, y: 18 });
+    expect(crop.stats).toMatchObject({
+      sceneObjects: 1,
+      sceneLights: 1,
+      droppedSceneObjects: 0,
+      droppedSceneLights: 0,
+    });
+  });
+
+  it('caps materialized virtual scene objects and lights with stats', () => {
+    const chunk = generateVirtualChunk(createDefaultVirtualWorldDef(5153), 0, 0);
+    const objects: VirtualSceneObject[] = Array.from({ length: 5 }, (_, n) => ({
+      id: `obj-${n}`,
+      kind: 'pickup',
+      x: 20 + n,
+      y: 30,
+      params: { kind: 'goldpile', amount: n + 1 },
+    }));
+    const lights: VirtualSceneLight[] = Array.from({ length: 5 }, (_, n) => ({
+      id: `light-${n}`,
+      x: 40 + n,
+      y: 50,
+      color: '#ffffff',
+      intensity: 0.5,
+      radius: 42,
+    }));
+    const placement: VirtualScenePlacementInstance = {
+      id: 'cap-scene',
+      x: 0,
+      y: 0,
+      w: 96,
+      h: 64,
+      objects,
+      links: [],
+      lights,
+    };
+    chunk.meta.scenes = [placement.id];
+    chunk.meta.scenePlacements = [placement];
+
+    const materialized = materializeChunks([chunk], { maxSceneObjects: 2, maxSceneLights: 3 });
+
+    expect(materialized.scenePlacements).toEqual([
+      expect.objectContaining({
+        id: 'cap-scene',
+        x: 0,
+        y: 0,
+        w: 96,
+        h: 64,
+        objectCount: 5,
+        linkCount: 0,
+        lightCount: 5,
+        sourceChunk: { cx: 0, cy: 0, hash: chunk.meta.hash },
+      }),
+    ]);
+    expect(materialized.sceneObjects.map((object) => object.id)).toEqual(['obj-0', 'obj-1']);
+    expect(materialized.sceneLights.map((light) => light.id)).toEqual(['light-0', 'light-1', 'light-2']);
+    expect(materialized.stats).toMatchObject({
+      scenePlacements: 1,
+      sceneObjects: 2,
+      sceneLights: 3,
+      droppedSceneObjects: 3,
+      droppedSceneLights: 2,
+    });
+  });
+
+  it('uses deterministic ordinal placement order when materialization caps apply', () => {
+    const chunk = generateVirtualChunk(createDefaultVirtualWorldDef(5155), 0, 0);
+    const placements: VirtualScenePlacementInstance[] = ['place-b', 'place-a', 'place-c'].map((id, n) => ({
+      id,
+      x: 0,
+      y: 0,
+      w: 32,
+      h: 32,
+      objects: [{
+        id: `obj-${id}`,
+        kind: 'pickup',
+        x: 8 + n,
+        y: 9,
+        params: { kind: 'goldpile', amount: n + 1 },
+      }],
+      links: [],
+      lights: [{
+        id: `light-${id}`,
+        x: 12 + n,
+        y: 13,
+        color: '#ffffff',
+        intensity: 0.5,
+        radius: 24,
+      }],
+    }));
+    chunk.meta.scenes = placements.map((placement) => placement.id);
+    chunk.meta.scenePlacements = placements;
+
+    const materialized = materializeChunks([chunk], { maxSceneObjects: 2, maxSceneLights: 2 });
+
+    expect(materialized.sceneObjects.map((object) => object.id)).toEqual(['obj-place-a', 'obj-place-b']);
+    expect(materialized.sceneLights.map((light) => light.id)).toEqual(['light-place-a', 'light-place-b']);
+  });
+
+  it('rebases virtual scene placement bounds into cropped runtime windows', () => {
+    const chunk = generateVirtualChunk(createDefaultVirtualWorldDef(5157), 0, 0);
+    const placement: VirtualScenePlacementInstance = {
+      id: 'tile:0,0:shaft-wall:scene-crystal-cluster',
+      x: 30,
+      y: 40,
+      w: 20,
+      h: 18,
+      objects: [],
+      links: [],
+      lights: [],
+    };
+    chunk.meta.scenes = [placement.id];
+    chunk.meta.scenePlacements = [placement];
+
+    const materialized = materializeChunks([chunk]);
+    const crop = cropMaterializedWindow(materialized, 20, 30, 40, 40);
+
+    expect(crop.scenePlacements).toEqual([
+      expect.objectContaining({
+        id: placement.id,
+        x: 10,
+        y: 10,
+        w: 20,
+        h: 18,
+        sourceChunk: { cx: 0, cy: 0, hash: chunk.meta.hash },
+      }),
+    ]);
+  });
+
+  it('leaves oversized crop rows empty instead of repeating the edge row', () => {
+    const def = createDefaultVirtualWorldDef(5156);
+    const materialized = materializeChunks([generateVirtualChunk(def, 0, 0)]);
+    const crop = cropMaterializedWindow(materialized, 0, 0, 16, materialized.world.height + 4);
+    const lastRow = crop.world.types.subarray((crop.world.height - 1) * crop.world.width, crop.world.height * crop.world.width);
+
+    expect([...lastRow]).toEqual(Array.from({ length: crop.world.width }, () => Cell.Empty));
   });
 
   it('rejects sparse virtual materialization windows', () => {

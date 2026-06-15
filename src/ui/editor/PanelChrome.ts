@@ -37,7 +37,9 @@ export function builderPanelHeader(options: BuilderPanelHeaderOptions): string {
       )}"${options.closeCommandId ? ` data-command-id="${escapeAttr(options.closeCommandId)}"` : ''}>&times;</button>`
     : '';
   const trailing = `${options.actions ?? ''}${close}`;
-  return `<div class="${escapeAttr(className)}"${handle}>${escapeHtml(options.title.toUpperCase())}${trailing ? ` ${trailing}` : ''}</div>`;
+  return `<div class="${escapeAttr(className)}"${handle}><span class="builder-panel-title-label">${escapeHtml(
+    options.title.toUpperCase(),
+  )}</span>${trailing ? `<span class="builder-panel-header-actions">${trailing}</span>` : ''}</div>`;
 }
 
 export function normalizePanelChromeHandles(panel: HTMLElement, options: NormalizePanelChromeOptions = {}): HTMLElement[] {

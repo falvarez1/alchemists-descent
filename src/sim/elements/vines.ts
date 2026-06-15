@@ -2,6 +2,13 @@ import type { Ctx } from '@/core/types';
 import { Cell, isSolid } from '@/sim/CellType';
 import { EMPTY_COLOR, vineColor } from '@/sim/colors';
 
+const SIP_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [0, -1],
+  [0, 1],
+  [-1, 0],
+  [1, 0],
+];
+
 export function handleVines(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const ci = w.idx(x, y);
@@ -15,13 +22,9 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
   if (energy < 0) return;
 
   // Drink adjacent water: consumed water fuels fresh growth
-  const sips = [
-    [x, y - 1],
-    [x, y + 1],
-    [x - 1, y],
-    [x + 1, y],
-  ];
-  for (const [wx, wy] of sips) {
+  for (const [dx, dy] of SIP_OFFSETS) {
+    const wx = x + dx;
+    const wy = y + dy;
     if (!w.inBounds(wx, wy) || w.types[w.idx(wx, wy)] !== Cell.Water) continue;
     if (Math.random() < 0.30) {
       const si = w.idx(wx, wy);

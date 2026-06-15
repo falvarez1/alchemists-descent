@@ -31,6 +31,10 @@ const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 page.on('dialog', (d) => d.accept());
 const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
+await page.addInitScript(() => {
+  localStorage.removeItem('noita-builder-workspace-v1');
+  localStorage.removeItem('noita-builder-draft');
+});
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
@@ -496,6 +500,213 @@ check(
 );
 await page.click('#b-reset-workspace');
 await page.waitForTimeout(150);
+const sideControlOverflow = [];
+for (const [panelId, buttonId] of [
+  ['builder-postfx', 'bp-postfx-btn'],
+  ['builder-matparams', 'bp-mat-btn'],
+  ['builder-global', 'bp-global-btn'],
+  ['builder-world', 'bp-world-btn'],
+  ['builder-virtual-world', 'bp-world-map-btn'],
+]) {
+  await page.evaluate((id) => document.getElementById(id)?.click(), buttonId);
+  await page.waitForTimeout(120);
+  sideControlOverflow.push(await page.evaluate((id) => {
+    const panel = document.getElementById(id);
+    const body = panel?.querySelector('#bw-controls, #bm-controls, #bg-controls, #bf-controls, .vw-body, .vw-controls, .vw-inspector');
+    const rows = [...panel?.querySelectorAll('.builder-value-row, .builder-slider-row, .vw-slider') ?? []].map((row) => {
+      const line = row.querySelector('.builder-value-inputs, .bw-numline, .vw-slider-inputs');
+      const rr = row.getBoundingClientRect();
+      const lr = line?.getBoundingClientRect();
+      return {
+        rowWidth: Math.round(rr.width),
+        rowScrollWidth: row.scrollWidth,
+        lineWidth: lr ? Math.round(lr.width) : 0,
+        lineScrollWidth: line?.scrollWidth ?? 0,
+      };
+    });
+    return {
+      id,
+      visible: panel ? getComputedStyle(panel).display !== 'none' : false,
+      panelScrollLeft: panel?.scrollLeft ?? -1,
+      bodyScrollLeft: body?.scrollLeft ?? -1,
+      panelOverflow: panel ? panel.scrollWidth > panel.clientWidth + 1 : true,
+      bodyOverflow: body ? body.scrollWidth > body.clientWidth + 1 : true,
+      rowOverflow: rows.some((row) => row.rowScrollWidth > row.rowWidth + 1 || row.lineScrollWidth > row.lineWidth + 1),
+      rows: rows.length,
+    };
+  }, panelId));
+}
+check(
+  'side parameter panels keep sliders inside their dock width',
+  sideControlOverflow.every((row) =>
+    row.visible &&
+    row.panelScrollLeft === 0 &&
+    row.bodyScrollLeft === 0 &&
+    !row.panelOverflow &&
+    !row.bodyOverflow &&
+    !row.rowOverflow,
+  ),
+  JSON.stringify(sideControlOverflow),
+);
+await dockWorkspacePanel('builder-virtual-world', 'builder-dock-right', 70, 0.50);
+await page.waitForTimeout(120);
+for (const [panelId, buttonId] of [
+  ['builder-proc', 'bp-proc-btn'],
+  ['builder-outliner', 'bp-outliner-btn'],
+  ['builder-runtime', 'bp-runtime-btn'],
+]) {
+  await page.evaluate((id) => document.getElementById(id)?.click(), buttonId);
+  await page.waitForTimeout(90);
+  await dockWorkspacePanel(panelId, 'builder-dock-right', 70, 0.50);
+}
+await page.evaluate(() => document.getElementById('b-validate')?.click());
+await page.waitForTimeout(120);
+await dockWorkspacePanel('builder-issues', 'builder-dock-right', 70, 0.50);
+for (const [panelId, buttonId] of [
+  ['builder-assets', 'bp-assets-btn'],
+  ['builder-link-graph', 'bp-link-graph-btn'],
+]) {
+  await page.evaluate((id) => document.getElementById(id)?.click(), buttonId);
+  await page.waitForTimeout(140);
+  await dockWorkspacePanel(panelId, 'builder-dock-right', 70, 0.50);
+}
+const sideTabbedChrome = [];
+for (const id of [
+  'builder-postfx',
+  'builder-matparams',
+  'builder-global',
+  'builder-world',
+  'builder-virtual-world',
+  'builder-proc',
+  'builder-issues',
+  'builder-outliner',
+  'builder-runtime',
+  'builder-assets',
+  'builder-link-graph',
+]) {
+  await activatePanel(id);
+  await page.waitForTimeout(70);
+  sideTabbedChrome.push(await page.evaluate((panelId) => {
+    const dock = document.getElementById('builder-dock-right');
+    const tabs = dock?.querySelector('.builder-dock-tabs');
+    const panel = document.getElementById(panelId);
+    const dockRect = dock?.getBoundingClientRect();
+    const tabsRect = tabs?.getBoundingClientRect();
+    const panelRect = panel?.getBoundingClientRect();
+    const pcs = panel ? getComputedStyle(panel) : null;
+    const contentLeft = dock && dockRect ? dockRect.left + dock.clientLeft : 0;
+    const contentRight = dock && dockRect ? dockRect.left + dock.clientLeft + dock.clientWidth : 0;
+    return {
+      id: panelId,
+      hasTabs: dock?.classList.contains('has-tabs') ?? false,
+      visible: panel ? getComputedStyle(panel).display !== 'none' : false,
+      topGap: tabsRect && panelRect ? Math.round(panelRect.top - tabsRect.bottom) : 999,
+      leftGap: panelRect ? Math.round(panelRect.left - contentLeft) : 999,
+      rightGap: panelRect ? Math.round(contentRight - panelRect.right) : 999,
+      panelMargin: pcs ? `${pcs.marginTop}/${pcs.marginLeft}` : '',
+      panelPadding: pcs ? `${pcs.paddingTop}/${pcs.paddingLeft}` : '',
+      panelBorder: pcs ? `${pcs.borderTopWidth}/${pcs.borderRightWidth}/${pcs.borderBottomWidth}/${pcs.borderLeftWidth}` : '',
+      panelRadius: pcs?.borderTopLeftRadius ?? '',
+      panelBackground: pcs?.backgroundColor ?? '',
+      panelShadow: pcs?.boxShadow ?? '',
+      panelOverflow: panel ? panel.scrollWidth > panel.clientWidth + 1 || panel.scrollLeft !== 0 : true,
+    };
+  }, id));
+}
+check(
+  'tabbed side docks keep panel chrome flush with the tab strip',
+  sideTabbedChrome.every((row) =>
+    row.hasTabs &&
+    row.visible &&
+    Math.abs(row.topGap) <= 1 &&
+    Math.abs(row.leftGap) <= 1 &&
+    Math.abs(row.rightGap) <= 1 &&
+    row.panelMargin === '0px/0px' &&
+    row.panelPadding === '0px/0px' &&
+    row.panelBorder === '0px/0px/0px/0px' &&
+    row.panelRadius === '0px' &&
+    row.panelBackground === 'rgba(0, 0, 0, 0)' &&
+    row.panelShadow === 'none' &&
+    !row.panelOverflow,
+  ),
+  JSON.stringify(sideTabbedChrome),
+);
+const responsiveSideControlOverflow = [];
+for (const viewport of [
+  { width: 768, height: 900 },
+  { width: 600, height: 700 },
+]) {
+  await page.setViewportSize(viewport);
+  await page.waitForTimeout(180);
+  await page.evaluate(() => document.getElementById('b-reset-workspace')?.click());
+  await page.waitForTimeout(120);
+  for (const [panelId, buttonId] of [
+    ['builder-postfx', 'bp-postfx-btn'],
+    ['builder-matparams', 'bp-mat-btn'],
+    ['builder-global', 'bp-global-btn'],
+    ['builder-world', 'bp-world-btn'],
+    ['builder-virtual-world', 'bp-world-map-btn'],
+  ]) {
+    await page.evaluate((id) => document.getElementById(id)?.click(), buttonId);
+    await page.waitForTimeout(100);
+    responsiveSideControlOverflow.push(await page.evaluate(({ panelId, viewport }) => {
+      const panel = document.getElementById(panelId);
+      const body = panel?.querySelector('#bw-controls, #bm-controls, #bg-controls, #bf-controls, .vw-body, .vw-controls, .vw-inspector');
+      const rows = [...panel?.querySelectorAll('.builder-value-row, .builder-slider-row, .vw-slider') ?? []].map((row) => {
+        const line = row.querySelector('.builder-value-inputs, .bw-numline, .vw-slider-inputs');
+        return {
+          rowOverflow: row.scrollWidth > row.clientWidth + 1,
+          lineOverflow: line ? line.scrollWidth > line.clientWidth + 1 : false,
+        };
+      });
+      return {
+        id: panelId,
+        viewport: `${viewport.width}x${viewport.height}`,
+        visible: panel ? getComputedStyle(panel).display !== 'none' : false,
+        panelOverflow: panel ? panel.scrollWidth > panel.clientWidth + 1 || panel.scrollLeft !== 0 : true,
+        bodyOverflow: body ? body.scrollWidth > body.clientWidth + 1 || body.scrollLeft !== 0 : true,
+        rowOverflow: rows.some((row) => row.rowOverflow || row.lineOverflow),
+        rows: rows.length,
+      };
+    }, { panelId, viewport }));
+  }
+}
+await page.setViewportSize({ width: 1500, height: 900 });
+await page.waitForTimeout(180);
+check(
+  'side parameter sliders stay inside dock width at narrow viewports',
+  responsiveSideControlOverflow.every((row) =>
+    row.visible &&
+    !row.panelOverflow &&
+    !row.bodyOverflow &&
+    !row.rowOverflow,
+  ),
+  JSON.stringify(responsiveSideControlOverflow),
+);
+await page.evaluate(() => document.getElementById('b-validate')?.click());
+await page.waitForTimeout(120);
+const validationSideOverflow = await page.evaluate(() => {
+  const panel = document.getElementById('builder-issues');
+  const body = panel?.querySelector('.bv-panel-body');
+  return {
+    visible: panel ? getComputedStyle(panel).display !== 'none' : false,
+    panelScrollLeft: panel?.scrollLeft ?? -1,
+    bodyScrollLeft: body?.scrollLeft ?? -1,
+    panelOverflow: panel ? panel.scrollWidth > panel.clientWidth + 1 : true,
+    bodyOverflow: body ? body.scrollWidth > body.clientWidth + 1 : true,
+  };
+});
+check(
+  'Validation Issues wraps content without horizontal dock overflow',
+  validationSideOverflow.visible &&
+    validationSideOverflow.panelScrollLeft === 0 &&
+    validationSideOverflow.bodyScrollLeft === 0 &&
+    !validationSideOverflow.panelOverflow &&
+    !validationSideOverflow.bodyOverflow,
+  JSON.stringify(validationSideOverflow),
+);
+await page.click('#b-reset-workspace');
+await page.waitForTimeout(150);
 await page.evaluate(() => document.getElementById('bp-world-map-btn')?.click());
 await page.waitForTimeout(300);
 await page.evaluate(() => document.getElementById('b-validate')?.click());
@@ -505,12 +716,16 @@ await dockWorkspacePanel('builder-inspector', 'builder-dock-bottom', 70, 0.90);
 await page.evaluate(() => document.getElementById('bp-global-btn')?.click());
 await page.waitForTimeout(120);
 await dockWorkspacePanel('builder-global', 'builder-dock-bottom', 70, 0.90);
-const bottomIds = ['builder-issues', 'builder-virtual-world', 'builder-inspector', 'builder-global'];
+await page.evaluate(() => document.getElementById('bp-postfx-btn')?.click());
+await page.waitForTimeout(120);
+await dockWorkspacePanel('builder-postfx', 'builder-dock-bottom', 70, 0.90);
+const bottomIds = ['builder-issues', 'builder-virtual-world', 'builder-inspector', 'builder-global', 'builder-postfx'];
 const expectedBottomTitles = {
   'builder-issues': 'VALIDATION ISSUES',
   'builder-virtual-world': 'WORLD MAP',
   'builder-inspector': 'INSPECTOR',
   'builder-global': 'GLOBAL CONTROLS',
+  'builder-postfx': 'POST PROCESSING',
 };
 const bottomChrome = [];
 for (const id of bottomIds) {
@@ -521,9 +736,11 @@ for (const id of bottomIds) {
     const pane = panel?.closest('.builder-bottom-pane');
     const head = panel?.querySelector('.bi-head[data-panel-handle]');
     const close = panel?.querySelector('.b-close');
+    const body = panel?.querySelector('.bv-panel-body, .bi-panel-body, .vw-body, .bw-form, #bw-controls, #bm-controls, #bg-controls, #bf-controls');
     const pcs = panel ? getComputedStyle(panel) : null;
     const hcs = head ? getComputedStyle(head) : null;
     const ccs = close ? getComputedStyle(close) : null;
+    const bcs = body ? getComputedStyle(body) : null;
     return {
       id: panelId,
       parent: panel?.parentElement?.id ?? '',
@@ -534,9 +751,14 @@ for (const id of bottomIds) {
       close: close instanceof HTMLButtonElement && close.getAttribute('aria-label') !== '',
       margin: pcs ? `${pcs.marginTop}/${pcs.marginLeft}` : '',
       padding: pcs ? `${pcs.paddingTop}/${pcs.paddingLeft}` : '',
+      borderY: pcs ? `${pcs.borderTopWidth}/${pcs.borderBottomWidth}` : '',
+      background: pcs ? pcs.backgroundColor : '',
+      panelOverflow: panel ? panel.scrollWidth > panel.clientWidth + 1 || panel.scrollLeft !== 0 : true,
+      bodyOverflow: body ? body.scrollWidth > body.clientWidth + 1 || body.scrollLeft !== 0 : false,
       font: hcs ? `${hcs.fontSize}/${hcs.letterSpacing}/${hcs.textTransform}` : '',
       headBox: hcs ? `${hcs.minHeight}/${hcs.paddingTop}/${hcs.paddingRight}/${hcs.paddingBottom}/${hcs.paddingLeft}` : '',
       closeBox: ccs ? `${ccs.width}/${ccs.height}/${ccs.paddingTop}/${ccs.marginLeft}` : '',
+      bodyBox: bcs ? `${bcs.paddingTop}/${bcs.paddingRight}/${bcs.paddingBottom}/${bcs.paddingLeft}` : '',
     };
   }, { panelId: id, expectedTitles: expectedBottomTitles }));
 }
@@ -566,7 +788,12 @@ check(
   bottomTabs.rootTabs === 0 &&
     bottomTabs.panes.some((pane) => pane.id === 'bottom-left' && pane.panels.includes('builder-issues')) &&
     bottomTabs.panes.some((pane) => pane.id === 'bottom-main' && pane.panels.includes('builder-virtual-world')) &&
-    bottomTabs.panes.some((pane) => pane.id === 'bottom-right' && pane.panels.includes('builder-inspector') && pane.panels.includes('builder-global')) &&
+    bottomTabs.panes.some((pane) =>
+      pane.id === 'bottom-right' &&
+      pane.panels.includes('builder-inspector') &&
+      pane.panels.includes('builder-global') &&
+      pane.panels.includes('builder-postfx'),
+    ) &&
     bottomTabs.childOrder.length === 5 &&
     bottomTabs.childOrder[0] === 'bottom-left' &&
     bottomTabs.childOrder[1] === 'bottom-left|bottom-main' &&
@@ -577,9 +804,13 @@ check(
     bottomTabs.splitters.some((splitter) => splitter.id === 'bottom-main|bottom-right' && splitter.min === '220' && splitter.max <= 420 && splitter.tabIndex === 0 && splitter.role === 'separator') &&
     bottomTabs.displayed.length === 3 &&
     bottomChrome.every((row) => row.parent !== 'builder-dock-bottom' && row.close && row.titleOk && row.margin === '0px/0px' && row.padding === '0px/0px') &&
+    bottomChrome.every((row) => row.borderY === '1px/0px') &&
+    bottomChrome.every((row) => !row.panelOverflow && !row.bodyOverflow) &&
+    new Set(bottomChrome.map((row) => row.background)).size === 1 &&
     new Set(bottomChrome.map((row) => row.font)).size === 1 &&
     new Set(bottomChrome.map((row) => row.headBox)).size === 1 &&
-    new Set(bottomChrome.map((row) => row.closeBox)).size === 1,
+    new Set(bottomChrome.map((row) => row.closeBox)).size === 1 &&
+    bottomChrome.find((row) => row.id === 'builder-issues')?.bodyBox === '8px/8px/8px/8px',
   JSON.stringify({ bottomTabs, bottomChrome }),
 );
 await activatePanel('builder-inspector');

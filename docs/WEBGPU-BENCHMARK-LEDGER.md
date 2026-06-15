@@ -428,8 +428,393 @@ Notes:
   worktree. It reports `39` passing test files, `508` passing tests, and one
   unrelated failure in `tests/virtual-world.test.ts`: `No herringbone tile for
   orientation 'vertical'`.
-- The current worktree also contains an unrelated `src/render/ComposeShader.ts`
-  hunk that changes backdrop sample quantization. It is not part of this
-  Phase 4.1 slice. Because `postFx.gpuCompose` is the WebGL2 reference path,
-  that hunk must be separately benchmarked/accepted or cleared before a WebGPU
-  compose port treats the current shader as the reference.
+- At the time of the Phase 4.1 probe, the shared worktree also contained an
+  unrelated `src/render/ComposeShader.ts` hunk that changed backdrop sample
+  quantization. It was not part of the Phase 4.1 slice. Because
+  `postFx.gpuCompose` is the WebGL2 reference path, Phase 4.2 rechecked and
+  accepted the current compose reference before adding the WebGPU API canary.
+
+## Phase 4.2 - WebGPU Compose API Canary
+
+Task: prove the pinned Three/WebGPU stack can use the two API primitives needed
+for the first WebGPU compose port before production renderer code changes:
+TSL `textureLoad` into a WebGPU render target and raw WGSL compute on the active
+Three `GPUDevice`.
+
+Commit: `76e0a5e` plus working-tree Phase 4.2 canary/docs changes. The checkout
+was dirty from unrelated gameplay and virtual-world files during the probe.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for prior WebGPU phases.
+
+Requested backend: explicit `WebGPURenderer` canary page.
+
+Actual backend: WebGPU, with `isWebGPUBackend=true` and `isWebGLBackend=false`.
+
+Scene / seed / resolution: isolated API probe page. The TSL canary uploads a
+`4x4` RGBA8 texture and renders it scaled into a `64x64` WebGPU render target;
+the compute canary dispatches one raw WGSL workgroup over eight `u32` values.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-compose-canary-page.js
+node --check scripts/probe-webgpu-compose-canary.mjs
+node scripts/probe-compose-parity.mjs http://127.0.0.1:5205/
+npm run probe:webgpu-compose-canary
+```
+
+Baseline: the current WebGL2 compose reference was reaccepted before the canary
+was recorded. `node scripts/probe-compose-parity.mjs
+http://127.0.0.1:5205/` passed all 8 assertions: static CPU/GPU parity was
+`99.998%` exact with max delta `1`, max black-hole parity was `99.982%` exact
+with `0.0016%` big pixels, shockwave/sprite parity was `99.997%` exact with
+`0.0011%` big pixels, postFx-on parity max delta was `1`, and there were no
+shader/WebGL console errors.
+
+Expected result: no production visual or performance behavior change yet. The
+positive result is a quantitative canary that proves exact WebGPU render-target
+texture readback through TSL and exact raw WGSL compute readback before the
+production compose shader port starts.
+
+Actual result: keep. The canary passed on actual WebGPU. TSL `textureLoad`
+rendered and read back the scaled texture with `maxDelta=0`, `mismatches=0`,
+and normal orientation. Raw WGSL compute transformed `[1,2,3,4,5,6,7,8]` into
+`[10,13,16,19,22,25,28,31]` exactly. The page reported no console errors, no
+page errors, and no probe failures. The visible readback visualization reported
+`4096/4096` nonblack pixels, average RGB `94.667`, and max channel `213`.
+
+Performance result: no WebGPU speedup is claimed for this slice. The production
+WebGL2 compose path is unchanged; this phase only reduces implementation risk
+for the upcoming WebGPU compose port.
+
+Visual/quality evidence: the canary screenshot visualizes the verified WebGPU
+render-target readback buffer and was captured at
+`verify-out/webgpu-compose-canary/canary-1781538012826.png`. The current compose
+reference screenshots were refreshed at
+`verify-out/compose-parity/cpu-shockwave.png` and
+`verify-out/compose-parity/gpu-shockwave.png`.
+
+Decision: keep the canary and proceed to the production WebGPU compose shader
+port only after preserving the Phase 4.1 ABI and extending parity to compare
+CPU, WebGL2 GPU compose, and WebGPU compose in the same harness.
+
+Notes:
+
+- Raw canary artifact:
+  `verify-out/webgpu-compose-canary/probe-1781538012826.json`.
+- Reference compose-parity log:
+  `verify-out/compose-parity/phase4-2-compose-parity-5205.out.log`.
+- Device limits in the canary matched the Phase 4.1 contract shape:
+  `maxTextureDimension2D=8192`, `maxSampledTexturesPerShaderStage=16`,
+  `maxSamplersPerShaderStage=16`, `maxStorageBuffersPerShaderStage=8`,
+  `maxStorageBufferBindingSize=134217728`, and `maxBufferSize=268435456`.
+- Validation passed: `node --check scripts/probe-webgpu-compose-canary-page.js`,
+  `node --check scripts/probe-webgpu-compose-canary.mjs`,
+  `npm run probe:webgpu-compose-canary`, `npm run typecheck`,
+  `npm run lint`, `npm test`, and `npm run build`. The build retained the
+  existing Vite large-chunk warning.
+
+## Phase 4.3 - Raw WGSL Compose Fixture
+
+Task: add a production-shaped WebGPU compose fixture that renders a subset of
+the terrain-composition shader through raw WGSL on the active Three
+`GPUDevice`, then compares readback to a CPU reference.
+
+Commit: `76e0a5e` plus working-tree Phase 4.3 fixture/docs changes. The
+checkout was dirty from unrelated gameplay, Builder, UI, and virtual-world
+files during the probe.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for prior WebGPU phases.
+
+Requested backend: explicit `WebGPURenderer` fixture page.
+
+Actual backend: WebGPU, with `isWebGPUBackend=true` and `isWebGLBackend=false`.
+
+Scene / seed / resolution: isolated compose fixture page at `525x357` output
+resolution, using Phase 4.1 production ABI dimensions: `653x485` world window,
+`263x179` light field, and `525x357` overlay/output.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-compose-fixture-page.js
+node --check scripts/probe-webgpu-compose-fixture.mjs
+npm run probe:webgpu-compose-fixture
+```
+
+Baseline: Phase 4.2 proved exact TSL `textureLoad` readback and exact raw WGSL
+compute, but did not exercise production-sized compose resources, row padding,
+packed type/charge bytes, half-float overlay data, light lookup, or LUT lookup
+in a compose-shaped shader. The current WebGL2 compose path remains the
+production performance reference.
+
+Expected result: no production visual or performance behavior change yet. The
+positive result is a quantitative CPU-vs-WebGPU parity fixture using the same
+resource shapes and formats the live shader port will need.
+
+After: the raw WGSL fixture rendered through the actual WebGPU backend with
+`rgba8uint` world-window, `rgba32float` light-field, `r32float` bloom-LUT,
+`rgba16float` overlay, and `rgba8unorm` output textures. Output readback used
+`2100` byte rows padded to `2304` bytes.
+
+Actual result: keep. The fixture passed with `maxDelta=1`, `bigPct=0`,
+`meanDelta=0.0273`, and `89.425%` exact pixels against the CPU reference. This
+passes the gate of `maxDelta <= 2` and `bigPct <= 0.01`.
+
+Performance result: no WebGPU speedup is claimed for this slice. The measured
+`gpuSubmitReadbackWallMs=101.8ms` includes explicit render-target readback and
+is a validation cost, not a production frame-time estimate. The CPU reference
+for the fixture measured `25.2ms`; the next production step must remove
+readback from the frame path before judging WebGPU compose performance.
+
+Visual/quality evidence:
+`verify-out/webgpu-compose-fixture/fixture-1781540827915.png`.
+
+Decision: keep the fixture and proceed to a live, boot-gated WebGPU compose
+implementation only after extending the parity harness to compare CPU, WebGL2
+GPU compose, and WebGPU compose in the same scenario.
+
+Notes:
+
+- Raw fixture artifact:
+  `verify-out/webgpu-compose-fixture/probe-1781540827915.json`.
+- Device limits in the fixture matched the Phase 4.1 contract shape:
+  `maxTextureDimension2D=8192`, `maxSampledTexturesPerShaderStage=16`,
+  `maxSamplersPerShaderStage=16`, `maxStorageBuffersPerShaderStage=8`,
+  `maxStorageBufferBindingSize=134217728`, and `maxBufferSize=268435456`.
+- The fixture covers coordinate orientation, row-pitch padding, type/charge
+  packing, overlay replace/add semantics, light-field reads, and bloom-LUT
+  reads. It intentionally remains isolated from production renderer state.
+- Validation passed for this slice:
+  `node --check scripts/probe-webgpu-compose-fixture-page.js`,
+  `node --check scripts/probe-webgpu-compose-fixture.mjs`, and
+  `npm run probe:webgpu-compose-fixture`. Follow-up full validation also
+  passed: `npm run probe:webgpu-compose-canary`, `npm run typecheck`,
+  `npm run lint`, `npm test`, `npm run build`, and `git diff --check`. The
+  build retained the existing Vite large-chunk warning. `git diff --check`
+  reported line-ending normalization warnings on dirty files but no whitespace
+  errors.
+
+## Phase 4.4 - TSL Storage Texture Presentation Bridge
+
+Task: prove a GPU-resident bridge from WebGPU compute output to Three's TSL
+presentation path before wiring live WebGPU compose. The probe writes a
+`StorageTexture` with TSL compute, renders it through a TSL `RenderPipeline`,
+and reads back only in the validation harness.
+
+Commit: `76e0a5e` plus working-tree Phase 4.4 bridge/docs changes. The
+checkout was dirty from unrelated gameplay, Builder, UI, wand, and
+virtual-world files during the probe.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for prior WebGPU phases.
+
+Requested backend: explicit `WebGPURenderer` bridge page.
+
+Actual backend: WebGPU, with `isWebGPUBackend=true` and `isWebGLBackend=false`.
+
+Scene / seed / resolution: isolated `128x96` storage-texture bridge page,
+presented at `4x` scale.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-storage-bridge-page.js
+node --check scripts/probe-webgpu-storage-bridge.mjs
+node --check scripts/webgpu-storage-screenshot-validation.mjs
+npm run probe:webgpu-storage-bridge
+```
+
+Baseline: Phase 4.3 proved raw WGSL can render a production-shaped compose
+fixture into a WebGPU texture and compare it to CPU through validation readback.
+It did not prove that a WebGPU-generated texture can stay resident and be
+sampled by the Three/TSL presentation path that the live renderer already uses.
+
+Expected result: no production visual or performance behavior change yet. The
+positive result is a quantitative bridge proof: TSL compute writes texture
+contents, TSL presentation samples the same texture, full-frame readback
+validation matches a deterministic expected image within the declared tolerance,
+and the presented canvas screenshot matches the same expected image at the
+declared output dimensions.
+
+After: the probe created a Three r184 `StorageTexture`, filled it through a TSL
+`Fn` using `textureStore`, presented it through a `RenderPipeline` using
+`textureLoad`, captured a validation readback outside any production frame loop,
+unpacked Three/WebGPU's 256-byte padded readback rows, and decoded the Playwright
+screenshot for separate presentation pixel validation.
+
+Actual result: keep. The probe passed on actual WebGPU with full-frame
+`maxDelta=1`, `mismatches=0`, `mismatchPct=0`, `exactPct=90.91%`,
+`meanDelta=0.0234`, `99.9919%` nonblack pixels, average RGB `127.469`, and max
+channel `255` for both offscreen readback and screenshot validation. The page
+reported no console errors, no page errors, and no probe failures.
+
+Performance result: no WebGPU speedup is claimed for this slice. The measured
+`computeSubmitWallMs=25.0ms` is a one-shot probe cost that includes setup and
+submit synchronization; it is not a production frame-time estimate. The
+important performance-relevant result is qualitative: the bridge allows a
+future live compose path to avoid copying WebGPU output back through CPU
+`pixelData` before presentation.
+
+Visual/quality evidence:
+`verify-out/webgpu-storage-bridge/bridge-1781545375079.png`.
+
+Decision: keep the bridge probe. The next live compose slice can target a
+boot-gated WebGPU output texture because the presentation bridge no longer
+requires a frame-loop readback.
+
+Notes:
+
+- Raw bridge artifact:
+  `verify-out/webgpu-storage-bridge/probe-1781545375079.json`.
+- Device limits in the bridge artifact satisfy the bridge needs:
+  `maxStorageTexturesPerShaderStage=4`,
+  `maxSampledTexturesPerShaderStage=16`, and `maxTextureDimension2D=8192`.
+- This slice intentionally does not change `WebGpuRenderBackend` production
+  behavior; `gpuComposeAvailable` must stay false until CPU/WebGL2/WebGPU
+  same-scenario parity and A/B timing exist.
+- A production-size bridge variant was attempted after the small bridge passed:
+  `525x357` storage texture, `1050x714` output, full-frame comparison. The first
+  attempt and one focused 2D-dispatch fix appeared to fail with high mismatch
+  rates: `verify-out/webgpu-storage-bridge/probe-1781543232414.json` and
+  `verify-out/webgpu-storage-bridge/probe-1781543325378.json`. Phase 4.5 traced
+  that signature to validation code that treated Three/WebGPU's 256-byte padded
+  readback rows as tightly packed rows. The failed artifacts are retained as
+  validation-bug evidence, not as evidence that production-sized
+  `StorageTexture` presentation fails.
+- Validation passed for this slice:
+  `node --check scripts/probe-webgpu-storage-bridge-page.js`,
+  `node --check scripts/probe-webgpu-storage-bridge.mjs`,
+  `node --check scripts/webgpu-storage-screenshot-validation.mjs`, and
+  `npm run probe:webgpu-storage-bridge`. The final post-review fixture rerun
+  records full-frame readback and screenshot comparison metrics, not
+  sample-only parity.
+- Same-session full validation before later unrelated wand reward-pool edits
+  passed: `npm run probe:webgpu-compose-canary`,
+  `npm run probe:webgpu-compose-fixture`,
+  `npm run probe:webgpu-storage-bridge`, `npm run typecheck`,
+  `npm run lint`, `npm test`, `npm run build`, and `git diff --check`. The
+  build retained the existing Vite large-chunk warning. `git diff --check`
+  reported line-ending normalization warnings on dirty files but no whitespace
+  errors.
+- Final post-review focused validation passed: all bridge scripts passed
+  `node --check`, `npm run probe:webgpu-storage-bridge` passed, `npm run lint`
+  passed, and targeted `git diff --check` found no whitespace errors.
+
+## Phase 4.5 - Storage Bridge Size Sweep
+
+Task: add a focused diagnostic sweep for the apparent Phase 4.4 production-size
+failure before wiring live WebGPU compose. The probe reuses the TSL storage
+bridge page with configurable logical size, storage size, and presentation
+scale.
+
+Commit: `76e0a5e` plus working-tree Phase 4.5 diagnostic/docs changes. The
+checkout remained dirty from unrelated gameplay, Builder, UI, wand, and
+virtual-world files during the probe.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for prior WebGPU phases.
+
+Requested backend: explicit `WebGPURenderer` bridge page.
+
+Actual backend: WebGPU, with `isWebGPUBackend=true` and `isWebGLBackend=false`
+in every sweep case.
+
+Scene / seed / resolution: isolated storage-texture bridge page. Cases covered
+small baseline, production-width/small-height, small-width/production-height,
+aligned `512x360`, production width with aligned height, aligned width with
+production height, production `525x357`, and production `525x357` with `576`
+storage-width padding.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-storage-bridge-page.js
+node --check scripts/probe-webgpu-storage-size-sweep.mjs
+node --check scripts/webgpu-storage-screenshot-validation.mjs
+npm run probe:webgpu-storage-size-sweep
+```
+
+Baseline: Phase 4.4 proved that a small `128x96` TSL `StorageTexture` can be
+written by compute, sampled by TSL presentation, and validated with full-frame
+readback. A direct production-size attempt appeared to fail, but reviewer
+feedback identified that the failure signature matched missing 256-byte
+readback-row unpacking.
+
+Expected result: no production visual or performance behavior change. The
+positive result is qualitative and quantitative diagnostic coverage: the sweep
+must preserve the known-good small case, fix the readback-row unpacking bug,
+validate production-width cases, and separately validate the presented canvas
+screenshot before a live compose attempt depends on this bridge.
+
+After: the storage bridge page accepts `w`, `h`, `scale`, `storageW`, and
+`storageH` query parameters, unpacks padded WebGPU readback rows, and records
+raw/tight row layout. The sweep harness decodes each Playwright screenshot and
+compares logical screenshot pixels against the same deterministic expected
+image, then verifies screenshot dimensions against the declared scaled output
+size.
+
+Actual result: keep. The diagnostic gate passed in
+`verify-out/webgpu-storage-size-sweep/probe-1781545386069.json` with no console
+errors, no page errors, all eight declared expected statuses matched, and both
+offscreen readback and screenshot comparison reported `mismatchPct=0`. All
+screenshots also matched their expected scaled dimensions:
+
+| Case | Size | Storage | Row padding | Readback `mismatchPct` | Screenshot `mismatchPct` |
+| --- | --- | --- | --- | --- | --- |
+| baseline-powerish | `128x96` | `128x96` | `0` | `0` | `0` |
+| view-width-small-height | `525x96` | `525x96` | `204` | `0` | `0` |
+| small-width-view-height | `128x357` | `128x357` | `0` | `0` | `0` |
+| aligned-view-neighbor | `512x360` | `512x360` | `0` | `0` | `0` |
+| view-width-aligned-height | `525x360` | `525x360` | `204` | `0` | `0` |
+| aligned-width-view-height | `528x357` | `528x357` | `192` | `0` | `0` |
+| production-view | `525x357` | `525x357` | `204` | `0` | `0` |
+| production-view-padded-storage | `525x357` | `576x357` | `204` | `0` | `0` |
+
+Performance result: no WebGPU speedup is claimed for this slice. The useful
+result is reducing next-step risk: the production-size bridge failure was a
+validation readback bug, not a demonstrated `StorageTexture`/TSL presentation
+limit. Production-width cases now pass the readback and screenshot quality gates
+without enabling production WebGPU compose.
+
+Visual/quality evidence:
+`verify-out/webgpu-storage-size-sweep/bridge-production-view-1781545386069.png`
+and the per-case screenshots beside the artifact.
+
+Decision: keep the sweep as a regression/diagnostic tool. Do not enable
+production WebGPU compose from this state. The next attempt can use the
+production-size storage bridge as a validated presentation path, but it still
+needs live compose parity against CPU/WebGL2 and same-session timing before it
+can become a renderer option.
+
+Notes:
+
+- Sweep artifact:
+  `verify-out/webgpu-storage-size-sweep/probe-1781545386069.json`.
+- The first sweep version recorded several middle cases as `expected:
+  investigate`; reviewer feedback correctly noted that this made the diagnostic
+  claim weaker than the benchmark discipline requires. The sweep now declares
+  an explicit `expectedStatus` for every case and fails the probe if any case
+  deviates from its declared pass status.
+- A second reviewer correctly identified the production-width failures as
+  missing row unpacking: Three r184 aligns WebGPU `readRenderTargetPixelsAsync`
+  rows to 256 bytes, so non-aligned widths such as `525` and `528` must unpack
+  padded rows before comparison. The fixed probe records `rowPaddingBytes` for
+  every case.
+- A temporary in-page attempt to validate the presented WebGPU canvas through
+  `drawImage` captured black pixels in headless Edge even though the Playwright
+  screenshot was correct. That approach was removed and replaced with Node-side
+  PNG screenshot decoding in `scripts/webgpu-storage-screenshot-validation.mjs`.
+- Validation passed for this slice:
+  `node --check scripts/probe-webgpu-storage-bridge-page.js`,
+  `node --check scripts/probe-webgpu-storage-size-sweep.mjs`,
+  `node --check scripts/webgpu-storage-screenshot-validation.mjs`,
+  `npm run probe:webgpu-storage-bridge`,
+  `npm run probe:webgpu-storage-size-sweep`, `npm run typecheck`,
+  `npm run lint`, and `npm run build`. The build retained the existing Vite
+  large-chunk warning. A final full `npm test` run failed in unrelated dirty
+  virtual-world work: `tests/virtual-world.test.ts` expected cropped scene caps
+  to keep `lightCount=261` / `objectCount=261`, while the current dirty checkout
+  returned `1` / `1`. That failure is outside the Phase 4.5 WebGPU slice.

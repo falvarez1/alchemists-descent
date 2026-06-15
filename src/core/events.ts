@@ -1,3 +1,5 @@
+import type { CardId } from '@/core/types';
+
 /**
  * Minimal synchronous typed event bus.
  *
@@ -9,7 +11,7 @@ export interface EventMap {
   /** Gold total changed — HUD score readouts re-render. */
   scoreChanged: { score: number };
   /** Player hit 0 HP — UI shows the game-over overlay. */
-  playerDied: { wave: number; gold: number };
+  playerDied: { depth: number; level: string; gold: number };
   /** Player came back — UI hides the game-over overlay. */
   playerRespawned: undefined;
   /** Death UI should clear without triggering gameplay respawn side effects. */
@@ -32,6 +34,15 @@ export interface EventMap {
   recipeBrewed: { id: string; name: string; firstDiscovery: boolean };
   /** A spell card entered the collection — banner + bench refresh. */
   cardGranted: { id: string; name: string };
+  /** Gameplay asks presentation to show an unskippable choice of spell cards. */
+  cardOfferRequested: {
+    source: 'tome' | 'sanctum';
+    title: string;
+    prompt?: string;
+    cards: CardId[];
+    handled?: boolean;
+    onChoose(card: CardId): void;
+  };
   /** Active wand or its loadout changed — HUD wand display refresh. */
   wandChanged: undefined;
   /** A concussive strike landed at (x, y) — mechanisms/rune vaults listen. */
@@ -40,6 +51,8 @@ export interface EventMap {
   toast: { text: string };
   /** The HUD objective line ("FIND THE GOLDEN KEY" -> "REACH THE PORTAL"). */
   objectiveChanged: { text: string };
+  /** The player needs the Refuge; map should briefly ping its bench marker. */
+  refugePing: undefined;
   /** The Kiln Colossus is slain: the expedition is complete. */
   runComplete: { gold: number };
   /** Crawler wants to stand but the ceiling says no — HUD CRAMPED glyph. */

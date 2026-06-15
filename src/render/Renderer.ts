@@ -39,6 +39,7 @@ class WebGLRenderBackend implements RendererBackend {
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
   private readonly postFx: PostFx;
+  private readonly floatTextureSupported: boolean;
   private requestedBackend: RenderSettings['backend'];
   private featureFlags: RenderBackendFeatureFlags;
   private fallbackReason: string | null;
@@ -84,6 +85,8 @@ class WebGLRenderBackend implements RendererBackend {
     if (this.renderer.domElement.parentElement !== holder) {
       holder.appendChild(this.renderer.domElement);
     }
+    this.floatTextureSupported =
+      this.renderer.capabilities.isWebGL2 || Boolean(this.renderer.extensions.get('OES_texture_float'));
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -182,11 +185,12 @@ class WebGLRenderBackend implements RendererBackend {
 
   getBackendStatus(): RenderBackendStatus {
     const webgl2 = this.renderer.capabilities.isWebGL2;
+    const webglAvailable = !this.contextLost && this.floatTextureSupported;
     const navigatorGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
     const secureContext = typeof window === 'undefined' ? false : window.isSecureContext === true;
     const decision = chooseRenderBackend({
       requested: this.requestedBackend,
-      webglAvailable: true,
+      webglAvailable,
       webgl2Available: webgl2,
       navigatorGpu,
       secureContext,
@@ -203,7 +207,11 @@ class WebGLRenderBackend implements RendererBackend {
       actual: this.contextLost ? 'none' : decision.actual,
       implementation: 'WebGLRenderBackend',
       health: this.contextLost ? 'lost' : this.contextRestoredCount > 0 ? 'recovered' : 'active',
-      reason: this.contextLost ? 'webgl-context-lost' : this.fallbackReason ?? decision.reason,
+      reason: this.contextLost
+        ? 'webgl-context-lost'
+        : !this.floatTextureSupported
+          ? 'webgl-float-texture-unavailable'
+          : this.fallbackReason ?? decision.reason,
       fallback: this.fallbackReason !== null || decision.fallback,
       canvas: {
         width: this.renderer.domElement.width,
@@ -225,7 +233,7 @@ class WebGLRenderBackend implements RendererBackend {
         lastLossMessage: null,
       },
       webgl: {
-        available: true,
+        available: webglAvailable,
         webgl2,
         contextLost: this.contextLost,
         lostCount: this.contextLostCount,
@@ -333,6 +341,13 @@ export class Renderer implements RenderTarget {
     );
   }
 
+  private fallBackFromLostWebGpu(settings: RenderSettings): void {
+    if (!(this.backend instanceof WebGpuRenderBackend) || !this.backend.deviceLost) return;
+    const reason = this.backend.deviceLossReason;
+    const canvas = this.backend.releaseCanvasForWebGlFallback();
+    this.backend = new WebGLRenderBackend(this.holder, settings, canvas, reason);
+  }
+
   get pixelData(): Float32Array {
     return this.backend.pixelData;
   }
@@ -367,6 +382,7 @@ export class Renderer implements RenderTarget {
   render(ctx: Ctx): void {
     this.backend.syncSettings(ctx.state.render);
     this.fallBackFromFailedWebGpu(ctx.state.render);
+    this.fallBackFromLostWebGpu(ctx.state.render);
     this.backend.syncSettings(ctx.state.render);
     this.backend.render(ctx);
   }

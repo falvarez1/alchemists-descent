@@ -1,5 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { CARD_DEFS } from '@/combat/wands/cards';
+import { nextWandSentence } from '@/combat/wands/sentenceView';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { cardIconName, makeIconCanvas } from '@/ui/icons';
 
@@ -24,6 +25,8 @@ export class Hud {
   private hotbarSlots: Array<{ tile: HTMLElement; cost: number; slotIdx: number }> = [];
   /** The active wand's recharge bar fill (rebuilt with the hotbar). */
   private rechargeFill: HTMLElement | null = null;
+  /** Readable spell sentence for the active wand's next click. */
+  private castCaption: HTMLElement | null = null;
   /** Rolling gold display: ticks toward the true score instead of snapping. */
   private displayedGold = 0;
   /** Frame the last dry-fire flash started (clears the class after it). */
@@ -120,8 +123,8 @@ export class Hud {
       el('enemies-left').textContent = String(count);
     });
 
-    ctx.events.on('playerDied', ({ wave, gold }) => {
-      el('go-wave').textContent = 'WAVE ' + wave;
+    ctx.events.on('playerDied', ({ depth, level, gold }) => {
+      el('go-wave').textContent = 'D' + depth + ' - ' + level.toUpperCase();
       el('go-gold').textContent = String(gold);
       el('gameover-overlay').classList.add('visible');
     });
@@ -190,6 +193,7 @@ export class Hud {
     const bar = el('spell-hotbar');
     bar.innerHTML = '';
     this.hotbarSlots = [];
+    this.castCaption = null;
 
     const wands = this.ctx.wands;
     for (const wi of [wands.active, (1 - wands.active) as 0 | 1]) {
@@ -237,6 +241,11 @@ export class Hud {
       // Cast rhythm bar: drains over the cooldown — a short blip between
       // cards, a long visible draw when the cycle wraps into recharge.
       if (isActive) {
+        const caption = document.createElement('div');
+        caption.className = 'wand-cast-caption';
+        bar.appendChild(caption);
+        this.castCaption = caption;
+
         const track = document.createElement('div');
         track.className = 'wand-recharge';
         const fill = document.createElement('div');
@@ -325,9 +334,18 @@ export class Hud {
     const wand = ctx.wands.wands[ctx.wands.active];
     const cooling = wand.cooldown > 0;
     const next = ctx.wands.nextCastSlots();
+    const sentence = nextWandSentence(wand.cards, wand.castIndex);
+    const groupUnaffordable = player.mana < sentence.manaCost;
+    if (this.castCaption) {
+      this.castCaption.textContent = groupUnaffordable
+        ? sentence.label + ' - Needs ' + sentence.manaCost + ' mana, tank has ' + Math.floor(player.mana)
+        : sentence.label + ' - ' + sentence.detail;
+      this.castCaption.classList.toggle('overmana', groupUnaffordable);
+    }
     for (const s of this.hotbarSlots) {
-      s.tile.classList.toggle('unaffordable', player.mana < s.cost);
-      s.tile.classList.toggle('next-cast', !cooling && next.includes(s.slotIdx));
+      const isNext = !cooling && next.includes(s.slotIdx);
+      s.tile.classList.toggle('unaffordable', isNext ? groupUnaffordable : player.mana < s.cost);
+      s.tile.classList.toggle('next-cast', isNext);
     }
     // Recharge bar: drains while the wand catches its breath
     if (this.rechargeFill) {

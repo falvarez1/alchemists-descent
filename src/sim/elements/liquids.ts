@@ -14,6 +14,20 @@ import {
   unpackR,
   waterColor,
 } from '@/sim/colors';
+import { stainCell } from '@/sim/stains';
+
+const CARDINAL_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+const IGNITION_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [-1, -1],
+];
 
 export function handleWater(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
@@ -60,6 +74,14 @@ export function handleWater(ctx: Ctx, x: number, y: number): void {
 // Blood and slime: generic viscous liquids
 export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell): void {
   const w = ctx.world;
+  // Blood soaks whatever sturdy surface it flows across or pools against — the
+  // floor beneath it and the walls beside it pick up a red stain over time
+  // (stainCell no-ops on non-sturdy cells, so empty space/sand is unaffected).
+  if (type === Cell.Blood && Math.random() < 0.35) {
+    stainCell(w, x, y + 1, 118, 14, 20, 0.16);
+    stainCell(w, x + 1, y, 118, 14, 20, 0.1);
+    stainCell(w, x - 1, y, 118, 14, 20, 0.1);
+  }
   const pass = (t: number) => t === Cell.Empty || t === Cell.Steam || t === Cell.Smoke;
   if (w.inBounds(x, y + 1) && pass(w.types[w.idx(x, y + 1)])) {
     w.swap(x, y, x, y + 1);
@@ -99,15 +121,11 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
 export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const ci = w.idx(x, y);
-  const targets = [
-    { x: x + 1, y: y },
-    { x: x - 1, y: y },
-    { x: x, y: y + 1 },
-    { x: x, y: y - 1 },
-  ];
-  for (const t of targets) {
-    if (w.inBounds(t.x, t.y)) {
-      const ti = w.idx(t.x, t.y);
+  for (const [dx, dy] of CARDINAL_OFFSETS) {
+    const tx = x + dx;
+    const ty = y + dy;
+    if (w.inBounds(tx, ty)) {
+      const ti = w.idx(tx, ty);
       const n = w.types[ti];
       if (n === Cell.Water) {
         w.types[ti] = Cell.Ice;
@@ -156,16 +174,12 @@ export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
 
 export function handleOil(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  const targets = [
-    { x: x + 1, y: y },
-    { x: x - 1, y: y },
-    { x: x, y: y + 1 },
-    { x: x - 1, y: y - 1 },
-  ];
-  for (const t of targets) {
+  for (const [dx, dy] of IGNITION_OFFSETS) {
+    const tx = x + dx;
+    const ty = y + dy;
     if (
-      w.inBounds(t.x, t.y) &&
-      (w.types[w.idx(t.x, t.y)] === Cell.Fire || w.charge[w.idx(t.x, t.y)] > 0)
+      w.inBounds(tx, ty) &&
+      (w.types[w.idx(tx, ty)] === Cell.Fire || w.charge[w.idx(tx, ty)] > 0)
     ) {
       const ci = w.idx(x, y);
       w.types[ci] = Cell.Fire;
@@ -222,15 +236,11 @@ function catalystNeighbor(w: Ctx['world'], x: number, y: number): number {
 
 export function handleAcid(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  const targets = [
-    { x: x + 1, y: y },
-    { x: x - 1, y: y },
-    { x: x, y: y + 1 },
-    { x: x, y: y - 1 },
-  ];
-  for (const t of targets) {
-    if (w.inBounds(t.x, t.y)) {
-      const ti = w.idx(t.x, t.y);
+  for (const [dx, dy] of CARDINAL_OFFSETS) {
+    const tx = x + dx;
+    const ty = y + dy;
+    if (w.inBounds(tx, ty)) {
+      const ti = w.idx(tx, ty);
       const n = w.types[ti];
       if (
         n !== Cell.Empty &&
@@ -249,13 +259,13 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
           // finite as the dust you found (never a global rule change).
           const cat =
             n === Cell.Wall || n === Cell.Wood || n === Cell.Stone
-              ? catalystNeighbor(w, t.x, t.y)
+              ? catalystNeighbor(w, tx, ty)
               : -1;
           if (
             (n === Cell.Wall || n === Cell.Wood || n === Cell.Stone) &&
             (cat >= 0
               ? Math.random() < 0.45
-              : Math.random() < 0.03 && hasWaterNeighbor(w, t.x, t.y))
+              : Math.random() < 0.03 && hasWaterNeighbor(w, tx, ty))
           ) {
             w.types[ti] = Cell.Gold;
             w.colors[ti] = goldColor();
@@ -299,15 +309,11 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
 
 export function handleLava(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  const targets = [
-    { x: x + 1, y: y },
-    { x: x - 1, y: y },
-    { x: x, y: y + 1 },
-    { x: x, y: y - 1 },
-  ];
-  for (const t of targets) {
-    if (w.inBounds(t.x, t.y)) {
-      const ti = w.idx(t.x, t.y);
+  for (const [dx, dy] of CARDINAL_OFFSETS) {
+    const tx = x + dx;
+    const ty = y + dy;
+    if (w.inBounds(tx, ty)) {
+      const ti = w.idx(tx, ty);
       const n = w.types[ti];
       if (n === Cell.Water) {
         const ci = w.idx(x, y);

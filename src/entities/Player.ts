@@ -295,6 +295,11 @@ export class PlayerControl implements PlayerControlApi {
 
   constructor(private ctx: Ctx) {}
 
+  private reduceIncomingDamage(amount: number, minimum = 0): number {
+    if (this.ctx.player.status.stoneskin > 0) amount *= 0.5;
+    return Math.max(minimum, amount);
+  }
+
   /** Original: damagePlayer(amount, kx, ky) — lines 1565-1575. */
   damage(amount: number, kx: number, ky: number, src?: string): void {
     const ctx = this.ctx;
@@ -305,19 +310,14 @@ export class PlayerControl implements PlayerControlApi {
     if (src === 'fire' && player.perks.flameward) amount *= 0.4;
     if ((src === 'toxic' || src === 'acid') && player.perks.toxinward) amount *= 0.25;
     // Stoneskin (Wave C potion): half damage, knockback shrugged off entirely
-    const stoneskinned = player.status.stoneskin > 0;
-    if (stoneskinned) amount *= 0.5;
-    amount = Math.max(0.5, amount);
+    amount = this.reduceIncomingDamage(amount, 0.5);
     // A blow shatters heart communion — the unhealed remainder is lost
     if (player.recharge > 0) {
       player.recharge = 0;
       ctx.events.emit('toast', { text: 'COMMUNION BROKEN' });
     }
     player.hp -= amount;
-    if (!stoneskinned) {
-      player.vx += kx || 0;
-      player.vy += ky || 0;
-    }
+    this.applyImpulse(kx || 0, ky || 0);
     player.invuln = 30;
     // Hurt stagger: a lean away from the blow, and the hat whips with it
     player.staggerT = 12;
@@ -331,6 +331,16 @@ export class PlayerControl implements PlayerControlApi {
     // Blood spray — the Noita way
     ctx.particles.burst(player.x, player.y - 7, Math.min(16, 5 + amount * 0.4), Cell.Blood, bloodColor, 2.4);
     if (player.hp <= 0) this.kill();
+  }
+
+  /** Add a velocity impulse (cells/frame) to the player — the shared verb for
+   *  explosions, knockback, and (later) rigid-body pushes. Stoneskin shrugs off
+   *  external knockback entirely (self-inflicted wand recoil bypasses this). */
+  applyImpulse(vx: number, vy: number): void {
+    const player = this.ctx.player;
+    if (player.status.stoneskin > 0) return;
+    player.vx += vx;
+    player.vy += vy;
   }
 
   /** Original: killPlayer() — lines 1577-1587. */
@@ -368,7 +378,12 @@ export class PlayerControl implements PlayerControlApi {
     ctx.audio.squelch();
     ctx.audio.boom(10);
     ctx.fx.screenShake = 0.05;
-    ctx.events.emit('playerDied', { wave: ctx.waves.num, gold: ctx.state.score });
+    const level = ctx.levels.current?.def;
+    ctx.events.emit('playerDied', {
+      depth: level?.depth ?? ctx.waves.num,
+      level: level?.name ?? 'Arena',
+      gold: ctx.state.score,
+    });
   }
 
   /** Original: findSpawnPoint() — lines 1589-1606. */
@@ -609,7 +624,7 @@ export class PlayerControl implements PlayerControlApi {
       );
       this.statusSlow = slowFactor;
       if (damage > 0) {
-        player.hp -= damage;
+        player.hp -= this.reduceIncomingDamage(damage);
         if (player.hp <= 0) {
           this.kill();
           return;
@@ -660,24 +675,47 @@ export class PlayerControl implements PlayerControlApi {
     } else if (player.crouchT > 0) player.crouchT = Math.max(0, player.crouchT - 2);
 
     // air control: stronger mid-air acceleration for Ori-like corrections.
-    // Swift potion (x1.5) and Swift Soles boon (x1.18) stack on top.
-    const speedK =
-      (player.status.swift > 0 ? 1.5 : 1) * (player.perks.swiftfoot ? 1.18 : 1);
+    // Swift potion (x1.5) and Swift Soles boon (x1.18) stack on top — but those
+    // are GROUND legs. While the levitation jet is lit (levitFrames>0 means we
+    // levitated last frame) the horizontal handling switches to its own knob
+    // (levitHorizControl), so a ground-speed buff no longer makes flight skate
+    // sideways far faster than it climbs. This is also the hook for future
+    // levitation enhancement cards/spells.
+    const lp = ctx.params.player;
+    const levitatingMove =
+      this.levitFrames > 0 && !player.grounded && !player.inLiquid && !player.climbing;
+    const speedK = levitatingMove
+      ? lp.levitHorizControl
+      : (player.status.swift > 0 ? 1.5 : 1) * (player.perks.swiftfoot ? 1.18 : 1);
     // crouch-creep 0.38; crawl 0.32 — slow is the crawl's whole cost
     const stanceK = player.crawling ? 0.32 : crouching ? 0.38 : 1;
     const accel = (player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK,
       maxRun = 2.6 * speedK * stanceK;
     if (!player.climbing) {
-      if (keys.left) {
-        player.vx -= accel;
-        player.facing = -1;
-      }
+      // Powered input accelerates UP TO maxRun but never drags carried momentum
+      // back DOWN — a fast run carried into a jump/levitate keeps its speed (you
+      // can still actively brake or reverse). Pressing past maxRun is a no-op;
+      // any excess momentum bleeds off through drag, never a hard snap.
       if (keys.right) {
-        player.vx += accel;
         player.facing = 1;
+        if (player.vx < maxRun) player.vx = Math.min(maxRun, player.vx + accel);
       }
-      if (!keys.left && !keys.right) player.vx *= 0.72;
-      player.vx = clamp(player.vx, -maxRun, maxRun);
+      if (keys.left) {
+        player.facing = -1;
+        if (player.vx > -maxRun) player.vx = Math.max(-maxRun, player.vx - accel);
+      }
+      if (player.grounded || player.inLiquid) {
+        // On a surface: momentum dies fast and the cap is firm.
+        if (!keys.left && !keys.right) player.vx *= 0.72;
+        player.vx = clamp(player.vx, -maxRun, maxRun);
+      } else {
+        // Airborne / levitating: INERTIA. Only a gentle air drag bleeds
+        // horizontal momentum, so sprint speed carries into flight and a glide
+        // coasts instead of snapping to a stop. The ±12 rail is a sanity cap for
+        // stacked recoil impulses.
+        player.vx *= lp.airDrag;
+        player.vx = clamp(player.vx, -12, 12);
+      }
     } else {
       player.vx = 0;
       player.fx = 0;
@@ -767,7 +805,7 @@ export class PlayerControl implements PlayerControlApi {
     }
     if (tpTouch && player.tpCool <= 0) this.randomTeleport(ctx);
     if (hazardDmg > 0) {
-      player.hp -= hazardDmg;
+      player.hp -= this.reduceIncomingDamage(hazardDmg);
       if (ctx.state.frameCount % 14 === 0) {
         ctx.audio.hurt();
         ctx.particles.burst(player.x, player.y - 7, 4, Cell.Smoke, smokeColor, 1.1);
@@ -904,14 +942,19 @@ export class PlayerControl implements PlayerControlApi {
         } else if (player.levit > 0 && player.diveT === 0) {
           levitating = true;
           // levitation response: the jet SPOOLS. Thrust starts at a near-hover
-          // 0.34 (gravity is 0.28 — the first frames barely arrest the fall)
-          // and builds t-squared to the full 0.62 over 20 frames, so a tap
+          // levitThrust0 (gravity is 0.28 — the first frames barely arrest the
+          // fall) and builds t-CUBED to full over levitRampFrames, so a tap
           // feathers your height and a hold winds up into a climb. Releasing
-          // resets the spool (levitFrames), which is what makes tapping a
-          // hover instrument instead of an on/off rocket.
-          const t = Math.min(this.levitFrames / 20, 1);
-          const thrust = 0.34 + 0.28 * t * t;
+          // resets the spool (levitFrames), which is what makes tapping a hover
+          // instrument instead of an on/off rocket. The per-frame levitDrag is
+          // the load-bearing bit: it makes climb speed ASYMPTOTE to a comfy
+          // terminal (~3.3) instead of accumulating linearly into the cap, and
+          // also damps a fall you catch mid-air. Apply it EVERY frame (the
+          // simulated curve depends on the drag hitting positive vy too).
+          const t = Math.min(this.levitFrames / lp.levitRampFrames, 1);
+          const thrust = lp.levitThrust0 + lp.levitThrustGain * t * t * t;
           player.vy -= thrust;
+          player.vy *= lp.levitDrag;
           // Levity potion (Wave C): levitation burns no levit while the timer runs
           if (player.status.levity <= 0)
             player.levit -= 1.15 * (player.perks.featherweight ? 0.55 : 1);
@@ -988,8 +1031,10 @@ export class PlayerControl implements PlayerControlApi {
           );
         }
       }
-      // dive overrides the normal terminal velocity (5.0)
-      player.vy = clamp(player.vy, -4.6, player.diveT > 0 ? 6.4 : 5.0);
+      // dive overrides the normal terminal velocity (5.0). The up-cap is a pure
+      // safety net (levitDrag settles the climb well under it); keep it ≤ -3.7
+      // so it never clips the jump impulse.
+      player.vy = clamp(player.vy, ctx.params.player.vyCapUp, player.diveT > 0 ? 6.4 : 5.0);
 
       // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling)
       player.fx += player.vx;

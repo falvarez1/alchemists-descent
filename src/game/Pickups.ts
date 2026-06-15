@@ -1,4 +1,11 @@
-import type { Ctx, EntityStatus, Pickup, PickupKind, PickupsApi } from '@/core/types';
+import {
+  buildCardOffer,
+  collectOwnedCards,
+  requestCardOffer,
+  TOME_REWARD_POOL,
+} from '@/combat/wands/rewardPools';
+import { ALL_CARD_IDS } from '@/combat/wands/cards';
+import type { CardId, Ctx, EntityStatus, Pickup, PickupKind, PickupsApi } from '@/core/types';
 import { blocksEntity } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 
@@ -19,6 +26,18 @@ export const POTION_DEFS: Record<string, { name: string; status: keyof EntitySta
 };
 
 export const POTION_KINDS = Object.keys(POTION_DEFS);
+const CARD_IDS = new Set<string>(ALL_CARD_IDS);
+const POTION_IDS = new Set<string>(POTION_KINDS);
+
+function validCardId(value: unknown): CardId | undefined {
+  if (typeof value !== 'string' || value === '' || value === 'random') return undefined;
+  return CARD_IDS.has(value) ? (value as CardId) : undefined;
+}
+
+function potionIdOrRandom(value: unknown): string {
+  if (typeof value === 'string' && POTION_IDS.has(value)) return value;
+  return POTION_KINDS[Math.floor(Math.random() * POTION_KINDS.length)] ?? 'vigor';
+}
 
 export function makePickup(kind: PickupKind, x: number, y: number, data: Pickup['data'] = {}): Pickup {
   return { kind, x, y, vx: 0, vy: 0, taken: false, data };
@@ -43,7 +62,7 @@ export class Pickups implements PickupsApi {
     const player = ctx.player;
 
     for (const p of runtime.pickups) {
-      if (p.taken) continue;
+      if (p.taken || p.data.offerPending) continue;
 
       // Settle physics: fall until resting on blocking cells.
       const below = world.inBounds(Math.floor(p.x), Math.floor(p.y) + 1)
@@ -59,8 +78,9 @@ export class Pickups implements PickupsApi {
       const dx = player.x - p.x;
       const dy = player.y - 8 - p.y;
       const d2 = dx * dx + dy * dy;
+      const magnetRange = player.perks.goldmagnet && p.kind === 'goldpile' ? 48 : 24;
       let clearLine = true;
-      if (d2 < 24 * 24) {
+      if (d2 < magnetRange * magnetRange) {
         for (const t of [0.3, 0.55, 0.8]) {
           const sx = Math.floor(p.x + dx * t);
           const sy = Math.floor(p.y + dy * t);
@@ -70,7 +90,7 @@ export class Pickups implements PickupsApi {
           }
         }
       }
-      if (!player.dead && d2 < 24 * 24 && clearLine) {
+      if (!player.dead && d2 < magnetRange * magnetRange && clearLine) {
         const d = Math.sqrt(d2) || 1;
         p.vx += (dx / d) * 0.18;
         p.vy += (dy / d) * 0.18;
@@ -88,6 +108,10 @@ export class Pickups implements PickupsApi {
 
   private collect(ctx: Ctx, p: Pickup): void {
     const player = ctx.player;
+    if (p.kind === 'tome') {
+      this.collectTome(ctx, p);
+      return;
+    }
     p.taken = true;
     ctx.telemetry.count('pickup.' + p.kind);
 
@@ -108,10 +132,6 @@ export class Pickups implements PickupsApi {
         glow: 1.8,
         grav: -0.02,
       });
-    } else if (p.kind === 'tome') {
-      const card = p.data.card ?? 'spark';
-      ctx.wands.grantCard(ctx, card);
-      ctx.audio.learn();
     } else if (p.kind === 'chest') {
       // Chests burst into gold piles (and sometimes a potion) where they stand.
       const runtime = ctx.levels.current;
@@ -131,7 +151,7 @@ export class Pickups implements PickupsApi {
       ctx.events.emit('toast', { text: 'CHEST OPENED' });
       ctx.audio.chest();
     } else if (p.kind === 'potion') {
-      const def = POTION_DEFS[p.data.potion ?? 'vigor'] ?? POTION_DEFS.vigor;
+      const def = POTION_DEFS[potionIdOrRandom(p.data.potion)] ?? POTION_DEFS.vigor;
       const st = player.status;
       st[def.status] = Math.min(1800, st[def.status] + def.frames);
       ctx.events.emit('toast', { text: def.name });
@@ -147,5 +167,36 @@ export class Pickups implements PickupsApi {
         grav: -0.01,
       });
     }
+  }
+
+  private collectTome(ctx: Ctx, p: Pickup): void {
+    if (p.data.offerPending) return;
+    ctx.telemetry.count('pickup.tome');
+    const fixedCard = validCardId(p.data.card);
+    const grant = (card: CardId): void => {
+      if (p.taken) return;
+      p.taken = true;
+      p.data.offerPending = false;
+      ctx.wands.grantCard(ctx, card);
+      ctx.audio.learn();
+    };
+
+    if (fixedCard === 'vitrify') {
+      grant(fixedCard);
+      return;
+    }
+
+    const cards = buildCardOffer(TOME_REWARD_POOL, collectOwnedCards(ctx.wands), {
+      preferred: fixedCard ? [fixedCard] : [],
+    });
+    p.data.offerPending = true;
+    const handled = requestCardOffer(ctx, {
+      source: 'tome',
+      title: 'SPELL TOME',
+      prompt: 'Choose one page',
+      cards,
+      onChoose: grant,
+    });
+    if (!handled) p.data.offerPending = false;
   }
 }

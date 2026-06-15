@@ -13,18 +13,27 @@ import {
   waterColor,
 } from '@/sim/colors';
 
+const CARDINAL_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+const FIRE_REACTION_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [-1, -1],
+];
+
 /** EXPORTED for cross-handler use: handleFire melts adjacent ice via this. */
 export function handleIce(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  const targets = [
-    { x: x + 1, y: y },
-    { x: x - 1, y: y },
-    { x: x, y: y + 1 },
-    { x: x, y: y - 1 },
-  ];
-  for (const t of targets) {
-    if (w.inBounds(t.x, t.y)) {
-      const ti = w.idx(t.x, t.y);
+  for (const [dx, dy] of CARDINAL_OFFSETS) {
+    const tx = x + dx;
+    const ty = y + dy;
+    if (w.inBounds(tx, ty)) {
+      const ti = w.idx(tx, ty);
       if (w.types[ti] === Cell.Fire) {
         if (Math.random() < 1.0 - ctx.params.materials[Cell.Ice].insulationRating!) {
           const ci = w.idx(x, y);
@@ -54,13 +63,9 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const P = ctx.params.materials[Cell.Ember];
   // React with neighbors
-  const nbs = [
-    [x, y + 1],
-    [x - 1, y],
-    [x + 1, y],
-    [x, y - 1],
-  ];
-  for (const [nx, ny] of nbs) {
+  for (const [dx, dy] of CARDINAL_OFFSETS) {
+    const nx = x + dx;
+    const ny = y + dy;
     if (!w.inBounds(nx, ny)) continue;
     const ni = w.idx(nx, ny);
     const n = w.types[ni];
@@ -152,15 +157,11 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
     );
   }
 
-  const targets = [
-    { x: x + 1, y: y },
-    { x: x - 1, y: y },
-    { x: x, y: y + 1 },
-    { x: x - 1, y: y - 1 },
-  ];
-  for (const t of targets) {
-    if (w.inBounds(t.x, t.y)) {
-      const ti = w.idx(t.x, t.y);
+  for (const [dx, dy] of FIRE_REACTION_OFFSETS) {
+    const tx = x + dx;
+    const ty = y + dy;
+    if (w.inBounds(tx, ty)) {
+      const ti = w.idx(tx, ty);
       const n = w.types[ti];
       if (n === Cell.Wood && Math.random() < ctx.params.materials[Cell.Wood].flammability!) {
         w.types[ti] = Cell.Fire;
@@ -204,7 +205,7 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.types[ti] = Cell.Fire;
         w.life[ti] = 50;
         w.colors[ti] = fireColor();
-        if (Math.random() < 0.7) spawnSmoke(ctx, t.x, t.y);
+        if (Math.random() < 0.7) spawnSmoke(ctx, tx, ty);
       }
       if (n === Cell.Snow) {
         w.types[ti] = Cell.Water;
@@ -221,11 +222,11 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.colors[ti] = fireColor();
       }
       if (n === Cell.Gunpowder) {
-        ctx.explosions.trigger(t.x, t.y, ctx.params.materials[Cell.Gunpowder].blastRadius!);
+        ctx.explosions.trigger(tx, ty, ctx.params.materials[Cell.Gunpowder].blastRadius!);
         return;
       }
       if (n === Cell.Ice) {
-        handleIce(ctx, t.x, t.y);
+        handleIce(ctx, tx, ty);
       }
       if (n === Cell.Blood && Math.random() < 0.06) {
         w.types[ti] = Cell.Smoke;

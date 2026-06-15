@@ -69,10 +69,15 @@ export class Minimap {
     ctx.events.on('objectiveChanged', ({ text }) => {
       if (text === 'REACH THE PORTAL') this.portalPing = 300;
     });
+    ctx.events.on('refugePing', () => {
+      this.refugePing = 300;
+    });
   }
 
   /** Frames left of the go-to-the-portal ping. */
   private portalPing = 0;
+  /** Frames left of the go-to-the-Refuge ping. */
+  private refugePing = 0;
 
   private setVisible(on: boolean): void {
     if (on === this.visible) return;
@@ -84,9 +89,10 @@ export class Minimap {
   /** Per-frame hook (lead-wired). Cheap no-op unless something needs redrawing. */
   update(ctx: Ctx): void {
     if (this.portalPing > 0) this.portalPing--;
+    if (this.refugePing > 0) this.refugePing--;
     // Always-on corner panel: a slower cadence keeps it nearly free —
     // except while the portal ping flashes, which earns a fast refresh.
-    const cadence = this.portalPing > 0 ? 8 : 30;
+    const cadence = this.portalPing > 0 || this.refugePing > 0 ? 8 : 30;
     if (ctx.state.mode === 'play' && ctx.state.frameCount % cadence === 0) this.redrawCorner(ctx);
     if (!this.visible || ctx.state.frameCount % REDRAW_INTERVAL !== 0) return;
     this.redraw(ctx);
@@ -167,6 +173,19 @@ export class Minimap {
     if (level.cauldron) {
       g.fillStyle = '#4ade80';
       g.fillRect((level.cauldron.x >> 3) - 1, (level.cauldron.y >> 3) - 1, 2, 2);
+    }
+    if (level.refuge) {
+      const rx = level.refuge.x >> 3;
+      const ry = level.refuge.y >> 3;
+      const discovered = level.explored[rx + ry * MINIMAP_W] > 0;
+      if (discovered || this.refugePing > 0) {
+        if (this.refugePing > 0 && this.refugePing % 16 < 8) {
+          g.fillStyle = '#ffffff';
+          g.fillRect(rx - 3, ry - 3, 7, 7);
+        }
+        g.fillStyle = '#38bdf8';
+        g.fillRect(rx - 1, ry - 1, 3, 3);
+      }
     }
     if (level.vaultArch) {
       // the gilded arch: always shown on the branch side (the way home is a

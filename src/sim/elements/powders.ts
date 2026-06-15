@@ -3,6 +3,12 @@ import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { glassColor } from '@/sim/colors';
 
 /* ===================== Element Physics Behaviors ===================== */
+const IGNITION_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [-1, -1],
+];
 
 /** Falling-powder behavior shared by SAND and GOLD (type selects the params). */
 export function handleSand(ctx: Ctx, x: number, y: number, type: Cell): void {
@@ -52,16 +58,12 @@ export function handleSand(ctx: Ctx, x: number, y: number, type: Cell): void {
 
 export function handleGunpowder(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  const targets = [
-    { x: x + 1, y: y },
-    { x: x - 1, y: y },
-    { x: x, y: y + 1 },
-    { x: x - 1, y: y - 1 },
-  ];
-  for (const t of targets) {
+  for (const [dx, dy] of IGNITION_OFFSETS) {
+    const tx = x + dx;
+    const ty = y + dy;
     if (
-      w.inBounds(t.x, t.y) &&
-      (w.types[w.idx(t.x, t.y)] === Cell.Fire || w.charge[w.idx(t.x, t.y)] > 0)
+      w.inBounds(tx, ty) &&
+      (w.types[w.idx(tx, ty)] === Cell.Fire || w.charge[w.idx(tx, ty)] > 0)
     ) {
       ctx.explosions.trigger(x, y, ctx.params.materials[Cell.Gunpowder].blastRadius!);
       return;

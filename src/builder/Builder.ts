@@ -1,9 +1,9 @@
-import type { AuthoredLight, BiomeId, Ctx, LevelDef, PlayerState, WandRuntimeSnapshot } from '@/core/types';
+import type { AuthoredLight, BiomeId, Ctx, GeneratedScenePlacement, LevelDef, PlayerState, WandRuntimeSnapshot } from '@/core/types';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { BIOMES as BIOME_DEFS } from '@/config/biomes';
 import { GEN, defaultSkeletonSpec } from '@/config/gen';
 import type { SkeletonSpec } from '@/config/gen';
-import { createDefaultPostFxSettings, createDefaultWandLightSettings } from '@/config/params';
+import { createDefaultPostFxSettings, createDefaultWandLightSettings, PLAYER_TUNING_DEFAULTS } from '@/config/params';
 import { LEVELS, vaultHostId } from '@/config/worldgraph';
 import { randomSeed } from '@/core/rng';
 import {
@@ -162,8 +162,10 @@ import { PopoverHost } from '@/ui/editor/PopoverHost';
 import { TabView, tabStripHtml, wireTabStrip } from '@/ui/editor/Tabs';
 import { renderInspectorItems } from '@/ui/editor/InspectorSchema';
 import type { InspectorSchemaItem } from '@/ui/editor/InspectorSchema';
+import { escapeAttr, escapeHtml } from '@/ui/editor/Fields';
 import { builderPanelHeader, normalizePanelChromeHandles } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle, createBuilderPanelRegistry } from '@/ui/editor/PanelRegistry';
+import { editorSectionHtml } from '@/ui/editor/Section';
 import type { CommandSpec } from '@/ui/editor/CommandRegistry';
 import {
   documentInspectorSchema,
@@ -674,6 +676,42 @@ const TOOL_INFO: Partial<Record<string, { name: string; desc: string }>> = {
   link: { name: 'Link (K)', desc: 'Click a trigger (or rune glyph), then its target — door, valve, or relay (relays can also detonate plugs). Several triggers on ONE target = AND gate.' },
 };
 
+const GENERATED_SCENE_OBJECT_KINDS: ReadonlySet<EditorObjectKind> = new Set([
+  'enemy',
+  'pickup',
+  'exitPortal',
+  'waystone',
+  'exitWell',
+  'cauldron',
+  'door',
+  'plate',
+  'lever',
+  'brazier',
+  'scale',
+  'buoy',
+  'chargeLatch',
+  'runeGlyph',
+  'runeDoor',
+  'bossMarker',
+  'terrainStamp',
+  'vegetationStamp',
+  'hazardEmitter',
+  'decor',
+  'valve',
+  'plug',
+  'sensor',
+  'counterweight',
+  'relay',
+]);
+
+const GENERATED_SCENE_LINK_KINDS: ReadonlySet<EditorLink['kind']> = new Set([
+  'triggerDoor',
+  'runeDoor',
+  'keyPortal',
+  'bossGate',
+  'logic',
+]);
+
 interface PendingPassPreview {
   kind: 'pass';
   before: CellPatch;
@@ -753,6 +791,8 @@ export class Builder {
   /** Primary selection (drives the inspector); selectedIds is the full set. */
   private selectedId: string | null = null;
   private selectedIds = new Set<string>();
+  private selectedGeneratedSceneId: string | null = null;
+  private adoptedGeneratedScenes: GeneratedScenePlacement[] = [];
   private tool: BuilderTool = 'select';
   /** Group drag: every unlocked member of the selection moves together. */
   private drag: {
@@ -1059,11 +1099,11 @@ export class Builder {
     if (this.ctx.state.mode === 'play') {
       (document.getElementById('mode-build-btn') as HTMLButtonElement | null)?.click();
     }
+    if (intent === 'current-scene') this.adoptCurrentSceneAsDocument();
     if (!this.returningFromPlaytest && this.ctx.state.playtestSource === 'test') {
       this.ctx.levels.exitDisposableRuntime(this.ctx);
       this.ctx.state.playtestSource = null;
     }
-    if (intent === 'current-scene') this.adoptCurrentSceneAsDocument();
     this.syncDocBackdropToLive();
     // EXPEDITION PROTECTION: levels persist as live World instances. If the
     // canvas still shows an expedition level, the Builder must NOT edit it
@@ -2566,6 +2606,7 @@ export class Builder {
     doc.backdropProfileId = rt?.backdropLevelId ?? rt?.def.id ?? null;
     doc.world = captureWorldLayer(this.ctx);
     doc.lights = (rt?.authoredLights ?? []).map((light, n) => authoredLightToEditorLight(light, n, SCENE_LIGHT_PREFIX));
+    this.adoptedGeneratedScenes = this.cloneGeneratedScenes(rt?.generatedScenes ?? []);
     doc.objects.push({
       id: freshId('spawn'),
       kind: 'spawn',
@@ -2588,6 +2629,19 @@ export class Builder {
     this.regionMask = null;
     this.regionMaskCells = 0;
     this.syncDocBackdropToLive();
+  }
+
+  private cloneGeneratedScenes(scenes: readonly GeneratedScenePlacement[]): GeneratedScenePlacement[] {
+    return scenes.map((scene) => ({
+      ...scene,
+      objects: scene.objects.map((object) => ({
+        ...object,
+        params: structuredClone(object.params) as Record<string, unknown>,
+      })),
+      links: scene.links.map((link) => ({ ...link })),
+      lights: scene.lights.map((light) => ({ ...light })),
+      ...(scene.sourceChunk ? { sourceChunk: { ...scene.sourceChunk } } : {}),
+    }));
   }
 
   private keepCurrentDocDraft(): void {
@@ -2613,6 +2667,7 @@ export class Builder {
 
   private replaceDocument(doc: EditorDocument, statusText: string): void {
     this.doc = doc;
+    this.adoptedGeneratedScenes = [];
     this.worldgenLevelId = this.levelIdForBiome(doc.biome);
     this.adoptDocSprites();
     this.playtestScars = null;
@@ -2895,19 +2950,21 @@ export class Builder {
       </div>
       <div id="builder-proc" style="display:none">
         ${builderPanelHeader({ title: builderPanelTitle('builder-proc'), closeId: 'bp-proc-close', closeLabel: 'Close procedural pass' })}
-        <div class="bi-row"><span>pass</span><select id="bp-pass">${PASSES.map(
-          (p) => `<option value="${p.id}">${p.label}</option>`,
-        ).join('')}</select></div>
-        <div class="bi-row"><span>seed</span><input id="bp-seed" type="number" value="1337" min="0" step="1"><button id="bp-dice" class="b-icon" title="Re-roll seed" aria-label="Re-roll seed">&#9860;</button></div>
-        <div class="bi-row"><span>density</span><input id="bp-density" type="range" min="5" max="100" value="50" aria-label="Procedural density"><b id="bp-density-val">50</b></div>
-        <div class="bi-row"><span>target</span><b id="bp-target">whole level</b></div>
-        <div class="bi-row"><span>material</span><b id="bp-material">&mdash;</b></div>
-        <div class="bp-actions">
-          <button id="bp-preview">PREVIEW</button>
-          <button id="bp-apply" class="b-primary">APPLY</button>
-          <button id="bp-discard">DISCARD</button>
+        <div id="bp-controls" class="bi-panel-body">
+          <div class="bi-row"><span>pass</span><select id="bp-pass">${PASSES.map(
+            (p) => `<option value="${p.id}">${p.label}</option>`,
+          ).join('')}</select></div>
+          <div class="bi-row"><span>seed</span><input id="bp-seed" type="number" value="1337" min="0" step="1"><button id="bp-dice" class="b-icon" title="Re-roll seed" aria-label="Re-roll seed">&#9860;</button></div>
+          <div class="bi-row"><span>density</span><input id="bp-density" type="range" min="5" max="100" value="50" aria-label="Procedural density"><b id="bp-density-val">50</b></div>
+          <div class="bi-row"><span>target</span><b id="bp-target">whole level</b></div>
+          <div class="bi-row"><span>material</span><b id="bp-material">&mdash;</b></div>
+          <div class="bp-actions">
+            <button id="bp-preview">PREVIEW</button>
+            <button id="bp-apply" class="b-primary">APPLY</button>
+            <button id="bp-discard">DISCARD</button>
+          </div>
+          <div class="bp-hint" id="bp-status">Cell passes preview before<br>committing; population passes<br>apply directly (undoable).</div>
         </div>
-        <div class="bp-hint" id="bp-status">Cell passes preview before<br>committing; population passes<br>apply directly (undoable).</div>
       </div>
       <div id="builder-issues" style="display:none"></div>
       </div>
@@ -3485,6 +3542,7 @@ export class Builder {
     if (this.authoringActionBlocks('New document')) return;
     if (!(await this.confirmDiscardCurrentDocument('New Document'))) return;
     this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
+    this.adoptedGeneratedScenes = [];
     this.worldgenLevelId = this.levelIdForBiome(this.doc.biome);
     this.playtestScars = null;
     this.mutedLightIds.clear();
@@ -4496,11 +4554,17 @@ export class Builder {
       }
       const hit = this.hitTest(pos.x, pos.y);
       if (!hit) {
+        const generatedScene = this.hitGeneratedScene(pos.x, pos.y);
+        if (generatedScene) {
+          this.selectGeneratedScene(generatedScene.id);
+          return;
+        }
         // empty space: drag a marquee (mouseup with a tiny one just deselects)
         this.marquee = { x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y };
         return;
       }
       if (e.shiftKey) {
+        this.clearGeneratedSceneSelection(true);
         // toggle membership; primary follows the latest addition
         if (this.selectedIds.has(hit.id)) {
           this.selectedIds.delete(hit.id);
@@ -4517,6 +4581,7 @@ export class Builder {
         // grouped objects select as one unit
         const obj = hit.isLight ? null : (hit.target as EditorObject);
         if (obj?.group) {
+          this.clearGeneratedSceneSelection(true);
           this.selectedIds = new Set(
             this.doc.objects.filter((o) => o.group === obj.group).map((o) => o.id),
           );
@@ -4525,6 +4590,7 @@ export class Builder {
           this.renderInspector();
         } else this.select(hit.id);
       } else {
+        this.clearGeneratedSceneSelection(true);
         this.selectedId = hit.id;
         this.renderInspector();
       }
@@ -4706,6 +4772,7 @@ export class Builder {
       this.select(null);
       return;
     }
+    this.clearGeneratedSceneSelection(true);
     const ids: string[] = [];
     for (const o of this.doc.objects) {
       if (!this.layerSelectableObj(o)) continue;
@@ -5287,7 +5354,65 @@ export class Builder {
     return null;
   }
 
+  private generatedScenes(): readonly GeneratedScenePlacement[] {
+    const runtimeScenes = this.ctx.levels.current?.generatedScenes ?? [];
+    return runtimeScenes.length > 0 ? runtimeScenes : this.adoptedGeneratedScenes;
+  }
+
+  private selectedGeneratedScene(): GeneratedScenePlacement | null {
+    if (!this.selectedGeneratedSceneId) return null;
+    return this.generatedScenes().find((scene) => scene.id === this.selectedGeneratedSceneId) ?? null;
+  }
+
+  private hitGeneratedScene(x: number, y: number): GeneratedScenePlacement | null {
+    let best: GeneratedScenePlacement | null = null;
+    let bestArea = Number.POSITIVE_INFINITY;
+    for (const scene of this.generatedScenes()) {
+      if (x < scene.x0 || x > scene.x1 || y < scene.y0 || y > scene.y1) continue;
+      const area = Math.max(1, scene.x1 - scene.x0 + 1) * Math.max(1, scene.y1 - scene.y0 + 1);
+      if (area < bestArea) {
+        best = scene;
+        bestArea = area;
+      }
+    }
+    return best;
+  }
+
+  private selectGeneratedScene(id: string): void {
+    const scene = this.generatedScenes().find((candidate) => candidate.id === id);
+    if (!scene) return;
+    this.selectedGeneratedSceneId = scene.id;
+    this.selectedId = null;
+    this.selectedIds.clear();
+    this.region = null;
+    this.regionMask = null;
+    this.regionMaskCells = 0;
+    this.syncProcPanel();
+    this.syncMarkers();
+    this.renderInspector();
+    this.syncStructurePanels();
+    this.status(`GENERATED SCENE: ${scene.label.toUpperCase()} - CAPTURE TO EDIT`);
+  }
+
+  private clearGeneratedSceneSelection(clearRegion: boolean): void {
+    const scene = this.selectedGeneratedScene();
+    this.selectedGeneratedSceneId = null;
+    if (!clearRegion || !scene || !this.region) return;
+    if (
+      this.region.x0 === scene.x0 &&
+      this.region.y0 === scene.y0 &&
+      this.region.x1 === scene.x1 &&
+      this.region.y1 === scene.y1
+    ) {
+      this.region = null;
+      this.regionMask = null;
+      this.regionMaskCells = 0;
+      this.syncProcPanel();
+    }
+  }
+
   private select(id: string | null): void {
+    this.clearGeneratedSceneSelection(true);
     this.selectedId = id;
     this.selectedIds = id ? new Set([id]) : new Set();
     this.syncMarkers();
@@ -5296,6 +5421,7 @@ export class Builder {
   }
 
   private selectMany(ids: readonly string[]): void {
+    this.clearGeneratedSceneSelection(true);
     const clean = ids.filter(
       (id) =>
         this.doc.objects.some((object) => object.id === id && this.layerSelectableObj(object)) ||
@@ -5487,6 +5613,11 @@ export class Builder {
 
   /** Center the camera on the selection (F, and validation issue clicks). */
   private frameSelection(): void {
+    const generatedScene = this.selectedGeneratedScene();
+    if (generatedScene) {
+      this.ctx.camera.snapTo((generatedScene.x0 + generatedScene.x1) / 2, (generatedScene.y0 + generatedScene.y1) / 2);
+      return;
+    }
     const obj = this.selected();
     const light = this.selectedLight();
     const rec = obj ?? light;
@@ -5798,7 +5929,7 @@ export class Builder {
     onInput: (v: number) => void,
   ): void {
     const row = document.createElement('div');
-    row.className = 'bw-row';
+    row.className = 'bw-row builder-slider-row';
     row.innerHTML = `<div class="bw-label"><span>${label}</span><b>${fmt(value)}</b></div>
       <input type="range" min="${min}" max="${max}" step="${step}" value="${value}">`;
     const input = row.querySelector('input')!;
@@ -5813,26 +5944,21 @@ export class Builder {
 
   private worldSection(host: HTMLElement, title: string): HTMLElement {
     const id = `${host.id || 'world'}.${title.toLowerCase().replace(/[^a-z0-9]+/g, '.')}`;
-    const collapsed = this.workspaceLayout.collapsedSections[id] === true;
-    const section = document.createElement('section');
-    section.className = `bw-section editor-section${collapsed ? ' collapsed' : ''}`;
-    section.dataset.section = id;
-    const heading = document.createElement('button');
-    heading.type = 'button';
-    heading.className = 'bw-title editor-section-head';
-    heading.dataset.sectionToggle = id;
-    heading.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    const bodyId = `editor-section-body-${id.replace(/[^A-Za-z0-9_-]/g, '-')}`;
-    heading.setAttribute('aria-controls', bodyId);
-    heading.innerHTML = `<span class="bp-chevron" aria-hidden="true"></span><span class="editor-section-label">${escHtml(title)}</span>`;
-    section.appendChild(heading);
-    const body = document.createElement('div');
-    body.id = bodyId;
-    body.className = 'bw-section-body editor-section-body';
-    section.appendChild(body);
+    const marker = document.createElement('template');
+    marker.innerHTML = editorSectionHtml({
+      id,
+      title,
+      body: '',
+      className: 'bw-section',
+      titleClassName: 'bw-title',
+      bodyClassName: 'bw-section-body',
+      collapsed: this.workspaceLayout.collapsedSections[id] === true,
+    });
+    const section = marker.content.firstElementChild;
+    if (!(section instanceof HTMLElement)) throw new Error(`Failed to create builder section ${id}`);
     host.appendChild(section);
     this.wireCollapsibleSections(section);
-    return body;
+    return section.querySelector<HTMLElement>('.bw-section-body') ?? section;
   }
 
   private worldActionRow(host: HTMLElement, actions: Array<{ label: string; title?: string; run: () => void }>): void {
@@ -5910,11 +6036,11 @@ export class Builder {
     onInput: (v: number) => void,
   ): void {
     const row = document.createElement('div');
-    row.className = 'bw-row bw-numrow';
+    row.className = 'bw-row bw-numrow builder-value-row';
     const lo = Math.min(min, value);
     const hi = Math.max(max, value);
     row.innerHTML = `<div class="bw-label"><span>${escHtml(label)}</span><b>${escHtml(fmt(value))}</b></div>
-      <div class="bw-numline"><input type="range" min="${lo}" max="${hi}" step="${step}" value="${value}">
+      <div class="bw-numline builder-value-inputs"><input type="range" min="${lo}" max="${hi}" step="${step}" value="${value}">
       <input type="number" min="${lo}" max="${hi}" step="${step}" value="${value}"></div>`;
     const range = row.querySelector<HTMLInputElement>('input[type="range"]')!;
     const number = row.querySelector<HTMLInputElement>('input[type="number"]')!;
@@ -6106,6 +6232,27 @@ export class Builder {
       this.el('bp-brush-val').textContent = String(v);
     });
 
+    const goreSection = this.worldSection(host, 'GORE');
+    // Master: 0 = bloodless … 1 = shipped … 10 = maximum gore (Tarantino mode).
+    // The particle pool is hard-capped (MAX_PARTICLES), so extreme values
+    // saturate gracefully rather than tanking the framerate.
+    this.sliderRow(goreSection, 'Overall Gore', g.bloodAmount, 0, 10, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
+      g.bloodAmount = v;
+    });
+    // Per-material channels (multiply on top of Overall) — the spray mixes each
+    // enemy's body material with a universal blood spray; tune them apart.
+    this.sliderRow(goreSection, 'Red Blood', g.goreBlood, 0, 4, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
+      g.goreBlood = v;
+    });
+    this.sliderRow(goreSection, 'Green Slime', g.goreSlime, 0, 4, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
+      g.goreSlime = v;
+    });
+    this.sliderRow(goreSection, 'Glowing Ooze (acid/toxic)', g.goreOoze, 0, 4, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
+      g.goreOoze = v;
+    });
+
+    this.buildPlayerPhysicsSections(host);
+
     const previewSection = this.worldSection(host, 'WAND PREVIEW');
     this.checkboxRow(previewSection, 'Cursor Wand Light', this.wandLightPreviewOn, (value) => {
       this.wandLightPreviewOn = value;
@@ -6160,6 +6307,62 @@ export class Builder {
           Object.assign(this.ctx.state.wandLight, createDefaultWandLightSettings());
           this.buildGlobalPanel();
           this.status('WAND LIGHT RESET');
+        },
+      },
+    ]);
+  }
+
+  /** Levitation + wand-recoil dials (ctx.params.player). These write straight
+   *  into the live tuning object, so they can be adjusted WHILE a Builder
+   *  playtest runs — fly and shoot to feel each change. The hook for future
+   *  levitation enhancement cards is `levitHorizControl`. */
+  private buildPlayerPhysicsSections(host: HTMLElement): void {
+    const p = this.ctx.params.player;
+
+    const lev = this.worldSection(host, 'LEVITATION');
+    this.numberRow(lev, 'Lift: base thrust', p.levitThrust0, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => {
+      p.levitThrust0 = v;
+    });
+    this.numberRow(lev, 'Lift: ramp gain', p.levitThrustGain, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => {
+      p.levitThrustGain = v;
+    });
+    this.numberRow(lev, 'Lift: ramp frames', p.levitRampFrames, 6, 120, 1, (v) => Math.round(v) + 'f', (v) => {
+      p.levitRampFrames = Math.max(1, Math.round(v));
+    });
+    this.numberRow(lev, 'Vertical drag', p.levitDrag, 0.8, 1, 0.005, (v) => v.toFixed(3), (v) => {
+      p.levitDrag = v;
+    });
+    this.numberRow(lev, 'Up-speed cap', p.vyCapUp, -8, -3.7, 0.1, (v) => v.toFixed(1), (v) => {
+      p.vyCapUp = Math.min(-3.7, v);
+    });
+    this.numberRow(lev, 'Horizontal control', p.levitHorizControl, 0, 3, 0.05, (v) => v.toFixed(2) + 'x', (v) => {
+      p.levitHorizControl = v;
+    });
+    this.numberRow(lev, 'Air momentum (drag)', p.airDrag, 0.9, 1, 0.001, (v) => v.toFixed(3), (v) => {
+      p.airDrag = v;
+    });
+
+    const rec = this.worldSection(host, 'WAND RECOIL');
+    this.numberRow(rec, 'Base kick', p.recoilBase, 0, 20, 0.5, (v) => v.toFixed(1), (v) => {
+      p.recoilBase = v;
+    });
+    this.numberRow(rec, 'Per momentum', p.recoilPerMomentum, 0, 0.2, 0.005, (v) => v.toFixed(3), (v) => {
+      p.recoilPerMomentum = v;
+    });
+    this.numberRow(rec, 'Max impulse (cap)', p.recoilMaxImpulse, 0, 8, 0.1, (v) => v.toFixed(1), (v) => {
+      p.recoilMaxImpulse = v;
+    });
+    this.numberRow(rec, 'Ground damping', p.recoilGroundDamp, 0, 1, 0.05, (v) => v.toFixed(2) + 'x', (v) => {
+      p.recoilGroundDamp = v;
+    });
+    this.worldActionRow(rec, [
+      {
+        label: 'RESET PLAYER PHYSICS',
+        title: 'Restore the shipped levitation + recoil values',
+        run: () => {
+          Object.assign(this.ctx.params.player, PLAYER_TUNING_DEFAULTS);
+          this.buildGlobalPanel();
+          this.status('PLAYER PHYSICS RESET');
         },
       },
     ]);
@@ -8497,6 +8700,9 @@ export class Builder {
         this.marquee = null;
       } else if (this.tool !== 'select') {
         this.setTool('select');
+      } else if (this.selectedGeneratedSceneId) {
+        this.select(null);
+        this.status('GENERATED SCENE DESELECTED');
       } else if (this.region) {
         this.region = null;
         this.regionMask = null;
@@ -8743,6 +8949,8 @@ export class Builder {
         toScreen: toS,
       });
     }
+
+    this.drawGeneratedSceneOverlays(g, { view, toScreen: toS, canvasWidth: cw });
 
     // selection region (dashed cyan)
     if (this.region) {
@@ -9118,6 +9326,40 @@ export class Builder {
     }
   }
 
+  private drawGeneratedSceneOverlays(
+    g: CanvasRenderingContext2D,
+    opts: {
+      view: { x0: number; y0: number; x1: number; y1: number };
+      toScreen: (wx: number, wy: number) => { x: number; y: number };
+      canvasWidth: number;
+    },
+  ): void {
+    const scenes = this.generatedScenes();
+    if (scenes.length === 0) return;
+    for (const scene of scenes) {
+      if (scene.x1 < opts.view.x0 || scene.x0 > opts.view.x1 || scene.y1 < opts.view.y0 || scene.y0 > opts.view.y1) continue;
+      const selected = scene.id === this.selectedGeneratedSceneId;
+      const a = opts.toScreen(scene.x0, scene.y0);
+      const b = opts.toScreen(scene.x1 + 1, scene.y1 + 1);
+      g.setLineDash(selected ? [] : [4, 5]);
+      g.lineWidth = selected ? 2 : 1;
+      g.strokeStyle = selected ? 'rgba(94,234,212,0.95)' : 'rgba(251,191,36,0.24)';
+      g.fillStyle = selected ? 'rgba(94,234,212,0.08)' : 'rgba(251,191,36,0.025)';
+      if (selected) g.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+      g.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+      g.setLineDash([]);
+      if (selected) {
+        this.drawCanvasCallout(
+          g,
+          `GENERATED: ${scene.label}`,
+          Math.max(8, Math.min(opts.canvasWidth - 210, a.x + 6)),
+          Math.max(18, a.y - 18),
+          opts.canvasWidth,
+        );
+      }
+    }
+  }
+
   private drawCanvasCallout(g: CanvasRenderingContext2D, text: string, x: number, y: number, width: number): void {
     g.save();
     g.font = '700 10px monospace';
@@ -9293,7 +9535,7 @@ export class Builder {
    * active tab) and is re-entrancy safe (dockActive is set before re-layout).
    */
   private revealInspectorIfTabbed(): void {
-    if (this.selectedIds.size === 0) return;
+    if (this.selectedIds.size === 0 && this.selectedGeneratedSceneId === null) return;
     const panel = this.workspaceLayout.panels.find((p) => p.id === 'builder-inspector');
     if (!panel || !panel.open || panel.dock === 'floating') return;
     const groupKey = this.tabGroupKeyForPanel(panel);
@@ -9327,6 +9569,12 @@ export class Builder {
       }
       this.wireMultiSelectionInspector(panel);
       panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
+      this.syncNavigationPanels();
+      return;
+    }
+    const generatedScene = this.selectedGeneratedScene();
+    if (generatedScene) {
+      this.renderGeneratedSceneInspector(panel, generatedScene);
       this.syncNavigationPanels();
       return;
     }
@@ -9489,6 +9737,153 @@ export class Builder {
     this.refreshPanelDragHandles(panel);
     this.wireCollapsibleSections(panel);
     panel.querySelector('#bi-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-inspector'));
+  }
+
+  private renderGeneratedSceneInspector(panel: HTMLDivElement, scene: GeneratedScenePlacement): void {
+    const source = scene.sourceChunk
+      ? `${scene.sourceChunk.cx}, ${scene.sourceChunk.cy} / ${scene.sourceChunk.hash}`
+      : '-';
+    const width = scene.x1 - scene.x0 + 1;
+    const height = scene.y1 - scene.y0 + 1;
+    panel.innerHTML =
+      builderPanelHeader({
+        title: builderPanelTitle('builder-inspector'),
+        closeId: 'bi-close',
+        closeLabel: 'Close inspector',
+      }) +
+      `<div class="bi-panel-body bi-generated-scene">
+        <div class="bi-section">
+          <div class="bi-head">GENERATED PIXEL SCENE</div>
+          <div class="bi-id">${escapeHtml(scene.id)}</div>
+          <div class="bi-row"><span>Name</span><b>${escapeHtml(scene.label)}</b></div>
+          <div class="bi-row"><span>Scene</span><b>${escapeHtml(scene.sceneId)}</b></div>
+          <div class="bi-row"><span>Slot</span><b>${escapeHtml(scene.slotId)}</b></div>
+          <div class="bi-row"><span>Bounds</span><b>${scene.x0},${scene.y0} - ${scene.x1},${scene.y1}</b></div>
+          <div class="bi-row"><span>Size</span><b>${width}x${height}</b></div>
+          <div class="bi-row"><span>Chunk</span><b title="${escapeAttr(source)}">${escapeHtml(source)}</b></div>
+          <div class="bi-row"><span>Content</span><b>${scene.objectCount} obj / ${scene.lightCount} light / ${scene.linkCount} link</b></div>
+          <div class="bpd-message">Generated scenes are read-only runtime content. Capture Prefab converts the visible cells plus valid generated objects and lights into an editable authored prefab.</div>
+          <div class="bi-action-row">
+            <button id="bi-gen-frame" type="button">Frame</button>
+            <button id="bi-gen-world" type="button">World Map</button>
+            <button id="bi-gen-copy" type="button">Copy ID</button>
+            <button id="bi-gen-capture" class="b-primary" type="button">Capture Prefab</button>
+          </div>
+        </div>
+      </div>`;
+    this.refreshPanelDragHandles(panel);
+    panel.querySelector('#bi-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-inspector'));
+    panel.querySelector('#bi-gen-frame')?.addEventListener('click', () => this.frameSelection());
+    panel.querySelector('#bi-gen-world')?.addEventListener('click', () => this.openWorkspacePanel('builder-virtual-world'));
+    panel.querySelector('#bi-gen-copy')?.addEventListener('click', () => void this.copyGeneratedSceneId(scene.id));
+    panel.querySelector('#bi-gen-capture')?.addEventListener('click', () => void this.captureGeneratedSceneAsPrefab(scene));
+  }
+
+  private async copyGeneratedSceneId(id: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(id);
+      this.status('GENERATED SCENE ID COPIED');
+    } catch {
+      this.status('COPY FAILED - BROWSER CLIPBOARD BLOCKED', true);
+    }
+  }
+
+  private async captureGeneratedSceneAsPrefab(scene: GeneratedScenePlacement): Promise<void> {
+    if (this.previewBlocks()) return;
+    const raw = await appDialog.prompt(
+      'Prefab name (#tags after the name):',
+      `${scene.label.toLowerCase()} #generated #${scene.sceneId.replace(/^scene-/, '')}`,
+      { title: 'Capture Generated Scene', confirmText: 'Capture' },
+    );
+    if (raw === null) return;
+    const tags = [...raw.matchAll(/#([\w-]+)/g)].map((m) => m[1].toLowerCase());
+    const name = raw.replace(/#[\w-]+/g, '').trim();
+    const region: Region = { x0: scene.x0, y0: scene.y0, x1: scene.x1, y1: scene.y1 };
+    const { doc, skippedObjects, skippedLinks } = this.generatedSceneCaptureDocument(scene);
+    const got = capturePrefab(this.ctx.world, region, doc, name, tags);
+    if (!got) {
+      this.status('GENERATED SCENE TOO LARGE FOR A PREFAB (MAX ~40K CELLS)', true);
+      return;
+    }
+    if (!savePrefab(got.prefab)) this.status('PREFAB STORAGE FULL - USE EXPORT', true);
+    this.prefabs.push(got.prefab);
+    this.prefabs.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    this.selectPrefabAsset(got.prefab, 'library', this.isWorkspacePanelOpen('builder-prefab-details'));
+    this.refreshPrefabs();
+    const extras =
+      got.prefab.objects.length > 0 || got.prefab.lights.length > 0
+        ? ` +${got.prefab.objects.length} OBJ +${got.prefab.lights.length} LIGHT`
+        : '';
+    const skipped = skippedObjects > 0 || skippedLinks > 0 ? ` (${skippedObjects} OBJ/${skippedLinks} LINK SKIPPED)` : '';
+    this.status(`CAPTURED GENERATED SCENE PREFAB ${got.prefab.w}x${got.prefab.h}${extras}${skipped}`);
+  }
+
+  private generatedSceneCaptureDocument(scene: GeneratedScenePlacement): {
+    doc: EditorDocument;
+    skippedObjects: number;
+    skippedLinks: number;
+  } {
+    const doc = createEmptyDocument(`${scene.label} generated capture`, this.doc.biome);
+    let skippedObjects = 0;
+    const objectIds = new Set<string>();
+    for (const object of scene.objects) {
+      const kind = this.generatedSceneObjectKind(object.kind);
+      if (!kind || object.x < scene.x0 || object.x > scene.x1 || object.y < scene.y0 || object.y > scene.y1) {
+        skippedObjects++;
+        continue;
+      }
+      const params = structuredClone(object.params) as Record<string, unknown>;
+      if (kind === 'pickup' && params.kind === 'gold') params.kind = 'goldpile';
+      doc.objects.push({
+        id: object.id,
+        kind,
+        x: object.x,
+        y: object.y,
+        rotation: 0,
+        locked: false,
+        hidden: false,
+        params,
+      });
+      objectIds.add(object.id);
+    }
+    let skippedLinks = 0;
+    for (const link of scene.links) {
+      const kind = this.generatedSceneLinkKind(link.kind);
+      if (!kind || !objectIds.has(link.fromId) || !objectIds.has(link.toId)) {
+        skippedLinks++;
+        continue;
+      }
+      doc.links.push({ id: link.id, fromId: link.fromId, toId: link.toId, kind });
+    }
+    doc.lights = scene.lights
+      .filter((light) => light.x >= scene.x0 && light.x <= scene.x1 && light.y >= scene.y0 && light.y <= scene.y1)
+      .map((light, n) => this.generatedSceneEditorLight(light, n));
+    return { doc, skippedObjects, skippedLinks };
+  }
+
+  private generatedSceneObjectKind(kind: string): EditorObjectKind | null {
+    return GENERATED_SCENE_OBJECT_KINDS.has(kind as EditorObjectKind) ? kind as EditorObjectKind : null;
+  }
+
+  private generatedSceneLinkKind(kind: string): EditorLink['kind'] | null {
+    return GENERATED_SCENE_LINK_KINDS.has(kind as EditorLink['kind']) ? kind as EditorLink['kind'] : null;
+  }
+
+  private generatedSceneEditorLight(sceneLight: GeneratedScenePlacement['lights'][number], n: number): EditorLight {
+    return {
+      id: sceneLight.id || `generated-light-${n}`,
+      x: sceneLight.x,
+      y: sceneLight.y,
+      color: sceneLight.color,
+      intensity: sceneLight.intensity,
+      radius: sceneLight.radius,
+      bloom: sceneLight.bloom ?? 0.8,
+      flicker: sceneLight.flicker ?? 0,
+      falloff: sceneLight.falloff ?? 'soft',
+      occluded: sceneLight.occluded ?? true,
+      locked: false,
+      hidden: false,
+    };
   }
 
   private wireDocumentInspector(panel: HTMLDivElement): void {

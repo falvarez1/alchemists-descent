@@ -1,3 +1,4 @@
+import { ALL_CARD_IDS } from '@/combat/wands/cards';
 import type { EnemyKind, PickupKind } from '@/core/types';
 import { paramNum } from '@/builder/document';
 import type { EditorDocument, EditorLight, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
@@ -12,6 +13,7 @@ import type {
   InspectorCommandRef,
   InspectorSchemaItem,
 } from '@/ui/editor/InspectorSchema';
+import { POTION_KINDS } from '@/game/Pickups';
 
 export const POINT_ROTATE_KINDS: ReadonlySet<EditorObjectKind> = new Set([
   'enemy',
@@ -39,6 +41,14 @@ export const ENEMY_KINDS: EnemyKind[] = [
 ];
 
 export const PICKUP_KINDS: PickupKind[] = ['goldpile', 'heart', 'tome', 'chest', 'potion', 'key'];
+const CARD_PICKUP_OPTIONS: FieldOption[] = [
+  { value: '', label: 'random' },
+  ...ALL_CARD_IDS.map((id) => ({ value: id, label: id })),
+];
+const POTION_PICKUP_OPTIONS: FieldOption[] = [
+  { value: '', label: 'random' },
+  ...POTION_KINDS.map((id) => ({ value: id, label: id })),
+];
 
 /** Light presets: one click of mood, applied through the undo stack. */
 export const LIGHT_PRESETS: Record<string, Partial<EditorLight>> = {
@@ -464,8 +474,8 @@ function pickupItems(obj: EditorObject): InspectorSchemaItem[] {
   const items: InspectorSchemaItem[] = [paramSelect(obj, 'kind', 'kind', PICKUP_KINDS, 'goldpile')];
   const kind = obj.params.kind;
   if (kind === 'goldpile' || kind === 'chest') items.push(paramNumber(obj, 'amount', 'amount', 30));
-  if (kind === 'tome') items.push(paramText(obj, 'card', 'card', 'random'));
-  if (kind === 'potion') items.push(paramText(obj, 'potion', 'potion', 'random'));
+  if (kind === 'tome') items.push(paramSelect(obj, 'card', 'card', CARD_PICKUP_OPTIONS, ''));
+  if (kind === 'potion') items.push(paramSelect(obj, 'potion', 'potion', POTION_PICKUP_OPTIONS, ''));
   return items;
 }
 

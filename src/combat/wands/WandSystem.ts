@@ -3,6 +3,8 @@ import type {
   CastActionExecutionContext,
   Ctx,
   Projectile,
+  SpellId,
+  SpellParams,
   WandFrame,
   WandLoadoutSave,
   WandRuntimeSnapshot,
@@ -12,8 +14,10 @@ import type {
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { acidColor, emberColor, fireColor, glassColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
 import { ALL_CARD_IDS, CARD_DEFS } from './cards';
+import { markCardDiscovered } from './cardDiscovery';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 import { BOUNCE_COUNTS, INFUSED, TRIGGERED } from './projectileMarks';
+import { DEPTH_PROJECTILE_POOL, randomCard, WAYSTONE_MOD_POOL } from './rewardPools';
 
 /**
  * Wand frames available at launch. Only 'oak' and 'bone' exist as actual
@@ -27,25 +31,35 @@ export const WAND_FRAMES: Record<string, WandFrame> = {
   void: { id: 'void', name: 'Void Lattice', capacity: 5, castDelay: 16, recharge: 20, manaMax: 220, manaRegen: 1.1, spread: 0 },
 };
 
-/** Cards a lit waystone can gift (weighted toward build-shaping mods). */
-const MOD_POOL: CardId[] = ['speed', 'heavy', 'spread', 'bounce', 'trigger', 'double', 'triple'];
-/** Cards a first visit to a new depth can gift. */
-const PROJ_POOL: CardId[] = [
-  'spark',
-  'bomb',
-  'lightning',
-  'flame',
-  'dig',
-  'warp',
-  'blackhole',
-  'vitriol',
-  'frostshard',
-  'icelance',
-  'wisp',
-  'meteor',
-  'conjure',
-  'emberstorm',
-];
+/**
+ * Recoil force proxy for one compiled cast action: muzzle momentum
+ * (projectile speed × count). Mirrors the spawn speeds in castActionAt — the
+ * params-driven cards (spark/bomb/warp) read the live spell table, the rest
+ * mirror castActionAt's literals (16/11/6.5/4.5). Non-ballistic cards (hitscan,
+ * streams, rays, placed/stationary spells) carry no kinetic recoil → 0.
+ */
+function kineticOf(action: CastAction, sp: Record<SpellId, SpellParams>): number {
+  const s = action.speedMul;
+  switch (action.card) {
+    case 'spark':
+      return sp.bolt.velocityForce! * s * Math.max(1, Math.round(action.dmgMul));
+    case 'bomb':
+      return sp.bomb.velocityForce! * s;
+    case 'warp':
+      return sp.warp.velocityForce! * s;
+    case 'frostshard':
+      return 11 * s;
+    case 'icelance':
+      return 16 * s;
+    case 'wisp':
+      return 4.5 * s * (action.dmgMul >= 2 ? 2 : 1);
+    case 'meteor':
+      return 6.5 * s;
+    default:
+      return 0;
+  }
+}
+
 /** waystoneLit grant: chance the gift is a modifier/multicast rather than a projectile. */
 const WAYSTONE_MOD_BIAS = 0.75;
 
@@ -121,13 +135,13 @@ export class WandSystem implements WandsApi {
   constructor(private readonly ctx: Ctx) {
     // Card economy v1: the world hands out cards through existing events.
     ctx.events.on('waystoneLit', () => {
-      const pool = Math.random() < WAYSTONE_MOD_BIAS ? MOD_POOL : PROJ_POOL;
-      this.grantCard(this.ctx, pool[Math.floor(Math.random() * pool.length)]);
+      const pool = Math.random() < WAYSTONE_MOD_BIAS ? WAYSTONE_MOD_POOL : DEPTH_PROJECTILE_POOL;
+      this.grantCard(this.ctx, randomCard(pool));
     });
     ctx.events.on('levelChanged', ({ depth }) => {
       if (depth < 2 || this.depthsGranted.has(depth)) return;
       this.depthsGranted.add(depth);
-      this.grantCard(this.ctx, PROJ_POOL[Math.floor(Math.random() * PROJ_POOL.length)]);
+      this.grantCard(this.ctx, randomCard(DEPTH_PROJECTILE_POOL));
     });
     // Brewing real materials proves you speak material — the Infuser answers.
     ctx.events.on('recipeBrewed', () => this.grantInfuser(ctx));
@@ -200,6 +214,20 @@ export class WandSystem implements WandsApi {
     const ra = ctx.player.aimAngle;
     ctx.player.hat.vx -= Math.cos(ra) * 1.0;
     ctx.player.hat.vy -= Math.sin(ra) * 0.7 + 0.3;
+    // CAST RECOIL (physical): shove the body opposite the aim, scaled to the
+    // shot's muzzle momentum (flat base so streams/hitscan still tap; summed
+    // projectile momentum so multicast/heavy stacks kick harder), capped so no
+    // shotgun flings you, and ground-damped since friction braces you. fire()
+    // runs inside PlayerControl.update() AFTER the vy clamp, so firing DOWNWARD
+    // while airborne lands an uncapped rocket-jump pop that bleeds off next
+    // frame. Self-inflicted, so it bypasses Stoneskin (you feel your own gun).
+    const lp = ctx.params.player;
+    let momentum = lp.recoilBase;
+    for (const a of group.actions) momentum += kineticOf(a, ctx.params.spells);
+    let recoil = Math.min(momentum * lp.recoilPerMomentum, lp.recoilMaxImpulse);
+    if (ctx.player.grounded) recoil *= lp.recoilGroundDamp;
+    ctx.player.vx -= Math.cos(ra) * recoil;
+    ctx.player.vy -= Math.sin(ra) * recoil;
 
     const tip = ctx.spells.wandTip();
     for (const action of group.actions) {
@@ -497,6 +525,7 @@ export class WandSystem implements WandsApi {
   grantCard(ctx: Ctx, id: CardId): void {
     if (id === 'infuser') this.infuserGranted = true;
     this.collection.push(id);
+    markCardDiscovered(id);
     ctx.telemetry.count('card.granted.' + id);
     ctx.events.emit('cardGranted', { id, name: CARD_DEFS[id].name });
   }

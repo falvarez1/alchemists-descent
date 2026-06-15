@@ -27,8 +27,8 @@ The house principles, in order of authority:
 |---|---|---|
 | Coyote time | A jump press within 6 frames of walking off a ledge still gets the full jump | `entities/Player.ts` |
 | Jump buffer | A press up to 8 frames before touchdown fires on the landing frame | `Player.ts` |
-| Air control | Mid-air acceleration (0.575) is *stronger* than ground (0.5) for Ori-like corrections | `Player.ts` |
-| Levitation spool | Thrust starts at a near-hover 0.34 (gravity 0.28) and builds t² to 0.62 over 20 frames — a tap feathers height, a hold winds into a climb; releasing resets the spool. The exhaust plume scales with the spool. Refuels on ground/liquid contact | `Player.ts` |
+| Air control | Mid-air acceleration (0.575) is *stronger* than ground (0.5) for Ori-like corrections. Input accelerates only UP TO maxRun and never drags carried momentum back down, so a fast run carries into a jump/levitate; airborne uses gentle `airDrag` (0.985) inertia instead of the ground's 0.72 stop — flight coasts and keeps momentum | `Player.ts` |
+| Levitation spool | Thrust starts at a near-hover 0.33 (gravity 0.28) and builds t³ to 0.57 over 48 frames; a per-frame 0.92 drag makes climb speed *asymptote* to ~3.3 cells/frame (90% by ~f51) instead of snapping to the cap. A tap feathers height, a hold winds slowly into a climb; releasing resets the spool. The exhaust plume scales with the spool. Refuels on ground/liquid contact. Live-tunable in `params.player` (Builder → Global Controls → LEVITATION; adjustable mid-playtest) | `Player.ts` + `config/params.ts` + `Builder.ts` |
 | Levitation sputter | Below 20% fuel the jet coughs — exhaust gaps + put-put audio — so panic starts *before* the fall | `Player.ts` + `AudioEngine.sputter` |
 | Step-up | 2-cell ledges are walked up automatically (step-up 5 in the entity mover) | `entities/physics.ts` |
 | Loose rubble | Connected solid clusters < 5 cells are walk-through debris | `physics.cellBlocks` |
@@ -132,7 +132,7 @@ Layered, bottom to top:
 | **Three air poses** | Rising = tight leg tuck · apex = drift · falling = legs trailing apart, off-hand thrown high, robe flared. The jump arc reads from silhouette alone |
 | **Turn skid** | Reversing above walk speed (input sign vs `_svx` sign, \|svx\| > 1.1): 9 frames — both heels plant down the old direction, torso throws back (lean 3), the hat whips forward, dust scuffs off the heels (burst + mid-skid trickle) with a scuff noise |
 | **Cloth springs** | The hat is a damped spring (4 progressive segments, tip whip, airflow lift while falling). The robe hem has a second, heavier spring — the skirt swings past a stop and settles instead of snapping; a skid sends it overtaking the body |
-| **Cast recoil** | Each cast kicks the staff back 1–2 px along the aim for 5 frames (7 for card groups ≥ 25 mana) and jolts the hat through its spring |
+| **Cast recoil** | Each cast kicks the staff back 1–2 px along the aim for 5 frames (7 for card groups ≥ 25 mana) and jolts the hat through its spring. The body also takes a *physical* shove opposite the aim, scaled to the shot's muzzle momentum (flat base 6 + summed projectile speed×count, ×0.06), capped at 4.0 and damped to 0.55× on the ground. Because `fire()` runs after the frame's vy clamp, firing **downward while airborne** lands an uncapped rocket-jump pop that bleeds off next frame. Self-inflicted, so it ignores Stoneskin. Live-tunable in `params.player` (Builder → Global Controls → WAND RECOIL; adjustable mid-playtest) |
 | **Hurt stagger** | Damage leans the body away from the knockback vector for 12 frames and whips the hat with the blow (on top of hitstop ≥ 8 dmg) |
 | **Idle fidgets** | ~7 s of true stillness: the off-hand reaches up and straightens the hat (the hat springs at the touch), then the staff gets a slow flourish of cyan sparks. Repeats ~6 s later. Cancelled by any action; a crouch is a stance, not boredom |
 | Blink | Random 6-frame blinks (~0.7%/frame) |
@@ -381,7 +381,12 @@ Layered, bottom to top:
 
 ```
 coyote 6f · jump buffer 8f · jump vy -3.7 · gravity 0.28 (liquid 0.12)
-levitation spool: 0.34 -> 0.62 thrust over 20f (t-squared ease-in)
+levitation spool: 0.33 -> 0.57 thrust over 48f (t-cubed ease-in) + 0.92/f drag -> ~3.3 terminal climb
+wand recoil: base 6 + sum(proj speed×count), ×0.06 -> impulse, cap 4.0, ground ×0.55 (opposite aim; down+airborne = rocket-jump)
+levitation horizontal: own control (levitHorizControl 1.0×) — decoupled from ground Swift/Swift-Soles buffs
+air inertia: input caps at maxRun but never snaps carried momentum down; airborne vx *= airDrag (0.985) each frame instead of the ground 0.72 — sprint carries into jump/levitate, glide coasts (±12 sanity rail). Builder → LEVITATION → Air momentum (drag)
+gore/blood: count = baseline × global.bloodAmount × channelMul(material) × sizeFactor. sizeFactor = clamp(halfW·h / 50, 0.3, 4) (bat barely spatters, golem/colossus gushes). channelMul keys off the sprayed cell: Cell.Blood→goreBlood, Cell.Slime→goreSlime, Cell.Acid/Toxic→goreOoze, else 1 — so red blood, green slime, and glowing ooze tune discretely. bloodAmount is the master: 0 = bloodless, 1 = shipped, up to 10 = maximum gore / Tarantino mode. All in Builder → Global Controls → GORE (Overall 0–10×, channels 0–4×). Particle pool MAX_PARTICLES=4200 caps extremes gracefully; gold bounty shower is NOT scaled
+blood staining: blood particles stain (stainCell) the sturdy surface they strike (Wall/Wood/Stone/Ice), and flowing/pooling blood liquid stains the floor/walls it touches each substep (handleViscousLiquid) — red soaks in permanently (tints world.colors, not types, so golden hashes unaffected)
 run accel 0.5 ground / 0.575 air · max run 2.6 · crouch 0.38x · peek +48 cells
 dive: entry 5.6, floor 4.6, terminal 6.4 (normal 5.0), drift x0.86/f
 slam: 26-cell knock radius, 1 dmg, ≤12 powder cells popped

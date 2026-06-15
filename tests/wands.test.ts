@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { compileWand } from '@/combat/wands/compiler';
+import { buildWandSentenceView, nextWandSentence } from '@/combat/wands/sentenceView';
 import { WandSystem } from '@/combat/wands/WandSystem';
 import { TRIGGERED } from '@/combat/wands/projectileMarks';
 import { createDefaultWandLightSettings, createGameParams } from '@/config/params';
@@ -8,7 +9,7 @@ import { EventBus } from '@/core/events';
 import type { CardId, CastAction, Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
-import { canOpenWandBench } from '@/ui/WandBench';
+import { canOpenWandBench, wandBenchUnavailableCue } from '@/ui/WandBench';
 
 /**
  * The cast compiler is a PURE function of the slot list, so every rule that
@@ -152,6 +153,82 @@ describe('compileWand', () => {
     expect(a.bounces).toBe(2);
     // spread (3) x2 + infuser (6) + bounce (5) + spark (10)
     expect(program[0].manaCost).toBe(27);
+  });
+});
+
+describe('wand sentence view', () => {
+  it('renders empty and malformed decks honestly', () => {
+    const empty = buildWandSentenceView([]);
+    expect(empty.lines[0]).toMatchObject({
+      label: 'No spell ready',
+      detail: 'Slot at least one projectile card',
+      manaCost: 0,
+      slots: [],
+    });
+
+    const malformed = buildWandSentenceView(['speed', 'double', null]);
+    expect(malformed.lines[0].label).toBe('No spell ready');
+    expect(malformed.warnings).toEqual(expect.arrayContaining([
+      'Swift Charm in slot 1 has no projectile after it',
+      'Twin Cast in slot 2 wants 2 projectiles, found 0',
+    ]));
+    expect(malformed.slotWarnings[0]).toContain('Swift Charm in slot 1 has no projectile after it');
+    expect(malformed.slotWarnings[1]).toContain('Twin Cast in slot 2 wants 2 projectiles, found 0');
+  });
+
+  it('describes modifiers and their target slots', () => {
+    const view = buildWandSentenceView(['speed', 'spark']);
+    expect(view.lines[0]).toMatchObject({
+      label: 'Next: Swift Spark Bolt',
+      detail: '14 mana - slots 1, 2',
+      manaCost: 14,
+      slots: [0, 1],
+    });
+    expect(view.warnings).toEqual([]);
+    expect(view.slotRelations[0]).toEqual(expect.arrayContaining([1]));
+    expect(view.slotRelations[1]).toEqual(expect.arrayContaining([0]));
+  });
+
+  it('describes trigger payloads as one upfront-paid cast', () => {
+    const view = buildWandSentenceView(['trigger', 'spark', 'bomb']);
+    expect(view.lines[0]).toMatchObject({
+      label: 'Next: Spark Bolt -> Cast Bomb at impact',
+      detail: '42 mana - slots 1, 2, 3',
+      manaCost: 42,
+      slots: [0, 1, 2],
+    });
+    expect(view.warnings).toEqual([]);
+    expect(view.slotRelations[0]).toEqual(expect.arrayContaining([1, 2]));
+    expect(view.slotRelations[1]).toEqual(expect.arrayContaining([0, 2]));
+  });
+
+  it('warns when a trigger has a host but no payload group', () => {
+    const view = buildWandSentenceView(['trigger', 'spark']);
+    expect(view.lines[0]).toMatchObject({
+      label: 'Next: Spark Bolt',
+      detail: '18 mana - slots 1, 2',
+    });
+    expect(view.warnings).toContain('Trigger in slot 1 has no payload group after its host');
+    expect(view.slotWarnings[0]).toContain('Trigger in slot 1 has no payload group after its host');
+    expect(view.slotWarnings[1]).toContain('Trigger in slot 1 has no payload group after its host');
+  });
+
+  it('warns when stacked multicasts request more projectiles than the deck supplies', () => {
+    const view = buildWandSentenceView(['double', 'triple', 'spark', 'spark', 'spark', 'spark']);
+    expect(view.lines[0].label).toBe('Next: 4 casts: Spark Bolt + Spark Bolt + Spark Bolt + Spark Bolt');
+    expect(view.lines[0].manaCost).toBe(58);
+    expect(view.warnings).toContain('Stacked multicasts starting slot 1 want 5 projectiles, found 4');
+    expect(view.slotWarnings[0]).toContain('Stacked multicasts starting slot 1 want 5 projectiles, found 4');
+    expect(view.slotWarnings[1]).toContain('Stacked multicasts starting slot 1 want 5 projectiles, found 4');
+    expect(view.slotRelations[0]).toEqual(expect.arrayContaining([2, 3, 4, 5]));
+    expect(view.slotRelations[1]).toEqual(expect.arrayContaining([2, 3, 4, 5]));
+  });
+
+  it('rotates labels around the current cast cursor', () => {
+    const view = buildWandSentenceView(['spark', 'dig'], 1);
+    expect(view.lines[0].label).toBe('Next: Excavate Ray');
+    expect(view.lines[1].label).toBe('Then: Spark Bolt');
+    expect(nextWandSentence(['spark', 'dig'], 1).label).toBe('Next: Excavate Ray');
   });
 });
 
@@ -471,5 +548,12 @@ describe('wand bench access', () => {
     expect(canOpenWandBench(benchCtx({
       state: { mode: 'build', debugGodMode: true },
     } as Partial<Ctx>))).toBe(false);
+  });
+
+  it('explains the Refuge direction when the bench is unavailable', () => {
+    expect(wandBenchUnavailableCue(benchCtx({
+      player: { x: 60, y: 150, dead: false },
+      levels: { current: { refuge: { x: 120, y: 100 }, cauldron: null } },
+    } as Partial<Ctx>))).toBe('WAND BENCH IN REFUGE EAST ABOVE - 78 STEPS');
   });
 });

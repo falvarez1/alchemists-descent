@@ -5,7 +5,7 @@ import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
 import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode } from '@/core/types';
 import { AudioEngine } from '@/audio/AudioEngine';
-import { Builder } from '@/builder/Builder';
+import type { Builder } from '@/builder/Builder';
 import { Flask } from '@/combat/Flask';
 import { Lightning } from '@/combat/Lightning';
 import { WandSystem } from '@/combat/wands/WandSystem';
@@ -37,6 +37,7 @@ import { Cell } from '@/sim/CellType';
 import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
+import { CardOfferOverlay } from '@/ui/CardOfferOverlay';
 import { HelpOverlay } from '@/ui/HelpOverlay';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
@@ -80,6 +81,7 @@ export class Game {
   private modePersistDisposer: (() => void) | null = null;
   private visibilityDisposer: (() => void) | null = null;
   private animationFrameId: number | null = null;
+  private builderPromise: Promise<Builder> | null = null;
   private started = false;
   private disposed = false;
 
@@ -177,6 +179,7 @@ export class Game {
 
     this.hud = new Hud(ctx);
     this.minimap = new Minimap(ctx);
+    new CardOfferOverlay(ctx);
     // Self-binds the B key; lives for the page lifetime.
     new WandBench(ctx);
     // Transitional dev console: typed QA commands + automation adapter.
@@ -188,10 +191,8 @@ export class Game {
     // Header PLAY opens the canonical run launcher; Builder playtests bypass it.
     new RunLauncher(ctx);
     // The authoring overlay (injects its own DOM + header button).
-    const builder = new Builder(ctx);
-    if (import.meta.env.DEV) {
-      (ctx as Ctx & { builder?: Builder }).builder = builder;
-    }
+    this.builderPromise = this.mountBuilder(ctx);
+    void this.builderPromise.catch(() => undefined);
     // ESC pause + the Handbook (H); pause registers FIRST so its keydown
     // handler sees the help overlay still open and yields ESC to it.
     new PauseOverlay(ctx);
@@ -204,9 +205,30 @@ export class Game {
       if (!import.meta.env.DEV) return;
       const mode = readAppMode();
       if (mode === 'play') inputManager.setMode('play');
-      else if (mode === 'builder') builder.open();
+      else if (mode === 'builder') this.openBuilderWhenReady();
       // null -> nothing saved; boot stays in the default Sandbox.
     };
+  }
+
+  private mountBuilder(ctx: Ctx): Promise<Builder> {
+    return import('@/builder/Builder')
+      .then(({ Builder: BuilderCtor }) => {
+        const builder = new BuilderCtor(ctx);
+        if (import.meta.env.DEV) {
+          (ctx as Ctx & { builder?: Builder }).builder = builder;
+        }
+        return builder;
+      })
+      .catch((error) => {
+        console.error('Builder failed to load', error);
+        throw error;
+      });
+  }
+
+  private openBuilderWhenReady(): void {
+    void this.builderPromise
+      ?.then((builder) => builder.open())
+      .catch(() => undefined);
   }
 
   /** Boot sequence (original lines 4106-4117), then kick off the rAF loop. */

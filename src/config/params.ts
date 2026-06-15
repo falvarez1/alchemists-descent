@@ -4,6 +4,7 @@ import type {
   GameParams,
   GlobalParams,
   MaterialParams,
+  PlayerTuning,
   PostFxSettings,
   RenderSettings,
   SpellId,
@@ -23,6 +24,10 @@ export const GLOBAL_PARAMS: GlobalParams = {
   // Raised from the original 0.14: with the squared light curve, 0.18 keeps
   // the caves moody while letting shadowed rock read as silhouette.
   ambient: 0.18,
+  bloodAmount: 1.0,
+  goreBlood: 1.0,
+  goreSlime: 1.0,
+  goreOoze: 1.0,
 };
 
 export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
@@ -105,12 +110,42 @@ export const SPELL_ORDER: SpellId[] = [
   'blackhole',
 ];
 
+/**
+ * Player feel dials (levitation jet + wand recoil). See docs/FEEL.md.
+ * Levitation: a gentle t³ spool plus per-frame drag so climb speed ASYMPTOTES
+ * to ~3.3 cells/frame (90% by ~f51) instead of snapping to the -4.6 cap.
+ * Recoil: flat base + summed muzzle momentum, opposite aim, capped, ground-damped.
+ */
+export const PLAYER_PARAMS: PlayerTuning = {
+  levitThrust0: 0.33,
+  // Full thrust 0.33+0.24 = 0.57; with grav 0.28 and drag 0.92 that solves to a
+  // terminal climb of ~3.3 cells/frame (well under the old -4.6 cap).
+  levitThrustGain: 0.24,
+  levitRampFrames: 48,
+  levitDrag: 0.92,
+  vyCapUp: -4.6,
+  // Flight legs are their own thing — base feel (1.0), immune to Swift buffs so
+  // god-mode/Swift no longer makes levitation skate sideways while crawling up.
+  levitHorizControl: 1.0,
+  // Airborne horizontal inertia: 0.985/frame retention means a fast run carries
+  // into a jump/levitate and a glide coasts, instead of snapping to a stop.
+  airDrag: 0.985,
+  recoilBase: 6,
+  recoilPerMomentum: 0.06,
+  recoilMaxImpulse: 4.0,
+  recoilGroundDamp: 0.55,
+};
+
+/** Frozen baseline captured at load — the Builder "reset" action restores it. */
+export const PLAYER_TUNING_DEFAULTS: Readonly<PlayerTuning> = Object.freeze({ ...PLAYER_PARAMS });
+
 export function createGameParams(): GameParams {
   return {
     global: GLOBAL_PARAMS,
     backdrop: loadBackdropSettings(),
     materials: MATERIAL_PARAMS,
     spells: SPELL_PARAMS,
+    player: PLAYER_PARAMS,
   };
 }
 

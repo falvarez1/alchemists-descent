@@ -1,8 +1,10 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { ALL_CARD_IDS } from '@/combat/wands/cards';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { computeLooseRubbleBlockingMask } from '@/sim/collision';
 import { decodeTypes, paramNum } from '@/builder/document';
 import type { EditorDocument, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
+import { POTION_KINDS } from '@/game/Pickups';
 import { PLUG_CELLS, SENSOR_FILTER_CELLS, VALVE_CELLS } from '@/game/instantiate';
 import {
   stampBuoyBasin,
@@ -64,6 +66,9 @@ const AUTHORED_SPAWN_PLAYTEST_BLOCKERS = new Set([
   'builder.spawn.missing',
   'builder.spawn.embedded',
 ]);
+const VALID_TOME_CARDS = new Set<string>(ALL_CARD_IDS);
+const VALID_POTIONS = new Set<string>(POTION_KINDS);
+const VALID_PICKUP_KINDS = new Set(['goldpile', 'heart', 'tome', 'chest', 'potion', 'key']);
 
 /**
  * Validation deliberately reports authoring and findability errors that are
@@ -688,6 +693,22 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   for (const o of doc.objects) {
     if (o.x < 4 || o.x >= WIDTH - 4 || o.y < 4 || o.y >= HEIGHT - 4) {
       push('error', o.kind + ' outside world bounds', o.id);
+    }
+    if (o.kind === 'pickup' && !o.hidden) {
+      const kind = typeof o.params.kind === 'string' ? o.params.kind : 'goldpile';
+      if (!VALID_PICKUP_KINDS.has(kind)) {
+        push('error', `unknown pickup kind '${kind}'`, o.id, { code: 'builder.pickup.kind.invalid' });
+      } else if (kind === 'tome') {
+        const card = typeof o.params.card === 'string' ? o.params.card : '';
+        if (card !== '' && card !== 'random' && !VALID_TOME_CARDS.has(card)) {
+          push('error', `unknown tome card '${card}'`, o.id, { code: 'builder.pickup.card.invalid' });
+        }
+      } else if (kind === 'potion') {
+        const potion = typeof o.params.potion === 'string' ? o.params.potion : '';
+        if (potion !== '' && potion !== 'random' && !VALID_POTIONS.has(potion)) {
+          push('error', `unknown potion '${potion}'`, o.id, { code: 'builder.pickup.potion.invalid' });
+        }
+      }
     }
   }
   for (const l of doc.lights) {

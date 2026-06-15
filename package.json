@@ -20,6 +20,10 @@
     "probe:webgpu-r184": "node scripts/probe-webgpu-r184.mjs",
     "probe:render-backend": "node scripts/probe-render-backend-selection.mjs",
     "probe:webgpu-presentation": "node scripts/probe-webgpu-presentation.mjs",
+    "probe:webgpu-compose-canary": "node scripts/probe-webgpu-compose-canary.mjs",
+    "probe:webgpu-compose-fixture": "node scripts/probe-webgpu-compose-fixture.mjs",
+    "probe:webgpu-storage-bridge": "node scripts/probe-webgpu-storage-bridge.mjs",
+    "probe:webgpu-storage-size-sweep": "node scripts/probe-webgpu-storage-size-sweep.mjs",
     "lint": "eslint src",
     "format": "prettier --write \"src/**/*.{ts,css}\" index.html"
   },

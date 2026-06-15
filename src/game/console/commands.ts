@@ -2144,6 +2144,13 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
       if (args.length !== 2) return result(false, 'Usage: set <paramPath> <value>', { code: 'usage' });
       const resolved = resolveParamPath(ctx, args[0]);
       if (isCommandResult(resolved)) return resolved;
+      if (resolved.canonical === 'render.backend') {
+        return result(false, 'render.backend is startup-only; use ?renderBackend=webgl|webgpu|auto before boot.', {
+          code: 'startup-only-param',
+          path: resolved.canonical,
+          expected: RENDER_BACKEND_MODES,
+        });
+      }
       const next = parseParamValue(args[1], resolved.current, resolved.allowed);
       if (isCommandResult(next)) return next;
       resolved.owner[resolved.key] = next;

@@ -1,5 +1,6 @@
 import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskState, type PerkId } from '@/core/types';
 import { CARD_DEFS } from '@/combat/wands/cards';
+import { buildWandSentenceView, type WandSentenceView } from '@/combat/wands/sentenceView';
 import { POTION_DEFS, POTION_KINDS } from '@/game/Pickups';
 import { Cell } from '@/sim/CellType';
 import { cardIconName, ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
@@ -65,6 +66,19 @@ export function canOpenWandBench(ctx: Ctx): boolean {
   return dx * dx + dy * dy <= BENCH_REFUGE_RADIUS * BENCH_REFUGE_RADIUS;
 }
 
+export function wandBenchUnavailableCue(ctx: Ctx): string {
+  const refuge = ctx.levels.current?.refuge;
+  if (!refuge) return 'WAND BENCH WAITS IN THE REFUGE';
+  const dx = refuge.x - ctx.player.x;
+  const dy = refuge.y - ctx.player.y;
+  const dist = Math.max(1, Math.round(Math.hypot(dx, dy)));
+  const dirs: string[] = [];
+  if (Math.abs(dx) > 18) dirs.push(dx > 0 ? 'EAST' : 'WEST');
+  if (Math.abs(dy) > 18) dirs.push(dy > 0 ? 'BELOW' : 'ABOVE');
+  const dir = dirs.length > 0 ? ' ' + dirs.join(' ') : '';
+  return 'WAND BENCH IN REFUGE' + dir + ' - ' + dist + ' STEPS';
+}
+
 // ===================== Wand Bench =====================
 /**
  * The wandsmith's bench (B, play mode): a full overlay for moving spell cards
@@ -82,6 +96,7 @@ export class WandBench {
   private visible = false;
   /** Index into ctx.wands.collection of the card held by the cursor, or -1. */
   private heldIdx = -1;
+  private inspectedCard: CardId | null = null;
   private dragSource: BenchDragSource | null = null;
 
   constructor(private ctx: Ctx) {
@@ -112,6 +127,7 @@ export class WandBench {
     if (on === this.visible) return;
     this.visible = on;
     this.heldIdx = -1;
+    this.inspectedCard = null;
     el('wand-bench').classList.toggle('visible', on);
     if (on) this.render();
   }
@@ -122,7 +138,8 @@ export class WandBench {
       return;
     }
     if (!canOpenWandBench(this.ctx)) {
-      this.ctx.events.emit('toast', { text: 'WAND BENCH WAITS IN THE REFUGE' });
+      this.ctx.events.emit('toast', { text: wandBenchUnavailableCue(this.ctx) });
+      this.ctx.events.emit('refugePing');
       return;
     }
     this.setVisible(true);
@@ -159,10 +176,12 @@ export class WandBench {
       head.appendChild(stats);
       row.appendChild(head);
 
+      const sentence = buildWandSentenceView(wand.cards, wand.castIndex);
       const slots = document.createElement('div');
       slots.className = 'bench-slots';
-      wand.cards.forEach((id, s) => slots.appendChild(this.makeSlotTile(w, s, id)));
+      wand.cards.forEach((id, s) => slots.appendChild(this.makeSlotTile(w, s, id, sentence)));
       row.appendChild(slots);
+      row.appendChild(this.makeSentencePreview(sentence, wand.mana));
       root.appendChild(row);
     });
 
@@ -182,6 +201,7 @@ export class WandBench {
     }
     wands.collection.forEach((id, i) => grid.appendChild(this.makeCollectionTile(id, i)));
     root.appendChild(grid);
+    this.appendCardInspect(root);
 
     if (this.ctx.state.debugGodMode) this.appendReviewTools(root);
 
@@ -190,6 +210,96 @@ export class WandBench {
     hint.textContent =
       'CLICK A CARD, THEN A SLOT · CLICK A FILLED SLOT TO UNSLOT · B / ESC CLOSES · THE CAVES DO NOT WAIT';
     root.appendChild(hint);
+  }
+
+  private makeSentencePreview(view: WandSentenceView, mana: number): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'bench-sentence';
+    for (const line of view.lines.slice(0, 3)) {
+      const row = document.createElement('div');
+      row.className = 'bench-sentence-line' + (line.manaCost > mana ? ' overmana' : '');
+      const label = document.createElement('span');
+      label.className = 'bench-sentence-label';
+      label.textContent = line.label;
+      const detail = document.createElement('span');
+      detail.className = 'bench-sentence-detail';
+      const slotDetail = line.detail.replace(/^\d+ mana - /, '');
+      detail.textContent = line.manaCost > mana
+        ? 'Needs ' + line.manaCost + ' mana, tank has ' + Math.floor(mana) + ' - ' + slotDetail
+        : line.detail;
+      row.appendChild(label);
+      row.appendChild(detail);
+      wrap.appendChild(row);
+    }
+    for (const warning of view.warnings.slice(0, 2)) {
+      const row = document.createElement('div');
+      row.className = 'bench-sentence-warning';
+      row.textContent = warning;
+      wrap.appendChild(row);
+    }
+    return wrap;
+  }
+
+  private appendCardInspect(root: HTMLElement): void {
+    const panel = document.createElement('div');
+    panel.className = 'bench-inspect';
+    this.populateCardInspect(panel);
+    root.appendChild(panel);
+  }
+
+  private populateCardInspect(panel: HTMLElement): void {
+    panel.innerHTML = '';
+    const id = this.cardForInspect();
+    if (id === null) {
+      const name = document.createElement('div');
+      name.className = 'bench-inspect-name';
+      name.textContent = 'NO CARD SELECTED';
+      panel.appendChild(name);
+      return;
+    }
+
+    const def = CARD_DEFS[id];
+    const iconWrap = document.createElement('div');
+    iconWrap.className = 'bench-inspect-icon';
+    const icon = makeIconCanvas(cardIconName(id), 3);
+    if (icon) iconWrap.appendChild(icon);
+    panel.appendChild(iconWrap);
+
+    const copy = document.createElement('div');
+    copy.className = 'bench-inspect-copy';
+    const name = document.createElement('div');
+    name.className = 'bench-inspect-name';
+    name.textContent = def.name;
+    const meta = document.createElement('div');
+    meta.className = 'bench-inspect-meta';
+    meta.textContent = def.kind.toUpperCase() + ' - ' + def.manaCost + ' MANA';
+    const blurb = document.createElement('div');
+    blurb.className = 'bench-inspect-blurb';
+    blurb.textContent = def.blurb;
+    copy.appendChild(name);
+    copy.appendChild(meta);
+    copy.appendChild(blurb);
+    panel.appendChild(copy);
+  }
+
+  private cardForInspect(): CardId | null {
+    if (this.inspectedCard && this.cardStillVisible(this.inspectedCard)) return this.inspectedCard;
+    const held = this.heldIdx >= 0 ? this.ctx.wands.collection[this.heldIdx] : undefined;
+    if (held) return held;
+    const active = this.ctx.wands.wands[this.ctx.wands.active].cards.find((id): id is CardId => id !== null);
+    if (active) return active;
+    const anyWandCard = this.ctx.wands.wands.flatMap((wand) => wand.cards).find((id): id is CardId => id !== null);
+    return anyWandCard ?? this.ctx.wands.collection[0] ?? null;
+  }
+
+  private cardStillVisible(id: CardId): boolean {
+    return this.ctx.wands.collection.includes(id) || this.ctx.wands.wands.some((wand) => wand.cards.includes(id));
+  }
+
+  private inspectCard(id: CardId): void {
+    this.inspectedCard = id;
+    const panel = document.querySelector<HTMLElement>('#wand-bench .bench-inspect');
+    if (panel) this.populateCardInspect(panel);
   }
 
   private appendReviewTools(root: HTMLElement): void {
@@ -417,6 +527,7 @@ export class WandBench {
   private onDragStart(event: DragEvent, source: BenchDragSource): void {
     this.dragSource = source;
     this.heldIdx = -1;
+    this.inspectedCard = source.id;
     event.dataTransfer?.setData('text/plain', source.id);
     if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
   }
@@ -432,18 +543,23 @@ export class WandBench {
   /** Slot to flash on the next render (CSS animation runs on the fresh tile). */
   private flashSlot: { w: 0 | 1; s: number } | null = null;
 
-  private makeSlotTile(w: 0 | 1, s: number, id: CardId | null): HTMLElement {
+  private makeSlotTile(w: 0 | 1, s: number, id: CardId | null, view: WandSentenceView): HTMLElement {
     const tile = document.createElement('div');
     tile.className = 'bench-slot' + (id === null ? ' empty' : '');
     tile.dataset.benchWand = String(w);
     tile.dataset.benchSlot = String(s);
+    if (view.slotWarnings[s]?.length) tile.classList.add('sentence-warning');
     if (this.flashSlot && this.flashSlot.w === w && this.flashSlot.s === s) {
       tile.classList.add('just-slotted');
     }
     if (id === null) {
       tile.title = 'Empty slot';
     } else {
-      tile.title = cardTitle(id);
+      const warningText = view.slotWarnings[s]?.join('\n');
+      tile.title = warningText ? cardTitle(id) + '\n' + warningText : cardTitle(id);
+      tile.setAttribute('aria-label', cardTitle(id));
+      tile.tabIndex = 0;
+      if (this.inspectedCard === id) tile.classList.add('inspected');
       const icon = makeIconCanvas(cardIconName(id), 3);
       if (icon) tile.appendChild(icon);
       const cost = document.createElement('div');
@@ -453,6 +569,16 @@ export class WandBench {
       tile.draggable = true;
       tile.addEventListener('dragstart', (event) => this.onDragStart(event, { kind: 'slot', wand: w, slot: s, id }));
       tile.addEventListener('dragend', () => this.onDragEnd());
+      tile.addEventListener('mouseenter', () => {
+        this.inspectCard(id);
+        this.highlightRelatedSlots(w, s);
+      });
+      tile.addEventListener('focus', () => {
+        this.inspectCard(id);
+        this.highlightRelatedSlots(w, s);
+      });
+      tile.addEventListener('mouseleave', () => this.clearSentenceHighlights());
+      tile.addEventListener('blur', () => this.clearSentenceHighlights());
     }
     tile.addEventListener('dragover', (event) => {
       if (!this.dragSource) return;
@@ -469,23 +595,48 @@ export class WandBench {
     return tile;
   }
 
+  private highlightRelatedSlots(w: 0 | 1, s: number): void {
+    this.clearSentenceHighlights();
+    const cards = this.ctx.wands.wands[w].cards;
+    const view = buildWandSentenceView(cards, this.ctx.wands.wands[w].castIndex);
+    const related = new Set<number>([s, ...(view.slotRelations[s] ?? [])]);
+    for (const slot of related) {
+      const tile = document.querySelector<HTMLElement>(
+        '#wand-bench .bench-slot[data-bench-wand="' + w + '"][data-bench-slot="' + slot + '"]',
+      );
+      tile?.classList.add(slot === s ? 'sentence-source' : 'sentence-related');
+    }
+  }
+
+  private clearSentenceHighlights(): void {
+    document.querySelectorAll('#wand-bench .sentence-source, #wand-bench .sentence-related').forEach((node) => {
+      node.classList.remove('sentence-source', 'sentence-related');
+    });
+  }
+
   private makeCollectionTile(id: CardId, i: number): HTMLElement {
     const tile = document.createElement('div');
     tile.className = 'bench-card' + (i === this.heldIdx ? ' held' : '');
     tile.draggable = true;
     tile.dataset.benchCollectionIndex = String(i);
     tile.title = cardTitle(id);
+    tile.tabIndex = 0;
+    tile.setAttribute('aria-label', cardTitle(id));
+    if (this.inspectedCard === id) tile.classList.add('inspected');
     const icon = makeIconCanvas(cardIconName(id), 3);
     if (icon) tile.appendChild(icon);
     const cost = document.createElement('div');
     cost.className = 'cost';
     cost.textContent = String(CARD_DEFS[id].manaCost);
     tile.appendChild(cost);
+    tile.addEventListener('mouseenter', () => this.inspectCard(id));
+    tile.addEventListener('focus', () => this.inspectCard(id));
     tile.addEventListener('dragstart', (event) => this.onDragStart(event, { kind: 'collection', index: i, id }));
     tile.addEventListener('dragend', () => this.onDragEnd());
     // Click toggles 'held' — clicking the held card again puts it down.
     tile.addEventListener('click', () => {
       this.heldIdx = this.heldIdx === i ? -1 : i;
+      this.inspectedCard = id;
       this.ctx.audio.cardPick(); // paper snick
       this.render();
     });
@@ -514,12 +665,14 @@ export class WandBench {
     const held = this.heldIdx >= 0 ? wands.collection[this.heldIdx] : undefined;
     this.heldIdx = -1;
     if (held !== undefined) {
+      this.inspectedCard = held;
       // Swap: a filled slot returns its card to the collection first.
       if (id !== null) wands.slotCard(w, s, null);
       wands.slotCard(w, s, held);
       this.ctx.audio.cardSlot(); // firm clack: seated in the wand
       this.flashSlot = { w, s };
     } else if (id !== null) {
+      this.inspectedCard = id;
       // Empty-handed click on a filled slot returns the card to the collection.
       wands.slotCard(w, s, null);
       this.ctx.audio.cardPick();

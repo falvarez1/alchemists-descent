@@ -34,6 +34,7 @@ export function makeLevelRuntime(
       | 'backdropLevelId'
       | 'emitters'
       | 'placedPrefabs'
+      | 'generatedScenes'
       | 'decors'
       | 'refuge'
       | 'vaultArch'

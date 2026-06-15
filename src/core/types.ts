@@ -416,11 +416,56 @@ export interface SpellParams {
   collapseLimit?: number;
 }
 
+/**
+ * Live-tunable player feel (levitation jet + wand recoil). Player physics was
+ * historically hard-coded in Player.ts; these are the dials that now live in
+ * config/params.ts so they can be tuned at runtime like the spell table.
+ */
+export interface PlayerTuning {
+  /** Base levitation thrust per frame at spool start (air gravity is 0.28). */
+  levitThrust0: number;
+  /** Extra thrust added across the t³ spool to reach full power. */
+  levitThrustGain: number;
+  /** Frames to wind the levitation spool from a tap to full thrust. */
+  levitRampFrames: number;
+  /** Per-frame vy multiplier WHILE levitating — makes climb speed asymptote to
+   *  a terminal value instead of accumulating into the hard cap, and damps fall-catch. */
+  levitDrag: number;
+  /** Hard upward (negative) vy clamp; safety net only. Must stay ≤ the -3.7 jump impulse. */
+  vyCapUp: number;
+  /** Horizontal accel/max-run multiplier WHILE levitating — flight has its own
+   *  legs, deliberately decoupled from the ground-speed buffs (Swift potion /
+   *  Swift Soles). The hook for future levitation enhancement cards. */
+  levitHorizControl: number;
+  /** Per-frame horizontal velocity retention while airborne/levitating (1 = no
+   *  drag / frictionless glide, lower = quicker stop). Gives flight inertia:
+   *  carried run momentum bleeds off gradually instead of snapping to a halt. */
+  airDrag: number;
+  /** Flat recoil momentum floor so hitscan/stream casts still nudge. */
+  recoilBase: number;
+  /** Muzzle-momentum → impulse (cells/frame) scale. */
+  recoilPerMomentum: number;
+  /** Hard cap on a single shot's recoil impulse (no screen-flings). */
+  recoilMaxImpulse: number;
+  /** Grounded recoil multiplier — friction braces you (airborne is full). */
+  recoilGroundDamp: number;
+}
+
 export interface GlobalParams {
   simSpeed: number;
   maxBrightness: number;
   /** Base ambient light level (original top-level `AMBIENT`). */
   ambient: number;
+  /** Master multiplier on ALL gore/blood particle counts when an enemy is hit
+   *  or killed (1 = shipped, 0 = bloodless, up to 10 = maximum gore). */
+  bloodAmount: number;
+  /** Per-material gore channels, multiplied on top of bloodAmount so each can be
+   *  tuned discretely (the spray is a mix of an enemy's own body material plus a
+   *  universal blood spray). Keyed by the spawned cell type; materials outside
+   *  these channels (stone debris, ember, nitrogen) ride bloodAmount alone. */
+  goreBlood: number; // Cell.Blood — the universal red spray
+  goreSlime: number; // Cell.Slime — green viscera
+  goreOoze: number; // Cell.Acid + Cell.Toxic — glowing caustic ooze
 }
 
 export interface PostFxSettings {
@@ -545,6 +590,7 @@ export interface GameParams {
   backdrop: BackdropSettings;
   materials: Record<number, MaterialParams>;
   spells: Record<SpellId, SpellParams>;
+  player: PlayerTuning;
 }
 
 export type BiomeCrown = 'moss' | 'frost' | 'ember';
@@ -877,6 +923,9 @@ export interface PhysicsApi {
 export interface PlayerControlApi {
   /** src tags ('explosion' | 'fire' | 'acid' | 'toxic' | 'impact') drive boon resistances. */
   damage(amount: number, kx: number, ky: number, src?: string): void;
+  /** Add a velocity impulse (cells/frame) to the player. Stoneskin shrugs it off.
+   *  The shared verb for explosions, knockback, and rigid-body pushes. */
+  applyImpulse(vx: number, vy: number): void;
   kill(): void;
   respawn(): void;
   findSpawnPoint(): { x: number; y: number };
@@ -1236,8 +1285,8 @@ export interface Pickup {
   vx: number;
   vy: number;
   taken: boolean;
-  /** tome: the card granted; potion: POTION_DEFS key; goldpile/chest: amount. */
-  data: { card?: CardId; potion?: string; amount?: number };
+  /** tome: card seed/unique grant; potion: POTION_DEFS key; goldpile/chest: amount. */
+  data: { card?: CardId; potion?: string; amount?: number; offerPending?: boolean };
 }
 
 /** The level's exit gate: opens when the golden key is brought to it. */
@@ -1316,6 +1365,7 @@ export type CardId =
   | 'bounce';
 
 export type CardKind = 'projectile' | 'modifier' | 'multicast';
+export type CardTag = 'Damage' | 'Terrain' | 'Setup' | 'Trail' | 'Status' | 'Combo' | 'Movement' | 'Risk';
 
 export interface CastAction {
   card: CardId;
@@ -1341,6 +1391,7 @@ export interface CardDef {
   id: CardId;
   name: string;
   kind: CardKind;
+  tags: CardTag[];
   /** Added to the frame's per-cast mana drain. */
   manaCost: number;
   /** One-line bench tooltip. */
@@ -1589,6 +1640,59 @@ export interface PlacedPrefab {
   y1: number;
 }
 
+export interface GeneratedSceneObjectPlacement {
+  id: string;
+  kind: string;
+  x: number;
+  y: number;
+  params: Record<string, unknown>;
+}
+
+export interface GeneratedSceneLinkPlacement {
+  id: string;
+  fromId: string;
+  toId: string;
+  kind: string;
+}
+
+export interface GeneratedSceneLightPlacement {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  intensity: number;
+  radius: number;
+  bloom?: number;
+  flicker?: number;
+  falloff?: 'soft' | 'linear' | 'sharp';
+  occluded?: boolean;
+}
+
+/**
+ * Read-only footprint for a generated virtual-world pixel scene materialized
+ * into the current runtime window. These are not Builder document objects;
+ * the editor can inspect/capture them, but editing still goes through authored
+ * objects, lights, prefabs, or terrain cells.
+ */
+export interface GeneratedScenePlacement {
+  id: string;
+  source: 'virtual-world';
+  sceneId: string;
+  slotId: string;
+  label: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  objectCount: number;
+  linkCount: number;
+  lightCount: number;
+  objects: GeneratedSceneObjectPlacement[];
+  links: GeneratedSceneLinkPlacement[];
+  lights: GeneratedSceneLightPlacement[];
+  sourceChunk?: { cx: number; cy: number; hash: string };
+}
+
 /**
  * A decoded, render-ready animated sprite (Aseprite pipeline). Shared by
  * reference: every decor instance pointing at the same asset holds the SAME
@@ -1671,6 +1775,8 @@ export interface LevelRuntime {
   emitters?: HazardEmitter[];
   /** Authored prefabs stamped into this level by worldgen (audit/debug). */
   placedPrefabs?: PlacedPrefab[];
+  /** Generated virtual pixel-scene footprints (read-only audit/selection handles). */
+  generatedScenes?: GeneratedScenePlacement[];
   /** Animated sprite decor (visual-only — see RuntimeDecor). */
   decors?: RuntimeDecor[];
   /** The Refuge's offering shrine point — E in reach opens the Sanctum shop. */

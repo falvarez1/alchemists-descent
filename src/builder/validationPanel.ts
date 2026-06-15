@@ -37,15 +37,17 @@ export function renderValidationPanel(issues: DocIssue[], options: ValidationPan
         </div>`
       : '';
   return `${builderPanelHeader({ title: builderPanelTitle('builder-issues'), closeId: 'b-issues-close', closeLabel: 'Close validation issues' })}
-    ${blockerBanner}
-    <div class="bv-summary">${issues.length} issue${issues.length === 1 ? '' : 's'} - ${count(issues, 'error')} errors - ${count(issues, 'warning')} warnings</div>
-    <div class="bv-filters" role="group" aria-label="Validation filters">
-      ${filterButton('all', 'All', 'All issues', issues.length, true)}
-      ${filterButton('error', 'Errors', 'Errors', count(issues, 'error'))}
-      ${filterButton('warning', 'Warnings', 'Warnings', count(issues, 'warning'))}
-      ${filterButton('info', 'Info', 'Info', count(issues, 'info'))}
-    </div>
-    <div class="bv-groups">${issues.length === 0 ? '<div class="bv-empty" role="status">0 issues found. Document is ready for playtest checks.</div>' : groups}</div>`;
+    <div class="bv-panel-body">
+      ${blockerBanner}
+      <div class="bv-summary">${issues.length} issue${issues.length === 1 ? '' : 's'} - ${count(issues, 'error')} errors - ${count(issues, 'warning')} warnings</div>
+      <div class="bv-filters" role="group" aria-label="Validation filters">
+        ${filterButton('all', 'All', 'All issues', issues.length, true)}
+        ${filterButton('error', 'Errors', 'Errors', count(issues, 'error'))}
+        ${filterButton('warning', 'Warnings', 'Warnings', count(issues, 'warning'))}
+        ${filterButton('info', 'Info', 'Info', count(issues, 'info'))}
+      </div>
+      <div class="bv-groups">${issues.length === 0 ? '<div class="bv-empty" role="status">0 issues found. Document is ready for playtest checks.</div>' : groups}</div>
+    </div>`;
 }
 
 function renderGroup(

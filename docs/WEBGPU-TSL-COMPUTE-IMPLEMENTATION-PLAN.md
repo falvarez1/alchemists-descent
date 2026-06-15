@@ -3,7 +3,9 @@
 Status: in progress. Phases 0-2 are implemented and benchmark-gated. Phase 3
 is implemented as a boot-gated diagnostic shell with documented presentation
 warnings; it is not promoted as the default renderer. Phase 4 has started with
-the compose ABI/limit contract in `docs/WEBGPU-COMPOSE-ABI.md`; the WebGPU
+the compose ABI/limit contract in `docs/WEBGPU-COMPOSE-ABI.md`, a standalone
+WebGPU/TSL/raw-WGSL compose API canary, a production-shaped raw WGSL compose
+fixture, and a GPU-resident TSL storage-texture bridge probe. The live WebGPU
 compose shader port remains pending.
 
 This plan turns the current WebGL2 GPU frame-composition work into a staged
@@ -358,6 +360,102 @@ Phase 4.1 result:
 - This slice intentionally does not enable WebGPU compose yet; `GpuCompose` in
   `src/render/ComposeShader.ts` remains the WebGL2 performance and parity
   reference.
+
+Phase 4.2 result:
+
+- The current WebGL2 compose reference was rechecked before the WebGPU shader
+  port work continues: `node scripts/probe-compose-parity.mjs
+  http://127.0.0.1:5205/` passed all 8 assertions with static CPU/GPU
+  `99.998%` exact, max delta `1`, shockwave/sprite `99.997%` exact, postFx-on
+  max delta `1`, and no shader/WebGL console errors.
+- Added a standalone browser canary under
+  `scripts/probe-webgpu-compose-canary.*`, exposed as
+  `npm run probe:webgpu-compose-canary`, that proves the pinned Three/WebGPU
+  stack can render TSL `textureLoad` output into a WebGPU render target and can
+  dispatch raw WGSL compute through the active Three `GPUDevice`.
+- The canary artifact
+  `verify-out/webgpu-compose-canary/probe-1781538012826.json` passed on actual
+  WebGPU. TSL `textureLoad` read back a scaled `4x4` RGBA8 texture through a
+  `64x64` render target with `maxDelta=0`, `mismatches=0`, and normal
+  orientation. Raw WGSL compute transformed `[1,2,3,4,5,6,7,8]` into
+  `[10,13,16,19,22,25,28,31]` exactly. The screenshot visualizes the verified
+  render-target readback buffer and reported `4096/4096` nonblack pixels.
+- This slice still does not enable WebGPU compose in production and does not
+  claim a frame-rate win. Its positive result is that the required TSL texture
+  readback and raw WGSL compute primitives are verified before the production
+  shader port starts.
+
+Phase 4.3 result:
+
+- Added a standalone browser fixture under
+  `scripts/probe-webgpu-compose-fixture.*`, exposed as
+  `npm run probe:webgpu-compose-fixture`, that renders a production-shaped
+  subset of the compose shader through raw WGSL on the active Three WebGPU
+  `GPUDevice`.
+- The fixture uses the Phase 4.1 ABI resource shapes and formats:
+  `653x485 rgba8uint` world window, `263x179 rgba32float` light field,
+  `256x1 r32float` bloom LUT, `525x357 rgba16float` overlay, and
+  `525x357 rgba8unorm` output with 256-byte row-pitch readback.
+- The artifact
+  `verify-out/webgpu-compose-fixture/probe-1781540827915.json` passed on actual
+  WebGPU with `maxDelta=1`, `bigPct=0`, `meanDelta=0.0273`, and `89.425%`
+  exact pixels against the CPU reference. The screenshot
+  `verify-out/webgpu-compose-fixture/fixture-1781540827915.png` visualizes the
+  WebGPU readback buffer.
+- This slice still does not enable WebGPU compose in production and does not
+  claim a frame-rate win. Its positive result is a concrete CPU-vs-raw-WGSL
+  parity gate for the coordinate orientation, row padding, packed type/charge
+  bytes, overlay add/replace semantics, light field, and bloom LUT pieces that
+  the live shader port must preserve.
+
+Phase 4.4 result:
+
+- Added a standalone browser bridge under
+  `scripts/probe-webgpu-storage-bridge.*`, exposed as
+  `npm run probe:webgpu-storage-bridge`, that proves a Three r184
+  `StorageTexture` can be written by TSL compute and then sampled by a TSL
+  `RenderPipeline` without requiring production-frame readback.
+- The artifact
+  `verify-out/webgpu-storage-bridge/probe-1781545375079.json` passed on actual
+  WebGPU with full-frame offscreen readback and screenshot validation both at
+  `maxDelta=1`, `mismatches=0`, `mismatchPct=0`, `exactPct=90.91%`,
+  `meanDelta=0.0234`, `99.9919%` nonblack pixels, and no console or page
+  errors. The screenshot
+  `verify-out/webgpu-storage-bridge/bridge-1781545375079.png` visualizes the
+  storage-texture presentation output.
+- Earlier production-size attempts appeared to fail at `525x357`, but Phase 4.5
+  traced that to validation code that read Three/WebGPU's 256-byte padded rows as
+  tightly packed rows. Those failed artifacts remain recorded as validation-bug
+  evidence: `verify-out/webgpu-storage-bridge/probe-1781543232414.json` and
+  `verify-out/webgpu-storage-bridge/probe-1781543325378.json`.
+- This slice still does not enable WebGPU compose in production and does not
+  claim a frame-rate win. Its positive result is proving the GPU-resident output
+  bridge that a future live compose path needs: compute or render work can
+  write a WebGPU texture and the Three/TSL presentation layer can consume that
+  texture without copying it back through `pixelData`.
+
+Phase 4.5 result:
+
+- Added a diagnostic size sweep under
+  `scripts/probe-webgpu-storage-size-sweep.mjs`, exposed as
+  `npm run probe:webgpu-storage-size-sweep`, that reuses the Phase 4.4 bridge
+  page with query-string dimensions to isolate the apparent production-size
+  failure.
+- The artifact
+  `verify-out/webgpu-storage-size-sweep/probe-1781545386069.json` passed as a
+  diagnostic gate: every sweep case had a declared expected status, every case
+  passed, offscreen readback and screenshot validation both reported
+  `mismatchPct=0`, screenshot dimensions matched the declared scaled output
+  size, and the probe reported no console or page errors.
+- The positive qualitative result is resolving the apparent production-size
+  blocker before any live production wiring. The old `525x357` failures were
+  caused by missing 256-byte row unpacking in the validation readback. After
+  unpacking padded rows and adding screenshot pixel validation, `128x96`,
+  `525x96`, `128x357`, `512x360`, `525x360`, `528x357`, `525x357`, and
+  `525x357` with `576` storage padding all pass.
+- This slice still does not enable WebGPU compose in production and does not
+  claim a frame-rate win. Per the benchmark rule, the initially worse result was
+  fixed and kept rather than rolled back.
 
 Expected result:
 

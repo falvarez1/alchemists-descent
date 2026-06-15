@@ -24,6 +24,7 @@ import type {
   Ctx,
   Enemy,
   EnemyKind,
+  GeneratedScenePlacement,
   AuthoredLight,
   ExitPortal,
   LevelDef,
@@ -59,8 +60,10 @@ import { EXTRAS } from '@/world/biomeExtras';
 import { extractRegionGraph } from '@/world/regions';
 import {
   createDefaultVirtualWorldDef,
+  cropMaterializedWindow,
   generateVirtualWindow,
   materializeChunks,
+  type MaterializedScenePlacement,
   type VirtualSceneLight,
   type VirtualSceneObject,
   type VirtualWorldDef,
@@ -961,28 +964,26 @@ export class Levels implements LevelsApi {
     name: string,
   ): LevelRuntime {
     const materialized = materializeChunks(chunks);
-    const world = new World();
     const maxSrcX = Math.max(0, materialized.world.width - WIDTH);
     const maxSrcY = Math.max(0, materialized.world.height - HEIGHT);
     const wantedSrcX = Math.floor(center.x - materialized.originX - WIDTH / 2);
     const wantedSrcY = Math.floor(center.y - materialized.originY - HEIGHT / 2);
-    const srcX = Math.max(0, Math.min(maxSrcX, wantedSrcX));
-    const srcY = Math.max(0, Math.min(maxSrcY, wantedSrcY));
-    for (let y = 0; y < HEIGHT; y++) {
-      const sy = Math.min(materialized.world.height - 1, srcY + y);
-      const dstOff = y * WIDTH;
-      const srcOff = srcX + sy * materialized.world.width;
-      world.types.set(materialized.world.types.subarray(srcOff, srcOff + WIDTH), dstOff);
-      world.colors.set(materialized.world.colors.subarray(srcOff, srcOff + WIDTH), dstOff);
-      world.life.set(materialized.world.life.subarray(srcOff, srcOff + WIDTH), dstOff);
-      world.charge.set(materialized.world.charge.subarray(srcOff, srcOff + WIDTH), dstOff);
-    }
+    const crop = cropMaterializedWindow(
+      materialized,
+      Math.max(0, Math.min(maxSrcX, wantedSrcX)),
+      Math.max(0, Math.min(maxSrcY, wantedSrcY)),
+      WIDTH,
+      HEIGHT,
+    );
+    const { world, srcX, srcY } = crop;
     ctx.world = world;
     ctx.worldgen.spawnHint = null;
     const spawn = this.findVirtualSpawn(world);
     this.carveVirtualSpawn(world, spawn.x, spawn.y);
     ctx.worldgen.spawnHint = spawn;
-    const sceneRuntime = this.virtualSceneRuntime(ctx, materialized.sceneObjects, materialized.sceneLights, srcX, srcY, world);
+    this.warnVirtualMaterializationDrops(ctx, crop.stats);
+    const sceneRuntime = this.virtualSceneRuntime(ctx, crop.sceneObjects, crop.sceneLights, 0, 0, world);
+    const generatedScenes = this.virtualGeneratedScenes(crop.scenePlacements, world);
     ctx.enemies.length = 0;
     for (const rec of sceneRuntime.enemies) spawnPrefabEnemy(ctx, rec);
     const runtimeDef: LevelDef = {
@@ -1003,6 +1004,7 @@ export class Levels implements LevelsApi {
       ...(sceneRuntime.portal ? { portal: sceneRuntime.portal } : {}),
       ...(sceneRuntime.keyTaken ? { keyTaken: true } : {}),
       ...(sceneRuntime.authoredLights.length > 0 ? { authoredLights: sceneRuntime.authoredLights } : {}),
+      ...(generatedScenes.length > 0 ? { generatedScenes } : {}),
       placedPrefabs: materialized.chunks.map((chunk) => {
         const x0 = chunk.cx * def.chunkSize - materialized.originX - srcX;
         const y0 = chunk.cy * def.chunkSize - materialized.originY - srcY;
@@ -1014,6 +1016,85 @@ export class Levels implements LevelsApi {
           y1: y0 + def.chunkSize - 1,
         };
       }),
+    });
+  }
+
+  private virtualGeneratedScenes(
+    placements: readonly MaterializedScenePlacement[],
+    world: World,
+  ): GeneratedScenePlacement[] {
+    const out: GeneratedScenePlacement[] = [];
+    for (const placement of placements) {
+      const x0 = Math.max(0, Math.floor(placement.x));
+      const y0 = Math.max(0, Math.floor(placement.y));
+      const x1 = Math.min(world.width - 1, Math.ceil(placement.x + placement.w) - 1);
+      const y1 = Math.min(world.height - 1, Math.ceil(placement.y + placement.h) - 1);
+      if (x1 < x0 || y1 < y0) continue;
+      const parsed = this.parseVirtualScenePlacementId(placement.id);
+      out.push({
+        id: placement.id,
+        source: 'virtual-world',
+        sceneId: parsed.sceneId,
+        slotId: parsed.slotId,
+        label: this.virtualSceneLabel(parsed.sceneId),
+        x0,
+        y0,
+        x1,
+        y1,
+        objectCount: placement.objectCount,
+        linkCount: placement.linkCount,
+        lightCount: placement.lightCount,
+        objects: placement.objects.map((object) => ({
+          id: object.id,
+          kind: object.kind,
+          x: Math.floor(object.x),
+          y: Math.floor(object.y),
+          params: { ...object.params },
+        })),
+        links: placement.links.map((link) => ({
+          id: link.id,
+          fromId: link.fromId,
+          toId: link.toId,
+          kind: link.kind,
+        })),
+        lights: placement.lights.map((light) => ({
+          id: light.id,
+          x: Math.floor(light.x),
+          y: Math.floor(light.y),
+          color: light.color,
+          intensity: finiteNumber(light.intensity, 1),
+          radius: finiteNumber(light.radius, 72),
+          ...(light.bloom !== undefined ? { bloom: finiteNumber(light.bloom, 0.8) } : {}),
+          ...(light.flicker !== undefined ? { flicker: finiteNumber(light.flicker, 0) } : {}),
+          ...(light.falloff ? { falloff: light.falloff } : {}),
+          ...(light.occluded !== undefined ? { occluded: light.occluded } : {}),
+        })),
+        ...(placement.sourceChunk ? { sourceChunk: { ...placement.sourceChunk } } : {}),
+      });
+    }
+    return out;
+  }
+
+  private parseVirtualScenePlacementId(id: string): { slotId: string; sceneId: string } {
+    const parts = id.split(':');
+    if (parts.length >= 3) return { slotId: parts[parts.length - 2] || 'scene', sceneId: parts[parts.length - 1] || id };
+    return { slotId: 'scene', sceneId: id };
+  }
+
+  private virtualSceneLabel(sceneId: string): string {
+    const label = sceneId.replace(/^scene-/, '').replaceAll('-', ' ').trim();
+    return label
+      ? label.replace(/\b[a-z]/g, (match) => match.toUpperCase())
+      : 'Generated Scene';
+  }
+
+  private warnVirtualMaterializationDrops(
+    ctx: Ctx,
+    stats: { droppedSceneObjects: number; droppedSceneLights: number; sceneObjects: number; sceneLights: number },
+  ): void {
+    if (stats.droppedSceneObjects <= 0 && stats.droppedSceneLights <= 0) return;
+    ctx.events.emit('toast', {
+      text: `VIRTUAL WINDOW CAPPED: ${stats.sceneObjects} OBJECTS/${stats.droppedSceneObjects} DROPPED, ${stats.sceneLights} LIGHTS/${stats.droppedSceneLights} DROPPED`,
     });
   }
 

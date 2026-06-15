@@ -19,7 +19,8 @@ import { resolveLoopTag, spritePhase } from '@/builder/assets/sprites';
 import type { SpriteAsset } from '@/builder/assets/sprites';
 import { resolveRuntimeSprite } from '@/builder/assets/spritelib';
 import type { ResolvedSprite } from '@/builder/assets/spritelib';
-import { makePickup } from '@/game/Pickups';
+import { ALL_CARD_IDS } from '@/combat/wands/cards';
+import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import {
   makeBrazier,
   makeBuoy,
@@ -56,6 +57,19 @@ import { HEIGHT } from '@/config/constants';
  *  - worldgen prefab placement at a stamped prefab's origin, deferring enemy
  *    spawns to the levels manager (PrefabEnemy records in the sink).
  */
+
+const CARD_ID_SET = new Set<string>(ALL_CARD_IDS);
+const POTION_ID_SET = new Set<string>(POTION_KINDS);
+
+function fixedCardParam(value: unknown): Pickup['data']['card'] | undefined {
+  if (typeof value !== 'string' || value === '' || value === 'random') return undefined;
+  return CARD_ID_SET.has(value) ? (value as Pickup['data']['card']) : undefined;
+}
+
+function fixedPotionParam(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value === '' || value === 'random') return undefined;
+  return POTION_ID_SET.has(value) ? value : undefined;
+}
 
 /** Hazard emitter material names -> cell ids (the inspector's choices). */
 export const EMITTER_CELLS: Record<string, number> = {
@@ -254,8 +268,8 @@ export function instantiateObjects(
       sink.pickups.push(
         makePickup(kind, o.x + originX, o.y + originY, {
           amount: typeof o.params.amount === 'number' ? o.params.amount : undefined,
-          card: o.params.card as never,
-          potion: o.params.potion as never,
+          card: fixedCardParam(o.params.card),
+          potion: fixedPotionParam(o.params.potion),
         }),
       );
     } else if (o.kind === 'exitPortal') {

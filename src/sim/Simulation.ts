@@ -44,6 +44,14 @@ export class Simulation implements SimulationApi {
     const world = ctx.world;
     const sim = world.simBounds;
 
+    // New substep = new moved-epoch (see World.movedTick). The old code
+    // zeroed every window cell here, column-major, every substep.
+    world.movedTick++;
+    if (world.movedTick > 255) {
+      world.moved.fill(0);
+      world.movedTick = 1;
+    }
+
     runHarvesterField(ctx);
     updateElectricalGrid(ctx);
     ctx.projectileCtl.update(ctx);
@@ -54,13 +62,6 @@ export class Simulation implements SimulationApi {
       if (w.currentRadius >= w.maxRadius) ctx.shockwaves.splice(i, 1);
     }
 
-    // New substep = new moved-epoch (see World.movedTick). The old code
-    // zeroed every window cell here, column-major, every substep.
-    world.movedTick++;
-    if (world.movedTick > 255) {
-      world.moved.fill(0);
-      world.movedTick = 1;
-    }
     // Hoisted for the hot loop: handlers run inside it, so V8 cannot prove
     // these fields stable and would reload them per cell otherwise.
     const movedArr = world.moved;

@@ -1,9 +1,9 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { randomCard, TOME_REWARD_POOL } from '@/combat/wands/rewardPools';
 import { clamp, hash2 } from '@/core/math';
 import type { Rng } from '@/core/rng';
 import type {
   AuthoredLight,
-  CardId,
   Ctx,
   EnemyKind,
   ExitPortal,
@@ -54,12 +54,6 @@ import type { PlacementLedger } from '@/world/connect';
  * The golden key opens the portal; the well plug remains as the diggers'
  * secret bypass.
  */
-
-const TOME_POOL: CardId[] = [
-  'spark', 'bomb', 'lightning', 'flame', 'dig', 'warp', 'blackhole',
-  'vitriol', 'frostshard', 'icelance', 'wisp', 'meteor', 'conjure', 'emberstorm',
-  'double', 'triple', 'speed', 'heavy', 'spread', 'infuser', 'trigger', 'bounce',
-];
 
 export function placeStructures(
   ctx: Ctx,
@@ -448,7 +442,7 @@ export function placeStructures(
       }
     }
     pickups.push(
-      makePickup('tome', tx, ty - 1, { card: TOME_POOL[Math.floor(rng.next() * TOME_POOL.length)] }),
+      makePickup('tome', tx, ty - 1, { card: randomCard(TOME_REWARD_POOL, () => rng.next()) }),
     );
   }
 
@@ -755,7 +749,7 @@ export function placeStructures(
       );
       pickups.push(
         makePickup('tome', px2 + 23, py2 + 9, {
-          card: TOME_POOL[Math.floor(rng.next() * TOME_POOL.length)],
+          card: randomCard(TOME_REWARD_POOL, () => rng.next()),
         }),
       );
 

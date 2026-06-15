@@ -226,6 +226,16 @@ export class WebGpuRenderBackend implements RendererBackend {
     return this.initState === 'failed';
   }
 
+  get deviceLost(): boolean {
+    return this.deviceLifecycle.status().state === 'lost';
+  }
+
+  get deviceLossReason(): string {
+    const lifecycle = this.deviceLifecycle.status();
+    const detail = lifecycle.lastLossReason ?? lifecycle.lastLossMessage;
+    return detail ? `webgpu-device-lost-webgl-fallback: ${detail}` : 'webgpu-device-lost-webgl-fallback';
+  }
+
   get failureReason(): string | null {
     return this.initError ? `${this.initReason}: ${this.initError}` : this.initReason;
   }
