@@ -57,6 +57,7 @@ export function canOpenWandBench(ctx: Ctx): boolean {
   if (ctx.state.mode !== 'play' || ctx.player.dead) return false;
   const runtime = ctx.levels.current;
   if (!runtime) return false;
+  if (ctx.state.debugGodMode) return true;
   const refuge = runtime.refuge;
   if (!refuge) return false;
   const dx = refuge.x - ctx.player.x;

@@ -83,15 +83,41 @@ export class WebGpuDeviceLifecycle {
     return this.status();
   }
 
+  private async recoveryAdapter(adapterOverride?: GpuAdapterLike): Promise<GpuAdapterLike | null> {
+    if (adapterOverride) return adapterOverride;
+    if (typeof navigator === 'undefined') return null;
+    return await (navigator as NavigatorWithGpu).gpu?.requestAdapter() ?? null;
+  }
+
+  private async immediateLoss(device: GpuDeviceLike): Promise<GpuDeviceLostInfoLike | null> {
+    return Promise.race([
+      device.lost.then((info) => info),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 0)),
+    ]);
+  }
+
   async recover(adapterOverride?: GpuAdapterLike): Promise<WebGpuRecoveryResult> {
     this.state = 'recovering';
     try {
-      const adapter = adapterOverride ?? (await (navigator as NavigatorWithGpu).gpu?.requestAdapter()) ?? this.adapter;
+      const adapter = await this.recoveryAdapter(adapterOverride);
       if (!adapter) {
         this.state = 'failed';
         return { ok: false, status: this.status(), device: null, error: 'requestAdapter returned null' };
       }
       const device = await adapter.requestDevice();
+      const loss = await this.immediateLoss(device);
+      if (loss) {
+        this.state = 'failed';
+        this.lostCount++;
+        this.lastLossReason = loss.reason ?? null;
+        this.lastLossMessage = loss.message ?? null;
+        return {
+          ok: false,
+          status: this.status(),
+          device: null,
+          error: `replacement device lost immediately: ${loss.reason ?? 'unknown'}`,
+        };
+      }
       this.trackDevice(device, adapter);
       return { ok: true, status: this.status(), device };
     } catch (error) {

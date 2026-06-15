@@ -23,6 +23,7 @@ import {
 } from '@/builder/terrain';
 import { CommandStack, compositeCmd, editDocumentMoodCmd, paintTerrainCmd } from '@/builder/commands';
 import { Builder } from '@/builder/Builder';
+import { CommandRegistry } from '@/ui/editor/CommandRegistry';
 import { buildValidationOverlayDiagnostics, playtestBlockingIssues, validateDocument } from '@/builder/validate';
 import { renderValidationPanel } from '@/builder/validationPanel';
 import { toAuthoredLight } from '@/builder/compile';
@@ -527,6 +528,90 @@ describe('builder validation', () => {
     builder.currentValidationIssues();
 
     expect(captured).toBe(true);
+  });
+
+  it('does not autosave-capture dirty terrain while Logic Preview is open', () => {
+    type AutosaveHarness = {
+      isOpen: boolean;
+      sessionMode: 'author' | 'live';
+      settling: boolean;
+      settleSnap: unknown;
+      pendingPreview: unknown;
+      floating: unknown;
+      gizmoDrag: unknown;
+      drag: unknown;
+      floatDrag: unknown;
+      waypointDrag: unknown;
+      shapeDrag: unknown;
+      marquee: unknown;
+      stroke: unknown;
+      terraStroke: unknown;
+      cmds: { depth: number };
+      paintDirty: boolean;
+      ensureCaptured: () => boolean;
+      autosaveDraft: () => void;
+    };
+    const builder = Object.create(Builder.prototype) as AutosaveHarness;
+    let captured = false;
+    Object.assign(builder, {
+      isOpen: true,
+      sessionMode: 'live',
+      settling: false,
+      settleSnap: null,
+      pendingPreview: null,
+      floating: null,
+      gizmoDrag: null,
+      drag: null,
+      floatDrag: null,
+      waypointDrag: null,
+      shapeDrag: null,
+      marquee: null,
+      stroke: null,
+      terraStroke: null,
+      cmds: { depth: 1 },
+      paintDirty: true,
+      ensureCaptured: () => {
+        captured = true;
+        return true;
+      },
+    });
+
+    builder.autosaveDraft();
+
+    expect(captured).toBe(false);
+    expect(builder.paintDirty).toBe(true);
+  });
+
+  it('blocks author-only commands through Builder scoped menu execution in Logic Preview', () => {
+    type MenuHarness = {
+      sessionMode: 'author' | 'live';
+      uiCommands: CommandRegistry;
+      uiCommandMenuState: (id: string) => { enabled: boolean; reason?: string };
+      runScopedUiCommand: (id: string) => { ok: boolean; reason?: string };
+    };
+    const builder = Object.create(Builder.prototype) as MenuHarness;
+    let ran = false;
+    builder.sessionMode = 'live';
+    builder.uiCommands = new CommandRegistry();
+    builder.uiCommands.register({
+      id: 'builder.findInvalid',
+      label: 'Find Invalid Object',
+      category: 'Validation',
+      scopes: ['builder.author'],
+      run: () => {
+        ran = true;
+      },
+    });
+
+    expect(builder.uiCommandMenuState('builder.findInvalid')).toEqual({
+      enabled: false,
+      reason: 'Return to Author View first',
+    });
+    expect(builder.runScopedUiCommand('builder.findInvalid')).toEqual({
+      ok: false,
+      reason: 'Return to Author View first',
+    });
+    expect(ran).toBe(false);
   });
 
   it('previews linked mechanism state in a disposable world', () => {

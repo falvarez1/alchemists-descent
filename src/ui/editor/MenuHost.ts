@@ -1,4 +1,5 @@
 import type { CommandRegistry } from '@/ui/editor/CommandRegistry';
+import type { CommandRunResult } from '@/ui/editor/CommandRegistry';
 import type { PopoverPosition, RectLike } from '@/ui/editor/PopoverHost';
 import { placePopover } from '@/ui/editor/PopoverHost';
 
@@ -15,6 +16,8 @@ export interface CommandMenuOptions {
   commandIds: readonly string[];
   anchorRect?: RectLike;
   cursor?: { x: number; y: number };
+  commandState?: (id: string) => { enabled: boolean; reason?: string };
+  runCommand?: (id: string) => CommandRunResult;
   onStatus?: (message: string, error?: boolean) => void;
 }
 
@@ -67,7 +70,7 @@ export class MenuHost {
   }
 
   showCommandMenu(options: CommandMenuOptions): HTMLDivElement {
-    const items = commandMenuItems(options.registry, options.commandIds);
+    const items = commandMenuItems(options.registry, options.commandIds, options.commandState);
     const root = this.portalRoot();
     if (this.root.parentElement !== root) root.appendChild(this.root);
     this.root.innerHTML = '';
@@ -85,7 +88,7 @@ export class MenuHost {
         button.title = item.reason ?? 'Command unavailable';
       }
       button.addEventListener('click', () => {
-        const result = options.registry.run(item.id);
+        const result = (options.runCommand ?? ((id: string) => options.registry.run(id)))(item.id);
         if (!result.ok) options.onStatus?.(result.reason ?? 'Command unavailable', true);
         this.hide();
       });
@@ -147,14 +150,19 @@ export class MenuHost {
   }
 }
 
-export function commandMenuItems(registry: CommandRegistry, commandIds: readonly string[]): CommandMenuItem[] {
+export function commandMenuItems(
+  registry: CommandRegistry,
+  commandIds: readonly string[],
+  commandState?: (id: string) => { enabled: boolean; reason?: string },
+): CommandMenuItem[] {
   return commandIds
     .map((id): CommandMenuItem | null => {
       const command = registry.get(id);
       if (!command || command.visible?.() === false) return null;
-      const enabled = registry.isEnabled(id);
+      const state = commandState?.(id);
+      const enabled = state?.enabled ?? registry.isEnabled(id);
       const item: CommandMenuItem = { id, label: command.label, enabled };
-      if (!enabled) item.reason = registry.disabledReason(id);
+      if (!enabled) item.reason = state?.reason ?? registry.disabledReason(id);
       return item;
     })
     .filter((item): item is CommandMenuItem => item !== null);

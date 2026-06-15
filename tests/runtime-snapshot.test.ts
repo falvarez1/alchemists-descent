@@ -122,6 +122,20 @@ describe('runtime entity snapshot', () => {
     expect(snapshot.capped).toBe(false);
   });
 
+  it('does not expose collected pickups as live runtime rows', () => {
+    const available = makePickup();
+    const taken = makePickup();
+    taken.kind = 'key';
+    taken.taken = true;
+    const snapshot = buildRuntimeEntitySnapshot(makeCtx({ pickups: [available, taken] }));
+
+    expect(snapshot.counts.find((count) => count.group === 'pickups')).toMatchObject({
+      total: 1,
+      sampled: 1,
+    });
+    expect(snapshot.rows.filter((row) => row.group === 'pickups').map((row) => row.kind)).toEqual(['heart']);
+  });
+
   it('counts downward mechanism bodies as visible when their anchor is above the view', () => {
     const mechanism = { ...makeMechanism(), y: -10, h: 50 };
     const snapshot = buildRuntimeEntitySnapshot(makeCtx({ mechanisms: [mechanism] }));
@@ -146,6 +160,19 @@ describe('runtime entity snapshot', () => {
       total: 3,
       sampled: 2,
     });
+  });
+
+  it('can preserve source row order instead of moving visible rows first', () => {
+    const offscreen = makeProjectile('bomb');
+    offscreen.x = 900;
+    const visible = makeProjectile('bolt');
+    const ctx = makeCtx({ projectiles: [offscreen, visible] });
+
+    const defaultOrder = buildRuntimeEntitySnapshot(ctx).rows.filter((row) => row.group === 'projectiles');
+    const stableOrder = buildRuntimeEntitySnapshot(ctx, { preserveRowOrder: true }).rows.filter((row) => row.group === 'projectiles');
+
+    expect(defaultOrder.map((row) => row.kind)).toEqual(['bolt', 'bomb']);
+    expect(stableOrder.map((row) => row.kind)).toEqual(['bomb', 'bolt']);
   });
 
   it('uses level-scoped durable ids for mechanisms and portals', () => {

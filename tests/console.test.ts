@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createDefaultPostFxSettings, createDefaultRenderSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
+import { ALL_CARD_IDS } from '@/combat/wands/cards';
 import { EventBus } from '@/core/events';
 import type {
   Ctx,
@@ -126,7 +127,14 @@ function makeCtx(): Ctx {
     resetLoadout: () => {
       collection.length = 0;
     },
-    grantReviewLoadout: () => undefined,
+    grantReviewLoadout: () => {
+      wands.wands[0].frame = { id: 'brass', name: 'Brass Injector', capacity: 5, castDelay: 6, recharge: 60, manaMax: 160, manaRegen: 0.8, spread: 0.08 };
+      wands.wands[0].cards = ['spark', 'double', 'speed', 'flame', 'lightning'];
+      wands.wands[1].frame = { id: 'void', name: 'Void Lattice', capacity: 5, castDelay: 16, recharge: 20, manaMax: 220, manaRegen: 1.1, spread: 0 };
+      wands.wands[1].cards = ['dig', 'conjure', 'vitriol', 'blackhole', 'warp'];
+      collection.length = 0;
+      collection.push(...ALL_CARD_IDS);
+    },
     upgradeFrame: () => false,
     nextCastSlots: () => [],
   };
@@ -729,6 +737,56 @@ describe('console registry', () => {
     expect(ctx.player.hp).toBe(ctx.player.maxHp);
     expect(ctx.state.score).toBe(25);
     expect(ctx.state.debugGodMode).toBe(true);
+  });
+
+  it('god mode grants the full debug kit including all cards and flask inventory', async () => {
+    const ctx = makeCtx();
+    ctx.state.mode = 'play';
+    ctx.player.hp = 1;
+    ctx.player.dead = true;
+    ctx.levels.debugEnterLevel(ctx, 'd1');
+
+    const god = await ctx.console.exec('god');
+
+    expect(god.ok).toBe(true);
+    expect(ctx.state.debugGodMode).toBe(true);
+    expect(ctx.player.dead).toBe(false);
+    expect(ctx.player.hp).toBe(ctx.player.maxHp);
+    expect(ctx.player.perks).toEqual(expect.objectContaining({
+      might: true,
+      vampirism: true,
+      featherweight: true,
+      manafont: true,
+      swiftfoot: true,
+      torchbearer: true,
+      ironhide: true,
+      flameward: true,
+      toxinward: true,
+      goldmagnet: true,
+    }));
+    expect(ctx.player.status).toMatchObject({
+      regen: 3600,
+      levity: 3600,
+      stoneskin: 3600,
+      swift: 3600,
+      torch: 3600,
+    });
+    expect(ctx.wands.wands.map((wand) => wand.frame.id)).toEqual(['brass', 'void']);
+    expect(ctx.wands.collection).toEqual(ALL_CARD_IDS);
+    expect(ctx.flask.activeIndex).toBe(0);
+    expect(ctx.flask.slots.map((slot) => ({ material: slot.material, count: slot.count }))).toEqual([
+      { material: Cell.ElixirLife, count: 600 },
+      { material: Cell.ElixirLevity, count: 600 },
+      { material: Cell.ElixirStone, count: 600 },
+      { material: Cell.Water, count: 600 },
+    ]);
+    expect(god.data).toMatchObject({
+      target: 'expedition',
+      tainted: true,
+      wasDead: true,
+      cards: ALL_CARD_IDS.length,
+      activeFlaskIndex: 0,
+    });
   });
 
   it('does not taint expedition saves when give validation fails', async () => {

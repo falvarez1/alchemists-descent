@@ -115,12 +115,20 @@ async function runDeviceLifecycleProbe() {
   lifecycle.trackDevice(device, adapter);
   out.supported = true;
   out.initial = lifecycle.status();
-  const recovery = await lifecycle.simulateLossAndRecover();
+  if (typeof device.destroy !== 'function') {
+    out.skippedReason = 'device.destroy unavailable';
+    return out;
+  }
+  device.destroy();
+  const lostStatus = await lifecycle.waitForLoss();
   out.afterLoss = {
-    state: lifecycle.status().state,
-    lostCount: lifecycle.status().lostCount,
-    lastLossReason: lifecycle.status().lastLossReason,
+    state: lostStatus.state,
+    generation: lostStatus.generation,
+    lostCount: lostStatus.lostCount,
+    lastLossReason: lostStatus.lastLossReason,
+    lastLossMessage: lostStatus.lastLossMessage,
   };
+  const recovery = await lifecycle.recover();
   out.recovery = {
     ok: recovery.ok,
     status: recovery.status,
@@ -145,7 +153,11 @@ async function main() {
   const lifecyclePassed =
     lifecycle.supported === false ||
     (lifecycle.recovery?.ok === true &&
+      lifecycle.afterLoss?.state === 'lost' &&
+      lifecycle.afterLoss?.lostCount >= 1 &&
+      lifecycle.afterLoss?.lastLossReason === 'destroyed' &&
       lifecycle.recovery.status.state === 'recovered' &&
+      lifecycle.recovery.status.generation >= 2 &&
       lifecycle.recovery.status.lostCount >= 1);
   const failures = [
     ...selection.failures,
@@ -168,4 +180,3 @@ main().catch((error) => {
     error: error instanceof Error ? error.message : String(error),
   };
 });
-

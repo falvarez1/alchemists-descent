@@ -135,6 +135,7 @@ export class RuntimeInspector {
 
   private render(forceSnapshot: boolean): void {
     const snapshot = this.sampleSnapshot(forceSnapshot);
+    const scrollTop = this.root.scrollTop;
     this.root.innerHTML = renderRuntimePanel({
       snapshot,
       query: this.query,
@@ -144,6 +145,7 @@ export class RuntimeInspector {
       showCameraControls: true,
       cameraFollowEnabled: this.followSelectedEntity,
     });
+    this.root.scrollTop = scrollTop;
   }
 
   private sampleSnapshot(force: boolean): RuntimeEntitySnapshot {
@@ -156,6 +158,7 @@ export class RuntimeInspector {
     ) {
       this.snapshot = buildRuntimeEntitySnapshot(this.ctx, {
         selectedId: this.selectedId,
+        preserveRowOrder: true,
       });
       this.snapshotFrame = frame;
       if (this.snapshot.selectedMissing) {
@@ -188,7 +191,7 @@ export class RuntimeInspector {
     if (target.id === 'brt-follow-selected') {
       this.followSelectedEntity = target.checked;
       if (this.followSelectedEntity) {
-        this.updateSelectedRuntimeTarget({ updateCamera: true, snapCamera: true });
+        this.updateSelectedRuntimeTarget({ updateCamera: true, snapCamera: false });
       }
     }
   }
@@ -225,13 +228,16 @@ export class RuntimeInspector {
     }
     const focus = runtimeRowFocus(row);
     this.ctx.state.runtimeInspectionLight = focus;
-    this.ctx.camera.setInspectionFocus(focus.x, focus.y);
+    this.ctx.camera.setInspectionFocus(focus.x, focus.y, { snap: !this.followSelectedEntity });
     this.render(false);
   }
 
   private updateSelectedRuntimeTarget(options: { updateCamera: boolean; snapCamera: boolean }): void {
     if (this.selectedId === null || this.ctx.state.mode !== 'play') return;
-    const snapshot = buildRuntimeEntitySnapshot(this.ctx, { selectedId: this.selectedId });
+    const snapshot = buildRuntimeEntitySnapshot(this.ctx, {
+      selectedId: this.selectedId,
+      preserveRowOrder: true,
+    });
     const row = snapshot.selectedRow;
     if (row === null || snapshot.selectedMissing) {
       this.clearInspectionSelection();

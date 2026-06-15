@@ -100,6 +100,8 @@ export interface RuntimeSnapshotOptions {
   selectedId?: string | null;
   maxRowsPerGroup?: Partial<Record<RuntimeEntityGroup, number>>;
   maxParticleMaterials?: number;
+  /** Preserve source-array row order instead of reordering visible rows first. */
+  preserveRowOrder?: boolean;
 }
 
 const GROUP_LABELS: Record<RuntimeEntityGroup, string> = {
@@ -130,6 +132,7 @@ let nextObjectId = 1;
 export function buildRuntimeEntitySnapshot(ctx: Ctx, options: RuntimeSnapshotOptions = {}): RuntimeEntitySnapshot {
   const limits = { ...DEFAULT_ROW_LIMITS, ...options.maxRowsPerGroup };
   const view = runtimeView(ctx);
+  const preserveRowOrder = options.preserveRowOrder === true;
   const rows: RuntimeEntityRow[] = [];
   const counts = new Map<RuntimeEntityGroup, { total: number; visible: number; sampled: number }>();
   const selectedId = options.selectedId ?? null;
@@ -138,6 +141,7 @@ export function buildRuntimeEntitySnapshot(ctx: Ctx, options: RuntimeSnapshotOpt
   const runtime = ctx.state.mode === 'play' ? ctx.levels.current : null;
   const activeRuntime = ctx.state.mode === 'play' && runtime !== null;
   const levelId = runtime?.def.id ?? 'none';
+  const livePickups = runtime?.pickups.filter((pickup) => !pickup.taken) ?? [];
 
   const pushGroup = <T>(
     group: RuntimeEntityGroup,
@@ -151,28 +155,38 @@ export function buildRuntimeEntitySnapshot(ctx: Ctx, options: RuntimeSnapshotOpt
     let selectedItem: T | null = null;
     const visibleItems: T[] = [];
     const offscreenItems: T[] = [];
+    const groupRows: RuntimeEntityRow[] = [];
+    const sampledIds = new Set<string>();
 
     for (const item of items) {
       const isVisible = visibleOf(item);
       if (isVisible) visible++;
       if (selectedId !== null && idOf(item) === selectedId) selectedItem = item;
       if (limit <= 0) continue;
+      if (preserveRowOrder) {
+        if (groupRows.length < limit) {
+          const id = idOf(item);
+          sampledIds.add(id);
+          groupRows.push(rowOf(item));
+        }
+        continue;
+      }
       if (isVisible && visibleItems.length < limit) visibleItems.push(item);
       else if (!isVisible && offscreenItems.length < limit) offscreenItems.push(item);
     }
 
-    const groupRows: RuntimeEntityRow[] = [];
-    const sampledIds = new Set<string>();
-    for (const item of visibleItems) {
-      const id = idOf(item);
-      sampledIds.add(id);
-      groupRows.push(rowOf(item));
-    }
-    for (const item of offscreenItems) {
-      if (groupRows.length >= limit) break;
-      const id = idOf(item);
-      sampledIds.add(id);
-      groupRows.push(rowOf(item));
+    if (!preserveRowOrder) {
+      for (const item of visibleItems) {
+        const id = idOf(item);
+        sampledIds.add(id);
+        groupRows.push(rowOf(item));
+      }
+      for (const item of offscreenItems) {
+        if (groupRows.length >= limit) break;
+        const id = idOf(item);
+        sampledIds.add(id);
+        groupRows.push(rowOf(item));
+      }
     }
     if (selectedItem !== null) {
       const id = idOf(selectedItem);
@@ -189,7 +203,7 @@ export function buildRuntimeEntitySnapshot(ctx: Ctx, options: RuntimeSnapshotOpt
   pushGroup('enemies', activeRuntime ? ctx.enemies : [], (enemy) => objectId('enemy', enemy), (enemy) => inView(view, enemy.x, enemy.y), (enemy) => enemyRow(ctx, enemy, view));
   pushGroup('projectiles', activeRuntime ? ctx.projectiles : [], (projectile) => objectId('projectile', projectile), (projectile) => inView(view, projectile.x, projectile.y), (projectile) => projectileRow(projectile, view));
   pushGroup('critters', activeRuntime ? ctx.critters.list : [], (critter) => objectId('critter', critter), (critter) => inView(view, critter.x, critter.y), (critter) => critterRow(critter, view));
-  pushGroup('pickups', runtime?.pickups ?? [], (pickup) => objectId('pickup', pickup), (pickup) => inView(view, pickup.x, pickup.y), (pickup) => pickupRow(pickup, view));
+  pushGroup('pickups', livePickups, (pickup) => objectId('pickup', pickup), (pickup) => inView(view, pickup.x, pickup.y), (pickup) => pickupRow(pickup, view));
   pushGroup(
     'mechanisms',
     runtime?.mechanisms ?? [],

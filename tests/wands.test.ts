@@ -442,4 +442,14 @@ describe('wand bench access', () => {
       levels: { current: { refuge: undefined, cauldron: { x: 110, y: 100 } } },
     } as Partial<Ctx>))).toBe(false);
   });
+
+  it('opens from anywhere in play once god mode is active', () => {
+    expect(canOpenWandBench(benchCtx({
+      state: { mode: 'play', debugGodMode: true },
+      player: { x: 400, y: 100, dead: false },
+    } as Partial<Ctx>))).toBe(true);
+    expect(canOpenWandBench(benchCtx({
+      state: { mode: 'build', debugGodMode: true },
+    } as Partial<Ctx>))).toBe(false);
+  });
 });

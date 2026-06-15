@@ -19,7 +19,8 @@ describe('camera inspection focus', () => {
     camera.clearInspectionFocus();
     camera.update(ctx);
 
-    expect(camera.tx).toBe(700 - VIEW_W / 2 + 26);
+    expect(camera.tx).toBeGreaterThan(700 - VIEW_W / 2);
+    expect(camera.tx).not.toBe(900 - VIEW_W / 2);
     expect(camera.ty).toBe(500 - 9 - VIEW_H / 2);
   });
 
@@ -44,11 +45,42 @@ describe('camera inspection focus', () => {
   });
 });
 
+describe('camera aim lookahead', () => {
+  it('does not fling to the opposite side for near-player crosshair corrections', () => {
+    const camera = new Camera();
+    const ctx = makeCtx(camera);
+    const centeredTx = ctx.player.x - VIEW_W / 2;
+
+    ctx.input.mouse.x = ctx.player.x + 220;
+    for (let i = 0; i < 28; i++) camera.update(ctx);
+    expect(camera.tx).toBeGreaterThan(centeredTx + 20);
+
+    ctx.input.mouse.x = ctx.player.x - 8;
+    camera.update(ctx);
+
+    expect(camera.tx).toBeGreaterThan(centeredTx);
+  });
+
+  it('still gives side room when aiming deliberately far across the player', () => {
+    const camera = new Camera();
+    const ctx = makeCtx(camera);
+    const centeredTx = ctx.player.x - VIEW_W / 2;
+
+    ctx.input.mouse.x = ctx.player.x - 220;
+    for (let i = 0; i < 28; i++) camera.update(ctx);
+
+    expect(camera.tx).toBeLessThan(centeredTx - 20);
+  });
+});
+
 function makeCtx(camera: Camera): Ctx {
   return {
     camera,
     state: { mode: 'play' },
-    input: { keys: { left: false, right: false, jump: false, down: false } },
+    input: {
+      keys: { left: false, right: false, jump: false, down: false },
+      mouse: { x: 820, y: 390 },
+    },
     player: {
       x: 600,
       y: 400,

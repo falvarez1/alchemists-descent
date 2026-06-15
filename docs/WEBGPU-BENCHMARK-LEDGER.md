@@ -204,20 +204,27 @@ After: Phase 2 same-session A/B measured compose `19.135 -> 3.417 ms`
 (-65.7%). P95s were compose `22.400 -> 6.800 ms`, render `23.200 -> 8.100 ms`,
 and frame `26.200 -> 12.800 ms`. `gl` rose `0.584 -> 0.807 ms`, but the total
 render/frame win remained well inside the established GPU-compose performance
-shape.
+shape. A direct backend-flag A/B also compared `render.backend=webgl` to
+`render.backend=auto` with the same scene and measured compose `3.105 -> 3.002`
+ms (-3.3%, not significant), render `3.863 -> 3.679 ms` (-4.7%), and frame
+`7.054 -> 6.726 ms` (-4.7%). P95s were compose `5.500 -> 5.200 ms`, render
+`6.700 -> 6.100 ms`, and frame `10.200 -> 9.400 ms`.
 
 Expected result: no visual change, deterministic backend status for tests and
 A/B runs, WebGL fallback preserved, and no measurable renderer/frame regression
 outside normal drift.
 
-Actual result: keep. The backend-selection matrix covered `navigator.gpu`
+Actual result: keep after focused review fix. The backend-selection matrix covered `navigator.gpu`
 absent, insecure context, no adapter, device init failure, explicit
 `forceWebGL`, WebGPU disabled by user flag, WebGPU lost, WebGPU recovered,
 backend missing, and WebGPU available. The live game probe verified
 `render.backend=auto` and `render.backend=webgpu` both report actual WebGL2
 fallback while the WebGPU backend is not implemented. The simulated WebGPU
-device-loss probe called `device.destroy()`, observed loss reason `destroyed`,
-and recovered with generation `2` and `lostCount=1`.
+device-loss probe called `device.destroy()`, observed the explicit lost state
+with loss reason `destroyed`, and recovered through a fresh adapter with
+generation `2` and `lostCount=1`. A reviewer found that the first recovery
+helper could fall back to a cached adapter when fresh adapter recovery failed;
+that path was fixed and covered by unit tests before Phase 2 was accepted.
 
 Visual/quality evidence: existing WebGL2 compose parity passed 8/8 after the
 boundary change. The live backend probe kept the same `Ctx`, `World`, renderer
@@ -228,16 +235,22 @@ Decision: keep.
 
 Notes:
 
-- Raw backend artifact:
+- Fixed backend artifact:
+  `verify-out/render-backend-selection/probe-1781507095894.json`
+- Original backend artifact before the reviewer recovery fix:
   `verify-out/render-backend-selection/probe-1781506084667.json`
 - Raw perf artifact:
   `verify-out/perf-ab-postfx.gpucompose-chaos-1781506228534.json`
+- Direct backend-flag perf artifact:
+  `verify-out/perf-ab-render.backend-chaos-1781507172915.json`
 - Validation passed: `node --check scripts/probe-render-backend-selection.mjs`,
   `node --check scripts/probe-render-backend-browser.js`,
   `node --check scripts/perf-ab-feature.mjs`, `npm run typecheck`,
-  `npx vitest run tests/console.test.ts`, `npm run lint`,
+  `npx vitest run tests/webgpu-device-lifecycle.test.ts tests/console.test.ts`,
+  `npm run lint`,
   `npm run probe:render-backend`, `npm run perf:ab -- postFx.gpuCompose false
-  true http://127.0.0.1:5173/ 360 4 chaos`, `npm test`, `npm run build`,
+  true http://127.0.0.1:5173/ 360 4 chaos`, `npm run perf:ab -- render.backend
+  webgl auto http://127.0.0.1:5173/ 360 4 chaos`, `npm test`, `npm run build`,
   `node scripts/probe-compose-parity.mjs http://127.0.0.1:5173/`, and
   `node scripts/verify-game.mjs http://127.0.0.1:5173/`.
 - The first compose-parity attempt hit `window.__game` before the existing dev

@@ -3,7 +3,7 @@ import { createDefaultPostFxSettings, createDefaultRenderSettings, createDefault
 import { EventBus } from '@/core/events';
 import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
-import type { Ctx, FxState, GameStateData, InputState } from '@/core/types';
+import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode } from '@/core/types';
 import { AudioEngine } from '@/audio/AudioEngine';
 import { Builder } from '@/builder/Builder';
 import { Flask } from '@/combat/Flask';
@@ -52,6 +52,12 @@ import { Toolbar } from '@/ui/Toolbar';
 import { WandBench } from '@/ui/WandBench';
 import { WorldGen } from '@/world/CaveGenerator';
 
+function initialRenderBackendOverride(): RenderBackendMode | null {
+  if (typeof window === 'undefined') return null;
+  const value = new URLSearchParams(window.location.search).get('renderBackend');
+  return value === 'webgl' || value === 'webgpu' || value === 'auto' ? value : null;
+}
+
 /**
  * Composition root. Builds the shared Ctx once, owns the frame loop, and is
  * the single place that knows every concrete class.
@@ -99,6 +105,7 @@ export class Game {
       runtimeInspectionLight: null,
       playtestSource: null,
     };
+    state.render.backend = initialRenderBackendOverride() ?? state.render.backend;
     const input: InputState = {
       keys: { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false },
       mouse: { x: 0, y: 0 },

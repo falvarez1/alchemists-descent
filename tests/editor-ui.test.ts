@@ -452,6 +452,20 @@ describe('editor popover and menu hosts', () => {
       { id: 'builder.b', label: 'B', enabled: false, reason: 'Select something first' },
     ]);
   });
+
+  it('lets scoped owners override command menu enabled state', () => {
+    const registry = new CommandRegistry();
+    registry.register({ id: 'builder.authorOnly', label: 'Author Only', category: 'test', run: () => undefined });
+
+    expect(
+      commandMenuItems(registry, ['builder.authorOnly'], () => ({
+        enabled: false,
+        reason: 'Return to Author View first',
+      })),
+    ).toEqual([
+      { id: 'builder.authorOnly', label: 'Author Only', enabled: false, reason: 'Return to Author View first' },
+    ]);
+  });
 });
 
 describe('editor field controls', () => {

@@ -8,6 +8,7 @@ import type { Ctx, RenderSettings } from '@/core/types';
 import { chooseRenderBackend } from '@/render/backendSelection';
 import { GpuCompose } from '@/render/ComposeShader';
 import { PostFx } from '@/render/PostFx';
+import { WebGpuRenderBackend } from '@/render/WebGpuRenderBackend';
 import type {
   CompositorLens,
   LightField,
@@ -280,7 +281,10 @@ export class Renderer implements RenderTarget {
   private readonly backend: RendererBackend;
 
   constructor(holder: HTMLElement, settings: RenderSettings) {
-    this.backend = new WebGLRenderBackend(holder, settings);
+    this.backend =
+      settings.backend === 'webgpu' || settings.backend === 'auto'
+        ? new WebGpuRenderBackend(holder, settings)
+        : new WebGLRenderBackend(holder, settings);
   }
 
   get pixelData(): Float32Array {

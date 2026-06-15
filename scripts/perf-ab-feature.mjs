@@ -103,6 +103,9 @@ const result = await page.evaluate(
       }
       const key = parts[parts.length - 1];
       if (!(key in owner)) throw new Error(`Feature path "${path}" missing final key "${key}"`);
+      if (owner === ctx.state.render && key === 'backend' && !['webgl', 'webgpu', 'auto'].includes(value)) {
+        throw new Error(`Feature path "${path}" expected backend webgl, webgpu, or auto; got "${String(value)}"`);
+      }
       owner[key] = value;
       return owner[key];
     };

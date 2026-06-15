@@ -1347,6 +1347,8 @@ export class Builder {
       registry: this.uiCommands,
       commandIds,
       cursor: { x: event.clientX, y: event.clientY },
+      commandState: (id) => this.uiCommandMenuState(id),
+      runCommand: (id) => this.runScopedUiCommand(id),
       onStatus: (message, error) => this.status(message, error),
     });
   }
@@ -2957,14 +2959,26 @@ export class Builder {
   }
 
   private runUiCommand(id: string): void {
-    const cmd = this.uiCommands.get(id);
-    const scope = this.sessionMode === 'live' ? 'builder.livePreview' : 'builder.author';
-    if (cmd && cmd.scopes && cmd.scopes.length > 0 && !cmd.scopes.includes('global') && !cmd.scopes.includes(scope)) {
-      this.status(`${cmd.label.toUpperCase()} IS NOT AVAILABLE IN ${this.sessionMode === 'live' ? 'LOGIC PREVIEW' : 'AUTHOR VIEW'}`, true);
-      return;
-    }
-    const result = this.uiCommands.run(id);
+    const result = this.runScopedUiCommand(id);
     if (!result.ok) this.status(result.reason ?? 'COMMAND UNAVAILABLE', true);
+  }
+
+  private runScopedUiCommand(id: string) {
+    const cmd = this.uiCommands.get(id);
+    if (cmd) {
+      const reason = this.commandScopeReason(cmd);
+      if (reason) return { ok: false, reason };
+    }
+    return this.uiCommands.run(id);
+  }
+
+  private uiCommandMenuState(id: string): { enabled: boolean; reason?: string } {
+    const cmd = this.uiCommands.get(id);
+    if (!cmd) return { enabled: false, reason: 'Unknown command' };
+    const scopeReason = this.commandScopeReason(cmd);
+    if (scopeReason) return { enabled: false, reason: scopeReason };
+    const enabled = this.uiCommands.isEnabled(id);
+    return enabled ? { enabled } : { enabled, reason: this.uiCommands.disabledReason(id) };
   }
 
   private setBuilderSession(mode: 'author' | 'live'): void {
@@ -7633,6 +7647,7 @@ export class Builder {
   private autosaveDraft(): void {
     if (
       !this.isOpen ||
+      this.sessionMode === 'live' ||
       this.settling ||
       this.settleSnap ||
       this.pendingPreview ||

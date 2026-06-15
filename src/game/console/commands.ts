@@ -52,6 +52,13 @@ const RUN_PERKS: PerkId[] = [
   'goldmagnet',
 ];
 
+const GOD_FLASKS: FlaskSlotConfig[] = [
+  { material: Cell.ElixirLife, count: 600 },
+  { material: Cell.ElixirLevity, count: 600 },
+  { material: Cell.ElixirStone, count: 600 },
+  { material: Cell.Water, count: 600 },
+];
+
 type Bounds = { x0: number; y0: number; x1: number; y1: number };
 type PerfPhase = 'sim' | 'entities' | 'render' | 'compose' | 'gl' | 'frame';
 type PerfSample = Record<PerfPhase, number>;
@@ -1086,6 +1093,12 @@ function commandTargetCompletions(req: CompletionRequest): string[] {
   return [];
 }
 
+function grantGodFlasks(ctx: Ctx): void {
+  ctx.flask.clearSlots();
+  GOD_FLASKS.forEach((flask, index) => ctx.flask.setSlot(index, flask.material, flask.count));
+  ctx.flask.selectSlot(0);
+}
+
 function normalizeRunWorldSource(raw: string): 'campaign' | 'campaign-level' | 'virtual-world' | CommandResult {
   const key = raw.toLowerCase();
   if (key === 'campaign' || key === 'descent' || key === 'progression') return 'campaign';
@@ -1638,7 +1651,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
 
   add({
     name: 'god',
-    info: info('game.god', 'God Kit', 'god [--target expedition]', 'Grant the transient review kit.', 'game'),
+    info: info('game.god', 'God Kit', 'god [--target expedition]', 'Grant every debug capability, card, perk, and potion.', 'game'),
     run: (ctx, args) => {
       const target = resolveTarget(ctx, args, 'god');
       if (!target.ok) return target.result;
@@ -1656,6 +1669,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
       grantFullReviewKit(ctx.player);
       ctx.player.invuln = Math.max(ctx.player.invuln, 90);
       ctx.wands.grantReviewLoadout();
+      grantGodFlasks(ctx);
       ctx.levels.seedReviewKit(ctx);
       if (wasDead) ctx.events.emit('playerRespawned');
       ctx.events.emit('toast', { text: alreadyTainted ? 'GOD MODE REFRESHED' : 'GOD MODE ENABLED' });
@@ -1666,6 +1680,10 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
         hp: ctx.player.hp,
         maxHp: ctx.player.maxHp,
         cards: ctx.wands.collection.length,
+        wands: ctx.wands.wands.map((wand) => ({ frameId: wand.frame.id, cards: wand.cards })),
+        flasks: ctx.flask.slots.map((slot) => ({ material: slot.material, count: slot.count })),
+        activeFlaskIndex: ctx.flask.activeIndex,
+        perks: Object.keys(ctx.player.perks).sort(),
       });
     },
     complete: (_ctx, req) => commandTargetCompletions(req),

@@ -3,9 +3,17 @@ import { clamp } from '@/core/math';
 import type { CameraApi, Ctx } from '@/core/types';
 import type { World } from '@/sim/World';
 
+const AIM_LOOKAHEAD_DEADZONE = 28;
+const AIM_LOOKAHEAD_FULL_DISTANCE = 150;
+const AIM_LOOKAHEAD_LERP = 0.12;
+
+function smoothStep(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
 /**
  * Smooth lerp-follow camera. In play mode it tracks the player with a small
- * facing lookahead; in build mode the WASD keys pan it. Also derives the
+ * aim-distance lookahead; in build mode the WASD keys pan it. Also derives the
  * active simulation window and leans in (idle zoom) when the wizard stands still.
  */
 export class Camera implements CameraApi {
@@ -19,6 +27,7 @@ export class Camera implements CameraApi {
   /** Runtime inspector/debug focus target; null means normal play follow. */
   inspectionFocus: { x: number; y: number } | null = null;
   idleFrames = 0;
+  private aimLookaheadX = 0;
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
   renderX = 0;
   renderY = 0;
@@ -29,10 +38,22 @@ export class Camera implements CameraApi {
       this.tx = this.inspectionFocus.x - VIEW_W / 2;
       this.ty = this.inspectionFocus.y - VIEW_H / 2;
     } else if (state.mode === 'play' && !player.dead) {
+      const lead = 26 + (player.crawlT / 10) * 14;
+      const aimDx = input.mouse.x - player.x;
+      const aimDistance = Math.abs(aimDx);
+      const leadT = smoothStep(
+        clamp(
+          (aimDistance - AIM_LOOKAHEAD_DEADZONE) / (AIM_LOOKAHEAD_FULL_DISTANCE - AIM_LOOKAHEAD_DEADZONE),
+          0,
+          1,
+        ),
+      );
+      const targetLookahead = Math.sign(aimDx) * lead * leadT;
+      this.aimLookaheadX += (targetLookahead - this.aimLookaheadX) * AIM_LOOKAHEAD_LERP;
       // Crawl: a mild extra forward lead — you want to see down the tunnel,
       // not under your own knees (crouchT decays in a crawl, so the peek
       // below hands itself over to the lead as the stance changes).
-      this.tx = player.x - VIEW_W / 2 + player.facing * (26 + (player.crawlT / 10) * 14);
+      this.tx = player.x - VIEW_W / 2 + this.aimLookaheadX;
       // Crouch-peek: holding the stance tilts the view below the ledge
       // (the lerp below turns the offset into a smooth glance down).
       this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48;
