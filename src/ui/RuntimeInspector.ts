@@ -1,7 +1,7 @@
 import { renderRuntimePanel } from '@/builder/runtimePanel';
 import type { Ctx } from '@/core/types';
 import { buildRuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
-import type { RuntimeEntityGroup, RuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
+import type { RuntimeEntityGroup, RuntimeEntityRow, RuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
 import { FocusRouter } from '@/ui/editor/FocusRouter';
 
 const RUNTIME_INSPECTOR_REFRESH_FRAMES = 30;
@@ -17,6 +17,7 @@ export class RuntimeInspector {
   private snapshotFrame = -1;
   private openState = false;
   private pointerInside = false;
+  private followSelectedEntity = false;
   private rafId: number | null = null;
 
   constructor(private readonly ctx: Ctx) {
@@ -42,6 +43,7 @@ export class RuntimeInspector {
     this.root.addEventListener('mouseup', (event) => event.stopPropagation());
     this.root.addEventListener('click', (event) => this.handleClick(event));
     this.root.addEventListener('input', (event) => this.handleInput(event));
+    this.root.addEventListener('change', (event) => this.handleInput(event));
 
     ctx.events.on('modeChanged', ({ mode }) => {
       this.syncButton();
@@ -114,6 +116,7 @@ export class RuntimeInspector {
         this.close();
         return;
       }
+      this.updateSelectedRuntimeTarget({ updateCamera: this.followSelectedEntity, snapCamera: false });
       const frame = this.ctx.state.frameCount;
       const active = document.activeElement;
       const focusInside = active instanceof HTMLElement && this.root.contains(active);
@@ -138,6 +141,8 @@ export class RuntimeInspector {
       filters: this.filters,
       showOverlayControls: false,
       showFocusActions: false,
+      showCameraControls: true,
+      cameraFollowEnabled: this.followSelectedEntity,
     });
   }
 
@@ -154,8 +159,7 @@ export class RuntimeInspector {
       });
       this.snapshotFrame = frame;
       if (this.snapshot.selectedMissing) {
-        this.selectedId = null;
-        this.ctx.camera.clearInspectionFocus();
+        this.clearInspectionSelection();
       }
     }
     return this.snapshot;
@@ -168,15 +172,25 @@ export class RuntimeInspector {
   private clearInspectionSelection(): void {
     this.selectedId = null;
     this.ctx.camera.clearInspectionFocus();
+    this.ctx.state.runtimeInspectionLight = null;
     this.invalidateSnapshot();
   }
 
   private handleInput(event: Event): void {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement) || target.id !== 'brt-search') return;
-    this.query = target.value;
-    this.render(false);
-    this.root.querySelector<HTMLInputElement>('#brt-search')?.focus({ preventScroll: true });
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.id === 'brt-search') {
+      this.query = target.value;
+      this.render(false);
+      this.root.querySelector<HTMLInputElement>('#brt-search')?.focus({ preventScroll: true });
+      return;
+    }
+    if (target.id === 'brt-follow-selected') {
+      this.followSelectedEntity = target.checked;
+      if (this.followSelectedEntity) {
+        this.updateSelectedRuntimeTarget({ updateCamera: true, snapCamera: true });
+      }
+    }
   }
 
   private handleClick(event: MouseEvent): void {
@@ -209,9 +223,31 @@ export class RuntimeInspector {
       this.render(false);
       return;
     }
-    const focusX = row.bounds ? (row.bounds.x0 + row.bounds.x1) / 2 : row.x;
-    const focusY = row.bounds ? (row.bounds.y0 + row.bounds.y1) / 2 : row.y;
-    this.ctx.camera.setInspectionFocus(focusX, focusY);
+    const focus = runtimeRowFocus(row);
+    this.ctx.state.runtimeInspectionLight = focus;
+    this.ctx.camera.setInspectionFocus(focus.x, focus.y);
     this.render(false);
   }
+
+  private updateSelectedRuntimeTarget(options: { updateCamera: boolean; snapCamera: boolean }): void {
+    if (this.selectedId === null || this.ctx.state.mode !== 'play') return;
+    const snapshot = buildRuntimeEntitySnapshot(this.ctx, { selectedId: this.selectedId });
+    const row = snapshot.selectedRow;
+    if (row === null || snapshot.selectedMissing) {
+      this.clearInspectionSelection();
+      if (this.openState && !this.pointerInside) this.render(true);
+      return;
+    }
+    const focus = runtimeRowFocus(row);
+    this.ctx.state.runtimeInspectionLight = focus;
+    if (options.updateCamera) {
+      this.ctx.camera.setInspectionFocus(focus.x, focus.y, { snap: options.snapCamera });
+    }
+  }
+}
+
+function runtimeRowFocus(row: RuntimeEntityRow): { x: number; y: number } {
+  return row.bounds
+    ? { x: (row.bounds.x0 + row.bounds.x1) / 2, y: (row.bounds.y0 + row.bounds.y1) / 2 }
+    : { x: row.x, y: row.y };
 }

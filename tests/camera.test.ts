@@ -22,6 +22,26 @@ describe('camera inspection focus', () => {
     expect(camera.tx).toBe(700 - VIEW_W / 2 + 26);
     expect(camera.ty).toBe(500 - 9 - VIEW_H / 2);
   });
+
+  it('can retarget inspection focus without snapping the camera position', () => {
+    const camera = new Camera();
+    const ctx = makeCtx(camera);
+
+    camera.snapTo(500, 400);
+    const startX = camera.x;
+    const startY = camera.y;
+
+    camera.setInspectionFocus(900, 520, { snap: false });
+
+    expect(camera.x).toBe(startX);
+    expect(camera.y).toBe(startY);
+
+    camera.update(ctx);
+
+    expect(camera.tx).toBe(900 - VIEW_W / 2);
+    expect(camera.ty).toBe(520 - VIEW_H / 2);
+    expect(camera.x).toBeGreaterThan(startX);
+  });
 });
 
 function makeCtx(camera: Camera): Ctx {

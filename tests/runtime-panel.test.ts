@@ -48,6 +48,23 @@ describe('runtime panel renderer', () => {
     expect(html).not.toContain('Viewport Overlays');
     expect(html).not.toContain('data-runtime-overlay="bounds"');
     expect(html).not.toContain('data-runtime-focus=');
+    expect(html).not.toContain('brt-follow-selected');
+  });
+
+  it('renders optional Play camera follow controls for the top-level runtime inspector', () => {
+    const html = renderRuntimePanel({
+      snapshot: makeSnapshot(),
+      query: '',
+      filters: new Set(),
+      showOverlayControls: false,
+      showFocusActions: false,
+      showCameraControls: true,
+      cameraFollowEnabled: true,
+    });
+
+    expect(html).toContain('id="brt-follow-selected"');
+    expect(html).toContain('Follow Entity');
+    expect(html).toContain('checked');
   });
 
   it('points author-mode empty runtime panels at Logic Preview', () => {

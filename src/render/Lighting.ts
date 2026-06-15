@@ -3,6 +3,9 @@ import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
 import type { LightField, LightSample } from '@/render/pixels';
 
+const RUNTIME_INSPECTION_LIGHT_INTENSITY = 1.2;
+const RUNTIME_INSPECTION_LIGHT_RADIUS = 65;
+
 /* ===================== Dynamic Lighting =====================
  * Half-resolution RGB light field, seeded by every emitter in view, then
  * propagated with four directional sweeps. Solid cells attenuate hard, so
@@ -466,6 +469,13 @@ export class Lighting implements LightField {
       }
     }
 
+    // Runtime inspector selected-entity light: same raycast path as the wand,
+    // but steady, wider, and intentionally dimmer.
+    if (ctx.state.mode === 'play' && ctx.state.runtimeInspectionLight) {
+      const target = ctx.state.runtimeInspectionLight;
+      this.raycastRuntimeInspectionLight(target.x, target.y);
+    }
+
     // The wand: a true shadow-casting light. Rays march outward from the tip;
     // rock absorbs them hard, so edges throw real shadows and nothing wraps corners.
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
@@ -501,6 +511,18 @@ export class Lighting implements LightField {
       s * wand.g,
       s * wand.b,
       Math.max(1, Math.round(Math.max(1, radius) * 0.5)),
+    );
+  }
+
+  private raycastRuntimeInspectionLight(wx: number, wy: number): void {
+    const wand = this.ctx.state.wandLight;
+    this.raycastLight(
+      wx,
+      wy,
+      RUNTIME_INSPECTION_LIGHT_INTENSITY * wand.r,
+      RUNTIME_INSPECTION_LIGHT_INTENSITY * wand.g,
+      RUNTIME_INSPECTION_LIGHT_INTENSITY * wand.b,
+      Math.max(1, Math.round(RUNTIME_INSPECTION_LIGHT_RADIUS * 0.5)),
     );
   }
 
