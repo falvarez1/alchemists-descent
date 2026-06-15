@@ -235,6 +235,7 @@ const paintBlock = async (x0, y0, x1, y1) => {
   await page.waitForTimeout(120);
 };
 await paintBlock(640, 500, 650, 510);
+await page.click('[data-menu="document"]');
 await page.click('#b-save');
 await page.waitForTimeout(200);
 const rle1 = await readSavedRle();
@@ -252,6 +253,7 @@ const gateStatus = await page.evaluate(() => document.getElementById('builder-st
 check('proc APPLY refused while a settle decision is pending', sumBefore === sumAfter && gateStatus.includes('SETTLE'), `${sumBefore} vs ${sumAfter} · "${gateStatus}"`);
 await page.click('#bp-settle-keep');
 await page.waitForTimeout(200);
+await page.click('[data-menu="document"]');
 await page.click('#b-save');
 await page.waitForTimeout(200);
 const rle2 = await readSavedRle();
@@ -650,6 +652,7 @@ await page.keyboard.press('o');
 await page.keyboard.press('o');
 await page.keyboard.press('o'); // back to NONE
 
+await page.click('[data-menu="document"]');
 await page.click('#b-share');
 const code = await readAppPromptAndAccept();
 check('SHARE produces a PLLD1 code', typeof code === 'string' && code.startsWith('PLLD1.'), String(code).slice(0, 24));
@@ -658,6 +661,7 @@ await acceptAppConfirm();
 await page.waitForTimeout(150);
 let count = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('NEW cleared the document', count === 0, `got ${count}`);
+await page.click('[data-menu="document"]');
 await page.click('#b-code');
 await acceptAppPrompt(code);
 await page.waitForTimeout(800);

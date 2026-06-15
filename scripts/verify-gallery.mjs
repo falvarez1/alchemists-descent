@@ -31,6 +31,7 @@ await page.click('#mode-builder-btn');
 await page.waitForTimeout(400);
 
 /* ---------- open ---------- */
+await page.click('[data-menu="view"]');
 await page.click('#b-gallery');
 await page.waitForTimeout(500);
 check('gallery opens', await page.isVisible('#builder-gallery'));

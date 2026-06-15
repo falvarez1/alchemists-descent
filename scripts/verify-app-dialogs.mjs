@@ -41,6 +41,7 @@ await page.waitForFunction(() => !document.querySelector('.app-dialog-root'), { 
 
 await page.click('#mode-builder-btn');
 await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 5000 });
+await page.click('[data-menu="document"]');
 await page.click('#b-share');
 await page.waitForSelector('.app-dialog-root textarea.app-dialog-input', { timeout: 10000 });
 dialog = await page.evaluate(() => ({
@@ -51,6 +52,7 @@ check('builder share uses app dialog', dialog.title === 'Share Code' && dialog.t
 await page.keyboard.press('Escape');
 await page.waitForFunction(() => !document.querySelector('.app-dialog-root'), { timeout: 5000 });
 
+await page.click('[data-menu="edit"]');
 await page.click('#b-capture');
 await page.click('#b-new');
 await page.waitForSelector('.app-dialog-root', { timeout: 5000 });

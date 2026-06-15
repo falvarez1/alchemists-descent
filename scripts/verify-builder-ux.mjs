@@ -1037,10 +1037,12 @@ const overlayLabel = await page.evaluate(() => document.getElementById('bp-overl
 check('palette runs the matched command', overlayLabel.includes('LIGHT'), overlayLabel);
 
 /* zen mode: every panel yields to the canvas */
+await page.click('[data-menu="view"]');
 await page.click('#b-zen');
 await page.waitForTimeout(120);
 let zenHidden = await page.evaluate(() => getComputedStyle(document.getElementById('builder-palette')).display === 'none');
 check('zen mode hides the side panels', zenHidden);
+await page.click('[data-menu="view"]');
 await page.click('#b-zen');
 await page.waitForTimeout(120);
 zenHidden = await page.evaluate(() => getComputedStyle(document.getElementById('builder-palette')).display === 'none');
@@ -1416,6 +1418,7 @@ moodDoc = await page.evaluate(() => {
 });
 check('document mood ambient redoes through Builder command stack', moodDoc.value === '0.5', JSON.stringify(moodDoc));
 const preAmbient = await page.evaluate(() => window.__game.ctx.params.global.ambient);
+await page.click('[data-menu="edit"]');
 await page.click('#b-capture');
 await page.waitForTimeout(300);
 await page.click('#b-playtest');

@@ -150,6 +150,7 @@ let markers = await page.evaluate(() => document.querySelectorAll('.b-marker').l
 check('five markers (4 objects + 1 light)', markers === 5, `got ${markers}`);
 
 /* ---------- save -> document carries links + lights ---------- */
+await page.click('[data-menu="document"]');
 await page.click('#b-save');
 await page.waitForTimeout(150);
 const savedDoc = await page.evaluate(() => {
@@ -207,6 +208,7 @@ check('apply commits the pass', goldInRegion >= 10, `got ${goldInRegion}`);
 
 /* ---------- Phase 10: validation passes clean ---------- */
 console.log('-- validate & playtest');
+await page.click('[data-menu="edit"]');
 await page.click('#b-validate');
 await page.waitForTimeout(400);
 const errCount = await page.evaluate(() => document.querySelectorAll('#builder-issues .b-issue.error').length);
@@ -273,6 +275,7 @@ const procCount = await page.evaluate(() => {
   return Object.values(lib)[0]?.proceduralHistory?.length ?? -1;
 });
 check('saved doc predates the pass (history persists on next save)', procCount === 0, `got ${procCount}`);
+await page.click('[data-menu="document"]');
 await page.click('#b-save');
 await page.waitForTimeout(150);
 const procCount2 = await page.evaluate(() => {
@@ -312,6 +315,7 @@ check(
     spawnPlaytestBlock.status.includes('PLAYTEST BLOCKED'),
   JSON.stringify(spawnPlaytestBlock),
 );
+await repairPage.click('[data-menu="edit"]');
 await repairPage.click('#b-validate');
 await repairPage.waitForTimeout(200);
 const spawnRepairBefore = await repairPage.evaluate(() => {
@@ -376,8 +380,10 @@ const repairPlaceAt = async (kind, wx, wy) => {
   await repairPage.waitForTimeout(80);
 };
 await repairPlaceAt('spawn', 470, 616);
+await repairPage.click('[data-menu="edit"]');
 await repairPage.click('#b-capture');
 await repairPage.waitForTimeout(100);
+await repairPage.click('[data-menu="edit"]');
 await repairPage.click('#b-validate');
 await repairPage.waitForTimeout(160);
 await repairPage.click('#bp-link-graph-btn');
@@ -476,6 +482,7 @@ await repairPage.evaluate(() => {
   row?.querySelector('button[data-row-toggle="hidden"]')?.click();
 });
 await repairPage.waitForTimeout(120);
+await repairPage.click('[data-menu="edit"]');
 await repairPage.click('#b-validate');
 await repairPage.waitForTimeout(200);
 const hiddenLinkRepairBefore = await repairPage.evaluate(() => {

@@ -30,6 +30,7 @@ await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
 await page.click('#mode-builder-btn');
 await page.waitForTimeout(400);
+await page.click('[data-menu="view"]');
 await page.click('#b-gallery');
 await page.waitForTimeout(500);
 check('gallery opens', await page.isVisible('#builder-gallery'));

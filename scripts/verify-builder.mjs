@@ -93,11 +93,14 @@ check('re-placing spawn moves it (still 5 markers)', markers === 5, `got ${marke
 
 /* ---------- undo / redo ---------- */
 console.log('-- undo/redo');
+await page.click('[data-menu="edit"]');
 await page.click('#b-undo'); // undo spawn move
+await page.click('[data-menu="edit"]');
 await page.click('#b-undo'); // undo portal add
 await page.waitForTimeout(80);
 markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('undo removes the portal (4 markers)', markers === 4, `got ${markers}`);
+await page.click('[data-menu="edit"]');
 await page.click('#b-redo');
 await page.waitForTimeout(80);
 markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
@@ -141,7 +144,9 @@ await page.waitForTimeout(80);
 
 /* ---------- capture terrain + validate ---------- */
 console.log('-- capture/validate');
+await page.click('[data-menu="edit"]');
 await page.click('#b-capture');
+await page.click('[data-menu="edit"]');
 await page.click('#b-validate');
 await page.waitForTimeout(120);
 const issues = await page.evaluate(() => {
@@ -200,6 +205,7 @@ check('esc returns to the select tool', toolNow === 'select', String(toolNow));
 console.log('-- save/load');
 await page.fill('#b-doc-name', 'probe-level');
 await page.evaluate(() => document.getElementById('b-doc-name').dispatchEvent(new Event('change')));
+await page.click('[data-menu="document"]');
 await page.click('#b-save');
 const saved = await page.evaluate(() => {
   const lib = {};
@@ -282,6 +288,7 @@ await page.click('#b-new');
 await page.waitForTimeout(120);
 let m = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('NEW clears the document', m === 0, `got ${m}`);
+await page.click('[data-menu="document"]');
 await page.click('#b-load');
 await page.waitForTimeout(120);
 m = await page.evaluate(() => document.querySelectorAll('.b-marker').length);

@@ -27,6 +27,7 @@ await page.waitForTimeout(1200);
 
 await page.click('#mode-builder-btn');
 await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 6000 });
+await page.click('[data-menu="view"]');
 await page.click('#b-backdrop');
 await page.waitForFunction(() => getComputedStyle(document.getElementById('builder-backdrop')).display !== 'none');
 
@@ -139,6 +140,7 @@ await page.evaluate(() => {
   }
   ctx.camera.snapTo(620, 560);
 });
+await page.click('[data-menu="edit"]');
 await page.click('#b-capture');
 await page.click('.bp-tool[data-kind="spawn"]');
 const spawnPoint = await page.evaluate(() => {

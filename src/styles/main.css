@@ -355,9 +355,51 @@ body.play-active #viewport-container { padding: 0; }
 .run-launcher-status {
     min-width: 0; color: #9fb6cc; font: 800 10px/1.45 var(--mono); overflow-wrap: anywhere;
 }
+.run-launcher-hidden { display: none !important; }
+.run-launcher-normal-summary {
+    display: grid; gap: 6px; padding: 12px; border: 1px solid #203040; border-radius: 5px;
+    background: rgba(10, 16, 24, 0.82); color: #9fb6cc; font: 800 10px/1.45 var(--mono);
+}
+.run-launcher-normal-summary strong {
+    color: #e5f2ff; font: 900 11px/1 var(--mono); letter-spacing: 1.4px; text-transform: uppercase;
+}
+.run-launcher-test-fields { display: grid; gap: 12px; min-width: 0; }
+.run-launcher-kit-tabs {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+}
+.run-launcher-kit-tabs button, .run-launcher-inline-actions button {
+    height: 30px; border: 1px solid #2b3b4c; border-radius: 4px;
+    background: #0b1119; color: #9fb6cc; font: 900 10px/1 var(--mono); letter-spacing: 1px;
+    cursor: pointer; text-transform: uppercase;
+}
+.run-launcher-kit-tabs button:hover:not(:disabled), .run-launcher-kit-tabs button.active {
+    border-color: #38bdf8; background: #12202c; color: #e5f2ff;
+}
+.run-launcher-kit-tabs button:disabled, .run-launcher-inline-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+.run-launcher-kit-panel { display: none; min-width: 0; }
+.run-launcher-kit-panel.active { display: grid; gap: 10px; }
+.run-launcher-kit-tools {
+    display: grid; grid-template-columns: minmax(120px, 0.72fr) minmax(150px, 1fr) auto; gap: 9px; align-items: end;
+}
+.run-launcher-inline-actions {
+    display: flex; gap: 6px; align-items: end; justify-content: flex-start;
+}
+.run-launcher-inline-actions.right { justify-content: flex-end; margin-bottom: 8px; }
+.run-launcher-inline-actions button { min-width: 58px; padding: 0 10px; }
+.run-launcher-inline-actions button:hover:not(:disabled) { border-color: #7dd3fc; color: #f8fafc; }
+.run-launcher-check-grid.cards {
+    max-height: 224px; overflow: auto; padding-right: 4px;
+}
 @media (max-width: 720px) {
     .run-launcher-body { grid-template-columns: 1fr; }
-    .run-launcher-form-grid, .run-launcher-kit-grid, .run-launcher-check-grid, .run-launcher-check-grid.perks { grid-template-columns: 1fr; }
+    .run-launcher-form-grid,
+    .run-launcher-kit-grid,
+    .run-launcher-check-grid,
+    .run-launcher-check-grid.perks,
+    .run-launcher-kit-tools,
+    .run-launcher-kit-tabs {
+        grid-template-columns: 1fr;
+    }
     .run-launcher-choice { min-height: 58px; }
 }
 
@@ -1917,6 +1959,13 @@ body.builder-open #builder-issues { bottom: 182px; }
 }
 .bv-filters span { color: #6f839b; }
 .bv-groups { display: grid; gap: 6px; padding: 0 6px 7px; }
+.bv-empty {
+  border: 1px solid #164e2f;
+  border-radius: 5px;
+  color: #bbf7d0;
+  font: 800 10px/1.45 var(--mono);
+  padding: 8px;
+}
 .bv-group { display: grid; gap: 4px; }
 .bv-group-title {
   align-items: center;
@@ -1977,6 +2026,13 @@ body.builder-open #builder-issues { bottom: 182px; }
   align-items: center;
   display: inline-flex;
   gap: 4px;
+  font-size: 9px;
+  padding: 3px 5px;
+}
+.bv-select {
+  background: #0b1220;
+  border-color: #24364b;
+  color: #dbeafe;
   font-size: 9px;
   padding: 3px 5px;
 }
@@ -2828,3 +2884,94 @@ body.builder-playtest-active #mode-play-btn.active {
 #builder-root .bp-prefab-card:focus-visible {
     outline: 1px solid var(--bui-accent); outline-offset: -1px;
 }
+
+/* ---- Reusable tab strip (src/ui/editor/Tabs.ts) ----
+   In-panel section tabs, Asset Browser views, and dock panel groups. ‹ ›
+   overflow arrows appear only when the tabs don't fit (.has-overflow). */
+#builder-root .editor-tabs,
+#dev-console .editor-tabs {
+    display: flex; align-items: stretch; min-width: 0; gap: 2px;
+    border-bottom: 1px solid #172232; background: #070b10;
+}
+#builder-root .editor-tabs-list {
+    flex: 1 1 auto; min-width: 0; display: flex; align-items: stretch; gap: 2px;
+    overflow-x: auto; scroll-behavior: smooth; scrollbar-width: none;
+}
+#builder-root .editor-tabs-list::-webkit-scrollbar { height: 0; display: none; }
+#builder-root .editor-tab {
+    flex: 0 0 auto; max-width: 168px; min-width: 0; height: 24px; padding: 0 9px;
+    display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid transparent; border-bottom: 0; border-radius: 4px 4px 0 0;
+    background: transparent; color: #66798d;
+    font: 800 9px var(--mono); letter-spacing: 0.6px; text-transform: uppercase;
+    cursor: pointer; white-space: nowrap;
+}
+#builder-root .editor-tab:hover { color: #b8c8d8; background: #0b1119; }
+#builder-root .editor-tab.active {
+    color: #e0edf8; background: #0d141e;
+    border-color: #2b3a4d; box-shadow: inset 0 2px 0 var(--bui-accent);
+}
+#builder-root .editor-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#builder-root .editor-tab-icon { flex: 0 0 auto; display: inline-flex; }
+#builder-root .editor-tab-close {
+    flex: 0 0 auto; width: 13px; height: 13px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 3px; color: #5f7286; font-size: 13px; line-height: 1; opacity: 0;
+}
+#builder-root .editor-tab:hover .editor-tab-close,
+#builder-root .editor-tab.active .editor-tab-close { opacity: 1; }
+#builder-root .editor-tab-close:hover { background: #2a1212; color: #ffd9d9; }
+#builder-root .editor-tabs-arrow {
+    flex: 0 0 auto; width: 18px; min-width: 18px; padding: 0; display: none;
+    align-items: center; justify-content: center;
+    border: 0; border-bottom: 1px solid #172232; border-radius: 0; background: #070b10;
+    color: #7c90a6; font-size: 13px; line-height: 1; cursor: pointer;
+}
+#builder-root .editor-tabs.has-overflow .editor-tabs-arrow { display: inline-flex; }
+#builder-root .editor-tabs-arrow:hover:not([disabled]) { color: #d6e6f5; background: #101822; }
+#builder-root .editor-tabs-arrow[disabled] { opacity: 0.3; cursor: default; }
+
+/* In-panel tab view: strip on top, one pane visible below. */
+#builder-root .editor-tabview { display: flex; flex-direction: column; min-height: 0; }
+#builder-root .editor-tabview-content { min-height: 0; }
+#builder-root .editor-tabview-pane { display: flex; flex-direction: column; gap: 6px; padding-top: 7px; }
+#builder-root .editor-tabview-pane[hidden] { display: none; }
+
+/* ---- Top menu bar (VS Code style) — Document/Edit/View/Help dropdowns hold
+   the former toolbar buttons; a slim inline strip keeps doc + playtest. ---- */
+#builder-bar .builder-menubar { display: inline-flex; align-items: stretch; gap: 1px; }
+#builder-root #builder-bar .builder-menu-btn {
+    border: 0; border-radius: 3px; background: transparent; color: #b8c8d8;
+    font: 700 11px var(--mono); letter-spacing: 0.2px; text-transform: none;
+    padding: 4px 9px; height: 24px; cursor: pointer;
+}
+#builder-root #builder-bar .builder-menu-btn:hover { background: #1d2733; color: #eaf2fb; border-color: transparent; }
+#builder-root #builder-bar .builder-menu-btn[aria-expanded="true"] { background: #1d2733; color: #fff; }
+#builder-bar .b-spacer { flex: 1 1 auto; min-width: 8px; }
+#builder-bar #b-doc-name { min-width: 64px; }
+.builder-menu-dropdown {
+    position: absolute; top: calc(100% - 1px); left: 0; z-index: 90; min-width: 190px; max-width: 300px;
+    display: flex; flex-direction: column; gap: 1px; padding: 4px;
+    background: rgba(8,11,16,0.99); border: 1px solid #2c3a4c; border-radius: 0 0 5px 5px;
+    box-shadow: 0 16px 38px rgba(0,0,0,0.74); font-family: var(--mono);
+}
+.builder-menu-dropdown[hidden] { display: none; }
+#builder-root #builder-bar .builder-menu-dropdown button,
+#builder-root #builder-bar .builder-menu-dropdown .b-filebtn {
+    display: flex; align-items: center; gap: 12px; width: 100%; min-height: 26px;
+    padding: 0 10px; border: 1px solid transparent; border-radius: 4px;
+    background: transparent; color: #d6e6f5; font: 700 11px var(--mono); letter-spacing: 0;
+    text-align: left; text-transform: none; cursor: pointer; white-space: nowrap;
+}
+#builder-root #builder-bar .builder-menu-dropdown button:hover,
+#builder-root #builder-bar .builder-menu-dropdown .b-filebtn:hover {
+    background: #16202e; color: #fff; border-color: #243140;
+}
+#builder-bar .builder-menu-sep { height: 1px; margin: 3px 6px; background: #1d2733; }
+#builder-bar .builder-menu-key { margin-left: auto; padding-left: 18px; color: #6f8090; font-size: 10px; font-weight: 700; }
+/* Leading checkmark column (VS Code style): View items tick when their panel is visible. */
+#builder-root #builder-bar .builder-menu-dropdown button::before,
+#builder-root #builder-bar .builder-menu-dropdown .b-filebtn::before {
+    content: ""; flex: 0 0 13px; width: 13px; margin-right: -4px; text-align: center;
+    color: var(--bui-accent); font-weight: 900; font-size: 11px; line-height: 1;
+}
+#builder-root #builder-bar .builder-menu-dropdown button.menu-checked::before { content: "\2713"; }

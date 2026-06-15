@@ -107,6 +107,7 @@ check('X lifts the region into a float', st.includes('FLOATING'), st);
 const holeWhileFloating = await countType(480, 489, 500, 509, 12);
 check('lift leaves a hole at the source', holeWhileFloating === 0, `got ${holeWhileFloating}`);
 // save must refuse while floating (the gate every mutation path shares)
+await page.click('[data-menu="document"]');
 await page.click('#b-save');
 await page.waitForTimeout(120);
 st = await statusText();
@@ -232,6 +233,7 @@ await page.click('#bi-rotate-pt');
 await page.waitForTimeout(120);
 st = await statusText();
 check('rotation status reads the drip direction', st.includes('90') && st.includes('LEFT'), st);
+await page.click('[data-menu="document"]');
 await page.click('#b-save');
 await page.waitForTimeout(200);
 const savedRotation = await page.evaluate(() => {

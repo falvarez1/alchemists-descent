@@ -1,4 +1,4 @@
-import type { BiomeId, CardId, Ctx, LevelDef, PlayerState, WandFrame } from '@/core/types';
+import type { BiomeId, Ctx, LevelDef, PlayerState, WandRuntimeSnapshot } from '@/core/types';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { BIOMES as BIOME_DEFS } from '@/config/biomes';
 import { GEN, defaultSkeletonSpec } from '@/config/gen';
@@ -53,6 +53,7 @@ import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
+import { resetCombatTransients } from '@/game/transients';
 import { PreviewRuntime } from '@/builder/PreviewRuntime';
 import {
   capturePrefab,
@@ -385,19 +386,6 @@ type BuilderTool =
   | 'stamp'
   | EditorObjectKind;
 type BuilderOpenIntent = 'continue-document' | 'current-scene';
-interface BuilderWandSnapshot {
-  active: 0 | 1;
-  collection: CardId[];
-  wands: Array<{
-    frame: WandFrame;
-    cards: (CardId | null)[];
-    mana: number;
-    cooldown: number;
-    cooldownMax?: number;
-    castIndex: number;
-  }>;
-}
-
 /** Editor layer families (visibility/locking are EDITOR-side only:
  *  a hidden layer still compiles — that's what object `hidden` is for). */
 type LayerFamily = 'gameplay' | 'mech' | 'links' | 'lights';
@@ -785,7 +773,7 @@ export class Builder {
   /** Player state before the disposable playtest mutates ctx.player. */
   private prePlaytestPlayer: PlayerState | null = null;
   /** Wand runtime state before the disposable playtest mutates ctx.wands. */
-  private prePlaytestWands: BuilderWandSnapshot | null = null;
+  private prePlaytestWands: WandRuntimeSnapshot | null = null;
   /** Ambient as it stood before a mood-overridden playtest. */
   private prevAmbient: number | null = null;
   /** Light preview solo (null = all). */
@@ -1019,8 +1007,7 @@ export class Builder {
     if (rt && rt.def.id !== 'custom' && this.ctx.world === rt.world) {
       this.ctx.world = new World();
       this.ctx.enemies.length = 0;
-      this.ctx.projectiles.length = 0;
-      this.ctx.particles.clear();
+      resetCombatTransients(this.ctx);
       if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
       detached = true;
     }
@@ -1052,8 +1039,7 @@ export class Builder {
       };
       applyWorldLayer(this.ctx, this.doc.world);
       this.ctx.enemies.length = 0;
-      this.ctx.projectiles.length = 0;
-      this.ctx.particles.clear();
+      resetCombatTransients(this.ctx);
       this.ctx.levels.exitCustomPlaytest(this.ctx);
       openStatus = { text: 'PLAYTEST DISCARDED - "BAKE PLAYTEST SCARS" (CTRL+K) CAN KEEP THEM' };
     } else if (this.returningFromPlaytest) {
@@ -2032,6 +2018,13 @@ export class Builder {
       <div id="builder-workspace">
       <div id="builder-bar">
         <span class="b-title">BUILDER</span>
+        <nav class="builder-menubar" role="menubar" aria-label="Builder menu">
+          <button type="button" class="builder-menu-btn" data-menu="document" aria-haspopup="true" aria-expanded="false">Document</button>
+          <button type="button" class="builder-menu-btn" data-menu="edit" aria-haspopup="true" aria-expanded="false">Edit</button>
+          <button type="button" class="builder-menu-btn" data-menu="view" aria-haspopup="true" aria-expanded="false">View</button>
+          <button type="button" class="builder-menu-btn" data-menu="help" aria-haspopup="true" aria-expanded="false">Help</button>
+        </nav>
+        <span class="b-sep"></span>
         <div id="b-session-tabs" class="b-segment" aria-label="Builder session">
           <button id="b-session-author" class="active" title="Static authoring view">AUTHOR</button>
           <button id="b-session-live" title="Preview animation without gameplay mutation">LIVE PREVIEW</button>
@@ -2039,36 +2032,49 @@ export class Builder {
           <button id="b-session-discard" title="Discard Live Preview and return to Author">DISCARD</button>
         </div>
         <input id="b-doc-name" value="untitled" spellcheck="false" title="Document name">
+        <select id="b-doc-select" title="Saved documents"></select>
         <select id="b-biome" title="Document biome"></select>
         <button id="b-new" title="New document">NEW</button>
-        <select id="b-doc-select" title="Saved documents"></select>
-        <button id="b-load">LOAD</button>
-        <button id="b-save">SAVE</button>
-        <button id="b-export">EXPORT</button>
-        <label for="b-import" class="b-filebtn">IMPORT</label>
-        <input type="file" id="b-import" accept=".json" hidden>
-        <button id="b-share" title="Compress the document into a pasteable share code">SHARE</button>
-        <button id="b-code" title="Import a level from a share code">CODE</button>
-        <span class="b-sep"></span>
-        <button id="b-undo" title="Ctrl+Z" aria-label="Undo">&#8617;</button>
-        <button id="b-redo" title="Ctrl+Y" aria-label="Redo">&#8618;</button>
-        <span class="b-sep"></span>
-        <button id="b-capture" title="Snapshot the live sandbox cells into the document">CAPTURE TERRAIN</button>
-        <button id="b-restore" title="Re-decode the document's captured terrain into the live world (clears undo)">RESTORE</button>
-        <button id="b-validate">VALIDATE</button>
-        <button id="b-bake" style="display:none" title="Re-apply the held playtest scars onto the document terrain (region = precise, undoable)">BAKE</button>
+        <span class="b-spacer"></span>
         <button id="b-playtest" class="b-accent">BUILDER PLAYTEST</button>
         <button id="b-playtest-here" class="b-accent" title="Compile this document and spawn at the cursor">PLAYTEST HERE</button>
-        <button id="b-worldgen" title="Generate and tune procedural worlds">WORLDGEN</button>
-        <button id="b-world-map" title="Preview and tune the virtual chunk world map">WORLD MAP</button>
-        <button id="b-global" title="Global simulation and wand light controls">GLOBAL</button>
-        <button id="b-postfx" title="Post processing controls">POST FX</button>
-        <button id="b-gallery" title="Browse and preview every prefab, mechanism, entity and sprite — live and animated">GALLERY</button>
-        <button id="b-assets" title="Project Asset Browser: documents, prefabs, sprites, imports and dependencies">ASSETS</button>
-        <button id="b-backdrop" title="Preview and tune parallax backdrop layers">BACKDROP</button>
-        <button id="b-reset-workspace" title="Reset dock layout, open panels, and workspace preferences">RESET WORKSPACE</button>
-        <button id="b-zen" title="Hide all side panels for a clear view of the canvas">PANELS</button>
+        <button id="b-bake" style="display:none" title="Re-apply the held playtest scars onto the document terrain (region = precise, undoable)">BAKE</button>
+        <button id="b-reset-workspace" title="Reset dock layout, open panels, and workspace preferences">RESET</button>
         <button id="b-exit">EXIT</button>
+        <div class="builder-menu-dropdown" data-menu-panel="document" role="menu" aria-label="Document" hidden>
+          <button id="b-save">Save</button>
+          <button id="b-load">Open Saved&hellip;</button>
+          <button id="b-export">Export JSON</button>
+          <label for="b-import" class="b-filebtn" role="menuitem">Import JSON&hellip;</label>
+          <input type="file" id="b-import" accept=".json" hidden>
+          <div class="builder-menu-sep"></div>
+          <button id="b-share" title="Compress the document into a pasteable share code">Share Code</button>
+          <button id="b-code" title="Import a level from a share code">Import Code&hellip;</button>
+        </div>
+        <div class="builder-menu-dropdown" data-menu-panel="edit" role="menu" aria-label="Edit" hidden>
+          <button id="b-undo" title="Ctrl+Z">Undo<span class="builder-menu-key">Ctrl+Z</span></button>
+          <button id="b-redo" title="Ctrl+Y">Redo<span class="builder-menu-key">Ctrl+Y</span></button>
+          <div class="builder-menu-sep"></div>
+          <button id="b-capture" title="Snapshot the live sandbox cells into the document">Capture Terrain</button>
+          <button id="b-restore" title="Re-decode the document's captured terrain into the live world (clears undo)">Restore Terrain</button>
+          <button id="b-validate">Validate</button>
+        </div>
+        <div class="builder-menu-dropdown" data-menu-panel="view" role="menu" aria-label="View" hidden>
+          <button id="b-worldgen" title="Generate and tune procedural worlds">World Generation</button>
+          <button id="b-world-map" title="Preview and tune the virtual chunk world map">World Map</button>
+          <button id="b-global" title="Global simulation and wand light controls">Global Controls</button>
+          <button id="b-postfx" title="Post processing controls">Post Processing</button>
+          <div class="builder-menu-sep"></div>
+          <button id="b-gallery" title="Browse and preview every prefab, mechanism, entity and sprite — live and animated">Gallery</button>
+          <button id="b-assets" title="Project Asset Browser: documents, prefabs, sprites, imports and dependencies">Asset Browser</button>
+          <button id="b-backdrop" title="Preview and tune parallax backdrop layers">Backdrop</button>
+          <div class="builder-menu-sep"></div>
+          <button id="b-zen" title="Hide all side panels for a clear view of the canvas">Toggle Panels</button>
+        </div>
+        <div class="builder-menu-dropdown" data-menu-panel="help" role="menu" aria-label="Help" hidden>
+          <button id="b-menu-palette">Command Palette<span class="builder-menu-key">Ctrl+K</span></button>
+          <button id="b-menu-help">Builder Help<span class="builder-menu-key">H</span></button>
+        </div>
       </div>
       <div id="builder-workspace-body">
       <div id="builder-dock-left" class="builder-dock" data-dock="left">
@@ -3052,6 +3058,105 @@ export class Builder {
     this.el('b-reset-workspace').addEventListener('click', () => this.runUiCommand('builder.resetWorkspace'));
     this.el('b-zen').addEventListener('click', () => this.runUiCommand('builder.togglePanels'));
     this.el('b-exit').addEventListener('click', () => this.close());
+    this.el('b-menu-palette').addEventListener('click', () => this.runUiCommand('builder.commandPalette'));
+    this.el('b-menu-help').addEventListener('click', () => this.runUiCommand('builder.help'));
+    this.wireMenuBar();
+  }
+
+  /**
+   * The top menu bar: Document / Edit / View / Help dropdowns hold the former
+   * toolbar buttons (ids + handlers unchanged). Click a menu to open; hover
+   * switches between open menus (VS Code style); click an item, click outside,
+   * or Escape closes. Dropdowns are absolutely positioned under their trigger.
+   */
+  private wireMenuBar(): void {
+    const bar = this.el('builder-bar');
+    const buttons = [...bar.querySelectorAll<HTMLElement>('.builder-menu-btn')];
+    const panels = new Map<string, HTMLElement>();
+    for (const panel of bar.querySelectorAll<HTMLElement>('.builder-menu-dropdown')) {
+      panels.set(panel.dataset.menuPanel ?? '', panel);
+    }
+    let openMenu: string | null = null;
+    const close = (): void => {
+      openMenu = null;
+      for (const btn of buttons) btn.setAttribute('aria-expanded', 'false');
+      for (const panel of panels.values()) panel.hidden = true;
+      bar.classList.remove('b-menu-open');
+    };
+    const open = (menu: string): void => {
+      const btn = buttons.find((b) => b.dataset.menu === menu);
+      const panel = panels.get(menu);
+      if (!btn || !panel) return;
+      close();
+      openMenu = menu;
+      if (menu === 'view') this.refreshViewMenuChecks();
+      btn.setAttribute('aria-expanded', 'true');
+      panel.hidden = false;
+      panel.style.left = `${Math.round(btn.offsetLeft)}px`;
+      bar.classList.add('b-menu-open');
+    };
+    for (const btn of buttons) {
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const menu = btn.dataset.menu ?? '';
+        if (openMenu === menu) close();
+        else open(menu);
+      });
+      btn.addEventListener('pointerenter', () => {
+        if (openMenu !== null && openMenu !== btn.dataset.menu) open(btn.dataset.menu ?? '');
+      });
+    }
+    for (const panel of panels.values()) {
+      // Run the item's own handler, then dismiss — except the file-input label,
+      // which must keep the menu alive long enough to open the OS file dialog.
+      panel.addEventListener('click', (event) => {
+        if ((event.target as HTMLElement | null)?.closest('label[for="b-import"], input[type="file"]')) return;
+        close();
+      });
+    }
+    document.addEventListener('pointerdown', (event) => {
+      if (openMenu === null) return;
+      if (!(event.target as HTMLElement | null)?.closest('#builder-bar .builder-menubar, #builder-bar .builder-menu-dropdown')) close();
+    });
+    window.addEventListener(
+      'keydown',
+      (event) => {
+        if (openMenu !== null && event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          close();
+        }
+      },
+      true,
+    );
+  }
+
+  /** VS Code-style: tick the View menu items whose panel is currently visible. */
+  private refreshViewMenuChecks(): void {
+    const zen = this.root.classList.contains('b-zen');
+    const panelOpen = (id: string): boolean =>
+      !zen && this.workspaceLayout.panels.find((panel) => panel.id === id)?.open === true;
+    const overlayOpen = (id: string): boolean => {
+      const el = document.getElementById(id);
+      return el !== null && el.offsetParent !== null;
+    };
+    const checks: Array<[string, boolean]> = [
+      ['b-worldgen', panelOpen('builder-world')],
+      ['b-world-map', panelOpen('builder-virtual-world')],
+      ['b-global', panelOpen('builder-global')],
+      ['b-postfx', panelOpen('builder-postfx')],
+      ['b-gallery', overlayOpen('builder-gallery')],
+      ['b-assets', panelOpen('builder-assets')],
+      ['b-backdrop', overlayOpen('builder-backdrop')],
+      ['b-zen', !zen],
+    ];
+    for (const [id, on] of checks) {
+      const btn = document.getElementById(id);
+      if (!btn) continue;
+      btn.classList.toggle('menu-checked', on);
+      btn.setAttribute('role', 'menuitemcheckbox');
+      btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
   }
 
   /** The asset gallery: browse and preview everything, live and animated. */
@@ -3183,8 +3288,7 @@ export class Builder {
     this.ctx.state.editorLights = null;
     this.ctx.state.builderWandLightPreview.enabled = false;
     this.ctx.enemies.length = 0;
-    this.ctx.projectiles.length = 0;
-    this.ctx.particles.clear();
+    resetCombatTransients(this.ctx);
     if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
     else this.ctx.world = new World();
     this.restorePrePlaytestPlayer();
@@ -3199,41 +3303,15 @@ export class Builder {
     if (!snapshot.dead) this.ctx.events.emit('playerDeathCleared');
   }
 
-  private snapshotWands(): BuilderWandSnapshot {
-    return {
-      active: this.ctx.wands.active,
-      collection: [...this.ctx.wands.collection],
-      wands: this.ctx.wands.wands.map((w) => ({
-        frame: w.frame,
-        cards: [...w.cards],
-        mana: w.mana,
-        cooldown: w.cooldown,
-        cooldownMax: w.cooldownMax,
-        castIndex: w.castIndex,
-      })),
-    };
+  private snapshotWands(): WandRuntimeSnapshot {
+    return this.ctx.wands.snapshotRuntimeState();
   }
 
   private restorePrePlaytestWands(): void {
     const snapshot = this.prePlaytestWands;
     if (!snapshot) return;
-    this.ctx.wands.active = snapshot.active;
-    this.ctx.wands.collection.length = 0;
-    this.ctx.wands.collection.push(...snapshot.collection);
-    snapshot.wands.forEach((saved, index) => {
-      const wand = this.ctx.wands.wands[index as 0 | 1];
-      if (!wand) return;
-      wand.frame = saved.frame;
-      wand.cards.length = 0;
-      wand.cards.push(...saved.cards);
-      wand.mana = saved.mana;
-      wand.cooldown = saved.cooldown;
-      wand.castIndex = saved.castIndex;
-      if (saved.cooldownMax === undefined) delete wand.cooldownMax;
-      else wand.cooldownMax = saved.cooldownMax;
-    });
+    this.ctx.wands.restoreRuntimeState(snapshot);
     this.prePlaytestWands = null;
-    this.ctx.wands.invalidatePrograms();
   }
 
   private setPlaytestBanner(show: boolean): void {
@@ -3247,8 +3325,7 @@ export class Builder {
     if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
     else this.ctx.world.clear();
     this.ctx.enemies.length = 0;
-    this.ctx.projectiles.length = 0;
-    this.ctx.particles.clear();
+    resetCombatTransients(this.ctx);
   }
 
   private undo(): void {
@@ -10087,18 +10164,10 @@ export class Builder {
     options: { playtestBlockers?: readonly DocIssue[] } = {},
   ): void {
     this.lastIssues = [...issues];
-    this.lastValidationOverlay = buildValidationOverlayDiagnostics(this.doc);
     this.validationDirty = false;
     this.syncNavigationPanels();
     const panel = this.el<HTMLDivElement>('builder-issues');
     this.validationScrollTop = panel.scrollTop || this.validationScrollTop;
-    if (issues.length === 0) {
-      panel.style.display = 'none';
-      this.setWorkspacePanelOpen('builder-issues', false);
-      this.applyWorkspaceLayout();
-      this.saveWorkspacePrefs();
-      return;
-    }
     panel.style.display = '';
     this.setWorkspacePanelOpen('builder-issues', true);
     this.applyWorkspaceLayout();
@@ -10131,19 +10200,15 @@ export class Builder {
         if (issue) this.runValidationAction(button.dataset.validationAction ?? '', issue);
       });
     }
-    for (const row of panel.querySelectorAll<HTMLDivElement>('.b-issue')) {
-      const activate = () => {
-        const issue = issues[Number(row.dataset.n)];
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-validation-select]')) {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const issue = issues[Number(button.dataset.validationSelect)];
         if (!issue) return;
-        this.activeValidationIssueIndex = Number(row.dataset.n);
+        this.activeValidationIssueIndex = Number(button.dataset.validationSelect);
         this.markActiveValidationIssue(panel);
         this.selectIssueTarget(issue);
-      };
-      row.addEventListener('click', activate);
-      row.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        activate();
       });
     }
   }

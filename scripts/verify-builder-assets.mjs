@@ -156,6 +156,7 @@ const dragAssetRowToStage = async (assetId, xFrac = 0.5, yFrac = 0.5) => {
 };
 
 console.log('-- asset browser open/search/filter/details');
+await page.click('[data-menu="view"]');
 await page.click('#b-assets');
 await page.waitForTimeout(200);
 
@@ -214,7 +215,7 @@ const dockLayout = await page.evaluate(() => {
       panelRect.top >= dockRect.top - 1 &&
       panelRect.bottom <= dockRect.bottom + 1,
     widthUsesDock: panelRect.width >= dockRect.width * 0.9,
-    clearOfRightDock: panelRect.top >= rightRect.bottom - 1,
+    clearOfRightDock: panelRect.right <= rightRect.left + 1,
     sameRowCards: cardRects.filter((rect) => rect.top === firstTop).length,
     sourceRailWidth: Math.round(sourceRail.getBoundingClientRect().width),
     contentWidth: Math.round(content.getBoundingClientRect().width),
@@ -240,7 +241,7 @@ check(
     dockLayout.widthUsesDock &&
     dockLayout.clearOfRightDock &&
     dockLayout.sourceRailWidth >= 160 &&
-    dockLayout.contentWidth >= 900 &&
+    dockLayout.contentWidth >= 700 &&
     dockLayout.sourceTree &&
     dockLayout.sourceChips === 0 &&
     dockLayout.sourceButtons === 0 &&
