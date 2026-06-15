@@ -168,3 +168,80 @@ Notes:
 - Validation passed: `npm run probe:webgpu-r184`, `npm run typecheck`,
   `npm test`, `npm run lint`, `npm run build`, `node scripts/verify-game.mjs`,
   and `node scripts/probe-compose-parity.mjs`.
+
+## Phase 2 - Renderer Backend Boundary
+
+Task: add the renderer backend boundary, `render.*` feature flags, backend
+selection/status reporting, and device-loss lifecycle plumbing while keeping the
+shipping WebGL2 renderer behavior unchanged.
+
+Commit: `aa2d5a4`
+
+Hardware/browser: Headless Edge 150.0.0.0 on ANGLE / NVIDIA GeForce RTX 3080 Ti
+/ D3D11.
+
+Requested backend: default `render.backend=webgl`; probe also toggled
+`render.backend=auto` and `render.backend=webgpu`.
+
+Actual backend: `WebGLRenderBackend`, actual canvas backend `webgl2`.
+
+Scene / seed / resolution: chaos / seed 777 / `1050x714` / 4x360 frames for
+the performance gate; live game probe at the same canvas size for selection.
+
+Command:
+
+```powershell
+npm run probe:render-backend
+npm run perf:ab -- postFx.gpuCompose false true http://127.0.0.1:5173/ 360 4 chaos
+```
+
+Baseline: Phase 1 unchanged WebGL2 path, where GPU compose A/B measured
+compose `19.683 -> 3.744 ms`, render `20.384 -> 4.872 ms`, and frame
+`23.275 -> 8.520 ms`.
+
+After: Phase 2 same-session A/B measured compose `19.135 -> 3.417 ms`
+(-82.1%), render `19.769 -> 4.278 ms` (-78.4%), and frame `22.538 -> 7.728 ms`
+(-65.7%). P95s were compose `22.400 -> 6.800 ms`, render `23.200 -> 8.100 ms`,
+and frame `26.200 -> 12.800 ms`. `gl` rose `0.584 -> 0.807 ms`, but the total
+render/frame win remained well inside the established GPU-compose performance
+shape.
+
+Expected result: no visual change, deterministic backend status for tests and
+A/B runs, WebGL fallback preserved, and no measurable renderer/frame regression
+outside normal drift.
+
+Actual result: keep. The backend-selection matrix covered `navigator.gpu`
+absent, insecure context, no adapter, device init failure, explicit
+`forceWebGL`, WebGPU disabled by user flag, WebGPU lost, WebGPU recovered,
+backend missing, and WebGPU available. The live game probe verified
+`render.backend=auto` and `render.backend=webgpu` both report actual WebGL2
+fallback while the WebGPU backend is not implemented. The simulated WebGPU
+device-loss probe called `device.destroy()`, observed loss reason `destroyed`,
+and recovered with generation `2` and `lostCount=1`.
+
+Visual/quality evidence: existing WebGL2 compose parity passed 8/8 after the
+boundary change. The live backend probe kept the same `Ctx`, `World`, renderer
+canvas, direct `#canvas-holder` canvas count, and finite input mouse state while
+toggling render flags.
+
+Decision: keep.
+
+Notes:
+
+- Raw backend artifact:
+  `verify-out/render-backend-selection/probe-1781506084667.json`
+- Raw perf artifact:
+  `verify-out/perf-ab-postfx.gpucompose-chaos-1781506228534.json`
+- Validation passed: `node --check scripts/probe-render-backend-selection.mjs`,
+  `node --check scripts/probe-render-backend-browser.js`,
+  `node --check scripts/perf-ab-feature.mjs`, `npm run typecheck`,
+  `npx vitest run tests/console.test.ts`, `npm run lint`,
+  `npm run probe:render-backend`, `npm run perf:ab -- postFx.gpuCompose false
+  true http://127.0.0.1:5173/ 360 4 chaos`, `npm test`, `npm run build`,
+  `node scripts/probe-compose-parity.mjs http://127.0.0.1:5173/`, and
+  `node scripts/verify-game.mjs http://127.0.0.1:5173/`.
+- The first compose-parity attempt hit `window.__game` before the existing dev
+  server finished exposing the debug handle; the immediate rerun passed all
+  assertions.
+- The raw artifacts disclose the shared dirty checkout through `git.dirty` and
+  full `git.status` metadata.
