@@ -1,26 +1,26 @@
-// Mode persistence across Vite HMR full-reloads.
+// Mode persistence across reloads (dev only).
 //
-// While you edit source, Vite often can't hot-patch a change (nothing in the
-// module graph accepts it — e.g. Game.ts / Builder.ts) and falls back to a FULL
-// page reload. That re-runs main.ts -> new Game -> the hard-coded `mode: 'build'`
-// default, dumping you back in the Sandbox no matter what you were doing.
+// Boot always resets ctx.state.mode to its 'build' (Sandbox) default, so any
+// reload — a manual browser refresh, or Vite's own full-reload when it can't
+// hot-patch a change (Game.ts / Builder.ts ...) — used to dump you back in the
+// Sandbox even when you were in Play or the Builder.
 //
-// We hook Vite's `vite:beforeFullReload` HMR event (see Game.wireModePersistence)
-// to snapshot the live mode into sessionStorage just before that reload, then
-// restore it one-shot on the next boot. The event fires ONLY for Vite's own
-// reloads: a manual refresh (F5 / location.reload), a fresh navigation, or a
-// headless `page.reload()` never emits it, so the token is absent and boot
-// behaves exactly as before (Sandbox). That keeps the verification suite — which
-// relies on reload == clean boot — unaffected, and the whole thing is inert in
-// production (import.meta.hot is undefined there, so nothing is ever saved).
+// We mirror the live top-level mode into sessionStorage on every change and
+// restore it on the next boot, so a refresh returns you to where you were.
+// Dev only (import.meta.env.DEV): production keeps its canonical Sandbox-first,
+// launcher-gated boot. sessionStorage is per-tab and clears with the tab, so
+// this never leaks across browser sessions or to other origins.
 //
-// Only the top-level mode is preserved, not the descent's level, the player's
-// position, or the open Builder document — a reload regenerates the world, so
+// Only the top-level mode is restored — not the descent's level, the player's
+// position, or the open Builder document. A reload regenerates the world, so
 // deeper state could not survive anyway; this just reopens the right room.
 
 export type AppMode = 'sandbox' | 'play' | 'builder';
 
-const KEY = 'ad-mode-before-reload';
+// Headless probes that reset to a clean slate (e.g. verify-run-launcher's
+// resetLauncherStorageAndReload) must clear this key so their reload still
+// boots into the Sandbox.
+const KEY = 'ad-mode';
 
 /**
  * Derive the current top-level app mode. The Builder rides on top of build mode
@@ -32,10 +32,10 @@ export function currentAppMode(stateMode: 'build' | 'play'): AppMode {
 }
 
 /**
- * Snapshot the mode just before a Vite full-reload. Sandbox is the default boot
- * mode, so it clears the token instead of storing it.
+ * Mirror the live mode into sessionStorage. Sandbox is the default boot mode,
+ * so it clears the key instead of storing it (keeps a fresh tab clean).
  */
-export function saveModeForReload(mode: AppMode): void {
+export function saveAppMode(mode: AppMode): void {
   try {
     if (mode === 'sandbox') sessionStorage.removeItem(KEY);
     else sessionStorage.setItem(KEY, mode);
@@ -44,14 +44,10 @@ export function saveModeForReload(mode: AppMode): void {
   }
 }
 
-/**
- * Read and clear the snapshot (one-shot, so a later manual reload boots clean).
- * Returns null when there is nothing to restore.
- */
-export function takeSavedMode(): AppMode | null {
+/** The mode to restore on boot, or null for the default Sandbox. */
+export function readAppMode(): AppMode | null {
   try {
     const value = sessionStorage.getItem(KEY);
-    sessionStorage.removeItem(KEY);
     return value === 'play' || value === 'builder' ? value : null;
   } catch {
     return null;

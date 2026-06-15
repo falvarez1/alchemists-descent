@@ -108,7 +108,10 @@ if (haveRight) {
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
   await page.waitForTimeout(1200);
-  await page.click('#mode-builder-btn');
+  // Dev mode persistence may already have reopened the Builder on reload; only
+  // click to open it if it isn't already (a click would otherwise toggle it shut).
+  const reopened = await page.evaluate(() => document.body.classList.contains('builder-open'));
+  if (!reopened) await page.click('#mode-builder-btn');
   await page.waitForTimeout(500);
   const restored = (await grid()).right;
   persisted = { target, restored };

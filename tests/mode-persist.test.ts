@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { currentAppMode, saveModeForReload, takeSavedMode } from '@/game/modePersist';
+import { currentAppMode, readAppMode, saveAppMode } from '@/game/modePersist';
 
 // The unit env is plain node; stub the two globals modePersist touches.
-const g = globalThis as unknown as { sessionStorage: unknown; document: unknown };
-let savedSession: unknown;
+const g = globalThis as unknown as { sessionStorage: Storage; document: unknown };
+let savedSession: Storage;
 let savedDoc: unknown;
 
 function fakeSession(): Storage {
@@ -35,37 +35,33 @@ afterEach(() => {
 });
 
 describe('modePersist', () => {
-  describe('save / take round-trip', () => {
+  describe('saveAppMode / readAppMode', () => {
     it('persists play and builder', () => {
-      saveModeForReload('play');
-      expect(takeSavedMode()).toBe('play');
-      saveModeForReload('builder');
-      expect(takeSavedMode()).toBe('builder');
+      saveAppMode('play');
+      expect(readAppMode()).toBe('play');
+      saveAppMode('builder');
+      expect(readAppMode()).toBe('builder');
     });
 
-    it('is one-shot: a second take returns null', () => {
-      saveModeForReload('builder');
-      expect(takeSavedMode()).toBe('builder');
-      expect(takeSavedMode()).toBeNull();
+    it('is durable, not one-shot: repeated reads keep returning it', () => {
+      saveAppMode('builder');
+      expect(readAppMode()).toBe('builder');
+      expect(readAppMode()).toBe('builder');
     });
 
     it('sandbox clears the token (the default needs no restore)', () => {
-      saveModeForReload('play');
-      saveModeForReload('sandbox');
-      expect(takeSavedMode()).toBeNull();
+      saveAppMode('play');
+      saveAppMode('sandbox');
+      expect(readAppMode()).toBeNull();
     });
 
     it('returns null when nothing was saved', () => {
-      expect(takeSavedMode()).toBeNull();
+      expect(readAppMode()).toBeNull();
     });
 
     it('ignores a corrupt token value', () => {
-      g.sessionStorage = (() => {
-        const s = fakeSession();
-        s.setItem('ad-mode-before-reload', 'bogus');
-        return s;
-      })();
-      expect(takeSavedMode()).toBeNull();
+      g.sessionStorage.setItem('ad-mode', 'bogus');
+      expect(readAppMode()).toBeNull();
     });
   });
 

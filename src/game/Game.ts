@@ -22,7 +22,7 @@ import { Mechanisms } from '@/game/Mechanisms';
 import { Pickups } from '@/game/Pickups';
 import { createWaveState, WaveDirector } from '@/game/WaveDirector';
 import { InputManager } from '@/input/InputManager';
-import { currentAppMode, saveModeForReload, takeSavedMode } from '@/game/modePersist';
+import { currentAppMode, readAppMode, saveAppMode } from '@/game/modePersist';
 import { Particles } from '@/particles/Particles';
 import { Background } from '@/render/Background';
 import { Camera } from '@/render/Camera';
@@ -185,10 +185,11 @@ export class Game {
     // Wires its DOM listeners in the constructor; lives for the page lifetime.
     const inputManager = new InputManager(this.renderer.domElement, ctx);
     this.restoreSavedMode = () => {
-      const mode = takeSavedMode();
+      if (!import.meta.env.DEV) return;
+      const mode = readAppMode();
       if (mode === 'play') inputManager.setMode('play');
       else if (mode === 'builder') builder.open();
-      // null -> nothing was saved; boot stays in the default Sandbox.
+      // null -> nothing saved; boot stays in the default Sandbox.
     };
   }
 
@@ -241,23 +242,23 @@ export class Game {
   }
 
   /**
-   * Snapshot the live mode just before a Vite HMR full-reload so the next boot
-   * returns to it (see modePersist). Fires only for Vite's own reloads, so a
-   * manual refresh or a headless page.reload() still boots clean into Sandbox
-   * and the verification suite is unaffected. Inert in production, where
-   * import.meta.hot is undefined.
+   * Mirror the live app mode into sessionStorage on every change so the next
+   * boot — a manual refresh OR Vite's own full-reload — returns to it (see
+   * modePersist). Build<->Play fires `modeChanged`; the Builder only toggles a
+   * body class, so we also watch that. Dev only; production keeps the canonical
+   * Sandbox-first, launcher-gated boot.
    */
   private wireModePersistence(): void {
-    if (!import.meta.hot || this.modePersistDisposer) return;
-    const save = (): void => saveModeForReload(currentAppMode(this.ctx.state.mode));
-    import.meta.hot.on('vite:beforeFullReload', save);
-    // Dev/test seam: lets a probe drive the real save->reload->restore chain,
-    // since Vite's own reload event can't be dispatched from page scripts.
-    (window as unknown as { __persistModeNow?: () => void }).__persistModeNow = save;
+    if (!import.meta.env.DEV || this.modePersistDisposer) return;
+    const save = (): void => saveAppMode(currentAppMode(this.ctx.state.mode));
+    const unsubscribe = this.ctx.events.on('modeChanged', save);
+    const observer = new MutationObserver(save);
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     this.modePersistDisposer = () => {
-      import.meta.hot?.off('vite:beforeFullReload', save);
-      delete (window as unknown as { __persistModeNow?: () => void }).__persistModeNow;
+      unsubscribe();
+      observer.disconnect();
     };
+    save(); // record whatever mode we booted/restored into
   }
 
   /** Fixed-timestep accumulator (the game is authored in 60Hz frames). */
