@@ -1523,6 +1523,103 @@ export class Builder {
     return group;
   }
 
+  private readonly dockSplitters: Partial<Record<'left' | 'right' | 'bottom', HTMLElement>> = {};
+  private splitterDragging: 'left' | 'right' | 'bottom' | null = null;
+
+  /**
+   * VS Code-style resize sashes: a thin draggable strip at each dock's inner
+   * edge. Positioned absolutely inside the (position:relative) workspace body
+   * and styled inline so this never touches the (concurrently-edited) CSS file.
+   */
+  private syncDockSplitters(leftSize: number, rightSize: number, bottomSize: number): void {
+    const body = this.el<HTMLDivElement>('builder-workspace-body');
+    const splitter = (dock: 'left' | 'right' | 'bottom'): HTMLElement => {
+      let el = this.dockSplitters[dock];
+      if (!el) {
+        el = document.createElement('div');
+        el.className = `builder-splitter builder-splitter-${dock}`;
+        el.setAttribute('aria-hidden', 'true');
+        el.style.cssText = `position:absolute; z-index:6; background:transparent; transition:background 0.12s ease; cursor:${
+          dock === 'bottom' ? 'row-resize' : 'col-resize'
+        };`;
+        el.addEventListener('pointerenter', () => {
+          if (this.splitterDragging === null) el!.style.background = 'rgba(56,189,248,0.5)';
+        });
+        el.addEventListener('pointerleave', () => {
+          if (this.splitterDragging !== dock) el!.style.background = 'transparent';
+        });
+        el.addEventListener('pointerdown', (event) => this.startDockSplitterDrag(event, dock));
+        body.appendChild(el);
+        this.dockSplitters[dock] = el;
+      }
+      return el;
+    };
+    const l = splitter('left');
+    if (leftSize > 0) {
+      l.style.display = '';
+      l.style.left = `${leftSize - 2}px`;
+      l.style.top = '0px';
+      l.style.bottom = '0px';
+      l.style.width = '5px';
+    } else l.style.display = 'none';
+    const r = splitter('right');
+    if (rightSize > 0) {
+      r.style.display = '';
+      r.style.right = `${rightSize - 2}px`;
+      r.style.top = '0px';
+      r.style.bottom = '0px';
+      r.style.width = '5px';
+    } else r.style.display = 'none';
+    const b = splitter('bottom');
+    if (bottomSize > 0) {
+      b.style.display = '';
+      b.style.left = `${leftSize}px`;
+      b.style.right = `${rightSize}px`;
+      b.style.bottom = `${bottomSize - 2}px`;
+      b.style.height = '5px';
+    } else b.style.display = 'none';
+  }
+
+  private startDockSplitterDrag(event: PointerEvent, dock: 'left' | 'right' | 'bottom'): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    this.splitterDragging = dock;
+    const el = this.dockSplitters[dock];
+    if (el) el.style.background = 'rgba(56,189,248,0.75)';
+    document.body.style.cursor = dock === 'bottom' ? 'row-resize' : 'col-resize';
+    const body = this.el<HTMLDivElement>('builder-workspace-body').getBoundingClientRect();
+    const onMove = (e: PointerEvent): void => {
+      e.preventDefault();
+      const size =
+        dock === 'left' ? e.clientX - body.left : dock === 'right' ? body.right - e.clientX : body.bottom - e.clientY;
+      this.resizeDock(dock, Math.round(size));
+    };
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onUp, true);
+      this.splitterDragging = null;
+      document.body.style.cursor = '';
+      if (el) el.style.background = 'transparent';
+      this.saveWorkspacePrefs();
+    };
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+  }
+
+  private resizeDock(dock: 'left' | 'right' | 'bottom', size: number): void {
+    const min = dock === 'bottom' ? 140 : 160;
+    const max = dock === 'bottom' ? 620 : 560;
+    const clamped = Math.max(min, Math.min(max, size));
+    for (const panel of this.workspaceLayout.panels) {
+      if (panel.dock !== dock || !panel.open) continue;
+      const spec = this.panelRegistry.get(panel.id);
+      panel.size = Math.max(spec?.minSize ?? min, Math.min(spec?.maxSize ?? max, clamped));
+    }
+    this.applyWorkspaceLayout();
+  }
+
   private applyWorkspaceLayout(): void {
     const left = this.el<HTMLDivElement>('builder-dock-left');
     const right = this.el<HTMLDivElement>('builder-dock-right');
@@ -1583,6 +1680,7 @@ export class Builder {
     // side docks keep their full height; size only the body's stage/bottom rows.
     this.el<HTMLDivElement>('builder-workspace-body').style.gridTemplateRows =
       bottomOpen ? `minmax(0, 1fr) ${bottomSize}px` : 'minmax(0, 1fr) 0';
+    this.syncDockSplitters(zen || cramped ? 0 : leftSize, zen || cramped ? 0 : rightSize, bottomOpen ? bottomSize : 0);
     this.lastWorkspaceSize = { w: Math.round(rootWidth), h: Math.round(this.root.getBoundingClientRect().height || window.innerHeight) };
     let floatingIndex = 0;
     const canClampFloating = this.isOpen && floating.clientWidth > 0 && floating.clientHeight > 0;
