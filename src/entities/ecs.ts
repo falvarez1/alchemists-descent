@@ -6,9 +6,9 @@ export type EntityId = number & { readonly [EntityIdBrand]: true };
 export interface EntityPoolOptions {
   /** Dense pool capacity. Omit for an unbounded pool. */
   max?: number;
-  /** First id to allocate. Defaults to 1 so 0 can stay sentinel-friendly. */
-  firstId?: number;
 }
+
+let nextEntityId = 1;
 
 /**
  * Dense, order-free entity pool for runtime objects that already want
@@ -20,12 +20,10 @@ export class EntityPool<T extends object> {
 
   private readonly ids = new WeakMap<T, EntityId>();
   private readonly slots = new Map<EntityId, number>();
-  private nextId: number;
   private readonly max: number;
 
   constructor(options: EntityPoolOptions = {}) {
     this.max = options.max ?? Number.POSITIVE_INFINITY;
-    this.nextId = normalizeFirstId(options.firstId ?? 1);
   }
 
   get size(): number {
@@ -41,8 +39,10 @@ export class EntityPool<T extends object> {
   }
 
   add(entity: T): EntityId | null {
+    const existing = this.ids.get(entity);
+    if (existing !== undefined && this.slots.has(existing)) return existing;
     if (this.full) return null;
-    const id = this.allocateId();
+    const id = allocateEntityId();
     this.list.push(entity);
     this.ids.set(entity, id);
     this.slots.set(id, this.list.length - 1);
@@ -51,8 +51,10 @@ export class EntityPool<T extends object> {
 
   create(factory: (id: EntityId) => T): T | null {
     if (this.full) return null;
-    const id = this.allocateId();
+    const id = allocateEntityId();
     const entity = factory(id);
+    const existing = this.ids.get(entity);
+    if (existing !== undefined && this.slots.has(existing)) return entity;
     this.list.push(entity);
     this.ids.set(entity, id);
     this.slots.set(id, this.list.length - 1);
@@ -117,19 +119,13 @@ export class EntityPool<T extends object> {
     this.slots.clear();
   }
 
-  private allocateId(): EntityId {
-    let candidate = normalizeFirstId(this.nextId);
-
-    while (true) {
-      const id = candidate as EntityId;
-      this.nextId = normalizeFirstId(candidate + 1);
-      if (!this.slots.has(id)) return id;
-      candidate = this.nextId;
-    }
-  }
 }
 
-/** Sparse component table keyed by EntityId for systems that do not need archetypes. */
+/**
+ * Sparse component table keyed by globally unique EntityId.
+ * Component lifetime is explicit: delete or clear component rows when the
+ * owning entity pool removes entities.
+ */
 export class ComponentStore<T> {
   private readonly values = new Map<EntityId, T>();
 
@@ -176,7 +172,9 @@ export interface Lifetime {
   life: number;
 }
 
-function normalizeFirstId(id: number): number {
-  if (!Number.isFinite(id) || id < 1) return 1;
-  return id > Number.MAX_SAFE_INTEGER ? 1 : Math.floor(id);
+function allocateEntityId(): EntityId {
+  if (nextEntityId > Number.MAX_SAFE_INTEGER) {
+    throw new Error('EntityId space exhausted');
+  }
+  return nextEntityId++ as EntityId;
 }

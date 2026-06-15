@@ -1409,6 +1409,23 @@ export class Builder {
     window.removeEventListener('pointercancel', this.onPanelPointerCancel, true);
   }
 
+  /**
+   * Start a panel drag from its dock tab. Reuses the panel pointer-drag flow:
+   * past the threshold the panel pops out as a floating ghost; dropping it on a
+   * dock reorders/moves it, dropping on the stage tears it off (VS Code style).
+   * A click without movement falls through to the tab's select handler.
+   */
+  private startPanelDragFromTab(event: PointerEvent, id: string): void {
+    if (!this.isOpen || event.button !== 0) return;
+    const panel = this.panelEl(id);
+    if (!panel || panel.classList.contains('maximized')) return;
+    this.panelDragOffset = { x: 36, y: 12 };
+    this.panelPointerDrag = { id, pointerId: event.pointerId, el: panel, startX: event.clientX, startY: event.clientY, active: false };
+    window.addEventListener('pointermove', this.onPanelPointerMove, true);
+    window.addEventListener('pointerup', this.onPanelPointerUp, true);
+    window.addEventListener('pointercancel', this.onPanelPointerCancel, true);
+  }
+
   private moveFloatingPanelPreview(id: string, point: PanelDropPoint): void {
     const pos = this.floatingPointFromClient(id, point);
     const panel = this.workspaceLayout.panels.find((p) => p.id === id);
@@ -1493,6 +1510,7 @@ export class Builder {
             this.applyWorkspaceLayout();
             this.saveWorkspacePrefs();
           },
+          onTabPointerDown: (id, event) => this.startPanelDragFromTab(event, id),
         })
       : null;
   }

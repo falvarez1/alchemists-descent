@@ -59,12 +59,16 @@ export class Critters implements CrittersApi {
     }
   }
 
-  removeAt(index: number): Critter | undefined {
-    return this.pool.removeAt(index);
+  remove(critter: Critter): Critter | undefined {
+    return this.pool.remove(critter);
   }
 
   clear(): void {
     this.pool.clear();
+  }
+
+  private removeAt(index: number): Critter | undefined {
+    return this.pool.removeAt(index);
   }
 
   update(ctx: Ctx): void {

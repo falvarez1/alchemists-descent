@@ -1,6 +1,6 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
-import type { CardId, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
+import type { CardId, Critter, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { Cell } from '@/sim/CellType';
@@ -637,8 +637,7 @@ export class Enemies implements EnemyControlApi {
         e.bobPhase += 0.22;
         let hunting = false;
         if (!targetAlive || pDist > 120) {
-          let prey = null as { x: number; y: number } | null;
-          let preyIdx = -1;
+          let prey = null as Critter | null;
           const critters = ctx.critters.list;
           for (let ci2 = 0; ci2 < critters.length; ci2++) {
             const cr = critters[ci2];
@@ -647,7 +646,6 @@ export class Enemies implements EnemyControlApi {
               cdy = cr.y - e.y;
             if (cdx * cdx + cdy * cdy < 70 * 70) {
               prey = cr;
-              preyIdx = ci2;
               break;
             }
           }
@@ -661,7 +659,7 @@ export class Enemies implements EnemyControlApi {
             if (cd < 4) {
               // gulp: a puff of wing dust and the moth is gone
               ctx.particles.burst(prey.x, prey.y, 3, null, () => packRGB(150, 140, 110), 0.8);
-              ctx.critters.removeAt(preyIdx);
+              ctx.critters.remove(prey);
             }
           }
         }
