@@ -159,6 +159,7 @@ import { FocusRouter } from '@/ui/editor/FocusRouter';
 import { Keymap } from '@/ui/editor/Keymap';
 import { MenuHost } from '@/ui/editor/MenuHost';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
+import { TabView } from '@/ui/editor/Tabs';
 import { renderInspectorItems } from '@/ui/editor/InspectorSchema';
 import { builderPanelHeader, normalizePanelChromeHandles } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle, createBuilderPanelRegistry } from '@/ui/editor/PanelRegistry';
@@ -3107,10 +3108,16 @@ export class Builder {
       });
     }
     for (const panel of panels.values()) {
-      // Run the item's own handler, then dismiss — except the file-input label,
-      // which must keep the menu alive long enough to open the OS file dialog.
+      // Run the item's own handler, then dismiss — except the file-input label
+      // (keeps the menu alive for the OS file dialog) and checkmarked toggles
+      // (kept open so several panels can be enabled without reopening the menu).
       panel.addEventListener('click', (event) => {
-        if ((event.target as HTMLElement | null)?.closest('label[for="b-import"], input[type="file"]')) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('label[for="b-import"], input[type="file"]')) return;
+        if (target?.closest('button[role="menuitemcheckbox"]')) {
+          window.setTimeout(() => this.refreshViewMenuChecks(), 0);
+          return;
+        }
         close();
       });
     }
@@ -5068,12 +5075,31 @@ export class Builder {
     host.appendChild(row);
   }
 
+  private worldTabActive: string | null = null;
+
   private buildWorldPanel(): void {
     const host = this.el<HTMLDivElement>('bw-controls');
     host.innerHTML = '';
     const levels = this.levelEntries();
     if (!this.worldgenLevelId) this.worldgenLevelId = this.levelIdForBiome(this.doc.biome);
-    const levelSection = this.worldSection(host, 'TARGET');
+    const worldTabs = new TabView(host, {
+      ariaLabel: 'World generation sections',
+      onChange: (id) => {
+        this.worldTabActive = id;
+      },
+    });
+    worldTabs.setPanes(
+      [
+        { id: 'target', label: 'Target' },
+        { id: 'skeleton', label: 'Skeleton' },
+        { id: 'decoration', label: 'Decoration' },
+        { id: 'biome', label: 'Biome Surface' },
+        { id: 'backdrop', label: 'Backdrop Grade' },
+        { id: 'sim', label: 'Live Sim' },
+      ],
+      this.worldTabActive ?? 'target',
+    );
+    const levelSection = worldTabs.paneBody('target');
     this.selectRow(
       levelSection,
       'level',
@@ -5118,7 +5144,7 @@ export class Builder {
     ]);
 
     const gen = GEN[this.doc.biome] ?? GEN.earthen;
-    const skeletonSection = this.worldSection(host, 'SKELETON');
+    const skeletonSection = worldTabs.paneBody('skeleton');
     this.selectRow(
       skeletonSection,
       'kind',
@@ -5133,7 +5159,7 @@ export class Builder {
       gen.skeleton.params = next as SkeletonSpec['params'];
     });
 
-    const decoration = this.worldSection(host, 'DECORATION');
+    const decoration = worldTabs.paneBody('decoration');
     this.editableTree(decoration, gen.goldPockets, 'goldPockets', (next) => {
       gen.goldPockets = Number(next);
     });
@@ -5150,16 +5176,16 @@ export class Builder {
       gen.machines = next as typeof gen.machines;
     });
 
-    const biomeSection = this.worldSection(host, 'BIOME SURFACE');
+    const biomeSection = worldTabs.paneBody('biome');
     this.editBiomeControls(biomeSection, this.doc.biome);
 
-    const backdropSection = this.worldSection(host, 'BACKDROP GRADE');
+    const backdropSection = worldTabs.paneBody('backdrop');
     this.editBackdropGradeControls(backdropSection);
     this.worldActionRow(backdropSection, [
       { label: 'OPEN BACKDROP', title: 'Open the visual parallax editor', run: () => this.openBackdropPreview() },
     ]);
 
-    const simSection = this.worldSection(host, 'LIVE SIM');
+    const simSection = worldTabs.paneBody('sim');
     const g = this.ctx.params.global;
     this.sliderRow(simSection, 'Simulation Speed', g.simSpeed, 0, 2, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
       g.simSpeed = v;
