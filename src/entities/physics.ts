@@ -6,7 +6,6 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Ctx, PhysicsApi } from '@/core/types';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { cellBlocksEntityWithLooseRubble } from '@/sim/collision';
-import { EMPTY_COLOR } from '@/sim/colors';
 
 export class Physics implements PhysicsApi {
   // Loose-rubble rule: a solid cell only blocks a moving body if it belongs to a
@@ -59,8 +58,7 @@ export class Physics implements PhysicsApi {
           t === Cell.Gold ? 200 : 40,
           t === Cell.Gold ? { homing: ctx.state.mode === 'play', glow: 2.0, grav: 0 } : undefined,
         );
-        world.types[i] = Cell.Empty;
-        world.colors[i] = EMPTY_COLOR;
+        world.clearCellAt(i);
         crushed++;
       }
     }

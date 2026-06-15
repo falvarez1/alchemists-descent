@@ -203,7 +203,7 @@ function renderActuator(row: LinkGraphActuatorRow): string {
     ? 'no inputs'
     : row.inputs.map((input) => `${input.sequenceIndex ? `${input.sequenceIndex}. ` : ''}${input.from?.kind ?? 'missing'}`).join(', ');
   const outputText = row.outputs.length === 0 ? 'no outputs' : row.outputs.map((output) => output.to?.kind ?? 'missing').join(', ');
-  return `<div class="blg-actuator${row.selected ? ' selected' : ''}${row.severity ? ` ${row.severity}` : ''}" role="option" tabindex="-1" aria-selected="${row.selected ? 'true' : 'false'}" data-select-id="${escAttr(row.endpoint.id)}" data-frame-id="${escAttr(row.endpoint.id)}">
+  return `<div class="blg-actuator${row.selected ? ' selected' : ''}${row.severity ? ` ${row.severity}` : ''}" role="option" tabindex="0" aria-selected="${row.selected ? 'true' : 'false'}" data-select-id="${escAttr(row.endpoint.id)}" data-frame-id="${escAttr(row.endpoint.id)}">
     <div class="bo-row-title">${esc(row.endpoint.label)} <span class="bo-badge">${esc(row.logic.toUpperCase())}</span>${row.relay ? '<span class="bo-badge">relay</span>' : ''}</div>
     <div class="bo-row-sub">in: ${esc(inputText)}</div>
     <div class="bo-row-sub">out: ${esc(outputText)}</div>
@@ -215,7 +215,7 @@ function renderLink(row: LinkGraphLinkRow): string {
   const status = row.severity ?? (row.live ? 'live' : 'dead');
   const messages = row.messages.length > 0 ? `<div class="blg-msg">${esc(row.messages.join(' | '))}</div>` : '';
   const sequence = row.sequenceIndex ? `<span class="bo-badge">seq ${row.sequenceIndex}</span>` : '';
-  return `<div class="blg-link${row.selected ? ' selected' : ''}${row.severity ? ` ${row.severity}` : ''}" role="option" tabindex="-1" aria-selected="${row.selected ? 'true' : 'false'}" data-link-id="${escAttr(row.id)}" data-select-id="${escAttr(row.to?.id ?? row.from?.id ?? '')}" data-frame-id="${escAttr(row.to?.id ?? row.from?.id ?? '')}">
+  return `<div class="blg-link${row.selected ? ' selected' : ''}${row.severity ? ` ${row.severity}` : ''}" role="option" tabindex="0" aria-selected="${row.selected ? 'true' : 'false'}" data-link-id="${escAttr(row.id)}" data-select-id="${escAttr(row.to?.id ?? row.from?.id ?? '')}" data-frame-id="${escAttr(row.to?.id ?? row.from?.id ?? '')}">
     <div class="bo-row-title">${esc(row.from?.label ?? `Missing ${row.link.fromId}`)} -&gt; ${esc(row.to?.label ?? `Missing ${row.link.toId}`)}</div>
     <div class="bo-row-sub">${esc(row.link.kind)} - ${esc(row.id)} <span class="bo-badge">${esc(status)}</span>${sequence}</div>
     ${messages}

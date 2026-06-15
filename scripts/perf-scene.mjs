@@ -2,7 +2,9 @@
 // Usage: node scripts/perf-scene.mjs <label> [url] [runs] [frames]
 // Writes verify-out/perf-<label>.json. If verify-out/perf-before.json exists
 // and label !== "before", prints a Welch t-test comparison per bucket.
-// PERF_GPU_COMPOSE=1 enables the GPU frame-composition flag for the run
+// PERF_GPU_COMPOSE=1 enables the GPU frame-composition flag for the run,
+// PERF_GPU_COMPOSE=0 disables it, and PERF_GPU_COMPOSE=current leaves the
+// current app setting untouched
 // (cross-session comparison only — scripts/perf-ab-compose.mjs is the
 // drift-proof same-session A/B).
 import { chromium } from 'playwright-core';
@@ -27,21 +29,29 @@ const label = process.argv[2] ?? 'before';
 const url = process.argv[3] ?? 'http://localhost:5173/';
 const RUNS = Number(process.argv[4] ?? 3);
 const FRAMES = Number(process.argv[5] ?? 700);
+const GPU_COMPOSE_MODE = process.env.PERF_GPU_COMPOSE ?? 'current';
+if (!['0', '1', 'current'].includes(GPU_COMPOSE_MODE)) {
+  throw new Error('PERF_GPU_COMPOSE must be 0, 1, or current');
+}
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const all = emptyBuckets(['autosaveMs']);
 let firstRunCapabilities = null;
 let webgpuCapabilities = null;
+const gpuComposeRuns = [];
 
 for (let run = 0; run < RUNS; run++) {
   const page = await newBenchmarkPage(browser, { diagnosticsLabel: `perf-scene-${run + 1}` });
   page.on('pageerror', (e) => console.error('PAGE ERROR:', String(e)));
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
-  await page.evaluate((gpuCompose) => {
-    if (gpuCompose) window.__game.ctx.state.postFx.gpuCompose = true;
-  }, process.env.PERF_GPU_COMPOSE === '1');
   await startConsoleTestRun(page, { seed: 777, settleMs: 1500 });
+  const gpuComposeAppliedBeforeScene = await page.evaluate((mode) => {
+    const ctx = window.__game.ctx;
+    if (mode === '1') ctx.state.postFx.gpuCompose = true;
+    else if (mode === '0') ctx.state.postFx.gpuCompose = false;
+    return Boolean(ctx.state.postFx.gpuCompose);
+  }, GPU_COMPOSE_MODE);
   firstRunCapabilities ??= await collectBackendCapabilities(page, 'current');
   webgpuCapabilities ??= await collectWebGpuAdapterCapabilities(page);
 
@@ -165,6 +175,7 @@ for (let run = 0; run < RUNS; run++) {
         enemies: ctx.enemies.length,
         projectiles: ctx.projectiles.length,
         authoredLights: ctx.levels.current?.authoredLights?.length ?? 0,
+        gpuComposeApplied: Boolean(ctx.state.postFx.gpuCompose),
       };
     },
     { FRAMES },
@@ -172,10 +183,16 @@ for (let run = 0; run < RUNS; run++) {
 
   addSampleBuckets(all, result.samples);
   all.autosaveMs.push(...result.saves);
+  gpuComposeRuns.push({
+    run: run + 1,
+    requested: GPU_COMPOSE_MODE,
+    appliedBeforeScene: gpuComposeAppliedBeforeScene,
+    appliedAfterScene: result.gpuComposeApplied,
+  });
   console.log(
     `run ${run + 1}/${RUNS}: ${result.samples.length} frames, autosave [${result.saves
       .map((v) => v.toFixed(1))
-      .join(', ')}]ms`,
+      .join(', ')}]ms, gpuCompose=${result.gpuComposeApplied}`,
   );
   await page.context().close();
 }
@@ -193,6 +210,10 @@ const payload = {
   url,
   runs: RUNS,
   frames: FRAMES,
+  gpuCompose: {
+    requested: GPU_COMPOSE_MODE,
+    runs: gpuComposeRuns,
+  },
   scenario: 'chaos',
   seed: 777,
   capabilities: {

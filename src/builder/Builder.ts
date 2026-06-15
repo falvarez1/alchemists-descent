@@ -251,6 +251,9 @@ const PREFERRED_BUILDER_CENTER_WIDTH = 320;
 const BUILDER_VIEWPORT_PAD = 20;
 const RUNTIME_PANEL_REFRESH_FRAMES = 12;
 const RUNTIME_OVERLAY_REFRESH_FRAMES = 4;
+const BOTTOM_PANE_ORDER = ['bottom-left', 'bottom-main', 'bottom-right'] as const;
+const BOTTOM_SIDE_PANE_MIN = 220;
+const BOTTOM_SIDE_PANE_MAX = 420;
 const BIOME_IDS = Object.keys(BIOME_DEFS) as BiomeId[];
 const WORLDGEN_LIGHT_PREFIX = 'worldgen-light-';
 const SCENE_LIGHT_PREFIX = 'scene-light-';
@@ -1057,6 +1060,7 @@ export class Builder {
       (document.getElementById('mode-build-btn') as HTMLButtonElement | null)?.click();
     }
     if (!this.returningFromPlaytest && this.ctx.state.playtestSource === 'test') {
+      this.ctx.levels.exitDisposableRuntime(this.ctx);
       this.ctx.state.playtestSource = null;
     }
     if (intent === 'current-scene') this.adoptCurrentSceneAsDocument();
@@ -1236,9 +1240,14 @@ export class Builder {
         this.draggingPanelId = null;
         this.clearWorkspaceDropState();
         if (!id || !region) return;
+        const bottomPane = region === 'bottom' ? this.bottomPaneForDrop(dock, id, e) : undefined;
         this.moveWorkspacePanel(id, region, {
-          beforeId: region === 'floating' ? null : this.dropInsertBeforeId(region, dock, id, e),
+          beforeId:
+            region === 'floating' || (region === 'bottom' && this.bottomPaneOfTarget(dock) !== bottomPane)
+              ? null
+              : this.dropInsertBeforeId(region, dock, id, e),
           floating: region === 'floating' ? this.floatingDropPosition(id, e) : undefined,
+          tabGroupId: bottomPane,
         });
         this.applyWorkspaceLayout();
         this.saveWorkspacePrefs();
@@ -1450,9 +1459,14 @@ export class Builder {
     const target = this.panelDropTargetAt(e);
     const region = target?.dataset.dock as DockRegion | undefined;
     if (target && region) {
+      const bottomPane = region === 'bottom' ? this.bottomPaneForDrop(target, drag.id, e) : undefined;
       this.moveWorkspacePanel(drag.id, region, {
-        beforeId: region === 'floating' ? null : this.dropInsertBeforeId(region, target, drag.id, e),
+        beforeId:
+          region === 'floating' || (region === 'bottom' && this.bottomPaneOfTarget(target) !== bottomPane)
+            ? null
+            : this.dropInsertBeforeId(region, target, drag.id, e),
         floating: region === 'floating' ? this.floatingPointFromClient(drag.id, e) : undefined,
+        tabGroupId: bottomPane,
       });
       this.status(`PANEL DOCKED ${region.toUpperCase()}`);
     }
@@ -1504,11 +1518,22 @@ export class Builder {
 
   private updatePanelDropTarget(point: PanelDropPoint): void {
     const target = this.panelDropTargetAt(point);
-    this.clearDropTargetHighlights(target ?? undefined);
-    if (!target) return;
-    target.classList.add('drop-target');
+    if (!target) {
+      this.clearDropTargetHighlights();
+      return;
+    }
     const region = target.dataset.dock as DockRegion | undefined;
-    if (region) this.markDockInsertion(target, region, point);
+    const bottomPane =
+      region === 'bottom' && this.draggingPanelId
+        ? this.bottomPaneForDrop(target, this.draggingPanelId, point)
+        : null;
+    const highlight =
+      bottomPane && this.bottomPaneOfTarget(target) !== bottomPane
+        ? (this.bottomPaneEls.get(bottomPane) ?? this.el<HTMLDivElement>('builder-dock-bottom'))
+        : target;
+    this.clearDropTargetHighlights(highlight);
+    highlight.classList.add('drop-target');
+    if (region) this.markDockInsertion(highlight, region, point);
   }
 
   private panelDropTargetAt(point: PanelDropPoint): HTMLElement | null {
@@ -1519,8 +1544,10 @@ export class Builder {
     return null;
   }
 
-  private readonly dockActive: Partial<Record<DockRegion, string>> = {};
-  private readonly dockTabStrips = new Map<DockRegion, { host: HTMLElement; wired: ReturnType<typeof wireTabStrip> | null }>();
+  private readonly dockActive: Partial<Record<string, string>> = {};
+  private readonly dockTabStrips = new Map<string, { host: HTMLElement; wired: ReturnType<typeof wireTabStrip> | null }>();
+  private readonly bottomPaneEls = new Map<string, HTMLElement>();
+  private readonly bottomPaneSplitters = new Map<string, HTMLElement>();
 
   /**
    * VS Code-style dock tab group: when a left/right dock holds 2+ open panels,
@@ -1528,36 +1555,46 @@ export class Builder {
    * The active panel keeps its own header, so dragging it still tears off or
    * re-docks. Single-panel docks render normally (no strip).
    */
-  private syncDockTabs(dock: DockRegion, dockEl: HTMLElement): void {
-    const open = this.workspaceLayout.panels.filter(
-      (panel) => panel.dock === dock && panel.open && this.panelEl(panel.id) !== null,
+  private syncDockTabs(dock: 'left' | 'right', dockEl: HTMLElement): void {
+    this.syncTabbedPanelGroup(
+      dock,
+      dockEl,
+      this.workspaceLayout.panels.filter((panel) => panel.dock === dock && panel.open && this.panelEl(panel.id) !== null),
+      `${dock} dock panels`,
     );
+  }
+
+  private syncTabbedPanelGroup(groupKey: string, dockEl: HTMLElement, open: WorkspaceLayout['panels'], ariaLabel: string): void {
     // The most-recently-activated panel (opened, moved into this dock, or a
     // clicked tab) wins; otherwise keep this dock's remembered tab; else last.
     const globalActive = this.workspaceLayout.activePanelId ?? undefined;
     let activeId: string | undefined;
     if (globalActive !== undefined && open.some((panel) => panel.id === globalActive)) {
       activeId = globalActive;
-    } else if (this.dockActive[dock] !== undefined && open.some((panel) => panel.id === this.dockActive[dock])) {
-      activeId = this.dockActive[dock];
+    } else if (this.dockActive[groupKey] !== undefined && open.some((panel) => panel.id === this.dockActive[groupKey])) {
+      activeId = this.dockActive[groupKey];
     } else {
       activeId = open.at(-1)?.id;
     }
-    const prevActive = this.dockActive[dock];
-    this.dockActive[dock] = activeId;
-    const existing = this.dockTabStrips.get(dock) ?? null;
+    const prevActive = this.dockActive[groupKey];
+    this.dockActive[groupKey] = activeId;
+    const existing = this.dockTabStrips.get(groupKey) ?? null;
     dockEl.classList.toggle('has-tabs', open.length > 1);
     if (open.length <= 1) {
       existing?.wired?.dispose();
       existing?.host.remove();
       if (existing) existing.wired = null;
+      for (const panel of open) {
+        const el = this.panelEl(panel.id);
+        if (el) this.setPanelElementVisible(el, true);
+      }
       return;
     }
     for (const panel of open) {
       const el = this.panelEl(panel.id);
-      if (el) el.style.display = panel.id === activeId ? '' : 'none';
+      if (el) this.setPanelElementVisible(el, panel.id === activeId);
     }
-    const group = existing ?? this.createDockTabStrip(dock);
+    const group = existing ?? this.createDockTabStrip(groupKey);
     const tabs = open.map((panel) => {
       const spec = this.panelRegistry.get(panel.id);
       return { id: panel.id, label: spec?.title ?? panel.id, closable: spec?.closePolicy !== 'required' };
@@ -1566,14 +1603,14 @@ export class Builder {
     // capture it first: a re-sync (e.g. clicking an overflowed right-side tab)
     // must not snap back to the start and hide the tab that was just clicked.
     const prevScroll = group.host.querySelector<HTMLElement>('.editor-tabs-list')?.scrollLeft ?? 0;
-    group.host.innerHTML = tabStripHtml(tabs, activeId ?? '', { ariaLabel: `${dock} dock panels` });
+    group.host.innerHTML = tabStripHtml(tabs, activeId ?? '', { ariaLabel });
     if (dockEl.firstChild !== group.host) dockEl.insertBefore(group.host, dockEl.firstChild);
     group.wired?.dispose();
     const stripEl = group.host.querySelector<HTMLElement>('.editor-tabs');
     group.wired = stripEl
       ? wireTabStrip(stripEl, {
           onSelect: (id) => {
-            this.dockActive[dock] = id;
+            this.dockActive[groupKey] = id;
             this.workspaceLayout.activePanelId = id;
             this.applyWorkspaceLayout();
             this.saveWorkspacePrefs();
@@ -1595,12 +1632,319 @@ export class Builder {
     else group.wired?.refresh();
   }
 
-  private createDockTabStrip(dock: DockRegion): { host: HTMLElement; wired: ReturnType<typeof wireTabStrip> | null } {
+  private createDockTabStrip(groupKey: string): { host: HTMLElement; wired: ReturnType<typeof wireTabStrip> | null } {
     const host = document.createElement('div');
     host.className = 'builder-dock-tabs';
     const group: { host: HTMLElement; wired: ReturnType<typeof wireTabStrip> | null } = { host, wired: null };
-    this.dockTabStrips.set(dock, group);
+    this.dockTabStrips.set(groupKey, group);
     return group;
+  }
+
+  private syncBottomDockPanes(bottom: HTMLElement): void {
+    const legacyBottomTabs = this.dockTabStrips.get('bottom');
+    if (legacyBottomTabs) {
+      legacyBottomTabs.wired?.dispose();
+      legacyBottomTabs.host.remove();
+      this.dockTabStrips.delete('bottom');
+    }
+
+    const open = this.workspaceLayout.panels.filter(
+      (panel) => panel.dock === 'bottom' && panel.open && this.panelEl(panel.id) !== null,
+    );
+    const panes = new Map<string, WorkspaceLayout['panels']>();
+    for (const panel of open) {
+      const pane = this.normalizeBottomPaneId(panel.tabGroupId) ?? this.defaultBottomPaneForPanel(panel.id);
+      panel.tabGroupId = pane;
+      const group = panes.get(pane) ?? [];
+      group.push(panel);
+      panes.set(pane, group);
+    }
+
+    bottom.classList.toggle('has-splits', panes.size > 1);
+    bottom.classList.toggle('has-tabs', [...panes.values()].some((panels) => panels.length > 1));
+    bottom.classList.toggle('has-main-pane', panes.has('bottom-main'));
+    bottom.classList.toggle('has-one-pane', panes.size === 1);
+    const used = new Set(panes.keys());
+    for (const [pane, el] of this.bottomPaneEls) {
+      if (used.has(pane)) continue;
+      this.disposeDockTabStrip(`bottom:${pane}`);
+      el.remove();
+      this.bottomPaneEls.delete(pane);
+    }
+
+    for (const pane of BOTTOM_PANE_ORDER) {
+      const panels = panes.get(pane);
+      if (!panels || panels.length === 0) continue;
+      const paneEl = this.bottomPaneEl(bottom, pane);
+      paneEl.style.setProperty('--builder-bottom-pane-size', `${this.bottomPaneSize(pane, panels)}px`);
+      for (const panel of panels) {
+        const el = this.panelEl(panel.id);
+        if (el && el.parentElement !== paneEl) paneEl.appendChild(el);
+      }
+      this.syncTabbedPanelGroup(`bottom:${pane}`, paneEl, panels, `${this.bottomPaneLabel(pane)} bottom dock panels`);
+    }
+    this.syncBottomPaneSplitters(bottom, [...panes.keys()].sort((a, b) => BOTTOM_PANE_ORDER.indexOf(a as (typeof BOTTOM_PANE_ORDER)[number]) - BOTTOM_PANE_ORDER.indexOf(b as (typeof BOTTOM_PANE_ORDER)[number])));
+  }
+
+  private bottomPaneEl(bottom: HTMLElement, pane: string): HTMLElement {
+    let el = this.bottomPaneEls.get(pane);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = `builder-bottom-pane builder-bottom-pane-${pane.replace(/^bottom-/, '')}`;
+      el.dataset.dock = 'bottom';
+      el.dataset.bottomPane = pane;
+      el.style.order = String(BOTTOM_PANE_ORDER.indexOf(pane as (typeof BOTTOM_PANE_ORDER)[number]) * 2);
+      this.bottomPaneEls.set(pane, el);
+    }
+    this.insertBottomDockChild(bottom, el, BOTTOM_PANE_ORDER.indexOf(pane as (typeof BOTTOM_PANE_ORDER)[number]) * 2);
+    return el;
+  }
+
+  private insertBottomDockChild(bottom: HTMLElement, el: HTMLElement, order: number): void {
+    el.style.order = String(order);
+    const before = [...bottom.children].find((child) => {
+      if (!(child instanceof HTMLElement) || child === el) return false;
+      const childOrder = Number(child.style.order);
+      return Number.isFinite(childOrder) && childOrder > order;
+    });
+    if (before) bottom.insertBefore(el, before);
+    else if (el.parentElement !== bottom) bottom.appendChild(el);
+  }
+
+  private disposeDockTabStrip(groupKey: string): void {
+    const group = this.dockTabStrips.get(groupKey);
+    group?.wired?.dispose();
+    group?.host.remove();
+    this.dockTabStrips.delete(groupKey);
+    delete this.dockActive[groupKey];
+  }
+
+  private bottomPaneForDrop(target: HTMLElement, panelId: string, point: PanelDropPoint): string {
+    const bottom = this.el<HTMLDivElement>('builder-dock-bottom');
+    const bottomRect = bottom.getBoundingClientRect();
+    if (bottomRect.width > 0 && point.clientX >= bottomRect.left && point.clientX <= bottomRect.right) {
+      const x = (point.clientX - bottomRect.left) / bottomRect.width;
+      if (x < 0.22) return 'bottom-left';
+      if (x > 0.78) return 'bottom-right';
+    }
+    const paneEl = target.closest<HTMLElement>('.builder-bottom-pane');
+    const pane = this.normalizeBottomPaneId(paneEl?.dataset.bottomPane);
+    if (pane && paneEl) {
+      const preferredPane = this.defaultBottomPaneForPanel(panelId);
+      if (pane === 'bottom-main' && preferredPane !== 'bottom-main') {
+        const tabList = paneEl.querySelector<HTMLElement>('.builder-dock-tabs .editor-tabs-list');
+        const tabRect = tabList?.getBoundingClientRect();
+        const inTabBand = tabRect
+          ? point.clientY >= tabRect.top - 12 && point.clientY <= tabRect.bottom + 12
+          : false;
+        if (!inTabBand) return preferredPane;
+      }
+      const rect = paneEl.getBoundingClientRect();
+      const x = rect.width > 0 ? (point.clientX - rect.left) / rect.width : 0.5;
+      if (pane === 'bottom-main') {
+        if (x < 0.22) return 'bottom-left';
+        if (x > 0.78) return 'bottom-right';
+      }
+      if (pane === 'bottom-left' && x > 0.82) return 'bottom-main';
+      if (pane === 'bottom-right' && x < 0.18) return 'bottom-main';
+      return pane;
+    }
+    if (target.id === 'builder-dock-bottom') {
+      const rect = target.getBoundingClientRect();
+      if (rect.width > 0) {
+        const x = (point.clientX - rect.left) / rect.width;
+        if (x < 0.22) return 'bottom-left';
+        if (x > 0.78) return 'bottom-right';
+      }
+    }
+    return this.defaultBottomPaneForPanel(panelId);
+  }
+
+  private bottomPaneOfTarget(target: HTMLElement): string | null {
+    return this.normalizeBottomPaneId(target.closest<HTMLElement>('.builder-bottom-pane')?.dataset.bottomPane);
+  }
+
+  private normalizeBottomPaneId(value: string | undefined): string | null {
+    return value === 'bottom-left' || value === 'bottom-main' || value === 'bottom-right' ? value : null;
+  }
+
+  private defaultBottomPaneForPanel(panelId: string): string {
+    if (panelId === 'builder-issues' || panelId === 'builder-outliner' || panelId === 'builder-runtime') return 'bottom-left';
+    if (
+      panelId === 'builder-inspector' ||
+      panelId === 'builder-world' ||
+      panelId === 'builder-global' ||
+      panelId === 'builder-postfx' ||
+      panelId === 'builder-matparams' ||
+      panelId === 'builder-proc' ||
+      panelId === 'builder-asset-details' ||
+      panelId === 'builder-prefab-details'
+    ) {
+      return 'bottom-right';
+    }
+    return 'bottom-main';
+  }
+
+  private bottomPaneSize(pane: string, panels: WorkspaceLayout['panels']): number {
+    if (pane === 'bottom-main') return 0;
+    const sizes = panels.map((panel) => {
+      const spec = this.panelRegistry.get(panel.id);
+      const preferred = panel.width ?? panel.size;
+      return Math.max(BOTTOM_SIDE_PANE_MIN, Math.min(Math.min(spec?.maxSize ?? BOTTOM_SIDE_PANE_MAX, BOTTOM_SIDE_PANE_MAX), preferred));
+    });
+    return Math.max(BOTTOM_SIDE_PANE_MIN, Math.min(BOTTOM_SIDE_PANE_MAX, Math.max(...sizes)));
+  }
+
+  private bottomPaneLabel(pane: string): string {
+    if (pane === 'bottom-left') return 'left split';
+    if (pane === 'bottom-right') return 'right split';
+    return 'main split';
+  }
+
+  private tabGroupKeyForPanel(panel: WorkspaceLayout['panels'][number]): string {
+    if (panel.dock !== 'bottom') return panel.dock;
+    const pane = this.normalizeBottomPaneId(panel.tabGroupId) ?? this.defaultBottomPaneForPanel(panel.id);
+    return `bottom:${pane}`;
+  }
+
+  private panelsInTabGroup(panel: WorkspaceLayout['panels'][number]): WorkspaceLayout['panels'] {
+    const groupKey = this.tabGroupKeyForPanel(panel);
+    return this.workspaceLayout.panels.filter((candidate) => {
+      if (!candidate.open) return false;
+      if (candidate.dock !== panel.dock) return false;
+      return this.tabGroupKeyForPanel(candidate) === groupKey;
+    });
+  }
+
+  private syncBottomPaneSplitters(bottom: HTMLElement, visiblePanes: string[]): void {
+    const needed = new Set<string>();
+    for (let i = 0; i < visiblePanes.length - 1; i++) {
+      const before = visiblePanes[i];
+      const after = visiblePanes[i + 1];
+      const key = `${before}|${after}`;
+      needed.add(key);
+      let splitter = this.bottomPaneSplitters.get(key);
+      if (!splitter) {
+        splitter = document.createElement('div');
+        splitter.className = 'builder-bottom-pane-splitter';
+        splitter.setAttribute('role', 'separator');
+        splitter.setAttribute('aria-orientation', 'vertical');
+        splitter.tabIndex = 0;
+        splitter.dataset.bottomPaneSplitter = key;
+        splitter.addEventListener('pointerdown', (event) => this.startBottomPaneResize(event, before, after, splitter!));
+        splitter.addEventListener('keydown', (event) => this.onBottomPaneSplitterKeyDown(event, splitter!));
+        this.bottomPaneSplitters.set(key, splitter);
+      }
+      const resizePane = this.resizePaneForSplitter(before, after);
+      const current = this.currentBottomPaneSize(resizePane);
+      const max = this.bottomPaneResizeMax(resizePane);
+      splitter.dataset.resizePane = resizePane;
+      splitter.setAttribute('aria-label', `Resize ${this.bottomPaneLabel(resizePane)} bottom pane`);
+      splitter.setAttribute('aria-valuemin', String(BOTTOM_SIDE_PANE_MIN));
+      splitter.setAttribute('aria-valuemax', String(max));
+      splitter.setAttribute('aria-valuenow', String(Math.max(BOTTOM_SIDE_PANE_MIN, Math.min(max, current))));
+      this.insertBottomDockChild(bottom, splitter, BOTTOM_PANE_ORDER.indexOf(before as (typeof BOTTOM_PANE_ORDER)[number]) * 2 + 1);
+    }
+    for (const [key, splitter] of this.bottomPaneSplitters) {
+      if (needed.has(key)) continue;
+      splitter.remove();
+      this.bottomPaneSplitters.delete(key);
+    }
+  }
+
+  private resizePaneForSplitter(before: string, after: string): string {
+    if (before === 'bottom-left') return before;
+    if (after === 'bottom-right') return after;
+    return before;
+  }
+
+  private startBottomPaneResize(event: PointerEvent, before: string, after: string, splitter: HTMLElement): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    splitter.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    const bottom = this.el<HTMLDivElement>('builder-dock-bottom');
+    const onMove = (e: PointerEvent): void => {
+      e.preventDefault();
+      const rect = bottom.getBoundingClientRect();
+      if (before === 'bottom-left') this.resizeBottomPane(before, Math.max(BOTTOM_SIDE_PANE_MIN, e.clientX - rect.left));
+      else if (after === 'bottom-right') this.resizeBottomPane(after, Math.max(BOTTOM_SIDE_PANE_MIN, rect.right - e.clientX));
+      this.applyWorkspaceLayout();
+    };
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onUp, true);
+      splitter.classList.remove('dragging');
+      document.body.style.cursor = '';
+      this.saveWorkspacePrefs();
+    };
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+  }
+
+  private onBottomPaneSplitterKeyDown(event: KeyboardEvent, splitter: HTMLElement): void {
+    if (
+      event.key !== 'ArrowLeft' &&
+      event.key !== 'ArrowRight' &&
+      event.key !== 'Home' &&
+      event.key !== 'End' &&
+      event.key !== 'PageUp' &&
+      event.key !== 'PageDown'
+    ) {
+      return;
+    }
+    const pane = this.normalizeBottomPaneId(splitter.dataset.resizePane);
+    if (!pane) return;
+    event.preventDefault();
+    const max = this.bottomPaneResizeMax(pane);
+    const current = this.currentBottomPaneSize(pane);
+    const step = event.shiftKey || event.key === 'PageUp' || event.key === 'PageDown' ? 48 : 16;
+    let next = current;
+    if (event.key === 'Home') next = BOTTOM_SIDE_PANE_MIN;
+    else if (event.key === 'End') next = max;
+    else {
+      const direction = event.key === 'ArrowRight' || event.key === 'PageDown' ? 1 : -1;
+      const sign = pane === 'bottom-right' ? -1 : 1;
+      next = current + direction * sign * step;
+    }
+    this.resizeBottomPane(pane, Math.max(BOTTOM_SIDE_PANE_MIN, Math.min(max, next)));
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
+    this.bottomPaneSplitters.get(splitter.dataset.bottomPaneSplitter ?? '')?.focus({ preventScroll: true });
+  }
+
+  private resizeBottomPane(pane: string, size: number): void {
+    const panels = this.workspaceLayout.panels.filter(
+      (panel) => panel.dock === 'bottom' && panel.open && (this.normalizeBottomPaneId(panel.tabGroupId) ?? this.defaultBottomPaneForPanel(panel.id)) === pane,
+    );
+    const max = this.bottomPaneResizeMax(pane);
+    const clamped = Math.max(BOTTOM_SIDE_PANE_MIN, Math.min(max, Math.round(size)));
+    for (const panel of panels) {
+      panel.width = clamped;
+    }
+  }
+
+  private currentBottomPaneSize(pane: string): number {
+    const panels = this.workspaceLayout.panels.filter(
+      (panel) => panel.dock === 'bottom' && panel.open && (this.normalizeBottomPaneId(panel.tabGroupId) ?? this.defaultBottomPaneForPanel(panel.id)) === pane,
+    );
+    if (panels.length === 0) return 252;
+    return Math.max(BOTTOM_SIDE_PANE_MIN, Math.min(this.bottomPaneResizeMax(pane), Math.max(...panels.map((panel) => panel.width ?? panel.size))));
+  }
+
+  private bottomPaneResizeMax(pane?: string): number {
+    const width = this.el<HTMLDivElement>('builder-dock-bottom').getBoundingClientRect().width || this.root.clientWidth || 720;
+    const layoutMax = Math.max(BOTTOM_SIDE_PANE_MIN, Math.min(BOTTOM_SIDE_PANE_MAX, Math.floor(width * 0.7)));
+    if (!pane) return layoutMax;
+    const panePanels = this.workspaceLayout.panels.filter(
+      (panel) => panel.dock === 'bottom' && panel.open && (this.normalizeBottomPaneId(panel.tabGroupId) ?? this.defaultBottomPaneForPanel(panel.id)) === pane,
+    );
+    if (panePanels.length === 0) return layoutMax;
+    const specMax = Math.max(...panePanels.map((panel) => this.panelRegistry.get(panel.id)?.maxSize ?? layoutMax));
+    return Math.max(BOTTOM_SIDE_PANE_MIN, Math.min(layoutMax, specMax, BOTTOM_SIDE_PANE_MAX));
   }
 
   private readonly dockSplitters: Partial<Record<'left' | 'right' | 'bottom', HTMLElement>> = {};
@@ -1719,7 +2063,7 @@ export class Builder {
       el.draggable = false;
       el.dataset.panelId = panel.id;
       this.refreshPanelDragHandles(el);
-      el.style.display = panel.open ? '' : 'none';
+      this.setPanelElementVisible(el, panel.open);
       if (panel.dock === 'floating' && !consoleMaximized) {
         const z = Math.max(0, Math.min(1_000_000, panel.z ?? 0));
         el.style.zIndex = String((panel.id === DEV_CONSOLE_PANEL_ID ? 20 : 10) + z);
@@ -1732,7 +2076,7 @@ export class Builder {
     }
     this.syncDockTabs('left', left);
     this.syncDockTabs('right', right);
-    this.syncDockTabs('bottom', bottom);
+    this.syncBottomDockPanes(bottom);
     let leftSize = this.openDockSize('left');
     let rightSize = this.openDockSize('right');
     const rootWidth = this.root.getBoundingClientRect().width || window.innerWidth;
@@ -1788,6 +2132,7 @@ export class Builder {
   private workspaceDropTargets(): HTMLElement[] {
     return [
       ...this.root.querySelectorAll<HTMLElement>('.builder-dock'),
+      ...this.root.querySelectorAll<HTMLElement>('.builder-bottom-pane'),
       ...this.root.querySelectorAll<HTMLElement>('.builder-dock-guide'),
       this.el<HTMLDivElement>('builder-stage'),
     ];
@@ -1917,6 +2262,20 @@ export class Builder {
     return (this.root.querySelector(`[id="${cssString(id)}"]`) as HTMLElement | null) ?? document.getElementById(id);
   }
 
+  private setPanelElementVisible(el: HTMLElement, visible: boolean): void {
+    el.style.display = visible ? '' : 'none';
+    el.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    if (!visible) this.releaseFocusFromPanel(el);
+  }
+
+  private releaseFocusFromPanel(panel: HTMLElement): void {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !panel.contains(active)) return;
+    const stage = this.el<HTMLElement>('builder-stage');
+    if (!stage.hasAttribute('tabindex')) stage.tabIndex = -1;
+    stage.focus({ preventScroll: true });
+  }
+
   private raiseFloatingPanel(id: string): void {
     if (!this.workspaceLayout.panels.some((panel) => panel.id === id && panel.dock === 'floating')) return;
     this.dockHost.replaceLayout(this.workspaceLayout);
@@ -2029,7 +2388,7 @@ export class Builder {
   private moveWorkspacePanel(
     id: string,
     dock: DockRegion,
-    options: { beforeId?: string | null; floating?: { x: number; y: number } } = {},
+    options: { beforeId?: string | null; floating?: { x: number; y: number }; tabGroupId?: string | null } = {},
   ): void {
     this.dockHost.replaceLayout(this.workspaceLayout);
     this.workspaceLayout = this.dockHost.movePanel(id, dock, options);
@@ -3608,6 +3967,17 @@ export class Builder {
   }
 
   private startBuilderPlaytest(spawnAt: { x: number; y: number } | null): void {
+    if (!this.doc.world) this.doc.world = captureWorldLayer(this.ctx);
+    const issues = validateDocument(this.doc);
+    this.lastIssues = issues;
+    this.lastValidationOverlay = buildValidationOverlayDiagnostics(this.doc);
+    const blockers = playtestBlockingIssues(issues, spawnAt ? 'cursor-spawn' : 'authored-spawn');
+    if (blockers.length > 0) {
+      this.renderInspector();
+      this.renderIssues(issues);
+      this.status('FIX PLAYTEST BLOCKERS FIRST', true);
+      return;
+    }
     this.returningFromPlaytest = true;
     this.builderPlaytestActive = true;
     this.lastPlaytestSpawn = spawnAt ? { ...spawnAt } : null;
@@ -3617,7 +3987,19 @@ export class Builder {
     this.prePlaytestWands = this.snapshotWands();
     if (this.prevAmbient === null) this.prevAmbient = this.ctx.params.global.ambient;
     this.close();
-    compileAndPlaytest(this.ctx, this.doc, spawnAt ? { spawnAt } : undefined);
+    if (!compileAndPlaytest(this.ctx, this.doc, spawnAt ? { spawnAt } : undefined)) {
+      this.builderPlaytestActive = false;
+      this.returningFromPlaytest = false;
+      this.lastPlaytestSpawn = null;
+      this.ctx.state.playtestSource = null;
+      if (this.prevAmbient !== null) {
+        this.ctx.params.global.ambient = this.prevAmbient;
+        this.prevAmbient = null;
+      }
+      this.open();
+      this.status('PLAYTEST COMPILE FAILED', true);
+      return;
+    }
     this.setPlaytestBanner(true);
     (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
   }
@@ -5310,7 +5692,7 @@ export class Builder {
   private openSidePanel(which: BuilderSidePanel | null): void {
     if (which === null) {
       for (const id of Object.values(Builder.SIDE_PANELS)) {
-        this.el<HTMLDivElement>(id).style.display = 'none';
+        this.setPanelElementVisible(this.el<HTMLDivElement>(id), false);
         this.setWorkspacePanelOpen(id, false);
       }
       this.root.classList.remove('b-params-open');
@@ -5319,7 +5701,7 @@ export class Builder {
       return;
     }
     const id = Builder.SIDE_PANELS[which];
-    this.el<HTMLDivElement>(id).style.display = '';
+    this.setPanelElementVisible(this.el<HTMLDivElement>(id), true);
     this.setWorkspacePanelOpen(id, true);
     this.root.classList.toggle(
       'b-params-open',
@@ -5343,7 +5725,7 @@ export class Builder {
 
   private closeSidePanel(which: BuilderSidePanel): void {
     const id = Builder.SIDE_PANELS[which];
-    this.el<HTMLDivElement>(id).style.display = 'none';
+    this.setPanelElementVisible(this.el<HTMLDivElement>(id), false);
     this.setWorkspacePanelOpen(id, false);
     this.root.classList.toggle(
       'b-params-open',
@@ -5362,7 +5744,7 @@ export class Builder {
   }
 
   private openWorkspacePanel(id: BuilderWorkspacePanelId): void {
-    this.el<HTMLDivElement>(id).style.display = '';
+    this.setPanelElementVisible(this.el<HTMLDivElement>(id), true);
     this.setWorkspacePanelOpen(id, true);
     this.applyWorkspaceLayout();
     this.renderWorkspacePanelContent(id);
@@ -5371,7 +5753,7 @@ export class Builder {
 
   private closeWorkspacePanel(id: BuilderWorkspacePanelId): void {
     if (id === 'builder-virtual-world') this.virtualWorldPanel?.cancel();
-    this.el<HTMLDivElement>(id).style.display = 'none';
+    this.setPanelElementVisible(this.el<HTMLDivElement>(id), false);
     this.setWorkspacePanelOpen(id, false);
     this.applyWorkspaceLayout();
     this.saveWorkspacePrefs();
@@ -5394,6 +5776,11 @@ export class Builder {
       getBaseSeed: () => this.ctx.state.worldSeed >>> 0,
       onPlayWindow: (def, center, previewRadius) => this.playVirtualWorldWindow(def, center, previewRadius),
       onClose: () => this.closeWorkspacePanel('builder-virtual-world'),
+      isSectionCollapsed: (id) => this.workspaceLayout.collapsedSections[id] === true,
+      onSectionCollapsed: (id, collapsed) => {
+        this.workspaceLayout.collapsedSections[id] = collapsed;
+        this.saveWorkspacePrefs();
+      },
     });
     this.refreshPanelDragHandles(panel);
     this.virtualWorldPanel.refresh();
@@ -7741,15 +8128,8 @@ export class Builder {
         }))
       )
         return;
-      this.doc = restored;
-      this.mutedLightIds.clear();
-      this.clearPlacedPrefabAnchors();
-      this.cmds.clear();
-      this.select(null);
+      this.replaceDocument(restored, 'DRAFT RESTORED');
       this.paintDirty = false;
-      this.applyDocTerrain();
-      this.syncAll();
-      this.status('DRAFT RESTORED');
     } catch {
       // a corrupt draft is just gone
     }
@@ -8916,13 +9296,14 @@ export class Builder {
     if (this.selectedIds.size === 0) return;
     const panel = this.workspaceLayout.panels.find((p) => p.id === 'builder-inspector');
     if (!panel || !panel.open || panel.dock === 'floating') return;
-    const active = this.dockActive[panel.dock];
+    const groupKey = this.tabGroupKeyForPanel(panel);
+    const active = this.dockActive[groupKey];
     if (active === 'builder-inspector') return;
     // Don't steal focus from panels you select FROM (the outliner/link graph).
     if (active === 'builder-outliner' || active === 'builder-link-graph') return;
-    const openInDock = this.workspaceLayout.panels.filter((p) => p.dock === panel.dock && p.open).length;
-    if (openInDock <= 1) return;
-    this.dockActive[panel.dock] = 'builder-inspector';
+    const openInGroup = this.panelsInTabGroup(panel).length;
+    if (openInGroup <= 1) return;
+    this.dockActive[groupKey] = 'builder-inspector';
     this.workspaceLayout.activePanelId = 'builder-inspector';
     this.applyWorkspaceLayout();
   }
@@ -8933,13 +9314,13 @@ export class Builder {
     window.clearTimeout(this.decorPreviewTimer);
     const panel = this.el<HTMLDivElement>('builder-inspector');
     if (this.selectedIds.size > 1) {
-      panel.innerHTML = renderInspectorItems(
+      this.renderInspectorPanel(
+        panel,
         multiSelectionInspectorSchema(
           this.doc.objects.filter((obj) => this.selectedIds.has(obj.id)),
           this.doc.lights.filter((light) => this.selectedIds.has(light.id)),
         ),
       );
-      this.refreshPanelDragHandles(panel);
       this.applyInspectorMixedState(panel);
       for (const b of panel.querySelectorAll<HTMLButtonElement>('button[data-align]')) {
         b.addEventListener('click', () => this.alignSelection(b.dataset.align as 'x' | 'y' | 'spreadX' | 'spreadY'));
@@ -8957,14 +9338,13 @@ export class Builder {
     }
     const obj = this.selected();
     if (!obj) {
-      panel.innerHTML = renderInspectorItems(documentInspectorSchema(this.doc, this.cmds.depth));
-      this.refreshPanelDragHandles(panel);
+      this.renderInspectorPanel(panel, documentInspectorSchema(this.doc, this.cmds.depth));
       this.wireDocumentInspector(panel);
       this.syncNavigationPanels();
       return;
     }
 
-    panel.innerHTML = renderInspectorItems(
+    this.renderInspectorPanel(panel,
       objectInspectorSchema(obj, {
         objects: this.doc.objects,
         links: this.doc.links,
@@ -8973,7 +9353,6 @@ export class Builder {
         patrolEditId: this.patrolEditId,
       }),
     );
-    this.refreshPanelDragHandles(panel);
 
     // x/y commit as move commands; params as edit-param commands.
     for (const input of panel.querySelectorAll<HTMLInputElement>('input[data-f="x"],input[data-f="y"]')) {
@@ -9091,6 +9470,25 @@ export class Builder {
     if (obj.kind === 'decor') this.wireDecorSpriteExtras(panel, obj);
     panel.querySelector('#bi-delete')?.addEventListener('click', () => void this.deleteSelection());
     this.syncNavigationPanels();
+  }
+
+  private renderInspectorPanel(panel: HTMLDivElement, items: InspectorSchemaItem[]): void {
+    const bodyItems =
+      items[0]?.kind === 'section' && items[0].label.toUpperCase() === builderPanelTitle('builder-inspector').toUpperCase()
+        ? items.slice(1)
+        : items;
+    panel.innerHTML =
+      builderPanelHeader({
+        title: builderPanelTitle('builder-inspector'),
+        closeId: 'bi-close',
+        closeLabel: 'Close inspector',
+      }) +
+      `<div class="bi-panel-body">${renderInspectorItems(bodyItems, {
+        collapsedSections: this.workspaceLayout.collapsedSections,
+      })}</div>`;
+    this.refreshPanelDragHandles(panel);
+    this.wireCollapsibleSections(panel);
+    panel.querySelector('#bi-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-inspector'));
   }
 
   private wireDocumentInspector(panel: HTMLDivElement): void {
@@ -9268,14 +9666,14 @@ export class Builder {
   }
 
   private renderLightInspector(panel: HTMLDivElement, light: EditorLight): void {
-    panel.innerHTML = renderInspectorItems(
+    this.renderInspectorPanel(
+      panel,
       lightInspectorSchema(light, {
         presetIds: Object.keys(LIGHT_PRESETS),
         solo: this.soloLightId === light.id,
         muted: this.mutedLightIds.has(light.id),
       }),
     );
-    this.refreshPanelDragHandles(panel);
 
     for (const field of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-lf]')) {
       field.addEventListener('change', () => {
@@ -9633,6 +10031,7 @@ export class Builder {
       selectedIds: this.assetSelectedIds,
       hiddenSelectedCount,
       batchDeleteBlockedReason,
+      sourceNote: 'Editable document, prefab, and sprite assets are stored in this browser library. Project-store sync is not connected yet.',
       stats: database.stats(),
       collapsedSections: this.workspaceLayout.collapsedSections,
     });
@@ -9774,7 +10173,7 @@ export class Builder {
         const record = database.get(assetId);
         if (record) this.selectPrefabAssetRecord(record, true);
         this.setWorkspacePanelOpen('builder-asset-details', true);
-        this.el<HTMLDivElement>('builder-asset-details').style.display = '';
+        this.setPanelElementVisible(this.el<HTMLDivElement>('builder-asset-details'), true);
         this.applyWorkspaceLayout();
         this.updateAssetBrowserSelection(panel);
         this.renderAssetDetails();
@@ -9989,7 +10388,7 @@ export class Builder {
     this.prefabSelectedAnchorId = prefab.anchors?.[0]?.id ?? null;
     if (openDetails) {
       this.setWorkspacePanelOpen('builder-prefab-details', true);
-      this.el<HTMLDivElement>('builder-prefab-details').style.display = '';
+      this.setPanelElementVisible(this.el<HTMLDivElement>('builder-prefab-details'), true);
       this.applyWorkspaceLayout();
       this.saveWorkspacePrefs();
     }
@@ -10430,7 +10829,7 @@ export class Builder {
     if (record.kind === 'document' && isDocumentAsset(record.payload)) {
       const sourceDoc = record.source.storage === 'document' ? this.doc : record.payload;
       const doc = structuredClone(sourceDoc);
-      embedSprites(doc, this.sprites);
+      embedSprites(doc, this.sprites, { preferEmbedded: record.source.storage !== 'document' });
       return {
         filename: `${doc.name || 'level'}.builder.json`,
         mime: 'application/json',
@@ -10542,9 +10941,8 @@ export class Builder {
         ].filter(Boolean).join('\n'),
         'Reimport Blocked',
       );
-      const result = this.assetStore.reimportJson(record, input);
-      this.status(result.message, true);
-      this.refreshAssetLibraries();
+      const reason = preview.errors.concat(preview.warnings)[0] ?? 'preview rejected';
+      this.status('REIMPORT BLOCKED: ' + reason.toUpperCase(), true);
       return;
     }
     if (!preview.sameContent) {
@@ -10796,25 +11194,49 @@ export class Builder {
   }
 
   private wireSelectAndFrameRows(panel: HTMLElement): void {
-    for (const row of panel.querySelectorAll<HTMLElement>('[data-select-id]')) {
+    const rows = [...panel.querySelectorAll<HTMLElement>('[data-select-id]')].filter((row) => row.tagName !== 'BUTTON');
+    for (const row of rows) {
       if (row.tagName === 'BUTTON') continue;
       row.addEventListener('click', (event) => {
         const target = event.target as HTMLElement | null;
         if (target?.closest('button, input, textarea, select, label, [contenteditable="true"]')) return;
-        const ids = this.rowSelectionIds(row);
-        if (ids.length > 1) this.selectMany(ids);
-        else if (ids[0]) this.select(ids[0]);
+        this.selectStructureRow(row);
       });
       row.addEventListener('dblclick', (event) => {
         const target = event.target as HTMLElement | null;
         if (target?.closest('button, input, textarea, select, label, [contenteditable="true"]')) return;
-        const id = row.dataset.frameId || row.dataset.selectId;
-        if (id) {
-          const ids = this.rowSelectionIds(row);
-          if (ids.length > 1) this.selectMany(ids);
-          else this.select(id);
-          this.frameSelection();
+        this.frameStructureRow(row);
+      });
+      row.addEventListener('keydown', (event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('button, input, textarea, select, label, [contenteditable="true"]')) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          this.selectStructureRow(row);
+          return;
         }
+        if (event.key.toLowerCase() === 'f' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+          event.preventDefault();
+          this.frameStructureRow(row);
+          return;
+        }
+        if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+          this.openStructureRowContextMenu(event, row);
+          return;
+        }
+        const next =
+          event.key === 'ArrowDown'
+            ? rows[rows.indexOf(row) + 1]
+            : event.key === 'ArrowUp'
+              ? rows[rows.indexOf(row) - 1]
+              : event.key === 'Home'
+                ? rows[0]
+                : event.key === 'End'
+                  ? rows[rows.length - 1]
+                  : null;
+        if (!next || next === row) return;
+        event.preventDefault();
+        next.focus({ preventScroll: true });
       });
       row.addEventListener('contextmenu', (event) => {
         const target = event.target as HTMLElement | null;
@@ -10831,6 +11253,19 @@ export class Builder {
     }
   }
 
+  private selectStructureRow(row: HTMLElement): void {
+    const ids = this.rowSelectionIds(row);
+    if (ids.length > 1) this.selectMany(ids);
+    else if (ids[0]) this.select(ids[0]);
+  }
+
+  private frameStructureRow(row: HTMLElement): void {
+    const id = row.dataset.frameId || row.dataset.selectId;
+    if (!id) return;
+    this.selectStructureRow(row);
+    this.frameSelection();
+  }
+
   private rowSelectionIds(row: HTMLElement): string[] {
     const ids = (row.dataset.selectIds ?? '')
       .split(',')
@@ -10840,7 +11275,7 @@ export class Builder {
     return row.dataset.selectId ? [row.dataset.selectId] : [];
   }
 
-  private openStructureRowContextMenu(event: MouseEvent, row: HTMLElement): void {
+  private openStructureRowContextMenu(event: MouseEvent | KeyboardEvent, row: HTMLElement): void {
     const panel = row.closest<HTMLElement>('[data-panel-id], #builder-outliner, #builder-link-graph');
     const panelId = panel?.dataset.panelId ?? panel?.id ?? '';
     const ids = this.rowSelectionIds(row);
@@ -10853,11 +11288,16 @@ export class Builder {
     if (commandIds.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
+    const rect = row.getBoundingClientRect();
+    const cursor =
+      event instanceof MouseEvent && (event.clientX !== 0 || event.clientY !== 0)
+        ? { x: event.clientX, y: event.clientY }
+        : { x: rect.left + Math.min(32, rect.width / 2), y: rect.top + Math.min(18, rect.height / 2) };
     this.menus.showCommandMenu({
       id: `row:${row.dataset.rowType ?? 'record'}:${selectId ?? linkId ?? ''}`,
       registry: this.uiCommands,
       commandIds,
-      cursor: { x: event.clientX, y: event.clientY },
+      cursor,
       onStatus: (message, error) => this.status(message, error),
     });
   }

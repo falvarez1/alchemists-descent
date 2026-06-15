@@ -327,6 +327,29 @@ const floatWorkspacePanel = async (panelId, ratioX, ratioY) => {
   await page.waitForTimeout(120);
   return true;
 };
+
+const dockWorkspacePanel = async (panelId, dockId, yOffset = 48, xRatio = 0.5) => {
+  await activatePanel(panelId);
+  const start = await page.evaluate((id) => {
+    const panel = document.getElementById(id);
+    const handle = panel?.querySelector('[data-panel-handle]');
+    const r = handle?.getBoundingClientRect();
+    return r && r.width > 0 && r.height > 0 ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+  }, panelId);
+  const drop = await page.evaluate(([id, offset, ratio]) => {
+    const r = document.getElementById(id)?.getBoundingClientRect();
+    return r
+      ? { x: r.left + r.width * Math.max(0.05, Math.min(0.95, ratio)), y: r.top + Math.min(offset, Math.max(12, r.height - 12)) }
+      : null;
+  }, [dockId, yOffset, xRatio]);
+  if (!start || !drop) return false;
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(drop.x, drop.y, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  return true;
+};
 await floatWorkspacePanel('builder-palette', 0.36, 0.30);
 await floatWorkspacePanel('builder-inspector', 0.40, 0.34);
 const stackedBeforeRaise = await page.evaluate(() => {
@@ -473,12 +496,208 @@ check(
 );
 await page.click('#b-reset-workspace');
 await page.waitForTimeout(150);
+await page.evaluate(() => document.getElementById('bp-world-map-btn')?.click());
+await page.waitForTimeout(300);
+await page.evaluate(() => document.getElementById('b-validate')?.click());
+await page.waitForTimeout(160);
+await dockWorkspacePanel('builder-issues', 'builder-dock-bottom', 70, 0.10);
+await dockWorkspacePanel('builder-inspector', 'builder-dock-bottom', 70, 0.90);
+await page.evaluate(() => document.getElementById('bp-global-btn')?.click());
+await page.waitForTimeout(120);
+await dockWorkspacePanel('builder-global', 'builder-dock-bottom', 70, 0.90);
+const bottomIds = ['builder-issues', 'builder-virtual-world', 'builder-inspector', 'builder-global'];
+const expectedBottomTitles = {
+  'builder-issues': 'VALIDATION ISSUES',
+  'builder-virtual-world': 'WORLD MAP',
+  'builder-inspector': 'INSPECTOR',
+  'builder-global': 'GLOBAL CONTROLS',
+};
+const bottomChrome = [];
+for (const id of bottomIds) {
+  await activatePanel(id);
+  await page.waitForTimeout(80);
+  bottomChrome.push(await page.evaluate(({ panelId, expectedTitles }) => {
+    const panel = document.getElementById(panelId);
+    const pane = panel?.closest('.builder-bottom-pane');
+    const head = panel?.querySelector('.bi-head[data-panel-handle]');
+    const close = panel?.querySelector('.b-close');
+    const pcs = panel ? getComputedStyle(panel) : null;
+    const hcs = head ? getComputedStyle(head) : null;
+    const ccs = close ? getComputedStyle(close) : null;
+    return {
+      id: panelId,
+      parent: panel?.parentElement?.id ?? '',
+      pane: pane?.dataset.bottomPane ?? '',
+      visible: panel ? getComputedStyle(panel).display !== 'none' : false,
+      title: head?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      titleOk: (head?.textContent?.replace(/\s+/g, ' ').trim() ?? '').startsWith(expectedTitles[panelId] ?? ''),
+      close: close instanceof HTMLButtonElement && close.getAttribute('aria-label') !== '',
+      margin: pcs ? `${pcs.marginTop}/${pcs.marginLeft}` : '',
+      padding: pcs ? `${pcs.paddingTop}/${pcs.paddingLeft}` : '',
+      font: hcs ? `${hcs.fontSize}/${hcs.letterSpacing}/${hcs.textTransform}` : '',
+      headBox: hcs ? `${hcs.minHeight}/${hcs.paddingTop}/${hcs.paddingRight}/${hcs.paddingBottom}/${hcs.paddingLeft}` : '',
+      closeBox: ccs ? `${ccs.width}/${ccs.height}/${ccs.paddingTop}/${ccs.marginLeft}` : '',
+    };
+  }, { panelId: id, expectedTitles: expectedBottomTitles }));
+}
+const bottomTabs = await page.evaluate((ids) => ({
+  rootTabs: document.getElementById('builder-dock-bottom')?.querySelectorAll(':scope > .builder-dock-tabs').length ?? -1,
+  childOrder: [...document.getElementById('builder-dock-bottom')?.children ?? []]
+    .map((child) => child instanceof HTMLElement ? child.dataset.bottomPane ?? child.dataset.bottomPaneSplitter ?? '' : '')
+    .filter(Boolean),
+  panes: [...document.querySelectorAll('#builder-dock-bottom .builder-bottom-pane')].map((pane) => ({
+    id: pane.dataset.bottomPane,
+    width: Math.round(pane.getBoundingClientRect().width),
+    tabs: [...pane.querySelectorAll('.builder-dock-tabs .editor-tab')].map((tab) => tab.dataset.tabId),
+    panels: ids.filter((id) => document.getElementById(id)?.closest('.builder-bottom-pane') === pane),
+  })),
+  splitters: [...document.querySelectorAll('#builder-dock-bottom .builder-bottom-pane-splitter')].map((splitter) => ({
+    id: splitter.dataset.bottomPaneSplitter,
+    min: splitter.getAttribute('aria-valuemin'),
+    max: Number(splitter.getAttribute('aria-valuemax') ?? 0),
+    now: Number(splitter.getAttribute('aria-valuenow') ?? 0),
+    tabIndex: splitter.tabIndex,
+    role: splitter.getAttribute('role'),
+  })),
+  displayed: ids.filter((id) => getComputedStyle(document.getElementById(id)).display !== 'none'),
+}), bottomIds);
+check(
+  'bottom dock supports VS Code-style split groups plus local tabs',
+  bottomTabs.rootTabs === 0 &&
+    bottomTabs.panes.some((pane) => pane.id === 'bottom-left' && pane.panels.includes('builder-issues')) &&
+    bottomTabs.panes.some((pane) => pane.id === 'bottom-main' && pane.panels.includes('builder-virtual-world')) &&
+    bottomTabs.panes.some((pane) => pane.id === 'bottom-right' && pane.panels.includes('builder-inspector') && pane.panels.includes('builder-global')) &&
+    bottomTabs.childOrder.length === 5 &&
+    bottomTabs.childOrder[0] === 'bottom-left' &&
+    bottomTabs.childOrder[1] === 'bottom-left|bottom-main' &&
+    bottomTabs.childOrder[2] === 'bottom-main' &&
+    bottomTabs.childOrder[3] === 'bottom-main|bottom-right' &&
+    bottomTabs.childOrder[4] === 'bottom-right' &&
+    bottomTabs.splitters.some((splitter) => splitter.id === 'bottom-left|bottom-main' && splitter.min === '220' && splitter.max <= 420 && splitter.tabIndex === 0 && splitter.role === 'separator') &&
+    bottomTabs.splitters.some((splitter) => splitter.id === 'bottom-main|bottom-right' && splitter.min === '220' && splitter.max <= 420 && splitter.tabIndex === 0 && splitter.role === 'separator') &&
+    bottomTabs.displayed.length === 3 &&
+    bottomChrome.every((row) => row.parent !== 'builder-dock-bottom' && row.close && row.titleOk && row.margin === '0px/0px' && row.padding === '0px/0px') &&
+    new Set(bottomChrome.map((row) => row.font)).size === 1 &&
+    new Set(bottomChrome.map((row) => row.headBox)).size === 1 &&
+    new Set(bottomChrome.map((row) => row.closeBox)).size === 1,
+  JSON.stringify({ bottomTabs, bottomChrome }),
+);
+await activatePanel('builder-inspector');
+const resizeStart = await page.evaluate(() => {
+  const splitter = [...document.querySelectorAll('#builder-dock-bottom .builder-bottom-pane-splitter')]
+    .find((el) => el.dataset.bottomPaneSplitter === 'bottom-main|bottom-right');
+  const pane = document.querySelector('#builder-dock-bottom .builder-bottom-pane[data-bottom-pane="bottom-right"]');
+  const r = splitter?.getBoundingClientRect();
+  return r && pane ? { x: r.left + r.width / 2, y: r.top + r.height / 2, width: Math.round(pane.getBoundingClientRect().width) } : null;
+});
+if (resizeStart) {
+  await page.mouse.move(resizeStart.x, resizeStart.y);
+  await page.mouse.down();
+  await page.mouse.move(resizeStart.x - 80, resizeStart.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(140);
+}
+const resizeEnd = await page.evaluate((start) => {
+  const pane = document.querySelector('#builder-dock-bottom .builder-bottom-pane[data-bottom-pane="bottom-right"]');
+  return {
+    hadStart: start !== null,
+    before: start?.width ?? 0,
+    after: pane ? Math.round(pane.getBoundingClientRect().width) : 0,
+  };
+}, resizeStart);
+check(
+  'bottom split sash resizes adjacent panel groups',
+  resizeEnd.hadStart && resizeEnd.after > resizeEnd.before + 24,
+  JSON.stringify(resizeEnd),
+);
+await page.focus('#builder-dock-bottom .builder-bottom-pane-splitter[data-bottom-pane-splitter="bottom-main|bottom-right"]');
+await page.keyboard.press('Home');
+await page.waitForTimeout(100);
+const keyboardResize = await page.evaluate(() => {
+  const pane = document.querySelector('#builder-dock-bottom .builder-bottom-pane[data-bottom-pane="bottom-right"]');
+  const splitter = document.querySelector('#builder-dock-bottom .builder-bottom-pane-splitter[data-bottom-pane-splitter="bottom-main|bottom-right"]');
+  return {
+    active: document.activeElement === splitter,
+    width: pane ? Math.round(pane.getBoundingClientRect().width) : 0,
+    min: splitter?.getAttribute('aria-valuemin') ?? '',
+    now: splitter?.getAttribute('aria-valuenow') ?? '',
+    outline: splitter ? getComputedStyle(splitter).outlineStyle : '',
+  };
+});
+check(
+  'bottom split sash keyboard resize matches rendered min and has focus affordance',
+  keyboardResize.active && keyboardResize.width <= 224 && keyboardResize.min === '220' && keyboardResize.now === '220' && keyboardResize.outline !== 'none',
+  JSON.stringify(keyboardResize),
+);
+await activatePanel('builder-virtual-world');
+const worldMapCollapse = await page.evaluate(() => {
+  const button = document.querySelector('#builder-virtual-world [data-section-toggle="virtualWorld.controls.preview"]');
+  if (button instanceof HTMLElement) button.click();
+  const section = button?.closest('.editor-section');
+  return {
+    collapsed: section?.classList.contains('collapsed') === true,
+    expanded: button?.getAttribute('aria-expanded') ?? '',
+    controls: button?.getAttribute('aria-controls') ?? '',
+  };
+});
+check(
+  'World Map sections use shared collapsible section semantics',
+  worldMapCollapse.collapsed && worldMapCollapse.expanded === 'false' && worldMapCollapse.controls !== '',
+  JSON.stringify(worldMapCollapse),
+);
+await activatePanel('builder-inspector');
+const inspectorCollapse = await page.evaluate(() => {
+  const button = document.querySelector('#builder-inspector [data-section-toggle]');
+  if (button instanceof HTMLElement) button.click();
+  const section = button?.closest('.editor-section');
+  const cs = button ? getComputedStyle(button) : null;
+  const palette = document.querySelector('#builder-palette .bp-head');
+  const ps = palette ? getComputedStyle(palette) : null;
+  return {
+    collapsed: section?.classList.contains('collapsed') === true,
+    expanded: button?.getAttribute('aria-expanded') ?? '',
+    controls: button?.getAttribute('aria-controls') ?? '',
+    sameFont: Boolean(cs && ps && cs.fontSize === ps.fontSize && cs.fontWeight === ps.fontWeight && cs.letterSpacing === ps.letterSpacing),
+    justify: cs?.justifyContent ?? '',
+  };
+});
+check(
+  'Inspector sections collapse with Palette-consistent header layout',
+  inspectorCollapse.collapsed &&
+    inspectorCollapse.expanded === 'false' &&
+    inspectorCollapse.controls !== '' &&
+    inspectorCollapse.sameFont &&
+    inspectorCollapse.justify === 'flex-start',
+  JSON.stringify(inspectorCollapse),
+);
+await page.click('#b-reset-workspace');
+await page.waitForTimeout(150);
 await page.evaluate(() => {
   const sw = document.querySelector('.bp-swatch[data-el="11"]'); // lava
   sw.click();
 });
 let el = await page.evaluate(() => window.__game.ctx.state.currentElement);
 check('clicking a swatch arms the material', el === 11, `got ${el}`);
+const swatchA11y = await page.evaluate(() => {
+  const active = document.querySelector('.bp-swatch[data-el="11"]');
+  const swatches = [...document.querySelectorAll('.bp-swatch')];
+  return {
+    activePressed: active?.getAttribute('aria-pressed') ?? '',
+    activeLabel: active?.getAttribute('aria-label') ?? '',
+    allButtons: swatches.every((swatch) => swatch instanceof HTMLButtonElement && swatch.type === 'button'),
+    allLabels: swatches.every((swatch) => (swatch.getAttribute('aria-label') ?? '').startsWith('Arm material: ')),
+    iconsHidden: swatches.every((swatch) => [...swatch.children].every((child) => child.getAttribute('aria-hidden') === 'true')),
+  };
+});
+check(
+  'material swatches expose accessible pressed state',
+  swatchA11y.activePressed === 'true' &&
+    swatchA11y.activeLabel.includes('Lava') &&
+    swatchA11y.allButtons &&
+    swatchA11y.allLabels &&
+    swatchA11y.iconsHidden,
+  JSON.stringify(swatchA11y),
+);
 await page.evaluate(() => {
   const r = document.getElementById('bp-brush');
   r.value = '12';
@@ -692,6 +911,44 @@ await page.evaluate(() => {
   // restore the default so later light checks aren't washed out
   window.__game.ctx.params.global.ambient = 0.18;
 });
+await page.evaluate(() => document.getElementById('bp-global-btn')?.click());
+await page.waitForTimeout(150);
+const globalSections = await page.evaluate(() => {
+  const panel = document.getElementById('builder-global');
+  const paletteHead = document.querySelector('#builder-palette .bp-head');
+  const first = panel?.querySelector('[data-section-toggle]');
+  const paletteStyle = paletteHead ? getComputedStyle(paletteHead) : null;
+  const firstStyle = first ? getComputedStyle(first) : null;
+  if (first instanceof HTMLElement) first.click();
+  const section = first?.closest('.editor-section');
+  return {
+    visible: panel ? getComputedStyle(panel).display !== 'none' : false,
+    toggles: panel?.querySelectorAll('[data-section-toggle]').length ?? 0,
+    allAria: [...(panel?.querySelectorAll('[data-section-toggle]') ?? [])].every(
+      (button) => button.getAttribute('aria-controls') && button.getAttribute('aria-expanded'),
+    ),
+    collapsed: section?.classList.contains('collapsed') === true,
+    expanded: first?.getAttribute('aria-expanded') ?? '',
+    sameFont: Boolean(
+      paletteStyle &&
+        firstStyle &&
+        paletteStyle.fontSize === firstStyle.fontSize &&
+        paletteStyle.fontWeight === firstStyle.fontWeight &&
+        paletteStyle.letterSpacing === firstStyle.letterSpacing &&
+        paletteStyle.textTransform === firstStyle.textTransform,
+    ),
+  };
+});
+check(
+  'Global Controls sections collapse with Palette-consistent section chrome',
+  globalSections.visible &&
+    globalSections.toggles >= 4 &&
+    globalSections.allAria &&
+    globalSections.collapsed &&
+    globalSections.expanded === 'false' &&
+    globalSections.sameFont,
+  JSON.stringify(globalSections),
+);
 // arming LAVA AUTO-OPENS its tuning window (no extra click needed)
 await page.evaluate(() => {
   document.querySelector('.bp-swatch[data-el="11"]').click();
@@ -1375,12 +1632,14 @@ await page.keyboard.press('Escape'); // enemy tool is sticky
 p = await toClient(700, 616);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(100);
+await activatePanel('builder-inspector');
 await page.evaluate(() => {
   const k = document.querySelector('#builder-inspector select[data-p="kind"]');
   k.value = 'golem';
   k.dispatchEvent(new Event('change'));
 });
 await page.waitForTimeout(100);
+await page.waitForSelector('#bi-patrol', { state: 'visible', timeout: 3000 });
 await page.click('#bi-patrol');
 for (const [wx, wy] of [[650, 616], [740, 616]]) {
   const q = await toClient(wx, wy);
@@ -1444,6 +1703,10 @@ await page.waitForFunction(
 await page.waitForFunction(
   () => {
     const ctx = window.__game.ctx;
+    for (let n = 0; n < 120; n++) {
+      ctx.state.frameCount++;
+      ctx.mechanisms.update(ctx);
+    }
     const w = ctx.world;
     let water = 0;
     for (let y = 495; y < 625; y++) for (let x = 580; x < 620; x++) if (w.types[w.idx(x, y)] === 2) water++;
@@ -1556,6 +1819,7 @@ check('region bake undoes as one command', scarGold === 0, `got ${scarGold}`);
 console.log('-- rotate, note, solo');
 await activatePanel('builder-inspector');
 await placeAt('door', 600, 560);
+await activatePanel('builder-inspector');
 await page.click('#bi-rotate');
 await page.waitForTimeout(120);
 const rot = await page.evaluate(() => ({

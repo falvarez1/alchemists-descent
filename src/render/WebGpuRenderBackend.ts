@@ -62,6 +62,19 @@ interface ThreeGpuBackendProbe {
   };
 }
 
+const WEBGPU_COMPOSE_LIMIT_KEYS = [
+  'maxTextureDimension2D',
+  'maxBindGroups',
+  'maxBindingsPerBindGroup',
+  'maxSampledTexturesPerShaderStage',
+  'maxSamplersPerShaderStage',
+  'maxStorageTexturesPerShaderStage',
+  'maxStorageBuffersPerShaderStage',
+  'maxUniformBufferBindingSize',
+  'maxStorageBufferBindingSize',
+  'maxBufferSize',
+] as const;
+
 type TslUvNode = NonNullable<Parameters<typeof texture>[1]>;
 type TslRgbNode = ReturnType<typeof texture>['rgb'];
 
@@ -103,6 +116,21 @@ function shouldSimulateInitFailure(): boolean {
   );
 }
 
+function collectWebGpuFeatures(device: ThreeGpuBackendProbe['device']): string[] {
+  return Array.from(device?.features ?? []).sort();
+}
+
+function collectWebGpuLimits(device: ThreeGpuBackendProbe['device']): Record<string, number> | null {
+  const limits = device?.limits;
+  if (!limits) return null;
+  const result: Record<string, number> = {};
+  for (const key of WEBGPU_COMPOSE_LIMIT_KEYS) {
+    const value = limits[key];
+    if (typeof value === 'number') result[key] = value;
+  }
+  return result;
+}
+
 /**
  * Phase 3 WebGPU presentation backend. It deliberately keeps terrain
  * composition on the existing CPU path; Phase 4 owns the WebGPU compose port.
@@ -125,6 +153,9 @@ export class WebGpuRenderBackend implements RendererBackend {
   private initReason = 'webgpu-initializing';
   private initError: string | null = null;
   private actualBackend: 'webgpu' | 'webgl2' | 'unknown' = 'unknown';
+  private deviceFeatures: string[] = [];
+  private deviceLimits: Record<string, number> | null = null;
+  private timestampQueryAvailable: boolean | null = null;
 
   private readonly bloomEnabled = uniform(1);
   private readonly lensEnabled = uniform(1);
@@ -293,6 +324,9 @@ export class WebGpuRenderBackend implements RendererBackend {
       await this.renderer.init();
       this.actualBackend = backendName(this.renderer);
       const backend = this.renderer.backend as unknown as ThreeGpuBackendProbe;
+      this.deviceFeatures = collectWebGpuFeatures(backend.device);
+      this.deviceLimits = collectWebGpuLimits(backend.device);
+      this.timestampQueryAvailable = this.deviceFeatures.includes('timestamp-query');
       if (this.actualBackend === 'webgpu' && hasLifecycleDevice(backend.device)) {
         this.deviceLifecycle.trackDevice(backend.device);
       }
@@ -361,6 +395,9 @@ export class WebGpuRenderBackend implements RendererBackend {
         backendImplemented: true,
         adapter: navigatorGpuAvailable() ? 'available' : 'unavailable',
         device: lifecycle.state === 'lost' ? 'lost' : webgpuActive ? 'available' : this.initState === 'failed' ? 'failed' : 'unchecked',
+        deviceFeatures: this.deviceFeatures,
+        deviceLimits: this.deviceLimits,
+        timestampQueryAvailable: this.timestampQueryAvailable,
         lostCount: lifecycle.lostCount,
         lastLossReason: lifecycle.lastLossReason,
         lastLossMessage: lifecycle.lastLossMessage,
@@ -377,6 +414,16 @@ export class WebGpuRenderBackend implements RendererBackend {
 
   render(ctx: Ctx): void {
     if (this.initState !== 'active') return;
+    let ox = -(ctx.camera.x - Math.floor(ctx.camera.x)) * (2 / VIEW_W);
+    let oy = (ctx.camera.y - Math.floor(ctx.camera.y)) * (2 / VIEW_H);
+    if (ctx.fx.screenShake > 0.0005) {
+      ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
+      oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
+      ctx.fx.screenShake *= 0.88;
+    } else {
+      ctx.fx.screenShake = 0;
+    }
+
     const post = ctx.state.postFx;
     this.bloomEnabled.value = post.enabled && post.bloomEnabled ? 1 : 0;
     this.lensEnabled.value = post.enabled && post.lensEnabled ? 1 : 0;
@@ -394,15 +441,6 @@ export class WebGpuRenderBackend implements RendererBackend {
 
     if (ctx.fx.bloomKick > 0.001) ctx.fx.bloomKick *= 0.86;
     else ctx.fx.bloomKick = 0;
-    if (ctx.fx.screenShake > 0.0005) ctx.fx.screenShake *= 0.88;
-    else ctx.fx.screenShake = 0;
-
-    let ox = -(ctx.camera.x - Math.floor(ctx.camera.x)) * (2 / VIEW_W);
-    let oy = (ctx.camera.y - Math.floor(ctx.camera.y)) * (2 / VIEW_H);
-    if (ctx.fx.screenShake > 0.0005) {
-      ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
-      oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
-    }
     this.quadOffset.value.set(ox * ctx.camera.zoom, oy * ctx.camera.zoom);
     this.quadScale.value.set(
       (1 + 4 / VIEW_W) * ctx.camera.zoom,

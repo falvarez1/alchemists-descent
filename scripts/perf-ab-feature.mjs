@@ -309,10 +309,11 @@ const result = await page.evaluate(
       }
     };
 
-    const addAuthoredLights = (px, py, count) => {
+    const addAuthoredLights = (px, py, count, options = {}) => {
       const runtime = ctx.levels.current;
       if (!runtime) return;
       runtime.authoredLights ??= [];
+      const occluded = options.occluded !== false;
       for (let i = 0; i < count; i++) {
         const row = Math.floor(i / 8);
         const col = i % 8;
@@ -328,7 +329,7 @@ const result = await page.evaluate(
           flicker: 0.12,
           flickerPhase: i * 0.73,
           falloff: 'soft',
-          occluded: true,
+          occluded,
         });
       }
     };
@@ -339,6 +340,7 @@ const result = await page.evaluate(
       if (scenarioName === 'particles' || scenarioName === 'emitters') addVisualParticles(px, py, 900);
       if (scenarioName === 'projectiles' || scenarioName === 'emitters') addProjectiles(px, py, 96);
       if (scenarioName === 'lights' || scenarioName === 'emitters') addAuthoredLights(px, py, 40);
+      if (scenarioName === 'lights-unoccluded') addAuthoredLights(px, py, 40, { occluded: false });
 
       const offsets = [-90, -45, 0, 45, 90];
       let bomb = 0;

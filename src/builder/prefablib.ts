@@ -1,6 +1,6 @@
 import { rleDecode, rleEncode } from '@/core/rle';
 import type { World } from '@/sim/World';
-import { Cell } from '@/sim/CellType';
+import { CELL_COUNT, Cell } from '@/sim/CellType';
 import { writeCell } from '@/builder/terrain';
 import type { PatchRecorder, Region } from '@/builder/terrain';
 import { freshId } from '@/builder/document';
@@ -644,6 +644,11 @@ export function sanitizePrefab(
   if (typeof p.rle !== 'string') return null;
   try {
     if (rleLength(p.rle) !== w * h) return null;
+    const cells = new Uint8Array(w * h);
+    rleDecode(p.rle, cells);
+    for (const cell of cells) {
+      if (cell >= CELL_COUNT) return null;
+    }
   } catch {
     return null;
   }

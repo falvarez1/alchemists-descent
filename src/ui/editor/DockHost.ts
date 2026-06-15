@@ -57,7 +57,11 @@ export class DockHost {
     return this.snapshot().layout;
   }
 
-  movePanel(id: string, dock: DockRegion, options: { beforeId?: string | null; floating?: { x: number; y: number } } = {}): WorkspaceLayout {
+  movePanel(
+    id: string,
+    dock: DockRegion,
+    options: { beforeId?: string | null; floating?: { x: number; y: number }; tabGroupId?: string | null } = {},
+  ): WorkspaceLayout {
     if (!this.registry.canDock(id, dock)) return this.snapshot().layout;
     this.layout = movePanel(this.layout, id, dock, options);
     return this.snapshot().layout;

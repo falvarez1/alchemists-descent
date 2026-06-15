@@ -230,10 +230,7 @@ function extract(
   } else if (spawnRegion === exitRegion) {
     mainPath = [spawnRegion];
   } else {
-    mainPath = breachablePath(regions.length, edges, spawnRegion, exitRegion) ?? [
-      spawnRegion,
-      exitRegion,
-    ];
+    mainPath = breachablePath(regions.length, edges, spawnRegion, exitRegion) ?? [spawnRegion];
   }
 
   for (const id of mainPath) {

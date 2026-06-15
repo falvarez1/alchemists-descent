@@ -575,9 +575,13 @@ export class InputManager {
     ctx.events.emit('modeChanged', { mode });
 
     if (mode === 'play') {
-      // Play mode IS the descent: generate (or resume) the current level.
-      // On first entry this swaps in D1 and positions the player at its spawn.
-      ctx.levels.startDescent(ctx);
+      // Builder Playtest compiles a disposable runtime before flipping the
+      // header mode. Preserve that runtime instead of replacing it with D1.
+      if (ctx.state.playtestSource !== 'builder') {
+        // Play mode IS the descent: generate (or resume) the current level.
+        // On first entry this swaps in D1 and positions the player at its spawn.
+        ctx.levels.startDescent(ctx);
+      }
       // Defensive legacy fallback: only if no level took over the spawn.
       if (ctx.levels.current === null && (!ctx.state.playerSpawned || ctx.player.dead)) {
         const sp = ctx.playerCtl.findSpawnPoint();

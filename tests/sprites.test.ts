@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Ctx, RuntimeDecor, RuntimeSprite } from '@/core/types';
+import type { LightField, PixelSurface } from '@/render/pixels';
 import {
   decodeFramePx,
   decodeRuntimeSprite,
@@ -24,6 +25,7 @@ import {
   saveSprite,
 } from '@/builder/assets/spritelib';
 import { decorFrame, decorLoopTicks, decorSteps, stepFrame } from '@/render/sprites/DecorSprites';
+import { drawParticles } from '@/render/sprites/FxSprites';
 import { createEmptyDocument, sanitizeImportedDoc } from '@/builder/document';
 import type { EditorDocument, EditorObject, EditorObjectKind } from '@/builder/document';
 import { instantiateObjects, makeInstantiationSink } from '@/game/instantiate';
@@ -166,6 +168,55 @@ const ARRAY_TRIMMED_JSON = `{
   ],
   "meta": { "frameTags": [] }
 }`;
+
+/* ---------------- particle FX rendering ---------------- */
+
+describe('particle FX rendering', () => {
+  it('draws low-glow particles as self-lit instead of light-sampled', () => {
+    const writes: Array<[number, number, number, number, number]> = [];
+    const surface: PixelSurface = {
+      setPx: (x, y, r, g, b) => writes.push([x, y, r, g, b]),
+      addPx: () => undefined,
+    };
+    let sampled = 0;
+    const light = {
+      sample: () => {
+        sampled++;
+        return { r: 0, g: 0, b: 0 };
+      },
+    } as unknown as LightField;
+    const ctx = {
+      particles: {
+        list: [
+          {
+            x: 12,
+            y: 34,
+            vx: 0,
+            vy: 0,
+            type: null,
+            color: 0xff8000,
+            life: 10,
+            grav: 0,
+            glow: 0.35,
+            homing: false,
+            value: 10,
+            hostileDmg: 0,
+          },
+        ],
+      },
+    } as unknown as Ctx;
+
+    drawParticles(surface, light, ctx);
+
+    expect(sampled).toBe(0);
+    expect(writes).toHaveLength(1);
+    expect(writes[0][0]).toBe(12);
+    expect(writes[0][1]).toBe(34);
+    expect(writes[0][2]).toBeCloseTo(0.35);
+    expect(writes[0][3]).toBeCloseTo((128 / 255) * 0.35);
+    expect(writes[0][4]).toBe(0);
+  });
+});
 
 /* ---------------- duration -> ticks ---------------- */
 
@@ -384,6 +435,18 @@ describe('sprite library + embedding', () => {
     );
     const got = collectReferencedSprites(doc, [a]);
     expect(got.map((s) => s.id)).toEqual([a.id]);
+  });
+
+  it('can prefer embedded document sprites over same-id local library sprites', () => {
+    const embedded = makeAsset('torch', 8, 8, [[255, 0, 0]]);
+    const local = makeAsset('torch local edit', 8, 8, [[0, 0, 255]]);
+    local.id = embedded.id;
+    const doc = createEmptyDocument('d', 'earthen');
+    doc.objects.push(makeObj('decor', 'd1', 10, 10, { spriteId: embedded.id }));
+    doc.assets = { sprites: [embedded] };
+
+    expect(collectReferencedSprites(doc, [local])[0].frames[0].px).toBe(local.frames[0].px);
+    expect(collectReferencedSprites(doc, [local], { preferEmbedded: true })[0].frames[0].px).toBe(embedded.frames[0].px);
   });
 
   it('embeds referenced sprites and survives sanitizeImportedDoc', () => {

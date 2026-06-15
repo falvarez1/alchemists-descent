@@ -1,4 +1,5 @@
 import type { LevelRuntime } from '@/core/types';
+import { mechanismTriggersFor } from '@/core/mechanisms';
 import { blocksEntity } from '@/sim/CellType';
 import { computeLooseRubbleBlockingMask } from '@/sim/collision';
 
@@ -156,6 +157,47 @@ function near(
   return false;
 }
 
+function clearLine(
+  world: { width: number; height: number; types: Uint8Array },
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+): boolean {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy)));
+  for (let i = 1; i < steps; i++) {
+    const x = Math.floor(fromX + (dx * i) / steps);
+    const y = Math.floor(fromY + (dy * i) / steps);
+    if (x <= 0 || y <= 0 || x >= world.width || y >= world.height) return false;
+    if (blocksEntity(world.types[x + y * world.width])) return false;
+  }
+  return true;
+}
+
+function nearWithLine(
+  seen: Uint8Array,
+  world: { width: number; height: number; types: Uint8Array },
+  x: number,
+  y: number,
+  r: number,
+): boolean {
+  const W = world.width;
+  const H = world.height;
+  const tx = Math.floor(x);
+  const ty = Math.floor(y);
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const X = tx + dx;
+      const Y = ty + dy;
+      if (X <= 0 || Y <= 0 || X >= W || Y >= H || !seen[X + Y * W]) continue;
+      if (clearLine(world, X, Y, tx, ty)) return true;
+    }
+  }
+  return false;
+}
+
 export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
   const seen = reachableMask(runtime); // the crawler's view (media, treasure)
   const wiz = wizardMask(runtime); // the PLAYER's view (9x17, walk + jump)
@@ -199,10 +241,12 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       // pure logic node — its INPUTS carry the reachability requirement
       // (the prefab earnability fixpoint enforces that in CI)
       continue;
+    } else if (m.kind === 'plug') {
+      if (mechanismTriggersFor(runtime, m.id).length > 0) continue;
+      check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y);
     } else if (
       m.kind === 'sensor' ||
       m.kind === 'counterweight' ||
-      m.kind === 'plug' ||
       m.kind === 'buoy' ||
       m.kind === 'chargelatch'
     ) {
@@ -211,7 +255,7 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       // chargelatch latches on ANY spark in its zone (lightning bolt,
       // electrified water, a conducting enemy's blood) — like rune glyphs,
       // line of sight from open space suffices, so the cell mask judges it.
-      check(near(seen, W, H, m.x, m.y - 2, 5), m.kind, m.x, m.y);
+      check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y);
     } else {
       // hands-on triggers: the WIZARD must be able to stand here
       check(near(wiz, W, H, m.x, m.y - 2, 6), m.kind, m.x, m.y);
@@ -220,7 +264,7 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
   for (const v of runtime.runeVaults) {
     // glyphs answer to projectiles — line of sight from a standable spot is
     // looser than standing beside it, so the cell mask + radius suffices
-    check(near(seen, W, H, v.rx, v.ry, 5), 'rune', v.rx, v.ry);
+    check(nearWithLine(seen, runtime.world, v.rx, v.ry, 5), 'rune', v.rx, v.ry);
   }
   for (const p of runtime.pickups) {
     if (p.taken) continue;

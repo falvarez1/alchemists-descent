@@ -186,6 +186,95 @@ describe('level enemy persistence', () => {
     expect(levels.current?.def.id).toBe('d1');
   });
 
+  it('clears disposable virtual runtimes without poisoning campaign resume', () => {
+    const world = new World();
+    const ctx = {
+      world,
+      enemies: [enemy()],
+      state: { playtestSource: 'test' },
+      input: { activeChargingBlackHole: null, releaseHeldInput: () => undefined },
+      projectiles: [],
+      shockwaves: [],
+      lightning: { clear: () => undefined },
+      particles: { clear: () => undefined },
+      fx: { digBeam: null },
+    } as unknown as Ctx;
+    const levels = new Levels(ctx);
+    const virtualRuntime = makeLevelRuntime({
+      def: { id: 'virtual-builder-test', name: 'Virtual Test', biome: 'earthen', depth: 1, nextLevelId: null },
+      world,
+      enemies: [],
+      spawn: { x: 10, y: 20 },
+      regions: null,
+    });
+    const internals = levels as unknown as {
+      currentId: string | null;
+      levels: Map<string, LevelRuntime>;
+    };
+    internals.levels.set('virtual-builder-test', virtualRuntime);
+    internals.currentId = 'virtual-builder-test';
+
+    levels.exitDisposableRuntime(ctx);
+
+    expect(levels.current).toBeNull();
+    expect(internals.levels.has('virtual-builder-test')).toBe(false);
+    expect(ctx.state.playtestSource).toBeNull();
+    expect(ctx.enemies).toHaveLength(0);
+  });
+
+  it('does not save dead players or disposable runtimes', () => {
+    withLocalStorage((store) => {
+      const world = new World();
+      const ctx = {
+        world,
+        enemies: [],
+        state: {
+          playtestSource: null,
+          debugGodMode: false,
+          score: 0,
+          worldSeed: 42,
+        },
+        player: {
+          x: 10,
+          y: 20,
+          hp: 0,
+          maxHp: 100,
+          dead: true,
+          levit: 100,
+          maxLevit: 100,
+          perks: {},
+        },
+      } as unknown as Ctx;
+      const levels = new Levels(ctx);
+      const runtime = makeLevelRuntime({
+        def: { id: 'd1', name: 'Depth 1', biome: 'earthen', depth: 1, nextLevelId: null },
+        world,
+        enemies: [],
+        spawn: { x: 10, y: 20 },
+        regions: null,
+      });
+      const internals = levels as unknown as {
+        currentId: string | null;
+        levels: Map<string, LevelRuntime>;
+      };
+      internals.levels.set('d1', runtime);
+      internals.currentId = 'd1';
+
+      levels.saveExpedition(ctx);
+      expect(store.get('noita-expedition')).toBeUndefined();
+
+      ctx.player.dead = false;
+      internals.levels.set('virtual-builder-test', {
+        ...runtime,
+        def: { ...runtime.def, id: 'virtual-builder-test' },
+      });
+      internals.currentId = 'virtual-builder-test';
+
+      levels.saveExpedition(ctx);
+      expect(store.get('noita-expedition')).toBeUndefined();
+    });
+  });
+
   it('serializes full wand runtime state and flask belt state into expedition saves', () => {
     withLocalStorage((store) => {
       const world = new World();

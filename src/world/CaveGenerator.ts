@@ -707,7 +707,10 @@ export class WorldGen implements WorldGenApi {
     }
     stage('prefabs');
 
-    stampSecrets(ctx, this.rng, graph, def.biome, ledger);
+    const secretCount = stampSecrets(ctx, this.rng, graph, def.biome, ledger);
+    if (import.meta.env.DEV && secretCount < 2) {
+      console.warn(`Worldgen placed only ${secretCount} sealed secret chambers for ${def.id}`);
+    }
     stage('secrets');
 
     // 6) Cauldron: a stone brewing basin on the first waystone's ground row —

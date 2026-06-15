@@ -332,6 +332,72 @@ describe('projectile trigger payloads', () => {
     expect(ctx.projectiles).toHaveLength(0);
     expect(released.map((action) => action.card)).toEqual(['spark']);
   });
+
+  it('clears stale cell metadata when frost converts water to ice', () => {
+    const world = new World();
+    const wall = world.idx(6, 5);
+    const water = world.idx(6, 6);
+    world.types[wall] = Cell.Stone;
+    world.types[water] = Cell.Water;
+    world.life[water] = 77;
+    world.charge[water] = 12;
+    const projectile: Projectile = {
+      x: 5,
+      y: 5,
+      vx: 1,
+      vy: 0,
+      type: 'frostbolt',
+      life: 10,
+      age: 0,
+      charging: false,
+      hostile: false,
+    };
+    const ctx = {
+      world,
+      projectiles: [projectile],
+      enemies: [],
+      state: { mode: 'play', frameCount: 1 },
+      player: { dead: false, crawling: false },
+      params: { spells: {} },
+      particles: {
+        spawn: () => undefined,
+        burst: () => undefined,
+      },
+      audio: {
+        tone: () => undefined,
+        hollowKnock: () => undefined,
+      },
+      events: {
+        emit: () => undefined,
+      },
+      explosions: {
+        trigger: () => undefined,
+      },
+      spells: {
+        executeWarp: () => false,
+        erodeAt: () => undefined,
+      },
+      enemyCtl: {
+        damage: () => undefined,
+      },
+      playerCtl: {
+        damage: () => undefined,
+      },
+      fx: {
+        bloomKick: 0,
+        screenShake: 0,
+      },
+      wands: {
+        castActionAt: () => undefined,
+      },
+    } as unknown as Ctx;
+
+    new Projectiles().update(ctx);
+
+    expect(world.types[water]).toBe(Cell.Ice);
+    expect(world.life[water]).toBe(0);
+    expect(world.charge[water]).toBe(0);
+  });
 });
 
 function enemyAt(x: number, y: number): Enemy {

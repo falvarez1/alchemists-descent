@@ -20,8 +20,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadCellAbi } from './cell-abi.mjs';
 
-const Cell = { Empty: 0, Sand: 1, Water: 2, Wall: 3, Wood: 4, Stone: 12, Metal: 13, Coal: 28 };
+const Cell = loadCellAbi();
 
 /* RLE codec — same 16-bit-run format as src/core/rle.ts (stable ABI). */
 function rleEncode(types) {

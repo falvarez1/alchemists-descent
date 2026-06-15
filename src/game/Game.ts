@@ -189,6 +189,9 @@ export class Game {
     new RunLauncher(ctx);
     // The authoring overlay (injects its own DOM + header button).
     const builder = new Builder(ctx);
+    if (import.meta.env.DEV) {
+      (ctx as Ctx & { builder?: Builder }).builder = builder;
+    }
     // ESC pause + the Handbook (H); pause registers FIRST so its keydown
     // handler sees the help overlay still open and yields ESC to it.
     new PauseOverlay(ctx);
@@ -225,7 +228,8 @@ export class Game {
       if (
         document.hidden &&
         this.ctx.state.mode === 'play' &&
-        this.ctx.state.playtestSource === null
+        this.ctx.state.playtestSource === null &&
+        !this.ctx.player.dead
       ) {
         this.ctx.levels.saveExpedition(this.ctx);
       }
@@ -318,6 +322,7 @@ export class Game {
       ctx.state.mode === 'play' &&
       ctx.state.playtestSource === null &&
       !ctx.state.paused &&
+      !ctx.player.dead &&
       ctx.state.frameCount % 1800 === 0
     ) {
       ctx.levels.saveExpedition(ctx);

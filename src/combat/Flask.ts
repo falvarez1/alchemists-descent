@@ -1,6 +1,6 @@
 import { clamp } from '@/core/math';
 import { FLASK_SLOT_COUNT, type Ctx, type FlaskApi, type FlaskBottleState, type FlaskState } from '@/core/types';
-import { Cell, isGas, isLiquid } from '@/sim/CellType';
+import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, packRGB } from '@/sim/colors';
 
 /** Cell types the flask can drink: any liquid, plus the loose powders worth carrying. */
@@ -20,6 +20,20 @@ const BOTTLE_GRAV = 0.18;
 const MAX_SPILL_RADIUS = 20;
 
 const GLASS_COLOR = packRGB(200, 230, 255);
+
+function hasLineOfSight(ctx: Ctx, fromX: number, fromY: number, toX: number, toY: number): boolean {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy)));
+  for (let i = 1; i <= steps; i++) {
+    const x = Math.floor(fromX + (dx * i) / steps);
+    const y = Math.floor(fromY + (dy * i) / steps);
+    if (!ctx.world.inBounds(x, y)) return false;
+    const t = ctx.world.types[ctx.world.idx(x, y)];
+    if (blocksEntity(t) && !siphonable(t)) return false;
+  }
+  return true;
+}
 
 // ===================== The Material Flask =====================
 /**
@@ -151,6 +165,7 @@ export class Flask implements FlaskApi {
         if (!world.inBounds(x, y)) continue;
         const t = world.types[world.idx(x, y)];
         if (!siphonable(t)) continue;
+        if (!hasLineOfSight(ctx, player.x, player.y - 9, x, y)) continue;
         // First cell fixes the flask's contents; afterwards only matches are taken.
         if (s.material === null) s.material = t;
         else if (t !== s.material) continue;

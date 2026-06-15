@@ -63,8 +63,21 @@ export class World {
   /** Reset a cell to empty space. */
   clearCell(x: number, y: number): void {
     const i = x + y * this.width;
+    this.clearCellAt(i);
+  }
+
+  /** Reset a flat-indexed cell to empty space. */
+  clearCellAt(i: number): void {
     this.types[i] = Cell.Empty;
     this.colors[i] = EMPTY_COLOR;
+    this.life[i] = 0;
+    this.charge[i] = 0;
+  }
+
+  /** Replace a flat-indexed cell with fresh material, clearing transient metadata. */
+  replaceCellAt(i: number, t: number, color: number): void {
+    this.types[i] = t;
+    this.colors[i] = color;
     this.life[i] = 0;
     this.charge[i] = 0;
   }

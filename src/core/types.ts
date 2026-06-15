@@ -327,6 +327,7 @@ export interface FlyingParticle {
   grav: number;
   glow: number;
   homing: boolean;
+  value: number;
   hostileDmg: number;
 }
 
@@ -334,6 +335,7 @@ export interface ParticleOpts {
   grav?: number;
   glow?: number;
   homing?: boolean;
+  value?: number;
   hostileDmg?: number;
 }
 
@@ -638,7 +640,7 @@ export interface RunStatus {
   playtestSource: PlaytestSource | null;
   savedExpedition: boolean;
   autosaveEnabled: boolean;
-  autosaveBlockReason: 'not-play' | 'playtest' | 'debug-tainted' | null;
+  autosaveBlockReason: 'not-play' | 'playtest' | 'debug-tainted' | 'dead' | null;
   debugGodMode: boolean;
   expeditionSeed: number | null;
   worldSeed: number;
@@ -1704,6 +1706,8 @@ export interface LevelsApi {
   playVirtualWindow(ctx: Ctx, def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void;
   /** Leave a disposable Builder/Sandbox custom runtime so header PLAY resumes the expedition path. */
   exitCustomPlaytest(ctx: Ctx): void;
+  /** Leave any disposable non-campaign runtime, including virtual-world test windows. */
+  exitDisposableRuntime(ctx: Ctx): void;
   /** QA/debug command: stock visible potion pickups in the current level. */
   seedReviewKit(ctx: Ctx): void;
   /** Persist the whole expedition (visited levels + hero) to localStorage. */

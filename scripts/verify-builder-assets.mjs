@@ -208,6 +208,8 @@ const dockLayout = await page.evaluate(() => {
   });
   return {
     parentId: panel.parentElement?.id ?? '',
+    bottomPane: panel.closest('.builder-bottom-pane')?.getAttribute('data-bottom-pane') ?? '',
+    dockId: panel.closest('#builder-dock-bottom')?.id ?? '',
     position: getComputedStyle(panel).position,
     contained:
       panelRect.left >= dockRect.left - 1 &&
@@ -235,7 +237,8 @@ const dockLayout = await page.evaluate(() => {
 });
 check(
   'asset browser is a contained bottom-dock content browser',
-  dockLayout.parentId === 'builder-dock-bottom' &&
+  dockLayout.dockId === 'builder-dock-bottom' &&
+    dockLayout.bottomPane === 'bottom-main' &&
     dockLayout.position !== 'absolute' &&
     dockLayout.contained &&
     dockLayout.widthUsesDock &&

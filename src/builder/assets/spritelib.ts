@@ -96,6 +96,7 @@ export function decorSpriteId(o: EditorObject): string | null {
 export function collectReferencedSprites(
   doc: EditorDocument,
   library: SpriteAsset[],
+  options: { preferEmbedded?: boolean } = {},
 ): SpriteAsset[] {
   const wanted = new Set<string>();
   for (const o of doc.objects) {
@@ -106,7 +107,7 @@ export function collectReferencedSprites(
   for (const id of wanted) {
     const fromLib = library.find((s) => s.id === id);
     const fromDoc = doc.assets?.sprites.find((s) => s.id === id);
-    const hit = fromLib ?? fromDoc;
+    const hit = options.preferEmbedded === true ? fromDoc ?? fromLib : fromLib ?? fromDoc;
     if (hit) out.push(hit);
     // a dangling reference embeds nothing — compile skips it the same way
   }
@@ -115,8 +116,8 @@ export function collectReferencedSprites(
 }
 
 /** SAVE/EXPORT/SHARE step: embed referenced sprites (or drop the field). */
-export function embedSprites(doc: EditorDocument, library: SpriteAsset[]): number {
-  const sprites = collectReferencedSprites(doc, library);
+export function embedSprites(doc: EditorDocument, library: SpriteAsset[], options: { preferEmbedded?: boolean } = {}): number {
+  const sprites = collectReferencedSprites(doc, library, options);
   if (sprites.length > 0) doc.assets = { sprites };
   else delete doc.assets;
   return sprites.length;

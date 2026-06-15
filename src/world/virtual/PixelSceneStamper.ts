@@ -1,6 +1,6 @@
 import { Cell } from '@/sim/CellType';
-import { packRGB } from '@/sim/colors';
-import type { PixelScenePlacementDef } from '@/world/virtual/types';
+import { EMPTY_COLOR, packRGB } from '@/sim/colors';
+import type { PixelScenePlacementDef, VirtualScenePlacementInstance } from '@/world/virtual/types';
 import type { WorldRect } from '@/world/virtual/coords';
 import { rectsOverlap } from '@/world/virtual/coords';
 
@@ -10,6 +10,13 @@ export interface PixelSceneStampTarget {
   size: number;
   types: Uint8Array;
   colors: Uint32Array;
+  life?: Int16Array;
+  charge?: Uint8Array;
+}
+
+export interface PixelSceneStampResult {
+  scenes: string[];
+  placements: VirtualScenePlacementInstance[];
 }
 
 export function overlappingPixelScenes(
@@ -31,14 +38,15 @@ export function overlappingPixelScenes(
 export function stampPixelScenes(
   target: PixelSceneStampTarget,
   placements: readonly PixelScenePlacementDef[],
-): string[] {
+): PixelSceneStampResult {
   const chunkRect = {
     x0: target.originX,
     y0: target.originY,
     x1: target.originX + target.size - 1,
     y1: target.originY + target.size - 1,
   };
-  const stamped: string[] = [];
+  const scenes: string[] = [];
+  const stampedPlacements: VirtualScenePlacementInstance[] = [];
   for (const placement of overlappingPixelScenes(placements, chunkRect)) {
     const scene = placement.scene;
     const x0 = Math.max(chunkRect.x0, placement.x);
@@ -53,16 +61,23 @@ export function stampPixelScenes(
         const sceneX = x - placement.x;
         const si = sceneX + sceneY * scene.w;
         const material = scene.material[si];
-        if (material === undefined || material === Cell.Empty) continue;
+        const mask = scene.mask;
+        const writesPixel = mask ? mask[si] !== 0 : material !== Cell.Empty;
+        if (material === undefined || !writesPixel) continue;
         const ci = x - target.originX + localY * target.size;
         target.types[ci] = material;
-        target.colors[ci] = scene.colorOverrides?.[si] ?? fallbackSceneColor(material);
+        target.colors[ci] = material === Cell.Empty ? EMPTY_COLOR : scene.colorOverrides?.[si] ?? fallbackSceneColor(material);
+        if (target.life && scene.life) target.life[ci] = scene.life[si] ?? 0;
+        if (target.charge && scene.charge) target.charge[ci] = scene.charge[si] ?? 0;
         touched = true;
       }
     }
-    if (touched) stamped.push(placement.id);
+    if (touched || (scene.objects?.length ?? 0) > 0 || (scene.links?.length ?? 0) > 0 || (scene.lights?.length ?? 0) > 0) {
+      scenes.push(placement.id);
+      stampedPlacements.push(scenePlacementInstance(placement));
+    }
   }
-  return stamped;
+  return { scenes, placements: stampedPlacements };
 }
 
 function fallbackSceneColor(material: number): number {
@@ -71,4 +86,38 @@ function fallbackSceneColor(material: number): number {
   if (material === Cell.Metal) return packRGB(116, 126, 140);
   if (material === Cell.Wall) return packRGB(62, 58, 54);
   return packRGB(96, 92, 88);
+}
+
+function scenePlacementInstance(placement: PixelScenePlacementDef): VirtualScenePlacementInstance {
+  const scene = placement.scene;
+  return {
+    id: placement.id,
+    x: placement.x,
+    y: placement.y,
+    w: scene.w,
+    h: scene.h,
+    objects: (scene.objects ?? []).map((object) => ({
+      ...object,
+      id: instanceId(placement.id, object.id),
+      x: placement.x + object.x,
+      y: placement.y + object.y,
+      params: { ...object.params },
+    })),
+    links: (scene.links ?? []).map((link) => ({
+      ...link,
+      id: instanceId(placement.id, link.id),
+      fromId: instanceId(placement.id, link.fromId),
+      toId: instanceId(placement.id, link.toId),
+    })),
+    lights: (scene.lights ?? []).map((light) => ({
+      ...light,
+      id: instanceId(placement.id, light.id),
+      x: placement.x + light.x,
+      y: placement.y + light.y,
+    })),
+  };
+}
+
+function instanceId(placementId: string, localId: string): string {
+  return `${placementId}:${localId}`;
 }

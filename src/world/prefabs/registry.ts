@@ -23,11 +23,10 @@ for (const key of Object.keys(modules).sort()) {
   const raw = mod && typeof mod === 'object' && 'default' in mod ? mod.default : mod;
   const got = sanitizePrefab(raw);
   if (!got) {
-    console.warn(`[prefabs] builtin ${key} failed sanitization — dropped`);
-    continue;
+    throw new Error(`[prefabs] builtin ${key} failed sanitization`);
   }
   if (got.warnings.length > 0) {
-    console.warn(`[prefabs] builtin ${key}: ${got.warnings.join('; ')}`);
+    throw new Error(`[prefabs] builtin ${key}: ${got.warnings.join('; ')}`);
   }
   BUILTINS.push(got.prefab);
 }

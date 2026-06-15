@@ -126,10 +126,10 @@ export function stampSecrets(
   const breachCell: Cell = breachSkinCell(biome);
   const breachColor = breachSkinColorFn(biome, rng);
 
-  const allWall = (cx: number, cy: number, r: number): boolean => {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (dx * dx + dy * dy > r * r) continue;
+  const allWallEllipse = (cx: number, cy: number, rx: number, ry: number): boolean => {
+    for (let dy = -ry; dy <= ry; dy++) {
+      for (let dx = -rx; dx <= rx; dx++) {
+        if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) > 1) continue;
         const X = cx + dx,
           Y = cy + dy;
         if (X < 2 || X >= W - 2 || Y < 2 || Y >= H - 2) return false;
@@ -142,7 +142,7 @@ export function stampSecrets(
   const target = 4 + rng.int(4); // 4-7 secrets
   let placedCount = 0;
 
-  for (let attempt = 0; attempt < 60 && placedCount < target; attempt++) {
+  for (let attempt = 0; attempt < target * 80 && placedCount < target; attempt++) {
     const region = pool[rng.int(pool.length)];
     const ang = rng.next() * Math.PI * 2;
     const reach = rng.range(40, 160);
@@ -152,7 +152,7 @@ export function stampSecrets(
     const ry = 9 + rng.int(6); // 9-14
     if (cx - rx < 3 || cx + rx >= W - 3 || cy - ry < 3 || cy + ry >= H - 8) continue;
     if (ledger && ledger.intersects(cx - rx - 2, cy - ry - 2, cx + rx + 2, cy + ry + 2)) continue;
-    if (!allWall(cx, cy, 10)) continue;
+    if (!allWallEllipse(cx, cy, rx, ry)) continue;
 
     // Chamber: elliptical hollow (bedrock metal is never carved).
     for (let dy = -ry; dy <= ry; dy++) {

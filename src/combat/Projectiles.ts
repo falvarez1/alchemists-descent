@@ -32,8 +32,7 @@ function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
       const ci = world.idx(X, Y);
       const t = world.types[ci];
       if (t === Cell.Water) {
-        world.types[ci] = Cell.Ice;
-        world.colors[ci] = iceColor();
+        world.replaceCellAt(ci, Cell.Ice, iceColor());
       } else if (t === Cell.Empty && Math.random() < 0.35) {
         // thin rime on solid-adjacent air cells
         let nearSolid = false;
@@ -43,8 +42,7 @@ function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
           if (world.inBounds(nx, ny) && isSolid(world.types[world.idx(nx, ny)])) nearSolid = true;
         }
         if (nearSolid) {
-          world.types[ci] = Cell.Ice;
-          world.colors[ci] = iceColor();
+          world.replaceCellAt(ci, Cell.Ice, iceColor());
         }
       }
     }
@@ -74,9 +72,7 @@ function splashLiquid(
       const ci = world.idx(X, Y);
       const t = world.types[ci];
       if (t === Cell.Empty || isGas(t)) {
-        world.types[ci] = type;
-        world.colors[ci] = colorFn();
-        world.life[ci] = 0;
+        world.replaceCellAt(ci, type, colorFn());
       }
     }
   }
@@ -143,8 +139,7 @@ export class Projectiles implements ProjectilesApi {
             { grav: 0, glow: t === Cell.Gold || t === Cell.Lava ? 1.6 : 0 },
           );
         }
-        world.types[ci] = Cell.Empty;
-        world.colors[ci] = EMPTY_COLOR;
+        world.clearCellAt(ci);
       }
     }
     // Inverted shockwave: space visibly snaps inward
@@ -188,8 +183,7 @@ export class Projectiles implements ProjectilesApi {
             const dSq = dx * dx + dy * dy;
             if (dSq <= Math.max(9, (vortexRad * 0.12) ** 2)) {
               // crossed the event horizon: gone
-              world.types[ci] = Cell.Empty;
-              world.colors[ci] = EMPTY_COLOR;
+              world.clearCellAt(ci);
             } else if (t === Cell.Wall) {
               // bedrock shears loose and streams toward the singularity
               if (dSq <= vortexRad * vortexRad && Math.random() < 0.05) {
@@ -204,8 +198,7 @@ export class Projectiles implements ProjectilesApi {
                   90,
                   { grav: 0 },
                 );
-                world.types[ci] = Cell.Empty;
-                world.colors[ci] = EMPTY_COLOR;
+                world.clearCellAt(ci);
               }
             } else if (dSq <= vortexRad * vortexRad && Math.random() < 0.55) {
               const stepX = px - Math.sign(dx),
@@ -341,8 +334,7 @@ export class Projectiles implements ProjectilesApi {
           const ti = world.idx(tx, ty);
           const t = world.types[ti];
           if (t === Cell.Empty || isGas(t)) {
-            world.types[ti] = infuseMat;
-            world.colors[ti] = colorFn ? colorFn() : EMPTY_COLOR;
+            world.replaceCellAt(ti, infuseMat, colorFn ? colorFn() : EMPTY_COLOR);
           }
         }
       }
@@ -400,9 +392,7 @@ export class Projectiles implements ProjectilesApi {
                 Math.random() < 0.6
               ) {
                 const wi = world.idx(wx2, wy2);
-                world.types[wi] = Cell.Ice;
-                world.colors[wi] = iceColor();
-                world.life[wi] = 0;
+                world.replaceCellAt(wi, Cell.Ice, iceColor());
               }
             }
           }
@@ -549,9 +539,7 @@ export class Projectiles implements ProjectilesApi {
                   wy2 = gy + fz;
                 if (world.inBounds(wx2, wy2) && world.types[world.idx(wx2, wy2)] === Cell.Water) {
                   const wi = world.idx(wx2, wy2);
-                  world.types[wi] = Cell.Ice;
-                  world.colors[wi] = iceColor();
-                  world.life[wi] = 0;
+                  world.replaceCellAt(wi, Cell.Ice, iceColor());
                 }
               }
             }
@@ -603,8 +591,7 @@ export class Projectiles implements ProjectilesApi {
                 if (!world.inBounds(nx, ny)) continue;
                 const ci = world.idx(nx, ny);
                 if (world.types[ci] === Cell.Water) {
-                  world.types[ci] = Cell.Ice;
-                  world.colors[ci] = iceColor();
+                  world.replaceCellAt(ci, Cell.Ice, iceColor());
                   frozen++;
                 }
               }

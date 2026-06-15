@@ -42,6 +42,7 @@ export interface AssetBrowserModel {
   selectedIds: ReadonlySet<string>;
   hiddenSelectedCount: number;
   batchDeleteBlockedReason?: string;
+  sourceNote?: string;
   stats: AssetDatabaseStats;
   collapsedSections?: Readonly<Record<string, boolean>>;
 }
@@ -131,6 +132,7 @@ export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
       <div class="ba-shell">
         <aside class="ba-sources" aria-label="Asset sources and filters">
           <div class="ba-summary">${model.stats.total} assets - ${model.stats.missing} missing - ${model.stats.errors} errors</div>
+          ${model.sourceNote ? `<div class="ba-source-note">${esc(model.sourceNote)}</div>` : ''}
           <nav class="ba-tree" role="tree" aria-label="Asset source tree">
             ${treeGroup(model, 'assetBrowser.quickAccess', 'Assets', [
               treeCollection(model, 'all', 'All Assets', model.stats.total),

@@ -122,7 +122,8 @@ export function sanitizeWorkspaceLayout(
     if (isFiniteNumber(panel.width)) next.width = Math.max(120, Math.min(1200, panel.width));
     if (isFiniteNumber(panel.height)) next.height = Math.max(120, Math.min(900, panel.height));
     if (isFiniteNumber(panel.z)) next.z = Math.max(0, Math.min(1_000_000, Math.floor(panel.z)));
-    if (typeof panel.tabGroupId === 'string' && panel.tabGroupId.trim()) next.tabGroupId = panel.tabGroupId.trim();
+    const tabGroupId = dock === 'bottom' ? normalizeBottomTabGroupId(panel.tabGroupId) : null;
+    if (tabGroupId) next.tabGroupId = tabGroupId;
     if (dock === 'floating' && panel.floating) {
       next.floating = {
         x: Math.max(0, Math.min(4096, panel.floating.x)),
@@ -164,7 +165,7 @@ export function movePanel(
   layout: WorkspaceLayout,
   panelId: string,
   dock: DockRegion,
-  options: { beforeId?: string | null; floating?: { x: number; y: number } } = {},
+  options: { beforeId?: string | null; floating?: { x: number; y: number }; tabGroupId?: string | null } = {},
 ): WorkspaceLayout {
   const next = structuredClone(layout);
   const index = next.panels.findIndex((p) => p.id === panelId);
@@ -177,6 +178,13 @@ export function movePanel(
     panel.floating = options.floating ?? panel.floating ?? { x: 24, y: 64 };
   } else {
     delete panel.floating;
+  }
+  if (dock === 'bottom') {
+    const tabGroupId = normalizeBottomTabGroupId(options.tabGroupId);
+    if (tabGroupId) panel.tabGroupId = tabGroupId;
+    else delete panel.tabGroupId;
+  } else {
+    delete panel.tabGroupId;
   }
   const beforeIndex =
     options.beforeId === undefined || options.beforeId === null
@@ -345,6 +353,10 @@ function isPanelLayoutArray(value: WorkspaceSanitizeOptions | readonly PanelLayo
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function normalizeBottomTabGroupId(value: unknown): string | null {
+  return value === 'bottom-left' || value === 'bottom-main' || value === 'bottom-right' ? value : null;
 }
 
 function sanitizeLayerState(value: unknown): Record<string, { hidden: boolean; locked: boolean }> {

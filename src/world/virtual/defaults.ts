@@ -11,6 +11,8 @@ import type {
   VirtualDressingProfile,
   VirtualMaterialPalette,
   VirtualMaterialProfile,
+  VirtualSceneBudget,
+  VirtualSceneKind,
   VirtualWorldDef,
 } from '@/world/virtual/types';
 import {
@@ -31,6 +33,19 @@ export const VIRTUAL_BIOME_IDS: VirtualBiomeId[] = [
   'gilded',
 ];
 
+export const VIRTUAL_SCENE_KINDS: VirtualSceneKind[] = [
+  'timberBraces',
+  'ruinedRooms',
+  'bridgeFragments',
+  'shrines',
+  'fungalPockets',
+  'crystalClusters',
+  'lavaVents',
+  'collapsedShafts',
+];
+
+let defaultPixelSceneLibrary: PixelSceneDef[] | null = null;
+
 export function createDefaultVirtualWorldDef(seed = 0x4e4f4954): VirtualWorldDef {
   const map = createDefaultBiomeMap();
   return {
@@ -46,23 +61,27 @@ export function createDefaultVirtualWorldDef(seed = 0x4e4f4954): VirtualWorldDef
     pixelScenes: createDefaultPixelScenePlacements(),
     materialProfile: createDefaultMaterialProfile(),
     dressing: createDefaultDressingProfile(),
-    generation: {
-      halo: 32,
-      baseCellSize: 3,
-      smoothingPasses: 1,
-      organicSmoothingPasses: 0,
-      noiseScale: 0.035,
-      noiseThreshold: 0.54,
-      borderSeal: 2,
-      shapeWarp: 0.32,
-      cornerRounding: 0.56,
-      surfaceCover: 0.64,
-      surfaceDepth: 2,
-      vegetationDensity: 0.38,
-      edgeRoughness: 0.38,
-      pocketDensity: 0.3,
-      crackDensity: 0.2,
-    },
+    generation: createDefaultVirtualGenerationParams(),
+  };
+}
+
+export function createDefaultVirtualGenerationParams(): VirtualWorldDef['generation'] {
+  return {
+    halo: 32,
+    baseCellSize: 3,
+    smoothingPasses: 1,
+    organicSmoothingPasses: 0,
+    noiseScale: 0.035,
+    noiseThreshold: 0.54,
+    borderSeal: 2,
+    shapeWarp: 0.32,
+    cornerRounding: 0.56,
+    surfaceCover: 0.64,
+    surfaceDepth: 2,
+    vegetationDensity: 0.38,
+    edgeRoughness: 0.38,
+    pocketDensity: 0.3,
+    crackDensity: 0.2,
   };
 }
 
@@ -117,6 +136,15 @@ export function createDefaultDressingProfile(): VirtualDressingProfile {
       hangingGrowth: 1,
     },
     biomes,
+    scenes: {
+      controls: {
+        density: 1,
+        maxPerTile: 2,
+      },
+      biomes: Object.fromEntries(
+        VIRTUAL_BIOME_IDS.map((id) => [id, sceneBudgetForBiome(id)]),
+      ) as Record<VirtualBiomeId, VirtualSceneBudget>,
+    },
   };
 }
 
@@ -178,6 +206,31 @@ function recipe(
   };
 }
 
+function sceneBudgetForBiome(id: VirtualBiomeId): VirtualSceneBudget {
+  const zero = Object.fromEntries(VIRTUAL_SCENE_KINDS.map((kind) => [kind, 0])) as VirtualSceneBudget;
+  switch (id) {
+    case 'fungal':
+      return { ...zero, fungalPockets: 1.6, shrines: 0.24, timberBraces: 0.28, collapsedShafts: 0.42 };
+    case 'frozen':
+      return { ...zero, crystalClusters: 0.9, collapsedShafts: 0.54, shrines: 0.22, ruinedRooms: 0.22 };
+    case 'flooded':
+      return { ...zero, bridgeFragments: 0.74, fungalPockets: 0.76, timberBraces: 0.42, collapsedShafts: 0.26 };
+    case 'timber':
+      return { ...zero, timberBraces: 1.45, bridgeFragments: 0.82, ruinedRooms: 0.3, shrines: 0.16 };
+    case 'crystal':
+      return { ...zero, crystalClusters: 1.65, shrines: 0.34, collapsedShafts: 0.38 };
+    case 'scorched':
+      return { ...zero, lavaVents: 0.58, collapsedShafts: 0.72, ruinedRooms: 0.32, bridgeFragments: 0.22 };
+    case 'volcanic':
+      return { ...zero, lavaVents: 1.6, collapsedShafts: 0.86, bridgeFragments: 0.18 };
+    case 'gilded':
+      return { ...zero, shrines: 0.82, ruinedRooms: 0.52, crystalClusters: 0.34, collapsedShafts: 0.24 };
+    case 'earthen':
+    default:
+      return { ...zero, ruinedRooms: 0.58, bridgeFragments: 0.44, shrines: 0.26, collapsedShafts: 0.44, timberBraces: 0.28 };
+  }
+}
+
 function materialPaletteForBiome(id: VirtualBiomeId): VirtualMaterialPalette {
   const biome = BIOMES[id];
   const wall = biome.bands[0] ?? [110, 100, 90];
@@ -228,6 +281,7 @@ function createDefaultHerringboneTileset(): HerringboneTilesetDef {
     carve: HerringboneTileDef['carve'],
     biomeTags: VirtualBiomeId[] = VIRTUAL_BIOME_IDS,
     weight = 1,
+    sceneSlots: HerringboneTileDef['sceneSlots'] = [],
   ): HerringboneTileDef => ({
     id,
     orientation,
@@ -236,7 +290,7 @@ function createDefaultHerringboneTileset(): HerringboneTilesetDef {
     edges,
     vertices: { nw: 'solid', ne: 'junction', se: 'solid', sw: 'junction' },
     carve,
-    sceneSlots: [],
+    sceneSlots,
   });
 
   const open = { n: 'wall', e: 'open', s: 'wall', w: 'open' };
@@ -255,32 +309,46 @@ function createDefaultHerringboneTileset(): HerringboneTilesetDef {
       mk('h-open-a', 'horizontal', open, [
         { kind: 'spline', from: 'w', to: 'e', radius: 15, jitter: 14 },
         { kind: 'chamber', x: 0.5, y: 0.52, rx: 34, ry: 22 },
+      ], VIRTUAL_BIOME_IDS, 1, [
+        { id: 'mid-bridge', x: 0.5, y: 0.56, tags: ['bridgeFragments', 'timberBraces', 'shrines'] },
       ]),
       mk('h-open-b', 'horizontal', open, [
         { kind: 'spline', from: 'w', to: 'e', radius: 12, jitter: 28 },
         { kind: 'chamber', x: 0.32, y: 0.45, rx: 22, ry: 17 },
+      ], VIRTUAL_BIOME_IDS, 1, [
+        { id: 'side-room', x: 0.34, y: 0.5, tags: ['ruinedRooms', 'fungalPockets', 'crystalClusters'] },
       ]),
       mk('h-fungal', 'horizontal', open, [
         { kind: 'spline', from: 'w', to: 'e', radius: 18, jitter: 20 },
         { kind: 'chamber', x: 0.67, y: 0.58, rx: 42, ry: 32 },
-      ], ['fungal', 'flooded', 'timber'], 1.5),
+      ], ['fungal', 'flooded', 'timber'], 1.5, [
+        { id: 'growth-pocket', x: 0.66, y: 0.58, tags: ['fungalPockets', 'timberBraces'] },
+      ]),
       mk('v-open-a', 'vertical', vertical, [
         { kind: 'spline', from: 'n', to: 's', radius: 14, jitter: 18 },
         { kind: 'chamber', x: 0.45, y: 0.62, rx: 20, ry: 34 },
+      ], VIRTUAL_BIOME_IDS, 1, [
+        { id: 'shaft-wall', x: 0.46, y: 0.58, tags: ['collapsedShafts', 'crystalClusters', 'lavaVents'] },
       ]),
       mk('v-open-b', 'vertical', vertical, [
         { kind: 'spline', from: 'n', to: 's', radius: 11, jitter: 26 },
         { kind: 'shaft', x: 0.56, radius: 9, roughness: 0.45 },
+      ], VIRTUAL_BIOME_IDS, 1, [
+        { id: 'shaft-brace', x: 0.56, y: 0.48, tags: ['collapsedShafts', 'timberBraces'] },
       ]),
       mk('cross-a', 'horizontal', cross, [
         { kind: 'spline', from: 'w', to: 'e', radius: 12, jitter: 12 },
         { kind: 'spline', from: 'n', to: 's', radius: 10, jitter: 16 },
         { kind: 'chamber', x: 0.5, y: 0.5, rx: 28, ry: 28 },
-      ], ['earthen', 'fungal', 'flooded', 'timber', 'crystal', 'gilded'], 0.7),
+      ], ['earthen', 'fungal', 'flooded', 'timber', 'crystal', 'gilded'], 0.7, [
+        { id: 'junction-scene', x: 0.5, y: 0.5, tags: ['shrines', 'bridgeFragments', 'ruinedRooms'] },
+      ]),
       mk('drop-a', 'vertical', drop, [
         { kind: 'spline', from: 'n', to: 's', radius: 10, jitter: 14 },
         { kind: 'chamber', x: 0.5, y: 0.78, rx: 24, ry: 18 },
-      ], ['frozen', 'crystal', 'scorched', 'volcanic', 'earthen'], 0.8),
+      ], ['frozen', 'crystal', 'scorched', 'volcanic', 'earthen'], 0.8, [
+        { id: 'drop-feature', x: 0.5, y: 0.76, tags: ['lavaVents', 'collapsedShafts', 'crystalClusters'] },
+      ]),
     ],
   };
 }
@@ -295,6 +363,222 @@ function createDefaultPixelScenePlacements(): PixelScenePlacementDef[] {
       priority: 10,
     },
   ];
+}
+
+export function getDefaultPixelSceneLibrary(): readonly PixelSceneDef[] {
+  defaultPixelSceneLibrary ??= [
+    createTimberBracesScene(),
+    createRuinedRoomScene(),
+    createBridgeFragmentScene(),
+    createShrineScene(),
+    createFungalPocketScene(),
+    createCrystalClusterScene(),
+    createLavaVentScene(),
+    createCollapsedShaftScene(),
+  ];
+  return defaultPixelSceneLibrary;
+}
+
+function createSceneCanvas(w: number, h: number): {
+  material: Uint8Array;
+  mask: Uint8Array;
+  colorOverrides: Uint32Array;
+  paint(x: number, y: number, material: number, color: number): void;
+  clear(x: number, y: number): void;
+  rect(x0: number, y0: number, x1: number, y1: number, material: number, color: number): void;
+} {
+  const material = new Uint8Array(w * h);
+  const mask = new Uint8Array(w * h);
+  const colorOverrides = new Uint32Array(w * h);
+  const paint = (x: number, y: number, cell: number, color: number): void => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = x + y * w;
+    material[i] = cell;
+    mask[i] = 1;
+    colorOverrides[i] = color;
+  };
+  const clear = (x: number, y: number): void => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = x + y * w;
+    material[i] = Cell.Empty;
+    mask[i] = 1;
+    colorOverrides[i] = 0;
+  };
+  const rect = (x0: number, y0: number, x1: number, y1: number, cell: number, color: number): void => {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) paint(x, y, cell, color);
+    }
+  };
+  return { material, mask, colorOverrides, paint, clear, rect };
+}
+
+function createTimberBracesScene(): PixelSceneDef {
+  const w = 84;
+  const h = 52;
+  const c = createSceneCanvas(w, h);
+  const wood = packRGB(92, 58, 32);
+  const moss = packRGB(74, 120, 42);
+  c.rect(9, 36, 75, 40, Cell.Wood, wood);
+  c.rect(15, 12, 20, 43, Cell.Wood, packRGB(78, 48, 28));
+  c.rect(63, 12, 68, 43, Cell.Wood, packRGB(78, 48, 28));
+  for (let n = 0; n < 30; n++) {
+    const x = 18 + n;
+    c.paint(x, 35 - Math.floor(n * 0.42), Cell.Wood, packRGB(86, 54, 30));
+    c.paint(66 - n, 35 - Math.floor(n * 0.42), Cell.Wood, packRGB(86, 54, 30));
+  }
+  for (let x = 12; x <= 72; x += 6) c.paint(x, 35, Cell.Moss, moss);
+  return sceneDef('scene-timber-braces', 'Timber Braces', 'timberBraces', ['timber', 'bridge', 'support'], w, h, c);
+}
+
+function createRuinedRoomScene(): PixelSceneDef {
+  const w = 96;
+  const h = 64;
+  const c = createSceneCanvas(w, h);
+  const stone = packRGB(86, 82, 78);
+  const dark = packRGB(54, 50, 48);
+  for (let y = 16; y < 50; y++) {
+    for (let x = 14; x < 82; x++) c.clear(x, y);
+  }
+  c.rect(10, 48, 86, 54, Cell.Stone, stone);
+  c.rect(10, 12, 18, 54, Cell.Stone, dark);
+  c.rect(78, 12, 86, 54, Cell.Stone, dark);
+  c.rect(16, 10, 80, 16, Cell.Stone, stone);
+  for (let x = 24; x < 72; x += 9) c.paint(x, 47, Cell.Gold, packRGB(206, 158, 44));
+  return sceneDef('scene-ruined-room', 'Ruined Room', 'ruinedRooms', ['ruin', 'room', 'shrine'], w, h, c, [
+    { id: 'room-pickup', kind: 'pickup', x: Math.floor(w / 2), y: 43, params: { kind: 'gold', amount: 16 } },
+  ]);
+}
+
+function createBridgeFragmentScene(): PixelSceneDef {
+  const w = 112;
+  const h = 46;
+  const c = createSceneCanvas(w, h);
+  const wood = packRGB(96, 62, 34);
+  const rope = packRGB(92, 86, 46);
+  c.rect(10, 24, 94, 29, Cell.Wood, wood);
+  for (let x = 10; x <= 96; x += 12) c.rect(x, 18, x + 4, 33, Cell.Wood, packRGB(82, 52, 30));
+  for (let n = 0; n < 82; n++) {
+    c.paint(12 + n, 16 + Math.floor(Math.sin(n * 0.18) * 2), Cell.Vines, rope);
+    if (n % 9 === 0) c.paint(12 + n, 30, Cell.Moss, packRGB(70, 112, 42));
+  }
+  return sceneDef('scene-bridge-fragment', 'Bridge Fragment', 'bridgeFragments', ['bridge', 'timber'], w, h, c);
+}
+
+function createShrineScene(): PixelSceneDef {
+  const w = 76;
+  const h = 66;
+  const c = createSceneCanvas(w, h);
+  const stone = packRGB(94, 88, 82);
+  c.rect(16, 48, 60, 55, Cell.Stone, stone);
+  c.rect(24, 24, 30, 50, Cell.Stone, packRGB(74, 70, 68));
+  c.rect(46, 24, 52, 50, Cell.Stone, packRGB(74, 70, 68));
+  c.rect(24, 20, 52, 26, Cell.Stone, stone);
+  c.rect(34, 34, 42, 48, Cell.Crystal, packRGB(108, 220, 238));
+  return sceneDef('scene-shrine', 'Small Shrine', 'shrines', ['shrine', 'light', 'treasure'], w, h, c, [
+    { id: 'shrine-pickup', kind: 'pickup', x: 38, y: 45, params: { kind: 'tome', card: 'spark' } },
+  ], [
+    { id: 'shrine-light', x: 38, y: 35, color: '#7df9ff', intensity: 0.86, radius: 96, bloom: 1.1, flicker: 0.08, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createFungalPocketScene(): PixelSceneDef {
+  const w = 88;
+  const h = 58;
+  const c = createSceneCanvas(w, h);
+  for (let y = 18; y < 48; y++) {
+    for (let x = 14; x < 74; x++) {
+      const nx = (x - 44) / 32;
+      const ny = (y - 34) / 18;
+      if (nx * nx + ny * ny < 1) c.clear(x, y);
+    }
+  }
+  for (let x = 18; x < 72; x += 7) {
+    c.paint(x, 45, Cell.Fungus, packRGB(52, 156, 114));
+    c.paint(x + 1, 44, Cell.Glowshroom, packRGB(126, 228, 142));
+  }
+  c.rect(30, 48, 58, 51, Cell.Moss, packRGB(56, 118, 50));
+  return sceneDef('scene-fungal-pocket', 'Fungal Pocket', 'fungalPockets', ['fungal', 'flooded', 'growth', 'light'], w, h, c, [], [
+    { id: 'fungal-glow', x: 45, y: 39, color: '#7ef58e', intensity: 0.54, radius: 76, bloom: 0.82, flicker: 0.18, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createCrystalClusterScene(): PixelSceneDef {
+  const w = 86;
+  const h = 70;
+  const c = createSceneCanvas(w, h);
+  for (let x = 20; x <= 66; x += 8) {
+    const height = 18 + ((x * 17) % 24);
+    for (let y = 56; y > 56 - height; y--) {
+      const taper = Math.abs(x - 43) / 28;
+      const width = Math.max(1, Math.floor(3 - taper));
+      c.rect(x - width, y, x + width, y, Cell.Crystal, packRGB(90, 198, 226));
+    }
+  }
+  c.rect(14, 57, 72, 62, Cell.Ice, packRGB(126, 176, 214));
+  return sceneDef('scene-crystal-cluster', 'Crystal Cluster', 'crystalClusters', ['crystal', 'frozen', 'light'], w, h, c, [], [
+    { id: 'crystal-glow', x: 43, y: 42, color: '#83f4ff', intensity: 0.68, radius: 86, bloom: 1.2, flicker: 0.04, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createLavaVentScene(): PixelSceneDef {
+  const w = 84;
+  const h = 78;
+  const c = createSceneCanvas(w, h);
+  for (let y = 16; y < 66; y++) {
+    const half = Math.max(3, Math.floor(13 - Math.abs(y - 42) * 0.18));
+    for (let x = 42 - half; x <= 42 + half; x++) c.clear(x, y);
+  }
+  c.rect(28, 58, 56, 66, Cell.Lava, packRGB(242, 72, 14));
+  c.rect(33, 48, 51, 58, Cell.Lava, packRGB(238, 84, 20));
+  c.rect(22, 64, 62, 68, Cell.Stone, packRGB(70, 64, 62));
+  return sceneDef('scene-lava-vent', 'Lava Vent', 'lavaVents', ['volcanic', 'scorched', 'hazard', 'light'], w, h, c, [], [
+    { id: 'lava-light', x: 42, y: 53, color: '#ff6b1a', intensity: 1.08, radius: 110, bloom: 1.25, flicker: 0.22, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createCollapsedShaftScene(): PixelSceneDef {
+  const w = 74;
+  const h = 120;
+  const c = createSceneCanvas(w, h);
+  for (let y = 6; y < 112; y++) {
+    const drift = Math.floor(Math.sin(y * 0.11) * 5);
+    const half = 8 + Math.floor(Math.sin(y * 0.07 + 1.7) * 3);
+    for (let x = 37 + drift - half; x <= 37 + drift + half; x++) c.clear(x, y);
+  }
+  for (let y = 18; y < 108; y += 18) {
+    c.rect(24, y, 50, y + 4, Cell.Wood, packRGB(76, 48, 28));
+    c.paint(25, y + 5, Cell.Vines, packRGB(46, 124, 54));
+  }
+  c.rect(20, 110, 56, 116, Cell.Stone, packRGB(76, 72, 72));
+  return sceneDef('scene-collapsed-shaft', 'Collapsed Shaft', 'collapsedShafts', ['shaft', 'drop', 'ruin'], w, h, c);
+}
+
+function sceneDef(
+  id: string,
+  name: string,
+  kind: VirtualSceneKind,
+  tags: string[],
+  w: number,
+  h: number,
+  canvas: ReturnType<typeof createSceneCanvas>,
+  objects: PixelSceneDef['objects'] = [],
+  lights: PixelSceneDef['lights'] = [],
+): PixelSceneDef {
+  return {
+    v: 1,
+    id,
+    name,
+    kind,
+    tags,
+    w,
+    h,
+    mask: canvas.mask,
+    material: canvas.material,
+    colorOverrides: canvas.colorOverrides,
+    objects,
+    links: [],
+    lights,
+  };
 }
 
 function createBoundaryRuinScene(): PixelSceneDef {
@@ -319,12 +603,35 @@ function createBoundaryRuinScene(): PixelSceneDef {
     v: 1,
     id: 'scene-boundary-ruin',
     name: 'Boundary Ruin',
+    kind: 'ruinedRooms',
+    tags: ['ruin', 'waystone', 'boundary'],
     w,
     h,
     material,
     colorOverrides,
-    objects: [],
+    objects: [
+      {
+        id: 'ruin-waystone',
+        kind: 'waystone',
+        x: Math.floor(w / 2),
+        y: h - 12,
+        params: { lit: false },
+      },
+    ],
     links: [],
-    lights: [],
+    lights: [
+      {
+        id: 'ruin-glow',
+        x: Math.floor(w / 2),
+        y: h - 22,
+        color: '#f6c76d',
+        intensity: 0.72,
+        radius: 78,
+        bloom: 0.95,
+        flicker: 0.12,
+        falloff: 'soft',
+        occluded: true,
+      },
+    ],
   };
 }

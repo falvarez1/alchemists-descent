@@ -1021,6 +1021,21 @@ describe('builder validation', () => {
     ).toBe(true);
   });
 
+  it('matches runtime loose-rubble collision when validating reachability', () => {
+    const { doc } = worldDoc((w) => {
+      carveBox(w, 100, 100, 210, 159);
+      w.types[w.idx(180, 156)] = Cell.Stone;
+      w.types[w.idx(181, 156)] = Cell.Stone;
+    });
+    doc.objects.push(makeObj('spawn', 120, 158));
+    doc.objects.push(makeObj('pickup', 180, 158, { kind: 'key' }));
+
+    const issues = validateDocument(doc);
+
+    expect(issues.some((i) => i.code === 'builder.key.unreachable')).toBe(false);
+    expect(issues.some((i) => i.what.includes('pickup embedded'))).toBe(false);
+  });
+
   it('warns about a floating lever (it would break and fail open by itself)', () => {
     const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
     const spawn = makeObj('spawn', 120, 158);

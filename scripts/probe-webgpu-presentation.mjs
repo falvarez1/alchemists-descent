@@ -20,6 +20,14 @@ const outDir = 'verify-out/webgpu-presentation';
 const timestamp = Date.now();
 const providedBaseUrl = process.argv[2] ?? null;
 const PERF_FRAMES = Number(process.env.WEBGPU_PRESENTATION_FRAMES ?? 180);
+const WEBGPU_COMPOSE_CAPABILITY_REQUIREMENTS = {
+  maxTextureDimension2D: 2172,
+  maxSampledTexturesPerShaderStage: 9,
+  maxSamplersPerShaderStage: 2,
+  maxUniformBufferBindingSize: 4096,
+  maxStorageBufferBindingSize: 1266820,
+  maxBufferSize: 1553664,
+};
 
 async function startViteServer() {
   const server = await createServer({
@@ -201,6 +209,41 @@ async function waitForFrames(page, frames) {
     window.__perfRecord = false;
     return window.__perfSamples ?? [];
   });
+}
+
+function evaluateWebGpuComposeCapability(status) {
+  const webgpu = status?.webgpu ?? {};
+  const limits = webgpu.deviceLimits ?? {};
+  const features = Array.isArray(webgpu.deviceFeatures) ? webgpu.deviceFeatures : [];
+  const failures = [];
+  if (status?.actual !== 'webgpu') failures.push('actual backend is not WebGPU');
+  if (!Array.isArray(webgpu.deviceFeatures)) failures.push('deviceFeatures missing');
+  if (webgpu.deviceLimits === null || typeof webgpu.deviceLimits !== 'object') {
+    failures.push('deviceLimits missing');
+  }
+  for (const [key, minimum] of Object.entries(WEBGPU_COMPOSE_CAPABILITY_REQUIREMENTS)) {
+    const value = limits[key];
+    if (typeof value !== 'number') {
+      failures.push(`${key} missing`);
+    } else if (value < minimum) {
+      failures.push(`${key} ${value} < ${minimum}`);
+    }
+  }
+  if (typeof webgpu.timestampQueryAvailable !== 'boolean') {
+    failures.push('timestampQueryAvailable is not reported as a boolean');
+  } else if (webgpu.timestampQueryAvailable !== features.includes('timestamp-query')) {
+    failures.push('timestampQueryAvailable does not match deviceFeatures');
+  }
+  return {
+    status: failures.length === 0 ? 'passed' : 'failed',
+    requirements: WEBGPU_COMPOSE_CAPABILITY_REQUIREMENTS,
+    failures,
+    observed: {
+      deviceFeatures: features,
+      deviceLimits: webgpu.deviceLimits ?? null,
+      timestampQueryAvailable: webgpu.timestampQueryAvailable ?? null,
+    },
+  };
 }
 
 async function runVariant(
@@ -505,6 +548,7 @@ try {
             100,
     },
   };
+  const composeCapabilityGate = evaluateWebGpuComposeCapability(webgpuOff.status);
 
   const variants = [webglOff, webgpuOff, webglOn, webgpuOn].map(({ png: _png, ...variant }) => variant);
   const postControls = {
@@ -535,6 +579,9 @@ try {
   }
   if (webgpuOff.status.actual !== 'webgpu' || webgpuOn.status.actual !== 'webgpu') {
     failures.push('WebGPU variants did not report actual WebGPU backend');
+  }
+  if (composeCapabilityGate.status !== 'passed') {
+    failures.push(`WebGPU compose capability gate failed: ${composeCapabilityGate.failures.join('; ')}`);
   }
   if (fallbackProbe.status.actual !== 'webgl2' || fallbackProbe.status.implementation !== 'WebGLRenderBackend') {
     failures.push('simulated WebGPU init failure did not fall back to WebGL2');
@@ -580,6 +627,7 @@ try {
     variants,
     postControls,
     fallbackProbe,
+    composeCapabilityGate,
     diffs: { postOff: postOffDiff, postOn: postOnDiff },
     presentation,
     failures,
@@ -592,6 +640,12 @@ try {
       'docs/WEBGPU-PRESENTATION-CONTRACT.md',
       'docs/WEBGPU-BENCHMARK-LEDGER.md',
       'docs/WEBGPU-TSL-COMPUTE-IMPLEMENTATION-PLAN.md',
+    ],
+    phase4_1Files: [
+      'docs/WEBGPU-COMPOSE-ABI.md',
+      'src/render/pixels.ts',
+      'src/render/WebGpuRenderBackend.ts',
+      'scripts/probe-webgpu-presentation.mjs',
     ],
   };
 

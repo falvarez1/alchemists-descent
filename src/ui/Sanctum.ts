@@ -1,4 +1,4 @@
-import { CARD_DEFS } from '@/combat/wands/cards';
+import { ALL_CARD_IDS } from '@/combat/wands/cards';
 import type { CardId, Ctx, PerkId, SanctumApi } from '@/core/types';
 import { POTION_DEFS, POTION_KINDS } from '@/game/Pickups';
 
@@ -38,6 +38,8 @@ const PERKS: SanctumPerk[] = [
   { id: 'swiftfoot', flag: 'swiftfoot', name: 'Swift Soles', desc: 'Move 18% faster', apply: () => {} },
   { id: 'might', flag: 'might', name: 'Power Surge', desc: 'All spell damage +25%', apply: () => {} },
 ];
+
+const SANCTUM_CARD_POOL = ALL_CARD_IDS.filter((id) => id !== 'vitrify');
 
 function el(id: string): HTMLElement {
   return document.getElementById(id)!;
@@ -193,12 +195,10 @@ export class Sanctum implements SanctumApi {
         act: () => {
           const owned = new Set<CardId>(ctx.wands.collection);
           for (const w of ctx.wands.wands) for (const c of w.cards) if (c) owned.add(c);
-          const unknown = (Object.keys(CARD_DEFS) as CardId[]).filter((c) => !owned.has(c));
+          const unknown = SANCTUM_CARD_POOL.filter((c) => !owned.has(c));
           const pick = unknown.length
             ? unknown[Math.floor(Math.random() * unknown.length)]
-            : (Object.keys(CARD_DEFS) as CardId[])[
-                Math.floor(Math.random() * Object.keys(CARD_DEFS).length)
-              ];
+            : SANCTUM_CARD_POOL[Math.floor(Math.random() * SANCTUM_CARD_POOL.length)];
           ctx.wands.grantCard(ctx, pick);
         },
       },

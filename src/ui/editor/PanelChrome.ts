@@ -13,6 +13,8 @@ export interface BuilderPanelHeaderOptions {
   handle?: boolean;
   /** Extra header-trailing markup (e.g. action buttons) rendered before the close button. */
   actions?: string;
+  /** Optional extra class for panel-specific chrome hooks. */
+  className?: string;
 }
 
 export interface NormalizePanelChromeOptions {
@@ -28,13 +30,14 @@ export interface NormalizePanelChromeOptions {
  */
 export function builderPanelHeader(options: BuilderPanelHeaderOptions): string {
   const handle = options.handle === false ? '' : ' data-panel-handle';
+  const className = ['bi-head', options.className].filter(Boolean).join(' ');
   const close = options.closeId
     ? `<button id="${escapeAttr(options.closeId)}" type="button" class="b-close" aria-label="${escapeAttr(
         options.closeLabel ?? `Close ${options.title}`,
       )}"${options.closeCommandId ? ` data-command-id="${escapeAttr(options.closeCommandId)}"` : ''}>&times;</button>`
     : '';
   const trailing = `${options.actions ?? ''}${close}`;
-  return `<div class="bi-head"${handle}>${escapeHtml(options.title.toUpperCase())}${trailing ? ` ${trailing}` : ''}</div>`;
+  return `<div class="${escapeAttr(className)}"${handle}>${escapeHtml(options.title.toUpperCase())}${trailing ? ` ${trailing}` : ''}</div>`;
 }
 
 export function normalizePanelChromeHandles(panel: HTMLElement, options: NormalizePanelChromeOptions = {}): HTMLElement[] {

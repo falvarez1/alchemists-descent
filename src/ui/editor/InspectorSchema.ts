@@ -147,6 +147,7 @@ export function renderInspectorItems(items: InspectorSchemaItem[], options: Rend
         titleClassName: 'bi-head',
         bodyClassName: 'bi-section-body',
         collapsed: options.collapsedSections?.[id] === true,
+        attrs: current.id ? `data-section-id="${escapeAttr(current.id)}"` : undefined,
       }),
     );
     current = null;

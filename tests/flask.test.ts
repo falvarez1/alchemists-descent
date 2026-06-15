@@ -4,12 +4,17 @@ import { Flask } from '@/combat/Flask';
 import type { Ctx, RunTestKitConfig } from '@/core/types';
 import { Levels } from '@/game/Levels';
 import { Cell } from '@/sim/CellType';
+import { World } from '@/sim/World';
 
 function makeFlaskCtx(flask = new Flask()): Ctx {
+  const world = new World(64, 64);
   return {
     flask,
+    world,
     state: { mode: 'play', score: 0, frameCount: 0 },
     player: {
+      x: 12,
+      y: 21,
       dead: false,
       climbing: false,
       maxHp: 100,
@@ -28,9 +33,11 @@ function makeFlaskCtx(flask = new Flask()): Ctx {
     audio: {
       tone: () => undefined,
       dryFire: () => undefined,
+      noiseBurst: () => undefined,
     },
     telemetry: { count: () => undefined },
     events: { emit: () => undefined },
+    particles: { spawn: () => undefined },
     wands: {
       collection: [],
       wands: [],
@@ -51,6 +58,31 @@ describe('Flask runtime state', () => {
     flask.clearSlots();
 
     expect(flask.bottleView()).toBeNull();
+  });
+
+  it('does not siphon material through blocking cells', () => {
+    const flask = new Flask();
+    const ctx = makeFlaskCtx(flask);
+    ctx.input.siphonHeld = true;
+    ctx.world.types[ctx.world.idx(20, 12)] = Cell.Stone;
+    ctx.world.types[ctx.world.idx(32, 12)] = Cell.Water;
+
+    flask.update(ctx);
+
+    expect(flask.state.count).toBe(0);
+    expect(ctx.world.types[ctx.world.idx(32, 12)]).toBe(Cell.Water);
+  });
+
+  it('siphons visible material after the path is opened', () => {
+    const flask = new Flask();
+    const ctx = makeFlaskCtx(flask);
+    ctx.input.siphonHeld = true;
+    ctx.world.types[ctx.world.idx(32, 12)] = Cell.Water;
+
+    flask.update(ctx);
+
+    expect(flask.state).toMatchObject({ material: Cell.Water, count: 1 });
+    expect(ctx.world.types[ctx.world.idx(32, 12)]).toBe(Cell.Empty);
   });
 });
 

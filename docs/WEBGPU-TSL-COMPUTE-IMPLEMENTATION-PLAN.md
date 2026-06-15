@@ -2,7 +2,9 @@
 
 Status: in progress. Phases 0-2 are implemented and benchmark-gated. Phase 3
 is implemented as a boot-gated diagnostic shell with documented presentation
-warnings; it is not promoted as the default renderer. Phase 4+ remain pending.
+warnings; it is not promoted as the default renderer. Phase 4 has started with
+the compose ABI/limit contract in `docs/WEBGPU-COMPOSE-ABI.md`; the WebGPU
+compose shader port remains pending.
 
 This plan turns the current WebGL2 GPU frame-composition work into a staged
 WebGPU platform migration. The goal is not to swap APIs for novelty; the goal is
@@ -345,6 +347,17 @@ Tasks:
 - Include storage texture/buffer limit checks in the ABI table. If the preferred
   layout exceeds guaranteed limits on any target class, document the fallback
   layout before implementation.
+
+Phase 4.1 result:
+
+- ABI and limit contract: `docs/WEBGPU-COMPOSE-ABI.md`.
+- WebGPU backend status now reports compose-relevant device features, selected
+  limits, and `timestamp-query` availability for probes and benchmark artifacts.
+- The WebGPU presentation probe now asserts the Phase 4.1 minimum device limits
+  before future work may claim WebGPU compose support.
+- This slice intentionally does not enable WebGPU compose yet; `GpuCompose` in
+  `src/render/ComposeShader.ts` remains the WebGL2 performance and parity
+  reference.
 
 Expected result:
 

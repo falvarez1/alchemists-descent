@@ -92,10 +92,15 @@ export interface PixelSceneDef {
   v: 1;
   id: string;
   name: string;
+  kind?: VirtualSceneKind;
+  tags?: string[];
   w: number;
   h: number;
+  mask?: Uint8Array;
   material: Uint8Array;
   colorOverrides?: Uint32Array;
+  life?: Int16Array;
+  charge?: Uint8Array;
   visual?: Uint8ClampedArray;
   background?: Uint8ClampedArray;
   objects: VirtualSceneObject[];
@@ -109,6 +114,17 @@ export interface PixelScenePlacementDef {
   x: number;
   y: number;
   priority: number;
+}
+
+export interface VirtualScenePlacementInstance {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  objects: VirtualSceneObject[];
+  links: VirtualSceneLink[];
+  lights: VirtualSceneLight[];
 }
 
 export interface VirtualSceneObject {
@@ -133,6 +149,10 @@ export interface VirtualSceneLight {
   color: string;
   intensity: number;
   radius: number;
+  bloom?: number;
+  flicker?: number;
+  falloff?: 'soft' | 'linear' | 'sharp';
+  occluded?: boolean;
 }
 
 export interface VirtualMaterialPalette {
@@ -155,6 +175,28 @@ export interface VirtualDressingControls {
   hangingGrowth: number;
 }
 
+export type VirtualSceneKind =
+  | 'timberBraces'
+  | 'ruinedRooms'
+  | 'bridgeFragments'
+  | 'shrines'
+  | 'fungalPockets'
+  | 'crystalClusters'
+  | 'lavaVents'
+  | 'collapsedShafts';
+
+export interface VirtualSceneControls {
+  density: number;
+  maxPerTile: number;
+}
+
+export type VirtualSceneBudget = Record<VirtualSceneKind, number>;
+
+export interface VirtualSceneDressingProfile {
+  controls: VirtualSceneControls;
+  biomes: Record<VirtualBiomeId, VirtualSceneBudget>;
+}
+
 export interface VirtualBiomeDressingRecipe {
   ore: number;
   oreDensity: number;
@@ -175,6 +217,7 @@ export interface VirtualBiomeDressingRecipe {
 export interface VirtualDressingProfile {
   controls: VirtualDressingControls;
   biomes: Record<VirtualBiomeId, VirtualBiomeDressingRecipe>;
+  scenes: VirtualSceneDressingProfile;
 }
 
 export interface VirtualGenerationParams {
@@ -199,6 +242,7 @@ export interface VirtualChunkMeta {
   biome: VirtualBiomeId;
   tileIds: string[];
   scenes: string[];
+  scenePlacements: VirtualScenePlacementInstance[];
   hash: string;
   generatedMs: number;
 }

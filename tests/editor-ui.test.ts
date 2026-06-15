@@ -573,6 +573,9 @@ describe('inspector schema rendering', () => {
       lightInspectorSchema(light(), { presetIds: Object.keys(LIGHT_PRESETS), solo: false, muted: true }),
     );
 
+    expect(html).toContain('class="editor-section bi-section"');
+    expect(html).toContain('data-section-toggle="inspector.authored.light"');
+    expect(html).toContain('aria-controls="editor-section-body-inspector-authored-light"');
     expect(html).toContain('data-field-id="light.position"');
     expect(html).toContain('data-lf="x"');
     expect(html).toContain('data-command-id="builder.inspector.light.move"');
@@ -624,9 +627,15 @@ describe('inspector schema rendering', () => {
   it('models mixed multi-select shared flags with composite-command metadata', () => {
     const a = object({ id: 'a', locked: true, hidden: false });
     const b = object({ id: 'b', locked: false, hidden: false });
-    const html = renderInspectorItems(multiSelectionInspectorSchema([a, b], [light()]));
+    const html = renderInspectorItems(multiSelectionInspectorSchema([a, b], [light()]), {
+      collapsedSections: { 'inspector.selection.flags': true },
+    });
 
     expect(sharedValue([true, false])).toBe(MIXED_VALUE);
+    expect(html).toContain('data-section-id="selection.flags"');
+    expect(html).toContain('data-section="inspector.selection.flags"');
+    expect(html).toContain('class="editor-section bi-section collapsed"');
+    expect(html).toContain('aria-expanded="false"');
     expect(html).toContain('data-field-id="selection.locked"');
     expect(html).toContain('data-mf="locked"');
     expect(html).toContain('data-mixed="true"');
@@ -703,6 +712,7 @@ describe('builder outliner and link graph models', () => {
     }));
     expect(html).toContain('data-row-toggle="hidden"');
     expect(html).toContain('data-command-id="builder.toggleSelectedHidden"');
+    expect(html).toContain('role="option" tabindex="0"');
     expect(html).toContain('data-select-ids="plate-1,lever-1"');
     expect(html).toContain('data-select-id="door-1"');
     expect(html).toContain('link endpoint missing (missing)');
@@ -740,7 +750,9 @@ describe('builder outliner and link graph models', () => {
     expect(model.links.find((row) => row.id === 'link-bad')?.messages.join(' ')).toContain('trigger cannot drive pickup');
     expect(model.links.find((row) => row.id === 'link-missing')).toMatchObject({ live: false, severity: 'error' });
     expect(model.actuators.find((row) => row.id === door.id)?.inputs.map((row) => row.id)).toEqual(['link-b', 'link-a', 'link-missing']);
-    expect(renderLinkGraphPanel(model)).toContain('door warning &lt;x&gt;');
+    const html = renderLinkGraphPanel(model);
+    expect(html).toContain('door warning &lt;x&gt;');
+    expect(html).toContain('role="option" tabindex="0"');
   });
 });
 
@@ -814,6 +826,48 @@ describe('editor workspace layout', () => {
     );
     expect(moved.activePanelId).toBe('builder-inspector');
     expect(closed.panels.find((panel) => panel.id === 'builder-inspector')?.open).toBe(false);
+  });
+
+  it('tracks bottom dock split groups separately from tab order', () => {
+    const original = cloneDefaultBuilderLayout();
+    const moved = movePanel(original, 'builder-inspector', 'bottom', {
+      beforeId: 'dev-console',
+      tabGroupId: 'bottom-right',
+    });
+    const refloated = movePanel(moved, 'builder-inspector', 'floating', { floating: { x: 28, y: 64 } });
+
+    expect(moved.panels.find((panel) => panel.id === 'builder-inspector')).toMatchObject({
+      dock: 'bottom',
+      tabGroupId: 'bottom-right',
+    });
+    expect(moved.panels.findIndex((panel) => panel.id === 'builder-inspector')).toBeLessThan(
+      moved.panels.findIndex((panel) => panel.id === 'dev-console'),
+    );
+    expect(refloated.panels.find((panel) => panel.id === 'builder-inspector')?.tabGroupId).toBeUndefined();
+    expect(
+      sanitizeWorkspaceLayout({
+        panels: [
+          { id: 'builder-palette', dock: 'left', open: true, size: 214, tabGroupId: 'bottom-left' },
+          { id: 'builder-inspector', dock: 'bottom', open: true, size: 252, tabGroupId: 'bottom-right' },
+        ],
+      }).panels.find((panel) => panel.id === 'builder-palette')?.tabGroupId,
+    ).toBeUndefined();
+    expect(
+      sanitizeWorkspaceLayout({
+        panels: [{ id: 'builder-inspector', dock: 'bottom', open: true, size: 252, tabGroupId: 'bottom-right' }],
+      }).panels.find((panel) => panel.id === 'builder-inspector')?.tabGroupId,
+    ).toBe('bottom-right');
+    expect(
+      sanitizeWorkspaceLayout({
+        panels: [{ id: 'builder-inspector', dock: 'bottom', open: true, size: 252, tabGroupId: 'stale-group' }],
+      }).panels.find((panel) => panel.id === 'builder-inspector')?.tabGroupId,
+    ).toBeUndefined();
+    expect(movePanel(original, 'builder-inspector', 'bottom', { tabGroupId: 'stale-group' }).panels.find((panel) => panel.id === 'builder-inspector')?.tabGroupId).toBeUndefined();
+    expect(
+      sanitizeWorkspaceLayout({
+        panels: [{ id: 'builder-inspector', dock: 'bottom', open: true, size: 252, width: 412, tabGroupId: 'bottom-right' }],
+      }).panels.find((panel) => panel.id === 'builder-inspector')?.width,
+    ).toBe(412);
   });
 
   it('persists floating panel coordinates', () => {
@@ -921,6 +975,14 @@ describe('editor panel registry and chrome', () => {
       title: 'Palette',
       defaultDock: 'left',
       closePolicy: 'required',
+      allowedDocks: ['left', 'right', 'floating'],
+    });
+    expect(registry.get('builder-inspector')).toMatchObject({
+      title: 'Inspector',
+      defaultDock: 'right',
+      closePolicy: 'hide',
+      allowedDocks: ['left', 'right', 'bottom', 'floating'],
+      commandIds: { open: 'builder.inspectorPanel', close: 'builder.inspectorPanel' },
     });
     expect(registry.get('dev-console')?.commandIds).toMatchObject({
       open: 'console.open',
@@ -956,6 +1018,8 @@ describe('editor panel registry and chrome', () => {
       commandIds: { open: 'builder.postProcessingPanel' },
     });
     expect(registry.canDock('dev-console', 'floating')).toBe(true);
+    expect(registry.canDock('builder-inspector', 'bottom')).toBe(true);
+    expect(registry.canDock('builder-palette', 'bottom')).toBe(false);
     expect(registry.defaultLayouts()).toEqual(
       BUILDER_PANEL_SPECS.map((spec) => ({
         id: spec.id,
@@ -1042,6 +1106,8 @@ describe('editor panel registry and chrome', () => {
     });
 
     expect(host.movePanel('locked', 'right').panels.find((panel) => panel.id === 'locked')?.dock).toBe('left');
+    expect(host.movePanel('optional', 'right').panels.find((panel) => panel.id === 'optional')?.dock).toBe('bottom');
+    expect(host.movePanel('optional', 'floating').panels.find((panel) => panel.id === 'optional')?.dock).toBe('floating');
     expect(host.closePanel('locked').panels.find((panel) => panel.id === 'locked')?.open).toBe(true);
     expect(host.focusPanel('optional').activePanelId).toBe('optional');
     expect(host.snapshot().layout.panels.at(-1)?.id).toBe('optional');

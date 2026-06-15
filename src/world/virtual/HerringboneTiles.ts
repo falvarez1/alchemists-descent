@@ -53,7 +53,13 @@ export function resolveTile(
   }
 
   const edgeBias = edgeSignature(seed, tx, ty);
-  const weighted = candidates.map((tile) => ({
+  const ranked = candidates.map((tile) => ({
+    tile,
+    matches: edgeMatchCount(tile, edgeBias),
+  }));
+  const bestMatches = ranked.reduce((best, item) => Math.max(best, item.matches), -1);
+  const constrained = ranked.filter((item) => item.matches === bestMatches);
+  const weighted = constrained.map(({ tile }) => ({
     tile,
     weight: Math.max(0.001, tile.weight) * edgeCompatibility(tile, edgeBias),
   }));
@@ -139,4 +145,18 @@ function edgeCompatibility(tile: HerringboneTileDef, edgeBias: Record<'n' | 'e' 
     if (edge === 'wall' && !wantOpen) score += 0.35;
   }
   return score;
+}
+
+function edgeMatchCount(tile: HerringboneTileDef, edgeBias: Record<'n' | 'e' | 's' | 'w', number>): number {
+  let matches = 0;
+  for (const side of ['n', 'e', 's', 'w'] as const) {
+    if (tile.edges[side] === desiredEdgeColor(edgeBias[side])) matches++;
+  }
+  return matches;
+}
+
+function desiredEdgeColor(edgeBias: number): string {
+  if (edgeBias <= 1) return 'open';
+  if (edgeBias === 2) return 'narrow';
+  return 'wall';
 }

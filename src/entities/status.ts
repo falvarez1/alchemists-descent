@@ -34,6 +34,15 @@ export function createDefaultStatus(): EntityStatus {
   };
 }
 
+/** Death/respawn clears grid-inflicted transient harm but preserves potion boons. */
+export function clearElementalStatus(status: EntityStatus): void {
+  status.wet = 0;
+  status.oiled = 0;
+  status.burning = 0;
+  status.frozen = 0;
+  status.electrified = 0;
+}
+
 /** Random cell on the body's AABB perimeter (where flames lick off the skin). */
 function randomEdgeCell(body: StatusBody, halfW: number, h: number): { x: number; y: number } {
   const side = Math.floor(Math.random() * 4);

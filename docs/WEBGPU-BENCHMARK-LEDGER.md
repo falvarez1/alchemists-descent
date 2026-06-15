@@ -334,3 +334,102 @@ Notes:
   `npm run probe:webgpu-presentation`.
 - The passing probe artifact records a dirty checkout because the external
   `f0859d8` checkpoint preceded the local post-review fixes.
+
+## Phase 4.1 - WebGPU Compose ABI And Limit Contract
+
+Task: add the WebGPU compose ABI/limit contract before porting the WebGL2
+`GpuCompose` shader, and expose compose-relevant WebGPU feature/limit reporting
+through the backend status payload.
+
+Commit: `5a0f324` plus working-tree Phase 4.1 docs/status changes.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for prior WebGPU phases.
+
+Requested backend: `renderBackend=webgpu` through the Phase 3 presentation
+probe; `renderBackend=webgl` remains the fallback/reference path.
+
+Actual backend: WebGPU variants report `WebGPURenderBackend` / actual WebGPU;
+WebGL variants report `WebGLRenderBackend` / WebGL2.
+
+Scene / seed / resolution: deterministic Phase 3 presentation scene, seed
+`777`, `1050x714` renderer canvas. This task is contract/capability plumbing;
+it intentionally does not enable WebGPU compose.
+
+Command:
+
+```powershell
+npm run probe:webgpu-presentation
+npm run probe:render-backend
+node scripts/probe-compose-parity.mjs http://127.0.0.1:5204/
+```
+
+Baseline: Phase 3 status payload did not expose the device features or limits
+needed to decide whether a WebGPU compose resource layout is valid. The WebGL2
+compose reference was already green and remains the performance target.
+
+After: `docs/WEBGPU-COMPOSE-ABI.md` records the world-window, light-field,
+LUT, overlay, backdrop, logical bind-group, uniform, row-pitch/alignment,
+endian, coordinate, packing, and fallback ABI. WebGPU backend status now
+reports selected active-device features, selected active-device limits, and
+`timestamp-query` availability. The presentation probe now hard-asserts the
+Phase 4.1 compose capability gate in artifact
+`verify-out/webgpu-presentation/probe-1781526289455.json`.
+
+Expected result: no visual or performance behavior change yet; the positive
+result is a concrete ABI/limit gate that prevents the Phase 4 shader port from
+silently changing resource formats, coordinate orientation, overlay semantics,
+or device requirements.
+
+Actual result: keep. The probed WebGPU device reports `timestamp-query`
+available and the capability gate passed with limits that satisfy the Phase 4.1
+contract for the preferred `textureLoad` layout: `maxTextureDimension2D=8192`,
+`maxSampledTexturesPerShaderStage=16`, `maxSamplersPerShaderStage=16`,
+`maxUniformBufferBindingSize=65536`,
+`maxStorageBufferBindingSize=134217728`, and `maxBufferSize=268435456`.
+The hard gate now requires the current largest backdrop dimension
+(`maxTextureDimension2D >= 2172`) and padded overlay staging size
+(`maxBufferSize >= 1553664`). The existing CPU/WebGL2 compose parity probe
+stayed green.
+
+Performance result: no WebGPU speedup is claimed for this slice. The latest
+passing presentation probe still leaves compose on the CPU path; WebGPU only
+presents the already-composed frame. In that run the post-on `gl` bucket was
+roughly comparable to WebGL2 (`0.478ms` WebGL2 vs `0.493ms` WebGPU, `+3.1%`),
+while the no-post diagnostic bucket was slower (`0.363ms` WebGL2 vs `0.460ms`
+WebGPU, `+27.0%`) and remains a warning. Real improvement is expected only
+after a Phase 4 compose shader moves substantial frame work onto WebGPU.
+
+Visual/quality evidence: no new visual path was enabled. Reference parity
+evidence is the existing `npm run probe:compose-parity` result: static scene
+`99.999%` exact, max delta `1`, postFx-on chain max delta `1`, and all 8
+assertions green.
+
+Decision: keep. Proceed to a WebGPU compose shader spike only after preserving
+this ABI, keeping the capability gate green, and adding a CPU/WebGL2/WebGPU
+parity variant.
+
+Notes:
+
+- ABI contract: `docs/WEBGPU-COMPOSE-ABI.md`.
+- Presentation artifact with WebGPU limits and hard compose gate:
+  `verify-out/webgpu-presentation/probe-1781526289455.json`.
+- Backend artifact:
+  `verify-out/render-backend-selection/probe-1781525980797.json`.
+- Validation passed: `node --check scripts/probe-webgpu-presentation.mjs`,
+  targeted ESLint for `src/render/Renderer.ts`,
+  `src/render/WebGpuRenderBackend.ts`, `src/render/pixels.ts`, and
+  `scripts/probe-webgpu-presentation.mjs`, `npm run typecheck`,
+  `npm run lint`, `npm run build`, `npm run probe:render-backend`,
+  `npm run probe:webgpu-presentation`, and a fresh
+  `node scripts/probe-compose-parity.mjs http://127.0.0.1:5204/` run against a
+  temporary Vite server.
+- Current full-suite status: `npm test` is not green in the shared dirty
+  worktree. It reports `39` passing test files, `508` passing tests, and one
+  unrelated failure in `tests/virtual-world.test.ts`: `No herringbone tile for
+  orientation 'vertical'`.
+- The current worktree also contains an unrelated `src/render/ComposeShader.ts`
+  hunk that changes backdrop sample quantization. It is not part of this
+  Phase 4.1 slice. Because `postFx.gpuCompose` is the WebGL2 reference path,
+  that hunk must be separately benchmarked/accepted or cleared before a WebGPU
+  compose port treats the current shader as the reference.

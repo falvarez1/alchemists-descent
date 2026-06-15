@@ -250,6 +250,26 @@ describe('WandSystem runtime snapshots', () => {
     expect(wands.collection).not.toContain('infuser');
     expect(wands.snapshotRuntimeState().infuserGranted).toBe(false);
   });
+
+  it('does not spend mana or advance the cast cycle while a black hole is charging', () => {
+    const ctx = makeCastCtx();
+    const wands = new WandSystem(ctx);
+    wands.loadLoadout({
+      active: 0,
+      collection: ['blackhole'],
+      wands: [{ frameId: 'oak', cards: ['blackhole', null, null], mana: 90 }],
+    });
+    const before = wands.snapshotRuntimeState().wands[0];
+    ctx.input.activeChargingBlackHole = { type: 'blackhole' } as typeof ctx.input.activeChargingBlackHole;
+
+    wands.fire(ctx);
+
+    const after = wands.snapshotRuntimeState().wands[0];
+    expect(ctx.projectiles).toHaveLength(0);
+    expect(after.mana).toBe(before.mana);
+    expect(after.castIndex).toBe(before.castIndex);
+    expect(after.cooldown).toBe(before.cooldown);
+  });
 });
 
 function action(card: CardId, overrides: Partial<CastAction> = {}): CastAction {

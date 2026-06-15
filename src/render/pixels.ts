@@ -22,6 +22,9 @@ export interface RenderBackendWebGpuStatus {
   backendImplemented: boolean;
   adapter: 'unchecked' | 'available' | 'unavailable' | 'failed';
   device: 'unchecked' | 'available' | 'unavailable' | 'failed' | 'lost' | 'recovered';
+  deviceFeatures: string[];
+  deviceLimits: Record<string, number> | null;
+  timestampQueryAvailable: boolean | null;
   lostCount: number;
   lastLossReason: string | null;
   lastLossMessage: string | null;

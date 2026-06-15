@@ -100,4 +100,20 @@ describe('region graph extraction', () => {
     expect(g.exitRegion).toBe(-1);
     expect(g.mainPath).toEqual([]);
   });
+
+  it('does not mark an unreachable exit-side region as main path', () => {
+    const separated = new World();
+    separated.types.fill(Cell.Wall);
+    carve(separated, 100, 200, 200, 300);
+    carve(separated, 500, 200, 600, 300);
+
+    const g = extractRegionGraph(separated, { x: 150, y: 250 }, { x: 550, y: 250 });
+
+    expect(g.spawnRegion).toBeGreaterThanOrEqual(0);
+    expect(g.exitRegion).toBeGreaterThanOrEqual(0);
+    expect(g.exitRegion).not.toBe(g.spawnRegion);
+    expect(g.mainPath).toEqual([g.spawnRegion]);
+    expect(g.regions[g.spawnRegion].onMainPath).toBe(true);
+    expect(g.regions[g.exitRegion].onMainPath).toBe(false);
+  });
 });

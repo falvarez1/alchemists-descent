@@ -2,15 +2,26 @@ import { Cell } from '@/sim/CellType';
 import { EMPTY_COLOR, packRGB } from '@/sim/colors';
 import type {
   HerringboneTileDef,
+  PixelSceneDef,
+  PixelScenePlacementDef,
   TileAnchor,
   TileCarveInstruction,
+  VirtualDressingProfile,
   VirtualBiomeDressingRecipe,
   VirtualBiomeId,
+  VirtualSceneBudget,
   VirtualChunk,
+  VirtualScenePlacementInstance,
   VirtualWorldDef,
 } from '@/world/virtual/types';
-import { biomeIdFromIndex } from '@/world/virtual/defaults';
-import { biomeAtWorld, chunkOrigin } from '@/world/virtual/coords';
+import {
+  biomeIdFromIndex,
+  createDefaultDressingProfile,
+  getDefaultPixelSceneLibrary,
+  VIRTUAL_SCENE_KINDS,
+  createDefaultVirtualGenerationParams,
+} from '@/world/virtual/defaults';
+import { biomeAtWorld, chunkOrigin, floorDiv } from '@/world/virtual/coords';
 import { fnv1aByteArrays, signedUnitHash2i, unitHash2i } from '@/world/virtual/hash';
 import { resolveTilesForRect, type ResolvedTile } from '@/world/virtual/HerringboneTiles';
 import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
@@ -25,6 +36,11 @@ interface Scratch {
 }
 
 export function generateVirtualChunk(def: VirtualWorldDef, cx: number, cy: number): VirtualChunk {
+  normalizeVirtualWorldDef(def);
+  return generateVirtualChunkNormalized(def, cx, cy);
+}
+
+function generateVirtualChunkNormalized(def: VirtualWorldDef, cx: number, cy: number): VirtualChunk {
   const t0 = now();
   const size = def.chunkSize;
   const halo = Math.max(0, Math.floor(def.generation.halo));
@@ -74,18 +90,26 @@ export function generateVirtualChunk(def: VirtualWorldDef, cx: number, cy: numbe
     }
   }
 
-  const scenes = stampPixelScenes({
+  const life = new Int16Array(size * size);
+  const charge = new Uint8Array(size * size);
+  const stampedScenes = stampPixelScenes({
     originX: origin.x,
     originY: origin.y,
     size,
     types,
     colors,
-  }, def.pixelScenes);
+    life,
+    charge,
+  }, pixelScenePlacementsForChunk(def, origin.x, origin.y, size, biomeAt));
 
-  const life = new Int16Array(size * size);
-  const charge = new Uint8Array(size * size);
   const biome = biomeAt(origin.x + size / 2, origin.y + size / 2);
-  const hash = fnv1aByteArrays([types, new Uint8Array(colors.buffer)]);
+  const hash = fnv1aByteArrays([
+    types,
+    new Uint8Array(colors.buffer),
+    new Uint8Array(life.buffer),
+    charge,
+    sceneMetadataBytes(stampedScenes.placements),
+  ]);
   return {
     cx,
     cy,
@@ -99,7 +123,8 @@ export function generateVirtualChunk(def: VirtualWorldDef, cx: number, cy: numbe
     meta: {
       biome,
       tileIds: [...new Set(tiles.map((tile) => tile.tile.id))],
-      scenes,
+      scenes: stampedScenes.scenes,
+      scenePlacements: stampedScenes.placements,
       hash,
       generatedMs: now() - t0,
     },
@@ -113,13 +138,142 @@ export function generateVirtualWindow(
   cx1: number,
   cy1: number,
 ): VirtualChunk[] {
+  normalizeVirtualWorldDef(def);
   const out: VirtualChunk[] = [];
   for (let cy = cy0; cy <= cy1; cy++) {
     for (let cx = cx0; cx <= cx1; cx++) {
-      out.push(generateVirtualChunk(def, cx, cy));
+      out.push(generateVirtualChunkNormalized(def, cx, cy));
     }
   }
   return out;
+}
+
+const MIN_SCENE_PLACEMENT_REACH = 128;
+
+function pixelScenePlacementsForChunk(
+  def: VirtualWorldDef,
+  originX: number,
+  originY: number,
+  size: number,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): PixelScenePlacementDef[] {
+  const placements = new Map<string, PixelScenePlacementDef>();
+  for (const placement of def.pixelScenes) placements.set(placement.id, placement);
+  for (const placement of generatedPixelScenePlacements(def, originX, originY, size, biomeAt)) {
+    if (!placements.has(placement.id)) placements.set(placement.id, placement);
+  }
+  return [...placements.values()].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
+}
+
+function generatedPixelScenePlacements(
+  def: VirtualWorldDef,
+  originX: number,
+  originY: number,
+  size: number,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): PixelScenePlacementDef[] {
+  const density = sceneControl(def, 'density');
+  const maxPerTile = Math.max(0, Math.min(6, Math.floor(sceneControl(def, 'maxPerTile'))));
+  if (density <= 0 || maxPerTile <= 0) return [];
+  const library = getDefaultPixelSceneLibrary();
+  const reach = scenePlacementReach(def, library);
+  const tiles = resolveTilesForRect(
+    def.tileset,
+    def.seed,
+    originX - reach,
+    originY - reach,
+    originX + size + reach,
+    originY + size + reach,
+    biomeAt,
+  );
+  const out: PixelScenePlacementDef[] = [];
+  for (const resolved of tiles) {
+    const selected: Array<{ placement: PixelScenePlacementDef; order: number }> = [];
+    for (let slotIndex = 0; slotIndex < resolved.tile.sceneSlots.length; slotIndex++) {
+      const slot = resolved.tile.sceneSlots[slotIndex];
+      const wx = Math.round(resolved.x0 + slot.x * def.tileset.tileSize);
+      const wy = Math.round(resolved.y0 + slot.y * def.tileset.tileSize);
+      const biome = biomeAt(wx, wy);
+      const budget = sceneBudget(def, biome);
+      const scene = chooseSceneForSlot(def, library, budget, slot.tags, biome, resolved.tx, resolved.ty, slotIndex);
+      if (!scene?.kind) continue;
+      const chance = clamp01((budget[scene.kind] ?? 0) * density * 0.55);
+      if (unitHash2i(def.seed ^ 0x341d8e2b, resolved.tx * 4099 + slotIndex, resolved.ty) > chance) continue;
+      const x = Math.round(wx - scene.w / 2);
+      const y = Math.round(wy - scene.h / 2);
+      selected.push({
+        order: unitHash2i(def.seed ^ 0x7c15f2d3, resolved.tx * 4099 + slotIndex, resolved.ty),
+        placement: {
+          id: `tile:${resolved.tx},${resolved.ty}:${slot.id}:${scene.id}`,
+          scene,
+          x,
+          y,
+          priority: 100 + slotIndex,
+        },
+      });
+    }
+    selected.sort((a, b) => a.order - b.order || a.placement.id.localeCompare(b.placement.id));
+    for (const item of selected.slice(0, maxPerTile)) out.push(item.placement);
+  }
+  return out;
+}
+
+function scenePlacementReach(def: VirtualWorldDef, library: readonly PixelSceneDef[]): number {
+  let maxSceneExtent = 0;
+  for (const scene of library) maxSceneExtent = Math.max(maxSceneExtent, scene.w, scene.h);
+  for (const placement of def.pixelScenes) maxSceneExtent = Math.max(maxSceneExtent, placement.scene.w, placement.scene.h);
+  let maxSlotOvershoot = 0;
+  for (const tile of def.tileset.tiles) {
+    for (const slot of tile.sceneSlots) {
+      maxSlotOvershoot = Math.max(
+        maxSlotOvershoot,
+        Math.abs(slot.x - 0.5) * def.tileset.tileSize,
+        Math.abs(slot.y - 0.5) * def.tileset.tileSize,
+      );
+    }
+  }
+  return Math.max(MIN_SCENE_PLACEMENT_REACH, Math.ceil(def.tileset.tileSize + maxSceneExtent + maxSlotOvershoot));
+}
+
+function chooseSceneForSlot(
+  def: VirtualWorldDef,
+  library: readonly PixelSceneDef[],
+  budget: VirtualSceneBudget,
+  slotTags: readonly string[],
+  biome: VirtualBiomeId,
+  tx: number,
+  ty: number,
+  slotIndex: number,
+): PixelSceneDef | null {
+  const candidates = library.filter((scene) =>
+    scene.kind &&
+    (budget[scene.kind] ?? 0) > 0 &&
+    sceneMatchesSlot(scene, slotTags, biome),
+  );
+  if (candidates.length === 0) return null;
+  const total = candidates.reduce((sum, scene) => sum + Math.max(0.001, budget[scene.kind!]), 0);
+  let roll = unitHash2i(def.seed ^ 0x5d9e4c17, tx * 4099 + slotIndex, ty) * total;
+  for (const scene of candidates) {
+    roll -= Math.max(0.001, budget[scene.kind!]);
+    if (roll <= 0) return scene;
+  }
+  return candidates[candidates.length - 1] ?? null;
+}
+
+function sceneMatchesSlot(scene: PixelSceneDef, slotTags: readonly string[], biome: VirtualBiomeId): boolean {
+  if (!scene.kind) return false;
+  if (slotTags.includes(scene.kind) || slotTags.includes('any')) return true;
+  const sceneTags = scene.tags ?? [];
+  return sceneTags.includes(biome) || sceneTags.some((tag) => slotTags.includes(tag));
+}
+
+function sceneBudget(def: VirtualWorldDef, biome: VirtualBiomeId): VirtualSceneBudget {
+  return def.dressing.scenes.biomes[biome] ?? def.dressing.scenes.biomes.earthen;
+}
+
+function sceneControl(def: VirtualWorldDef, key: keyof VirtualWorldDef['dressing']['scenes']['controls']): number {
+  const value = def.dressing.scenes.controls[key];
+  return Math.max(0, Math.min(key === 'maxPerTile' ? 6 : 2, Number.isFinite(value) ? value : 1));
 }
 
 function fillBaseTerrain(
@@ -128,18 +282,26 @@ function fillBaseTerrain(
   biomeAt: (x: number, y: number) => VirtualBiomeId,
 ): void {
   const block = generationInt(def.generation.baseCellSize, 2, 1, 4);
-  for (let y = 0; y < scratch.size; y += block) {
-    const wy = scratch.originY + y;
-    for (let x = 0; x < scratch.size; x += block) {
-      const wx = scratch.originX + x;
+  const bx0 = floorDiv(scratch.originX, block);
+  const by0 = floorDiv(scratch.originY, block);
+  const bx1 = floorDiv(scratch.originX + scratch.size - 1, block);
+  const by1 = floorDiv(scratch.originY + scratch.size - 1, block);
+  for (let by = by0; by <= by1; by++) {
+    const wy = by * block;
+    const y0 = Math.max(0, wy - scratch.originY);
+    const y1 = Math.min(scratch.size - 1, wy + block - 1 - scratch.originY);
+    for (let bx = bx0; bx <= bx1; bx++) {
+      const wx = bx * block;
+      const x0 = Math.max(0, wx - scratch.originX);
+      const x1 = Math.min(scratch.size - 1, wx + block - 1 - scratch.originX);
       const n = terrainNoise(def, wx, wy);
       const solid = n <= generationNumber(def.generation.noiseThreshold, 0.54);
       const biome = biomeAt(wx, wy);
       const color = solid ? terrainColor(def, biome, wx, wy, n) : EMPTY_COLOR;
-      for (let oy = 0; oy < block && y + oy < scratch.size; oy++) {
-        const row = (y + oy) * scratch.size;
-        for (let ox = 0; ox < block && x + ox < scratch.size; ox++) {
-          const i = x + ox + row;
+      for (let y = y0; y <= y1; y++) {
+        const row = y * scratch.size;
+        for (let x = x0; x <= x1; x++) {
+          const i = x + row;
           scratch.types[i] = solid ? Cell.Wall : Cell.Empty;
           scratch.colors[i] = color;
         }
@@ -199,9 +361,9 @@ function roughenCaveEdges(
   if (roughness <= 0) return;
   const before = scratch.types;
   const after = new Uint8Array(before);
-  for (let y = 1; y < scratch.size - 1; y += 2) {
+  for (let y = firstSteppedLocal(scratch.originY, 1, 2); y < scratch.size - 1; y += 2) {
     const wy = scratch.originY + y;
-    for (let x = 1; x < scratch.size - 1; x += 2) {
+    for (let x = firstSteppedLocal(scratch.originX, 1, 2); x < scratch.size - 1; x += 2) {
       const i = x + y * scratch.size;
       const solidNeighbors = countSolidNeighbors(before, scratch.size, x, y);
       const openNeighbors = 8 - solidNeighbors;
@@ -650,9 +812,9 @@ function dressFloorDebris(
   const debris = dressingControl(def, 'floorDebris');
   if (detail <= 0 || debris <= 0) return;
 
-  for (let y = 2; y < scratch.size - 3; y += 2) {
+  for (let y = firstSteppedLocal(scratch.originY, 2, 2); y < scratch.size - 3; y += 2) {
     const wy = scratch.originY + y;
-    for (let x = 1; x < scratch.size - 1; x += 2) {
+    for (let x = firstSteppedLocal(scratch.originX, 1, 2); x < scratch.size - 1; x += 2) {
       const i = x + y * scratch.size;
       if (!isTerrainSolid(scratch.types[i]) || scratch.types[i - scratch.size] !== Cell.Empty) continue;
       const wx = scratch.originX + x;
@@ -683,9 +845,9 @@ function dressHangingGrowth(
   const hanging = dressingControl(def, 'hangingGrowth');
   if (detail <= 0 || hanging <= 0) return;
 
-  for (let y = 2; y < scratch.size - 8; y += 2) {
+  for (let y = firstSteppedLocal(scratch.originY, 2, 2); y < scratch.size - 8; y += 2) {
     const wy = scratch.originY + y;
-    for (let x = 1; x < scratch.size - 1; x += 3) {
+    for (let x = firstSteppedLocal(scratch.originX, 1, 3); x < scratch.size - 1; x += 3) {
       const i = x + y * scratch.size;
       if (scratch.types[i] !== Cell.Empty || !isTerrainSolid(scratch.types[i - scratch.size])) continue;
       const wx = scratch.originX + x;
@@ -715,9 +877,9 @@ function dressLiquidBasins(
   const liquids = dressingControl(def, 'liquidRichness');
   if (detail <= 0 || liquids <= 0) return;
 
-  for (let y = 3; y < scratch.size - 3; y += 4) {
+  for (let y = firstSteppedLocal(scratch.originY, 3, 4); y < scratch.size - 3; y += 4) {
     const wy = scratch.originY + y;
-    for (let x = 4; x < scratch.size - 4; x += 5) {
+    for (let x = firstSteppedLocal(scratch.originX, 4, 5); x < scratch.size - 4; x += 5) {
       const i = x + y * scratch.size;
       if (scratch.types[i] !== Cell.Empty || !isTerrainSolid(scratch.types[i + scratch.size])) continue;
       if (scratch.types[i - scratch.size] !== Cell.Empty) continue;
@@ -751,9 +913,9 @@ function dressGlowAccents(
   const glow = dressingControl(def, 'glowDensity');
   if (detail <= 0 || glow <= 0) return;
 
-  for (let y = 2; y < scratch.size - 3; y += 3) {
+  for (let y = firstSteppedLocal(scratch.originY, 2, 3); y < scratch.size - 3; y += 3) {
     const wy = scratch.originY + y;
-    for (let x = 2; x < scratch.size - 2; x += 3) {
+    for (let x = firstSteppedLocal(scratch.originX, 2, 3); x < scratch.size - 2; x += 3) {
       const i = x + y * scratch.size;
       if (scratch.types[i] !== Cell.Empty) continue;
       const floor = isTerrainSolid(scratch.types[i + scratch.size]);
@@ -1144,6 +1306,176 @@ function scaleColor(color: number, k: number): number {
   const g = Math.max(0, Math.min(255, Math.floor(((color >> 8) & 0xff) * k)));
   const b = Math.max(0, Math.min(255, Math.floor((color & 0xff) * k)));
   return packRGB(r, g, b);
+}
+
+function normalizeVirtualWorldDef(def: VirtualWorldDef): void {
+  def.pixelScenes = normalizePixelScenePlacements(
+    (def as VirtualWorldDef & { pixelScenes?: PixelScenePlacementDef[] }).pixelScenes ?? [],
+  );
+
+  const fallbackGeneration = createDefaultVirtualGenerationParams();
+  const rawGeneration = (def as VirtualWorldDef & { generation?: Partial<VirtualWorldDef['generation']> }).generation ?? {};
+  def.generation = {
+    ...fallbackGeneration,
+    ...rawGeneration,
+  };
+  for (const [key, fallback] of Object.entries(fallbackGeneration) as Array<
+    [keyof VirtualWorldDef['generation'], number]
+  >) {
+    if (!Number.isFinite(def.generation[key])) def.generation[key] = fallback;
+  }
+
+  const fallbackDressing = createDefaultDressingProfile();
+  const rawDressing =
+    (def as VirtualWorldDef & { dressing?: Partial<VirtualDressingProfile> }).dressing ?? {};
+  const rawControls = rawDressing.controls ?? {};
+  const rawSceneControls = normalizeSceneControlAliases(rawDressing.scenes?.controls ?? {});
+  def.dressing = {
+    controls: {
+      ...fallbackDressing.controls,
+      ...rawControls,
+    },
+    biomes: { ...fallbackDressing.biomes },
+    scenes: {
+      controls: {
+        ...fallbackDressing.scenes.controls,
+        ...rawSceneControls,
+      },
+      biomes: { ...fallbackDressing.scenes.biomes },
+    },
+  };
+  for (const [key, fallback] of Object.entries(fallbackDressing.controls) as Array<
+    [keyof VirtualDressingProfile['controls'], number]
+  >) {
+    const value = def.dressing.controls[key];
+    def.dressing.controls[key] = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : fallback;
+  }
+  const rawBiomes = rawDressing.biomes ?? {};
+  for (const [biome, fallbackRecipe] of Object.entries(fallbackDressing.biomes) as Array<
+    [VirtualBiomeId, VirtualBiomeDressingRecipe]
+  >) {
+    const recipe = {
+      ...fallbackRecipe,
+      ...(rawBiomes[biome] ?? {}),
+    };
+    for (const [key, fallback] of Object.entries(fallbackRecipe) as Array<
+      [keyof VirtualBiomeDressingRecipe, number]
+    >) {
+      if (!Number.isFinite(recipe[key])) recipe[key] = fallback;
+    }
+    def.dressing.biomes[biome] = recipe;
+  }
+  for (const [key, fallback] of Object.entries(fallbackDressing.scenes.controls) as Array<
+    [keyof VirtualDressingProfile['scenes']['controls'], number]
+  >) {
+    const max = key === 'maxPerTile' ? 6 : 2;
+    const value = def.dressing.scenes.controls[key];
+    def.dressing.scenes.controls[key] = Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : fallback;
+  }
+  const rawSceneBiomes = rawDressing.scenes?.biomes ?? {};
+  for (const [biome, fallbackBudget] of Object.entries(fallbackDressing.scenes.biomes) as Array<
+    [VirtualBiomeId, VirtualSceneBudget]
+  >) {
+    const rawBudget = rawSceneBiomes[biome] ?? {};
+    const budget = { ...fallbackBudget, ...rawBudget };
+    for (const kind of VIRTUAL_SCENE_KINDS) {
+      const value = budget[kind];
+      budget[kind] = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : fallbackBudget[kind];
+    }
+    def.dressing.scenes.biomes[biome] = budget;
+  }
+}
+
+function normalizeSceneControlAliases(
+  controls: Partial<VirtualDressingProfile['scenes']['controls']> & { maxPerChunk?: number },
+): Partial<VirtualDressingProfile['scenes']['controls']> {
+  if (!Number.isFinite(controls.maxPerTile) && Number.isFinite(controls.maxPerChunk)) {
+    return { ...controls, maxPerTile: controls.maxPerChunk };
+  }
+  return controls;
+}
+
+function normalizePixelScenePlacements(placements: readonly PixelScenePlacementDef[]): PixelScenePlacementDef[] {
+  if (!Array.isArray(placements)) return [];
+  const out: PixelScenePlacementDef[] = [];
+  for (const placement of placements) {
+    const scene = normalizePixelScene(placement?.scene);
+    if (!scene) continue;
+    const x = Number.isFinite(placement.x) ? Math.round(placement.x) : 0;
+    const y = Number.isFinite(placement.y) ? Math.round(placement.y) : 0;
+    const priority = Number.isFinite(placement.priority) ? placement.priority : 0;
+    out.push({
+      id: typeof placement.id === 'string' && placement.id.length > 0 ? placement.id : scene.id,
+      scene,
+      x,
+      y,
+      priority,
+    });
+  }
+  return out;
+}
+
+function normalizePixelScene(scene: PixelSceneDef | undefined): PixelSceneDef | null {
+  if (!scene || !(scene.material instanceof Uint8Array)) return null;
+  const w = Math.max(1, Math.floor(scene.w));
+  const h = Math.max(1, Math.floor(scene.h));
+  if (scene.material.length < w * h) return null;
+  return {
+    ...scene,
+    v: 1,
+    id: typeof scene.id === 'string' && scene.id.length > 0 ? scene.id : 'scene',
+    name: typeof scene.name === 'string' && scene.name.length > 0 ? scene.name : scene.id,
+    tags: Array.isArray(scene.tags) ? scene.tags.filter((tag) => typeof tag === 'string') : [],
+    w,
+    h,
+    mask: scene.mask instanceof Uint8Array ? scene.mask : undefined,
+    colorOverrides: scene.colorOverrides instanceof Uint32Array ? scene.colorOverrides : undefined,
+    life: scene.life instanceof Int16Array && scene.life.length >= w * h ? scene.life : undefined,
+    charge: scene.charge instanceof Uint8Array && scene.charge.length >= w * h ? scene.charge : undefined,
+    objects: Array.isArray(scene.objects) ? scene.objects : [],
+    links: Array.isArray(scene.links) ? scene.links : [],
+    lights: Array.isArray(scene.lights) ? scene.lights : [],
+  };
+}
+
+function sceneMetadataBytes(placements: readonly VirtualScenePlacementInstance[]): Uint8Array {
+  if (placements.length === 0) return new Uint8Array(0);
+  const text = placements
+    .map((placement) => {
+      const objects = placement.objects
+        .map((object) => `${object.id},${object.kind},${object.x},${object.y},${stableScalarString(object.params)}`)
+        .join(';');
+      const links = placement.links
+        .map((link) => `${link.id},${link.kind},${link.fromId},${link.toId}`)
+        .join(';');
+      const lights = placement.lights
+        .map((light) => `${light.id},${light.x},${light.y},${light.color},${light.intensity},${light.radius},${light.bloom ?? ''},${light.flicker ?? ''},${light.falloff ?? ''},${light.occluded ?? ''}`)
+        .join(';');
+      return `${placement.id}@${placement.x},${placement.y},${placement.w},${placement.h}:o(${objects})l(${links})g(${lights})`;
+    })
+    .join('|');
+  const out = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) out[i] = text.charCodeAt(i) & 0xff;
+  return out;
+}
+
+function stableScalarString(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (Array.isArray(value)) return `[${value.map(stableScalarString).join(',')}]`;
+  if (typeof value === 'object') {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableScalarString((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`;
+  }
+  return '';
+}
+
+function firstSteppedLocal(origin: number, minLocal: number, step: number): number {
+  return Math.ceil((origin + minLocal) / step) * step - origin;
 }
 
 function clamp01(value: number): number {

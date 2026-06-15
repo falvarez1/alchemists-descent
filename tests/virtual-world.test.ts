@@ -2,12 +2,26 @@ import { describe, expect, it } from 'vitest';
 
 import { BIOMES } from '@/config/biomes';
 import { Cell } from '@/sim/CellType';
-import { biomeIndexFromId, createDefaultVirtualWorldDef, VIRTUAL_BIOME_IDS } from '@/world/virtual/defaults';
+import {
+  biomeIndexFromId,
+  createDefaultVirtualWorldDef,
+  getDefaultPixelSceneLibrary,
+  VIRTUAL_BIOME_IDS,
+  VIRTUAL_SCENE_KINDS,
+} from '@/world/virtual/defaults';
 import { generateVirtualChunk, generateVirtualWindow } from '@/world/virtual/ChunkGenerator';
-import { validateTileset } from '@/world/virtual/HerringboneTiles';
+import { resolveTile, validateTileset } from '@/world/virtual/HerringboneTiles';
 import { materializeChunks } from '@/world/virtual/WindowMaterializer';
-import { fnv1aByteArrays } from '@/world/virtual/hash';
+import { fnv1aByteArrays, hashCoord } from '@/world/virtual/hash';
+import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
 import { fromTransferableChunk, toTransferableChunk } from '@/world/virtual/transfer';
+import type {
+  HerringboneTileDef,
+  HerringboneTilesetDef,
+  PixelScenePlacementDef,
+  VirtualSceneBudget,
+  VirtualWorldDef,
+} from '@/world/virtual/types';
 
 function allPlaneHash(chunk: ReturnType<typeof generateVirtualChunk>): string {
   return fnv1aByteArrays([
@@ -33,6 +47,30 @@ function countMaterials(types: Uint8Array, materials: readonly number[]): number
     if (set.has(types[i])) count++;
   }
   return count;
+}
+
+function edgeColorsFor(seed: number, tx: number, ty: number): HerringboneTileDef['edges'] {
+  return {
+    n: desiredEdgeColor(hashCoord(seed, 'edge-h', tx, ty) % 4),
+    s: desiredEdgeColor(hashCoord(seed, 'edge-h', tx, ty + 1) % 4),
+    w: desiredEdgeColor(hashCoord(seed, 'edge-v', tx, ty) % 4),
+    e: desiredEdgeColor(hashCoord(seed, 'edge-v', tx + 1, ty) % 4),
+  };
+}
+
+function desiredEdgeColor(edgeBias: number): string {
+  if (edgeBias <= 1) return 'open';
+  if (edgeBias === 2) return 'narrow';
+  return 'wall';
+}
+
+function oppositeEdges(edges: HerringboneTileDef['edges']): HerringboneTileDef['edges'] {
+  return {
+    n: edges.n === 'open' ? 'wall' : 'open',
+    e: edges.e === 'open' ? 'wall' : 'open',
+    s: edges.s === 'open' ? 'wall' : 'open',
+    w: edges.w === 'open' ? 'wall' : 'open',
+  };
 }
 
 describe('virtual world prototype', () => {
@@ -83,6 +121,19 @@ describe('virtual world prototype', () => {
       const recipe = def.dressing.biomes[biome];
       expect(recipe.ore).toBeGreaterThan(0);
       expect(recipe.glowDensity).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('ships scene budgets and a built-in pixel scene library for every scene kind', () => {
+    const def = createDefaultVirtualWorldDef(4322);
+    const sceneKinds = new Set(getDefaultPixelSceneLibrary().map((scene) => scene.kind));
+
+    expect(sceneKinds).toEqual(new Set(VIRTUAL_SCENE_KINDS));
+    expect(new Set(Object.keys(def.dressing.scenes.biomes))).toEqual(new Set(VIRTUAL_BIOME_IDS));
+    for (const biome of VIRTUAL_BIOME_IDS) {
+      for (const kind of VIRTUAL_SCENE_KINDS) {
+        expect(Number.isFinite(def.dressing.scenes.biomes[biome][kind])).toBe(true);
+      }
     }
   });
 
@@ -204,6 +255,20 @@ describe('virtual world prototype', () => {
     expect(allPlaneHash(window!)).toBe(allPlaneHash(alone));
   });
 
+  it('is stable when the same world area is generated at a larger chunk size', () => {
+    const tiled = createDefaultVirtualWorldDef(246813);
+    const wide = createDefaultVirtualWorldDef(246813);
+    wide.chunkSize = tiled.chunkSize * 2;
+
+    const tiledWorld = materializeChunks(generateVirtualWindow(tiled, 0, 0, 1, 1)).world;
+    const wideChunk = generateVirtualChunk(wide, 0, 0);
+
+    expect(tiledWorld.width).toBe(wideChunk.size);
+    expect(tiledWorld.height).toBe(wideChunk.size);
+    expect(tiledWorld.types).toEqual(wideChunk.types);
+    expect(tiledWorld.colors).toEqual(wideChunk.colors);
+  });
+
   it('does not artificially seal horizontal chunk seams', () => {
     const def = createDefaultVirtualWorldDef(777);
     const left = generateVirtualChunk(def, 0, 0);
@@ -245,8 +310,175 @@ describe('virtual world prototype', () => {
 
     for (const chunk of chunks) {
       expect(chunk.meta.scenes).toContain('boundary-ruin-0');
+      expect(chunk.meta.scenePlacements.map((placement) => placement.id)).toContain('boundary-ruin-0');
       expect(chunk.types.some((type) => type === Cell.Stone)).toBe(true);
     }
+
+    const materialized = materializeChunks(chunks);
+
+    const boundaryObjects = materialized.sceneObjects.filter((object) => object.id.startsWith('boundary-ruin-0:'));
+    const boundaryLights = materialized.sceneLights.filter((light) => light.id.startsWith('boundary-ruin-0:'));
+
+    expect(boundaryObjects).toHaveLength(1);
+    expect(boundaryObjects[0]).toMatchObject({
+      id: 'boundary-ruin-0:ruin-waystone',
+      kind: 'waystone',
+      x: 264,
+      y: 274,
+    });
+    expect(boundaryLights).toHaveLength(1);
+    expect(boundaryLights[0]).toMatchObject({
+      id: 'boundary-ruin-0:ruin-glow',
+      x: 264,
+      y: 264,
+      color: '#f6c76d',
+    });
+  });
+
+  it('uses tile scene slots and biome budgets to stamp generated pixel scenes', () => {
+    const def = createDefaultVirtualWorldDef(60606);
+    def.pixelScenes = [];
+    def.map.cells.fill(biomeIndexFromId('volcanic'));
+    def.tileset = {
+      v: 1,
+      tileSize: 64,
+      constraints: {
+        edgeColors: ['open'],
+        vertexColors: ['solid'],
+      },
+      tiles: [
+        {
+          id: 'lava-slot-h',
+          orientation: 'horizontal',
+          biomeTags: ['volcanic'],
+          weight: 1,
+          edges: { n: 'open', e: 'open', s: 'open', w: 'open' },
+          vertices: { nw: 'solid', ne: 'solid', se: 'solid', sw: 'solid' },
+          carve: [{ kind: 'chamber', x: 0.5, y: 0.5, rx: 30, ry: 22 }],
+          sceneSlots: [{ id: 'lava-feature', x: 0.5, y: 0.5, tags: ['lavaVents'] }],
+        },
+        {
+          id: 'lava-slot-v',
+          orientation: 'vertical',
+          biomeTags: ['volcanic'],
+          weight: 1,
+          edges: { n: 'open', e: 'open', s: 'open', w: 'open' },
+          vertices: { nw: 'solid', ne: 'solid', se: 'solid', sw: 'solid' },
+          carve: [{ kind: 'chamber', x: 0.5, y: 0.5, rx: 22, ry: 30 }],
+          sceneSlots: [{ id: 'lava-feature', x: 0.5, y: 0.5, tags: ['lavaVents'] }],
+        },
+      ],
+    };
+    def.dressing.scenes.controls.density = 2;
+    def.dressing.scenes.controls.maxPerTile = 4;
+    const volcanicBudget = def.dressing.scenes.biomes.volcanic as VirtualSceneBudget;
+    for (const kind of VIRTUAL_SCENE_KINDS) volcanicBudget[kind] = kind === 'lavaVents' ? 2 : 0;
+
+    const chunks = generateVirtualWindow(def, -1, -1, 1, 1);
+    const generated = chunks.flatMap((chunk) =>
+      chunk.meta.scenePlacements.filter((placement) => placement.id.includes('scene-lava-vent')),
+    );
+
+    expect(generated.length).toBeGreaterThan(0);
+    expect(chunks.some((chunk) => chunk.types.some((type) => type === Cell.Lava))).toBe(true);
+  });
+
+  it('lets masked pixel scenes carve explicit empty cells without treating all empty pixels as writes', () => {
+    const types = new Uint8Array(16).fill(Cell.Wall);
+    const colors = new Uint32Array(16).fill(0x222222);
+    const life = new Int16Array(16);
+    const charge = new Uint8Array(16);
+    const material = new Uint8Array(4);
+    material[0] = Cell.Empty;
+    material[1] = Cell.Wood;
+    material[2] = Cell.Empty;
+    material[3] = Cell.Wood;
+    const colorOverrides = new Uint32Array(4);
+    colorOverrides[1] = 0x6a4426;
+    colorOverrides[3] = 0x997755;
+    const sceneLife = new Int16Array([0, 120, 0, 240]);
+    const sceneCharge = new Uint8Array([0, 7, 0, 9]);
+    const mask = new Uint8Array([1, 1, 0, 0]);
+    const placements: PixelScenePlacementDef[] = [
+      {
+        id: 'masked-carve',
+        x: 1,
+        y: 1,
+        priority: 0,
+        scene: {
+          v: 1,
+          id: 'masked-scene',
+          name: 'Masked Scene',
+          w: 2,
+          h: 2,
+          mask,
+          material,
+          colorOverrides,
+          life: sceneLife,
+          charge: sceneCharge,
+          objects: [],
+          links: [],
+          lights: [],
+        },
+      },
+    ];
+
+    stampPixelScenes({ originX: 0, originY: 0, size: 4, types, colors, life, charge }, placements);
+
+    expect(types[1 + 1 * 4]).toBe(Cell.Empty);
+    expect(types[2 + 1 * 4]).toBe(Cell.Wood);
+    expect(colors[2 + 1 * 4]).toBe(0x6a4426);
+    expect(life[2 + 1 * 4]).toBe(120);
+    expect(charge[2 + 1 * 4]).toBe(7);
+    expect(types[1 + 2 * 4]).toBe(Cell.Wall);
+    expect(types[2 + 2 * 4]).toBe(Cell.Wall);
+    expect(life[2 + 2 * 4]).toBe(0);
+    expect(charge[2 + 2 * 4]).toBe(0);
+  });
+
+  it('keeps default volcanic liquid hazard dressing within a bounded budget', () => {
+    const def = createDefaultVirtualWorldDef(9090);
+    def.map.cells.fill(biomeIndexFromId('volcanic'));
+    const chunks = generateVirtualWindow(def, -1, -1, 1, 1);
+    const lava = chunks.reduce((sum, chunk) => sum + countMaterials(chunk.types, [Cell.Lava]), 0);
+
+    expect(lava).toBeGreaterThan(20);
+    expect(lava).toBeLessThan(3000);
+  });
+
+  it('normalizes stale virtual defs before chunk generation', () => {
+    const stale = createDefaultVirtualWorldDef(12345) as VirtualWorldDef & {
+      generation?: Partial<VirtualWorldDef['generation']>;
+      dressing?: Partial<VirtualWorldDef['dressing']>;
+      pixelScenes?: PixelScenePlacementDef[];
+    };
+    delete stale.generation;
+    delete stale.pixelScenes;
+    stale.dressing = {
+      controls: { detailDensity: 1 } as Partial<VirtualWorldDef['dressing']['controls']>,
+      biomes: {
+        earthen: { ore: Cell.Gold } as Partial<VirtualWorldDef['dressing']['biomes']['earthen']>,
+      } as Partial<VirtualWorldDef['dressing']['biomes']>,
+      scenes: {
+        controls: {
+          density: 1.5,
+          maxPerChunk: 3,
+        } as Partial<VirtualWorldDef['dressing']['scenes']['controls']> & { maxPerChunk: number },
+        biomes: {
+          earthen: { shrines: 1.2 } as Partial<VirtualSceneBudget>,
+        } as Partial<VirtualWorldDef['dressing']['scenes']['biomes']>,
+      } as Partial<VirtualWorldDef['dressing']['scenes']>,
+    };
+
+    const chunk = generateVirtualChunk(stale, 0, 0);
+
+    expect(chunk.types.length).toBe(stale.chunkSize * stale.chunkSize);
+    expect(stale.generation.halo).toBe(32);
+    expect(stale.dressing.biomes.earthen.glow).toBeGreaterThan(0);
+    expect(stale.pixelScenes).toEqual([]);
+    expect(stale.dressing.scenes.controls.maxPerTile).toBe(3);
+    expect(stale.dressing.scenes.biomes.earthen.shrines).toBe(1.2);
+    expect(stale.dressing.scenes.biomes.earthen.collapsedShafts).toBeGreaterThanOrEqual(0);
   });
 
   it('materializes a rectangular chunk window into a normal World instance', () => {
@@ -293,5 +525,41 @@ describe('virtual world prototype', () => {
     const issues = validateTileset(def.tileset).filter((issue) => issue.severity === 'error');
 
     expect(issues).toEqual([]);
+  });
+
+  it('constrains herringbone resolution to the best edge signature match before weighting', () => {
+    const seed = 424242;
+    const tx = 8;
+    const ty = 4;
+    const matchedEdges = edgeColorsFor(seed, tx, ty);
+    const mismatchedEdges = oppositeEdges(matchedEdges);
+    const tile = (
+      id: string,
+      edges: HerringboneTileDef['edges'],
+      weight: number,
+    ): HerringboneTileDef => ({
+      id,
+      orientation: 'horizontal',
+      biomeTags: ['earthen'],
+      weight,
+      edges,
+      vertices: { nw: 'solid', ne: 'solid', se: 'solid', sw: 'solid' },
+      carve: [],
+      sceneSlots: [],
+    });
+    const tileset: HerringboneTilesetDef = {
+      v: 1,
+      tileSize: 32,
+      constraints: {
+        edgeColors: ['open', 'narrow', 'wall'],
+        vertexColors: ['solid'],
+      },
+      tiles: [
+        tile('matched-low-weight', matchedEdges, 0.001),
+        tile('mismatched-heavy', mismatchedEdges, 10_000),
+      ],
+    };
+
+    expect(resolveTile(tileset, seed, tx, ty, 'earthen').tile.id).toBe('matched-low-weight');
   });
 });

@@ -3,19 +3,26 @@ import { BIOMES } from '@/config/biomes';
 import { randomSeed } from '@/core/rng';
 import type { BiomeId, LevelDef } from '@/core/types';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
+import { builderPanelHeader } from '@/ui/editor/PanelChrome';
+import { editorSectionHtml } from '@/ui/editor/Section';
 import {
   biomeIndexFromId,
+  biomeIdFromIndex,
   createDefaultVirtualWorldDef,
   createDefaultDressingProfile,
+  createDefaultVirtualGenerationParams,
   TsWorkerBackend,
   WasmBackend,
   WebGpuPreviewBackend,
+  VIRTUAL_SCENE_KINDS,
 } from '@/world/virtual';
 import type {
   BackendInfo,
   GenerateWindowResult,
   TransferableVirtualChunk,
   VirtualBiomeId,
+  VirtualSceneBudget,
+  VirtualSceneKind,
   VirtualWorldDef,
 } from '@/world/virtual';
 
@@ -24,6 +31,7 @@ type VirtualWorldStatus = 'idle' | 'generating' | 'ready' | 'stale' | 'canceled'
 type CaveStylePresetId = 'structured' | 'natural' | 'wild' | 'custom';
 type GenerationParams = VirtualWorldDef['generation'];
 type DressingControls = VirtualWorldDef['dressing']['controls'];
+type SceneControls = VirtualWorldDef['dressing']['scenes']['controls'];
 
 interface CachedPreviewChunk {
   chunk: TransferableVirtualChunk;
@@ -36,29 +44,15 @@ export interface VirtualWorldPanelHooks {
   getBaseSeed(): number;
   onPlayWindow(def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void;
   onClose(): void;
+  isSectionCollapsed?(id: string): boolean;
+  onSectionCollapsed?(id: string, collapsed: boolean): void;
 }
 
 const ZOOM_MIN = 0.08;
 const ZOOM_MAX = 2.5;
 const MAX_PREVIEW_CACHE_BYTES = 96 * 1024 * 1024;
 const MAX_PREVIEW_CHUNKS_PER_PROFILE = 128;
-const GENERATION_DEFAULTS: GenerationParams = {
-  halo: 32,
-  baseCellSize: 3,
-  smoothingPasses: 1,
-  organicSmoothingPasses: 0,
-  noiseScale: 0.035,
-  noiseThreshold: 0.54,
-  borderSeal: 2,
-  shapeWarp: 0.32,
-  cornerRounding: 0.56,
-  surfaceCover: 0.64,
-  surfaceDepth: 2,
-  vegetationDensity: 0.38,
-  edgeRoughness: 0.38,
-  pocketDensity: 0.3,
-  crackDensity: 0.2,
-};
+const GENERATION_DEFAULTS: GenerationParams = createDefaultVirtualGenerationParams();
 const CAVE_STYLE_PRESETS: Record<Exclude<CaveStylePresetId, 'custom'>, Partial<GenerationParams>> = {
   structured: {
     baseCellSize: 4,
@@ -280,6 +274,21 @@ const PROFILE_DRESSING_PRESETS: Record<BiomeId, Partial<DressingControls>> = {
     hangingGrowth: 0.42,
   },
 };
+const SCENE_CONTROL_DEFAULTS: SceneControls = {
+  density: 1,
+  maxPerTile: 2,
+};
+const PROFILE_SCENE_CONTROL_PRESETS: Record<BiomeId, Partial<SceneControls>> = {
+  earthen: { density: 0.95, maxPerTile: 2 },
+  fungal: { density: 1.35, maxPerTile: 3 },
+  frozen: { density: 0.85, maxPerTile: 2 },
+  flooded: { density: 1.12, maxPerTile: 3 },
+  timber: { density: 1.28, maxPerTile: 3 },
+  crystal: { density: 1.12, maxPerTile: 2 },
+  scorched: { density: 0.9, maxPerTile: 2 },
+  volcanic: { density: 1.05, maxPerTile: 2 },
+  gilded: { density: 0.92, maxPerTile: 2 },
+};
 
 export class VirtualWorldPanel {
   private readonly canvas: HTMLCanvasElement;
@@ -353,10 +362,7 @@ export class VirtualWorldPanel {
 
   private renderShell(): string {
     return `
-      <div class="bi-head vw-head" data-panel-handle>
-        <span>${builderPanelTitle('builder-virtual-world').toUpperCase()}</span>
-        <button id="vw-close" type="button" class="b-close" aria-label="Close world map">&times;</button>
-      </div>
+      ${builderPanelHeader({ title: builderPanelTitle('builder-virtual-world'), closeId: 'vw-close', closeLabel: 'Close world map', className: 'vw-head' })}
       <div class="vw-body">
         <aside class="vw-controls" id="vw-controls"></aside>
         <div class="vw-stage" id="vw-stage" tabindex="0" aria-label="Virtual world map preview">
@@ -370,10 +376,11 @@ export class VirtualWorldPanel {
   private renderControls(): void {
     const def = this.currentDef();
     const style = generationStyle(def);
+    const sceneBiome = this.activeSceneBiome(def);
+    const sceneBudget = def.dressing.scenes.biomes[sceneBiome] ?? def.dressing.scenes.biomes.earthen;
     const controls = this.must<HTMLElement>('#vw-controls');
     controls.innerHTML = `
-      <section class="vw-section">
-        <div class="vw-title">World</div>
+      ${this.sectionHtml('controls.world', 'World', `
         <label class="vw-field"><span>profile</span><select id="vw-profile">
           <option value="global">Global prototype</option>
           ${this.profiles.map((level) => `<option value="${level.id}">${profileLabel(level)}</option>`).join('')}
@@ -382,9 +389,8 @@ export class VirtualWorldPanel {
         <label class="vw-field"><span>backend</span><select id="vw-backend">
           ${this.backendInfos.map((info) => `<option value="${info.kind}"${info.kind !== 'ts-worker' ? ' disabled' : ''}>${info.label}${info.available ? '' : ' unavailable'}${info.authoritativeCells ? '' : ' preview'}</option>`).join('')}
         </select></label>
-      </section>
-      <section class="vw-section">
-        <div class="vw-title">Preview</div>
+      `)}
+      ${this.sectionHtml('controls.preview', 'Preview', `
         <label class="vw-field"><span>window</span><select id="vw-radius">
           <option value="1">3 x 3 chunks</option>
           <option value="2">5 x 5 chunks</option>
@@ -395,9 +401,9 @@ export class VirtualWorldPanel {
         <label class="vw-check"><input id="vw-biomes" type="checkbox"> Biome labels</label>
         <label class="vw-check"><input id="vw-scenes" type="checkbox"> Scene markers</label>
         <label class="vw-check"><input id="vw-cost" type="checkbox"> Cost heatmap</label>
-      </section>
-      <section class="vw-section">
-        <div class="vw-title-row"><div class="vw-title">Generation</div><button id="vw-reset-generation" type="button">RESET</button></div>
+      `)}
+      ${this.sectionHtml('controls.generation', 'Generation', `
+        <div class="vw-title-row"><button id="vw-reset-generation" type="button">RESET</button></div>
         <div class="vw-segment" role="group" aria-label="Cave style">
           ${this.styleButtonHtml('structured', 'Structured', style)}
           ${this.styleButtonHtml('natural', 'Natural', style)}
@@ -421,6 +427,11 @@ export class VirtualWorldPanel {
         ${this.sliderHtml('glow-density', 'glow accents', def.dressing.controls.glowDensity, 0, 2, 0.01)}
         ${this.sliderHtml('floor-debris', 'floor debris', def.dressing.controls.floorDebris, 0, 2, 0.01)}
         ${this.sliderHtml('hanging-growth', 'hanging growth', def.dressing.controls.hangingGrowth, 0, 2, 0.01)}
+        <div class="vw-subtitle">Scenes</div>
+        ${this.sliderHtml('scene-density', 'scene density', def.dressing.scenes.controls.density, 0, 2, 0.01)}
+        ${this.sliderHtml('scene-budget', 'scenes per tile', def.dressing.scenes.controls.maxPerTile, 0, 6, 1)}
+        <div class="vw-title-row"><div class="vw-subtitle">Scene mix - ${escapeHtml(BIOMES[sceneBiome].name)}</div><button id="vw-reset-scenes" type="button">RESET MIX</button></div>
+        ${this.sceneBudgetSlidersHtml(sceneBudget)}
         <details class="vw-advanced">
           <summary>Advanced</summary>
           ${this.sliderHtml('base-cell-size', 'cell grain', def.generation.baseCellSize, 1, 4, 1)}
@@ -430,9 +441,8 @@ export class VirtualWorldPanel {
           ${this.sliderHtml('halo', 'halo', def.generation.halo, 0, 64, 1)}
           ${this.sliderHtml('border-seal', 'border seal', def.generation.borderSeal, 0, 8, 1)}
         </details>
-      </section>
-      <section class="vw-section">
-        <div class="vw-title">Actions</div>
+      `)}
+      ${this.sectionHtml('controls.actions', 'Actions', `
         <div class="vw-actions">
           <button id="vw-generate" type="button">GENERATE</button>
           <button id="vw-frame" type="button">FRAME</button>
@@ -441,7 +451,8 @@ export class VirtualWorldPanel {
           <button id="vw-validate" type="button">VALIDATE</button>
           <button id="vw-play-window" type="button" title="Play a disposable fixed-size test crop centered on this map view">PLAY WINDOW</button>
         </div>
-      </section>`;
+      `)}`;
+    this.wireSections(controls);
     this.must<HTMLSelectElement>('#vw-profile').value = this.selectedProfile;
     this.must<HTMLInputElement>('#vw-seed').value = String(def.seed >>> 0);
     this.must<HTMLSelectElement>('#vw-backend').value = this.selectedBackend;
@@ -454,6 +465,41 @@ export class VirtualWorldPanel {
     this.syncSliderValues(def);
     this.wireControls();
     this.renderInspector();
+  }
+
+  private sectionHtml(id: string, title: string, body: string): string {
+    const key = `virtualWorld.${id}`;
+    return editorSectionHtml({
+      id: key,
+      title,
+      body,
+      className: 'vw-section',
+      titleClassName: 'vw-title',
+      bodyClassName: 'vw-section-body',
+      collapsed: this.hooks.isSectionCollapsed?.(key) === true,
+    });
+  }
+
+  private wireSections(root: ParentNode): void {
+    for (const button of root.querySelectorAll<HTMLElement>('[data-section-toggle]')) {
+      if (button.dataset.sectionToggleWired === 'true') continue;
+      button.dataset.sectionToggleWired = 'true';
+      const toggle = (): void => {
+        const id = button.dataset.sectionToggle;
+        const section = button.closest<HTMLElement>('.editor-section');
+        if (!id || !section) return;
+        const collapsed = !section.classList.contains('collapsed');
+        section.classList.toggle('collapsed', collapsed);
+        button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        this.hooks.onSectionCollapsed?.(id, collapsed);
+      };
+      button.addEventListener('click', toggle);
+      button.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        toggle();
+      });
+    }
   }
 
   private sliderHtml(id: string, label: string, value: number, min: number, max: number, step: number): string {
@@ -469,6 +515,12 @@ export class VirtualWorldPanel {
   private styleButtonHtml(id: CaveStylePresetId, label: string, active: CaveStylePresetId): string {
     const preset = id === 'custom' ? '' : ` data-vw-style="${id}"`;
     return `<button type="button" class="${id === active ? 'active' : ''}" data-vw-style-button="${id}"${preset} aria-pressed="${id === active ? 'true' : 'false'}">${label}</button>`;
+  }
+
+  private sceneBudgetSlidersHtml(budget: VirtualSceneBudget): string {
+    return VIRTUAL_SCENE_KINDS
+      .map((kind) => this.sliderHtml(`scene-kind-${kind}`, sceneKindLabel(kind), budget[kind], 0, 2, 0.01))
+      .join('');
   }
 
   private wire(): void {
@@ -488,6 +540,7 @@ export class VirtualWorldPanel {
       this.selectedProfile = (event.currentTarget as HTMLSelectElement).value;
       this.status = 'idle';
       this.statusText = profileStatusText(this.selectedProfile);
+      this.lastMetrics = null;
       this.lastAutoCenter = '';
       this.renderControls();
       this.requestDraw();
@@ -545,6 +598,10 @@ export class VirtualWorldPanel {
       this.mutateDef((def) => resetProfileTuning(def, this.selectedProfile));
       this.renderControls();
     });
+    this.must<HTMLButtonElement>('#vw-reset-scenes').addEventListener('click', () => {
+      this.mutateDef((def) => resetSceneBudgetForProfile(def, this.selectedProfile));
+      this.renderControls();
+    });
     this.must<HTMLButtonElement>('#vw-generate').addEventListener('click', () => void this.generateWindow());
     this.must<HTMLButtonElement>('#vw-frame').addEventListener('click', () => this.frameCachedChunks());
     this.must<HTMLButtonElement>('#vw-cancel').addEventListener('click', () => this.cancel());
@@ -565,6 +622,7 @@ export class VirtualWorldPanel {
   }
 
   private syncSliderValues(def: VirtualWorldDef): void {
+    const sceneBudget = def.dressing.scenes.biomes[this.activeSceneBiome(def)] ?? def.dressing.scenes.biomes.earthen;
     const values: Record<string, number> = {
       halo: def.generation.halo,
       'base-cell-size': def.generation.baseCellSize,
@@ -581,6 +639,8 @@ export class VirtualWorldPanel {
       'glow-density': def.dressing.controls.glowDensity,
       'floor-debris': def.dressing.controls.floorDebris,
       'hanging-growth': def.dressing.controls.hangingGrowth,
+      'scene-density': def.dressing.scenes.controls.density,
+      'scene-budget': def.dressing.scenes.controls.maxPerTile,
       'edge-roughness': def.generation.edgeRoughness,
       'pocket-density': def.generation.pocketDensity,
       'crack-density': def.generation.crackDensity,
@@ -588,6 +648,7 @@ export class VirtualWorldPanel {
       'noise-threshold': def.generation.noiseThreshold,
       'border-seal': def.generation.borderSeal,
     };
+    for (const kind of VIRTUAL_SCENE_KINDS) values[`scene-kind-${kind}`] = sceneBudget[kind];
     for (const [id, value] of Object.entries(values)) {
       const range = this.host.querySelector<HTMLInputElement>(`[data-vw-range="${id}"]`);
       const number = this.host.querySelector<HTMLInputElement>(`[data-vw-number="${id}"]`);
@@ -619,6 +680,15 @@ export class VirtualWorldPanel {
       else if (id === 'glow-density') def.dressing.controls.glowDensity = next;
       else if (id === 'floor-debris') def.dressing.controls.floorDebris = next;
       else if (id === 'hanging-growth') def.dressing.controls.hangingGrowth = next;
+      else if (id === 'scene-density') def.dressing.scenes.controls.density = next;
+      else if (id === 'scene-budget') def.dressing.scenes.controls.maxPerTile = Math.round(next);
+      else if (id.startsWith('scene-kind-')) {
+        const kind = id.slice('scene-kind-'.length);
+        if (isVirtualSceneKind(kind)) {
+          const biome = this.activeSceneBiome(def);
+          def.dressing.scenes.biomes[biome][kind] = next;
+        }
+      }
       else if (id === 'edge-roughness') def.generation.edgeRoughness = next;
       else if (id === 'pocket-density') def.generation.pocketDensity = next;
       else if (id === 'crack-density') def.generation.crackDensity = next;
@@ -649,6 +719,12 @@ export class VirtualWorldPanel {
     this.lastAutoCenter = '';
     this.requestDraw();
     this.renderInspector();
+  }
+
+  private activeSceneBiome(def: VirtualWorldDef): VirtualBiomeId {
+    const level = LEVELS[this.selectedProfile];
+    if (level) return level.biome as VirtualBiomeId;
+    return biomeIdFromIndex(def.map.cells[0] ?? 0);
   }
 
   private async generateWindow(): Promise<void> {
@@ -877,7 +953,7 @@ export class VirtualWorldPanel {
       const size = chunk.size * this.zoom;
       this.ctx.drawImage(entry.canvas, sx, sy, size, size);
       if (this.showCost) this.drawCostOverlay(entry, sx, sy, size);
-      if (this.showScenes && chunk.meta.scenes.length > 0) this.drawSceneMarker(chunk, sx, sy, size);
+      if (this.showScenes && chunk.meta.scenePlacements.length > 0) this.drawSceneMarkers(chunk, sx, sy, size);
       if (this.showBiomes && size > 44) this.drawChunkLabel(chunk, sx, sy);
     }
     if (this.showGrid) this.drawGrid(viewLeft, viewTop, w, h);
@@ -916,14 +992,28 @@ export class VirtualWorldPanel {
     this.ctx.fillRect(sx, sy, size, size);
   }
 
-  private drawSceneMarker(_chunk: TransferableVirtualChunk, sx: number, sy: number, size: number): void {
-    this.ctx.fillStyle = 'rgba(250, 204, 21, 0.78)';
-    this.ctx.strokeStyle = 'rgba(30, 20, 0, 0.85)';
+  private drawSceneMarkers(chunk: TransferableVirtualChunk, sx: number, sy: number, size: number): void {
+    const scale = size / chunk.size;
+    this.ctx.save();
     this.ctx.lineWidth = 1;
-    this.ctx.beginPath();
-    this.ctx.arc(sx + size - 12, sy + 12, 4, 0, Math.PI * 2);
-    this.ctx.fill();
-    this.ctx.stroke();
+    this.ctx.font = '9px monospace';
+    for (const placement of chunk.meta.scenePlacements) {
+      const x = sx + (placement.x - chunk.originX) * scale;
+      const y = sy + (placement.y - chunk.originY) * scale;
+      const w = Math.max(3, placement.w * scale);
+      const h = Math.max(3, placement.h * scale);
+      this.ctx.strokeStyle = 'rgba(250, 204, 21, 0.72)';
+      this.ctx.fillStyle = 'rgba(250, 204, 21, 0.1)';
+      this.ctx.fillRect(x, y, w, h);
+      this.ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+      if (scale > 0.22) {
+        this.ctx.fillStyle = 'rgba(4, 6, 10, 0.78)';
+        this.ctx.fillRect(x + 2, y + 2, Math.min(w - 4, 72), 14);
+        this.ctx.fillStyle = '#facc15';
+        this.ctx.fillText(placement.id.replace(/^tile:/, ''), x + 5, y + 12);
+      }
+    }
+    this.ctx.restore();
   }
 
   private drawChunkLabel(chunk: TransferableVirtualChunk, sx: number, sy: number): void {
@@ -970,8 +1060,7 @@ export class VirtualWorldPanel {
     const hover = this.hoverWorld ? this.chunkAt(this.hoverWorld.x, this.hoverWorld.y) : null;
     const mem = this.previewBytes();
     inspector.innerHTML = `
-      <section class="vw-section">
-        <div class="vw-title">Status</div>
+      ${this.sectionHtml('inspector.status', 'Status', `
         <div class="vw-stat"><span>state</span><b class="vw-${this.status}">${this.status.toUpperCase()}</b></div>
         <div class="vw-message">${escapeHtml(this.statusText)}</div>
         <div class="vw-stat"><span>profile</span><b>${escapeHtml(profile.label)}</b></div>
@@ -980,16 +1069,14 @@ export class VirtualWorldPanel {
         <div class="vw-stat"><span>memory</span><b>${formatBytes(mem)}</b></div>
         <div class="vw-stat"><span>zoom</span><b>${this.zoom.toFixed(2)}x</b></div>
         <div class="vw-stat"><span>center</span><b>${Math.floor(this.camX)}, ${Math.floor(this.camY)}</b></div>
-      </section>
-      <section class="vw-section">
-        <div class="vw-title">Metrics</div>
+      `)}
+      ${this.sectionHtml('inspector.metrics', 'Metrics', `
         <div class="vw-stat"><span>window</span><b>${this.lastMetrics ? `${this.lastMetrics.chunks} chunks` : '-'}</b></div>
         <div class="vw-stat"><span>time</span><b>${this.lastMetrics ? `${this.lastMetrics.generatedMs.toFixed(1)} ms` : '-'}</b></div>
         <div class="vw-stat"><span>generated</span><b>${this.lastMetrics ? formatBytes(this.lastMetrics.generatedBytes) : '-'}</b></div>
         <div class="vw-stat"><span>transfer</span><b>${this.lastMetrics ? formatBytes(this.lastMetrics.transferBytes) : '-'}</b></div>
-      </section>
-      <section class="vw-section">
-        <div class="vw-title">Chunk</div>
+      `)}
+      ${this.sectionHtml('inspector.chunk', 'Chunk', `
         ${
           hover
             ? `<div class="vw-stat"><span>coord</span><b>${hover.cx}, ${hover.cy}</b></div>
@@ -997,20 +1084,31 @@ export class VirtualWorldPanel {
               <div class="vw-stat"><span>time</span><b>${hover.metrics.generatedMs.toFixed(2)} ms</b></div>
               <div class="vw-stat"><span>hash</span><b>${hover.meta.hash}</b></div>
               <div class="vw-list"><span>tiles</span><p>${hover.meta.tileIds.map(escapeHtml).join(', ') || '-'}</p></div>
-              <div class="vw-list"><span>scenes</span><p>${hover.meta.scenes.map(escapeHtml).join(', ') || '-'}</p></div>`
+              <div class="vw-list"><span>scenes</span><p>${this.sceneSummaryHtml(hover)}</p></div>`
             : '<div class="vw-message">Move over a generated chunk.</div>'
         }
-      </section>
-      <section class="vw-section">
-        <div class="vw-title">Next</div>
+      `)}
+      ${this.sectionHtml('inspector.next', 'Next', `
         <div class="vw-message">PLAY WINDOW launches a disposable fixed-size crop around the current map center using these generation settings.</div>
-      </section>`;
+      `)}`;
+    this.wireSections(inspector);
   }
 
   private updateCaption(): void {
     const caption = this.must<HTMLElement>('#vw-caption');
     caption.textContent = `${this.status.toUpperCase()} | ${this.activeChunks().length} CACHED | WASD / DRAG TO PAN | WHEEL TO ZOOM`;
     this.renderInspector();
+  }
+
+  private sceneSummaryHtml(chunk: TransferableVirtualChunk): string {
+    if (chunk.meta.scenePlacements.length === 0) return '-';
+    return chunk.meta.scenePlacements
+      .map((placement) => {
+        const objectCount = placement.objects.length;
+        const lightCount = placement.lights.length;
+        return `${escapeHtml(placement.id)} <em>${placement.w}x${placement.h}</em> <b>${objectCount} obj</b> <b>${lightCount} light</b>`;
+      })
+      .join('<br>');
   }
 
   private resizeCanvas(): void {
@@ -1157,6 +1255,11 @@ function normalizeVirtualDef(def: VirtualWorldDef): void {
 }
 
 function normalizeGeneration(def: VirtualWorldDef): void {
+  const raw = (def as VirtualWorldDef & { generation?: Partial<GenerationParams> }).generation ?? {};
+  def.generation = {
+    ...GENERATION_DEFAULTS,
+    ...raw,
+  };
   const generation = def.generation as GenerationParams & Partial<Record<keyof GenerationParams, number>>;
   for (const [key, fallback] of Object.entries(GENERATION_DEFAULTS) as Array<[keyof GenerationParams, number]>) {
     if (!Number.isFinite(generation[key])) generation[key] = fallback;
@@ -1166,10 +1269,24 @@ function normalizeGeneration(def: VirtualWorldDef): void {
 function normalizeDressing(def: VirtualWorldDef): void {
   if (!def.dressing) def.dressing = createDefaultDressingProfile();
   const fallback = createDefaultDressingProfile();
-  def.dressing.biomes = {
-    ...fallback.biomes,
-    ...(def.dressing.biomes ?? {}),
-  };
+  const rawScenes = def.dressing.scenes ?? fallback.scenes;
+  const rawSceneControls = normalizeSceneControlAliases(rawScenes.controls ?? {});
+  const rawBiomes = def.dressing.biomes ?? {};
+  def.dressing.biomes = { ...fallback.biomes };
+  for (const [biome, fallbackRecipe] of Object.entries(fallback.biomes) as Array<
+    [VirtualBiomeId, VirtualWorldDef['dressing']['biomes'][VirtualBiomeId]]
+  >) {
+    const recipe = {
+      ...fallbackRecipe,
+      ...(rawBiomes[biome] ?? {}),
+    };
+    for (const [key, fallbackValue] of Object.entries(fallbackRecipe) as Array<
+      [keyof typeof fallbackRecipe, number]
+    >) {
+      if (!Number.isFinite(recipe[key])) recipe[key] = fallbackValue;
+    }
+    def.dressing.biomes[biome] = recipe;
+  }
   def.dressing.controls = {
     ...DRESSING_DEFAULTS,
     ...(def.dressing.controls ?? {}),
@@ -1178,6 +1295,43 @@ function normalizeDressing(def: VirtualWorldDef): void {
     const value = def.dressing.controls[key];
     def.dressing.controls[key] = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : fallbackValue;
   }
+  def.dressing.scenes = {
+    controls: {
+      ...SCENE_CONTROL_DEFAULTS,
+      ...rawSceneControls,
+    },
+    biomes: { ...fallback.scenes.biomes },
+  };
+  const sceneControls = def.dressing.scenes.controls;
+  sceneControls.density = Number.isFinite(sceneControls.density)
+    ? Math.max(0, Math.min(2, sceneControls.density))
+    : SCENE_CONTROL_DEFAULTS.density;
+  sceneControls.maxPerTile = Number.isFinite(sceneControls.maxPerTile)
+    ? Math.max(0, Math.min(6, Math.round(sceneControls.maxPerTile)))
+    : SCENE_CONTROL_DEFAULTS.maxPerTile;
+  const rawSceneBiomes = rawScenes.biomes ?? {};
+  for (const [biome, fallbackBudget] of Object.entries(fallback.scenes.biomes) as Array<
+    [VirtualBiomeId, VirtualSceneBudget]
+  >) {
+    const budget = {
+      ...fallbackBudget,
+      ...(rawSceneBiomes[biome] ?? {}),
+    };
+    for (const kind of VIRTUAL_SCENE_KINDS) {
+      const value = budget[kind];
+      budget[kind] = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : fallbackBudget[kind];
+    }
+    def.dressing.scenes.biomes[biome] = budget;
+  }
+}
+
+function normalizeSceneControlAliases(
+  controls: Partial<SceneControls> & { maxPerChunk?: number },
+): Partial<SceneControls> {
+  if (!Number.isFinite(controls.maxPerTile) && Number.isFinite(controls.maxPerChunk)) {
+    return { ...controls, maxPerTile: controls.maxPerChunk };
+  }
+  return controls;
 }
 
 function applyGenerationPreset(def: VirtualWorldDef, preset: Exclude<CaveStylePresetId, 'custom'>): void {
@@ -1194,6 +1348,8 @@ function applyVirtualLevelProfile(def: VirtualWorldDef, level: LevelDef): void {
 function resetProfileTuning(def: VirtualWorldDef, profile: VirtualWorldProfileId): void {
   Object.assign(def.generation, generationDefaultsForProfile(profile));
   Object.assign(def.dressing.controls, dressingDefaultsForProfile(profile));
+  Object.assign(def.dressing.scenes.controls, sceneControlDefaultsForProfile(profile));
+  resetSceneBudgetForProfile(def, profile);
 }
 
 function generationDefaultsForProfile(profile: VirtualWorldProfileId): GenerationParams {
@@ -1210,6 +1366,34 @@ function dressingDefaultsForProfile(profile: VirtualWorldProfileId): DressingCon
     ...DRESSING_DEFAULTS,
     ...(level ? PROFILE_DRESSING_PRESETS[level.biome] : {}),
   };
+}
+
+function sceneControlDefaultsForProfile(profile: VirtualWorldProfileId): SceneControls {
+  const level = LEVELS[profile];
+  return {
+    ...SCENE_CONTROL_DEFAULTS,
+    ...(level ? PROFILE_SCENE_CONTROL_PRESETS[level.biome] : {}),
+  };
+}
+
+function resetSceneBudgetForProfile(def: VirtualWorldDef, profile: VirtualWorldProfileId): void {
+  const fallback = createDefaultDressingProfile();
+  const biome = sceneBudgetBiomeForProfile(def, profile);
+  def.dressing.scenes.biomes[biome] = { ...fallback.scenes.biomes[biome] };
+}
+
+function sceneBudgetBiomeForProfile(def: VirtualWorldDef, profile: VirtualWorldProfileId): VirtualBiomeId {
+  const level = LEVELS[profile];
+  if (level) return level.biome as VirtualBiomeId;
+  return biomeIdFromIndex(def.map.cells[0] ?? 0);
+}
+
+function sceneKindLabel(kind: VirtualSceneKind): string {
+  return kind.replace(/[A-Z]/g, (match) => ` ${match.toLowerCase()}`);
+}
+
+function isVirtualSceneKind(value: string): value is VirtualSceneKind {
+  return (VIRTUAL_SCENE_KINDS as readonly string[]).includes(value);
 }
 
 function generationStyle(def: VirtualWorldDef): CaveStylePresetId {

@@ -8,11 +8,11 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, PerkId, PlayerControlApi, PlayerState } from '@/core/types';
 import { PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP } from '@/core/types';
-import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
+import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup } from '@/game/Pickups';
 import { resetCombatTransients } from '@/game/transients';
 import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
-import { bloodColor, EMPTY_COLOR, packRGB, smokeColor } from '@/sim/colors';
+import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
 
 const REVIEW_STATUS_FRAMES = 3600;
 const CLIMB_FACE_REACHES = [PLAYER_HALF_W + 1, PLAYER_HALF_W + 2, PLAYER_HALF_W + 3, PLAYER_HALF_W + 4];
@@ -232,8 +232,7 @@ export class PlayerControl implements PlayerControlApi {
         t === Cell.Gold ? 180 : 32,
         t === Cell.Gold ? { homing: ctx.state.mode === 'play', glow: 2.0, grav: 0 } : { grav: 0.06 },
       );
-      world.types[i] = Cell.Empty;
-      world.colors[i] = EMPTY_COLOR;
+      world.clearCellAt(i);
     }
   }
 
@@ -342,6 +341,7 @@ export class PlayerControl implements PlayerControlApi {
     player.dead = true;
     player.hp = 0;
     player.recharge = 0;
+    clearElementalStatus(player.status);
     this.resetClimbState(player);
     ctx.particles.burst(player.x, player.y - 7, 56, Cell.Blood, bloodColor, 4.2);
     ctx.particles.burst(player.x, player.y - 7, 10, null, () => packRGB(168, 85, 247), 3.4, {
@@ -422,6 +422,7 @@ export class PlayerControl implements PlayerControlApi {
       player.hp = player.maxHp;
       player.mana = player.maxMana;
       player.levit = player.maxLevit;
+      clearElementalStatus(player.status);
       player.dead = false;
       player.invuln = 90;
       player.crawling = false; // waystone arrivals are standing-safe
@@ -447,6 +448,7 @@ export class PlayerControl implements PlayerControlApi {
     player.hp = player.maxHp;
     player.mana = player.maxMana;
     player.levit = player.maxLevit;
+    clearElementalStatus(player.status);
     player.dead = false;
     player.invuln = 90;
     player.crawling = false;
@@ -706,8 +708,7 @@ export class PlayerControl implements PlayerControlApi {
           healTouch += 0.14;
           // consumed as it heals
           if (Math.random() < 0.12) {
-            world.types[ci2] = Cell.Empty;
-            world.colors[ci2] = EMPTY_COLOR;
+            world.clearCellAt(ci2);
           }
         }
         if (c === Cell.Teleportium) tpTouch = true;
@@ -1108,8 +1109,7 @@ export class PlayerControl implements PlayerControlApi {
             gy = Math.floor(player.y) - dy;
           if (!world.inBounds(gx, gy) || world.types[world.idx(gx, gy)] !== Cell.Slime) continue;
           const gi = world.idx(gx, gy);
-          world.types[gi] = Cell.Empty;
-          world.colors[gi] = EMPTY_COLOR;
+          world.clearCellAt(gi);
           player.hp = Math.min(player.maxHp, player.hp + 0.9);
           // green motes drift up into the wizard
           ctx.particles.spawn(gx, gy, (player.x - gx) * 0.08, -0.5 - Math.random() * 0.5, null, packRGB(110, 255, 150), 18, {
@@ -1383,8 +1383,7 @@ export class PlayerControl implements PlayerControlApi {
             t4 === Cell.Coal
           ) {
             const col4 = ws.colors[ci4];
-            ws.types[ci4] = Cell.Empty;
-            ws.colors[ci4] = EMPTY_COLOR;
+            ws.clearCellAt(ci4);
             ctx.particles.spawn(X2, Y2, (dx2 / 4) * 1.4, -1.2 - Math.random(), t4, col4, 40, {
               grav: 0.12,
             });

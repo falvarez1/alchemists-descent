@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { rleEncode } from '@/core/rle';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { PatchRecorder } from '@/builder/terrain';
@@ -332,6 +333,26 @@ describe('prefab library + migration', () => {
     expect(list[0].name).toBe('old stamp');
     expect(list[0].tags).toEqual(['terrain']);
     expect(decodePrefabCells(list[0])[0]).toBe(Cell.Stone);
+  });
+
+  it('rejects prefab terrain RLE that decodes to unknown cell ids', () => {
+    const cells = new Uint8Array([255]);
+
+    expect(
+      sanitizePrefab({
+        v: 1,
+        kind: 'prefab',
+        id: 'bad-cell',
+        name: 'bad cell',
+        tags: [],
+        w: 1,
+        h: 1,
+        rle: rleEncode(cells),
+        objects: [],
+        links: [],
+        lights: [],
+      }),
+    ).toBeNull();
   });
 
   it('saves, reloads, and deletes per-prefab keys', () => {

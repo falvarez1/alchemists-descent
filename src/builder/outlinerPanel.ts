@@ -218,7 +218,7 @@ function renderOutlinerRow(row: OutlinerRow): string {
           <button type="button" data-row-toggle="locked" data-row-id="${escAttr(row.objectId ?? row.lightId ?? '')}" data-row-kind="${row.objectId ? 'object' : 'light'}" data-command-id="builder.toggleSelectedLocked">${row.locked ? 'Unlock' : 'Lock'}</button>
         </div>`
       : '';
-  return `<div class="bo-row ${row.type}${row.selected ? ' selected' : ''}${row.invalid ? ' invalid' : ''}${row.hidden ? ' hidden-row' : ''}" role="option" tabindex="-1" aria-selected="${row.selected ? 'true' : 'false'}" data-row-type="${row.type}"${selectAttr}${selectIdsAttr}${frameAttr}${linkAttr}>
+  return `<div class="bo-row ${row.type}${row.selected ? ' selected' : ''}${row.invalid ? ' invalid' : ''}${row.hidden ? ' hidden-row' : ''}" role="option" tabindex="0" aria-selected="${row.selected ? 'true' : 'false'}" data-row-type="${row.type}"${selectAttr}${selectIdsAttr}${frameAttr}${linkAttr}>
     <div class="bo-row-main">
       <div class="bo-row-title">${esc(row.label)}</div>
       <div class="bo-row-sub">${esc(row.sublabel)}</div>

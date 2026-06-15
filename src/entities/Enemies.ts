@@ -316,8 +316,11 @@ export class Enemies implements EnemyControlApi {
   /** Gold coin shower (homing in play mode) + build-mode direct score credit. */
   private dropBounty(e: Enemy, def: EnemyDef): void {
     const ctx = this.ctx;
-    const coins = Math.floor(def.bounty / 10);
+    const coins = Math.max(1, Math.ceil(def.bounty / 10));
+    const baseValue = Math.floor(def.bounty / coins);
+    let remainder = def.bounty - baseValue * coins;
     for (let i = 0; i < coins; i++) {
+      const value = baseValue + (remainder-- > 0 ? 1 : 0);
       ctx.particles.spawn(
         e.x,
         e.y - 5,
@@ -328,6 +331,7 @@ export class Enemies implements EnemyControlApi {
         300,
         {
           homing: ctx.state.mode === 'play',
+          value,
           glow: 2.0,
           grav: ctx.state.mode === 'play' ? 0 : 0.14,
         },

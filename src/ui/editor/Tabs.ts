@@ -128,10 +128,21 @@ export function wireTabStrip(container: HTMLElement, handlers: TabStripHandlers 
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft' && event.key !== 'Home' && event.key !== 'End') return;
     const tabs = [...(list?.querySelectorAll<HTMLElement>('[data-tab-id]') ?? [])];
     if (tabs.length === 0) return;
     const current = tabs.findIndex((t) => t === document.activeElement);
+    const currentTab = current >= 0 ? tabs[current] : null;
+    const closeRequested =
+      event.key === 'Delete' ||
+      event.key === 'Backspace' ||
+      ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'w');
+    if (closeRequested && currentTab?.querySelector('[data-tab-close]')) {
+      event.preventDefault();
+      event.stopPropagation();
+      handlers.onClose?.(currentTab.dataset.tabId ?? '');
+      return;
+    }
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft' && event.key !== 'Home' && event.key !== 'End') return;
     let nextIndex = current;
     if (event.key === 'ArrowRight') nextIndex = current < 0 ? 0 : (current + 1) % tabs.length;
     else if (event.key === 'ArrowLeft') nextIndex = current <= 0 ? tabs.length - 1 : current - 1;

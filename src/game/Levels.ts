@@ -24,11 +24,15 @@ import type {
   Ctx,
   Enemy,
   EnemyKind,
+  AuthoredLight,
+  ExitPortal,
   LevelDef,
   LevelRuntime,
   LevelsApi,
   Mechanism,
   Pickup,
+  PickupKind,
+  PrefabEnemy,
   CardId,
   RunLoadoutPreset,
   RunStartConfig,
@@ -43,7 +47,7 @@ import type {
 } from '@/core/types';
 import { createPlayer, grantFullReviewKit } from '@/entities/Player';
 import { createDefaultStatus } from '@/entities/status';
-import { spawnPrefabEnemy } from '@/game/instantiate';
+import { spawnPrefabEnemy, toAuthoredLight } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { makeLevelRuntime } from '@/game/runtime';
 import { resetCombatTransients } from '@/game/transients';
@@ -53,7 +57,14 @@ import { COLOR_FN, emberColor, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
 import { EXTRAS } from '@/world/biomeExtras';
 import { extractRegionGraph } from '@/world/regions';
-import { createDefaultVirtualWorldDef, generateVirtualWindow, materializeChunks, type VirtualWorldDef } from '@/world/virtual';
+import {
+  createDefaultVirtualWorldDef,
+  generateVirtualWindow,
+  materializeChunks,
+  type VirtualSceneLight,
+  type VirtualSceneObject,
+  type VirtualWorldDef,
+} from '@/world/virtual';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
 const CURTAIN_HOLD_MS = 450;
@@ -64,6 +75,7 @@ const POPULATION_SPAWN_CLEARANCE = 220;
 const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, 80, 0] as const;
 const POPULATION_ATTEMPTS_PER_PASS = 36;
 const ROOST_ATTEMPTS_PER_PASS = 160;
+const VIRTUAL_PICKUP_KINDS = new Set<PickupKind>(['goldpile', 'heart', 'tome', 'chest', 'potion', 'key']);
 
 interface PopulationSpotOptions {
   minY?: number;
@@ -396,7 +408,9 @@ export class Levels implements LevelsApi {
           ? 'playtest'
           : ctx.state.debugGodMode
             ? 'debug-tainted'
-            : null;
+            : ctx.player.dead
+              ? 'dead'
+              : null;
     return {
       mode: ctx.state.mode,
       playtestSource: ctx.state.playtestSource,
@@ -426,10 +440,14 @@ export class Levels implements LevelsApi {
       // current level — a full enterLevel so enemies and transients restore
       // with it (arrival-at-spawn is the established re-entry semantic).
       const rt = this.current;
-      if (rt && ctx.world !== rt.world && rt.def.id !== 'custom') {
+      if (!LEVELS[this.currentId]) {
+        this.exitDisposableRuntime(ctx);
+      } else if (rt && ctx.world !== rt.world && rt.def.id !== 'custom') {
         this.enterLevel(ctx, rt.def.id);
+        return;
+      } else {
+        return;
       }
-      return;
     }
     if (this.tryResumeExpedition(ctx)) return;
     this.expeditionSeed = ctx.state.worldSeed >>> 0;
@@ -618,6 +636,19 @@ export class Levels implements LevelsApi {
     this.lastEnemiesEmit = ctx.enemies.length;
   }
 
+  exitDisposableRuntime(ctx: Ctx): void {
+    const id = this.currentId;
+    if (!id || LEVELS[id]) return;
+    this.levels.delete(id);
+    this.currentId = null;
+    this.preCustomCurrentId = null;
+    ctx.state.playtestSource = null;
+    ctx.enemies.length = 0;
+    resetCombatTransients(ctx);
+    this.waystoneHeat = [];
+    this.lastEnemiesEmit = 0;
+  }
+
   /* ---------------- expedition persistence ---------------- */
 
   /** Lazily-restorable blobs for levels saved but not yet revisited this session. */
@@ -632,8 +663,10 @@ export class Levels implements LevelsApi {
 
   saveExpedition(ctx: Ctx): void {
     if (!this.currentId || this.currentId === 'custom') return;
+    if (!LEVELS[this.currentId]) return;
     if (ctx.state.playtestSource !== null) return;
     if (ctx.state.debugGodMode) return;
+    if (ctx.player.dead) return;
     // Sync the live hostile roster into the current runtime before reading it.
     this.leaveLevel();
     const blobs: SavedLevelBlob[] = [];
@@ -949,6 +982,9 @@ export class Levels implements LevelsApi {
     const spawn = this.findVirtualSpawn(world);
     this.carveVirtualSpawn(world, spawn.x, spawn.y);
     ctx.worldgen.spawnHint = spawn;
+    const sceneRuntime = this.virtualSceneRuntime(ctx, materialized.sceneObjects, materialized.sceneLights, srcX, srcY, world);
+    ctx.enemies.length = 0;
+    for (const rec of sceneRuntime.enemies) spawnPrefabEnemy(ctx, rec);
     const runtimeDef: LevelDef = {
       id,
       name,
@@ -959,8 +995,14 @@ export class Levels implements LevelsApi {
     return makeLevelRuntime({
       def: runtimeDef,
       world,
+      enemies: ctx.enemies.slice(),
       spawn,
       regions: extractRegionGraph(world, spawn, spawn),
+      waystones: sceneRuntime.waystones,
+      pickups: sceneRuntime.pickups,
+      ...(sceneRuntime.portal ? { portal: sceneRuntime.portal } : {}),
+      ...(sceneRuntime.keyTaken ? { keyTaken: true } : {}),
+      ...(sceneRuntime.authoredLights.length > 0 ? { authoredLights: sceneRuntime.authoredLights } : {}),
       placedPrefabs: materialized.chunks.map((chunk) => {
         const x0 = chunk.cx * def.chunkSize - materialized.originX - srcX;
         const y0 = chunk.cy * def.chunkSize - materialized.originY - srcY;
@@ -973,6 +1015,111 @@ export class Levels implements LevelsApi {
         };
       }),
     });
+  }
+
+  private virtualSceneRuntime(
+    ctx: Ctx,
+    objects: readonly VirtualSceneObject[],
+    lights: readonly VirtualSceneLight[],
+    srcX: number,
+    srcY: number,
+    world: World,
+  ): {
+    enemies: PrefabEnemy[];
+    pickups: Pickup[];
+    waystones: Waystone[];
+    portal: ExitPortal | null;
+    keyTaken: boolean;
+    authoredLights: AuthoredLight[];
+  } {
+    const enemies: PrefabEnemy[] = [];
+    const pickups: Pickup[] = [];
+    const waystones: Waystone[] = [];
+    let portal: ExitPortal | null = null;
+    let keyTaken = false;
+    for (const object of objects) {
+      const x = Math.floor(object.x - srcX);
+      const y = Math.floor(object.y - srcY);
+      if (!world.inBounds(x, y)) continue;
+      if (object.kind === 'enemy') {
+        enemies.push({
+          kind: this.virtualEnemyKind(ctx, object.params.kind, 'slime'),
+          x,
+          y,
+          sourceId: object.id,
+        });
+      } else if (object.kind === 'bossMarker') {
+        enemies.push({
+          kind: this.virtualEnemyKind(ctx, object.params.kind, 'colossus'),
+          x,
+          y,
+          sourceId: object.id,
+        });
+      } else if (object.kind === 'pickup') {
+        pickups.push(makePickup(
+          this.virtualPickupKind(object.params.kind),
+          x,
+          y,
+          {
+            amount: typeof object.params.amount === 'number' ? object.params.amount : undefined,
+            card: typeof object.params.card === 'string' ? object.params.card as Pickup['data']['card'] : undefined,
+            potion: typeof object.params.potion === 'string' ? object.params.potion : undefined,
+          },
+        ));
+      } else if (object.kind === 'waystone') {
+        waystones.push({ x, y, lit: object.params.lit === true });
+      } else if (object.kind === 'exitPortal') {
+        portal = { x, y, open: object.params.open === true || object.params.alwaysOpen === true };
+        keyTaken = keyTaken || object.params.alwaysOpen === true;
+      }
+    }
+    return {
+      enemies,
+      pickups,
+      waystones,
+      portal,
+      keyTaken,
+      authoredLights: this.virtualSceneLights(lights, srcX, srcY, world),
+    };
+  }
+
+  private virtualSceneLights(
+    lights: readonly VirtualSceneLight[],
+    srcX: number,
+    srcY: number,
+    world: World,
+  ): AuthoredLight[] {
+    const authored: AuthoredLight[] = [];
+    for (const light of lights) {
+      const x = Math.floor(light.x - srcX);
+      const y = Math.floor(light.y - srcY);
+      if (!world.inBounds(x, y)) continue;
+      authored.push(toAuthoredLight({
+        id: light.id,
+        x,
+        y,
+        color: light.color,
+        intensity: finiteNumber(light.intensity, 1),
+        radius: finiteNumber(light.radius, 72),
+        bloom: finiteNumber(light.bloom, 0.8),
+        flicker: finiteNumber(light.flicker, 0),
+        falloff: light.falloff ?? 'soft',
+        occluded: light.occluded ?? true,
+        locked: false,
+        hidden: false,
+      }, authored.length));
+    }
+    return authored;
+  }
+
+  private virtualEnemyKind(ctx: Ctx, value: unknown, fallback: EnemyKind): EnemyKind {
+    return typeof value === 'string' && value in ctx.enemyCtl.defs ? value as EnemyKind : fallback;
+  }
+
+  private virtualPickupKind(value: unknown): PickupKind {
+    return typeof value === 'string' && VIRTUAL_PICKUP_KINDS.has(value as PickupKind)
+      ? value as PickupKind
+      : 'goldpile';
   }
 
   private findVirtualSpawn(world: World): { x: number; y: number } {

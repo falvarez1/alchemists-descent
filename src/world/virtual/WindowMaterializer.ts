@@ -1,16 +1,23 @@
 import { World } from '@/sim/World';
-import type { VirtualChunk } from '@/world/virtual/types';
+import type {
+  VirtualChunk,
+  VirtualSceneLight,
+  VirtualSceneObject,
+  VirtualScenePlacementInstance,
+} from '@/world/virtual/types';
 
 export interface MaterializedWindow {
   world: World;
   originX: number;
   originY: number;
   chunks: Array<{ cx: number; cy: number; hash: string }>;
+  sceneObjects: VirtualSceneObject[];
+  sceneLights: VirtualSceneLight[];
 }
 
 export function materializeChunks(chunks: readonly VirtualChunk[]): MaterializedWindow {
   if (chunks.length === 0) {
-    return { world: new World(1, 1), originX: 0, originY: 0, chunks: [] };
+    return { world: new World(1, 1), originX: 0, originY: 0, chunks: [], sceneObjects: [], sceneLights: [] };
   }
   const size = chunks[0].size;
   const seen = new Set<string>();
@@ -47,10 +54,40 @@ export function materializeChunks(chunks: readonly VirtualChunk[]): Materialized
     }
   }
 
+  const placements = uniqueScenePlacements(chunks);
+  const sceneObjects: VirtualSceneObject[] = [];
+  const sceneLights: VirtualSceneLight[] = [];
+  for (const placement of placements) {
+    for (const object of placement.objects) {
+      const x = object.x - originX;
+      const y = object.y - originY;
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      sceneObjects.push({ ...object, x, y, params: { ...object.params } });
+    }
+    for (const light of placement.lights) {
+      const x = light.x - originX;
+      const y = light.y - originY;
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      sceneLights.push({ ...light, x, y });
+    }
+  }
+
   return {
     world,
     originX,
     originY,
     chunks: chunks.map((chunk) => ({ cx: chunk.cx, cy: chunk.cy, hash: chunk.meta.hash })),
+    sceneObjects,
+    sceneLights,
   };
+}
+
+function uniqueScenePlacements(chunks: readonly VirtualChunk[]): VirtualScenePlacementInstance[] {
+  const placements = new Map<string, VirtualScenePlacementInstance>();
+  for (const chunk of chunks) {
+    for (const placement of chunk.meta.scenePlacements ?? []) {
+      if (!placements.has(placement.id)) placements.set(placement.id, placement);
+    }
+  }
+  return [...placements.values()].sort((a, b) => a.id.localeCompare(b.id));
 }

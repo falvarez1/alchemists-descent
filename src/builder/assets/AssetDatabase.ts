@@ -66,9 +66,13 @@ export class AssetDatabase {
 
   constructor(input: AssetDatabaseInput = {}) {
     const importTimes = importTimestampIndex(input.importReports ?? []);
+    const importWarnings = importWarningIndex(input.importReports ?? []);
     indexBuiltInMetadata(this, input);
     for (const prefab of input.builtinPrefabs ?? []) this.add(makePrefabRecord(prefab, 'built-in'));
-    for (const prefab of input.prefabs ?? []) this.add(makePrefabRecord(prefab, 'library', importTimes.get(`prefab:${prefab.id}`)));
+    for (const prefab of input.prefabs ?? []) {
+      const key = `prefab:${prefab.id}`;
+      this.add(makePrefabRecord(prefab, 'library', importTimes.get(key), importWarnings.get(key)));
+    }
     for (const doc of Object.values(input.documents ?? {})) {
       for (const sprite of doc.assets?.sprites ?? []) this.add(makeSpriteRecord(sprite, 'document-embedded', doc.id));
     }
@@ -320,8 +324,14 @@ function makeDocumentRecord(doc: EditorDocument, current: boolean, importedAt?: 
   });
 }
 
-function makePrefabRecord(prefab: PrefabDef, origin: 'built-in' | 'library', importedAt?: string): AssetRecord<PrefabDef> {
+function makePrefabRecord(
+  prefab: PrefabDef,
+  origin: 'built-in' | 'library',
+  importedAt?: string,
+  warnings: readonly string[] = [],
+): AssetRecord<PrefabDef> {
   const signature = prefabContentSignature(prefab);
+  const validation = warnings.length > 0 ? warningSummary([...warnings]) : validSummary();
   return finalizeRecord({
     assetId: stableAssetId('prefab', origin, prefab.id),
     kind: 'prefab',
@@ -333,7 +343,7 @@ function makePrefabRecord(prefab: PrefabDef, origin: 'built-in' | 'library', imp
     createdAt: prefab.createdAt,
     updatedAt: importedAt ?? prefab.createdAt,
     source: { storage: origin === 'built-in' ? 'builtin' : 'localStorage', key: origin === 'built-in' ? undefined : `noita-builder-prefab:${prefab.id}` },
-    validation: validSummary(),
+    validation,
     dependencies: emptyDependencies(),
     usages: [],
     preview: { kind: 'none', label: '', contentSignature: signature },
@@ -414,6 +424,16 @@ function importTimestampIndex(reports: readonly AssetImportReport[]): Map<string
     if (!previous || report.importedAt > previous) times.set(key, report.importedAt);
   }
   return times;
+}
+
+function importWarningIndex(reports: readonly AssetImportReport[]): Map<string, string[]> {
+  const warnings = new Map<string, string[]>();
+  for (const report of reports) {
+    if (!report.importedKind || !report.finalSourceId || report.warnings.length === 0) continue;
+    if (report.decision !== 'accepted' && report.decision !== 'collision-reid' && report.decision !== 'collision-replace') continue;
+    warnings.set(`${report.importedKind}:${report.finalSourceId}`, report.warnings);
+  }
+  return warnings;
 }
 
 function makeSyntheticRecord(

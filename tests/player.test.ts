@@ -59,4 +59,62 @@ describe('player death economy', () => {
     expect(runtime.pickups).toHaveLength(1);
     expect(runtime.pickups[0].data.amount).toBe(1);
   });
+
+  it('clears grid-inflicted status on death without removing potion boons', () => {
+    const player = createPlayer();
+    player.status.burning = 30;
+    player.status.electrified = 20;
+    player.status.frozen = 10;
+    player.status.regen = 90;
+    player.status.stoneskin = 80;
+    const ctx = {
+      player,
+      world: new World(),
+      state: { score: 0, mode: 'play' },
+      levels: { current: { pickups: [] } },
+      events: new EventBus(),
+      waves: { num: 1 },
+      particles: { burst: () => undefined },
+      audio: { squelch: () => undefined, boom: () => undefined },
+      fx: { screenShake: 0 },
+    } as unknown as Ctx;
+
+    new PlayerControl(ctx).kill();
+
+    expect(player.status.burning).toBe(0);
+    expect(player.status.electrified).toBe(0);
+    expect(player.status.frozen).toBe(0);
+    expect(player.status.regen).toBe(90);
+    expect(player.status.stoneskin).toBe(80);
+  });
+
+  it('clears lethal status on checkpoint respawn', () => {
+    const player = createPlayer();
+    player.dead = true;
+    player.status.burning = 30;
+    player.status.electrified = 20;
+    player.status.swift = 70;
+    const ctx = {
+      player,
+      world: new World(),
+      state: { score: 0, mode: 'play' },
+      levels: {
+        current: { pickups: [] },
+        respawnPoint: () => ({ x: 44, y: 55 }),
+      },
+      events: new EventBus(),
+      telemetry: { count: () => undefined },
+      particles: { burst: () => undefined },
+      audio: { squelch: () => undefined, boom: () => undefined },
+      fx: { screenShake: 0 },
+    } as unknown as Ctx;
+
+    new PlayerControl(ctx).respawn();
+
+    expect(player.dead).toBe(false);
+    expect(player.hp).toBe(player.maxHp);
+    expect(player.status.burning).toBe(0);
+    expect(player.status.electrified).toBe(0);
+    expect(player.status.swift).toBe(70);
+  });
 });

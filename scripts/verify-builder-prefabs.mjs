@@ -210,7 +210,10 @@ let details = await page.evaluate(() => {
   return {
     visible,
     parentId: panel?.parentElement?.id ?? '',
+    bottomPane: panel?.closest('.builder-bottom-pane')?.getAttribute('data-bottom-pane') ?? '',
+    dockId: panel?.closest('#builder-dock-bottom')?.id ?? '',
     width: panel?.getBoundingClientRect().width ?? 0,
+    overflowX: panel ? panel.scrollWidth - Math.ceil(panel.clientWidth) : 0,
     horizontalFlow: (panel?.getBoundingClientRect().width ?? 0) > 520,
     title: panel?.textContent ?? '',
     variants: previews.length,
@@ -220,7 +223,11 @@ let details = await page.evaluate(() => {
   };
 });
 check('prefab detail panel opens from prefab card', details.visible && /gate room/i.test(details.title), JSON.stringify(details));
-check('prefab detail panel uses bottom dock horizontal space', details.parentId === 'builder-dock-bottom' && details.horizontalFlow, JSON.stringify(details));
+check(
+  'prefab detail panel uses bottom dock horizontal space',
+  details.dockId === 'builder-dock-bottom' && details.bottomPane === 'bottom-right' && details.horizontalFlow && details.overflowX <= 2,
+  JSON.stringify(details),
+);
 check('prefab variants render preview canvases', details.variants >= 8 && details.largePixels, JSON.stringify(details));
 const scrollProbe = await page.evaluate(() => {
   const panel = document.getElementById('builder-prefab-details');

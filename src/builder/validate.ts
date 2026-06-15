@@ -1,5 +1,6 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { blocksEntity, Cell } from '@/sim/CellType';
+import { computeLooseRubbleBlockingMask } from '@/sim/collision';
 import { decodeTypes, paramNum } from '@/builder/document';
 import type { EditorDocument, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
 import { PLUG_CELLS, SENSOR_FILTER_CELLS, VALVE_CELLS } from '@/game/instantiate';
@@ -338,7 +339,12 @@ export function buildScratchGrid(doc: EditorDocument, openIds: ReadonlySet<strin
 
 /* ---------------- reachability ---------------- */
 
+function looseBlockingMask(types: Uint8Array): Uint8Array {
+  return computeLooseRubbleBlockingMask({ width: WIDTH, height: HEIGHT, types });
+}
+
 function bfsMask(types: Uint8Array, sx: number, sy: number): Uint8Array {
+  const blocks = looseBlockingMask(types);
   const seen = new Uint8Array(WIDTH * HEIGHT);
   const qx = new Int32Array(WIDTH * HEIGHT);
   const qy = new Int32Array(WIDTH * HEIGHT);
@@ -347,7 +353,7 @@ function bfsMask(types: Uint8Array, sx: number, sy: number): Uint8Array {
   const push = (x: number, y: number): void => {
     if (x < 1 || y < 1 || x >= WIDTH - 1 || y >= HEIGHT - 1) return;
     const i = x + y * WIDTH;
-    if (seen[i] || blocksEntity(types[i])) return;
+    if (seen[i] || blocks[i]) return;
     seen[i] = 1;
     qx[tail] = x;
     qy[tail] = y;
@@ -373,8 +379,9 @@ function bfsMask(types: Uint8Array, sx: number, sy: number): Uint8Array {
  * passes, O(cells).
  */
 function erodePassable(types: Uint8Array): Uint8Array {
+  const blocks = looseBlockingMask(types);
   const pass = new Uint8Array(WIDTH * HEIGHT);
-  for (let i = 0; i < pass.length; i++) pass[i] = blocksEntity(types[i]) ? 0 : 1;
+  for (let i = 0; i < pass.length; i++) pass[i] = blocks[i] ? 0 : 1;
   const h = new Uint8Array(WIDTH * HEIGHT);
   for (let y = 0; y < HEIGHT; y++) {
     const row = y * WIDTH;
@@ -557,6 +564,7 @@ function buildReachabilityState(
 
   const finalGrid = baseTypes.slice();
   stampObjects(finalGrid, doc, openIds);
+  const finalBlocks = looseBlockingMask(finalGrid);
   const eroded = erodePassable(finalGrid);
   let seedX = -1;
   let seedY = -1;
@@ -574,7 +582,7 @@ function buildReachabilityState(
   const tooTight = clearanceReachable ? new Uint8Array(WIDTH * HEIGHT) : null;
   if (tooTight && clearanceReachable) {
     for (let i = 0; i < tooTight.length; i++) {
-      if (mask[i] && !clearanceReachable[i] && !blocksEntity(finalGrid[i])) tooTight[i] = 1;
+      if (mask[i] && !clearanceReachable[i] && !finalBlocks[i]) tooTight[i] = 1;
     }
   }
 
@@ -943,8 +951,11 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   const initialOpen = initialOpenDoorIds(doc, liveLinks);
   const closed = baseTypes.slice();
   stampObjects(closed, doc, initialOpen);
+  const closedBlocks = looseBlockingMask(closed);
   const blockedAt = (g: Uint8Array, x: number, y: number): boolean =>
-    blocksEntity(g[Math.floor(x) + Math.floor(y) * WIDTH]);
+    g === closed
+      ? closedBlocks[Math.floor(x) + Math.floor(y) * WIDTH] === 1
+      : blocksEntity(g[Math.floor(x) + Math.floor(y) * WIDTH]);
 
   // spawn embedded (the wizard is 9x17)
   if (spawns.length === 1) {

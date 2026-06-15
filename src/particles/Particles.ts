@@ -35,6 +35,7 @@ export class Particles implements ParticlesApi {
     p.grav = opts && opts.grav !== undefined ? opts.grav : 0.16;
     p.glow = (opts && opts.glow) || 0;
     p.homing = (opts && opts.homing) || false;
+    p.value = opts && opts.value !== undefined ? Math.max(0, Math.floor(opts.value)) : 10;
     p.hostileDmg = (opts && opts.hostileDmg) || 0;
     this.pool.add(p);
   }
@@ -91,7 +92,7 @@ export class Particles implements ParticlesApi {
         p.vx *= 0.92;
         p.vy *= 0.92;
         if (d < 2.5) {
-          ctx.state.score += 10;
+          ctx.state.score += p.value;
           ctx.events.emit('scoreChanged', { score: ctx.state.score });
           ctx.audio.coin();
           this.removeAt(i);

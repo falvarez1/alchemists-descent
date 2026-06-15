@@ -14,8 +14,8 @@ import { unpackB, unpackG, unpackR } from '@/sim/colors';
 /** Ballistic debris / embers / coins. Glowing motes are self-lit; the rest sample the light field. */
 export function drawParticles(s: PixelSurface, light: LightField, ctx: Ctx): void {
   for (const fp of ctx.particles.list) {
-    const glow = fp.glow || 1.0;
-    if (glow > 1.01) {
+    const glow = fp.glow;
+    if (glow > 0) {
       s.setPx(
         fp.x,
         fp.y,

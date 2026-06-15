@@ -164,6 +164,37 @@ describe('asset database', () => {
     expect(db.query({ sort: 'validation' })[0].validation.state).toMatch(/valid|warning|error/);
   });
 
+  it('surfaces sanitizer warnings from accepted prefab imports', () => {
+    const prefab = prefabAsset('lossy-prefab', 'Lossy Prefab');
+    const db = buildAssetDatabase({
+      prefabs: [prefab],
+      importReports: [
+        {
+          id: 'report-lossy',
+          name: 'lossy report',
+          sourceFile: 'lossy.prefab.json',
+          importedAt: '2026-06-15T00:00:00.000Z',
+          decision: 'accepted',
+          importedKind: 'prefab',
+          importedSourceId: prefab.id,
+          finalSourceId: prefab.id,
+          importedAssetId: `prefab:library:${prefab.id}`,
+          replacedAssetId: undefined,
+          warnings: ['dropped a link with a missing endpoint'],
+          errors: [],
+          diff: [],
+          contentSignature: 'sig',
+        },
+      ],
+    });
+
+    expect(db.get(`prefab:library:${prefab.id}`)?.validation).toMatchObject({
+      state: 'warning',
+      warnings: 1,
+      messages: ['dropped a link with a missing endpoint'],
+    });
+  });
+
   it('blocks built-in deletion and allows unused library asset deletion', () => {
     const sprite = spriteAsset('sprite-free', 'Free Sprite');
     const db = buildAssetDatabase({
