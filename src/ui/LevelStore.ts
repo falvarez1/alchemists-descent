@@ -3,6 +3,8 @@ import { rleDecode, rleEncode } from '@/core/rle';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { appDialog } from '@/ui/AppDialog';
+import { resetCombatTransients } from '@/game/transients';
+import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
 
 /**
  * The Level Library (build mode): save the painted world to localStorage,
@@ -53,6 +55,7 @@ export class LevelStore {
 
   private serialize(): SavedLevel {
     const ctx = this.ctx;
+    ensureSandboxWorldDetached(ctx);
     const w = ctx.world;
     const life: Array<[number, number]> = [];
     const charge: Array<[number, number]> = [];
@@ -74,6 +77,7 @@ export class LevelStore {
 
   private applySave(save: SavedLevel): boolean {
     const ctx = this.ctx;
+    ensureSandboxWorldDetached(ctx);
     const w = ctx.world;
     if (save.w !== w.width || save.h !== w.height) return false;
     w.clear();
@@ -88,8 +92,7 @@ export class LevelStore {
     for (const [i, v] of save.life) w.life[i] = v;
     for (const [i, v] of save.charge) w.charge[i] = v;
     ctx.enemies.length = 0;
-    ctx.projectiles.length = 0;
-    ctx.particles.clear();
+    resetCombatTransients(ctx);
     ctx.events.emit('toast', { text: 'LEVEL LOADED' });
     return true;
   }

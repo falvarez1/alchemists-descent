@@ -207,12 +207,18 @@ export interface ChunkMetrics {
   cx: number;
   cy: number;
   generatedMs: number;
+  generatedBytes: number;
+  transferBytes: number;
+  /** @deprecated Use generatedBytes for full-cell payload size or transferBytes for actual posted payload size. */
   bytes: number;
 }
 
 export interface WindowMetrics {
   chunks: number;
   generatedMs: number;
+  generatedBytes: number;
+  transferBytes: number;
+  /** @deprecated Use generatedBytes or transferBytes. */
   bytes: number;
 }
 

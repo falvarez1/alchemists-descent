@@ -61,6 +61,7 @@ type ParsedRunOptions = {
   loadout?: 'fresh' | 'advanced' | 'review';
   worldSource?: 'campaign' | 'campaign-level' | 'virtual-world';
   kit?: RunTestKitConfig;
+  hasTestOnlySetup: boolean;
 };
 type PerfWindow = Window & {
   __perfRecord?: boolean;
@@ -1107,6 +1108,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
   let worldSource: 'campaign' | 'campaign-level' | 'virtual-world' | undefined;
   let flaskMaterial: number | null | undefined;
   let flaskCount: number | undefined;
+  let hasTestOnlySetup = false;
   const kit: RunTestKitConfig = {};
 
   const readValue = (arg: string, i: number): { value?: string; next: number } => {
@@ -1147,6 +1149,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
         });
       }
       loadout = key as 'fresh' | 'advanced' | 'review';
+      hasTestOnlySetup = true;
       i = parsed.next;
       continue;
     }
@@ -1165,6 +1168,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
       const n = parseRunNumber(parsed.value, 'gold', 0, 999999);
       if (typeof n !== 'number') return n;
       kit.gold = n;
+      hasTestOnlySetup = true;
       i = parsed.next;
       continue;
     }
@@ -1174,6 +1178,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
       const n = parseRunNumber(parsed.value, 'hp', 1, 9999);
       if (typeof n !== 'number') return n;
       kit.hp = n;
+      hasTestOnlySetup = true;
       i = parsed.next;
       continue;
     }
@@ -1183,6 +1188,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
       const n = parseRunNumber(parsed.value, 'max-hp', 1, 9999);
       if (typeof n !== 'number') return n;
       kit.maxHp = n;
+      hasTestOnlySetup = true;
       i = parsed.next;
       continue;
     }
@@ -1192,6 +1198,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
       const n = parseRunNumber(parsed.value, 'levit', 1, 9999);
       if (typeof n !== 'number') return n;
       kit.maxLevit = n;
+      hasTestOnlySetup = true;
       i = parsed.next;
       continue;
     }
@@ -1209,6 +1216,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
         }
         kit.cards = cards;
       }
+      hasTestOnlySetup = true;
       i = parsed.next;
       continue;
     }
@@ -1226,6 +1234,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
         }
         kit.perks = perks;
       }
+      hasTestOnlySetup = true;
       i = parsed.next;
       continue;
     }
@@ -1245,6 +1254,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
         if (typeof n !== 'number') return n;
         flaskCount = n;
       }
+      hasTestOnlySetup = true;
       i = parsed.next;
       continue;
     }
@@ -1254,6 +1264,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
       const n = parseRunNumber(parsed.value, 'flask count', 0, 600);
       if (typeof n !== 'number') return n;
       flaskCount = n;
+      hasTestOnlySetup = true;
       i = parsed.next;
       continue;
     }
@@ -1263,6 +1274,18 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
     });
   }
 
+  if (flaskCount !== undefined && flaskMaterial === undefined) {
+    return result(false, '--flask-count requires --flask <material|empty>.', {
+      code: 'run-flask-count-without-material',
+      flaskCount,
+    });
+  }
+  if (flaskMaterial === null && flaskCount !== undefined && flaskCount > 0) {
+    return result(false, 'Empty flask cannot have cells. Use --flask empty or --flask <material>:<count>.', {
+      code: 'run-empty-flask-with-cells',
+      flaskCount,
+    });
+  }
   if (flaskMaterial !== undefined || flaskCount !== undefined) {
     kit.flask = { material: flaskMaterial ?? null, count: flaskCount ?? (flaskMaterial === null ? 0 : 600) };
   }
@@ -1273,6 +1296,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
     loadout,
     worldSource,
     kit: Object.keys(kit).length > 0 ? kit : undefined,
+    hasTestOnlySetup,
   };
 }
 
@@ -1458,7 +1482,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
     info: info(
       'game.run',
       'Run Control',
-      'run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--loadout fresh|advanced|review] [--world campaign|campaign-level|virtual-world] [--gold n] [--cards all|id,id] [--perks all|id,id]',
+      'run <status|continue|new|test|save|abandon> [--level id] [--seed n] [--world campaign|campaign-level|virtual-world] [test-only: --loadout preset --gold n --cards all|id,id --perks all|id,id --flask material:count]',
       'Canonical start/reset/save/test-run workflow for expeditions.',
       'game',
     ),
@@ -1501,6 +1525,12 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
         const parsed = parseRunOptions(ctx, args.slice(1));
         if (!isParsedRunOptions(parsed)) return parsed;
         const test = sub === 'test';
+        if (!test && parsed.hasTestOnlySetup) {
+          return result(false, 'Loadout and granular kit options are Test Run-only. Use `run test ...` for disposable setup.', {
+            code: 'run-kit-test-only',
+            action: 'new',
+          });
+        }
         const worldSource = parsed.worldSource ?? (parsed.levelId ? 'campaign-level' : 'campaign');
         ctx.audio.ensure();
         const started = ctx.levels.startRun(ctx, {

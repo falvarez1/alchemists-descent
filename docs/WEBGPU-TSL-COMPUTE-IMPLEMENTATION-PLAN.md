@@ -67,6 +67,8 @@ probe.
   `PerfHud`.
 - Visual evidence: probe screenshots under `verify-out/`, canvas readbacks
   inside `requestAnimationFrame`, and parity diffs for deterministic output.
+- Durable benchmark summaries live in `docs/`; `verify-out/` remains generated
+  local evidence and must not become the committed ledger.
 - Drift rule: prefer same-session A/B. If comparing separate sessions, only
   trust movement well outside normal 3-5% machine drift.
 
@@ -123,7 +125,7 @@ Purpose: make every later phase hard to fool.
 
 Tasks:
 
-- Add a durable benchmark ledger under `docs/` or `verify-out/benchmarks/`
+- Add a durable benchmark ledger under `docs/`
   that records before/after numbers, hardware/browser, commit SHA, scene, seed,
   and decision.
 - Add or extend a script that runs repeatable A/B blocks for arbitrary feature
@@ -199,6 +201,15 @@ Tasks:
   flags for compose, lighting, particles, and post.
 - Add device-loss handling that can recreate GPU resources while preserving the
   CPU game state.
+- Add a backend-selection matrix that proves the actual backend in use. Cover:
+  `navigator.gpu` absent, insecure context, no adapter, device init failure,
+  explicit `forceWebGL`, WebGPU disabled by user flag, WebGPU lost, and WebGPU
+  recovered. Three's WebGPU renderer may fall back to WebGL2; probes must report
+  the verified backend, not only the requested backend.
+- Device-loss recovery must preserve the existing `Ctx`, `World`, expedition
+  state, input bindings, Builder overlays, and canvas-holder layout. If a canvas
+  must be replaced, input and Builder measurement hooks must be explicitly
+  rebound and verified.
 
 Expected result:
 
@@ -244,6 +255,12 @@ Acceptance gate:
 - PostFx on/off screenshots match current WebGL reference closely enough that
   differences are either imperceptible or documented.
 - `gl`/presentation bucket is not worse than WebGL after one focused fix.
+- Main-thread canvas ownership is preserved. OffscreenCanvas/worker
+  presentation is a non-goal until a separate input, screenshot, Builder, and
+  console-capture design exists. Workers may be used for compute/worldgen only.
+- The post-processing/output-transform order is documented as a named contract:
+  base pixel quad, bloom/emissive treatment, lens split/grain/hurt pulse,
+  exposure/tone mapping, and final output color-space conversion exactly once.
 
 Rollback rule:
 
@@ -267,6 +284,12 @@ Tasks:
 - Use WebGPU textures/storage resources that avoid unnecessary CPU-side format
   conversion.
 - Keep `postFx.gpuCompose` runtime-flippable for same-session A/B.
+- Before porting, add a compose ABI table covering every current WebGL2 input:
+  world window format (`RGBA8UI` equivalent), type/charge packing, light field
+  (`RGBA32F` equivalent), LUT (`R32F` equivalent), overlay (`RGBA16F`
+  equivalent), Y-flipped view rows, padded windows, row-major CPU arrays,
+  alignment, bind groups, texture-vs-storage-buffer choices, endian assumptions,
+  and update cadence.
 
 Expected result:
 
@@ -278,6 +301,9 @@ Acceptance gate:
 
 - Existing compose parity scenarios pass against CPU reference and WebGL2 GPU
   compose reference.
+- The parity matrix covers CPU, WebGL2 GPU compose, and WebGPU compose across
+  post off/on, output transform, black-hole distortion, shockwaves, sprite
+  overlay `setPx`/`addPx`, Sandbox, Builder Author, and Builder playtest.
 - Same-session A/B shows WebGPU compose is not slower than WebGL2 GPU compose,
   or a documented visual-quality gain justifies a small cost.
 - Builder and Sandbox both render through the WebGPU path without mode-specific
@@ -304,6 +330,9 @@ Tasks:
   costs less than simple uploads.
 - Add debug assertions comparing sampled CPU cells to GPU mirror contents via
   occasional non-frame-loop readback.
+- Track dirty upload cost separately from CPU packing cost. Any dirty-rect,
+  row-span, or chunk strategy must record touched-cell count, uploaded bytes,
+  and CPU bookkeeping time so it can be compared against the simple upload path.
 
 Expected result:
 
@@ -333,6 +362,10 @@ Tasks:
   `Lighting.build` into GPU resources.
 - Implement directional sweeps as WGSL compute passes over the half-res light
   field.
+- Decompose compute into explicit passes before implementation: seed generation
+  from materials/authored/entity lights, attenuation initialization, directional
+  dependency sweeps, wand raycast lighting, flicker/random inputs, optional
+  sprite-light bridge, and final field normalization for compose/post.
 - Preserve authored lights, entity lights, material glow, charge glow, wand
   light behavior, and the current even-frame rebuild cadence unless a measured
   alternative wins.
@@ -350,6 +383,9 @@ Acceptance gate:
 
 - Lighting probe compares WebGPU light field against CPU field using tolerance
   bands and screenshot diffs.
+- GPU timing is reported separately from CPU submit timing where supported
+  through timestamp queries. Unsupported timing must be labeled clearly, and
+  readbacks must stay out of frame-loop benchmarks.
 - Heavy-light benchmark improves `compose` or `render` meaningfully without
   worsening `frame`.
 - No visible loss in shadow readability, emissive self-glow, or bloom behavior.
@@ -388,6 +424,10 @@ Acceptance gate:
   time.
 - Visual density improves or stays the same in screenshots/clips.
 - Material-depositing particles still deposit real cells exactly as before.
+- Regression tests prove `type === null` visual-only particles can move to the
+  GPU path while material particles still deposit cells, homing coins still
+  score, hostile/debris interactions still damage correctly, and CPU sprite
+  lighting parity remains intact.
 
 Rollback rule:
 

@@ -46,6 +46,8 @@ await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(500);
 
 await page.click('#immersive-play-btn');
+await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
+await page.click('#run-launcher .run-launcher-start');
 await page.waitForFunction(
   () =>
     window.__game.ctx.state.mode === 'play' &&

@@ -13,7 +13,10 @@ let def: VirtualWorldDef | null = null;
 const canceled = new Set<number>();
 
 worker.addEventListener('message', (event) => {
-  const msg = event.data;
+  void handleMessage(event.data);
+});
+
+async function handleMessage(msg: VirtualWorkerRequest): Promise<void> {
   try {
     if (msg.kind === 'init' || msg.kind === 'updateDef') {
       def = msg.def;
@@ -37,22 +40,32 @@ worker.addEventListener('message', (event) => {
     if (msg.kind === 'generateWindow') {
       const start = now();
       let chunks = 0;
-      let bytes = 0;
+      let generatedBytes = 0;
+      let transferBytes = 0;
+      let sinceYield = 0;
       for (const [cx, cy] of sortedWindowCoords(msg.req)) {
         if (canceled.has(msg.req.jobId)) {
           worker.postMessage({ kind: 'canceled', jobId: msg.req.jobId });
+          canceled.delete(msg.req.jobId);
           return;
         }
         const chunk = generateVirtualChunk(def, cx, cy);
         const transferable = toTransferableChunk(chunk, msg.req.requestedPlanes);
         chunks++;
-        bytes += transferable.chunk.metrics.bytes;
+        generatedBytes += transferable.chunk.metrics.generatedBytes;
+        transferBytes += transferable.chunk.metrics.transferBytes;
         worker.postMessage({ kind: 'chunk', jobId: msg.req.jobId, chunk: transferable.chunk }, transferable.transfer);
+        sinceYield++;
+        if (sinceYield >= 2) {
+          sinceYield = 0;
+          await yieldToWorkerQueue();
+        }
       }
+      canceled.delete(msg.req.jobId);
       worker.postMessage({
         kind: 'windowDone',
         jobId: msg.req.jobId,
-        metrics: { chunks, generatedMs: now() - start, bytes },
+        metrics: { chunks, generatedMs: now() - start, generatedBytes, transferBytes, bytes: generatedBytes },
       });
     }
   } catch (err) {
@@ -60,7 +73,7 @@ worker.addEventListener('message', (event) => {
     const jobId = 'req' in msg ? msg.req.jobId : 'jobId' in msg ? msg.jobId : undefined;
     worker.postMessage({ kind: 'error', jobId, message: error.message, stack: error.stack });
   }
-});
+}
 
 function sortedWindowCoords(req: Extract<VirtualWorkerRequest, { kind: 'generateWindow' }>['req']): Array<[number, number]> {
   const coords: Array<[number, number]> = [];
@@ -77,4 +90,8 @@ function sortedWindowCoords(req: Extract<VirtualWorkerRequest, { kind: 'generate
 
 function now(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+function yieldToWorkerQueue(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }

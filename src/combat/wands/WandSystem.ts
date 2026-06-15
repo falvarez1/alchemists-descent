@@ -4,6 +4,7 @@ import type {
   Projectile,
   WandFrame,
   WandLoadoutSave,
+  WandRuntimeSnapshot,
   WandsApi,
   WandState,
 } from '@/core/types';
@@ -532,6 +533,54 @@ export class WandSystem implements WandsApi {
       w.castIndex = 0;
       this.compiled[i as 0 | 1] = null;
     }
+    this.ctx.events.emit('wandChanged');
+  }
+
+  snapshotRuntimeState(): WandRuntimeSnapshot {
+    return {
+      active: this._active,
+      collection: [...this.collection],
+      wands: this.wands.map((w) => ({
+        frameId: w.frame.id,
+        cards: [...w.cards],
+        mana: w.mana,
+        cooldown: w.cooldown,
+        ...(w.cooldownMax === undefined ? {} : { cooldownMax: w.cooldownMax }),
+        castIndex: w.castIndex,
+      })),
+      lastDryFire: this.lastDryFire,
+      flameBurst: this.flameBurst,
+      depthsGranted: [...this.depthsGranted],
+      infuserGranted: this.infuserGranted,
+    };
+  }
+
+  restoreRuntimeState(data: WandRuntimeSnapshot): void {
+    this._active = data.active;
+    this.collection.length = 0;
+    this.collection.push(...data.collection);
+    for (let i = 0; i < this.wands.length && i < data.wands.length; i++) {
+      const saved = data.wands[i];
+      const w = this.wands[i];
+      w.frame = WAND_FRAMES[saved.frameId] ?? w.frame;
+      w.cards.length = 0;
+      w.cards.push(...saved.cards);
+      while (w.cards.length < w.frame.capacity) w.cards.push(null);
+      w.cards.length = w.frame.capacity;
+      w.mana = Math.min(w.frame.manaMax, Math.max(0, saved.mana));
+      w.cooldown = Math.max(0, saved.cooldown);
+      w.castIndex = Math.max(0, Math.floor(saved.castIndex));
+      if (saved.cooldownMax === undefined) delete w.cooldownMax;
+      else w.cooldownMax = Math.max(0, saved.cooldownMax);
+      this.compiled[i as 0 | 1] = null;
+    }
+    this.lastDryFire = data.lastDryFire;
+    this.flameBurst = Math.max(0, Math.floor(data.flameBurst));
+    this.depthsGranted.clear();
+    for (const depth of data.depthsGranted) {
+      if (Number.isFinite(depth)) this.depthsGranted.add(Math.floor(depth));
+    }
+    this.infuserGranted = data.infuserGranted;
     this.ctx.events.emit('wandChanged');
   }
 

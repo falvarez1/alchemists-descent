@@ -44,6 +44,7 @@ import { createDefaultStatus } from '@/entities/status';
 import { spawnPrefabEnemy } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/game/Pickups';
 import { makeLevelRuntime } from '@/game/runtime';
+import { resetCombatTransients } from '@/game/transients';
 import { validateFindability, wizardMask } from '@/world/validate';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { COLOR_FN, emberColor, EMPTY_COLOR, packRGB } from '@/sim/colors';
@@ -708,10 +709,7 @@ export class Levels implements LevelsApi {
     ctx.events.emit('playerDeathCleared');
 
     ctx.enemies.length = 0;
-    ctx.projectiles.length = 0;
-    ctx.shockwaves.length = 0;
-    ctx.particles.clear();
-    ctx.lightning.clear();
+    resetCombatTransients(ctx);
     ctx.critters.list.length = 0;
     ctx.input.keys.left = false;
     ctx.input.keys.right = false;
@@ -721,13 +719,6 @@ export class Levels implements LevelsApi {
     ctx.input.keys.down = false;
     ctx.input.keys.grab = false;
     ctx.input.isDrawing = false;
-    ctx.input.buildSpellHeld = false;
-    ctx.input.bombCharge = -1;
-    ctx.input.activeChargingBlackHole = null;
-    ctx.input.siphonHeld = false;
-    ctx.input.pourHeld = false;
-    ctx.input.drinkHeld = false;
-    ctx.fx.digBeam = null;
     ctx.fx.hitstop = 0;
     ctx.flask.state.material = null;
     ctx.flask.state.count = 0;
@@ -803,6 +794,8 @@ export class Levels implements LevelsApi {
       const srcOff = srcX + sy * materialized.world.width;
       world.types.set(materialized.world.types.subarray(srcOff, srcOff + WIDTH), dstOff);
       world.colors.set(materialized.world.colors.subarray(srcOff, srcOff + WIDTH), dstOff);
+      world.life.set(materialized.world.life.subarray(srcOff, srcOff + WIDTH), dstOff);
+      world.charge.set(materialized.world.charge.subarray(srcOff, srcOff + WIDTH), dstOff);
     }
     ctx.world = world;
     ctx.worldgen.spawnHint = null;
@@ -821,13 +814,17 @@ export class Levels implements LevelsApi {
       world,
       spawn,
       regions: extractRegionGraph(world, spawn, spawn),
-      placedPrefabs: materialized.chunks.map((chunk) => ({
-        id: `virtual:${chunk.cx},${chunk.cy}:${chunk.hash}`,
-        x0: (chunk.cx + 3) * def.chunkSize,
-        y0: (chunk.cy + 1) * def.chunkSize,
-        x1: (chunk.cx + 4) * def.chunkSize - 1,
-        y1: (chunk.cy + 2) * def.chunkSize - 1,
-      })),
+      placedPrefabs: materialized.chunks.map((chunk) => {
+        const x0 = chunk.cx * def.chunkSize - materialized.originX - srcX;
+        const y0 = chunk.cy * def.chunkSize - materialized.originY - srcY;
+        return {
+          id: `virtual:${chunk.cx},${chunk.cy}:${chunk.hash}`,
+          x0,
+          y0,
+          x1: x0 + def.chunkSize - 1,
+          y1: y0 + def.chunkSize - 1,
+        };
+      }),
     });
   }
 
@@ -891,12 +888,7 @@ export class Levels implements LevelsApi {
     ctx.world = runtime.world;
     ctx.enemies.length = 0;
     ctx.enemies.push(...runtime.enemies);
-    ctx.projectiles.length = 0;
-    ctx.shockwaves.length = 0;
-    ctx.particles.clear();
-    ctx.lightning.clear();
-    ctx.input.activeChargingBlackHole = null;
-    ctx.fx.digBeam = null;
+    resetCombatTransients(ctx);
 
     const player = ctx.player;
     player.x = runtime.spawn.x;
@@ -1148,12 +1140,7 @@ export class Levels implements LevelsApi {
     }
 
     // Transient combat state never crosses a well
-    ctx.projectiles.length = 0;
-    ctx.shockwaves.length = 0;
-    ctx.particles.clear();
-    ctx.lightning.clear();
-    ctx.input.activeChargingBlackHole = null;
-    ctx.fx.digBeam = null;
+    resetCombatTransients(ctx);
 
     // v1: arrival (descending or re-ascending) always places the player at
     // the destination level's spawn chamber — see file header

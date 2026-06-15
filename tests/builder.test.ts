@@ -392,8 +392,9 @@ describe('builder validation', () => {
     expect(html).toContain('data-action-kind="mutate"');
     expect(html).toContain('data-mutates-document="true"');
     expect(html).toContain('data-action-kind="inspect"');
-    expect(html).toContain('role="button"');
-    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('role="listitem"');
+    expect(html).toContain('data-validation-select="0"');
+    expect(html).not.toContain('tabindex="0"');
     expect(html).toContain('No &lt;spawn&gt; placed');
     expect(html).not.toContain('No <spawn> placed');
   });
@@ -930,6 +931,51 @@ describe('import sanitizer', () => {
     });
     expect(full).not.toBeNull();
     expect(full!.world).not.toBeNull();
+  });
+
+  it('drops malformed imported document records and keeps only bounded valid references', () => {
+    const w = new World();
+    const doc = sanitizeImportedDoc({
+      v: 2,
+      id: 'unsafe doc id!',
+      name: '',
+      biome: 'not-a-biome',
+      objects: [
+        { id: 'spawn 1', kind: 'spawn', x: 20.4, y: 30.9, rotation: 0, locked: false, hidden: false, params: { note: '<ok>' } },
+        { id: 'bad-kind', kind: 'script-tag', x: 0, y: 0, rotation: 0, locked: false, hidden: false, params: {} },
+        { id: '', kind: 'waystone', x: Number.NaN, y: 0, rotation: 0, locked: false, hidden: false, params: {} },
+      ],
+      links: [
+        { id: 'link 1', fromId: 'spawn-1', toId: 'spawn-1', kind: 'triggerDoor' },
+        { id: 'link-bad', fromId: 'spawn-1', toId: 'missing', kind: 'triggerDoor' },
+      ],
+      lights: [
+        { id: 'light 1', x: 50, y: 60, radius: 100, intensity: 1.2, color: '#ff00aa', flicker: 0.25 },
+        { id: 'light-bad', x: 0, y: 0, radius: -1, intensity: 1, color: '#fff', flicker: 0 },
+      ],
+      proceduralHistory: [
+        { id: 'pass 1', pass: 'veins', seed: 123, region: { x0: 1, y0: 2, x1: 3, y1: 4 }, intensity: 0.5, material: Cell.Gold },
+        { id: 'pass-bad', pass: '', seed: 1, region: { x0: 0, y0: 0, x1: 1, y1: 1 }, intensity: 0.5, material: Cell.Gold },
+      ],
+      world: {
+        rle: rleEncode(w.types),
+        life: Array.from({ length: 80010 }, (_, index) => [index, 1]),
+        charge: Array.from({ length: 80010 }, (_, index) => [index, 1]),
+      },
+      size: { w: w.width, h: w.height },
+    });
+
+    expect(doc).not.toBeNull();
+    expect(doc!.id).toBe('unsafe-doc-id');
+    expect(doc!.name).toBe('imported');
+    expect(doc!.biome).toBe('earthen');
+    expect(doc!.objects).toHaveLength(1);
+    expect(doc!.objects[0]).toMatchObject({ id: 'spawn-1', kind: 'spawn', x: 20, y: 30 });
+    expect(doc!.links).toMatchObject([{ id: 'link-1', fromId: 'spawn-1', toId: 'spawn-1', kind: 'triggerDoor' }]);
+    expect(doc!.lights).toHaveLength(1);
+    expect(doc!.proceduralHistory).toHaveLength(1);
+    expect(doc!.world?.life).toHaveLength(80000);
+    expect(doc!.world?.charge).toHaveLength(80000);
   });
 });
 

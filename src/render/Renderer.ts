@@ -109,7 +109,7 @@ export class Renderer implements RenderTarget {
     lenses: readonly CompositorLens[],
     lightRebuilt: boolean,
   ): OverlaySurface {
-    this.gpu ??= new GpuCompose(layers, light);
+    this.gpu ??= new GpuCompose(this.renderer, layers, light);
     this.gpuFrame = true;
     return this.gpu.beginFrame(ctx, light, lenses, lightRebuilt);
   }

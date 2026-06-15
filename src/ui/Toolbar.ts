@@ -4,6 +4,7 @@ import { WIDTH } from '@/config/constants';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
+import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
 
 export type SelectionChangedFn = (id: string | number, mode: 'element' | 'spell') => void;
 
@@ -122,16 +123,24 @@ export class Toolbar {
   }
 
   private wireWorldGen(): void {
-    document.getElementById('btn-caves')!.addEventListener('click', () => this.ctx.worldgen.regenerate(this.ctx));
-    document.getElementById('biome-select')!.addEventListener('change', (e) => {
-      this.ctx.state.currentBiome = (e.target as HTMLSelectElement).value as BiomeId;
+    document.getElementById('btn-caves')!.addEventListener('click', () => {
+      ensureSandboxWorldDetached(this.ctx);
       this.ctx.worldgen.regenerate(this.ctx);
     });
-    document.getElementById('btn-fortress')!.addEventListener('click', () => this.ctx.worldgen.spawnFortress(this.ctx));
+    document.getElementById('biome-select')!.addEventListener('change', (e) => {
+      this.ctx.state.currentBiome = (e.target as HTMLSelectElement).value as BiomeId;
+      ensureSandboxWorldDetached(this.ctx);
+      this.ctx.worldgen.regenerate(this.ctx);
+    });
+    document.getElementById('btn-fortress')!.addEventListener('click', () => {
+      ensureSandboxWorldDetached(this.ctx);
+      this.ctx.worldgen.spawnFortress(this.ctx);
+    });
   }
 
   // Build-mode enemy droppers
   private dropEnemyAtTop(kind: EnemyKind): void {
+    ensureSandboxWorldDetached(this.ctx);
     const x = 20 + Math.floor(Math.random() * (WIDTH - 40));
     this.ctx.enemyCtl.spawn(kind, x, kind === 'imp' ? 14 + Math.random() * 12 : 6);
   }

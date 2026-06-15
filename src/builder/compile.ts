@@ -10,6 +10,7 @@ import {
   makeInstantiationSink,
   spawnPrefabEnemy,
 } from '@/game/instantiate';
+import { cancelChargingBlackHole, resetCombatTransients, resetHeldSpellInputs } from '@/game/transients';
 import type { CellSetter } from '@/builder/stamps';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { createDefaultStatus } from '@/entities/status';
@@ -54,8 +55,7 @@ export function compileAndPlaytest(
 
   // 2) Fresh combat state, then wrap the world as the custom runtime.
   ctx.enemies.length = 0;
-  ctx.projectiles.length = 0;
-  ctx.particles.clear();
+  resetCombatTransients(ctx);
   ctx.levels.playCurrentWorld(ctx);
   const runtime = ctx.levels.current;
   if (!runtime) return false;
@@ -178,11 +178,7 @@ function resetPlayerForPlaytest(ctx: Ctx): void {
   p.fidgetT = 0;
   p.robe = { ox: 0, vx: 0 };
   p.status = createDefaultStatus();
-  ctx.input.buildSpellHeld = false;
-  ctx.input.bombCharge = -1;
-  ctx.input.activeChargingBlackHole = null;
-  ctx.input.siphonHeld = false;
-  ctx.input.pourHeld = false;
-  ctx.input.drinkHeld = false;
+  resetHeldSpellInputs(ctx);
+  cancelChargingBlackHole(ctx);
   ctx.events.emit('playerDeathCleared');
 }

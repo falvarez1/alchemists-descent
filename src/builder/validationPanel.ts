@@ -42,7 +42,7 @@ export function renderValidationPanel(issues: DocIssue[], options: ValidationPan
       ${filterButton('warning', 'Warnings', 'Warnings', count(issues, 'warning'))}
       ${filterButton('info', 'Info', 'Info', count(issues, 'info'))}
     </div>
-    <div class="bv-groups">${groups}</div>`;
+    <div class="bv-groups">${issues.length === 0 ? '<div class="bv-empty" role="status">0 issues found. Document is ready for playtest checks.</div>' : groups}</div>`;
 }
 
 function renderGroup(
@@ -70,12 +70,13 @@ function renderIssueRow(issue: DocIssue, index: number, playtestBlocker: boolean
   const loc = issue.location ? `<span class="bv-loc">${Math.round(issue.location.x)},${Math.round(issue.location.y)}</span>` : '';
   const objIds = issue.objIds ?? (issue.objId ? [issue.objId] : []);
   const classes = ['b-issue', 'bv-issue', issue.severity, playtestBlocker ? 'playtest-blocker' : ''].filter(Boolean).join(' ');
-  return `<div class="${classes}" role="button" tabindex="0" aria-label="${escapeAttr(issue.severity + ': ' + issue.what)}" data-n="${index}" data-issue-code="${escapeAttr(issue.code ?? '')}" data-issue-obj="${escapeAttr(issue.objId ?? '')}" data-issue-objs="${escapeAttr(objIds.join(','))}" data-issue-link="${escapeAttr(issue.linkId ?? '')}"${playtestBlocker ? ' data-playtest-blocker="true"' : ''}>
+  const selectButton = `<button type="button" class="bv-select" data-validation-select="${index}" aria-label="${escapeAttr('Select issue: ' + issue.what)}">Select</button>`;
+  return `<div class="${classes}" role="listitem" aria-label="${escapeAttr(issue.severity + ': ' + issue.what)}" data-n="${index}" data-issue-code="${escapeAttr(issue.code ?? '')}" data-issue-obj="${escapeAttr(issue.objId ?? '')}" data-issue-objs="${escapeAttr(objIds.join(','))}" data-issue-link="${escapeAttr(issue.linkId ?? '')}"${playtestBlocker ? ' data-playtest-blocker="true"' : ''}>
     <div class="bv-main">
       <div class="bv-title">[${issue.severity.slice(0, 4).toUpperCase()}] ${escapeHtml(issue.what)}</div>
       <div class="bv-meta">${code}${loc}</div>
     </div>
-    ${actions ? `<div class="bv-actions">${actions}</div>` : ''}
+    <div class="bv-actions">${selectButton}${actions}</div>
   </div>`;
 }
 

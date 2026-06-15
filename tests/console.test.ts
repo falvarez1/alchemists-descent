@@ -107,6 +107,16 @@ function makeCtx(): Ctx {
     slotCard: () => undefined,
     snapshotLoadout: () => ({ active: 0, collection: [], wands: [] }),
     loadLoadout: () => undefined,
+    snapshotRuntimeState: () => ({
+      active: 0,
+      collection: [],
+      wands: [],
+      lastDryFire: -99,
+      flameBurst: 0,
+      depthsGranted: [],
+      infuserGranted: false,
+    }),
+    restoreRuntimeState: () => undefined,
     resetLoadout: () => {
       collection.length = 0;
     },
@@ -689,6 +699,38 @@ describe('console registry', () => {
     expect(status).toMatchObject({
       ok: true,
       data: { action: 'status', mode: 'play', playtestSource: 'test', autosaveEnabled: false },
+    });
+  });
+
+  it('keeps loadout and granular kit setup scoped to disposable test runs', async () => {
+    const ctx = makeCtx();
+
+    const gold = await ctx.console.exec('run new --gold 250');
+    const loadout = await ctx.console.exec('run new --loadout review');
+
+    expect(gold).toMatchObject({
+      ok: false,
+      data: { code: 'run-kit-test-only', action: 'new' },
+    });
+    expect(loadout).toMatchObject({
+      ok: false,
+      data: { code: 'run-kit-test-only', action: 'new' },
+    });
+  });
+
+  it('rejects ambiguous or impossible run flask setup', async () => {
+    const ctx = makeCtx();
+
+    const countOnly = await ctx.console.exec('run test --flask-count 25');
+    const emptyWithCells = await ctx.console.exec('run test --flask empty:25');
+
+    expect(countOnly).toMatchObject({
+      ok: false,
+      data: { code: 'run-flask-count-without-material', flaskCount: 25 },
+    });
+    expect(emptyWithCells).toMatchObject({
+      ok: false,
+      data: { code: 'run-empty-flask-with-cells', flaskCount: 25 },
     });
   });
 

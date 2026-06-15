@@ -11,6 +11,24 @@ function appendOption(parts, name, value) {
   parts.push(name, String(value));
 }
 
+function appendListOption(parts, name, value) {
+  if (value === undefined || value === null || value === '') return;
+  parts.push(name, Array.isArray(value) ? value.join(',') : String(value));
+}
+
+function appendFlaskOptions(parts, options) {
+  const flask = options.flask;
+  if (flask && typeof flask === 'object' && !Array.isArray(flask)) {
+    const material = flask.material === null ? 'empty' : flask.material;
+    if (material !== undefined && material !== '') {
+      appendOption(parts, '--flask', flask.count !== undefined ? `${material}:${flask.count}` : material);
+      return;
+    }
+  }
+  appendOption(parts, '--flask', flask ?? options.flaskMaterial);
+  appendOption(parts, '--flask-count', options.flaskCount);
+}
+
 export function buildRunCommand(options = {}) {
   const subcommand = options.subcommand ?? options.mode ?? 'test';
   const parts = ['run', subcommand];
@@ -18,6 +36,13 @@ export function buildRunCommand(options = {}) {
   appendOption(parts, '--seed', options.seed);
   appendOption(parts, '--loadout', options.loadout);
   appendOption(parts, '--world', options.world ?? options.worldSource);
+  appendOption(parts, '--gold', options.gold);
+  appendOption(parts, '--hp', options.hp);
+  appendOption(parts, '--max-hp', options.maxHp ?? options.maxHP);
+  appendOption(parts, '--levit', options.levit ?? options.maxLevit);
+  appendListOption(parts, '--cards', options.cards);
+  appendListOption(parts, '--perks', options.perks);
+  appendFlaskOptions(parts, options);
   return parts.join(' ');
 }
 

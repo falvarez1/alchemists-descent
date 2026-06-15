@@ -8,7 +8,8 @@ import {
 } from '@/builder/assets/AssetPreview';
 import type { AssetDatabase } from '@/builder/assets/AssetDatabase';
 import type { AssetImportInput, AssetImportResult, AssetStore } from '@/builder/assets/AssetStore';
-import type { AssetKind, AssetRecord } from '@/builder/assets/AssetTypes';
+import { normalizeAssetToken, stableAssetId } from '@/builder/assets/AssetTypes';
+import type { AssetKind, AssetOrigin, AssetRecord } from '@/builder/assets/AssetTypes';
 
 export interface AssetImportPreview {
   ok: boolean;
@@ -47,14 +48,7 @@ export function previewJsonImport(input: AssetImportInput, database: Pick<AssetD
   const duplicate = database
     .list()
     .find((record) => record.kind === asset.kind && record.contentSignature === asset.contentSignature);
-  const collision = database
-    .list()
-    .find((record) =>
-      record.kind === asset.kind &&
-      record.sourceId === asset.sourceId &&
-      record.origin !== 'missing' &&
-      record.contentSignature !== asset.contentSignature,
-    );
+  const collision = findImportCollision(database, asset.kind, asset.sourceId, asset.contentSignature);
   return {
     ok: true,
     kind: asset.kind,
@@ -141,29 +135,54 @@ function identifyImportPayload(value: unknown): {
 } | null {
   const doc = sanitizeImportedDoc(value);
   if (doc) {
-    return { kind: 'document', sourceId: doc.id, name: doc.name, contentSignature: stableContentSignature(doc), warnings: [] };
+    const payload = { ...doc, id: normalizeAssetToken(doc.id) };
+    return { kind: 'document', sourceId: payload.id, name: payload.name, contentSignature: stableContentSignature(payload), warnings: [] };
   }
   const prefab = sanitizePrefab(value);
   if (prefab) {
+    const payload = { ...prefab.prefab, id: normalizeAssetToken(prefab.prefab.id) };
     return {
       kind: 'prefab',
-      sourceId: prefab.prefab.id,
-      name: prefab.prefab.name,
-      contentSignature: prefabContentSignature(prefab.prefab),
+      sourceId: payload.id,
+      name: payload.name,
+      contentSignature: prefabContentSignature(payload),
       warnings: prefab.warnings,
     };
   }
   const sprite = sanitizeSpriteAsset(value);
   if (sprite) {
+    const payload = { ...sprite, id: normalizeAssetToken(sprite.id) };
     return {
       kind: 'sprite',
-      sourceId: sprite.id,
-      name: sprite.name,
-      contentSignature: spriteAssetContentSignature(sprite),
+      sourceId: payload.id,
+      name: payload.name,
+      contentSignature: spriteAssetContentSignature(payload),
       warnings: [],
     };
   }
   return null;
+}
+
+function stableImportedAssetId(kind: 'document' | 'prefab' | 'sprite', sourceId: string): string {
+  const origin: AssetOrigin = kind === 'document' ? 'project' : 'library';
+  return stableAssetId(kind, origin, sourceId);
+}
+
+function findImportCollision(
+  database: Pick<AssetDatabase, 'list'>,
+  kind: 'document' | 'prefab' | 'sprite',
+  sourceId: string,
+  contentSignature: string,
+): AssetRecord | undefined {
+  const incomingAssetId = stableImportedAssetId(kind, sourceId);
+  return database
+    .list()
+    .find((record) =>
+      record.kind === kind &&
+      record.origin !== 'missing' &&
+      record.contentSignature !== contentSignature &&
+      (record.assetId === incomingAssetId || normalizeAssetToken(record.sourceId) === sourceId),
+    );
 }
 
 function invalidPreview(input: AssetImportInput, message: string): AssetImportPreview {

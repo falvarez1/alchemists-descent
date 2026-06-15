@@ -1,4 +1,6 @@
 import type { Ctx, MaterialParams, SpellId, SpellParams } from '@/core/types';
+import { resetCombatTransients } from '@/game/transients';
+import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
 
 // ===================== Adaptive UI Form Inspectors =====================
 
@@ -134,9 +136,10 @@ export class Inspector {
   private wireClearButton(): void {
     const ctx = this.ctx;
     document.getElementById('clear-btn')!.addEventListener('click', () => {
+      ensureSandboxWorldDetached(ctx);
       ctx.world.clear();
-      ctx.projectiles.length = 0; ctx.shockwaves.length = 0; ctx.simulation.accumulator = 0; ctx.input.activeChargingBlackHole = null;
-      ctx.particles.clear(); ctx.lightning.clear(); ctx.enemies.length = 0;
+      resetCombatTransients(ctx, { simulationAccumulator: true });
+      ctx.enemies.length = 0;
       ctx.fx.screenShake = 0;
       ctx.waves.num = 0; ctx.waves.active = false; ctx.waves.intermission = 150; ctx.waves.kills = 0;
       ctx.state.score = 0; ctx.events.emit('scoreChanged', { score: ctx.state.score });

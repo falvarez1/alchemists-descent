@@ -117,8 +117,16 @@ describe('virtual world prototype', () => {
     expect(materialized.originY).toBe(0);
     expect(materialized.world.width).toBe(def.chunkSize * 2);
     expect(materialized.world.height).toBe(def.chunkSize * 2);
+    expect(materialized.world.simBounds).toEqual({ x0: 0, x1: def.chunkSize * 2, y0: 0, y1: def.chunkSize * 2 });
     expect(materialized.chunks.length).toBe(4);
     expect(materialized.world.types[0]).toBe(chunks[0].types[0]);
+  });
+
+  it('rejects sparse virtual materialization windows', () => {
+    const def = createDefaultVirtualWorldDef(5151);
+    const chunks = generateVirtualWindow(def, 0, 0, 1, 1).filter((chunk) => chunk.cx !== 1 || chunk.cy !== 1);
+
+    expect(() => materializeChunks(chunks)).toThrow(/sparse chunk window/);
   });
 
   it('serializes only requested chunk planes for worker transfer', () => {
@@ -131,6 +139,8 @@ describe('virtual world prototype', () => {
     expect(chunk.colors).toBeUndefined();
     expect(chunk.life).toBeUndefined();
     expect(chunk.charge).toBeUndefined();
+    expect(chunk.metrics.generatedBytes).toBe(source.types.byteLength + source.colors.byteLength + source.life.byteLength + source.charge.byteLength);
+    expect(chunk.metrics.transferBytes).toBe(source.types.byteLength + source.size * source.size * 4);
 
     const restored = fromTransferableChunk(chunk);
     expect(restored.types.length).toBe(def.chunkSize * def.chunkSize);

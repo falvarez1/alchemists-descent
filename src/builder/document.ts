@@ -1,6 +1,7 @@
 import type { BackdropSettings, BiomeId, Ctx } from '@/core/types';
 import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { BIOMES } from '@/config/biomes';
 import { createDefaultBackdropSettings, sanitizeBackdropSettings } from '@/config/backdrop';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
@@ -289,6 +290,38 @@ export function applyWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {
  */
 const LEGACY_DOCS_KEY = 'noita-builder-docs';
 const DOC_PREFIX = 'noita-builder-doc:';
+const DOC_OBJECT_CAP = 4_096;
+const DOC_LINK_CAP = 8_192;
+const DOC_LIGHT_CAP = 1_024;
+const DOC_PROCEDURAL_CAP = 256;
+const DOC_SPARSE_CAP = 80_000;
+const SHARE_COMPRESSED_MAX_BYTES = 2_000_000;
+const SHARE_JSON_MAX_BYTES = 12_000_000;
+
+const OBJECT_KINDS = new Set<EditorObjectKind>([
+  'spawn', 'enemy', 'pickup', 'exitPortal', 'waystone', 'exitWell', 'cauldron',
+  'door', 'plate', 'lever', 'brazier', 'scale', 'buoy', 'chargeLatch', 'runeGlyph',
+  'runeDoor', 'bossMarker', 'terrainStamp', 'vegetationStamp', 'hazardEmitter', 'decor',
+  'valve', 'plug', 'sensor', 'counterweight', 'relay',
+]);
+const LINK_KINDS = new Set<EditorLink['kind']>(['triggerDoor', 'runeDoor', 'keyPortal', 'bossGate', 'logic']);
+const LINK_LOGICS = new Set<NonNullable<EditorLink['logic']>>(['and', 'or', 'sequence']);
+const LIGHT_FALLOFFS = new Set<EditorLight['falloff']>(['soft', 'linear', 'sharp']);
+
+const num = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const clampInt = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, Math.floor(value)));
+const clampNum = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
+function safeId(value: unknown, fallback: string): string {
+  if (typeof value !== 'string' || !value.trim()) return fallback;
+  return value.trim().slice(0, 96).replace(/[^\w:.-]/g, '-').replace(/^-+|-+$/g, '') || fallback;
+}
+
+function safeName(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim().slice(0, 160) : fallback;
+}
 
 function migrateLegacyLibrary(): void {
   try {
@@ -335,47 +368,221 @@ export function saveDocToLibrary(doc: EditorDocument): boolean {
   }
 }
 
+function uniqueId(raw: unknown, fallbackPrefix: string, used: Set<string>): string {
+  const base = safeId(raw, `${fallbackPrefix}-${used.size}`).replace(/[^\w:.-]/g, '-');
+  let id = base;
+  let n = 1;
+  while (used.has(id)) id = `${base}-${n++}`;
+  used.add(id);
+  return id;
+}
+
+function sanitizeJsonValue(value: unknown, depth = 0): unknown {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (depth > 5) return null;
+  if (Array.isArray(value)) return value.slice(0, 128).map((item) => sanitizeJsonValue(item, depth + 1));
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value).slice(0, 128)) {
+      out[key.slice(0, 80)] = sanitizeJsonValue(nested, depth + 1);
+    }
+    return out;
+  }
+  return null;
+}
+
+function sanitizeParams(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (sanitizeJsonValue(value) as Record<string, unknown>)
+    : {};
+}
+
+function sanitizeSparsePairs(
+  pairs: unknown,
+  maxEntries: number,
+  minValue: number,
+  maxValue: number,
+): Array<[number, number]> | undefined {
+  if (!Array.isArray(pairs)) return undefined;
+  const out: Array<[number, number]> = [];
+  const seen = new Set<number>();
+  for (const pair of pairs) {
+    if (!Array.isArray(pair) || !num(pair[0]) || !num(pair[1])) continue;
+    const i = Math.floor(pair[0]);
+    if (i < 0 || i >= WIDTH * HEIGHT || seen.has(i)) continue;
+    seen.add(i);
+    out.push([i, clampInt(pair[1], minValue, maxValue)]);
+    if (out.length >= maxEntries) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function sanitizeWorldLayer(value: unknown): EditorWorldLayer | null {
+  const layer = value as EditorWorldLayer;
+  if (!layer || typeof layer !== 'object' || typeof layer.rle !== 'string') return null;
+  try {
+    rleDecode(layer.rle, new Uint8Array(WIDTH * HEIGHT));
+  } catch {
+    return null;
+  }
+  return {
+    rle: layer.rle,
+    life: sanitizeSparsePairs(layer.life, DOC_SPARSE_CAP, -32768, 32767),
+    charge: sanitizeSparsePairs(layer.charge, DOC_SPARSE_CAP, 0, 255),
+    colorOverrides: sanitizeSparsePairs(layer.colorOverrides, DOC_SPARSE_CAP, 0, 0xffffff),
+  };
+}
+
+function sanitizeObject(raw: unknown, usedIds: Set<string>): EditorObject | null {
+  const o = raw as EditorObject;
+  if (!o || typeof o !== 'object' || !OBJECT_KINDS.has(o.kind) || !num(o.x) || !num(o.y)) return null;
+  return {
+    id: uniqueId(o.id, o.kind, usedIds),
+    kind: o.kind,
+    x: clampInt(o.x, 0, WIDTH - 1),
+    y: clampInt(o.y, 0, HEIGHT - 1),
+    rotation: o.rotation === 90 || o.rotation === 180 || o.rotation === 270 ? o.rotation : 0,
+    locked: o.locked === true,
+    hidden: o.hidden === true,
+    ...(typeof o.group === 'string' && o.group.trim() ? { group: o.group.trim().slice(0, 96) } : {}),
+    params: sanitizeParams(o.params),
+  };
+}
+
+function sanitizeLink(raw: unknown, objectIds: ReadonlySet<string>, usedIds: Set<string>): EditorLink | null {
+  const l = raw as EditorLink;
+  if (
+    !l ||
+    typeof l !== 'object' ||
+    !LINK_KINDS.has(l.kind) ||
+    !objectIds.has(l.fromId) ||
+    !objectIds.has(l.toId)
+  ) {
+    return null;
+  }
+  return {
+    id: uniqueId(l.id, 'link', usedIds),
+    fromId: l.fromId,
+    toId: l.toId,
+    kind: l.kind,
+    ...(l.logic && LINK_LOGICS.has(l.logic) ? { logic: l.logic } : {}),
+  };
+}
+
+function sanitizeLight(raw: unknown, usedIds: Set<string>): EditorLight | null {
+  const light = raw as EditorLight;
+  if (!light || typeof light !== 'object' || !num(light.x) || !num(light.y)) return null;
+  if (light.radius !== undefined && (!num(light.radius) || light.radius <= 0)) return null;
+  const color = typeof light.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(light.color) ? light.color : '#ffb060';
+  return {
+    id: uniqueId(light.id, 'light', usedIds),
+    x: clampInt(light.x, 0, WIDTH - 1),
+    y: clampInt(light.y, 0, HEIGHT - 1),
+    color,
+    intensity: num(light.intensity) ? clampNum(light.intensity, 0, 4) : 1,
+    radius: num(light.radius) ? clampNum(light.radius, 4, 480) : 60,
+    bloom: num(light.bloom) ? clampNum(light.bloom, 0, 2) : 0,
+    flicker: num(light.flicker) ? clampNum(light.flicker, 0, 1) : 0,
+    falloff: LIGHT_FALLOFFS.has(light.falloff) ? light.falloff : 'soft',
+    occluded: light.occluded !== false,
+    locked: light.locked === true,
+    hidden: light.hidden === true,
+  };
+}
+
+function sanitizeProceduralPass(raw: unknown, usedIds: Set<string>): ProceduralPass | null {
+  const pass = raw as ProceduralPass;
+  if (!pass || typeof pass !== 'object' || typeof pass.pass !== 'string' || !pass.pass.trim()) return null;
+  return {
+    id: uniqueId(pass.id, 'proc', usedIds),
+    pass: pass.pass.trim().slice(0, 80),
+    seed: num(pass.seed) ? pass.seed >>> 0 : 0,
+    params: sanitizeParams(pass.params),
+    appliedAt: typeof pass.appliedAt === 'string' && pass.appliedAt ? pass.appliedAt.slice(0, 64) : new Date(0).toISOString(),
+  };
+}
+
 /**
  * Validate-then-accept for imported JSON: defaults for optional families,
  * and the terrain layer must decode cleanly into a scratch buffer BEFORE
  * the document is allowed to replace the open one. Returns null on garbage.
  */
 export function sanitizeImportedDoc(parsed: unknown): EditorDocument | null {
-  const doc = parsed as EditorDocument;
-  if (!doc || doc.v !== 2 || !Array.isArray(doc.objects)) return null;
-  doc.name = typeof doc.name === 'string' && doc.name.trim() ? doc.name : 'imported';
-  doc.id = typeof doc.id === 'string' && doc.id ? doc.id : freshId('doc');
-  doc.biome = (doc.biome ?? 'earthen') as BiomeId;
-  doc.size = doc.size ?? { w: WIDTH, h: HEIGHT };
-  doc.links = Array.isArray(doc.links) ? doc.links : [];
-  doc.lights = Array.isArray(doc.lights) ? doc.lights : [];
-  doc.proceduralHistory = Array.isArray(doc.proceduralHistory) ? doc.proceduralHistory : [];
-  doc.validation = doc.validation ?? null;
-  doc.mood = doc.mood && typeof doc.mood === 'object' ? doc.mood : { ambient: null, ambience: '' };
-  doc.backdrop = sanitizeBackdropSettings(doc.backdrop);
-  doc.backdropProfileId =
-    typeof doc.backdropProfileId === 'string' && doc.backdropProfileId ? doc.backdropProfileId : null;
+  const raw = parsed as EditorDocument;
+  if (!raw || typeof raw !== 'object' || raw.v !== 2 || !Array.isArray(raw.objects)) return null;
+  const size = raw.size && num(raw.size.w) && num(raw.size.h)
+    ? { w: Math.floor(raw.size.w), h: Math.floor(raw.size.h) }
+    : { w: WIDTH, h: HEIGHT };
+  if (size.w !== WIDTH || size.h !== HEIGHT) return null;
+
+  const objectIds = new Set<string>();
+  const objects = raw.objects
+    .slice(0, DOC_OBJECT_CAP)
+    .map((object) => sanitizeObject(object, objectIds))
+    .filter((object): object is EditorObject => object !== null);
+  const linkIds = new Set<string>();
+  const links = Array.isArray(raw.links)
+    ? raw.links
+        .slice(0, DOC_LINK_CAP)
+        .map((link) => sanitizeLink(link, objectIds, linkIds))
+        .filter((link): link is EditorLink => link !== null)
+    : [];
+  const lightIds = new Set<string>();
+  const lights = Array.isArray(raw.lights)
+    ? raw.lights
+        .slice(0, DOC_LIGHT_CAP)
+        .map((light) => sanitizeLight(light, lightIds))
+        .filter((light): light is EditorLight => light !== null)
+    : [];
+  const procIds = new Set<string>();
+  const proceduralHistory = Array.isArray(raw.proceduralHistory)
+    ? raw.proceduralHistory
+        .slice(0, DOC_PROCEDURAL_CAP)
+        .map((pass) => sanitizeProceduralPass(pass, procIds))
+        .filter((pass): pass is ProceduralPass => pass !== null)
+    : [];
+
+  const mood = raw.mood && typeof raw.mood === 'object'
+    ? {
+        ambient: num(raw.mood.ambient) ? clampInt(raw.mood.ambient, 0, 0xffffff) : null,
+        ambience: typeof raw.mood.ambience === 'string' ? raw.mood.ambience.slice(0, 80) : '',
+      }
+    : { ambient: null, ambience: '' };
+  const validation = raw.validation && typeof raw.validation === 'object'
+    ? {
+        at: typeof raw.validation.at === 'string' ? raw.validation.at.slice(0, 64) : '',
+        errors: num(raw.validation.errors) ? Math.max(0, Math.floor(raw.validation.errors)) : 0,
+        warnings: num(raw.validation.warnings) ? Math.max(0, Math.floor(raw.validation.warnings)) : 0,
+      }
+    : null;
+
+  const doc: EditorDocument = {
+    v: 2,
+    id: safeId(raw.id, freshId('doc')),
+    name: safeName(raw.name, 'imported'),
+    biome: BIOMES[raw.biome as BiomeId] ? raw.biome as BiomeId : 'earthen',
+    size,
+    world: raw.world ? sanitizeWorldLayer(raw.world) : null,
+    objects,
+    links,
+    lights,
+    proceduralHistory,
+    validation,
+    mood,
+    backdrop: sanitizeBackdropSettings(raw.backdrop),
+    backdropProfileId: typeof raw.backdropProfileId === 'string' && raw.backdropProfileId ? raw.backdropProfileId.slice(0, 96) : null,
+  };
+  if (raw.world && !doc.world) return null;
   // Embedded sprite assets: validate-then-accept each one; garbage entries
   // drop out individually, an empty/invalid block drops the field entirely.
-  if (doc.assets && Array.isArray((doc.assets as { sprites?: unknown }).sprites)) {
-    const sprites = ((doc.assets as { sprites: unknown[] }).sprites)
+  if (raw.assets && Array.isArray((raw.assets as { sprites?: unknown }).sprites)) {
+    const sprites = ((raw.assets as { sprites: unknown[] }).sprites)
       .map(sanitizeSpriteAsset)
       .filter((s): s is SpriteAsset => s !== null);
     if (sprites.length > 0) doc.assets = { sprites };
-    else delete doc.assets;
   } else {
     delete doc.assets;
-  }
-  if (doc.world) {
-    if (typeof doc.world.rle !== 'string') return null;
-    if (doc.size.w !== WIDTH || doc.size.h !== HEIGHT) return null;
-    try {
-      rleDecode(doc.world.rle, new Uint8Array(WIDTH * HEIGHT));
-    } catch {
-      return null;
-    }
-  } else {
-    doc.world = null;
   }
   return doc;
 }
@@ -407,11 +614,14 @@ export async function shareCodeToDoc(code: string): Promise<EditorDocument | nul
   try {
     const trimmed = code.trim();
     if (!trimmed.startsWith(SHARE_PREFIX)) return null;
+    if (trimmed.length > SHARE_COMPRESSED_MAX_BYTES) return null;
     const bin = atob(trimmed.slice(SHARE_PREFIX.length));
+    if (bin.length > SHARE_COMPRESSED_MAX_BYTES) return null;
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
     const json = await new Response(stream).text();
+    if (json.length > SHARE_JSON_MAX_BYTES) return null;
     return sanitizeImportedDoc(JSON.parse(json));
   } catch {
     return null;

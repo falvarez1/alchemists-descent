@@ -85,19 +85,36 @@ function isBrewable(t: number): boolean {
 // ===================== Cauldron Brewing =====================
 export class Brewing {
   private brewTicks = 0;
+  private activeBrewKey: string | null = null;
 
   /** Play-mode only; samples the basin every 4th frame. */
   update(ctx: Ctx): void {
-    if (ctx.state.mode !== 'play') return;
-    if (ctx.state.frameCount % 4 !== 0) return;
+    if (ctx.state.mode !== 'play') {
+      this.resetProgress();
+      return;
+    }
     const cauldron = ctx.levels.current?.cauldron;
-    if (!cauldron) return;
+    if (!cauldron) {
+      this.resetProgress();
+      return;
+    }
+    if (ctx.state.frameCount % 4 !== 0) return;
 
     const recipe = this.matchRecipe(ctx, cauldron);
-    const heated = recipe !== null && this.hasHeat(ctx, cauldron);
+    if (!recipe) {
+      this.resetProgress();
+      return;
+    }
+    const key = this.brewKey(ctx, cauldron, recipe);
+    if (this.activeBrewKey !== key) {
+      this.activeBrewKey = key;
+      this.brewTicks = 0;
+    }
+    const heated = this.hasHeat(ctx, cauldron);
 
     if (!heated) {
       if (this.brewTicks > 0) this.brewTicks--;
+      if (this.brewTicks === 0) this.activeBrewKey = null;
       return;
     }
 
@@ -117,8 +134,17 @@ export class Brewing {
 
     if (this.brewTicks >= BREW_TICKS_REQUIRED) {
       this.finishBrew(ctx, cauldron, recipe);
-      this.brewTicks = 0;
+      this.resetProgress();
     }
+  }
+
+  private resetProgress(): void {
+    this.brewTicks = 0;
+    this.activeBrewKey = null;
+  }
+
+  private brewKey(ctx: Ctx, cauldron: { x: number; y: number }, recipe: Recipe): string {
+    return `${ctx.levels.current?.def.id ?? 'sandbox'}:${cauldron.x},${cauldron.y}:${recipe.id}`;
   }
 
   /** Histogram the basin interior and return the first recipe it satisfies. */

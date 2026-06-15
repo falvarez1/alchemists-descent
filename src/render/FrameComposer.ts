@@ -154,7 +154,15 @@ export class FrameComposer implements PixelSurface {
     // fragment shader; sprites keep drawing through setPx/addPx into the
     // overlay. Flag off (or no WebGL2) = the original CPU loop, untouched.
     if (ctx.state.postFx.gpuCompose && this.target.gpuComposeAvailable) {
-      this.overlay = this.target.beginGpuCompose(ctx, this.light, this.layers, lenses, lightRebuilt);
+      try {
+        this.overlay = this.target.beginGpuCompose(ctx, this.light, this.layers, lenses, lightRebuilt);
+      } catch (error) {
+        ctx.state.postFx.gpuCompose = false;
+        ctx.events.emit('toast', { text: 'GPU COMPOSE FAILED - CPU FALLBACK ACTIVE' });
+        console.warn('GPU compose disabled after setup failure', error);
+        this.overlay = null;
+        this.composeTerrainCpu(ctx, lenses);
+      }
     } else {
       this.overlay = null;
       this.composeTerrainCpu(ctx, lenses);
@@ -162,8 +170,21 @@ export class FrameComposer implements PixelSurface {
 
     this.composeOverlays(ctx);
 
-    if (this.overlay !== null) this.target.commitGpuCompose();
-    else this.target.markTextureDirty();
+    if (this.overlay !== null) {
+      try {
+        this.target.commitGpuCompose();
+      } catch (error) {
+        ctx.state.postFx.gpuCompose = false;
+        ctx.events.emit('toast', { text: 'GPU COMPOSE COMMIT FAILED - CPU FALLBACK ACTIVE' });
+        console.warn('GPU compose disabled after commit failure', error);
+        this.overlay = null;
+        this.composeTerrainCpu(ctx, lenses);
+        this.composeOverlays(ctx);
+        this.target.markTextureDirty();
+      }
+    } else {
+      this.target.markTextureDirty();
+    }
   }
 
   /**

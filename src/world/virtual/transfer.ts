@@ -9,12 +9,28 @@ export function chunkBytes(chunk: VirtualChunk): number {
   return chunk.types.byteLength + chunk.colors.byteLength + chunk.life.byteLength + chunk.charge.byteLength;
 }
 
+function planeBytes(chunk: VirtualChunk, plane: VirtualChunkPlane): number {
+  switch (plane) {
+    case 'types':
+      return chunk.types.byteLength;
+    case 'colors':
+      return chunk.colors.byteLength;
+    case 'life':
+      return chunk.life.byteLength;
+    case 'charge':
+      return chunk.charge.byteLength;
+    case 'previewRgba':
+      return chunk.size * chunk.size * 4;
+  }
+}
+
 export function toTransferableChunk(
   chunk: VirtualChunk,
   requestedPlanes: readonly VirtualChunkPlane[],
 ): { chunk: TransferableVirtualChunk; transfer: Transferable[] } {
   const wants = new Set(requestedPlanes);
   const transfer: Transferable[] = [];
+  let transferBytes = 0;
   const out: TransferableVirtualChunk = {
     cx: chunk.cx,
     cy: chunk.cy,
@@ -26,6 +42,8 @@ export function toTransferableChunk(
       cx: chunk.cx,
       cy: chunk.cy,
       generatedMs: chunk.meta.generatedMs,
+      generatedBytes: chunkBytes(chunk),
+      transferBytes: 0,
       bytes: chunkBytes(chunk),
     },
   };
@@ -33,28 +51,34 @@ export function toTransferableChunk(
     const buffer = chunk.types.buffer as ArrayBuffer;
     out.types = buffer;
     transfer.push(buffer);
+    transferBytes += planeBytes(chunk, 'types');
   }
   if (wants.has('colors')) {
     const buffer = chunk.colors.buffer as ArrayBuffer;
     out.colors = buffer;
     transfer.push(buffer);
+    transferBytes += planeBytes(chunk, 'colors');
   }
   if (wants.has('life')) {
     const buffer = chunk.life.buffer as ArrayBuffer;
     out.life = buffer;
     transfer.push(buffer);
+    transferBytes += planeBytes(chunk, 'life');
   }
   if (wants.has('charge')) {
     const buffer = chunk.charge.buffer as ArrayBuffer;
     out.charge = buffer;
     transfer.push(buffer);
+    transferBytes += planeBytes(chunk, 'charge');
   }
   if (wants.has('previewRgba')) {
     const preview = makePreviewRgba(chunk);
     const buffer = preview.buffer as ArrayBuffer;
     out.previewRgba = buffer;
     transfer.push(buffer);
+    transferBytes += planeBytes(chunk, 'previewRgba');
   }
+  out.metrics.transferBytes = transferBytes;
   return { chunk: out, transfer };
 }
 

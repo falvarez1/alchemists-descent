@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { compileWand } from '@/combat/wands/compiler';
+import { WandSystem } from '@/combat/wands/WandSystem';
 import { createDefaultWandLightSettings } from '@/config/params';
-import type { CardId } from '@/core/types';
+import { EventBus } from '@/core/events';
+import type { CardId, Ctx } from '@/core/types';
 
 /**
  * The cast compiler is a PURE function of the slot list, so every rule that
@@ -165,5 +167,36 @@ describe('wand light defaults', () => {
       torchRadius: 152,
       torchMinFlicker: 1.05,
     });
+  });
+});
+
+describe('WandSystem runtime snapshots', () => {
+  it('restores private playtest progression flags with the visible loadout', () => {
+    const events = new EventBus();
+    const ctx = {
+      events,
+      telemetry: { count: () => undefined },
+      audio: { wandSwap: () => undefined },
+      state: { mode: 'build' },
+      player: {},
+    } as unknown as Ctx;
+    const wands = new WandSystem(ctx);
+    const before = wands.snapshotRuntimeState();
+
+    events.emit('recipeDiscovered', { name: 'ELIXIR OF LIFE', bounty: 100 });
+    events.emit('levelChanged', { depth: 2, name: 'D2' });
+    expect(wands.collection).toContain('infuser');
+    expect(wands.snapshotRuntimeState().infuserGranted).toBe(true);
+    expect(wands.snapshotRuntimeState().depthsGranted).toEqual([2]);
+
+    wands.restoreRuntimeState(before);
+
+    const restored = wands.snapshotRuntimeState();
+    expect(restored.infuserGranted).toBe(false);
+    expect(restored.depthsGranted).toEqual([]);
+    expect(wands.collection).toEqual(before.collection);
+
+    events.emit('recipeDiscovered', { name: 'ELIXIR OF LIFE', bounty: 100 });
+    expect(wands.collection.filter((card) => card === 'infuser')).toHaveLength(1);
   });
 });

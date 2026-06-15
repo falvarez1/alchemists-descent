@@ -21,6 +21,8 @@ type VirtualWorldStatus = 'idle' | 'generating' | 'ready' | 'stale' | 'canceled'
 interface CachedPreviewChunk {
   chunk: TransferableVirtualChunk;
   canvas: HTMLCanvasElement;
+  bytes: number;
+  lastUsed: number;
 }
 
 export interface VirtualWorldPanelHooks {
@@ -30,6 +32,8 @@ export interface VirtualWorldPanelHooks {
 
 const ZOOM_MIN = 0.08;
 const ZOOM_MAX = 2.5;
+const MAX_PREVIEW_CACHE_BYTES = 96 * 1024 * 1024;
+const MAX_PREVIEW_CHUNKS_PER_PROFILE = 128;
 
 export class VirtualWorldPanel {
   private readonly canvas: HTMLCanvasElement;
@@ -60,6 +64,7 @@ export class VirtualWorldPanel {
   private hoverWorld: { x: number; y: number } | null = null;
   private drag: { pointerId: number; x: number; y: number } | null = null;
   private lastMetrics: GenerateWindowResult['metrics'] | null = null;
+  private cacheTick = 0;
 
   constructor(private readonly host: HTMLElement, private readonly hooks: VirtualWorldPanelHooks) {
     this.backendInfos = [
@@ -390,7 +395,13 @@ export class VirtualWorldPanel {
     const rgba = new Uint8ClampedArray(chunk.previewRgba.byteLength);
     rgba.set(new Uint8ClampedArray(chunk.previewRgba));
     ctx.putImageData(new ImageData(rgba, chunk.size, chunk.size), 0, 0);
-    this.chunks.set(this.chunkKeyFor(profile, chunk.cx, chunk.cy), { chunk, canvas });
+    this.chunks.set(this.chunkKeyFor(profile, chunk.cx, chunk.cy), {
+      chunk,
+      canvas,
+      bytes: chunk.previewRgba.byteLength,
+      lastUsed: ++this.cacheTick,
+    });
+    this.evictPreviewCache(profile);
   }
 
   private frameCachedChunks(): void {
@@ -522,12 +533,11 @@ export class VirtualWorldPanel {
     this.ctx.imageSmoothingEnabled = false;
     const viewLeft = this.camX - w / (2 * this.zoom);
     const viewTop = this.camY - h / (2 * this.zoom);
-    for (const entry of this.activeChunks()) {
+    for (const entry of this.visibleChunks(viewLeft, viewTop, w, h)) {
       const chunk = entry.chunk;
       const sx = (chunk.originX - viewLeft) * this.zoom;
       const sy = (chunk.originY - viewTop) * this.zoom;
       const size = chunk.size * this.zoom;
-      if (sx > w || sy > h || sx + size < 0 || sy + size < 0) continue;
       this.ctx.drawImage(entry.canvas, sx, sy, size, size);
       if (this.showCost) this.drawCostOverlay(entry, sx, sy, size);
       if (this.showScenes && chunk.meta.scenes.length > 0) this.drawSceneMarker(chunk, sx, sy, size);
@@ -635,7 +645,8 @@ export class VirtualWorldPanel {
         <div class="vw-title">Metrics</div>
         <div class="vw-stat"><span>window</span><b>${this.lastMetrics ? `${this.lastMetrics.chunks} chunks` : '-'}</b></div>
         <div class="vw-stat"><span>time</span><b>${this.lastMetrics ? `${this.lastMetrics.generatedMs.toFixed(1)} ms` : '-'}</b></div>
-        <div class="vw-stat"><span>bytes</span><b>${this.lastMetrics ? formatBytes(this.lastMetrics.bytes) : '-'}</b></div>
+        <div class="vw-stat"><span>generated</span><b>${this.lastMetrics ? formatBytes(this.lastMetrics.generatedBytes) : '-'}</b></div>
+        <div class="vw-stat"><span>transfer</span><b>${this.lastMetrics ? formatBytes(this.lastMetrics.transferBytes) : '-'}</b></div>
       </section>
       <section class="vw-section">
         <div class="vw-title">Chunk</div>
@@ -706,11 +717,34 @@ export class VirtualWorldPanel {
       .map(([, value]) => value);
   }
 
+  private visibleChunks(viewLeft: number, viewTop: number, w: number, h: number): CachedPreviewChunk[] {
+    const viewRight = viewLeft + w / this.zoom;
+    const viewBottom = viewTop + h / this.zoom;
+    const visible: CachedPreviewChunk[] = [];
+    for (const entry of this.activeChunks()) {
+      const chunk = entry.chunk;
+      if (
+        chunk.originX > viewRight ||
+        chunk.originY > viewBottom ||
+        chunk.originX + chunk.size < viewLeft ||
+        chunk.originY + chunk.size < viewTop
+      ) {
+        continue;
+      }
+      entry.lastUsed = ++this.cacheTick;
+      visible.push(entry);
+    }
+    return visible;
+  }
+
   private chunkAt(x: number, y: number): TransferableVirtualChunk | null {
     const size = this.currentDef().chunkSize;
     const cx = Math.floor(x / size);
     const cy = Math.floor(y / size);
-    return this.chunks.get(this.chunkKey(cx, cy))?.chunk ?? null;
+    const entry = this.chunks.get(this.chunkKey(cx, cy));
+    if (!entry) return null;
+    entry.lastUsed = ++this.cacheTick;
+    return entry.chunk;
   }
 
   private windowFullyCached(): boolean {
@@ -745,8 +779,19 @@ export class VirtualWorldPanel {
 
   private previewBytes(): number {
     let bytes = 0;
-    for (const entry of this.activeChunks()) bytes += entry.chunk.previewRgba?.byteLength ?? 0;
+    for (const entry of this.activeChunks()) bytes += entry.bytes;
     return bytes;
+  }
+
+  private evictPreviewCache(profile: VirtualWorldProfileId): void {
+    const profileEntries = [...this.chunks.entries()].filter(([key]) => key.startsWith(`${profile}:`));
+    let profileBytes = profileEntries.reduce((sum, [, entry]) => sum + entry.bytes, 0);
+    while (profileEntries.length > MAX_PREVIEW_CHUNKS_PER_PROFILE || profileBytes > MAX_PREVIEW_CACHE_BYTES) {
+      profileEntries.sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+      const [key, entry] = profileEntries.shift()!;
+      this.chunks.delete(key);
+      profileBytes -= entry.bytes;
+    }
   }
 
   private must<T extends Element>(selector: string): T {

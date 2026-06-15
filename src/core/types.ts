@@ -1307,6 +1307,9 @@ export interface WandsApi {
   /** Save-game support: capture / restore the full wand loadout. */
   snapshotLoadout(): WandLoadoutSave;
   loadLoadout(data: WandLoadoutSave): void;
+  /** Disposable playtest support: capture / restore full wand runtime state. */
+  snapshotRuntimeState(): WandRuntimeSnapshot;
+  restoreRuntimeState(data: WandRuntimeSnapshot): void;
   /** Start-run support: restore the launch starter wands/collection in place. */
   resetLoadout(): void;
   /** QA/debug command: upgrade both wands and expose every card. */
@@ -1328,6 +1331,23 @@ export interface WandLoadoutSave {
   active: 0 | 1;
   collection: CardId[];
   wands: Array<{ frameId: string; cards: (CardId | null)[]; mana: number }>;
+}
+
+export interface WandRuntimeSnapshot {
+  active: 0 | 1;
+  collection: CardId[];
+  wands: Array<{
+    frameId: string;
+    cards: (CardId | null)[];
+    mana: number;
+    cooldown: number;
+    cooldownMax?: number;
+    castIndex: number;
+  }>;
+  lastDryFire: number;
+  flameBurst: number;
+  depthsGranted: number[];
+  infuserGranted: boolean;
 }
 
 /* ============================================================

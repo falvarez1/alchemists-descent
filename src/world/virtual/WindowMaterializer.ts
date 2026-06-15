@@ -13,18 +13,28 @@ export function materializeChunks(chunks: readonly VirtualChunk[]): Materialized
     return { world: new World(1, 1), originX: 0, originY: 0, chunks: [] };
   }
   const size = chunks[0].size;
+  const seen = new Set<string>();
   const cx0 = Math.min(...chunks.map((chunk) => chunk.cx));
   const cy0 = Math.min(...chunks.map((chunk) => chunk.cy));
   const cx1 = Math.max(...chunks.map((chunk) => chunk.cx));
   const cy1 = Math.max(...chunks.map((chunk) => chunk.cy));
   const width = (cx1 - cx0 + 1) * size;
   const height = (cy1 - cy0 + 1) * size;
+  const expectedChunks = (cx1 - cx0 + 1) * (cy1 - cy0 + 1);
+  for (const chunk of chunks) {
+    if (chunk.size !== size) throw new Error('Cannot materialize chunks with mixed sizes');
+    const key = `${chunk.cx},${chunk.cy}`;
+    if (seen.has(key)) throw new Error(`Cannot materialize duplicate chunk ${key}`);
+    seen.add(key);
+  }
+  if (seen.size !== expectedChunks) {
+    throw new Error(`Cannot materialize sparse chunk window: expected ${expectedChunks} chunks, got ${seen.size}`);
+  }
   const world = new World(width, height);
   const originX = cx0 * size;
   const originY = cy0 * size;
 
   for (const chunk of chunks) {
-    if (chunk.size !== size) throw new Error('Cannot materialize chunks with mixed sizes');
     const ox = (chunk.cx - cx0) * size;
     const oy = (chunk.cy - cy0) * size;
     for (let y = 0; y < size; y++) {

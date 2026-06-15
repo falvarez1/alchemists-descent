@@ -6,10 +6,11 @@
 
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
-import type { Ctx, PerkId, PlayerControlApi, PlayerState, Projectile } from '@/core/types';
+import type { Ctx, PerkId, PlayerControlApi, PlayerState } from '@/core/types';
 import { PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup } from '@/game/Pickups';
+import { resetCombatTransients } from '@/game/transients';
 import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
 import { bloodColor, EMPTY_COLOR, packRGB, smokeColor } from '@/sim/colors';
 
@@ -452,10 +453,8 @@ export class PlayerControl implements PlayerControlApi {
     player.crawlT = 0;
     this.resetClimbState(player);
     ctx.events.emit('playerRespawned');
-    // Clear hostile projectiles, restart current wave
-    const kept: Projectile[] = ctx.projectiles.filter((p) => !p.hostile);
-    ctx.projectiles.length = 0;
-    ctx.projectiles.push(...kept);
+    // Clear hostile projectiles and stale charging handles, restart current wave.
+    resetCombatTransients(ctx, { projectiles: 'keep-friendly', particles: false });
     ctx.enemies.length = 0;
     ctx.waves.active = false;
     ctx.waves.intermission = 90;

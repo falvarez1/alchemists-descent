@@ -1,6 +1,7 @@
 import type { CommandResult, Ctx } from '@/core/types';
 import { loadConsoleBinds, loadConsoleWatches, normalizeBindKey, saveConsoleWatches } from '@/game/console/prefs';
 import { upsertConsoleScript } from '@/game/console/scripts';
+import { cancelChargingBlackHole, resetHeldSpellInputs } from '@/game/transients';
 import { FocusRouter, isEditorTextEntryTarget } from '@/ui/editor/FocusRouter';
 
 const HISTORY_KEY = 'noita-console-history';
@@ -336,17 +337,10 @@ export class ConsoleOverlay {
     ctx.input.isDrawing = false;
     ctx.input.lastX = null;
     ctx.input.lastY = null;
-    ctx.input.buildSpellHeld = false;
-    ctx.input.bombCharge = -1;
-    ctx.input.siphonHeld = false;
-    ctx.input.pourHeld = false;
-    ctx.input.drinkHeld = false;
+    resetHeldSpellInputs(ctx);
     ctx.player.firing = false;
     ctx.player.climbing = false;
-    if (ctx.input.activeChargingBlackHole) {
-      ctx.input.activeChargingBlackHole.charging = false;
-      ctx.input.activeChargingBlackHole = null;
-    }
+    cancelChargingBlackHole(ctx);
   }
 
   private async submit(): Promise<void> {

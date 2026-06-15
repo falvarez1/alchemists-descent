@@ -53,11 +53,12 @@ export type EditorField = NumberField | CheckboxField | SelectField | TextField 
 
 export function fieldRow(field: EditorField): string {
   const title = field.disabledReason ?? field.hint ?? '';
+  const labelId = `editor-field-label-${escapeAttr(field.id)}`;
   return `<div class="bi-row editor-field editor-field-${field.kind}" data-field-id="${escapeAttr(field.id)}"${
     field.mixed ? ' data-mixed="true"' : ''
   }${
     title ? ` title="${escapeAttr(title)}"` : ''
-  }><span>${escapeHtml(field.label)}</span>${fieldControl(field)}</div>`;
+  }><span id="${labelId}">${escapeHtml(field.label)}</span>${fieldControl(field, labelId)}</div>`;
 }
 
 export function numberField(field: Omit<NumberField, 'kind'>): string {
@@ -92,44 +93,45 @@ export function vec2Field(field: Omit<Vec2Field, 'kind'>): string {
   return fieldRow({ ...field, kind: 'vec2' });
 }
 
-function fieldControl(field: EditorField): string {
+function fieldControl(field: EditorField, labelId: string): string {
   if (field.kind === 'checkbox') {
-    return `<input type="checkbox"${controlAttrs(field)}${dataAttrs(field.dataset)}${
+    return `<input type="checkbox"${controlAttrs(field, labelId)}${dataAttrs(field.dataset)}${
       field.checked ? ' checked' : ''
     }${field.mixed ? ' data-mixed="true" aria-checked="mixed"' : ''}${disabledAttrs(field)}>`;
   }
   if (field.kind === 'select') {
     const selected = field.mixed ? '\u0000' : field.value;
     const mixed = field.mixed ? '<option value="" selected disabled>mixed</option>' : '';
-    return `<select${controlAttrs(field)}${dataAttrs(field.dataset)}${disabledAttrs(field)}>${mixed}${field.options
+    return `<select${controlAttrs(field, labelId)}${dataAttrs(field.dataset)}${disabledAttrs(field)}>${mixed}${field.options
       .map((option) => optionTag(option, selected))
       .join('')}</select>`;
   }
   if (field.kind === 'color') {
     return `<input type="color" value="${escapeAttr(field.mixed ? '#000000' : field.value)}"${controlAttrs(
       field,
+      labelId,
     )}${dataAttrs(field.dataset)}${mixedAttrs(field)}${disabledAttrs(field)}>`;
   }
   if (field.kind === 'swatch') {
     return `<span class="editor-field-swatch" style="background:${escapeAttr(field.value)}"></span><input type="text" value="${escapeAttr(
       field.mixed ? '' : field.value,
-    )}"${controlAttrs(field)}${dataAttrs(field.dataset)}${mixedAttrs(field)}${disabledAttrs(field)}>`;
+    )}"${controlAttrs(field, labelId)}${dataAttrs(field.dataset)}${mixedAttrs(field)}${disabledAttrs(field)}>`;
   }
   if (field.kind === 'text') {
-    return `<input type="text" value="${escapeAttr(field.mixed ? '' : field.value)}"${controlAttrs(field)}${dataAttrs(
+    return `<input type="text" value="${escapeAttr(field.mixed ? '' : field.value)}"${controlAttrs(field, labelId)}${dataAttrs(
       field.dataset,
     )}${mixedAttrs(field)}${disabledAttrs(field)}>`;
   }
   if (field.kind === 'vec2') {
     return `<span class="editor-field-vec2"><input type="number" value="${field.x}"${dataAttrs(
       field.xDataset ?? field.dataset,
-    )}${disabledAttrs(field)}><input type="number" value="${field.y}"${dataAttrs(
+    )} aria-label="${escapeAttr(field.label)} X"${disabledAttrs(field)}><input type="number" value="${field.y}"${dataAttrs(
       field.yDataset ?? field.dataset,
-    )}${disabledAttrs(field)}></span>`;
+    )} aria-label="${escapeAttr(field.label)} Y"${disabledAttrs(field)}></span>`;
   }
   const numeric = field as NumberField;
   const type = field.kind === 'slider' ? 'range' : 'number';
-  return `<input type="${type}" value="${numeric.mixed ? '' : numeric.value}"${controlAttrs(numeric)}${numberAttrs(
+  return `<input type="${type}" value="${numeric.mixed ? '' : numeric.value}"${controlAttrs(numeric, labelId)}${numberAttrs(
     numeric,
   )}${dataAttrs(numeric.dataset)}${mixedAttrs(numeric)}${disabledAttrs(numeric)}>`;
 }
@@ -150,9 +152,10 @@ function numberAttrs(field: NumberField): string {
   ].join('');
 }
 
-function controlAttrs(field: BaseField): string {
+function controlAttrs(field: BaseField, labelId: string): string {
   return [
     field.controlId ? ` id="${escapeAttr(field.controlId)}"` : '',
+    ` aria-labelledby="${labelId}"`,
     field.placeholder ? ` placeholder="${escapeAttr(field.placeholder)}"` : '',
   ].join('');
 }

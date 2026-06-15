@@ -27,7 +27,7 @@ export class World {
   readonly charge: Uint8Array;
 
   /** Active simulation window — only cells inside are simulated each tick. */
-  readonly simBounds = { x0: 0, x1: WIDTH, y0: 0, y1: HEIGHT };
+  readonly simBounds: { x0: number; x1: number; y0: number; y1: number };
 
   constructor(width = WIDTH, height = HEIGHT) {
     this.width = width;
@@ -38,6 +38,7 @@ export class World {
     this.life = new Int16Array(n);
     this.moved = new Uint8Array(n);
     this.charge = new Uint8Array(n);
+    this.simBounds = { x0: 0, x1: width, y0: 0, y1: height };
   }
 
   idx(x: number, y: number): number {

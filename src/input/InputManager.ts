@@ -3,6 +3,8 @@ import { VIEW_W, VIEW_H } from '@/config/constants';
 import { SPELL_ORDER } from '@/config/params';
 import { packRGB } from '@/sim/colors';
 import { spawnCircle, drawLine } from '@/sim/brush';
+import { cancelChargingBlackHole, resetHeldSpellInputs } from '@/game/transients';
+import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
 
 type KeyboardLockApi = {
   lock?: (keyCodes?: string[]) => Promise<void>;
@@ -93,6 +95,10 @@ export class InputManager {
       if (document.hidden) this.clearHeldInput();
     });
     document.addEventListener('fullscreenchange', () => this.onFullscreenChange());
+    window.addEventListener('run-launcher-started', (event) => {
+      const source = event instanceof CustomEvent ? event.detail?.source : null;
+      if (source === 'fullscreen') void this.enterImmersivePlay();
+    });
 
     // Header mode buttons drive game state directly.
     document.getElementById('mode-build-btn')?.addEventListener('click', (e) => {
@@ -102,7 +108,13 @@ export class InputManager {
     document.getElementById('mode-play-btn')?.addEventListener('click', (e) => {
       (e.currentTarget as HTMLElement).blur();
       this.ctx.audio.ensure();
-      if (!document.body.classList.contains('builder-open') && this.ctx.state.playtestSource !== 'builder' && this.requestRunLauncher('play-button')) return;
+      if (
+        !document.body.classList.contains('builder-open') &&
+        this.ctx.state.playtestSource !== 'builder' &&
+        this.requestRunLauncher('play-button')
+      ) {
+        return;
+      }
       this.setMode('play');
     });
     document.getElementById('immersive-play-btn')?.addEventListener('click', (e) => {
@@ -229,10 +241,7 @@ export class InputManager {
     }
     ctx.input.bombCharge = -1;
     ctx.player.firing = false;
-    if (ctx.input.activeChargingBlackHole) {
-      ctx.input.activeChargingBlackHole.charging = false;
-      ctx.input.activeChargingBlackHole = null;
-    }
+    cancelChargingBlackHole(ctx);
   }
 
   private onWheel(e: WheelEvent): void {
@@ -316,17 +325,10 @@ export class InputManager {
     ctx.input.isDrawing = false;
     ctx.input.lastX = null;
     ctx.input.lastY = null;
-    ctx.input.buildSpellHeld = false;
-    ctx.input.bombCharge = -1;
-    ctx.input.siphonHeld = false;
-    ctx.input.pourHeld = false;
-    ctx.input.drinkHeld = false;
+    resetHeldSpellInputs(ctx);
     ctx.player.firing = false;
     ctx.player.climbing = false;
-    if (ctx.input.activeChargingBlackHole) {
-      ctx.input.activeChargingBlackHole.charging = false;
-      ctx.input.activeChargingBlackHole = null;
-    }
+    cancelChargingBlackHole(ctx);
   }
 
   private requestRunLauncher(source: 'play-button' | 'tab' | 'fullscreen'): boolean {
@@ -580,6 +582,7 @@ export class InputManager {
     } else {
       this.clearHeldInput();
       this.exitImmersive();
+      ensureSandboxWorldDetached(ctx);
     }
   }
 }

@@ -17,6 +17,7 @@ import { renderAssetBrowserPanel, renderAssetPlacementPanel } from '@/builder/as
 class StorageStub implements Storage {
   private readonly data = new Map<string, string>();
   private readonly failingSetPrefixes = new Set<string>();
+  private readonly failingValueFragments = new Set<string>();
 
   get length(): number {
     return this.data.size;
@@ -25,6 +26,7 @@ class StorageStub implements Storage {
   clear(): void {
     this.data.clear();
     this.failingSetPrefixes.clear();
+    this.failingValueFragments.clear();
   }
 
   getItem(key: string): string | null {
@@ -43,11 +45,18 @@ class StorageStub implements Storage {
     if ([...this.failingSetPrefixes].some((prefix) => key.startsWith(prefix))) {
       throw new Error(`forced storage failure for ${key}`);
     }
+    if ([...this.failingValueFragments].some((fragment) => value.includes(fragment))) {
+      throw new Error(`forced storage failure for value containing ${[...this.failingValueFragments].join(',')}`);
+    }
     this.data.set(key, value);
   }
 
   failSetItemForPrefix(prefix: string): void {
     this.failingSetPrefixes.add(prefix);
+  }
+
+  failSetItemForValueContaining(fragment: string): void {
+    this.failingValueFragments.add(fragment);
   }
 }
 
@@ -448,6 +457,36 @@ describe('localStorage asset store', () => {
     expect(store.listImportReports().map((report) => report.decision).sort()).toEqual(['collision-reid', 'duplicate']);
   });
 
+  it('canonicalizes imported source ids before collision checks', () => {
+    const store = new LocalStorageAssetStore();
+    expect(saveSprite(spriteAsset('sprite-canonical-id', 'Canonical', [255, 0, 0, 255]))).toBe(true);
+
+    const imported = spriteAsset('sprite canonical id', 'Canonical Blue', [0, 0, 255, 255]);
+    const preview = previewJsonImport(
+      { fileName: 'canonical-blue.sprite.json', text: JSON.stringify(imported) },
+      buildAssetDatabase({ sprites: loadSprites() }),
+    );
+    const result = store.importJson(
+      { fileName: 'canonical-blue.sprite.json', text: JSON.stringify(imported), acceptedAt: '2026-06-14T00:01:00.000Z' },
+      buildAssetDatabase({ sprites: loadSprites() }),
+    );
+
+    expect(preview).toMatchObject({
+      ok: true,
+      sourceId: 'sprite-canonical-id',
+      collisionWith: 'sprite:library:sprite-canonical-id',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.report).toMatchObject({
+      decision: 'collision-reid',
+      originalSourceId: 'sprite-canonical-id',
+      collisionWith: 'sprite:library:sprite-canonical-id',
+    });
+    expect(loadSprites().some((sprite) => sprite.id === 'sprite canonical id')).toBe(false);
+    expect(loadSprites()).toHaveLength(2);
+    expect(loadSprites().some((sprite) => sprite.id !== 'sprite-canonical-id' && sprite.name === 'Canonical Blue')).toBe(true);
+  });
+
   it('stores invalid import reports and duplicates built-ins into the project library', () => {
     const store = new LocalStorageAssetStore();
     const invalid = store.importJson(
@@ -639,6 +678,70 @@ describe('localStorage asset store', () => {
     )).toBe(true);
   });
 
+  it('rejects invalid bundles during preflight before writing any entries', () => {
+    const store = new LocalStorageAssetStore();
+    const valid = spriteAsset('bundle-preflight-valid', 'Bundle Preflight Valid', [10, 20, 30, 255]);
+
+    const result = store.importJson(
+      {
+        fileName: 'preflight.assets.json',
+        text: JSON.stringify({
+          v: 1,
+          kind: 'assetExportBundle',
+          exportedAt: '2026-06-14T00:30:00.000Z',
+          assets: [
+            bundleEntry('sprite:library:bundle-preflight-valid', valid),
+            {
+              assetId: 'sprite:library:bundle-preflight-bad',
+              kind: 'sprite',
+              origin: 'library',
+              sourceId: 'bundle-preflight-bad',
+              filename: 'bad.sprite.json',
+              mime: 'application/json',
+              text: '{bad',
+            },
+          ],
+        }),
+        acceptedAt: '2026-06-14T00:30:00.000Z',
+      },
+      buildAssetDatabase(),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.report).toMatchObject({
+      decision: 'invalid',
+      diff: ['Bundle rejected before writing any assets'],
+    });
+    expect(result.report.errors).toEqual(['bad.sprite.json: invalid JSON']);
+    expect(loadSprites()).toHaveLength(0);
+    expect(store.listImportReports()).toMatchObject([{ sourceFile: 'preflight.assets.json', decision: 'invalid' }]);
+  });
+
+  it('rolls back accepted bundle entries when the final bundle report cannot be saved', () => {
+    const store = new LocalStorageAssetStore();
+    (globalThis.localStorage as StorageStub).failSetItemForValueContaining('bundle-final-report-fail.assets.json');
+    const sprite = spriteAsset('bundle-final-report-sprite', 'Bundle Final Report Sprite', [10, 20, 30, 255]);
+
+    const result = store.importJson(
+      {
+        fileName: 'bundle-final-report-fail.assets.json',
+        text: JSON.stringify({
+          v: 1,
+          kind: 'assetExportBundle',
+          exportedAt: '2026-06-14T00:30:00.000Z',
+          assets: [bundleEntry('sprite:library:bundle-final-report-sprite', sprite)],
+        }),
+        acceptedAt: '2026-06-14T00:30:00.000Z',
+      },
+      buildAssetDatabase(),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('bundle rollback removed 1 asset(s) and 1 report(s)');
+    expect(loadSprites()).toHaveLength(0);
+    expect(store.listImportReports()).toHaveLength(0);
+  });
+
   it('rejects reimport mismatches without replacing existing local assets', () => {
     const store = new LocalStorageAssetStore();
     const original = spriteAsset('sprite-guarded', 'Original', [255, 0, 0, 255]);
@@ -691,6 +794,31 @@ describe('localStorage asset store', () => {
 
     expect(result.ok).toBe(false);
     expect(loadSprites()).toMatchObject([{ id: 'shared-sprite', name: 'Library Sprite' }]);
+  });
+
+  it('refuses to delete local assets that are still referenced', () => {
+    const store = new LocalStorageAssetStore();
+    const sprite = spriteAsset('used-sprite', 'Used Sprite');
+    expect(saveSprite(sprite)).toBe(true);
+    const doc = createEmptyDocument('using-doc', 'earthen');
+    doc.objects.push({
+      id: 'decor-1',
+      kind: 'decor',
+      x: 1,
+      y: 1,
+      rotation: 0,
+      locked: false,
+      hidden: false,
+      params: { spriteId: sprite.id },
+    });
+    const record = buildAssetDatabase({ currentDocument: doc, sprites: loadSprites() }).get('sprite:library:used-sprite')!;
+
+    const result = store.delete(record);
+
+    expect(record.usages).toHaveLength(1);
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('reference(s) still exist');
+    expect(loadSprites()).toMatchObject([{ id: 'used-sprite', name: 'Used Sprite' }]);
   });
 
   it('defaults Recent queries to newest modified assets first', () => {

@@ -12,7 +12,7 @@ import {
 } from '@/builder/assets/AssetPreview';
 import { buildAssetDatabase } from '@/builder/assets/AssetDatabase';
 import type { AssetDatabase } from '@/builder/assets/AssetDatabase';
-import { stableAssetId } from '@/builder/assets/AssetTypes';
+import { ASSET_KINDS, normalizeAssetToken, stableAssetId } from '@/builder/assets/AssetTypes';
 import type { AssetImportReport, AssetKind, AssetOrigin, AssetRecord } from '@/builder/assets/AssetTypes';
 
 export interface AssetStoreResult {
@@ -82,6 +82,17 @@ const DOC_PREFIX = 'noita-builder-doc:';
 const PREFAB_PREFIX = 'noita-builder-prefab:';
 const SPRITE_PREFIX = 'noita-builder-sprite:';
 const REPORT_PREFIX = 'noita-builder-import-report:';
+const IMPORT_JSON_MAX_BYTES = 12_000_000;
+const IMPORT_BUNDLE_MAX_ENTRIES = 128;
+const IMPORT_BUNDLE_ENTRY_MAX_BYTES = 4_000_000;
+const IMPORT_DECISIONS: readonly AssetImportReport['decision'][] = [
+  'accepted',
+  'rejected',
+  'duplicate',
+  'collision-reid',
+  'collision-replace',
+  'invalid',
+];
 
 export class LocalStorageAssetStore implements AssetStore {
   constructor(private readonly resolveStorage: () => Storage | null = storageOrNull) {}
@@ -133,6 +144,9 @@ export class LocalStorageAssetStore implements AssetStore {
 
   delete(record: AssetRecord): AssetStoreResult {
     if (record.immutable) return { ok: false, message: 'Built-in assets are immutable' };
+    if (record.usages.length > 0) {
+      return { ok: false, message: `Cannot delete ${record.name}; ${record.usages.length} current document reference(s) still exist` };
+    }
     if (record.source.storage === 'document') {
       return { ok: false, message: 'Document-owned assets must be changed through Builder document commands' };
     }
@@ -241,6 +255,11 @@ export class LocalStorageAssetStore implements AssetStore {
 
   importJson(input: AssetImportInput, database: AssetDatabase): AssetImportResult {
     const importedAt = input.acceptedAt ?? new Date().toISOString();
+    if (byteLength(input.text) > IMPORT_JSON_MAX_BYTES) {
+      const report = makeReport(input, importedAt, 'invalid', 'unknown', null, ['Import JSON is too large'], [], []);
+      const reportSave = this.saveReport(report);
+      return { ok: false, message: reportSave.ok ? 'Import failed: JSON too large' : `Import failed: JSON too large; ${reportSave.message}`, report };
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(input.text);
@@ -283,9 +302,7 @@ export class LocalStorageAssetStore implements AssetStore {
       };
     }
 
-    const existingSameId = database
-      .list()
-      .find((record) => record.kind === parsedAsset.kind && record.sourceId === parsedAsset.sourceId && record.origin !== 'missing');
+    const existingSameId = findImportCollision(database, parsedAsset.kind, parsedAsset.sourceId);
     const asset = existingSameId ? reIdImportedAsset(parsedAsset) : parsedAsset;
     const decision = existingSameId ? 'collision-reid' : 'accepted';
     const save = saveImportedAsset(asset);
@@ -345,9 +362,36 @@ export class LocalStorageAssetStore implements AssetStore {
     bundle: AssetExportBundle,
     database: AssetDatabase,
   ): AssetImportResult {
+    if (bundle.assets.length > IMPORT_BUNDLE_MAX_ENTRIES) {
+      const report = makeReport(input, importedAt, 'invalid', 'unknown', null, [`Bundle contains ${bundle.assets.length} entries; max is ${IMPORT_BUNDLE_MAX_ENTRIES}`], [], []);
+      const reportSave = this.saveReport(report);
+      return { ok: false, message: reportSave.ok ? 'Import failed: bundle too large' : `Import failed: bundle too large; ${reportSave.message}`, report };
+    }
+    const preflightErrors: string[] = [];
+    for (const [index, entry] of bundle.assets.entries()) {
+      if (byteLength(entry.text) > IMPORT_BUNDLE_ENTRY_MAX_BYTES) {
+        preflightErrors.push(`${entry.filename || index}: entry JSON is too large`);
+        continue;
+      }
+      try {
+        if (!parseImportPayload(JSON.parse(entry.text))) preflightErrors.push(`${entry.filename || index}: unsupported asset JSON`);
+      } catch {
+        preflightErrors.push(`${entry.filename || index}: invalid JSON`);
+      }
+    }
+    if (preflightErrors.length > 0) {
+      const report = makeReport(input, importedAt, 'invalid', 'unknown', null, preflightErrors, [], ['Bundle rejected before writing any assets']);
+      const reportSave = this.saveReport(report);
+      return {
+        ok: false,
+        message: reportSave.ok ? 'Import failed: bundle preflight rejected' : `Import failed: bundle preflight rejected; ${reportSave.message}`,
+        report,
+      };
+    }
     const diffs: string[] = [];
     const warnings: string[] = [];
     const errors: string[] = [];
+    const entryReports: AssetImportReport[] = [];
     let workingDatabase = database;
     for (const [index, entry] of bundle.assets.entries()) {
       const entryInput: AssetImportInput = {
@@ -360,7 +404,8 @@ export class LocalStorageAssetStore implements AssetStore {
       diffs.push(label);
       if (result.report.warnings.length > 0) warnings.push(...result.report.warnings.map((warning) => `${entry.filename}: ${warning}`));
       if (!result.ok) errors.push(label);
-      workingDatabase = this.bundleWorkingDatabase(database);
+      else entryReports.push(result.report);
+      workingDatabase = this.bundleWorkingDatabase(workingDatabase);
     }
     const decision: AssetImportReport['decision'] = errors.length === 0 ? 'accepted' : 'rejected';
     const report = makeReport(
@@ -379,11 +424,17 @@ export class LocalStorageAssetStore implements AssetStore {
       stableContentSignature(input.text),
     );
     const reportSave = this.saveReport(report);
+    if (!reportSave.ok) {
+      const rollback = this.rollbackBundleImports(entryReports);
+      return {
+        ok: false,
+        message: `Imported bundle entries, but ${reportSave.message}; ${rollback.message}`,
+        report,
+      };
+    }
     return {
-      ok: errors.length === 0 && reportSave.ok,
-      message: reportSave.ok
-        ? `Imported bundle: ${bundle.assets.length - errors.length}/${bundle.assets.length} entries accepted`
-        : `Imported bundle entries, but ${reportSave.message}`,
+      ok: errors.length === 0,
+      message: `Imported bundle: ${bundle.assets.length - errors.length}/${bundle.assets.length} entries accepted`,
       report,
     };
   }
@@ -629,6 +680,45 @@ export class LocalStorageAssetStore implements AssetStore {
     }
   }
 
+  private rollbackBundleImports(reports: readonly AssetImportReport[]): AssetStoreResult {
+    let assetsRolledBack = 0;
+    let reportsRolledBack = 0;
+    const errors: string[] = [];
+    const store = this.resolveStorage();
+    for (const report of reports) {
+      const decisionWritesAsset = report.decision === 'accepted' || report.decision === 'collision-reid';
+      if (decisionWritesAsset && report.importedKind && report.finalSourceId) {
+        try {
+          if (report.importedKind === 'document') {
+            if (!store) throw new Error('storage unavailable');
+            store.removeItem('noita-builder-doc:' + report.finalSourceId);
+            assetsRolledBack++;
+          } else if (report.importedKind === 'prefab') {
+            deletePrefab(report.finalSourceId);
+            assetsRolledBack++;
+          } else if (report.importedKind === 'sprite') {
+            deleteSprite(report.finalSourceId);
+            assetsRolledBack++;
+          }
+        } catch {
+          errors.push(`asset ${report.importedAssetId ?? report.finalSourceId}`);
+        }
+      }
+      if (store) {
+        try {
+          store.removeItem(REPORT_PREFIX + report.id);
+          reportsRolledBack++;
+        } catch {
+          errors.push(`report ${report.id}`);
+        }
+      }
+    }
+    const message = errors.length > 0
+      ? `bundle rollback incomplete (${assetsRolledBack} asset(s), ${reportsRolledBack} report(s)); failed ${errors.join(', ')}`
+      : `bundle rollback removed ${assetsRolledBack} asset(s) and ${reportsRolledBack} report(s)`;
+    return { ok: errors.length === 0, message };
+  }
+
   private localAssetDatabase(): AssetDatabase {
     return buildAssetDatabase({
       documents: loadDocLibrary(),
@@ -652,13 +742,17 @@ export function sanitizeImportReport(value: unknown): AssetImportReport | null {
   const report = value as AssetImportReport;
   if (!report || typeof report !== 'object' || report.v !== 1 || report.kind !== 'importReport') return null;
   if (typeof report.id !== 'string' || typeof report.name !== 'string' || typeof report.sourceFile !== 'string') return null;
-  if (typeof report.importedAt !== 'string' || typeof report.decision !== 'string') return null;
+  if (typeof report.importedAt !== 'string' || Number.isNaN(Date.parse(report.importedAt))) return null;
+  if (!IMPORT_DECISIONS.includes(report.decision)) return null;
+  if (report.importedKind !== undefined && !ASSET_KINDS.includes(report.importedKind)) return null;
+  if (!Array.isArray(report.warnings) || !Array.isArray(report.errors) || !Array.isArray(report.diff)) return null;
+  if (!Number.isInteger(report.sizeBytes) || report.sizeBytes < 0) return null;
   return {
     v: 1,
     kind: 'importReport',
-    id: report.id,
-    name: report.name,
-    sourceFile: report.sourceFile,
+    id: normalizeAssetToken(report.id),
+    name: report.name.slice(0, 160),
+    sourceFile: report.sourceFile.slice(0, 260),
     importedAt: report.importedAt,
     decision: report.decision,
     importedAssetId: typeof report.importedAssetId === 'string' ? report.importedAssetId : undefined,
@@ -670,7 +764,7 @@ export function sanitizeImportReport(value: unknown): AssetImportReport | null {
     warnings: Array.isArray(report.warnings) ? report.warnings.filter((v): v is string => typeof v === 'string') : [],
     errors: Array.isArray(report.errors) ? report.errors.filter((v): v is string => typeof v === 'string') : [],
     diff: Array.isArray(report.diff) ? report.diff.filter((v): v is string => typeof v === 'string') : [],
-    sizeBytes: Number.isFinite(report.sizeBytes) ? report.sizeBytes : 0,
+    sizeBytes: report.sizeBytes,
     contentSignature: typeof report.contentSignature === 'string' ? report.contentSignature : stableContentSignature(report),
   };
 }
@@ -708,25 +802,34 @@ function sanitizeAssetExportBundle(value: unknown): AssetExportBundle | null {
 
 function parseImportPayload(value: unknown): ParsedImportAsset | null {
   const doc = sanitizeImportedDoc(value);
-  if (doc) return { kind: 'document', sourceId: doc.id, name: doc.name, payload: doc, contentSignature: stableContentSignature(doc), warnings: [] };
+  if (doc) {
+    const payload = { ...doc, id: normalizeAssetToken(doc.id) };
+    return { kind: 'document', sourceId: payload.id, name: payload.name, payload, contentSignature: stableContentSignature(payload), warnings: [] };
+  }
   const prefab = sanitizePrefab(value);
-  if (prefab) return {
-    kind: 'prefab',
-    sourceId: prefab.prefab.id,
-    name: prefab.prefab.name,
-    payload: prefab.prefab,
-    contentSignature: prefabContentSignature(prefab.prefab),
-    warnings: prefab.warnings,
-  };
+  if (prefab) {
+    const payload = { ...prefab.prefab, id: normalizeAssetToken(prefab.prefab.id) };
+    return {
+      kind: 'prefab',
+      sourceId: payload.id,
+      name: payload.name,
+      payload,
+      contentSignature: prefabContentSignature(payload),
+      warnings: prefab.warnings,
+    };
+  }
   const sprite = sanitizeSpriteAsset(value);
-  if (sprite) return {
-    kind: 'sprite',
-    sourceId: sprite.id,
-    name: sprite.name,
-    payload: sprite,
-    contentSignature: spriteAssetContentSignature(sprite),
-    warnings: [],
-  };
+  if (sprite) {
+    const payload = { ...sprite, id: normalizeAssetToken(sprite.id) };
+    return {
+      kind: 'sprite',
+      sourceId: payload.id,
+      name: payload.name,
+      payload,
+      contentSignature: spriteAssetContentSignature(payload),
+      warnings: [],
+    };
+  }
   return null;
 }
 
@@ -844,6 +947,21 @@ function stableImportedAssetId(kind: ParsedImportAsset['kind'], sourceId: string
   return stableAssetId(kind, origin, sourceId);
 }
 
+function findImportCollision(
+  database: AssetDatabase,
+  kind: ParsedImportAsset['kind'],
+  sourceId: string,
+): AssetRecord | undefined {
+  const incomingAssetId = stableImportedAssetId(kind, sourceId);
+  return database
+    .list()
+    .find((record) =>
+      record.kind === kind &&
+      record.origin !== 'missing' &&
+      (record.assetId === incomingAssetId || normalizeAssetToken(record.sourceId) === sourceId),
+    );
+}
+
 function jsonExport(filename: string, value: unknown): AssetStoreExport {
   return {
     filename,
@@ -858,6 +976,10 @@ function storageOrNull(): Storage | null {
   } catch {
     return null;
   }
+}
+
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
 }
 
 function isDocument(value: unknown): value is EditorDocument {

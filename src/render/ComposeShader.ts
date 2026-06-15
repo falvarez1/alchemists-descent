@@ -47,11 +47,19 @@ const WIN_H = VIEW_H + 2 * COMPOSE_PAD;
 const MAX_WAVES = 8;
 const MAX_LENSES = 4;
 const TWO_PI = Math.PI * 2;
+const OVERLAY_FULL_UPLOAD_RATIO = 0.65;
 
 /** Vignette bake constants — must match Lighting's baked table exactly. */
 const VIG_CX = VIEW_W / 2;
 const VIG_CY = VIEW_H / 2;
 const VIG_MAXR2 = VIG_CX * VIG_CX + VIG_CY * VIG_CY;
+
+interface DirtyRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 const vertexShader = /* glsl */ `
 out vec2 vUv;
@@ -347,8 +355,10 @@ class Overlay implements OverlaySurface {
   private readonly touched = new Uint8Array(VIEW_W * VIEW_H);
   private written = new Uint32Array(8192);
   private count = 0;
-  /** Set when last frame's pixels were zeroed (upload needed even with 0 new writes). */
-  private clearedThisFrame = false;
+  private dirtyX0 = VIEW_W;
+  private dirtyY0 = VIEW_H;
+  private dirtyX1 = -1;
+  private dirtyY1 = -1;
 
   mark(pixelIdx: number): void {
     if (this.touched[pixelIdx] !== 0) return;
@@ -359,11 +369,13 @@ class Overlay implements OverlaySurface {
       this.written = grown;
     }
     this.written[this.count++] = pixelIdx;
+    this.includeDirty(pixelIdx);
   }
 
   /** Zero only last frame's written pixels (full-buffer fill was the slow path). */
   clear(): void {
     const { data, half, touched, written } = this;
+    this.resetDirty();
     for (let k = 0; k < this.count; k++) {
       const pi = written[k];
       const b = pi * 4;
@@ -376,13 +388,13 @@ class Overlay implements OverlaySurface {
       half[b + 2] = 0;
       half[b + 3] = 0;
       touched[pi] = 0;
+      this.includeDirty(pi);
     }
-    this.clearedThisFrame = this.count > 0;
     this.count = 0;
   }
 
-  /** Convert this frame's written pixels to f16. Returns true if upload needed. */
-  commit(): boolean {
+  /** Convert this frame's written pixels to f16. Returns the upload rect, if any. */
+  commit(): DirtyRect | null {
     const { data, half, written } = this;
     for (let k = 0; k < this.count; k++) {
       const b = written[k] * 4;
@@ -391,9 +403,29 @@ class Overlay implements OverlaySurface {
       half[b + 2] = DataUtils.toHalfFloat(data[b + 2]);
       half[b + 3] = DataUtils.toHalfFloat(data[b + 3]);
     }
-    const dirty = this.clearedThisFrame || this.count > 0;
-    this.clearedThisFrame = false;
-    return dirty;
+    if (this.dirtyX1 < this.dirtyX0 || this.dirtyY1 < this.dirtyY0) return null;
+    return {
+      x: this.dirtyX0,
+      y: this.dirtyY0,
+      w: this.dirtyX1 - this.dirtyX0 + 1,
+      h: this.dirtyY1 - this.dirtyY0 + 1,
+    };
+  }
+
+  private includeDirty(pixelIdx: number): void {
+    const x = pixelIdx % VIEW_W;
+    const y = (pixelIdx / VIEW_W) | 0;
+    if (x < this.dirtyX0) this.dirtyX0 = x;
+    if (y < this.dirtyY0) this.dirtyY0 = y;
+    if (x > this.dirtyX1) this.dirtyX1 = x;
+    if (y > this.dirtyY1) this.dirtyY1 = y;
+  }
+
+  private resetDirty(): void {
+    this.dirtyX0 = VIEW_W;
+    this.dirtyY0 = VIEW_H;
+    this.dirtyX1 = -1;
+    this.dirtyY1 = -1;
   }
 }
 
@@ -416,12 +448,21 @@ export class GpuCompose {
 
   private readonly overlayTex: THREE.DataTexture;
   private readonly overlay = new Overlay();
+  private overlayUploadTex: THREE.DataTexture | null = null;
+  private overlayUploadData: Uint16Array<ArrayBuffer> | null = null;
+  private overlayUploadCapacity = 0;
+  private overlaySubUploadFailed = false;
+  private readonly overlayUploadPos = new THREE.Vector2();
 
   private readonly waveA: THREE.Vector4[] = [];
   private readonly waveS = new Float32Array(MAX_WAVES);
   private readonly lensV: THREE.Vector4[] = [];
 
-  constructor(private readonly layers: ParallaxLayers, light: LightField) {
+  constructor(
+    private readonly renderer: THREE.WebGLRenderer,
+    private readonly layers: ParallaxLayers,
+    light: LightField,
+  ) {
     // World window: RGBA8UI so type/charge reads are exact integer fetches
     // and colors come back as the same float(n)/255 the CPU computes.
     this.winTex = new THREE.DataTexture(
@@ -581,7 +622,68 @@ export class GpuCompose {
 
   /** Stage this frame's overlay writes for upload. */
   commit(): void {
-    if (this.overlay.commit()) this.overlayTex.needsUpdate = true;
+    const dirty = this.overlay.commit();
+    if (dirty === null) return;
+    this.uploadOverlay(dirty);
+  }
+
+  private uploadOverlay(dirty: DirtyRect): void {
+    const dirtyPixels = dirty.w * dirty.h;
+    if (
+      this.overlaySubUploadFailed ||
+      dirtyPixels >= VIEW_W * VIEW_H * OVERLAY_FULL_UPLOAD_RATIO
+    ) {
+      this.overlayTex.needsUpdate = true;
+      return;
+    }
+
+    const uploadData = this.ensureOverlayUploadTexture(dirty.w, dirty.h);
+    const rowElems = dirty.w * 4;
+    for (let row = 0; row < dirty.h; row++) {
+      const src = ((dirty.y + row) * VIEW_W + dirty.x) * 4;
+      uploadData.set(this.overlay.half.subarray(src, src + rowElems), row * rowElems);
+    }
+
+    try {
+      this.overlayUploadPos.set(dirty.x, dirty.y);
+      this.renderer.copyTextureToTexture(
+        this.overlayUploadPos,
+        this.overlayUploadTex!,
+        this.overlayTex,
+      );
+    } catch (error) {
+      this.overlaySubUploadFailed = true;
+      this.overlayTex.needsUpdate = true;
+      console.warn('GPU overlay sub-upload failed; falling back to full overlay uploads', error);
+    }
+  }
+
+  private ensureOverlayUploadTexture(w: number, h: number): Uint16Array<ArrayBuffer> {
+    const needed = w * h * 4;
+    if (this.overlayUploadData === null || this.overlayUploadCapacity < needed) {
+      this.overlayUploadTex?.dispose();
+      this.overlayUploadCapacity = Math.max(needed, this.overlayUploadCapacity * 2);
+      this.overlayUploadData = new Uint16Array(this.overlayUploadCapacity);
+      this.overlayUploadTex = new THREE.DataTexture(
+        this.overlayUploadData,
+        w,
+        h,
+        THREE.RGBAFormat,
+        THREE.HalfFloatType,
+      );
+      this.overlayUploadTex.minFilter = this.overlayUploadTex.magFilter = THREE.NearestFilter;
+      this.overlayUploadTex.generateMipmaps = false;
+      this.overlayUploadTex.unpackAlignment = 1;
+    } else {
+      const image = this.overlayUploadTex!.image as unknown as {
+        data: Uint16Array<ArrayBuffer>;
+        width: number;
+        height: number;
+      };
+      image.width = w;
+      image.height = h;
+    }
+    return this.overlayUploadData;
   }
 
   private createBackdropTexture(layer: ParallaxBitmapLayer | undefined): THREE.DataTexture {
