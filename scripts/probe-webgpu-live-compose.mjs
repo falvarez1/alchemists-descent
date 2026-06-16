@@ -19,6 +19,17 @@ import {
 const outDir = 'verify-out/webgpu-live-compose';
 const timestamp = Date.now();
 const providedBaseUrl = process.argv[2] ?? null;
+const VIEW_W = 525;
+const VIEW_H = 357;
+const WIN_W = 653;
+const WIN_H = 485;
+const LIGHT_W = 263;
+const LIGHT_H = 179;
+const PARAM_BYTES = 160 * 4;
+
+function align(value, alignment) {
+  return Math.ceil(value / alignment) * alignment;
+}
 
 async function startViteServer() {
   const server = await createServer({
@@ -78,6 +89,99 @@ function validateStatus(status) {
     }
     if (storage.mipLevelCount !== 1) failures.push(`expected one mip level, got ${storage.mipLevelCount}`);
   }
+  return failures;
+}
+
+function validateLiveMetrics(status) {
+  const failures = [];
+  const metrics = status?.webgpu?.compose?.liveMetrics;
+  if (!metrics) {
+    failures.push('live compose metrics missing after GPU-composed frame');
+    return failures;
+  }
+
+  const expectedWorldLogical = WIN_W * WIN_H * 4;
+  const expectedWorldSubmitted = align(WIN_W * 4, 256) * WIN_H;
+  const expectedOverlayLogical = VIEW_W * VIEW_H * 8;
+  const expectedOverlaySubmitted = align(VIEW_W * 8, 256) * VIEW_H;
+  const expectedLightLogical = LIGHT_W * LIGHT_H * 16;
+  const expectedLightSubmitted = align(LIGHT_W * 16, 256) * LIGHT_H;
+  const expectedLutBytes = 256 * 4;
+  const expectedMinLogical =
+    expectedWorldLogical + expectedOverlayLogical + expectedLutBytes + PARAM_BYTES;
+  const expectedMinSubmitted =
+    expectedWorldSubmitted + expectedOverlaySubmitted + expectedLutBytes + PARAM_BYTES;
+
+  const finiteNonNegative = [
+    'beginFrameCpuMs',
+    'commitCpuMs',
+    'packWindowCpuMs',
+    'worldWindowUploadCpuMs',
+    'lightPackCpuMs',
+    'lightUploadCpuMs',
+    'lutPackCpuMs',
+    'lutUploadCpuMs',
+    'paramsUploadCpuMs',
+    'overlayPackCpuMs',
+    'overlayUploadCpuMs',
+    'commandEncodeSubmitCpuMs',
+  ];
+  for (const key of finiteNonNegative) {
+    if (!Number.isFinite(metrics[key]) || metrics[key] < 0) {
+      failures.push(`live metrics ${key} must be finite and >= 0, got ${metrics[key]}`);
+    }
+  }
+
+  if (metrics.outputPixels !== VIEW_W * VIEW_H) {
+    failures.push(`live metrics outputPixels expected ${VIEW_W * VIEW_H}, got ${metrics.outputPixels}`);
+  }
+  if (metrics.dispatchWorkgroupsX !== Math.ceil(VIEW_W / 8)) {
+    failures.push(`live metrics dispatchWorkgroupsX expected ${Math.ceil(VIEW_W / 8)}, got ${metrics.dispatchWorkgroupsX}`);
+  }
+  if (metrics.dispatchWorkgroupsY !== Math.ceil(VIEW_H / 8)) {
+    failures.push(`live metrics dispatchWorkgroupsY expected ${Math.ceil(VIEW_H / 8)}, got ${metrics.dispatchWorkgroupsY}`);
+  }
+  if (metrics.packWindowBytes !== expectedWorldLogical) {
+    failures.push(`live metrics packWindowBytes expected ${expectedWorldLogical}, got ${metrics.packWindowBytes}`);
+  }
+  if (metrics.worldWindowLogicalUploadBytes !== expectedWorldLogical) {
+    failures.push(`live metrics world logical bytes expected ${expectedWorldLogical}, got ${metrics.worldWindowLogicalUploadBytes}`);
+  }
+  if (metrics.worldWindowSubmittedUploadBytes !== expectedWorldSubmitted) {
+    failures.push(`live metrics world submitted bytes expected ${expectedWorldSubmitted}, got ${metrics.worldWindowSubmittedUploadBytes}`);
+  }
+  if (metrics.overlayLogicalUploadBytes !== expectedOverlayLogical) {
+    failures.push(`live metrics overlay logical bytes expected ${expectedOverlayLogical}, got ${metrics.overlayLogicalUploadBytes}`);
+  }
+  if (metrics.overlaySubmittedUploadBytes !== expectedOverlaySubmitted) {
+    failures.push(`live metrics overlay submitted bytes expected ${expectedOverlaySubmitted}, got ${metrics.overlaySubmittedUploadBytes}`);
+  }
+  if (metrics.lutLogicalUploadBytes !== expectedLutBytes || metrics.lutSubmittedUploadBytes !== expectedLutBytes) {
+    failures.push(
+      `live metrics LUT bytes expected ${expectedLutBytes}, got logical=${metrics.lutLogicalUploadBytes} submitted=${metrics.lutSubmittedUploadBytes}`,
+    );
+  }
+  if (metrics.paramsUploadBytes !== PARAM_BYTES) {
+    failures.push(`live metrics params bytes expected ${PARAM_BYTES}, got ${metrics.paramsUploadBytes}`);
+  }
+  if (metrics.lightUploadedThisFrame) {
+    if (metrics.lightLogicalUploadBytes !== expectedLightLogical) {
+      failures.push(`live metrics light logical bytes expected ${expectedLightLogical}, got ${metrics.lightLogicalUploadBytes}`);
+    }
+    if (metrics.lightSubmittedUploadBytes !== expectedLightSubmitted) {
+      failures.push(`live metrics light submitted bytes expected ${expectedLightSubmitted}, got ${metrics.lightSubmittedUploadBytes}`);
+    }
+  }
+  if (metrics.totalLogicalUploadBytes < expectedMinLogical) {
+    failures.push(`live metrics total logical bytes ${metrics.totalLogicalUploadBytes} below minimum ${expectedMinLogical}`);
+  }
+  if (metrics.totalSubmittedUploadBytes < expectedMinSubmitted) {
+    failures.push(`live metrics total submitted bytes ${metrics.totalSubmittedUploadBytes} below minimum ${expectedMinSubmitted}`);
+  }
+  if (metrics.totalSubmittedUploadBytes < metrics.totalLogicalUploadBytes) {
+    failures.push('live metrics submitted bytes should be >= logical bytes');
+  }
+
   return failures;
 }
 
@@ -504,6 +608,7 @@ try {
   const statusFailures = [
     ...validateStatus(beforeStatus),
     ...validateStatus(visual.statusAfterGpuFrame).map((failure) => `after GPU frame: ${failure}`),
+    ...validateLiveMetrics(visual.statusAfterGpuFrame).map((failure) => `after GPU frame: ${failure}`),
   ];
   const bootstrapFailures = validateBootstrap(bootstrapProbe);
   const toggleFailures = validateToggle(toggleProbe);
@@ -524,6 +629,7 @@ try {
     beforeStatus,
     toggleProbe,
     visual,
+    liveMetrics: visual.statusAfterGpuFrame?.webgpu?.compose?.liveMetrics ?? null,
     consoleErrors,
     consoleWarnings,
     pageErrors,
@@ -540,6 +646,7 @@ try {
       bootstrapToggle: 'clicking WGSL from the default URL reloads with renderBackend=webgpu&enableWebGpuLiveCompose=1',
       runtimeToggle: 'webgpu-compose-toggle toggles render.compose off/on',
       querySeed: 'enableWebGpuLiveCompose=1 initializes render.compose for probes',
+      liveMetrics: 'GPU-composed frame reports pack/upload/submit CPU timings plus logical/submitted upload bytes',
     },
     artifacts: {
       json: join(outDir, `probe-${timestamp}.json`),

@@ -11,6 +11,7 @@ import type {
   OverlaySurface,
   ParallaxBitmapLayer,
   ParallaxLayers,
+  RenderBackendWebGpuComposeLiveMetrics,
   RenderBackendWebGpuComposeStatus,
 } from '@/render/pixels';
 import {
@@ -126,6 +127,15 @@ interface BackdropGpuTexture {
 
 type GpuUploadData = ArrayBuffer | ArrayBufferView<ArrayBufferLike>;
 
+interface UploadStats {
+  logicalBytes: number;
+  submittedBytes: number;
+}
+
+interface TimedUploadStats extends UploadStats {
+  cpuMs: number;
+}
+
 function rendererDevice(renderer: WebGPURenderer): RuntimeGpuDevice | null {
   return (renderer as RendererDeviceProbe).backend?.device ?? null;
 }
@@ -160,12 +170,55 @@ function packCellValue(types: Uint8Array, colors: Uint32Array, charge: Uint8Arra
   );
 }
 
+function createLiveMetrics(frameId: number): RenderBackendWebGpuComposeLiveMetrics {
+  return {
+    frameId,
+    outputPixels: VIEW_W * VIEW_H,
+    dispatchWorkgroupsX: Math.ceil(VIEW_W / 8),
+    dispatchWorkgroupsY: Math.ceil(VIEW_H / 8),
+    beginFrameCpuMs: 0,
+    commitCpuMs: 0,
+    packWindowCpuMs: 0,
+    packWindowBytes: WIN_W * WIN_H * 4,
+    worldWindowLogicalUploadBytes: 0,
+    worldWindowSubmittedUploadBytes: 0,
+    worldWindowUploadCpuMs: 0,
+    lightUploadedThisFrame: false,
+    lightPackCpuMs: 0,
+    lightLogicalUploadBytes: 0,
+    lightSubmittedUploadBytes: 0,
+    lightUploadCpuMs: 0,
+    lutPackCpuMs: 0,
+    lutLogicalUploadBytes: 0,
+    lutSubmittedUploadBytes: 0,
+    lutUploadCpuMs: 0,
+    paramsUploadBytes: 0,
+    paramsUploadCpuMs: 0,
+    backdropTextureUploads: 0,
+    backdropLogicalUploadBytes: 0,
+    backdropSubmittedUploadBytes: 0,
+    backdropUploadCpuMs: 0,
+    overlayTouchedPixels: 0,
+    overlayPackCpuMs: 0,
+    overlayLogicalUploadBytes: 0,
+    overlaySubmittedUploadBytes: 0,
+    overlayUploadCpuMs: 0,
+    commandEncodeSubmitCpuMs: 0,
+    totalLogicalUploadBytes: 0,
+    totalSubmittedUploadBytes: 0,
+  };
+}
+
 class WebGpuOverlay implements OverlaySurface {
   readonly data = new Float32Array(VIEW_W * VIEW_H * 4);
   readonly half = new Uint16Array(VIEW_W * VIEW_H * 4);
   private readonly touched = new Uint8Array(VIEW_W * VIEW_H);
   private written = new Uint32Array(8192);
   private count = 0;
+
+  get touchedCount(): number {
+    return this.count;
+  }
 
   mark(pixelIdx: number): void {
     if (this.touched[pixelIdx] !== 0) return;
@@ -468,6 +521,8 @@ export class WebGpuLiveCompose {
   private backdropTextures: BackdropGpuTexture[] = [];
   private initialized = false;
   private lightUploaded = false;
+  private currentMetrics: RenderBackendWebGpuComposeLiveMetrics | null = null;
+  private lastMetrics: RenderBackendWebGpuComposeLiveMetrics | null = null;
   private uncapturedErrorHandler: ((event: RuntimeGpuUncapturedErrorEvent) => void) | null = null;
   private status: RenderBackendWebGpuComposeStatus = {
     productionAvailable: false,
@@ -483,6 +538,7 @@ export class WebGpuLiveCompose {
       meanDelta: null,
       gpuSubmitReadbackWallMs: null,
     },
+    liveMetrics: null,
   };
 
   constructor(private readonly renderer: WebGPURenderer) {
@@ -551,6 +607,7 @@ export class WebGpuLiveCompose {
           source: this.storageAccess.source,
         },
         rawWgslWrite: { ...this.status.rawWgslWrite },
+        liveMetrics: this.lastMetrics ? { ...this.lastMetrics } : null,
       };
     } catch (error) {
       this.status = {
@@ -559,6 +616,7 @@ export class WebGpuLiveCompose {
         reason: error instanceof Error ? error.message : String(error),
         outputStorage: null,
         rawWgslWrite: { ...this.status.rawWgslWrite },
+        liveMetrics: this.lastMetrics ? { ...this.lastMetrics } : null,
       };
     }
     return this.getStatus();
@@ -572,22 +630,46 @@ export class WebGpuLiveCompose {
     lightRebuilt: boolean,
   ): OverlaySurface {
     if (!this.available || !this.device) throw new Error('WebGPU live compose is not initialized');
+    const frameStart = performance.now();
+    const metrics = createLiveMetrics(ctx.state.frameCount);
+    this.currentMetrics = metrics;
     const camX = ctx.camera.renderX;
     const camY = ctx.camera.renderY;
+    const packStart = performance.now();
     this.packWindow(ctx.world, camX, camY);
-    this.uploadTexture(this.winTexture, this.winBytes, WIN_W, WIN_H, WIN_W * 4);
+    metrics.packWindowCpuMs = performance.now() - packStart;
+    const winUpload = this.timedUploadTexture(this.winTexture, this.winBytes, WIN_W, WIN_H, WIN_W * 4);
+    metrics.worldWindowLogicalUploadBytes = winUpload.logicalBytes;
+    metrics.worldWindowSubmittedUploadBytes = winUpload.submittedBytes;
+    metrics.worldWindowUploadCpuMs = winUpload.cpuMs;
     if (lightRebuilt || !this.lightUploaded) {
+      const lightPackStart = performance.now();
       this.uploadLight(light);
-      this.uploadTexture(this.lightTexture, this.lightData, LIGHT_W, LIGHT_H, LIGHT_W * 16);
+      metrics.lightPackCpuMs = performance.now() - lightPackStart;
+      const lightUpload = this.timedUploadTexture(this.lightTexture, this.lightData, LIGHT_W, LIGHT_H, LIGHT_W * 16);
+      metrics.lightUploadedThisFrame = true;
+      metrics.lightLogicalUploadBytes = lightUpload.logicalBytes;
+      metrics.lightSubmittedUploadBytes = lightUpload.submittedBytes;
+      metrics.lightUploadCpuMs = lightUpload.cpuMs;
       this.lightUploaded = true;
     }
+    const lutPackStart = performance.now();
     this.updateLut(ctx.params.materials);
-    this.uploadTexture(this.lutTexture, this.lutData, 256, 1, 256 * 4);
+    metrics.lutPackCpuMs = performance.now() - lutPackStart;
+    const lutUpload = this.timedUploadTexture(this.lutTexture, this.lutData, 256, 1, 256 * 4);
+    metrics.lutLogicalUploadBytes = lutUpload.logicalBytes;
+    metrics.lutSubmittedUploadBytes = lutUpload.submittedBytes;
+    metrics.lutUploadCpuMs = lutUpload.cpuMs;
     const backdropsChanged = this.syncBackdropTextures(layers);
     if (backdropsChanged) this.rebuildBindGroup();
     this.updateParams(ctx, layers, lenses, camX, camY);
+    const paramUploadStart = performance.now();
     this.device.queue.writeBuffer(this.paramBuffer!, 0, this.params);
+    metrics.paramsUploadBytes = this.params.byteLength;
+    metrics.paramsUploadCpuMs = performance.now() - paramUploadStart;
     this.overlay.clear();
+    metrics.beginFrameCpuMs = performance.now() - frameStart;
+    this.refreshTotalUploadBytes(metrics);
     return this.overlay;
   }
 
@@ -595,9 +677,20 @@ export class WebGpuLiveCompose {
     if (!this.available || !this.device || !this.pipeline || !this.bindGroup) {
       throw new Error('WebGPU live compose commit requires initialized GPU resources');
     }
+    const commitStart = performance.now();
+    const metrics = this.currentMetrics;
+    if (metrics) metrics.overlayTouchedPixels = this.overlay.touchedCount;
+    const overlayPackStart = performance.now();
     this.overlay.commit();
-    this.uploadTexture(this.overlayTexture, this.overlay.half, VIEW_W, VIEW_H, VIEW_W * 8);
+    if (metrics) metrics.overlayPackCpuMs = performance.now() - overlayPackStart;
+    const overlayUpload = this.timedUploadTexture(this.overlayTexture, this.overlay.half, VIEW_W, VIEW_H, VIEW_W * 8);
+    if (metrics) {
+      metrics.overlayLogicalUploadBytes = overlayUpload.logicalBytes;
+      metrics.overlaySubmittedUploadBytes = overlayUpload.submittedBytes;
+      metrics.overlayUploadCpuMs = overlayUpload.cpuMs;
+    }
 
+    const commandStart = performance.now();
     const encoder = this.device.createCommandEncoder({ label: 'webgpu_live_compose_encoder' });
     const pass = encoder.beginComputePass({ label: 'webgpu_live_compose_pass' });
     pass.setPipeline(this.pipeline);
@@ -605,6 +698,13 @@ export class WebGpuLiveCompose {
     pass.dispatchWorkgroups(Math.ceil(VIEW_W / 8), Math.ceil(VIEW_H / 8));
     pass.end();
     this.device.queue.submit([encoder.finish()]);
+    if (metrics) {
+      metrics.commandEncodeSubmitCpuMs = performance.now() - commandStart;
+      metrics.commitCpuMs = performance.now() - commitStart;
+      this.refreshTotalUploadBytes(metrics);
+      this.lastMetrics = { ...metrics };
+      this.status.liveMetrics = { ...metrics };
+    }
   }
 
   getStatus(): RenderBackendWebGpuComposeStatus {
@@ -612,6 +712,7 @@ export class WebGpuLiveCompose {
       ...this.status,
       outputStorage: this.status.outputStorage ? { ...this.status.outputStorage } : null,
       rawWgslWrite: { ...this.status.rawWgslWrite },
+      liveMetrics: this.status.liveMetrics ? { ...this.status.liveMetrics } : null,
     };
   }
 
@@ -651,6 +752,7 @@ export class WebGpuLiveCompose {
       reason,
       outputStorage: this.status.outputStorage ? { ...this.status.outputStorage } : null,
       rawWgslWrite: { ...this.status.rawWgslWrite },
+      liveMetrics: this.status.liveMetrics ? { ...this.status.liveMetrics } : null,
     };
   }
 
@@ -700,15 +802,52 @@ export class WebGpuLiveCompose {
     width: number,
     height: number,
     rowBytes: number,
-  ): void {
-    if (!this.device || !texture) return;
+  ): UploadStats {
     const paddedRowBytes = align(rowBytes, 256);
+    const stats = {
+      logicalBytes: rowBytes * height,
+      submittedBytes: paddedRowBytes * height,
+    };
+    if (!this.device || !texture) return stats;
     this.device.queue.writeTexture(
       { texture },
       padRows(data, rowBytes, height, paddedRowBytes),
       { bytesPerRow: paddedRowBytes },
       { width, height },
     );
+    return stats;
+  }
+
+  private timedUploadTexture(
+    texture: RuntimeGpuTexture | null,
+    data: GpuUploadData,
+    width: number,
+    height: number,
+    rowBytes: number,
+  ): TimedUploadStats {
+    const start = performance.now();
+    const stats = this.uploadTexture(texture, data, width, height, rowBytes);
+    return {
+      ...stats,
+      cpuMs: performance.now() - start,
+    };
+  }
+
+  private refreshTotalUploadBytes(metrics: RenderBackendWebGpuComposeLiveMetrics): void {
+    metrics.totalLogicalUploadBytes =
+      metrics.worldWindowLogicalUploadBytes +
+      metrics.lightLogicalUploadBytes +
+      metrics.lutLogicalUploadBytes +
+      metrics.paramsUploadBytes +
+      metrics.backdropLogicalUploadBytes +
+      metrics.overlayLogicalUploadBytes;
+    metrics.totalSubmittedUploadBytes =
+      metrics.worldWindowSubmittedUploadBytes +
+      metrics.lightSubmittedUploadBytes +
+      metrics.lutSubmittedUploadBytes +
+      metrics.paramsUploadBytes +
+      metrics.backdropSubmittedUploadBytes +
+      metrics.overlaySubmittedUploadBytes;
   }
 
   private createPipeline(): void {
@@ -783,7 +922,17 @@ export class WebGpuLiveCompose {
       const version = layer?.version ?? -1;
       if (this.backdropTextures[i]?.version === version) continue;
       this.backdropTextures[i]?.texture.destroy();
+      const width = Math.max(1, layer?.width ?? 1);
+      const height = Math.max(1, layer?.height ?? 1);
+      const metrics = this.currentMetrics;
+      const start = performance.now();
       this.backdropTextures[i] = this.createBackdropTexture(layer, i);
+      if (metrics) {
+        metrics.backdropTextureUploads++;
+        metrics.backdropLogicalUploadBytes += width * height * 4;
+        metrics.backdropSubmittedUploadBytes += align(width * 4, 256) * height;
+        metrics.backdropUploadCpuMs += performance.now() - start;
+      }
       changed = true;
     }
     return changed;

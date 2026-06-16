@@ -38,6 +38,7 @@ export interface RenderBackendWebGpuComposeStatus {
   reason: string;
   outputStorage: RenderBackendWebGpuComposeStorageStatus | null;
   rawWgslWrite: RenderBackendWebGpuComposeRawWgslStatus;
+  liveMetrics?: RenderBackendWebGpuComposeLiveMetrics | null;
 }
 
 export interface RenderBackendWebGpuComposeStorageStatus {
@@ -57,6 +58,43 @@ export interface RenderBackendWebGpuComposeRawWgslStatus {
   exactPct: number | null;
   meanDelta: number | null;
   gpuSubmitReadbackWallMs: number | null;
+}
+
+export interface RenderBackendWebGpuComposeLiveMetrics {
+  frameId: number;
+  outputPixels: number;
+  dispatchWorkgroupsX: number;
+  dispatchWorkgroupsY: number;
+  beginFrameCpuMs: number;
+  commitCpuMs: number;
+  packWindowCpuMs: number;
+  packWindowBytes: number;
+  worldWindowLogicalUploadBytes: number;
+  worldWindowSubmittedUploadBytes: number;
+  worldWindowUploadCpuMs: number;
+  lightUploadedThisFrame: boolean;
+  lightPackCpuMs: number;
+  lightLogicalUploadBytes: number;
+  lightSubmittedUploadBytes: number;
+  lightUploadCpuMs: number;
+  lutPackCpuMs: number;
+  lutLogicalUploadBytes: number;
+  lutSubmittedUploadBytes: number;
+  lutUploadCpuMs: number;
+  paramsUploadBytes: number;
+  paramsUploadCpuMs: number;
+  backdropTextureUploads: number;
+  backdropLogicalUploadBytes: number;
+  backdropSubmittedUploadBytes: number;
+  backdropUploadCpuMs: number;
+  overlayTouchedPixels: number;
+  overlayPackCpuMs: number;
+  overlayLogicalUploadBytes: number;
+  overlaySubmittedUploadBytes: number;
+  overlayUploadCpuMs: number;
+  commandEncodeSubmitCpuMs: number;
+  totalLogicalUploadBytes: number;
+  totalSubmittedUploadBytes: number;
 }
 
 export interface RenderBackendWebGlStatus {
