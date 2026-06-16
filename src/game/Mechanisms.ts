@@ -1253,6 +1253,9 @@ export class Mechanisms implements MechanismsApi {
           world.colors[i] = fireColor();
         }
       }
+      // also light any flammable body sitting on the target (a crate/barrel the
+      // seeded fire would otherwise have to drift into) — relays light props now
+      if (ctx.rigidBodies) ctx.rigidBodies.igniteArea(tx, ty, 6);
     } else if (action === 'strike') {
       // a concussive pulse: flips levers, wakes rune glyphs (event round-trip)
       ctx.events.emit('structureStrike', { x: tx, y: ty, radius: 8 });

@@ -1278,7 +1278,8 @@ benchmark used CPU PerfHud bucket timing rather than GPU timestamp queries.
 
 Requested backend: `renderBackend=webgpu&enableWebGpuLiveCompose=1`; the URL
 seeds `ctx.state.render.compose=true`, and the header `WGSL` button can toggle
-that diagnostic gate off/on at runtime.
+that diagnostic gate off/on at runtime. Clicking `WGSL` from the default WebGL
+URL now reloads to the WebGPU diagnostic URL instead of staying unlit.
 
 Actual backend: `WebGPURenderBackend` / actual WebGPU.
 
@@ -1315,8 +1316,10 @@ WebGPU `uncapturederror` handler so asynchronous validation errors mark the
 live bridge failed/fail-closed, and the probe now validates the storage-texture
 post-FX presentation path as well as raw compose output. Follow-up work added
 the header `WGSL` button next to `GPU FX` and `PERF`; it toggles
-`ctx.state.render.compose`, while the existing `GPU FX` button continues to
-toggle `postFx.gpuCompose` for CPU-vs-GPU A/B.
+`ctx.state.render.compose`, reloads from the default WebGL URL into
+`?renderBackend=webgpu&enableWebGpuLiveCompose=1` on first enable, while the
+existing `GPU FX` button continues to toggle `postFx.gpuCompose` for
+CPU-vs-GPU A/B.
 
 Actual result: fixed and kept. The first live implementation used an
 `rgba8unorm` output storage texture and failed the quality gate because hot
@@ -1324,14 +1327,16 @@ materials were darker after HDR compose values were clamped before tone
 mapping. The focused fix switched the output storage texture to `rgba16float`
 and removed the upper clamp on WGSL output while keeping values non-negative.
 The passing live probe artifact
-`verify-out/webgpu-live-compose/probe-1781613556199.json` reports actual
+`verify-out/webgpu-live-compose/probe-1781617327730.json` reports actual
 WebGPU, `bridge=validated`, output storage `format=rgba16float`, `usage=31`,
 `mipLevelCount=1`, no console/page errors, and `productionAvailable=false`.
-It also clicked the `WGSL` button off/on and verified `render.compose` plus
-backend `features.compose` followed the toggle.
+It first clicked the `WGSL` button from the default WebGL URL and verified the
+reload to `?renderBackend=webgpu&enableWebGpuLiveCompose=1`, then clicked the
+button off/on and verified `render.compose` plus backend `features.compose`
+followed the toggle.
 The frozen same-frame CPU-vs-WebGPU comparison reports raw compose
-`exactPct=97.449`, `maxd=1`, `meand=0.00858`, `bigPct=0`, and post-FX
-`exactPct=97.198`, `maxd=1`, `meand=0.00947`, `bigPct=0`; the lava brightness
+`exactPct=97.223`, `maxd=1`, `meand=0.00935`, `bigPct=0`, and post-FX
+`exactPct=97.048`, `maxd=1`, `meand=0.01`, `bigPct=0`; the lava brightness
 sample matched CPU exactly at RGB mean `[255, 226, 160]`.
 
 Performance result: the latest same-session live WebGPU A/B artifact
@@ -1344,9 +1349,9 @@ must continue to judge full-frame effects and not only the compose bucket.
 
 Visual/quality evidence:
 
-- `verify-out/webgpu-live-compose/cpu-1781613556199.png`
-- `verify-out/webgpu-live-compose/gpu-1781613556199.png`
-- `verify-out/webgpu-live-compose/probe-1781613556199.json`
+- `verify-out/webgpu-live-compose/cpu-1781617327730.png`
+- `verify-out/webgpu-live-compose/gpu-1781617327730.png`
+- `verify-out/webgpu-live-compose/probe-1781617327730.json`
 
 Decision: keep behind the explicit diagnostic `render.compose` gate. This is the first
 measured live WebGPU frame-loop win for compose, but the WebGL2 GPU compose path
@@ -1365,10 +1370,10 @@ Notes:
   presentation can differ by one 8-bit channel while preserving the look.
 - The same probe also validates the post-FX storage pipeline with
   `postFxMeanDelta <= 0.5` and `postFxBigPct <= 2`; the current artifact passes
-  with `meand=0.00947` and `bigPct=0`.
+  with `meand=0.01` and `bigPct=0`.
 - Validation passed for this slice:
   `node --check scripts/probe-webgpu-live-compose.mjs`,
-  `npm run probe:webgpu-live-compose -- http://127.0.0.1:5173/`,
+  `npm run probe:webgpu-live-compose`,
   `npm run perf:ab -- postFx.gpuCompose false true
   "http://127.0.0.1:5173/?renderBackend=webgpu&enableWebGpuLiveCompose=1" 360
   4 chaos`, `npm run typecheck`, `npm run lint`, and `npm run build`.
@@ -1474,3 +1479,64 @@ Notes:
 - Validation passed for this slice: `npm run typecheck`,
   `npx vitest run tests/virtual-world.test.ts` (`35` tests), and
   `npm run bench:virtual-world -- 1313162580 2 6`.
+
+## Virtual World Generation - WASM Corner-Rounding Kernel
+
+Task: implement the first real WASM virtual-generation accelerator. CPU profiling
+(`--cpu-prof`, 160 chunks) showed the cellular corner-rounding morphology dominates
+generation: `roundCaveCorners` self-time `14.8%` plus the `countSolidNeighbors`
+(`16.8%`) and `isTerrainSolid` (`6.9%`) it drives = **~38% of per-chunk time in one
+pass**. Its math is a value-noise threshold (`organicNoise -> smoothValueNoise`: floor +
+smoothstep + lerp, NO transcendentals) over a pure-u32 `hash2i`, so a byte-identical
+WASM port is feasible (AS f64 == JS number, AS u32 mul == `Math.imul`).
+
+Commit: working-tree Phase-6 follow-up after `961b4eb`. Added the AssemblyScript
+toolchain (`assemblyscript@0.28.19`, devDep, approved by the user).
+
+Hardware/host: same Windows workstation; this benchmark runs under Node via Vite
+`ssrLoadModule` (Node has `WebAssembly`, so the kernel is exercised here, not stubbed).
+
+Requested/actual backend: `setRoundCornersBackend('ts')` vs `('wasm')`; default is
+`'auto'` (WASM if it instantiates, else graceful TS fallback).
+
+Scene / seed / resolution: `createDefaultVirtualWorldDef(0x4e4f4954)`, 60 chunks
+(chunk size 256, scratch 320x320), 3 warm-up passes then timed.
+
+Command: `npm run build:wasm` (asc -> `build/roundCorners.wasm` -> base64-embedded into
+`src/world/virtual/wasm/roundCornersWasm.ts`), then a TS-vs-WASM generation A/B.
+
+Baseline (TS path): per-chunk generate mean `45.54 ms`.
+
+After (WASM path, `'wasm'` backend): per-chunk generate mean `32.89 ms`.
+
+Expected result: byte-identical chunks and a measurable speedup, with the morphology
+pass (~38% of time) substantially reduced.
+
+Actual result: keep. **`1.38x` overall per-chunk speedup** (`45.54 -> 32.89 ms`) with
+**byte-identical output** (`hashesMatch: true` in the A/B; and `tests/wasm-worldgen.test.ts`
+proves 4 seeds x 6 coords = 24 full chunks match exactly via chunk hash, which cascades
+through every downstream dressing pass that reads terrain shape). The full
+`tests/virtual-world.test.ts` suite (41 tests) passes with WASM on by default, and the
+`bench:virtual-world` determinism fixtures are unchanged.
+
+Parity rule compliance: this is an authoritative accelerator, so byte-identity is
+mandatory (per the Backend Baseline entry, rule 3). It is enforced by the cross-backend
+chunk-hash test, not assumed. The kernel instantiates synchronously (small 1544-byte
+module, base64-embedded) so it works in the worker, the main-thread sync path, and Node
+identically; if instantiation ever fails, `roundCornersWasm` returns false and the TS
+path runs unchanged.
+
+Performance note: `1.38x` is consistent with Amdahl's law for a ~38% pass moved to a
+~3x-faster kernel. Larger wins would require porting more passes (smoothing, recolor,
+surface dressing) — candidates for follow-up, each gated by the same byte-parity test.
+
+Decision: keep as the default authoritative accelerator (`'auto'`), TS retained as the
+reference + fallback.
+
+Notes:
+
+- Source: `assembly/worldgen.ts`; build: `npm run build:wasm`; loader:
+  `src/world/virtual/wasm/roundCornersKernel.ts`; wired in `ChunkGenerator.roundCaveCorners`.
+- `build/` is gitignored; the committed runtime artifact is the base64 `.ts`.
+- Validation passed: `npm run build:wasm`, `npm run typecheck`,
+  `npx vitest run tests/wasm-worldgen.test.ts tests/virtual-world.test.ts`, `npm run build`.

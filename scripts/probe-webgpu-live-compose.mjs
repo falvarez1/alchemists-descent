@@ -109,6 +109,42 @@ function validateToggle(probe) {
   return failures;
 }
 
+function validateBootstrap(probe) {
+  const failures = [];
+  if (!probe?.exists) {
+    failures.push('WGSL bootstrap toggle missing on default boot');
+    return failures;
+  }
+  if (probe.before.backend !== 'webgl') {
+    failures.push(`WGSL bootstrap should start from webgl backend, got ${probe.before.backend}`);
+  }
+  if (probe.before.compose !== false) {
+    failures.push(`WGSL bootstrap should start with render.compose=false, got ${probe.before.compose}`);
+  }
+  if (probe.before.lit !== false) {
+    failures.push('WGSL bootstrap should start unlit on default boot');
+  }
+  if (probe.after.backend !== 'webgpu') {
+    failures.push(`WGSL bootstrap should reload with render.backend=webgpu, got ${probe.after.backend}`);
+  }
+  if (probe.after.compose !== true) {
+    failures.push(`WGSL bootstrap should reload with render.compose=true, got ${probe.after.compose}`);
+  }
+  if (probe.after.lit !== true) {
+    failures.push('WGSL bootstrap should be lit after reload');
+  }
+  if (!probe.after.url?.includes('renderBackend=webgpu')) {
+    failures.push(`WGSL bootstrap URL missing renderBackend=webgpu: ${probe.after.url}`);
+  }
+  if (!probe.after.url?.includes('enableWebGpuLiveCompose=1')) {
+    failures.push(`WGSL bootstrap URL missing enableWebGpuLiveCompose=1: ${probe.after.url}`);
+  }
+  if (probe.after.status?.actual !== 'webgpu') {
+    failures.push(`WGSL bootstrap status should be actual WebGPU, got ${probe.after.status?.actual}`);
+  }
+  return failures;
+}
+
 function validateVisual(result) {
   const failures = [];
   const staticDiff = result?.staticDiff;
@@ -177,8 +213,62 @@ try {
   });
   page.on('pageerror', (error) => pageErrors.push(String(error)));
 
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+  const bootstrapUrl = new URL(baseUrl);
+  bootstrapUrl.searchParams.delete('renderBackend');
+  bootstrapUrl.searchParams.delete('enableWebGpuLiveCompose');
+  await page.goto(bootstrapUrl.toString(), { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForFunction(() => window.__game?.ctx, null, { timeout: 30000 });
+  const bootstrapProbe = await page.evaluate(() => {
+    const button = document.getElementById('webgpu-compose-toggle');
+    const ctx = window.__game.ctx;
+    if (!button) return { exists: false };
+    const before = {
+      url: window.location.href,
+      backend: ctx.state.render.backend,
+      compose: ctx.state.render.compose,
+      lit: button.classList.contains('lit'),
+      aria: button.getAttribute('aria-pressed'),
+    };
+    button.click();
+    return {
+      exists: true,
+      label: button.textContent?.trim() ?? '',
+      before,
+    };
+  });
+  await page.waitForURL((currentUrl) => {
+    const params = currentUrl.searchParams;
+    return params.get('renderBackend') === 'webgpu' && params.get('enableWebGpuLiveCompose') === '1';
+  }, { timeout: 30000 });
+  await page.waitForFunction(() => window.__game?.ctx, null, { timeout: 30000 });
+  await page.waitForFunction(
+    () => {
+      const ctx = window.__game?.ctx;
+      const button = document.getElementById('webgpu-compose-toggle');
+      const status = window.__game?.getRenderBackendStatus?.();
+      return (
+        ctx?.state?.render?.backend === 'webgpu' &&
+        ctx.state.render.compose === true &&
+        button?.classList.contains('lit') &&
+        status?.implementation === 'WebGPURenderBackend' &&
+        status.health !== 'recovering'
+      );
+    },
+    null,
+    { timeout: 30000 },
+  );
+  bootstrapProbe.after = await page.evaluate(() => {
+    const button = document.getElementById('webgpu-compose-toggle');
+    const ctx = window.__game.ctx;
+    return {
+      url: window.location.href,
+      backend: ctx.state.render.backend,
+      compose: ctx.state.render.compose,
+      lit: button?.classList.contains('lit') ?? false,
+      aria: button?.getAttribute('aria-pressed') ?? null,
+      status: window.__game.getRenderBackendStatus(),
+    };
+  });
   await page.waitForTimeout(2500);
   await page.waitForFunction(
     () => {
@@ -415,9 +505,10 @@ try {
     ...validateStatus(beforeStatus),
     ...validateStatus(visual.statusAfterGpuFrame).map((failure) => `after GPU frame: ${failure}`),
   ];
+  const bootstrapFailures = validateBootstrap(bootstrapProbe);
   const toggleFailures = validateToggle(toggleProbe);
   const visualFailures = validateVisual(visual);
-  const failures = [...statusFailures, ...toggleFailures, ...visualFailures];
+  const failures = [...statusFailures, ...bootstrapFailures, ...toggleFailures, ...visualFailures];
   if (consoleErrors.length > 0) failures.push('console errors');
   if (pageErrors.length > 0) failures.push('page errors');
 
@@ -429,6 +520,7 @@ try {
     generatedAt: new Date().toISOString(),
     baseUrl,
     url,
+    bootstrapProbe,
     beforeStatus,
     toggleProbe,
     visual,
@@ -445,6 +537,7 @@ try {
       postFxBigPct: '<= 2',
       lavaMeanDeviation: '<= 4% red and green',
       productionAvailable: false,
+      bootstrapToggle: 'clicking WGSL from the default URL reloads with renderBackend=webgpu&enableWebGpuLiveCompose=1',
       runtimeToggle: 'webgpu-compose-toggle toggles render.compose off/on',
       querySeed: 'enableWebGpuLiveCompose=1 initializes render.compose for probes',
     },

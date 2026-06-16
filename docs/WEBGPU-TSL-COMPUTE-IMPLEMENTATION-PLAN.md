@@ -600,29 +600,34 @@ Phase 4.11 result:
 - Wired it into `src/render/WebGpuRenderBackend.ts` behind
   `ctx.state.render.compose`. The URL parameter `?enableWebGpuLiveCompose=1`
   seeds that flag for probes, and the new header `WGSL` button toggles it off/on
-  during a WebGPU session. The regular WebGPU presentation path and WebGL2 path
-  do not pay this setup cost until the flag is enabled. The live status still
+  during a WebGPU session. If clicked from the normal WebGL URL, the button now
+  reloads to `?renderBackend=webgpu&enableWebGpuLiveCompose=1` instead of
+  silently staying off. The regular WebGPU presentation path and WebGL2 path do
+  not pay this setup cost until the flag is enabled. The live status still
   reports `productionAvailable=false` because this is a diagnostic gate, not
   default production enablement.
 - Added `scripts/probe-webgpu-live-compose.mjs`, exposed as
   `npm run probe:webgpu-live-compose`, to validate actual WebGPU backend status,
-  guarded Three r184 storage access, the `WGSL` runtime toggle, same-frame
-  CPU-vs-WebGPU raw and post-FX visual quality, and HDR material brightness.
+  guarded Three r184 storage access, the `WGSL` default-URL bootstrap and
+  runtime toggle, same-frame CPU-vs-WebGPU raw and post-FX visual quality, and
+  HDR material brightness.
 - The first live output attempt used `rgba8unorm` storage and failed the visual
   gate: deterministic parity showed hot materials were darker because the WGSL
   output clamped HDR compose values before ACES/post processing. The focused fix
   switched the live output to `rgba16float` and removed the upper clamp while
   preserving non-negative output.
 - The latest passing live probe artifact
-  `verify-out/webgpu-live-compose/probe-1781613556199.json` reports actual
+  `verify-out/webgpu-live-compose/probe-1781617327730.json` reports actual
   WebGPU, `bridge=validated`, output storage `format=rgba16float`, `usage=31`,
   `mipLevelCount=1`, no console/page errors, and
-  `productionAvailable=false`. It also clicked the header `WGSL` button off/on
-  and verified `render.compose` plus backend status followed the toggle. Its
-  frozen same-frame visual comparison reports raw compose `exactPct=97.449`,
-  `maxd=1`, `meand=0.00858`, `bigPct=0`, and post-FX `exactPct=97.198`,
-  `maxd=1`, `meand=0.00947`, `bigPct=0`; the lava brightness sample matched
-  CPU exactly at RGB mean `[255, 226, 160]`.
+  `productionAvailable=false`. It clicked `WGSL` from a default WebGL URL and
+  verified the app reloaded with `renderBackend=webgpu` and
+  `enableWebGpuLiveCompose=1`, then clicked the same button off/on and verified
+  `render.compose` plus backend status followed the toggle. Its frozen
+  same-frame visual comparison reports raw compose `exactPct=97.223`, `maxd=1`,
+  `meand=0.00935`, `bigPct=0`, and post-FX `exactPct=97.048`, `maxd=1`,
+  `meand=0.01`, `bigPct=0`; the lava brightness sample matched CPU exactly at
+  RGB mean `[255, 226, 160]`.
 - The latest same-session live WebGPU A/B artifact
   `verify-out/perf-ab-postfx.gpucompose-chaos-1781613600624.json` compares
   `postFx.gpuCompose=false` to `true` under actual WebGPU with

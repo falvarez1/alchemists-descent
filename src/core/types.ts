@@ -990,6 +990,8 @@ export interface RigidBody {
   density?: number;
   /** P5: true while the body's footprint overlaps water (splash-on-entry edge). */
   inWater?: boolean;
+  /** Explosive barrel: detonates when burned or caught in a blast (chain reactions). */
+  payload?: 'explosive';
   grounded?: boolean;
   /** Mirror of Rapier's sleep state (settled bodies sleep). */
   sleeping: boolean;
@@ -1014,6 +1016,8 @@ export interface SpawnBodyOpts {
   material?: BodyMaterial;
   /** Mass/inertia derive from shape area × density (default 1). */
   density?: number;
+  /** Explosive barrel: detonates when burned or caught in a blast. */
+  payload?: 'explosive';
   restitution?: number;
   friction?: number;
   color?: number;
@@ -1052,6 +1056,11 @@ export interface RigidBodiesApi {
   grab(ctx: Ctx): void;
   /** Throw the held body along the aim (carrying the player's momentum), or no-op. */
   release(ctx: Ctx): void;
+  /** Light the fuse of every flammable body whose footprint is within `radius`
+   *  of (x,y) — lets an igniter (relay 'ignite', hazard, spell) set a prop or
+   *  barrel alight directly instead of waiting for a fire cell to drift into its
+   *  footprint. Returns how many bodies were newly lit. */
+  igniteArea(x: number, y: number, radius: number): number;
 }
 
 export interface VineStrandNodeView {

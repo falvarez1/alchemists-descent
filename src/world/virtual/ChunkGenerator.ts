@@ -25,6 +25,21 @@ import { biomeAtWorld, chunkOrigin, floorDiv } from '@/world/virtual/coords';
 import { fnv1aByteArrays, signedUnitHash2i, unitHash2i } from '@/world/virtual/hash';
 import { resolveTilesForRect, type ResolvedTile } from '@/world/virtual/HerringboneTiles';
 import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
+import { roundCornersWasm } from '@/world/virtual/wasm/roundCornersKernel';
+
+/**
+ * Backend for the hot corner-rounding morphology pass. 'auto' uses the byte-identical WASM
+ * kernel when available and silently falls back to TS; 'ts'/'wasm' force one path (tests use
+ * these to assert byte-parity). See assembly/worldgen.ts + tests/wasm-worldgen.test.ts.
+ */
+export type RoundCornersBackend = 'auto' | 'ts' | 'wasm';
+let roundCornersBackend: RoundCornersBackend = 'auto';
+export function setRoundCornersBackend(backend: RoundCornersBackend): void {
+  roundCornersBackend = backend;
+}
+export function getRoundCornersBackend(): RoundCornersBackend {
+  return roundCornersBackend;
+}
 
 interface Scratch {
   size: number;
@@ -619,6 +634,14 @@ function roundCaveCorners(
   if (strength <= 0) return;
 
   const passes = strength >= 0.7 ? 2 : 1;
+  if (
+    roundCornersBackend !== 'ts' &&
+    roundCornersWasm(scratch.types, scratch.size, scratch.originX, scratch.originY, def.seed >>> 0, strength, passes)
+  ) {
+    // WASM kernel produced byte-identical morphology; recolor exactly as the TS path does.
+    recolorTerrain(def, scratch, biomeAt);
+    return;
+  }
   let cur: Uint8Array = scratch.types;
   let next: Uint8Array = new Uint8Array(cur.length);
   for (let pass = 0; pass < passes; pass++) {

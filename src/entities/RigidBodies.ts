@@ -54,6 +54,8 @@ const GRAB_HOLD_DIST = 12; // distance the held body floats in front of the hand
 const GRAB_STIFFNESS = 0.45; // per-frame fraction of the gap the held body closes
 const GRAB_MAX_SPEED = 7; // cap on the held body's tracking speed (cells/frame)
 const THROW_SPEED = 9; // launch speed when the held body is thrown (cells/frame)
+const BARREL_FUSE = 45; // frames a lit explosive barrel burns before it blows
+const BARREL_BLAST = 24; // explosion radius of a detonating barrel
 
 type RWorld = InstanceType<typeof RAPIER.World>;
 type RBody = InstanceType<typeof RAPIER.RigidBody>;
@@ -72,6 +74,8 @@ export class RigidBodies implements RigidBodiesApi {
   private nextId = 1;
   /** The body the player is currently carrying (grab/throw), or null. */
   private held: RigidBody | null = null;
+  /** Explosive barrels queued to detonate (processed once per tick → chains ripple). */
+  private detonations: RigidBody[] = [];
 
   constructor(private readonly ctx: Ctx) {
     this.world = new RAPIER.World({ x: 0, y: GRAVITY });
@@ -124,6 +128,7 @@ export class RigidBodies implements RigidBodiesApi {
       color,
       material: opts.material,
       density,
+      payload: opts.payload,
       sleeping: false,
       tag: opts.tag,
       data: opts.data,
@@ -146,6 +151,7 @@ export class RigidBodies implements RigidBodiesApi {
 
   clear(): void {
     this.held = null;
+    this.detonations.length = 0;
     for (const rb of this.handles.values()) this.world.removeRigidBody(rb);
     this.handles.clear();
     this.bodies.length = 0;
@@ -245,6 +251,25 @@ export class RigidBodies implements RigidBodiesApi {
     ctx.audio.tone(210, 90, 0.1, 'square', 0.09); // throw
   }
 
+  igniteArea(x: number, y: number, radius: number): number {
+    if (radius <= 0) return 0;
+    const r2 = radius * radius;
+    let lit = 0;
+    for (const body of this.bodies) {
+      if (body.kind !== 'dynamic' || body.burnT) continue;
+      const matDef = body.material ? bodyMaterialDef(body.material) : null;
+      if (!matDef?.flammable) continue;
+      const [ex, ey] = bodyExtents(body);
+      const dx = Math.max(Math.abs(x - body.x) - ex, 0);
+      const dy = Math.max(Math.abs(y - body.y) - ey, 0);
+      if (dx * dx + dy * dy > r2) continue;
+      // explosive barrels burn a short fuse then blow; everything else chars to ash
+      body.burnT = (body.payload === 'explosive' ? BARREL_FUSE : BURN_FRAMES) + Math.floor(Math.random() * 40);
+      lit++;
+    }
+    return lit;
+  }
+
   /** Track the held body to the hand point each frame (stays dynamic so it still
    *  bumps the world); drops it if the body's gone or the player died. */
   private trackHeld(ctx: Ctx): void {
@@ -287,6 +312,11 @@ export class RigidBodies implements RigidBodiesApi {
       const d = Math.hypot(dx, dy);
       if (d > radius) continue;
       const falloff = 1 - d / radius;
+      // An explosive barrel caught in a blast detonates (deferred → chain ripple).
+      if (body.payload === 'explosive' && falloff >= 0.3) {
+        this.queueDetonation(body);
+        continue;
+      }
       // A large BRITTLE body (wood/stone — one that leaves rubble; metal is tough)
       // caught in a strong, close blast SHATTERS into smaller crates instead of
       // just being flung (deferred — don't mutate the bodies list mid-iteration).
@@ -360,7 +390,30 @@ export class RigidBodies implements RigidBodiesApi {
     this.ctx.audio.noiseBurst(0.14, 300, 0.1);
   }
 
+  /** Queue an explosive barrel to detonate next tick (idempotent). */
+  private queueDetonation(body: RigidBody): void {
+    if (body.payload !== 'explosive' || this.detonations.includes(body)) return;
+    this.detonations.push(body);
+  }
+
+  /** Detonate the barrels queued as of this tick; their blasts queue any nearby
+   *  barrels for the NEXT tick, so a chain reaction ripples across frames. */
+  private processDetonations(ctx: Ctx): void {
+    if (this.detonations.length === 0) return;
+    const batch = this.detonations;
+    this.detonations = [];
+    for (const body of batch) {
+      if (!this.handles.has(body)) continue;
+      const bx = body.x;
+      const by = body.y;
+      this.remove(body); // remove before the blast so it isn't re-queued by its own explosion
+      ctx.particles.burst(bx, by, 26, null, () => packRGB(255, 180, 70), 2.8, { glow: 2.8, grav: 0.02 });
+      ctx.explosions.trigger(bx, by, BARREL_BLAST);
+    }
+  }
+
   update(ctx: Ctx): void {
+    this.processDetonations(ctx);
     this.syncTerrain(ctx.world, ctx.state.frameCount);
     this.world.step();
     for (const body of this.bodies) {
@@ -398,7 +451,8 @@ export class RigidBodies implements RigidBodiesApi {
       if (matDef?.flammable) {
         if (!body.burnT) {
           if (this.scanFootprint(world, body, 1, isHotCell)) {
-            body.burnT = BURN_FRAMES + Math.floor(Math.random() * 40);
+            // explosive barrels burn a short fuse, then blow instead of charring
+            body.burnT = (body.payload === 'explosive' ? BARREL_FUSE : BURN_FRAMES) + Math.floor(Math.random() * 40);
             ctx.audio.noiseBurst(0.1, 480, 0.05);
           }
         } else {
@@ -416,6 +470,10 @@ export class RigidBodies implements RigidBodiesApi {
           if (ctx.state.frameCount % 5 === 0) ctx.particles.spawn(body.x, body.y - 3, 0, -0.4, null, smokeColor(), 40, { grav: -0.02 });
           if (Math.random() < 0.12) this.shedFire(world, body);
           if (body.burnT <= 0) {
+            if (body.payload === 'explosive') {
+              this.queueDetonation(body); // the detonation removes it
+              continue;
+            }
             this.burnUpBody(ctx, body);
             this.remove(body);
             continue;

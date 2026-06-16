@@ -62,7 +62,7 @@ function initialRenderBackendOverride(): RenderBackendMode | null {
 }
 
 function initialWebGpuLiveComposeOverride(): boolean {
-  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).get('enableWebGpuLiveCompose') === '1';
 }
 

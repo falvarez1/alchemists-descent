@@ -154,18 +154,28 @@ export class Inspector {
     const btn = document.getElementById('webgpu-compose-toggle') as HTMLButtonElement | null;
     if (!btn) return;
     const canToggle = (): boolean => render.backend === 'webgpu' || render.backend === 'auto';
+    const bootIntoWebGpuCompose = (): void => {
+      if (typeof window === 'undefined') return;
+      const url = new URL(window.location.href);
+      url.searchParams.set('renderBackend', 'webgpu');
+      url.searchParams.set('enableWebGpuLiveCompose', '1');
+      btn.classList.add('lit');
+      btn.setAttribute('aria-pressed', 'true');
+      btn.disabled = true;
+      btn.title = 'Reloading with WebGPU raw WGSL compose enabled';
+      this.ctx.events.emit('toast', { text: 'RELOADING WITH WEBGPU COMPOSE' });
+      window.location.assign(url.toString());
+    };
     const syncBtn = (): void => {
       btn.classList.toggle('lit', render.compose);
       btn.setAttribute('aria-pressed', String(render.compose));
       btn.title = canToggle()
         ? `WebGPU raw WGSL compose: ${render.compose ? 'on' : 'off'}`
-        : 'WebGPU raw WGSL compose requires booting with ?renderBackend=webgpu';
+        : 'Click to reload with WebGPU raw WGSL compose enabled';
     };
     btn.addEventListener('click', () => {
       if (!canToggle()) {
-        this.ctx.events.emit('toast', { text: 'WEBGPU COMPOSE NEEDS ?renderBackend=webgpu' });
-        syncBtn();
-        btn.blur();
+        bootIntoWebGpuCompose();
         return;
       }
       render.compose = !render.compose;
