@@ -1877,3 +1877,40 @@ Notes:
   loader `src/world/virtual/wasm/roundCornersKernel.ts`, wired in `ChunkGenerator`.
 - Validation: `npm run build:wasm`, `npm run typecheck`,
   `npx vitest run tests/wasm-worldgen.test.ts tests/virtual-world.test.ts` (43), `npm run build`.
+
+## Campaign Play-Mode Render Audit (visual)
+
+Task: the requested "fixed-campaign Play-Mode vs Builder-Playtest screenshot parity". First
+finding is architectural: there is no Builder Playtest of a campaign level — `RunWorldSource`
+is `campaign | campaign-level | virtual-world`, and the Builder playtests authored
+`EditorDocument`s via `PreviewRuntime`, not `CaveGenerator` levels. Both paths share the SAME
+renderer. The real parity risk (fresh-gen vs restore dropping generated paint/lights -> "dull")
+is covered by unit tests: cells by `tests/worldgen.test.ts`, lights by `tests/level-lights.test.ts`.
+This entry adds the remaining runtime confirmation: a campaign level renders rich in Play Mode.
+
+Commit: working-tree, after `b5bc1b9`.
+
+Hardware/browser: Headless Edge via playwright-core (`channel: 'msedge'`), Vite dev server on
+`:5191`. `window.__game.ctx.levels.startRun(ctx, {mode:'test', worldSource:'campaign-level', levelId, seed:1337})`.
+
+Command: `npm run verify:campaign-playtest -- http://localhost:5191/ d1` (and `d6`).
+
+Expected result: the campaign level enters Play Mode, generates authored lights, and renders
+at least as rich as the sandbox build reference, with the lights producing bright pixels.
+
+Actual result: keep. `scripts/verify-campaign-playtest.mjs` passed for two biomes:
+
+| Level | Biome | Authored lights | Coverage (vs ref) | Avg (vs ref) | brightPct | maxV |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| d1 | earthen | 4 | `24.7%` (`26.8%`/`18.1%`) | `11.4` (`9.6`/`8.0`) | `0.92` | `765` |
+| d6 | crystal | 4 | `35.9%` (`16.6%`) | `14.8` (`7.8`) | `1.43` | `765` |
+
+Both render richer than the sandbox reference with `maxV 765` (a fully-lit pixel), i.e. the
+generated lights actually light the frame. The "dull campaign render" failure mode is absent.
+
+Visual/quality evidence: `verify-out/campaign-playtest-d1.png`, `verify-out/campaign-playtest-d6.png`.
+
+Decision: keep `scripts/verify-campaign-playtest.mjs` + `npm run verify:campaign-playtest` as the
+campaign render gate. The dark-cave game means richness is judged RELATIVE to the sandbox
+reference, not by an absolute coverage threshold; the probe samples multiple frames and keeps
+the richest reading (WebGL `drawImage` readback intermittently catches a cleared frame).

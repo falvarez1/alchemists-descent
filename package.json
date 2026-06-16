@@ -16,6 +16,7 @@
     "verify:builder-ux": "node scripts/verify-builder-ux.mjs",
     "verify:builder-responsive": "node scripts/verify-builder-responsive.mjs",
     "verify:virtual-playtest": "node scripts/verify-virtual-playtest.mjs",
+    "verify:campaign-playtest": "node scripts/verify-campaign-playtest.mjs",
     "bench:virtual-world": "node scripts/bench-virtual-world.mjs",
     "build:wasm": "asc assembly/worldgen.ts --outFile build/roundCorners.wasm --runtime stub --optimize --noAssert && node scripts/embed-wasm.mjs",
     "perf:scene": "node scripts/perf-scene.mjs",
