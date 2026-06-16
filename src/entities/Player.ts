@@ -6,7 +6,7 @@
 
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
-import type { Ctx, PerkId, PlayerControlApi, PlayerState } from '@/core/types';
+import type { Ctx, PerkId, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
 import { PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP } from '@/core/types';
 import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup } from '@/core/pickupDefs';
@@ -19,6 +19,11 @@ const CLIMB_FACE_REACHES = [PLAYER_HALF_W + 1, PLAYER_HALF_W + 2, PLAYER_HALF_W 
 const CLIMB_X_NUDGES = [0, 1, 2];
 const CLIMB_BRUSH_MAX = 8;
 const TELEPORT_SEARCH_RADIUS = 260;
+// Vine swing (#2): latch a hanging vine and pendulum on it; pump with left/right.
+const SWING_REACH = 16;
+const SWING_PUMP = 0.16;
+const SWING_MIN_LEN = 14;
+const SWING_MAX_LEN = 150;
 const TELEPORT_SEARCH_RADIUS_SQ = TELEPORT_SEARCH_RADIUS * TELEPORT_SEARCH_RADIUS;
 const TELEPORT_MAX_VISITED = 60000;
 const TELEPORT_MAX_CANDIDATES = 384;
@@ -155,6 +160,16 @@ export class PlayerControl implements PlayerControlApi {
   private prevJumpHeld = false;
   /** Frames until the player can kick again. */
   private kickCooldownT = 0;
+  /** Death ragdoll: the flung corpse body (null when alive), its settle flag + timer. */
+  private corpse: RigidBody | null = null;
+  private corpseSettled = false;
+  private corpseT = 0;
+  /** Vine swing: pendulum state (anchor pivot + rope length) while latched. */
+  private swinging = false;
+  private swingAX = 0;
+  private swingAY = 0;
+  private swingLen = 0;
+  private swingJumpPrev = false;
   /** Edge detector for the Space-only wall-jump key. */
   private prevWallJumpHeld = false;
   /** Grab input buffer, so near-miss wall catches feel intentional. */
@@ -451,11 +466,98 @@ export class PlayerControl implements PlayerControlApi {
     ctx.audio.noiseBurst(0.08, 260, 0.08);
   }
 
+  /** Latch onto the nearest hanging vine for a pendulum swing; true if latched. */
+  grabVine(ctx: Ctx): boolean {
+    if (this.swinging) return true;
+    const player = ctx.player;
+    if (player.dead || player.climbing || ctx.state.mode !== 'play') return false;
+    const g = ctx.vineStrands.grabSwing(player.x, player.y - 8, SWING_REACH);
+    if (!g) return false;
+    this.swinging = true;
+    player.swinging = true; // body-resolve skips him while the pendulum owns movement
+    this.swingAX = g.anchorX;
+    this.swingAY = g.anchorY;
+    this.swingLen = Math.max(SWING_MIN_LEN, Math.min(g.length, SWING_MAX_LEN));
+    this.swingJumpPrev = ctx.input.keys.jump; // don't insta-launch if jump is already held
+    ctx.vineStrands.driveSwing(player.x, player.y - 8);
+    ctx.audio.tone(260, 160, 0.06, 'sine', 0.06);
+    return true;
+  }
+
+  /** Let go of a vine swing (keeps the launch velocity). */
+  releaseVine(ctx: Ctx): void {
+    if (!this.swinging) return;
+    this.swinging = false;
+    ctx.player.swinging = false;
+    this.swingJumpPrev = false;
+    ctx.vineStrands.releaseSwing();
+  }
+
+  /** Pendulum while latched to a vine: gravity + a rigid rope constraint (radial
+   *  velocity projected out, tangential kept), pumped by left/right; jump launches. */
+  private updateSwing(ctx: Ctx): void {
+    const player = ctx.player;
+    const keys = ctx.input.keys;
+    player.vy += 0.28; // gravity drives the swing
+    const rx = player.x - this.swingAX;
+    const ry = player.y - this.swingAY;
+    const rd = Math.hypot(rx, ry) || 0.001;
+    const tx = -ry / rd; // tangent (perpendicular to the rope)
+    const ty = rx / rd;
+    let pump = 0;
+    if (keys.left) pump -= SWING_PUMP;
+    if (keys.right) pump += SWING_PUMP;
+    player.vx += tx * pump;
+    player.vy += ty * pump;
+    player.vx *= 0.992;
+    player.vy *= 0.996;
+    const oldX = player.x;
+    const oldY = player.y;
+    player.x += player.vx;
+    player.y += player.vy;
+    // enforce the rope length: clamp to the arc and project out radial velocity
+    const nx = player.x - this.swingAX;
+    const ny = player.y - this.swingAY;
+    const nd = Math.hypot(nx, ny) || 0.001;
+    if (nd > this.swingLen) {
+      const ux = nx / nd;
+      const uy = ny / nd;
+      player.x = this.swingAX + ux * this.swingLen;
+      player.y = this.swingAY + uy * this.swingLen;
+      const radial = player.vx * ux + player.vy * uy;
+      if (radial > 0) {
+        player.vx -= ux * radial;
+        player.vy -= uy * radial;
+      }
+    }
+    // don't swing through solid (torso/feet sample); revert + bleed the speed
+    const bx = Math.floor(player.x);
+    if (ctx.physics.cellBlocks(bx, Math.floor(player.y - 8)) || ctx.physics.cellBlocks(bx, Math.floor(player.y - 1))) {
+      player.x = oldX;
+      player.y = oldY;
+      player.vx *= 0.4;
+      player.vy *= 0.4;
+    }
+    player.fx = 0;
+    player.fy = 0;
+    player.facing = player.vx >= 0 ? 1 : -1;
+    ctx.vineStrands.driveSwing(player.x, player.y - 8);
+    // jump launches off the vine with a boost
+    const jumpEdge = keys.jump && !this.swingJumpPrev;
+    this.swingJumpPrev = keys.jump;
+    if (jumpEdge) {
+      this.releaseVine(ctx);
+      player.vy -= 2.0;
+      ctx.audio.jump();
+    }
+  }
+
   /** Original: killPlayer() — lines 1577-1587. */
   kill(): void {
     const ctx = this.ctx;
     const player = ctx.player;
     if (player.dead) return;
+    this.releaseVine(ctx); // let go of any vine before ragdolling
     player.dead = true;
     player.hp = 0;
     player.recharge = 0;
@@ -484,6 +586,23 @@ export class PlayerControl implements PlayerControlApi {
       ctx.events.emit('toast', { text: `${spill} oz SCATTERS WHERE YOU FELL` });
     }
     ctx.levels.saveDeathCheckpoint?.(ctx);
+    // RAGDOLL DEATH: the wizard becomes a tumbling corpse flung with his last
+    // momentum (plus a death-pop + spin). The game-over overlay waits until it
+    // settles (see tickCorpse → 'playerCorpseSettled'); a tombstone rises then.
+    if (ctx.rigidBodies) {
+      this.corpse = ctx.rigidBodies.spawn({ kind: 'box', halfW: 3, halfH: 8 }, player.x, player.y - 8, {
+        density: 1,
+        friction: 0.7,
+        restitution: 0.28,
+        vx: player.vx * 0.9 + (Math.random() - 0.5) * 1.2,
+        vy: Math.min(player.vy, 0) - 1.6,
+        va: (Math.random() - 0.5) * 0.5 - player.vx * 0.04,
+        tag: 'player-corpse',
+        color: packRGB(70, 110, 190),
+      });
+      this.corpseSettled = false;
+      this.corpseT = 0;
+    }
     ctx.audio.squelch();
     ctx.audio.boom(10);
     ctx.fx.screenShake = 0.05;
@@ -493,6 +612,29 @@ export class PlayerControl implements PlayerControlApi {
       level: level?.name ?? 'Arena',
       gold: ctx.state.score,
     });
+  }
+
+  /** Watch the death ragdoll: once it sleeps (or after a timeout so the UI is
+   *  never stranded) mark it settled — the renderer raises a tombstone and the
+   *  game-over overlay reveals. Runs every frame while a corpse exists. */
+  private tickCorpse(ctx: Ctx): void {
+    const corpse = this.corpse;
+    if (!corpse) return;
+    this.corpseT++;
+    if (!this.corpseSettled && (corpse.sleeping || this.corpseT > 240)) {
+      this.corpseSettled = true;
+      corpse.data = { settled: true }; // the renderer reads this to raise the tombstone
+      ctx.audio.tone(150, 320, 0.32, 'sine', 0.09); // a low knell
+      ctx.events.emit('playerCorpseSettled');
+    }
+  }
+
+  /** Remove the death ragdoll + tombstone (on respawn / death-clear). */
+  private clearCorpse(ctx: Ctx): void {
+    if (this.corpse) ctx.rigidBodies.remove(this.corpse);
+    this.corpse = null;
+    this.corpseSettled = false;
+    this.corpseT = 0;
   }
 
   /** Original: findSpawnPoint() — lines 1589-1606. */
@@ -530,6 +672,8 @@ export class PlayerControl implements PlayerControlApi {
   respawn(): void {
     const ctx = this.ctx;
     const player = ctx.player;
+    this.clearCorpse(ctx); // remove the death ragdoll + tombstone
+    this.releaseVine(ctx);
 
     // Descent (Wave B): come back at the last lit waystone (or the level
     // spawn) with the world UNTOUCHED — enemies, scars, and hostile fire all
@@ -594,7 +738,9 @@ export class PlayerControl implements PlayerControlApi {
   update(ctx: Ctx): void {
     const player = ctx.player;
     const world = ctx.world;
+    this.tickCorpse(ctx); // runs while dead too (watches the ragdoll settle)
     if (ctx.state.mode !== 'play' || player.dead) return;
+    if (this.swinging) { this.updateSwing(ctx); return; } // pendulum replaces normal movement
     if (this.kickCooldownT > 0) this.kickCooldownT--;
 
     // Near death, you hear it: a slow heartbeat under 25% HP, urgent under 12%.

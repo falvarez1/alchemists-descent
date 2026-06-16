@@ -463,6 +463,10 @@ export class InputManager {
       else if (e.code === 'KeyX' && !ctx.player.climbing) ctx.input.drinkHeld = true;
       else if (e.code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing)
         ctx.playerCtl.kick(ctx);
+      else if (e.code === 'KeyG' && !e.repeat && !ctx.player.dead && !ctx.player.climbing) {
+        // hold G: latch a hanging vine to swing, else carry a body; release to let go/throw
+        if (!ctx.playerCtl.grabVine(ctx)) ctx.rigidBodies.grab(ctx);
+      }
       else if (e.code.startsWith('Digit')) {
         const n = parseInt(e.code.slice(5)) - 1;
         // Wave D: digits pick wands first, then the Noita-like potion belt.
@@ -481,6 +485,10 @@ export class InputManager {
     else if (e.code === 'KeyE') ctx.input.siphonHeld = false;
     else if (e.code === 'KeyQ') ctx.input.pourHeld = false;
     else if (e.code === 'KeyX') ctx.input.drinkHeld = false;
+    else if (e.code === 'KeyG') {
+      ctx.playerCtl.releaseVine(ctx); // let go of a vine swing...
+      ctx.rigidBodies.release(ctx); // ...or throw the carried body (whichever is active)
+    }
   }
 
   private stageElement(): HTMLElement | null {

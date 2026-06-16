@@ -163,8 +163,12 @@ export class Hud {
     });
 
     ctx.events.on('playerDied', ({ depth, level, gold }) => {
+      // Prep the overlay text but DON'T show it yet — the wizard ragdolls first.
       el('go-wave').textContent = 'D' + depth + ' - ' + level.toUpperCase();
       el('go-gold').textContent = String(gold);
+    });
+    ctx.events.on('playerCorpseSettled', () => {
+      // The corpse has come to rest (tombstone is up) — now offer the respawn.
       el('gameover-overlay').classList.add('visible');
     });
 

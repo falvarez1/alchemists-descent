@@ -10,8 +10,10 @@ import type { CardId } from '@/core/types';
 export interface EventMap {
   /** Gold total changed — HUD score readouts re-render. */
   scoreChanged: { score: number };
-  /** Player hit 0 HP — UI shows the game-over overlay. */
+  /** Player hit 0 HP — UI preps the game-over text (overlay deferred to the ragdoll settle). */
   playerDied: { depth: number; level: string; gold: number };
+  /** The death ragdoll has settled (or timed out) — UI reveals the game-over overlay. */
+  playerCorpseSettled: undefined;
   /** Player came back — UI hides the game-over overlay. */
   playerRespawned: undefined;
   /** Death UI should clear without triggering gameplay respawn side effects. */

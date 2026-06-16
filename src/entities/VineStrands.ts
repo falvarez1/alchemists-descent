@@ -64,6 +64,10 @@ interface VineStrand extends VineStrandView {
   anchorX?: number;
   anchorY?: number;
   thickness?: number;
+  /** Player is swinging on this strand: it lays taut from anchor to (grabX,grabY). */
+  grabbed?: boolean;
+  grabX?: number;
+  grabY?: number;
 }
 
 export class VineStrands implements VineStrandsApi {
@@ -200,6 +204,49 @@ export class VineStrands implements VineStrandsApi {
     });
   }
 
+  grabSwing(px: number, py: number, maxDist: number): { anchorX: number; anchorY: number; length: number } | null {
+    let best: VineStrand | null = null;
+    let bestD = maxDist * maxDist;
+    for (const s of this.strands) {
+      if (!s.persistent) continue;
+      for (const n of s.nodes) {
+        const dx = n.x - px;
+        const dy = n.y - py;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD) {
+          bestD = d2;
+          best = s;
+        }
+      }
+    }
+    if (!best) return null;
+    best.grabbed = true;
+    best.grabX = px;
+    best.grabY = py;
+    const ax = best.anchorX ?? best.nodes[0].x;
+    const ay = best.anchorY ?? best.nodes[0].y;
+    return { anchorX: ax, anchorY: ay, length: Math.hypot(px - ax, py - ay) };
+  }
+
+  driveSwing(px: number, py: number): void {
+    for (const s of this.strands) {
+      if (s.grabbed) {
+        s.grabX = px;
+        s.grabY = py;
+      }
+    }
+  }
+
+  releaseSwing(): void {
+    for (const s of this.strands) {
+      if (s.grabbed) {
+        s.grabbed = false;
+        s.grabX = undefined;
+        s.grabY = undefined;
+      }
+    }
+  }
+
   update(ctx: Ctx): void {
     for (let i = this.strands.length - 1; i >= 0; i--) {
       const strand = this.strands[i];
@@ -234,6 +281,22 @@ export class VineStrands implements VineStrandsApi {
 
   private stepStrand(ctx: Ctx, strand: VineStrand): void {
     strand.age++;
+    // Player swinging on this vine: lay it taut from the anchor to the grabbed
+    // hand point (the pendulum physics lives in PlayerControl).
+    if (strand.grabbed && strand.grabX !== undefined && strand.grabY !== undefined) {
+      const ax = strand.anchorX ?? strand.nodes[0].x;
+      const ay = strand.anchorY ?? strand.nodes[0].y;
+      const n = strand.nodes.length;
+      for (let i = 0; i < n; i++) {
+        const t = n > 1 ? i / (n - 1) : 0;
+        const nd = strand.nodes[i];
+        nd.x = ax + (strand.grabX - ax) * t;
+        nd.y = ay + (strand.grabY - ay) * t;
+        nd.px = nd.x;
+        nd.py = nd.y;
+      }
+      return;
+    }
     // A hanging rope/vine that loses the solid it hangs from (terrain or the
     // object dug/blasted away) stops being pinned and falls + settles like a cut
     // vine. Checked before integration so it releases the same frame.

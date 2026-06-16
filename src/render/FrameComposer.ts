@@ -508,6 +508,7 @@ export class FrameComposer implements PixelSurface {
     drawDigBeam(this, ctx);
 
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
+    this.drawPlayerRagdoll(ctx);
   }
 
   /** Rigid bodies: rotated boxes and circles, flat-shaded with a darker rim for
@@ -517,6 +518,7 @@ export class FrameComposer implements PixelSurface {
     if (ctx.state.mode !== 'play') return;
     const frame = ctx.state.frameCount;
     for (const b of ctx.rigidBodies.bodies) {
+      if (b.tag === 'player-corpse') continue; // drawn as a limp wizard in drawPlayerRagdoll
       let r = ((b.color >> 16) & 0xff) / 255;
       let g = ((b.color >> 8) & 0xff) / 255;
       let bl = (b.color & 0xff) / 255;
@@ -576,6 +578,59 @@ export class FrameComposer implements PixelSurface {
         }
       }
     }
+  }
+
+  /** The death ragdoll: a limp wizard (robe + hat) tumbling on the corpse body,
+   *  and a tombstone that rises once it settles. Replaces the live player sprite. */
+  private drawPlayerRagdoll(ctx: Ctx): void {
+    if (ctx.state.mode !== 'play') return;
+    const corpse = ctx.rigidBodies.bodies.find((b) => b.tag === 'player-corpse');
+    if (!corpse || corpse.shape.kind !== 'box') return;
+    const hw = corpse.shape.halfW;
+    const hh = corpse.shape.halfH;
+    const cx = corpse.x;
+    const cy = corpse.y;
+    const cos = Math.cos(corpse.angle);
+    const sin = Math.sin(corpse.angle);
+    const wx = (lx: number, ly: number): number => cx + lx * cos - ly * sin;
+    const wy = (lx: number, ly: number): number => cy + lx * sin + ly * cos;
+    const lt = this.light.sample(cx, cy);
+    const lr = Math.max(0.14, lt.r);
+    const lg = Math.max(0.14, lt.g);
+    const lb = Math.max(0.16, lt.b);
+    // ROBE — the rotated body box, blue with a darker rim, purple hood toward the head (−y).
+    for (let ly = -hh; ly <= hh; ly++) {
+      for (let lx = -hw; lx <= hw; lx++) {
+        const edge = Math.abs(lx) >= hw || Math.abs(ly) >= hh ? 0.6 : 1;
+        const hood = ly < 0 ? 0.32 : 0;
+        this.setPx(wx(lx, ly), wy(lx, ly), (0.26 + hood) * lr * edge, 0.4 * lg * edge, (0.74 - hood * 0.3) * lb * edge);
+      }
+    }
+    // HAT — a purple cone + brim just beyond the head (local −y), tumbling with the body.
+    for (let t = 0; t <= 5; t++) {
+      const w = Math.max(0, 4 - Math.floor(t * 0.7));
+      for (let dx = -w; dx <= w; dx++) this.setPx(wx(dx, -hh - 1 - t), wy(dx, -hh - 1 - t), 0.52 * lr, 0.26 * lg, 0.74 * lb);
+    }
+    for (let dx = -5; dx <= 5; dx++) this.setPx(wx(dx, -hh - 1), wy(dx, -hh - 1), 0.6 * lr, 0.32 * lg, 0.82 * lb);
+    // TOMBSTONE — rises once the corpse settles (world-upright marker + cross).
+    if (corpse.data?.settled === true || corpse.sleeping) this.drawTombstone(cx, cy - hh - 13);
+  }
+
+  /** A small arched grey headstone with a darker cross, dimly lit, world-upright. */
+  private drawTombstone(cx: number, topY: number): void {
+    const lt = this.light.sample(cx, topY + 6);
+    const lr = Math.max(0.24, lt.r);
+    const lg = Math.max(0.24, lt.g);
+    const lb = Math.max(0.26, lt.b);
+    for (let dy = 0; dy <= 12; dy++) {
+      const halfW = dy < 4 ? Math.floor(2 + dy * 0.7) : 5;
+      for (let dx = -halfW; dx <= halfW; dx++) {
+        const edge = Math.abs(dx) >= halfW || dy >= 12 ? 0.7 : 1;
+        this.setPx(cx + dx, topY + dy, 0.5 * lr * edge, 0.5 * lg * edge, 0.52 * lb * edge);
+      }
+    }
+    for (let dy = 3; dy <= 9; dy++) this.setPx(cx, topY + dy, 0.28 * lr, 0.28 * lg, 0.3 * lb);
+    for (let dx = -2; dx <= 2; dx++) this.setPx(cx + dx, topY + 5, 0.28 * lr, 0.28 * lg, 0.3 * lb);
   }
 
   private drawVineStrands(ctx: Ctx): void {

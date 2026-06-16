@@ -53,14 +53,16 @@ const r = await page.evaluate(async () => {
   const jumpedOff = p.y < preJumpY - 6;
   relInput();
 
-  // ---- B2b: player SHOVES a light wood crate by walking into it (clean floor) ----
+  // ---- B2b: player SHOVES a light wood crate by walking into it. Carve a clean
+  //      bed clear of the dispenser/lever furniture (x798/818) and stairs (x864). ----
   rb.clear();
-  const shove = box(800, 'wood');
+  for (let yy = 575; yy <= 599; yy++) for (let xx = 826; xx <= 862; xx++) ctx.world.clearCellAt(ctx.world.idx(xx, yy));
+  const shove = box(840, 'wood');
   tick(40);
   const sx0 = shove.x;
-  placePlayer(shove.x - 10, 599);
+  placePlayer(shove.x - 10, 599); // player at ~830
   ctx.input.keys.right = true;
-  tick(30); // stops well short of the staircase at x864
+  tick(12); // crate ends ~858, still on open floor (short of the staircase at 864)
   ctx.input.keys.right = false;
   const shovePush = shove.x - sx0;
   const playerLeftOfCrate = p.x < shove.x;

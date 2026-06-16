@@ -47,6 +47,13 @@ const SHATTER_POWER = 1.5; // ...and strength·falloff ≥ this (a bomb shatters
 const SHATTER_PIECES = 3; // small crates a large one breaks into
 const WATER_DRAG = 0.15; // per-frame velocity damp while fully submerged (viscosity)
 const SPLASH_MIN_SPEED = 1.2 * PF; // min downward speed (cells/s) to splash on water entry
+const GRAB_REACH = 18; // cells in front of the player a body can be grabbed from
+const GRAB_ARC = 1.1; // grab cone half-angle (radians)
+const GRAB_MASS_MAX = 200; // heaviest body the player can grab (large-metal is too heavy)
+const GRAB_HOLD_DIST = 12; // distance the held body floats in front of the hands
+const GRAB_STIFFNESS = 0.45; // per-frame fraction of the gap the held body closes
+const GRAB_MAX_SPEED = 7; // cap on the held body's tracking speed (cells/frame)
+const THROW_SPEED = 9; // launch speed when the held body is thrown (cells/frame)
 
 type RWorld = InstanceType<typeof RAPIER.World>;
 type RBody = InstanceType<typeof RAPIER.RigidBody>;
@@ -63,6 +70,8 @@ export class RigidBodies implements RigidBodiesApi {
   private readonly terrainStale = new Map<number, number>();
   private readonly desired = new Set<number>();
   private nextId = 1;
+  /** The body the player is currently carrying (grab/throw), or null. */
+  private held: RigidBody | null = null;
 
   constructor(private readonly ctx: Ctx) {
     this.world = new RAPIER.World({ x: 0, y: GRAVITY });
@@ -136,6 +145,7 @@ export class RigidBodies implements RigidBodiesApi {
   }
 
   clear(): void {
+    this.held = null;
     for (const rb of this.handles.values()) this.world.removeRigidBody(rb);
     this.handles.clear();
     this.bodies.length = 0;
@@ -186,6 +196,82 @@ export class RigidBodies implements RigidBodiesApi {
       }
     }
     return null;
+  }
+
+  grab(ctx: Ctx): void {
+    if (this.held) return;
+    const p = ctx.player;
+    if (p.dead || p.climbing || ctx.state.mode !== 'play') return;
+    const ox = p.x;
+    const oy = p.y - 8;
+    const dirX = Math.cos(p.aimAngle);
+    const dirY = Math.sin(p.aimAngle);
+    const cosArc = Math.cos(GRAB_ARC);
+    let best: RigidBody | null = null;
+    let bestD = Infinity;
+    for (const body of this.bodies) {
+      if (body.kind !== 'dynamic') continue;
+      const mass = body.invMass && body.invMass > 0 ? 1 / body.invMass : Infinity;
+      if (mass > GRAB_MASS_MAX) continue;
+      const dx = body.x - ox;
+      const dy = body.y - oy;
+      const d = Math.hypot(dx, dy) || 0.001;
+      const reach = GRAB_REACH + (body.shape.kind === 'circle' ? body.shape.radius : 5);
+      if (d > reach) continue;
+      if ((dx / d) * dirX + (dy / d) * dirY < cosArc) continue;
+      if (d < bestD) {
+        bestD = d;
+        best = body;
+      }
+    }
+    if (!best) return;
+    this.held = best;
+    ctx.audio.tone(320, 220, 0.06, 'square', 0.08); // grab snap
+  }
+
+  release(ctx: Ctx): void {
+    const held = this.held;
+    if (!held) return;
+    this.held = null;
+    const rb = this.handles.get(held);
+    if (!rb) return;
+    const p = ctx.player;
+    const vx = (Math.cos(p.aimAngle) * THROW_SPEED + p.vx * 0.5) * PF;
+    const vy = (Math.sin(p.aimAngle) * THROW_SPEED + p.vy * 0.5) * PF;
+    rb.setLinvel({ x: vx, y: vy }, true);
+    rb.setAngvel((Math.random() - 0.5) * 6, true);
+    held.vx = vx / PF;
+    held.vy = vy / PF;
+    ctx.audio.tone(210, 90, 0.1, 'square', 0.09); // throw
+  }
+
+  /** Track the held body to the hand point each frame (stays dynamic so it still
+   *  bumps the world); drops it if the body's gone or the player died. */
+  private trackHeld(ctx: Ctx): void {
+    const held = this.held;
+    if (!held) return;
+    const rb = this.handles.get(held);
+    const p = ctx.player;
+    if (!rb || p.dead || ctx.state.mode !== 'play') {
+      this.held = null;
+      return;
+    }
+    const hx = p.x + Math.cos(p.aimAngle) * GRAB_HOLD_DIST;
+    const hy = p.y - 8 + Math.sin(p.aimAngle) * GRAB_HOLD_DIST;
+    const t = rb.translation();
+    let vx = (hx - t.x) * GRAB_STIFFNESS * PF;
+    let vy = (hy - t.y) * GRAB_STIFFNESS * PF;
+    const cap = GRAB_MAX_SPEED * PF;
+    const sp = Math.hypot(vx, vy);
+    if (sp > cap) {
+      const s = cap / sp;
+      vx *= s;
+      vy *= s;
+    }
+    rb.setLinvel({ x: vx, y: vy }, true);
+    rb.setAngvel(rb.angvel() * 0.55, true);
+    held.vx = vx / PF;
+    held.vy = vy / PF;
   }
 
   applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void {
@@ -291,6 +377,7 @@ export class RigidBodies implements RigidBodiesApi {
       body.sleeping = rb.isSleeping();
     }
     this.reactBodies(ctx);
+    this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
     this.resolvePlayer(ctx);
   }
 
@@ -407,11 +494,13 @@ export class RigidBodies implements RigidBodiesApi {
     for (let k = 0; k < n; k++) {
       const ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.7; // up + spread
       const sp = 0.7 + Math.random() * speed * 0.6;
+      // erupt ABOVE the body (over air) so droplets arc up and read as a splash
+      // instead of being absorbed the instant they spawn inside the pool.
       ctx.particles.spawn(
         body.x + (Math.random() * 2 - 1) * ex,
-        body.y + ex * 0.5,
+        body.y - ex,
         Math.cos(ang) * sp,
-        Math.sin(ang) * sp,
+        Math.sin(ang) * sp - 0.6,
         Cell.Water,
         color ? color() : packRGB(60, 120, 200),
         36,
@@ -505,10 +594,11 @@ export class RigidBodies implements RigidBodiesApi {
    */
   private resolvePlayer(ctx: Ctx): void {
     const player = ctx.player;
-    if (ctx.state.mode !== 'play' || player.dead || player.climbing) return;
+    if (ctx.state.mode !== 'play' || player.dead || player.climbing || player.swinging) return;
     const bodyH = player.crawling ? PLAYER_CRAWL_H : PLAYER_H;
     for (const body of this.bodies) {
       if (body.kind !== 'dynamic') continue;
+      if (body === this.held) continue; // don't shove the player off its own carried body
       if (Math.abs(body.x - player.x) > 48 || Math.abs(body.y - player.y) > 48) continue;
       this.resolvePlayerVsBody(player, body, bodyH);
     }
@@ -547,14 +637,16 @@ export class RigidBodies implements RigidBodiesApi {
     }
 
     // 3) Side contact: shove a light body aside, be blocked by a heavy one.
-    //    Resolve to the NEAREST face (minimum penetration) so the player can
-    //    never be flipped across the body's centre and ejected out the far side.
+    //    Resolve to the side the player is APPROACHING FROM (his trailing side),
+    //    chosen by relative velocity — so a player faster than the crate he's
+    //    pushing never crosses its centre and tunnels through, and a crate wedged
+    //    against a wall blocks him instead of ejecting him out the far face.
     const mass = body.invMass && body.invMass > 0 ? 1 / body.invMass : Infinity;
     const light = mass <= PUSH_MASS_MAX;
     const shove = Math.max(Math.abs(player.vx), MIN_PUSH) * PUSH_TRANSFER;
-    const penLeft = right - bL; // depth if we push the player left (off the body's left face)
-    const penRight = bR - left; // depth if we push the player right
-    if (penLeft <= penRight) {
+    const relVx = player.vx - body.vx;
+    const pushLeft = relVx > 0.05 ? true : relVx < -0.05 ? false : player.x < body.x;
+    if (pushLeft) {
       if (light) this.applyImpulse(body, shove, -0.03);
       player.x = bL - PLAYER_HALF_W;
       if (light) player.vx *= 0.6;

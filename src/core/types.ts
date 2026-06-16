@@ -107,6 +107,8 @@ export interface PlayerState {
   kickT: number;
   /** Direction (±1) the last kick was aimed (for the pose). */
   kickDir: number;
+  /** True while swinging on a vine (pendulum owns movement; body-resolve skips him). */
+  swinging?: boolean;
   /** Hurt stagger lean (frames left) in staggerDir (+-1, away from the hit). */
   staggerT: number;
   staggerDir: number;
@@ -1045,6 +1047,11 @@ export interface RigidBodiesApi {
   /** The dynamic body whose shape contains world point (x,y) (small grace
    *  margin), or null. Used by projectiles to detect a body strike. */
   hitTest(x: number, y: number): RigidBody | null;
+  /** Grab the nearest light body in front of the player (held = tracks the hand
+   *  point each frame). No-op if already holding or nothing's in reach. */
+  grab(ctx: Ctx): void;
+  /** Throw the held body along the aim (carrying the player's momentum), or no-op. */
+  release(ctx: Ctx): void;
 }
 
 export interface VineStrandNodeView {
@@ -1076,6 +1083,13 @@ export interface VineStrandsApi {
   update(ctx: Ctx): void;
   clear(): void;
   applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void;
+  /** Latch the nearest hanging vine near (px,py) for a swing — returns its pivot
+   *  (anchor) + rope length, or null. Marks the strand taut to the grab point. */
+  grabSwing(px: number, py: number, maxDist: number): { anchorX: number; anchorY: number; length: number } | null;
+  /** Move the grabbed strand's hand point (drives the taut rope visual). */
+  driveSwing(px: number, py: number): void;
+  /** Let go of any grabbed strand (it returns to free Verlet sway). */
+  releaseSwing(): void;
 }
 
 export interface PlayerControlApi {
@@ -1087,6 +1101,10 @@ export interface PlayerControlApi {
   /** Melee kick toward the aim: shoves bodies (mass-aware) + enemies in a short
    *  cone, with self-recoil off solid hits (kick-jump). Gated by a cooldown. */
   kick(ctx: Ctx): void;
+  /** Latch onto the nearest hanging vine for a pendulum swing; true if latched. */
+  grabVine(ctx: Ctx): boolean;
+  /** Let go of a vine swing (keeps the launch velocity). */
+  releaseVine(ctx: Ctx): void;
   kill(): void;
   respawn(): void;
   findSpawnPoint(): { x: number; y: number };
