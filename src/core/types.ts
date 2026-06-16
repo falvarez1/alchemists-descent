@@ -984,6 +984,10 @@ export interface RigidBody {
   color: number;
   /** What it's made of (drives mass/buoyancy/flammability/conduction). */
   material?: BodyMaterial;
+  /** Density vs water (=1) — drives buoyancy (P5: <1 floats, >1 sinks). */
+  density?: number;
+  /** P5: true while the body's footprint overlaps water (splash-on-entry edge). */
+  inWater?: boolean;
   grounded?: boolean;
   /** Mirror of Rapier's sleep state (settled bodies sleep). */
   sleeping: boolean;
@@ -1328,7 +1332,8 @@ export type MechanismKind =
   | 'plug' // real cells that FIRE once when enough of them are destroyed
   | 'sensor' // generic bounded-zone reader: heat/liquid/weight/charge/material
   | 'counterweight' // weight pan that latches permanently at its threshold
-  | 'relay'; // one-shot event handoff: inputs satisfied -> delay -> fire
+  | 'relay' // one-shot event handoff: inputs satisfied -> delay -> fire
+  | 'dispenser'; // ACTUATOR: while its triggers fire, emits rigid bodies (cooldown + max-active cap)
 
 /**
  * A placed contraption. Doors are real Metal-cell spans that retract row by
@@ -1420,6 +1425,14 @@ export interface Mechanism {
   fuseT?: number;
   /** relay: world effect at its target on fire (default 'activate'). */
   outputAction?: 'activate' | 'ignite' | 'break' | 'strike';
+  /** dispenser: frames between emissions while triggered. */
+  dispCooldown?: number;
+  /** dispenser: max bodies kept alive (oldest despawned past this). */
+  dispMax?: number;
+  /** dispenser: emission cooldown countdown (transient). */
+  dispCoolT?: number;
+  /** dispenser: the live bodies it has emitted, oldest first (transient, not persisted). */
+  dispBodies?: RigidBody[];
 }
 
 /**

@@ -425,17 +425,23 @@ export function resolveRelativeCoord(raw: string, base: number): number | Comman
 function spawnRigidTest(ctx: Ctx, args: string[], kind: 'crate' | 'boulder'): CommandResult {
   const target = resolveTarget(ctx, args, kind);
   if (!target.ok) return target.result;
-  // Pull an optional material token (wood/metal/stone) out of the args.
+  // Pull optional material (wood/metal/stone) and size (small/large) tokens out.
   const MATERIALS: BodyMaterial[] = ['wood', 'metal', 'stone'];
   let material: BodyMaterial | undefined;
+  let size: 'small' | 'large' | undefined;
   const rest = target.args.filter((a) => {
     if ((MATERIALS as string[]).includes(a)) {
       material = a as BodyMaterial;
       return false;
     }
+    if (a === 'small' || a === 'large') {
+      size = a;
+      return false;
+    }
     return true;
   });
   const mat: BodyMaterial = material ?? (kind === 'boulder' ? 'stone' : 'wood');
+  const big = size === 'large';
   let n = 1;
   let coordAt = 0;
   if (rest.length === 1 || rest.length >= 3) {
@@ -456,12 +462,13 @@ function spawnRigidTest(ctx: Ctx, args: string[], kind: 'crate' | 'boulder'): Co
   } else if (rest.length - coordAt !== 0) {
     return result(false, `Usage: ${kind} [n] [x y] [--target ...]`, { code: 'usage' });
   }
+  const spacing = big ? 16 : 9;
   for (let i = 0; i < n; i++) {
-    const ox = x + i * 9;
-    if (kind === 'boulder') ctx.rigidBodies.spawn({ kind: 'circle', radius: 4 }, ox, y, { material: mat, restitution: 0.2, friction: 0.85 });
-    else ctx.rigidBodies.spawn({ kind: 'box', halfW: 3, halfH: 3 }, ox, y, { material: mat, restitution: 0.2, friction: 0.6 });
+    const ox = x + i * spacing;
+    if (kind === 'boulder') ctx.rigidBodies.spawn({ kind: 'circle', radius: big ? 7 : 4 }, ox, y, { material: mat, restitution: 0.2, friction: 0.85 });
+    else ctx.rigidBodies.spawn({ kind: 'box', halfW: big ? 6 : 3, halfH: big ? 6 : 3 }, ox, y, { material: mat, restitution: 0.2, friction: 0.6 });
   }
-  return result(true, `Dropped ${n} ${mat} ${kind}${n === 1 ? '' : 's'} at ${x},${y}.`, {
+  return result(true, `Dropped ${n} ${big ? 'large ' : ''}${mat} ${kind}${n === 1 ? '' : 's'} at ${x},${y}.`, {
     target: target.target,
     requested: { x, y, n },
     live: ctx.rigidBodies.bodies.length,
@@ -1890,14 +1897,14 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
 
   add({
     name: 'crate',
-    info: info('game.crate', 'Spawn Crate', 'crate [n] [x y] [--target ...]', 'Drop rigid-body test crates (boxes that fall, tumble, and collide).', 'game'),
+    info: info('game.crate', 'Spawn Crate', 'crate [n] [x y] [wood|metal|stone] [small|large] [--target ...]', 'Drop rigid-body test crates (boxes that fall, tumble, collide; large ones resist kicks/blasts and shatter).', 'game'),
     run: (ctx, args) => spawnRigidTest(ctx, args, 'crate'),
     complete: (_ctx, req) => commandTargetCompletions(req),
   });
 
   add({
     name: 'boulder',
-    info: info('game.boulder', 'Spawn Boulder', 'boulder [n] [x y] [--target ...]', 'Drop rigid-body boulders (circles that roll down slopes).', 'game'),
+    info: info('game.boulder', 'Spawn Boulder', 'boulder [n] [x y] [wood|metal|stone] [small|large] [--target ...]', 'Drop rigid-body boulders (circles that roll down slopes; large ones resist kicks/blasts).', 'game'),
     run: (ctx, args) => spawnRigidTest(ctx, args, 'boulder'),
     complete: (_ctx, req) => commandTargetCompletions(req),
   });

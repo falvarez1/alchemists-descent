@@ -23,10 +23,10 @@ await page.waitForTimeout(400);
 
 const r = await page.evaluate(async () => {
   const ctx = window.__game.ctx;
-  const w = ctx.world;
   const tick = (n) => { for (let f = 0; f < n; f++) window.__game.tick(); };
   await ctx.console.exec('run test --level physics-test --world campaign-level');
   tick(20);
+  const w = ctx.world; // capture AFTER the level loads — run test swaps ctx.world
   const rb = ctx.rigidBodies;
   const box = (x, material, half = 3.5, y = 596) => rb.spawn({ kind: 'box', halfW: half, halfH: half }, x, y, { material, friction: 0.6, restitution: 0.15 });
   const FIRE = 5; // Cell.Fire
@@ -107,7 +107,7 @@ const r = await page.evaluate(async () => {
   tick(40);
   const ashX = Math.round(c.x);
   const ashYc = Math.round(c.y);
-  const before = countSolid(ashX - 3, ashX + 3, 593, 596);
+  const before = countSolid(ashX - 4, ashX + 4, 593, 599); // ash powder settles toward the floor
   // engulf the body's footprint in fire (3 cols × 4 rows, inside the scan margin)
   for (let fy = ashYc - 2; fy <= ashYc + 1; fy++) {
     for (const fx of [ashX - 3, ashX, ashX + 3]) {
@@ -122,7 +122,7 @@ const r = await page.evaluate(async () => {
   const n0 = rb.bodies.length;
   tick(230);
   const burnedAway = rb.bodies.length < n0;
-  const ashAfter = countSolid(ashX - 3, ashX + 3, 593, 596);
+  const ashAfter = countSolid(ashX - 4, ashX + 4, 593, 599);
 
   return {
     digPush: +digPush.toFixed(2),

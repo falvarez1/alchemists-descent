@@ -1,4 +1,4 @@
-import type { Ctx, LevelRuntime, Mechanism, MechanismsApi } from '@/core/types';
+import type { BodyMaterial, Ctx, LevelRuntime, Mechanism, MechanismsApi } from '@/core/types';
 import { hash2 } from '@/core/math';
 import { mechanismTriggersFor } from '@/core/mechanisms';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
@@ -652,6 +652,51 @@ export function makeRelay(
   return m;
 }
 
+/**
+ * DISPENSER: an ACTUATOR (linked triggers point at it, like a door). While its
+ * triggers are satisfied it emits a rigid body of random size/material from its
+ * mouth every `cooldown` frames, keeping at most `maxActive` alive (oldest
+ * despawned) so it can never flood the sim. A reusable level primitive — the
+ * seed for conveyors/crushers/fans later.
+ */
+export function makeDispenser(
+  world: World,
+  list: Mechanism[],
+  x: number,
+  y: number,
+  opts?: { cooldown?: number; maxActive?: number },
+): Mechanism {
+  const m: Mechanism = {
+    id: allocId(list),
+    kind: 'dispenser',
+    x,
+    y,
+    w: 1,
+    h: 1,
+    state: 0,
+    targetId: -1,
+    dispCooldown: Math.max(4, Math.floor(opts?.cooldown ?? 24)),
+    dispMax: Math.max(1, Math.floor(opts?.maxActive ?? 8)),
+  };
+  list.push(m);
+  // A metal hopper funnel converging to a mouth at (x, y); bodies drop from just
+  // below it. The body doubles as the fail-open footprint (wreck it → it stops).
+  const body: Array<[number, number]> = [];
+  const place = (cx: number, cy: number): void => {
+    if (!world.inBounds(cx, cy)) return;
+    const i = world.idx(cx, cy);
+    world.types[i] = Cell.Metal;
+    world.colors[i] = packRGB(120, 122, 138);
+    body.push([cx, cy]);
+  };
+  for (let d = 0; d <= 4; d++) {
+    place(x - 5 + d, y - 5 + d); // left funnel wall
+    place(x + 5 - d, y - 5 + d); // right funnel wall
+  }
+  m.body = body;
+  return m;
+}
+
 /* ---------------- the runtime system ---------------- */
 
 export class Mechanisms implements MechanismsApi {
@@ -896,6 +941,10 @@ export class Mechanisms implements MechanismsApi {
       }
       if (door.kind === 'relay') {
         this.updateRelay(ctx, door, runtime);
+        continue;
+      }
+      if (door.kind === 'dispenser') {
+        this.updateDispenser(ctx, door, runtime);
         continue;
       }
       if (door.kind !== 'door') continue;
@@ -1210,6 +1259,51 @@ export class Mechanisms implements MechanismsApi {
     } else if (action === 'break') {
       if (target && target.kind === 'plug') this.breakPlug(ctx, target, true);
     }
+  }
+
+  /**
+   * DISPENSER actuator update: while its linked triggers are satisfied, emit a
+   * body every cooldown; capped at dispMax (oldest despawned). A wrecked
+   * dispenser (groaning) stops.
+   */
+  private updateDispenser(ctx: Ctx, m: Mechanism, runtime: LevelRuntime): void {
+    if (m.broken !== undefined) return;
+    if (m.dispCoolT !== undefined && m.dispCoolT > 0) m.dispCoolT--;
+    const triggers = mechanismTriggersFor(runtime, m.id, m);
+    if (triggers.length === 0) return;
+    if (!this.aggregateWant(ctx, m, triggers)) return;
+    if (m.dispCoolT !== undefined && m.dispCoolT > 0) return;
+    this.dispense(ctx, m);
+    m.dispCoolT = m.dispCooldown ?? 24;
+  }
+
+  /** Emit one rigid body from the dispenser's mouth, honoring the active cap. */
+  private dispense(ctx: Ctx, m: Mechanism): void {
+    const bodies = (m.dispBodies ??= []);
+    const cap = m.dispMax ?? 8;
+    while (bodies.length >= cap) {
+      const old = bodies.shift();
+      if (old) ctx.rigidBodies.remove(old);
+    }
+    const MATS: BodyMaterial[] = ['wood', 'wood', 'stone', 'metal']; // wood-weighted mix
+    const mat = MATS[Math.floor(Math.random() * MATS.length)];
+    const half = Math.random() < 0.28 ? 5 : 3; // mostly small, the odd large
+    const body = ctx.rigidBodies.spawn(
+      { kind: 'box', halfW: half, halfH: half },
+      m.x,
+      m.y + 1 + half,
+      {
+        material: mat,
+        friction: 0.6,
+        restitution: 0.2,
+        vx: (Math.random() - 0.5) * 0.8,
+        vy: 0.6,
+        va: (Math.random() - 0.5) * 0.4,
+      },
+    );
+    bodies.push(body);
+    ctx.particles.burst(m.x, m.y + 1, 6, null, () => packRGB(180, 172, 150), 1.0, { grav: 0.06 });
+    ctx.audio.tone(190, 130, 0.07, 'square', 0.1);
   }
 
   /**

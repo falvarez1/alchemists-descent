@@ -147,7 +147,28 @@ P4 dispenser → P5 water.** Each lands as a verified increment.
   Lightning conducts into conductive (metal) bodies in `Lightning.cast` (bolt terminates +
   charges/zaps) but passes a non-conductive one. Burning/frozen tint in
   `FrameComposer.drawRigidBodies`. `verify-reactions.mjs` (9/9).
-- **NEXT: P3** larger crates + size×material variety (then P4 dispenser, P5 water).
+- **P3 larger crates + size×material variety — DONE.** Mass = area×density (Rapier) makes a
+  large-metal crate near-immovable and a small-wood one kickable — all the force code is already
+  mass-aware. Size token on console `crate`/`boulder` (`small`/`large`); arena seeds a large metal
+  anchor + a large wood crate. **Shatter cascade:** `RigidBodies.applyRadialImpulse` shatters a
+  large BRITTLE (wood/stone, not metal) body caught in a strong close blast into `SHATTER_PIECES`
+  smaller crates of the same material + a strewn rubble pile (`shatterBody`, deferred so it doesn't
+  mutate the body list mid-iteration). `verify-bigcrates.mjs` (8/8).
+- **P4 dispenser entity + lever — DONE.** New `dispenser` mechanism kind (an ACTUATOR, like
+  door/valve/relay): while its linked triggers are satisfied it emits a random-size/material rigid
+  body from its hopper mouth every `dispCooldown` frames, capped at `dispMax` (oldest despawned) so
+  it can't flood the sim — wired into `Mechanisms` (`makeDispenser`, `updateDispenser`/`dispense`).
+  Arena seeds a lever-wired hopper. (Gotcha: `runtime.mechanismTriggers` is a cached index — invalidate
+  it after editing the list.) `verify-dispenser.mjs` (8/8).
+- **P5 water buoyancy + splash — DONE.** Each tick `RigidBodies.reactBodies` samples a body's
+  submerged footprint fraction → Archimedes buoyancy (`submerged × waterDensity/bodyDensity × g`
+  upward) + viscous linear/angular drag, so wood settles ~60% submerged and metal/stone sink to
+  the basin floor (material density drives it; `RigidBody.density` stored at spawn). A body first
+  plunging in fast ejects a fan of real `Cell.Water` particles (`splash`). `verify-water.mjs` (6/6).
+
+## ✅ PLAN COMPLETE
+All phases shipped & verified: B1 materials · B2 couplings · P1 kick · P2 reactions · P3 big
+crates/shatter · P4 dispenser · P5 water. Out-of-scope items below remain future work.
 
 ## Ropes / vines — DONE (separate Verlet system, not Rapier)
 Handled by `VineStrands`, not the rigid bodies. `VineStrands.addHanging(x, y, length,

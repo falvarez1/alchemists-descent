@@ -2,8 +2,8 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Ctx, RigidBodiesApi, RigidBody, RigidShape, SpawnBodyOpts } from '@/core/types';
 import { PLAYER_CRAWL_H, PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { blocksEntity, Cell } from '@/sim/CellType';
-import { ashColor, fireColor, packRGB, smokeColor } from '@/sim/colors';
-import { bodyMaterialDef } from '@/entities/bodyMaterials';
+import { ashColor, COLOR_FN, fireColor, packRGB, smokeColor } from '@/sim/colors';
+import { bodyMaterialDef, WATER_DENSITY } from '@/entities/bodyMaterials';
 import type { World } from '@/sim/World';
 import { RAPIER } from '@/entities/rapierInit';
 
@@ -41,6 +41,12 @@ const FROST_CONTACT_FRAMES = 50; // freeze duration refreshed each frame a body 
 const FROST_DAMP = 0.65; // per-frame velocity retention while frozen (locks it in place)
 const DIG_PUSH = 24; // mass-aware momentum the dig beam imparts to bodies in its path
 const DIG_REACH = 6; // perpendicular cells the dig beam shoves bodies within
+const SHATTER_RADIUS_MIN = 6.5; // bodies bigger than this (diagonal) shatter under a strong close blast
+const SHATTER_FALLOFF = 0.4; // blast must land within (1 - d/radius) ≥ this to shatter
+const SHATTER_POWER = 1.5; // ...and strength·falloff ≥ this (a bomb shatters, a weak spark only shoves)
+const SHATTER_PIECES = 3; // small crates a large one breaks into
+const WATER_DRAG = 0.15; // per-frame velocity damp while fully submerged (viscosity)
+const SPLASH_MIN_SPEED = 1.2 * PF; // min downward speed (cells/s) to splash on water entry
 
 type RWorld = InstanceType<typeof RAPIER.World>;
 type RBody = InstanceType<typeof RAPIER.RigidBody>;
@@ -58,7 +64,7 @@ export class RigidBodies implements RigidBodiesApi {
   private readonly desired = new Set<number>();
   private nextId = 1;
 
-  constructor(ctx: Ctx) {
+  constructor(private readonly ctx: Ctx) {
     this.world = new RAPIER.World({ x: 0, y: GRAVITY });
     this.world.integrationParameters.dt = DT;
     // Bodies are per-level transient state (like projectiles/particles).
@@ -108,6 +114,7 @@ export class RigidBodies implements RigidBodiesApi {
       friction,
       color,
       material: opts.material,
+      density,
       sleeping: false,
       tag: opts.tag,
       data: opts.data,
@@ -183,6 +190,7 @@ export class RigidBodies implements RigidBodiesApi {
 
   applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void {
     if (radius <= 0) return;
+    let toShatter: RigidBody[] | null = null;
     for (const body of this.bodies) {
       if (body.kind !== 'dynamic') continue;
       const rb = this.handles.get(body);
@@ -193,6 +201,19 @@ export class RigidBodies implements RigidBodiesApi {
       const d = Math.hypot(dx, dy);
       if (d > radius) continue;
       const falloff = 1 - d / radius;
+      // A large BRITTLE body (wood/stone — one that leaves rubble; metal is tough)
+      // caught in a strong, close blast SHATTERS into smaller crates instead of
+      // just being flung (deferred — don't mutate the bodies list mid-iteration).
+      const brittle = body.material ? bodyMaterialDef(body.material).gore !== null : false;
+      if (
+        brittle &&
+        shapeRadius(body.shape) >= SHATTER_RADIUS_MIN &&
+        falloff >= SHATTER_FALLOFF &&
+        strength * falloff >= SHATTER_POWER
+      ) {
+        (toShatter ??= []).push(body);
+        continue;
+      }
       // Mass-scaled so material matters: a light wood crate is flung, a heavy
       // metal one barely budges (relative to a reference-mass crate).
       const massScale = REFERENCE_MASS / Math.max(REFERENCE_MASS * 0.25, rb.mass());
@@ -203,6 +224,54 @@ export class RigidBodies implements RigidBodiesApi {
       const br = shapeRadius(body.shape) * 0.5;
       this.applyImpulseAt(body, nx * mag, ny * mag - mag * 0.35, t.x - nx * br, t.y - ny * br);
     }
+    if (toShatter) for (const body of toShatter) this.shatterBody(body, cx, cy);
+  }
+
+  /** A large body destroyed by a blast: scatter rubble cells + spawn smaller
+   *  crates of the same material, flung outward from the blast centre. */
+  private shatterBody(body: RigidBody, cx: number, cy: number): void {
+    const world = this.ctx.world;
+    const half = body.shape.kind === 'circle' ? body.shape.radius : body.shape.halfW;
+    const mat = body.material;
+    const gore = mat ? bodyMaterialDef(mat).gore : null;
+    const bx = body.x;
+    const by = body.y;
+    const friction = body.friction;
+    const restitution = body.restitution;
+    this.remove(body);
+    // Rubble: strew the material's gore cells across the wreck (metal leaves none).
+    // Stamp over any OPEN cell (empty or the blast's fire/smoke) so the pile lands
+    // even amid an explosion's aftermath.
+    if (gore !== null) {
+      const tint = COLOR_FN[gore] ?? ashColor;
+      const x0 = Math.max(1, Math.floor(bx - half));
+      const x1 = Math.min(WIDTH - 2, Math.ceil(bx + half));
+      const y0 = Math.max(1, Math.floor(by - half));
+      const y1 = Math.min(HEIGHT - 2, Math.ceil(by + half));
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const idx = world.idx(x, y);
+          const t = world.types[idx];
+          if ((t === Cell.Empty || t === Cell.Fire || t === Cell.Smoke || t === Cell.Steam) && Math.random() < 0.55) {
+            world.replaceCellAt(idx, gore, tint());
+          }
+        }
+      }
+    }
+    // Pieces: smaller crates of the same material, flung away from the blast.
+    const ph = Math.max(2.5, half * 0.42);
+    for (let i = 0; i < SHATTER_PIECES; i++) {
+      const a = (i / SHATTER_PIECES) * Math.PI * 2 + Math.random();
+      const sx = bx + Math.cos(a) * half * 0.6;
+      const sy = by + Math.sin(a) * half * 0.6;
+      const piece = this.spawn({ kind: 'box', halfW: ph, halfH: ph }, sx, sy, { material: mat, friction, restitution });
+      const dx = sx - cx;
+      const dy = sy - cy;
+      const dd = Math.hypot(dx, dy) || 1;
+      this.applyImpulse(piece, (dx / dd) * 3.5, (dy / dd) * 3.5 - 1.5);
+    }
+    this.ctx.particles.burst(bx, by, 18, null, () => packRGB(160, 140, 110), 2.4, { grav: 0.05 });
+    this.ctx.audio.noiseBurst(0.14, 300, 0.1);
   }
 
   update(ctx: Ctx): void {
@@ -282,8 +351,74 @@ export class RigidBodies implements RigidBodiesApi {
         if (ctx.state.frameCount % 8 === 0)
           ctx.particles.spawn(body.x + (Math.random() - 0.5) * 4, body.y + (Math.random() - 0.5) * 4, 0, 0.1, null, packRGB(180, 225, 255), 16, { glow: 1.4 });
       }
+
+      // WATER — Archimedes buoyancy (material vs water) + viscous drag, with a
+      // splash of real water cells when a body first plunges in fast.
+      const submerged = this.submergedFraction(world, body);
+      if (submerged > 0.05) {
+        const rb = this.handles.get(body);
+        if (rb) {
+          const v = rb.linvel();
+          if (body.inWater !== true && v.y > SPLASH_MIN_SPEED) this.splash(ctx, body, v.y);
+          const density = Math.max(0.2, body.density ?? 1);
+          const buoy = submerged * (WATER_DENSITY / density) * GRAVITY * DT; // upward (−y)
+          const drag = 1 - Math.min(0.5, submerged * WATER_DRAG);
+          const nvx = v.x * drag;
+          const nvy = (v.y - buoy) * drag;
+          rb.setLinvel({ x: nvx, y: nvy }, true);
+          rb.setAngvel(rb.angvel() * drag, true);
+          body.vx = nvx / PF;
+          body.vy = nvy / PF;
+        }
+        body.inWater = true;
+      } else {
+        body.inWater = false;
+      }
     }
     this.digPush(ctx);
+  }
+
+  /** Fraction of a body's footprint cells currently filled with water (0..1). */
+  private submergedFraction(world: World, body: RigidBody): number {
+    const [ex, ey] = bodyExtents(body);
+    const x0 = Math.max(0, Math.floor(body.x - ex));
+    const x1 = Math.min(WIDTH - 1, Math.ceil(body.x + ex));
+    const y0 = Math.max(0, Math.floor(body.y - ey));
+    const y1 = Math.min(HEIGHT - 1, Math.ceil(body.y + ey));
+    const types = world.types;
+    let water = 0;
+    let total = 0;
+    for (let y = y0; y <= y1; y++) {
+      const row = y * WIDTH;
+      for (let x = x0; x <= x1; x++) {
+        total++;
+        if (types[row + x] === Cell.Water) water++;
+      }
+    }
+    return total > 0 ? water / total : 0;
+  }
+
+  /** Eject a fan of real water cells when a body plunges in (scaled by impact). */
+  private splash(ctx: Ctx, body: RigidBody, vySpeed: number): void {
+    const ex = bodyExtents(body)[0];
+    const speed = vySpeed / PF; // cells/frame
+    const n = Math.min(48, Math.floor(5 + speed * ex));
+    const color = COLOR_FN[Cell.Water];
+    for (let k = 0; k < n; k++) {
+      const ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.7; // up + spread
+      const sp = 0.7 + Math.random() * speed * 0.6;
+      ctx.particles.spawn(
+        body.x + (Math.random() * 2 - 1) * ex,
+        body.y + ex * 0.5,
+        Math.cos(ang) * sp,
+        Math.sin(ang) * sp,
+        Cell.Water,
+        color ? color() : packRGB(60, 120, 200),
+        36,
+        { grav: 0.08, glow: 0.4 },
+      );
+    }
+    ctx.audio.bubble();
   }
 
   /** True if any cell within `margin` of the body's footprint passes `test`. */

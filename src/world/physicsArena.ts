@@ -1,6 +1,7 @@
 import type { BodyMaterial, Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, packRGB } from '@/sim/colors';
+import { makeDispenser, makeLever } from '@/game/Mechanisms';
 
 /**
  * The "PHYSICS TEST ARENA" level (worldgraph id 'physics-test'): a large,
@@ -101,6 +102,14 @@ export function buildPhysicsArena(ctx: Ctx): void {
   crate(980, 470, 'wood'); // into the pool → floats (P5)
   crate(1040, 470, 'metal'); // into the pool → sinks
 
+  // LARGE crates (P3): mass scales area×density → the metal one is near-immovable
+  // (kick/blast resist), the wood one shatters into smaller crates when bombed.
+  const bigCrate = (x: number, y: number, material: BodyMaterial): void => {
+    rb.spawn({ kind: 'box', halfW: 6, halfH: 6 }, x, y, { material, friction: 0.7, restitution: 0.1 });
+  };
+  bigCrate(916, 588, 'metal');
+  bigCrate(936, 588, 'wood');
+
   // Ceiling beams with hanging ropes + thick vines into the player's walking path,
   // so you can brush/swing through them (persistent Verlet strands, player-reactive).
   const beam = (bx0: number, bx1: number): void => {
@@ -113,4 +122,14 @@ export function buildPhysicsArena(ctx: Ctx): void {
   vines.addHanging(740, 461, 135, { thickness: 1 }); // thin vine
   vines.addHanging(764, 461, 135, { thickness: 3 }); // thick vine
   vines.addHanging(904, 461, 135, { thickness: 2, color: packRGB(122, 88, 52) }); // a rope
+
+  // P4: a CRATE DISPENSER wired to a lever — pull the lever (E) and its hopper
+  // rains crates of random size/material onto the floor (cooldown + active cap).
+  const runtime = ctx.levels.current;
+  if (runtime) {
+    runtime.mechanisms.length = 0; // a clean test arena (no inherited mechanisms)
+    const disp = makeDispenser(w, runtime.mechanisms, 818, 558, { cooldown: 18, maxActive: 10 });
+    makeLever(runtime.mechanisms, 798, GROUND - 1, disp); // lever.targetId → dispenser
+    runtime.mechanismTriggers = undefined; // invalidate the cached trigger index so it rebuilds
+  }
 }
