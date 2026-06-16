@@ -303,6 +303,7 @@ export class Projectiles implements ProjectilesApi {
     ctx.rigidBodies.applyMomentumAt(body, (p.vx / spd) * push, (p.vy / spd) * push, p.x, p.y);
     switch (p.type) {
       case 'icelance':
+        body.frozenT = 90; // a frost lance freezes what it pierces
         return 'pierce';
       case 'bomb':
         p.vx *= -0.3;
@@ -326,9 +327,11 @@ export class Projectiles implements ProjectilesApi {
         this.triggerExplosion(ctx, p.x, p.y, 40, p.mul ?? 1);
         break;
       case 'iceshard':
+        body.frozenT = 90;
         freezeSplash(ctx, p.x, p.y, 7);
         break;
       case 'frostbolt':
+        body.frozenT = 90;
         ctx.particles.burst(p.x, p.y, 10, null, iceColor, 1.3, { glow: 1.5, grav: 0.02 });
         break;
       case 'acidglob':
@@ -775,7 +778,7 @@ export class Projectiles implements ProjectilesApi {
         // Rigid bodies are solid to player shots: a strike shoves + spins the
         // body (mass-aware — wood flies, metal resists), then the shot resolves
         // its terminal effect on the body (pierce/bounce/detonate per type).
-        if (!p.hostile && p.type !== 'warp' && p.type !== 'blackhole') {
+        if (ctx.rigidBodies && !p.hostile && p.type !== 'warp' && p.type !== 'blackhole') {
           const body = ctx.rigidBodies.hitTest(p.x, p.y);
           if (body) {
             const fate = this.impactBody(ctx, p, body);

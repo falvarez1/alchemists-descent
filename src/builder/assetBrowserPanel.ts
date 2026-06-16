@@ -96,7 +96,7 @@ const ORIGIN_FILTERS: Array<{ id: AssetOrigin; label: string }> = [
 export function renderAssetPlacementPanel(model: AssetPlacementPanelModel): string {
   const rows = model.records.length > 0
     ? model.records.map((record) => renderAssetPlacementRow(record, model.selectedId, model.armedId)).join('')
-    : `<div class="ba-placement-empty">${esc(model.emptyMessage)}</div>`;
+    : `<div class="ba-placement-empty b-empty">${esc(model.emptyMessage)}</div>`;
   return `
     <div class="ba-placement-browser">
       <div class="ba-placement-actions" aria-label="${escAttr(model.title)} actions">
@@ -132,6 +132,7 @@ export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
       <div class="ba-shell">
         <aside class="ba-sources" aria-label="Asset sources and filters">
           <div class="ba-summary">${model.stats.total} assets - ${model.stats.missing} missing - ${model.stats.errors} errors</div>
+          <div class="ba-quota" id="ba-quota" role="status"></div>
           ${model.sourceNote ? `<div class="ba-source-note">${esc(model.sourceNote)}</div>` : ''}
           <nav class="ba-tree" role="tree" aria-label="Asset source tree">
             ${treeGroup(model, 'assetBrowser.quickAccess', 'Assets', [
@@ -199,7 +200,7 @@ export function renderAssetBrowserPanel(model: AssetBrowserModel): string {
             </label>
             <span class="ba-selected-count">${selectedCount === 1 ? '1 selected' : `${selectedCount} selected`}${model.hiddenSelectedCount > 0 ? ` (${model.hiddenSelectedCount} hidden)` : ''}</span>
             <button type="button" id="ba-batch-export" class="ba-tool" ${selectedCount === 0 ? 'disabled' : ''}>Export</button>
-            <button type="button" id="ba-batch-delete" class="ba-tool danger" title="${escAttr(deleteTitle)}" ${selectedCount === 0 || model.batchDeleteBlockedReason ? 'disabled' : ''}>Delete</button>
+            <button type="button" id="ba-batch-delete" class="ba-tool b-danger" title="${escAttr(deleteTitle)}" ${selectedCount === 0 || model.batchDeleteBlockedReason ? 'disabled' : ''}>Delete</button>
             <button type="button" id="ba-batch-clear" class="ba-icon-btn" title="Clear selection" aria-label="Clear selection" ${selectedCount === 0 ? 'disabled' : ''}>&times;</button>
           </div>
           <div class="ba-path-row">

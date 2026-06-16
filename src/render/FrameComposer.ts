@@ -515,14 +515,30 @@ export class FrameComposer implements PixelSurface {
    *  field like the rest of the world. */
   private drawRigidBodies(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
+    const frame = ctx.state.frameCount;
     for (const b of ctx.rigidBodies.bodies) {
-      const r = ((b.color >> 16) & 0xff) / 255;
-      const g = ((b.color >> 8) & 0xff) / 255;
-      const bl = (b.color & 0xff) / 255;
+      let r = ((b.color >> 16) & 0xff) / 255;
+      let g = ((b.color >> 8) & 0xff) / 255;
+      let bl = (b.color & 0xff) / 255;
       const lt = this.light.sample(b.x, b.y);
-      const lr = Math.max(0.06, lt.r);
-      const lg = Math.max(0.06, lt.g);
-      const lb = Math.max(0.06, lt.b);
+      let lr = Math.max(0.06, lt.r);
+      let lg = Math.max(0.06, lt.g);
+      let lb = Math.max(0.06, lt.b);
+      if (b.burnT && b.burnT > 0) {
+        // burning: flickering orange that self-illuminates (ignores scene dark)
+        const flick = 0.55 + 0.45 * Math.sin(frame * 0.6 + b.id);
+        r = Math.min(1, r * 0.4 + 0.9 * flick);
+        g = Math.min(1, g * 0.3 + 0.4 * flick);
+        bl *= 0.2;
+        lr = Math.max(lr, 0.85);
+        lg = Math.max(lg, 0.5);
+        lb = Math.max(lb, 0.18);
+      } else if (b.frozenT && b.frozenT > 0) {
+        // frozen: rimed pale blue
+        r = r * 0.55 + 0.18;
+        g = g * 0.7 + 0.28;
+        bl = Math.min(1, bl * 0.8 + 0.55);
+      }
       const cos = Math.cos(b.angle);
       const sin = Math.sin(b.angle);
       const reach = b.shape.kind === 'circle' ? b.shape.radius : Math.hypot(b.shape.halfW, b.shape.halfH);

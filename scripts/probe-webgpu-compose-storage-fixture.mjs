@@ -142,6 +142,8 @@ try {
       'scripts/probe-webgpu-compose-storage-fixture-page.js',
       'scripts/webgpu-compose-storage-fixture-model.mjs',
       'scripts/webgpu-storage-screenshot-validation.mjs',
+      'src/render/WebGpuStorageTextureAccess.ts',
+      'tests/webgpu-storage-texture-access.test.ts',
       'package.json',
       'docs/WEBGPU-BENCHMARK-LEDGER.md',
       'docs/WEBGPU-TSL-COMPUTE-IMPLEMENTATION-PLAN.md',

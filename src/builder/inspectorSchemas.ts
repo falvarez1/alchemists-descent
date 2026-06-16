@@ -60,12 +60,20 @@ export const LIGHT_PRESETS: Record<string, Partial<EditorLight>> = {
   warning: { color: '#ff4444', intensity: 1.2, radius: 56, bloom: 0.5, flicker: 0.55, falloff: 'soft', occluded: false },
 };
 
+export interface InspectorObjectIssue {
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+}
+
 export interface ObjectInspectorSchemaContext {
   objects: EditorObject[];
   links: EditorLink[];
   sprites: SpriteAsset[];
   documentSprites: SpriteAsset[];
   patrolEditId: string | null;
+  /** Validation issues for THIS object, surfaced inline so the field that
+   *  caused a problem is visible without opening the validation panel. */
+  issues?: InspectorObjectIssue[];
 }
 
 export interface LightInspectorSchemaContext {
@@ -122,16 +130,24 @@ export function documentInspectorSchema(doc: EditorDocument, undoDepth: number):
   ];
 }
 
-export function multiSelectionInspectorSchema(objects: EditorObject[], lights: EditorLight[]): InspectorSchemaItem[] {
+export function multiSelectionInspectorSchema(
+  objects: EditorObject[],
+  lights: EditorLight[],
+  context?: ObjectInspectorSchemaContext,
+): InspectorSchemaItem[] {
   const count = objects.length + lights.length;
   const byKind = new Map<string, number>();
   for (const obj of objects) byKind.set(obj.kind, (byKind.get(obj.kind) ?? 0) + 1);
   if (lights.length > 0) byKind.set('light', lights.length);
   const locked = sharedValue([...objects.map((obj) => obj.locked), ...lights.map((light) => light.locked)]);
   const hidden = sharedValue([...objects.map((obj) => obj.hidden), ...lights.map((light) => light.hidden)]);
+  // Shared parameter editing applies only to a homogeneous, light-free
+  // selection: one kind => one well-defined set of param rows to edit at once.
+  const sharedParams = context && lights.length === 0 ? sharedParamItems(objects, context) : [];
   return [
     section(`${count} SELECTED`),
     ...[...byKind.entries()].map(([kind, n]) => readout(`selection.kind.${kind}`, kind, n)),
+    ...sharedParams,
     actionGroup('selection.align', [
       action('align.x', 'ALIGN X', 'Align to the primary column', { align: 'x' }, docCommand('builder.inspector.selection.align.x')),
       action('align.y', 'ALIGN Y', 'Align to the primary row', { align: 'y' }, docCommand('builder.inspector.selection.align.y')),
@@ -156,6 +172,33 @@ export function multiSelectionInspectorSchema(objects: EditorObject[], lights: E
     help(['Drag moves the group.', 'Ctrl+D duplicates / Ctrl+G groups.', 'Ctrl+Shift+G dissolves groups.']),
     action('selection.delete', 'DELETE ALL (DEL)', undefined, {}, docCommand('builder.delete'), 'bi-delete'),
   ];
+}
+
+/** Re-emit a homogeneous selection's editable PARAM fields with cross-selection
+ *  mixed state, so a designer can set width/material/threshold etc. on every
+ *  selected object at once. Links, actions, help and the per-object identity
+ *  rows are intentionally dropped — only the value fields multi-edit cleanly. */
+function sharedParamItems(objects: EditorObject[], context: ObjectInspectorSchemaContext): InspectorSchemaItem[] {
+  if (objects.length < 2) return [];
+  const rep = objects[0];
+  const kind = rep.kind;
+  // Same EditorObjectKind AND same sub-kind discriminator (enemy/pickup carry
+  // their type in params.kind, which decides which conditional rows exist) — a
+  // slime+bat selection must NOT re-emit the bat-only 'sleeping' row and write
+  // it onto the slime.
+  if (!objects.every((obj) => obj.kind === kind && obj.params.kind === rep.params.kind)) return [];
+  const out: InspectorSchemaItem[] = [];
+  for (const item of objectKindItems(rep, context)) {
+    if (item.kind !== 'field') continue;
+    const f = item.field;
+    const key = typeof f.dataset?.p === 'string' ? f.dataset.p : null;
+    if (!key) continue; // skip library-owned fields (e.g. sprite emissive) with no param key
+    if (f.kind === 'vec2') continue;
+    const mixed = isMixedValue(sharedValue(objects.map((obj) => obj.params[key])));
+    out.push(field({ ...f, mixed }, paramCommand(rep, key)));
+  }
+  if (out.length === 0) return [];
+  return [section(`SHARED ${kind.toUpperCase()}`, 'selection.params'), ...out];
 }
 
 export function lightInspectorSchema(light: EditorLight, context: LightInspectorSchemaContext): InspectorSchemaItem[] {
@@ -245,6 +288,16 @@ export function objectInspectorSchema(obj: EditorObject, context: ObjectInspecto
     ),
   ];
 
+  const issues = context.issues ?? [];
+  if (issues.length > 0) {
+    items.push(section(`ISSUES (${issues.length})`, 'object.issues'));
+    issues.forEach((issue, i) => {
+      items.push(
+        readout(`object.issue.${i}`, issue.severity, issue.message, issue.severity === 'info' ? 'muted' : 'warn'),
+      );
+    });
+  }
+
   items.push(...objectKindItems(obj, context));
   if (POINT_ROTATE_KINDS.has(obj.kind)) {
     const dir = obj.kind === 'hazardEmitter' ? ` (${EMITTER_DIR[obj.rotation] ?? 'down'})` : '';
@@ -265,11 +318,11 @@ function objectKindItems(obj: EditorObject, context: ObjectInspectorSchemaContex
   if (obj.kind === 'pickup') return pickupItems(obj);
   if (obj.kind === 'exitPortal') return [paramCheckbox(obj, 'alwaysOpen', 'always open')];
   if (obj.kind === 'waystone') return [paramCheckbox(obj, 'lit', 'pre-lit')];
-  if (obj.kind === 'exitWell') return [paramNumber(obj, 'halfW', 'half width', 14)];
+  if (obj.kind === 'exitWell') return [paramNumber(obj, 'halfW', 'half width (cells)', 14, { min: 1 })];
   if (obj.kind === 'door') {
     return [
-      paramNumber(obj, 'w', 'width', 3),
-      paramNumber(obj, 'h', 'height', 13),
+      paramNumber(obj, 'w', 'width (cells)', 3, { min: 1 }),
+      paramNumber(obj, 'h', 'height (cells)', 13, { min: 1 }),
       paramCheckbox(obj, 'initialOpen', 'starts open'),
       paramSelect(obj, 'logic', 'logic', ['and', 'or', 'sequence'], 'and', true),
       action('object.rotateSlab', 'ROTATE 90', 'Swap width and height', {}, docCommand('builder.inspector.object.rotateSlab', { objectId: obj.id }), 'bi-rotate'),
@@ -278,19 +331,19 @@ function objectKindItems(obj: EditorObject, context: ObjectInspectorSchemaContex
   }
   if (obj.kind === 'runeDoor') {
     return [
-      paramNumber(obj, 'w', 'width', 2),
-      paramNumber(obj, 'h', 'height', 11),
+      paramNumber(obj, 'w', 'width (cells)', 2, { min: 1 }),
+      paramNumber(obj, 'h', 'height (cells)', 11, { min: 1 }),
       action('object.rotateSlab', 'ROTATE 90', 'Swap width and height', {}, docCommand('builder.inspector.object.rotateSlab', { objectId: obj.id }), 'bi-rotate'),
       ...linkItems(obj, 'in', context),
     ];
   }
-  if (obj.kind === 'plate') return [paramNumber(obj, 'w', 'width', 5), ...linkItems(obj, 'out', context)];
-  if (obj.kind === 'scale') return [paramNumber(obj, 'w', 'pan width', 7), paramNumber(obj, 'threshold', 'threshold', 24), ...linkItems(obj, 'out', context)];
+  if (obj.kind === 'plate') return [paramNumber(obj, 'w', 'width (cells)', 5, { min: 1 }), ...linkItems(obj, 'out', context)];
+  if (obj.kind === 'scale') return [paramNumber(obj, 'w', 'pan width (cells)', 7, { min: 1 }), paramNumber(obj, 'threshold', 'threshold', 24, { min: 0 }), ...linkItems(obj, 'out', context)];
   if (obj.kind === 'buoy') {
     return [
-      paramNumber(obj, 'w', 'basin width', 13),
-      paramNumber(obj, 'depth', 'basin depth', 4),
-      paramNumber(obj, 'threshold', 'threshold', 26),
+      paramNumber(obj, 'w', 'basin width (cells)', 13, { min: 1 }),
+      paramNumber(obj, 'depth', 'basin depth (cells)', 4, { min: 1 }),
+      paramNumber(obj, 'threshold', 'threshold', 26, { min: 0 }),
       ...linkItems(obj, 'out', context),
     ];
   }
@@ -298,22 +351,22 @@ function objectKindItems(obj: EditorObject, context: ObjectInspectorSchemaContex
   if (obj.kind === 'runeGlyph') return linkItems(obj, 'out', context);
   if (obj.kind === 'valve') {
     return [
-      paramNumber(obj, 'w', 'width', 5),
-      paramNumber(obj, 'h', 'height', 2),
+      paramNumber(obj, 'w', 'width (cells)', 5, { min: 1 }),
+      paramNumber(obj, 'h', 'height (cells)', 2, { min: 1 }),
       paramSelect(obj, 'material', 'material', ['metal', 'stone', 'wood', 'glass'], 'metal', true),
       paramCheckbox(obj, 'oneShot', 'one-shot (stays open)'),
-      paramNumber(obj, 'autoClose', 'auto-close frames', 0),
-      paramSelect(obj, 'logic', 'logic', ['and', 'or', 'sequence'], 'and'),
+      paramNumber(obj, 'autoClose', 'auto-close frames', 0, { min: 0 }),
+      paramSelect(obj, 'logic', 'logic', ['and', 'or', 'sequence'], 'and', true),
       action('object.rotateSlab', 'ROTATE 90', 'Swap width and height', {}, docCommand('builder.inspector.object.rotateSlab', { objectId: obj.id }), 'bi-rotate'),
       ...linkItems(obj, 'in', context),
     ];
   }
   if (obj.kind === 'plug') {
     return [
-      paramNumber(obj, 'w', 'width', 3),
-      paramNumber(obj, 'h', 'height', 3),
-      paramSelect(obj, 'material', 'material', ['wood', 'ash', 'glass', 'coal', 'stone', 'sand', 'metal'], 'wood'),
-      paramNumber(obj, 'breakFrac', 'break fraction', 0.5),
+      paramNumber(obj, 'w', 'width (cells)', 3, { min: 1 }),
+      paramNumber(obj, 'h', 'height (cells)', 3, { min: 1 }),
+      paramSelect(obj, 'material', 'material', ['wood', 'ash', 'glass', 'coal', 'stone', 'sand', 'metal'], 'wood', true),
+      paramNumber(obj, 'breakFrac', 'break fraction', 0.5, { min: 0, max: 1, step: 0.05 }),
       help(['The material IS the break profile:', 'wood burns, glass shatters,', 'stone resists fire, metal needs', "a relay 'break'."]),
       action('object.rotateSlab', 'ROTATE 90', 'Swap width and height', {}, docCommand('builder.inspector.object.rotateSlab', { objectId: obj.id }), 'bi-rotate'),
       ...linkItems(obj, 'in', context),
@@ -324,29 +377,29 @@ function objectKindItems(obj: EditorObject, context: ObjectInspectorSchemaContex
     return [
       paramSelect(obj, 'type', 'reads', ['heat', 'liquid', 'weight', 'charge', 'material'], 'heat'),
       paramSelect(obj, 'filter', 'filter', ['', 'water', 'oil', 'acid', 'lava', 'sand', 'snow', 'gold', 'gunpowder', 'coal', 'ash', 'slime', 'healium', 'teleportium'], ''),
-      paramNumber(obj, 'threshold', 'threshold', 6),
-      paramNumber(obj, 'zoneW', 'zone width', 9),
-      paramNumber(obj, 'zoneH', 'zone height', 7),
+      paramNumber(obj, 'threshold', 'threshold', 6, { min: 1 }),
+      paramNumber(obj, 'zoneW', 'zone width (cells)', 9, { min: 1 }),
+      paramNumber(obj, 'zoneH', 'zone height (cells)', 7, { min: 1 }),
       paramSelect(obj, 'latch', 'latch', ['momentary', 'timed', 'permanent'], 'timed'),
-      ...(obj.params.latch !== 'permanent' && obj.params.latch !== 'momentary'
-        ? [paramNumber(obj, 'latchFrames', 'latch frames', 420)]
+      ...(obj.params.latch === 'timed'
+        ? [paramNumber(obj, 'latchFrames', 'latch frames', 420, { min: 0 })]
         : []),
       ...linkItems(obj, 'out', context),
     ];
   }
   if (obj.kind === 'counterweight') {
     return [
-      paramNumber(obj, 'w', 'pan width', 7),
-      paramNumber(obj, 'threshold', 'threshold', 30),
+      paramNumber(obj, 'w', 'pan width (cells)', 7, { min: 1 }),
+      paramNumber(obj, 'threshold', 'threshold', 30, { min: 1 }),
       help(['Latches PERMANENTLY once enough', 'material mass stays poured.']),
       ...linkItems(obj, 'out', context),
     ];
   }
   if (obj.kind === 'relay') {
     return [
-      paramNumber(obj, 'delay', 'delay frames', 0),
-      paramSelect(obj, 'action', 'on fire', ['activate', 'ignite', 'break', 'strike'], 'activate'),
-      paramSelect(obj, 'logic', 'input logic', ['and', 'or', 'sequence'], 'and'),
+      paramNumber(obj, 'delay', 'delay frames', 0, { min: 0 }),
+      paramSelect(obj, 'action', 'on fire', ['activate', 'ignite', 'break', 'strike'], 'activate', true),
+      paramSelect(obj, 'logic', 'input logic', ['and', 'or', 'sequence'], 'and', true),
       help(['One-shot: inputs satisfied -> wait', '-> fire once -> latched forever.']),
       ...linkItems(obj, 'in', context),
       ...linkItems(obj, 'out', context),
@@ -389,9 +442,9 @@ function hazardEmitterItems(obj: EditorObject): InspectorSchemaItem[] {
   const cells = ['water', 'oil', 'acid', 'lava', 'fire', 'ember', 'sand', 'snow', 'smoke'];
   return [
     paramSelect(obj, 'cell', 'material', cells, 'water'),
-    paramNumber(obj, 'rate', 'rate (frames)', 30),
-    paramNumber(obj, 'burst', 'burst (cells)', 1),
-    paramNumber(obj, 'phase', 'phase (frames)', 0),
+    paramNumber(obj, 'rate', 'rate (frames)', 30, { min: 2 }),
+    paramNumber(obj, 'burst', 'burst (cells)', 1, { min: 1, max: 8 }),
+    paramNumber(obj, 'phase', 'phase (frames)', 0, { min: 0 }),
     help(['Drips "burst" real cells every', '"rate" frames (offset by phase),', 'aimed by rotation; the grid', 'does the rest.']),
   ];
 }
@@ -440,7 +493,7 @@ function decorItems(obj: EditorObject, context: ObjectInspectorSchemaContext): I
         ],
         loopTag,
       ),
-      paramNumber(obj, 'fps', 'fps (0 = authored)', 0),
+      paramNumber(obj, 'fps', 'fps (0 = authored)', 0, { min: 0, max: 60 }),
       paramCheckbox(obj, 'flipX', 'flip X'),
       field(
         {
@@ -473,7 +526,7 @@ function decorItems(obj: EditorObject, context: ObjectInspectorSchemaContext): I
 function pickupItems(obj: EditorObject): InspectorSchemaItem[] {
   const items: InspectorSchemaItem[] = [paramSelect(obj, 'kind', 'kind', PICKUP_KINDS, 'goldpile')];
   const kind = obj.params.kind;
-  if (kind === 'goldpile' || kind === 'chest') items.push(paramNumber(obj, 'amount', 'amount', 30));
+  if (kind === 'goldpile' || kind === 'chest') items.push(paramNumber(obj, 'amount', 'amount (gold)', 30, { min: 0 }));
   if (kind === 'tome') items.push(paramSelect(obj, 'card', 'card', CARD_PICKUP_OPTIONS, ''));
   if (kind === 'potion') items.push(paramSelect(obj, 'potion', 'potion', POTION_PICKUP_OPTIONS, ''));
   return items;
@@ -501,13 +554,28 @@ function linkItems(obj: EditorObject, dir: 'in' | 'out', context: ObjectInspecto
   });
 }
 
-function paramNumber(obj: EditorObject, key: string, label: string, fallback: number): InspectorSchemaItem {
+interface NumberBounds {
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+function paramNumber(
+  obj: EditorObject,
+  key: string,
+  label: string,
+  fallback: number,
+  bounds?: NumberBounds,
+): InspectorSchemaItem {
   return field(
     {
       kind: 'number',
       id: `param.${key}`,
       label,
       value: paramNum(obj, key, fallback),
+      min: bounds?.min,
+      max: bounds?.max,
+      step: bounds?.step,
       dataset: { p: key, num: 1 },
     },
     paramCommand(obj, key),

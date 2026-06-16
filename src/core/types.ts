@@ -103,6 +103,10 @@ export interface PlayerState {
   swapT: number;
   /** Cast recoil kick on the wand arm (frames left). */
   recoilT: number;
+  /** Melee kick pose (frames left) — drives the leg thrust toward kickDir. */
+  kickT: number;
+  /** Direction (±1) the last kick was aimed (for the pose). */
+  kickDir: number;
   /** Hurt stagger lean (frames left) in staggerDir (+-1, away from the hit). */
   staggerT: number;
   staggerDir: number;
@@ -451,6 +455,18 @@ export interface PlayerTuning {
   recoilMaxImpulse: number;
   /** Grounded recoil multiplier — friction braces you (airborne is full). */
   recoilGroundDamp: number;
+  /** Kick: momentum imparted to a struck body (Δv = impulse/mass — light flies, heavy resists). */
+  kickImpulse: number;
+  /** Kick reach in cells from the shoulder along the aim. */
+  kickRange: number;
+  /** Kick cone half-angle (radians) around the aim direction. */
+  kickArc: number;
+  /** Frames between kicks. */
+  kickCooldown: number;
+  /** Self-recoil (cells/frame) when the kick lands on something solid — enables kick-jumps. */
+  kickSelfRecoil: number;
+  /** Contact damage a direct kick deals to an enemy. */
+  kickDamage: number;
 }
 
 export interface GlobalParams {
@@ -972,6 +988,10 @@ export interface RigidBody {
   /** Mirror of Rapier's sleep state (settled bodies sleep). */
   sleeping: boolean;
   restT?: number;
+  /** P2 reaction: frames left on fire (flammable bodies burn up to ash); 0/undefined = not burning. */
+  burnT?: number;
+  /** P2 reaction: frames left frozen (frost dampens its velocity); 0/undefined = not frozen. */
+  frozenT?: number;
   tag?: string;
   data?: Record<string, unknown>;
   /** Fired on a hard terrain impact; `speed` is the pre-impact contact speed. */
@@ -1060,6 +1080,9 @@ export interface PlayerControlApi {
   /** Add a velocity impulse (cells/frame) to the player. Stoneskin shrugs it off.
    *  The shared verb for explosions, knockback, and rigid-body pushes. */
   applyImpulse(vx: number, vy: number): void;
+  /** Melee kick toward the aim: shoves bodies (mass-aware) + enemies in a short
+   *  cone, with self-recoil off solid hits (kick-jump). Gated by a cooldown. */
+  kick(ctx: Ctx): void;
   kill(): void;
   respawn(): void;
   findSpawnPoint(): { x: number; y: number };

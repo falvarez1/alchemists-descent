@@ -921,3 +921,94 @@ Notes:
   `node --check scripts/webgpu-compose-storage-fixture-model.mjs`,
   `node --check scripts/webgpu-storage-screenshot-validation.mjs`, and
   `npm run probe:webgpu-compose-storage-fixture`.
+
+## Phase 4.7 - Guarded Three StorageTexture Access Adapter
+
+Task: box the private Three r184 `backend.get(storageTexture).texture` access
+behind a guarded production-source adapter before live `WebGpuRenderBackend`
+compose wiring starts.
+
+Commit: `d8753ee` plus working-tree Phase 4.7 adapter/probe/docs changes. The
+checkout remained dirty from unrelated Builder, physics, gameplay, and docs work
+during this slice, including unrelated render-path edits outside the adapter
+such as `src/render/FrameComposer.ts`.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for prior WebGPU phases.
+
+Requested backend: explicit `WebGPURenderer` fixture page.
+
+Actual backend: WebGPU, with `isWebGPUBackend=true` and `isWebGLBackend=false`.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-compose-storage-fixture-page.js
+node --check scripts/probe-webgpu-compose-storage-fixture.mjs
+npx vitest run tests/webgpu-storage-texture-access.test.ts
+npm run typecheck
+npm run probe:webgpu-compose-storage-fixture
+```
+
+Baseline: Phase 4.6 proved that raw WGSL can write a Three-owned
+`StorageTexture` and TSL can present it, but the probe performed the private
+Three backend lookup inline. Review accepted that only while pinned to Three
+r184 and called for a guarded adapter before production wiring.
+
+Expected result: no production visual or performance behavior change. The
+positive result is a qualitative and quantitative safety gate: the private Three
+lookup is isolated, format-checked, base-mip-view checked, unit-tested for drift,
+and the WebGPU storage fixture still passes through that adapter.
+
+After: added `src/render/WebGpuStorageTextureAccess.ts` and
+`tests/webgpu-storage-texture-access.test.ts`, then updated the Phase 4.6 browser
+probe to call `resolveThreeStorageTextureAccess(...)` instead of reading
+`backend.get(storageTexture).texture` directly.
+
+Actual result: keep. The adapter-backed probe passed in
+`verify-out/webgpu-compose-storage-fixture/probe-1781592516747.json` with no
+console errors, no page errors, no probe failures, and
+`outputStorageAccess=three-r184-backend-get`:
+
+| Metric | Readback | Screenshot |
+| --- | --- | --- |
+| `maxDelta` | `1` | `1` |
+| `mismatchPct` | `0` | `0` |
+| `exactPct` | `89.425%` | `89.425%` |
+| `meanDelta` | `0.0273` | `0.0273` |
+| Dimensions | `525x357` | `1050x714` |
+
+Performance result: no WebGPU speedup is claimed for this slice. The measured
+`gpuSubmitReadbackWallMs=36.6ms` includes validation readback and is not a
+production frame-time estimate.
+
+Visual/quality evidence:
+`verify-out/webgpu-compose-storage-fixture/compose-storage-1781592516747.png`.
+
+Decision: keep the adapter and the unit tests. Do not enable production WebGPU
+compose from this state. The next runtime slice should wire through this adapter
+and keep `WebGpuRenderBackend.gpuComposeAvailable` false until CPU/WebGL2/WebGPU
+parity and same-session timing are green.
+
+Notes:
+
+- Adapter artifact:
+  `verify-out/webgpu-compose-storage-fixture/probe-1781592516747.json`.
+- The adapter creates `texture.createView({ baseMipLevel: 0, mipLevelCount: 1 })`
+  centrally so the Phase 4.6 mip-view failure cannot reappear as an ad hoc
+  production callsite.
+- The final artifact records the Three descriptor as `format=rgba8unorm`,
+  `width=525`, `height=357`, `mipLevelCount=1`, and `usage=31`; the adapter
+  requires descriptor presence, storage-binding usage, expected dimensions, and
+  the expected mip count to reject Three default-texture fallbacks before
+  bind-group creation.
+- `npx vitest run tests/webgpu-storage-texture-access.test.ts` passed `13`
+  adapter tests covering success, metadata fallback, missing private API,
+  missing backend data, missing backend texture, missing descriptor, missing
+  format metadata, metadata mismatch, format drift, missing storage usage,
+  dimension drift, mip-count drift, and failed base-mip view creation.
+- Validation passed for this slice:
+  `node --check scripts/probe-webgpu-compose-storage-fixture-page.js`,
+  `node --check scripts/probe-webgpu-compose-storage-fixture.mjs`,
+  `npx vitest run tests/webgpu-storage-texture-access.test.ts`,
+  `npm run typecheck`, and `npm run probe:webgpu-compose-storage-fixture`.

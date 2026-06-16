@@ -727,7 +727,8 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     }
   }
   for (const l of doc.lights) {
-    if (l.x < 0 || l.x >= WIDTH || l.y < 0 || l.y >= HEIGHT) {
+    // Same 4-cell inset as objects above — uniform out-of-bounds semantics.
+    if (l.x < 4 || l.x >= WIDTH - 4 || l.y < 4 || l.y >= HEIGHT - 4) {
       push('error', 'light outside world bounds', l.id);
     }
   }
@@ -737,9 +738,14 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   for (const l of doc.links) {
     const assessment = assessEditorLink(l, byId.get(l.fromId) ?? null, byId.get(l.toId) ?? null);
     for (const issue of assessment.issues) {
+      // Only offer the removeDeadLink repair when the issue actually carries a
+      // linkId — otherwise the repair button renders but fails "NO LINK TARGET".
+      const offerRemove =
+        issue.linkId !== undefined &&
+        (issue.severity === 'error' || issue.message.includes('hidden endpoint'));
       push(issue.severity, issue.what, issue.objId, {
         linkId: issue.linkId,
-        actions: issue.severity === 'error' || issue.message.includes('hidden endpoint')
+        actions: offerRemove
           ? ['selectIssueTarget', 'removeDeadLink']
           : ['selectIssueTarget'],
         overlayKind: 'validation',
@@ -961,8 +967,9 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   const well = doc.objects.find((o) => o.kind === 'exitWell' && !o.hidden);
   const key = doc.objects.find((o) => o.kind === 'pickup' && o.params.kind === 'key' && !o.hidden);
   if (portal && !key && portal.params.alwaysOpen !== true) {
+    // An unwinnable level cannot be playtested correctly — Error, not warning.
     push(
-      'warning',
+      'error',
       'Portal has no golden key and is not marked always-open — it can never open',
       portal.id,
       {
@@ -997,8 +1004,10 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   if (spawns.length === 1) {
     const s = spawns[0];
     let blocked = false;
-    for (let dy = 0; dy < 17 && !blocked; dy += 4) {
-      for (let dx = -4; dx <= 4 && !blocked; dx += 4) {
+    // Sample EVERY cell of the 9x17 box (dy 0..16, dx -4..4): a coarse stride
+    // strides past a 1-3 cell-thick slab and false-negates a compile blocker.
+    for (let dy = 0; dy < 17 && !blocked; dy += 1) {
+      for (let dx = -4; dx <= 4 && !blocked; dx += 1) {
         if (blockedAt(closed, s.x + dx, s.y - dy)) blocked = true;
       }
     }

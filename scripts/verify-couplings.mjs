@@ -1,8 +1,10 @@
 // B2 interaction couplings in the PHYSICS TEST ARENA:
 //  B2a projectile → body: a player shot shoves a rigid body it strikes, and a
 //       light wood crate is shoved far more than a heavy metal one (mass-aware).
-//  B2b player ↔ body: the player stands on a heavy crate (doesn't fall through)
-//       and shoves a light crate aside by walking into it.
+//  B2b player ↔ body: the player stands on a heavy crate (doesn't fall through,
+//       can jump off it) and shoves a light crate aside by walking into it.
+// Order matters: the non-erosive player/iceshard tests run first on pristine
+// floor; the floor-eroding bolt test runs LAST.
 import { chromium } from 'playwright-core';
 
 const url = process.argv[2] || 'http://localhost:5173/';
@@ -27,11 +29,43 @@ const r = await page.evaluate(async () => {
   await ctx.console.exec('run test --level physics-test --world campaign-level');
   tick(20);
   const rb = ctx.rigidBodies;
+  const p = ctx.player;
   const FLOOR_Y = 596; // crate centre rests ~596.5 on the y=600 floor (under the platform)
   const box = (x, material) => rb.spawn({ kind: 'box', halfW: 3.5, halfH: 3.5 }, x, FLOOR_Y, { material, friction: 0.6, restitution: 0.15 });
   const fire = (type, x, y) => ctx.projectiles.push({ x, y, vx: 9, vy: 0, type, life: 120, age: 0, charging: false, hostile: false, mul: 1 });
   const relInput = () => { for (const k of ['left', 'right', 'up', 'jump', 'down']) ctx.input.keys[k] = false; };
+  const placePlayer = (x, y) => { p.dead = false; p.crawling = false; p.climbing = false; p.diveT = 0; p.x = x; p.y = y; p.vx = 0; p.vy = 0; p.fx = 0; p.fy = 0; };
   relInput();
+
+  // ---- B2b: player STANDS on a heavy metal crate (no fall-through) ----
+  rb.clear();
+  const stand = box(815, 'metal');
+  tick(40);
+  const crateTop = stand.y - 3.5;
+  placePlayer(stand.x, 560);
+  tick(80);
+  const standY = p.y;
+  const standGrounded = p.grounded === true;
+  const stoodOnCrate = standY < crateTop + 2 && standY > crateTop - 4;
+  // jump off it (grounded was set by the resolve last frame)
+  const preJumpY = p.y;
+  ctx.input.keys.jump = true; tick(2); ctx.input.keys.jump = false; tick(10);
+  const jumpedOff = p.y < preJumpY - 6;
+  relInput();
+
+  // ---- B2b: player SHOVES a light wood crate by walking into it (clean floor) ----
+  rb.clear();
+  const shove = box(800, 'wood');
+  tick(40);
+  const sx0 = shove.x;
+  placePlayer(shove.x - 10, 599);
+  ctx.input.keys.right = true;
+  tick(30); // stops well short of the staircase at x864
+  ctx.input.keys.right = false;
+  const shovePush = shove.x - sx0;
+  const playerLeftOfCrate = p.x < shove.x;
+  relInput();
+  tick(5);
 
   // ---- B2a: iceshard shove, wood vs metal (pure momentum, no blast) ----
   rb.clear();
@@ -50,7 +84,7 @@ const r = await page.evaluate(async () => {
   tick(45);
   const metalPush = m1.x - mx0;
 
-  // ---- B2a: a bolt (the common case) clearly moves a wood crate ----
+  // ---- B2a: a bolt (the common case) clearly moves a wood crate (erodes floor) ----
   rb.clear();
   const w2 = box(800, 'wood');
   tick(40);
@@ -59,49 +93,12 @@ const r = await page.evaluate(async () => {
   tick(30);
   const boltPush = Math.abs(w2.x - bx0);
 
-  // ---- B2b: player STANDS on a heavy metal crate (no fall-through) ----
-  rb.clear();
-  const stand = box(815, 'metal');
-  tick(40);
-  const crateTop = stand.y - 3.5;
-  const p = ctx.player;
-  p.dead = false; p.crawling = false; p.climbing = false; p.diveT = 0;
-  p.x = stand.x; p.y = 560; p.vx = 0; p.vy = 0; p.fx = 0; p.fy = 0;
-  tick(80);
-  const standY = p.y;
-  const standGrounded = p.grounded === true;
-  const stoodOnCrate = standY < crateTop + 2 && standY > crateTop - 4; // feet on the crate top
-
-  // can he jump off it? (grounded was set by the resolve last frame)
-  const preJumpY = p.y;
-  ctx.input.keys.jump = true; tick(2); ctx.input.keys.jump = false; tick(10);
-  const jumpedOff = p.y < preJumpY - 6;
-
-  // ---- B2b: player SHOVES a light wood crate by walking into it (open floor) ----
-  rb.clear();
-  const shove = box(800, 'wood');
-  tick(40);
-  const sx0 = shove.x;
-  p.dead = false; p.crawling = false; p.climbing = false; p.diveT = 0;
-  p.x = shove.x - 10; p.y = 599; p.vx = 0; p.vy = 0; p.fx = 0; p.fy = 0;
-  ctx.input.keys.right = true;
-  const trace = [];
-  for (let k = 0; k < 11; k++) { tick(5); trace.push([+p.x.toFixed(1), +p.y.toFixed(1), +shove.x.toFixed(1)]); }
-  ctx.input.keys.right = false;
-  const shovePush = shove.x - sx0;
-  const playerLeftOfCrate = p.x < shove.x; // never tunnelled through
-  const px = p.x, py = p.y, shoveYend = shove.y, shoveXend = shove.x;
-  relInput();
-
   return {
     woodPush: +woodPush.toFixed(2), metalPush: +metalPush.toFixed(2), boltPush: +boltPush.toFixed(2),
     standY: +standY.toFixed(2), crateTop: +crateTop.toFixed(2), standGrounded, stoodOnCrate, jumpedOff,
     shovePush: +shovePush.toFixed(2), playerLeftOfCrate,
-    px: +px.toFixed(2), py: +py.toFixed(2), shoveXend: +shoveXend.toFixed(2), shoveYend: +shoveYend.toFixed(2),
-    trace,
   };
 });
-console.log('shove trace [px,py,cratex]:', JSON.stringify(r.trace));
 
 check('B2a shot shoves a wood crate', r.woodPush > 2, JSON.stringify(r));
 check('B2a shove is mass-aware (wood >> metal)', r.woodPush > r.metalPush * 1.5 + 0.3, JSON.stringify(r));

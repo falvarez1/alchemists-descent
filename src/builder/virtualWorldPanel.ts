@@ -386,6 +386,10 @@ export class VirtualWorldPanel {
     const sceneBiome = this.activeSceneBiome(def);
     const sceneBudget = def.dressing.scenes.biomes[sceneBiome] ?? def.dressing.scenes.biomes.earthen;
     const controls = this.must<HTMLElement>('#vw-controls');
+    // Preserve the native <details> "Advanced" disclosure across rebuilds (a
+    // preset/reset click rebuilds the controls and would otherwise slam it shut).
+    const prevAdvanced = controls.querySelector<HTMLDetailsElement>('.vw-advanced');
+    const advancedOpen = prevAdvanced ? prevAdvanced.open : null;
     controls.innerHTML = `
       ${this.sectionHtml('controls.world', 'World', `
         <label class="vw-field"><span>profile</span><select id="vw-profile">
@@ -462,6 +466,10 @@ export class VirtualWorldPanel {
           <button id="vw-play-window" type="button" title="Play a disposable fixed-size test crop centered on this map view">PLAY WINDOW</button>
         </div>
       `)}`;
+    if (advancedOpen !== null) {
+      const adv = controls.querySelector<HTMLDetailsElement>('.vw-advanced');
+      if (adv) adv.open = advancedOpen;
+    }
     this.wireSections(controls);
     this.must<HTMLSelectElement>('#vw-profile').value = this.selectedProfile;
     this.must<HTMLInputElement>('#vw-seed').value = String(def.seed >>> 0);
@@ -1100,6 +1108,8 @@ export class VirtualWorldPanel {
     );
   }
 
+  private lastInspectorHtml = '';
+
   private renderInspector(): void {
     const inspector = this.host.querySelector<HTMLElement>('#vw-inspector');
     if (!inspector) return;
@@ -1108,7 +1118,7 @@ export class VirtualWorldPanel {
     const mem = this.previewBytes();
     const profileDiff = this.profileDiff();
     const stats = this.cachedProfileStats();
-    inspector.innerHTML = `
+    const html = `
       ${this.sectionHtml('inspector.status', 'Status', `
         <div class="vw-stat"><span>state</span><b class="vw-${this.status}">${this.status.toUpperCase()}</b></div>
         <div class="vw-message" aria-live="polite">${escapeHtml(this.statusText)}</div>
@@ -1148,6 +1158,12 @@ export class VirtualWorldPanel {
       ${this.sectionHtml('inspector.next', 'Next', `
         <div class="vw-message">PLAY WINDOW launches a disposable fixed-size crop around the current map center using these generation settings.</div>
       `)}`;
+    // movePointer/updateCaption call this on every pointermove over the stage;
+    // skipping the innerHTML rebuild when nothing changed preserves keyboard
+    // focus and any in-progress text selection (e.g. copying a chunk hash).
+    if (html === this.lastInspectorHtml && inspector.childElementCount > 0) return;
+    this.lastInspectorHtml = html;
+    inspector.innerHTML = html;
     this.wireSections(inspector);
   }
 

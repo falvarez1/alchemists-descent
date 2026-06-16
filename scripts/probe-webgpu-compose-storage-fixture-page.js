@@ -20,6 +20,7 @@ import {
   vec4,
 } from 'three/tsl';
 
+import { resolveThreeStorageTextureAccess } from '/src/render/WebGpuStorageTextureAccess.ts';
 import {
   Cell,
   COMPOSE_PAD,
@@ -188,10 +189,15 @@ async function runRawWgslStorageFixture(renderer, storageTexture) {
 
   renderer.compute(makeStorageInitCompute(storageTexture));
   await device.queue.onSubmittedWorkDone?.();
-  const textureData = backend.get?.(storageTexture);
-  const outputTexture = textureData?.texture;
-  if (!outputTexture?.createView) throw new Error('Three backend did not expose StorageTexture GPUTexture');
-  const outputFormat = textureData?.format ?? textureData?.textureDescriptorGPU?.format ?? 'unknown';
+  const storageAccess = resolveThreeStorageTextureAccess(renderer, storageTexture, {
+    expectedFormat: 'rgba8unorm',
+    expectedWidth: VIEW_W,
+    expectedHeight: VIEW_H,
+    expectedMipLevelCount: 1,
+    label: 'phase4_6_compose_storage_fixture_output',
+  });
+  const outputTexture = storageAccess.texture;
+  const outputFormat = storageAccess.format;
 
   const winTexture = createTexture(device, 'phase4_6_win_rgba8uint', 'rgba8uint', WIN_W, WIN_H, win, WIN_W * 4);
   const lightTexture = createTexture(device, 'phase4_6_light_rgba32float', 'rgba32float', LIGHT_W, LIGHT_H, light, LIGHT_W * 16);
@@ -244,7 +250,7 @@ async function runRawWgslStorageFixture(renderer, storageTexture) {
       { binding: 2, resource: lutTexture.createView() },
       { binding: 3, resource: overlayTexture.createView() },
       { binding: 4, resource: { buffer: uniformBuffer } },
-      { binding: 5, resource: outputTexture.createView({ baseMipLevel: 0, mipLevelCount: 1 }) },
+      { binding: 5, resource: storageAccess.baseMipView },
     ],
   });
 
@@ -294,6 +300,8 @@ async function runRawWgslStorageFixture(renderer, storageTexture) {
       overlay: 'rgba16float',
       outputStorage: 'rgba8unorm StorageTexture',
       outputStorageBackendFormat: outputFormat,
+      outputStorageAccess: storageAccess.source,
+      outputStorageDescriptor: storageAccess.descriptor,
     },
     comparison,
     timings: {

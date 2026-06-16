@@ -70,7 +70,7 @@ import {
   savePrefab,
 } from '@/builder/prefablib';
 import type { PrefabAnchor, PrefabDef, PrefabVariantId } from '@/builder/prefablib';
-import { showImportReport } from '@/builder/prefabPanel';
+import { showImportNotes, showImportReport } from '@/builder/prefabPanel';
 import {
   clampBackdropBrightness,
   clampBackdropContrast,
@@ -950,6 +950,9 @@ export class Builder {
   private armedSprite: SpriteAsset | null = null;
   /** Frame-0 canvases for the editor overlay (id -> canvas; null = unresolvable). */
   private spriteFrameCache = new Map<string, HTMLCanvasElement | null>();
+  /** Painted thumbnail snapshots keyed by asset id + content signature + size,
+   *  so list re-renders (every search keystroke) don't re-decode every asset. */
+  private assetPreviewCache = new Map<string, HTMLCanvasElement>();
   /** The decor inspector's animated preview (setTimeout chain, torn down on
    *  every inspector rebuild / close). */
   private decorPreviewTimer = 0;
@@ -965,6 +968,7 @@ export class Builder {
    *  not launder away dirt earned by earlier uncaptured painting. */
   private settleWasDirty = false;
   private autosaveTimer = 0;
+  private draftRetryTimer = 0;
   private lastDraftOfferAt = 0;
   private allowingSandboxWorldShape = false;
   private shareBusy = false;
@@ -1224,6 +1228,10 @@ export class Builder {
     this.isOpen = false;
     cancelAnimationFrame(this.rafId);
     window.clearInterval(this.autosaveTimer);
+    if (this.draftRetryTimer) {
+      window.clearTimeout(this.draftRetryTimer);
+      this.draftRetryTimer = 0;
+    }
     this.ctx.camera.zoomLock = null;
     this.previewRuntime.stop();
     this.previewRuntimeDirty = true;
@@ -2684,7 +2692,7 @@ export class Builder {
         <div class="bi-kicker">OPEN BUILDER</div>
         <div id="builder-intent-title" class="bi-title">What do you want to build?</div>
         <div class="bi-copy">
-          You are currently playing ${escHtml(rt.def.name)}. Choose whether Builder should snapshot this scene or reopen the existing Builder document.
+          You are currently playing ${escapeHtml(rt.def.name)}. Choose whether Builder should snapshot this scene or reopen the existing Builder document.
         </div>
         ${hasWork ? '<div class="bi-warn">Editing the current scene replaces the in-memory Builder document. A draft is kept before the swap.</div>' : ''}
         <div class="bi-actions">
@@ -2853,7 +2861,7 @@ export class Builder {
     this.ensureCaptured();
     this.ensureDocBackdrop();
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), doc: this.doc }));
+      localStorage.setItem(this.draftKey(), JSON.stringify({ at: Date.now(), doc: this.doc }));
     } catch {
       // quota: the explicit SAVE/EXPORT paths remain the reliable archive
     }
@@ -3404,6 +3412,14 @@ export class Builder {
       this.armedSprite = null;
       this.refreshSprites();
     }
+    // Leaving a region-drawing tool mid-gesture must drop its in-progress
+    // outline — otherwise the dashed polygon/lasso keeps rendering with no
+    // active tool able to close it (only ESC could clear it).
+    if (t !== 'polyRegion' && this.polyPoints.length > 0) {
+      this.polyPoints = [];
+      this.status('POLYGON CANCELLED');
+    }
+    if (t !== 'lassoRegion' && this.lassoPoints) this.lassoPoints = null;
     this.syncPalette();
     if (t === 'link') this.status('LINK: CLICK A TRIGGER OR RUNE GLYPH, THEN ITS DOOR');
   }
@@ -3786,7 +3802,7 @@ export class Builder {
       this.backdropDirty = false;
       this.markDocumentSaved();
       this.status(`SAVED "${this.doc.name.toUpperCase()}"`);
-      localStorage.removeItem(DRAFT_KEY);
+      localStorage.removeItem(this.draftKey());
     } else this.status('STORAGE FULL — USE EXPORT', true);
     this.refreshDocSelect();
   }
@@ -3861,6 +3877,10 @@ export class Builder {
   private markDocumentChanged(cmd?: Command): void {
     this.documentRevision++;
     this.validationDirty = true;
+    // The persisted validation snapshot only reflects the doc as it was when
+    // VALIDATE last ran; any edit makes it stale, so a save/export/share must
+    // not carry a "0 errors" badge that no longer holds. (Templates null it too.)
+    this.doc.validation = null;
     this.previewRuntimeDirty = true;
     if (cmd?.label === 'edit backdrop' || cmd?.label === 'edit backdrop grade') this.syncDocBackdropToLive();
     if ((cmd?.cells ?? 0) > 0) this.markTerrainDirty(false);
@@ -3871,6 +3891,7 @@ export class Builder {
     if (trackRevision && !this.paintDirty) this.documentRevision++;
     this.paintDirty = true;
     this.validationDirty = true;
+    this.doc.validation = null; // stale snapshot — see markDocumentChanged
     this.previewRuntimeDirty = true;
     this.scheduleValidationPanelRefresh();
   }
@@ -3879,6 +3900,7 @@ export class Builder {
     if (!this.backdropDirty) this.documentRevision++;
     this.backdropDirty = true;
     this.validationDirty = true;
+    this.doc.validation = null; // stale snapshot — see markDocumentChanged
     this.previewRuntimeDirty = true;
     this.scheduleValidationPanelRefresh();
   }
@@ -4347,6 +4369,9 @@ export class Builder {
     if (this.previewBlocks()) return;
     const label = this.cmds.undo();
     if (label === 'paint') this.markTerrainDirty();
+    // An undone add (or redone delete) can leave ids selected that no longer
+    // exist — drop them so the inspector never shows a phantom object.
+    this.pruneSelection();
     this.status(label ? 'UNDID ' + label.toUpperCase() : 'NOTHING TO UNDO');
     this.syncAll();
   }
@@ -4355,6 +4380,7 @@ export class Builder {
     if (this.previewBlocks()) return;
     const label = this.cmds.redo();
     if (label === 'paint') this.markTerrainDirty();
+    this.pruneSelection();
     this.status(label ? 'REDID ' + label.toUpperCase() : 'NOTHING TO REDO');
     this.syncAll();
   }
@@ -6132,7 +6158,7 @@ export class Builder {
   ): void {
     const row = document.createElement('div');
     row.className = 'bw-row builder-slider-row';
-    row.innerHTML = `<div class="bw-label"><span>${label}</span><b>${fmt(value)}</b></div>
+    row.innerHTML = `<div class="bw-label"><span>${escapeHtml(label)}</span><b>${escapeHtml(fmt(value))}</b></div>
       <input type="range" min="${min}" max="${max}" step="${step}" value="${value}">`;
     const input = row.querySelector('input')!;
     const out = row.querySelector('b')!;
@@ -6241,7 +6267,7 @@ export class Builder {
     row.className = 'bw-row bw-numrow builder-value-row';
     const lo = Math.min(min, value);
     const hi = Math.max(max, value);
-    row.innerHTML = `<div class="bw-label"><span>${escHtml(label)}</span><b>${escHtml(fmt(value))}</b></div>
+    row.innerHTML = `<div class="bw-label"><span>${escapeHtml(label)}</span><b>${escapeHtml(fmt(value))}</b></div>
       <div class="bw-numline builder-value-inputs"><input type="range" min="${lo}" max="${hi}" step="${step}" value="${value}">
       <input type="number" min="${lo}" max="${hi}" step="${step}" value="${value}"></div>`;
     const range = row.querySelector<HTMLInputElement>('input[type="range"]')!;
@@ -7201,7 +7227,7 @@ export class Builder {
     this.renderPrefabDetailsIfOpen();
   }
 
-  private renderPrefabPalette(focusSearch = false): void {
+  private renderPrefabPalette(focusSearch = false, caret: number | null = null): void {
     const host = this.el<HTMLDivElement>('bp-prefab-host');
     const previousScroll = host.querySelector<HTMLElement>('.ba-placement-list')?.scrollTop ?? this.prefabPaletteScrollTop;
     const database = this.createAssetDatabase();
@@ -7230,9 +7256,9 @@ export class Builder {
     });
     this.paintAssetPreviews(host, database);
     this.wireAssetPlacementPalette(host, records, {
-      onSearch: (query) => {
+      onSearch: (query, caret) => {
         this.prefabAssetQuery = query;
-        this.renderPrefabPalette(true);
+        this.renderPrefabPalette(true, caret);
       },
       onAction: (action) => this.runPrefabPaletteAction(action),
       onActivate: (record) => this.armPrefabAssetRecord(record),
@@ -7242,7 +7268,7 @@ export class Builder {
       this.prefabPaletteScrollTop = scrollTop;
     });
     this.restorePlacementPaletteFocus(host, 'prefab');
-    if (focusSearch) this.focusPlacementPaletteSearch(host);
+    if (focusSearch) this.focusPlacementPaletteSearch(host, caret);
   }
 
   private runPrefabPaletteAction(action: string): void {
@@ -7290,7 +7316,7 @@ export class Builder {
     host: HTMLElement,
     records: readonly AssetRecord[],
     hooks: {
-      onSearch(query: string): void;
+      onSearch(query: string, caret: number | null): void;
       onAction(action: string): void;
       onActivate(record: AssetRecord): void;
       onDetails(record: AssetRecord): void;
@@ -7298,7 +7324,8 @@ export class Builder {
   ): void {
     const recordsById = new Map(records.map((record) => [record.assetId, record]));
     host.querySelector<HTMLInputElement>('[data-asset-placement-search]')?.addEventListener('input', (event) => {
-      hooks.onSearch((event.target as HTMLInputElement).value);
+      const field = event.target as HTMLInputElement;
+      hooks.onSearch(field.value, field.selectionStart);
     });
     for (const button of host.querySelectorAll<HTMLButtonElement>('button[data-asset-placement-action]')) {
       button.addEventListener('click', () => hooks.onAction(button.dataset.assetPlacementAction ?? ''));
@@ -7345,12 +7372,14 @@ export class Builder {
     }
   }
 
-  private focusPlacementPaletteSearch(host: HTMLElement): void {
+  private focusPlacementPaletteSearch(host: HTMLElement, caret: number | null = null): void {
     const input = host.querySelector<HTMLInputElement>('[data-asset-placement-search]');
     if (!input) return;
     input.focus({ preventScroll: true });
-    const end = input.value.length;
-    input.setSelectionRange(end, end);
+    // Restore the exact caret (clamped) so mid-string editing works; default to
+    // end only when no caret was captured (e.g. an external refresh).
+    const pos = caret === null ? input.value.length : Math.min(caret, input.value.length);
+    input.setSelectionRange(pos, pos);
   }
 
   private restorePlacementPaletteScroll(
@@ -7608,6 +7637,12 @@ export class Builder {
       this.createAssetDatabase(),
     );
     this.status(result.message, !result.ok || result.report.warnings.length > 0);
+    if (result.report.warnings.length > 0 || result.report.errors.length > 0) {
+      showImportNotes(this.el<HTMLDivElement>('builder-import-host'), file.name, {
+        warnings: result.report.warnings,
+        errors: result.report.errors,
+      });
+    }
     this.prefabs = loadPrefabs();
     this.sprites = loadSprites();
     if (result.ok && result.report.decision !== 'duplicate') this.setAssetCollection('recent');
@@ -7737,7 +7772,7 @@ export class Builder {
     this.syncAssetPanels();
   }
 
-  private renderSpritePalette(focusSearch = false): void {
+  private renderSpritePalette(focusSearch = false, caret: number | null = null): void {
     const host = this.el<HTMLDivElement>('bp-sprite-host');
     const previousScroll = host.querySelector<HTMLElement>('.ba-placement-list')?.scrollTop ?? this.spritePaletteScrollTop;
     const database = this.createAssetDatabase();
@@ -7766,9 +7801,9 @@ export class Builder {
     });
     this.paintAssetPreviews(host, database);
     this.wireAssetPlacementPalette(host, records, {
-      onSearch: (query) => {
+      onSearch: (query, caret) => {
         this.spriteAssetQuery = query;
-        this.renderSpritePalette(true);
+        this.renderSpritePalette(true, caret);
       },
       onAction: (action) => {
         if (action === 'import') void this.importSpriteFiles();
@@ -7780,7 +7815,7 @@ export class Builder {
       this.spritePaletteScrollTop = scrollTop;
     });
     this.restorePlacementPaletteFocus(host, 'sprite');
-    if (focusSearch) this.focusPlacementPaletteSearch(host);
+    if (focusSearch) this.focusPlacementPaletteSearch(host, caret);
   }
 
   private armSpriteAssetRecord(record: AssetRecord): void {
@@ -8490,10 +8525,19 @@ export class Builder {
 
   /* ---------- autosave drafts ---------- */
 
+  /** Per-document draft key so opening doc B never surfaces doc A's draft. */
+  private draftKey(id: string = this.doc.id): string {
+    return `${DRAFT_KEY}.${id}`;
+  }
+
   private autosaveDraft(): void {
-    if (
-      !this.isOpen ||
-      this.sessionMode === 'live' ||
+    if (this.draftRetryTimer) {
+      window.clearTimeout(this.draftRetryTimer);
+      this.draftRetryTimer = 0;
+    }
+    if (!this.isOpen || this.sessionMode === 'live') return;
+    if (!this.hasUnsavedChanges()) return;
+    const interacting =
       this.settling ||
       this.settleSnap ||
       this.pendingPreview ||
@@ -8505,13 +8549,19 @@ export class Builder {
       this.shapeDrag ||
       this.marquee ||
       this.stroke ||
-      this.terraStroke
-    )
+      this.terraStroke;
+    if (interacting) {
+      // Don't write mid-gesture, but retry soon — a long sculpt must not go a
+      // full 30s (or, if gestures chain, indefinitely) without a crash draft.
+      this.draftRetryTimer = window.setTimeout(() => {
+        this.draftRetryTimer = 0;
+        this.autosaveDraft();
+      }, 2500);
       return;
-    if (!this.hasUnsavedChanges()) return;
+    }
     try {
       this.ensureCaptured();
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), doc: this.doc }));
+      localStorage.setItem(this.draftKey(), JSON.stringify({ at: Date.now(), doc: this.doc }));
       this.status('DRAFT AUTOSAVED');
     } catch {
       // quota — the explicit SAVE path reports storage problems loudly
@@ -8520,13 +8570,19 @@ export class Builder {
 
   private async offerDraft(): Promise<void> {
     try {
-      const raw = localStorage.getItem(DRAFT_KEY);
+      const key = this.draftKey();
+      let raw = localStorage.getItem(key);
+      // Legacy single-key drafts (pre per-document keying) are honored once, but
+      // only if they actually belong to the document being opened.
+      const legacy = raw === null;
+      if (legacy) raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
       const draft = JSON.parse(raw) as { at: number; doc: unknown };
       const draftAt = Number.isFinite(draft.at) ? draft.at : 0;
       if (draftAt > 0 && draftAt === this.lastDraftOfferAt) return;
       const restored = sanitizeImportedDoc(draft.doc);
       if (!restored) return;
+      if (legacy && restored.id !== this.doc.id) return;
       if (draftAt > 0) this.lastDraftOfferAt = draftAt;
       const when = new Date(draftAt || Date.now()).toLocaleTimeString();
       if (
@@ -8538,6 +8594,7 @@ export class Builder {
         return;
       this.replaceDocument(restored, 'DRAFT RESTORED');
       this.paintDirty = false;
+      if (legacy) localStorage.removeItem(DRAFT_KEY); // migrate off the global key
     } catch {
       // a corrupt draft is just gone
     }
@@ -8969,6 +9026,12 @@ export class Builder {
         } else if (this.rotateSelectedObjects()) {
           e.stopPropagation();
         }
+      } else if (e.code === 'KeyE' && this.selectedIds.size > 0) {
+        // Mirror has no geometric meaning for an arbitrary placed-object
+        // selection (it's a footprint transform), so explain instead of
+        // silently no-op'ing the documented Q/E pair.
+        e.stopPropagation();
+        this.status('MIRROR (E) APPLIES TO FLOATING SELECTIONS (X) & ARMED PREFABS — Q ROTATES PLACED OBJECTS', true);
       }
     } else if (e.code === 'KeyM') {
       // Keep play-mode overlays out of authoring.
@@ -9767,6 +9830,13 @@ export class Builder {
         multiSelectionInspectorSchema(
           this.doc.objects.filter((obj) => this.selectedIds.has(obj.id)),
           this.doc.lights.filter((light) => this.selectedIds.has(light.id)),
+          {
+            objects: this.doc.objects,
+            links: this.doc.links,
+            sprites: this.sprites,
+            documentSprites: this.doc.assets?.sprites ?? [],
+            patrolEditId: this.patrolEditId,
+          },
         ),
       );
       this.applyInspectorMixedState(panel);
@@ -9798,6 +9868,9 @@ export class Builder {
       return;
     }
 
+    const objIssues = this.currentValidationIssues({ captureTerrain: false })
+      .filter((issue) => issue.objId === obj.id || (issue.objIds?.includes(obj.id) ?? false))
+      .map((issue) => ({ severity: issue.severity, message: issue.what }));
     this.renderInspectorPanel(panel,
       objectInspectorSchema(obj, {
         objects: this.doc.objects,
@@ -9805,6 +9878,7 @@ export class Builder {
         sprites: this.sprites,
         documentSprites: this.doc.assets?.sprites ?? [],
         patrolEditId: this.patrolEditId,
+        issues: objIssues,
       }),
     );
 
@@ -9927,6 +10001,10 @@ export class Builder {
   }
 
   private renderInspectorPanel(panel: HTMLDivElement, items: InspectorSchemaItem[]): void {
+    // Editing a param low in a tall inspector re-renders on commit; keep the
+    // user's place instead of snapping the panel back to the top.
+    const panelScroll = panel.scrollTop;
+    const bodyScroll = panel.querySelector<HTMLElement>('.bi-panel-body')?.scrollTop ?? 0;
     const bodyItems =
       items[0]?.kind === 'section' && items[0].label.toUpperCase() === builderPanelTitle('builder-inspector').toUpperCase()
         ? items.slice(1)
@@ -9940,6 +10018,7 @@ export class Builder {
       `<div class="bi-panel-body">${renderInspectorItems(bodyItems, {
         collapsedSections: this.workspaceLayout.collapsedSections,
       })}</div>`;
+    this.restoreStructurePanelScroll(panel, panelScroll, [['.bi-panel-body', bodyScroll]]);
     this.refreshPanelDragHandles(panel);
     this.wireCollapsibleSections(panel);
     panel.querySelector('#bi-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-inspector'));
@@ -10125,6 +10204,36 @@ export class Builder {
   }
 
   private wireMultiSelectionInspector(panel: HTMLDivElement): void {
+    // Shared-parameter rows (homogeneous selection): one edit applies to every
+    // selected object of the same kind, through one composite command.
+    for (const field of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-p]')) {
+      field.addEventListener('change', () => {
+        if (this.authoringActionBlocks('Edit selection parameter')) {
+          this.renderInspector();
+          return;
+        }
+        const key = field.dataset.p as string;
+        let value: unknown =
+          field instanceof HTMLInputElement && field.type === 'checkbox' ? field.checked : field.value;
+        if (field instanceof HTMLInputElement && (field.dataset.num || field.type === 'number')) {
+          const parsed = this.parseInspectorNumber(field, key, true);
+          if (!parsed.ok) return;
+          value = parsed.value;
+        } else if (value === '') value = undefined;
+        const selected = this.doc.objects.filter((obj) => this.selectedIds.has(obj.id));
+        const kind = selected[0]?.kind;
+        const cmds: Command[] = [];
+        for (const obj of selected) {
+          if (obj.kind !== kind || obj.params[key] === value) continue;
+          cmds.push(editParamCmd(obj, key, value));
+        }
+        if (cmds.length === 0) return;
+        this.cmds.run(cmds.length === 1 ? cmds[0] : compositeCmd(`edit ${key} x${cmds.length}`, cmds));
+        this.syncMarkers();
+        this.renderInspector();
+        this.status(`${key.toUpperCase()}: ${cmds.length} UPDATED`);
+      });
+    }
     for (const flag of panel.querySelectorAll<HTMLInputElement>('input[data-mf]')) {
       flag.addEventListener('change', () => {
         if (this.authoringActionBlocks('Edit selection flag')) {
@@ -10179,17 +10288,17 @@ export class Builder {
     const maxAttr = input.getAttribute('max');
     const min = minAttr === null || minAttr === '' ? null : Number(minAttr);
     const max = maxAttr === null || maxAttr === '' ? null : Number(maxAttr);
-    if (min !== null && Number.isFinite(min) && value < min) {
-      this.status(`${label.toUpperCase()} MUST BE >= ${min}`, true);
-      this.renderInspector();
-      return { ok: false };
+    // Clamp-and-keep rather than reject-and-rebuild: an out-of-range entry is a
+    // sensible intent (e.g. "as wide as possible"), so snap it to the bound and
+    // commit, keeping the caret instead of wiping the edit with a re-render.
+    let clamped = value;
+    if (min !== null && Number.isFinite(min) && clamped < min) clamped = min;
+    if (max !== null && Number.isFinite(max) && clamped > max) clamped = max;
+    if (clamped !== value) {
+      input.value = String(clamped);
+      this.status(`${label.toUpperCase()} CLAMPED TO ${clamped}`);
     }
-    if (max !== null && Number.isFinite(max) && value > max) {
-      this.status(`${label.toUpperCase()} MUST BE <= ${max}`, true);
-      this.renderInspector();
-      return { ok: false };
-    }
-    return { ok: true, value };
+    return { ok: true, value: clamped };
   }
 
   /** Decor sprite extras: the asset-level emissive toggle (library edit,
@@ -10356,9 +10465,11 @@ export class Builder {
     this.wireCollapsibleSections(panel);
     panel.querySelector('#bo-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-outliner'));
     panel.querySelector<HTMLInputElement>('#bo-search')?.addEventListener('input', (event) => {
-      this.outlinerQuery = (event.target as HTMLInputElement).value;
+      const field = event.target as HTMLInputElement;
+      const caret = field.selectionStart;
+      this.outlinerQuery = field.value;
       this.renderOutliner();
-      this.el<HTMLInputElement>('bo-search')?.focus({ preventScroll: true });
+      this.refocusSearchField('bo-search', caret);
     });
     for (const chip of panel.querySelectorAll<HTMLButtonElement>('button[data-outliner-filter]')) {
       chip.addEventListener('click', () => {
@@ -10409,9 +10520,11 @@ export class Builder {
     this.wireCollapsibleSections(panel);
     panel.querySelector('#brt-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-runtime'));
     panel.querySelector<HTMLInputElement>('#brt-search')?.addEventListener('input', (event) => {
-      this.runtimeQuery = (event.target as HTMLInputElement).value;
+      const field = event.target as HTMLInputElement;
+      const caret = field.selectionStart;
+      this.runtimeQuery = field.value;
       this.renderRuntimePanel(false);
-      this.el<HTMLInputElement>('brt-search')?.focus({ preventScroll: true });
+      this.refocusSearchField('brt-search', caret);
     });
     for (const chip of panel.querySelectorAll<HTMLButtonElement>('button[data-runtime-filter]')) {
       chip.addEventListener('click', () => {
@@ -10427,10 +10540,33 @@ export class Builder {
         this.toggleRuntimeOverlay(overlay);
       });
     }
-    for (const row of panel.querySelectorAll<HTMLElement>('[data-runtime-id]')) {
+    const runtimeRows = [...panel.querySelectorAll<HTMLElement>('[data-runtime-id]')];
+    for (const row of runtimeRows) {
       row.addEventListener('click', () => {
         const id = row.dataset.runtimeId ?? '';
         if (id) this.focusRuntimeRow(id);
+      });
+      // These rows advertise role="option"; back that with real keyboard nav.
+      row.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          const id = row.dataset.runtimeId ?? '';
+          if (id) this.focusRuntimeRow(id);
+          return;
+        }
+        const next =
+          event.key === 'ArrowDown'
+            ? runtimeRows[runtimeRows.indexOf(row) + 1]
+            : event.key === 'ArrowUp'
+              ? runtimeRows[runtimeRows.indexOf(row) - 1]
+              : event.key === 'Home'
+                ? runtimeRows[0]
+                : event.key === 'End'
+                  ? runtimeRows[runtimeRows.length - 1]
+                  : null;
+        if (!next || next === row) return;
+        event.preventDefault();
+        next.focus({ preventScroll: true });
       });
     }
     for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-runtime-focus]')) {
@@ -10508,7 +10644,16 @@ export class Builder {
     if (!this.isWorkspacePanelOpen('builder-runtime')) return;
     const panel = this.el<HTMLDivElement>('builder-runtime');
     const active = document.activeElement;
-    if (active instanceof HTMLElement && panel.contains(active) && this.focusRouter.isTextEntryTarget(active)) return;
+    // Don't yank the DOM out from under a focused control: the search input OR a
+    // runtime row the user is keyboard-navigating (the wholesale innerHTML
+    // rebuild would otherwise destroy row focus ~5x/sec).
+    if (
+      active instanceof HTMLElement &&
+      panel.contains(active) &&
+      (this.focusRouter.isTextEntryTarget(active) ||
+        active.closest('[data-runtime-id],[data-runtime-filter],[data-runtime-overlay]'))
+    )
+      return;
     const frame = this.ctx.state.frameCount;
     if (this.runtimeSnapshotFrame >= 0 && Math.abs(frame - this.runtimeSnapshotFrame) < RUNTIME_PANEL_REFRESH_FRAMES) return;
     this.renderRuntimePanel(true);
@@ -10552,9 +10697,11 @@ export class Builder {
     this.wireCollapsibleSections(panel);
     panel.querySelector('#blg-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-link-graph'));
     panel.querySelector<HTMLInputElement>('#blg-search')?.addEventListener('input', (event) => {
-      this.linkGraphQuery = (event.target as HTMLInputElement).value;
+      const field = event.target as HTMLInputElement;
+      const caret = field.selectionStart;
+      this.linkGraphQuery = field.value;
       this.renderLinkGraph();
-      this.el<HTMLInputElement>('blg-search')?.focus({ preventScroll: true });
+      this.refocusSearchField('blg-search', caret);
     });
     for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-unlink]')) {
       button.addEventListener('click', (event) => {
@@ -10662,6 +10809,7 @@ export class Builder {
     this.refreshPanelDragHandles(panel);
     this.wireCollapsibleSections(panel);
     this.paintAssetPreviews(panel, database);
+    void this.updateAssetQuotaLine();
     this.restoreAssetBrowserScroll(panel, previousSourceScroll, previousListScroll);
     this.restoreAssetBrowserFocus(panel);
     panel.querySelector('#ba-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-assets'));
@@ -10701,9 +10849,11 @@ export class Builder {
       this.renderAssetBrowser();
     });
     panel.querySelector<HTMLInputElement>('#ba-search')?.addEventListener('input', (event) => {
-      this.assetQuery = (event.target as HTMLInputElement).value;
+      const field = event.target as HTMLInputElement;
+      const caret = field.selectionStart;
+      this.assetQuery = field.value;
       this.renderAssetBrowser();
-      this.el<HTMLInputElement>('ba-search')?.focus({ preventScroll: true });
+      this.refocusSearchField('ba-search', caret);
     });
     for (const chip of panel.querySelectorAll<HTMLElement>('[data-asset-collection]')) {
       const activate = (): void => {
@@ -10981,6 +11131,20 @@ export class Builder {
     return `${blocked.length} selected asset${blocked.length === 1 ? '' : 's'} cannot be deleted: ${first.record.name} - ${first.plan.reasons[0] ?? 'blocked'}`;
   }
 
+  /** Re-focus a search field after its panel re-rendered on `input`, restoring
+   *  the caret. Without this the freshly-parsed `<input value="…">` focuses with
+   *  the caret at index 0, so each new character inserts at the front and the
+   *  query comes out reversed. */
+  private refocusSearchField(id: string, caret: number | null): void {
+    const el = this.el<HTMLInputElement>(id);
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    if (caret !== null) {
+      const pos = Math.min(caret, el.value.length);
+      el.setSelectionRange(pos, pos);
+    }
+  }
+
   private restoreAssetBrowserFocus(panel: HTMLElement): void {
     const target = this.assetBrowserFocusTarget;
     if (!target) return;
@@ -11028,6 +11192,7 @@ export class Builder {
 
   private renderAssetDetails(): void {
     const panel = this.el<HTMLDivElement>('builder-asset-details');
+    const previousScroll = panel.scrollTop; // sibling renderPrefabDetails preserves this; keep parity
     const database = this.createAssetDatabase();
     const asset = this.assetSelectedId ? database.get(this.assetSelectedId) : null;
     panel.innerHTML = renderAssetDetailPanel({
@@ -11035,6 +11200,7 @@ export class Builder {
       deletePlan: asset ? database.deletePlan(asset.assetId) : undefined,
       collapsedSections: this.workspaceLayout.collapsedSections,
     });
+    this.restoreStructurePanelScroll(panel, previousScroll, []);
     this.refreshPanelDragHandles(panel);
     this.wireCollapsibleSections(panel);
     this.paintAssetPreviews(panel, database);
@@ -11259,10 +11425,48 @@ export class Builder {
     this.status(`DUPLICATED PREFAB: ${copy.name.toUpperCase()} — EDITABLE PROJECT COPY`);
   }
 
+  /** Fill the asset browser's storage-budget line (localStorage is ~5 MB);
+   *  surfaced so large sprite-sheet imports don't hit a silent quota wall. */
+  private async updateAssetQuotaLine(): Promise<void> {
+    const summary = await this.assetStore.quota().catch(() => null);
+    if (!summary) return;
+    const el = this.el<HTMLDivElement>('builder-assets').querySelector<HTMLElement>('#ba-quota');
+    if (!el) return;
+    if (!summary.available) {
+      el.textContent = '';
+      return;
+    }
+    const kb = Math.round(summary.usedBytes / 1024);
+    const LIMIT_KB = 5 * 1024;
+    const pct = Math.min(100, Math.round((kb / LIMIT_KB) * 100));
+    el.textContent = `local storage: ${kb} KB (~${pct}% of 5 MB) · ${summary.itemCount} item(s)`;
+    el.classList.toggle('warn', kb > LIMIT_KB * 0.8);
+  }
+
   private paintAssetPreviews(panel: HTMLElement, database: AssetDatabase): void {
     for (const canvas of panel.querySelectorAll<HTMLCanvasElement>('canvas[data-asset-id]')) {
       const asset = database.get(canvas.dataset.assetId ?? '');
-      if (asset) paintAssetPreview(canvas, asset);
+      if (!asset) continue;
+      const key = `${asset.assetId}:${asset.contentSignature}:${canvas.width}x${canvas.height}`;
+      const cached = this.assetPreviewCache.get(key);
+      const g = canvas.getContext('2d');
+      if (cached) {
+        if (g) {
+          g.clearRect(0, 0, canvas.width, canvas.height);
+          g.drawImage(cached, 0, 0);
+        }
+        continue;
+      }
+      if (!paintAssetPreview(canvas, asset)) continue;
+      // Snapshot the freshly painted (synchronous) canvas for later re-renders.
+      const snap = document.createElement('canvas');
+      snap.width = canvas.width;
+      snap.height = canvas.height;
+      const sg = snap.getContext('2d');
+      if (sg) {
+        sg.drawImage(canvas, 0, 0);
+        this.assetPreviewCache.set(key, snap);
+      }
     }
   }
 
@@ -11291,6 +11495,7 @@ export class Builder {
     void this.refreshProjectAssetStore();
     this.sanitizeArmedAssetsAfterLibraryRefresh();
     this.spriteFrameCache.clear();
+    this.assetPreviewCache.clear();
     this.refreshPrefabs();
     this.refreshSprites();
     this.refreshDocSelect();
@@ -12443,10 +12648,6 @@ export class Builder {
 }
 
 /** Minimal HTML escape for text interpolated into Builder-owned markup. */
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
 function cssString(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\a ');
 }

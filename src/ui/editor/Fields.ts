@@ -47,6 +47,9 @@ export interface Vec2Field extends BaseField {
   y: number;
   xDataset?: Record<string, string | number | boolean>;
   yDataset?: Record<string, string | number | boolean>;
+  min?: number;
+  max?: number;
+  step?: number;
 }
 
 export type EditorField = NumberField | CheckboxField | SelectField | TextField | Vec2Field;
@@ -123,11 +126,15 @@ function fieldControl(field: EditorField, labelId: string): string {
     )}${mixedAttrs(field)}${disabledAttrs(field)}>`;
   }
   if (field.kind === 'vec2') {
-    return `<span class="editor-field-vec2"><input type="number" value="${field.x}"${dataAttrs(
+    const range = numberAttrs(field);
+    const mixed = mixedAttrs(field);
+    return `<span class="editor-field-vec2"><input type="number" value="${field.mixed ? '' : field.x}"${dataAttrs(
       field.xDataset ?? field.dataset,
-    )} aria-label="${escapeAttr(field.label)} X"${disabledAttrs(field)}><input type="number" value="${field.y}"${dataAttrs(
-      field.yDataset ?? field.dataset,
-    )} aria-label="${escapeAttr(field.label)} Y"${disabledAttrs(field)}></span>`;
+    )}${range} aria-label="${escapeAttr(field.label)} X"${mixed}${disabledAttrs(field)}><input type="number" value="${
+      field.mixed ? '' : field.y
+    }"${dataAttrs(field.yDataset ?? field.dataset)}${range} aria-label="${escapeAttr(field.label)} Y"${mixed}${disabledAttrs(
+      field,
+    )}></span>`;
   }
   const numeric = field as NumberField;
   const type = field.kind === 'slider' ? 'range' : 'number';
@@ -144,7 +151,7 @@ function optionTag(option: string | FieldOption, selected: string): string {
   }</option>`;
 }
 
-function numberAttrs(field: NumberField): string {
+function numberAttrs(field: { min?: number; max?: number; step?: number }): string {
   return [
     field.min === undefined ? '' : ` min="${field.min}"`,
     field.max === undefined ? '' : ` max="${field.max}"`,

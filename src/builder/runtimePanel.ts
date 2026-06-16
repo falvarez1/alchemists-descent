@@ -157,7 +157,7 @@ function renderRuntimeRow(row: RuntimeEntityRow, selected: boolean, showFocusAct
       <button type="button" data-runtime-focus="${escAttr(row.id)}">Focus</button>
     </div>`
     : '';
-  return `<div class="bo-row brt-row ${selected ? ' selected' : ''}${row.visible ? '' : ' hidden-row'}" role="option" tabindex="-1" aria-selected="${selected ? 'true' : 'false'}" data-runtime-id="${escAttr(row.id)}">
+  return `<div class="bo-row brt-row ${selected ? ' selected' : ''}${row.visible ? '' : ' hidden-row'}" role="option" tabindex="0" aria-selected="${selected ? 'true' : 'false'}" data-runtime-id="${escAttr(row.id)}">
     <div class="bo-row-main">
       <div class="bo-row-title">${esc(row.label)}</div>
       <div class="bo-row-sub">${esc(row.sublabel)}</div>

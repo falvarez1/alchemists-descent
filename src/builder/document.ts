@@ -738,8 +738,16 @@ export function migrateSandboxSave(
   save: { v: 1; biome: string; rle: string; life: Array<[number, number]>; charge: Array<[number, number]> },
 ): EditorDocument {
   const doc = createEmptyDocument(name, save.biome as BiomeId);
-  doc.world = { rle: save.rle, life: save.life, charge: save.charge };
-  return doc;
+  // Sanitize the v1 grid through the same layer guard the import path uses:
+  // a corrupt rle / sparse-pair array returns null here and is dropped to a
+  // null world layer rather than injecting a doc that throws later in
+  // decode/validate. Well-formed saves round-trip unchanged.
+  doc.world = sanitizeWorldLayer({ rle: save.rle, life: save.life, charge: save.charge, biome: doc.biome });
+  // Run the full assembled doc through the import sanitizer for parity with
+  // every other ingestion path. createEmptyDocument already yields a valid
+  // v:2 doc with matching size and a (now) sanitized/null world layer, so this
+  // never returns null; the fallback preserves the migrated doc defensively.
+  return sanitizeImportedDoc(doc) ?? doc;
 }
 
 /* ---------------- shareable level codes ---------------- */

@@ -130,6 +130,25 @@ Blast→eject already works. Add:
 **B1 material → B2 couplings → P1 kick → P2 spell reactions → P3 big crates →
 P4 dispenser → P5 water.** Each lands as a verified increment.
 
+### Progress
+- **B1 material — DONE** (`bodyMaterials.ts`; blasts mass-scaled). `verify-materials.mjs`.
+- **B2 couplings — DONE.** B2a: player shots strike bodies via `RigidBodiesApi.hitTest`
+  + mass-aware `applyMomentumAt` (in `Projectiles.ts impactBody`; pierce/bounce/detonate
+  per type). B2b: `RigidBodies.resolvePlayer` (post-step) — the player stands on / jumps
+  off bodies, shoves light ones, is blocked by heavy ones, never tunnels (min-penetration
+  side resolve). `verify-couplings.mjs` (8/8).
+- **P1 kick — DONE.** `PlayerControlApi.kick` (bound to **F**; RMB still throws the flask):
+  mass-aware cone shove of bodies + enemy knockback/damage, self-recoil off solid hits
+  (kick-jump), cooldown. Tunables in `params.player` (kick*). `verify-kick.mjs` (7/7).
+- **P2 spell/material reactions — DONE.** `RigidBodies.reactBodies` (per tick): flammable
+  (wood) bodies ignite from hot cells → burn (flames/smoke, shed fire) → consumed into real
+  ash cells (`burnT`); frost (ice contact or a frost shot via `Projectiles.impactBody`)
+  sets `frozenT` → velocity damped; the dig beam shoves bodies in its path (`digPush`).
+  Lightning conducts into conductive (metal) bodies in `Lightning.cast` (bolt terminates +
+  charges/zaps) but passes a non-conductive one. Burning/frozen tint in
+  `FrameComposer.drawRigidBodies`. `verify-reactions.mjs` (9/9).
+- **NEXT: P3** larger crates + size×material variety (then P4 dispenser, P5 water).
+
 ## Ropes / vines — DONE (separate Verlet system, not Rapier)
 Handled by `VineStrands`, not the rigid bodies. `VineStrands.addHanging(x, y, length,
 {thickness, color})` makes a PERSISTENT strand pinned at the top that sways, collides

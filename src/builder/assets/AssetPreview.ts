@@ -3,6 +3,8 @@ import type { PrefabDef } from '@/builder/prefablib';
 import { decodeFramePx, spriteContentSig } from '@/builder/assets/sprites';
 import type { SpriteAsset } from '@/builder/assets/sprites';
 import type { AssetPreviewSummary, AssetRecord } from '@/builder/assets/AssetTypes';
+import { paletteColor } from '@/sim/cellPalette';
+import { unpackB, unpackG, unpackR } from '@/sim/colors';
 
 export function stableContentSignature(value: unknown): string {
   return fnv1a(stableStringify(value)).toString(16).padStart(8, '0');
@@ -191,15 +193,8 @@ function paintSpritePreview(g: CanvasRenderingContext2D, canvas: HTMLCanvasEleme
 }
 
 function cellColor(cell: number): string {
-  if (cell === 1) return '#c7a767';
-  if (cell === 2) return '#2f7ed8';
-  if (cell === 3) return '#65606a';
-  if (cell === 4) return '#d2b48c';
-  if (cell === 5) return '#ff7a1a';
-  if (cell === 12) return '#8a8a92';
-  if (cell === 13) return '#9aa7b2';
-  if (cell === 34) return '#3f8f3f';
-  return '#9fb6cc';
+  const packed = paletteColor(cell);
+  return `rgb(${unpackR(packed)},${unpackG(packed)},${unpackB(packed)})`;
 }
 
 function isPrefab(value: unknown): value is PrefabDef {

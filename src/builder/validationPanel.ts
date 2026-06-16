@@ -46,7 +46,7 @@ export function renderValidationPanel(issues: DocIssue[], options: ValidationPan
         ${filterButton('warning', 'Warnings', 'Warnings', count(issues, 'warning'))}
         ${filterButton('info', 'Info', 'Info', count(issues, 'info'))}
       </div>
-      <div class="bv-groups">${issues.length === 0 ? '<div class="bv-empty" role="status">0 issues found. Document is ready for playtest checks.</div>' : groups}</div>
+      <div class="bv-groups">${issues.length === 0 ? '<div class="bv-empty b-empty" role="status">0 issues found. Document is ready for playtest checks.</div>' : groups}</div>
     </div>`;
 }
 

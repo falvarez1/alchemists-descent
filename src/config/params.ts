@@ -137,6 +137,14 @@ export const PLAYER_PARAMS: PlayerTuning = {
   recoilPerMomentum: 0.06,
   recoilMaxImpulse: 4.0,
   recoilGroundDamp: 0.55,
+  // Kick (F): a chunky shove. kickImpulse is a momentum (Δv = impulse/mass) so a
+  // ~29-mass wood crate gets Δv≈2.6 and a ~127-mass metal one only ≈0.6.
+  kickImpulse: 75,
+  kickRange: 22,
+  kickArc: 0.9, // ~±52° cone around the aim
+  kickCooldown: 22,
+  kickSelfRecoil: 3.0, // full kick-jump off a wall/heavy body; scaled by what you hit
+  kickDamage: 8,
 };
 
 /** Frozen baseline captured at load — the Builder "reset" action restores it. */

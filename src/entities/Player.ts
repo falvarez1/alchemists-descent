@@ -116,6 +116,8 @@ export function createPlayer(): PlayerState {
     skidDir: 1,
     swapT: 0,
     recoilT: 0,
+    kickT: 0,
+    kickDir: 1,
     staggerT: 0,
     staggerDir: 1,
     fidgetT: 0,
@@ -151,6 +153,8 @@ export class PlayerControl implements PlayerControlApi {
   private jumpBufferFrames = 0;
   /** Edge detector for the jump key. */
   private prevJumpHeld = false;
+  /** Frames until the player can kick again. */
+  private kickCooldownT = 0;
   /** Edge detector for the Space-only wall-jump key. */
   private prevWallJumpHeld = false;
   /** Grab input buffer, so near-miss wall catches feel intentional. */
@@ -362,6 +366,91 @@ export class PlayerControl implements PlayerControlApi {
     player.vy += vy;
   }
 
+  /**
+   * Melee kick (bound to F): a short cone toward the aim shoves rigid bodies
+   * (mass-aware via applyMomentumAt — light crates fly, heavy ones resist) and
+   * knocks back/damages enemies. Landing it on something solid (a heavy body or
+   * terrain) recoils the wizard the other way — a kick-jump off the world.
+   */
+  kick(ctx: Ctx): void {
+    const player = ctx.player;
+    if (player.dead || player.climbing || ctx.state.mode !== 'play') return;
+    if (this.kickCooldownT > 0) return;
+    const lp = ctx.params.player;
+    this.kickCooldownT = lp.kickCooldown;
+    const a = player.aimAngle;
+    const dirX = Math.cos(a);
+    const dirY = Math.sin(a);
+    player.kickT = 12;
+    player.kickDir = dirX < 0 ? -1 : 1;
+    player.facing = player.kickDir;
+    // Origin at the hip, nudged toward the aim.
+    const ox = player.x + dirX * 3;
+    const oy = player.y - 8 + dirY * 3;
+    const cosArc = Math.cos(lp.kickArc);
+    let reaction = 0; // 0 = kicked air; → 1 = hit something immovable (full recoil)
+
+    // Rigid bodies in the cone: mass-aware shove + spin.
+    for (const body of ctx.rigidBodies.bodies) {
+      if (body.kind !== 'dynamic') continue;
+      const dx = body.x - ox;
+      const dy = body.y - oy;
+      const d = Math.hypot(dx, dy) || 1;
+      const reach = lp.kickRange + (body.shape.kind === 'circle' ? body.shape.radius : 5);
+      if (d > reach) continue;
+      const nx = dx / d;
+      const ny = dy / d;
+      if (nx * dirX + ny * dirY < cosArc) continue;
+      ctx.rigidBodies.applyMomentumAt(
+        body,
+        dirX * lp.kickImpulse,
+        dirY * lp.kickImpulse - lp.kickImpulse * 0.2,
+        body.x - nx * 1.5,
+        body.y - ny * 1.5,
+      );
+      const mass = body.invMass && body.invMass > 0 ? 1 / body.invMass : 100;
+      reaction = Math.max(reaction, Math.min(1, mass / 90));
+    }
+
+    // Enemies in the cone: knockback + contact damage.
+    for (const e of ctx.enemies) {
+      const dx = e.x - ox;
+      const dy = e.y - 5 - oy;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d > lp.kickRange + 6) continue;
+      const nx = dx / d;
+      const ny = dy / d;
+      if (nx * dirX + ny * dirY < cosArc) continue;
+      ctx.enemyCtl.damage(e, lp.kickDamage, dirX * 3.2, dirY * 2 - 1.4);
+      reaction = Math.max(reaction, 0.5);
+    }
+
+    // Terrain straight ahead → full reaction (kick off a wall/floor).
+    const world = ctx.world;
+    for (let s = 4; s <= lp.kickRange; s += 2) {
+      const cx = Math.floor(ox + dirX * s);
+      const cy = Math.floor(oy + dirY * s);
+      if (world.inBounds(cx, cy) && blocksEntity(world.types[world.idx(cx, cy)])) {
+        reaction = 1;
+        break;
+      }
+    }
+
+    // Self-recoil opposite the kick when it bit into something solid (kick-jump).
+    if (reaction > 0) {
+      this.applyImpulse(-dirX * lp.kickSelfRecoil * reaction, -dirY * lp.kickSelfRecoil * reaction);
+      if (player.grounded && dirY > 0.2) player.grounded = false; // kicking down lifts you off
+    }
+
+    // Feedback: a dust arc along the kick + a low thud.
+    for (let k = 0; k < 8; k++) {
+      const spread = a + (Math.random() - 0.5) * lp.kickArc * 1.6;
+      ctx.particles.spawn(ox + dirX * 4, oy + dirY * 4, Math.cos(spread) * 1.6, Math.sin(spread) * 1.6, null, packRGB(190, 178, 158), 12, { grav: 0.05 });
+    }
+    ctx.audio.tone(150, 90, 0.14, 'square', 0.09);
+    ctx.audio.noiseBurst(0.08, 260, 0.08);
+  }
+
   /** Original: killPlayer() — lines 1577-1587. */
   kill(): void {
     const ctx = this.ctx;
@@ -506,6 +595,7 @@ export class PlayerControl implements PlayerControlApi {
     const player = ctx.player;
     const world = ctx.world;
     if (ctx.state.mode !== 'play' || player.dead) return;
+    if (this.kickCooldownT > 0) this.kickCooldownT--;
 
     // Near death, you hear it: a slow heartbeat under 25% HP, urgent under 12%.
     const hpFrac = player.hp / player.maxHp;
@@ -1542,6 +1632,7 @@ export class PlayerControl implements PlayerControlApi {
     if (player.landTimer > 0) player.landTimer--;
     if (player.stretchT > 0) player.stretchT--;
     if (player.recoilT > 0) player.recoilT--;
+    if (player.kickT > 0) player.kickT--;
     if (player.staggerT > 0) player.staggerT--;
     if (player.swapT > 0) player.swapT--;
     player.prevGrounded = player.grounded;

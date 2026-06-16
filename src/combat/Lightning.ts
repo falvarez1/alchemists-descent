@@ -2,6 +2,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { Ctx, LightningApi, LightningArc } from '@/core/types';
 import { EnemySpatialIndex } from '@/entities/enemySpatial';
+import { bodyMaterialDef } from '@/entities/bodyMaterials';
 import { Cell, isGas } from '@/sim/CellType';
 
 // ===================== Chain Lightning =====================
@@ -51,6 +52,25 @@ export class Lightning implements LightningApi {
         }
       }
       if (struck) break;
+
+      // Conductive (metal) rigid bodies catch the bolt and conduct it: charge
+      // their surroundings (the sim chains it onward) and zap enemies in contact.
+      const body = ctx.rigidBodies?.hitTest?.(x, y);
+      if (body && body.material && bodyMaterialDef(body.material).conductive) {
+        world.setChargeAt(world.idx(gx, gy), 20);
+        for (const e of this.enemyIndex.query(body.x, body.y, 22, this.enemyScratch)) {
+          if (!this.enemyIndex.has(e)) continue;
+          const ex = e.x - body.x;
+          const ey = e.y - 5 - body.y;
+          if (ex * ex + ey * ey < 26 * 26) {
+            ctx.enemyCtl.damage(e, params.damage!, Math.cos(angle) * 1.4, -0.8);
+            if (e.hp <= 0) this.enemyIndex.syncLive(ctx.enemies);
+          }
+        }
+        ctx.explosions.trigger(body.x, body.y, 3);
+        struck = true;
+        break;
+      }
 
       const c = world.types[world.idx(gx, gy)];
       if (c !== Cell.Empty && !isGas(c) && c !== Cell.Fire) {

@@ -340,3 +340,34 @@ export function showImportReport(
     opts.onCancel();
   });
 }
+
+/**
+ * Surfaces the warnings/errors a JSON (prefab/sprite/document) import produced —
+ * "dropped a spawn object", "dropped a link with a missing endpoint" — instead
+ * of letting them die in a single 4-second status toast. Read-only: a DISMISS
+ * button closes it (the asset already landed; this just explains what changed).
+ */
+export function showImportNotes(
+  host: HTMLElement,
+  filename: string,
+  notes: { warnings: string[]; errors: string[] },
+): void {
+  if (notes.warnings.length === 0 && notes.errors.length === 0) return;
+  host.innerHTML = '';
+  host.style.display = '';
+  const panel = document.createElement('div');
+  panel.id = 'builder-import-report';
+  const note = (cls: string, text: string): string =>
+    `<div class="b-imp-note ${cls}">${escapeHtml(text)}</div>`;
+  panel.innerHTML =
+    `<div class="bi-head">IMPORT — ${escapeHtml(filename)}</div>` +
+    `<div class="bp-hint">${notes.errors.length} error(s), ${notes.warnings.length} warning(s) during import.</div>` +
+    notes.errors.map((text) => note('b-imp-error', text)).join('') +
+    notes.warnings.map((text) => note('b-imp-warn', text)).join('') +
+    `<div class="bp-actions"><button id="b-imp-dismiss" class="b-accent">DISMISS</button></div>`;
+  host.appendChild(panel);
+  panel.querySelector('#b-imp-dismiss')!.addEventListener('click', () => {
+    host.style.display = 'none';
+    host.innerHTML = '';
+  });
+}

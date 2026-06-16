@@ -175,6 +175,7 @@ export class Gallery {
   private infoEl!: HTMLDivElement;
   private searchEl!: HTMLInputElement;
   private captionEl!: HTMLDivElement;
+  private hintEl!: HTMLSpanElement;
   private viewToggleEl!: HTMLButtonElement;
 
   private items: GalleryItem[] = [];
@@ -247,8 +248,8 @@ export class Gallery {
     this.root.innerHTML = `
       <div class="bg-head">
         <span class="bg-title">GALLERY</span>
-        <input id="bg-search" type="search" placeholder="search" spellcheck="false">
-        <span class="bg-hint">/ focus &middot; &uarr;&darr; browse &middot; &larr;&rarr; states &middot; +/&minus; zoom &middot; ESC close</span>
+        <input id="bg-search" type="search" placeholder="search gallery" spellcheck="false">
+        <span id="bg-hint" class="bg-hint">/ focus &middot; &uarr;&darr; browse &middot; &larr;&rarr; states &middot; +/&minus; zoom &middot; ESC close</span>
         <div class="bg-actions">
           <button id="bg-view-toggle" type="button" aria-label="Maximize gallery" title="Maximize gallery"></button>
           <button id="bg-close" type="button" aria-label="Close gallery">&times;</button>
@@ -273,6 +274,7 @@ export class Gallery {
     this.infoEl = this.root.querySelector('#bg-info')!;
     this.searchEl = this.root.querySelector('#bg-search')!;
     this.captionEl = this.root.querySelector('#bg-caption')!;
+    this.hintEl = this.root.querySelector('#bg-hint')!;
     this.viewToggleEl = this.root.querySelector('#bg-view-toggle')!;
     this.viewToggleEl.addEventListener('click', () => this.setMaximized(!this.maximized));
     this.root.querySelector('#bg-close')!.addEventListener('click', () => this.close());
@@ -457,6 +459,13 @@ export class Gallery {
 
   private loop = (): void => {
     if (!this.openFlag) return;
+    // Tab hidden: the live micro-sim is purely cosmetic, so skip the
+    // step+redraw work entirely (no advancing the world for invisible frames),
+    // but keep rescheduling so the gallery resumes cleanly when shown again.
+    if (document.hidden) {
+      this.raf = requestAnimationFrame(this.loop);
+      return;
+    }
     this.frame++;
     this.stubState.frameCount = this.frame;
     const rig = this.rig;
@@ -644,8 +653,21 @@ export class Gallery {
     }
   }
 
+  /**
+   * The keyboard-hint bar only advertises &larr;&rarr; when arrows actually do
+   * something for the selected item — it walks multiple STATES, or steps the
+   * TACTICAL SPELLS demos. Single-state items (no spells) drop the segment.
+   */
+  private renderHint(it: GalleryItem | undefined): void {
+    const hasArrows = !!it && (it.states.length > 1 || !!it.spells);
+    const arrows = hasArrows ? '&larr;&rarr; ' + (it && it.spells ? 'states/spells' : 'states') + ' &middot; ' : '';
+    this.hintEl.innerHTML =
+      '/ focus &middot; &uarr;&darr; browse &middot; ' + arrows + '+/&minus; zoom &middot; ESC close';
+  }
+
   private renderInfo(): void {
     const it = this.filtered[this.selected];
+    this.renderHint(it);
     if (!it) {
       this.infoEl.innerHTML = '';
       return;

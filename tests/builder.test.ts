@@ -375,6 +375,7 @@ describe('builder document', () => {
 
   it('resyncs live backdrop params when backdrop metadata commands replay', () => {
     type BackdropHarness = {
+      doc: EditorDocument;
       documentRevision: number;
       validationDirty: boolean;
       previewRuntimeDirty: boolean;
@@ -386,6 +387,7 @@ describe('builder document', () => {
     };
     const builder = Object.create(Builder.prototype) as BackdropHarness;
     Object.assign(builder, {
+      doc: createEmptyDocument('backdrop-harness', 'earthen'),
       documentRevision: 0,
       validationDirty: false,
       previewRuntimeDirty: false,

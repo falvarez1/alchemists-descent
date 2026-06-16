@@ -1455,11 +1455,17 @@ body.builder-open #right-inspector { display: none; }
     cursor: pointer; transition: all 0.1s ease;
 }
 #builder-root button:hover, #builder-root .b-filebtn:hover { background: #1d2733; color: #d6e6f5; border-color: #3a4c61; }
+/* Keyboard focus must be visible on the most common control (WCAG 2.4.7). */
+#builder-root button:focus-visible, #builder-root .b-filebtn:focus-visible {
+    outline: 1px solid var(--bui-accent); outline-offset: -1px;
+}
+#builder-root button:disabled, #builder-root .b-filebtn:disabled { opacity: 0.45; cursor: default; }
 #builder-root input, #builder-root select {
     background: #0c0f14; border: 1px solid #25303d; color: #d6e6f5; font-family: var(--mono);
     font-size: 10px; padding: 4px 6px; border-radius: 3px; outline: none;
 }
-#builder-root input:focus, #builder-root select:focus { border-color: #4ade80; }
+/* One focused-field colour across the whole IDE (was green/sky-300/sky-400). */
+#builder-root input:focus, #builder-root select:focus { border-color: var(--bui-accent); }
 
 #builder-bar {
     position: relative; z-index: 3; pointer-events: auto;
@@ -1626,7 +1632,7 @@ body.builder-open #right-inspector { display: none; }
 }
 .bw-field input:focus,
 .bw-field select:focus,
-.bw-numline input[type="number"]:focus { border-color: #7dd3fc; }
+.bw-numline input[type="number"]:focus { border-color: var(--bui-accent); }
 .bw-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
 .bw-actions button:hover { border-color: #7dd3fc; color: #dbe6f3; }
 .bw-group { border: 1px solid #141b24; border-radius: 4px; background: #090d13; }
@@ -1694,7 +1700,7 @@ body.builder-open #right-inspector { display: none; }
     width: 100%; min-width: 0; box-sizing: border-box; background: #070b10; color: #d6e6f5;
     border: 1px solid #1b2735; border-radius: 3px; padding: 5px 6px; font-size: 10px;
 }
-.ba-placement-toolbar input:focus { border-color: #38bdf8; outline: none; }
+.ba-placement-toolbar input:focus { border-color: var(--bui-accent); outline: none; }
 .ba-placement-toolbar span {
     color: #5f7286; font-size: 8px; font-weight: 800; text-transform: uppercase; white-space: nowrap;
 }
@@ -1748,6 +1754,13 @@ body.builder-open #right-inspector { display: none; }
 .b-imp-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 .b-imp-swatch { width: 12px; height: 12px; flex: none; border: 1px solid #36414e; border-radius: 2px; }
 .b-imp-row code { color: #e8d6f5; }
+/* JSON-import notes list (warnings/errors surfaced from importPrefabJson). */
+.b-imp-note {
+    padding: 3px 6px; margin: 2px 0; border-radius: 3px; line-height: 1.35;
+    border-left: 2px solid var(--bui-border); background: #0c1118;
+}
+.b-imp-note.b-imp-warn { border-left-color: #b78a2e; color: #f2d79a; }
+.b-imp-note.b-imp-error { border-left-color: var(--bui-danger-border); color: var(--bui-danger-color); }
 
 /* double-id selector: must out-rank `#canvas-holder canvas { width:100% !important }` */
 #builder-root #builder-minimap {
@@ -1781,7 +1794,8 @@ body.builder-open #builder-issues { bottom: 182px; }
 }
 .editor-section-head:hover,
 .editor-section-head:focus-visible {
-    color: #8aa0b8; background: #101822; outline: none;
+    color: #8aa0b8; background: #101822;
+    outline: 1px solid var(--bui-accent); outline-offset: -1px;
 }
 .editor-section-label {
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -2159,7 +2173,7 @@ body.builder-open #builder-issues { bottom: 182px; }
 }
 .vw-field input:focus,
 .vw-field select:focus,
-.vw-slider-inputs input[type="number"]:focus { border-color: #7dd3fc; }
+.vw-slider-inputs input[type="number"]:focus { border-color: var(--bui-accent); }
 .vw-seed { grid-template-columns: 42px minmax(0, 1fr) 48px; }
 .vw-check {
     display: flex; align-items: center; gap: 6px; color: #8799ad;
@@ -2272,6 +2286,12 @@ body.builder-open #builder-issues { bottom: 182px; }
     color: #5f7286; font-size: 9px; font-weight: 750; text-transform: uppercase;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.ba-quota {
+    margin-top: 2px; color: var(--bui-text-2); font-size: 9px; font-weight: 700;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ba-quota:empty { display: none; }
+.ba-quota.warn { color: #f2d79a; }
 .ba-source-note {
     margin-top: 6px; color: #8594a4; font-size: 10px; line-height: 1.35;
 }
@@ -3278,7 +3298,7 @@ body.builder-playtest-active #mode-play-btn.active {
     width: 220px; background: #0e1219; border: 1px solid #1d2733; border-radius: 4px;
     color: #c8d4e4; padding: 4px 8px; font-size: 11px; outline: none;
 }
-#builder-gallery #bg-search:focus { border-color: #7dd3fc; }
+#builder-gallery #bg-search:focus { border-color: var(--bui-accent); }
 #builder-gallery .bg-hint { margin-left: auto; color: #5a6878; font-size: 10px; letter-spacing: 0.4px; }
 #builder-gallery .bg-actions { display: flex; align-items: center; gap: 6px; }
 #builder-gallery #bg-view-toggle,
@@ -3474,7 +3494,7 @@ body.builder-playtest-active #mode-play-btn.active {
     width: 58px; background: #0e1219; border: 1px solid #1d2733; border-radius: 4px;
     color: #c8d4e4; padding: 4px 5px; font-size: 10px; outline: none;
 }
-#builder-backdrop .bb-control input[type="number"]:focus { border-color: #7dd3fc; }
+#builder-backdrop .bb-control input[type="number"]:focus { border-color: var(--bui-accent); }
 #builder-backdrop .bb-layer input:disabled,
 #builder-backdrop .bb-grade input:disabled,
 #builder-backdrop .bb-layer button:disabled { opacity: 0.35; cursor: default; }
@@ -3532,10 +3552,13 @@ body.builder-playtest-active #mode-play-btn.active {
     --bui-section-body-gap: 5px;
     --bui-empty-color: #5b7187;
     --bui-accent: #38bdf8;
+    --bui-border: #1d2733;
+    --bui-text: #d6e6f5;
+    --bui-text-2: #9fb6cc;
     --bui-danger-border: #441a1a;
     --bui-danger-bg: #160c0c;
     --bui-danger-color: #ff8a8a;
-    --bui-danger-hi-bg: #441a1a;
+    --bui-danger-hi-bg: #5a2020;
     --bui-danger-hi-color: #ffd9d9;
     --bui-primary-border: #22c55e;
     --bui-primary-bg: #0c1f12;
@@ -3786,7 +3809,6 @@ body.builder-playtest-active #mode-play-btn.active {
    their magenta theme via active color only; gallery chips stay sans.) */
 #builder-root .bo-chip,
 #builder-root .bp-prefab-tag,
-#builder-root .ba-chip,
 #builder-root .bv-filters button {
     border-radius: 4px;
     font-family: var(--mono); font-size: 9px; font-weight: 800;
@@ -3794,7 +3816,6 @@ body.builder-playtest-active #mode-play-btn.active {
     padding: 2px 6px;
 }
 #builder-root .bo-chip[aria-pressed="true"],
-#builder-root .ba-chip[aria-pressed="true"],
 #builder-root .bv-filters button[aria-pressed="true"] {
     border-color: var(--bui-accent); color: #d9f4ff; background: #0b2330;
 }

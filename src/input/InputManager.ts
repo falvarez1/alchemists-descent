@@ -462,7 +462,7 @@ export class InputManager {
       else if (e.code === 'KeyQ' && !ctx.player.climbing) ctx.input.pourHeld = true;
       else if (e.code === 'KeyX' && !ctx.player.climbing) ctx.input.drinkHeld = true;
       else if (e.code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing)
-        ctx.flask.throwFlask(ctx);
+        ctx.playerCtl.kick(ctx);
       else if (e.code.startsWith('Digit')) {
         const n = parseInt(e.code.slice(5)) - 1;
         // Wave D: digits pick wands first, then the Noita-like potion belt.

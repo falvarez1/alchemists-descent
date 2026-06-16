@@ -482,6 +482,27 @@ Phase 4.6 result:
   (`backend.get(storageTexture).texture`) behind a guarded adapter and rerun the
   Phase 4.6 probe on any Three upgrade.
 
+Phase 4.7 result:
+
+- Added `src/render/WebGpuStorageTextureAccess.ts`, a guarded adapter around the
+  pinned Three r184 private `backend.get(storageTexture).texture` lookup. It
+  fails closed when `backend.get`, the backend texture, the format metadata, or
+  the required base-mip view is unavailable.
+- Updated `scripts/probe-webgpu-compose-storage-fixture-page.js` to use the
+  adapter instead of reaching into Three internals inline. The new artifact
+  `verify-out/webgpu-compose-storage-fixture/probe-1781592516747.json` passed on
+  actual WebGPU and records `outputStorageAccess=three-r184-backend-get`,
+  `outputStorageBackendFormat=rgba8unorm`, descriptor `usage=31`,
+  `mipLevelCount=1`, `maxDelta=1`, `mismatchPct=0`, and `meanDelta=0.0273`.
+- Added `tests/webgpu-storage-texture-access.test.ts` for adapter success,
+  descriptor-format fallback, missing-private-API failure, missing backend data,
+  missing backend texture, missing format metadata, format-drift failure, and
+  failed base-mip view creation. The targeted test run passed `13` tests after
+  review hardening.
+- This slice still does not enable WebGPU compose in production and does not
+  claim a frame-rate win. It reduces integration risk for the next runtime
+  slice by boxing the private Three r184 access in one revalidatable module.
+
 Expected result:
 
 - Same or better visual quality than WebGL2 GPU compose.
