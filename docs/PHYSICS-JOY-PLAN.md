@@ -52,19 +52,31 @@ rises above it; the respawn UI is deferred until then.
 
 ---
 
+## ✅ Shipped since the first pass
+
+### Explosive barrels & payload bodies  ✅
+`RigidBody.payload: 'explosive'`; a flammable barrel takes a short `BARREL_FUSE` from
+fire/lava/blast then detonates (`queueDetonation`/`processDetonations` chains ripple over
+frames). Verified by `scripts/verify-barrels.mjs`.
+
+### The physics-test PLAYGROUND + "The Alchemist's Folly" trap  ✅
+`src/world/physicsArena.ts` is now a **standalone, brightly-lit, black-backdrop test arena**
+(generated terrain wiped) with a station for every physics-joy feature, plus a Rube-Goldberg
+death trap: step the **plate** → a **relay** lights its coil → a wood **fuse** crawls into a nest
+of **explosive barrels** (and on to an ice block it melts) while `igniteArea` lights the barrels
+directly → the chain detonation flings a flaming crate and **shoves the victim into a sealed acid
+vat**. Enhancement: relay `'ignite'` now also lights flammable *bodies* in range
+(`RigidBodiesApi.igniteArea`), so relays can ignite props/barrels — previously it seeded fire only
+in empty cells and silently did nothing on a solid/body target. Verified by
+`scripts/verify-playground.mjs` (10/10) and `scripts/verify-acidtrap.mjs` (6/6).
+
 ## ⭐ Recommended next
 
-### Explosive barrels & payload bodies  ⭐
-A body with **contents** that release on break/fire/blast: gunpowder → explosion, oil →
-flammable puddle, water → douse. Kick or shoot one into a crowd → chain reactions.
-- **Fit:** `bodyMaterials` gains a `payload` (none | explode | spill cell + radius);
-  `RigidBodies.shatterBody`/a destroy hook fires it. Reuses shatter + explosions + fire.
-
-### Force push / telekinesis spell  ⭐
+### Force push / telekinesis spell  ⭐ (the remaining ⭐ pick)
 A cone shove that flings bodies + enemies and recoils the caster.
 - **Fit:** new spell card; `applyRadialImpulse`/`applyMomentumAt` in a cone; reuses kick math.
 
-### Fill-and-float puzzles  ⭐
+### Fill-and-float puzzles  ◻ (a station exists in the playground; puzzle content TBD)
 Flood water → a heavy wood crate rises with the surface → a bridge; sink metal to dam a
 sluice. A whole puzzle vocabulary from the P5 buoyancy + the buoy/sluice mechanisms.
 - **Fit:** content/level design on existing systems; maybe a "water level" sensor.
