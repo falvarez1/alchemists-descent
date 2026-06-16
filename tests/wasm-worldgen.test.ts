@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createDefaultVirtualWorldDef } from '@/world/virtual/defaults';
 import {
   generateVirtualChunk,
-  setRoundCornersBackend,
+  setWorldgenWasmBackend,
 } from '@/world/virtual/ChunkGenerator';
 import { isRoundCornersWasmAvailable } from '@/world/virtual/wasm/roundCornersKernel';
 
@@ -13,16 +13,17 @@ function sameTyped(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
   return true;
 }
 
-describe('wasm corner-rounding kernel', () => {
+describe('wasm worldgen kernels', () => {
   it('instantiates in this environment', () => {
     // Guards the parity test below from a false pass: if the kernel were unavailable, the
     // 'wasm' backend would silently fall back to TS and parity would be trivially true.
     expect(isRoundCornersWasmAvailable()).toBe(true);
   });
 
-  it('produces byte-identical chunks via the WASM and TS corner-rounding paths', () => {
-    // roundCaveCorners runs BEFORE the dressing passes, which read terrain shape — so a single
-    // divergent cell cascades into a different chunk hash. Equal hashes => byte-identical morphology.
+  it('produces byte-identical chunks via the WASM and TS paths (corner-rounding + smoothing)', () => {
+    // The 'wasm' backend runs BOTH the corner-rounding and the cellular-smoothing kernels;
+    // both run before the dressing passes that read terrain shape, so a single divergent cell
+    // cascades into a different chunk hash. Equal hashes => byte-identical morphology.
     const coords: Array<[number, number]> = [
       [0, 0],
       [1, 0],
@@ -36,9 +37,9 @@ describe('wasm corner-rounding kernel', () => {
       for (const seed of seeds) {
         const def = createDefaultVirtualWorldDef(seed);
         for (const [cx, cy] of coords) {
-          setRoundCornersBackend('ts');
+          setWorldgenWasmBackend('ts');
           const ts = generateVirtualChunk(def, cx, cy);
-          setRoundCornersBackend('wasm');
+          setWorldgenWasmBackend('wasm');
           const wasm = generateVirtualChunk(def, cx, cy);
           expect(wasm.meta.hash).toBe(ts.meta.hash);
           expect(sameTyped(wasm.types, ts.types)).toBe(true);
@@ -48,7 +49,7 @@ describe('wasm corner-rounding kernel', () => {
         }
       }
     } finally {
-      setRoundCornersBackend('auto');
+      setWorldgenWasmBackend('auto');
     }
   });
 });

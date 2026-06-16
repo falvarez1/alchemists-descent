@@ -82,6 +82,32 @@ export function alloc(size: i32): usize {
 }
 
 /**
+ * Cellular smoothing morphology (the pure-integer loop of smoothTerrain): each pass fills the
+ * scratch with Wall, then sets interior cells from the solid-neighbour count (>=5 Wall, <=2
+ * Empty, else unchanged). Leaves the final result at `typesPtr`. The TS caller still does the
+ * downstream color fix-up. Must stay byte-identical to the TS loop (tests/wasm-worldgen.test.ts).
+ */
+export function smoothTypes(typesPtr: usize, scratchPtr: usize, size: i32, passes: i32): void {
+  let cur = typesPtr;
+  let next = scratchPtr;
+  const n = (size * size) as usize;
+  for (let pass = 0; pass < passes; pass++) {
+    memory.fill(next, WALL, n); // next.fill(Cell.Wall) — borders stay Wall (interior loop skips them)
+    for (let y = 1; y < size - 1; y++) {
+      for (let x = 1; x < size - 1; x++) {
+        const i = x + y * size;
+        const solid = countSolidNeighbors(cur, size, x, y);
+        store<u8>(next + i, solid >= 5 ? WALL : (solid <= 2 ? EMPTY : load<u8>(cur + i)));
+      }
+    }
+    const tmp = cur;
+    cur = next;
+    next = tmp;
+  }
+  if (cur != typesPtr) memory.copy(typesPtr, cur, n);
+}
+
+/**
  * Run the corner-rounding morphology over `typesPtr` (size*size bytes), using `scratchPtr`
  * as the double-buffer. Leaves the final result at `typesPtr`. `strength`/`passes` are
  * computed host-side exactly as the TS path does.

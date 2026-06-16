@@ -1828,3 +1828,52 @@ Notes:
   passes, not the noise.
 - Validation: `node scripts/probe-webgpu-virtual-preview.mjs` (status `passed`, adapter
   available, `~2.85 ms`/preview).
+
+## Virtual World Generation - WASM Smoothing Kernel (second pass)
+
+Task: extend the WASM accelerator to the next pass that profiling justifies, per the rule
+"only port a pass once profiling justifies it."
+
+Commit: working-tree, after `cc500ce`.
+
+Hardware/host: same Windows workstation; Node via Vite `ssrLoadModule`.
+
+Re-profile (with the corner-rounding kernel already on, `--cpu-prof`, 160 chunks): per-chunk
+fell to `34.83 ms`. The new CPU hot spots were the cellular helpers — `countSolidNeighbors`
+`21.5%`, `isTerrainSolid` `7.9%`, and `smoothTerrain` `6.1%` — because `roundCaveCorners`
+(now WASM) was no longer the caller; `smoothTerrain` is now the dominant caller of
+`countSolidNeighbors`. `recolorTerrain` was `8.2%`.
+
+Decision on target: port `smoothTerrain`'s integer cellular loop (it drives
+`countSolidNeighbors`). It splits cleanly into a pure-integer morphology loop (WASM-portable)
+plus a TS color fix-up that needs biome/palette tables (kept in TS). `recolorTerrain` was
+NOT ported: it is color-table + float-tint heavy, a much harder byte-identical port for a
+smaller (~8%) and scattered gain — see "stop here" below.
+
+Command: `npm run build:wasm`, then a TS-vs-WASM A/B over 60 chunks.
+
+Baseline (corner-rounding kernel only): `40.05 ms`/chunk (`1.38x` vs pure TS).
+
+After (corner-rounding + smoothing kernels): per-chunk `23.74 ms` vs TS `40.14 ms` =
+**`1.69x`** (up from `1.38x`).
+
+Actual result: keep. Byte-identical (`hashesMatch: true` in the A/B; `tests/wasm-worldgen.test.ts`
+now exercises BOTH kernels through the same `setWorldgenWasmBackend('ts'|'wasm')` gate and the
+cross-backend chunk hash; 43 virtual tests pass). The `bench:virtual-world` determinism
+fixtures are UNCHANGED (`0,0=95e538c8`, `1,0=db38f3ce`, `-1,2=44575bc5`, `7,-3=19ee354f`),
+confirming the smoothing kernel is byte-identical to the TS loop.
+
+Stop here (for now): re-profiling after this pass would leave `recolorTerrain` (~8%, color
+tables + float tinting + biome-palette lookups) and the residual `countSolidNeighbors` from
+`hasSurfaceNear` (scattered across carve/dressing passes) as the next candidates. Both are
+materially harder to port byte-identically for a smaller marginal gain than the two clean
+integer cellular passes already ported. The rule "only port once profiling justifies it" now
+argues against further porting until the cellular morphology is no longer the bottleneck.
+
+Notes:
+
+- The toggle was renamed `setRoundCornersBackend` -> `setWorldgenWasmBackend` (it now gates
+  both kernels). Kernel source `assembly/worldgen.ts` (`roundCorners` + `smoothTypes`),
+  loader `src/world/virtual/wasm/roundCornersKernel.ts`, wired in `ChunkGenerator`.
+- Validation: `npm run build:wasm`, `npm run typecheck`,
+  `npx vitest run tests/wasm-worldgen.test.ts tests/virtual-world.test.ts` (43), `npm run build`.

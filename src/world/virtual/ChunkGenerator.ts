@@ -25,20 +25,21 @@ import { biomeAtWorld, chunkOrigin, floorDiv } from '@/world/virtual/coords';
 import { fnv1aByteArrays, signedUnitHash2i, unitHash2i } from '@/world/virtual/hash';
 import { resolveTilesForRect, type ResolvedTile } from '@/world/virtual/HerringboneTiles';
 import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
-import { roundCornersWasm } from '@/world/virtual/wasm/roundCornersKernel';
+import { roundCornersWasm, smoothTypesWasm } from '@/world/virtual/wasm/roundCornersKernel';
 
 /**
- * Backend for the hot corner-rounding morphology pass. 'auto' uses the byte-identical WASM
- * kernel when available and silently falls back to TS; 'ts'/'wasm' force one path (tests use
- * these to assert byte-parity). See assembly/worldgen.ts + tests/wasm-worldgen.test.ts.
+ * Backend for the WASM-accelerated generation passes (corner-rounding + cellular smoothing).
+ * 'auto' uses the byte-identical WASM kernels when available and silently falls back to TS;
+ * 'ts'/'wasm' force one path (tests use these to assert byte-parity across the whole pipeline).
+ * See assembly/worldgen.ts + tests/wasm-worldgen.test.ts.
  */
-export type RoundCornersBackend = 'auto' | 'ts' | 'wasm';
-let roundCornersBackend: RoundCornersBackend = 'auto';
-export function setRoundCornersBackend(backend: RoundCornersBackend): void {
-  roundCornersBackend = backend;
+export type WorldgenWasmBackend = 'auto' | 'ts' | 'wasm';
+let worldgenWasmBackend: WorldgenWasmBackend = 'auto';
+export function setWorldgenWasmBackend(backend: WorldgenWasmBackend): void {
+  worldgenWasmBackend = backend;
 }
-export function getRoundCornersBackend(): RoundCornersBackend {
-  return roundCornersBackend;
+export function getWorldgenWasmBackend(): WorldgenWasmBackend {
+  return worldgenWasmBackend;
 }
 
 interface Scratch {
@@ -338,22 +339,26 @@ function fillBaseTerrain(
 function smoothTerrain(def: VirtualWorldDef, scratch: Scratch): void {
   const passes = generationInt(def.generation.smoothingPasses, 1, 0, 4);
   if (passes === 0) return;
-  let cur: Uint8Array = scratch.types;
-  let next: Uint8Array = new Uint8Array(cur.length);
-  for (let pass = 0; pass < passes; pass++) {
-    next.fill(Cell.Wall);
-    for (let y = 1; y < scratch.size - 1; y++) {
-      for (let x = 1; x < scratch.size - 1; x++) {
-        const i = x + y * scratch.size;
-        const solid = countSolidNeighbors(cur, scratch.size, x, y);
-        next[i] = solid >= 5 ? Cell.Wall : solid <= 2 ? Cell.Empty : cur[i];
+  // WASM kernel does the integer cellular morphology byte-identically; TS path is the fallback.
+  if (worldgenWasmBackend === 'ts' || !smoothTypesWasm(scratch.types, scratch.size, passes)) {
+    let cur: Uint8Array = scratch.types;
+    let next: Uint8Array = new Uint8Array(cur.length);
+    for (let pass = 0; pass < passes; pass++) {
+      next.fill(Cell.Wall);
+      for (let y = 1; y < scratch.size - 1; y++) {
+        for (let x = 1; x < scratch.size - 1; x++) {
+          const i = x + y * scratch.size;
+          const solid = countSolidNeighbors(cur, scratch.size, x, y);
+          next[i] = solid >= 5 ? Cell.Wall : solid <= 2 ? Cell.Empty : cur[i];
+        }
       }
+      const tmp = cur;
+      cur = next;
+      next = tmp;
     }
-    const tmp = cur;
-    cur = next;
-    next = tmp;
+    if (cur !== scratch.types) scratch.types.set(cur);
   }
-  if (cur !== scratch.types) scratch.types.set(cur);
+  // Downstream color fix-up runs for both paths: clear empties, recolor newly-solid cells.
   for (let y = 0; y < scratch.size; y++) {
     const wy = scratch.originY + y;
     for (let x = 0; x < scratch.size; x++) {
@@ -635,7 +640,7 @@ function roundCaveCorners(
 
   const passes = strength >= 0.7 ? 2 : 1;
   if (
-    roundCornersBackend !== 'ts' &&
+    worldgenWasmBackend !== 'ts' &&
     roundCornersWasm(scratch.types, scratch.size, scratch.originX, scratch.originY, def.seed >>> 0, strength, passes)
   ) {
     // WASM kernel produced byte-identical morphology; recolor exactly as the TS path does.
