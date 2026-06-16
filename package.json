@@ -33,6 +33,7 @@
     "probe:webgpu-live-compose": "node scripts/probe-webgpu-live-compose.mjs",
     "probe:webgpu-storage-bridge": "node scripts/probe-webgpu-storage-bridge.mjs",
     "probe:webgpu-storage-size-sweep": "node scripts/probe-webgpu-storage-size-sweep.mjs",
+    "probe:webgpu-virtual-preview": "node scripts/probe-webgpu-virtual-preview.mjs",
     "lint": "eslint src",
     "format": "prettier --write \"src/**/*.{ts,css}\" index.html"
   },

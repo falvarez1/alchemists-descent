@@ -1471,6 +1471,101 @@ Validation passed for this slice:
 - `npm run probe:webgpu-live-compose`
 - `npm run perf:compose-backends -- http://127.0.0.1:5173/ 180 2 chaos`
 
+## Phase 5.1 - Live Compose Upload Telemetry
+
+Task: instrument the WebGPU live compose path so Phase 5 can measure CPU packing
+time separately from texture/buffer upload cost before attempting a resident
+world mirror or dirty upload strategy.
+
+Commit: `39ce0a6` plus working-tree Phase 5.1 telemetry, probe, and docs
+changes.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for Phase 4.12.
+
+Requested backend: WebGPU diagnostic through
+`?renderBackend=webgpu&enableWebGpuLiveCompose=1`; cross-backend benchmark also
+used the default WebGL2 production reference.
+
+Actual backend: actual WebGPU for the telemetry probe and diagnostic compose
+path; WebGL2 for the production reference.
+
+Scene / seed / resolution: live visual probe uses its frozen compose parity
+scene at `1050x714`; benchmark uses chaos / seed `777` / `1050x714` /
+2x180-frame interleaved blocks for each backend.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-live-compose.mjs
+npm run typecheck
+npm run probe:webgpu-live-compose
+npm run perf:compose-backends -- http://127.0.0.1:5173/ 180 2 chaos
+```
+
+Baseline: Phase 4.12 proved the WebGPU live compose path still failed the
+promotion gate against WebGL2 GPU compose, and the implementation could only be
+judged by coarse PerfHud buckets. It did not expose the per-frame world-window
+packing time, logical upload bytes, 256-byte-row-padded submitted bytes, overlay
+upload cost, light upload cadence, LUT upload cost, params write cost, or
+command encode/submit CPU time.
+
+After: `RenderBackendWebGpuComposeStatus.liveMetrics` reports the last completed
+WebGPU-composed frame. The live probe now asserts that those metrics are present
+after a GPU-composed frame and that dimensions, workgroup counts, byte counts,
+and timings are sane.
+
+Expected result: produce a positive quantitative result without changing visual
+output or promoting WebGPU compose. The result should identify which uploads
+Phase 5 must reduce and confirm the instrumentation itself does not alter the
+existing visual gate.
+
+Actual result: keep instrumentation, no promotion. The live probe artifact
+`verify-out/webgpu-live-compose/probe-1781618999550.json` passed with actual
+WebGPU, `bridge=validated`, no console/page errors, raw compose
+`exactPct=97.325`, `maxd=1`, `bigPct=0`, post-FX `exactPct=97.149`, `maxd=1`,
+`bigPct=0`, and lava RGB means matching CPU at `[255, 226, 160]`.
+
+Telemetry result from that artifact's frozen light-rebuild frame:
+
+| Metric | Value |
+| --- | ---: |
+| `packWindowCpuMs` | `0.800 ms` |
+| `worldWindowLogicalUploadBytes` | `1,266,820` |
+| `worldWindowSubmittedUploadBytes` | `1,365,760` |
+| `worldWindowUploadCpuMs` | `0.500 ms` |
+| `lightLogicalUploadBytes` | `753,232` |
+| `lightSubmittedUploadBytes` | `779,008` |
+| `overlayLogicalUploadBytes` | `1,499,400` |
+| `overlaySubmittedUploadBytes` | `1,553,664` |
+| `overlayUploadCpuMs` | `0.400 ms` |
+| `totalLogicalUploadBytes` | `3,521,116` |
+| `totalSubmittedUploadBytes` | `3,700,096` |
+
+Performance after instrumentation:
+`verify-out/perf-compose-backends-chaos-1781619023517.json` kept the promotion
+decision unchanged. WebGPU WGSL compose improved versus CPU compose inside the
+WebGPU renderer (`compose 22.155 -> 6.121 ms`, -72.4%; `render 22.835 -> 6.506
+ms`, -71.5%; `frame 30.209 -> 13.949 ms`, -53.8%), but remained slower than
+WebGL2 GPU compose:
+
+- `compose`: `4.617 -> 6.121 ms` (+32.6%)
+- `gl`: `0.768 -> 0.273 ms` (-64.5%)
+- `render`: `5.466 -> 6.506 ms` (+19.0%)
+- `frame`: `12.535 -> 13.949 ms` (+11.3%)
+
+Visual/quality evidence:
+
+- `verify-out/webgpu-live-compose/cpu-1781618999550.png`
+- `verify-out/webgpu-live-compose/gpu-1781618999550.png`
+- `verify-out/webgpu-live-compose/probe-1781618999550.json`
+
+Decision: keep. This slice gives Phase 5 the quantitative upload accounting it
+needed and preserves the existing visual gate, but WebGPU live compose remains a
+diagnostic `WGSL` path. The next implementation should reduce or avoid the
+world-window and full-overlay uploads now measured here, then rerun the same
+WebGL2-vs-WebGPU promotion gate.
+
 ## Virtual World Generation - Backend Baseline And Parity Rules
 
 Task: establish the first virtual-world (chunked Noita-like) generation baseline
@@ -1675,3 +1770,61 @@ Notes:
 - The remaining un-audited parity case is fixed-campaign Play Mode vs Builder Playtest of
   the SAME authored level; that is entangled with the campaign restore/regenerate path and
   the campaign-recipe-parity work, not the virtual materialization boundary covered here.
+
+## Virtual World Generation - WebGPU Preview Kernel (research spike, visual-only)
+
+Task: evaluate a WebGPU compute kernel for fast World Map preview generation, per the plan's
+Phase 6 ("Implement WebGPU visual-only preview acceleration OR explicitly remove it from the
+UI until it exists" + "if it shows visual mismatch, keep it as a research artifact").
+
+Commit: working-tree, after `39ce0a6`.
+
+Hardware/browser: Headless Edge via playwright-core (`channel: 'msedge'`), real GPU. Raw
+`navigator.gpu` device + a WGSL compute shader (no Three dependency).
+
+Scene / seed / resolution: a `256x256` preview chunk, seed `0x4e4f4954`, value-noise field
+(WGSL ports of `hash2i` + `smoothValueNoise` in f32) thresholded to solid/empty and tinted
+by a biome palette. `scripts/probe-webgpu-virtual-preview.{mjs,html,-page.js}`.
+
+Command: `node scripts/probe-webgpu-virtual-preview.mjs`
+
+Baseline: TS worker full chunk generation `~45 ms`; WASM-accelerated `~33 ms` (see entries
+above). The preview kernel is NOT comparable to those — it computes only the base noise
+field, not the carved + dressed authoritative chunk.
+
+After: keep as research artifact. The kernel runs on the actual GPU and produces a varied,
+non-blank biome preview: `65,536` cells, `100%` non-black, `48.3%` solid, steady-state
+compute `~2.85 ms` per `256x256` preview (readback excluded, measured with
+`onSubmittedWorkDone` over 20 dispatches after warm-up).
+
+Expected result: prove WebGPU can generate a preview fast on the GPU, and decide whether it
+is shippable.
+
+Actual result: keep as a research artifact; do NOT wire it into the UI. `WebGpuPreviewBackend`
+stays gated `planned` (per the Backend Baseline entry). Reasoning:
+
+1. Visual mismatch. The kernel computes only the base value-noise field — it has NO herringbone
+   carve, organic shaping, smoothing/corner-rounding, dressing, or pixel scenes. The materialized
+   authoritative chunk looks substantially different, so this preview would mislead a designer
+   panning the World Map (it shows a noise backdrop, not the caves/scenes they will play).
+2. Non-authoritative by construction. WGSL `f32` != JS `f64`, so even a full GPU port could not
+   be byte-identical; it could only ever be a `authoritativeCells:false` preview (Backend
+   Baseline rule 4 forbids feeding playtest from it).
+3. The worker already produces an authoritative `previewRgba` that matches what materializes.
+   A fast-but-wrong GPU preview is worse than a correct worker preview for this tool.
+
+Visual/quality evidence: `verify-out/webgpu-virtual-preview/preview-<ts>.png` (biome-tinted
+value-noise field).
+
+Decision: keep the probe as a feasibility/research artifact. A shippable WebGPU preview would
+require porting the full carve+dressing pipeline to WGSL and accepting visual-only semantics
+with an explicit UI label — out of scope here. The real, shippable generation accelerator is
+the byte-identical WASM kernel (entry above).
+
+Notes:
+
+- The kernel reuses the exact `hash2i`/`smoothValueNoise` math the TS generator and the WASM
+  kernel use, so the noise field itself is faithful; the gap is the missing carve/dressing
+  passes, not the noise.
+- Validation: `node scripts/probe-webgpu-virtual-preview.mjs` (status `passed`, adapter
+  available, `~2.85 ms`/preview).

@@ -725,6 +725,43 @@ Tasks:
   outside the frame loop, but gameplay, saves, status checks, brewing,
   mechanisms, and collisions must continue to read the CPU `World`.
 
+Phase 5.1 result:
+
+- Added live compose telemetry to the WebGPU backend status. The last completed
+  WebGPU-composed frame now reports CPU wall-clock timings for world-window
+  packing, world/light/LUT/overlay texture uploads, params buffer writes,
+  overlay float-to-half packing, command encode/submit, and begin/commit totals.
+  It also reports logical and 256-byte-row-padded submitted upload bytes.
+- Extended `scripts/probe-webgpu-live-compose.mjs` so the live probe fails if a
+  GPU-composed frame does not expose telemetry or reports impossible dimensions,
+  workgroup counts, upload byte counts, or negative timings.
+- The kept probe artifact
+  `verify-out/webgpu-live-compose/probe-1781618999550.json` passed with actual
+  WebGPU, `bridge=validated`, `productionAvailable=false`, no console/page
+  errors, default-URL `WGSL` bootstrap, runtime off/on toggle, raw visual
+  `exactPct=97.325`, `maxd=1`, `bigPct=0`, post-FX `exactPct=97.149`,
+  `maxd=1`, `bigPct=0`, and lava RGB means matching CPU at `[255, 226, 160]`.
+- The same artifact gives the first hard upload-cost breakdown for a live
+  WebGPU composed frame. On the frozen light-rebuild frame, the path packed and
+  logically uploaded a `1,266,820` byte padded world window
+  (`1,365,760` bytes submitted), a `753,232` byte light field
+  (`779,008` submitted), a `1,499,400` byte overlay (`1,553,664` submitted),
+  a `1,024` byte LUT, and a `640` byte params buffer, for `3,700,096`
+  submitted bytes total.
+- The after benchmark
+  `verify-out/perf-compose-backends-chaos-1781619023517.json` keeps the Phase
+  4.12 promotion decision unchanged. WebGPU WGSL compose still beats CPU
+  compose inside the WebGPU renderer, but compared with production WebGL2 GPU
+  compose it remains slower in `compose` (`4.617ms -> 6.121ms`, +32.6%),
+  `render` (`5.466ms -> 6.506ms`, +19.0%), and `frame`
+  (`12.535ms -> 13.949ms`, +11.3%), while WebGPU `gl` remains lower
+  (`0.768ms -> 0.273ms`, -64.5%).
+- Decision: keep the instrumentation because it produces a positive
+  quantitative result and does not change visual output, but do not promote
+  WebGPU compose. The next Phase 5 implementation work should target the
+  resident world mirror or another way to avoid the per-frame world/overlay
+  uploads now quantified by this telemetry.
+
 Expected result:
 
 - Reduce CPU packing/upload cost for compose, lighting, and future effects.
