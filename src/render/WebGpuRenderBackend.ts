@@ -4,6 +4,7 @@ import {
   FloatType,
   NearestFilter,
   NoColorSpace,
+  NoToneMapping,
   RGBAFormat,
   RenderPipeline,
   SRGBColorSpace,
@@ -162,6 +163,7 @@ export class WebGpuRenderBackend implements RendererBackend {
   private readonly exposure = uniform(1.0);
   private readonly bloomStrength = uniform(0.35);
   private readonly bloomThreshold = uniform(0.85);
+  private readonly bloomRadius = uniform(0.28);
   private readonly aberration = uniform(0.0005);
   private readonly grain = uniform(0.028);
   private readonly hurt = uniform(0);
@@ -211,7 +213,10 @@ export class WebGpuRenderBackend implements RendererBackend {
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(RENDER_W, RENDER_H, false);
     this.renderer.outputColorSpace = SRGBColorSpace;
-    this.renderer.toneMapping = ACESFilmicToneMapping;
+    // RenderPipeline nodes below call renderOutput(..., ACES, SRGB) explicitly.
+    // Keep renderer globals neutral so WebGPU does not drift from WebGL via
+    // backend-level tone/color defaults.
+    this.renderer.toneMapping = NoToneMapping;
     this.renderer.toneMappingExposure = 1.0;
 
     this.basePipeline = new RenderPipeline(this.renderer, this.buildBaseOutputNode());
@@ -240,13 +245,17 @@ export class WebGpuRenderBackend implements RendererBackend {
     return this.initError ? `${this.initReason}: ${this.initError}` : this.initReason;
   }
 
-  releaseCanvasForWebGlFallback(): HTMLCanvasElement {
+  releaseCanvasForWebGlFallback(reuseCanvas: boolean): HTMLCanvasElement | undefined {
     this.basePipeline.dispose();
     this.postPipeline.dispose();
     this.texture.dispose();
     this.renderer.dispose();
-    this.canvas.dataset.renderBackend = 'webgl-fallback';
-    return this.canvas;
+    if (reuseCanvas) {
+      this.canvas.dataset.renderBackend = 'webgl-fallback';
+      return this.canvas;
+    }
+    this.canvas.remove();
+    return undefined;
   }
 
   private pixelUv() {
@@ -268,6 +277,8 @@ export class WebGpuRenderBackend implements RendererBackend {
     const brightness = (rgb: TslRgbNode) =>
       max(max(rgb.r, rgb.g), rgb.b).sub(this.bloomThreshold).max(0);
     const brightColor = (rgb: TslRgbNode) => rgb.mul(brightness(rgb));
+    const tap1 = texel.mul(this.bloomRadius.mul(4.0).add(1.0));
+    const tap2 = tap1.mul(2.0);
 
     const postColor = Fn(() => {
       const p = this.pixelUv();
@@ -282,12 +293,12 @@ export class WebGpuRenderBackend implements RendererBackend {
       );
 
       const c0 = brightColor(base).mul(0.28);
-      const c1 = brightColor(sampleRgb(p.add(vec2(texel.x, 0)))).mul(0.12);
-      const c2 = brightColor(sampleRgb(p.sub(vec2(texel.x, 0)))).mul(0.12);
-      const c3 = brightColor(sampleRgb(p.add(vec2(0, texel.y)))).mul(0.12);
-      const c4 = brightColor(sampleRgb(p.sub(vec2(0, texel.y)))).mul(0.12);
-      const c5 = brightColor(sampleRgb(p.add(texel.mul(2)))).mul(0.06);
-      const c6 = brightColor(sampleRgb(p.sub(texel.mul(2)))).mul(0.06);
+      const c1 = brightColor(sampleRgb(p.add(vec2(tap1.x, 0)))).mul(0.12);
+      const c2 = brightColor(sampleRgb(p.sub(vec2(tap1.x, 0)))).mul(0.12);
+      const c3 = brightColor(sampleRgb(p.add(vec2(0, tap1.y)))).mul(0.12);
+      const c4 = brightColor(sampleRgb(p.sub(vec2(0, tap1.y)))).mul(0.12);
+      const c5 = brightColor(sampleRgb(p.add(tap2))).mul(0.06);
+      const c6 = brightColor(sampleRgb(p.sub(tap2))).mul(0.06);
       const bloom = c0
         .add(c1)
         .add(c2)
@@ -440,6 +451,7 @@ export class WebGpuRenderBackend implements RendererBackend {
     this.exposure.value = post.enabled ? post.exposure : 1.0;
     this.bloomStrength.value = post.bloomStrength + ctx.fx.bloomKick * post.bloomKickScale;
     this.bloomThreshold.value = post.bloomThreshold;
+    this.bloomRadius.value = post.bloomRadius;
     this.aberration.value =
       post.aberration + ctx.fx.bloomKick * post.aberrationKick + ctx.fx.screenShake * post.shakeAberration;
     this.grain.value = post.grain;

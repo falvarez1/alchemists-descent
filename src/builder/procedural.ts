@@ -223,12 +223,36 @@ function vegetationPass(p: PassInput): PassResult {
       // vines hang from ceilings
       const above = world.types[world.idx(x, y - 1)];
       if ((above === Cell.Wall || above === Cell.Stone) && rng.next() < density * 0.12) {
-        const len = 2 + rng.int(5);
+        const len = 4 + rng.int(rng.next() < 0.22 ? 18 : 10);
+        let vx = x;
         for (let d = 0; d < len; d++) {
-          if (y + d >= world.height - 1) break;
-          if (world.types[world.idx(x, y + d)] !== Cell.Empty) break;
-          writeCell(world, rec, x, y + d, Cell.Vines);
+          const yy = y + d;
+          if (yy >= world.height - 1) break;
+          let connectorX = -1;
+          if (d > 2 && rng.next() < 0.18) {
+            const nx = vx + (rng.next() < 0.5 ? -1 : 1);
+            if (nx > 0 && nx < world.width - 1 && world.types[world.idx(nx, yy)] === Cell.Empty) {
+              connectorX = vx;
+              vx = nx;
+            }
+          }
+          if (world.types[world.idx(vx, yy)] !== Cell.Empty) break;
+          if (connectorX >= 0 && world.types[world.idx(connectorX, yy)] === Cell.Empty) {
+            writeCell(world, rec, connectorX, yy, Cell.Vines);
+            world.life[world.idx(connectorX, yy)] = -1;
+            vines++;
+          }
+          writeCell(world, rec, vx, yy, Cell.Vines);
+          world.life[world.idx(vx, yy)] = -1;
           vines++;
+          if (d > 3 && rng.next() < 0.1) {
+            const side = vx + (rng.next() < 0.5 ? -1 : 1);
+            if (side > 0 && side < world.width - 1 && world.types[world.idx(side, yy)] === Cell.Empty) {
+              writeCell(world, rec, side, yy, Cell.Vines);
+              world.life[world.idx(side, yy)] = -1;
+              vines++;
+            }
+          }
         }
       }
     }

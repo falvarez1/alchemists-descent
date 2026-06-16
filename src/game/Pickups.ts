@@ -5,7 +5,8 @@ import {
   TOME_REWARD_POOL,
 } from '@/combat/wands/rewardPools';
 import { ALL_CARD_IDS } from '@/combat/wands/cards';
-import type { CardId, Ctx, EntityStatus, Pickup, PickupKind, PickupsApi } from '@/core/types';
+import { makePickup, POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
+import type { CardId, Ctx, Pickup, PickupsApi } from '@/core/types';
 import { blocksEntity } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 
@@ -16,16 +17,6 @@ import { packRGB } from '@/sim/colors';
  * runtime, so untaken treasure persists when you leave and return.
  */
 
-/** Instant potions: drinking applies a timed status (the grid explains the rest). */
-export const POTION_DEFS: Record<string, { name: string; status: keyof EntityStatus; frames: number }> = {
-  vigor: { name: 'POTION OF VIGOR', status: 'regen', frames: 600 },
-  levity: { name: 'POTION OF LEVITY', status: 'levity', frames: 700 },
-  stoneskin: { name: 'POTION OF STONESKIN', status: 'stoneskin', frames: 700 },
-  swift: { name: 'POTION OF SWIFTNESS', status: 'swift', frames: 700 },
-  torch: { name: 'TORCHBEARER TONIC', status: 'torch', frames: 900 },
-};
-
-export const POTION_KINDS = Object.keys(POTION_DEFS);
 const CARD_IDS = new Set<string>(ALL_CARD_IDS);
 const POTION_IDS = new Set<string>(POTION_KINDS);
 
@@ -39,19 +30,7 @@ function potionIdOrRandom(value: unknown): string {
   return POTION_KINDS[Math.floor(Math.random() * POTION_KINDS.length)] ?? 'vigor';
 }
 
-export function makePickup(kind: PickupKind, x: number, y: number, data: Pickup['data'] = {}): Pickup {
-  return { kind, x, y, vx: 0, vy: 0, taken: false, data };
-}
-
-/** Display colors for rendering + minimap dots. */
-export const PICKUP_COLOR: Record<PickupKind, number> = {
-  goldpile: packRGB(255, 210, 60),
-  heart: packRGB(255, 80, 110),
-  tome: packRGB(140, 200, 255),
-  chest: packRGB(210, 150, 70),
-  potion: packRGB(220, 120, 255),
-  key: packRGB(255, 230, 90),
-};
+export { makePickup, PICKUP_COLOR, POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 
 export class Pickups implements PickupsApi {
   update(ctx: Ctx): void {
@@ -160,7 +139,7 @@ export class Pickups implements PickupsApi {
       const runtime = ctx.levels.current;
       if (runtime) runtime.keyTaken = true;
       ctx.events.emit('toast', { text: 'GOLDEN KEY ACQUIRED' });
-      ctx.events.emit('objectiveChanged', { text: 'REACH THE PORTAL' });
+      ctx.events.emit('objectiveChanged', { text: 'RETURN TO THE PORTAL' });
       ctx.audio.keyJingle();
       ctx.particles.burst(p.x, p.y - 2, 16, null, () => packRGB(255, 230, 90), 2.0, {
         glow: 2.2,
@@ -188,6 +167,7 @@ export class Pickups implements PickupsApi {
 
     const cards = buildCardOffer(TOME_REWARD_POOL, collectOwnedCards(ctx.wands), {
       preferred: fixedCard ? [fixedCard] : [],
+      ensureKind: 'projectile',
     });
     p.data.offerPending = true;
     const handled = requestCardOffer(ctx, {

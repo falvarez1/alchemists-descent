@@ -1,8 +1,20 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Rng } from '@/core/rng';
-import type { BiomeId, Ctx, EnemyKind } from '@/core/types';
-import { Cell, isSolid } from '@/sim/CellType';
+import type {
+  BiomeId,
+  Ctx,
+  EnemyKind,
+  ExitPortal,
+  Mechanism,
+  Pickup,
+  RuneVault,
+  Waystone,
+} from '@/core/types';
+import { Cell, isLiquid, isSoftGrowth, isSolid } from '@/sim/CellType';
+import type { VirtualBiomeDressingRecipe } from '@/world/virtual/types';
+import type { PlacementLedger } from '@/world/connect';
 import {
+  COLOR_FN,
   ashColor,
   catalystColor,
   coalColor,
@@ -95,11 +107,466 @@ export const EXTRAS: Record<BiomeId, BiomeExtras> = {
   },
 };
 
+export function goldPocketBudgetForBiome(basePockets: number, biome: BiomeId): number {
+  const bonus = EXTRAS[biome]?.goldBonus ?? 1;
+  return Math.max(0, Math.round(basePockets * bonus));
+}
+
 /**
  * Biome decoration passes for the new materials: fungus colonies, healing
  * springs, crystal clusters, glowshrooms, coal seams, ash piles, snow drifts.
  * All randomness flows through the passed Rng (worldgen determinism).
  */
+export const CAMPAIGN_DRESSING_RECIPES: Record<BiomeId, VirtualBiomeDressingRecipe> = {
+  earthen: campaignRecipe(Cell.Gold, 0.62, Cell.Coal, 0.44, Cell.Stone, 0.52, Cell.Water, 0.18, Cell.Glowshroom, 0.34, Cell.Moss, 0.92, Cell.Vines, 0.62),
+  fungal: campaignRecipe(Cell.Gold, 0.35, Cell.Fungus, 1.2, Cell.Glowshroom, 0.78, Cell.Toxic, 0.34, Cell.Glowshroom, 1.25, Cell.Moss, 1.15, Cell.Vines, 1.15),
+  frozen: campaignRecipe(Cell.Crystal, 0.72, Cell.Ice, 1.05, Cell.Snow, 0.9, Cell.Nitrogen, 0.18, Cell.Crystal, 0.85, Cell.Ice, 0.95, Cell.Ice, 0.38),
+  flooded: campaignRecipe(Cell.Gold, 0.34, Cell.Moss, 1.1, Cell.Fungus, 0.58, Cell.Water, 1.1, Cell.Glowshroom, 0.55, Cell.Moss, 1.25, Cell.Vines, 1.4),
+  timber: campaignRecipe(Cell.Coal, 0.46, Cell.Wood, 1.25, Cell.Moss, 0.8, Cell.Water, 0.2, Cell.Glowshroom, 0.38, Cell.Wood, 1.4, Cell.Vines, 1.35),
+  crystal: campaignRecipe(Cell.Crystal, 1.65, Cell.Glass, 0.58, Cell.Crystal, 1.25, Cell.Water, 0.16, Cell.Crystal, 1.65, Cell.Stone, 0.5, Cell.Crystal, 1.1),
+  scorched: campaignRecipe(Cell.Coal, 1.1, Cell.Ash, 0.75, Cell.Stone, 0.62, Cell.Lava, 0.24, Cell.Gold, 0.34, Cell.Ash, 1.1, Cell.Stone, 0.2),
+  volcanic: campaignRecipe(Cell.Coal, 0.82, Cell.Stone, 0.72, Cell.Lava, 0.8, Cell.Lava, 0.86, Cell.Lava, 0.48, Cell.Stone, 0.7, Cell.Stone, 0.24),
+  gilded: campaignRecipe(Cell.Gold, 1.6, Cell.Catalyst, 0.46, Cell.Gold, 1.1, Cell.Acid, 0.3, Cell.Gold, 0.88, Cell.Stone, 0.6, Cell.Gold, 0.28),
+};
+
+export function campaignDressingRecipeForBiome(biome: BiomeId): VirtualBiomeDressingRecipe {
+  return CAMPAIGN_DRESSING_RECIPES[biome] ?? CAMPAIGN_DRESSING_RECIPES.earthen;
+}
+
+function campaignRecipe(
+  ore: number,
+  oreDensity: number,
+  secondary: number,
+  secondaryDensity: number,
+  pocket: number,
+  pocketDensity: number,
+  liquid: number,
+  liquidDensity: number,
+  glow: number,
+  glowDensity: number,
+  rubble: number,
+  rubbleDensity: number,
+  hanging: number,
+  hangingDensity: number,
+): VirtualBiomeDressingRecipe {
+  return {
+    ore,
+    oreDensity,
+    secondary,
+    secondaryDensity,
+    pocket,
+    pocketDensity,
+    liquid,
+    liquidDensity,
+    glow,
+    glowDensity,
+    rubble,
+    rubbleDensity,
+    hanging,
+    hangingDensity,
+  };
+}
+
+interface ProtectedRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface CampaignDressingAvoid {
+  pickups?: readonly Pickup[];
+  mechanisms?: readonly Mechanism[];
+  runeVaults?: readonly RuneVault[];
+  portal?: ExitPortal | null;
+  waystones?: readonly Waystone[];
+  cauldron?: { x: number; y: number } | null;
+  fits?: Uint8Array;
+}
+
+export interface CampaignDressingStats {
+  veins: number;
+  pockets: number;
+  accents: number;
+  protectedSkips: number;
+  cellsChanged: number;
+}
+
+function rect(x0: number, y0: number, x1: number, y1: number): ProtectedRect {
+  return {
+    x0: Math.floor(Math.min(x0, x1)),
+    y0: Math.floor(Math.min(y0, y1)),
+    x1: Math.ceil(Math.max(x0, x1)),
+    y1: Math.ceil(Math.max(y0, y1)),
+  };
+}
+
+function intersects(a: ProtectedRect, b: ProtectedRect): boolean {
+  return a.x0 <= b.x1 && a.x1 >= b.x0 && a.y0 <= b.y1 && a.y1 >= b.y0;
+}
+
+function clampInt(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, Math.floor(v)));
+}
+
+function protectedRects(ctx: Ctx, avoid: CampaignDressingAvoid): ProtectedRect[] {
+  const out: ProtectedRect[] = [];
+  const spawn = ctx.worldgen?.spawnHint ?? null;
+  if (spawn) out.push(rect(spawn.x - 72, spawn.y - 62, spawn.x + 72, spawn.y + 62));
+  for (const p of avoid.pickups ?? []) out.push(rect(p.x - 18, p.y - 18, p.x + 18, p.y + 18));
+  for (const ws of avoid.waystones ?? []) out.push(rect(ws.x - 22, ws.y - 18, ws.x + 22, ws.y + 16));
+  if (avoid.portal) out.push(rect(avoid.portal.x - 32, avoid.portal.y - 28, avoid.portal.x + 32, avoid.portal.y + 24));
+  if (avoid.cauldron) out.push(rect(avoid.cauldron.x - 18, avoid.cauldron.y - 16, avoid.cauldron.x + 18, avoid.cauldron.y + 16));
+
+  for (const m of avoid.mechanisms ?? []) {
+    const pad = m.kind === 'door' || m.kind === 'valve' ? 14 : 10;
+    out.push(rect(m.x - pad, m.y - pad, m.x + m.w + pad, m.y + m.h + pad));
+    if (m.zone) out.push(rect(m.zone.x0 - 6, m.zone.y0 - 6, m.zone.x1 + 6, m.zone.y1 + 6));
+    if (m.body && m.body.length > 0) {
+      let x0 = WIDTH,
+        y0 = HEIGHT,
+        x1 = 0,
+        y1 = 0;
+      for (const [x, y] of m.body) {
+        x0 = Math.min(x0, x);
+        y0 = Math.min(y0, y);
+        x1 = Math.max(x1, x);
+        y1 = Math.max(y1, y);
+      }
+      out.push(rect(x0 - 6, y0 - 6, x1 + 6, y1 + 6));
+    }
+  }
+
+  for (const rv of avoid.runeVaults ?? []) {
+    out.push(rect(rv.rx - 22, rv.ry - 22, rv.rx + 22, rv.ry + 22));
+    if (rv.door.length > 0) {
+      let x0 = WIDTH,
+        y0 = HEIGHT,
+        x1 = 0,
+        y1 = 0;
+      for (const [x, y] of rv.door) {
+        x0 = Math.min(x0, x);
+        y0 = Math.min(y0, y);
+        x1 = Math.max(x1, x);
+        y1 = Math.max(y1, y);
+      }
+      out.push(rect(x0 - 8, y0 - 8, x1 + 8, y1 + 8));
+    }
+  }
+  return out;
+}
+
+/**
+ * Late campaign dressing: enriches the generated rock mass after authored
+ * prefabs/structures have reserved their space. It rewrites existing wall cells,
+ * adds tiny embedded liquid pockets kept away from open cave space, and hangs
+ * pass-through vine tendrils from ceilings so the pass improves material
+ * richness without creating surprise blockers.
+ */
+export function applyCampaignDressing(
+  ctx: Ctx,
+  rng: Rng,
+  biome: BiomeId,
+  ledger: PlacementLedger,
+  avoid: CampaignDressingAvoid = {},
+): CampaignDressingStats {
+  const world = ctx.world;
+  const recipe = campaignDressingRecipeForBiome(biome);
+  const protections = protectedRects(ctx, avoid);
+  const floorBand = HEIGHT - 52;
+  const stats: CampaignDressingStats = {
+    veins: 0,
+    pockets: 0,
+    accents: 0,
+    protectedSkips: 0,
+    cellsChanged: 0,
+  };
+
+  const fitsIn = (r: ProtectedRect): boolean => {
+    if (!avoid.fits) return false;
+    const x0 = clampInt(r.x0, 0, WIDTH - 1);
+    const y0 = clampInt(r.y0, 0, HEIGHT - 1);
+    const x1 = clampInt(r.x1, 0, WIDTH - 1);
+    const y1 = clampInt(r.y1, 0, HEIGHT - 1);
+    for (let y = y0; y <= y1; y++) {
+      const row = y * WIDTH;
+      for (let x = x0; x <= x1; x++) {
+        if (avoid.fits[row + x]) return true;
+      }
+    }
+    return false;
+  };
+
+  const isProtected = (r: ProtectedRect, protectFits: boolean): boolean => {
+    if (r.x0 < 3 || r.y0 < 4 || r.x1 >= WIDTH - 3 || r.y1 >= floorBand) return true;
+    if (ledger.intersects(r.x0 - 3, r.y0 - 3, r.x1 + 3, r.y1 + 3)) return true;
+    for (const p of protections) {
+      if (intersects(r, p)) return true;
+    }
+    return protectFits && fitsIn(rect(r.x0 - 8, r.y0 - 12, r.x1 + 8, r.y1 + 8));
+  };
+
+  const colorFor = (t: number): number => (COLOR_FN[t] ?? stoneColor)();
+  const setWall = (x: number, y: number, t: number): boolean => {
+    if (!world.inBounds(x, y)) return false;
+    const i = world.idx(x, y);
+    if (world.types[i] !== Cell.Wall) return false;
+    world.types[i] = t;
+    world.colors[i] = colorFor(t);
+    world.life[i] = 0;
+    world.charge[i] = 0;
+    stats.cellsChanged++;
+    return true;
+  };
+
+  const setOpenVine = (x: number, y: number): boolean => {
+    if (!world.inBounds(x, y)) return false;
+    const i = world.idx(x, y);
+    if (world.types[i] !== Cell.Empty) return false;
+    world.types[i] = Cell.Vines;
+    world.colors[i] = colorFor(Cell.Vines);
+    world.life[i] = -1;
+    world.charge[i] = 0;
+    stats.cellsChanged++;
+    return true;
+  };
+
+  const hasOpenBorder = (r: ProtectedRect): boolean => {
+    const x0 = clampInt(r.x0 - 1, 1, WIDTH - 2);
+    const y0 = clampInt(r.y0 - 1, 1, HEIGHT - 2);
+    const x1 = clampInt(r.x1 + 1, 1, WIDTH - 2);
+    const y1 = clampInt(r.y1 + 1, 1, HEIGHT - 2);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (x > x0 && x < x1 && y > y0 && y < y1) continue;
+        if (world.types[world.idx(x, y)] === Cell.Empty) return true;
+      }
+    }
+    return false;
+  };
+
+  const adjacentOpen = (x: number, y: number): boolean =>
+    world.inBounds(x, y - 1) && world.types[world.idx(x, y - 1)] === Cell.Empty
+      ? true
+      : world.inBounds(x, y + 1) && world.types[world.idx(x, y + 1)] === Cell.Empty
+        ? true
+        : world.inBounds(x - 1, y) && world.types[world.idx(x - 1, y)] === Cell.Empty
+          ? true
+          : world.inBounds(x + 1, y) && world.types[world.idx(x + 1, y)] === Cell.Empty;
+
+  const surfaceAccentMaterial = (t: number): boolean => !isLiquid(t) && isSolid(t);
+  const loadBearingMaterial = (t: number): boolean => surfaceAccentMaterial(t) && !isSoftGrowth(t);
+  const mustStayEmbedded = (t: number): boolean => !loadBearingMaterial(t);
+
+  const budget = (density: number, base: number, scale: number): number =>
+    density <= 0 ? 0 : Math.max(1, Math.round(base + density * scale));
+
+  const stampVeins = (material: number, count: number, label: string): void => {
+    let placed = 0;
+    for (let attempt = 0; attempt < count * 34 && placed < count; attempt++) {
+      let x = 8 + rng.int(WIDTH - 16);
+      let y = 22 + rng.int(Math.max(1, floorBand - 34));
+      if (world.types[world.idx(x, y)] !== Cell.Wall) continue;
+      let angle = rng.next() * Math.PI * 2;
+      const len = 12 + rng.int(22);
+      const cells: number[] = [];
+      let x0 = x,
+        y0 = y,
+        x1 = x,
+        y1 = y;
+      for (let step = 0; step < len; step++) {
+        angle += (rng.next() - 0.5) * 0.85;
+        x = clampInt(x + Math.cos(angle) * 1.25, 4, WIDTH - 5);
+        y = clampInt(y + Math.sin(angle) * 0.95, 8, floorBand - 5);
+        const w = rng.next() < 0.22 ? 1 : 0;
+        for (let dy = -w; dy <= w; dy++) {
+          const yy = y + dy;
+          if (!world.inBounds(x, yy) || world.types[world.idx(x, yy)] !== Cell.Wall) continue;
+          if (mustStayEmbedded(material) && adjacentOpen(x, yy)) continue;
+          cells.push(world.idx(x, yy));
+          x0 = Math.min(x0, x);
+          y0 = Math.min(y0, yy);
+          x1 = Math.max(x1, x);
+          y1 = Math.max(y1, yy);
+        }
+      }
+      if (cells.length < 5) continue;
+      const r = rect(x0 - 2, y0 - 2, x1 + 2, y1 + 2);
+      if (isProtected(r, false)) {
+        stats.protectedSkips++;
+        continue;
+      }
+      let changed = 0;
+      for (const i of cells) {
+        if (world.types[i] !== Cell.Wall) continue;
+        world.types[i] = material;
+        world.colors[i] = colorFor(material);
+        world.life[i] = 0;
+        world.charge[i] = 0;
+        changed++;
+      }
+      if (changed <= 0) continue;
+      stats.cellsChanged += changed;
+      stats.veins++;
+      placed++;
+      ledger.reserve(r.x0 - 5, r.y0 - 5, r.x1 + 5, r.y1 + 5, label);
+    }
+  };
+
+  const stampPockets = (material: number, count: number, label: string): void => {
+    let placed = 0;
+    const liquid = isLiquid(material);
+    const embedded = mustStayEmbedded(material);
+    for (let attempt = 0; attempt < count * 48 && placed < count; attempt++) {
+      const rx = 2 + rng.int(embedded ? 4 : 6);
+      const ry = 1 + rng.int(embedded ? 3 : 5);
+      const cx = 8 + rng.int(WIDTH - 16);
+      const cy = 18 + rng.int(Math.max(1, floorBand - 30));
+      const r = rect(cx - rx - 2, cy - ry - 2, cx + rx + 2, cy + ry + 2);
+      if (isProtected(r, embedded) || (embedded && hasOpenBorder(r))) {
+        stats.protectedSkips++;
+        continue;
+      }
+      const cells: Array<[number, number]> = [];
+      let solidArea = 0,
+        area = 0;
+      for (let y = cy - ry; y <= cy + ry; y++) {
+        for (let x = cx - rx; x <= cx + rx; x++) {
+          const nx = (x - cx) / Math.max(1, rx);
+          const ny = (y - cy) / Math.max(1, ry);
+          if (nx * nx + ny * ny > 1) continue;
+          area++;
+          if (world.inBounds(x, y) && world.types[world.idx(x, y)] === Cell.Wall) {
+            solidArea++;
+            cells.push([x, y]);
+          }
+        }
+      }
+      if (area <= 0 || solidArea / area < 0.78) continue;
+      let changed = 0;
+      for (const [x, y] of cells) {
+        if (rng.next() < (liquid ? 0.78 : 0.9) && setWall(x, y, material)) changed++;
+      }
+      if (changed <= 0) continue;
+      stats.pockets++;
+      placed++;
+      ledger.reserve(r.x0, r.y0, r.x1, r.y1, label);
+    }
+  };
+
+  const surfaceMaterial = (): number => {
+    if (
+      recipe.glowDensity > 0 &&
+      surfaceAccentMaterial(recipe.glow) &&
+      rng.next() < Math.min(0.2, recipe.glowDensity * 0.08)
+    ) {
+      return recipe.glow;
+    }
+    if (recipe.hangingDensity > 0 && surfaceAccentMaterial(recipe.hanging) && rng.next() < 0.48) {
+      return recipe.hanging;
+    }
+    return surfaceAccentMaterial(recipe.rubble) ? recipe.rubble : Cell.Stone;
+  };
+
+  const stampSurfaceAccents = (count: number): void => {
+    let placed = 0;
+    for (let attempt = 0; attempt < count * 42 && placed < count; attempt++) {
+      const x = 8 + rng.int(WIDTH - 16);
+      const y = 12 + rng.int(Math.max(1, floorBand - 24));
+      if (world.types[world.idx(x, y)] !== Cell.Wall || !adjacentOpen(x, y)) continue;
+      const horizontal =
+        world.types[world.idx(x, y - 1)] === Cell.Empty || world.types[world.idx(x, y + 1)] === Cell.Empty;
+      const len = 2 + rng.int(8);
+      const material = surfaceMaterial();
+      const r = horizontal ? rect(x - len, y - 1, x + len, y + 1) : rect(x - 1, y - len, x + 1, y + len);
+      if (isProtected(r, false)) {
+        stats.protectedSkips++;
+        continue;
+      }
+      let changed = 0;
+      for (let o = -len; o <= len; o++) {
+        const px = horizontal ? x + o : x;
+        const py = horizontal ? y : y + o;
+        if (!world.inBounds(px, py) || world.types[world.idx(px, py)] !== Cell.Wall) continue;
+        if (!adjacentOpen(px, py) || rng.next() > 0.76) continue;
+        if (setWall(px, py, material)) changed++;
+      }
+      if (changed <= 0) continue;
+      stats.accents++;
+      placed++;
+    }
+  };
+
+  const stampHangingVines = (count: number): void => {
+    if (recipe.hanging !== Cell.Vines || count <= 0) return;
+    let placed = 0;
+    for (let attempt = 0; attempt < count * 64 && placed < count; attempt++) {
+      let x = 8 + rng.int(WIDTH - 16);
+      const y = 14 + rng.int(Math.max(1, floorBand - 34));
+      if (world.types[world.idx(x, y)] !== Cell.Empty) continue;
+      if (!world.inBounds(x, y - 1) || !loadBearingMaterial(world.types[world.idx(x, y - 1)])) continue;
+
+      const lengthRoll = rng.next();
+      const targetLen = 4 + rng.int(lengthRoll < 0.18 ? 20 : lengthRoll < 0.48 ? 13 : 8);
+      const cells: Array<[number, number]> = [];
+      let x0 = x,
+        y0 = y,
+        x1 = x,
+        y1 = y;
+      for (let d = 0; d < targetLen; d++) {
+        const yy = y + d;
+        if (yy >= floorBand - 1) break;
+        let connectorX = -1;
+        if (d > 2 && rng.next() < 0.22) {
+          const nx = x + (rng.next() < 0.5 ? -1 : 1);
+          if (world.inBounds(nx, yy) && world.types[world.idx(nx, yy)] === Cell.Empty) {
+            connectorX = x;
+            x = nx;
+          }
+        }
+        if (!world.inBounds(x, yy) || world.types[world.idx(x, yy)] !== Cell.Empty) break;
+        if (connectorX >= 0 && world.types[world.idx(connectorX, yy)] === Cell.Empty) {
+          cells.push([connectorX, yy]);
+          x0 = Math.min(x0, connectorX - 1);
+          x1 = Math.max(x1, connectorX + 1);
+        }
+        cells.push([x, yy]);
+        x0 = Math.min(x0, x - 1);
+        y0 = Math.min(y0, yy);
+        x1 = Math.max(x1, x + 1);
+        y1 = Math.max(y1, yy);
+      }
+      if (cells.length < 4) continue;
+      const r = rect(x0 - 2, y0 - 2, x1 + 2, y1 + 2);
+      if (isProtected(r, false)) {
+        stats.protectedSkips++;
+        continue;
+      }
+
+      let changed = 0;
+      for (let i = 0; i < cells.length; i++) {
+        const [px, py] = cells[i];
+        if (setOpenVine(px, py)) changed++;
+        if (i <= 3 || rng.next() >= 0.14) continue;
+        const side = px + (rng.next() < 0.5 ? -1 : 1);
+        if (setOpenVine(side, py)) changed++;
+      }
+      if (changed <= 0) continue;
+      stats.accents++;
+      placed++;
+    }
+  };
+
+  stampVeins(recipe.ore, budget(recipe.oreDensity, 10, 22), 'campaign-ore');
+  stampVeins(recipe.secondary, budget(recipe.secondaryDensity, 7, 16), 'campaign-secondary');
+  stampPockets(recipe.pocket, budget(recipe.pocketDensity, 3, 8), 'campaign-pocket');
+  stampPockets(recipe.liquid, budget(recipe.liquidDensity, 0, 6), 'campaign-liquid');
+  stampSurfaceAccents(budget(recipe.rubbleDensity + recipe.hangingDensity + recipe.glowDensity, 48, 34));
+  stampHangingVines(budget(recipe.hangingDensity, 8, 20));
+
+  return stats;
+}
+
 export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
   const w = ctx.world;
   const B = EXTRAS[biome];

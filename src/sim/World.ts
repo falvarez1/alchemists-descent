@@ -2,6 +2,8 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { Cell } from '@/sim/CellType';
 import { EMPTY_COLOR } from '@/sim/colors';
 
+const CHARGE_SCAN_TILE = 64;
+
 /**
  * The mutable cell-grid state of the entire game world, stored as flat typed
  * arrays indexed by `idx(x, y) = x + y * width` (row-major).
@@ -19,12 +21,18 @@ export class World {
   readonly types: Uint8Array;
   /** Packed 0xRRGGBB per cell. */
   readonly colors: Uint32Array;
+  /** Sparse color-only scars that must survive expedition save/restore. */
+  readonly colorOverrides = new Set<number>();
   /** Generic per-cell countdown (fire life, smoke life, ember life, ...). */
   readonly life: Int16Array;
   /** Set when a cell moved this sim tick, so it is not simulated twice. */
   readonly moved: Uint8Array;
   /** Electrical charge ticks remaining (chain lightning, sparks). */
   readonly charge: Uint8Array;
+  /** Sparse index of charged cells, used to avoid full-window electrical discovery every substep. */
+  readonly activeCharges = new Set<number>();
+  /** Coarse tiles already scanned for loaded/generated direct charge writes. */
+  private readonly chargeScanTiles = new Set<number>();
 
   /** Active simulation window — only cells inside are simulated each tick. */
   readonly simBounds: { x0: number; x1: number; y0: number; y1: number };
@@ -58,6 +66,7 @@ export class World {
     const i = x + y * this.width;
     this.types[i] = t;
     this.colors[i] = color;
+    this.colorOverrides.delete(i);
   }
 
   /** Reset a cell to empty space. */
@@ -71,7 +80,8 @@ export class World {
     this.types[i] = Cell.Empty;
     this.colors[i] = EMPTY_COLOR;
     this.life[i] = 0;
-    this.charge[i] = 0;
+    this.clearChargeAt(i);
+    this.colorOverrides.delete(i);
   }
 
   /** Replace a flat-indexed cell with fresh material, clearing transient metadata. */
@@ -79,7 +89,73 @@ export class World {
     this.types[i] = t;
     this.colors[i] = color;
     this.life[i] = 0;
+    this.clearChargeAt(i);
+    this.colorOverrides.delete(i);
+  }
+
+  /** Set charge while keeping the sparse active-charge index in step. */
+  setChargeAt(i: number, charge: number): void {
+    const q = Math.max(0, Math.min(255, charge | 0));
+    this.charge[i] = q;
+    if (q > 0) this.activeCharges.add(i);
+    else this.activeCharges.delete(i);
+  }
+
+  /** Clear charge while keeping the sparse active-charge index in step. */
+  clearChargeAt(i: number): void {
     this.charge[i] = 0;
+    this.activeCharges.delete(i);
+  }
+
+  /** Rebuild charge tracking for one active window after legacy direct writes or save loads. */
+  rebuildActiveChargesInBounds(bounds = this.simBounds): void {
+    const bx0 = Math.max(0, Math.min(this.width, bounds.x0));
+    const bx1 = Math.max(bx0, Math.min(this.width, bounds.x1));
+    const by0 = Math.max(0, Math.min(this.height, bounds.y0));
+    const by1 = Math.max(by0, Math.min(this.height, bounds.y1));
+    if (bx0 >= bx1 || by0 >= by1) return;
+    const tx0 = Math.floor(bx0 / CHARGE_SCAN_TILE);
+    const tx1 = Math.floor((bx1 - 1) / CHARGE_SCAN_TILE);
+    const ty0 = Math.floor(by0 / CHARGE_SCAN_TILE);
+    const ty1 = Math.floor((by1 - 1) / CHARGE_SCAN_TILE);
+    const tilesWide = Math.ceil(this.width / CHARGE_SCAN_TILE);
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        const key = tx + ty * tilesWide;
+        if (this.chargeScanTiles.has(key)) continue;
+        const x0 = tx * CHARGE_SCAN_TILE;
+        const x1 = Math.min(this.width, x0 + CHARGE_SCAN_TILE);
+        const y0 = ty * CHARGE_SCAN_TILE;
+        const y1 = Math.min(this.height, y0 + CHARGE_SCAN_TILE);
+        for (let y = y0; y < y1; y++) {
+          const row = y * this.width;
+          for (let x = x0; x < x1; x++) {
+            const i = row + x;
+            if (this.charge[i] > 0) this.activeCharges.add(i);
+          }
+        }
+        this.chargeScanTiles.add(key);
+      }
+    }
+  }
+
+  chargeTrackingCovers(bounds = this.simBounds): boolean {
+    const bx0 = Math.max(0, Math.min(this.width, bounds.x0));
+    const bx1 = Math.max(bx0, Math.min(this.width, bounds.x1));
+    const by0 = Math.max(0, Math.min(this.height, bounds.y0));
+    const by1 = Math.max(by0, Math.min(this.height, bounds.y1));
+    if (bx0 >= bx1 || by0 >= by1) return true;
+    const tx0 = Math.floor(bx0 / CHARGE_SCAN_TILE);
+    const tx1 = Math.floor((bx1 - 1) / CHARGE_SCAN_TILE);
+    const ty0 = Math.floor(by0 / CHARGE_SCAN_TILE);
+    const ty1 = Math.floor((by1 - 1) / CHARGE_SCAN_TILE);
+    const tilesWide = Math.ceil(this.width / CHARGE_SCAN_TILE);
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        if (!this.chargeScanTiles.has(tx + ty * tilesWide)) return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -94,6 +170,8 @@ export class World {
   swap(x1: number, y1: number, x2: number, y2: number): void {
     const a = x1 + y1 * this.width;
     const b = x2 + y2 * this.width;
+    const aOverride = this.colorOverrides.has(a);
+    const bOverride = this.colorOverrides.has(b);
     const t = this.types[a];
     this.types[a] = this.types[b];
     this.types[b] = t;
@@ -108,6 +186,17 @@ export class World {
     this.charge[b] = q;
     this.moved[a] = this.movedTick;
     this.moved[b] = this.movedTick;
+    if (aOverride !== bOverride) {
+      if (aOverride) {
+        this.colorOverrides.delete(a);
+        this.colorOverrides.add(b);
+      } else {
+        this.colorOverrides.delete(b);
+        this.colorOverrides.add(a);
+      }
+    }
+    this.syncChargeMembership(a);
+    this.syncChargeMembership(b);
   }
 
   /** Wipe the whole grid back to empty space. */
@@ -117,5 +206,13 @@ export class World {
     this.life.fill(0);
     this.moved.fill(0);
     this.charge.fill(0);
+    this.colorOverrides.clear();
+    this.activeCharges.clear();
+    this.chargeScanTiles.clear();
+  }
+
+  private syncChargeMembership(i: number): void {
+    if (this.charge[i] > 0) this.activeCharges.add(i);
+    else this.activeCharges.delete(i);
   }
 }

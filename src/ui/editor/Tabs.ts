@@ -37,16 +37,17 @@ export function tabStripHtml(tabs: readonly TabDef[], activeId: string | null, o
 
 function tabButtonHtml(tab: TabDef, active: boolean, draggable: boolean): string {
   const close = tab.closable
-    ? `<span class="editor-tab-close" role="button" tabindex="-1" data-tab-close="${escapeAttr(tab.id)}" aria-label="Close ${escapeAttr(
+    ? `<button type="button" class="editor-tab-close" tabindex="-1" data-tab-close="${escapeAttr(tab.id)}" aria-label="Close ${escapeAttr(
         tab.label,
-      )}">×</span>`
+      )}">×</button>`
     : '';
   const icon = tab.iconHtml ? `<span class="editor-tab-icon" aria-hidden="true">${tab.iconHtml}</span>` : '';
   return (
+    `<span class="editor-tab-shell${active ? ' active' : ''}">` +
     `<button type="button" class="editor-tab${active ? ' active' : ''}" role="tab" data-tab-id="${escapeAttr(tab.id)}"` +
     ` aria-selected="${active ? 'true' : 'false'}" tabindex="${active ? '0' : '-1'}"${draggable ? ' draggable="false"' : ''}${
       tab.title ? ` title="${escapeAttr(tab.title)}"` : ''
-    }>${icon}<span class="editor-tab-label">${escapeHtml(tab.label)}</span>${close}</button>`
+    }>${icon}<span class="editor-tab-label">${escapeHtml(tab.label)}</span></button>${close}</span>`
   );
 }
 
@@ -136,7 +137,7 @@ export function wireTabStrip(container: HTMLElement, handlers: TabStripHandlers 
       event.key === 'Delete' ||
       event.key === 'Backspace' ||
       ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'w');
-    if (closeRequested && currentTab?.querySelector('[data-tab-close]')) {
+    if (closeRequested && currentTab?.parentElement?.querySelector('[data-tab-close]')) {
       event.preventDefault();
       event.stopPropagation();
       handlers.onClose?.(currentTab.dataset.tabId ?? '');

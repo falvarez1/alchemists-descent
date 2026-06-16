@@ -67,7 +67,6 @@ export class CommandStack {
     this.done.length = 0;
     this.undone.length = 0;
     this.retainedCells = 0;
-    this.onChange?.();
   }
 
   get depth(): number {
@@ -333,6 +332,26 @@ export function editDocumentMoodCmd(patch: Partial<NonNullable<EditorDocument['m
     undo: (doc) => {
       if (prev === undefined) delete doc.mood;
       else doc.mood = { ...prev };
+    },
+  };
+}
+
+export function editDocumentCmd<K extends keyof EditorDocument>(
+  label: string,
+  patch: Pick<EditorDocument, K>,
+): Command {
+  const prev: Partial<Pick<EditorDocument, K>> = {};
+  const keys = Object.keys(patch) as K[];
+  return {
+    label,
+    do: (doc) => {
+      for (const key of keys) {
+        prev[key] = doc[key];
+        doc[key] = patch[key];
+      }
+    },
+    undo: (doc) => {
+      for (const key of keys) doc[key] = prev[key] as EditorDocument[K];
     },
   };
 }

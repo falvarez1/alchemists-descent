@@ -1,7 +1,8 @@
 import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskState, type PerkId } from '@/core/types';
-import { CARD_DEFS } from '@/combat/wands/cards';
+import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
+import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/WandSystem';
 import { buildWandSentenceView, type WandSentenceView } from '@/combat/wands/sentenceView';
-import { POTION_DEFS, POTION_KINDS } from '@/game/Pickups';
+import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import { Cell } from '@/sim/CellType';
 import { cardIconName, ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 
@@ -18,6 +19,38 @@ function cardTitle(id: CardId): string {
 
 const BENCH_STATUS_CAP = 3600;
 const BENCH_REFUGE_RADIUS = 48;
+
+export type BenchCardFilter = 'all' | 'projectile' | 'modifier' | 'multicast' | 'setup' | 'terrain';
+
+const BENCH_CARD_FILTERS: Array<{ id: BenchCardFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'projectile', label: 'Projectiles' },
+  { id: 'modifier', label: 'Modifiers' },
+  { id: 'multicast', label: 'Multicast' },
+  { id: 'setup', label: 'Setup' },
+  { id: 'terrain', label: 'Terrain' },
+];
+
+const CARD_RECIPE_HINTS: Partial<Record<CardId, string[]>> = {
+  watertrail: ['Pairs with Critical on Wet and Electric Charge.'],
+  critwet: ['Pairs with Water Trail or any wet target.'],
+  electriccharge: ['Pairs with Water Trail and conductor cells.'],
+  oiltrail: ['Pairs with Flame as a visible fuse.'],
+  trigger: ['Put a host projectile next, then a payload group after it.'],
+  infuser: ['Uses the active flask material as the projectile trail.'],
+};
+
+export function cardMatchesBenchFilter(id: CardId, filter: BenchCardFilter): boolean {
+  if (filter === 'all') return true;
+  const def = CARD_DEFS[id];
+  if (filter === 'projectile' || filter === 'modifier' || filter === 'multicast') return def.kind === filter;
+  if (filter === 'setup') return def.tags.includes('Setup');
+  return def.tags.includes('Terrain');
+}
+
+export function recipeHintsForCard(id: CardId): readonly string[] {
+  return CARD_RECIPE_HINTS[id] ?? [];
+}
 
 const POTION_ICON: Record<string, string> = {
   vigor: 'elixirLife',
@@ -98,6 +131,7 @@ export class WandBench {
   private heldIdx = -1;
   private inspectedCard: CardId | null = null;
   private dragSource: BenchDragSource | null = null;
+  private collectionFilter: BenchCardFilter = 'all';
 
   constructor(private ctx: Ctx) {
     window.addEventListener('keydown', (e) => {
@@ -189,17 +223,21 @@ export class WandBench {
     section.className = 'bench-section';
     section.textContent = 'COLLECTION';
     root.appendChild(section);
+    root.appendChild(this.makeCollectionFilters());
 
     const grid = document.createElement('div');
     grid.className = 'bench-collection bench-card-collection';
     this.installCollectionDropTarget(grid);
-    if (wands.collection.length === 0) {
+    const collection = wands.collection
+      .map((id, index) => ({ id, index }))
+      .filter(({ id }) => cardMatchesBenchFilter(id, this.collectionFilter));
+    if (wands.collection.length === 0 || collection.length === 0) {
       const none = document.createElement('div');
       none.className = 'bench-empty';
-      none.textContent = 'no spare cards — the caves hold more';
+      none.textContent = wands.collection.length === 0 ? 'no spare cards - the caves hold more' : 'no cards match this filter';
       grid.appendChild(none);
     }
-    wands.collection.forEach((id, i) => grid.appendChild(this.makeCollectionTile(id, i)));
+    collection.forEach(({ id, index }) => grid.appendChild(this.makeCollectionTile(id, index)));
     root.appendChild(grid);
     this.appendCardInspect(root);
 
@@ -279,6 +317,25 @@ export class WandBench {
     copy.appendChild(name);
     copy.appendChild(meta);
     copy.appendChild(blurb);
+    const tags = document.createElement('div');
+    tags.className = 'bench-inspect-tags';
+    def.tags.forEach((tag) => {
+      const chip = document.createElement('span');
+      chip.textContent = tag;
+      tags.appendChild(chip);
+    });
+    copy.appendChild(tags);
+    const hints = recipeHintsForCard(id);
+    if (hints.length > 0) {
+      const hintWrap = document.createElement('div');
+      hintWrap.className = 'bench-inspect-hints';
+      hints.forEach((hint) => {
+        const row = document.createElement('div');
+        row.textContent = hint;
+        hintWrap.appendChild(row);
+      });
+      copy.appendChild(hintWrap);
+    }
     panel.appendChild(copy);
   }
 
@@ -293,7 +350,8 @@ export class WandBench {
   }
 
   private cardStillVisible(id: CardId): boolean {
-    return this.ctx.wands.collection.includes(id) || this.ctx.wands.wands.some((wand) => wand.cards.includes(id));
+    return this.ctx.wands.wands.some((wand) => wand.cards.includes(id)) ||
+      (this.ctx.wands.collection.includes(id) && cardMatchesBenchFilter(id, this.collectionFilter));
   }
 
   private inspectCard(id: CardId): void {
@@ -303,6 +361,12 @@ export class WandBench {
   }
 
   private appendReviewTools(root: HTMLElement): void {
+    this.appendSection(root, 'REVIEW LOADOUTS');
+    const loadouts = document.createElement('div');
+    loadouts.className = 'bench-loadouts';
+    REVIEW_WAND_LOADOUTS.forEach((loadout) => loadouts.appendChild(this.makeReviewLoadoutButton(loadout)));
+    root.appendChild(loadouts);
+
     this.appendSection(root, 'STATUS POTIONS');
     const potions = document.createElement('div');
     potions.className = 'bench-collection';
@@ -331,11 +395,66 @@ export class WandBench {
     root.appendChild(powers);
   }
 
+  private makeReviewLoadoutButton(loadout: BuiltInWandLoadout): HTMLElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'bench-loadout';
+    button.textContent = loadout.name;
+    button.setAttribute('aria-label', 'Apply ' + loadout.name + ' to active wand');
+    button.title = loadout.cards.map((id) => CARD_DEFS[id].name).join(' + ');
+    button.addEventListener('click', () => {
+      this.applyReviewLoadout(loadout);
+    });
+    return button;
+  }
+
+  private applyReviewLoadout(loadout: BuiltInWandLoadout): void {
+    const frame = WAND_FRAMES[loadout.frameId];
+    if (!frame) return;
+    const active = this.ctx.wands.active;
+    const snapshot = this.ctx.wands.snapshotLoadout();
+    const cards: Array<CardId | null> = [...loadout.cards];
+    while (cards.length < frame.capacity) cards.push(null);
+    cards.length = frame.capacity;
+
+    snapshot.active = active;
+    snapshot.collection = [...ALL_CARD_IDS];
+    snapshot.wands[active] = {
+      frameId: frame.id,
+      cards,
+      mana: frame.manaMax,
+    };
+    this.ctx.wands.loadLoadout(snapshot);
+    this.ctx.audio.cardSlot();
+    this.ctx.events.emit('toast', { text: loadout.name.toUpperCase() + ' READY' });
+    this.inspectedCard = loadout.cards[0] ?? null;
+    this.render();
+  }
+
   private appendSection(root: HTMLElement, label: string): void {
     const section = document.createElement('div');
     section.className = 'bench-section';
     section.textContent = label;
     root.appendChild(section);
+  }
+
+  private makeCollectionFilters(): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'bench-card-filters';
+    for (const filter of BENCH_CARD_FILTERS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = filter.label;
+      btn.dataset.benchCardFilter = filter.id;
+      btn.setAttribute('aria-pressed', String(this.collectionFilter === filter.id));
+      btn.addEventListener('click', () => {
+        this.collectionFilter = filter.id;
+        this.heldIdx = -1;
+        this.render();
+      });
+      wrap.appendChild(btn);
+    }
+    return wrap;
   }
 
   private makePotionTile(kind: string): HTMLElement {
@@ -619,6 +738,9 @@ export class WandBench {
     tile.className = 'bench-card' + (i === this.heldIdx ? ' held' : '');
     tile.draggable = true;
     tile.dataset.benchCollectionIndex = String(i);
+    tile.dataset.benchCardId = id;
+    tile.dataset.benchCardKind = CARD_DEFS[id].kind;
+    tile.dataset.benchCardTags = CARD_DEFS[id].tags.join(' ');
     tile.title = cardTitle(id);
     tile.tabIndex = 0;
     tile.setAttribute('aria-label', cardTitle(id));

@@ -28,6 +28,16 @@ export class PerfHud {
   private root: HTMLDivElement;
   private fpsEl: HTMLSpanElement;
   private headerBtn: HTMLElement | null = null;
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (e.code === 'F3') {
+      e.preventDefault();
+      this.toggle();
+    }
+  };
+  private readonly onHeaderClick = (e: MouseEvent): void => {
+    this.toggle();
+    (e.currentTarget as HTMLButtonElement).blur(); // keep Space/Enter for the game
+  };
   private phaseEls: Record<Exclude<PerfPhase, 'frame'>, HTMLSpanElement>;
   private ema: Record<PerfPhase, number> = { sim: 0, entities: 0, render: 0, compose: 0, gl: 0, frame: 0 };
   private frameMarks = 0;
@@ -76,19 +86,11 @@ export class PerfHud {
     document.body.appendChild(root);
     this.root = root;
 
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'F3') {
-        e.preventDefault();
-        this.toggle();
-      }
-    });
+    window.addEventListener('keydown', this.onKeyDown);
 
     // Header PERF button mirrors F3 (lit while the overlay is up).
     this.headerBtn = document.getElementById('perf-hud-toggle');
-    this.headerBtn?.addEventListener('click', (e) => {
-      this.toggle();
-      (e.currentTarget as HTMLButtonElement).blur(); // keep Space/Enter for the game
-    });
+    this.headerBtn?.addEventListener('click', this.onHeaderClick);
   }
 
   get visible(): boolean {
@@ -138,5 +140,12 @@ export class PerfHud {
       el.textContent = labels[phase] + ' ' + this.ema[phase].toFixed(1) + 'ms';
       el.style.color = this.ema[phase] > BUDGETS[phase] ? COLOR_OVER : COLOR_OK;
     }
+  }
+
+  dispose(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
+    this.headerBtn?.removeEventListener('click', this.onHeaderClick);
+    this.headerBtn?.classList.remove('lit');
+    this.root.remove();
   }
 }

@@ -19,7 +19,7 @@ import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_VERSION } from '@/config/gen';
 import { LEVELS, START_LEVEL, populationForLevel, vaultHostId } from '@/config/worldgraph';
 import { Rng, hashSeed, randomSeed } from '@/core/rng';
-import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
+import { base64ToBytes, bytesToBase64, rleDecode, rleEncode } from '@/core/rle';
 import type {
   Ctx,
   Enemy,
@@ -49,15 +49,16 @@ import type {
 import { createPlayer, grantFullReviewKit } from '@/entities/Player';
 import { createDefaultStatus } from '@/entities/status';
 import { spawnPrefabEnemy, toAuthoredLight } from '@/game/instantiate';
-import { makePickup, POTION_KINDS } from '@/game/Pickups';
+import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { makeLevelRuntime } from '@/game/runtime';
 import { resetCombatTransients } from '@/game/transients';
-import { validateFindability, wizardMask } from '@/world/validate';
+import { failOpenFindability, wizardMask } from '@/world/validate';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { COLOR_FN, emberColor, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
 import { EXTRAS } from '@/world/biomeExtras';
 import { extractRegionGraph } from '@/world/regions';
+import { buildPhysicsArena } from '@/world/physicsArena';
 import {
   createDefaultVirtualWorldDef,
   cropMaterializedWindow,
@@ -71,6 +72,8 @@ import {
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
 const CURTAIN_HOLD_MS = 450;
+/** Run after loose materials have begun settling, before the findability audit's 350 ms read. */
+const SETTLED_FINDABILITY_REPAIR_MS = 300;
 /** Waystone bowl fire checks run every 4th frame; this many hot checks light it. */
 const WAYSTONE_LIGHT_TICKS = 30;
 /** Minimum placement distance (cells) between a placed enemy and the level spawn. */
@@ -138,6 +141,8 @@ interface SavedLevelBlob {
   id: string;
   /** RLE cell types; colors regenerate from the seed + a diff recolor pass. */
   rle: string;
+  /** Sparse packed RGB cells whose type is unchanged but whose color is scarred. */
+  colorOverrides?: Array<[number, number]>;
   life: Array<[number, number]>;
   charge: Array<[number, number]>;
   explored: string;
@@ -181,6 +186,24 @@ interface FlaskInventorySave {
   activeIndex: number;
   slots: Array<{ material: number | null; count: number; capacity?: number }>;
   bottle?: FlaskBottleState;
+}
+
+function snapshotPickupForSave(pickup: Pickup): Pickup {
+  const data = { ...pickup.data };
+  if (pickup.kind === 'tome') data.offerPending = false;
+  return { ...pickup, data };
+}
+
+function reviveSavedPickup(pickup: Pickup): Pickup {
+  return snapshotPickupForSave(pickup);
+}
+
+function sparseNonZeroPairs(arr: Int16Array | Uint8Array): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i] !== 0) out.push([i, arr[i]]);
+  }
+  return out;
 }
 
 function nonNegativeInt(value: number | undefined, fallback: number): number {
@@ -290,8 +313,26 @@ export class Levels implements LevelsApi {
   private reviewKitSeeded = new Set<string>();
   /** Resume restores the hero position after enterLevel; suppress that transient checkpoint. */
   private checkpointSaveSuppression = 0;
+  /** Guards delayed settled-findability repair against stale level transitions. */
+  private findabilityRepairToken = 0;
 
   constructor(private ctx: Ctx) {}
+
+  private showTransitionCurtain(ctx: Ctx): void {
+    ctx.events.emit('levelCurtain', { visible: true });
+  }
+
+  private finishTransitionWithCurtain(ctx: Ctx): void {
+    const complete = (): void => {
+      this._transitioning = false;
+    };
+    const handled = ctx.events.emit('levelCurtain', {
+      visible: false,
+      holdMs: CURTAIN_HOLD_MS,
+      onComplete: complete,
+    });
+    if (!handled) complete();
+  }
 
   get current(): LevelRuntime | null {
     return this.currentId ? (this.levels.get(this.currentId) ?? null) : null;
@@ -665,17 +706,49 @@ export class Levels implements LevelsApi {
   private blobCache = new Map<string, SavedLevelBlob>();
 
   saveExpedition(ctx: Ctx): void {
+    if (ctx.player.dead) return;
+    this.writeExpeditionSave(ctx, this.snapshotPlayerForSave(ctx));
+  }
+
+  saveDeathCheckpoint(ctx: Ctx): void {
+    const respawn = this.respawnPoint();
+    if (!respawn) return;
+    this.writeExpeditionSave(ctx, this.snapshotPlayerForSave(ctx, {
+      x: respawn.x,
+      y: respawn.y,
+      hp: ctx.player.maxHp,
+      levit: ctx.player.maxLevit,
+    }));
+  }
+
+  private snapshotPlayerForSave(
+    ctx: Ctx,
+    override: Partial<ExpeditionSave['player']> = {},
+  ): ExpeditionSave['player'] {
+    return {
+      x: ctx.player.x,
+      y: ctx.player.y,
+      hp: ctx.player.hp,
+      maxHp: ctx.player.maxHp,
+      levit: ctx.player.levit,
+      maxLevit: ctx.player.maxLevit,
+      perks: { ...ctx.player.perks } as Record<string, true>,
+      ...override,
+    };
+  }
+
+  private writeExpeditionSave(ctx: Ctx, playerSave: ExpeditionSave['player']): void {
     if (!this.currentId || this.currentId === 'custom') return;
     if (!LEVELS[this.currentId]) return;
     if (ctx.state.playtestSource !== null) return;
     if (ctx.state.debugGodMode) return;
-    if (ctx.player.dead) return;
+    const currentId = this.currentId;
     // Sync the live hostile roster into the current runtime before reading it.
     this.leaveLevel();
     const blobs: SavedLevelBlob[] = [];
     for (const [id, rt] of this.levels) {
       if (id === 'custom') continue;
-      if (id === this.currentId) {
+      if (id === currentId) {
         blobs.push(this.serializeLevel(id, rt));
         continue;
       }
@@ -695,17 +768,9 @@ export class Levels implements LevelsApi {
       v: 1,
       genVersion: GEN_VERSION,
       expeditionSeed,
-      currentId: this.currentId,
+      currentId,
       score: ctx.state.score,
-      player: {
-        x: ctx.player.x,
-        y: ctx.player.y,
-        hp: ctx.player.hp,
-        maxHp: ctx.player.maxHp,
-        levit: ctx.player.levit,
-        maxLevit: ctx.player.maxLevit,
-        perks: { ...ctx.player.perks } as Record<string, true>,
-      },
+      player: playerSave,
       loadout: ctx.wands.snapshotLoadout(),
       wands: ctx.wands.snapshotRuntimeState(),
       flasks: this.snapshotFlasks(ctx),
@@ -1252,11 +1317,7 @@ export class Levels implements LevelsApi {
 
   private enterAdHocRuntime(ctx: Ctx, runtime: LevelRuntime, objective: string): void {
     this._transitioning = true;
-    const curtain = document.getElementById('level-curtain');
-    if (curtain) {
-      curtain.classList.add('visible');
-      void curtain.offsetHeight;
-    }
+    this.showTransitionCurtain(ctx);
 
     this.levels.set(runtime.def.id, runtime);
     this.currentId = runtime.def.id;
@@ -1285,10 +1346,7 @@ export class Levels implements LevelsApi {
     ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
     ctx.events.emit('objectiveChanged', { text: objective });
 
-    window.setTimeout(() => {
-      curtain?.classList.remove('visible');
-      this._transitioning = false;
-    }, CURTAIN_HOLD_MS);
+    this.finishTransitionWithCurtain(ctx);
   }
 
   private serializeLevel(id: string, rt: LevelRuntime): SavedLevelBlob {
@@ -1297,7 +1355,7 @@ export class Levels implements LevelsApi {
     const life: Array<[number, number]> = [];
     const types = rt.world.types;
     const lifeArr = rt.world.life;
-    for (let i = 0; i < lifeArr.length && life.length < 20000; i++) {
+    for (let i = 0; i < lifeArr.length; i++) {
       if (lifeArr[i] === 0) continue;
       const t = types[i];
       if (t === Cell.Fire || t === Cell.Ember || t === Cell.Smoke || t === Cell.Steam) continue;
@@ -1306,11 +1364,12 @@ export class Levels implements LevelsApi {
     return {
       id,
       rle: rleEncode(rt.world.types),
+      colorOverrides: this.serializeColorOverrides(rt.world),
       life,
-      charge: sparsePairs(rt.world.charge, 20000),
+      charge: sparseNonZeroPairs(rt.world.charge),
       explored: bytesToBase64(rt.explored),
       waystones: rt.waystones,
-      pickups: rt.pickups,
+      pickups: rt.pickups.map(snapshotPickupForSave),
       mechanisms: rt.mechanisms,
       runeVaults: rt.runeVaults,
       keyTaken: rt.keyTaken,
@@ -1320,57 +1379,111 @@ export class Levels implements LevelsApi {
     };
   }
 
+  private serializeColorOverrides(world: World): Array<[number, number]> {
+    const out: Array<[number, number]> = [];
+    for (const i of world.colorOverrides) {
+      if (i < 0 || i >= world.colors.length || world.types[i] === Cell.Empty) continue;
+      out.push([i, world.colors[i] >>> 0]);
+    }
+    out.sort((a, b) => a[0] - b[0]);
+    return out;
+  }
+
+  private isExpeditionSaveShape(value: unknown): value is ExpeditionSave {
+    if (!value || typeof value !== 'object') return false;
+    const save = value as Partial<ExpeditionSave>;
+    const player = save.player as Partial<ExpeditionSave['player']> | undefined;
+    return save.v === 1 &&
+      typeof save.currentId === 'string' &&
+      typeof save.expeditionSeed === 'number' &&
+      Number.isFinite(save.expeditionSeed) &&
+      typeof save.score === 'number' &&
+      Number.isFinite(save.score) &&
+      Array.isArray(save.levels) &&
+      !!save.loadout &&
+      typeof save.loadout === 'object' &&
+      !!player &&
+      typeof player.x === 'number' &&
+      typeof player.y === 'number' &&
+      typeof player.hp === 'number' &&
+      typeof player.maxHp === 'number' &&
+      typeof player.levit === 'number' &&
+      typeof player.maxLevit === 'number' &&
+      !!player.perks &&
+      typeof player.perks === 'object';
+  }
+
+  private retireSavedExpedition(ctx: Ctx, text: string): void {
+    this.abandonExpedition();
+    ctx.events.emit('toast', { text });
+  }
+
   /** Resume a saved expedition: hero + loadout now, levels lazily on entry. */
   private tryResumeExpedition(ctx: Ctx): boolean {
     let save: ExpeditionSave | null = null;
     try {
       const raw = localStorage.getItem(EXPEDITION_KEY);
-      if (raw) save = JSON.parse(raw) as ExpeditionSave;
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (!this.isExpeditionSaveShape(parsed)) {
+          this.retireSavedExpedition(ctx, 'SAVED EXPEDITION CORRUPT - RETIRED');
+          return false;
+        }
+        save = parsed;
+      }
     } catch {
-      save = null;
+      this.retireSavedExpedition(ctx, 'SAVED EXPEDITION CORRUPT - RETIRED');
+      return false;
     }
     if (!save || save.v !== 1 || !LEVELS[save.currentId]) return false;
     // Generation-version guard: a save from another generation would resume
     // against regenerated worlds that no longer match its blobs. Retire it
     // honestly instead of silently desyncing.
     if (save.genVersion !== GEN_VERSION) {
-      this.abandonExpedition();
-      ctx.events.emit('toast', { text: 'THE DEPTHS HAVE SHIFTED — EXPEDITION RETIRED' });
+      this.retireSavedExpedition(ctx, 'THE DEPTHS HAVE SHIFTED - EXPEDITION RETIRED');
       return false;
     }
     if (this.isLegacyReviewSave(save)) return false;
 
-    this.expeditionSeed = save.expeditionSeed >>> 0;
-    this.savedBlobs.clear();
-    this.blobCache.clear();
-    for (const blob of save.levels) this.savedBlobs.set(blob.id, blob);
-
-    ctx.state.score = save.score;
-    ctx.events.emit('scoreChanged', { score: ctx.state.score });
-    const p = ctx.player;
-    p.maxHp = save.player.maxHp;
-    p.hp = save.player.hp;
-    p.maxLevit = save.player.maxLevit;
-    p.levit = save.player.levit;
-    p.perks = { ...save.player.perks } as typeof p.perks;
-    if (save.wands) ctx.wands.restoreRuntimeState(save.wands);
-    else {
-      ctx.wands.loadLoadout(save.loadout);
-      ctx.wands.markDepthGrantsThrough(LEVELS[save.currentId].depth);
-    }
-    this.restoreFlasks(ctx, save.flasks);
-
-    this.checkpointSaveSuppression++;
+    const suppressionBeforeResume = this.checkpointSaveSuppression;
     try {
-      this.enterLevel(ctx, save.currentId);
-    } finally {
-      this.checkpointSaveSuppression--;
+      this.expeditionSeed = save.expeditionSeed >>> 0;
+      this.savedBlobs.clear();
+      this.blobCache.clear();
+      for (const blob of save.levels) this.savedBlobs.set(blob.id, blob);
+
+      ctx.state.score = save.score;
+      ctx.events.emit('scoreChanged', { score: ctx.state.score });
+      const p = ctx.player;
+      p.maxHp = save.player.maxHp;
+      p.hp = save.player.hp;
+      p.maxLevit = save.player.maxLevit;
+      p.levit = save.player.levit;
+      p.perks = { ...save.player.perks } as typeof p.perks;
+      if (save.wands) ctx.wands.restoreRuntimeState(save.wands);
+      else {
+        ctx.wands.loadLoadout(save.loadout);
+        ctx.wands.markDepthGrantsThrough(LEVELS[save.currentId].depth);
+      }
+      this.restoreFlasks(ctx, save.flasks);
+
+      this.checkpointSaveSuppression++;
+      try {
+        this.enterLevel(ctx, save.currentId);
+      } finally {
+        this.checkpointSaveSuppression--;
+      }
+      // enterLevel parks the hero at the spawn; the save knows better.
+      p.x = save.player.x;
+      p.y = save.player.y;
+      ctx.camera.snapTo(p.x, p.y);
+      this.saveExpedition(ctx);
+    } catch (error) {
+      console.warn('Saved expedition failed to resume', error);
+      this.checkpointSaveSuppression = suppressionBeforeResume;
+      this.retireSavedExpedition(ctx, 'SAVED EXPEDITION CORRUPT - RETIRED');
+      return false;
     }
-    // enterLevel parks the hero at the spawn; the save knows better.
-    p.x = save.player.x;
-    p.y = save.player.y;
-    ctx.camera.snapTo(p.x, p.y);
-    this.saveExpedition(ctx);
     ctx.events.emit('toast', { text: 'EXPEDITION RESUMED' });
     return true;
   }
@@ -1416,8 +1529,14 @@ export class Levels implements LevelsApi {
     }
     world.life.fill(0);
     world.charge.fill(0);
+    world.activeCharges.clear();
     for (const [i, v] of blob.life) world.life[i] = v;
-    for (const [i, v] of blob.charge) world.charge[i] = v;
+    for (const [i, v] of blob.charge) world.setChargeAt(i, v);
+    for (const [i, color] of blob.colorOverrides ?? []) {
+      if (i < 0 || i >= world.colors.length || world.types[i] === Cell.Empty) continue;
+      world.colors[i] = color >>> 0;
+      world.colorOverrides.add(i);
+    }
 
     for (const se of blob.enemies) {
       ctx.enemies.push(reviveSavedEnemy(se));
@@ -1444,7 +1563,7 @@ export class Levels implements LevelsApi {
         y: pristine.exit.sealY - 12,
       }),
       cauldron: pristine.cauldron,
-      pickups: blob.pickups,
+      pickups: blob.pickups.map(reviveSavedPickup),
       portal,
       keyTaken: blob.keyTaken,
       mechanisms: blob.mechanisms,
@@ -1461,6 +1580,7 @@ export class Levels implements LevelsApi {
       ...(pristine.emitters.length > 0 ? { emitters: pristine.emitters } : {}),
       ...(pristine.decors.length > 0 ? { decors: pristine.decors } : {}),
       ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
+      ...(pristine.spellLab ? { spellLab: pristine.spellLab } : {}),
       ...(pristine.vaultArch ? { vaultArch: pristine.vaultArch } : {}),
     });
   }
@@ -1497,14 +1617,7 @@ export class Levels implements LevelsApi {
     if (!def) return;
     this._transitioning = true;
 
-    // Curtain down (element owned by the UI layer — null-safe). Reading
-    // offsetHeight forces a reflow so the class change is committed before
-    // the synchronous generation below blocks the main thread.
-    const curtain = document.getElementById('level-curtain');
-    if (curtain) {
-      curtain.classList.add('visible');
-      void curtain.offsetHeight;
-    }
+    this.showTransitionCurtain(ctx);
 
     // This level is about to become CURRENT and mutate — its cached blob dies.
     this.blobCache.delete(id);
@@ -1548,6 +1661,7 @@ export class Levels implements LevelsApi {
     ctx.camera.snapTo(player.x, player.y);
 
     this.currentId = id;
+    this.scheduleSettledFindabilityRepair(ctx, runtime);
     this.waystoneHeat = new Array<number>(runtime.waystones.length).fill(0);
     this.lastEnemiesEmit = ctx.enemies.length;
     if (ctx.state.debugGodMode) {
@@ -1555,11 +1669,14 @@ export class Levels implements LevelsApi {
       this.seedRuntimeReviewKit(ctx, runtime);
     }
     ctx.events.emit('levelChanged', { depth: def.depth, name: def.name });
+    // The physics test arena stamps its authored terrain + rigid bodies AFTER
+    // levelChanged (which clears the body pool), so the bodies persist.
+    if (id === 'physics-test') buildPhysicsArena(ctx);
     ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
     ctx.events.emit('objectiveChanged', {
       text: runtime.portal
         ? runtime.keyTaken
-          ? 'REACH THE PORTAL'
+          ? 'RETURN TO THE PORTAL'
           : 'FIND THE GOLDEN KEY'
         : runtime.boss
           ? 'SLAY THE KILN COLOSSUS'
@@ -1568,10 +1685,7 @@ export class Levels implements LevelsApi {
             : 'THE DEPTHS END HERE — SURVIVE',
     });
 
-    window.setTimeout(() => {
-      curtain?.classList.remove('visible');
-      this._transitioning = false;
-    }, CURTAIN_HOLD_MS);
+    this.finishTransitionWithCurtain(ctx);
 
     // Crossing a threshold is a natural checkpoint.
     if (this.checkpointSaveSuppression === 0) this.saveExpedition(ctx);
@@ -1610,6 +1724,43 @@ export class Levels implements LevelsApi {
     ctx.events.emit('toast', { text: 'REVIEW POTION BELT STOCKED' });
   }
 
+  private repairFindability(ctx: Ctx, runtime: LevelRuntime, phase: 'initial' | 'settled'): boolean {
+    const findability = failOpenFindability(runtime);
+    if (import.meta.env.DEV) {
+      if (findability.repaired.length) {
+        console.warn(
+          `[findability:${phase}:repaired] ${runtime.def.id}: ${findability.repaired
+            .map((i) => `${i.what}@${i.x},${i.y}`)
+            .join(' ')}`,
+        );
+      }
+      const remainingErrors = findability.remaining.filter((i) => i.severity === 'error');
+      if (remainingErrors.length) {
+        console.warn(
+          `[findability:${phase}:remaining] ${runtime.def.id}: ${remainingErrors
+            .map((i) => `${i.what}@${i.x},${i.y}`)
+            .join(' ')}`,
+        );
+      }
+    }
+    if (findability.repaired.length > 0) {
+      this.blobCache.delete(runtime.def.id);
+      ctx.events.emit('toast', { text: 'A SAFE ROUTE TEARS OPEN' });
+    }
+    return findability.repaired.length > 0;
+  }
+
+  private scheduleSettledFindabilityRepair(ctx: Ctx, runtime: LevelRuntime): void {
+    const id = runtime.def.id;
+    const token = ++this.findabilityRepairToken;
+    globalThis.setTimeout(() => {
+      if (token !== this.findabilityRepairToken || this.currentId !== id || this.current !== runtime) return;
+      if (this.repairFindability(ctx, runtime, 'settled') && this.checkpointSaveSuppression === 0) {
+        this.saveExpedition(ctx);
+      }
+    }, SETTLED_FINDABILITY_REPAIR_MS);
+  }
+
   /** Generate a fresh level World into ctx and place its hostile population. */
   private createLevel(ctx: Ctx, def: LevelDef): LevelRuntime {
     // Ctx.world is a mutable field by design: every system dereferences ctx
@@ -1636,6 +1787,7 @@ export class Levels implements LevelsApi {
       emitters,
       decors,
       refuge,
+      spellLab,
       vaultArch,
       vaultHoard,
     } = ctx.worldgen.generateLevel(ctx, def, seed, {
@@ -1688,19 +1840,13 @@ export class Levels implements LevelsApi {
       ...(emitters.length > 0 ? { emitters } : {}),
       ...(decors.length > 0 ? { decors } : {}),
       ...(refuge ? { refuge } : {}),
+      ...(spellLab ? { spellLab } : {}),
       ...(vaultArch ? { vaultArch } : {}),
     });
 
-    // DEV tripwire: a freshly generated level with anything unreachable
-    // is a generator regression — shout immediately, not at playtest.
-    if (import.meta.env.DEV) {
-      const issues = validateFindability(runtime);
-      if (issues.length) {
-        console.warn(
-          `[findability] ${def.id}: ${issues.map((i) => `${i.what}@${i.x},${i.y}`).join(' ')}`,
-        );
-      }
-    }
+    // Findability fail-open: validator-matched progression breaks carve an
+    // explicit rescue route, then DEV still shouts because the generator regressed.
+    this.repairFindability(ctx, runtime, 'initial');
 
     return runtime;
   }

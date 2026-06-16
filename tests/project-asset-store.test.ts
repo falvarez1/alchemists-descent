@@ -9,12 +9,14 @@ import {
   importInputFromProjectAssetEntry,
   projectAssetEntryFromExport,
 } from '@/builder/assets/ProjectAssetStore';
+import { encodeFramePx } from '@/builder/assets/sprites';
 import type {
   FileSystemDirectoryHandleLike,
   FileSystemFileHandleLike,
   ProjectAssetEntry,
 } from '@/builder/assets/ProjectAssetStore';
 import type { AssetImportReport } from '@/builder/assets/AssetTypes';
+import type { SpriteAsset } from '@/builder/assets/sprites';
 
 describe('project asset store', () => {
   it('converts existing Asset Database exports into async project-store entries', () => {
@@ -43,6 +45,61 @@ describe('project asset store', () => {
       text: exported.text,
       acceptedAt: '2026-06-14T10:00:00.000Z',
     });
+  });
+
+  it('hydrates Asset Database records from IndexedDB project-store entries', async () => {
+    const factory = new FakeIndexedDbFactory();
+    const doc = createEmptyDocument('indexed-project-doc', 'earthen');
+    const database = buildAssetDatabase({ documents: { [doc.id]: doc } });
+    const record = database.get(`document:project:${doc.id}`)!;
+    const exported = new LocalStorageAssetStore().export(record)!;
+    const entry = projectAssetEntryFromExport(record, exported, '2026-06-14T10:00:00.000Z')!;
+    const store = new IndexedDbAssetStore('hydrate-project-assets', () => factory as unknown as IDBFactory);
+
+    expect(await store.putAsset(entry)).toMatchObject({ ok: true });
+
+    const hydrated = buildAssetDatabase({ projectAssets: await store.listAssets() }).get(`document:project:${doc.id}`);
+    expect(hydrated).toMatchObject({
+      assetId: `document:project:${doc.id}`,
+      name: doc.name,
+      source: { storage: 'indexedDB', key: `document:project:${doc.id}` },
+    });
+  });
+
+  it('hydrates embedded sprite records from IndexedDB project document entries', async () => {
+    const factory = new FakeIndexedDbFactory();
+    const sprite = spriteAsset('embedded-torch', 'Embedded Torch');
+    const doc = createEmptyDocument('indexed-project-doc-with-sprite', 'earthen');
+    doc.assets = { sprites: [sprite] };
+    doc.objects.push({
+      id: 'decor-1',
+      kind: 'decor',
+      x: 4,
+      y: 5,
+      rotation: 0,
+      locked: false,
+      hidden: false,
+      params: { spriteId: sprite.id },
+    });
+    const database = buildAssetDatabase({ documents: { [doc.id]: doc } });
+    const record = database.get(`document:project:${doc.id}`)!;
+    const exported = new LocalStorageAssetStore().export(record)!;
+    const entry = projectAssetEntryFromExport(record, exported, '2026-06-14T10:05:00.000Z')!;
+    const store = new IndexedDbAssetStore('hydrate-project-assets-with-sprites', () => factory as unknown as IDBFactory);
+
+    expect(await store.putAsset(entry)).toMatchObject({ ok: true });
+
+    const hydrated = buildAssetDatabase({ projectAssets: await store.listAssets() });
+    expect(hydrated.get(`document:project:${doc.id}`)?.dependencies.state).toBe('ok');
+    expect(hydrated.get(`sprite:document-embedded:${doc.id}:embedded-torch`)).toMatchObject({
+      assetId: `sprite:document-embedded:${doc.id}:embedded-torch`,
+      sourceId: 'embedded-torch',
+      name: 'Embedded Torch',
+      origin: 'document-embedded',
+      source: { storage: 'document', documentId: doc.id },
+      usages: [{ assetId: `document:project:${doc.id}`, label: doc.name }],
+    });
+    expect(hydrated.query({ collection: 'missing' }).map((item) => item.assetId)).not.toContain('sprite:missing:embedded-torch');
   });
 
   it('rejects document-owned, immutable, and malformed records as project-store entries', async () => {
@@ -221,6 +278,20 @@ function assetEntry(assetId: string, name: string, updatedAt: string): ProjectAs
     sizeBytes: new TextEncoder().encode(text).length,
     contentSignature: `${assetId}:sig`,
     updatedAt,
+  };
+}
+
+function spriteAsset(id: string, name: string, rgba = [255, 128, 0, 255]): SpriteAsset {
+  return {
+    v: 1,
+    kind: 'sprite',
+    id,
+    name,
+    w: 1,
+    h: 1,
+    frames: [{ durationMs: 100, px: encodeFramePx(new Uint8ClampedArray(rgba)) }],
+    tags: [],
+    emissive: false,
   };
 }
 

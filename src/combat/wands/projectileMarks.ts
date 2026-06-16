@@ -14,5 +14,39 @@ export const BOUNCE_COUNTS: WeakMap<Projectile, number> = new WeakMap();
 /** Flask material this projectile sheds while flying. */
 export const INFUSED: WeakMap<Projectile, number> = new WeakMap();
 
+export interface ProjectileModState {
+  /** Fixed low-economy water cells left to shed. */
+  waterTrailBudget?: number;
+  /** Frame cadence for water shedding. */
+  waterTrailCadence?: number;
+  /** Fixed low-economy oil cells left to shed. */
+  oilTrailBudget?: number;
+  /** Frame cadence for oil shedding. */
+  oilTrailCadence?: number;
+  /** Electrify enemies and conductor terrain touched by this projectile. */
+  electricCharge?: boolean;
+  /** Conditional crit when the struck target is wet or touching water. */
+  critWet?: boolean;
+  /** Frames of short-range homing correction remaining. */
+  shortHomingFrames?: number;
+  /** Frame cadence for homing retargeting. */
+  shortHomingCadence?: number;
+}
+
+/** Aggregate review-content projectile modifier state. */
+export const PROJECTILE_MODS: WeakMap<Projectile, ProjectileModState> = new WeakMap();
+
+export function ensureProjectileMods(p: Projectile): ProjectileModState {
+  let state = PROJECTILE_MODS.get(p);
+  if (!state) {
+    state = {};
+    PROJECTILE_MODS.set(p, state);
+  }
+  return state;
+}
+
 /** Depth-1 trigger payload cast at the carrier projectile's impact point. */
 export const TRIGGERED: WeakMap<Projectile, CastAction[]> = new WeakMap();
+
+/** Wand-frame spread that belonged to the projectile when its trigger was armed. */
+export const TRIGGER_SOURCE_SPREAD: WeakMap<Projectile, number> = new WeakMap();

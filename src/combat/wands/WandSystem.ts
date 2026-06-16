@@ -14,9 +14,9 @@ import type {
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { acidColor, emberColor, fireColor, glassColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
 import { ALL_CARD_IDS, CARD_DEFS } from './cards';
-import { markCardDiscovered } from './cardDiscovery';
+import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
-import { BOUNCE_COUNTS, INFUSED, TRIGGERED } from './projectileMarks';
+import { BOUNCE_COUNTS, INFUSED, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
 import { DEPTH_PROJECTILE_POOL, randomCard, WAYSTONE_MOD_POOL } from './rewardPools';
 
 /**
@@ -68,6 +68,20 @@ const STACK_JITTER = 0.06;
 /** Flame card: frames of stream burst per cast / hard cap while spamming. */
 const FLAME_BURST_FRAMES = 4;
 const FLAME_BURST_CAP = 16;
+const DEFAULT_FLAME_ACTION: CastAction = {
+  card: 'flame',
+  speedMul: 1,
+  dmgMul: 1,
+  spreadAdd: 0,
+  infused: false,
+  waterTrail: 0,
+  oilTrail: 0,
+  electricCharge: false,
+  critWet: false,
+  shortHoming: false,
+  bounces: 0,
+  triggered: null,
+};
 
 export interface BuiltInWandLoadout {
   id: string;
@@ -83,8 +97,11 @@ export const STARTING_WAND_LOADOUTS: BuiltInWandLoadout[] = [
 ];
 
 export const REVIEW_WAND_LOADOUTS: BuiltInWandLoadout[] = [
-  { id: 'review-brass-injector', name: 'Review Brass Injector', frameId: 'brass', cards: ['spark', 'double', 'speed', 'flame', 'lightning'], status: 'review' },
-  { id: 'review-void-lattice', name: 'Review Void Lattice', frameId: 'void', cards: ['dig', 'conjure', 'vitriol', 'blackhole', 'warp'], status: 'review' },
+  { id: 'review-brass-injector', name: 'Review Brass Injector', frameId: 'brass', cards: ['watertrail', 'electriccharge', 'critwet', 'shorthoming', 'spark'], status: 'review' },
+  { id: 'review-void-lattice', name: 'Review Void Lattice', frameId: 'void', cards: ['oiltrail', 'spark', 'flame', 'dig', 'warp'], status: 'review' },
+  { id: 'wet-crit-primer', name: 'Wet Crit Primer', frameId: 'brass', cards: ['watertrail', 'critwet', 'spark'], status: 'review' },
+  { id: 'fuse-primer', name: 'Fuse Primer', frameId: 'brass', cards: ['oiltrail', 'spark', 'flame'], status: 'review' },
+  { id: 'trigger-primer', name: 'Trigger Primer', frameId: 'brass', cards: ['trigger', 'spark', 'bomb'], status: 'review' },
 ];
 
 const REVIEW_WAND_CARDS: [CardId[], CardId[]] = [
@@ -93,6 +110,17 @@ const REVIEW_WAND_CARDS: [CardId[], CardId[]] = [
 ];
 
 const STARTING_COLLECTION: CardId[] = ['double', 'speed'];
+const STARTER_WAND_CARDS = new Set<CardId>(['spark', 'dig']);
+
+function startingCollection(): CardId[] {
+  const discovered = new Set(getDiscoveredCards());
+  const collection = [...STARTING_COLLECTION];
+  for (const id of ALL_CARD_IDS) {
+    if (!discovered.has(id) || STARTER_WAND_CARDS.has(id) || collection.includes(id)) continue;
+    collection.push(id);
+  }
+  return collection;
+}
 
 /**
  * The wand engine (DESIGN.md pillar 6): frames + slotted spell cards + the
@@ -109,7 +137,8 @@ const STARTING_COLLECTION: CardId[] = ['double', 'speed'];
  * dmgMul > 1 on a spark cast spawns round(dmgMul) stacked bolts at tiny
  * spread instead — the extra firepower reads honestly on screen. On lightning
  * dmgMul casts the arc floor(dmgMul) times (max 2); on dig it widens the
- * erosion radius x1.7. On bomb/warp/blackhole dmgMul is inert in v1.
+ * erosion radius x1.7. On bomb it scales blast damage/radius; on casts with no
+ * damage surface the bench sentence warns instead of promising a no-op.
  */
 export class WandSystem implements WandsApi {
   readonly wands: [WandState, WandState] = [
@@ -119,7 +148,7 @@ export class WandSystem implements WandsApi {
 
   // Starting kit: two build-shaping basics. High-impact payloads come from
   // tomes, waystones, bosses, shops, or test/review loadouts.
-  readonly collection: CardId[] = [...STARTING_COLLECTION];
+  readonly collection: CardId[] = startingCollection();
 
   /** Compiled programs, rebuilt lazily when a wand's slots change. */
   private readonly compiled: [CastGroup[] | null, CastGroup[] | null] = [null, null];
@@ -128,9 +157,12 @@ export class WandSystem implements WandsApi {
   private _active: 0 | 1 = 0;
   /** Frames of flame-card stream left to spray from the wand tip. */
   private flameBurst = 0;
+  /** Modifiers captured by the most recent flame-card burst. */
+  private flameBurstAction: CastAction | null = null;
   /** Depths whose first-visit projectile card was already granted. */
   private readonly depthsGranted = new Set<number>();
   private infuserGranted = false;
+  private lastPickFrame = -99;
 
   constructor(private readonly ctx: Ctx) {
     // Card economy v1: the world hands out cards through existing events.
@@ -181,7 +213,10 @@ export class WandSystem implements WandsApi {
     const wand = this.wands[this._active];
     if (wand.cooldown > 0) return;
     const program = this.program(this._active);
-    if (program.length === 0) return;
+    if (program.length === 0) {
+      this.tryPickStrike(ctx);
+      return;
+    }
 
     if (wand.castIndex >= program.length) wand.castIndex = 0;
     const group = program[wand.castIndex];
@@ -198,6 +233,7 @@ export class WandSystem implements WandsApi {
           grav: 0.04,
         });
       }
+      this.tryPickStrike(ctx);
       return;
     }
 
@@ -243,6 +279,58 @@ export class WandSystem implements WandsApi {
     }
   }
 
+  private tryPickStrike(ctx: Ctx): boolean {
+    if (ctx.state.frameCount - this.lastPickFrame < 16) return false;
+    const angle = ctx.player.aimAngle;
+    const tip = ctx.spells.wandTip();
+    const reach = 18;
+    let struck = false;
+    const hit = ctx.spells.digRay(tip.x, tip.y, angle, reach);
+    const hitType = hit && ctx.world.inBounds(hit.x, hit.y) ? ctx.world.types[ctx.world.idx(hit.x, hit.y)] : Cell.Empty;
+    if (hit && hitType !== Cell.Metal) {
+      ctx.spells.erodeAt(hit.x, hit.y, 2);
+      ctx.fx.digBeam = {
+        x0: tip.x,
+        y0: tip.y,
+        x1: hit.x,
+        y1: hit.y,
+        life: 2,
+      };
+      ctx.events.emit('structureStrike', { x: hit.x, y: hit.y, radius: 4 });
+      struck = true;
+    }
+
+    const ax = Math.cos(angle);
+    const ay = Math.sin(angle);
+    let victim: Ctx['enemies'][number] | null = null;
+    let bestProj = reach + 1;
+    for (const enemy of ctx.enemies ?? []) {
+      const dx = enemy.x - tip.x;
+      const dy = enemy.y - tip.y;
+      const proj = dx * ax + dy * ay;
+      if (proj < 0 || proj > reach || proj > bestProj) continue;
+      const perp = Math.abs(dx * ay - dy * ax);
+      if (perp > 9) continue;
+      victim = enemy;
+      bestProj = proj;
+    }
+    if (victim) {
+      ctx.enemyCtl?.damage(victim, 7, ax * 1.2, Math.min(-0.4, ay * 0.8));
+      struck = true;
+    }
+
+    if (!struck) return false;
+    this.lastPickFrame = ctx.state.frameCount;
+    ctx.player.recoilT = Math.max(ctx.player.recoilT ?? 0, 4);
+    if (ay > 0.45) {
+      ctx.player.vy = Math.min(ctx.player.vy ?? 0, -2.2);
+      ctx.player.grounded = false;
+    }
+    ctx.audio.dig();
+    ctx.particles.burst(tip.x + ax * 8, tip.y + ay * 8, 4, Cell.Smoke, smokeColor, 0.5);
+    return true;
+  }
+
   /**
    * Execute one compiled action from (x, y) along `angle` (+ spread jitter).
    * fire() calls this with the wand tip + player aim; the Projectiles.ts
@@ -261,7 +349,10 @@ export class WandSystem implements WandsApi {
     const action: CastAction = ctx.player.perks.might
       ? { ...actionIn, dmgMul: Math.min(4, actionIn.dmgMul * 1.25) }
       : actionIn;
-    const jitter = (): number => angle + (Math.random() * 2 - 1) * (frame.spread + action.spreadAdd);
+    const sourceSpread = options.origin === 'trigger' && options.sourceSpread !== undefined
+      ? options.sourceSpread
+      : frame.spread;
+    const jitter = (): number => angle + (Math.random() * 2 - 1) * (sourceSpread + action.spreadAdd);
     const targetPoint = (): { x: number; y: number } => options.target ?? ctx.input.mouse;
     const sp = ctx.params.spells;
     ctx.telemetry.count('card.cast.' + action.card);
@@ -281,7 +372,7 @@ export class WandSystem implements WandsApi {
     } else if (action.card === 'bomb') {
       const a = jitter();
       const v = sp.bomb.velocityForce! * action.speedMul;
-      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'bomb', life: Math.floor(sp.bomb.fuseTicks!), age: 0, charging: false, hostile: false };
+      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'bomb', life: Math.floor(sp.bomb.fuseTicks!), age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
       ctx.audio.noiseBurst(0.06, 700, 0.05);
@@ -296,6 +387,7 @@ export class WandSystem implements WandsApi {
         // Stream card: each cast feeds a 4-frame burst sprayed from the live
         // wand tip in update().
         this.flameBurst = Math.min(FLAME_BURST_CAP, this.flameBurst + FLAME_BURST_FRAMES);
+        this.flameBurstAction = action;
       }
       ctx.audio.flame();
     } else if (action.card === 'dig') {
@@ -313,7 +405,7 @@ export class WandSystem implements WandsApi {
     } else if (action.card === 'warp') {
       const a = jitter();
       const v = sp.warp.velocityForce! * action.speedMul;
-      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'warp', life: 90, age: 0, charging: false, hostile: false };
+      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'warp', life: 90, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
       ctx.audio.zap();
@@ -392,10 +484,7 @@ export class WandSystem implements WandsApi {
           const ci = world.idx(X, Y);
           const t = world.types[ci];
           if (t === Cell.Empty || isLiquid(t) || isGas(t)) {
-            world.types[ci] = Cell.Stone;
-            world.colors[ci] = stoneColor();
-            world.life[ci] = 0;
-            world.charge[ci] = 0;
+            world.replaceCellAt(ci, Cell.Stone, stoneColor());
           }
         }
       }
@@ -457,12 +546,30 @@ export class WandSystem implements WandsApi {
   }
 
   private sprayFlameAt(ctx: Ctx, x: number, y: number, angle: number, action: CastAction): void {
+    this.sprayFlameParticles(
+      ctx,
+      x,
+      y,
+      angle,
+      action,
+      FLAME_BURST_FRAMES * 4 * Math.max(1, Math.round(action.dmgMul)),
+    );
+  }
+
+  private sprayFlameParticles(
+    ctx: Ctx,
+    x: number,
+    y: number,
+    angle: number,
+    action: CastAction,
+    count: number,
+    carryVx = 0,
+  ): void {
     const flame = ctx.params.spells.flame;
-    const count = FLAME_BURST_FRAMES * 4 * Math.max(1, Math.round(action.dmgMul));
     for (let j = 0; j < count; j++) {
       const a = angle + (Math.random() - 0.5) * ((flame.spread ?? 0.28) + action.spreadAdd);
       const spd = (3.2 + Math.random() * 2.2) * action.speedMul;
-      ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd, Cell.Fire, fireColor(),
+      ctx.particles.spawn(x, y, Math.cos(a) * spd + carryVx, Math.sin(a) * spd, Cell.Fire, fireColor(),
         14 + Math.floor(Math.random() * 12), { grav: -0.015, glow: 2.2 });
     }
   }
@@ -470,6 +577,29 @@ export class WandSystem implements WandsApi {
   /** Write the impact-time side-channel marks for a freshly spawned projectile. */
   private markProjectile(ctx: Ctx, p: Projectile, action: CastAction): void {
     if (action.bounces > 0) BOUNCE_COUNTS.set(p, action.bounces);
+    if (
+      action.waterTrail > 0 ||
+      action.oilTrail > 0 ||
+      action.electricCharge ||
+      action.critWet ||
+      action.shortHoming
+    ) {
+      const mods = ensureProjectileMods(p);
+      if (action.waterTrail > 0) {
+        mods.waterTrailBudget = action.waterTrail;
+        mods.waterTrailCadence = 2;
+      }
+      if (action.oilTrail > 0) {
+        mods.oilTrailBudget = action.oilTrail;
+        mods.oilTrailCadence = 3;
+      }
+      if (action.electricCharge) mods.electricCharge = true;
+      if (action.critWet) mods.critWet = true;
+      if (action.shortHoming) {
+        mods.shortHomingFrames = 90;
+        mods.shortHomingCadence = 4;
+      }
+    }
     if (action.infused) {
       const flask = ctx.flask.state;
       if (flask.material !== null && flask.count > 0) {
@@ -479,7 +609,10 @@ export class WandSystem implements WandsApi {
         if (flask.count === 0) flask.material = null;
       }
     }
-    if (action.triggered) TRIGGERED.set(p, action.triggered);
+    if (action.triggered) {
+      TRIGGERED.set(p, action.triggered);
+      TRIGGER_SOURCE_SPREAD.set(p, this.wands[this._active].frame.spread);
+    }
   }
 
   /* ---------------- per-frame upkeep ---------------- */
@@ -498,15 +631,18 @@ export class WandSystem implements WandsApi {
       this.flameBurst--;
       if (ctx.state.mode === 'play' && !ctx.player.dead) {
         const tip = ctx.spells.wandTip();
-        const flame = ctx.params.spells.flame;
-        for (let j = 0; j < 4; j++) {
-          const a = ctx.player.aimAngle + (Math.random() - 0.5) * flame.spread!;
-          const spd = 3.2 + Math.random() * 2.2;
-          ctx.particles.spawn(tip.x, tip.y, Math.cos(a) * spd + ctx.player.vx * 0.4,
-            Math.sin(a) * spd, Cell.Fire, fireColor(),
-            14 + Math.floor(Math.random() * 12), { grav: -0.015, glow: 2.2 });
-        }
+        const action = this.flameBurstAction ?? DEFAULT_FLAME_ACTION;
+        this.sprayFlameParticles(
+          ctx,
+          tip.x,
+          tip.y,
+          ctx.player.aimAngle,
+          action,
+          4 * Math.max(1, Math.round(action.dmgMul)),
+          ctx.player.vx * 0.4,
+        );
       }
+      if (this.flameBurst === 0) this.flameBurstAction = null;
     }
 
     // Mirror the active wand's pool into the player so the existing HUD mana
@@ -670,7 +806,7 @@ export class WandSystem implements WandsApi {
       this.compiled[i as 0 | 1] = null;
     }
     this.collection.length = 0;
-    this.collection.push(...STARTING_COLLECTION);
+    this.collection.push(...startingCollection());
     this.depthsGranted.clear();
     this.infuserGranted = false;
     this.flameBurst = 0;

@@ -24,14 +24,13 @@ export function spawnCircle(ctx: Ctx, centerX: number, centerY: number, type: nu
             type === Cell.Metal ||
             (t !== Cell.Wall && t !== Cell.Metal)
           ) {
-            world.types[i] = type;
             const fn = COLOR_FN[type];
-            world.colors[i] = fn ? fn() : EMPTY_COLOR;
+            if (type === Cell.Empty) world.clearCellAt(i);
+            else world.replaceCellAt(i, type, fn ? fn() : EMPTY_COLOR);
             if (type === Cell.Smoke) world.life[i] = Math.floor(Math.random() * 40) + 30;
             else if (type === Cell.Fire)
               world.life[i] =
                 Math.floor(Math.random() * (ctx.params.materials[Cell.Fire]?.particleLife || 30)) + 15;
-            world.charge[i] = 0;
           }
         }
       }

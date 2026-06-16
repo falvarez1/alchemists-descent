@@ -37,6 +37,7 @@ import {
   deleteLinkCmd,
   deleteObjectCmd,
   editDocumentMoodCmd,
+  editDocumentCmd,
   editLightCmd,
   editParamCmd,
   moveLightCmd,
@@ -89,10 +90,12 @@ import type { AssetDatabase } from '@/builder/assets/AssetDatabase';
 import { createBuiltInContentAssetRecords } from '@/builder/assets/ContentAssetProvider';
 import { importJsonAsset, previewReimport } from '@/builder/assets/AssetImportPipeline';
 import { LocalStorageAssetStore } from '@/builder/assets/AssetStore';
-import type { AssetStoreExport } from '@/builder/assets/AssetStore';
+import type { AssetImportResult, AssetStoreExport, AssetStoreResult } from '@/builder/assets/AssetStore';
+import { IndexedDbAssetStore, projectAssetEntryFromExport } from '@/builder/assets/ProjectAssetStore';
+import type { ProjectAssetEntry } from '@/builder/assets/ProjectAssetStore';
 import { paintAssetPreview, paintPrefabPreviewCanvas } from '@/builder/assets/AssetPreview';
 import { stableAssetId } from '@/builder/assets/AssetTypes';
-import type { AssetKind, AssetOrigin, AssetRecord, AssetSmartCollection, AssetSortMode } from '@/builder/assets/AssetTypes';
+import type { AssetImportReport, AssetKind, AssetOrigin, AssetRecord, AssetSmartCollection, AssetSortMode } from '@/builder/assets/AssetTypes';
 import { appDialog } from '@/ui/AppDialog';
 import {
   decodeFramePx,
@@ -458,8 +461,14 @@ const MECH_KINDS: ReadonlySet<EditorObjectKind> = new Set([
 const familyOf = (o: EditorObject): LayerFamily => (MECH_KINDS.has(o.kind) ? 'mech' : 'gameplay');
 
 const DRAFT_KEY = 'noita-builder-draft';
+const BUILDER_REQUEST_CLOSE_EVENT = 'builder-request-close';
 /** Settle previews bigger than this commit without undo (memory honesty). */
 const SETTLE_UNDO_CAP = 400000;
+
+interface BuilderCloseRequestDetail {
+  reason: 'play-button';
+  result?: Promise<boolean>;
+}
 
 /** Tiny procedural pixel previews for the palette popovers (28x28). */
 type PreviewDraw = (g: CanvasRenderingContext2D) => void;
@@ -780,11 +789,18 @@ export class Builder {
   private readonly menus = new MenuHost();
   private readonly popovers = new PopoverHost();
   private readonly panelRegistry = createBuilderPanelRegistry();
+  private readonly onExternalCloseRequest = (event: Event): void => {
+    const detail = event instanceof CustomEvent ? (event.detail as BuilderCloseRequestDetail | undefined) : undefined;
+    if (!detail) return;
+    detail.result = this.requestClose();
+  };
   private cmdkActiveIndex = 0;
   private cmdkHits: CommandSpec[] = [];
   private isOpen = false;
   private ownsPause = false;
   private returningFromPlaytest = false;
+  private documentRevision = 0;
+  private savedDocumentRevision = 0;
   /** Live world has terrain edits the document hasn't captured yet. */
   private paintDirty = false;
 
@@ -848,6 +864,9 @@ export class Builder {
   private linkGraphQuery = '';
   private contextLinkId: string | null = null;
   private readonly assetStore = new LocalStorageAssetStore();
+  private readonly projectAssetStore = new IndexedDbAssetStore();
+  private projectAssetEntries: ProjectAssetEntry[] = [];
+  private projectImportReports: AssetImportReport[] = [];
   private assetQuery = '';
   private assetView: AssetBrowserView = 'grid';
   private assetSort: AssetSortMode = 'name';
@@ -946,7 +965,7 @@ export class Builder {
    *  not launder away dirt earned by earlier uncaptured painting. */
   private settleWasDirty = false;
   private autosaveTimer = 0;
-  private draftOffered = false;
+  private lastDraftOfferAt = 0;
   private allowingSandboxWorldShape = false;
   private shareBusy = false;
   private codeBusy = false;
@@ -956,6 +975,7 @@ export class Builder {
   private dockHost!: DockHost;
   private draggingPanelId: string | null = null;
   private panelPointerDrag: PanelPointerDrag | null = null;
+  private dropIndicator: HTMLElement | null = null;
   private panelDragOffset = { x: 18, y: 12 };
   private lastWorkspaceSize = { w: 0, h: 0 };
 
@@ -985,6 +1005,7 @@ export class Builder {
     this.worldgenLevelId = this.levelIdForBiome(this.doc.biome);
     this.prefabs = loadPrefabs();
     this.sprites = loadSprites();
+    void this.refreshProjectAssetStore();
     this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
     this.dockHost = new DockHost(this.panelRegistry, this.workspaceLayout);
     this.workspaceLayout = this.dockHost.snapshot().layout;
@@ -1013,9 +1034,15 @@ export class Builder {
     // Entering play (PLAY button) while authoring closes the overlay; the
     // document survives for the next open.
     ctx.events.on('modeChanged', ({ mode }) => {
-      if (mode === 'play' && this.isOpen) this.close();
+      if (mode === 'play' && this.isOpen) {
+        void this.requestClose().then((closed) => {
+          if (!closed && this.isOpen) (document.getElementById('mode-build-btn') as HTMLButtonElement | null)?.click();
+        });
+      }
       if (mode === 'build' && this.builderPlaytestActive && !this.isOpen && !this.builderReturnRequested) {
-        this.abandonBuilderPlaytest();
+        this.builderReturnRequested = true;
+        this.returningFromPlaytest = true;
+        this.openWithIntent('continue-document', false);
         return;
       }
       // a mood-overridden playtest must not leak its ambient into the
@@ -1074,10 +1101,11 @@ export class Builder {
     }
     // Unsaved authoring work guards the tab close.
     window.addEventListener('beforeunload', (e) => {
-      if (this.isOpen && (this.cmds.depth > 0 || this.paintDirty || this.backdropDirty || this.pendingPreview || this.gizmoDrag)) {
+      if (this.isOpen && this.hasUnsavedChanges()) {
         e.preventDefault();
       }
     });
+    window.addEventListener(BUILDER_REQUEST_CLOSE_EVENT, this.onExternalCloseRequest);
   }
 
   /* ===================== open / close ===================== */
@@ -1094,6 +1122,7 @@ export class Builder {
 
   private openWithIntent(intent: BuilderOpenIntent, inheritPause = false): void {
     if (this.isOpen) return;
+    const wasReturningFromPlaytest = this.returningFromPlaytest;
     this.hideOpenIntentModal(false);
     // The Builder rides on build mode; leave the descent first if needed.
     if (this.ctx.state.mode === 'play') {
@@ -1182,7 +1211,7 @@ export class Builder {
     this.refreshSprites();
     this.syncSettleButtons();
     this.autosaveTimer = window.setInterval(() => this.autosaveDraft(), 30000);
-    if (intent !== 'current-scene') void this.offerDraft();
+    if (intent !== 'current-scene' && !wasReturningFromPlaytest) void this.offerDraft();
     if (openStatus) this.status(openStatus.text, openStatus.warn);
     this.rafId = requestAnimationFrame(this.loop);
   }
@@ -1231,6 +1260,22 @@ export class Builder {
     document.body.classList.remove('builder-open');
   }
 
+  private async requestClose(): Promise<boolean> {
+    if (!this.isOpen) return true;
+    if (this.hasUnsavedChanges()) {
+      const ok = await appDialog.confirm('Close Builder with unsaved document changes?', {
+        title: 'Unsaved Builder Changes',
+        confirmText: 'Close',
+        cancelText: 'Keep Editing',
+        tone: 'danger',
+      });
+      if (!ok) return false;
+      this.keepCurrentDocDraft();
+    }
+    this.close();
+    return true;
+  }
+
   private attachWorkspace(): void {
     const holder = document.getElementById('canvas-holder');
     if (!holder || holder.parentElement === this.centerSlot) return;
@@ -1252,6 +1297,7 @@ export class Builder {
   }
 
   private wireWorkspace(): void {
+    this.injectDockChromeStyles();
     for (const panel of this.workspaceLayout.panels) {
       const el = this.panelEl(panel.id);
       if (!el) continue;
@@ -1560,6 +1606,7 @@ export class Builder {
     const target = this.panelDropTargetAt(point);
     if (!target) {
       this.clearDropTargetHighlights();
+      this.hideDropIndicator();
       return;
     }
     const region = target.dataset.dock as DockRegion | undefined;
@@ -1574,6 +1621,117 @@ export class Builder {
     this.clearDropTargetHighlights(highlight);
     highlight.classList.add('drop-target');
     if (region) this.markDockInsertion(highlight, region, point);
+    // The bold VS Code-style overlay: a filled rectangle over the exact region
+    // the panel will occupy, so left/center/right splits are unambiguous.
+    const rect = region ? this.predictedDropRect(region, target, point) : null;
+    if (rect) this.showDropIndicator(rect);
+    else this.hideDropIndicator();
+  }
+
+  /**
+   * The screen rect (in #builder-workspace-body coordinates) the dragged panel
+   * will occupy if dropped now. Drives the drop indicator. Returns null when no
+   * preview should show (floating drops — the live ghost already shows that).
+   */
+  private predictedDropRect(
+    region: DockRegion,
+    target: HTMLElement,
+    point: PanelDropPoint,
+  ): { left: number; top: number; width: number; height: number } | null {
+    if (region === 'floating') return null;
+    const body = this.el<HTMLDivElement>('builder-workspace-body').getBoundingClientRect();
+    const toLocal = (r: { left: number; top: number; width: number; height: number }) => ({
+      left: r.left - body.left,
+      top: r.top - body.top,
+      width: r.width,
+      height: r.height,
+    });
+    if (region === 'left' || region === 'right') {
+      const dockEl = this.el<HTMLDivElement>(region === 'left' ? 'builder-dock-left' : 'builder-dock-right');
+      const r = dockEl.getBoundingClientRect();
+      if (r.width >= 8 && r.height >= 8) return toLocal(r);
+      // Closed/empty side dock: predict a default-width column at the body edge.
+      const spec = this.draggingPanelId ? this.panelRegistry.get(this.draggingPanelId) : null;
+      const w = Math.max(160, Math.min(360, spec?.defaultSize ?? 240));
+      return { left: region === 'left' ? 0 : body.width - w, top: 0, width: w, height: body.height };
+    }
+    // bottom dock
+    const bottom = this.el<HTMLDivElement>('builder-dock-bottom');
+    const br = bottom.getBoundingClientRect();
+    if (br.width < 8 || br.height < 8) return null;
+    const pane = this.draggingPanelId ? this.bottomPaneForDrop(target, this.draggingPanelId, point) : 'bottom-main';
+    const existing = this.bottomPaneEls.get(pane);
+    if (existing) {
+      const r = existing.getBoundingClientRect();
+      if (r.width >= 8) return toLocal({ left: r.left, top: r.top, width: r.width, height: r.height });
+    }
+    const sideW = Math.max(BOTTOM_SIDE_PANE_MIN, Math.min(br.width * 0.4, 300));
+    if (pane === 'bottom-left') return toLocal({ left: br.left, top: br.top, width: sideW, height: br.height });
+    if (pane === 'bottom-right') return toLocal({ left: br.right - sideW, top: br.top, width: sideW, height: br.height });
+    // bottom-main: the central region between any existing side panes.
+    const leftEdge = this.bottomPaneEls.get('bottom-left')?.getBoundingClientRect().right ?? br.left;
+    const rightEdge = this.bottomPaneEls.get('bottom-right')?.getBoundingClientRect().left ?? br.right;
+    return toLocal({ left: leftEdge, top: br.top, width: Math.max(60, rightEdge - leftEdge), height: br.height });
+  }
+
+  private showDropIndicator(rect: { left: number; top: number; width: number; height: number }): void {
+    const el = this.ensureDropIndicator();
+    el.style.display = 'block';
+    el.style.left = `${Math.round(rect.left)}px`;
+    el.style.top = `${Math.round(rect.top)}px`;
+    el.style.width = `${Math.round(rect.width)}px`;
+    el.style.height = `${Math.round(rect.height)}px`;
+  }
+
+  private hideDropIndicator(): void {
+    if (this.dropIndicator) this.dropIndicator.style.display = 'none';
+  }
+
+  private ensureDropIndicator(): HTMLElement {
+    if (this.dropIndicator && this.dropIndicator.isConnected) return this.dropIndicator;
+    const body = this.el<HTMLDivElement>('builder-workspace-body');
+    const el = document.createElement('div');
+    el.className = 'builder-drop-indicator';
+    el.setAttribute('aria-hidden', 'true');
+    // Styled inline (like the dock splitters) to stay clear of the
+    // concurrently-edited stylesheet. Glides between zones for a VS Code feel.
+    el.style.cssText =
+      'position:absolute; display:none; pointer-events:none; z-index:8; box-sizing:border-box;' +
+      'border-radius:4px; background:rgba(74,222,128,0.14); border:1.5px solid rgba(74,222,128,0.85);' +
+      'box-shadow:0 0 0 1px rgba(74,222,128,0.22), inset 0 0 24px rgba(74,222,128,0.12);' +
+      'transition:left .09s ease, top .09s ease, width .09s ease, height .09s ease;';
+    body.appendChild(el);
+    this.dropIndicator = el;
+    return el;
+  }
+
+  /**
+   * Owned stylesheet for dock chrome that must stay out of the
+   * concurrently-edited main.css (mirrors the inline-styled splitters). Holds
+   * the dock-tab close affordance fix so the × sits inside the tab instead of
+   * wrapping below it.
+   */
+  private injectDockChromeStyles(): void {
+    const id = 'builder-dock-chrome-fixes';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      #builder-root .editor-tab-shell {
+        position: relative; display: inline-flex; align-items: center; flex: 0 0 auto; min-width: 0;
+      }
+      #builder-root .editor-tab-shell:has(.editor-tab-close) > .editor-tab { padding-right: 22px; }
+      #builder-root .editor-tab-shell > .editor-tab-close {
+        position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
+        width: 15px; height: 15px; margin: 0; padding: 0; cursor: pointer;
+        border: 0; background: transparent;
+      }
+      #builder-root .editor-tab-shell > .editor-tab-close:hover,
+      #builder-root .editor-tab-shell > .editor-tab-close:focus-visible {
+        background: #2a1212; color: #ffd9d9; outline: none;
+      }
+    `;
+    document.head.appendChild(style);
   }
 
   private panelDropTargetAt(point: PanelDropPoint): HTMLElement | null {
@@ -1698,6 +1856,20 @@ export class Builder {
       const group = panes.get(pane) ?? [];
       group.push(panel);
       panes.set(pane, group);
+    }
+
+    // Collapse a lone surviving group into the full-width main pane. Tearing the
+    // last side panel out of a split must never strand the remaining panel in a
+    // fixed-width side pane (the "split with only one panel" bug) — a single
+    // bottom group always reclaims the whole dock as bottom-main.
+    if (panes.size === 1) {
+      const [solePane] = panes.keys();
+      if (solePane !== 'bottom-main') {
+        const solePanels = panes.get(solePane)!;
+        for (const panel of solePanels) panel.tabGroupId = 'bottom-main';
+        panes.delete(solePane);
+        panes.set('bottom-main', solePanels);
+      }
     }
 
     bottom.classList.toggle('has-splits', panes.size > 1);
@@ -2181,6 +2353,7 @@ export class Builder {
   private clearWorkspaceDropState(): void {
     this.root.classList.remove('b-dragging-panel');
     this.clearDropTargetHighlights();
+    this.hideDropIndicator();
   }
 
   private clearDropTargetHighlights(active?: HTMLElement): void {
@@ -2320,8 +2493,24 @@ export class Builder {
     if (!this.workspaceLayout.panels.some((panel) => panel.id === id && panel.dock === 'floating')) return;
     this.dockHost.replaceLayout(this.workspaceLayout);
     this.workspaceLayout = this.dockHost.raisePanel(id);
-    this.applyWorkspaceLayout();
+    // Restack via z-index ONLY — never a full applyWorkspaceLayout here. That
+    // pass reparents every panel element (appendChild into its dock), and
+    // reparenting the panel during the same pointerdown that triggered the
+    // raise cancels the click on header controls in Chromium, which is why the
+    // floating panel close button used to do nothing. Touch nothing but z.
+    this.applyFloatingZOrder();
     this.saveWorkspacePrefs();
+  }
+
+  /** Re-apply only the floating panels' stacking order (no DOM reparenting). */
+  private applyFloatingZOrder(): void {
+    for (const panel of this.workspaceLayout.panels) {
+      if (panel.dock !== 'floating' || !panel.open) continue;
+      const el = this.panelEl(panel.id);
+      if (!el || !el.classList.contains('floating')) continue;
+      const z = Math.max(0, Math.min(1_000_000, panel.z ?? 0));
+      el.style.zIndex = String((panel.id === DEV_CONSOLE_PANEL_ID ? 20 : 10) + z);
+    }
   }
 
   private openDockSize(dock: 'left' | 'right'): number {
@@ -2597,6 +2786,19 @@ export class Builder {
     );
   }
 
+  private hasUnsavedChanges(): boolean {
+    return (
+      this.documentRevision !== this.savedDocumentRevision ||
+      this.paintDirty ||
+      this.backdropDirty ||
+      this.pendingPreview !== null ||
+      this.gizmoDrag !== null ||
+      this.floating !== null ||
+      this.settling ||
+      this.settleSnap !== null
+    );
+  }
+
   private adoptCurrentSceneAsDocument(): void {
     this.keepCurrentDocDraft();
     const rt = this.ctx.levels.current;
@@ -2623,6 +2825,7 @@ export class Builder {
     this.mutedLightIds.clear();
     this.clearPlacedPrefabAnchors();
     this.cmds.clear();
+    this.markDocumentSaved();
     this.select(null);
     this.paintDirty = false;
     this.region = null;
@@ -2677,6 +2880,7 @@ export class Builder {
     this.select(null);
     this.paintDirty = false;
     this.backdropDirty = false;
+    this.markDocumentSaved();
     this.region = null;
     this.regionMask = null;
     this.regionMaskCells = 0;
@@ -2687,6 +2891,17 @@ export class Builder {
     this.status(statusText);
   }
 
+  private markDocumentSaved(): void {
+    this.savedDocumentRevision = this.documentRevision;
+  }
+
+  private editDocumentMetadata(
+    label: string,
+    patch: Partial<Pick<EditorDocument, 'name' | 'biome' | 'backdrop' | 'backdropProfileId'>>,
+  ): void {
+    this.cmds.run(editDocumentCmd(label, patch as Pick<EditorDocument, keyof typeof patch>));
+  }
+
   /* ===================== DOM scaffold ===================== */
 
   private buildDom(): void {
@@ -2694,7 +2909,7 @@ export class Builder {
     this.modeBtn = document.createElement('button');
     this.modeBtn.id = 'mode-builder-btn';
     this.modeBtn.textContent = 'BUILDER';
-    this.modeBtn.addEventListener('click', () => (this.isOpen ? this.close() : this.open()));
+    this.modeBtn.addEventListener('click', () => (this.isOpen ? void this.requestClose() : this.open()));
     document.querySelector('.mode-switch')?.appendChild(this.modeBtn);
 
     const holder = document.getElementById('canvas-holder');
@@ -3548,6 +3763,7 @@ export class Builder {
     this.mutedLightIds.clear();
     this.clearPlacedPrefabAnchors();
     this.cmds.clear();
+    this.markDocumentSaved();
     this.select(null);
     this.paintDirty = false;
     this.backdropDirty = false;
@@ -3568,6 +3784,7 @@ export class Builder {
     embedSprites(this.doc, this.sprites);
     if (saveDocToLibrary(this.doc)) {
       this.backdropDirty = false;
+      this.markDocumentSaved();
       this.status(`SAVED "${this.doc.name.toUpperCase()}"`);
       localStorage.removeItem(DRAFT_KEY);
     } else this.status('STORAGE FULL — USE EXPORT', true);
@@ -3642,14 +3859,25 @@ export class Builder {
   }
 
   private markDocumentChanged(cmd?: Command): void {
+    this.documentRevision++;
     this.validationDirty = true;
     this.previewRuntimeDirty = true;
-    if ((cmd?.cells ?? 0) > 0) this.markTerrainDirty();
+    if (cmd?.label === 'edit backdrop' || cmd?.label === 'edit backdrop grade') this.syncDocBackdropToLive();
+    if ((cmd?.cells ?? 0) > 0) this.markTerrainDirty(false);
     this.scheduleValidationPanelRefresh();
   }
 
-  private markTerrainDirty(): void {
+  private markTerrainDirty(trackRevision = true): void {
+    if (trackRevision && !this.paintDirty) this.documentRevision++;
     this.paintDirty = true;
+    this.validationDirty = true;
+    this.previewRuntimeDirty = true;
+    this.scheduleValidationPanelRefresh();
+  }
+
+  private markBackdropDirty(): void {
+    if (!this.backdropDirty) this.documentRevision++;
+    this.backdropDirty = true;
     this.validationDirty = true;
     this.previewRuntimeDirty = true;
     this.scheduleValidationPanelRefresh();
@@ -3761,7 +3989,7 @@ export class Builder {
         input.value = this.doc.name;
         return;
       }
-      this.doc.name = input.value.trim() || 'untitled';
+      this.editDocumentMetadata('rename document', { name: input.value.trim() || 'untitled' });
       this.refreshDocSelect();
     });
     this.el<HTMLSelectElement>('b-biome').addEventListener('change', (e) => {
@@ -3771,7 +3999,7 @@ export class Builder {
         return;
       }
       const biome = select.value as BiomeId;
-      this.doc.biome = biome;
+      this.editDocumentMetadata('change biome', { biome });
       this.ctx.state.currentBiome = biome;
       this.worldgenLevelId = this.levelIdForBiome(biome);
       this.syncWorkspacePanelContent();
@@ -3828,7 +4056,7 @@ export class Builder {
     this.el('b-backdrop').addEventListener('click', () => this.openBackdropPreview());
     this.el('b-reset-workspace').addEventListener('click', () => this.runUiCommand('builder.resetWorkspace'));
     this.el('b-zen').addEventListener('click', () => this.runUiCommand('builder.togglePanels'));
-    this.el('b-exit').addEventListener('click', () => this.close());
+    this.el('b-exit').addEventListener('click', () => void this.requestClose());
     this.el('b-menu-palette').addEventListener('click', () => this.runUiCommand('builder.commandPalette'));
     this.el('b-menu-help').addEventListener('click', () => this.runUiCommand('builder.help'));
     this.wireMenuBar();
@@ -3959,10 +4187,10 @@ export class Builder {
       getSettings: () => this.ensureDocBackdrop(),
       commitSettings: (settings, playtestProfileId) => {
         if (this.authoringActionBlocks('Apply backdrop')) return;
-        this.doc.backdrop = sanitizeBackdropSettings(settings);
-        this.doc.backdropProfileId = playtestProfileId;
-        this.ctx.params.backdrop = this.doc.backdrop;
-        this.backdropDirty = true;
+        const clean = sanitizeBackdropSettings(settings);
+        this.editDocumentMetadata('edit backdrop', { backdrop: clean, backdropProfileId: playtestProfileId });
+        this.ctx.params.backdrop = clean;
+        this.markBackdropDirty();
         this.status(
           playtestProfileId
             ? `BACKDROP APPLIED TO DOCUMENT - PLAYTEST USES ${playtestProfileId.toUpperCase()}`
@@ -3976,10 +4204,7 @@ export class Builder {
   }
 
   private ensureDocBackdrop(): NonNullable<EditorDocument['backdrop']> {
-    this.doc.backdrop = sanitizeBackdropSettings(this.doc.backdrop ?? this.ctx.params.backdrop);
-    this.doc.backdropProfileId =
-      typeof this.doc.backdropProfileId === 'string' && this.doc.backdropProfileId ? this.doc.backdropProfileId : null;
-    return this.doc.backdrop;
+    return sanitizeBackdropSettings(this.doc.backdrop ?? this.ctx.params.backdrop);
   }
 
   private syncDocBackdropToLive(): void {
@@ -4082,31 +4307,6 @@ export class Builder {
     this.close();
     this.ctx.levels.playVirtualWindow(this.ctx, def, center, previewRadius);
     this.status(`PLAYING VIRTUAL WINDOW @ ${center.x},${center.y}`);
-  }
-
-  private abandonBuilderPlaytest(): void {
-    if (!this.builderPlaytestActive) return;
-    if (this.prevAmbient !== null) {
-      this.ctx.params.global.ambient = this.prevAmbient;
-      this.prevAmbient = null;
-    }
-    this.ctx.levels.exitCustomPlaytest(this.ctx);
-    this.builderPlaytestActive = false;
-    this.builderReturnRequested = false;
-    this.returningFromPlaytest = false;
-    this.lastPlaytestSpawn = null;
-    this.playtestScars = null;
-    this.ctx.state.playtestSource = null;
-    this.setPlaytestBanner(false);
-    this.ctx.state.editorLights = null;
-    this.ctx.state.builderWandLightPreview.enabled = false;
-    this.ctx.enemies.length = 0;
-    resetCombatTransients(this.ctx);
-    this.ctx.state.currentBiome = this.doc.biome;
-    if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
-    else this.ctx.world = new World();
-    this.restorePrePlaytestPlayer();
-    this.restorePrePlaytestWands();
   }
 
   private restorePrePlaytestPlayer(): void {
@@ -5103,7 +5303,10 @@ export class Builder {
     const level = this.worldgenLevelId ? LEVELS[this.worldgenLevelId] : null;
     let statusProfile = BIOME_DEFS[this.doc.biome].name.toUpperCase();
     if (level) {
-      this.doc.biome = level.biome;
+      this.editDocumentMetadata('generate world metadata', {
+        biome: level.biome,
+        backdropProfileId: level.id,
+      });
       this.ctx.state.currentBiome = level.biome;
       const levelSeed = campaignLevelSeed(baseSeed, level.id);
       const generated = this.ctx.worldgen.generateLevel(this.ctx, level, levelSeed, {
@@ -5114,7 +5317,6 @@ export class Builder {
         ...this.doc.lights.filter((light) => !light.id.startsWith(WORLDGEN_LIGHT_PREFIX)),
         ...generated.authoredLights.map((light, n) => authoredLightToEditorLight(light, n, WORLDGEN_LIGHT_PREFIX)),
       ];
-      this.doc.backdropProfileId = level.id;
       statusProfile = `${level.name.toUpperCase()} PROFILE`;
     } else {
       this.ctx.state.currentBiome = this.doc.biome;
@@ -6122,7 +6324,7 @@ export class Builder {
         this.worldgenLevelId = levelId === 'custom' ? null : levelId;
         const level = levelId === 'custom' ? null : LEVELS[levelId];
         if (level) {
-          this.doc.biome = level.biome;
+          this.editDocumentMetadata('change world target', { biome: level.biome });
           this.ctx.state.currentBiome = level.biome;
           this.el<HTMLSelectElement>('b-biome').value = level.biome;
         }
@@ -6139,7 +6341,7 @@ export class Builder {
           this.buildWorldPanel();
           return;
         }
-        this.doc.biome = biome;
+        this.editDocumentMetadata('change biome', { biome });
         this.ctx.state.currentBiome = biome;
         this.worldgenLevelId = this.levelIdForBiome(biome);
         this.el<HTMLSelectElement>('b-biome').value = biome;
@@ -6468,17 +6670,19 @@ export class Builder {
       host.innerHTML = '<div class="bp-hint">Return to Author View to edit backdrop grade.</div>';
       return;
     }
-    const settings = this.ensureDocBackdrop();
+    const settings = sanitizeBackdropSettings(this.doc.backdrop ?? this.ctx.params.backdrop);
     const grade = settings.grade;
     const update = (mutate: (grade: typeof settings.grade) => void): void => {
       if (this.authoringActionBlocks('Edit backdrop grade')) {
         this.buildWorldPanel();
         return;
       }
-      const backdrop = this.ensureDocBackdrop();
-      mutate(backdrop.grade);
-      this.ctx.params.backdrop = backdrop;
-      this.backdropDirty = true;
+      const next = sanitizeBackdropSettings(structuredClone(this.doc.backdrop ?? this.ctx.params.backdrop));
+      mutate(next.grade);
+      const clean = sanitizeBackdropSettings(next);
+      this.editDocumentMetadata('edit backdrop grade', { backdrop: clean });
+      this.ctx.params.backdrop = clean;
+      this.markBackdropDirty();
     };
     this.numberRow(host, 'Exposure', grade.exposure, -3, 2, 0.01, (v) => v.toFixed(2), (v) => {
       update((live) => {
@@ -8304,7 +8508,7 @@ export class Builder {
       this.terraStroke
     )
       return;
-    if (this.cmds.depth === 0 && !this.paintDirty) return;
+    if (!this.hasUnsavedChanges()) return;
     try {
       this.ensureCaptured();
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), doc: this.doc }));
@@ -8315,15 +8519,16 @@ export class Builder {
   }
 
   private async offerDraft(): Promise<void> {
-    if (this.draftOffered) return;
-    this.draftOffered = true;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
       const draft = JSON.parse(raw) as { at: number; doc: unknown };
+      const draftAt = Number.isFinite(draft.at) ? draft.at : 0;
+      if (draftAt > 0 && draftAt === this.lastDraftOfferAt) return;
       const restored = sanitizeImportedDoc(draft.doc);
       if (!restored) return;
-      const when = new Date(draft.at).toLocaleTimeString();
+      if (draftAt > 0) this.lastDraftOfferAt = draftAt;
+      const when = new Date(draftAt || Date.now()).toLocaleTimeString();
       if (
         !(await appDialog.confirm(`Restore the autosaved draft "${restored.name}" from ${when}?`, {
           title: 'Restore Draft',
@@ -8901,6 +9106,7 @@ export class Builder {
     // registered overlays (under object previews and editor gizmos)
     const activeOverlays = new Set(BUILDER_OVERLAY_IDS.filter((id) => this.workspaceLayout.overlayVisibility[id]));
     if (activeOverlays.size > 0) {
+      if (this.validationDirty) this.currentValidationIssues({ captureTerrain: false });
       drawBuilderOverlays(
         g,
         {
@@ -10385,7 +10591,8 @@ export class Builder {
       builtinPrefabs: builtinPrefabs(),
       sprites: this.sprites,
       embeddedSprites: this.doc.assets?.sprites ?? [],
-      importReports: this.assetStore.listImportReports(),
+      importReports: this.allImportReports(),
+      projectAssets: this.projectAssetEntries,
       contentAssets: createBuiltInContentAssetRecords({ materials: this.ctx.params.materials }),
       materials: this.ctx.params.materials,
       procPresets: PASSES.map((pass) => ({ id: pass.id, label: pass.label, usesMaterial: pass.usesMaterial })),
@@ -10400,6 +10607,28 @@ export class Builder {
         ...Object.values(LEVELS).map((level) => ({ id: level.id, label: level.name, builtIn: true })),
       ],
     });
+  }
+
+  private allImportReports(): AssetImportReport[] {
+    const byId = new Map<string, AssetImportReport>();
+    for (const report of this.assetStore.listImportReports()) byId.set(report.id, report);
+    for (const report of this.projectImportReports) byId.set(report.id, report);
+    return [...byId.values()];
+  }
+
+  private async refreshProjectAssetStore(): Promise<void> {
+    if (!this.projectAssetStore.available()) return;
+    try {
+      const [assets, reports] = await Promise.all([
+        this.projectAssetStore.listAssets(),
+        this.projectAssetStore.listImportReports(),
+      ]);
+      this.projectAssetEntries = assets;
+      this.projectImportReports = reports;
+      this.syncAssetPanels();
+    } catch {
+      // The local browser library remains authoritative if project storage is unavailable.
+    }
   }
 
   private renderAssetBrowser(): void {
@@ -10426,7 +10655,7 @@ export class Builder {
       selectedIds: this.assetSelectedIds,
       hiddenSelectedCount,
       batchDeleteBlockedReason,
-      sourceNote: 'Editable document, prefab, and sprite assets are stored in this browser library. Project-store sync is not connected yet.',
+      sourceNote: 'Editable document, prefab, sprite, and mirrored project-store assets share this browser. IndexedDB project sync is used when available.',
       stats: database.stats(),
       collapsedSections: this.workspaceLayout.collapsedSections,
     });
@@ -11059,6 +11288,7 @@ export class Builder {
   private refreshAssetLibraries(): void {
     this.prefabs = loadPrefabs();
     this.sprites = loadSprites();
+    void this.refreshProjectAssetStore();
     this.sanitizeArmedAssetsAfterLibraryRefresh();
     this.spriteFrameCache.clear();
     this.refreshPrefabs();
@@ -11115,6 +11345,7 @@ export class Builder {
       this.status(result.message, !result.ok || result.report.warnings.length > 0);
       this.prefabs = loadPrefabs();
       this.sprites = loadSprites();
+      await this.mirrorAssetImportResult(result);
     }
     if (imported > 0) this.setAssetCollection('recent');
     this.refreshAssetLibraries();
@@ -11157,10 +11388,12 @@ export class Builder {
         `alchemists-descent-${exported.length}-assets.bundle.json`,
         'application/json',
       );
+      const projectSync = await this.persistProjectAssetExports(exported);
       this.status(
         `EXPORTED ${exported.length} ASSET${exported.length === 1 ? '' : 'S'}` +
           (hiddenCount > 0 ? ` (${hiddenCount} HIDDEN SELECTED)` : '') +
-          (skipped > 0 ? ` (${skipped} SKIPPED)` : ''),
+          (skipped > 0 ? ` (${skipped} SKIPPED)` : '') +
+          (projectSync.saved > 0 ? ` + ${projectSync.saved} PROJECT-SYNCED` : ''),
       );
       return;
     }
@@ -11200,7 +11433,7 @@ export class Builder {
     let deleted = 0;
     const failures: string[] = [];
     for (const record of records) {
-      const result = this.assetStore.delete(record);
+      const result = await this.deleteAssetRecord(record);
       if (result.ok) {
         deleted++;
         this.assetSelectedIds.delete(record.assetId);
@@ -11234,11 +11467,60 @@ export class Builder {
     return this.assetStore.export(record);
   }
 
+  private async persistProjectAssetExports(
+    entries: readonly { record: AssetRecord; exported: AssetStoreExport }[],
+  ): Promise<{ saved: number; failed: number }> {
+    if (!this.projectAssetStore.available()) return { saved: 0, failed: 0 };
+    let saved = 0;
+    let failed = 0;
+    for (const { record, exported } of entries) {
+      const entry = projectAssetEntryFromExport(record, exported);
+      if (!entry) continue;
+      const result = await this.projectAssetStore.putAsset(entry);
+      if (result.ok) saved++;
+      else failed++;
+    }
+    if (saved > 0) await this.refreshProjectAssetStore();
+    return { saved, failed };
+  }
+
+  private async mirrorAssetImportResult(result: AssetImportResult): Promise<void> {
+    if (!this.projectAssetStore.available()) return;
+    await this.projectAssetStore.putImportReport(result.report);
+    if (result.ok && result.report.importedAssetId) {
+      const record = this.createAssetDatabase().get(result.report.importedAssetId);
+      const exported = record ? this.exportAssetRecord(record) : null;
+      if (record && exported) {
+        const entry = projectAssetEntryFromExport(record, exported, result.report.importedAt);
+        if (entry) await this.projectAssetStore.putAsset(entry);
+      }
+    }
+    await this.refreshProjectAssetStore();
+  }
+
+  private async deleteAssetRecord(record: AssetRecord): Promise<AssetStoreResult> {
+    if (record.source.storage === 'indexedDB') {
+      const result = await this.projectAssetStore.deleteAsset(record.assetId);
+      if (result.ok) await this.refreshProjectAssetStore();
+      return result;
+    }
+    const result = this.assetStore.delete(record);
+    if (result.ok && this.projectAssetStore.available()) {
+      await this.projectAssetStore.deleteAsset(record.assetId);
+      await this.refreshProjectAssetStore();
+    }
+    return result;
+  }
+
   private async runAssetAction(action: string, assetId: string): Promise<void> {
     const database = this.createAssetDatabase();
     const record = database.get(assetId);
     if (!record) {
       this.status('ASSET NOT FOUND', true);
+      return;
+    }
+    if (action === 'place') {
+      this.placeAssetRecordAt(record, this.lastMouse.x, this.lastMouse.y);
       return;
     }
     if (action === 'open') {
@@ -11277,6 +11559,11 @@ export class Builder {
     if (action === 'export') {
       if (record.kind === 'sprite' && isSpriteAsset(record.payload)) {
         await this.exportSprite(record.payload);
+        const exported = this.exportAssetRecord(record);
+        if (exported) {
+          const projectSync = await this.persistProjectAssetExports([{ record, exported }]);
+          if (projectSync.saved > 0) this.status('SPRITE EXPORTED + PROJECT STORE SYNCED');
+        }
         return;
       }
       const exported = this.exportAssetRecord(record);
@@ -11285,10 +11572,11 @@ export class Builder {
         return;
       }
       downloadText(exported.text, exported.filename, exported.mime);
+      const projectSync = await this.persistProjectAssetExports([{ record, exported }]);
       this.status(
         record.kind === 'document'
-          ? 'EXPORTED DOCUMENT WITH REFERENCED PORTABLE ASSETS'
-          : `EXPORTED ${record.name.toUpperCase()}${record.source.storage === 'content-registry' ? ' METADATA' : ''}`,
+          ? `EXPORTED DOCUMENT WITH REFERENCED PORTABLE ASSETS${projectSync.saved > 0 ? ' + PROJECT STORE SYNCED' : ''}`
+          : `EXPORTED ${record.name.toUpperCase()}${record.source.storage === 'content-registry' ? ' METADATA' : ''}${projectSync.saved > 0 ? ' + PROJECT STORE SYNCED' : ''}`,
       );
       return;
     }
@@ -11307,7 +11595,7 @@ export class Builder {
         }))
       )
         return;
-      const result = this.assetStore.delete(record);
+      const result = await this.deleteAssetRecord(record);
       this.status(result.message, !result.ok);
       if (result.ok) {
         this.assetSelectedId = null;
@@ -11362,6 +11650,9 @@ export class Builder {
     this.status(result.message, !result.ok || result.report.warnings.length > 0);
     this.assetSelectedId = record.assetId;
     if (result.ok && result.report.decision === 'collision-replace') this.setAssetCollection('recent');
+    this.prefabs = loadPrefabs();
+    this.sprites = loadSprites();
+    await this.mirrorAssetImportResult(result);
     this.refreshAssetLibraries();
   }
 
@@ -11372,10 +11663,14 @@ export class Builder {
   }
 
   private placeAssetDrop(assetId: string, event: DragEvent): void {
-    if (this.previewBlocks() || this.livePreviewActionBlocks('Place asset')) return;
     const record = this.createAssetDatabase().get(assetId);
     if (!record) return;
     const pos = this.mouseToWorld(event);
+    this.placeAssetRecordAt(record, pos.x, pos.y);
+  }
+
+  private placeAssetRecordAt(record: AssetRecord, x: number, y: number): void {
+    if (this.previewBlocks() || this.livePreviewActionBlocks('Place asset')) return;
     if (record.kind === 'prefab' && isPrefabAsset(record.payload)) {
       const blocker = this.prefabPlacementBlocker(record);
       if (blocker) {
@@ -11388,21 +11683,21 @@ export class Builder {
       const prefab = record.assetId === this.prefabSelectedAssetId
         ? prefabVariant(record.payload, this.prefabActiveVariant)
         : structuredClone(record.payload);
-      this.pastePrefabAt(prefab, pos.x, pos.y);
+      this.pastePrefabAt(prefab, x, y);
       const warning = this.prefabPlacementWarning(record);
       if (warning) this.status(warning, true);
       return;
     }
     if (record.kind === 'sprite' && isSpriteAsset(record.payload)) {
-      this.placeSpriteAsset(record.payload, pos.x, pos.y);
+      this.placeSpriteAsset(record.payload, x, y);
       return;
     }
     if (record.kind === 'materialProfile') {
-      this.applyMaterialProfileAsset(record, pos.x, pos.y);
+      this.applyMaterialProfileAsset(record, x, y);
       return;
     }
     if (record.kind === 'lightPreset') {
-      this.placeOrApplyLightPresetAsset(record, pos.x, pos.y);
+      this.placeOrApplyLightPresetAsset(record, x, y);
       return;
     }
     if (record.kind === 'procPreset') {

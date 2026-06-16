@@ -1,10 +1,10 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
-import { ALL_CARD_IDS } from '@/combat/wands/cards';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { computeLooseRubbleBlockingMask } from '@/sim/collision';
 import { decodeTypes, paramNum } from '@/builder/document';
 import type { EditorDocument, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
-import { POTION_KINDS } from '@/game/Pickups';
+import { POTION_KINDS } from '@/core/pickupDefs';
+import { TOME_REWARD_POOL } from '@/combat/wands/rewardPools';
 import { PLUG_CELLS, SENSOR_FILTER_CELLS, VALVE_CELLS } from '@/game/instantiate';
 import {
   stampBuoyBasin,
@@ -62,11 +62,16 @@ export interface ValidationOverlayDiagnostics {
 
 export type PlaytestValidationTarget = 'authored-spawn' | 'cursor-spawn';
 
-const AUTHORED_SPAWN_PLAYTEST_BLOCKERS = new Set([
+const PLAYTEST_BLOCKING_CODES = new Set([
   'builder.spawn.missing',
+  'builder.spawn.multiple',
   'builder.spawn.embedded',
+  'builder.id.duplicate',
+  'builder.pickup.kind.invalid',
+  'builder.pickup.card.invalid',
+  'builder.pickup.potion.invalid',
 ]);
-const VALID_TOME_CARDS = new Set<string>(ALL_CARD_IDS);
+const VALID_TOME_CARDS = new Set<string>([...TOME_REWARD_POOL, 'vitrify']);
 const VALID_POTIONS = new Set<string>(POTION_KINDS);
 const VALID_PICKUP_KINDS = new Set(['goldpile', 'heart', 'tome', 'chest', 'potion', 'key']);
 
@@ -78,10 +83,17 @@ export function isPlaytestBlockingIssue(
   issue: DocIssue,
   target: PlaytestValidationTarget = 'authored-spawn',
 ): boolean {
-  if (target === 'cursor-spawn' && (issue.code === 'builder.spawn.missing' || issue.code === 'builder.spawn.embedded')) {
+  if (
+    target === 'cursor-spawn' &&
+    (
+      issue.code === 'builder.spawn.missing' ||
+      issue.code === 'builder.spawn.multiple' ||
+      issue.code === 'builder.spawn.embedded'
+    )
+  ) {
     return false;
   }
-  return AUTHORED_SPAWN_PLAYTEST_BLOCKERS.has(issue.code ?? '');
+  return PLAYTEST_BLOCKING_CODES.has(issue.code ?? '');
 }
 
 export function playtestBlockingIssues(
@@ -246,8 +258,8 @@ function compilerLiveLinks(doc: EditorDocument, byId: ReadonlyMap<string, Editor
  * Stamp every structural object the compiler would stamp onto a types grid.
  * Doors/rune doors in `openIds` stamp open (cleared); the rest stamp solid.
  * Trigger furniture mirrors the game/Mechanisms.ts factories cell for cell
- * (plate sill, scale pan + lips, brazier bowl, latch pedestal) so the
- * reachability audit walks the same world the compiler builds.
+ * (plate sill, scale pan + lips, brazier bowl, latch pedestal, sensor node)
+ * so the reachability audit walks the same world the compiler builds.
  */
 function stampObjects(types: Uint8Array, doc: EditorDocument, openIds: ReadonlySet<string>): void {
   const set = (x: number, y: number, t: number): void => {
@@ -325,6 +337,9 @@ function stampObjects(types: Uint8Array, doc: EditorDocument, openIds: ReadonlyS
     } else if (o.kind === 'chargeLatch') {
       // mirror makeChargeLatch: a 5-wide conductive pedestal
       for (let dx = -2; dx <= 2; dx++) set(x + dx, y, Cell.Metal);
+    } else if (o.kind === 'sensor') {
+      // mirror makeSensor: one physical metal node; destroyed sensors fail open.
+      set(x, y, Cell.Metal);
     } else if (o.kind === 'brazier') {
       // mirror makeBrazier: stone bowl with raised tips
       for (let dx = -2; dx <= 2; dx++) set(x + dx, y, Cell.Stone);
@@ -674,7 +689,7 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
     ...doc.links.map((l) => l.id),
   ];
   for (const id of allIds) {
-    if (ids.has(id)) push('error', 'duplicate id: ' + id);
+    if (ids.has(id)) push('error', 'duplicate id: ' + id, id, { code: 'builder.id.duplicate' });
     ids.add(id);
   }
 

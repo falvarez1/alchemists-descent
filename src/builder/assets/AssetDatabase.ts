@@ -1,7 +1,10 @@
 import type { MaterialParams } from '@/core/types';
 import { CARD_DEFS } from '@/combat/wands/cards';
+import { sanitizeImportedDoc } from '@/builder/document';
 import type { EditorDocument, EditorObject } from '@/builder/document';
+import { sanitizePrefab } from '@/builder/prefablib';
 import type { PrefabDef } from '@/builder/prefablib';
+import { sanitizeSpriteAsset } from '@/builder/assets/sprites';
 import type { SpriteAsset } from '@/builder/assets/sprites';
 import { decorSpriteId } from '@/builder/assets/spritelib';
 import { validateDocument } from '@/builder/validate';
@@ -32,9 +35,11 @@ import type {
   AssetValidationSummary,
   AssetDeletePlan,
   AssetImportReport,
+  AssetSourceMetadata,
 } from '@/builder/assets/AssetTypes';
 import { isAssetContentKind } from '@/content/types';
 import type { ContentItem } from '@/content/types';
+import type { ProjectAssetEntry } from '@/builder/assets/ProjectAssetStore';
 
 export interface AssetDatabaseInput {
   currentDocument?: EditorDocument;
@@ -45,6 +50,7 @@ export interface AssetDatabaseInput {
   sprites?: readonly SpriteAsset[];
   embeddedSprites?: readonly SpriteAsset[];
   importReports?: readonly AssetImportReport[];
+  projectAssets?: readonly ProjectAssetEntry[];
   contentAssets?: readonly AssetRecord[];
   materials?: Record<number, MaterialParams>;
   procPresets?: readonly { id: string; label: string; usesMaterial?: boolean }[];
@@ -81,6 +87,11 @@ export class AssetDatabase {
     }
     for (const sprite of input.embeddedSprites ?? []) this.add(makeSpriteRecord(sprite, 'document-embedded', input.currentDocument?.id));
     for (const sprite of input.sprites ?? []) this.add(makeSpriteRecord(sprite, 'library', undefined, importTimes.get(`sprite:${sprite.id}`)));
+    for (const entry of input.projectAssets ?? []) {
+      for (const record of makeProjectAssetRecords(entry)) {
+        if (!this.records.has(record.assetId)) this.add(record);
+      }
+    }
     for (const record of input.contentAssets ?? []) this.add(record);
     for (const doc of Object.values(input.templates ?? {})) this.add(makeTemplateRecord(doc));
     for (const doc of Object.values(input.documents ?? {})) {
@@ -216,6 +227,7 @@ export class AssetDatabase {
     const preferred = ref.kind === 'sprite'
       ? [
           stableAssetId('sprite', 'library', ref.sourceId),
+          ref.assetId,
           stableAssetId('sprite', 'document-embedded', ref.sourceId),
           stableAssetId('sprite', 'built-in', ref.sourceId),
         ]
@@ -357,8 +369,9 @@ function makePrefabRecord(
 
 function makeSpriteRecord(sprite: SpriteAsset, origin: 'library' | 'document-embedded', documentId?: string, importedAt?: string): AssetRecord<SpriteAsset> {
   const signature = spriteAssetContentSignature(sprite);
+  const assetSourceId = origin === 'document-embedded' && documentId ? `${documentId}:${sprite.id}` : sprite.id;
   return finalizeRecord({
-    assetId: stableAssetId('sprite', origin, sprite.id),
+    assetId: stableAssetId('sprite', origin, assetSourceId),
     kind: 'sprite',
     sourceId: sprite.id,
     name: sprite.name || 'sprite',
@@ -382,6 +395,65 @@ function makeSpriteRecord(sprite: SpriteAsset, origin: 'library' | 'document-emb
     sizeBytes: estimatedJsonBytes(sprite),
     contentSignature: signature,
   });
+}
+
+function makeProjectAssetRecords(entry: ProjectAssetEntry): AssetRecord[] {
+  const records: AssetRecord[] = [];
+  try {
+    const parsed = JSON.parse(entry.text);
+    if (entry.assetKind === 'document' && entry.origin === 'project') {
+      const doc = sanitizeImportedDoc(parsed);
+      if (doc) {
+        records.push(makeDocumentRecord(doc, false, entry.updatedAt));
+        for (const sprite of doc.assets?.sprites ?? []) {
+          records.push(makeSpriteRecord(sprite, 'document-embedded', doc.id, entry.updatedAt));
+        }
+      }
+    } else if (entry.assetKind === 'prefab' && entry.origin === 'library') {
+      const prefab = sanitizePrefab(parsed);
+      if (prefab) records.push(makePrefabRecord(prefab.prefab, 'library', entry.updatedAt, prefab.warnings));
+    } else if (entry.assetKind === 'sprite' && entry.origin === 'library') {
+      const sprite = sanitizeSpriteAsset(parsed);
+      if (sprite) records.push(makeSpriteRecord(sprite, 'library', undefined, entry.updatedAt));
+    }
+  } catch {
+    return [];
+  }
+  const primary = records[0];
+  if (!primary || primary.assetId !== entry.assetId || primary.kind !== entry.assetKind || primary.origin !== entry.origin) {
+    return [];
+  }
+  return records.map((record) => (record === primary ? withProjectSource(record, entry) : record));
+}
+
+function withProjectSource<T extends AssetRecord>(record: T, entry: ProjectAssetEntry): T {
+  const source = projectAssetSource(entry);
+  const validation = record.contentSignature === entry.contentSignature
+    ? record.validation
+    : warningSummary([...record.validation.messages, 'Project-store entry content signature changed since it was indexed']);
+  return finalizeRecord({
+    ...record,
+    name: entry.name || record.name,
+    updatedAt: entry.updatedAt,
+    source,
+    validation,
+    sizeBytes: entry.sizeBytes,
+  });
+}
+
+function projectAssetSource(entry: ProjectAssetEntry): AssetSourceMetadata {
+  const storage = entry.persistence.backend === 'indexedDB'
+    ? 'indexedDB'
+    : entry.persistence.backend === 'fileSystem'
+      ? 'fileSystem'
+      : entry.source.storage;
+  return {
+    ...entry.source,
+    storage,
+    key: entry.persistence.key ?? entry.source.key ?? entry.assetId,
+    fileName: entry.filename,
+    importedAt: entry.updatedAt,
+  };
 }
 
 function makeImportReportRecord(report: AssetImportReport): AssetRecord<AssetImportReport> {
@@ -550,7 +622,9 @@ function spriteRefs(objects: readonly EditorObject[], source: AssetRecord): Asse
     if (spriteId) ids.add(spriteId);
   }
   return [...ids].sort().map((sourceId) => ({
-    assetId: stableAssetId('sprite', 'library', sourceId),
+    assetId: source.kind === 'document'
+      ? stableAssetId('sprite', 'document-embedded', `${source.sourceId}:${sourceId}`)
+      : stableAssetId('sprite', 'library', sourceId),
     kind: 'sprite',
     sourceId,
     label: `${source.name} decor sprite`,

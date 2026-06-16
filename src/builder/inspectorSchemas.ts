@@ -1,4 +1,3 @@
-import { ALL_CARD_IDS } from '@/combat/wands/cards';
 import type { EnemyKind, PickupKind } from '@/core/types';
 import { paramNum } from '@/builder/document';
 import type { EditorDocument, EditorLight, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
@@ -13,7 +12,8 @@ import type {
   InspectorCommandRef,
   InspectorSchemaItem,
 } from '@/ui/editor/InspectorSchema';
-import { POTION_KINDS } from '@/game/Pickups';
+import { POTION_KINDS } from '@/core/pickupDefs';
+import { TOME_REWARD_POOL } from '@/combat/wands/rewardPools';
 
 export const POINT_ROTATE_KINDS: ReadonlySet<EditorObjectKind> = new Set([
   'enemy',
@@ -43,7 +43,7 @@ export const ENEMY_KINDS: EnemyKind[] = [
 export const PICKUP_KINDS: PickupKind[] = ['goldpile', 'heart', 'tome', 'chest', 'potion', 'key'];
 const CARD_PICKUP_OPTIONS: FieldOption[] = [
   { value: '', label: 'random' },
-  ...ALL_CARD_IDS.map((id) => ({ value: id, label: id })),
+  ...[...TOME_REWARD_POOL, 'vitrify'].map((id) => ({ value: id, label: id })),
 ];
 const POTION_PICKUP_OPTIONS: FieldOption[] = [
   { value: '', label: 'random' },

@@ -9,6 +9,39 @@ function el(id: string): HTMLElement {
   return document.getElementById(id)!;
 }
 
+const BENCH_OBJECTIVE_FRAMES = 720;
+const WAYSTONE_OBJECTIVE_RADIUS_SQ = 72 * 72;
+
+export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFrames = 0): string {
+  if (ctx.state.mode !== 'play') return fallback;
+  const runtime = ctx.levels.current;
+  if (!runtime) return fallback;
+  if (benchNudgeFrames > 0 && runtime.refuge && ctx.wands.collection.length > 0) return 'BENCH AVAILABLE IN REFUGE';
+  const nearUnlitWaystone = runtime.waystones.some((waystone) => {
+    if (waystone.lit) return false;
+    const dx = waystone.x - ctx.player.x;
+    const dy = waystone.y - ctx.player.y;
+    return dx * dx + dy * dy <= WAYSTONE_OBJECTIVE_RADIUS_SQ;
+  });
+  if (nearUnlitWaystone && !runtime.keyTaken) return 'LIGHT WAYSTONE: BRING FIRE';
+  if (runtime.portal) return runtime.keyTaken ? 'RETURN TO THE PORTAL' : 'FIND THE GOLDEN KEY';
+  return fallback;
+}
+
+export function cardGrantBenchCue(ctx: Ctx): string {
+  if (ctx.state.mode !== 'play') return 'NEW SPELL CARD';
+  const refuge = ctx.levels.current?.refuge;
+  if (!refuge) return 'NEW SPELL CARD - FIND REFUGE';
+  const dx = refuge.x - ctx.player.x;
+  const dy = refuge.y - ctx.player.y;
+  const dist = Math.max(1, Math.round(Math.hypot(dx, dy)));
+  if (dist <= 48) return 'BENCH AVAILABLE IN REFUGE';
+  const dirs: string[] = [];
+  if (Math.abs(dx) > 18) dirs.push(dx > 0 ? 'EAST' : 'WEST');
+  if (Math.abs(dy) > 18) dirs.push(dy > 0 ? 'BELOW' : 'ABOVE');
+  return 'BENCH IN REFUGE' + (dirs.length > 0 ? ' ' + dirs.join(' ') : '') + ' - ' + dist + ' STEPS';
+}
+
 // ===================== HUD =====================
 /**
  * Play-mode heads-up display: vitals bars, gold readout, spell hotbar,
@@ -31,6 +64,8 @@ export class Hud {
   private displayedGold = 0;
   /** Frame the last dry-fire flash started (clears the class after it). */
   private dryFlashUntil = 0;
+  private objectiveBase = 'FIND THE GOLDEN KEY';
+  private benchObjectiveUntil = 0;
 
   constructor(private ctx: Ctx) {
     // Treasure-row pixel icons (hud-gold itself rolls toward the score in
@@ -84,7 +119,10 @@ export class Hud {
     // Wandsmith: a found card announces itself; the bench (B) slots it.
     // The satchel chip flashes so the income lands in the treasure row too.
     ctx.events.on('cardGranted', ({ name }) => {
-      this.showBanner(name + ' ACQUIRED', 'NEW SPELL CARD — PRESS B');
+      this.showBanner(name + ' ACQUIRED', cardGrantBenchCue(this.ctx));
+      this.benchObjectiveUntil = this.ctx.state.frameCount + BENCH_OBJECTIVE_FRAMES;
+      this.ctx.events.emit('refugePing');
+      this.renderObjective();
       const chip = el('cards-chip');
       chip.classList.remove('flash');
       void chip.offsetWidth; // restart the one-shot animation
@@ -93,7 +131,8 @@ export class Hud {
 
     // Descent meta layer: the objective line + short center toasts.
     ctx.events.on('objectiveChanged', ({ text }) => {
-      el('objective').textContent = text;
+      this.objectiveBase = text;
+      this.renderObjective();
     });
 
     // The Kiln Colossus is slain: roll victory after the explosion lands.
@@ -175,6 +214,13 @@ export class Hud {
     const banner = el('wave-banner');
     banner.classList.add('show');
     setTimeout(() => banner.classList.remove('show'), 2200);
+  }
+
+  private renderObjective(): void {
+    const left = Math.max(0, this.benchObjectiveUntil - this.ctx.state.frameCount);
+    const text = contextualObjectiveText(this.ctx, this.objectiveBase, left);
+    const node = el('objective');
+    if (node.textContent !== text) node.textContent = text;
   }
 
   /**
@@ -259,6 +305,7 @@ export class Hud {
 
   update(ctx: Ctx): void {
     const player = ctx.player;
+    this.renderObjective();
     el('hp-fill').style.width = Math.max(0, (player.hp / player.maxHp) * 100) + '%';
     // player.mana mirrors the active wand's tank (WandSystem guarantee), so
     // the mana bar tracks the wand with no extra wiring here.

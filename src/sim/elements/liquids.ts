@@ -29,6 +29,22 @@ const IGNITION_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [-1, -1],
 ];
 
+function waterCanPass(t: number): boolean {
+  return t === Cell.Empty || t === Cell.Oil || t === Cell.Steam || t === Cell.Smoke;
+}
+
+function viscousCanPass(t: number): boolean {
+  return t === Cell.Empty || t === Cell.Steam || t === Cell.Smoke;
+}
+
+function acidCanPass(t: number): boolean {
+  return t === Cell.Empty || t === Cell.Steam || t === Cell.Water || t === Cell.Oil || t === Cell.Smoke;
+}
+
+function lavaCanPass(t: number): boolean {
+  return t === Cell.Empty || t === Cell.Steam || t === Cell.Oil || t === Cell.Acid || t === Cell.Smoke;
+}
+
 export function handleWater(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   // Clean water dilutes toxic sludge it touches
@@ -44,27 +60,25 @@ export function handleWater(ctx: Ctx, x: number, y: number): void {
       }
     }
   }
-  const pass = (t: number) =>
-    t === Cell.Empty || t === Cell.Oil || t === Cell.Steam || t === Cell.Smoke;
-  if (w.inBounds(x, y + 1) && pass(w.types[w.idx(x, y + 1)])) {
+  if (w.inBounds(x, y + 1) && waterCanPass(w.types[w.idx(x, y + 1)])) {
     w.swap(x, y, x, y + 1);
     return;
   }
   const dir = Math.random() < 0.5 ? 1 : -1;
-  if (w.inBounds(x + dir, y + 1) && pass(w.types[w.idx(x + dir, y + 1)])) {
+  if (w.inBounds(x + dir, y + 1) && waterCanPass(w.types[w.idx(x + dir, y + 1)])) {
     w.swap(x, y, x + dir, y + 1);
     return;
   }
-  if (w.inBounds(x - dir, y + 1) && pass(w.types[w.idx(x - dir, y + 1)])) {
+  if (w.inBounds(x - dir, y + 1) && waterCanPass(w.types[w.idx(x - dir, y + 1)])) {
     w.swap(x, y, x - dir, y + 1);
     return;
   }
   if (Math.random() < ctx.params.materials[Cell.Water].flowRate!) {
-    if (w.inBounds(x + dir, y) && pass(w.types[w.idx(x + dir, y)])) {
+    if (w.inBounds(x + dir, y) && waterCanPass(w.types[w.idx(x + dir, y)])) {
       w.swap(x, y, x + dir, y);
       return;
     }
-    if (w.inBounds(x - dir, y) && pass(w.types[w.idx(x - dir, y)])) {
+    if (w.inBounds(x - dir, y) && waterCanPass(w.types[w.idx(x - dir, y)])) {
       w.swap(x, y, x - dir, y);
       return;
     }
@@ -82,26 +96,25 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
     stainCell(w, x + 1, y, 118, 14, 20, 0.1);
     stainCell(w, x - 1, y, 118, 14, 20, 0.1);
   }
-  const pass = (t: number) => t === Cell.Empty || t === Cell.Steam || t === Cell.Smoke;
-  if (w.inBounds(x, y + 1) && pass(w.types[w.idx(x, y + 1)])) {
+  if (w.inBounds(x, y + 1) && viscousCanPass(w.types[w.idx(x, y + 1)])) {
     w.swap(x, y, x, y + 1);
     return;
   }
   const dir = Math.random() < 0.5 ? 1 : -1;
-  if (w.inBounds(x + dir, y + 1) && pass(w.types[w.idx(x + dir, y + 1)])) {
+  if (w.inBounds(x + dir, y + 1) && viscousCanPass(w.types[w.idx(x + dir, y + 1)])) {
     w.swap(x, y, x + dir, y + 1);
     return;
   }
-  if (w.inBounds(x - dir, y + 1) && pass(w.types[w.idx(x - dir, y + 1)])) {
+  if (w.inBounds(x - dir, y + 1) && viscousCanPass(w.types[w.idx(x - dir, y + 1)])) {
     w.swap(x, y, x - dir, y + 1);
     return;
   }
   if (Math.random() < ctx.params.materials[type].flowRate!) {
-    if (w.inBounds(x + dir, y) && pass(w.types[w.idx(x + dir, y)])) {
+    if (w.inBounds(x + dir, y) && viscousCanPass(w.types[w.idx(x + dir, y)])) {
       w.swap(x, y, x + dir, y);
       return;
     }
-    if (w.inBounds(x - dir, y) && pass(w.types[w.idx(x - dir, y)])) {
+    if (w.inBounds(x - dir, y) && viscousCanPass(w.types[w.idx(x - dir, y)])) {
       w.swap(x, y, x - dir, y);
       return;
     }
@@ -288,19 +301,17 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
       }
     }
   }
-  const canPass = (t: number) =>
-    t === Cell.Empty || t === Cell.Steam || t === Cell.Water || t === Cell.Oil || t === Cell.Smoke;
-  if (w.inBounds(x, y + 1) && canPass(w.types[w.idx(x, y + 1)])) {
+  if (w.inBounds(x, y + 1) && acidCanPass(w.types[w.idx(x, y + 1)])) {
     w.swap(x, y, x, y + 1);
     return;
   }
   const dir = Math.random() < 0.5 ? 1 : -1;
   if (Math.random() < ctx.params.materials[Cell.Acid].flowRate!) {
-    if (w.inBounds(x + dir, y) && canPass(w.types[w.idx(x + dir, y)])) {
+    if (w.inBounds(x + dir, y) && acidCanPass(w.types[w.idx(x + dir, y)])) {
       w.swap(x, y, x + dir, y);
       return;
     }
-    if (w.inBounds(x - dir, y) && canPass(w.types[w.idx(x - dir, y)])) {
+    if (w.inBounds(x - dir, y) && acidCanPass(w.types[w.idx(x - dir, y)])) {
       w.swap(x, y, x - dir, y);
       return;
     }
@@ -366,19 +377,17 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
       }
     }
   }
-  const canPass = (t: number) =>
-    t === Cell.Empty || t === Cell.Steam || t === Cell.Oil || t === Cell.Acid || t === Cell.Smoke;
-  if (w.inBounds(x, y + 1) && canPass(w.types[w.idx(x, y + 1)])) {
+  if (w.inBounds(x, y + 1) && lavaCanPass(w.types[w.idx(x, y + 1)])) {
     w.swap(x, y, x, y + 1);
     return;
   }
   const dir = Math.random() < 0.5 ? 1 : -1;
   if (Math.random() < ctx.params.materials[Cell.Lava].flowRate!) {
-    if (w.inBounds(x + dir, y) && canPass(w.types[w.idx(x + dir, y)])) {
+    if (w.inBounds(x + dir, y) && lavaCanPass(w.types[w.idx(x + dir, y)])) {
       w.swap(x, y, x + dir, y);
       return;
     }
-    if (w.inBounds(x - dir, y) && canPass(w.types[w.idx(x - dir, y)])) {
+    if (w.inBounds(x - dir, y) && lavaCanPass(w.types[w.idx(x - dir, y)])) {
       w.swap(x, y, x - dir, y);
       return;
     }

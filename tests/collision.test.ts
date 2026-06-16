@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { Ctx } from '@/core/types';
 import { Physics } from '@/entities/physics';
-import { Cell } from '@/sim/CellType';
-import { cellBlocksEntityWithLooseRubble } from '@/sim/collision';
+import { Cell, blocksEntity, isSolid } from '@/sim/CellType';
+import { cellBlocksEntityWithLooseRubble, computeLooseRubbleBlockingMask } from '@/sim/collision';
 import { World } from '@/sim/World';
 import { computeFits } from '@/world/validate';
 
@@ -54,5 +54,20 @@ describe('loose-rubble collision parity', () => {
     expect(physics.cellBlocks(40, 30)).toBe(true);
     expect(physics.cellBlocks(60, 30)).toBe(true);
     expect(physics.cellBlocks(80, 30)).toBe(false);
+  });
+
+  it('keeps soft growth grid-real but pass-through for bodies and findability', () => {
+    for (const growth of [Cell.Vines, Cell.Moss, Cell.Fungus, Cell.Glowshroom]) {
+      const world = new World();
+      for (let n = 0; n < 5; n++) set(world, 40 + n, 30, growth);
+
+      expect(isSolid(growth)).toBe(true);
+      expect(blocksEntity(growth)).toBe(false);
+      expect(cellBlocksEntityWithLooseRubble(world, 40, 30)).toBe(false);
+      expect(computeLooseRubbleBlockingMask(world)[40 + 30 * world.width]).toBe(0);
+
+      const fits = computeFits(world);
+      expect(fits[42 + 50 * world.width]).toBe(1);
+    }
   });
 });

@@ -211,6 +211,7 @@ describe('runtime entity snapshot', () => {
   it('infers source labels from runtime lifecycle state', () => {
     expect(inferRuntimeSource(makeCtx({ mode: 'build' })).id).toBe('build');
     expect(inferRuntimeSource(makeCtx({ playtestSource: null })).id).toBe('expedition');
+    expect(inferRuntimeSource(makeCtx({ playtestSource: 'sandbox' })).id).toBe('sandbox-playtest');
     expect(inferRuntimeSource(makeCtx({ playtestSource: 'test' })).id).toBe('test-run');
     expect(inferRuntimeSource(makeCtx({ playtestSource: null, debugGodMode: true })).id).toBe('debug-run');
   });
@@ -218,7 +219,7 @@ describe('runtime entity snapshot', () => {
 
 function makeCtx(options: {
   mode?: 'build' | 'play';
-  playtestSource?: 'builder' | 'test' | null;
+  playtestSource?: 'builder' | 'sandbox' | 'test' | null;
   debugGodMode?: boolean;
   enemies?: Enemy[];
   projectiles?: Projectile[];

@@ -90,7 +90,7 @@ export class LevelStore {
       w.colors[i] = fn ? fn() : EMPTY_COLOR;
     }
     for (const [i, v] of save.life) w.life[i] = v;
-    for (const [i, v] of save.charge) w.charge[i] = v;
+    for (const [i, v] of save.charge) w.setChargeAt(i, v);
     ctx.enemies.length = 0;
     resetCombatTransients(ctx);
     ctx.events.emit('toast', { text: 'LEVEL LOADED' });
@@ -194,7 +194,7 @@ export class LevelStore {
     });
 
     document.getElementById('btn-level-playtest')?.addEventListener('click', () => {
-      this.ctx.state.playtestSource = 'builder';
+      this.ctx.state.playtestSource = 'sandbox';
       this.ctx.levels.playCurrentWorld(this.ctx);
       (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
     });

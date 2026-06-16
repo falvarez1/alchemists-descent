@@ -1,7 +1,6 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import {
-  EMPTY_COLOR,
   acidColor,
   emberColor,
   fireColor,
@@ -61,7 +60,7 @@ export class Spells implements SpellsApi {
               c === Cell.Wood ? Cell.Wood : Cell.Sand, world.colors[i], 55);
             debris++;
           }
-          world.types[i] = Cell.Empty; world.colors[i] = EMPTY_COLOR; chewed++;
+          world.clearCellAt(i); chewed++;
         }
       }
     }
@@ -90,10 +89,7 @@ export class Spells implements SpellsApi {
         const i = world.idx(X, Y);
         const t = world.types[i];
         if (t === Cell.Empty || isLiquid(t) || isGas(t)) {
-          world.types[i] = Cell.Stone;
-          world.colors[i] = stoneColor();
-          world.life[i] = 0;
-          world.charge[i] = 0;
+          world.replaceCellAt(i, Cell.Stone, stoneColor());
         }
       }
     }

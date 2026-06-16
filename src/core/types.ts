@@ -239,6 +239,8 @@ export interface Enemy {
    *  4th frame) — its damage shield and swim physics read THIS, never a
    *  lingering wet meter. The grid is the armor. */
   submerged?: boolean;
+  /** Environmental contact damage feedback throttle. */
+  envDamageFeedbackCd?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
@@ -629,7 +631,7 @@ export type BiomeId =
 
 export type GameMode = 'build' | 'play';
 export type InputMode = 'element' | 'spell';
-export type PlaytestSource = 'builder' | 'test';
+export type PlaytestSource = 'builder' | 'sandbox' | 'test';
 export type RunMode = 'normal' | 'test';
 export type RunWorldSource = 'campaign' | 'campaign-level' | 'virtual-world';
 export type RunLoadoutPreset = 'fresh' | 'advanced' | 'review';
@@ -889,7 +891,7 @@ export interface ParticlesApi {
 }
 
 export interface ExplosionApi {
-  trigger(cx: number, cy: number, radius: number): void;
+  trigger(cx: number, cy: number, radius: number, options?: { enemyDamageMul?: number }): void;
 }
 
 export interface LightningApi {
@@ -918,6 +920,138 @@ export interface PhysicsApi {
     h: number,
     stepUp: number,
   ): boolean;
+}
+
+export type RigidBodyKind = 'dynamic' | 'kinematic';
+
+/** Body geometry. Box uses half-extents; circle uses a radius (cells). */
+export type RigidShape =
+  | { kind: 'box'; halfW: number; halfH: number }
+  | { kind: 'circle'; radius: number };
+
+/** What a rigid body is made of — drives density (mass + float/sink), colour,
+ *  flammability, and conductivity. Registry: entities/bodyMaterials.ts. */
+export type BodyMaterial = 'wood' | 'metal' | 'stone';
+
+/**
+ * A rigid body in the physics layer (backed by Rapier2D). Boxes and circles
+ * collide with the cave, each other, and receive impulses; the solver handles
+ * rotation, rolling, tumbling, stacking, bounce and friction. Terrain is fed to
+ * Rapier as small per-body colliders generated from the live cell grid, so no
+ * whole-cave polygonisation is needed.
+ *
+ * The numeric fields are a READ-ONLY MIRROR of the Rapier body, refreshed each
+ * tick for the renderer / console / debug. To move or push a body, go through
+ * RigidBodiesApi (spawn opts / applyImpulse) — never by writing these directly.
+ *
+ * `x`/`y` are the CENTRE OF MASS in world cells; `angle` radians; `vx/vy`
+ * cells/frame; `va` rad/frame.
+ */
+export interface RigidBody {
+  readonly id: number;
+  kind: RigidBodyKind;
+  shape: RigidShape;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  angle: number;
+  va: number;
+  /** Inverse mass / inverse rotational inertia used by the current local solver. */
+  invMass?: number;
+  invInertia?: number;
+  /** Bounce on impact (0 = dead stop, 1 = elastic) — set at spawn. */
+  restitution: number;
+  /** Coulomb friction coefficient — set at spawn. */
+  friction: number;
+  /** Packed 0xRRGGBB fill colour for the default renderer. */
+  color: number;
+  /** What it's made of (drives mass/buoyancy/flammability/conduction). */
+  material?: BodyMaterial;
+  grounded?: boolean;
+  /** Mirror of Rapier's sleep state (settled bodies sleep). */
+  sleeping: boolean;
+  restT?: number;
+  tag?: string;
+  data?: Record<string, unknown>;
+  /** Fired on a hard terrain impact; `speed` is the pre-impact contact speed. */
+  onTerrainHit?: (body: RigidBody, speed: number) => void;
+}
+
+export interface SpawnBodyOpts {
+  kind?: RigidBodyKind;
+  vx?: number;
+  vy?: number;
+  angle?: number;
+  va?: number;
+  /** What it's made of — sets density + default colour (explicit density/color win). */
+  material?: BodyMaterial;
+  /** Mass/inertia derive from shape area × density (default 1). */
+  density?: number;
+  restitution?: number;
+  friction?: number;
+  color?: number;
+  tag?: string;
+  data?: Record<string, unknown>;
+  onTerrainHit?: (body: RigidBody, speed: number) => void;
+}
+
+export interface RigidBodiesApi {
+  /** Live list — mutated in place, never reassigned (entity-array invariant). */
+  readonly bodies: RigidBody[];
+  spawn(shape: RigidShape, x: number, y: number, opts?: SpawnBodyOpts): RigidBody;
+  remove(body: RigidBody): void;
+  clear(): void;
+  update(ctx: Ctx): void;
+  /** Wake the body and add a VELOCITY kick (cells/frame) at the centre of mass —
+   *  mass-independent by design (matches explosion/knockback tuning). NOTE for a
+   *  future Rapier backend: these are velocity deltas, not force·mass⁻¹ impulses,
+   *  so multiply by the body's mass before calling Rapier's applyImpulse. */
+  applyImpulse(body: RigidBody, ix: number, iy: number): void;
+  /** Velocity kick at a world point — adds the linear delta AND the spin its
+   *  lever arm implies, so an off-centre shove also rotates the body. */
+  applyImpulseAt(body: RigidBody, ix: number, iy: number, px: number, py: number): void;
+  /** MASS-AWARE impulse at a world point: (mx,my) is a true impulse (momentum),
+   *  so Δv = impulse/mass — a heavy crate resists, a light one flies. Use for
+   *  bullet/kick hits where material weight should matter (cf. applyImpulseAt,
+   *  a mass-independent velocity kick). Off-centre → also spins. */
+  applyMomentumAt(body: RigidBody, mx: number, my: number, px: number, py: number): void;
+  /** Push every body within `radius` away from (cx,cy), scaled by linear falloff. */
+  applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void;
+  /** The dynamic body whose shape contains world point (x,y) (small grace
+   *  margin), or null. Used by projectiles to detect a body strike. */
+  hitTest(x: number, y: number): RigidBody | null;
+}
+
+export interface VineStrandNodeView {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface VineStrandSegmentView {
+  readonly a: number;
+  readonly b: number;
+}
+
+export interface VineStrandView {
+  readonly nodes: readonly VineStrandNodeView[];
+  readonly segments: readonly VineStrandSegmentView[];
+  readonly color: number;
+  /** Render width in cells (1 = a thin strand; >1 = a thick rope/vine). */
+  readonly thickness?: number;
+}
+
+export interface VineStrandsApi {
+  /** Detached + persistent vine strands; render-only mirror, mutated in place. */
+  readonly strands: readonly VineStrandView[];
+  /** Convert a disconnected vine component in the cell grid into a soft strand. */
+  detachCluster(x: number, y: number): boolean;
+  /** Add a PERSISTENT strand pinned at (x,y) hanging `length` cells down — a rope
+   *  or thick vine that sways, collides, and reacts to the player (never settles). */
+  addHanging(x: number, y: number, length: number, opts?: { thickness?: number; color?: number }): void;
+  update(ctx: Ctx): void;
+  clear(): void;
+  applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void;
 }
 
 export interface PlayerControlApi {
@@ -1025,6 +1159,8 @@ export interface WorldGenApi {
     vaultArch: VaultArch | null;
     /** Branch-level hoard center — createLevel posts the elite guards here. */
     vaultHoard: { x: number; y: number } | null;
+    /** D1 teaching alcove with real-cell stations and a checked reward. */
+    spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null;
     /** Deferred prefab enemies — createLevel spawns them; restoreLevel
      *  IGNORES them (the saved blob's roster is the truth). */
     prefabEnemies: PrefabEnemy[];
@@ -1361,6 +1497,11 @@ export type CardId =
   | 'heavy'
   | 'spread'
   | 'infuser'
+  | 'watertrail'
+  | 'oiltrail'
+  | 'electriccharge'
+  | 'critwet'
+  | 'shorthoming'
   | 'trigger'
   | 'bounce';
 
@@ -1375,6 +1516,16 @@ export interface CastAction {
   spreadAdd: number;
   /** Trail the flask's stored material while flying. */
   infused: boolean;
+  /** Fixed low-budget Water Trail cells remaining for review-only setup cards. */
+  waterTrail: number;
+  /** Fixed low-budget Oil Wick cells remaining for review-only setup cards. */
+  oilTrail: number;
+  /** Electrify struck targets and nearby conductor cells. */
+  electricCharge: boolean;
+  /** Conditional crit if the struck enemy is wet or touching water. */
+  critWet: boolean;
+  /** Short-range homing correction for normal projectile bodies. */
+  shortHoming: boolean;
   /** Terrain bounces remaining before the projectile detonates. */
   bounces: number;
   /** Cast at the impact point (depth-1 trigger payload), or null. */
@@ -1385,6 +1536,8 @@ export interface CastActionExecutionContext {
   origin: 'wand' | 'trigger';
   /** Cursor-target cards use this target instead of the live mouse position. */
   target?: { x: number; y: number };
+  /** Trigger payloads inherit the carrier projectile's source wand spread. */
+  sourceSpread?: number;
 }
 
 export interface CardDef {
@@ -1572,6 +1725,9 @@ export interface VaultArch {
    *  trigger radius so a transition never bounces straight back). */
   backX: number;
   backY: number;
+  /** Host-side reachable tell/gold-glint point used for secret discoverability. */
+  discoverX?: number;
+  discoverY?: number;
 }
 
 /** A fire-lit checkpoint brazier. Lights when Fire cells touch its bowl. */
@@ -1781,6 +1937,8 @@ export interface LevelRuntime {
   decors?: RuntimeDecor[];
   /** The Refuge's offering shrine point — E in reach opens the Sanctum shop. */
   refuge?: { x: number; y: number };
+  /** D1 teaching alcove: real-cell stations plus its reward pedestal. */
+  spellLab?: { x: number; y: number; rewardX: number; rewardY: number };
   /** The gilded arch: hidden branch entrance (host) / way home (branch). */
   vaultArch?: VaultArch;
 }
@@ -1818,6 +1976,8 @@ export interface LevelsApi {
   seedReviewKit(ctx: Ctx): void;
   /** Persist the whole expedition (visited levels + hero) to localStorage. */
   saveExpedition(ctx: Ctx): void;
+  /** Persist a post-death checkpoint: world penalty now, hero resumes at the respawn anchor. */
+  saveDeathCheckpoint(ctx: Ctx): void;
   hasSavedExpedition(): boolean;
   /** Drop the save; the next play entry starts a fresh expedition. */
   abandonExpedition(): void;
@@ -1850,6 +2010,8 @@ export interface Ctx {
   lightning: LightningApi;
   projectileCtl: ProjectilesApi;
   physics: PhysicsApi;
+  rigidBodies: RigidBodiesApi;
+  vineStrands: VineStrandsApi;
   playerCtl: PlayerControlApi;
   enemyCtl: EnemyControlApi;
   spells: SpellsApi;

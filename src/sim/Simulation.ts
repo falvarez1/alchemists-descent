@@ -1,6 +1,5 @@
 import type { Ctx, SimulationApi } from '@/core/types';
 import { Cell, isSolid } from '@/sim/CellType';
-import { EMPTY_COLOR } from '@/sim/colors';
 import { stainCell } from '@/sim/stains';
 import { handleGas } from '@/sim/elements/gas';
 import {
@@ -68,6 +67,7 @@ export class Simulation implements SimulationApi {
     const tick = world.movedTick;
 
     const spanW = sim.x1 - sim.x0;
+    let runSparsePass = false;
     for (let y = sim.y1 - 1; y >= sim.y0; y--) {
       const leftToRight = Math.random() < 0.5;
       for (let i = 0; i < spanW; i++) {
@@ -89,8 +89,12 @@ export class Simulation implements SimulationApi {
           type === Cell.Fungus ||
           type === Cell.Glowshroom ||
           type === Cell.Moss
-        )
+        ) {
+          if (type === Cell.Ice || type === Cell.Vines || type === Cell.Fungus || type === Cell.Moss) {
+            runSparsePass = true;
+          }
           continue;
+        }
 
         if (type === Cell.Sand || type === Cell.Gold || type === Cell.Catalyst)
           handleSand(ctx, x, y, type);
@@ -127,8 +131,7 @@ export class Simulation implements SimulationApi {
               isSolid(world.types[world.idx(x, y + 1)])
             ) {
               stainCell(world, x, y + 1, 110, 12, 18, 0.5);
-              world.types[ci] = Cell.Empty;
-              world.colors[ci] = EMPTY_COLOR;
+              world.clearCellAt(ci);
               continue;
             }
           }
@@ -147,16 +150,18 @@ export class Simulation implements SimulationApi {
       }
     }
 
-    for (let y = sim.y1 - 1; y >= sim.y0; y--) {
-      for (let x = sim.x0; x < sim.x1; x++) {
-        const ci = x + y * world.width;
-        // Type check FIRST: these materials are sparse, so the moved-epoch
-        // load short-circuits away for almost every cell.
-        const t2 = world.types[ci];
-        if (t2 === Cell.Ice && movedArr[ci] !== tick) handleIce(ctx, x, y);
-        else if (t2 === Cell.Vines && movedArr[ci] !== tick) handleVines(ctx, x, y);
-        else if (t2 === Cell.Fungus && movedArr[ci] !== tick) handleFungus(ctx, x, y);
-        else if (t2 === Cell.Moss && movedArr[ci] !== tick) handleMoss(ctx, x, y);
+    if (runSparsePass) {
+      for (let y = sim.y1 - 1; y >= sim.y0; y--) {
+        for (let x = sim.x0; x < sim.x1; x++) {
+          const ci = x + y * world.width;
+          // Type check FIRST: these materials are sparse, so the moved-epoch
+          // load short-circuits away for almost every cell.
+          const t2 = world.types[ci];
+          if (t2 === Cell.Ice && movedArr[ci] !== tick) handleIce(ctx, x, y);
+          else if (t2 === Cell.Vines && movedArr[ci] !== tick) handleVines(ctx, x, y);
+          else if (t2 === Cell.Fungus && movedArr[ci] !== tick) handleFungus(ctx, x, y);
+          else if (t2 === Cell.Moss && movedArr[ci] !== tick) handleMoss(ctx, x, y);
+        }
       }
     }
   }

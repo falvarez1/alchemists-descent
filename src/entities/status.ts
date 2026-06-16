@@ -62,9 +62,9 @@ function randomAdjacentCell(body: StatusBody, halfW: number, h: number): { x: nu
 }
 
 /**
- * Sample the cells touching a body, run the status transitions, tick every
- * timer, and emit the per-status side effects. Callers invoke this every
- * SECOND frame (the timers are tuned for that cadence).
+ * Sample the cells touching a body, run the status transitions, tick timers in
+ * real frames, and emit the per-status side effects. Callers that sample less
+ * often pass the elapsed frame count so "600 frames" still means 600 frames.
  *
  * Returns the per-call status damage (applied by the caller, bypassing
  * invulnerability like hazard DPS) and the horizontal slow factor.
@@ -75,9 +75,11 @@ export function sampleAndTickStatus(
   halfW: number,
   h: number,
   immune?: Partial<Record<ElementalStatus, boolean>>,
+  elapsedFrames = 1,
 ): { damage: number; slowFactor: number } {
   const world = ctx.world;
   const st = body.status;
+  const tickFrames = Math.max(1, Math.floor(elapsedFrames));
 
   // --- Sample: what is the grid touching this body right now? ---
   let water = 0,
@@ -127,16 +129,16 @@ export function sampleAndTickStatus(
   if (charged >= 1 && !immune?.electrified) st.electrified = Math.max(st.electrified, 45);
 
   // --- Tick every timer ---
-  if (st.wet > 0) st.wet--;
-  if (st.oiled > 0) st.oiled--;
-  if (st.burning > 0) st.burning--;
-  if (st.frozen > 0) st.frozen--;
-  if (st.electrified > 0) st.electrified--;
-  if (st.regen > 0) st.regen--;
-  if (st.levity > 0) st.levity--;
-  if (st.stoneskin > 0) st.stoneskin--;
-  if (st.swift > 0) st.swift--;
-  if (st.torch > 0) st.torch--;
+  if (st.wet > 0) st.wet = Math.max(0, st.wet - tickFrames);
+  if (st.oiled > 0) st.oiled = Math.max(0, st.oiled - tickFrames);
+  if (st.burning > 0) st.burning = Math.max(0, st.burning - tickFrames);
+  if (st.frozen > 0) st.frozen = Math.max(0, st.frozen - tickFrames);
+  if (st.electrified > 0) st.electrified = Math.max(0, st.electrified - tickFrames);
+  if (st.regen > 0) st.regen = Math.max(0, st.regen - tickFrames);
+  if (st.levity > 0) st.levity = Math.max(0, st.levity - tickFrames);
+  if (st.stoneskin > 0) st.stoneskin = Math.max(0, st.stoneskin - tickFrames);
+  if (st.swift > 0) st.swift = Math.max(0, st.swift - tickFrames);
+  if (st.torch > 0) st.torch = Math.max(0, st.torch - tickFrames);
 
   // --- Active side effects: statuses write back into the world ---
   const frame = ctx.state.frameCount;

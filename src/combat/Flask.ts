@@ -176,18 +176,19 @@ export class Flask implements FlaskApi {
     }
     if (taken === 0 || s.material === null) return;
 
-    // Streaks getting sucked from the siphon area toward the wizard.
+    // Streaks getting sucked from the siphon area toward the wizard — bumped up
+    // (count + glow) so the pull reads clearly against the brighter wand light.
     const colorFn = COLOR_FN[s.material];
-    const streaks = 2 + (Math.random() < 0.5 ? 1 : 0);
+    const streaks = 4 + (Math.random() < 0.5 ? 2 : 0);
     for (let j = 0; j < streaks; j++) {
       const a = Math.random() * Math.PI * 2;
       const r = Math.random() * SIPHON_RADIUS;
       const px = mx + Math.cos(a) * r, py = my + Math.sin(a) * r;
       const dx = player.x - px, dy = (player.y - 9) - py;
       const d = Math.hypot(dx, dy) || 1;
-      const spd = 2.2 + Math.random() * 1.2;
+      const spd = 2.6 + Math.random() * 1.4;
       ctx.particles.spawn(px, py, (dx / d) * spd, (dy / d) * spd, null, colorFn(),
-        10 + Math.floor(Math.random() * 8), { grav: 0, glow: 0.8 });
+        12 + Math.floor(Math.random() * 8), { grav: 0, glow: 1.6 });
     }
     if (ctx.state.frameCount % 8 === 0) ctx.audio.noiseBurst(0.08, 900, 0.05, true);
     ctx.telemetry.count('flask.siphon.' + this.materialName(ctx, s.material), taken);

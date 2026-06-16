@@ -16,6 +16,7 @@ let missingWaveE = 0;
 let totalPrefabs = 0;
 let missingPrefabs = 0;
 let missingMachines = 0;
+let missingSpellLabs = 0;
 
 async function auditSeed(seed) {
   let lastError = null;
@@ -62,7 +63,8 @@ async function auditSeed(seed) {
               Object.values(braziersByDoor).some((n) => n >= 3);
             const placedPrefabs = rt.placedPrefabs ?? [];
             const machines = placedPrefabs.filter((p) => String(p.id ?? '').startsWith('machine-')).length;
-            out.push({ id, waveE, issues, buried, prefabs: placedPrefabs.length, machines });
+            const spellLab = id !== 'd1' || !!rt.spellLab;
+            out.push({ id, waveE, spellLab, issues, buried, prefabs: placedPrefabs.length, machines });
           }
           return out;
         },
@@ -87,15 +89,17 @@ for (const seed of seeds) {
   }
 
   for (const lv of results) {
-    const bad = lv.issues.length > 0 || !lv.waveE;
+    const bad = lv.issues.length > 0 || !lv.waveE || !lv.spellLab;
     if (lv.issues.length) failures++;
     if (!lv.waveE) missingWaveE++;
+    if (!lv.spellLab) missingSpellLabs++;
     if (lv.prefabs <= 0) missingPrefabs++;
     if (lv.machines <= 0) missingMachines++;
     totalPrefabs += lv.prefabs;
     console.log(
       `${bad || lv.prefabs <= 0 || lv.machines <= 0 ? 'FAIL' : ' ok '} seed=${seed} ${lv.id} prefabs=${lv.prefabs} machines=${lv.machines}` +
         (lv.waveE ? '' : ' [NO WAVE-E LOCK]') +
+        (lv.spellLab ? '' : ' [NO SPELL LAB]') +
         (lv.prefabs <= 0 ? ' [NO PREFAB]' : '') +
         (lv.machines <= 0 ? ' [NO MACHINE]' : '') +
         (lv.issues.length ? ' unreachable: ' + lv.issues.join(' ') : '') +
@@ -112,8 +116,8 @@ if (totalPrefabs === 0) {
   console.error('PREFAB FLOOR FAILED: 0 prefabs placed across the entire run');
 }
 console.log(
-  failures + missingWaveE + missingPrefabs + missingMachines === 0
+  failures + missingWaveE + missingPrefabs + missingMachines + missingSpellLabs === 0
     ? `\nFINDABILITY OK: ${seeds.length} seeds x ${DEPTHS.length} depths clean, ${totalPrefabs} prefabs placed`
-    : `\nFINDABILITY FAILED: ${failures} reachability failures, ${missingWaveE} missing locks, ${missingPrefabs} missing prefabs, ${missingMachines} missing machines`,
+    : `\nFINDABILITY FAILED: ${failures} reachability failures, ${missingWaveE} missing locks, ${missingSpellLabs} missing spell labs, ${missingPrefabs} missing prefabs, ${missingMachines} missing machines`,
 );
-process.exit(failures + missingWaveE + missingPrefabs + missingMachines === 0 ? 0 : 1);
+process.exit(failures + missingWaveE + missingPrefabs + missingMachines + missingSpellLabs === 0 ? 0 : 1);

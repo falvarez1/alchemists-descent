@@ -1,8 +1,23 @@
 # Wand Mechanics And Progression Clarity Plan
 
-Status: proposal, not implemented.
-Date: 2026-06-15.
+Status: implemented through Phase 6; bench pause/slow-time remains a playtest decision.
+Date: 2026-06-15. Updated: 2026-06-16.
 Scope: play-mode wand readability, first-run teaching, spell-card rewards, and the first small modifier/content slice. Builder authoring support is out of scope except where validation probes need test fixtures.
+
+## Completion Update
+
+Implemented:
+
+- Phase 1: wand sentence view, bench previews, malformed-deck warnings, HUD next-cast caption, inspect panel, and slot relationship highlighting.
+- Phase 2: guaranteed D1 Spell Lab with real-cell teaching stations, a safe tome reward, minimap marker, and validation probe.
+- Phase 3: choice-of-3 tome and Sanctum Lost Pages card offers, staged reward pools, card tags, discovered-card persistence, and localStorage failure handling.
+- Phase 4: `watertrail`, `oiltrail`, `electriccharge`, `critwet`, and `shorthoming` modifier slice with projectile mod state, visual/terrain effects, god/review access, normal reward-pool access, and probes.
+- Phase 5: bench card filters, inspect-panel recipe hints, metadata coverage, and god-mode review primer loadouts.
+- Phase 6: discovered Refuge minimap marker, Refuge direction/ping cues, card-grant bench objective nudges, and contextual objective text.
+
+Deferred:
+
+- Bench pause or slow-time behavior. The current rule remains live simulation under the bench until playtesting says otherwise.
 
 ## Problem
 
@@ -210,7 +225,7 @@ Implementation tasks:
   - `Trigger` wants a payload group after the host projectile
 - Add optional review-only starter loadouts for testing teaching builds:
   - Wet Crit Primer: `watertrail`, `critwet`, `spark`
-  - Fuse Primer: `oiltrail`, `flame`
+  - Fuse Primer: `oiltrail`, `spark`, `flame`
   - Trigger Primer: `trigger`, `spark`, `bomb`
 - Keep recipe hints descriptive, not prescriptive. The player should still experiment.
 

@@ -44,7 +44,7 @@ export class Lightning implements LightningApi {
           for (let j = 0; j < 5; j++) {
             const sx = clamp(gx + ((Math.random() * 5) | 0) - 2, 0, WIDTH - 1);
             const sy = clamp(gy + ((Math.random() * 5) | 0) - 2, 0, HEIGHT - 1);
-            world.charge[world.idx(sx, sy)] = 8;
+            world.setChargeAt(world.idx(sx, sy), 8);
           }
           struck = true;
           break;
@@ -54,7 +54,7 @@ export class Lightning implements LightningApi {
 
       const c = world.types[world.idx(gx, gy)];
       if (c !== Cell.Empty && !isGas(c) && c !== Cell.Fire) {
-        world.charge[world.idx(gx, gy)] = 20;
+        world.setChargeAt(world.idx(gx, gy), 20);
         ctx.explosions.trigger(x, y, 4);
         this.enemyIndex.syncLive(ctx.enemies);
         struck = true;

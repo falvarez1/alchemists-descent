@@ -1,7 +1,7 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, ExplosionApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
-import { crystalColor, EMPTY_COLOR, fireColor, glassColor, smokeColor } from '@/sim/colors';
+import { crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
 
 /**
  * Explosions. Ported from triggerExplosion (noita-sandbox.html lines 718-800).
@@ -9,7 +9,7 @@ import { crystalColor, EMPTY_COLOR, fireColor, glassColor, smokeColor } from '@/
 export class Explosions implements ExplosionApi {
   constructor(private ctx: Ctx) {}
 
-  trigger(cx: number, cy: number, radius: number): void {
+  trigger(cx: number, cy: number, radius: number, options: { enemyDamageMul?: number } = {}): void {
     const ctx = this.ctx;
     const world = ctx.world;
     cx = Math.floor(cx);
@@ -92,18 +92,15 @@ export class Explosions implements ExplosionApi {
               );
             }
             if (Math.random() < 0.3) {
-              world.types[ni] = Cell.Fire;
+              world.replaceCellAt(ni, Cell.Fire, fireColor());
               world.life[ni] = Math.floor(Math.random() * 25) + 10;
-              world.colors[ni] = fireColor();
             } else if (Math.random() < 0.2) {
-              world.types[ni] = Cell.Smoke;
+              world.replaceCellAt(ni, Cell.Smoke, smokeColor());
               world.life[ni] = Math.floor(Math.random() * 30) + 20;
-              world.colors[ni] = smokeColor();
             } else {
-              world.types[ni] = Cell.Empty;
-              world.colors[ni] = EMPTY_COLOR;
+              world.clearCellAt(ni);
             }
-            if (Math.random() < 0.4) world.charge[ni] = 4;
+            if (Math.random() < 0.4) world.setChargeAt(ni, 4);
           }
         }
       }
@@ -122,8 +119,7 @@ export class Explosions implements ExplosionApi {
         const t = world.types[ni];
         // Heat fuses sand at the blast rim into glass
         if (t === Cell.Sand && Math.random() < 0.4) {
-          world.types[ni] = Cell.Glass;
-          world.colors[ni] = glassColor();
+          world.replaceCellAt(ni, Cell.Glass, glassColor());
           continue;
         }
         if (t === Cell.Empty || t === Cell.Metal || !blocksEntity(t) || ctx.physics.cellBlocks(nx, ny))
@@ -139,8 +135,7 @@ export class Explosions implements ExplosionApi {
             70,
           );
         }
-        world.types[ni] = Cell.Empty;
-        world.colors[ni] = EMPTY_COLOR;
+        world.clearCellAt(ni);
       }
     }
 
@@ -157,7 +152,7 @@ export class Explosions implements ExplosionApi {
       const d = Math.sqrt(dx * dx + dy * dy);
       if (d < radius * 1.6) {
         const dmg = Math.max(4, (1 - d / (radius * 1.6)) * radius * 2.4);
-        ctx.enemyCtl.damage(e, dmg, (dx / (d || 1)) * 2.2, -1.6);
+        ctx.enemyCtl.damage(e, dmg * (options.enemyDamageMul ?? 1), (dx / (d || 1)) * 2.2, -1.6);
       }
     }
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
@@ -169,5 +164,10 @@ export class Explosions implements ExplosionApi {
         ctx.playerCtl.damage(dmg, (dx / (d || 1)) * 2.4, -1.8, 'explosion');
       }
     }
+    // Blasts toss loose rigid bodies (crates, debris). Generous reach + a flat
+    // base so even a small spark blast gives a satisfying shove, scaling up to a
+    // proper launch for bombs.
+    ctx.rigidBodies.applyRadialImpulse(cx, cy, radius * 1.8, 2.5 + radius * 0.08);
+    ctx.vineStrands?.applyRadialImpulse(cx, cy, radius * 1.8, 1.4 + radius * 0.05);
   }
 }

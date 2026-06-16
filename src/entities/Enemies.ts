@@ -2,12 +2,11 @@ import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import type { CardId, Critter, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
-import { makePickup, POTION_KINDS } from '@/game/Pickups';
+import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { Cell } from '@/sim/CellType';
 import {
   acidColor,
   bloodColor,
-  EMPTY_COLOR,
   fireColor,
   goldColor,
   iceColor,
@@ -21,6 +20,28 @@ import {
 import { splatterStain } from '@/sim/stains';
 
 // ===================== Enemies =====================
+interface CellCandidate {
+  x: number;
+  y: number;
+  d2: number;
+}
+
+function addNearestCandidate(list: CellCandidate[], cap: number, x: number, y: number, d2: number): void {
+  if (list.length < cap) {
+    list.push({ x, y, d2 });
+    return;
+  }
+  let worst = 0;
+  let worstD2 = list[0].d2;
+  for (let i = 1; i < list.length; i++) {
+    if (list[i].d2 > worstD2) {
+      worst = i;
+      worstD2 = list[i].d2;
+    }
+  }
+  if (d2 < worstD2) list[worst] = { x, y, d2 };
+}
+
 export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   slime: { hp: 48, halfW: 5, h: 8, bounty: 30, gore: Cell.Slime, goreFn: slimeColor },
   imp: { hp: 40, halfW: 5, h: 12, bounty: 50, gore: Cell.Fire, goreFn: fireColor },
@@ -45,6 +66,7 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
  *  Mid-size foes (~slime/spitter) sit near 1×; a bat barely spatters, a golem
  *  or colossus gushes. The factor is clamped to a sane band (see goreCount). */
 const GORE_REF_AREA = 50;
+const ENV_DAMAGE_FEEDBACK_COOLDOWN = 12;
 
 /** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
 const STATUS_IMMUNE: Partial<
@@ -196,12 +218,35 @@ export class Enemies implements EnemyControlApi {
     if (e.hp <= 0) this.kill(e, kx, ky);
   }
 
+  private removeEnemyAt(index: number): Enemy | undefined {
+    const enemies = this.ctx.enemies;
+    if (!Number.isInteger(index) || index < 0 || index >= enemies.length) return undefined;
+    const removed = enemies[index];
+    const last = enemies.length - 1;
+    if (index !== last) enemies[index] = enemies[last];
+    enemies.pop();
+    return removed;
+  }
+
+  private removeEnemy(e: Enemy): Enemy | undefined {
+    const idx = this.ctx.enemies.indexOf(e);
+    return idx === -1 ? undefined : this.removeEnemyAt(idx);
+  }
+
+  private killAt(index: number, e: Enemy, kx: number, ky: number): void {
+    const removed = this.ctx.enemies[index] === e ? this.removeEnemyAt(index) : this.removeEnemy(e);
+    if (!removed) return;
+    this.finishKill(e, kx, ky);
+  }
+
   kill(e: Enemy, kx: number, ky: number): void {
+    if (!this.removeEnemy(e)) return;
+    this.finishKill(e, kx, ky);
+  }
+
+  private finishKill(e: Enemy, kx: number, ky: number): void {
     const ctx = this.ctx;
     const def = this.defs[e.kind];
-    const idx = ctx.enemies.indexOf(e);
-    if (idx === -1) return;
-    ctx.enemies.splice(idx, 1);
     // Bombers go out the only way they know how
     if (e.kind === 'bomber') {
       ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(Math.random() * 3));
@@ -379,7 +424,7 @@ export class Enemies implements EnemyControlApi {
     const player = ctx.player;
     const ex = Math.floor(e.x),
       ey = Math.floor(e.y) - 7;
-    const found: Array<{ x: number; y: number; d2: number }> = [];
+    const found: CellCandidate[] = [];
     for (let dy = -40; dy <= 40; dy++) {
       for (let dx = -40; dx <= 40; dx++) {
         const d2 = dx * dx + dy * dy;
@@ -389,7 +434,7 @@ export class Enemies implements EnemyControlApi {
         if (!world.inBounds(nx, ny)) continue;
         const t = world.types[world.idx(nx, ny)];
         if (t === Cell.Sand || t === Cell.Gold || t === Cell.Gunpowder) {
-          found.push({ x: nx, y: ny, d2 });
+          addNearestCandidate(found, 14, nx, ny, d2);
         }
       }
     }
@@ -400,8 +445,7 @@ export class Enemies implements EnemyControlApi {
       const ci = world.idx(c.x, c.y);
       const t = world.types[ci];
       const color = world.colors[ci];
-      world.types[ci] = Cell.Empty;
-      world.colors[ci] = EMPTY_COLOR;
+      world.clearCellAt(ci);
       const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (Math.random() - 0.5) * 0.24;
       const spd = 3.6 + Math.random() * 0.8;
       ctx.particles.spawn(c.x, c.y, Math.cos(aim) * spd, Math.sin(aim) * spd, t, color, 170, {
@@ -428,7 +472,7 @@ export class Enemies implements EnemyControlApi {
     const player = ctx.player;
     const ex = Math.floor(e.x),
       ey = Math.floor(e.y) - 6;
-    const found: Array<{ x: number; y: number; d2: number }> = [];
+    const found: CellCandidate[] = [];
     for (let dy = -26; dy <= 26; dy += 2) {
       for (let dx = -26; dx <= 26; dx += 2) {
         const d2 = dx * dx + dy * dy;
@@ -436,7 +480,7 @@ export class Enemies implements EnemyControlApi {
         const nx = ex + dx,
           ny = ey + dy;
         if (!world.inBounds(nx, ny)) continue;
-        if (world.types[world.idx(nx, ny)] === Cell.Water) found.push({ x: nx, y: ny, d2 });
+        if (world.types[world.idx(nx, ny)] === Cell.Water) addNearestCandidate(found, 12, nx, ny, d2);
       }
     }
     found.sort((a, b) => a.d2 - b.d2);
@@ -445,8 +489,7 @@ export class Enemies implements EnemyControlApi {
       const c = found[k];
       const ci = world.idx(c.x, c.y);
       const color = world.colors[ci];
-      world.types[ci] = Cell.Empty;
-      world.colors[ci] = EMPTY_COLOR;
+      world.clearCellAt(ci);
       const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (Math.random() - 0.5) * 0.2;
       const spd = 3.2 + Math.random() * 0.9;
       ctx.particles.spawn(c.x, c.y, Math.cos(aim) * spd, Math.sin(aim) * spd - 0.4, Cell.Water, color, 170, {
@@ -461,7 +504,7 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
-  private enemyEnvironmentDamage(e: Enemy): void {
+  private enemyEnvironmentDamage(e: Enemy, index?: number): void {
     const ctx = this.ctx;
     const def = this.defs[e.kind];
     let dmg = 0;
@@ -473,7 +516,17 @@ export class Enemies implements EnemyControlApi {
       if ((c === Cell.Fire || c === Cell.Lava) && e.kind !== 'imp') dmg += c === Cell.Lava ? 1.6 : 0.7;
       if (c === Cell.Acid && e.kind !== 'acidslime') dmg += 0.9;
     }
-    if (dmg > 0) this.damage(e, dmg, 0, 0);
+    if (dmg <= 0) return;
+    if ((e.envDamageFeedbackCd ?? 0) <= 0) {
+      e.envDamageFeedbackCd = ENV_DAMAGE_FEEDBACK_COOLDOWN;
+      e.flash = Math.max(e.flash, 2);
+      ctx.particles.burst(e.x, e.y - 5, 3, Cell.Smoke, smokeColor, 0.7, { grav: 0.02 });
+    }
+    e.hp -= dmg;
+    if (e.hp <= 0) {
+      if (index === undefined) this.kill(e, 0, 0);
+      else this.killAt(index, e, 0, 0);
+    }
   }
 
   update(ctx: Ctx): void {
@@ -491,19 +544,20 @@ export class Enemies implements EnemyControlApi {
       if (e.x < sim.x0 - 60 || e.x > sim.x1 + 60 || e.y < sim.y0 - 60 || e.y > sim.y1 + 60)
         continue;
       if (e.flash > 0) e.flash--;
+      if ((e.envDamageFeedbackCd ?? 0) > 0) e.envDamageFeedbackCd = (e.envDamageFeedbackCd ?? 0) - 1;
       e.timer++;
       if (e.attackCd > 0) e.attackCd--;
-      this.enemyEnvironmentDamage(e);
+      this.enemyEnvironmentDamage(e, i);
       if (enemies[i] !== e) continue; // died from environment
 
       // Sim-sampled statuses (DESIGN pillar 5/9): every 2nd frame the cells
       // touching the body ARE the status — damage lands straight on hp (no
       // flash), and a frozen body's horizontal speed is scaled once per sample.
       if (e.timer % 2 === 0) {
-        const eff = sampleAndTickStatus(ctx, e, def.halfW, def.h, STATUS_IMMUNE[e.kind]);
+        const eff = sampleAndTickStatus(ctx, e, def.halfW, def.h, STATUS_IMMUNE[e.kind], 2);
         if (eff.damage > 0) e.hp -= eff.damage;
         if (e.hp <= 0) {
-          this.kill(e, 0, 0);
+          this.killAt(i, e, 0, 0);
           continue;
         }
         if (eff.slowFactor !== 1) e.vx *= eff.slowFactor;
@@ -613,8 +667,7 @@ export class Enemies implements EnemyControlApi {
             if (!ctx.world.inBounds(tx, ty)) break;
             const ti = ctx.world.idx(tx, ty);
             if (ctx.world.types[ti] === Cell.Empty) {
-              ctx.world.types[ti] = Cell.Acid;
-              ctx.world.colors[ti] = acidColor();
+              ctx.world.replaceCellAt(ti, Cell.Acid, acidColor());
               break;
             }
           }
@@ -645,7 +698,7 @@ export class Enemies implements EnemyControlApi {
           ctx.particles.burst(e.x, e.y - 3, 14, Cell.Slime, slimeColor, 2.0);
           ctx.audio.squelch();
           ctx.events.emit('toast', { text: 'AN EGG CLUTCH HATCHES' });
-          enemies.splice(i, 1);
+          this.removeEnemyAt(i);
           continue;
         }
       } else if (e.kind === 'bat') {
@@ -768,7 +821,7 @@ export class Enemies implements EnemyControlApi {
           e.fusing = (e.fusing ?? 0) - 1;
           e.vx *= 0.5;
           if (e.fusing === 0) {
-            this.kill(e, 0, 0);
+            this.killAt(i, e, 0, 0);
             continue;
           }
         } else {
@@ -888,12 +941,10 @@ export class Enemies implements EnemyControlApi {
               const ci = ctx.world.idx(nx, ny);
               const c = ctx.world.types[ci];
               if (c === Cell.Water) {
-                ctx.world.types[ci] = Cell.Ice;
-                ctx.world.colors[ci] = iceColor();
+                ctx.world.replaceCellAt(ci, Cell.Ice, iceColor());
                 frozen++;
               } else if (c === Cell.Lava && Math.random() < 0.1) {
-                ctx.world.types[ci] = Cell.Stone;
-                ctx.world.colors[ci] = stoneColor();
+                ctx.world.replaceCellAt(ci, Cell.Stone, stoneColor());
                 frozen++;
               }
             }
@@ -1064,7 +1115,7 @@ export class Enemies implements EnemyControlApi {
           e.hp -= 1.1;
           e.flash = Math.max(e.flash, 2);
           if (e.hp <= 0) {
-            this.kill(e, 0, 0);
+            this.killAt(i, e, 0, 0);
             continue;
           }
           e.attackCd = Math.max(e.attackCd, 30);
@@ -1302,8 +1353,7 @@ export class Enemies implements EnemyControlApi {
                 ctx.world.colors[ci],
                 80,
               );
-              ctx.world.types[ci] = Cell.Empty;
-              ctx.world.colors[ci] = EMPTY_COLOR;
+              ctx.world.clearCellAt(ci);
             }
           }
         }

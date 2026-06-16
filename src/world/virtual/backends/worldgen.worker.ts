@@ -42,6 +42,10 @@ async function handleMessage(msg: VirtualWorkerRequest): Promise<void> {
       let chunks = 0;
       let generatedBytes = 0;
       let transferBytes = 0;
+      let materialCells = 0;
+      let liquidCells = 0;
+      let glowCells = 0;
+      let sceneCount = 0;
       let sinceYield = 0;
       for (const [cx, cy] of sortedWindowCoords(msg.req)) {
         if (canceled.has(msg.req.jobId)) {
@@ -54,6 +58,10 @@ async function handleMessage(msg: VirtualWorkerRequest): Promise<void> {
         chunks++;
         generatedBytes += transferable.chunk.metrics.generatedBytes;
         transferBytes += transferable.chunk.metrics.transferBytes;
+        materialCells += transferable.chunk.metrics.materialCells;
+        liquidCells += transferable.chunk.metrics.liquidCells;
+        glowCells += transferable.chunk.metrics.glowCells;
+        sceneCount += transferable.chunk.metrics.sceneCount;
         worker.postMessage({ kind: 'chunk', jobId: msg.req.jobId, chunk: transferable.chunk }, transferable.transfer);
         sinceYield++;
         if (sinceYield >= 2) {
@@ -65,7 +73,7 @@ async function handleMessage(msg: VirtualWorkerRequest): Promise<void> {
       worker.postMessage({
         kind: 'windowDone',
         jobId: msg.req.jobId,
-        metrics: { chunks, generatedMs: now() - start, generatedBytes, transferBytes, bytes: generatedBytes },
+        metrics: { chunks, generatedMs: now() - start, generatedBytes, transferBytes, materialCells, liquidCells, glowCells, sceneCount, bytes: generatedBytes },
       });
     }
   } catch (err) {

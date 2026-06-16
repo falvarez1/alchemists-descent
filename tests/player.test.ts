@@ -2,10 +2,24 @@ import { describe, expect, it } from 'vitest';
 
 import { EventBus } from '@/core/events';
 import type { Ctx, LevelRuntime } from '@/core/types';
-import { PlayerControl, createPlayer } from '@/entities/Player';
+import { PlayerControl, climbBrushesCell, createPlayer } from '@/entities/Player';
+import { sampleAndTickStatus } from '@/entities/status';
+import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 
 describe('player death economy', () => {
+  it('halves incoming damage while stoneskin is active', () => {
+    const player = createPlayer();
+    const control = new PlayerControl({ player } as unknown as Ctx) as unknown as {
+      reduceIncomingDamage(amount: number, minimum?: number): number;
+    };
+
+    expect(control.reduceIncomingDamage(8)).toBe(8);
+    player.status.stoneskin = 30;
+    expect(control.reduceIncomingDamage(8)).toBe(4);
+    expect(control.reduceIncomingDamage(0.4, 0.5)).toBe(0.5);
+  });
+
   it('spills 15 percent of carried gold as recoverable pickups', () => {
     const player = createPlayer();
     player.x = 100;
@@ -116,5 +130,29 @@ describe('player death economy', () => {
     expect(player.status.burning).toBe(0);
     expect(player.status.electrified).toBe(0);
     expect(player.status.swift).toBe(70);
+  });
+
+  it('only lets wall climbing brush soft growth and debris cells', () => {
+    expect(climbBrushesCell(Cell.Snow)).toBe(true);
+    expect(climbBrushesCell(Cell.Ash)).toBe(true);
+    expect(climbBrushesCell(Cell.Moss)).toBe(true);
+    expect(climbBrushesCell(Cell.Fungus)).toBe(true);
+    expect(climbBrushesCell(Cell.Gold)).toBe(false);
+    expect(climbBrushesCell(Cell.Stone)).toBe(false);
+    expect(climbBrushesCell(Cell.Wood)).toBe(false);
+  });
+
+  it('ticks sampled status timers by elapsed frames', () => {
+    const player = createPlayer();
+    player.status.swift = 5;
+    const ctx = {
+      world: new World(),
+      state: { frameCount: 2 },
+      particles: { spawn: () => undefined },
+    } as unknown as Ctx;
+
+    sampleAndTickStatus(ctx, player, 4, 17, undefined, 2);
+
+    expect(player.status.swift).toBe(3);
   });
 });

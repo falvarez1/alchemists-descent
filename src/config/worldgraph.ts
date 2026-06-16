@@ -24,6 +24,15 @@ export const LEVELS: Record<string, LevelDef> = {
     nextLevelId: null,
     branch: true,
   },
+  // Dev/test arena for the rigid-body physics (selectable from the level
+  // dropdown in test mode). Not part of the campaign spine; never autosaved.
+  'physics-test': {
+    id: 'physics-test',
+    name: 'PHYSICS TEST ARENA',
+    biome: 'earthen',
+    depth: 0,
+    nextLevelId: null,
+  },
 };
 
 export const START_LEVEL = 'd1';

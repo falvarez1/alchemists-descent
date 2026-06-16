@@ -61,9 +61,13 @@ export function resetCombatTransients(ctx: Ctx, options: CombatTransientResetOpt
   if (opts.projectiles === 'clear-all') {
     ctx.projectiles.length = 0;
   } else if (opts.projectiles === 'keep-friendly') {
-    const kept: Projectile[] = ctx.projectiles.filter((projectile) => !projectile.hostile && projectile !== charging);
-    ctx.projectiles.length = 0;
-    ctx.projectiles.push(...kept);
+    let write = 0;
+    for (let read = 0; read < ctx.projectiles.length; read++) {
+      const projectile = ctx.projectiles[read];
+      if (projectile.hostile || projectile === charging) continue;
+      ctx.projectiles[write++] = projectile;
+    }
+    ctx.projectiles.length = write;
   }
 
   if (opts.shockwaves) ctx.shockwaves.length = 0;

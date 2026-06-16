@@ -20,7 +20,7 @@ function expectedPixel(x, y, width, height) {
   return [r, g, b, 255];
 }
 
-function readPngRgba(filePath) {
+export function readPngRgba(filePath) {
   const buffer = readFileSync(filePath);
   if (!buffer.subarray(0, pngSignature.length).equals(pngSignature)) {
     throw new Error(`Not a PNG file: ${filePath}`);
@@ -95,7 +95,7 @@ function readPngRgba(filePath) {
   return { width, height, data: rgba };
 }
 
-function sampleLogicalPixels(image, logicalWidth, logicalHeight) {
+export function sampleLogicalPixels(image, logicalWidth, logicalHeight) {
   const logical = new Uint8Array(logicalWidth * logicalHeight * 4);
   const scaleX = image.width / logicalWidth;
   const scaleY = image.height / logicalHeight;
@@ -144,7 +144,50 @@ function comparePixels(readback, width, height) {
   };
 }
 
-function summarizeImage(readback) {
+export function compareRgbaPixels(expected, actual, tolerance = 1, width = null) {
+  if (expected.length !== actual.length) {
+    throw new Error(`RGBA buffers differ in length: expected=${expected.length}, actual=${actual.length}`);
+  }
+  let maxDelta = 0;
+  let mismatches = 0;
+  let exact = 0;
+  let sumDelta = 0;
+  const samples = [];
+  for (let i = 0; i < expected.length; i += 4) {
+    const d0 = Math.abs(expected[i] - actual[i]);
+    const d1 = Math.abs(expected[i + 1] - actual[i + 1]);
+    const d2 = Math.abs(expected[i + 2] - actual[i + 2]);
+    const d3 = Math.abs(expected[i + 3] - actual[i + 3]);
+    const pixelMax = Math.max(d0, d1, d2, d3);
+    if (pixelMax === 0) exact++;
+    if (pixelMax > tolerance) {
+      mismatches++;
+      if (samples.length < 12) {
+        const pixel = i / 4;
+        samples.push({
+          x: width ? pixel % width : pixel,
+          y: width ? Math.floor(pixel / width) : 0,
+          expected: Array.from(expected.slice(i, i + 4)),
+          actual: Array.from(actual.slice(i, i + 4)),
+          maxDelta: pixelMax,
+        });
+      }
+    }
+    maxDelta = Math.max(maxDelta, pixelMax);
+    sumDelta += d0 + d1 + d2 + d3;
+  }
+  const pixels = expected.length / 4;
+  return {
+    maxDelta,
+    mismatches,
+    mismatchPct: (mismatches / pixels) * 100,
+    exactPct: (exact / pixels) * 100,
+    meanDelta: sumDelta / (pixels * 4),
+    samples,
+  };
+}
+
+export function summarizeImage(readback) {
   let nonBlackPixels = 0;
   let maxChannel = 0;
   let sumRgb = 0;

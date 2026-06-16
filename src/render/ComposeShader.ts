@@ -488,7 +488,7 @@ export class GpuCompose {
     );
     this.lightTex.minFilter = this.lightTex.magFilter = THREE.NearestFilter;
 
-    // bloomWeight LUT by type id — re-fed every frame (live-tunable params).
+    // bloomWeight LUT by type id — re-fed only when live-tuned params change.
     this.lutTex = new THREE.DataTexture(
       this.lutData,
       256,
@@ -497,6 +497,7 @@ export class GpuCompose {
       THREE.FloatType,
     );
     this.lutTex.minFilter = this.lutTex.magFilter = THREE.NearestFilter;
+    this.lutTex.needsUpdate = true;
 
     for (let i = 0; i < 5; i++) this.backdropTex.push(this.createBackdropTexture(layers.backdropLayers[i]));
     for (let i = 0; i < 5; i++) this.backdropVersions[i] = layers.backdropLayers[i]?.version ?? -1;
@@ -576,7 +577,7 @@ export class GpuCompose {
   ): OverlaySurface {
     const camX = ctx.camera.renderX;
     const camY = ctx.camera.renderY;
-    this.packWindow(ctx.world, camX, camY);
+    this.packWindow(ctx.world, camX, camY, ctx.shockwaves.length > 0 || lenses.length > 0);
     this.winTex.needsUpdate = true;
 
     if (lightRebuilt) this.uploadLight(light);
@@ -763,13 +764,18 @@ export class GpuCompose {
    * distortion that stays inside the pad. Field loads are hoisted — V8 does
    * not hoist them past the call boundary on its own (perf lesson).
    */
-  private packWindow(world: World, camX: number, camY: number): void {
+  private packWindow(world: World, camX: number, camY: number, fullWindow: boolean): void {
     const types = world.types;
     const colors = world.colors;
     const charge = world.charge;
     const out = this.win32;
     const x0 = camX - COMPOSE_PAD;
     const y0 = camY - COMPOSE_PAD;
+    this.winTex.clearUpdateRanges();
+    if (!fullWindow) {
+      this.packWindowRows(types, colors, charge, camX, camY, COMPOSE_PAD - 1, VIEW_H + 1);
+      return;
+    }
     // Columns left of / right of the world edge use a clamped repeat value,
     // so the hot middle loop runs branch-free.
     const leftN = Math.min(WIN_W, Math.max(0, -x0));
@@ -800,6 +806,41 @@ export class GpuCompose {
     }
   }
 
+  private packWindowRows(
+    types: Uint8Array,
+    colors: Uint32Array,
+    charge: Uint8Array,
+    camX: number,
+    camY: number,
+    startRow: number,
+    rowCount: number,
+  ): void {
+    const out = this.win32;
+    const col0 = COMPOSE_PAD;
+    const col1 = COMPOSE_PAD + VIEW_W;
+    const x0 = camX;
+    for (let row = startRow; row < startRow + rowCount; row++) {
+      let wy = camY + row - COMPOSE_PAD;
+      if (wy < 0) wy = 0;
+      else if (wy >= HEIGHT) wy = HEIGHT - 1;
+      const rowBase = wy * WIDTH;
+      let ci = rowBase + x0;
+      let o = row * WIN_W + col0;
+      for (let col = col0; col < col1; col++, ci++, o++) {
+        let sample = ci;
+        if (sample < rowBase) sample = rowBase;
+        else if (sample >= rowBase + WIDTH) sample = rowBase + WIDTH - 1;
+        const c = colors[sample];
+        out[o] =
+          ((c >>> 16) & 0xff) |
+          (c & 0xff00) |
+          ((c & 0xff) << 16) |
+          ((types[sample] | (charge[sample] !== 0 ? 0x80 : 0)) << 24);
+      }
+      this.winTex.addUpdateRange((row * WIN_W + col0) * 4, VIEW_W * 4);
+    }
+  }
+
   private uploadLight(light: LightField): void {
     const { lightR, lightG, lightB } = light;
     const out = this.lightData;
@@ -814,10 +855,15 @@ export class GpuCompose {
 
   private updateLut(materials: Record<number, MaterialParams>): void {
     const lut = this.lutData;
+    let changed = false;
     for (let t = 0; t < 256; t++) {
       const m = materials[t];
-      lut[t] = m?.bloomWeight !== undefined ? m.bloomWeight : 0;
+      const bloomWeight = m?.bloomWeight !== undefined ? m.bloomWeight : 0;
+      if (lut[t] === bloomWeight) continue;
+      lut[t] = bloomWeight;
+      changed = true;
     }
+    if (!changed) return;
     this.lutTex.needsUpdate = true;
   }
 }

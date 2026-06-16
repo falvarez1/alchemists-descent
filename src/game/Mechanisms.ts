@@ -509,9 +509,11 @@ function clampZone(zone: { x0: number; y0: number; x1: number; y1: number }): {
  * GENERIC SENSOR: a bounded zone read with a typed reading and a latch mode.
  * The visible Wave E sensors (plate/scale/buoy/brazier/chargelatch) stay
  * preferred for hand-placed puzzles; this one serves generated machines and
- * advanced authoring. Stamps no cells (no body — it cannot break).
+ * advanced authoring. Its anchor is a small physical node so destruction
+ * triggers the same fail-open behavior as other machine triggers.
  */
 export function makeSensor(
+  world: World,
   list: Mechanism[],
   x: number,
   y: number,
@@ -546,6 +548,11 @@ export function makeSensor(
     m.materialFilter = opts.materialFilter.slice(0, 8);
   }
   list.push(m);
+  if (world.inBounds(x, y)) {
+    const i = world.idx(x, y);
+    world.replaceCellAt(i, Cell.Metal, packRGB(72, 132, 128));
+    m.body = [[x, y]];
+  }
   return m;
 }
 

@@ -9,7 +9,7 @@ import type {
 } from '@/render/pixels';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
-import { PICKUP_COLOR } from '@/game/Pickups';
+import { PICKUP_COLOR } from '@/core/pickupDefs';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
@@ -177,13 +177,34 @@ export class FrameComposer implements PixelSurface {
         ctx.state.postFx.gpuCompose = false;
         ctx.events.emit('toast', { text: 'GPU COMPOSE COMMIT FAILED - CPU FALLBACK ACTIVE' });
         console.warn('GPU compose disabled after commit failure', error);
+        const failedOverlay = this.overlay;
         this.overlay = null;
         this.composeTerrainCpu(ctx, lenses);
-        this.composeOverlays(ctx);
+        this.compositeOverlayToCpu(failedOverlay);
         this.target.markTextureDirty();
       }
     } else {
       this.target.markTextureDirty();
+    }
+  }
+
+  private compositeOverlayToCpu(overlay: OverlaySurface): void {
+    const src = overlay.data;
+    const dst = this.target.pixelData;
+    for (let i = 0; i < src.length; i += 4) {
+      const r = src[i];
+      const g = src[i + 1];
+      const b = src[i + 2];
+      if (src[i + 3] > 0.5) {
+        dst[i] = r;
+        dst[i + 1] = g;
+        dst[i + 2] = b;
+        dst[i + 3] = 1;
+      } else if (r !== 0 || g !== 0 || b !== 0) {
+        dst[i] += r;
+        dst[i + 1] += g;
+        dst[i + 2] += b;
+      }
     }
   }
 
@@ -478,6 +499,8 @@ export class FrameComposer implements PixelSurface {
     this.drawMechanismsAndRunes(ctx);
     this.drawCritters(ctx);
     this.drawFlaskEffects(ctx);
+    this.drawRigidBodies(ctx);
+    this.drawVineStrands(ctx);
 
     // Entities on top
     for (const e of ctx.enemies) this.drawEnemy(this, this.light, ctx, e);
@@ -485,6 +508,99 @@ export class FrameComposer implements PixelSurface {
     drawDigBeam(this, ctx);
 
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
+  }
+
+  /** Rigid bodies: rotated boxes and circles, flat-shaded with a darker rim for
+   *  read and (on circles) a radial spoke so spin is visible. Lit by the ambient
+   *  field like the rest of the world. */
+  private drawRigidBodies(ctx: Ctx): void {
+    if (ctx.state.mode !== 'play') return;
+    for (const b of ctx.rigidBodies.bodies) {
+      const r = ((b.color >> 16) & 0xff) / 255;
+      const g = ((b.color >> 8) & 0xff) / 255;
+      const bl = (b.color & 0xff) / 255;
+      const lt = this.light.sample(b.x, b.y);
+      const lr = Math.max(0.06, lt.r);
+      const lg = Math.max(0.06, lt.g);
+      const lb = Math.max(0.06, lt.b);
+      const cos = Math.cos(b.angle);
+      const sin = Math.sin(b.angle);
+      const reach = b.shape.kind === 'circle' ? b.shape.radius : Math.hypot(b.shape.halfW, b.shape.halfH);
+      // Coarse off-screen cull (matches the landmark/decor draws).
+      if (
+        b.x + reach < this.renderCamX ||
+        b.x - reach > this.renderCamX + VIEW_W ||
+        b.y + reach < this.renderCamY ||
+        b.y - reach > this.renderCamY + VIEW_H
+      )
+        continue;
+      const x0 = Math.floor(b.x - reach);
+      const x1 = Math.ceil(b.x + reach);
+      const y0 = Math.floor(b.y - reach);
+      const y1 = Math.ceil(b.y + reach);
+      for (let yy = y0; yy <= y1; yy++) {
+        for (let xx = x0; xx <= x1; xx++) {
+          const dx = xx + 0.5 - b.x;
+          const dy = yy + 0.5 - b.y;
+          const lx = dx * cos + dy * sin; // into the body's local frame
+          const ly = -dx * sin + dy * cos;
+          let edge = 1;
+          if (b.shape.kind === 'circle') {
+            const rad = b.shape.radius;
+            if (dx * dx + dy * dy > rad * rad) continue;
+            if (dx * dx + dy * dy > (rad - 1) * (rad - 1)) edge = 0.6;
+            // a single spoke toward local +x makes the roll legible
+            else if (lx > 0 && Math.abs(ly) < 0.9) edge = 0.5;
+          } else {
+            const { halfW, halfH } = b.shape;
+            if (Math.abs(lx) > halfW || Math.abs(ly) > halfH) continue;
+            if (Math.abs(lx) > halfW - 1 || Math.abs(ly) > halfH - 1) edge = 0.6;
+          }
+          this.setPx(xx, yy, r * lr * edge, g * lg * edge, bl * lb * edge);
+        }
+      }
+    }
+  }
+
+  private drawVineStrands(ctx: Ctx): void {
+    const strands = ctx.vineStrands?.strands;
+    if (!strands?.length) return;
+    for (const strand of strands) {
+      const base = this.unpack01(strand.color);
+      const half = ((strand.thickness ?? 1) - 1) / 2;
+      for (const segment of strand.segments) {
+        const a = strand.nodes[segment.a];
+        const b = strand.nodes[segment.b];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const perpX = -dy / len; // unit perpendicular, for thickness
+        const perpY = dx / len;
+        const steps = Math.max(1, Math.ceil(len * 1.8));
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const x = a.x + dx * t;
+          const y = a.y + dy * t;
+          const lt = this.light.sample(x, y);
+          const r = base.r * Math.max(0.16, lt.r) * 1.05;
+          const g = base.g * Math.max(0.18, lt.g) * 1.1;
+          const b2 = base.b * Math.max(0.14, lt.b);
+          for (let w = -half; w <= half + 1e-6; w += 1) this.setPx(x + perpX * w, y + perpY * w, r, g, b2);
+        }
+      }
+      if (strand.segments.length === 0) {
+        for (const node of strand.nodes) {
+          const lt = this.light.sample(node.x, node.y);
+          this.setPx(
+            node.x,
+            node.y,
+            base.r * Math.max(0.16, lt.r),
+            base.g * Math.max(0.18, lt.g),
+            base.b * Math.max(0.14, lt.b),
+          );
+        }
+      }
+    }
   }
 
   /** Animated sprite decor (visual-only; per-decor culling in drawDecor). */
@@ -618,8 +734,19 @@ export class FrameComposer implements PixelSurface {
       const target = ctx.input.mouse;
       const reach = Math.hypot(target.x - ctx.player.x, target.y - (ctx.player.y - 9));
       if (reach < 72) {
-        const phase = ((frame % 14) / 14);
-        this.drawDottedLine(target.x, target.y, ctx.player.x, ctx.player.y - 9, 11, phase, tint.r * 0.15, tint.g * 0.2, tint.b * 0.22);
+        const phase = (frame % 12) / 12;
+        // Bright, dense pull-line so the siphon reads against the lit terrain.
+        this.drawDottedLine(target.x, target.y, ctx.player.x, ctx.player.y - 9, 16, phase, tint.r * 0.6 + 0.05, tint.g * 0.75 + 0.08, tint.b * 0.9 + 0.12);
+        // A pulsing node on the cursor marks the patch being drained.
+        const pulse = 0.65 + Math.sin(frame * 0.4) * 0.35;
+        this.addPx(target.x, target.y, tint.r * pulse, tint.g * pulse, tint.b * pulse);
+        const arm = tint.r * pulse * 0.6,
+          arg = tint.g * pulse * 0.6,
+          ab = tint.b * pulse * 0.6;
+        this.addPx(target.x + 1, target.y, arm, arg, ab);
+        this.addPx(target.x - 1, target.y, arm, arg, ab);
+        this.addPx(target.x, target.y + 1, arm, arg, ab);
+        this.addPx(target.x, target.y - 1, arm, arg, ab);
       }
     }
 

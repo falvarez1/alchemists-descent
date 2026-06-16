@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { CommandRegistry } from '@/ui/editor/CommandRegistry';
 import { DockHost } from '@/ui/editor/DockHost';
@@ -10,6 +11,7 @@ import { Keymap, normalizeShortcut, shortcutFromEvent } from '@/ui/editor/Keymap
 import { builderPanelHeader, normalizePanelChromeHandles } from '@/ui/editor/PanelChrome';
 import { BUILDER_PANEL_SPECS, createBuilderPanelRegistry, PanelRegistry } from '@/ui/editor/PanelRegistry';
 import { placePopover } from '@/ui/editor/PopoverHost';
+import { tabStripHtml } from '@/ui/editor/Tabs';
 import {
   documentInspectorSchema,
   LIGHT_PRESETS,
@@ -1141,6 +1143,26 @@ describe('editor panel registry and chrome', () => {
       expect(handles[0].dataset.panelHandle).toBe('true');
       expect(handles[0].classList.contains('builder-panel-handle')).toBe(true);
     }
+  });
+
+  it('renders closable tabs without nesting the close control inside the tab button', () => {
+    const html = tabStripHtml([
+      { id: 'builder-inspector', label: 'Inspector', closable: true },
+    ], 'builder-inspector');
+
+    expect(html).toContain('class="editor-tab-shell active"');
+    expect(html).toContain('class="editor-tab active"');
+    expect(html).toContain('class="editor-tab-close"');
+    expect(html).not.toContain('role="button"');
+    expect(html.indexOf('class="editor-tab-close"')).toBeGreaterThan(html.indexOf('</button>'));
+  });
+
+  it('reveals closable tab controls from the sibling shell selector', () => {
+    const css = readFileSync('src/styles/main.css', 'utf8');
+
+    expect(css).toContain('.editor-tab-shell:hover .editor-tab-close');
+    expect(css).toContain('.editor-tab-shell.active .editor-tab-close');
+    expect(css).not.toContain('.editor-tab:hover .editor-tab-close');
   });
 });
 

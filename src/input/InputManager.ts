@@ -49,6 +49,13 @@ const GAMEPLAY_KEY_CODES = new Set([
   'Tab',
 ]);
 
+const BUILDER_REQUEST_CLOSE_EVENT = 'builder-request-close';
+
+interface BuilderCloseRequestDetail {
+  reason: 'play-button';
+  result?: Promise<boolean>;
+}
+
 const KEYBOARD_LOCK_CODES = [
   ...GAMEPLAY_KEY_CODES,
   'KeyB',
@@ -75,21 +82,30 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export class InputManager {
   private keyboardLocked = false;
   private readonly heldKeyCodes = new Set<string>();
+  private canvas: HTMLCanvasElement;
+  private readonly handleMouseDown = (e: MouseEvent): void => this.onMouseDown(e);
+  private readonly handleMouseMove = (e: MouseEvent): void => this.onMouseMove(e);
+  private readonly handleWheel = (e: WheelEvent): void => this.onWheel(e);
+  private readonly handleContextMenu = (e: Event): void => e.preventDefault();
+  private readonly handleRendererCanvasChanged = (event: Event): void => {
+    const canvas =
+      event instanceof CustomEvent && event.detail?.canvas instanceof HTMLCanvasElement
+        ? event.detail.canvas
+        : null;
+    if (canvas) this.attachCanvas(canvas);
+  };
 
   constructor(
-    private canvas: HTMLCanvasElement,
+    canvas: HTMLCanvasElement,
     private ctx: Ctx,
   ) {
+    this.canvas = canvas;
     ctx.input.releaseHeldInput = () => this.clearHeldInput();
 
     // ===================== Input: Mouse =====================
-    canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
-    canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+    this.attachCanvas(canvas);
     window.addEventListener('mouseup', () => this.onMouseUp());
-    // RMB belongs to the game (flask throw / eyedropper), not the browser.
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    // Wave D: the wheel swaps the held wand in play mode.
-    canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
+    window.addEventListener('renderer-canvas-changed', this.handleRendererCanvasChanged);
 
     // ===================== Input: Keyboard =====================
     window.addEventListener('keydown', (e) => this.onKeyDown(e), true);
@@ -115,15 +131,7 @@ export class InputManager {
     });
     document.getElementById('mode-play-btn')?.addEventListener('click', (e) => {
       (e.currentTarget as HTMLElement).blur();
-      this.ctx.audio.ensure();
-      if (
-        !document.body.classList.contains('builder-open') &&
-        this.ctx.state.playtestSource !== 'builder' &&
-        this.requestRunLauncher('play-button')
-      ) {
-        return;
-      }
-      this.setMode('play');
+      void this.handlePlayButtonClick();
     });
     document.getElementById('immersive-play-btn')?.addEventListener('click', (e) => {
       (e.currentTarget as HTMLElement).blur();
@@ -132,15 +140,42 @@ export class InputManager {
     this.syncImmersiveButton();
   }
 
+  private attachCanvas(canvas: HTMLCanvasElement): void {
+    if (this.canvas === canvas && canvas.dataset.inputAttached === 'true') return;
+    this.canvas.removeEventListener('mousedown', this.handleMouseDown);
+    this.canvas.removeEventListener('mousemove', this.handleMouseMove);
+    this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
+    this.canvas.removeEventListener('wheel', this.handleWheel);
+    this.canvas.dataset.inputAttached = 'false';
+
+    this.canvas = canvas;
+    this.canvas.addEventListener('mousedown', this.handleMouseDown);
+    this.canvas.addEventListener('mousemove', this.handleMouseMove);
+    // RMB belongs to the game (flask throw / eyedropper), not the browser.
+    this.canvas.addEventListener('contextmenu', this.handleContextMenu);
+    // Wave D: the wheel swaps the held wand in play mode.
+    this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
+    this.canvas.dataset.inputAttached = 'true';
+  }
+
   private getMouseGridCoords(e: MouseEvent): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
     const u = (e.clientX - rect.left) / rect.width;
     const v = (e.clientY - rect.top) / rect.height;
-    const zx = 0.5 + (u - 0.5) / this.ctx.camera.zoom;
-    const zy = 0.5 + (v - 0.5) / this.ctx.camera.zoom;
+    const zoom = this.ctx.camera.zoom;
+    const fracX = this.ctx.camera.x - Math.floor(this.ctx.camera.x);
+    const fracY = this.ctx.camera.y - Math.floor(this.ctx.camera.y);
+    const scaleX = (1 + 4 / VIEW_W) * zoom;
+    const scaleY = (1 + 4 / VIEW_H) * zoom;
+    const offsetX = -fracX * (2 / VIEW_W) * zoom;
+    const offsetY = fracY * (2 / VIEW_H) * zoom;
+    const ndcX = u * 2 - 1;
+    const ndcY = 1 - v * 2;
+    const texU = 0.5 + ((ndcX - offsetX) / scaleX) * 0.5;
+    const texV = 0.5 - ((ndcY - offsetY) / scaleY) * 0.5;
     return {
-      x: Math.floor(zx * VIEW_W) + this.ctx.camera.renderX,
-      y: Math.floor(zy * VIEW_H) + this.ctx.camera.renderY,
+      x: Math.floor(texU * VIEW_W) + this.ctx.camera.renderX,
+      y: Math.floor(texV * VIEW_H) + this.ctx.camera.renderY,
     };
   }
 
@@ -371,7 +406,7 @@ export class InputManager {
       if (
         ctx.state.mode === 'build' &&
         !document.body.classList.contains('builder-open') &&
-        ctx.state.playtestSource !== 'builder' &&
+        ctx.state.playtestSource === null &&
         this.requestRunLauncher('tab')
       ) {
         return;
@@ -494,7 +529,7 @@ export class InputManager {
     if (
       this.ctx.state.mode !== 'play' &&
       !document.body.classList.contains('builder-open') &&
-      this.ctx.state.playtestSource !== 'builder' &&
+      this.ctx.state.playtestSource === null &&
       this.requestRunLauncher('fullscreen')
     ) {
       this.syncImmersiveButton();
@@ -568,6 +603,29 @@ export class InputManager {
   }
 
   // ===================== Mode Switching =====================
+  private async handlePlayButtonClick(): Promise<void> {
+    const { ctx } = this;
+    ctx.audio.ensure();
+    if (!(await this.closeOpenBuilderForPlay())) return;
+    if (
+      !document.body.classList.contains('builder-open') &&
+      ctx.state.playtestSource === null &&
+      this.requestRunLauncher('play-button')
+    ) {
+      return;
+    }
+    this.setMode('play');
+  }
+
+  private async closeOpenBuilderForPlay(): Promise<boolean> {
+    if (!document.body.classList.contains('builder-open')) return true;
+    const detail: BuilderCloseRequestDetail = { reason: 'play-button' };
+    window.dispatchEvent(new CustomEvent<BuilderCloseRequestDetail>(BUILDER_REQUEST_CLOSE_EVENT, { detail }));
+    if (!detail.result) return !document.body.classList.contains('builder-open');
+    const closed = await detail.result;
+    return closed && !document.body.classList.contains('builder-open');
+  }
+
   setMode(mode: GameMode): void {
     const { ctx } = this;
     if (mode === ctx.state.mode) return;
@@ -575,9 +633,9 @@ export class InputManager {
     ctx.events.emit('modeChanged', { mode });
 
     if (mode === 'play') {
-      // Builder Playtest compiles a disposable runtime before flipping the
-      // header mode. Preserve that runtime instead of replacing it with D1.
-      if (ctx.state.playtestSource !== 'builder') {
+      // Builder/Sandbox playtests compile a disposable runtime before flipping
+      // the header mode. Preserve that runtime instead of replacing it with D1.
+      if (ctx.state.playtestSource === null) {
         // Play mode IS the descent: generate (or resume) the current level.
         // On first entry this swaps in D1 and positions the player at its spawn.
         ctx.levels.startDescent(ctx);

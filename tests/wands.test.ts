@@ -1,15 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { compileWand } from '@/combat/wands/compiler';
 import { buildWandSentenceView, nextWandSentence } from '@/combat/wands/sentenceView';
-import { WandSystem } from '@/combat/wands/WandSystem';
-import { TRIGGERED } from '@/combat/wands/projectileMarks';
+import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, WandSystem } from '@/combat/wands/WandSystem';
+import { TRIGGERED, TRIGGER_SOURCE_SPREAD } from '@/combat/wands/projectileMarks';
 import { createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
 import type { CardId, CastAction, Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
-import { canOpenWandBench, wandBenchUnavailableCue } from '@/ui/WandBench';
+import { cardGrantBenchCue, contextualObjectiveText } from '@/ui/Hud';
+import { canOpenWandBench, cardMatchesBenchFilter, recipeHintsForCard, wandBenchUnavailableCue } from '@/ui/WandBench';
 
 /**
  * The cast compiler is a PURE function of the slot list, so every rule that
@@ -128,6 +129,11 @@ describe('compileWand', () => {
       dmgMul: 1,
       spreadAdd: 0,
       infused: false,
+      waterTrail: 0,
+      oilTrail: 0,
+      electricCharge: false,
+      critWet: false,
+      shortHoming: false,
       bounces: 0,
       triggered: null,
     });
@@ -153,6 +159,84 @@ describe('compileWand', () => {
     expect(a.bounces).toBe(2);
     // spread (3) x2 + infuser (6) + bounce (5) + spark (10)
     expect(program[0].manaCost).toBe(27);
+  });
+
+  it('marks review-only setup modifiers on the action they modify', () => {
+    const program = compileWand(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'spark', 'spark']);
+    expect(program).toHaveLength(2);
+
+    const wetSpark = program[0].actions[0];
+    expect(wetSpark.card).toBe('spark');
+    expect(wetSpark.waterTrail).toBe(18);
+    expect(wetSpark.oilTrail).toBe(14);
+    expect(wetSpark.electricCharge).toBe(true);
+    expect(wetSpark.critWet).toBe(true);
+    expect(wetSpark.shortHoming).toBe(true);
+    expect(program[0].manaCost).toBe(43);
+
+    const drySpark = program[1].actions[0];
+    expect(drySpark.card).toBe('spark');
+    expect(drySpark.waterTrail).toBe(0);
+    expect(drySpark.oilTrail).toBe(0);
+    expect(drySpark.electricCharge).toBe(false);
+    expect(drySpark.critWet).toBe(false);
+    expect(drySpark.shortHoming).toBe(false);
+  });
+
+  it('caps review-only trail budgets and strips projectile-body modifiers from unsupported casts', () => {
+    const capped = compileWand(['watertrail', 'watertrail', 'spark']);
+    expect(capped[0].actions[0].waterTrail).toBe(18);
+    expect(capped[0].manaCost).toBe(20);
+
+    const oilCapped = compileWand(['oiltrail', 'oiltrail', 'spark']);
+    expect(oilCapped[0].actions[0].oilTrail).toBe(14);
+    expect(oilCapped[0].manaCost).toBe(24);
+
+    const unsupported = compileWand(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'lightning']);
+    expect(unsupported[0].actions[0].card).toBe('lightning');
+    expect(unsupported[0].actions[0].waterTrail).toBe(0);
+    expect(unsupported[0].actions[0].oilTrail).toBe(0);
+    expect(unsupported[0].actions[0].electricCharge).toBe(false);
+    expect(unsupported[0].actions[0].critWet).toBe(false);
+    expect(unsupported[0].actions[0].shortHoming).toBe(false);
+    expect(unsupported[0].manaCost).toBe(59);
+  });
+
+  it('keeps built-in review loadouts from silently stripping review-only projectile-body modifiers', () => {
+    const brass = compileWand(REVIEW_WAND_LOADOUTS[0].cards);
+    expect(brass[0].actions[0]).toMatchObject({
+      card: 'spark',
+      waterTrail: 18,
+      electricCharge: true,
+      critWet: true,
+      shortHoming: true,
+    });
+
+    const voidLattice = compileWand(REVIEW_WAND_LOADOUTS[1].cards);
+    expect(voidLattice[0].actions[0]).toMatchObject({
+      card: 'spark',
+      oilTrail: 14,
+    });
+  });
+
+  it('keeps named review primer loadouts valid and discoverable', () => {
+    const loadouts = new Map(REVIEW_WAND_LOADOUTS.map((loadout) => [loadout.id, loadout]));
+    expect([...loadouts.keys()]).toEqual(expect.arrayContaining([
+      'wet-crit-primer',
+      'fuse-primer',
+      'trigger-primer',
+    ]));
+
+    for (const loadout of REVIEW_WAND_LOADOUTS) {
+      const frame = WAND_FRAMES[loadout.frameId];
+      expect(frame, loadout.id).toBeDefined();
+      expect(loadout.cards.length, loadout.id).toBeLessThanOrEqual(frame.capacity);
+      expect(compileWand(loadout.cards).length, loadout.id).toBeGreaterThan(0);
+    }
+
+    expect(loadouts.get('wet-crit-primer')?.cards).toEqual(['watertrail', 'critwet', 'spark']);
+    expect(loadouts.get('fuse-primer')?.cards).toEqual(['oiltrail', 'spark', 'flame']);
+    expect(loadouts.get('trigger-primer')?.cards).toEqual(['trigger', 'spark', 'bomb']);
   });
 });
 
@@ -187,6 +271,52 @@ describe('wand sentence view', () => {
     expect(view.warnings).toEqual([]);
     expect(view.slotRelations[0]).toEqual(expect.arrayContaining([1]));
     expect(view.slotRelations[1]).toEqual(expect.arrayContaining([0]));
+  });
+
+  it('describes wet setup modifiers in the next-cast sentence', () => {
+    const view = buildWandSentenceView(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'spark']);
+    expect(view.lines[0]).toMatchObject({
+      label: 'Next: Water-Trail Oil-Wick Electric Wet-Crit Short-Homing Spark Bolt',
+      detail: '43 mana - slots 1, 2, 3, 4, 5, 6',
+      manaCost: 43,
+      slots: [0, 1, 2, 3, 4, 5],
+    });
+  });
+
+  it('warns when projectile-body modifiers target casts without projectile bodies', () => {
+    const view = buildWandSentenceView(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'lightning']);
+    expect(view.lines[0]).toMatchObject({
+      label: 'Next: Chain Lightning',
+      detail: '59 mana - slots 1, 2, 3, 4, 5, 6',
+    });
+    expect(view.warnings).toEqual(expect.arrayContaining([
+      'Water Trail in slot 1 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
+      'Oil Wick in slot 2 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
+      'Electric Charge in slot 3 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
+      'Critical on Wet in slot 4 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
+      'Short Homing in slot 5 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
+    ]));
+    expect(view.slotWarnings[0]).toContain('Water Trail in slot 1 needs a projectile body; Chain Lightning in slot 6 cannot carry it');
+    expect(view.slotWarnings[1]).toContain('Oil Wick in slot 2 needs a projectile body; Chain Lightning in slot 6 cannot carry it');
+    expect(view.slotWarnings[2]).toContain('Electric Charge in slot 3 needs a projectile body; Chain Lightning in slot 6 cannot carry it');
+    expect(view.slotWarnings[3]).toContain('Critical on Wet in slot 4 needs a projectile body; Chain Lightning in slot 6 cannot carry it');
+    expect(view.slotWarnings[4]).toContain('Short Homing in slot 5 needs a projectile body; Chain Lightning in slot 6 cannot carry it');
+    expect(view.slotWarnings[5]).toEqual(expect.arrayContaining([
+      'Water Trail in slot 1 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
+      'Oil Wick in slot 2 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
+      'Electric Charge in slot 3 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
+      'Critical on Wet in slot 4 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
+      'Short Homing in slot 5 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
+    ]));
+  });
+
+  it('warns when basic modifiers target casts without that effect surface', () => {
+    const view = buildWandSentenceView(['heavy', 'warp']);
+
+    expect(view.lines[0].label).toBe('Next: Warp Bolt');
+    expect(view.warnings).toContain('Heavy Charm in slot 1 has no damage effect on Warp Bolt in slot 2');
+    expect(view.slotWarnings[0]).toContain('Heavy Charm in slot 1 has no damage effect on Warp Bolt in slot 2');
+    expect(view.slotWarnings[1]).toContain('Heavy Charm in slot 1 has no damage effect on Warp Bolt in slot 2');
   });
 
   it('describes trigger payloads as one upfront-paid cast', () => {
@@ -248,6 +378,99 @@ describe('wand light defaults', () => {
       torchRadius: 152,
       torchMinFlicker: 1.05,
     });
+  });
+});
+
+describe('wand bench card organization', () => {
+  it('filters cards by kind and high-signal tags', () => {
+    expect(cardMatchesBenchFilter('spark', 'all')).toBe(true);
+    expect(cardMatchesBenchFilter('spark', 'projectile')).toBe(true);
+    expect(cardMatchesBenchFilter('spark', 'modifier')).toBe(false);
+    expect(cardMatchesBenchFilter('speed', 'modifier')).toBe(true);
+    expect(cardMatchesBenchFilter('double', 'multicast')).toBe(true);
+    expect(cardMatchesBenchFilter('watertrail', 'setup')).toBe(true);
+    expect(cardMatchesBenchFilter('conjure', 'terrain')).toBe(true);
+    expect(cardMatchesBenchFilter('critwet', 'terrain')).toBe(false);
+  });
+
+  it('keeps recipe hints tied to implemented card combinations', () => {
+    expect(recipeHintsForCard('watertrail').join(' ')).toContain('Critical on Wet');
+    expect(recipeHintsForCard('watertrail').join(' ')).toContain('Electric Charge');
+    expect(recipeHintsForCard('oiltrail').join(' ')).toContain('Flame');
+    expect(recipeHintsForCard('trigger').join(' ')).toContain('payload');
+    expect(recipeHintsForCard('spark')).toEqual([]);
+  });
+});
+
+function objectiveCtx(opts: {
+  player?: { x: number; y: number };
+  collection?: CardId[];
+  refuge?: { x: number; y: number } | null;
+  portal?: { x: number; y: number; open: boolean } | null;
+  keyTaken?: boolean;
+  waystones?: Array<{ x: number; y: number; lit: boolean }>;
+  mode?: 'play' | 'build';
+} = {}): Ctx {
+  return {
+    state: { mode: opts.mode ?? 'play' },
+    player: opts.player ?? { x: 100, y: 100 },
+    wands: { collection: opts.collection ?? [] },
+    levels: {
+      current: {
+        refuge: opts.refuge ?? null,
+        portal: opts.portal ?? null,
+        keyTaken: opts.keyTaken ?? false,
+        waystones: opts.waystones ?? [],
+      },
+    },
+  } as unknown as Ctx;
+}
+
+describe('HUD contextual objectives', () => {
+  it('prioritizes short card-to-bench guidance when spare cards can be slotted', () => {
+    const ctx = objectiveCtx({
+      collection: ['speed'],
+      refuge: { x: 120, y: 100 },
+      portal: { x: 500, y: 100, open: false },
+    });
+
+    expect(contextualObjectiveText(ctx, 'FIND THE GOLDEN KEY', 60)).toBe('BENCH AVAILABLE IN REFUGE');
+  });
+
+  it('shows portal and key state with plan wording', () => {
+    const beforeKey = objectiveCtx({ portal: { x: 500, y: 100, open: false }, keyTaken: false });
+    const afterKey = objectiveCtx({ portal: { x: 500, y: 100, open: false }, keyTaken: true });
+
+    expect(contextualObjectiveText(beforeKey, 'anything')).toBe('FIND THE GOLDEN KEY');
+    expect(contextualObjectiveText(afterKey, 'anything')).toBe('RETURN TO THE PORTAL');
+  });
+
+  it('calls out nearby unlit waystones before falling back to the base objective', () => {
+    const nearWaystone = objectiveCtx({
+      player: { x: 100, y: 100 },
+      waystones: [{ x: 130, y: 100, lit: false }],
+    });
+    const litWaystone = objectiveCtx({
+      player: { x: 100, y: 100 },
+      waystones: [{ x: 130, y: 100, lit: true }],
+    });
+
+    expect(contextualObjectiveText(nearWaystone, 'EXPLORE')).toBe('LIGHT WAYSTONE: BRING FIRE');
+    expect(contextualObjectiveText(litWaystone, 'EXPLORE')).toBe('EXPLORE');
+  });
+
+  it('gives card-grant bench directions even before the Refuge map marker is visible', () => {
+    const away = objectiveCtx({
+      player: { x: 60, y: 150 },
+      refuge: { x: 120, y: 100 },
+    });
+    const near = objectiveCtx({
+      player: { x: 118, y: 100 },
+      refuge: { x: 120, y: 100 },
+    });
+
+    expect(cardGrantBenchCue(away)).toBe('BENCH IN REFUGE EAST ABOVE - 78 STEPS');
+    expect(cardGrantBenchCue(near)).toBe('BENCH AVAILABLE IN REFUGE');
   });
 });
 
@@ -347,6 +570,77 @@ describe('WandSystem runtime snapshots', () => {
     expect(after.castIndex).toBe(before.castIndex);
     expect(after.cooldown).toBe(before.cooldown);
   });
+
+  it('uses a zero-mana pick strike with downward pogo on dry fire', () => {
+    const ctx = makeCastCtx();
+    let eroded: { x: number; y: number; rad: number } | null = null;
+    let dug = 0;
+    ctx.audio.dig = () => {
+      dug++;
+    };
+    ctx.player.aimAngle = Math.PI / 2;
+    ctx.player.vy = 1.4;
+    ctx.world.replaceCellAt(ctx.world.idx(10, 18), Cell.Stone, 0x777777);
+    ctx.spells.digRay = () => ({ x: 10, y: 18 });
+    ctx.spells.erodeAt = (x: number, y: number, rad: number) => {
+      eroded = { x, y, rad };
+      return 1;
+    };
+    const wands = new WandSystem(ctx);
+    wands.loadLoadout({
+      active: 0,
+      collection: [],
+      wands: [{ frameId: 'oak', cards: ['spark', null, null], mana: 0 }],
+    });
+
+    wands.fire(ctx);
+
+    expect(ctx.projectiles).toHaveLength(0);
+    expect(eroded).toEqual({ x: 10, y: 18, rad: 2 });
+    expect(ctx.player.vy).toBeLessThan(0);
+    expect(dug).toBe(1);
+  });
+});
+
+describe('WandSystem metaprogression', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('seeds fresh-run collection from discovered cards without duplicating starter wand cards', () => {
+    const store = new Map<string, string>([
+      [
+        'alchemists-descent-card-discovery-v1',
+        JSON.stringify({ version: 1, cards: ['flame', 'spark', 'dig', 'blackhole'] }),
+      ],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+    });
+    const ctx = {
+      events: new EventBus(),
+      telemetry: { count: () => undefined },
+      audio: { wandSwap: () => undefined },
+      state: { mode: 'play' },
+      player: {},
+    } as unknown as Ctx;
+    const wands = new WandSystem(ctx);
+
+    expect(wands.collection.slice(0, 2)).toEqual(['double', 'speed']);
+    expect(wands.collection).toContain('flame');
+    expect(wands.collection).toContain('blackhole');
+    expect(wands.collection).not.toContain('spark');
+    expect(wands.collection).not.toContain('dig');
+
+    wands.collection.length = 0;
+    wands.resetLoadout();
+
+    expect(wands.collection).toContain('flame');
+    expect(wands.collection).toContain('blackhole');
+    expect(wands.collection).not.toContain('spark');
+    expect(wands.collection).not.toContain('dig');
+  });
 });
 
 function action(card: CardId, overrides: Partial<CastAction> = {}): CastAction {
@@ -356,6 +650,11 @@ function action(card: CardId, overrides: Partial<CastAction> = {}): CastAction {
     dmgMul: 1,
     spreadAdd: 0,
     infused: false,
+    waterTrail: 0,
+    oilTrail: 0,
+    electricCharge: false,
+    critWet: false,
+    shortHoming: false,
     bounces: 0,
     triggered: null,
     ...overrides,
@@ -375,6 +674,7 @@ function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: num
       tone: () => undefined,
       flame: () => undefined,
       dig: () => undefined,
+      dryFire: () => undefined,
       learn: () => undefined,
       wandSwap: () => undefined,
     },
@@ -453,6 +753,28 @@ describe('WandSystem trigger executor', () => {
     expect(ctx.spawned.every((particle) => particle.x === 40 && particle.y === 41 && particle.type === Cell.Fire)).toBe(true);
   });
 
+  it('applies damage modifiers to live flame stream density', () => {
+    const ctx = makeCastCtx();
+    const wands = new WandSystem(ctx);
+
+    wands.castActionAt(ctx, action('flame', { dmgMul: 2, speedMul: 1.6, spreadAdd: 0.18 }), 40, 41, 0);
+    wands.update(ctx);
+
+    expect(ctx.spawned).toHaveLength(8);
+    expect(ctx.spawned.every((particle) => particle.type === Cell.Fire)).toBe(true);
+  });
+
+  it('carries heavy modifiers onto bomb projectiles', () => {
+    const ctx = makeCastCtx();
+    const wands = new WandSystem(ctx);
+
+    wands.castActionAt(ctx, action('bomb', { dmgMul: 1.7 }), 55, 56, 0);
+
+    expect(ctx.projectiles).toHaveLength(1);
+    expect(ctx.projectiles[0].type).toBe('bomb');
+    expect(ctx.projectiles[0].mul).toBeCloseTo(1.7);
+  });
+
   it('marks wand-cast black-hole hosts with trigger payload metadata', () => {
     const ctx = makeCastCtx();
     const wands = new WandSystem(ctx);
@@ -465,6 +787,7 @@ describe('WandSystem trigger executor', () => {
     expect(ctx.projectiles[0].charging).toBe(true);
     expect(ctx.input.activeChargingBlackHole).toBe(ctx.projectiles[0]);
     expect(TRIGGERED.get(ctx.projectiles[0])).toEqual([payload]);
+    expect(TRIGGER_SOURCE_SPREAD.get(ctx.projectiles[0])).toBe(0.02);
   });
 
   it('spawns triggered black holes without claiming the mouse-up charging lifecycle', () => {

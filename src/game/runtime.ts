@@ -37,6 +37,7 @@ export function makeLevelRuntime(
       | 'generatedScenes'
       | 'decors'
       | 'refuge'
+      | 'spellLab'
       | 'vaultArch'
     >
   >,

@@ -86,6 +86,11 @@ export function isSolid(t: number): boolean {
   );
 }
 
+/** Soft growth occupies the grid visually/sim-wise, but bodies move through it. */
+export function isSoftGrowth(t: number): boolean {
+  return t === Cell.Vines || t === Cell.Moss || t === Cell.Fungus || t === Cell.Glowshroom;
+}
+
 /** Materials that carry electrical charge (chain lightning, sparks). */
 export function isConductor(t: number): boolean {
   return (
@@ -122,6 +127,7 @@ export function isGas(t: number): boolean {
 
 /** Materials that obstruct moving bodies (player, enemies, projectiles). */
 export function blocksEntity(t: number): boolean {
+  if (isSoftGrowth(t)) return false;
   return (
     isSolid(t) ||
     t === Cell.Sand ||

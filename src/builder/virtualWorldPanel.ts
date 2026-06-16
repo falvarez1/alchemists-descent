@@ -33,6 +33,13 @@ type GenerationParams = VirtualWorldDef['generation'];
 type DressingControls = VirtualWorldDef['dressing']['controls'];
 type SceneControls = VirtualWorldDef['dressing']['scenes']['controls'];
 
+interface VirtualProfileStats {
+  materialCells: number;
+  liquidCells: number;
+  glowCells: number;
+  sceneCount: number;
+}
+
 interface CachedPreviewChunk {
   chunk: TransferableVirtualChunk;
   canvas: HTMLCanvasElement;
@@ -448,6 +455,9 @@ export class VirtualWorldPanel {
           <button id="vw-frame" type="button">FRAME</button>
           <button id="vw-cancel" type="button" title="Cancel is only available while a window is generating"${this.status === 'generating' ? '' : ' disabled'}>CANCEL</button>
           <button id="vw-clear" type="button">CLEAR CACHE</button>
+          <button id="vw-reset-profile" type="button" title="Reset this profile to its built-in preset">RESET ALL</button>
+          <button id="vw-export-profile" type="button" title="Download this world-generation profile as JSON">EXPORT</button>
+          <button id="vw-import-profile" type="button" title="Import a world-generation profile JSON file">IMPORT</button>
           <button id="vw-validate" type="button">VALIDATE</button>
           <button id="vw-play-window" type="button" title="Play a disposable fixed-size test crop centered on this map view">PLAY WINDOW</button>
         </div>
@@ -602,6 +612,19 @@ export class VirtualWorldPanel {
       this.mutateDef((def) => resetSceneBudgetForProfile(def, this.selectedProfile));
       this.renderControls();
     });
+    this.must<HTMLButtonElement>('#vw-reset-profile').addEventListener('click', () => {
+      this.cancel();
+      this.defs.set(this.selectedProfile, defaultDefForProfile(this.selectedProfile, this.profileSeed(this.selectedProfile)));
+      this.chunks.clear();
+      this.lastMetrics = null;
+      this.status = 'idle';
+      this.statusText = 'Profile reset to built-in preset';
+      this.lastAutoCenter = '';
+      this.renderControls();
+      this.requestDraw();
+    });
+    this.must<HTMLButtonElement>('#vw-export-profile').addEventListener('click', () => this.exportProfile());
+    this.must<HTMLButtonElement>('#vw-import-profile').addEventListener('click', () => void this.importProfile());
     this.must<HTMLButtonElement>('#vw-generate').addEventListener('click', () => void this.generateWindow());
     this.must<HTMLButtonElement>('#vw-frame').addEventListener('click', () => this.frameCachedChunks());
     this.must<HTMLButtonElement>('#vw-cancel').addEventListener('click', () => this.cancel());
@@ -896,13 +919,37 @@ export class VirtualWorldPanel {
 
   private onKeyDown(event: KeyboardEvent): void {
     const step = (event.shiftKey ? 160 : 64) / this.zoom;
-    if (event.key === 'a' || event.key === 'A') this.camX -= step;
-    else if (event.key === 'd' || event.key === 'D') this.camX += step;
-    else if (event.key === 'w' || event.key === 'W') this.camY -= step;
-    else if (event.key === 's' || event.key === 'S') this.camY += step;
-    else return;
+    if (event.key === 'a' || event.key === 'A' || event.key === 'ArrowLeft') this.camX -= step;
+    else if (event.key === 'd' || event.key === 'D' || event.key === 'ArrowRight') this.camX += step;
+    else if (event.key === 'w' || event.key === 'W' || event.key === 'ArrowUp') this.camY -= step;
+    else if (event.key === 's' || event.key === 'S' || event.key === 'ArrowDown') this.camY += step;
+    else if (event.key === '+' || event.key === '=') {
+      this.zoomAtCenter(1.15);
+      event.preventDefault();
+      return;
+    } else if (event.key === '-' || event.key === '_') {
+      this.zoomAtCenter(1 / 1.15);
+      event.preventDefault();
+      return;
+    } else if (event.key === 'Home') {
+      this.frameCachedChunks();
+      event.preventDefault();
+      return;
+    } else if (event.key === 'Enter') {
+      void this.generateWindow();
+      event.preventDefault();
+      return;
+    } else return;
     event.preventDefault();
     this.afterPan();
+    this.maybeAutoGenerate();
+  }
+
+  private zoomAtCenter(scale: number): void {
+    const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom * scale));
+    if (next === this.zoom) return;
+    this.zoom = next;
+    this.requestDraw();
     this.maybeAutoGenerate();
   }
 
@@ -1059,10 +1106,12 @@ export class VirtualWorldPanel {
     const profile = profileInfo(this.selectedProfile);
     const hover = this.hoverWorld ? this.chunkAt(this.hoverWorld.x, this.hoverWorld.y) : null;
     const mem = this.previewBytes();
+    const profileDiff = this.profileDiff();
+    const stats = this.cachedProfileStats();
     inspector.innerHTML = `
       ${this.sectionHtml('inspector.status', 'Status', `
         <div class="vw-stat"><span>state</span><b class="vw-${this.status}">${this.status.toUpperCase()}</b></div>
-        <div class="vw-message">${escapeHtml(this.statusText)}</div>
+        <div class="vw-message" aria-live="polite">${escapeHtml(this.statusText)}</div>
         <div class="vw-stat"><span>profile</span><b>${escapeHtml(profile.label)}</b></div>
         <div class="vw-stat"><span>biome</span><b>${escapeHtml(profile.biome)}</b></div>
         <div class="vw-stat"><span>cache</span><b>${this.activeChunks().length} chunks</b></div>
@@ -1070,11 +1119,19 @@ export class VirtualWorldPanel {
         <div class="vw-stat"><span>zoom</span><b>${this.zoom.toFixed(2)}x</b></div>
         <div class="vw-stat"><span>center</span><b>${Math.floor(this.camX)}, ${Math.floor(this.camY)}</b></div>
       `)}
+      ${this.sectionHtml('inspector.profile', 'Profile Diff', `
+        <div class="vw-stat"><span>changed</span><b>${profileDiff.length}</b></div>
+        <div class="vw-message">${profileDiff.length > 0 ? escapeHtml(profileDiff.slice(0, 8).join(', ')) : 'Matches built-in preset'}</div>
+      `)}
       ${this.sectionHtml('inspector.metrics', 'Metrics', `
         <div class="vw-stat"><span>window</span><b>${this.lastMetrics ? `${this.lastMetrics.chunks} chunks` : '-'}</b></div>
         <div class="vw-stat"><span>time</span><b>${this.lastMetrics ? `${this.lastMetrics.generatedMs.toFixed(1)} ms` : '-'}</b></div>
         <div class="vw-stat"><span>generated</span><b>${this.lastMetrics ? formatBytes(this.lastMetrics.generatedBytes) : '-'}</b></div>
         <div class="vw-stat"><span>transfer</span><b>${this.lastMetrics ? formatBytes(this.lastMetrics.transferBytes) : '-'}</b></div>
+        <div class="vw-stat"><span>materials</span><b>${formatCount(stats.materialCells)}</b></div>
+        <div class="vw-stat"><span>liquids</span><b>${formatCount(stats.liquidCells)}</b></div>
+        <div class="vw-stat"><span>glow cells</span><b>${formatCount(stats.glowCells)}</b></div>
+        <div class="vw-stat"><span>scenes</span><b>${stats.sceneCount}</b></div>
       `)}
       ${this.sectionHtml('inspector.chunk', 'Chunk', `
         ${
@@ -1136,14 +1193,98 @@ export class VirtualWorldPanel {
       normalizeVirtualDef(existing);
       return existing;
     }
-    const def = createDefaultVirtualWorldDef(this.profileSeed(this.selectedProfile));
-    def.id = `virtual-${this.selectedProfile}`;
-    def.name = this.selectedProfile === 'global' ? 'Global Virtual World' : `${LEVELS[this.selectedProfile]?.name ?? this.selectedProfile} Virtual World`;
-    const level = LEVELS[this.selectedProfile];
-    if (level) applyVirtualLevelProfile(def, level);
+    const def = defaultDefForProfile(this.selectedProfile, this.profileSeed(this.selectedProfile));
     normalizeVirtualDef(def);
     this.defs.set(this.selectedProfile, def);
     return def;
+  }
+
+  private profileDiff(): string[] {
+    const current = this.currentDef();
+    const baseline = defaultDefForProfile(this.selectedProfile, this.profileSeed(this.selectedProfile));
+    const changed: string[] = [];
+    for (const key of Object.keys(GENERATION_DEFAULTS) as Array<keyof GenerationParams>) {
+      if (current.generation[key] !== baseline.generation[key]) changed.push(`generation.${key}`);
+    }
+    for (const key of Object.keys(DRESSING_DEFAULTS) as Array<keyof DressingControls>) {
+      if (current.dressing.controls[key] !== baseline.dressing.controls[key]) changed.push(`dressing.${key}`);
+    }
+    for (const key of Object.keys(current.dressing.scenes.controls) as Array<keyof SceneControls>) {
+      if (current.dressing.scenes.controls[key] !== baseline.dressing.scenes.controls[key]) changed.push(`scenes.${key}`);
+    }
+    for (const kind of VIRTUAL_SCENE_KINDS) {
+      if (current.dressing.scenes.biomes[profileBiome(this.selectedProfile)]?.[kind] !== baseline.dressing.scenes.biomes[profileBiome(this.selectedProfile)]?.[kind]) {
+        changed.push(`scenes.${kind}`);
+      }
+    }
+    return changed;
+  }
+
+  private cachedProfileStats(): VirtualProfileStats {
+    const stats: VirtualProfileStats = {
+      materialCells: 0,
+      liquidCells: 0,
+      glowCells: 0,
+      sceneCount: 0,
+    };
+    const seenScenes = new Set<string>();
+    for (const cached of this.activeChunks()) {
+      const chunk = cached.chunk as TransferableVirtualChunk & { meta?: { scenePlacements?: Array<{ id?: string }> } };
+      for (const placement of chunk.meta?.scenePlacements ?? []) {
+        const id = placement.id ?? '';
+        if (id && !seenScenes.has(id)) {
+          seenScenes.add(id);
+          stats.sceneCount += 1;
+        }
+      }
+      stats.materialCells += chunk.metrics.materialCells;
+      stats.liquidCells += chunk.metrics.liquidCells;
+      stats.glowCells += chunk.metrics.glowCells;
+    }
+    return stats;
+  }
+
+  private exportProfile(): void {
+    const profile = exportableVirtualProfile(this.currentDef());
+    const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const name = typeof profile.name === 'string' ? profile.name : this.selectedProfile;
+    a.download = `${safeFileName(name)}.virtual-world-profile.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    this.statusText = 'Exported world-generation profile';
+    this.renderInspector();
+  }
+
+  private async importProfile(): Promise<void> {
+    this.cancel();
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    const file = await new Promise<File | null>((resolve) => {
+      input.addEventListener('change', () => resolve(input.files?.[0] ?? null), { once: true });
+      input.click();
+    });
+    if (!file) return;
+    try {
+      const raw = JSON.parse(await file.text()) as Partial<VirtualWorldDef>;
+      const def = mergeImportedProfile(raw, this.selectedProfile, this.profileSeed(this.selectedProfile));
+      this.defs.set(this.selectedProfile, def);
+      this.chunks.clear();
+      this.lastMetrics = null;
+      this.status = 'idle';
+      this.statusText = `Imported ${def.name}`;
+      this.lastAutoCenter = '';
+      this.renderControls();
+      this.requestDraw();
+    } catch (error) {
+      this.status = 'error';
+      this.statusText = `Import failed: ${error instanceof Error ? error.message : String(error)}`;
+      this.renderControls();
+    }
   }
 
   private profileSeed(profile: VirtualWorldProfileId): number {
@@ -1350,6 +1491,71 @@ function resetProfileTuning(def: VirtualWorldDef, profile: VirtualWorldProfileId
   Object.assign(def.dressing.controls, dressingDefaultsForProfile(profile));
   Object.assign(def.dressing.scenes.controls, sceneControlDefaultsForProfile(profile));
   resetSceneBudgetForProfile(def, profile);
+}
+
+function defaultDefForProfile(profile: VirtualWorldProfileId, seed: number): VirtualWorldDef {
+  const def = createDefaultVirtualWorldDef(seed);
+  def.id = `virtual-${profile}`;
+  def.name = profile === 'global' ? 'Global Virtual World' : `${LEVELS[profile]?.name ?? profile} Virtual World`;
+  const level = LEVELS[profile];
+  if (level) applyVirtualLevelProfile(def, level);
+  normalizeVirtualDef(def);
+  return def;
+}
+
+function profileBiome(profile: VirtualWorldProfileId): VirtualBiomeId {
+  return (LEVELS[profile]?.biome as VirtualBiomeId | undefined) ?? 'earthen';
+}
+
+function exportableVirtualProfile(def: VirtualWorldDef): Record<string, unknown> {
+  return {
+    v: 1,
+    kind: 'alchemists-descent.virtual-world-profile',
+    id: def.id,
+    name: def.name,
+    seed: def.seed >>> 0,
+    generation: { ...def.generation },
+    dressing: {
+      controls: { ...def.dressing.controls },
+      scenes: {
+        controls: { ...def.dressing.scenes.controls },
+        biomes: Object.fromEntries(
+          Object.entries(def.dressing.scenes.biomes).map(([biome, budget]) => [biome, { ...budget }]),
+        ),
+      },
+    },
+  };
+}
+
+function mergeImportedProfile(raw: Partial<VirtualWorldDef>, profile: VirtualWorldProfileId, seed: number): VirtualWorldDef {
+  const def = defaultDefForProfile(profile, seed);
+  if (typeof raw.name === 'string' && raw.name.trim()) def.name = raw.name.trim();
+  if (Number.isFinite(raw.seed)) def.seed = Number(raw.seed) >>> 0;
+  if (raw.generation) Object.assign(def.generation, raw.generation);
+  if (raw.dressing?.controls) Object.assign(def.dressing.controls, raw.dressing.controls);
+  if (raw.dressing?.scenes?.controls) Object.assign(def.dressing.scenes.controls, raw.dressing.scenes.controls);
+  if (raw.dressing?.scenes?.biomes) {
+    for (const [biome, budget] of Object.entries(raw.dressing.scenes.biomes)) {
+      const target = def.dressing.scenes.biomes[biome as VirtualBiomeId];
+      if (!target || !budget) continue;
+      for (const kind of VIRTUAL_SCENE_KINDS) {
+        const value = (budget as Partial<VirtualSceneBudget>)[kind];
+        if (Number.isFinite(value)) target[kind] = Number(value);
+      }
+    }
+  }
+  normalizeVirtualDef(def);
+  return def;
+}
+
+function safeFileName(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'virtual-world-profile';
+}
+
+function formatCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return String(value);
 }
 
 function generationDefaultsForProfile(profile: VirtualWorldProfileId): GenerationParams {

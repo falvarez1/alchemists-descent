@@ -1,7 +1,8 @@
 import type { LevelRuntime } from '@/core/types';
 import { mechanismTriggersFor } from '@/core/mechanisms';
-import { blocksEntity } from '@/sim/CellType';
+import { blocksEntity, Cell } from '@/sim/CellType';
 import { computeLooseRubbleBlockingMask } from '@/sim/collision';
+import { extractRegionGraph } from '@/world/regions';
 
 /**
  * Findability validation: mechanism-correct is NOT player-findable.
@@ -21,6 +22,12 @@ export interface FindabilityIssue {
    * info: buried treasure — shown on the map, digging to it is the game.
    */
   severity: 'error' | 'info';
+}
+
+export interface FindabilityRepairResult {
+  initial: FindabilityIssue[];
+  repaired: FindabilityIssue[];
+  remaining: FindabilityIssue[];
 }
 
 /** The wizard's collision box: entities/physics.ts tryMoveEntity(4, 17). */
@@ -198,6 +205,98 @@ function nearWithLine(
   return false;
 }
 
+const REPAIR_HALF_W = PW + 3;
+const REPAIR_HEADROOM = PH + 3;
+const REPAIR_FOOTROOM = 2;
+const REPAIR_SHELL = 2;
+const REPAIR_STEP = 4;
+const REPAIR_SLEEVE_COLOR = 0x596170;
+
+function markRepairInterior(runtime: LevelRuntime, interior: Uint8Array, cx: number, cy: number): void {
+  const world = runtime.world;
+  const footY = Math.floor(cy);
+  const x0 = Math.max(1, Math.floor(cx) - REPAIR_HALF_W);
+  const x1 = Math.min(world.width - 2, Math.floor(cx) + REPAIR_HALF_W);
+  const y0 = Math.max(1, footY - REPAIR_HEADROOM);
+  const y1 = Math.min(world.height - 2, footY + REPAIR_FOOTROOM);
+  for (let y = y0; y <= y1; y++) {
+    const row = y * world.width;
+    for (let x = x0; x <= x1; x++) interior[row + x] = 1;
+  }
+}
+
+function markStableRepairPathInterior(runtime: LevelRuntime, interior: Uint8Array, issue: FindabilityIssue): void {
+  const fromX = Math.floor(runtime.spawn.x);
+  const fromY = Math.floor(runtime.spawn.y - 2);
+  const toX = Math.max(2, Math.min(runtime.world.width - 3, Math.floor(issue.x)));
+  const toY = Math.max(2, Math.min(runtime.world.height - 3, Math.floor(issue.y)));
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / REPAIR_STEP));
+  for (let step = 0; step <= steps; step++) {
+    markRepairInterior(runtime, interior, fromX + (dx * step) / steps, fromY + (dy * step) / steps);
+  }
+}
+
+function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly FindabilityIssue[]): void {
+  const world = runtime.world;
+  const interior = new Uint8Array(world.width * world.height);
+  for (const issue of issues) markStableRepairPathInterior(runtime, interior, issue);
+  for (let i = 0; i < interior.length; i++) {
+    if (interior[i]) world.clearCellAt(i);
+  }
+
+  for (let y = 1; y < world.height - 1; y++) {
+    const row = y * world.width;
+    for (let x = 1; x < world.width - 1; x++) {
+      const i = row + x;
+      if (interior[i]) continue;
+      let nearInterior = false;
+      for (let sy = -REPAIR_SHELL; sy <= REPAIR_SHELL && !nearInterior; sy++) {
+        const yy = y + sy;
+        if (yy <= 0 || yy >= world.height - 1) continue;
+        const shellRow = yy * world.width;
+        for (let sx = -REPAIR_SHELL; sx <= REPAIR_SHELL; sx++) {
+          const xx = x + sx;
+          if (xx <= 0 || xx >= world.width - 1) continue;
+          if (interior[shellRow + xx]) {
+            nearInterior = true;
+            break;
+          }
+        }
+      }
+      if (nearInterior) world.replaceCellAt(i, Cell.Metal, REPAIR_SLEEVE_COLOR);
+    }
+  }
+}
+
+function regionExitAnchor(runtime: LevelRuntime): { x: number; y: number } {
+  if (runtime.exit) return { x: runtime.exit.x, y: runtime.exit.sealY - 12 };
+  if (runtime.portal) return { x: runtime.portal.x, y: runtime.portal.y };
+  return runtime.spawn;
+}
+
+export function failOpenFindability(
+  runtime: LevelRuntime,
+  issues = validateFindability(runtime),
+): FindabilityRepairResult {
+  const repairMap = new Map<string, FindabilityIssue>();
+  let remaining = issues;
+  for (let pass = 0; pass < 5; pass++) {
+    const errors = remaining.filter((issue) => issue.severity === 'error');
+    if (errors.length === 0) break;
+    for (const issue of errors) repairMap.set(`${issue.what}@${issue.x},${issue.y}`, issue);
+    carveStableRepairPaths(runtime, [...repairMap.values()]);
+    runtime.regions = extractRegionGraph(runtime.world, runtime.spawn, regionExitAnchor(runtime));
+    remaining = validateFindability(runtime);
+  }
+  return {
+    initial: issues,
+    repaired: [...repairMap.values()],
+    remaining,
+  };
+}
+
 export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
   const seen = reachableMask(runtime); // the crawler's view (media, treasure)
   const wiz = wizardMask(runtime); // the PLAYER's view (9x17, walk + jump)
@@ -220,8 +319,8 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
         near(wiz, W, H, m.x - 2, m.y + m.h - 2, 8) ||
           near(wiz, W, H, m.x + m.w + 1, m.y + m.h - 2, 8),
         'doorfront',
-        m.x,
-        m.y,
+        m.x + m.w / 2,
+        m.y + m.h - 2,
       );
     } else if (m.kind === 'valve') {
       // A valve is a gate, not a hand-trigger: it needs an approachable
@@ -232,10 +331,10 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
         near(seen, W, H, m.x - 2, m.y + m.h / 2, 4) ||
           near(seen, W, H, m.x + m.w + 1, m.y + m.h / 2, 4) ||
           near(seen, W, H, m.x + m.w / 2, m.y - 2, 4) ||
-          near(seen, W, H, m.x + m.w / 2, m.y + m.h + 1, 4),
+        near(seen, W, H, m.x + m.w / 2, m.y + m.h + 1, 4),
         'valvefront',
-        m.x,
-        m.y,
+        m.x + m.w / 2,
+        m.y + m.h / 2,
       );
     } else if (m.kind === 'relay') {
       // pure logic node — its INPUTS carry the reachability requirement
@@ -243,7 +342,7 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       continue;
     } else if (m.kind === 'plug') {
       if (mechanismTriggersFor(runtime, m.id).length > 0) continue;
-      check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y);
+      check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
     } else if (
       m.kind === 'sensor' ||
       m.kind === 'counterweight' ||
@@ -255,10 +354,10 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       // chargelatch latches on ANY spark in its zone (lightning bolt,
       // electrified water, a conducting enemy's blood) — like rune glyphs,
       // line of sight from open space suffices, so the cell mask judges it.
-      check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y);
+      check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
     } else {
       // hands-on triggers: the WIZARD must be able to stand here
-      check(near(wiz, W, H, m.x, m.y - 2, 6), m.kind, m.x, m.y);
+      check(near(wiz, W, H, m.x, m.y - 2, 6), m.kind, m.x, m.y - 2);
     }
   }
   for (const v of runtime.runeVaults) {
@@ -268,11 +367,18 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
   }
   for (const p of runtime.pickups) {
     if (p.taken) continue;
-    // The key gates progression — the wizard must WALK to it. Hearts/tomes
-    // appear as minimap dots, so a sealed pocket is buried treasure.
+    // The key gates progression — the wizard must WALK to it. Other pickups
+    // appear as minimap dots / diagnostics, so a sealed pocket is buried
+    // treasure instead of a hard progression failure.
     if (p.kind === 'key') {
       check(near(wiz, W, H, p.x, p.y, 10), p.kind, p.x, p.y);
-    } else if (p.kind === 'heart' || p.kind === 'tome') {
+    } else if (
+      p.kind === 'heart' ||
+      p.kind === 'tome' ||
+      p.kind === 'chest' ||
+      p.kind === 'potion' ||
+      p.kind === 'goldpile'
+    ) {
       check(near(seen, W, H, p.x, p.y - 2, 6), p.kind, p.x, p.y, 'info');
     }
   }
@@ -283,16 +389,23 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
     // shelter, not progression: surfaced for diagnostics, never a gate
     check(near(wiz, W, H, runtime.refuge.x, runtime.refuge.y, 10), 'refuge', runtime.refuge.x, runtime.refuge.y, 'info');
   }
+  if (runtime.spellLab) {
+    const lab = runtime.spellLab;
+    check(near(wiz, W, H, lab.x, lab.y, 12), 'spell-lab', lab.x, lab.y);
+    check(near(wiz, W, H, lab.rewardX, lab.rewardY + 4, 10), 'spell-lab-reward', lab.rewardX, lab.rewardY + 4);
+  }
   if (runtime.vaultArch) {
     const a = runtime.vaultArch;
     if (runtime.def.branch) {
       // the way HOME from a branch level — the wizard must be able to walk
       // into it, or the vault is a one-way trap
-      check(near(wiz, W, H, a.x, a.y - 2, 10), 'vault-arch', a.x, a.y);
+      check(near(wiz, W, H, a.x, a.y - 2, 10), 'vault-arch', a.x, a.y - 2);
     } else {
-      // the hidden entrance on a host level is SEALED by design: buried
-      // treasure, not a reachability failure (digging to it is the game)
-      check(near(seen, W, H, a.x, a.y - 2, 18), 'vault-arch', a.x, a.y, 'info');
+      // The entrance itself is sealed by design, but its gilded gallery/tell
+      // must be reachable. Otherwise the secret is not discoverable at all.
+      const discoverX = a.discoverX ?? a.x;
+      const discoverY = a.discoverY ?? a.y;
+      check(near(wiz, W, H, discoverX, discoverY, 10), 'vault-arch', discoverX, discoverY);
     }
   }
   if (runtime.cauldron) {
@@ -308,7 +421,7 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       near(wiz, W, H, runtime.portal.x, runtime.portal.y + 6, 12),
       'portal',
       runtime.portal.x,
-      runtime.portal.y,
+      runtime.portal.y + 6,
     );
   }
   if (runtime.boss) {

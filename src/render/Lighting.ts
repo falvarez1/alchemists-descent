@@ -6,6 +6,58 @@ import type { LightField, LightSample } from '@/render/pixels';
 const RUNTIME_INSPECTION_LIGHT_INTENSITY = 1.2;
 const RUNTIME_INSPECTION_LIGHT_RADIUS = 65;
 
+// Wand "beam": a narrow directional cone cast along the aim, on top of (never
+// instead of) the omni wand light. It reaches further so corridors read deeper
+// when you point down them. Crucially it is *max-combined* into the same field
+// (lights never add here) and seeded dimmer at the muzzle than the omni light,
+// so the bright zone around the wizard is unchanged — the omni light already
+// saturates the tonemap in the near radius, so the beam can only extend the lit
+// area down the aim, never raise the peak exposure on the wizard.
+const BEAM_RAYS = 110; // dense enough that adjacent rays stay <1 cell apart at the rim
+const BEAM_HALF_SPREAD = 0.42; // radians (~24°) half-angle of the cone — focused
+const BEAM_RADIUS_SCALE = 2.0; // linear rim at ~2× the omni wand radius
+const BEAM_INTENSITY_SCALE = 0.74; // dimmer at the muzzle than the omni light, but
+//   bright enough that the cone reads as joined to the wand glow rather than
+//   starting in a gap ahead of it.
+const BEAM_ORIGIN_DIST = 4; // cells along the aim from the shoulder — the cone apex
+//   sits closer to the wizard than the omni muzzle (9 cells out) so the beam
+//   appears to start right at the wand.
+const BEAM_EDGE_MIN = 0.25; // angular falloff floor at the soft cone edge
+// The beam's whole point is to throw light *further down open corridors* than
+// the omni wand light, which loses ~7%/cell in air (att 0.86 → STEP_LIQ). So
+// the beam loses far less per air-cell while solids still swallow it, keeping
+// shadows crisp: it reaches down the hall but never bleeds through rock.
+const BEAM_STEP_AIR = 0.976; // empty / translucent (att ≥ 0.83)
+const BEAM_STEP_LIQ = 0.93; // liquids (att ≈ 0.8)
+const BEAM_STEP_SOLID = 0.55; // rock still kills it (slightly harder than the omni)
+
+// Third wand light: a NON-occluded ambient directional glow. The omni light and
+// the beam above both raycast and are stopped by terrain (crisp shadows); this
+// one paints a soft cone straight into the field, ignoring occlusion, so the
+// surrounding/ahead terrain the shadow-casters leave dark gets a faint wash of
+// light. Kept faint (so the beam's shadows still read) and flickered faster than
+// the steady wand light for a little candle-like life.
+const GLOW_RAYS = 110; // wide soft cone — keep adjacent rays <1 cell apart at the rim
+const GLOW_HALF_SPREAD = 0.7; // radians (~40°) — wider/softer than the focused beam
+const GLOW_RADIUS_SCALE = 0.7; // wraps the wizard's surroundings, doesn't tunnel far
+const GLOW_INTENSITY_SCALE = 0.3; // faint ambient fill — must not wash out the shadows
+const GLOW_EDGE_MIN = 0.15; // very soft cone edge
+// Hard ceiling on the glow's deposited light value. Bloom (a global threshold
+// pass at ~0.85 final luma) fires once a lit cell pushes past ~0.95 light. By
+// capping the glow below that, its terrain fill never feeds the bloom pass —
+// while the brighter occluded beam/omni still bloom where they win the max.
+const GLOW_BLOOM_CAP = 0.6;
+
+const RAYCAST_RAYS = 540;
+const RAY_DIR_X = new Float32Array(RAYCAST_RAYS);
+const RAY_DIR_Y = new Float32Array(RAYCAST_RAYS);
+
+for (let k = 0; k < RAYCAST_RAYS; k++) {
+  const a = (k / RAYCAST_RAYS) * Math.PI * 2;
+  RAY_DIR_X[k] = Math.cos(a);
+  RAY_DIR_Y[k] = Math.sin(a);
+}
+
 /* ===================== Dynamic Lighting =====================
  * Half-resolution RGB light field, seeded by every emitter in view, then
  * propagated with four directional sweeps. Solid cells attenuate hard, so
@@ -280,20 +332,86 @@ export class Lighting implements LightField {
         this.wandFlickerTarget = spread > 0 ? 1.04 - spread + Math.random() * spread * 2 : 1;
       }
       this.seedLight(ctx.player.x, ctx.player.y - 9, wand.fillR, wand.fillG, wand.fillB);
+      // Active flask siphon (hold E): pulse a cool light over the drained patch
+      // at the cursor so the pull reads even against the bright wand light.
+      // Max-combined like every wand light (seedLight takes the max — never
+      // additive), and faded to nothing as the cursor nears the wizard: the wand
+      // already lights that zone, so the siphon light would only pile brightness
+      // right next to the player. It only contributes when draining at range.
+      if (ctx.input.siphonHeld) {
+        const m = ctx.input.mouse;
+        const sdx = m.x - ctx.player.x,
+          sdy = m.y - (ctx.player.y - 9);
+        const reach = Math.hypot(sdx, sdy);
+        if (reach < 72) {
+          const near = Math.min(1, Math.max(0, (reach - 12) / 28)); // 0 close, full by ~40
+          const pulse = (0.6 + Math.sin(ctx.state.frameCount * 0.4) * 0.25) * near;
+          if (pulse > 0) this.seedLight(m.x, m.y, 0.4 * pulse, 0.75 * pulse, 1.05 * pulse);
+        }
+      }
     }
 
-    // Projectiles glow in their own colors
+    // Projectiles glow in their own colors and rake light across the walls
+    // they streak past. A fast bolt crosses many cells between (even-frame)
+    // light rebuilds, so beyond the head we seed a short fading wake back along
+    // the velocity — otherwise the glow lands in disconnected dots and the
+    // terrain barely registers it. Intensities are lifted from the original
+    // port values so the cast reads against the now-brighter wand light.
     for (const p of ctx.projectiles) {
-      if (p.type === 'bolt' || p.type === 'pellet') this.seedLight(p.x, p.y, 0.5, 1.3, 1.6);
-      else if (p.type === 'fireball') this.seedLight(p.x, p.y, 1.5, 0.7, 0.15);
-      else if (p.type === 'bomb') this.seedLight(p.x, p.y, 0.45, 0.32, 0.12);
-      else if (p.type === 'warp') this.seedLight(p.x, p.y, 1.1, 0.6, 1.5);
-      else if (p.type === 'blackhole') this.seedLight(p.x, p.y, 0.9, 0.45, 1.4);
-      else if (p.type === 'iceshard' || p.type === 'icelance')
-        this.seedLight(p.x, p.y, 0.5, 0.85, 1.2);
-      else if (p.type === 'wisp') this.seedLight(p.x, p.y, 0.4, 1.0, 1.3);
-      else if (p.type === 'meteor') this.seedLight(p.x, p.y, 1.6, 0.6, 0.1);
-      else if (p.type === 'acidglob') this.seedLight(p.x, p.y, 0.15, 0.55, 0.1);
+      let lr = 0,
+        lg = 0,
+        lb = 0,
+        wake = 0;
+      if (p.type === 'bolt' || p.type === 'pellet') {
+        lr = 0.85;
+        lg = 2.0;
+        lb = 2.45;
+        wake = 3;
+      } else if (p.type === 'fireball') {
+        lr = 1.8;
+        lg = 0.85;
+        lb = 0.2;
+        wake = 2;
+      } else if (p.type === 'bomb') {
+        lr = 0.55;
+        lg = 0.4;
+        lb = 0.16;
+      } else if (p.type === 'warp') {
+        lr = 1.5;
+        lg = 0.82;
+        lb = 2.0;
+        wake = 2;
+      } else if (p.type === 'blackhole') {
+        lr = 1.2;
+        lg = 0.6;
+        lb = 1.85;
+      } else if (p.type === 'iceshard' || p.type === 'icelance') {
+        lr = 0.72;
+        lg = 1.2;
+        lb = 1.7;
+        wake = 3;
+      } else if (p.type === 'wisp') {
+        lr = 0.55;
+        lg = 1.4;
+        lb = 1.8;
+      } else if (p.type === 'meteor') {
+        lr = 1.9;
+        lg = 0.78;
+        lb = 0.14;
+        wake = 3;
+      } else if (p.type === 'acidglob') {
+        lr = 0.22;
+        lg = 0.8;
+        lb = 0.16;
+        wake = 2;
+      } else {
+        continue;
+      }
+      this.seedLight(p.x, p.y, lr, lg, lb);
+      for (let s = 1; s <= wake; s++) {
+        const f = 1 - 0.6 * (s / (wake + 1)); // comet-tail fade behind the head
+        this.seedLight(p.x - p.vx * s, p.y - p.vy * s, lr * f, lg * f, lb * f);
+      }
     }
     // Chain lightning floods its path with cold light
     for (const arc of ctx.lightning.arcs) {
@@ -488,12 +606,26 @@ export class Lighting implements LightField {
       const wand = ctx.state.wandLight;
       const torch = ctx.player.status.torch > 0 || ctx.player.perks.torchbearer === true;
       const flick = torch ? Math.max(this.wandFlicker, wand.torchMinFlicker) : this.wandFlicker;
-      this.raycastWandLight(
-        tipX,
-        tipY,
-        (torch ? wand.torchIntensity : wand.intensity) * flick,
-        torch ? wand.torchRadius : wand.radius,
-      );
+      const rawBase = torch ? wand.torchIntensity : wand.intensity;
+      const baseIntensity = rawBase * flick;
+      const baseRadius = torch ? wand.torchRadius : wand.radius;
+      this.raycastWandLight(tipX, tipY, baseIntensity, baseRadius);
+      // Directional beam down the aim — extends corridor sightlines without
+      // brightening the wizard (same flicker, max-combined, dimmer at the muzzle).
+      // Fired from a point closer to the wizard than the muzzle so the cone
+      // reads as starting at the wand, not floating ahead of it.
+      const beamX = ctx.player.x + Math.cos(ctx.player.aimAngle) * BEAM_ORIGIN_DIST;
+      const beamY = ctx.player.y - 9 + Math.sin(ctx.player.aimAngle) * BEAM_ORIGIN_DIST;
+      this.raycastWandBeam(beamX, beamY, ctx.player.aimAngle, baseIntensity, baseRadius);
+      // Third light: non-occluded ambient glow over the same cone, on its OWN
+      // faster flicker (candle-like life) instead of the steady wand flicker.
+      const fc = ctx.state.frameCount;
+      const glowFlick =
+        1 +
+        Math.sin(fc * 0.31) * 0.1 +
+        Math.sin(fc * 0.57 + 2.1) * 0.07 +
+        (Math.random() - 0.5) * 0.05;
+      this.raycastWandGlow(beamX, beamY, ctx.player.aimAngle, rawBase * glowFlick, baseRadius);
     } else if (ctx.state.mode === 'build' && ctx.state.builderWandLightPreview.enabled) {
       const preview = ctx.state.builderWandLightPreview;
       const wand = ctx.state.wandLight;
@@ -512,6 +644,110 @@ export class Lighting implements LightField {
       s * wand.b,
       Math.max(1, Math.round(Math.max(1, radius) * 0.5)),
     );
+  }
+
+  /**
+   * Narrow shadow-casting cone fired along `aim` from the wand tip. Same march
+   * and occlusion as the omni light, but: only BEAM_RAYS rays inside a cone, a
+   * longer reach (BEAM_RADIUS_SCALE), a lower source intensity
+   * (BEAM_INTENSITY_SCALE), a soft angular edge, and — the key difference — a
+   * gentler per-cell air attenuation (BEAM_STEP_AIR) so it carries down open
+   * corridors. Because the field combines by max (never sum) and the omni light
+   * already saturates the near radius, this only extends the lit area down the
+   * aim; it never raises the exposure on the wizard.
+   */
+  private raycastWandBeam(
+    wx: number,
+    wy: number,
+    aim: number,
+    intensity: number,
+    radius: number,
+  ): void {
+    const wand = this.ctx.state.wandLight;
+    const s = Math.max(0, intensity) * BEAM_INTENSITY_SCALE;
+    if (s <= 0) return;
+    const sr = s * wand.r,
+      sg = s * wand.g,
+      sb = s * wand.b;
+    const { LW, LH, lightR, lightG, lightB, lightAtt } = this;
+    const radiusHalf = Math.max(1, Math.round(Math.max(1, radius) * BEAM_RADIUS_SCALE * 0.5));
+    const ox = (wx - this.ctx.camera.renderX) / 2,
+      oy = (wy - this.ctx.camera.renderY) / 2;
+    if (ox < -radiusHalf || ox > LW + radiusHalf || oy < -radiusHalf || oy > LH + radiusHalf)
+      return;
+    for (let k = 0; k < BEAM_RAYS; k++) {
+      // -1..1 across the fan; angular falloff tapers the cone edges so it reads
+      // as a soft beam rather than a hard pie slice.
+      const u = BEAM_RAYS > 1 ? (k / (BEAM_RAYS - 1)) * 2 - 1 : 0;
+      const a = aim + u * BEAM_HALF_SPREAD;
+      const edge = BEAM_EDGE_MIN + (1 - BEAM_EDGE_MIN) * (1 - u * u);
+      const dx = Math.cos(a),
+        dy = Math.sin(a);
+      let T = 1;
+      for (let d = 0; d < radiusHalf; d++) {
+        const lx = Math.round(ox + dx * d),
+          ly = Math.round(oy + dy * d);
+        if (lx < 0 || lx >= LW || ly < 0 || ly >= LH) break;
+        const i = ly * LW + lx;
+        const fall = T * (1 - d / radiusHalf) * edge;
+        const vr = sr * fall,
+          vgc = sg * fall,
+          vb = sb * fall;
+        if (vr > lightR[i]) lightR[i] = vr;
+        if (vgc > lightG[i]) lightG[i] = vgc;
+        if (vb > lightB[i]) lightB[i] = vb;
+        const att = lightAtt[i];
+        T *= att < 0.5 ? BEAM_STEP_SOLID : att < 0.83 ? BEAM_STEP_LIQ : BEAM_STEP_AIR;
+        if (T < 0.02) break;
+      }
+    }
+  }
+
+  /**
+   * Non-occluded ambient cone — the third wand light. Same cone geometry as the
+   * beam, but each ray deposits a pure radial × angular falloff and NEVER reads
+   * `lightAtt`, so terrain does not stop or shadow it: it washes the surrounding
+   * cells (walls included) with a faint, fast-flickering glow. Max-combined like
+   * the others, and kept dim so the beam's crisp shadows still read on top.
+   */
+  private raycastWandGlow(
+    wx: number,
+    wy: number,
+    aim: number,
+    intensity: number,
+    radius: number,
+  ): void {
+    const wand = this.ctx.state.wandLight;
+    const s = Math.max(0, intensity) * GLOW_INTENSITY_SCALE;
+    if (s <= 0) return;
+    const { LW, LH, lightR, lightG, lightB } = this;
+    const radiusHalf = Math.max(1, Math.round(Math.max(1, radius) * GLOW_RADIUS_SCALE * 0.5));
+    const ox = (wx - this.ctx.camera.renderX) / 2,
+      oy = (wy - this.ctx.camera.renderY) / 2;
+    if (ox < -radiusHalf || ox > LW + radiusHalf || oy < -radiusHalf || oy > LH + radiusHalf)
+      return;
+    for (let k = 0; k < GLOW_RAYS; k++) {
+      const u = GLOW_RAYS > 1 ? (k / (GLOW_RAYS - 1)) * 2 - 1 : 0;
+      const a = aim + u * GLOW_HALF_SPREAD;
+      const edge = GLOW_EDGE_MIN + (1 - GLOW_EDGE_MIN) * (1 - u * u);
+      const dx = Math.cos(a),
+        dy = Math.sin(a);
+      for (let d = 0; d < radiusHalf; d++) {
+        const lx = Math.round(ox + dx * d),
+          ly = Math.round(oy + dy * d);
+        if (lx < 0 || lx >= LW || ly < 0 || ly >= LH) break;
+        const i = ly * LW + lx;
+        const fall = (1 - d / radiusHalf) * edge; // no occlusion term — paints through terrain
+        // Cap below the bloom threshold so this fill illuminates but never blooms.
+        const mag = Math.min(GLOW_BLOOM_CAP, s * fall);
+        const vr = mag * wand.r,
+          vgc = mag * wand.g,
+          vb = mag * wand.b;
+        if (vr > lightR[i]) lightR[i] = vr;
+        if (vgc > lightG[i]) lightG[i] = vgc;
+        if (vb > lightB[i]) lightB[i] = vb;
+      }
+    }
   }
 
   private raycastRuntimeInspectionLight(wx: number, wy: number): void {
@@ -539,14 +775,12 @@ export class Lighting implements LightField {
       oy = (wy - this.ctx.camera.renderY) / 2;
     if (ox < -radiusHalf || ox > LW + radiusHalf || oy < -radiusHalf || oy > LH + radiusHalf)
       return;
-    const RAYS = 540;
     const STEP_AIR = 0.988,
       STEP_SOLID = 0.6,
       STEP_LIQ = 0.93;
-    for (let k = 0; k < RAYS; k++) {
-      const a = (k / RAYS) * Math.PI * 2;
-      const dx = Math.cos(a),
-        dy = Math.sin(a);
+    for (let k = 0; k < RAYCAST_RAYS; k++) {
+      const dx = RAY_DIR_X[k],
+        dy = RAY_DIR_Y[k];
       let T = 1;
       for (let d = 0; d < radiusHalf; d++) {
         const lx = Math.round(ox + dx * d),

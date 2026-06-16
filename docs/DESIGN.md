@@ -36,9 +36,10 @@ physics lock at the chokepoint → break the floor seal, drop down the well.
 
 ## Pillar systems (what we're building, from which proposal)
 
-1. **Depth stack + wells + snapshots** (P1) — `worldgraph.ts` data: Surface Camp →
-   D1 Earthen → D2 Timberworks → D3 Frozen → D4 Galvanic Foundry → D5 Scorched Core →
-   boss vault (branch biomes post-spine). One live World at a time; RLE snapshots
+1. **Depth graph + wells + snapshots** (P1) — `worldgraph.ts` data: Surface Camp →
+   D1 Earthen → D2 Fungal Deep → D3 Frozen → D4 Flooded Caverns → D5 Timberworks →
+   D6 Crystal Hollows → D7 Scorched Wastes → D8 Volcanic Maw, plus the Gilded Vault
+   branch hosted by one mid-descent level. One live World at a time; RLE snapshots
    (~120-400KB/level) in RAM ×3 + IndexedDB; colors regenerate deterministically,
    stains re-applied. Cell IDs are save-format ABI: **append-only forever**.
 2. **Region graph extraction** (P1) — flood-fill regions + adjacency with min wall
@@ -178,8 +179,8 @@ puzzle archetypes (Sand Scale, Burning Seals, Sluice); Kiln Colossus boss (water
 thermal shock, pylon lightning stun — a physics puzzle wearing a health bar).
 
 ### Post-spine content drips
-Branch biomes (Flooded Caverns, Fungal Gloom), Gilded Vault, Freeze Bridge + Live
-Circuit puzzle archetypes, second boss, more cards/frames/potions/relics.
+More branch biomes beyond the shipped Gilded Vault, second boss variants, more
+cards/frames/potions/relics, and deeper authored Builder campaigns.
 
 SHIPPED so far: **Freeze Bridge** (frozen-biased archetype 4 — a metal-lined water
 trench, an eternal nitrogen drip off a ceiling icicle, and a diggable stone

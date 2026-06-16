@@ -21,10 +21,10 @@ import {
   stampLine,
   stampRect,
 } from '@/builder/terrain';
-import { CommandStack, compositeCmd, editDocumentMoodCmd, paintTerrainCmd } from '@/builder/commands';
+import { CommandStack, compositeCmd, editDocumentCmd, editDocumentMoodCmd, paintTerrainCmd } from '@/builder/commands';
 import { Builder } from '@/builder/Builder';
 import { CommandRegistry } from '@/ui/editor/CommandRegistry';
-import { buildValidationOverlayDiagnostics, playtestBlockingIssues, validateDocument } from '@/builder/validate';
+import { buildScratchGrid, buildValidationOverlayDiagnostics, playtestBlockingIssues, validateDocument } from '@/builder/validate';
 import { renderValidationPanel } from '@/builder/validationPanel';
 import { toAuthoredLight } from '@/builder/compile';
 import { PreviewRuntime } from '@/builder/PreviewRuntime';
@@ -357,6 +357,55 @@ describe('builder document', () => {
     expect(doc.mood).toEqual({ ambient: 0.34, ambience: '' });
   });
 
+  it('edits document metadata through undoable commands', () => {
+    const doc = createEmptyDocument('metadata', 'earthen');
+    const stack = new CommandStack(() => doc);
+
+    stack.run(editDocumentCmd('rename document', { name: 'vault draft', biome: 'gilded' }));
+
+    expect(doc.name).toBe('vault draft');
+    expect(doc.biome).toBe('gilded');
+    expect(stack.undo()).toBe('rename document');
+    expect(doc.name).toBe('metadata');
+    expect(doc.biome).toBe('earthen');
+    expect(stack.redo()).toBe('rename document');
+    expect(doc.name).toBe('vault draft');
+    expect(doc.biome).toBe('gilded');
+  });
+
+  it('resyncs live backdrop params when backdrop metadata commands replay', () => {
+    type BackdropHarness = {
+      documentRevision: number;
+      validationDirty: boolean;
+      previewRuntimeDirty: boolean;
+      syncs: number;
+      markDocumentChanged: (cmd?: { label: string; cells?: number }) => void;
+      syncDocBackdropToLive: () => void;
+      markTerrainDirty: () => void;
+      scheduleValidationPanelRefresh: () => void;
+    };
+    const builder = Object.create(Builder.prototype) as BackdropHarness;
+    Object.assign(builder, {
+      documentRevision: 0,
+      validationDirty: false,
+      previewRuntimeDirty: false,
+      syncs: 0,
+      syncDocBackdropToLive() {
+        this.syncs++;
+      },
+      markTerrainDirty() {
+        throw new Error('unexpected terrain dirty');
+      },
+      scheduleValidationPanelRefresh() {},
+    });
+
+    builder.markDocumentChanged(editDocumentCmd('edit backdrop', { backdrop: undefined }));
+    builder.markDocumentChanged(editDocumentCmd('rename document', { name: 'same' }));
+    builder.markDocumentChanged(editDocumentCmd('edit backdrop grade', { backdrop: undefined }));
+
+    expect(builder.syncs).toBe(2);
+  });
+
   it('reports composite terrain cells through command-stack change callbacks', () => {
     const doc = createEmptyDocument('terrain-callback', 'earthen');
     const seen: number[] = [];
@@ -548,6 +597,7 @@ describe('builder validation', () => {
       terraStroke: unknown;
       cmds: { depth: number };
       paintDirty: boolean;
+      hasUnsavedChanges?: () => boolean;
       ensureCaptured: () => boolean;
       autosaveDraft: () => void;
     };
@@ -580,6 +630,59 @@ describe('builder validation', () => {
 
     expect(captured).toBe(false);
     expect(builder.paintDirty).toBe(true);
+  });
+
+  it('does not autosave a clean saved document just because undo history exists', () => {
+    type AutosaveHarness = {
+      isOpen: boolean;
+      sessionMode: 'author' | 'live';
+      settling: boolean;
+      settleSnap: unknown;
+      pendingPreview: unknown;
+      floating: unknown;
+      gizmoDrag: unknown;
+      drag: unknown;
+      floatDrag: unknown;
+      waypointDrag: unknown;
+      shapeDrag: unknown;
+      marquee: unknown;
+      stroke: unknown;
+      terraStroke: unknown;
+      cmds: { depth: number };
+      paintDirty: boolean;
+      hasUnsavedChanges: () => boolean;
+      ensureCaptured: () => boolean;
+      autosaveDraft: () => void;
+    };
+    const builder = Object.create(Builder.prototype) as AutosaveHarness;
+    let captured = false;
+    Object.assign(builder, {
+      isOpen: true,
+      sessionMode: 'author',
+      settling: false,
+      settleSnap: null,
+      pendingPreview: null,
+      floating: null,
+      gizmoDrag: null,
+      drag: null,
+      floatDrag: null,
+      waypointDrag: null,
+      shapeDrag: null,
+      marquee: null,
+      stroke: null,
+      terraStroke: null,
+      cmds: { depth: 3 },
+      paintDirty: false,
+      hasUnsavedChanges: () => false,
+      ensureCaptured: () => {
+        captured = true;
+        return true;
+      },
+    });
+
+    builder.autosaveDraft();
+
+    expect(captured).toBe(false);
   });
 
   it('blocks author-only commands through Builder scoped menu execution in Logic Preview', () => {
@@ -788,6 +891,49 @@ describe('builder validation', () => {
     expect(issues.some((i) => i.severity === 'info' && i.what.includes('win exit'))).toBe(true);
   });
 
+  it('flags invalid fixed tome cards and potion pickup ids', () => {
+    const doc = createEmptyDocument('bad-pickups', 'earthen');
+    doc.objects.push(makeObj('pickup', 80, 80, { kind: 'tome', card: 'no-such-card' }));
+    doc.objects.push(makeObj('pickup', 90, 80, { kind: 'potion', potion: 'no-such-potion' }));
+
+    const issues = validateDocument(doc);
+
+    expect(issues.some((issue) => issue.code === 'builder.pickup.card.invalid')).toBe(true);
+    expect(issues.some((issue) => issue.code === 'builder.pickup.potion.invalid')).toBe(true);
+  });
+
+  it('blocks playtest for invalid pickups and duplicate ids that the compiler cannot honor', () => {
+    const doc = createEmptyDocument('compile-blockers', 'earthen');
+    const spawn = makeObj('spawn', 120, 158);
+    const badKind = makeObj('pickup', 130, 158, { kind: 'mystery' });
+    const badCard = makeObj('pickup', 140, 158, { kind: 'tome', card: 'no-such-card' });
+    const badPotion = makeObj('pickup', 150, 158, { kind: 'potion', potion: 'no-such-potion' });
+    badPotion.id = badCard.id;
+    doc.objects.push(spawn, badKind, badCard, badPotion);
+
+    const blockerCodes = playtestBlockingIssues(validateDocument(doc), 'authored-spawn')
+      .map((issue) => issue.code)
+      .sort();
+
+    expect(blockerCodes).toEqual(expect.arrayContaining([
+      'builder.id.duplicate',
+      'builder.pickup.card.invalid',
+      'builder.pickup.kind.invalid',
+      'builder.pickup.potion.invalid',
+    ]));
+  });
+
+  it('rejects fixed tome cards that normal tome collection cannot honor', () => {
+    const doc = createEmptyDocument('review-tome', 'earthen');
+    doc.objects.push(makeObj('pickup', 80, 80, { kind: 'tome', card: 'watertrail' }));
+    doc.objects.push(makeObj('pickup', 90, 80, { kind: 'tome', card: 'vitrify' }));
+    doc.objects.push(makeObj('pickup', 100, 80, { kind: 'tome', card: 'infuser' }));
+
+    const issues = validateDocument(doc);
+
+    expect(issues.filter((issue) => issue.code === 'builder.pickup.card.invalid')).toHaveLength(1);
+  });
+
   it('does not treat hidden spawns as compile-visible spawns', () => {
     const doc = createEmptyDocument('hidden-spawn', 'earthen');
     const spawn = makeObj('spawn', 120, 158);
@@ -797,6 +943,20 @@ describe('builder validation', () => {
     expect(issues.find((issue) => issue.code === 'builder.spawn.missing')).toBeTruthy();
     expect(playtestBlockingIssues(issues, 'authored-spawn').map((issue) => issue.code)).toContain(
       'builder.spawn.missing',
+    );
+  });
+
+  it('blocks authored playtest on multiple spawns while allowing cursor playtest', () => {
+    const doc = createEmptyDocument('multiple-spawns', 'earthen');
+    doc.objects.push(makeObj('spawn', 120, 158), makeObj('spawn', 140, 158));
+
+    const issues = validateDocument(doc);
+    expect(issues.find((issue) => issue.code === 'builder.spawn.multiple')).toBeTruthy();
+    expect(playtestBlockingIssues(issues, 'authored-spawn').map((issue) => issue.code)).toContain(
+      'builder.spawn.multiple',
+    );
+    expect(playtestBlockingIssues(issues, 'cursor-spawn').map((issue) => issue.code)).not.toContain(
+      'builder.spawn.multiple',
     );
   });
 
@@ -970,6 +1130,16 @@ describe('builder validation', () => {
     expect(
       validateDocument(doc).some((i) => i.severity === 'warning' && i.what.includes('pan capacity')),
     ).toBe(true);
+  });
+
+  it('mirrors the runtime sensor anchor in the validation scratch grid', () => {
+    const { doc } = worldDoc((w) => carveBox(w, 100, 100, 200, 159));
+    doc.objects.push(makeObj('spawn', 120, 158));
+    doc.objects.push(makeObj('sensor', 150, 158, { type: 'heat', latch: 'timed' }));
+
+    const scratch = buildScratchGrid(doc, new Set());
+
+    expect(scratch[150 + 158 * WIDTH]).toBe(Cell.Metal);
   });
 
   it('notes that link-level logic is ignored (the door owns logic now)', () => {

@@ -20,7 +20,7 @@ import type { SpriteAsset } from '@/builder/assets/sprites';
 import { resolveRuntimeSprite } from '@/builder/assets/spritelib';
 import type { ResolvedSprite } from '@/builder/assets/spritelib';
 import { ALL_CARD_IDS } from '@/combat/wands/cards';
-import { makePickup, POTION_KINDS } from '@/game/Pickups';
+import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import {
   makeBrazier,
   makeBuoy,
@@ -337,6 +337,7 @@ export function instantiateObjects(
       const filterName = String(o.params.filter ?? '');
       const filterCell = SENSOR_FILTER_CELLS[filterName];
       const sensor = makeSensor(
+        ctx.world,
         sink.mechanisms,
         ox,
         oy,

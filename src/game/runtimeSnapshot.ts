@@ -25,6 +25,7 @@ export type RuntimeSnapshotSourceId =
   | 'expedition'
   | 'builder-live-preview'
   | 'builder-playtest'
+  | 'sandbox-playtest'
   | 'test-run'
   | 'debug-run';
 
@@ -259,6 +260,9 @@ export function inferRuntimeSource(ctx: Ctx): RuntimeSnapshotSource {
   }
   if (ctx.state.playtestSource === 'builder') {
     return { id: 'builder-playtest', label: 'Builder Playtest', detail: 'Disposable playtest runtime' };
+  }
+  if (ctx.state.playtestSource === 'sandbox') {
+    return { id: 'sandbox-playtest', label: 'Sandbox Playtest', detail: 'Disposable raw-grid runtime' };
   }
   if (ctx.state.playtestSource === 'test') {
     return { id: 'test-run', label: 'Test Run', detail: 'Disposable launcher/debug runtime' };

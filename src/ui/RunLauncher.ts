@@ -494,7 +494,7 @@ export class RunLauncher {
     document.body.appendChild(this.root);
 
     document.getElementById('mode-play-btn')?.addEventListener('click', (e) => {
-      if (this.ctx.state.playtestSource === 'builder' || this.builderIsOpen()) return;
+      if (this.ctx.state.playtestSource !== null || this.builderIsOpen()) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       (e.currentTarget as HTMLElement).blur();
@@ -502,7 +502,7 @@ export class RunLauncher {
       this.open('play-button');
     }, true);
     window.addEventListener('run-launcher-request', (event) => {
-      if (this.ctx.state.playtestSource === 'builder' || this.builderIsOpen()) return;
+      if (this.ctx.state.playtestSource !== null || this.builderIsOpen()) return;
       event.preventDefault();
       this.ctx.audio.ensure();
       const source = event instanceof CustomEvent && this.isLauncherSource(event.detail?.source)

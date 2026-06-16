@@ -1,5 +1,5 @@
 import type { CardId } from '@/core/types';
-import { CARD_DEFS, MULTICAST_SIZE } from './cards';
+import { CARD_DEFS, MULTICAST_SIZE, PROJECTILE_MOD_HOST_CARDS } from './cards';
 import { compileWand, type CastGroup } from './compiler';
 
 export interface WandSentenceLine {
@@ -28,6 +28,60 @@ function isProjectile(id: CardId): boolean {
   return CARD_DEFS[id].kind === 'projectile';
 }
 
+const SPEED_EFFECT_CARDS = new Set<CardId>([
+  'spark',
+  'bomb',
+  'flame',
+  'warp',
+  'vitriol',
+  'frostshard',
+  'icelance',
+  'wisp',
+  'meteor',
+  'emberstorm',
+]);
+
+const DAMAGE_EFFECT_CARDS = new Set<CardId>([
+  'spark',
+  'bomb',
+  'lightning',
+  'flame',
+  'dig',
+  'vitriol',
+  'frostshard',
+  'icelance',
+  'wisp',
+  'meteor',
+  'emberstorm',
+  'vitrify',
+]);
+
+const SPREAD_EFFECT_CARDS = new Set<CardId>([
+  'spark',
+  'bomb',
+  'lightning',
+  'flame',
+  'dig',
+  'warp',
+  'vitriol',
+  'frostshard',
+  'icelance',
+  'wisp',
+  'meteor',
+]);
+
+function modifierHasEffect(modifier: CardId, host: CardId): boolean {
+  if (modifier === 'speed') return SPEED_EFFECT_CARDS.has(host);
+  if (modifier === 'heavy') return DAMAGE_EFFECT_CARDS.has(host);
+  if (modifier === 'spread') return SPREAD_EFFECT_CARDS.has(host);
+  return true;
+}
+
+function modifierEffectWarning(modifier: CardId, modifierSlot: number, host: CardId, hostSlot: number): string {
+  const effect = modifier === 'speed' ? 'speed' : modifier === 'heavy' ? 'damage' : 'spread';
+  return `${cardName(modifier)} in slot ${slotLabel(modifierSlot)} has no ${effect} effect on ${cardName(host)} in slot ${slotLabel(hostSlot)}`;
+}
+
 function nextProjectileSlot(cards: (CardId | null)[], fromSlot: number): number | null {
   for (let slot = fromSlot + 1; slot < cards.length; slot++) {
     const id = cards[slot];
@@ -53,10 +107,15 @@ function addWarning(map: Partial<Record<number, string[]>>, slot: number, warnin
 function actionPhrase(action: CastGroup['actions'][number]): string {
   const parts: string[] = [];
   if (action.infused) parts.push('Infused');
+  if (action.waterTrail > 0) parts.push('Water-Trail');
+  if (action.oilTrail > 0) parts.push('Oil-Wick');
+  if (action.electricCharge) parts.push('Electric');
+  if (action.critWet) parts.push('Wet-Crit');
+  if (action.shortHoming) parts.push('Short-Homing');
   if (action.bounces > 0) parts.push('Bouncing');
-  if (action.speedMul > 1.05) parts.push('Swift');
-  if (action.dmgMul > 1.05) parts.push('Heavy');
-  if (action.spreadAdd > 0.01) parts.push('Scatter');
+  if (action.speedMul > 1.05 && SPEED_EFFECT_CARDS.has(action.card)) parts.push('Swift');
+  if (action.dmgMul > 1.05 && DAMAGE_EFFECT_CARDS.has(action.card)) parts.push('Heavy');
+  if (action.spreadAdd > 0.01 && SPREAD_EFFECT_CARDS.has(action.card)) parts.push('Scatter');
   parts.push(cardName(action.card));
   return parts.join(' ');
 }
@@ -173,6 +232,24 @@ function analyzeSlots(
         addWarning(slotWarnings, slot, warning);
       } else {
         addRelation(slotRelations, slot, host);
+        const hostId = cards[host];
+        const projectileBodyMod =
+          id === 'watertrail' ||
+          id === 'oiltrail' ||
+          id === 'electriccharge' ||
+          id === 'critwet' ||
+          id === 'shorthoming';
+        if (projectileBodyMod && hostId && !PROJECTILE_MOD_HOST_CARDS.has(hostId)) {
+          const warning = `${def.name} in slot ${slotLabel(slot)} needs a projectile body; ${cardName(hostId)} in slot ${slotLabel(host)} cannot carry it`;
+          warnings.push(warning);
+          addWarning(slotWarnings, slot, warning);
+          addWarning(slotWarnings, host, warning);
+        } else if ((id === 'speed' || id === 'heavy' || id === 'spread') && hostId && !modifierHasEffect(id, hostId)) {
+          const warning = modifierEffectWarning(id, slot, hostId, host);
+          warnings.push(warning);
+          addWarning(slotWarnings, slot, warning);
+          addWarning(slotWarnings, host, warning);
+        }
       }
       continue;
     }

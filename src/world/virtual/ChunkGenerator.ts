@@ -855,14 +855,47 @@ function dressHangingGrowth(
       const recipe = dressingRecipe(def, biome);
       const density = clamp01(recipe.hangingDensity * hanging * detail);
       if (unitHash2i(def.seed ^ 0xb67db631, Math.floor(wx / 3), Math.floor(wy / 3)) > density * 0.12) continue;
-      const length = 2 + Math.floor(unitHash2i(def.seed ^ 0xf6249a83, wx, wy) * 6);
+      const lengthRoll = unitHash2i(def.seed ^ 0xf6249a83, wx, wy);
+      const length =
+        recipe.hanging === Cell.Vines ? 4 + Math.floor(Math.pow(lengthRoll, 1.35) * 18) : 2 + Math.floor(lengthRoll * 6);
+      let xx = x;
       for (let d = 0; d < length; d++) {
         const yy = y + d;
-        const ii = x + yy * scratch.size;
-        if (yy >= scratch.size - 1 || scratch.types[ii] !== Cell.Empty) break;
+        if (yy >= scratch.size - 1) break;
+        let connectorX = -1;
+        if (recipe.hanging === Cell.Vines && d > 2) {
+          const bend = unitHash2i(def.seed ^ 0x2a751b39, wx + d, scratch.originY + yy);
+          if (bend < 0.12 && xx > 1) {
+            connectorX = xx;
+            xx--;
+          } else if (bend > 0.88 && xx < scratch.size - 2) {
+            connectorX = xx;
+            xx++;
+          }
+        }
+        const ii = xx + yy * scratch.size;
+        if (scratch.types[ii] !== Cell.Empty) break;
         const worldY = scratch.originY + yy;
+        if (connectorX >= 0) {
+          const ci = connectorX + yy * scratch.size;
+          if (scratch.types[ci] === Cell.Empty) {
+            scratch.types[ci] = recipe.hanging;
+            scratch.colors[ci] = materialColor(def, biome, recipe.hanging, scratch.originX + connectorX, worldY);
+          }
+        }
         scratch.types[ii] = recipe.hanging;
-        scratch.colors[ii] = materialColor(def, biome, recipe.hanging, wx, worldY);
+        scratch.colors[ii] = materialColor(def, biome, recipe.hanging, scratch.originX + xx, worldY);
+        if (recipe.hanging === Cell.Vines && d > 3) {
+          const branch = unitHash2i(def.seed ^ 0x6e8424ef, wx - d, worldY);
+          if (branch < 0.1 || branch > 0.9) {
+            const bx = xx + (branch < 0.5 ? -1 : 1);
+            const bi = bx + yy * scratch.size;
+            if (bx > 0 && bx < scratch.size - 1 && scratch.types[bi] === Cell.Empty) {
+              scratch.types[bi] = recipe.hanging;
+              scratch.colors[bi] = materialColor(def, biome, recipe.hanging, scratch.originX + bx, worldY);
+            }
+          }
+        }
       }
     }
   }

@@ -10,6 +10,10 @@ const IGNITION_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [-1, -1],
 ];
 
+function powderCanPass(t: number): boolean {
+  return t === Cell.Empty || (isLiquid(t) && t !== Cell.Lava) || isGas(t);
+}
+
 /** Falling-powder behavior shared by SAND and GOLD (type selects the params). */
 export function handleSand(ctx: Ctx, x: number, y: number, type: Cell): void {
   const w = ctx.world;
@@ -38,18 +42,17 @@ export function handleSand(ctx: Ctx, x: number, y: number, type: Cell): void {
     }
   }
   const passRate = ctx.params.materials[type].densityWeight!;
-  const canPass = (t: number) => t === Cell.Empty || (isLiquid(t) && t !== Cell.Lava) || isGas(t);
-  if (w.inBounds(x, y + 1) && canPass(w.types[w.idx(x, y + 1)]) && Math.random() < passRate) {
+  if (w.inBounds(x, y + 1) && powderCanPass(w.types[w.idx(x, y + 1)]) && Math.random() < passRate) {
     w.swap(x, y, x, y + 1);
     return;
   }
   if (Math.random() < ctx.params.materials[type].friction!) {
     const dir = Math.random() < 0.5 ? 1 : -1;
-    if (w.inBounds(x + dir, y + 1) && canPass(w.types[w.idx(x + dir, y + 1)])) {
+    if (w.inBounds(x + dir, y + 1) && powderCanPass(w.types[w.idx(x + dir, y + 1)])) {
       w.swap(x, y, x + dir, y + 1);
       return;
     }
-    if (w.inBounds(x - dir, y + 1) && canPass(w.types[w.idx(x - dir, y + 1)])) {
+    if (w.inBounds(x - dir, y + 1) && powderCanPass(w.types[w.idx(x - dir, y + 1)])) {
       w.swap(x, y, x - dir, y + 1);
       return;
     }
@@ -69,18 +72,17 @@ export function handleGunpowder(ctx: Ctx, x: number, y: number): void {
       return;
     }
   }
-  const canPass = (t: number) => t === Cell.Empty || (isLiquid(t) && t !== Cell.Lava) || isGas(t);
-  if (w.inBounds(x, y + 1) && canPass(w.types[w.idx(x, y + 1)])) {
+  if (w.inBounds(x, y + 1) && powderCanPass(w.types[w.idx(x, y + 1)])) {
     w.swap(x, y, x, y + 1);
     return;
   }
   if (Math.random() < ctx.params.materials[Cell.Gunpowder].friction!) {
     const dir = Math.random() < 0.5 ? 1 : -1;
-    if (w.inBounds(x + dir, y + 1) && canPass(w.types[w.idx(x + dir, y + 1)])) {
+    if (w.inBounds(x + dir, y + 1) && powderCanPass(w.types[w.idx(x + dir, y + 1)])) {
       w.swap(x, y, x + dir, y + 1);
       return;
     }
-    if (w.inBounds(x - dir, y + 1) && canPass(w.types[w.idx(x - dir, y + 1)])) {
+    if (w.inBounds(x - dir, y + 1) && powderCanPass(w.types[w.idx(x - dir, y + 1)])) {
       w.swap(x, y, x - dir, y + 1);
       return;
     }

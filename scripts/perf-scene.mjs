@@ -35,7 +35,7 @@ if (!['0', '1', 'current'].includes(GPU_COMPOSE_MODE)) {
 }
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
-const all = emptyBuckets(['autosaveMs']);
+const all = emptyBuckets(['autosaveMs', 'heapUsedDeltaMB', 'heapTotalDeltaMB']);
 let firstRunCapabilities = null;
 let webgpuCapabilities = null;
 const gpuComposeRuns = [];
@@ -141,6 +141,17 @@ for (let run = 0; run < RUNS; run++) {
       }, 700);
 
       await new Promise((r) => setTimeout(r, 1500)); // warm-up / JIT
+      const readHeap = () => {
+        const memory = performance.memory;
+        return memory
+          ? {
+              usedJSHeapSize: memory.usedJSHeapSize,
+              totalJSHeapSize: memory.totalJSHeapSize,
+              jsHeapSizeLimit: memory.jsHeapSizeLimit,
+            }
+          : null;
+      };
+      const heapBeforeRecord = readHeap();
 
       window.__perfSamples = [];
       window.__perfRecord = true;
@@ -154,6 +165,7 @@ for (let run = 0; run < RUNS; run++) {
       window.__perfRecord = false;
       clearInterval(bomber);
       const samples = window.__perfSamples;
+      const heapAfterRecord = readHeap();
 
       // ---- AUTOSAVE HITCH: visit 5 levels, then time saveExpedition ----
       for (const id of ['d2', 'd3', 'd4', 'd5']) {
@@ -168,9 +180,15 @@ for (let run = 0; run < RUNS; run++) {
         saves.push(performance.now() - t0);
         await new Promise((r) => setTimeout(r, 120));
       }
+      const heapAfterSaves = readHeap();
       return {
         samples,
         saves,
+        heap: {
+          beforeRecord: heapBeforeRecord,
+          afterRecord: heapAfterRecord,
+          afterSaves: heapAfterSaves,
+        },
         particles: ctx.particles.list?.length ?? -1,
         enemies: ctx.enemies.length,
         projectiles: ctx.projectiles.length,
@@ -183,6 +201,12 @@ for (let run = 0; run < RUNS; run++) {
 
   addSampleBuckets(all, result.samples);
   all.autosaveMs.push(...result.saves);
+  const heapBefore = result.heap.beforeRecord;
+  const heapAfter = result.heap.afterSaves ?? result.heap.afterRecord;
+  if (heapBefore && heapAfter) {
+    all.heapUsedDeltaMB.push((heapAfter.usedJSHeapSize - heapBefore.usedJSHeapSize) / (1024 * 1024));
+    all.heapTotalDeltaMB.push((heapAfter.totalJSHeapSize - heapBefore.totalJSHeapSize) / (1024 * 1024));
+  }
   gpuComposeRuns.push({
     run: run + 1,
     requested: GPU_COMPOSE_MODE,
@@ -198,7 +222,17 @@ for (let run = 0; run < RUNS; run++) {
 }
 await browser.close();
 
-const summaryKeys = ['sim', 'entities', 'compose', 'gl', 'render', 'frame', 'autosaveMs'];
+const summaryKeys = [
+  'sim',
+  'entities',
+  'compose',
+  'gl',
+  'render',
+  'frame',
+  'autosaveMs',
+  'heapUsedDeltaMB',
+  'heapTotalDeltaMB',
+];
 const summary = summarizeBuckets(all, summaryKeys);
 
 const payload = {

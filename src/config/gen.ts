@@ -39,8 +39,16 @@ import type { BiomeId } from '@/core/types';
  *      machine-room passes so later connectors use current, stamped terrain.
  * v12: rescue validator-matched machine-fed/ranged locks with cell-reachable
  *      tunnels after prefab and machine-room placement.
+ * v13: D1 Spell Lab annex beside the first Refuge, with real-cell teaching
+ *      stations and a checked tome reward.
+ * v14: post-placement campaign dressing adds biome-specific ore, rubble,
+ *      liquid pockets, and surface accents while respecting placement ledgers.
+ * v15: biome goldBonus scales gold pocket budgets; non-lava pools use their
+ *      material color; final findability errors carve fail-open rescue routes.
+ * v16: longer biome vines and pass-through campaign hanging-vine dressing feed
+ *      the soft strand simulation with observable, organic tendrils.
  */
-export const GEN_VERSION = 12;
+export const GEN_VERSION = 16;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)

@@ -5,6 +5,7 @@ import { LEVELS } from '@/config/worldgraph';
 import { Flask } from '@/combat/Flask';
 import { createDefaultStatus } from '@/entities/status';
 import { Levels, reviveSavedEnemy, snapshotEnemyForSave } from '@/game/Levels';
+import { makePickup } from '@/core/pickupDefs';
 import { makeLevelRuntime } from '@/game/runtime';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
@@ -275,9 +276,90 @@ describe('level enemy persistence', () => {
     });
   });
 
+  it('death checkpoints persist the penalty while resuming at the respawn anchor', () => {
+    withLocalStorage((store) => {
+      const world = new World();
+      const ctx = {
+        world,
+        enemies: [],
+        state: {
+          playtestSource: null,
+          debugGodMode: false,
+          score: 170,
+          worldSeed: 42,
+        },
+        player: {
+          x: 300,
+          y: 240,
+          hp: 0,
+          maxHp: 120,
+          dead: true,
+          levit: 12,
+          maxLevit: 90,
+          perks: { torchbearer: true },
+        },
+        wands: {
+          snapshotLoadout: () => ({ active: 0, collection: ['spark'], wands: [] }),
+          snapshotRuntimeState: () => ({
+            active: 0,
+            collection: ['spark'],
+            wands: [],
+            lastDryFire: 0,
+            flameBurst: 0,
+            depthsGranted: [],
+            infuserGranted: false,
+          }),
+        },
+        flask: {
+          activeIndex: 0,
+          slots: [],
+          bottleView: () => null,
+        },
+      } as unknown as Ctx;
+      const levels = new Levels(ctx);
+      const runtime = makeLevelRuntime({
+        def: { id: 'd1', name: 'Depth 1', biome: 'earthen', depth: 1, nextLevelId: null },
+        world,
+        enemies: [],
+        spawn: { x: 44, y: 55 },
+        regions: null,
+      });
+      runtime.pickups.push(makePickup('goldpile', 301, 234, { amount: 30 }));
+      const internals = levels as unknown as {
+        currentId: string | null;
+        levels: Map<string, LevelRuntime>;
+      };
+      internals.levels.set('d1', runtime);
+      internals.currentId = 'd1';
+
+      levels.saveDeathCheckpoint(ctx);
+
+      const save = JSON.parse(store.get('noita-expedition') ?? 'null') as {
+        score: number;
+        player: { x: number; y: number; hp: number; maxHp: number; levit: number; maxLevit: number; perks: Record<string, true> };
+        levels: Array<{ pickups: Array<{ kind: string; data: { amount?: number } }> }>;
+      };
+      expect(save.score).toBe(170);
+      expect(save.player).toMatchObject({ x: 44, y: 55, hp: 120, maxHp: 120, levit: 90, maxLevit: 90 });
+      expect(save.player.perks).toEqual({ torchbearer: true });
+      expect(save.levels[0].pickups).toEqual([
+        expect.objectContaining({ kind: 'goldpile', data: { amount: 30 } }),
+      ]);
+    });
+  });
+
   it('serializes full wand runtime state and flask belt state into expedition saves', () => {
     withLocalStorage((store) => {
       const world = new World();
+      for (let i = 0; i < 20005; i++) {
+        world.types[i] = Cell.Fungus;
+        world.life[i] = -1;
+        world.charge[i] = 1;
+      }
+      const scarIdx = world.idx(7, 7);
+      world.types[scarIdx] = Cell.Stone;
+      world.colors[scarIdx] = 0x552211;
+      world.colorOverrides.add(scarIdx);
       const loadout: WandLoadoutSave = {
         active: 0,
         collection: ['spark'],
@@ -333,6 +415,7 @@ describe('level enemy persistence', () => {
         spawn: { x: 10, y: 20 },
         regions: null,
       });
+      runtime.pickups.push(makePickup('tome', 66, 77, { card: 'spark', offerPending: true }));
       const internals = levels as unknown as {
         currentId: string | null;
         levels: Map<string, LevelRuntime>;
@@ -346,6 +429,12 @@ describe('level enemy persistence', () => {
         loadout: WandLoadoutSave;
         wands: WandRuntimeSnapshot;
         flasks: { activeIndex: number; slots: Array<{ material: number | null; count: number; capacity: number }> };
+        levels: Array<{
+          colorOverrides?: Array<[number, number]>;
+          life: Array<[number, number]>;
+          charge: Array<[number, number]>;
+          pickups: Array<{ kind: string; data: { offerPending?: boolean } }>;
+        }>;
       };
       expect(save.loadout).toEqual(loadout);
       expect(save.wands).toEqual(wands);
@@ -356,6 +445,10 @@ describe('level enemy persistence', () => {
           { material: Cell.Acid, count: 120, capacity: 600 },
         ],
       });
+      expect(save.levels[0].colorOverrides).toContainEqual([scarIdx, 0x552211]);
+      expect(save.levels[0].life).toHaveLength(20005);
+      expect(save.levels[0].charge).toHaveLength(20005);
+      expect(save.levels[0].pickups[0]).toMatchObject({ kind: 'tome', data: { offerPending: false } });
     });
   });
 

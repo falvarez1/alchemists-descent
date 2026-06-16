@@ -818,3 +818,106 @@ Notes:
   virtual-world work: `tests/virtual-world.test.ts` expected cropped scene caps
   to keep `lightCount=261` / `objectCount=261`, while the current dirty checkout
   returned `1` / `1`. That failure is outside the Phase 4.5 WebGPU slice.
+
+## Phase 4.6 - Raw WGSL Compose to TSL Storage Presentation
+
+Task: combine the raw WGSL compose fixture and the Three/TSL storage-texture
+presentation bridge before any live renderer WebGPU compose path is enabled.
+The probe uses production-sized compose resources, writes a Three-owned
+`StorageTexture` from raw WGSL compute, then presents that same texture through
+TSL `RenderPipeline` / `textureLoad`.
+
+Commit: `9a93544` plus working-tree Phase 4.6 probe/docs changes. The checkout
+remained dirty from unrelated gameplay, Builder, UI, wand, and virtual-world
+files during the probe.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for prior WebGPU phases.
+
+Requested backend: explicit `WebGPURenderer` fixture page.
+
+Actual backend: WebGPU, with `isWebGPUBackend=true` and `isWebGLBackend=false`.
+
+Scene / seed / resolution: deterministic production-sized compose fixture:
+`525x357` logical view, `1050x714` presentation, `653x485 rgba8uint` world
+window, `263x179 rgba32float` light field, `256x1 r32float` bloom LUT,
+`525x357 rgba16float` overlay, and `525x357 rgba8unorm` output storage texture.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-compose-storage-fixture-page.js
+node --check scripts/probe-webgpu-compose-storage-fixture.mjs
+node --check scripts/webgpu-compose-storage-fixture-model.mjs
+node --check scripts/webgpu-storage-screenshot-validation.mjs
+npm run probe:webgpu-compose-storage-fixture
+```
+
+Baseline: Phase 4.3 proved a raw WGSL render-pass fixture could match a CPU
+reference but did not present through a Three texture. Phase 4.4/4.5 proved a
+Three `StorageTexture` could be written and presented at production size but did
+not feed it from raw WGSL compose. The missing integration risk was whether raw
+WGSL work could write a Three-owned texture that TSL presentation then samples.
+
+Expected result: no production visual or performance behavior change. The
+positive result is a quantitative integration proof: raw WGSL writes the
+GPU-resident output texture, TSL presents it, readback parity matches CPU, and
+the Playwright screenshot matches the same CPU reference at the declared output
+dimensions.
+
+After: added `scripts/probe-webgpu-compose-storage-fixture.*` plus shared
+fixture/reference helpers in `scripts/webgpu-compose-storage-fixture-model.mjs`.
+The page allocates a Three r184 `StorageTexture`, initializes it through TSL so
+Three owns the resource, binds its base mip view to raw WGSL compute as
+`texture_storage_2d<rgba8unorm, write>`, copies the texture back with 256-byte
+row unpacking for validation, then presents the same texture through TSL.
+
+Actual result: keep. The probe passed in
+`verify-out/webgpu-compose-storage-fixture/probe-1781558198105.json` with no
+console errors, no page errors, and no probe failures:
+
+| Metric | Readback | Screenshot |
+| --- | --- | --- |
+| `maxDelta` | `1` | `1` |
+| `mismatchPct` | `0` | `0` |
+| `exactPct` | `89.425%` | `89.425%` |
+| `meanDelta` | `0.0273` | `0.0273` |
+| Dimensions | `525x357` | `1050x714` |
+
+Performance result: no WebGPU speedup is claimed for this slice. The measured
+`gpuSubmitReadbackWallMs=30.6ms` includes validation readback and is not a
+production frame-time estimate. The useful result is architectural: the intended
+raw-WGSL-to-TSL GPU-resident presentation path works without copying through
+`pixelData`.
+
+Visual/quality evidence:
+`verify-out/webgpu-compose-storage-fixture/compose-storage-1781558198105.png`.
+
+Decision: keep the probe. Do not enable production WebGPU compose from this
+state. The next runtime slice can wire this path behind the existing
+`postFx.gpuCompose` switch, but `WebGpuRenderBackend.gpuComposeAvailable` must
+remain false until CPU/WebGL2/WebGPU parity and same-session timing are green.
+
+Notes:
+
+- Combined fixture artifact:
+  `verify-out/webgpu-compose-storage-fixture/probe-1781558198105.json`.
+- The first run failed because the raw storage binding used a default texture
+  view spanning all mips while the bind-group layout required one mip. The fix
+  binds `outputTexture.createView({ baseMipLevel: 0, mipLevelCount: 1 })` and
+  sets `storageTexture.generateMipmaps=false`. The failed artifact is
+  `verify-out/webgpu-compose-storage-fixture/probe-1781557822135.json`.
+- The fixture intentionally exercises the subset already covered by Phase 4.3;
+  the full live shader still needs backdrop, distortion, animated material, and
+  post-on parity against CPU/WebGL2 before it can be treated as production
+  compose.
+- Raw access to the Three-owned `StorageTexture` currently relies on the pinned
+  r184 backend detail `backend.get(storageTexture).texture`. Production wiring
+  must keep that behind a guarded adapter and rerun this probe on any Three
+  upgrade.
+- Validation passed for this slice:
+  `node --check scripts/probe-webgpu-compose-storage-fixture-page.js`,
+  `node --check scripts/probe-webgpu-compose-storage-fixture.mjs`,
+  `node --check scripts/webgpu-compose-storage-fixture-model.mjs`,
+  `node --check scripts/webgpu-storage-screenshot-validation.mjs`, and
+  `npm run probe:webgpu-compose-storage-fixture`.

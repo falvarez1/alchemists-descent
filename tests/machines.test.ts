@@ -238,7 +238,7 @@ describe('plug', () => {
   it('is exempt from the groan/fail-open watch', () => {
     const plug = makePlug(h.world, h.list, 100, 100, 4, 4, Cell.Wood, null);
     for (const [x, y] of plug.body!) h.world.types[h.world.idx(x, y)] = Cell.Empty;
-    step(h.ctx, mech, 60);
+    step(h.ctx, mech, 1830);
     expect(plug.state).toBe(1);
     expect(plug.broken).toBeUndefined();
   });
@@ -248,6 +248,7 @@ describe('sensor', () => {
   it('heat sensor reads its zone and holds through the timed latch', () => {
     const door = makeDoor(h.ctx, h.list, 200, 100, 3, 10);
     const sensor = makeSensor(
+      h.world,
       h.list,
       100,
       100,
@@ -272,7 +273,7 @@ describe('sensor', () => {
   });
 
   it('permanent charge sensor latches forever', () => {
-    const sensor = makeSensor(h.list, 100, 100, {
+    const sensor = makeSensor(h.world, h.list, 100, 100, {
       sensorType: 'charge',
       threshold: 1,
       zone: { x0: 98, y0: 96, x1: 102, y1: 99 },
@@ -288,7 +289,7 @@ describe('sensor', () => {
   });
 
   it('material sensor counts only the filtered cells', () => {
-    const sensor = makeSensor(h.list, 100, 100, {
+    const sensor = makeSensor(h.world, h.list, 100, 100, {
       sensorType: 'material',
       threshold: 3,
       zone: { x0: 98, y0: 96, x1: 102, y1: 99 },
@@ -308,13 +309,29 @@ describe('sensor', () => {
   });
 
   it('clamps oversized zones to the scan cap', () => {
-    const sensor = makeSensor(h.list, 100, 100, {
+    const sensor = makeSensor(h.world, h.list, 100, 100, {
       sensorType: 'weight',
       threshold: 10,
       zone: { x0: 0, y0: 0, x1: 800, y1: 600 },
     });
     const z = sensor.zone!;
     expect((z.x1 - z.x0 + 1) * (z.y1 - z.y0 + 1)).toBeLessThanOrEqual(SENSOR_ZONE_CAP);
+  });
+
+  it('fails open when its physical node is destroyed', () => {
+    const door = makeDoor(h.ctx, h.list, 200, 100, 3, 10);
+    const sensor = makeSensor(h.world, h.list, 100, 100, {
+      sensorType: 'heat',
+      threshold: 20,
+      zone: { x0: 96, y0: 92, x1: 104, y1: 99 },
+    }, door);
+    expect(sensor.body).toEqual([[100, 100]]);
+    h.world.clearCellAt(h.world.idx(100, 100));
+
+    step(h.ctx, mech, 1830);
+
+    expect(sensor.broken).toBe(0);
+    expect(door.state).toBe(1);
   });
 });
 

@@ -1,5 +1,5 @@
 import type { CardId, CastAction } from '@/core/types';
-import { CARD_DEFS, MULTICAST_SIZE } from './cards';
+import { CARD_DEFS, MULTICAST_SIZE, PROJECTILE_MOD_HOST_CARDS } from './cards';
 export type { CastAction } from '@/core/types';
 
 /**
@@ -37,6 +37,8 @@ export interface CastGroup {
 
 const MAX_DMG_MUL = 4;
 const MAX_ACTIONS_PER_GROUP = 6;
+const WATER_TRAIL_BUDGET = 18;
+const OIL_TRAIL_BUDGET = 14;
 
 /** Pending modifier pack, consumed (and reset) by the next projectile card. */
 interface ModPack {
@@ -44,6 +46,11 @@ interface ModPack {
   dmgMul: number;
   spreadAdd: number;
   infused: boolean;
+  waterTrail: number;
+  oilTrail: number;
+  electricCharge: boolean;
+  critWet: boolean;
+  shortHoming: boolean;
   bounces: number;
   trigger: boolean;
   /** Mana of the modifier cards in the pack, charged to the consuming group. */
@@ -58,6 +65,11 @@ function freshPack(): ModPack {
     dmgMul: 1,
     spreadAdd: 0,
     infused: false,
+    waterTrail: 0,
+    oilTrail: 0,
+    electricCharge: false,
+    critWet: false,
+    shortHoming: false,
     bounces: 0,
     trigger: false,
     mana: 0,
@@ -98,6 +110,11 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
         pack.speedMul *= 0.75;
       } else if (id === 'spread') pack.spreadAdd += 0.18;
       else if (id === 'infuser') pack.infused = true;
+      else if (id === 'watertrail') pack.waterTrail = Math.max(pack.waterTrail, WATER_TRAIL_BUDGET);
+      else if (id === 'oiltrail') pack.oilTrail = Math.max(pack.oilTrail, OIL_TRAIL_BUDGET);
+      else if (id === 'electriccharge') pack.electricCharge = true;
+      else if (id === 'critwet') pack.critWet = true;
+      else if (id === 'shorthoming') pack.shortHoming = true;
       else if (id === 'bounce') pack.bounces = 2;
       else if (id === 'trigger') pack.trigger = true;
     } else if (def.kind === 'multicast') {
@@ -120,6 +137,7 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
         pendingMana = 0;
         pendingSlots = [];
       }
+      const supportsProjectileMods = PROJECTILE_MOD_HOST_CARDS.has(id);
       cur.actions.push({
         action: {
           card: id,
@@ -127,6 +145,11 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
           dmgMul: Math.min(MAX_DMG_MUL, pack.dmgMul),
           spreadAdd: pack.spreadAdd,
           infused: pack.infused,
+          waterTrail: supportsProjectileMods ? pack.waterTrail : 0,
+          oilTrail: supportsProjectileMods ? pack.oilTrail : 0,
+          electricCharge: supportsProjectileMods ? pack.electricCharge : false,
+          critWet: supportsProjectileMods ? pack.critWet : false,
+          shortHoming: supportsProjectileMods ? pack.shortHoming : false,
           bounces: pack.bounces,
           triggered: null,
         },

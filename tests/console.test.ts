@@ -528,14 +528,14 @@ describe('console registry', () => {
     const compose = await ctx.console.exec('set render.compose on');
     const lighting = await ctx.console.exec('set render.lighting true');
     const badBackend = await ctx.console.exec('set render.backend metal');
-    const assertBackend = await ctx.console.exec('assert render.backend == auto');
+    const assertBackend = await ctx.console.exec('assert render.backend == webgl');
 
-    expect(backend).toMatchObject({ ok: true, data: { path: 'render.backend', oldValue: 'webgl', value: 'auto', tainted: false } });
+    expect(backend).toMatchObject({ ok: false, data: { code: 'startup-only-param', path: 'render.backend', expected: ['webgl', 'webgpu', 'auto'] } });
     expect(compose).toMatchObject({ ok: true, data: { path: 'render.compose', value: true, tainted: false } });
     expect(lighting).toMatchObject({ ok: true, data: { path: 'render.lighting', value: true, tainted: false } });
-    expect(badBackend).toMatchObject({ ok: false, data: { code: 'parse-param-value', expected: ['webgl', 'webgpu', 'auto'] } });
-    expect(assertBackend).toMatchObject({ ok: true, data: { path: 'render.backend', expected: 'auto', actual: 'auto' } });
-    expect(ctx.state.render).toMatchObject({ backend: 'auto', compose: true, lighting: true, particles: false, post: false });
+    expect(badBackend).toMatchObject({ ok: false, data: { code: 'startup-only-param', expected: ['webgl', 'webgpu', 'auto'] } });
+    expect(assertBackend).toMatchObject({ ok: true, data: { path: 'render.backend', expected: 'webgl', actual: 'webgl' } });
+    expect(ctx.state.render).toMatchObject({ backend: 'webgl', compose: true, lighting: true, particles: false, post: false });
     expect(ctx.state.debugGodMode).toBe(false);
   });
 

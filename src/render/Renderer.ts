@@ -292,6 +292,8 @@ class WebGLRenderBackend implements RendererBackend {
     this.texture.dispose();
     this.basicMaterial.dispose();
     this.quadMesh.geometry.dispose();
+    this.bloomPass.dispose();
+    this.postFx.dispose();
     this.composer.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -317,7 +319,7 @@ export class Renderer implements RenderTarget {
   }
 
   private createBackend(settings: RenderSettings): RendererBackend {
-    if (settings.backend !== 'webgpu') {
+    if (settings.backend === 'webgl') {
       return new WebGLRenderBackend(this.holder, settings);
     }
     if (!this.canAttemptWebGpu()) {
@@ -332,7 +334,7 @@ export class Renderer implements RenderTarget {
 
   private fallBackFromFailedWebGpu(settings: RenderSettings): void {
     if (!(this.backend instanceof WebGpuRenderBackend) || !this.backend.initializationFailed) return;
-    const canvas = this.backend.releaseCanvasForWebGlFallback();
+    const canvas = this.backend.releaseCanvasForWebGlFallback(true);
     this.backend = new WebGLRenderBackend(
       this.holder,
       settings,
@@ -344,8 +346,14 @@ export class Renderer implements RenderTarget {
   private fallBackFromLostWebGpu(settings: RenderSettings): void {
     if (!(this.backend instanceof WebGpuRenderBackend) || !this.backend.deviceLost) return;
     const reason = this.backend.deviceLossReason;
-    const canvas = this.backend.releaseCanvasForWebGlFallback();
+    const canvas = this.backend.releaseCanvasForWebGlFallback(false);
     this.backend = new WebGLRenderBackend(this.holder, settings, canvas, reason);
+    this.emitCanvasChanged();
+  }
+
+  private emitCanvasChanged(): void {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('renderer-canvas-changed', { detail: { canvas: this.backend.domElement } }));
   }
 
   get pixelData(): Float32Array {

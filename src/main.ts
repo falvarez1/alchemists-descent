@@ -1,5 +1,6 @@
 import '@/styles/main.css';
 import { Game } from '@/game/Game';
+import { initRapier } from '@/entities/rapierInit';
 
 const bootOverlay = document.getElementById('boot-overlay');
 const bootStatus = document.getElementById('boot-status');
@@ -7,10 +8,15 @@ const bootStatus = document.getElementById('boot-status');
 // Two rAFs = one committed frame: the styled boot overlay gets painted
 // before synchronous worldgen blocks the main thread.
 requestAnimationFrame(() =>
-  requestAnimationFrame(() => {
+  requestAnimationFrame(async () => {
     try {
       const holder = document.getElementById('canvas-holder');
       if (!holder) throw new Error('missing #canvas-holder');
+
+      // The rigid-body engine (Rapier2D) is WASM — initialise it before the
+      // Game constructor builds the physics world.
+      if (bootStatus) bootStatus.textContent = 'LOADING PHYSICS…';
+      await initRapier();
 
       const game = new Game(holder);
       game.start();

@@ -25,6 +25,7 @@ export function stainCell(
     Math.floor(unpackG(c) + (sg - unpackG(c)) * k),
     Math.floor(unpackB(c) + (sb - unpackB(c)) * k),
   );
+  world.colorOverrides.add(i);
 }
 
 /** Spray a disc of blood stains with density falling off toward the rim. */

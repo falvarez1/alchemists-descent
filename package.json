@@ -13,7 +13,9 @@
     "test:watch": "vitest",
     "verify:findability": "node scripts/verify-findability.mjs",
     "verify:game": "node scripts/verify-game.mjs",
+    "verify:builder-ux": "node scripts/verify-builder-ux.mjs",
     "verify:builder-responsive": "node scripts/verify-builder-responsive.mjs",
+    "bench:virtual-world": "node scripts/bench-virtual-world.mjs",
     "perf:scene": "node scripts/perf-scene.mjs",
     "perf:ab": "node scripts/perf-ab-feature.mjs",
     "probe:compose-parity": "node scripts/probe-compose-parity.mjs",
@@ -22,12 +24,14 @@
     "probe:webgpu-presentation": "node scripts/probe-webgpu-presentation.mjs",
     "probe:webgpu-compose-canary": "node scripts/probe-webgpu-compose-canary.mjs",
     "probe:webgpu-compose-fixture": "node scripts/probe-webgpu-compose-fixture.mjs",
+    "probe:webgpu-compose-storage-fixture": "node scripts/probe-webgpu-compose-storage-fixture.mjs",
     "probe:webgpu-storage-bridge": "node scripts/probe-webgpu-storage-bridge.mjs",
     "probe:webgpu-storage-size-sweep": "node scripts/probe-webgpu-storage-size-sweep.mjs",
     "lint": "eslint src",
     "format": "prettier --write \"src/**/*.{ts,css}\" index.html"
   },
   "dependencies": {
+    "@dimforge/rapier2d-compat": "^0.19.3",
     "three": "0.184.0"
   },
   "devDependencies": {

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { BIOMES } from '@/config/biomes';
 import { createDefaultPostFxSettings } from '@/config/params';
 import type { Ctx, GameStateData } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
+import type { VirtualBiomeDressingRecipe } from '@/world/virtual/types';
+import { campaignDressingRecipeForBiome, goldPocketBudgetForBiome } from '@/world/biomeExtras';
 import { WorldGen } from '@/world/CaveGenerator';
 
 /**
@@ -17,7 +20,7 @@ import { WorldGen } from '@/world/CaveGenerator';
  * cell types + spawn hint are the deterministic contract.
  */
 
-function makeCtx(world: World, worldSeed: number): Ctx {
+function makeCtx(world: World, worldSeed: number, biome: keyof typeof BIOMES = 'earthen'): Ctx {
   const state: GameStateData = {
     mode: 'build',
     score: 0,
@@ -25,7 +28,7 @@ function makeCtx(world: World, worldSeed: number): Ctx {
     activeInputMode: 'element',
     currentElement: Cell.Sand,
     currentSpell: 'bolt',
-    currentBiome: 'earthen',
+    currentBiome: biome,
     brushSize: 6,
     playerSpawned: false,
     worldSeed,
@@ -53,6 +56,59 @@ const GOLDEN: Record<number, { hash: string; spawn: { x: number; y: number } }> 
   1337: { hash: 'e8e81b0d', spawn: { x: 800, y: 396 } },
   123456789: { hash: '52d2a4e0', spawn: { x: 800, y: 542 } },
 };
+
+const RECIPE_FIELDS: Array<keyof VirtualBiomeDressingRecipe> = [
+  'ore',
+  'oreDensity',
+  'secondary',
+  'secondaryDensity',
+  'pocket',
+  'pocketDensity',
+  'liquid',
+  'liquidDensity',
+  'glow',
+  'glowDensity',
+  'rubble',
+  'rubbleDensity',
+  'hanging',
+  'hangingDensity',
+];
+
+describe('campaign biome dressing recipe vocabulary', () => {
+  for (const biome of Object.keys(BIOMES) as Array<keyof typeof BIOMES>) {
+    it(`${biome} exposes a complete virtual-compatible recipe`, () => {
+      const recipe = campaignDressingRecipeForBiome(biome);
+      for (const field of RECIPE_FIELDS) {
+        expect(Number.isFinite(recipe[field])).toBe(true);
+      }
+    });
+  }
+});
+
+describe('biome gold pocket budgets', () => {
+  it('applies biome goldBonus to the base pocket target', () => {
+    expect(goldPocketBudgetForBiome(100, 'earthen')).toBe(100);
+    expect(goldPocketBudgetForBiome(100, 'timber')).toBe(110);
+    expect(goldPocketBudgetForBiome(100, 'crystal')).toBe(160);
+  });
+});
+
+describe('biome liquid pool paint', () => {
+  it('paints crystal water pools with water colors instead of nitrogen colors', () => {
+    const world = new World();
+    const gen = new WorldGen();
+    gen.generateCaves(makeCtx(world, 1337, 'crystal'));
+
+    const waterColors: number[] = [];
+    for (let i = 0; i < world.types.length; i++) {
+      if (world.types[i] === Cell.Water) waterColors.push(world.colors[i]);
+    }
+
+    expect(waterColors.length).toBeGreaterThan(0);
+    expect(waterColors.some((color) => ((color >> 16) & 0xff) < 80 && (color & 0xff) >= 230)).toBe(true);
+    expect(waterColors.every((color) => ((color >> 16) & 0xff) < 80)).toBe(true);
+  });
+});
 
 describe('earthen generateCaves golden hashes', () => {
   for (const seedKey of Object.keys(GOLDEN)) {

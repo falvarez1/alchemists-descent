@@ -14,6 +14,8 @@ import { Spells } from '@/combat/Spells';
 import { Enemies } from '@/entities/Enemies';
 import { createPlayer, PlayerControl } from '@/entities/Player';
 import { Physics } from '@/entities/physics';
+import { RigidBodies } from '@/entities/RigidBodies';
+import { VineStrands } from '@/entities/VineStrands';
 import { Brewing } from '@/game/Brewing';
 import { createConsoleApi } from '@/game/console/commands';
 import { Critters } from '@/game/Critters';
@@ -80,6 +82,8 @@ export class Game {
   private readonly restoreSavedMode: () => void;
   private modePersistDisposer: (() => void) | null = null;
   private visibilityDisposer: (() => void) | null = null;
+  private levelCurtainDisposer: (() => void) | null = null;
+  private levelCurtainTimer: number | null = null;
   private animationFrameId: number | null = null;
   private builderPromise: Promise<Builder> | null = null;
   private started = false;
@@ -146,6 +150,8 @@ export class Game {
     ctx.lightning = new Lightning(ctx);
     ctx.projectileCtl = new Projectiles();
     ctx.physics = new Physics(ctx);
+    ctx.rigidBodies = new RigidBodies(ctx);
+    ctx.vineStrands = new VineStrands(ctx);
     ctx.playerCtl = new PlayerControl(ctx);
     ctx.enemyCtl = new Enemies(ctx);
     ctx.spells = new Spells(ctx);
@@ -166,6 +172,27 @@ export class Game {
 
     ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
     ctx.events.on('waveStarted', ({ num }) => ctx.telemetry.count(`wave.reached.${num}`));
+    this.levelCurtainDisposer = ctx.events.on('levelCurtain', ({ visible, holdMs = 0, onComplete }) => {
+      if (this.levelCurtainTimer !== null) {
+        window.clearTimeout(this.levelCurtainTimer);
+        this.levelCurtainTimer = null;
+      }
+      const curtain = document.getElementById('level-curtain');
+      if (visible) {
+        curtain?.classList.add('visible');
+        // Force reflow so the curtain class commits before synchronous generation.
+        if (curtain) void curtain.offsetHeight;
+        onComplete?.();
+        return;
+      }
+      const hide = (): void => {
+        curtain?.classList.remove('visible');
+        this.levelCurtainTimer = null;
+        onComplete?.();
+      };
+      if (holdMs > 0) this.levelCurtainTimer = window.setTimeout(hide, holdMs);
+      else hide();
+    });
 
     this.renderer = new Renderer(holder, state.render);
     this.composer = new FrameComposer(
@@ -278,6 +305,13 @@ export class Game {
     this.modePersistDisposer = null;
     this.visibilityDisposer?.();
     this.visibilityDisposer = null;
+    this.levelCurtainDisposer?.();
+    this.levelCurtainDisposer = null;
+    if (this.levelCurtainTimer !== null) {
+      window.clearTimeout(this.levelCurtainTimer);
+      this.levelCurtainTimer = null;
+    }
+    this.perfHud.dispose();
     this.renderer.dispose();
   }
 
@@ -367,6 +401,12 @@ export class Game {
       ctx.playerCtl.update(ctx);
       ctx.flask.update(ctx);
       ctx.enemyCtl.update(ctx);
+      // Rigid bodies integrate against THIS frame's settled terrain, after the
+      // sim and the kinematic entities. Impulses from systems that run later this
+      // frame (wands/projectiles → explosions) land on the bodies next frame —
+      // a one-frame lag that's imperceptible for debris.
+      ctx.rigidBodies.update(ctx);
+      ctx.vineStrands.update(ctx);
       // The descent replaced wave survival (Wave B): levels own population,
       // transitions, waystones, and the explored mask.
       ctx.levels.update(ctx);

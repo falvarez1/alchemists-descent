@@ -26,6 +26,8 @@ export interface EventMap {
   enemiesLeft: { count: number };
   /** The player arrived in a level — HUD shows depth + biome name. */
   levelChanged: { depth: number; name: string };
+  /** Gameplay requests the level-transition curtain; Game owns DOM/timing. */
+  levelCurtain: { visible: boolean; holdMs?: number; onComplete?: () => void };
   /** A waystone brazier caught fire — checkpoint set. */
   waystoneLit: undefined;
   /** First-time brew of a recipe — Grimoire entry + gold bounty. */
@@ -92,9 +94,10 @@ export class EventBus {
   emit<K extends keyof EventMap>(
     event: K,
     ...payload: EventMap[K] extends undefined ? [] : [EventMap[K]]
-  ): void {
+  ): boolean {
     const set = this.handlers.get(event);
-    if (!set) return;
+    if (!set || set.size === 0) return false;
     for (const h of set) (h as Handler<EventMap[K] | undefined>)(payload[0]);
+    return true;
   }
 }

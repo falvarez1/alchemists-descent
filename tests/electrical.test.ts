@@ -42,6 +42,26 @@ describe('updateElectricalGrid', () => {
 
     expect(world.charge[outside]).toBe(7);
   });
+
+  it('discovers directly restored charges when the simulation window reaches a new tile', () => {
+    const world = new World(128, 8);
+    world.simBounds.x0 = 0;
+    world.simBounds.x1 = 16;
+    world.simBounds.y0 = 0;
+    world.simBounds.y1 = 8;
+    const restored = world.idx(80, 3);
+    world.types[restored] = Cell.Metal;
+    world.charge[restored] = 5;
+
+    updateElectricalGrid(ctxFor(world));
+    expect(world.charge[restored]).toBe(5);
+
+    world.simBounds.x0 = 64;
+    world.simBounds.x1 = 96;
+    updateElectricalGrid(ctxFor(world));
+
+    expect(world.charge[restored]).toBe(4);
+  });
 });
 
 function ctxFor(world: World): Ctx {

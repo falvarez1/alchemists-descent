@@ -1,4 +1,4 @@
-import { Cell } from '@/sim/CellType';
+import { Cell, isLiquid } from '@/sim/CellType';
 import type {
   TransferableVirtualChunk,
   VirtualChunk,
@@ -31,6 +31,7 @@ export function toTransferableChunk(
   const wants = new Set(requestedPlanes);
   const transfer: Transferable[] = [];
   let transferBytes = 0;
+  const summary = chunkCellSummary(chunk);
   const out: TransferableVirtualChunk = {
     cx: chunk.cx,
     cy: chunk.cy,
@@ -44,6 +45,10 @@ export function toTransferableChunk(
       generatedMs: chunk.meta.generatedMs,
       generatedBytes: chunkBytes(chunk),
       transferBytes: 0,
+      materialCells: summary.materialCells,
+      liquidCells: summary.liquidCells,
+      glowCells: summary.glowCells,
+      sceneCount: chunk.meta.scenePlacements.length,
       bytes: chunkBytes(chunk),
     },
   };
@@ -80,6 +85,19 @@ export function toTransferableChunk(
   }
   out.metrics.transferBytes = transferBytes;
   return { chunk: out, transfer };
+}
+
+function chunkCellSummary(chunk: VirtualChunk): { materialCells: number; liquidCells: number; glowCells: number } {
+  let materialCells = 0;
+  let liquidCells = 0;
+  let glowCells = 0;
+  for (let i = 0; i < chunk.types.length; i++) {
+    const t = chunk.types[i] as Cell;
+    if (t !== Cell.Empty) materialCells++;
+    if (isLiquid(t)) liquidCells++;
+    if (t === Cell.Fire || t === Cell.Lava || t === Cell.Glowshroom || t === Cell.Crystal) glowCells++;
+  }
+  return { materialCells, liquidCells, glowCells };
 }
 
 export function fromTransferableChunk(input: TransferableVirtualChunk): VirtualChunk {

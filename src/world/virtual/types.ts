@@ -294,6 +294,10 @@ export interface ChunkMetrics {
   generatedMs: number;
   generatedBytes: number;
   transferBytes: number;
+  materialCells: number;
+  liquidCells: number;
+  glowCells: number;
+  sceneCount: number;
   /** @deprecated Use generatedBytes for full-cell payload size or transferBytes for actual posted payload size. */
   bytes: number;
 }
@@ -303,6 +307,10 @@ export interface WindowMetrics {
   generatedMs: number;
   generatedBytes: number;
   transferBytes: number;
+  materialCells: number;
+  liquidCells: number;
+  glowCells: number;
+  sceneCount: number;
   /** @deprecated Use generatedBytes or transferBytes. */
   bytes: number;
 }

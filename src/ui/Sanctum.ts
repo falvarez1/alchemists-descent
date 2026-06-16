@@ -5,7 +5,7 @@ import {
   SANCTUM_LOST_PAGES_POOL,
 } from '@/combat/wands/rewardPools';
 import type { CardId, Ctx, PerkId, SanctumApi } from '@/core/types';
-import { POTION_DEFS, POTION_KINDS } from '@/game/Pickups';
+import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 
 /**
  * The Sanctum (upgrade-port meta layer): a paused rest stop between depths.
@@ -203,7 +203,7 @@ export class Sanctum implements SanctumApi {
         desc: 'Choose one of three unknown spell cards',
         cost: 160,
         act: (purchase) => {
-          const cards = buildCardOffer(SANCTUM_LOST_PAGES_POOL, collectOwnedCards(ctx.wands));
+          const cards = buildCardOffer(SANCTUM_LOST_PAGES_POOL, collectOwnedCards(ctx.wands), { ensureKind: 'projectile' });
           requestCardOffer(ctx, {
             source: 'sanctum',
             title: 'LOST PAGES',

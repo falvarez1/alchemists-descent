@@ -145,7 +145,7 @@ constants assume it — do not "unify" it without retuning the whole game.
 **Frame order is a contract.** Per frame, in `Game.ts`:
 `frameCount++ → camera.update → camera.updateSimBounds → simulation.update (substeps:
 harvester → electrical → projectiles → shockwave aging → moved-clear → material sweep →
-ice/vines pass) → playerCtl.update → enemyCtl.update → waveCtl.update →
+ice/vines pass) → playerCtl.update → enemyCtl.update → rigidBodies.update → waveCtl.update →
 particles.update → lightning.update → build-mode held spells → renderer.render
 (snapshot renderCam → compose pixels → bloom/shake transforms → composer.render) →
 HUD update (even frames, play mode) → digBeam decay`.

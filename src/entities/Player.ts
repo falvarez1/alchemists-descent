@@ -9,7 +9,7 @@ import { clamp } from '@/core/math';
 import type { Ctx, PerkId, PlayerControlApi, PlayerState } from '@/core/types';
 import { PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP } from '@/core/types';
 import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
-import { makePickup } from '@/game/Pickups';
+import { makePickup } from '@/core/pickupDefs';
 import { resetCombatTransients } from '@/game/transients';
 import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
 import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
@@ -18,6 +18,10 @@ const REVIEW_STATUS_FRAMES = 3600;
 const CLIMB_FACE_REACHES = [PLAYER_HALF_W + 1, PLAYER_HALF_W + 2, PLAYER_HALF_W + 3, PLAYER_HALF_W + 4];
 const CLIMB_X_NUDGES = [0, 1, 2];
 const CLIMB_BRUSH_MAX = 8;
+const TELEPORT_SEARCH_RADIUS = 260;
+const TELEPORT_SEARCH_RADIUS_SQ = TELEPORT_SEARCH_RADIUS * TELEPORT_SEARCH_RADIUS;
+const TELEPORT_MAX_VISITED = 60000;
+const TELEPORT_MAX_CANDIDATES = 384;
 const REVIEW_PERKS: PerkId[] = [
   'might',
   'vampirism',
@@ -30,6 +34,21 @@ const REVIEW_PERKS: PerkId[] = [
   'toxinward',
   'goldmagnet',
 ];
+
+export function climbBrushesCell(t: number): boolean {
+  return t === Cell.Snow || t === Cell.Ash || t === Cell.Moss || t === Cell.Fungus;
+}
+
+function teleportHazardCell(t: number): boolean {
+  return (
+    t === Cell.Fire ||
+    t === Cell.Lava ||
+    t === Cell.Acid ||
+    t === Cell.Toxic ||
+    t === Cell.Nitrogen ||
+    t === Cell.Teleportium
+  );
+}
 
 export function grantFullReviewKit(player: PlayerState): void {
   player.maxHp = Math.max(player.maxHp, 180);
@@ -206,7 +225,7 @@ export class PlayerControl implements PlayerControlApi {
 
         const onWallShoulder = dx * side >= PLAYER_HALF_W - 1;
         const t = world.types[world.idx(sx, sy)];
-        if (!onWallShoulder || t === Cell.Metal) return { ok: false, brush: [] };
+        if (!onWallShoulder || !climbBrushesCell(t)) return { ok: false, brush: [] };
 
         brush.push([sx, sy]);
         if (brush.length > CLIMB_BRUSH_MAX) return { ok: false, brush: [] };
@@ -221,16 +240,16 @@ export class PlayerControl implements PlayerControlApi {
       if (!world.inBounds(x, y)) continue;
       const i = world.idx(x, y);
       const t = world.types[i];
-      if (!blocksEntity(t) || t === Cell.Metal) continue;
+      if (!climbBrushesCell(t)) continue;
       ctx.particles.spawn(
         x,
         y,
         -side * (0.25 + Math.random() * 0.35),
         -0.25 - Math.random() * 0.35,
-        t === Cell.Gold ? Cell.Gold : null,
+        null,
         world.colors[i],
-        t === Cell.Gold ? 180 : 32,
-        t === Cell.Gold ? { homing: ctx.state.mode === 'play', glow: 2.0, grav: 0 } : { grav: 0.06 },
+        32,
+        { grav: 0.06 },
       );
       world.clearCellAt(i);
     }
@@ -375,6 +394,7 @@ export class PlayerControl implements PlayerControlApi {
       }
       ctx.events.emit('toast', { text: `${spill} oz SCATTERS WHERE YOU FELL` });
     }
+    ctx.levels.saveDeathCheckpoint?.(ctx);
     ctx.audio.squelch();
     ctx.audio.boom(10);
     ctx.fx.screenShake = 0.05;
@@ -621,6 +641,7 @@ export class PlayerControl implements PlayerControlApi {
         4,
         bodyH,
         player.perks.flameward ? { burning: true } : undefined,
+        2,
       );
       this.statusSlow = slowFactor;
       if (damage > 0) {
@@ -1204,7 +1225,8 @@ export class PlayerControl implements PlayerControlApi {
 
   /**
    * Teleportium contact: the violet liquid flings the alchemist somewhere
-   * else entirely. 120-frame cooldown so a pool doesn't strobe-teleport.
+   * else nearby and reachable. 120-frame cooldown so a pool doesn't
+   * strobe-teleport.
    */
   private randomTeleport(ctx: Ctx): void {
     const player = ctx.player;
@@ -1213,24 +1235,75 @@ export class PlayerControl implements PlayerControlApi {
       glow: 2.4,
       grav: 0,
     });
-    for (let a = 0; a < 60; a++) {
-      const tx = 20 + Math.floor(Math.random() * (WIDTH - 40));
-      const ty = 24 + Math.floor(Math.random() * (HEIGHT - 60));
-      if (ctx.physics.entityFree(tx, ty, 4, 17)) {
-        player.x = tx;
-        player.y = ty;
-        player.vx = 0;
-        player.vy = 0;
-        player.crawling = false; // the arrival spot fits the full stance
-        this.resetClimbState(player);
-        ctx.particles.burst(tx, ty - 8, 18, null, () => packRGB(185, 110, 255), 2.6, {
-          glow: 2.4,
-          grav: 0,
-        });
-        ctx.audio.tone(660, 1320, 0.18, 'sine', 0.18);
-        return;
+    const target = this.safeTeleportTarget(ctx);
+    if (!target) return;
+    player.x = target.x;
+    player.y = target.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.crawling = false; // the arrival spot fits the full stance
+    this.resetClimbState(player);
+    ctx.particles.burst(target.x, target.y - 8, 18, null, () => packRGB(185, 110, 255), 2.6, {
+      glow: 2.4,
+      grav: 0,
+    });
+    ctx.audio.tone(660, 1320, 0.18, 'sine', 0.18);
+  }
+
+  private safeTeleportTarget(ctx: Ctx): { x: number; y: number } | null {
+    const { player, world } = ctx;
+    const sx = Math.floor(player.x);
+    const sy = Math.floor(player.y);
+    if (!world.inBounds(sx, sy)) return null;
+
+    const visited = new Uint8Array(world.types.length);
+    const queue = new Int32Array(Math.min(world.types.length, TELEPORT_MAX_VISITED));
+    const candidates: Array<{ x: number; y: number }> = [];
+    let head = 0;
+    let tail = 0;
+
+    const enqueue = (x: number, y: number): void => {
+      if (tail >= queue.length || !world.inBounds(x, y)) return;
+      const dx = x - sx;
+      const dy = y - sy;
+      if (dx * dx + dy * dy > TELEPORT_SEARCH_RADIUS_SQ) return;
+      const i = world.idx(x, y);
+      if (visited[i]) return;
+      if (tail > 0 && !ctx.physics.entityFree(x, y, PLAYER_HALF_W, PLAYER_H)) return;
+      visited[i] = 1;
+      queue[tail++] = i;
+    };
+
+    enqueue(sx, sy);
+    while (head < tail && candidates.length < TELEPORT_MAX_CANDIDATES) {
+      const i = queue[head++];
+      const x = i % WIDTH;
+      const y = Math.floor(i / WIDTH);
+      if ((x !== sx || y !== sy) && this.isSafeTeleportLanding(ctx, x, y)) {
+        candidates.push({ x, y });
+      }
+      enqueue(x + 1, y);
+      enqueue(x - 1, y);
+      enqueue(x, y + 1);
+      enqueue(x, y - 1);
+    }
+    if (candidates.length === 0) return null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  private isSafeTeleportLanding(ctx: Ctx, x: number, y: number): boolean {
+    if (!ctx.physics.entityFree(x, y, PLAYER_HALF_W, PLAYER_H)) return false;
+    if (ctx.physics.entityFree(x, y + 1, PLAYER_HALF_W, 1)) return false;
+    const world = ctx.world;
+    for (let dy = 0; dy < PLAYER_H; dy += 2) {
+      for (let dx = -PLAYER_HALF_W; dx <= PLAYER_HALF_W; dx += 2) {
+        const sx = x + dx;
+        const sy = y - dy;
+        if (!world.inBounds(sx, sy)) return false;
+        if (teleportHazardCell(world.types[world.idx(sx, sy)])) return false;
       }
     }
+    return true;
   }
 
   /** Original: updatePlayerAnimation() — lines 1723-1760. */

@@ -1,5 +1,16 @@
 import type { CardDef, CardId } from '@/core/types';
 
+export const PROJECTILE_MOD_HOST_CARDS: ReadonlySet<CardId> = new Set([
+  'spark',
+  'bomb',
+  'warp',
+  'blackhole',
+  'frostshard',
+  'icelance',
+  'wisp',
+  'meteor',
+]);
+
 /**
  * The spell card catalogue (DESIGN.md pillar 6): the 7 legacy spells reborn as
  * projectile cards, plus the modifier / multicast cards the cast compiler
@@ -165,6 +176,46 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
     tags: ['Trail', 'Setup'],
     manaCost: 6,
     blurb: "Next projectile trails the flask's stored material",
+  },
+  watertrail: {
+    id: 'watertrail',
+    name: 'Water Trail',
+    kind: 'modifier',
+    tags: ['Trail', 'Setup'],
+    manaCost: 5,
+    blurb: 'Next projectile drips a small, fixed trail of real water',
+  },
+  oiltrail: {
+    id: 'oiltrail',
+    name: 'Oil Wick',
+    kind: 'modifier',
+    tags: ['Trail', 'Setup', 'Risk'],
+    manaCost: 7,
+    blurb: 'Next projectile drips a small, fixed trail of flammable oil',
+  },
+  electriccharge: {
+    id: 'electriccharge',
+    name: 'Electric Charge',
+    kind: 'modifier',
+    tags: ['Status', 'Combo'],
+    manaCost: 9,
+    blurb: 'Next projectile electrifies targets and charges nearby conductors',
+  },
+  critwet: {
+    id: 'critwet',
+    name: 'Critical on Wet',
+    kind: 'modifier',
+    tags: ['Damage', 'Combo'],
+    manaCost: 6,
+    blurb: 'Next projectile hits harder if the target is wet or touching water',
+  },
+  shorthoming: {
+    id: 'shorthoming',
+    name: 'Short Homing',
+    kind: 'modifier',
+    tags: ['Movement', 'Setup'],
+    manaCost: 6,
+    blurb: 'Next projectile nudges toward a nearby hostile after it leaves the wand',
   },
   bounce: {
     id: 'bounce',

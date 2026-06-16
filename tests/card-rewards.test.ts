@@ -4,9 +4,12 @@ import { CARD_DEFS } from '@/combat/wands/cards';
 import { getDiscoveredCards, markCardDiscovered } from '@/combat/wands/cardDiscovery';
 import {
   buildCardOffer,
+  COMBO_SETUP_POOL,
+  DEPTH_PROJECTILE_POOL,
   requestCardOffer,
   SANCTUM_LOST_PAGES_POOL,
   TOME_REWARD_POOL,
+  WAYSTONE_MOD_POOL,
 } from '@/combat/wands/rewardPools';
 import { EventBus } from '@/core/events';
 import type { EventMap } from '@/core/events';
@@ -18,6 +21,18 @@ describe('card reward pools', () => {
     expect(SANCTUM_LOST_PAGES_POOL).not.toContain('vitrify');
     expect(TOME_REWARD_POOL).not.toContain('infuser');
     expect(SANCTUM_LOST_PAGES_POOL).not.toContain('infuser');
+  });
+
+  it('puts Phase 4 combo setup modifiers in normal live reward pools', () => {
+    expect(COMBO_SETUP_POOL).toEqual(['watertrail', 'electriccharge', 'critwet', 'oiltrail', 'shorthoming']);
+    expect(new Set(COMBO_SETUP_POOL).size).toBe(COMBO_SETUP_POOL.length);
+    for (const card of COMBO_SETUP_POOL) {
+      expect(CARD_DEFS[card].kind).toBe('modifier');
+      expect(TOME_REWARD_POOL).toContain(card);
+      expect(SANCTUM_LOST_PAGES_POOL).toContain(card);
+      expect(WAYSTONE_MOD_POOL).toContain(card);
+      expect(DEPTH_PROJECTILE_POOL).not.toContain(card);
+    }
   });
 
   it('builds three unique unknown card offers before falling back to known cards', () => {
@@ -42,6 +57,26 @@ describe('card reward pools', () => {
     const pool: CardId[] = ['speed', 'heavy', 'spread'];
     const offer = buildCardOffer(pool, new Set<CardId>(['speed', 'heavy']), { rng: () => 0 });
     expect(offer).toEqual(['spread', 'speed', 'heavy']);
+  });
+
+  it('can keep normal offers from becoming setup-only while unknown payloads remain', () => {
+    const offer = buildCardOffer(['watertrail', 'electriccharge', 'critwet', 'bomb'], new Set<CardId>(), {
+      ensureKind: 'projectile',
+      rng: () => 0,
+    });
+
+    expect(offer).toHaveLength(3);
+    expect(offer).toContain('bomb');
+    expect(offer).toContain('watertrail');
+  });
+
+  it('does not force known payload cards over a full unknown setup offer', () => {
+    const offer = buildCardOffer(['bomb', 'watertrail', 'electriccharge', 'critwet'], new Set<CardId>(['bomb']), {
+      ensureKind: 'projectile',
+      rng: () => 0,
+    });
+
+    expect(offer).toEqual(['watertrail', 'electriccharge', 'critwet']);
   });
 
   it('keeps card metadata complete for offer rendering', () => {

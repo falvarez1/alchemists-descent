@@ -1,6 +1,6 @@
 import { sanitizeBackdropSettings, saveBackdropSettings } from '@/config/backdrop';
 import { LEVELS } from '@/config/worldgraph';
-import { FLASK_SLOT_COUNT, type CardId, type CommandInfo, type CommandResult, type ConsoleApi, type Ctx, type EnemyKind, type FlaskSlotConfig, type LevelRuntime, type Mechanism, type PerkId, type Pickup, type RunTestKitConfig } from '@/core/types';
+import { FLASK_SLOT_COUNT, type BodyMaterial, type CardId, type CommandInfo, type CommandResult, type ConsoleApi, type Ctx, type EnemyKind, type FlaskSlotConfig, type LevelRuntime, type Mechanism, type PerkId, type Pickup, type RunTestKitConfig } from '@/core/types';
 import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { grantFullReviewKit } from '@/entities/Player';
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
@@ -419,6 +419,119 @@ export function resolveRelativeCoord(raw: string, base: number): number | Comman
   const n = Number(raw);
   if (!Number.isFinite(n)) return result(false, `Expected coordinate number or ~ offset, got "${raw}"`, { code: 'parse-coordinate', raw });
   return Math.floor(n);
+}
+
+/** Shared body of the `crate`/`boulder` dev commands: drop N rigid bodies. */
+function spawnRigidTest(ctx: Ctx, args: string[], kind: 'crate' | 'boulder'): CommandResult {
+  const target = resolveTarget(ctx, args, kind);
+  if (!target.ok) return target.result;
+  // Pull an optional material token (wood/metal/stone) out of the args.
+  const MATERIALS: BodyMaterial[] = ['wood', 'metal', 'stone'];
+  let material: BodyMaterial | undefined;
+  const rest = target.args.filter((a) => {
+    if ((MATERIALS as string[]).includes(a)) {
+      material = a as BodyMaterial;
+      return false;
+    }
+    return true;
+  });
+  const mat: BodyMaterial = material ?? (kind === 'boulder' ? 'stone' : 'wood');
+  let n = 1;
+  let coordAt = 0;
+  if (rest.length === 1 || rest.length >= 3) {
+    const parsedN = parsePositiveInt(rest[0], `${kind} count`, 32);
+    if (typeof parsedN !== 'number') return parsedN;
+    n = parsedN;
+    coordAt = 1;
+  }
+  let x = Math.floor(ctx.player.x + ctx.player.facing * 18);
+  let y = Math.floor(ctx.player.y - 30);
+  if (rest.length - coordAt === 2) {
+    const px = resolveRelativeCoord(rest[coordAt], ctx.player.x);
+    if (typeof px !== 'number') return px;
+    const py = resolveRelativeCoord(rest[coordAt + 1], ctx.player.y);
+    if (typeof py !== 'number') return py;
+    x = px;
+    y = py;
+  } else if (rest.length - coordAt !== 0) {
+    return result(false, `Usage: ${kind} [n] [x y] [--target ...]`, { code: 'usage' });
+  }
+  for (let i = 0; i < n; i++) {
+    const ox = x + i * 9;
+    if (kind === 'boulder') ctx.rigidBodies.spawn({ kind: 'circle', radius: 4 }, ox, y, { material: mat, restitution: 0.2, friction: 0.85 });
+    else ctx.rigidBodies.spawn({ kind: 'box', halfW: 3, halfH: 3 }, ox, y, { material: mat, restitution: 0.2, friction: 0.6 });
+  }
+  return result(true, `Dropped ${n} ${mat} ${kind}${n === 1 ? '' : 's'} at ${x},${y}.`, {
+    target: target.target,
+    requested: { x, y, n },
+    live: ctx.rigidBodies.bodies.length,
+  });
+}
+
+/**
+ * Carve a self-contained rigid-body test arena into the world (two ramps, a
+ * valley, a drop shelf) and populate it with boulders + crates, then drop the
+ * player into the valley. A one-command physics demo for the `playground` cmd.
+ */
+function buildPlayground(ctx: Ctx): void {
+  const w = ctx.world;
+  const LEFT = 700;
+  const RIGHT = 900;
+  const TOP = 440;
+  const FLOOR = 552;
+  const BOTTOM = 560;
+  const stamp = (x: number, y: number): void => {
+    if (w.inBounds(x, y)) w.replaceCellAt(w.idx(x, y), Cell.Stone, COLOR_FN[Cell.Stone]());
+  };
+  const clear = (x: number, y: number): void => {
+    if (w.inBounds(x, y)) w.clearCellAt(w.idx(x, y));
+  };
+  // Hollow the arena, lay the floor, raise the side walls.
+  for (let x = LEFT; x <= RIGHT; x++) for (let y = TOP; y <= BOTTOM; y++) clear(x, y);
+  for (let x = LEFT; x <= RIGHT; x++) for (let y = FLOOR; y <= BOTTOM; y++) stamp(x, y);
+  for (let y = TOP; y <= FLOOR; y++) for (let d = 0; d < 4; d++) {
+    stamp(LEFT + d, y);
+    stamp(RIGHT - d, y);
+  }
+  // Left ramp descends to the right; right ramp descends to the left — a V that
+  // funnels rolling boulders into the central valley (x 793..807, left clear).
+  for (let x = LEFT + 12; x <= 792; x++) {
+    const top = Math.round(468 + (x - (LEFT + 12)) * 0.72);
+    for (let y = top; y <= FLOOR; y++) stamp(x, y);
+  }
+  for (let x = 808; x <= RIGHT - 12; x++) {
+    const top = Math.round(468 + (RIGHT - 12 - x) * 0.72);
+    for (let y = top; y <= FLOOR; y++) stamp(x, y);
+  }
+  // A shelf off the left wall to pile crates on (and let some tumble off).
+  for (let x = LEFT + 6; x <= LEFT + 40; x++) for (let y = 478; y <= 480; y++) stamp(x, y);
+
+  const rb = ctx.rigidBodies;
+  rb.clear();
+  // Boulders at the ramp tops — they roll down and collect in the valley.
+  rb.spawn({ kind: 'circle', radius: 4 }, 718, 450, { friction: 0.9, restitution: 0.15, color: COLOR_FN[Cell.Stone]() });
+  rb.spawn({ kind: 'circle', radius: 4 }, 882, 450, { friction: 0.9, restitution: 0.15, color: COLOR_FN[Cell.Stone]() });
+  // Crates piled on the shelf.
+  for (let i = 0; i < 3; i++) rb.spawn({ kind: 'box', halfW: 3, halfH: 3 }, 712 + i * 8, 468, {});
+  for (let i = 0; i < 2; i++) rb.spawn({ kind: 'box', halfW: 3, halfH: 3 }, 716 + i * 8, 460, {});
+  // Crates dropped above each ramp — they tumble down.
+  rb.spawn({ kind: 'box', halfW: 3, halfH: 3 }, 758, 440, {});
+  rb.spawn({ kind: 'box', halfW: 3, halfH: 3 }, 842, 440, {});
+
+  // Drop the player into the clear valley with full headroom.
+  const p = ctx.player;
+  p.x = 800;
+  p.y = 551;
+  p.fx = 0;
+  p.fy = 0;
+  p.vx = 0;
+  p.vy = 0;
+  p.dead = false;
+  p.crawling = false;
+  p.climbing = false;
+  p.diveT = 0;
+  p.hp = p.maxHp;
+  ctx.camera.snapTo(800, 500);
 }
 
 function cellNameEntries(ctx: Ctx): Array<[string, number]> {
@@ -1773,6 +1886,37 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
       if (req.completingArg === 0) return matching(Object.keys(ctx.enemyCtl.defs), currentToken(req));
       return commandTargetCompletions(req);
     },
+  });
+
+  add({
+    name: 'crate',
+    info: info('game.crate', 'Spawn Crate', 'crate [n] [x y] [--target ...]', 'Drop rigid-body test crates (boxes that fall, tumble, and collide).', 'game'),
+    run: (ctx, args) => spawnRigidTest(ctx, args, 'crate'),
+    complete: (_ctx, req) => commandTargetCompletions(req),
+  });
+
+  add({
+    name: 'boulder',
+    info: info('game.boulder', 'Spawn Boulder', 'boulder [n] [x y] [--target ...]', 'Drop rigid-body boulders (circles that roll down slopes).', 'game'),
+    run: (ctx, args) => spawnRigidTest(ctx, args, 'boulder'),
+    complete: (_ctx, req) => commandTargetCompletions(req),
+  });
+
+  add({
+    name: 'playground',
+    aliases: ['physlab'],
+    info: info('game.playground', 'Physics Playground', 'playground [--target ...]', 'Carve a rigid-body test arena (ramps + shelf + valley) and drop boulders/crates around you.', 'game'),
+    run: (ctx, args) => {
+      const target = resolveTarget(ctx, args, 'playground');
+      if (!target.ok) return target.result;
+      buildPlayground(ctx);
+      const note = ctx.state.mode === 'play' ? '' : ' (start a run / PLAY to see the bodies render)';
+      return result(true, `Physics playground built — boulders roll the ramps, crates pile on the shelf. Lob a bomb to scatter them.${note}`, {
+        target: target.target,
+        bodies: ctx.rigidBodies.bodies.length,
+      });
+    },
+    complete: (_ctx, req) => commandTargetCompletions(req),
   });
 
   add({

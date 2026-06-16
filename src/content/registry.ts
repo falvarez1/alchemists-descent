@@ -2,7 +2,7 @@ import type { CardDef, EnemyDef, EnemyKind, MaterialParams } from '@/core/types'
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { REVIEW_WAND_LOADOUTS, STARTING_WAND_LOADOUTS, WAND_FRAMES } from '@/combat/wands/WandSystem';
 import { ENEMY_DEFS } from '@/entities/Enemies';
-import { POTION_DEFS } from '@/game/Pickups';
+import { POTION_DEFS } from '@/core/pickupDefs';
 import { RECIPES } from '@/game/Brewing';
 import { LEVELS, populationForLevel } from '@/config/worldgraph';
 import { EXTRAS } from '@/world/biomeExtras';
@@ -31,12 +31,23 @@ function listCards(): ContentItem[] {
   return ALL_CARD_IDS.map((id) => {
     const def = CARD_DEFS[id];
     const kind = def.kind === 'projectile' ? 'card' : 'modifier';
+    const status: ContentStatus | undefined =
+      id === 'watertrail' || id === 'oiltrail' || id === 'electriccharge' || id === 'critwet' || id === 'shorthoming'
+        ? 'review'
+        : undefined;
     return item({
       id,
       kind,
       name: def.name,
       description: def.blurb,
-      tags: ['spell', def.kind, `mana-${def.manaCost}`, kind === 'modifier' ? 'wand-shaping' : 'payload'],
+      tags: [
+        'spell',
+        def.kind,
+        `mana-${def.manaCost}`,
+        kind === 'modifier' ? 'wand-shaping' : 'payload',
+        ...(status ? [status] : []),
+      ],
+      status,
       source: 'src/combat/wands/cards.ts:CARD_DEFS',
       dependencies: [
         dep('code', 'src/combat/wands/compiler.ts', 'compiler reads card kind and grouping rules'),
@@ -92,7 +103,7 @@ function listPotions(): ContentItem[] {
     name: titleCase(potion.name),
     description: `${potion.frames} frames of ${potion.status}.`,
     tags: ['pickup', 'potion', potion.status],
-    source: 'src/game/Pickups.ts:POTION_DEFS',
+    source: 'src/core/pickupDefs.ts:POTION_DEFS',
     dependencies: [
       dep('status', potion.status, 'timed player status'),
       dep('code', 'src/game/Pickups.ts', 'pickup collection applies the timer'),

@@ -1,6 +1,6 @@
 # Spell, Potion, and Modifier Expansion Plan - Builder Content Addendum
 
-Status: addendum proposal, not implemented.
+Status: partially implemented. Built-in content metadata is indexed through the shared Asset Database, typed card/potion pickup validation is live, and local assets now mirror through the browser project store when IndexedDB is available. Spell Lab, scenario authoring, and the remaining content-browser workflow phases are still proposed.
 
 Parent plan: `docs/SPELL-POTION-MODIFIER-EXPANSION-PLAN.md`.
 

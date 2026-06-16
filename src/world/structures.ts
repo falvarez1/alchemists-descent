@@ -28,7 +28,7 @@ import {
   makeValve,
   setValveCells,
 } from '@/game/Mechanisms';
-import { makePickup, POTION_KINDS } from '@/game/Pickups';
+import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { Cell } from '@/sim/CellType';
 import {
   catalystColor,
@@ -76,6 +76,7 @@ export function placeStructures(
   emitters: HazardEmitter[];
   authoredLights: AuthoredLight[];
   refuge: { x: number; y: number } | null;
+  spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null;
   vaultArch: VaultArch | null;
   vaultHoard: { x: number; y: number } | null;
   /** Re-asserts the Sump's casing, plugs, and pool AFTER the gauge-rescue
@@ -92,6 +93,7 @@ export function placeStructures(
   const emitters: HazardEmitter[] = [];
   const authoredLights: AuthoredLight[] = [];
   let refuge: { x: number; y: number } | null = null;
+  let spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null = null;
   let vaultArch: VaultArch | null = null;
   let vaultHoard: { x: number; y: number } | null = null;
   let sumpRepair: (() => void) | null = null;
@@ -376,6 +378,109 @@ export function placeStructures(
     }
   }
 
+  // ---- D1 Spell Lab: a real-cell teaching annex beside the first Refuge ----
+  if (def.depth === 1) {
+    const s = refuge ? Math.sign(refuge.x - portalX) || 1 : 1;
+    const rCx = refuge ? Math.floor(refuge.x) : portalX + s * 22;
+    const rCy = refuge ? Math.floor(refuge.y - 7) : portalY + 2;
+    let labX = Math.floor(clamp(rCx + s * 42, 34, WIDTH - 35));
+    let labY = rCy;
+    if (ledger.intersects(labX - 28, labY - 16, labX + 28, labY + 16)) {
+      labX = rCx;
+      labY = Math.floor(clamp(rCy - 30, 36, HEIGHT - 72));
+    }
+
+    const set = (X: number, Y: number, t: Cell, color: number): void => {
+      if (!w.inBounds(X, Y)) return;
+      const i = w.idx(X, Y);
+      if (w.types[i] === Cell.Metal && t !== Cell.Empty && t !== Cell.Metal) return;
+      w.types[i] = t;
+      w.colors[i] = color;
+      w.life[i] = 0;
+      w.charge[i] = 0;
+    };
+    const hew = (X: number, Y: number): void => set(X, Y, Cell.Stone, stoneColor());
+
+    for (let X = labX - 27; X <= labX + 27; X++) {
+      hew(X, labY - 14);
+      hew(X, labY - 13);
+      hew(X, labY + 13);
+      hew(X, labY + 14);
+    }
+    for (let Y = labY - 14; Y <= labY + 14; Y++) {
+      for (const X of [labX - 27, labX - 26, labX + 26, labX + 27]) hew(X, Y);
+    }
+    carveRectCells(w, labX - 25, labY - 12, labX + 25, labY + 12);
+    for (let X = labX - 25; X <= labX + 25; X++) hew(X, labY + 12);
+    tunnelTo(w, rng, rCx + s * 12, rCy + 4, labX - s * 27, labY + 5, 12, {
+      halfW: 7,
+      up: 21,
+      down: 9,
+    });
+    connectToCavesFrom(w, rng, graph, labX - s * 27, labY + 5, 12, fits, {
+      halfW: 7,
+      up: 21,
+      down: 9,
+    });
+
+    // Dig station: starter Excavate Ray opens the sand plug.
+    const digX = labX - s * 18;
+    for (let X = digX - 4; X <= digX + 4; X++) hew(X, labY + 10);
+    for (let Y = labY + 8; Y <= labY + 10; Y++) {
+      for (let X = digX - 2; X <= digX + 2; X++) set(X, Y, Cell.Sand, sandColor());
+    }
+    for (let Y = labY + 8; Y <= labY + 10; Y++) set(digX + s * 4, Y, Cell.Gold, goldColor());
+
+    // Burn station: environmental fire teaches wood, no Flame card required.
+    const fireX = labX - s * 7;
+    for (let X = fireX - 4; X <= fireX + 4; X++) hew(X, labY + 10);
+    for (let X = fireX - 3; X <= fireX + 3; X++) set(X, labY + 8, Cell.Wood, packRGB(124, 82, 48));
+    for (let X = fireX - 2; X <= fireX + 2; X++) {
+      set(X, labY + 6, Cell.Fire, packRGB(255, 118, 24));
+      w.life[w.idx(X, labY + 6)] = 360 + Math.floor(rng.next() * 90);
+    }
+
+    // Water-prep station: a contained basin beside heat, not a flood trap.
+    const waterX = labX + s * 4;
+    for (let X = waterX - 5; X <= waterX + 5; X++) hew(X, labY + 10);
+    for (const X of [waterX - 5, waterX + 5]) {
+      for (let Y = labY + 6; Y <= labY + 10; Y++) hew(X, Y);
+    }
+    for (let X = waterX - 3; X <= waterX + 3; X++) {
+      set(X, labY + 8, Cell.Water, packRGB(54, 126, 208));
+      set(X, labY + 9, Cell.Water, packRGB(44, 112, 190));
+    }
+    set(waterX + s * 7, labY + 9, Cell.Fire, packRGB(255, 104, 28));
+    w.life[w.idx(waterX + s * 7, labY + 9)] = 260;
+
+    // Spark station: a real charge latch opens an optional sample shutter.
+    const doorX = labX + s * 18;
+    const door = makeDoor(ctx, mechanisms, doorX - (s < 0 ? 3 : 0), labY + 4, 4, 6);
+    makeChargeLatch(w, mechanisms, labX + s * 12, labY + 10, door);
+    for (let Y = labY + 6; Y <= labY + 10; Y++) set(doorX + s * 5, Y, Cell.Gold, goldColor());
+
+    const rewardX = labX;
+    const rewardY = labY + 5;
+    for (let X = rewardX - 2; X <= rewardX + 2; X++) hew(X, rewardY + 1);
+    pickups.push(makePickup('tome', rewardX, rewardY, { card: 'heavy' }));
+    authoredLights.push({
+      x: labX,
+      y: labY,
+      r: 0.55,
+      g: 0.82,
+      b: 1.0,
+      intensity: 1.05,
+      radius: 52,
+      bloom: 0.4,
+      flicker: 0.18,
+      flickerPhase: 4.2,
+      falloff: 'soft',
+      occluded: true,
+    });
+    ledger.reserve(labX - 28, labY - 16, labX + 28, labY + 16, 'spell-lab');
+    spellLab = { x: labX, y: labY + 10, rewardX, rewardY };
+  }
+
   // ---- Golden key vault: the main-path region farthest from the spawn ----
   if (portal) {
     let best = null as { cx: number; cy: number } | null;
@@ -384,7 +489,7 @@ export function placeStructures(
       if (!reg.onMainPath && reg.area < 250) continue;
       // Never seat the key on reserved ground: door-gated prefab interiors
       // are reserved rects, and the findability BFS does not open doors.
-      if (ledger.intersects(reg.cx, reg.cy, reg.cx, reg.cy)) continue;
+      if (ledger.intersects(reg.cx - 15, reg.cy - 15, reg.cx + 15, reg.cy + 15)) continue;
       const d = Math.abs(reg.cx - spawn.x) + Math.abs(reg.cy - spawn.y) * 0.6;
       if (d > bestD) {
         bestD = d;
@@ -415,7 +520,9 @@ export function placeStructures(
   }
 
   // ---- One heart container in a quiet pocket ----
-  const pocketRegions = graph.regions.filter((r2) => r2.isPocket && r2.area > 40);
+  const pocketRegions = graph.regions.filter(
+    (r2) => r2.isPocket && r2.area > 40 && !ledger.intersects(r2.cx - 4, r2.cy - 4, r2.cx + 4, r2.cy + 8),
+  );
   const heartReg =
     pocketRegions.length > 0
       ? pocketRegions[Math.floor(rng.next() * pocketRegions.length)]
@@ -428,7 +535,9 @@ export function placeStructures(
 
   // ---- Tome pedestals: 1-2 spell tomes on stone plinths off the main path ----
   const tomes = 1 + (rng.next() < 0.5 ? 1 : 0);
-  const sideRegions = graph.regions.filter((r2) => !r2.onMainPath && r2.area > 80);
+  const sideRegions = graph.regions.filter(
+    (r2) => !r2.onMainPath && r2.area > 80 && !ledger.intersects(r2.cx - 4, r2.cy - 4, r2.cx + 4, r2.cy + 8),
+  );
   for (let t = 0; t < tomes && sideRegions.length > 0; t++) {
     const reg = sideRegions[Math.floor(rng.next() * sideRegions.length)];
     const tx = Math.floor(reg.cx);
@@ -580,6 +689,30 @@ export function placeStructures(
       }
     }
     if (collide || rock / cells < 0.9) continue;
+
+    // the rune switch: a marked pedestal 70-240 cells away in open cave.
+    // Find it BEFORE stamping the vault so a failed switch roll leaves no
+    // orphan strongroom or inaccessible loot behind.
+    let rx = -1,
+      ry = -1,
+      rTries = 0;
+    while (rTries < 3000) {
+      rTries++;
+      const cand = 14 + Math.floor(rng.next() * (WIDTH - 28));
+      const candY = 40 + Math.floor(rng.next() * (FLOOR_BAND - 60));
+      const dist = Math.abs(cand - vx) + Math.abs(candY - vy);
+      if (dist < 70 || dist > 240) continue;
+      if (
+        w.types[w.idx(cand, candY)] !== Cell.Empty ||
+        w.types[w.idx(cand, candY + 1)] !== Cell.Wall
+      )
+        continue;
+      rx = cand;
+      ry = candY;
+      break;
+    }
+    if (rx < 0) continue;
+
     // shell: metal box, interior hollow, stone door on the left wall
     for (let dy = -12; dy <= 12; dy++) {
       for (let dx = -13; dx <= 13; dx++) {
@@ -625,26 +758,6 @@ export function placeStructures(
         w.colors[i] = goldColor();
       }
     }
-    // the rune switch: a marked pedestal 70-240 cells away in open cave
-    let rx = -1,
-      ry = -1,
-      rTries = 0;
-    while (rTries < 3000) {
-      rTries++;
-      const cand = 14 + Math.floor(rng.next() * (WIDTH - 28));
-      const candY = 40 + Math.floor(rng.next() * (FLOOR_BAND - 60));
-      const dist = Math.abs(cand - vx) + Math.abs(candY - vy);
-      if (dist < 70 || dist > 240) continue;
-      if (
-        w.types[w.idx(cand, candY)] !== Cell.Empty ||
-        w.types[w.idx(cand, candY + 1)] !== Cell.Wall
-      )
-        continue;
-      rx = cand;
-      ry = candY;
-      break;
-    }
-    if (rx < 0) continue;
     // pedestal — tunneled to the network so the glyph can actually be found
     for (let dx = -2; dx <= 2; dx++) {
       const i = w.idx(rx + dx, ry);
@@ -704,6 +817,19 @@ export function placeStructures(
       px2 = cand;
       py2 = candY;
       break;
+    }
+    if (px2 < 0) {
+      let best: { cx: number; cy: number; d: number } | null = null;
+      for (const reg of graph.regions) {
+        if (reg.area < 180) continue;
+        const rx0 = Math.floor(clamp(reg.cx, 70, WIDTH - 70));
+        const ry0 = Math.floor(clamp(reg.cy, 120, HEIGHT - 90));
+        if (ledger.intersects(rx0 - 20, ry0 - 12, rx0 + 20, ry0 + 12)) continue;
+        const d = Math.abs(rx0 - spawn.x) + Math.abs(ry0 - spawn.y) * 0.6;
+        if (!best || d > best.d) best = { cx: rx0, cy: ry0, d };
+      }
+      px2 = best ? best.cx : Math.floor(clamp(WIDTH - spawn.x, 70, WIDTH - 70));
+      py2 = best ? best.cy : Math.floor(clamp(HEIGHT * 0.48, 120, HEIGHT - 90));
     }
     if (px2 >= 0) {
       // Six archetypes now; the cold biome leans toward the Freeze Bridge
@@ -909,6 +1035,7 @@ export function placeStructures(
           }
         }
         makeSensor(
+          w,
           mechanisms,
           px2 - 2,
           py2 + 9,
@@ -1418,6 +1545,19 @@ export function placeStructures(
       ay = candY;
       break;
     }
+    if (ax < 0) {
+      let best: { cx: number; cy: number; d: number } | null = null;
+      for (const reg of graph.regions) {
+        if (reg.area < 180) continue;
+        const cx = Math.floor(clamp(reg.cx, 80, WIDTH - 80));
+        const cy = Math.floor(clamp(reg.cy, 120, HEIGHT - 100));
+        if (ledger.intersects(cx - 19, cy - 14, cx + 19, cy + 14)) continue;
+        const d = Math.abs(cx - spawn.x) + Math.abs(cy - spawn.y) * 0.6;
+        if (!best || d > best.d) best = { cx, cy, d };
+      }
+      ax = best ? best.cx : Math.floor(clamp(WIDTH - spawn.x, 80, WIDTH - 80));
+      ay = best ? best.cy : Math.floor(clamp(HEIGHT * 0.46, 120, HEIGHT - 100));
+    }
     if (ax >= 0) {
       carveRectCells(w, ax - 16, ay - 12, ax + 16, ay + 12);
       for (let X = ax - 16; X <= ax + 16; X++) {
@@ -1471,7 +1611,7 @@ export function placeStructures(
         occluded: true,
       });
       ledger.reserve(ax - 17, ay - 13, ax + 17, ay + 13, 'vault-arch');
-      vaultArch = { x: ax + 8, y: fy, backX: ax - 5, backY: fy };
+      vaultArch = { x: ax + 8, y: fy, backX: ax - 5, backY: fy, discoverX: ax - 19, discoverY: ay + 2 };
     }
   }
 
@@ -1484,6 +1624,7 @@ export function placeStructures(
     emitters,
     authoredLights,
     refuge,
+    spellLab,
     vaultArch,
     vaultHoard,
     sumpRepair,

@@ -1,5 +1,5 @@
 import type { Ctx } from '@/core/types';
-import { Cell, isSolid } from '@/sim/CellType';
+import { Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
 import { EMPTY_COLOR, vineColor } from '@/sim/colors';
 
 const SIP_OFFSETS: ReadonlyArray<readonly [number, number]> = [
@@ -9,9 +9,30 @@ const SIP_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
 ];
 
+const SUPPORT_OFFSETS: ReadonlyArray<readonly [number, number]> = SIP_OFFSETS;
+
+function loadBearingAnchor(t: number): boolean {
+  return isSolid(t) && !isSoftGrowth(t);
+}
+
+function hasLocalVineSupport(ctx: Ctx, x: number, y: number): boolean {
+  const w = ctx.world;
+  const above = y - 1;
+  if (above >= 0 && w.types[w.idx(x, above)] === Cell.Vines) return true;
+  for (const [dx, dy] of SUPPORT_OFFSETS) {
+    const sx = x + dx;
+    const sy = y + dy;
+    if (!w.inBounds(sx, sy)) continue;
+    if (loadBearingAnchor(w.types[w.idx(sx, sy)])) return true;
+  }
+  return false;
+}
+
 export function handleVines(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const ci = w.idx(x, y);
+  if (!hasLocalVineSupport(ctx, x, y) && ctx.vineStrands?.detachCluster(x, y)) return;
+
   // Energy-budget growth: vines flourish briefly, slow down, then go dormant.
   // lifeGrid: 0 = freshly planted (charge it), >0 = growing energy, -1 = dormant.
   let energy = w.life[ci];

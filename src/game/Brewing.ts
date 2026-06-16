@@ -23,6 +23,11 @@ export interface Recipe {
   needs: Array<{ cell: Cell; min: number }>;
 }
 
+interface BasinSample {
+  counts: Record<number, number>;
+  brewableMass: number;
+}
+
 /*
  * Thresholds are sized to the STAMPED bowl: the generator builds a 7-wide
  * interior with 2-tall walls (cauldron.y is the bottom interior row), so the
@@ -86,6 +91,8 @@ function isBrewable(t: number): boolean {
 export class Brewing {
   private brewTicks = 0;
   private activeBrewKey: string | null = null;
+  private lastHintFrame = -9999;
+  private lastHintText = '';
 
   /** Play-mode only; samples the basin every 4th frame. */
   update(ctx: Ctx): void {
@@ -100,8 +107,13 @@ export class Brewing {
     }
     if (ctx.state.frameCount % 4 !== 0) return;
 
-    const recipe = this.matchRecipe(ctx, cauldron);
+    const sample = this.sampleBasin(ctx, cauldron);
+    const recipe = this.matchRecipe(sample);
+    const heated = this.hasHeat(ctx, cauldron);
     if (!recipe) {
+      if (sample.brewableMass > 0) {
+        this.emitHint(ctx, heated ? 'CAULDRON: WRONG MIX' : 'CAULDRON: NEEDS HEAT');
+      }
       this.resetProgress();
       return;
     }
@@ -110,14 +122,14 @@ export class Brewing {
       this.activeBrewKey = key;
       this.brewTicks = 0;
     }
-    const heated = this.hasHeat(ctx, cauldron);
-
     if (!heated) {
+      this.emitHint(ctx, 'CAULDRON: NEEDS HEAT');
       if (this.brewTicks > 0) this.brewTicks--;
       if (this.brewTicks === 0) this.activeBrewKey = null;
       return;
     }
 
+    if (this.brewTicks === 0) this.emitHint(ctx, `CAULDRON: BREWING ${recipe.name}`);
     this.brewTicks++;
     // Simmer ambience: blub + a wisp or two of recipe-colored vapor rising off the bowl.
     if (ctx.state.frameCount % 8 === 0) {
@@ -143,24 +155,37 @@ export class Brewing {
     this.activeBrewKey = null;
   }
 
+  private emitHint(ctx: Ctx, text: string): void {
+    if (this.lastHintText === text && ctx.state.frameCount - this.lastHintFrame < 120) return;
+    this.lastHintText = text;
+    this.lastHintFrame = ctx.state.frameCount;
+    ctx.events.emit('toast', { text });
+  }
+
   private brewKey(ctx: Ctx, cauldron: { x: number; y: number }, recipe: Recipe): string {
     return `${ctx.levels.current?.def.id ?? 'sandbox'}:${cauldron.x},${cauldron.y}:${recipe.id}`;
   }
 
-  /** Histogram the basin interior and return the first recipe it satisfies. */
-  private matchRecipe(ctx: Ctx, cauldron: { x: number; y: number }): Recipe | null {
+  private sampleBasin(ctx: Ctx, cauldron: { x: number; y: number }): BasinSample {
     const world = ctx.world;
     const counts: Record<number, number> = {};
+    let brewableMass = 0;
     for (let dy = BASIN_TOP; dy <= BASIN_BOTTOM; dy++) {
       for (let dx = -BASIN_HALF_W; dx <= BASIN_HALF_W; dx++) {
         const x = cauldron.x + dx, y = cauldron.y + dy;
         if (!world.inBounds(x, y)) continue;
         const t = world.types[world.idx(x, y)];
         counts[t] = (counts[t] ?? 0) + 1;
+        if (isBrewable(t)) brewableMass++;
       }
     }
+    return { counts, brewableMass };
+  }
+
+  /** Return the first recipe satisfied by the sampled basin histogram. */
+  private matchRecipe(sample: BasinSample): Recipe | null {
     for (const recipe of RECIPES) {
-      if (recipe.needs.every((n) => (counts[n.cell] ?? 0) >= n.min)) return recipe;
+      if (recipe.needs.every((n) => (sample.counts[n.cell] ?? 0) >= n.min)) return recipe;
     }
     return null;
   }

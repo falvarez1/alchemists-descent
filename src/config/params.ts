@@ -75,7 +75,10 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
 };
 
 export const SPELL_PARAMS: Record<SpellId, SpellParams> = {
-  bolt: { name: 'Spark Bolt', velocityForce: 13, explosionRadius: 14, manaCost: 12, cooldown: 12 },
+  // velocityForce is the UNMODIFIED base: a starter Spark Bolt lobs slowly (you
+  // can read its travel wake). The 'speed' modifier (×1.6 in the wand compiler)
+  // scales it back up — one speed card ≈ 12.8, restoring the old snappy feel.
+  bolt: { name: 'Spark Bolt', velocityForce: 8, explosionRadius: 14, manaCost: 12, cooldown: 12 },
   scatter: { name: 'Scatter Hex', pellets: 5, velocityForce: 9.5, spread: 0.42, explosionRadius: 6, manaCost: 15, cooldown: 20 },
   bomb: { name: 'Cast Bomb', velocityForce: 7.5, fuseTicks: 120, explosionRadius: 52, manaCost: 28, cooldown: 40 },
   lightning: { name: 'Chain Lightning', range: 340, branches: 2, damage: 28, manaCost: 30, cooldown: 30 },

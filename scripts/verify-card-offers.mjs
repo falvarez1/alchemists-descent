@@ -35,7 +35,7 @@ const beforeTome = await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const rt = ctx.levels.current;
   const p = ctx.player;
-  const tome = { kind: 'tome', x: p.x, y: p.y - 8, vx: 0, vy: 0, taken: false, data: { card: 'flame' } };
+  const tome = { kind: 'tome', x: p.x, y: p.y - 8, vx: 0, vy: 0, taken: false, data: { card: 'watertrail' } };
   rt.pickups.push(tome);
   return {
     cards: ctx.wands.collection.length,
@@ -64,14 +64,14 @@ check(
   tomeOffer.visible &&
     tomeOffer.cards.length === 3 &&
     new Set(tomeOffer.cards.map((card) => card.id)).size === 3 &&
-    tomeOffer.cards.some((card) => card.id === 'flame') &&
+    tomeOffer.cards.some((card) => card.id === 'watertrail') &&
     tomeOffer.pending &&
     !tomeOffer.taken &&
     tomeOffer.paused,
   JSON.stringify(tomeOffer),
 );
 
-await page.click('#card-offer-overlay [data-card-offer-id="flame"]');
+await page.click('#card-offer-overlay [data-card-offer-id="watertrail"]');
 await page.waitForFunction(() => !document.getElementById('card-offer-overlay')?.classList.contains('visible'), null, { timeout: 5000 });
 await page.waitForFunction(
   () => Number(document.getElementById('hud-cards')?.textContent ?? 0) === window.__game.ctx.wands.collection.length,
@@ -84,7 +84,7 @@ const afterTome = await page.evaluate(() => {
   const tome = rt.pickups[rt.pickups.length - 1];
   return {
     cards: ctx.wands.collection.length,
-    hasFlame: ctx.wands.collection.includes('flame'),
+    hasWaterTrail: ctx.wands.collection.includes('watertrail'),
     taken: tome.taken === true,
     pending: tome.data.offerPending === true,
     paused: ctx.state.paused,
@@ -93,9 +93,9 @@ const afterTome = await page.evaluate(() => {
   };
 });
 check(
-  'Tome selection grants one card and marks the pickup taken once',
+  'Tome selection grants a normal-pool Phase 4 card and marks the pickup taken once',
   afterTome.cards === beforeTome.cards + 1 &&
-    afterTome.hasFlame &&
+    afterTome.hasWaterTrail &&
     afterTome.taken &&
     !afterTome.pending &&
     afterTome.paused === beforeTome.paused &&
@@ -106,6 +106,31 @@ check(
 const beforeShop = await page.evaluate(() => {
   const ctx = window.__game.ctx;
   ctx.state.score = 500;
+  ctx.wands.collection.length = 0;
+  ctx.wands.collection.push(
+    'speed',
+    'heavy',
+    'spread',
+    'double',
+    'flame',
+    'dig',
+    'conjure',
+    'vitriol',
+    'frostshard',
+    'bomb',
+    'lightning',
+    'warp',
+    'blackhole',
+    'icelance',
+    'wisp',
+    'meteor',
+    'emberstorm',
+    'bounce',
+    'trigger',
+    'triple',
+    'watertrail',
+    'shorthoming',
+  );
   ctx.events.emit('scoreChanged', { score: ctx.state.score });
   ctx.sanctum.openShop(ctx);
   return {
@@ -119,14 +144,16 @@ await page.waitForSelector('#card-offer-overlay.visible', { timeout: 5000 });
 const shopBeforeChoice = await page.evaluate(() => ({
   gold: window.__game.ctx.state.score,
   cards: window.__game.ctx.wands.collection.length,
-  offers: document.querySelectorAll('#card-offer-overlay .card-offer-card').length,
+  offers: [...document.querySelectorAll('#card-offer-overlay .card-offer-card')].map((el) =>
+    el.getAttribute('data-card-offer-id')),
   sanctumVisible: document.getElementById('sanctum-overlay')?.classList.contains('visible') === true,
 }));
 check(
-  'Lost Pages opens a three-card offer without spending gold first',
+  'Lost Pages can offer normal-pool Phase 4 combo cards without spending gold first',
   shopBeforeChoice.gold === beforeShop.gold &&
     shopBeforeChoice.cards === beforeShop.cards &&
-    shopBeforeChoice.offers === 3 &&
+    shopBeforeChoice.offers.length === 3 &&
+    ['electriccharge', 'critwet', 'oiltrail'].every((card) => shopBeforeChoice.offers.includes(card)) &&
     shopBeforeChoice.sanctumVisible,
   JSON.stringify({ beforeShop, shopBeforeChoice }),
 );

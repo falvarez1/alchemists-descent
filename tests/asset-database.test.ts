@@ -141,10 +141,23 @@ describe('asset database', () => {
     const db = buildAssetDatabase({ documents: { [doc.id]: doc } });
 
     expect(db.get(`document:project:${doc.id}`)?.dependencies.state).toBe('ok');
-    expect(db.get('sprite:document-embedded:embedded-torch')?.usages).toMatchObject([
+    expect(db.get(`sprite:document-embedded:${doc.id}:embedded-torch`)?.usages).toMatchObject([
       { assetId: `document:project:${doc.id}`, label: 'saved-doc' },
     ]);
     expect(db.query({ collection: 'missing' }).map((record) => record.assetId)).not.toContain('sprite:missing:embedded-torch');
+  });
+
+  it('scopes embedded sprite asset ids by owning document', () => {
+    const first = createEmptyDocument('first-doc', 'earthen');
+    const second = createEmptyDocument('second-doc', 'earthen');
+    first.assets = { sprites: [spriteAsset('shared-embedded', 'First Embedded')] };
+    second.assets = { sprites: [spriteAsset('shared-embedded', 'Second Embedded', [20, 30, 40, 255])] };
+
+    const db = buildAssetDatabase({ documents: { [first.id]: first, [second.id]: second } });
+
+    expect(db.get(`sprite:document-embedded:${first.id}:shared-embedded`)?.name).toBe('First Embedded');
+    expect(db.get(`sprite:document-embedded:${second.id}:shared-embedded`)?.name).toBe('Second Embedded');
+    expect(db.query({ kinds: ['sprite'], origins: ['document-embedded'] })).toHaveLength(2);
   });
 
   it('filters and sorts by kind, origin, text, usage, and validation', () => {
@@ -314,11 +327,11 @@ describe('asset database', () => {
     ]));
     expect(db.get('wandLoadout:built-in:review-brass-injector')?.dependencies.refs.map((ref) => `${ref.kind}:${ref.sourceId}`)).toEqual([
       'wandFrame:brass',
+      'modifier:watertrail',
+      'modifier:electriccharge',
+      'modifier:critwet',
+      'modifier:shorthoming',
       'card:spark',
-      'modifier:double',
-      'modifier:speed',
-      'card:flame',
-      'card:lightning',
     ]);
   });
 
@@ -756,7 +769,7 @@ describe('localStorage asset store', () => {
     expect(reports.some((report) =>
       report.sourceFile === 'Colliding Library Sprite.sprite.json' &&
       report.decision === 'collision-reid' &&
-      report.collisionWith === 'sprite:document-embedded:embedded-bundle-sprite'
+      report.collisionWith === `sprite:document-embedded:${doc.id}:embedded-bundle-sprite`
     )).toBe(true);
   });
 
@@ -870,7 +883,7 @@ describe('localStorage asset store', () => {
     expect(saveSprite(local)).toBe(true);
     const doc = createEmptyDocument('embedded-doc', 'earthen');
     doc.assets = { sprites: [embedded] };
-    const record = buildAssetDatabase({ currentDocument: doc, sprites: loadSprites() }).get('sprite:document-embedded:shared-sprite')!;
+    const record = buildAssetDatabase({ currentDocument: doc, sprites: loadSprites() }).get(`sprite:document-embedded:${doc.id}:shared-sprite`)!;
 
     const result = store.delete(record);
 

@@ -91,4 +91,8 @@ export class PostFx {
         : 0;
     u.uHurt.value = hurt * post.hurtPulse;
   }
+
+  dispose(): void {
+    this.pass.dispose();
+  }
 }

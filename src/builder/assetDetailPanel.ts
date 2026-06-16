@@ -41,6 +41,7 @@ export function renderAssetDetailPanel(model: AssetDetailModel): string {
   const reimportDisabled = !canReimport(asset);
   const exportLabel = asset.source.storage === 'content-registry' ? 'Export Metadata' : 'Export';
   const openAvailable = asset.kind === 'document' || asset.kind === 'template';
+  const placeAvailable = canPlace(asset);
   return `
     ${builderPanelHeader({ title: builderPanelTitle('builder-asset-details'), closeId: 'bad-close', closeLabel: 'Close asset details' })}
     <div class="bad-hero">
@@ -52,6 +53,7 @@ export function renderAssetDetailPanel(model: AssetDetailModel): string {
     </div>
     <div class="bad-actions">
       ${openAvailable ? `<button type="button" data-asset-action="open" data-asset-id="${escAttr(asset.assetId)}" ${documentOwned ? 'disabled' : ''}>Open</button>` : ''}
+      ${placeAvailable ? `<button type="button" data-asset-action="place" data-asset-id="${escAttr(asset.assetId)}">Place</button>` : ''}
       <button type="button" data-asset-action="rename" data-asset-id="${escAttr(asset.assetId)}" ${renameDisabled ? 'disabled' : ''}>Rename</button>
       <button type="button" data-asset-action="duplicate" data-asset-id="${escAttr(asset.assetId)}" ${duplicateDisabled ? 'disabled' : ''}>Duplicate</button>
       <button type="button" data-asset-action="reimport" data-asset-id="${escAttr(asset.assetId)}" ${reimportDisabled ? 'disabled' : ''}>Reimport</button>
@@ -110,6 +112,14 @@ function section(model: AssetDetailModel, id: string, title: string, body: strin
     bodyClassName: 'bad-section-body',
     collapsed: model.collapsedSections?.[id] === true,
   });
+}
+
+function canPlace(asset: AssetRecord): boolean {
+  return asset.kind === 'prefab' ||
+    asset.kind === 'sprite' ||
+    asset.kind === 'materialProfile' ||
+    asset.kind === 'lightPreset' ||
+    asset.kind === 'procPreset';
 }
 
 function canDuplicate(asset: AssetRecord): boolean {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WIDTH } from '@/config/constants';
+import { HEIGHT, WIDTH } from '@/config/constants';
 import type { PrefabBudget } from '@/config/gen';
 import { Rng, hashSeed } from '@/core/rng';
 import type { Ctx, RegionGraph } from '@/core/types';
@@ -8,6 +8,7 @@ import type { PrefabDef } from '@/builder/prefablib';
 import { objectFootprint } from '@/builder/document';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { World } from '@/sim/World';
+import { applyCampaignDressing } from '@/world/biomeExtras';
 import { PlacementLedger } from '@/world/connect';
 import { makeInstantiationSink } from '@/game/instantiate';
 import { placePrefabs } from '@/world/prefabs/place';
@@ -579,5 +580,160 @@ describe('PlacementLedger', () => {
     expect(ledger.intersects(350, 350, 350, 350)).toBe(true);
     expect(ledger.rects().length).toBe(2);
     expect(ledger.rects()[1]).toEqual({ x0: 300, y0: 300, x1: 400, y1: 400, label: 'b' });
+  });
+});
+
+describe('applyCampaignDressing', () => {
+  it('enriches unreserved wall without touching reserved or interactive footprints', () => {
+    const world = new World();
+    world.types.fill(Cell.Wall);
+    world.colors.fill(0x010203);
+    const ctx = {
+      world,
+      state: { mode: 'build', currentBiome: 'crystal' },
+      worldgen: { spawnHint: { x: 40, y: 40 }, paintSeed: null },
+    } as unknown as Ctx;
+    const ledger = new PlacementLedger();
+    ledger.reserve(90, 90, 130, 130, 'reserved-test');
+
+    const stats = applyCampaignDressing(
+      ctx,
+      new Rng(hashSeed(12345, 'campaign-dressing-test')),
+      'crystal',
+      ledger,
+      {
+        pickups: [{ kind: 'key', x: 180, y: 120, vx: 0, vy: 0, taken: false, data: {} }],
+        mechanisms: [{ id: 1, kind: 'door', x: 240, y: 80, w: 10, h: 30, state: 0, targetId: -1 }],
+        runeVaults: [{ rx: 304, ry: 130, door: [[300, 132], [301, 132]], active: true }],
+        portal: { x: 350, y: 120, open: false },
+        waystones: [{ x: 390, y: 120, lit: false }],
+        cauldron: { x: 430, y: 120 },
+      },
+    );
+
+    expect(stats.cellsChanged).toBeGreaterThan(0);
+    expect(stats.veins + stats.pockets).toBeGreaterThan(0);
+
+    const assertUntouched = (x0: number, y0: number, x1: number, y1: number): void => {
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const i = world.idx(x, y);
+          expect(world.types[i]).toBe(Cell.Wall);
+          expect(world.colors[i]).toBe(0x010203);
+        }
+      }
+    };
+
+    assertUntouched(90, 90, 130, 130);
+    assertUntouched(174, 114, 186, 126);
+    assertUntouched(240, 80, 250, 110);
+    assertUntouched(298, 126, 306, 136);
+    assertUntouched(344, 114, 356, 126);
+    assertUntouched(384, 114, 396, 126);
+    assertUntouched(424, 114, 436, 126);
+
+    let changedCells = 0;
+    for (let y = 0; y < HEIGHT; y++) {
+      for (let x = 0; x < WIDTH; x++) {
+        if (world.types[world.idx(x, y)] !== Cell.Wall) changedCells++;
+      }
+    }
+    expect(changedCells).toBe(stats.cellsChanged);
+  });
+
+  it('keeps unstable powder and liquid dressing embedded away from traversal-adjacent surfaces', () => {
+    const world = new World();
+    world.types.fill(Cell.Wall);
+    world.colors.fill(0x010203);
+    const fits = new Uint8Array(WIDTH * HEIGHT);
+    for (let y = 56; y < HEIGHT - 120; y += 30) {
+      for (let yy = y; yy <= y + 8; yy++) {
+        for (let x = 24; x < WIDTH - 24; x++) {
+          world.types[world.idx(x, yy)] = Cell.Empty;
+          fits[world.idx(x, yy)] = 1;
+        }
+      }
+    }
+    const ctx = {
+      world,
+      state: { mode: 'build', currentBiome: 'scorched' },
+      worldgen: { spawnHint: { x: 40, y: 40 }, paintSeed: null },
+    } as unknown as Ctx;
+
+    const stats = applyCampaignDressing(
+      ctx,
+      new Rng(hashSeed(67890, 'campaign-dressing-route-safety')),
+      'scorched',
+      new PlacementLedger(),
+      { fits },
+    );
+
+    expect(stats.cellsChanged).toBeGreaterThan(0);
+    const unstable = new Set([Cell.Coal, Cell.Ash, Cell.Gold, Cell.Lava]);
+    let routeAdjacentAccents = 0;
+    for (let y = 1; y < HEIGHT - 1; y++) {
+      for (let x = 1; x < WIDTH - 1; x++) {
+        const i = world.idx(x, y);
+        const t = world.types[i];
+        if (t === Cell.Empty) continue;
+        const nearRoute =
+          world.types[world.idx(x, y - 1)] === Cell.Empty ||
+          world.types[world.idx(x, y + 1)] === Cell.Empty ||
+          world.types[world.idx(x - 1, y)] === Cell.Empty ||
+          world.types[world.idx(x + 1, y)] === Cell.Empty;
+        if (!nearRoute) continue;
+        if (t !== Cell.Wall) routeAdjacentAccents++;
+        expect(unstable.has(t)).toBe(false);
+      }
+    }
+    expect(routeAdjacentAccents).toBeGreaterThan(0);
+  });
+
+  it('keeps gilded powder pockets embedded away from traversal-adjacent surfaces', () => {
+    const world = new World();
+    world.types.fill(Cell.Wall);
+    world.colors.fill(0x010203);
+    const fits = new Uint8Array(WIDTH * HEIGHT);
+    for (let y = 56; y < HEIGHT - 120; y += 30) {
+      for (let yy = y; yy <= y + 8; yy++) {
+        for (let x = 24; x < WIDTH - 24; x++) {
+          world.types[world.idx(x, yy)] = Cell.Empty;
+          fits[world.idx(x, yy)] = 1;
+        }
+      }
+    }
+    const ctx = {
+      world,
+      state: { mode: 'build', currentBiome: 'gilded' },
+      worldgen: { spawnHint: { x: 40, y: 40 }, paintSeed: null },
+    } as unknown as Ctx;
+
+    const stats = applyCampaignDressing(
+      ctx,
+      new Rng(hashSeed(24680, 'campaign-dressing-gilded-route-safety')),
+      'gilded',
+      new PlacementLedger(),
+      { fits },
+    );
+
+    expect(stats.cellsChanged).toBeGreaterThan(0);
+    const unstable = new Set([Cell.Gold, Cell.Catalyst, Cell.Acid]);
+    let routeAdjacentAccents = 0;
+    for (let y = 1; y < HEIGHT - 1; y++) {
+      for (let x = 1; x < WIDTH - 1; x++) {
+        const i = world.idx(x, y);
+        const t = world.types[i];
+        if (t === Cell.Empty) continue;
+        const nearRoute =
+          world.types[world.idx(x, y - 1)] === Cell.Empty ||
+          world.types[world.idx(x, y + 1)] === Cell.Empty ||
+          world.types[world.idx(x - 1, y)] === Cell.Empty ||
+          world.types[world.idx(x + 1, y)] === Cell.Empty;
+        if (!nearRoute) continue;
+        if (t !== Cell.Wall) routeAdjacentAccents++;
+        expect(unstable.has(t)).toBe(false);
+      }
+    }
+    expect(routeAdjacentAccents).toBeGreaterThan(0);
   });
 });

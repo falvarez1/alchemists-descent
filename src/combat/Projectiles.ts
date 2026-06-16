@@ -1,18 +1,67 @@
-import { BOUNCE_COUNTS, INFUSED, TRIGGERED } from '@/combat/wands/projectileMarks';
+import {
+  BOUNCE_COUNTS,
+  INFUSED,
+  PROJECTILE_MODS,
+  TRIGGERED,
+  TRIGGER_SOURCE_SPREAD,
+  type ProjectileModState,
+} from '@/combat/wands/projectileMarks';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
-import type { Ctx, Projectile, ProjectilesApi } from '@/core/types';
+import type { Ctx, Projectile, ProjectilesApi, ProjectileType, RigidBody } from '@/core/types';
 import { EnemySpatialIndex } from '@/entities/enemySpatial';
-import { Cell, isGas, isSolid } from '@/sim/CellType';
+import { Cell, isConductor, isGas, isSolid } from '@/sim/CellType';
 import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { probeHollow } from '@/world/secrets';
+
+/**
+ * Per-type impulse a player projectile imparts to a rigid body it strikes —
+ * a TRUE momentum (Δv = push/mass), so a light wood crate is shoved hard and a
+ * heavy metal one barely moves. Explosive types add their blast on top.
+ */
+const PROJECTILE_PUSH: Partial<Record<ProjectileType, number>> = {
+  bolt: 50,
+  pellet: 28,
+  fireball: 55,
+  meteor: 130,
+  wisp: 36,
+  iceshard: 42,
+  frostbolt: 36,
+  acidglob: 40,
+  icelance: 80,
+  bomb: 45,
+};
 
 /** Solid-for-projectiles test (same gate as the impact check in update()). */
 function solidAt(world: World, x: number, y: number): boolean {
   if (!world.inBounds(x, y)) return true;
   const c = world.types[world.idx(x, y)];
   return c !== Cell.Empty && !isGas(c);
+}
+
+interface DiskOffset {
+  dx: number;
+  dy: number;
+  dSq: number;
+}
+
+const diskOffsetCache = new Map<number, DiskOffset[]>();
+
+function diskOffsets(radius: number): readonly DiskOffset[] {
+  const r = Math.max(0, Math.floor(radius));
+  let cached = diskOffsetCache.get(r);
+  if (cached) return cached;
+  cached = [];
+  const rSq = r * r;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const dSq = dx * dx + dy * dy;
+      if (dSq <= rSq) cached.push({ dx, dy, dSq });
+    }
+  }
+  diskOffsetCache.set(r, cached);
+  return cached;
 }
 
 /** Frost shard impact: freeze standing water, rime exposed surfaces — never inside the player. */
@@ -86,12 +135,131 @@ function releaseTriggered(ctx: Ctx, p: Projectile): void {
   const actions = TRIGGERED.get(p);
   if (!actions) return;
   TRIGGERED.delete(p);
+  const sourceSpread = TRIGGER_SOURCE_SPREAD.get(p);
+  TRIGGER_SOURCE_SPREAD.delete(p);
   const angle = Math.atan2(p.vy, p.vx);
   for (const action of actions) {
     ctx.wands.castActionAt(ctx, action, p.x, p.y, angle, {
       origin: 'trigger',
       target: { x: p.x, y: p.y },
+      sourceSpread,
     });
+  }
+}
+
+function pointOverlapsPlayer(ctx: Ctx, x: number, y: number): boolean {
+  if (ctx.state.mode !== 'play' || ctx.player.dead) return false;
+  return Math.abs(x - ctx.player.x) <= 5 && y <= ctx.player.y + 1 && y >= ctx.player.y - 18;
+}
+
+function bodyTouchesWater(ctx: Ctx, enemy: Ctx['enemies'][number]): boolean {
+  const world = ctx.world;
+  const def = ctx.enemyCtl.defs[enemy.kind];
+  const x0 = Math.floor(enemy.x - def.halfW - 2);
+  const x1 = Math.floor(enemy.x + def.halfW + 2);
+  const y0 = Math.floor(enemy.y - def.h - 2);
+  const y1 = Math.floor(enemy.y + 2);
+  for (let y = y0; y <= y1; y += 2) {
+    for (let x = x0; x <= x1; x += 2) {
+      if (world.inBounds(x, y) && world.types[world.idx(x, y)] === Cell.Water) return true;
+    }
+  }
+  return false;
+}
+
+function wetCritArmed(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]): boolean {
+  const mods = PROJECTILE_MODS.get(p);
+  return mods?.critWet === true && (enemy.status.wet > 0 || bodyTouchesWater(ctx, enemy));
+}
+
+function wetCritFeedback(ctx: Ctx, x: number, y: number): void {
+  ctx.particles.burst(x, y - 6, 12, null, () => packRGB(100, 210, 255), 2.0, {
+    glow: 2.2,
+    grav: 0.02,
+  });
+  ctx.audio.tone(1180, 120, 0.14, 'triangle', 0.08);
+}
+
+function electricFeedback(ctx: Ctx, x: number, y: number): void {
+  ctx.particles.burst(x, y - 4, 10, null, () => packRGB(150, 230, 255), 1.7, {
+    glow: 2.3,
+    grav: 0,
+  });
+  ctx.audio.tone(1500, 300, 0.08, 'square', 0.06);
+}
+
+function pruneProjectileMods(p: Projectile, mods: ProjectileModState): void {
+  if (
+    mods.waterTrailBudget !== undefined ||
+    mods.oilTrailBudget !== undefined ||
+    mods.electricCharge === true ||
+    mods.critWet === true ||
+    mods.shortHomingFrames !== undefined
+  ) {
+    return;
+  }
+  PROJECTILE_MODS.delete(p);
+}
+
+function chargeNearby(ctx: Ctx, cx: number, cy: number, radius: number, charge: number): void {
+  const world = ctx.world;
+  for (const { dx, dy, dSq } of diskOffsets(radius)) {
+    const x = cx + dx;
+    const y = cy + dy;
+    if (!world.inBounds(x, y)) continue;
+    const idx = world.idx(x, y);
+    const t = world.types[idx];
+    if (isConductor(t) || (dSq === 0 && t !== Cell.Empty && !isGas(t))) {
+      world.setChargeAt(idx, Math.max(world.charge[idx], charge));
+    }
+  }
+}
+
+function applyElectricChargeToEnemy(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]): void {
+  const mods = PROJECTILE_MODS.get(p);
+  if (mods?.electricCharge !== true) return;
+  enemy.status.electrified = Math.max(enemy.status.electrified ?? 0, 60);
+  chargeNearby(ctx, Math.floor(enemy.x), Math.floor(enemy.y - 5), 5, 12);
+  electricFeedback(ctx, enemy.x, enemy.y);
+}
+
+function applyElectricChargeToTerrain(ctx: Ctx, p: Projectile, gx: number, gy: number): void {
+  const mods = PROJECTILE_MODS.get(p);
+  if (mods?.electricCharge !== true) return;
+  chargeNearby(ctx, gx, gy, 4, 14);
+  electricFeedback(ctx, gx, gy);
+}
+
+function shedTrail(
+  ctx: Ctx,
+  p: Projectile,
+  mods: ProjectileModState,
+  cell: Cell,
+  budgetKey: 'waterTrailBudget' | 'oilTrailBudget',
+  cadenceKey: 'waterTrailCadence' | 'oilTrailCadence',
+): void {
+  const budget = mods[budgetKey];
+  if (budget === undefined || budget <= 0 || ctx.state.frameCount % (mods[cadenceKey] ?? 2) !== 0) return;
+  const world = ctx.world;
+  const spd = Math.hypot(p.vx, p.vy) || 1;
+  const colorFn = COLOR_FN[cell] ?? (() => EMPTY_COLOR);
+  let placed = 0;
+  for (let d = 0; d < 2 && placed < budget; d++) {
+    const tx = Math.floor(p.x - (p.vx / spd) * 2 + (Math.random() - 0.5) * 2);
+    const ty = Math.floor(p.y - (p.vy / spd) * 2 + (Math.random() - 0.5) * 2);
+    if (!world.inBounds(tx, ty) || pointOverlapsPlayer(ctx, tx, ty)) continue;
+    const ti = world.idx(tx, ty);
+    const t = world.types[ti];
+    if (t === Cell.Empty || isGas(t)) {
+      world.replaceCellAt(ti, cell, colorFn());
+      placed++;
+    }
+  }
+  mods[budgetKey] = budget - placed;
+  if ((mods[budgetKey] ?? 0) <= 0) {
+    delete mods[budgetKey];
+    delete mods[cadenceKey];
+    pruneProjectileMods(p, mods);
   }
 }
 
@@ -99,15 +267,117 @@ function releaseTriggered(ctx: Ctx, p: Projectile): void {
 export class Projectiles implements ProjectilesApi {
   private readonly enemyIndex = new EnemySpatialIndex();
   private readonly enemyScratch: Ctx['enemies'] = [];
+  private indexedFrame = -1;
+  private indexedEnemyCount = -1;
+
+  private ensureEnemyIndex(ctx: Ctx): void {
+    if (this.indexedFrame === ctx.state.frameCount && this.indexedEnemyCount === ctx.enemies.length) return;
+    this.enemyIndex.rebuild(ctx.enemies);
+    this.indexedFrame = ctx.state.frameCount;
+    this.indexedEnemyCount = ctx.enemies.length;
+  }
 
   private damageEnemy(ctx: Ctx, enemy: Ctx['enemies'][number], amount: number, kx: number, ky: number): void {
     ctx.enemyCtl.damage(enemy, amount, kx, ky);
-    if (enemy.hp <= 0) this.enemyIndex.syncLive(ctx.enemies);
+    if (enemy.hp <= 0) {
+      this.enemyIndex.syncLive(ctx.enemies);
+      this.indexedEnemyCount = ctx.enemies.length;
+    }
   }
 
-  private triggerExplosion(ctx: Ctx, x: number, y: number, radius: number): void {
-    ctx.explosions.trigger(x, y, radius);
+  private triggerExplosion(ctx: Ctx, x: number, y: number, radius: number, enemyDamageMul = 1): void {
+    ctx.explosions.trigger(x, y, radius, enemyDamageMul === 1 ? undefined : { enemyDamageMul });
     this.enemyIndex.syncLive(ctx.enemies);
+    this.indexedEnemyCount = ctx.enemies.length;
+  }
+
+  /**
+   * A player projectile struck a rigid body: shove + spin it (mass-aware), then
+   * resolve the projectile per type — 'pierce' (icelance keeps flying), 'bounce'
+   * (bomb ricochets, detonates on its own timer), or 'consume' (everything else
+   * fires its terminal effect at the contact). Mirrors the terrain-impact switch.
+   */
+  private impactBody(ctx: Ctx, p: Projectile, body: RigidBody): 'consume' | 'bounce' | 'pierce' {
+    const spd = Math.hypot(p.vx, p.vy) || 1;
+    const push = PROJECTILE_PUSH[p.type] ?? 30;
+    ctx.rigidBodies.applyMomentumAt(body, (p.vx / spd) * push, (p.vy / spd) * push, p.x, p.y);
+    switch (p.type) {
+      case 'icelance':
+        return 'pierce';
+      case 'bomb':
+        p.vx *= -0.3;
+        p.vy *= -0.2;
+        p.x += p.vx;
+        p.y += p.vy;
+        return 'bounce';
+      case 'bolt':
+        this.triggerExplosion(ctx, p.x, p.y, ctx.params.spells.bolt.explosionRadius!);
+        break;
+      case 'pellet':
+        this.triggerExplosion(ctx, p.x, p.y, 6);
+        break;
+      case 'fireball':
+        this.triggerExplosion(ctx, p.x, p.y, 10);
+        break;
+      case 'wisp':
+        this.triggerExplosion(ctx, p.x, p.y, 5);
+        break;
+      case 'meteor':
+        this.triggerExplosion(ctx, p.x, p.y, 40, p.mul ?? 1);
+        break;
+      case 'iceshard':
+        freezeSplash(ctx, p.x, p.y, 7);
+        break;
+      case 'frostbolt':
+        ctx.particles.burst(p.x, p.y, 10, null, iceColor, 1.3, { glow: 1.5, grav: 0.02 });
+        break;
+      case 'acidglob':
+        splashLiquid(ctx, p.x, p.y, Cell.Acid, acidColor, 3);
+        break;
+      default:
+        ctx.particles.burst(p.x, p.y, 4, null, () => packRGB(255, 220, 150), 1.2, { glow: 1.6, grav: 0.03 });
+        break;
+    }
+    releaseTriggered(ctx, p);
+    return 'consume';
+  }
+
+  private applyShortHoming(ctx: Ctx, p: Projectile, mods: ProjectileModState): void {
+    if (mods.shortHomingFrames === undefined) return;
+    mods.shortHomingFrames--;
+    if (mods.shortHomingFrames <= 0) {
+      delete mods.shortHomingFrames;
+      delete mods.shortHomingCadence;
+      pruneProjectileMods(p, mods);
+      return;
+    }
+    if (p.age < 4 || ctx.state.frameCount % (mods.shortHomingCadence ?? 4) !== 0) return;
+
+    let best: Ctx['enemies'][number] | null = null;
+    let bestD = 110 * 110;
+    for (const e of this.enemyIndex.query(p.x, p.y + 5, 110, this.enemyScratch)) {
+      if (!this.enemyIndex.has(e)) continue;
+      const dx = e.x - p.x;
+      const dy = e.y - 5 - p.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD) {
+        bestD = d2;
+        best = e;
+      }
+    }
+    if (!best) return;
+
+    const d = Math.sqrt(bestD) || 1;
+    const initialSpeed = Math.hypot(p.vx, p.vy);
+    p.vx += ((best.x - p.x) / d) * 0.36;
+    p.vy += ((best.y - 5 - p.y) / d) * 0.36;
+    const cap = Math.max(3.5, initialSpeed * 1.2);
+    const spd = Math.hypot(p.vx, p.vy);
+    if (spd > cap) {
+      p.vx = (p.vx / spd) * cap;
+      p.vy = (p.vy / spd) * cap;
+    }
+    ctx.particles.spawn(p.x, p.y, 0, 0, null, packRGB(160, 230, 255), 10, { grav: 0, glow: 1.8 });
   }
 
   private implosionCollapse(ctx: Ctx, p: Projectile): void {
@@ -116,31 +386,27 @@ export class Projectiles implements ProjectilesApi {
       cy = Math.floor(p.y);
     const R = Math.floor(p.vortexRad! * 1.2);
     // Everything left inside the well is sheared loose and streams into the center
-    for (let dy = -R; dy <= R; dy++) {
-      for (let dx = -R; dx <= R; dx++) {
-        const d2 = dx * dx + dy * dy;
-        if (d2 > R * R) continue;
-        const nx = cx + dx,
-          ny = cy + dy;
-        if (!world.inBounds(nx, ny)) continue;
-        const ci = world.idx(nx, ny);
-        const t = world.types[ci];
-        if (t === Cell.Empty || t === Cell.Metal) continue;
-        const d = Math.sqrt(d2) || 1;
-        if (Math.random() < 0.35) {
-          ctx.particles.spawn(
-            nx,
-            ny,
-            (-dx / d) * (2.0 + d * 0.1),
-            (-dy / d) * (2.0 + d * 0.1),
-            null,
-            world.colors[ci],
-            60,
-            { grav: 0, glow: t === Cell.Gold || t === Cell.Lava ? 1.6 : 0 },
-          );
-        }
-        world.clearCellAt(ci);
+    for (const { dx, dy, dSq } of diskOffsets(R)) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!world.inBounds(nx, ny)) continue;
+      const ci = world.idx(nx, ny);
+      const t = world.types[ci];
+      if (t === Cell.Empty || t === Cell.Metal) continue;
+      const d = Math.sqrt(dSq) || 1;
+      if (Math.random() < 0.35) {
+        ctx.particles.spawn(
+          nx,
+          ny,
+          (-dx / d) * (2.0 + d * 0.1),
+          (-dy / d) * (2.0 + d * 0.1),
+          null,
+          world.colors[ci],
+          60,
+          { grav: 0, glow: t === Cell.Gold || t === Cell.Lava ? 1.6 : 0 },
+        );
       }
+      world.clearCellAt(ci);
     }
     // Inverted shockwave: space visibly snaps inward
     ctx.shockwaves.push({ cx, cy, currentRadius: 0, maxRadius: R * 2.4, speed: 5.5, strength: -16 });
@@ -172,42 +438,46 @@ export class Projectiles implements ProjectilesApi {
       const p = ctx.projectiles[i];
       if (p.type === 'blackhole') {
         const vortexRad = Math.floor(p.vortexRad!);
-        for (let dy = -vortexRad; dy <= vortexRad; dy++) {
-          for (let dx = -vortexRad; dx <= vortexRad; dx++) {
-            const px = Math.floor(p.x) + dx,
-              py = Math.floor(p.y) + dy;
-            if (!world.inBounds(px, py)) continue;
-            const ci = world.idx(px, py);
-            const t = world.types[ci];
-            if (t === Cell.Empty || t === Cell.Metal) continue;
-            const dSq = dx * dx + dy * dy;
-            if (dSq <= Math.max(9, (vortexRad * 0.12) ** 2)) {
-              // crossed the event horizon: gone
+        const centerX = Math.floor(p.x);
+        const centerY = Math.floor(p.y);
+        const sim = world.simBounds;
+        const offsets = diskOffsets(vortexRad);
+        const stride = offsets.length > 16000 ? 4 : offsets.length > 8000 ? 2 : 1;
+        const start = stride === 1 ? 0 : p.age % stride;
+        for (let offsetIndex = start; offsetIndex < offsets.length; offsetIndex += stride) {
+          const { dx, dy, dSq } = offsets[offsetIndex];
+          const px = centerX + dx;
+          const py = centerY + dy;
+          if (px < sim.x0 || px >= sim.x1 || py < sim.y0 || py >= sim.y1 || !world.inBounds(px, py)) continue;
+          const ci = world.idx(px, py);
+          const t = world.types[ci];
+          if (t === Cell.Empty || t === Cell.Metal) continue;
+          if (dSq <= Math.max(9, (vortexRad * 0.12) ** 2)) {
+            // crossed the event horizon: gone
+            world.clearCellAt(ci);
+          } else if (t === Cell.Wall) {
+            // bedrock shears loose and streams toward the singularity
+            if (Math.random() < 0.05) {
+              const d = Math.sqrt(dSq) || 1;
+              ctx.particles.spawn(
+                px,
+                py,
+                (-dx / d) * (1.2 + Math.random() * 1.6),
+                (-dy / d) * (1.2 + Math.random() * 1.6),
+                null,
+                world.colors[ci],
+                90,
+                { grav: 0 },
+              );
               world.clearCellAt(ci);
-            } else if (t === Cell.Wall) {
-              // bedrock shears loose and streams toward the singularity
-              if (dSq <= vortexRad * vortexRad && Math.random() < 0.05) {
-                const d = Math.sqrt(dSq) || 1;
-                ctx.particles.spawn(
-                  px,
-                  py,
-                  (-dx / d) * (1.2 + Math.random() * 1.6),
-                  (-dy / d) * (1.2 + Math.random() * 1.6),
-                  null,
-                  world.colors[ci],
-                  90,
-                  { grav: 0 },
-                );
-                world.clearCellAt(ci);
-              }
-            } else if (dSq <= vortexRad * vortexRad && Math.random() < 0.55) {
-              const stepX = px - Math.sign(dx),
-                stepY = py - Math.sign(dy);
-              if (world.inBounds(stepX, stepY)) {
-                const st = world.types[world.idx(stepX, stepY)];
-                if (st === Cell.Empty || st === Cell.Steam || st === Cell.Smoke) {
-                  world.swap(px, py, stepX, stepY);
-                }
+            }
+          } else if (Math.random() < 0.55) {
+            const stepX = px - Math.sign(dx),
+              stepY = py - Math.sign(dy);
+            if (world.inBounds(stepX, stepY)) {
+              const st = world.types[world.idx(stepX, stepY)];
+              if (st === Cell.Empty || st === Cell.Steam || st === Cell.Smoke) {
+                world.swap(px, py, stepX, stepY);
               }
             }
           }
@@ -238,7 +508,7 @@ export class Projectiles implements ProjectilesApi {
   }
 
   update(ctx: Ctx): void {
-    this.enemyIndex.rebuild(ctx.enemies);
+    this.ensureEnemyIndex(ctx);
     this.updateSingularityGravityWells(ctx);
 
     const world = ctx.world;
@@ -271,7 +541,9 @@ export class Projectiles implements ProjectilesApi {
       }
 
       if (p.type === 'bomb' && p.life <= 0) {
-        this.triggerExplosion(ctx, p.x, p.y, Math.floor(ctx.params.spells.bomb.explosionRadius!));
+        const mul = p.mul ?? 1;
+        const radius = Math.floor(ctx.params.spells.bomb.explosionRadius! * Math.min(1.45, 1 + (mul - 1) * 0.15));
+        this.triggerExplosion(ctx, p.x, p.y, radius, mul);
         releaseTriggered(ctx, p);
         removeAt(i);
         continue;
@@ -321,6 +593,14 @@ export class Projectiles implements ProjectilesApi {
         }
       }
 
+      const mods = PROJECTILE_MODS.get(p);
+      if (mods) {
+        this.applyShortHoming(ctx, p, mods);
+        if (mods.electricCharge && ctx.state.frameCount % 4 === 0) {
+          chargeNearby(ctx, Math.floor(p.x), Math.floor(p.y), 2, 8);
+        }
+      }
+
       // Infuser card (Wave D): the wand charged this projectile from the
       // flask — it sheds 2 real cells of that material per frame in its wake.
       const infuseMat = INFUSED.get(p);
@@ -337,6 +617,11 @@ export class Projectiles implements ProjectilesApi {
             world.replaceCellAt(ti, infuseMat, colorFn ? colorFn() : EMPTY_COLOR);
           }
         }
+      }
+
+      if (mods) {
+        shedTrail(ctx, p, mods, Cell.Water, 'waterTrailBudget', 'waterTrailCadence');
+        shedTrail(ctx, p, mods, Cell.Oil, 'oilTrailBudget', 'oilTrailCadence');
       }
 
       // Swept movement: sub-step at <=1 cell so fast bolts can't tunnel through thin walls
@@ -372,12 +657,15 @@ export class Projectiles implements ProjectilesApi {
             const dx = e.x - p.x,
               dy = e.y - 5 - p.y;
             if (dx * dx + dy * dy < 130) {
-              this.damageEnemy(ctx, e, 30 * (p.mul ?? 1), p.vx * 0.4, -0.8);
+              const wetCrit = wetCritArmed(ctx, p, e);
+              applyElectricChargeToEnemy(ctx, p, e);
+              this.damageEnemy(ctx, e, 30 * (p.mul ?? 1) * (wetCrit ? 1.8 : 1), p.vx * 0.4, -0.8);
               e.status.frozen = Math.max(e.status.frozen, 150);
               ctx.particles.burst(e.x, e.y - 5, 10, null, () => packRGB(200, 240, 255), 2.2, {
                 glow: 1.8,
                 grav: 0.08,
               });
+              if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
               ctx.audio.tone(900 + Math.random() * 300, 130, 0.12, 'sine', 0.08);
             }
           }
@@ -451,22 +739,27 @@ export class Projectiles implements ProjectilesApi {
             const dx = e.x - p.x,
               dy = e.y - 5 - p.y;
             if (dx * dx + dy * dy < (p.type === 'meteor' ? 200 : 120)) {
+              const wetCrit = wetCritArmed(ctx, p, e);
+              const damageMul = mul * (wetCrit ? 1.8 : 1);
+              const explosionMul = wetCrit ? 1.8 : 1;
+              applyElectricChargeToEnemy(ctx, p, e);
               if (p.type === 'bolt') {
-                this.damageEnemy(ctx, e, 18 * mul, p.vx * 0.8, -1.6);
-                this.triggerExplosion(ctx, p.x, p.y, ctx.params.spells.bolt.explosionRadius!);
+                this.damageEnemy(ctx, e, 18 * damageMul, p.vx * 0.8, -1.6);
+                this.triggerExplosion(ctx, p.x, p.y, ctx.params.spells.bolt.explosionRadius!, explosionMul);
               } else if (p.type === 'pellet') {
-                this.damageEnemy(ctx, e, 8 * mul, p.vx * 0.6, -1.0);
-                this.triggerExplosion(ctx, p.x, p.y, 6);
+                this.damageEnemy(ctx, e, 8 * damageMul, p.vx * 0.6, -1.0);
+                this.triggerExplosion(ctx, p.x, p.y, 6, explosionMul);
               } else if (p.type === 'iceshard') {
-                this.damageEnemy(ctx, e, 16 * mul, p.vx * 0.5, -0.8);
+                this.damageEnemy(ctx, e, 16 * damageMul, p.vx * 0.5, -0.8);
                 e.status.frozen = Math.max(e.status.frozen, 140);
                 freezeSplash(ctx, p.x, p.y, 7);
               } else if (p.type === 'wisp') {
-                this.damageEnemy(ctx, e, 13 * mul, p.vx * 0.5, -1.0);
-                this.triggerExplosion(ctx, p.x, p.y, 5);
+                this.damageEnemy(ctx, e, 13 * damageMul, p.vx * 0.5, -1.0);
+                this.triggerExplosion(ctx, p.x, p.y, 5, explosionMul);
               } else {
-                this.triggerExplosion(ctx, p.x, p.y, 40);
+                this.triggerExplosion(ctx, p.x, p.y, 40, damageMul);
               }
+              if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
               releaseTriggered(ctx, p);
               removeAt(i);
               hit = true;
@@ -479,8 +772,26 @@ export class Projectiles implements ProjectilesApi {
           }
         }
 
+        // Rigid bodies are solid to player shots: a strike shoves + spins the
+        // body (mass-aware — wood flies, metal resists), then the shot resolves
+        // its terminal effect on the body (pierce/bounce/detonate per type).
+        if (!p.hostile && p.type !== 'warp' && p.type !== 'blackhole') {
+          const body = ctx.rigidBodies.hitTest(p.x, p.y);
+          if (body) {
+            const fate = this.impactBody(ctx, p, body);
+            if (fate === 'consume') {
+              removeAt(i);
+              removed = true;
+              break;
+            }
+            if (fate === 'bounce') break;
+            // 'pierce' → keep flying through
+          }
+        }
+
         const col = world.types[world.idx(gx, gy)];
         if (col !== Cell.Empty && !isGas(col)) {
+          applyElectricChargeToTerrain(ctx, p, gx, gy);
           // Hollow-wall tell (pillar 10): a player shot striking a thin wall
           // with open space behind it knocks hollow — probed through the real
           // cells along the impact direction. The speed gate keeps a bomb
@@ -564,7 +875,7 @@ export class Projectiles implements ProjectilesApi {
             removeAt(i);
             removed = true;
           } else if (p.type === 'meteor') {
-            this.triggerExplosion(ctx, gx, gy, 40);
+            this.triggerExplosion(ctx, gx, gy, 40, p.mul ?? 1);
             removeAt(i);
             removed = true;
           } else if (p.type === 'acidglob') {
@@ -573,7 +884,7 @@ export class Projectiles implements ProjectilesApi {
             removed = true;
           } else if (p.type === 'bolt') {
             this.triggerExplosion(ctx, gx, gy, ctx.params.spells.bolt.explosionRadius!);
-            world.charge[world.idx(gx, gy)] = 20;
+            world.setChargeAt(world.idx(gx, gy), 20);
             removeAt(i);
             removed = true;
           } else if (p.type === 'fireball') {
@@ -636,7 +947,7 @@ export class Projectiles implements ProjectilesApi {
               grav: -0.01,
             });
         } else if (p.type === 'meteor') {
-          this.triggerExplosion(ctx, p.x, p.y, 40);
+          this.triggerExplosion(ctx, p.x, p.y, 40, p.mul ?? 1);
         }
         removeAt(i);
         continue;

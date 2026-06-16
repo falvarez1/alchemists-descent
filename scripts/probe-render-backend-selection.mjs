@@ -85,7 +85,7 @@ async function runLiveGameProbe(browser, baseUrl) {
     const directCanvases = () =>
       Array.from(holder?.children ?? []).filter((child) => child instanceof HTMLCanvasElement);
     const initialCanvas = directCanvases()[0] ?? null;
-    const run = async (line) => ctx.console.exec(line);
+    const run = async (line) => ({ line, ...(await ctx.console.exec(line)) });
     const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
     const statusAfterFrame = async () => {
       await nextFrame();
@@ -160,15 +160,19 @@ try {
   const browserProbe = await runBrowserProbe(browser, baseUrl);
   const liveGame = await runLiveGameProbe(browser, baseUrl);
   const live = liveGame.result;
-  const commandFailures = live.commands.filter((command) => command.ok !== true);
+  const backendSetCommands = live.commands.filter((command) => command.line.startsWith('set render.backend '));
+  const unexpectedBackendSetResults = backendSetCommands.filter((command) => command.data?.code !== 'startup-only-param');
+  const commandFailures = live.commands.filter(
+    (command) => command.ok !== true && command.data?.code !== 'startup-only-param',
+  );
   const liveFailures = [];
   if (live.initialStatus.actual !== 'webgl2') liveFailures.push('initial actual backend is not webgl2');
   if (live.initialStatus.requested !== 'webgl') liveFailures.push('initial requested backend is not webgl');
-  if (live.autoStatus.requested !== 'auto' || live.autoStatus.actual !== 'webgl2') {
-    liveFailures.push('auto flag did not stay on WebGL2 fallback');
+  if (live.autoStatus.requested !== 'webgl' || live.autoStatus.actual !== 'webgl2') {
+    liveFailures.push('startup-only auto request changed live backend state');
   }
-  if (live.requestedWebGpuStatus.requested !== 'webgpu' || live.requestedWebGpuStatus.actual !== 'webgl2') {
-    liveFailures.push('explicit WebGPU request did not report WebGL2 fallback');
+  if (live.requestedWebGpuStatus.requested !== 'webgl' || live.requestedWebGpuStatus.actual !== 'webgl2') {
+    liveFailures.push('startup-only WebGPU request changed live backend state');
   }
   if (live.restoredStatus.requested !== 'webgl' || live.restoredStatus.actual !== 'webgl2') {
     liveFailures.push('restored WebGL flag did not report WebGL2');
@@ -180,6 +184,9 @@ try {
     liveFailures.push('canvas-holder layout changed');
   }
   if (!live.identities.mouseFinite) liveFailures.push('input mouse state became invalid');
+  if (backendSetCommands.length !== 3 || unexpectedBackendSetResults.length > 0) {
+    liveFailures.push('render backend console command was not startup-only');
+  }
   if (commandFailures.length > 0) liveFailures.push('render flag console command failed');
 
   payload = {

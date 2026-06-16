@@ -880,7 +880,7 @@ export class Gallery {
         (st) => {
           this.stageFloor(RX - 34, RX + 34);
           makeSensor(
-            list, RX - 8, FY,
+            this.world, list, RX - 8, FY,
             { sensorType: 'heat', threshold: 6, zone: { x0: RX - 12, y0: FY - 7, x1: RX - 4, y1: FY - 1 } },
             targetDoor(),
           );
@@ -1570,6 +1570,18 @@ export class Gallery {
       shockwaves: [],
       input,
       fx: { screenShake: 0, bloomKick: 0, digBeam: null, hitstop: 0 },
+      rigidBodies: {
+        bodies: [],
+        spawn: () => {
+          throw new Error('Gallery previews do not spawn rigid bodies');
+        },
+        remove: noop,
+        clear: noop,
+        update: noop,
+        applyImpulse: noop,
+        applyImpulseAt: noop,
+        applyRadialImpulse: noop,
+      },
       levels: { current: this.runtime },
     } as unknown as Ctx;
     // the real combat stack, wired to the scratch ctx (constructor-injected)

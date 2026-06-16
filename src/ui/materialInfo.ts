@@ -1,5 +1,5 @@
 import type { MaterialParams } from '@/core/types';
-import { blocksEntity, Cell, isGas, isLiquid, isSolid } from '@/sim/CellType';
+import { blocksEntity, Cell, isGas, isLiquid, isSoftGrowth, isSolid } from '@/sim/CellType';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { paramSliderSpec } from '@/ui/Inspector';
 
@@ -39,7 +39,7 @@ export const MATERIAL_INFO: Record<number, string> = {
     'Rigid and conductive: carries sparks and chain lightning. The one solid acid cannot dissolve.',
   [Cell.Smoke]: 'Inert exhaust gas: rises, disperses, and fades away.',
   [Cell.Vines]:
-    'Living growth that drinks neighboring water and spreads — hanging, creeping, climbing — until its energy is spent. Very flammable.',
+    'Pass-through living growth that drinks neighboring water and spreads — hanging, creeping, climbing — until its energy is spent. Very flammable.',
   [Cell.Nitrogen]:
     'Cryogenic liquid: freezes water into Ice and shocks lava into Stone, boiling away as it works. Slowly evaporates on its own.',
   [Cell.Gold]:
@@ -69,15 +69,15 @@ export const MATERIAL_INFO: Record<number, string> = {
   [Cell.Crystal]:
     'Glittering translucent crystal that sparkles and carries light deep into the rock. Cave critters gather to its glow.',
   [Cell.Fungus]:
-    'Bioluminescent colony that creeps along solid surfaces until its energy is spent, then settles in to glow. Burns readily.',
+    'Pass-through bioluminescent colony that creeps along solid surfaces until its energy is spent, then settles in to glow. Burns readily.',
   [Cell.Glass]:
     'Translucent solid fused from sand by lava or lightning. Lets light through; acid dissolves it.',
   [Cell.Ash]:
     'Featherlight burnt residue: drifts sideways as it falls and dissolves in water.',
   [Cell.Glowshroom]:
-    'Still, glowing cave growth — a living lamp. Catches fire.',
+    'Pass-through glowing cave growth — a living lamp. Catches fire.',
   [Cell.Moss]:
-    'Damp green creep that slowly spreads over wet rock and stops where the cave runs dry. Burns short and smoky.',
+    'Pass-through damp green creep that slowly spreads over wet rock and stops where the cave runs dry. Burns short and smoky.',
   [Cell.Catalyst]:
     "The philosopher's dust. Acid biting rock, wood, or stone beside it transmutes them into Gold Powder, consuming a grain of dust per conversion. Acid cannot eat the dust itself.",
 };
@@ -115,6 +115,7 @@ export function fillMaterialPopover(
   const tags: string[] = [];
   if (isLiquid(id)) tags.push('liquid');
   else if (isGas(id)) tags.push('gas');
+  else if (isSoftGrowth(id)) tags.push('soft growth');
   else if (isSolid(id)) tags.push('solid');
   else if (blocksEntity(id)) tags.push('powder');
   if (id === Cell.Fire || id === Cell.Ember) tags.push('burns');

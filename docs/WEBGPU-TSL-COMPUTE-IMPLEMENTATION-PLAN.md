@@ -457,6 +457,31 @@ Phase 4.5 result:
   claim a frame-rate win. Per the benchmark rule, the initially worse result was
   fixed and kept rather than rolled back.
 
+Phase 4.6 result:
+
+- Added a combined production-sized fixture under
+  `scripts/probe-webgpu-compose-storage-fixture.*`, exposed as
+  `npm run probe:webgpu-compose-storage-fixture`, that joins the two previously
+  separate proof points: raw WGSL compute writes a Three r184 `StorageTexture`
+  and TSL presents that same GPU-resident texture.
+- The artifact
+  `verify-out/webgpu-compose-storage-fixture/probe-1781558198105.json` passed on
+  actual WebGPU. The raw WGSL storage output and the TSL-presented screenshot
+  both matched the CPU reference with `maxDelta=1`, `mismatchPct=0`,
+  `exactPct=89.425%`, and `meanDelta=0.0273`; screenshot dimensions matched
+  the declared `1050x714` output.
+- The positive qualitative result is proving the live renderer's intended
+  GPU-resident path shape before wiring it into `WebGpuRenderBackend`: production
+  compose resources can feed raw WGSL, write a Three-owned storage texture, and
+  be consumed by TSL presentation without a CPU `pixelData` copy.
+- This slice still does not enable WebGPU compose in production and does not
+  claim a frame-rate win. The next runtime slice must wire this path behind the
+  existing `postFx.gpuCompose` flag and pass CPU/WebGL2/WebGPU parity plus
+  same-session timing before `gpuComposeAvailable` may return true.
+- Production wiring must isolate the pinned r184 private backend texture access
+  (`backend.get(storageTexture).texture`) behind a guarded adapter and rerun the
+  Phase 4.6 probe on any Three upgrade.
+
 Expected result:
 
 - Same or better visual quality than WebGL2 GPU compose.

@@ -24,13 +24,12 @@ import type {
 } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import {
+  COLOR_FN,
   EMPTY_COLOR,
   fireColor,
   goldColor,
   gunpowderColor,
   iceColor,
-  lavaColor,
-  nitrogenColor,
   oilColor,
   packRGB,
   sandColor,
@@ -41,7 +40,7 @@ import {
   waterColor,
   woodColor,
 } from '@/sim/colors';
-import { applyBiomeExtras } from '@/world/biomeExtras';
+import { applyBiomeExtras, applyCampaignDressing, goldPocketBudgetForBiome } from '@/world/biomeExtras';
 import { PlacementLedger, carveRect, tunnelTo } from '@/world/connect';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
@@ -273,7 +272,8 @@ export class WorldGen implements WorldGenApi {
     // Gold: a limited number of discrete pockets, buried but adjacent to open space
     let goldPlaced = 0,
       goldTries = 0;
-    while (goldPlaced < G.goldPockets && goldTries < G.goldTriesCap) {
+    const goldPocketTarget = goldPocketBudgetForBiome(G.goldPockets, ctx.state.currentBiome);
+    while (goldPlaced < goldPocketTarget && goldTries < G.goldTriesCap) {
       goldTries++;
       const x = 14 + Math.floor(this.rng.next() * (WIDTH - 28));
       const y = 40 + Math.floor(this.rng.next() * (FLOOR_BAND - 70));
@@ -323,7 +323,7 @@ export class WorldGen implements WorldGenApi {
                 (dy === 0 || Math.abs(dx) <= 4 + dy * 2)
               ) {
                 world.types[px + py * WIDTH] = poolType;
-                world.colors[px + py * WIDTH] = poolType === Cell.Lava ? lavaColor() : nitrogenColor();
+                world.colors[px + py * WIDTH] = (COLOR_FN[poolType] ?? COLOR_FN[Cell.Nitrogen])();
               }
             }
           }
@@ -492,6 +492,7 @@ export class WorldGen implements WorldGenApi {
     emitters: HazardEmitter[];
     decors: RuntimeDecor[];
     refuge: { x: number; y: number } | null;
+    spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null;
     vaultArch: VaultArch | null;
     vaultHoard: { x: number; y: number } | null;
   } {
@@ -870,6 +871,7 @@ export class WorldGen implements WorldGenApi {
       emitters: structEmitters,
       authoredLights: structLights,
       refuge,
+      spellLab,
       vaultArch,
       vaultHoard,
       sumpRepair,
@@ -903,6 +905,22 @@ export class WorldGen implements WorldGenApi {
     runeVaults.push(...sink.runeVaults);
     waystones.push(...sink.waystones);
     stage('merge');
+
+    // 8b.5) Late campaign dressing enriches terrain mass after all authored
+    // placements have reserved their footprints. It uses a forked stream so
+    // visual material richness does not perturb structure placement outcomes.
+    const campaignDressing = applyCampaignDressing(
+      ctx,
+      new Rng(hashSeed(seed >>> 0, 'campaign-dressing')),
+      def.biome,
+      ledger,
+      { pickups, mechanisms, runeVaults, portal, waystones, cauldron, fits },
+    );
+    if (campaignDressing.cellsChanged > 0) {
+      graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+      fits.set(computeFits(ctx.world));
+    }
+    stage('campaign-dressing');
 
     // 8c) GAUGE RESCUE: run the same connectivity audits the validator runs.
     //     Hands-on locks and door fronts use wizard connectivity (9x17 fits,
@@ -1002,12 +1020,39 @@ export class WorldGen implements WorldGenApi {
         rescued.push(label);
         if (!attempt()) failedRescues.push(label);
       };
+      const inSpellLab = (x: number, y: number): boolean =>
+        !!spellLab &&
+        x >= spellLab.x - 30 &&
+        x <= spellLab.x + 30 &&
+        y >= spellLab.y - 28 &&
+        y <= spellLab.y + 8;
+      const spellLabDoor = spellLab
+        ? mechanisms.find((m) => m.kind === 'door' && inSpellLab(m.x + m.w / 2, m.y + m.h / 2))
+        : undefined;
+      const spellLabSide = spellLabDoor && spellLab
+        ? Math.sign(spellLabDoor.x + spellLabDoor.w / 2 - spellLab.x) || 1
+        : 1;
+      let spellLabRescued = false;
+      const rescueSpellLab = (pass: () => boolean): boolean => {
+        if (!spellLab) return false;
+        if (spellLabRescued) return pass();
+        spellLabRescued = true;
+        return rescueAt(spellLab.x - spellLabSide * 36, spellLab.y - 5, pass);
+      };
       for (const m of mechanisms) {
+        const labMechanism = inSpellLab(m.x + m.w / 2, m.y + m.h / 2);
         if (m.kind === 'door') {
           const pass = (): boolean =>
             wizNear(m.x - 2, m.y + m.h - 2, 8) || wizNear(m.x + m.w + 1, m.y + m.h - 2, 8);
           const stable = (): boolean =>
             wizNearCount(m.x - 2, m.y + m.h - 2, 8) + wizNearCount(m.x + m.w + 1, m.y + m.h - 2, 8) >= 64;
+          if (labMechanism && pass()) continue;
+          if (labMechanism) {
+            recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
+              rescueSpellLab(pass),
+            );
+            continue;
+          }
           if (pass() && stable()) continue;
           recordRescue(
             `${m.kind}@${m.x},${m.y}`,
@@ -1035,6 +1080,12 @@ export class WorldGen implements WorldGenApi {
         } else if (CELL_REACH.has(m.kind)) {
           const pass = (): boolean => cellNear(m.x, m.y - 2, 5);
           if (pass()) continue;
+          if (labMechanism) {
+            recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
+              rescueSpellLab(pass),
+            );
+            continue;
+          }
           recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
         }
       }
@@ -1112,6 +1163,7 @@ export class WorldGen implements WorldGenApi {
       emitters: [...sink.emitters, ...structEmitters],
       decors: sink.decors,
       refuge,
+      spellLab,
       vaultArch,
       vaultHoard,
     };

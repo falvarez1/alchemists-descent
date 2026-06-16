@@ -289,7 +289,7 @@ export function applyWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {
   rleDecode(layer.rle, w.types);
   repaintWorldLayer(ctx, layer);
   for (const [i, v] of layer.life ?? []) w.life[i] = v;
-  for (const [i, v] of layer.charge ?? []) w.charge[i] = v;
+  for (const [i, v] of layer.charge ?? []) w.setChargeAt(i, v);
   for (const [i, c] of layer.colorOverrides ?? []) w.colors[i] = c;
 }
 

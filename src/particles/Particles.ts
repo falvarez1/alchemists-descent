@@ -136,8 +136,7 @@ export class Particles implements ParticlesApi {
           if (world.inBounds(bx, by)) {
             const bi = world.idx(bx, by);
             if (world.types[bi] === Cell.Empty || isGas(world.types[bi])) {
-              world.types[bi] = p.type;
-              world.colors[bi] = p.color;
+              world.replaceCellAt(bi, p.type, p.color);
               if (p.type === Cell.Fire) world.life[bi] = 18 + Math.floor(Math.random() * 18);
               if (p.type === Cell.Smoke) world.life[bi] = 30 + Math.floor(Math.random() * 30);
             }
