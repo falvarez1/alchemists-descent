@@ -1378,6 +1378,99 @@ Notes:
   "http://127.0.0.1:5173/?renderBackend=webgpu&enableWebGpuLiveCompose=1" 360
   4 chaos`, `npm run typecheck`, `npm run lint`, and `npm run build`.
 
+## Phase 4.12 - WebGL2 vs WebGPU Compose Promotion Gate
+
+Task: compare the diagnostic WebGPU raw-WGSL live compose path against the
+existing production WebGL2 GPU compose path, then attempt one focused fix if
+WebGPU is slower.
+
+Commit: `961b4eb` plus working-tree Phase 4.12 benchmark/script/docs changes.
+The checkout also contained unrelated dirty gameplay, physics, virtual-world,
+WASM, and verification files; artifacts record full `git.status` provenance.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for Phase 4.11. WebGPU ran through Three r184 `WebGPURenderer`; WebGL2 used the
+existing `GpuCompose` GLSL path.
+
+Requested backends:
+
+- WebGL2 production reference: `http://127.0.0.1:5173/`
+- WebGPU diagnostic: `http://127.0.0.1:5173/?renderBackend=webgpu&enableWebGpuLiveCompose=1`
+
+Actual backends: WebGL2 for the production reference; actual WebGPU for the
+diagnostic path.
+
+Scene / seed / resolution: chaos / seed `777` / `1050x714` / 2x180-frame
+interleaved blocks for each backend. This is a shorter promotion-gate run than
+the 4x360 CPU-vs-WebGPU A/B, intended to catch directionality before spending
+more time on a non-promotable path.
+
+Commands:
+
+```powershell
+node --check scripts/perf-compose-backends.mjs
+npm run perf:compose-backends -- http://127.0.0.1:5173/ 180 2 chaos
+npm run typecheck
+npm run probe:webgpu-live-compose
+```
+
+Baseline: Phase 4.11 proved WebGPU WGSL compose beats CPU terrain composition
+inside the WebGPU renderer, but it had not compared WebGPU against the already
+shipping WebGL2 GPU compose path. The promotion gate requires WebGPU compose to
+be no slower than WebGL2 GPU compose, or to provide a documented visual-quality
+gain that justifies any cost.
+
+Expected result: WebGPU WGSL compose should match or beat WebGL2 GPU compose in
+`compose + gl`, `render`, and `frame`, while preserving the visual gate.
+
+After: added `scripts/perf-compose-backends.mjs` and package script
+`npm run perf:compose-backends`. The script reuses `scripts/perf-ab-feature.mjs`
+for both backends, then compares the `postFx.gpuCompose=true` variants so the
+scenario setup and PerfHud buckets remain consistent.
+
+Actual result: failed promotion gate; keep diagnostic only. The first
+cross-backend artifact
+`verify-out/perf-compose-backends-chaos-1781617832000.json` showed WebGPU WGSL
+compose was slower than WebGL2 GPU compose:
+
+- `compose`: `4.938 -> 7.559 ms` (+53.1%)
+- `gl`: `0.927 -> 0.299 ms` (-67.7%)
+- `render`: `5.950 -> 7.986 ms` (+34.2%)
+- `frame`: `13.944 -> 16.554 ms` (+18.7%)
+
+The lower WebGPU `gl` bucket did not offset the higher WebGPU compose cost.
+
+Attempted fix and rollback: a focused optimization changed the WebGPU overlay
+upload from full `rgba16float` texture upload to dirty-rectangle sub-upload.
+That attempt failed the benchmark in
+`verify-out/perf-compose-backends-chaos-1781618054569.json`, where WebGPU was
+even slower versus WebGL2 GPU compose:
+
+- `compose`: `5.293 -> 8.896 ms` (+68.1%)
+- `gl`: `0.894 -> 0.510 ms` (-43.0%)
+- `render`: `6.275 -> 9.566 ms` (+52.5%)
+- `frame`: `13.918 -> 19.814 ms` (+42.4%)
+
+The dirty-rectangle overlay upload attempt was rolled back. The kept live path
+still passed visual/button validation in
+`verify-out/webgpu-live-compose/probe-1781618193466.json`: actual WebGPU,
+`bridge=validated`, no console/page errors, default-URL `WGSL` bootstrap reload,
+runtime off/on toggle, raw `maxd=1`, raw `bigPct=0`, post-FX `maxd=1`, post-FX
+`bigPct=0`, and lava RGB mean matched CPU at `[255, 226, 160]`.
+
+Decision: keep WebGPU live compose behind the explicit `render.compose` /
+`WGSL` diagnostic gate. Do not promote it over WebGL2 GPU compose yet. The next
+performance work should target resident GPU world/upload architecture in Phase
+5 rather than another small overlay-upload tweak.
+
+Validation passed for this slice:
+
+- `node --check scripts/perf-compose-backends.mjs`
+- `node --check scripts/probe-webgpu-live-compose.mjs`
+- `npm run typecheck`
+- `npm run probe:webgpu-live-compose`
+- `npm run perf:compose-backends -- http://127.0.0.1:5173/ 180 2 chaos`
+
 ## Virtual World Generation - Backend Baseline And Parity Rules
 
 Task: establish the first virtual-world (chunked Noita-like) generation baseline
@@ -1540,3 +1633,45 @@ Notes:
 - `build/` is gitignored; the committed runtime artifact is the base64 `.ts`.
 - Validation passed: `npm run build:wasm`, `npm run typecheck`,
   `npx vitest run tests/wasm-worldgen.test.ts tests/virtual-world.test.ts`, `npm run build`.
+
+## Virtual World Generation - Builder Playtest Render Audit (visual)
+
+Task: Phase 5 render-parity audit. Unit tests already prove the data conversion boundary
+(materializeChunks/cropMaterializedWindow keep cells/colors/life/charge exact and rebase
+scene lights). This audit checks the OTHER end — that a real virtual playtest renders rich
+(biome colors + scene lighting), disproving the plan's "Builder playtest looks dull while
+play looks rich" concern for the virtual path.
+
+Commit: working-tree, after `9539b8c`.
+
+Hardware/browser: Headless Edge via playwright-core (`channel: 'msedge'`), Vite dev server
+on `:5191`. `window.__game.ctx.levels.startRun(ctx, {mode:'test', worldSource:'virtual-world', seed})`.
+
+Scene / seed / resolution: `createDefaultVirtualWorldDef(1313162580)` virtual test runtime,
+`1050x714` renderer canvas. Reference = the sandbox build-mode view (this is a deliberately
+dark cave game: even the proven-good sandbox view is only ~20% non-black, so richness is
+judged RELATIVE to that reference, not by an absolute coverage threshold).
+
+Command: `npm run verify:virtual-playtest -- http://localhost:5191/`
+
+Expected result: the virtual playtest enters the `virtual-test` runtime, materializes
+generated scenes + scene lights, and renders at least as rich as the sandbox reference with
+the scene lights producing bright pixels.
+
+Actual result: keep. Stable across 3 runs: `8` generated scenes and `7` scene lights
+materialized into the runtime; canvas coverage `~21%` (reference `~20%`), average brightness
+`~8.5` (reference `~8.0`), `brightPct ~0.24`, and `maxV 765` (a fully-lit pixel) — i.e. the
+scene lights actually light the frame. The "dull playtest" failure mode is not present on
+the virtual path.
+
+Visual/quality evidence: `verify-out/virtual-playtest.png`.
+
+Decision: keep `scripts/verify-virtual-playtest.mjs` as the runtime render-parity gate.
+WebGL `drawImage` readback (no preserveDrawingBuffer) intermittently catches a cleared
+frame, so the probe samples multiple frames and keeps the richest reading.
+
+Notes:
+
+- The remaining un-audited parity case is fixed-campaign Play Mode vs Builder Playtest of
+  the SAME authored level; that is entangled with the campaign restore/regenerate path and
+  the campaign-recipe-parity work, not the virtual materialization boundary covered here.

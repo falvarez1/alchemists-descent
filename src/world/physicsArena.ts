@@ -19,7 +19,7 @@ import { BACKDROP_LAYER_SPECS, createDefaultBackdropSettings } from '@/config/ba
 const FY = 700; // floor top
 const BOT = 716; // floor bottom
 const X0 = 60;
-const X1 = 1760;
+const X1 = 1594; // right wall (world is 1600 wide — must stay in-bounds)
 const TOP = 184;
 const PLAYGROUND_AMBIENT = 0.92;
 
@@ -187,43 +187,43 @@ function buildAcidTrap(ctx: Ctx, mechs: Mechanism[]): void {
 
   // --- re-assert a solid floor under the whole contraption so the nest, relay
   //     footing, and plate always sit on bedrock (independent of carves) ---
-  fill(1560, FY, 1759, BOT, Cell.Stone);
+  fill(1485, FY, X1 - 6, BOT, Cell.Stone);
 
   // --- the ACID VAT (the finale) right of the plate: a SEALED basin — stone
   //     floor + walls, acid surface a few cells below the lip — so it can't drain
   //     or corrode the contraption, but a shoved victim drops straight in ---
-  fill(1668, FY, 1744, BOT - 1, Cell.Empty); // carve the pit (keep y=BOT as the basin floor)
-  fill(1669, 705, 1743, BOT - 1, Cell.Acid); // acid pooled in the bottom (surface y705)
+  fill(1545, FY, 1585, BOT - 1, Cell.Empty); // carve the pit (keep y=BOT as the basin floor)
+  fill(1546, 703, 1584, BOT - 1, Cell.Acid); // acid pooled in the bottom (surface y703, below the lip)
 
   // --- the contraption's gantry: a left backstop wall + a metal canopy so the
   //     blast vents sideways toward the victim instead of straight up ---
-  for (let y = FY - 46; y <= FY - 1; y++) { cell(1602, y, Cell.Stone); cell(1603, y, Cell.Stone); }
-  for (let x = 1602; x <= 1650; x++) { cell(x, FY - 46, Cell.Metal); cell(x, FY - 45, Cell.Metal); }
+  for (let y = FY - 44; y <= FY - 1; y++) { cell(1490, y, Cell.Stone); cell(1491, y, Cell.Stone); }
+  for (let x = 1490; x <= 1528; x++) { cell(x, FY - 44, Cell.Metal); cell(x, FY - 43, Cell.Metal); }
 
   // --- the explosive barrel nest on the floor (left of the plate) ---
   const barrel = (x: number, y: number): void => {
     rb.spawn({ kind: 'box', halfW: 3.5, halfH: 4.5 }, x, y, { material: 'wood', payload: 'explosive', color: packRGB(176, 64, 48), friction: 0.6, restitution: 0.1 });
   };
-  barrel(1614, FY - 5);
-  barrel(1626, FY - 5);
-  barrel(1638, FY - 5);
-  barrel(1626, FY - 15);
+  barrel(1502, FY - 5);
+  barrel(1512, FY - 5);
+  barrel(1522, FY - 5);
+  barrel(1512, FY - 15);
 
   // --- a wood crate perched on the nest — the blast flings it (flaming) at the victim ---
-  rb.spawn({ kind: 'box', halfW: 4, halfH: 4 }, 1626, FY - 24, { material: 'wood', friction: 0.6, restitution: 0.15 });
+  rb.spawn({ kind: 'box', halfW: 4, halfH: 4 }, 1512, FY - 24, { material: 'wood', friction: 0.6, restitution: 0.15 });
 
   // --- the wood FUSE the relay lights: fire crawls along it into the nest and on
   //     to the ice block (the fire literally dissolves the fuse to reach the nest) ---
-  for (let x = 1608; x <= 1643; x++) cell(x, FY - 1, Cell.Wood);
+  for (let x = 1494; x <= 1528; x++) cell(x, FY - 1, Cell.Wood);
 
   // --- an ICE block at the fuse's end: the crawling fire melts it to water — a
   //     visible "fire dissolves something" beat, harmlessly contained ---
-  fill(1644, FY - 9, 1650, FY - 1, Cell.Ice);
+  fill(1529, FY - 9, 1535, FY - 1, Cell.Ice);
 
   // --- the RELAY ignition coil buried in the nest: when the plate fires it, it
   //     lights the fuse AND (via igniteArea) the barrels it sits among ---
-  const relay = makeRelay(mechs, 1620, FY - 1, { delayFrames: 10, outputAction: 'ignite' });
+  const relay = makeRelay(mechs, 1508, FY - 1, { delayFrames: 10, outputAction: 'ignite' });
 
   // --- the TRIGGER PLATE (step here → it all kicks off) ---
-  makePlate(w, mechs, 1652, FY - 1, 12, relay);
+  makePlate(w, mechs, 1537, FY - 1, 7, relay);
 }

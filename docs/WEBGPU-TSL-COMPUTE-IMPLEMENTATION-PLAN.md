@@ -645,6 +645,33 @@ Phase 4.11 result:
   the production/default compose path until the broader parity matrix and
   rollout criteria are done.
 
+Phase 4.12 result:
+
+- Added `scripts/perf-compose-backends.mjs`, exposed as
+  `npm run perf:compose-backends`, to run the existing `postFx.gpuCompose`
+  A/B harness once on the production WebGL2 path and once on the WebGPU
+  live-compose diagnostic path, then compare the GPU-compose-on variants.
+- The first cross-backend artifact
+  `verify-out/perf-compose-backends-chaos-1781617832000.json` shows the current
+  WebGPU WGSL compose path does not pass the WebGL2 promotion gate yet. Against
+  WebGL2 GPU compose, WebGPU WGSL compose was slower in `compose`
+  (`4.938ms -> 7.559ms`, +53.1%), `render` (`5.950ms -> 7.986ms`, +34.2%),
+  and `frame` (`13.944ms -> 16.554ms`, +18.7%), although WebGPU `gl` was lower
+  (`0.927ms -> 0.299ms`, -67.7%).
+- A focused optimization attempt changed WebGPU overlay upload from full
+  texture upload to dirty-rectangle sub-upload. It failed the performance gate
+  in `verify-out/perf-compose-backends-chaos-1781618054569.json`, worsening the
+  cross-backend comparison to `compose +68.1%`, `render +52.5%`, and
+  `frame +42.4%` versus WebGL2 GPU compose. That optimization was rolled back.
+- The kept live path still passes the visual/button gate after rollback:
+  `verify-out/webgpu-live-compose/probe-1781618193466.json` reports no
+  console/page errors, actual WebGPU, bootstrap `WGSL` reload, runtime off/on
+  toggle, and raw/post-FX visual deltas within tolerance.
+- Decision: do not promote WebGPU compose. Keep the WebGPU live compose path as
+  an explicit diagnostic toggle, keep WebGL2 GPU compose as production/default,
+  and move the next performance work to Phase 5's resident GPU world mirror and
+  upload-cost reduction rather than another small overlay upload tweak.
+
 Remaining Phase 4 expected result:
 
 - Same or better visual quality than WebGL2 GPU compose.
