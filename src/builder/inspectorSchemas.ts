@@ -1,4 +1,5 @@
 import type { EnemyKind, PickupKind } from '@/core/types';
+import { sentenceCase } from '@/core/strings';
 import { paramNum } from '@/builder/document';
 import type { EditorDocument, EditorLight, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
 import type { SpriteAsset } from '@/builder/assets/sprites';
@@ -663,7 +664,9 @@ function mixedCheckbox(
 }
 
 function field(fieldDef: EditorField, command: InspectorCommandRef): InspectorSchemaItem {
-  return { kind: 'field', field: fieldDef, command };
+  // Sentence-case every field label so the inspector matches the Title/sentence
+  // casing used across the rest of the Builder instead of raw lowercase keys.
+  return { kind: 'field', field: { ...fieldDef, label: sentenceCase(fieldDef.label) }, command };
 }
 
 function section(label: string, id?: string): InspectorSchemaItem {

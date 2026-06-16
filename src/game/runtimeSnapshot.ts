@@ -8,6 +8,7 @@ import type {
   Projectile,
 } from '@/core/types';
 import { VIEW_H, VIEW_W } from '@/config/constants';
+import { humanizeIdentifier } from '@/core/strings';
 
 export type RuntimeEntityGroup =
   | 'player'
@@ -434,7 +435,7 @@ function mechanismRow(mechanism: Mechanism, view: RuntimeView, levelId: string):
     id: mechanismId(levelId, mechanism),
     group: 'mechanisms',
     kind: mechanism.kind,
-    label: `${mechanism.kind} #${mechanism.id}`,
+    label: `${humanizeIdentifier(mechanism.kind)} #${mechanism.id}`,
     sublabel: `${fmt(mechanism.x)}, ${fmt(mechanism.y)} - state ${fmt(mechanism.state)}`,
     x: mechanism.x,
     y: mechanism.y,

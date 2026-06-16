@@ -1,3 +1,4 @@
+import { escapeHtml as esc, escapeAttr as escAttr } from '@/ui/editor/Fields';
 import type {
   RuntimeEntityGroup,
   RuntimeEntityRow,
@@ -182,10 +183,3 @@ function renderRuntimeDetail(row: RuntimeEntityRow, showFocusActions: boolean): 
   </div>`;
 }
 
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-}
-
-function escAttr(s: string): string {
-  return esc(s);
-}

@@ -61,6 +61,11 @@ function initialRenderBackendOverride(): RenderBackendMode | null {
   return value === 'webgl' || value === 'webgpu' || value === 'auto' ? value : null;
 }
 
+function initialWebGpuLiveComposeOverride(): boolean {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('enableWebGpuLiveCompose') === '1';
+}
+
 /**
  * Composition root. Builds the shared Ctx once, owns the frame loop, and is
  * the single place that knows every concrete class.
@@ -112,6 +117,7 @@ export class Game {
       playtestSource: null,
     };
     state.render.backend = initialRenderBackendOverride() ?? state.render.backend;
+    state.render.compose = initialWebGpuLiveComposeOverride() || state.render.compose;
     const input: InputState = {
       keys: { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false },
       mouse: { x: 0, y: 0 },

@@ -150,6 +150,11 @@ function runSyncBenchmark(virtual, def, opts, requestedPlanes) {
 async function resolveBackendRun(virtual, def, opts, requestedPlanes) {
   const backend = createBackend(virtual, opts.backend);
   if (!backend) return null;
+  if (!backend.info.implemented) {
+    const info = { reason: `${backend.info.label} is planned and not implemented yet; synchronous reference used`, available: backend.info.available, error: null };
+    backend.dispose();
+    return { ...runSyncBenchmark(virtual, def, opts, requestedPlanes), fallback: info };
+  }
   if (!backend.info.available) {
     const info = { reason: `${backend.info.label} unavailable in this process`, available: false, error: null };
     backend.dispose();

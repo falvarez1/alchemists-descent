@@ -11,7 +11,18 @@ export type VirtualBackendKind = 'ts-worker' | 'webgpu-preview' | 'wasm';
 export interface BackendInfo {
   kind: VirtualBackendKind;
   label: string;
+  /** The platform capability this backend needs is present (Worker / navigator.gpu / WebAssembly). */
   available: boolean;
+  /**
+   * This backend is actually built and may be selected for generation. A backend can be
+   * `available` (the platform supports it) yet not `implemented` (we haven't written it),
+   * e.g. the WASM kernels: `WebAssembly` exists in every browser but the kernels do not.
+   */
+  implemented: boolean;
+  /**
+   * Produces byte-identical authoritative chunk cells/colors/life/charge. Only an
+   * authoritative backend may feed playtest materialization; a preview backend is visual-only.
+   */
   authoritativeCells: boolean;
   details: Record<string, string | number | boolean>;
 }

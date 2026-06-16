@@ -5,8 +5,13 @@ is implemented as a boot-gated diagnostic shell with documented presentation
 warnings; it is not promoted as the default renderer. Phase 4 has started with
 the compose ABI/limit contract in `docs/WEBGPU-COMPOSE-ABI.md`, a standalone
 WebGPU/TSL/raw-WGSL compose API canary, a production-shaped raw WGSL compose
-fixture, and a GPU-resident TSL storage-texture bridge probe. The live WebGPU
-compose shader port remains pending.
+fixture, a GPU-resident TSL storage-texture bridge probe, an opt-in runtime
+StorageTexture bridge check inside the live WebGPU renderer, and an opt-in raw
+WGSL write check against that live bridge. Phase 4.11 adds the first live
+WebGPU raw-WGSL compose path inside `WebGpuRenderBackend`; it is query-seeded,
+runtime-toggleable from the header `WGSL` button, passes the current
+visual/timing gates, but remains diagnostic-only and `productionAvailable=false`
+until the wider CPU/WebGL2/WebGPU parity matrix is complete.
 
 This plan turns the current WebGL2 GPU frame-composition work into a staged
 WebGPU platform migration. The goal is not to swap APIs for novelty; the goal is
@@ -503,13 +508,145 @@ Phase 4.7 result:
   claim a frame-rate win. It reduces integration risk for the next runtime
   slice by boxing the private Three r184 access in one revalidatable module.
 
-Expected result:
+Phase 4.8 result:
+
+- Added `src/render/WebGpuComposeBridge.ts`, a dev/probe-only runtime bridge
+  owned by `WebGpuRenderBackend`. It allocates a production-sized Three r184
+  `StorageTexture`, initializes it through TSL `textureStore`, then resolves
+  the guarded raw `GPUTexture` access through `resolveThreeStorageTextureAccess`.
+- Extended `RenderBackendStatus.webgpu.compose` so probes can distinguish
+  `productionAvailable=false` from a validated runtime bridge. The bridge only
+  runs when the page is booted with `?validateWebGpuComposeBridge=1`; normal
+  WebGPU presentation does not pay the one-shot compute/setup cost.
+- Added `scripts/probe-webgpu-runtime-compose-bridge.mjs`, exposed as
+  `npm run probe:webgpu-runtime-compose-bridge`. The artifact
+  `verify-out/webgpu-runtime-compose-bridge/probe-1781594616958.json` passed on
+  actual WebGPU with `bridge=validated`, `productionAvailable=false`, descriptor
+  `format=rgba8unorm`, `width=525`, `height=357`, `mipLevelCount=1`,
+  `usage=31`, and `source=three-r184-backend-get`. The probe also flipped
+  `postFx.gpuCompose=true` and confirmed the status stayed fail-closed with no
+  console errors or page errors.
+- This slice still does not enable WebGPU compose in production and does not
+  claim a frame-rate win. Its positive result is narrowing the next shader-port
+  risk: the live game renderer can allocate and validate the GPU-resident output
+  bridge that the future raw WGSL compose pass will write, while runtime compose
+  remains disabled until CPU/WebGL2/WebGPU parity and same-session timing gates
+  pass.
+- Post-review hardening switched the one-shot init to the current
+  `renderer.compute(...)` pattern and reports the bridge as unsupported if
+  device loss invalidates GPU resources before fallback completes.
+
+Phase 4.9 result:
+
+- Extended the runtime bridge with a second explicit probe gate,
+  `?validateWebGpuComposeRawWgsl=1`, that dispatches raw WGSL against the same
+  live `StorageTexture` validated in Phase 4.8. The WGSL kernel writes a
+  deterministic byte pattern to the `rgba8unorm` storage output, then the probe
+  copies that texture to a readback buffer outside the production frame loop.
+- The artifact
+  `verify-out/webgpu-runtime-compose-bridge/probe-1781596963586.json` passed on
+  actual WebGPU with `rawWgslWrite.status=validated`, `maxDelta=0`,
+  `mismatchPct=0`, `exactPct=100`, and `meanDelta=0`. The bridge still reports
+  `productionAvailable=false`, and flipping `postFx.gpuCompose=true` remained
+  fail-closed.
+- This slice still does not enable WebGPU compose in production and does not
+  claim a frame-rate win. The recorded `gpuSubmitReadbackWallMs=127.7ms`
+  includes one-shot shader/pipeline setup plus validation readback and is not a
+  production frame-time estimate. Its positive result is proving that raw WGSL
+  can write the live renderer-owned compose output texture that the future
+  production compose pass will target.
+- Post-review hardening made the deterministic raw WGSL validation exact-byte
+  (`maxDelta=0`) and added an explicit `COPY_SRC` usage preflight before the
+  diagnostic readback copy.
+
+Phase 4.10 result:
+
+- Added a repeatable diagnostic benchmark under
+  `scripts/probe-webgpu-compose-benchmark.*`, exposed as
+  `npm run bench:webgpu-compose`. The benchmark reuses the production-shaped
+  raw WGSL compose fixture, writes a Three-owned `StorageTexture`, presents it
+  through TSL, and records CPU reference timing, WebGPU per-dispatch
+  queue-completion timing, batched dispatch throughput, readback parity, and
+  screenshot parity.
+- The artifact
+  `verify-out/webgpu-compose-benchmark/probe-1781602097966.json` passed on
+  actual WebGPU. The raw WGSL output matched the CPU reference with
+  `maxDelta=1`, `bigPct=0`, and screenshot `mismatchPct=0`; no console or page
+  errors were recorded.
+- Diagnostic submit/wait wall-clock timing for the fixture was CPU reference
+  mean `11.142ms` versus
+  WebGPU individual submit/wait mean `2.891ms`, a `3.85x` speedup for this
+  isolated raw WGSL compose subset. The same run measured a batched
+  one-submit throughput of `0.022ms` per dispatch, but that number is treated as
+  a throughput diagnostic rather than a frame-time estimate.
+- The same checkout also reran the live production WebGL2 same-session A/B:
+  `postFx.gpuCompose=false` to `true` improved `compose` from `21.323ms` to
+  `4.618ms` (-78.3%), `render` from `22.000ms` to `5.556ms` (-74.7%), and
+  `frame` from `28.793ms` to `13.149ms` (-54.3%). That artifact is
+  `verify-out/perf-ab-postfx.gpucompose-chaos-1781601403799.json`.
+- This slice gives the first positive WebGPU performance evidence for the raw
+  compose kernel, but it still does not prove a live game speedup. Production
+  WebGPU compose remains `productionAvailable=false`; the next slice must move
+  this kernel into `WebGpuRenderBackend` behind the existing flag and benchmark
+  CPU/WebGL2/WebGPU in the same live frame loop.
+
+Phase 4.11 result:
+
+- Added `src/render/WebGpuLiveCompose.ts`, a live WebGPU compose
+  backend that packs the visible world window, half-resolution light field,
+  bloom LUT, backdrop layers, overlay texture, shockwaves, and lens parameters
+  into WebGPU resources, dispatches raw WGSL compute, and presents the resulting
+  Three `StorageTexture` through the existing TSL `RenderPipeline` path.
+- Wired it into `src/render/WebGpuRenderBackend.ts` behind
+  `ctx.state.render.compose`. The URL parameter `?enableWebGpuLiveCompose=1`
+  seeds that flag for probes, and the new header `WGSL` button toggles it off/on
+  during a WebGPU session. The regular WebGPU presentation path and WebGL2 path
+  do not pay this setup cost until the flag is enabled. The live status still
+  reports `productionAvailable=false` because this is a diagnostic gate, not
+  default production enablement.
+- Added `scripts/probe-webgpu-live-compose.mjs`, exposed as
+  `npm run probe:webgpu-live-compose`, to validate actual WebGPU backend status,
+  guarded Three r184 storage access, the `WGSL` runtime toggle, same-frame
+  CPU-vs-WebGPU raw and post-FX visual quality, and HDR material brightness.
+- The first live output attempt used `rgba8unorm` storage and failed the visual
+  gate: deterministic parity showed hot materials were darker because the WGSL
+  output clamped HDR compose values before ACES/post processing. The focused fix
+  switched the live output to `rgba16float` and removed the upper clamp while
+  preserving non-negative output.
+- The latest passing live probe artifact
+  `verify-out/webgpu-live-compose/probe-1781613556199.json` reports actual
+  WebGPU, `bridge=validated`, output storage `format=rgba16float`, `usage=31`,
+  `mipLevelCount=1`, no console/page errors, and
+  `productionAvailable=false`. It also clicked the header `WGSL` button off/on
+  and verified `render.compose` plus backend status followed the toggle. Its
+  frozen same-frame visual comparison reports raw compose `exactPct=97.449`,
+  `maxd=1`, `meand=0.00858`, `bigPct=0`, and post-FX `exactPct=97.198`,
+  `maxd=1`, `meand=0.00947`, `bigPct=0`; the lava brightness sample matched
+  CPU exactly at RGB mean `[255, 226, 160]`.
+- The latest same-session live WebGPU A/B artifact
+  `verify-out/perf-ab-postfx.gpucompose-chaos-1781613600624.json` compares
+  `postFx.gpuCompose=false` to `true` under actual WebGPU with
+  `?enableWebGpuLiveCompose=1`, chaos seed `777`, `1050x714`, and 4x360-frame
+  interleaved blocks. It improved `compose` from `21.723ms` to `5.505ms`
+  (-74.7%), `render` from `22.327ms` to `5.839ms` (-73.8%), and `frame` from
+  `29.175ms` to `12.921ms` (-55.7%). The `sim` and `entities` buckets were
+  slower in that run (`+2.2%` and `+4.8%`), so future promotion must
+  continue tracking full-frame effects, not only compose time.
+- Post-review hardening added a WebGPU `uncapturederror` handler so asynchronous
+  validation errors mark the live compose bridge failed/fail-closed, and the
+  live probe now covers the storage-texture post-FX presentation pipeline.
+- Decision: keep behind the explicit diagnostic `render.compose` gate. This is
+  the first measured live WebGPU frame-loop win, but WebGL2 GPU compose remains
+  the production/default compose path until the broader parity matrix and
+  rollout criteria are done.
+
+Remaining Phase 4 expected result:
 
 - Same or better visual quality than WebGL2 GPU compose.
 - Equal or better `compose + gl` cost than WebGL2 GPU compose on supported
   hardware.
 
-Acceptance gate:
+Remaining Phase 4 acceptance gate:
 
 - Existing compose parity scenarios pass against CPU reference and WebGL2 GPU
   compose reference.
@@ -521,7 +658,7 @@ Acceptance gate:
 - Builder and Sandbox both render through the WebGPU path without mode-specific
   assumptions.
 
-Rollback rule:
+Remaining Phase 4 rollback rule:
 
 - If WebGPU compose cannot match the look or cannot beat WebGL2 compose after
   one focused tuning pass, keep the WebGL2 compose path as default and record the

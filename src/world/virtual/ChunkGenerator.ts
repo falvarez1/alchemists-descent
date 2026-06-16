@@ -245,16 +245,26 @@ function chooseSceneForSlot(
   ty: number,
   slotIndex: number,
 ): PixelSceneDef | null {
-  const candidates = library.filter((scene) =>
+  const matching = library.filter((scene) =>
     scene.kind &&
     (budget[scene.kind] ?? 0) > 0 &&
     sceneMatchesSlot(scene, slotTags, biome),
   );
-  if (candidates.length === 0) return null;
-  const total = candidates.reduce((sum, scene) => sum + Math.max(0.001, budget[scene.kind!]), 0);
+  if (matching.length === 0) return null;
+  // Prefer variants that explicitly belong to this biome so each biome keeps its identity;
+  // fall back to all matching scenes when no biome-specific variant exists.
+  const biomePreferred = matching.filter((scene) => (scene.tags ?? []).includes(biome));
+  const candidates = biomePreferred.length > 0 ? biomePreferred : matching;
+  // Normalize each variant's weight by the count of same-kind variants so adding variety does
+  // not inflate a kind's share of the budget: a kind's total weight stays budget[kind].
+  const kindCounts = new Map<string, number>();
+  for (const scene of candidates) kindCounts.set(scene.kind!, (kindCounts.get(scene.kind!) ?? 0) + 1);
+  const weightOf = (scene: PixelSceneDef): number =>
+    Math.max(0.001, budget[scene.kind!]) / (kindCounts.get(scene.kind!) ?? 1);
+  const total = candidates.reduce((sum, scene) => sum + weightOf(scene), 0);
   let roll = unitHash2i(def.seed ^ 0x5d9e4c17, tx * 4099 + slotIndex, ty) * total;
   for (const scene of candidates) {
-    roll -= Math.max(0.001, budget[scene.kind!]);
+    roll -= weightOf(scene);
     if (roll <= 0) return scene;
   }
   return candidates[candidates.length - 1] ?? null;

@@ -126,6 +126,25 @@ player ↔ spells) without letting circular imports exist.
 of nested JS arrays of arrays — far less memory, far better cache behavior, and the
 foundation for future chunking/dirty-rect work. Colors are packed `0xRRGGBB` integers.
 
+**Entity storage is array-of-objects, on purpose — with a documented switch
+point.** The grid is structure-of-arrays (above), but the transient entity
+systems — the particle pool (`src/particles/Particles.ts` + the `EntityPool` in
+`src/entities/ecs.ts`), enemies, projectiles, critters — are deliberately
+array-of-objects (AoS). Below ~10k *sustained* live elements, AoS ties or beats
+parallel typed arrays (the working set stays cache-resident and V8's monomorphic
+object access is fast), and it keeps gameplay code legible and `window.__game.ctx`
+debuggable. The crossover is real: converting `Particles` to structure-of-arrays
+(`Float32Array` per field) measured ~2× faster at 16k particles, ~4–6× at 64k, and
+~10× less GC churn — but only once a system genuinely *sustains* that many. So the
+rule is: **keep AoS until a system sustains >~10k live elements, then convert that
+one system to SoA.** Raising `MAX_PARTICLES` (a ceiling) does not by itself trigger
+this — sustained on-screen count does. The benchmarks are the gate
+(`scripts/bench-particle-layout.mjs`, `scripts/perf-particles-12k.mjs`); re-run them
+on target hardware before refactoring. A C/WASM archetype ECS (FLECS) was evaluated
+and rejected: its SoA-iteration win is unusable from JS without rewriting gameplay in
+C, and it would fight the in-place-array invariant, the frame-order contract, and the
+in-page probe workflow — the same win is available in pure TypeScript with no WASM.
+
 **Events outward, calls inward.** Gameplay systems call each other through Ctx service
 APIs (synchronous, ordered), but never touch the DOM. Anything presentation-shaped
 (score readouts, banners, overlays, mode classes) is an `EventBus` event the UI layer

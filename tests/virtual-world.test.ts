@@ -15,6 +15,10 @@ import { cropMaterializedWindow, materializeChunks } from '@/world/virtual/Windo
 import { fnv1aByteArrays, hashCoord } from '@/world/virtual/hash';
 import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
 import { fromTransferableChunk, toTransferableChunk } from '@/world/virtual/transfer';
+import { TsWorkerBackend } from '@/world/virtual/backends/TsWorkerBackend';
+import { WebGpuPreviewBackend } from '@/world/virtual/backends/WebGpuPreviewBackend';
+import { WasmBackend } from '@/world/virtual/backends/WasmBackend';
+import type { BackendInfo } from '@/world/virtual/backends/BackendTypes';
 import type {
   HerringboneTileDef,
   HerringboneTilesetDef,
@@ -23,6 +27,8 @@ import type {
   VirtualSceneObject,
   VirtualScenePlacementInstance,
   VirtualSceneBudget,
+  VirtualBiomeId,
+  VirtualSceneKind,
   VirtualWorldDef,
 } from '@/world/virtual/types';
 
@@ -795,5 +801,225 @@ describe('virtual world prototype', () => {
     };
 
     expect(resolveTile(tileset, seed, tx, ty, 'earthen').tile.id).toBe('matched-low-weight');
+  });
+});
+
+describe('virtual world backends', () => {
+  it('reports honest capability/implementation/authority flags', () => {
+    const ts = new TsWorkerBackend().info;
+    expect(ts.kind).toBe('ts-worker');
+    expect(ts.implemented).toBe(true);
+    expect(ts.authoritativeCells).toBe(true);
+
+    const webgpu = new WebGpuPreviewBackend().info;
+    expect(webgpu.kind).toBe('webgpu-preview');
+    expect(webgpu.implemented).toBe(false);
+    // Preview backends are visual-only and must never claim authoritative cells.
+    expect(webgpu.authoritativeCells).toBe(false);
+
+    const wasm = new WasmBackend().info;
+    expect(wasm.kind).toBe('wasm');
+    // WebAssembly exists in every browser, but the kernels do not: available != implemented.
+    expect(wasm.implemented).toBe(false);
+  });
+
+  it('enforces the parity rule: only an implemented authoritative backend feeds materialization', () => {
+    const infos: BackendInfo[] = [
+      new TsWorkerBackend().info,
+      new WebGpuPreviewBackend().info,
+      new WasmBackend().info,
+    ];
+    // A backend usable for playtest materialization must be both implemented and authoritative.
+    const usable = infos.filter((info) => info.implemented && info.authoritativeCells);
+    expect(usable.map((info) => info.kind)).toEqual(['ts-worker']);
+    // No backend may be implemented yet preview-only — that would silently corrupt playtest cells.
+    expect(infos.every((info) => !info.implemented || info.authoritativeCells)).toBe(true);
+  });
+
+  it('refuses to generate from a backend that is not implemented yet', async () => {
+    const def = createDefaultVirtualWorldDef(7);
+    const webgpu = new WebGpuPreviewBackend();
+    await expect(webgpu.init(def)).rejects.toThrow(/not implemented|planned/i);
+    await expect(
+      webgpu.generateChunk({ jobId: 1, cx: 0, cy: 0, requestedPlanes: ['previewRgba'] }),
+    ).rejects.toThrow();
+    webgpu.dispose();
+
+    const wasm = new WasmBackend();
+    await expect(wasm.init(def)).rejects.toThrow(/not implemented/i);
+    await expect(
+      wasm.generateChunk({ jobId: 1, cx: 0, cy: 0, requestedPlanes: ['types'] }),
+    ).rejects.toThrow();
+    wasm.dispose();
+  });
+});
+
+describe('virtual world content pack', () => {
+  // Build a controlled world that places exactly one scene kind, in one biome, at every tile,
+  // so we can assert which scene variants the generator picks for that biome.
+  function placedSceneIds(
+    biome: VirtualBiomeId,
+    kind: VirtualSceneKind,
+    overrides: { density?: number; seed?: number } = {},
+  ): string[] {
+    const def = createDefaultVirtualWorldDef(overrides.seed ?? 4242);
+    def.pixelScenes = [];
+    def.map.cells.fill(biomeIndexFromId(biome));
+    const slotTile = (id: string, orientation: HerringboneTileDef['orientation']): HerringboneTileDef => ({
+      id,
+      orientation,
+      biomeTags: [biome],
+      weight: 1,
+      edges: { n: 'open', e: 'open', s: 'open', w: 'open' },
+      vertices: { nw: 'solid', ne: 'solid', se: 'solid', sw: 'solid' },
+      carve: [{ kind: 'chamber', x: 0.5, y: 0.5, rx: 26, ry: 26 }],
+      sceneSlots: [{ id: 'feature', x: 0.5, y: 0.5, tags: [kind] }],
+    });
+    def.tileset = {
+      v: 1,
+      tileSize: 64,
+      constraints: { edgeColors: ['open'], vertexColors: ['solid'] },
+      tiles: [slotTile('feat-h', 'horizontal'), slotTile('feat-v', 'vertical')],
+    };
+    def.dressing.scenes.controls.density = overrides.density ?? 2;
+    def.dressing.scenes.controls.maxPerTile = 4;
+    const budget = def.dressing.scenes.biomes[biome] as VirtualSceneBudget;
+    for (const k of VIRTUAL_SCENE_KINDS) budget[k] = k === kind ? 2 : 0;
+    const chunks = generateVirtualWindow(def, -1, -1, 1, 1);
+    return chunks.flatMap((chunk) => chunk.meta.scenePlacements.map((p) => p.id));
+  }
+
+  it('ships multiple scene variants for the biome-signature kinds', () => {
+    const lib = getDefaultPixelSceneLibrary();
+    const countOf = (kind: VirtualSceneKind): number => lib.filter((s) => s.kind === kind).length;
+    expect(countOf('fungalPockets')).toBeGreaterThanOrEqual(3);
+    expect(countOf('crystalClusters')).toBeGreaterThanOrEqual(3);
+    expect(countOf('lavaVents')).toBeGreaterThanOrEqual(3);
+    expect(countOf('ruinedRooms')).toBeGreaterThanOrEqual(3);
+    expect(countOf('shrines')).toBeGreaterThanOrEqual(3);
+    // every library scene still maps to a known kind (no orphaned content)
+    for (const s of lib) expect(VIRTUAL_SCENE_KINDS).toContain(s.kind);
+  });
+
+  it('routes biome-specific scene variants to their home biome and away from others', () => {
+    // Shrines exist in several biomes but have biome-specialized variants.
+    const scorchedShrines = placedSceneIds('scorched', 'shrines');
+    expect(scorchedShrines.length).toBeGreaterThan(0);
+    expect(scorchedShrines.some((id) => id.includes('scene-ember-shrine'))).toBe(true);
+    expect(scorchedShrines.some((id) => id.includes('scene-crystal-altar'))).toBe(false);
+
+    const crystalShrines = placedSceneIds('crystal', 'shrines');
+    expect(crystalShrines.some((id) => id.includes('scene-crystal-altar'))).toBe(true);
+    expect(crystalShrines.some((id) => id.includes('scene-ember-shrine'))).toBe(false);
+
+    // The gold vault belongs to gilded; earthen ruins must not turn up a gilded vault.
+    const gildedRooms = placedSceneIds('gilded', 'ruinedRooms');
+    expect(gildedRooms.some((id) => id.includes('scene-gilded-vault'))).toBe(true);
+
+    const earthenRooms = placedSceneIds('earthen', 'ruinedRooms');
+    expect(earthenRooms.length).toBeGreaterThan(0);
+    expect(earthenRooms.some((id) => id.includes('scene-gilded-vault'))).toBe(false);
+    expect(earthenRooms.some((id) => id.includes('scene-scorched-ruin'))).toBe(false);
+  });
+
+  it('scales scene placement density with the density control', () => {
+    const sparse = placedSceneIds('fungal', 'fungalPockets', { density: 0.4 });
+    const dense = placedSceneIds('fungal', 'fungalPockets', { density: 2 });
+    expect(sparse.length).toBeGreaterThan(0);
+    expect(dense.length).toBeGreaterThan(sparse.length);
+    // fungal pocket slots only ever yield fungal-appropriate variants
+    for (const id of dense) {
+      expect(
+        /scene-fungal-pocket|scene-mushroom-grove|scene-glowcap-hollow/.test(id),
+      ).toBe(true);
+    }
+  });
+});
+
+// Phase 5 parity guard: materializeChunks + cropMaterializedWindow are the single conversion
+// boundary shared by Builder preview, Builder playtest, and (via Levels) play. If colors/life/
+// charge are lost here, Builder playtest looks dull while play looks rich. Lock the boundary.
+describe('virtual world materialization parity', () => {
+  type CellArrays = { types: Uint8Array; colors: Uint32Array; life: Int16Array; charge: Uint8Array };
+  function regionMismatch(
+    world: CellArrays & { width: number },
+    ox: number,
+    oy: number,
+    chunk: CellArrays & { size: number },
+  ): string | null {
+    const size = chunk.size;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const w = ox + x + (oy + y) * world.width;
+        const s = x + y * size;
+        if (world.types[w] !== chunk.types[s]) return `types@${x},${y}`;
+        if (world.colors[w] !== chunk.colors[s]) return `colors@${x},${y}`;
+        if (world.life[w] !== chunk.life[s]) return `life@${x},${y}`;
+        if (world.charge[w] !== chunk.charge[s]) return `charge@${x},${y}`;
+      }
+    }
+    return null;
+  }
+
+  it('materializes chunk cells, colors, life, and charge with exact parity', () => {
+    const def = createDefaultVirtualWorldDef(20260616);
+    const chunks = generateVirtualWindow(def, 0, 0, 1, 1);
+    const m = materializeChunks(chunks);
+    const size = chunks[0].size;
+    const cx0 = Math.min(...chunks.map((c) => c.cx));
+    const cy0 = Math.min(...chunks.map((c) => c.cy));
+    for (const chunk of chunks) {
+      const ox = (chunk.cx - cx0) * size;
+      const oy = (chunk.cy - cy0) * size;
+      expect(regionMismatch(m.world, ox, oy, chunk)).toBeNull();
+    }
+    // The materialized world must carry real per-cell colors, not a blank/dull grid.
+    expect(m.world.colors.some((c) => c !== 0)).toBe(true);
+  });
+
+  it('crops a materialized window back to its source chunk with exact parity', () => {
+    const def = createDefaultVirtualWorldDef(20260616);
+    const chunks = generateVirtualWindow(def, 0, 0, 1, 1);
+    const m = materializeChunks(chunks);
+    const size = chunks[0].size;
+    const cx0 = Math.min(...chunks.map((c) => c.cx));
+    const cy0 = Math.min(...chunks.map((c) => c.cy));
+    const topLeft = chunks.find((c) => c.cx === cx0 && c.cy === cy0);
+    expect(topLeft).toBeDefined();
+    const crop = cropMaterializedWindow(m, 0, 0, size, size);
+    expect([crop.srcX, crop.srcY]).toEqual([0, 0]);
+    expect(crop.world.width).toBe(size);
+    expect(regionMismatch(crop.world, 0, 0, topLeft!)).toBeNull();
+  });
+
+  it('preserves scene light authored data and rebases coordinates into the window', () => {
+    const def = createDefaultVirtualWorldDef(7777);
+    const chunks = generateVirtualWindow(def, -2, -1, 2, 2);
+    const m = materializeChunks(chunks);
+    // Collect the authored light data straight off the chunk placements (pre-rebase).
+    const authored = new Map<string, { color: string; intensity: number; radius: number }>();
+    for (const chunk of chunks) {
+      for (const placement of chunk.meta.scenePlacements ?? []) {
+        for (const light of placement.lights) {
+          authored.set(`${placement.id}:${light.id}`, {
+            color: light.color,
+            intensity: light.intensity,
+            radius: light.radius,
+          });
+        }
+      }
+    }
+    expect(m.sceneLights.length).toBeGreaterThan(0);
+    for (const light of m.sceneLights) {
+      // every materialized light lands inside the world bounds...
+      expect(light.x).toBeGreaterThanOrEqual(0);
+      expect(light.y).toBeGreaterThanOrEqual(0);
+      expect(light.x).toBeLessThan(m.world.width);
+      expect(light.y).toBeLessThan(m.world.height);
+      // ...and keeps the authored color/intensity/radius (no dull/blank lights).
+      expect(light.intensity).toBeGreaterThan(0);
+      expect(light.radius).toBeGreaterThan(0);
+      expect(/^#?[0-9a-fA-F]{3,8}$/.test(light.color)).toBe(true);
+    }
   });
 });

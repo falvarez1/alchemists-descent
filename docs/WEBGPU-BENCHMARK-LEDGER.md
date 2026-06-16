@@ -1012,3 +1012,465 @@ Notes:
   `node --check scripts/probe-webgpu-compose-storage-fixture.mjs`,
   `npx vitest run tests/webgpu-storage-texture-access.test.ts`,
   `npm run typecheck`, and `npm run probe:webgpu-compose-storage-fixture`.
+
+## Phase 4.8 - Runtime WebGPU Compose Storage Bridge
+
+Task: wire the guarded Three r184 StorageTexture access into the live
+`WebGpuRenderBackend` as an opt-in runtime bridge diagnostic without enabling
+production WebGPU compose.
+
+Commit: `c64e0c5` plus working-tree Phase 4.8 bridge/probe/docs changes. The
+checkout also contained unrelated dirty files during the probe; the artifact
+records full `git.status` provenance.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for prior WebGPU phases.
+
+Requested backend: `renderBackend=webgpu` with
+`validateWebGpuComposeBridge=1`.
+
+Actual backend: `WebGPURenderBackend` / actual WebGPU.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-runtime-compose-bridge.mjs
+npm run typecheck
+npm run probe:webgpu-runtime-compose-bridge
+```
+
+Baseline: Phase 4.7 proved the guarded adapter in an isolated fixture, but the
+live WebGPU renderer still had no runtime-owned storage output bridge and no
+status field that could distinguish "bridge validated" from "compose available".
+
+Expected result: no production visual or performance behavior change. The
+positive result is a live-renderer validation gate: the WebGPU backend can
+allocate a production-sized Three `StorageTexture`, initialize it through TSL,
+resolve the guarded GPU texture/view metadata, and still report production
+compose as disabled.
+
+After: added `src/render/WebGpuComposeBridge.ts`, extended
+`RenderBackendStatus.webgpu.compose`, wired `WebGpuRenderBackend` to run the
+bridge only when explicitly requested by query string, and added
+`scripts/probe-webgpu-runtime-compose-bridge.mjs`.
+
+Actual result: keep. The probe passed in
+`verify-out/webgpu-runtime-compose-bridge/probe-1781594616958.json` with actual
+WebGPU, `bridge=validated`, `productionAvailable=false`, no console errors, and
+no page errors. The bridge descriptor was `format=rgba8unorm`, `width=525`,
+`height=357`, `mipLevelCount=1`, `usage=31`, and
+`source=three-r184-backend-get`. The probe also set `postFx.gpuCompose=true`
+and verified the backend status stayed fail-closed.
+
+Performance result: no WebGPU speedup is claimed for this slice. The bridge is
+query-gated and exists to reduce integration risk before the raw WGSL live
+compose port; it does not move frame composition work off the CPU yet.
+
+Visual/quality evidence:
+`verify-out/webgpu-runtime-compose-bridge/runtime-compose-bridge-1781594616958.png`.
+
+Decision: keep. Production WebGPU compose remains disabled; do not change
+`WebGpuRenderBackend.gpuComposeAvailable` until CPU/WebGL2/WebGPU parity and
+same-session timing gates pass.
+
+Notes:
+
+- Runtime bridge artifact:
+  `verify-out/webgpu-runtime-compose-bridge/probe-1781594616958.json`.
+- Post-review hardening switched the one-shot init to the current
+  `renderer.compute(...)` pattern and reports the bridge as unsupported if
+  device loss invalidates GPU resources before fallback completes.
+- Console warnings were recorded but were known startup/worldgen warnings, not
+  bridge failures. Console errors and page errors remain fatal for this probe.
+- Validation passed for this slice:
+  `node --check scripts/probe-webgpu-runtime-compose-bridge.mjs`,
+  `npm run typecheck`, and `npm run probe:webgpu-runtime-compose-bridge`.
+
+## Phase 4.9 - Raw WGSL Write Into Runtime Compose Bridge
+
+Task: prove raw WGSL can write the live `WebGpuRenderBackend` compose
+`StorageTexture` validated in Phase 4.8, while keeping production WebGPU
+compose disabled.
+
+Commit: `c64e0c5` plus working-tree Phase 4.9 bridge/probe/docs changes. The
+checkout also contained unrelated dirty files during the probe; the artifact
+records full `git.status` provenance.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for prior WebGPU phases.
+
+Requested backend: `renderBackend=webgpu` with
+`validateWebGpuComposeBridge=1` and `validateWebGpuComposeRawWgsl=1`.
+
+Actual backend: `WebGPURenderBackend` / actual WebGPU.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-runtime-compose-bridge.mjs
+npm run typecheck
+npm run probe:webgpu-runtime-compose-bridge
+```
+
+Baseline: Phase 4.8 proved that the live WebGPU renderer can allocate and
+validate a production-sized Three `StorageTexture`, but raw WGSL had only
+written Three-owned storage textures in standalone fixture pages.
+
+Expected result: no production visual or performance behavior change. The
+positive result is a live-renderer validation gate showing that raw WGSL can
+write the same renderer-owned output texture that future production compose will
+target.
+
+After: extended `src/render/WebGpuComposeBridge.ts` with an opt-in raw WGSL
+write validation pass. The pass writes a deterministic byte pattern to the live
+`rgba8unorm` storage output, copies the texture to a readback buffer outside the
+production frame loop, unpacks 256-byte padded rows, and records exact parity
+metrics in `RenderBackendStatus.webgpu.compose.rawWgslWrite`.
+
+Actual result: keep. The probe passed in
+`verify-out/webgpu-runtime-compose-bridge/probe-1781596963586.json` with actual
+WebGPU, `bridge=validated`, `productionAvailable=false`, and
+`rawWgslWrite.status=validated`. The raw WGSL readback reported `maxDelta=0`,
+`mismatchPct=0`, `exactPct=100`, and `meanDelta=0`. The probe also set
+`postFx.gpuCompose=true` and verified the backend status stayed fail-closed.
+
+Performance result: no WebGPU speedup is claimed for this slice. The recorded
+`gpuSubmitReadbackWallMs=127.7ms` includes one-shot shader/pipeline setup and
+validation readback; it is not a production frame-time estimate.
+
+Visual/quality evidence:
+`verify-out/webgpu-runtime-compose-bridge/runtime-compose-bridge-1781596963586.png`.
+
+Decision: keep. Production WebGPU compose remains disabled; do not change
+`WebGpuRenderBackend.gpuComposeAvailable` until CPU/WebGL2/WebGPU parity and
+same-session timing gates pass.
+
+Notes:
+
+- Runtime raw WGSL bridge artifact:
+  `verify-out/webgpu-runtime-compose-bridge/probe-1781596963586.json`.
+- Post-review hardening made the deterministic raw WGSL validation exact-byte
+  (`maxDelta=0`) and added an explicit `COPY_SRC` usage preflight before the
+  diagnostic readback copy.
+- Console warnings were recorded but were known startup/worldgen warnings, not
+  bridge failures. Console errors and page errors remain fatal for this probe.
+- Validation passed for this slice:
+  `node --check scripts/probe-webgpu-runtime-compose-bridge.mjs`,
+  `npm run typecheck`, and `npm run probe:webgpu-runtime-compose-bridge`.
+
+## Phase 4.10 - Raw WGSL Compose Diagnostic Benchmark
+
+Task: add and run a repeatable benchmark for the production-shaped raw WGSL
+compose fixture so the WebGPU work has a real performance data point before the
+live frame-composer port is promoted.
+
+Commit: `861d4ca` plus working-tree Phase 4.10 benchmark/docs changes. The
+checkout also contained unrelated dirty Builder, gameplay, particle, physics,
+and UI files during the benchmark; artifacts record full `git.status`
+provenance.
+
+Hardware/browser: Headless Edge 150.0.0.0 on NVIDIA GeForce RTX 3080 Ti through
+ANGLE / D3D11 for the live WebGL2 A/B. The WebGPU diagnostic ran on actual
+WebGPU through Three r184 `WebGPURenderer`; WebGPU device features included
+`timestamp-query`, but this benchmark did not capture GPU timestamp queries.
+
+Requested backend: explicit `WebGPURenderer` for the raw WGSL diagnostic;
+current live WebGL2 renderer for the production `postFx.gpuCompose` A/B.
+
+Actual backend: WebGPU for `npm run bench:webgpu-compose`; WebGL2 for the live
+production A/B.
+
+Scene / seed / resolution: deterministic production-sized compose fixture for
+WebGPU (`525x357` logical, `1050x714` presentation, `653x485` world window,
+`263x179` light field). The live A/B used chaos / seed `777` /
+`1050x714` / 2x180-frame blocks on the current dirty checkout.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-compose-benchmark-page.js
+node --check scripts/probe-webgpu-compose-benchmark.mjs
+npm run bench:webgpu-compose
+npm run perf:ab -- postFx.gpuCompose false true http://127.0.0.1:5211/ 180 2 chaos
+```
+
+Baseline: Phase 4.9 had only one-shot raw WGSL bridge validation. Its
+`gpuSubmitReadbackWallMs=127.7ms` included shader/pipeline setup and validation
+readback, so it could not answer whether the WebGPU compose kernel has steady
+performance headroom.
+
+Expected result: benchmark evidence that excludes frame-loop readback, preserves
+pixel parity, and distinguishes diagnostic WebGPU kernel timing from the live
+production renderer path.
+
+After: added `scripts/probe-webgpu-compose-benchmark.mjs`,
+`scripts/probe-webgpu-compose-benchmark.html`, and
+`scripts/probe-webgpu-compose-benchmark-page.js`, exposed as
+`npm run bench:webgpu-compose`. The harness starts Vite, launches headless Edge,
+runs CPU reference samples, dispatches the raw WGSL compose kernel against the
+Three-owned storage texture, validates one final readback, captures a presented
+TSL screenshot, and writes a JSON artifact.
+
+Actual result: keep the benchmark harness. The WebGPU diagnostic passed in
+`verify-out/webgpu-compose-benchmark/probe-1781602097966.json` with actual
+WebGPU, no console errors, no page errors, readback `maxDelta=1`, `bigPct=0`,
+and screenshot `mismatchPct=0`. Fixture CPU reference mean was `11.142ms`;
+WebGPU individual submit/wait mean was `2.891ms`, a `3.85x` speedup for this
+isolated raw WGSL compose subset. Batched one-submit throughput measured
+`0.022ms` per dispatch, but that is treated as a throughput diagnostic rather
+than a production frame-time estimate.
+
+Performance result: diagnostic WebGPU kernel timing is positive, but no live
+WebGPU frame-composition speedup is claimed yet. Production WebGPU compose
+remains disabled. The live production WebGL2 A/B in
+`verify-out/perf-ab-postfx.gpucompose-chaos-1781601403799.json` still provides
+this dirty-checkout live WebGL2 reference: `postFx.gpuCompose=false -> true`
+improved
+`compose` `21.323 -> 4.618ms` (-78.3%), `render` `22.000 -> 5.556ms`
+(-74.7%), and `frame` `28.793 -> 13.149ms` (-54.3%). In that dirty-checkout
+run, `sim` and `entities` were slower in the variant, so the next live WebGPU
+port must keep tracking full-frame buckets rather than only the compose kernel.
+
+Visual/quality evidence:
+`verify-out/webgpu-compose-benchmark/compose-benchmark-1781602097966.png`.
+
+Decision: keep the benchmark harness and proceed to live WebGPU compose wiring
+only behind the existing gates. Do not mark `WebGpuRenderBackend`
+`gpuComposeAvailable` true until the live path passes CPU/WebGL2/WebGPU parity
+and same-session frame-loop timing.
+
+Notes:
+
+- WebGPU benchmark artifact:
+  `verify-out/webgpu-compose-benchmark/probe-1781602097966.json`.
+- Live WebGL2 A/B artifact:
+  `verify-out/perf-ab-postfx.gpucompose-chaos-1781601403799.json`.
+- WebGPU timing method: `performance.now` around WebGPU command submission plus
+  `GPUQueue.onSubmittedWorkDone()`. Validation readback is measured separately
+  and excluded from steady-state samples. GPU timestamp queries remain a future
+  improvement.
+- Batched one-submit timing is recorded only as a throughput diagnostic and is
+  not reported as a speedup.
+- The CPU reference timing uses the parity fixture model and includes that
+  model's output allocation, so it is not a production-optimized CPU composer.
+- Validation passed for this slice:
+  `node --check scripts/probe-webgpu-compose-benchmark-page.js`,
+  `node --check scripts/probe-webgpu-compose-benchmark.mjs`,
+  `npm run bench:webgpu-compose`, and
+  `npm run perf:ab -- postFx.gpuCompose false true http://127.0.0.1:5211/ 180
+  2 chaos`.
+
+## Phase 4.11 - Live WebGPU Raw WGSL Compose Path
+
+Task: wire the raw WGSL compose kernel into the live `WebGpuRenderBackend`
+behind an explicit diagnostic query gate, prove same-frame visual quality, and
+run a live frame-loop benchmark.
+
+Commit: `861d4ca` plus working-tree Phase 4.11 live compose/probe/docs changes.
+The checkout also contained unrelated dirty Builder, gameplay, particle,
+physics, virtual-world, and UI files during the benchmark; artifacts record full
+`git.status` provenance.
+
+Hardware/browser: Headless Edge 150.0.0.0 on the same Windows workstation used
+for Phase 4.10. The live run reported actual WebGPU through Three r184
+`WebGPURenderer`; WebGPU device features included `timestamp-query`, but this
+benchmark used CPU PerfHud bucket timing rather than GPU timestamp queries.
+
+Requested backend: `renderBackend=webgpu&enableWebGpuLiveCompose=1`; the URL
+seeds `ctx.state.render.compose=true`, and the header `WGSL` button can toggle
+that diagnostic gate off/on at runtime.
+
+Actual backend: `WebGPURenderBackend` / actual WebGPU.
+
+Scene / seed / resolution: deterministic sandbox parity scene for the visual
+probe; chaos / seed `777` / `1050x714` / 4x360-frame interleaved blocks for the
+performance A/B.
+
+Commands:
+
+```powershell
+node --check scripts/probe-webgpu-live-compose.mjs
+npm run probe:webgpu-live-compose -- http://127.0.0.1:5173/
+npm run perf:ab -- postFx.gpuCompose false true "http://127.0.0.1:5173/?renderBackend=webgpu&enableWebGpuLiveCompose=1" 360 4 chaos
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Baseline: Phase 4.10 had a standalone raw WGSL diagnostic speedup but no live
+frame-loop WebGPU compose path. Under actual WebGPU, `postFx.gpuCompose=false`
+still used CPU terrain composition feeding the WebGPU presentation texture.
+
+Expected result: the live WebGPU path must improve compose/render/frame buckets,
+preserve the CPU visual reference within quantified tolerance, avoid console or
+page errors, and remain diagnostic-gated with `productionAvailable=false`.
+
+After: added `src/render/WebGpuLiveCompose.ts`, integrated it into
+`src/render/WebGpuRenderBackend.ts`, and added
+`scripts/probe-webgpu-live-compose.mjs` plus `npm run probe:webgpu-live-compose`.
+The live path packs the world window, light field, LUT, overlay, backdrop
+layers, shockwaves, and lens params, dispatches raw WGSL compute, and presents
+the Three-owned storage texture through TSL. Post-review hardening added a
+WebGPU `uncapturederror` handler so asynchronous validation errors mark the
+live bridge failed/fail-closed, and the probe now validates the storage-texture
+post-FX presentation path as well as raw compose output. Follow-up work added
+the header `WGSL` button next to `GPU FX` and `PERF`; it toggles
+`ctx.state.render.compose`, while the existing `GPU FX` button continues to
+toggle `postFx.gpuCompose` for CPU-vs-GPU A/B.
+
+Actual result: fixed and kept. The first live implementation used an
+`rgba8unorm` output storage texture and failed the quality gate because hot
+materials were darker after HDR compose values were clamped before tone
+mapping. The focused fix switched the output storage texture to `rgba16float`
+and removed the upper clamp on WGSL output while keeping values non-negative.
+The passing live probe artifact
+`verify-out/webgpu-live-compose/probe-1781613556199.json` reports actual
+WebGPU, `bridge=validated`, output storage `format=rgba16float`, `usage=31`,
+`mipLevelCount=1`, no console/page errors, and `productionAvailable=false`.
+It also clicked the `WGSL` button off/on and verified `render.compose` plus
+backend `features.compose` followed the toggle.
+The frozen same-frame CPU-vs-WebGPU comparison reports raw compose
+`exactPct=97.449`, `maxd=1`, `meand=0.00858`, `bigPct=0`, and post-FX
+`exactPct=97.198`, `maxd=1`, `meand=0.00947`, `bigPct=0`; the lava brightness
+sample matched CPU exactly at RGB mean `[255, 226, 160]`.
+
+Performance result: the latest same-session live WebGPU A/B artifact
+`verify-out/perf-ab-postfx.gpucompose-chaos-1781613600624.json` improved
+`compose` `21.723 -> 5.505 ms` (-74.7%), `gl` `0.525 -> 0.242 ms` (-53.9%),
+`render` `22.327 -> 5.839 ms` (-73.8%), and `frame`
+`29.175 -> 12.921 ms` (-55.7%). `sim` moved `3.791 -> 3.876 ms` (+2.2%) and
+`entities` moved `3.050 -> 3.196 ms` (+4.8%) in that run, so promotion work
+must continue to judge full-frame effects and not only the compose bucket.
+
+Visual/quality evidence:
+
+- `verify-out/webgpu-live-compose/cpu-1781613556199.png`
+- `verify-out/webgpu-live-compose/gpu-1781613556199.png`
+- `verify-out/webgpu-live-compose/probe-1781613556199.json`
+
+Decision: keep behind the explicit diagnostic `render.compose` gate. This is the first
+measured live WebGPU frame-loop win for compose, but the WebGL2 GPU compose path
+remains the production/default path until the wider CPU/WebGL2/WebGPU parity
+matrix, Builder/Sandbox coverage, and rollout criteria are complete.
+
+Notes:
+
+- The earlier strict `probe-compose-parity` run against the live WebGPU path
+  exposed the failed `rgba8unorm` attempt (`maxd=99`, `bigPct=7.6472%`, lava
+  brightness visibly darker). After the half-float fix the same legacy probe was
+  effectively green except for its WebGL-specific exact-pixel threshold:
+  `maxd=1`, `meand=0.0089`, `bigPct=0`, and lava distribution matched CPU.
+- The dedicated live probe intentionally accepts a one-channel presentation
+  delta and requires `bigPct=0`, because `rgba16float` storage plus final canvas
+  presentation can differ by one 8-bit channel while preserving the look.
+- The same probe also validates the post-FX storage pipeline with
+  `postFxMeanDelta <= 0.5` and `postFxBigPct <= 2`; the current artifact passes
+  with `meand=0.00947` and `bigPct=0`.
+- Validation passed for this slice:
+  `node --check scripts/probe-webgpu-live-compose.mjs`,
+  `npm run probe:webgpu-live-compose -- http://127.0.0.1:5173/`,
+  `npm run perf:ab -- postFx.gpuCompose false true
+  "http://127.0.0.1:5173/?renderBackend=webgpu&enableWebGpuLiveCompose=1" 360
+  4 chaos`, `npm run typecheck`, `npm run lint`, and `npm run build`.
+
+## Virtual World Generation - Backend Baseline And Parity Rules
+
+Task: establish the first virtual-world (chunked Noita-like) generation baseline
+in this ledger and record the backend parity rules, so any future WebGPU/WASM
+virtual-world accelerator has a fixed reference to beat and a fixed correctness
+contract to honor. This is the Phase 6 entry called for by
+`docs/NOITA-LIKE-RICH-WORLD-IMPLEMENTATION-PLAN.md`. Renderer WebGPU compose
+(Phases 0-4.x above) is a separate subsystem from virtual-world generation.
+
+Commit: `d8753ee` plus working-tree Phase 6 backend-honesty changes
+(`BackendInfo.implemented`, UI gating, parity test, bench `implemented`
+fallback). The shared checkout was dirty from a concurrent rich-world session.
+
+Hardware/host: same Windows workstation used for prior ledger entries. This
+benchmark runs under Node via Vite `ssrLoadModule`, not in a browser.
+
+Requested backend: `auto` (resolves to `ts-worker`).
+
+Actual backend: `sync` synchronous reference. The `ts-worker` backend reports
+`available=false` under Node SSR (`typeof Worker === 'undefined'`), so the
+harness falls back to the synchronous reference path. This is the authoritative
+path: the worker's `worldgen.worker.ts` calls the same `generateVirtualChunk`,
+so worker output is byte-identical to the sync reference; the worker only moves
+that work off the main thread and streams chunks.
+
+Scene / seed / resolution: `createDefaultVirtualWorldDef(1313162580)`, chunk
+size `256`, window radius `2` (`5x5 = 25` chunks), `6` repeats, full authoritative
+planes (`types`, `colors`, `life`, `charge`).
+
+Command:
+
+```powershell
+npm run bench:virtual-world -- 1313162580 2 6
+```
+
+Baseline:
+
+| Metric | Value |
+| --- | ---: |
+| Per-chunk generate mean | `40.05 ms` (p50 `39.68`, p95 `42.75`, max `43.07`) |
+| 25-chunk window | mean `1020.87 ms`, p50 `968.84`, p95 `1165.85` |
+| Per-chunk plane serialize mean | `3.52 ms` (p50 `3.37`, p95 `4.32`) |
+| Generated bytes (25 chunks) | `13,107,200` (`512 KiB`/chunk = `8 B`/cell) |
+| Transfer bytes (full planes) | `13,107,200` (no plane reduction in full mode) |
+
+Determinism fixtures (chunk meta hashes; any backend claiming authoritative
+output must reproduce these exactly): `0,0=95e538c8`, `1,0=db38f3ce`,
+`-1,2=44575bc5`, `7,-3=19ee354f`. These were refreshed after the Phase 2/3
+content-pack expansion (12 new biome-identity pixel scenes). The expansion
+changed only the two fixtures whose chunks received new scenes (`0,0`, `1,0`)
+and left per-chunk time (~`41 ms`), window time, and transfer size
+(`13,107,200` bytes) within noise of the pre-content baseline, confirming the
+new content is deterministic and bounded.
+
+After: n/a. This entry is the baseline.
+
+Expected result: a recorded, reproducible reference for per-chunk and per-window
+generation time, payload size, and determinism hashes.
+
+Actual result: keep. The synchronous reference produced the table above and the
+four determinism fixtures matched across all `6` repeats.
+
+Backend parity rules (the durable contract):
+
+1. `BackendInfo.available` means the platform capability exists (`Worker`,
+   `navigator.gpu`, `WebAssembly`). `BackendInfo.implemented` means we actually
+   built the backend. They are independent: the WASM backend is `available` in
+   every browser (`WebAssembly` exists) but `implemented=false`.
+2. A backend may feed playtest/materialization only if
+   `implemented && authoritativeCells`. Today that set is exactly `{ ts-worker }`.
+   Enforced by `tests/virtual-world.test.ts > virtual world backends`.
+3. A WASM authoritative backend must reproduce the determinism fixtures above
+   byte-for-byte (cells, colors, life, charge, meta hash) before it may replace
+   the worker. Otherwise it cannot claim `authoritativeCells`.
+4. A WebGPU preview backend is visual-only (`authoritativeCells=false`) and must
+   never be used for playtest materialization. The Builder playtest path already
+   sidesteps this risk by regenerating through the synchronous authoritative
+   generator (`Levels.createVirtual*Runtime` -> `generateVirtualWindow`), never
+   through preview chunks.
+5. Until a backend is `implemented`, the Builder World Map backend picker shows
+   it as `planned` and disabled, and `generateWindow` refuses to run it.
+
+Performance note: no accelerator speedup is claimed. The Backend Acceleration
+Spike (plan Next Task 5) should compare any future WASM/WebGPU run against this
+sync baseline at the same seed/radius/repeats and must match the determinism
+fixtures (authoritative) or be explicitly labeled visual-only (preview).
+
+Decision: keep as the virtual-world generation reference baseline.
+
+Visual/quality evidence: not applicable to a generation-time/size baseline; a
+visual preview accelerator entry must add screenshots and a CPU-vs-preview diff.
+
+Notes:
+
+- Raw artifact: `verify-out/virtual-world-bench-1781603196478.json`.
+- A browser run (where `Worker` exists) would report `actualBackend=ts-worker`
+  with the same determinism fixtures; rerun there to record worker streaming
+  wall-clock and main-thread off-load before any accelerator comparison.
+- Validation passed for this slice: `npm run typecheck`,
+  `npx vitest run tests/virtual-world.test.ts` (`35` tests), and
+  `npm run bench:virtual-world -- 1313162580 2 6`.

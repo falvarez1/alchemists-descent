@@ -1,4 +1,5 @@
 import type { Ctx, MaterialParams, SpellId, SpellParams } from '@/core/types';
+import { formatStep } from '@/core/strings';
 import { resetCombatTransients } from '@/game/transients';
 import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
 
@@ -8,7 +9,7 @@ import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
  * Slider spec for one live-param key — shared by the Sandbox inspector and
  * the Builder's MATERIAL window so their ranges can never drift.
  */
-export function paramSliderSpec(propKey: string): {
+export function paramSliderSpec(propKey: string, value?: number): {
   min: number;
   max: number;
   step: number;
@@ -31,7 +32,20 @@ export function paramSliderSpec(propKey: string): {
   if (propKey === 'heat') { min = 1; max = 60; step = 1; }
   if (propKey === 'chargeRate') { min = 0.05; max = 2; step = 0.05; }
   if (propKey === 'coagulation') { min = 0; max = 0.02; step = 0.001; }
+  // Sub-step material rates: the default 0..1/0.05 grid leaves these stuck at the
+  // far left and snapping to 0 on the first nudge — give them resolvable ranges.
+  if (propKey === 'evaporationSpeed') { min = 0; max = 0.1; step = 0.001; }
+  if (propKey === 'igniteChance') { min = 0; max = 0.2; step = 0.005; }
+  if (propKey === 'dispersion') { min = 0; max = 0.5; step = 0.005; }
   if (propKey === 'bloomWeight') label = 'Bloom Scale (%)';
+  // Safety net for any other value smaller than one step (an invisible thumb at
+  // the far left): derive a usable grid from the value's order of magnitude.
+  if (value !== undefined && Number.isFinite(value) && value > 0 && value < step) {
+    const mag = Math.pow(10, Math.floor(Math.log10(value)));
+    step = mag;
+    max = mag * 20;
+    min = 0;
+  }
   return { min, max, step, label };
 }
 
@@ -44,6 +58,7 @@ export class Inspector {
   constructor(private ctx: Ctx) {
     this.wireGlobalControls();
     this.wireGpuComposeToggle();
+    this.wireWebGpuComposeToggle();
     this.wireClearButton();
     this.wireSoundToggle();
   }
@@ -75,13 +90,13 @@ export class Inspector {
 
     Object.keys(profile).forEach(propKey => {
       if (propKey === 'name') return;
-      const { min, max, step, label: labelText } = paramSliderSpec(propKey);
+      const { min, max, step, label: labelText } = paramSliderSpec(propKey, fields[propKey]);
 
       const wrapper = document.createElement('div');
       wrapper.innerHTML = `
           <div class="control-label-wrapper">
               <label style="text-transform: capitalize;">${labelText.replace(/([A-Z])/g, ' $1')}</label>
-              <span id="dyn-val-${propKey}" class="val-display">${propKey === 'bloomWeight' ? (fields[propKey] * 100).toFixed(0) + '%' : fields[propKey]}</span>
+              <span id="dyn-val-${propKey}" class="val-display">${propKey === 'bloomWeight' ? (fields[propKey] * 100).toFixed(0) + '%' : formatStep(fields[propKey], step)}</span>
           </div>
           <input type="range" id="dyn-input-${propKey}" min="${min}" max="${max}" step="${step}" value="${fields[propKey]}">
       `;
@@ -93,7 +108,8 @@ export class Inspector {
       if (propKey === 'name') return;
       document.getElementById(`dyn-input-${propKey}`)!.addEventListener('input', (e) => {
         const val = parseFloat((e.target as HTMLInputElement).value); fields[propKey] = val;
-        document.getElementById(`dyn-val-${propKey}`)!.textContent = propKey === 'bloomWeight' ? (val * 100).toFixed(0) + '%' : String(val);
+        document.getElementById(`dyn-val-${propKey}`)!.textContent =
+          propKey === 'bloomWeight' ? (val * 100).toFixed(0) + '%' : formatStep(val, paramSliderSpec(propKey, val).step);
       });
     });
   }
@@ -131,6 +147,32 @@ export class Inspector {
       gpuBtn.blur(); // a focused button would eat Space/Enter mid-play
     });
     syncGpuBtn();
+  }
+
+  private wireWebGpuComposeToggle(): void {
+    const render = this.ctx.state.render;
+    const btn = document.getElementById('webgpu-compose-toggle') as HTMLButtonElement | null;
+    if (!btn) return;
+    const canToggle = (): boolean => render.backend === 'webgpu' || render.backend === 'auto';
+    const syncBtn = (): void => {
+      btn.classList.toggle('lit', render.compose);
+      btn.setAttribute('aria-pressed', String(render.compose));
+      btn.title = canToggle()
+        ? `WebGPU raw WGSL compose: ${render.compose ? 'on' : 'off'}`
+        : 'WebGPU raw WGSL compose requires booting with ?renderBackend=webgpu';
+    };
+    btn.addEventListener('click', () => {
+      if (!canToggle()) {
+        this.ctx.events.emit('toast', { text: 'WEBGPU COMPOSE NEEDS ?renderBackend=webgpu' });
+        syncBtn();
+        btn.blur();
+        return;
+      }
+      render.compose = !render.compose;
+      syncBtn();
+      btn.blur();
+    });
+    syncBtn();
   }
 
   private wireClearButton(): void {

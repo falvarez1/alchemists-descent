@@ -1,3 +1,4 @@
+import { escapeHtml as esc, escapeAttr as escAttr } from '@/ui/editor/Fields';
 import { renderAssetPreviewMarkup } from '@/builder/assets/AssetPreview';
 import type { AssetDeletePlan, AssetRecord } from '@/builder/assets/AssetTypes';
 import type { ContentItem } from '@/content/types';
@@ -143,10 +144,3 @@ function canReimport(asset: AssetRecord): boolean {
     (asset.kind === 'document' || asset.kind === 'prefab' || asset.kind === 'sprite');
 }
 
-function esc(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function escAttr(value: string): string {
-  return esc(value);
-}

@@ -1,4 +1,5 @@
 import type { DocIssue } from '@/builder/validate';
+import { plural } from '@/core/strings';
 import { validationRepairActions } from '@/builder/validationActions';
 import { escapeAttr, escapeHtml } from '@/ui/editor/Fields';
 import { builderPanelHeader } from '@/ui/editor/PanelChrome';
@@ -33,13 +34,13 @@ export function renderValidationPanel(issues: DocIssue[], options: ValidationPan
     blockerKeys.size > 0
       ? `<div class="bv-blocker" data-playtest-blockers="${blockerKeys.size}">
           <strong>PLAYTEST BLOCKED</strong>
-          <span>${blockerKeys.size} compile blocker${blockerKeys.size === 1 ? '' : 's'} must be repaired first.</span>
+          <span>${plural(blockerKeys.size, 'compile blocker')} must be repaired first.</span>
         </div>`
       : '';
   return `${builderPanelHeader({ title: builderPanelTitle('builder-issues'), closeId: 'b-issues-close', closeLabel: 'Close validation issues' })}
     <div class="bv-panel-body">
       ${blockerBanner}
-      <div class="bv-summary">${issues.length} issue${issues.length === 1 ? '' : 's'} - ${count(issues, 'error')} errors - ${count(issues, 'warning')} warnings</div>
+      <div class="bv-summary">${plural(issues.length, 'issue')} - ${plural(count(issues, 'error'), 'error')} - ${plural(count(issues, 'warning'), 'warning')}</div>
       <div class="bv-filters" role="group" aria-label="Validation filters">
         ${filterButton('all', 'All', 'All issues', issues.length, true)}
         ${filterButton('error', 'Errors', 'Errors', count(issues, 'error'))}
@@ -85,9 +86,9 @@ function renderIssueRow(issue: DocIssue, index: number, playtestBlocker: boolean
   const objIds = issue.objIds ?? (issue.objId ? [issue.objId] : []);
   const classes = ['b-issue', 'bv-issue', issue.severity, playtestBlocker ? 'playtest-blocker' : ''].filter(Boolean).join(' ');
   const selectButton = `<button type="button" class="bv-select" data-validation-select="${index}" aria-label="${escapeAttr('Select issue: ' + issue.what)}">Select</button>`;
-  return `<div class="${classes}" role="listitem" aria-label="${escapeAttr(issue.severity + ': ' + issue.what)}" data-n="${index}" data-issue-code="${escapeAttr(issue.code ?? '')}" data-issue-obj="${escapeAttr(issue.objId ?? '')}" data-issue-objs="${escapeAttr(objIds.join(','))}" data-issue-link="${escapeAttr(issue.linkId ?? '')}"${playtestBlocker ? ' data-playtest-blocker="true"' : ''}>
+  return `<div class="${classes}" aria-label="${escapeAttr(issue.severity + ': ' + issue.what)}" data-n="${index}" data-issue-code="${escapeAttr(issue.code ?? '')}" data-issue-obj="${escapeAttr(issue.objId ?? '')}" data-issue-objs="${escapeAttr(objIds.join(','))}" data-issue-link="${escapeAttr(issue.linkId ?? '')}"${playtestBlocker ? ' data-playtest-blocker="true"' : ''}>
     <div class="bv-main">
-      <div class="bv-title">[${issue.severity.slice(0, 4).toUpperCase()}] ${escapeHtml(issue.what)}</div>
+      <div class="bv-title">[${issue.severity.toUpperCase()}] ${escapeHtml(issue.what)}</div>
       <div class="bv-meta">${code}${loc}</div>
     </div>
     <div class="bv-actions">${selectButton}${actions}</div>

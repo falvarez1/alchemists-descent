@@ -19,6 +19,7 @@ import type {
   RenderTarget,
   RendererBackend,
 } from '@/render/pixels';
+import { webGpuComposeUnrequestedStatus } from '@/render/WebGpuComposeBridge';
 
 /**
  * Three.js WebGL presentation layer: a full-screen orthographic quad textured
@@ -231,6 +232,7 @@ class WebGLRenderBackend implements RendererBackend {
         lostCount: 0,
         lastLossReason: null,
         lastLossMessage: null,
+        compose: webGpuComposeUnrequestedStatus('webgpu-compose-unavailable-on-webgl-render-backend'),
       },
       webgl: {
         available: webglAvailable,

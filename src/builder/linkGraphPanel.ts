@@ -1,3 +1,4 @@
+import { escapeHtml as esc, escapeAttr as escAttr } from '@/ui/editor/Fields';
 import type { DocIssue } from '@/builder/validate';
 import { assessEditorLink } from '@/builder/validate';
 import type { EditorDocument, EditorLink, EditorObject } from '@/builder/document';
@@ -280,14 +281,3 @@ function normalizeSearch(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function esc(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function escAttr(value: string): string {
-  return esc(value);
-}

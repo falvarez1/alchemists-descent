@@ -375,6 +375,19 @@ export function getDefaultPixelSceneLibrary(): readonly PixelSceneDef[] {
     createCrystalClusterScene(),
     createLavaVentScene(),
     createCollapsedShaftScene(),
+    // Biome-identity variants (chosen per biome by chooseSceneForSlot's biome-preferred filter).
+    createMushroomGroveScene(),
+    createGlowcapHollowScene(),
+    createFrozenGeodeScene(),
+    createCrystalSpireScene(),
+    createMineScaffoldScene(),
+    createMagmaFissureScene(),
+    createCinderVentScene(),
+    createGildedVaultScene(),
+    createScorchedRuinScene(),
+    createCrystalAltarScene(),
+    createEmberShrineScene(),
+    createFloodedShaftScene(),
   ];
   return defaultPixelSceneLibrary;
 }
@@ -427,7 +440,7 @@ function createTimberBracesScene(): PixelSceneDef {
     c.paint(66 - n, 35 - Math.floor(n * 0.42), Cell.Wood, packRGB(86, 54, 30));
   }
   for (let x = 12; x <= 72; x += 6) c.paint(x, 35, Cell.Moss, moss);
-  return sceneDef('scene-timber-braces', 'Timber Braces', 'timberBraces', ['timber', 'bridge', 'support'], w, h, c);
+  return sceneDef('scene-timber-braces', 'Timber Braces', 'timberBraces', ['timber', 'flooded', 'fungal', 'bridge', 'support'], w, h, c);
 }
 
 function createRuinedRoomScene(): PixelSceneDef {
@@ -444,7 +457,7 @@ function createRuinedRoomScene(): PixelSceneDef {
   c.rect(78, 12, 86, 54, Cell.Stone, dark);
   c.rect(16, 10, 80, 16, Cell.Stone, stone);
   for (let x = 24; x < 72; x += 9) c.paint(x, 47, Cell.Gold, packRGB(206, 158, 44));
-  return sceneDef('scene-ruined-room', 'Ruined Room', 'ruinedRooms', ['ruin', 'room', 'shrine'], w, h, c, [
+  return sceneDef('scene-ruined-room', 'Ruined Room', 'ruinedRooms', ['earthen', 'frozen', 'timber', 'ruin', 'room', 'shrine'], w, h, c, [
     { id: 'room-pickup', kind: 'pickup', x: Math.floor(w / 2), y: 43, params: { kind: 'gold', amount: 16 } },
   ]);
 }
@@ -461,7 +474,7 @@ function createBridgeFragmentScene(): PixelSceneDef {
     c.paint(12 + n, 16 + Math.floor(Math.sin(n * 0.18) * 2), Cell.Vines, rope);
     if (n % 9 === 0) c.paint(12 + n, 30, Cell.Moss, packRGB(70, 112, 42));
   }
-  return sceneDef('scene-bridge-fragment', 'Bridge Fragment', 'bridgeFragments', ['bridge', 'timber'], w, h, c);
+  return sceneDef('scene-bridge-fragment', 'Bridge Fragment', 'bridgeFragments', ['earthen', 'flooded', 'timber', 'scorched', 'volcanic', 'bridge'], w, h, c);
 }
 
 function createShrineScene(): PixelSceneDef {
@@ -474,7 +487,7 @@ function createShrineScene(): PixelSceneDef {
   c.rect(46, 24, 52, 50, Cell.Stone, packRGB(74, 70, 68));
   c.rect(24, 20, 52, 26, Cell.Stone, stone);
   c.rect(34, 34, 42, 48, Cell.Crystal, packRGB(108, 220, 238));
-  return sceneDef('scene-shrine', 'Small Shrine', 'shrines', ['shrine', 'light', 'treasure'], w, h, c, [
+  return sceneDef('scene-shrine', 'Small Shrine', 'shrines', ['earthen', 'fungal', 'timber', 'gilded', 'shrine', 'light', 'treasure'], w, h, c, [
     { id: 'shrine-pickup', kind: 'pickup', x: 38, y: 45, params: { kind: 'tome', card: 'spark' } },
   ], [
     { id: 'shrine-light', x: 38, y: 35, color: '#7df9ff', intensity: 0.86, radius: 96, bloom: 1.1, flicker: 0.08, falloff: 'soft', occluded: true },
@@ -550,7 +563,237 @@ function createCollapsedShaftScene(): PixelSceneDef {
     c.paint(25, y + 5, Cell.Vines, packRGB(46, 124, 54));
   }
   c.rect(20, 110, 56, 116, Cell.Stone, packRGB(76, 72, 72));
-  return sceneDef('scene-collapsed-shaft', 'Collapsed Shaft', 'collapsedShafts', ['shaft', 'drop', 'ruin'], w, h, c);
+  return sceneDef('scene-collapsed-shaft', 'Collapsed Shaft', 'collapsedShafts', ['earthen', 'fungal', 'frozen', 'crystal', 'scorched', 'volcanic', 'gilded', 'shaft', 'drop', 'ruin'], w, h, c);
+}
+
+function createMushroomGroveScene(): PixelSceneDef {
+  const w = 92;
+  const h = 64;
+  const c = createSceneCanvas(w, h);
+  const moss = packRGB(54, 116, 48);
+  const stalk = packRGB(196, 182, 150);
+  const cap = packRGB(126, 232, 150);
+  c.rect(8, 54, 84, 58, Cell.Moss, moss);
+  for (const sx of [18, 34, 52, 70]) {
+    const top = 26 + ((sx * 13) % 12);
+    c.rect(sx - 1, top, sx + 1, 54, Cell.Fungus, stalk);
+    for (let dx = -5; dx <= 5; dx++) {
+      const cy = top - 3 + Math.floor(Math.abs(dx) * 0.5);
+      c.paint(sx + dx, cy, Cell.Glowshroom, cap);
+      c.paint(sx + dx, cy + 1, Cell.Glowshroom, cap);
+    }
+  }
+  for (let x = 12; x < 82; x += 9) c.paint(x, 53, Cell.Glowshroom, packRGB(150, 240, 168));
+  return sceneDef('scene-mushroom-grove', 'Mushroom Grove', 'fungalPockets', ['fungal', 'growth', 'light'], w, h, c, [], [
+    { id: 'grove-glow', x: 46, y: 36, color: '#88f59a', intensity: 0.6, radius: 92, bloom: 0.9, flicker: 0.16, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createGlowcapHollowScene(): PixelSceneDef {
+  const w = 84;
+  const h = 60;
+  const c = createSceneCanvas(w, h);
+  for (let y = 14; y < 50; y++) {
+    for (let x = 12; x < 72; x++) {
+      const nx = (x - 42) / 30;
+      const ny = (y - 32) / 18;
+      if (nx * nx + ny * ny < 1) c.clear(x, y);
+    }
+  }
+  for (let a = 0; a < 28; a++) {
+    const t = (a / 28) * Math.PI * 2;
+    c.paint(Math.round(42 + Math.cos(t) * 29), Math.round(32 + Math.sin(t) * 17), Cell.Glowshroom, packRGB(130, 232, 150));
+  }
+  c.rect(28, 47, 56, 50, Cell.Toxic, packRGB(120, 196, 70));
+  c.rect(20, 50, 64, 52, Cell.Moss, packRGB(52, 112, 46));
+  return sceneDef('scene-glowcap-hollow', 'Glowcap Hollow', 'fungalPockets', ['fungal', 'flooded', 'growth', 'light', 'hazard'], w, h, c, [], [
+    { id: 'hollow-glow', x: 42, y: 34, color: '#7ef58e', intensity: 0.66, radius: 84, bloom: 0.95, flicker: 0.2, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createFrozenGeodeScene(): PixelSceneDef {
+  const w = 80;
+  const h = 72;
+  const c = createSceneCanvas(w, h);
+  const ice = packRGB(150, 196, 224);
+  const core = packRGB(120, 214, 234);
+  for (let y = 8; y < 64; y++) {
+    for (let x = 10; x < 70; x++) {
+      const nx = (x - 40) / 28;
+      const ny = (y - 36) / 26;
+      const d = nx * nx + ny * ny;
+      if (d < 1 && d > 0.62) c.paint(x, y, Cell.Ice, ice);
+      else if (d <= 0.62 && d > 0.5) c.clear(x, y);
+    }
+  }
+  for (let a = 0; a < 16; a++) {
+    const t = (a / 16) * Math.PI * 2;
+    for (let r = 0; r < 7; r++) {
+      c.paint(Math.round(40 + Math.cos(t) * (16 - r)), Math.round(36 + Math.sin(t) * (15 - r)), Cell.Crystal, core);
+    }
+  }
+  return sceneDef('scene-frozen-geode', 'Frozen Geode', 'crystalClusters', ['frozen', 'crystal', 'light'], w, h, c, [], [
+    { id: 'geode-glow', x: 40, y: 36, color: '#9fe8ff', intensity: 0.62, radius: 80, bloom: 1.1, flicker: 0.05, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createCrystalSpireScene(): PixelSceneDef {
+  const w = 70;
+  const h = 96;
+  const c = createSceneCanvas(w, h);
+  const crystal = packRGB(98, 206, 230);
+  const deep = packRGB(64, 150, 188);
+  c.rect(14, 84, 56, 90, Cell.Ice, packRGB(120, 168, 206));
+  for (const s of [{ x: 35, top: 10, ww: 6 }, { x: 22, top: 40, ww: 3 }, { x: 48, top: 34, ww: 4 }]) {
+    for (let y = 84; y >= s.top; y--) {
+      const k = (y - s.top) / (84 - s.top);
+      const half = Math.max(0, Math.round(s.ww * k));
+      c.rect(s.x - half, y, s.x + half, y, Cell.Crystal, k > 0.5 ? crystal : deep);
+    }
+  }
+  return sceneDef('scene-crystal-spire', 'Crystal Spire', 'crystalClusters', ['crystal', 'frozen', 'light'], w, h, c, [], [
+    { id: 'spire-glow', x: 35, y: 40, color: '#83f4ff', intensity: 0.7, radius: 96, bloom: 1.2, flicker: 0.04, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createMineScaffoldScene(): PixelSceneDef {
+  const w = 88;
+  const h = 78;
+  const c = createSceneCanvas(w, h);
+  const wood = packRGB(96, 62, 34);
+  const dark = packRGB(74, 46, 26);
+  c.rect(16, 8, 20, 70, Cell.Wood, dark);
+  c.rect(66, 8, 70, 70, Cell.Wood, dark);
+  for (let y = 18; y < 70; y += 17) c.rect(16, y, 70, y + 3, Cell.Wood, wood);
+  c.rect(41, 8, 45, 70, Cell.Wood, dark);
+  for (let y = 12; y < 70; y += 5) c.rect(38, y, 48, y + 1, Cell.Wood, wood);
+  c.paint(24, 64, Cell.Gold, packRGB(206, 158, 44));
+  c.paint(62, 30, Cell.Gold, packRGB(206, 158, 44));
+  c.paint(60, 64, Cell.Coal, packRGB(40, 40, 44));
+  return sceneDef('scene-mine-scaffold', 'Mine Scaffold', 'timberBraces', ['timber', 'mine', 'support', 'earthen'], w, h, c);
+}
+
+function createMagmaFissureScene(): PixelSceneDef {
+  const w = 104;
+  const h = 70;
+  const c = createSceneCanvas(w, h);
+  for (let y = 10; y < 60; y++) {
+    const half = Math.round(10 + (y - 10) * 0.5);
+    for (let x = 52 - half; x <= 52 + half; x++) c.clear(x, y);
+  }
+  // A thin magma channel, not a pool: keep volcanic hazard dressing bounded and survivable.
+  c.rect(40, 58, 64, 61, Cell.Lava, packRGB(242, 80, 16));
+  c.rect(46, 54, 58, 57, Cell.Lava, packRGB(236, 96, 24));
+  for (let x = 18; x <= 86; x += 4) c.paint(x, 63, Cell.Stone, packRGB(58, 50, 48));
+  return sceneDef('scene-magma-fissure', 'Magma Fissure', 'lavaVents', ['volcanic', 'scorched', 'hazard', 'light'], w, h, c, [], [
+    { id: 'fissure-glow', x: 52, y: 56, color: '#ff5a14', intensity: 1.15, radius: 124, bloom: 1.3, flicker: 0.26, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createCinderVentScene(): PixelSceneDef {
+  const w = 72;
+  const h = 58;
+  const c = createSceneCanvas(w, h);
+  const ash = packRGB(96, 86, 80);
+  for (let x = 10; x < 62; x++) {
+    const top = 44 - Math.round(Math.max(0, 14 - Math.abs(x - 36)) * 0.9);
+    c.rect(x, top, x, 50, Cell.Ash, ash);
+  }
+  c.rect(30, 46, 42, 50, Cell.Lava, packRGB(238, 92, 22));
+  c.paint(26, 49, Cell.Coal, packRGB(40, 40, 44));
+  c.paint(46, 49, Cell.Coal, packRGB(40, 40, 44));
+  return sceneDef('scene-cinder-vent', 'Cinder Vent', 'lavaVents', ['scorched', 'volcanic', 'hazard', 'light'], w, h, c, [], [
+    { id: 'cinder-glow', x: 36, y: 47, color: '#ff7a2a', intensity: 0.82, radius: 92, bloom: 1.05, flicker: 0.3, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createGildedVaultScene(): PixelSceneDef {
+  const w = 98;
+  const h = 64;
+  const c = createSceneCanvas(w, h);
+  const stone = packRGB(92, 84, 70);
+  const gold = packRGB(212, 168, 56);
+  for (let y = 16; y < 50; y++) for (let x = 14; x < 84; x++) c.clear(x, y);
+  c.rect(10, 48, 88, 54, Cell.Stone, stone);
+  c.rect(10, 12, 18, 54, Cell.Stone, stone);
+  c.rect(80, 12, 88, 54, Cell.Stone, stone);
+  c.rect(16, 10, 82, 16, Cell.Stone, stone);
+  for (let y = 14; y < 52; y += 5) { c.paint(14, y, Cell.Gold, gold); c.paint(85, y + 2, Cell.Gold, gold); }
+  for (let x = 28; x < 70; x += 3) c.rect(x, 45 - ((x * 7) % 4), x + 1, 47, Cell.Gold, gold);
+  return sceneDef('scene-gilded-vault', 'Gilded Vault', 'ruinedRooms', ['gilded', 'treasure', 'room'], w, h, c, [
+    { id: 'vault-pickup', kind: 'pickup', x: Math.floor(w / 2), y: 43, params: { kind: 'gold', amount: 40 } },
+  ], [
+    { id: 'vault-glow', x: 49, y: 30, color: '#f6c76d', intensity: 0.7, radius: 88, bloom: 1.0, flicker: 0.06, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createScorchedRuinScene(): PixelSceneDef {
+  const w = 96;
+  const h = 60;
+  const c = createSceneCanvas(w, h);
+  const charred = packRGB(58, 52, 50);
+  const stone = packRGB(78, 70, 66);
+  for (let y = 14; y < 46; y++) for (let x = 12; x < 82; x++) c.clear(x, y);
+  c.rect(8, 44, 86, 50, Cell.Stone, charred);
+  c.rect(8, 10, 16, 50, Cell.Stone, stone);
+  c.rect(78, 10, 86, 40, Cell.Stone, stone);
+  c.rect(14, 8, 80, 14, Cell.Stone, charred);
+  for (let x = 20; x < 76; x += 5) c.paint(x, 43, Cell.Ash, packRGB(92, 84, 78));
+  c.paint(30, 43, Cell.Coal, packRGB(38, 38, 42));
+  c.paint(58, 43, Cell.Coal, packRGB(38, 38, 42));
+  return sceneDef('scene-scorched-ruin', 'Scorched Ruin', 'ruinedRooms', ['scorched', 'ruin', 'room'], w, h, c);
+}
+
+function createCrystalAltarScene(): PixelSceneDef {
+  const w = 74;
+  const h = 64;
+  const c = createSceneCanvas(w, h);
+  c.rect(18, 50, 56, 56, Cell.Stone, packRGB(86, 92, 102));
+  c.rect(28, 40, 46, 51, Cell.Stone, packRGB(70, 76, 86));
+  for (let y = 22; y < 42; y++) {
+    const half = Math.max(1, Math.round((42 - y) * 0.4));
+    c.rect(37 - half, y, 37 + half, y, Cell.Crystal, packRGB(120, 222, 240));
+  }
+  return sceneDef('scene-crystal-altar', 'Crystal Altar', 'shrines', ['crystal', 'frozen', 'shrine', 'light', 'treasure'], w, h, c, [
+    { id: 'altar-pickup', kind: 'pickup', x: 37, y: 47, params: { kind: 'tome', card: 'spark' } },
+  ], [
+    { id: 'altar-glow', x: 37, y: 30, color: '#9af0ff', intensity: 0.92, radius: 100, bloom: 1.2, flicker: 0.05, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createEmberShrineScene(): PixelSceneDef {
+  const w = 74;
+  const h = 64;
+  const c = createSceneCanvas(w, h);
+  const stone = packRGB(72, 60, 56);
+  c.rect(16, 50, 58, 56, Cell.Stone, stone);
+  c.rect(24, 26, 30, 52, Cell.Stone, packRGB(58, 48, 46));
+  c.rect(44, 26, 50, 52, Cell.Stone, packRGB(58, 48, 46));
+  c.rect(24, 22, 50, 28, Cell.Stone, stone);
+  c.rect(32, 40, 42, 46, Cell.Lava, packRGB(240, 96, 26));
+  return sceneDef('scene-ember-shrine', 'Ember Shrine', 'shrines', ['scorched', 'volcanic', 'shrine', 'light'], w, h, c, [
+    { id: 'ember-pickup', kind: 'pickup', x: 37, y: 47, params: { kind: 'gold', amount: 18 } },
+  ], [
+    { id: 'ember-light', x: 37, y: 40, color: '#ff7b2c', intensity: 0.9, radius: 96, bloom: 1.1, flicker: 0.24, falloff: 'soft', occluded: true },
+  ]);
+}
+
+function createFloodedShaftScene(): PixelSceneDef {
+  const w = 70;
+  const h = 116;
+  const c = createSceneCanvas(w, h);
+  for (let y = 6; y < 104; y++) {
+    const drift = Math.floor(Math.sin(y * 0.1) * 4);
+    const half = 9 + Math.floor(Math.sin(y * 0.06 + 1.2) * 3);
+    for (let x = 35 + drift - half; x <= 35 + drift + half; x++) c.clear(x, y);
+  }
+  c.rect(18, 98, 52, 106, Cell.Water, packRGB(46, 96, 150));
+  c.rect(14, 104, 56, 110, Cell.Stone, packRGB(72, 70, 72));
+  for (let y = 24; y < 96; y += 22) {
+    c.rect(24, y, 46, y + 2, Cell.Wood, packRGB(72, 46, 26));
+    c.paint(25, y + 3, Cell.Moss, packRGB(50, 116, 50));
+  }
+  return sceneDef('scene-flooded-shaft', 'Flooded Shaft', 'collapsedShafts', ['flooded', 'shaft', 'drop'], w, h, c);
 }
 
 function sceneDef(

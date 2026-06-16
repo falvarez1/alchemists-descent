@@ -3,6 +3,7 @@ import { blocksEntity, Cell } from '@/sim/CellType';
 import { computeLooseRubbleBlockingMask } from '@/sim/collision';
 import { decodeTypes, paramNum } from '@/builder/document';
 import type { EditorDocument, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
+import { kindLabel } from '@/builder/kindLabel';
 import { POTION_KINDS } from '@/core/pickupDefs';
 import { TOME_REWARD_POOL } from '@/combat/wands/rewardPools';
 import { PLUG_CELLS, SENSOR_FILTER_CELLS, VALVE_CELLS } from '@/game/instantiate';
@@ -707,7 +708,7 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   // ---- bounds ----
   for (const o of doc.objects) {
     if (o.x < 4 || o.x >= WIDTH - 4 || o.y < 4 || o.y >= HEIGHT - 4) {
-      push('error', o.kind + ' outside world bounds', o.id);
+      push('error', kindLabel(o.kind) + ' outside world bounds', o.id);
     }
     if (o.kind === 'pickup' && !o.hidden) {
       const kind = typeof o.params.kind === 'string' ? o.params.kind : 'goldpile';
@@ -808,12 +809,12 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
         if (o.kind === 'plug')
           push('info', 'plug signals nothing — a pure breakable seal (that is fine)', o.id);
         else
-          push('error', o.kind + ' is not linked to any door/valve/relay (use the LINK tool)', o.id);
+          push('error', kindLabel(o.kind) + ' is not linked to any door/valve/relay (use the LINK tool)', o.id);
       }
       if (outs.length > 1)
         push(
           'error',
-          o.kind + ' drives several targets — one trigger drives one (AND = many triggers on ONE actuator)',
+          kindLabel(o.kind) + ' drives several targets — one trigger drives one (AND = many triggers on ONE actuator)',
           o.id,
         );
     } else if (o.kind === 'door') {
@@ -979,7 +980,7 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
       },
     );
   }
-  if (!portal && !well) push('info', 'No exit portal or exit well: custom level has no win exit');
+  if (!portal && !well) push('info', 'No exit portal or exit well: custom level has no win exit', undefined, { code: 'builder.exit.missing' });
 
   // ---- terrain-dependent checks ----
   if (!doc.world) {
@@ -1022,7 +1023,7 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   for (const o of doc.objects) {
     if (o.hidden) continue;
     if ((o.kind === 'enemy' || o.kind === 'pickup') && blockedAt(closed, o.x, o.y - 2)) {
-      push('warning', o.kind + ' embedded in blocking cells', o.id);
+      push('warning', kindLabel(o.kind) + ' embedded in blocking cells', o.id);
     }
     if (o.kind === 'hazardEmitter') {
       if (blockedAt(closed, o.x, o.y))
@@ -1062,7 +1063,7 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
   for (const o of visible) {
     if (POSITIONAL_TRIGGER_KINDS.has(o.kind)) {
       if (!triggerReachable(mask, o))
-        push('error', o.kind + ' unreachable from spawn (even after opening every earnable door)', o.id);
+        push('error', kindLabel(o.kind) + ' unreachable from spawn (even after opening every earnable door)', o.id);
     } else if (o.kind === 'sensor') {
       // a sensor zone can legitimately be fed by world flows the player
       // never touches (lava reaching a heat sensor) — warn, don't error
@@ -1090,7 +1091,7 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
       const w = paramNum(o, 'w', o.kind === 'door' ? 3 : 5),
         h = paramNum(o, 'h', o.kind === 'door' ? 13 : 2);
       if (!near(mask, o.x - 2, o.y + h / 2, 4) && !near(mask, o.x + w + 1, o.y + h / 2, 4))
-        push('warning', `no side of this ${o.kind} is reachable from spawn`, o.id);
+        push('warning', `no side of this ${kindLabel(o.kind)} is reachable from spawn`, o.id);
     } else if (o.kind === 'pickup') {
       if (!near(mask, o.x, o.y - 2, 6)) {
         if (o.params.kind === 'key')
@@ -1168,6 +1169,9 @@ function stableIssueCode(what: string): string {
     [/link-level logic is ignored/, 'builder.link.ignoredLogic'],
     [/link touches a hidden object/, 'builder.link.hiddenEndpoint'],
     [/not linked to any door\/valve\/relay/, 'builder.trigger.unlinked'],
+    [/drives several targets/, 'builder.trigger.multiDrive'],
+    [/embedded in blocking cells/, 'builder.object.embedded'],
+    [/no side of this .* is reachable/, 'builder.reachability.noSide'],
     [/door has no trigger/, 'builder.door.noTrigger'],
     [/valve has no trigger/, 'builder.valve.noTrigger'],
     [/rune glyph opens nothing/, 'builder.runeGlyph.unlinked'],
@@ -1183,9 +1187,14 @@ function stableIssueCode(what: string): string {
   for (const [pattern, code] of matchers) {
     if (pattern.test(text)) return code;
   }
+  // No matcher: derive a short, stable code from the first few significant
+  // words so the UI never shows a whole sentence dot-joined as an id.
   const slug = text
-    .replace(/[^a-z0-9]+/g, '.')
-    .replace(/^\.+|\.+$/g, '')
-    .slice(0, 72);
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4)
+    .join('.');
   return slug ? `builder.${slug}` : 'builder.issue';
 }

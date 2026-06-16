@@ -1,3 +1,4 @@
+import { escapeHtml as esc, escapeAttr as escAttr } from '@/ui/editor/Fields';
 import type { AssetRecord } from '@/builder/assets/AssetTypes';
 import { PREFAB_VARIANTS } from '@/builder/prefablib';
 import type { PrefabAnchor, PrefabDef, PrefabVariantId } from '@/builder/prefablib';
@@ -148,10 +149,3 @@ function oppositeDir(dir: 'n' | 's' | 'e' | 'w'): 'n' | 's' | 'e' | 'w' {
   return 'e';
 }
 
-function esc(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function escAttr(value: string): string {
-  return esc(value);
-}

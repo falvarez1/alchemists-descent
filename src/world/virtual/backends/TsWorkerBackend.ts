@@ -25,6 +25,7 @@ export class TsWorkerBackend implements VirtualWorldBackend {
     kind: 'ts-worker',
     label: 'TypeScript Worker',
     available: typeof Worker !== 'undefined',
+    implemented: true,
     authoritativeCells: true,
     details: {},
   };

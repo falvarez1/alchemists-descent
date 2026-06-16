@@ -161,7 +161,22 @@ export class PopoverHost {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.code === 'Escape') this.hide();
+    if (event.code !== 'Escape') return;
+    // Only dismiss INTERACTIVE (editable) popovers on Escape, and consume the
+    // event so it doesn't also fire a host-level Escape handler. Non-interactive
+    // hover popovers are transient (mouseleave/scroll already dismiss them) and
+    // are left alone so an unrelated tooltip isn't blown away mid-edit.
+    let dismissed = false;
+    for (const [id, el] of this.nodes) {
+      if (el.style.display !== 'none' && el.classList.contains('interactive')) {
+        this.hide(id);
+        dismissed = true;
+      }
+    }
+    if (dismissed) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   };
 
   private readonly onScroll = (): void => this.hide();

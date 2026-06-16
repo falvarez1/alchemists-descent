@@ -151,9 +151,11 @@ export class FrameComposer implements PixelSurface {
     if (lightRebuilt) this.light.build(ctx);
 
     // GPU frame composition (perf ticket #8): the terrain pass runs as a
-    // fragment shader; sprites keep drawing through setPx/addPx into the
-    // overlay. Flag off (or no WebGL2) = the original CPU loop, untouched.
-    if (ctx.state.postFx.gpuCompose && this.target.gpuComposeAvailable) {
+    // fragment/compute shader; sprites keep drawing through setPx/addPx into
+    // the overlay. WebGPU live compose has its own runtime gate because the
+    // renderer syncs settings after composition, not before it.
+    const webGpuLiveComposeDisabled = ctx.state.render.backend !== 'webgl' && !ctx.state.render.compose;
+    if (ctx.state.postFx.gpuCompose && !webGpuLiveComposeDisabled && this.target.gpuComposeAvailable) {
       try {
         this.overlay = this.target.beginGpuCompose(ctx, this.light, this.layers, lenses, lightRebuilt);
       } catch (error) {

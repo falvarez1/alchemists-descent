@@ -1,8 +1,12 @@
 import type { Ctx, FlyingParticle, ParticleOpts, ParticlesApi } from '@/core/types';
 import { EntityPool } from '@/entities/ecs';
 import { MAX_PARTICLES } from '@/config/constants';
-import { Cell, isGas } from '@/sim/CellType';
+import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { stainCell } from '@/sim/stains';
+
+/** Fraction of blood motes that expire mid-air and settle into a real liquid
+ *  cell instead of vanishing — what lets airborne spray actually pool. */
+const BLOOD_SETTLE = 0.3;
 
 /**
  * Ballistic flying particles: explosion debris, gore, sparks, homing coins,
@@ -66,6 +70,26 @@ export class Particles implements ParticlesApi {
     }
   }
 
+  /** A wet mote hitting a pool throws up a few short-lived droplets — purely
+   *  visual (type=null, so they never deposit or splash again, no feedback
+   *  loop) plus an occasional soft splash sound. */
+  private splash(ctx: Ctx, x: number, y: number, color: number): void {
+    const n = 2 + ((Math.random() * 3) | 0);
+    for (let k = 0; k < n; k++) {
+      this.spawn(
+        x,
+        y - 1,
+        (Math.random() - 0.5) * 1.8,
+        -0.7 - Math.random() * 1.4,
+        null,
+        color,
+        16 + ((Math.random() * 14) | 0),
+        { grav: 0.22 },
+      );
+    }
+    if (Math.random() < 0.12) ctx.audio.splash(0.4 + Math.random() * 0.3);
+  }
+
   /**
    * O(1) removal: overwrite slot i with the tail and pop. Draw order of
    * ballistic debris is visually irrelevant, and the backward loop has
@@ -108,7 +132,20 @@ export class Particles implements ParticlesApi {
       const gx = Math.floor(p.x),
         gy = Math.floor(p.y);
 
-      if (!world.inBounds(gx, gy) || p.life <= 0) {
+      if (!world.inBounds(gx, gy)) {
+        this.removeAt(i);
+        continue;
+      }
+      if (p.life <= 0) {
+        // Blood expiring mid-air over open ground settles into a real liquid
+        // cell (which then falls and pools) instead of simply disappearing.
+        if (
+          p.type === Cell.Blood &&
+          Math.random() < BLOOD_SETTLE &&
+          world.types[world.idx(gx, gy)] === Cell.Empty
+        ) {
+          world.replaceCellAt(world.idx(gx, gy), Cell.Blood, p.color);
+        }
         this.removeAt(i);
         continue;
       }
@@ -126,6 +163,10 @@ export class Particles implements ParticlesApi {
 
       const cell = world.types[world.idx(gx, gy)];
       if (cell !== Cell.Empty && !isGas(cell)) {
+        // A wet mote striking a pool kicks up a small splash of droplets.
+        if (isLiquid(cell) && (p.type === null || isLiquid(p.type))) {
+          this.splash(ctx, p.x, p.y, p.color);
+        }
         // Blood spatter marks the surface it strikes — a red stain soaked into
         // the wall (stainCell only takes on sturdy materials; sand/etc. churn).
         if (p.type === Cell.Blood) stainCell(world, gx, gy, 118, 14, 20, 0.35 + Math.random() * 0.25);

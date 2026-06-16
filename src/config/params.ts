@@ -25,10 +25,15 @@ export const GLOBAL_PARAMS: GlobalParams = {
   // the caves moody while letting shadowed rock read as silhouette.
   ambient: 0.18,
   bloodAmount: 1.0,
-  goreBlood: 1.0,
+  // Blood-specific gore dialed up (1.0 -> 1.3) for a gorier, more Noita-like
+  // spray that feeds the new corpse pools; other gore channels unchanged.
+  goreBlood: 1.3,
   goreSlime: 1.0,
   goreOoze: 1.0,
 };
+
+/** Frozen baseline captured at load — the Builder section "reset" restores it. */
+export const GLOBAL_PARAM_DEFAULTS: Readonly<GlobalParams> = Object.freeze({ ...GLOBAL_PARAMS });
 
 export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Sand]: { name: 'Sand', friction: 0.5, densityWeight: 0.9 },
@@ -73,6 +78,10 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };
+
+/** Deep snapshot of the shipped material tunings, captured at load before any
+ *  live edits mutate MATERIAL_PARAMS — the Builder MATERIAL "reset" restores it. */
+export const MATERIAL_PARAM_DEFAULTS: Readonly<Record<number, MaterialParams>> = structuredClone(MATERIAL_PARAMS);
 
 export const SPELL_PARAMS: Record<SpellId, SpellParams> = {
   // velocityForce is the UNMODIFIED base: a starter Spark Bolt lobs slowly (you

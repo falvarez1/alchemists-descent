@@ -1,5 +1,5 @@
 import type { Ctx } from '@/core/types';
-import { Cell } from '@/sim/CellType';
+import { Cell, isSolid } from '@/sim/CellType';
 import {
   EMPTY_COLOR,
   fireColor,
@@ -36,6 +36,11 @@ function waterCanPass(t: number): boolean {
 function viscousCanPass(t: number): boolean {
   return t === Cell.Empty || t === Cell.Steam || t === Cell.Smoke;
 }
+
+/** Per-step chance that a thin film of settled blood on sturdy ground dries to
+ *  a permanent floor stain. Deep pools (blood overhead) persist; this only
+ *  retires the surface layer, bounding how much liquid a gory fight can leave. */
+const BLOOD_DRY = 0.006;
 
 function acidCanPass(t: number): boolean {
   return t === Cell.Empty || t === Cell.Steam || t === Cell.Water || t === Cell.Oil || t === Cell.Smoke;
@@ -119,15 +124,26 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
       return;
     }
   }
-  // Blood slowly darkens and dries
-  if (type === Cell.Blood && Math.random() < ctx.params.materials[Cell.Blood].coagulation!) {
+  // Settled blood slowly coagulates (darkens)...
+  if (type === Cell.Blood) {
     const i = w.idx(x, y);
-    const c = w.colors[i];
-    w.colors[i] = packRGB(
-      Math.max(60, unpackR(c) - 30),
-      Math.max(5, unpackG(c) - 4),
-      Math.max(8, unpackB(c) - 4),
-    );
+    if (Math.random() < ctx.params.materials[Cell.Blood].coagulation!) {
+      const c = w.colors[i];
+      w.colors[i] = packRGB(
+        Math.max(60, unpackR(c) - 30),
+        Math.max(5, unpackG(c) - 4),
+        Math.max(8, unpackB(c) - 4),
+      );
+    }
+    // ...and a thin surface film resting on sturdy ground eventually dries to a
+    // permanent stain. Deep pools (blood directly overhead) keep their wet body;
+    // only the exposed top layer retires, so spray can't drown the level/sim.
+    const aboveBlood = w.inBounds(x, y - 1) && w.types[w.idx(x, y - 1)] === Cell.Blood;
+    const below = w.inBounds(x, y + 1) ? w.types[w.idx(x, y + 1)] : Cell.Wall;
+    if (!aboveBlood && isSolid(below) && Math.random() < BLOOD_DRY) {
+      stainCell(w, x, y + 1, 96, 12, 16, 0.55);
+      w.replaceCellAt(i, Cell.Empty, EMPTY_COLOR);
+    }
   }
 }
 

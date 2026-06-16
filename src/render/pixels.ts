@@ -28,6 +28,35 @@ export interface RenderBackendWebGpuStatus {
   lostCount: number;
   lastLossReason: string | null;
   lastLossMessage: string | null;
+  compose: RenderBackendWebGpuComposeStatus;
+}
+
+export interface RenderBackendWebGpuComposeStatus {
+  /** Runtime production compose remains false until parity and timing gates pass. */
+  productionAvailable: boolean;
+  bridge: 'unrequested' | 'initializing' | 'validated' | 'failed' | 'unsupported';
+  reason: string;
+  outputStorage: RenderBackendWebGpuComposeStorageStatus | null;
+  rawWgslWrite: RenderBackendWebGpuComposeRawWgslStatus;
+}
+
+export interface RenderBackendWebGpuComposeStorageStatus {
+  format: string;
+  width: number | null;
+  height: number | null;
+  mipLevelCount: number | null;
+  usage: number | null;
+  source: string;
+}
+
+export interface RenderBackendWebGpuComposeRawWgslStatus {
+  status: 'unrequested' | 'validated' | 'failed';
+  reason: string;
+  maxDelta: number | null;
+  mismatchPct: number | null;
+  exactPct: number | null;
+  meanDelta: number | null;
+  gpuSubmitReadbackWallMs: number | null;
 }
 
 export interface RenderBackendWebGlStatus {

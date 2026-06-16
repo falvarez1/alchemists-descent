@@ -8,6 +8,7 @@ import {
   RGBAFormat,
   RenderPipeline,
   SRGBColorSpace,
+  StorageTexture,
   Vector2,
   WebGPURenderer,
 } from 'three/webgpu';
@@ -40,9 +41,12 @@ import type {
   RenderBackendFeatureFlags,
   RenderBackendHealth,
   RenderBackendStatus,
+  RenderBackendWebGpuComposeStatus,
   RendererBackend,
 } from '@/render/pixels';
+import { WebGpuComposeBridge, webGpuComposeUnrequestedStatus } from '@/render/WebGpuComposeBridge';
 import { WebGpuDeviceLifecycle } from '@/render/WebGpuDeviceLifecycle';
+import { WebGpuLiveCompose } from '@/render/WebGpuLiveCompose';
 
 interface NavigatorWithGpu {
   gpu?: {
@@ -117,6 +121,22 @@ function shouldSimulateInitFailure(): boolean {
   );
 }
 
+function shouldValidateComposeBridge(): boolean {
+  return (
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('validateWebGpuComposeBridge') === '1'
+  );
+}
+
+function shouldValidateComposeRawWgsl(): boolean {
+  return (
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('validateWebGpuComposeRawWgsl') === '1'
+  );
+}
+
 function collectWebGpuFeatures(device: ThreeGpuBackendProbe['device']): string[] {
   return Array.from(device?.features ?? []).sort();
 }
@@ -130,6 +150,27 @@ function collectWebGpuLimits(device: ThreeGpuBackendProbe['device']): Record<str
     if (typeof value === 'number') result[key] = value;
   }
   return result;
+}
+
+function liveComposeRuntimeStatus(
+  bridge: 'initializing' | 'failed',
+  reason: string,
+): RenderBackendWebGpuComposeStatus {
+  return {
+    productionAvailable: false,
+    bridge,
+    reason,
+    outputStorage: null,
+    rawWgslWrite: {
+      status: 'unrequested',
+      reason: 'webgpu-live-compose-raw-wgsl-readback-not-requested',
+      maxDelta: null,
+      mismatchPct: null,
+      exactPct: null,
+      meanDelta: null,
+      gpuSubmitReadbackWallMs: null,
+    },
+  };
 }
 
 /**
@@ -157,6 +198,13 @@ export class WebGpuRenderBackend implements RendererBackend {
   private deviceFeatures: string[] = [];
   private deviceLimits: Record<string, number> | null = null;
   private timestampQueryAvailable: boolean | null = null;
+  private composeBridge: WebGpuComposeBridge | null = null;
+  private liveCompose: WebGpuLiveCompose | null = null;
+  private liveComposeInitPromise: Promise<void> | null = null;
+  private liveComposeInitFailure: string | null = null;
+  private liveComposeBasePipeline: RenderPipeline | null = null;
+  private liveComposePostPipeline: RenderPipeline | null = null;
+  private liveComposeFrame = false;
 
   private readonly bloomEnabled = uniform(1);
   private readonly lensEnabled = uniform(1);
@@ -248,6 +296,14 @@ export class WebGpuRenderBackend implements RendererBackend {
   releaseCanvasForWebGlFallback(reuseCanvas: boolean): HTMLCanvasElement | undefined {
     this.basePipeline.dispose();
     this.postPipeline.dispose();
+    this.composeBridge?.dispose();
+    this.composeBridge = null;
+    this.liveComposeBasePipeline?.dispose();
+    this.liveComposeBasePipeline = null;
+    this.liveComposePostPipeline?.dispose();
+    this.liveComposePostPipeline = null;
+    this.liveCompose?.dispose();
+    this.liveCompose = null;
     this.texture.dispose();
     this.renderer.dispose();
     if (reuseCanvas) {
@@ -266,6 +322,15 @@ export class WebGpuRenderBackend implements RendererBackend {
 
   private buildBaseOutputNode(): ReturnType<typeof renderOutput> {
     const baseColor = Fn(() => vec4(texture(this.texture, this.pixelUv()).rgb, 1.0))();
+    return renderOutput(baseColor, ACESFilmicToneMapping, SRGBColorSpace);
+  }
+
+  private storageSampleRgb(storageTexture: StorageTexture, sampleUv: TslUvNode) {
+    return texture(storageTexture, sampleUv).rgb;
+  }
+
+  private buildStorageBaseOutputNode(storageTexture: StorageTexture): ReturnType<typeof renderOutput> {
+    const baseColor = Fn(() => vec4(this.storageSampleRgb(storageTexture, this.pixelUv()), 1.0))();
     return renderOutput(baseColor, ACESFilmicToneMapping, SRGBColorSpace);
   }
 
@@ -331,6 +396,109 @@ export class WebGpuRenderBackend implements RendererBackend {
     return renderOutput(postColor, ACESFilmicToneMapping, SRGBColorSpace);
   }
 
+  private buildStoragePostOutputNode(storageTexture: StorageTexture): ReturnType<typeof renderOutput> {
+    const texel = vec2(1 / VIEW_W, 1 / VIEW_H);
+    const sampleRgb = (sampleUv: TslUvNode) => this.storageSampleRgb(storageTexture, sampleUv);
+    const brightness = (rgb: TslRgbNode) =>
+      max(max(rgb.r, rgb.g), rgb.b).sub(this.bloomThreshold).max(0);
+    const brightColor = (rgb: TslRgbNode) => rgb.mul(brightness(rgb));
+    const tap1 = texel.mul(this.bloomRadius.mul(4.0).add(1.0));
+    const tap2 = tap1.mul(2.0);
+
+    const postColor = Fn(() => {
+      const p = this.pixelUv();
+      const base = sampleRgb(p);
+      const centered = p.sub(0.5);
+      const r2 = dot(centered, centered);
+      const aberrationShift = centered.mul(r2.mul(this.aberration).mul(40.0));
+      const aberrated = vec3(
+        sampleRgb(p.sub(aberrationShift)).r,
+        base.g,
+        sampleRgb(p.add(aberrationShift)).b,
+      );
+
+      const c0 = brightColor(base).mul(0.28);
+      const c1 = brightColor(sampleRgb(p.add(vec2(tap1.x, 0)))).mul(0.12);
+      const c2 = brightColor(sampleRgb(p.sub(vec2(tap1.x, 0)))).mul(0.12);
+      const c3 = brightColor(sampleRgb(p.add(vec2(0, tap1.y)))).mul(0.12);
+      const c4 = brightColor(sampleRgb(p.sub(vec2(0, tap1.y)))).mul(0.12);
+      const c5 = brightColor(sampleRgb(p.add(tap2))).mul(0.06);
+      const c6 = brightColor(sampleRgb(p.sub(tap2))).mul(0.06);
+      const bloom = c0
+        .add(c1)
+        .add(c2)
+        .add(c3)
+        .add(c4)
+        .add(c5)
+        .add(c6)
+        .mul(this.bloomStrength)
+        .mul(this.bloomEnabled);
+
+      const bloomBase = base.add(bloom);
+      const lensBase = aberrated.add(bloom);
+      const grainHash = fract(
+        sin(dot(p.mul(vec2(RENDER_W, RENDER_H)).add(this.time.mul(17.0)), vec2(12.9898, 78.233)))
+          .mul(43758.5453),
+      ).sub(0.5);
+      const lumaWeight = float(0.4).add(
+        clamp(float(1).sub(dot(lensBase, vec3(0.333))), 0, 1).mul(0.6),
+      );
+      const withGrain = lensBase.add(grainHash.mul(this.grain).mul(lumaWeight));
+      const hurtMix = this.hurt
+        .mul(smoothstep(0.18, 0.55, r2))
+        .mul(sin(this.time.mul(0.12)).mul(0.25).add(0.75))
+        .mul(0.6);
+      const lensed = mix(withGrain, vec3(0.45, 0.02, 0.04), hurtMix);
+      const post = mix(bloomBase, lensed, this.lensEnabled).mul(this.exposure);
+      return vec4(post, 1.0);
+    })();
+
+    return renderOutput(postColor, ACESFilmicToneMapping, SRGBColorSpace);
+  }
+
+  private async ensureLiveComposeDiagnostic(): Promise<void> {
+    if (this.liveCompose !== null) return;
+    if (this.liveComposeInitPromise) return this.liveComposeInitPromise;
+    if (this.actualBackend !== 'webgpu') return;
+    this.liveComposeInitFailure = null;
+    this.liveComposeInitPromise = this.initializeLiveComposeDiagnostic().finally(() => {
+      this.liveComposeInitPromise = null;
+    });
+    return this.liveComposeInitPromise;
+  }
+
+  private async initializeLiveComposeDiagnostic(): Promise<void> {
+    const liveCompose = new WebGpuLiveCompose(this.renderer);
+    this.liveCompose = liveCompose;
+    try {
+      const composeStatus = await liveCompose.initialize();
+      if (composeStatus.bridge !== 'validated') {
+        console.warn('WebGPU live compose diagnostic initialization failed', composeStatus.reason);
+        return;
+      }
+      this.liveComposeBasePipeline = new RenderPipeline(
+        this.renderer,
+        this.buildStorageBaseOutputNode(liveCompose.outputTexture),
+      );
+      this.liveComposeBasePipeline.outputColorTransform = false;
+      this.liveComposePostPipeline = new RenderPipeline(
+        this.renderer,
+        this.buildStoragePostOutputNode(liveCompose.outputTexture),
+      );
+      this.liveComposePostPipeline.outputColorTransform = false;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.liveComposeInitFailure = reason;
+      console.warn('WebGPU live compose diagnostic initialization failed', error);
+      liveCompose.dispose();
+      this.liveCompose = null;
+      this.liveComposeBasePipeline?.dispose();
+      this.liveComposeBasePipeline = null;
+      this.liveComposePostPipeline?.dispose();
+      this.liveComposePostPipeline = null;
+    }
+  }
+
   private async initialize(): Promise<void> {
     try {
       if (shouldSimulateInitFailure()) {
@@ -351,6 +519,22 @@ export class WebGpuRenderBackend implements RendererBackend {
       if (this.actualBackend === 'webgpu' && hasLifecycleDevice(backend.device)) {
         this.deviceLifecycle.trackDevice(backend.device);
       }
+      if (this.actualBackend === 'webgpu' && this.flags.compose) {
+        await this.ensureLiveComposeDiagnostic();
+      }
+      if (this.actualBackend === 'webgpu' && !this.flags.compose && shouldValidateComposeBridge()) {
+        this.composeBridge = new WebGpuComposeBridge(this.renderer);
+        const composeStatus = await this.composeBridge.initialize();
+        if (composeStatus.bridge !== 'validated') {
+          console.warn('WebGPU compose runtime bridge validation failed', composeStatus.reason);
+        }
+        if (composeStatus.bridge === 'validated' && shouldValidateComposeRawWgsl()) {
+          const rawWgslStatus = await this.composeBridge.validateRawWgslWrite();
+          if (rawWgslStatus.status !== 'validated') {
+            console.warn('WebGPU compose raw WGSL runtime write validation failed', rawWgslStatus.reason);
+          }
+        }
+      }
       this.initState = 'active';
       this.initReason =
         this.actualBackend === 'webgpu' ? 'webgpu-presentation-active' : 'webgpu-renderer-webgl2-fallback';
@@ -365,32 +549,87 @@ export class WebGpuRenderBackend implements RendererBackend {
   syncSettings(settings: RenderSettings): void {
     this.requestedBackend = settings.backend;
     this.flags = featureFlags(settings);
+    if (this.flags.compose && this.initState === 'active' && this.actualBackend === 'webgpu') {
+      void this.ensureLiveComposeDiagnostic();
+    }
   }
 
   markTextureDirty(): void {
     this.texture.needsUpdate = true;
+    this.liveComposeFrame = false;
   }
 
   get gpuComposeAvailable(): boolean {
-    return false;
+    return (
+      this.flags.compose &&
+      this.initState === 'active' &&
+      this.actualBackend === 'webgpu' &&
+      this.deviceLifecycle.status().state !== 'lost' &&
+      this.liveCompose?.available === true &&
+      this.liveComposeBasePipeline !== null &&
+      this.liveComposePostPipeline !== null
+    );
   }
 
   beginGpuCompose(
-    _ctx: Ctx,
-    _light: LightField,
-    _layers: ParallaxLayers,
-    _lenses: readonly CompositorLens[],
-    _lightRebuilt: boolean,
+    ctx: Ctx,
+    light: LightField,
+    layers: ParallaxLayers,
+    lenses: readonly CompositorLens[],
+    lightRebuilt: boolean,
   ): OverlaySurface {
-    throw new Error('WebGPU terrain compose is Phase 4; Phase 3 uses CPU compose');
+    if (!this.flags.compose) {
+      throw new Error('WebGPU live compose diagnostic is disabled');
+    }
+    if (!this.liveCompose?.available) {
+      throw new Error('WebGPU live compose diagnostic is not initialized');
+    }
+    this.liveComposeFrame = true;
+    return this.liveCompose.beginFrame(ctx, light, layers, lenses, lightRebuilt);
   }
 
   commitGpuCompose(): void {
-    throw new Error('WebGPU terrain compose is Phase 4; Phase 3 uses CPU compose');
+    if (!this.liveCompose?.available) {
+      throw new Error('WebGPU live compose diagnostic is not initialized');
+    }
+    this.liveCompose.commit();
+    this.liveComposeFrame = true;
   }
 
   get domElement(): HTMLCanvasElement {
     return this.canvas;
+  }
+
+  private composeStatus(lifecycle: ReturnType<WebGpuDeviceLifecycle['status']>) {
+    if (lifecycle.state === 'lost') {
+      return {
+        productionAvailable: false,
+        bridge: 'unsupported' as const,
+        reason: 'webgpu-compose-runtime-bridge-invalidated-by-device-loss',
+        outputStorage: null,
+        rawWgslWrite: {
+          status: 'failed' as const,
+          reason: 'webgpu-compose-raw-wgsl-write-invalidated-by-device-loss',
+          maxDelta: null,
+          mismatchPct: null,
+          exactPct: null,
+          meanDelta: null,
+          gpuSubmitReadbackWallMs: null,
+        },
+      };
+    }
+    if (this.liveCompose) return this.liveCompose.getStatus();
+    if (this.liveComposeInitPromise) {
+      return liveComposeRuntimeStatus('initializing', 'webgpu-live-compose-runtime-initializing');
+    }
+    if (this.liveComposeInitFailure) {
+      return liveComposeRuntimeStatus('failed', this.liveComposeInitFailure);
+    }
+    return this.composeBridge?.getStatus() ?? webGpuComposeUnrequestedStatus(
+      this.actualBackend === 'webgpu'
+        ? 'webgpu-compose-runtime-bridge-not-requested'
+        : 'webgpu-compose-runtime-bridge-requires-actual-webgpu-backend',
+    );
   }
 
   getBackendStatus(): RenderBackendStatus {
@@ -422,6 +661,7 @@ export class WebGpuRenderBackend implements RendererBackend {
         lostCount: lifecycle.lostCount,
         lastLossReason: lifecycle.lastLossReason,
         lastLossMessage: lifecycle.lastLossMessage,
+        compose: this.composeStatus(lifecycle),
       },
       webgl: {
         available: webglFallback,
@@ -469,13 +709,26 @@ export class WebGpuRenderBackend implements RendererBackend {
       (1 + 4 / VIEW_H) * ctx.camera.zoom,
     );
 
-    if (post.enabled) this.postPipeline.render();
+    const liveComposePipeline =
+      this.liveComposeFrame && this.liveComposeBasePipeline !== null && this.liveComposePostPipeline !== null;
+    if (liveComposePipeline) {
+      if (post.enabled) this.liveComposePostPipeline!.render();
+      else this.liveComposeBasePipeline!.render();
+    } else if (post.enabled) this.postPipeline.render();
     else this.basePipeline.render();
   }
 
   dispose(): void {
     this.basePipeline.dispose();
     this.postPipeline.dispose();
+    this.composeBridge?.dispose();
+    this.composeBridge = null;
+    this.liveComposeBasePipeline?.dispose();
+    this.liveComposeBasePipeline = null;
+    this.liveComposePostPipeline?.dispose();
+    this.liveComposePostPipeline = null;
+    this.liveCompose?.dispose();
+    this.liveCompose = null;
     this.texture.dispose();
     this.renderer.dispose();
     this.canvas.remove();

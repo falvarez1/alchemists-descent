@@ -1,3 +1,4 @@
+import { escapeHtml as esc, escapeAttr as escAttr } from '@/ui/editor/Fields';
 import { renderAssetPreviewMarkup } from '@/builder/assets/AssetPreview';
 import type {
   AssetKind,
@@ -7,6 +8,7 @@ import type {
   AssetSortMode,
 } from '@/builder/assets/AssetTypes';
 import type { AssetDatabaseStats } from '@/builder/assets/AssetDatabase';
+import { plural } from '@/core/strings';
 import { builderPanelHeader } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 
@@ -224,7 +226,7 @@ function renderAssetCard(record: AssetRecord, selectedId: string | null, selecte
     ${renderAssetPreviewMarkup(record)}
     <div class="ba-card-body">
       <div class="ba-name">${esc(record.name)}</div>
-      <div class="ba-meta">${esc(record.kind)} - ${esc(record.origin)} - ${record.usages.length} use(s)</div>
+      <div class="ba-meta">${esc(record.kind)} - ${esc(record.origin)} - ${plural(record.usages.length, 'use')}</div>
       <div class="ba-tags">${record.tags.slice(0, 4).map((tag) => `<span>${esc(tag)}</span>`).join('')}</div>
     </div>
   </div>`;
@@ -348,9 +350,9 @@ function compactAssetMeta(record: AssetRecord): string {
       anchors?: unknown[];
     };
     if (typeof prefab.w === 'number' && typeof prefab.h === 'number') parts.push(`${prefab.w}x${prefab.h}`);
-    if (Array.isArray(prefab.objects) && prefab.objects.length > 0) parts.push(`${prefab.objects.length} obj`);
-    if (Array.isArray(prefab.lights) && prefab.lights.length > 0) parts.push(`${prefab.lights.length} light`);
-    if (Array.isArray(prefab.anchors) && prefab.anchors.length > 0) parts.push(`${prefab.anchors.length} anchor`);
+    if (Array.isArray(prefab.objects) && prefab.objects.length > 0) parts.push(plural(prefab.objects.length, 'object'));
+    if (Array.isArray(prefab.lights) && prefab.lights.length > 0) parts.push(plural(prefab.lights.length, 'light'));
+    if (Array.isArray(prefab.anchors) && prefab.anchors.length > 0) parts.push(plural(prefab.anchors.length, 'anchor'));
   } else if (record.kind === 'sprite' && record.payload && typeof record.payload === 'object') {
     const sprite = record.payload as { w?: unknown; h?: unknown; frames?: unknown[] };
     if (typeof sprite.w === 'number' && typeof sprite.h === 'number' && Array.isArray(sprite.frames)) {
@@ -360,7 +362,7 @@ function compactAssetMeta(record: AssetRecord): string {
     parts.push(record.folder);
   }
   if (record.tags.length > 0) parts.push(record.tags.slice(0, 3).map((tag) => `#${tag}`).join(' '));
-  if (record.usages.length > 0) parts.push(`${record.usages.length} use(s)`);
+  if (record.usages.length > 0) parts.push(plural(record.usages.length, 'use'));
   if (record.validation.state !== 'valid') parts.push(record.validation.state);
   return parts.join(' - ');
 }
@@ -373,10 +375,3 @@ function originLabelFor(origin: AssetOrigin): string {
   return ORIGIN_FILTERS.find((item) => item.id === origin)?.label ?? origin;
 }
 
-function esc(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function escAttr(value: string): string {
-  return esc(value);
-}

@@ -15,6 +15,7 @@ export class WasmBackend implements VirtualWorldBackend {
     kind: 'wasm',
     label: 'Wasm Kernels',
     available: typeof WebAssembly !== 'undefined',
+    implemented: false,
     authoritativeCells: true,
     details: { threaded: typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated },
   };

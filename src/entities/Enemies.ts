@@ -162,6 +162,27 @@ export class Enemies implements EnemyControlApi {
     );
   }
 
+  /** Stamp a small puddle of real liquid gore into the empty cells around a
+   *  death so a wet pool exists immediately; the airborne spray then feeds it,
+   *  it flows downhill, stains what it touches, and eventually dries (liquids.ts).
+   *  Grid-explained gore: it IS Cell.Blood, nothing painted on top. */
+  private seedGorePool(x: number, y: number, r: number): void {
+    const w = this.ctx.world;
+    const cx = Math.floor(x);
+    const cy = Math.floor(y);
+    for (let dy = -1; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r) continue;
+        if (Math.random() < 0.45) continue;
+        const xx = cx + dx;
+        const yy = cy + dy;
+        if (!w.inBounds(xx, yy)) continue;
+        const i = w.idx(xx, yy);
+        if (w.types[i] === Cell.Empty) w.replaceCellAt(i, Cell.Blood, bloodColor());
+      }
+    }
+  }
+
   damage(e: Enemy, amount: number, kx: number, ky: number): void {
     const ctx = this.ctx;
     // WATER IS THE LEVIATHAN'S ARMOR: while the body is actually in water
@@ -268,6 +289,7 @@ export class Enemies implements EnemyControlApi {
         grav: -0.01,
       });
       splatterStain(ctx.world, e.x, e.y - 5, 12);
+      this.seedGorePool(e.x, e.y - 2, 8);
       this.dropBounty(e, def);
       const runtime = ctx.levels.current;
       if (runtime && ctx.state.mode === 'play') {
@@ -341,6 +363,8 @@ export class Enemies implements EnemyControlApi {
       }
       // gore decal painted straight onto the nearby cave walls
       splatterStain(ctx.world, e.x, e.y - 5, e.kind === 'golem' ? 14 : e.kind === 'bat' ? 5 : 10);
+      // ...and a real wet pool at the feet that the spray keeps feeding
+      this.seedGorePool(e.x, e.y - 2, e.kind === 'golem' ? 5 : e.kind === 'bat' ? 1 : 3);
     }
     this.dropBounty(e, def);
     this.maybeDropPotion(e);

@@ -28,9 +28,9 @@ export function tabStripHtml(tabs: readonly TabDef[], activeId: string | null, o
   const cls = ['editor-tabs', options.extraClass].filter(Boolean).join(' ');
   return (
     `<div class="${cls}">` +
-    `<button type="button" class="editor-tabs-arrow editor-tabs-arrow-left" tabindex="-1" aria-hidden="true" data-tabs-scroll="-1">‹</button>` +
+    `<button type="button" class="editor-tabs-arrow editor-tabs-arrow-left" aria-label="Scroll tabs left" data-tabs-scroll="-1">‹</button>` +
     `<div class="editor-tabs-list" role="tablist"${options.ariaLabel ? ` aria-label="${escapeAttr(options.ariaLabel)}"` : ''}>${list}</div>` +
-    `<button type="button" class="editor-tabs-arrow editor-tabs-arrow-right" tabindex="-1" aria-hidden="true" data-tabs-scroll="1">›</button>` +
+    `<button type="button" class="editor-tabs-arrow editor-tabs-arrow-right" aria-label="Scroll tabs right" data-tabs-scroll="1">›</button>` +
     `</div>`
   );
 }

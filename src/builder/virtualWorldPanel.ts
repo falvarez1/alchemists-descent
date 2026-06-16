@@ -398,7 +398,11 @@ export class VirtualWorldPanel {
         </select></label>
         <label class="vw-field vw-seed"><span>seed</span><input id="vw-seed" type="number" min="0" max="4294967295" step="1"><button id="vw-reroll" type="button">ROLL</button></label>
         <label class="vw-field"><span>backend</span><select id="vw-backend">
-          ${this.backendInfos.map((info) => `<option value="${info.kind}"${info.kind !== 'ts-worker' ? ' disabled' : ''}>${info.label}${info.available ? '' : ' unavailable'}${info.authoritativeCells ? '' : ' preview'}</option>`).join('')}
+          ${this.backendInfos.map((info) => {
+            const disabled = !info.implemented || !info.available;
+            const hint = !info.implemented ? ' — planned' : !info.available ? ' — unavailable' : info.authoritativeCells ? '' : ' — preview';
+            return `<option value="${info.kind}"${disabled ? ' disabled' : ''}>${info.label}${hint}</option>`;
+          }).join('')}
         </select></label>
       `)}
       ${this.sectionHtml('controls.preview', 'Preview', `
@@ -576,7 +580,8 @@ export class VirtualWorldPanel {
     });
     this.must<HTMLSelectElement>('#vw-backend').addEventListener('change', (event) => {
       this.selectedBackend = (event.currentTarget as HTMLSelectElement).value;
-      if (this.selectedBackend !== 'ts-worker') this.statusText = 'Only TypeScript Worker is implemented for authoritative chunks';
+      const info = this.selectedBackendInfo();
+      if (!info.implemented) this.statusText = `${info.label} is planned; only the TypeScript Worker produces authoritative chunks`;
       this.renderControls();
     });
     this.must<HTMLSelectElement>('#vw-radius').addEventListener('change', (event) => {
@@ -758,10 +763,15 @@ export class VirtualWorldPanel {
     return biomeIdFromIndex(def.map.cells[0] ?? 0);
   }
 
+  private selectedBackendInfo(): BackendInfo {
+    return this.backendInfos.find((info) => info.kind === this.selectedBackend) ?? this.backend.info;
+  }
+
   private async generateWindow(): Promise<void> {
-    if (this.selectedBackend !== 'ts-worker') {
+    const selectedInfo = this.selectedBackendInfo();
+    if (!selectedInfo.implemented) {
       this.status = 'error';
-      this.statusText = 'Selected backend is not implemented yet';
+      this.statusText = `${selectedInfo.label} is planned and not implemented yet`;
       this.renderControls();
       return;
     }

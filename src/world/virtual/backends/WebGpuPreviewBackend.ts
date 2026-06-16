@@ -18,6 +18,7 @@ export class WebGpuPreviewBackend implements VirtualWorldBackend {
       kind: 'webgpu-preview',
       label: 'WebGPU Preview',
       available: typeof navigator !== 'undefined' && 'gpu' in navigator,
+      implemented: false,
       authoritativeCells: false,
       details: {},
     };

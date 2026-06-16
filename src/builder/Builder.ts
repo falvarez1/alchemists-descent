@@ -3,7 +3,7 @@ import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { BIOMES as BIOME_DEFS } from '@/config/biomes';
 import { GEN, defaultSkeletonSpec } from '@/config/gen';
 import type { SkeletonSpec } from '@/config/gen';
-import { createDefaultPostFxSettings, createDefaultWandLightSettings, PLAYER_TUNING_DEFAULTS } from '@/config/params';
+import { createDefaultPostFxSettings, createDefaultWandLightSettings, GLOBAL_PARAM_DEFAULTS, MATERIAL_PARAM_DEFAULTS, PLAYER_TUNING_DEFAULTS } from '@/config/params';
 import { LEVELS, vaultHostId } from '@/config/worldgraph';
 import { randomSeed } from '@/core/rng';
 import {
@@ -27,6 +27,7 @@ import type {
   EditorObject,
   EditorObjectKind,
 } from '@/builder/document';
+import { generatedSceneCaptureDocument } from '@/builder/generatedSceneCapture';
 import {
   addLightCmd,
   addLinkCmd,
@@ -49,6 +50,8 @@ import {
 } from '@/builder/commands';
 import type { CellPatch, Command } from '@/builder/commands';
 import { rleEncode } from '@/core/rle';
+import { formatStep, plural } from '@/core/strings';
+import { kindLabel } from '@/builder/kindLabel';
 import { drawLine, spawnCircle } from '@/sim/brush';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { blocksEntity, Cell } from '@/sim/CellType';
@@ -259,6 +262,8 @@ const RUNTIME_OVERLAY_REFRESH_FRAMES = 4;
 const BOTTOM_PANE_ORDER = ['bottom-left', 'bottom-main', 'bottom-right'] as const;
 const BOTTOM_SIDE_PANE_MIN = 220;
 const BOTTOM_SIDE_PANE_MAX = 420;
+/** Shipped dock sizes (match DEFAULT_BUILDER_LAYOUT) — used by double-click reset. */
+const DEFAULT_DOCK_SIZE: Record<'left' | 'right' | 'bottom', number> = { left: 214, right: 252, bottom: 420 };
 const BIOME_IDS = Object.keys(BIOME_DEFS) as BiomeId[];
 const WORLDGEN_LIGHT_PREFIX = 'worldgen-light-';
 const SCENE_LIGHT_PREFIX = 'scene-light-';
@@ -375,12 +380,12 @@ const PLACE_MECH: Array<{ kind: EditorObjectKind; label: string; glyph: string }
   { kind: 'buoy', label: 'Buoy', glyph: '~' },
   { kind: 'chargeLatch', label: 'Latch', glyph: 'Z' },
   { kind: 'runeGlyph', label: 'Rune', glyph: 'R' },
-  { kind: 'runeDoor', label: 'RuneDoor', glyph: 'G' },
+  { kind: 'runeDoor', label: 'Rune Door', glyph: 'G' },
   // machine primitives (docs/MACHINE-PRIMITIVES-AND-STRUCTURES-PLAN.md)
   { kind: 'valve', label: 'Valve', glyph: 'V' },
   { kind: 'plug', label: 'Plug', glyph: '%' },
   { kind: 'sensor', label: 'Sensor', glyph: '?' },
-  { kind: 'counterweight', label: 'Cweight', glyph: 'C' },
+  { kind: 'counterweight', label: 'Counterweight', glyph: 'C' },
   { kind: 'relay', label: 'Relay', glyph: '&' },
 ];
 
@@ -685,41 +690,8 @@ const TOOL_INFO: Partial<Record<string, { name: string; desc: string }>> = {
   link: { name: 'Link (K)', desc: 'Click a trigger (or rune glyph), then its target — door, valve, or relay (relays can also detonate plugs). Several triggers on ONE target = AND gate.' },
 };
 
-const GENERATED_SCENE_OBJECT_KINDS: ReadonlySet<EditorObjectKind> = new Set([
-  'enemy',
-  'pickup',
-  'exitPortal',
-  'waystone',
-  'exitWell',
-  'cauldron',
-  'door',
-  'plate',
-  'lever',
-  'brazier',
-  'scale',
-  'buoy',
-  'chargeLatch',
-  'runeGlyph',
-  'runeDoor',
-  'bossMarker',
-  'terrainStamp',
-  'vegetationStamp',
-  'hazardEmitter',
-  'decor',
-  'valve',
-  'plug',
-  'sensor',
-  'counterweight',
-  'relay',
-]);
-
-const GENERATED_SCENE_LINK_KINDS: ReadonlySet<EditorLink['kind']> = new Set([
-  'triggerDoor',
-  'runeDoor',
-  'keyPortal',
-  'bossGate',
-  'logic',
-]);
+// Generated-scene capture allow-lists and the read-only -> editable conversion live in
+// ./generatedSceneCapture.ts (extracted for direct unit testing).
 
 interface PendingPassPreview {
   kind: 'pass';
@@ -868,6 +840,7 @@ export class Builder {
   private projectAssetEntries: ProjectAssetEntry[] = [];
   private projectImportReports: AssetImportReport[] = [];
   private assetQuery = '';
+  private assetSearchDebounce = 0;
   private assetView: AssetBrowserView = 'grid';
   private assetSort: AssetSortMode = 'name';
   private assetCollection: AssetSmartCollection = 'all';
@@ -975,6 +948,7 @@ export class Builder {
   private codeBusy = false;
   private builderHelpOpen = false;
   private builderHelpReturnFocus: HTMLElement | null = null;
+  private cmdkReturnFocus: HTMLElement | null = null;
   private workspaceLayout: WorkspaceLayout = loadWorkspaceLayout();
   private dockHost!: DockHost;
   private draggingPanelId: string | null = null;
@@ -2182,21 +2156,38 @@ export class Builder {
       if (!el) {
         el = document.createElement('div');
         el.className = `builder-splitter builder-splitter-${dock}`;
-        el.setAttribute('aria-hidden', 'true');
-        el.style.cssText = `position:absolute; z-index:6; background:transparent; transition:background 0.12s ease; cursor:${
+        // Keyboard-operable separator, matching the bottom-pane splitters (so the
+        // main docks are resizable without a mouse — WCAG, and parity).
+        el.setAttribute('role', 'separator');
+        el.tabIndex = 0;
+        el.setAttribute('aria-orientation', dock === 'bottom' ? 'horizontal' : 'vertical');
+        el.setAttribute('aria-label', `Resize ${dock} dock (arrows; double-click to reset)`);
+        el.style.cssText = `position:absolute; z-index:var(--z-float); background:transparent; transition:background 0.12s ease; cursor:${
           dock === 'bottom' ? 'row-resize' : 'col-resize'
         };`;
-        el.addEventListener('pointerenter', () => {
-          if (this.splitterDragging === null) el!.style.background = 'rgba(56,189,248,0.5)';
-        });
-        el.addEventListener('pointerleave', () => {
-          if (this.splitterDragging !== dock) el!.style.background = 'transparent';
-        });
+        const lit = (on: boolean): void => {
+          if (el && (on || this.splitterDragging !== dock)) el.style.background = on ? 'rgba(56,189,248,0.5)' : 'transparent';
+        };
+        el.addEventListener('pointerenter', () => { if (this.splitterDragging === null) lit(true); });
+        el.addEventListener('pointerleave', () => lit(false));
+        el.addEventListener('focus', () => lit(true));
+        el.addEventListener('blur', () => lit(false));
         el.addEventListener('pointerdown', (event) => this.startDockSplitterDrag(event, dock));
+        el.addEventListener('keydown', (event) => this.onDockSplitterKeyDown(event, dock));
+        el.addEventListener('dblclick', () => {
+          this.resizeDock(dock, DEFAULT_DOCK_SIZE[dock]);
+          this.saveWorkspacePrefs();
+          this.status(`${dock.toUpperCase()} DOCK RESET`);
+        });
         body.appendChild(el);
         this.dockSplitters[dock] = el;
       }
       return el;
+    };
+    const ariaVals = (el: HTMLElement, min: number, max: number, now: number): void => {
+      el.setAttribute('aria-valuemin', String(min));
+      el.setAttribute('aria-valuemax', String(max));
+      el.setAttribute('aria-valuenow', String(Math.round(now)));
     };
     const l = splitter('left');
     if (leftSize > 0) {
@@ -2205,6 +2196,7 @@ export class Builder {
       l.style.top = '0px';
       l.style.bottom = '0px';
       l.style.width = '5px';
+      ariaVals(l, 160, 560, leftSize);
     } else l.style.display = 'none';
     const r = splitter('right');
     if (rightSize > 0) {
@@ -2213,6 +2205,7 @@ export class Builder {
       r.style.top = '0px';
       r.style.bottom = '0px';
       r.style.width = '5px';
+      ariaVals(r, 160, 560, rightSize);
     } else r.style.display = 'none';
     const b = splitter('bottom');
     if (bottomSize > 0) {
@@ -2221,7 +2214,25 @@ export class Builder {
       b.style.right = `${rightSize}px`;
       b.style.bottom = `${bottomSize - 2}px`;
       b.style.height = '5px';
+      ariaVals(b, 140, 620, bottomSize);
     } else b.style.display = 'none';
+  }
+
+  /** Keyboard resize for a main dock sash — mirrors the bottom-pane splitter. */
+  private onDockSplitterKeyDown(event: KeyboardEvent, dock: 'left' | 'right' | 'bottom'): void {
+    const step = event.shiftKey ? 48 : 16;
+    const cur = this.openDockSize(dock);
+    const grow = dock === 'left' ? 'ArrowRight' : dock === 'right' ? 'ArrowLeft' : 'ArrowUp';
+    const shrink = dock === 'left' ? 'ArrowLeft' : dock === 'right' ? 'ArrowRight' : 'ArrowDown';
+    let next: number | null = null;
+    if (event.code === grow) next = cur + step;
+    else if (event.code === shrink) next = cur - step;
+    else if (event.code === 'Home') next = dock === 'bottom' ? 140 : 160;
+    else if (event.code === 'End') next = dock === 'bottom' ? 620 : 560;
+    if (next === null) return;
+    event.preventDefault();
+    this.resizeDock(dock, Math.round(next));
+    this.saveWorkspacePrefs();
   }
 
   private startDockSplitterDrag(event: PointerEvent, dock: 'left' | 'right' | 'bottom'): void {
@@ -2291,6 +2302,7 @@ export class Builder {
       } else {
         el.style.removeProperty('--builder-floating-left');
         el.style.removeProperty('--builder-floating-top');
+        el.style.removeProperty('--builder-floating-width');
         el.style.removeProperty('z-index');
       }
     }
@@ -2334,6 +2346,9 @@ export class Builder {
       const pos = canClampFloating ? this.clampedFloatingPosition(rawPos, el) : rawPos;
       el.style.setProperty('--builder-floating-left', `${pos.x}px`);
       el.style.setProperty('--builder-floating-top', `${pos.y}px`);
+      // Float width follows the panel's registered/last dock size (clamped) so a
+      // torn-off panel isn't crammed into a one-size 240px (tab strips fit, etc.).
+      el.style.setProperty('--builder-floating-width', `${Math.round(Math.max(200, Math.min(560, panel.size || 240)))}px`);
       floatingIndex += 1;
     }
     this.syncViewportFrame();
@@ -2521,7 +2536,7 @@ export class Builder {
     }
   }
 
-  private openDockSize(dock: 'left' | 'right'): number {
+  private openDockSize(dock: 'left' | 'right' | 'bottom'): number {
     const sizes = this.workspaceLayout.panels
       .filter((panel) => panel.dock === dock && panel.open)
       .map((panel) => panel.size);
@@ -2942,7 +2957,7 @@ export class Builder {
     const layerRows = LAYER_FAMILIES
       .map(
         (f) =>
-          `<div class="bp-layer" data-layer="${f}"><span>${layerLabel(f)}</span><button data-vis title="Show/hide in the editor (still compiles)">&#128065;</button><button data-lock title="Lock against selection">&#128275;</button></div>`,
+          `<div class="bp-layer" data-layer="${f}"><span>${layerLabel(f)}</span><button data-vis type="button" aria-pressed="false" aria-label="Hide ${layerLabel(f)} layer" title="Show/hide in the editor (still compiles)">&#128065;</button><button data-lock type="button" aria-pressed="false" aria-label="Lock ${layerLabel(f)} layer" title="Lock against selection">&#128275;</button></div>`,
       )
       .join('');
     this.root.innerHTML = `
@@ -3112,7 +3127,8 @@ export class Builder {
         <div id="bp-cmdk-list" role="listbox"></div>
       </div>
       <div id="builder-import-host" style="display:none"></div>
-      <div id="builder-status"></div>
+      <div id="builder-status" role="status" aria-live="polite"></div>
+      <div id="builder-status-alert" class="sr-only" role="alert" aria-live="assertive"></div>
       <div id="builder-help" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="builder-help-title" style="display:none">
         <div class="builder-help-card">
           <div class="builder-help-titlebar">
@@ -3398,7 +3414,12 @@ export class Builder {
   }
 
   private el<T extends HTMLElement>(id: string): T {
-    return this.root.querySelector(`[id="${cssString(id)}"]`) as T;
+    const found = this.root.querySelector(`[id="${cssString(id)}"]`);
+    // Fail loudly with the id instead of returning a null cast to T — a renamed
+    // or not-yet-built element then throws an actionable error, not a downstream
+    // "Cannot read properties of null" several calls away.
+    if (found === null) throw new Error(`Builder element #${id} not found`);
+    return found as T;
   }
 
   private setTool(t: BuilderTool): void {
@@ -3450,7 +3471,7 @@ export class Builder {
     add({ id: 'builder.view.zoomIn', label: 'Zoom In', category: 'View', run: () => this.setBuilderZoom(this.zoomTarget * 1.2) }, INSPECT_SCOPES);
     add({ id: 'builder.view.zoomOut', label: 'Zoom Out', category: 'View', run: () => this.setBuilderZoom(this.zoomTarget / 1.2) }, INSPECT_SCOPES);
     add({ id: 'builder.view.zoomReset', label: 'Reset Zoom', category: 'View', run: () => this.setBuilderZoom(1) }, INSPECT_SCOPES);
-    add({ id: 'builder.help', label: 'Builder Help', category: 'Help', shortcut: 'H', run: () => this.setBuilderHelp(true) }, INSPECT_SCOPES);
+    add({ id: 'builder.help', label: 'Builder Help', category: 'Help', shortcut: 'H', run: () => this.setBuilderHelp(!this.builderHelpOpen) }, INSPECT_SCOPES);
     add({
       id: 'builder.validate',
       label: 'Validate Document',
@@ -3871,7 +3892,7 @@ export class Builder {
       warnings: issues.filter((i) => i.severity === 'warning').length,
     };
     this.renderIssues(issues);
-    this.status(issues.length === 0 ? 'VALID — NO ISSUES' : `${issues.length} ISSUE(S)`);
+    this.status(issues.length === 0 ? 'VALID — NO ISSUES' : plural(issues.length, 'ISSUE', 'ISSUES'));
   }
 
   private markDocumentChanged(cmd?: Command): void {
@@ -4115,7 +4136,17 @@ export class Builder {
       panel.hidden = false;
       panel.style.left = `${Math.round(btn.offsetLeft)}px`;
       bar.classList.add('b-menu-open');
+      // Valid `role="menu"` children + roving focus: every item is a menuitem
+      // (the View toggles are tagged menuitemcheckbox by refreshViewMenuChecks).
+      for (const item of panel.querySelectorAll<HTMLElement>('button, label[for]')) {
+        if (!item.hasAttribute('role')) item.setAttribute('role', 'menuitem');
+        item.tabIndex = -1;
+      }
     };
+    const menuItems = (panel: HTMLElement): HTMLElement[] =>
+      [...panel.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemcheckbox"]')].filter(
+        (i) => i.offsetParent !== null,
+      );
     for (const btn of buttons) {
       btn.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -4126,6 +4157,28 @@ export class Builder {
       btn.addEventListener('pointerenter', () => {
         if (openMenu !== null && openMenu !== btn.dataset.menu) open(btn.dataset.menu ?? '');
       });
+      // ArrowDown on an open trigger steps into the menu (keyboard entry point).
+      btn.addEventListener('keydown', (event) => {
+        if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && openMenu === null) {
+          event.preventDefault();
+          open(btn.dataset.menu ?? '');
+        }
+        if (event.key === 'ArrowDown' && openMenu === btn.dataset.menu) {
+          const panel = panels.get(openMenu);
+          if (panel) { event.preventDefault(); menuItems(panel)[0]?.focus(); }
+        }
+      });
+    }
+    for (const panel of panels.values()) {
+      panel.addEventListener('keydown', (event) => {
+        const items = menuItems(panel);
+        if (items.length === 0) return;
+        const idx = items.indexOf(document.activeElement as HTMLElement);
+        if (event.key === 'ArrowDown') { event.preventDefault(); items[idx < 0 ? 0 : (idx + 1) % items.length].focus(); }
+        else if (event.key === 'ArrowUp') { event.preventDefault(); items[idx < 0 ? items.length - 1 : (idx - 1 + items.length) % items.length].focus(); }
+        else if (event.key === 'Home') { event.preventDefault(); items[0].focus(); }
+        else if (event.key === 'End') { event.preventDefault(); items[items.length - 1].focus(); }
+      });
     }
     for (const panel of panels.values()) {
       // Run the item's own handler, then dismiss — except the file-input label
@@ -4134,7 +4187,11 @@ export class Builder {
       panel.addEventListener('click', (event) => {
         const target = event.target as HTMLElement | null;
         if (target?.closest('label[for="b-import"], input[type="file"]')) return;
-        if (target?.closest('button[role="menuitemcheckbox"]')) {
+        // Gallery/Backdrop open a full-screen overlay that takes over the screen —
+        // always dismiss the menu so it isn't left floating behind the overlay
+        // (and so the overlay's own Esc-to-close isn't swallowed by the menu).
+        const overlayItem = target?.closest('#b-gallery, #b-backdrop');
+        if (!overlayItem && target?.closest('button[role="menuitemcheckbox"]')) {
           window.setTimeout(() => this.refreshViewMenuChecks(), 0);
           return;
         }
@@ -4197,6 +4254,13 @@ export class Builder {
       sprites: () => this.sprites,
       docSprites: () => this.doc.assets?.sprites,
     });
+    // The View-menu item is a checkbox toggle: re-selecting it closes the gallery
+    // instead of re-running open() (which would reset its catalog and search).
+    if (this.gallery.isOpen) {
+      this.gallery.close();
+      this.refreshViewMenuChecks();
+      return;
+    }
     this.gallery.open();
     this.status('GALLERY — ↑↓ BROWSE · ←→ STATES · ESC CLOSES');
   }
@@ -4265,7 +4329,7 @@ export class Builder {
     this.renderIssues(issues, { playtestBlockers: blockers });
     if (blockers.length > 0) {
       this.selectIssueTarget(blockers[0]);
-      this.status(`PLAYTEST BLOCKED: ${blockers.length} COMPILE BLOCKER(S)`, true);
+      this.status(`PLAYTEST BLOCKED: ${plural(blockers.length, 'COMPILE BLOCKER', 'COMPILE BLOCKERS')}`, true);
       return;
     }
     this.startBuilderPlaytest(null);
@@ -4498,7 +4562,7 @@ export class Builder {
         this.cmds.run(cmd);
         this.renderInspector();
         this.syncMarkers();
-        this.status(`ROTATED ${obj.kind.toUpperCase()} 90 DEGREES`);
+        this.status(`ROTATED ${kindLabel(obj.kind).toUpperCase()} 90 DEGREES`);
         return true;
       }
       if (handle.kind === 'resize-e' || handle.kind === 'resize-se') {
@@ -5524,7 +5588,7 @@ export class Builder {
     }
     if (obj.id === from.id || !targetOk(from, obj)) {
       this.status(
-        `${from.kind.toUpperCase()} LINKS TO A ${from.kind === 'runeGlyph' ? 'RUNE DOOR' : 'DOOR/VALVE/RELAY'}`,
+        `${kindLabel(from.kind).toUpperCase()} LINKS TO A ${from.kind === 'runeGlyph' ? 'RUNE DOOR' : 'DOOR/VALVE/RELAY'}`,
         true,
       );
       return;
@@ -5544,7 +5608,7 @@ export class Builder {
     this.cmds.run(addLinkCmd(link));
     this.linkFrom = null;
     this.select(obj.id);
-    this.status('LINKED ' + from.kind.toUpperCase() + ' → ' + obj.kind.toUpperCase());
+    this.status('LINKED ' + kindLabel(from.kind).toUpperCase() + ' → ' + kindLabel(obj.kind).toUpperCase());
   }
 
   private hitTest(
@@ -5805,7 +5869,7 @@ export class Builder {
       kind: obj.kind,
       params: JSON.parse(JSON.stringify(obj.params)) as Record<string, unknown>,
     };
-    this.status('COPIED ' + obj.kind.toUpperCase() + ' PARAMS — CTRL+V ON SAME-KIND OBJECTS');
+    this.status('COPIED ' + kindLabel(obj.kind).toUpperCase() + ' PARAMS — CTRL+V ON SAME-KIND OBJECTS');
   }
 
   private pasteParams(): void {
@@ -5827,12 +5891,12 @@ export class Builder {
       count++;
     }
     if (edits.length === 0) {
-      this.status(`NO UNLOCKED ${clip.kind.toUpperCase()} IN THE SELECTION`, true);
+      this.status(`NO UNLOCKED ${kindLabel(clip.kind).toUpperCase()} IN THE SELECTION`, true);
       return;
     }
     this.cmds.run(compositeCmd('paste params ×' + count, edits));
     this.renderInspector();
-    this.status(`PASTED ${clip.kind.toUpperCase()} PARAMS ONTO ${count}`);
+    this.status(`PASTED ${kindLabel(clip.kind).toUpperCase()} PARAMS ONTO ${count}`);
   }
 
   private selected(): EditorObject | null {
@@ -6156,18 +6220,9 @@ export class Builder {
     fmt: (v: number) => string,
     onInput: (v: number) => void,
   ): void {
-    const row = document.createElement('div');
-    row.className = 'bw-row builder-slider-row';
-    row.innerHTML = `<div class="bw-label"><span>${escapeHtml(label)}</span><b>${escapeHtml(fmt(value))}</b></div>
-      <input type="range" min="${min}" max="${max}" step="${step}" value="${value}">`;
-    const input = row.querySelector('input')!;
-    const out = row.querySelector('b')!;
-    input.addEventListener('input', () => {
-      const v = Number(input.value);
-      onInput(v);
-      out.textContent = fmt(v);
-    });
-    host.appendChild(row);
+    // Unified with numberRow so every tuning row is editable and visually
+    // identical — no more read-only "locked" sliders sitting beside typeable ones.
+    this.numberRow(host, label, value, min, max, step, fmt, onInput);
   }
 
   private worldSection(host: HTMLElement, title: string): HTMLElement {
@@ -6265,25 +6320,36 @@ export class Builder {
   ): void {
     const row = document.createElement('div');
     row.className = 'bw-row bw-numrow builder-value-row';
-    const lo = Math.min(min, value);
-    const hi = Math.max(max, value);
-    row.innerHTML = `<div class="bw-label"><span>${escapeHtml(label)}</span><b>${escapeHtml(fmt(value))}</b></div>
-      <div class="bw-numline builder-value-inputs"><input type="range" min="${lo}" max="${hi}" step="${step}" value="${value}">
-      <input type="number" min="${lo}" max="${hi}" step="${step}" value="${value}"></div>`;
+    // Keep the slider's min/max FIXED at the declared design range and clamp the
+    // value into it for display, instead of silently widening the control to fit
+    // an out-of-range value (which made the same dial show different extents).
+    const shown = Math.min(max, Math.max(min, value));
+    // Integral-ness depends on the STEP alone, not the initial value, so display
+    // and stored value can never drift apart on a step>=1 dial.
+    const integral = Number.isInteger(step) && step >= 1;
+    const rangeHint = `${label}: ${fmt(min)} – ${fmt(max)}`;
+    row.title = rangeHint;
+    row.innerHTML = `<div class="bw-label"><span>${escapeHtml(label)}</span><b>${escapeHtml(fmt(shown))}</b></div>
+      <div class="bw-numline builder-value-inputs"><input type="range" min="${min}" max="${max}" step="${step}" value="${shown}" aria-label="${escapeHtml(rangeHint)}">
+      <input type="number" min="${min}" max="${max}" step="${step}" value="${shown}" aria-label="${escapeHtml(rangeHint)}"></div>`;
     const range = row.querySelector<HTMLInputElement>('input[type="range"]')!;
     const number = row.querySelector<HTMLInputElement>('input[type="number"]')!;
     const out = row.querySelector('b')!;
-    const integral = step >= 1 && Number.isInteger(value);
-    const apply = (raw: number, source: HTMLInputElement): void => {
+    const apply = (raw: number): void => {
       if (!Number.isFinite(raw)) return;
-      const next = integral ? Math.round(raw) : raw;
+      const clamped = Math.min(max, Math.max(min, raw));
+      const next = integral ? Math.round(clamped) : clamped;
       onInput(next);
       out.textContent = fmt(next);
-      if (source !== range) range.value = String(next);
-      if (source !== number) number.value = String(next);
+      // Round once and write back to BOTH inputs so the slider, the number box,
+      // and the readout always agree (including the box you just typed into).
+      range.value = String(next);
+      number.value = String(next);
+      range.setAttribute('aria-valuetext', fmt(next));
     };
-    range.addEventListener('input', () => apply(Number(range.value), range));
-    number.addEventListener('change', () => apply(Number(number.value), number));
+    range.setAttribute('aria-valuetext', fmt(shown));
+    range.addEventListener('input', () => apply(Number(range.value)));
+    number.addEventListener('change', () => apply(Number(number.value)));
     host.appendChild(row);
   }
 
@@ -6478,6 +6544,17 @@ export class Builder {
     this.sliderRow(goreSection, 'Glowing Ooze (acid/toxic)', g.goreOoze, 0, 4, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
       g.goreOoze = v;
     });
+    this.worldActionRow(goreSection, [
+      {
+        label: 'RESET SIM + GORE',
+        title: 'Restore simulation, lighting, and gore multipliers to shipped defaults',
+        run: () => {
+          Object.assign(this.ctx.params.global, GLOBAL_PARAM_DEFAULTS);
+          this.buildGlobalPanel();
+          this.status('SIM + GORE RESET');
+        },
+      },
+    ]);
 
     this.buildPlayerPhysicsSections(host);
 
@@ -6865,16 +6942,16 @@ export class Builder {
     let rows = 0;
     for (const key of Object.keys(profile)) {
       if (key === 'name') continue;
-      const spec = paramSliderSpec(key);
+      const spec = paramSliderSpec(key, fields[key]);
       const pct = key === 'bloomWeight';
-      this.sliderRow(
+      this.numberRow(
         host,
-        spec.label.replace(/([A-Z])/g, ' $1'),
+        this.humanizeParamKey(spec.label),
         fields[key],
         spec.min,
         spec.max,
         spec.step,
-        (v) => (pct ? (v * 100).toFixed(0) + '%' : String(v)),
+        (v) => (pct ? (v * 100).toFixed(0) + '%' : formatStep(v, spec.step)),
         (v) => {
           fields[key] = v;
         },
@@ -6886,6 +6963,20 @@ export class Builder {
       hint.className = 'bp-hint';
       hint.innerHTML = 'Nothing tunable on this<br>material — it just is.';
       host.appendChild(hint);
+    } else {
+      const cell = state.currentElement;
+      this.worldActionRow(host, [
+        {
+          label: 'RESET MATERIAL',
+          title: "Restore this material's shipped tuning values",
+          run: () => {
+            const defaults = MATERIAL_PARAM_DEFAULTS[cell];
+            if (defaults) Object.assign(this.ctx.params.materials[cell], defaults);
+            this.buildMatPanel();
+            this.status('MATERIAL RESET');
+          },
+        },
+      ]);
     }
   }
 
@@ -7251,7 +7342,7 @@ export class Builder {
         { id: 'capture', elementId: 'bp-prefab-capture', label: 'Capture', title: 'Save the selected region as a prefab' },
         { id: 'import', elementId: 'bp-prefab-import', label: 'Import', title: 'Import .prefab.json or terrain .png files' },
         { id: 'region-png', elementId: 'bp-prefab-png', label: 'PNG', title: "Export the selected region's cells as a paintable PNG" },
-        { id: 'palette', elementId: 'bp-prefab-gpl', label: '.GPL', title: 'Export the material palette as a .gpl swatch file' },
+        { id: 'palette', elementId: 'bp-prefab-gpl', label: '.gpl', title: 'Export the material palette as a .gpl swatch file' },
       ],
     });
     this.paintAssetPreviews(host, database);
@@ -7597,7 +7688,7 @@ export class Builder {
   private async exportPrefabPng(p: PrefabDef): Promise<void> {
     const blob = await rgbaToPngBlob(cellsToRgba(decodePrefabCells(p), p.w, p.h), p.w, p.h);
     download(blob, `${p.name || 'prefab'}.terrain.png`);
-    this.status('TERRAIN PNG EXPORTED — EACH COLOR IS A MATERIAL (.GPL HAS THE SWATCHES)');
+    this.status('TERRAIN PNG EXPORTED — EACH COLOR IS A MATERIAL (.gpl HAS THE SWATCHES)');
   }
 
   private async exportRegionPng(): Promise<void> {
@@ -8052,8 +8143,22 @@ export class Builder {
   private syncLayers(): void {
     for (const row of this.root.querySelectorAll<HTMLDivElement>('.bp-layer')) {
       const family = row.dataset.layer as LayerFamily;
-      row.classList.toggle('off', this.layerHidden.has(family));
-      row.classList.toggle('locked', this.layerLocked.has(family));
+      const hidden = this.layerHidden.has(family);
+      const locked = this.layerLocked.has(family);
+      row.classList.toggle('off', hidden);
+      row.classList.toggle('locked', locked);
+      const vis = row.querySelector<HTMLButtonElement>('[data-vis]');
+      const lock = row.querySelector<HTMLButtonElement>('[data-lock]');
+      if (vis) {
+        vis.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+        vis.setAttribute('aria-label', `${hidden ? 'Show' : 'Hide'} ${layerLabel(family)} layer`);
+      }
+      if (lock) {
+        lock.setAttribute('aria-pressed', locked ? 'true' : 'false');
+        lock.setAttribute('aria-label', `${locked ? 'Unlock' : 'Lock'} ${layerLabel(family)} layer`);
+        // closed padlock when locked, open when not — the glyph should not lie.
+        lock.innerHTML = locked ? '&#128274;' : '&#128275;';
+      }
     }
   }
 
@@ -8450,7 +8555,7 @@ export class Builder {
 
   private exportMaterialPalette(): void {
     downloadText(paletteAsGpl(), 'alchemists-descent-cells.gpl');
-    this.status('PALETTE EXPORTED - LOAD THE .GPL IN ASEPRITE/GIMP');
+    this.status('PALETTE EXPORTED - LOAD THE .gpl IN ASEPRITE/GIMP');
   }
 
   private toggleLightPreview(): void {
@@ -8607,6 +8712,10 @@ export class Builder {
       this.status('RELEASE OR ESCAPE THE CANVAS GIZMO FIRST', true);
       return;
     }
+    // Remember what had focus so we can hand it back on close (keyboard users
+    // keep their place) — mirror of the Builder Help modal's focus handling.
+    const active = document.activeElement;
+    this.cmdkReturnFocus = active instanceof HTMLElement && active.id !== 'bp-cmdk-input' ? active : null;
     const box = this.el<HTMLDivElement>('builder-cmdk');
     box.style.display = '';
     const input = this.el<HTMLInputElement>('bp-cmdk-input');
@@ -8622,6 +8731,9 @@ export class Builder {
     const input = this.el<HTMLInputElement>('bp-cmdk-input');
     input.setAttribute('aria-expanded', 'false');
     input.removeAttribute('aria-activedescendant');
+    const returnFocus = this.cmdkReturnFocus;
+    this.cmdkReturnFocus = null;
+    if (returnFocus && document.contains(returnFocus)) returnFocus.focus({ preventScroll: true });
   }
 
   private isCommandPaletteOpen(): boolean {
@@ -8761,7 +8873,7 @@ export class Builder {
     if (blocker) {
       this.select(blocker.id);
       this.frameSelection();
-      this.status(`T NEEDS OPEN SPACE — CURSOR OVERLAPS ${blocker.kind.toUpperCase()} FOOTPRINT`, true);
+      this.status(`T NEEDS OPEN SPACE — CURSOR OVERLAPS ${kindLabel(blocker.kind).toUpperCase()} FOOTPRINT`, true);
       return;
     }
     for (let dy = 0; dy < 17; dy += 4) {
@@ -8895,7 +9007,9 @@ export class Builder {
       appDialogOpen,
       builderHelpOpen: this.builderHelpOpen,
       commandPaletteOpen: this.isCommandPaletteOpen(),
-      menuOpen: document.querySelector('.editor-command-menu.open') !== null,
+      menuOpen:
+        document.querySelector('.editor-command-menu.open') !== null ||
+        document.querySelector('#builder-bar .builder-menu-dropdown:not([hidden])') !== null,
       interactivePopoverOpen: document.querySelector('.editor-popover.interactive') !== null,
       consoleOpen,
       consoleInputFocused: document.activeElement?.id === 'dev-console-input',
@@ -8903,6 +9017,12 @@ export class Builder {
       target: e.target,
     });
     if (focusClaim.surface === 'app-dialog') return;
+    // Gallery / Backdrop are self-contained modal overlays with their own key
+    // handling (Esc closes, arrows browse). Yield to them — otherwise the
+    // Builder's canvas Escape handler stopPropagation()s the event before the
+    // overlay's own handler can run (their "ESC close" hint would be a lie).
+    const backdropOverlay = document.getElementById('builder-backdrop');
+    if (this.gallery?.isOpen === true || (backdropOverlay !== null && backdropOverlay.offsetParent !== null)) return;
     if (this.builderHelpOpen) {
       if (e.code === 'Escape' || e.code === 'KeyH') {
         e.preventDefault();
@@ -10005,6 +10125,15 @@ export class Builder {
     // user's place instead of snapping the panel back to the top.
     const panelScroll = panel.scrollTop;
     const bodyScroll = panel.querySelector<HTMLElement>('.bi-panel-body')?.scrollTop ?? 0;
+    // Capture the focused field (and text caret) so committing a param and
+    // re-rendering doesn't drop you out of the field you just Tabbed into —
+    // chained "type, Tab, type" editing keeps working across the rebuild.
+    const active = document.activeElement;
+    const focusKey = active instanceof HTMLElement && panel.contains(active) ? this.inspectorFieldKey(active) : null;
+    const textSel =
+      active instanceof HTMLInputElement && active.type === 'text'
+        ? { start: active.selectionStart, end: active.selectionEnd }
+        : null;
     const bodyItems =
       items[0]?.kind === 'section' && items[0].label.toUpperCase() === builderPanelTitle('builder-inspector').toUpperCase()
         ? items.slice(1)
@@ -10019,9 +10148,29 @@ export class Builder {
         collapsedSections: this.workspaceLayout.collapsedSections,
       })}</div>`;
     this.restoreStructurePanelScroll(panel, panelScroll, [['.bi-panel-body', bodyScroll]]);
+    if (focusKey) {
+      const next = panel.querySelector<HTMLElement>(focusKey);
+      if (next) {
+        next.focus({ preventScroll: true });
+        if (textSel && next instanceof HTMLInputElement && next.type === 'text' && textSel.start !== null) {
+          try { next.setSelectionRange(textSel.start, textSel.end ?? textSel.start); } catch { /* unsupported */ }
+        }
+      }
+    }
     this.refreshPanelDragHandles(panel);
     this.wireCollapsibleSections(panel);
     panel.querySelector('#bi-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-inspector'));
+  }
+
+  /** A stable selector for an inspector field, so focus can be restored to the
+   *  same control after the panel re-renders (params data-p, flags data-f,
+   *  light fields data-lf, otherwise the element id). */
+  private inspectorFieldKey(el: HTMLElement): string | null {
+    for (const attr of ['data-p', 'data-f', 'data-lf']) {
+      const v = el.getAttribute(attr);
+      if (v !== null) return `[${attr}="${cssString(v)}"]`;
+    }
+    return el.id ? `[id="${cssString(el.id)}"]` : null;
   }
 
   private renderGeneratedSceneInspector(panel: HTMLDivElement, scene: GeneratedScenePlacement): void {
@@ -10084,7 +10233,7 @@ export class Builder {
     const tags = [...raw.matchAll(/#([\w-]+)/g)].map((m) => m[1].toLowerCase());
     const name = raw.replace(/#[\w-]+/g, '').trim();
     const region: Region = { x0: scene.x0, y0: scene.y0, x1: scene.x1, y1: scene.y1 };
-    const { doc, skippedObjects, skippedLinks } = this.generatedSceneCaptureDocument(scene);
+    const { doc, skippedObjects, skippedLinks } = generatedSceneCaptureDocument(scene, this.doc.biome);
     const got = capturePrefab(this.ctx.world, region, doc, name, tags);
     if (!got) {
       this.status('GENERATED SCENE TOO LARGE FOR A PREFAB (MAX ~40K CELLS)', true);
@@ -10101,74 +10250,6 @@ export class Builder {
         : '';
     const skipped = skippedObjects > 0 || skippedLinks > 0 ? ` (${skippedObjects} OBJ/${skippedLinks} LINK SKIPPED)` : '';
     this.status(`CAPTURED GENERATED SCENE PREFAB ${got.prefab.w}x${got.prefab.h}${extras}${skipped}`);
-  }
-
-  private generatedSceneCaptureDocument(scene: GeneratedScenePlacement): {
-    doc: EditorDocument;
-    skippedObjects: number;
-    skippedLinks: number;
-  } {
-    const doc = createEmptyDocument(`${scene.label} generated capture`, this.doc.biome);
-    let skippedObjects = 0;
-    const objectIds = new Set<string>();
-    for (const object of scene.objects) {
-      const kind = this.generatedSceneObjectKind(object.kind);
-      if (!kind || object.x < scene.x0 || object.x > scene.x1 || object.y < scene.y0 || object.y > scene.y1) {
-        skippedObjects++;
-        continue;
-      }
-      const params = structuredClone(object.params) as Record<string, unknown>;
-      if (kind === 'pickup' && params.kind === 'gold') params.kind = 'goldpile';
-      doc.objects.push({
-        id: object.id,
-        kind,
-        x: object.x,
-        y: object.y,
-        rotation: 0,
-        locked: false,
-        hidden: false,
-        params,
-      });
-      objectIds.add(object.id);
-    }
-    let skippedLinks = 0;
-    for (const link of scene.links) {
-      const kind = this.generatedSceneLinkKind(link.kind);
-      if (!kind || !objectIds.has(link.fromId) || !objectIds.has(link.toId)) {
-        skippedLinks++;
-        continue;
-      }
-      doc.links.push({ id: link.id, fromId: link.fromId, toId: link.toId, kind });
-    }
-    doc.lights = scene.lights
-      .filter((light) => light.x >= scene.x0 && light.x <= scene.x1 && light.y >= scene.y0 && light.y <= scene.y1)
-      .map((light, n) => this.generatedSceneEditorLight(light, n));
-    return { doc, skippedObjects, skippedLinks };
-  }
-
-  private generatedSceneObjectKind(kind: string): EditorObjectKind | null {
-    return GENERATED_SCENE_OBJECT_KINDS.has(kind as EditorObjectKind) ? kind as EditorObjectKind : null;
-  }
-
-  private generatedSceneLinkKind(kind: string): EditorLink['kind'] | null {
-    return GENERATED_SCENE_LINK_KINDS.has(kind as EditorLink['kind']) ? kind as EditorLink['kind'] : null;
-  }
-
-  private generatedSceneEditorLight(sceneLight: GeneratedScenePlacement['lights'][number], n: number): EditorLight {
-    return {
-      id: sceneLight.id || `generated-light-${n}`,
-      x: sceneLight.x,
-      y: sceneLight.y,
-      color: sceneLight.color,
-      intensity: sceneLight.intensity,
-      radius: sceneLight.radius,
-      bloom: sceneLight.bloom ?? 0.8,
-      flicker: sceneLight.flicker ?? 0,
-      falloff: sceneLight.falloff ?? 'soft',
-      occluded: sceneLight.occluded ?? true,
-      locked: false,
-      hidden: false,
-    };
   }
 
   private wireDocumentInspector(panel: HTMLDivElement): void {
@@ -10850,10 +10931,17 @@ export class Builder {
     });
     panel.querySelector<HTMLInputElement>('#ba-search')?.addEventListener('input', (event) => {
       const field = event.target as HTMLInputElement;
-      const caret = field.selectionStart;
       this.assetQuery = field.value;
-      this.renderAssetBrowser();
-      this.refocusSearchField('ba-search', caret);
+      // Debounce the expensive full re-aggregation (DB rebuild + localStorage
+      // scan + innerHTML) so fast typing doesn't rebuild on every keystroke. The
+      // input keeps its own value/caret until the debounced render fires.
+      window.clearTimeout(this.assetSearchDebounce);
+      this.assetSearchDebounce = window.setTimeout(() => {
+        const live = this.root.querySelector<HTMLInputElement>('#ba-search');
+        const caret = live?.selectionStart ?? null;
+        this.renderAssetBrowser();
+        this.refocusSearchField('ba-search', caret);
+      }, 120);
     });
     for (const chip of panel.querySelectorAll<HTMLElement>('[data-asset-collection]')) {
       const activate = (): void => {
@@ -12239,7 +12327,7 @@ export class Builder {
       const object = this.doc.objects.find((item) => item.id === id);
       if (!object) return;
       this.cmds.run(setObjectFlagCmd(object, flag, !object[flag]));
-      this.status(`${flag.toUpperCase()} ${object.kind.toUpperCase()}: ${object[flag] ? 'ON' : 'OFF'}`);
+      this.status(`${flag.toUpperCase()} ${kindLabel(object.kind).toUpperCase()}: ${object[flag] ? 'ON' : 'OFF'}`);
     } else {
       const light = this.doc.lights.find((item) => item.id === id);
       if (!light) return;
@@ -12579,6 +12667,9 @@ export class Builder {
     line.textContent = text;
     line.classList.toggle('warn', warn);
     line.classList.add('show');
+    // Mirror warnings into an assertive alert region so screen-reader users hear
+    // blocked-action feedback — the visible toast alone is silent to AT.
+    this.el<HTMLDivElement>('builder-status-alert').textContent = warn ? text : '';
     clearTimeout(this.statusTimer);
     this.statusTimer = window.setTimeout(() => line.classList.remove('show'), 4000);
   }

@@ -1,8 +1,11 @@
+import { escapeHtml as esc, escapeAttr as escAttr } from '@/ui/editor/Fields';
 import type { DocIssue } from '@/builder/validate';
 import { assessEditorLink } from '@/builder/validate';
 import type { EditorDocument, EditorLight, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
 import type { PrefabDef } from '@/builder/prefablib';
 import type { SpriteAsset } from '@/builder/assets/sprites';
+import { plural } from '@/core/strings';
+import { kindLabel } from '@/builder/kindLabel';
 import { builderPanelHeader } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 import { editorSectionHtml } from '@/ui/editor/Section';
@@ -284,7 +287,7 @@ function objectRow(
   if (selectedIds.has(object.id)) filters.add('selected');
   if (issue) filters.add('invalid');
   const label = objectLabel(object, spriteNames);
-  const badges = [category.label, object.kind];
+  const badges = [category.label, kindLabel(object.kind)];
   if (object.group) badges.push('group');
   if (object.hidden) badges.push('hidden');
   if (object.locked) badges.push('locked');
@@ -422,7 +425,7 @@ function prefabRow(prefab: PrefabDef): OutlinerRow {
     id: `prefab:${prefab.id}`,
     type: 'prefab',
     label: prefab.name,
-    sublabel: `${prefab.w}x${prefab.h} - ${prefab.objects.length} objects - ${prefab.links.length} links`,
+    sublabel: `${prefab.w}x${prefab.h} - ${plural(prefab.objects.length, 'object')} - ${plural(prefab.links.length, 'link')}`,
     category: 'Prefab',
     hidden: false,
     locked: false,
@@ -449,7 +452,7 @@ function objectLabel(object: EditorObject, spriteNames: Map<string, string>): st
     if (sprite) return `Decor: ${sprite}`;
     return `Note: ${String(object.params.text ?? 'note')}`;
   }
-  return object.kind;
+  return kindLabel(object.kind);
 }
 
 function spriteNameForObject(object: EditorObject, spriteNames: Map<string, string>): string {
@@ -495,14 +498,3 @@ function normalizeSearch(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function esc(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function escAttr(value: string): string {
-  return esc(value);
-}

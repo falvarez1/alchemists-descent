@@ -1202,6 +1202,11 @@ function syncKnownParamInputs(path: string, value: unknown): void {
     if (input && typeof value === 'boolean') input.checked = value;
     button?.classList.toggle('lit', value === true);
   }
+  if (path === 'render.compose') {
+    const button = document.getElementById('webgpu-compose-toggle');
+    button?.classList.toggle('lit', value === true);
+    button?.setAttribute('aria-pressed', String(value === true));
+  }
 }
 
 function commandTargetCompletions(req: CompletionRequest): string[] {

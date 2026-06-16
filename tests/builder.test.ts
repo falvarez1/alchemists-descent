@@ -37,7 +37,8 @@ import {
   resizeObjectPatchFromDrag,
 } from '@/builder/gizmos';
 import { nextSnapStep, sanitizeSnapStep, snapValue } from '@/builder/spatialGuides';
-import type { Ctx } from '@/core/types';
+import type { Ctx, GeneratedScenePlacement } from '@/core/types';
+import { generatedSceneCaptureDocument } from '@/builder/generatedSceneCapture';
 import { PASSES, runPass } from '@/builder/procedural';
 import { sanitizeBackdropSettings } from '@/config/backdrop';
 
@@ -451,7 +452,10 @@ describe('builder validation', () => {
     expect(html).toContain('data-action-kind="mutate"');
     expect(html).toContain('data-mutates-document="true"');
     expect(html).toContain('data-action-kind="inspect"');
-    expect(html).toContain('role="listitem"');
+    // Orphaned role="listitem" (no role="list" ancestor) was dropped; the row's
+    // accessible name conveys severity + text instead.
+    expect(html).not.toContain('role="listitem"');
+    expect(html).toContain('aria-label="error: No &lt;spawn&gt; placed"');
     expect(html).toContain('data-validation-select="0"');
     expect(html).not.toContain('tabindex="0"');
     expect(html).toContain('No &lt;spawn&gt; placed');
@@ -1176,7 +1180,7 @@ describe('builder validation', () => {
     expect(errors(build('or'))).toEqual([]);
     const andIssues = build('and');
     expect(andIssues.some((i) => i.severity === 'error' && i.what.includes('key unreachable'))).toBe(true);
-    expect(andIssues.some((i) => i.severity === 'error' && i.what.includes('plate unreachable'))).toBe(true);
+    expect(andIssues.some((i) => i.severity === 'error' && i.what.includes('Plate unreachable'))).toBe(true);
   });
 
   it('warns when an earnable target sits behind a too-tight crawlway', () => {
@@ -1187,7 +1191,7 @@ describe('builder validation', () => {
     doc.objects.push(makeObj('spawn', 120, 158));
     doc.objects.push(makeObj('waystone', 255, 158));
     const issues = validateDocument(doc);
-    expect(issues.some((i) => i.what.includes('waystone unreachable'))).toBe(false); // cells reach it
+    expect(issues.some((i) => i.what.includes('Waystone unreachable'))).toBe(false); // cells reach it
     expect(
       issues.some((i) => i.severity === 'warning' && i.what.includes('too tight')),
     ).toBe(true);
@@ -1205,7 +1209,7 @@ describe('builder validation', () => {
     const issues = validateDocument(doc);
 
     expect(issues.some((i) => i.code === 'builder.key.unreachable')).toBe(false);
-    expect(issues.some((i) => i.what.includes('pickup embedded'))).toBe(false);
+    expect(issues.some((i) => i.what.includes('Pickup embedded'))).toBe(false);
   });
 
   it('warns about a floating lever (it would break and fail open by itself)', () => {
@@ -1380,5 +1384,78 @@ describe('compile helpers', () => {
     expect(al.g).toBeCloseTo(0.5, 1);
     expect(al.b).toBe(0);
     expect(al.intensity).toBe(1.5);
+  });
+});
+
+describe('generated scene capture', () => {
+  function genScene(overrides: Partial<GeneratedScenePlacement> = {}): GeneratedScenePlacement {
+    return {
+      id: 'tile:0,0:feature:scene-shrine',
+      source: 'virtual-world',
+      sceneId: 'scene-shrine',
+      slotId: 'feature',
+      label: 'Small Shrine',
+      x0: 10,
+      y0: 10,
+      x1: 50,
+      y1: 50,
+      objectCount: 0,
+      linkCount: 0,
+      lightCount: 0,
+      objects: [],
+      links: [],
+      lights: [],
+      ...overrides,
+    };
+  }
+
+  it('captures in-bounds authorable objects, remaps gold pickups, and counts skips', () => {
+    const scene = genScene({
+      objects: [
+        { id: 'a', kind: 'pickup', x: 20, y: 20, params: { kind: 'gold', amount: 10 } },
+        { id: 'b', kind: 'waystone', x: 30, y: 30, params: { lit: false } },
+        { id: 'c', kind: 'pickup', x: 5, y: 5, params: { kind: 'gold' } }, // out of bounds
+        { id: 'd', kind: 'totallyNotAThing', x: 25, y: 25, params: {} }, // unknown kind
+      ],
+    });
+    const { doc, skippedObjects } = generatedSceneCaptureDocument(scene, 'earthen');
+    expect(doc.objects.map((o) => o.id)).toEqual(['a', 'b']);
+    const gold = doc.objects.find((o) => o.id === 'a');
+    expect(gold?.params.kind).toBe('goldpile'); // generated 'gold' remaps to authored 'goldpile'
+    expect(gold?.params.amount).toBe(10);
+    expect(skippedObjects).toBe(2);
+    expect(doc.biome).toBe('earthen');
+  });
+
+  it('keeps only links whose endpoints both survived capture', () => {
+    const scene = genScene({
+      objects: [
+        { id: 'lever', kind: 'lever', x: 20, y: 20, params: {} },
+        { id: 'door', kind: 'door', x: 30, y: 30, params: {} },
+        { id: 'far', kind: 'door', x: 999, y: 999, params: {} }, // out of bounds -> dropped
+      ],
+      links: [
+        { id: 'L1', fromId: 'lever', toId: 'door', kind: 'triggerDoor' }, // kept
+        { id: 'L2', fromId: 'lever', toId: 'far', kind: 'triggerDoor' }, // endpoint dropped
+        { id: 'L3', fromId: 'lever', toId: 'door', kind: 'mysteryLink' }, // bad kind
+      ],
+    });
+    const { doc, skippedLinks } = generatedSceneCaptureDocument(scene, 'fungal');
+    expect(doc.links.map((l) => l.id)).toEqual(['L1']);
+    expect(skippedLinks).toBe(2);
+  });
+
+  it('captures in-bounds lights with defaults and an id fallback', () => {
+    const scene = genScene({
+      lights: [
+        { id: '', x: 20, y: 20, color: '#fff', intensity: 0.5, radius: 40 },
+        { id: 'L', x: 25, y: 25, color: '#f00', intensity: 1, radius: 60, bloom: 1.5, flicker: 0.2, falloff: 'sharp', occluded: false },
+        { id: 'out', x: 0, y: 0, color: '#0f0', intensity: 1, radius: 10 }, // out of bounds
+      ],
+    });
+    const { doc } = generatedSceneCaptureDocument(scene, 'crystal');
+    expect(doc.lights.map((l) => l.id)).toEqual(['generated-light-0', 'L']);
+    expect(doc.lights[0]).toMatchObject({ bloom: 0.8, flicker: 0, falloff: 'soft', occluded: true });
+    expect(doc.lights[1]).toMatchObject({ bloom: 1.5, falloff: 'sharp', occluded: false });
   });
 });
