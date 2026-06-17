@@ -2,6 +2,16 @@ export function clamp(v: number, a: number, b: number): number {
   return v < a ? a : v > b ? b : v;
 }
 
+/** Linear interpolation between a and b by t. */
+export function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/** Cubic smoothstep easing (Hermite) of t in [0,1]: t*t*(3-2t). */
+export function smoothstep(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
 /** Deterministic 2D integer hash → [0, 1). */
 export function hash2(x: number, y: number, seed: number): number {
   let h = (x * 374761393 + y * 668265263 + seed * 1442695041) | 0;

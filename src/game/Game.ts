@@ -23,7 +23,7 @@ import { HintSystem } from '@/game/Hints';
 import { Levels } from '@/game/Levels';
 import { Mechanisms } from '@/game/Mechanisms';
 import { Pickups } from '@/game/Pickups';
-import { createWaveState, WaveDirector } from '@/game/WaveDirector';
+import { createWaveState } from '@/game/WaveDirector';
 import { InputManager } from '@/input/InputManager';
 import { currentAppMode, readAppMode, saveAppMode } from '@/game/modePersist';
 import { Particles } from '@/particles/Particles';
@@ -167,7 +167,6 @@ export class Game {
     ctx.spells = new Spells(ctx);
     ctx.simulation = new Simulation();
     ctx.worldgen = new WorldGen();
-    ctx.waveCtl = new WaveDirector(ctx);
     ctx.flask = new Flask();
     ctx.telemetry = new Telemetry();
     ctx.levels = new Levels(ctx);

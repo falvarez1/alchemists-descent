@@ -43,7 +43,8 @@ src/
     Enemies.ts            Enemy defs, spawn/damage/kill, slime/imp/golem AI
   game/
     Game.ts               Composition root: builds Ctx, owns the frame order
-    WaveDirector.ts       Wave spawning state machine
+    WaveDirector.ts       createWaveState() — the small kill/counter state that
+                          outlived the retired wave-survival director
   world/
     CaveGenerator.ts      Generation pipeline host: skeleton dispatch + paint + decorations
     carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)
@@ -164,10 +165,12 @@ constants assume it — do not "unify" it without retuning the whole game.
 **Frame order is a contract.** Per frame, in `Game.ts`:
 `frameCount++ → camera.update → camera.updateSimBounds → simulation.update (substeps:
 harvester → electrical → projectiles → shockwave aging → moved-clear → material sweep →
-ice/vines pass) → playerCtl.update → enemyCtl.update → rigidBodies.update → waveCtl.update →
-particles.update → lightning.update → build-mode held spells → renderer.render
+ice/vines pass) → playerCtl.update → flask.update → enemyCtl.update → rigidBodies.update →
+vineStrands.update → levels.update → pickups.update → mechanisms.update → critters.update →
+brewing.update → hints.update → wands.update → particles.update → lightning.update →
+HUD update (even frames, play mode) → minimap.update → renderer.render
 (snapshot renderCam → compose pixels → bloom/shake transforms → composer.render) →
-HUD update (even frames, play mode) → digBeam decay`.
+digBeam decay`.
 Several behaviors silently depend on this order (sim bounds derive from camera; spells
 aim with the *previous* frame's render snapshot; lighting rebuilds on even frames).
 

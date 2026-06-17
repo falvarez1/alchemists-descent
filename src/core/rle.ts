@@ -18,15 +18,25 @@ export function rleEncode(types: Uint8Array): string {
   return bytesToBase64(new Uint8Array(out));
 }
 
-export function rleDecode(rle: string, into: Uint8Array): void {
+/**
+ * Decode an RLE string into `into`, returning the number of cells the stream
+ * CLAIMS to cover (which may differ from `into.length` for corrupt/foreign
+ * data). Writes are clamped to the buffer, so an over-long run can never
+ * scribble out of bounds. Callers handling untrusted save/share input should
+ * (a) wrap this in try/catch — `atob` throws on non-base64 — and (b) verify the
+ * returned length equals the expected cell count before trusting the result.
+ */
+export function rleDecode(rle: string, into: Uint8Array): number {
   const bin = atob(rle);
+  const len = into.length;
   let pos = 0;
   for (let i = 0; i + 2 < bin.length; i += 3) {
     const run = bin.charCodeAt(i) | (bin.charCodeAt(i + 1) << 8);
     const t = bin.charCodeAt(i + 2);
-    into.fill(t, pos, pos + run);
+    if (pos < len) into.fill(t, pos, Math.min(pos + run, len));
     pos += run;
   }
+  return pos;
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {

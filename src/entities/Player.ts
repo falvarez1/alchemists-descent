@@ -48,30 +48,11 @@ const TELEPORT_SEARCH_RADIUS = 260;
 const KICK_BASE_RECOIL = 0.5; // kick always self-pushes this fraction even into open air (so it works mid-air like wand recoil); a solid hit ramps to 1
 const GUST_ENEMY_PUSH = 5; // kick wind-gust shove scalar for enemies (mass-scaled in EnemyControl.gustShove)
 const MOVE_ACCEL_CAP = 0.6; // max per-frame ground-speed gain — high top speeds (Swift stacks / God Mode) RAMP up over several frames instead of snapping to max
-// Fine horizontal control (Celeste-style). Two halves:
-//  - Soft-start: ground accel eases in from a standstill so a brief A/D tap is a
-//    small, controllable nudge, ramping to full accel as you pick up speed (a
-//    held run still reaches top speed in ~7 frames). Air control stays snappy.
-//  - Fast stop: on release, decelerate quicker than you accelerated and snap the
-//    last crumb of speed to zero, so a tap doesn't coast cells past your intent.
-const MOVE_SOFT_START = 0.55; // accel from rest = this fraction of full, ramping to 1.0 at top speed (ground AND air)
-const GROUND_STOP_DECAY = 0.6; // ground velocity kept per frame with no input (was 0.72)
-const GROUND_STOP_SNAP = 0.12; // below this |vx| (cells/frame) the body halts outright
-// Air horizontal control. Inertia (airDrag ~0.985) carries a fast run into a
-// jump/levitate so a glide coasts — but a quick TAP from low speed would coast
-// the same ~65x, flinging you sideways. So below the glide speed, with no input,
-// stop fast like the ground; at/above it the carried momentum still glides.
-const AIR_GLIDE_SPEED = 1.9; // |vx| at/above which airborne momentum keeps its slow drag (a real glide)
-const AIR_STOP_DECAY = 0.74; // air velocity kept per frame for a low-speed tap with no input (floatier than ground)
-// Variable jump height. The fixed -3.7 launch peaks ~24 cells, so even a tap
-// flies way over a crate. Hold jump for the full leap; release during the rise
-// to cut it short (a low hop). Holding past the window rolls into levitation.
-const JUMP_CUT = 0.25; // upward velocity kept when jump is released mid-rise (lower = shorter min hop)
-const JUMP_HOLD_WINDOW = 7; // frames a fresh jump stays a cuttable ballistic leap (jet suppressed)
-// Top ground speed is capped here so speed buffs (Swift potion ×1.5, Swift Soles
-// ×1.18, God Mode kits) still feel faster but never outrun the soft-start /
-// quick-stop precision curve. Base run is 2.6; this bounds the stacked total.
-const MAX_RUN_CAP = 3.6;
+// Fine horizontal control + variable jump height (Celeste-style) used to live as
+// module consts here; they now live on ctx.params.player (moveSoftStart,
+// groundStopDecay/Snap, airGlideSpeed, airStopDecay, jumpCut, jumpHoldWindow,
+// maxRunCap) so the inspector can tune jump/run/air FEEL live without a recompile.
+// See config/params.ts PLAYER_PARAMS and core/types.ts PlayerTuning.
 const ENEMY_STOMP_BOUNCE = 3.6; // upward pop after a Mario-style stomp kill (chains to the next foe)
 // Too big/heavy to stomp — a boot off these just bounces (handle them another way).
 const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'golem']);
@@ -459,6 +440,29 @@ export class PlayerControl implements PlayerControlApi {
     player.climbing = false;
     player.climbMoveT = 0;
     player.climbIntentY = 0;
+  }
+
+  /** A subtle gleam when the wizard's light catches an EXPOSED RawOre face nearby
+   *  — the discovery tell for the hidden gold-flecked ore. Cheap: a few random
+   *  samples in the light radius per frame, only on ore with an open neighbor. */
+  private glintNearbyOre(ctx: Ctx): void {
+    const w = ctx.world;
+    const p = ctx.player;
+    const R = 28;
+    const open = (x: number, y: number): boolean => {
+      if (!w.inBounds(x, y)) return false;
+      const t = w.types[w.idx(x, y)];
+      return t === Cell.Empty || isGas(t);
+    };
+    for (let s = 0; s < 5; s++) {
+      const gx = Math.round(p.x + (Math.random() - 0.5) * 2 * R);
+      const gy = Math.round(p.y - 9 + (Math.random() - 0.5) * 2 * R);
+      if (!w.inBounds(gx, gy) || w.types[w.idx(gx, gy)] !== Cell.RawOre) continue;
+      if (!(open(gx - 1, gy) || open(gx + 1, gy) || open(gx, gy - 1) || open(gx, gy + 1))) continue;
+      if (Math.random() < 0.3) {
+        ctx.particles.spawn(gx, gy, (Math.random() - 0.5) * 0.3, -0.15, null, packRGB(255, 222, 130), 12, { glow: 1.9, grav: -0.012 });
+      }
+    }
   }
 
   /** Mario stomp: a committed dive that spears a stompable foe's upper body kills
@@ -1199,11 +1203,11 @@ export class PlayerControl implements PlayerControlApi {
     const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK, MOVE_ACCEL_CAP),
       // Cap the boosted top speed (Swift/God Mode) so it stays inside the
       // precision curve; crawl/crouch then scale down from the capped run.
-      maxRun = Math.min(2.6 * speedK, MAX_RUN_CAP) * stanceK;
+      maxRun = Math.min(2.6 * speedK, lp.maxRunCap) * stanceK;
     // Soft-start: ease in from a standstill (a tap stays slow + precise), ramping
     // to full accel with speed. Applies in the air too, so a fresh airborne tap is
     // gentle while CARRIED speed (already near maxRun) still gets full control.
-    const stepAccel = accel * (MOVE_SOFT_START + (1 - MOVE_SOFT_START) * Math.min(1, Math.abs(player.vx) / maxRun));
+    const stepAccel = accel * (lp.moveSoftStart + (1 - lp.moveSoftStart) * Math.min(1, Math.abs(player.vx) / maxRun));
     if (!player.climbing) {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
       // back DOWN — a fast run carried into a jump/levitate keeps its speed (you
@@ -1221,17 +1225,17 @@ export class PlayerControl implements PlayerControlApi {
         // On a surface: a quick, snappy stop on release so a tap is a small,
         // predictable nudge instead of a long coast (precision-platformer feel).
         if (!keys.left && !keys.right) {
-          player.vx *= GROUND_STOP_DECAY;
-          if (Math.abs(player.vx) < GROUND_STOP_SNAP) player.vx = 0;
+          player.vx *= lp.groundStopDecay;
+          if (Math.abs(player.vx) < lp.groundStopSnap) player.vx = 0;
         }
         player.vx = clamp(player.vx, -maxRun, maxRun);
       } else {
         // Airborne / levitating: a fast run still GLIDES (carried momentum bleeds
         // slowly through airDrag), but a quick low-speed TAP stops fast so it's a
         // small nudge, not a 60-cell skate. The ±12 rail caps stacked recoil.
-        if (!keys.left && !keys.right && Math.abs(player.vx) < AIR_GLIDE_SPEED) {
-          player.vx *= AIR_STOP_DECAY;
-          if (Math.abs(player.vx) < GROUND_STOP_SNAP) player.vx = 0;
+        if (!keys.left && !keys.right && Math.abs(player.vx) < lp.airGlideSpeed) {
+          player.vx *= lp.airStopDecay;
+          if (Math.abs(player.vx) < lp.groundStopSnap) player.vx = 0;
         } else {
           player.vx *= lp.airDrag;
         }
@@ -1511,7 +1515,7 @@ export class PlayerControl implements PlayerControlApi {
           player.stretchT = 6; // launch stretch (anti-squash)
           this.framesSinceGrounded = 99; // consumed — no double coyote jumps
           this.jumpBufferFrames = 0;
-          this.jumpRiseFrames = JUMP_HOLD_WINDOW; // arm the cuttable ballistic rise
+          this.jumpRiseFrames = lp.jumpHoldWindow; // arm the cuttable ballistic rise
           ctx.audio.jump();
         } else if (player.levit > 0 && player.diveT === 0 && this.jumpRiseFrames <= 0) {
           levitating = true;
@@ -1574,7 +1578,7 @@ export class PlayerControl implements PlayerControlApi {
         this.jumpRiseFrames--;
         if (player.vy >= 0) this.jumpRiseFrames = 0;
         else if (!keys.jump) {
-          player.vy *= JUMP_CUT;
+          player.vy *= lp.jumpCut;
           this.jumpRiseFrames = 0;
         }
       }
@@ -1666,6 +1670,7 @@ export class PlayerControl implements PlayerControlApi {
       // bounces off — gated on diveT so only a real STOMP kills, never an idle
       // fall onto a foe (that still trades contact damage as before).
       if (player.diveT > 0) this.tryStompEnemy(ctx);
+      if (ctx.state.frameCount % 3 === 0) this.glintNearbyOre(ctx); // discovery gleam on lit ore
       player.grounded = !ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1);
       if (player.grounded) {
         // jump buffer: a press made just before touchdown fires on the landing frame

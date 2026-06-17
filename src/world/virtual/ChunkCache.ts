@@ -1,9 +1,9 @@
 import type { VirtualChunk } from '@/world/virtual/types';
 
 export class ChunkCache {
+  // LRU recency is encoded by Map insertion order: the first key is the least-recently used,
+  // the last key the most-recently used. Touching a key re-inserts it at the end.
   private readonly chunks = new Map<string, VirtualChunk>();
-  private readonly touches = new Map<string, number>();
-  private tick = 0;
 
   constructor(private readonly maxChunks: number) {}
 
@@ -13,21 +13,23 @@ export class ChunkCache {
 
   get(cx: number, cy: number): VirtualChunk | null {
     const key = chunkKey(cx, cy);
-    const chunk = this.chunks.get(key) ?? null;
-    if (chunk) this.touches.set(key, ++this.tick);
+    const chunk = this.chunks.get(key);
+    if (chunk === undefined) return null;
+    // Move to most-recently-used by re-inserting at the tail.
+    this.chunks.delete(key);
+    this.chunks.set(key, chunk);
     return chunk;
   }
 
   set(chunk: VirtualChunk): void {
     const key = chunkKey(chunk.cx, chunk.cy);
+    this.chunks.delete(key);
     this.chunks.set(key, chunk);
-    this.touches.set(key, ++this.tick);
     this.evict();
   }
 
   clear(): void {
     this.chunks.clear();
-    this.touches.clear();
   }
 
   values(): VirtualChunk[] {
@@ -44,17 +46,9 @@ export class ChunkCache {
 
   private evict(): void {
     while (this.chunks.size > this.maxChunks) {
-      let oldestKey = '';
-      let oldestTick = Infinity;
-      for (const [key, touched] of this.touches) {
-        if (touched < oldestTick) {
-          oldestTick = touched;
-          oldestKey = key;
-        }
-      }
-      if (!oldestKey) return;
+      const oldestKey = this.chunks.keys().next().value;
+      if (oldestKey === undefined) return;
       this.chunks.delete(oldestKey);
-      this.touches.delete(oldestKey);
     }
   }
 }

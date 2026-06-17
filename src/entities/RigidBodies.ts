@@ -86,6 +86,9 @@ type RCollider = InstanceType<typeof RAPIER.Collider>;
 
 export class RigidBodies implements RigidBodiesApi {
   readonly bodies: RigidBody[] = [];
+  /** The live player-corpse ragdoll, cached so the camera/lighting/compose
+   *  readers don't linear-scan `bodies` for it every frame. */
+  playerCorpse: RigidBody | null = null;
   private readonly world: RWorld;
   private readonly handles = new Map<RigidBody, RBody>();
   private readonly terrain = new Map<number, RCollider>();
@@ -166,6 +169,7 @@ export class RigidBodies implements RigidBodiesApi {
     };
     this.handles.set(body, rb);
     this.bodies.push(body);
+    if (opts.tag === 'player-corpse') this.playerCorpse = body;
     return body;
   }
 
@@ -177,21 +181,31 @@ export class RigidBodies implements RigidBodiesApi {
     }
     const i = this.bodies.indexOf(body);
     if (i !== -1) this.bodies.splice(i, 1);
+    if (body === this.playerCorpse) this.playerCorpse = null;
   }
 
   /** Thin the body set when it hits the cap: drop the oldest resting (else oldest)
-   *  un-held dynamic body in a quiet puff, so debris fades instead of crashing Rapier. */
+   *  un-held dynamic body in a quiet puff, so debris fades instead of crashing Rapier.
+   *  Long-lived tagged bodies (the player corpse, polled every frame by tickCorpse)
+   *  are exempt — a spawn flood must never evict the ragdoll out from under its owner. */
   private evictOldestDynamic(): void {
     let victim: RigidBody | null = null;
-    for (const b of this.bodies) if (b.kind === 'dynamic' && b !== this.held && b.sleeping) { victim = b; break; }
-    if (!victim) for (const b of this.bodies) if (b.kind === 'dynamic' && b !== this.held) { victim = b; break; }
+    for (const b of this.bodies) if (b.kind === 'dynamic' && !this.evictionProtected(b) && b.sleeping) { victim = b; break; }
+    if (!victim) for (const b of this.bodies) if (b.kind === 'dynamic' && !this.evictionProtected(b)) { victim = b; break; }
     if (!victim) return;
     this.ctx.particles.burst(victim.x, victim.y, 6, null, () => packRGB(150, 140, 120), 1.2, { grav: 0.05 });
     this.remove(victim);
   }
 
+  /** A body the eviction sweep must never claim: the one the player is holding, or
+   *  a long-lived tagged body whose owner keeps polling it (the player corpse). */
+  private evictionProtected(b: RigidBody): boolean {
+    return b === this.held || b.tag === 'player-corpse';
+  }
+
   clear(): void {
     this.held = null;
+    this.playerCorpse = null;
     this.detonations.length = 0;
     for (const rb of this.handles.values()) this.world.removeRigidBody(rb);
     this.handles.clear();

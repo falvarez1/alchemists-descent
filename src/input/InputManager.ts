@@ -1,3 +1,4 @@
+import type { Cell } from '@/sim/CellType';
 import type { Ctx, GameMode } from '@/core/types';
 import { VIEW_W, VIEW_H } from '@/config/constants';
 import { SPELL_ORDER } from '@/config/params';
@@ -200,7 +201,7 @@ export class InputManager {
           );
           if (btn) btn.click();
           else {
-            ctx.state.currentElement = t as never;
+            ctx.state.currentElement = t as Cell;
             ctx.state.activeInputMode = 'element';
           }
           const name = ctx.params.materials[t]?.name ?? 'Material ' + t;
@@ -253,35 +254,10 @@ export class InputManager {
     ctx.input.lastX = null;
     ctx.input.lastY = null;
     ctx.input.buildSpellHeld = false;
-    // Release a charged bomb throw
-    if (
-      ctx.input.bombCharge >= 0 &&
-      ctx.state.mode === 'play' &&
-      !ctx.player.dead &&
-      !ctx.player.climbing &&
-      ctx.player.spell === 'bomb'
-    ) {
-      const sp = ctx.params.spells.bomb;
-      if (ctx.player.mana >= sp.manaCost && ctx.player.cooldown === 0) {
-        ctx.player.mana -= sp.manaCost;
-        ctx.player.cooldown = sp.cooldown;
-        const tip = ctx.spells.wandTip();
-        const a = ctx.player.aimAngle;
-        const power = sp.velocityForce! * (0.35 + ctx.input.bombCharge * 1.25);
-        ctx.projectiles.push({
-          x: tip.x,
-          y: tip.y,
-          vx: Math.cos(a) * power,
-          vy: Math.sin(a) * power - 0.6,
-          type: 'bomb',
-          life: Math.floor(sp.fuseTicks!),
-          age: 0,
-          charging: false,
-          hostile: false,
-        });
-        ctx.audio.tone(180 + ctx.input.bombCharge * 240, 120, 0.14, 'triangle', 0.10);
-      }
-    }
+    // Charged-bomb release lives only in the build/gallery preview path
+    // (which drives its own input loop); in live play firing routes through
+    // the wand program, so player.spell is never 'bomb' and there is no
+    // fixed-spell release to perform here. Just clear the charge counter.
     ctx.input.bombCharge = -1;
     ctx.player.firing = false;
     cancelChargingBlackHole(ctx);
@@ -438,42 +414,40 @@ export class InputManager {
       return;
     }
 
-    if (ctx.state.mode === 'play') {
-      if (
-        e.code === 'KeyA' ||
-        e.code === 'ArrowLeft' ||
-        e.code === 'KeyD' ||
-        e.code === 'ArrowRight' ||
-        e.code === 'Space' ||
-        e.code === 'KeyW' ||
-        e.code === 'ArrowUp' ||
-        e.code === 'KeyS' ||
-        e.code === 'ArrowDown' ||
-        GRAB_KEY_CODES.has(e.code)
-      )
-        this.setKeyHeld(e.code, true);
-      else if (e.code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
-      else if (e.code === 'KeyE' && !ctx.player.climbing) {
-        // Context-sensitive E: a lever in reach starts the hand-pull (both
-        // hands busy — no siphon); otherwise the hold siphons the flask.
-        const pulling = !e.repeat && ctx.mechanisms.interact(ctx);
-        if (!pulling) ctx.input.siphonHeld = true;
-      }
-      else if (e.code === 'KeyQ' && !ctx.player.climbing) ctx.input.pourHeld = true;
-      else if (e.code === 'KeyX' && !ctx.player.climbing) ctx.input.drinkHeld = true;
-      else if (e.code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing)
-        ctx.playerCtl.kick(ctx);
-      else if (e.code === 'KeyG' && !e.repeat && !ctx.player.dead && !ctx.player.climbing) {
-        // hold G: latch a hanging vine to swing, else carry a body; release to let go/throw
-        if (!ctx.playerCtl.grabVine(ctx)) ctx.rigidBodies.grab(ctx);
-      }
-      else if (e.code.startsWith('Digit')) {
-        const n = parseInt(e.code.slice(5)) - 1;
-        // Wave D: digits pick wands first, then the Noita-like potion belt.
-        if (n === 0 || n === 1) this.selectWand(n);
-        else if (n >= 2 && n <= 5) this.selectFlaskSlot(n - 2);
-      }
-      return;
+    // mode === 'play' from here (the block above returns for every other mode).
+    if (
+      e.code === 'KeyA' ||
+      e.code === 'ArrowLeft' ||
+      e.code === 'KeyD' ||
+      e.code === 'ArrowRight' ||
+      e.code === 'Space' ||
+      e.code === 'KeyW' ||
+      e.code === 'ArrowUp' ||
+      e.code === 'KeyS' ||
+      e.code === 'ArrowDown' ||
+      GRAB_KEY_CODES.has(e.code)
+    )
+      this.setKeyHeld(e.code, true);
+    else if (e.code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
+    else if (e.code === 'KeyE' && !ctx.player.climbing) {
+      // Context-sensitive E: a lever in reach starts the hand-pull (both
+      // hands busy — no siphon); otherwise the hold siphons the flask.
+      const pulling = !e.repeat && ctx.mechanisms.interact(ctx);
+      if (!pulling) ctx.input.siphonHeld = true;
+    }
+    else if (e.code === 'KeyQ' && !ctx.player.climbing) ctx.input.pourHeld = true;
+    else if (e.code === 'KeyX' && !ctx.player.climbing) ctx.input.drinkHeld = true;
+    else if (e.code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing)
+      ctx.playerCtl.kick(ctx);
+    else if (e.code === 'KeyG' && !e.repeat && !ctx.player.dead && !ctx.player.climbing) {
+      // hold G: latch a hanging vine to swing, else carry a body; release to let go/throw
+      if (!ctx.playerCtl.grabVine(ctx)) ctx.rigidBodies.grab(ctx);
+    }
+    else if (e.code.startsWith('Digit')) {
+      const n = parseInt(e.code.slice(5)) - 1;
+      // Wave D: digits pick wands first, then the Noita-like potion belt.
+      if (n === 0 || n === 1) this.selectWand(n);
+      else if (n >= 2 && n <= 5) this.selectFlaskSlot(n - 2);
     }
   }
 

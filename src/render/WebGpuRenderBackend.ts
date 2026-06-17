@@ -320,85 +320,21 @@ export class WebGpuRenderBackend implements RendererBackend {
     return ndc.sub(this.quadOffset).div(this.quadScale).mul(0.5).add(0.5).flipY();
   }
 
-  private buildBaseOutputNode(): ReturnType<typeof renderOutput> {
-    const baseColor = Fn(() => vec4(texture(this.texture, this.pixelUv()).rgb, 1.0))();
+  // Single source of truth for the base/post-FX TSL, parameterized only by how the
+  // source pixels are sampled. The DataTexture path samples `this.texture`; the
+  // GPU-compose path samples a StorageTexture. Both must stay identical, so they
+  // share these builders rather than maintaining two copies (see buildPostOutputNodeFrom).
+  private buildBaseOutputNodeFrom(
+    sampleRgb: (sampleUv: TslUvNode) => TslRgbNode,
+  ): ReturnType<typeof renderOutput> {
+    const baseColor = Fn(() => vec4(sampleRgb(this.pixelUv()), 1.0))();
     return renderOutput(baseColor, ACESFilmicToneMapping, SRGBColorSpace);
   }
 
-  private storageSampleRgb(storageTexture: StorageTexture, sampleUv: TslUvNode) {
-    return texture(storageTexture, sampleUv).rgb;
-  }
-
-  private buildStorageBaseOutputNode(storageTexture: StorageTexture): ReturnType<typeof renderOutput> {
-    const baseColor = Fn(() => vec4(this.storageSampleRgb(storageTexture, this.pixelUv()), 1.0))();
-    return renderOutput(baseColor, ACESFilmicToneMapping, SRGBColorSpace);
-  }
-
-  private buildPostOutputNode(): ReturnType<typeof renderOutput> {
-    const source = this.texture;
+  private buildPostOutputNodeFrom(
+    sampleRgb: (sampleUv: TslUvNode) => TslRgbNode,
+  ): ReturnType<typeof renderOutput> {
     const texel = vec2(1 / VIEW_W, 1 / VIEW_H);
-
-    const sampleRgb = (sampleUv: TslUvNode) => texture(source, sampleUv).rgb;
-    const brightness = (rgb: TslRgbNode) =>
-      max(max(rgb.r, rgb.g), rgb.b).sub(this.bloomThreshold).max(0);
-    const brightColor = (rgb: TslRgbNode) => rgb.mul(brightness(rgb));
-    const tap1 = texel.mul(this.bloomRadius.mul(4.0).add(1.0));
-    const tap2 = tap1.mul(2.0);
-
-    const postColor = Fn(() => {
-      const p = this.pixelUv();
-      const base = texture(source, p).rgb;
-      const centered = p.sub(0.5);
-      const r2 = dot(centered, centered);
-      const aberrationShift = centered.mul(r2.mul(this.aberration).mul(40.0));
-      const aberrated = vec3(
-        texture(source, p.sub(aberrationShift)).r,
-        base.g,
-        texture(source, p.add(aberrationShift)).b,
-      );
-
-      const c0 = brightColor(base).mul(0.28);
-      const c1 = brightColor(sampleRgb(p.add(vec2(tap1.x, 0)))).mul(0.12);
-      const c2 = brightColor(sampleRgb(p.sub(vec2(tap1.x, 0)))).mul(0.12);
-      const c3 = brightColor(sampleRgb(p.add(vec2(0, tap1.y)))).mul(0.12);
-      const c4 = brightColor(sampleRgb(p.sub(vec2(0, tap1.y)))).mul(0.12);
-      const c5 = brightColor(sampleRgb(p.add(tap2))).mul(0.06);
-      const c6 = brightColor(sampleRgb(p.sub(tap2))).mul(0.06);
-      const bloom = c0
-        .add(c1)
-        .add(c2)
-        .add(c3)
-        .add(c4)
-        .add(c5)
-        .add(c6)
-        .mul(this.bloomStrength)
-        .mul(this.bloomEnabled);
-
-      const bloomBase = base.add(bloom);
-      const lensBase = aberrated.add(bloom);
-      const grainHash = fract(
-        sin(dot(p.mul(vec2(RENDER_W, RENDER_H)).add(this.time.mul(17.0)), vec2(12.9898, 78.233)))
-          .mul(43758.5453),
-      ).sub(0.5);
-      const lumaWeight = float(0.4).add(
-        clamp(float(1).sub(dot(lensBase, vec3(0.333))), 0, 1).mul(0.6),
-      );
-      const withGrain = lensBase.add(grainHash.mul(this.grain).mul(lumaWeight));
-      const hurtMix = this.hurt
-        .mul(smoothstep(0.18, 0.55, r2))
-        .mul(sin(this.time.mul(0.12)).mul(0.25).add(0.75))
-        .mul(0.6);
-      const lensed = mix(withGrain, vec3(0.45, 0.02, 0.04), hurtMix);
-      const post = mix(bloomBase, lensed, this.lensEnabled).mul(this.exposure);
-      return vec4(post, 1.0);
-    })();
-
-    return renderOutput(postColor, ACESFilmicToneMapping, SRGBColorSpace);
-  }
-
-  private buildStoragePostOutputNode(storageTexture: StorageTexture): ReturnType<typeof renderOutput> {
-    const texel = vec2(1 / VIEW_W, 1 / VIEW_H);
-    const sampleRgb = (sampleUv: TslUvNode) => this.storageSampleRgb(storageTexture, sampleUv);
     const brightness = (rgb: TslRgbNode) =>
       max(max(rgb.r, rgb.g), rgb.b).sub(this.bloomThreshold).max(0);
     const brightColor = (rgb: TslRgbNode) => rgb.mul(brightness(rgb));
@@ -454,6 +390,26 @@ export class WebGpuRenderBackend implements RendererBackend {
     })();
 
     return renderOutput(postColor, ACESFilmicToneMapping, SRGBColorSpace);
+  }
+
+  private buildBaseOutputNode(): ReturnType<typeof renderOutput> {
+    return this.buildBaseOutputNodeFrom((sampleUv) => texture(this.texture, sampleUv).rgb);
+  }
+
+  private storageSampleRgb(storageTexture: StorageTexture, sampleUv: TslUvNode) {
+    return texture(storageTexture, sampleUv).rgb;
+  }
+
+  private buildStorageBaseOutputNode(storageTexture: StorageTexture): ReturnType<typeof renderOutput> {
+    return this.buildBaseOutputNodeFrom((sampleUv) => this.storageSampleRgb(storageTexture, sampleUv));
+  }
+
+  private buildPostOutputNode(): ReturnType<typeof renderOutput> {
+    return this.buildPostOutputNodeFrom((sampleUv) => texture(this.texture, sampleUv).rgb);
+  }
+
+  private buildStoragePostOutputNode(storageTexture: StorageTexture): ReturnType<typeof renderOutput> {
+    return this.buildPostOutputNodeFrom((sampleUv) => this.storageSampleRgb(storageTexture, sampleUv));
   }
 
   private async ensureLiveComposeDiagnostic(): Promise<void> {

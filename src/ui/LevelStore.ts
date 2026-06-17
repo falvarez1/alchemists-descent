@@ -77,6 +77,11 @@ export class LevelStore {
 
   private applySave(save: SavedLevel): boolean {
     const ctx = this.ctx;
+    // Structural validation: tampered localStorage (or a hand-edited file) can
+    // be missing the sparse arrays or carry a non-string RLE blob. Bail out as
+    // a clean "false" (caller shows "Load Failed") instead of throwing an
+    // uncaught error deep inside rleDecode/atob or the life/charge loops.
+    if (typeof save.rle !== 'string' || !Array.isArray(save.life) || !Array.isArray(save.charge)) return false;
     ensureSandboxWorldDetached(ctx);
     const w = ctx.world;
     if (save.w !== w.width || save.h !== w.height) return false;

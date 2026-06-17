@@ -54,6 +54,16 @@ import { placeStructures } from '@/world/structures';
 
 /* ===================== Procedural Generation Map Engines ===================== */
 
+/** 4-connected neighbor offsets, hoisted out of the rim-light distance BFS so
+ *  that pass allocates no per-cell neighbor literals (the open-cell frontier is
+ *  10^5-10^6 cells over 13 levels). */
+const N4: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
 export class WorldGen implements WorldGenApi {
   /** Center of the carved spawn chamber (original caveSpawnHint). */
   spawnHint: { x: number; y: number } | null = null;
@@ -125,12 +135,7 @@ export class WorldGen implements WorldGenApi {
     for (let d = 1; d <= 13 && frontier.length; d++) {
       const nf: Array<[number, number]> = [];
       for (const [fx2, fy2] of frontier) {
-        for (const [dx, dy] of [
-          [1, 0],
-          [-1, 0],
-          [0, 1],
-          [0, -1],
-        ]) {
+        for (const [dx, dy] of N4) {
           const X = fx2 + dx,
             Y = fy2 + dy;
           if (X < 0 || X >= WIDTH || Y < 0 || Y >= HEIGHT) continue;

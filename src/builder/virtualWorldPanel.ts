@@ -1,6 +1,7 @@
 import { LEVELS } from '@/config/worldgraph';
 import { BIOMES } from '@/config/biomes';
 import { randomSeed } from '@/core/rng';
+import { escapeHtml } from '@/core/strings';
 import type { BiomeId, LevelDef } from '@/core/types';
 import { builderPanelTitle } from '@/ui/editor/PanelRegistry';
 import { builderPanelHeader } from '@/ui/editor/PanelChrome';
@@ -1683,6 +1684,3 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}

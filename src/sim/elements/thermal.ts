@@ -101,13 +101,11 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
     const tx = drift < 0.18 ? x - 1 : drift < 0.36 ? x + 1 : x;
     const ty = y + 1;
     if (w.inBounds(tx, ty) && (w.types[w.idx(tx, ty)] === Cell.Empty || isGas(w.types[w.idx(tx, ty)]))) {
-      w.swap(x, y, tx, ty);
-      w.moved[w.idx(tx, ty)] = w.movedTick;
+      w.swap(x, y, tx, ty); // swap() already stamps moved on both endpoints
       return;
     }
     if (w.inBounds(x, ty) && (w.types[w.idx(x, ty)] === Cell.Empty || isGas(w.types[w.idx(x, ty)]))) {
-      w.swap(x, y, x, ty);
-      w.moved[w.idx(x, ty)] = w.movedTick;
+      w.swap(x, y, x, ty); // swap() already stamps moved on both endpoints
       return;
     }
   }
@@ -205,7 +203,8 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.types[ti] = Cell.Fire;
         w.life[ti] = 50;
         w.colors[ti] = fireColor();
-        if (Math.random() < 0.7) spawnSmoke(ctx, tx, ty);
+        // Smoke rises from the FIRE cell's position, matching every other fuel branch.
+        if (Math.random() < 0.7) spawnSmoke(ctx, x, y);
       }
       if (n === Cell.Snow) {
         w.types[ti] = Cell.Water;

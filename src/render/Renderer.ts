@@ -391,7 +391,9 @@ export class Renderer implements RenderTarget {
   }
 
   render(ctx: Ctx): void {
-    this.backend.syncSettings(ctx.state.render);
+    // The fallback helpers may swap this.backend (WebGPU -> WebGL); sync the
+    // active backend exactly once, after any swap, so we don't sync a backend
+    // that is about to be discarded.
     this.fallBackFromFailedWebGpu(ctx.state.render);
     this.fallBackFromLostWebGpu(ctx.state.render);
     this.backend.syncSettings(ctx.state.render);

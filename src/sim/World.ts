@@ -61,14 +61,6 @@ export class World {
     return this.types[x + y * this.width] as Cell;
   }
 
-  /** Set a cell's material and color; life/charge are left untouched. */
-  set(x: number, y: number, t: number, color: number): void {
-    const i = x + y * this.width;
-    this.types[i] = t;
-    this.colors[i] = color;
-    this.colorOverrides.delete(i);
-  }
-
   /** Reset a cell to empty space. */
   clearCell(x: number, y: number): void {
     const i = x + y * this.width;
@@ -107,7 +99,18 @@ export class World {
     this.activeCharges.delete(i);
   }
 
-  /** Rebuild charge tracking for one active window after legacy direct writes or save loads. */
+  /**
+   * Rebuild charge tracking for one active window after legacy direct writes or save loads.
+   *
+   * INVARIANT: positive charge must be deposited either through {@link setChargeAt}
+   * (which keeps {@link activeCharges} in step) OR exist before the containing
+   * 64x64 tile is first scanned here. Each tile is recorded in `chargeScanTiles`
+   * and scanned at most once; a RAW `charge[i] = v` write into an already-scanned
+   * tile is NEVER rediscovered, so the electrical sim (which only iterates
+   * `activeCharges`) will not propagate it. Authoring/repopulation paths that
+   * stamp charge directly into the grid MUST run before the sim window reaches
+   * that tile (the worldgen case), or route through `setChargeAt`.
+   */
   rebuildActiveChargesInBounds(bounds = this.simBounds): void {
     const bx0 = Math.max(0, Math.min(this.width, bounds.x0));
     const bx1 = Math.max(bx0, Math.min(this.width, bounds.x1));

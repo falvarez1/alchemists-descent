@@ -40,6 +40,14 @@ export interface ProjectAssetRecoveryReport {
   corrupt: Array<{ key: string; reason: string }>;
 }
 
+/**
+ * Per-entry byte ceiling for project assets read from IndexedDB / the project
+ * folder, mirroring the JSON-import path's IMPORT_BUNDLE_ENTRY_MAX_BYTES (4MB)
+ * so this ingest surface gets the same hardening. Project documents/prefabs/
+ * sprites sit far below this; it only bounds a pathological entry.
+ */
+const PROJECT_ASSET_MAX_BYTES = 4_000_000;
+
 export interface ProjectAssetStore {
   available(): boolean;
   listAssets(): Promise<ProjectAssetEntry[]>;
@@ -106,6 +114,10 @@ export function sanitizeProjectAssetEntry(value: unknown): ProjectAssetEntry | n
   if (!canPersistProjectAssetEntry(entry.assetKind, entry.origin, source.storage)) return null;
   if (entry.assetId !== stableAssetId(entry.assetKind, entry.origin, entry.sourceId)) return null;
   const expectedSize = byteLength(entry.text);
+  if (expectedSize > PROJECT_ASSET_MAX_BYTES) return null;
+  // sizeBytes is optional on the wire (older entries omit it) even though the
+  // validated ProjectAssetEntry output always carries it — when present it must
+  // match the recomputed byte length; the output below always sets expectedSize.
   if (entry.sizeBytes !== undefined && (!Number.isFinite(entry.sizeBytes) || entry.sizeBytes !== expectedSize)) return null;
   return {
     v: 1,
@@ -374,7 +386,10 @@ export class IndexedDbAssetStore implements ProjectAssetStore {
       };
       tx.oncomplete = () => {
         db.close();
-        resolve(result as T);
+        // A request-level error that did not abort the transaction (some browsers
+        // auto-commit) must surface rather than collapse to an undefined result.
+        if (requestError) reject(requestError);
+        else resolve(result as T);
       };
       tx.onerror = () => {
         db.close();
@@ -634,14 +649,6 @@ export interface ProjectAssetDirectoryRequestResult {
   handle: FileSystemDirectoryHandleLike | null;
   reason?: 'unsupported' | 'cancelled' | 'denied' | 'error';
   message: string;
-}
-
-export async function requestProjectAssetDirectory(
-  pickerHost: { showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandleLike> } =
-    globalThis as unknown as { showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandleLike> },
-): Promise<FileSystemDirectoryHandleLike | null> {
-  const result = await requestProjectAssetDirectoryResult(pickerHost);
-  return result.handle;
 }
 
 export async function requestProjectAssetDirectoryResult(

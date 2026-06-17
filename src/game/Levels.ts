@@ -19,10 +19,11 @@ import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_VERSION } from '@/config/gen';
 import { difficultyMods } from '@/config/difficulty';
 import { LEVELS, START_LEVEL, populationForLevel, vaultHostId } from '@/config/worldgraph';
-import { Rng, hashSeed, randomSeed } from '@/core/rng';
+import { Rng, hashSeed, randomSeed, fnv1aString } from '@/core/rng';
 import { base64ToBytes, bytesToBase64, rleDecode, rleEncode } from '@/core/rle';
 import type {
   Ctx,
+  Difficulty,
   Enemy,
   EnemyKind,
   GeneratedScenePlacement,
@@ -168,6 +169,9 @@ interface ExpeditionSave {
    *  against new generation silently desyncs). Absent = pre-guard save. */
   genVersion?: number;
   expeditionSeed: number;
+  /** Run difficulty 1–4; resume restores it so a continued run keeps its balance.
+   *  Absent in saves from before difficulty levels — those resume at 3 (shipped). */
+  difficulty?: Difficulty;
   currentId: string;
   score: number;
   player: {
@@ -199,16 +203,39 @@ function snapshotPickupForSave(pickup: Pickup): Pickup {
   return { ...pickup, data };
 }
 
-function reviveSavedPickup(pickup: Pickup): Pickup {
-  return snapshotPickupForSave(pickup);
-}
-
 function sparseNonZeroPairs(arr: Int16Array | Uint8Array): Array<[number, number]> {
   const out: Array<[number, number]> = [];
   for (let i = 0; i < arr.length; i++) {
     if (arr[i] !== 0) out.push([i, arr[i]]);
   }
   return out;
+}
+
+/**
+ * Project a runtime mechanism into a save-safe snapshot: drop the live/transient
+ * fields the Mechanism type marks as not-persisted. The critical one is
+ * `dispBodies`, which holds LIVE RigidBody references — JSON.stringify would
+ * strip their functions and persist a detached snapshot, so on restore a
+ * dispenser would come back with phantom bodies that throttle real emissions.
+ * The in-progress retraction queue (`dissolve`) and the various recomputed
+ * counters are likewise transient. All true gameplay state — `state`, `broken`,
+ * `body`, `seqDone`/`seqFired`, valve `material`/`oneShot`, etc. — is preserved.
+ */
+function sanitizeMechanismForSave(m: Mechanism): Mechanism {
+  const copy: Mechanism = { ...m };
+  delete copy.dispBodies;
+  delete copy.dissolve;
+  delete copy.seqPrev;
+  delete copy.pressed;
+  delete copy.pullT;
+  delete copy.seq;
+  delete copy.reading;
+  delete copy.closePending;
+  delete copy.closeT;
+  delete copy.prevWant;
+  delete copy.fuseT;
+  delete copy.dispCoolT;
+  return copy;
 }
 
 function nonNegativeInt(value: number | undefined, fallback: number): number {
@@ -219,6 +246,31 @@ function nonNegativeInt(value: number | undefined, fallback: number): number {
 function finiteNumber(value: number | undefined, fallback: number): number {
   if (value === undefined || !Number.isFinite(value)) return fallback;
   return value;
+}
+
+/**
+ * Per-level-blob shape guard. The top-level save validator must reject a save
+ * whose `levels` array carries a structurally-broken blob (missing rle, a
+ * non-array life/charge/enemies list) at LOAD time, where retire-the-save
+ * recovery exists — rather than letting it detonate later inside restoreLevel
+ * mid-transition. Only the fields restoreLevel actually dereferences are
+ * checked, so older valid saves keep passing.
+ */
+function isSavedLevelBlobShape(value: unknown): value is SavedLevelBlob {
+  if (!value || typeof value !== 'object') return false;
+  const b = value as Partial<SavedLevelBlob>;
+  return typeof b.id === 'string' &&
+    typeof b.rle === 'string' &&
+    typeof b.explored === 'string' &&
+    Array.isArray(b.life) &&
+    Array.isArray(b.charge) &&
+    Array.isArray(b.enemies) &&
+    Array.isArray(b.pickups) &&
+    Array.isArray(b.mechanisms) &&
+    Array.isArray(b.waystones) &&
+    Array.isArray(b.runeVaults) &&
+    Array.isArray(b.litOrder) &&
+    (b.colorOverrides === undefined || Array.isArray(b.colorOverrides));
 }
 
 export function snapshotEnemyForSave(e: Enemy): SavedEnemyState {
@@ -251,16 +303,20 @@ export function snapshotEnemyForSave(e: Enemy): SavedEnemyState {
 }
 
 export function reviveSavedEnemy(se: SavedEnemyState): Enemy {
+  // A corrupt/hand-edited save must not inject NaN/Infinity into positions or
+  // health (it would poison physics, camera and every distance check). Guard
+  // x/y/hp/maxHp the way the lesser fields below already are.
+  const maxHp = Math.max(1, finiteNumber(se.maxHp, 1));
   const enemy: Enemy = {
     kind: se.kind,
-    x: se.x,
-    y: se.y,
+    x: finiteNumber(se.x, 0),
+    y: finiteNumber(se.y, 0),
     fx: 0,
     fy: 0,
     vx: 0,
     vy: 0,
-    hp: se.hp,
-    maxHp: se.maxHp,
+    hp: Math.max(0, Math.min(maxHp, finiteNumber(se.hp, maxHp))),
+    maxHp,
     dmgK: finiteNumber(se.dmgK, 1),
     flash: 0,
     timer: nonNegativeInt(se.timer, 0),
@@ -790,6 +846,7 @@ export class Levels implements LevelsApi {
       v: 1,
       genVersion: GEN_VERSION,
       expeditionSeed,
+      difficulty: ctx.state.difficulty,
       currentId,
       score: ctx.state.score,
       player: playerSave,
@@ -1392,7 +1449,7 @@ export class Levels implements LevelsApi {
       explored: bytesToBase64(rt.explored),
       waystones: rt.waystones,
       pickups: rt.pickups.map(snapshotPickupForSave),
-      mechanisms: rt.mechanisms,
+      mechanisms: rt.mechanisms.map(sanitizeMechanismForSave),
       runeVaults: rt.runeVaults,
       keyTaken: rt.keyTaken,
       portalOpen: rt.portal?.open ?? false,
@@ -1415,22 +1472,22 @@ export class Levels implements LevelsApi {
     if (!value || typeof value !== 'object') return false;
     const save = value as Partial<ExpeditionSave>;
     const player = save.player as Partial<ExpeditionSave['player']> | undefined;
+    const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
     return save.v === 1 &&
       typeof save.currentId === 'string' &&
-      typeof save.expeditionSeed === 'number' &&
-      Number.isFinite(save.expeditionSeed) &&
-      typeof save.score === 'number' &&
-      Number.isFinite(save.score) &&
+      finite(save.expeditionSeed) &&
+      finite(save.score) &&
       Array.isArray(save.levels) &&
+      save.levels.every(isSavedLevelBlobShape) &&
       !!save.loadout &&
       typeof save.loadout === 'object' &&
       !!player &&
-      typeof player.x === 'number' &&
-      typeof player.y === 'number' &&
-      typeof player.hp === 'number' &&
-      typeof player.maxHp === 'number' &&
-      typeof player.levit === 'number' &&
-      typeof player.maxLevit === 'number' &&
+      finite(player.x) &&
+      finite(player.y) &&
+      finite(player.hp) &&
+      finite(player.maxHp) &&
+      finite(player.levit) &&
+      finite(player.maxLevit) &&
       !!player.perks &&
       typeof player.perks === 'object';
   }
@@ -1465,7 +1522,13 @@ export class Levels implements LevelsApi {
       this.retireSavedExpedition(ctx, 'THE DEPTHS HAVE SHIFTED - EXPEDITION RETIRED');
       return false;
     }
-    if (this.isLegacyReviewSave(save)) return false;
+    // A legacy review/debug-kit save is intentionally non-resumable. Retire it
+    // (like the genVersion path) so it doesn't linger in localStorage forever
+    // making hasSavedExpedition() report a save that can never be resumed.
+    if (this.isLegacyReviewSave(save)) {
+      this.retireSavedExpedition(ctx, 'REVIEW EXPEDITION RETIRED');
+      return false;
+    }
 
     const suppressionBeforeResume = this.checkpointSaveSuppression;
     try {
@@ -1475,6 +1538,7 @@ export class Levels implements LevelsApi {
       for (const blob of save.levels) this.savedBlobs.set(blob.id, blob);
 
       ctx.state.score = save.score;
+      ctx.state.difficulty = save.difficulty ?? 3; // pre-difficulty saves resume at the shipped balance
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
       const p = ctx.player;
       p.maxHp = save.player.maxHp;
@@ -1552,8 +1616,15 @@ export class Levels implements LevelsApi {
     world.life.fill(0);
     world.charge.fill(0);
     world.activeCharges.clear();
-    for (const [i, v] of blob.life) world.life[i] = v;
-    for (const [i, v] of blob.charge) world.setChargeAt(i, v);
+    // Guard the saved indices (same as the colorOverrides loop below): an
+    // out-of-range index from a corrupt save must not write past the planes or
+    // seed setChargeAt's activeCharges set with a bad entry.
+    for (const [i, v] of blob.life) {
+      if (i >= 0 && i < world.life.length) world.life[i] = v;
+    }
+    for (const [i, v] of blob.charge) {
+      if (i >= 0 && i < world.charge.length) world.setChargeAt(i, v);
+    }
     for (const [i, color] of blob.colorOverrides ?? []) {
       if (i < 0 || i >= world.colors.length || world.types[i] === Cell.Empty) continue;
       world.colors[i] = color >>> 0;
@@ -1585,7 +1656,7 @@ export class Levels implements LevelsApi {
         y: pristine.exit.sealY - 12,
       }),
       cauldron: pristine.cauldron,
-      pickups: blob.pickups.map(reviveSavedPickup),
+      pickups: blob.pickups.map(snapshotPickupForSave),
       portal,
       keyTaken: blob.keyTaken,
       mechanisms: blob.mechanisms,
@@ -1653,8 +1724,19 @@ export class Levels implements LevelsApi {
     } else {
       const blob = this.savedBlobs.get(id);
       if (blob) {
-        // Saved by a previous session: regenerate-and-overlay (see restoreLevel)
-        runtime = this.restoreLevel(ctx, def, blob);
+        // Saved by a previous session: regenerate-and-overlay (see restoreLevel).
+        // Fail-open: a corrupt blob (e.g. an unreadable RLE that throws out of
+        // rleDecode) must NEVER strand the run mid-transition with the curtain
+        // up. Fall back to a pristine regenerate from the level seed and drop
+        // the bad blob; createLevel re-establishes ctx.world/enemies from
+        // scratch, so the partial state left by a failed restore is overwritten.
+        try {
+          runtime = this.restoreLevel(ctx, def, blob);
+        } catch (error) {
+          console.warn(`Saved level "${id}" failed to restore; regenerating pristine`, error);
+          runtime = this.createLevel(ctx, def);
+          ctx.events.emit('toast', { text: 'A DEPTH WAS UNREADABLE — REFORGED' });
+        }
         this.savedBlobs.delete(id);
       } else {
         runtime = this.createLevel(ctx, def);
@@ -2245,13 +2327,10 @@ export class Levels implements LevelsApi {
     }
   }
 
-  /** Tiny FNV-1a over the level id — folds it into the expedition seed. */
+  /** Tiny FNV-1a over the level id — folds it into the expedition seed.
+   *  Shared with Builder's campaign playtest seed (core/rng.fnv1aString) so the
+   *  two cannot silently diverge. */
   private hashString(s: string): number {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < s.length; i++) {
-      h ^= s.charCodeAt(i);
-      h = Math.imul(h, 0x01000193);
-    }
-    return h >>> 0;
+    return fnv1aString(s);
   }
 }

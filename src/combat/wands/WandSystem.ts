@@ -13,10 +13,10 @@ import type {
 } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { acidColor, emberColor, fireColor, glassColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
-import { ALL_CARD_IDS, CARD_DEFS } from './cards';
+import { ALL_CARD_IDS, CARD_DEFS, isCardId } from './cards';
 import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
-import { BOUNCE_COUNTS, INFUSED, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
+import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
 import { DEPTH_PROJECTILE_POOL, randomCard, WAYSTONE_MOD_POOL } from './rewardPools';
 
 /**
@@ -603,9 +603,13 @@ export class WandSystem implements WandsApi {
     if (action.infused) {
       const flask = ctx.flask.state;
       if (flask.material !== null && flask.count > 0) {
-        INFUSED.set(p, flask.material);
-        // The trail is real material: the flask pays 2 stored cells per cast.
-        flask.count = Math.max(0, flask.count - 2);
+        // The trail is REAL material: bound it to a budget and charge the flask
+        // for exactly that many cells, so material is conserved. (Previously it
+        // paid 2 cells but shed 2/frame for the bolt's whole life — an unbounded
+        // fountain that also leaked the INFUSED entry forever.)
+        const budget = Math.min(INFUSE_TRAIL_BUDGET, flask.count);
+        INFUSED.set(p, { material: flask.material, budget });
+        flask.count = Math.max(0, flask.count - budget);
         if (flask.count === 0) flask.material = null;
       }
     }
@@ -715,13 +719,15 @@ export class WandSystem implements WandsApi {
   loadLoadout(data: WandLoadoutSave): void {
     this._active = data.active;
     this.collection.length = 0;
-    this.collection.push(...data.collection);
+    this.collection.push(...data.collection.filter(isCardId));
     for (let i = 0; i < this.wands.length && i < data.wands.length; i++) {
       const saved = data.wands[i];
       const w = this.wands[i];
       w.frame = WAND_FRAMES[saved.frameId] ?? w.frame;
       w.cards.length = 0;
-      w.cards.push(...saved.cards);
+      // Drop unknown/stale card ids (keep slot as empty) so a renamed/removed
+      // card from an old or hand-edited save can't reach the wand compiler.
+      w.cards.push(...saved.cards.map((c) => (c === null || isCardId(c) ? c : null)));
       // pad/trim to the frame's capacity
       while (w.cards.length < w.frame.capacity) w.cards.push(null);
       w.cards.length = w.frame.capacity;
@@ -755,13 +761,15 @@ export class WandSystem implements WandsApi {
   restoreRuntimeState(data: WandRuntimeSnapshot): void {
     this._active = data.active;
     this.collection.length = 0;
-    this.collection.push(...data.collection);
+    this.collection.push(...data.collection.filter(isCardId));
     for (let i = 0; i < this.wands.length && i < data.wands.length; i++) {
       const saved = data.wands[i];
       const w = this.wands[i];
       w.frame = WAND_FRAMES[saved.frameId] ?? w.frame;
       w.cards.length = 0;
-      w.cards.push(...saved.cards);
+      // Drop unknown/stale card ids (keep slot as empty) so a renamed/removed
+      // card from an old or hand-edited save can't reach the wand compiler.
+      w.cards.push(...saved.cards.map((c) => (c === null || isCardId(c) ? c : null)));
       while (w.cards.length < w.frame.capacity) w.cards.push(null);
       w.cards.length = w.frame.capacity;
       w.mana = Math.min(w.frame.manaMax, Math.max(0, saved.mana));

@@ -122,7 +122,13 @@ export class Lighting implements LightField {
       Lg = this.lightG[i];
       Lb = this.lightB[i];
     }
-    if (fx >= 0 && fx < VIEW_W && fy >= 0 && fy < VIEW_H) vg = this.vignette[fy * VIEW_W + fx];
+    if (fx >= 0 && fx < VIEW_W && fy >= 0 && fy < VIEW_H) {
+      // Rescale the baked 0.52 vignette by the live postFx.vignette setting so
+      // sprites/debris track the slider exactly like the terrain compose loop
+      // (FrameComposer) and the GPU shader's uVignette uniform.
+      const vigScale = ctx.state.postFx.vignette / 0.52;
+      vg = 1 - vigScale * (1 - this.vignette[fy * VIEW_W + fx]);
+    }
     let f = (AMBIENT + Math.min(2.2, Lr)) * vg;
     this.lit.r = Math.min(1.8, f * f);
     f = (AMBIENT + Math.min(2.2, Lg)) * vg;
@@ -635,7 +641,7 @@ export class Lighting implements LightField {
     // Death glow: the wand goes dark with the wizard, so the corpse carries its
     // own fading violet soul-light — the ragdoll stays readable as it tumbles.
     if (ctx.state.mode === 'play' && ctx.player.dead) {
-      const corpse = ctx.rigidBodies.bodies.find((b) => b.tag === 'player-corpse');
+      const corpse = ctx.rigidBodies.playerCorpse;
       if (corpse) {
         const flick =
           0.82 + Math.sin(ctx.state.frameCount * 0.18) * 0.12 + (Math.random() - 0.5) * 0.06;

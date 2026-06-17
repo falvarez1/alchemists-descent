@@ -20,6 +20,20 @@ import {
   drawProjectiles,
 } from '@/render/sprites/FxSprites';
 
+/** Reusable per-frame descriptor for a visible backdrop layer (see activeBackdropLayers). */
+interface ActiveBackdropLayer {
+  pixels: Uint8ClampedArray;
+  width: number;
+  opacity: number;
+  xSamples: Int32Array;
+  ySamples: Int32Array;
+}
+
+// Inert sentinels so the pooled descriptors start with valid-typed fields
+// before the first compose populates them (they are never sampled while inert).
+const EMPTY_BACKDROP_PIXELS = new Uint8ClampedArray(0);
+const EMPTY_SAMPLES = new Int32Array(0);
+
 /**
  * Composes each frame's CPU-side pixel buffer (original updateWebGLBuffers):
  * the lit world window with shockwave/black-hole refraction and parallax
@@ -40,6 +54,18 @@ export class FrameComposer implements PixelSurface {
   private overlay: OverlaySurface | null = null;
   private readonly backdropSampleX = Array.from({ length: 5 }, () => new Int32Array(VIEW_W));
   private readonly backdropSampleY = Array.from({ length: 5 }, () => new Int32Array(VIEW_H));
+
+  // Per-frame compose scratch, reset (not reallocated) each frame to keep the
+  // hot render path allocation-free (mirrors the backdropSampleX/Y pattern).
+  // The lens pool reuses CompositorLens objects up to a high-water mark; the
+  // backdrop-layer pool reuses the same wrapper objects each frame.
+  private readonly lensPool: CompositorLens[] = [];
+  private readonly lenses: CompositorLens[] = [];
+  private readonly backdropLayerPool: ActiveBackdropLayer[] = Array.from(
+    { length: 5 },
+    () => ({ pixels: EMPTY_BACKDROP_PIXELS, width: 0, opacity: 0, xSamples: EMPTY_SAMPLES, ySamples: EMPTY_SAMPLES }),
+  );
+  private readonly activeBackdropLayers: ActiveBackdropLayer[] = [];
 
   constructor(
     private readonly target: RenderTarget,
@@ -103,8 +129,29 @@ export class FrameComposer implements PixelSurface {
     pixelData[idx + 2] += b;
   }
 
-  private unpack01(c: number): { r: number; g: number; b: number } {
-    return { r: unpackR(c) / 255, g: unpackG(c) / 255, b: unpackB(c) / 255 };
+  // Channel-at-a-time unpack to 0..1 — scalar helpers instead of a {r,g,b}
+  // object so per-pixel/per-strand draw loops allocate nothing (the callers
+  // hold the three values as locals; some hold two unpacks live at once).
+  private unpackR01(c: number): number {
+    return unpackR(c) / 255;
+  }
+  private unpackG01(c: number): number {
+    return unpackG(c) / 255;
+  }
+  private unpackB01(c: number): number {
+    return unpackB(c) / 255;
+  }
+
+  /** Acquire a pooled CompositorLens (reset by the caller). */
+  private acquireLens(): CompositorLens {
+    const pool = this.lensPool;
+    const idx = this.lenses.length;
+    let lens = pool[idx];
+    if (lens === undefined) {
+      lens = { cx: 0, cy: 0, R: 0, K: 0 };
+      pool[idx] = lens;
+    }
+    return lens;
   }
 
   private isHotCell(t: number): boolean {
@@ -140,11 +187,19 @@ export class FrameComposer implements PixelSurface {
     this.renderCamY = ctx.camera.renderY;
 
     const frameCount = ctx.state.frameCount;
-    // Active singularities bend the image around them (inward pull + swirl)
-    const lenses: CompositorLens[] = [];
+    // Active singularities bend the image around them (inward pull + swirl).
+    // Reuse a pooled lens array + pooled lens objects so the common (no black
+    // hole) frame allocates nothing on the per-frame compose path.
+    const lenses = this.lenses;
+    lenses.length = 0;
     for (const pr of ctx.projectiles) {
       if (pr.type === 'blackhole') {
-        lenses.push({ cx: pr.x, cy: pr.y, R: pr.vortexRad! * 2.1, K: 4 + pr.vortexRad! * 0.16 });
+        const lens = this.acquireLens();
+        lens.cx = pr.x;
+        lens.cy = pr.y;
+        lens.R = pr.vortexRad! * 2.1;
+        lens.K = 4 + pr.vortexRad! * 0.16;
+        lenses.push(lens);
       }
     }
     const lightRebuilt = frameCount % 2 === 0 || frameCount < 5;
@@ -238,13 +293,10 @@ export class FrameComposer implements PixelSurface {
     const backdropContrast = backdropGrade.contrast;
     const backdropInvGamma = 1 / backdropGrade.gamma;
     const backdropSaturation = backdropGrade.saturation;
-    const activeBackdropLayers: Array<{
-      pixels: Uint8ClampedArray;
-      width: number;
-      opacity: number;
-      xSamples: Int32Array;
-      ySamples: Int32Array;
-    }> = [];
+    // Reuse the pooled descriptor array + objects (reset, not reallocated) so
+    // the per-frame compose path stays allocation-free (see field declaration).
+    const activeBackdropLayers = this.activeBackdropLayers;
+    activeBackdropLayers.length = 0;
     for (let i = 0; i < backdropLayers.length; i++) {
       const layer = backdropLayers[i];
       const setting = backdropSettings[layer.id];
@@ -264,13 +316,13 @@ export class FrameComposer implements PixelSurface {
         if (sy < 0) sy += layer.height;
         ySamples[vy] = sy;
       }
-      activeBackdropLayers.push({
-        pixels: layer.pixels,
-        width: layer.width,
-        opacity: setting.opacity,
-        xSamples,
-        ySamples,
-      });
+      const descriptor = this.backdropLayerPool[activeBackdropLayers.length];
+      descriptor.pixels = layer.pixels;
+      descriptor.width = layer.width;
+      descriptor.opacity = setting.opacity;
+      descriptor.xSamples = xSamples;
+      descriptor.ySamples = ySamples;
+      activeBackdropLayers.push(descriptor);
     }
     const pixelData = this.target.pixelData;
     const wavesLen = ctx.shockwaves.length;
@@ -409,7 +461,7 @@ export class FrameComposer implements PixelSurface {
           const fl = 0.7 + Math.random() * 0.55;
           r *= fl;
           g *= fl * 0.95;
-        } else if ((type === Cell.Water || type === Cell.Healium || type === Cell.Teleportium) && wy > 0 && types[ci - WIDTH] === Cell.Empty) {
+        } else if ((type === Cell.Water || type === Cell.Healium || type === Cell.Teleportium) && wy > 0 && lookupY > 0 && types[ci - WIDTH] === Cell.Empty) {
           const wave = 0.88 + Math.sin(frameCount * 0.16 + wx * 0.42) * 0.12;
           r *= wave;
           g *= 0.94 + (wave - 0.88) * 0.45;
@@ -591,7 +643,7 @@ export class FrameComposer implements PixelSurface {
    *  it settles. Replaces the live player sprite. */
   private drawPlayerRagdoll(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
-    const corpse = ctx.rigidBodies.bodies.find((b) => b.tag === 'player-corpse');
+    const corpse = ctx.rigidBodies.playerCorpse;
     if (!corpse || corpse.shape.kind !== 'box') return;
     const cx = corpse.x;
     const cy = corpse.y;
@@ -698,7 +750,9 @@ export class FrameComposer implements PixelSurface {
     const strands = ctx.vineStrands?.strands;
     if (!strands?.length) return;
     for (const strand of strands) {
-      const base = this.unpack01(strand.color);
+      const baseR = this.unpackR01(strand.color);
+      const baseG = this.unpackG01(strand.color);
+      const baseB = this.unpackB01(strand.color);
       const half = ((strand.thickness ?? 1) - 1) / 2;
       for (const segment of strand.segments) {
         const a = strand.nodes[segment.a];
@@ -714,9 +768,9 @@ export class FrameComposer implements PixelSurface {
           const x = a.x + dx * t;
           const y = a.y + dy * t;
           const lt = this.light.sample(x, y);
-          const r = base.r * Math.max(0.16, lt.r) * 1.05;
-          const g = base.g * Math.max(0.18, lt.g) * 1.1;
-          const b2 = base.b * Math.max(0.14, lt.b);
+          const r = baseR * Math.max(0.16, lt.r) * 1.05;
+          const g = baseG * Math.max(0.18, lt.g) * 1.1;
+          const b2 = baseB * Math.max(0.14, lt.b);
           for (let w = -half; w <= half + 1e-6; w += 1) this.setPx(x + perpX * w, y + perpY * w, r, g, b2);
         }
       }
@@ -726,9 +780,9 @@ export class FrameComposer implements PixelSurface {
           this.setPx(
             node.x,
             node.y,
-            base.r * Math.max(0.16, lt.r),
-            base.g * Math.max(0.18, lt.g),
-            base.b * Math.max(0.14, lt.b),
+            baseR * Math.max(0.16, lt.r),
+            baseG * Math.max(0.18, lt.g),
+            baseB * Math.max(0.14, lt.b),
           );
         }
       }
@@ -918,8 +972,8 @@ export class FrameComposer implements PixelSurface {
         if (!world.inBounds(cx + dx, cy + dy)) continue;
         const t = world.types[world.idx(cx + dx, cy + dy)];
         if (!this.isBrewableMass(t)) continue;
-        const c = this.unpack01(world.colors[world.idx(cx + dx, cy + dy)]);
-        sumR += c.r; sumG += c.g; sumB += c.b; mass++;
+        const col = world.colors[world.idx(cx + dx, cy + dy)];
+        sumR += this.unpackR01(col); sumG += this.unpackG01(col); sumB += this.unpackB01(col); mass++;
       }
     let heated = false;
     for (let dy = -2; dy <= 4 && !heated; dy++)
@@ -940,7 +994,8 @@ export class FrameComposer implements PixelSurface {
       return Math.round(baseHW + (rimHW - baseHW) * Math.sqrt(Math.max(0, 1 - tt * tt)));
     };
     const sheen = ((frame * 0.5) % (rimHW * 2 + 6)) - rimHW - 3; // a highlight travels the rim
-    const steel = (v: number): [number, number, number] => [v * 0.86, v * 0.93, v]; // cool steel
+    // cool steel — write the three channels directly (no per-pixel tuple alloc)
+    const setSteel = (x: number, y: number, v: number): void => this.setPx(x, y, v * 0.86, v * 0.93, v);
 
     // --- bowl walls (2px): a wide cup tapering to a rounded base ---
     for (let y = rimY; y <= baseY; y++) {
@@ -951,27 +1006,27 @@ export class FrameComposer implements PixelSurface {
           const x = cx + side * (hw - wpx);
           let v = 0.32 + (side > 0 ? 0.06 : -0.03) - (y - rimY) * 0.004;
           if (Math.abs(x - cx - sheen) < 1.3) v += 0.2; // traveling sheen
-          this.setPx(x, y, ...steel(v));
+          setSteel(x, y, v);
         }
       }
     }
     // close the rounded base
     const hwB = hwAt(baseY);
-    for (let dx = -hwB; dx <= hwB; dx++) this.setPx(cx + dx, baseY, ...steel(0.28));
+    for (let dx = -hwB; dx <= hwB; dx++) setSteel(cx + dx, baseY, 0.28);
     // rim band + rolled handles (the curled ends)
     for (let dx = -rimHW; dx <= rimHW; dx++) {
-      this.setPx(cx + dx, rimY - 1, ...steel(0.47));
-      this.setPx(cx + dx, rimY, ...steel(0.38));
+      setSteel(cx + dx, rimY - 1, 0.47);
+      setSteel(cx + dx, rimY, 0.38);
     }
     for (const side of [-1, 1] as const) {
       const hx = cx + side * (rimHW + 1);
-      this.setPx(hx, rimY - 2, ...steel(0.42));
-      this.setPx(hx + side, rimY - 2, ...steel(0.36));
-      this.setPx(hx + side, rimY - 1, ...steel(0.32));
+      setSteel(hx, rimY - 2, 0.42);
+      setSteel(hx + side, rimY - 2, 0.36);
+      setSteel(hx + side, rimY - 1, 0.32);
     }
     // splayed feet on the floor
     for (const side of [-1, 1] as const) {
-      for (let t = 0; t <= 2; t++) this.setPx(cx + side * (baseHW + t), baseY + 1 + (t >> 1), ...steel(0.26 - t * 0.03));
+      for (let t = 0; t <= 2; t++) setSteel(cx + side * (baseHW + t), baseY + 1 + (t >> 1), 0.26 - t * 0.03);
     }
 
     // --- the BREW: pools low in the big bowl (real basin level near cy) ---
@@ -1002,7 +1057,10 @@ export class FrameComposer implements PixelSurface {
     const frame = ctx.state.frameCount;
     const flask = ctx.flask.state;
     const mat = flask.material;
-    const tint = mat === null ? { r: 0.45, g: 0.72, b: 1.0 } : this.unpack01(COLOR_FN[mat]());
+    const tintCol = mat === null ? 0 : COLOR_FN[mat]();
+    const tintR = mat === null ? 0.45 : this.unpackR01(tintCol);
+    const tintG = mat === null ? 0.72 : this.unpackG01(tintCol);
+    const tintB = mat === null ? 1.0 : this.unpackB01(tintCol);
     const tip = ctx.spells.wandTip();
 
     if (ctx.input.siphonHeld) {
@@ -1011,13 +1069,13 @@ export class FrameComposer implements PixelSurface {
       if (reach < 72) {
         const phase = (frame % 12) / 12;
         // Bright, dense pull-line so the siphon reads against the lit terrain.
-        this.drawDottedLine(target.x, target.y, ctx.player.x, ctx.player.y - 9, 16, phase, tint.r * 0.6 + 0.05, tint.g * 0.75 + 0.08, tint.b * 0.9 + 0.12);
+        this.drawDottedLine(target.x, target.y, ctx.player.x, ctx.player.y - 9, 16, phase, tintR * 0.6 + 0.05, tintG * 0.75 + 0.08, tintB * 0.9 + 0.12);
         // A pulsing node on the cursor marks the patch being drained.
         const pulse = 0.65 + Math.sin(frame * 0.4) * 0.35;
-        this.addPx(target.x, target.y, tint.r * pulse, tint.g * pulse, tint.b * pulse);
-        const arm = tint.r * pulse * 0.6,
-          arg = tint.g * pulse * 0.6,
-          ab = tint.b * pulse * 0.6;
+        this.addPx(target.x, target.y, tintR * pulse, tintG * pulse, tintB * pulse);
+        const arm = tintR * pulse * 0.6,
+          arg = tintG * pulse * 0.6,
+          ab = tintB * pulse * 0.6;
         this.addPx(target.x + 1, target.y, arm, arg, ab);
         this.addPx(target.x - 1, target.y, arm, arg, ab);
         this.addPx(target.x, target.y + 1, arm, arg, ab);
@@ -1032,9 +1090,9 @@ export class FrameComposer implements PixelSurface {
         this.addPx(
           tip.x + Math.cos(a) * (2 + t * 10),
           tip.y + Math.sin(a) * (2 + t * 10) + t * t * 3,
-          tint.r * (0.3 - t * 0.18),
-          tint.g * (0.3 - t * 0.18),
-          tint.b * (0.3 - t * 0.18),
+          tintR * (0.3 - t * 0.18),
+          tintG * (0.3 - t * 0.18),
+          tintB * (0.3 - t * 0.18),
         );
       }
     }
@@ -1042,7 +1100,10 @@ export class FrameComposer implements PixelSurface {
     const bottle = ctx.flask.bottleView();
     if (!bottle) return;
     const bottleMat = bottle.material;
-    const bottleTint = bottleMat === null ? tint : this.unpack01(COLOR_FN[bottleMat]());
+    const bottleCol = bottleMat === null ? 0 : COLOR_FN[bottleMat]();
+    const bottleTintR = bottleMat === null ? tintR : this.unpackR01(bottleCol);
+    const bottleTintG = bottleMat === null ? tintG : this.unpackG01(bottleCol);
+    const bottleTintB = bottleMat === null ? tintB : this.unpackB01(bottleCol);
     const x = Math.round(bottle.x),
       y = Math.round(bottle.y);
     const spin = frame * 0.5 + bottle.x * 0.03;
@@ -1051,7 +1112,7 @@ export class FrameComposer implements PixelSurface {
     this.setPx(x, y, 0.72, 0.9, 1.0);
     this.setPx(x + sx, y + sy, 0.45, 0.65, 0.8);
     this.setPx(x - sx, y - sy, 0.18, 0.28, 0.36);
-    if (bottleMat !== null) this.addPx(x, y + 1, bottleTint.r * 0.55, bottleTint.g * 0.55, bottleTint.b * 0.55);
+    if (bottleMat !== null) this.addPx(x, y + 1, bottleTintR * 0.55, bottleTintG * 0.55, bottleTintB * 0.55);
   }
 
   /** Wave F: the critter layer — tiny, alive, mostly ignorable. */

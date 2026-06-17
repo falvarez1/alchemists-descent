@@ -526,18 +526,22 @@ export class ConsoleOverlay {
     const rows = await Promise.all(
       paths.map(async (path) => {
         const res = await this.ctx.console.exec('get ' + path);
+        const data = typeof res.data === 'object' && res.data !== null ? (res.data as { value?: unknown; code?: unknown }) : null;
         return {
           path,
           ok: res.ok,
-          value: res.ok && typeof res.data === 'object' && res.data !== null ? (res.data as { value?: unknown }).value : res.text,
+          // Only a definitively-unknown path ('parse-param-path') should be pruned; a transient
+          // resolution failure (e.g. a subsystem not yet initialized) must keep the pinned watch.
+          unknownPath: !res.ok && data?.code === 'parse-param-path',
+          value: res.ok && data ? data.value : res.text,
         };
       }),
     ).finally(() => {
       this.watchRefreshBusy = false;
     });
     if (id !== this.watchRefreshId) return;
-    const validPaths = rows.filter((row) => row.ok).map((row) => row.path);
-    if (validPaths.length !== paths.length) saveConsoleWatches(validPaths);
+    const keptPaths = rows.filter((row) => !row.unknownPath).map((row) => row.path);
+    if (keptPaths.length !== paths.length) saveConsoleWatches(keptPaths);
     this.watchEl.replaceChildren();
     for (const row of rows) {
       const el = document.createElement('div');

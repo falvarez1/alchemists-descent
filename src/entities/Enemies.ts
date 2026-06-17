@@ -279,8 +279,8 @@ export class Enemies implements EnemyControlApi {
     if ((e.knockT ?? 0) <= 0) return false;
     e.knockT = (e.knockT ?? 0) - 1;
     const ctx = this.ctx;
-    let vx = (e.knockVx ?? 0) * KNOCK_DRAG;
-    let vy = ((e.knockVy ?? 0) + KNOCK_GRAV) * KNOCK_DRAG;
+    const vx = (e.knockVx ?? 0) * KNOCK_DRAG;
+    const vy = ((e.knockVy ?? 0) + KNOCK_GRAV) * KNOCK_DRAG;
     const speed = Math.hypot(vx, vy);
     e.fx += vx;
     e.fy += vy;
@@ -1217,6 +1217,10 @@ export class Enemies implements EnemyControlApi {
           this.shakeAt(e.x, e.y, 0.02, 0.05);
           ctx.audio.hollowKnock();
         }
+        // The colossus owns its own landing edge: the renderer only writes prevG
+        // for slimes/bomber, so without this the footfall would fire every grounded
+        // frame instead of once per landing. Keep this gating in the sim.
+        e.prevG = e.grounded;
 
         // Furnace breath: embers rise off the shoulders
         if (ctx.state.frameCount % 5 === 0 && !doused) {
@@ -1548,7 +1552,8 @@ export class Enemies implements EnemyControlApi {
           e.attackCd = 240;
         }
         if (targetAlive && e.attackCd < 200 && Math.abs(pdx) < 15 && Math.abs(pdy) < 22) {
-          ctx.playerCtl.damage(20, Math.sign(pdx) * -5.0, -3.6);
+          // dmgK so depth + difficulty scale this slam like every other attack.
+          ctx.playerCtl.damage(20 * (e.dmgK ?? 1), Math.sign(pdx) * -5.0, -3.6);
           e.attackCd = 220;
         }
       }

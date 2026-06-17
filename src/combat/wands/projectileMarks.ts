@@ -11,8 +11,17 @@ import type { CastAction } from './compiler';
 /** Terrain bounces remaining for a marked projectile. */
 export const BOUNCE_COUNTS: WeakMap<Projectile, number> = new WeakMap();
 
-/** Flask material this projectile sheds while flying. */
-export const INFUSED: WeakMap<Projectile, number> = new WeakMap();
+/** Flask material a projectile sheds while flying, with a bounded cell budget
+ *  so the trail is conserved (the flask pays exactly `budget` cells at cast) and
+ *  the mark is dropped at 0 rather than shedding forever. */
+export interface InfuseTrail {
+  material: number;
+  budget: number;
+}
+export const INFUSED: WeakMap<Projectile, InfuseTrail> = new WeakMap();
+
+/** Cells an infuser bolt may shed over its life (the flask pays this many). */
+export const INFUSE_TRAIL_BUDGET = 60;
 
 export interface ProjectileModState {
   /** Fixed low-economy water cells left to shed. */

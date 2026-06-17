@@ -15,6 +15,7 @@ import type {
 } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { EventBus } from '@/core/events';
+import { escapeHtml } from '@/core/strings';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { bloodColor, COLOR_FN, EMPTY_COLOR, packRGB, stoneColor, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -1960,6 +1961,3 @@ function prefabThumb(p: PrefabDef): HTMLCanvasElement {
   return thumb;
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}

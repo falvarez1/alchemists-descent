@@ -1,5 +1,5 @@
 import { HEIGHT, SIM_MARGIN, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
-import { clamp } from '@/core/math';
+import { clamp, smoothstep } from '@/core/math';
 import type { CameraApi, Ctx } from '@/core/types';
 import type { World } from '@/sim/World';
 
@@ -7,9 +7,6 @@ const AIM_LOOKAHEAD_DEADZONE = 28;
 const AIM_LOOKAHEAD_FULL_DISTANCE = 150;
 const AIM_LOOKAHEAD_LERP = 0.12;
 
-function smoothStep(t: number): number {
-  return t * t * (3 - 2 * t);
-}
 
 /**
  * Smooth lerp-follow camera. In play mode it tracks the player with a small
@@ -41,7 +38,7 @@ export class Camera implements CameraApi {
       const lead = 26 + (player.crawlT / 10) * 14;
       const aimDx = input.mouse.x - player.x;
       const aimDistance = Math.abs(aimDx);
-      const leadT = smoothStep(
+      const leadT = smoothstep(
         clamp(
           (aimDistance - AIM_LOOKAHEAD_DEADZONE) / (AIM_LOOKAHEAD_FULL_DISTANCE - AIM_LOOKAHEAD_DEADZONE),
           0,
@@ -59,7 +56,7 @@ export class Camera implements CameraApi {
       this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48;
     } else if (state.mode === 'play' && player.dead) {
       // Death: ride the tumbling ragdoll down (don't freeze on the death spot).
-      const corpse = ctx.rigidBodies.bodies.find((b) => b.tag === 'player-corpse');
+      const corpse = ctx.rigidBodies.playerCorpse;
       const fx = corpse ? corpse.x : player.x;
       const fy = corpse ? corpse.y : player.y - 9;
       this.tx = fx - VIEW_W / 2;

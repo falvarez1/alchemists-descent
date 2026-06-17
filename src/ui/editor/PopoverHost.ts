@@ -1,3 +1,5 @@
+import { clamp } from '@/core/math';
+
 export type PopoverSide = 'right' | 'left' | 'bottom' | 'top';
 
 export interface RectLike {
@@ -107,6 +109,23 @@ export class PopoverHost {
       el.style.display = 'none';
       el.classList.remove('interactive');
     }
+  }
+
+  /**
+   * Tear down the document/window listeners and drop the popover nodes.
+   * Mirrors MenuHost.dispose()/Tabs teardown so PopoverHost is symmetric and
+   * safe to use per-view (current owners are app-lifetime singletons).
+   */
+  dispose(): void {
+    if (this.hoverTimer !== null) {
+      this.doc.defaultView?.clearTimeout(this.hoverTimer);
+      this.hoverTimer = null;
+    }
+    this.doc.removeEventListener('keydown', this.onKeyDown, true);
+    this.doc.removeEventListener('scroll', this.onScroll, true);
+    this.doc.defaultView?.removeEventListener('resize', this.onResize);
+    for (const el of this.nodes.values()) el.remove();
+    this.nodes.clear();
   }
 
   attachHover(anchor: HTMLElement, options: PopoverHoverOptions): () => void {
@@ -233,8 +252,4 @@ function rawPosition(side: PopoverSide, anchor: RectLike, size: PopoverSize, gap
 
 function cursorRect(cursor: { x: number; y: number }): RectLike {
   return { left: cursor.x, top: cursor.y, right: cursor.x, bottom: cursor.y, width: 0, height: 0 };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }

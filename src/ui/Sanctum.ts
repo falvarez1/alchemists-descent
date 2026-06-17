@@ -51,6 +51,8 @@ function el(id: string): HTMLElement {
 export class Sanctum implements SanctumApi {
   private _open = false;
   private onDescend: (() => void) | null = null;
+  /** Pause state we found on open, so close() restores it rather than force-resuming a pause we didn't take. */
+  private wasPaused = false;
 
   constructor(private ctx: Ctx) {
     el('descend-btn').addEventListener('click', () => this.close());
@@ -64,6 +66,7 @@ export class Sanctum implements SanctumApi {
     if (this._open) return;
     this._open = true;
     this.onDescend = onDescend;
+    this.wasPaused = ctx.state.paused;
     ctx.state.paused = true;
 
     const depth = (ctx.levels.current?.def.depth ?? 0) + 1;
@@ -119,6 +122,7 @@ export class Sanctum implements SanctumApi {
     if (this._open) return;
     this._open = true;
     this.onDescend = null;
+    this.wasPaused = ctx.state.paused;
     ctx.state.paused = true;
     el('sanc-depth').textContent = String(ctx.levels.current?.def.depth ?? 1);
     el('sanc-gold').textContent = String(ctx.state.score);
@@ -255,7 +259,7 @@ export class Sanctum implements SanctumApi {
     if (!this._open) return;
     this._open = false;
     el('sanctum-overlay').classList.remove('visible');
-    this.ctx.state.paused = false;
+    this.ctx.state.paused = this.wasPaused;
     const go = this.onDescend;
     this.onDescend = null;
     go?.();

@@ -130,6 +130,19 @@ manipulated `[r,g,b]` channels (coagulation darkening, stains, shading), use
       obsidian rind chills DOWN into it (top cell always, then ragged to
       `LAVA_CRUST_DEPTH`=3 at `LAVA_TOP_CRUST_DEEP`=0.7) — a real ~2-4 cell crust,
       not a faint single line.
+13. The GPU compose path (`render/ComposeShader.ts`) caps simultaneous distortions
+    at `MAX_WAVES`=8 / `MAX_LENSES`=4; the CPU reference (`FrameComposer.composeTerrainCpu`,
+    THE look reference) processes all of them. The two paths therefore diverge only in
+    the rare case of >8 shockwaves or >4 lenses on screen at once (a dense explosion
+    cluster). Accepted: scenes stay under the caps in practice, and the parity probe
+    asserts within them. If this matters, the CPU loop is authoritative.
+14. Combat modules (`combat/Projectiles.ts`, `combat/Lightning.ts`) concretely import a
+    few STATELESS cross-system helpers outside the strict Ctx foundation allowlist:
+    `entities/enemySpatial` (a spatial-index data structure), `entities/bodyMaterials`
+    (a material registry), and `world/secrets.probeHollow` (a pure grid query). These
+    are pure helpers, not stateful systems, so the coupling is benign and intentional;
+    they are treated as shared foundation-tier utilities. Do not route them through Ctx
+    just to satisfy the letter of the allowlist.
 
 Everything else: identical behavior — confirmed by a 13-agent adversarial fidelity
 audit (zero critical/major divergences) on 2026-06-10.

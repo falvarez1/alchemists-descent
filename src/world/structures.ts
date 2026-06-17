@@ -379,6 +379,11 @@ export function placeStructures(
   }
 
   // ---- D1 Spell Lab: a real-cell teaching annex beside the first Refuge ----
+  // Mutually exclusive with the `if (def.branch)` hoard block below: both anchor
+  // off the spawn/refuge chamber and would overlap if a level were ever both
+  // depth-1 AND a branch. config/worldgraph.ts guarantees that never happens
+  // (the only depth-1 level is non-branch; the only branch is depth 4). If a
+  // depth-1 branch is ever added, gate one of these blocks explicitly.
   if (def.depth === 1) {
     const s = refuge ? Math.sign(refuge.x - portalX) || 1 : 1;
     const rCx = refuge ? Math.floor(refuge.x) : portalX + s * 22;
@@ -1408,6 +1413,8 @@ export function placeStructures(
     });
   };
 
+  // Mutually exclusive with the depth-1 Spell Lab above (see note there): a
+  // depth-1 branch would overlap this hoard. worldgraph guarantees no such level.
   if (def.branch) {
     // BRANCH SIDE: the way home stands on a gold dais in the spawn chamber,
     // far enough from the arrival spot that a fresh traveler never bounces

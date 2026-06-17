@@ -97,8 +97,10 @@ export interface InspectorCustomItem {
   command?: InspectorCommandRef;
 }
 
-export type InspectorSchemaItem =
-  | InspectorSectionItem
+/** Every item except 'section'. Sections are intercepted by the render loop
+ *  and never reach renderInspectorItem, so that function takes this narrower
+ *  union (and has no 'section' case). */
+export type InspectorBodyItem =
   | InspectorIdentityItem
   | InspectorReadoutItem
   | InspectorFieldItem
@@ -107,6 +109,8 @@ export type InspectorSchemaItem =
   | InspectorRowActionItem
   | InspectorHelpItem
   | InspectorCustomItem;
+
+export type InspectorSchemaItem = InspectorSectionItem | InspectorBodyItem;
 
 export interface RenderInspectorOptions {
   collapsedSections?: Readonly<Record<string, boolean>>;
@@ -176,12 +180,8 @@ export function commandDataset(command: InspectorCommandRef): Record<string, str
   };
 }
 
-function renderInspectorItem(item: InspectorSchemaItem): string {
+function renderInspectorItem(item: InspectorBodyItem): string {
   switch (item.kind) {
-    case 'section':
-      return `<div class="bi-head"${item.id ? ` data-section-id="${escapeAttr(item.id)}"` : ''}>${escapeHtml(
-        item.label,
-      )}</div>`;
     case 'identity':
       return `<div class="bi-id">${escapeHtml(item.value)}</div>`;
     case 'readout':

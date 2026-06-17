@@ -1,4 +1,5 @@
 import { base64ToBytes, bytesToBase64 } from '@/core/rle';
+import { fnv1aString } from '@/core/rng';
 import type { RuntimeSprite } from '@/core/types';
 
 /**
@@ -363,17 +364,12 @@ export function sanitizeSpriteAsset(parsed: unknown): SpriteAsset | null {
 
 /** Content identity (id/name excluded) — import collisions re-id on mismatch. */
 export function spriteContentSig(s: SpriteAsset): number {
-  let hash = 0x811c9dc5;
-  const fold = (str: string): void => {
-    for (let i = 0; i < str.length; i++) {
-      hash ^= str.charCodeAt(i);
-      hash = Math.imul(hash, 0x01000193);
-    }
-  };
-  fold(`${s.w}x${s.h}:${s.emissive ? 1 : 0}`);
-  for (const f of s.frames) fold(`${f.durationMs};${f.px}`);
-  for (const t of s.tags) fold(`${t.name},${t.from},${t.to},${t.dir}`);
-  return hash >>> 0;
+  // Chained FNV-1a fold (seed carries between parts) — byte-identical to the
+  // prior single running-hash loop.
+  let hash = fnv1aString(`${s.w}x${s.h}:${s.emissive ? 1 : 0}`);
+  for (const f of s.frames) hash = fnv1aString(`${f.durationMs};${f.px}`, hash);
+  for (const t of s.tags) hash = fnv1aString(`${t.name},${t.from},${t.to},${t.dir}`, hash);
+  return hash;
 }
 
 /* ---------------- runtime decode ---------------- */
@@ -405,12 +401,7 @@ export function resolveLoopTag(
 
 /** Stable per-decor phase from the object id (identical torches desync). */
 export function spritePhase(objectId: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < objectId.length; i++) {
-    hash ^= objectId.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0) % 1024;
+  return fnv1aString(objectId) % 1024;
 }
 
 /* ---------------- export (closes the Aseprite round-trip) ---------------- */

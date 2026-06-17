@@ -5,6 +5,7 @@ import {
   fireColor,
   goldColor,
   iceColor,
+  obsidianColor,
   packRGB,
   smokeColor,
   steamColor,
@@ -71,9 +72,9 @@ export function handleWater(ctx: Ctx, x: number, y: number): void {
       const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
       const ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
       if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Toxic) {
-        const ni = w.idx(nx, ny);
-        w.types[ni] = Cell.Water;
-        w.colors[ni] = waterColor();
+        // replaceCellAt clears any stale life/charge from the old Toxic cell so
+        // the fresh Water doesn't inherit transient metadata.
+        w.replaceCellAt(w.idx(nx, ny), Cell.Water, waterColor());
         break;
       }
     }
@@ -322,9 +323,9 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
             w.life[ti] = 25;
             w.colors[ti] = steamColor();
           }
-          const ci = w.idx(x, y);
-          w.types[ci] = Cell.Empty;
-          w.colors[ci] = EMPTY_COLOR;
+          // clearCellAt zeroes life AND charge in lockstep so the now-empty hole
+          // never carries stale transient metadata (vs. a raw types/colors write).
+          w.clearCellAt(w.idx(x, y));
           return;
         }
       }
@@ -367,19 +368,17 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
           // Water resting ON TOP of SEATED lava: chill a THICK obsidian rind DOWN
           // into it so the seal is a real crust, not a faint line. (If the lava
           // can still sink it's boring, not settled — fall through to the fleck.)
-          w.types[ci] = Cell.Stone;
-          w.colors[ci] = stoneColor();
+          // replaceCellAt clears the lava's charge/life (lava is a conductor) so
+          // the chilled Stone doesn't keep re-energizing conductor neighbors.
+          w.replaceCellAt(ci, Cell.Stone, obsidianColor());
           for (let d = 1; d <= LAVA_CRUST_DEPTH; d++) {
             const yy = y + d;
             if (!w.inBounds(x, yy) || w.types[w.idx(x, yy)] !== Cell.Lava || Math.random() >= LAVA_TOP_CRUST_DEEP) break;
-            const bi = w.idx(x, yy);
-            w.types[bi] = Cell.Stone;
-            w.colors[bi] = stoneColor();
+            w.replaceCellAt(w.idx(x, yy), Cell.Stone, obsidianColor());
           }
         } else if (Math.random() < LAVA_CRUST_CHANCE) {
           // Boring down / spreading: just the occasional fleck, so lava out-bores it.
-          w.types[ci] = Cell.Stone;
-          w.colors[ci] = stoneColor();
+          w.replaceCellAt(ci, Cell.Stone, obsidianColor());
         }
         return;
       }

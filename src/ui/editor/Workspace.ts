@@ -57,6 +57,9 @@ export const DEFAULT_BUILDER_LAYOUT: WorkspaceLayout = {
     { id: 'builder-proc', dock: 'right', open: false, size: 252 },
     { id: 'builder-issues', dock: 'right', open: false, size: 252 },
     { id: 'builder-outliner', dock: 'right', open: false, size: 292 },
+    // Keep in sync with BUILDER_PANEL_SPECS (PanelRegistry): the registry's sanitizeLayout knows
+    // builder-runtime, so omitting it here let the literal default and the registry drift apart.
+    { id: 'builder-runtime', dock: 'right', open: false, size: 320 },
     { id: 'builder-link-graph', dock: 'bottom', open: false, size: 300 },
     { id: 'dev-console', dock: 'bottom', open: false, size: 260 },
   ],
@@ -228,10 +231,19 @@ export function closePanel(layout: WorkspaceLayout, panelId: string): WorkspaceL
   return next;
 }
 
-export function resizePanel(layout: WorkspaceLayout, panelId: string, size: number): WorkspaceLayout {
+export function resizePanel(
+  layout: WorkspaceLayout,
+  panelId: string,
+  size: number,
+  minSize = 120,
+  maxSize = 720,
+): WorkspaceLayout {
   const next = structuredClone(layout);
   const panel = next.panels.find((p) => p.id === panelId);
-  if (panel && Number.isFinite(size)) panel.size = Math.max(120, Math.min(720, size));
+  // Bounds are caller-supplied so the per-panel registry min/max (e.g. a wide
+  // panel allowing >720) are honored instead of being re-clamped away here; the
+  // defaults preserve the standalone behavior.
+  if (panel && Number.isFinite(size)) panel.size = Math.max(minSize, Math.min(maxSize, size));
   return next;
 }
 

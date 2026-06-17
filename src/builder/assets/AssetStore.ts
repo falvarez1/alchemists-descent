@@ -942,13 +942,21 @@ function makeReport(
   };
 }
 
-function stableImportedAssetId(kind: ParsedImportAsset['kind'], sourceId: string): string {
+/** Shared by both the import-commit path (here) and the preview path (AssetImportPipeline). */
+export function stableImportedAssetId(kind: ParsedImportAsset['kind'], sourceId: string): string {
   const origin: AssetOrigin = kind === 'document' ? 'project' : 'library';
   return stableAssetId(kind, origin, sourceId);
 }
 
-function findImportCollision(
-  database: AssetDatabase,
+/**
+ * The single collision predicate used by both commit and preview so the two can
+ * never disagree: an incoming asset collides with a non-missing record of the
+ * same kind whose stable id or normalized source id matches. Same-content
+ * duplicates are caught upstream by the contentSignature check, so this does not
+ * special-case them.
+ */
+export function findImportCollision(
+  database: Pick<AssetDatabase, 'list'>,
   kind: ParsedImportAsset['kind'],
   sourceId: string,
 ): AssetRecord | undefined {

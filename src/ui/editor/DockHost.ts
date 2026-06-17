@@ -76,7 +76,7 @@ export class DockHost {
   resizePanel(id: string, size: number): WorkspaceLayout {
     const spec = this.registry.get(id);
     if (!spec) return this.snapshot().layout;
-    this.layout = resizePanel(this.layout, id, Math.max(spec.minSize ?? 120, Math.min(spec.maxSize ?? 720, size)));
+    this.layout = resizePanel(this.layout, id, size, spec.minSize ?? 120, spec.maxSize ?? 720);
     return this.snapshot().layout;
   }
 

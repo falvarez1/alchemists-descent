@@ -4,6 +4,7 @@ import type {
   RuntimeEntityRow,
   RuntimeEntitySnapshot,
 } from '@/game/runtimeSnapshot';
+import { clamp } from '@/core/math';
 
 export type RuntimeOverlayKind = 'bounds' | 'labels' | 'velocity';
 
@@ -295,8 +296,4 @@ function fallbackBounds(row: RuntimeEntityRow): RuntimeEntityBounds {
     x1: row.x + radius + 1,
     y1: row.y + radius + 1,
   };
-}
-
-function clamp(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, n));
 }

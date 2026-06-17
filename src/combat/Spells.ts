@@ -17,8 +17,14 @@ const RAWORE_GOLD = 2;
 
 /**
  * Player spell casting: wand geometry, the excavation ray, warp teleport
- * resolution, the play-mode per-frame casting dispatch, and the build-mode
- * one-shot casts (original castSpellProjectile → castBuildSpell).
+ * resolution, and the build-mode one-shot casts (original castSpellProjectile
+ * → castBuildSpell).
+ *
+ * NOTE: live play-mode firing is owned by WandSystem (Player.ts calls
+ * ctx.wands.fire → WandSystem.castActionAt). `firePlayerSpell` below is the
+ * legacy fixed-spell dispatch, now used ONLY by the builder gallery's
+ * spell-preview choreography (builder/gallery.ts) — it is not on the live
+ * combat path, so edits to play-mode casting belong in WandSystem, not here.
  */
 export class Spells implements SpellsApi {
   constructor(private readonly ctx: Ctx) {}
@@ -51,7 +57,7 @@ export class Spells implements SpellsApi {
 
   erodeAt(gx: number, gy: number, rad: number): number {
     const { world } = this.ctx;
-    let chewed = 0, debris = 0;
+    let chewed = 0, debris = 0, oreCells = 0;
     for (let dy = -rad; dy <= rad; dy++) {
       for (let dx = -rad; dx <= rad; dx++) {
         if (dx * dx + dy * dy > rad * rad) continue;
@@ -61,12 +67,11 @@ export class Spells implements SpellsApi {
         const c = world.types[i];
         if (c === Cell.RawOre) {
           // Mining the hidden ore spills its gold: a homing grain flies to the
-          // wizard (the same tell as the gold harvester) and the purse ticks up.
+          // wizard (the same tell as the gold harvester). Score + chime aggregate
+          // after the loop so a radius dig pays once, not per cell.
           this.ctx.particles.spawn(X, Y, (Math.random() - 0.5) * 1.4, -0.8 - Math.random(),
             null, goldColor(), 200, { homing: true, glow: 2.2, grav: 0 });
-          this.ctx.state.score += RAWORE_GOLD;
-          this.ctx.events.emit('scoreChanged', { score: this.ctx.state.score });
-          world.clearCellAt(i); chewed++;
+          world.clearCellAt(i); chewed++; oreCells++;
         } else if (c === Cell.Wall || c === Cell.Sand || c === Cell.Wood || c === Cell.Ice || c === Cell.Vines || c === Cell.Stone || c === Cell.Gunpowder) {
           if (debris < 2 && Math.random() < 0.16) {
             this.ctx.particles.spawn(X, Y, (Math.random() - 0.5) * 1.6, -0.7 - Math.random() * 0.9,
@@ -76,6 +81,14 @@ export class Spells implements SpellsApi {
           world.clearCellAt(i); chewed++;
         }
       }
+    }
+    if (oreCells > 0) {
+      // Deeper ore is richer; shallow ore stays modest so the new source can't
+      // flood the early economy (gold sinks live in the Sanctum/brewing).
+      const depth = this.ctx.state.mode === 'play' ? (this.ctx.levels.current?.def.depth ?? 1) : 1;
+      this.ctx.state.score += Math.round(oreCells * RAWORE_GOLD * (1 + (depth - 1) * 0.25));
+      this.ctx.events.emit('scoreChanged', { score: this.ctx.state.score });
+      this.ctx.audio.coin(); // the discovery payoff — a bright chime
     }
     return chewed;
   }
@@ -197,6 +210,10 @@ export class Spells implements SpellsApi {
     return false;
   }
 
+  /**
+   * Legacy fixed-spell dispatch — gallery spell-preview path only (see class
+   * doc). Live play casting goes through WandSystem.castActionAt.
+   */
   firePlayerSpell(): void {
     const { player, projectiles, input } = this.ctx;
     if (player.dead || player.cooldown > 0) return;

@@ -48,8 +48,9 @@ export function runHarvesterField(ctx: Ctx): void {
     for (const { dx, dy } of diskOffsets(rad)) {
       const px = mx + dx,
         py = my + dy;
-      if (w.inBounds(px, py) && w.types[w.idx(px, py)] === Cell.Gold) {
-        const i = w.idx(px, py);
+      if (!w.inBounds(px, py)) continue;
+      const i = w.idx(px, py);
+      if (w.types[i] === Cell.Gold) {
         w.clearCellAt(i);
         ctx.particles.spawn(
           px,

@@ -366,10 +366,6 @@ function blockBuilderPlaytestPersistentState(command: string, target: ConsoleTar
   );
 }
 
-function requireNoBuilderPlaytestPersistentState(command: string, target: ConsoleTarget): CommandResult | null {
-  return blockBuilderPlaytestPersistentState(command, target);
-}
-
 function isBuilderPlaytestActive(ctx: Ctx): boolean {
   return ctx.state.mode === 'play' && ctx.state.playtestSource === 'builder';
 }
@@ -626,10 +622,10 @@ function paintDisc(ctx: Ctx, cx: number, cy: number, radius: number, type: numbe
       const dy = y - cy;
       if (dx * dx + dy * dy > radius * radius) continue;
       const i = world.idx(x, y);
-      world.types[i] = type;
-      world.colors[i] = fn ? fn() : EMPTY_COLOR;
-      world.life[i] = 0;
-      world.charge[i] = 0;
+      // replaceCellAt/clearCellAt keep the sparse activeCharges + colorOverrides
+      // indices in lockstep with the planes; hand-rolled plane writes leave them stale.
+      if (type === Cell.Empty) world.clearCellAt(i);
+      else world.replaceCellAt(i, type, fn ? fn() : EMPTY_COLOR);
       cells++;
     }
   }
@@ -667,10 +663,10 @@ function paintRect(ctx: Ctx, bounds: Bounds, type: number): { cells: number; bou
   for (let y = clipped.y0; y <= clipped.y1; y++) {
     for (let x = clipped.x0; x <= clipped.x1; x++) {
       const i = world.idx(x, y);
-      world.types[i] = type;
-      world.colors[i] = fn ? fn() : EMPTY_COLOR;
-      world.life[i] = 0;
-      world.charge[i] = 0;
+      // replaceCellAt/clearCellAt keep the sparse activeCharges + colorOverrides
+      // indices in lockstep with the planes; hand-rolled plane writes leave them stale.
+      if (type === Cell.Empty) world.clearCellAt(i);
+      else world.replaceCellAt(i, type, fn ? fn() : EMPTY_COLOR);
       cells++;
     }
   }
@@ -881,59 +877,72 @@ function browserWindow(): BrowserWindow | null {
 async function captureScreenshot(): Promise<CommandResult> {
   const w = browserWindow();
   if (!w) return result(false, 'screenshot requires the browser runtime.', { code: 'ui-unavailable' });
-  await new Promise<void>((resolve) => w.requestAnimationFrame(() => resolve()));
-  const source = document.querySelector<HTMLCanvasElement>('#canvas-holder canvas');
-  if (!source || source.width <= 0 || source.height <= 0) {
-    return result(false, 'No rendered canvas available for screenshot.', { code: 'canvas-unavailable' });
-  }
-  const out = document.createElement('canvas');
-  out.width = source.width;
-  out.height = source.height;
-  const g = out.getContext('2d');
-  if (!g) return result(false, 'Unable to create screenshot canvas.', { code: 'canvas-unavailable' });
-  g.drawImage(source, 0, 0);
-  let nonBlankSamples = 0;
-  let sampleHash = 2166136261;
-  try {
-    const image = g.getImageData(0, 0, out.width, out.height).data;
-    const sampleX = Math.max(1, Math.floor(out.width / 16));
-    const sampleY = Math.max(1, Math.floor(out.height / 16));
-    for (let y = 0; y < out.height; y += sampleY) {
-      for (let x = 0; x < out.width; x += sampleX) {
-        const i = (y * out.width + x) * 4;
-        const r = image[i] ?? 0;
-        const green = image[i + 1] ?? 0;
-        const b = image[i + 2] ?? 0;
-        const a = image[i + 3] ?? 0;
-        if (a !== 0 && (r !== 0 || green !== 0 || b !== 0)) nonBlankSamples++;
-        sampleHash ^= r + (green << 8) + (b << 16) + (a << 24);
-        sampleHash = Math.imul(sampleHash, 16777619) >>> 0;
+  // The renderer runs without preserveDrawingBuffer, so the GL drawing buffer is
+  // only reliably readable synchronously inside the rAF callback — drawImage +
+  // pixel sampling must happen there, not in a microtask after the callback returns
+  // (which intermittently catches a cleared frame).
+  return new Promise<CommandResult>((resolve) => {
+    w.requestAnimationFrame(() => {
+      const source = document.querySelector<HTMLCanvasElement>('#canvas-holder canvas');
+      if (!source || source.width <= 0 || source.height <= 0) {
+        resolve(result(false, 'No rendered canvas available for screenshot.', { code: 'canvas-unavailable' }));
+        return;
       }
-    }
-  } catch (err) {
-    return result(false, 'Unable to sample screenshot pixels.', {
-      code: 'canvas-sample-unavailable',
-      message: err instanceof Error ? err.message : String(err),
+      const out = document.createElement('canvas');
+      out.width = source.width;
+      out.height = source.height;
+      const g = out.getContext('2d');
+      if (!g) {
+        resolve(result(false, 'Unable to create screenshot canvas.', { code: 'canvas-unavailable' }));
+        return;
+      }
+      g.drawImage(source, 0, 0);
+      let nonBlankSamples = 0;
+      let sampleHash = 2166136261;
+      try {
+        const image = g.getImageData(0, 0, out.width, out.height).data;
+        const sampleX = Math.max(1, Math.floor(out.width / 16));
+        const sampleY = Math.max(1, Math.floor(out.height / 16));
+        for (let y = 0; y < out.height; y += sampleY) {
+          for (let x = 0; x < out.width; x += sampleX) {
+            const i = (y * out.width + x) * 4;
+            const r = image[i] ?? 0;
+            const green = image[i + 1] ?? 0;
+            const b = image[i + 2] ?? 0;
+            const a = image[i + 3] ?? 0;
+            if (a !== 0 && (r !== 0 || green !== 0 || b !== 0)) nonBlankSamples++;
+            sampleHash ^= r + (green << 8) + (b << 16) + (a << 24);
+            sampleHash = Math.imul(sampleHash, 16777619) >>> 0;
+          }
+        }
+      } catch (err) {
+        resolve(result(false, 'Unable to sample screenshot pixels.', {
+          code: 'canvas-sample-unavailable',
+          message: err instanceof Error ? err.message : String(err),
+        }));
+        return;
+      }
+      if (nonBlankSamples === 0) {
+        resolve(result(false, 'Screenshot canvas appears blank.', {
+          code: 'canvas-blank',
+          width: out.width,
+          height: out.height,
+          sampleHash,
+          nonBlankSamples,
+        }));
+        return;
+      }
+      const dataUrl = out.toDataURL('image/png');
+      resolve(result(true, `screenshot ${out.width}x${out.height}`, {
+        width: out.width,
+        height: out.height,
+        type: 'image/png',
+        dataUrl,
+        bytesApprox: Math.ceil((dataUrl.length * 3) / 4),
+        nonBlankSamples,
+        sampleHash,
+      }));
     });
-  }
-  if (nonBlankSamples === 0) {
-    return result(false, 'Screenshot canvas appears blank.', {
-      code: 'canvas-blank',
-      width: out.width,
-      height: out.height,
-      sampleHash,
-      nonBlankSamples,
-    });
-  }
-  const dataUrl = out.toDataURL('image/png');
-  return result(true, `screenshot ${out.width}x${out.height}`, {
-    width: out.width,
-    height: out.height,
-    type: 'image/png',
-    dataUrl,
-    bytesApprox: Math.ceil((dataUrl.length * 3) / 4),
-    nonBlankSamples,
-    sampleHash,
   });
 }
 
@@ -1030,6 +1039,14 @@ function resolveParamPath(ctx: Ctx, path: string): ResolvedParamPath | CommandRe
     const param = parts[2];
     if (!owner || !(param in owner)) return result(false, `Unknown spell parameter "${parts[1]}.${param}"`, { code: 'parse-param-path', path });
     return { owner, key: param, current: owner[param], canonical: `spells.${parts[1]}.${param}` };
+  }
+  if (parts[0] === 'player') {
+    // Player feel dials (jump/run/air movement, levitation, recoil, kick) — tune
+    // them live: e.g. `param player.jumpCut 0.3`, `param player.maxRunCap 4`.
+    const owner = ctx.params.player as unknown as ParamOwner;
+    const key = parts[1];
+    if (!(key in owner)) return result(false, `Unknown player parameter "${key}"`, { code: 'parse-param-path', path });
+    return { owner, key, current: owner[key], canonical: `player.${key}` };
   }
   if (parts[0] === 'postFx') {
     const owner = ctx.state.postFx as unknown as ParamOwner;
@@ -1135,7 +1152,7 @@ async function executeNamedScript(ctx: Ctx, nameRaw: string, stack: string[] = [
   for (const command of commands) {
     const parsed = parseConsoleLine(command.line);
     const nested =
-      parsed && (parsed.name === 'exec' || parsed.name === 'run') && parsed.args.length === 1
+      parsed && parsed.name === 'exec' && parsed.args.length === 1
         ? await executeNamedScript(ctx, parsed.args[0], nextStack)
         : null;
     const res = nested ?? (await ctx.console.exec(command.line));
@@ -1585,7 +1602,6 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
 
   add({
     name: 'exec',
-    aliases: ['run'],
     info: info('console.exec', 'Run Script', 'exec <name>', 'Run a named localStorage console script with fail-fast results.'),
     run: async (ctx, args) => {
       if (args.length !== 1) return result(false, 'Usage: exec <name>', { code: 'usage' });
@@ -1629,6 +1645,8 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
       const key = args[0].toLowerCase();
       if (key === 'list') {
         const watches = loadConsoleWatches();
+        // Normalize-on-read: resave the loaded value so legacy/dirty stored entries
+        // are migrated to the canonical normalized form on the next read.
         saveConsoleWatches(watches);
         return result(true, watches.length ? `watches: ${watches.join(', ')}` : 'watches: none', { watches });
       }
@@ -1662,6 +1680,8 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
     run: (_ctx, args) => {
       if (args.length === 1 && args[0].toLowerCase() === 'list') {
         const binds = loadConsoleBinds();
+        // Normalize-on-read: resave the loaded value so legacy/dirty stored entries
+        // are migrated to the canonical normalized form on the next read.
         saveConsoleBinds(binds);
         const lines = Object.entries(binds).map(([key, command]) => `${key}=${command}`);
         return result(true, lines.length ? `binds: ${lines.join(' ')}` : 'binds: none', { binds });
@@ -1946,10 +1966,13 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
         const amountRaw = arg ?? '100';
         const amount = parsePositiveInt(amountRaw, 'gold amount', 999999);
         if (typeof amount !== 'number') return amount;
-        const taint = taintIfNeeded(ctx, 'give', target.target);
-        ctx.state.score += amount;
-        ctx.events.emit('scoreChanged', { score: ctx.state.score });
-        return result(true, `${taint ? taint + ' ' : ''}+${amount} gold.`, { target: target.target, kind, amount, score: ctx.state.score });
+        // Delegate to the shared grant so taint/score/scoreChanged stay in one place;
+        // merge `kind` into the result data for the give-command shape.
+        const granted = grantGold(ctx, amount, target.target);
+        if (granted.ok && granted.data && typeof granted.data === 'object') {
+          granted.data = { ...granted.data, kind };
+        }
+        return granted;
       }
       if (kind === 'heart') {
         const count = arg ? parsePositiveInt(arg, 'heart count', 50) : 1;
@@ -2357,7 +2380,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
     run: (ctx, args) => {
       const target = resolveTarget(ctx, args, 'gold');
       if (!target.ok) return target.result;
-      const blocked = requireNoBuilderPlaytestPersistentState('gold', target.target);
+      const blocked = blockBuilderPlaytestPersistentState('gold', target.target);
       if (blocked) return blocked;
       if (target.args.length !== 1) return result(false, 'Usage: gold <n> [--target ...]', { code: 'usage' });
       const amount = parsePositiveInt(target.args[0], 'gold amount', 999999);
@@ -2373,7 +2396,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
     run: (ctx, args) => {
       const target = resolveTarget(ctx, args, 'heal');
       if (!target.ok) return target.result;
-      const blocked = requireNoBuilderPlaytestPersistentState('heal', target.target);
+      const blocked = blockBuilderPlaytestPersistentState('heal', target.target);
       if (blocked) return blocked;
       if (target.args.length > 1) return result(false, 'Usage: heal [amount|full] [--target ...]', { code: 'usage' });
       let amount: number | null = null;

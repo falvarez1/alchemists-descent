@@ -404,8 +404,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     } else {
       // arms swing opposite the legs
       for (let dy = 5; dy <= 12; dy++) {
-        const sw = dy <= 7 ? armSwing : Math.round(armSwing * 0.5);
-        P(-6 + (dy <= 7 ? -sw : 0) * 0 - (dy <= 7 ? Math.round(armSwing * 0.6) : 0), dy + B, ...SD);
+        P(-6 - (dy <= 7 ? Math.round(armSwing * 0.6) : 0), dy + B, ...SD);
         P(-7, dy + B, ...(dy >= 11 ? SL : SD));
         P(6 + (dy <= 7 ? Math.round(armSwing * 0.6) : 0), dy + B, ...SD);
         P(7, dy + B, ...(dy >= 11 ? SL : SD));

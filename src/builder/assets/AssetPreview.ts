@@ -5,9 +5,11 @@ import type { SpriteAsset } from '@/builder/assets/sprites';
 import type { AssetPreviewSummary, AssetRecord } from '@/builder/assets/AssetTypes';
 import { paletteColor } from '@/sim/cellPalette';
 import { unpackB, unpackG, unpackR } from '@/sim/colors';
+import { fnv1aString } from '@/core/rng';
+import { escapeHtml as esc, escapeAttr as escAttr } from '@/core/strings';
 
 export function stableContentSignature(value: unknown): string {
-  return fnv1a(stableStringify(value)).toString(16).padStart(8, '0');
+  return fnv1aString(stableStringify(value)).toString(16).padStart(8, '0');
 }
 
 export function estimatedJsonBytes(value: unknown): number {
@@ -216,19 +218,3 @@ function stableStringify(value: unknown): string {
     .join(',')}}`;
 }
 
-function fnv1a(value: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < value.length; i++) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-function esc(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function escAttr(value: string): string {
-  return esc(value);
-}

@@ -1,5 +1,6 @@
 import type { PrefabDef } from '@/builder/prefablib';
 import { decodePrefabCells } from '@/builder/prefablib';
+import { escapeHtml } from '@/core/strings';
 import { CELL_PALETTE, paletteColor } from '@/sim/cellPalette';
 import { unpackB, unpackG, unpackR } from '@/sim/colors';
 import type { RgbaDecodeResult } from '@/builder/assets/pixmap';
@@ -289,9 +290,6 @@ export class PrefabPanel {
   }
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 
 /**
  * The PNG import report: stray colors with swatch, count, first position

@@ -134,19 +134,27 @@ export function mergeEmbeddedSprites(doc: EditorDocument): { added: number; reId
     reIded = 0;
   const sprites = doc.assets?.sprites ?? [];
   for (let i = 0; i < sprites.length; i++) {
-    let sprite = sprites[i];
+    const sprite = sprites[i];
     const existing = getStoredSprite(sprite.id);
     if (existing && spriteContentSig(existing) === spriteContentSig(sprite)) continue;
     if (existing) {
+      // Id collision with different content: re-id the incoming copy. Persist
+      // FIRST — only rewrite the document's references and count the re-id once
+      // the library write succeeds, so a quota failure leaves doc references
+      // pointing at the embedded copy (resolveRuntimeSprite still resolves it)
+      // and {added, reIded} never reports a re-id with no backing write.
       const oldId = sprite.id;
-      sprite = { ...sprite, id: freshSpriteId() };
-      sprites[i] = sprite;
+      const reidSprite = { ...sprite, id: freshSpriteId() };
+      if (!saveSprite(reidSprite)) continue;
+      sprites[i] = reidSprite;
       for (const o of doc.objects) {
-        if (decorSpriteId(o) === oldId) o.params.spriteId = sprite.id;
+        if (decorSpriteId(o) === oldId) o.params.spriteId = reidSprite.id;
       }
       reIded++;
+      added++;
+    } else if (saveSprite(sprite)) {
+      added++;
     }
-    if (saveSprite(sprite)) added++;
   }
   return { added, reIded };
 }

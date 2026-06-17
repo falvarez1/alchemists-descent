@@ -32,8 +32,8 @@ export interface RgbaDecodeResult {
   semiTransparent: number;
 }
 
-/** Most distinct stray colors reported before the list caps out. */
-export const UNKNOWN_REPORT_CAP = 64;
+/** Most distinct stray colors reported before the list caps out. File-internal. */
+const UNKNOWN_REPORT_CAP = 64;
 
 export function cellsToRgba(cells: Uint8Array, w: number, h: number): Uint8ClampedArray {
   const out = new Uint8ClampedArray(w * h * 4);

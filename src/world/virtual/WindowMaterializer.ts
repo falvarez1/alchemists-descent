@@ -85,10 +85,18 @@ export function materializeChunks(
   }
   const size = chunks[0].size;
   const seen = new Set<string>();
-  const cx0 = Math.min(...chunks.map((chunk) => chunk.cx));
-  const cy0 = Math.min(...chunks.map((chunk) => chunk.cy));
-  const cx1 = Math.max(...chunks.map((chunk) => chunk.cx));
-  const cy1 = Math.max(...chunks.map((chunk) => chunk.cy));
+  // Single linear pass for the window bounds — avoids four map() allocations plus argument-spreads
+  // (and the `Math.min(...bigArray)` "Maximum call stack size exceeded" hazard on very large windows).
+  let cx0 = chunks[0].cx;
+  let cy0 = chunks[0].cy;
+  let cx1 = chunks[0].cx;
+  let cy1 = chunks[0].cy;
+  for (const chunk of chunks) {
+    if (chunk.cx < cx0) cx0 = chunk.cx;
+    if (chunk.cy < cy0) cy0 = chunk.cy;
+    if (chunk.cx > cx1) cx1 = chunk.cx;
+    if (chunk.cy > cy1) cy1 = chunk.cy;
+  }
   const width = (cx1 - cx0 + 1) * size;
   const height = (cy1 - cy0 + 1) * size;
   const expectedChunks = (cx1 - cx0 + 1) * (cy1 - cy0 + 1);

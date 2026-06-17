@@ -58,8 +58,11 @@ export function extractRegionGraph(
   const h = Math.max(1, Math.floor(world.height / SCALE));
   try {
     return extract(world, w, h, spawn, exit);
-  } catch {
-    // Never let analysis failure take down level generation.
+  } catch (err) {
+    // Never let analysis failure take down level generation (fail-open). But a
+    // throw here means a real bug in extract() (e.g. an OOB from a future edit),
+    // not "this level has no regions" — surface it in DEV so it isn't masked.
+    if (import.meta.env.DEV) console.error('extractRegionGraph: analysis failed', err);
     return {
       scale: SCALE,
       w,

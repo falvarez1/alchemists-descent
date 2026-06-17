@@ -67,6 +67,20 @@ export class Hud {
   private objectiveBase = 'FIND THE GOLDEN KEY';
   private benchObjectiveUntil = 0;
 
+  // Static HUD nodes resolved once (all exist in index.html). update() runs
+  // every other tick (~30Hz), so caching these avoids repeated getElementById
+  // lookups on the hottest UI function instead of re-resolving each frame.
+  private readonly hpFill = el('hp-fill');
+  private readonly manaFill = el('mana-fill');
+  private readonly levitFill = el('levit-fill');
+  private readonly hudGold = el('hud-gold');
+  private readonly keyIndicator = el('key-indicator');
+  private readonly hudCards = el('hud-cards');
+  private readonly flaskFill = el('flask-fill');
+  private readonly damageVignette = el('damage-vignette');
+  private readonly objectiveNode = el('objective');
+  private readonly interactionHintNode = el('interaction-hint');
+
   constructor(private ctx: Ctx) {
     // Treasure-row pixel icons (hud-gold itself rolls toward the score in
     // update() — income you can watch).
@@ -223,14 +237,14 @@ export class Hud {
   private renderObjective(): void {
     const left = Math.max(0, this.benchObjectiveUntil - this.ctx.state.frameCount);
     const text = contextualObjectiveText(this.ctx, this.objectiveBase, left);
-    const node = el('objective');
+    const node = this.objectiveNode;
     if (node.textContent !== text) node.textContent = text;
   }
 
   /** Tier-2 contextual hint: the nearest interactable's "what to do" line. */
   private renderInteractionHint(ctx: Ctx): void {
     const text = ctx.hints.current?.line ?? '';
-    const node = el('interaction-hint');
+    const node = this.interactionHintNode;
     if (node.textContent !== text) node.textContent = text;
     node.classList.toggle('visible', text !== '');
   }
@@ -319,18 +333,18 @@ export class Hud {
     const player = ctx.player;
     this.renderObjective();
     this.renderInteractionHint(ctx);
-    el('hp-fill').style.width = Math.max(0, (player.hp / player.maxHp) * 100) + '%';
+    this.hpFill.style.width = Math.max(0, (player.hp / player.maxHp) * 100) + '%';
     // player.mana mirrors the active wand's tank (WandSystem guarantee), so
     // the mana bar tracks the wand with no extra wiring here.
-    el('mana-fill').style.width = Math.max(0, (player.mana / player.maxMana) * 100) + '%';
-    el('levit-fill').style.width = Math.max(0, (player.levit / player.maxLevit) * 100) + '%';
+    this.manaFill.style.width = Math.max(0, (player.mana / player.maxMana) * 100) + '%';
+    this.levitFill.style.width = Math.max(0, (player.levit / player.maxLevit) * 100) + '%';
 
     // Critical-state bar language: HP pulses near death, LEV blinks on fumes,
     // the mana track recovers from its dry-fire flinch.
-    el('hp-fill').classList.toggle('critical', !player.dead && player.hp / player.maxHp < 0.25);
-    el('levit-fill').classList.toggle('low', player.levit / player.maxLevit < 0.2);
+    this.hpFill.classList.toggle('critical', !player.dead && player.hp / player.maxHp < 0.25);
+    this.levitFill.classList.toggle('low', player.levit / player.maxLevit < 0.2);
     if (this.dryFlashUntil && ctx.state.frameCount > this.dryFlashUntil) {
-      el('mana-fill').parentElement?.classList.remove('mana-dry');
+      this.manaFill.parentElement?.classList.remove('mana-dry');
       this.dryFlashUntil = 0;
     }
 
@@ -339,22 +353,22 @@ export class Hud {
     if (this.displayedGold !== goldTarget) {
       const step = Math.ceil(Math.abs(goldTarget - this.displayedGold) * 0.18);
       this.displayedGold += Math.sign(goldTarget - this.displayedGold) * step;
-      el('hud-gold').textContent = String(this.displayedGold);
-      el('hud-gold').classList.add('rolling');
+      this.hudGold.textContent = String(this.displayedGold);
+      this.hudGold.classList.add('rolling');
     } else {
-      el('hud-gold').classList.remove('rolling');
+      this.hudGold.classList.remove('rolling');
     }
 
     // The golden key rides the HUD once held — you never wonder again.
-    el('key-indicator').classList.toggle('visible', ctx.levels.current?.keyTaken === true);
+    this.keyIndicator.classList.toggle('visible', ctx.levels.current?.keyTaken === true);
 
     // Satchel count: spell cards collected from tomes, waystones, descents.
     const cards = String(ctx.wands.collection.length);
-    const cardsEl = el('hud-cards');
+    const cardsEl = this.hudCards;
     if (cardsEl.textContent !== cards) cardsEl.textContent = cards;
 
     const flask = ctx.flask.state;
-    const flaskFill = el('flask-fill');
+    const flaskFill = this.flaskFill;
     flaskFill.style.width = Math.max(0, (flask.count / flask.capacity) * 100) + '%';
     flaskFill.classList.toggle('flask-sloshing', flask.count > 0);
     if (flask.material !== this.flaskMaterial) {
@@ -387,7 +401,7 @@ export class Hud {
     }
 
     const hurt = 1 - (player.hp / player.maxHp);
-    el('damage-vignette').style.opacity = String(player.dead ? 0.85 : Math.max(0, (hurt - 0.4) * 1.3));
+    this.damageVignette.style.opacity = String(player.dead ? 0.85 : Math.max(0, (hurt - 0.4) * 1.3));
 
     // Cast cursor: the cards the NEXT click will fire pulse amber, so the
     // left-to-right cast cycle is something you can watch, not guess at.

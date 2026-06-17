@@ -149,10 +149,19 @@ function byteView(data: GpuUploadData): Uint8Array<ArrayBuffer> {
   return new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
 }
 
-function padRows(data: GpuUploadData, rowBytes: number, height: number, paddedRowBytes = align(rowBytes, 256)): Uint8Array {
+// WebGPU writeTexture requires bytesPerRow aligned to 256, so non-aligned rows
+// need a staging copy. `scratch` lets hot-path callers pass a persistent buffer
+// (sized paddedRowBytes*height) so the compose path allocates nothing per frame.
+function padRows(
+  data: GpuUploadData,
+  rowBytes: number,
+  height: number,
+  paddedRowBytes = align(rowBytes, 256),
+  scratch?: Uint8Array,
+): Uint8Array {
   const bytes = byteView(data);
   if (rowBytes === paddedRowBytes) return bytes;
-  const padded = new Uint8Array(paddedRowBytes * height);
+  const padded = scratch ?? new Uint8Array(paddedRowBytes * height);
   for (let row = 0; row < height; row++) {
     padded.set(bytes.subarray(row * rowBytes, row * rowBytes + rowBytes), row * paddedRowBytes);
   }
@@ -507,6 +516,11 @@ export class WebGpuLiveCompose {
   private readonly lightData = new Float32Array(LIGHT_W * LIGHT_H * 4);
   private readonly lutData = new Float32Array(256);
   private readonly overlay = new WebGpuOverlay();
+  // Persistent row-padding scratch for the two per-frame uploads whose rowBytes
+  // are not 256-aligned (world window WIN_W*4, overlay VIEW_W*8) — avoids a fresh
+  // multi-MB allocation + memcpy every composed frame (see padRows).
+  private readonly winPadScratch = new Uint8Array(align(WIN_W * 4, 256) * WIN_H);
+  private readonly overlayPadScratch = new Uint8Array(align(VIEW_W * 8, 256) * VIEW_H);
   private readonly params = new Float32Array(PARAM_COUNT);
   private device: RuntimeGpuDevice | null = null;
   private storageAccess: WebGpuStorageTextureAccess | null = null;
@@ -638,7 +652,7 @@ export class WebGpuLiveCompose {
     const packStart = performance.now();
     this.packWindow(ctx.world, camX, camY);
     metrics.packWindowCpuMs = performance.now() - packStart;
-    const winUpload = this.timedUploadTexture(this.winTexture, this.winBytes, WIN_W, WIN_H, WIN_W * 4);
+    const winUpload = this.timedUploadTexture(this.winTexture, this.winBytes, WIN_W, WIN_H, WIN_W * 4, this.winPadScratch);
     metrics.worldWindowLogicalUploadBytes = winUpload.logicalBytes;
     metrics.worldWindowSubmittedUploadBytes = winUpload.submittedBytes;
     metrics.worldWindowUploadCpuMs = winUpload.cpuMs;
@@ -683,7 +697,7 @@ export class WebGpuLiveCompose {
     const overlayPackStart = performance.now();
     this.overlay.commit();
     if (metrics) metrics.overlayPackCpuMs = performance.now() - overlayPackStart;
-    const overlayUpload = this.timedUploadTexture(this.overlayTexture, this.overlay.half, VIEW_W, VIEW_H, VIEW_W * 8);
+    const overlayUpload = this.timedUploadTexture(this.overlayTexture, this.overlay.half, VIEW_W, VIEW_H, VIEW_W * 8, this.overlayPadScratch);
     if (metrics) {
       metrics.overlayLogicalUploadBytes = overlayUpload.logicalBytes;
       metrics.overlaySubmittedUploadBytes = overlayUpload.submittedBytes;
@@ -802,6 +816,7 @@ export class WebGpuLiveCompose {
     width: number,
     height: number,
     rowBytes: number,
+    padScratch?: Uint8Array,
   ): UploadStats {
     const paddedRowBytes = align(rowBytes, 256);
     const stats = {
@@ -811,7 +826,7 @@ export class WebGpuLiveCompose {
     if (!this.device || !texture) return stats;
     this.device.queue.writeTexture(
       { texture },
-      padRows(data, rowBytes, height, paddedRowBytes),
+      padRows(data, rowBytes, height, paddedRowBytes, padScratch),
       { bytesPerRow: paddedRowBytes },
       { width, height },
     );
@@ -824,9 +839,10 @@ export class WebGpuLiveCompose {
     width: number,
     height: number,
     rowBytes: number,
+    padScratch?: Uint8Array,
   ): TimedUploadStats {
     const start = performance.now();
-    const stats = this.uploadTexture(texture, data, width, height, rowBytes);
+    const stats = this.uploadTexture(texture, data, width, height, rowBytes, padScratch);
     return {
       ...stats,
       cpuMs: performance.now() - start,
@@ -1013,6 +1029,14 @@ export class WebGpuLiveCompose {
   }
 
   private uploadLight(light: LightField): void {
+    // The light texture/buffer are sized from the module constants LIGHT_W/LIGHT_H;
+    // assert the incoming field matches so a future LW/LH change can't silently
+    // over/under-read here (the CPU ComposeShader drives off light.LW/light.LH).
+    if (light.LW !== LIGHT_W || light.LH !== LIGHT_H) {
+      throw new Error(
+        `WebGPU live compose light-field size mismatch: expected ${LIGHT_W}x${LIGHT_H}, got ${light.LW}x${light.LH}`,
+      );
+    }
     const { lightR, lightG, lightB } = light;
     for (let i = 0, offset = 0; i < LIGHT_W * LIGHT_H; i++, offset += 4) {
       this.lightData[offset] = lightR[i];

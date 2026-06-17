@@ -31,7 +31,13 @@ async function handleMessage(msg: VirtualWorkerRequest): Promise<void> {
     }
     if (!def) throw new Error('Virtual world worker has not been initialized');
     if (msg.kind === 'generateChunk') {
-      if (canceled.has(msg.req.jobId)) return;
+      if (canceled.has(msg.req.jobId)) {
+        // Settle the backend's pending promise (it stays parked in pendingChunks until a
+        // chunk/error/canceled message arrives) and drop the id so the set can't grow unbounded.
+        worker.postMessage({ kind: 'canceled', jobId: msg.req.jobId });
+        canceled.delete(msg.req.jobId);
+        return;
+      }
       const chunk = generateVirtualChunk(def, msg.req.cx, msg.req.cy);
       const transferable = toTransferableChunk(chunk, msg.req.requestedPlanes);
       worker.postMessage({ kind: 'chunk', jobId: msg.req.jobId, chunk: transferable.chunk }, transferable.transfer);

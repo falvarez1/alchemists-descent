@@ -487,6 +487,25 @@ export interface PlayerTuning {
    *  drag / frictionless glide, lower = quicker stop). Gives flight inertia:
    *  carried run momentum bleeds off gradually instead of snapping to a halt. */
   airDrag: number;
+  /** Ground/air accel from a standstill as a fraction of full, ramping to 1.0 at
+   *  top speed — eases a tap so it's a small nudge, not a skate (0.55). */
+  moveSoftStart: number;
+  /** Per-frame ground velocity kept on release (lower = crisper stop, 0.6). */
+  groundStopDecay: number;
+  /** Below this |vx| the body halts outright — kills the low-speed creep (0.12). */
+  groundStopSnap: number;
+  /** Airborne |vx| at/above which momentum keeps its slow drag (a real glide);
+   *  below it, a low-speed air tap stops fast instead of skating (1.9). */
+  airGlideSpeed: number;
+  /** Per-frame air velocity kept for a low-speed tap with no input (0.74). */
+  airStopDecay: number;
+  /** Upward velocity kept when a jump is released mid-rise — variable jump height;
+   *  lower = shorter minimum hop (0.25). */
+  jumpCut: number;
+  /** Frames a fresh jump stays a cuttable ballistic leap before the jet spools (7). */
+  jumpHoldWindow: number;
+  /** Top ground run speed cap so Swift/God-Mode stays inside the precision curve (3.6). */
+  maxRunCap: number;
   /** Flat recoil momentum floor so hitscan/stream casts still nudge. */
   recoilBase: number;
   /** Muzzle-momentum → impulse (cells/frame) scale. */
@@ -1089,6 +1108,9 @@ export interface SpawnBodyOpts {
 export interface RigidBodiesApi {
   /** Live list — mutated in place, never reassigned (entity-array invariant). */
   readonly bodies: RigidBody[];
+  /** The live player-corpse ragdoll (or null), cached so per-frame readers
+   *  don't linear-scan `bodies` for it. */
+  readonly playerCorpse: RigidBody | null;
   spawn(shape: RigidShape, x: number, y: number, opts?: SpawnBodyOpts): RigidBody;
   remove(body: RigidBody): void;
   clear(): void;
@@ -1309,11 +1331,6 @@ export interface HazardEmitter {
   dir: 0 | 90 | 180 | 270;
   burst: number;
   phase: number;
-}
-
-export interface WaveDirectorApi {
-  start(n: number): void;
-  update(ctx: Ctx): void;
 }
 
 /* ============================================================
@@ -2165,7 +2182,6 @@ export interface Ctx {
   spells: SpellsApi;
   simulation: SimulationApi;
   worldgen: WorldGenApi;
-  waveCtl: WaveDirectorApi;
   flask: FlaskApi;
   telemetry: TelemetryApi;
   perf: PerfApi;

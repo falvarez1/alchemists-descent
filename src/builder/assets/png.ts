@@ -9,8 +9,27 @@
  * exactly; semi-transparent ones are the importer's warning case.
  */
 
-/** Refuse to decode anything larger before allocating buffers. */
-export const PNG_DIM_CAP = 2048;
+/** Refuse to decode anything larger before allocating buffers. File-internal. */
+const PNG_DIM_CAP = 2048;
+
+/**
+ * Read width/height straight out of a PNG's IHDR chunk (the first chunk in a
+ * valid PNG: 8-byte signature, then a 4-byte length + 'IHDR' tag, then width
+ * and height as big-endian uint32 at byte offsets 16 and 20). Returns null for
+ * anything that is not a recognizable PNG header so the real decoder can take
+ * over and report the failure. This lets us reject a decompression-bomb sized
+ * image BEFORE createImageBitmap rasterizes it into memory.
+ */
+function pngHeaderDimensions(bytes: Uint8Array): { w: number; h: number } | null {
+  if (bytes.length < 24) return null;
+  // PNG signature: 0x89 'P' 'N' 'G' \r \n 0x1A \n
+  const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  for (let i = 0; i < sig.length; i++) if (bytes[i] !== sig[i]) return null;
+  // First chunk must be IHDR (tag at offset 12).
+  if (bytes[12] !== 0x49 || bytes[13] !== 0x48 || bytes[14] !== 0x44 || bytes[15] !== 0x52) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return { w: view.getUint32(16), h: view.getUint32(20) };
+}
 
 export async function rgbaToPngBlob(
   rgba: Uint8ClampedArray,
@@ -35,6 +54,13 @@ export async function rgbaToPngBlob(
 export async function pngBlobToRgba(
   blob: Blob,
 ): Promise<{ rgba: Uint8ClampedArray; w: number; h: number }> {
+  // Cap dimensions from the IHDR header BEFORE createImageBitmap rasterizes the
+  // image, so a small-on-disk but huge-in-memory PNG is rejected up front. The
+  // post-decode check below still guards non-PNG blobs and unparseable headers.
+  const header = pngHeaderDimensions(new Uint8Array(await blob.arrayBuffer()));
+  if (header && (header.w > PNG_DIM_CAP || header.h > PNG_DIM_CAP)) {
+    throw new Error(`image larger than ${PNG_DIM_CAP}px`);
+  }
   const bitmap = await createImageBitmap(blob, {
     colorSpaceConversion: 'none',
     premultiplyAlpha: 'none',

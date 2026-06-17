@@ -46,18 +46,6 @@ export function vaultHostId(expeditionSeed: number): string {
   return 'd' + (2 + ((expeditionSeed >>> 0) % 3));
 }
 
-/** Placed hostile population per level: base + per-depth growth, kind weights shift down. */
-export function populationForDepth(depth: number): Partial<Record<EnemyKind, number>> {
-  return {
-    slime: 12 + depth * 3,
-    imp: depth >= 2 ? 4 + depth * 3 : 2,
-    golem: depth >= 3 ? depth * 2 : depth >= 2 ? 1 : 0,
-    acidslime: depth >= 2 ? 2 + depth * 2 : 0,
-    wisp: depth >= 3 ? 1 + depth : depth === 2 ? 1 : 0,
-    mage: depth >= 4 ? depth - 2 : 0,
-  };
-}
-
 /**
  * Biome-weighted population: the total count follows the depth curve, but the
  * kind mix comes from the biome's foes table (biomeExtras), with a seasoning

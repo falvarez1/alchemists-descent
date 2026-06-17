@@ -60,3 +60,21 @@ export function hashSeed(seed: number, label: string): number {
   }
   return h >>> 0;
 }
+
+/**
+ * FNV-1a hash of a string → uint32 (seed 0x811c9dc5, prime 0x01000193).
+ *
+ * The canonical single-source for the string fold that was previously
+ * copy-pasted across Levels (expedition seed), Builder (campaign playtest
+ * seed — MUST stay byte-identical to Levels for seed reproducibility), and the
+ * asset content signatures. Pass `seed` to CHAIN folds (fold A then B is
+ * `fnv1aString(B, fnv1aString(A))`), reproducing a multi-string running hash.
+ */
+export function fnv1aString(s: string, seed = 0x811c9dc5): number {
+  let h = seed >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}

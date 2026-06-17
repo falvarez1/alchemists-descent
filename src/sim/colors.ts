@@ -1,5 +1,16 @@
 import { Cell } from '@/sim/CellType';
 
+/**
+ * DETERMINISM BOUNDARY: cell TYPES come from the seeded Rng and are part of the
+ * save-format ABI (golden-test-hashed); cell COLORS here are cosmetic tint drawn
+ * from `Math.random()` (see `rand` below) and are intentionally NOT seed-stable.
+ * The save system regenerates pristine worlds from seed and overlays only
+ * player-changed cells, so unchanged terrain is re-tinted differently every load.
+ * "Replay the seed" is therefore NOT pixel-deterministic — keep any future
+ * color-sensitive persistence out of the seed-only path (persist the color
+ * explicitly instead of expecting to regenerate it from the seed).
+ */
+
 /** Pack 8-bit RGB channels into a single 0xRRGGBB integer. */
 export function packRGB(r: number, g: number, b: number): number {
   return ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
@@ -42,6 +53,13 @@ export const iceColor = () => packRGB(160 + rand(20), 215 + rand(20), 255);
 export const emberColor = () => packRGB(250 + rand(6), 80 + rand(70), 8 + rand(14));
 export const lavaColor = () => packRGB(250 + rand(6), 22 + rand(24), 0);
 export const stoneColor = () => packRGB(85 + rand(15), 80 + rand(15), 85 + rand(15));
+// Obsidian: near-black volcanic glass with an occasional cold purple sheen. Used
+// to colour the Stone crust that lava chills into under water (a "this was lava"
+// tell) without needing a separate cell — mechanically it's still rock.
+export const obsidianColor = () =>
+  Math.random() < 0.16
+    ? packRGB(58 + rand(22), 50 + rand(18), 78 + rand(22))
+    : packRGB(24 + rand(12), 21 + rand(10), 31 + rand(13));
 export const metalColor = () => packRGB(105 + rand(10), 115 + rand(10), 130 + rand(10));
 export const smokeColor = () => {
   const s = 45 + rand(20);

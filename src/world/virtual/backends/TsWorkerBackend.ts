@@ -85,7 +85,7 @@ export class TsWorkerBackend implements VirtualWorldBackend {
       this.handleMessage(event.data);
     });
     this.worker.addEventListener('error', (event) => {
-      this.rejectAll(new Error(event.message || 'Virtual world worker error'));
+      this.failWorker(new Error(event.message || 'Virtual world worker error'));
     });
   }
 
@@ -127,8 +127,11 @@ export class TsWorkerBackend implements VirtualWorldBackend {
     }
     if (message.kind === 'error') {
       const error = new Error(message.message);
+      // A jobId-tagged error is scoped to that one job; an untagged error has no owner and is
+      // treated as fatal — fail everything and discard the (possibly wedged) worker so the next
+      // call can recreate a fresh one via ensureWorker().
       if (message.jobId !== undefined) this.rejectJob(message.jobId, error);
-      else this.rejectAll(error);
+      else this.failWorker(error);
     }
   }
 
@@ -159,5 +162,12 @@ export class TsWorkerBackend implements VirtualWorldBackend {
     this.pendingChunks.clear();
     for (const pending of this.pendingWindows.values()) pending.reject(error);
     this.pendingWindows.clear();
+  }
+
+  /** Fatal/untagged failure: reject every in-flight job and tear down the worker so the next call recreates it. */
+  private failWorker(error: Error): void {
+    this.worker?.terminate();
+    this.worker = null;
+    this.rejectAll(error);
   }
 }

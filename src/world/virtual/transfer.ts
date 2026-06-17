@@ -9,6 +9,21 @@ export function chunkBytes(chunk: VirtualChunk): number {
   return chunk.types.byteLength + chunk.colors.byteLength + chunk.life.byteLength + chunk.charge.byteLength;
 }
 
+/**
+ * Returns the ArrayBuffer to transfer for a plane. Today every plane is a standalone full-buffer
+ * Uint8Array/etc, so the fast path transfers the backing buffer untouched (zero-copy). If a plane is
+ * ever a subarray/view (sliced cache region, pooled buffer), `.buffer` would be the wrong/oversized
+ * store and the receiver (which reads from offset 0) would corrupt cells — so slice out exactly this
+ * view's bytes instead. The slice also leaves the source buffer attached, so a chunk can be transferred
+ * more than once without yielding zero-length planes on the second send.
+ */
+function planeBuffer(view: ArrayBufferView): ArrayBuffer {
+  if (view.byteOffset === 0 && view.byteLength === view.buffer.byteLength) {
+    return view.buffer as ArrayBuffer;
+  }
+  return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) as ArrayBuffer;
+}
+
 function planeBytes(chunk: VirtualChunk, plane: VirtualChunkPlane): number {
   switch (plane) {
     case 'types':
@@ -53,32 +68,32 @@ export function toTransferableChunk(
     },
   };
   if (wants.has('types')) {
-    const buffer = chunk.types.buffer as ArrayBuffer;
+    const buffer = planeBuffer(chunk.types);
     out.types = buffer;
     transfer.push(buffer);
     transferBytes += planeBytes(chunk, 'types');
   }
   if (wants.has('colors')) {
-    const buffer = chunk.colors.buffer as ArrayBuffer;
+    const buffer = planeBuffer(chunk.colors);
     out.colors = buffer;
     transfer.push(buffer);
     transferBytes += planeBytes(chunk, 'colors');
   }
   if (wants.has('life')) {
-    const buffer = chunk.life.buffer as ArrayBuffer;
+    const buffer = planeBuffer(chunk.life);
     out.life = buffer;
     transfer.push(buffer);
     transferBytes += planeBytes(chunk, 'life');
   }
   if (wants.has('charge')) {
-    const buffer = chunk.charge.buffer as ArrayBuffer;
+    const buffer = planeBuffer(chunk.charge);
     out.charge = buffer;
     transfer.push(buffer);
     transferBytes += planeBytes(chunk, 'charge');
   }
   if (wants.has('previewRgba')) {
     const preview = makePreviewRgba(chunk);
-    const buffer = preview.buffer as ArrayBuffer;
+    const buffer = planeBuffer(preview);
     out.previewRgba = buffer;
     transfer.push(buffer);
     transferBytes += planeBytes(chunk, 'previewRgba');

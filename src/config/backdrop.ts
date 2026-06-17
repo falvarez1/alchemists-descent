@@ -115,18 +115,6 @@ export function createDefaultBackdropSettings(): BackdropSettings {
   };
 }
 
-export function cloneBackdropSettings(settings: BackdropSettings): BackdropSettings {
-  return sanitizeBackdropSettings(settings);
-}
-
-export function copyBackdropSettingsInto(target: BackdropSettings, source: unknown): BackdropSettings {
-  const clean = sanitizeBackdropSettings(source);
-  target.layers = clean.layers;
-  target.grade = clean.grade;
-  target.levels = clean.levels;
-  return target;
-}
-
 export function resolveBackdropProfile(
   settings: BackdropSettings,
   levelId?: string | null,
@@ -148,13 +136,6 @@ export function resolveBackdropProfileForRuntime(
 ): BackdropProfile {
   const source = runtime?.backdrop ?? settings;
   return resolveBackdropProfile(source, runtime?.backdropLevelId ?? runtime?.def.id);
-}
-
-export function resolveBackdropLayersForRuntime(
-  settings: BackdropSettings,
-  runtime?: LevelRuntime | null,
-): Record<BackdropLayerId, BackdropLayerSettings> {
-  return resolveBackdropProfileForRuntime(settings, runtime).layers;
 }
 
 export function setBackdropLevelOverride(settings: BackdropSettings, levelId: string, enabled: boolean): void {

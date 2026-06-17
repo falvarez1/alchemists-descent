@@ -20,20 +20,18 @@ export function handleGas(
   if (elementId === Cell.Steam) {
     if (w.inBounds(x, y - 1) && isSolid(w.types[w.idx(x, y - 1)])) {
       if (Math.random() < ctx.params.materials[Cell.Water].poolingFactor!) {
-        w.types[ci] = Cell.Water;
-        w.colors[ci] = waterColor();
-        w.life[ci] = 0;
+        // replaceCellAt clears life/charge/override in lockstep, matching the
+        // life<=0 conversions below so all three Steam->Water/Empty exits agree.
+        w.replaceCellAt(ci, Cell.Water, waterColor());
         return;
       }
     }
   }
   if (w.life[ci] <= 0) {
     if (elementId === Cell.Steam && Math.random() < 0.15) {
-      w.types[ci] = Cell.Water;
-      w.colors[ci] = waterColor();
+      w.replaceCellAt(ci, Cell.Water, waterColor());
     } else {
-      w.types[ci] = Cell.Empty;
-      w.colors[ci] = EMPTY_COLOR;
+      w.replaceCellAt(ci, Cell.Empty, EMPTY_COLOR);
     }
     return;
   }

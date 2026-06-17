@@ -101,6 +101,10 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
 
   for (const { id, slot } of deck) {
     const def = CARD_DEFS[id];
+    // Defensive: an id not present in CARD_DEFS (a stale/renamed card from an
+    // old or hand-edited save) would make `def` undefined and throw on every
+    // cast. Skip it rather than soft-locking combat.
+    if (!def) continue;
     if (def.kind === 'modifier') {
       pack.mana += def.manaCost;
       pack.slots.push(slot);

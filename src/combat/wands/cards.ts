@@ -256,6 +256,13 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
 /** Stable catalogue order for review kits, shops, and random grants. */
 export const ALL_CARD_IDS = Object.keys(CARD_DEFS) as CardId[];
 
+/** Is `id` a real card id in the current catalogue? Guards restore/import paths
+ *  against stale or hand-edited card ids that would otherwise reach the wand
+ *  compiler. */
+export function isCardId(id: unknown): id is CardId {
+  return typeof id === 'string' && Object.prototype.hasOwnProperty.call(CARD_DEFS, id);
+}
+
 /** Multicast group sizes (how many following projectile casts get grouped). */
 export const MULTICAST_SIZE: Partial<Record<CardId, number>> = {
   double: 2,

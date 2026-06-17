@@ -1,6 +1,24 @@
 /** Small, dependency-free string helpers shared across game + builder UI.
  *  Foundation module: safe to import from any layer. */
 
+/** Escape the five HTML-significant characters so untrusted text is safe in
+ *  BOTH element and attribute contexts. Canonical single-source; previously
+ *  copy-pasted (often as a weaker &,<,> -only variant) across editor panels. */
+export function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+/** Alias for {@link escapeHtml}; kept distinct so attribute-context call sites
+ *  read intentionally and can diverge later if ever needed. */
+export function escapeAttr(value: string): string {
+  return escapeHtml(value);
+}
+
 /** Turn a code identifier into human Title Case:
  *  "densityWeight" -> "Density Weight", "rune_door" -> "Rune Door". */
 export function humanizeIdentifier(key: string): string {

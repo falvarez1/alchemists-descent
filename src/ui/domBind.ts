@@ -9,6 +9,8 @@
  * (console `param`, Builder, a reset). Subscribe `resync` to `paramsChanged`.
  */
 
+import { escapeAttr, escapeHtml } from '@/core/strings';
+
 export interface Binding {
   /** Re-read the live value into the control. Skips a control being dragged. */
   resync(): void;
@@ -52,7 +54,8 @@ export function bindSelect(opts: {
   const select = document.getElementById(opts.select) as HTMLSelectElement | null;
   if (select) {
     // Build options from data so the list is never a stale hard-coded subset.
-    select.innerHTML = opts.options.map((o) => `<option value="${o.value}">${o.label}</option>`).join('');
+    // Escape value/label so this shared primitive stays injection-safe for any caller.
+    select.innerHTML = opts.options.map((o) => `<option value="${escapeAttr(o.value)}">${escapeHtml(o.label)}</option>`).join('');
   }
   const resync = (): void => {
     if (select && document.activeElement !== select) select.value = opts.get();

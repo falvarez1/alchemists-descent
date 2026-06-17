@@ -36,6 +36,13 @@ export function paramSliderSpec(propKey: string, value?: number): {
   // Sub-step material rates: the default 0..1/0.05 grid leaves these stuck at the
   // far left and snapping to 0 on the first nudge — give them resolvable ranges.
   if (propKey === 'evaporationSpeed') { min = 0; max = 0.1; step = 0.001; }
+  // Player-feel dials
+  if (propKey === 'groundStopSnap' || propKey === 'jumpCut') { min = 0; max = 0.6; step = 0.01; }
+  if (propKey === 'groundStopDecay' || propKey === 'airStopDecay' || propKey === 'moveSoftStart' || propKey === 'levitDrag' || propKey === 'levitHorizControl') { min = 0; max = 1; step = 0.02; }
+  if (propKey === 'airGlideSpeed') { min = 0; max = 4; step = 0.1; }
+  if (propKey === 'maxRunCap') { min = 1; max = 8; step = 0.1; }
+  if (propKey === 'jumpHoldWindow' || propKey === 'levitRampFrames') { min = 0; max = 30; step = 1; }
+  if (propKey === 'recoilBase' || propKey === 'kickImpulse' || propKey === 'kickRange' || propKey === 'kickCooldown' || propKey === 'kickDamage') { min = 0; max = 100; step = 1; }
   if (propKey === 'igniteChance') { min = 0; max = 0.2; step = 0.005; }
   if (propKey === 'dispersion') { min = 0; max = 0.5; step = 0.005; }
   if (propKey === 'bloomWeight') label = 'Bloom Scale (%)';
@@ -56,6 +63,9 @@ export function paramSliderSpec(propKey: string, value?: number): {
  * sliders, the clear-world button and the sound toggle.
  */
 export class Inspector {
+  /** Tears down the previous context-inspector paramsChanged subscription before each rebuild. */
+  private contextInspectorOff: (() => void) | null = null;
+
   constructor(private ctx: Ctx) {
     this.wireGlobalControls();
     this.wireGpuComposeToggle();
@@ -65,6 +75,10 @@ export class Inspector {
   }
 
   generateContextInspector(id: string | number, mode: 'element' | 'spell'): void {
+    // Drop the subscription from the previously inspected material/spell before
+    // rebuilding, so we never leak listeners that point at destroyed DOM.
+    this.contextInspectorOff?.();
+    this.contextInspectorOff = null;
     const container = document.getElementById('material-dynamic-controls')!;
     container.innerHTML = '';
 
@@ -105,12 +119,29 @@ export class Inspector {
     });
     container.appendChild(group);
 
+    const formatVal = (propKey: string, val: number): string =>
+      propKey === 'bloomWeight' ? (val * 100).toFixed(0) + '%' : formatStep(val, paramSliderSpec(propKey, val).step);
+
     Object.keys(profile).forEach(propKey => {
       if (propKey === 'name') return;
       document.getElementById(`dyn-input-${propKey}`)!.addEventListener('input', (e) => {
         const val = parseFloat((e.target as HTMLInputElement).value); fields[propKey] = val;
-        document.getElementById(`dyn-val-${propKey}`)!.textContent =
-          propKey === 'bloomWeight' ? (val * 100).toFixed(0) + '%' : formatStep(val, paramSliderSpec(propKey, val).step);
+        document.getElementById(`dyn-val-${propKey}`)!.textContent = formatVal(propKey, val);
+      });
+    });
+
+    // Re-read the live profile whenever anything else changes it (console `param`,
+    // Builder mirror, a reset) so these sliders mirror the global ones and never
+    // show a stale number while their material/spell stays selected.
+    this.contextInspectorOff = this.ctx.events.on('paramsChanged', () => {
+      Object.keys(profile).forEach(propKey => {
+        if (propKey === 'name') return;
+        const input = document.getElementById(`dyn-input-${propKey}`) as HTMLInputElement | null;
+        const valEl = document.getElementById(`dyn-val-${propKey}`);
+        if (!input || !valEl) return;
+        // Skip a slider mid-drag so we don't snap it out from under the user (matches bindRange.resync).
+        if (document.activeElement !== input) input.value = String(fields[propKey]);
+        valEl.textContent = formatVal(propKey, fields[propKey]);
       });
     });
   }

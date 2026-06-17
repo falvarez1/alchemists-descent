@@ -659,7 +659,11 @@ export class PreviewRuntime {
         } else if (sensorType === 'charge') {
           if (this.world.charge[i] > 0) count++;
         } else if (sensorType === 'material') {
-          if (mechanism.materialFilter?.includes(type)) count++;
+          // A material sensor with no filter is an invalid configuration the
+          // validator hard-errors on ('material sensor needs a filter material');
+          // sense nothing deterministically so preview and validation agree
+          // instead of relying on optional-chain falsiness.
+          if (mechanism.materialFilter && mechanism.materialFilter.includes(type)) count++;
         } else if (type !== Cell.Empty && !isGas(type) && type !== Cell.Fire) {
           count++;
         }

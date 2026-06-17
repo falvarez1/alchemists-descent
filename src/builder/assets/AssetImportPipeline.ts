@@ -8,8 +8,9 @@ import {
 } from '@/builder/assets/AssetPreview';
 import type { AssetDatabase } from '@/builder/assets/AssetDatabase';
 import type { AssetImportInput, AssetImportResult, AssetStore } from '@/builder/assets/AssetStore';
-import { normalizeAssetToken, stableAssetId } from '@/builder/assets/AssetTypes';
-import type { AssetKind, AssetOrigin, AssetRecord } from '@/builder/assets/AssetTypes';
+import { findImportCollision } from '@/builder/assets/AssetStore';
+import { normalizeAssetToken } from '@/builder/assets/AssetTypes';
+import type { AssetKind, AssetRecord } from '@/builder/assets/AssetTypes';
 
 export interface AssetImportPreview {
   ok: boolean;
@@ -48,7 +49,7 @@ export function previewJsonImport(input: AssetImportInput, database: Pick<AssetD
   const duplicate = database
     .list()
     .find((record) => record.kind === asset.kind && record.contentSignature === asset.contentSignature);
-  const collision = findImportCollision(database, asset.kind, asset.sourceId, asset.contentSignature);
+  const collision = findImportCollision(database, asset.kind, asset.sourceId);
   return {
     ok: true,
     kind: asset.kind,
@@ -161,28 +162,6 @@ function identifyImportPayload(value: unknown): {
     };
   }
   return null;
-}
-
-function stableImportedAssetId(kind: 'document' | 'prefab' | 'sprite', sourceId: string): string {
-  const origin: AssetOrigin = kind === 'document' ? 'project' : 'library';
-  return stableAssetId(kind, origin, sourceId);
-}
-
-function findImportCollision(
-  database: Pick<AssetDatabase, 'list'>,
-  kind: 'document' | 'prefab' | 'sprite',
-  sourceId: string,
-  contentSignature: string,
-): AssetRecord | undefined {
-  const incomingAssetId = stableImportedAssetId(kind, sourceId);
-  return database
-    .list()
-    .find((record) =>
-      record.kind === kind &&
-      record.origin !== 'missing' &&
-      record.contentSignature !== contentSignature &&
-      (record.assetId === incomingAssetId || normalizeAssetToken(record.sourceId) === sourceId),
-    );
 }
 
 function invalidPreview(input: AssetImportInput, message: string): AssetImportPreview {

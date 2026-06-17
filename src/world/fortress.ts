@@ -1,9 +1,8 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import type { Ctx } from '@/core/types';
+import { clamp } from '@/core/math';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, fireColor, metalColor, packRGB, stoneColor, wallColor, woodColor } from '@/sim/colors';
-
-const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 /**
  * Stamp a complete sandbox fortress centered in the current view. It is not a

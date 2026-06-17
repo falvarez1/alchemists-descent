@@ -5,7 +5,7 @@ import { GEN, defaultSkeletonSpec } from '@/config/gen';
 import type { SkeletonSpec } from '@/config/gen';
 import { createDefaultPostFxSettings, createDefaultWandLightSettings, GLOBAL_PARAM_DEFAULTS, MATERIAL_PARAM_DEFAULTS, PLAYER_TUNING_DEFAULTS } from '@/config/params';
 import { LEVELS, vaultHostId } from '@/config/worldgraph';
-import { randomSeed } from '@/core/rng';
+import { randomSeed, fnv1aString } from '@/core/rng';
 import {
   applyWorldLayer,
   bakeExclusionMask,
@@ -315,14 +315,10 @@ const SKELETON_KINDS: Array<SkeletonSpec['kind']> = [
   'volcanicTubes',
 ];
 
-/** Tiny FNV-1a over the level id, matching Levels' expedition seed fold. */
+/** FNV-1a over the level id, matching Levels' expedition seed fold.
+ *  Both call the shared core/rng.fnv1aString so they cannot diverge. */
 function hashLevelId(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
+  return fnv1aString(s);
 }
 
 function campaignLevelSeed(baseSeed: number, levelId: string): number {
@@ -4270,7 +4266,16 @@ export class Builder {
       this.refreshDocSelect();
       return;
     }
-    const doc = JSON.parse(JSON.stringify(saved)) as EditorDocument;
+    // Library entries are persisted same-origin data, but an older/buggier build
+    // or a hand-edited localStorage value can be malformed; run them through the
+    // same sanitizer every other load path uses (sanitizeImportedDoc rebuilds a
+    // fresh disjoint doc, so it also stands in for the defensive deep-clone).
+    const doc = sanitizeImportedDoc(saved);
+    if (!doc) {
+      this.status('DOCUMENT IS CORRUPT OR INCOMPATIBLE', true);
+      this.refreshDocSelect();
+      return;
+    }
     if (!(await this.confirmDiscardCurrentDocument('Load Document'))) {
       this.refreshDocSelect();
       return;
@@ -4884,7 +4889,9 @@ export class Builder {
 
   private clientToWorld(clientX: number, clientY: number, clampToOverlay = false): { x: number; y: number } {
     const rect = this.overlay.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return this.lastMouse;
+    // return a fresh point, never the live internal field, so callers can't
+    // alias/mutate this.lastMouse through the transform's return value
+    if (rect.width <= 0 || rect.height <= 0) return { x: this.lastMouse.x, y: this.lastMouse.y };
     const rawU = (clientX - rect.left) / rect.width;
     const rawV = (clientY - rect.top) / rect.height;
     const u = clampToOverlay ? Math.max(0, Math.min(1, rawU)) : rawU;
@@ -5329,6 +5336,7 @@ export class Builder {
       if (targets.length > 0) this.drag = { targets, grabX: pos.x, grabY: pos.y };
     });
     window.addEventListener('mousemove', (e) => {
+      if (!this.isOpen) return; // permanent global listener — do nothing while the Builder is closed
       const pos = this.mouseToWorld(e);
       this.lastMouseClient = { x: e.clientX, y: e.clientY };
       this.lastMouse = pos;
@@ -5387,6 +5395,7 @@ export class Builder {
       }
     });
     window.addEventListener('mouseup', () => {
+      if (!this.isOpen) return; // permanent global listener — drag state is already cleared by close()
       if (this.gizmoDrag) {
         this.commitGizmoDrag();
         return;
@@ -5503,10 +5512,11 @@ export class Builder {
         : o.x >= x0 && o.x <= x1 && o.y >= y0 && o.y <= y1;
       if (inside) ids.push(o.id);
     }
-    if (!this.layerHidden.has('lights') && !this.layerLocked.has('lights')) {
-      for (const l of this.doc.lights) {
-        if (l.x >= x0 && l.x <= x1 && l.y >= y0 && l.y <= y1) ids.push(l.id);
-      }
+    for (const l of this.doc.lights) {
+      // lightSelectable covers the lights-layer guard AND the per-light
+      // hidden/locked flags, matching layerSelectableObj for objects above —
+      // so a marquee can't add a light that later ops (drag/align/prune) skip.
+      if (this.lightSelectable(l) && l.x >= x0 && l.x <= x1 && l.y >= y0 && l.y <= y1) ids.push(l.id);
     }
     this.selectedIds = new Set(ids);
     this.selectedId = ids[0] ?? null;
@@ -5794,7 +5804,10 @@ export class Builder {
     const ctx = this.ctx;
     if (!ctx.world.inBounds(x, y)) return;
     const t = ctx.world.types[ctx.world.idx(x, y)];
-    this.selectMaterial(t);
+    // Sample-only: arm the material without yanking the user into the Paint tool
+    // or popping the material panel (selectMaterial's auto-switch is reserved for
+    // explicit palette clicks). RMB-eyedrop should just pick the color.
+    this.armMaterial(t);
     const name = ctx.params.materials[t]?.name ?? 'Material ' + t;
     this.status('PICKED: ' + name.toUpperCase());
     this.syncProcPanel();
@@ -5916,17 +5929,20 @@ export class Builder {
       };
     }
     // Slab kinds anchor top-left; center them on the click for placement.
-    let px = this.snap(x),
-      py = this.snap(y);
+    // (snap once — and avoid shadowing the module-level `px` draw helper.)
+    const sx = this.snap(x),
+      sy = this.snap(y);
+    let anchorX = sx,
+      anchorY = sy;
     if (kind === 'door' || kind === 'runeDoor' || kind === 'valve' || kind === 'plug') {
-      px = this.snap(x) - Math.floor(((params.w as number) ?? 3) / 2);
-      py = this.snap(y) - Math.floor(((params.h as number) ?? 13) / 2);
+      anchorX = sx - Math.floor(((params.w as number) ?? 3) / 2);
+      anchorY = sy - Math.floor(((params.h as number) ?? 13) / 2);
     }
     const obj: EditorObject = {
       id: freshId(kind),
       kind,
-      x: px,
-      y: py,
+      x: anchorX,
+      y: anchorY,
       rotation: 0,
       locked: false,
       hidden: false,
@@ -7055,6 +7071,16 @@ export class Builder {
    *  levitation enhancement cards is `levitHorizControl`. */
   private buildPlayerPhysicsSections(host: HTMLElement): void {
     const p = this.ctx.params.player;
+
+    const feel = this.worldSection(host, 'MOVEMENT FEEL');
+    this.numberRow(feel, 'Soft-start (ease-in)', p.moveSoftStart, 0, 1, 0.02, (v) => v.toFixed(2), (v) => { p.moveSoftStart = v; });
+    this.numberRow(feel, 'Max run cap', p.maxRunCap, 1, 8, 0.1, (v) => v.toFixed(1), (v) => { p.maxRunCap = v; });
+    this.numberRow(feel, 'Ground stop (decay)', p.groundStopDecay, 0, 1, 0.02, (v) => v.toFixed(2), (v) => { p.groundStopDecay = v; });
+    this.numberRow(feel, 'Stop snap', p.groundStopSnap, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => { p.groundStopSnap = v; });
+    this.numberRow(feel, 'Air glide speed', p.airGlideSpeed, 0, 4, 0.1, (v) => v.toFixed(1), (v) => { p.airGlideSpeed = v; });
+    this.numberRow(feel, 'Air tap stop (decay)', p.airStopDecay, 0, 1, 0.02, (v) => v.toFixed(2), (v) => { p.airStopDecay = v; });
+    this.numberRow(feel, 'Jump cut', p.jumpCut, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => { p.jumpCut = v; });
+    this.numberRow(feel, 'Jump window', p.jumpHoldWindow, 0, 30, 1, (v) => Math.round(v) + 'f', (v) => { p.jumpHoldWindow = Math.max(0, Math.round(v)); });
 
     const lev = this.worldSection(host, 'LEVITATION');
     this.numberRow(lev, 'Lift: base thrust', p.levitThrust0, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => {
@@ -8964,10 +8990,14 @@ export class Builder {
       after.life.push(w.life[i]);
       after.charge.push(w.charge[i]);
     }
-    this.markTerrainDirty();
+    // Only dirty the doc when cells actually moved — a zero-cell settle must
+    // leave documentRevision / validation / preview state untouched (otherwise
+    // it falsely flips hasUnsavedChanges and stales the validation badge).
     if (overCap) {
+      this.markTerrainDirty();
       this.status('SETTLED — TOO LARGE TO UNDO, CAPTURED ON NEXT SAVE');
     } else if (before.idxs.length > 0) {
+      this.markTerrainDirty();
       this.cmds.run(paintTerrainCmd(w, before, after));
       this.status(`SETTLED ${before.idxs.length} CELLS (UNDOABLE)`);
     } else {
@@ -9494,9 +9524,9 @@ export class Builder {
       e.stopImmediatePropagation();
     } else if (e.code === 'Escape') {
       e.stopPropagation();
-      if (this.gizmoDrag) {
-        this.cancelGizmoDrag();
-      } else if (this.settling || this.settleSnap) {
+      // gizmo-drag Escape is already handled by the top-of-function guard, so
+      // this.gizmoDrag is guaranteed null here.
+      if (this.settling || this.settleSnap) {
         this.finishSettle(false);
         this.status('SETTLE CANCELLED');
       } else if (this.floating) {
@@ -9667,10 +9697,17 @@ export class Builder {
     if (!this.minimapImage || state.frameCount % 12 === 0) this.refreshMinimapTerrain();
     this.drawMinimap();
 
+    // resolve ids once per frame instead of an Array.find per marker/link —
+    // the marker loop and link-wire draw are both O(visible) against these maps
+    const objById = new Map<string, EditorObject>();
+    for (const o of this.doc.objects) objById.set(o.id, o);
+    const lightById = new Map<string, EditorLight>();
+    for (const l of this.doc.lights) lightById.set(l.id, l);
+
     // markers glue to world positions (sized kinds anchor at footprint center)
     for (const [id, el] of this.markers) {
-      const obj = this.doc.objects.find((o) => o.id === id);
-      const light = obj ? null : this.doc.lights.find((l) => l.id === id);
+      const obj = objById.get(id) ?? null;
+      const light = obj ? null : (lightById.get(id) ?? null);
       const rec = obj ?? light;
       if (!rec) continue;
       let ax = rec.x,
@@ -9689,11 +9726,11 @@ export class Builder {
         p.x < -10 || p.x > rect.width + 10 || p.y < -10 || p.y > rect.height + 10 ? 'none' : '';
     }
 
-    this.drawCanvas(rect);
+    this.drawCanvas(rect, objById);
   };
 
   /** Region, shape previews, link wires, footprint boxes, light rings. */
-  private drawCanvas(rect: DOMRect): void {
+  private drawCanvas(rect: DOMRect, objById: Map<string, EditorObject>): void {
     const cw = Math.round(rect.width),
       ch = Math.round(rect.height);
     if (this.canvas.width !== cw) this.canvas.width = cw;
@@ -9835,12 +9872,11 @@ export class Builder {
     }
 
     // link wires: trigger -> door amber, glyph -> runeDoor green
-    if (this.layerHidden.has('links')) {
-      // links layer hidden: skip the wires entirely
-    } else
+    // (links layer hidden: skip the wires entirely)
+    if (!this.layerHidden.has('links'))
     for (const l of this.doc.links) {
-      const from = this.doc.objects.find((o) => o.id === l.fromId);
-      const to = this.doc.objects.find((o) => o.id === l.toId);
+      const from = objById.get(l.fromId);
+      const to = objById.get(l.toId);
       if (!from || !to) continue;
       const tf = objectFootprint(to);
       const a = toS(from.x, from.y - 2);
@@ -9870,7 +9906,7 @@ export class Builder {
 
     // link in progress: wire follows the mouse
     if (this.linkFrom) {
-      const from = this.doc.objects.find((o) => o.id === this.linkFrom);
+      const from = objById.get(this.linkFrom);
       if (from) {
         const a = toS(from.x, from.y - 2);
         const b = toS(this.lastMouse.x, this.lastMouse.y);
@@ -12092,19 +12128,21 @@ export class Builder {
       return;
     }
     if (action === 'export') {
-      const exported = records
+      // `exportable` (the filtered entry array) is named distinctly from each
+      // entry's `exported` AssetStoreExport field so neither shadows the other.
+      const exportable = records
         .map((record) => ({ record, exported: this.exportAssetRecord(record) }))
         .filter((entry): entry is { record: AssetRecord; exported: AssetStoreExport } => entry.exported !== null);
-      if (exported.length === 0) {
+      if (exportable.length === 0) {
         this.status('NO SELECTED ASSETS CAN BE EXPORTED', true);
         return;
       }
-      const skipped = records.length - exported.length;
+      const skipped = records.length - exportable.length;
       const bundle = {
         v: 1,
         kind: 'assetExportBundle',
         exportedAt: new Date().toISOString(),
-        assets: exported.map(({ record, exported }) => ({
+        assets: exportable.map(({ record, exported }) => ({
           assetId: record.assetId,
           kind: record.kind,
           origin: record.origin,
@@ -12116,12 +12154,12 @@ export class Builder {
       };
       downloadText(
         JSON.stringify(bundle, null, 2),
-        `alchemists-descent-${exported.length}-assets.bundle.json`,
+        `alchemists-descent-${exportable.length}-assets.bundle.json`,
         'application/json',
       );
-      const projectSync = await this.persistProjectAssetExports(exported);
+      const projectSync = await this.persistProjectAssetExports(exportable);
       this.status(
-        `EXPORTED ${exported.length} ASSET${exported.length === 1 ? '' : 'S'}` +
+        `EXPORTED ${exportable.length} ASSET${exportable.length === 1 ? '' : 'S'}` +
           (hiddenCount > 0 ? ` (${hiddenCount} HIDDEN SELECTED)` : '') +
           (skipped > 0 ? ` (${skipped} SKIPPED)` : '') +
           (projectSync.saved > 0 ? ` + ${projectSync.saved} PROJECT-SYNCED` : ''),
@@ -12605,7 +12643,15 @@ export class Builder {
       this.renderAssetDetails();
       return;
     }
-    const doc = JSON.parse(JSON.stringify(latest.payload)) as EditorDocument;
+    // Sanitize asset-store payloads on the same footing as imported files
+    // (sanitizeImportedDoc rebuilds a fresh disjoint doc, replacing the prior
+    // defensive deep-clone, and rejects malformed/incompatible entries).
+    const doc = sanitizeImportedDoc(latest.payload);
+    if (!doc) {
+      this.status('DOCUMENT ASSET IS CORRUPT OR INCOMPATIBLE', true);
+      this.renderAssetDetails();
+      return;
+    }
     if (latest.kind === 'template') {
       doc.id = freshId('doc');
       doc.name = doc.name ? `${doc.name} copy` : 'untitled';

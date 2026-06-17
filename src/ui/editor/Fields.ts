@@ -1,3 +1,7 @@
+import { escapeHtml, escapeAttr } from '@/core/strings';
+
+export { escapeHtml, escapeAttr };
+
 export type FieldKind = 'number' | 'slider' | 'checkbox' | 'select' | 'color' | 'text' | 'swatch' | 'vec2';
 
 export interface FieldOption {
@@ -68,28 +72,12 @@ export function numberField(field: Omit<NumberField, 'kind'>): string {
   return fieldRow({ ...field, kind: 'number' });
 }
 
-export function sliderField(field: Omit<NumberField, 'kind'>): string {
-  return fieldRow({ ...field, kind: 'slider' });
-}
-
 export function checkboxField(field: Omit<CheckboxField, 'kind'>): string {
   return fieldRow({ ...field, kind: 'checkbox' });
 }
 
 export function selectField(field: Omit<SelectField, 'kind'>): string {
   return fieldRow({ ...field, kind: 'select' });
-}
-
-export function colorField(field: Omit<TextField, 'kind'>): string {
-  return fieldRow({ ...field, kind: 'color' });
-}
-
-export function textField(field: Omit<TextField, 'kind'>): string {
-  return fieldRow({ ...field, kind: 'text' });
-}
-
-export function swatchField(field: Omit<TextField, 'kind'>): string {
-  return fieldRow({ ...field, kind: 'swatch' });
 }
 
 export function vec2Field(field: Omit<Vec2Field, 'kind'>): string {
@@ -186,15 +174,3 @@ function toKebab(value: string): string {
   return value.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
 }
 
-export function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-export function escapeAttr(value: string): string {
-  return escapeHtml(value);
-}

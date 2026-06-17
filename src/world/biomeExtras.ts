@@ -378,8 +378,8 @@ export function applyCampaignDressing(
         angle += (rng.next() - 0.5) * 0.85;
         x = clampInt(x + Math.cos(angle) * 1.25, 4, WIDTH - 5);
         y = clampInt(y + Math.sin(angle) * 0.95, 8, floorBand - 5);
-        const w = rng.next() < 0.22 ? 1 : 0;
-        for (let dy = -w; dy <= w; dy++) {
+        const halfW = rng.next() < 0.22 ? 1 : 0;
+        for (let dy = -halfW; dy <= halfW; dy++) {
           const yy = y + dy;
           if (!world.inBounds(x, yy) || world.types[world.idx(x, yy)] !== Cell.Wall) continue;
           if (mustStayEmbedded(material) && adjacentOpen(x, yy)) continue;
@@ -716,6 +716,9 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
     const i = w.idx(x, y);
     w.types[i] = t;
     w.colors[i] = color;
+    // Match setWall: never inherit stale life/charge onto a freshly-stamped cell.
+    w.life[i] = 0;
+    w.charge[i] = 0;
   };
 
   // Glowcap fungus colonies clinging to cave surfaces
@@ -739,7 +742,6 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
       }
       if (!nearSolid) continue;
       set(x, y, Cell.Fungus, fungusColor());
-      w.life[w.idx(x, y)] = 0;
       fp++;
     }
   }
@@ -764,7 +766,6 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
       }
       if (!nearSolid || !nearWet) continue;
       set(x, y, Cell.Moss, mossColor());
-      w.life[w.idx(x, y)] = 0;
       mp++;
     }
   }
@@ -1002,7 +1003,7 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
 /**
  * Mineral-vug fill. The cave skeleton leaves a swiss-cheese of small ENCLOSED air
  * pockets buried in the rock. This fills ~70% of them with cave-suitable material:
- * mostly solid stone/coal (denser rock to chew through), ~19% a hidden RawOre
+ * mostly solid stone/coal (denser rock to chew through), ~16% a hidden RawOre
  * cache (dark gold-flecked rock that stays dark until the wizard's light sweeps
  * it, then gleams — dig it to spill gold), and a rare crystal geode. Only SMALL
  * enclosed pockets are touched — never the main caves, tunnels, the floor strip,

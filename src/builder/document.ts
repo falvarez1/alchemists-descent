@@ -4,7 +4,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { BIOMES } from '@/config/biomes';
 import { createDefaultBackdropSettings, sanitizeBackdropSettings } from '@/config/backdrop';
 import { clamp, hash2, valueNoise } from '@/core/math';
-import { Cell } from '@/sim/CellType';
+import { Cell, CELL_COUNT } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { sanitizeSpriteAsset } from '@/builder/assets/sprites';
 import type { SpriteAsset } from '@/builder/assets/sprites';
@@ -436,6 +436,7 @@ const DOC_OBJECT_CAP = 4_096;
 const DOC_LINK_CAP = 8_192;
 const DOC_LIGHT_CAP = 1_024;
 const DOC_PROCEDURAL_CAP = 256;
+const DOC_SPRITE_CAP = 512;
 const DOC_SPARSE_CAP = 80_000;
 const SHARE_COMPRESSED_MAX_BYTES = 2_000_000;
 const SHARE_JSON_MAX_BYTES = 12_000_000;
@@ -563,13 +564,30 @@ function sanitizeSparsePairs(
 function sanitizeWorldLayer(value: unknown): EditorWorldLayer | null {
   const layer = value as EditorWorldLayer;
   if (!layer || typeof layer !== 'object' || typeof layer.rle !== 'string') return null;
+  const decoded = new Uint8Array(WIDTH * HEIGHT);
+  let claimed: number;
   try {
-    rleDecode(layer.rle, new Uint8Array(WIDTH * HEIGHT));
+    claimed = rleDecode(layer.rle, decoded);
   } catch {
     return null;
   }
+  // Reject a terrain layer whose run total doesn't cover exactly the grid (the
+  // prefab path guards this too) — a mismatch means corrupt/foreign data that
+  // would silently mis-decode into a half-empty world.
+  if (claimed !== WIDTH * HEIGHT) return null;
+  // Drop any off-palette id (>= CELL_COUNT) so a hostile/stale rle can't smuggle
+  // a value whose high bit corrupts the GPU-compose charge channel. Re-encode
+  // ONLY when something changed, so a clean doc keeps its exact rle (and the
+  // content signature derived from it).
+  let dirty = false;
+  for (let i = 0; i < decoded.length; i++) {
+    if (decoded[i] >= CELL_COUNT) {
+      decoded[i] = Cell.Empty;
+      dirty = true;
+    }
+  }
   return {
-    rle: layer.rle,
+    rle: dirty ? rleEncode(decoded) : layer.rle,
     ...(isBiomeId(layer.biome) ? { biome: layer.biome } : {}),
     ...(num(layer.seed) ? { seed: Math.floor(layer.seed) >>> 0 } : {}),
     ...(num(layer.paintSeed) ? { paintSeed: clampInt(layer.paintSeed, 0, 99999) } : {}),
@@ -661,36 +679,40 @@ export function sanitizeImportedDoc(parsed: unknown): EditorDocument | null {
     : { w: WIDTH, h: HEIGHT };
   if (size.w !== WIDTH || size.h !== HEIGHT) return null;
 
-  const objectIds = new Set<string>();
+  // ONE id namespace across every record family — validateDocument pools
+  // object/link/light ids into a single set and flags any cross-family
+  // collision as a playtest-blocker, so the importer must enforce the same
+  // global uniqueness (per-family sets would let an object and a light share an
+  // id that then fails validation). `objectIds` stays separate: it is the set
+  // of final OBJECT ids used to verify link endpoints actually exist.
+  const usedIds = new Set<string>();
   const objects = raw.objects
     .slice(0, DOC_OBJECT_CAP)
-    .map((object) => sanitizeObject(object, objectIds))
+    .map((object) => sanitizeObject(object, usedIds))
     .filter((object): object is EditorObject => object !== null);
-  const linkIds = new Set<string>();
+  const objectIds = new Set<string>(objects.map((o) => o.id));
   const links = Array.isArray(raw.links)
     ? raw.links
         .slice(0, DOC_LINK_CAP)
-        .map((link) => sanitizeLink(link, objectIds, linkIds))
+        .map((link) => sanitizeLink(link, objectIds, usedIds))
         .filter((link): link is EditorLink => link !== null)
     : [];
-  const lightIds = new Set<string>();
   const lights = Array.isArray(raw.lights)
     ? raw.lights
         .slice(0, DOC_LIGHT_CAP)
-        .map((light) => sanitizeLight(light, lightIds))
+        .map((light) => sanitizeLight(light, usedIds))
         .filter((light): light is EditorLight => light !== null)
     : [];
-  const procIds = new Set<string>();
   const proceduralHistory = Array.isArray(raw.proceduralHistory)
     ? raw.proceduralHistory
         .slice(0, DOC_PROCEDURAL_CAP)
-        .map((pass) => sanitizeProceduralPass(pass, procIds))
+        .map((pass) => sanitizeProceduralPass(pass, usedIds))
         .filter((pass): pass is ProceduralPass => pass !== null)
     : [];
 
   const mood = raw.mood && typeof raw.mood === 'object'
     ? {
-        ambient: num(raw.mood.ambient) ? clampInt(raw.mood.ambient, 0, 0xffffff) : null,
+        ambient: num(raw.mood.ambient) ? clampNum(raw.mood.ambient, 0.02, 0.6) : null,
         ambience: typeof raw.mood.ambience === 'string' ? raw.mood.ambience.slice(0, 80) : '',
       }
     : { ambient: null, ambience: '' };
@@ -723,6 +745,7 @@ export function sanitizeImportedDoc(parsed: unknown): EditorDocument | null {
   // drop out individually, an empty/invalid block drops the field entirely.
   if (raw.assets && Array.isArray((raw.assets as { sprites?: unknown }).sprites)) {
     const sprites = ((raw.assets as { sprites: unknown[] }).sprites)
+      .slice(0, DOC_SPRITE_CAP)
       .map(sanitizeSpriteAsset)
       .filter((s): s is SpriteAsset => s !== null);
     if (sprites.length > 0) doc.assets = { sprites };
@@ -730,24 +753,6 @@ export function sanitizeImportedDoc(parsed: unknown): EditorDocument | null {
     delete doc.assets;
   }
   return doc;
-}
-
-/** Migrate a Sandbox raw-grid save (LevelStore v1) into a Builder document. */
-export function migrateSandboxSave(
-  name: string,
-  save: { v: 1; biome: string; rle: string; life: Array<[number, number]>; charge: Array<[number, number]> },
-): EditorDocument {
-  const doc = createEmptyDocument(name, save.biome as BiomeId);
-  // Sanitize the v1 grid through the same layer guard the import path uses:
-  // a corrupt rle / sparse-pair array returns null here and is dropped to a
-  // null world layer rather than injecting a doc that throws later in
-  // decode/validate. Well-formed saves round-trip unchanged.
-  doc.world = sanitizeWorldLayer({ rle: save.rle, life: save.life, charge: save.charge, biome: doc.biome });
-  // Run the full assembled doc through the import sanitizer for parity with
-  // every other ingestion path. createEmptyDocument already yields a valid
-  // v:2 doc with matching size and a (now) sanitized/null world layer, so this
-  // never returns null; the fallback preserves the migrated doc defensively.
-  return sanitizeImportedDoc(doc) ?? doc;
 }
 
 /* ---------------- shareable level codes ---------------- */

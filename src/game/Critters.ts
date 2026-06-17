@@ -139,7 +139,7 @@ export class Critters implements CrittersApi {
       const t = w.types[i];
       const biome = ctx.state.currentBiome;
 
-      if (isLiquid(t) && t === Cell.Water && counts.fish < CAPS.fish) {
+      if (t === Cell.Water && counts.fish < CAPS.fish) {
         // fish want depth: two more water cells below
         if (
           w.types[w.idx(x, y + 1)] === Cell.Water &&
@@ -253,7 +253,7 @@ export class Critters implements CrittersApi {
         // damping so the scatter carries (a beetle is blown off its feet and
         // tumbles; a fish in water bolts but the water resists). It flees, panics.
         c.startle = (c.startle ?? 0) - 1;
-        const inWater = here === Cell.Water || isLiquid(here);
+        const inWater = isLiquid(here);
         if (c.kind === 'fish' && inWater) {
           c.vx *= 0.95;
           c.vy *= 0.95;
@@ -298,7 +298,7 @@ export class Critters implements CrittersApi {
         c.vx *= 0.96;
         c.vy *= 0.96;
       } else if (c.kind === 'fish') {
-        if (here === Cell.Water || isLiquid(here)) {
+        if (isLiquid(here)) {
           c.gasp = 0;
           // cruise + flee the splashing alchemist
           const pdx = c.x - player.x,
@@ -342,6 +342,9 @@ export class Critters implements CrittersApi {
               [0, -1],
               [c.facing, 1],
             ]) {
+              // Guard the neighbor offset (matches every other scan in this file):
+              // without it, a beetle at x=0 would idx(-1,yi) into the previous row.
+              if (!w.inBounds(xi + ddx, yi + ddy)) continue;
               const ti = w.idx(xi + ddx, yi + ddy);
               const tt = w.types[ti];
               if (tt === Cell.Fungus || tt === Cell.Moss) {

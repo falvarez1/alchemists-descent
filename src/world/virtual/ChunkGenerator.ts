@@ -38,9 +38,6 @@ let worldgenWasmBackend: WorldgenWasmBackend = 'auto';
 export function setWorldgenWasmBackend(backend: WorldgenWasmBackend): void {
   worldgenWasmBackend = backend;
 }
-export function getWorldgenWasmBackend(): WorldgenWasmBackend {
-  return worldgenWasmBackend;
-}
 
 interface Scratch {
   size: number;
@@ -721,6 +718,10 @@ function dressSurfaceTerrain(
       const wx = scratch.originX + x;
       const exposure = openAbove(scratch.types, scratch.size, x, y);
       if (exposure < 2) continue;
+      // NOTE: 0x5c13faced is 36-bit; JS `^` coerces to Int32 so the high nibble is dropped and the
+      // effective mix constant is 0xc13faced. Harmless (still deterministic + seam-stable) but the
+      // field is less independent from the others than the literal implies. Locked: changing it to a
+      // true 8-digit constant would alter generated cell types -> re-record gen-golden + bump GEN_VERSION.
       const field = organicNoise(def.seed ^ 0x5c13faced, wx, wy);
       if (field > cover) continue;
       const biome = biomeAt(wx, wy);

@@ -277,6 +277,18 @@ export class Projectiles implements ProjectilesApi {
     this.indexedEnemyCount = ctx.enemies.length;
   }
 
+  /**
+   * O(1) swap-remove of a projectile by index — the backward update loop has
+   * already visited the tail, and projectile identity (WeakMap card marks,
+   * black-hole refs) survives. Hoisted off the hot loop so update() doesn't
+   * allocate a fresh closure every frame.
+   */
+  private removeAt(projectiles: Projectile[], idx: number): void {
+    const last = projectiles.length - 1;
+    if (idx !== last) projectiles[idx] = projectiles[last];
+    projectiles.pop();
+  }
+
   private damageEnemy(ctx: Ctx, enemy: Ctx['enemies'][number], amount: number, kx: number, ky: number): void {
     ctx.enemyCtl.damage(enemy, amount, kx, ky);
     if (enemy.hp <= 0) {
@@ -355,6 +367,11 @@ export class Projectiles implements ProjectilesApi {
       return;
     }
     if (p.age < 4 || ctx.state.frameCount % (mods.shortHomingCadence ?? 4) !== 0) return;
+    // A wisp already runs a stronger built-in seek with its own speed cap; a
+    // second steering pass this frame would double-steer with a conflicting
+    // cap. Let the frame counter (decremented above) still expire the mod, but
+    // skip the redundant nudge.
+    if (p.type === 'wisp') return;
 
     let best: Ctx['enemies'][number] | null = null;
     let bestD = 110 * 110;
@@ -516,13 +533,6 @@ export class Projectiles implements ProjectilesApi {
 
     const world = ctx.world;
     const projectiles = ctx.projectiles;
-    // O(1) swap-remove: the backward loop already visited the tail, and
-    // projectile identity (WeakMap card marks, black-hole refs) survives.
-    const removeAt = (idx: number): void => {
-      const last = projectiles.length - 1;
-      if (idx !== last) projectiles[idx] = projectiles[last];
-      projectiles.pop();
-    };
     for (let i = projectiles.length - 1; i >= 0; i--) {
       const p = projectiles[i];
       p.life--;
@@ -539,7 +549,7 @@ export class Projectiles implements ProjectilesApi {
       if (p.type === 'blackhole' && p.life <= 0) {
         this.implosionCollapse(ctx, p);
         releaseTriggered(ctx, p);
-        removeAt(i);
+        this.removeAt(projectiles, i);
         continue;
       }
 
@@ -548,7 +558,7 @@ export class Projectiles implements ProjectilesApi {
         const radius = Math.floor(ctx.params.spells.bomb.explosionRadius! * Math.min(1.45, 1 + (mul - 1) * 0.15));
         this.triggerExplosion(ctx, p.x, p.y, radius, mul);
         releaseTriggered(ctx, p);
-        removeAt(i);
+        this.removeAt(projectiles, i);
         continue;
       }
 
@@ -599,27 +609,35 @@ export class Projectiles implements ProjectilesApi {
       const mods = PROJECTILE_MODS.get(p);
       if (mods) {
         this.applyShortHoming(ctx, p, mods);
+        // Electric charge is a passive aura for the projectile's whole life by
+        // design (no budget/decay, unlike the trail/homing mods); the mod is
+        // intentionally retained by pruneProjectileMods until the projectile is
+        // GC'd. The frameCount % 4 cadence keeps the per-life scan cost bounded.
         if (mods.electricCharge && ctx.state.frameCount % 4 === 0) {
           chargeNearby(ctx, Math.floor(p.x), Math.floor(p.y), 2, 8);
         }
       }
 
-      // Infuser card (Wave D): the wand charged this projectile from the
-      // flask — it sheds 2 real cells of that material per frame in its wake.
-      const infuseMat = INFUSED.get(p);
-      if (infuseMat !== undefined) {
+      // Infuser card (Wave D): the wand charged this projectile from the flask —
+      // it sheds up to 2 real cells of that material per frame in its wake, down
+      // to a fixed budget paid for at cast time (then the mark is dropped, so the
+      // trail is conserved and the WeakMap entry doesn't leak).
+      const infused = INFUSED.get(p);
+      if (infused !== undefined) {
         const spd = Math.hypot(p.vx, p.vy) || 1;
-        const colorFn = COLOR_FN[infuseMat];
-        for (let d = 0; d < 2; d++) {
+        const colorFn = COLOR_FN[infused.material];
+        for (let d = 0; d < 2 && infused.budget > 0; d++) {
           const tx = Math.floor(p.x - (p.vx / spd) * 2 + (Math.random() - 0.5) * 2);
           const ty = Math.floor(p.y - (p.vy / spd) * 2 + (Math.random() - 0.5) * 2);
           if (!world.inBounds(tx, ty)) continue;
           const ti = world.idx(tx, ty);
           const t = world.types[ti];
           if (t === Cell.Empty || isGas(t)) {
-            world.replaceCellAt(ti, infuseMat, colorFn ? colorFn() : EMPTY_COLOR);
+            world.replaceCellAt(ti, infused.material, colorFn ? colorFn() : EMPTY_COLOR);
+            infused.budget--;
           }
         }
+        if (infused.budget <= 0) INFUSED.delete(p);
       }
 
       if (mods) {
@@ -647,7 +665,7 @@ export class Projectiles implements ProjectilesApi {
                 grav: -0.01,
               });
           }
-          removeAt(i);
+          this.removeAt(projectiles, i);
           removed = true;
           break;
         }
@@ -720,7 +738,7 @@ export class Projectiles implements ProjectilesApi {
               ctx.playerCtl.damage(11, p.vx * 1.7, -2.3, 'explosion');
               this.triggerExplosion(ctx, p.x, p.y, 10);
             }
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
             break;
           }
@@ -764,7 +782,7 @@ export class Projectiles implements ProjectilesApi {
               }
               if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
               releaseTriggered(ctx, p);
-              removeAt(i);
+              this.removeAt(projectiles, i);
               hit = true;
               break;
             }
@@ -785,7 +803,7 @@ export class Projectiles implements ProjectilesApi {
           if (body) {
             const fate = this.impactBody(ctx, p, body);
             if (fate === 'consume') {
-              removeAt(i);
+              this.removeAt(projectiles, i);
               removed = true;
               break;
             }
@@ -832,10 +850,12 @@ export class Projectiles implements ProjectilesApi {
               BOUNCE_COUNTS.set(p, left - 1);
               const prevGx = Math.floor(p.x - p.vx / steps);
               const prevGy = Math.floor(p.y - p.vy / steps);
-              const hitVertical = solidAt(world, gx, prevGy); // the x-step alone hits
-              const hitHorizontal = solidAt(world, prevGx, gy); // the y-step alone hits
-              if (hitVertical || !hitHorizontal) p.vx *= -0.55;
-              if (hitHorizontal || !hitVertical) p.vy *= -0.55;
+              // Name each probe after the axis it tests: the x-step alone is
+              // (new gx, prev gy); the y-step alone is (prev gx, new gy).
+              const hitFromXStep = solidAt(world, gx, prevGy);
+              const hitFromYStep = solidAt(world, prevGx, gy);
+              if (hitFromXStep || !hitFromYStep) p.vx *= -0.55;
+              if (hitFromYStep || !hitFromXStep) p.vy *= -0.55;
               p.x += p.vx;
               p.y += p.vy;
               ctx.particles.burst(gx, gy, 4, null, () => packRGB(255, 215, 120), 1.2, {
@@ -865,36 +885,36 @@ export class Projectiles implements ProjectilesApi {
               grav: 0.06,
             });
             ctx.audio.tone(1600, 160, 0.14, 'triangle', 0.1);
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'pellet') {
             this.triggerExplosion(ctx, gx, gy, 6);
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'iceshard') {
             freezeSplash(ctx, gx, gy, 7);
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'wisp') {
             this.triggerExplosion(ctx, gx, gy, 5);
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'meteor') {
             this.triggerExplosion(ctx, gx, gy, 40, p.mul ?? 1);
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'acidglob') {
             splashLiquid(ctx, gx, gy, Cell.Acid, acidColor, 3);
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'bolt') {
             this.triggerExplosion(ctx, gx, gy, ctx.params.spells.bolt.explosionRadius!);
             world.setChargeAt(world.idx(gx, gy), 20);
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'fireball') {
             this.triggerExplosion(ctx, gx, gy, 10);
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'frostbolt') {
             // No blast — the impact frost-locks nearby water into real ice
@@ -914,7 +934,7 @@ export class Projectiles implements ProjectilesApi {
             }
             ctx.particles.burst(gx, gy, 10, null, iceColor, 1.3, { glow: 1.5, grav: 0.02 });
             ctx.audio.tone(900, 400, 0.1, 'sine', 0.1);
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'warp') {
             if (!ctx.spells.executeWarp(p))
@@ -922,7 +942,7 @@ export class Projectiles implements ProjectilesApi {
                 glow: 2.2,
                 grav: -0.01,
               });
-            removeAt(i);
+            this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'bomb') {
             p.vx *= -0.3;
@@ -954,7 +974,7 @@ export class Projectiles implements ProjectilesApi {
         } else if (p.type === 'meteor') {
           this.triggerExplosion(ctx, p.x, p.y, 40, p.mul ?? 1);
         }
-        removeAt(i);
+        this.removeAt(projectiles, i);
         continue;
       }
 

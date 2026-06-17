@@ -68,7 +68,7 @@ export function carveRect(
  * region's centroid (Metal is never breached, so vault shells and water
  * tanks survive their own approach tunnels).
  *
- * `radius` defaults to 11: the player's collision box is 9x17 and EVERY
+ * `radius` defaults to 12: the player's collision box is 9x17 and EVERY
  * cell of it must be clear — an axis-aligned 9x17 box needs a circle of
  * radius >= 9.62 just to EXIST inside it, and the walk's jitter plus
  * diagonal runs eat the rest of the margin (radius 9 fragments into

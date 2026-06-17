@@ -21,12 +21,12 @@ import type {
 export const GLOBAL_PARAMS: GlobalParams = {
   simSpeed: 1.0,
   maxBrightness: 2.5,
-  // Raised from the original 0.14: with the squared light curve, 0.18 keeps
-  // the caves moody while letting shadowed rock read as silhouette.
+  // Raised from the original 0.14: with the squared light curve, this floor
+  // keeps the caves moody while letting shadowed rock read as silhouette.
   ambient: 0.36,
   bloodAmount: 7.0,
-  // Blood-specific gore dialed up (1.0 -> 1.3) for a gorier, more Noita-like
-  // spray that feeds the new corpse pools; other gore channels unchanged.
+  // Blood-specific gore dialed well above the other channels for a gorier,
+  // more Noita-like spray that feeds the corpse pools; other gore channels unchanged.
   goreBlood: 4.0,
   goreSlime: 1.0,
   goreOoze: 0.15,
@@ -39,7 +39,7 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Sand]: { name: 'Sand', friction: 0.5, densityWeight: 0.9 },
   [Cell.Gunpowder]: { name: 'Gunpowder', friction: 0.4, blastRadius: 38 },
   [Cell.Wood]: { name: 'Wood', flammability: 0.2, carbonSmokeGen: 0.4 },
-  [Cell.Vines]: { name: 'Vines', flammability: 0.45, climbRate: 0.15, hangRate: 0.25 },
+  [Cell.Vines]: { name: 'Vines', flammability: 0.45 },
   [Cell.Water]: { name: 'Water', flowRate: 0.85, poolingFactor: 0.95 },
   [Cell.Oil]: { name: 'Oil', flowRate: 0.7, burnDuration: 75 },
   [Cell.Nitrogen]: { name: 'Liquid Nitrogen', flowRate: 0.8, evaporationSpeed: 0.05 },
@@ -52,12 +52,12 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Metal]: { name: 'Metal', conductivity: 0.95 },
   [Cell.Gold]: { name: 'Gold Powder', friction: 0.55, densityWeight: 0.98, bloomWeight: 0.15 },
   [Cell.Blood]: { name: 'Blood', flowRate: 0.55, coagulation: 0.002 },
-  [Cell.Slime]: { name: 'Slime', flowRate: 0.15, viscosity: 0.85, bloomWeight: 0.2 },
+  [Cell.Slime]: { name: 'Slime', flowRate: 0.15, bloomWeight: 0.2 },
   [Cell.Ember]: { name: 'Ember', fallChance: 0.4, igniteChance: 0.015, bloomWeight: 0.7 },
   // Brewed elixirs: inert viscous liquids whose glow (bloomWeight) is the in-world discovery tell.
-  [Cell.ElixirLife]: { name: 'Elixir of Life', flowRate: 0.6, viscosity: 0.5, bloomWeight: 0.35 },
-  [Cell.ElixirLevity]: { name: 'Elixir of Levity', flowRate: 0.6, viscosity: 0.5, bloomWeight: 0.45 },
-  [Cell.ElixirStone]: { name: 'Elixir of Stone', flowRate: 0.45, viscosity: 0.5, bloomWeight: 0.2 },
+  [Cell.ElixirLife]: { name: 'Elixir of Life', flowRate: 0.6, bloomWeight: 0.35 },
+  [Cell.ElixirLevity]: { name: 'Elixir of Levity', flowRate: 0.6, bloomWeight: 0.45 },
+  [Cell.ElixirStone]: { name: 'Elixir of Stone', flowRate: 0.45, bloomWeight: 0.2 },
   // Upgrade port: 10 new materials + Stone made inspectable (remapped ids).
   // Crystal's dead 'resonance' param was dropped (vestige of a cut feature).
   [Cell.Stone]: { name: 'Stone' },
@@ -144,6 +144,16 @@ export const PLAYER_PARAMS: PlayerTuning = {
   // Airborne horizontal inertia: 0.985/frame retention means a fast run carries
   // into a jump/levitate and a glide coasts, instead of snapping to a stop.
   airDrag: 0.985,
+  // Precision-platformer movement feel (was module consts in Player.ts; live here
+  // so the inspector can tune jump/run/air feel without a recompile).
+  moveSoftStart: 0.55,
+  groundStopDecay: 0.6,
+  groundStopSnap: 0.12,
+  airGlideSpeed: 1.9,
+  airStopDecay: 0.74,
+  jumpCut: 0.25,
+  jumpHoldWindow: 7,
+  maxRunCap: 3.6,
   recoilBase: 6,
   recoilPerMomentum: 0.06,
   recoilMaxImpulse: 4.0,

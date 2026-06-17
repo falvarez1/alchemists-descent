@@ -152,7 +152,11 @@ export function drawProjectiles(s: PixelSurface, ctx: Ctx): void {
         s.setPx(gx, gy - 1, 0.1 * fl, 0.6 * fl, 0.08 * fl);
         s.addPx(gx + 1, gy, 0.03, 0.16, 0.03);
       } else if (p.type === 'blackhole') {
-        const drawRad = Math.max(2, Math.floor(p.vortexRad! / 6));
+        // Blackholes are always created with vortexRad; narrow explicitly so the
+        // optionality is handled instead of an `!` that would silently turn a
+        // missing radius into NaN (and a never-executing draw loop).
+        if (p.vortexRad === undefined) continue;
+        const drawRad = Math.max(2, Math.floor(p.vortexRad / 6));
         for (let dy = -drawRad - 1; dy <= drawRad + 1; dy++) {
           for (let dx = -drawRad - 1; dx <= drawRad + 1; dx++) {
             const rx = gx + dx,
