@@ -11,7 +11,7 @@ import { PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_S
 import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup } from '@/core/pickupDefs';
 import { resetCombatTransients } from '@/game/transients';
-import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
+import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
 
 const REVIEW_STATUS_FRAMES = 3600;
@@ -21,6 +21,7 @@ const CLIMB_BRUSH_MAX = 8;
 const TELEPORT_SEARCH_RADIUS = 260;
 // Vine swing (#2): latch a hanging vine and pendulum on it; pump with left/right.
 const KICK_BASE_RECOIL = 0.5; // kick always self-pushes this fraction even into open air (so it works mid-air like wand recoil); a solid hit ramps to 1
+const MOVE_ACCEL_CAP = 0.6; // max per-frame ground-speed gain — high top speeds (Swift stacks / God Mode) RAMP up over several frames instead of snapping to max
 const SWING_REACH = 16;
 const SWING_PUMP = 0.16;
 const SWING_MIN_LEN = 14;
@@ -460,13 +461,59 @@ export class PlayerControl implements PlayerControlApi {
     this.applyImpulse(-dirX * recoil, -dirY * recoil);
     if (player.grounded && dirY > 0.2) player.grounded = false; // kicking down lifts you off
 
-    // Feedback: a dust arc along the kick + a low thud.
+    // WIND GUST: the kick is a blast of air. Within a wide gust cone it blows loose
+    // light cells (ash ALWAYS, plus embers + gases) into flying motes, shoves loose
+    // particles and ambient critters (moths) away from the wizard, and bends the
+    // hanging vines — the same "push, don't block" feel as walking through debris.
+    const windRange = lp.kickRange + 10;
+    const windCos = Math.cos(Math.min(Math.PI * 0.9, lp.kickArc * 1.5)); // wider fan than the melee cone
+    const gustAt = (px: number, py: number): number => {
+      const gx = px - ox;
+      const gy = py - oy;
+      const gd = Math.hypot(gx, gy) || 1;
+      if (gd > windRange) return 0;
+      if ((gx / gd) * dirX + (gy / gd) * dirY < windCos) return 0;
+      return 1 - gd / windRange; // linear falloff
+    };
+    let blown = 0;
+    const bx = Math.floor(ox);
+    const by = Math.floor(oy);
+    const wr = Math.ceil(windRange);
+    for (let yy = -wr; yy <= wr && blown < 64; yy++) {
+      for (let xx = -wr; xx <= wr && blown < 64; xx++) {
+        const cx = bx + xx;
+        const cy = by + yy;
+        if (!world.inBounds(cx, cy)) continue;
+        const ci = world.idx(cx, cy);
+        const t = world.types[ci];
+        if (t !== Cell.Ash && t !== Cell.Ember && !isGas(t)) continue;
+        const g = gustAt(cx, cy);
+        if (g <= 0) continue;
+        const col = world.colors[ci];
+        world.clearCellAt(ci);
+        ctx.particles.spawn(cx + 0.5, cy + 0.5, dirX * (2 + g * 4) + (Math.random() - 0.5) * 1.2, dirY * (2 + g * 4) - 0.5 - Math.random(), t, col, 36 + ((Math.random() * 24) | 0), { grav: isGas(t) ? -0.03 : 0.06, glow: t === Cell.Ember ? 1.2 : 0 });
+        blown++;
+      }
+    }
+    for (const pt of ctx.particles.list) {
+      const g = gustAt(pt.x, pt.y);
+      if (g > 0) { pt.vx += dirX * g * 3.6; pt.vy += dirY * g * 3.6 - g * 0.4; }
+    }
+    if (ctx.critters) {
+      for (const cr of ctx.critters.list) {
+        const g = gustAt(cr.x, cr.y);
+        if (g > 0) { cr.vx += dirX * g * 4.5; cr.vy += dirY * g * 4.5 - g * 1.4; cr.facing = dirX < 0 ? -1 : 1; }
+      }
+    }
+    ctx.vineStrands?.applyRadialImpulse(ox, oy, windRange * 0.9, 1.8); // bend the hanging vines in the gust
+
+    // Feedback: a dust arc along the kick + a low thud + an airy whoosh.
     for (let k = 0; k < 8; k++) {
       const spread = a + (Math.random() - 0.5) * lp.kickArc * 1.6;
       ctx.particles.spawn(ox + dirX * 4, oy + dirY * 4, Math.cos(spread) * 1.6, Math.sin(spread) * 1.6, null, packRGB(190, 178, 158), 12, { grav: 0.05 });
     }
     ctx.audio.tone(150, 90, 0.14, 'square', 0.09);
-    ctx.audio.noiseBurst(0.08, 260, 0.08);
+    ctx.audio.noiseBurst(0.12, 220, 0.09); // whoosh
   }
 
   /** Latch onto the nearest hanging vine for a pendulum swing; true if latched. */
@@ -949,7 +996,11 @@ export class PlayerControl implements PlayerControlApi {
       : (player.status.swift > 0 ? 1.5 : 1) * (player.perks.swiftfoot ? 1.18 : 1);
     // crouch-creep 0.38; crawl 0.32 — slow is the crawl's whole cost
     const stanceK = player.crawling ? 0.32 : crouching ? 0.38 : 1;
-    const accel = (player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK,
+    // Cap the per-frame speed gain so a high top speed builds up over several
+    // frames (a natural ramp) instead of snapping to max in ~5 frames flat. The
+    // cap only bites at high speedK (Swift/God Mode); normal, crawl, and the
+    // gentle levitation accel stay well under it and are unchanged.
+    const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK, MOVE_ACCEL_CAP),
       maxRun = 2.6 * speedK * stanceK;
     if (!player.climbing) {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
