@@ -30,7 +30,7 @@ const r = await page.evaluate(async () => {
   tick(20);
   const rb = ctx.rigidBodies;
   const p = ctx.player;
-  const FLOOR_Y = 596; // crate centre rests ~596.5 on the y=600 floor (under the platform)
+  const FLOOR_Y = 695; // crate centre rests ~696.5 on the y=700 arena floor
   const box = (x, material) => rb.spawn({ kind: 'box', halfW: 3.5, halfH: 3.5 }, x, FLOOR_Y, { material, friction: 0.6, restitution: 0.15 });
   const fire = (type, x, y) => ctx.projectiles.push({ x, y, vx: 9, vy: 0, type, life: 120, age: 0, charging: false, hostile: false, mul: 1 });
   const relInput = () => { for (const k of ['left', 'right', 'up', 'jump', 'down']) ctx.input.keys[k] = false; };
@@ -39,10 +39,10 @@ const r = await page.evaluate(async () => {
 
   // ---- B2b: player STANDS on a heavy metal crate (no fall-through) ----
   rb.clear();
-  const stand = box(815, 'metal');
+  const stand = box(350, 'metal');
   tick(40);
   const crateTop = stand.y - 3.5;
-  placePlayer(stand.x, 560);
+  placePlayer(stand.x, 660);
   tick(80);
   const standY = p.y;
   const standGrounded = p.grounded === true;
@@ -56,11 +56,10 @@ const r = await page.evaluate(async () => {
   // ---- B2b: player SHOVES a light wood crate by walking into it. Carve a clean
   //      bed clear of the dispenser/lever furniture (x798/818) and stairs (x864). ----
   rb.clear();
-  for (let yy = 575; yy <= 599; yy++) for (let xx = 826; xx <= 862; xx++) ctx.world.clearCellAt(ctx.world.idx(xx, yy));
-  const shove = box(840, 'wood');
+  const shove = box(360, 'wood');
   tick(40);
   const sx0 = shove.x;
-  placePlayer(shove.x - 10, 599); // player at ~830
+  placePlayer(shove.x - 10, 699); // player at ~830
   ctx.input.keys.right = true;
   tick(12); // crate ends ~858, still on open floor (short of the staircase at 864)
   ctx.input.keys.right = false;
@@ -71,7 +70,7 @@ const r = await page.evaluate(async () => {
 
   // ---- B2a: iceshard shove, wood vs metal (pure momentum, no blast) ----
   rb.clear();
-  const w1 = box(800, 'wood');
+  const w1 = box(350, 'wood');
   tick(40);
   const wx0 = w1.x;
   fire('iceshard', w1.x - 25, w1.y);
@@ -79,7 +78,7 @@ const r = await page.evaluate(async () => {
   const woodPush = w1.x - wx0;
 
   rb.clear();
-  const m1 = box(825, 'metal');
+  const m1 = box(350, 'metal');
   tick(40);
   const mx0 = m1.x;
   fire('iceshard', m1.x - 25, m1.y);
@@ -88,7 +87,7 @@ const r = await page.evaluate(async () => {
 
   // ---- B2a: a bolt (the common case) clearly moves a wood crate (erodes floor) ----
   rb.clear();
-  const w2 = box(800, 'wood');
+  const w2 = box(350, 'wood');
   tick(40);
   const bx0 = w2.x;
   fire('bolt', w2.x - 25, w2.y);

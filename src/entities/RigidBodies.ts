@@ -2,6 +2,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Ctx, RigidBodiesApi, RigidBody, RigidShape, SpawnBodyOpts } from '@/core/types';
 import { PLAYER_CRAWL_H, PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { blocksEntity, Cell } from '@/sim/CellType';
+import { cellBlocksEntityWithLooseRubble, type CollisionScratch } from '@/sim/collision';
 import { ashColor, COLOR_FN, fireColor, packRGB, smokeColor } from '@/sim/colors';
 import { bodyMaterialDef, WATER_DENSITY } from '@/entities/bodyMaterials';
 import type { World } from '@/sim/World';
@@ -36,6 +37,9 @@ const REFERENCE_MASS = 45; // a "typical" crate; blast/kick scale a body's throw
 const PUSH_MASS_MAX = 60; // player shoves bodies up to this mass (light wood); heavier ones block
 const MIN_PUSH = 0.7; // minimum shove speed (cells/frame) when the player leans on a light body
 const PUSH_TRANSFER = 0.9; // fraction of the player's walk speed transferred into the shoved body
+// Reused flood-fill scratch for the loose-rubble test on terrain colliders (so a
+// body, like the player, walks through small floating cell clusters instead of snagging).
+const TERRAIN_SCRATCH: CollisionScratch = { x: new Int32Array(32), y: new Int32Array(32) };
 const BURN_FRAMES = 150; // a flammable (wood) body burns ~2.5s before it chars to ash
 const FROST_CONTACT_FRAMES = 50; // freeze duration refreshed each frame a body touches ice
 const FROST_DAMP = 0.65; // per-frame velocity retention while frozen (locks it in place)
@@ -678,7 +682,7 @@ export class RigidBodies implements RigidBodiesApi {
     //    capped by fall speed so a fast drop still snaps cleanly to the surface.
     const landTol = Math.max(2, player.vy + 1);
     if (player.vy >= -0.1 && feetY >= bT - 1 && feetY <= bT + landTol && headY < bT) {
-      player.y = bT;
+      player.y = Math.round(bT); // keep the player on integer cells (the grid oracle is cell-indexed)
       if (player.vy > 0) player.vy = 0;
       player.grounded = true;
       return true;
@@ -687,33 +691,41 @@ export class RigidBodies implements RigidBodiesApi {
     const overlapY = Math.min(feetY, bB) - Math.max(headY, bT);
     if (overlapY <= 0) return false;
 
-    // 2) Head bonk from below.
+    // 2) Head-bonk from below (rising into an overhang): just STOP the upward
+    //    motion. Never shove him DOWN to seat his head under the body — when the
+    //    body has sunk into his torso (a crate falling onto a levitating/jumping
+    //    wizard), bB+bodyH lands past the floor and would clip him straight
+    //    through the ground. Cap the correction at his current feet (no down-push).
     if (player.vy < 0 && feetY > bB) {
-      player.y = bB + bodyH;
+      player.y = Math.min(Math.round(bB + bodyH), feetY);
       player.vy = 0;
       return true;
     }
 
     // 3) Side contact: shove a light body aside, be blocked by a heavy one.
-    //    Resolve to the side the player is APPROACHING FROM (his trailing side),
-    //    chosen by relative velocity — so a player faster than the crate he's
-    //    pushing never crosses its centre and tunnels through, and a crate wedged
-    //    against a wall blocks him instead of ejecting him out the far face.
+    //    Choose the blocked face from the SWEPT previous positions — the side the
+    //    player occupied BEFORE this frame's move — so a fast mover is stopped on
+    //    the face he ENTERED from (no tunnelling) AND a player already resting
+    //    against one face, pressing toward it (or toward a wall), is never flung
+    //    through to the far side. Centre comparison only as a last resort when he
+    //    was already overlapping the body last frame.
     const mass = body.invMass && body.invMass > 0 ? 1 / body.invMass : Infinity;
     const light = mass <= PUSH_MASS_MAX;
+    const prevPX = player.x - player.vx;
+    const prevBX = body.x - body.vx;
+    let pushLeft: boolean;
+    if (prevPX + PLAYER_HALF_W <= prevBX - ex + 0.5) pushLeft = true; // was clear on the LEFT
+    else if (prevPX - PLAYER_HALF_W >= prevBX + ex - 0.5) pushLeft = false; // was clear on the RIGHT
+    else pushLeft = player.x < body.x; // overlapping last frame too: nearest face by centre
     const shove = Math.max(Math.abs(player.vx), MIN_PUSH) * PUSH_TRANSFER;
-    const relVx = player.vx - body.vx;
-    const pushLeft = relVx > 0.05 ? true : relVx < -0.05 ? false : player.x < body.x;
     if (pushLeft) {
-      if (light) this.applyImpulse(body, shove, -0.03);
-      player.x = bL - PLAYER_HALF_W;
-      if (light) player.vx *= 0.6;
-      else if (player.vx > 0) player.vx = 0;
+      if (light && player.vx > 0) this.applyImpulse(body, shove, -0.03); // only shove when pushing INTO it
+      player.x = Math.round(bL - PLAYER_HALF_W);
+      if (player.vx > 0) player.vx = light ? player.vx * 0.6 : 0;
     } else {
-      if (light) this.applyImpulse(body, -shove, -0.03);
-      player.x = bR + PLAYER_HALF_W;
-      if (light) player.vx *= 0.6;
-      else if (player.vx < 0) player.vx = 0;
+      if (light && player.vx < 0) this.applyImpulse(body, -shove, -0.03);
+      player.x = Math.round(bR + PLAYER_HALF_W);
+      if (player.vx < 0) player.vx = light ? player.vx * 0.6 : 0;
     }
     return true;
   }
@@ -754,6 +766,10 @@ export class RigidBodies implements RigidBodiesApi {
             blocksEntity(types[i + WIDTH])
           )
             continue;
+          // Loose-rubble rule (same as the player): a solid cell in a cluster of
+          // fewer than five is walk-through, so a body never snags on a one- or
+          // two-cell floating speck — it shoves past like the player does.
+          if (!cellBlocksEntityWithLooseRubble(world, x, y, TERRAIN_SCRATCH)) continue;
           desired.add(i);
         }
       }

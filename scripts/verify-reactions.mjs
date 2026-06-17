@@ -107,7 +107,7 @@ const r = await page.evaluate(async () => {
   tick(40);
   const ashX = Math.round(c.x);
   const ashYc = Math.round(c.y);
-  const before = countSolid(ashX - 4, ashX + 4, 593, 599); // ash powder settles toward the floor
+  const before = countSolid(ashX - 4, ashX + 4, ashYc - 3, 699); // ash powder settles toward the floor
   // engulf the body's footprint in fire (3 cols × 4 rows, inside the scan margin)
   for (let fy = ashYc - 2; fy <= ashYc + 1; fy++) {
     for (const fx of [ashX - 3, ashX, ashX + 3]) {
@@ -122,7 +122,7 @@ const r = await page.evaluate(async () => {
   const n0 = rb.bodies.length;
   tick(230);
   const burnedAway = rb.bodies.length < n0;
-  const ashAfter = countSolid(ashX - 4, ashX + 4, 593, 599);
+  const ashAfter = countSolid(ashX - 4, ashX + 4, ashYc - 3, 699);
 
   return {
     digPush: +digPush.toFixed(2),

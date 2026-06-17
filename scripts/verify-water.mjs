@@ -27,8 +27,8 @@ const r = await page.evaluate(async () => {
   tick(30);
   const rb = ctx.rigidBodies;
   const WATER = 2; // Cell.Water
-  const POOL_X = 1030; // pool centre (basin x ~953..1107, water y 560..597)
-  const drop = (material) => rb.spawn({ kind: 'box', halfW: 3.5, halfH: 3.5 }, POOL_X, 545, { material, friction: 0.6, restitution: 0.1 });
+  const POOL_X = 955; // Z4 pool centre (basin x ~851..1059, water y 640..699)
+  const drop = (material) => rb.spawn({ kind: 'box', halfW: 3.5, halfH: 3.5 }, POOL_X, 600, { material, friction: 0.6, restitution: 0.1 });
   const settleAt = (material) => { rb.clear(); const b = drop(material); tick(260); return +b.y.toFixed(1); };
 
   const woodY = settleAt('wood');
@@ -48,9 +48,9 @@ const r = await page.evaluate(async () => {
   return { woodY, metalY, stoneY, waterPBefore, waterPPeak };
 });
 
-check('wood FLOATS near the surface', r.woodY < 578, JSON.stringify(r));
-check('metal SINKS to the basin floor', r.metalY > 588, JSON.stringify(r));
-check('stone SINKS to the basin floor', r.stoneY > 588, JSON.stringify(r));
+check('wood FLOATS near the surface', r.woodY < 665, JSON.stringify(r));
+check('metal SINKS to the basin floor', r.metalY > 685, JSON.stringify(r));
+check('stone SINKS to the basin floor', r.stoneY > 685, JSON.stringify(r));
 check('wood floats well above where metal sinks', r.metalY - r.woodY > 12, JSON.stringify(r));
 // The exact droplet count is throttled by the (concurrent) particle-pool refactor,
 // so assert the splash FIRES (≥1 water droplet appears that wasn't there before).

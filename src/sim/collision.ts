@@ -40,6 +40,13 @@ export function cellBlocksEntityWithLooseRubble(
   y: number,
   scratch?: CollisionScratch,
 ): boolean {
+  // Cells are integer-indexed. Entity positions can be fractional, and a
+  // fractional index makes `idxOf` (x + y*width) bleed the y-fraction into the
+  // column AND makes the TypedArray read return `undefined` (→ treated as empty)
+  // — i.e. an entity at a fractional coord would silently fall through solid
+  // terrain. Floor to the containing cell so any float query is well-defined.
+  x = Math.floor(x);
+  y = Math.floor(y);
   if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) return true;
   const t = grid.types[idxOf(grid, x, y)];
   if (!blocksEntity(t)) return false;

@@ -115,12 +115,16 @@ export function buildPhysicsArena(ctx: Ctx): void {
   crate(1000, 600, 'metal'); // sinks
   boulder(1035, 600); // sinks
 
-  // ===== Z5 — FILL-AND-FLOAT: a water emitter floods a shaft, lifting a crate =====
+  // ===== Z5 — DROP SHAFT: a tall shaft to drop/stack crates into (dry) =====
+  // Deliberately dry: a perpetual water emitter splashes every frame (a constant
+  // sound) and overflows the arena, and a body left bobbing in deep water keeps a
+  // splash cascade alive. Buoyancy is demoed by the calm Z4 pool; a fill-on-demand
+  // faucet could be lever-gated here later for the rising-water test.
   const SX0 = 1100;
   const SX1 = 1150;
   for (let y = 360; y <= BOT; y++) for (let d = 0; d < 4; d++) { stone(SX0 - 1 - d, y); stone(SX1 + 1 + d, y); }
-  crate((SX0 + SX1) / 2, FY - 5, 'wood'); // rises as the shaft fills
-  runtime?.emitters?.push({ x: Math.round((SX0 + SX1) / 2), y: 372, cell: Cell.Water, rate: 2, dir: 0, burst: 4, phase: 0 });
+  crate((SX0 + SX1) / 2, FY - 5, 'wood');
+  crate((SX0 + SX1) / 2, FY - 13, 'stone');
 
   // ===== Z6 — REACTIONS + SHATTER + BARRELS + RAGDOLL PIT =====
   // a lava pit: fire reaction (the wood crate beside it burns to ash) AND a death

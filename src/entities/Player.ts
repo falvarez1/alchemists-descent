@@ -20,6 +20,7 @@ const CLIMB_X_NUDGES = [0, 1, 2];
 const CLIMB_BRUSH_MAX = 8;
 const TELEPORT_SEARCH_RADIUS = 260;
 // Vine swing (#2): latch a hanging vine and pendulum on it; pump with left/right.
+const KICK_BASE_RECOIL = 0.5; // kick always self-pushes this fraction even into open air (so it works mid-air like wand recoil); a solid hit ramps to 1
 const SWING_REACH = 16;
 const SWING_PUMP = 0.16;
 const SWING_MIN_LEN = 14;
@@ -451,11 +452,13 @@ export class PlayerControl implements PlayerControlApi {
       }
     }
 
-    // Self-recoil opposite the kick when it bit into something solid (kick-jump).
-    if (reaction > 0) {
-      this.applyImpulse(-dirX * lp.kickSelfRecoil * reaction, -dirY * lp.kickSelfRecoil * reaction);
-      if (player.grounded && dirY > 0.2) player.grounded = false; // kicking down lifts you off
-    }
+    // Self-recoil opposite the kick. A base push-off ALWAYS applies — Newton for
+    // the kick effort — so the shove feels the same mid-air (levitating) as it
+    // does on the ground, matching how a wand shot always recoils. Biting into
+    // something solid adds the stronger kick-jump on top.
+    const recoil = lp.kickSelfRecoil * Math.max(KICK_BASE_RECOIL, reaction);
+    this.applyImpulse(-dirX * recoil, -dirY * recoil);
+    if (player.grounded && dirY > 0.2) player.grounded = false; // kicking down lifts you off
 
     // Feedback: a dust arc along the kick + a low thud.
     for (let k = 0; k < 8; k++) {

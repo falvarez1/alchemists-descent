@@ -163,8 +163,11 @@ export class Particles implements ParticlesApi {
 
       const cell = world.types[world.idx(gx, gy)];
       if (cell !== Cell.Empty && !isGas(cell)) {
-        // A wet mote striking a pool kicks up a small splash of droplets.
-        if (isLiquid(cell) && (p.type === null || isLiquid(p.type))) {
+        // A wet mote (a liquid particle) striking a pool kicks up a small splash.
+        // ONLY liquid-typed motes splash — the purely-visual droplets splash()
+        // itself spawns are type=null, so they never splash again (no runaway
+        // feedback loop that would make any disturbed pool roar forever).
+        if (isLiquid(cell) && p.type !== null && isLiquid(p.type)) {
           this.splash(ctx, p.x, p.y, p.color);
         }
         // Blood spatter marks the surface it strikes — a red stain soaked into

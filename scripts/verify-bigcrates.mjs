@@ -40,7 +40,7 @@ const r = await page.evaluate(async () => {
   rb.clear();
   let c = small(800, 'wood');
   tick(40);
-  placePlayer(c.x - 10, 599);
+  placePlayer(c.x - 10, 699);
   let x0 = c.x;
   kickAt(0);
   tick(20);
@@ -49,7 +49,7 @@ const r = await page.evaluate(async () => {
   rb.clear();
   c = large(820, 'metal');
   tick(40);
-  placePlayer(c.x - 13, 599);
+  placePlayer(c.x - 13, 699);
   x0 = c.x;
   kickAt(0);
   tick(20);

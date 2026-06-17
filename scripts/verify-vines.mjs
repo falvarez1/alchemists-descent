@@ -24,10 +24,10 @@ const r = await page.evaluate(async () => {
   const vs = ctx.vineStrands;
   for (let f = 0; f < 90; f++) window.__game.tick(); // let the ropes settle to a hang
   const count0 = vs.strands.length;
-  // Pick the hanging vine nearest x≈740.
+  // Pick the hanging vine nearest x≈485.
   let vine = vs.strands[0];
   for (const s of vs.strands) {
-    if (s.nodes[0] && Math.abs(s.nodes[0].x - 740.5) < Math.abs(vine.nodes[0].x - 740.5)) vine = s;
+    if (s.nodes[0] && Math.abs(s.nodes[0].x - 485.5) < Math.abs(vine.nodes[0].x - 485.5)) vine = s;
   }
   const anchorX = vine.nodes[0].x;
   const node0y = vine.nodes[0].y;
@@ -38,24 +38,27 @@ const r = await page.evaluate(async () => {
   const count1 = vs.strands.length;
   const restBottomX = vine.nodes[last].x;
   const bottomY = vine.nodes[last].y;
-  // Player interaction: stand just left of the vine and measure the peak swing.
+  // Player interaction: walk the wizard rightward THROUGH the vine at a node
+  // partway down and measure how far it's shoved. (The Z2 pit has no floor under
+  // the vine, so hold him at the vine's height instead of standing him on ground.)
   const p = ctx.player;
-  p.dead = false;
-  p.x = anchorX - 4;
-  p.y = 599;
-  p.vx = p.vy = 0;
-  const mid = Math.floor(last * 0.9);
+  p.dead = false; p.climbing = false; p.crawling = false; p.diveT = 0;
+  const mid = Math.floor(last * 0.55);
+  const holdY = vine.nodes[mid].y;
+  const restMidX = vine.nodes[mid].x;
   let peak = 0;
-  for (let f = 0; f < 30; f++) {
+  p.x = anchorX - 8;
+  for (let f = 0; f < 40; f++) {
+    p.y = holdY; p.vy = 0; p.x += 0.7; // sweep through the strand
     window.__game.tick();
-    peak = Math.max(peak, vine.nodes[mid].x - restBottomX);
+    peak = Math.max(peak, Math.abs(vine.nodes[mid].x - restMidX));
   }
 
   // Detach-on-anchor-loss: destroy the beam a hanging rope hangs from and it
   // must fall (un-pin its top + drop), not freeze in mid-air.
   let rope = vs.strands[0];
   for (const s of vs.strands) {
-    if (s.nodes[0] && Math.abs(s.nodes[0].x - 904.5) < Math.abs(rope.nodes[0].x - 904.5)) rope = s;
+    if (s.nodes[0] && Math.abs(s.nodes[0].x - 440.5) < Math.abs(rope.nodes[0].x - 440.5)) rope = s;
   }
   const ropeAnchorX = Math.floor(rope.nodes[0].x);
   const ropeTop0 = rope.nodes[0].y;
@@ -63,7 +66,7 @@ const r = await page.evaluate(async () => {
   // Blast away the beam cells at/above the anchor (rows 456..461, a few columns).
   const world = ctx.world;
   for (let cx = ropeAnchorX - 4; cx <= ropeAnchorX + 4; cx++)
-    for (let cy = 456; cy <= 461; cy++)
+    for (let cy = 539; cy <= 545; cy++)
       if (world.inBounds(cx, cy)) world.clearCellAt(world.idx(cx, cy));
   window.__game.tick();
   const ropePersist1 = rope.persistent === true;
@@ -78,12 +81,12 @@ const r = await page.evaluate(async () => {
   };
 });
 
-check('hanging strands exist (>=4 ropes/vines)', r.count0 >= 4, JSON.stringify(r));
-check('strands are PERSISTENT (do not settle away)', r.count1 >= 4, JSON.stringify(r));
-check('top node is PINNED at the anchor (~461.5, does not fall)', Math.abs(r.node0y - 461.5) < 1.5 && Math.abs(r.node0yLater - 461.5) < 1.5, JSON.stringify(r));
-check('vine hangs to near the floor', r.bottomY > 560, JSON.stringify(r));
+check('hanging strands exist (>=3 ropes/vines)', r.count0 >= 3, JSON.stringify(r));
+check('strands are PERSISTENT (do not settle away)', r.count1 >= 3, JSON.stringify(r));
+check('top node is PINNED at the anchor (~545, does not fall)', Math.abs(r.node0y - 545) < 1.5 && Math.abs(r.node0yLater - 545) < 1.5, JSON.stringify(r));
+check('vine hangs to near the floor', r.bottomY > 650, JSON.stringify(r));
 check('player walking into the vine shoves it', r.peakShove > 1.5, JSON.stringify(r));
-check('rope starts pinned/persistent', r.ropePersist0 && Math.abs(r.ropeTop0 - 461.5) < 1.5, JSON.stringify(r));
+check('rope starts pinned/persistent', r.ropePersist0 && Math.abs(r.ropeTop0 - 545) < 1.5, JSON.stringify(r));
 check('destroying its anchor un-pins the rope', r.ropePersist1 === false, JSON.stringify(r));
 check('un-anchored rope falls (top drops, no hover)', r.ropeDrop > 15, JSON.stringify(r));
 check('no page errors', errs.length === 0, errs.join(' | '));

@@ -1,4 +1,4 @@
-// #2 Vine swing, in the PHYSICS TEST ARENA (hanging vines at x≈716/740/764/904):
+// #2 Vine swing, in the PHYSICS TEST ARENA (hanging vines in the Z2 pit, x≈440/485/525):
 //  - latch the nearest vine (grabVine true)
 //  - a push makes the wizard pendulum (x oscillates), held to the rope length
 //  - jumping launches him off the vine (upward boost + breaks the rope)
@@ -66,7 +66,7 @@ const r = await page.evaluate(async () => {
   const vyAfter = p.vy;
   const launched = vyAfter < vyBefore - 1.4;
   tick(45);
-  const brokeFree = distFromAnchor() > ropeLen + 10; // free of the rope after release
+  const brokeFree = p.swinging !== true; // released = no longer roped (he may land on the swing beam near the anchor)
 
   return {
     latched, ropeLen: +ropeLen.toFixed(1), swingRange: +swingRange.toFixed(1),

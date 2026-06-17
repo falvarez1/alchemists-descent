@@ -31,23 +31,23 @@ const r = await page.evaluate(async () => {
   const w = ctx.world;
   const rb = ctx.rigidBodies;
   const p = ctx.player;
-  ctx.input.mouse.x = 1100; ctx.input.mouse.y = 590; // park the cursor far right → aim ≈ 0
-  const clearBed = () => { for (let y = 540; y <= 599; y++) for (let x = 788; x <= 860; x++) w.clearCellAt(w.idx(x, y)); };
-  const placePlayer = (x) => { p.dead = false; p.crawling = false; p.climbing = false; p.diveT = 0; p.x = x; p.y = 599; p.vx = 0; p.vy = 0; p.fx = 0; p.fy = 0; };
+  ctx.input.mouse.x = 1100; ctx.input.mouse.y = 430; // park cursor right -> aim ~ 0
+  const clearBed = () => {}; // new test spot (x~350) is clean floor
+  const placePlayer = (x) => { p.dead = false; p.crawling = false; p.climbing = false; p.diveT = 0; p.x = x; p.y = 699; p.vx = 0; p.vy = 0; p.fx = 0; p.fy = 0; };
 
   // ---- GRAB + FOLLOW (light wood) ----
   rb.clear();
   clearBed();
-  let c = rb.spawn({ kind: 'box', halfW: 3.5, halfH: 3.5 }, 814, 596, { material: 'wood', friction: 0.6, restitution: 0.15 });
+  let c = rb.spawn({ kind: 'box', halfW: 3.5, halfH: 3.5 }, 350, 695, { material: 'wood', friction: 0.6, restitution: 0.15 });
   tick(30);
-  placePlayer(800);
+  placePlayer(336);
   p.aimAngle = 0;
   rb.grab(ctx);
   tick(6);
-  placePlayer(815); // walk right; the carried crate should follow the hand
+  placePlayer(351); // walk right; the carried crate should follow the hand
   tick(25);
   const followX = c.x;
-  const hovering = c.y < 595; // lifted off the floor (held), not resting at ~596.5
+  const hovering = c.y < 695; // lifted off the floor (held), not resting at ~596.5
 
   // ---- THROW ----
   const beforeThrow = c.x;
@@ -59,20 +59,20 @@ const r = await page.evaluate(async () => {
   // ---- TOO HEAVY (large metal) can't be grabbed ----
   rb.clear();
   clearBed();
-  c = rb.spawn({ kind: 'box', halfW: 6, halfH: 6 }, 814, 590, { material: 'metal', friction: 0.7, restitution: 0.1 });
+  c = rb.spawn({ kind: 'box', halfW: 6, halfH: 6 }, 350, 692, { material: 'metal', friction: 0.7, restitution: 0.1 });
   tick(30);
-  placePlayer(800);
+  placePlayer(336);
   p.aimAngle = 0;
   rb.grab(ctx);
   const heavyX0 = c.x;
-  placePlayer(838); // move away; if it were grabbed it'd follow
+  placePlayer(374); // move away; if it were grabbed it'd follow
   tick(25);
   const heavyFollowed = Math.abs(c.x - heavyX0) > 8;
 
   return { followX: +followX.toFixed(2), hovering, throwDx: +throwDx.toFixed(2), heavyFollowed };
 });
 
-check('grabbed crate follows the wizard (tracks the hand point)', r.followX > 820, JSON.stringify(r));
+check('grabbed crate follows the wizard (tracks the hand point)', r.followX > 355, JSON.stringify(r));
 check('grabbed crate is held aloft (not resting on the floor)', r.hovering, JSON.stringify(r));
 check('throwing launches it along the aim', r.throwDx > 15, JSON.stringify(r));
 check('a too-heavy body cannot be grabbed', r.heavyFollowed === false, JSON.stringify(r));

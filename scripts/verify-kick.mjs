@@ -29,7 +29,7 @@ const r = await page.evaluate(async () => {
   tick(20);
   const rb = ctx.rigidBodies;
   const p = ctx.player;
-  const box = (x, material) => rb.spawn({ kind: 'box', halfW: 3.5, halfH: 3.5 }, x, 596, { material, friction: 0.6, restitution: 0.15 });
+  const box = (x, material) => rb.spawn({ kind: 'box', halfW: 3.5, halfH: 3.5 }, x, 695, { material, friction: 0.6, restitution: 0.15 });
   const placePlayer = (x, y) => { p.dead = false; p.crawling = false; p.climbing = false; p.diveT = 0; p.x = x; p.y = y; p.vx = 0; p.vy = 0; p.fx = 0; p.fy = 0; };
   // aim + kick atomically (no tick in between, or the mouse overwrites aimAngle)
   const kickAt = (angle) => { p.aimAngle = angle; ctx.playerCtl.kick(ctx); };
@@ -38,7 +38,7 @@ const r = await page.evaluate(async () => {
   rb.clear();
   let c = box(812, 'wood');
   tick(40);                 // settle crate + drain any prior cooldown
-  placePlayer(800, 599);
+  placePlayer(800, 699);
   const wcx0 = c.x;
   kickAt(0);                // kick right
   const kickT = p.kickT;
@@ -48,7 +48,7 @@ const r = await page.evaluate(async () => {
   rb.clear();
   c = box(812, 'metal');
   tick(40);
-  placePlayer(800, 599);
+  placePlayer(800, 699);
   const mcx0 = c.x;
   kickAt(0);
   tick(30);
@@ -58,14 +58,14 @@ const r = await page.evaluate(async () => {
   rb.clear();
   c = box(810, 'metal');
   tick(40);
-  placePlayer(800, 599);
+  placePlayer(800, 699);
   kickAt(0);
   const recoilVx = p.vx; // applied synchronously by kick()
 
   // ---- kick-jump: kick straight down near the floor → upward boost ----
   rb.clear();
   tick(25);                 // drain cooldown from the recoil kick
-  placePlayer(800, 596);    // airborne just above the floor
+  placePlayer(800, 697);    // airborne just above the floor
   kickAt(Math.PI / 2);      // down
   const jumpVy = p.vy;
 
@@ -73,7 +73,7 @@ const r = await page.evaluate(async () => {
   rb.clear();
   c = box(812, 'wood');
   tick(40);
-  placePlayer(800, 599);
+  placePlayer(800, 699);
   const scx0 = c.x;
   kickAt(0);
   tick(30);
@@ -82,7 +82,7 @@ const r = await page.evaluate(async () => {
   rb.clear();
   c = box(812, 'wood');
   tick(40);
-  placePlayer(800, 599);
+  placePlayer(800, 699);
   const dcx0 = c.x;
   kickAt(0);
   kickAt(0); // blocked by cooldown (no tick between)

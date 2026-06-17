@@ -55,7 +55,7 @@ check('dispenser + lever present', r.hasLever && r.hasDispenser, JSON.stringify(
 check('water pool present', r.waterCells > 300, JSON.stringify(r));
 check('lava (fire/ragdoll pit) present', r.lavaCells > 80, JSON.stringify(r));
 check('explosive barrels present (>=4)', r.barrels >= 4, JSON.stringify(r));
-check('fill-and-float water emitter present', r.emitters >= 1, JSON.stringify(r));
+check('no perpetual water emitter (constant-sound fix)', r.emitters === 0, JSON.stringify(r));
 check('no page errors', errs.length === 0, errs.join(' | '));
 
 console.log(`\nplayground probe: ${pass} passed, ${fail} failed`);
