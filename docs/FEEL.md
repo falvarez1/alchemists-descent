@@ -112,6 +112,48 @@ The house principles, in order of authority:
   - grounded foes within 26 cells are chipped (1 dmg) and knocked off their feet.
 - Water cancels the dive into the normal splash. State: `player.diveT`.
 
+### Kick / force push (F)
+
+A single button that is half melee, half *blast of air* — Newton both ways.
+
+- **Two cones.** A tight **melee cone** (`kickRange` 22, `kickArc` ≈ ±52°) deals
+  `kickDamage` 8 and shoves rigid bodies mass-aware (`applyMomentumAt`,
+  `kickImpulse` 75 — light crates fly, heavy ones resist). A wider **wind-gust
+  cone** (`kickRange` + 10, ~1.5× the fan) is the force push. Cooldown 22f.
+- **Self-recoil = a kick-jump.** You recoil opposite the kick, scaled by what you
+  bite into (`kickSelfRecoil` 3.0 × `max(0.5, reaction)`); a base push-off always
+  applies so it feels identical mid-air (levitating) as on the ground — like wand
+  recoil. Kicking **down** lifts you off the floor (a stomp-launch).
+- **Enemies get blown back, mass-scaled** (footprint proxy `halfW·h`: bat 15,
+  slime 40, golem 140; `GUST_ENEMY_PUSH` 5). Small foes (mass ≤ `SLAM_MASS_MAX`
+  26 — bats, egg clutches) enter a brief **ballistic launch** (AI + flight-cap
+  suspended so the shove actually carries) and **SMASH into the first wall**:
+  blood paints the stone (`splatterStain`), gore gouts spray in, and they take
+  `12 + 2.4·speed` damage (a bat gibs outright). Heavier foes nudge/stagger and
+  thud to a stop. Bosses ignore it.
+- **Ambient critters scatter.** The gust **startles** them (16–32f): their seek +
+  heavy damping suspend so the push carries and they flee — a grounded beetle is
+  blown off its feet instead of re-planting its crawl. Blast waves startle them too.
+- **Vines bend; loose cells fly.** The gust bends hanging vines
+  (`applyRadialImpulse`); ash (always) + embers + gases blow into flying motes;
+  loose particles ride the gust.
+- Feedback: a dust arc along the kick, a low square *thud*, an airy noise *whoosh*.
+
+### Vine swing (G)
+
+- Latch the nearest hanging rope/vine within `SWING_REACH` 16; the body becomes a
+  **pendulum** (gravity 0.28) rigidly constrained to the rope length
+  (`SWING_MIN_LEN` 14 … `SWING_MAX_LEN` 150 — radial velocity projected out,
+  tangential kept). State: `player.swinging`.
+- **Pump with left/right** (`SWING_PUMP` 0.16) — left swings you left, right
+  swings you right. **Jump** launches off the vine (+2.0 up, breaks the grab).
+- **Release keeps the swing's momentum** — letting go drops you into the airborne
+  inertia path (only `airDrag` 0.985 bleeds it), never the walk-speed clamp, so a
+  fast swing flings you off with everything you built up.
+- You also shove vines aside just by **moving/levitating through them**
+  (`PLAYER_PUSH_STRENGTH` 1.4 within 20 cells; the bias imparts real velocity so
+  the rope keeps swaying after you pass).
+
 ---
 
 ## 2. The Alchemist — procedural animation stack
@@ -279,7 +321,10 @@ Layered, bottom to top:
 - **Critters** spawn from local cell context and live transiently: moths steer
   to glow and wand light, fireflies carry light seeds, fish school in real
   water, beetles graze fungus/moss, flies orbit blood. `structureStrike` kills
-  them like anything else.
+  them like anything else. A concussive shove that *doesn't* kill — the kick's
+  gust, a near-miss blast (`critters.scatter`) — **startles** them: they drop
+  their routine and flee for 16–32f so the shove visibly carries (a grounded
+  beetle is blown off its feet, not re-planting its crawl).
 - **Weather of the deep:** ceiling drips are real water cells; ember falls,
   spore drift, dust motes, heal-spring bubbles.
 - **Cave moss** creeps only on damp stone (real moisture check).
@@ -390,6 +435,10 @@ blood staining: blood particles stain (stainCell) the sturdy surface they strike
 run accel 0.5 ground / 0.575 air · max run 2.6 · crouch 0.38x · peek +48 cells
 dive: entry 5.6, floor 4.6, terminal 6.4 (normal 5.0), drift x0.86/f
 slam: 26-cell knock radius, 1 dmg, ≤12 powder cells popped
+kick (F): melee cone range 22 / ±52° / 8 dmg / cd 22 · gust cone range 32 (1.5× fan) · kickImpulse 75 (mass-aware) · self-recoil 3.0×max(0.5,reaction), down=stomp-launch
+kick gust → enemies: push 5×(40/footprint), clamp 0.2–4.5× · ballistic launch if mass≤26 (bat/eggs) → wall SMASH (12+2.4·speed dmg, blood-paints stone); heavier foes thud · bosses immune
+kick gust → critters scatter+startle 16–32f · vines bend (applyRadialImpulse)
+vine swing (G): reach 16, len 14–150, pump 0.16 (left=left/right=right), jump launch +2.0 up · release keeps momentum (airborne inertia, no walk clamp) · player pushes vines aside within 20 cells (strength 1.4)
 skid: trigger |svx|>1.1 on reversal, 9f · stagger 12f · recoil 5f/7f
 swap draw 12f (gleam f5-7) · fidget arms at 420f idle, routine 90f
 slime windup 7f chase / 12f wander · wounded hop 0.55-0.85x at <40% hp

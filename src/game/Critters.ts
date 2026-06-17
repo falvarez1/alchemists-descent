@@ -59,6 +59,23 @@ export class Critters implements CrittersApi {
     }
   }
 
+  scatter(x: number, y: number, radius: number, strength: number): void {
+    if (radius <= 0 || strength === 0) return;
+    const r2 = radius * radius;
+    for (const c of this.list) {
+      const dx = c.x - x;
+      const dy = c.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > r2) continue;
+      const d = Math.sqrt(d2) || 1;
+      const f = (1 - d / radius) * strength;
+      c.vx += (dx / d) * f;
+      c.vy += (dy / d) * f - f * 0.3; // a touch of lift into the scatter
+      c.startle = Math.max(c.startle ?? 0, Math.round(16 + f * 4));
+      c.facing = c.vx < 0 ? -1 : 1;
+    }
+  }
+
   remove(critter: Critter): Critter | undefined {
     return this.pool.remove(critter);
   }
@@ -191,7 +208,26 @@ export class Critters implements CrittersApi {
         continue;
       }
 
-      if (c.kind === 'moth') {
+      if ((c.startle ?? 0) > 0) {
+        // STARTLED: a concussive shove owns the motion — no seeking, only light
+        // damping so the scatter carries (a beetle is blown off its feet and
+        // tumbles; a fish in water bolts but the water resists). It flees, panics.
+        c.startle = (c.startle ?? 0) - 1;
+        const inWater = here === Cell.Water || isLiquid(here);
+        if (c.kind === 'fish' && inWater) {
+          c.vx *= 0.95;
+          c.vy *= 0.95;
+        } else {
+          c.vy += 0.05; // the blown-airborne (beetle/fish) arc back down
+          c.vx *= 0.99;
+          c.vy *= 0.99;
+        }
+        c.facing = c.vx < 0 ? -1 : 1;
+        if ((c.startle ?? 0) === 0 && Math.random() < 0.5) {
+          // a tiny puff as it recovers its composure
+          ctx.particles.burst(c.x, c.y, 2, null, () => packRGB(150, 140, 110), 0.6, { grav: 0.04 });
+        }
+      } else if (c.kind === 'moth') {
         // flutter + LIGHT SEEKING: glow cells nearby, else the raised wand
         c.vx += Math.sin(c.phase * 1.7) * 0.04 + (Math.random() - 0.5) * 0.05;
         c.vy += Math.cos(c.phase * 1.3) * 0.035 + (Math.random() - 0.5) * 0.05;

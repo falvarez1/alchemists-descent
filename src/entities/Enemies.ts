@@ -68,6 +68,18 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
 const GORE_REF_AREA = 50;
 const ENV_DAMAGE_FEEDBACK_COOLDOWN = 12;
 
+// --- Gust knockback (the player's kick is a wind blast; see Player.kick) ----
+const GUST_REF_MASS = 40; // a slime-ish footprint (halfW·h); push scales inversely
+const GUST_MASS_LO = 0.2; // heaviest foes barely budge
+const GUST_MASS_HI = 4.5; // lightest foes (bats) get hurled
+const GUST_KNOCK_FRAMES_MAX = 18; // longest ballistic-launch window (AI + flight cap suppressed)
+const KNOCK_GRAV = 0.12; // gentle gravity during a launch so the arc reads
+const KNOCK_DRAG = 0.97; // per-frame air drag on a launched body
+const SLAM_MASS_MAX = 26; // only SMALL foes (bat 15, eggs 20) gib on a wall; heavier ones just thud
+const SLAM_MIN_SPEED = 3.5; // ...and only above a real impact speed (cells/frame), not a gentle bump
+const SLAM_DMG_BASE = 12; // base wall-slam damage...
+const SLAM_DMG_PER_SPEED = 2.4; // ...plus this per cell/frame of impact speed (small foes gib outright)
+
 /** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
 const STATUS_IMMUNE: Partial<
   Record<EnemyKind, Partial<Record<'burning' | 'frozen' | 'electrified' | 'wet' | 'oiled', boolean>>>
@@ -237,6 +249,128 @@ export class Enemies implements EnemyControlApi {
       );
     }
     if (e.hp <= 0) this.kill(e, kx, ky);
+  }
+
+  /** The player's kick is a wind blast: shove a foe along (dirX,dirY), mass-scaled
+   *  so a bat is hurled and a golem barely rocks. Light foes enter a brief ballistic
+   *  LAUNCH (AI + per-kind flight cap suppressed in tickKnock) so the shove actually
+   *  carries — and a fast launch SMASHES into the first wall it meets, painting it. */
+  gustShove(e: Enemy, dirX: number, dirY: number, strength: number): void {
+    if (strength <= 0 || e.hp <= 0) return;
+    if (e.kind === 'colossus' || e.kind === 'leviathan') return; // a gust can't move a boss
+    const def = this.defs[e.kind];
+    const mass = def.halfW * def.h; // footprint proxy: bat 15, slime 40, golem 140
+    const push = strength * clamp(GUST_REF_MASS / mass, GUST_MASS_LO, GUST_MASS_HI);
+    e.sleeping = false; // a roosting bat is knocked loose
+    e.knockVx = (e.knockVx ?? 0) + dirX * push;
+    e.knockVy = (e.knockVy ?? 0) + dirY * push - push * 0.18; // a touch of lift
+    // Heavy foes get a short stagger; light ones a long, wall-smashing flight.
+    e.knockT = Math.max(e.knockT ?? 0, Math.round(clamp(push * 2, 3, GUST_KNOCK_FRAMES_MAX)));
+  }
+
+  /** Advance a gust-launched foe ballistically, suppressing its AI and flight cap
+   *  so the shove carries. Returns true while the launch owns the body (the update
+   *  loop then skips normal AI + integration). A launch ≥ SLAM_MIN_SPEED that meets
+   *  a wall smashes the foe against it (slamWall). */
+  private tickKnock(e: Enemy, def: EnemyDef): boolean {
+    if ((e.knockT ?? 0) <= 0) return false;
+    e.knockT = (e.knockT ?? 0) - 1;
+    const ctx = this.ctx;
+    let vx = (e.knockVx ?? 0) * KNOCK_DRAG;
+    let vy = ((e.knockVy ?? 0) + KNOCK_GRAV) * KNOCK_DRAG;
+    const speed = Math.hypot(vx, vy);
+    e.fx += vx;
+    e.fy += vy;
+    let hit = false;
+    // Sweep one cell at a time so a fast launch can't tunnel a thin wall.
+    let sx = Math.trunc(e.fx);
+    while (sx !== 0 && !hit) {
+      const step = sx > 0 ? 1 : -1;
+      const tx = Math.floor(clamp(e.x + step, 6, WIDTH - 7));
+      if (tx === e.x || !ctx.physics.entityFree(tx, e.y, def.halfW, def.h)) {
+        hit = true;
+        break;
+      }
+      e.x = tx;
+      e.fx -= step;
+      sx -= step;
+    }
+    let sy = Math.trunc(e.fy);
+    while (sy !== 0 && !hit) {
+      const step = sy > 0 ? 1 : -1;
+      const ty = Math.floor(clamp(e.y + step, 14, HEIGHT - 7));
+      if (ty === e.y || !ctx.physics.entityFree(e.x, ty, def.halfW, def.h)) {
+        hit = true;
+        break;
+      }
+      e.y = ty;
+      e.fy -= step;
+      sy -= step;
+    }
+    e.knockVx = vx;
+    e.knockVy = vy;
+    // A small foe hurled fast into a wall SMASHES (gib + wall paint); a heavier
+    // one just thuds. Either way a wall stops the launch — never phase through it.
+    if (hit && speed >= SLAM_MIN_SPEED && def.halfW * def.h <= SLAM_MASS_MAX) {
+      this.slamWall(e, def, vx, vy, speed); // consumes the launch; may kill
+      return true;
+    }
+    if (hit) {
+      // bumped a wall (too heavy/slow to gib) — stop dead against it
+      e.vx = 0;
+      e.vy = 0;
+      e.fx = 0;
+      e.fy = 0;
+      e.knockT = 0;
+      e.knockVx = 0;
+      e.knockVy = 0;
+    } else if ((e.knockT ?? 0) <= 0) {
+      // launch ran its course in open air — hand the residual momentum to the AI
+      e.vx = vx;
+      e.vy = vy;
+      e.fx = 0;
+      e.fy = 0;
+      e.knockVx = 0;
+      e.knockVy = 0;
+    }
+    return true;
+  }
+
+  /** A foe launched into a wall: smear blood across the impact, gout particles into
+   *  the stone, and take heavy speed-scaled damage (small foes gib outright). */
+  private slamWall(e: Enemy, def: EnemyDef, vx: number, vy: number, speed: number): void {
+    const ctx = this.ctx;
+    const nx = vx / (speed || 1);
+    const ny = vy / (speed || 1);
+    const r = Math.max(3, Math.round((def.halfW + def.h) * 0.4));
+    // Paint the wall at the impact point (just past the body), plus a lighter smear
+    // around the body. splatterStain only takes on Wall/Wood/Stone/Ice.
+    splatterStain(ctx.world, e.x + Math.round(nx * (def.halfW + 1)), e.y - 5 + Math.round(ny * 3), r);
+    splatterStain(ctx.world, e.x, e.y - 5, Math.ceil(r * 0.6));
+    // Blood gouts driven INTO the wall...
+    for (let k = 0; k < 14; k++) {
+      ctx.particles.spawn(
+        e.x + (Math.random() - 0.5) * def.halfW,
+        e.y - 5 + (Math.random() - 0.5) * def.h,
+        nx * (1 + Math.random() * 2) + (Math.random() - 0.5) * 1.5,
+        ny * (1 + Math.random() * 2) + (Math.random() - 0.5) * 1.5,
+        Cell.Blood,
+        bloodColor(),
+        150,
+      );
+    }
+    ctx.particles.burst(e.x, e.y - 5, 10, null, () => packRGB(150, 140, 120), 1.6, { grav: 0.05 });
+    ctx.audio.noiseBurst(0.12, 170, 0.13); // wet crunch
+    ctx.audio.tone(120, 70, 0.12, 'square', 0.08);
+    // Consume the launch, then take the hit (lethal for small foes → gib gore).
+    e.knockT = 0;
+    e.knockVx = 0;
+    e.knockVy = 0;
+    e.fx = 0;
+    e.fy = 0;
+    e.vx = 0;
+    e.vy = 0;
+    this.damage(e, SLAM_DMG_BASE + speed * SLAM_DMG_PER_SPEED, -nx * 0.6, -ny * 0.6);
   }
 
   private removeEnemyAt(index: number): Enemy | undefined {
@@ -586,6 +720,10 @@ export class Enemies implements EnemyControlApi {
         }
         if (eff.slowFactor !== 1) e.vx *= eff.slowFactor;
       }
+
+      // Gust-launched foes fly ballistically (AI + flight cap suppressed) until
+      // they land, slow, or smash into a wall — see gustShove/tickKnock.
+      if (this.tickKnock(e, def)) continue;
 
       const pdx = player.x - e.x,
         pdy = player.y - 9 - (e.y - 5);

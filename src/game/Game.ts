@@ -40,6 +40,7 @@ import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
 import { CardOfferOverlay } from '@/ui/CardOfferOverlay';
+import { WaystonePromptOverlay } from '@/ui/WaystonePromptOverlay';
 import { HelpOverlay } from '@/ui/HelpOverlay';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
@@ -213,6 +214,7 @@ export class Game {
     this.hud = new Hud(ctx);
     this.minimap = new Minimap(ctx);
     new CardOfferOverlay(ctx);
+    new WaystonePromptOverlay(ctx);
     // Self-binds the B key; lives for the page lifetime.
     new WandBench(ctx);
     // Transitional dev console: typed QA commands + automation adapter.

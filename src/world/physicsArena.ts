@@ -144,6 +144,34 @@ export function buildPhysicsArena(ctx: Ctx): void {
   barrel(1474, FY - 6);
   barrel(1456, FY - 16);
 
+  // ===== Z7 — WAYSTONE FORGE: light the checkpoint by bringing fire to its bowl =====
+  // A waystone is a fire-lit checkpoint: it lights when Cell.Fire fills the 5x3
+  // bowl rect just above its anchor for ~120 frames (Levels.updateWaystones). The
+  // brazier is only a rendered sprite (no terrain), so for the no-flame paths we
+  // lay a real COAL bed in the bowl — coal ignites from lava/fire and burns 170f,
+  // long enough to cross the threshold. Around it: a raised LAVA tub and OIL tub
+  // (both flask-siphonable) and a wood crate — four ways to bring fire here: pour
+  // lava on the coals, lay+light an oil wick, carry a burning crate onto the bowl,
+  // or cast the Flame Jet card (granted in the runtime block below).
+  const WX = 340;
+  const WY = FY; // anchor at the floor surface; the bowl rect is the air above it
+  for (let x = WX - 2; x <= WX + 2; x++) cell(x, WY - 1, Cell.Coal); // coal bed
+  stone(WX - 3, WY - 1); // nibs pin the coal so it can't creep along the floor
+  stone(WX + 3, WY - 1);
+  // a raised molten tub to siphon from — kept well clear of the bowl so a stray
+  // splash can't auto-light the checkpoint before the player does it themselves
+  box(356, 695, 357, 699, Cell.Stone); // left wall
+  box(367, 695, 368, 699, Cell.Stone); // right wall
+  box(358, 699, 366, 699, Cell.Stone); // tub floor
+  box(358, 696, 366, 698, Cell.Lava); // molten fill
+  // a raised oil tub: siphon a wick of it toward the bowl, or pour it in as kindling
+  box(375, 695, 376, 699, Cell.Stone);
+  box(384, 695, 385, 699, Cell.Stone);
+  box(377, 699, 383, 699, Cell.Stone);
+  box(377, 696, 383, 698, Cell.Oil);
+  // a wood crate to set alight (in the lava / with flame) then carry or kick in
+  crate(350, FY - 5, 'wood');
+
   // ---- spawn the player on clear floor at the left, calm arena ----
   const p = ctx.player;
   p.x = 120;
@@ -165,6 +193,17 @@ export function buildPhysicsArena(ctx: Ctx): void {
     makeLever(runtime.mechanisms, 650, FY - 1, disp);
     buildAcidTrap(ctx, runtime.mechanisms);
     runtime.mechanismTriggers = undefined; // rebuild the cached trigger index
+
+    // the Z7 waystone checkpoint (rebuilt fresh each entry) + a Flame card in the
+    // satchel so the proximity prompt has a fire spell to offer to equip
+    runtime.waystones.length = 0;
+    runtime.waystones.push({ x: WX, y: WY, lit: false });
+    if (
+      !ctx.wands.collection.includes('flame') &&
+      !ctx.wands.wands.some((wand) => wand.cards.includes('flame'))
+    ) {
+      ctx.wands.grantCard(ctx, 'flame');
+    }
   }
 }
 

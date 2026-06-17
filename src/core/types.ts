@@ -247,6 +247,13 @@ export interface Enemy {
   submerged?: boolean;
   /** Environmental contact damage feedback throttle. */
   envDamageFeedbackCd?: number;
+  /** Gust knockback (the kick's wind blast): frames of ballistic LAUNCH remaining.
+   *  While >0 the AI and per-kind flight cap are suppressed so the shove actually
+   *  carries the body — and a fast launch meeting a wall smashes the foe into it. */
+  knockT?: number;
+  /** Launch velocity (cells/frame) used while `knockT` > 0. */
+  knockVx?: number;
+  knockVy?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
@@ -265,6 +272,10 @@ export interface Critter {
   /** Fish out of water / general distress countdown; <=0 from spawn = unused. */
   gasp: number;
   facing: number;
+  /** Startle frames: a concussive shove (the kick's gust, a nearby blast) sends
+   *  the critter fleeing — its normal steering + heavy damping are suppressed so
+   *  the shove actually carries and it visibly scatters. */
+  startle?: number;
 }
 
 export interface CrittersApi {
@@ -272,6 +283,10 @@ export interface CrittersApi {
   update(ctx: Ctx): void;
   /** Concussion/heat kills the small things too (splat + remove). */
   killAt(ctx: Ctx, x: number, y: number, radius: number): void;
+  /** A blast wave that DOESN'T kill: shove + startle every critter within radius
+   *  away from (x,y), scaled by a linear falloff (the kick's gust, a near-miss
+   *  explosion). They scatter and flee instead of just twitching. */
+  scatter(x: number, y: number, radius: number, strength: number): void;
   /** O(1) owner-managed removal; critter draw order is intentionally unstable. */
   remove(critter: Critter): Critter | undefined;
   clear(): void;
@@ -1125,6 +1140,11 @@ export interface EnemyControlApi {
   spawn(kind: EnemyKind, x: number, y: number): void;
   damage(e: Enemy, amount: number, kx: number, ky: number): void;
   kill(e: Enemy, kx: number, ky: number): void;
+  /** Blow a foe along (dirX,dirY) with a wind-gust shove (the player's kick),
+   *  mass-scaled so a bat is hurled and a golem barely rocks. Light foes enter a
+   *  brief ballistic launch and SMASH into the first wall they hit. `strength` is
+   *  the gust intensity at the body (≈0..1 × a push scalar). No-op on bosses. */
+  gustShove(e: Enemy, dirX: number, dirY: number, strength: number): void;
   update(ctx: Ctx): void;
 }
 

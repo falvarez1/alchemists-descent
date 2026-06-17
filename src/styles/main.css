@@ -1237,6 +1237,71 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
     .card-offer-card { min-height: 0; grid-template-columns: 44px minmax(0, 1fr); grid-template-rows: auto auto auto auto; }
     .card-offer-icon { grid-row: 1 / span 4; }
 }
+.waystone-prompt-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 121;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    box-sizing: border-box;
+    background: rgba(5,4,9,0.72);
+    pointer-events: auto;
+    font-family: var(--mono);
+}
+.waystone-prompt-overlay.visible { display: flex; }
+.waystone-prompt-panel {
+    width: min(440px, calc(100vw - 28px));
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid rgba(110,70,50,0.72);
+    border-radius: 6px;
+    background: rgba(10,8,12,0.96);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.55);
+}
+.waystone-prompt-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: rgba(255,200,120,0.92);
+    text-transform: uppercase;
+}
+.waystone-prompt-body {
+    font-size: 12px;
+    line-height: 1.5;
+    color: rgba(255,255,255,0.72);
+}
+.waystone-prompt-actions {
+    display: flex;
+    gap: 9px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+.waystone-prompt-btn {
+    padding: 8px 14px;
+    border: 1px dashed #6e4632;
+    border-radius: 6px;
+    background: rgba(22,15,11,0.94);
+    color: var(--text-main);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+.waystone-prompt-btn:hover, .waystone-prompt-btn:focus-visible {
+    border-color: #fcd34d;
+    outline: 0;
+    box-shadow: 0 0 0 1px rgba(252,211,77,0.7), 0 0 16px rgba(252,211,77,0.18);
+}
+.waystone-prompt-btn.primary {
+    border-style: solid;
+    border-color: rgba(252,211,77,0.6);
+    color: rgba(255,235,200,0.95);
+}
 #descend-btn {
     margin-top: 10px; background: #2a1336; border: 1px solid var(--accent-purple); color: #e9d5ff;
     font-weight: 700; letter-spacing: 2px; font-size: 15px; padding: 11px 30px; border-radius: 6px;

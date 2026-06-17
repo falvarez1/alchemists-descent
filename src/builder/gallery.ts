@@ -60,7 +60,7 @@ import {
   drawParticles,
   drawProjectiles,
 } from '@/render/sprites/FxSprites';
-import { createPlayer } from '@/entities/Player';
+import { createPlayer, PlayerControl } from '@/entities/Player';
 import { createDefaultStatus } from '@/entities/status';
 // The combat micro-sim: the REAL casting/projectile/explosion/cell-sim stack
 // run against the gallery's scratch world (same precedent as Mechanisms above).
@@ -1121,6 +1121,9 @@ export class Gallery {
     const SPELL_LABELS = SPELL_ORDER.map((id) =>
       this.hooks.ctx.params.spells[id].name.toUpperCase(),
     );
+    // ...plus the kick, which isn't a spell but is the player's other "cast":
+    // a force-push blast of air. Appended after the spells; see buildKickRig.
+    const PLAYER_RIGS = [...SPELL_LABELS, 'FORCE PUSH (F)'];
     items.push({
       id: 'ent-player',
       section: 'ENTITIES',
@@ -1129,12 +1132,13 @@ export class Gallery {
       desc:
         'The procedural wizard: stride-wheel boots, swaying robe, 4-segment spring hat, wand glow toward the aim. ' +
         'He faces your cursor; CAST aims the wand straight at it. ' +
-        'TACTICAL SPELLS put him on a firing range — live casts against a target dummy or the practice fort, real cells and all.',
+        'TACTICAL SPELLS put him on a firing range — live casts against a target dummy or the practice fort, real cells and all. ' +
+        'FORCE PUSH (F) fires the real kick: a blast of air that bursts a patch of ash into flying motes (in play it blows enemies back, smashes small foes into walls, scatters critters, and bends vines).',
       glyph: '@',
       glyphCss: '#c084fc',
       states: PLAYER_STATES,
-      spells: SPELL_LABELS,
-      buildSpell: (n) => this.buildSpellRig(SPELL_ORDER[n]),
+      spells: PLAYER_RIGS,
+      buildSpell: (n) => (n < SPELL_ORDER.length ? this.buildSpellRig(SPELL_ORDER[n]) : this.buildKickRig()),
       build: (st) => {
         this.stageFloor(RX - 30, RX + 30);
         // the poses that live against rock bring their rock along
@@ -1602,7 +1606,12 @@ export class Gallery {
         update: noop,
         applyImpulse: noop,
         applyImpulseAt: noop,
+        applyMomentumAt: noop,
         applyRadialImpulse: noop,
+        hitTest: () => null,
+        grab: noop,
+        release: noop,
+        igniteArea: () => 0,
       },
       levels: { current: this.runtime },
     } as unknown as Ctx;
@@ -1756,6 +1765,117 @@ export class Gallery {
           this.safeDraw('enemy-golem', () => drawEnemySprite(s, FULLBRIGHT, ctx, dummy));
         }
         drawDigBeam(s, ctx);
+        this.safeDraw('player', () => drawPlayerSprite(s, FULLBRIGHT, ctx));
+      },
+    };
+  }
+
+  /**
+   * FORCE PUSH (F): the kick is a blast of air. This rig fires the REAL
+   * `PlayerControl.kick` on a cycle against a patch of ash, so you watch the gust
+   * burst it into flying motes and the dust arc whoosh out — the same code the
+   * game runs. In play the same gust blows enemies back (small foes smash into
+   * walls), scatters critters, and bends vines; here the stage shows the gust.
+   */
+  private buildKickRig(): StageRig {
+    const PXC = RX - 14;
+    const bounds = { x0: PXC - 18, y0: FY - 46, x1: RX + 42, y1: FY + 6 };
+    const ashX0 = RX, ashX1 = RX + 16, ashY0 = FY - 7, ashY1 = FY - 1;
+
+    const paintStage = (): void => {
+      this.paint(bounds.x0, bounds.y0, bounds.x1, bounds.y1, Cell.Empty);
+      this.paint(bounds.x0, FY + 1, bounds.x1, FY + 8, Cell.Stone); // floor
+      this.paint(bounds.x1 - 4, FY - 40, bounds.x1, FY, Cell.Stone); // backstop the motes slam into
+      this.paint(bounds.x0, FY - 40, bounds.x0 + 3, FY, Cell.Stone); // containment behind the wizard
+      this.paint(ashX0, ashY0, ashX1, ashY1, Cell.Ash); // the patch the gust blows into motes
+    };
+
+    const sb = this.world.simBounds;
+    sb.x0 = Math.max(0, bounds.x0 - 2);
+    sb.y0 = Math.max(0, bounds.y0 - 2);
+    sb.x1 = Math.min(this.world.width, bounds.x1 + 3);
+    sb.y1 = Math.min(this.world.height, FY + 8);
+
+    const fake = createPlayer();
+    fake.x = PXC;
+    fake.y = FY;
+    fake.facing = 1;
+    fake.aimAngle = 0;
+
+    const noop = (): void => undefined;
+    const particles = new Particles();
+    const projectiles: Projectile[] = [];
+    const input = {
+      keys: {}, mouse: { x: RX + 20, y: FY - 6 }, isDrawing: false, lastX: null, lastY: null,
+      buildSpellHeld: false, bombCharge: -1, activeChargingBlackHole: null as Projectile | null,
+      siphonHeld: false, pourHeld: false, drinkHeld: false,
+    };
+    const ctx = {
+      world: this.world,
+      events: this.events,
+      enemies: [] as Enemy[],
+      player: fake,
+      playerCtl: { damage: noop, kill: noop, respawn: noop },
+      enemyCtl: { defs: this.hooks.ctx.enemyCtl.defs, spawn: noop, damage: noop, kill: noop, gustShove: noop, update: noop },
+      camera: { x: RX - Math.floor(VIEW_W / 2), y: FY - Math.floor(VIEW_H / 2), renderX: 0, renderY: 0 },
+      state: this.stubState,
+      params: this.hooks.ctx.params,
+      audio: {
+        tone: noop, zap: noop, flame: noop, dig: noop, boom: noop, noiseBurst: noop,
+        shatter: noop, implode: noop, lightning: noop, hollowKnock: noop, coin: noop,
+        bubble: noop, groan: noop, brazier: noop, lever: noop, doorGrind: noop,
+      },
+      particles,
+      projectiles,
+      shockwaves: [],
+      input,
+      fx: { screenShake: 0, bloomKick: 0, digBeam: null, hitstop: 0 },
+      rigidBodies: {
+        bodies: [], spawn: () => { throw new Error('Gallery previews do not spawn rigid bodies'); },
+        remove: noop, clear: noop, update: noop, applyImpulse: noop, applyImpulseAt: noop,
+        applyMomentumAt: noop, applyRadialImpulse: noop, hitTest: () => null, grab: noop, release: noop, igniteArea: () => 0,
+      },
+      levels: { current: this.runtime },
+    } as unknown as Ctx;
+    // the real combat stack the sim leans on (so cells settle correctly), plus the
+    // REAL player controller — kick() is the actual game implementation.
+    (ctx as { spells: SpellsApi }).spells = new Spells(ctx);
+    (ctx as { lightning: LightningApi }).lightning = new Lightning(ctx);
+    (ctx as { explosions: ExplosionApi }).explosions = new Explosions(ctx);
+    (ctx as { physics: PhysicsApi }).physics = new Physics(ctx);
+    (ctx as { projectileCtl: ProjectilesApi }).projectileCtl = new Projectiles();
+    const playerCtl = new PlayerControl(ctx);
+    const sim = new Simulation();
+
+    paintStage();
+    const cycle = 150;
+    let startF = -1;
+    return {
+      bounds,
+      cells: true,
+      step: (f) => {
+        if (startF < 0) startF = f;
+        const t = (f - startF) % cycle;
+        if (t === 0) {
+          paintStage();
+          particles.clear();
+          fake.x = PXC; fake.y = FY; fake.vx = fake.vy = 0; fake.facing = 1; fake.aimAngle = 0;
+        }
+        if (fake.blinkTimer > 0) fake.blinkTimer--;
+        else if (Math.random() < 0.006) fake.blinkTimer = 8;
+        fake.grounded = true; fake.firing = false; fake._svx = 0; fake._svy = 0;
+        fake.aimAngle = 0; fake.facing = 1;
+        if (t === 40) {
+          (playerCtl as unknown as { kickCooldownT: number }).kickCooldownT = 0;
+          playerCtl.kick(ctx);
+          this.caption = 'FORCE PUSH (F) — a blast of air';
+          this.captionT = 70;
+        }
+        sim.update(ctx);
+        particles.update(ctx);
+      },
+      draw: (s) => {
+        drawParticles(s, FULLBRIGHT, ctx);
         this.safeDraw('player', () => drawPlayerSprite(s, FULLBRIGHT, ctx));
       },
     };

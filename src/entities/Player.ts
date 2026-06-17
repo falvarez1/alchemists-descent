@@ -21,6 +21,7 @@ const CLIMB_BRUSH_MAX = 8;
 const TELEPORT_SEARCH_RADIUS = 260;
 // Vine swing (#2): latch a hanging vine and pendulum on it; pump with left/right.
 const KICK_BASE_RECOIL = 0.5; // kick always self-pushes this fraction even into open air (so it works mid-air like wand recoil); a solid hit ramps to 1
+const GUST_ENEMY_PUSH = 5; // kick wind-gust shove scalar for enemies (mass-scaled in EnemyControl.gustShove)
 const MOVE_ACCEL_CAP = 0.6; // max per-frame ground-speed gain — high top speeds (Swift stacks / God Mode) RAMP up over several frames instead of snapping to max
 const SWING_REACH = 16;
 const SWING_PUMP = 0.16;
@@ -502,8 +503,21 @@ export class PlayerControl implements PlayerControlApi {
     if (ctx.critters) {
       for (const cr of ctx.critters.list) {
         const g = gustAt(cr.x, cr.y);
-        if (g > 0) { cr.vx += dirX * g * 4.5; cr.vy += dirY * g * 4.5 - g * 1.4; cr.facing = dirX < 0 ? -1 : 1; }
+        if (g > 0) {
+          cr.vx += dirX * g * 4.5;
+          cr.vy += dirY * g * 4.5 - g * 1.4;
+          cr.facing = dirX < 0 ? -1 : 1;
+          // startle so the AI stops instantly damping the shove — it scatters
+          // and flees (a beetle that would otherwise re-plant its crawl speed).
+          cr.startle = Math.max(cr.startle ?? 0, Math.round(18 + g * 14));
+        }
       }
+    }
+    // Enemies in the gust are blown back too — mass-scaled in the enemy controller:
+    // a slime is nudged, a bat is hurled hard enough to smash into a wall and splatter.
+    for (const e of ctx.enemies) {
+      const g = gustAt(e.x, e.y - 5);
+      if (g > 0) ctx.enemyCtl.gustShove(e, dirX, dirY, g * GUST_ENEMY_PUSH);
     }
     ctx.vineStrands?.applyRadialImpulse(ox, oy, windRange * 0.9, 1.8); // bend the hanging vines in the gust
 
@@ -540,6 +554,12 @@ export class PlayerControl implements PlayerControlApi {
     this.swinging = false;
     ctx.player.swinging = false;
     this.swingJumpPrev = false;
+    // `grounded` is frozen at its pre-swing value (the normal update — which
+    // re-detects ground — was skipped every swinging frame). If it's stale-true,
+    // the release-frame horizontal block clamps vx to maxRun and the swing's
+    // momentum vanishes. Force airborne so the inertia path carries the launch;
+    // ground is correctly re-detected at the end of this frame.
+    ctx.player.grounded = false;
     ctx.vineStrands.releaseSwing();
   }
 
@@ -554,9 +574,11 @@ export class PlayerControl implements PlayerControlApi {
     const rd = Math.hypot(rx, ry) || 0.001;
     const tx = -ry / rd; // tangent (perpendicular to the rope)
     const ty = rx / rd;
+    // Tangent (tx,ty) points LEFT when hanging below the anchor, so the pump sign
+    // is inverted vs intuition: RIGHT must drive +x. (left → −pump → +tx·… etc.)
     let pump = 0;
-    if (keys.left) pump -= SWING_PUMP;
-    if (keys.right) pump += SWING_PUMP;
+    if (keys.left) pump += SWING_PUMP;
+    if (keys.right) pump -= SWING_PUMP;
     player.vx += tx * pump;
     player.vy += ty * pump;
     player.vx *= 0.992;

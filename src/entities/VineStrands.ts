@@ -35,8 +35,8 @@ const DAMPING = 0.985;
 const SOLVER_ITERATIONS = 4;
 const SETTLE_FRAMES = 38;
 const MAX_AGE_FRAMES = 720;
-const PLAYER_PUSH_RADIUS = 17;
-const PLAYER_PUSH_STRENGTH = 0.82;
+const PLAYER_PUSH_RADIUS = 20;
+const PLAYER_PUSH_STRENGTH = 1.4;
 
 interface VineNode extends VineStrandNodeView {
   x: number;
@@ -348,8 +348,11 @@ export class VineStrands implements VineStrandsApi {
     const iy = (dy / d) * push;
     node.x += ix;
     node.y += iy;
-    node.px -= ix * 0.35;
-    node.py -= iy * 0.2;
+    // Bias px/py back HARDER than the position bump so the shove imparts real
+    // velocity (x − px) — the rope keeps swaying after the player passes through,
+    // instead of the solver snapping it straight the next frame.
+    node.px -= ix * 0.55;
+    node.py -= iy * 0.4;
   }
 
   private solveSegment(nodes: VineNode[], segment: VineSegment): void {

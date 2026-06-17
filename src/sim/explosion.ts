@@ -169,5 +169,7 @@ export class Explosions implements ExplosionApi {
     // proper launch for bombs.
     ctx.rigidBodies.applyRadialImpulse(cx, cy, radius * 1.8, 2.5 + radius * 0.08);
     ctx.vineStrands?.applyRadialImpulse(cx, cy, radius * 1.8, 1.4 + radius * 0.05);
+    // The blast wave scatters any ambient critters it didn't outright incinerate.
+    ctx.critters?.scatter(cx, cy, radius * 2.0, 2.0 + radius * 0.06);
   }
 }

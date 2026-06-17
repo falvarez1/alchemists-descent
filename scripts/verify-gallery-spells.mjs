@@ -116,7 +116,9 @@ check('crawl loop animates', c1.sum !== c2.sum);
 const spellChips = await page.$$eval('#builder-gallery .bg-chip[data-sp]', (els) =>
   els.map((e) => e.textContent),
 );
-check('15 tactical spell chips', spellChips.length === 15, JSON.stringify(spellChips));
+// 15 tactical spells + the FORCE PUSH (F) kick rig = 16 player "cast" chips
+check('16 player rigs (15 spells + force push)', spellChips.length === 16, JSON.stringify(spellChips));
+check('FORCE PUSH chip present', spellChips.includes('FORCE PUSH (F)'), JSON.stringify(spellChips));
 
 // stage-region cell census straight off the gallery's scratch world
 const cellCensus = () =>

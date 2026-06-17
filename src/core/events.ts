@@ -32,6 +32,17 @@ export interface EventMap {
   levelCurtain: { visible: boolean; holdMs?: number; onComplete?: () => void };
   /** A waystone brazier caught fire — checkpoint set. */
   waystoneLit: undefined;
+  /**
+   * Player walked up to an unlit waystone. UI shows a prompt: if `card` is set,
+   * the player owns a fire spell that isn't on the active wand (offer to equip
+   * it); if null, they own none (explain how to bring fire by hand). Exactly one
+   * callback runs when the prompt closes.
+   */
+  waystonePrompt: {
+    card: CardId | null;
+    onEquip(): void;
+    onDismiss(): void;
+  };
   /** First-time brew of a recipe — Grimoire entry + gold bounty. */
   recipeDiscovered: { name: string; bounty: number };
   /** Any completed cauldron recipe, including recipes already known in the Grimoire. */
