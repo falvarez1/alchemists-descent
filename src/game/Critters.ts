@@ -31,6 +31,16 @@ function isLure(t: number): boolean {
   );
 }
 
+/** Hot, dangerous glow that light-SHY critters flee (cf. the moth's lure — the
+ *  ambient Glowshroom/Crystal glow is harmless, so it's not a threat here). */
+function isHotGlow(t: number): boolean {
+  return t === Cell.Fire || t === Cell.Lava || t === Cell.Ember;
+}
+
+/** Prey species that skitter from fire and the looming player — the inverse of
+ *  the moth's light-seeking (moths and fish have their own rules). */
+const LIGHT_SHY: ReadonlySet<CritterKind> = new Set<CritterKind>(['beetle', 'fly', 'firefly']);
+
 export class Critters implements CrittersApi {
   private readonly pool = new EntityPool<Critter>();
   readonly list = this.pool.list;
@@ -59,6 +69,23 @@ export class Critters implements CrittersApi {
     }
   }
 
+  scatter(x: number, y: number, radius: number, strength: number): void {
+    if (radius <= 0 || strength === 0) return;
+    const r2 = radius * radius;
+    for (const c of this.list) {
+      const dx = c.x - x;
+      const dy = c.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > r2) continue;
+      const d = Math.sqrt(d2) || 1;
+      const f = (1 - d / radius) * strength;
+      c.vx += (dx / d) * f;
+      c.vy += (dy / d) * f - f * 0.3; // a touch of lift into the scatter
+      c.startle = Math.max(c.startle ?? 0, Math.round(16 + f * 4));
+      c.facing = c.vx < 0 ? -1 : 1;
+    }
+  }
+
   remove(critter: Critter): Critter | undefined {
     return this.pool.remove(critter);
   }
@@ -78,6 +105,7 @@ export class Critters implements CrittersApi {
     if (frame % 30 === 0) this.trySpawn(ctx);
     this.updateCritters(ctx);
     this.ambientGrid(ctx, frame);
+    this.shedFromShake(ctx);
     if (frame % 90 === 0) this.ambientAudio(ctx);
   }
 
@@ -191,7 +219,55 @@ export class Critters implements CrittersApi {
         continue;
       }
 
-      if (c.kind === 'moth') {
+      // LIGHT-SHY: prey species flinch from fire and the player's looming bulk —
+      // it kicks a short flee (carried by the startle branch below), the mirror
+      // of the moth's pull. Once they clear the threat radius they settle again.
+      if ((c.startle ?? 0) === 0 && LIGHT_SHY.has(c.kind)) {
+        let ax = 0, ay = 0, threatened = false;
+        if (!player.dead) {
+          const pdx = c.x - player.x, pdy = c.y - (player.y - 8);
+          const pd2 = pdx * pdx + pdy * pdy;
+          if (pd2 > 4 && pd2 < 32 * 32) {
+            const pd = Math.sqrt(pd2), k = 1 - pd / 32;
+            ax += (pdx / pd) * k; ay += (pdy / pd) * k; threatened = true;
+          }
+        }
+        for (let s = 0; s < 4; s++) {
+          const sx = xi + ((Math.random() * 29) | 0) - 14;
+          const sy = yi + ((Math.random() * 29) | 0) - 14;
+          if (w.inBounds(sx, sy) && isHotGlow(w.types[w.idx(sx, sy)])) {
+            const ddx = c.x - sx, ddy = c.y - sy, dd = Math.hypot(ddx, ddy) || 1;
+            ax += (ddx / dd) * 0.9; ay += (ddy / dd) * 0.9; threatened = true;
+          }
+        }
+        if (threatened) {
+          const am = Math.hypot(ax, ay) || 1;
+          c.vx += (ax / am) * 0.7;
+          c.vy += (ay / am) * 0.7 - 0.3; // a little hop into the scramble
+          c.startle = 8;
+        }
+      }
+
+      if ((c.startle ?? 0) > 0) {
+        // STARTLED: a concussive shove owns the motion — no seeking, only light
+        // damping so the scatter carries (a beetle is blown off its feet and
+        // tumbles; a fish in water bolts but the water resists). It flees, panics.
+        c.startle = (c.startle ?? 0) - 1;
+        const inWater = here === Cell.Water || isLiquid(here);
+        if (c.kind === 'fish' && inWater) {
+          c.vx *= 0.95;
+          c.vy *= 0.95;
+        } else {
+          c.vy += 0.05; // the blown-airborne (beetle/fish) arc back down
+          c.vx *= 0.99;
+          c.vy *= 0.99;
+        }
+        c.facing = c.vx < 0 ? -1 : 1;
+        if ((c.startle ?? 0) === 0 && Math.random() < 0.5) {
+          // a tiny puff as it recovers its composure
+          ctx.particles.burst(c.x, c.y, 2, null, () => packRGB(150, 140, 110), 0.6, { grav: 0.04 });
+        }
+      } else if (c.kind === 'moth') {
         // flutter + LIGHT SEEKING: glow cells nearby, else the raised wand
         c.vx += Math.sin(c.phase * 1.7) * 0.04 + (Math.random() - 0.5) * 0.05;
         c.vy += Math.cos(c.phase * 1.3) * 0.035 + (Math.random() - 0.5) * 0.05;
@@ -391,6 +467,43 @@ export class Critters implements CrittersApi {
           grav: -0.01,
         });
         if (Math.random() < 0.15) ctx.audio.bubble();
+      }
+    }
+  }
+
+  /** CONCUSSION SHED: when the cave shakes (a heavy landing, a blast), overhangs
+   *  loose dust and grit — real falling motes whose count scales with the shake.
+   *  Reads the same screenShake the renderer uses (it decays ~×0.88/frame, so a
+   *  big jolt sheds a brief cascade over the next dozen frames). */
+  private shedFromShake(ctx: Ctx): void {
+    const shake = ctx.fx.screenShake;
+    if (shake < 0.015) return;
+    const w = ctx.world;
+    const camX = Math.floor(ctx.camera.x);
+    const camY = Math.floor(ctx.camera.y);
+    const tries = Math.min(6, 1 + Math.floor(shake * 60));
+    for (let k = 0; k < tries; k++) {
+      const x = camX + Math.floor(Math.random() * VIEW_W);
+      // walk down to the lowest ceiling cell that has open air just beneath it
+      let solidY = -1;
+      for (let y = camY + 2; y < camY + VIEW_H - 8 && y < HEIGHT - 6; y++) {
+        if (!w.inBounds(x, y)) break;
+        const t = w.types[w.idx(x, y)];
+        if (t === Cell.Wall || t === Cell.Stone) solidY = y;
+        else if (solidY > 0 && t === Cell.Empty) break;
+        else solidY = -1;
+      }
+      if (solidY > 0 && w.inBounds(x, solidY + 1) && w.types[w.idx(x, solidY + 1)] === Cell.Empty) {
+        ctx.particles.spawn(
+          x + (Math.random() - 0.5),
+          solidY + 1,
+          (Math.random() - 0.5) * 0.25,
+          0.1 + Math.random() * 0.35,
+          null,
+          packRGB(118, 110, 98),
+          46 + ((Math.random() * 40) | 0),
+          { grav: 0.05 },
+        );
       }
     }
   }

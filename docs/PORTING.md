@@ -119,6 +119,17 @@ manipulated `[r,g,b]` channels (coagulation darkening, stains, shading), use
     2026-06-12; gold lives only in the in-canvas HUD treasure row (`#hud-gold`),
     which rolls toward `ctx.state.score` every frame instead of waiting for the
     original's even-frame HUD cadence. Same value, marginally fresher.
+12. Lava + water reaction is now directional (was: always turn the lava cell to
+    Stone, which sealed every interface and let you stack a stable lava/water
+    cake). The water ALWAYS flashes to steam; whether the lava chills depends on
+    where the water is (`sim/elements/liquids.ts`; verify-lava-water.mjs):
+    - water BELOW/beside the lava (it's boring down into the water): only a
+      sparse `LAVA_CRUST_CHANCE` (0.06) fleck, so the lava out-bores the crust and
+      sinks through instead of resting on top.
+    - water RESTING ON TOP of SEATED lava (can't sink — solid/lava below): a thick
+      obsidian rind chills DOWN into it (top cell always, then ragged to
+      `LAVA_CRUST_DEPTH`=3 at `LAVA_TOP_CRUST_DEEP`=0.7) — a real ~2-4 cell crust,
+      not a faint single line.
 
 Everything else: identical behavior — confirmed by a 13-agent adversarial fidelity
 audit (zero critical/major divergences) on 2026-06-10.

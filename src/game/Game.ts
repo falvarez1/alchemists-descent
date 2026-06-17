@@ -1,4 +1,4 @@
-import { VIEW_H, VIEW_W } from '@/config/constants';
+import { DEATH_SLOWMO_FRAMES, DEATH_SLOWMO_MIN, VIEW_H, VIEW_W } from '@/config/constants';
 import { createDefaultPostFxSettings, createDefaultRenderSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
 import { randomSeed } from '@/core/rng';
@@ -19,6 +19,7 @@ import { VineStrands } from '@/entities/VineStrands';
 import { Brewing } from '@/game/Brewing';
 import { createConsoleApi } from '@/game/console/commands';
 import { Critters } from '@/game/Critters';
+import { HintSystem } from '@/game/Hints';
 import { Levels } from '@/game/Levels';
 import { Mechanisms } from '@/game/Mechanisms';
 import { Pickups } from '@/game/Pickups';
@@ -40,6 +41,8 @@ import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
 import { CardOfferOverlay } from '@/ui/CardOfferOverlay';
+import { WaystonePromptOverlay } from '@/ui/WaystonePromptOverlay';
+import { HintTeachOverlay } from '@/ui/HintTeachOverlay';
 import { HelpOverlay } from '@/ui/HelpOverlay';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
@@ -106,6 +109,7 @@ export class Game {
       brushSize: 6,
       playerSpawned: false,
       worldSeed: randomSeed(),
+      difficulty: 2, // shipped balance until a run picks otherwise
       paused: false,
       debugGodMode: false,
       postFx: createDefaultPostFxSettings(),
@@ -131,7 +135,7 @@ export class Game {
       pourHeld: false,
       drinkHeld: false,
     };
-    const fx: FxState = { bloomKick: 0, screenShake: 0, digBeam: null, hitstop: 0 };
+    const fx: FxState = { bloomKick: 0, screenShake: 0, digBeam: null, hitstop: 0, deathSlowMo: 0 };
 
     // Assembled in two steps: data first, then services that close over ctx.
     // Services only USE ctx at runtime, after wiring completes.
@@ -172,6 +176,7 @@ export class Game {
     ctx.mechanisms = new Mechanisms(ctx);
     ctx.sanctum = new Sanctum(ctx);
     ctx.critters = new Critters(ctx);
+    ctx.hints = new HintSystem(ctx);
     ctx.perf = this.perfHud;
     ctx.console = createConsoleApi(ctx);
     this.ctx = ctx;
@@ -213,6 +218,8 @@ export class Game {
     this.hud = new Hud(ctx);
     this.minimap = new Minimap(ctx);
     new CardOfferOverlay(ctx);
+    new WaystonePromptOverlay(ctx);
+    new HintTeachOverlay(ctx);
     // Self-binds the B key; lives for the page lifetime.
     new WandBench(ctx);
     // Transitional dev console: typed QA commands + automation adapter.
@@ -364,14 +371,24 @@ export class Game {
     if (this.lastStepTime === 0) this.lastStepTime = now;
     this.stepDebt += Math.min(100, now - this.lastStepTime);
     this.lastStepTime = now;
-    if (this.stepDebt < Game.STEP_MS) return; // high-refresh idle rAF: free
+    // Death slow-mo: stretch the wall-clock cost of a tick so the sim advances
+    // in slow motion (the ramp eases back to real-time as the timer runs out).
+    // Render still fires every rAF, so the ragdoll tumble is smooth, not choppy.
+    let stepBudget = Game.STEP_MS;
+    const slowMo = this.ctx.fx.deathSlowMo;
+    if (slowMo > 0 && !this.ctx.state.paused) {
+      const t = Math.min(1, slowMo / DEATH_SLOWMO_FRAMES); // 1 at death -> 0 at end
+      const scale = DEATH_SLOWMO_MIN + (1 - DEATH_SLOWMO_MIN) * (1 - t); // MIN -> 1
+      stepBudget = Game.STEP_MS / scale;
+    }
+    if (this.stepDebt < stepBudget) return; // high-refresh idle rAF: free
     let ticks = 0;
-    while (this.stepDebt >= Game.STEP_MS && ticks < 2) {
-      this.stepDebt -= Game.STEP_MS;
+    while (this.stepDebt >= stepBudget && ticks < 2) {
+      this.stepDebt -= stepBudget;
       ticks++;
       this.tick();
     }
-    if (this.stepDebt >= Game.STEP_MS) this.stepDebt = 0; // drop unpayable debt
+    if (this.stepDebt >= stepBudget) this.stepDebt = 0; // drop unpayable debt
   };
 
   private tick = (): void => {
@@ -394,6 +411,7 @@ export class Game {
     // outright. Rendering continues through both.
     const frozen = ctx.fx.hitstop > 0 || ctx.state.paused;
     if (ctx.fx.hitstop > 0 && !ctx.state.paused) ctx.fx.hitstop--;
+    if (ctx.fx.deathSlowMo > 0 && !ctx.state.paused && !frozen) ctx.fx.deathSlowMo--;
 
     ctx.camera.update(ctx);
     ctx.camera.updateSimBounds(ctx.world);
@@ -420,6 +438,7 @@ export class Game {
       ctx.mechanisms.update(ctx);
       ctx.critters.update(ctx);
       this.brewing.update(ctx);
+      ctx.hints.update(ctx);
       ctx.wands.update(ctx);
       ctx.particles.update(ctx);
       ctx.lightning.update();

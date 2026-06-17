@@ -7,3 +7,4 @@ verify-out/
 build/
 .agents/
 .codex-vite-*.log
+.claude/projects/

@@ -779,7 +779,9 @@ export class Projectiles implements ProjectilesApi {
         // body (mass-aware — wood flies, metal resists), then the shot resolves
         // its terminal effect on the body (pierce/bounce/detonate per type).
         if (ctx.rigidBodies && !p.hostile && p.type !== 'warp' && p.type !== 'blackhole') {
-          const body = ctx.rigidBodies.hitTest(p.x, p.y);
+          // `?.` so a stubbed rigid-body layer (e.g. gallery previews) is harmless,
+          // mirroring Lightning.cast — calling a missing hitTest crashed the frame.
+          const body = ctx.rigidBodies.hitTest?.(p.x, p.y);
           if (body) {
             const fate = this.impactBody(ctx, p, body);
             if (fate === 'consume') {

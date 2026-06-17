@@ -83,6 +83,13 @@ export const catalystColor = () =>
   Math.random() < 0.12
     ? packRGB(255, 235 + rand(20), 200 + rand(40))
     : packRGB(240 + rand(15), 140 + rand(40), 70 + rand(30));
+// raw ore: dark host rock veined with golden flecks. It carries NO light of its
+// own (Lighting seeds nothing for it), so it sits dark as plain rock until the
+// wizard's beam falls on it and the ~22% gold grains catch the light.
+export const rawOreColor = () =>
+  Math.random() < 0.22
+    ? packRGB(226 + rand(24), 174 + rand(26), 46 + rand(22)) // gold fleck
+    : packRGB(46 + rand(16), 42 + rand(14), 37 + rand(12)); // dark host rock
 
 /** Fresh randomized color for a newly placed cell of the given material. */
 export const COLOR_FN: Record<number, () => number> = {
@@ -122,4 +129,5 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.Glowshroom]: glowshroomColor,
   [Cell.Moss]: mossColor,
   [Cell.Catalyst]: catalystColor,
+  [Cell.RawOre]: rawOreColor,
 };

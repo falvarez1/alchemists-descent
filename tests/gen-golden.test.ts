@@ -50,11 +50,14 @@ function fnv1a(bytes: Uint8Array): string {
 
 /** Recorded from the pre-overhaul generator. Re-record ONLY for deliberate,
  *  commit-flagged generation changes. */
+// Re-recorded for GEN_VERSION 18 (CAVE_SCALE 1.5 — grander caves). Radius is
+// consumed after every rng draw, so the stream + spawn anchors are identical to
+// v17; only carved cell width changed, which is exactly what these hashes lock.
 const GOLDEN: Record<number, { hash: string; spawn: { x: number; y: number } }> = {
-  1: { hash: '3f8861f4', spawn: { x: 800, y: 550 } },
-  5: { hash: '496f57e3', spawn: { x: 800, y: 413 } },
-  1337: { hash: 'e8e81b0d', spawn: { x: 800, y: 396 } },
-  123456789: { hash: '52d2a4e0', spawn: { x: 800, y: 542 } },
+  1: { hash: '8cf019bd', spawn: { x: 800, y: 550 } },
+  5: { hash: 'c7d799e5', spawn: { x: 800, y: 413 } },
+  1337: { hash: 'fe3390d9', spawn: { x: 800, y: 396 } },
+  123456789: { hash: 'faad3775', spawn: { x: 800, y: 542 } },
 };
 
 const RECIPE_FIELDS: Array<keyof VirtualBiomeDressingRecipe> = [

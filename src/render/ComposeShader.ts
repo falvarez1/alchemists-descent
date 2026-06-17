@@ -113,6 +113,7 @@ uniform vec4 uBackdropGrade; // exposure, brightness, contrast, inverse gamma
 uniform float uBackdropSaturation;
 uniform float uAmbient;
 uniform float uBoost;      // maxBrightness
+uniform float uVignette;   // screen vignette strength (postFx.vignette; 0.52 shipped)
 uniform int uGlintFrame;   // frameCount % 97 (crystal glint is integer math)
 uniform float uPhaseWater;  // (frameCount * 0.16)  mod 2pi
 uniform float uPhaseShroom; // (frameCount * 0.045) mod 2pi
@@ -226,7 +227,7 @@ void main() {
     vec3 light = texelFetch(uLight, ivec2(vx >> 1, vy >> 1), 0).rgb;
     float dxv = float(vx) - ${VIG_CX.toFixed(1)};
     float dyv = float(vy) - ${VIG_CY.toFixed(1)};
-    float vg = 1.0 - 0.52 * ((dxv * dxv + dyv * dyv) / ${VIG_MAXR2.toFixed(1)});
+    float vg = 1.0 - uVignette * ((dxv * dxv + dyv * dyv) / ${VIG_MAXR2.toFixed(1)});
 
     if (type == ${Cell.Empty}) {
       // Ordered PNG parallax composite. Every layer carries its own alpha and
@@ -550,6 +551,7 @@ export class GpuCompose {
         uBackdropSaturation: { value: 1 },
         uAmbient: { value: 0 },
         uBoost: { value: 1 },
+        uVignette: { value: 0.52 },
         uGlintFrame: { value: 0 },
         uPhaseWater: { value: 0 },
         uPhaseShroom: { value: 0 },
@@ -590,6 +592,7 @@ export class GpuCompose {
     this.updateBackdropUniforms(ctx);
     u.uAmbient.value = ctx.params.global.ambient;
     u.uBoost.value = ctx.params.global.maxBrightness;
+    u.uVignette.value = ctx.state.postFx.vignette;
 
     const frameCount = ctx.state.frameCount;
     u.uGlintFrame.value = frameCount % 97;

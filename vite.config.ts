@@ -2,6 +2,10 @@ import { defineConfig } from 'vite';
 import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
+  // GitHub Pages serves a project site under /<repo>/, so the deploy build needs
+  // that base for assets to resolve. The CI workflow sets GH_PAGES=true; local
+  // dev and `npm run build` stay at '/'.
+  base: process.env.GH_PAGES ? '/alchemists-descent/' : '/',
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

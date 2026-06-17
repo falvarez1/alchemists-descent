@@ -33,6 +33,24 @@ const DT = 1 / PF;
 const GRAVITY = 0.28 * PF * PF; // 0.28 cells/frame² → cells/second²
 const TERRAIN_MARGIN = 3; // base cells of terrain colliders around each body (grows with speed)
 const REMOVE_DELAY = 4; // frames a stale terrain collider lingers before removal
+// Safety rails on body state. A body that picks up a runaway velocity (a dogpile
+// of stacked explosion impulses, or a NaN leaking in from upstream) is fatal: the
+// terrain-collider window below grows with speed, so an extreme/non-finite velocity
+// makes syncTerrain request a grid-spanning wall of colliders in a single frame,
+// which overflows Rapier's wasm solver stack and then permanently borrow-locks the
+// world ("recursive use of an object" — the whole physics layer dies). These caps
+// sit far above any intended throw/blast speed, so normal play never touches them.
+const MAX_BODY_SPEED = 40; // hard cap on a body's linear speed (cells/frame)
+const MAX_BODY_ANGVEL = 40; // hard cap on a body's spin (radians/second)
+const MAX_TERRAIN_LEAD = 12; // most the collider window may lead a fast body (cells)
+const MAX_TERRAIN_REACH = 40; // absolute cap on the collider-window half-extent (cells)
+// GLOBAL caps: per-body velocity/window are bounded above, but a chain reaction or
+// debris pile can still grow the body set — and the SUM of their terrain windows —
+// until Rapier's broad-phase recurses past the wasm stack ("recursive use" lock).
+// These ceilings sit far above normal play (a handful of bodies, a few hundred
+// terrain cells) but cut the runaway off before it can crash the solver.
+const MAX_DYNAMIC_BODIES = 80; // live dynamic bodies; spawning past this evicts the oldest
+const MAX_TERRAIN_CELLS = 2800; // total terrain colliders requested per frame
 const REFERENCE_MASS = 45; // a "typical" crate; blast/kick scale a body's throw by REFERENCE_MASS / mass
 const PUSH_MASS_MAX = 60; // player shoves bodies up to this mass (light wood); heavier ones block
 const MIN_PUSH = 0.7; // minimum shove speed (cells/frame) when the player leans on a light body
@@ -49,6 +67,7 @@ const SHATTER_RADIUS_MIN = 6.5; // bodies bigger than this (diagonal) shatter un
 const SHATTER_FALLOFF = 0.4; // blast must land within (1 - d/radius) ≥ this to shatter
 const SHATTER_POWER = 1.5; // ...and strength·falloff ≥ this (a bomb shatters, a weak spark only shoves)
 const SHATTER_PIECES = 3; // small crates a large one breaks into
+const STOMP_BOUNCE = 3.2; // upward pop when a dive-stomp smashes a destructible crate
 const WATER_DRAG = 0.15; // per-frame velocity damp while fully submerged (viscosity)
 const SPLASH_MIN_SPEED = 1.2 * PF; // min downward speed (cells/s) to splash on water entry
 const GRAB_REACH = 18; // cells in front of the player a body can be grabbed from
@@ -93,6 +112,13 @@ export class RigidBodies implements RigidBodiesApi {
 
   spawn(shape: RigidShape, x: number, y: number, opts: SpawnBodyOpts = {}): RigidBody {
     const kinematic = opts.kind === 'kinematic';
+    // Keep the dynamic-body set bounded so a runaway spawn (chain detonations,
+    // repeated shatter) can't overflow Rapier's solver — thin out the oldest first.
+    if (!kinematic) {
+      let dyn = 0;
+      for (const b of this.bodies) if (b.kind === 'dynamic') dyn++;
+      if (dyn >= MAX_DYNAMIC_BODIES) this.evictOldestDynamic();
+    }
     const desc = (kinematic ? RAPIER.RigidBodyDesc.kinematicPositionBased() : RAPIER.RigidBodyDesc.dynamic())
       .setTranslation(x, y)
       .setRotation(opts.angle ?? 0)
@@ -156,6 +182,17 @@ export class RigidBodies implements RigidBodiesApi {
     if (i !== -1) this.bodies.splice(i, 1);
   }
 
+  /** Thin the body set when it hits the cap: drop the oldest resting (else oldest)
+   *  un-held dynamic body in a quiet puff, so debris fades instead of crashing Rapier. */
+  private evictOldestDynamic(): void {
+    let victim: RigidBody | null = null;
+    for (const b of this.bodies) if (b.kind === 'dynamic' && b !== this.held && b.sleeping) { victim = b; break; }
+    if (!victim) for (const b of this.bodies) if (b.kind === 'dynamic' && b !== this.held) { victim = b; break; }
+    if (!victim) return;
+    this.ctx.particles.burst(victim.x, victim.y, 6, null, () => packRGB(150, 140, 120), 1.2, { grav: 0.05 });
+    this.remove(victim);
+  }
+
   clear(): void {
     this.held = null;
     this.detonations.length = 0;
@@ -165,6 +202,29 @@ export class RigidBodies implements RigidBodiesApi {
     for (const col of this.terrain.values()) this.world.removeCollider(col, false);
     this.terrain.clear();
     this.terrainStale.clear();
+  }
+
+  /** Keep a body's integrated state sane after a step. Returns false if the body
+   *  is unrecoverable (non-finite position) and should be removed; otherwise clamps
+   *  velocity/spin in place (writing back to Rapier) and returns true. */
+  private clampBody(rb: RBody): boolean {
+    const t = rb.translation();
+    if (!Number.isFinite(t.x) || !Number.isFinite(t.y)) return false;
+    const v = rb.linvel();
+    let vx = Number.isFinite(v.x) ? v.x : 0;
+    let vy = Number.isFinite(v.y) ? v.y : 0;
+    const cap = MAX_BODY_SPEED * PF; // linvel is cells/second
+    const sp = Math.hypot(vx, vy);
+    if (sp > cap) {
+      const s = cap / sp;
+      vx *= s;
+      vy *= s;
+    }
+    if (vx !== v.x || vy !== v.y) rb.setLinvel({ x: vx, y: vy }, true);
+    const w = rb.angvel();
+    if (!Number.isFinite(w)) rb.setAngvel(0, true);
+    else if (Math.abs(w) > MAX_BODY_ANGVEL) rb.setAngvel(Math.sign(w) * MAX_BODY_ANGVEL, true);
+    return true;
   }
 
   applyImpulse(body: RigidBody, ix: number, iy: number): void {
@@ -447,6 +507,37 @@ export class RigidBodies implements RigidBodiesApi {
     this.ctx.audio.noiseBurst(0.14, 300, 0.1);
   }
 
+  /** A crate STOMPED to bits: remove it and pulverize it into its rubble cells +
+   *  a debris poof. Unlike shatterBody this spawns no flung pieces — a boot to
+   *  the lid pulverizes rather than splits. Only call on destructible bodies
+   *  (gore !== null); metal has no gore and should just be landed on. */
+  private smashBody(body: RigidBody): void {
+    const world = this.ctx.world;
+    const half = body.shape.kind === 'circle' ? body.shape.radius : body.shape.halfW;
+    const gore = body.material ? bodyMaterialDef(body.material).gore : null;
+    const bx = body.x;
+    const by = body.y;
+    this.remove(body);
+    if (gore !== null) {
+      const tint = COLOR_FN[gore] ?? ashColor;
+      const x0 = Math.max(1, Math.floor(bx - half));
+      const x1 = Math.min(WIDTH - 2, Math.ceil(bx + half));
+      const y0 = Math.max(1, Math.floor(by - half));
+      const y1 = Math.min(HEIGHT - 2, Math.ceil(by + half));
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const idx = world.idx(x, y);
+          const t = world.types[idx];
+          if ((t === Cell.Empty || t === Cell.Fire || t === Cell.Smoke || t === Cell.Steam) && Math.random() < 0.6) {
+            world.replaceCellAt(idx, gore, tint());
+          }
+        }
+      }
+    }
+    this.ctx.particles.burst(bx, by, 22, null, () => packRGB(170, 140, 105), 2.8, { grav: 0.06 });
+    this.ctx.audio.noiseBurst(0.16, 250, 0.12);
+  }
+
   /** Queue an explosive barrel to detonate next tick (idempotent). */
   private queueDetonation(body: RigidBody): void {
     if (body.payload !== 'explosive' || this.detonations.includes(body)) return;
@@ -473,9 +564,17 @@ export class RigidBodies implements RigidBodiesApi {
     this.processDetonations(ctx);
     this.syncTerrain(ctx.world, ctx.state.frameCount);
     this.world.step();
+    let dead: RigidBody[] | null = null;
     for (const body of this.bodies) {
       const rb = this.handles.get(body);
       if (!rb) continue;
+      // Clamp/sanitise before the mirror is read: a non-finite position can't be
+      // recovered (drop the body); a non-finite or runaway velocity is clamped so
+      // it never blows up the terrain-collider window and crashes Rapier.
+      if (!this.clampBody(rb)) {
+        (dead ??= []).push(body);
+        continue;
+      }
       const t = rb.translation();
       const v = rb.linvel();
       body.x = t.x;
@@ -486,6 +585,7 @@ export class RigidBodies implements RigidBodiesApi {
       body.va = rb.angvel() / PF;
       body.sleeping = rb.isSleeping();
     }
+    if (dead) for (const body of dead) this.remove(body);
     this.reactBodies(ctx);
     this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
     this.resolvePlayer(ctx);
@@ -738,6 +838,23 @@ export class RigidBodies implements RigidBodiesApi {
       player.y = Math.round(bT); // keep the player on integer cells (the grid oracle is cell-indexed)
       if (player.vy > 0) player.vy = 0;
       player.grounded = true;
+      // A dive lands on a body here, NOT on a terrain cell, so Player's own
+      // dive-clear (which checks terrain-grounded) never fires — diveT would
+      // stay latched and lock out jump+levitation. Clear it on contact, and if
+      // it was a STOMP onto a destructible crate, smash it and pop off the wreck.
+      if (player.diveT > 0) {
+        player.diveT = 0;
+        const destructible = body.material ? bodyMaterialDef(body.material).gore !== null : false;
+        if (destructible) {
+          this.smashBody(body);
+          player.vy = -STOMP_BOUNCE;
+          player.grounded = false;
+          this.ctx.fx.screenShake = Math.min(this.ctx.fx.screenShake + 0.02, 0.05);
+          this.ctx.audio.landThud(1);
+          return true; // the body is gone — nothing left to seat against
+        }
+        this.ctx.audio.landThud(0.6); // a tough body (metal): just a clang
+      }
       return true;
     }
 
@@ -795,13 +912,18 @@ export class RigidBodies implements RigidBodiesApi {
     const desired = this.desired;
     desired.clear();
     for (const body of this.bodies) {
+      if (desired.size >= MAX_TERRAIN_CELLS) break; // total-collider ceiling (anti-overflow)
       const rb = this.handles.get(body);
       if (!rb || body.kind !== 'dynamic') continue;
       const t = rb.translation();
       const v = rb.linvel();
-      // Reach grows with speed (cells/frame) so the collider window leads motion.
-      const lead = Math.ceil(Math.hypot(v.x, v.y) / PF);
-      const r = shapeRadius(body.shape) + TERRAIN_MARGIN + lead;
+      // Reach grows with speed (cells/frame) so the collider window leads motion —
+      // but BOTH the lead and the absolute reach are hard-capped: an extreme (or
+      // non-finite) velocity must never make this window span the grid and spawn a
+      // wall of colliders that overflows Rapier (clampBody also bounds the speed).
+      const speed = Math.hypot(v.x, v.y) / PF;
+      const lead = Number.isFinite(speed) ? Math.min(MAX_TERRAIN_LEAD, Math.ceil(speed)) : 0;
+      const r = Math.min(MAX_TERRAIN_REACH, shapeRadius(body.shape) + TERRAIN_MARGIN + lead);
       const x0 = Math.max(1, Math.floor(t.x - r));
       const x1 = Math.min(WIDTH - 2, Math.ceil(t.x + r));
       const y0 = Math.max(1, Math.floor(t.y - r));

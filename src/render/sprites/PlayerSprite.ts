@@ -336,6 +336,24 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
       : 0;
     const py = player.y + bodyBob;
     const hat = player.hat;
+    // Wall-hug tilt: ROTATE the whole figure to lie parallel to the rock face
+    // instead of plumb-vertical (the "climbing in mid-air" look). A rigid rotation
+    // (not a shear) keeps the wizard's shape — a shear smears the top sideways and
+    // reads as "lying down". Pivot low on the body so the toes stay on the lip.
+    // cs/crow wrap the drawing primitives so the silhouette + outline rotate too.
+    const ang = Math.atan(player.climbLean);
+    const cosA = Math.cos(ang),
+      sinA = Math.sin(ang);
+    const pivY = py - 4;
+    const rxAt = (x: number, y: number): number => px + (x - px) * cosA + (pivY - y) * sinA;
+    const ryAt = (x: number, y: number): number => pivY - ((pivY - y) * cosA - (x - px) * sinA);
+    const cs = {
+      setPx: (x: number, y: number, r: number, g: number, b: number): void =>
+        s.setPx(rxAt(x, y), ryAt(x, y), r, g, b),
+    };
+    const crow = (x0: number, x1: number, yy: number, c: RGB): void => {
+      for (let xx = x0; xx <= x1; xx++) s.setPx(rxAt(xx, yy), ryAt(xx, yy), c[0], c[1], c[2]);
+    };
     // hands and feet trade holds across the six-beat bouldering cycle
     const shift = beat >= 2 && beat <= 4 ? 1 : 0;
     const reach = movingClimb && beat === 2 ? (up ? 2 : -1) : 0;
@@ -343,21 +361,21 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     const step = movingClimb && beat >= 4 ? (up ? 1 : -1) : 0;
 
     // feet: one toe on the lip, the other jammed into the face higher up
-    s.setPx(px + wd * 3, py, ...BOOT);
-    s.setPx(px + wd * 2, py, ...BOOT);
-    s.setPx(px + wd * 2, py - 1, ...BOOT_L);
-    s.setPx(px + wd * 3, py - 4 - step, ...BOOT);
-    s.setPx(px + wd * 2, py - 4 - step, ...BOOT_L);
+    cs.setPx(px + wd * 3, py, ...BOOT);
+    cs.setPx(px + wd * 2, py, ...BOOT);
+    cs.setPx(px + wd * 2, py - 1, ...BOOT_L);
+    cs.setPx(px + wd * 3, py - 4 - step, ...BOOT);
+    cs.setPx(px + wd * 2, py - 4 - step, ...BOOT_L);
 
     // bent legs holding the hips off the rock
-    s.setPx(px + wd, py - 2, ...ROBE_D);
-    s.setPx(px + wd, py - 5 - Math.max(0, step), ...ROBE_D);
+    cs.setPx(px + wd, py - 2, ...ROBE_D);
+    cs.setPx(px + wd, py - 5 - Math.max(0, step), ...ROBE_D);
 
     // the skirt hangs PLUMB off the hips — gravity owns it, not the stride
     for (const [dy, hw] of [[3, 3], [4, 3], [5, 2], [6, 2]] as const) {
       for (let dx = -hw; dx <= hw; dx++) {
         const edge = Math.abs(dx) === hw;
-        s.setPx(px - wd + dx, py - dy, ...(edge ? ROBE_D : ROBE));
+        cs.setPx(px - wd + dx, py - dy, ...(edge ? ROBE_D : ROBE));
       }
     }
 
@@ -366,43 +384,43 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
       const shiftX = dy >= 9 ? wd : 0;
       for (let dx = -2; dx <= 2; dx++) {
         const c = dx === 0 ? TRIM : Math.abs(dx) === 2 ? ROBE_D : ROBE;
-        s.setPx(px + shiftX + dx, py - dy, ...c);
+        cs.setPx(px + shiftX + dx, py - dy, ...c);
       }
     }
-    row(px + wd - 2, px + wd + 2, py - 11, ROBE); // shoulders
+    crow(px + wd - 2, px + wd + 2, py - 11, ROBE); // shoulders
 
     // both arms up the wall: a high lock-off and a mid hold, trading places
-    s.setPx(px + wd * 2, py - 12 - pull, ...ROBE_D);
-    s.setPx(px + wd * 3, py - 13 + shift - reach, ...ROBE_D);
-    s.setPx(px + wd * 4, py - 14 + shift - reach, ...SKIN);
-    s.setPx(px + wd * 3, py - 11 - shift + pull, ...ROBE_D);
-    s.setPx(px + wd * 4, py - 10 - shift + pull, ...SKIN_D);
+    cs.setPx(px + wd * 2, py - 12 - pull, ...ROBE_D);
+    cs.setPx(px + wd * 3, py - 13 + shift - reach, ...ROBE_D);
+    cs.setPx(px + wd * 4, py - 14 + shift - reach, ...SKIN);
+    cs.setPx(px + wd * 3, py - 11 - shift + pull, ...ROBE_D);
+    cs.setPx(px + wd * 4, py - 10 - shift + pull, ...SKIN_D);
 
     // head tight to the rock, eyes UP the route
     const hx = px + wd;
     for (let dy = 12; dy <= 14; dy++) {
       for (let dx = -2; dx <= 2; dx++) {
         const c = dy === 14 ? SHADE : dx * wd > 0 ? SKIN : SKIN_D;
-        s.setPx(hx + dx, py - dy, ...c);
+        cs.setPx(hx + dx, py - dy, ...c);
       }
     }
     if (player.blinkTimer === 0) {
-      s.setPx(hx + wd, py - 13, 1.0, 1.0, 1.0);
-      s.setPx(hx + wd * 2, py - 13, 0.08, 0.08, 0.12);
+      cs.setPx(hx + wd, py - 13, 1.0, 1.0, 1.0);
+      cs.setPx(hx + wd * 2, py - 13, 0.08, 0.08, 0.12);
     }
 
     // hat tipped back off the brow — he's reading the wall above
     const hatY = py - 15;
     for (let dx = -4; dx <= 4; dx++) {
-      s.setPx(hx - wd + dx, hatY, ...(Math.abs(dx) === 4 ? HAT_D : HAT));
+      cs.setPx(hx - wd + dx, hatY, ...(Math.abs(dx) === 4 ? HAT_D : HAT));
     }
-    row(hx - wd - 1, hx - wd + 1, hatY - 1, BAND);
-    row(hx - wd * 2 - 1, hx - wd * 2 + 1, hatY - 2, HAT);
-    s.setPx(hx - wd * 3 + Math.round(hat.ox * 0.5), hatY - 3 + Math.round(hat.oy * 0.5), ...HAT_D);
+    crow(hx - wd - 1, hx - wd + 1, hatY - 1, BAND);
+    crow(hx - wd * 2 - 1, hx - wd * 2 + 1, hatY - 2, HAT);
+    cs.setPx(hx - wd * 3 + Math.round(hat.ox * 0.5), hatY - 3 + Math.round(hat.oy * 0.5), ...HAT_D);
 
     stampOutline();
     // both hands are on the rock; the trigger breaks one free to cast
-    if (player.firing) drawStaff(px - wd * 2, py - 10);
+    if (player.firing) drawStaff(rxAt(px - wd * 2, py - 10), ryAt(px - wd * 2, py - 10));
     return;
   }
 

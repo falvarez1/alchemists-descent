@@ -20,11 +20,11 @@ export interface BackdropLayerSpec {
 export const BACKDROP_SETTINGS_KEY = 'noita-backdrop-settings';
 
 export const DEFAULT_BACKDROP_GRADE: BackdropGradeSettings = {
-  exposure: -0.35,
-  brightness: -0.015,
-  contrast: 1,
-  gamma: 1,
-  saturation: 0.95,
+  exposure: -1.22,
+  brightness: -0.035,
+  contrast: 1.19,
+  gamma: 1.43,
+  saturation: 0.71,
 };
 
 export const BACKDROP_LAYER_SPECS: readonly BackdropLayerSpec[] = [

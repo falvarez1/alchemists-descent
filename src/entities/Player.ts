@@ -4,10 +4,11 @@
 // updatePlayer / updatePlayerAnimation).
 // DOM writes (game-over overlay) become 'playerDied' / 'playerRespawned' events.
 
-import { HEIGHT, WIDTH } from '@/config/constants';
+import { DEATH_SLOWMO_FRAMES, HEIGHT, WIDTH } from '@/config/constants';
+import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
-import type { Ctx, PerkId, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
-import { PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP } from '@/core/types';
+import type { Ctx, EnemyKind, PerkId, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
+import { PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
 import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup } from '@/core/pickupDefs';
 import { resetCombatTransients } from '@/game/transients';
@@ -17,11 +18,63 @@ import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
 const REVIEW_STATUS_FRAMES = 3600;
 const CLIMB_FACE_REACHES = [PLAYER_HALF_W + 1, PLAYER_HALF_W + 2, PLAYER_HALF_W + 3, PLAYER_HALF_W + 4];
 const CLIMB_X_NUDGES = [0, 1, 2];
+/** Climbing UP may bulge farther off the face to round a protruding rock/overhang
+ *  (a stone nub poking into the body); nudge 3 keeps the wall just within reach. */
+const CLIMB_UP_NUDGES = [0, 1, 2, 3];
 const CLIMB_BRUSH_MAX = 8;
+/** Mantle: at a wall top, pull up onto a ledge whose surface is this many cells
+ *  of rise away (roughly hand-high), nearest first. */
+const CLIMB_MANTLE_MIN_UP = 5;
+const CLIMB_MANTLE_MAX_UP = PLAYER_H + 3;
+/** Climb speed in CELLS PER FRAME (higher = faster). A fractional rate lets us
+ *  tune between whole-frame cadences — ~0.45 is a touch quicker than the old
+ *  3-frames-per-cell (0.33) without becoming a zip. */
+const CLIMB_RATE_UP = 0.45;
+const CLIMB_RATE_DOWN = 0.5;
+/** Max cells/frame the body is pulled toward the face to close the grip gap. */
+const CLIMB_SNUG_MAX = 4;
+/** Heights (cells above the feet) the wall-lean sampler reads the face at. */
+const CLIMB_LEAN_LOW = 2;
+const CLIMB_LEAN_HIGH = 14;
+/** Lean below this is treated as a plumb wall (kills jitter on lumpy faces). */
+const CLIMB_LEAN_DEADZONE = 0.14;
+/** Tilt cap: tan of the body angle off vertical (~0.32 ≈ 18°). Keep it modest —
+ *  a strong tilt reads as "lying down", not "climbing". */
+const CLIMB_LEAN_MAX = 0.32;
+/** How fast the rendered lean eases toward the measured wall angle (heavy = calm). */
+const CLIMB_LEAN_EASE = 0.12;
 const TELEPORT_SEARCH_RADIUS = 260;
 // Vine swing (#2): latch a hanging vine and pendulum on it; pump with left/right.
 const KICK_BASE_RECOIL = 0.5; // kick always self-pushes this fraction even into open air (so it works mid-air like wand recoil); a solid hit ramps to 1
+const GUST_ENEMY_PUSH = 5; // kick wind-gust shove scalar for enemies (mass-scaled in EnemyControl.gustShove)
 const MOVE_ACCEL_CAP = 0.6; // max per-frame ground-speed gain — high top speeds (Swift stacks / God Mode) RAMP up over several frames instead of snapping to max
+// Fine horizontal control (Celeste-style). Two halves:
+//  - Soft-start: ground accel eases in from a standstill so a brief A/D tap is a
+//    small, controllable nudge, ramping to full accel as you pick up speed (a
+//    held run still reaches top speed in ~7 frames). Air control stays snappy.
+//  - Fast stop: on release, decelerate quicker than you accelerated and snap the
+//    last crumb of speed to zero, so a tap doesn't coast cells past your intent.
+const MOVE_SOFT_START = 0.55; // accel from rest = this fraction of full, ramping to 1.0 at top speed (ground AND air)
+const GROUND_STOP_DECAY = 0.6; // ground velocity kept per frame with no input (was 0.72)
+const GROUND_STOP_SNAP = 0.12; // below this |vx| (cells/frame) the body halts outright
+// Air horizontal control. Inertia (airDrag ~0.985) carries a fast run into a
+// jump/levitate so a glide coasts — but a quick TAP from low speed would coast
+// the same ~65x, flinging you sideways. So below the glide speed, with no input,
+// stop fast like the ground; at/above it the carried momentum still glides.
+const AIR_GLIDE_SPEED = 1.9; // |vx| at/above which airborne momentum keeps its slow drag (a real glide)
+const AIR_STOP_DECAY = 0.74; // air velocity kept per frame for a low-speed tap with no input (floatier than ground)
+// Variable jump height. The fixed -3.7 launch peaks ~24 cells, so even a tap
+// flies way over a crate. Hold jump for the full leap; release during the rise
+// to cut it short (a low hop). Holding past the window rolls into levitation.
+const JUMP_CUT = 0.25; // upward velocity kept when jump is released mid-rise (lower = shorter min hop)
+const JUMP_HOLD_WINDOW = 7; // frames a fresh jump stays a cuttable ballistic leap (jet suppressed)
+// Top ground speed is capped here so speed buffs (Swift potion ×1.5, Swift Soles
+// ×1.18, God Mode kits) still feel faster but never outrun the soft-start /
+// quick-stop precision curve. Base run is 2.6; this bounds the stacked total.
+const MAX_RUN_CAP = 3.6;
+const ENEMY_STOMP_BOUNCE = 3.6; // upward pop after a Mario-style stomp kill (chains to the next foe)
+// Too big/heavy to stomp — a boot off these just bounces (handle them another way).
+const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'golem']);
 const SWING_REACH = 16;
 const SWING_PUMP = 0.16;
 const SWING_MIN_LEN = 14;
@@ -141,6 +194,7 @@ export function createPlayer(): PlayerState {
     climbPhase: 0,
     climbMoveT: 0,
     climbIntentY: 0,
+    climbLean: 0,
     robe: { ox: 0, vx: 0 },
   };
 }
@@ -158,6 +212,10 @@ export class PlayerControl implements PlayerControlApi {
   private framesSinceGrounded = 99;
   /** Frames remaining in which a pre-landing jump press still fires. */
   private jumpBufferFrames = 0;
+  /** Frames left in a fresh jump's ballistic rise: during this window holding
+   *  jump stays a (cuttable) ballistic leap rather than spooling the jet, so
+   *  releasing early gives a short hop. Counts down; 0 = jet may engage. */
+  private jumpRiseFrames = 0;
   /** Edge detector for the jump key. */
   private prevJumpHeld = false;
   /** Frames until the player can kick again. */
@@ -227,6 +285,50 @@ export class PlayerControl implements PlayerControlApi {
     return samples >= 4 && anchored >= 2;
   }
 
+  /** Horizontal cells from body center to the first solid face cell on `side`. */
+  private wallSurfaceDist(ctx: Ctx, x: number, y: number, side: number, dy: number): number {
+    const maxReach = PLAYER_HALF_W + 9;
+    for (let r = PLAYER_HALF_W - 1; r <= maxReach; r++) {
+      const sx = x + side * r,
+        sy = y - dy;
+      if (!ctx.world.inBounds(sx, sy)) return -1;
+      if (ctx.physics.cellBlocks(sx, sy)) return r;
+    }
+    return -1;
+  }
+
+  /**
+   * The climbed face's tangent slope: x-shift per cell of HEIGHT, sampling the
+   * surface distance low and high on the body. 0 on a plumb wall. The sprite
+   * leans by this so it lies parallel to the rock; the climb releases when it
+   * exceeds CLIMB_LEAN_RELEASE (a walkable slope or a wrong-way overhang).
+   */
+  private climbLeanTarget(ctx: Ctx): number {
+    const { player } = ctx;
+    const side = player.climbDir || 1;
+    // Least-squares slope of surface-distance vs height over MANY samples, so a
+    // single bump or edge can't throw the lean — real cave faces are lumpy and a
+    // two-point read swings wildly off any nub.
+    let n = 0,
+      sumH = 0,
+      sumD = 0,
+      sumHH = 0,
+      sumHD = 0;
+    for (let dy = CLIMB_LEAN_LOW; dy <= CLIMB_LEAN_HIGH; dy += 2) {
+      const d = this.wallSurfaceDist(ctx, player.x, player.y, side, dy);
+      if (d < 0) continue;
+      n++;
+      sumH += dy;
+      sumD += d;
+      sumHH += dy * dy;
+      sumHD += dy * d;
+    }
+    if (n < 4) return 0; // not enough face sampled to trust a slope
+    const denom = n * sumHH - sumH * sumH;
+    if (denom === 0) return 0;
+    return (side * (n * sumHD - sumH * sumD)) / denom;
+  }
+
   private climbClearance(
     ctx: Ctx,
     x: number,
@@ -279,7 +381,11 @@ export class PlayerControl implements PlayerControlApi {
   private tryClimbStep(ctx: Ctx, dy: number): boolean {
     const { player } = ctx;
     const side = player.climbDir || 1;
-    for (const nudge of CLIMB_X_NUDGES) {
+    // Climbing up bulges farther off the face to get the body around a jutting
+    // rock; down keeps the tighter nudge set (hasClimbFaceAt still gates it onto
+    // the wall, so a bulge that loses the face is simply not taken).
+    const nudges = dy < 0 ? CLIMB_UP_NUDGES : CLIMB_X_NUDGES;
+    for (const nudge of nudges) {
       const nx = player.x - side * nudge;
       const ny = player.y + dy;
       const clearance = this.climbClearance(ctx, nx, ny, side, PLAYER_H);
@@ -288,6 +394,38 @@ export class PlayerControl implements PlayerControlApi {
       player.y = ny;
       this.brushClimbDebris(ctx, clearance.brush, side);
       return true;
+    }
+    return false;
+  }
+
+  /**
+   * Top-out mantle: when an up-climb can't continue (the wall ended), look for a
+   * standable lip just over the top — toward the wall, near the hands — and haul
+   * up onto it instead of dangling. Returns true if he pulled up (now grounded).
+   */
+  private tryMantle(ctx: Ctx): boolean {
+    const { player } = ctx;
+    const side = player.climbDir || 1;
+    for (let up = CLIMB_MANTLE_MIN_UP; up <= CLIMB_MANTLE_MAX_UP; up++) {
+      for (let over = 0; over <= PLAYER_HALF_W + 3; over++) {
+        const nx = player.x + side * over; // step onto the TOP of the wall (toward the face)
+        const ny = player.y - up;
+        if (!ctx.physics.entityFree(nx, ny, PLAYER_HALF_W, PLAYER_H)) continue; // standing room
+        if (ctx.physics.entityFree(nx, ny + 1, PLAYER_HALF_W, 1)) continue; // solid underfoot
+        player.x = nx;
+        player.y = ny;
+        player.vx = side * 0.5;
+        player.vy = 0;
+        player.fx = 0;
+        player.fy = 0;
+        player.grounded = true;
+        player.stretchT = 6; // a little pull-up pop
+        player.hat.vy -= 1.4;
+        this.stopClimb(player);
+        ctx.particles.burst(nx, ny - 2, 7, null, () => packRGB(150, 140, 120), 1.2, { grav: 0.05 });
+        ctx.audio.noiseBurst(0.05, 300, 0.08, true);
+        return true;
+      }
     }
     return false;
   }
@@ -321,6 +459,30 @@ export class PlayerControl implements PlayerControlApi {
     player.climbing = false;
     player.climbMoveT = 0;
     player.climbIntentY = 0;
+  }
+
+  /** Mario stomp: a committed dive that spears a stompable foe's upper body kills
+   *  it outright and bounces the player off (chaining to the next). Caller gates
+   *  on diveT > 0, so a plain fall onto a foe never triggers it. */
+  private tryStompEnemy(ctx: Ctx): void {
+    const player = ctx.player;
+    for (const e of ctx.enemies) {
+      if (STOMP_IMMUNE.has(e.kind)) continue;
+      const def = ctx.enemyCtl.defs[e.kind];
+      if (Math.abs(player.x - e.x) > PLAYER_HALF_W + def.halfW) continue; // no horizontal overlap
+      const crown = e.y - def.h;
+      // Feet must have driven down into the foe from above (crown..feet band).
+      if (player.y >= crown - 4 && player.y <= e.y + 1) {
+        ctx.enemyCtl.kill(e, player.vx * 0.4, -1.2);
+        player.diveT = 0;
+        player.vy = -ENEMY_STOMP_BOUNCE;
+        player.grounded = false;
+        player.stretchT = 6;
+        ctx.fx.hitstop = Math.max(ctx.fx.hitstop, 3); // a crunchy little freeze
+        ctx.audio.landThud(0.85);
+        return; // one kill per frame; the bounce carries you onward
+      }
+    }
   }
 
   private resetClimbState(player: PlayerState): void {
@@ -460,6 +622,11 @@ export class PlayerControl implements PlayerControlApi {
     const recoil = lp.kickSelfRecoil * Math.max(KICK_BASE_RECOIL, reaction);
     this.applyImpulse(-dirX * recoil, -dirY * recoil);
     if (player.grounded && dirY > 0.2) player.grounded = false; // kicking down lifts you off
+    // The gust catches the wizard's own cloth: the hat whips and the robe flares
+    // in the blast (the same springs the dive/skid/recoil drive).
+    player.hat.vx += dirX * 1.8;
+    player.hat.vy -= 1.2;
+    player.robe.vx += dirX * 1.4;
 
     // WIND GUST: the kick is a blast of air. Within a wide gust cone it blows loose
     // light cells (ash ALWAYS, plus embers + gases) into flying motes, shoves loose
@@ -502,8 +669,21 @@ export class PlayerControl implements PlayerControlApi {
     if (ctx.critters) {
       for (const cr of ctx.critters.list) {
         const g = gustAt(cr.x, cr.y);
-        if (g > 0) { cr.vx += dirX * g * 4.5; cr.vy += dirY * g * 4.5 - g * 1.4; cr.facing = dirX < 0 ? -1 : 1; }
+        if (g > 0) {
+          cr.vx += dirX * g * 4.5;
+          cr.vy += dirY * g * 4.5 - g * 1.4;
+          cr.facing = dirX < 0 ? -1 : 1;
+          // startle so the AI stops instantly damping the shove — it scatters
+          // and flees (a beetle that would otherwise re-plant its crawl speed).
+          cr.startle = Math.max(cr.startle ?? 0, Math.round(18 + g * 14));
+        }
       }
+    }
+    // Enemies in the gust are blown back too — mass-scaled in the enemy controller:
+    // a slime is nudged, a bat is hurled hard enough to smash into a wall and splatter.
+    for (const e of ctx.enemies) {
+      const g = gustAt(e.x, e.y - 5);
+      if (g > 0) ctx.enemyCtl.gustShove(e, dirX, dirY, g * GUST_ENEMY_PUSH);
     }
     ctx.vineStrands?.applyRadialImpulse(ox, oy, windRange * 0.9, 1.8); // bend the hanging vines in the gust
 
@@ -540,6 +720,12 @@ export class PlayerControl implements PlayerControlApi {
     this.swinging = false;
     ctx.player.swinging = false;
     this.swingJumpPrev = false;
+    // `grounded` is frozen at its pre-swing value (the normal update — which
+    // re-detects ground — was skipped every swinging frame). If it's stale-true,
+    // the release-frame horizontal block clamps vx to maxRun and the swing's
+    // momentum vanishes. Force airborne so the inertia path carries the launch;
+    // ground is correctly re-detected at the end of this frame.
+    ctx.player.grounded = false;
     ctx.vineStrands.releaseSwing();
   }
 
@@ -554,9 +740,11 @@ export class PlayerControl implements PlayerControlApi {
     const rd = Math.hypot(rx, ry) || 0.001;
     const tx = -ry / rd; // tangent (perpendicular to the rope)
     const ty = rx / rd;
+    // Tangent (tx,ty) points LEFT when hanging below the anchor, so the pump sign
+    // is inverted vs intuition: RIGHT must drive +x. (left → −pump → +tx·… etc.)
     let pump = 0;
-    if (keys.left) pump -= SWING_PUMP;
-    if (keys.right) pump += SWING_PUMP;
+    if (keys.left) pump += SWING_PUMP;
+    if (keys.right) pump -= SWING_PUMP;
     player.vx += tx * pump;
     player.vy += ty * pump;
     player.vx *= 0.992;
@@ -618,9 +806,10 @@ export class PlayerControl implements PlayerControlApi {
       glow: 2.4,
       grav: 0.04,
     });
-    // Death is a walk back, not a reset: a small recoverable purse spills.
+    // Death is a walk back, not a reset: a small recoverable purse spills (the
+    // fraction scales with difficulty — gentler on easy, harsher on Archmage).
     const runtime = ctx.levels.current;
-    const spill = Math.floor(ctx.state.score * 0.15);
+    const spill = Math.floor(ctx.state.score * difficultyMods(ctx.state).deathPenalty);
     if (runtime && spill > 0) {
       ctx.state.score -= spill;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
@@ -656,6 +845,10 @@ export class PlayerControl implements PlayerControlApi {
     ctx.audio.squelch();
     ctx.audio.boom(10);
     ctx.fx.screenShake = 0.05;
+    // A beat of freeze, then slow-mo: the death reads as a moment, and the camera
+    // (see Camera.update) rides the ragdoll down through it.
+    ctx.fx.hitstop = Math.max(ctx.fx.hitstop, 5);
+    ctx.fx.deathSlowMo = DEATH_SLOWMO_FRAMES;
     const level = ctx.levels.current?.def;
     ctx.events.emit('playerDied', {
       depth: level?.depth ?? ctx.waves.num,
@@ -856,6 +1049,7 @@ export class PlayerControl implements PlayerControlApi {
         player.grounded &&
         !player.inLiquid &&
         !player.climbing &&
+        player.wallGrabT <= 0 && // never drop into a crawl while gripping a wall face — it reads as lying off the rock
         !restrained
       ) {
         player.crawling = true;
@@ -873,7 +1067,9 @@ export class PlayerControl implements PlayerControlApi {
       // Wants-to-stand: S released, W pressed (a stand attempt comes before
       // any jump), swimming preempting the stance, or a restraint (communion,
       // lever) demanding the full posture. Geometry has the final word.
-      const wantsStand = !keys.down || keys.jump || player.inLiquid || restrained;
+      // Gripping a wall face stands you up (geometry permitting) so a crawl can't
+      // cling sideways to the rock — the bouldering pose owns the wall, not the crawl.
+      const wantsStand = !keys.down || keys.jump || player.inLiquid || restrained || player.wallGrabT > 0;
       if (wantsStand) {
         if (ctx.physics.entityFree(player.x, player.y, 4, PLAYER_H)) {
           // POP upright: reverse squash overshoot, the hat flips, dust shakes off
@@ -1001,7 +1197,13 @@ export class PlayerControl implements PlayerControlApi {
     // cap only bites at high speedK (Swift/God Mode); normal, crawl, and the
     // gentle levitation accel stay well under it and are unchanged.
     const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK, MOVE_ACCEL_CAP),
-      maxRun = 2.6 * speedK * stanceK;
+      // Cap the boosted top speed (Swift/God Mode) so it stays inside the
+      // precision curve; crawl/crouch then scale down from the capped run.
+      maxRun = Math.min(2.6 * speedK, MAX_RUN_CAP) * stanceK;
+    // Soft-start: ease in from a standstill (a tap stays slow + precise), ramping
+    // to full accel with speed. Applies in the air too, so a fresh airborne tap is
+    // gentle while CARRIED speed (already near maxRun) still gets full control.
+    const stepAccel = accel * (MOVE_SOFT_START + (1 - MOVE_SOFT_START) * Math.min(1, Math.abs(player.vx) / maxRun));
     if (!player.climbing) {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
       // back DOWN — a fast run carried into a jump/levitate keeps its speed (you
@@ -1009,22 +1211,30 @@ export class PlayerControl implements PlayerControlApi {
       // any excess momentum bleeds off through drag, never a hard snap.
       if (keys.right) {
         player.facing = 1;
-        if (player.vx < maxRun) player.vx = Math.min(maxRun, player.vx + accel);
+        if (player.vx < maxRun) player.vx = Math.min(maxRun, player.vx + stepAccel);
       }
       if (keys.left) {
         player.facing = -1;
-        if (player.vx > -maxRun) player.vx = Math.max(-maxRun, player.vx - accel);
+        if (player.vx > -maxRun) player.vx = Math.max(-maxRun, player.vx - stepAccel);
       }
       if (player.grounded || player.inLiquid) {
-        // On a surface: momentum dies fast and the cap is firm.
-        if (!keys.left && !keys.right) player.vx *= 0.72;
+        // On a surface: a quick, snappy stop on release so a tap is a small,
+        // predictable nudge instead of a long coast (precision-platformer feel).
+        if (!keys.left && !keys.right) {
+          player.vx *= GROUND_STOP_DECAY;
+          if (Math.abs(player.vx) < GROUND_STOP_SNAP) player.vx = 0;
+        }
         player.vx = clamp(player.vx, -maxRun, maxRun);
       } else {
-        // Airborne / levitating: INERTIA. Only a gentle air drag bleeds
-        // horizontal momentum, so sprint speed carries into flight and a glide
-        // coasts instead of snapping to a stop. The ±12 rail is a sanity cap for
-        // stacked recoil impulses.
-        player.vx *= lp.airDrag;
+        // Airborne / levitating: a fast run still GLIDES (carried momentum bleeds
+        // slowly through airDrag), but a quick low-speed TAP stops fast so it's a
+        // small nudge, not a 60-cell skate. The ±12 rail caps stacked recoil.
+        if (!keys.left && !keys.right && Math.abs(player.vx) < AIR_GLIDE_SPEED) {
+          player.vx *= AIR_STOP_DECAY;
+          if (Math.abs(player.vx) < GROUND_STOP_SNAP) player.vx = 0;
+        } else {
+          player.vx *= lp.airDrag;
+        }
         player.vx = clamp(player.vx, -12, 12);
       }
     } else {
@@ -1159,6 +1369,10 @@ export class PlayerControl implements PlayerControlApi {
     let handledByClimb = false;
     if (player.climbing) {
       const stillOnFace = this.hasClimbFace(ctx, player.climbDir, PLAYER_H);
+      // The local rock angle: drives the wall-hug tilt, and if it's steeper than
+      // a climbable face (a walkable slope, or an overhang tilting the wrong way)
+      // we let go — the climb resolves into a walk or a fall.
+      const leanTarget = this.climbLeanTarget(ctx);
       if (!keys.grab || player.inLiquid || restrained) {
         this.stopClimb(player);
       } else if (wallJumpPressed || keys.wallJump) {
@@ -1180,12 +1394,56 @@ export class PlayerControl implements PlayerControlApi {
           const g = 128 + Math.floor(Math.random() * 50);
           return packRGB(g, g, g - 12);
         }, 0.75, { grav: 0.04 });
-      } else if (!stillOnFace) {
+      } else if ((player.climbDir > 0 && keys.left && !keys.right) || (player.climbDir < 0 && keys.right && !keys.left)) {
+        // Lean AWAY from the wall and you peel off it — let go and fall (no launch,
+        // unlike a wall-jump; pressing INTO the wall keeps you hugging it).
+        const away = -player.climbDir;
         this.stopClimb(player);
+        player.vx = away * 1.2; // a small shove off the face
+        player.grounded = false;
+        player.wallGrabT = 0;
+        player.facing = away;
+        this.framesSinceGrounded = 99;
+        player.hat.vx += away * 1.0;
+        ctx.particles.burst(player.x - player.climbDir * 2, player.y - 6, 3, null, () => {
+          const g = 128 + Math.floor(Math.random() * 50);
+          return packRGB(g, g, g - 12);
+        }, 0.6, { grav: 0.05 });
+      } else if (!stillOnFace) {
+        // The face ran out. If he was hauling UP and there's a landing in reach,
+        // mantle onto it (top-out) rather than just dropping. Otherwise the
+        // "healthy limit" is the reach itself — a too-shallow ramp or a face that
+        // receded out of reach stops anchoring, dropping him to a walk/fall.
+        if (!(keys.up && this.tryMantle(ctx))) this.stopClimb(player);
       } else {
         const climbIntent = keys.up === keys.down ? 0 : keys.up ? -1 : 1;
         player.climbIntentY = climbIntent;
         player.climbT = Math.min(10, player.climbT + 2);
+        // ease the rendered body toward the wall angle so he hugs it. A soft
+        // deadzone keeps lumpy near-vertical faces plumb; the cap keeps the tilt
+        // a lean, not a recline.
+        let leanGoal = 0;
+        if (Math.abs(leanTarget) > CLIMB_LEAN_DEADZONE) {
+          leanGoal = clamp(
+            leanTarget - Math.sign(leanTarget) * CLIMB_LEAN_DEADZONE,
+            -CLIMB_LEAN_MAX,
+            CLIMB_LEAN_MAX,
+          );
+        }
+        player.climbLean += (leanGoal - player.climbLean) * CLIMB_LEAN_EASE;
+        // SNUG to the rock: the catch reach is lenient (up to 4 cells off the
+        // face), and tryClimbStep nudges AWAY to find clearance — together they
+        // leave him gripping air. Pull toward the wall each frame; climbClearance
+        // stops him one cell off the surface, so he reads as actually holding on.
+        for (let n = 0; n < CLIMB_SNUG_MAX; n++) {
+          const nx = player.x + player.climbDir;
+          if (
+            !this.climbClearance(ctx, nx, player.y, player.climbDir, PLAYER_H).ok ||
+            !this.hasClimbFaceAt(ctx, player.climbDir, PLAYER_H, nx, player.y)
+          )
+            break;
+          player.x = nx;
+        }
         player.wallGrabDir = player.climbDir;
         player.wallGrabT = 10;
         player.facing = -player.climbDir;
@@ -1199,10 +1457,10 @@ export class PlayerControl implements PlayerControlApi {
         ctx.input.siphonHeld = ctx.input.pourHeld = ctx.input.drinkHeld = false;
 
         if (climbIntent !== 0) {
-          player.climbMoveT++;
-          const stepFrames = climbIntent < 0 ? 5 : 4;
-          if (player.climbMoveT >= stepFrames) {
-            player.climbMoveT = 0;
+          // accumulate fractional cells-per-frame; a whole cell of progress = one step
+          player.climbMoveT += climbIntent < 0 ? CLIMB_RATE_UP : CLIMB_RATE_DOWN;
+          if (player.climbMoveT >= 1) {
+            player.climbMoveT -= 1;
             if (this.tryClimbStep(ctx, climbIntent)) {
               player.climbPhase = (player.climbPhase + 1) % 24;
               player.hat.vy += climbIntent < 0 ? -0.35 : 0.25;
@@ -1218,6 +1476,9 @@ export class PlayerControl implements PlayerControlApi {
                   { grav: 0.06 },
                 );
               }
+            } else if (climbIntent < 0) {
+              // can't climb higher — if a landing is in reach, pull up onto it
+              this.tryMantle(ctx);
             }
           }
         } else {
@@ -1231,6 +1492,7 @@ export class PlayerControl implements PlayerControlApi {
     if (!player.climbing) {
       player.climbT = Math.max(0, player.climbT - 2);
       player.climbIntentY = 0;
+      player.climbLean *= 0.7; // relax back to plumb after letting go
     }
 
     if (!handledByClimb) {
@@ -1249,8 +1511,9 @@ export class PlayerControl implements PlayerControlApi {
           player.stretchT = 6; // launch stretch (anti-squash)
           this.framesSinceGrounded = 99; // consumed — no double coyote jumps
           this.jumpBufferFrames = 0;
+          this.jumpRiseFrames = JUMP_HOLD_WINDOW; // arm the cuttable ballistic rise
           ctx.audio.jump();
-        } else if (player.levit > 0 && player.diveT === 0) {
+        } else if (player.levit > 0 && player.diveT === 0 && this.jumpRiseFrames <= 0) {
           levitating = true;
           // levitation response: the jet SPOOLS. Thrust starts at a near-hover
           // levitThrust0 (gravity is 0.28 — the first frames barely arrest the
@@ -1304,6 +1567,17 @@ export class PlayerControl implements PlayerControlApi {
           }
         }
       }
+      // Variable jump height: count down the ballistic window; if jump is let go
+      // mid-rise, cut the climb short (a low hop to land on a crate). At the apex
+      // there's nothing left to cut, so close the window (the jet may take over).
+      if (this.jumpRiseFrames > 0) {
+        this.jumpRiseFrames--;
+        if (player.vy >= 0) this.jumpRiseFrames = 0;
+        else if (!keys.jump) {
+          player.vy *= JUMP_CUT;
+          this.jumpRiseFrames = 0;
+        }
+      }
       if (!levitating) this.levitFrames = 0;
       if (player.grounded || player.inLiquid) player.levit = Math.min(player.maxLevit, player.levit + 1.7);
 
@@ -1350,7 +1624,9 @@ export class PlayerControl implements PlayerControlApi {
       // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling)
       player.fx += player.vx;
       while (player.fx >= 1) {
-        if (!ctx.physics.tryMoveEntity(player, 1, 0, PLAYER_HALF_W, bodyH, stepUp)) {
+        // stepUp climbs floor lips; PLAYER_CEIL_SLIP ducks under a ceiling that
+        // steps down in the travel direction (else a tiny lip pins the slide).
+        if (!ctx.physics.tryMoveEntity(player, 1, 0, PLAYER_HALF_W, bodyH, stepUp, PLAYER_CEIL_SLIP)) {
           player.vx = 0;
           player.fx = 0;
           break;
@@ -1358,7 +1634,7 @@ export class PlayerControl implements PlayerControlApi {
         player.fx -= 1;
       }
       while (player.fx <= -1) {
-        if (!ctx.physics.tryMoveEntity(player, -1, 0, PLAYER_HALF_W, bodyH, stepUp)) {
+        if (!ctx.physics.tryMoveEntity(player, -1, 0, PLAYER_HALF_W, bodyH, stepUp, PLAYER_CEIL_SLIP)) {
           player.vx = 0;
           player.fx = 0;
           break;
@@ -1377,13 +1653,19 @@ export class PlayerControl implements PlayerControlApi {
         player.fy -= 1;
       }
       while (player.fy <= -1) {
-        if (!ctx.physics.tryMoveEntity(player, 0, -1, PLAYER_HALF_W, bodyH, 0)) {
+        // Rising: allow a lateral slip so a small wall nub can't pin a climb up
+        // a tunnel (the vertical mirror of the run's stepUp over floor debris).
+        if (!ctx.physics.tryMoveEntity(player, 0, -1, PLAYER_HALF_W, bodyH, 0, PLAYER_VERT_SLIP)) {
           player.vy = 0;
           player.fy = 0;
           break;
         }
         player.fy += 1;
       }
+      // A committed dive that spears a foe's crown stomps it (Mario-style) and
+      // bounces off — gated on diveT so only a real STOMP kills, never an idle
+      // fall onto a foe (that still trades contact damage as before).
+      if (player.diveT > 0) this.tryStompEnemy(ctx);
       player.grounded = !ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1);
       if (player.grounded) {
         // jump buffer: a press made just before touchdown fires on the landing frame

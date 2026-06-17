@@ -42,6 +42,19 @@ function viscousCanPass(t: number): boolean {
  *  retires the surface layer, bounding how much liquid a gory fight can leave. */
 const BLOOD_DRY = 0.006;
 
+/** Lava meeting water always flashes the water to steam. Whether the lava itself
+ *  chills to stone depends on the direction:
+ *  - water BELOW/beside (lava boring down into it): only this sparse fleck
+ *    chance, so the lava out-bores the crust and eats through instead of
+ *    re-sealing into a stable cake.
+ *  - water RESTING ON TOP (settled): a thick obsidian rind chills DOWN into the
+ *    lava (top cell always, then ragged to LAVA_CRUST_DEPTH) so the seal reads
+ *    as a real crust, not a faint single line.
+ *  Deliberate deviation from the original always-crust port; see docs/PORTING.md. */
+const LAVA_CRUST_CHANCE = 0.06;
+const LAVA_CRUST_DEPTH = 3; // max obsidian-rind thickness where water rests on lava
+const LAVA_TOP_CRUST_DEEP = 0.7; // chance each successive cell below the rind also chills (ragged underside)
+
 function acidCanPass(t: number): boolean {
   return t === Cell.Empty || t === Cell.Steam || t === Cell.Water || t === Cell.Oil || t === Cell.Smoke;
 }
@@ -343,12 +356,31 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
       const ti = w.idx(tx, ty);
       const n = w.types[ti];
       if (n === Cell.Water) {
-        const ci = w.idx(x, y);
-        w.types[ci] = Cell.Stone;
-        w.colors[ci] = stoneColor();
+        // Water always flashes to steam.
         w.types[ti] = Cell.Steam;
         w.life[ti] = 50;
         w.colors[ti] = steamColor();
+        const ci = w.idx(x, y);
+        const belowT = w.inBounds(x, y + 1) ? w.types[w.idx(x, y + 1)] : Cell.Wall;
+        const seated = !(lavaCanPass(belowT) || belowT === Cell.Water); // can't sink -> truly settled
+        if (dy < 0 && seated) {
+          // Water resting ON TOP of SEATED lava: chill a THICK obsidian rind DOWN
+          // into it so the seal is a real crust, not a faint line. (If the lava
+          // can still sink it's boring, not settled — fall through to the fleck.)
+          w.types[ci] = Cell.Stone;
+          w.colors[ci] = stoneColor();
+          for (let d = 1; d <= LAVA_CRUST_DEPTH; d++) {
+            const yy = y + d;
+            if (!w.inBounds(x, yy) || w.types[w.idx(x, yy)] !== Cell.Lava || Math.random() >= LAVA_TOP_CRUST_DEEP) break;
+            const bi = w.idx(x, yy);
+            w.types[bi] = Cell.Stone;
+            w.colors[bi] = stoneColor();
+          }
+        } else if (Math.random() < LAVA_CRUST_CHANCE) {
+          // Boring down / spreading: just the occasional fleck, so lava out-bores it.
+          w.types[ci] = Cell.Stone;
+          w.colors[ci] = stoneColor();
+        }
         return;
       }
       if (n === Cell.Ice && Math.random() < ctx.params.materials[Cell.Lava].meltRange!) {

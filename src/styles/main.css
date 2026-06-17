@@ -434,6 +434,7 @@ body.play-active.runtime-inspector-open #viewport-container {
 .run-launcher-choice:disabled { opacity: 0.45; cursor: not-allowed; }
 .run-launcher-form { display: grid; gap: 12px; align-content: start; }
 .run-launcher-form-grid, .run-launcher-kit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+.run-launcher-difficulty-note { margin: -2px 0 2px; font: 500 11px/1.45 var(--mono); letter-spacing: 0.3px; color: rgba(170,195,220,0.62); }
 .run-launcher-form label { display: grid; gap: 6px; color: #8ea6bd; font: 900 10px/1 var(--mono); letter-spacing: 1.4px; text-transform: uppercase; }
 .run-launcher-form select, .run-launcher-form input {
     min-width: 0; height: 34px; border: 1px solid #2c3c4d; border-radius: 4px;
@@ -1237,6 +1238,127 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
     .card-offer-card { min-height: 0; grid-template-columns: 44px minmax(0, 1fr); grid-template-rows: auto auto auto auto; }
     .card-offer-icon { grid-row: 1 / span 4; }
 }
+.waystone-prompt-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 121;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    box-sizing: border-box;
+    background: rgba(5,4,9,0.72);
+    pointer-events: auto;
+    font-family: var(--mono);
+}
+.waystone-prompt-overlay.visible { display: flex; }
+.waystone-prompt-panel {
+    width: min(440px, calc(100vw - 28px));
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid rgba(110,70,50,0.72);
+    border-radius: 6px;
+    background: rgba(10,8,12,0.96);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.55);
+}
+.waystone-prompt-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: rgba(255,200,120,0.92);
+    text-transform: uppercase;
+}
+.waystone-prompt-body {
+    font-size: 12px;
+    line-height: 1.5;
+    color: rgba(255,255,255,0.72);
+}
+.waystone-prompt-actions {
+    display: flex;
+    gap: 9px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+.waystone-prompt-btn {
+    padding: 8px 14px;
+    border: 1px dashed #6e4632;
+    border-radius: 6px;
+    background: rgba(22,15,11,0.94);
+    color: var(--text-main);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+.waystone-prompt-btn:hover, .waystone-prompt-btn:focus-visible {
+    border-color: #fcd34d;
+    outline: 0;
+    box-shadow: 0 0 0 1px rgba(252,211,77,0.7), 0 0 16px rgba(252,211,77,0.18);
+}
+.waystone-prompt-btn.primary {
+    border-style: solid;
+    border-color: rgba(252,211,77,0.6);
+    color: rgba(255,235,200,0.95);
+}
+/* Hint tier 2: contextual "what to do here" line, bottom-center, just a pill. */
+#interaction-hint {
+    position: absolute;
+    bottom: 64px;
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    max-width: min(620px, calc(100vw - 40px));
+    padding: 5px 14px;
+    border: 1px solid rgba(252,211,77,0.28);
+    border-radius: 999px;
+    background: rgba(12,9,14,0.82);
+    color: rgba(255,235,200,0.92);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.4px;
+    text-align: center;
+    white-space: nowrap;
+    text-shadow: 0 1px 3px #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+#interaction-hint.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* Hint tier 3: teach-once popover, top-center, non-modal, click to dismiss. */
+.hint-teach-overlay {
+    position: fixed;
+    top: 64px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    z-index: 118;
+    width: min(360px, calc(100vw - 28px));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    font-family: var(--mono);
+}
+.hint-teach-overlay.visible { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.hint-teach-card {
+    display: grid;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1px solid rgba(252,211,77,0.4);
+    border-radius: 6px;
+    background: rgba(10,8,12,0.96);
+    box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+    cursor: pointer;
+}
+.hint-teach-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    color: rgba(255,205,120,0.95);
+    text-transform: uppercase;
+}
+.hint-teach-body { font-size: 12px; line-height: 1.5; color: rgba(255,255,255,0.78); }
+.hint-teach-dismiss { font-size: 10px; letter-spacing: 0.5px; color: rgba(255,255,255,0.38); text-transform: uppercase; text-align: right; }
 #descend-btn {
     margin-top: 10px; background: #2a1336; border: 1px solid var(--accent-purple); color: #e9d5ff;
     font-weight: 700; letter-spacing: 2px; font-size: 15px; padding: 11px 30px; border-radius: 6px;

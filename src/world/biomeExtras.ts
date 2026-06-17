@@ -557,12 +557,151 @@ export function applyCampaignDressing(
     }
   };
 
+  // VINE DRAPES: a vine slung wall-to-wall across a gap, sagging in the middle
+  // (a catenary) with the odd sprig dangling — reads as overgrowth bridging a cleft.
+  const stampVineDrapes = (count: number): void => {
+    if (recipe.hanging !== Cell.Vines || count <= 0) return;
+    let placed = 0;
+    for (let attempt = 0; attempt < count * 90 && placed < count; attempt++) {
+      const y = 26 + rng.int(Math.max(1, floorBand - 60));
+      const sx = 12 + rng.int(WIDTH - 24);
+      if (world.types[world.idx(sx, y)] !== Cell.Empty) continue;
+      let leftX = -1, rightX = -1;
+      for (let x = sx; x > sx - 46 && x > 1; x--) {
+        const t = world.types[world.idx(x, y)];
+        if (loadBearingMaterial(t)) { leftX = x; break; }
+        if (t !== Cell.Empty) break;
+      }
+      for (let x = sx; x < sx + 46 && x < WIDTH - 2; x++) {
+        const t = world.types[world.idx(x, y)];
+        if (loadBearingMaterial(t)) { rightX = x; break; }
+        if (t !== Cell.Empty) break;
+      }
+      if (leftX < 0 || rightX < 0) continue;
+      const span = rightX - leftX;
+      if (span < 9 || span > 42) continue;
+      const sag = 2 + Math.floor(span * (0.18 + rng.next() * 0.14));
+      const r = rect(leftX, y - 1, rightX, y + sag + 2);
+      if (isProtected(r, false)) continue;
+      const cells: Array<[number, number]> = [];
+      let clear = true;
+      for (let x = leftX + 1; x < rightX; x++) {
+        const t = (x - leftX) / span;
+        const dip = Math.round(sag * (1 - (2 * t - 1) * (2 * t - 1))); // 0 at the walls, deepest mid-span
+        const yy = y + dip;
+        if (!world.inBounds(x, yy) || world.types[world.idx(x, yy)] !== Cell.Empty) { clear = false; break; }
+        cells.push([x, yy]);
+      }
+      if (!clear || cells.length < 6) continue;
+      let changed = 0;
+      for (const [px, py] of cells) {
+        if (setOpenVine(px, py)) changed++;
+        if (rng.next() < 0.16 && setOpenVine(px, py + 1)) { changed++; if (rng.next() < 0.4) setOpenVine(px, py + 2); } // sprig
+      }
+      if (changed <= 0) continue;
+      stats.accents++;
+      placed++;
+    }
+  };
+
+  // VINE LOOPS: a tendril hangs from the ceiling and curls into a small loop at the
+  // end — the lift sim leaves these (and drapes) as static cover; only thin tendrils sway.
+  const stampVineLoops = (count: number): void => {
+    if (recipe.hanging !== Cell.Vines || count <= 0) return;
+    let placed = 0;
+    for (let attempt = 0; attempt < count * 90 && placed < count; attempt++) {
+      const x = 8 + rng.int(WIDTH - 16);
+      const y = 14 + rng.int(Math.max(1, floorBand - 44));
+      if (world.types[world.idx(x, y)] !== Cell.Empty) continue;
+      if (!world.inBounds(x, y - 1) || !loadBearingMaterial(world.types[world.idx(x, y - 1)])) continue;
+      const stem = 3 + rng.int(7);
+      const loopR = 2 + rng.int(2);
+      const totalH = stem + loopR * 2 + 2;
+      if (y + totalH >= floorBand - 1) continue;
+      const r = rect(x - loopR - 2, y - 2, x + loopR + 2, y + totalH + 2);
+      if (isProtected(r, false)) continue;
+      const cells: Array<[number, number]> = [];
+      for (let d = 0; d < stem; d++) cells.push([x, y + d]);
+      const lcy = y + stem + loopR;
+      for (let a = 0; a < 18; a++) {
+        const ang = (a / 18) * Math.PI * 2;
+        cells.push([x + Math.round(Math.cos(ang) * loopR), lcy + Math.round(Math.sin(ang) * loopR)]);
+      }
+      let clear = true;
+      for (const [px, py] of cells) {
+        if (!world.inBounds(px, py)) { clear = false; break; }
+        const t = world.types[world.idx(px, py)];
+        if (t !== Cell.Empty && t !== Cell.Vines) { clear = false; break; }
+      }
+      if (!clear) continue;
+      let changed = 0;
+      for (const [px, py] of cells) if (setOpenVine(px, py)) changed++;
+      if (changed <= 3) continue;
+      stats.accents++;
+      placed++;
+    }
+  };
+
+  // VINE CLUSTERS: a heavy bushy thicket clinging to a rock surface — a dense,
+  // irregular mass of vines (denser toward its heart) with tendrils drooping off
+  // the underside. Wider than 4 cells, so the lift leaves it as static overgrowth.
+  const stampVineClusters = (count: number): void => {
+    if (recipe.hanging !== Cell.Vines || count <= 0) return;
+    const NEIGH: ReadonlyArray<readonly [number, number]> = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    let placed = 0;
+    for (let attempt = 0; attempt < count * 100 && placed < count; attempt++) {
+      const x = 8 + rng.int(WIDTH - 16);
+      const y = 18 + rng.int(Math.max(1, floorBand - 44));
+      if (world.types[world.idx(x, y)] !== Cell.Empty) continue;
+      let onSurface = false;
+      for (const [dx, dy] of NEIGH) {
+        if (world.inBounds(x + dx, y + dy) && loadBearingMaterial(world.types[world.idx(x + dx, y + dy)])) { onSurface = true; break; }
+      }
+      if (!onSurface) continue;
+      const radius = 3 + rng.int(4); // heavy: a 6–13 cell-wide thicket
+      const r = rect(x - radius - 1, y - radius - 1, x + radius + 1, y + radius * 2 + 3);
+      if (isProtected(r, false)) continue;
+      const cells: Array<[number, number]> = [];
+      // dense irregular blob — fill falls off toward the rim, biased to droop down
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const d2 = dx * dx + dy * dy;
+          if (d2 > radius * radius) continue;
+          const fill = (1 - d2 / (radius * radius)) * (dy >= 0 ? 1 : 0.65);
+          if (rng.next() > fill * 0.92) continue;
+          const px = x + dx, py = y + dy;
+          if (world.inBounds(px, py) && world.types[world.idx(px, py)] === Cell.Empty) cells.push([px, py]);
+        }
+      }
+      // tendrils drooping off the underside
+      const tendrils = 2 + rng.int(3);
+      for (let t = 0; t < tendrils; t++) {
+        const tx = x + rng.int(radius * 2 + 1) - radius;
+        const len = 2 + rng.int(radius + 2);
+        for (let d = 1; d <= len; d++) {
+          const py = y + radius + d;
+          if (world.inBounds(tx, py) && world.types[world.idx(tx, py)] === Cell.Empty) cells.push([tx, py]);
+          else break;
+        }
+      }
+      if (cells.length < 10) continue; // require a real mass — it's a HEAVY cluster
+      let changed = 0;
+      for (const [px, py] of cells) if (setOpenVine(px, py)) changed++;
+      if (changed < 10) continue;
+      stats.accents++;
+      placed++;
+    }
+  };
+
   stampVeins(recipe.ore, budget(recipe.oreDensity, 10, 22), 'campaign-ore');
   stampVeins(recipe.secondary, budget(recipe.secondaryDensity, 7, 16), 'campaign-secondary');
   stampPockets(recipe.pocket, budget(recipe.pocketDensity, 3, 8), 'campaign-pocket');
   stampPockets(recipe.liquid, budget(recipe.liquidDensity, 0, 6), 'campaign-liquid');
   stampSurfaceAccents(budget(recipe.rubbleDensity + recipe.hangingDensity + recipe.glowDensity, 48, 34));
-  stampHangingVines(budget(recipe.hangingDensity, 8, 20));
+  stampHangingVines(budget(recipe.hangingDensity, 16, 34)); // denser hanging tendrils
+  stampVineDrapes(budget(recipe.hangingDensity, 6, 14));
+  stampVineLoops(budget(recipe.hangingDensity, 5, 12));
+  stampVineClusters(budget(recipe.hangingDensity, 6, 16)); // heavy bushy thickets
 
   return stats;
 }
@@ -856,6 +995,65 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
         }
       }
       sd++;
+    }
+  }
+}
+
+/**
+ * Mineral-vug fill. The cave skeleton leaves a swiss-cheese of small ENCLOSED air
+ * pockets buried in the rock. This fills ~70% of them with cave-suitable material:
+ * mostly solid stone/coal (denser rock to chew through), ~19% a hidden RawOre
+ * cache (dark gold-flecked rock that stays dark until the wizard's light sweeps
+ * it, then gleams — dig it to spill gold), and a rare crystal geode. Only SMALL
+ * enclosed pockets are touched — never the main caves, tunnels, the floor strip,
+ * or any reserved structure/spawn footprint — so traversal is never affected
+ * (re-verified by the findability audit). Runs late in generateLevel.
+ */
+export function fillMineralVugs(ctx: Ctx, rng: Rng, ledger: PlacementLedger): void {
+  const w = ctx.world;
+  const floorBand = HEIGHT - 52;
+  const visited = new Uint8Array(WIDTH * HEIGHT);
+  const FILL_CHANCE = 0.7;
+  const MIN_CELLS = 6; // skip 1-5 cell specks
+  const MAX_CELLS = 130; // skip tunnels / caverns / the main traversable cave
+  const stack: number[] = [];
+  const comp: number[] = [];
+  for (let sy = 3; sy < floorBand; sy++) {
+    for (let sx = 2; sx < WIDTH - 2; sx++) {
+      const startI = w.idx(sx, sy);
+      if (visited[startI] || w.types[startI] !== Cell.Empty) continue;
+      comp.length = 0;
+      stack.length = 0;
+      stack.push(startI);
+      visited[startI] = 1;
+      let count = 0;
+      let tooBig = false;
+      let minX = sx, maxX = sx, minY = sy, maxY = sy;
+      while (stack.length) {
+        const c = stack.pop() as number;
+        count++;
+        if (count <= MAX_CELLS) comp.push(c);
+        else tooBig = true; // keep draining so the whole component is marked visited
+        const cx = c % WIDTH;
+        const cy = (c / WIDTH) | 0;
+        if (cx < minX) minX = cx;
+        else if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        else if (cy > maxY) maxY = cy;
+        // 4-connected, kept above the floor strip and off the border ring
+        if (cx > 1 && !visited[c - 1] && w.types[c - 1] === Cell.Empty) { visited[c - 1] = 1; stack.push(c - 1); }
+        if (cx < WIDTH - 2 && !visited[c + 1] && w.types[c + 1] === Cell.Empty) { visited[c + 1] = 1; stack.push(c + 1); }
+        if (cy > 1 && !visited[c - WIDTH] && w.types[c - WIDTH] === Cell.Empty) { visited[c - WIDTH] = 1; stack.push(c - WIDTH); }
+        if (cy + 1 < floorBand && !visited[c + WIDTH] && w.types[c + WIDTH] === Cell.Empty) { visited[c + WIDTH] = 1; stack.push(c + WIDTH); }
+      }
+      if (tooBig || count < MIN_CELLS) continue;
+      if (rng.next() > FILL_CHANCE) continue; // leave some pockets open for variety
+      if (ledger.intersects(minX, minY, maxX, maxY)) continue; // respect reserved footprints
+      // Mostly solid common rock; ~16% a hidden RawOre cache; ~4% a crystal geode.
+      const roll = rng.next();
+      const mat = roll < 0.58 ? Cell.Stone : roll < 0.8 ? Cell.Coal : roll < 0.96 ? Cell.RawOre : Cell.Crystal;
+      const fn = COLOR_FN[mat];
+      for (const c of comp) w.replaceCellAt(c, mat, fn());
     }
   }
 }

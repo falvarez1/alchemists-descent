@@ -20,16 +20,16 @@ import type {
 
 export const GLOBAL_PARAMS: GlobalParams = {
   simSpeed: 1.0,
-  maxBrightness: 3.5,
+  maxBrightness: 2.5,
   // Raised from the original 0.14: with the squared light curve, 0.18 keeps
   // the caves moody while letting shadowed rock read as silhouette.
-  ambient: 0.18,
-  bloodAmount: 1.0,
+  ambient: 0.36,
+  bloodAmount: 7.0,
   // Blood-specific gore dialed up (1.0 -> 1.3) for a gorier, more Noita-like
   // spray that feeds the new corpse pools; other gore channels unchanged.
-  goreBlood: 1.3,
+  goreBlood: 4.0,
   goreSlime: 1.0,
-  goreOoze: 1.0,
+  goreOoze: 0.15,
 };
 
 /** Frozen baseline captured at load — the Builder section "reset" restores it. */
@@ -75,6 +75,8 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   // The Gilded Vault's philosopher's dust: a heavy glittering powder whose
   // bloom IS the discovery tell (light is information).
   [Cell.Catalyst]: { name: 'Aurum Catalyst', friction: 0.55, densityWeight: 0.96, bloomWeight: 0.5 },
+  // Hidden ore: a static rock (no bloom — the WHOLE point is it stays dark until lit).
+  [Cell.RawOre]: { name: 'Raw Ore', bloomWeight: 0 },
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };
@@ -187,6 +189,8 @@ export function createDefaultPostFxSettings(): PostFxSettings {
     grain: 0.028,
     hurtPulse: 1.0,
     exposure: 1.05,
+    tonemap: true,
+    vignette: 0.52,
   };
 }
 

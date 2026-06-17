@@ -57,6 +57,13 @@ export class Camera implements CameraApi {
       // Crouch-peek: holding the stance tilts the view below the ledge
       // (the lerp below turns the offset into a smooth glance down).
       this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48;
+    } else if (state.mode === 'play' && player.dead) {
+      // Death: ride the tumbling ragdoll down (don't freeze on the death spot).
+      const corpse = ctx.rigidBodies.bodies.find((b) => b.tag === 'player-corpse');
+      const fx = corpse ? corpse.x : player.x;
+      const fy = corpse ? corpse.y : player.y - 9;
+      this.tx = fx - VIEW_W / 2;
+      this.ty = fy - VIEW_H / 2;
     } else if (state.mode === 'build') {
       // pan in SCREEN distance: zoomed in, the world moves proportionally less
       const pan = 9 / this.zoom;

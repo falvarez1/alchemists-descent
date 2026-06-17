@@ -1,5 +1,6 @@
 import type { Ctx, MaterialParams, SpellId, SpellParams } from '@/core/types';
 import { formatStep } from '@/core/strings';
+import { bindRange, type Binding } from '@/ui/domBind';
 import { resetCombatTransients } from '@/game/transients';
 import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
 
@@ -116,22 +117,24 @@ export class Inspector {
 
   private wireGlobalControls(): void {
     const ctx = this.ctx;
-    document.getElementById('brush-size')!.addEventListener('input', (e) => {
-      ctx.state.brushSize = parseInt((e.target as HTMLInputElement).value);
-      document.getElementById('brush-value')!.textContent = ctx.state.brushSize + "px";
-    });
-    document.getElementById('g-speed')!.addEventListener('input', (e) => {
-      ctx.params.global.simSpeed = parseFloat((e.target as HTMLInputElement).value);
-      document.getElementById('g-speed-value')!.textContent = ctx.params.global.simSpeed.toFixed(1) + "x";
-    });
-    document.getElementById('g-bright')!.addEventListener('input', (e) => {
-      ctx.params.global.maxBrightness = parseFloat((e.target as HTMLInputElement).value);
-      document.getElementById('g-bright-value')!.textContent = ctx.params.global.maxBrightness.toFixed(1);
-    });
-    document.getElementById('g-ambient')!.addEventListener('input', (e) => {
-      ctx.params.global.ambient = parseFloat((e.target as HTMLInputElement).value);
-      document.getElementById('g-ambient-value')!.textContent = ctx.params.global.ambient.toFixed(2);
-    });
+    const g = ctx.params.global;
+    // A slider edit emits paramsChanged so other mirrors (and these very sliders,
+    // if changed from elsewhere) stay in sync — the bindings seed from the live
+    // value and resync on that event, so the panel can never show a stale number.
+    const changed = (): void => { ctx.events.emit('paramsChanged'); };
+    const bindings: Binding[] = [
+      bindRange({ slider: 'brush-size', readout: 'brush-value', get: () => ctx.state.brushSize,
+        set: (v) => { ctx.state.brushSize = Math.round(v); }, fmt: (v) => Math.round(v) + 'px', onInput: changed }),
+      bindRange({ slider: 'g-speed', readout: 'g-speed-value', get: () => g.simSpeed,
+        set: (v) => { g.simSpeed = v; }, fmt: (v) => v.toFixed(1) + 'x', onInput: changed }),
+      bindRange({ slider: 'g-bright', readout: 'g-bright-value', get: () => g.maxBrightness,
+        set: (v) => { g.maxBrightness = v; }, fmt: (v) => v.toFixed(1), onInput: changed }),
+      bindRange({ slider: 'g-ambient', readout: 'g-ambient-value', get: () => g.ambient,
+        set: (v) => { g.ambient = v; }, fmt: (v) => v.toFixed(2), onInput: changed }),
+    ];
+    // Re-read the live params whenever ANYTHING changes them (console `param`,
+    // Builder sliders, a reset) so this panel mirrors them without a reload.
+    ctx.events.on('paramsChanged', () => bindings.forEach((b) => b.resync()));
   }
 
   private wireGpuComposeToggle(): void {

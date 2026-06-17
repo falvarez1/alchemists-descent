@@ -148,6 +148,13 @@ export interface PlayerState {
   climbMoveT: number;
   /** Last vertical climb intent (-1 up, 0 hold, +1 down), for animation. */
   climbIntentY: number;
+  /**
+   * Smoothed wall-surface lean: x-shift per cell of body height so the climb
+   * pose lies PARALLEL to the local rock face instead of plumb-vertical (a
+   * detached "climbing in mid-air" look). 0 = vertical wall; sign follows the
+   * surface tangent. Render-only tilt; the pixel-catch physics is untouched.
+   */
+  climbLean: number;
   /** Robe hem cloth spring: lagged horizontal offset (same idea as the hat). */
   robe: { ox: number; vx: number };
 }
@@ -155,6 +162,22 @@ export interface PlayerState {
 export const PLAYER_HALF_W = 4;
 export const PLAYER_H = 17;
 export const PLAYER_STEP_UP = 5;
+/**
+ * Vertical "slip": the climbing mirror of PLAYER_STEP_UP. While rising
+ * (levitating/jumping up a tunnel), a wall nub catching a shoulder nudges the
+ * body sideways by up to this many cells to clear it instead of pinning the
+ * climb — the same forgiveness a run gets over small floor debris. Applied to
+ * UPWARD moves only; falling keeps no slip so you don't slide off ledge edges.
+ */
+export const PLAYER_VERT_SLIP = 3;
+/**
+ * Ceiling "duck": the step-DOWN mirror of PLAYER_STEP_UP for horizontal moves.
+ * A ceiling that steps DOWN in your travel direction catches your head and pins
+ * the slide; drop the body by up to this many cells to clear the descending lip.
+ * Inert on flat ground (the floor blocks the probe), so it only frees genuine
+ * ceiling snags — a ceiling that steps UP never blocked you in the first place.
+ */
+export const PLAYER_CEIL_SLIP = 3;
 /** Crawl gauge (CRAWL.md rule zero): 9 in any direction — optional tier only. */
 export const PLAYER_CRAWL_H = 9;
 /**
@@ -247,6 +270,13 @@ export interface Enemy {
   submerged?: boolean;
   /** Environmental contact damage feedback throttle. */
   envDamageFeedbackCd?: number;
+  /** Gust knockback (the kick's wind blast): frames of ballistic LAUNCH remaining.
+   *  While >0 the AI and per-kind flight cap are suppressed so the shove actually
+   *  carries the body — and a fast launch meeting a wall smashes the foe into it. */
+  knockT?: number;
+  /** Launch velocity (cells/frame) used while `knockT` > 0. */
+  knockVx?: number;
+  knockVy?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
@@ -265,6 +295,10 @@ export interface Critter {
   /** Fish out of water / general distress countdown; <=0 from spawn = unused. */
   gasp: number;
   facing: number;
+  /** Startle frames: a concussive shove (the kick's gust, a nearby blast) sends
+   *  the critter fleeing — its normal steering + heavy damping are suppressed so
+   *  the shove actually carries and it visibly scatters. */
+  startle?: number;
 }
 
 export interface CrittersApi {
@@ -272,6 +306,10 @@ export interface CrittersApi {
   update(ctx: Ctx): void;
   /** Concussion/heat kills the small things too (splat + remove). */
   killAt(ctx: Ctx, x: number, y: number, radius: number): void;
+  /** A blast wave that DOESN'T kill: shove + startle every critter within radius
+   *  away from (x,y), scaled by a linear falloff (the kick's gust, a near-miss
+   *  explosion). They scatter and flee instead of just twitching. */
+  scatter(x: number, y: number, radius: number, strength: number): void;
   /** O(1) owner-managed removal; critter draw order is intentionally unstable. */
   remove(critter: Critter): Critter | undefined;
   clear(): void;
@@ -513,6 +551,12 @@ export interface PostFxSettings {
   grain: number;
   hurtPulse: number;
   exposure: number;
+  /** ACES filmic tonemap — the always-on render rolloff that desaturates/compresses
+   *  highlights. Off = linear (no rolloff), for A/B comparison. */
+  tonemap: boolean;
+  /** Screen vignette strength: the compose darkens edges by this × (r²/maxR²).
+   *  0.52 is the shipped look; 0 disables it. */
+  vignette: number;
 }
 
 export type RenderBackendMode = 'webgl' | 'webgpu' | 'auto';
@@ -674,9 +718,14 @@ export interface RunTestKitConfig {
   activeFlaskIndex?: number;
 }
 
+/** Run difficulty (1 easiest … 4 hardest). 3 == the shipped balance. See config/difficulty. */
+export type Difficulty = 1 | 2 | 3 | 4;
+
 export interface RunStartConfig {
   /** Normal progression persists; test mode is disposable and never autosaved. */
   mode: RunMode;
+  /** Run difficulty 1–4 (3 = shipped balance). Defaults to the run's current level. */
+  difficulty?: Difficulty;
   /** Campaign starts/resumes the authored descent; campaign-level jumps to one authored level. */
   worldSource: RunWorldSource;
   /** Used by campaign-level starts and test runs. */
@@ -727,6 +776,9 @@ export interface GameStateData {
   playerSpawned: boolean;
   /** Seed for the current world generation (drives the seeded RNG). */
   worldSeed: number;
+  /** Run difficulty 1–4 (3 = shipped balance); scales enemy count/damage/hp/speed/
+   *  sense, player HP, and the death penalty. Set at run start, held for the run. */
+  difficulty: Difficulty;
   /** Gameplay frozen behind a modal (Sanctum); rendering continues. */
   paused: boolean;
   /** Transient QA mode enabled by the debug console key; never autosaved. */
@@ -790,6 +842,9 @@ export interface FxState {
   digBeam: DigBeam | null;
   /** Frames of gameplay freeze remaining (impact hitstop); rendering continues. */
   hitstop: number;
+  /** Death slow-motion timer (game ticks). >0 slows the sim cadence; render is
+   *  unaffected, so the ragdoll tumbles in slow-mo. Decrements each tick. */
+  deathSlowMo: number;
 }
 
 export interface WaveState {
@@ -929,7 +984,11 @@ export interface PhysicsApi {
   /** AABB clearance test: halfW cells each side, h cells tall, anchored at the feet. */
   entityFree(cx: number, cy: number, halfW: number, h: number): boolean;
   crushLooseDebris(ent: { x: number; y: number }, halfW: number, h: number): void;
-  /** Move one cell horizontally (with optional stepUp ledge climb) or vertically. */
+  /**
+   * Move one cell horizontally (with optional stepUp ledge climb) or vertically
+   * (with optional `slip`: a lateral nudge, the vertical mirror of stepUp, so a
+   * small wall nub can't pin a climb).
+   */
   tryMoveEntity(
     ent: { x: number; y: number },
     dx: number,
@@ -937,6 +996,7 @@ export interface PhysicsApi {
     halfW: number,
     h: number,
     stepUp: number,
+    slip?: number,
   ): boolean;
 }
 
@@ -1131,6 +1191,11 @@ export interface EnemyControlApi {
   spawn(kind: EnemyKind, x: number, y: number): void;
   damage(e: Enemy, amount: number, kx: number, ky: number): void;
   kill(e: Enemy, kx: number, ky: number): void;
+  /** Blow a foe along (dirX,dirY) with a wind-gust shove (the player's kick),
+   *  mass-scaled so a bat is hurled and a golem barely rocks. Light foes enter a
+   *  brief ballistic launch and SMASH into the first wall they hit. `strength` is
+   *  the gust intensity at the body (≈0..1 × a push scalar). No-op on bosses. */
+  gustShove(e: Enemy, dirX: number, dirY: number, strength: number): void;
   update(ctx: Ctx): void;
 }
 
@@ -1514,6 +1579,23 @@ export type PerkId =
   | 'toxinward'
   | 'goldmagnet';
 
+/** One contextual onboarding hint for the nearest interactable. */
+export interface HintInfo {
+  /** Stable category id — also the teach-once key. */
+  key: string;
+  /** One-line "what to do here" shown in the HUD. */
+  line: string;
+  /** World cell to point a marker at, if this hint has a discrete object. */
+  world?: { x: number; y: number };
+}
+
+/** Surfaces the best contextual hint for whatever the player is standing near. */
+export interface HintApi {
+  /** The current best hint, or null when nothing relevant is in reach. */
+  readonly current: HintInfo | null;
+  update(ctx: Ctx): void;
+}
+
 export interface MechanismsApi {
   /** Plate/brazier/door physics + rune-vault dissolution each frame (play mode). */
   update(ctx: Ctx): void;
@@ -1804,6 +1886,9 @@ export interface Waystone {
   x: number;
   y: number;
   lit: boolean;
+  /** Ignition progress 0..1 while heating (sustained fire in the bowl) — render
+   *  reads this for the "almost lit" tell. Resets to 0 when the fire guts out. */
+  heat?: number;
 }
 
 export interface LevelExitWell {
@@ -2097,4 +2182,5 @@ export interface Ctx {
   mechanisms: MechanismsApi;
   sanctum: SanctumApi;
   critters: CrittersApi;
+  hints: HintApi;
 }

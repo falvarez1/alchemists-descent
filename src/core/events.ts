@@ -20,6 +20,10 @@ export interface EventMap {
   playerDeathCleared: undefined;
   /** Build/play switch — UI swaps panels and HUD visibility. */
   modeChanged: { mode: 'build' | 'play' };
+  /** A global/material tuning param changed (a slider, the console `param`
+   *  command, or a Builder reset). Panels that mirror params — the Sandbox
+   *  Global Controls — re-sync their sliders from the live values. */
+  paramsChanged: undefined;
   /** A wave began — HUD updates the wave number readout. */
   waveStarted: { num: number };
   /** Show the big center-screen banner text for ~2.2s. */
@@ -32,6 +36,17 @@ export interface EventMap {
   levelCurtain: { visible: boolean; holdMs?: number; onComplete?: () => void };
   /** A waystone brazier caught fire — checkpoint set. */
   waystoneLit: undefined;
+  /**
+   * Player walked up to an unlit waystone. UI shows a prompt: if `card` is set,
+   * the player owns a fire spell that isn't on the active wand (offer to equip
+   * it); if null, they own none (explain how to bring fire by hand). Exactly one
+   * callback runs when the prompt closes.
+   */
+  waystonePrompt: {
+    card: CardId | null;
+    onEquip(): void;
+    onDismiss(): void;
+  };
   /** First-time brew of a recipe — Grimoire entry + gold bounty. */
   recipeDiscovered: { name: string; bounty: number };
   /** Any completed cauldron recipe, including recipes already known in the Grimoire. */
@@ -49,6 +64,8 @@ export interface EventMap {
   };
   /** Active wand or its loadout changed — HUD wand display refresh. */
   wandChanged: undefined;
+  /** First time the player nears a given interactable — show a teach-once popover. */
+  hintTeach: { key: string; title: string; body: string };
   /** A concussive strike landed at (x, y) — mechanisms/rune vaults listen. */
   structureStrike: { x: number; y: number; radius: number };
   /** Short corner toast ("GOLDEN KEY ACQUIRED", "+20 MAX HP", ...). */

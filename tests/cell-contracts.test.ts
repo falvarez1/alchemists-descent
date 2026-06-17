@@ -56,8 +56,9 @@ describe('cell ABI contracts', () => {
       Glowshroom: 33,
       Moss: 34,
       Catalyst: 35,
+      RawOre: 36,
     });
-    expect(CELL_COUNT).toBe(36);
+    expect(CELL_COUNT).toBe(37);
     expect(Math.max(...Object.values(Cell))).toBeLessThan(128);
   });
 });

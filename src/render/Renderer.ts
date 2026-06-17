@@ -272,6 +272,7 @@ class WebGLRenderBackend implements RendererBackend {
     // Blast-wave bloom surge decays back to baseline. PostFx reads
     // bloomKick/screenShake BEFORE decay so kicks land this frame.
     const post = ctx.state.postFx;
+    this.renderer.toneMapping = post.tonemap ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = post.enabled ? post.exposure : 1.0;
     this.bloomPass.enabled = post.enabled && post.bloomEnabled;
     this.bloomPass.strength = post.bloomStrength + ctx.fx.bloomKick * post.bloomKickScale;
