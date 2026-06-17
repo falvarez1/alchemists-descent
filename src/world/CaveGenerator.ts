@@ -718,7 +718,9 @@ export class WorldGen implements WorldGenApi {
     //    9 wide, 1-row stone base, 2-tall side walls, open 7x3 interior bowl.
     const ws0 = waystones[0];
     const cSide = this.rng.next() < 0.5 ? -1 : 1;
-    const cauldronX = Math.floor(clamp(ws0.x + cSide * 14, 8, WIDTH - 9));
+    // Set well clear of the waystone — the runestone + cauldron render large now,
+    // so a tight 14-cell offset made the cauldron sit in front of the stele.
+    const cauldronX = Math.floor(clamp(ws0.x + cSide * 28, 8, WIDTH - 9));
     const cauldronBaseY = ws0.y + 1;
     // carve clearance above the basin footprint if rock is in the way
     for (let dy = 1; dy <= 6; dy++) {

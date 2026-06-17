@@ -17,6 +17,7 @@
 
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_VERSION } from '@/config/gen';
+import { difficultyMods } from '@/config/difficulty';
 import { LEVELS, START_LEVEL, populationForLevel, vaultHostId } from '@/config/worldgraph';
 import { Rng, hashSeed, randomSeed } from '@/core/rng';
 import { base64ToBytes, bytesToBase64, rleDecode, rleEncode } from '@/core/rle';
@@ -429,18 +430,28 @@ export class Levels implements LevelsApi {
     this.expeditionSeed = seed;
     ctx.state.playtestSource = mode === 'test' ? 'test' : null;
 
+    if (config.difficulty !== undefined) ctx.state.difficulty = config.difficulty;
+
     const preset = config.loadout ?? 'fresh';
     if (mode === 'normal' && (worldSource !== 'campaign' || levelId !== START_LEVEL || preset !== 'fresh' || config.kit)) {
       ctx.state.debugGodMode = true;
     }
     this.applyLoadoutPreset(ctx, preset);
+    // Difficulty cushion: scale the loadout's max HP, then top off (the kit can
+    // still override below). Level 3 = ×1.0, so the shipped game is untouched.
+    const hpScale = difficultyMods(ctx.state).playerHp;
+    if (hpScale !== 1) {
+      ctx.player.maxHp = Math.round(ctx.player.maxHp * hpScale);
+      ctx.player.hp = ctx.player.maxHp;
+    }
     if (config.kit) this.applyTestKit(ctx, config.kit);
     this.enterLevel(ctx, levelId);
 
     const runtime = this.current;
     const label = runtime?.def.name ?? levelId.toUpperCase();
     const prefix = mode === 'test' ? 'Test run' : 'Fresh expedition';
-    ctx.events.emit('toast', { text: `${prefix.toUpperCase()}: ${label}` });
+    const diff = difficultyMods(ctx.state);
+    ctx.events.emit('toast', { text: `${prefix.toUpperCase()}: ${label} — ${diff.roman} ${diff.name.toUpperCase()}` });
     return {
       ok: true,
       message: `${prefix} started at ${label}.`,
@@ -1873,12 +1884,15 @@ export class Levels implements LevelsApi {
     reachable: Uint8Array,
     rng: Rng,
   ): void {
-    // Depth sets the headcount; the biome's foes table sets the mix.
+    // Depth sets the headcount; the biome's foes table sets the mix; difficulty
+    // scales the whole headcount (the "enemy rate is insane" knob). Level 3 = ×1.
     const foes = EXTRAS[def.biome].foes;
     const pop = populationForLevel(def, foes);
+    const countScale = difficultyMods(ctx.state).enemyCount;
     for (const [kind, count] of Object.entries(pop) as Array<[EnemyKind, number]>) {
       const enemyDef = ctx.enemyCtl.defs[kind];
-      for (let i = 0; i < count; i++) {
+      const scaled = Math.round(count * countScale);
+      for (let i = 0; i < scaled; i++) {
         const spot = this.findPopulationSpot(
           ctx,
           rng,
@@ -2065,6 +2079,8 @@ export class Levels implements LevelsApi {
       // `?? 0` tolerates a waystone added after enterLevel sized the heat array
       // (the physics arena pushes its checkpoint during the post-enter build).
       this.waystoneHeat[i] = fire > 0 ? (this.waystoneHeat[i] ?? 0) + 1 : 0;
+      // Expose ignition progress for the render's "almost lit" tell.
+      ws.heat = Math.min(1, this.waystoneHeat[i] / WAYSTONE_LIGHT_TICKS);
       if (fire > 0 && ctx.state.frameCount % 16 === 0) {
         ctx.particles.spawn(
           ws.x + (Math.random() - 0.5) * 4,

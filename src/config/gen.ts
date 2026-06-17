@@ -47,8 +47,10 @@ import type { BiomeId } from '@/core/types';
  *      material color; final findability errors carve fail-open rescue routes.
  * v16: longer biome vines and pass-through campaign hanging-vine dressing feed
  *      the soft strand simulation with observable, organic tendrils.
+ * v17: cauldron set 28 cells from the waystone (the larger monuments overlapped);
+ *      denser vines + new drape (wall-to-wall), loop, and heavy-cluster variants.
  */
-export const GEN_VERSION = 16;
+export const GEN_VERSION = 17;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)

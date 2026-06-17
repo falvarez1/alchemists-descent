@@ -1,13 +1,39 @@
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
+import { DEFAULT_DIFFICULTY, asDifficulty } from '@/config/difficulty';
 import { LEVELS } from '@/config/worldgraph';
-import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskSlotConfig, type PerkId, type RunLoadoutPreset, type RunMode, type RunStatus, type RunTestKitConfig, type RunWorldSource } from '@/core/types';
+import { FLASK_SLOT_COUNT, type CardId, type Ctx, type Difficulty, type FlaskSlotConfig, type PerkId, type RunLoadoutPreset, type RunMode, type RunStatus, type RunTestKitConfig, type RunWorldSource } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN } from '@/sim/colors';
 import { appDialog } from '@/ui/AppDialog';
 
 const PREFS_KEY = 'noita-run-launcher-prefs-v3';
 const LEGACY_PREFS_KEY = 'noita-run-launcher-prefs-v2';
+const DIFFICULTY_KEY = 'alchemists-descent-difficulty-v1';
 const RUN_LAUNCHER_STATE_EVENT = 'run-launcher-state';
+
+/** One-line "what this does" blurb per difficulty, shown under the selector. */
+const DIFFICULTY_BLURB: Record<Difficulty, string> = {
+  1: 'Apprentice — far fewer, weaker, slower foes that notice you late; big HP cushion, tiny death cost.',
+  2: 'Adept — a gentler descent: fewer, softer enemies and extra HP. A relaxed run.',
+  3: 'Conjurer — the standard balance (the shipped game).',
+  4: 'Archmage — more foes, hitting harder and faster, spotting you from afar; less HP, steeper death cost.',
+};
+
+function loadStoredDifficulty(): Difficulty {
+  try {
+    return asDifficulty(localStorage.getItem(DIFFICULTY_KEY), DEFAULT_DIFFICULTY);
+  } catch {
+    return DEFAULT_DIFFICULTY;
+  }
+}
+
+function storeDifficulty(value: string): void {
+  try {
+    localStorage.setItem(DIFFICULTY_KEY, value);
+  } catch {
+    // launcher preference only
+  }
+}
 
 const LEVEL_IDS = Object.values(LEVELS).sort((a, b) => {
   if (a.branch !== b.branch) return a.branch ? 1 : -1;
@@ -285,6 +311,8 @@ export class RunLauncher {
   private readonly testFieldsSection: HTMLElement;
   private readonly worldSelect: HTMLSelectElement;
   private readonly levelSelect: HTMLSelectElement;
+  private readonly difficultySelect: HTMLSelectElement;
+  private readonly difficultyNote: HTMLElement;
   private readonly seedInput: HTMLInputElement;
   private readonly loadoutSelect: HTMLSelectElement;
   private readonly goldInput: HTMLInputElement;
@@ -349,6 +377,15 @@ export class RunLauncher {
           </div>
           <form class="run-launcher-form">
             <div class="run-launcher-form-grid">
+              <label data-field-wrap="difficulty">
+                <span>Difficulty</span>
+                <select data-field="difficulty">
+                  <option value="1">I — APPRENTICE</option>
+                  <option value="2">II — ADEPT</option>
+                  <option value="3">III — CONJURER</option>
+                  <option value="4">IV — ARCHMAGE</option>
+                </select>
+              </label>
               <label data-field-wrap="seed">
                 <span>Seed</span>
                 <div class="run-launcher-seed">
@@ -357,6 +394,7 @@ export class RunLauncher {
                 </div>
               </label>
             </div>
+            <div class="run-launcher-difficulty-note" data-field="difficulty-note"></div>
             <div class="run-launcher-normal-summary" data-section="normal-summary">
               <strong>New Expedition</strong>
               <span>D1 start, fresh starter kit, normal progression, autosave enabled.</span>
@@ -466,6 +504,8 @@ export class RunLauncher {
     this.testFieldsSection = this.root.querySelector<HTMLElement>('[data-section="test-fields"]')!;
     this.worldSelect = this.root.querySelector<HTMLSelectElement>('[data-field="world"]')!;
     this.levelSelect = this.root.querySelector<HTMLSelectElement>('[data-field="level"]')!;
+    this.difficultySelect = this.root.querySelector<HTMLSelectElement>('[data-field="difficulty"]')!;
+    this.difficultyNote = this.root.querySelector<HTMLElement>('[data-field="difficulty-note"]')!;
     this.seedInput = this.root.querySelector<HTMLInputElement>('[data-field="seed"]')!;
     this.loadoutSelect = this.root.querySelector<HTMLSelectElement>('[data-field="loadout"]')!;
     this.goldInput = this.root.querySelector<HTMLInputElement>('[data-field="gold"]')!;
@@ -524,6 +564,9 @@ export class RunLauncher {
     this.testButton.addEventListener('click', () => this.setMode('test'));
     this.worldSelect.addEventListener('change', () => this.sync());
     this.levelSelect.addEventListener('change', () => this.sync());
+    this.difficultySelect.value = String(loadStoredDifficulty());
+    this.difficultySelect.addEventListener('change', () => this.renderDifficultyNote());
+    this.renderDifficultyNote();
     this.seedInput.addEventListener('input', () => this.sync());
     this.loadoutSelect.addEventListener('change', () => {
       if (!this.suppressPresetApply) this.applyPresetDefaults(this.loadoutSelect.value as RunLoadoutPreset);
@@ -872,6 +915,7 @@ export class RunLauncher {
       worldSource,
       levelId: this.mode === 'test' ? this.levelSelect.value : undefined,
       seed,
+      difficulty: asDifficulty(this.difficultySelect.value, DEFAULT_DIFFICULTY),
       loadout: this.mode === 'test' ? (this.loadoutSelect.value as RunLoadoutPreset) : 'fresh',
       kit: this.mode === 'test' ? this.readKit() : undefined,
       continueSave: false,
@@ -1030,12 +1074,18 @@ export class RunLauncher {
       this.seedInput.value,
       this.mode === 'test' ? this.currentTestPrefs() : undefined,
     );
+    storeDifficulty(this.difficultySelect.value);
     if (!prefs) return;
     try {
       localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
     } catch {
       // Launcher preferences are convenience only.
     }
+  }
+
+  private renderDifficultyNote(): void {
+    const d = asDifficulty(this.difficultySelect.value, DEFAULT_DIFFICULTY);
+    this.difficultyNote.textContent = DIFFICULTY_BLURB[d];
   }
 
   private currentTestPrefs(): TestPrefs {

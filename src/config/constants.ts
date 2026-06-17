@@ -33,3 +33,10 @@ export const MAX_PARTICLES = 12000;
 /** Fog-of-war minimap mask dimensions (1:8 downsample of the world). */
 export const MINIMAP_W = 200;
 export const MINIMAP_H = 133;
+
+/** Death slow-motion: game ticks the slow-mo lasts, and its slowest time scale.
+ *  The scale ramps from MIN back to 1.0 over the timer (a juicy ease-out as the
+ *  wizard ragdolls). Rendering keeps running at full rate, so it reads as slow-mo,
+ *  not stutter. */
+export const DEATH_SLOWMO_FRAMES = 60;
+export const DEATH_SLOWMO_MIN = 0.32;

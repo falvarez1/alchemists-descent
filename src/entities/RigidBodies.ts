@@ -44,6 +44,13 @@ const MAX_BODY_SPEED = 40; // hard cap on a body's linear speed (cells/frame)
 const MAX_BODY_ANGVEL = 40; // hard cap on a body's spin (radians/second)
 const MAX_TERRAIN_LEAD = 12; // most the collider window may lead a fast body (cells)
 const MAX_TERRAIN_REACH = 40; // absolute cap on the collider-window half-extent (cells)
+// GLOBAL caps: per-body velocity/window are bounded above, but a chain reaction or
+// debris pile can still grow the body set — and the SUM of their terrain windows —
+// until Rapier's broad-phase recurses past the wasm stack ("recursive use" lock).
+// These ceilings sit far above normal play (a handful of bodies, a few hundred
+// terrain cells) but cut the runaway off before it can crash the solver.
+const MAX_DYNAMIC_BODIES = 80; // live dynamic bodies; spawning past this evicts the oldest
+const MAX_TERRAIN_CELLS = 2800; // total terrain colliders requested per frame
 const REFERENCE_MASS = 45; // a "typical" crate; blast/kick scale a body's throw by REFERENCE_MASS / mass
 const PUSH_MASS_MAX = 60; // player shoves bodies up to this mass (light wood); heavier ones block
 const MIN_PUSH = 0.7; // minimum shove speed (cells/frame) when the player leans on a light body
@@ -101,6 +108,13 @@ export class RigidBodies implements RigidBodiesApi {
 
   spawn(shape: RigidShape, x: number, y: number, opts: SpawnBodyOpts = {}): RigidBody {
     const kinematic = opts.kind === 'kinematic';
+    // Keep the dynamic-body set bounded so a runaway spawn (chain detonations,
+    // repeated shatter) can't overflow Rapier's solver — thin out the oldest first.
+    if (!kinematic) {
+      let dyn = 0;
+      for (const b of this.bodies) if (b.kind === 'dynamic') dyn++;
+      if (dyn >= MAX_DYNAMIC_BODIES) this.evictOldestDynamic();
+    }
     const desc = (kinematic ? RAPIER.RigidBodyDesc.kinematicPositionBased() : RAPIER.RigidBodyDesc.dynamic())
       .setTranslation(x, y)
       .setRotation(opts.angle ?? 0)
@@ -162,6 +176,17 @@ export class RigidBodies implements RigidBodiesApi {
     }
     const i = this.bodies.indexOf(body);
     if (i !== -1) this.bodies.splice(i, 1);
+  }
+
+  /** Thin the body set when it hits the cap: drop the oldest resting (else oldest)
+   *  un-held dynamic body in a quiet puff, so debris fades instead of crashing Rapier. */
+  private evictOldestDynamic(): void {
+    let victim: RigidBody | null = null;
+    for (const b of this.bodies) if (b.kind === 'dynamic' && b !== this.held && b.sleeping) { victim = b; break; }
+    if (!victim) for (const b of this.bodies) if (b.kind === 'dynamic' && b !== this.held) { victim = b; break; }
+    if (!victim) return;
+    this.ctx.particles.burst(victim.x, victim.y, 6, null, () => packRGB(150, 140, 120), 1.2, { grav: 0.05 });
+    this.remove(victim);
   }
 
   clear(): void {
@@ -785,6 +810,7 @@ export class RigidBodies implements RigidBodiesApi {
     const desired = this.desired;
     desired.clear();
     for (const body of this.bodies) {
+      if (desired.size >= MAX_TERRAIN_CELLS) break; // total-collider ceiling (anti-overflow)
       const rb = this.handles.get(body);
       if (!rb || body.kind !== 'dynamic') continue;
       const t = rb.translation();

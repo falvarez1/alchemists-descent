@@ -1,4 +1,5 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
+import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
 import type { CardId, Critter, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
@@ -117,10 +118,12 @@ export class Enemies implements EnemyControlApi {
       }
     }
     if (sy < 0) sy = Math.max(def.h, Math.floor(y)); // last resort
-    // Depth scaling: tougher and harder-hitting the deeper you descend
+    // Depth scaling: tougher and harder-hitting the deeper you descend; difficulty
+    // multiplies both on top (level 3 = ×1, so the shipped curve is untouched).
     const depth = ctx.state.mode === 'play' ? (ctx.levels.current?.def.depth ?? 1) : 1;
-    const hpMul = 1 + (depth - 1) * 0.16;
-    const dmgK = 1 + (depth - 1) * 0.1;
+    const diff = difficultyMods(ctx.state);
+    const hpMul = (1 + (depth - 1) * 0.16) * diff.enemyHp;
+    const dmgK = (1 + (depth - 1) * 0.1) * diff.enemyDamage;
     ctx.enemies.push({
       kind,
       x: sx,
@@ -738,7 +741,7 @@ export class Enemies implements EnemyControlApi {
       // THE NOTICE: the first time a foe clocks you, it says so — a blip and
       // a spark of attention over its head. The colossus announces itself
       // rather more thoroughly.
-      if (!e.alerted && targetAlive && pDist < 300 && e.kind !== 'eggs' && !e.sleeping) {
+      if (!e.alerted && targetAlive && pDist < 300 * difficultyMods(ctx.state).enemySense && e.kind !== 'eggs' && !e.sleeping) {
         e.alerted = true;
         if (e.kind === 'colossus') {
           ctx.audio.tone(46, 110, 0.9, 'sawtooth', 0.22);
@@ -1550,11 +1553,13 @@ export class Enemies implements EnemyControlApi {
         }
       }
 
-      // Integrate movement (slimes/golems/mages collide; imps/wisps/bats drift)
+      // Integrate movement (slimes/golems/mages collide; imps/wisps/bats drift).
+      // Difficulty scales the step distance = effective speed (level 3 = ×1).
+      const spd = difficultyMods(ctx.state).enemySpeed;
       if (e.kind === 'imp' || e.kind === 'wisp' || e.kind === 'bat') {
         // Drift via sub-cell accumulators so e.x / e.y stay integers (grid indices)
-        e.fx += e.vx;
-        e.fy += e.vy;
+        e.fx += e.vx * spd;
+        e.fy += e.vy * spd;
         const sx = Math.trunc(e.fx),
           sy = Math.trunc(e.fy);
         if (sx !== 0) {
@@ -1568,7 +1573,7 @@ export class Enemies implements EnemyControlApi {
       } else {
         const stepUp =
           e.kind === 'colossus' ? 3 : e.kind === 'golem' || e.kind === 'leviathan' ? 2 : 1;
-        e.fx += e.vx;
+        e.fx += e.vx * spd;
         while (e.fx >= 1) {
           if (!ctx.physics.tryMoveEntity(e, 1, 0, def.halfW, def.h, stepUp)) {
             e.vx = 0;
@@ -1585,7 +1590,7 @@ export class Enemies implements EnemyControlApi {
           }
           e.fx += 1;
         }
-        e.fy += e.vy;
+        e.fy += e.vy * spd;
         while (e.fy >= 1) {
           if (!ctx.physics.tryMoveEntity(e, 0, 1, def.halfW, def.h, 0)) {
             e.vy = 0;

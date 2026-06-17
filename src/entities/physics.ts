@@ -71,12 +71,34 @@ export class Physics implements PhysicsApi {
     halfW: number,
     h: number,
     stepUp: number,
+    slip = 0,
   ): boolean {
     if (dy !== 0) {
       if (this.entityFree(ent.x, ent.y + dy, halfW, h)) {
         ent.y += dy;
         this.crushLooseDebris(ent, halfW, h);
         return true;
+      }
+      // Lateral "slip": the vertical mirror of stepUp. A small wall nub catching
+      // a shoulder shouldn't pin a vertical climb (levitating up a tunnel) any
+      // more than a low ledge stops a run — nudge sideways the minimum needed to
+      // clear it and keep moving. Slips AWAY from the obstruction (the blocked
+      // side fails entityFree first), capped at `slip` cells.
+      if (slip) {
+        for (let s = 1; s <= slip; s++) {
+          if (this.entityFree(ent.x + s, ent.y + dy, halfW, h)) {
+            ent.x += s;
+            ent.y += dy;
+            this.crushLooseDebris(ent, halfW, h);
+            return true;
+          }
+          if (this.entityFree(ent.x - s, ent.y + dy, halfW, h)) {
+            ent.x -= s;
+            ent.y += dy;
+            this.crushLooseDebris(ent, halfW, h);
+            return true;
+          }
+        }
       }
       return false;
     }
@@ -90,6 +112,20 @@ export class Physics implements PhysicsApi {
         if (this.entityFree(ent.x + dx, ent.y - s, halfW, h)) {
           ent.x += dx;
           ent.y -= s;
+          this.crushLooseDebris(ent, halfW, h);
+          return true;
+        }
+      }
+    }
+    // Step-DOWN: the ceiling mirror of stepUp. Pressed up against a ceiling, a
+    // small nub jutting down shouldn't pin a sideways move — duck under it by the
+    // minimum needed. Inert on flat ground (the floor blocks the downward probe),
+    // so it only frees a snag where there's actually open space below.
+    if (slip) {
+      for (let s = 1; s <= slip; s++) {
+        if (this.entityFree(ent.x + dx, ent.y + s, halfW, h)) {
+          ent.x += dx;
+          ent.y += s;
           this.crushLooseDebris(ent, halfW, h);
           return true;
         }

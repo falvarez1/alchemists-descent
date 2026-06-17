@@ -434,6 +434,7 @@ body.play-active.runtime-inspector-open #viewport-container {
 .run-launcher-choice:disabled { opacity: 0.45; cursor: not-allowed; }
 .run-launcher-form { display: grid; gap: 12px; align-content: start; }
 .run-launcher-form-grid, .run-launcher-kit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+.run-launcher-difficulty-note { margin: -2px 0 2px; font: 500 11px/1.45 var(--mono); letter-spacing: 0.3px; color: rgba(170,195,220,0.62); }
 .run-launcher-form label { display: grid; gap: 6px; color: #8ea6bd; font: 900 10px/1 var(--mono); letter-spacing: 1.4px; text-transform: uppercase; }
 .run-launcher-form select, .run-launcher-form input {
     min-width: 0; height: 34px; border: 1px solid #2c3c4d; border-radius: 4px;

@@ -109,6 +109,31 @@ const healthy = await page.evaluate(() => {
 check('a fresh body still falls + rests after the runaway (world not locked)',
   !healthy.crashed && healthy.fell && healthy.restY <= 500, JSON.stringify(healthy));
 
+// ---- body-count explosion (chain reactions / debris) in dense terrain --------
+// The crash vector: many bodies, each adding a terrain window + contact island,
+// until Rapier's broad-phase overflows. The body cap must hold and the sim survive.
+const flood = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const RB = ctx.rigidBodies;
+  window.__rb.reset();
+  window.__rb.scatterClumps(); // surface terrain everywhere → max collider pressure
+  ctx.world.simBounds.x0 = 1; ctx.world.simBounds.y0 = 1;
+  ctx.world.simBounds.x1 = ctx.world.width - 2; ctx.world.simBounds.y1 = ctx.world.height - 2;
+  let crashed = false;
+  try {
+    for (let n = 0; n < 300; n++) {
+      RB.spawn({ kind: 'box', halfW: 3, halfH: 3 }, 200 + (n * 7) % 1200, 300 + (n * 13) % 400, { restitution: 0.2 });
+      if (n % 10 === 0) window.__game.tick();
+    }
+    for (let f = 0; f < 60; f++) window.__game.tick();
+  } catch (e) { crashed = true; }
+  let dyn = 0;
+  for (const b of RB.bodies) if (b.kind === 'dynamic') dyn++;
+  return { crashed, dyn };
+});
+check('spawning 300 bodies does not crash (Rapier solver survives)', !flood.crashed, JSON.stringify(flood));
+check('dynamic body count is capped (<= ~80)', flood.dyn <= 82, JSON.stringify(flood));
+
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
 console.log(`\nrunaway probe: ${pass} passed, ${fail} failed`);

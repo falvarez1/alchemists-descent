@@ -582,40 +582,96 @@ export class FrameComposer implements PixelSurface {
     }
   }
 
-  /** The death ragdoll: a limp wizard (robe + hat) tumbling on the corpse body,
-   *  and a tombstone that rises once it settles. Replaces the live player sprite. */
+  /** The death ragdoll: an ARTICULATED limp wizard (head, torso, two arms, two
+   *  legs, hat) hanging off the corpse body. Limbs flail with the body's spin +
+   *  speed so it tumbles like a ragdoll, not a rigid log; a tombstone rises once
+   *  it settles. Replaces the live player sprite. */
   private drawPlayerRagdoll(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const corpse = ctx.rigidBodies.bodies.find((b) => b.tag === 'player-corpse');
     if (!corpse || corpse.shape.kind !== 'box') return;
-    const hw = corpse.shape.halfW;
-    const hh = corpse.shape.halfH;
     const cx = corpse.x;
     const cy = corpse.y;
-    const cos = Math.cos(corpse.angle);
-    const sin = Math.sin(corpse.angle);
+    const ang = corpse.angle;
+    const cos = Math.cos(ang);
+    const sin = Math.sin(ang);
+    // body-local -> world (local −y is the head end, +y the feet)
     const wx = (lx: number, ly: number): number => cx + lx * cos - ly * sin;
     const wy = (lx: number, ly: number): number => cy + lx * sin + ly * cos;
     const lt = this.light.sample(cx, cy);
-    const lr = Math.max(0.14, lt.r);
-    const lg = Math.max(0.14, lt.g);
-    const lb = Math.max(0.16, lt.b);
-    // ROBE — the rotated body box, blue with a darker rim, purple hood toward the head (−y).
-    for (let ly = -hh; ly <= hh; ly++) {
-      for (let lx = -hw; lx <= hw; lx++) {
-        const edge = Math.abs(lx) >= hw || Math.abs(ly) >= hh ? 0.6 : 1;
-        const hood = ly < 0 ? 0.32 : 0;
-        this.setPx(wx(lx, ly), wy(lx, ly), (0.26 + hood) * lr * edge, 0.4 * lg * edge, (0.74 - hood * 0.3) * lb * edge);
+    const lr = Math.max(0.16, lt.r);
+    const lg = Math.max(0.16, lt.g);
+    const lb = Math.max(0.2, lt.b);
+    const ROBE: [number, number, number] = [0.24 * lr, 0.44 * lg, 0.86 * lb];
+    const ROBE_D: [number, number, number] = [0.09 * lr, 0.18 * lg, 0.42 * lb];
+    const SKIN: [number, number, number] = [0.86 * lr, 0.7 * lg, 0.52 * lb];
+    const HAT: [number, number, number] = [0.5 * lr, 0.26 * lg, 0.8 * lb];
+    const HAT_D: [number, number, number] = [0.22 * lr, 0.1 * lg, 0.42 * lb];
+    const BOOT: [number, number, number] = [0.14 * lr, 0.12 * lg, 0.2 * lb];
+
+    const fc = ctx.state.frameCount;
+    const settled = corpse.data?.settled === true || corpse.sleeping;
+    const va = corpse.va ?? 0;
+    const speed = Math.hypot(corpse.vx ?? 0, corpse.vy ?? 0);
+    // how hard the limbs flail: driven by spin + travel, easing to a limp droop at rest
+    const flail = settled ? 0.06 : Math.min(1.4, Math.abs(va) * 5 + speed * 0.22);
+
+    const dot = (x: number, y: number, c: [number, number, number], k = 1): void => {
+      this.setPx(x, y, c[0] * k, c[1] * k, c[2] * k);
+      this.setPx(x + 1, y, c[0] * 0.78 * k, c[1] * 0.78 * k, c[2] * 0.78 * k);
+    };
+    const seg = (x0: number, y0: number, x1: number, y1: number, c: [number, number, number]): void => {
+      const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+      for (let i = 0; i <= n; i++) dot(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n, c);
+    };
+    // a 2-segment limb (with an elbow/knee) hanging from a body-local joint. The
+    // limb stays anchored to the body but LAGS its spin and wobbles — that lag is
+    // exactly what reads as a joint instead of a welded plank.
+    const limb = (jx: number, jy: number, spread: number, len: number, phase: number, tip: [number, number, number]): void => {
+      const jwx = wx(jx, jy);
+      const jwy = wy(jx, jy);
+      const a1 = ang + Math.PI / 2 + spread + va * 4 + Math.sin(fc * 0.22 + phase) * flail;
+      const kx = jwx + Math.cos(a1) * len * 0.55;
+      const ky = jwy + Math.sin(a1) * len * 0.55;
+      const a2 = a1 + 0.45 + Math.sin(fc * 0.3 + phase + 1.3) * flail * 0.7;
+      const ex = kx + Math.cos(a2) * len * 0.5;
+      const ey = ky + Math.sin(a2) * len * 0.5;
+      seg(jwx, jwy, kx, ky, ROBE_D);
+      seg(kx, ky, ex, ey, ROBE_D);
+      dot(ex, ey, tip);
+      dot(ex, ey + 1, tip, 0.85);
+    };
+
+    // draw order: legs + arms BEHIND, torso over the shoulders, then head + hat
+    limb(-1.4, 5, 0.32, 8, 0.0, BOOT); // left leg
+    limb(1.4, 5, -0.32, 8, 2.1, BOOT); // right leg
+    limb(-2, -1, 0.55, 6, 1.0, SKIN); // left arm
+    limb(2, -1, -0.55, 6, 3.3, SKIN); // right arm
+    // TORSO — a robe slab, darker rim, purple hood up top (−y)
+    for (let ly = -3; ly <= 5; ly++) {
+      for (let lx = -2; lx <= 2; lx++) {
+        const edge = Math.abs(lx) >= 2 || ly >= 5 ? 0.6 : 1;
+        const c = ly <= -2 ? ROBE_D : ROBE;
+        this.setPx(wx(lx, ly), wy(lx, ly), c[0] * edge, c[1] * edge, c[2] * edge);
       }
     }
-    // HAT — a purple cone + brim just beyond the head (local −y), tumbling with the body.
-    for (let t = 0; t <= 5; t++) {
-      const w = Math.max(0, 4 - Math.floor(t * 0.7));
-      for (let dx = -w; dx <= w; dx++) this.setPx(wx(dx, -hh - 1 - t), wy(dx, -hh - 1 - t), 0.52 * lr, 0.26 * lg, 0.74 * lb);
+    // HEAD — a small round skin blob above the torso
+    for (let ly = -8; ly <= -4; ly++) {
+      const r = ly === -8 || ly === -4 ? 1 : 2;
+      for (let lx = -r; lx <= r; lx++) {
+        const shade = lx * (va >= 0 ? 1 : -1) > 0 ? 1 : 0.82;
+        this.setPx(wx(lx, ly), wy(lx, ly), SKIN[0] * shade, SKIN[1] * shade, SKIN[2] * shade);
+      }
     }
-    for (let dx = -5; dx <= 5; dx++) this.setPx(wx(dx, -hh - 1), wy(dx, -hh - 1), 0.6 * lr, 0.32 * lg, 0.82 * lb);
-    // TOMBSTONE — rises once the corpse settles (world-upright marker + cross).
-    if (corpse.data?.settled === true || corpse.sleeping) this.drawTombstone(cx, cy - hh - 13);
+    // HAT — purple cone + brim beyond the head, tumbling with the skull
+    for (let dx = -5; dx <= 5; dx++) this.setPx(wx(dx, -9), wy(dx, -9), HAT[0], HAT[1], HAT[2]);
+    for (let dx = -6; dx <= 6; dx++) this.setPx(wx(dx, -8), wy(dx, -8), HAT_D[0], HAT_D[1], HAT_D[2]);
+    for (let t = 1; t <= 5; t++) {
+      const w = Math.max(0, 4 - Math.floor(t * 0.7));
+      for (let dx = -w; dx <= w; dx++) this.setPx(wx(dx, -9 - t), wy(dx, -9 - t), HAT[0], HAT[1], HAT[2]);
+    }
+    // TOMBSTONE — rises once the corpse settles (world-upright marker + cross)
+    if (settled) this.drawTombstone(cx, cy - 21);
   }
 
   /** A small arched grey headstone with a darker cross, dimly lit, world-upright. */
@@ -688,97 +744,19 @@ export class FrameComposer implements PixelSurface {
     const runtime = ctx.levels.current;
     if (!runtime || ctx.state.mode !== 'play') return;
     const frame = ctx.state.frameCount;
-    const world = ctx.world;
     const camX = ctx.camera.renderX,
       camY = ctx.camera.renderY;
 
     for (const ws of runtime.waystones) {
-      if (ws.x < camX - 12 || ws.x > camX + VIEW_W + 12 || ws.y < camY - 12 || ws.y > camY + VIEW_H + 12)
+      // Tall runestone: wide cull so the stele/flame above the bowl isn't clipped.
+      if (ws.x < camX - 40 || ws.x > camX + VIEW_W + 40 || ws.y < camY - 48 || ws.y > camY + VIEW_H + 16)
         continue;
-      let hot = 0;
-      for (let dy = -3; dy <= -1; dy++) {
-        for (let dx = -2; dx <= 2; dx++) {
-          const X = ws.x + dx,
-            Y = ws.y + dy;
-          if (!world.inBounds(X, Y)) continue;
-          if (this.isHotCell(world.types[world.idx(X, Y)])) hot++;
-        }
-      }
-
-      const litPulse = 0.72 + Math.sin(frame * 0.07 + ws.x) * 0.22;
-      const heatPulse = Math.min(1, hot / 8) * (0.55 + Math.sin(frame * 0.2 + ws.y) * 0.25);
-      for (let dx = -4; dx <= 4; dx++) {
-        this.setPx(ws.x + dx, ws.y, 0.18, 0.16, 0.14);
-        if (Math.abs(dx) <= 2) this.setPx(ws.x + dx, ws.y - 1, 0.33, 0.28, 0.2);
-      }
-      this.setPx(ws.x - 3, ws.y - 2, 0.23, 0.2, 0.16);
-      this.setPx(ws.x + 3, ws.y - 2, 0.23, 0.2, 0.16);
-      if (ws.lit) {
-        for (let k = 0; k < 5; k++) {
-          const a = frame * 0.05 + k * 1.26;
-          this.addPx(ws.x + Math.round(Math.cos(a) * 2), ws.y - 4 + Math.round(Math.sin(a) * 1.2), 0.5 * litPulse, 0.28 * litPulse, 0.05);
-        }
-        this.addPx(ws.x, ws.y - 3, 1.0 * litPulse, 0.62 * litPulse, 0.12);
-      } else if (hot > 0) {
-        for (let k = 0; k < Math.min(5, hot); k++) {
-          const y = ws.y - 3 - ((frame + k * 5) % 12) / 3;
-          this.addPx(ws.x + ((k % 3) - 1), y, 0.75 * heatPulse, 0.42 * heatPulse, 0.08);
-        }
-      } else if (frame % 80 < 22) {
-        this.addPx(ws.x, ws.y - 3, 0.12, 0.08, 0.04);
-      }
+      this.drawRunestone(ctx, ws);
     }
 
     const cauldron = runtime.cauldron;
-    if (cauldron && cauldron.x >= camX - 14 && cauldron.x <= camX + VIEW_W + 14 && cauldron.y >= camY - 14 && cauldron.y <= camY + VIEW_H + 14) {
-      let mass = 0,
-        sumR = 0,
-        sumG = 0,
-        sumB = 0;
-      for (let dy = -2; dy <= 0; dy++) {
-        for (let dx = -3; dx <= 3; dx++) {
-          const X = cauldron.x + dx,
-            Y = cauldron.y + dy;
-          if (!world.inBounds(X, Y)) continue;
-          const i = world.idx(X, Y);
-          const t = world.types[i];
-          if (!this.isBrewableMass(t)) continue;
-          const c = this.unpack01(world.colors[i]);
-          sumR += c.r;
-          sumG += c.g;
-          sumB += c.b;
-          mass++;
-        }
-      }
-      let heated = false;
-      for (let dy = -2; dy <= 4 && !heated; dy++) {
-        for (let dx = -6; dx <= 6 && !heated; dx++) {
-          if (Math.abs(dx) <= 3 && dy >= -2 && dy <= 0) continue;
-          const X = cauldron.x + dx,
-            Y = cauldron.y + dy;
-          if (world.inBounds(X, Y) && this.isHotCell(world.types[world.idx(X, Y)])) heated = true;
-        }
-      }
-      for (let dx = -4; dx <= 4; dx++) this.setPx(cauldron.x + dx, cauldron.y + 1, 0.25, 0.22, 0.19);
-      this.setPx(cauldron.x - 4, cauldron.y, 0.2, 0.18, 0.16);
-      this.setPx(cauldron.x + 4, cauldron.y, 0.2, 0.18, 0.16);
-      if (mass > 0) {
-        const inv = 1 / mass;
-        const r = sumR * inv,
-          g = sumG * inv,
-          b = sumB * inv;
-        const simmer = heated ? 0.9 + Math.sin(frame * 0.22) * 0.25 : 0.72 + Math.sin(frame * 0.06) * 0.12;
-        for (let dx = -3; dx <= 3; dx++) {
-          const slosh = Math.round(Math.sin(frame * 0.12 + dx * 0.9) * (heated ? 1 : 0.35));
-          this.setPx(cauldron.x + dx, cauldron.y - 1 + slosh, r * simmer, g * simmer, b * simmer);
-        }
-        if (heated) {
-          for (let k = 0; k < 3; k++) {
-            const lift = ((frame + k * 11) % 30) / 6;
-            this.addPx(cauldron.x - 2 + k * 2, cauldron.y - 3 - lift, r * 0.32, g * 0.32, b * 0.32);
-          }
-        }
-      }
+    if (cauldron && cauldron.x >= camX - 28 && cauldron.x <= camX + VIEW_W + 28 && cauldron.y >= camY - 22 && cauldron.y <= camY + VIEW_H + 28) {
+      this.drawCauldronBowl(ctx, cauldron);
     }
 
     const exit = runtime.exit;
@@ -803,6 +781,215 @@ export class FrameComposer implements PixelSurface {
       this.addPx(hint.x, top, 0.95 * pulse, 0.72 * pulse, 0.18 * pulse);
       this.addPx(hint.x - 1, top - 1, 0.7 * pulse, 0.52 * pulse, 0.12 * pulse);
       this.addPx(hint.x + 1, top - 1, 0.7 * pulse, 0.52 * pulse, 0.12 * pulse);
+    }
+  }
+
+  /**
+   * The waystone as a RUNESTONE WITH FIRE: a tall carved stele rising behind the
+   * brazier dish, an ancient hieroglyph glowing/pulsing on its face, and a tall
+   * bright flame when lit. The playable fire bowl stays at (ws.y) — the lighting
+   * still reads real fire cells; everything here is the monument around it.
+   */
+  private drawRunestone(ctx: Ctx, ws: { x: number; y: number; lit: boolean; heat?: number }): void {
+    const frame = ctx.state.frameCount;
+    const world = ctx.world;
+    const cx = ws.x;
+    let hot = 0;
+    for (let dy = -3; dy <= -1; dy++)
+      for (let dx = -2; dx <= 2; dx++)
+        if (world.inBounds(cx + dx, ws.y + dy) && this.isHotCell(world.types[world.idx(cx + dx, ws.y + dy)])) hot++;
+    const lit = ws.lit;
+    const heat = lit ? 1 : (ws.heat ?? 0);
+    const litPulse = 0.72 + Math.sin(frame * 0.07 + cx) * 0.22;
+
+    // --- the STELE: a tall carved monolith with a rounded crown + carved grooves ---
+    const topY = ws.y - 32;
+    const halfW = 6;
+    for (let y = topY; y <= ws.y; y++) {
+      const fromTop = y - topY;
+      const hw = fromTop < 4 ? halfW - (4 - fromTop) : halfW; // rounded crown
+      if (hw < 0) continue;
+      for (let dx = -hw; dx <= hw; dx++) {
+        let v = 0.28 + dx * 0.007 - fromTop * 0.0009; // faint left-shadow / top-light
+        if (Math.abs(dx) === hw) v = 0.12; // dark outline
+        else if (Math.abs(dx) >= hw - 1) v = 0.2; // bevel
+        if (fromTop % 7 === 3) v *= 0.72; // carved horizontal groove
+        const warm = lit ? 0.1 * litPulse : heat * 0.06; // lit braziers warm the stone
+        this.setPx(cx + dx, y, v + warm, v * 0.95 + warm * 0.65, v * 0.82 + warm * 0.2);
+      }
+    }
+
+    // --- the HIEROGLYPH: a glowing carved glyph mid-face (gold lit / cyan dormant) ---
+    const glyphY = ws.y - 19;
+    const gp = lit
+      ? 0.5 + 0.5 * litPulse
+      : 0.12 + heat * 0.5 + Math.sin(frame * 0.05 + cx) * 0.05;
+    const glyph: ReadonlyArray<readonly [number, number]> = [
+      [0, -4], [-1, -3], [1, -3], [-2, -1], [2, -1], [-2, 1], [2, 1], [-1, 3], [1, 3], [0, 4], // ring
+      [0, -1], [0, 0], [0, 1], // pupil bar
+      [-3, -4], [3, -4], [-3, 4], [3, 4], // corner ticks
+    ];
+    const gr = lit ? 1.0 : 0.5, gg = lit ? 0.78 : 0.85, gb = lit ? 0.3 : 0.95;
+    for (const [dx, dy] of glyph) this.addPx(cx + dx, glyphY + dy, gr * gp, gg * gp, gb * gp);
+    if (lit && frame % 96 < 28) {
+      // a spark of light crawls up a carved edge groove
+      const sy = ws.y - 2 - (frame % 96);
+      this.addPx(cx - halfW + 1, sy, 0.6 * litPulse, 0.42 * litPulse, 0.14);
+    }
+
+    // --- the BRAZIER DISH at the foot (the real fire bowl) ---
+    for (let dx = -5; dx <= 5; dx++) this.setPx(cx + dx, ws.y + 1, 0.22, 0.2, 0.17); // lip
+    for (let dx = -4; dx <= 4; dx++) this.setPx(cx + dx, ws.y, 0.16 + heat * 0.28, 0.14 + heat * 0.12, 0.12);
+    this.setPx(cx - 5, ws.y, 0.14, 0.13, 0.11);
+    this.setPx(cx + 5, ws.y, 0.14, 0.13, 0.11);
+
+    // --- the FLAME ---
+    if (lit) {
+      const tall = 16;
+      const sway = Math.sin(frame * 0.06 + cx) * 0.9;
+      for (let t = 0; t <= tall; t++) {
+        const up = 1 - t / (tall + 2);
+        const fx = cx + Math.round(sway * (t / tall) + Math.sin(frame * 0.2 + t * 0.5) * 0.5 * up);
+        const w = t < 3 ? 2 : t < 9 ? 1 : 0;
+        for (let dx = -w; dx <= w; dx++) {
+          const core = dx === 0 ? 1 : 0.6;
+          this.addPx(fx + dx, ws.y - 1 - t, (0.8 + 0.35 * up) * litPulse * core, (0.5 + 0.2 * up) * litPulse * core, (0.1 + (1 - up) * 0.5) * core);
+        }
+      }
+      this.addPx(cx, ws.y - 2, 0.95, 0.95 * litPulse, 0.85 * litPulse); // white-hot heart
+      this.addPx(cx, ws.y - 3, 0.92, 0.82 * litPulse, 0.5 * litPulse);
+      for (let k = 0; k < 5; k++) {
+        const ey = ws.y - 4 - ((frame + k * 17) % 40) / 2;
+        this.addPx(cx + ((k % 3) - 1) + Math.round(Math.sin(frame * 0.1 + k) * 2), ey, 0.6 * litPulse, 0.3 * litPulse, 0.06);
+      }
+      const halo = 0.1 + Math.sin(frame * 0.08 + ws.y) * 0.04;
+      for (let a = 0; a < 8; a++) {
+        const ang = (a / 8) * Math.PI * 2;
+        this.addPx(cx + Math.round(Math.cos(ang) * 6), ws.y - 5 + Math.round(Math.sin(ang) * 4), halo * 0.45, halo * 0.65, halo);
+      }
+    } else if (hot > 0) {
+      const heatPulse = Math.min(1, hot / 8) * (0.55 + Math.sin(frame * 0.2 + ws.y) * 0.25);
+      for (let k = 0; k < Math.min(6, hot + 1); k++) {
+        const y = ws.y - 2 - ((frame + k * 5) % 14) / 3;
+        this.addPx(cx + ((k % 3) - 1), y, 0.75 * heatPulse, 0.42 * heatPulse, 0.08);
+      }
+      const rim = Math.round(heat * 4);
+      for (let t = 0; t < rim; t++) {
+        this.addPx(cx - 5, ws.y - t, 0.7, 0.4, 0.08);
+        this.addPx(cx + 5, ws.y - t, 0.7, 0.4, 0.08);
+      }
+    } else if (frame % 80 < 22) {
+      this.addPx(cx, ws.y - 2, 0.1, 0.07, 0.04);
+    }
+
+    // objective chevron over the crown when unlit + player near
+    if (!lit) {
+      const pdx = ws.x - ctx.player.x, pdy = ws.y - ctx.player.y;
+      if (pdx * pdx + pdy * pdy < 80 * 80) {
+        const bob = Math.round(Math.sin(frame * 0.12) * 1.5);
+        const ay = topY - 5 + bob;
+        const c = 0.55 + Math.sin(frame * 0.12) * 0.25;
+        this.addPx(cx - 2, ay, c, c * 0.85, c * 0.35);
+        this.addPx(cx + 2, ay, c, c * 0.85, c * 0.35);
+        this.addPx(cx - 1, ay + 1, c, c * 0.85, c * 0.35);
+        this.addPx(cx + 1, ay + 1, c, c * 0.85, c * 0.35);
+        this.addPx(cx, ay + 2, c, c * 0.85, c * 0.35);
+      }
+    }
+  }
+
+  /**
+   * The cauldron as a LARGE ornate brewing vessel: a wide U-bowl with rolled-handle
+   * rim, curved legs, and a stepped stone pedestal — the brew liquid sloshes and
+   * simmers inside. The playable brew basin stays at (cauldron.y) — brewing still
+   * reads the real cells; this is the vessel rendered around them.
+   */
+  private drawCauldronBowl(ctx: Ctx, cauldron: { x: number; y: number }): void {
+    const frame = ctx.state.frameCount;
+    const world = ctx.world;
+    const cx = cauldron.x, cy = cauldron.y;
+    // brew mass + heat, sampled from the real basin cells
+    let mass = 0, sumR = 0, sumG = 0, sumB = 0;
+    for (let dy = -2; dy <= 0; dy++)
+      for (let dx = -3; dx <= 3; dx++) {
+        if (!world.inBounds(cx + dx, cy + dy)) continue;
+        const t = world.types[world.idx(cx + dx, cy + dy)];
+        if (!this.isBrewableMass(t)) continue;
+        const c = this.unpack01(world.colors[world.idx(cx + dx, cy + dy)]);
+        sumR += c.r; sumG += c.g; sumB += c.b; mass++;
+      }
+    let heated = false;
+    for (let dy = -2; dy <= 4 && !heated; dy++)
+      for (let dx = -8; dx <= 8 && !heated; dx++) {
+        if (Math.abs(dx) <= 3 && dy >= -2 && dy <= 0) continue;
+        if (world.inBounds(cx + dx, cy + dy) && this.isHotCell(world.types[world.idx(cx + dx, cy + dy)])) heated = true;
+      }
+
+    // The vessel RISES from the ground basin: a wide rim high above (the wizard
+    // stands in it and pours over the lip), tapering to a rounded base on feet.
+    const rimY = cy - 12;     // tall rim, well above the ground floor
+    const baseY = cy + 2;     // rounded base on the floor
+    const span = baseY - rimY;
+    const rimHW = 13;
+    const baseHW = 4;
+    const hwAt = (y: number): number => {
+      const tt = (y - rimY) / span; // 0 at rim (widest) → 1 at base (narrow)
+      return Math.round(baseHW + (rimHW - baseHW) * Math.sqrt(Math.max(0, 1 - tt * tt)));
+    };
+    const sheen = ((frame * 0.5) % (rimHW * 2 + 6)) - rimHW - 3; // a highlight travels the rim
+    const steel = (v: number): [number, number, number] => [v * 0.86, v * 0.93, v]; // cool steel
+
+    // --- bowl walls (2px): a wide cup tapering to a rounded base ---
+    for (let y = rimY; y <= baseY; y++) {
+      const hw = hwAt(y);
+      if (hw < 1) continue;
+      for (const side of [-1, 1] as const) {
+        for (let wpx = 0; wpx < 2; wpx++) {
+          const x = cx + side * (hw - wpx);
+          let v = 0.32 + (side > 0 ? 0.06 : -0.03) - (y - rimY) * 0.004;
+          if (Math.abs(x - cx - sheen) < 1.3) v += 0.2; // traveling sheen
+          this.setPx(x, y, ...steel(v));
+        }
+      }
+    }
+    // close the rounded base
+    const hwB = hwAt(baseY);
+    for (let dx = -hwB; dx <= hwB; dx++) this.setPx(cx + dx, baseY, ...steel(0.28));
+    // rim band + rolled handles (the curled ends)
+    for (let dx = -rimHW; dx <= rimHW; dx++) {
+      this.setPx(cx + dx, rimY - 1, ...steel(0.47));
+      this.setPx(cx + dx, rimY, ...steel(0.38));
+    }
+    for (const side of [-1, 1] as const) {
+      const hx = cx + side * (rimHW + 1);
+      this.setPx(hx, rimY - 2, ...steel(0.42));
+      this.setPx(hx + side, rimY - 2, ...steel(0.36));
+      this.setPx(hx + side, rimY - 1, ...steel(0.32));
+    }
+    // splayed feet on the floor
+    for (const side of [-1, 1] as const) {
+      for (let t = 0; t <= 2; t++) this.setPx(cx + side * (baseHW + t), baseY + 1 + (t >> 1), ...steel(0.26 - t * 0.03));
+    }
+
+    // --- the BREW: pools low in the big bowl (real basin level near cy) ---
+    if (mass > 0) {
+      const inv = 1 / mass;
+      const r = sumR * inv, g = sumG * inv, b = sumB * inv;
+      const simmer = heated ? 0.9 + Math.sin(frame * 0.22) * 0.25 : 0.72 + Math.sin(frame * 0.06) * 0.12;
+      const surfY = cy - 2; // surface sits low, near the real basin cells
+      for (let y = surfY; y <= baseY - 1; y++) {
+        const hw = Math.max(0, hwAt(y) - 2);
+        const slosh = y === surfY ? Math.round(Math.sin(frame * 0.12) * (heated ? 1 : 0.4)) : 0;
+        for (let dx = -hw; dx <= hw; dx++) this.setPx(cx + dx, y + slosh, r * simmer, g * simmer, b * simmer);
+      }
+      if (heated) {
+        for (let k = 0; k < 6; k++) {
+          const lift = ((frame + k * 11) % 40) / 3;
+          this.addPx(cx - 6 + k * 3, surfY - 1 - lift, r * 0.3, g * 0.3, b * 0.3); // vapor climbs the bowl
+        }
+        if (frame % 7 < 3) this.addPx(cx + ((frame >> 1) % 13) - 6, surfY, r * 0.5 + 0.2, g * 0.5 + 0.12, b * 0.5); // bubble glint
+        for (let dx = -baseHW - 2; dx <= baseHW + 2; dx++) this.addPx(cx + dx, baseY, 0.42, 0.18, 0.04); // ember glow under the base
+      }
     }
   }
 
