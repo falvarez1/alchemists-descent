@@ -31,11 +31,8 @@ jobs:
           node-version: 20
           cache: npm
 
-      # `npm install`, not `npm ci`: the committed lockfile is generated on Windows
-      # and pins the win32 Rollup native binary, so `npm ci` fails EBADPLATFORM on
-      # the Linux runner. `npm install` re-resolves the right platform binary.
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci
 
       # vite build (not `npm run build`) so a strict-tsc error never blocks a
       # deploy. GH_PAGES sets the /<repo>/ base path (see vite.config.ts).
