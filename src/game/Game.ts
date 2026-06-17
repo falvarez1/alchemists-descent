@@ -19,6 +19,7 @@ import { VineStrands } from '@/entities/VineStrands';
 import { Brewing } from '@/game/Brewing';
 import { createConsoleApi } from '@/game/console/commands';
 import { Critters } from '@/game/Critters';
+import { HintSystem } from '@/game/Hints';
 import { Levels } from '@/game/Levels';
 import { Mechanisms } from '@/game/Mechanisms';
 import { Pickups } from '@/game/Pickups';
@@ -41,6 +42,7 @@ import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
 import { CardOfferOverlay } from '@/ui/CardOfferOverlay';
 import { WaystonePromptOverlay } from '@/ui/WaystonePromptOverlay';
+import { HintTeachOverlay } from '@/ui/HintTeachOverlay';
 import { HelpOverlay } from '@/ui/HelpOverlay';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
@@ -173,6 +175,7 @@ export class Game {
     ctx.mechanisms = new Mechanisms(ctx);
     ctx.sanctum = new Sanctum(ctx);
     ctx.critters = new Critters(ctx);
+    ctx.hints = new HintSystem(ctx);
     ctx.perf = this.perfHud;
     ctx.console = createConsoleApi(ctx);
     this.ctx = ctx;
@@ -215,6 +218,7 @@ export class Game {
     this.minimap = new Minimap(ctx);
     new CardOfferOverlay(ctx);
     new WaystonePromptOverlay(ctx);
+    new HintTeachOverlay(ctx);
     // Self-binds the B key; lives for the page lifetime.
     new WandBench(ctx);
     // Transitional dev console: typed QA commands + automation adapter.
@@ -422,6 +426,7 @@ export class Game {
       ctx.mechanisms.update(ctx);
       ctx.critters.update(ctx);
       this.brewing.update(ctx);
+      ctx.hints.update(ctx);
       ctx.wands.update(ctx);
       ctx.particles.update(ctx);
       ctx.lightning.update();

@@ -792,6 +792,18 @@ export class FrameComposer implements PixelSurface {
       }
       if (frame % 48 < 12) this.addPx(exit.x, exit.sealY - 12, 0.16, 0.12, 0.06);
     }
+
+    // Hint tier 1: a bobbing amber chevron over whatever interactable the
+    // HintSystem is currently pointing the player at (light = information).
+    const hint = ctx.hints.current?.world;
+    if (hint && hint.x >= camX - 4 && hint.x <= camX + VIEW_W + 4 && hint.y >= camY - 12 && hint.y <= camY + VIEW_H + 4) {
+      const bob = Math.round(Math.sin(frame * 0.16) * 1.5);
+      const top = hint.y - 8 + bob;
+      const pulse = 0.55 + Math.sin(frame * 0.16) * 0.3;
+      this.addPx(hint.x, top, 0.95 * pulse, 0.72 * pulse, 0.18 * pulse);
+      this.addPx(hint.x - 1, top - 1, 0.7 * pulse, 0.52 * pulse, 0.12 * pulse);
+      this.addPx(hint.x + 1, top - 1, 0.7 * pulse, 0.52 * pulse, 0.12 * pulse);
+    }
   }
 
   /** Hand-tool tells: flask siphon/pour beams and the bottle in flight. */

@@ -227,6 +227,14 @@ export class Hud {
     if (node.textContent !== text) node.textContent = text;
   }
 
+  /** Tier-2 contextual hint: the nearest interactable's "what to do" line. */
+  private renderInteractionHint(ctx: Ctx): void {
+    const text = ctx.hints.current?.line ?? '';
+    const node = el('interaction-hint');
+    if (node.textContent !== text) node.textContent = text;
+    node.classList.toggle('visible', text !== '');
+  }
+
   /**
    * Wandsmith (Wave D): the play-mode hotbar mirrors the ACTIVE WAND — its
    * name as a label, then one tile per frame slot (empty = dim). Cards are
@@ -310,6 +318,7 @@ export class Hud {
   update(ctx: Ctx): void {
     const player = ctx.player;
     this.renderObjective();
+    this.renderInteractionHint(ctx);
     el('hp-fill').style.width = Math.max(0, (player.hp / player.maxHp) * 100) + '%';
     // player.mana mirrors the active wand's tank (WandSystem guarantee), so
     // the mana bar tracks the wand with no extra wiring here.

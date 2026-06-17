@@ -83,9 +83,12 @@ const r = await page.evaluate(async () => {
   const slimeBefore = { x: slime.x, hp: slime.hp };
   kick();
   const slimeLaunched = (slime.knockT ?? 0) > 0;
-  for (let f = 0; f < 30; f++) window.__game.tick();
+  // peak displacement AWAY from the wizard during the launch — a slime is an
+  // aggressive hopper, so it springs back toward you afterward (net is fragile).
+  let slimeMaxX = slime.x;
+  for (let f = 0; f < 30; f++) { window.__game.tick(); if (ctx.enemies.includes(slime)) slimeMaxX = Math.max(slimeMaxX, slime.x); }
   const slimeAlive = ctx.enemies.includes(slime);
-  const slimeMovedAway = slime.x - slimeBefore.x;
+  const slimeMovedAway = slimeMaxX - slimeBefore.x;
 
   return {
     wallSolid,

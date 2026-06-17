@@ -31,6 +31,16 @@ function isLure(t: number): boolean {
   );
 }
 
+/** Hot, dangerous glow that light-SHY critters flee (cf. the moth's lure — the
+ *  ambient Glowshroom/Crystal glow is harmless, so it's not a threat here). */
+function isHotGlow(t: number): boolean {
+  return t === Cell.Fire || t === Cell.Lava || t === Cell.Ember;
+}
+
+/** Prey species that skitter from fire and the looming player — the inverse of
+ *  the moth's light-seeking (moths and fish have their own rules). */
+const LIGHT_SHY: ReadonlySet<CritterKind> = new Set<CritterKind>(['beetle', 'fly', 'firefly']);
+
 export class Critters implements CrittersApi {
   private readonly pool = new EntityPool<Critter>();
   readonly list = this.pool.list;
@@ -95,6 +105,7 @@ export class Critters implements CrittersApi {
     if (frame % 30 === 0) this.trySpawn(ctx);
     this.updateCritters(ctx);
     this.ambientGrid(ctx, frame);
+    this.shedFromShake(ctx);
     if (frame % 90 === 0) this.ambientAudio(ctx);
   }
 
@@ -206,6 +217,35 @@ export class Critters implements CrittersApi {
         ctx.particles.burst(c.x, c.y, 3, null, () => packRGB(140, 120, 80), 1.0, { grav: 0.04 });
         this.removeAt(idx);
         continue;
+      }
+
+      // LIGHT-SHY: prey species flinch from fire and the player's looming bulk —
+      // it kicks a short flee (carried by the startle branch below), the mirror
+      // of the moth's pull. Once they clear the threat radius they settle again.
+      if ((c.startle ?? 0) === 0 && LIGHT_SHY.has(c.kind)) {
+        let ax = 0, ay = 0, threatened = false;
+        if (!player.dead) {
+          const pdx = c.x - player.x, pdy = c.y - (player.y - 8);
+          const pd2 = pdx * pdx + pdy * pdy;
+          if (pd2 > 4 && pd2 < 32 * 32) {
+            const pd = Math.sqrt(pd2), k = 1 - pd / 32;
+            ax += (pdx / pd) * k; ay += (pdy / pd) * k; threatened = true;
+          }
+        }
+        for (let s = 0; s < 4; s++) {
+          const sx = xi + ((Math.random() * 29) | 0) - 14;
+          const sy = yi + ((Math.random() * 29) | 0) - 14;
+          if (w.inBounds(sx, sy) && isHotGlow(w.types[w.idx(sx, sy)])) {
+            const ddx = c.x - sx, ddy = c.y - sy, dd = Math.hypot(ddx, ddy) || 1;
+            ax += (ddx / dd) * 0.9; ay += (ddy / dd) * 0.9; threatened = true;
+          }
+        }
+        if (threatened) {
+          const am = Math.hypot(ax, ay) || 1;
+          c.vx += (ax / am) * 0.7;
+          c.vy += (ay / am) * 0.7 - 0.3; // a little hop into the scramble
+          c.startle = 8;
+        }
       }
 
       if ((c.startle ?? 0) > 0) {
@@ -427,6 +467,43 @@ export class Critters implements CrittersApi {
           grav: -0.01,
         });
         if (Math.random() < 0.15) ctx.audio.bubble();
+      }
+    }
+  }
+
+  /** CONCUSSION SHED: when the cave shakes (a heavy landing, a blast), overhangs
+   *  loose dust and grit — real falling motes whose count scales with the shake.
+   *  Reads the same screenShake the renderer uses (it decays ~×0.88/frame, so a
+   *  big jolt sheds a brief cascade over the next dozen frames). */
+  private shedFromShake(ctx: Ctx): void {
+    const shake = ctx.fx.screenShake;
+    if (shake < 0.015) return;
+    const w = ctx.world;
+    const camX = Math.floor(ctx.camera.x);
+    const camY = Math.floor(ctx.camera.y);
+    const tries = Math.min(6, 1 + Math.floor(shake * 60));
+    for (let k = 0; k < tries; k++) {
+      const x = camX + Math.floor(Math.random() * VIEW_W);
+      // walk down to the lowest ceiling cell that has open air just beneath it
+      let solidY = -1;
+      for (let y = camY + 2; y < camY + VIEW_H - 8 && y < HEIGHT - 6; y++) {
+        if (!w.inBounds(x, y)) break;
+        const t = w.types[w.idx(x, y)];
+        if (t === Cell.Wall || t === Cell.Stone) solidY = y;
+        else if (solidY > 0 && t === Cell.Empty) break;
+        else solidY = -1;
+      }
+      if (solidY > 0 && w.inBounds(x, solidY + 1) && w.types[w.idx(x, solidY + 1)] === Cell.Empty) {
+        ctx.particles.spawn(
+          x + (Math.random() - 0.5),
+          solidY + 1,
+          (Math.random() - 0.5) * 0.25,
+          0.1 + Math.random() * 0.35,
+          null,
+          packRGB(118, 110, 98),
+          46 + ((Math.random() * 40) | 0),
+          { grav: 0.05 },
+        );
       }
     }
   }

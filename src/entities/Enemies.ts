@@ -362,6 +362,12 @@ export class Enemies implements EnemyControlApi {
     ctx.particles.burst(e.x, e.y - 5, 10, null, () => packRGB(150, 140, 120), 1.6, { grav: 0.05 });
     ctx.audio.noiseBurst(0.12, 170, 0.13); // wet crunch
     ctx.audio.tone(120, 70, 0.12, 'square', 0.08);
+    // THE PUNCH: a wall-slam gib is a kill-cam moment — a beat of hitstop, a bloom
+    // flash, and a small shake, all scaled a touch by how hard it hit.
+    const punch = Math.min(1, speed / 12);
+    ctx.fx.hitstop = Math.max(ctx.fx.hitstop, 3 + Math.round(punch * 2));
+    ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 0.7 + punch * 0.5);
+    this.shakeAt(e.x, e.y, 0.014 + punch * 0.014, 0.05);
     // Consume the launch, then take the hit (lethal for small foes → gib gore).
     e.knockT = 0;
     e.knockVx = 0;

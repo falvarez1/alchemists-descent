@@ -163,6 +163,15 @@ export class Explosions implements ExplosionApi {
         const dmg = Math.min(42, Math.max(3, (1 - d / (radius * 1.5)) * radius * 2.0));
         ctx.playerCtl.damage(dmg, (dx / (d || 1)) * 2.4, -1.8, 'explosion');
       }
+      // The blast wave billows the wizard's cloth (reaches past the damage radius).
+      const hat = ctx.player.hat, robe = ctx.player.robe;
+      if (hat && robe && d < radius * 2.4) {
+        const bn = 1 - d / (radius * 2.4);
+        const ux = dx / (d || 1);
+        hat.vx += ux * (1.2 + bn * 3.0);
+        hat.vy -= 0.8 + bn * 1.8;
+        robe.vx += ux * (0.9 + bn * 2.2);
+      }
     }
     // Blasts toss loose rigid bodies (crates, debris). Generous reach + a flat
     // base so even a small spark blast gives a satisfying shove, scaling up to a

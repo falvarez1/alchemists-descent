@@ -461,6 +461,11 @@ export class PlayerControl implements PlayerControlApi {
     const recoil = lp.kickSelfRecoil * Math.max(KICK_BASE_RECOIL, reaction);
     this.applyImpulse(-dirX * recoil, -dirY * recoil);
     if (player.grounded && dirY > 0.2) player.grounded = false; // kicking down lifts you off
+    // The gust catches the wizard's own cloth: the hat whips and the robe flares
+    // in the blast (the same springs the dive/skid/recoil drive).
+    player.hat.vx += dirX * 1.8;
+    player.hat.vy -= 1.2;
+    player.robe.vx += dirX * 1.4;
 
     // WIND GUST: the kick is a blast of air. Within a wide gust cone it blows loose
     // light cells (ash ALWAYS, plus embers + gases) into flying motes, shoves loose

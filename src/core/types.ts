@@ -1528,6 +1528,23 @@ export type PerkId =
   | 'toxinward'
   | 'goldmagnet';
 
+/** One contextual onboarding hint for the nearest interactable. */
+export interface HintInfo {
+  /** Stable category id — also the teach-once key. */
+  key: string;
+  /** One-line "what to do here" shown in the HUD. */
+  line: string;
+  /** World cell to point a marker at, if this hint has a discrete object. */
+  world?: { x: number; y: number };
+}
+
+/** Surfaces the best contextual hint for whatever the player is standing near. */
+export interface HintApi {
+  /** The current best hint, or null when nothing relevant is in reach. */
+  readonly current: HintInfo | null;
+  update(ctx: Ctx): void;
+}
+
 export interface MechanismsApi {
   /** Plate/brazier/door physics + rune-vault dissolution each frame (play mode). */
   update(ctx: Ctx): void;
@@ -2111,4 +2128,5 @@ export interface Ctx {
   mechanisms: MechanismsApi;
   sanctum: SanctumApi;
   critters: CrittersApi;
+  hints: HintApi;
 }
