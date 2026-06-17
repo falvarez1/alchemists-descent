@@ -1136,8 +1136,14 @@ export interface RigidBodiesApi {
   /** Grab the nearest light body in front of the player (held = tracks the hand
    *  point each frame). No-op if already holding or nothing's in reach. */
   grab(ctx: Ctx): void;
-  /** Throw the held body along the aim (carrying the player's momentum), or no-op. */
-  release(ctx: Ctx): void;
+  /** Telekinesis: lift the body under the mouse cursor (within reach, any mass) so
+   *  it levitates and tracks the hands. Returns true if a body was lifted. */
+  grabAtCursor(ctx: Ctx): boolean;
+  /** Whether a body is currently held/levitated. */
+  isHolding(): boolean;
+  /** Let go of the held body: throwIt=true flings it along the aim (carrying the
+   *  player's momentum); false sets it down gently where it floats. No-op if none. */
+  release(ctx: Ctx, throwIt?: boolean): void;
   /** Light the fuse of every flammable body whose footprint is within `radius`
    *  of (x,y) — lets an igniter (relay 'ignite', hazard, spell) set a prop or
    *  barrel alight directly instead of waiting for a fire cell to drift into its

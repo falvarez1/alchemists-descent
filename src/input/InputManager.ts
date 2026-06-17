@@ -430,15 +430,25 @@ export class InputManager {
       this.setKeyHeld(e.code, true);
     else if (e.code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
     else if (e.code === 'KeyE' && !ctx.player.climbing) {
-      // Context-sensitive E: a lever in reach starts the hand-pull (both
-      // hands busy — no siphon); otherwise the hold siphons the flask.
-      const pulling = !e.repeat && ctx.mechanisms.interact(ctx);
-      if (!pulling) ctx.input.siphonHeld = true;
+      // E telekinesis (toggle): drop a levitated crate, else LIFT the crate the
+      // mouse cursor is on. If no crate's involved it falls through to the old
+      // E behaviour — a lever-pull in reach, else hold-to-siphon the flask.
+      if (!e.repeat && ctx.rigidBodies.isHolding()) {
+        ctx.rigidBodies.release(ctx, false); // set the levitated crate down
+      } else if (!e.repeat && ctx.rigidBodies.grabAtCursor(ctx)) {
+        // lifted the crate under the cursor — it now levitates and tracks the hand
+      } else if (!ctx.rigidBodies.isHolding()) {
+        const pulling = !e.repeat && ctx.mechanisms.interact(ctx);
+        if (!pulling) ctx.input.siphonHeld = true;
+      }
     }
     else if (e.code === 'KeyQ' && !ctx.player.climbing) ctx.input.pourHeld = true;
     else if (e.code === 'KeyX' && !ctx.player.climbing) ctx.input.drinkHeld = true;
-    else if (e.code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing)
-      ctx.playerCtl.kick(ctx);
+    else if (e.code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing) {
+      // F throws a telekinetically-held crate; otherwise it's the kick gust.
+      if (ctx.rigidBodies.isHolding()) ctx.rigidBodies.release(ctx, true);
+      else ctx.playerCtl.kick(ctx);
+    }
     else if (e.code === 'KeyG' && !e.repeat && !ctx.player.dead && !ctx.player.climbing) {
       // hold G: latch a hanging vine to swing, else carry a body; release to let go/throw
       if (!ctx.playerCtl.grabVine(ctx)) ctx.rigidBodies.grab(ctx);
