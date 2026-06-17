@@ -1516,6 +1516,7 @@ export class Builder {
     const floating = this.floatingPointFromClient(drag.id, point);
     this.moveWorkspacePanel(drag.id, 'floating', { floating });
     this.applyWorkspaceLayout();
+    this.updateDockGuides();
     drag.el = this.panelEl(drag.id) ?? drag.el;
     drag.el.classList.add('dragging-live');
   }
@@ -2377,6 +2378,29 @@ export class Builder {
     this.root.classList.remove('b-dragging-panel');
     this.clearDropTargetHighlights();
     this.hideDropIndicator();
+  }
+
+  /**
+   * Dock guides are drop affordances for *empty* docks: a hittable edge target
+   * where there is otherwise nothing to drop onto. When a region already holds
+   * an open panel, the dock (and its tab strip) is itself the drop target and
+   * shows a precise per-tab insertion point — so the guide is both redundant
+   * and harmful: its `pointer-events: auto` overlay sits on top of the dock and
+   * intercepts the cursor, which short-circuits that insertion feedback (the
+   * early return in markDockInsertion). Show each guide only while its region is
+   * empty; for occupied regions the live drop indicator + drop-before markers do
+   * the work, the same way the bottom dock already does. Recomputed once per
+   * drag (occupancy is fixed for the duration of a drag).
+   */
+  private updateDockGuides(): void {
+    for (const region of ['left', 'right', 'bottom'] as const) {
+      const guide = this.panelEl(`builder-dock-guide-${region}`);
+      if (!guide) continue;
+      const occupied = this.workspaceLayout.panels.some(
+        (panel) => panel.dock === region && panel.open && panel.id !== this.draggingPanelId,
+      );
+      guide.style.display = occupied ? 'none' : '';
+    }
   }
 
   private clearDropTargetHighlights(active?: HTMLElement): void {

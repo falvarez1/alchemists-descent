@@ -54,9 +54,15 @@ const MOVE_ACCEL_CAP = 0.6; // max per-frame ground-speed gain — high top spee
 //    held run still reaches top speed in ~7 frames). Air control stays snappy.
 //  - Fast stop: on release, decelerate quicker than you accelerated and snap the
 //    last crumb of speed to zero, so a tap doesn't coast cells past your intent.
-const GROUND_SOFT_START = 0.55; // ground accel from rest = this fraction of full, ramping to 1.0 at top speed
-const GROUND_STOP_DECAY = 0.6; // velocity kept per frame with no input (was 0.72)
+const MOVE_SOFT_START = 0.55; // accel from rest = this fraction of full, ramping to 1.0 at top speed (ground AND air)
+const GROUND_STOP_DECAY = 0.6; // ground velocity kept per frame with no input (was 0.72)
 const GROUND_STOP_SNAP = 0.12; // below this |vx| (cells/frame) the body halts outright
+// Air horizontal control. Inertia (airDrag ~0.985) carries a fast run into a
+// jump/levitate so a glide coasts — but a quick TAP from low speed would coast
+// the same ~65x, flinging you sideways. So below the glide speed, with no input,
+// stop fast like the ground; at/above it the carried momentum still glides.
+const AIR_GLIDE_SPEED = 1.9; // |vx| at/above which airborne momentum keeps its slow drag (a real glide)
+const AIR_STOP_DECAY = 0.74; // air velocity kept per frame for a low-speed tap with no input (floatier than ground)
 // Variable jump height. The fixed -3.7 launch peaks ~24 cells, so even a tap
 // flies way over a crate. Hold jump for the full leap; release during the rise
 // to cut it short (a low hop). Holding past the window rolls into levitation.
@@ -1194,11 +1200,10 @@ export class PlayerControl implements PlayerControlApi {
       // Cap the boosted top speed (Swift/God Mode) so it stays inside the
       // precision curve; crawl/crouch then scale down from the capped run.
       maxRun = Math.min(2.6 * speedK, MAX_RUN_CAP) * stanceK;
-    // Ground soft-start: ease in from a standstill (a tap stays slow + precise),
-    // ramping to full accel with speed. Air control keeps its full responsiveness.
-    const stepAccel = player.grounded
-      ? accel * (GROUND_SOFT_START + (1 - GROUND_SOFT_START) * Math.min(1, Math.abs(player.vx) / maxRun))
-      : accel;
+    // Soft-start: ease in from a standstill (a tap stays slow + precise), ramping
+    // to full accel with speed. Applies in the air too, so a fresh airborne tap is
+    // gentle while CARRIED speed (already near maxRun) still gets full control.
+    const stepAccel = accel * (MOVE_SOFT_START + (1 - MOVE_SOFT_START) * Math.min(1, Math.abs(player.vx) / maxRun));
     if (!player.climbing) {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
       // back DOWN — a fast run carried into a jump/levitate keeps its speed (you
@@ -1221,11 +1226,15 @@ export class PlayerControl implements PlayerControlApi {
         }
         player.vx = clamp(player.vx, -maxRun, maxRun);
       } else {
-        // Airborne / levitating: INERTIA. Only a gentle air drag bleeds
-        // horizontal momentum, so sprint speed carries into flight and a glide
-        // coasts instead of snapping to a stop. The ±12 rail is a sanity cap for
-        // stacked recoil impulses.
-        player.vx *= lp.airDrag;
+        // Airborne / levitating: a fast run still GLIDES (carried momentum bleeds
+        // slowly through airDrag), but a quick low-speed TAP stops fast so it's a
+        // small nudge, not a 60-cell skate. The ±12 rail caps stacked recoil.
+        if (!keys.left && !keys.right && Math.abs(player.vx) < AIR_GLIDE_SPEED) {
+          player.vx *= AIR_STOP_DECAY;
+          if (Math.abs(player.vx) < GROUND_STOP_SNAP) player.vx = 0;
+        } else {
+          player.vx *= lp.airDrag;
+        }
         player.vx = clamp(player.vx, -12, 12);
       }
     } else {
