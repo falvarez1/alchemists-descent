@@ -48,6 +48,20 @@ const TELEPORT_SEARCH_RADIUS = 260;
 const KICK_BASE_RECOIL = 0.5; // kick always self-pushes this fraction even into open air (so it works mid-air like wand recoil); a solid hit ramps to 1
 const GUST_ENEMY_PUSH = 5; // kick wind-gust shove scalar for enemies (mass-scaled in EnemyControl.gustShove)
 const MOVE_ACCEL_CAP = 0.6; // max per-frame ground-speed gain — high top speeds (Swift stacks / God Mode) RAMP up over several frames instead of snapping to max
+// Fine horizontal control (Celeste-style). Two halves:
+//  - Soft-start: ground accel eases in from a standstill so a brief A/D tap is a
+//    small, controllable nudge, ramping to full accel as you pick up speed (a
+//    held run still reaches top speed in ~7 frames). Air control stays snappy.
+//  - Fast stop: on release, decelerate quicker than you accelerated and snap the
+//    last crumb of speed to zero, so a tap doesn't coast cells past your intent.
+const GROUND_SOFT_START = 0.55; // ground accel from rest = this fraction of full, ramping to 1.0 at top speed
+const GROUND_STOP_DECAY = 0.6; // velocity kept per frame with no input (was 0.72)
+const GROUND_STOP_SNAP = 0.12; // below this |vx| (cells/frame) the body halts outright
+// Variable jump height. The fixed -3.7 launch peaks ~24 cells, so even a tap
+// flies way over a crate. Hold jump for the full leap; release during the rise
+// to cut it short (a low hop). Holding past the window rolls into levitation.
+const JUMP_CUT = 0.35; // upward velocity kept when jump is released mid-rise
+const JUMP_HOLD_WINDOW = 7; // frames a fresh jump stays a cuttable ballistic leap (jet suppressed)
 const SWING_REACH = 16;
 const SWING_PUMP = 0.16;
 const SWING_MIN_LEN = 14;
@@ -185,6 +199,10 @@ export class PlayerControl implements PlayerControlApi {
   private framesSinceGrounded = 99;
   /** Frames remaining in which a pre-landing jump press still fires. */
   private jumpBufferFrames = 0;
+  /** Frames left in a fresh jump's ballistic rise: during this window holding
+   *  jump stays a (cuttable) ballistic leap rather than spooling the jet, so
+   *  releasing early gives a short hop. Counts down; 0 = jet may engage. */
+  private jumpRiseFrames = 0;
   /** Edge detector for the jump key. */
   private prevJumpHeld = false;
   /** Frames until the player can kick again. */
@@ -1143,6 +1161,11 @@ export class PlayerControl implements PlayerControlApi {
     // gentle levitation accel stay well under it and are unchanged.
     const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK, MOVE_ACCEL_CAP),
       maxRun = 2.6 * speedK * stanceK;
+    // Ground soft-start: ease in from a standstill (a tap stays slow + precise),
+    // ramping to full accel with speed. Air control keeps its full responsiveness.
+    const stepAccel = player.grounded
+      ? accel * (GROUND_SOFT_START + (1 - GROUND_SOFT_START) * Math.min(1, Math.abs(player.vx) / maxRun))
+      : accel;
     if (!player.climbing) {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
       // back DOWN — a fast run carried into a jump/levitate keeps its speed (you
@@ -1150,15 +1173,19 @@ export class PlayerControl implements PlayerControlApi {
       // any excess momentum bleeds off through drag, never a hard snap.
       if (keys.right) {
         player.facing = 1;
-        if (player.vx < maxRun) player.vx = Math.min(maxRun, player.vx + accel);
+        if (player.vx < maxRun) player.vx = Math.min(maxRun, player.vx + stepAccel);
       }
       if (keys.left) {
         player.facing = -1;
-        if (player.vx > -maxRun) player.vx = Math.max(-maxRun, player.vx - accel);
+        if (player.vx > -maxRun) player.vx = Math.max(-maxRun, player.vx - stepAccel);
       }
       if (player.grounded || player.inLiquid) {
-        // On a surface: momentum dies fast and the cap is firm.
-        if (!keys.left && !keys.right) player.vx *= 0.72;
+        // On a surface: a quick, snappy stop on release so a tap is a small,
+        // predictable nudge instead of a long coast (precision-platformer feel).
+        if (!keys.left && !keys.right) {
+          player.vx *= GROUND_STOP_DECAY;
+          if (Math.abs(player.vx) < GROUND_STOP_SNAP) player.vx = 0;
+        }
         player.vx = clamp(player.vx, -maxRun, maxRun);
       } else {
         // Airborne / levitating: INERTIA. Only a gentle air drag bleeds
@@ -1442,8 +1469,9 @@ export class PlayerControl implements PlayerControlApi {
           player.stretchT = 6; // launch stretch (anti-squash)
           this.framesSinceGrounded = 99; // consumed — no double coyote jumps
           this.jumpBufferFrames = 0;
+          this.jumpRiseFrames = JUMP_HOLD_WINDOW; // arm the cuttable ballistic rise
           ctx.audio.jump();
-        } else if (player.levit > 0 && player.diveT === 0) {
+        } else if (player.levit > 0 && player.diveT === 0 && this.jumpRiseFrames <= 0) {
           levitating = true;
           // levitation response: the jet SPOOLS. Thrust starts at a near-hover
           // levitThrust0 (gravity is 0.28 — the first frames barely arrest the
@@ -1495,6 +1523,17 @@ export class PlayerControl implements PlayerControlApi {
               { grav: 0.02, glow: 2.2 },
             );
           }
+        }
+      }
+      // Variable jump height: count down the ballistic window; if jump is let go
+      // mid-rise, cut the climb short (a low hop to land on a crate). At the apex
+      // there's nothing left to cut, so close the window (the jet may take over).
+      if (this.jumpRiseFrames > 0) {
+        this.jumpRiseFrames--;
+        if (player.vy >= 0) this.jumpRiseFrames = 0;
+        else if (!keys.jump) {
+          player.vy *= JUMP_CUT;
+          this.jumpRiseFrames = 0;
         }
       }
       if (!levitating) this.levitFrames = 0;
