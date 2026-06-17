@@ -262,6 +262,11 @@ const RUNTIME_OVERLAY_REFRESH_FRAMES = 4;
 const BOTTOM_PANE_ORDER = ['bottom-left', 'bottom-main', 'bottom-right'] as const;
 const BOTTOM_SIDE_PANE_MIN = 220;
 const BOTTOM_SIDE_PANE_MAX = 420;
+// Side docks (left/right) split vertically into a flexible top pane and a fixed,
+// resizable bottom pane — the y-axis analogue of the bottom dock's panes.
+const SIDE_PANE_ORDER = ['top', 'bottom'] as const;
+const SIDE_BOTTOM_PANE_MIN = 140;
+const SIDE_BOTTOM_PANE_MAX = 600;
 /** Shipped dock sizes (match DEFAULT_BUILDER_LAYOUT) — used by double-click reset. */
 const DEFAULT_DOCK_SIZE: Record<'left' | 'right' | 'bottom', number> = { left: 214, right: 252, bottom: 420 };
 const BIOME_IDS = Object.keys(BIOME_DEFS) as BiomeId[];
@@ -1308,14 +1313,14 @@ export class Builder {
         this.draggingPanelId = null;
         this.clearWorkspaceDropState();
         if (!id || !region) return;
-        const bottomPane = region === 'bottom' ? this.bottomPaneForDrop(dock, id, e) : undefined;
+        const pane = this.paneForDrop(region, dock, id, e);
         this.moveWorkspacePanel(id, region, {
           beforeId:
-            region === 'floating' || (region === 'bottom' && this.bottomPaneOfTarget(dock) !== bottomPane)
+            region === 'floating' || (pane !== undefined && this.paneOfTarget(region, dock) !== pane)
               ? null
               : this.dropInsertBeforeId(region, dock, id, e),
           floating: region === 'floating' ? this.floatingDropPosition(id, e) : undefined,
-          tabGroupId: bottomPane,
+          tabGroupId: pane,
         });
         this.applyWorkspaceLayout();
         this.saveWorkspacePrefs();
@@ -1528,14 +1533,14 @@ export class Builder {
     const target = this.panelDropTargetAt(e);
     const region = target?.dataset.dock as DockRegion | undefined;
     if (target && region) {
-      const bottomPane = region === 'bottom' ? this.bottomPaneForDrop(target, drag.id, e) : undefined;
+      const pane = this.paneForDrop(region, target, drag.id, e);
       this.moveWorkspacePanel(drag.id, region, {
         beforeId:
-          region === 'floating' || (region === 'bottom' && this.bottomPaneOfTarget(target) !== bottomPane)
+          region === 'floating' || (pane !== undefined && this.paneOfTarget(region, target) !== pane)
             ? null
             : this.dropInsertBeforeId(region, target, drag.id, e),
         floating: region === 'floating' ? this.floatingPointFromClient(drag.id, e) : undefined,
-        tabGroupId: bottomPane,
+        tabGroupId: pane,
       });
       this.status(`PANEL DOCKED ${region.toUpperCase()}`);
     }
@@ -1593,20 +1598,28 @@ export class Builder {
       return;
     }
     const region = target.dataset.dock as DockRegion | undefined;
-    const bottomPane =
-      region === 'bottom' && this.draggingPanelId
-        ? this.bottomPaneForDrop(target, this.draggingPanelId, point)
-        : null;
-    const highlight =
-      bottomPane && this.bottomPaneOfTarget(target) !== bottomPane
-        ? (this.bottomPaneEls.get(bottomPane) ?? this.el<HTMLDivElement>('builder-dock-bottom'))
-        : target;
+    let highlight: HTMLElement = target;
+    if (region === 'bottom' && this.draggingPanelId) {
+      const bottomPane = this.bottomPaneForDrop(target, this.draggingPanelId, point);
+      if (bottomPane && this.bottomPaneOfTarget(target) !== bottomPane) {
+        highlight = this.bottomPaneEls.get(bottomPane) ?? this.el<HTMLDivElement>('builder-dock-bottom');
+      }
+    } else if ((region === 'left' || region === 'right') && this.draggingPanelId) {
+      // Highlight an existing target pane; a not-yet-created bottom section is
+      // shown by the drop indicator rect (predictedDropRect) instead.
+      const sidePane = this.sidePaneForDrop(region, target, point);
+      const existing = this.sidePaneEls.get(sidePane);
+      if (existing && existing !== target) highlight = existing;
+    }
     this.clearDropTargetHighlights(highlight);
     highlight.classList.add('drop-target');
     if (region) this.markDockInsertion(highlight, region, point);
     // The bold VS Code-style overlay: a filled rectangle over the exact region
-    // the panel will occupy, so left/center/right splits are unambiguous.
-    const rect = region ? this.predictedDropRect(region, target, point) : null;
+    // the panel will occupy, so left/center/right splits are unambiguous. Over an
+    // (empty-dock) guide the guide is already sized to the full drop area, so the
+    // separate indicator is suppressed — otherwise the two boxes doubled up.
+    const overGuide = target.classList.contains('builder-dock-guide');
+    const rect = region && !overGuide ? this.predictedDropRect(region, target, point) : null;
     if (rect) this.showDropIndicator(rect);
     else this.hideDropIndicator();
   }
@@ -1632,7 +1645,21 @@ export class Builder {
     if (region === 'left' || region === 'right') {
       const dockEl = this.el<HTMLDivElement>(region === 'left' ? 'builder-dock-left' : 'builder-dock-right');
       const r = dockEl.getBoundingClientRect();
-      if (r.width >= 8 && r.height >= 8) return toLocal(r);
+      if (r.width >= 8 && r.height >= 8) {
+        const pane = this.draggingPanelId ? this.sidePaneForDrop(region, target, point) : `${region}-top`;
+        const existing = this.sidePaneEls.get(pane);
+        if (existing) {
+          const pr = existing.getBoundingClientRect();
+          if (pr.height >= 8) return toLocal({ left: pr.left, top: pr.top, width: pr.width, height: pr.height });
+        }
+        if (this.normalizeSidePaneId(region, pane) === 'bottom') {
+          // Predict a fresh bottom section split off the bottom of the dock.
+          const bottomH = Math.max(SIDE_BOTTOM_PANE_MIN, Math.min(r.height * 0.4, 280));
+          return toLocal({ left: r.left, top: r.bottom - bottomH, width: r.width, height: bottomH });
+        }
+        // Joining the (unsplit) top group — preview the whole dock.
+        return toLocal(r);
+      }
       // Closed/empty side dock: predict a default-width column at the body edge.
       const spec = this.draggingPanelId ? this.panelRegistry.get(this.draggingPanelId) : null;
       const w = Math.max(160, Math.min(360, spec?.defaultSize ?? 240));
@@ -1713,6 +1740,63 @@ export class Builder {
       #builder-root .editor-tab-shell > .editor-tab-close:focus-visible {
         background: #2a1212; color: #ffd9d9; outline: none;
       }
+      /* Side-dock vertical split (top/bottom sections). Lives here, not in the
+         concurrently-edited main.css, mirroring the inline-styled splitters and
+         drop indicator. Mirrors .builder-bottom-pane* rotated to the y-axis. */
+      #builder-root .builder-side-pane {
+        display: flex; flex-direction: column; align-items: stretch;
+        min-height: 0; min-width: 0; overflow: hidden; background: #0a0d12;
+      }
+      #builder-root .builder-side-pane-top { flex: 1 1 auto; }
+      #builder-root .builder-side-pane-bottom {
+        flex: 0 0 var(--builder-side-pane-size, 240px);
+        min-height: 120px; max-height: 70%; border-top: 1px solid #172232;
+      }
+      /* Only restructure overflow/spacing when actually split so the unsplit dock
+         keeps its original scroll behaviour. */
+      #builder-root #builder-dock-left.has-splits,
+      #builder-root #builder-dock-right.has-splits {
+        overflow: hidden; gap: 0; padding: 0;
+      }
+      #builder-root .builder-side-pane > .builder-panel {
+        flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+        margin: 0; width: 100%; max-width: none;
+      }
+      #builder-root .builder-side-pane-splitter {
+        flex: 0 0 5px; height: 5px; width: 100%; min-height: 5px;
+        cursor: row-resize; background: transparent; position: relative; z-index: 5;
+      }
+      #builder-root .builder-side-pane-splitter::before {
+        content: ""; position: absolute; inset: 2px 0; background: transparent;
+        transition: background 0.12s ease;
+      }
+      #builder-root .builder-side-pane-splitter:hover::before,
+      #builder-root .builder-side-pane-splitter:focus-visible::before,
+      #builder-root .builder-side-pane-splitter.dragging::before {
+        background: rgba(56, 189, 248, 0.72);
+      }
+      #builder-root .builder-side-pane-splitter:focus-visible {
+        outline: 1px solid rgba(125, 211, 252, 0.9); outline-offset: -1px;
+      }
+      #builder-root .builder-side-pane.drop-target {
+        outline: 2px solid #4ade80; outline-offset: -3px; background: #0d1512;
+      }
+      #builder-root .builder-side-pane.drop-at-end {
+        box-shadow: inset 0 -3px 0 rgba(74, 222, 128, 0.72);
+      }
+      #builder-root .builder-side-pane .builder-panel.drop-before {
+        box-shadow: inset 0 3px 0 rgba(74, 222, 128, 0.86), inset 0 1px 0 rgba(148, 163, 184, 0.08);
+      }
+      /* Empty-dock guides are sized to the full drop area (updateDockGuides), so
+         give them a light translucent-green fill like the drop indicator rather
+         than the heavy dark default that would blanket the stage. */
+      #builder-root .builder-dock-guide {
+        background: rgba(74, 222, 128, 0.08);
+        border-color: rgba(74, 222, 128, 0.6);
+      }
+      #builder-root .builder-dock-guide.drop-target {
+        background: rgba(74, 222, 128, 0.16);
+      }
     `;
     document.head.appendChild(style);
   }
@@ -1729,20 +1813,280 @@ export class Builder {
   private readonly dockTabStrips = new Map<string, { host: HTMLElement; wired: ReturnType<typeof wireTabStrip> | null }>();
   private readonly bottomPaneEls = new Map<string, HTMLElement>();
   private readonly bottomPaneSplitters = new Map<string, HTMLElement>();
+  // Side-dock vertical split: pane wrappers keyed `${dock}-${pane}` and one
+  // horizontal splitter per split side dock keyed by dock.
+  private readonly sidePaneEls = new Map<string, HTMLElement>();
+  private readonly sidePaneSplitters = new Map<string, HTMLElement>();
 
   /**
-   * VS Code-style dock tab group: when a left/right dock holds 2+ open panels,
-   * show only the active one full-height and present the rest as a tab strip.
-   * The active panel keeps its own header, so dragging it still tears off or
-   * re-docks. Single-panel docks render normally (no strip).
+   * Side docks (left/right) split vertically into a top pane and a bottom pane —
+   * the y-axis analogue of syncBottomDockPanes. A panel's pane is its tabGroupId
+   * (`${dock}-top`/`${dock}-bottom`), defaulting to the top pane. When only the
+   * top pane is occupied the dock renders as a single flat tab group exactly as
+   * before (panels stay direct dock children); a second pane wraps both panes
+   * and inserts a draggable horizontal splitter between them.
    */
-  private syncDockTabs(dock: 'left' | 'right', dockEl: HTMLElement): void {
-    this.syncTabbedPanelGroup(
-      dock,
-      dockEl,
-      this.workspaceLayout.panels.filter((panel) => panel.dock === dock && panel.open && this.panelEl(panel.id) !== null),
-      `${dock} dock panels`,
+  private syncSideDockPanes(dock: 'left' | 'right', dockEl: HTMLElement): void {
+    const open = this.workspaceLayout.panels.filter(
+      (panel) => panel.dock === dock && panel.open && this.panelEl(panel.id) !== null,
     );
+    const panes = new Map<string, WorkspaceLayout['panels']>();
+    for (const panel of open) {
+      const pane = this.normalizeSidePaneId(dock, panel.tabGroupId) ?? this.defaultSidePaneForPanel(dock, panel.id);
+      panel.tabGroupId = `${dock}-${pane}`;
+      const group = panes.get(pane) ?? [];
+      group.push(panel);
+      panes.set(pane, group);
+    }
+
+    // Collapse a lone surviving group into the top pane. Tearing the last panel
+    // out of the top must never strand the remainder in the fixed-height bottom
+    // pane (mirrors the bottom dock's lone-pane reclaim).
+    if (panes.size === 1) {
+      const [solePane] = panes.keys();
+      if (solePane !== 'top') {
+        const solePanels = panes.get(solePane)!;
+        for (const panel of solePanels) panel.tabGroupId = `${dock}-top`;
+        panes.delete(solePane);
+        panes.set('top', solePanels);
+      }
+    }
+
+    const split = panes.size > 1;
+    dockEl.classList.toggle('has-splits', split);
+
+    if (!split) {
+      // Flat tab group: identical to the original single-group behaviour. The
+      // panels are already direct dock children (applyWorkspaceLayout reparented
+      // them), so just clear any leftover split chrome and run the tab group.
+      this.clearSideDockPanes(dock);
+      this.syncTabbedPanelGroup(dock, dockEl, open, `${dock} dock panels`);
+      return;
+    }
+
+    // Split: the bare-dock tab strip is replaced by per-pane strips.
+    this.disposeDockTabStrip(dock);
+    dockEl.classList.toggle('has-tabs', [...panes.values()].some((panels) => panels.length > 1));
+    const used = new Set([...panes.keys()].map((pane) => `${dock}-${pane}`));
+    for (const [key, el] of this.sidePaneEls) {
+      if (!key.startsWith(`${dock}-`) || used.has(key)) continue;
+      this.disposeDockTabStrip(`${dock}:${key.slice(dock.length + 1)}`);
+      el.remove();
+      this.sidePaneEls.delete(key);
+    }
+
+    for (const pane of SIDE_PANE_ORDER) {
+      const panels = panes.get(pane);
+      if (!panels || panels.length === 0) continue;
+      const paneEl = this.sidePaneEl(dock, dockEl, pane);
+      if (pane === 'bottom') paneEl.style.setProperty('--builder-side-pane-size', `${this.sidePaneSize(dock, panels)}px`);
+      else paneEl.style.removeProperty('--builder-side-pane-size');
+      for (const panel of panels) {
+        const el = this.panelEl(panel.id);
+        if (el && el.dataset.panelId && el.parentElement !== paneEl) paneEl.appendChild(el);
+      }
+      this.syncTabbedPanelGroup(`${dock}:${pane}`, paneEl, panels, `${dock} ${pane} dock panels`);
+    }
+    this.syncSideDockSplitter(dock, dockEl);
+  }
+
+  /** Tear down a side dock's split wrappers + splitter (transition back to flat). */
+  private clearSideDockPanes(dock: 'left' | 'right'): void {
+    for (const [key, el] of this.sidePaneEls) {
+      if (!key.startsWith(`${dock}-`)) continue;
+      this.disposeDockTabStrip(`${dock}:${key.slice(dock.length + 1)}`);
+      el.remove();
+      this.sidePaneEls.delete(key);
+    }
+    const splitter = this.sidePaneSplitters.get(dock);
+    if (splitter) {
+      splitter.remove();
+      this.sidePaneSplitters.delete(dock);
+    }
+  }
+
+  private sidePaneEl(dock: 'left' | 'right', dockEl: HTMLElement, pane: (typeof SIDE_PANE_ORDER)[number]): HTMLElement {
+    const key = `${dock}-${pane}`;
+    let el = this.sidePaneEls.get(key);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = `builder-side-pane builder-side-pane-${pane}`;
+      el.dataset.dock = dock;
+      el.dataset.sidePane = pane;
+      this.sidePaneEls.set(key, el);
+    }
+    this.insertSideDockChild(dockEl, el, SIDE_PANE_ORDER.indexOf(pane) * 2);
+    return el;
+  }
+
+  private insertSideDockChild(dockEl: HTMLElement, el: HTMLElement, order: number): void {
+    el.style.order = String(order);
+    const before = [...dockEl.children].find((child) => {
+      if (!(child instanceof HTMLElement) || child === el) return false;
+      const childOrder = Number(child.style.order);
+      return Number.isFinite(childOrder) && childOrder > order;
+    });
+    if (before) dockEl.insertBefore(el, before);
+    else if (el.parentElement !== dockEl) dockEl.appendChild(el);
+  }
+
+  private normalizeSidePaneId(dock: 'left' | 'right', value: string | undefined): (typeof SIDE_PANE_ORDER)[number] | null {
+    return value === `${dock}-top` ? 'top' : value === `${dock}-bottom` ? 'bottom' : null;
+  }
+
+  private defaultSidePaneForPanel(_dock: 'left' | 'right', _panelId: string): (typeof SIDE_PANE_ORDER)[number] {
+    // Everything starts in the top pane; the bottom pane only ever exists because
+    // the user explicitly dropped a panel into it, so saved layouts never get
+    // silently rearranged on load.
+    return 'top';
+  }
+
+  private sidePaneSize(_dock: 'left' | 'right', panels: WorkspaceLayout['panels']): number {
+    const preferred = Math.max(...panels.map((panel) => panel.height ?? 240));
+    return Math.max(SIDE_BOTTOM_PANE_MIN, Math.min(SIDE_BOTTOM_PANE_MAX, preferred));
+  }
+
+  private sidePaneOfTarget(_dock: 'left' | 'right', target: HTMLElement): (typeof SIDE_PANE_ORDER)[number] | null {
+    const pane = target.closest<HTMLElement>('.builder-side-pane')?.dataset.sidePane;
+    return pane === 'top' || pane === 'bottom' ? pane : null;
+  }
+
+  /**
+   * The pane (full tabGroupId) a drop on a side dock targets. Inside an existing
+   * pane → join it; otherwise split by cursor Y (bottom ~28% creates/uses the
+   * bottom section).
+   */
+  private sidePaneForDrop(dock: 'left' | 'right', target: HTMLElement, point: PanelDropPoint): string {
+    const pane = this.sidePaneOfTarget(dock, target);
+    if (pane) return `${dock}-${pane}`;
+    const dockEl = this.el<HTMLDivElement>(dock === 'left' ? 'builder-dock-left' : 'builder-dock-right');
+    const rect = dockEl.getBoundingClientRect();
+    if (rect.height > 0) {
+      const y = (point.clientY - rect.top) / rect.height;
+      if (y > 0.72) return `${dock}-bottom`;
+    }
+    return `${dock}-top`;
+  }
+
+  /** Resolve the target pane (tabGroupId) for a drop, dispatching bottom vs side. */
+  private paneForDrop(region: DockRegion, target: HTMLElement, panelId: string, point: PanelDropPoint): string | undefined {
+    if (region === 'bottom') return this.bottomPaneForDrop(target, panelId, point);
+    if (region === 'left' || region === 'right') return this.sidePaneForDrop(region, target, point);
+    return undefined;
+  }
+
+  /** The full pane id (tabGroupId) the drop target currently belongs to, or null. */
+  private paneOfTarget(region: DockRegion, target: HTMLElement): string | null {
+    if (region === 'bottom') return this.bottomPaneOfTarget(target);
+    if (region === 'left' || region === 'right') {
+      const pane = this.sidePaneOfTarget(region, target);
+      return pane ? `${region}-${pane}` : null;
+    }
+    return null;
+  }
+
+  /* ---- side-dock horizontal splitter (resizes the bottom section) ---- */
+
+  private syncSideDockSplitter(dock: 'left' | 'right', dockEl: HTMLElement): void {
+    let splitter = this.sidePaneSplitters.get(dock);
+    if (!splitter) {
+      const created = document.createElement('div');
+      created.className = 'builder-side-pane-splitter';
+      created.setAttribute('role', 'separator');
+      created.setAttribute('aria-orientation', 'horizontal');
+      created.tabIndex = 0;
+      created.dataset.sidePaneSplitter = dock;
+      created.addEventListener('pointerdown', (event) => this.startSidePaneResize(event, dock, created));
+      created.addEventListener('keydown', (event) => this.onSidePaneSplitterKeyDown(event, dock));
+      this.sidePaneSplitters.set(dock, created);
+      splitter = created;
+    }
+    const max = this.sidePaneResizeMax(dock);
+    const current = this.currentSidePaneSize(dock);
+    splitter.setAttribute('aria-label', `Resize ${dock} dock bottom section`);
+    splitter.setAttribute('aria-valuemin', String(SIDE_BOTTOM_PANE_MIN));
+    splitter.setAttribute('aria-valuemax', String(max));
+    splitter.setAttribute('aria-valuenow', String(Math.max(SIDE_BOTTOM_PANE_MIN, Math.min(max, current))));
+    this.insertSideDockChild(dockEl, splitter, 1);
+  }
+
+  private startSidePaneResize(event: PointerEvent, dock: 'left' | 'right', splitter: HTMLElement): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    splitter.classList.add('dragging');
+    document.body.style.cursor = 'row-resize';
+    const dockEl = this.el<HTMLDivElement>(dock === 'left' ? 'builder-dock-left' : 'builder-dock-right');
+    const onMove = (e: PointerEvent): void => {
+      e.preventDefault();
+      const rect = dockEl.getBoundingClientRect();
+      this.resizeSidePane(dock, Math.max(SIDE_BOTTOM_PANE_MIN, rect.bottom - e.clientY));
+      this.applyWorkspaceLayout();
+    };
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onUp, true);
+      splitter.classList.remove('dragging');
+      document.body.style.cursor = '';
+      this.saveWorkspacePrefs();
+    };
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+  }
+
+  private onSidePaneSplitterKeyDown(event: KeyboardEvent, dock: 'left' | 'right'): void {
+    if (
+      event.key !== 'ArrowUp' &&
+      event.key !== 'ArrowDown' &&
+      event.key !== 'Home' &&
+      event.key !== 'End' &&
+      event.key !== 'PageUp' &&
+      event.key !== 'PageDown'
+    ) {
+      return;
+    }
+    event.preventDefault();
+    const max = this.sidePaneResizeMax(dock);
+    const current = this.currentSidePaneSize(dock);
+    const step = event.shiftKey || event.key === 'PageUp' || event.key === 'PageDown' ? 48 : 16;
+    let next = current;
+    if (event.key === 'Home') next = SIDE_BOTTOM_PANE_MIN;
+    else if (event.key === 'End') next = max;
+    else {
+      // ArrowUp grows the bottom section (its top edge moves up).
+      const direction = event.key === 'ArrowUp' || event.key === 'PageUp' ? 1 : -1;
+      next = current + direction * step;
+    }
+    this.resizeSidePane(dock, Math.max(SIDE_BOTTOM_PANE_MIN, Math.min(max, next)));
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
+    this.sidePaneSplitters.get(dock)?.focus({ preventScroll: true });
+  }
+
+  private resizeSidePane(dock: 'left' | 'right', size: number): void {
+    const max = this.sidePaneResizeMax(dock);
+    const clamped = Math.max(SIDE_BOTTOM_PANE_MIN, Math.min(max, Math.round(size)));
+    for (const panel of this.workspaceLayout.panels) {
+      if (panel.dock === dock && panel.open && this.normalizeSidePaneId(dock, panel.tabGroupId) === 'bottom') {
+        panel.height = clamped;
+      }
+    }
+  }
+
+  private currentSidePaneSize(dock: 'left' | 'right'): number {
+    const heights = this.workspaceLayout.panels
+      .filter((panel) => panel.dock === dock && panel.open && this.normalizeSidePaneId(dock, panel.tabGroupId) === 'bottom')
+      .map((panel) => panel.height ?? 240);
+    if (heights.length === 0) return 240;
+    return Math.max(SIDE_BOTTOM_PANE_MIN, Math.min(this.sidePaneResizeMax(dock), Math.max(...heights)));
+  }
+
+  private sidePaneResizeMax(dock: 'left' | 'right'): number {
+    const h = this.el<HTMLDivElement>(dock === 'left' ? 'builder-dock-left' : 'builder-dock-right').getBoundingClientRect().height;
+    if (!(h > 0)) return SIDE_BOTTOM_PANE_MAX;
+    return Math.max(SIDE_BOTTOM_PANE_MIN, Math.min(SIDE_BOTTOM_PANE_MAX, Math.floor(h * 0.7)));
   }
 
   private syncTabbedPanelGroup(groupKey: string, dockEl: HTMLElement, open: WorkspaceLayout['panels'], ariaLabel: string): void {
@@ -1997,9 +2341,29 @@ export class Builder {
   }
 
   private tabGroupKeyForPanel(panel: WorkspaceLayout['panels'][number]): string {
-    if (panel.dock !== 'bottom') return panel.dock;
-    const pane = this.normalizeBottomPaneId(panel.tabGroupId) ?? this.defaultBottomPaneForPanel(panel.id);
-    return `bottom:${pane}`;
+    if (panel.dock === 'bottom') {
+      const pane = this.normalizeBottomPaneId(panel.tabGroupId) ?? this.defaultBottomPaneForPanel(panel.id);
+      return `bottom:${pane}`;
+    }
+    if (panel.dock === 'left' || panel.dock === 'right') {
+      // Mirror the rendered group key: a flat (unsplit) side dock uses the bare
+      // dock name, a split one uses `${dock}:${pane}`.
+      if (!this.isSideDockSplit(panel.dock)) return panel.dock;
+      const pane = this.normalizeSidePaneId(panel.dock, panel.tabGroupId) ?? this.defaultSidePaneForPanel(panel.dock, panel.id);
+      return `${panel.dock}:${pane}`;
+    }
+    return panel.dock;
+  }
+
+  /** A side dock is split when its open panels occupy both the top and bottom panes. */
+  private isSideDockSplit(dock: 'left' | 'right'): boolean {
+    const panes = new Set<string>();
+    for (const panel of this.workspaceLayout.panels) {
+      if (panel.dock !== dock || !panel.open) continue;
+      panes.add(this.normalizeSidePaneId(dock, panel.tabGroupId) ?? this.defaultSidePaneForPanel(dock, panel.id));
+      if (panes.size > 1) return true;
+    }
+    return false;
   }
 
   private panelsInTabGroup(panel: WorkspaceLayout['panels'][number]): WorkspaceLayout['panels'] {
@@ -2307,8 +2671,8 @@ export class Builder {
         el.style.removeProperty('z-index');
       }
     }
-    this.syncDockTabs('left', left);
-    this.syncDockTabs('right', right);
+    this.syncSideDockPanes('left', left);
+    this.syncSideDockPanes('right', right);
     this.syncBottomDockPanes(bottom);
     let leftSize = this.openDockSize('left');
     let rightSize = this.openDockSize('right');
@@ -2369,6 +2733,7 @@ export class Builder {
     return [
       ...this.root.querySelectorAll<HTMLElement>('.builder-dock'),
       ...this.root.querySelectorAll<HTMLElement>('.builder-bottom-pane'),
+      ...this.root.querySelectorAll<HTMLElement>('.builder-side-pane'),
       ...this.root.querySelectorAll<HTMLElement>('.builder-dock-guide'),
       this.el<HTMLDivElement>('builder-stage'),
     ];
@@ -2399,8 +2764,47 @@ export class Builder {
       const occupied = this.workspaceLayout.panels.some(
         (panel) => panel.dock === region && panel.open && panel.id !== this.draggingPanelId,
       );
-      guide.style.display = occupied ? 'none' : '';
+      if (occupied) {
+        guide.style.display = 'none';
+        continue;
+      }
+      // Empty dock: the guide IS the drop target, so size it to the exact space
+      // the panel would occupy once docked (full height + width for a side dock,
+      // a bottom-pinned band spanning the centre column for the bottom dock).
+      // The separate drop indicator is suppressed over guides (see
+      // updatePanelDropTarget), so this is the single, full-area affordance.
+      const rect = this.emptyDockGuideRect(region);
+      if (rect) {
+        guide.style.left = `${Math.round(rect.left)}px`;
+        guide.style.top = `${Math.round(rect.top)}px`;
+        guide.style.width = `${Math.round(rect.width)}px`;
+        guide.style.height = `${Math.round(rect.height)}px`;
+        guide.style.right = 'auto';
+        guide.style.bottom = 'auto';
+      }
+      guide.style.display = '';
     }
+  }
+
+  /** Body-local rect a dragged panel would occupy if dropped into this (empty) dock. */
+  private emptyDockGuideRect(
+    dock: 'left' | 'right' | 'bottom',
+  ): { left: number; top: number; width: number; height: number } | null {
+    const body = this.el<HTMLDivElement>('builder-workspace-body').getBoundingClientRect();
+    if (body.width <= 0 || body.height <= 0) return null;
+    const panel = this.draggingPanelId ? this.workspaceLayout.panels.find((p) => p.id === this.draggingPanelId) : null;
+    const spec = this.draggingPanelId ? this.panelRegistry.get(this.draggingPanelId) : null;
+    const extent = panel?.size ?? spec?.defaultSize ?? 240;
+    if (dock === 'left' || dock === 'right') {
+      const w = Math.max(160, Math.min(360, extent));
+      return { left: dock === 'left' ? 0 : body.width - w, top: 0, width: w, height: body.height };
+    }
+    // bottom: a band pinned to the bottom, spanning the centre (stage) column.
+    const stage = this.el<HTMLDivElement>('builder-stage').getBoundingClientRect();
+    const h = Math.max(160, Math.min(420, extent));
+    const left = stage.width > 0 ? Math.max(0, stage.left - body.left) : 0;
+    const width = stage.width > 0 ? stage.width : body.width;
+    return { left, top: Math.max(0, body.height - h), width, height: h };
   }
 
   private clearDropTargetHighlights(active?: HTMLElement): void {

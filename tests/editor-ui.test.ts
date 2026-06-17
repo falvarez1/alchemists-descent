@@ -872,6 +872,55 @@ describe('editor workspace layout', () => {
     ).toBe(412);
   });
 
+  it('tracks side dock vertical split groups (left-top / left-bottom)', () => {
+    const original = cloneDefaultBuilderLayout();
+
+    // movePanel preserves a valid, dock-matched side pane id.
+    expect(
+      movePanel(original, 'builder-issues', 'left', { tabGroupId: 'left-bottom' }).panels.find(
+        (panel) => panel.id === 'builder-issues',
+      )?.tabGroupId,
+    ).toBe('left-bottom');
+    // A bottom-dock pane id is not a valid side id → stripped.
+    expect(
+      movePanel(original, 'builder-issues', 'left', { tabGroupId: 'bottom-left' }).panels.find(
+        (panel) => panel.id === 'builder-issues',
+      )?.tabGroupId,
+    ).toBeUndefined();
+    // A pane id belonging to the other dock is stripped (dock-namespaced).
+    expect(
+      movePanel(original, 'builder-issues', 'right', { tabGroupId: 'left-bottom' }).panels.find(
+        (panel) => panel.id === 'builder-issues',
+      )?.tabGroupId,
+    ).toBeUndefined();
+
+    // sanitize round-trips a side split + its stored bottom-pane height.
+    const round = sanitizeWorkspaceLayout({
+      panels: [{ id: 'builder-issues', dock: 'left', open: true, size: 252, height: 300, tabGroupId: 'left-bottom' }],
+    }).panels.find((panel) => panel.id === 'builder-issues');
+    expect(round?.tabGroupId).toBe('left-bottom');
+    expect(round?.height).toBe(300);
+    // top id preserved; stale/foreign ids stripped.
+    expect(
+      sanitizeWorkspaceLayout({
+        panels: [{ id: 'builder-inspector', dock: 'right', open: true, size: 252, tabGroupId: 'right-top' }],
+      }).panels.find((panel) => panel.id === 'builder-inspector')?.tabGroupId,
+    ).toBe('right-top');
+    expect(
+      sanitizeWorkspaceLayout({
+        panels: [{ id: 'builder-inspector', dock: 'left', open: true, size: 252, tabGroupId: 'stale' }],
+      }).panels.find((panel) => panel.id === 'builder-inspector')?.tabGroupId,
+    ).toBeUndefined();
+    // Tearing the panel out to float drops the side pane id.
+    const floated = movePanel(
+      movePanel(original, 'builder-issues', 'left', { tabGroupId: 'left-bottom' }),
+      'builder-issues',
+      'floating',
+      { floating: { x: 12, y: 12 } },
+    );
+    expect(floated.panels.find((panel) => panel.id === 'builder-issues')?.tabGroupId).toBeUndefined();
+  });
+
   it('persists floating panel coordinates', () => {
     const original = cloneDefaultBuilderLayout();
     const moved = movePanel(original, 'builder-palette', 'floating', { floating: { x: 180, y: 96 } });

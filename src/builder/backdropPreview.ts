@@ -80,6 +80,13 @@ export class BackdropPreview {
   private readonly terrainOverlay: ImageData;
   private readonly terrainCanvas: HTMLCanvasElement;
   private readonly terrainCtx: CanvasRenderingContext2D;
+  // Emissive-only layer (lava/fire/crystal/glow), bloomed additively so hot cells
+  // glow like the live render instead of reading as flat color blocks.
+  private readonly emissiveOverlay: ImageData;
+  private readonly emissiveCanvas: HTMLCanvasElement;
+  private readonly emissiveCtx: CanvasRenderingContext2D;
+  private readonly bloomCanvas: HTMLCanvasElement;
+  private readonly bloomCtx: CanvasRenderingContext2D;
   private readonly backdropCanvas: HTMLCanvasElement;
   private readonly backdropCtx: CanvasRenderingContext2D;
   private readonly profiles = levelEntries();
@@ -182,6 +189,19 @@ export class BackdropPreview {
     if (!terrainCtx) throw new Error('missing backdrop terrain canvas context');
     this.terrainCtx = terrainCtx;
     this.terrainOverlay = terrainCtx.createImageData(VIEW_W, VIEW_H);
+    this.emissiveCanvas = document.createElement('canvas');
+    this.emissiveCanvas.width = VIEW_W;
+    this.emissiveCanvas.height = VIEW_H;
+    const emissiveCtx = this.emissiveCanvas.getContext('2d', { willReadFrequently: true });
+    if (!emissiveCtx) throw new Error('missing backdrop emissive canvas context');
+    this.emissiveCtx = emissiveCtx;
+    this.emissiveOverlay = emissiveCtx.createImageData(VIEW_W, VIEW_H);
+    this.bloomCanvas = document.createElement('canvas');
+    this.bloomCanvas.width = Math.max(1, VIEW_W >> 2);
+    this.bloomCanvas.height = Math.max(1, VIEW_H >> 2);
+    const bloomCtx = this.bloomCanvas.getContext('2d');
+    if (!bloomCtx) throw new Error('missing backdrop bloom canvas context');
+    this.bloomCtx = bloomCtx;
     this.backdropCanvas = document.createElement('canvas');
     this.backdropCanvas.width = VIEW_W;
     this.backdropCanvas.height = VIEW_H;
@@ -679,6 +699,11 @@ export class BackdropPreview {
       ctx.restore();
     }
     if (this.showTonemap || this.showPost) this.applyInGameLook(ctx);
+    // Bloom is additive ON TOP of the tonemapped image (like the live post chain),
+    // re-applying the terrain's zoom so the glow lands on the hot cells.
+    if (this.showTerrain && this.showPost && this.ctx.state.postFx.bloomEnabled) {
+      this.applyBloom(ctx);
+    }
 
     const coords = this.root.querySelector('#bb-coords');
     if (coords) coords.textContent = `x ${Math.round(this.camX)}  y ${Math.round(this.camY)}  ${this.zoom.toFixed(2)}x`;
@@ -807,7 +832,14 @@ export class BackdropPreview {
     const world = this.ctx.world;
     const types = world.types;
     const colors = world.colors;
+    const materials = this.ctx.params.materials;
+    const maxBright = this.ctx.params.global.maxBrightness;
+    // Emissive cells (bloomWeight > 0) read flat without the live render's self-glow
+    // + maxBrightness intensity. Re-apply that here so lava/fire cores look hot and
+    // feed the bloom layer. Only when an in-game pass is on (raw stays untouched).
+    const glow = this.showTonemap || this.showPost;
     const data = this.terrainOverlay.data;
+    const edata = this.emissiveOverlay.data;
     let o = 0;
     const camX = Math.floor(this.camX);
     const camY = Math.floor(this.camY);
@@ -815,24 +847,80 @@ export class BackdropPreview {
       const wy = camY + vy;
       for (let vx = 0; vx < VIEW_W; vx++, o += 4) {
         const wx = camX + vx;
+        edata[o + 3] = 0;
         if (wx < 0 || wx >= WIDTH || wy < 0 || wy >= HEIGHT) {
           data[o + 3] = 0;
           continue;
         }
         const ci = wy * WIDTH + wx;
-        if (types[ci] === Cell.Empty) {
+        const t = types[ci];
+        if (t === Cell.Empty) {
           data[o + 3] = 0;
           continue;
         }
         const c = colors[ci];
-        data[o] = Math.floor(unpackR(c) * 0.92);
-        data[o + 1] = Math.floor(unpackG(c) * 0.92);
-        data[o + 2] = Math.floor(unpackB(c) * 0.96);
+        let r = unpackR(c);
+        let g = unpackG(c);
+        let b = unpackB(c);
+        const bw = glow ? materials[t]?.bloomWeight ?? 0 : 0;
+        if (bw > 0) {
+          // self-glow × maxBrightness intensity — mirrors the compose's emissive law
+          const f = (0.45 + bw * 1.55) * (1 + (maxBright - 1) * bw);
+          r = Math.min(255, r * f);
+          g = Math.min(255, g * f);
+          b = Math.min(255, b * f);
+          edata[o] = r;
+          edata[o + 1] = g;
+          edata[o + 2] = b;
+          edata[o + 3] = Math.min(255, Math.round(60 + bw * 255)); // bloom feed
+        } else {
+          r *= 0.92;
+          g *= 0.92;
+          b *= 0.96;
+        }
+        data[o] = Math.floor(r);
+        data[o + 1] = Math.floor(g);
+        data[o + 2] = Math.floor(b);
         data[o + 3] = 232;
       }
     }
     this.terrainCtx.putImageData(this.terrainOverlay, 0, 0);
     ctx.drawImage(this.terrainCanvas, 0, 0);
+    this.emissiveCtx.putImageData(this.emissiveOverlay, 0, 0);
+  }
+
+  /**
+   * APPROXIMATE bloom: blur the emissive-only layer (built in drawTerrainOverlay)
+   * by downscaling to a small canvas, then add it back additively in two octaves —
+   * a tight core glow and a wider soft halo. Re-applies the terrain zoom so the
+   * glow aligns with the hot cells. Threshold isn't modelled (we bloom KNOWN
+   * emissive cells directly); Strength and Radius from postFx drive it.
+   */
+  private applyBloom(stageCtx: CanvasRenderingContext2D): void {
+    const post = this.ctx.state.postFx;
+    if (post.bloomStrength <= 0) return;
+    const bw = this.bloomCanvas.width;
+    const bh = this.bloomCanvas.height;
+    this.bloomCtx.clearRect(0, 0, bw, bh);
+    this.bloomCtx.imageSmoothingEnabled = true;
+    this.bloomCtx.drawImage(this.emissiveCanvas, 0, 0, bw, bh); // downscale = blur
+    stageCtx.save();
+    stageCtx.translate(VIEW_W / 2, VIEW_H / 2);
+    stageCtx.scale(this.zoom, this.zoom);
+    stageCtx.translate(-VIEW_W / 2, -VIEW_H / 2);
+    stageCtx.globalCompositeOperation = 'lighter';
+    stageCtx.imageSmoothingEnabled = true;
+    // tight core glow (cheap canvas bloom is dimmer than the live UnrealBloom, so
+    // the octaves run hotter than 1× to approximate its intensity)
+    stageCtx.globalAlpha = Math.min(1, post.bloomStrength * 1.9);
+    stageCtx.drawImage(this.bloomCanvas, 0, 0, bw, bh, 0, 0, VIEW_W, VIEW_H);
+    // wider soft halo — Radius widens the spread
+    const spread = 1 + post.bloomRadius * 3;
+    const ox = (VIEW_W * (spread - 1)) / 2;
+    const oy = (VIEW_H * (spread - 1)) / 2;
+    stageCtx.globalAlpha = Math.min(1, post.bloomStrength * 1.1);
+    stageCtx.drawImage(this.bloomCanvas, 0, 0, bw, bh, -ox, -oy, VIEW_W * spread, VIEW_H * spread);
+    stageCtx.restore();
   }
 
   private allImagesReady(): boolean {

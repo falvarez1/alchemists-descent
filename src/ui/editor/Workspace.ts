@@ -122,7 +122,12 @@ export function sanitizeWorkspaceLayout(
     if (isFiniteNumber(panel.width)) next.width = Math.max(120, Math.min(1200, panel.width));
     if (isFiniteNumber(panel.height)) next.height = Math.max(120, Math.min(900, panel.height));
     if (isFiniteNumber(panel.z)) next.z = Math.max(0, Math.min(1_000_000, Math.floor(panel.z)));
-    const tabGroupId = dock === 'bottom' ? normalizeBottomTabGroupId(panel.tabGroupId) : null;
+    const tabGroupId =
+      dock === 'bottom'
+        ? normalizeBottomTabGroupId(panel.tabGroupId)
+        : dock === 'left' || dock === 'right'
+          ? normalizeSideTabGroupId(dock, panel.tabGroupId)
+          : null;
     if (tabGroupId) next.tabGroupId = tabGroupId;
     if (dock === 'floating' && panel.floating) {
       next.floating = {
@@ -181,6 +186,10 @@ export function movePanel(
   }
   if (dock === 'bottom') {
     const tabGroupId = normalizeBottomTabGroupId(options.tabGroupId);
+    if (tabGroupId) panel.tabGroupId = tabGroupId;
+    else delete panel.tabGroupId;
+  } else if (dock === 'left' || dock === 'right') {
+    const tabGroupId = normalizeSideTabGroupId(dock, options.tabGroupId);
     if (tabGroupId) panel.tabGroupId = tabGroupId;
     else delete panel.tabGroupId;
   } else {
@@ -357,6 +366,16 @@ function isFiniteNumber(value: unknown): value is number {
 
 function normalizeBottomTabGroupId(value: unknown): string | null {
   return value === 'bottom-left' || value === 'bottom-main' || value === 'bottom-right' ? value : null;
+}
+
+/**
+ * Side docks (left/right) split vertically into a `${dock}-top` / `${dock}-bottom`
+ * pane pair, the y-axis analogue of the bottom dock's `bottom-*` panes. The id is
+ * dock-namespaced so a persisted `left-bottom` can't ride onto a panel that now
+ * lives in the right dock, and so it stays disjoint from the `bottom-*` ids.
+ */
+function normalizeSideTabGroupId(dock: 'left' | 'right', value: unknown): string | null {
+  return value === `${dock}-top` || value === `${dock}-bottom` ? (value as string) : null;
 }
 
 function sanitizeLayerState(value: unknown): Record<string, { hidden: boolean; locked: boolean }> {

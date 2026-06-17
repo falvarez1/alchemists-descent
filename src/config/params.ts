@@ -24,12 +24,12 @@ export const GLOBAL_PARAMS: GlobalParams = {
   // Raised from the original 0.14: with the squared light curve, 0.18 keeps
   // the caves moody while letting shadowed rock read as silhouette.
   ambient: 0.36,
-  bloodAmount: 1.0,
+  bloodAmount: 7.0,
   // Blood-specific gore dialed up (1.0 -> 1.3) for a gorier, more Noita-like
   // spray that feeds the new corpse pools; other gore channels unchanged.
-  goreBlood: 2.3,
+  goreBlood: 4.0,
   goreSlime: 1.0,
-  goreOoze: 1.0,
+  goreOoze: 0.15,
 };
 
 /** Frozen baseline captured at load — the Builder section "reset" restores it. */
