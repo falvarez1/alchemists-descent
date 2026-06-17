@@ -30,7 +30,7 @@ const PERK_CHOICES: Array<{ id: PerkId; name: string }> = [
 const ADVANCED_CARDS: CardId[] = ['lightning', 'bomb', 'speed', 'heavy', 'bounce', 'trigger'];
 const KIT_TABS = ['vitals', 'cards', 'perks', 'flask'] as const;
 
-type LauncherSource = 'play-button' | 'tab' | 'fullscreen';
+type LauncherSource = 'play-button' | 'tab' | 'fullscreen' | 'pause';
 type KitTab = (typeof KIT_TABS)[number];
 type CardFilter = 'all' | 'projectile' | 'modifier' | 'multicast';
 
@@ -502,12 +502,15 @@ export class RunLauncher {
       this.open('play-button');
     }, true);
     window.addEventListener('run-launcher-request', (event) => {
-      if (this.ctx.state.playtestSource !== null || this.builderIsOpen()) return;
-      event.preventDefault();
-      this.ctx.audio.ensure();
       const source = event instanceof CustomEvent && this.isLauncherSource(event.detail?.source)
         ? event.detail.source
         : 'play-button';
+      // The Pause menu may reopen the launcher mid-(disposable)-test-run; other sources stay
+      // blocked during any playtest. The Builder owns its own playtest exit, so never here.
+      if (this.builderIsOpen()) return;
+      if (source !== 'pause' && this.ctx.state.playtestSource !== null) return;
+      event.preventDefault();
+      this.ctx.audio.ensure();
       this.open(source);
     });
 
@@ -603,7 +606,7 @@ export class RunLauncher {
   }
 
   private isLauncherSource(source: unknown): source is LauncherSource {
-    return source === 'play-button' || source === 'tab' || source === 'fullscreen';
+    return source === 'play-button' || source === 'tab' || source === 'fullscreen' || source === 'pause';
   }
 
   private primaryFocusTarget(): HTMLElement {

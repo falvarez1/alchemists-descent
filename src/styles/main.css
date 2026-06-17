@@ -1006,6 +1006,15 @@ body.play-active.runtime-inspector-open #viewport-container {
 }
 #pause-exit-fullscreen.visible { display: block; }
 #pause-exit-fullscreen:hover { background: #2a1640; color: #f5f3ff; }
+#pause-overlay .pause-actions { display: flex; gap: 10px; margin-top: 16px; }
+#pause-overlay .pause-actions button {
+    padding: 10px 20px; background: #17111f; border: 1px solid #7c3aed; color: #d8b4fe;
+    border-radius: 4px; cursor: pointer; font-family: var(--mono);
+    font-size: 12px; font-weight: 800; letter-spacing: 2px;
+}
+#pause-overlay .pause-actions button:hover { background: #2a1640; color: #f5f3ff; }
+#pause-overlay .pause-actions #pause-launcher { border-color: #22c55e; color: #86efac; }
+#pause-overlay .pause-actions #pause-launcher:hover { background: #14331f; color: #dcfce7; }
 
 .app-dialog-root {
     position: fixed; inset: 0; z-index: 120;
