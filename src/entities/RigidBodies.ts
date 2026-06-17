@@ -58,6 +58,9 @@ const GRAB_HOLD_DIST = 12; // distance the held body floats in front of the hand
 const GRAB_STIFFNESS = 0.45; // per-frame fraction of the gap the held body closes
 const GRAB_MAX_SPEED = 7; // cap on the held body's tracking speed (cells/frame)
 const THROW_SPEED = 9; // launch speed when the held body is thrown (cells/frame)
+const TELE_REACH = 130; // telekinesis: how far the cursor-targeted lift reaches
+const TELE_MASS_MAX = 700; // telekinesis lifts ANY crate/boulder (incl. large metal ~374)
+const TELE_CURSOR_GRACE = 7; // cells of slack: grab the body nearest the cursor within this
 const BARREL_FUSE = 45; // frames a lit explosive barrel burns before it blows
 const BARREL_BLAST = 24; // explosion radius of a detonating barrel
 
@@ -239,20 +242,63 @@ export class RigidBodies implements RigidBodiesApi {
     ctx.audio.tone(320, 220, 0.06, 'square', 0.08); // grab snap
   }
 
-  release(ctx: Ctx): void {
+  /** Telekinesis: lift the body the MOUSE CURSOR is on (within reach), regardless
+   *  of facing/mass — it then levitates and tracks the hands like a grabbed body.
+   *  Returns true if something was lifted. (Bound to E, toggled with isHolding.) */
+  isHolding(): boolean {
+    return this.held !== null;
+  }
+
+  grabAtCursor(ctx: Ctx): boolean {
+    if (this.held) return false;
+    const p = ctx.player;
+    if (p.dead || p.climbing || ctx.state.mode !== 'play') return false;
+    const wx = ctx.input.mouse.x;
+    const wy = ctx.input.mouse.y;
+    let target = this.hitTest(wx, wy);
+    if (!target) {
+      // grace: the dynamic body nearest the cursor within a few cells
+      let bestD2 = TELE_CURSOR_GRACE * TELE_CURSOR_GRACE;
+      for (const body of this.bodies) {
+        if (body.kind !== 'dynamic') continue;
+        const dx = body.x - wx;
+        const dy = body.y - wy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; target = body; }
+      }
+    }
+    if (!target || target.kind !== 'dynamic') return false;
+    const mass = target.invMass && target.invMass > 0 ? 1 / target.invMass : Infinity;
+    if (mass > TELE_MASS_MAX) return false;
+    if (Math.hypot(target.x - p.x, target.y - (p.y - 8)) > TELE_REACH) return false;
+    this.held = target;
+    ctx.audio.tone(440, 200, 0.08, 'sine', 0.07); // telekinetic lift
+    return true;
+  }
+
+  release(ctx: Ctx, throwIt = true): void {
     const held = this.held;
     if (!held) return;
     this.held = null;
     const rb = this.handles.get(held);
     if (!rb) return;
     const p = ctx.player;
-    const vx = (Math.cos(p.aimAngle) * THROW_SPEED + p.vx * 0.5) * PF;
-    const vy = (Math.sin(p.aimAngle) * THROW_SPEED + p.vy * 0.5) * PF;
-    rb.setLinvel({ x: vx, y: vy }, true);
-    rb.setAngvel((Math.random() - 0.5) * 6, true);
-    held.vx = vx / PF;
-    held.vy = vy / PF;
-    ctx.audio.tone(210, 90, 0.1, 'square', 0.09); // throw
+    if (throwIt) {
+      const vx = (Math.cos(p.aimAngle) * THROW_SPEED + p.vx * 0.5) * PF;
+      const vy = (Math.sin(p.aimAngle) * THROW_SPEED + p.vy * 0.5) * PF;
+      rb.setLinvel({ x: vx, y: vy }, true);
+      rb.setAngvel((Math.random() - 0.5) * 6, true);
+      held.vx = vx / PF;
+      held.vy = vy / PF;
+      ctx.audio.tone(210, 90, 0.1, 'square', 0.09); // throw
+    } else {
+      // gentle set-down: kill the tracking velocity so it just falls where it floats
+      rb.setLinvel({ x: 0, y: 0 }, true);
+      rb.setAngvel(0, true);
+      held.vx = 0;
+      held.vy = 0;
+      ctx.audio.tone(180, 80, 0.07, 'sine', 0.06); // soft drop
+    }
   }
 
   igniteArea(x: number, y: number, radius: number): number {
@@ -301,6 +347,13 @@ export class RigidBodies implements RigidBodiesApi {
     rb.setAngvel(rb.angvel() * 0.55, true);
     held.vx = vx / PF;
     held.vy = vy / PF;
+    // telekinetic aura: a few glowing motes orbit the levitated body
+    if (ctx.state.frameCount % 2 === 0) {
+      const [ex, ey] = bodyExtents(held);
+      const ang = Math.random() * Math.PI * 2;
+      const rr = Math.max(ex, ey) + 1.5;
+      ctx.particles.spawn(held.x + Math.cos(ang) * rr, held.y + Math.sin(ang) * rr, Math.cos(ang) * 0.25, Math.sin(ang) * 0.25, null, packRGB(150, 205, 255), 12 + ((Math.random() * 8) | 0), { glow: 1.8, grav: 0 });
+    }
   }
 
   applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void {
