@@ -1598,13 +1598,19 @@ export class Builder {
       return;
     }
     const region = target.dataset.dock as DockRegion | undefined;
+    // Over an empty-dock guide the guide itself is the full-area drop affordance
+    // and the target, so keep it as the highlight (it lights up on hover) and
+    // suppress the separate drop indicator. Without this the bottom branch below
+    // reassigned the highlight to the hidden bottom-dock element, so the bottom
+    // guide never brightened the way the left/right guides did.
+    const overGuide = target.classList.contains('builder-dock-guide');
     let highlight: HTMLElement = target;
-    if (region === 'bottom' && this.draggingPanelId) {
+    if (!overGuide && region === 'bottom' && this.draggingPanelId) {
       const bottomPane = this.bottomPaneForDrop(target, this.draggingPanelId, point);
       if (bottomPane && this.bottomPaneOfTarget(target) !== bottomPane) {
         highlight = this.bottomPaneEls.get(bottomPane) ?? this.el<HTMLDivElement>('builder-dock-bottom');
       }
-    } else if ((region === 'left' || region === 'right') && this.draggingPanelId) {
+    } else if (!overGuide && (region === 'left' || region === 'right') && this.draggingPanelId) {
       // Highlight an existing target pane; a not-yet-created bottom section is
       // shown by the drop indicator rect (predictedDropRect) instead.
       const sidePane = this.sidePaneForDrop(region, target, point);
@@ -1615,10 +1621,7 @@ export class Builder {
     highlight.classList.add('drop-target');
     if (region) this.markDockInsertion(highlight, region, point);
     // The bold VS Code-style overlay: a filled rectangle over the exact region
-    // the panel will occupy, so left/center/right splits are unambiguous. Over an
-    // (empty-dock) guide the guide is already sized to the full drop area, so the
-    // separate indicator is suppressed — otherwise the two boxes doubled up.
-    const overGuide = target.classList.contains('builder-dock-guide');
+    // the panel will occupy, so left/center/right splits are unambiguous.
     const rect = region && !overGuide ? this.predictedDropRect(region, target, point) : null;
     if (rect) this.showDropIndicator(rect);
     else this.hideDropIndicator();

@@ -97,16 +97,12 @@ export function isSoftGrowth(t: number): boolean {
   return t === Cell.Vines || t === Cell.Moss || t === Cell.Fungus || t === Cell.Glowshroom;
 }
 
-/** Materials that carry electrical charge (chain lightning, sparks). */
+/** Materials that carry electrical charge (chain lightning, sparks).
+ *  Acid/Toxic/Blood were dropped: charge conducting through gore/ooze made the
+ *  cyan electrified glow spread across those pools. Only water, molten rock, and
+ *  metal carry charge now. */
 export function isConductor(t: number): boolean {
-  return (
-    t === Cell.Water ||
-    t === Cell.Lava ||
-    t === Cell.Metal ||
-    t === Cell.Acid ||
-    t === Cell.Blood ||
-    t === Cell.Toxic
-  );
+  return t === Cell.Water || t === Cell.Lava || t === Cell.Metal;
 }
 
 export function isLiquid(t: number): boolean {
