@@ -998,3 +998,62 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
     }
   }
 }
+
+/**
+ * Mineral-vug fill. The cave skeleton leaves a swiss-cheese of small ENCLOSED air
+ * pockets buried in the rock. This fills ~70% of them with cave-suitable material:
+ * mostly solid stone/coal (denser rock to chew through), ~19% a hidden RawOre
+ * cache (dark gold-flecked rock that stays dark until the wizard's light sweeps
+ * it, then gleams — dig it to spill gold), and a rare crystal geode. Only SMALL
+ * enclosed pockets are touched — never the main caves, tunnels, the floor strip,
+ * or any reserved structure/spawn footprint — so traversal is never affected
+ * (re-verified by the findability audit). Runs late in generateLevel.
+ */
+export function fillMineralVugs(ctx: Ctx, rng: Rng, ledger: PlacementLedger): void {
+  const w = ctx.world;
+  const floorBand = HEIGHT - 52;
+  const visited = new Uint8Array(WIDTH * HEIGHT);
+  const FILL_CHANCE = 0.7;
+  const MIN_CELLS = 6; // skip 1-5 cell specks
+  const MAX_CELLS = 130; // skip tunnels / caverns / the main traversable cave
+  const stack: number[] = [];
+  const comp: number[] = [];
+  for (let sy = 3; sy < floorBand; sy++) {
+    for (let sx = 2; sx < WIDTH - 2; sx++) {
+      const startI = w.idx(sx, sy);
+      if (visited[startI] || w.types[startI] !== Cell.Empty) continue;
+      comp.length = 0;
+      stack.length = 0;
+      stack.push(startI);
+      visited[startI] = 1;
+      let count = 0;
+      let tooBig = false;
+      let minX = sx, maxX = sx, minY = sy, maxY = sy;
+      while (stack.length) {
+        const c = stack.pop() as number;
+        count++;
+        if (count <= MAX_CELLS) comp.push(c);
+        else tooBig = true; // keep draining so the whole component is marked visited
+        const cx = c % WIDTH;
+        const cy = (c / WIDTH) | 0;
+        if (cx < minX) minX = cx;
+        else if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        else if (cy > maxY) maxY = cy;
+        // 4-connected, kept above the floor strip and off the border ring
+        if (cx > 1 && !visited[c - 1] && w.types[c - 1] === Cell.Empty) { visited[c - 1] = 1; stack.push(c - 1); }
+        if (cx < WIDTH - 2 && !visited[c + 1] && w.types[c + 1] === Cell.Empty) { visited[c + 1] = 1; stack.push(c + 1); }
+        if (cy > 1 && !visited[c - WIDTH] && w.types[c - WIDTH] === Cell.Empty) { visited[c - WIDTH] = 1; stack.push(c - WIDTH); }
+        if (cy + 1 < floorBand && !visited[c + WIDTH] && w.types[c + WIDTH] === Cell.Empty) { visited[c + WIDTH] = 1; stack.push(c + WIDTH); }
+      }
+      if (tooBig || count < MIN_CELLS) continue;
+      if (rng.next() > FILL_CHANCE) continue; // leave some pockets open for variety
+      if (ledger.intersects(minX, minY, maxX, maxY)) continue; // respect reserved footprints
+      // Mostly solid common rock; ~16% a hidden RawOre cache; ~4% a crystal geode.
+      const roll = rng.next();
+      const mat = roll < 0.58 ? Cell.Stone : roll < 0.8 ? Cell.Coal : roll < 0.96 ? Cell.RawOre : Cell.Crystal;
+      const fn = COLOR_FN[mat];
+      for (const c of comp) w.replaceCellAt(c, mat, fn());
+    }
+  }
+}

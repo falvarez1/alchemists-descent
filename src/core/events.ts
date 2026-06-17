@@ -20,6 +20,10 @@ export interface EventMap {
   playerDeathCleared: undefined;
   /** Build/play switch — UI swaps panels and HUD visibility. */
   modeChanged: { mode: 'build' | 'play' };
+  /** A global/material tuning param changed (a slider, the console `param`
+   *  command, or a Builder reset). Panels that mirror params — the Sandbox
+   *  Global Controls — re-sync their sliders from the live values. */
+  paramsChanged: undefined;
   /** A wave began — HUD updates the wave number readout. */
   waveStarted: { num: number };
   /** Show the big center-screen banner text for ~2.2s. */

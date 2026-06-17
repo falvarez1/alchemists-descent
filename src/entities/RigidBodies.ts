@@ -67,6 +67,7 @@ const SHATTER_RADIUS_MIN = 6.5; // bodies bigger than this (diagonal) shatter un
 const SHATTER_FALLOFF = 0.4; // blast must land within (1 - d/radius) ≥ this to shatter
 const SHATTER_POWER = 1.5; // ...and strength·falloff ≥ this (a bomb shatters, a weak spark only shoves)
 const SHATTER_PIECES = 3; // small crates a large one breaks into
+const STOMP_BOUNCE = 3.2; // upward pop when a dive-stomp smashes a destructible crate
 const WATER_DRAG = 0.15; // per-frame velocity damp while fully submerged (viscosity)
 const SPLASH_MIN_SPEED = 1.2 * PF; // min downward speed (cells/s) to splash on water entry
 const GRAB_REACH = 18; // cells in front of the player a body can be grabbed from
@@ -453,6 +454,37 @@ export class RigidBodies implements RigidBodiesApi {
     this.ctx.audio.noiseBurst(0.14, 300, 0.1);
   }
 
+  /** A crate STOMPED to bits: remove it and pulverize it into its rubble cells +
+   *  a debris poof. Unlike shatterBody this spawns no flung pieces — a boot to
+   *  the lid pulverizes rather than splits. Only call on destructible bodies
+   *  (gore !== null); metal has no gore and should just be landed on. */
+  private smashBody(body: RigidBody): void {
+    const world = this.ctx.world;
+    const half = body.shape.kind === 'circle' ? body.shape.radius : body.shape.halfW;
+    const gore = body.material ? bodyMaterialDef(body.material).gore : null;
+    const bx = body.x;
+    const by = body.y;
+    this.remove(body);
+    if (gore !== null) {
+      const tint = COLOR_FN[gore] ?? ashColor;
+      const x0 = Math.max(1, Math.floor(bx - half));
+      const x1 = Math.min(WIDTH - 2, Math.ceil(bx + half));
+      const y0 = Math.max(1, Math.floor(by - half));
+      const y1 = Math.min(HEIGHT - 2, Math.ceil(by + half));
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const idx = world.idx(x, y);
+          const t = world.types[idx];
+          if ((t === Cell.Empty || t === Cell.Fire || t === Cell.Smoke || t === Cell.Steam) && Math.random() < 0.6) {
+            world.replaceCellAt(idx, gore, tint());
+          }
+        }
+      }
+    }
+    this.ctx.particles.burst(bx, by, 22, null, () => packRGB(170, 140, 105), 2.8, { grav: 0.06 });
+    this.ctx.audio.noiseBurst(0.16, 250, 0.12);
+  }
+
   /** Queue an explosive barrel to detonate next tick (idempotent). */
   private queueDetonation(body: RigidBody): void {
     if (body.payload !== 'explosive' || this.detonations.includes(body)) return;
@@ -753,6 +785,23 @@ export class RigidBodies implements RigidBodiesApi {
       player.y = Math.round(bT); // keep the player on integer cells (the grid oracle is cell-indexed)
       if (player.vy > 0) player.vy = 0;
       player.grounded = true;
+      // A dive lands on a body here, NOT on a terrain cell, so Player's own
+      // dive-clear (which checks terrain-grounded) never fires — diveT would
+      // stay latched and lock out jump+levitation. Clear it on contact, and if
+      // it was a STOMP onto a destructible crate, smash it and pop off the wreck.
+      if (player.diveT > 0) {
+        player.diveT = 0;
+        const destructible = body.material ? bodyMaterialDef(body.material).gore !== null : false;
+        if (destructible) {
+          this.smashBody(body);
+          player.vy = -STOMP_BOUNCE;
+          player.grounded = false;
+          this.ctx.fx.screenShake = Math.min(this.ctx.fx.screenShake + 0.02, 0.05);
+          this.ctx.audio.landThud(1);
+          return true; // the body is gone — nothing left to seat against
+        }
+        this.ctx.audio.landThud(0.6); // a tough body (metal): just a clang
+      }
       return true;
     }
 

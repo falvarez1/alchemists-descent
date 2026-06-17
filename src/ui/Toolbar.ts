@@ -1,6 +1,8 @@
 import type { BiomeId, Ctx, EnemyKind, InputMode, SpellId } from '@/core/types';
 import type { Cell } from '@/sim/CellType';
 import { WIDTH } from '@/config/constants';
+import { BIOMES } from '@/config/biomes';
+import { bindSelect } from '@/ui/domBind';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
@@ -127,10 +129,17 @@ export class Toolbar {
       ensureSandboxWorldDetached(this.ctx);
       this.ctx.worldgen.regenerate(this.ctx);
     });
-    document.getElementById('biome-select')!.addEventListener('change', (e) => {
-      this.ctx.state.currentBiome = (e.target as HTMLSelectElement).value as BiomeId;
-      ensureSandboxWorldDetached(this.ctx);
-      this.ctx.worldgen.regenerate(this.ctx);
+    // Options sourced from BIOMES (not a hard-coded HTML subset) and the dropdown
+    // seeded from the live currentBiome, so it lists every biome and reflects state.
+    bindSelect({
+      select: 'biome-select',
+      options: (Object.keys(BIOMES) as BiomeId[]).map((id) => ({ value: id, label: 'Biome: ' + BIOMES[id].name })),
+      get: () => this.ctx.state.currentBiome,
+      set: (v) => { this.ctx.state.currentBiome = v as BiomeId; },
+      onChange: () => {
+        ensureSandboxWorldDetached(this.ctx);
+        this.ctx.worldgen.regenerate(this.ctx);
+      },
     });
     document.getElementById('btn-fortress')!.addEventListener('click', () => {
       ensureSandboxWorldDetached(this.ctx);

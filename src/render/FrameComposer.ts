@@ -226,6 +226,9 @@ export class FrameComposer implements PixelSurface {
     const charge = world.charge;
     const materials = ctx.params.materials;
     const { lightR, lightG, lightB, vignette, LW } = this.light;
+    // The vignette[] array bakes the shipped 0.52 strength; rescale per-frame so
+    // postFx.vignette tunes it (mirrors the GPU compose's uVignette uniform).
+    const vigScale = ctx.state.postFx.vignette / 0.52;
     const backdropLayers = this.layers.backdropLayers;
     const backdropProfile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
     const backdropSettings = backdropProfile.layers;
@@ -364,7 +367,7 @@ export class FrameComposer implements PixelSurface {
           b *= depthShade;
           {
             const li = (vy >> 1) * LW + (vx >> 1);
-            const vg = vignette[vy * VIEW_W + vx];
+            const vg = 1 - vigScale * (1 - vignette[vy * VIEW_W + vx]);
             let lf0 = Math.min(2.2, lightR[li]) * vg;
             r = (r * 0.62 + ambient * 0.022) * vg + r * lf0 * lf0 * 0.72;
             lf0 = Math.min(2.2, lightG[li]) * vg;
@@ -443,7 +446,7 @@ export class FrameComposer implements PixelSurface {
 
         {
           const li = (vy >> 1) * LW + (vx >> 1);
-          const vg = vignette[vy * VIEW_W + vx];
+          const vg = 1 - vigScale * (1 - vignette[vy * VIEW_W + vx]);
           // squared: compensates the sRGB output curve so darkness reads as darkness.
           // The small additive floor keeps shadowed rock readable as silhouette
           // (the BFS rim shading baked into cell colors carries the detail).

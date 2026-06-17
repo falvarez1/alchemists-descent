@@ -7,7 +7,7 @@
 import { DEATH_SLOWMO_FRAMES, HEIGHT, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
-import type { Ctx, PerkId, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
+import type { Ctx, EnemyKind, PerkId, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
 import { PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
 import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup } from '@/core/pickupDefs';
@@ -60,8 +60,15 @@ const GROUND_STOP_SNAP = 0.12; // below this |vx| (cells/frame) the body halts o
 // Variable jump height. The fixed -3.7 launch peaks ~24 cells, so even a tap
 // flies way over a crate. Hold jump for the full leap; release during the rise
 // to cut it short (a low hop). Holding past the window rolls into levitation.
-const JUMP_CUT = 0.35; // upward velocity kept when jump is released mid-rise
+const JUMP_CUT = 0.25; // upward velocity kept when jump is released mid-rise (lower = shorter min hop)
 const JUMP_HOLD_WINDOW = 7; // frames a fresh jump stays a cuttable ballistic leap (jet suppressed)
+// Top ground speed is capped here so speed buffs (Swift potion ×1.5, Swift Soles
+// ×1.18, God Mode kits) still feel faster but never outrun the soft-start /
+// quick-stop precision curve. Base run is 2.6; this bounds the stacked total.
+const MAX_RUN_CAP = 3.6;
+const ENEMY_STOMP_BOUNCE = 3.6; // upward pop after a Mario-style stomp kill (chains to the next foe)
+// Too big/heavy to stomp — a boot off these just bounces (handle them another way).
+const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'golem']);
 const SWING_REACH = 16;
 const SWING_PUMP = 0.16;
 const SWING_MIN_LEN = 14;
@@ -446,6 +453,30 @@ export class PlayerControl implements PlayerControlApi {
     player.climbing = false;
     player.climbMoveT = 0;
     player.climbIntentY = 0;
+  }
+
+  /** Mario stomp: a committed dive that spears a stompable foe's upper body kills
+   *  it outright and bounces the player off (chaining to the next). Caller gates
+   *  on diveT > 0, so a plain fall onto a foe never triggers it. */
+  private tryStompEnemy(ctx: Ctx): void {
+    const player = ctx.player;
+    for (const e of ctx.enemies) {
+      if (STOMP_IMMUNE.has(e.kind)) continue;
+      const def = ctx.enemyCtl.defs[e.kind];
+      if (Math.abs(player.x - e.x) > PLAYER_HALF_W + def.halfW) continue; // no horizontal overlap
+      const crown = e.y - def.h;
+      // Feet must have driven down into the foe from above (crown..feet band).
+      if (player.y >= crown - 4 && player.y <= e.y + 1) {
+        ctx.enemyCtl.kill(e, player.vx * 0.4, -1.2);
+        player.diveT = 0;
+        player.vy = -ENEMY_STOMP_BOUNCE;
+        player.grounded = false;
+        player.stretchT = 6;
+        ctx.fx.hitstop = Math.max(ctx.fx.hitstop, 3); // a crunchy little freeze
+        ctx.audio.landThud(0.85);
+        return; // one kill per frame; the bounce carries you onward
+      }
+    }
   }
 
   private resetClimbState(player: PlayerState): void {
@@ -1160,7 +1191,9 @@ export class PlayerControl implements PlayerControlApi {
     // cap only bites at high speedK (Swift/God Mode); normal, crawl, and the
     // gentle levitation accel stay well under it and are unchanged.
     const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK, MOVE_ACCEL_CAP),
-      maxRun = 2.6 * speedK * stanceK;
+      // Cap the boosted top speed (Swift/God Mode) so it stays inside the
+      // precision curve; crawl/crouch then scale down from the capped run.
+      maxRun = Math.min(2.6 * speedK, MAX_RUN_CAP) * stanceK;
     // Ground soft-start: ease in from a standstill (a tap stays slow + precise),
     // ramping to full accel with speed. Air control keeps its full responsiveness.
     const stepAccel = player.grounded
@@ -1620,6 +1653,10 @@ export class PlayerControl implements PlayerControlApi {
         }
         player.fy += 1;
       }
+      // A committed dive that spears a foe's crown stomps it (Mario-style) and
+      // bounces off — gated on diveT so only a real STOMP kills, never an idle
+      // fall onto a foe (that still trades contact damage as before).
+      if (player.diveT > 0) this.tryStompEnemy(ctx);
       player.grounded = !ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1);
       if (player.grounded) {
         // jump buffer: a press made just before touchdown fires on the landing frame

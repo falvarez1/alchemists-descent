@@ -43,6 +43,20 @@ function wrapOffset(value: number, size: number): number {
   return wrapped < 0 ? wrapped + size : wrapped;
 }
 
+/** Narkowicz ACES filmic tonemap — matches THREE.ACESFilmicToneMapping (which
+ *  pre-scales by 0.6 after the exposure multiply). Input/output in 0..1. */
+function acesTonemap(x: number): number {
+  const v = x * 0.6;
+  const y = (v * (2.51 * v + 0.03)) / (v * (2.43 * v + 0.59) + 0.14);
+  return y <= 0 ? 0 : y >= 1 ? 1 : y;
+}
+
+/** Cheap deterministic per-pixel noise in 0..1 for the film-grain approximation. */
+function hashNoise(x: number, y: number): number {
+  const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+
 function levelEntries(): LevelDef[] {
   return Object.values(LEVELS).sort((a, b) => {
     if (a.branch !== b.branch) return a.branch ? 1 : -1;
@@ -84,6 +98,12 @@ export class BackdropPreview {
   private copyAllPending = false;
   private soloLayer: BackdropLayerId | null = null;
   private showTerrain = true;
+  // Approximate the in-game color pipeline so the preview reads like gameplay:
+  // TONEMAP = the always-on ACES rolloff + vignette; POST FX = exposure + grain.
+  // (Dynamic per-cell lighting and bloom are NOT simulated — the live light field
+  // isn't available in the Builder; see the note in applyInGameLook.)
+  private showTonemap = true;
+  private showPost = true;
   private followCamera = false;
   private zoom = 1;
 
@@ -126,6 +146,8 @@ export class BackdropPreview {
               <button id="bb-follow" type="button">FOLLOW CAMERA</button>
               <button id="bb-terrain" type="button">TERRAIN</button>
               <button id="bb-fit" type="button">FIT</button>
+              <button id="bb-tonemap" type="button" title="Approximate the in-game ACES tonemap + vignette">TONEMAP</button>
+              <button id="bb-postfx" type="button" title="Approximate post FX (exposure + film grain)">POST FX</button>
             </div>
           </div>
           <section class="bb-grade">
@@ -295,6 +317,14 @@ export class BackdropPreview {
     });
     (this.root.querySelector('#bb-terrain') as HTMLButtonElement).addEventListener('click', () => {
       this.showTerrain = !this.showTerrain;
+      this.syncToggles();
+    });
+    (this.root.querySelector('#bb-tonemap') as HTMLButtonElement).addEventListener('click', () => {
+      this.showTonemap = !this.showTonemap;
+      this.syncToggles();
+    });
+    (this.root.querySelector('#bb-postfx') as HTMLButtonElement).addEventListener('click', () => {
+      this.showPost = !this.showPost;
       this.syncToggles();
     });
     (this.root.querySelector('#bb-fit') as HTMLButtonElement).addEventListener('click', () => {
@@ -552,6 +582,8 @@ export class BackdropPreview {
   private syncToggles(): void {
     this.setTogglePressed('#bb-follow', this.followCamera);
     this.setTogglePressed('#bb-terrain', this.showTerrain);
+    this.setTogglePressed('#bb-tonemap', this.showTonemap);
+    this.setTogglePressed('#bb-postfx', this.showPost);
     this.setTogglePressed('#bb-copy-all', this.copyAllPending);
     this.root.querySelector('#bb-apply')?.toggleAttribute('disabled', !this.dirty);
     this.root.querySelector('#bb-revert')?.toggleAttribute('disabled', !this.dirty);
@@ -646,6 +678,7 @@ export class BackdropPreview {
       this.drawTerrainOverlay(ctx);
       ctx.restore();
     }
+    if (this.showTonemap || this.showPost) this.applyInGameLook(ctx);
 
     const coords = this.root.querySelector('#bb-coords');
     if (coords) coords.textContent = `x ${Math.round(this.camX)}  y ${Math.round(this.camY)}  ${this.zoom.toFixed(2)}x`;
@@ -707,6 +740,61 @@ export class BackdropPreview {
       data[i] = Math.round((r <= 0 ? 0 : r >= 1 ? 1 : r ** invGamma) * 255);
       data[i + 1] = Math.round((g <= 0 ? 0 : g >= 1 ? 1 : g ** invGamma) * 255);
       data[i + 2] = Math.round((b <= 0 ? 0 : b >= 1 ? 1 : b ** invGamma) * 255);
+    }
+    ctx.putImageData(image, 0, 0);
+  }
+
+  /**
+   * APPROXIMATE the live render's color pipeline on the composited preview so it
+   * reads like gameplay instead of raw fullbright cells. Mirrors what the game
+   * always does after the per-cell lighting law: a screen VIGNETTE, the ACES
+   * filmic TONEMAP (the big saturation/highlight rolloff), and — when POST FX is
+   * on — the tonemap exposure (postFx.exposure) and film grain.
+   *
+   * NOT simulated: the dynamic per-cell lighting field (the live light buffer
+   * isn't built for the Builder's free-pan camera) and bloom. So lit/shadow
+   * contrast won't match exactly — but the color grade that made the editor look
+   * "richer/more saturated" than the game (no tonemap) is now reproduced.
+   */
+  private applyInGameLook(ctx: CanvasRenderingContext2D): void {
+    const post = this.ctx.state.postFx;
+    const tonemap = this.showTonemap;
+    const doPost = this.showPost;
+    const expo = doPost && post.enabled ? post.exposure : 1; // exposure feeds the tonemapper
+    const vigStrength = tonemap ? post.vignette : 0;
+    const grain = doPost && post.lensEnabled ? post.grain : 0;
+    const cx = VIEW_W / 2;
+    const cy = VIEW_H / 2;
+    const maxR2 = cx * cx + cy * cy;
+    const image = ctx.getImageData(0, 0, VIEW_W, VIEW_H);
+    const data = image.data;
+    let o = 0;
+    for (let y = 0; y < VIEW_H; y++) {
+      const dy = y - cy;
+      for (let x = 0; x < VIEW_W; x++, o += 4) {
+        let r = data[o] / 255;
+        let g = data[o + 1] / 255;
+        let b = data[o + 2] / 255;
+        if (vigStrength > 0) {
+          const dx = x - cx;
+          const vg = 1 - vigStrength * ((dx * dx + dy * dy) / maxR2);
+          r *= vg; g *= vg; b *= vg;
+        }
+        if (tonemap) {
+          r = acesTonemap(r * expo);
+          g = acesTonemap(g * expo);
+          b = acesTonemap(b * expo);
+        } else if (expo !== 1) {
+          r *= expo; g *= expo; b *= expo;
+        }
+        if (grain > 0) {
+          const n = (hashNoise(x, y) - 0.5) * grain;
+          r += n; g += n; b += n;
+        }
+        data[o] = r <= 0 ? 0 : r >= 1 ? 255 : Math.round(r * 255);
+        data[o + 1] = g <= 0 ? 0 : g >= 1 ? 255 : Math.round(g * 255);
+        data[o + 2] = b <= 0 ? 0 : b >= 1 ? 255 : Math.round(b * 255);
+      }
     }
     ctx.putImageData(image, 0, 0);
   }

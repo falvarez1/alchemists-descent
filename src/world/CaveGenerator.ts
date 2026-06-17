@@ -1,6 +1,6 @@
 import { BIOMES } from '@/config/biomes';
 import { HEIGHT, WIDTH } from '@/config/constants';
-import { GEN } from '@/config/gen';
+import { CAVE_SCALE, GEN, scaleSkeletonSpec } from '@/config/gen';
 import { clamp, hash2, valueNoise } from '@/core/math';
 import { Rng, hashSeed, randomSeed } from '@/core/rng';
 import { makeInstantiationSink } from '@/game/instantiate';
@@ -40,7 +40,7 @@ import {
   waterColor,
   woodColor,
 } from '@/sim/colors';
-import { applyBiomeExtras, applyCampaignDressing, goldPocketBudgetForBiome } from '@/world/biomeExtras';
+import { applyBiomeExtras, applyCampaignDressing, fillMineralVugs, goldPocketBudgetForBiome } from '@/world/biomeExtras';
 import { PlacementLedger, carveRect, tunnelTo } from '@/world/connect';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
@@ -99,7 +99,7 @@ export class WorldGen implements WorldGenApi {
       minY: MIN_Y,
       worldSeed: ctx.state.worldSeed >>> 0,
     };
-    const skel = SKELETONS[G.skeleton.kind](io, G.skeleton);
+    const skel = SKELETONS[G.skeleton.kind](io, scaleSkeletonSpec(G.skeleton, CAVE_SCALE));
     this.spawnHint = skel.spawnHint;
     // skel.tunnelY (the baseline primary-artery profile) has no remaining
     // consumers in the shared stages — the spawn chamber is carved inside the
@@ -923,6 +923,13 @@ export class WorldGen implements WorldGenApi {
       fits.set(computeFits(ctx.world));
     }
     stage('campaign-dressing');
+
+    // 8b.6) Mineral-vug fill: pack the buried swiss-cheese air pockets with cave
+    // material (mostly solid stone/coal, ~19% hidden RawOre caches, a rare geode).
+    // Forked stream, only ENCLOSED small pockets, respects the ledger — so it
+    // can't shift structure placement or disconnect the reachable graph.
+    fillMineralVugs(ctx, new Rng(hashSeed(seed >>> 0, 'mineral-vugs')), ledger);
+    stage('mineral-vugs');
 
     // 8c) GAUGE RESCUE: run the same connectivity audits the validator runs.
     //     Hands-on locks and door fronts use wizard connectivity (9x17 fits,

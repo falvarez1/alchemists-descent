@@ -51,6 +51,11 @@ export const Cell = {
   // (the economy guard: amplification is local and finite, never a rule
   // change — see handleAcid).
   Catalyst: 35,
+  // Hidden mineral cache: dark host rock veined with gold that does NOT self-glow
+  // (see Lighting — no emissive seed), so it reads as plain rock until the wizard's
+  // light sweeps it and the flecks gleam. Dig it (erodeAt) to spill gold. Placed by
+  // the mineral-vug fill pass into small cave pockets (world/biomeExtras).
+  RawOre: 36,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
@@ -59,10 +64,10 @@ export type Cell = (typeof Cell)[keyof typeof Cell];
  * NOTE: the GPU compose path (render/ComposeShader.ts) packs each cell's type
  * into a texture byte as `type | 0x80` when the cell is charged. That is an
  * internal texture format, NOT a save format — but it means cell ids must
- * stay <= 127. Ids are append-only and top out at 35 today, so there is room
- * for 92 more materials; if id 128 is ever near, the charge bit moves first.
+ * stay <= 127. Ids are append-only and top out at 36 today, so there is room
+ * for 91 more materials; if id 128 is ever near, the charge bit moves first.
  */
-export const CELL_COUNT = 36;
+export const CELL_COUNT = 37;
 
 /**
  * Classification predicates take plain numbers so values read straight out of
@@ -82,7 +87,8 @@ export function isSolid(t: number): boolean {
     t === Cell.Glass ||
     t === Cell.Fungus ||
     t === Cell.Glowshroom ||
-    t === Cell.Moss
+    t === Cell.Moss ||
+    t === Cell.RawOre
   );
 }
 

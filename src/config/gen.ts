@@ -49,8 +49,27 @@ import type { BiomeId } from '@/core/types';
  *      the soft strand simulation with observable, organic tendrils.
  * v17: cauldron set 28 cells from the waystone (the larger monuments overlapped);
  *      denser vines + new drape (wall-to-wall), loop, and heavy-cluster variants.
+ * v18: GRAND CAVES — every skeleton's open-space carve radii scale by CAVE_SCALE
+ *      (1.5x) for wider tunnels/shafts/chambers and more levitation room; the
+ *      world map size is unchanged, only the carved space grows.
+ * v19: mineral-vug fill — buried swiss-cheese air pockets pack with cave material
+ *      (mostly solid stone/coal, ~19% hidden non-glowing RawOre caches, a rare
+ *      crystal geode), discovered by digging + the wizard's light.
  */
-export const GEN_VERSION = 17;
+export const GEN_VERSION = 19;
+
+/**
+ * Global cave-size multiplier applied to every skeleton's OPEN-SPACE carve radii
+ * (arteries, shafts, chambers, walker tunnels, vaults, bubbles, the spawn
+ * chamber, connectivity tunnels). 1.0 = the golden-locked original; > 1 opens
+ * the caves up for grander, more traversable space without changing the map
+ * dimensions or the rng draw order (radius is consumed AFTER every draw, so the
+ * spawn anchor and stream are identical — only carved cells differ). Changing
+ * this is a DELIBERATE generation change: re-record tests/gen-golden.test.ts and
+ * bump GEN_VERSION. Decorative wall features (stalactites, vault pillars) are
+ * intentionally NOT scaled, so bigger caverns gain contrast rather than clutter.
+ */
+export const CAVE_SCALE = 1.5;
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)
@@ -677,6 +696,141 @@ export function tubeParams(): TubeParams {
     minArea: 300,
     tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
   };
+}
+
+/* ============================================================
+ * Cave-size scaling (CAVE_SCALE). Applied to a skeleton spec just before it is
+ * carved, so the param factories stay the literal golden source.
+ * ============================================================ */
+
+const scaleArtery = (a: ArterySpec, s: number): ArterySpec => ({ ...a, radius: a.radius * s });
+const scaleChambers = (c: ChamberParams, s: number): ChamberParams => ({
+  ...c,
+  rxBase: c.rxBase * s,
+  rxRand: c.rxRand * s,
+  ryBase: c.ryBase * s,
+  ryRand: c.ryRand * s,
+});
+const scaleShaftsRadius = (sh: ShaftParams, s: number): ShaftParams => ({ ...sh, radius: sh.radius * s });
+
+/**
+ * Return a copy of `spec` with every OPEN-SPACE carve radius multiplied by `s`.
+ * Identity when s === 1 (the same object is returned so golden output is bit-
+ * for-bit unchanged). Decorative wall features (stalactites, vault pillars) and
+ * structural counts/positions are left untouched — only how wide each carve
+ * opens. See CAVE_SCALE.
+ */
+export function scaleSkeletonSpec(spec: SkeletonSpec, s: number): SkeletonSpec {
+  if (s === 1) return spec;
+  switch (spec.kind) {
+    case 'baseline': {
+      const p = spec.params;
+      return {
+        kind: 'baseline',
+        params: {
+          ...p,
+          arteries: p.arteries.map((a) => scaleArtery(a, s)),
+          shafts: scaleShaftsRadius(p.shafts, s),
+          chambers: scaleChambers(p.chambers, s),
+          spawnRadius: p.spawnRadius * s,
+        },
+      };
+    }
+    case 'fungalPockets': {
+      const p = spec.params;
+      return {
+        kind: 'fungalPockets',
+        params: {
+          ...p,
+          artery: scaleArtery(p.artery, s),
+          rMin: p.rMin * s,
+          rMax: p.rMax * s,
+          throatW: p.throatW * s,
+          spawnRadius: p.spawnRadius * s,
+          tunnelRadius: p.tunnelRadius * s,
+        },
+      };
+    }
+    case 'frozenCrevasses': {
+      const p = spec.params;
+      return {
+        kind: 'frozenCrevasses',
+        params: {
+          ...p,
+          tunnels: { ...p.tunnels, radiusMin: p.tunnels.radiusMin * s, radiusMax: p.tunnels.radiusMax * s },
+          shelves: { ...p.shelves, radius: p.shelves.radius * s },
+          spawnRadius: p.spawnRadius * s,
+          tunnelRadius: p.tunnelRadius * s,
+        },
+      };
+    }
+    case 'floodedGalleries': {
+      const p = spec.params;
+      return {
+        kind: 'floodedGalleries',
+        params: {
+          ...p,
+          galleries: p.galleries.map((g) => scaleArtery(g, s)),
+          chambers: scaleChambers(p.chambers, s),
+          sumps: { ...p.sumps, rMin: p.sumps.rMin * s, rMax: p.sumps.rMax * s },
+          shafts: scaleShaftsRadius(p.shafts, s),
+          spawnRadius: p.spawnRadius * s,
+          tunnelRadius: p.tunnelRadius * s,
+        },
+      };
+    }
+    case 'timberScaffold': {
+      const p = spec.params;
+      return {
+        kind: 'timberScaffold',
+        params: {
+          ...p,
+          grid: {
+            ...p.grid,
+            corridorW: p.grid.corridorW * s,
+            roomWFrac: Math.min(0.92, p.grid.roomWFrac * s),
+            roomHFrac: Math.min(0.92, p.grid.roomHFrac * s),
+          },
+          shaftHalfW: p.shaftHalfW * s,
+          spawnRadius: p.spawnRadius * s,
+          tunnelRadius: p.tunnelRadius * s,
+        },
+      };
+    }
+    case 'crystalVaults': {
+      const p = spec.params;
+      return {
+        kind: 'crystalVaults',
+        params: {
+          ...p,
+          vaults: {
+            ...p.vaults,
+            rxMin: p.vaults.rxMin * s,
+            rxMax: p.vaults.rxMax * s,
+            ryMin: p.vaults.ryMin * s,
+            ryMax: p.vaults.ryMax * s,
+          },
+          arteries: p.arteries.map((a) => scaleArtery(a, s)),
+          shafts: scaleShaftsRadius(p.shafts, s),
+          spawnRadius: p.spawnRadius * s,
+          tunnelRadius: p.tunnelRadius * s,
+        },
+      };
+    }
+    case 'volcanicTubes': {
+      const p = spec.params;
+      return {
+        kind: 'volcanicTubes',
+        params: {
+          ...p,
+          walkers: { ...p.walkers, radiusMin: p.walkers.radiusMin * s, radiusMax: p.walkers.radiusMax * s },
+          chambers: { ...p.chambers, rMin: p.chambers.rMin * s, rMax: p.chambers.rMax * s },
+          spawnRadius: p.spawnRadius * s,
+          tunnelRadius: p.tunnelRadius * s,
+        },
+      };
+    }
+  }
 }
 
 /** Default spec instance per skeleton kind (used by structural tests). */

@@ -4,11 +4,16 @@ import {
   acidColor,
   emberColor,
   fireColor,
+  goldColor,
   packRGB,
   smokeColor,
   stoneColor,
 } from '@/sim/colors';
 import type { Ctx, Projectile, SpellId, SpellsApi } from '@/core/types';
+
+/** Gold per RawOre cell mined. Kept modest (raw ore < refined gold's ~10/cell) —
+ *  caches are plentiful and buried, so the per-cell value guards the economy. */
+const RAWORE_GOLD = 2;
 
 /**
  * Player spell casting: wand geometry, the excavation ray, warp teleport
@@ -54,7 +59,15 @@ export class Spells implements SpellsApi {
         if (!world.inBounds(X, Y)) continue;
         const i = world.idx(X, Y);
         const c = world.types[i];
-        if (c === Cell.Wall || c === Cell.Sand || c === Cell.Wood || c === Cell.Ice || c === Cell.Vines || c === Cell.Stone || c === Cell.Gunpowder) {
+        if (c === Cell.RawOre) {
+          // Mining the hidden ore spills its gold: a homing grain flies to the
+          // wizard (the same tell as the gold harvester) and the purse ticks up.
+          this.ctx.particles.spawn(X, Y, (Math.random() - 0.5) * 1.4, -0.8 - Math.random(),
+            null, goldColor(), 200, { homing: true, glow: 2.2, grav: 0 });
+          this.ctx.state.score += RAWORE_GOLD;
+          this.ctx.events.emit('scoreChanged', { score: this.ctx.state.score });
+          world.clearCellAt(i); chewed++;
+        } else if (c === Cell.Wall || c === Cell.Sand || c === Cell.Wood || c === Cell.Ice || c === Cell.Vines || c === Cell.Stone || c === Cell.Gunpowder) {
           if (debris < 2 && Math.random() < 0.16) {
             this.ctx.particles.spawn(X, Y, (Math.random() - 0.5) * 1.6, -0.7 - Math.random() * 0.9,
               c === Cell.Wood ? Cell.Wood : Cell.Sand, world.colors[i], 55);

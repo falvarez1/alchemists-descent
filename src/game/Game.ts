@@ -109,7 +109,7 @@ export class Game {
       brushSize: 6,
       playerSpawned: false,
       worldSeed: randomSeed(),
-      difficulty: 3, // shipped balance until a run picks otherwise
+      difficulty: 2, // shipped balance until a run picks otherwise
       paused: false,
       debugGodMode: false,
       postFx: createDefaultPostFxSettings(),

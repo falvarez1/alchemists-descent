@@ -3891,7 +3891,7 @@ export class Builder {
       errors: issues.filter((i) => i.severity === 'error').length,
       warnings: issues.filter((i) => i.severity === 'warning').length,
     };
-    this.renderIssues(issues);
+    this.renderIssues(issues, { activate: true });
     this.status(issues.length === 0 ? 'VALID — NO ISSUES' : plural(issues.length, 'ISSUE', 'ISSUES'));
   }
 
@@ -4326,7 +4326,7 @@ export class Builder {
     const issues = validateDocument(this.doc);
     this.lastValidationOverlay = buildValidationOverlayDiagnostics(this.doc);
     const blockers = playtestBlockingIssues(issues, 'authored-spawn');
-    this.renderIssues(issues, { playtestBlockers: blockers });
+    this.renderIssues(issues, { playtestBlockers: blockers, activate: blockers.length > 0 });
     if (blockers.length > 0) {
       this.selectIssueTarget(blockers[0]);
       this.status(`PLAYTEST BLOCKED: ${plural(blockers.length, 'COMPILE BLOCKER', 'COMPILE BLOCKERS')}`, true);
@@ -4343,7 +4343,7 @@ export class Builder {
     const blockers = playtestBlockingIssues(issues, spawnAt ? 'cursor-spawn' : 'authored-spawn');
     if (blockers.length > 0) {
       this.renderInspector();
-      this.renderIssues(issues);
+      this.renderIssues(issues, { activate: true });
       this.status('FIX PLAYTEST BLOCKERS FIRST', true);
       return;
     }
@@ -6550,6 +6550,7 @@ export class Builder {
         title: 'Restore simulation, lighting, and gore multipliers to shipped defaults',
         run: () => {
           Object.assign(this.ctx.params.global, GLOBAL_PARAM_DEFAULTS);
+          this.ctx.events.emit('paramsChanged'); // Sandbox Global Controls re-sync
           this.buildGlobalPanel();
           this.status('SIM + GORE RESET');
         },
@@ -6687,6 +6688,12 @@ export class Builder {
     });
     this.numberRow(section, 'Exposure', post.exposure, 0.5, 1.8, 0.05, (v) => v.toFixed(2), (v) => {
       post.exposure = v;
+    });
+    this.checkboxRow(section, 'Tonemapping (ACES)', post.tonemap, (value) => {
+      post.tonemap = value;
+    });
+    this.numberRow(section, 'Vignette', post.vignette, 0, 1, 0.02, (v) => v.toFixed(2), (v) => {
+      post.vignette = v;
     });
 
     const bloom = this.worldSection(host, 'BLOOM');
@@ -8850,7 +8857,7 @@ export class Builder {
     this.ensureCaptured();
     const issues = validateDocument(this.doc);
     this.lastValidationOverlay = buildValidationOverlayDiagnostics(this.doc);
-    this.renderIssues(issues);
+    this.renderIssues(issues, { activate: true });
     const target = issues.find((i) => i.objId);
     if (!target) {
       this.status(issues.length === 0 ? 'NOTHING INVALID — ALL CLEAN' : `${issues.length} ISSUE(S), NONE LOCATABLE`);
@@ -8889,7 +8896,7 @@ export class Builder {
     const issues = validateDocument(this.doc);
     this.lastValidationOverlay = buildValidationOverlayDiagnostics(this.doc);
     const blockers = playtestBlockingIssues(issues, 'cursor-spawn');
-    this.renderIssues(issues, { playtestBlockers: blockers });
+    this.renderIssues(issues, { playtestBlockers: blockers, activate: blockers.length > 0 });
     if (blockers.length > 0) {
       this.selectIssueTarget(blockers[0]);
       this.status(`PLAYTEST HERE BLOCKED: ${blockers.length} COMPILE BLOCKER(S)`, true);
@@ -12400,17 +12407,27 @@ export class Builder {
 
   private renderIssues(
     issues: DocIssue[],
-    options: { playtestBlockers?: readonly DocIssue[] } = {},
+    options: { playtestBlockers?: readonly DocIssue[]; activate?: boolean } = {},
   ): void {
+    // `activate` = the user explicitly asked to see issues (Validate / Find Invalid /
+    // a blocked playtest), so bring the panel forward and focus its tab. The default
+    // is a *quiet* content refresh: validation re-runs on every edit, and yanking the
+    // active tab to Validation each time makes it impossible to work in another tab
+    // while the doc is transiently invalid. A quiet refresh only updates the
+    // (already-open) panel's content; it must never touch activePanelId or the
+    // panel's visibility, both of which are owned by the tab group.
+    const activate = options.activate ?? false;
     this.lastIssues = [...issues];
     this.validationDirty = false;
     this.syncNavigationPanels();
     const panel = this.el<HTMLDivElement>('builder-issues');
     this.validationScrollTop = panel.scrollTop || this.validationScrollTop;
-    panel.style.display = '';
-    this.setWorkspacePanelOpen('builder-issues', true);
-    this.applyWorkspaceLayout();
-    this.saveWorkspacePrefs();
+    if (activate) {
+      panel.style.display = '';
+      this.setWorkspacePanelOpen('builder-issues', true);
+      this.applyWorkspaceLayout();
+      this.saveWorkspacePrefs();
+    }
     panel.innerHTML = renderValidationPanel(issues, {
       ...options,
       collapsedSections: this.workspaceLayout.collapsedSections,

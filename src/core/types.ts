@@ -551,6 +551,12 @@ export interface PostFxSettings {
   grain: number;
   hurtPulse: number;
   exposure: number;
+  /** ACES filmic tonemap — the always-on render rolloff that desaturates/compresses
+   *  highlights. Off = linear (no rolloff), for A/B comparison. */
+  tonemap: boolean;
+  /** Screen vignette strength: the compose darkens edges by this × (r²/maxR²).
+   *  0.52 is the shipped look; 0 disables it. */
+  vignette: number;
 }
 
 export type RenderBackendMode = 'webgl' | 'webgpu' | 'auto';

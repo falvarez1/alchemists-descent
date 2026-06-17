@@ -751,6 +751,7 @@ function setSimSpeed(ctx: Ctx, value: number): CommandResult {
   const oldValue = ctx.params.global.simSpeed;
   ctx.params.global.simSpeed = value;
   syncKnownParamInputs('global.simSpeed', value);
+  ctx.events.emit('paramsChanged');
   return result(true, `global.simSpeed: ${oldValue} -> ${value}`, {
     path: 'global.simSpeed',
     oldValue,
@@ -2318,6 +2319,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
         if (!isCommandResult(reread)) value = reread.current;
       }
       syncKnownParamInputs(resolved.canonical, value);
+      ctx.events.emit('paramsChanged'); // mirrors re-sync (Sandbox Global Controls)
       return result(true, `${resolved.canonical}: ${String(resolved.current)} -> ${String(value)}`, {
         path: resolved.canonical,
         oldValue: resolved.current,

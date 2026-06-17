@@ -88,7 +88,8 @@ export class Simulation implements SimulationApi {
           type === Cell.Glass ||
           type === Cell.Fungus ||
           type === Cell.Glowshroom ||
-          type === Cell.Moss
+          type === Cell.Moss ||
+          type === Cell.RawOre
         ) {
           if (type === Cell.Ice || type === Cell.Vines || type === Cell.Fungus || type === Cell.Moss) {
             runSparsePass = true;
