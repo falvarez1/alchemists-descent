@@ -481,6 +481,221 @@ export class WorldGen implements WorldGenApi {
     }
   }
 
+  /** GAUGE RESCUE: re-run the validator connectivity audits and carve a
+   *  guaranteed chamber + tunnel for anything still cut off. Extracted verbatim
+   *  from generateLevel; mutates ctx.world using the placed feature lists. */
+  private gaugeRescue(
+    ctx: Ctx,
+    def: LevelDef,
+    spawn: { x: number; y: number },
+    mechanisms: Mechanism[],
+    spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null,
+    runeVaults: RuneVault[],
+    pickups: Pickup[],
+    waystones: Waystone[],
+    cauldron: { x: number; y: number } | null,
+  ): void {
+      let wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
+      let cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
+      const wizNear = (x: number, y: number, r: number): boolean => {
+        return wizNearCount(x, y, r) > 0;
+      };
+      const wizNearCount = (x: number, y: number, r: number): number => {
+        let count = 0;
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const X = Math.floor(x) + dx,
+              Y = Math.floor(y) + dy;
+            if (X > 0 && Y > 0 && X < WIDTH && Y < HEIGHT && wiz[X + Y * WIDTH]) count++;
+          }
+        }
+        return count;
+      };
+      const cellNear = (x: number, y: number, r: number): boolean => {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const X = Math.floor(x) + dx,
+              Y = Math.floor(y) + dy;
+            if (X > 0 && Y > 0 && X < WIDTH && Y < HEIGHT && cell[X + Y * WIDTH]) return true;
+          }
+        }
+        return false;
+      };
+      const HANDS_ON = new Set(['plate', 'lever', 'brazier', 'scale']);
+      const CELL_REACH = new Set(['sensor', 'counterweight', 'plug', 'buoy', 'chargelatch']);
+      // nearest spawn-connected wizard cell whose STRAIGHT LINE from the
+      // lock crosses no Metal — carvePocket spares Metal, so a tunnel aimed
+      // through a door slab / vault shell / well casing is silently severed
+      const metalOnLine = (x0: number, y0: number, x1: number, y1: number): boolean => {
+        const steps2 = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 2));
+        for (let k = 0; k <= steps2; k++) {
+          const X = Math.round(x0 + ((x1 - x0) * k) / steps2);
+          const Y = Math.round(y0 + ((y1 - y0) * k) / steps2);
+          for (let dy = -6; dy <= 6; dy += 3) {
+            for (let dx = -6; dx <= 6; dx += 3) {
+              const XX = X + dx,
+                YY = Y + dy;
+              if (XX < 0 || XX >= WIDTH || YY < 0 || YY >= HEIGHT) continue;
+              if (ctx.world.types[XX + YY * WIDTH] === Cell.Metal) return true;
+            }
+          }
+        }
+        return false;
+      };
+      const nearestWiz = (x: number, y: number): { x: number; y: number } | null => {
+        let fallback: { x: number; y: number } | null = null;
+        for (let r = 24; r <= 1200; r += 3) {
+          for (let a = 0; a < 24; a++) {
+            const ang = (a / 24) * Math.PI * 2;
+            const X = Math.floor(x + Math.cos(ang) * r),
+              Y = Math.floor(y + Math.sin(ang) * r);
+            if (X > 1 && Y > 1 && X < WIDTH - 1 && Y < HEIGHT - 1 && wiz[X + Y * WIDTH]) {
+              if (!metalOnLine(x, y, X, Y)) return { x: X, y: Y };
+              fallback ??= { x: X, y: Y };
+            }
+          }
+        }
+        return fallback;
+      };
+      // Rescue one STANDING point: a 15x20 rect chamber above it guarantees
+      // fitting feet BY CONSTRUCTION (a disc tunnel only guarantees fits on
+      // its centerline — a Metal pedestal in the tube mouth or a rock spire
+      // a row above disc reach silently voids it; both happened). Then a
+      // tunnel from the chamber joins the spawn component; verify by
+      // recomputing the mask, and fall back to a tunnel aimed at the spawn.
+      const SWEEP = { halfW: 10, up: 25, down: 12 }; // gauge-guaranteed gallery
+      const rescueAt = (px: number, py: number, pass: () => boolean): boolean => {
+        carveRect(ctx.world, px - SWEEP.halfW, py - 24, px + SWEEP.halfW, py + 4);
+        // Let the rescue tunnel reach a chamber/target ABOVE the default row-26
+        // floor (the rescue chamber's top is py-24); for deep features (every
+        // case in the shipped seeds) this stays 26, so carve output is unchanged.
+        const rescueMinY = Math.min(26, py - 24);
+        const target = nearestWiz(px, py - 10) ?? {
+          x: Math.floor(spawn.x),
+          y: Math.floor(spawn.y) - 4,
+        };
+        tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP, rescueMinY);
+        wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
+        cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
+        if (pass()) return true;
+        tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY);
+        wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
+        cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
+        return pass();
+      };
+      const rescued: string[] = [];
+      const failedRescues: string[] = [];
+      const recordRescue = (label: string, attempt: () => boolean): void => {
+        rescued.push(label);
+        if (!attempt()) failedRescues.push(label);
+      };
+      const inSpellLab = (x: number, y: number): boolean =>
+        !!spellLab &&
+        x >= spellLab.x - 30 &&
+        x <= spellLab.x + 30 &&
+        y >= spellLab.y - 28 &&
+        y <= spellLab.y + 8;
+      const spellLabDoor = spellLab
+        ? mechanisms.find((m) => m.kind === 'door' && inSpellLab(m.x + m.w / 2, m.y + m.h / 2))
+        : undefined;
+      const spellLabSide = spellLabDoor && spellLab
+        ? Math.sign(spellLabDoor.x + spellLabDoor.w / 2 - spellLab.x) || 1
+        : 1;
+      let spellLabRescued = false;
+      const rescueSpellLab = (pass: () => boolean): boolean => {
+        if (!spellLab) return false;
+        if (spellLabRescued) return pass();
+        spellLabRescued = true;
+        return rescueAt(spellLab.x - spellLabSide * 36, spellLab.y - 5, pass);
+      };
+      for (const m of mechanisms) {
+        const labMechanism = inSpellLab(m.x + m.w / 2, m.y + m.h / 2);
+        if (m.kind === 'door') {
+          const pass = (): boolean =>
+            wizNear(m.x - 2, m.y + m.h - 2, 8) || wizNear(m.x + m.w + 1, m.y + m.h - 2, 8);
+          const stable = (): boolean =>
+            wizNearCount(m.x - 2, m.y + m.h - 2, 8) + wizNearCount(m.x + m.w + 1, m.y + m.h - 2, 8) >= 64;
+          if (labMechanism && pass()) continue;
+          if (labMechanism) {
+            recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
+              rescueSpellLab(pass),
+            );
+            continue;
+          }
+          if (pass() && stable()) continue;
+          recordRescue(
+            `${m.kind}@${m.x},${m.y}`,
+            () => rescueAt(m.x - 6, m.y + m.h - 2, pass) || rescueAt(m.x + m.w + 5, m.y + m.h - 2, pass),
+          );
+        } else if (m.kind === 'valve') {
+          const pass = (): boolean =>
+            cellNear(m.x - 2, m.y + m.h / 2, 4) ||
+            cellNear(m.x + m.w + 1, m.y + m.h / 2, 4) ||
+            cellNear(m.x + m.w / 2, m.y - 2, 4) ||
+            cellNear(m.x + m.w / 2, m.y + m.h + 1, 4);
+          if (pass()) continue;
+          recordRescue(
+            `${m.kind}@${m.x},${m.y}`,
+            () =>
+              rescueAt(m.x + m.w / 2, m.y - 2, pass) ||
+              rescueAt(m.x + m.w / 2, m.y + m.h + 1, pass) ||
+              rescueAt(m.x - 2, m.y + m.h / 2, pass) ||
+              rescueAt(m.x + m.w + 1, m.y + m.h / 2, pass),
+          );
+        } else if (HANDS_ON.has(m.kind)) {
+          const pass = (): boolean => wizNear(m.x, m.y - 2, 6);
+          if (pass() && wizNearCount(m.x, m.y - 2, 6) >= 40) continue;
+          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
+        } else if (CELL_REACH.has(m.kind)) {
+          const pass = (): boolean => cellNear(m.x, m.y - 2, 5);
+          if (pass()) continue;
+          if (labMechanism) {
+            recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
+              rescueSpellLab(pass),
+            );
+            continue;
+          }
+          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
+        }
+      }
+      for (const v of runeVaults) {
+        const rx = Math.floor(v.rx),
+          ry = Math.floor(v.ry);
+        const pass = (): boolean => cellNear(rx, ry, 5);
+        if (pass()) continue;
+        recordRescue(`rune@${rx},${ry}`, () => rescueAt(rx, ry, pass));
+      }
+      // The golden key gates progression and the wizard must WALK to it —
+      // it gets the same guarantee as the hands-on locks.
+      for (const p of pickups) {
+        if (p.kind !== 'key') continue;
+        const kx = Math.floor(p.x),
+          ky = Math.floor(p.y);
+        const pass = (): boolean => wizNear(kx, ky, 10);
+        if (pass() && wizNearCount(kx, ky, 10) >= 64) continue;
+        recordRescue(`key@${kx},${ky}`, () => rescueAt(kx, ky, pass));
+      }
+      for (const ws of waystones) {
+        const wx = Math.floor(ws.x),
+          wy = Math.floor(ws.y);
+        const pass = (): boolean => wizNear(wx, wy, 10);
+        if (pass() && wizNearCount(wx, wy, 10) >= 64) continue;
+        recordRescue(`waystone@${wx},${wy}`, () => rescueAt(wx, wy, pass));
+      }
+      if (cauldron) {
+        const cx = Math.floor(cauldron.x),
+          cy = Math.floor(cauldron.y);
+        const pass = (): boolean => wizNear(cx, cy, 10);
+        if (!pass() || wizNearCount(cx, cy, 10) < 64) {
+          recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass));
+        }
+      }
+      if (import.meta.env.DEV && rescued.length > 0) {
+        const suffix = failedRescues.length > 0 ? `; still cut off: ${failedRescues.join(' ')}` : '';
+        console.warn(`[gen] ${def.id}: gauge-rescued ${rescued.length} cut-off feature(s): ${rescued.join(' ')}${suffix}`);
+      }
+  }
+
   /**
    * Descent-mode generation (Wave B/C): base biome caves, then the level dressing —
    * an indestructible bedrock floor, a stone-sealed exit well through it, two unlit
@@ -957,208 +1172,8 @@ export class WorldGen implements WorldGenApi {
     //     the spawn-connected component, verified by recomputing the masks.
     //     This closes the long tail of organic-junction rolls no static
     //     geometry can promise away.
-    {
-      let wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
-      let cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
-      const wizNear = (x: number, y: number, r: number): boolean => {
-        return wizNearCount(x, y, r) > 0;
-      };
-      const wizNearCount = (x: number, y: number, r: number): number => {
-        let count = 0;
-        for (let dy = -r; dy <= r; dy++) {
-          for (let dx = -r; dx <= r; dx++) {
-            const X = Math.floor(x) + dx,
-              Y = Math.floor(y) + dy;
-            if (X > 0 && Y > 0 && X < WIDTH && Y < HEIGHT && wiz[X + Y * WIDTH]) count++;
-          }
-        }
-        return count;
-      };
-      const cellNear = (x: number, y: number, r: number): boolean => {
-        for (let dy = -r; dy <= r; dy++) {
-          for (let dx = -r; dx <= r; dx++) {
-            const X = Math.floor(x) + dx,
-              Y = Math.floor(y) + dy;
-            if (X > 0 && Y > 0 && X < WIDTH && Y < HEIGHT && cell[X + Y * WIDTH]) return true;
-          }
-        }
-        return false;
-      };
-      const HANDS_ON = new Set(['plate', 'lever', 'brazier', 'scale']);
-      const CELL_REACH = new Set(['sensor', 'counterweight', 'plug', 'buoy', 'chargelatch']);
-      // nearest spawn-connected wizard cell whose STRAIGHT LINE from the
-      // lock crosses no Metal — carvePocket spares Metal, so a tunnel aimed
-      // through a door slab / vault shell / well casing is silently severed
-      const metalOnLine = (x0: number, y0: number, x1: number, y1: number): boolean => {
-        const steps2 = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 2));
-        for (let k = 0; k <= steps2; k++) {
-          const X = Math.round(x0 + ((x1 - x0) * k) / steps2);
-          const Y = Math.round(y0 + ((y1 - y0) * k) / steps2);
-          for (let dy = -6; dy <= 6; dy += 3) {
-            for (let dx = -6; dx <= 6; dx += 3) {
-              const XX = X + dx,
-                YY = Y + dy;
-              if (XX < 0 || XX >= WIDTH || YY < 0 || YY >= HEIGHT) continue;
-              if (ctx.world.types[XX + YY * WIDTH] === Cell.Metal) return true;
-            }
-          }
-        }
-        return false;
-      };
-      const nearestWiz = (x: number, y: number): { x: number; y: number } | null => {
-        let fallback: { x: number; y: number } | null = null;
-        for (let r = 24; r <= 1200; r += 3) {
-          for (let a = 0; a < 24; a++) {
-            const ang = (a / 24) * Math.PI * 2;
-            const X = Math.floor(x + Math.cos(ang) * r),
-              Y = Math.floor(y + Math.sin(ang) * r);
-            if (X > 1 && Y > 1 && X < WIDTH - 1 && Y < HEIGHT - 1 && wiz[X + Y * WIDTH]) {
-              if (!metalOnLine(x, y, X, Y)) return { x: X, y: Y };
-              fallback ??= { x: X, y: Y };
-            }
-          }
-        }
-        return fallback;
-      };
-      // Rescue one STANDING point: a 15x20 rect chamber above it guarantees
-      // fitting feet BY CONSTRUCTION (a disc tunnel only guarantees fits on
-      // its centerline — a Metal pedestal in the tube mouth or a rock spire
-      // a row above disc reach silently voids it; both happened). Then a
-      // tunnel from the chamber joins the spawn component; verify by
-      // recomputing the mask, and fall back to a tunnel aimed at the spawn.
-      const SWEEP = { halfW: 10, up: 25, down: 12 }; // gauge-guaranteed gallery
-      const rescueAt = (px: number, py: number, pass: () => boolean): boolean => {
-        carveRect(ctx.world, px - SWEEP.halfW, py - 24, px + SWEEP.halfW, py + 4);
-        // Let the rescue tunnel reach a chamber/target ABOVE the default row-26
-        // floor (the rescue chamber's top is py-24); for deep features (every
-        // case in the shipped seeds) this stays 26, so carve output is unchanged.
-        const rescueMinY = Math.min(26, py - 24);
-        const target = nearestWiz(px, py - 10) ?? {
-          x: Math.floor(spawn.x),
-          y: Math.floor(spawn.y) - 4,
-        };
-        tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP, rescueMinY);
-        wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
-        cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
-        if (pass()) return true;
-        tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY);
-        wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
-        cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
-        return pass();
-      };
-      const rescued: string[] = [];
-      const failedRescues: string[] = [];
-      const recordRescue = (label: string, attempt: () => boolean): void => {
-        rescued.push(label);
-        if (!attempt()) failedRescues.push(label);
-      };
-      const inSpellLab = (x: number, y: number): boolean =>
-        !!spellLab &&
-        x >= spellLab.x - 30 &&
-        x <= spellLab.x + 30 &&
-        y >= spellLab.y - 28 &&
-        y <= spellLab.y + 8;
-      const spellLabDoor = spellLab
-        ? mechanisms.find((m) => m.kind === 'door' && inSpellLab(m.x + m.w / 2, m.y + m.h / 2))
-        : undefined;
-      const spellLabSide = spellLabDoor && spellLab
-        ? Math.sign(spellLabDoor.x + spellLabDoor.w / 2 - spellLab.x) || 1
-        : 1;
-      let spellLabRescued = false;
-      const rescueSpellLab = (pass: () => boolean): boolean => {
-        if (!spellLab) return false;
-        if (spellLabRescued) return pass();
-        spellLabRescued = true;
-        return rescueAt(spellLab.x - spellLabSide * 36, spellLab.y - 5, pass);
-      };
-      for (const m of mechanisms) {
-        const labMechanism = inSpellLab(m.x + m.w / 2, m.y + m.h / 2);
-        if (m.kind === 'door') {
-          const pass = (): boolean =>
-            wizNear(m.x - 2, m.y + m.h - 2, 8) || wizNear(m.x + m.w + 1, m.y + m.h - 2, 8);
-          const stable = (): boolean =>
-            wizNearCount(m.x - 2, m.y + m.h - 2, 8) + wizNearCount(m.x + m.w + 1, m.y + m.h - 2, 8) >= 64;
-          if (labMechanism && pass()) continue;
-          if (labMechanism) {
-            recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
-              rescueSpellLab(pass),
-            );
-            continue;
-          }
-          if (pass() && stable()) continue;
-          recordRescue(
-            `${m.kind}@${m.x},${m.y}`,
-            () => rescueAt(m.x - 6, m.y + m.h - 2, pass) || rescueAt(m.x + m.w + 5, m.y + m.h - 2, pass),
-          );
-        } else if (m.kind === 'valve') {
-          const pass = (): boolean =>
-            cellNear(m.x - 2, m.y + m.h / 2, 4) ||
-            cellNear(m.x + m.w + 1, m.y + m.h / 2, 4) ||
-            cellNear(m.x + m.w / 2, m.y - 2, 4) ||
-            cellNear(m.x + m.w / 2, m.y + m.h + 1, 4);
-          if (pass()) continue;
-          recordRescue(
-            `${m.kind}@${m.x},${m.y}`,
-            () =>
-              rescueAt(m.x + m.w / 2, m.y - 2, pass) ||
-              rescueAt(m.x + m.w / 2, m.y + m.h + 1, pass) ||
-              rescueAt(m.x - 2, m.y + m.h / 2, pass) ||
-              rescueAt(m.x + m.w + 1, m.y + m.h / 2, pass),
-          );
-        } else if (HANDS_ON.has(m.kind)) {
-          const pass = (): boolean => wizNear(m.x, m.y - 2, 6);
-          if (pass() && wizNearCount(m.x, m.y - 2, 6) >= 40) continue;
-          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
-        } else if (CELL_REACH.has(m.kind)) {
-          const pass = (): boolean => cellNear(m.x, m.y - 2, 5);
-          if (pass()) continue;
-          if (labMechanism) {
-            recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
-              rescueSpellLab(pass),
-            );
-            continue;
-          }
-          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
-        }
-      }
-      for (const v of runeVaults) {
-        const rx = Math.floor(v.rx),
-          ry = Math.floor(v.ry);
-        const pass = (): boolean => cellNear(rx, ry, 5);
-        if (pass()) continue;
-        recordRescue(`rune@${rx},${ry}`, () => rescueAt(rx, ry, pass));
-      }
-      // The golden key gates progression and the wizard must WALK to it —
-      // it gets the same guarantee as the hands-on locks.
-      for (const p of pickups) {
-        if (p.kind !== 'key') continue;
-        const kx = Math.floor(p.x),
-          ky = Math.floor(p.y);
-        const pass = (): boolean => wizNear(kx, ky, 10);
-        if (pass() && wizNearCount(kx, ky, 10) >= 64) continue;
-        recordRescue(`key@${kx},${ky}`, () => rescueAt(kx, ky, pass));
-      }
-      for (const ws of waystones) {
-        const wx = Math.floor(ws.x),
-          wy = Math.floor(ws.y);
-        const pass = (): boolean => wizNear(wx, wy, 10);
-        if (pass() && wizNearCount(wx, wy, 10) >= 64) continue;
-        recordRescue(`waystone@${wx},${wy}`, () => rescueAt(wx, wy, pass));
-      }
-      if (cauldron) {
-        const cx = Math.floor(cauldron.x),
-          cy = Math.floor(cauldron.y);
-        const pass = (): boolean => wizNear(cx, cy, 10);
-        if (!pass() || wizNearCount(cx, cy, 10) < 64) {
-          recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass));
-        }
-      }
-      if (import.meta.env.DEV && rescued.length > 0) {
-        const suffix = failedRescues.length > 0 ? `; still cut off: ${failedRescues.join(' ')}` : '';
-        console.warn(`[gen] ${def.id}: gauge-rescued ${rescued.length} cut-off feature(s): ${rescued.join(' ')}${suffix}`);
-      }
-      stage('gauge-rescue');
-    }
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron);
+    stage('gauge-rescue');
 
     // 8d) The Sump self-repairs AFTER the rescue pass: rescue tunnels eat all
     //     stone and spare only metal, and a wandering carve through the d4
