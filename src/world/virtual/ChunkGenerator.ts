@@ -22,8 +22,8 @@ import {
   createDefaultVirtualGenerationParams,
 } from '@/world/virtual/defaults';
 import { biomeAtWorld, chunkOrigin, floorDiv } from '@/world/virtual/coords';
-import { polishCaveTerrain } from '@/world/terrainPolish';
-import type { World } from '@/sim/World';
+import { lerp, smoothstep } from '@/core/math';
+import { polishCaveTerrain, type PolishTarget } from '@/world/terrainPolish';
 import { fnv1aByteArrays, signedUnitHash2i, unitHash2i } from '@/world/virtual/hash';
 import { resolveTilesForRect, type ResolvedTile } from '@/world/virtual/HerringboneTiles';
 import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
@@ -117,7 +117,8 @@ function generateVirtualChunkNormalized(def: VirtualWorldDef, cx: number, cy: nu
     colors,
     life,
     charge,
-  }, pixelScenePlacementsForChunk(def, origin.x, origin.y, size, biomeAt));
+  }, pixelScenePlacementsForChunk(def, origin.x, origin.y, size, biomeAt),
+  (wx, wy) => ({ type: Cell.Wall, color: terrainColor(def, biomeAt(wx, wy), wx, wy, 0.5) }));
 
   const biome = biomeAt(origin.x + size / 2, origin.y + size / 2);
   const hash = fnv1aByteArrays([
@@ -1380,7 +1381,7 @@ function terrainNoise(def: VirtualWorldDef, x: number, y: number): number {
   );
 }
 
-function terrainColor(def: VirtualWorldDef, biome: VirtualBiomeId, x: number, y: number, n: number): number {
+export function terrainColor(def: VirtualWorldDef, biome: VirtualBiomeId, x: number, y: number, n: number): number {
   const palette = def.materialProfile.palettes[biome] ?? def.materialProfile.palettes.earthen;
   const grain = 0.82 + unitHash2i(def.seed ^ 0x9e3779b9, x, y) * 0.26;
   const depth = 0.72 + Math.max(0, Math.min(1, n)) * 0.42;
@@ -1598,14 +1599,14 @@ function fillSurfacePitsScratch(def: VirtualWorldDef, scratch: Scratch): void {
   const before = scratch.types.slice();
   // polishCaveTerrain zeroes life/charge on filled cells; the scratch has no such
   // planes, so hand it throwaway ones (filled cells are inert rock anyway).
-  const adapter = {
+  const adapter: PolishTarget = {
     types: scratch.types,
     colors: scratch.colors,
     width: scratch.size,
     height: scratch.size,
     life: new Int16Array(cells),
     charge: new Uint8Array(cells),
-  } as unknown as World;
+  };
   polishCaveTerrain(adapter, {
     seed: def.seed >>> 0,
     minY: 0,
@@ -1696,13 +1697,6 @@ function smoothValueNoise(seed: number, x: number, y: number): number {
   return lerp(lerp(a, b, fx), lerp(c, d, fx), fy);
 }
 
-function smoothstep(t: number): number {
-  return t * t * (3 - 2 * t);
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
 
 function now(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();

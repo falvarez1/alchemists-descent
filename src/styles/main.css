@@ -1425,11 +1425,14 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
 }
 /* Text safe-areas over the two parchment pages (% of the book art). */
 .grimoire-page {
-  position: absolute; overflow: hidden;
+  position: absolute; overflow-y: auto; overflow-x: hidden;
   font-family: Georgia, 'Times New Roman', serif;
   color: #3a2614; /* ink on parchment */
   font-size: 1.7vh; line-height: 1.4;
+  scrollbar-width: thin; scrollbar-color: rgba(90, 60, 30, 0.5) transparent;
 }
+.grimoire-page::-webkit-scrollbar { width: 6px; }
+.grimoire-page::-webkit-scrollbar-thumb { background: rgba(90, 60, 30, 0.45); border-radius: 3px; }
 .grimoire-left  { left: 18%; top: 21%; width: 26%; height: 54%; }
 .grimoire-right { left: 55.5%; top: 21%; width: 26%; height: 54%; }
 .gr-head { font-size: 2.4vh; font-weight: bold; text-align: center; margin-bottom: 0.6vh; letter-spacing: 0.04em; }

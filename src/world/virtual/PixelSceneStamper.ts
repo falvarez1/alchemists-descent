@@ -1,8 +1,12 @@
 import { Cell } from '@/sim/CellType';
 import { EMPTY_COLOR, packRGB } from '@/sim/colors';
-import type { PixelScenePlacementDef, VirtualScenePlacementInstance } from '@/world/virtual/types';
+import { PIXEL_SCENE_BIOME_FILL, type PixelScenePlacementDef, type VirtualScenePlacementInstance } from '@/world/virtual/types';
 import type { WorldRect } from '@/world/virtual/coords';
 import { rectsOverlap } from '@/world/virtual/coords';
+
+/** Resolves a biome-fill (FFFFFF) scene pixel to the surrounding biome's rock at a
+ *  world coordinate. The chunk generator passes a terrain-coloured resolver. */
+export type BiomeFillResolver = (worldX: number, worldY: number) => { type: number; color: number };
 
 export interface PixelSceneStampTarget {
   originX: number;
@@ -38,6 +42,7 @@ export function overlappingPixelScenes(
 export function stampPixelScenes(
   target: PixelSceneStampTarget,
   placements: readonly PixelScenePlacementDef[],
+  resolveFill?: BiomeFillResolver,
 ): PixelSceneStampResult {
   const chunkRect = {
     x0: target.originX,
@@ -65,8 +70,16 @@ export function stampPixelScenes(
         const writesPixel = mask ? mask[si] !== 0 : material !== Cell.Empty;
         if (material === undefined || !writesPixel) continue;
         const ci = x - target.originX + localY * target.size;
-        target.types[ci] = material;
-        target.colors[ci] = material === Cell.Empty ? EMPTY_COLOR : scene.colorOverrides?.[si] ?? fallbackSceneColor(material);
+        if (material === PIXEL_SCENE_BIOME_FILL) {
+          // "Use the biome's rock here" — resolved to the surrounding terrain so the
+          // pixel is indistinguishable from the cave wall (Noita's FFFFFF).
+          const fill = resolveFill ? resolveFill(x, y) : { type: Cell.Wall, color: fallbackSceneColor(Cell.Wall) };
+          target.types[ci] = fill.type;
+          target.colors[ci] = fill.type === Cell.Empty ? EMPTY_COLOR : fill.color;
+        } else {
+          target.types[ci] = material;
+          target.colors[ci] = material === Cell.Empty ? EMPTY_COLOR : scene.colorOverrides?.[si] ?? fallbackSceneColor(material);
+        }
         if (target.life && scene.life) target.life[ci] = scene.life[si] ?? 0;
         if (target.charge && scene.charge) target.charge[ci] = scene.charge[si] ?? 0;
         touched = true;

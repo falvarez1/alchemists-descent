@@ -1,5 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { RECIPES, loadDiscoveredRecipes, type Recipe } from '@/game/Brewing';
+import { MATERIAL_LORE, discoveredLore } from '@/game/lore';
 import { MATERIAL_PARAMS } from '@/config/params';
 
 // Bundled like the backdrop layers (new URL → Vite asset). The authored book art.
@@ -76,9 +77,17 @@ export class Grimoire {
       `<div class="gr-head">Grimoire</div>` +
       `<div class="gr-section">Elixirs &mdash; ${discovered} / ${RECIPES.length} known</div>` +
       RECIPES.map(entry).join('');
+    const lore = discoveredLore();
+    const loreEntries = Object.entries(MATERIAL_LORE).filter(([id]) => lore[id]);
+    const total = Object.keys(MATERIAL_LORE).length;
     this.right.innerHTML =
       `<div class="gr-head">Material Lore</div>` +
-      `<div class="gr-empty">Examine the world (press <b>I</b>) to record what its materials do, and brew in a cauldron to inscribe new elixirs.</div>`;
+      (loreEntries.length
+        ? `<div class="gr-section">Materials &mdash; ${loreEntries.length} / ${total} studied</div>` +
+          loreEntries
+            .map(([, e]) => `<div class="gr-entry"><div class="gr-title">${e!.title}</div><div class="gr-sub">${e!.body}</div></div>`)
+            .join('')
+        : `<div class="gr-empty">Examine the world (press <b>I</b>) to record what its materials do, and brew in a cauldron to inscribe new elixirs.</div>`);
   }
 
   dispose(): void {

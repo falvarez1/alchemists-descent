@@ -1,7 +1,21 @@
 import { hash2 } from '@/core/math';
 import { Cell } from '@/sim/CellType';
-import type { World } from '@/sim/World';
 import { packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
+
+/**
+ * The minimal grid view the polish pass reads: the flat cell planes + dims,
+ * no World methods (it indexes manually as x + y*width). A real World satisfies
+ * it structurally, and the virtual ChunkGenerator hands in a lightweight scratch
+ * adapter — so neither caller needs an `as unknown as World` cast.
+ */
+export interface PolishTarget {
+  types: Uint8Array;
+  colors: Uint32Array;
+  life: Int16Array;
+  charge: Uint8Array;
+  width: number;
+  height: number;
+}
 
 export interface TerrainPolishOptions {
   seed: number;
@@ -59,7 +73,7 @@ function shadeChannel(v: number): number {
   return Math.max(0, Math.min(255, Math.floor(v)));
 }
 
-function sampleTerrainFill(world: World, x: number, y: number, seed: number): FillSample | null {
+function sampleTerrainFill(world: PolishTarget, x: number, y: number, seed: number): FillSample | null {
   const types = world.types;
   const colors = world.colors;
   const W = world.width;
@@ -101,7 +115,7 @@ function sampleTerrainFill(world: World, x: number, y: number, seed: number): Fi
   };
 }
 
-function applyFills(world: World, indices: number[], fillTypes: number[], fillColors: number[]): void {
+function applyFills(world: PolishTarget, indices: number[], fillTypes: number[], fillColors: number[]): void {
   for (let n = 0; n < indices.length; n++) {
     const i = indices[n];
     world.types[i] = fillTypes[n];
@@ -112,7 +126,7 @@ function applyFills(world: World, indices: number[], fillTypes: number[], fillCo
 }
 
 function queueFill(
-  world: World,
+  world: PolishTarget,
   x: number,
   y: number,
   seed: number,
@@ -128,7 +142,7 @@ function queueFill(
   return true;
 }
 
-function fillTinyNotches(world: World, seed: number, minY: number, maxY: number, passes: number): number {
+function fillTinyNotches(world: PolishTarget, seed: number, minY: number, maxY: number, passes: number): number {
   const W = world.width;
   const types = world.types;
   let total = 0;
@@ -199,7 +213,7 @@ function shallowPitDepth(types: Uint8Array, W: number, x: number, y: number, max
   return 0;
 }
 
-function fillSurfacePits(world: World, seed: number, minY: number, maxY: number, maxWidth: number, maxPitDepth: number): number {
+function fillSurfacePits(world: PolishTarget, seed: number, minY: number, maxY: number, maxWidth: number, maxPitDepth: number): number {
   const W = world.width;
   const types = world.types;
   let filled = 0;
@@ -262,7 +276,7 @@ function fillSurfacePits(world: World, seed: number, minY: number, maxY: number,
  * deterministic and bounded; real shafts, rooms, and structure carves stay
  * open.
  */
-export function polishCaveTerrain(world: World, options: TerrainPolishOptions): TerrainPolishStats {
+export function polishCaveTerrain(world: PolishTarget, options: TerrainPolishOptions): TerrainPolishStats {
   const minY = options.minY ?? 1;
   const maxY = Math.min(options.floorBand ?? world.height - 1, world.height - 1);
   const notchPasses = Math.max(0, Math.round(options.notchPasses ?? NOTCH_PASSES));

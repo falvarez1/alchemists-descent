@@ -4,13 +4,14 @@ import { unpackR, unpackG, unpackB } from '@/sim/colors';
 import { MATERIAL_PARAMS } from '@/config/params';
 import { BIOMES } from '@/config/biomes';
 import { getDefaultPixelSceneLibrary, createDefaultVirtualWorldDef, biomeIndexFromId } from '@/world/virtual/defaults';
-import { generateVirtualChunk } from '@/world/virtual/ChunkGenerator';
+import { generateVirtualChunk, terrainColor } from '@/world/virtual/ChunkGenerator';
+import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
 import { emissiveGlowRgb } from '@/world/virtual/emissive';
 import { serializePixelScene, parsePixelScene, type PixelSceneJson } from '@/world/virtual/pixelSceneJson';
 import { validatePixelScene } from '@/world/virtual/pixelSceneValidate';
 import { listUserScenes, saveUserScene, deleteUserScene, userSceneExists } from '@/world/virtual/pixelSceneStore';
 import { VIRTUAL_SCENE_KINDS } from '@/world/virtual/defaults';
-import { VIRTUAL_CHUNK_SIZE, type PixelSceneDef, type VirtualChunk, type VirtualSceneKind } from '@/world/virtual/types';
+import { PIXEL_SCENE_BIOME_FILL, type PixelSceneDef, type VirtualChunk, type VirtualScenePlacementInstance, type VirtualSceneKind } from '@/world/virtual/types';
 import type { BiomeId } from '@/core/types';
 
 interface Swatch { cell: number; name: string; color: number }
@@ -18,6 +19,7 @@ interface Swatch { cell: number; name: string; color: number }
 // Paintable cells + a representative editor color. The author paints cell TYPES;
 // per-pixel colour shading is a follow-up (scenes loaded from code keep their own).
 const PALETTE: Swatch[] = [
+  { cell: PIXEL_SCENE_BIOME_FILL, name: 'Biome Fill', color: 0x3a352c },
   { cell: Cell.Wall, name: 'Wall', color: 0x4a4a52 },
   { cell: Cell.Stone, name: 'Stone', color: 0x52505a },
   { cell: Cell.Wood, name: 'Wood', color: 0x5e3e22 },
@@ -64,6 +66,7 @@ export class PixelSceneEditor {
   private mode: 'edit' | 'tile' = 'edit';
   private tile: VirtualChunk | null = null;
   private tileRect: { x: number; y: number; w: number; h: number } | null = null;
+  private tilePlacements: VirtualScenePlacementInstance[] = [];
   private tileBiome: BiomeId = 'earthen';
   private tileSeed = 0x51a17e;
   private hoverEl: HTMLElement | null = null;
@@ -516,26 +519,32 @@ export class PixelSceneEditor {
     if (mode === 'edit') { this.tile = null; this.fitZoom(); this.draw(); }
   }
 
-  /** Build a single-biome def with auto-scenes off, force-place THIS scene centred in
-   *  chunk (0,0), generate the chunk, and show the scene embedded in the carved cave —
-   *  exactly how it materializes in the World Map. */
+  /** Generate a plain single-biome cave chunk, find a floor, and stamp THIS scene
+   *  onto it (resolving biome-fill to the cave rock) so the preview shows the scene
+   *  embedded in terrain the way it materializes in the World Map — not floating. */
   private generateTile(): void {
     if (this.mode !== 'tile') this.setMode('tile');
     const def = createDefaultVirtualWorldDef(this.tileSeed);
     def.map.cells.fill(biomeIndexFromId(this.tileBiome)); // uniform biome across the preview
     def.dressing.scenes.controls.density = 0; // suppress the auto tile-slot scenes — show just this one
-    const size = VIRTUAL_CHUNK_SIZE;
-    const sx = Math.max(1, Math.floor(size / 2 - this.scene.w / 2));
-    const sy = Math.max(1, Math.floor(size / 2 - this.scene.h / 2));
-    def.pixelScenes = [{ id: 'editor-preview', scene: this.scene, x: sx, y: sy, priority: 1000 }];
+    def.pixelScenes = [];
+    let chunk: VirtualChunk;
     try {
-      this.tile = generateVirtualChunk(def, 0, 0);
-      this.tileRect = { x: sx, y: sy, w: this.scene.w, h: this.scene.h };
+      chunk = generateVirtualChunk(def, 0, 0);
     } catch (err) {
       this.flash(`Tile gen failed: ${(err as Error).message}`, true);
       this.setMode('edit');
       return;
     }
+    const pos = findScenePlacement(chunk, this.scene.w, this.scene.h);
+    const stamped = stampPixelScenes(
+      { originX: chunk.originX, originY: chunk.originY, size: chunk.size, types: chunk.types, colors: chunk.colors, life: chunk.life, charge: chunk.charge },
+      [{ id: 'editor-preview', scene: this.scene, x: chunk.originX + pos.x, y: chunk.originY + pos.y, priority: 1000 }],
+      (wx, wy) => ({ type: Cell.Wall, color: terrainColor(def, this.tileBiome, wx, wy, 0.5) }),
+    );
+    this.tile = chunk;
+    this.tilePlacements = stamped.placements;
+    this.tileRect = { x: pos.x, y: pos.y, w: this.scene.w, h: this.scene.h };
     this.fitZoom();
     this.draw();
   }
@@ -564,7 +573,7 @@ export class PixelSceneEditor {
     }
     if (this.lit) {
       ctx.globalCompositeOperation = 'lighter';
-      for (const p of tile.meta.scenePlacements ?? []) {
+      for (const p of this.tilePlacements) {
         for (const light of p.lights ?? []) {
           const [lr, lg, lb] = hexToRgb(light.color);
           const lx = (light.x - tile.originX) * z + z / 2;
@@ -615,7 +624,9 @@ export class PixelSceneEditor {
     const info = this.cellInfoAt(gx, gy);
     if (!info) { hover.hidden = true; return; }
     const mat = MATERIAL_PARAMS[info.id];
-    const name = info.id === Cell.Empty ? 'Empty' : mat?.name ?? `cell #${info.id}`;
+    const name = info.id === PIXEL_SCENE_BIOME_FILL ? 'Biome Fill (rock)'
+      : info.id === Cell.Empty ? 'Empty'
+      : mat?.name ?? `cell #${info.id}`;
     const c = info.color;
     hover.innerHTML = `<b>${escapeHtml(name)}</b> <span class="pse-hover-id">#${info.id}</span><br>`
       + `(${gx}, ${gy}) · rgb ${unpackR(c)},${unpackG(c)},${unpackB(c)}<br>`
@@ -646,6 +657,28 @@ export class PixelSceneEditor {
 }
 
 // ---- pure helpers ---------------------------------------------------------
+/** Find a cave floor near the chunk centre to sit the scene on, so the preview
+ *  shows it grounded in terrain instead of floating. Returns local chunk coords for
+ *  the scene's top-left (its bottom row lands on the floor surface). */
+function findScenePlacement(chunk: VirtualChunk, w: number, h: number): { x: number; y: number } {
+  const size = chunk.size;
+  const cx = Math.floor(size / 2);
+  for (const col of [cx, cx - 12, cx + 12, cx - 24, cx + 24, cx - 40, cx + 40]) {
+    if (col < 2 || col >= size - 2) continue;
+    for (let y = Math.floor(size * 0.3); y < size - 4; y++) {
+      const here = chunk.types[col + y * size];
+      const below = chunk.types[col + (y + 1) * size];
+      const above = chunk.types[col + (y - 1) * size];
+      if (here === Cell.Empty && below !== Cell.Empty && above === Cell.Empty) {
+        const x = Math.max(1, Math.min(size - w - 1, col - Math.floor(w / 2)));
+        const yy = Math.max(1, Math.min(size - h - 1, y - h + 1)); // bottom row at the floor
+        return { x, y: yy };
+      }
+    }
+  }
+  return { x: Math.max(1, Math.floor(size / 2 - w / 2)), y: Math.max(1, Math.floor(size / 2 - h / 2)) };
+}
+
 function blankScene(id: string, name: string, w: number, h: number): PixelSceneDef {
   return {
     v: 1, id, name, w, h,

@@ -1,5 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { MATERIAL_PARAMS } from '@/config/params';
+import { MATERIAL_LORE, recordLore } from '@/game/lore';
 import { isConductor } from '@/sim/CellType';
 import { unpackB, unpackG, unpackR } from '@/sim/colors';
 
@@ -62,12 +63,18 @@ export class CellInspector {
     const c = w.colors[i];
     const mat = MATERIAL_PARAMS[t];
     const name = mat?.name ?? `cell #${t}`;
+    // Examining IS discovery: the first look at a cataloged material inscribes its
+    // lore into the Grimoire. Allowed in every mode (the Sandbox paint mode is
+    // internally 'build') — it only ever adds to the player's persistent knowledge.
+    recordLore(this.ctx, t);
+    const lore = MATERIAL_LORE[t];
     this.el.textContent =
       `(${x}, ${y})\n` +
       `${name}  [id ${t}]\n` +
       `rgb ${unpackR(c)}, ${unpackG(c)}, ${unpackB(c)}\n` +
       `charge ${w.charge[i]}   life ${w.life[i]}\n` +
-      `bloom ${mat?.bloomWeight ?? 0}   ${isConductor(t) ? 'conductor' : 'insulator'}`;
+      `bloom ${mat?.bloomWeight ?? 0}   ${isConductor(t) ? 'conductor' : 'insulator'}` +
+      (lore ? `\n— ${lore.body}` : '');
   }
 
   dispose(): void {

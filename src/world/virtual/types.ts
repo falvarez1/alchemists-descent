@@ -4,6 +4,16 @@ export const VIRTUAL_CHUNK_SIZE = 256 as const;
 export const VIRTUAL_BIOME_CHUNK_SIZE = 512 as const;
 export const VIRTUAL_TILE_SIZE = 256 as const;
 
+/**
+ * Sentinel value in a pixel scene's `material` plane meaning "fill this pixel with
+ * the surrounding biome's rock + colour" (Noita's `FFFFFF`). It is NOT a real Cell
+ * (Cell ids go to ~37); the stamper resolves it to the biome wall at stamp time, so
+ * it never reaches the output grid. Lets a scene carve a real room — solid biome
+ * rock around its authored materials + carved (transparent) space — instead of
+ * floating a few cells in open cave.
+ */
+export const PIXEL_SCENE_BIOME_FILL = 255 as const;
+
 export type VirtualBiomeId = BiomeId;
 
 export type HerringboneOrientation = 'horizontal' | 'vertical';

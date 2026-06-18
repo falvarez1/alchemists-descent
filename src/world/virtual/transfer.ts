@@ -15,8 +15,13 @@ export function chunkBytes(chunk: VirtualChunk): number {
  * Uint8Array/etc, so the fast path transfers the backing buffer untouched (zero-copy). If a plane is
  * ever a subarray/view (sliced cache region, pooled buffer), `.buffer` would be the wrong/oversized
  * store and the receiver (which reads from offset 0) would corrupt cells — so slice out exactly this
- * view's bytes instead. The slice also leaves the source buffer attached, so a chunk can be transferred
- * more than once without yielding zero-length planes on the second send.
+ * view's bytes instead.
+ *
+ * NOTE on re-sends: posting a buffer in a transfer list DETACHES it. The full-buffer fast path hands
+ * over the plane's own backing store, so that chunk is single-use — a second send would yield a
+ * zero-length plane. Only the slice path leaves the source attached (it transfers a fresh copy), so
+ * only sliced/pooled planes survive a re-send. Chunks today are generated fresh per send, so the
+ * fast-path detach is fine; revisit this if chunks are ever cached-then-resent.
  */
 function planeBuffer(view: ArrayBufferView): ArrayBuffer {
   if (view.byteOffset === 0 && view.byteLength === view.buffer.byteLength) {
