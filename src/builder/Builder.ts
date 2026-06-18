@@ -222,6 +222,7 @@ import {
 import { buildRuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
 import type { RuntimeEntityGroup, RuntimeEntitySnapshot, RuntimeSnapshotOptions } from '@/game/runtimeSnapshot';
 import { VirtualWorldPanel } from '@/builder/virtualWorldPanel';
+import { PixelSceneEditor } from '@/builder/pixelSceneEditor';
 import type { VirtualWorldDef } from '@/world/virtual/types';
 import { renderAssetBrowserPanel, renderAssetPlacementPanel } from '@/builder/assetBrowserPanel';
 import type { AssetBrowserView } from '@/builder/assetBrowserPanel';
@@ -914,6 +915,7 @@ export class Builder {
     startY: number;
     ghost: HTMLDivElement | null;
   } | null = null;
+  private sceneEditor: PixelSceneEditor | null = null;
   private overlayMode: BuilderOverlayId | 'none' = 'none';
   private lastIssues: DocIssue[] = [];
   private lastValidationOverlay: ValidationOverlayDiagnostics | null = null;
@@ -3490,6 +3492,7 @@ export class Builder {
           <button id="b-postfx" title="Post processing controls">Post Processing</button>
           <div class="builder-menu-sep"></div>
           <button id="b-gallery" title="Browse and preview every prefab, mechanism, entity and sprite — live and animated">Gallery</button>
+          <button id="b-scene-editor" title="Author chunked-world pixel scenes: paint cells, place lights, validate">Pixel Scene Editor</button>
           <button id="b-assets" title="Project Asset Browser: documents, prefabs, sprites, imports and dependencies">Asset Browser</button>
           <button id="b-runtime" title="Inspect the active play runtime without editing authored objects">Runtime</button>
           <button id="b-backdrop" title="Preview and tune parallax backdrop layers">Backdrop</button>
@@ -4581,6 +4584,7 @@ export class Builder {
     this.el('b-global').addEventListener('click', () => this.runUiCommand('builder.globalControlsPanel'));
     this.el('b-postfx').addEventListener('click', () => this.runUiCommand('builder.postProcessingPanel'));
     this.el('b-gallery').addEventListener('click', () => this.openGallery());
+    this.el('b-scene-editor').addEventListener('click', () => this.openSceneEditor());
     this.el('b-assets').addEventListener('click', () => this.runUiCommand('builder.assetsPanel'));
     this.el('b-runtime').addEventListener('click', () => this.runUiCommand('builder.runtimePanel'));
     this.el('b-backdrop').addEventListener('click', () => this.openBackdropPreview());
@@ -4751,6 +4755,17 @@ export class Builder {
     }
     this.gallery.open();
     this.status('GALLERY — ↑↓ BROWSE · ←→ STATES · ESC CLOSES');
+  }
+
+  /** The pixel-scene editor: author chunked-world pixel scenes (paint, light, validate). */
+  private openSceneEditor(): void {
+    this.sceneEditor ??= new PixelSceneEditor(this.root);
+    if (this.sceneEditor.isOpen()) {
+      this.sceneEditor.close();
+      return;
+    }
+    this.sceneEditor.open();
+    this.status('PIXEL SCENE EDITOR — PAINT · SAVE · ESC CLOSES');
   }
 
   /** Live preview for the image-backed parallax cave backdrop. */

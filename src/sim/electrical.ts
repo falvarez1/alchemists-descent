@@ -4,6 +4,10 @@ import { isConductor } from '@/sim/CellType';
 const charged: number[] = [];
 /** Cell index → charge to seed it with this frame (attenuated per hop). */
 const spreadCharge = new Map<number, number>();
+/** This grid ticks once per sim SUBSTEP (~6×/frame), but charge must decay only
+ *  once per FRAME — otherwise a charge of N vanishes in ~N/6 frames, far too fast
+ *  to see now that the spread no longer re-seeds at full strength. */
+let lastDecayFrame = -1;
 
 export function updateElectricalGrid(ctx: Ctx): void {
   const w = ctx.world;
@@ -52,9 +56,16 @@ export function updateElectricalGrid(ctx: Ctx): void {
     trySpread(x, y + 1, c);
     trySpread(x - 1, y - 1, c);
   }
-  for (const ci of charged) {
-    const next = w.charge[ci] - decay;
-    w.setChargeAt(ci, next > 0 ? next : 0);
+  // Decay ONCE PER FRAME (not per substep), so `chargeDecay` reads as charge lost
+  // per frame — a visible glow duration. Spread still runs every substep so the
+  // conduction propagates promptly within the frame.
+  const doDecay = ctx.state.frameCount !== lastDecayFrame;
+  if (doDecay) {
+    lastDecayFrame = ctx.state.frameCount;
+    for (const ci of charged) {
+      const next = w.charge[ci] - decay;
+      w.setChargeAt(ci, next > 0 ? next : 0);
+    }
   }
   for (const [ti, v] of spreadCharge) w.setChargeAt(ti, v);
 }

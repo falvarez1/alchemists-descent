@@ -100,7 +100,10 @@ export class Explosions implements ExplosionApi {
             } else {
               world.clearCellAt(ni);
             }
-            if (Math.random() < 0.4) world.setChargeAt(ni, 4);
+            // Charge ~8 (was 4): with per-frame decay this reads as a visible
+            // electrified flash that conducts through adjacent water/metal for
+            // ~8 frames, then fades (chargeFalloff/chargeDecay tune reach/duration).
+            if (Math.random() < 0.4) world.setChargeAt(ni, 8);
           }
         }
       }
