@@ -21,8 +21,8 @@ describe('updateElectricalGrid', () => {
     updateElectricalGrid(ctxFor(world));
 
     expect(world.charge[source]).toBe(7); // decays by 1
-    expect(world.charge[world.idx(4, 3)]).toBe(7); // src - 1 (attenuated, was a flat 4)
-    expect(world.charge[world.idx(2, 3)]).toBe(7);
+    expect(world.charge[world.idx(4, 3)]).toBe(5); // water: src - base*3 (far less conductive)
+    expect(world.charge[world.idx(2, 3)]).toBe(7); // metal: src - base (carries far)
     expect(world.charge[world.idx(3, 4)]).toBe(0); // acid no longer conducts
     expect(world.charge[world.idx(2, 2)]).toBe(0); // blood no longer conducts
     expect(world.charge[world.idx(3, 2)]).toBe(0); // not a tracked neighbor direction

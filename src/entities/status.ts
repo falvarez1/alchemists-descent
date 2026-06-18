@@ -105,6 +105,13 @@ export function sampleAndTickStatus(
       if (world.charge[i] > 0) charged++;
     }
   }
+  // Standing on a charged conductor (a zapped metal floor / electrified water)
+  // counts as contact — sense the cells just underfoot, not only the body box.
+  for (let dx = -halfW; dx <= halfW; dx += 2) {
+    const X = body.x + dx;
+    const Y = body.y + 1;
+    if (world.inBounds(X, Y) && world.charge[world.idx(X, Y)] > 0) charged++;
+  }
 
   // --- Transitions (immune statuses never rise above 0) ---
   if (water >= 3) {

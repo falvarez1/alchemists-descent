@@ -63,6 +63,24 @@ describe('electrified shock', () => {
     expect(wet.damage).toBeGreaterThan(dry.damage);
   });
 
+  it('shocks a body standing ON a charged conductor (charge underfoot, dry)', () => {
+    const world = new World(24, 24);
+    // a charged metal floor right under the feet — nothing in the body box
+    for (let dx = -3; dx <= 3; dx++) {
+      const i = world.idx(12 + dx, 15);
+      world.types[i] = Cell.Metal;
+      world.setChargeAt(i, 8);
+    }
+    const { ctx } = ctxWith(world);
+    const body = { x: 12, y: 14, status: createDefaultStatus() }; // feet at y=14, floor at y=15
+
+    const eff = sampleAndTickStatus(ctx, body, 3, 8);
+
+    expect(body.status.electrified).toBeGreaterThan(0);
+    expect(body.status.wet).toBe(0); // no water touching the body
+    expect(eff.damage).toBeGreaterThan(0);
+  });
+
   it('does not shock a body immune to electrification', () => {
     const world = new World(24, 24);
     fillBody(world, Cell.Water, 12, 14, 3, 8);

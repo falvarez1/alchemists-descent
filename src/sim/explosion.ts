@@ -104,6 +104,12 @@ export class Explosions implements ExplosionApi {
             // electrified flash that conducts through adjacent water/metal for
             // ~8 frames, then fades (chargeFalloff/chargeDecay tune reach/duration).
             if (Math.random() < 0.4) world.setChargeAt(ni, 8);
+          } else {
+            // Metal doesn't shatter — but it CONDUCTS. The blast rings a strong
+            // current through it that spreads across the connected metal (and up
+            // into water sitting on it, and into enemies standing on it), fading
+            // over ~1s. (chargeFalloff / chargeDecay tune reach + duration.)
+            world.setChargeAt(ni, 60);
           }
         }
       }

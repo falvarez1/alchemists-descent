@@ -46,6 +46,7 @@ import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
 import { polishCaveTerrain } from '@/world/terrainPolish';
+import { dressWalkSurface } from '@/world/surfaceDress';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
 import { stampSecrets } from '@/world/secrets';
@@ -478,6 +479,10 @@ export class WorldGen implements WorldGenApi {
         notchPasses: GEN_TUNE.notchPasses,
         surfacePits: GEN_TUNE.fillSurfacePits,
       });
+      // Cap the remaining shallow walk-surface snags and lay dirt + grass/moss/
+      // flowers on the ledges the player walks (runs after polish so it dresses the
+      // filled surface). See world/surfaceDress.ts.
+      dressWalkSurface(world, { seed, minY: MIN_Y, floorBand: FLOOR_BAND, crown: B.crown, flowerChance: B.flowerChance });
     }
   }
 

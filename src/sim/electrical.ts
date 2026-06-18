@@ -1,5 +1,5 @@
 import type { Ctx } from '@/core/types';
-import { isConductor } from '@/sim/CellType';
+import { Cell, isConductor } from '@/sim/CellType';
 
 const charged: number[] = [];
 /** Cell index → charge to seed it with this frame (attenuated per hop). */
@@ -17,7 +17,10 @@ export function updateElectricalGrid(ctx: Ctx): void {
   // discovery from the active simulation window; sustained charge then stays sparse.
   // Spread/duration are live-tunable (params.global). Both clamp to >= 1 so a
   // stray 0 can't make charge spread forever or never decay (the self-sustain bug).
-  const falloff = Math.max(1, Math.round(ctx.params.global.chargeFalloff));
+  // `chargeFalloff` is the BEST-conductor (metal/lava) loss per hop. Water is far
+  // less conductive, so charge dies ~3x faster in it — metal carries a current
+  // much farther than water.
+  const base = Math.max(1, Math.round(ctx.params.global.chargeFalloff));
   const decay = Math.max(1, Math.round(ctx.params.global.chargeDecay));
   charged.length = 0;
   spreadCharge.clear();
@@ -39,7 +42,9 @@ export function updateElectricalGrid(ctx: Ctx): void {
   const trySpread = (tx: number, ty: number, src: number): void => {
     if (!w.inBounds(tx, ty)) return;
     const ti = tx + ty * w.width;
-    if (isConductor(w.types[ti]) && w.charge[ti] === 0) {
+    const tt = w.types[ti];
+    if (isConductor(tt) && w.charge[ti] === 0) {
+      const falloff = tt === Cell.Water ? base * 3 : base; // metal/lava carry far; water loses fast
       const v = src - falloff;
       if (v > 0) {
         const prev = spreadCharge.get(ti);
