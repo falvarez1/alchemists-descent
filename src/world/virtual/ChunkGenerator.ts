@@ -6,7 +6,6 @@ import type {
   PixelScenePlacementDef,
   TileAnchor,
   TileCarveInstruction,
-  VirtualDressingProfile,
   VirtualBiomeDressingRecipe,
   VirtualBiomeId,
   VirtualSceneBudget,
@@ -16,10 +15,8 @@ import type {
 } from '@/world/virtual/types';
 import {
   biomeIdFromIndex,
-  createDefaultDressingProfile,
   getDefaultPixelSceneLibrary,
-  VIRTUAL_SCENE_KINDS,
-  createDefaultVirtualGenerationParams,
+  normalizeVirtualWorldDef,
 } from '@/world/virtual/defaults';
 import { biomeAtWorld, chunkOrigin, floorDiv } from '@/world/virtual/coords';
 import { lerp, smoothstep } from '@/core/math';
@@ -1395,143 +1392,6 @@ function scaleColor(color: number, k: number): number {
   const g = Math.max(0, Math.min(255, Math.floor(((color >> 8) & 0xff) * k)));
   const b = Math.max(0, Math.min(255, Math.floor((color & 0xff) * k)));
   return packRGB(r, g, b);
-}
-
-function normalizeVirtualWorldDef(def: VirtualWorldDef): void {
-  def.pixelScenes = normalizePixelScenePlacements(
-    (def as VirtualWorldDef & { pixelScenes?: PixelScenePlacementDef[] }).pixelScenes ?? [],
-  );
-
-  const fallbackGeneration = createDefaultVirtualGenerationParams();
-  const rawGeneration = (def as VirtualWorldDef & { generation?: Partial<VirtualWorldDef['generation']> }).generation ?? {};
-  def.generation = {
-    ...fallbackGeneration,
-    ...rawGeneration,
-  };
-  const genBag = def.generation as unknown as Record<string, number | boolean | undefined>;
-  for (const [key, fallback] of Object.entries(fallbackGeneration) as Array<
-    [string, number | boolean]
-  >) {
-    // generation is mostly numeric but holds one boolean (fillSurfacePits); guard
-    // each by its fallback's type so the boolean isn't clobbered by a finite-check.
-    if (typeof fallback === 'boolean') {
-      if (typeof genBag[key] !== 'boolean') genBag[key] = fallback;
-    } else if (!Number.isFinite(genBag[key] as number)) {
-      genBag[key] = fallback;
-    }
-  }
-
-  const fallbackDressing = createDefaultDressingProfile();
-  const rawDressing =
-    (def as VirtualWorldDef & { dressing?: Partial<VirtualDressingProfile> }).dressing ?? {};
-  const rawControls = rawDressing.controls ?? {};
-  const rawSceneControls = normalizeSceneControlAliases(rawDressing.scenes?.controls ?? {});
-  def.dressing = {
-    controls: {
-      ...fallbackDressing.controls,
-      ...rawControls,
-    },
-    biomes: { ...fallbackDressing.biomes },
-    scenes: {
-      controls: {
-        ...fallbackDressing.scenes.controls,
-        ...rawSceneControls,
-      },
-      biomes: { ...fallbackDressing.scenes.biomes },
-    },
-  };
-  for (const [key, fallback] of Object.entries(fallbackDressing.controls) as Array<
-    [keyof VirtualDressingProfile['controls'], number]
-  >) {
-    const value = def.dressing.controls[key];
-    def.dressing.controls[key] = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : fallback;
-  }
-  const rawBiomes = rawDressing.biomes ?? {};
-  for (const [biome, fallbackRecipe] of Object.entries(fallbackDressing.biomes) as Array<
-    [VirtualBiomeId, VirtualBiomeDressingRecipe]
-  >) {
-    const recipe = {
-      ...fallbackRecipe,
-      ...(rawBiomes[biome] ?? {}),
-    };
-    for (const [key, fallback] of Object.entries(fallbackRecipe) as Array<
-      [keyof VirtualBiomeDressingRecipe, number]
-    >) {
-      if (!Number.isFinite(recipe[key])) recipe[key] = fallback;
-    }
-    def.dressing.biomes[biome] = recipe;
-  }
-  for (const [key, fallback] of Object.entries(fallbackDressing.scenes.controls) as Array<
-    [keyof VirtualDressingProfile['scenes']['controls'], number]
-  >) {
-    const max = key === 'maxPerTile' ? 6 : 2;
-    const value = def.dressing.scenes.controls[key];
-    def.dressing.scenes.controls[key] = Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : fallback;
-  }
-  const rawSceneBiomes = rawDressing.scenes?.biomes ?? {};
-  for (const [biome, fallbackBudget] of Object.entries(fallbackDressing.scenes.biomes) as Array<
-    [VirtualBiomeId, VirtualSceneBudget]
-  >) {
-    const rawBudget = rawSceneBiomes[biome] ?? {};
-    const budget = { ...fallbackBudget, ...rawBudget };
-    for (const kind of VIRTUAL_SCENE_KINDS) {
-      const value = budget[kind];
-      budget[kind] = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : fallbackBudget[kind];
-    }
-    def.dressing.scenes.biomes[biome] = budget;
-  }
-}
-
-function normalizeSceneControlAliases(
-  controls: Partial<VirtualDressingProfile['scenes']['controls']> & { maxPerChunk?: number },
-): Partial<VirtualDressingProfile['scenes']['controls']> {
-  if (!Number.isFinite(controls.maxPerTile) && Number.isFinite(controls.maxPerChunk)) {
-    return { ...controls, maxPerTile: controls.maxPerChunk };
-  }
-  return controls;
-}
-
-function normalizePixelScenePlacements(placements: readonly PixelScenePlacementDef[]): PixelScenePlacementDef[] {
-  if (!Array.isArray(placements)) return [];
-  const out: PixelScenePlacementDef[] = [];
-  for (const placement of placements) {
-    const scene = normalizePixelScene(placement?.scene);
-    if (!scene) continue;
-    const x = Number.isFinite(placement.x) ? Math.round(placement.x) : 0;
-    const y = Number.isFinite(placement.y) ? Math.round(placement.y) : 0;
-    const priority = Number.isFinite(placement.priority) ? placement.priority : 0;
-    out.push({
-      id: typeof placement.id === 'string' && placement.id.length > 0 ? placement.id : scene.id,
-      scene,
-      x,
-      y,
-      priority,
-    });
-  }
-  return out;
-}
-
-function normalizePixelScene(scene: PixelSceneDef | undefined): PixelSceneDef | null {
-  if (!scene || !(scene.material instanceof Uint8Array)) return null;
-  const w = Math.max(1, Math.floor(scene.w));
-  const h = Math.max(1, Math.floor(scene.h));
-  if (scene.material.length < w * h) return null;
-  return {
-    ...scene,
-    v: 1,
-    id: typeof scene.id === 'string' && scene.id.length > 0 ? scene.id : 'scene',
-    name: typeof scene.name === 'string' && scene.name.length > 0 ? scene.name : scene.id,
-    tags: Array.isArray(scene.tags) ? scene.tags.filter((tag) => typeof tag === 'string') : [],
-    w,
-    h,
-    mask: scene.mask instanceof Uint8Array ? scene.mask : undefined,
-    colorOverrides: scene.colorOverrides instanceof Uint32Array ? scene.colorOverrides : undefined,
-    life: scene.life instanceof Int16Array && scene.life.length >= w * h ? scene.life : undefined,
-    charge: scene.charge instanceof Uint8Array && scene.charge.length >= w * h ? scene.charge : undefined,
-    objects: Array.isArray(scene.objects) ? scene.objects : [],
-    links: Array.isArray(scene.links) ? scene.links : [],
-    lights: Array.isArray(scene.lights) ? scene.lights : [],
-  };
 }
 
 function sceneMetadataBytes(placements: readonly VirtualScenePlacementInstance[]): Uint8Array {

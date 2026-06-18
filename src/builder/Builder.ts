@@ -7101,6 +7101,10 @@ export class Builder {
       g.chargeDecay = v;
       this.ctx.events.emit('paramsChanged');
     });
+    this.sliderRow(elec, 'Shock Damage', g.shockDamage, 0, 1, 0.05, (v) => v.toFixed(2), (v) => {
+      g.shockDamage = v;
+      this.ctx.events.emit('paramsChanged');
+    });
 
     this.buildPlayerPhysicsSections(host);
     this.buildWorldgenLookSection(host);

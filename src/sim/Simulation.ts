@@ -1,6 +1,6 @@
 import type { Ctx, SimulationApi } from '@/core/types';
-import { Cell, isSolid } from '@/sim/CellType';
-import { stainCell } from '@/sim/stains';
+import { Cell } from '@/sim/CellType';
+import { canDryBloodOnSurface, stainCell } from '@/sim/stains';
 import { handleGas } from '@/sim/elements/gas';
 import {
   handleAcid,
@@ -133,8 +133,7 @@ export class Simulation implements SimulationApi {
             }
             if (
               Math.random() < 0.004 &&
-              world.inBounds(x, y + 1) &&
-              isSolid(world.types[world.idx(x, y + 1)])
+              canDryBloodOnSurface(world, x, y + 1)
             ) {
               stainCell(world, x, y + 1, 110, 12, 18, 0.5);
               world.clearCellAt(ci);

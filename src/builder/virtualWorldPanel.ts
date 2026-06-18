@@ -14,6 +14,7 @@ import {
   createDefaultVirtualWorldDef,
   createDefaultDressingProfile,
   createDefaultVirtualGenerationParams,
+  normalizeVirtualWorldDef,
   TsWorkerBackend,
   WasmBackend,
   WebGpuPreviewBackend,
@@ -800,15 +801,24 @@ export class VirtualWorldPanel {
       this.renderControls();
       return;
     }
-    let def = this.currentDef();
     // Mirror the global Look-tuning TERRAIN knobs (cave size + walk-surface sink
     // fill) onto the def so they cross the worker boundary — exactly as the
-    // Sandbox/Builder worldgen sliders drive the legacy generator.
-    def.generation.caveScale = GEN_TUNE.caveScale;
-    def.generation.fillSurfacePits = GEN_TUNE.fillSurfacePits;
-    def.generation.surfacePitWidth = GEN_TUNE.surfacePitWidth;
-    def.generation.surfacePitDepth = GEN_TUNE.surfacePitDepth;
-    def.generation.notchPasses = GEN_TUNE.notchPasses;
+    // Sandbox/Builder worldgen sliders drive the legacy generator. CLONE first
+    // (def + generation) so the STORED authored def is never mutated, mirroring
+    // the dressing branch below — otherwise Profile Diff and exported JSON would
+    // silently carry the live GEN_TUNE values.
+    let def = this.currentDef();
+    def = {
+      ...def,
+      generation: {
+        ...def.generation,
+        caveScale: GEN_TUNE.caveScale,
+        fillSurfacePits: GEN_TUNE.fillSurfacePits,
+        surfacePitWidth: GEN_TUNE.surfacePitWidth,
+        surfacePitDepth: GEN_TUNE.surfacePitDepth,
+        notchPasses: GEN_TUNE.notchPasses,
+      },
+    };
 
     // Optional: overlay the global campaign dressing recipes (Look-tuning ore/
     // glow/rubble/vine densities) over this profile's own dressing. Shallow-clone
@@ -1266,11 +1276,11 @@ export class VirtualWorldPanel {
   private currentDef(): VirtualWorldDef {
     const existing = this.defs.get(this.selectedProfile);
     if (existing) {
-      normalizeVirtualDef(existing);
+      normalizeVirtualWorldDef(existing);
       return existing;
     }
     const def = defaultDefForProfile(this.selectedProfile, this.profileSeed(this.selectedProfile));
-    normalizeVirtualDef(def);
+    normalizeVirtualWorldDef(def);
     this.defs.set(this.selectedProfile, def);
     return def;
   }
@@ -1466,97 +1476,6 @@ export class VirtualWorldPanel {
   }
 }
 
-function normalizeVirtualDef(def: VirtualWorldDef): void {
-  normalizeGeneration(def);
-  normalizeDressing(def);
-}
-
-function normalizeGeneration(def: VirtualWorldDef): void {
-  const raw = (def as VirtualWorldDef & { generation?: Partial<GenerationParams> }).generation ?? {};
-  def.generation = {
-    ...GENERATION_DEFAULTS,
-    ...raw,
-  };
-  const generation = def.generation as unknown as Record<string, number | boolean | undefined>;
-  for (const [key, fallback] of Object.entries(GENERATION_DEFAULTS) as Array<[string, number | boolean]>) {
-    // generation is mostly numeric but holds one boolean (fillSurfacePits); guard
-    // each by its fallback's type so the boolean isn't clobbered by a finite-check.
-    if (typeof fallback === 'boolean') {
-      if (typeof generation[key] !== 'boolean') generation[key] = fallback;
-    } else if (!Number.isFinite(generation[key] as number)) {
-      generation[key] = fallback;
-    }
-  }
-}
-
-function normalizeDressing(def: VirtualWorldDef): void {
-  if (!def.dressing) def.dressing = createDefaultDressingProfile();
-  const fallback = createDefaultDressingProfile();
-  const rawScenes = def.dressing.scenes ?? fallback.scenes;
-  const rawSceneControls = normalizeSceneControlAliases(rawScenes.controls ?? {});
-  const rawBiomes = def.dressing.biomes ?? {};
-  def.dressing.biomes = { ...fallback.biomes };
-  for (const [biome, fallbackRecipe] of Object.entries(fallback.biomes) as Array<
-    [VirtualBiomeId, VirtualWorldDef['dressing']['biomes'][VirtualBiomeId]]
-  >) {
-    const recipe = {
-      ...fallbackRecipe,
-      ...(rawBiomes[biome] ?? {}),
-    };
-    for (const [key, fallbackValue] of Object.entries(fallbackRecipe) as Array<
-      [keyof typeof fallbackRecipe, number]
-    >) {
-      if (!Number.isFinite(recipe[key])) recipe[key] = fallbackValue;
-    }
-    def.dressing.biomes[biome] = recipe;
-  }
-  def.dressing.controls = {
-    ...DRESSING_DEFAULTS,
-    ...(def.dressing.controls ?? {}),
-  };
-  for (const [key, fallbackValue] of Object.entries(DRESSING_DEFAULTS) as Array<[keyof DressingControls, number]>) {
-    const value = def.dressing.controls[key];
-    def.dressing.controls[key] = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : fallbackValue;
-  }
-  def.dressing.scenes = {
-    controls: {
-      ...SCENE_CONTROL_DEFAULTS,
-      ...rawSceneControls,
-    },
-    biomes: { ...fallback.scenes.biomes },
-  };
-  const sceneControls = def.dressing.scenes.controls;
-  sceneControls.density = Number.isFinite(sceneControls.density)
-    ? Math.max(0, Math.min(2, sceneControls.density))
-    : SCENE_CONTROL_DEFAULTS.density;
-  sceneControls.maxPerTile = Number.isFinite(sceneControls.maxPerTile)
-    ? Math.max(0, Math.min(6, Math.round(sceneControls.maxPerTile)))
-    : SCENE_CONTROL_DEFAULTS.maxPerTile;
-  const rawSceneBiomes = rawScenes.biomes ?? {};
-  for (const [biome, fallbackBudget] of Object.entries(fallback.scenes.biomes) as Array<
-    [VirtualBiomeId, VirtualSceneBudget]
-  >) {
-    const budget = {
-      ...fallbackBudget,
-      ...(rawSceneBiomes[biome] ?? {}),
-    };
-    for (const kind of VIRTUAL_SCENE_KINDS) {
-      const value = budget[kind];
-      budget[kind] = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : fallbackBudget[kind];
-    }
-    def.dressing.scenes.biomes[biome] = budget;
-  }
-}
-
-function normalizeSceneControlAliases(
-  controls: Partial<SceneControls> & { maxPerChunk?: number },
-): Partial<SceneControls> {
-  if (!Number.isFinite(controls.maxPerTile) && Number.isFinite(controls.maxPerChunk)) {
-    return { ...controls, maxPerTile: controls.maxPerChunk };
-  }
-  return controls;
-}
-
 function applyGenerationPreset(def: VirtualWorldDef, preset: Exclude<CaveStylePresetId, 'custom'>): void {
   Object.assign(def.generation, CAVE_STYLE_PRESETS[preset]);
 }
@@ -1581,7 +1500,7 @@ function defaultDefForProfile(profile: VirtualWorldProfileId, seed: number): Vir
   def.name = profile === 'global' ? 'Global Virtual World' : `${LEVELS[profile]?.name ?? profile} Virtual World`;
   const level = LEVELS[profile];
   if (level) applyVirtualLevelProfile(def, level);
-  normalizeVirtualDef(def);
+  normalizeVirtualWorldDef(def);
   return def;
 }
 
@@ -1626,7 +1545,7 @@ function mergeImportedProfile(raw: Partial<VirtualWorldDef>, profile: VirtualWor
       }
     }
   }
-  normalizeVirtualDef(def);
+  normalizeVirtualWorldDef(def);
   return def;
 }
 

@@ -549,6 +549,9 @@ export interface GlobalParams {
   /** Electrical DURATION: charge dropped per frame. 1 = shipped; higher makes a
    *  charged cell fade faster. (Charge is integer 0–255, so values round.) */
   chargeDecay: number;
+  /** Shock damage per status tick a body spends electrified (standing in a charged
+   *  conductor). Wet bodies take a multiple of this — the lightning combo. */
+  shockDamage: number;
 }
 
 export interface PostFxSettings {
@@ -999,6 +1002,9 @@ export interface LightningApi {
   /** Flickering branch arcs between nearby charged cells, so an electrified area
    *  visibly crackles. Called once per frame; self-limited to charged regions. */
   ambientDischarge(): void;
+  /** A single short discharge arc between two points — the status system uses it
+   *  to crawl lightning over the body of any shocked entity. */
+  spark(x0: number, y0: number, x1: number, y1: number): void;
   clear(): void;
 }
 

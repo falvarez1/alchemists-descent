@@ -1,5 +1,5 @@
 import type { Ctx } from '@/core/types';
-import { Cell, isSolid } from '@/sim/CellType';
+import { Cell } from '@/sim/CellType';
 import {
   EMPTY_COLOR,
   fireColor,
@@ -16,7 +16,7 @@ import {
   waterColor,
 } from '@/sim/colors';
 import { CARDINAL_OFFSETS, IGNITION_OFFSETS } from '@/sim/neighborOffsets';
-import { stainCell } from '@/sim/stains';
+import { canDryBloodOnSurface, stainCell } from '@/sim/stains';
 
 function waterCanPass(t: number): boolean {
   return t === Cell.Empty || t === Cell.Oil || t === Cell.Steam || t === Cell.Smoke;
@@ -141,8 +141,7 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
     // permanent stain. Deep pools (blood directly overhead) keep their wet body;
     // only the exposed top layer retires, so spray can't drown the level/sim.
     const aboveBlood = w.inBounds(x, y - 1) && w.types[w.idx(x, y - 1)] === Cell.Blood;
-    const below = w.inBounds(x, y + 1) ? w.types[w.idx(x, y + 1)] : Cell.Wall;
-    if (!aboveBlood && isSolid(below) && Math.random() < BLOOD_DRY) {
+    if (!aboveBlood && Math.random() < BLOOD_DRY && canDryBloodOnSurface(w, x, y + 1)) {
       stainCell(w, x, y + 1, 96, 12, 16, 0.55);
       w.replaceCellAt(i, Cell.Empty, EMPTY_COLOR);
     }

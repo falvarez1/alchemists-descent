@@ -64,9 +64,13 @@ describe('updateElectricalGrid', () => {
   });
 });
 
+// Decay now fires once per FRAME (updateElectricalGrid gates on frameCount), so
+// each call gets a fresh, advancing frame — every decay-expecting call decays.
+let testFrame = 0;
 function ctxFor(world: World): Ctx {
   return {
     world,
     params: createGameParams(),
+    state: { frameCount: ++testFrame },
   } as Ctx;
 }

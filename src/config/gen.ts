@@ -65,8 +65,12 @@ import type { BiomeId } from '@/core/types';
  *      tunnel during placeStructures, changing the full-level cell output (the
  *      bare-cave gen-golden hashes are still UNCHANGED); gen-level-golden was
  *      re-recorded. Resume retires mismatched saves.
+ * v22: sink-fill defaults raised (surfacePitWidth 6->20, surfacePitDepth 4->10,
+ *      notchPasses 2->3) so legacy walk surfaces fill their snaggy pits/holes by
+ *      default. terrainPolish runs inside generateCaves, so this changes the bare-
+ *      cave output too — BOTH gen-golden and gen-level-golden re-recorded.
  */
-export const GEN_VERSION = 21;
+export const GEN_VERSION = 22;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox
@@ -88,9 +92,13 @@ export const GEN_VERSION = 21;
  */
 export const GEN_TUNE = {
   caveScale: 1.5,
-  surfacePitWidth: 6,
-  surfacePitDepth: 4,
-  notchPasses: 2,
+  // v22: raised from 6/4/2 so legacy walk surfaces fill their snaggy pits/holes by
+  // default (the platforms read far cleaner). terrainPolish is bounded — it only
+  // raises shallow walk-surface dips between shoulders + tiny enclosed notches, so
+  // wider/deeper values smooth the ledges without closing real caves.
+  surfacePitWidth: 20,
+  surfacePitDepth: 10,
+  notchPasses: 3,
   fillSurfacePits: true,
 };
 

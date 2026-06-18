@@ -4,7 +4,8 @@ import { getDefaultPixelSceneLibrary } from '@/world/virtual/defaults';
 import { serializePixelScene, parsePixelScene } from '@/world/virtual/pixelSceneJson';
 import { validatePixelScene } from '@/world/virtual/pixelSceneValidate';
 import { listUserScenes, saveUserScene, deleteUserScene, userSceneExists } from '@/world/virtual/pixelSceneStore';
-import type { PixelSceneDef } from '@/world/virtual/types';
+import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
+import { PIXEL_SCENE_BIOME_FILL, type PixelSceneDef } from '@/world/virtual/types';
 
 function syntheticScene(): PixelSceneDef {
   const w = 5;
@@ -99,6 +100,29 @@ describe('pixel scene validation', () => {
     const codes = validatePixelScene(s).map((x) => `${x.severity}:${x.code}`);
     expect(codes).toContain('error:oob');
     expect(codes).toContain('warn:light-budget');
+  });
+});
+
+describe('pixel scene biome-fill (Noita FFFFFF)', () => {
+  it('resolves biome-fill pixels to the resolver result, leaving other materials alone', () => {
+    const material = Uint8Array.from([PIXEL_SCENE_BIOME_FILL, Cell.Water, Cell.Empty, Cell.Wall]);
+    const mask = Uint8Array.from([1, 1, 0, 1]);
+    const scene: PixelSceneDef = { v: 1, id: 'f', name: 'f', w: 4, h: 1, material, mask, objects: [], links: [], lights: [] };
+    const target = { originX: 0, originY: 0, size: 4, types: new Uint8Array(16), colors: new Uint32Array(16) };
+    stampPixelScenes(target, [{ id: 'p', scene, x: 0, y: 0, priority: 1 }], () => ({ type: Cell.Wall, color: 0x123456 }));
+    expect(target.types[0]).toBe(Cell.Wall);   // biome-fill -> resolver's rock
+    expect(target.colors[0]).toBe(0x123456);
+    expect(target.types[1]).toBe(Cell.Water);  // normal material stamped as-is
+    expect(target.types[2]).toBe(Cell.Empty);  // unmasked pixel left untouched
+    expect(target.types[3]).toBe(Cell.Wall);
+  });
+
+  it('a liquid framed by biome-fill is considered sealed (no leak)', () => {
+    const w = 3, h = 3, n = w * h;
+    const material = new Uint8Array(n).fill(PIXEL_SCENE_BIOME_FILL);
+    material[4] = Cell.Water; // centre, walled by biome-fill on all sides
+    const scene: PixelSceneDef = { v: 1, id: 's', name: 's', w, h, material, mask: new Uint8Array(n).fill(1), objects: [], links: [], lights: [], kind: 'shrines', tags: ['x'] };
+    expect(validatePixelScene(scene).some((x) => x.code === 'liquid-basin')).toBe(false);
   });
 });
 

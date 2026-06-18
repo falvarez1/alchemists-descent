@@ -12,6 +12,9 @@ import { fireColor, packRGB, steamColor } from '@/sim/colors';
 /** Statuses the grid can inflict (potion timers can't be "immune"-blocked). */
 type ElementalStatus = 'burning' | 'frozen' | 'electrified' | 'wet' | 'oiled';
 
+const SHOCK_WET_MULT = 3; // a wet body conducts — far more shock damage (the combo)
+const SHOCK_ZAP = 3; // one-time hit the instant a dry/wet body becomes electrified
+
 interface StatusBody {
   x: number;
   y: number;
@@ -79,6 +82,7 @@ export function sampleAndTickStatus(
 ): { damage: number; slowFactor: number } {
   const world = ctx.world;
   const st = body.status;
+  const electrifiedBefore = st.electrified;
   const tickFrames = Math.max(1, Math.floor(elapsedFrames));
 
   // --- Sample: what is the grid touching this body right now? ---
@@ -127,6 +131,9 @@ export function sampleAndTickStatus(
   if (fire >= 1 && !immune?.burning) st.burning = Math.max(st.burning, st.oiled > 0 ? 300 : 90);
   if (nitrogen >= 2 && !immune?.frozen) st.frozen = Math.max(st.frozen, 100);
   if (charged >= 1 && !immune?.electrified) st.electrified = Math.max(st.electrified, 45);
+  // The instant a body goes live (0 -> charged) gets a one-time zap + a crack.
+  const justShocked = electrifiedBefore === 0 && st.electrified > 0;
+  if (justShocked) ctx.audio.zap();
 
   // --- Tick every timer ---
   if (st.wet > 0) st.wet = Math.max(0, st.wet - tickFrames);
@@ -182,16 +189,31 @@ export function sampleAndTickStatus(
       { grav: -0.005, glow: 0.7 },
     );
   }
-  if (st.electrified > 0 && frame % 5 === 0) {
-    const e = randomEdgeCell(body, halfW, h);
-    const sa = Math.random() * Math.PI * 2;
-    ctx.particles.spawn(e.x, e.y, Math.cos(sa) * 1.4, Math.sin(sa) * 1.4, null, packRGB(80, 240, 255), 7, {
-      grav: 0,
-      glow: 2.6,
-    });
+  if (st.electrified > 0) {
+    if (frame % 5 === 0) {
+      const e = randomEdgeCell(body, halfW, h);
+      const sa = Math.random() * Math.PI * 2;
+      ctx.particles.spawn(e.x, e.y, Math.cos(sa) * 1.4, Math.sin(sa) * 1.4, null, packRGB(80, 240, 255), 7, {
+        grav: 0,
+        glow: 2.6,
+      });
+    }
+    // Lightning crawls over the shocked body: a short arc between two points on
+    // its perimeter each sample (~2 frames). Lives on the lightning arc list, so
+    // it both draws and seeds light. Guarded for status-only test stubs.
+    const a = randomEdgeCell(body, halfW, h);
+    const b = randomEdgeCell(body, halfW, h);
+    ctx.lightning?.spark?.(a.x, a.y, b.x, b.y);
   }
 
+  // Shock is now a real, tunable threat (global.shockDamage), with wet amplified
+  // and a one-time zap the instant a body is electrified.
+  const shock = ctx.params.global.shockDamage;
   const damage =
-    (st.burning > 0 ? 0.12 : 0) + (st.electrified > 0 ? (st.wet > 0 ? 0.3 : 0.08) : 0);
-  return { damage, slowFactor: st.frozen > 0 ? 0.55 : 1 };
+    (st.burning > 0 ? 0.12 : 0) +
+    (st.electrified > 0 ? shock * (st.wet > 0 ? SHOCK_WET_MULT : 1) : 0) +
+    (justShocked ? SHOCK_ZAP : 0);
+  // Electrified bodies stutter (a mild slow), short of the deep frozen lock.
+  const slowFactor = st.frozen > 0 ? 0.55 : st.electrified > 0 ? 0.82 : 1;
+  return { damage, slowFactor };
 }

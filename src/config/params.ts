@@ -34,6 +34,8 @@ export const GLOBAL_PARAMS: GlobalParams = {
   // local flash; raise either to attenuate harder (less spread / shorter glow).
   chargeFalloff: 1,
   chargeDecay: 1,
+  // Damage per status tick spent in a charged conductor (wet bodies take ~3×).
+  shockDamage: 0.2,
 };
 
 /** Frozen baseline captured at load — the Builder section "reset" restores it. */

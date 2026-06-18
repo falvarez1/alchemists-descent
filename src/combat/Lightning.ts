@@ -129,6 +129,13 @@ export class Lightning implements LightningApi {
     ctx.audio.lightning();
   }
 
+  /** A single short discharge arc between two points (the status system crawls
+   *  these over a shocked body). Reuses the chain-bolt jagged look + arc list, so
+   *  it both draws and seeds light. */
+  spark(x0: number, y0: number, x1: number, y1: number): void {
+    this.arcs.push({ pts: jaggedArc(x0, y0, x1, y1), life: 2 + ((Math.random() * 3) | 0), intensity: 0.4 + Math.random() * 0.35 });
+  }
+
   update(): void {
     for (let i = this.arcs.length - 1; i >= 0; i--) {
       this.arcs[i].life--;

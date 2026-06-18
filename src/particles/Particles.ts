@@ -1,12 +1,8 @@
 import type { Ctx, FlyingParticle, ParticleOpts, ParticlesApi } from '@/core/types';
 import { EntityPool } from '@/entities/ecs';
 import { MAX_PARTICLES } from '@/config/constants';
-import { Cell, isGas, isLiquid } from '@/sim/CellType';
+import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import { stainCell } from '@/sim/stains';
-
-/** Fraction of blood motes that expire mid-air and settle into a real liquid
- *  cell instead of vanishing — what lets airborne spray actually pool. */
-const BLOOD_SETTLE = 0.3;
 
 /**
  * Ballistic flying particles: explosion debris, gore, sparks, homing coins,
@@ -140,15 +136,6 @@ export class Particles implements ParticlesApi {
         continue;
       }
       if (p.life <= 0) {
-        // Blood expiring mid-air over open ground settles into a real liquid
-        // cell (which then falls and pools) instead of simply disappearing.
-        if (
-          p.type === Cell.Blood &&
-          Math.random() < BLOOD_SETTLE &&
-          world.types[world.idx(gx, gy)] === Cell.Empty
-        ) {
-          world.replaceCellAt(world.idx(gx, gy), Cell.Blood, p.color);
-        }
         this.removeAt(i);
         continue;
       }
@@ -166,11 +153,12 @@ export class Particles implements ParticlesApi {
 
       const cell = world.types[world.idx(gx, gy)];
       if (cell !== Cell.Empty && !isGas(cell)) {
+        const hitLiquid = isLiquid(cell);
         // A wet mote (a liquid particle) striking a pool kicks up a small splash.
         // ONLY liquid-typed motes splash — the purely-visual droplets splash()
         // itself spawns are type=null, so they never splash again (no runaway
         // feedback loop that would make any disturbed pool roar forever).
-        if (isLiquid(cell) && p.type !== null && isLiquid(p.type)) {
+        if (hitLiquid && p.type !== null && isLiquid(p.type)) {
           this.splash(ctx, p.x, p.y, p.color);
         }
         // Blood spatter marks the surface it strikes — a red stain soaked into
@@ -178,14 +166,17 @@ export class Particles implements ParticlesApi {
         if (p.type === Cell.Blood) stainCell(world, gx, gy, 118, 14, 20, 0.35 + Math.random() * 0.25);
         // Deposit at last free position behind us
         if (p.type !== null) {
-          const bx = Math.floor(p.x - p.vx),
-            by = Math.floor(p.y - p.vy);
-          if (world.inBounds(bx, by)) {
-            const bi = world.idx(bx, by);
-            if (world.types[bi] === Cell.Empty || isGas(world.types[bi])) {
-              world.replaceCellAt(bi, p.type, p.color);
-              if (p.type === Cell.Fire) world.life[bi] = 18 + Math.floor(Math.random() * 18);
-              if (p.type === Cell.Smoke) world.life[bi] = 30 + Math.floor(Math.random() * 30);
+          const blockingDebris = blocksEntity(p.type);
+          if (!(hitLiquid && blockingDebris)) {
+            const bx = Math.floor(p.x - p.vx),
+              by = Math.floor(p.y - p.vy);
+            if (world.inBounds(bx, by)) {
+              const bi = world.idx(bx, by);
+              if (world.types[bi] === Cell.Empty || isGas(world.types[bi])) {
+                world.replaceCellAt(bi, p.type, p.color);
+                if (p.type === Cell.Fire) world.life[bi] = 18 + Math.floor(Math.random() * 18);
+                if (p.type === Cell.Smoke) world.life[bi] = 30 + Math.floor(Math.random() * 30);
+              }
             }
           }
         }

@@ -54,10 +54,10 @@ function fnv1a(bytes: Uint8Array): string {
 // consumed after every rng draw, so the stream + spawn anchors are identical to
 // v17; only carved cell width changed, which is exactly what these hashes lock.
 const GOLDEN: Record<number, { hash: string; spawn: { x: number; y: number } }> = {
-  1: { hash: '8cf019bd', spawn: { x: 800, y: 550 } },
-  5: { hash: 'c7d799e5', spawn: { x: 800, y: 413 } },
-  1337: { hash: 'fe3390d9', spawn: { x: 800, y: 396 } },
-  123456789: { hash: 'faad3775', spawn: { x: 800, y: 542 } },
+  1: { hash: '9ba6dc42', spawn: { x: 800, y: 550 } },
+  5: { hash: '5bf0eb35', spawn: { x: 800, y: 413 } },
+  1337: { hash: 'aa4457fe', spawn: { x: 800, y: 396 } },
+  123456789: { hash: '7358c7d5', spawn: { x: 800, y: 542 } },
 };
 
 const RECIPE_FIELDS: Array<keyof VirtualBiomeDressingRecipe> = [

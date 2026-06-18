@@ -77,16 +77,16 @@ function levelTypeHash(def: LevelDef, seed: number): string {
   return fnv1a(ctx.world.types);
 }
 
-// Re-recorded for GEN_VERSION 21 (review fix: the heart container now tunnels
-// to the cave network via connectToCaves like every other landmark, so pocket-
-// placed hearts can no longer be unreachable — this carves cells, changing the
-// post-structures cell output for every level that places a heart).
+// Re-recorded for GEN_VERSION 22 (sink-fill defaults raised: surfacePitWidth
+// 6->20, surfacePitDepth 4->10, notchPasses 2->3 — terrainPolish now fills the
+// snaggy walk-surface pits/holes more aggressively, changing the polished cell
+// output. The gilded 'vault' is UNCHANGED: that biome skips terrainPolish.).
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '11f7e2cc' },
-  { id: 'd4', seed: 1337, hash: 'd8788a72' },
-  { id: 'd8', seed: 1337, hash: '0e38ceef' },
+  { id: 'd1', seed: 1337, hash: 'dff03836' },
+  { id: 'd4', seed: 1337, hash: 'f528cc8c' },
+  { id: 'd8', seed: 1337, hash: '8346ca19' },
   { id: 'vault', seed: 1337, hash: 'e2b0c188' },
-  { id: 'd2', seed: 42, hash: 'b8a1ed3f' },
+  { id: 'd2', seed: 42, hash: 'c7ce069d' },
 ];
 
 describe('full generateLevel golden hashes', () => {
