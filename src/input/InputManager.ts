@@ -328,7 +328,7 @@ export class InputManager {
     return (
       e.isComposing ||
       Boolean(document.querySelector(
-        '.app-dialog-root, .editor-command-menu.open, .editor-popover.interactive, #run-launcher.visible, #dev-console.open',
+        '.app-dialog-root, .editor-command-menu.open, .editor-popover.interactive, #run-launcher.visible, #minimap-overlay.visible, #dev-console.open',
       )) ||
       isEditableTarget(e.target)
     );
@@ -693,6 +693,7 @@ export class InputManager {
     } else {
       this.clearHeldInput();
       this.exitImmersive();
+      if (ctx.state.playtestSource === 'sandbox') ctx.levels.exitCustomPlaytest(ctx);
       ensureSandboxWorldDetached(ctx);
     }
   }

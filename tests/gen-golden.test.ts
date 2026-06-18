@@ -50,17 +50,16 @@ function fnv1a(bytes: Uint8Array): string {
 
 /** Recorded from the pre-overhaul generator. Re-record ONLY for deliberate,
  *  commit-flagged generation changes. */
-// Re-recorded for GEN_VERSION 25: earthen baseline noiseDensity 0.54 -> 0.66
-// (denser solid rock so walkable platforms stop reading porous) plus the new
-// terrainPolish de-speckle passes — a morphological CLOSE (solidifyRock, radius 2)
-// and the sealed-pocket fill (fillEnclosedHoles). fillNoise draws one rng value
-// per 2x2 block regardless of density, so the stream + spawn anchors are identical
-// to v24; only which noise cells become wall, plus the polish fills, changed.
+// Re-recorded for GEN_VERSION 26: living walk-through ground cover — grass blades
+// (the new Cell.Grass=37) plus sparse glowshroom/fungus tufts — is now planted on
+// the dressed walk surface (world/surfaceDress.plantGroundCover). Placement is
+// hash2-deterministic, so the cell TYPES these hashes lock shift on every moss-crown
+// ledge. (v25 was noiseDensity 0.54->0.66 + the solidifyRock close.)
 const GOLDEN: Record<number, { hash: string; spawn: { x: number; y: number } }> = {
-  1: { hash: 'f21c68c9', spawn: { x: 800, y: 550 } },
-  5: { hash: '28ad038a', spawn: { x: 800, y: 413 } },
-  1337: { hash: '64ffc6a9', spawn: { x: 800, y: 396 } },
-  123456789: { hash: '606becb3', spawn: { x: 800, y: 542 } },
+  1: { hash: 'dba1ca07', spawn: { x: 800, y: 550 } },
+  5: { hash: '7e732aab', spawn: { x: 800, y: 413 } },
+  1337: { hash: 'c3c7a180', spawn: { x: 800, y: 396 } },
+  123456789: { hash: '739afd34', spawn: { x: 800, y: 542 } },
 };
 
 const RECIPE_FIELDS: Array<keyof VirtualBiomeDressingRecipe> = [

@@ -22,6 +22,10 @@ const spreadCharge = new Map<number, number>();
  *  once per FRAME — otherwise a charge of N vanishes in ~N/6 frames, far too fast
  *  to see now that the spread no longer re-seeds at full strength. */
 let lastDecayFrame = -1;
+/** Cells the conduction front advances per substep (×6 substeps/frame). A SMALL
+ *  value keeps the visible racing crawl — high enough to feel fast, low enough
+ *  that it never fills as an instant solid slab (that killed the crackle look). */
+const CRAWL_HOPS = 4;
 
 function materialConductivity(ctx: Ctx, t: number): number {
   const tuned = ctx.params?.materials?.[t]?.conductivity;
@@ -76,25 +80,37 @@ export function updateElectricalGrid(ctx: Ctx): void {
       }
     }
   };
-  for (const ci of charged) {
-    const y = Math.floor(ci / w.width);
-    const x = ci - y * w.width;
-    const c = w.charge[ci];
-    trySpread(x + 1, y, c);
-    trySpread(x - 1, y, c);
-    trySpread(x, y + 1, c);
-    trySpread(x - 1, y - 1, c);
+  // The front advances CRAWL_HOPS cells per substep — a fast racing crawl, applied
+  // hop-by-hop so each freshly-lit cell carries the current onward the same step.
+  // Small enough to stay a visible spreading front (with the ambient arcs, this is
+  // the crackle), never an instant solid slab.
+  let frontier = charged;
+  for (let hop = 0; hop < CRAWL_HOPS; hop++) {
+    spreadCharge.clear();
+    for (const ci of frontier) {
+      const y = Math.floor(ci / w.width);
+      const x = ci - y * w.width;
+      const c = w.charge[ci];
+      trySpread(x + 1, y, c);
+      trySpread(x - 1, y, c);
+      trySpread(x, y + 1, c);
+      trySpread(x - 1, y - 1, c);
+    }
+    if (spreadCharge.size === 0) break;
+    const next: number[] = [];
+    for (const [ti, v] of spreadCharge) {
+      w.setChargeAt(ti, v);
+      next.push(ti);
+    }
+    frontier = next;
   }
-  // Decay ONCE PER FRAME (not per substep), so `chargeDecay` reads as charge lost
-  // per frame — a visible glow duration. Spread still runs every substep so the
-  // conduction propagates promptly within the frame.
-  const doDecay = ctx.state.frameCount !== lastDecayFrame;
-  if (doDecay) {
+  // Decay ONCE PER FRAME (gated on frameCount), so `chargeDecay` reads as charge
+  // lost per frame — the glow duration.
+  if (ctx.state.frameCount !== lastDecayFrame) {
     lastDecayFrame = ctx.state.frameCount;
     for (const ci of charged) {
       const next = w.charge[ci] - decay;
       w.setChargeAt(ci, next > 0 ? next : 0);
     }
   }
-  for (const [ti, v] of spreadCharge) w.setChargeAt(ti, v);
 }

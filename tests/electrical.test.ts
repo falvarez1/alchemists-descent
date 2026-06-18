@@ -25,7 +25,9 @@ describe('updateElectricalGrid', () => {
     expect(world.charge[world.idx(2, 3)]).toBe(7); // metal: src - base (carries far)
     expect(world.charge[world.idx(3, 4)]).toBe(0); // acid no longer conducts
     expect(world.charge[world.idx(2, 2)]).toBe(0); // blood no longer conducts
-    expect(world.charge[world.idx(3, 2)]).toBe(0); // not a tracked neighbor direction
+    // The front now advances a few cells per call (CRAWL_HOPS), so this cell is
+    // reached on the 2nd hop via the water neighbour's diagonal: 5 (water) - 1 (metal).
+    expect(world.charge[world.idx(3, 2)]).toBe(4);
   });
 
   it('uses live material conductivity when attenuating conductor spread', () => {

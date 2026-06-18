@@ -1117,11 +1117,13 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
 #sanctum-overlay .sanc-heading { font-size: 12px; font-weight: 800; letter-spacing: 3px; color: var(--text-muted); margin-top: 8px; }
 #perk-row { display: flex; gap: 10px; }
 .perk-card {
-    width: 185px; padding: 12px 10px; cursor: pointer; text-align: center;
+    width: 185px; padding: 12px 10px; cursor: pointer; text-align: center; color: inherit; font: inherit;
     background: linear-gradient(180deg, rgba(34,24,17,0.95), rgba(22,15,11,0.95));
     border: 1px dashed #6e4632; border-radius: 6px; transition: all 0.12s ease;
 }
 .perk-card:hover { border-color: #e8c15a; transform: translateY(-2px); }
+.perk-card:focus-visible { outline: 2px solid #e8c15a; outline-offset: 2px; }
+.perk-card:disabled { color: inherit; }
 .perk-card .pk-name { font-size: 15px; font-weight: 800; letter-spacing: 1px; color: #fcd34d; margin-bottom: 6px; }
 .perk-card .pk-desc { font-size: 12px; line-height: 1.6; color: rgba(255,255,255,0.6); }
 .perk-card.taken { border: 2px solid #e8c15a; box-shadow: 0 0 18px rgba(232,193,90,0.4); }

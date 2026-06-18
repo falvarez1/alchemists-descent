@@ -297,7 +297,8 @@ void main() {
       float intensity = 1.0 + (uBoost - 1.0) * scalar;
       if (charged) {
         r = 0.2; g = 0.75; b = 1.0;
-        intensity = uBoost * 1.2;
+        // crackle strobe: per-cell, per-frame flicker (same hash family as fire)
+        intensity = uBoost * 1.2 * (0.3 + flickerRand(vec2(float(wx), float(wy)), 2.3) * 1.1);
       }
 
       // The lighting law (per channel): vignette, ambient, clamp 2.2, square,

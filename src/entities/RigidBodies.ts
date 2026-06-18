@@ -54,7 +54,7 @@ const MAX_TERRAIN_CELLS = 2800; // total terrain colliders requested per frame
 const REFERENCE_MASS = 45; // a "typical" crate; blast/kick scale a body's throw by REFERENCE_MASS / mass
 const PUSH_MASS_MAX = 60; // player shoves bodies up to this mass (light wood); heavier ones block
 const MIN_PUSH = 0.7; // minimum shove speed (cells/frame) when the player leans on a light body
-const PUSH_TRANSFER = 0.9; // fraction of the player's walk speed transferred into the shoved body
+const PUSH_TRANSFER = 1.35; // fraction of the player's walk speed transferred into the shoved body
 // Reused flood-fill scratch for the loose-rubble test on terrain colliders (so a
 // body, like the player, walks through small floating cell clusters instead of snagging).
 const TERRAIN_SCRATCH: CollisionScratch = { x: new Int32Array(32), y: new Int32Array(32) };

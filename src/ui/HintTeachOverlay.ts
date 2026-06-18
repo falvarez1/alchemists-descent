@@ -57,4 +57,9 @@ export class HintTeachOverlay {
     this.root.classList.remove('visible');
     this.root.setAttribute('aria-hidden', 'true');
   }
+
+  dispose(): void {
+    window.clearTimeout(this.hideTimer);
+    this.root.remove();
+  }
 }

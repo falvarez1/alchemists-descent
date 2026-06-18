@@ -19,6 +19,7 @@ export class RuntimeInspector {
   private pointerInside = false;
   private followSelectedEntity = false;
   private rafId: number | null = null;
+  private readonly onButtonClick = (): void => this.toggle();
 
   constructor(private readonly ctx: Ctx) {
     const holder = document.getElementById('viewport-container') ?? document.body;
@@ -29,7 +30,7 @@ export class RuntimeInspector {
     holder.appendChild(this.root);
 
     this.button = document.getElementById('runtime-inspector-toggle') as HTMLButtonElement | null;
-    this.button?.addEventListener('click', () => this.toggle());
+    this.button?.addEventListener('click', this.onButtonClick);
     this.root.addEventListener('pointerdown', (event) => event.stopPropagation());
     this.root.addEventListener('pointerup', (event) => event.stopPropagation());
     this.root.addEventListener('pointerenter', () => {
@@ -56,6 +57,14 @@ export class RuntimeInspector {
       if (this.openState) this.render(true);
     });
     this.syncButton();
+  }
+
+  dispose(): void {
+    this.close();
+    this.button?.removeEventListener('click', this.onButtonClick);
+    this.root.remove();
+    this.button?.classList.remove('lit');
+    this.button?.removeAttribute('disabled');
   }
 
   private toggle(): void {

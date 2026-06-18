@@ -661,7 +661,7 @@ function sanitizeWorldLayer(value: unknown): EditorWorldLayer | null {
     ...(num(layer.seed) ? { seed: Math.floor(layer.seed) >>> 0 } : {}),
     ...(num(layer.paintSeed) ? { paintSeed: clampInt(layer.paintSeed, 0, 99999) } : {}),
     life: sanitizeSparsePairs(layer.life, DOC_SPARSE_CAP, -32768, 32767),
-    charge: sanitizeSparsePairs(layer.charge, DOC_SPARSE_CAP, 0, 255),
+    charge: sanitizeSparsePairs(layer.charge, DOC_SPARSE_CAP, 0, 65535),
     colors: sanitizeColorPlane(layer.colors),
     colorOverrides: sanitizeSparsePairs(layer.colorOverrides, DOC_SPARSE_CAP, 0, 0xffffff),
   };

@@ -46,7 +46,7 @@ import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
 import { polishCaveTerrain, consolidateRock, fillEnclosedHoles, solidifyRock } from '@/world/terrainPolish';
-import { dressWalkSurface } from '@/world/surfaceDress';
+import { dressWalkSurface, plantGroundCover } from '@/world/surfaceDress';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
 import { stampSecrets } from '@/world/secrets';
@@ -106,6 +106,7 @@ export class WorldGen implements WorldGenApi {
   generateCaves(ctx: Ctx): void {
     this.rng = new Rng(ctx.state.worldSeed >>> 0);
     const world = ctx.world;
+    world.clear();
     const B = BIOMES[ctx.state.currentBiome] || BIOMES.earthen;
     const G = GEN[ctx.state.currentBiome] || GEN.earthen;
     const FLOOR_BAND = HEIGHT - 52; // open strip at the bottom
@@ -166,8 +167,6 @@ export class WorldGen implements WorldGenApi {
     for (let x = 0; x < WIDTH; x++) {
       for (let y = 0; y < HEIGHT; y++) {
         const i = x + y * WIDTH;
-        world.life[i] = 0;
-        world.charge[i] = 0;
         if (!work[i]) {
           world.types[i] = Cell.Empty;
           world.colors[i] = EMPTY_COLOR;
@@ -503,7 +502,12 @@ export class WorldGen implements WorldGenApi {
       // Cap the remaining shallow walk-surface snags and lay dirt + grass/moss/
       // flowers on the ledges the player walks (runs after polish so it dresses the
       // filled surface). See world/surfaceDress.ts.
-      dressWalkSurface(world, { seed, minY: MIN_Y, floorBand: FLOOR_BAND, crown: B.crown, flowerChance: B.flowerChance });
+      const dressOpts = { seed, minY: MIN_Y, floorBand: FLOOR_BAND, crown: B.crown, flowerChance: B.flowerChance };
+      dressWalkSurface(world, dressOpts);
+      // Living, walk-through ground cover (grass blades + sparse mushroom tufts) on
+      // the dressed surface — real soft-growth cells that sway-spread, burn, and
+      // wither on their own. See world/surfaceDress.plantGroundCover.
+      plantGroundCover(world, dressOpts);
     }
   }
 

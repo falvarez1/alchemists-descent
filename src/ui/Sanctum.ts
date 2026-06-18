@@ -92,14 +92,22 @@ export class Sanctum implements SanctumApi {
       dBtn.disabled = true;
       dBtn.textContent = 'CHOOSE A BOON TO DESCEND';
     }
+    const cards: HTMLButtonElement[] = [];
     for (const pk of offer) {
-      const card = document.createElement('div');
+      const card = document.createElement('button');
+      card.type = 'button';
       card.className = 'perk-card';
-      card.innerHTML =
-        '<div class="pk-name">' + pk.name + '</div><div class="pk-desc">' + pk.desc + '</div>';
+      const name = document.createElement('div');
+      name.className = 'pk-name';
+      name.textContent = pk.name;
+      const desc = document.createElement('div');
+      desc.className = 'pk-desc';
+      desc.textContent = pk.desc;
+      card.append(name, desc);
       card.addEventListener('click', () => {
         if (perkTaken) return;
         perkTaken = true;
+        for (const button of cards) button.disabled = true;
         if (pk.flag) ctx.player.perks[pk.flag] = true;
         pk.apply(ctx);
         ctx.audio.learn();
@@ -110,6 +118,7 @@ export class Sanctum implements SanctumApi {
         });
         armDescend();
       });
+      cards.push(card);
       row.appendChild(card);
     }
 

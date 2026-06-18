@@ -1,5 +1,6 @@
-import { Cell } from '@/sim/CellType';
+import { Cell, isSolid } from '@/sim/CellType';
 import { EMPTY_COLOR, packRGB } from '@/sim/colors';
+import { BIOMES } from '@/config/biomes';
 import type {
   HerringboneTileDef,
   PixelSceneDef,
@@ -88,6 +89,7 @@ function generateVirtualChunkNormalized(def: VirtualWorldDef, cx: number, cy: nu
   roundCaveCorners(def, scratch, biomeAt);
   fillSurfacePitsScratch(def, scratch);
   dressSurfaceTerrain(def, scratch, biomeAt);
+  plantGroundCoverScratch(def, scratch, biomeAt);
   dressBiomeFeatures(def, scratch, biomeAt);
   fillMineralVugsScratch(def, scratch, biomeAt);
   sealOuterBorder(def, scratch);
@@ -1183,6 +1185,73 @@ function openAbove(types: Uint8Array, size: number, x: number, y: number): numbe
     open++;
   }
   return open;
+}
+
+/** Deterministic ground-cover colours — the chunked analog of the legacy
+ *  Math.random() factories (grass/glowshroom/fungusColor), hashed so chunks stay
+ *  cache-stable and seam-consistent. Base terms match the legacy factories. */
+function groundCoverColor(
+  seed: number,
+  x: number,
+  y: number,
+  r0: number,
+  rSpan: number,
+  g0: number,
+  gSpan: number,
+  b0: number,
+  bSpan: number,
+): number {
+  return packRGB(
+    r0 + Math.floor(unitHash2i(seed ^ 0x6a710001, x, y) * rSpan),
+    g0 + Math.floor(unitHash2i(seed ^ 0x6a710002, x, y) * gSpan),
+    b0 + Math.floor(unitHash2i(seed ^ 0x6a710003, x, y) * bSpan),
+  );
+}
+
+/**
+ * Chunked-gen port of world/surfaceDress.plantGroundCover: stand living,
+ * walk-through grass blades (Cell.Grass) with sparse glowshroom/fungus tufts in
+ * the open air above the dressed walk surface, on verdant (moss-crown) biomes.
+ * Density scales with the world's vegetationDensity. Fully deterministic
+ * (unitHash2i for both placement and colour) so chunks cache + tile seamlessly.
+ */
+function plantGroundCoverScratch(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  const vegetation = clamp01(generationNumber(def.generation.vegetationDensity, 0.38));
+  if (vegetation <= 0) return;
+  const size = scratch.size;
+  const seed = def.seed;
+  for (let y = 3; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const i = x + y * size;
+      if (!isSolid(scratch.types[i])) continue; // need solid ground (incl. moss crust)
+      const ai = i - size; // the open cell a blade stands in
+      if (scratch.types[ai] !== Cell.Empty) continue;
+      if (openAbove(scratch.types, size, x, y) < 2) continue; // headroom
+      const wx = scratch.originX + x;
+      const wy = scratch.originY + y;
+      if (BIOMES[biomeAt(wx, wy)]?.crown !== 'moss') continue; // verdant only
+      const r = unitHash2i(seed ^ 0x6c0ffee5, wx, wy);
+      if (r < vegetation * 0.78) {
+        scratch.types[ai] = Cell.Grass;
+        scratch.colors[ai] = groundCoverColor(seed, wx, wy - 1, 96, 40, 160, 40, 52, 28);
+        const a2 = ai - size;
+        if (y - 2 >= 0 && scratch.types[a2] === Cell.Empty && unitHash2i(seed ^ 0x6c0ffe71, wx, wy) < 0.28) {
+          scratch.types[a2] = Cell.Grass;
+          scratch.colors[a2] = groundCoverColor(seed, wx, wy - 2, 96, 40, 160, 40, 52, 28);
+        }
+      } else if (r < vegetation * 0.9) {
+        scratch.types[ai] = Cell.Glowshroom;
+        scratch.colors[ai] = groundCoverColor(seed, wx, wy - 1, 120, 40, 230, 25, 140, 50);
+      } else if (r < vegetation) {
+        scratch.types[ai] = Cell.Fungus;
+        scratch.colors[ai] = groundCoverColor(seed, wx, wy - 1, 40, 20, 190, 35, 150, 30);
+      }
+    }
+  }
 }
 
 function surfaceCellForBiome(

@@ -77,16 +77,17 @@ function levelTypeHash(def: LevelDef, seed: number): string {
   return fnv1a(ctx.world.types);
 }
 
-// Re-recorded for GEN_VERSION 25: earthen baseline noiseDensity 0.54 -> 0.66 and
-// the terrainPolish de-speckle passes (solidifyRock morphological close + the
-// sealed-pocket fillEnclosedHoles). vault is unchanged — gilded uses the crystal-
-// vault skeleton and skips the polish block, so its hash carries over from v24.
+// Re-recorded for GEN_VERSION 26: living walk-through ground cover (grass +
+// glowshroom/fungus tufts) is planted on moss-crown walk surfaces in generateCaves
+// (world/surfaceDress.plantGroundCover), shifting cell types on those levels. d8
+// and vault are UNCHANGED — their biomes aren't moss-crowned / skip the polish
+// block, so no cover is planted. (v25 was noiseDensity 0.66 + the solidifyRock close.)
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: 'b6fdc081' },
-  { id: 'd4', seed: 1337, hash: '30e64077' },
+  { id: 'd1', seed: 1337, hash: '4c7570c1' },
+  { id: 'd4', seed: 1337, hash: 'ea181c61' },
   { id: 'd8', seed: 1337, hash: '7f87cbd4' },
   { id: 'vault', seed: 1337, hash: '36b10aba' },
-  { id: 'd2', seed: 42, hash: '60630ba2' },
+  { id: 'd2', seed: 42, hash: '96da8a86' },
 ];
 
 describe('full generateLevel golden hashes', () => {

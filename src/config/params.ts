@@ -30,17 +30,16 @@ export const GLOBAL_PARAMS: GlobalParams = {
   goreBlood: 4.0,
   goreSlime: 1.0,
   goreOoze: 0.15,
-  // Electrical spark/lightning conduction. The current front travels ~6 cells/
-  // frame for the source's lifetime, so reach ≈ 6 · (strength·deposit / decay)
-  // cells and the glow lasts ~ strength·deposit / decay frames. Charge is Uint16,
-  // so reach is no longer capped at 255 cells: strength 10 + decay 6 carries a
-  // metal current ~600 cells (≈4x the old ~150) with a ~1.7s glow. Raise strength
-  // for more of both; raise decay to shorten the glow (and trim reach with it).
-  // Metal stays far more conductive than water (water loses charge 3x faster per
-  // hop — see electrical.ts).
+  // Electrical spark/lightning conduction. The current crawls outward through
+  // connected conductors (a visible racing front), attenuating `falloff` per hop
+  // and decaying `decay`/frame. strength scales the injected charge: reach ≈
+  // strength·baseDeposit / falloff, glow ≈ strength·baseDeposit / decay frames.
+  // strength 2.5 = a tight, glowy local surge (~150 cells) — the look that reads
+  // as crackling electricity. Metal carries it ~3x farther than water (water loses
+  // charge 3x faster per hop). Charge is Uint16 so very high strengths don't clip.
   chargeFalloff: 1,
-  chargeStrength: 10,
-  chargeDecay: 6,
+  chargeStrength: 2.5,
+  chargeDecay: 1,
   // Damage per status tick spent in a charged conductor (wet bodies take ~3×).
   shockDamage: 0.2,
 };
@@ -90,6 +89,11 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Catalyst]: { name: 'Aurum Catalyst', friction: 0.55, densityWeight: 0.96, bloomWeight: 0.5 },
   // Hidden ore: a static rock (no bloom — the WHOLE point is it stays dark until lit).
   [Cell.RawOre]: { name: 'Raw Ore', bloomWeight: 0 },
+  // Walk-through ground cover. LOW flammability on purpose: a flame only
+  // occasionally catches a neighbouring blade, so fire creeps/sputters across a
+  // grassy ledge and often fizzles rather than flashing over (no bloom — grass
+  // doesn't self-glow).
+  [Cell.Grass]: { name: 'Grass', flammability: 0.12 },
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };

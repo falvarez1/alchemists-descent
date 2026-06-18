@@ -766,17 +766,21 @@ export class Levels implements LevelsApi {
   }
 
   exitCustomPlaytest(ctx: Ctx): void {
+    ctx.state.playtestSource = null;
     if (this.currentId !== 'custom') {
       this.levels.delete('custom');
       this.preCustomCurrentId = null;
+      resetCombatTransients(ctx);
       return;
     }
     this.levels.delete('custom');
     this.currentId =
       this.preCustomCurrentId && this.levels.has(this.preCustomCurrentId) ? this.preCustomCurrentId : null;
     this.preCustomCurrentId = null;
+    ctx.enemies.length = 0;
+    resetCombatTransients(ctx);
     this.waystoneHeat = [];
-    this.lastEnemiesEmit = ctx.enemies.length;
+    this.lastEnemiesEmit = 0;
   }
 
   exitDisposableRuntime(ctx: Ctx): void {

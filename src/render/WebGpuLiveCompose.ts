@@ -487,7 +487,8 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
       var intensity = 1.0 + (boost - 1.0) * scalar;
       if (charged) {
         base = vec3<f32>(0.2, 0.75, 1.0);
-        intensity = boost * 1.2;
+        // crackle strobe: per-cell, per-frame flicker (same hash family as fire)
+        intensity = boost * 1.2 * (0.3 + flickerRand(vec2<f32>(f32(wx), f32(wy)), 2.3) * 1.1);
       }
       let floorL = 0.06 * vg;
       let selfGlow = select(0.0, 0.45 + scalar * 1.55, scalar > 0.0);
@@ -655,6 +656,7 @@ export class WebGpuLiveCompose {
         this.device.removeEventListener?.('uncapturederror', this.uncapturedErrorHandler);
         this.uncapturedErrorHandler = null;
       }
+      this.releaseGpuResources();
       this.status = {
         productionAvailable: false,
         bridge: 'failed',
@@ -797,16 +799,7 @@ export class WebGpuLiveCompose {
       this.uncapturedErrorHandler = null;
     }
     this.outputTexture.dispose();
-    for (const texture of [
-      this.winTexture,
-      this.lightTexture,
-      this.lutTexture,
-      this.overlayTexture,
-      ...this.backdropTextures.map((entry) => entry.texture),
-    ]) {
-      texture?.destroy();
-    }
-    this.paramBuffer?.destroy();
+    this.releaseGpuResources();
     this.status = {
       ...this.status,
       productionAvailable: false,
@@ -816,6 +809,27 @@ export class WebGpuLiveCompose {
       rawWgslWrite: { ...this.status.rawWgslWrite },
       liveMetrics: this.status.liveMetrics ? { ...this.status.liveMetrics } : null,
     };
+  }
+
+  private releaseGpuResources(): void {
+    for (const texture of [
+      this.winTexture,
+      this.lightTexture,
+      this.lutTexture,
+      this.overlayTexture,
+      ...this.backdropTextures.map((entry) => entry.texture),
+    ]) {
+      texture?.destroy();
+    }
+    this.winTexture = null;
+    this.lightTexture = null;
+    this.lutTexture = null;
+    this.overlayTexture = null;
+    this.backdropTextures = [];
+    this.bindGroup = null;
+    this.pipeline = null;
+    this.paramBuffer?.destroy();
+    this.paramBuffer = null;
   }
 
   private makeStorageInitCompute() {

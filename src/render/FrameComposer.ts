@@ -210,8 +210,7 @@ export class FrameComposer implements PixelSurface {
     // fragment/compute shader; sprites keep drawing through setPx/addPx into
     // the overlay. WebGPU live compose has its own runtime gate because the
     // renderer syncs settings after composition, not before it.
-    const webGpuLiveComposeDisabled = ctx.state.render.backend !== 'webgl' && !ctx.state.render.compose;
-    if (ctx.state.postFx.gpuCompose && !webGpuLiveComposeDisabled && this.target.gpuComposeAvailable) {
+    if (ctx.state.postFx.gpuCompose && this.target.gpuComposeAvailable) {
       try {
         this.overlay = this.target.beginGpuCompose(ctx, this.light, this.layers, lenses, lightRebuilt);
       } catch (error) {
@@ -494,7 +493,8 @@ export class FrameComposer implements PixelSurface {
           r = 0.2;
           g = 0.75;
           b = 1.0;
-          intensity = boostG * 1.2;
+          // crackle strobe: per-cell, per-frame flicker (matches the shaders)
+          intensity = boostG * 1.2 * (0.3 + Math.random() * 1.1);
         }
 
         {

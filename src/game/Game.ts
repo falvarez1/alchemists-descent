@@ -173,7 +173,9 @@ export class Game {
     ctx.simulation = new Simulation();
     ctx.worldgen = new WorldGen();
     ctx.flask = new Flask();
-    ctx.telemetry = new Telemetry();
+    const telemetry = new Telemetry();
+    ctx.telemetry = telemetry;
+    this.disposables.push(telemetry);
     ctx.levels = new Levels(ctx);
     ctx.wands = new WandSystem(ctx);
     ctx.pickups = new Pickups();
@@ -225,18 +227,20 @@ export class Game {
     );
 
     this.hud = new Hud(ctx);
+    this.disposables.push(this.hud);
     this.minimap = new Minimap(ctx);
-    new CardOfferOverlay(ctx);
-    new WaystonePromptOverlay(ctx);
-    new HintTeachOverlay(ctx);
+    this.disposables.push(this.minimap);
+    this.disposables.push(new CardOfferOverlay(ctx));
+    this.disposables.push(new WaystonePromptOverlay(ctx));
+    this.disposables.push(new HintTeachOverlay(ctx));
     // Self-binds the B key; lives for the page lifetime.
     this.disposables.push(new WandBench(ctx));
     // Transitional dev console: typed QA commands + automation adapter.
     this.disposables.push(new ConsoleOverlay(ctx));
     // Top-level runtime inspector for Play and Builder Playtest.
-    new RuntimeInspector(ctx);
+    this.disposables.push(new RuntimeInspector(ctx));
     // Wires the Level Library buttons; lives for the page lifetime.
-    new LevelStore(ctx);
+    this.disposables.push(new LevelStore(ctx));
     // Header PLAY opens the canonical run launcher; Builder playtests bypass it.
     this.disposables.push(new RunLauncher(ctx));
     // The authoring overlay (injects its own DOM + header button).
@@ -269,6 +273,11 @@ export class Game {
     return import('@/builder/Builder')
       .then(({ Builder: BuilderCtor }) => {
         const builder = new BuilderCtor(ctx);
+        if (this.disposed) {
+          builder.dispose();
+          return builder;
+        }
+        this.disposables.push(builder);
         if (import.meta.env.DEV) {
           (ctx as Ctx & { builder?: Builder }).builder = builder;
         }
@@ -349,6 +358,7 @@ export class Game {
       }
     }
     this.disposables.length = 0;
+    this.ctx.events.clear();
     this.perfHud.dispose();
     this.renderer.dispose();
   }
@@ -406,17 +416,26 @@ export class Game {
       const scale = DEATH_SLOWMO_MIN + (1 - DEATH_SLOWMO_MIN) * (1 - t); // MIN -> 1
       stepBudget = Game.STEP_MS / scale;
     }
-    if (this.stepDebt < stepBudget) return; // high-refresh idle rAF: free
+    if (this.stepDebt < stepBudget) {
+      this.renderFrame();
+      return;
+    }
     let ticks = 0;
     while (this.stepDebt >= stepBudget && ticks < 2) {
       this.stepDebt -= stepBudget;
       ticks++;
-      this.tick();
+      this.tick(false);
     }
     if (this.stepDebt >= stepBudget) this.stepDebt = 0; // drop unpayable debt
+    this.renderFrame();
   };
 
-  private tick = (): void => {
+  private tick = (render = true): void => {
+    this.updateFixedTick();
+    if (render) this.renderFrame();
+  };
+
+  private updateFixedTick(): void {
     const ctx = this.ctx;
     const tFrame = performance.now();
     ctx.state.frameCount++;
@@ -472,7 +491,11 @@ export class Game {
       this.perfHud.mark('entities', performance.now() - tEnt);
     }
 
-    // Compose the frame, sync the HUD on even frames, then present.
+    this.perfHud.mark('frame', performance.now() - tFrame);
+  }
+
+  private renderFrame(): void {
+    const ctx = this.ctx;
     const tRender = performance.now();
     this.composer.compose(ctx);
     const tCompose = performance.now();
@@ -487,9 +510,7 @@ export class Game {
     // Dig beam fades after 3 drawn frames (decay moved out of the renderer —
     // approved deviation 7; same cadence as the original).
     if (ctx.fx.digBeam && ctx.fx.digBeam.life > 0) ctx.fx.digBeam.life--;
-
-    this.perfHud.mark('frame', performance.now() - tFrame);
-  };
+  }
 
   /** Build-mode dig/flame streams while the mouse is held (original lines 3250-3262). */
   private updateBuildModeHeldSpells(): void {

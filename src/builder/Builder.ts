@@ -770,6 +770,13 @@ export class Builder {
     if (!detail) return;
     detail.result = this.requestClose();
   };
+  private readonly onBeforeUnload = (e: BeforeUnloadEvent): void => {
+    if (this.isOpen && this.hasUnsavedChanges()) {
+      e.preventDefault();
+    }
+  };
+  private readonly disposers: Array<() => void> = [];
+  private disposed = false;
   private cmdkActiveIndex = 0;
   private cmdkHits: CommandSpec[] = [];
   private isOpen = false;
@@ -1024,10 +1031,12 @@ export class Builder {
     this.wireLayers();
     this.syncLayers();
     window.addEventListener('keydown', this.onKeyDown, true);
+    this.disposers.push(() => window.removeEventListener('keydown', this.onKeyDown, true));
     window.addEventListener(DEV_CONSOLE_STATE_EVENT, this.onDevConsoleState as EventListener);
+    this.disposers.push(() => window.removeEventListener(DEV_CONSOLE_STATE_EVENT, this.onDevConsoleState as EventListener));
     // Entering play (PLAY button) while authoring closes the overlay; the
     // document survives for the next open.
-    ctx.events.on('modeChanged', ({ mode }) => {
+    this.disposers.push(ctx.events.on('modeChanged', ({ mode }) => {
       if (mode === 'play' && this.isOpen) {
         void this.requestClose().then((closed) => {
           if (!closed && this.isOpen) (document.getElementById('mode-build-btn') as HTMLButtonElement | null)?.click();
@@ -1045,61 +1054,59 @@ export class Builder {
         ctx.params.global.ambient = this.prevAmbient;
         this.prevAmbient = null;
       }
-    });
-    ctx.events.on('worldEdited', (edit) => {
+    }));
+    this.disposers.push(ctx.events.on('worldEdited', (edit) => {
       if (!this.isOpen) return;
       this.markTerrainDirty();
       this.status(`${edit.command.toUpperCase()} EDITED ${edit.cells} LIVE CELLS`, true);
-    });
+    }));
     // Sandbox world-shaping buttons reshape the WHOLE world under the open
     // document with no undo. While the Builder is open they must confirm
     // first (capture phase beats the Sandbox handler), and a confirmed
     // reshape marks the terrain dirty for re-capture.
     for (const id of ['btn-caves', 'btn-fortress', 'clear-btn']) {
-      document.getElementById(id)?.addEventListener(
-        'click',
-        (e) => {
-          if (!this.isOpen) return;
-          if (this.allowingSandboxWorldShape) {
-            this.allowingSandboxWorldShape = false;
-            this.markTerrainDirty();
-            return;
-          }
-          const hasWork = this.doc.world !== null || this.cmds.depth > 0 || this.paintDirty;
-          if (this.previewBlocks()) {
-            e.stopImmediatePropagation();
-            e.preventDefault();
-            return;
-          }
-          if (hasWork) {
-            e.stopImmediatePropagation();
-            e.preventDefault();
-            const target = e.currentTarget as HTMLElement | null;
-            void appDialog
-              .confirm(
-                'This reshapes the ENTIRE world under the open document and cannot be undone. ' +
-                  '(RESTORE re-decodes the last captured terrain.) Continue?',
-                { title: 'Reshape World', confirmText: 'Continue', tone: 'danger' },
-              )
-              .then((ok) => {
-                if (!ok) return;
-                this.allowingSandboxWorldShape = true;
-                target?.click();
-              });
-            return;
-          }
+      const target = document.getElementById(id);
+      if (!target) continue;
+      const onSandboxWorldShape = (e: MouseEvent): void => {
+        if (!this.isOpen) return;
+        if (this.allowingSandboxWorldShape) {
+          this.allowingSandboxWorldShape = false;
           this.markTerrainDirty();
-        },
-        true,
-      );
+          return;
+        }
+        const hasWork = this.doc.world !== null || this.cmds.depth > 0 || this.paintDirty;
+        if (this.previewBlocks()) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          return;
+        }
+        if (hasWork) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          const clicked = e.currentTarget as HTMLElement | null;
+          void appDialog
+            .confirm(
+              'This reshapes the ENTIRE world under the open document and cannot be undone. ' +
+                '(RESTORE re-decodes the last captured terrain.) Continue?',
+              { title: 'Reshape World', confirmText: 'Continue', tone: 'danger' },
+            )
+            .then((ok) => {
+              if (!ok) return;
+              this.allowingSandboxWorldShape = true;
+              clicked?.click();
+            });
+          return;
+        }
+        this.markTerrainDirty();
+      };
+      target.addEventListener('click', onSandboxWorldShape, true);
+      this.disposers.push(() => target.removeEventListener('click', onSandboxWorldShape, true));
     }
     // Unsaved authoring work guards the tab close.
-    window.addEventListener('beforeunload', (e) => {
-      if (this.isOpen && this.hasUnsavedChanges()) {
-        e.preventDefault();
-      }
-    });
+    window.addEventListener('beforeunload', this.onBeforeUnload);
+    this.disposers.push(() => window.removeEventListener('beforeunload', this.onBeforeUnload));
     window.addEventListener(BUILDER_REQUEST_CLOSE_EVENT, this.onExternalCloseRequest);
+    this.disposers.push(() => window.removeEventListener(BUILDER_REQUEST_CLOSE_EVENT, this.onExternalCloseRequest));
   }
 
   /* ===================== open / close ===================== */
@@ -1119,6 +1126,7 @@ export class Builder {
     const wasReturningFromPlaytest = this.returningFromPlaytest;
     this.hideOpenIntentModal(false);
     // The Builder rides on build mode; leave the descent first if needed.
+    const leftPlayForDocument = this.ctx.state.mode === 'play' && intent === 'continue-document' && !this.returningFromPlaytest;
     if (this.ctx.state.mode === 'play') {
       (document.getElementById('mode-build-btn') as HTMLButtonElement | null)?.click();
     }
@@ -1141,6 +1149,9 @@ export class Builder {
       resetCombatTransients(this.ctx);
       this.ctx.state.currentBiome = this.doc.biome;
       if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
+      detached = true;
+    } else if (leftPlayForDocument && this.doc.world) {
+      this.applyDocTerrain();
       detached = true;
     }
     this.isOpen = true;
@@ -1256,6 +1267,34 @@ export class Builder {
     if (!this.builderPlaytestActive) this.setPlaytestBanner(false);
     this.modeBtn.classList.remove('active');
     document.body.classList.remove('builder-open');
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.close();
+    this.hideOpenIntentModal(false);
+    this.previewRuntime.stop();
+    this.gallery?.dispose();
+    this.gallery = null;
+    this.backdropPreview?.close();
+    this.backdropPreview = null;
+    this.virtualWorldPanel?.dispose();
+    this.virtualWorldPanel = null;
+    this.sceneEditor?.close();
+    this.sceneEditor = null;
+    window.clearInterval(this.autosaveTimer);
+    window.clearTimeout(this.draftRetryTimer);
+    window.clearTimeout(this.statusTimer);
+    window.clearTimeout(this.decorPreviewTimer);
+    cancelAnimationFrame(this.rafId);
+    this.cancelPanelPointerDrag();
+    this.cancelGizmoDrag(true);
+    for (const dispose of this.disposers.splice(0).reverse()) dispose();
+    this.root.remove();
+    this.modeBtn.remove();
+    document.body.classList.remove('builder-open', 'builder-playtest-active');
+    if ((this.ctx as Ctx & { builder?: Builder }).builder === this) delete (this.ctx as Ctx & { builder?: Builder }).builder;
   }
 
   private async requestClose(): Promise<boolean> {
@@ -7097,11 +7136,11 @@ export class Builder {
       g.chargeFalloff = v;
       this.ctx.events.emit('paramsChanged');
     });
-    this.sliderRow(elec, 'Charge Strength (reach)', g.chargeStrength, 1, 30, 1, (v) => `${v.toFixed(0)}x`, (v) => {
+    this.sliderRow(elec, 'Charge Strength (reach)', g.chargeStrength, 0.5, 5, 0.5, (v) => `${v.toFixed(1)}x`, (v) => {
       g.chargeStrength = v;
       this.ctx.events.emit('paramsChanged');
     });
-    this.sliderRow(elec, 'Charge Decay (duration)', g.chargeDecay, 1, 20, 1, (v) => v.toFixed(0), (v) => {
+    this.sliderRow(elec, 'Charge Decay (duration)', g.chargeDecay, 1, 10, 1, (v) => v.toFixed(0), (v) => {
       g.chargeDecay = v;
       this.ctx.events.emit('paramsChanged');
     });

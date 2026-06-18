@@ -83,7 +83,7 @@ describe('LevelStore sandbox load validation', () => {
         .toBe(false);
       expect(store.applySave({ v: 1, w: 4, h: 4, biome: 'earthen', rle: goodRle, life: [[999, 1]], charge: [] }))
         .toBe(false);
-      expect(store.applySave({ v: 1, w: 4, h: 4, biome: 'earthen', rle: goodRle, life: [], charge: [[0, 300]] }))
+      expect(store.applySave({ v: 1, w: 4, h: 4, biome: 'earthen', rle: goodRle, life: [], charge: [[0, 70000]] }))
         .toBe(false);
 
       expect(snapshotCell(world, i)).toEqual(before);

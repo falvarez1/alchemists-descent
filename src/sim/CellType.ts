@@ -56,6 +56,11 @@ export const Cell = {
   // light sweeps it and the flecks gleam. Dig it (erodeAt) to spill gold. Placed by
   // the mineral-vug fill pass into small cave pockets (world/biomeExtras).
   RawOre: 36,
+  // Walk-through ground cover: blades that stand on dirt/walkable rock and creep
+  // along it (handleGrass), passing the body straight through (isSoftGrowth) but
+  // catching and racing fire like dry brush (thermal). Planted on the walkable
+  // surface by world/surfaceDress.plantGroundCover alongside mushroom tufts.
+  Grass: 37,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
@@ -67,7 +72,7 @@ export type Cell = (typeof Cell)[keyof typeof Cell];
  * stay <= 127. Ids are append-only and top out at 36 today, so there is room
  * for 91 more materials; if id 128 is ever near, the charge bit moves first.
  */
-export const CELL_COUNT = 37;
+export const CELL_COUNT = 38;
 
 /**
  * Classification predicates take plain numbers so values read straight out of
@@ -88,13 +93,20 @@ export function isSolid(t: number): boolean {
     t === Cell.Fungus ||
     t === Cell.Glowshroom ||
     t === Cell.Moss ||
-    t === Cell.RawOre
+    t === Cell.RawOre ||
+    t === Cell.Grass
   );
 }
 
 /** Soft growth occupies the grid visually/sim-wise, but bodies move through it. */
 export function isSoftGrowth(t: number): boolean {
-  return t === Cell.Vines || t === Cell.Moss || t === Cell.Fungus || t === Cell.Glowshroom;
+  return (
+    t === Cell.Vines ||
+    t === Cell.Moss ||
+    t === Cell.Fungus ||
+    t === Cell.Glowshroom ||
+    t === Cell.Grass
+  );
 }
 
 /** Materials that carry electrical charge (chain lightning, sparks).

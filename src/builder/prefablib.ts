@@ -784,7 +784,7 @@ export function sanitizePrefab(
       h,
       rle: p.rle,
       life: sparse(p.life, -32768, 32767),
-      charge: sparse(p.charge, 0, 255),
+      charge: sparse(p.charge, 0, 65535),
       colorOverrides: sparse(p.colorOverrides, 0, 0xffffff),
       objects,
       links,

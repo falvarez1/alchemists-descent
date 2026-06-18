@@ -91,8 +91,14 @@ import type { BiomeId } from '@/core/types';
  *      safe by construction; findability stays clean). fillEnclosedHoles mops up the
  *      remaining sealed pockets. Re-recorded gen-golden + gen-level-golden (vault
  *      unchanged: gilded skips the polish block).
+ * v26: LIVING GROUND COVER — walk-through grass (new Cell.Grass=37) plus sparse
+ *      glowshroom/fungus tufts are planted on moss-crown walk surfaces
+ *      (world/surfaceDress.plantGroundCover, after dressWalkSurface). Real
+ *      soft-growth cells (bodies pass through; they burn/wither/creep on their
+ *      own). Deterministic placement shifts cell types on verdant levels — re-
+ *      recorded gen-golden + gen-level-golden (d8 + vault unchanged: not moss-crown).
  */
-export const GEN_VERSION = 25;
+export const GEN_VERSION = 26;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

@@ -1,7 +1,7 @@
 import { MAX_PARTICLES } from '@/config/constants';
 import type { Ctx } from '@/core/types';
-import { Cell, isGas, isLiquid, isSolid } from '@/sim/CellType';
-import { fireColor, fungusColor, mossColor, packRGB, waterColor } from '@/sim/colors';
+import { Cell, isGas, isLiquid, isSoftGrowth, isSolid } from '@/sim/CellType';
+import { fireColor, fungusColor, grassColor, mossColor, packRGB, waterColor } from '@/sim/colors';
 import { handleViscousLiquid } from '@/sim/elements/liquids';
 import { spawnSmoke } from '@/sim/elements/thermal';
 
@@ -199,6 +199,42 @@ export function handleFungus(ctx: Ctx, x: number, y: number): void {
   }
   w.life[i]--;
   if (w.life[i] <= 0) w.life[i] = -1; // mature: stop spreading, keep glowing
+}
+
+/**
+ * Lawn grass creeps sideways along the floor it stands on, then settles. A blade
+ * lives only where it can root — solid, non-growth ground directly below — so it
+ * carpets the walk surface and stops, never climbing into the air the way vines
+ * do. If the ground beneath it is dug away it withers, so it can't float. lifeGrid:
+ * 0 = fresh blade (charge it), >0 = spreading energy, -1 = settled.
+ */
+export function handleGrass(ctx: Ctx, x: number, y: number): void {
+  const w = ctx.world;
+  const i = w.idx(x, y);
+  const rooted = (sx: number, sy: number): boolean => {
+    const by = sy + 1;
+    if (!w.inBounds(sx, by)) return false;
+    const b = w.types[w.idx(sx, by)];
+    return isSolid(b) && !isSoftGrowth(b);
+  };
+  // Wither if the ground was dug out from under the blade (and nothing grassy holds it up).
+  if (!rooted(x, y) && (!w.inBounds(x, y + 1) || w.types[w.idx(x, y + 1)] !== Cell.Grass)) {
+    if (Math.random() < 0.25) w.clearCellAt(i);
+    return;
+  }
+  if (w.life[i] === 0) w.life[i] = 6 + Math.floor(Math.random() * 9);
+  if (w.life[i] < 0) return;
+  if (Math.random() > 0.05) return; // gentle, grassy pace
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  const nx = x + dir;
+  if (w.inBounds(nx, y) && w.types[w.idx(nx, y)] === Cell.Empty && rooted(nx, y)) {
+    const ni = w.idx(nx, y);
+    w.replaceCellAt(ni, Cell.Grass, grassColor());
+    w.life[ni] = Math.max(2, w.life[i] - 1 - Math.floor(Math.random() * 2));
+    w.moved[ni] = w.movedTick;
+  }
+  w.life[i]--;
+  if (w.life[i] <= 0) w.life[i] = -1;
 }
 
 /** Toxic sludge / healium / teleportium share viscous flow with bespoke quirks. */

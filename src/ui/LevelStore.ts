@@ -62,9 +62,15 @@ function saveLibrary(lib: Record<string, SavedLevel>): boolean {
 }
 
 export class LevelStore {
+  private readonly disposers: Array<() => void> = [];
+
   constructor(private ctx: Ctx) {
     this.wire();
     this.refreshList();
+  }
+
+  dispose(): void {
+    for (const dispose of this.disposers.splice(0)) dispose();
   }
 
   private serialize(): SavedLevel {
@@ -100,7 +106,7 @@ export class LevelStore {
     if (
       typeof save.rle !== 'string' ||
       !isSparsePairs(save.life, w.types.length, -32768, 32767) ||
-      !isSparsePairs(save.charge, w.types.length, 0, 255)
+      !isSparsePairs(save.charge, w.types.length, 0, 65535)
     ) {
       return false;
     }
@@ -133,7 +139,7 @@ export class LevelStore {
   /* ---------------- DOM wiring ---------------- */
 
   private wire(): void {
-    document.getElementById('btn-level-save')?.addEventListener('click', async () => {
+    this.listen('btn-level-save', 'click', async () => {
       const name = await appDialog.prompt('Level name:', 'my-level', {
         title: 'Save Level',
       });
@@ -158,7 +164,7 @@ export class LevelStore {
       this.refreshList();
     });
 
-    document.getElementById('btn-level-load')?.addEventListener('click', async () => {
+    this.listen('btn-level-load', 'click', async () => {
       const select = document.getElementById('level-select') as HTMLSelectElement | null;
       const name = select?.value;
       if (!name) return;
@@ -177,7 +183,7 @@ export class LevelStore {
         await appDialog.alert('That level was saved for a different world size.', 'Load Failed');
     });
 
-    document.getElementById('btn-level-delete')?.addEventListener('click', async () => {
+    this.listen('btn-level-delete', 'click', async () => {
       const select = document.getElementById('level-select') as HTMLSelectElement | null;
       const name = select?.value;
       if (!name) return;
@@ -196,7 +202,7 @@ export class LevelStore {
       this.refreshList();
     });
 
-    document.getElementById('btn-level-export')?.addEventListener('click', () => {
+    this.listen('btn-level-export', 'click', () => {
       const blob = new Blob([JSON.stringify(this.serialize())], {
         type: 'application/json',
       });
@@ -207,7 +213,7 @@ export class LevelStore {
       URL.revokeObjectURL(a.href);
     });
 
-    document.getElementById('level-import')?.addEventListener('change', (e) => {
+    this.listen('level-import', 'change', (e) => {
       const input = e.target as HTMLInputElement;
       const file = input.files?.[0];
       if (!file) return;
@@ -234,13 +240,13 @@ export class LevelStore {
       })();
     });
 
-    document.getElementById('btn-level-playtest')?.addEventListener('click', () => {
+    this.listen('btn-level-playtest', 'click', () => {
       this.ctx.state.playtestSource = 'sandbox';
       this.ctx.levels.playCurrentWorld(this.ctx);
       (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
     });
 
-    document.getElementById('btn-expedition-abandon')?.addEventListener('click', async () => {
+    this.listen('btn-expedition-abandon', 'click', async () => {
       if (!this.ctx.levels.hasSavedExpedition()) {
         this.ctx.events.emit('toast', { text: 'NO SAVED EXPEDITION' });
         return;
@@ -254,6 +260,17 @@ export class LevelStore {
       this.ctx.levels.abandonExpedition();
       this.ctx.events.emit('toast', { text: 'EXPEDITION ABANDONED' });
     });
+  }
+
+  private listen<K extends keyof HTMLElementEventMap>(
+    id: string,
+    type: K,
+    handler: (event: HTMLElementEventMap[K]) => void,
+  ): void {
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.addEventListener(type, handler as EventListener);
+    this.disposers.push(() => target.removeEventListener(type, handler as EventListener));
   }
 
   private refreshList(): void {

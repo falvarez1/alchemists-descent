@@ -15,6 +15,7 @@ import {
   handleCoal,
   handleExoticLiquid,
   handleFungus,
+  handleGrass,
   handleMoss,
   handleSnow,
 } from '@/sim/elements/newMaterials';
@@ -94,9 +95,16 @@ export class Simulation implements SimulationApi {
           type === Cell.Fungus ||
           type === Cell.Glowshroom ||
           type === Cell.Moss ||
-          type === Cell.RawOre
+          type === Cell.RawOre ||
+          type === Cell.Grass
         ) {
-          if (type === Cell.Ice || type === Cell.Vines || type === Cell.Fungus || type === Cell.Moss) {
+          if (
+            type === Cell.Ice ||
+            type === Cell.Vines ||
+            type === Cell.Fungus ||
+            type === Cell.Moss ||
+            type === Cell.Grass
+          ) {
             runSparsePass = true;
           }
           continue;
@@ -166,6 +174,7 @@ export class Simulation implements SimulationApi {
           else if (t2 === Cell.Vines && movedArr[ci] !== tick) handleVines(ctx, x, y);
           else if (t2 === Cell.Fungus && movedArr[ci] !== tick) handleFungus(ctx, x, y);
           else if (t2 === Cell.Moss && movedArr[ci] !== tick) handleMoss(ctx, x, y);
+          else if (t2 === Cell.Grass && movedArr[ci] !== tick) handleGrass(ctx, x, y);
         }
       }
     }

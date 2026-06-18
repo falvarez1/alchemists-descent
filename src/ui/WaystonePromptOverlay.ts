@@ -107,4 +107,10 @@ export class WaystonePromptOverlay {
     if (action === 'equip') request.onEquip();
     else request.onDismiss();
   }
+
+  dispose(): void {
+    this.active = null;
+    this.focusTrap.deactivate({ restoreFocus: false });
+    this.root.remove();
+  }
 }

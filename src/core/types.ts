@@ -1414,6 +1414,7 @@ export interface FlaskApi {
 export interface TelemetryApi {
   count(key: string, n?: number): void;
   all(): Record<string, number>;
+  dispose?(): void;
 }
 
 /* ============================================================

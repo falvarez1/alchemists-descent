@@ -84,10 +84,9 @@ export function setDoorCells(ctx: Ctx, door: Mechanism, open: boolean): void {
           skipped = true;
           continue;
         }
-        world.types[i] = Cell.Metal;
         // rune-tinted metal so sealed doors read as mechanisms, not plain plate
         const rs = 0.85 + hash2(X, Y, 311) * 0.3;
-        world.colors[i] = packRGB(Math.floor(96 * rs), Math.floor(108 * rs), Math.floor(142 * rs));
+        world.replaceCellAt(i, Cell.Metal, packRGB(Math.floor(96 * rs), Math.floor(108 * rs), Math.floor(142 * rs)));
       }
     }
   }
@@ -133,8 +132,7 @@ export function makePlate(
   for (let dx = 0; dx < w; dx++) {
     if (world.inBounds(x + dx, y)) {
       const i = world.idx(x + dx, y);
-      world.types[i] = Cell.Metal;
-      world.colors[i] = packRGB(148, 132, 70);
+      world.replaceCellAt(i, Cell.Metal, packRGB(148, 132, 70));
       body.push([x + dx, y]);
     }
   }
@@ -191,16 +189,14 @@ export function makeBrazier(
   for (let dx = -2; dx <= 2; dx++) {
     if (world.inBounds(x + dx, y)) {
       const i = world.idx(x + dx, y);
-      world.types[i] = Cell.Stone;
-      world.colors[i] = stoneColor();
+      world.replaceCellAt(i, Cell.Stone, stoneColor());
       body.push([x + dx, y]);
     }
   }
   for (const dx of [-2, 2]) {
     if (world.inBounds(x + dx, y - 1)) {
       const i = world.idx(x + dx, y - 1);
-      world.types[i] = Cell.Stone;
-      world.colors[i] = stoneColor();
+      world.replaceCellAt(i, Cell.Stone, stoneColor());
       body.push([x + dx, y - 1]);
     }
   }
@@ -236,8 +232,7 @@ export function makeScale(
   for (let dx = 0; dx < w; dx++) {
     if (world.inBounds(x + dx, y)) {
       const i = world.idx(x + dx, y);
-      world.types[i] = Cell.Metal;
-      world.colors[i] = packRGB(168, 142, 64);
+      world.replaceCellAt(i, Cell.Metal, packRGB(168, 142, 64));
       body.push([x + dx, y]);
     }
   }
@@ -245,8 +240,7 @@ export function makeScale(
     for (let dy = 0; dy <= 2; dy++) {
       if (world.inBounds(x + dx, y - dy)) {
         const i = world.idx(x + dx, y - dy);
-        world.types[i] = Cell.Metal;
-        world.colors[i] = packRGB(148, 126, 58);
+        world.replaceCellAt(i, Cell.Metal, packRGB(148, 126, 58));
         body.push([x + dx, y - dy]);
       }
     }
@@ -307,8 +301,7 @@ export function makeChargeLatch(
   for (let dx = -2; dx <= 2; dx++) {
     if (world.inBounds(x + dx, y)) {
       const i = world.idx(x + dx, y);
-      world.types[i] = Cell.Metal;
-      world.colors[i] = packRGB(104, 116, 132);
+      world.replaceCellAt(i, Cell.Metal, packRGB(104, 116, 132));
       body.push([x + dx, y]);
     }
   }
@@ -403,16 +396,15 @@ export function setValveCells(ctx: Ctx, valve: Mechanism, open: boolean): void {
         continue;
       }
       const i = world.idx(X, Y);
-      world.types[i] = mat;
+      let color: number;
       if (mat === Cell.Metal) {
         // mechanism-tinted metal, like doors — a gate, not plain plate
         const rs = 0.85 + hash2(X, Y, 173) * 0.3;
-        world.colors[i] = packRGB(Math.floor(110 * rs), Math.floor(104 * rs), Math.floor(86 * rs));
+        color = packRGB(Math.floor(110 * rs), Math.floor(104 * rs), Math.floor(86 * rs));
       } else {
-        world.colors[i] = fn ? fn() : EMPTY_COLOR;
+        color = fn ? fn() : EMPTY_COLOR;
       }
-      world.life[i] = 0;
-      world.charge[i] = 0;
+      world.replaceCellAt(i, mat, color);
     }
   }
   valve.closePending = skipped;
@@ -473,10 +465,7 @@ export function makePlug(
         Y = y + dy;
       if (!world.inBounds(X, Y)) continue;
       const i = world.idx(X, Y);
-      world.types[i] = material;
-      world.colors[i] = fn ? fn() : EMPTY_COLOR;
-      world.life[i] = 0;
-      world.charge[i] = 0;
+      world.replaceCellAt(i, material, fn ? fn() : EMPTY_COLOR);
       body.push([X, Y]);
     }
   }
@@ -589,8 +578,7 @@ export function makeCounterweight(
   for (let dx = 0; dx < w; dx++) {
     if (world.inBounds(x + dx, y)) {
       const i = world.idx(x + dx, y);
-      world.types[i] = Cell.Metal;
-      world.colors[i] = packRGB(96, 88, 74);
+      world.replaceCellAt(i, Cell.Metal, packRGB(96, 88, 74));
       body.push([x + dx, y]);
     }
   }
@@ -598,8 +586,7 @@ export function makeCounterweight(
     for (let dy = 0; dy <= 3; dy++) {
       if (world.inBounds(x + dx, y - dy)) {
         const i = world.idx(x + dx, y - dy);
-        world.types[i] = Cell.Metal;
-        world.colors[i] = packRGB(84, 78, 66);
+        world.replaceCellAt(i, Cell.Metal, packRGB(84, 78, 66));
         body.push([x + dx, y - dy]);
       }
     }
@@ -685,8 +672,7 @@ export function makeDispenser(
   const place = (cx: number, cy: number): void => {
     if (!world.inBounds(cx, cy)) return;
     const i = world.idx(cx, cy);
-    world.types[i] = Cell.Metal;
-    world.colors[i] = packRGB(120, 122, 138);
+    world.replaceCellAt(i, Cell.Metal, packRGB(120, 122, 138));
     body.push([cx, cy]);
   };
   for (let d = 0; d <= 4; d++) {
@@ -922,9 +908,8 @@ export class Mechanisms implements MechanismsApi {
             Y = m.y - 1 - Math.floor(Math.random() * 2);
           if (world.inBounds(X, Y) && world.types[world.idx(X, Y)] === Cell.Empty) {
             const i = world.idx(X, Y);
-            world.types[i] = Cell.Fire;
+            world.replaceCellAt(i, Cell.Fire, fireColor());
             world.life[i] = 18 + Math.floor(Math.random() * 22);
-            world.colors[i] = fireColor();
           }
         }
       }
@@ -957,8 +942,7 @@ export class Mechanisms implements MechanismsApi {
           if (!world.inBounds(X, Y)) continue;
           const i = world.idx(X, Y);
           if (world.types[i] === Cell.Metal) {
-            world.types[i] = Cell.Empty;
-            world.colors[i] = EMPTY_COLOR;
+            world.clearCellAt(i);
             if (Math.random() < 0.25) {
               ctx.particles.spawn(
                 X,
@@ -1004,8 +988,7 @@ export class Mechanisms implements MechanismsApi {
         const [dx2, dy2] = cell;
         if (world.inBounds(dx2, dy2) && world.types[world.idx(dx2, dy2)] === Cell.Stone) {
           const i = world.idx(dx2, dy2);
-          world.types[i] = Cell.Empty;
-          world.colors[i] = EMPTY_COLOR;
+          world.clearCellAt(i);
           ctx.particles.spawn(
             dx2,
             dy2,
@@ -1036,9 +1019,8 @@ export class Mechanisms implements MechanismsApi {
           if (!world.inBounds(X, Y)) break;
           const i = world.idx(X, Y);
           if (world.types[i] !== Cell.Empty) continue;
-          world.types[i] = em.cell;
           const fn = COLOR_FN[em.cell];
-          world.colors[i] = fn ? fn() : EMPTY_COLOR;
+          world.replaceCellAt(i, em.cell, fn ? fn() : EMPTY_COLOR);
           if (em.cell === Cell.Fire) world.life[i] = 15 + Math.floor(Math.random() * 30);
           else if (em.cell === Cell.Smoke) world.life[i] = 30 + Math.floor(Math.random() * 40);
         }
@@ -1137,8 +1119,7 @@ export class Mechanisms implements MechanismsApi {
         if (!world.inBounds(X, Y)) continue;
         const i = world.idx(X, Y);
         if (world.types[i] === mat) {
-          world.types[i] = Cell.Empty;
-          world.colors[i] = EMPTY_COLOR;
+          world.clearCellAt(i);
           if (Math.random() < 0.25) {
             ctx.particles.spawn(
               X,
@@ -1248,9 +1229,8 @@ export class Mechanisms implements MechanismsApi {
           if (!world.inBounds(X, Y)) continue;
           const i = world.idx(X, Y);
           if (world.types[i] !== Cell.Empty) continue;
-          world.types[i] = Cell.Fire;
+          world.replaceCellAt(i, Cell.Fire, fireColor());
           world.life[i] = 18 + Math.floor(Math.random() * 24);
-          world.colors[i] = fireColor();
         }
       }
       // also light any flammable body sitting on the target (a crate/barrel the
@@ -1325,8 +1305,7 @@ export class Mechanisms implements MechanismsApi {
         if (!world.inBounds(bx, by)) continue;
         const i = world.idx(bx, by);
         if (world.types[i] !== mat) continue;
-        world.types[i] = Cell.Empty;
-        world.colors[i] = EMPTY_COLOR;
+        world.clearCellAt(i);
         if (Math.random() < 0.3) {
           ctx.particles.spawn(
             bx,

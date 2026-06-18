@@ -96,6 +96,9 @@ export const ashColor = () => {
 };
 export const glowshroomColor = () => packRGB(120 + rand(40), 230 + rand(25), 140 + rand(50));
 export const mossColor = () => packRGB(38 + rand(20), 96 + rand(44), 42 + rand(18));
+// dry lawn grass — yellow-green blades, lighter than moss so a tuft reads against
+// the dressed dirt surface (and warmer, so it visibly catches fire).
+export const grassColor = () => packRGB(96 + rand(40), 160 + rand(40), 52 + rand(28));
 // philosopher's dust: rose-gold grains with the occasional white-hot glint
 export const catalystColor = () =>
   Math.random() < 0.12
@@ -148,4 +151,5 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.Moss]: mossColor,
   [Cell.Catalyst]: catalystColor,
   [Cell.RawOre]: rawOreColor,
+  [Cell.Grass]: grassColor,
 };

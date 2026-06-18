@@ -82,6 +82,7 @@ const WEBGPU_COMPOSE_LIMIT_KEYS = [
 
 type TslUvNode = NonNullable<Parameters<typeof texture>[1]>;
 type TslRgbNode = ReturnType<typeof texture>['rgb'];
+type ToneMappingMode = typeof ACESFilmicToneMapping | typeof NoToneMapping;
 
 function backendName(renderer: WebGPURenderer): 'webgpu' | 'webgl2' | 'unknown' {
   const backend = renderer.backend as unknown as ThreeGpuBackendProbe;
@@ -187,7 +188,9 @@ export class WebGpuRenderBackend implements RendererBackend {
   private readonly renderer: WebGPURenderer;
   private readonly texture: DataTexture;
   private readonly basePipeline: RenderPipeline;
+  private readonly basePipelineNoTone: RenderPipeline;
   private readonly postPipeline: RenderPipeline;
+  private readonly postPipelineNoTone: RenderPipeline;
   private readonly deviceLifecycle = new WebGpuDeviceLifecycle();
   private requestedBackend: RenderSettings['backend'];
   private flags: RenderBackendFeatureFlags;
@@ -203,7 +206,9 @@ export class WebGpuRenderBackend implements RendererBackend {
   private liveComposeInitPromise: Promise<void> | null = null;
   private liveComposeInitFailure: string | null = null;
   private liveComposeBasePipeline: RenderPipeline | null = null;
+  private liveComposeBasePipelineNoTone: RenderPipeline | null = null;
   private liveComposePostPipeline: RenderPipeline | null = null;
+  private liveComposePostPipelineNoTone: RenderPipeline | null = null;
   private liveComposeFrame = false;
   private disposed = false;
   private initGeneration = 0;
@@ -271,8 +276,12 @@ export class WebGpuRenderBackend implements RendererBackend {
 
     this.basePipeline = new RenderPipeline(this.renderer, this.buildBaseOutputNode());
     this.basePipeline.outputColorTransform = false;
+    this.basePipelineNoTone = new RenderPipeline(this.renderer, this.buildBaseOutputNode(NoToneMapping));
+    this.basePipelineNoTone.outputColorTransform = false;
     this.postPipeline = new RenderPipeline(this.renderer, this.buildPostOutputNode());
     this.postPipeline.outputColorTransform = false;
+    this.postPipelineNoTone = new RenderPipeline(this.renderer, this.buildPostOutputNode(NoToneMapping));
+    this.postPipelineNoTone.outputColorTransform = false;
 
     void this.initialize();
   }
@@ -300,13 +309,19 @@ export class WebGpuRenderBackend implements RendererBackend {
     this.disposed = true;
     this.initGeneration++;
     this.basePipeline.dispose();
+    this.basePipelineNoTone.dispose();
     this.postPipeline.dispose();
+    this.postPipelineNoTone.dispose();
     this.composeBridge?.dispose();
     this.composeBridge = null;
     this.liveComposeBasePipeline?.dispose();
     this.liveComposeBasePipeline = null;
+    this.liveComposeBasePipelineNoTone?.dispose();
+    this.liveComposeBasePipelineNoTone = null;
     this.liveComposePostPipeline?.dispose();
     this.liveComposePostPipeline = null;
+    this.liveComposePostPipelineNoTone?.dispose();
+    this.liveComposePostPipelineNoTone = null;
     this.liveCompose?.dispose();
     this.liveCompose = null;
     this.texture.dispose();
@@ -335,13 +350,15 @@ export class WebGpuRenderBackend implements RendererBackend {
   // share these builders rather than maintaining two copies (see buildPostOutputNodeFrom).
   private buildBaseOutputNodeFrom(
     sampleRgb: (sampleUv: TslUvNode) => TslRgbNode,
+    toneMapping: ToneMappingMode = ACESFilmicToneMapping,
   ): ReturnType<typeof renderOutput> {
     const baseColor = Fn(() => vec4(sampleRgb(this.pixelUv()), 1.0))();
-    return renderOutput(baseColor, ACESFilmicToneMapping, SRGBColorSpace);
+    return renderOutput(baseColor, toneMapping, SRGBColorSpace);
   }
 
   private buildPostOutputNodeFrom(
     sampleRgb: (sampleUv: TslUvNode) => TslRgbNode,
+    toneMapping: ToneMappingMode = ACESFilmicToneMapping,
   ): ReturnType<typeof renderOutput> {
     const texel = vec2(1 / VIEW_W, 1 / VIEW_H);
     const brightness = (rgb: TslRgbNode) =>
@@ -398,27 +415,33 @@ export class WebGpuRenderBackend implements RendererBackend {
       return vec4(post, 1.0);
     })();
 
-    return renderOutput(postColor, ACESFilmicToneMapping, SRGBColorSpace);
+    return renderOutput(postColor, toneMapping, SRGBColorSpace);
   }
 
-  private buildBaseOutputNode(): ReturnType<typeof renderOutput> {
-    return this.buildBaseOutputNodeFrom((sampleUv) => texture(this.texture, sampleUv).rgb);
+  private buildBaseOutputNode(toneMapping: ToneMappingMode = ACESFilmicToneMapping): ReturnType<typeof renderOutput> {
+    return this.buildBaseOutputNodeFrom((sampleUv) => texture(this.texture, sampleUv).rgb, toneMapping);
   }
 
   private storageSampleRgb(storageTexture: StorageTexture, sampleUv: TslUvNode) {
     return texture(storageTexture, sampleUv).rgb;
   }
 
-  private buildStorageBaseOutputNode(storageTexture: StorageTexture): ReturnType<typeof renderOutput> {
-    return this.buildBaseOutputNodeFrom((sampleUv) => this.storageSampleRgb(storageTexture, sampleUv));
+  private buildStorageBaseOutputNode(
+    storageTexture: StorageTexture,
+    toneMapping: ToneMappingMode = ACESFilmicToneMapping,
+  ): ReturnType<typeof renderOutput> {
+    return this.buildBaseOutputNodeFrom((sampleUv) => this.storageSampleRgb(storageTexture, sampleUv), toneMapping);
   }
 
-  private buildPostOutputNode(): ReturnType<typeof renderOutput> {
-    return this.buildPostOutputNodeFrom((sampleUv) => texture(this.texture, sampleUv).rgb);
+  private buildPostOutputNode(toneMapping: ToneMappingMode = ACESFilmicToneMapping): ReturnType<typeof renderOutput> {
+    return this.buildPostOutputNodeFrom((sampleUv) => texture(this.texture, sampleUv).rgb, toneMapping);
   }
 
-  private buildStoragePostOutputNode(storageTexture: StorageTexture): ReturnType<typeof renderOutput> {
-    return this.buildPostOutputNodeFrom((sampleUv) => this.storageSampleRgb(storageTexture, sampleUv));
+  private buildStoragePostOutputNode(
+    storageTexture: StorageTexture,
+    toneMapping: ToneMappingMode = ACESFilmicToneMapping,
+  ): ReturnType<typeof renderOutput> {
+    return this.buildPostOutputNodeFrom((sampleUv) => this.storageSampleRgb(storageTexture, sampleUv), toneMapping);
   }
 
   private async ensureLiveComposeDiagnostic(): Promise<void> {
@@ -444,6 +467,9 @@ export class WebGpuRenderBackend implements RendererBackend {
       }
       if (composeStatus.bridge !== 'validated') {
         console.warn('WebGPU live compose diagnostic initialization failed', composeStatus.reason);
+        this.liveComposeInitFailure = composeStatus.reason;
+        liveCompose.dispose();
+        this.liveCompose = null;
         return;
       }
       this.liveComposeBasePipeline = new RenderPipeline(
@@ -451,11 +477,21 @@ export class WebGpuRenderBackend implements RendererBackend {
         this.buildStorageBaseOutputNode(liveCompose.outputTexture),
       );
       this.liveComposeBasePipeline.outputColorTransform = false;
+      this.liveComposeBasePipelineNoTone = new RenderPipeline(
+        this.renderer,
+        this.buildStorageBaseOutputNode(liveCompose.outputTexture, NoToneMapping),
+      );
+      this.liveComposeBasePipelineNoTone.outputColorTransform = false;
       this.liveComposePostPipeline = new RenderPipeline(
         this.renderer,
         this.buildStoragePostOutputNode(liveCompose.outputTexture),
       );
       this.liveComposePostPipeline.outputColorTransform = false;
+      this.liveComposePostPipelineNoTone = new RenderPipeline(
+        this.renderer,
+        this.buildStoragePostOutputNode(liveCompose.outputTexture, NoToneMapping),
+      );
+      this.liveComposePostPipelineNoTone.outputColorTransform = false;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.liveComposeInitFailure = reason;
@@ -464,8 +500,12 @@ export class WebGpuRenderBackend implements RendererBackend {
       this.liveCompose = null;
       this.liveComposeBasePipeline?.dispose();
       this.liveComposeBasePipeline = null;
+      this.liveComposeBasePipelineNoTone?.dispose();
+      this.liveComposeBasePipelineNoTone = null;
       this.liveComposePostPipeline?.dispose();
       this.liveComposePostPipeline = null;
+      this.liveComposePostPipelineNoTone?.dispose();
+      this.liveComposePostPipelineNoTone = null;
     }
   }
 
@@ -548,7 +588,9 @@ export class WebGpuRenderBackend implements RendererBackend {
       this.deviceLifecycle.status().state !== 'lost' &&
       this.liveCompose?.available === true &&
       this.liveComposeBasePipeline !== null &&
-      this.liveComposePostPipeline !== null
+      this.liveComposeBasePipelineNoTone !== null &&
+      this.liveComposePostPipeline !== null &&
+      this.liveComposePostPipelineNoTone !== null
     );
   }
 
@@ -692,12 +734,16 @@ export class WebGpuRenderBackend implements RendererBackend {
     );
 
     const liveComposePipeline =
-      this.liveComposeFrame && this.liveComposeBasePipeline !== null && this.liveComposePostPipeline !== null;
+      this.liveComposeFrame &&
+      this.liveComposeBasePipeline !== null &&
+      this.liveComposeBasePipelineNoTone !== null &&
+      this.liveComposePostPipeline !== null &&
+      this.liveComposePostPipelineNoTone !== null;
     if (liveComposePipeline) {
-      if (post.enabled) this.liveComposePostPipeline!.render();
-      else this.liveComposeBasePipeline!.render();
-    } else if (post.enabled) this.postPipeline.render();
-    else this.basePipeline.render();
+      if (post.enabled) (post.tonemap ? this.liveComposePostPipeline : this.liveComposePostPipelineNoTone)!.render();
+      else (post.tonemap ? this.liveComposeBasePipeline : this.liveComposeBasePipelineNoTone)!.render();
+    } else if (post.enabled) (post.tonemap ? this.postPipeline : this.postPipelineNoTone).render();
+    else (post.tonemap ? this.basePipeline : this.basePipelineNoTone).render();
   }
 
   dispose(): void {
@@ -705,13 +751,19 @@ export class WebGpuRenderBackend implements RendererBackend {
     this.disposed = true;
     this.initGeneration++;
     this.basePipeline.dispose();
+    this.basePipelineNoTone.dispose();
     this.postPipeline.dispose();
+    this.postPipelineNoTone.dispose();
     this.composeBridge?.dispose();
     this.composeBridge = null;
     this.liveComposeBasePipeline?.dispose();
     this.liveComposeBasePipeline = null;
+    this.liveComposeBasePipelineNoTone?.dispose();
+    this.liveComposeBasePipelineNoTone = null;
     this.liveComposePostPipeline?.dispose();
     this.liveComposePostPipeline = null;
+    this.liveComposePostPipelineNoTone?.dispose();
+    this.liveComposePostPipelineNoTone = null;
     this.liveCompose?.dispose();
     this.liveCompose = null;
     this.texture.dispose();

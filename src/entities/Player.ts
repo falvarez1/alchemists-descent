@@ -206,6 +206,8 @@ export class PlayerControl implements PlayerControlApi {
    *  jump stays a (cuttable) ballistic leap rather than spooling the jet, so
    *  releasing early gives a short hop. Counts down; 0 = jet may engage. */
   private jumpRiseFrames = 0;
+  /** Rigid-body footing gets a short grace before jump-cut so launches clear the body. */
+  private jumpCutGraceFrames = 0;
   /** Edge detector for the jump key. */
   private prevJumpHeld = false;
   /** Frames until the player can kick again. */
@@ -285,6 +287,32 @@ export class PlayerControl implements PlayerControlApi {
       if (ctx.physics.cellBlocks(sx, sy)) return r;
     }
     return -1;
+  }
+
+  private rigidBodyHalfExtents(body: RigidBody): [number, number] {
+    const shape = body.shape;
+    if (shape.kind === 'circle') return [shape.radius, shape.radius];
+    const c = Math.abs(Math.cos(body.angle));
+    const s = Math.abs(Math.sin(body.angle));
+    return [shape.halfW * c + shape.halfH * s, shape.halfW * s + shape.halfH * c];
+  }
+
+  private supportedByRigidBody(ctx: Ctx, bodyH: number): boolean {
+    const { player } = ctx;
+    const feetY = player.y;
+    const headY = player.y - bodyH;
+    const left = player.x - PLAYER_HALF_W;
+    const right = player.x + PLAYER_HALF_W;
+    for (const body of ctx.rigidBodies.bodies) {
+      if (body === ctx.rigidBodies.playerCorpse) continue;
+      const [ex, ey] = this.rigidBodyHalfExtents(body);
+      const bL = body.x - ex;
+      const bR = body.x + ex;
+      if (right <= bL || left >= bR) continue;
+      const bT = body.y - ey;
+      if (feetY >= bT - 1 && feetY <= bT + Math.max(2, player.vy + 1) && headY < bT) return true;
+    }
+    return false;
   }
 
   /**
@@ -762,6 +790,7 @@ export class PlayerControl implements PlayerControlApi {
     this.framesSinceGrounded = 99;
     this.jumpBufferFrames = 0;
     this.jumpRiseFrames = 0;
+    this.jumpCutGraceFrames = 0;
     this.prevJumpHeld = false;
     this.kickCooldownT = 0;
     this.swingAX = 0;
@@ -1158,6 +1187,12 @@ export class PlayerControl implements PlayerControlApi {
       : Math.max(0, player.crawlT - 3);
     const bodyH = player.crawling ? PLAYER_CRAWL_H : PLAYER_H;
     const stepUp = player.crawling ? PLAYER_CRAWL_STEP_UP : PLAYER_STEP_UP;
+    const supportedByRigidBody = this.supportedByRigidBody(ctx, bodyH);
+    const supportedByTerrain = !ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1);
+    if (!player.grounded && (supportedByRigidBody || supportedByTerrain)) {
+      player.grounded = true;
+      this.framesSinceGrounded = 0;
+    }
 
     // Sim-sampled statuses (Wave C, pillar 5): the cells touching the body
     // decide what you ARE — wet, oiled, burning, frozen, electrified.
@@ -1569,6 +1604,7 @@ export class PlayerControl implements PlayerControlApi {
           this.framesSinceGrounded = 99; // consumed — no double coyote jumps
           this.jumpBufferFrames = 0;
           this.jumpRiseFrames = lp.jumpHoldWindow; // arm the cuttable ballistic rise
+          this.jumpCutGraceFrames = supportedByRigidBody && !supportedByTerrain ? 4 : 0;
           ctx.audio.jump();
         } else if (player.levit > 0 && player.diveT === 0 && this.jumpRiseFrames <= 0) {
           levitating = true;
@@ -1631,8 +1667,12 @@ export class PlayerControl implements PlayerControlApi {
         this.jumpRiseFrames--;
         if (player.vy >= 0) this.jumpRiseFrames = 0;
         else if (!keys.jump) {
-          player.vy *= lp.jumpCut;
-          this.jumpRiseFrames = 0;
+          if (this.jumpCutGraceFrames > 0) {
+            this.jumpCutGraceFrames--;
+          } else {
+            player.vy *= lp.jumpCut;
+            this.jumpRiseFrames = 0;
+          }
         }
       }
       if (!levitating) this.levitFrames = 0;
@@ -1724,7 +1764,9 @@ export class PlayerControl implements PlayerControlApi {
       // fall onto a foe (that still trades contact damage as before).
       if (player.diveT > 0) this.tryStompEnemy(ctx);
       if (ctx.state.frameCount % 3 === 0) this.glintNearbyOre(ctx); // discovery gleam on lit ore
-      player.grounded = !ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1);
+      player.grounded =
+        !ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1) ||
+        this.supportedByRigidBody(ctx, bodyH);
       if (player.grounded) {
         // jump buffer: a press made just before touchdown fires on the landing frame
         if (this.jumpBufferFrames > 0 && !player.crawling) {
@@ -1734,6 +1776,7 @@ export class PlayerControl implements PlayerControlApi {
           player.stretchT = 6;
           this.jumpBufferFrames = 0;
           this.framesSinceGrounded = 99;
+          this.jumpCutGraceFrames = 0;
           ctx.audio.jump();
         } else {
           this.framesSinceGrounded = 0; // coyote time anchor

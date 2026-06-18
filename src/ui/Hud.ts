@@ -80,59 +80,65 @@ export class Hud {
   private readonly damageVignette = el('damage-vignette');
   private readonly objectiveNode = el('objective');
   private readonly interactionHintNode = el('interaction-hint');
+  private readonly disposers: Array<() => void> = [];
+  private readonly timeouts = new Set<number>();
 
   constructor(private ctx: Ctx) {
     // Treasure-row pixel icons (hud-gold itself rolls toward the score in
     // update() — income you can watch).
+    const goldIconHost = el('gold-chip-icon');
+    goldIconHost.replaceChildren();
     const goldIcon = makeIconCanvas('gold', 2);
-    if (goldIcon) el('gold-chip-icon').appendChild(goldIcon);
+    if (goldIcon) goldIconHost.appendChild(goldIcon);
+    const tomeIconHost = el('cards-chip-icon');
+    tomeIconHost.replaceChildren();
     const tomeIcon = makeIconCanvas('tome', 2);
-    if (tomeIcon) el('cards-chip-icon').appendChild(tomeIcon);
+    if (tomeIcon) tomeIconHost.appendChild(tomeIcon);
     this.buildFlaskBelt();
 
     // Dry fire: the mana bar itself flinches red so the WHY is unmissable.
-    ctx.events.on('dryFire', () => {
+    this.disposers.push(ctx.events.on('dryFire', () => {
       this.dryFlashUntil = this.ctx.state.frameCount + 18;
       el('mana-fill').parentElement?.classList.add('mana-dry');
-    });
+    }));
     // CRAMPED: the crawler wants to stand but the ceiling says no — a small
     // glyph under the meters for as long as the world refuses (CRAWL.md).
-    ctx.events.on('crampedChanged', ({ cramped }) => {
+    this.disposers.push(ctx.events.on('crampedChanged', ({ cramped }) => {
       el('cramped-glyph').classList.toggle('visible', cramped);
-    });
+    }));
 
     // Same language for refused flask verbs: the FLSK track flinches.
-    ctx.events.on('flaskDry', () => {
+    this.disposers.push(ctx.events.on('flaskDry', () => {
       const track = el('flask-fill').parentElement;
       track?.classList.remove('mana-dry');
       void track?.offsetWidth; // restart the one-shot animation
       track?.classList.add('mana-dry');
-      window.setTimeout(() => track?.classList.remove('mana-dry'), 320);
-    });
+      this.setHudTimeout(() => track?.classList.remove('mana-dry'), 320);
+    }));
 
-    ctx.events.on('waveStarted', ({ num }) => {
+    this.disposers.push(ctx.events.on('waveStarted', ({ num }) => {
       el('wave-num').textContent = 'WAVE ' + num;
-    });
+    }));
 
-    ctx.events.on('waveBanner', ({ big, small }) => this.showBanner(big, small));
+    this.disposers.push(ctx.events.on('waveBanner', ({ big, small }) => this.showBanner(big, small)));
 
     // The descent: depth readout + arrival banner whenever a level is entered.
-    ctx.events.on('levelChanged', ({ depth, name }) => {
+    this.disposers.push(ctx.events.on('levelChanged', ({ depth, name }) => {
       el('wave-num').textContent = 'D' + depth;
       this.showBanner('D' + depth + ' — ' + name, 'THE DESCENT CONTINUES');
-    });
+    }));
 
-    ctx.events.on('waystoneLit', () => {
+    this.disposers.push(ctx.events.on('waystoneLit', () => {
       this.showBanner('WAYSTONE LIT', 'CHECKPOINT SET — VITALS RESTORED');
-    });
+    }));
 
-    ctx.events.on('recipeDiscovered', ({ name, bounty }) => {
+    this.disposers.push(ctx.events.on('recipeDiscovered', ({ name, bounty }) => {
       this.showBanner(name + ' BREWED', 'GRIMOIRE UPDATED — +' + bounty + ' oz');
-    });
+    }));
 
     // Wandsmith: a found card announces itself; the bench (B) slots it.
     // The satchel chip flashes so the income lands in the treasure row too.
-    ctx.events.on('cardGranted', ({ name }) => {
+    this.disposers.push(ctx.events.on('cardGranted', ({ name }) => {
       this.showBanner(name + ' ACQUIRED', cardGrantBenchCue(this.ctx));
       this.benchObjectiveUntil = this.ctx.state.frameCount + BENCH_OBJECTIVE_FRAMES;
       this.ctx.events.emit('refugePing');
@@ -141,68 +147,89 @@ export class Hud {
       chip.classList.remove('flash');
       void chip.offsetWidth; // restart the one-shot animation
       chip.classList.add('flash');
-    });
+    }));
 
     // Descent meta layer: the objective line + short center toasts.
-    ctx.events.on('objectiveChanged', ({ text }) => {
+    this.disposers.push(ctx.events.on('objectiveChanged', ({ text }) => {
       this.objectiveBase = text;
       this.renderObjective();
-    });
+    }));
 
     // The Kiln Colossus is slain: roll victory after the explosion lands.
-    ctx.events.on('runComplete', ({ gold }) => {
-      window.setTimeout(() => {
+    this.disposers.push(ctx.events.on('runComplete', ({ gold }) => {
+      this.setHudTimeout(() => {
         el('vic-gold').textContent = String(gold);
         el('victory-overlay').classList.add('visible');
         ctx.state.paused = true;
         ctx.audio.learn();
       }, 1400);
-    });
-    el('vic-return').addEventListener('click', () => window.location.reload());
-    ctx.events.on('toast', ({ text }) => {
+    }));
+    const onVictoryReturn = (): void => window.location.reload();
+    el('vic-return').addEventListener('click', onVictoryReturn);
+    this.disposers.push(() => el('vic-return').removeEventListener('click', onVictoryReturn));
+    this.disposers.push(ctx.events.on('toast', ({ text }) => {
       const stack = el('toast-stack');
       const node = document.createElement('div');
       node.className = 'toast';
       node.textContent = text;
       stack.appendChild(node);
       while (stack.children.length > 4) stack.removeChild(stack.firstChild!);
-      window.setTimeout(() => node.remove(), 2700);
-    });
+      this.setHudTimeout(() => node.remove(), 2700);
+    }));
 
     // The hotbar mirrors the active wand; any loadout change rebuilds it.
-    ctx.events.on('wandChanged', () => this.buildHotbar());
+    this.disposers.push(ctx.events.on('wandChanged', () => this.buildHotbar()));
 
-    ctx.events.on('enemiesLeft', ({ count }) => {
+    this.disposers.push(ctx.events.on('enemiesLeft', ({ count }) => {
       el('enemies-left').textContent = String(count);
-    });
+    }));
 
-    ctx.events.on('playerDied', ({ depth, level, gold }) => {
+    this.disposers.push(ctx.events.on('playerDied', ({ depth, level, gold }) => {
       // Prep the overlay text but DON'T show it yet — the wizard ragdolls first.
       el('go-wave').textContent = 'D' + depth + ' - ' + level.toUpperCase();
       el('go-gold').textContent = String(gold);
-    });
-    ctx.events.on('playerCorpseSettled', () => {
+    }));
+    this.disposers.push(ctx.events.on('playerCorpseSettled', () => {
       // The corpse has come to rest (tombstone is up) — now offer the respawn.
       el('gameover-overlay').classList.add('visible');
-    });
+    }));
 
-    ctx.events.on('playerRespawned', () => {
+    this.disposers.push(ctx.events.on('playerRespawned', () => {
       el('gameover-overlay').classList.remove('visible');
-    });
-    ctx.events.on('playerDeathCleared', () => {
+    }));
+    this.disposers.push(ctx.events.on('playerDeathCleared', () => {
       el('gameover-overlay').classList.remove('visible');
-    });
+    }));
 
-    ctx.events.on('modeChanged', ({ mode }) => {
+    this.disposers.push(ctx.events.on('modeChanged', ({ mode }) => {
       el('mode-build-btn').classList.toggle('active', mode === 'build');
       el('mode-play-btn').classList.toggle('active', mode === 'play');
       el('game-hud').classList.toggle('visible', mode === 'play');
       document.body.classList.toggle('play-active', mode === 'play');
       if (mode !== 'play') el('damage-vignette').style.opacity = '0';
       this.buildHotbar();
-    });
+    }));
 
-    el('respawn-btn').addEventListener('click', () => { ctx.audio.ensure(); ctx.playerCtl.respawn(); });
+    const onRespawn = (): void => { ctx.audio.ensure(); ctx.playerCtl.respawn(); };
+    el('respawn-btn').addEventListener('click', onRespawn);
+    this.disposers.push(() => el('respawn-btn').removeEventListener('click', onRespawn));
+  }
+
+  dispose(): void {
+    for (const dispose of this.disposers.splice(0)) dispose();
+    for (const timeout of this.timeouts) window.clearTimeout(timeout);
+    this.timeouts.clear();
+    el('gold-chip-icon').replaceChildren();
+    el('cards-chip-icon').replaceChildren();
+  }
+
+  private setHudTimeout(callback: () => void, ms: number): number {
+    const id = window.setTimeout(() => {
+      this.timeouts.delete(id);
+      callback();
+    }, ms);
+    this.timeouts.add(id);
+    return id;
   }
 
   private buildFlaskBelt(): void {
@@ -231,7 +258,7 @@ export class Hud {
     el('banner-small').textContent = small;
     const banner = el('wave-banner');
     banner.classList.add('show');
-    setTimeout(() => banner.classList.remove('show'), 2200);
+    this.setHudTimeout(() => banner.classList.remove('show'), 2200);
   }
 
   private renderObjective(): void {

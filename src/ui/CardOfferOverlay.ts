@@ -129,4 +129,11 @@ export class CardOfferOverlay {
     this.focusTrap.deactivate();
     this.ctx.state.paused = this.wasPaused;
   }
+
+  dispose(): void {
+    this.queue.length = 0;
+    this.active = null;
+    this.focusTrap.deactivate({ restoreFocus: false });
+    this.root.remove();
+  }
 }

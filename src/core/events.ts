@@ -119,4 +119,8 @@ export class EventBus {
     for (const h of set) (h as Handler<EventMap[K] | undefined>)(payload[0]);
     return true;
   }
+
+  clear(): void {
+    this.handlers.clear();
+  }
 }

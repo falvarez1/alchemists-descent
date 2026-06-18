@@ -6,6 +6,7 @@ import { COLOR_FN, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { PICKUP_COLOR, POTION_DEFS } from '@/core/pickupDefs';
 import { PopoverHost, type RectLike } from '@/ui/editor/PopoverHost';
 import { fillMaterialPopover } from '@/ui/materialInfo';
+import { resetHeldSpellInputs } from '@/game/transients';
 
 /** Fog color for unexplored map cells (#0a0a10). */
 const UNEXPLORED = packRGB(10, 10, 16);
@@ -702,6 +703,21 @@ export class Minimap {
    * changes when update()/explored advances a redraw, which refreshes it.
    */
   private cachedPois: readonly MinimapPoi[] = [];
+  private readonly disposers: Array<() => void> = [];
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (e.repeat || this.ctx.state.mode !== 'play') return;
+    if (e.code === 'KeyM') {
+      e.preventDefault();
+      e.stopPropagation();
+      this.setVisible(!this.visible);
+      return;
+    }
+    if (e.code === 'Escape' && this.visible) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.setVisible(false);
+    }
+  };
 
   constructor(private ctx: Ctx) {
     this.canvas = el('minimap-canvas') as HTMLCanvasElement;
@@ -721,27 +737,31 @@ export class Minimap {
     }
     this.palette[Cell.Empty] = EXPLORED_AIR;
 
-    window.addEventListener('keydown', (e) => {
-      if (e.code !== 'KeyM' || e.repeat || this.ctx.state.mode !== 'play') return;
-      this.setVisible(!this.visible);
-    });
+    window.addEventListener('keydown', this.onKeyDown, true);
+    this.disposers.push(() => window.removeEventListener('keydown', this.onKeyDown, true));
 
     // The map is a play-mode verb; leaving play always closes it.
-    ctx.events.on('modeChanged', ({ mode }) => {
+    this.disposers.push(ctx.events.on('modeChanged', ({ mode }) => {
       if (mode !== 'play') {
         this.setVisible(false);
         this.hidePoiPopover();
       }
-    });
+    }));
 
     // Key in hand -> the portal dot pings on the corner map for a few
     // seconds: "now go THERE."
-    ctx.events.on('objectiveChanged', ({ text }) => {
+    this.disposers.push(ctx.events.on('objectiveChanged', ({ text }) => {
       if (text === 'REACH THE PORTAL' || text === 'RETURN TO THE PORTAL') this.portalPing = 300;
-    });
-    ctx.events.on('refugePing', () => {
+    }));
+    this.disposers.push(ctx.events.on('refugePing', () => {
       this.refugePing = 300;
-    });
+    }));
+  }
+
+  dispose(): void {
+    this.setVisible(false);
+    this.hidePoiPopover();
+    for (const dispose of this.disposers.splice(0)) dispose();
   }
 
   /** Frames left of the go-to-the-portal ping. */
@@ -760,9 +780,11 @@ export class Minimap {
     // always-on corner panel is unaffected). Restore the prior pause state so it
     // nests correctly under the pause menu.
     if (on) {
+      resetHeldSpellInputs(this.ctx);
       this.wasPaused = this.ctx.state.paused;
       this.ctx.state.paused = true;
     } else {
+      resetHeldSpellInputs(this.ctx);
       this.ctx.state.paused = this.wasPaused;
     }
     if (!on) this.hidePoiPopover();
@@ -804,10 +826,16 @@ export class Minimap {
   }
 
   private wirePoiPopovers(canvas: HTMLCanvasElement): void {
-    canvas.addEventListener('mousemove', (event) => this.showPoiPopover(canvas, event));
-    canvas.addEventListener('mouseleave', () => {
+    const onMouseMove = (event: MouseEvent): void => this.showPoiPopover(canvas, event);
+    const onMouseLeave = (): void => {
       canvas.style.cursor = '';
       this.hidePoiPopover();
+    };
+    canvas.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('mouseleave', onMouseLeave);
+    this.disposers.push(() => {
+      canvas.removeEventListener('mousemove', onMouseMove);
+      canvas.removeEventListener('mouseleave', onMouseLeave);
     });
   }
 

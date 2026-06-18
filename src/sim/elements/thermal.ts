@@ -174,6 +174,11 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.life[ti] = 26; // damp greenery burns short and smoky
         if (Math.random() < 0.7) spawnSmoke(ctx, x, y);
       }
+      if (n === Cell.Grass && Math.random() < ctx.params.materials[Cell.Grass].flammability!) {
+        w.replaceCellAt(ti, Cell.Fire, fireColor());
+        w.life[ti] = 16; // a single blade flares briefly; low flammability keeps the spread a slow sputter
+        if (Math.random() < 0.3) spawnSmoke(ctx, x, y);
+      }
       if (n === Cell.Coal && Math.random() < ctx.params.materials[Cell.Coal].igniteChance!) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration!;

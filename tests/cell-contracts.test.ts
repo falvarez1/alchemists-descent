@@ -74,8 +74,9 @@ describe('cell ABI contracts', () => {
       Moss: 34,
       Catalyst: 35,
       RawOre: 36,
+      Grass: 37,
     });
-    expect(CELL_COUNT).toBe(37);
+    expect(CELL_COUNT).toBe(38);
     expect(Math.max(...Object.values(Cell))).toBeLessThan(128);
   });
 });
