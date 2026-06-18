@@ -2,7 +2,7 @@ import type { BiomeId, Ctx, EnemyKind, InputMode, SpellId } from '@/core/types';
 import type { Cell } from '@/sim/CellType';
 import { WIDTH } from '@/config/constants';
 import { BIOMES } from '@/config/biomes';
-import { GEN_TUNE, GEN_TUNE_DEFAULTS } from '@/config/gen';
+import { GEN_TUNE, GEN_TUNE_DEFAULTS, WORLDGEN_DRESSING_CHANNELS, WORLDGEN_LOOK_FIELDS } from '@/config/gen';
 import { EXTRAS, campaignDressingRecipeForBiome } from '@/world/biomeExtras';
 import { bindSelect } from '@/ui/domBind';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
@@ -196,10 +196,11 @@ export class Toolbar {
     const host = document.getElementById('worldgen-tune');
     if (!host) return;
     host.innerHTML = '';
-    this.worldgenSlider(host, 'Cave size', () => GEN_TUNE.caveScale, (v) => { GEN_TUNE.caveScale = v; }, 0.6, 2.2, 0.05, 2);
-    this.worldgenSlider(host, 'Sink fill width', () => GEN_TUNE.surfacePitWidth, (v) => { GEN_TUNE.surfacePitWidth = v; }, 0, 24, 1, 0);
-    this.worldgenSlider(host, 'Sink fill depth', () => GEN_TUNE.surfacePitDepth, (v) => { GEN_TUNE.surfacePitDepth = v; }, 1, 14, 1, 0);
-    this.worldgenSlider(host, 'Notch passes', () => GEN_TUNE.notchPasses, (v) => { GEN_TUNE.notchPasses = v; }, 0, 6, 1, 0);
+    // Field list + ranges come from the shared WORLDGEN_LOOK_FIELDS descriptor so
+    // this panel and the Builder's worldgen LOOK panel can't drift apart.
+    for (const f of WORLDGEN_LOOK_FIELDS) {
+      this.worldgenSlider(host, f.label, () => GEN_TUNE[f.key], (v) => { GEN_TUNE[f.key] = v; }, f.min, f.max, f.step, f.decimals);
+    }
     // The CURRENT biome's dressing: gold richness (EXTRAS) + the campaign-recipe
     // material densities (the channel material differs per biome — for earthen
     // ore=gold, glow=glowshroom, liquid=water, rubble=moss, vine=vines). Editing
@@ -207,14 +208,7 @@ export class Toolbar {
     const extras = EXTRAS[this.ctx.state.currentBiome] as unknown as Record<string, number | undefined>;
     this.worldgenSlider(host, 'Gold richness', () => extras.goldBonus ?? 1, (v) => { extras.goldBonus = v; }, 0, 3, 0.1, 1);
     const recipe = campaignDressingRecipeForBiome(this.ctx.state.currentBiome) as unknown as Record<string, number>;
-    const dressing: Array<[string, string]> = [
-      ['oreDensity', 'Ore density'],
-      ['glowDensity', 'Glow density'],
-      ['liquidDensity', 'Liquid density'],
-      ['rubbleDensity', 'Rubble/moss density'],
-      ['hangingDensity', 'Vine density'],
-    ];
-    for (const [key, label] of dressing) {
+    for (const [key, label] of WORLDGEN_DRESSING_CHANNELS) {
       if (typeof recipe[key] !== 'number') continue;
       this.worldgenSlider(host, label, () => recipe[key], (v) => { recipe[key] = v; }, 0, 2, 0.02, 2);
     }

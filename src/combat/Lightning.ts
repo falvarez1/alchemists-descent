@@ -29,7 +29,11 @@ export class Lightning implements LightningApi {
   readonly arcs: LightningArc[] = [];
   private readonly enemyIndex = new EnemySpatialIndex();
   private readonly enemyScratch: Ctx['enemies'] = [];
-  private readonly ambientPool: Array<{ x: number; y: number }> = [];
+  // Reused scratch for ambientDischarge's charged-cell scan — parallel x/y
+  // arrays instead of per-cell {x,y} wrappers, so the every-frame crackle pass
+  // allocates nothing here (length is reset, capacity is kept).
+  private readonly ambientPoolX: number[] = [];
+  private readonly ambientPoolY: number[] = [];
 
   constructor(private readonly ctx: Ctx) {}
 
@@ -142,37 +146,48 @@ export class Lightning implements LightningApi {
     const ctx = this.ctx;
     const w = ctx.world;
     const sim = w.simBounds;
-    const pool = this.ambientPool;
-    pool.length = 0;
+    const poolX = this.ambientPoolX;
+    const poolY = this.ambientPoolY;
+    let poolLen = 0;
     for (const ci of w.activeCharges) {
       if (w.charge[ci] <= 0) continue;
       const y = (ci / w.width) | 0;
       const x = ci - y * w.width;
       if (x < sim.x0 || x >= sim.x1 || y < sim.y0 || y >= sim.y1) continue;
-      pool.push({ x: x + 0.5, y: y + 0.5 });
-      if (pool.length >= POOL_CAP) break;
+      poolX[poolLen] = x + 0.5;
+      poolY[poolLen] = y + 0.5;
+      poolLen++;
+      if (poolLen >= POOL_CAP) break;
     }
-    if (pool.length < 2) return;
+    if (poolLen < 2) return;
     const range2 = RANGE * RANGE;
-    const count = Math.min(MAX_ARCS, 1 + (pool.length >> 3));
+    const count = Math.min(MAX_ARCS, 1 + (poolLen >> 3));
     for (let a = 0; a < count; a++) {
-      const p0 = pool[(Math.random() * pool.length) | 0];
+      const i0 = (Math.random() * poolLen) | 0;
+      const p0x = poolX[i0];
+      const p0y = poolY[i0];
       // nearest of a few random candidates, within range — keeps arcs short + local
-      let p1: { x: number; y: number } | null = null;
+      let p1x = 0;
+      let p1y = 0;
+      let found = false;
       let best = range2;
       for (let t = 0; t < 5; t++) {
-        const cand = pool[(Math.random() * pool.length) | 0];
-        const dx = cand.x - p0.x;
-        const dy = cand.y - p0.y;
+        const ic = (Math.random() * poolLen) | 0;
+        const cx = poolX[ic];
+        const cy = poolY[ic];
+        const dx = cx - p0x;
+        const dy = cy - p0y;
         const d = dx * dx + dy * dy;
         if (d > 1 && d < best) {
           best = d;
-          p1 = cand;
+          p1x = cx;
+          p1y = cy;
+          found = true;
         }
       }
-      if (!p1) continue;
+      if (!found) continue;
       this.arcs.push({
-        pts: jaggedArc(p0.x, p0.y, p1.x, p1.y),
+        pts: jaggedArc(p0x, p0y, p1x, p1y),
         life: 2 + ((Math.random() * 3) | 0),
         intensity: 0.3 + Math.random() * 0.3,
       });

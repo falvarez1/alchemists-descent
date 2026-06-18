@@ -1,5 +1,5 @@
 import type { EditorField, Vec2Field } from '@/ui/editor/Fields';
-import { escapeAttr, escapeHtml, fieldRow } from '@/ui/editor/Fields';
+import { escapeAttr, escapeHtml, fieldRow, toKebab } from '@/ui/editor/Fields';
 import { editorSectionHtml } from '@/ui/editor/Section';
 
 export type InspectorTargetScope =
@@ -252,8 +252,4 @@ function attrs(dataset: Record<string, string | number | boolean>): string {
   return Object.entries(dataset)
     .map(([key, value]) => ` data-${toKebab(key)}="${escapeAttr(String(value))}"`)
     .join('');
-}
-
-function toKebab(value: string): string {
-  return value.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
 }

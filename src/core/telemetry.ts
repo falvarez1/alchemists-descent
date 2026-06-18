@@ -15,12 +15,20 @@ export class Telemetry implements TelemetryApi {
   private counters: Record<string, number> = {};
   private dirty = false;
   private lastWrite = performance.now();
+  /** Stored so dispose() can detach it (the ctor adds it as an anonymous arrow). */
+  private readonly onVisibility = (): void => {
+    if (document.visibilityState === 'hidden') this.flush();
+  };
 
   constructor() {
     this.load();
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') this.flush();
-    });
+    document.addEventListener('visibilitychange', this.onVisibility);
+  }
+
+  /** Flush pending counters and remove the visibilitychange listener. */
+  dispose(): void {
+    this.flush();
+    document.removeEventListener('visibilitychange', this.onVisibility);
   }
 
   count(key: string, n = 1): void {

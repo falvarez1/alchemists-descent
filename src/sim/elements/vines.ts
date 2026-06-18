@@ -19,9 +19,11 @@ function hasLocalVineSupport(ctx: Ctx, x: number, y: number): boolean {
   const w = ctx.world;
   const above = y - 1;
   if (above >= 0 && w.types[w.idx(x, above)] === Cell.Vines) return true;
-  for (const [dx, dy] of SUPPORT_OFFSETS) {
-    const sx = x + dx;
-    const sy = y + dy;
+  // Indexed loop over the offset constant — hot per-cell path.
+  for (let k = 0; k < SUPPORT_OFFSETS.length; k++) {
+    const o = SUPPORT_OFFSETS[k];
+    const sx = x + o[0];
+    const sy = y + o[1];
     if (!w.inBounds(sx, sy)) continue;
     if (loadBearingAnchor(w.types[w.idx(sx, sy)])) return true;
   }
@@ -43,9 +45,11 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
   if (energy < 0) return;
 
   // Drink adjacent water: consumed water fuels fresh growth
-  for (const [dx, dy] of SIP_OFFSETS) {
-    const wx = x + dx;
-    const wy = y + dy;
+  // (indexed loop over the offset constant — hot per-cell path).
+  for (let k = 0; k < SIP_OFFSETS.length; k++) {
+    const o = SIP_OFFSETS[k];
+    const wx = x + o[0];
+    const wy = y + o[1];
     if (!w.inBounds(wx, wy) || w.types[w.idx(wx, wy)] !== Cell.Water) continue;
     if (Math.random() < 0.30) {
       const si = w.idx(wx, wy);

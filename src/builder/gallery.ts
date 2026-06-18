@@ -235,6 +235,12 @@ export class Gallery {
   private stub: Ctx;
   private mech: Mechanisms;
   private spriteCache = new Map<string, ResolvedSprite | null>();
+  // Reusable offscreen canvas + ImageData for the cells path — created once and
+  // resized only when the rig's bounds (bw/bh) change, instead of allocating a
+  // fresh canvas/getContext/createImageData every animation frame.
+  private cellCanvas: HTMLCanvasElement | null = null;
+  private cellCtx: CanvasRenderingContext2D | null = null;
+  private cellImage: ImageData | null = null;
 
   constructor(
     host: HTMLElement,
@@ -340,6 +346,19 @@ export class Gallery {
     this.root.style.display = 'none';
     cancelAnimationFrame(this.raf);
     this.rig = null;
+  }
+
+  /**
+   * Tear down the document-level listener the constructor installs (capture
+   * phase, so it must be removed with the same flag) and drop the loop + DOM.
+   * The gallery is normally a long-lived singleton, but without this the
+   * capture-phase keydown handler would leak if the host is ever rebuilt.
+   */
+  dispose(): void {
+    this.close();
+    document.removeEventListener('keydown', this.onKey, true);
+    delete (window as unknown as { __gallery?: Gallery }).__gallery;
+    this.root.remove();
   }
 
   private setMaximized(maximized: boolean): void {
@@ -529,7 +548,21 @@ export class Gallery {
 
       // 1) real cells from the scratch world
       if (rig.cells) {
-        const img = g.createImageData(bw, bh);
+        // Reuse the offscreen canvas/context/ImageData across frames; only
+        // (re)allocate when the rig's pixel bounds change. The buffer must be
+        // re-zeroed each frame so cells that turned Empty (or out-of-bounds
+        // padding) read transparent exactly as a fresh createImageData would.
+        if (!this.cellCanvas || !this.cellCtx) {
+          this.cellCanvas = document.createElement('canvas');
+          this.cellCtx = this.cellCanvas.getContext('2d')!;
+        }
+        if (this.cellCanvas.width !== bw || this.cellCanvas.height !== bh || !this.cellImage) {
+          this.cellCanvas.width = bw;
+          this.cellCanvas.height = bh;
+          this.cellImage = this.cellCtx.createImageData(bw, bh);
+        }
+        const img = this.cellImage;
+        img.data.fill(0);
         for (let y = 0; y < bh; y++) {
           for (let x = 0; x < bw; x++) {
             const wi = this.world.idx(b.x0 + x, b.y0 + y);
@@ -543,11 +576,8 @@ export class Gallery {
             img.data[o + 3] = 255;
           }
         }
-        const off = document.createElement('canvas');
-        off.width = bw;
-        off.height = bh;
-        off.getContext('2d')!.putImageData(img, 0, 0);
-        g.drawImage(off, ox, oy, bw * z, bh * z);
+        this.cellCtx.putImageData(img, 0, 0);
+        g.drawImage(this.cellCanvas, ox, oy, bw * z, bh * z);
       }
 
       // 2) authored-light halos

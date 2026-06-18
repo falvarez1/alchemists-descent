@@ -1,7 +1,7 @@
 import type { CommandRegistry } from '@/ui/editor/CommandRegistry';
 import type { CommandRunResult } from '@/ui/editor/CommandRegistry';
 import type { PopoverPosition, RectLike } from '@/ui/editor/PopoverHost';
-import { placePopover } from '@/ui/editor/PopoverHost';
+import { cursorRect, placePopover } from '@/ui/editor/PopoverHost';
 
 export interface CommandMenuItem {
   id: string;
@@ -32,35 +32,10 @@ export class MenuHost {
     this.root.setAttribute('role', 'menu');
     this.root.style.display = 'none';
     this.portalRoot().appendChild(this.root);
-    doc.addEventListener('keydown', (event) => {
-      if (!this.isOpen()) return;
-      if (event.code === 'Escape') {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        this.hide();
-        return;
-      }
-      if (event.code === 'Tab') {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        this.focusNext(event.shiftKey ? -1 : 1);
-        return;
-      }
-      if (event.code === 'ArrowDown' || event.code === 'ArrowUp') {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        this.focusNext(event.code === 'ArrowDown' ? 1 : -1);
-        return;
-      }
-      if (event.code === 'Enter' || event.code === 'Space') return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }, true);
-    doc.addEventListener('pointerdown', (event) => {
-      if (this.root.style.display === 'none') return;
-      if (event.target instanceof Node && this.root.contains(event.target)) return;
-      this.hide();
-    }, true);
+    // Bound-field handlers (not inline arrows) so dispose() can remove the same
+    // capture-phase document listeners and not leak them. Mirrors PopoverHost.
+    doc.addEventListener('keydown', this.onKeyDown, true);
+    doc.addEventListener('pointerdown', this.onPointerDown, true);
     if (typeof MutationObserver !== 'undefined') {
       this.modalObserver = new MutationObserver(() => {
         if (this.isOpen() && this.modalSurfaceOpen()) this.hide();
@@ -123,6 +98,8 @@ export class MenuHost {
 
   dispose(): void {
     this.modalObserver?.disconnect();
+    this.doc.removeEventListener('keydown', this.onKeyDown, true);
+    this.doc.removeEventListener('pointerdown', this.onPointerDown, true);
     this.root.remove();
   }
 
@@ -148,6 +125,37 @@ export class MenuHost {
   private portalRoot(): HTMLElement {
     return this.doc.fullscreenElement instanceof HTMLElement ? this.doc.fullscreenElement : this.doc.body;
   }
+
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (!this.isOpen()) return;
+    if (event.code === 'Escape') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.hide();
+      return;
+    }
+    if (event.code === 'Tab') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.focusNext(event.shiftKey ? -1 : 1);
+      return;
+    }
+    if (event.code === 'ArrowDown' || event.code === 'ArrowUp') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.focusNext(event.code === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (event.code === 'Enter' || event.code === 'Space') return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private readonly onPointerDown = (event: PointerEvent): void => {
+    if (this.root.style.display === 'none') return;
+    if (event.target instanceof Node && this.root.contains(event.target)) return;
+    this.hide();
+  };
 }
 
 export function commandMenuItems(
@@ -166,8 +174,4 @@ export function commandMenuItems(
       return item;
     })
     .filter((item): item is CommandMenuItem => item !== null);
-}
-
-function cursorRect(cursor: { x: number; y: number }): RectLike {
-  return { left: cursor.x, top: cursor.y, right: cursor.x, bottom: cursor.y, width: 0, height: 0 };
 }

@@ -495,8 +495,8 @@ export class WorldGen implements WorldGenApi {
     waystones: Waystone[],
     cauldron: { x: number; y: number } | null,
   ): void {
-      let wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
-      let cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
+      let wiz = wizardMask({ world: ctx.world, spawn });
+      let cell = reachableMask({ world: ctx.world, spawn });
       const wizNear = (x: number, y: number, r: number): boolean => {
         return wizNearCount(x, y, r) > 0;
       };
@@ -575,12 +575,12 @@ export class WorldGen implements WorldGenApi {
           y: Math.floor(spawn.y) - 4,
         };
         tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP, rescueMinY);
-        wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
-        cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
+        wiz = wizardMask({ world: ctx.world, spawn });
+        cell = reachableMask({ world: ctx.world, spawn });
         if (pass()) return true;
         tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY);
-        wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
-        cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
+        wiz = wizardMask({ world: ctx.world, spawn });
+        cell = reachableMask({ world: ctx.world, spawn });
         return pass();
       };
       const rescued: string[] = [];

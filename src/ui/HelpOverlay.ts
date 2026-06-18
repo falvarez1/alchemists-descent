@@ -11,21 +11,27 @@ export class HelpOverlay {
   private pausedBefore = false;
 
   constructor(private ctx: Ctx) {
-    window.addEventListener('keydown', (e) => {
-      if (e.defaultPrevented) return;
-      if (isRunLauncherOpen() && !this.visible) return;
-      if ((document.getElementById('builder-intent-modal') || document.querySelector('.app-dialog-root')) && !this.visible) return;
-      if (document.body.classList.contains('builder-open') && !this.visible) return;
-      if (e.code === 'KeyH' && !e.repeat && !this.ctx.sanctum.isOpen) {
-        e.preventDefault();
-        e.stopPropagation();
-        this.toggle();
-      } else if (e.code === 'Escape' && this.visible) {
-        e.preventDefault();
-        e.stopPropagation();
-        this.toggle();
-      }
-    });
+    window.addEventListener('keydown', this.onKeyDown);
+  }
+
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (e.defaultPrevented) return;
+    if (isRunLauncherOpen() && !this.visible) return;
+    if ((document.getElementById('builder-intent-modal') || document.querySelector('.app-dialog-root')) && !this.visible) return;
+    if (document.body.classList.contains('builder-open') && !this.visible) return;
+    if (e.code === 'KeyH' && !e.repeat && !this.ctx.sanctum.isOpen) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggle();
+    } else if (e.code === 'Escape' && this.visible) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggle();
+    }
+  };
+
+  dispose(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
   }
 
   private toggle(): void {

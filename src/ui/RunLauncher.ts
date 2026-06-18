@@ -533,26 +533,8 @@ export class RunLauncher {
     this.perkChecks = this.populatePerks();
     document.body.appendChild(this.root);
 
-    document.getElementById('mode-play-btn')?.addEventListener('click', (e) => {
-      if (this.ctx.state.playtestSource !== null || this.builderIsOpen()) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      (e.currentTarget as HTMLElement).blur();
-      this.ctx.audio.ensure();
-      this.open('play-button');
-    }, true);
-    window.addEventListener('run-launcher-request', (event) => {
-      const source = event instanceof CustomEvent && this.isLauncherSource(event.detail?.source)
-        ? event.detail.source
-        : 'play-button';
-      // The Pause menu may reopen the launcher mid-(disposable)-test-run; other sources stay
-      // blocked during any playtest. The Builder owns its own playtest exit, so never here.
-      if (this.builderIsOpen()) return;
-      if (source !== 'pause' && this.ctx.state.playtestSource !== null) return;
-      event.preventDefault();
-      this.ctx.audio.ensure();
-      this.open(source);
-    });
+    document.getElementById('mode-play-btn')?.addEventListener('click', this.onPlayButtonClick, true);
+    window.addEventListener('run-launcher-request', this.onRunLauncherRequest);
 
     this.root.querySelector<HTMLButtonElement>('.run-launcher-close')?.addEventListener('click', () => this.close());
     this.root.addEventListener('click', (e) => {
@@ -622,6 +604,34 @@ export class RunLauncher {
     this.setKitTab(this.activeKitTab);
     this.updateCardVisibility();
     this.sync(false);
+  }
+
+  private readonly onPlayButtonClick = (e: MouseEvent): void => {
+    if (this.ctx.state.playtestSource !== null || this.builderIsOpen()) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    (e.currentTarget as HTMLElement).blur();
+    this.ctx.audio.ensure();
+    this.open('play-button');
+  };
+
+  private readonly onRunLauncherRequest = (event: Event): void => {
+    const source = event instanceof CustomEvent && this.isLauncherSource(event.detail?.source)
+      ? event.detail.source
+      : 'play-button';
+    // The Pause menu may reopen the launcher mid-(disposable)-test-run; other sources stay
+    // blocked during any playtest. The Builder owns its own playtest exit, so never here.
+    if (this.builderIsOpen()) return;
+    if (source !== 'pause' && this.ctx.state.playtestSource !== null) return;
+    event.preventDefault();
+    this.ctx.audio.ensure();
+    this.open(source);
+  };
+
+  dispose(): void {
+    document.getElementById('mode-play-btn')?.removeEventListener('click', this.onPlayButtonClick, true);
+    window.removeEventListener('run-launcher-request', this.onRunLauncherRequest);
+    this.root.remove();
   }
 
   open(source: LauncherSource = 'play-button'): void {

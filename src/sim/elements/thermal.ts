@@ -18,9 +18,12 @@ import { CARDINAL_OFFSETS, IGNITION_OFFSETS as FIRE_REACTION_OFFSETS } from '@/s
 /** EXPORTED for cross-handler use: handleFire melts adjacent ice via this. */
 export function handleIce(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  for (const [dx, dy] of CARDINAL_OFFSETS) {
-    const tx = x + dx;
-    const ty = y + dy;
+  // Indexed loop over the hoisted offset constant: avoids the iterator
+  // protocol + per-element tuple destructuring on this hot per-cell path.
+  for (let k = 0; k < CARDINAL_OFFSETS.length; k++) {
+    const o = CARDINAL_OFFSETS[k];
+    const tx = x + o[0];
+    const ty = y + o[1];
     if (w.inBounds(tx, ty)) {
       const ti = w.idx(tx, ty);
       if (w.types[ti] === Cell.Fire) {
@@ -51,10 +54,11 @@ export function handleIce(ctx: Ctx, x: number, y: number): void {
 export function handleEmber(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const P = ctx.params.materials[Cell.Ember];
-  // React with neighbors
-  for (const [dx, dy] of CARDINAL_OFFSETS) {
-    const nx = x + dx;
-    const ny = y + dy;
+  // React with neighbors (indexed loop over the offset constant — hot path).
+  for (let k = 0; k < CARDINAL_OFFSETS.length; k++) {
+    const o = CARDINAL_OFFSETS[k];
+    const nx = x + o[0];
+    const ny = y + o[1];
     if (!w.inBounds(nx, ny)) continue;
     const ni = w.idx(nx, ny);
     const n = w.types[ni];
@@ -144,9 +148,11 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
     );
   }
 
-  for (const [dx, dy] of FIRE_REACTION_OFFSETS) {
-    const tx = x + dx;
-    const ty = y + dy;
+  // Indexed loop over the offset constant (hottest fire-spread path).
+  for (let k = 0; k < FIRE_REACTION_OFFSETS.length; k++) {
+    const o = FIRE_REACTION_OFFSETS[k];
+    const tx = x + o[0];
+    const ty = y + o[1];
     if (w.inBounds(tx, ty)) {
       const ti = w.idx(tx, ty);
       const n = w.types[ti];
@@ -229,8 +235,10 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.types[ci] = Cell.Steam;
         w.life[ci] = 260;
         w.colors[ci] = steamColor();
-        w.types[ti] = Cell.Empty;
-        w.colors[ti] = EMPTY_COLOR;
+        // Water is a conductor: clear through the World helper so the cell is
+        // removed from activeCharges/colorOverrides, not left as an invisible
+        // Empty cell the sparse charge tracker keeps radiating from.
+        w.clearCellAt(ti);
         return;
       }
     }

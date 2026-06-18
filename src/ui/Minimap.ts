@@ -696,6 +696,12 @@ export class Minimap {
   /** One representative packed 0xRRGGBB per cell type, frozen at construction. */
   private readonly palette: Uint32Array;
   private visible = false;
+  /**
+   * POI list cached from the most recent terrain repaint. The hover hit-test
+   * reuses this instead of rebuilding the whole list per mousemove — it only
+   * changes when update()/explored advances a redraw, which refreshes it.
+   */
+  private cachedPois: readonly MinimapPoi[] = [];
 
   constructor(private ctx: Ctx) {
     this.canvas = el('minimap-canvas') as HTMLCanvasElement;
@@ -806,7 +812,7 @@ export class Minimap {
     }
     const mapX = ((event.clientX - rect.left) / rect.width) * canvas.width;
     const mapY = ((event.clientY - rect.top) / rect.height) * canvas.height;
-    const poi = hitTestMinimapPoi(collectMinimapPois(this.ctx, level), mapX, mapY);
+    const poi = hitTestMinimapPoi(this.cachedPois, mapX, mapY);
     if (poi) {
       canvas.style.cursor = 'help';
       this.popovers.show({
@@ -888,7 +894,7 @@ export class Minimap {
       for (let x = 0; x < MINIMAP_W; x++) {
         const i = x + y * MINIMAP_W;
         let color = UNEXPLORED;
-        if (explored[i] === 1) {
+        if (explored[i] > 0) {
           exploredCount++;
           // Single sample at the 8x8 block center is plenty at this scale.
           const t = world.types[x * 8 + 4 + (y * 8 + 4) * world.width];
@@ -910,7 +916,10 @@ export class Minimap {
     ctx: Ctx,
     level: NonNullable<Ctx['levels']['current']>,
   ): void {
-    for (const poi of collectMinimapPois(ctx, level)) {
+    // Rebuild + cache once per repaint; the hover hit-test reuses this list.
+    const pois = collectMinimapPois(ctx, level);
+    this.cachedPois = pois;
+    for (const poi of pois) {
       if (poi.ping === 'portal' && this.portalPing > 0 && this.portalPing % 16 < 8) {
         g.fillStyle = '#ffffff';
         g.fillRect(poi.mapX - 3, poi.mapY - 3, 7, 7);

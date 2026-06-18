@@ -6,6 +6,14 @@ export type EntityId = number & { readonly [EntityIdBrand]: true };
 export interface EntityPoolOptions {
   /** Dense pool capacity. Omit for an unbounded pool. */
   max?: number;
+  /**
+   * Skip id allocation and the WeakMap/Map side tables. Use for high-churn
+   * pools (e.g. particles) that only ever use add/removeAt/list/full/clear and
+   * never reference entities by EntityId (idOf/get/has/create/remove/removeId/
+   * retain). In this mode add() returns null and the id-keyed lookups always
+   * miss; the dense list and swap-remove stay fully intact.
+   */
+  untracked?: boolean;
 }
 
 let nextEntityId = 1;
@@ -21,9 +29,11 @@ export class EntityPool<T extends object> {
   private readonly ids = new WeakMap<T, EntityId>();
   private readonly slots = new Map<EntityId, number>();
   private readonly max: number;
+  private readonly tracked: boolean;
 
   constructor(options: EntityPoolOptions = {}) {
     this.max = options.max ?? Number.POSITIVE_INFINITY;
+    this.tracked = options.untracked !== true;
   }
 
   get size(): number {
@@ -39,6 +49,12 @@ export class EntityPool<T extends object> {
   }
 
   add(entity: T): EntityId | null {
+    // Untracked pools push straight onto the dense list — no id, no side tables.
+    if (!this.tracked) {
+      if (this.full) return null;
+      this.list.push(entity);
+      return null;
+    }
     const existing = this.ids.get(entity);
     if (existing !== undefined && this.slots.has(existing)) return existing;
     if (this.full) return null;
@@ -95,6 +111,15 @@ export class EntityPool<T extends object> {
   removeAt(index: number): T | undefined {
     if (!Number.isInteger(index) || index < 0 || index >= this.list.length) return undefined;
 
+    // Untracked pools keep no id tables, so swap-remove is just list churn.
+    if (!this.tracked) {
+      const removed = this.list[index];
+      const last = this.list.length - 1;
+      if (index !== last) this.list[index] = this.list[last];
+      this.list.pop();
+      return removed;
+    }
+
     const removed = this.list[index];
     const removedId = this.ids.get(removed);
     const last = this.list.length - 1;
@@ -121,9 +146,12 @@ export class EntityPool<T extends object> {
   }
 
   clear(): void {
-    for (const entity of this.list) this.ids.delete(entity);
+    // Untracked pools have empty side tables, so just drop the list.
+    if (this.tracked) {
+      for (const entity of this.list) this.ids.delete(entity);
+      this.slots.clear();
+    }
     this.list.length = 0;
-    this.slots.clear();
   }
 
 }

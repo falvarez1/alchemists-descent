@@ -238,6 +238,9 @@ export class RigidBodies implements RigidBodiesApi {
     const w = rb.angvel();
     if (!Number.isFinite(w)) rb.setAngvel(0, true);
     else if (Math.abs(w) > MAX_BODY_ANGVEL) rb.setAngvel(Math.sign(w) * MAX_BODY_ANGVEL, true);
+    // A NaN rotation propagates into body.angle → bodyExtents' cos/sin → NaN
+    // extents that silently disable the body's grid collision. Sanitize it too.
+    if (!Number.isFinite(rb.rotation())) rb.setRotation(0, true);
     return true;
   }
 

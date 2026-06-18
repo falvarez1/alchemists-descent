@@ -152,9 +152,11 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
 export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const ci = w.idx(x, y);
-  for (const [dx, dy] of CARDINAL_OFFSETS) {
-    const tx = x + dx;
-    const ty = y + dy;
+  // Indexed loop over the offset constant — hot per-cell path.
+  for (let k = 0; k < CARDINAL_OFFSETS.length; k++) {
+    const o = CARDINAL_OFFSETS[k];
+    const tx = x + o[0];
+    const ty = y + o[1];
     if (w.inBounds(tx, ty)) {
       const ti = w.idx(tx, ty);
       const n = w.types[ti];
@@ -205,9 +207,11 @@ export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
 
 export function handleOil(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  for (const [dx, dy] of IGNITION_OFFSETS) {
-    const tx = x + dx;
-    const ty = y + dy;
+  // Indexed loop over the offset constant — hot per-cell path.
+  for (let k = 0; k < IGNITION_OFFSETS.length; k++) {
+    const o = IGNITION_OFFSETS[k];
+    const tx = x + o[0];
+    const ty = y + o[1];
     if (
       w.inBounds(tx, ty) &&
       (w.types[w.idx(tx, ty)] === Cell.Fire || w.charge[w.idx(tx, ty)] > 0)
@@ -267,9 +271,11 @@ function catalystNeighbor(w: Ctx['world'], x: number, y: number): number {
 
 export function handleAcid(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  for (const [dx, dy] of CARDINAL_OFFSETS) {
-    const tx = x + dx;
-    const ty = y + dy;
+  // Indexed loop over the offset constant — hot per-cell path.
+  for (let k = 0; k < CARDINAL_OFFSETS.length; k++) {
+    const o = CARDINAL_OFFSETS[k];
+    const tx = x + o[0];
+    const ty = y + o[1];
     if (w.inBounds(tx, ty)) {
       const ti = w.idx(tx, ty);
       const n = w.types[ti];
@@ -338,9 +344,11 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
 
 export function handleLava(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  for (const [dx, dy] of CARDINAL_OFFSETS) {
-    const tx = x + dx;
-    const ty = y + dy;
+  // Indexed loop over the offset constant — hot per-cell path.
+  for (let k = 0; k < CARDINAL_OFFSETS.length; k++) {
+    const o = CARDINAL_OFFSETS[k];
+    const tx = x + o[0];
+    const ty = y + o[1];
     if (w.inBounds(tx, ty)) {
       const ti = w.idx(tx, ty);
       const n = w.types[ti];
@@ -352,7 +360,8 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
         const ci = w.idx(x, y);
         const belowT = w.inBounds(x, y + 1) ? w.types[w.idx(x, y + 1)] : Cell.Wall;
         const seated = !(lavaCanPass(belowT) || belowT === Cell.Water); // can't sink -> truly settled
-        if (dy < 0 && seated) {
+        if (o[1] < 0 && seated) {
+          // o[1] is the neighbor's dy: <0 means the water is directly ABOVE the lava.
           // Water resting ON TOP of SEATED lava: chill a THICK obsidian rind DOWN
           // into it so the seal is a real crust, not a faint line. (If the lava
           // can still sink it's boring, not settled — fall through to the fleck.)

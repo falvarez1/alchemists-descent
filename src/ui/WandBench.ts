@@ -132,13 +132,10 @@ export class WandBench {
   private inspectedCard: CardId | null = null;
   private dragSource: BenchDragSource | null = null;
   private collectionFilter: BenchCardFilter = 'all';
+  private refugeWatchTimer: number | null = null;
 
   constructor(private ctx: Ctx) {
-    window.addEventListener('keydown', (e) => {
-      if (e.repeat) return;
-      if (e.code === 'KeyB' && this.ctx.state.mode === 'play') this.toggleFromKey();
-      else if (e.code === 'Escape' && this.visible) this.setVisible(false);
-    });
+    window.addEventListener('keydown', this.onKeyDown);
 
     // The bench is a play-mode verb; leaving play always closes it.
     ctx.events.on('modeChanged', ({ mode }) => {
@@ -152,9 +149,23 @@ export class WandBench {
       }
       this.render();
     });
-    window.setInterval(() => {
+    this.refugeWatchTimer = window.setInterval(() => {
       if (this.visible && !canOpenWandBench(this.ctx)) this.setVisible(false);
     }, 250);
+  }
+
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (e.repeat) return;
+    if (e.code === 'KeyB' && this.ctx.state.mode === 'play') this.toggleFromKey();
+    else if (e.code === 'Escape' && this.visible) this.setVisible(false);
+  };
+
+  dispose(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
+    if (this.refugeWatchTimer !== null) {
+      window.clearInterval(this.refugeWatchTimer);
+      this.refugeWatchTimer = null;
+    }
   }
 
   private setVisible(on: boolean): void {

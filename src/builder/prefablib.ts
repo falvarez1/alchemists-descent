@@ -116,6 +116,7 @@ export function capturePrefab(
   const cells = new Uint8Array(w * h);
   const life: Array<[number, number]> = [];
   const charge: Array<[number, number]> = [];
+  const colorOverrides: Array<[number, number]> = [];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const X = region.x0 + x,
@@ -128,6 +129,9 @@ export function capturePrefab(
         life.push([li, world.life[wi]]);
       }
       if (world.charge[wi] !== 0) charge.push([li, world.charge[wi]]);
+      // Capture override status so a hand-tinted cell round-trips through the
+      // prefab (paste re-registers these via world.colorOverrides.add).
+      if (world.colorOverrides.has(wi)) colorOverrides.push([li, world.colors[wi]]);
     }
   }
 
@@ -180,6 +184,7 @@ export function capturePrefab(
       rle: rleEncode(cells),
       ...(life.length > 0 ? { life } : {}),
       ...(charge.length > 0 ? { charge } : {}),
+      ...(colorOverrides.length > 0 ? { colorOverrides } : {}),
       objects,
       links,
       lights,
@@ -464,10 +469,14 @@ export function pastePrefab(
     world.life[i] = v;
   });
   overlay(p.charge, (i, v) => {
-    world.charge[i] = v;
+    // Route through setChargeAt so pasted charge enters the sparse active-charge
+    // index and actually propagates/decays (a raw charge[i]=v never would).
+    world.setChargeAt(i, v);
   });
   overlay(p.colorOverrides, (i, v) => {
     world.colors[i] = v;
+    // Register the scar so the pasted tint survives the cell's first swap.
+    world.colorOverrides.add(i);
   });
 
   const idMap = new Map<string, string>();

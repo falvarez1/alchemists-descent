@@ -217,10 +217,7 @@ export class Flask implements FlaskApi {
         const i = world.idx(x, y);
         const t = world.types[i];
         if (t !== Cell.Empty && !isGas(t)) continue;
-        world.types[i] = material;
-        world.colors[i] = colorFn();
-        world.life[i] = 0;
-        world.charge[i] = 0;
+        world.replaceCellAt(i, material, colorFn());
         s.count--;
         released++;
       }
@@ -325,10 +322,7 @@ export class Flask implements FlaskApi {
           const i = world.idx(x, y);
           const t = world.types[i];
           if (t !== Cell.Empty && !isGas(t)) continue;
-          world.types[i] = material;
-          world.colors[i] = colorFn();
-          world.life[i] = 0;
-          world.charge[i] = 0;
+          world.replaceCellAt(i, material, colorFn());
           remaining--;
         }
       }

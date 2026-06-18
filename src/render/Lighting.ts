@@ -124,10 +124,11 @@ export class Lighting implements LightField {
       Lb = this.lightB[i];
     }
     if (fx >= 0 && fx < VIEW_W && fy >= 0 && fy < VIEW_H) {
-      // Rescale the baked 0.52 vignette by the live postFx.vignette setting so
-      // sprites/debris track the slider exactly like the terrain compose loop
-      // (FrameComposer) and the GPU shader's uVignette uniform.
-      const vigScale = ctx.state.postFx.vignette / 0.52;
+      // Rescale the baked VIGNETTE_BASE vignette by the live postFx.vignette
+      // setting so sprites/debris track the slider exactly like the terrain
+      // compose loop (FrameComposer) and the GPU shader's uVignette uniform —
+      // same single source of truth that bakes the array above.
+      const vigScale = ctx.state.postFx.vignette / VIGNETTE_BASE;
       vg = 1 - vigScale * (1 - this.vignette[fy * VIEW_W + fx]);
     }
     let f = (AMBIENT + Math.min(2.2, Lr)) * vg;

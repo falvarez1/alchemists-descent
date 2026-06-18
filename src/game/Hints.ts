@@ -112,10 +112,15 @@ export class HintSystem implements HintApi {
     }
 
     // --- the flask (fallback): any siphonable liquid within reach ---
+    // Grid scans MUST use integer cell coords: player.x/y are continuous floats,
+    // and World.idx doesn't floor, so a fractional index reads undefined and the
+    // hint (plus its one-time teach popover) would silently never fire.
     const w = ctx.world;
+    const pcx = Math.floor(px);
+    const pcy = Math.floor(py);
     let liquid: { x: number; y: number; d2: number } | null = null;
-    for (let yy = py - FLASK_SCAN; yy <= py + 2; yy++) {
-      for (let xx = px - FLASK_SCAN; xx <= px + FLASK_SCAN; xx++) {
+    for (let yy = pcy - FLASK_SCAN; yy <= pcy + 2; yy++) {
+      for (let xx = pcx - FLASK_SCAN; xx <= pcx + FLASK_SCAN; xx++) {
         if (!w.inBounds(xx, yy)) continue;
         if (!isLiquid(w.types[w.idx(xx, yy)])) continue;
         const d2 = (xx - px) ** 2 + (yy - py) ** 2;

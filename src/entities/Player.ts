@@ -650,10 +650,17 @@ export class PlayerControl implements PlayerControlApi {
     const bx = Math.floor(ox);
     const by = Math.floor(oy);
     const wr = Math.ceil(windRange);
+    // The fan only opens AHEAD: when its half-angle is under 90° (windCos > 0 —
+    // true for every sane kickArc) gustAt rejects anything behind the origin
+    // plane, so skip that whole rear half-box up front with a cheap dot test on
+    // the cell→origin offset (saves the idx/types reads on ~half the ~65×65 box).
+    // A freak-wide fan (windCos ≤ 0) falls back to the full scan, behavior same.
+    const pruneRear = windCos > 0;
     for (let yy = -wr; yy <= wr && blown < 64; yy++) {
       for (let xx = -wr; xx <= wr && blown < 64; xx++) {
         const cx = bx + xx;
         const cy = by + yy;
+        if (pruneRear && (cx - ox) * dirX + (cy - oy) * dirY <= 0) continue; // strictly behind → gustAt = 0
         if (!world.inBounds(cx, cy)) continue;
         const ci = world.idx(cx, cy);
         const t = world.types[ci];
@@ -893,7 +900,8 @@ export class PlayerControl implements PlayerControlApi {
       for (const dx of [0, -8, 8, -16, 16]) {
         const cx = caveSpawnHint.x + dx;
         for (let y = caveSpawnHint.y; y < Math.min(HEIGHT - 4, caveSpawnHint.y + 38); y++) {
-          if (ctx.physics.entityFree(cx, y, 4, 17) && !ctx.physics.entityFree(cx, y + 1, 4, 1)) {
+          // Hitbox is PLAYER_HALF_W wide × PLAYER_H tall; the y+1 probe is the cell underfoot.
+          if (ctx.physics.entityFree(cx, y, PLAYER_HALF_W, PLAYER_H) && !ctx.physics.entityFree(cx, y + 1, PLAYER_HALF_W, 1)) {
             return { x: cx, y };
           }
         }
@@ -907,7 +915,7 @@ export class PlayerControl implements PlayerControlApi {
     ];
     for (const cx of candidates) {
       for (let y = 18; y < HEIGHT - 4; y++) {
-        if (ctx.physics.entityFree(cx, y, 4, 17) && !ctx.physics.entityFree(cx, y + 1, 4, 1)) {
+        if (ctx.physics.entityFree(cx, y, PLAYER_HALF_W, PLAYER_H) && !ctx.physics.entityFree(cx, y + 1, PLAYER_HALF_W, 1)) {
           return { x: cx, y };
         }
       }
@@ -915,47 +923,13 @@ export class PlayerControl implements PlayerControlApi {
     return { x: Math.floor(WIDTH / 2), y: 20 };
   }
 
-  /** Original: respawnPlayer() — lines 1608-1619; descent rules added in Wave B. */
-  respawn(): void {
-    const ctx = this.ctx;
-    const player = ctx.player;
-    this.clearCorpse(ctx); // remove the death ragdoll + tombstone
-    this.releaseVine(ctx);
-
-    // Descent (Wave B): come back at the last lit waystone (or the level
-    // spawn) with the world UNTOUCHED — enemies, scars, and hostile fire all
-    // persist. The toll already happened: the spilled gold waits where you
-    // fell, guarded by whatever killed you.
-    if (ctx.levels.current) {
-      const rp = ctx.levels.respawnPoint()!;
-      player.x = rp.x;
-      player.y = rp.y;
-      player.vx = 0;
-      player.vy = 0;
-      player.fx = 0;
-      player.fy = 0;
-      player.hp = player.maxHp;
-      player.mana = player.maxMana;
-      player.levit = player.maxLevit;
-      clearElementalStatus(player.status);
-      player.dead = false;
-      player.invuln = 90;
-      player.crawling = false; // waystone arrivals are standing-safe
-      player.crawlT = 0;
-      this.resetClimbState(player);
-      ctx.events.emit('playerRespawned');
-      ctx.telemetry.count('death.goldLost');
-      ctx.particles.burst(rp.x, rp.y - 7, 20, null, () => packRGB(200, 160, 255), 2.7, {
-        glow: 2.2,
-        grav: -0.01,
-      });
-      return;
-    }
-
-    // Legacy arena path (pre-descent / safety fallback)
-    const sp = this.findSpawnPoint();
-    player.x = sp.x;
-    player.y = sp.y;
+  /** The reset shared by both respawn paths: drop the player at (x,y) with full
+   *  vitals, cleared status/climb/crawl, a fresh invuln window, and announce it.
+   *  Each path computes its own spawn point and does its own extra cleanup after. */
+  private resetPlayerAt(x: number, y: number): void {
+    const player = this.ctx.player;
+    player.x = x;
+    player.y = y;
     player.vx = 0;
     player.vy = 0;
     player.fx = 0;
@@ -966,10 +940,36 @@ export class PlayerControl implements PlayerControlApi {
     clearElementalStatus(player.status);
     player.dead = false;
     player.invuln = 90;
-    player.crawling = false;
+    player.crawling = false; // arrivals are standing-safe
     player.crawlT = 0;
     this.resetClimbState(player);
-    ctx.events.emit('playerRespawned');
+    this.ctx.events.emit('playerRespawned');
+  }
+
+  /** Original: respawnPlayer() — lines 1608-1619; descent rules added in Wave B. */
+  respawn(): void {
+    const ctx = this.ctx;
+    this.clearCorpse(ctx); // remove the death ragdoll + tombstone
+    this.releaseVine(ctx);
+
+    // Descent (Wave B): come back at the last lit waystone (or the level
+    // spawn) with the world UNTOUCHED — enemies, scars, and hostile fire all
+    // persist. The toll already happened: the spilled gold waits where you
+    // fell, guarded by whatever killed you.
+    if (ctx.levels.current) {
+      const rp = ctx.levels.respawnPoint()!;
+      this.resetPlayerAt(rp.x, rp.y);
+      ctx.telemetry.count('death.goldLost');
+      ctx.particles.burst(rp.x, rp.y - 7, 20, null, () => packRGB(200, 160, 255), 2.7, {
+        glow: 2.2,
+        grav: -0.01,
+      });
+      return;
+    }
+
+    // Legacy arena path (pre-descent / safety fallback)
+    const sp = this.findSpawnPoint();
+    this.resetPlayerAt(sp.x, sp.y);
     // Clear hostile projectiles and stale charging handles, restart current wave.
     resetCombatTransients(ctx, { projectiles: 'keep-friendly', particles: false });
     ctx.enemies.length = 0;

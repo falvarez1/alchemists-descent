@@ -95,6 +95,34 @@ export class InputManager {
         : null;
     if (canvas) this.attachCanvas(canvas);
   };
+  private readonly handleWindowMouseUp = (): void => this.onMouseUp();
+  private readonly handleKeyDown = (e: KeyboardEvent): void => this.onKeyDown(e);
+  private readonly handleKeyUp = (e: KeyboardEvent): void => this.onKeyUp(e);
+  private readonly handleWindowBlur = (): void => this.clearHeldInput();
+  private readonly handleVisibilityChange = (): void => {
+    if (document.hidden) this.clearHeldInput();
+  };
+  private readonly handleFullscreenChange = (): void => this.onFullscreenChange();
+  private readonly handleRunLauncherStarted = (event: Event): void => {
+    const source = event instanceof CustomEvent ? event.detail?.source : null;
+    if (source === 'fullscreen') void this.enterImmersivePlay();
+  };
+  private readonly handleRunLauncherState = (event: Event): void => {
+    const open = event instanceof CustomEvent ? event.detail?.open : null;
+    if (open === true) this.clearHeldInput();
+  };
+  private readonly handleModeBuildClick = (e: MouseEvent): void => {
+    (e.currentTarget as HTMLElement).blur();
+    this.setMode('build');
+  };
+  private readonly handleModePlayClick = (e: MouseEvent): void => {
+    (e.currentTarget as HTMLElement).blur();
+    void this.handlePlayButtonClick();
+  };
+  private readonly handleImmersivePlayClick = (e: MouseEvent): void => {
+    (e.currentTarget as HTMLElement).blur();
+    void this.enterImmersivePlay();
+  };
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -105,40 +133,44 @@ export class InputManager {
 
     // ===================== Input: Mouse =====================
     this.attachCanvas(canvas);
-    window.addEventListener('mouseup', () => this.onMouseUp());
+    window.addEventListener('mouseup', this.handleWindowMouseUp);
     window.addEventListener('renderer-canvas-changed', this.handleRendererCanvasChanged);
 
     // ===================== Input: Keyboard =====================
-    window.addEventListener('keydown', (e) => this.onKeyDown(e), true);
-    window.addEventListener('keyup', (e) => this.onKeyUp(e), true);
-    window.addEventListener('blur', () => this.clearHeldInput());
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.clearHeldInput();
-    });
-    document.addEventListener('fullscreenchange', () => this.onFullscreenChange());
-    window.addEventListener('run-launcher-started', (event) => {
-      const source = event instanceof CustomEvent ? event.detail?.source : null;
-      if (source === 'fullscreen') void this.enterImmersivePlay();
-    });
-    window.addEventListener('run-launcher-state', (event) => {
-      const open = event instanceof CustomEvent ? event.detail?.open : null;
-      if (open === true) this.clearHeldInput();
-    });
+    window.addEventListener('keydown', this.handleKeyDown, true);
+    window.addEventListener('keyup', this.handleKeyUp, true);
+    window.addEventListener('blur', this.handleWindowBlur);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    document.addEventListener('fullscreenchange', this.handleFullscreenChange);
+    window.addEventListener('run-launcher-started', this.handleRunLauncherStarted);
+    window.addEventListener('run-launcher-state', this.handleRunLauncherState);
 
     // Header mode buttons drive game state directly.
-    document.getElementById('mode-build-btn')?.addEventListener('click', (e) => {
-      (e.currentTarget as HTMLElement).blur();
-      this.setMode('build');
-    });
-    document.getElementById('mode-play-btn')?.addEventListener('click', (e) => {
-      (e.currentTarget as HTMLElement).blur();
-      void this.handlePlayButtonClick();
-    });
-    document.getElementById('immersive-play-btn')?.addEventListener('click', (e) => {
-      (e.currentTarget as HTMLElement).blur();
-      void this.enterImmersivePlay();
-    });
+    document.getElementById('mode-build-btn')?.addEventListener('click', this.handleModeBuildClick);
+    document.getElementById('mode-play-btn')?.addEventListener('click', this.handleModePlayClick);
+    document.getElementById('immersive-play-btn')?.addEventListener('click', this.handleImmersivePlayClick);
     this.syncImmersiveButton();
+  }
+
+  dispose(): void {
+    window.removeEventListener('mouseup', this.handleWindowMouseUp);
+    window.removeEventListener('renderer-canvas-changed', this.handleRendererCanvasChanged);
+    window.removeEventListener('keydown', this.handleKeyDown, true);
+    window.removeEventListener('keyup', this.handleKeyUp, true);
+    window.removeEventListener('blur', this.handleWindowBlur);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    document.removeEventListener('fullscreenchange', this.handleFullscreenChange);
+    window.removeEventListener('run-launcher-started', this.handleRunLauncherStarted);
+    window.removeEventListener('run-launcher-state', this.handleRunLauncherState);
+    document.getElementById('mode-build-btn')?.removeEventListener('click', this.handleModeBuildClick);
+    document.getElementById('mode-play-btn')?.removeEventListener('click', this.handleModePlayClick);
+    document.getElementById('immersive-play-btn')?.removeEventListener('click', this.handleImmersivePlayClick);
+    // Drop the canvas listeners attachCanvas wired on the live canvas.
+    this.canvas.removeEventListener('mousedown', this.handleMouseDown);
+    this.canvas.removeEventListener('mousemove', this.handleMouseMove);
+    this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
+    this.canvas.removeEventListener('wheel', this.handleWheel);
+    this.canvas.dataset.inputAttached = 'false';
   }
 
   private attachCanvas(canvas: HTMLCanvasElement): void {

@@ -559,6 +559,10 @@ export function placeStructures(
     const hx = Math.floor(heartReg.cx);
     const hy = settleY(hx, Math.floor(heartReg.cy));
     pickups.push(makePickup('heart', hx, hy - 2));
+    // Pocket regions are by definition off the main path, so tunnel the heart
+    // to the cave network like every other landmark — otherwise the findability
+    // audit can grade it unreachable.
+    connectToCaves(hx, hy - 4);
   }
 
   // ---- Tome pedestals: 1-2 spell tomes on stone plinths off the main path ----
@@ -1248,29 +1252,48 @@ export function placeStructures(
     // the basin: hollow the tub, then the metal casing (chaos-proof except
     // where the plugs are authored)
     carveRectCells(w, cx - 26, cy + 15, cx + 26, cy + 32);
-    for (let Y = cy + 16; Y <= cy + 33; Y++) {
-      for (const X of [cx - 27, cx + 27]) {
-        const i = w.idx(X, Y);
+    // The basin's hard shell — metal casing sides + floor, the three diggable
+    // stone drain plugs, and the gold-dust tells. Stamped once here, and again
+    // (verbatim) by the sumpRepair pass after the gauge-rescue carve; sharing
+    // one stamper keeps the two paths from drifting. The shaft-digging and the
+    // water-fill are the deliberate divergences and stay OUT of the shell — the
+    // repair must NOT re-dig drains the player has opened, only reseal the casing.
+    // (Writes here and the construction-only shaft below touch disjoint cells, so
+    // calling the shell first leaves the carve output byte-identical.)
+    const stampSumpShell = (): void => {
+      for (let Y = cy + 16; Y <= cy + 33; Y++) {
+        for (const X of [cx - 27, cx + 27]) {
+          const i = w.idx(X, Y);
+          w.types[i] = Cell.Metal;
+          w.colors[i] = packRGB(96, 102, 112);
+        }
+      }
+      for (let X = cx - 27; X <= cx + 27; X++) {
+        const i = w.idx(X, cy + 33);
         w.types[i] = Cell.Metal;
         w.colors[i] = packRGB(96, 102, 112);
       }
-    }
-    for (let X = cx - 27; X <= cx + 27; X++) {
-      const i = w.idx(X, cy + 33);
-      w.types[i] = Cell.Metal;
-      w.colors[i] = packRGB(96, 102, 112);
-    }
+      for (const px of [cx - 16, cx, cx + 16]) {
+        for (let dx = -1; dx <= 1; dx++) {
+          for (const Y of [cy + 33, cy + 34]) {
+            const i = w.idx(px + dx, Y);
+            w.types[i] = Cell.Stone;
+            w.colors[i] = stoneColor();
+          }
+        }
+        // gold dust settled beside the plug: the diggers' tell, underwater
+        for (const gx of [px - 2, px + 2]) {
+          const i = w.idx(gx, cy + 32);
+          w.types[i] = Cell.Gold;
+          w.colors[i] = goldColor();
+        }
+      }
+    };
+    stampSumpShell();
     // three drain plugs through the casing floor, shafts dug until they
     // breach cave air OR flood water below (either way the basin sits
     // uphill — the refuge's bottomless-drain rule, aimed at an ocean)
     for (const px of [cx - 16, cx, cx + 16]) {
-      for (let dx = -1; dx <= 1; dx++) {
-        for (const Y of [cy + 33, cy + 34]) {
-          const i = w.idx(px + dx, Y);
-          w.types[i] = Cell.Stone;
-          w.colors[i] = stoneColor();
-        }
-      }
       let bottom = Math.min(HEIGHT - 8, cy + 35 + 120);
       for (let Y = cy + 38; Y <= cy + 35 + 120 && Y < HEIGHT - 8; Y++) {
         let open = 0;
@@ -1292,12 +1315,6 @@ export function placeStructures(
           w.types[i] = Cell.Empty;
           w.colors[i] = EMPTY_COLOR;
         }
-      }
-      // gold dust settled beside the plug: the diggers' tell, underwater
-      for (const gx of [px - 2, px + 2]) {
-        const i = w.idx(gx, cy + 32);
-        w.types[i] = Cell.Gold;
-        w.colors[i] = goldColor();
       }
     }
     // fill the tub — surface one row below the shore lip, so nothing spills
@@ -1335,33 +1352,12 @@ export function placeStructures(
     // a wandering carve deleted. Shores stay as the rescue left them — a
     // tunnel through a shore is connectivity, not vandalism.
     sumpRepair = (): void => {
-      for (let Y = cy + 16; Y <= cy + 33; Y++) {
-        for (const X of [cx - 27, cx + 27]) {
-          const i = w.idx(X, Y);
-          w.types[i] = Cell.Metal;
-          w.colors[i] = packRGB(96, 102, 112);
-        }
-      }
-      for (let X = cx - 27; X <= cx + 27; X++) {
-        const i = w.idx(X, cy + 33);
-        w.types[i] = Cell.Metal;
-        w.colors[i] = packRGB(96, 102, 112);
-      }
-      // ...and the plugs overwrite their slots back to diggable stone
-      for (const px of [cx - 16, cx, cx + 16]) {
-        for (let dx = -1; dx <= 1; dx++) {
-          for (const Y of [cy + 33, cy + 34]) {
-            const i = w.idx(px + dx, Y);
-            w.types[i] = Cell.Stone;
-            w.colors[i] = stoneColor();
-          }
-        }
-        for (const gx of [px - 2, px + 2]) {
-          const i = w.idx(gx, cy + 32);
-          w.types[i] = Cell.Gold;
-          w.colors[i] = goldColor();
-        }
-      }
+      // Reseal the casing, plug slots, and gold tells (the shell stamper);
+      // the rescue's stone-eating tunnels never re-dig the drains, so the
+      // construction-only shaft loop is deliberately NOT replayed here.
+      stampSumpShell();
+      // ...then refill whatever water a wandering carve deleted. Fixed tint
+      // (no rng jitter) — the repair runs after generation's rng stream closes.
       for (let X = cx - 26; X <= cx + 26; X++) {
         for (let Y = cy + 18; Y <= cy + 32; Y++) {
           const i = w.idx(X, Y);

@@ -266,7 +266,9 @@ export function instantiateObjects(
     } else if (o.kind === 'pickup') {
       const kind = (o.params.kind as PickupKind) ?? 'goldpile';
       sink.pickups.push(
-        makePickup(kind, o.x + originX, o.y + originY, {
+        // Use the precomputed integer origin (ox/oy) like every sibling object,
+        // not the raw float o.x/o.y, so pickups land on integer cell coords.
+        makePickup(kind, ox, oy, {
           amount: typeof o.params.amount === 'number' ? o.params.amount : undefined,
           card: fixedCardParam(o.params.card),
           potion: fixedPotionParam(o.params.potion),

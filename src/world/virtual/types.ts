@@ -250,6 +250,11 @@ export interface VirtualGenerationParams {
   surfacePitWidth?: number;
   surfacePitDepth?: number;
   notchPasses?: number;
+  /** Fill small ENCLOSED air pockets with cave rock — mostly stone/coal, ~16%
+   *  hidden RawOre (dark until lit), a rare crystal geode (parity with the legacy
+   *  fillMineralVugs). Only halo-bounded enclosed pockets are touched, never the
+   *  traversable caves. Undefined = on. */
+  mineralVugs?: boolean;
 }
 
 export interface VirtualChunkMeta {

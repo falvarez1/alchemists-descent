@@ -92,6 +92,7 @@ function generateVirtualChunkNormalized(def: VirtualWorldDef, cx: number, cy: nu
   fillSurfacePitsScratch(def, scratch);
   dressSurfaceTerrain(def, scratch, biomeAt);
   dressBiomeFeatures(def, scratch, biomeAt);
+  fillMineralVugsScratch(def, scratch, biomeAt);
   sealOuterBorder(def, scratch);
 
   const types = new Uint8Array(size * size);
@@ -1165,6 +1166,12 @@ function materialColor(def: VirtualWorldDef, biome: VirtualBiomeId, material: nu
     case Cell.Stone:
       base = packRGB(82, 80, 84);
       break;
+    case Cell.RawOre:
+      // Dark gold-flecked rock — stays near-black until the player's light sweeps
+      // it (RawOre is intentionally NOT in the Lighting emissive set). The faint
+      // warm tint is the only tell in lit areas.
+      base = packRGB(48, 41, 30);
+      break;
     default:
       base = (def.materialProfile.palettes[biome] ?? def.materialProfile.palettes.earthen).accent;
   }
@@ -1622,6 +1629,42 @@ function fillSurfacePitsScratch(def: VirtualWorldDef, scratch: Scratch): void {
         const biome = biomeIdFromIndex(biomeAtWorld(def.map, wx, wy, def.biomeChunkSize));
         scratch.colors[i] = terrainColor(def, biome, wx, wy, 0.5);
       }
+    }
+  }
+}
+
+/** Hidden-ore / mineral vugs — the chunked-gen analog of the legacy
+ *  fillMineralVugs. The chunked organic smoothing leaves almost no enclosed AIR
+ *  pockets (unlike the legacy swiss-cheese caves), so instead of filling air we
+ *  EMBED small clusters of cave rock directly into the wall mass: mostly
+ *  stone/coal, ~16% RawOre (dark until the player's light sweeps it), a rare
+ *  crystal geode. paintTerrainEllipse only overwrites SOLID cells, so the ore
+ *  stays buried — you have to dig it out. Coordinate-deterministic on a
+ *  world-anchored grid (same pattern as dressMaterialPockets), so it's
+ *  cross-chunk-seamless and chunk-size-stable for free. */
+function fillMineralVugsScratch(
+  def: VirtualWorldDef,
+  scratch: Scratch,
+  biomeAt: (x: number, y: number) => VirtualBiomeId,
+): void {
+  if (def.generation.mineralVugs === false) return;
+  const spacing = 70;
+  const reach = 24;
+  const gx0 = Math.floor((scratch.originX - reach) / spacing);
+  const gy0 = Math.floor((scratch.originY - reach) / spacing);
+  const gx1 = Math.ceil((scratch.originX + scratch.size + reach) / spacing);
+  const gy1 = Math.ceil((scratch.originY + scratch.size + reach) / spacing);
+  for (let gy = gy0; gy <= gy1; gy++) {
+    for (let gx = gx0; gx <= gx1; gx++) {
+      // ~45% of grid cells host a buried cluster.
+      if (unitHash2i(def.seed ^ 0x7a3c1b9f, gx, gy) > 0.45) continue;
+      const wx = Math.floor((gx + 0.2 + unitHash2i(def.seed ^ 0x53c1a7f3, gx, gy) * 0.6) * spacing);
+      const wy = Math.floor((gy + 0.2 + unitHash2i(def.seed ^ 0x9d2f41bb, gx, gy) * 0.6) * spacing);
+      const roll = unitHash2i(def.seed ^ 0x1ce4b27d, gx, gy);
+      const mat = roll < 0.58 ? Cell.Stone : roll < 0.8 ? Cell.Coal : roll < 0.96 ? Cell.RawOre : Cell.Crystal;
+      const rx = 2.5 + unitHash2i(def.seed ^ 0x4cd41233, gx, gy) * 3.5;
+      const ry = 2 + unitHash2i(def.seed ^ 0xb07a6f19, gx, gy) * 3;
+      paintTerrainEllipse(def, scratch, biomeAt, wx, wy, rx, ry, mat);
     }
   }
 }

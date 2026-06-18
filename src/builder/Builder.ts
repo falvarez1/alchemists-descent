@@ -1,7 +1,7 @@
 import type { AuthoredLight, BiomeId, Ctx, GeneratedScenePlacement, LevelDef, PlayerState, WandRuntimeSnapshot } from '@/core/types';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { BIOMES as BIOME_DEFS } from '@/config/biomes';
-import { GEN, GEN_TUNE, GEN_TUNE_DEFAULTS, defaultSkeletonSpec } from '@/config/gen';
+import { GEN, GEN_TUNE, GEN_TUNE_DEFAULTS, WORLDGEN_DRESSING_CHANNELS, WORLDGEN_LOOK_FIELDS, defaultSkeletonSpec } from '@/config/gen';
 import type { SkeletonSpec } from '@/config/gen';
 import { EXTRAS, campaignDressingRecipeForBiome } from '@/world/biomeExtras';
 import { createDefaultPostFxSettings, createDefaultWandLightSettings, GLOBAL_PARAM_DEFAULTS, MATERIAL_PARAM_DEFAULTS, PLAYER_TUNING_DEFAULTS } from '@/config/params';
@@ -776,6 +776,17 @@ export class Builder {
   private returningFromPlaytest = false;
   private documentRevision = 0;
   private savedDocumentRevision = 0;
+  // Per-frame id->record lookups for the marker/link/canvas draw, rebuilt only
+  // when the document actually changes. Keyed on BOTH documentRevision AND the
+  // doc reference: a load/new swaps this.doc without bumping the revision
+  // (replaceDocument calls markDocumentSaved, not markDocumentChanged), so the
+  // counter alone would hand back a stale map for the new document's ids.
+  private idMapsDoc: EditorDocument | null = null;
+  private idMapsRev = -1;
+  private objByIdCache = new Map<string, EditorObject>();
+  private lightByIdCache = new Map<string, EditorLight>();
+  /** Reused active-overlay set — repopulated in place to avoid a per-frame alloc. */
+  private activeOverlaysScratch = new Set<BuilderOverlayId>();
   /** Live world has terrain edits the document hasn't captured yet. */
   private paintDirty = false;
 
@@ -4958,6 +4969,22 @@ export class Builder {
     return { x: ux * rect.width, y: uy * rect.height };
   }
 
+  /**
+   * worldToScreen for callers that consume the result IMMEDIATELY and never
+   * hold two projections live at once — writes into a shared scratch to skip
+   * the per-call object. (The toScreen callback can't share scratch: overlay
+   * draws keep two projected points alive, so aliasing would corrupt them.)
+   */
+  private w2sScratch = { x: 0, y: 0 };
+  private worldToScreenInto(wx: number, wy: number, rect: DOMRect): { x: number; y: number } {
+    const cam = this.ctx.camera;
+    const ux = ((wx - cam.renderX) / VIEW_W - 0.5) * cam.zoom + 0.5;
+    const uy = ((wy - cam.renderY) / VIEW_H - 0.5) * cam.zoom + 0.5;
+    this.w2sScratch.x = ux * rect.width;
+    this.w2sScratch.y = uy * rect.height;
+    return this.w2sScratch;
+  }
+
   private projectedGizmoHandles(rect: DOMRect): ProjectedGizmoHandle[] {
     if (this.tool !== 'select') return [];
     const handles: GizmoHandle[] = [];
@@ -7128,18 +7155,20 @@ export class Builder {
   private buildWorldgenLookSection(host: HTMLElement): void {
     const t = GEN_TUNE;
     const sec = this.worldSection(host, 'WORLDGEN LOOK');
-    this.numberRow(sec, 'Cave size', t.caveScale, 0.6, 2.2, 0.05, (v) => v.toFixed(2), (v) => { t.caveScale = v; });
-    this.numberRow(sec, 'Sink fill width', t.surfacePitWidth, 0, 24, 1, (v) => String(Math.round(v)), (v) => { t.surfacePitWidth = Math.round(v); });
-    this.numberRow(sec, 'Sink fill depth', t.surfacePitDepth, 1, 14, 1, (v) => String(Math.round(v)), (v) => { t.surfacePitDepth = Math.round(v); });
-    this.numberRow(sec, 'Notch passes', t.notchPasses, 0, 6, 1, (v) => String(Math.round(v)), (v) => { t.notchPasses = Math.round(v); });
+    // Field list + ranges come from the shared WORLDGEN_LOOK_FIELDS descriptor so
+    // this panel and the Sandbox (Toolbar) worldgen panel can't drift apart.
+    for (const f of WORLDGEN_LOOK_FIELDS) {
+      const isInt = f.decimals === 0;
+      this.numberRow(
+        sec, f.label, t[f.key], f.min, f.max, f.step,
+        (v) => (isInt ? String(Math.round(v)) : v.toFixed(f.decimals)),
+        (v) => { t[f.key] = isInt ? Math.round(v) : v; },
+      );
+    }
     const extras = EXTRAS[this.doc.biome] as unknown as Record<string, number | undefined>;
     this.numberRow(sec, 'Gold richness', extras.goldBonus ?? 1, 0, 3, 0.1, (v) => v.toFixed(1), (v) => { extras.goldBonus = v; });
     const recipe = campaignDressingRecipeForBiome(this.doc.biome) as unknown as Record<string, number>;
-    const dressing: Array<[string, string]> = [
-      ['oreDensity', 'Ore density'], ['glowDensity', 'Glow density'], ['liquidDensity', 'Liquid density'],
-      ['rubbleDensity', 'Rubble/moss density'], ['hangingDensity', 'Vine density'],
-    ];
-    for (const [key, label] of dressing) {
+    for (const [key, label] of WORLDGEN_DRESSING_CHANNELS) {
       if (typeof recipe[key] !== 'number') continue;
       this.numberRow(sec, label, recipe[key], 0, 2, 0.02, (v) => v.toFixed(2), (v) => { recipe[key] = v; });
     }
@@ -9716,6 +9745,22 @@ export class Builder {
 
   /* ===================== per-frame: markers + canvas ===================== */
 
+  /**
+   * Refresh the id->record lookup maps iff the document changed since last
+   * build. Object/light add/remove/edit all route through the command stack
+   * (markDocumentChanged → documentRevision++); a whole-document swap keeps the
+   * old revision number, so we also fence on the doc reference identity.
+   */
+  private ensureIdMaps(): void {
+    if (this.idMapsDoc === this.doc && this.idMapsRev === this.documentRevision) return;
+    this.idMapsDoc = this.doc;
+    this.idMapsRev = this.documentRevision;
+    this.objByIdCache.clear();
+    for (const o of this.doc.objects) this.objByIdCache.set(o.id, o);
+    this.lightByIdCache.clear();
+    for (const l of this.doc.lights) this.lightByIdCache.set(l.id, l);
+  }
+
   private matRowText = '';
 
   private loop = (): void => {
@@ -9782,11 +9827,11 @@ export class Builder {
     this.drawMinimap();
 
     // resolve ids once per frame instead of an Array.find per marker/link —
-    // the marker loop and link-wire draw are both O(visible) against these maps
-    const objById = new Map<string, EditorObject>();
-    for (const o of this.doc.objects) objById.set(o.id, o);
-    const lightById = new Map<string, EditorLight>();
-    for (const l of this.doc.lights) lightById.set(l.id, l);
+    // the marker loop and link-wire draw are both O(visible) against these maps.
+    // The maps themselves rebuild only when the document changes (see ensureIdMaps).
+    this.ensureIdMaps();
+    const objById = this.objByIdCache;
+    const lightById = this.lightByIdCache;
 
     // markers glue to world positions (sized kinds anchor at footprint center)
     for (const [id, el] of this.markers) {
@@ -9803,7 +9848,7 @@ export class Builder {
           ay = (f.y0 + f.y1) / 2;
         }
       }
-      const p = this.worldToScreen(ax, ay, rect);
+      const p = this.worldToScreenInto(ax, ay, rect);
       el.style.left = p.x.toFixed(1) + 'px';
       el.style.top = p.y.toFixed(1) + 'px';
       el.style.display =
@@ -9845,8 +9890,15 @@ export class Builder {
       });
     }
 
-    // registered overlays (under object previews and editor gizmos)
-    const activeOverlays = new Set(BUILDER_OVERLAY_IDS.filter((id) => this.workspaceLayout.overlayVisibility[id]));
+    // registered overlays (under object previews and editor gizmos).
+    // Repopulate the reused set in place — overlayVisibility is reassigned from
+    // many sites, so we recompute membership each frame (the id list is tiny)
+    // but into a persistent container to drop the per-frame Set + filter alloc.
+    const activeOverlays = this.activeOverlaysScratch;
+    activeOverlays.clear();
+    for (const id of BUILDER_OVERLAY_IDS) {
+      if (this.workspaceLayout.overlayVisibility[id]) activeOverlays.add(id);
+    }
     if (activeOverlays.size > 0) {
       if (this.validationDirty) this.currentValidationIssues({ captureTerrain: false });
       drawBuilderOverlays(

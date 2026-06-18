@@ -517,10 +517,9 @@ export class WandSystem implements WandsApi {
           if (!world.inBounds(X, Y)) continue;
           const ci = world.idx(X, Y);
           if (isLiquid(world.types[ci])) {
-            world.types[ci] = Cell.Glass;
-            world.colors[ci] = glassColor();
-            world.life[ci] = 0;
-            world.charge[ci] = 0;
+            // Liquids can be charged conductors; replaceCellAt clears the sparse
+            // charge index/override instead of leaving a stale activeCharges entry.
+            world.replaceCellAt(ci, Cell.Glass, glassColor());
           }
         }
       }

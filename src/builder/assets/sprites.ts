@@ -106,15 +106,17 @@ export interface ParsedAseprite {
   tags: SpriteTag[];
 }
 
+/** A real pixel rect is finite and non-negative — NaN/Infinity/negative
+ *  values pass `typeof === 'number'` but compose into silently-blank frames,
+ *  so reject them here (the caller turns null into a designer-readable throw).
+ *  Sheet/sourceSize bounds are enforced downstream in sliceSheet. */
+function isRectNumber(n: unknown): n is number {
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0;
+}
+
 function asRect(v: unknown): AseRect | null {
   const r = v as AseRect;
-  if (
-    !r ||
-    typeof r.x !== 'number' ||
-    typeof r.y !== 'number' ||
-    typeof r.w !== 'number' ||
-    typeof r.h !== 'number'
-  ) {
+  if (!r || !isRectNumber(r.x) || !isRectNumber(r.y) || !isRectNumber(r.w) || !isRectNumber(r.h)) {
     return null;
   }
   return r;

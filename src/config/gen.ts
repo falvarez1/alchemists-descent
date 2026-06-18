@@ -60,8 +60,13 @@ import type { BiomeId } from '@/core/types';
  *      puzzle actually appears; gauge-rescue tunnels can reach a target above
  *      row 26; a secret connector that never reaches open space no longer leaves
  *      an undiscoverable sealed chamber with a misleading tell.
+ * v21: the heart container now calls connectToCaves like every other landmark,
+ *      so a pocket-placed heart can no longer be unreachable. This carves a
+ *      tunnel during placeStructures, changing the full-level cell output (the
+ *      bare-cave gen-golden hashes are still UNCHANGED); gen-level-golden was
+ *      re-recorded. Resume retires mismatched saves.
  */
-export const GEN_VERSION = 20;
+export const GEN_VERSION = 21;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox
@@ -91,6 +96,37 @@ export const GEN_TUNE = {
 
 /** Frozen shipped baseline — the Sandbox worldgen "reset" restores it. */
 export const GEN_TUNE_DEFAULTS: Readonly<typeof GEN_TUNE> = Object.freeze({ ...GEN_TUNE });
+
+/**
+ * Worldgen LOOK slider metadata shared by the Sandbox (Toolbar) and Builder
+ * panels — ONE source of truth for the field list, ranges, and the per-biome
+ * dressing channels so the two hand-built panels can't drift apart. Each panel
+ * still owns its own row-rendering primitive; only the metadata is shared.
+ * `decimals: 0` marks an integer field.
+ */
+export const WORLDGEN_LOOK_FIELDS: ReadonlyArray<{
+  key: 'caveScale' | 'surfacePitWidth' | 'surfacePitDepth' | 'notchPasses';
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  decimals: number;
+}> = [
+  { key: 'caveScale', label: 'Cave size', min: 0.6, max: 2.2, step: 0.05, decimals: 2 },
+  { key: 'surfacePitWidth', label: 'Sink fill width', min: 0, max: 24, step: 1, decimals: 0 },
+  { key: 'surfacePitDepth', label: 'Sink fill depth', min: 1, max: 14, step: 1, decimals: 0 },
+  { key: 'notchPasses', label: 'Notch passes', min: 0, max: 6, step: 1, decimals: 0 },
+];
+
+/** Per-biome campaign-dressing density channels (recipe key -> slider label),
+ *  shared by both worldgen LOOK panels; each is a 0..2 density. */
+export const WORLDGEN_DRESSING_CHANNELS: ReadonlyArray<readonly [string, string]> = [
+  ['oreDensity', 'Ore density'],
+  ['glowDensity', 'Glow density'],
+  ['liquidDensity', 'Liquid density'],
+  ['rubbleDensity', 'Rubble/moss density'],
+  ['hangingDensity', 'Vine density'],
+];
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)

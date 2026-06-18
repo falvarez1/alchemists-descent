@@ -77,14 +77,16 @@ function levelTypeHash(def: LevelDef, seed: number): string {
   return fnv1a(ctx.world.types);
 }
 
-// Re-recorded for GEN_VERSION 20 (review fixes: uniform brazier roll, rescue
-// minY, secret dead-end guard — all post-generateCaves).
+// Re-recorded for GEN_VERSION 21 (review fix: the heart container now tunnels
+// to the cave network via connectToCaves like every other landmark, so pocket-
+// placed hearts can no longer be unreachable — this carves cells, changing the
+// post-structures cell output for every level that places a heart).
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '8cfc5f49' },
-  { id: 'd4', seed: 1337, hash: '8ab83226' },
-  { id: 'd8', seed: 1337, hash: '5d6db21d' },
-  { id: 'vault', seed: 1337, hash: 'd0cf02bb' },
-  { id: 'd2', seed: 42, hash: 'c716603d' },
+  { id: 'd1', seed: 1337, hash: '11f7e2cc' },
+  { id: 'd4', seed: 1337, hash: 'd8788a72' },
+  { id: 'd8', seed: 1337, hash: '0e38ceef' },
+  { id: 'vault', seed: 1337, hash: 'e2b0c188' },
+  { id: 'd2', seed: 42, hash: 'b8a1ed3f' },
 ];
 
 describe('full generateLevel golden hashes', () => {

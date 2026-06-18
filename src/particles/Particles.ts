@@ -14,7 +14,10 @@ const BLOOD_SETTLE = 0.3;
  * updateFlyingParticles (noita-sandbox.html lines 649-716).
  */
 export class Particles implements ParticlesApi {
-  private readonly pool = new EntityPool<FlyingParticle>({ max: MAX_PARTICLES });
+  // Highest-churn pool in the game; it only ever uses add/removeAt/list/full/
+  // clear and never references particles by EntityId, so run it untracked to
+  // skip the per-spawn id allocation + WeakMap/Map bookkeeping.
+  private readonly pool = new EntityPool<FlyingParticle>({ max: MAX_PARTICLES, untracked: true });
   private readonly free: FlyingParticle[] = [];
   readonly list = this.pool.list;
 

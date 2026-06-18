@@ -1643,7 +1643,7 @@ export class Levels implements LevelsApi {
       ? { x: pristine.portal.x, y: pristine.portal.y, open: blob.portalOpen }
       : null;
 
-    return makeLevelRuntime({
+    const runtime = makeLevelRuntime({
       def,
       world,
       enemies: ctx.enemies.slice(),
@@ -1676,6 +1676,25 @@ export class Levels implements LevelsApi {
       ...(pristine.spellLab ? { spellLab: pristine.spellLab } : {}),
       ...(pristine.vaultArch ? { vaultArch: pristine.vaultArch } : {}),
     });
+
+    // A door/valve saved MID-retraction comes back with state=1 (open) but its
+    // transient dissolve queue was dropped on save, so the partially-cleared
+    // Metal in the restored RLE would stay stuck forever. Finish the retraction:
+    // an open gate must have no Metal left in its footprint.
+    for (const m of runtime.mechanisms) {
+      if (m.state !== 1 || (m.kind !== 'door' && m.kind !== 'valve')) continue;
+      for (let dy = 0; dy < m.h; dy++) {
+        for (let dx = 0; dx < m.w; dx++) {
+          const X = m.x + dx,
+            Y = m.y + dy;
+          if (!world.inBounds(X, Y)) continue;
+          const i = world.idx(X, Y);
+          if (world.types[i] === Cell.Metal) world.clearCellAt(i);
+        }
+      }
+    }
+
+    return runtime;
   }
 
   /** Respawn anchor: last lit waystone in the current level, else level spawn. */
@@ -1684,8 +1703,11 @@ export class Levels implements LevelsApi {
     if (!runtime) return null;
     const order = this.litOrder.get(runtime.def.id);
     if (order && order.length > 0) {
+      // litOrder is restored verbatim from the save blob while waystones are
+      // regenerated from seed; a stale/desynced index must fall through to the
+      // level spawn instead of dereferencing undefined and crashing respawn.
       const ws = runtime.waystones[order[order.length - 1]];
-      return { x: ws.x, y: ws.y - 2 };
+      if (ws) return { x: ws.x, y: ws.y - 2 };
     }
     return { x: runtime.spawn.x, y: runtime.spawn.y };
   }

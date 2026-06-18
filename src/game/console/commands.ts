@@ -157,7 +157,11 @@ function parseTargetFlag(args: string[]): { args: string[]; target?: ConsoleTarg
   return { args: out, target };
 }
 
-function resolveTarget(ctx: Ctx, args: string[], command: string): TargetedArgs {
+// The write path (resolveTarget) and the read path (resolveReadTarget) share the
+// same flag parse, default-target inference, and most rejection branches; only the
+// builder-document message and the sandbox guard genuinely diverge by mode. Folding
+// the shared body here keeps each user-facing message defined in exactly one place.
+function resolveTargetForMode(ctx: Ctx, args: string[], command: string, mode: 'read' | 'write'): TargetedArgs {
   const parsed = parseTargetFlag(args);
   if (parsed.error) return { ok: false, result: parsed.error };
 
@@ -172,52 +176,87 @@ function resolveTarget(ctx: Ctx, args: string[], command: string): TargetedArgs 
     if (builderOpen) {
       return {
         ok: false,
-        result: result(
-          false,
-          `${command} needs an explicit target while Builder Author is open: ${TARGETS.join(', ')}`,
-          {
-            code: 'target-ambiguous',
-            command,
-            targets: TARGETS,
-            builderOpen: true,
-          },
-        ),
+        result: result(false, `${command} needs an explicit target while Builder Author is open: ${TARGETS.join(', ')}`, {
+          code: 'target-ambiguous',
+          command,
+          targets: TARGETS,
+          builderOpen: true,
+        }),
       };
     }
     target = ctx.state.mode === 'play' ? (builderPlaytestActive ? 'builder-playtest' : 'expedition') : 'sandbox';
   }
 
   if (target === 'builder-document') {
+    // Writes are blocked (no undo bridge); reads have no document adapter yet.
     return {
       ok: false,
-      result: result(
-        false,
-        `${command} cannot mutate builder-document through raw ctx.world writes; use Builder commands/undo when that bridge exists.`,
-        { code: 'target-blocked', command, target },
-      ),
+      result: mode === 'write'
+        ? result(
+            false,
+            `${command} cannot mutate builder-document through raw ctx.world writes; use Builder commands/undo when that bridge exists.`,
+            { code: 'target-blocked', command, target },
+          )
+        : result(false, `${command} cannot inspect builder-document yet; no Builder command/document adapter is registered.`, {
+            code: 'target-unavailable',
+            command,
+            target,
+          }),
     };
   }
   if (target === 'builder-live-preview') {
+    // Same code/data, but the verb tracks the mode ("target" vs "inspect").
     return {
       ok: false,
-      result: result(false, `${command} cannot target builder-live-preview yet; the workspace live preview runtime does not exist.`, {
+      result: result(false, `${command} cannot ${mode === 'write' ? 'target' : 'inspect'} builder-live-preview yet; the workspace live preview runtime does not exist.`, {
         code: 'target-unavailable',
         command,
         target,
       }),
     };
   }
-  if (target === 'sandbox' && (ctx.state.mode !== 'build' || builderOpen)) {
-    return {
-      ok: false,
-      result: result(false, `${command} target sandbox requires Sandbox with Builder closed.`, {
-        code: 'target-inactive',
-        command,
-        target,
-        mode: ctx.state.mode,
-        builderOpen,
-      }),
-    };
+  if (target === 'sandbox') {
+    if (mode === 'write') {
+      // Sandbox writes need Build mode with Builder closed (one combined guard).
+      if (ctx.state.mode !== 'build' || builderOpen) {
+        return {
+          ok: false,
+          result: result(false, `${command} target sandbox requires Sandbox with Builder closed.`, {
+            code: 'target-inactive',
+            command,
+            target,
+            mode: ctx.state.mode,
+            builderOpen,
+          }),
+        };
+      }
+    } else {
+      // Reads reject Builder-open and non-Build separately for distinct messages.
+      if (builderOpen) {
+        return {
+          ok: false,
+          result: result(false, `${command} cannot inspect sandbox while Builder Author is open; Builder needs a document/live-preview read adapter.`, {
+            code: 'target-blocked',
+            command,
+            target,
+            reason: 'builder-open',
+            builderOpen: true,
+          }),
+        };
+      }
+      if (ctx.state.mode !== 'build') {
+        return {
+          ok: false,
+          result: result(false, `${command} target sandbox requires Sandbox/Builder Author mode.`, {
+            code: 'target-inactive',
+            command,
+            target,
+            mode: ctx.state.mode,
+            builderOpen,
+          }),
+        };
+      }
+    }
   }
   if (target === 'expedition' && (ctx.state.mode !== 'play' || builderPlaytestActive)) {
     return {
@@ -249,104 +288,12 @@ function resolveTarget(ctx: Ctx, args: string[], command: string): TargetedArgs 
   return { ok: true, args: parsed.args, target, explicit };
 }
 
+function resolveTarget(ctx: Ctx, args: string[], command: string): TargetedArgs {
+  return resolveTargetForMode(ctx, args, command, 'write');
+}
+
 function resolveReadTarget(ctx: Ctx, args: string[], command: string): TargetedArgs {
-  const parsed = parseTargetFlag(args);
-  if (parsed.error) return { ok: false, result: parsed.error };
-
-  const builderOpen = isBuilderOpen();
-  const current = ctx.levels.current;
-  const builderPlaytestActive = isBuilderPlaytestActive(ctx);
-  const builderPlaytestRuntime = isBuilderPlaytestRuntime(ctx);
-  let target = parsed.target;
-  const explicit = target !== undefined;
-
-  if (!target) {
-    if (builderOpen) {
-      return {
-        ok: false,
-        result: result(false, `${command} needs an explicit target while Builder Author is open: ${TARGETS.join(', ')}`, {
-          code: 'target-ambiguous',
-          command,
-          targets: TARGETS,
-          builderOpen: true,
-        }),
-      };
-    }
-    target = ctx.state.mode === 'play' ? (builderPlaytestActive ? 'builder-playtest' : 'expedition') : 'sandbox';
-  }
-
-  if (target === 'builder-document') {
-    return {
-      ok: false,
-      result: result(false, `${command} cannot inspect builder-document yet; no Builder command/document adapter is registered.`, {
-        code: 'target-unavailable',
-        command,
-        target,
-      }),
-    };
-  }
-  if (target === 'builder-live-preview') {
-    return {
-      ok: false,
-      result: result(false, `${command} cannot inspect builder-live-preview yet; the workspace live preview runtime does not exist.`, {
-        code: 'target-unavailable',
-        command,
-        target,
-      }),
-    };
-  }
-  if (target === 'sandbox' && builderOpen) {
-    return {
-      ok: false,
-      result: result(false, `${command} cannot inspect sandbox while Builder Author is open; Builder needs a document/live-preview read adapter.`, {
-        code: 'target-blocked',
-        command,
-        target,
-        reason: 'builder-open',
-        builderOpen: true,
-      }),
-    };
-  }
-  if (target === 'sandbox' && ctx.state.mode !== 'build') {
-    return {
-      ok: false,
-      result: result(false, `${command} target sandbox requires Sandbox/Builder Author mode.`, {
-        code: 'target-inactive',
-        command,
-        target,
-        mode: ctx.state.mode,
-        builderOpen,
-      }),
-    };
-  }
-  if (target === 'expedition' && (ctx.state.mode !== 'play' || builderPlaytestActive)) {
-    return {
-      ok: false,
-      result: result(false, `${command} target expedition requires normal Play, not Sandbox or Builder Playtest.`, {
-        code: 'target-inactive',
-        command,
-        target,
-        mode: ctx.state.mode,
-        level: current?.def.id ?? null,
-        playtestSource: ctx.state.playtestSource,
-      }),
-    };
-  }
-  if (target === 'builder-playtest' && !builderPlaytestRuntime) {
-    return {
-      ok: false,
-      result: result(false, `${command} target builder-playtest requires an active Builder-owned disposable custom runtime.`, {
-        code: 'target-inactive',
-        command,
-        target,
-        mode: ctx.state.mode,
-        level: current?.def.id ?? null,
-        playtestSource: ctx.state.playtestSource,
-      }),
-    };
-  }
-
-  return { ok: true, args: parsed.args, target, explicit };
+  return resolveTargetForMode(ctx, args, command, 'read');
 }
 
 function taintIfNeeded(ctx: Ctx, command: string, target: ConsoleTarget): string | null {
@@ -1276,17 +1223,19 @@ function parseRunNumber(raw: string, name: string, min: number, max: number): nu
   return n;
 }
 
+// Shared flask material-token parse: "empty"/"none" -> null, else a real cell id.
+// Used by both the `--flasks` slot parser and the inline `--flask` branch so the
+// "empty/none means null, otherwise parseCellType" rule lives in one place.
+function parseFlaskMaterial(ctx: Ctx, rawMaterial: string): number | null | CommandResult {
+  if (rawMaterial.toLowerCase() === 'empty' || rawMaterial.toLowerCase() === 'none') return null;
+  return parseCellType(ctx, rawMaterial);
+}
+
 function parseRunFlaskSpec(ctx: Ctx, raw: string): FlaskSlotConfig | CommandResult {
   const [rawMaterial, rawCount] = raw.split(':', 2);
   if (!rawMaterial) return result(false, 'Usage: flask spec must be <empty|material[:count]>', { code: 'usage' });
-  let material: number | null;
-  if (rawMaterial.toLowerCase() === 'empty' || rawMaterial.toLowerCase() === 'none') {
-    material = null;
-  } else {
-    const parsed = parseCellType(ctx, rawMaterial);
-    if (typeof parsed !== 'number') return parsed;
-    material = parsed;
-  }
+  const material = parseFlaskMaterial(ctx, rawMaterial);
+  if (typeof material === 'object' && material !== null) return material;
   const count = rawCount === undefined
     ? material === null ? 0 : 600
     : parseRunNumber(rawCount, 'flask count', 0, 600);
@@ -1440,13 +1389,11 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
       const parsed = readValue(arg, i);
       if (!parsed.value) return result(false, 'Usage: --flask <empty|material[:count]>', { code: 'usage' });
       const [rawMaterial, rawCount] = parsed.value.split(':', 2);
-      if (rawMaterial.toLowerCase() === 'empty' || rawMaterial.toLowerCase() === 'none') {
-        flaskMaterial = null;
-      } else {
-        const material = parseCellType(ctx, rawMaterial);
-        if (typeof material !== 'number') return material;
-        flaskMaterial = material;
-      }
+      // Only the material token is shared with parseRunFlaskSpec; count stays
+      // separate here so a later --flask-count can still supply it.
+      const material = parseFlaskMaterial(ctx, rawMaterial);
+      if (typeof material === 'object' && material !== null) return material;
+      flaskMaterial = material;
       if (rawCount !== undefined) {
         const n = parseRunNumber(rawCount, 'flask count', 0, 600);
         if (typeof n !== 'number') return n;

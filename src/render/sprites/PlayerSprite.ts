@@ -14,6 +14,13 @@ type RGB = readonly [number, number, number];
  */
 const CRAWL_POSE = 'prone' as 'prone' | 'allfours';
 
+// Per-frame pixel-key scratch Sets, hoisted to module scope so the hot draw
+// path reuses them instead of allocating two fresh Sets every frame. The draw
+// function is non-reentrant (one call per frame from the render path) and both
+// Sets are cleared before each use, so the rendered output is unchanged.
+const SILHOUETTE_MARKS = new Set<number>();
+const WAND_KEYS = new Set<number>();
+
 /**
  * Procedural wizard sprite (original drawPlayerSprite): boots ride a stride
  * wheel, the robe sways and flares, the torso leans with smoothed velocity,
@@ -32,7 +39,8 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   // stamped around the finished figure (Noita/Dead Cells readability — the
   // character cuts against any background instead of dissolving into it).
   // The wand, charge meter, and tip glow draw after recording stops.
-  const marks = new Set<number>();
+  const marks = SILHOUETTE_MARKS;
+  marks.clear();
   let recording = true;
   const s: PixelSurface = {
     setPx(x: number, y: number, r: number, g: number, b: number): void {
@@ -97,7 +105,8 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     const endY = wsy + Math.sin(a) * shaftLen;
     // One-sided drop shadow (underside only) — pops the shaft off the
     // background without the fattening of a full outline.
-    const wandKeys = new Set<number>();
+    const wandKeys = WAND_KEYS;
+    wandKeys.clear();
     const wandPx = (d: number, r: number, g: number, b: number): void => {
       const wx2 = wsx + Math.cos(a) * d;
       const wy2 = wsy + Math.sin(a) * d;

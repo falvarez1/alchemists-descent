@@ -30,6 +30,17 @@ export class EnemySpatialIndex {
     for (const enemy of enemies) this.live.add(enemy);
   }
 
+  /**
+   * Bucketed range query → returns the candidates in/near the radius's buckets.
+   *
+   * CONTRACT: buckets are only refreshed on rebuild(), so the result MAY contain
+   * STALE enemies that were killed (delete()'d) since the last rebuild. Callers
+   * that act on hits within a frame MUST gate each result on has() to drop the
+   * dead ones — e.g. `for (const e of idx.query(...)) { if (!idx.has(e)) continue; ... }`.
+   * (query() deliberately does NOT filter by `live` itself: a kill mid-iteration
+   * must remove the foe from EVERY in-flight query's view, which the per-hit has()
+   * guard gives for free; pre-filtering here would still leave that window open.)
+   */
   query(x: number, y: number, radius: number, out: Enemy[]): Enemy[] {
     out.length = 0;
     const r = Math.max(0, radius);

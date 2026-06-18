@@ -78,7 +78,11 @@ class WebGLRenderBackend implements RendererBackend {
       alpha: false,
       powerPreference: 'high-performance',
     });
-    this.renderer.setSize(RENDER_W, RENDER_H);
+    // Match the WebGPU backend: pin DPR to 1 and pass updateStyle=false so the
+    // renderer drives the backing-store resolution only and never writes CSS
+    // size onto the canvas (the holder owns layout in both paths).
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(RENDER_W, RENDER_H, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);

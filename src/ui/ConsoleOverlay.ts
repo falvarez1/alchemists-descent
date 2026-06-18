@@ -70,6 +70,7 @@ export class ConsoleOverlay {
   private maximized = false;
   private watchRefreshId = 0;
   private watchRefreshBusy = false;
+  private watchHudTimer: number | null = null;
   private readonly focusRouter = new FocusRouter();
 
   constructor(private readonly ctx: Ctx) {
@@ -144,24 +145,44 @@ export class ConsoleOverlay {
     ctx.events.on('toast', ({ text }) => {
       this.appendLine('mirror', 'toast: ' + text);
     });
-    window.addEventListener('error', (e) => {
-      this.appendLine('error', `JS ERROR: ${e.message}${e.filename ? ` (${e.filename}:${e.lineno})` : ''}`);
-    });
-    window.addEventListener(DEV_CONSOLE_COMMAND_EVENT, (event) => {
-      const open = (event as CustomEvent<{ open?: unknown }>).detail?.open;
-      if (open === true) this.open();
-      else if (open === false) this.close();
-    });
-    window.addEventListener('unhandledrejection', (e) => {
-      const reason = e.reason instanceof Error ? e.reason.message : String(e.reason);
-      this.appendLine('error', 'JS REJECTION: ' + reason);
-    });
-
-    window.addEventListener('keydown', (e) => this.onKeyDown(e), true);
-    window.addEventListener('keyup', (e) => this.onKeyUp(e), true);
-    window.setInterval(() => void this.refreshWatchHud(), 500);
+    window.addEventListener('error', this.onWindowError);
+    window.addEventListener(DEV_CONSOLE_COMMAND_EVENT, this.onConsoleCommand);
+    window.addEventListener('unhandledrejection', this.onUnhandledRejection);
+    window.addEventListener('keydown', this.onKeyDownCapture, true);
+    window.addEventListener('keyup', this.onKeyUpCapture, true);
+    this.watchHudTimer = window.setInterval(() => void this.refreshWatchHud(), 500);
     this.setMaximized(false);
     void this.refreshWatchHud();
+  }
+
+  private readonly onWindowError = (e: ErrorEvent): void => {
+    this.appendLine('error', `JS ERROR: ${e.message}${e.filename ? ` (${e.filename}:${e.lineno})` : ''}`);
+  };
+
+  private readonly onConsoleCommand = (event: Event): void => {
+    const open = (event as CustomEvent<{ open?: unknown }>).detail?.open;
+    if (open === true) this.open();
+    else if (open === false) this.close();
+  };
+
+  private readonly onUnhandledRejection = (e: PromiseRejectionEvent): void => {
+    const reason = e.reason instanceof Error ? e.reason.message : String(e.reason);
+    this.appendLine('error', 'JS REJECTION: ' + reason);
+  };
+
+  private readonly onKeyDownCapture = (e: KeyboardEvent): void => this.onKeyDown(e);
+  private readonly onKeyUpCapture = (e: KeyboardEvent): void => this.onKeyUp(e);
+
+  dispose(): void {
+    window.removeEventListener('error', this.onWindowError);
+    window.removeEventListener(DEV_CONSOLE_COMMAND_EVENT, this.onConsoleCommand);
+    window.removeEventListener('unhandledrejection', this.onUnhandledRejection);
+    window.removeEventListener('keydown', this.onKeyDownCapture, true);
+    window.removeEventListener('keyup', this.onKeyUpCapture, true);
+    if (this.watchHudTimer !== null) {
+      window.clearInterval(this.watchHudTimer);
+      this.watchHudTimer = null;
+    }
   }
 
   private toggle(): void {

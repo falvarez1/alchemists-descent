@@ -56,9 +56,11 @@ export function handleSand(ctx: Ctx, x: number, y: number, type: Cell): void {
 
 export function handleGunpowder(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  for (const [dx, dy] of IGNITION_OFFSETS) {
-    const tx = x + dx;
-    const ty = y + dy;
+  // Indexed loop over the offset constant — hot per-cell path.
+  for (let k = 0; k < IGNITION_OFFSETS.length; k++) {
+    const o = IGNITION_OFFSETS[k];
+    const tx = x + o[0];
+    const ty = y + o[1];
     if (
       w.inBounds(tx, ty) &&
       (w.types[w.idx(tx, ty)] === Cell.Fire || w.charge[w.idx(tx, ty)] > 0)

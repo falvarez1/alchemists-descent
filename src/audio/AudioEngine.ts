@@ -29,11 +29,23 @@ export class AudioEngine implements AudioApi {
     if (this.audioCtx && this.audioCtx.state === 'suspended') this.audioCtx.resume();
   }
 
-  /** Flip sound on/off; returns the new enabled state. */
+  /** Flip sound on/off; returns the new enabled state. Off suspends the
+   *  AudioContext (releases the audio thread); on resumes/creates it. */
   toggle(): boolean {
     this.soundOn = !this.soundOn;
     if (this.soundOn) this.ensure();
+    else if (this.audioCtx && this.audioCtx.state === 'running') void this.audioCtx.suspend();
     return this.soundOn;
+  }
+
+  /** Tear down: stop scheduling, suspend, and close the AudioContext so the
+   *  underlying audio resources are released (e.g. on full game shutdown). */
+  dispose(): void {
+    this.soundOn = false;
+    const ctx = this.audioCtx;
+    this.audioCtx = null;
+    this.masterGain = null;
+    if (ctx && ctx.state !== 'closed') void ctx.close();
   }
 
   private throttled(key: string, ms: number): boolean {
@@ -44,20 +56,22 @@ export class AudioEngine implements AudioApi {
   }
 
   tone(freq: number, endFreq: number, dur: number, type: OscillatorType, vol: number): void {
-    if (!this.soundOn || !this.audioCtx) return;
-    const audioCtx = this.audioCtx;
+    // Guard masterGain explicitly (set together with audioCtx in ensure()) so the
+    // sink is a real local, not a non-null assertion riding on that coupling.
+    if (!this.soundOn || !this.audioCtx || !this.masterGain) return;
+    const audioCtx = this.audioCtx, master = this.masterGain;
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, audioCtx.currentTime);
     o.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), audioCtx.currentTime + dur);
     g.gain.setValueAtTime(vol, audioCtx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
-    o.connect(g); g.connect(this.masterGain!);
+    o.connect(g); g.connect(master);
     o.start(); o.stop(audioCtx.currentTime + dur + 0.02);
   }
 
   noiseBurst(dur: number, filterFreq: number, vol: number, hp?: boolean): void {
-    if (!this.soundOn || !this.audioCtx) return;
-    const audioCtx = this.audioCtx;
+    if (!this.soundOn || !this.audioCtx || !this.masterGain) return;
+    const audioCtx = this.audioCtx, master = this.masterGain;
     const len = Math.floor(audioCtx.sampleRate * dur);
     const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
     const d = buf.getChannelData(0);
@@ -66,7 +80,7 @@ export class AudioEngine implements AudioApi {
     const f = audioCtx.createBiquadFilter(); f.type = hp ? 'highpass' : 'lowpass'; f.frequency.value = filterFreq;
     const g = audioCtx.createGain(); g.gain.setValueAtTime(vol, audioCtx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
-    src.connect(f); f.connect(g); g.connect(this.masterGain!);
+    src.connect(f); f.connect(g); g.connect(master);
     src.start();
   }
 

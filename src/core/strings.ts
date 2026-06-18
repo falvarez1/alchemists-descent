@@ -13,8 +13,11 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-/** Alias for {@link escapeHtml}; kept distinct so attribute-context call sites
- *  read intentionally and can diverge later if ever needed. */
+/** Escape text for an HTML attribute value. escapeHtml already covers both quote
+ *  styles (&quot; and &#39;), so it is fully attribute-safe and this is a true
+ *  alias — kept as a separate name only so attribute-context call sites read
+ *  intentionally (and could diverge later without touching every caller). Widely
+ *  used across the Builder UI; do not inline-replace at the call sites. */
 export function escapeAttr(value: string): string {
   return escapeHtml(value);
 }

@@ -664,7 +664,17 @@ export class Projectiles implements ProjectilesApi {
                 glow: 2.2,
                 grav: -0.01,
               });
+          } else if (p.type === 'meteor') {
+            // A meteor that flies past the edge still detonates at the clamped
+            // last in-bounds point — parity with the life<=0/terrain meteor
+            // branches, so an off-screen lob isn't silently swallowed.
+            p.x = clamp(p.x, 1, WIDTH - 2);
+            p.y = clamp(p.y, 1, HEIGHT - 2);
+            this.triggerExplosion(ctx, p.x, p.y, 40, p.mul ?? 1);
           }
+          // Non-hostile carriers release their nested trigger payload at the
+          // clamped exit point (mirrors the terrain/enemy/life<=0 paths).
+          if (!p.hostile) releaseTriggered(ctx, p);
           this.removeAt(projectiles, i);
           removed = true;
           break;
@@ -974,6 +984,10 @@ export class Projectiles implements ProjectilesApi {
         } else if (p.type === 'meteor') {
           this.triggerExplosion(ctx, p.x, p.y, 40, p.mul ?? 1);
         }
+        // A timed-out carrier still detonates its nested trigger cast at its
+        // final position (parity with the terrain/enemy/bomb impact paths) —
+        // otherwise a bolt fired into open sky silently swallows the payload.
+        if (!p.hostile) releaseTriggered(ctx, p);
         this.removeAt(projectiles, i);
         continue;
       }

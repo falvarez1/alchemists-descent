@@ -1,4 +1,5 @@
 import type { LevelRuntime } from '@/core/types';
+import type { World } from '@/sim/World';
 import { mechanismTriggersFor } from '@/core/mechanisms';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { computeLooseRubbleBlockingMask } from '@/sim/collision';
@@ -101,7 +102,18 @@ function fitsOf(w: { width: number; height: number; types: Uint8Array }): Uint8A
  * reachability is a crawler's view, and the player was getting WEDGED in
  * 9-tall connector tunnels that cell-BFS sailed through.
  */
-export function wizardMask(runtime: LevelRuntime): Uint8Array {
+/**
+ * The minimal runtime view the reachability masks actually read: the grid and
+ * the spawn point. Worldgen's gauge-rescue pass fabricates one of these directly
+ * (it has no full LevelRuntime yet), and a real LevelRuntime satisfies it
+ * structurally — so neither caller needs an `as unknown as` cast.
+ */
+export interface MaskInput {
+  world: World;
+  spawn: { x: number; y: number };
+}
+
+export function wizardMask(runtime: MaskInput): Uint8Array {
   const w = runtime.world;
   const W = w.width,
     H = w.height;
@@ -139,7 +151,7 @@ export function wizardMask(runtime: LevelRuntime): Uint8Array {
 }
 
 /** Spawn-reachable mask over the runtime's world (1 = reachable). */
-export function reachableMask(runtime: LevelRuntime): Uint8Array {
+export function reachableMask(runtime: MaskInput): Uint8Array {
   const w = runtime.world;
   const W = w.width,
     H = w.height;

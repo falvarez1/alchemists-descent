@@ -36,6 +36,9 @@ export interface FloatingSelection {
   charge: Uint8Array;
   /** 1 = cell belongs to the float (poly/magic masks narrow a rect lift). */
   mask: Uint8Array;
+  /** 1 = the lifted cell's color was a registered scar (hand-tint), so commit
+   *  must re-register it in world.colorOverrides or the tint dies on first swap. */
+  overrides: Uint8Array;
   /** Current world top-left. */
   x: number;
   y: number;
@@ -71,6 +74,7 @@ export function liftSelection(
     life: new Int16Array(w * h),
     charge: new Uint8Array(w * h),
     mask: new Uint8Array(w * h),
+    overrides: new Uint8Array(w * h),
     x: region.x0,
     y: region.y0,
     origX: region.x0,
@@ -94,12 +98,13 @@ export function liftSelection(
       f.colors[li] = world.colors[wi];
       f.life[li] = world.life[wi];
       f.charge[li] = world.charge[wi];
+      f.overrides[li] = world.colorOverrides.has(wi) ? 1 : 0;
       // clear the source — the hole IS the feedback that the block lifted
       rec.touch(wi);
       world.types[wi] = Cell.Empty;
       world.colors[wi] = EMPTY_COLOR;
       world.life[wi] = 0;
-      world.charge[wi] = 0;
+      world.clearChargeAt(wi); // drop any charge from the sparse active index too
     }
   }
   f.liftPatch = rec.finish();
@@ -127,6 +132,7 @@ export function rotateFloating(f: FloatingSelection): FloatingSelection {
     life: map(f.life, new Int16Array(dw * dh)),
     charge: map(f.charge, new Uint8Array(dw * dh)),
     mask: map(f.mask, new Uint8Array(dw * dh)),
+    overrides: map(f.overrides, new Uint8Array(dw * dh)),
     x: f.x + Math.floor((f.w - dw) / 2),
     y: f.y + Math.floor((f.h - dh) / 2),
     transformed: true,
@@ -151,6 +157,7 @@ export function mirrorFloating(f: FloatingSelection): FloatingSelection {
     life: map(f.life, new Int16Array(f.w * f.h)),
     charge: map(f.charge, new Uint8Array(f.w * f.h)),
     mask: map(f.mask, new Uint8Array(f.w * f.h)),
+    overrides: map(f.overrides, new Uint8Array(f.w * f.h)),
     transformed: true,
     preview: null,
   };
@@ -177,7 +184,11 @@ export function commitFloating(world: World, f: FloatingSelection): Command | nu
       world.types[wi] = f.cells[li];
       world.colors[wi] = f.colors[li]; // hand-tints travel with the block
       world.life[wi] = f.life[li];
-      world.charge[wi] = f.charge[li];
+      world.setChargeAt(wi, f.charge[li]); // keep the sparse charge index in step
+      // Re-register (or clear) the color scar so the carried tint survives the
+      // destination cell's first swap instead of regenerating a factory color.
+      if (f.overrides[li]) world.colorOverrides.add(wi);
+      else world.colorOverrides.delete(wi);
     }
   }
   const paste = rec.finish();
@@ -197,7 +208,7 @@ export function cancelFloating(world: World, f: FloatingSelection): void {
     world.types[i] = p.types[n];
     world.colors[i] = p.colors[n];
     world.life[i] = p.life[n];
-    world.charge[i] = p.charge[n];
+    world.setChargeAt(i, p.charge[n]); // restore charge through the sparse index
   }
 }
 

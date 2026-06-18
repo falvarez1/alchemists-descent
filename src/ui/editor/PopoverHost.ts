@@ -250,6 +250,6 @@ function rawPosition(side: PopoverSide, anchor: RectLike, size: PopoverSize, gap
   return { left: anchor.right + gap + offsetX, top: anchor.top + offsetY };
 }
 
-function cursorRect(cursor: { x: number; y: number }): RectLike {
+export function cursorRect(cursor: { x: number; y: number }): RectLike {
   return { left: cursor.x, top: cursor.y, right: cursor.x, bottom: cursor.y, width: 0, height: 0 };
 }

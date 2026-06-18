@@ -170,7 +170,7 @@ function dataAttrs(dataset: BaseField['dataset']): string {
     .join('');
 }
 
-function toKebab(value: string): string {
+export function toKebab(value: string): string {
   return value.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
 }
 

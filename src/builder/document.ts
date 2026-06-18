@@ -152,6 +152,16 @@ export function paramNum(o: EditorObject, key: string, fallback: number): number
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 }
 
+/** Largest an axis-aligned mechanism slab (door/runeDoor/valve/plug w & h) may
+ *  span: a generous bound that still keeps oversized authored params from
+ *  feeding world-sized reachability/exclusion loops downstream. */
+const MAX_SLAB_DIM = 64;
+
+/** Slab width/height param clamped to [1, MAX_SLAB_DIM]. */
+function slabDim(o: EditorObject, key: string, fallback: number): number {
+  return Math.max(1, Math.min(MAX_SLAB_DIM, Math.floor(paramNum(o, key, fallback))));
+}
+
 /**
  * World-cell bounding box of an object's structural footprint (door slabs,
  * sensor basins, the well shaft mouth...). Point objects return null.
@@ -163,9 +173,9 @@ export function objectFootprint(
 ): { x0: number; y0: number; x1: number; y1: number } | null {
   switch (o.kind) {
     case 'door':
-      return { x0: o.x, y0: o.y, x1: o.x + paramNum(o, 'w', 3) - 1, y1: o.y + paramNum(o, 'h', 13) - 1 };
+      return { x0: o.x, y0: o.y, x1: o.x + slabDim(o, 'w', 3) - 1, y1: o.y + slabDim(o, 'h', 13) - 1 };
     case 'runeDoor':
-      return { x0: o.x, y0: o.y, x1: o.x + paramNum(o, 'w', 2) - 1, y1: o.y + paramNum(o, 'h', 11) - 1 };
+      return { x0: o.x, y0: o.y, x1: o.x + slabDim(o, 'w', 2) - 1, y1: o.y + slabDim(o, 'h', 11) - 1 };
     case 'plate': {
       const hw = Math.floor(paramNum(o, 'w', 5) / 2);
       return { x0: o.x - hw, y0: o.y - 1, x1: o.x - hw + paramNum(o, 'w', 5) - 1, y1: o.y };
@@ -185,9 +195,9 @@ export function objectFootprint(
     case 'cauldron':
       return { x0: o.x - 4, y0: o.y - 5, x1: o.x + 4, y1: o.y };
     case 'valve':
-      return { x0: o.x, y0: o.y, x1: o.x + paramNum(o, 'w', 5) - 1, y1: o.y + paramNum(o, 'h', 2) - 1 };
+      return { x0: o.x, y0: o.y, x1: o.x + slabDim(o, 'w', 5) - 1, y1: o.y + slabDim(o, 'h', 2) - 1 };
     case 'plug':
-      return { x0: o.x, y0: o.y, x1: o.x + paramNum(o, 'w', 3) - 1, y1: o.y + paramNum(o, 'h', 3) - 1 };
+      return { x0: o.x, y0: o.y, x1: o.x + slabDim(o, 'w', 3) - 1, y1: o.y + slabDim(o, 'h', 3) - 1 };
     case 'counterweight': {
       // mirrors makeCounterweight: pan row + 4-tall lips at both ends
       const hw = Math.floor(paramNum(o, 'w', 7) / 2);
@@ -270,6 +280,13 @@ export function captureWorldLayer(ctx: Ctx): EditorWorldLayer {
     if (t === Cell.Smoke || t === Cell.Steam) continue;
     life.push([i, w.life[i]]);
   }
+  // Capture the sparse color-scar set so hand-tints round-trip; without this
+  // the field only ever arrives from foreign/imported docs (capture was blind).
+  const colorOverrides: Array<[number, number]> = [];
+  for (const i of w.colorOverrides) {
+    if (colorOverrides.length >= 60000) break;
+    colorOverrides.push([i, w.colors[i]]);
+  }
   const layer: EditorWorldLayer = {
     rle: rleEncode(w.types),
     biome: ctx.state.currentBiome,
@@ -277,6 +294,7 @@ export function captureWorldLayer(ctx: Ctx): EditorWorldLayer {
     life,
     charge: sparsePairs(w.charge, 20000),
   };
+  if (colorOverrides.length > 0) layer.colorOverrides = colorOverrides;
   const paintSeed = ctx.worldgen?.paintSeed;
   if (typeof paintSeed === 'number' && Number.isFinite(paintSeed)) layer.paintSeed = paintSeed;
   return layer;
@@ -286,11 +304,22 @@ export function captureWorldLayer(ctx: Ctx): EditorWorldLayer {
 export function applyWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {
   const w = ctx.world;
   w.clear();
-  rleDecode(layer.rle, w.types);
+  // A malformed rle must fail safe (leave the cleared world) rather than throw
+  // into callers — the importer's sanitizeWorldLayer guards the same way.
+  try {
+    rleDecode(layer.rle, w.types);
+  } catch {
+    return;
+  }
   repaintWorldLayer(ctx, layer);
   for (const [i, v] of layer.life ?? []) w.life[i] = v;
   for (const [i, v] of layer.charge ?? []) w.setChargeAt(i, v);
-  for (const [i, c] of layer.colorOverrides ?? []) w.colors[i] = c;
+  for (const [i, c] of layer.colorOverrides ?? []) {
+    w.colors[i] = c;
+    // Register the scar so World.swap carries the authored tint instead of
+    // regenerating the factory color on the cell's first move.
+    w.colorOverrides.add(i);
+  }
 }
 
 function repaintWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {

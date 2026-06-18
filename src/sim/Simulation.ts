@@ -37,6 +37,11 @@ export class Simulation implements SimulationApi {
       this.accumulator -= 1.0;
       safetyLimit++;
     }
+    // Clamp the carry after the 6-substep cap: an overdriven simSpeed could
+    // otherwise let the backlog grow unbounded and pin the sim at 6 substeps
+    // forever. Drop the un-spent overflow so normal speeds (carry < 1) are
+    // unchanged but the sim can never run away.
+    if (this.accumulator > 1.0) this.accumulator = 1.0;
   }
 
   processFrame(ctx: Ctx): void {

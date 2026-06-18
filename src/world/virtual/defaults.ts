@@ -91,6 +91,8 @@ export function createDefaultVirtualGenerationParams(): VirtualWorldDef['generat
     surfacePitWidth: 6,
     surfacePitDepth: 4,
     notchPasses: 2,
+    // Hidden-ore / mineral-vug fill of enclosed pockets (parity with legacy).
+    mineralVugs: true,
   };
 }
 

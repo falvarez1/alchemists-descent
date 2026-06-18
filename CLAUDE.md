@@ -64,7 +64,7 @@ dev server. `scripts/verify-*.mjs` show the pattern.
 ## Hard invariants
 
 1. **Cell IDs are append-only forever** (save-format ABI). `CELL_COUNT` in `sim/CellType.ts`
-   must match (currently 35; Moss=34 is the highest taken id). Never renumber or reuse.
+   must match (currently 37; RawOre=36 is the highest taken id). Never renumber or reuse.
    The marker palette in `sim/cellPalette.ts` is the same kind of ABI (it identifies
    materials in every exported terrain PNG): one appended color per new cell type,
    ≥12 Manhattan RGB from every existing entry, never edited (test-enforced).

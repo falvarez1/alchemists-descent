@@ -1,4 +1,5 @@
 import { Cell, isLiquid } from '@/sim/CellType';
+import { emissiveGlowRgb } from '@/world/virtual/emissive';
 import type {
   TransferableVirtualChunk,
   VirtualChunk,
@@ -135,11 +136,14 @@ export function makePreviewRgba(chunk: VirtualChunk): Uint8ClampedArray {
   const out = new Uint8ClampedArray(chunk.size * chunk.size * 4);
   for (let i = 0; i < chunk.types.length; i++) {
     const color = chunk.colors[i];
+    const type = chunk.types[i];
     const oi = i * 4;
-    out[oi] = (color >> 16) & 0xff;
-    out[oi + 1] = (color >> 8) & 0xff;
-    out[oi + 2] = color & 0xff;
-    out[oi + 3] = chunk.types[i] === Cell.Empty ? 16 : 255;
+    // Uint8ClampedArray clamps the additive glow to [0,255] for us.
+    const glow = emissiveGlowRgb(type);
+    out[oi] = ((color >> 16) & 0xff) + (glow ? glow[0] : 0);
+    out[oi + 1] = ((color >> 8) & 0xff) + (glow ? glow[1] : 0);
+    out[oi + 2] = (color & 0xff) + (glow ? glow[2] : 0);
+    out[oi + 3] = type === Cell.Empty ? 16 : 255;
   }
   return out;
 }

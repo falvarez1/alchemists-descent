@@ -419,7 +419,7 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let light = textureLoad(uLight, vec2<i32>(vx / 2, vy / 2), 0).rgb;
     let dxv = f32(vx) - ${(VIEW_W / 2).toFixed(1)};
     let dyv = f32(vy) - ${(VIEW_H / 2).toFixed(1)};
-    let vg = 1.0 - 0.52 * ((dxv * dxv + dyv * dyv) / ${((VIEW_W / 2) * (VIEW_W / 2) + (VIEW_H / 2) * (VIEW_H / 2)).toFixed(1)});
+    let vg = 1.0 - p(19u) * ((dxv * dxv + dyv * dyv) / ${((VIEW_W / 2) * (VIEW_W / 2) + (VIEW_H / 2) * (VIEW_H / 2)).toFixed(1)});
 
     if (typeId == ${Cell.Empty}) {
       var bg = vec3<f32>(0.004, 0.005, 0.009);
@@ -502,7 +502,9 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
   textureStore(
     uOutput,
     vec2<i32>(col, rowB),
-    vec4<f32>(max(c + ov.rgb, vec3<f32>(0.0)), 1.0)
+    // Overlay combine matches the CPU/WebGL reference exactly: no >=0 clamp here
+    // (addPx can ride negative; the float16 store keeps parity with ComposeShader).
+    vec4<f32>(c + ov.rgb, 1.0)
   );
 }
 `;
@@ -515,6 +517,12 @@ export class WebGpuLiveCompose {
   private readonly win32 = new Uint32Array(this.winBytes.buffer);
   private readonly lightData = new Float32Array(LIGHT_W * LIGHT_H * 4);
   private readonly lutData = new Float32Array(256);
+  // One-float scratch for hashing each LUT weight's raw bits into lutSignature
+  // (updateLut), so the rarely-changing bloom table isn't re-uploaded every frame.
+  // lutSigBytes aliases the same buffer; both are reused so updateLut allocates nothing.
+  private readonly lutSigScratch = new Float32Array(1);
+  private readonly lutSigBytes = new Uint8Array(this.lutSigScratch.buffer);
+  private lutSignature = -1;
   private readonly overlay = new WebGpuOverlay();
   // Persistent row-padding scratch for the two per-frame uploads whose rowBytes
   // are not 256-aligned (world window WIN_W*4, overlay VIEW_W*8) — avoids a fresh
@@ -535,6 +543,10 @@ export class WebGpuLiveCompose {
   private backdropTextures: BackdropGpuTexture[] = [];
   private initialized = false;
   private lightUploaded = false;
+  // Whether the overlay texture currently resident on the GPU holds any non-zero
+  // pixels. When this frame touches nothing AND the GPU already holds an all-zero
+  // overlay, commit() can skip the full-texture pad+upload (~1.5MB) entirely.
+  private overlayGpuDirty = false;
   private currentMetrics: RenderBackendWebGpuComposeLiveMetrics | null = null;
   private lastMetrics: RenderBackendWebGpuComposeLiveMetrics | null = null;
   private uncapturedErrorHandler: ((event: RuntimeGpuUncapturedErrorEvent) => void) | null = null;
@@ -624,6 +636,12 @@ export class WebGpuLiveCompose {
         liveMetrics: this.lastMetrics ? { ...this.lastMetrics } : null,
       };
     } catch (error) {
+      // A failed init still registered the uncaptured-error listener above; detach
+      // it so the dead instance doesn't keep firing failRuntime on later GPU errors.
+      if (this.device && this.uncapturedErrorHandler) {
+        this.device.removeEventListener?.('uncapturederror', this.uncapturedErrorHandler);
+        this.uncapturedErrorHandler = null;
+      }
       this.status = {
         productionAvailable: false,
         bridge: 'failed',
@@ -668,12 +686,14 @@ export class WebGpuLiveCompose {
       this.lightUploaded = true;
     }
     const lutPackStart = performance.now();
-    this.updateLut(ctx.params.materials);
+    const lutChanged = this.updateLut(ctx.params.materials);
     metrics.lutPackCpuMs = performance.now() - lutPackStart;
-    const lutUpload = this.timedUploadTexture(this.lutTexture, this.lutData, 256, 1, 256 * 4);
-    metrics.lutLogicalUploadBytes = lutUpload.logicalBytes;
-    metrics.lutSubmittedUploadBytes = lutUpload.submittedBytes;
-    metrics.lutUploadCpuMs = lutUpload.cpuMs;
+    if (lutChanged) {
+      const lutUpload = this.timedUploadTexture(this.lutTexture, this.lutData, 256, 1, 256 * 4);
+      metrics.lutLogicalUploadBytes = lutUpload.logicalBytes;
+      metrics.lutSubmittedUploadBytes = lutUpload.submittedBytes;
+      metrics.lutUploadCpuMs = lutUpload.cpuMs;
+    }
     const backdropsChanged = this.syncBackdropTextures(layers);
     if (backdropsChanged) this.rebuildBindGroup();
     this.updateParams(ctx, layers, lenses, camX, camY);
@@ -693,15 +713,22 @@ export class WebGpuLiveCompose {
     }
     const commitStart = performance.now();
     const metrics = this.currentMetrics;
-    if (metrics) metrics.overlayTouchedPixels = this.overlay.touchedCount;
-    const overlayPackStart = performance.now();
-    this.overlay.commit();
-    if (metrics) metrics.overlayPackCpuMs = performance.now() - overlayPackStart;
-    const overlayUpload = this.timedUploadTexture(this.overlayTexture, this.overlay.half, VIEW_W, VIEW_H, VIEW_W * 8, this.overlayPadScratch);
-    if (metrics) {
-      metrics.overlayLogicalUploadBytes = overlayUpload.logicalBytes;
-      metrics.overlaySubmittedUploadBytes = overlayUpload.submittedBytes;
-      metrics.overlayUploadCpuMs = overlayUpload.cpuMs;
+    const touchedCount = this.overlay.touchedCount;
+    if (metrics) metrics.overlayTouchedPixels = touchedCount;
+    // Skip the full overlay pad+upload when nothing was drawn this frame AND the
+    // GPU already holds an all-zero overlay — the shader still samples it, so the
+    // resident texture must be zero before we stop re-uploading.
+    if (touchedCount > 0 || this.overlayGpuDirty) {
+      const overlayPackStart = performance.now();
+      this.overlay.commit();
+      if (metrics) metrics.overlayPackCpuMs = performance.now() - overlayPackStart;
+      const overlayUpload = this.timedUploadTexture(this.overlayTexture, this.overlay.half, VIEW_W, VIEW_H, VIEW_W * 8, this.overlayPadScratch);
+      if (metrics) {
+        metrics.overlayLogicalUploadBytes = overlayUpload.logicalBytes;
+        metrics.overlaySubmittedUploadBytes = overlayUpload.submittedBytes;
+        metrics.overlayUploadCpuMs = overlayUpload.cpuMs;
+      }
+      this.overlayGpuDirty = touchedCount > 0;
     }
 
     const commandStart = performance.now();
@@ -985,6 +1012,9 @@ export class WebGpuLiveCompose {
     params[16] = backdropProfile.grade.contrast;
     params[17] = 1 / backdropProfile.grade.gamma;
     params[18] = backdropProfile.grade.saturation;
+    // Screen vignette strength, tracked live like the CPU FrameComposer / WebGL
+    // ComposeShader uVignette (0.52 shipped) instead of a WGSL literal.
+    params[19] = ctx.state.postFx.vignette;
 
     const settings = backdropProfile.layers;
     for (let i = 0; i < MAX_BACKDROP_LAYERS; i++) {
@@ -1046,10 +1076,25 @@ export class WebGpuLiveCompose {
     }
   }
 
-  private updateLut(materials: Record<number, MaterialParams>): void {
+  // Repack the bloom-weight LUT and report whether it actually changed since the
+  // last call (FNV-1a over the raw weight bits), so the per-frame re-upload of a
+  // table that almost never moves can be skipped (see beginFrame).
+  private updateLut(materials: Record<number, MaterialParams>): boolean {
+    const lut = this.lutData;
+    const sigBytes = this.lutSigBytes;
+    let sig = 0x811c9dc5;
     for (let type = 0; type < 256; type++) {
-      this.lutData[type] = materials[type]?.bloomWeight ?? 0;
+      const w = materials[type]?.bloomWeight ?? 0;
+      lut[type] = w;
+      this.lutSigScratch[0] = w;
+      for (let b = 0; b < 4; b++) {
+        sig = (sig ^ sigBytes[b]) >>> 0;
+        sig = Math.imul(sig, 0x01000193) >>> 0;
+      }
     }
+    if (sig === this.lutSignature) return false;
+    this.lutSignature = sig;
+    return true;
   }
 
   private packWindow(world: World, camX: number, camY: number): void {

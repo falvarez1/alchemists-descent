@@ -392,7 +392,12 @@ export class LocalStorageAssetStore implements AssetStore {
     const warnings: string[] = [];
     const errors: string[] = [];
     const entryReports: AssetImportReport[] = [];
-    let workingDatabase = database;
+    // Build the working database ONCE (a fresh instance, so the caller's
+    // `database` is never mutated), then add each just-saved asset incrementally
+    // instead of re-reading and re-parsing all of localStorage per entry. The
+    // only thing each entry changes is the single asset it persisted, so the
+    // next entry just needs that one record for its duplicate/collision checks.
+    const workingDatabase = this.bundleWorkingDatabase(database);
     for (const [index, entry] of bundle.assets.entries()) {
       const entryInput: AssetImportInput = {
         fileName: entry.filename || `${entry.kind}-${index}.json`,
@@ -404,8 +409,10 @@ export class LocalStorageAssetStore implements AssetStore {
       diffs.push(label);
       if (result.report.warnings.length > 0) warnings.push(...result.report.warnings.map((warning) => `${entry.filename}: ${warning}`));
       if (!result.ok) errors.push(label);
-      else entryReports.push(result.report);
-      workingDatabase = this.bundleWorkingDatabase(workingDatabase);
+      else {
+        entryReports.push(result.report);
+        this.indexSavedAsset(workingDatabase, result);
+      }
     }
     const decision: AssetImportReport['decision'] = errors.length === 0 ? 'accepted' : 'rejected';
     const report = makeReport(
@@ -735,6 +742,46 @@ export class LocalStorageAssetStore implements AssetStore {
       if (!database.get(record.assetId)) database.add(record);
     }
     return database;
+  }
+
+  /**
+   * Fold the single asset a bundle entry just persisted into the working
+   * database so the next entry's duplicate/collision checks see it — without
+   * re-reading and re-parsing all of localStorage. Re-reads only that one key
+   * and reuses buildAssetDatabase so the record's id/origin/contentSignature
+   * match exactly what a full rebuild would have produced.
+   */
+  private indexSavedAsset(working: AssetDatabase, result: AssetImportResult): void {
+    const kind = result.importedKind;
+    const sourceId = result.importedSourceId;
+    if (!kind || !sourceId) return;
+    const store = this.resolveStorage();
+    if (!store) return;
+    let oneAsset: AssetDatabase | null = null;
+    try {
+      if (kind === 'document') {
+        const doc = sanitizeImportedDoc(JSON.parse(store.getItem(DOC_PREFIX + sourceId) ?? 'null'));
+        if (doc) oneAsset = buildAssetDatabase({ documents: { [doc.id]: doc } });
+      } else if (kind === 'prefab') {
+        const prefab = sanitizePrefab(JSON.parse(store.getItem(PREFAB_PREFIX + sourceId) ?? 'null'));
+        if (prefab) oneAsset = buildAssetDatabase({ prefabs: [prefab.prefab] });
+      } else if (kind === 'sprite') {
+        const sprite = sanitizeSpriteAsset(JSON.parse(store.getItem(SPRITE_PREFIX + sourceId) ?? 'null'));
+        if (sprite) oneAsset = buildAssetDatabase({ sprites: [sprite] });
+      }
+    } catch {
+      // a corrupt re-read just leaves the working db one record short; the next
+      // entry still imports correctly (collisions only relax acceptance)
+      return;
+    }
+    if (!oneAsset) return;
+    // Add every record this asset introduced that the working db lacks (the
+    // saved asset itself plus any document-embedded sprites it carries, which a
+    // later sprite entry can collide with) — same not-already-present guard a
+    // full rebuild used, so we never clobber existing built-in/base records.
+    for (const record of oneAsset.list()) {
+      if (!working.get(record.assetId)) working.add(record);
+    }
   }
 }
 

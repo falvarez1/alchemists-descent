@@ -98,6 +98,8 @@ export class Game {
   private builderPromise: Promise<Builder> | null = null;
   private started = false;
   private disposed = false;
+  /** Page-lifetime UI singletons whose global listeners/timers must be torn down on HMR dispose. */
+  private readonly disposables: { dispose(): void }[] = [];
 
   constructor(holder: HTMLElement) {
     const state: GameStateData = {
@@ -227,29 +229,30 @@ export class Game {
     new WaystonePromptOverlay(ctx);
     new HintTeachOverlay(ctx);
     // Self-binds the B key; lives for the page lifetime.
-    new WandBench(ctx);
+    this.disposables.push(new WandBench(ctx));
     // Transitional dev console: typed QA commands + automation adapter.
-    new ConsoleOverlay(ctx);
+    this.disposables.push(new ConsoleOverlay(ctx));
     // Top-level runtime inspector for Play and Builder Playtest.
     new RuntimeInspector(ctx);
     // Wires the Level Library buttons; lives for the page lifetime.
     new LevelStore(ctx);
     // Header PLAY opens the canonical run launcher; Builder playtests bypass it.
-    new RunLauncher(ctx);
+    this.disposables.push(new RunLauncher(ctx));
     // The authoring overlay (injects its own DOM + header button).
     this.builderPromise = this.mountBuilder(ctx);
     void this.builderPromise.catch(() => undefined);
     // ESC pause + the Handbook (H); pause registers FIRST so its keydown
     // handler sees the help overlay still open and yields ESC to it.
-    new PauseOverlay(ctx);
-    new HelpOverlay(ctx);
+    this.disposables.push(new PauseOverlay(ctx));
+    this.disposables.push(new HelpOverlay(ctx));
     this.inspector = new Inspector(ctx);
     this.toolbar = new Toolbar(ctx, (id, mode) => this.inspector.generateContextInspector(id, mode));
     // Debug cell readout under the cursor (toggle with `I`). Self-managing; lives
     // for the page lifetime like the other DOM-wiring UI modules above.
-    new CellInspector(ctx);
+    this.disposables.push(new CellInspector(ctx));
     // Wires its DOM listeners in the constructor; lives for the page lifetime.
     const inputManager = new InputManager(this.renderer.domElement, ctx);
+    this.disposables.push(inputManager);
     this.restoreSavedMode = () => {
       if (!import.meta.env.DEV) return;
       const mode = readAppMode();
@@ -333,6 +336,16 @@ export class Game {
       window.clearTimeout(this.levelCurtainTimer);
       this.levelCurtainTimer = null;
     }
+    // Tear down the page-lifetime UI singletons (global listeners + timers).
+    // Wrap each so one failing teardown doesn't strand the rest.
+    for (const d of this.disposables) {
+      try {
+        d.dispose();
+      } catch (error) {
+        console.warn('UI singleton dispose failed', error);
+      }
+    }
+    this.disposables.length = 0;
     this.perfHud.dispose();
     this.renderer.dispose();
   }
