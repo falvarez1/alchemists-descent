@@ -89,11 +89,12 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Catalyst]: { name: 'Aurum Catalyst', friction: 0.55, densityWeight: 0.96, bloomWeight: 0.5 },
   // Hidden ore: a static rock (no bloom — the WHOLE point is it stays dark until lit).
   [Cell.RawOre]: { name: 'Raw Ore', bloomWeight: 0 },
-  // Walk-through ground cover. LOW flammability on purpose: a flame only
-  // occasionally catches a neighbouring blade, so fire creeps/sputters across a
-  // grassy ledge and often fizzles rather than flashing over (no bloom — grass
-  // doesn't self-glow).
-  [Cell.Grass]: { name: 'Grass', flammability: 0.12 },
+  // Walk-through ground cover. Deliberately LOW spread: a flame catches the blade
+  // it touches, but because fire RISES off the grass plane before it can reach the
+  // side neighbour, the burn stays a small local sputter (~2-3 blades, measured)
+  // and never flashes across the whole ledge. Raising this toward 1.0 tips it into
+  // a field-wide flashover. No bloom — grass doesn't self-glow.
+  [Cell.Grass]: { name: 'Grass', flammability: 0.35 },
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };

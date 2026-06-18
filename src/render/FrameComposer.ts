@@ -493,8 +493,10 @@ export class FrameComposer implements PixelSurface {
           r = 0.2;
           g = 0.75;
           b = 1.0;
-          // crackle strobe: per-cell, per-frame flicker (matches the shaders)
-          intensity = boostG * 1.2 * (0.3 + Math.random() * 1.1);
+          // crackle strobe + DIM metal glow (its bright bloom killed the look; the
+          // liquid pool stays bright). Matches the shaders.
+          const chargeGlow = type === Cell.Metal ? boostG * 0.35 : boostG * 1.2;
+          intensity = chargeGlow * (0.3 + Math.random() * 1.1);
         }
 
         {

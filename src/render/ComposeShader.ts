@@ -297,8 +297,11 @@ void main() {
       float intensity = 1.0 + (uBoost - 1.0) * scalar;
       if (charged) {
         r = 0.2; g = 0.75; b = 1.0;
-        // crackle strobe: per-cell, per-frame flicker (same hash family as fire)
-        intensity = uBoost * 1.2 * (0.3 + flickerRand(vec2(float(wx), float(wy)), 2.3) * 1.1);
+        // crackle strobe: per-cell, per-frame flicker (same hash family as fire).
+        // Metal conducts but glows DIM — its bright bloom killed the look; the
+        // liquid pool keeps the bright electrocution glow.
+        float chargeGlow = (type == ${Cell.Metal}) ? uBoost * 0.35 : uBoost * 1.2;
+        intensity = chargeGlow * (0.3 + flickerRand(vec2(float(wx), float(wy)), 2.3) * 1.1);
       }
 
       // The lighting law (per channel): vignette, ambient, clamp 2.2, square,

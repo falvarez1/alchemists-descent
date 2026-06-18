@@ -487,8 +487,10 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
       var intensity = 1.0 + (boost - 1.0) * scalar;
       if (charged) {
         base = vec3<f32>(0.2, 0.75, 1.0);
-        // crackle strobe: per-cell, per-frame flicker (same hash family as fire)
-        intensity = boost * 1.2 * (0.3 + flickerRand(vec2<f32>(f32(wx), f32(wy)), 2.3) * 1.1);
+        // crackle strobe + DIM metal glow (its bright bloom killed the look; the
+        // liquid pool stays bright).
+        let chargeGlow = select(boost * 1.2, boost * 0.35, typeId == ${Cell.Metal});
+        intensity = chargeGlow * (0.3 + flickerRand(vec2<f32>(f32(wx), f32(wy)), 2.3) * 1.1);
       }
       let floorL = 0.06 * vg;
       let selfGlow = select(0.0, 0.45 + scalar * 1.55, scalar > 0.0);

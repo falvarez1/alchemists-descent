@@ -3,7 +3,7 @@ import { clamp } from '@/core/math';
 import type { Ctx, LightningApi, LightningArc } from '@/core/types';
 import { EnemySpatialIndex } from '@/entities/enemySpatial';
 import { bodyMaterialDef } from '@/entities/bodyMaterials';
-import { Cell, isGas } from '@/sim/CellType';
+import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { chargeDeposit } from '@/sim/electrical';
 
 /** A jagged lightning path between two points (perpendicular jitter, peaking
@@ -157,8 +157,12 @@ export class Lightning implements LightningApi {
     const poolX = this.ambientPoolX;
     const poolY = this.ambientPoolY;
     let poolLen = 0;
+    // Prefer charged LIQUID cells (water/lava): that's the electrified pool that
+    // should visibly crackle. Anchoring the arcs here makes water on a charged
+    // metal floor spark exactly like water hit directly — instead of the metal's
+    // huge cell count hogging the arcs while the thin water layer just glows.
     for (const ci of w.activeCharges) {
-      if (w.charge[ci] <= 0) continue;
+      if (w.charge[ci] <= 0 || !isLiquid(w.types[ci])) continue;
       const y = (ci / w.width) | 0;
       const x = ci - y * w.width;
       if (x < sim.x0 || x >= sim.x1 || y < sim.y0 || y >= sim.y1) continue;
@@ -166,6 +170,19 @@ export class Lightning implements LightningApi {
       poolY[poolLen] = y + 0.5;
       poolLen++;
       if (poolLen >= POOL_CAP) break;
+    }
+    // Fallback: a bare metal current (no charged liquid) still crackles over itself.
+    if (poolLen < 2) {
+      for (const ci of w.activeCharges) {
+        if (w.charge[ci] <= 0) continue;
+        const y = (ci / w.width) | 0;
+        const x = ci - y * w.width;
+        if (x < sim.x0 || x >= sim.x1 || y < sim.y0 || y >= sim.y1) continue;
+        poolX[poolLen] = x + 0.5;
+        poolY[poolLen] = y + 0.5;
+        poolLen++;
+        if (poolLen >= POOL_CAP) break;
+      }
     }
     if (poolLen < 2) return;
     const range2 = RANGE * RANGE;

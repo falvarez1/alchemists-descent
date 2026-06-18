@@ -323,9 +323,12 @@ export class Lighting implements LightField {
             lightB[i] = f;
           }
         } else if (world.charge[wi] > 0) {
-          lightR[i] = Math.max(lightR[i], 0.25);
-          lightG[i] = Math.max(lightG[i], 0.8);
-          lightB[i] = Math.max(lightB[i], 1.0);
+          // Charged metal lights only DIMLY (its bright halo was over-blooming);
+          // the liquid pool keeps the bright cyan glow.
+          const liquidCharge = world.types[wi] !== Cell.Metal;
+          lightR[i] = Math.max(lightR[i], liquidCharge ? 0.25 : 0.08);
+          lightG[i] = Math.max(lightG[i], liquidCharge ? 0.8 : 0.22);
+          lightB[i] = Math.max(lightB[i], liquidCharge ? 1.0 : 0.3);
         }
       }
     }
