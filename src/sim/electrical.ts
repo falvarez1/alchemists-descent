@@ -1,5 +1,5 @@
 import type { Ctx } from '@/core/types';
-import { Cell, isConductor } from '@/sim/CellType';
+import { isConductor } from '@/sim/CellType';
 
 const charged: number[] = [];
 /** Cell index → charge to seed it with this frame (attenuated per hop). */
@@ -11,7 +11,10 @@ export function updateElectricalGrid(ctx: Ctx): void {
   // Gather tracked live charges in the active window, then apply spreads + decay in two phases.
   // Save loads and legacy direct writes start with an empty tracker, so the first pass rebuilds
   // discovery from the active simulation window; sustained charge then stays sparse.
-  const bleed = 1.0 - ctx.params.materials[Cell.Metal].conductivity!;
+  // Spread/duration are live-tunable (params.global). Both clamp to >= 1 so a
+  // stray 0 can't make charge spread forever or never decay (the self-sustain bug).
+  const falloff = Math.max(1, Math.round(ctx.params.global.chargeFalloff));
+  const decay = Math.max(1, Math.round(ctx.params.global.chargeDecay));
   charged.length = 0;
   spreadCharge.clear();
   if (!w.chargeTrackingCovers(sim)) w.rebuildActiveChargesInBounds(sim);
@@ -25,15 +28,15 @@ export function updateElectricalGrid(ctx: Ctx): void {
     if (x >= sim.x0 && x < sim.x1 && y >= sim.y0 && y < sim.y1) charged.push(ci);
   }
   if (charged.length === 0) return;
-  // Charge weakens one step per conductor hop (src - 1), so electrification stays
-  // LOCAL to the strike and dies out instead of re-seeding at a flat 4 — which let
+  // Charge weakens by `falloff` per conductor hop, so electrification stays LOCAL
+  // to the strike and dies out instead of re-seeding at full strength — which let
   // the front circulate through a connected pool and re-ignite decayed cells
   // indefinitely (the cyan glow that "multiplied" across water/blood/ooze).
   const trySpread = (tx: number, ty: number, src: number): void => {
     if (!w.inBounds(tx, ty)) return;
     const ti = tx + ty * w.width;
     if (isConductor(w.types[ti]) && w.charge[ti] === 0) {
-      const v = src - 1;
+      const v = src - falloff;
       if (v > 0) {
         const prev = spreadCharge.get(ti);
         if (prev === undefined || v > prev) spreadCharge.set(ti, v);
@@ -50,8 +53,8 @@ export function updateElectricalGrid(ctx: Ctx): void {
     trySpread(x - 1, y - 1, c);
   }
   for (const ci of charged) {
-    const c = w.charge[ci];
-    w.setChargeAt(ci, c - (1 + bleed) > 0 ? Math.floor(c - 1) : 0);
+    const next = w.charge[ci] - decay;
+    w.setChargeAt(ci, next > 0 ? next : 0);
   }
   for (const [ti, v] of spreadCharge) w.setChargeAt(ti, v);
 }

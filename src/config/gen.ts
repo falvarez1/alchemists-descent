@@ -59,17 +59,33 @@ import type { BiomeId } from '@/core/types';
 export const GEN_VERSION = 19;
 
 /**
- * Global cave-size multiplier applied to every skeleton's OPEN-SPACE carve radii
- * (arteries, shafts, chambers, walker tunnels, vaults, bubbles, the spawn
- * chamber, connectivity tunnels). 1.0 = the golden-locked original; > 1 opens
- * the caves up for grander, more traversable space without changing the map
- * dimensions or the rng draw order (radius is consumed AFTER every draw, so the
- * spawn anchor and stream are identical — only carved cells differ). Changing
- * this is a DELIBERATE generation change: re-record tests/gen-golden.test.ts and
- * bump GEN_VERSION. Decorative wall features (stalactites, vault pillars) are
- * intentionally NOT scaled, so bigger caverns gain contrast rather than clutter.
+ * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox
+ * worldgen panel writes straight into these and "Generate Caves" re-runs gen with
+ * the new values, so you can eyeball how a tweak changes the biome. The shipped
+ * defaults below are the golden-locked v18/v19 values; the golden test asserts
+ * generation at exactly these, so DON'T change a DEFAULT without re-recording
+ * tests/gen-golden.test.ts + bumping GEN_VERSION. Runtime edits are a dev/preview
+ * tool — they affect ALL generation (sandbox + expedition); find values you like,
+ * then bake them into the defaults. (A mid-expedition tweak can desync a saved
+ * level on reload, since the genVersion guard only locks the shipped baseline.)
+ *
+ * - caveScale: multiplier on every skeleton's OPEN-SPACE carve radii (tunnels,
+ *   shafts, chambers, vaults, the spawn chamber, connectivity tunnels). 1.0 =
+ *   original; >1 opens the caves up. Radius is consumed AFTER every rng draw, so
+ *   the spawn anchor + stream are identical — only carved width changes.
+ * - surfacePitWidth/Depth + notchPasses: how aggressively terrainPolish fills the
+ *   snaggy walk-surface "sinks" and tiny notches (see world/terrainPolish.ts).
  */
-export const CAVE_SCALE = 1.5;
+export const GEN_TUNE = {
+  caveScale: 1.5,
+  surfacePitWidth: 6,
+  surfacePitDepth: 4,
+  notchPasses: 2,
+  fillSurfacePits: true,
+};
+
+/** Frozen shipped baseline — the Sandbox worldgen "reset" restores it. */
+export const GEN_TUNE_DEFAULTS: Readonly<typeof GEN_TUNE> = Object.freeze({ ...GEN_TUNE });
 
 /* ============================================================
  * Baseline skeleton params (golden-hash locked)

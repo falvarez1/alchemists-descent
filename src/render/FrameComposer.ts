@@ -9,6 +9,7 @@ import type {
 } from '@/render/pixels';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
+import { VIGNETTE_BASE } from '@/render/lightingModel';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -283,7 +284,7 @@ export class FrameComposer implements PixelSurface {
     const { lightR, lightG, lightB, vignette, LW } = this.light;
     // The vignette[] array bakes the shipped 0.52 strength; rescale per-frame so
     // postFx.vignette tunes it (mirrors the GPU compose's uVignette uniform).
-    const vigScale = ctx.state.postFx.vignette / 0.52;
+    const vigScale = ctx.state.postFx.vignette / VIGNETTE_BASE;
     const backdropLayers = this.layers.backdropLayers;
     const backdropProfile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
     const backdropSettings = backdropProfile.layers;

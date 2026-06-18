@@ -1,0 +1,39 @@
+name: CI
+
+# Typecheck + tests on every push/PR. Independent of the Pages deploy (deploy.yml
+# uses `vite build`, which doesn't run tsc) so strict-type or test breakage is
+# VISIBLE here without blocking a deploy.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (tsc --noEmit, strict)
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test

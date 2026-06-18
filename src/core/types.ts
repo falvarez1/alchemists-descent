@@ -543,6 +543,12 @@ export interface GlobalParams {
   goreBlood: number; // Cell.Blood — the universal red spray
   goreSlime: number; // Cell.Slime — green viscera
   goreOoze: number; // Cell.Acid + Cell.Toxic — glowing caustic ooze
+  /** Electrical SPREAD: charge dropped per conductor hop. 1 = shipped; higher
+   *  kills the spark in fewer cells so electrified water/metal stays local. */
+  chargeFalloff: number;
+  /** Electrical DURATION: charge dropped per frame. 1 = shipped; higher makes a
+   *  charged cell fade faster. (Charge is integer 0–255, so values round.) */
+  chargeDecay: number;
 }
 
 export interface PostFxSettings {

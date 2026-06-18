@@ -13,6 +13,8 @@ export interface TabDef {
   closable?: boolean;
   /** Optional leading glyph/icon HTML (already escaped/safe). */
   iconHtml?: string;
+  /** Optional trailing count badge (e.g. validation error/warning counts). */
+  badge?: { text: string; tone?: 'error' | 'warn' | 'info' };
 }
 
 export interface TabStripRenderOptions {
@@ -42,12 +44,18 @@ function tabButtonHtml(tab: TabDef, active: boolean, draggable: boolean): string
       )}">×</button>`
     : '';
   const icon = tab.iconHtml ? `<span class="editor-tab-icon" aria-hidden="true">${tab.iconHtml}</span>` : '';
+  const badge =
+    tab.badge && tab.badge.text
+      ? `<span class="editor-tab-badge${tab.badge.tone ? ` editor-tab-badge-${tab.badge.tone}` : ''}" aria-hidden="true">${escapeHtml(
+          tab.badge.text,
+        )}</span>`
+      : '';
   return (
     `<span class="editor-tab-shell${active ? ' active' : ''}">` +
     `<button type="button" class="editor-tab${active ? ' active' : ''}" role="tab" data-tab-id="${escapeAttr(tab.id)}"` +
     ` aria-selected="${active ? 'true' : 'false'}" tabindex="${active ? '0' : '-1'}"${draggable ? ' draggable="false"' : ''}${
       tab.title ? ` title="${escapeAttr(tab.title)}"` : ''
-    }>${icon}<span class="editor-tab-label">${escapeHtml(tab.label)}</span></button>${close}</span>`
+    }>${icon}<span class="editor-tab-label">${escapeHtml(tab.label)}</span>${badge}</button>${close}</span>`
   );
 }
 

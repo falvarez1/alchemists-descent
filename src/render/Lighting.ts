@@ -1,4 +1,5 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
+import { VIGNETTE_BASE } from '@/render/lightingModel';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
 import type { LightField, LightSample } from '@/render/pixels';
@@ -99,7 +100,7 @@ export class Lighting implements LightField {
     for (let y = 0; y < VIEW_H; y++) {
       for (let x = 0; x < VIEW_W; x++) {
         const r2 = ((x - cx) ** 2 + (y - cy) ** 2) / maxR2;
-        this.vignette[y * VIEW_W + x] = 1 - 0.52 * r2;
+        this.vignette[y * VIEW_W + x] = 1 - VIGNETTE_BASE * r2;
       }
     }
   }

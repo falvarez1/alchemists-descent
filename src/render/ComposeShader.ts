@@ -3,6 +3,7 @@ import { DataUtils } from 'three';
 
 import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
+import { VIGNETTE_BASE } from '@/render/lightingModel';
 import type { Ctx, MaterialParams } from '@/core/types';
 import type {
   CompositorLens,
@@ -551,7 +552,7 @@ export class GpuCompose {
         uBackdropSaturation: { value: 1 },
         uAmbient: { value: 0 },
         uBoost: { value: 1 },
-        uVignette: { value: 0.52 },
+        uVignette: { value: VIGNETTE_BASE },
         uGlintFrame: { value: 0 },
         uPhaseWater: { value: 0 },
         uPhaseShroom: { value: 0 },

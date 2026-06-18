@@ -12,19 +12,8 @@ import {
   steamColor,
   waterColor,
 } from '@/sim/colors';
-
-const CARDINAL_OFFSETS: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
-const FIRE_REACTION_OFFSETS: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [-1, -1],
-];
+// FIRE_REACTION_OFFSETS was the local name for the shared asymmetric ignition list.
+import { CARDINAL_OFFSETS, IGNITION_OFFSETS as FIRE_REACTION_OFFSETS } from '@/sim/neighborOffsets';
 
 /** EXPORTED for cross-handler use: handleFire melts adjacent ice via this. */
 export function handleIce(ctx: Ctx, x: number, y: number): void {

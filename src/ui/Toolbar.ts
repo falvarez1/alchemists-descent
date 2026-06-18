@@ -2,6 +2,8 @@ import type { BiomeId, Ctx, EnemyKind, InputMode, SpellId } from '@/core/types';
 import type { Cell } from '@/sim/CellType';
 import { WIDTH } from '@/config/constants';
 import { BIOMES } from '@/config/biomes';
+import { GEN_TUNE, GEN_TUNE_DEFAULTS } from '@/config/gen';
+import { EXTRAS, campaignDressingRecipeForBiome } from '@/world/biomeExtras';
 import { bindSelect } from '@/ui/domBind';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { fillMaterialPopover } from '@/ui/materialInfo';
@@ -138,6 +140,7 @@ export class Toolbar {
       set: (v) => { this.ctx.state.currentBiome = v as BiomeId; },
       onChange: () => {
         ensureSandboxWorldDetached(this.ctx);
+        this.rebuildWorldgenTune(); // the dressing sliders follow the selected biome
         this.ctx.worldgen.regenerate(this.ctx);
       },
     });
@@ -145,6 +148,72 @@ export class Toolbar {
       ensureSandboxWorldDetached(this.ctx);
       this.ctx.worldgen.spawnFortress(this.ctx);
     });
+    document.getElementById('btn-worldgen-reset')?.addEventListener('click', () => {
+      Object.assign(GEN_TUNE, GEN_TUNE_DEFAULTS);
+      this.rebuildWorldgenTune();
+      ensureSandboxWorldDetached(this.ctx);
+      this.ctx.worldgen.regenerate(this.ctx);
+    });
+    this.rebuildWorldgenTune();
+  }
+
+  /** A live slider row writing straight into a tuning object; the change shows on
+   *  the next "Generate Caves" (worldgen is a one-shot bake, not per-frame). */
+  private worldgenSlider(host: HTMLElement, label: string, get: () => number, set: (v: number) => void, min: number, max: number, step: number, dec: number): void {
+    const fmt = (v: number) => (dec === 0 ? String(Math.round(v)) : v.toFixed(dec));
+    const row = document.createElement('div');
+    row.className = 'wg-tune-row';
+    const top = document.createElement('div');
+    top.className = 'wg-tune-top';
+    const lab = document.createElement('span');
+    lab.textContent = label;
+    const val = document.createElement('span');
+    val.className = 'wg-tune-val';
+    val.textContent = fmt(get());
+    top.append(lab, val);
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(get());
+    input.addEventListener('input', () => {
+      const v = parseFloat(input.value);
+      set(v);
+      val.textContent = fmt(v);
+    });
+    row.append(top, input);
+    host.appendChild(row);
+  }
+
+  /** (Re)build the worldgen look sliders: global structure (cave size + the
+   *  walk-surface "sink" fill) + the CURRENT biome's dressing densities. */
+  private rebuildWorldgenTune(): void {
+    const host = document.getElementById('worldgen-tune');
+    if (!host) return;
+    host.innerHTML = '';
+    this.worldgenSlider(host, 'Cave size', () => GEN_TUNE.caveScale, (v) => { GEN_TUNE.caveScale = v; }, 0.6, 2.2, 0.05, 2);
+    this.worldgenSlider(host, 'Sink fill width', () => GEN_TUNE.surfacePitWidth, (v) => { GEN_TUNE.surfacePitWidth = v; }, 0, 24, 1, 0);
+    this.worldgenSlider(host, 'Sink fill depth', () => GEN_TUNE.surfacePitDepth, (v) => { GEN_TUNE.surfacePitDepth = v; }, 1, 14, 1, 0);
+    this.worldgenSlider(host, 'Notch passes', () => GEN_TUNE.notchPasses, (v) => { GEN_TUNE.notchPasses = v; }, 0, 6, 1, 0);
+    // The CURRENT biome's dressing: gold richness (EXTRAS) + the campaign-recipe
+    // material densities (the channel material differs per biome — for earthen
+    // ore=gold, glow=glowshroom, liquid=water, rubble=moss, vine=vines). Editing
+    // these writes into the live tables; the dressed sandbox preview shows it.
+    const extras = EXTRAS[this.ctx.state.currentBiome] as unknown as Record<string, number | undefined>;
+    this.worldgenSlider(host, 'Gold richness', () => extras.goldBonus ?? 1, (v) => { extras.goldBonus = v; }, 0, 3, 0.1, 1);
+    const recipe = campaignDressingRecipeForBiome(this.ctx.state.currentBiome) as unknown as Record<string, number>;
+    const dressing: Array<[string, string]> = [
+      ['oreDensity', 'Ore density'],
+      ['glowDensity', 'Glow density'],
+      ['liquidDensity', 'Liquid density'],
+      ['rubbleDensity', 'Rubble/moss density'],
+      ['hangingDensity', 'Vine density'],
+    ];
+    for (const [key, label] of dressing) {
+      if (typeof recipe[key] !== 'number') continue;
+      this.worldgenSlider(host, label, () => recipe[key], (v) => { recipe[key] = v; }, 0, 2, 0.02, 2);
+    }
   }
 
   // Build-mode enemy droppers

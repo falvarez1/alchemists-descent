@@ -45,6 +45,19 @@ await page.evaluate(() => {
         }
       }
     },
+    // 3x3 solid blocks on a 4-cell pitch (1-cell gaps): each is a >=5 cluster
+    // (not loose-rubble) and nearly every cell is SURFACE, so a single body's
+    // collider window packs FAR denser than scatterClumps — the vector where one
+    // big window (or a few overlapping ones) overshoots the 2800-collider ceiling.
+    denseClumps() {
+      for (let cy = 60; cy < w.height - 6; cy += 4) {
+        for (let cx = 60; cx < w.width - 6; cx += 4) {
+          for (let y = cy; y < cy + 3; y++) for (let x = cx; x < cx + 3; x++) {
+            const i = w.idx(x, y); w.types[i] = 12; w.colors[i] = 0x777777;
+          }
+        }
+      }
+    },
     reset() {
       ctx.state.mode = 'play'; ctx.state.paused = false; ctx.fx.hitstop = 0;
       w.clear();
@@ -133,6 +146,29 @@ const flood = await page.evaluate(() => {
 });
 check('spawning 300 bodies does not crash (Rapier solver survives)', !flood.crashed, JSON.stringify(flood));
 check('dynamic body count is capped (<= ~80)', flood.dyn <= 82, JSON.stringify(flood));
+
+// ---- in-window collider overshoot: a few fast bodies in DENSE surface terrain --
+// The real-game crash vector: the 2800-collider ceiling was only checked BETWEEN
+// bodies, so the last body's full (dense) window overshot it and overflowed Rapier.
+// The cap is now enforced inside each body's window too.
+const dense = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const RB = ctx.rigidBodies;
+  window.__rb.reset();
+  window.__rb.denseClumps();
+  ctx.world.simBounds.x0 = 1; ctx.world.simBounds.y0 = 1;
+  ctx.world.simBounds.x1 = ctx.world.width - 2; ctx.world.simBounds.y1 = ctx.world.height - 2;
+  let crashed = false;
+  try {
+    for (let n = 0; n < 16; n++) {
+      const b = RB.spawn({ kind: 'box', halfW: 5, halfH: 5 }, 240 + n * 70, 380, { restitution: 0.2 });
+      RB.applyImpulse(b, (n % 2 ? 1 : -1) * 30, -20); // fast → big collider windows
+    }
+    for (let f = 0; f < 80; f++) window.__game.tick();
+  } catch (e) { crashed = true; }
+  return { crashed };
+});
+check('dense terrain + many fast bodies stays under the collider ceiling (no overflow)', !dense.crashed, JSON.stringify(dense));
 
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 

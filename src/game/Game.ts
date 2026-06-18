@@ -47,6 +47,7 @@ import { HelpOverlay } from '@/ui/HelpOverlay';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
 import { Hud } from '@/ui/Hud';
+import { CellInspector } from '@/ui/CellInspector';
 import { Inspector } from '@/ui/Inspector';
 import { LevelStore } from '@/ui/LevelStore';
 import { Minimap } from '@/ui/Minimap';
@@ -238,6 +239,9 @@ export class Game {
     new HelpOverlay(ctx);
     this.inspector = new Inspector(ctx);
     this.toolbar = new Toolbar(ctx, (id, mode) => this.inspector.generateContextInspector(id, mode));
+    // Debug cell readout under the cursor (toggle with `I`). Self-managing; lives
+    // for the page lifetime like the other DOM-wiring UI modules above.
+    new CellInspector(ctx);
     // Wires its DOM listeners in the constructor; lives for the page lifetime.
     const inputManager = new InputManager(this.renderer.domElement, ctx);
     this.restoreSavedMode = () => {

@@ -117,7 +117,16 @@ body.builder-open .hud-wrapper { gap: 6px; min-width: 0; }
 #left-toolbar .biome-select,
 #left-toolbar select,
 #left-toolbar label.action-btn,
+#left-toolbar .wg-tune-wrap,
 #left-toolbar #toolbar-filter { grid-column: 1 / -1; }
+.wg-tune-wrap { margin: 2px 0 4px; font-size: 11px; color: #9fb3c8; }
+.wg-tune-wrap > summary { cursor: pointer; padding: 4px 0; user-select: none; letter-spacing: 0.4px; }
+.wg-tune-hint { color: #6b7d90; font-size: 9px; margin-left: 4px; }
+.wg-tune { display: grid; gap: 5px; padding: 4px 2px 6px; }
+.wg-tune-row { display: grid; gap: 2px; }
+.wg-tune-top { display: flex; justify-content: space-between; font-size: 10px; color: #8ea6bd; }
+.wg-tune-val { color: #cfe0f0; font-variant-numeric: tabular-nums; }
+.wg-tune input[type="range"] { width: 100%; }
 #left-toolbar .section-title {
     position: sticky; top: -12px; z-index: 2;
     background: var(--panel-bg); padding: 6px 0 2px; margin: 6px 0 0;
@@ -1396,6 +1405,10 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
 .control-panel-group label { display: inline-block; min-width: 110px; }
 .control-label-wrapper { display: flex; justify-content: space-between; font-size: 11px; color: #bcbcc6; margin-bottom: 4px; }
 .control-label-wrapper span.val-display { color: var(--accent-blue); font-family: var(--mono); font-weight: 600; }
+/* A value bound with a code default: clickable to reset, and marked when it diverges. */
+.val-display.resettable { cursor: pointer; }
+.val-display.overridden { color: #ffb454; }
+.val-display.overridden::after { content: ' \2022'; opacity: 0.75; } /* a small dot = "differs from default" */
 
 .material-title-tag { font-size: 12px; font-weight: 600; color: #fff; background: #1a1a26; padding: 6px 10px; border-radius: 4px; border-left: 3px solid var(--accent-blue); margin-bottom: 8px; }
 

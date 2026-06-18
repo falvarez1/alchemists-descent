@@ -24,21 +24,41 @@ export function bindRange(opts: {
   fmt?: (value: number) => string;
   /** Called after a user edit (e.g. to emit paramsChanged). */
   onInput?: () => void;
+  /** Code default. When given, the readout marks itself 'overridden' when the live
+   *  value differs and becomes click-to-reset — so you can always tell (and undo)
+   *  when a value diverges from params.ts. */
+  defaultValue?: number;
 }): Binding {
   const slider = document.getElementById(opts.slider) as HTMLInputElement | null;
   const readout = opts.readout ? document.getElementById(opts.readout) : null;
   const fmt = opts.fmt ?? ((v: number) => String(v));
+  const def = opts.defaultValue;
+  const refresh = (v: number): void => {
+    if (!readout) return;
+    readout.textContent = fmt(v);
+    if (def !== undefined) readout.classList.toggle('overridden', Math.abs(v - def) > 1e-6);
+  };
   const resync = (): void => {
     const v = opts.get();
     if (slider && document.activeElement !== slider) slider.value = String(v);
-    if (readout) readout.textContent = fmt(v);
+    refresh(v);
   };
   slider?.addEventListener('input', () => {
     const v = parseFloat(slider.value);
     opts.set(v);
-    if (readout) readout.textContent = fmt(v);
+    refresh(v);
     opts.onInput?.();
   });
+  if (def !== undefined && readout) {
+    readout.classList.add('resettable');
+    readout.title = `Click to reset to default (${fmt(def)})`;
+    readout.addEventListener('click', () => {
+      opts.set(def);
+      if (slider) slider.value = String(def);
+      refresh(def);
+      opts.onInput?.();
+    });
+  }
   resync();
   return { resync };
 }

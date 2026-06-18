@@ -15,20 +15,8 @@ import {
   unpackR,
   waterColor,
 } from '@/sim/colors';
+import { CARDINAL_OFFSETS, IGNITION_OFFSETS } from '@/sim/neighborOffsets';
 import { stainCell } from '@/sim/stains';
-
-const CARDINAL_OFFSETS: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
-const IGNITION_OFFSETS: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [-1, -1],
-];
 
 function waterCanPass(t: number): boolean {
   return t === Cell.Empty || t === Cell.Oil || t === Cell.Steam || t === Cell.Smoke;

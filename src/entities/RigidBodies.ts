@@ -825,9 +825,13 @@ export class RigidBodies implements RigidBodiesApi {
     const player = ctx.player;
     if (ctx.state.mode !== 'play' || player.dead || player.climbing || player.swinging) return;
     const bodyH = player.crawling ? PLAYER_CRAWL_H : PLAYER_H;
-    for (const body of this.bodies) {
+    // Snapshot: a stomp can smashBody() mid-loop, splicing this.bodies — iterating
+    // the live array would skip the neighbor. Re-check membership so we never
+    // resolve (or double-smash) a body already removed this frame.
+    for (const body of this.bodies.slice()) {
       if (body.kind !== 'dynamic') continue;
       if (body === this.held) continue; // don't shove the player off its own carried body
+      if (!this.handles.has(body)) continue; // removed (smashed) earlier this frame
       if (Math.abs(body.x - player.x) > 48 || Math.abs(body.y - player.y) > 48) continue;
       this.resolvePlayerVsBody(player, body, bodyH);
     }
@@ -942,7 +946,11 @@ export class RigidBodies implements RigidBodiesApi {
       const x1 = Math.min(WIDTH - 2, Math.ceil(t.x + r));
       const y0 = Math.max(1, Math.floor(t.y - r));
       const y1 = Math.min(HEIGHT - 2, Math.ceil(t.y + r));
-      for (let y = y0; y <= y1; y++) {
+      // The total-collider ceiling is enforced INSIDE this window too, not just
+      // between bodies: one body in a wall of dense surface terrain could
+      // otherwise add its whole 80×80 window (thousands of cells) in a single
+      // pass and overflow Rapier before the next body's check ever ran.
+      for (let y = y0; y <= y1 && desired.size < MAX_TERRAIN_CELLS; y++) {
         const row = y * WIDTH;
         for (let x = x0; x <= x1; x++) {
           const i = row + x;
@@ -960,6 +968,7 @@ export class RigidBodies implements RigidBodiesApi {
           // two-cell floating speck — it shoves past like the player does.
           if (!cellBlocksEntityWithLooseRubble(world, x, y, TERRAIN_SCRATCH)) continue;
           desired.add(i);
+          if (desired.size >= MAX_TERRAIN_CELLS) break;
         }
       }
     }

@@ -16,6 +16,7 @@
     "verify:game": "node scripts/verify-game.mjs",
     "verify:builder-ux": "node scripts/verify-builder-ux.mjs",
     "verify:builder-responsive": "node scripts/verify-builder-responsive.mjs",
+    "verify:builder-dock-split": "node scripts/verify-builder-dock-split.mjs",
     "verify:virtual-playtest": "node scripts/verify-virtual-playtest.mjs",
     "verify:campaign-playtest": "node scripts/verify-campaign-playtest.mjs",
     "bench:virtual-world": "node scripts/bench-virtual-world.mjs",

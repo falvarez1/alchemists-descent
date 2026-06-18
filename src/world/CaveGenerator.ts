@@ -1,6 +1,6 @@
 import { BIOMES } from '@/config/biomes';
 import { HEIGHT, WIDTH } from '@/config/constants';
-import { CAVE_SCALE, GEN, scaleSkeletonSpec } from '@/config/gen';
+import { GEN, GEN_TUNE, scaleSkeletonSpec } from '@/config/gen';
 import { clamp, hash2, valueNoise } from '@/core/math';
 import { Rng, hashSeed, randomSeed } from '@/core/rng';
 import { makeInstantiationSink } from '@/game/instantiate';
@@ -79,6 +79,12 @@ export class WorldGen implements WorldGenApi {
     // never re-rolls the seed, so a fixed worldSeed replays the same layout.
     ctx.state.worldSeed = randomSeed();
     this.generateCaves(ctx);
+    // Dress the DISPOSABLE sandbox preview (ore veins, moss, crystals, coal, gold,
+    // then the campaign-recipe ore/glow/liquid/rubble/vine densities) so biome
+    // look-tuning is visible right here, not only in a played expedition — the
+    // expedition path does both passes inside generateLevel.
+    applyBiomeExtras(ctx, this.rng, ctx.state.currentBiome);
+    applyCampaignDressing(ctx, new Rng(hashSeed(ctx.state.worldSeed >>> 0, 'sandbox-dress')), ctx.state.currentBiome, new PlacementLedger());
     if (this.spawnHint) {
       ctx.camera.snapTo(this.spawnHint.x, this.spawnHint.y);
     }
@@ -109,7 +115,7 @@ export class WorldGen implements WorldGenApi {
       minY: MIN_Y,
       worldSeed: ctx.state.worldSeed >>> 0,
     };
-    const skel = SKELETONS[G.skeleton.kind](io, scaleSkeletonSpec(G.skeleton, CAVE_SCALE));
+    const skel = SKELETONS[G.skeleton.kind](io, scaleSkeletonSpec(G.skeleton, GEN_TUNE.caveScale));
     this.spawnHint = skel.spawnHint;
     // skel.tunnelY (the baseline primary-artery profile) has no remaining
     // consumers in the shared stages — the spawn chamber is carved inside the
@@ -463,7 +469,15 @@ export class WorldGen implements WorldGenApi {
     // Gilded Vault and timber scaffold routes keep their original thin-route
     // topology because generated locks are tuned tightly around them.
     if (ctx.state.currentBiome !== 'gilded' && ctx.state.currentBiome !== 'timber') {
-      polishCaveTerrain(world, { seed, minY: MIN_Y, floorBand: FLOOR_BAND });
+      polishCaveTerrain(world, {
+        seed,
+        minY: MIN_Y,
+        floorBand: FLOOR_BAND,
+        maxPitWidth: GEN_TUNE.surfacePitWidth,
+        maxPitDepth: GEN_TUNE.surfacePitDepth,
+        notchPasses: GEN_TUNE.notchPasses,
+        surfacePits: GEN_TUNE.fillSurfacePits,
+      });
     }
   }
 

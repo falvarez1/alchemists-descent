@@ -1,4 +1,5 @@
 import type {
+  AudioApi,
   Ctx,
   Enemy,
   EnemyKind,
@@ -83,6 +84,28 @@ import { Simulation } from '@/sim/Simulation';
  * lights, mechanisms, decor, and inhabitants. State chips switch each item
  * between its meaningful states. Nothing here is a mockup.
  */
+
+// Every Gallery preview shares ONE fully-typed no-op audio. Previews run the REAL
+// combat/particle/entity code, which fires a wide spread of ctx.audio.* sounds;
+// the old per-preview stubs hand-listed only a handful, so any sound they missed
+// crashed the preview ("ctx.audio.X is not a function" — e.g. Vitriol Spray's
+// liquid splash hitting splash()). Typing this as AudioApi makes tsc enforce
+// completeness, so a newly-added sound can never silently reopen that gap.
+const GALLERY_NOOP_AUDIO: AudioApi = (() => {
+  const s = (): void => undefined;
+  return {
+    enabled: false,
+    ensure: s,
+    toggle: () => false,
+    tone: s, noiseBurst: s, boom: s, zap: s, lightning: s, hollowKnock: s,
+    bubble: s, shatter: s, pickup: s, chest: s, keyJingle: s, portalWhoosh: s,
+    learn: s, drinkPotion: s, lever: s, doorGrind: s, brazier: s,
+    groan: s, chirp: s, skitter: s, drip: s, dryFire: s, wandSwap: s, sputter: s,
+    heartbeat: s, cardPick: s, cardSlot: s, footstep: s, crawlShuffle: s,
+    crampedBump: s, landThud: s, splash: s, alert: s, gong: s, coin: s, hurt: s,
+    jump: s, squelch: s, flame: s, dig: s, waveHorn: s, levitate: s, implode: s,
+  };
+})();
 
 interface StageRig {
   bounds: { x0: number; y0: number; x1: number; y1: number };
@@ -225,10 +248,7 @@ export class Gallery {
       player: { x: -500, y: -500, dead: false, pullT: 0, pullDir: 1, facing: 1 },
       camera: { renderX: 0, renderY: 0, x: 0, y: 0 },
       state: this.stubState,
-      audio: {
-        tone: noop, groan: noop, zap: noop, bubble: noop, brazier: noop,
-        lever: noop, doorGrind: noop, boom: noop,
-      },
+      audio: GALLERY_NOOP_AUDIO,
       particles: { spawn: noop, burst: noop, clear: noop },
       enemyCtl: hooks.ctx.enemyCtl,
       params: hooks.ctx.params,
@@ -1587,11 +1607,7 @@ export class Gallery {
       },
       state: this.stubState,
       params: demoParams,
-      audio: {
-        tone: noop, zap: noop, flame: noop, dig: noop, boom: noop, noiseBurst: noop,
-        shatter: noop, implode: noop, lightning: noop, hollowKnock: noop, coin: noop,
-        bubble: noop, groan: noop, brazier: noop, lever: noop, doorGrind: noop,
-      },
+      audio: GALLERY_NOOP_AUDIO,
       particles,
       projectiles,
       shockwaves: [],
@@ -1821,11 +1837,7 @@ export class Gallery {
       camera: { x: RX - Math.floor(VIEW_W / 2), y: FY - Math.floor(VIEW_H / 2), renderX: 0, renderY: 0 },
       state: this.stubState,
       params: this.hooks.ctx.params,
-      audio: {
-        tone: noop, zap: noop, flame: noop, dig: noop, boom: noop, noiseBurst: noop,
-        shatter: noop, implode: noop, lightning: noop, hollowKnock: noop, coin: noop,
-        bubble: noop, groan: noop, brazier: noop, lever: noop, doorGrind: noop,
-      },
+      audio: GALLERY_NOOP_AUDIO,
       particles,
       projectiles,
       shockwaves: [],

@@ -45,7 +45,7 @@ export const MATERIAL_INFO: Record<number, string> = {
   [Cell.Gold]:
     'Heavy precious powder. Dig it loose in play mode and the grains home to your purse. Acid alchemy creates it; the cauldron accepts it as an ingredient.',
   [Cell.Blood]:
-    'Spilled by wounded creatures. Stains rock and timber, slowly darkens as it dries, and conducts lightning.',
+    'Spilled by wounded creatures. Stains rock and timber and slowly darkens as it dries.',
   [Cell.Slime]:
     'Glowing goo the alchemist absorbs on contact to heal. Fire occasionally renders it into Acid.',
   [Cell.Ember]:

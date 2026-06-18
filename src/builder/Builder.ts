@@ -267,6 +267,7 @@ const BOTTOM_SIDE_PANE_MAX = 420;
 const SIDE_PANE_ORDER = ['top', 'bottom'] as const;
 const SIDE_BOTTOM_PANE_MIN = 140;
 const SIDE_BOTTOM_PANE_MAX = 600;
+const SIDE_DEFAULT_PANE_SIZE = 240;
 /** Shipped dock sizes (match DEFAULT_BUILDER_LAYOUT) — used by double-click reset. */
 const DEFAULT_DOCK_SIZE: Record<'left' | 'right' | 'bottom', number> = { left: 214, right: 252, bottom: 420 };
 const BIOME_IDS = Object.keys(BIOME_DEFS) as BiomeId[];
@@ -1796,6 +1797,29 @@ export class Builder {
       #builder-root .builder-dock-guide.drop-target {
         background: rgba(74, 222, 128, 0.16);
       }
+      /* Validation tab count badge (error/warning totals), so background issues
+         are glanceable without switching to the tab. */
+      #builder-root .editor-tab-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 15px; height: 14px; margin-left: 6px; padding: 0 4px;
+        border-radius: 7px; font: 700 9px/1 var(--mono); letter-spacing: 0;
+        color: #07120b; background: #9fb6cc; vertical-align: middle;
+      }
+      #builder-root .editor-tab-badge-error { background: #f87171; color: #260606; }
+      #builder-root .editor-tab-badge-warn { background: #fbbf24; color: #241803; }
+      /* Side-pane splitter grip: a resting handle that signals draggability and
+         brightens on hover/focus/drag (the strip itself is only 5px). */
+      #builder-root .builder-side-pane-splitter::after {
+        content: ""; position: absolute; left: 50%; top: 50%;
+        width: 28px; height: 3px; transform: translate(-50%, -50%);
+        border-radius: 2px; background: rgba(148, 163, 184, 0.35);
+        transition: background 0.12s ease, width 0.12s ease;
+      }
+      #builder-root .builder-side-pane-splitter:hover::after,
+      #builder-root .builder-side-pane-splitter:focus-visible::after,
+      #builder-root .builder-side-pane-splitter.dragging::after {
+        background: rgba(56, 189, 248, 0.95); width: 40px;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -1997,12 +2021,13 @@ export class Builder {
       created.dataset.sidePaneSplitter = dock;
       created.addEventListener('pointerdown', (event) => this.startSidePaneResize(event, dock, created));
       created.addEventListener('keydown', (event) => this.onSidePaneSplitterKeyDown(event, dock));
+      created.addEventListener('dblclick', () => this.resetSidePane(dock));
       this.sidePaneSplitters.set(dock, created);
       splitter = created;
     }
     const max = this.sidePaneResizeMax(dock);
     const current = this.currentSidePaneSize(dock);
-    splitter.setAttribute('aria-label', `Resize ${dock} dock bottom section`);
+    splitter.setAttribute('aria-label', `Resize ${dock} dock bottom section (arrows; double-click to reset)`);
     splitter.setAttribute('aria-valuemin', String(SIDE_BOTTOM_PANE_MIN));
     splitter.setAttribute('aria-valuemax', String(max));
     splitter.setAttribute('aria-valuenow', String(Math.max(SIDE_BOTTOM_PANE_MIN, Math.min(max, current))));
@@ -2074,6 +2099,14 @@ export class Builder {
     }
   }
 
+  /** Double-click the side splitter to restore the bottom section's default height. */
+  private resetSidePane(dock: 'left' | 'right'): void {
+    this.resizeSidePane(dock, SIDE_DEFAULT_PANE_SIZE);
+    this.applyWorkspaceLayout();
+    this.saveWorkspacePrefs();
+    this.status(`${dock.toUpperCase()} DOCK SECTION RESET`);
+  }
+
   private currentSidePaneSize(dock: 'left' | 'right'): number {
     const heights = this.workspaceLayout.panels
       .filter((panel) => panel.dock === dock && panel.open && this.normalizeSidePaneId(dock, panel.tabGroupId) === 'bottom')
@@ -2121,7 +2154,12 @@ export class Builder {
     const group = existing ?? this.createDockTabStrip(groupKey);
     const tabs = open.map((panel) => {
       const spec = this.panelRegistry.get(panel.id);
-      return { id: panel.id, label: spec?.title ?? panel.id, closable: spec?.closePolicy !== 'required' };
+      return {
+        id: panel.id,
+        label: spec?.title ?? panel.id,
+        closable: spec?.closePolicy !== 'required',
+        badge: panel.id === 'builder-issues' ? this.issueTabBadge() : undefined,
+      };
     });
     // Rebuilding the strip's innerHTML resets the list's horizontal scroll, so
     // capture it first: a re-sync (e.g. clicking an overflowed right-side tab)
@@ -3444,6 +3482,7 @@ export class Builder {
           <button id="b-runtime" title="Inspect the active play runtime without editing authored objects">Runtime</button>
           <button id="b-backdrop" title="Preview and tune parallax backdrop layers">Backdrop</button>
           <div class="builder-menu-sep"></div>
+          <button id="b-validation-layout" title="Workspace preset: dock Validation Issues, Outliner and Link Graph for a review pass">Validation Layout</button>
           <button id="b-zen" title="Hide all side panels for a clear view of the canvas">Toggle Panels</button>
         </div>
         <div class="builder-menu-dropdown" data-menu-panel="help" role="menu" aria-label="Help" hidden>
@@ -4533,6 +4572,7 @@ export class Builder {
     this.el('b-assets').addEventListener('click', () => this.runUiCommand('builder.assetsPanel'));
     this.el('b-runtime').addEventListener('click', () => this.runUiCommand('builder.runtimePanel'));
     this.el('b-backdrop').addEventListener('click', () => this.openBackdropPreview());
+    this.el('b-validation-layout').addEventListener('click', () => this.runUiCommand('builder.workspace.validation'));
     this.el('b-reset-workspace').addEventListener('click', () => this.runUiCommand('builder.resetWorkspace'));
     this.el('b-zen').addEventListener('click', () => this.runUiCommand('builder.togglePanels'));
     this.el('b-exit').addEventListener('click', () => void this.requestClose());
@@ -12880,6 +12920,42 @@ export class Builder {
     return this.workspaceLayout.panels.some((panel) => panel.id === id && panel.open);
   }
 
+  /** Error/warning count for the Validation tab badge (info issues don't badge). */
+  private issueTabBadge(): { text: string; tone: 'error' | 'warn' } | undefined {
+    let errors = 0;
+    let warnings = 0;
+    for (const issue of this.lastIssues) {
+      if (issue.severity === 'error') errors++;
+      else if (issue.severity === 'warning') warnings++;
+    }
+    const total = errors + warnings;
+    if (total === 0) return undefined;
+    return { text: String(total), tone: errors > 0 ? 'error' : 'warn' };
+  }
+
+  /**
+   * Update the Validation tab's badge in place. A quiet validation refresh skips
+   * the tab-strip rebuild, so the badge it embeds (issueTabBadge) would go stale;
+   * this patches the existing tab DOM directly. No-op when the panel isn't tabbed.
+   */
+  private refreshIssueTabBadge(): void {
+    const tab = this.root.querySelector<HTMLElement>('.builder-dock-tabs .editor-tab[data-tab-id="builder-issues"]');
+    if (!tab) return;
+    const badge = this.issueTabBadge();
+    let el = tab.querySelector<HTMLElement>('.editor-tab-badge');
+    if (!badge) {
+      el?.remove();
+      return;
+    }
+    if (!el) {
+      el = document.createElement('span');
+      el.setAttribute('aria-hidden', 'true');
+      tab.appendChild(el);
+    }
+    el.className = `editor-tab-badge editor-tab-badge-${badge.tone}`;
+    el.textContent = badge.text;
+  }
+
   /* ===================== issues / status / sync ===================== */
 
   private renderIssues(
@@ -12897,6 +12973,10 @@ export class Builder {
     this.lastIssues = [...issues];
     this.validationDirty = false;
     this.syncNavigationPanels();
+    // Keep the Validation tab's error/warning badge current even on a quiet
+    // refresh (which deliberately skips the layout/tab-strip rebuild), so issues
+    // appearing in the background are glanceable without switching to the tab.
+    this.refreshIssueTabBadge();
     const panel = this.el<HTMLDivElement>('builder-issues');
     this.validationScrollTop = panel.scrollTop || this.validationScrollTop;
     if (activate) {

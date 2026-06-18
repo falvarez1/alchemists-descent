@@ -8,6 +8,13 @@ export interface TerrainPolishOptions {
   minY?: number;
   floorBand?: number;
   surfacePits?: boolean;
+  /** Max walk-surface "sink" WIDTH to fill (cells). Default 6 — raise to smooth
+   *  wider gaps between floor shoulders. */
+  maxPitWidth?: number;
+  /** Max sink DEPTH to fill. Default 4 — raise to fill deeper dips. */
+  maxPitDepth?: number;
+  /** Tiny-enclosed-notch fill passes. Default 2 — raise for a cleaner wall. */
+  notchPasses?: number;
 }
 
 export interface TerrainPolishStats {
@@ -15,9 +22,9 @@ export interface TerrainPolishStats {
   surfaceCellsFilled: number;
 }
 
-const NOTCH_PASSES = 2;
-const SURFACE_MAX_PIT_WIDTH = 6;
-const SURFACE_MAX_PIT_DEPTH = 4;
+const NOTCH_PASSES = 2; // default; override via TerrainPolishOptions.notchPasses
+const SURFACE_MAX_PIT_WIDTH = 6; // default; override via TerrainPolishOptions.maxPitWidth
+const SURFACE_MAX_PIT_DEPTH = 4; // default; override via TerrainPolishOptions.maxPitDepth
 
 const NEIGHBOR_SAMPLES: ReadonlyArray<readonly [number, number, number]> = [
   [0, 1, 4],
@@ -121,12 +128,12 @@ function queueFill(
   return true;
 }
 
-function fillTinyNotches(world: World, seed: number, minY: number, maxY: number): number {
+function fillTinyNotches(world: World, seed: number, minY: number, maxY: number, passes: number): number {
   const W = world.width;
   const types = world.types;
   let total = 0;
 
-  for (let pass = 0; pass < NOTCH_PASSES; pass++) {
+  for (let pass = 0; pass < passes; pass++) {
     const indices: number[] = [];
     const fillTypes: number[] = [];
     const fillColors: number[] = [];
@@ -181,8 +188,8 @@ function isTopSurface(types: Uint8Array, W: number, x: number, y: number): boole
   );
 }
 
-function shallowPitDepth(types: Uint8Array, W: number, x: number, y: number, maxY: number): number {
-  for (let depth = 1; depth <= SURFACE_MAX_PIT_DEPTH; depth++) {
+function shallowPitDepth(types: Uint8Array, W: number, x: number, y: number, maxY: number, maxDepth: number): number {
+  for (let depth = 1; depth <= maxDepth; depth++) {
     const yy = y + depth;
     if (yy >= maxY) return 0;
     const t = types[x + yy * W];
@@ -192,7 +199,7 @@ function shallowPitDepth(types: Uint8Array, W: number, x: number, y: number, max
   return 0;
 }
 
-function fillSurfacePits(world: World, seed: number, minY: number, maxY: number): number {
+function fillSurfacePits(world: World, seed: number, minY: number, maxY: number, maxWidth: number, maxPitDepth: number): number {
   const W = world.width;
   const types = world.types;
   let filled = 0;
@@ -205,7 +212,7 @@ function fillSurfacePits(world: World, seed: number, minY: number, maxY: number)
       while (x < W - 2 && types[x + y * W] === Cell.Empty) x++;
       const end = x - 1;
       const width = end - start + 1;
-      if (width <= 0 || width > SURFACE_MAX_PIT_WIDTH) continue;
+      if (width <= 0 || width > maxWidth) continue;
       if (!isTopSurface(types, W, start - 1, y) || !isTopSurface(types, W, end + 1, y)) continue;
 
       const depths: number[] = [];
@@ -216,7 +223,7 @@ function fillSurfacePits(world: World, seed: number, minY: number, maxY: number)
           shallow = false;
           break;
         }
-        const depth = shallowPitDepth(types, W, xx, y, maxY);
+        const depth = shallowPitDepth(types, W, xx, y, maxY, maxPitDepth);
         if (depth === 0) {
           shallow = false;
           break;
@@ -258,8 +265,11 @@ function fillSurfacePits(world: World, seed: number, minY: number, maxY: number)
 export function polishCaveTerrain(world: World, options: TerrainPolishOptions): TerrainPolishStats {
   const minY = options.minY ?? 1;
   const maxY = Math.min(options.floorBand ?? world.height - 1, world.height - 1);
-  const notchesFilled = fillTinyNotches(world, options.seed, minY, maxY);
+  const notchPasses = Math.max(0, Math.round(options.notchPasses ?? NOTCH_PASSES));
+  const maxWidth = Math.max(0, Math.round(options.maxPitWidth ?? SURFACE_MAX_PIT_WIDTH));
+  const maxDepth = Math.max(1, Math.round(options.maxPitDepth ?? SURFACE_MAX_PIT_DEPTH));
+  const notchesFilled = fillTinyNotches(world, options.seed, minY, maxY, notchPasses);
   const surfaceCellsFilled =
-    options.surfacePits === false ? 0 : fillSurfacePits(world, options.seed, minY, maxY);
+    options.surfacePits === false ? 0 : fillSurfacePits(world, options.seed, minY, maxY, maxWidth, maxDepth);
   return { notchesFilled, surfaceCellsFilled };
 }

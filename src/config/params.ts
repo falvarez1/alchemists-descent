@@ -30,6 +30,10 @@ export const GLOBAL_PARAMS: GlobalParams = {
   goreBlood: 4.0,
   goreSlime: 1.0,
   goreOoze: 0.15,
+  // Electrical spark/lightning conduction. Falloff 1 + decay 1 = the shipped
+  // local flash; raise either to attenuate harder (less spread / shorter glow).
+  chargeFalloff: 1,
+  chargeDecay: 1,
 };
 
 /** Frozen baseline captured at load — the Builder section "reset" restores it. */

@@ -1,6 +1,10 @@
 import type { Ctx, MaterialParams, SpellId, SpellParams } from '@/core/types';
 import { formatStep } from '@/core/strings';
+import { GLOBAL_PARAM_DEFAULTS } from '@/config/params';
 import { bindRange, type Binding } from '@/ui/domBind';
+
+/** Initial GameStateData.brushSize (Game.ts) — the reset target for the brush slider. */
+const BRUSH_DEFAULT = 6;
 import { resetCombatTransients } from '@/game/transients';
 import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
 
@@ -153,15 +157,16 @@ export class Inspector {
     // if changed from elsewhere) stay in sync — the bindings seed from the live
     // value and resync on that event, so the panel can never show a stale number.
     const changed = (): void => { ctx.events.emit('paramsChanged'); };
+    const def = GLOBAL_PARAM_DEFAULTS;
     const bindings: Binding[] = [
       bindRange({ slider: 'brush-size', readout: 'brush-value', get: () => ctx.state.brushSize,
-        set: (v) => { ctx.state.brushSize = Math.round(v); }, fmt: (v) => Math.round(v) + 'px', onInput: changed }),
+        set: (v) => { ctx.state.brushSize = Math.round(v); }, fmt: (v) => Math.round(v) + 'px', onInput: changed, defaultValue: BRUSH_DEFAULT }),
       bindRange({ slider: 'g-speed', readout: 'g-speed-value', get: () => g.simSpeed,
-        set: (v) => { g.simSpeed = v; }, fmt: (v) => v.toFixed(1) + 'x', onInput: changed }),
+        set: (v) => { g.simSpeed = v; }, fmt: (v) => v.toFixed(1) + 'x', onInput: changed, defaultValue: def.simSpeed }),
       bindRange({ slider: 'g-bright', readout: 'g-bright-value', get: () => g.maxBrightness,
-        set: (v) => { g.maxBrightness = v; }, fmt: (v) => v.toFixed(1), onInput: changed }),
+        set: (v) => { g.maxBrightness = v; }, fmt: (v) => v.toFixed(1), onInput: changed, defaultValue: def.maxBrightness }),
       bindRange({ slider: 'g-ambient', readout: 'g-ambient-value', get: () => g.ambient,
-        set: (v) => { g.ambient = v; }, fmt: (v) => v.toFixed(2), onInput: changed }),
+        set: (v) => { g.ambient = v; }, fmt: (v) => v.toFixed(2), onInput: changed, defaultValue: def.ambient }),
     ];
     // Re-read the live params whenever ANYTHING changes them (console `param`,
     // Builder sliders, a reset) so this panel mirrors them without a reload.
@@ -238,12 +243,17 @@ export class Inspector {
 
   private wireSoundToggle(): void {
     const ctx = this.ctx;
-    document.getElementById('sound-toggle')!.addEventListener('click', (e) => {
-      const on = ctx.audio.toggle();
-      if (on) ctx.audio.ensure(); // original: turning sound on (re)creates the AudioContext
-      const btn = e.target as HTMLElement;
+    const btn = document.getElementById('sound-toggle');
+    if (!btn) return;
+    const paint = (on: boolean): void => {
       btn.textContent = on ? 'SND ON' : 'SND OFF';
       btn.classList.toggle('muted', !on);
+    };
+    btn.addEventListener('click', () => {
+      const on = ctx.audio.toggle();
+      if (on) ctx.audio.ensure(); // original: turning sound on (re)creates the AudioContext
+      paint(on);
     });
+    paint(ctx.audio.enabled); // seed from the real state, not the hard-coded "SND ON"
   }
 }

@@ -1,14 +1,9 @@
 import type { Ctx } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { glassColor } from '@/sim/colors';
+import { IGNITION_OFFSETS } from '@/sim/neighborOffsets';
 
 /* ===================== Element Physics Behaviors ===================== */
-const IGNITION_OFFSETS: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [-1, -1],
-];
 
 function powderCanPass(t: number): boolean {
   return t === Cell.Empty || (isLiquid(t) && t !== Cell.Lava) || isGas(t);
