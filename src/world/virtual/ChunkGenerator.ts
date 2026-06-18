@@ -22,6 +22,8 @@ import {
   createDefaultVirtualGenerationParams,
 } from '@/world/virtual/defaults';
 import { biomeAtWorld, chunkOrigin, floorDiv } from '@/world/virtual/coords';
+import { polishCaveTerrain } from '@/world/terrainPolish';
+import type { World } from '@/sim/World';
 import { fnv1aByteArrays, signedUnitHash2i, unitHash2i } from '@/world/virtual/hash';
 import { resolveTilesForRect, type ResolvedTile } from '@/world/virtual/HerringboneTiles';
 import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
@@ -87,6 +89,7 @@ function generateVirtualChunkNormalized(def: VirtualWorldDef, cx: number, cy: nu
   relaxOrganicSilhouette(def, scratch, biomeAt);
   smoothTerrain(def, scratch);
   roundCaveCorners(def, scratch, biomeAt);
+  fillSurfacePitsScratch(def, scratch);
   dressSurfaceTerrain(def, scratch, biomeAt);
   dressBiomeFeatures(def, scratch, biomeAt);
   sealOuterBorder(def, scratch);
@@ -1397,10 +1400,17 @@ function normalizeVirtualWorldDef(def: VirtualWorldDef): void {
     ...fallbackGeneration,
     ...rawGeneration,
   };
+  const genBag = def.generation as unknown as Record<string, number | boolean | undefined>;
   for (const [key, fallback] of Object.entries(fallbackGeneration) as Array<
-    [keyof VirtualWorldDef['generation'], number]
+    [string, number | boolean]
   >) {
-    if (!Number.isFinite(def.generation[key])) def.generation[key] = fallback;
+    // generation is mostly numeric but holds one boolean (fillSurfacePits); guard
+    // each by its fallback's type so the boolean isn't clobbered by a finite-check.
+    if (typeof fallback === 'boolean') {
+      if (typeof genBag[key] !== 'boolean') genBag[key] = fallback;
+    } else if (!Number.isFinite(genBag[key] as number)) {
+      genBag[key] = fallback;
+    }
   }
 
   const fallbackDressing = createDefaultDressingProfile();
@@ -1562,6 +1572,58 @@ function clamp01(value: number): number {
 
 function generationNumber(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
+}
+
+/** Walk-surface sink/notch fill — the chunked-gen analog of the legacy terrain
+ *  polish. Reuses the locked polishCaveTerrain on a thin World adapter over the
+ *  haloed scratch, so the snaggy floor dips a levitating player bumps into get
+ *  raised before surface dressing. A constant world-seed keeps the fill identical
+ *  where chunks overlap in the halo -> no boundary seam. Driven by the def's
+ *  fillSurfacePits/surfacePitWidth/surfacePitDepth/notchPasses, which the World
+ *  Map mirrors from GEN_TUNE so the global Look-tuning sink-fill sliders apply. */
+function fillSurfacePitsScratch(def: VirtualWorldDef, scratch: Scratch): void {
+  const gen = def.generation;
+  const surfacePits = gen.fillSurfacePits !== false;
+  const notchPasses = Math.max(0, Math.round(generationNumber(gen.notchPasses ?? 2, 2)));
+  if (!surfacePits && notchPasses === 0) return; // nothing to do — skip the allocation
+  const cells = scratch.types.length;
+  // Snapshot so we can recolor only the cells the pass fills (see below).
+  const before = scratch.types.slice();
+  // polishCaveTerrain zeroes life/charge on filled cells; the scratch has no such
+  // planes, so hand it throwaway ones (filled cells are inert rock anyway).
+  const adapter = {
+    types: scratch.types,
+    colors: scratch.colors,
+    width: scratch.size,
+    height: scratch.size,
+    life: new Int16Array(cells),
+    charge: new Uint8Array(cells),
+  } as unknown as World;
+  polishCaveTerrain(adapter, {
+    seed: def.seed >>> 0,
+    minY: 0,
+    floorBand: scratch.size - 1,
+    surfacePits,
+    maxPitWidth: Math.max(0, Math.round(generationNumber(gen.surfacePitWidth ?? 6, 6))),
+    maxPitDepth: Math.max(1, Math.round(generationNumber(gen.surfacePitDepth ?? 4, 4))),
+    notchPasses,
+  });
+  // The polish shades fills via SCRATCH-LOCAL coords, which would make the same
+  // world cell differ by chunk size and break cross-chunk-size stability. The fill
+  // TYPE/topology is world-deterministic (neighbor-based, local, far inside the
+  // halo), so just recolor each newly-solid cell by WORLD coord like the gen does.
+  const size = scratch.size;
+  for (let y = 0; y < size; y++) {
+    const wy = scratch.originY + y;
+    for (let x = 0; x < size; x++) {
+      const i = x + y * size;
+      if (before[i] === Cell.Empty && scratch.types[i] !== Cell.Empty) {
+        const wx = scratch.originX + x;
+        const biome = biomeIdFromIndex(biomeAtWorld(def.map, wx, wy, def.biomeChunkSize));
+        scratch.colors[i] = terrainColor(def, biome, wx, wy, 0.5);
+      }
+    }
+  }
 }
 
 /** The shipped virtual carves were authored at the look that GEN_TUNE calls

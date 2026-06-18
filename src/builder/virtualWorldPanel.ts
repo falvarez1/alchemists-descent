@@ -1,6 +1,7 @@
 import { LEVELS } from '@/config/worldgraph';
 import { BIOMES } from '@/config/biomes';
 import { GEN_TUNE } from '@/config/gen';
+import { campaignDressingRecipeForBiome } from '@/world/biomeExtras';
 import { randomSeed } from '@/core/rng';
 import { escapeHtml } from '@/core/strings';
 import type { BiomeId, LevelDef } from '@/core/types';
@@ -22,6 +23,7 @@ import type {
   BackendInfo,
   GenerateWindowResult,
   TransferableVirtualChunk,
+  VirtualBiomeDressingRecipe,
   VirtualBiomeId,
   VirtualSceneBudget,
   VirtualSceneKind,
@@ -323,6 +325,13 @@ export class VirtualWorldPanel {
   private showBiomes = true;
   private showScenes = true;
   private showCost = false;
+  /** When on, generation overlays the global campaign dressing recipes (the
+   *  Look-tuning ore/glow/rubble/vine densities) over this profile's own dressing,
+   *  so the World Map tracks the global dials instead of its baked-in recipes. */
+  private useGlobalDressing = false;
+  /** Signature of the global Look-tuning state baked into the last generation;
+   *  a change invalidates the chunk cache so the window re-bakes. */
+  private lastLookSig = '';
   private raf = 0;
   private lastAutoCenter = '';
   private hoverWorld: { x: number; y: number } | null = null;
@@ -418,6 +427,7 @@ export class VirtualWorldPanel {
         <label class="vw-check"><input id="vw-biomes" type="checkbox"> Biome labels</label>
         <label class="vw-check"><input id="vw-scenes" type="checkbox"> Scene markers</label>
         <label class="vw-check"><input id="vw-cost" type="checkbox"> Cost heatmap</label>
+        <label class="vw-check" title="Dress chunks with the global Look-tuning recipes (ore/glow/rubble/vine densities) instead of this profile's own dressing"><input id="vw-global-dressing" type="checkbox"> Use global dressing</label>
       `)}
       ${this.sectionHtml('controls.generation', 'Generation', `
         <div class="vw-title-row"><button id="vw-reset-generation" type="button">RESET</button></div>
@@ -486,6 +496,7 @@ export class VirtualWorldPanel {
     this.must<HTMLInputElement>('#vw-biomes').checked = this.showBiomes;
     this.must<HTMLInputElement>('#vw-scenes').checked = this.showScenes;
     this.must<HTMLInputElement>('#vw-cost').checked = this.showCost;
+    this.must<HTMLInputElement>('#vw-global-dressing').checked = this.useGlobalDressing;
     this.syncSliderValues(def);
     this.wireControls();
     this.renderInspector();
@@ -611,6 +622,12 @@ export class VirtualWorldPanel {
     this.must<HTMLInputElement>('#vw-cost').addEventListener('change', (event) => {
       this.showCost = (event.currentTarget as HTMLInputElement).checked;
       this.requestDraw();
+    });
+    this.must<HTMLInputElement>('#vw-global-dressing').addEventListener('change', (event) => {
+      this.useGlobalDressing = (event.currentTarget as HTMLInputElement).checked;
+      // Switching dressing source invalidates every cached chunk; regenerate.
+      this.chunks.clear();
+      void this.generateWindow();
     });
     for (const button of this.host.querySelectorAll<HTMLButtonElement>('[data-vw-style]')) {
       button.addEventListener('click', () => {
@@ -783,12 +800,36 @@ export class VirtualWorldPanel {
       this.renderControls();
       return;
     }
-    const def = this.currentDef();
-    // Mirror the live GEN_TUNE cave-size knob (the Sandbox/Builder "Cave size"
-    // slider) into the def so it crosses the worker boundary; when it changes,
-    // drop the cached chunks so the window actually re-carves at the new scale.
-    if (def.generation.caveScale !== GEN_TUNE.caveScale) {
-      def.generation.caveScale = GEN_TUNE.caveScale;
+    let def = this.currentDef();
+    // Mirror the global Look-tuning TERRAIN knobs (cave size + walk-surface sink
+    // fill) onto the def so they cross the worker boundary — exactly as the
+    // Sandbox/Builder worldgen sliders drive the legacy generator.
+    def.generation.caveScale = GEN_TUNE.caveScale;
+    def.generation.fillSurfacePits = GEN_TUNE.fillSurfacePits;
+    def.generation.surfacePitWidth = GEN_TUNE.surfacePitWidth;
+    def.generation.surfacePitDepth = GEN_TUNE.surfacePitDepth;
+    def.generation.notchPasses = GEN_TUNE.notchPasses;
+
+    // Optional: overlay the global campaign dressing recipes (Look-tuning ore/
+    // glow/rubble/vine densities) over this profile's own dressing. Shallow-clone
+    // so the stored authored recipes are never mutated.
+    if (this.useGlobalDressing) {
+      const biomes: Record<string, VirtualBiomeDressingRecipe> = {};
+      for (const biome of Object.keys(def.dressing.biomes)) {
+        biomes[biome] = { ...campaignDressingRecipeForBiome(biome as BiomeId) };
+      }
+      def = { ...def, dressing: { ...def.dressing, biomes: biomes as VirtualWorldDef['dressing']['biomes'] } };
+    }
+
+    // Unified cache signature: any change to the baked-in global look (terrain
+    // knobs or the overlaid dressing) drops cached chunks so the window re-bakes.
+    const sig = JSON.stringify({
+      cave: GEN_TUNE.caveScale,
+      pit: [GEN_TUNE.fillSurfacePits, GEN_TUNE.surfacePitWidth, GEN_TUNE.surfacePitDepth, GEN_TUNE.notchPasses],
+      dress: this.useGlobalDressing ? def.dressing.biomes : null,
+    });
+    if (sig !== this.lastLookSig) {
+      this.lastLookSig = sig;
       this.chunks.clear();
     }
     const profile = this.selectedProfile;
@@ -1436,9 +1477,15 @@ function normalizeGeneration(def: VirtualWorldDef): void {
     ...GENERATION_DEFAULTS,
     ...raw,
   };
-  const generation = def.generation as GenerationParams & Partial<Record<keyof GenerationParams, number>>;
-  for (const [key, fallback] of Object.entries(GENERATION_DEFAULTS) as Array<[keyof GenerationParams, number]>) {
-    if (!Number.isFinite(generation[key])) generation[key] = fallback;
+  const generation = def.generation as unknown as Record<string, number | boolean | undefined>;
+  for (const [key, fallback] of Object.entries(GENERATION_DEFAULTS) as Array<[string, number | boolean]>) {
+    // generation is mostly numeric but holds one boolean (fillSurfacePits); guard
+    // each by its fallback's type so the boolean isn't clobbered by a finite-check.
+    if (typeof fallback === 'boolean') {
+      if (typeof generation[key] !== 'boolean') generation[key] = fallback;
+    } else if (!Number.isFinite(generation[key] as number)) {
+      generation[key] = fallback;
+    }
   }
 }
 
@@ -1645,8 +1692,13 @@ function generationStyle(def: VirtualWorldDef): CaveStylePresetId {
 }
 
 function matchesGenerationPreset(generation: GenerationParams, preset: Partial<GenerationParams>): boolean {
-  return (Object.entries(preset) as Array<[keyof GenerationParams, number]>).every(
-    ([key, value]) => Math.abs((generation[key] ?? Number.NaN) - value) < 0.0001,
+  return (Object.entries(preset) as Array<[keyof GenerationParams, number | boolean]>).every(
+    ([key, value]) => {
+      const cur = generation[key];
+      // Presets only pin the numeric style knobs; compare booleans by equality.
+      if (typeof value !== 'number' || typeof cur !== 'number') return cur === value;
+      return Math.abs(cur - value) < 0.0001;
+    },
   );
 }
 

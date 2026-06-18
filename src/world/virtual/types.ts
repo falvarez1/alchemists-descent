@@ -241,6 +241,15 @@ export interface VirtualGenerationParams {
    *  so it survives the worker boundary. Undefined = 1.5 (the shipped grand-cave
    *  default). The World Map panel mirrors GEN_TUNE.caveScale into this. */
   caveScale?: number;
+  /** Walk-surface "sink"/notch fill (parity with the legacy terrain polish). These
+   *  mirror GEN_TUNE.{fillSurfacePits,surfacePitWidth,surfacePitDepth,notchPasses}
+   *  onto the def so the global Look-tuning sink-fill sliders drive the chunked gen
+   *  too. Run per-chunk on the haloed scratch, so cross-chunk pits up to the halo
+   *  width stay seamless. Undefined = the shipped defaults (on, 6/4/2). */
+  fillSurfacePits?: boolean;
+  surfacePitWidth?: number;
+  surfacePitDepth?: number;
+  notchPasses?: number;
 }
 
 export interface VirtualChunkMeta {

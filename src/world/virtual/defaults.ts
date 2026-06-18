@@ -86,6 +86,11 @@ export function createDefaultVirtualGenerationParams(): VirtualWorldDef['generat
     // World Map mirrors the live GEN_TUNE.caveScale onto this per generation;
     // caveMultiplier() in ChunkGenerator normalizes 1.5 -> x1.0.
     caveScale: 1.5,
+    // Walk-surface sink/notch fill, mirrored from GEN_TUNE (same shipped values).
+    fillSurfacePits: true,
+    surfacePitWidth: 6,
+    surfacePitDepth: 4,
+    notchPasses: 2,
   };
 }
 
