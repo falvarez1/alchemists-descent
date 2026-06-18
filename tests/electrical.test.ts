@@ -45,6 +45,22 @@ describe('updateElectricalGrid', () => {
     expect(world.charge[world.idx(2, 3)]).toBe(4);
   });
 
+  it('caps metal-to-water intake without weakening metal-to-lava propagation', () => {
+    const world = new World(8, 8);
+    const source = world.idx(3, 3);
+    const water = world.idx(4, 3);
+    const lava = world.idx(2, 3);
+    world.types[source] = Cell.Metal;
+    world.charge[source] = 80;
+    world.types[water] = Cell.Water;
+    world.types[lava] = Cell.Lava;
+
+    updateElectricalGrid(ctxFor(world));
+
+    expect(world.charge[water]).toBe(15);
+    expect(world.charge[lava]).toBe(79);
+  });
+
   it('ignores charged cells outside the active simulation window', () => {
     const world = new World(8, 8);
     world.simBounds.x0 = 0;

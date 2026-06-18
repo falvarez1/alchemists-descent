@@ -1,5 +1,5 @@
 import type { Ctx } from '@/core/types';
-import { Cell, isConductor } from '@/sim/CellType';
+import { Cell, isConductor, isLiquid } from '@/sim/CellType';
 
 /**
  * The charge a strike injects, scaled by the live `chargeStrength` (reach) knob.
@@ -26,6 +26,12 @@ let lastDecayFrame = -1;
  *  value keeps the visible racing crawl — high enough to feel fast, low enough
  *  that it never fills as an instant solid slab (that killed the crackle look). */
 const CRAWL_HOPS = 4;
+/** Max charge WATER takes in from a SOLID conductor (metal). Water is
+ *  far less conductive, so a powerful metal current only weakly energizes the
+ *  water sitting on it — a thin crackling layer, not a deep bright pool (keeps the
+ *  bloom down). A direct water hit writes straight into the water and spreads
+ *  water→water UNCAPPED, so that effect is untouched. */
+const WATER_INTAKE_CAP = 15;
 
 function materialConductivity(ctx: Ctx, t: number): number {
   const tuned = ctx.params?.materials?.[t]?.conductivity;
@@ -67,13 +73,17 @@ export function updateElectricalGrid(ctx: Ctx): void {
   // to the strike and dies out instead of re-seeding at full strength — which let
   // the front circulate through a connected pool and re-ignite decayed cells
   // indefinitely (the cyan glow that "multiplied" across water/blood/ooze).
-  const trySpread = (tx: number, ty: number, src: number): void => {
+  const trySpread = (tx: number, ty: number, src: number, srcLiquid: boolean): void => {
     if (!w.inBounds(tx, ty)) return;
     const ti = tx + ty * w.width;
     const tt = w.types[ti];
     if (isConductor(tt) && w.charge[ti] === 0) {
       const falloff = conductorFalloff(ctx, tt, base);
-      const v = src - falloff;
+      let v = src - falloff;
+      // Solid (metal) → liquid (water): cap the intake so the water lights only a
+      // thin crackling layer, not a deep bright pool (less bloom). Liquid→liquid
+      // (a direct water hit spreading through itself) is never capped — untouched.
+      if (!srcLiquid && tt === Cell.Water) v = Math.min(v, WATER_INTAKE_CAP);
       if (v > 0) {
         const prev = spreadCharge.get(ti);
         if (prev === undefined || v > prev) spreadCharge.set(ti, v);
@@ -91,10 +101,11 @@ export function updateElectricalGrid(ctx: Ctx): void {
       const y = Math.floor(ci / w.width);
       const x = ci - y * w.width;
       const c = w.charge[ci];
-      trySpread(x + 1, y, c);
-      trySpread(x - 1, y, c);
-      trySpread(x, y + 1, c);
-      trySpread(x - 1, y - 1, c);
+      const srcLiquid = isLiquid(w.types[ci]);
+      trySpread(x + 1, y, c, srcLiquid);
+      trySpread(x - 1, y, c, srcLiquid);
+      trySpread(x, y + 1, c, srcLiquid);
+      trySpread(x - 1, y - 1, c, srcLiquid);
     }
     if (spreadCharge.size === 0) break;
     const next: number[] = [];
