@@ -42,7 +42,7 @@ const PALETTE: Swatch[] = [
 const SWATCH_BY_CELL = new Map(PALETTE.map((s) => [s.cell, s]));
 const fallbackColor = (cell: number): number => SWATCH_BY_CELL.get(cell)?.color ?? 0x6a6a72;
 
-type Tool = 'paint' | 'erase' | 'eyedrop' | 'light';
+type Tool = 'paint' | 'erase' | 'eyedrop' | 'light' | 'color' | 'bg';
 
 /**
  * Pixel Scene Editor — a Builder authoring tool for the chunked world's pixel
@@ -58,6 +58,7 @@ export class PixelSceneEditor {
   private selectedCell: number = Cell.Wall;
   private tool: Tool = 'paint';
   private brush = 1;
+  private paintColor = 0xffffff; // active colour for the Color (visual) + BG tools
   private lit = false;
   private zoom = 8;
   private painting = false;
@@ -113,7 +114,10 @@ export class PixelSceneEditor {
             <div id="pse-toolrow" class="pse-toolrow">
               <button data-tool="paint">Paint</button><button data-tool="erase">Erase</button>
               <button data-tool="eyedrop">Pick</button><button data-tool="light">Light</button>
+              <button data-tool="color" title="Paint a custom per-pixel colour (the visual layer)">Color</button>
+              <button data-tool="bg" title="Paint the background layer (shows through empty cells)">BG</button>
             </div>
+            <label class="pse-field">Color <input id="pse-color" type="color" value="#ffffff"><b id="pse-color-hex" class="pse-hex">FFFFFF</b></label>
             <label class="pse-field">Brush <input id="pse-brush" type="range" min="0" max="4" step="1" value="0"><b id="pse-brush-v">1</b></label>
             <div class="pse-sub">Properties</div>
             <label class="pse-field">Kind <select id="pse-kind"></select></label>
@@ -195,6 +199,8 @@ export class PixelSceneEditor {
     });
     const brush = this.el<HTMLInputElement>('#pse-brush');
     brush.addEventListener('input', () => { this.brush = Number(brush.value); this.el('#pse-brush-v').textContent = String(this.brush * 2 + 1); });
+    const color = this.el<HTMLInputElement>('#pse-color');
+    color.addEventListener('input', () => this.setPaintColor(parseInt(color.value.slice(1), 16) || 0));
     this.el('#pse-resize').addEventListener('click', () => this.resize());
     for (const b of Array.from(this.el('#pse-toolrow').children) as HTMLElement[]) {
       b.addEventListener('click', () => this.setTool(b.dataset.tool as Tool));
@@ -378,6 +384,8 @@ export class PixelSceneEditor {
     if (this.tool === 'eyedrop') {
       const i = c.x + c.y * this.scene.w;
       this.selectedCell = this.scene.material[i] || Cell.Wall;
+      const picked = this.scene.colorOverrides?.[i];
+      if (picked) this.setPaintColor(picked);
       this.tool = 'paint';
       this.syncPalette();
       this.syncTool();
@@ -388,8 +396,9 @@ export class PixelSceneEditor {
       this.painting = false;
       return;
     }
-    const erase = this.tool === 'erase' || this.selectedCell === Cell.Empty;
+    const erase = this.tool === 'erase' || (this.tool === 'paint' && this.selectedCell === Cell.Empty);
     const { w, h, material, mask, colorOverrides } = this.scene;
+    const bg = this.tool === 'bg' ? this.ensureBackground() : null;
     const r = this.brush;
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
@@ -397,10 +406,16 @@ export class PixelSceneEditor {
         const y = c.y + dy;
         if (x < 0 || y < 0 || x >= w || y >= h) continue;
         const i = x + y * w;
-        if (erase) {
+        if (bg) {
+          bg[i] = this.paintColor; // background layer (any cell)
+        } else if (this.tool === 'color') {
+          // Visual layer: recolour an existing material pixel, don't change the material.
+          if ((mask ? mask[i] !== 0 : material[i] !== Cell.Empty) && colorOverrides) colorOverrides[i] = this.paintColor;
+        } else if (erase) {
           material[i] = Cell.Empty;
           if (mask) mask[i] = 0;
           if (colorOverrides) colorOverrides[i] = 0;
+          if (this.scene.background) this.scene.background[i] = 0;
         } else {
           material[i] = this.selectedCell;
           if (mask) mask[i] = 1;
@@ -411,6 +426,17 @@ export class PixelSceneEditor {
     this.dirty = true;
     this.draw();
     this.renderWarns();
+  }
+
+  private setPaintColor(color: number): void {
+    this.paintColor = color & 0xffffff;
+    const hex = this.paintColor.toString(16).padStart(6, '0');
+    this.el<HTMLInputElement>('#pse-color').value = '#' + hex;
+    this.el('#pse-color-hex').textContent = hex.toUpperCase();
+  }
+
+  private ensureBackground(): Uint32Array {
+    return this.scene.background ?? (this.scene.background = new Uint32Array(this.scene.w * this.scene.h));
   }
 
   private toggleLight(x: number, y: number): void {
@@ -449,6 +475,16 @@ export class PixelSceneEditor {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.fillStyle = '#0b0b0f';
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    // Background layer first — shows through empty/transparent cells.
+    const background = this.scene.background;
+    if (background) {
+      for (let i = 0; i < background.length; i++) {
+        const col = background[i];
+        if (!col) continue;
+        ctx.fillStyle = `rgb(${(col >> 16) & 0xff},${(col >> 8) & 0xff},${col & 0xff})`;
+        ctx.fillRect((i % w) * z, ((i / w) | 0) * z, z, z);
+      }
+    }
     const painted = (i: number): boolean => (mask ? mask[i] !== 0 : material[i] !== Cell.Empty);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -700,6 +736,7 @@ function cloneForEdit(src: PixelSceneDef): PixelSceneDef {
   return {
     v: 1, id: src.id, name: src.name, kind: src.kind, tags: src.tags ? [...src.tags] : undefined,
     w: src.w, h: src.h, material, mask, colorOverrides,
+    background: src.background ? Uint32Array.from(src.background.subarray(0, n)) : undefined,
     life: src.life ? Int16Array.from(src.life.subarray(0, n)) : undefined,
     charge: src.charge ? Uint8Array.from(src.charge.subarray(0, n)) : undefined,
     objects: (src.objects ?? []).map((o) => ({ ...o, params: { ...o.params } })),
@@ -714,6 +751,7 @@ function resizeScene(src: PixelSceneDef, w: number, h: number): PixelSceneDef {
   out.tags = src.tags ? [...src.tags] : undefined;
   out.objects = (src.objects ?? []).filter((o) => o.x < w && o.y < h).map((o) => ({ ...o, params: { ...o.params } }));
   out.lights = (src.lights ?? []).filter((l) => l.x < w && l.y < h).map((l) => ({ ...l }));
+  if (src.background) out.background = new Uint32Array(w * h);
   const cw = Math.min(w, src.w);
   const ch = Math.min(h, src.h);
   for (let y = 0; y < ch; y++) {
@@ -723,6 +761,7 @@ function resizeScene(src: PixelSceneDef, w: number, h: number): PixelSceneDef {
       out.material[di] = src.material[si];
       out.mask![di] = src.mask ? src.mask[si] : (src.material[si] !== Cell.Empty ? 1 : 0);
       out.colorOverrides![di] = src.colorOverrides?.[si] ?? (src.material[si] !== Cell.Empty ? fallbackColor(src.material[si]) : 0);
+      if (out.background && src.background) out.background[di] = src.background[si];
     }
   }
   return out;
@@ -798,6 +837,8 @@ function injectStyle(): void {
 .pse-field b{color:#cdd0d8;min-width:14px;text-align:center}
 .pse-field select,.pse-field input[type=text]{flex:1;background:#0e0f14;border:1px solid #2f323d;color:#e7e9f0;border-radius:3px;padding:2px 5px;font-size:11px}
 .pse-field input[type=range]{flex:1}
+.pse-field input[type=color]{width:34px;height:18px;padding:0;border:1px solid #2f323d;border-radius:3px;background:#0e0f14;cursor:pointer}
+.pse-hex{font-family:ui-monospace,monospace;font-size:10px;opacity:.7;min-width:48px}
 .pse-num{width:48px;background:#0e0f14;border:1px solid #2f323d;color:#e7e9f0;border-radius:3px;padding:2px 4px;font-size:11px}
 .pse-field button{background:#262932;border:1px solid #353846;color:#cdd0d8;border-radius:3px;padding:2px 7px;cursor:pointer;font-size:11px}
 .pse-warns{list-style:none;margin:2px 0;padding:0;display:flex;flex-direction:column;gap:2px}

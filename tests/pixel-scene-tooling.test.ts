@@ -16,11 +16,13 @@ function syntheticScene(): PixelSceneDef {
   const colorOverrides = new Uint32Array(n);
   const life = new Int16Array(n);
   const charge = new Uint8Array(n);
+  const background = new Uint32Array(n);
   material[0] = Cell.Wall; mask[0] = 1; colorOverrides[0] = 0x123456; life[0] = -5; charge[0] = 7;
   material[6] = Cell.Water; mask[6] = 1; colorOverrides[6] = 0xabcdef; life[6] = 1234;
+  background[0] = 0x445566; background[10] = 0x778899; // visible-through-empties background layer
   return {
     v: 1, id: 't-scene', name: 'Test Scene', kind: 'shrines', tags: ['a', 'b'], w, h,
-    material, mask, colorOverrides, life, charge,
+    material, mask, colorOverrides, background, life, charge,
     objects: [{ id: 'o', kind: 'pickup', x: 1, y: 1, params: { amount: 9 } }],
     links: [],
     lights: [{ id: 'l', x: 2, y: 2, color: '#7df9ff', intensity: 0.8, radius: 40 }],
@@ -58,6 +60,7 @@ describe('pixel scene JSON registry', () => {
     expect(Array.from(b.material)).toEqual(Array.from(a.material));
     expect(Array.from(b.mask!)).toEqual(Array.from(a.mask!));
     expect(Array.from(b.colorOverrides!)).toEqual(Array.from(a.colorOverrides!));
+    expect(Array.from(b.background!)).toEqual(Array.from(a.background!)); // background layer round-trips
     expect(Array.from(b.life!)).toEqual(Array.from(a.life!)); // -5 and 1234 survive
     expect(Array.from(b.charge!)).toEqual(Array.from(a.charge!));
     expect(b.objects).toEqual(a.objects);

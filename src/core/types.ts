@@ -277,6 +277,9 @@ export interface Enemy {
   /** Launch velocity (cells/frame) used while `knockT` > 0. */
   knockVx?: number;
   knockVy?: number;
+  /** Frames of wary recoil after refusing to step into a lethal cell (lava/fire/
+   *  acid it isn't immune to) — drives the "wary" inspector state. */
+  wary?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */

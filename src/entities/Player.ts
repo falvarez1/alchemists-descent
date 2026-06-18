@@ -48,6 +48,8 @@ const TELEPORT_SEARCH_RADIUS = 260;
 const KICK_BASE_RECOIL = 0.5; // kick always self-pushes this fraction even into open air (so it works mid-air like wand recoil); a solid hit ramps to 1
 const GUST_ENEMY_PUSH = 5; // kick wind-gust shove scalar for enemies (mass-scaled in EnemyControl.gustShove)
 const MOVE_ACCEL_CAP = 0.6; // max per-frame ground-speed gain — high top speeds (Swift stacks / God Mode) RAMP up over several frames instead of snapping to max
+const LIQUID_SPLASH_MIN_SPEED = 1.2;
+const LIQUID_STOMP_SPLASH_MIN_SPEED = 2.2;
 // Fine horizontal control + variable jump height (Celeste-style) used to live as
 // module consts here; they now live on ctx.params.player (moveSoftStart,
 // groundStopDecay/Snap, airGlideSpeed, airStopDecay, jumpCut, jumpHoldWindow,
@@ -78,6 +80,13 @@ const REVIEW_PERKS: PerkId[] = [
 
 export function climbBrushesCell(t: number): boolean {
   return t === Cell.Snow || t === Cell.Ash || t === Cell.Moss || t === Cell.Fungus;
+}
+
+export function playerLiquidSplashDropletCount(vy: number, stomping: boolean): number {
+  if (vy <= LIQUID_SPLASH_MIN_SPEED) return 0;
+  const base = 10 + Math.floor((vy - LIQUID_SPLASH_MIN_SPEED) * 4);
+  if (!stomping || vy <= LIQUID_STOMP_SPLASH_MIN_SPEED) return Math.min(22, base);
+  return Math.min(96, Math.max(45, base * 3 + Math.floor((vy - LIQUID_STOMP_SPLASH_MIN_SPEED) * 12)));
 }
 
 function teleportHazardCell(t: number): boolean {
@@ -1251,10 +1260,12 @@ export class PlayerControl implements PlayerControlApi {
     const pyro = player.perks.flameward ? 0.4 : 1;
     const toxi = player.perks.toxinward ? 0.25 : 1;
     let liquidCount = 0,
+      waterOrBloodCount = 0,
       hazardDmg = 0,
       healTouch = 0,
       tpTouch = false,
-      fungusBrush = false;
+      fungusBrush = false,
+      sampledSplashColor: number | null = null;
     for (let dy = 0; dy < bodyH; dy += 2) {
       for (let dx = -4; dx <= 4; dx += 2) {
         const X = player.x + dx,
@@ -1262,7 +1273,13 @@ export class PlayerControl implements PlayerControlApi {
         if (!world.inBounds(X, Y)) continue;
         const ci2 = world.idx(X, Y);
         const c = world.types[ci2];
-        if (isLiquid(c)) liquidCount++;
+        if (isLiquid(c)) {
+          liquidCount++;
+          if (sampledSplashColor === null || c === Cell.Water || c === Cell.Blood) {
+            sampledSplashColor = world.colors[ci2];
+          }
+          if (c === Cell.Water || c === Cell.Blood) waterOrBloodCount++;
+        }
         if (c === Cell.Fire) hazardDmg += 0.22 * pyro;
         if (c === Cell.Lava) hazardDmg += 0.62 * pyro;
         if (c === Cell.Acid) hazardDmg += 0.32 * toxi;
@@ -1282,24 +1299,27 @@ export class PlayerControl implements PlayerControlApi {
     player.inLiquid = liquidCount >= (player.crawling ? 7 : 13);
     // SPLASH: breaking the surface at speed throws up droplets of whatever
     // you fell into (the pool's own colors — the grid explains the splash).
-    if (player.inLiquid && !this.prevInLiquid && player.vy > 1.2) {
-      const li2 = world.idx(Math.floor(player.x), Math.floor(player.y));
-      const splashColor = world.inBounds(Math.floor(player.x), Math.floor(player.y))
-        ? world.colors[li2]
-        : packRGB(60, 140, 220);
-      for (let d = 0; d < 10; d++) {
+    if (player.inLiquid && !this.prevInLiquid && player.vy > LIQUID_SPLASH_MIN_SPEED) {
+      const stomping = waterOrBloodCount > 0 && player.diveT > 0 && player.vy > LIQUID_STOMP_SPLASH_MIN_SPEED;
+      const dropletCount = playerLiquidSplashDropletCount(player.vy, stomping);
+      const splashColor = sampledSplashColor ?? packRGB(60, 140, 220);
+      const spread = stomping ? 4.8 : 2.2;
+      const lift = stomping ? 3.5 : 1.6;
+      const sideBias = stomping ? 0.9 : 0.35;
+      for (let d = 0; d < dropletCount; d++) {
+        const side = d % 2 === 0 ? -1 : 1;
         ctx.particles.spawn(
-          player.x + (Math.random() - 0.5) * 8,
-          player.y - 14,
-          (Math.random() - 0.5) * 2.2,
-          -1.2 - Math.random() * 1.6,
+          player.x + (Math.random() - 0.5) * (stomping ? 14 : 8),
+          player.y - (stomping ? 11 : 14),
+          (Math.random() - 0.5) * spread + side * Math.random() * sideBias,
+          -1.1 - Math.random() * lift,
           null,
           splashColor,
-          26,
-          { grav: 0.12 },
+          stomping ? 30 + ((Math.random() * 18) | 0) : 26,
+          { grav: stomping ? 0.14 : 0.12 },
         );
       }
-      ctx.audio.splash(Math.min(1, player.vy / 4));
+      ctx.audio.splash(Math.min(1, player.vy / (stomping ? 2.8 : 4)));
     }
     this.prevInLiquid = player.inLiquid;
     // Wave F: brushing through glowcap colonies puffs a little spore cloud

@@ -108,11 +108,14 @@ export interface PixelSceneDef {
   h: number;
   mask?: Uint8Array;
   material: Uint8Array;
+  /** The "visual" layer — per-pixel packed RGB painted on top of the material
+   *  (Noita's visual_file). 0 falls back to the material's representative colour. */
   colorOverrides?: Uint32Array;
   life?: Int16Array;
   charge?: Uint8Array;
-  visual?: Uint8ClampedArray;
-  background?: Uint8ClampedArray;
+  /** Decorative per-pixel packed-RGB layer rendered BEHIND the materials, visible
+   *  through transparent/empty cells (Noita's background_file). 0 = transparent. */
+  background?: Uint32Array;
   objects: VirtualSceneObject[];
   links: VirtualSceneLink[];
   lights: VirtualSceneLight[];

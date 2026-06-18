@@ -94,10 +94,11 @@ export const GEN_TUNE = {
   caveScale: 1.5,
   // v22: raised from 6/4/2 so legacy walk surfaces fill their snaggy pits/holes by
   // default (the platforms read far cleaner). terrainPolish is bounded — it only
-  // raises shallow walk-surface dips between shoulders + tiny enclosed notches, so
-  // wider/deeper values smooth the ledges without closing real caves.
+  // raises shallow walk-surface dips between shoulders + tiny enclosed notches.
+  // Depth is kept modest (6, vs the wide 20): deeper fills risk closing a shaft-like
+  // passage, which the findability audit flags (it failed at depth 10).
   surfacePitWidth: 20,
-  surfacePitDepth: 10,
+  surfacePitDepth: 6,
   notchPasses: 3,
   fillSurfacePits: true,
 };

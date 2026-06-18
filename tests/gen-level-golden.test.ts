@@ -82,11 +82,11 @@ function levelTypeHash(def: LevelDef, seed: number): string {
 // snaggy walk-surface pits/holes more aggressively, changing the polished cell
 // output. The gilded 'vault' is UNCHANGED: that biome skips terrainPolish.).
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: 'dff03836' },
-  { id: 'd4', seed: 1337, hash: 'f528cc8c' },
-  { id: 'd8', seed: 1337, hash: '8346ca19' },
+  { id: 'd1', seed: 1337, hash: '2ffd66d2' },
+  { id: 'd4', seed: 1337, hash: '50aead90' },
+  { id: 'd8', seed: 1337, hash: '17a09f97' },
   { id: 'vault', seed: 1337, hash: 'e2b0c188' },
-  { id: 'd2', seed: 42, hash: 'c7ce069d' },
+  { id: 'd2', seed: 42, hash: 'bee52a0e' },
 ];
 
 describe('full generateLevel golden hashes', () => {

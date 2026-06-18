@@ -93,6 +93,29 @@ const STATUS_IMMUNE: Partial<
   leviathan: { burning: true },
 };
 
+/** Does cell `c` deal environmental harm to `kind`? Single source of truth for
+ *  both the env-damage tick and the wary look-ahead (so they never disagree):
+ *  fire/lava burn everything but the imp; acid eats everything but the acidslime. */
+export function enemyLethalCell(kind: EnemyKind, c: number): boolean {
+  if ((c === Cell.Fire || c === Cell.Lava) && kind !== 'imp') return true;
+  if (c === Cell.Acid && kind !== 'acidslime') return true;
+  return false;
+}
+
+/** Human-readable AI state for the cell inspector ("panicking", "wary", …). */
+export function enemyStateLabel(e: Enemy): string {
+  if ((e.knockT ?? 0) > 0) return 'launched';
+  if (e.status.frozen > 0) return 'frozen';
+  if (e.status.burning > 0) return 'panicking'; // on fire → flailing
+  if (e.status.electrified > 0) return 'shocked';
+  if ((e.wary ?? 0) > 0) return 'wary'; // recoiling from a hazard edge
+  if (e.sleeping) return 'asleep';
+  if (e.windup) return 'winding up';
+  if (e.alerted) return 'hunting';
+  if (e.patrol && e.patrol.length > 0) return 'patrolling';
+  return 'idle';
+}
+
 export class Enemies implements EnemyControlApi {
   readonly defs: Record<EnemyKind, EnemyDef> = ENEMY_DEFS;
 
@@ -671,6 +694,18 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
+  /** True if the cell just ahead of a grounded walker (foot ±1, in dir) is lethal
+   *  to it — used so it refuses to voluntarily step into lava/fire/acid. */
+  private lethalAhead(e: Enemy, def: EnemyDef, dir: number): boolean {
+    const w = this.ctx.world;
+    const X = Math.floor(e.x) + dir * (def.halfW + 1);
+    const foot = Math.floor(e.y);
+    for (let Y = foot - 1; Y <= foot + 1; Y++) {
+      if (w.inBounds(X, Y) && enemyLethalCell(e.kind, w.types[w.idx(X, Y)])) return true;
+    }
+    return false;
+  }
+
   private enemyEnvironmentDamage(e: Enemy, index?: number): void {
     const ctx = this.ctx;
     const def = this.defs[e.kind];
@@ -680,8 +715,7 @@ export class Enemies implements EnemyControlApi {
         Y = Math.floor(e.y) - dy;
       if (!ctx.world.inBounds(X, Y)) continue;
       const c = ctx.world.types[ctx.world.idx(X, Y)];
-      if ((c === Cell.Fire || c === Cell.Lava) && e.kind !== 'imp') dmg += c === Cell.Lava ? 1.6 : 0.7;
-      if (c === Cell.Acid && e.kind !== 'acidslime') dmg += 0.9;
+      if (enemyLethalCell(e.kind, c)) dmg += c === Cell.Lava ? 1.6 : c === Cell.Acid ? 0.9 : 0.7;
     }
     if (dmg <= 0) return;
     if ((e.envDamageFeedbackCd ?? 0) <= 0) {
@@ -712,6 +746,7 @@ export class Enemies implements EnemyControlApi {
         continue;
       if (e.flash > 0) e.flash--;
       if ((e.envDamageFeedbackCd ?? 0) > 0) e.envDamageFeedbackCd = (e.envDamageFeedbackCd ?? 0) - 1;
+      if ((e.wary ?? 0) > 0) e.wary = (e.wary ?? 0) - 1;
       e.timer++;
       if (e.attackCd > 0) e.attackCd--;
       this.enemyEnvironmentDamage(e, i);
@@ -1558,6 +1593,9 @@ export class Enemies implements EnemyControlApi {
         }
       }
 
+      // Burning foes PANIC — flail erratically instead of marching their line.
+      if (e.status.burning > 0 && e.grounded) e.vx += (Math.random() - 0.5) * 1.3;
+
       // Integrate movement (slimes/golems/mages collide; imps/wisps/bats drift).
       // Difficulty scales the step distance = effective speed (level 3 = ×1).
       const spd = difficultyMods(ctx.state).enemySpeed;
@@ -1578,6 +1616,16 @@ export class Enemies implements EnemyControlApi {
       } else {
         const stepUp =
           e.kind === 'colossus' ? 3 : e.kind === 'golem' || e.kind === 'leviathan' ? 2 : 1;
+        // WARY OF THE EDGE: a grounded walker won't voluntarily step into a cell
+        // that's lethal to it (lava/fire/acid). Fail-open — it only cancels this
+        // frame's step and re-aims next frame, so it never hard-locks a path.
+        // (Knockback bypasses this entirely — tickKnock continues above — so the
+        //  kick can still launch foes into the lava.)
+        if (e.grounded && e.vx !== 0 && this.lethalAhead(e, def, e.vx > 0 ? 1 : -1)) {
+          e.vx = 0;
+          e.fx = 0;
+          e.wary = 24;
+        }
         e.fx += e.vx * spd;
         while (e.fx >= 1) {
           if (!ctx.physics.tryMoveEntity(e, 1, 0, def.halfW, def.h, stepUp)) {

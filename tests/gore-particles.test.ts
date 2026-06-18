@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Ctx } from '@/core/types';
+import { playerLiquidSplashDropletCount } from '@/entities/Player';
 import { Particles } from '@/particles/Particles';
 import { Cell } from '@/sim/CellType';
 import { canDryBloodOnSurface } from '@/sim/stains';
@@ -76,5 +77,16 @@ describe('blood drying surfaces', () => {
 
     set(world, 40, 20, Cell.Metal);
     expect(canDryBloodOnSurface(world, 40, 20)).toBe(true);
+  });
+});
+
+describe('player liquid splashes', () => {
+  it('emits a much larger visual splash during a stomp entry', () => {
+    const normal = playerLiquidSplashDropletCount(4.8, false);
+    const stomp = playerLiquidSplashDropletCount(4.8, true);
+
+    expect(normal).toBeGreaterThan(0);
+    expect(stomp).toBeGreaterThanOrEqual(normal * 3);
+    expect(playerLiquidSplashDropletCount(1.2, true)).toBe(0);
   });
 });

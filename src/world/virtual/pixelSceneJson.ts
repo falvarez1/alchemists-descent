@@ -27,6 +27,7 @@ export interface PixelSceneJson {
   material: string; // base64 Uint8Array (w*h)
   mask?: string; // base64 Uint8Array
   colorOverrides?: string; // base64 Uint32Array bytes
+  background?: string; // base64 Uint32Array bytes
   life?: string; // base64 Int16Array bytes
   charge?: string; // base64 Uint8Array
   objects?: VirtualSceneObject[];
@@ -99,6 +100,7 @@ export function serializePixelScene(def: PixelSceneDef): PixelSceneJson {
   if (def.tags && def.tags.length) json.tags = [...def.tags];
   if (def.mask) json.mask = encodeBytes(def.mask);
   if (def.colorOverrides) json.colorOverrides = encodeBytes(viewBytes(def.colorOverrides));
+  if (def.background) json.background = encodeBytes(viewBytes(def.background));
   if (def.life) json.life = encodeBytes(viewBytes(def.life));
   if (def.charge) json.charge = encodeBytes(def.charge);
   return json;
@@ -129,6 +131,7 @@ export function parsePixelScene(json: PixelSceneJson): PixelSceneDef {
   if (Array.isArray(json.tags)) def.tags = json.tags.map(String);
   if (typeof json.mask === 'string') def.mask = fitU8(decodeBytes(json.mask), n);
   if (typeof json.colorOverrides === 'string') def.colorOverrides = fitU32(decodeBytes(json.colorOverrides), n);
+  if (typeof json.background === 'string') def.background = fitU32(decodeBytes(json.background), n);
   if (typeof json.life === 'string') def.life = fitI16(decodeBytes(json.life), n);
   if (typeof json.charge === 'string') def.charge = fitU8(decodeBytes(json.charge), n);
   return def;

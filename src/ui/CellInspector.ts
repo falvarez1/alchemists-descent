@@ -1,5 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { MATERIAL_PARAMS } from '@/config/params';
+import { enemyStateLabel } from '@/entities/Enemies';
 import { MATERIAL_LORE, recordLore } from '@/game/lore';
 import { isConductor } from '@/sim/CellType';
 import { unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -68,13 +69,26 @@ export class CellInspector {
     // internally 'build') — it only ever adds to the player's persistent knowledge.
     recordLore(this.ctx, t);
     const lore = MATERIAL_LORE[t];
+    // Nearest enemy within ~12 cells of the cursor: show its live AI state.
+    let near: { kind: string; state: string; hp: number; maxHp: number } | null = null;
+    let nd = 12 * 12;
+    for (const e of this.ctx.enemies) {
+      const dx = e.x - this.ctx.input.mouse.x;
+      const dy = e.y - 5 - this.ctx.input.mouse.y;
+      const d = dx * dx + dy * dy;
+      if (d < nd) {
+        nd = d;
+        near = { kind: e.kind, state: enemyStateLabel(e), hp: Math.ceil(e.hp), maxHp: e.maxHp };
+      }
+    }
     this.el.textContent =
       `(${x}, ${y})\n` +
       `${name}  [id ${t}]\n` +
       `rgb ${unpackR(c)}, ${unpackG(c)}, ${unpackB(c)}\n` +
       `charge ${w.charge[i]}   life ${w.life[i]}\n` +
       `bloom ${mat?.bloomWeight ?? 0}   ${isConductor(t) ? 'conductor' : 'insulator'}` +
-      (lore ? `\n— ${lore.body}` : '');
+      (lore ? `\n— ${lore.body}` : '') +
+      (near ? `\n\n${near.kind}: ${near.state}   hp ${near.hp}/${near.maxHp}` : '');
   }
 
   dispose(): void {
