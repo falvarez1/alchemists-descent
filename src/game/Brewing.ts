@@ -79,7 +79,18 @@ const HEAT_BOTTOM = 4;
 
 /** Sustained heat+ingredient sampler ticks (1 tick per 4 frames) to finish a brew. */
 const BREW_TICKS_REQUIRED = 90;
-const GRIMOIRE_KEY = 'noita-grimoire';
+export const GRIMOIRE_KEY = 'noita-grimoire';
+
+/** Which recipe ids have been discovered (brewed at least once), from the
+ *  persistent grimoire store. Recipe knowledge survives across expeditions. */
+export function loadDiscoveredRecipes(): Record<string, boolean> {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(GRIMOIRE_KEY) : null;
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
 const DISCOVERY_BOUNTY = 100;
 
 /** Loose powders count as brewable mass alongside liquids (they sink into the bowl). */

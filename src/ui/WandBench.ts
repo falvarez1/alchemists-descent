@@ -133,6 +133,8 @@ export class WandBench {
   private dragSource: BenchDragSource | null = null;
   private collectionFilter: BenchCardFilter = 'all';
   private refugeWatchTimer: number | null = null;
+  /** Sim pause state captured when the bench opens, restored on close. */
+  private wasPaused = false;
 
   constructor(private ctx: Ctx) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -174,7 +176,15 @@ export class WandBench {
     this.heldIdx = -1;
     this.inspectedCard = null;
     el('wand-bench').classList.toggle('visible', on);
-    if (on) this.render();
+    // Tinkering at the bench pauses the world; restore the prior pause state on
+    // close so it nests under the pause menu.
+    if (on) {
+      this.wasPaused = this.ctx.state.paused;
+      this.ctx.state.paused = true;
+      this.render();
+    } else {
+      this.ctx.state.paused = this.wasPaused;
+    }
   }
 
   private toggleFromKey(): void {

@@ -49,6 +49,7 @@ import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
 import { Hud } from '@/ui/Hud';
 import { CellInspector } from '@/ui/CellInspector';
+import { Grimoire } from '@/ui/Grimoire';
 import { Inspector } from '@/ui/Inspector';
 import { LevelStore } from '@/ui/LevelStore';
 import { Minimap } from '@/ui/Minimap';
@@ -250,6 +251,8 @@ export class Game {
     // Debug cell readout under the cursor (toggle with `I`). Self-managing; lives
     // for the page lifetime like the other DOM-wiring UI modules above.
     this.disposables.push(new CellInspector(ctx));
+    // The wizard's Grimoire book (toggle with `J`), rendered on the authored art.
+    this.disposables.push(new Grimoire(ctx));
     // Wires its DOM listeners in the constructor; lives for the page lifetime.
     const inputManager = new InputManager(this.renderer.domElement, ctx);
     this.disposables.push(inputManager);

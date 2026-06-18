@@ -159,30 +159,31 @@ A pure `f(worldY)` modulation — trivially deterministic, no connectivity. Add 
 
 ## Pixel-scene management tooling
 
-Today pixel scenes are **hand-coded TypeScript** (`defaults.ts` `createXScene()`
-via a `createSceneCanvas` helper); there is **no editor, no per-scene preview, no
-validation, no hot-reload** (see the gaps table at the end). To make Tier 2 (and
-biome identity generally) practical, build the following, roughly in order.
+Pixel scenes started as **hand-coded TypeScript** (`defaults.ts` `createXScene()`).
+**T1, T2 and T4 now ship** as the Pixel Scene Editor (Builder → View → "Pixel Scene
+Editor").
 
-### T1. Scene registry + JSON format
-- Define a serializable `PixelSceneJson` (RLE or base64 planes for
-  material/color/life/charge + objects/links/lights + tags/kind). Add
-  `loadPixelScene(json)` / `serializePixelScene(def)` in `src/world/virtual/`.
-- A `scripts/gen-pixel-scenes.mjs` that bakes authored JSON → the built-in library
-  (mirrors `gen-builtin-prefabs.mjs`), so scenes live as data, not code.
-- The existing hand-coded scenes become the seed corpus (one-time export).
+### T1. Scene registry + JSON format — SHIPPED
+- `serializePixelScene` / `parsePixelScene` in `src/world/virtual/pixelSceneJson.ts`
+  (`PixelSceneJson`, portable base64 planes — round-trips every plane incl. negative
+  `Int16` life). User scenes persist via `src/world/virtual/pixelSceneStore.ts`
+  (localStorage, one key per scene, like `prefablib.ts`).
+- Still TODO: a `scripts/gen-pixel-scenes.mjs` that bakes authored JSON → the
+  built-in library so scenes live as data, not code (the editor's EXPORT emits the
+  JSON today).
 
-### T2. In-Builder scene editor
-- A new Builder panel `builder.pixelSceneEditor`. Reuse the existing paint/brush
-  stack (the Builder already paints cells; `src/builder/` has the toolset) on a
-  fixed-size scene canvas with the real cell palette.
-- Tools: paint/erase cells, set per-cell color override, place objects
-  (pickup/enemy/waystone), place lights (color/intensity/radius/flicker/falloff),
-  set mask, tags, kind, and the `basin` helper for liquid scenes.
-- Save to the scene registry (JSON, localStorage during authoring, like the prefab
-  library `prefablib.ts`); export to the built-in corpus via the gen script.
+### T2. In-Builder scene editor — SHIPPED
+- `src/builder/pixelSceneEditor.ts` — a modal editor: paint/erase cells (cell
+  palette + brush), eyedropper, **place lights** (toggle), set kind/tags, resize,
+  lit preview (emissive + light halos via the shared `emissive.ts`), live
+  validation, and save/new/duplicate/import/export/delete against the user store.
+- Still TODO: per-pixel colour shading (paints a representative colour per cell
+  today), object placement UI (objects are preserved + previewed but not yet
+  placeable), and a `basin` quick-tool for liquid scenes.
 
-### T3. Per-scene preview & evaluation
+### T3. Per-scene preview & evaluation (partly in the editor)
+The editor's lit preview covers the per-scene "what will the lighting do" case.
+Still TODO on the World Map:
 - **Isolated render:** render a single scene to a canvas with the **lighting model
   applied** (run the real `Lighting` over a one-off World built from the scene) so
   authors see its glow/objects/lights exactly as in game — closes the
@@ -194,17 +195,11 @@ biome identity generally) practical, build the following, roughly in order.
   scenes and the weights `chooseSceneForSlot` computed — so "why did/didn't this
   scene appear here" is answerable.
 
-### T4. Validation
-A `validatePixelScene(def)` returning structured warnings, run in the editor and as
-a vitest gate:
-- **Liquid-without-basin** (a liquid cell on the scene edge or above empty → it will
-  drain when materialized).
-- **Light budget** (per-scene light count vs the materialization cap of 128;
-  warn before scenes silently drop lights).
-- **Object reachability** (a pickup/door object walled in with no `!blocksEntity`
-  path inside the scene footprint).
-- **Mask/material mismatch**, out-of-bounds objects/lights, missing tags/kind.
-- **Footprint sanity** (w·h within tile reach so it can actually be placed).
+### T4. Validation — SHIPPED (live in the editor)
+`validatePixelScene(def)` in `src/world/virtual/pixelSceneValidate.ts`: liquid-
+without-basin (drains when played), per-scene light budget, out-of-bounds objects/
+lights, missing kind/tags, empty scene. Unit-tested. Still TODO: a vitest gate over
+the whole library + object-reachability/overlap checks.
 
 ### T5. Hot-reload & a scene-coverage test harness
 - Dev-only: editing a scene (or its JSON) clears the World Map chunk cache and
@@ -215,9 +210,10 @@ a vitest gate:
   can't silently fail to place.
 
 ### Build order
-T1 (registry/JSON) → T3 (preview/eval, immediately useful for the existing corpus)
-→ T2 (editor) → T4 (validation) → T5 (hot-reload + coverage). Tier 2's liquid
-scenes can start as hand-authored JSON after T1, and graduate to the editor at T2.
+~~T1 (registry/JSON)~~ ✓ · ~~T2 (editor)~~ ✓ · ~~T4 (validation)~~ ✓ → T3 (World
+Map placement debug) → T5 (gen-script + hot-reload + coverage audit). Tier 2's liquid
+scenes can now be authored directly in the editor (the validator flags un-basined
+pools); the **depth gradient** (Tier 2b) is independent and can land anytime.
 
 ---
 
@@ -227,10 +223,11 @@ scenes can start as hand-authored JSON after T1, and graduate to the editor at T
 |---|---|---|---|
 | **Tier 1 (now)** | Mineral vugs (hidden ore) | halo-bounded flood-fill | no |
 | **Tier 1 (now)** | Honest emissive preview | per-cell, trivial | no |
-| Tier 2 | Localized liquids = pixel scenes | scene placement (already safe) | **yes** (T1–T4) |
+| **Tooling** | Scene registry/JSON (T1), editor (T2), validation (T4) | — | **SHIPPED** |
+| Tier 2 | Localized liquids = pixel scenes | scene placement (already safe) | author liquid scenes in the editor |
 | Tier 2 | Depth gradient | `f(worldY)`, trivial | no |
 | Tier 3 | Shape-varied extras (spikes/drifts/springs) | per-cell or scenes | some |
-| Tooling | Scene registry/JSON, editor, preview, validation, hot-reload | — | — |
+| Tooling | World Map placement debug (T3), gen-script + coverage (T5) | — | next |
 
 ## Known gaps in scene tooling (baseline, for reference)
 - No visual scene editor (hand-coded `Uint8Array` in TS).

@@ -1,12 +1,17 @@
-import { Cell } from '@/sim/CellType';
+import { Cell, isConductor } from '@/sim/CellType';
 import { escapeHtml } from '@/core/strings';
-import { getDefaultPixelSceneLibrary } from '@/world/virtual/defaults';
+import { unpackR, unpackG, unpackB } from '@/sim/colors';
+import { MATERIAL_PARAMS } from '@/config/params';
+import { BIOMES } from '@/config/biomes';
+import { getDefaultPixelSceneLibrary, createDefaultVirtualWorldDef, biomeIndexFromId } from '@/world/virtual/defaults';
+import { generateVirtualChunk } from '@/world/virtual/ChunkGenerator';
 import { emissiveGlowRgb } from '@/world/virtual/emissive';
 import { serializePixelScene, parsePixelScene, type PixelSceneJson } from '@/world/virtual/pixelSceneJson';
 import { validatePixelScene } from '@/world/virtual/pixelSceneValidate';
 import { listUserScenes, saveUserScene, deleteUserScene, userSceneExists } from '@/world/virtual/pixelSceneStore';
 import { VIRTUAL_SCENE_KINDS } from '@/world/virtual/defaults';
-import type { PixelSceneDef, VirtualSceneKind } from '@/world/virtual/types';
+import { VIRTUAL_CHUNK_SIZE, type PixelSceneDef, type VirtualChunk, type VirtualSceneKind } from '@/world/virtual/types';
+import type { BiomeId } from '@/core/types';
 
 interface Swatch { cell: number; name: string; color: number }
 
@@ -55,6 +60,13 @@ export class PixelSceneEditor {
   private zoom = 8;
   private painting = false;
   private dirty = false;
+  /** 'edit' = paint the scene; 'tile' = preview the scene generated into a chunk. */
+  private mode: 'edit' | 'tile' = 'edit';
+  private tile: VirtualChunk | null = null;
+  private tileRect: { x: number; y: number; w: number; h: number } | null = null;
+  private tileBiome: BiomeId = 'earthen';
+  private tileSeed = 0x51a17e;
+  private hoverEl: HTMLElement | null = null;
   private keyHandler = (e: KeyboardEvent): void => {
     if (e.key === 'Escape' && this.isOpen()) { e.stopPropagation(); this.close(); }
   };
@@ -79,6 +91,7 @@ export class PixelSceneEditor {
           <button id="pse-export" title="Download this scene as JSON">EXPORT</button>
           <button id="pse-save" class="pse-primary" title="Save to the user library">SAVE</button>
           <button id="pse-lit" title="Toggle lit preview (emissive + light halos)">LIT</button>
+          <button id="pse-tile" title="Generate a chunk with this scene placed — preview the final product">GEN TILE</button>
           <button id="pse-close" class="pse-close" title="Close (Esc)" aria-label="Close">✕</button>
           <input id="pse-file" type="file" accept=".json" hidden>
         </div>
@@ -107,6 +120,11 @@ export class PixelSceneEditor {
               <input id="pse-h" type="number" min="4" max="256" class="pse-num">
               <button id="pse-resize">Resize</button>
             </label>
+            <div class="pse-sub">Tile preview</div>
+            <label class="pse-field">Biome <select id="pse-tile-biome"></select></label>
+            <div class="pse-toolrow">
+              <button id="pse-tile-gen">Generate</button><button id="pse-tile-reseed">New seed</button>
+            </div>
             <div class="pse-sub">Validation</div>
             <ul id="pse-warns" class="pse-warns"></ul>
             <button id="pse-delete" class="pse-danger" title="Delete this scene from the user library">DELETE</button>
@@ -115,9 +133,19 @@ export class PixelSceneEditor {
       </div>`;
     this.root.appendChild(this.overlay);
     this.canvas = this.overlay.querySelector('#pse-canvas')!;
+    this.hoverEl = this.overlay.querySelector('.pse-canvas-wrap')!.appendChild(this.makeHover());
     this.wire();
     this.buildPalette();
     this.buildKindSelect();
+    this.buildBiomeSelect();
+  }
+
+  private makeHover(): HTMLElement {
+    const el = document.createElement('div');
+    el.id = 'pse-hover';
+    el.className = 'pse-hover';
+    el.hidden = true;
+    return el;
   }
 
   isOpen(): boolean { return !this.overlay.hidden; }
@@ -168,9 +196,19 @@ export class PixelSceneEditor {
     for (const b of Array.from(this.el('#pse-toolrow').children) as HTMLElement[]) {
       b.addEventListener('click', () => this.setTool(b.dataset.tool as Tool));
     }
-    this.canvas.addEventListener('mousedown', (e) => { this.painting = true; this.paintAt(e); });
-    this.canvas.addEventListener('mousemove', (e) => { if (this.painting) this.paintAt(e); });
-    this.canvas.addEventListener('mouseleave', () => { this.painting = false; });
+    this.el('#pse-tile').addEventListener('click', () => this.toggleTile());
+    this.el('#pse-tile-gen').addEventListener('click', () => this.generateTile());
+    this.el('#pse-tile-reseed').addEventListener('click', () => { this.tileSeed = (this.tileSeed * 1103515245 + 12345) >>> 0; this.generateTile(); });
+    this.el<HTMLSelectElement>('#pse-tile-biome').addEventListener('change', (e) => { this.tileBiome = (e.target as HTMLSelectElement).value as BiomeId; if (this.mode === 'tile') this.generateTile(); });
+    this.canvas.addEventListener('mousedown', (e) => { if (this.mode === 'edit') { this.painting = true; this.paintAt(e); } });
+    this.canvas.addEventListener('mousemove', (e) => { if (this.painting) this.paintAt(e); this.updateHover(e); });
+    this.canvas.addEventListener('mouseleave', () => { this.painting = false; if (this.hoverEl) this.hoverEl.hidden = true; });
+  }
+
+  private buildBiomeSelect(): void {
+    const sel = this.el<HTMLSelectElement>('#pse-tile-biome');
+    sel.innerHTML = (Object.keys(BIOMES) as BiomeId[]).map((id) => `<option value="${id}">${BIOMES[id].name}</option>`).join('');
+    sel.value = this.tileBiome;
   }
 
   private buildPalette(): void {
@@ -230,6 +268,10 @@ export class PixelSceneEditor {
   private loadScene(scene: PixelSceneDef): void {
     this.scene = cloneForEdit(scene);
     this.dirty = false;
+    this.mode = 'edit';
+    this.tile = null;
+    this.el('#pse-tile').classList.remove('active');
+    this.canvas.classList.remove('pse-tile-mode');
     this.el<HTMLInputElement>('#pse-name').value = this.scene.name;
     this.el<HTMLInputElement>('#pse-tags').value = (this.scene.tags ?? []).join(', ');
     this.el<HTMLSelectElement>('#pse-kind').value = this.scene.kind ?? '';
@@ -379,18 +421,26 @@ export class PixelSceneEditor {
   }
 
   // ---- rendering ----------------------------------------------------------
+  /** Active grid dimensions — the scene in edit mode, the generated chunk in tile mode. */
+  private gridDims(): { w: number; h: number } {
+    if (this.mode === 'tile' && this.tile) return { w: this.tile.size, h: this.tile.size };
+    return { w: this.scene.w, h: this.scene.h };
+  }
+
   private fitZoom(): void {
     const wrap = this.el('.pse-canvas-wrap');
     const maxW = Math.max(120, wrap.clientWidth - 16);
     const maxH = Math.max(120, wrap.clientHeight - 16);
-    this.zoom = Math.max(2, Math.floor(Math.min(maxW / this.scene.w, maxH / this.scene.h)));
-    this.canvas.width = this.scene.w * this.zoom;
-    this.canvas.height = this.scene.h * this.zoom;
+    const { w, h } = this.gridDims();
+    this.zoom = Math.max(1, Math.min(24, Math.floor(Math.min(maxW / w, maxH / h))));
+    this.canvas.width = w * this.zoom;
+    this.canvas.height = h * this.zoom;
   }
 
   private draw(): void {
     const ctx = this.canvas.getContext('2d');
     if (!ctx) return;
+    if (this.mode === 'tile') { this.drawTile(ctx); return; }
     const { w, h, material, mask, colorOverrides } = this.scene;
     const z = this.zoom;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -450,6 +500,131 @@ export class PixelSceneEditor {
         ctx.strokeRect(obj.x * z, obj.y * z, Math.max(4, z * 1.6), Math.max(4, z * 1.6));
       }
     }
+  }
+
+  // ---- tile preview -------------------------------------------------------
+  private toggleTile(): void {
+    if (this.mode === 'tile') { this.setMode('edit'); return; }
+    this.setMode('tile');
+    this.generateTile();
+  }
+
+  private setMode(mode: 'edit' | 'tile'): void {
+    this.mode = mode;
+    this.el('#pse-tile').classList.toggle('active', mode === 'tile');
+    this.canvas.classList.toggle('pse-tile-mode', mode === 'tile');
+    if (mode === 'edit') { this.tile = null; this.fitZoom(); this.draw(); }
+  }
+
+  /** Build a single-biome def with auto-scenes off, force-place THIS scene centred in
+   *  chunk (0,0), generate the chunk, and show the scene embedded in the carved cave —
+   *  exactly how it materializes in the World Map. */
+  private generateTile(): void {
+    if (this.mode !== 'tile') this.setMode('tile');
+    const def = createDefaultVirtualWorldDef(this.tileSeed);
+    def.map.cells.fill(biomeIndexFromId(this.tileBiome)); // uniform biome across the preview
+    def.dressing.scenes.controls.density = 0; // suppress the auto tile-slot scenes — show just this one
+    const size = VIRTUAL_CHUNK_SIZE;
+    const sx = Math.max(1, Math.floor(size / 2 - this.scene.w / 2));
+    const sy = Math.max(1, Math.floor(size / 2 - this.scene.h / 2));
+    def.pixelScenes = [{ id: 'editor-preview', scene: this.scene, x: sx, y: sy, priority: 1000 }];
+    try {
+      this.tile = generateVirtualChunk(def, 0, 0);
+      this.tileRect = { x: sx, y: sy, w: this.scene.w, h: this.scene.h };
+    } catch (err) {
+      this.flash(`Tile gen failed: ${(err as Error).message}`, true);
+      this.setMode('edit');
+      return;
+    }
+    this.fitZoom();
+    this.draw();
+  }
+
+  private drawTile(ctx: CanvasRenderingContext2D): void {
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.fillStyle = '#0b0b0f';
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    const tile = this.tile;
+    if (!tile) return;
+    const size = tile.size;
+    const z = this.zoom;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = x + y * size;
+        const t = tile.types[i];
+        if (t === Cell.Empty) continue;
+        const base = tile.colors[i];
+        const glow = this.lit ? emissiveGlowRgb(t) : null;
+        const r = Math.min(255, ((base >> 16) & 0xff) + (glow ? glow[0] : 0));
+        const g = Math.min(255, ((base >> 8) & 0xff) + (glow ? glow[1] : 0));
+        const b = Math.min(255, (base & 0xff) + (glow ? glow[2] : 0));
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(x * z, y * z, z, z);
+      }
+    }
+    if (this.lit) {
+      ctx.globalCompositeOperation = 'lighter';
+      for (const p of tile.meta.scenePlacements ?? []) {
+        for (const light of p.lights ?? []) {
+          const [lr, lg, lb] = hexToRgb(light.color);
+          const lx = (light.x - tile.originX) * z + z / 2;
+          const ly = (light.y - tile.originY) * z + z / 2;
+          const radius = Math.max(8, light.radius * z * 0.5);
+          const a = Math.max(0.1, Math.min(0.85, light.intensity * 0.6));
+          const grad = ctx.createRadialGradient(lx, ly, 0, lx, ly, radius);
+          grad.addColorStop(0, `rgba(${lr},${lg},${lb},${a})`);
+          grad.addColorStop(1, `rgba(${lr},${lg},${lb},0)`);
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(lx, ly, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    // Outline where the scene was stamped.
+    if (this.tileRect) {
+      ctx.strokeStyle = 'rgba(250,210,90,0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(this.tileRect.x * z + 0.5, this.tileRect.y * z + 0.5, this.tileRect.w * z, this.tileRect.h * z);
+    }
+  }
+
+  // ---- material hover readout (the in-game "I" inspector, for the editor) --
+  private cellInfoAt(gx: number, gy: number): { id: number; color: number } | null {
+    if (this.mode === 'tile') {
+      const tile = this.tile;
+      if (!tile) return null;
+      const i = gx + gy * tile.size;
+      return { id: tile.types[i], color: tile.colors[i] };
+    }
+    const i = gx + gy * this.scene.w;
+    const id = this.scene.material[i];
+    const color = this.scene.colorOverrides && this.scene.colorOverrides[i] ? this.scene.colorOverrides[i] : (id !== Cell.Empty ? fallbackColor(id) : 0);
+    return { id, color };
+  }
+
+  private updateHover(e: MouseEvent): void {
+    const hover = this.hoverEl;
+    if (!hover) return;
+    const { w, h } = this.gridDims();
+    const rect = this.canvas.getBoundingClientRect();
+    const gx = Math.floor((e.clientX - rect.left) / this.zoom);
+    const gy = Math.floor((e.clientY - rect.top) / this.zoom);
+    if (gx < 0 || gy < 0 || gx >= w || gy >= h) { hover.hidden = true; return; }
+    const info = this.cellInfoAt(gx, gy);
+    if (!info) { hover.hidden = true; return; }
+    const mat = MATERIAL_PARAMS[info.id];
+    const name = info.id === Cell.Empty ? 'Empty' : mat?.name ?? `cell #${info.id}`;
+    const c = info.color;
+    hover.innerHTML = `<b>${escapeHtml(name)}</b> <span class="pse-hover-id">#${info.id}</span><br>`
+      + `(${gx}, ${gy}) · rgb ${unpackR(c)},${unpackG(c)},${unpackB(c)}<br>`
+      + `bloom ${mat?.bloomWeight ?? 0} · ${isConductor(info.id) ? 'conductor' : 'insulator'}`;
+    // Position near the cursor, inside the wrap.
+    const wrap = this.el('.pse-canvas-wrap').getBoundingClientRect();
+    hover.style.left = `${Math.min(e.clientX - wrap.left + 12, wrap.width - 150)}px`;
+    hover.style.top = `${Math.max(4, e.clientY - wrap.top - 8)}px`;
+    hover.hidden = false;
   }
 
   private renderWarns(): void {
@@ -569,8 +744,13 @@ function injectStyle(): void {
 .pse-scene-row.user .pse-scene-name{color:#cfe6cf}
 .pse-scene-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pse-scene-kind{opacity:.5;font-size:.85em}
-.pse-canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#0c0d12;min-width:0;overflow:auto}
+.pse-canvas-wrap{position:relative;flex:1;display:flex;align-items:center;justify-content:center;background:#0c0d12;min-width:0;overflow:auto}
 .pse-canvas{image-rendering:pixelated;cursor:crosshair;background:#0b0b0f;box-shadow:0 0 0 1px #2a2c36}
+.pse-canvas.pse-tile-mode{cursor:default}
+.pse-hover{position:absolute;z-index:3;pointer-events:none;font:11px ui-monospace,monospace;color:#cfe6ff;
+  background:rgba(8,10,16,.9);border:1px solid #2a3550;border-radius:4px;padding:4px 7px;line-height:1.45;white-space:nowrap}
+.pse-hover[hidden]{display:none}
+.pse-hover .pse-hover-id{opacity:.55}
 .pse-palette{display:grid;grid-template-columns:1fr 1fr;gap:2px}
 .pse-swatch{display:flex;align-items:center;gap:4px;background:#1d1f27;border:1px solid #2a2c36;color:#cdd0d8;border-radius:3px;
   padding:2px 4px;cursor:pointer;font-size:10px}

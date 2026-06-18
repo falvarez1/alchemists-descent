@@ -749,10 +749,22 @@ export class Minimap {
   /** Frames left of the go-to-the-Refuge ping. */
   private refugePing = 0;
 
+  /** Sim pause state captured when the full map opens, restored on close. */
+  private wasPaused = false;
+
   private setVisible(on: boolean): void {
     if (on === this.visible) return;
     this.visible = on;
     el('minimap-overlay').classList.toggle('visible', on);
+    // The fullscreen map is a modal read — pause the world while it's up (the
+    // always-on corner panel is unaffected). Restore the prior pause state so it
+    // nests correctly under the pause menu.
+    if (on) {
+      this.wasPaused = this.ctx.state.paused;
+      this.ctx.state.paused = true;
+    } else {
+      this.ctx.state.paused = this.wasPaused;
+    }
     if (!on) this.hidePoiPopover();
     if (on) this.redraw(this.ctx);
   }
