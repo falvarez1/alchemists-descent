@@ -92,7 +92,7 @@ export class RigidBodies implements RigidBodiesApi {
   /** The live player-corpse ragdoll, cached so the camera/lighting/compose
    *  readers don't linear-scan `bodies` for it every frame. */
   playerCorpse: RigidBody | null = null;
-  private readonly world: RWorld;
+  private world: RWorld;
   private readonly handles = new Map<RigidBody, RBody>();
   private readonly terrain = new Map<number, RCollider>();
   /** Cell index → frame it left the desired set. Removal is DEFERRED a few frames
@@ -107,10 +107,17 @@ export class RigidBodies implements RigidBodiesApi {
   private detonations: RigidBody[] = [];
 
   constructor(private readonly ctx: Ctx) {
-    this.world = new RAPIER.World({ x: 0, y: GRAVITY });
-    this.world.integrationParameters.dt = DT;
+    this.world = this.createWorld();
     // Bodies are per-level transient state (like projectiles/particles).
     ctx.events.on('levelChanged', () => this.clear());
+  }
+
+  /** Build a fresh Rapier world (gravity + fixed dt). Used at construction and to
+   *  rebuild after a fatal solver fault (see recoverFromFault). */
+  private createWorld(): RWorld {
+    const world = new RAPIER.World({ x: 0, y: GRAVITY });
+    world.integrationParameters.dt = DT;
+    return world;
   }
 
   spawn(shape: RigidShape, x: number, y: number, opts: SpawnBodyOpts = {}): RigidBody {
@@ -579,8 +586,13 @@ export class RigidBodies implements RigidBodiesApi {
 
   update(ctx: Ctx): void {
     this.processDetonations(ctx);
-    this.syncTerrain(ctx.world, ctx.state.frameCount);
-    this.world.step();
+    // Terrain sync + the solver step are the two places a degenerate contact/
+    // collider pile can overflow Rapier's wasm stack. That overflow leaves the
+    // world PERMANENTLY borrow-locked ("recursive use of an object detected"),
+    // so every later frame would throw forever and brick the game. Guard them
+    // together: on a fault we drop the poisoned world and rebuild, then skip the
+    // rest of this frame's body work. (DESIGN fail-open: chaos never hard-locks.)
+    if (!this.stepPhysics(ctx)) return;
     let dead: RigidBody[] | null = null;
     for (const body of this.bodies) {
       const rb = this.handles.get(body);
@@ -606,6 +618,40 @@ export class RigidBodies implements RigidBodiesApi {
     this.reactBodies(ctx);
     this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
     this.resolvePlayer(ctx);
+  }
+
+  /** Sync terrain colliders and step Rapier inside a guard. A wasm solver overflow
+   *  throws and leaves the world borrow-locked; we catch it once, reset physics,
+   *  and report false so the caller skips the now-empty body pass. Clean step → true. */
+  private stepPhysics(ctx: Ctx): boolean {
+    try {
+      this.syncTerrain(ctx.world, ctx.state.frameCount);
+      this.world.step();
+      return true;
+    } catch (err) {
+      this.recoverFromFault(err);
+      return false;
+    }
+  }
+
+  /** Recover from a fatal Rapier fault: the old world is borrow-locked (we can't
+   *  even removeRigidBody on it), so drop it and stand up a clean one. Every body
+   *  is forfeit — transient debris and the death corpse alike — which is vastly
+   *  cheaper than a physics layer that errors every frame for the rest of the run.
+   *  The corpse's owner (Player.tickCorpse) has a frame-timeout, so the game-over
+   *  flow still resolves without its ragdoll. */
+  private recoverFromFault(err: unknown): void {
+    this.world = this.createWorld();
+    this.handles.clear();
+    this.terrain.clear();
+    this.terrainStale.clear();
+    this.desired.clear();
+    this.bodies.length = 0;
+    this.detonations.length = 0;
+    this.held = null;
+    this.playerCorpse = null;
+    console.error('[RigidBodies] physics solver fault — world reset to recover', err);
+    this.ctx.events.emit('toast', { text: 'PHYSICS RESET (solver overload)' });
   }
 
   /**

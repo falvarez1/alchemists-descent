@@ -12,6 +12,7 @@ import type { Ctx, Projectile, ProjectilesApi, ProjectileType, RigidBody } from 
 import { EnemySpatialIndex } from '@/entities/enemySpatial';
 import { Cell, isConductor, isGas, isSolid } from '@/sim/CellType';
 import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '@/sim/colors';
+import { chargeDeposit } from '@/sim/electrical';
 import type { World } from '@/sim/World';
 import { probeHollow } from '@/world/secrets';
 
@@ -210,7 +211,7 @@ function chargeNearby(ctx: Ctx, cx: number, cy: number, radius: number, charge: 
     const idx = world.idx(x, y);
     const t = world.types[idx];
     if (isConductor(t) || (dSq === 0 && t !== Cell.Empty && !isGas(t))) {
-      world.setChargeAt(idx, Math.max(world.charge[idx], charge));
+      world.setChargeAt(idx, Math.max(world.charge[idx], chargeDeposit(ctx, charge)));
     }
   }
 }
@@ -919,7 +920,7 @@ export class Projectiles implements ProjectilesApi {
             removed = true;
           } else if (p.type === 'bolt') {
             this.triggerExplosion(ctx, gx, gy, ctx.params.spells.bolt.explosionRadius!);
-            world.setChargeAt(world.idx(gx, gy), 20);
+            world.setChargeAt(world.idx(gx, gy), chargeDeposit(ctx, 20));
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'fireball') {

@@ -69,8 +69,16 @@ import type { BiomeId } from '@/core/types';
  *      notchPasses 2->3) so legacy walk surfaces fill their snaggy pits/holes by
  *      default. terrainPolish runs inside generateCaves, so this changes the bare-
  *      cave output too — BOTH gen-golden and gen-level-golden re-recorded.
+ * v23: LESS-POROUS CAVES — the swiss-cheese rock the player walked on was the
+ *      skeleton's own porosity, which no safe post-fill could clean (filling closes
+ *      passages; findability caught it). Fixed at the source: baseline caPasses
+ *      5->9 (more CA smoothing consolidates the rock into solid blobs AND opens the
+ *      caverns; the carved arteries keep connectivity), plus a bounded majority-rule
+ *      consolidation post-pass (GEN_TUNE.rockFillPasses 2) for residual holes, plus
+ *      cosmetic dirt/grass/moss/flower surface dressing. surfacePitDepth eased to 6.
+ *      Re-recorded gen-golden + gen-level-golden.
  */
-export const GEN_VERSION = 22;
+export const GEN_VERSION = 23;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox
@@ -101,6 +109,11 @@ export const GEN_TUNE = {
   surfacePitDepth: 6,
   notchPasses: 3,
   fillSurfacePits: true,
+  // Majority-rule rock consolidation (terrainPolish.consolidateRock) — closes the
+  // porous swiss-cheese holes so the rock the player walks on reads solid. passes 0
+  // = off. Tuned via render + findability before baking the default.
+  rockFillPasses: 2,
+  rockFillThreshold: 4,
 };
 
 /** Frozen shipped baseline — the Sandbox worldgen "reset" restores it. */
@@ -439,7 +452,7 @@ export interface GenDef {
 export function baselineSkeletonParams(): BaselineSkeletonParams {
   return {
     noiseDensity: 0.54,
-    caPasses: 5,
+    caPasses: 9,
     arteries: [
       // Primary meandering artery (defines tunnelY / the spawn chamber row).
       {

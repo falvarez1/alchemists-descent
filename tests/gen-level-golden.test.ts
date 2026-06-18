@@ -77,16 +77,16 @@ function levelTypeHash(def: LevelDef, seed: number): string {
   return fnv1a(ctx.world.types);
 }
 
-// Re-recorded for GEN_VERSION 22 (sink-fill defaults raised: surfacePitWidth
-// 6->20, surfacePitDepth 4->10, notchPasses 2->3 — terrainPolish now fills the
-// snaggy walk-surface pits/holes more aggressively, changing the polished cell
-// output. The gilded 'vault' is UNCHANGED: that biome skips terrainPolish.).
+// Re-recorded for GEN_VERSION 23 (less-porous caves: baseline skeleton caPasses
+// 5->9 + a bounded rock-consolidation post-pass close the swiss-cheese holes the
+// player walked on; surfacePitDepth eased to 6. The gilded 'vault' is UNCHANGED:
+// it uses the crystal-vault skeleton, not the baseline, and skips terrainPolish.).
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '2ffd66d2' },
-  { id: 'd4', seed: 1337, hash: '50aead90' },
-  { id: 'd8', seed: 1337, hash: '17a09f97' },
+  { id: 'd1', seed: 1337, hash: '1491d59e' },
+  { id: 'd4', seed: 1337, hash: '5cc139b7' },
+  { id: 'd8', seed: 1337, hash: '2687acb1' },
   { id: 'vault', seed: 1337, hash: 'e2b0c188' },
-  { id: 'd2', seed: 42, hash: 'bee52a0e' },
+  { id: 'd2', seed: 42, hash: 'fbf9bd74' },
 ];
 
 describe('full generateLevel golden hashes', () => {

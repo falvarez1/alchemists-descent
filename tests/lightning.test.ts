@@ -22,6 +22,7 @@ describe('Lightning', () => {
         spells: {
           lightning: { range: 20, branches: 0, damage: 7 },
         },
+        global: { chargeStrength: 1 },
       },
       enemyCtl: {
         damage: (enemy: Enemy, amount: number) => {

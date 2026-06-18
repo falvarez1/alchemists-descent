@@ -4,15 +4,17 @@ import type { World } from '@/sim/World';
 import { packRGB } from '@/sim/colors';
 
 /**
- * Walk-surface dressing — runs after terrainPolish so it sees the filled surface.
- * Two jobs the player feels directly on the ground they walk:
- *  1) cap the remaining shallow (1–2 cell) snags in the topmost walk surface, so the
- *     ledge reads level instead of saw-toothed (bounded to 2 cells → connectivity-safe);
- *  2) paint every walkable ledge as DIRT with grass/moss + occasional flowers on top
- *     (green-crown biomes) — the bare rock surface becomes natural ground.
+ * Walk-surface dressing — runs after terrainPolish so it sees the polished surface.
+ * Paints every walkable ledge (any solid cell with headroom above) as DIRT with
+ * grass/moss + occasional flowers on top, so the bare saw-tooth rock the player walks
+ * reads as natural ground instead of snaggy stone.
  *
- * Geometry change is intentionally tiny; the bulk is recolour. Cosmetic colours are
- * Math-free (hash2) so the gen stays deterministic and golden-lockable.
+ * PURE RECOLOUR — no geometry. An earlier version also "capped" shallow surface dips,
+ * but filling the empty headroom above a dip can seal a corridor (the findability
+ * audit caught a counterweight going unreachable), and a jagged cave top has no flat
+ * reference to tell a snag from natural slope. Geometry smoothing stays with the
+ * bounded terrainPolish pass; this layer makes the surface LOOK like ground. Colours
+ * are Math-free (hash2) so the gen stays deterministic and golden-lockable.
  */
 export interface SurfaceDressOptions {
   seed: number;
@@ -46,35 +48,8 @@ export function dressWalkSurface(world: World, opts: SurfaceDressOptions): void 
   const maxY = Math.min(floorBand, H - 1);
   const top = Math.max(minY + 1, 3);
 
-  // 1) Snag-cap: raise 1–2 cell dips in the TOPMOST walk surface to its neighbours.
-  const surf = new Int32Array(W).fill(-1);
-  for (let x = 1; x < W - 1; x++) {
-    for (let y = top; y < maxY; y++) {
-      if (t[x + y * W] === Cell.Wall && t[x + (y - 1) * W] === Cell.Empty && t[x + (y - 2) * W] === Cell.Empty) {
-        surf[x] = y;
-        break;
-      }
-    }
-  }
-  for (let x = 2; x < W - 2; x++) {
-    const s = surf[x], l = surf[x - 1], r = surf[x + 1];
-    if (s < 0 || l < 0 || r < 0) continue;
-    if (s <= l || s <= r) continue; // not a dip (must be lower than BOTH neighbours)
-    const target = Math.max(s - 2, Math.min(l, r)); // raise at most 2 cells, up to the higher neighbour
-    if (s - target < 1) continue;
-    let capped = false;
-    for (let y = target; y < s; y++) {
-      const i = x + y * W;
-      if (t[i] !== Cell.Empty) break; // never overwrite real cells / corridors
-      t[i] = Cell.Wall;
-      col[i] = dirtColor(x, y, seed);
-      capped = true;
-    }
-    if (capped) surf[x] = target;
-  }
-
-  // 2) Dress every walkable ledge (Wall with 2 empty above): grass/flowers on top,
-  //    dirt gradient below.
+  // Dress every walkable ledge (Wall with 2 empty above): grass/flowers on top,
+  // dirt gradient below.
   if (crown === 'ember') return; // scorched crown already handled by generateCaves
   for (let x = 0; x < W; x++) {
     for (let y = top; y < maxY; y++) {

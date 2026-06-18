@@ -194,6 +194,54 @@ function fillTinyNotches(world: PolishTarget, seed: number, minY: number, maxY: 
   return total;
 }
 
+/**
+ * Majority-rule rock consolidation — closes the small holes of a porous (swiss-cheese)
+ * cave so the rock the player walks reads SOLID instead of riddled with gaps. Each pass
+ * turns an Empty cell into sampled neighbour rock when >= `threshold` of its 8 neighbours
+ * are solid; iterated `passes` times so filled cells feed the next pass and the network
+ * consolidates. threshold 4 (majority) actually closes a 50/50 network — the notch fill's
+ * >=5 stalls on it. Bounded by passes; genuinely open caverns (few solid neighbours) stay
+ * open, but this DOES alter connectivity, so it's findability-gated.
+ */
+export function consolidateRock(
+  world: PolishTarget,
+  seed: number,
+  minY: number,
+  maxY: number,
+  passes: number,
+  threshold: number,
+): number {
+  const W = world.width;
+  const types = world.types;
+  let total = 0;
+  for (let pass = 0; pass < passes; pass++) {
+    const indices: number[] = [];
+    const fillTypes: number[] = [];
+    const fillColors: number[] = [];
+    for (let y = minY + 1; y < maxY; y++) {
+      const row = y * W;
+      for (let x = 1; x < W - 1; x++) {
+        const i = row + x;
+        if (types[i] !== Cell.Empty) continue;
+        let s = 0;
+        if (isTerrainSolid(types[i - W])) s++;
+        if (isTerrainSolid(types[i + W])) s++;
+        if (isTerrainSolid(types[i - 1])) s++;
+        if (isTerrainSolid(types[i + 1])) s++;
+        if (isTerrainSolid(types[i - W - 1])) s++;
+        if (isTerrainSolid(types[i - W + 1])) s++;
+        if (isTerrainSolid(types[i + W - 1])) s++;
+        if (isTerrainSolid(types[i + W + 1])) s++;
+        if (s >= threshold) queueFill(world, x, y, seed + pass * 419, indices, fillTypes, fillColors);
+      }
+    }
+    if (indices.length === 0) break;
+    applyFills(world, indices, fillTypes, fillColors);
+    total += indices.length;
+  }
+  return total;
+}
+
 function isTopSurface(types: Uint8Array, W: number, x: number, y: number): boolean {
   return (
     isTerrainSolid(types[x + y * W]) &&

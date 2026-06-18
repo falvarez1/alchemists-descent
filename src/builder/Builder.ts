@@ -7097,6 +7097,10 @@ export class Builder {
       g.chargeFalloff = v;
       this.ctx.events.emit('paramsChanged');
     });
+    this.sliderRow(elec, 'Charge Strength (reach)', g.chargeStrength, 0.5, 5, 0.5, (v) => `${v.toFixed(1)}x`, (v) => {
+      g.chargeStrength = v;
+      this.ctx.events.emit('paramsChanged');
+    });
     this.sliderRow(elec, 'Charge Decay (duration)', g.chargeDecay, 1, 10, 1, (v) => v.toFixed(0), (v) => {
       g.chargeDecay = v;
       this.ctx.events.emit('paramsChanged');
@@ -8367,7 +8371,15 @@ export class Builder {
       return;
     }
     showImportReport(this.el<HTMLDivElement>('builder-import-host'), file.name, result, {
-      onSnapAll: () => accept(snapUnknown(decoded.rgba, decoded.w, decoded.h)),
+      onSnapAll: () => {
+        // Surface the same semi-transparent warning the clean accept path shows
+        // (result.semiTransparent is already computed) — the snap-all branch
+        // was the only one that silently dropped it.
+        if (result.semiTransparent > 0) {
+          this.status(`${result.semiTransparent} SEMI-TRANSPARENT PIXEL(S) THRESHOLDED`, true);
+        }
+        accept(snapUnknown(decoded.rgba, decoded.w, decoded.h));
+      },
       onCancel: () => this.status('PNG IMPORT CANCELLED'),
     });
   }

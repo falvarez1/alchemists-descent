@@ -798,7 +798,7 @@ function modifierCtx(
     enemies: opts.enemies ?? [],
     state: { mode: 'play', frameCount: opts.frameCount ?? 1 },
     player: { x: 100, y: 100, dead: false, crawling: false, status: {}, ...opts.player },
-    params: { spells: { bolt: { explosionRadius: 3 } } },
+    params: { spells: { bolt: { explosionRadius: 3 } }, global: { chargeStrength: 1 } },
     particles: {
       spawn: () => undefined,
       burst: () => undefined,

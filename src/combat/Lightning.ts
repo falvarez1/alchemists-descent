@@ -4,6 +4,7 @@ import type { Ctx, LightningApi, LightningArc } from '@/core/types';
 import { EnemySpatialIndex } from '@/entities/enemySpatial';
 import { bodyMaterialDef } from '@/entities/bodyMaterials';
 import { Cell, isGas } from '@/sim/CellType';
+import { chargeDeposit } from '@/sim/electrical';
 
 /** A jagged lightning path between two points (perpendicular jitter, peaking
  *  mid-span, snapping back to the endpoint). Same look as the chain-bolt arcs. */
@@ -69,7 +70,7 @@ export class Lightning implements LightningApi {
           for (let j = 0; j < 5; j++) {
             const sx = clamp(gx + ((Math.random() * 5) | 0) - 2, 0, WIDTH - 1);
             const sy = clamp(gy + ((Math.random() * 5) | 0) - 2, 0, HEIGHT - 1);
-            world.setChargeAt(world.idx(sx, sy), 8);
+            world.setChargeAt(world.idx(sx, sy), chargeDeposit(ctx, 8));
           }
           struck = true;
           break;
@@ -81,7 +82,7 @@ export class Lightning implements LightningApi {
       // their surroundings (the sim chains it onward) and zap enemies in contact.
       const body = ctx.rigidBodies?.hitTest?.(x, y);
       if (body && body.material && bodyMaterialDef(body.material).conductive) {
-        world.setChargeAt(world.idx(gx, gy), 20);
+        world.setChargeAt(world.idx(gx, gy), chargeDeposit(ctx, 20));
         for (const e of this.enemyIndex.query(body.x, body.y, 22, this.enemyScratch)) {
           if (!this.enemyIndex.has(e)) continue;
           const ex = e.x - body.x;
@@ -98,7 +99,7 @@ export class Lightning implements LightningApi {
 
       const c = world.types[world.idx(gx, gy)];
       if (c !== Cell.Empty && !isGas(c) && c !== Cell.Fire) {
-        world.setChargeAt(world.idx(gx, gy), 20);
+        world.setChargeAt(world.idx(gx, gy), chargeDeposit(ctx, 20));
         ctx.explosions.trigger(x, y, 4);
         this.enemyIndex.syncLive(ctx.enemies);
         struck = true;

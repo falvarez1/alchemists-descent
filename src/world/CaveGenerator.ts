@@ -45,7 +45,7 @@ import { PlacementLedger, carveRect, tunnelTo } from '@/world/connect';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
-import { polishCaveTerrain } from '@/world/terrainPolish';
+import { polishCaveTerrain, consolidateRock } from '@/world/terrainPolish';
 import { dressWalkSurface } from '@/world/surfaceDress';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
@@ -470,6 +470,9 @@ export class WorldGen implements WorldGenApi {
     // Gilded Vault and timber scaffold routes keep their original thin-route
     // topology because generated locks are tuned tightly around them.
     if (ctx.state.currentBiome !== 'gilded' && ctx.state.currentBiome !== 'timber') {
+      if (GEN_TUNE.rockFillPasses > 0) {
+        consolidateRock(world, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockFillPasses, GEN_TUNE.rockFillThreshold);
+      }
       polishCaveTerrain(world, {
         seed,
         minY: MIN_Y,

@@ -1,6 +1,20 @@
 import type { Ctx } from '@/core/types';
 import { Cell, isConductor } from '@/sim/CellType';
 
+/**
+ * The charge a strike injects, scaled by the live `chargeStrength` (reach) knob.
+ * A current conducts ~ deposit / falloff cells before fading, so scaling the
+ * deposit is the single lever for "how far does it spread". Clamped to the
+ * 0–255 charge range (and ≥1 so a strike always reads). Every spark/lightning/
+ * explosion source routes its base deposit through here.
+ */
+export function chargeDeposit(ctx: Ctx, base: number): number {
+  // Fall back to 1x when no electrical tuning is configured (minimal test stubs);
+  // production always carries global params, so it gets the real chargeStrength.
+  const strength = ctx.params?.global?.chargeStrength ?? 1;
+  return Math.max(1, Math.min(255, Math.round(base * strength)));
+}
+
 const charged: number[] = [];
 /** Cell index → charge to seed it with this frame (attenuated per hop). */
 const spreadCharge = new Map<number, number>();

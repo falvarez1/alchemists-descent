@@ -549,6 +549,10 @@ export interface GlobalParams {
   /** Electrical SPREAD: charge dropped per conductor hop. 1 = shipped; higher
    *  kills the spark in fewer cells so electrified water/metal stays local. */
   chargeFalloff: number;
+  /** Electrical REACH: multiplier on the charge every strike injects. Since a
+   *  current conducts ~ deposit / falloff cells before fading, this is the single
+   *  lever for "how far does it spread" — 2.5 = the current default reach. */
+  chargeStrength: number;
   /** Electrical DURATION: charge dropped per frame. 1 = shipped; higher makes a
    *  charged cell fade faster. (Charge is integer 0–255, so values round.) */
   chargeDecay: number;

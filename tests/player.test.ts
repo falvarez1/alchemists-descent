@@ -149,6 +149,7 @@ describe('player death economy', () => {
       world: new World(),
       state: { frameCount: 2 },
       particles: { spawn: () => undefined },
+      params: { global: { shockDamage: 0.2, chargeStrength: 1 } },
     } as unknown as Ctx;
 
     sampleAndTickStatus(ctx, player, 4, 17, undefined, 2);

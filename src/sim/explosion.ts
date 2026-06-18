@@ -2,6 +2,7 @@ import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, ExplosionApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
+import { chargeDeposit } from '@/sim/electrical';
 
 /**
  * Explosions. Ported from triggerExplosion (noita-sandbox.html lines 718-800).
@@ -100,16 +101,17 @@ export class Explosions implements ExplosionApi {
             } else {
               world.clearCellAt(ni);
             }
-            // Charge ~8 (was 4): with per-frame decay this reads as a visible
-            // electrified flash that conducts through adjacent water/metal for
-            // ~8 frames, then fades (chargeFalloff/chargeDecay tune reach/duration).
-            if (Math.random() < 0.4) world.setChargeAt(ni, 8);
+            // A visible electrified flash that conducts through adjacent
+            // water/metal for several frames, then fades. The base deposit is
+            // scaled by chargeStrength (reach) and attenuated by chargeFalloff
+            // (spread) / chargeDecay (duration).
+            if (Math.random() < 0.4) world.setChargeAt(ni, chargeDeposit(ctx, 8));
           } else {
             // Metal doesn't shatter — but it CONDUCTS. The blast rings a strong
             // current through it that spreads across the connected metal (and up
             // into water sitting on it, and into enemies standing on it), fading
-            // over ~1s. (chargeFalloff / chargeDecay tune reach + duration.)
-            world.setChargeAt(ni, 60);
+            // over ~1s. Big base deposit → metal carries the current far.
+            world.setChargeAt(ni, chargeDeposit(ctx, 60));
           }
         }
       }
