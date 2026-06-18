@@ -22,7 +22,9 @@ npm run dev      # http://localhost:5173
 | `npm run build` | typecheck + production build to `dist/` |
 | `npm test` | vitest (worldgen determinism, ...) |
 | `npm run typecheck` | `tsc --noEmit` (strict) |
-| `node scripts/verify-game.mjs` | headless browser smoke test (needs dev server + Edge) |
+| `npm run lint` | ESLint over `src/`, `tests/`, scripts, and Vite config |
+| `npm run verify:runtime` | headless browser runtime/UI probe suite (spawns Vite + needs Edge) |
+| `node scripts/verify-game.mjs` | focused headless browser smoke test (needs dev server + Edge) |
 
 ## Controls
 

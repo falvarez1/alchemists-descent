@@ -28,6 +28,21 @@ describe('updateElectricalGrid', () => {
     expect(world.charge[world.idx(3, 2)]).toBe(0); // not a tracked neighbor direction
   });
 
+  it('uses live material conductivity when attenuating conductor spread', () => {
+    const world = new World(8, 8);
+    const source = world.idx(3, 3);
+    world.types[source] = Cell.Metal;
+    world.charge[source] = 8;
+    world.types[world.idx(2, 3)] = Cell.Metal;
+    const params = createGameParams();
+    params.materials = structuredClone(params.materials);
+    params.materials[Cell.Metal] = { ...params.materials[Cell.Metal], conductivity: 0.25 };
+
+    updateElectricalGrid(ctxFor(world, params));
+
+    expect(world.charge[world.idx(2, 3)]).toBe(4);
+  });
+
   it('ignores charged cells outside the active simulation window', () => {
     const world = new World(8, 8);
     world.simBounds.x0 = 0;
@@ -67,10 +82,15 @@ describe('updateElectricalGrid', () => {
 // Decay now fires once per FRAME (updateElectricalGrid gates on frameCount), so
 // each call gets a fresh, advancing frame — every decay-expecting call decays.
 let testFrame = 0;
-function ctxFor(world: World): Ctx {
+function ctxFor(world: World, params = createGameParams()): Ctx {
+  // Pin the tuning these assertions assume — production defaults are tuned for
+  // long in-game reach/glow, but the unit math here expects 1 lost per hop at the
+  // best conductor and 1 decayed per frame.
+  params.global.chargeFalloff = 1;
+  params.global.chargeDecay = 1;
   return {
     world,
-    params: createGameParams(),
+    params,
     state: { frameCount: ++testFrame },
   } as Ctx;
 }

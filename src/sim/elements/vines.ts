@@ -1,6 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
-import { EMPTY_COLOR, vineColor } from '@/sim/colors';
+import { vineColor } from '@/sim/colors';
 
 const SIP_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
@@ -54,13 +54,11 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
     if (Math.random() < 0.30) {
       const si = w.idx(wx, wy);
       if (Math.random() < 0.5) {
-        w.types[si] = Cell.Vines;
-        w.colors[si] = vineColor();
+        w.replaceCellAt(si, Cell.Vines, vineColor());
         w.life[si] = Math.min(130, energy + 45);
         w.moved[si] = w.movedTick;
       } else {
-        w.types[si] = Cell.Empty;
-        w.colors[si] = EMPTY_COLOR;
+        w.clearCellAt(si);
       }
       energy = Math.min(140, energy + 22);
       w.life[ci] = energy;
@@ -80,8 +78,7 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
     w.inBounds(sx, sy) && w.types[w.idx(sx, sy)] === Cell.Empty;
   const sprout = (sx: number, sy: number) => {
     const si = w.idx(sx, sy);
-    w.types[si] = Cell.Vines;
-    w.colors[si] = vineColor();
+    w.replaceCellAt(si, Cell.Vines, vineColor());
     const child = energy - (11 + Math.floor(Math.random() * 12));
     w.life[si] = child > 6 ? child : -1;
     w.moved[si] = w.movedTick;

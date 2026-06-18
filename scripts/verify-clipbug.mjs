@@ -36,10 +36,14 @@ async function walk(dir, frames) {
     const p = ctx.player;
     const w = ctx.world;
     const rows = [];
+    let clippedAtF = -1;
+    let maxY = p.y;
     let floorDump = null;
     for (let f = 0; f < n; f++) {
       window.__game.tick();
       const rx = Math.round(p.x);
+      maxY = Math.max(maxY, p.y);
+      if (clippedAtF < 0 && (p.dead || (p.y > 715 && p.vy > 0))) clippedAtF = f;
       if (f <= 10) rows.push({
         f, x: p.x, y: p.y, vy: +p.vy.toFixed(2), g: p.grounded ? 1 : 0,
         efInt: ctx.physics.entityFree(Math.floor(p.x), Math.floor(p.y) + 1, 4, 1) ? 1 : 0,
@@ -50,7 +54,7 @@ async function walk(dir, frames) {
         for (let x = rx - 8; x <= rx + 8; x++) { floorDump.y700.push(w.types[w.idx(x, 700)]); floorDump.y701.push(w.types[w.idx(x, 701)]); }
       }
     }
-    return { endX: +p.x.toFixed(1), endY: +p.y.toFixed(1), dead: p.dead, rows, floorDump };
+    return { endX: +p.x.toFixed(1), endY: +p.y.toFixed(1), maxY: +maxY.toFixed(1), clippedAtF, dead: p.dead, rows, floorDump };
   }, frames);
   await page.keyboard.up(key);
   await page.evaluate(() => { for (let f = 0; f < 30; f++) window.__game.tick(); });
@@ -69,4 +73,4 @@ const clipped = right.clippedAtF >= 0 || left.clippedAtF >= 0 || right.dead || l
 console.log(`\nFLOOR CLIP REPRODUCED: ${clipped ? 'YES' : 'no'}`);
 console.log('page errors:', errs.length ? errs.join(' | ') : 'none');
 await browser.close();
-process.exit(0);
+process.exit(clipped || errs.length > 0 ? 1 : 0);

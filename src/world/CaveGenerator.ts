@@ -45,7 +45,7 @@ import { PlacementLedger, carveRect, tunnelTo } from '@/world/connect';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
-import { polishCaveTerrain, consolidateRock } from '@/world/terrainPolish';
+import { polishCaveTerrain, consolidateRock, fillEnclosedHoles, solidifyRock } from '@/world/terrainPolish';
 import { dressWalkSurface } from '@/world/surfaceDress';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
@@ -64,6 +64,14 @@ const N4: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
   [0, -1],
 ];
+
+function shouldLogDevDiagnostics(): boolean {
+  if (!import.meta.env.DEV || import.meta.env.MODE === 'test') return false;
+  const runtime = globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  };
+  return runtime.process?.env?.VITEST !== 'true';
+}
 
 export class WorldGen implements WorldGenApi {
   /** Center of the carved spawn chamber (original caveSpawnHint). */
@@ -473,6 +481,16 @@ export class WorldGen implements WorldGenApi {
       if (GEN_TUNE.rockFillPasses > 0) {
         consolidateRock(world, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockFillPasses, GEN_TUNE.rockFillThreshold);
       }
+      // De-speckle: a morphological close packs every CONNECTED open feature
+      // thinner than 2*radius (the porous-noise speckle the player walks over),
+      // leaving caverns/tunnels wider than the radius untouched. Then mop up any
+      // remaining SEALED pockets. Both are connectivity-safe by construction.
+      if (GEN_TUNE.rockCloseRadius > 0) {
+        solidifyRock(world, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockCloseRadius);
+      }
+      if (GEN_TUNE.holeFillMax > 0) {
+        fillEnclosedHoles(world, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.holeFillMax);
+      }
       polishCaveTerrain(world, {
         seed,
         minY: MIN_Y,
@@ -698,7 +716,7 @@ export class WorldGen implements WorldGenApi {
           recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass));
         }
       }
-      if (import.meta.env.DEV && rescued.length > 0) {
+      if (shouldLogDevDiagnostics() && rescued.length > 0) {
         const suffix = failedRescues.length > 0 ? `; still cut off: ${failedRescues.join(' ')}` : '';
         console.warn(`[gen] ${def.id}: gauge-rescued ${rescued.length} cut-off feature(s): ${rescued.join(' ')}${suffix}`);
       }
@@ -744,7 +762,7 @@ export class WorldGen implements WorldGenApi {
     let tPrev = tStart;
     const stages: Array<[string, number]> = [];
     const stage = (label: string): void => {
-      if (!import.meta.env.DEV) return;
+      if (!shouldLogDevDiagnostics()) return;
       const now = performance.now();
       stages.push([label, now - tPrev]);
       tPrev = now;
@@ -951,7 +969,7 @@ export class WorldGen implements WorldGenApi {
     stage('prefabs');
 
     const secretCount = stampSecrets(ctx, this.rng, graph, def.biome, ledger);
-    if (import.meta.env.DEV && secretCount < 2) {
+    if (shouldLogDevDiagnostics() && secretCount < 2) {
       console.warn(`Worldgen placed only ${secretCount} sealed secret chambers for ${def.id}`);
     }
     stage('secrets');
@@ -1191,7 +1209,7 @@ export class WorldGen implements WorldGenApi {
     sumpRepair?.();
     stage('sump-repair');
 
-    if (import.meta.env.DEV) {
+    if (shouldLogDevDiagnostics()) {
       const total = performance.now() - tStart;
       if (total > 400) {
         console.warn(

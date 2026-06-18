@@ -1,8 +1,7 @@
 name: CI
 
-# Typecheck + tests on every push/PR. Independent of the Pages deploy (deploy.yml
-# uses `vite build`, which doesn't run tsc) so strict-type or test breakage is
-# VISIBLE here without blocking a deploy.
+# Typecheck, lint, tests, and generated WASM validation on every push/PR. The
+# Pages deploy uses the same strict `npm run build` entry point.
 on:
   push:
     branches: [main]
@@ -35,5 +34,13 @@ jobs:
       - name: Typecheck (tsc --noEmit, strict)
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
       - name: Tests
         run: npm test
+
+      - name: AssemblyScript WASM generation
+        run: |
+          npm run build:wasm
+          git diff --exit-code -- src/world/virtual/wasm/roundCornersWasm.ts

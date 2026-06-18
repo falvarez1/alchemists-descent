@@ -487,12 +487,12 @@ await page.evaluate(() => window.__game.ctx.camera.snapTo(600, 500));
 const beforeMarkers = await page.locator('.b-marker').count();
 const spriteDrag = await dragAssetRowToStage('sprite:library:asset-probe-sprite', 0.52, 0.58);
 await page.waitForTimeout(200);
-const afterDrop = await page.evaluate((before) => ({
+const afterDrop = await page.evaluate(() => ({
   markers: document.querySelectorAll('.b-marker').length,
   status: document.getElementById('builder-status')?.textContent ?? '',
   detail: document.getElementById('builder-asset-details')?.textContent ?? '',
   deleteDisabled: document.querySelector('#builder-asset-details button[data-asset-action="delete"]')?.hasAttribute('disabled') ?? false,
-}), beforeMarkers);
+}));
 check('sprite asset row drag drops onto stage as animated decor', spriteDrag.ok && spriteDrag.draggable === 'true' && afterDrop.markers > beforeMarkers && afterDrop.status.includes('ANIMATED DECOR'), JSON.stringify({ spriteDrag, afterDrop }));
 check('safe delete blocks a referenced sprite and explains usage', afterDrop.deleteDisabled && afterDrop.detail.includes('usage') && afterDrop.detail.includes('Current'), JSON.stringify(afterDrop));
 const afterTextDragMarkers = await page.evaluate(() => {

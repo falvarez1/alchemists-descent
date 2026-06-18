@@ -30,13 +30,6 @@ const r = await page.evaluate(async () => {
   const rb = ctx.rigidBodies;
   const box = (x, material, half = 3.5, y = 596) => rb.spawn({ kind: 'box', halfW: half, halfH: half }, x, y, { material, friction: 0.6, restitution: 0.15 });
   const FIRE = 5; // Cell.Fire
-  const chargeNear = (cx, cy, rad) => {
-    let m = 0;
-    for (let y = Math.floor(cy - rad); y <= cy + rad; y++)
-      for (let x = Math.floor(cx - rad); x <= cx + rad; x++)
-        if (w.inBounds(x, y)) m = Math.max(m, w.charge[w.idx(x, y)]);
-    return m;
-  };
   const countSolid = (x0, x1, y0, y1) => {
     let n = 0;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (w.inBounds(x, y) && w.types[w.idx(x, y)] !== 0) n++;

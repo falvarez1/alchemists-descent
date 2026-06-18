@@ -18,7 +18,8 @@ let pass = 0,
   fail = 0;
 const check = (ok, name, extra = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${extra ? '  [' + extra + ']' : ''}`);
-  ok ? pass++ : fail++;
+  if (ok) pass++;
+  else fail++;
 };
 
 await page.goto(url, { waitUntil: 'networkidle' });

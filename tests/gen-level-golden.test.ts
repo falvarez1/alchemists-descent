@@ -77,16 +77,16 @@ function levelTypeHash(def: LevelDef, seed: number): string {
   return fnv1a(ctx.world.types);
 }
 
-// Re-recorded for GEN_VERSION 23 (less-porous caves: baseline skeleton caPasses
-// 5->9 + a bounded rock-consolidation post-pass close the swiss-cheese holes the
-// player walked on; surfacePitDepth eased to 6. The gilded 'vault' is UNCHANGED:
-// it uses the crystal-vault skeleton, not the baseline, and skips terrainPolish.).
+// Re-recorded for GEN_VERSION 25: earthen baseline noiseDensity 0.54 -> 0.66 and
+// the terrainPolish de-speckle passes (solidifyRock morphological close + the
+// sealed-pocket fillEnclosedHoles). vault is unchanged — gilded uses the crystal-
+// vault skeleton and skips the polish block, so its hash carries over from v24.
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '1491d59e' },
-  { id: 'd4', seed: 1337, hash: '5cc139b7' },
-  { id: 'd8', seed: 1337, hash: '2687acb1' },
-  { id: 'vault', seed: 1337, hash: 'e2b0c188' },
-  { id: 'd2', seed: 42, hash: 'fbf9bd74' },
+  { id: 'd1', seed: 1337, hash: 'b6fdc081' },
+  { id: 'd4', seed: 1337, hash: '30e64077' },
+  { id: 'd8', seed: 1337, hash: '7f87cbd4' },
+  { id: 'vault', seed: 1337, hash: '36b10aba' },
+  { id: 'd2', seed: 42, hash: '60630ba2' },
 ];
 
 describe('full generateLevel golden hashes', () => {

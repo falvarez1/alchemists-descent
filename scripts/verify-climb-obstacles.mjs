@@ -37,7 +37,7 @@ const climb = (paintSrc, px, py) => `
 
 // ---- 1. climb past a rock that juts ~3 cells out of the face ----------------
 const overhang = await page.evaluate((setup) => {
-  // eslint-disable-next-line no-new-func
+
   new Function(setup)();
   const ctx = window.__game.ctx, p = ctx.player;
   let minY = p.y;
@@ -51,7 +51,7 @@ check('climbs up past a rock jutting out of the face', overhang.minY < 388, JSON
 
 // ---- 2. top-out mantle: pull up onto a landing at the wall top --------------
 const mantle = await page.evaluate((setup) => {
-  // eslint-disable-next-line no-new-func
+
   new Function(setup)();
   const ctx = window.__game.ctx, p = ctx.player;
   for (let f = 0; f < 240; f++) { window.__game.tick(); if (p.grounded && !p.climbing) break; }

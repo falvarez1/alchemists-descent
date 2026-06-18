@@ -304,7 +304,6 @@ await page.waitForTimeout(80);
 /* ---------- paste: fresh ids, one-undo ---------- */
 console.log('-- paste & single undo');
 const before = await page.evaluate(() => {
-  const ctx = window.__game.ctx;
   // count via markers; the doc object counts equal marker counts here
   return { markers: document.querySelectorAll('.b-marker').length, types: null };
 });

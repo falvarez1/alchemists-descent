@@ -39,6 +39,15 @@ export function rleDecode(rle: string, into: Uint8Array): number {
   return pos;
 }
 
+/** Decode only when the stream is valid base64 and covers exactly `into`. */
+export function rleDecodeExact(rle: string, into: Uint8Array): boolean {
+  try {
+    return rleDecode(rle, into) === into.length;
+  } catch {
+    return false;
+  }
+}
+
 export function bytesToBase64(bytes: Uint8Array): string {
   let bin = '';
   const CHUNK = 0x8000;
@@ -55,7 +64,7 @@ export function base64ToBytes(b64: string, into: Uint8Array): void {
 }
 
 /** Sparse non-zero [index, value] pairs from a numeric typed array. */
-export function sparsePairs(arr: Int16Array | Uint8Array, cap: number): Array<[number, number]> {
+export function sparsePairs(arr: Int16Array | Uint8Array | Uint16Array, cap: number): Array<[number, number]> {
   const out: Array<[number, number]> = [];
   for (let i = 0; i < arr.length && out.length < cap; i++) {
     if (arr[i] !== 0) out.push([i, arr[i]]);

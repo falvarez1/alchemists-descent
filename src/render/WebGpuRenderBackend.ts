@@ -205,6 +205,8 @@ export class WebGpuRenderBackend implements RendererBackend {
   private liveComposeBasePipeline: RenderPipeline | null = null;
   private liveComposePostPipeline: RenderPipeline | null = null;
   private liveComposeFrame = false;
+  private disposed = false;
+  private initGeneration = 0;
 
   private readonly bloomEnabled = uniform(1);
   private readonly lensEnabled = uniform(1);
@@ -294,6 +296,9 @@ export class WebGpuRenderBackend implements RendererBackend {
   }
 
   releaseCanvasForWebGlFallback(reuseCanvas: boolean): HTMLCanvasElement | undefined {
+    if (this.disposed) return reuseCanvas ? this.canvas : undefined;
+    this.disposed = true;
+    this.initGeneration++;
     this.basePipeline.dispose();
     this.postPipeline.dispose();
     this.composeBridge?.dispose();
@@ -312,6 +317,10 @@ export class WebGpuRenderBackend implements RendererBackend {
     }
     this.canvas.remove();
     return undefined;
+  }
+
+  private initStale(generation: number): boolean {
+    return this.disposed || generation !== this.initGeneration;
   }
 
   private pixelUv() {
@@ -413,6 +422,7 @@ export class WebGpuRenderBackend implements RendererBackend {
   }
 
   private async ensureLiveComposeDiagnostic(): Promise<void> {
+    if (this.disposed) return;
     if (this.liveCompose !== null) return;
     if (this.liveComposeInitPromise) return this.liveComposeInitPromise;
     if (this.actualBackend !== 'webgpu') return;
@@ -428,6 +438,10 @@ export class WebGpuRenderBackend implements RendererBackend {
     this.liveCompose = liveCompose;
     try {
       const composeStatus = await liveCompose.initialize();
+      if (this.disposed || this.liveCompose !== liveCompose) {
+        liveCompose.dispose();
+        return;
+      }
       if (composeStatus.bridge !== 'validated') {
         console.warn('WebGPU live compose diagnostic initialization failed', composeStatus.reason);
         return;
@@ -456,6 +470,7 @@ export class WebGpuRenderBackend implements RendererBackend {
   }
 
   private async initialize(): Promise<void> {
+    const generation = ++this.initGeneration;
     try {
       if (shouldSimulateInitFailure()) {
         throw new Error('simulated WebGPU init failure');
@@ -467,6 +482,7 @@ export class WebGpuRenderBackend implements RendererBackend {
         throw new Error('navigator.gpu unavailable');
       }
       await this.renderer.init();
+      if (this.initStale(generation)) return;
       this.actualBackend = backendName(this.renderer);
       const backend = this.renderer.backend as unknown as ThreeGpuBackendProbe;
       this.deviceFeatures = collectWebGpuFeatures(backend.device);
@@ -477,15 +493,22 @@ export class WebGpuRenderBackend implements RendererBackend {
       }
       if (this.actualBackend === 'webgpu' && this.flags.compose) {
         await this.ensureLiveComposeDiagnostic();
+        if (this.initStale(generation)) return;
       }
       if (this.actualBackend === 'webgpu' && !this.flags.compose && shouldValidateComposeBridge()) {
         this.composeBridge = new WebGpuComposeBridge(this.renderer);
         const composeStatus = await this.composeBridge.initialize();
+        if (this.initStale(generation)) {
+          this.composeBridge?.dispose();
+          this.composeBridge = null;
+          return;
+        }
         if (composeStatus.bridge !== 'validated') {
           console.warn('WebGPU compose runtime bridge validation failed', composeStatus.reason);
         }
         if (composeStatus.bridge === 'validated' && shouldValidateComposeRawWgsl()) {
           const rawWgslStatus = await this.composeBridge.validateRawWgslWrite();
+          if (this.initStale(generation)) return;
           if (rawWgslStatus.status !== 'validated') {
             console.warn('WebGPU compose raw WGSL runtime write validation failed', rawWgslStatus.reason);
           }
@@ -495,6 +518,7 @@ export class WebGpuRenderBackend implements RendererBackend {
       this.initReason =
         this.actualBackend === 'webgpu' ? 'webgpu-presentation-active' : 'webgpu-renderer-webgl2-fallback';
     } catch (error) {
+      if (this.initStale(generation)) return;
       this.initState = 'failed';
       this.initReason = 'webgpu-init-failed';
       this.initError = error instanceof Error ? error.message : String(error);
@@ -503,6 +527,7 @@ export class WebGpuRenderBackend implements RendererBackend {
   }
 
   syncSettings(settings: RenderSettings): void {
+    if (this.disposed) return;
     this.requestedBackend = settings.backend;
     this.flags = featureFlags(settings);
     if (this.flags.compose && this.initState === 'active' && this.actualBackend === 'webgpu') {
@@ -630,6 +655,7 @@ export class WebGpuRenderBackend implements RendererBackend {
   }
 
   render(ctx: Ctx): void {
+    if (this.disposed) return;
     if (this.initState !== 'active') return;
     let ox = -(ctx.camera.x - Math.floor(ctx.camera.x)) * (2 / VIEW_W);
     let oy = (ctx.camera.y - Math.floor(ctx.camera.y)) * (2 / VIEW_H);
@@ -675,6 +701,9 @@ export class WebGpuRenderBackend implements RendererBackend {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.initGeneration++;
     this.basePipeline.dispose();
     this.postPipeline.dispose();
     this.composeBridge?.dispose();

@@ -168,7 +168,7 @@ function padRows(
   return padded;
 }
 
-function packCellValue(types: Uint8Array, colors: Uint32Array, charge: Uint8Array, ci: number): number {
+function packCellValue(types: Uint8Array, colors: Uint32Array, charge: Uint16Array, ci: number): number {
   const c = colors[ci];
   return (
     (((c >>> 16) & 0xff) |
@@ -528,6 +528,12 @@ export class WebGpuLiveCompose {
   // are not 256-aligned (world window WIN_W*4, overlay VIEW_W*8) — avoids a fresh
   // multi-MB allocation + memcpy every composed frame (see padRows).
   private readonly winPadScratch = new Uint8Array(align(WIN_W * 4, 256) * WIN_H);
+  private readonly winVisiblePaddedRowBytes = align(VIEW_W * 4, 256);
+  private readonly winVisibleUploadRows = VIEW_H + 1;
+  private readonly winVisiblePadScratch = new Uint8Array(
+    this.winVisiblePaddedRowBytes * this.winVisibleUploadRows,
+  );
+  private readonly winVisible32 = new Uint32Array(this.winVisiblePadScratch.buffer);
   private readonly overlayPadScratch = new Uint8Array(align(VIEW_W * 8, 256) * VIEW_H);
   private readonly params = new Float32Array(PARAM_COUNT);
   private device: RuntimeGpuDevice | null = null;
@@ -550,6 +556,8 @@ export class WebGpuLiveCompose {
   private currentMetrics: RenderBackendWebGpuComposeLiveMetrics | null = null;
   private lastMetrics: RenderBackendWebGpuComposeLiveMetrics | null = null;
   private uncapturedErrorHandler: ((event: RuntimeGpuUncapturedErrorEvent) => void) | null = null;
+  private disposed = false;
+  private initGeneration = 0;
   private status: RenderBackendWebGpuComposeStatus = {
     productionAvailable: false,
     bridge: 'initializing',
@@ -580,11 +588,13 @@ export class WebGpuLiveCompose {
   }
 
   get available(): boolean {
-    return this.initialized && this.status.bridge === 'validated';
+    return !this.disposed && this.initialized && this.status.bridge === 'validated';
   }
 
   async initialize(): Promise<RenderBackendWebGpuComposeStatus> {
+    if (this.disposed) return this.getStatus();
     if (this.initialized || this.status.bridge === 'failed') return this.getStatus();
+    const generation = ++this.initGeneration;
     try {
       const device = rendererDevice(this.renderer);
       if (!device) throw new Error('WebGPU live compose requires a GPUDevice');
@@ -595,6 +605,7 @@ export class WebGpuLiveCompose {
       const result = this.renderer.compute(compute);
       if (result) await result;
       await device.queue.onSubmittedWorkDone?.();
+      if (this.disposed || generation !== this.initGeneration) return this.getStatus();
 
       this.storageAccess = resolveThreeStorageTextureAccess(this.renderer, this.outputTexture, {
         expectedFormat: 'rgba16float',
@@ -619,6 +630,7 @@ export class WebGpuLiveCompose {
       this.createPipeline();
       this.rebuildBindGroup();
 
+      if (this.disposed || generation !== this.initGeneration) return this.getStatus();
       this.initialized = true;
       this.status = {
         productionAvailable: false,
@@ -636,6 +648,7 @@ export class WebGpuLiveCompose {
         liveMetrics: this.lastMetrics ? { ...this.lastMetrics } : null,
       };
     } catch (error) {
+      if (this.disposed || generation !== this.initGeneration) return this.getStatus();
       // A failed init still registered the uncaptured-error listener above; detach
       // it so the dead instance doesn't keep firing failRuntime on later GPU errors.
       if (this.device && this.uncapturedErrorHandler) {
@@ -667,10 +680,27 @@ export class WebGpuLiveCompose {
     this.currentMetrics = metrics;
     const camX = ctx.camera.renderX;
     const camY = ctx.camera.renderY;
+    const fullWindow = ctx.shockwaves.length > 0 || lenses.length > 0;
     const packStart = performance.now();
-    this.packWindow(ctx.world, camX, camY);
+    const packedRows = fullWindow
+      ? this.packWindowFull(ctx.world, camX, camY)
+      : this.packWindowVisibleRows(ctx.world, camX, camY);
     metrics.packWindowCpuMs = performance.now() - packStart;
-    const winUpload = this.timedUploadTexture(this.winTexture, this.winBytes, WIN_W, WIN_H, WIN_W * 4, this.winPadScratch);
+    metrics.packWindowBytes = fullWindow
+      ? WIN_W * WIN_H * 4
+      : VIEW_W * packedRows * 4;
+    const winUpload = fullWindow
+      ? this.timedUploadTexture(this.winTexture, this.winBytes, WIN_W, WIN_H, WIN_W * 4, this.winPadScratch)
+      : this.timedUploadTextureRegion(
+        this.winTexture,
+        this.winVisiblePadScratch,
+        VIEW_W,
+        packedRows,
+        this.winVisiblePaddedRowBytes,
+        COMPOSE_PAD,
+        COMPOSE_PAD - 1,
+        VIEW_W * 4,
+      );
     metrics.worldWindowLogicalUploadBytes = winUpload.logicalBytes;
     metrics.worldWindowSubmittedUploadBytes = winUpload.submittedBytes;
     metrics.worldWindowUploadCpuMs = winUpload.cpuMs;
@@ -758,6 +788,10 @@ export class WebGpuLiveCompose {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.initGeneration++;
+    this.initialized = false;
     if (this.device && this.uncapturedErrorHandler) {
       this.device.removeEventListener?.('uncapturederror', this.uncapturedErrorHandler);
       this.uncapturedErrorHandler = null;
@@ -773,6 +807,15 @@ export class WebGpuLiveCompose {
       texture?.destroy();
     }
     this.paramBuffer?.destroy();
+    this.status = {
+      ...this.status,
+      productionAvailable: false,
+      bridge: 'failed',
+      reason: 'webgpu-live-compose-disposed',
+      outputStorage: null,
+      rawWgslWrite: { ...this.status.rawWgslWrite },
+      liveMetrics: this.status.liveMetrics ? { ...this.status.liveMetrics } : null,
+    };
   }
 
   private makeStorageInitCompute() {
@@ -870,6 +913,48 @@ export class WebGpuLiveCompose {
   ): TimedUploadStats {
     const start = performance.now();
     const stats = this.uploadTexture(texture, data, width, height, rowBytes, padScratch);
+    return {
+      ...stats,
+      cpuMs: performance.now() - start,
+    };
+  }
+
+  private uploadTextureRegion(
+    texture: RuntimeGpuTexture | null,
+    data: GpuUploadData,
+    width: number,
+    height: number,
+    bytesPerRow: number,
+    originX: number,
+    originY: number,
+    logicalRowBytes: number,
+  ): UploadStats {
+    const stats = {
+      logicalBytes: logicalRowBytes * height,
+      submittedBytes: bytesPerRow * height,
+    };
+    if (!this.device || !texture) return stats;
+    this.device.queue.writeTexture(
+      { texture, origin: { x: originX, y: originY } },
+      data,
+      { bytesPerRow },
+      { width, height },
+    );
+    return stats;
+  }
+
+  private timedUploadTextureRegion(
+    texture: RuntimeGpuTexture | null,
+    data: GpuUploadData,
+    width: number,
+    height: number,
+    bytesPerRow: number,
+    originX: number,
+    originY: number,
+    logicalRowBytes: number,
+  ): TimedUploadStats {
+    const start = performance.now();
+    const stats = this.uploadTextureRegion(texture, data, width, height, bytesPerRow, originX, originY, logicalRowBytes);
     return {
       ...stats,
       cpuMs: performance.now() - start,
@@ -1097,7 +1182,7 @@ export class WebGpuLiveCompose {
     return true;
   }
 
-  private packWindow(world: World, camX: number, camY: number): void {
+  private packWindowFull(world: World, camX: number, camY: number): number {
     const types = world.types;
     const colors = world.colors;
     const charge = world.charge;
@@ -1117,5 +1202,32 @@ export class WebGpuLiveCompose {
         out[offset++] = packCellValue(types, colors, charge, rowBase + wx);
       }
     }
+    return WIN_H;
+  }
+
+  private packWindowVisibleRows(world: World, camX: number, camY: number): number {
+    const types = world.types;
+    const colors = world.colors;
+    const charge = world.charge;
+    const out = this.winVisible32;
+    const rowStride = this.winVisiblePaddedRowBytes >> 2;
+    const startRow = COMPOSE_PAD - 1;
+    const rowCount = this.winVisibleUploadRows;
+    const x0 = camX;
+    for (let row = 0; row < rowCount; row++) {
+      let wy = camY + startRow + row - COMPOSE_PAD;
+      if (wy < 0) wy = 0;
+      else if (wy >= HEIGHT) wy = HEIGHT - 1;
+      const rowBase = wy * WIDTH;
+      let ci = rowBase + x0;
+      let o = row * rowStride;
+      for (let col = 0; col < VIEW_W; col++, ci++, o++) {
+        let sample = ci;
+        if (sample < rowBase) sample = rowBase;
+        else if (sample >= rowBase + WIDTH) sample = rowBase + WIDTH - 1;
+        out[o] = packCellValue(types, colors, charge, sample);
+      }
+    }
+    return rowCount;
   }
 }

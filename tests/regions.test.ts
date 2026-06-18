@@ -116,4 +116,20 @@ describe('region graph extraction', () => {
     expect(g.regions[g.spawnRegion].onMainPath).toBe(true);
     expect(g.regions[g.exitRegion].onMainPath).toBe(false);
   });
+
+  it('treats body-blocking materials as closed in occupancy analysis', () => {
+    const blocked = new World();
+    blocked.types.fill(Cell.Empty);
+    for (let y = 0; y < blocked.height; y++) {
+      for (let x = 196; x < 204; x++) blocked.types[x + y * blocked.width] = Cell.Gold;
+    }
+
+    const g = extractRegionGraph(blocked, { x: 100, y: 200 }, { x: 300, y: 200 });
+    const left = g.labels[ds(100) + ds(200) * g.w];
+    const right = g.labels[ds(300) + ds(200) * g.w];
+
+    expect(left).toBeGreaterThanOrEqual(0);
+    expect(right).toBeGreaterThanOrEqual(0);
+    expect(right).not.toBe(left);
+  });
 });

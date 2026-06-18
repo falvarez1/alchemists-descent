@@ -1,7 +1,7 @@
 // Three r184 WebGPU/TSL/WGSL API spike. This does not load or mutate the game.
 // Usage: node scripts/probe-webgpu-r184.mjs [baseUrl]
 import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';

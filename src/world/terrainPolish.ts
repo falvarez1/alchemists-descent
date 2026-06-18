@@ -12,7 +12,8 @@ export interface PolishTarget {
   types: Uint8Array;
   colors: Uint32Array;
   life: Int16Array;
-  charge: Uint8Array;
+  charge: Uint8Array | Uint16Array;
+  colorOverrides?: Set<number>;
   width: number;
   height: number;
 }
@@ -122,6 +123,7 @@ function applyFills(world: PolishTarget, indices: number[], fillTypes: number[],
     world.colors[i] = fillColors[n];
     world.life[i] = 0;
     world.charge[i] = 0;
+    world.colorOverrides?.add(i);
   }
 }
 
@@ -242,6 +244,176 @@ export function consolidateRock(
   return total;
 }
 
+/**
+ * Fill the swiss-cheese SPECKLE: flood-fill every open region; any region whose size
+ * is <= `maxHole` cells gets packed with sampled rock, larger regions (the real
+ * caverns) stay open. Connectivity-safe BY CONSTRUCTION — a region that connects two
+ * caverns is large, so it is never filled; only genuinely small pockets close. This
+ * is what makes the rock the player walks on read SOLID instead of porous, without
+ * the threshold-based fills' habit of sealing 1-cell corridors.
+ */
+export function fillEnclosedHoles(
+  world: PolishTarget,
+  seed: number,
+  minY: number,
+  maxY: number,
+  maxHole: number,
+): number {
+  if (maxHole <= 0) return 0;
+  const W = world.width;
+  const types = world.types;
+  const visited = new Uint8Array(W * world.height);
+  const stack: number[] = [];
+  const region: number[] = [];
+  let filled = 0;
+  for (let sy = minY; sy < maxY; sy++) {
+    for (let sx = 1; sx < W - 1; sx++) {
+      const start = sx + sy * W;
+      if (visited[start] || types[start] !== Cell.Empty) continue;
+      region.length = 0;
+      stack.length = 0;
+      stack.push(start);
+      visited[start] = 1;
+      let tooBig = false;
+      while (stack.length) {
+        const c = stack.pop() as number;
+        if (!tooBig) {
+          region.push(c);
+          if (region.length > maxHole) tooBig = true; // stop collecting, keep draining to mark visited
+        }
+        const cx = c % W;
+        const cy = (c / W) | 0;
+        if (cx > 1 && !visited[c - 1] && types[c - 1] === Cell.Empty) { visited[c - 1] = 1; stack.push(c - 1); }
+        if (cx < W - 2 && !visited[c + 1] && types[c + 1] === Cell.Empty) { visited[c + 1] = 1; stack.push(c + 1); }
+        if (cy > minY && !visited[c - W] && types[c - W] === Cell.Empty) { visited[c - W] = 1; stack.push(c - W); }
+        if (cy + 1 < maxY && !visited[c + W] && types[c + W] === Cell.Empty) { visited[c + W] = 1; stack.push(c + W); }
+      }
+      if (tooBig) continue; // a real cavern / passage — leave it open
+      // Pack ring-by-ring from the rock boundary inward so fat pockets fill solid:
+      // a cell can only sample a SOLID neighbor, so each pass converts the current
+      // shell to rock, exposing the next shell for the following pass.
+      let remaining = region.slice();
+      while (remaining.length) {
+        const next: number[] = [];
+        let progress = false;
+        for (const c of remaining) {
+          const sample = sampleTerrainFill(world, c % W, (c / W) | 0, seed + 1543);
+          if (sample) {
+            world.types[c] = sample.type;
+            world.colors[c] = sample.color;
+            world.life[c] = 0;
+            world.charge[c] = 0;
+            world.colorOverrides?.add(c);
+            filled++;
+            progress = true;
+          } else {
+            next.push(c);
+          }
+        }
+        if (!progress) break; // no solid neighbor anywhere (cannot happen for a sealed pocket)
+        remaining = next;
+      }
+    }
+  }
+  return filled;
+}
+
+/**
+ * Morphological CLOSE of the rock mass (dilate the non-empty cells by `radius`,
+ * then erode back). The net effect: every OPEN feature thinner than 2*radius —
+ * the connected swiss-cheese speckle, hairline crevices, pinhole pits — is packed
+ * with rock, while caverns and tunnels WIDER than 2*radius are restored to their
+ * exact original outline. Connectivity-safe by construction: a passage wider than
+ * the radius survives the erode, so only sub-radius gaps (which a body can't pass
+ * anyway) ever close. This is the real fix for the porous-noise look — unlike
+ * fillEnclosedHoles, it reaches the speckle that is CONNECTED to the cave network.
+ * Returns the number of air cells packed.
+ */
+export function solidifyRock(
+  world: PolishTarget,
+  seed: number,
+  minY: number,
+  maxY: number,
+  radius: number,
+): number {
+  if (radius <= 0) return 0;
+  const W = world.width;
+  const H = world.height;
+  const types = world.types;
+  const y0 = minY + 1;
+  const y1 = maxY;
+  const x0 = 1;
+  const x1 = W - 1;
+
+  // Dilation of the non-empty (rock) mass. OOB / out-of-band cells contribute
+  // nothing (treated open), so rock never grows out of the void.
+  const dil = new Uint8Array(W * H);
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      let any = false;
+      for (let dy = -radius; dy <= radius && !any; dy++) {
+        const Y = y + dy;
+        if (Y < y0 || Y >= y1) continue;
+        const row = Y * W;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const X = x + dx;
+          if (X < x0 || X >= x1) continue;
+          if (types[X + row] !== Cell.Empty) { any = true; break; }
+        }
+      }
+      if (any) dil[x + y * W] = 1;
+    }
+  }
+
+  // Erode the dilation; any Empty cell that stays solid is a thin gap to pack.
+  // An in-band window cell that is NOT dilated-solid opens the cell back up, so
+  // wide caverns (whose interiors never dilated) are restored exactly.
+  const queue: number[] = [];
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = x + y * W;
+      if (types[i] !== Cell.Empty) continue; // only pack air
+      let solid = true;
+      for (let dy = -radius; dy <= radius && solid; dy++) {
+        const Y = y + dy;
+        if (Y < y0 || Y >= y1) continue;
+        const row = Y * W;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const X = x + dx;
+          if (X < x0 || X >= x1) continue;
+          if (!dil[X + row]) { solid = false; break; }
+        }
+      }
+      if (solid) queue.push(i);
+    }
+  }
+
+  // Ring-fill from the rock boundary inward (same sampler as the other passes).
+  let filled = 0;
+  let remaining = queue;
+  while (remaining.length) {
+    const next: number[] = [];
+    let progress = false;
+    for (const c of remaining) {
+      const sample = sampleTerrainFill(world, c % W, (c / W) | 0, seed + 911);
+      if (sample) {
+        world.types[c] = sample.type;
+        world.colors[c] = sample.color;
+        world.life[c] = 0;
+        world.charge[c] = 0;
+        world.colorOverrides?.add(c);
+        filled++;
+        progress = true;
+      } else {
+        next.push(c);
+      }
+    }
+    if (!progress) break;
+    remaining = next;
+  }
+  return filled;
+}
+
 function isTopSurface(types: Uint8Array, W: number, x: number, y: number): boolean {
   return (
     isTerrainSolid(types[x + y * W]) &&
@@ -308,6 +480,7 @@ function fillSurfacePits(world: PolishTarget, seed: number, minY: number, maxY: 
           world.colors[i] = sample.color;
           world.life[i] = 0;
           world.charge[i] = 0;
+          world.colorOverrides?.add(i);
           filled++;
         }
       }

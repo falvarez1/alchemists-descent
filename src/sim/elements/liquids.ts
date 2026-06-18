@@ -160,19 +160,15 @@ export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
       const ti = w.idx(tx, ty);
       const n = w.types[ti];
       if (n === Cell.Water) {
-        w.types[ti] = Cell.Ice;
-        w.colors[ti] = iceColor();
-        w.types[ci] = Cell.Smoke;
+        w.replaceCellAt(ti, Cell.Ice, iceColor());
+        w.replaceCellAt(ci, Cell.Smoke, smokeColor());
         w.life[ci] = 20;
-        w.colors[ci] = smokeColor();
         return;
       }
       if (n === Cell.Lava) {
-        w.types[ti] = Cell.Stone;
-        w.colors[ti] = stoneColor();
-        w.types[ci] = Cell.Steam;
+        w.replaceCellAt(ti, Cell.Stone, stoneColor());
+        w.replaceCellAt(ci, Cell.Steam, steamColor());
         w.life[ci] = 30;
-        w.colors[ci] = steamColor();
         return;
       }
     }
@@ -198,9 +194,8 @@ export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
     }
   }
   if (Math.random() < ctx.params.materials[Cell.Nitrogen].evaporationSpeed!) {
-    w.types[ci] = Cell.Smoke;
+    w.replaceCellAt(ci, Cell.Smoke, smokeColor());
     w.life[ci] = 25;
-    w.colors[ci] = smokeColor();
   }
 }
 
@@ -216,9 +211,8 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
       (w.types[w.idx(tx, ty)] === Cell.Fire || w.charge[w.idx(tx, ty)] > 0)
     ) {
       const ci = w.idx(x, y);
-      w.types[ci] = Cell.Fire;
+      w.replaceCellAt(ci, Cell.Fire, fireColor());
       w.life[ci] = Math.floor(Math.random() * 30) + ctx.params.materials[Cell.Oil].burnDuration!;
-      w.colors[ci] = fireColor();
       return;
     }
   }
@@ -303,18 +297,15 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
               ? Math.random() < 0.45
               : Math.random() < 0.03 && hasWaterNeighbor(w, tx, ty))
           ) {
-            w.types[ti] = Cell.Gold;
-            w.colors[ti] = goldColor();
+            w.replaceCellAt(ti, Cell.Gold, goldColor());
             if (cat >= 0) {
               // the spent grain puffs away as a golden wisp — visible chemistry
-              w.types[cat] = Cell.Smoke;
+              w.replaceCellAt(cat, Cell.Smoke, smokeColor());
               w.life[cat] = 18;
-              w.colors[cat] = smokeColor();
             }
           } else {
-            w.types[ti] = Cell.Steam;
+            w.replaceCellAt(ti, Cell.Steam, steamColor());
             w.life[ti] = 25;
-            w.colors[ti] = steamColor();
           }
           // clearCellAt zeroes life AND charge in lockstep so the now-empty hole
           // never carries stale transient metadata (vs. a raw types/colors write).
@@ -353,9 +344,8 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
       const n = w.types[ti];
       if (n === Cell.Water) {
         // Water always flashes to steam.
-        w.types[ti] = Cell.Steam;
+        w.replaceCellAt(ti, Cell.Steam, steamColor());
         w.life[ti] = 50;
-        w.colors[ti] = steamColor();
         const ci = w.idx(x, y);
         const belowT = w.inBounds(x, y + 1) ? w.types[w.idx(x, y + 1)] : Cell.Wall;
         const seated = !(lavaCanPass(belowT) || belowT === Cell.Water); // can't sink -> truly settled
@@ -379,13 +369,11 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
         return;
       }
       if (n === Cell.Ice && Math.random() < ctx.params.materials[Cell.Lava].meltRange!) {
-        w.types[ti] = Cell.Water;
-        w.colors[ti] = waterColor();
+        w.replaceCellAt(ti, Cell.Water, waterColor());
       }
       if (n === Cell.Snow) {
-        w.types[ti] = Cell.Steam;
+        w.replaceCellAt(ti, Cell.Steam, steamColor());
         w.life[ti] = 30;
-        w.colors[ti] = steamColor();
       }
       if (
         n === Cell.Wood ||
@@ -394,29 +382,24 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
         n === Cell.Fungus ||
         n === Cell.Glowshroom
       ) {
-        w.types[ti] = Cell.Fire;
+        w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 35;
-        w.colors[ti] = fireColor();
       }
       if (n === Cell.Coal && Math.random() < 0.15) {
-        w.types[ti] = Cell.Fire;
+        w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration!;
-        w.colors[ti] = fireColor();
       }
       if (n === Cell.Toxic && Math.random() < 0.3) {
-        w.types[ti] = Cell.Smoke;
+        w.replaceCellAt(ti, Cell.Smoke, smokeColor());
         w.life[ti] = 35;
-        w.colors[ti] = smokeColor();
       }
       if (n === Cell.Healium) {
-        w.types[ti] = Cell.Steam;
+        w.replaceCellAt(ti, Cell.Steam, packRGB(255, 175, 205));
         w.life[ti] = 40;
-        w.colors[ti] = packRGB(255, 175, 205);
       }
       if (n === Cell.Blood || n === Cell.Slime) {
-        w.types[ti] = Cell.Smoke;
+        w.replaceCellAt(ti, Cell.Smoke, smokeColor());
         w.life[ti] = 25;
-        w.colors[ti] = smokeColor();
       }
     }
   }

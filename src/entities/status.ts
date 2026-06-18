@@ -137,7 +137,12 @@ export function sampleAndTickStatus(
   if (oil >= 3 && st.wet === 0 && !immune?.oiled) st.oiled = 600;
   if (fire >= 1 && !immune?.burning) st.burning = Math.max(st.burning, st.oiled > 0 ? 300 : 90);
   if (nitrogen >= 2 && !immune?.frozen) st.frozen = Math.max(st.frozen, 100);
-  if (charged >= 1 && !immune?.electrified) st.electrified = Math.max(st.electrified, 45);
+  // Touching a live conductor electrocutes for 1-2s. While still in the current
+  // it tops back up (decays to ~1s, re-rolls), so a body stuck to charged metal
+  // stays locked the whole time it conducts and convulses ~1-2s after it fades.
+  if (charged >= 1 && !immune?.electrified && st.electrified < 60) {
+    st.electrified = 60 + ((Math.random() * 61) | 0); // 60-120 frames @ 60fps
+  }
   // The instant a body goes live (0 -> charged) gets a one-time zap + a crack.
   const justShocked = electrifiedBefore === 0 && st.electrified > 0;
   if (justShocked) ctx.audio.zap();

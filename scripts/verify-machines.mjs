@@ -78,13 +78,13 @@ await page.evaluate(() => {
     ctx.player.vy = 0;
     ctx.player.hp = ctx.player.maxHp;
     ctx.camera.snapTo(AX, AY);
-    return { ctx, w, rt, AX, AY, paint, count };
+    return { rt, AX, AY, paint, count };
   };
 });
 
 console.log('— valve: lever opens it, cells retract; release closes it —');
 const valveProbe = await page.evaluate(async () => {
-  const { ctx, w, rt, AX, AY, paint, count } = window.__arena();
+  const { rt, AX, AY, paint, count } = window.__arena();
   // a metal valve slab across a channel + a lever with stone footing
   paint(AX, AY + 10, AX + 3, AY + 12, 13);
   const valve = { id: 9001, kind: 'valve', x: AX, y: AY + 10, w: 4, h: 3, state: 0, targetId: -1, material: 13 };
@@ -106,7 +106,7 @@ check('release closes it again', valveProbe.closedAgain === 0 && valveProbe.reCe
 
 console.log('— plug: REAL fire burns the wood, the linked door opens —');
 const plugProbe = await page.evaluate(async () => {
-  const { ctx, w, rt, AX, AY, paint, count } = window.__arena();
+  const { rt, AX, AY, paint } = window.__arena();
   // wooden plug block + a door slab; fire set against the plug face
   const body = [];
   for (let y = AY + 8; y <= AY + 11; y++) for (let x = AX - 10; x <= AX - 7; x++) body.push([x, y]);
@@ -132,7 +132,7 @@ check("the plug's door opens", plugProbe.doorOpen === 1);
 
 console.log('— counterweight: REAL falling sand tips it permanently —');
 const cwProbe = await page.evaluate(async () => {
-  const { ctx, w, rt, AX, AY, paint, count } = window.__arena();
+  const { rt, AX, AY, paint } = window.__arena();
   // iron pan with lips on the arena floor (pan row + 4-tall lips)
   const body = [];
   for (let x = AX - 3; x <= AX + 3; x++) { paint(x, AY + 20, x, AY + 20, 13); body.push([x, AY + 20]); }
@@ -160,7 +160,7 @@ check('the latch is permanent (scooping it out does nothing)', cwProbe.holds ===
 
 console.log('— sensor chain: REAL water pools over a liquid sensor, valve opens —');
 const sensorProbe = await page.evaluate(async () => {
-  const { ctx, w, rt, AX, AY, paint, count } = window.__arena();
+  const { rt, AX, AY, paint, count } = window.__arena();
   // stone cup on the floor; the sensor watches the cup interior
   paint(AX - 8, AY + 16, AX - 8, AY + 20, 12);
   paint(AX + 8, AY + 16, AX + 8, AY + 20, 12);
@@ -186,7 +186,7 @@ check('the sensed valve retracts its cells', sensorProbe.valveOpen === 1 && sens
 
 console.log('— relay: delayed BREAK demolishes a stone plug downstream —');
 const relayProbe = await page.evaluate(async () => {
-  const { ctx, w, rt, AX, AY, paint, count } = window.__arena();
+  const { rt, AX, AY, paint, count } = window.__arena();
   const body = [];
   for (let y = AY + 10; y <= AY + 12; y++) for (let x = AX + 10; x <= AX + 12; x++) body.push([x, y]);
   paint(AX + 10, AY + 10, AX + 12, AY + 12, 12);
@@ -212,7 +212,7 @@ check('the relay fires once and demolishes the plug', relayProbe.fired === 1 && 
 
 console.log('— fail-open: a wrecked relay groans, then counts as fired —');
 const failProbe = await page.evaluate(async () => {
-  const { ctx, w, rt, AX, AY, paint, count } = window.__arena();
+  const { rt, AX, AY, paint } = window.__arena();
   paint(AX - 1, AY + 19, AX + 1, AY + 19, 12);
   const relay = { id: 9050, kind: 'relay', x: AX, y: AY + 18, w: 1, h: 1, state: 0, targetId: 9051,
     body: [[AX - 1, AY + 19], [AX, AY + 19], [AX + 1, AY + 19]] };

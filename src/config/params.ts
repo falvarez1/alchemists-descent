@@ -30,13 +30,17 @@ export const GLOBAL_PARAMS: GlobalParams = {
   goreBlood: 4.0,
   goreSlime: 1.0,
   goreOoze: 0.15,
-  // Electrical spark/lightning conduction. Falloff 1 + decay 1 attenuate per
-  // hop / per frame; strength scales the injected charge so a current conducts
-  // ~ strength·deposit / falloff cells before fading. Strength 2.5 carries a
-  // strike ~2-3x as far as the original 1.0 deposits (metal stays the standout).
+  // Electrical spark/lightning conduction. The current front travels ~6 cells/
+  // frame for the source's lifetime, so reach ≈ 6 · (strength·deposit / decay)
+  // cells and the glow lasts ~ strength·deposit / decay frames. Charge is Uint16,
+  // so reach is no longer capped at 255 cells: strength 10 + decay 6 carries a
+  // metal current ~600 cells (≈4x the old ~150) with a ~1.7s glow. Raise strength
+  // for more of both; raise decay to shorten the glow (and trim reach with it).
+  // Metal stays far more conductive than water (water loses charge 3x faster per
+  // hop — see electrical.ts).
   chargeFalloff: 1,
-  chargeStrength: 2.5,
-  chargeDecay: 1,
+  chargeStrength: 10,
+  chargeDecay: 6,
   // Damage per status tick spent in a charged conductor (wet bodies take ~3×).
   shockDamage: 0.2,
 };

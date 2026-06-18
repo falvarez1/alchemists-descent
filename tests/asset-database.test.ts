@@ -7,7 +7,7 @@ import { previewJsonImport, previewReimport } from '@/builder/assets/AssetImport
 import { LocalStorageAssetStore } from '@/builder/assets/AssetStore';
 import { MATERIAL_PARAMS } from '@/config/params';
 import type { PrefabDef } from '@/builder/prefablib';
-import { loadPrefabs, savePrefab } from '@/builder/prefablib';
+import { loadPrefabs } from '@/builder/prefablib';
 import { loadSprites, saveSprite } from '@/builder/assets/spritelib';
 import { encodeFramePx } from '@/builder/assets/sprites';
 import type { SpriteAsset } from '@/builder/assets/sprites';

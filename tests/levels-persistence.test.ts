@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Ctx, Enemy, LevelRuntime, WandLoadoutSave, WandRuntimeSnapshot } from '@/core/types';
-import { GEN_VERSION } from '@/config/gen';
+import { GEN_TUNE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { LEVELS } from '@/config/worldgraph';
 import { Flask } from '@/combat/Flask';
 import { createDefaultStatus } from '@/entities/status';
@@ -167,7 +167,13 @@ describe('level enemy persistence', () => {
     } as unknown as Ctx;
     const levels = new Levels(ctx);
     const prior = makeLevelRuntime({
-      def: { id: 'd1', name: 'Depth 1', biome: 'earthen', depth: 1, nextLevelId: null },
+      def: {
+        id: 'd1',
+        name: 'Depth 1',
+        biome: 'earthen',
+        depth: 1,
+        nextLevelId: null,
+      },
       world,
       enemies: [],
       spawn: { x: 10, y: 20 },
@@ -193,7 +199,10 @@ describe('level enemy persistence', () => {
       world,
       enemies: [enemy()],
       state: { playtestSource: 'test' },
-      input: { activeChargingBlackHole: null, releaseHeldInput: () => undefined },
+      input: {
+        activeChargingBlackHole: null,
+        releaseHeldInput: () => undefined,
+      },
       projectiles: [],
       shockwaves: [],
       lightning: { clear: () => undefined },
@@ -202,7 +211,13 @@ describe('level enemy persistence', () => {
     } as unknown as Ctx;
     const levels = new Levels(ctx);
     const virtualRuntime = makeLevelRuntime({
-      def: { id: 'virtual-builder-test', name: 'Virtual Test', biome: 'earthen', depth: 1, nextLevelId: null },
+      def: {
+        id: 'virtual-builder-test',
+        name: 'Virtual Test',
+        biome: 'earthen',
+        depth: 1,
+        nextLevelId: null,
+      },
       world,
       enemies: [],
       spawn: { x: 10, y: 20 },
@@ -248,7 +263,13 @@ describe('level enemy persistence', () => {
       } as unknown as Ctx;
       const levels = new Levels(ctx);
       const runtime = makeLevelRuntime({
-        def: { id: 'd1', name: 'Depth 1', biome: 'earthen', depth: 1, nextLevelId: null },
+        def: {
+          id: 'd1',
+          name: 'Depth 1',
+          biome: 'earthen',
+          depth: 1,
+          nextLevelId: null,
+        },
         world,
         enemies: [],
         spawn: { x: 10, y: 20 },
@@ -299,7 +320,11 @@ describe('level enemy persistence', () => {
           perks: { torchbearer: true },
         },
         wands: {
-          snapshotLoadout: () => ({ active: 0, collection: ['spark'], wands: [] }),
+          snapshotLoadout: () => ({
+            active: 0,
+            collection: ['spark'],
+            wands: [],
+          }),
           snapshotRuntimeState: () => ({
             active: 0,
             collection: ['spark'],
@@ -318,7 +343,13 @@ describe('level enemy persistence', () => {
       } as unknown as Ctx;
       const levels = new Levels(ctx);
       const runtime = makeLevelRuntime({
-        def: { id: 'd1', name: 'Depth 1', biome: 'earthen', depth: 1, nextLevelId: null },
+        def: {
+          id: 'd1',
+          name: 'Depth 1',
+          biome: 'earthen',
+          depth: 1,
+          nextLevelId: null,
+        },
         world,
         enemies: [],
         spawn: { x: 44, y: 55 },
@@ -336,15 +367,30 @@ describe('level enemy persistence', () => {
 
       const save = JSON.parse(store.get('noita-expedition') ?? 'null') as {
         score: number;
-        player: { x: number; y: number; hp: number; maxHp: number; levit: number; maxLevit: number; perks: Record<string, true> };
-        levels: Array<{ pickups: Array<{ kind: string; data: { amount?: number } }> }>;
+        player: {
+          x: number;
+          y: number;
+          hp: number;
+          maxHp: number;
+          levit: number;
+          maxLevit: number;
+          perks: Record<string, true>;
+        };
+        levels: Array<{
+          pickups: Array<{ kind: string; data: { amount?: number } }>;
+        }>;
       };
       expect(save.score).toBe(170);
-      expect(save.player).toMatchObject({ x: 44, y: 55, hp: 120, maxHp: 120, levit: 90, maxLevit: 90 });
+      expect(save.player).toMatchObject({
+        x: 44,
+        y: 55,
+        hp: 120,
+        maxHp: 120,
+        levit: 90,
+        maxLevit: 90,
+      });
       expect(save.player.perks).toEqual({ torchbearer: true });
-      expect(save.levels[0].pickups).toEqual([
-        expect.objectContaining({ kind: 'goldpile', data: { amount: 30 } }),
-      ]);
+      expect(save.levels[0].pickups).toEqual([expect.objectContaining({ kind: 'goldpile', data: { amount: 30 } })]);
     });
   });
 
@@ -369,7 +415,13 @@ describe('level enemy persistence', () => {
         active: 1,
         collection: ['spark', 'infuser'],
         wands: [
-          { frameId: 'starter', cards: ['spark', 'infuser', null], mana: 42, cooldown: 7, castIndex: 1 },
+          {
+            frameId: 'starter',
+            cards: ['spark', 'infuser', null],
+            mana: 42,
+            cooldown: 7,
+            castIndex: 1,
+          },
         ],
         lastDryFire: 11,
         flameBurst: 3,
@@ -409,7 +461,13 @@ describe('level enemy persistence', () => {
       } as unknown as Ctx;
       const levels = new Levels(ctx);
       const runtime = makeLevelRuntime({
-        def: { id: 'd1', name: 'Depth 1', biome: 'earthen', depth: 1, nextLevelId: null },
+        def: {
+          id: 'd1',
+          name: 'Depth 1',
+          biome: 'earthen',
+          depth: 1,
+          nextLevelId: null,
+        },
         world,
         enemies: [],
         spawn: { x: 10, y: 20 },
@@ -426,9 +484,17 @@ describe('level enemy persistence', () => {
       levels.saveExpedition(ctx);
 
       const save = JSON.parse(store.get('noita-expedition') ?? 'null') as {
+        genTuneSignature?: string;
         loadout: WandLoadoutSave;
         wands: WandRuntimeSnapshot;
-        flasks: { activeIndex: number; slots: Array<{ material: number | null; count: number; capacity: number }> };
+        flasks: {
+          activeIndex: number;
+          slots: Array<{
+            material: number | null;
+            count: number;
+            capacity: number;
+          }>;
+        };
         levels: Array<{
           colorOverrides?: Array<[number, number]>;
           life: Array<[number, number]>;
@@ -436,6 +502,7 @@ describe('level enemy persistence', () => {
           pickups: Array<{ kind: string; data: { offerPending?: boolean } }>;
         }>;
       };
+      expect(save.genTuneSignature).toBe(genTuneSignature());
       expect(save.loadout).toEqual(loadout);
       expect(save.wands).toEqual(wands);
       expect(save.flasks).toEqual({
@@ -448,7 +515,10 @@ describe('level enemy persistence', () => {
       expect(save.levels[0].colorOverrides).toContainEqual([scarIdx, 0x552211]);
       expect(save.levels[0].life).toHaveLength(20005);
       expect(save.levels[0].charge).toHaveLength(20005);
-      expect(save.levels[0].pickups[0]).toMatchObject({ kind: 'tome', data: { offerPending: false } });
+      expect(save.levels[0].pickups[0]).toMatchObject({
+        kind: 'tome',
+        data: { offerPending: false },
+      });
     });
   });
 
@@ -493,12 +563,25 @@ describe('level enemy persistence', () => {
             { material: null, count: 0, capacity: 600 },
             { material: null, count: 0, capacity: 600 },
           ],
-          bottleView: () => ({ x: 0, y: 0, vx: 0, vy: 0, material: Cell.Water, count: 80 }),
+          bottleView: () => ({
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            material: Cell.Water,
+            count: 80,
+          }),
         },
       } as unknown as Ctx;
       const levels = new Levels(ctx);
       const runtime = makeLevelRuntime({
-        def: { id: 'd1', name: 'Depth 1', biome: 'earthen', depth: 1, nextLevelId: null },
+        def: {
+          id: 'd1',
+          name: 'Depth 1',
+          biome: 'earthen',
+          depth: 1,
+          nextLevelId: null,
+        },
         world,
         enemies: [],
         spawn: { x: 10, y: 20 },
@@ -517,12 +600,78 @@ describe('level enemy persistence', () => {
         flasks: {
           activeIndex: number;
           slots: Array<{ material: number | null; count: number }>;
-          bottle?: { material: number | null; count: number; x: number; y: number; vx: number; vy: number };
+          bottle?: {
+            material: number | null;
+            count: number;
+            x: number;
+            y: number;
+            vx: number;
+            vy: number;
+          };
         };
       };
       expect(save.flasks.activeIndex).toBe(1);
       expect(save.flasks.slots[1]).toMatchObject({ material: null, count: 0 });
-      expect(save.flasks.bottle).toMatchObject({ material: Cell.Water, count: 80, x: 0, y: 0, vx: 0, vy: 0 });
+      expect(save.flasks.bottle).toMatchObject({
+        material: Cell.Water,
+        count: 80,
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+      });
+    });
+  });
+
+  it('retires expedition saves captured under different worldgen tuning', () => {
+    withLocalStorage((store) => {
+      const originalTune = { ...GEN_TUNE };
+      const savedSignature = genTuneSignature();
+      try {
+        GEN_TUNE.caveScale = GEN_TUNE.caveScale + 0.1;
+        store.set(
+          'noita-expedition',
+          JSON.stringify({
+            v: 1,
+            genVersion: GEN_VERSION,
+            genTuneSignature: savedSignature,
+            expeditionSeed: 123,
+            currentId: 'd1',
+            score: 25,
+            player: {
+              x: 333,
+              y: 444,
+              hp: 80,
+              maxHp: 100,
+              levit: 60,
+              maxLevit: 100,
+              perks: {},
+            },
+            loadout: { active: 0, collection: ['spark'], wands: [] },
+            levels: [],
+          }),
+        );
+        const toasts: string[] = [];
+        const ctx = {
+          world: new World(),
+          enemies: [],
+          state: {},
+          events: {
+            emit: (_name: string, payload?: { text?: string }) => {
+              if (payload?.text) toasts.push(payload.text);
+            },
+          },
+        } as unknown as Ctx;
+        const levels = new Levels(ctx) as unknown as {
+          tryResumeExpedition(ctx: Ctx): boolean;
+        };
+
+        expect(levels.tryResumeExpedition(ctx)).toBe(false);
+        expect(store.get('noita-expedition')).toBeUndefined();
+        expect(toasts).toContain('WORLDGEN TUNING CHANGED - EXPEDITION RETIRED');
+      } finally {
+        Object.assign(GEN_TUNE, originalTune);
+      }
     });
   });
 
@@ -538,7 +687,15 @@ describe('level enemy persistence', () => {
         const wands: WandRuntimeSnapshot = {
           active: 0,
           collection: ['spark'],
-          wands: [{ frameId: 'starter', cards: ['spark', null, null], mana: 55, cooldown: 0, castIndex: 0 }],
+          wands: [
+            {
+              frameId: 'starter',
+              cards: ['spark', null, null],
+              mana: 55,
+              cooldown: 0,
+              castIndex: 0,
+            },
+          ],
           lastDryFire: 0,
           flameBurst: 0,
           depthsGranted: [],
@@ -599,7 +756,15 @@ describe('level enemy persistence', () => {
           },
           input: {
             activeChargingBlackHole: null,
-            keys: { left: true, right: true, up: true, jump: true, wallJump: true, down: true, grab: true },
+            keys: {
+              left: true,
+              right: true,
+              up: true,
+              jump: true,
+              wallJump: true,
+              down: true,
+              grab: true,
+            },
             isDrawing: true,
             lastX: 1,
             lastY: 1,
@@ -628,7 +793,13 @@ describe('level enemy persistence', () => {
         } as unknown as Ctx;
         const levels = new Levels(ctx);
         const runtime = makeLevelRuntime({
-          def: { id: 'd1', name: 'Depth 1', biome: 'earthen', depth: 1, nextLevelId: null },
+          def: {
+            id: 'd1',
+            name: 'Depth 1',
+            biome: 'earthen',
+            depth: 1,
+            nextLevelId: null,
+          },
           world,
           enemies: [],
           spawn: { x: 10, y: 20 },
@@ -662,7 +833,11 @@ describe('level enemy persistence', () => {
       withLevelDom(() => {
         const world = new World();
         const vaultWorld = new World();
-        const loadout: WandLoadoutSave = { active: 0, collection: [], wands: [] };
+        const loadout: WandLoadoutSave = {
+          active: 0,
+          collection: [],
+          wands: [],
+        };
         const wands: WandRuntimeSnapshot = {
           active: 0,
           collection: [],
@@ -706,7 +881,15 @@ describe('level enemy persistence', () => {
           },
           input: {
             activeChargingBlackHole: null,
-            keys: { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false },
+            keys: {
+              left: false,
+              right: false,
+              up: false,
+              jump: false,
+              wallJump: false,
+              down: false,
+              grab: false,
+            },
             isDrawing: false,
             lastX: null,
             lastY: null,
@@ -759,7 +942,10 @@ describe('level enemy persistence', () => {
 
         levels.update(ctx);
 
-        const save = JSON.parse(store.get('noita-expedition') ?? 'null') as { currentId: string; player: { x: number; y: number } };
+        const save = JSON.parse(store.get('noita-expedition') ?? 'null') as {
+          currentId: string;
+          player: { x: number; y: number };
+        };
         expect(save.currentId).toBe('vault');
         expect(save.player).toMatchObject({ x: 77, y: 88 });
       });

@@ -156,8 +156,7 @@ export function handleMoss(ctx: Ctx, x: number, y: number): void {
     }
     if (touching) {
       const ni = w.idx(nx, ny);
-      w.types[ni] = Cell.Moss;
-      w.colors[ni] = mossColor();
+      w.replaceCellAt(ni, Cell.Moss, mossColor());
       w.life[ni] = Math.max(2, w.life[i] - 1 - Math.floor(Math.random() * 3));
       w.moved[ni] = w.movedTick;
     }
@@ -193,8 +192,7 @@ export function handleFungus(ctx: Ctx, x: number, y: number): void {
     }
     if (touching) {
       const ni = w.idx(nx, ny);
-      w.types[ni] = Cell.Fungus;
-      w.colors[ni] = fungusColor();
+      w.replaceCellAt(ni, Cell.Fungus, fungusColor());
       w.life[ni] = Math.max(2, w.life[i] - 2 - Math.floor(Math.random() * 3));
       w.moved[ni] = w.movedTick;
     }

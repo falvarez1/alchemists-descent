@@ -36,8 +36,8 @@ await page.addInitScript(() => {
     fullscreenElement = null;
     document.dispatchEvent(new Event('fullscreenchange'));
   };
-  HTMLElement.prototype.requestFullscreen = async function requestFullscreen() {
-    fullscreenElement = this;
+  HTMLElement.prototype.requestFullscreen = async () => {
+    fullscreenElement = document.getElementById('canvas-holder');
     window.__verifyFullscreenRequests = (window.__verifyFullscreenRequests ?? 0) + 1;
     document.dispatchEvent(new Event('fullscreenchange'));
   };

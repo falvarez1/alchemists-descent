@@ -1,6 +1,6 @@
 import type { Ctx } from '@/core/types';
-import { rleDecode, rleEncode } from '@/core/rle';
-import { Cell } from '@/sim/CellType';
+import { rleDecodeExact, rleEncode } from '@/core/rle';
+import { CELL_COUNT, Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { appDialog } from '@/ui/AppDialog';
 import { resetCombatTransients } from '@/game/transients';
@@ -28,6 +28,20 @@ interface SavedLevel {
 }
 
 const STORE_KEY = 'noita-level-library';
+
+function isSparsePairs(
+  value: unknown,
+  maxIndex: number,
+  minValue: number,
+  maxValue: number,
+): value is Array<[number, number]> {
+  if (!Array.isArray(value)) return false;
+  return value.every((entry) => {
+    if (!Array.isArray(entry) || entry.length !== 2) return false;
+    const [i, v] = entry;
+    return Number.isInteger(i) && i >= 0 && i < maxIndex && Number.isInteger(v) && v >= minValue && v <= maxValue;
+  });
+}
 
 function loadLibrary(): Record<string, SavedLevel> {
   try {
@@ -81,21 +95,35 @@ export class LevelStore {
     // be missing the sparse arrays or carry a non-string RLE blob. Bail out as
     // a clean "false" (caller shows "Load Failed") instead of throwing an
     // uncaught error deep inside rleDecode/atob or the life/charge loops.
-    if (typeof save.rle !== 'string' || !Array.isArray(save.life) || !Array.isArray(save.charge)) return false;
-    ensureSandboxWorldDetached(ctx);
     const w = ctx.world;
     if (save.w !== w.width || save.h !== w.height) return false;
-    w.clear();
-    rleDecode(save.rle, w.types);
+    if (
+      typeof save.rle !== 'string' ||
+      !isSparsePairs(save.life, w.types.length, -32768, 32767) ||
+      !isSparsePairs(save.charge, w.types.length, 0, 255)
+    ) {
+      return false;
+    }
+    const decoded = new Uint8Array(w.types.length);
+    if (!rleDecodeExact(save.rle, decoded)) return false;
+    for (const t of decoded) {
+      if (t >= CELL_COUNT) return false;
+    }
+
+    ensureSandboxWorldDetached(ctx);
+    const target = ctx.world;
+    if (target.width !== w.width || target.height !== w.height) return false;
+    target.clear();
+    target.types.set(decoded);
     // Regenerate per-material colors (the save stores no color channel).
-    for (let i = 0; i < w.types.length; i++) {
-      const t = w.types[i];
+    for (let i = 0; i < target.types.length; i++) {
+      const t = target.types[i];
       if (t === Cell.Empty) continue;
       const fn = COLOR_FN[t];
-      w.colors[i] = fn ? fn() : EMPTY_COLOR;
+      target.colors[i] = fn ? fn() : EMPTY_COLOR;
     }
-    for (const [i, v] of save.life) w.life[i] = v;
-    for (const [i, v] of save.charge) w.setChargeAt(i, v);
+    for (const [i, v] of save.life) target.life[i] = v;
+    for (const [i, v] of save.charge) target.setChargeAt(i, v);
     ctx.enemies.length = 0;
     resetCombatTransients(ctx);
     ctx.events.emit('toast', { text: 'LEVEL LOADED' });
@@ -106,7 +134,9 @@ export class LevelStore {
 
   private wire(): void {
     document.getElementById('btn-level-save')?.addEventListener('click', async () => {
-      const name = await appDialog.prompt('Level name:', 'my-level', { title: 'Save Level' });
+      const name = await appDialog.prompt('Level name:', 'my-level', {
+        title: 'Save Level',
+      });
       if (!name) return;
       const lib = loadLibrary();
       if (
@@ -120,7 +150,10 @@ export class LevelStore {
         return;
       }
       lib[name] = this.serialize();
-      if (saveLibrary(lib)) this.ctx.events.emit('toast', { text: `SAVED "${name.toUpperCase()}"` });
+      if (saveLibrary(lib))
+        this.ctx.events.emit('toast', {
+          text: `SAVED "${name.toUpperCase()}"`,
+        });
       else await appDialog.alert('Storage is full — use Export to keep this level as a file.', 'Storage Full');
       this.refreshList();
     });
@@ -140,7 +173,8 @@ export class LevelStore {
       ) {
         return;
       }
-      if (!this.applySave(save)) await appDialog.alert('That level was saved for a different world size.', 'Load Failed');
+      if (!this.applySave(save))
+        await appDialog.alert('That level was saved for a different world size.', 'Load Failed');
     });
 
     document.getElementById('btn-level-delete')?.addEventListener('click', async () => {
@@ -163,7 +197,9 @@ export class LevelStore {
     });
 
     document.getElementById('btn-level-export')?.addEventListener('click', () => {
-      const blob = new Blob([JSON.stringify(this.serialize())], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(this.serialize())], {
+        type: 'application/json',
+      });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'noita-level.json';

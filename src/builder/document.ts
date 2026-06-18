@@ -1,11 +1,12 @@
 import type { BackdropSettings, BiomeId, Ctx } from '@/core/types';
-import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, sparsePairs } from '@/core/rle';
+import { base64ToBytes, bytesToBase64, rleDecode, rleDecodeExact, rleEncode, sparsePairs } from '@/core/rle';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { BIOMES } from '@/config/biomes';
 import { createDefaultBackdropSettings, sanitizeBackdropSettings } from '@/config/backdrop';
 import { clamp, hash2, valueNoise } from '@/core/math';
 import { Cell, CELL_COUNT } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, packRGB } from '@/sim/colors';
+import { World } from '@/sim/World';
 import { sanitizeSpriteAsset } from '@/builder/assets/sprites';
 import type { SpriteAsset } from '@/builder/assets/sprites';
 import {
@@ -14,6 +15,7 @@ import {
   crownTopColor,
   mossUnderColor,
 } from '@/world/crownPalette';
+import { dressWalkSurface } from '@/world/surfaceDress';
 
 /**
  * EditorDocument v2 (docs/BUILDER.md): the durable authoring layer. The
@@ -103,6 +105,8 @@ export interface EditorWorldLayer {
   paintSeed?: number;
   life?: Array<[number, number]>;
   charge?: Array<[number, number]>;
+  /** Optional full packed-color plane for generated layers whose paint is not sparse. */
+  colors?: string;
   colorOverrides?: Array<[number, number]>;
 }
 
@@ -274,18 +278,11 @@ export function captureWorldLayer(ctx: Ctx): EditorWorldLayer {
   const w = ctx.world;
   // Transient gas life is noise; keep authored/fire life so generated braziers survive restore.
   const life: Array<[number, number]> = [];
-  for (let i = 0; i < w.life.length && life.length < 60000; i++) {
+  for (let i = 0; i < w.life.length && life.length < DOC_SPARSE_CAP; i++) {
     if (w.life[i] === 0) continue;
     const t = w.types[i];
     if (t === Cell.Smoke || t === Cell.Steam) continue;
     life.push([i, w.life[i]]);
-  }
-  // Capture the sparse color-scar set so hand-tints round-trip; without this
-  // the field only ever arrives from foreign/imported docs (capture was blind).
-  const colorOverrides: Array<[number, number]> = [];
-  for (const i of w.colorOverrides) {
-    if (colorOverrides.length >= 60000) break;
-    colorOverrides.push([i, w.colors[i]]);
   }
   const layer: EditorWorldLayer = {
     rle: rleEncode(w.types),
@@ -294,9 +291,11 @@ export function captureWorldLayer(ctx: Ctx): EditorWorldLayer {
     life,
     charge: sparsePairs(w.charge, 20000),
   };
-  if (colorOverrides.length > 0) layer.colorOverrides = colorOverrides;
   const paintSeed = ctx.worldgen?.paintSeed;
   if (typeof paintSeed === 'number' && Number.isFinite(paintSeed)) layer.paintSeed = paintSeed;
+  const colorDiffs = captureColorDiffs(ctx, layer);
+  if (colorDiffs.truncated) layer.colors = encodeColorPlane(w.colors);
+  else if (colorDiffs.pairs.length > 0) layer.colorOverrides = colorDiffs.pairs;
   return layer;
 }
 
@@ -307,11 +306,12 @@ export function applyWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {
   // A malformed rle must fail safe (leave the cleared world) rather than throw
   // into callers — the importer's sanitizeWorldLayer guards the same way.
   try {
-    rleDecode(layer.rle, w.types);
+    if (!rleDecodeExact(layer.rle, w.types)) return;
   } catch {
     return;
   }
   repaintWorldLayer(ctx, layer);
+  if (layer.colors) decodeColorPlaneInto(layer.colors, w.colors);
   for (const [i, v] of layer.life ?? []) w.life[i] = v;
   for (const [i, v] of layer.charge ?? []) w.setChargeAt(i, v);
   for (const [i, c] of layer.colorOverrides ?? []) {
@@ -320,6 +320,38 @@ export function applyWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {
     // regenerating the factory color on the cell's first move.
     w.colorOverrides.add(i);
   }
+}
+
+function encodeColorPlane(colors: Uint32Array): string {
+  return bytesToBase64(new Uint8Array(colors.buffer, colors.byteOffset, colors.byteLength));
+}
+
+function decodeColorPlaneInto(encoded: string, colors: Uint32Array): boolean {
+  try {
+    const bin = atob(encoded);
+    const bytes = new Uint8Array(colors.buffer, colors.byteOffset, colors.byteLength);
+    if (bin.length !== bytes.length) return false;
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    for (let i = 0; i < colors.length; i++) colors[i] &= 0xffffff;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function captureColorDiffs(ctx: Ctx, layer: EditorWorldLayer): { pairs: Array<[number, number]>; truncated: boolean } {
+  const source = ctx.world;
+  const repainted = new World(source.width, source.height);
+  repainted.types.set(source.types);
+  repaintWorldLayer({ ...ctx, world: repainted } as Ctx, layer);
+
+  const pairs: Array<[number, number]> = [];
+  for (let i = 0; i < source.colors.length; i++) {
+    if (source.colors[i] === repainted.colors[i] && !source.colorOverrides.has(i)) continue;
+    if (pairs.length >= DOC_SPARSE_CAP) return { pairs, truncated: true };
+    pairs.push([i, source.colors[i]]);
+  }
+  return { pairs, truncated: false };
 }
 
 function repaintWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {
@@ -406,6 +438,14 @@ function repaintWorldLayer(ctx: Ctx, layer: EditorWorldLayer): void {
       }
     }
   }
+
+  dressWalkSurface(world, {
+    seed,
+    minY: 2,
+    floorBand: HEIGHT - 52,
+    crown: B.crown,
+    flowerChance: B.flowerChance,
+  });
 }
 
 function enqueueWall(
@@ -466,7 +506,7 @@ const DOC_LINK_CAP = 8_192;
 const DOC_LIGHT_CAP = 1_024;
 const DOC_PROCEDURAL_CAP = 256;
 const DOC_SPRITE_CAP = 512;
-const DOC_SPARSE_CAP = 80_000;
+const DOC_SPARSE_CAP = 500_000;
 const SHARE_COMPRESSED_MAX_BYTES = 2_000_000;
 const SHARE_JSON_MAX_BYTES = 12_000_000;
 
@@ -622,8 +662,15 @@ function sanitizeWorldLayer(value: unknown): EditorWorldLayer | null {
     ...(num(layer.paintSeed) ? { paintSeed: clampInt(layer.paintSeed, 0, 99999) } : {}),
     life: sanitizeSparsePairs(layer.life, DOC_SPARSE_CAP, -32768, 32767),
     charge: sanitizeSparsePairs(layer.charge, DOC_SPARSE_CAP, 0, 255),
+    colors: sanitizeColorPlane(layer.colors),
     colorOverrides: sanitizeSparsePairs(layer.colorOverrides, DOC_SPARSE_CAP, 0, 0xffffff),
   };
+}
+
+function sanitizeColorPlane(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const colors = new Uint32Array(WIDTH * HEIGHT);
+  return decodeColorPlaneInto(value, colors) ? encodeColorPlane(colors) : undefined;
 }
 
 function sanitizeObject(raw: unknown, usedIds: Set<string>): EditorObject | null {

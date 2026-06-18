@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { applyWorldLayer, captureWorldLayer } from '@/builder/document';
 import { createDefaultPostFxSettings } from '@/config/params';
-import type { Ctx, GameStateData } from '@/core/types';
+import type { Ctx, GameStateData, RegionGraph } from '@/core/types';
+import { Rng } from '@/core/rng';
 import { Cell } from '@/sim/CellType';
 import { unpackB, unpackG, unpackR } from '@/sim/colors';
 import { World } from '@/sim/World';
 import { WorldGen } from '@/world/CaveGenerator';
+import { stampSecrets } from '@/world/secrets';
 
 /**
  * generateCaves only reaches ctx.world and ctx.state (biome + worldSeed),
@@ -58,6 +60,32 @@ function mossyWallCount(world: World): number {
   return count;
 }
 
+class ScriptedRng extends Rng {
+  private pos = 0;
+
+  constructor(private readonly values: number[]) {
+    super(1);
+  }
+
+  override next(): number {
+    return this.values[this.pos++] ?? 0;
+  }
+}
+
+function singleRegionGraph(world: World, cx: number, cy: number): RegionGraph {
+  return {
+    scale: 4,
+    w: Math.floor(world.width / 4),
+    h: Math.floor(world.height / 4),
+    labels: new Int32Array(Math.floor(world.width / 4) * Math.floor(world.height / 4)).fill(-1),
+    regions: [{ id: 0, area: 1200, cx, cy, onMainPath: true, isPocket: false }],
+    edges: [],
+    mainPath: [0],
+    spawnRegion: 0,
+    exitRegion: 0,
+  };
+}
+
 describe('worldgen determinism', () => {
   it('produces identical cell types and spawn hint for the same seed', () => {
     const a = generate(123456789);
@@ -99,5 +127,31 @@ describe('worldgen determinism', () => {
 
     expect(mossyWallCount(restored)).toBeGreaterThan(beforeMoss * 0.75);
     expect(restored.life[fireIndex]).toBe(321);
+  });
+
+  it('rolls back failed secret connector trials without leaving carved pockets', () => {
+    const world = new World(320, 320);
+    world.types.fill(Cell.Wall);
+    const charged = world.idx(210, 160);
+    world.life[charged] = 7;
+    world.setChargeAt(charged, 4);
+    world.colorOverrides.add(charged);
+    const beforeTypes = world.types.slice();
+    const beforeColors = world.colors.slice();
+    const beforeLife = world.life.slice();
+    const beforeCharge = world.charge.slice();
+    const beforeOverrides = new Set(world.colorOverrides);
+    const ctx = { world } as unknown as Ctx;
+    const rng = new ScriptedRng([0, 0, 0, (50 - 40) / (160 - 40), 0, 0]);
+
+    const placed = stampSecrets(ctx, rng, singleRegionGraph(world, 160, 160), 'earthen');
+
+    expect(placed).toBe(0);
+    expect(world.types).toEqual(beforeTypes);
+    expect(world.colors).toEqual(beforeColors);
+    expect(world.life).toEqual(beforeLife);
+    expect(world.charge).toEqual(beforeCharge);
+    expect(world.activeCharges.has(charged)).toBe(true);
+    expect(world.colorOverrides).toEqual(beforeOverrides);
   });
 });

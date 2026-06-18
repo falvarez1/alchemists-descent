@@ -34,10 +34,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # vite build (not `npm run build`) so a strict-tsc error never blocks a
-      # deploy. GH_PAGES sets the /<repo>/ base path (see vite.config.ts).
+      # GH_PAGES sets the /<repo>/ base path (see vite.config.ts); use the same
+      # strict build entry point as local validation so deploys cannot bypass tsc.
       - name: Build
-        run: npx vite build
+        run: npm run build
         env:
           GH_PAGES: 'true'
 

@@ -123,6 +123,24 @@ describe('card offer requests', () => {
     request?.onChoose('heavy');
     expect(chosen).toEqual(['heavy']);
   });
+
+  it('does not auto-grant while a card-offer listener is busy', () => {
+    const events = new EventBus();
+    events.on('cardOfferRequested', () => {
+      // Mirrors the overlay declining a second request while an offer is active.
+    });
+
+    const chosen: CardId[] = [];
+    const handled = requestCardOffer({ events } as unknown as Ctx, {
+      source: 'tome',
+      title: 'SPELL TOME',
+      cards: ['speed', 'heavy', 'spread'],
+      onChoose: (card) => chosen.push(card),
+    });
+
+    expect(handled).toBe(false);
+    expect(chosen).toEqual([]);
+  });
 });
 
 describe('card discovery persistence', () => {

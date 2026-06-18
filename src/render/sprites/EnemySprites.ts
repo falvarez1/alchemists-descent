@@ -28,13 +28,19 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   const bR = selfLit ? 1 : Math.max(0.05, lt.r);
   const bG = selfLit ? 1 : Math.max(0.05, lt.g);
   const bB = selfLit ? 1 : Math.max(0.05, lt.b);
+  // Electrocuted bodies convulse: a violent per-frame render jitter (visual only —
+  // the sim pins them to the live conductor, see Enemies.ts). Every pixel draws
+  // off this shaken origin, so the whole creature vibrates while current crawls it.
+  const conv = e.status.electrified > 0;
+  const bx = conv ? e.x + ((Math.random() * 5) | 0) - 2 : e.x;
+  const by = conv ? e.y + ((Math.random() * 3) | 0) - 1 : e.y;
   const P = (dx: number, dy: number, r: number, g: number, b: number): void => {
-    if (flash) s.setPx(e.x + dx, e.y - dy, 2.2, 2.2, 2.2);
-    else s.setPx(e.x + dx, e.y - dy, r * bR, g * bG, b * bB);
+    if (flash) s.setPx(bx + dx, by - dy, 2.2, 2.2, 2.2);
+    else s.setPx(bx + dx, by - dy, r * bR, g * bG, b * bB);
   };
   const PE = (dx: number, dy: number, r: number, g: number, b: number): void => {
-    if (flash) s.setPx(e.x + dx, e.y - dy, 2.2, 2.2, 2.2);
-    else s.setPx(e.x + dx, e.y - dy, r, g, b);
+    if (flash) s.setPx(bx + dx, by - dy, 2.2, 2.2, 2.2);
+    else s.setPx(bx + dx, by - dy, r, g, b);
   };
   // Eyes are honest (Rain World): an unaware creature scans the room on a
   // slow wander; only an ALERTED one locks its gaze onto the alchemist.

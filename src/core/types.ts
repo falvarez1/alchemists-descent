@@ -1224,6 +1224,8 @@ export interface PlayerControlApi {
   grabVine(ctx: Ctx): boolean;
   /** Let go of a vine swing (keeps the launch velocity). */
   releaseVine(ctx: Ctx): void;
+  /** Clear private one-frame movement buffers and presentation state after run/level transitions. */
+  resetTransientState(ctx: Ctx): void;
   kill(): void;
   respawn(): void;
   findSpawnPoint(): { x: number; y: number };

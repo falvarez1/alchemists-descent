@@ -50,14 +50,17 @@ function fnv1a(bytes: Uint8Array): string {
 
 /** Recorded from the pre-overhaul generator. Re-record ONLY for deliberate,
  *  commit-flagged generation changes. */
-// Re-recorded for GEN_VERSION 18 (CAVE_SCALE 1.5 — grander caves). Radius is
-// consumed after every rng draw, so the stream + spawn anchors are identical to
-// v17; only carved cell width changed, which is exactly what these hashes lock.
+// Re-recorded for GEN_VERSION 25: earthen baseline noiseDensity 0.54 -> 0.66
+// (denser solid rock so walkable platforms stop reading porous) plus the new
+// terrainPolish de-speckle passes — a morphological CLOSE (solidifyRock, radius 2)
+// and the sealed-pocket fill (fillEnclosedHoles). fillNoise draws one rng value
+// per 2x2 block regardless of density, so the stream + spawn anchors are identical
+// to v24; only which noise cells become wall, plus the polish fills, changed.
 const GOLDEN: Record<number, { hash: string; spawn: { x: number; y: number } }> = {
-  1: { hash: 'e9347fcd', spawn: { x: 800, y: 550 } },
-  5: { hash: 'a3011f99', spawn: { x: 800, y: 413 } },
-  1337: { hash: 'cd9bdb20', spawn: { x: 800, y: 396 } },
-  123456789: { hash: 'b961882f', spawn: { x: 800, y: 542 } },
+  1: { hash: 'f21c68c9', spawn: { x: 800, y: 550 } },
+  5: { hash: '28ad038a', spawn: { x: 800, y: 413 } },
+  1337: { hash: '64ffc6a9', spawn: { x: 800, y: 396 } },
+  123456789: { hash: '606becb3', spawn: { x: 800, y: 542 } },
 };
 
 const RECIPE_FIELDS: Array<keyof VirtualBiomeDressingRecipe> = [

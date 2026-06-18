@@ -1335,8 +1335,8 @@ describe('import sanitizer', () => {
     expect(doc!.links).toMatchObject([{ id: 'link-1', fromId: 'spawn-1', toId: 'spawn-1', kind: 'triggerDoor' }]);
     expect(doc!.lights).toHaveLength(1);
     expect(doc!.proceduralHistory).toHaveLength(1);
-    expect(doc!.world?.life).toHaveLength(80000);
-    expect(doc!.world?.charge).toHaveLength(80000);
+    expect(doc!.world?.life).toHaveLength(80010);
+    expect(doc!.world?.charge).toHaveLength(80010);
   });
 });
 

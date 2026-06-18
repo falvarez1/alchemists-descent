@@ -157,7 +157,8 @@ export class Explosions implements ExplosionApi {
     });
 
     // Entity damage
-    for (const e of ctx.enemies) {
+    for (const e of ctx.enemies.slice()) {
+      if (!ctx.enemies.includes(e)) continue;
       const dx = e.x - cx,
         dy = e.y - cy;
       const d = Math.sqrt(dx * dx + dy * dy);

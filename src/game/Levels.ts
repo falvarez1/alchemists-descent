@@ -16,11 +16,11 @@
 //   world floor instead of falling out.
 
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
-import { GEN_VERSION } from '@/config/gen';
+import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { difficultyMods } from '@/config/difficulty';
 import { LEVELS, START_LEVEL, populationForLevel, vaultHostId } from '@/config/worldgraph';
 import { Rng, hashSeed, randomSeed, fnv1aString } from '@/core/rng';
-import { base64ToBytes, bytesToBase64, rleDecode, rleEncode } from '@/core/rle';
+import { base64ToBytes, bytesToBase64, rleDecodeExact, rleEncode } from '@/core/rle';
 import type {
   Ctx,
   Difficulty,
@@ -89,6 +89,13 @@ const POPULATION_ATTEMPTS_PER_PASS = 36;
 const ROOST_ATTEMPTS_PER_PASS = 160;
 const VIRTUAL_PICKUP_KINDS = new Set<PickupKind>(['goldpile', 'heart', 'tome', 'chest', 'potion', 'key']);
 
+function clearFrameStops(ctx: Ctx): void {
+  const fx = (ctx as { fx?: Ctx['fx'] }).fx;
+  if (!fx) return;
+  fx.hitstop = 0;
+  fx.deathSlowMo = 0;
+}
+
 interface PopulationSpotOptions {
   minY?: number;
   maxY?: number;
@@ -115,8 +122,14 @@ const LEGACY_REVIEW_PERKS = [
   'goldmagnet',
 ];
 const LEGACY_REVIEW_WANDS = [
-  { frameId: 'brass', cards: ['spark', 'double', 'speed', 'flame', 'lightning'] },
-  { frameId: 'void', cards: ['dig', 'conjure', 'vitriol', 'blackhole', 'warp'] },
+  {
+    frameId: 'brass',
+    cards: ['spark', 'double', 'speed', 'flame', 'lightning'],
+  },
+  {
+    frameId: 'void',
+    cards: ['dig', 'conjure', 'vitriol', 'blackhole', 'warp'],
+  },
 ];
 
 export interface SavedEnemyState {
@@ -168,6 +181,8 @@ interface ExpeditionSave {
    *  (restoreLevel regenerates pristine worlds from seed — a stale save
    *  against new generation silently desyncs). Absent = pre-guard save. */
   genVersion?: number;
+  /** Signature of live GEN_TUNE at save time. Absent = pre-tuning-guard save. */
+  genTuneSignature?: string;
   expeditionSeed: number;
   /** Run difficulty 1–4; resume restores it so a continued run keeps its balance.
    *  Absent in saves from before difficulty levels — those resume at 3 (shipped). */
@@ -203,7 +218,7 @@ function snapshotPickupForSave(pickup: Pickup): Pickup {
   return { ...pickup, data };
 }
 
-function sparseNonZeroPairs(arr: Int16Array | Uint8Array): Array<[number, number]> {
+function sparseNonZeroPairs(arr: Int16Array | Uint8Array | Uint16Array): Array<[number, number]> {
   const out: Array<[number, number]> = [];
   for (let i = 0; i < arr.length; i++) {
     if (arr[i] !== 0) out.push([i, arr[i]]);
@@ -259,7 +274,8 @@ function finiteNumber(value: number | undefined, fallback: number): number {
 function isSavedLevelBlobShape(value: unknown): value is SavedLevelBlob {
   if (!value || typeof value !== 'object') return false;
   const b = value as Partial<SavedLevelBlob>;
-  return typeof b.id === 'string' &&
+  return (
+    typeof b.id === 'string' &&
     typeof b.rle === 'string' &&
     typeof b.explored === 'string' &&
     Array.isArray(b.life) &&
@@ -270,7 +286,8 @@ function isSavedLevelBlobShape(value: unknown): value is SavedLevelBlob {
     Array.isArray(b.waystones) &&
     Array.isArray(b.runeVaults) &&
     Array.isArray(b.litOrder) &&
-    (b.colorOverrides === undefined || Array.isArray(b.colorOverrides));
+    (b.colorOverrides === undefined || Array.isArray(b.colorOverrides))
+  );
 }
 
 export function snapshotEnemyForSave(e: Enemy): SavedEnemyState {
@@ -414,7 +431,8 @@ export class Levels implements LevelsApi {
       if (mode !== 'test') {
         return {
           ok: false,
-          message: 'Chunked virtual worlds are playable as disposable test runs only until streaming persistence lands.',
+          message:
+            'Chunked virtual worlds are playable as disposable test runs only until streaming persistence lands.',
           mode,
           worldSource,
           levelId: null,
@@ -423,9 +441,7 @@ export class Levels implements LevelsApi {
         };
       }
       this.enterPlayMode(ctx);
-      const seed = config.seed !== undefined && Number.isFinite(config.seed)
-        ? config.seed >>> 0
-        : randomSeed();
+      const seed = config.seed !== undefined && Number.isFinite(config.seed) ? config.seed >>> 0 : randomSeed();
       this.resetRunState(ctx, { clearSave: false });
       ctx.state.worldSeed = seed;
       this.expeditionSeed = seed;
@@ -445,9 +461,7 @@ export class Levels implements LevelsApi {
       };
     }
 
-    const levelId = worldSource === 'campaign'
-      ? START_LEVEL
-      : (config.levelId ?? START_LEVEL).toLowerCase();
+    const levelId = worldSource === 'campaign' ? START_LEVEL : (config.levelId ?? START_LEVEL).toLowerCase();
     if (!LEVELS[levelId]) {
       return {
         ok: false,
@@ -478,9 +492,7 @@ export class Levels implements LevelsApi {
       };
     }
 
-    const seed = config.seed !== undefined && Number.isFinite(config.seed)
-      ? config.seed >>> 0
-      : randomSeed();
+    const seed = config.seed !== undefined && Number.isFinite(config.seed) ? config.seed >>> 0 : randomSeed();
     this.resetRunState(ctx, { clearSave: mode === 'normal' });
     ctx.state.worldSeed = seed;
     this.expeditionSeed = seed;
@@ -489,7 +501,10 @@ export class Levels implements LevelsApi {
     if (config.difficulty !== undefined) ctx.state.difficulty = config.difficulty;
 
     const preset = config.loadout ?? 'fresh';
-    if (mode === 'normal' && (worldSource !== 'campaign' || levelId !== START_LEVEL || preset !== 'fresh' || config.kit)) {
+    if (
+      mode === 'normal' &&
+      (worldSource !== 'campaign' || levelId !== START_LEVEL || preset !== 'fresh' || config.kit)
+    ) {
       ctx.state.debugGodMode = true;
     }
     this.applyLoadoutPreset(ctx, preset);
@@ -507,7 +522,9 @@ export class Levels implements LevelsApi {
     const label = runtime?.def.name ?? levelId.toUpperCase();
     const prefix = mode === 'test' ? 'Test run' : 'Fresh expedition';
     const diff = difficultyMods(ctx.state);
-    ctx.events.emit('toast', { text: `${prefix.toUpperCase()}: ${label} — ${diff.roman} ${diff.name.toUpperCase()}` });
+    ctx.events.emit('toast', {
+      text: `${prefix.toUpperCase()}: ${label} — ${diff.roman} ${diff.name.toUpperCase()}`,
+    });
     return {
       ok: true,
       message: `${prefix} started at ${label}.`,
@@ -618,12 +635,16 @@ export class Levels implements LevelsApi {
             this.enterLevel(ctx, next);
           });
         } else if (ctx.state.frameCount % 240 === 0) {
-          ctx.events.emit('toast', { text: 'CUSTOM LEVEL CLEAR — THE PORTAL SHINES' });
+          ctx.events.emit('toast', {
+            text: 'CUSTOM LEVEL CLEAR — THE PORTAL SHINES',
+          });
         }
         return;
       }
       if (near && !runtime.keyTaken && ctx.state.frameCount % 90 === 0) {
-        ctx.events.emit('toast', { text: 'SEALED — THE GOLDEN KEY IS MISSING' });
+        ctx.events.emit('toast', {
+          text: 'SEALED — THE GOLDEN KEY IS MISSING',
+        });
       }
     }
 
@@ -721,6 +742,8 @@ export class Levels implements LevelsApi {
     player.vy = 0;
     player.fx = 0;
     player.fy = 0;
+    ctx.playerCtl?.resetTransientState?.(ctx);
+    clearFrameStops(ctx);
     ctx.camera.snapTo(player.x, player.y);
     if (ctx.state.debugGodMode) {
       grantFullReviewKit(player);
@@ -750,9 +773,7 @@ export class Levels implements LevelsApi {
     }
     this.levels.delete('custom');
     this.currentId =
-      this.preCustomCurrentId && this.levels.has(this.preCustomCurrentId)
-        ? this.preCustomCurrentId
-        : null;
+      this.preCustomCurrentId && this.levels.has(this.preCustomCurrentId) ? this.preCustomCurrentId : null;
     this.preCustomCurrentId = null;
     this.waystoneHeat = [];
     this.lastEnemiesEmit = ctx.enemies.length;
@@ -791,18 +812,18 @@ export class Levels implements LevelsApi {
   saveDeathCheckpoint(ctx: Ctx): void {
     const respawn = this.respawnPoint();
     if (!respawn) return;
-    this.writeExpeditionSave(ctx, this.snapshotPlayerForSave(ctx, {
-      x: respawn.x,
-      y: respawn.y,
-      hp: ctx.player.maxHp,
-      levit: ctx.player.maxLevit,
-    }));
+    this.writeExpeditionSave(
+      ctx,
+      this.snapshotPlayerForSave(ctx, {
+        x: respawn.x,
+        y: respawn.y,
+        hp: ctx.player.maxHp,
+        levit: ctx.player.maxLevit,
+      }),
+    );
   }
 
-  private snapshotPlayerForSave(
-    ctx: Ctx,
-    override: Partial<ExpeditionSave['player']> = {},
-  ): ExpeditionSave['player'] {
+  private snapshotPlayerForSave(ctx: Ctx, override: Partial<ExpeditionSave['player']> = {}): ExpeditionSave['player'] {
     return {
       x: ctx.player.x,
       y: ctx.player.y,
@@ -845,6 +866,7 @@ export class Levels implements LevelsApi {
     const save: ExpeditionSave = {
       v: 1,
       genVersion: GEN_VERSION,
+      genTuneSignature: genTuneSignature(),
       expeditionSeed,
       difficulty: ctx.state.difficulty,
       currentId,
@@ -908,7 +930,11 @@ export class Levels implements LevelsApi {
     capacity?: number;
   } {
     if (!slot || typeof slot !== 'object') return { material: null, count: 0, capacity: 600 };
-    const source = slot as { material?: unknown; count?: unknown; capacity?: unknown };
+    const source = slot as {
+      material?: unknown;
+      count?: unknown;
+      capacity?: unknown;
+    };
     const rawCapacity = Number(source.capacity ?? 600);
     const capacity = Number.isFinite(rawCapacity) ? Math.max(0, Math.floor(rawCapacity)) : 600;
     if (!this.validFlaskMaterial(source.material)) return { material: null, count: 0, capacity };
@@ -919,7 +945,14 @@ export class Levels implements LevelsApi {
 
   private sanitizeFlaskBottle(bottle: unknown): FlaskBottleState | null {
     if (!bottle || typeof bottle !== 'object') return null;
-    const source = bottle as { x?: unknown; y?: unknown; vx?: unknown; vy?: unknown; material?: unknown; count?: unknown };
+    const source = bottle as {
+      x?: unknown;
+      y?: unknown;
+      vx?: unknown;
+      vy?: unknown;
+      material?: unknown;
+      count?: unknown;
+    };
     if (!this.validFlaskMaterial(source.material)) return null;
     const count = Math.max(0, Math.min(600, Math.floor(Number(source.count))));
     if (!Number.isFinite(count) || count <= 0) return null;
@@ -970,6 +1003,7 @@ export class Levels implements LevelsApi {
     this.expeditionSeed = null;
 
     Object.assign(ctx.player, createPlayer());
+    ctx.playerCtl?.resetTransientState?.(ctx);
     ctx.state.score = 0;
     ctx.state.playerSpawned = false;
     ctx.state.paused = false;
@@ -988,7 +1022,7 @@ export class Levels implements LevelsApi {
     ctx.input.keys.down = false;
     ctx.input.keys.grab = false;
     ctx.input.isDrawing = false;
-    ctx.fx.hitstop = 0;
+    clearFrameStops(ctx);
     ctx.flask.clearSlots();
     ctx.waves.num = 1;
     ctx.waves.active = false;
@@ -1073,10 +1107,17 @@ export class Levels implements LevelsApi {
   private createVirtualTestRuntime(ctx: Ctx, seed: number): LevelRuntime {
     const def = createDefaultVirtualWorldDef(seed);
     const chunks = generateVirtualWindow(def, -3, -1, 3, 4);
-    return this.createVirtualRuntimeFromChunks(ctx, def, chunks, {
-      x: def.chunkSize / 2,
-      y: def.chunkSize * 1.5,
-    }, 'virtual-test', 'CHUNKED VIRTUAL WORLD');
+    return this.createVirtualRuntimeFromChunks(
+      ctx,
+      def,
+      chunks,
+      {
+        x: def.chunkSize / 2,
+        y: def.chunkSize * 1.5,
+      },
+      'virtual-test',
+      'CHUNKED VIRTUAL WORLD',
+    );
   }
 
   private createVirtualWindowRuntime(
@@ -1096,7 +1137,14 @@ export class Levels implements LevelsApi {
       centerCx + radiusX,
       centerCy + radiusY,
     );
-    return this.createVirtualRuntimeFromChunks(ctx, def, chunks, center, 'virtual-builder-test', 'BUILDER VIRTUAL WORLD');
+    return this.createVirtualRuntimeFromChunks(
+      ctx,
+      def,
+      chunks,
+      center,
+      'virtual-builder-test',
+      'BUILDER VIRTUAL WORLD',
+    );
   }
 
   private createVirtualRuntimeFromChunks(
@@ -1219,22 +1267,35 @@ export class Levels implements LevelsApi {
     return out;
   }
 
-  private parseVirtualScenePlacementId(id: string): { slotId: string; sceneId: string } {
+  private parseVirtualScenePlacementId(id: string): {
+    slotId: string;
+    sceneId: string;
+  } {
     const parts = id.split(':');
-    if (parts.length >= 3) return { slotId: parts[parts.length - 2] || 'scene', sceneId: parts[parts.length - 1] || id };
+    if (parts.length >= 3)
+      return {
+        slotId: parts[parts.length - 2] || 'scene',
+        sceneId: parts[parts.length - 1] || id,
+      };
     return { slotId: 'scene', sceneId: id };
   }
 
   private virtualSceneLabel(sceneId: string): string {
-    const label = sceneId.replace(/^scene-/, '').replaceAll('-', ' ').trim();
-    return label
-      ? label.replace(/\b[a-z]/g, (match) => match.toUpperCase())
-      : 'Generated Scene';
+    const label = sceneId
+      .replace(/^scene-/, '')
+      .replaceAll('-', ' ')
+      .trim();
+    return label ? label.replace(/\b[a-z]/g, (match) => match.toUpperCase()) : 'Generated Scene';
   }
 
   private warnVirtualMaterializationDrops(
     ctx: Ctx,
-    stats: { droppedSceneObjects: number; droppedSceneLights: number; sceneObjects: number; sceneLights: number },
+    stats: {
+      droppedSceneObjects: number;
+      droppedSceneLights: number;
+      sceneObjects: number;
+      sceneLights: number;
+    },
   ): void {
     if (stats.droppedSceneObjects <= 0 && stats.droppedSceneLights <= 0) return;
     ctx.events.emit('toast', {
@@ -1281,20 +1342,21 @@ export class Levels implements LevelsApi {
           sourceId: object.id,
         });
       } else if (object.kind === 'pickup') {
-        pickups.push(makePickup(
-          this.virtualPickupKind(object.params.kind),
-          x,
-          y,
-          {
+        pickups.push(
+          makePickup(this.virtualPickupKind(object.params.kind), x, y, {
             amount: typeof object.params.amount === 'number' ? object.params.amount : undefined,
-            card: typeof object.params.card === 'string' ? object.params.card as Pickup['data']['card'] : undefined,
+            card: typeof object.params.card === 'string' ? (object.params.card as Pickup['data']['card']) : undefined,
             potion: typeof object.params.potion === 'string' ? object.params.potion : undefined,
-          },
-        ));
+          }),
+        );
       } else if (object.kind === 'waystone') {
         waystones.push({ x, y, lit: object.params.lit === true });
       } else if (object.kind === 'exitPortal') {
-        portal = { x, y, open: object.params.open === true || object.params.alwaysOpen === true };
+        portal = {
+          x,
+          y,
+          open: object.params.open === true || object.params.alwaysOpen === true,
+        };
         keyTaken = keyTaken || object.params.alwaysOpen === true;
       }
     }
@@ -1319,31 +1381,36 @@ export class Levels implements LevelsApi {
       const x = Math.floor(light.x - srcX);
       const y = Math.floor(light.y - srcY);
       if (!world.inBounds(x, y)) continue;
-      authored.push(toAuthoredLight({
-        id: light.id,
-        x,
-        y,
-        color: light.color,
-        intensity: finiteNumber(light.intensity, 1),
-        radius: finiteNumber(light.radius, 72),
-        bloom: finiteNumber(light.bloom, 0.8),
-        flicker: finiteNumber(light.flicker, 0),
-        falloff: light.falloff ?? 'soft',
-        occluded: light.occluded ?? true,
-        locked: false,
-        hidden: false,
-      }, authored.length));
+      authored.push(
+        toAuthoredLight(
+          {
+            id: light.id,
+            x,
+            y,
+            color: light.color,
+            intensity: finiteNumber(light.intensity, 1),
+            radius: finiteNumber(light.radius, 72),
+            bloom: finiteNumber(light.bloom, 0.8),
+            flicker: finiteNumber(light.flicker, 0),
+            falloff: light.falloff ?? 'soft',
+            occluded: light.occluded ?? true,
+            locked: false,
+            hidden: false,
+          },
+          authored.length,
+        ),
+      );
     }
     return authored;
   }
 
   private virtualEnemyKind(ctx: Ctx, value: unknown, fallback: EnemyKind): EnemyKind {
-    return typeof value === 'string' && value in ctx.enemyCtl.defs ? value as EnemyKind : fallback;
+    return typeof value === 'string' && value in ctx.enemyCtl.defs ? (value as EnemyKind) : fallback;
   }
 
   private virtualPickupKind(value: unknown): PickupKind {
     return typeof value === 'string' && VIRTUAL_PICKUP_KINDS.has(value as PickupKind)
-      ? value as PickupKind
+      ? (value as PickupKind)
       : 'goldpile';
   }
 
@@ -1417,11 +1484,16 @@ export class Levels implements LevelsApi {
     player.crawling = false;
     player.crawlT = 0;
     player.wallGrabT = 0;
+    ctx.playerCtl?.resetTransientState?.(ctx);
+    clearFrameStops(ctx);
     ctx.camera.snapTo(player.x, player.y);
 
     this.waystoneHeat = [];
     this.lastEnemiesEmit = ctx.enemies.length;
-    ctx.events.emit('levelChanged', { depth: runtime.def.depth, name: runtime.def.name });
+    ctx.events.emit('levelChanged', {
+      depth: runtime.def.depth,
+      name: runtime.def.name,
+    });
     ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
     ctx.events.emit('objectiveChanged', { text: objective });
 
@@ -1473,9 +1545,11 @@ export class Levels implements LevelsApi {
     const save = value as Partial<ExpeditionSave>;
     const player = save.player as Partial<ExpeditionSave['player']> | undefined;
     const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
-    return save.v === 1 &&
+    return (
+      save.v === 1 &&
       typeof save.currentId === 'string' &&
       finite(save.expeditionSeed) &&
+      (save.genTuneSignature === undefined || typeof save.genTuneSignature === 'string') &&
       finite(save.score) &&
       Array.isArray(save.levels) &&
       save.levels.every(isSavedLevelBlobShape) &&
@@ -1489,7 +1563,8 @@ export class Levels implements LevelsApi {
       finite(player.levit) &&
       finite(player.maxLevit) &&
       !!player.perks &&
-      typeof player.perks === 'object';
+      typeof player.perks === 'object'
+    );
   }
 
   private retireSavedExpedition(ctx: Ctx, text: string): void {
@@ -1520,6 +1595,11 @@ export class Levels implements LevelsApi {
     // honestly instead of silently desyncing.
     if (save.genVersion !== GEN_VERSION) {
       this.retireSavedExpedition(ctx, 'THE DEPTHS HAVE SHIFTED - EXPEDITION RETIRED');
+      return false;
+    }
+    const savedGenTuneSignature = save.genTuneSignature ?? GEN_TUNE_DEFAULT_SIGNATURE;
+    if (savedGenTuneSignature !== genTuneSignature()) {
+      this.retireSavedExpedition(ctx, 'WORLDGEN TUNING CHANGED - EXPEDITION RETIRED');
       return false;
     }
     // A legacy review/debug-kit save is intentionally non-resumable. Retire it
@@ -1605,7 +1685,7 @@ export class Levels implements LevelsApi {
     });
 
     const savedTypes = new Uint8Array(world.types.length);
-    rleDecode(blob.rle, savedTypes);
+    if (!rleDecodeExact(blob.rle, savedTypes)) throw new Error(`Saved level "${def.id}" RLE length mismatch`);
     for (let i = 0; i < savedTypes.length; i++) {
       if (savedTypes[i] !== world.types[i]) {
         world.types[i] = savedTypes[i];
@@ -1639,9 +1719,7 @@ export class Levels implements LevelsApi {
     base64ToBytes(blob.explored, explored);
     this.litOrder.set(def.id, [...blob.litOrder]);
 
-    const portal = pristine.portal
-      ? { x: pristine.portal.x, y: pristine.portal.y, open: blob.portalOpen }
-      : null;
+    const portal = pristine.portal ? { x: pristine.portal.x, y: pristine.portal.y, open: blob.portalOpen } : null;
 
     const runtime = makeLevelRuntime({
       def,
@@ -1667,9 +1745,7 @@ export class Levels implements LevelsApi {
       // enemy roster is the truth — pristine.prefabEnemies is deliberately
       // IGNORED here (those hostiles were already saved, alive or dead).
       placedPrefabs: pristine.placedPrefabs,
-      ...(pristine.authoredLights.length > 0
-        ? { authoredLights: pristine.authoredLights }
-        : {}),
+      ...(pristine.authoredLights.length > 0 ? { authoredLights: pristine.authoredLights } : {}),
       ...(pristine.emitters.length > 0 ? { emitters: pristine.emitters } : {}),
       ...(pristine.decors.length > 0 ? { decors: pristine.decors } : {}),
       ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
@@ -1757,7 +1833,9 @@ export class Levels implements LevelsApi {
         } catch (error) {
           console.warn(`Saved level "${id}" failed to restore; regenerating pristine`, error);
           runtime = this.createLevel(ctx, def);
-          ctx.events.emit('toast', { text: 'A DEPTH WAS UNREADABLE — REFORGED' });
+          ctx.events.emit('toast', {
+            text: 'A DEPTH WAS UNREADABLE — REFORGED',
+          });
         }
         this.savedBlobs.delete(id);
       } else {
@@ -1784,6 +1862,8 @@ export class Levels implements LevelsApi {
     player.crawling = false;
     player.crawlT = 0;
     player.wallGrabT = 0;
+    ctx.playerCtl?.resetTransientState?.(ctx);
+    clearFrameStops(ctx);
     ctx.camera.snapTo(player.x, player.y);
 
     this.currentId = id;
@@ -1831,9 +1911,7 @@ export class Levels implements LevelsApi {
     this.reviewKitSeeded.add(key);
 
     const present = new Set(
-      runtime.pickups
-        .filter((p) => !p.taken && p.kind === 'potion' && p.data.potion)
-        .map((p) => p.data.potion!),
+      runtime.pickups.filter((p) => !p.taken && p.kind === 'potion' && p.data.potion).map((p) => p.data.potion!),
     );
     const missing = POTION_KINDS.filter((kind) => !present.has(kind));
     if (missing.length === 0) return;
@@ -1923,7 +2001,10 @@ export class Levels implements LevelsApi {
     });
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
-    const regions = extractRegionGraph(ctx.world, spawn, { x: exit.x, y: exit.sealY - 12 });
+    const regions = extractRegionGraph(ctx.world, spawn, {
+      x: exit.x,
+      y: exit.sealY - 12,
+    });
     const populationReach = wizardMask(makeLevelRuntime({ def, world, spawn, regions }));
     this.placePopulation(ctx, def, spawn, regions, populationReach, new Rng(hashSeed(seed, 'population')));
     // Boss arenas: the Kiln Colossus at the bottom of the run; the Sunken
@@ -1997,15 +2078,7 @@ export class Levels implements LevelsApi {
       const enemyDef = ctx.enemyCtl.defs[kind];
       const scaled = Math.round(count * countScale);
       for (let i = 0; i < scaled; i++) {
-        const spot = this.findPopulationSpot(
-          ctx,
-          rng,
-          spawn,
-          regions,
-          reachable,
-          enemyDef.halfW,
-          enemyDef.h,
-        );
+        const spot = this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h);
         if (spot) this.spawnSeededEnemy(ctx, kind, spot.x, spot.y, rng);
       }
     }
@@ -2033,16 +2106,9 @@ export class Levels implements LevelsApi {
       const clutches = 1 + rng.int(2);
       const eggsDef = ctx.enemyCtl.defs.eggs;
       for (let c = 0; c < clutches; c++) {
-        const spot = this.findPopulationSpot(
-          ctx,
-          rng,
-          spawn,
-          regions,
-          reachable,
-          eggsDef.halfW,
-          eggsDef.h,
-          { clearances: [180, 100, 0] },
-        );
+        const spot = this.findPopulationSpot(ctx, rng, spawn, regions, reachable, eggsDef.halfW, eggsDef.h, {
+          clearances: [180, 100, 0],
+        });
         if (spot) this.spawnSeededEnemy(ctx, 'eggs', spot.x, spot.y, rng);
       }
     }
@@ -2068,9 +2134,7 @@ export class Levels implements LevelsApi {
     const clearances = opts.clearances ?? POPULATION_CLEARANCE_STEPS;
     const attempts = opts.attempts ?? POPULATION_ATTEMPTS_PER_PASS;
     const regionPasses =
-      opts.preferMainPath !== false && regions && regions.mainPath.length > 0
-        ? [true, false]
-        : [false];
+      opts.preferMainPath !== false && regions && regions.mainPath.length > 0 ? [true, false] : [false];
 
     for (const mainPathOnly of regionPasses) {
       for (const clearance of clearances) {
@@ -2116,8 +2180,7 @@ export class Levels implements LevelsApi {
           if (reachable[world.idx(x, footY)] === 0) continue;
           if (mainPathOnly && !this.inMainPathRegion(regions, x, footY)) continue;
           // ceiling: solid above, open air below
-          if (world.types[world.idx(x, y - 1)] === Cell.Empty || world.types[world.idx(x, y)] !== Cell.Empty)
-            continue;
+          if (world.types[world.idx(x, y - 1)] === Cell.Empty || world.types[world.idx(x, y)] !== Cell.Empty) continue;
           if (world.types[world.idx(x, y + 1)] !== Cell.Empty || world.types[world.idx(x, footY)] !== Cell.Empty)
             continue;
           let broodFits = true;
@@ -2252,16 +2315,14 @@ export class Levels implements LevelsApi {
     }
 
     // Celebration: gold motes rising, embers tumbling, a two-tone chime
-    ctx.particles.burst(
-      ws.x,
-      ws.y - 3,
-      26,
-      null,
-      () => packRGB(255, 196 + Math.floor(Math.random() * 40), 64),
-      2.6,
-      { glow: 2.4, grav: -0.012 },
-    );
-    ctx.particles.burst(ws.x, ws.y - 3, 14, null, emberColor, 1.7, { glow: 2.2, grav: 0.02 });
+    ctx.particles.burst(ws.x, ws.y - 3, 26, null, () => packRGB(255, 196 + Math.floor(Math.random() * 40), 64), 2.6, {
+      glow: 2.4,
+      grav: -0.012,
+    });
+    ctx.particles.burst(ws.x, ws.y - 3, 14, null, emberColor, 1.7, {
+      glow: 2.2,
+      grav: 0.02,
+    });
     ctx.audio.tone(660, 660, 0.22, 'sine', 0.18);
     setTimeout(() => ctx.audio.tone(990, 990, 0.3, 'sine', 0.16), 130);
 

@@ -78,7 +78,7 @@ for (let k = 0; k < 24; k++) {
     ctx.input.siphonHeld = true;
     ctx.input.mouse.x = 600 + 38;
     ctx.input.mouse.y = 500 + 9;
-    window.__game.tick && window.__game.tick();
+    if (window.__game.tick) window.__game.tick();
   });
   await page.waitForTimeout(16);
 }

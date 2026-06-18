@@ -124,9 +124,9 @@ export function requestCardOffer(
 ): boolean {
   const cards: CardId[] = offer.cards.length > 0 ? [...offer.cards] : ['spark'];
   const request = { ...offer, cards, handled: false };
-  ctx.events.emit('cardOfferRequested', request);
+  const hadListener = ctx.events.emit('cardOfferRequested', request);
   if (!request.handled) {
-    offer.onChoose(cards[0]);
+    if (!hadListener) offer.onChoose(cards[0]);
     return false;
   }
   return true;

@@ -2,12 +2,15 @@ import { CARD_DEFS } from '@/combat/wands/cards';
 import type { EventMap } from '@/core/events';
 import type { CardId, Ctx } from '@/core/types';
 import { cardIconName, makeIconCanvas } from '@/ui/icons';
+import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 
 type CardOfferRequest = EventMap['cardOfferRequested'];
 
 export class CardOfferOverlay {
   private readonly root: HTMLElement;
   private active: CardOfferRequest | null = null;
+  private readonly queue: CardOfferRequest[] = [];
+  private readonly focusTrap: ModalFocusTrap;
   private wasPaused = false;
 
   constructor(private readonly ctx: Ctx) {
@@ -17,16 +20,23 @@ export class CardOfferOverlay {
     this.root.setAttribute('aria-hidden', 'true');
     this.root.addEventListener('keydown', (event) => event.stopPropagation());
     document.body.appendChild(this.root);
+    this.focusTrap = createModalFocusTrap(this.root, {
+      initialFocus: () => this.root.querySelector<HTMLButtonElement>('.card-offer-card'),
+    });
 
     ctx.events.on('cardOfferRequested', (request) => this.open(request));
   }
 
   private open(request: CardOfferRequest): void {
-    if (this.active) return;
     request.handled = true;
+    if (this.active) {
+      this.queue.push(request);
+      return;
+    }
     this.active = request;
     this.wasPaused = this.ctx.state.paused;
     this.ctx.state.paused = true;
+    this.focusTrap.activate();
     this.render(request);
   }
 
@@ -60,7 +70,7 @@ export class CardOfferOverlay {
     this.root.appendChild(panel);
 
     window.setTimeout(() => {
-      this.root.querySelector<HTMLButtonElement>('.card-offer-card')?.focus();
+      this.focusTrap.focusInitial(this.root.querySelector<HTMLButtonElement>('.card-offer-card'));
     }, 0);
   }
 
@@ -104,11 +114,19 @@ export class CardOfferOverlay {
   private choose(id: CardId): void {
     const request = this.active;
     if (!request) return;
-    this.active = null;
     this.root.classList.remove('visible');
     this.root.setAttribute('aria-hidden', 'true');
     this.root.innerHTML = '';
-    this.ctx.state.paused = this.wasPaused;
     request.onChoose(id);
+    const next = this.queue.shift();
+    if (next) {
+      this.active = next;
+      this.ctx.state.paused = true;
+      this.render(next);
+      return;
+    }
+    this.active = null;
+    this.focusTrap.deactivate();
+    this.ctx.state.paused = this.wasPaused;
   }
 }

@@ -1,7 +1,6 @@
 import { DataUtils } from 'three';
 import { LinearSRGBColorSpace, NoToneMapping, WebGPURenderer } from 'three/webgpu';
 
-const WORLD_W = 1600;
 const WORLD_H = 1064;
 const VIEW_W = 525;
 const VIEW_H = 357;

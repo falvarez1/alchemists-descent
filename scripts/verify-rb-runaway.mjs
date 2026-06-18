@@ -84,7 +84,7 @@ const runaway = await page.evaluate(() => {
   // slam an absurd velocity in (pre-fix: lead≈5000 → grid-spanning collider wall)
   RB.applyImpulse(b, 5000, -5000);
   let crashed = false;
-  try { for (let f = 0; f < 90; f++) window.__game.tick(); } catch (e) { crashed = true; }
+  try { for (let f = 0; f < 90; f++) window.__game.tick(); } catch (_e) { crashed = true; }
   const alive = RB.bodies.includes(b);
   return { crashed, alive, vx: b.vx, vy: b.vy, speed: Math.hypot(b.vx, b.vy) };
 });
@@ -101,7 +101,7 @@ const nan = await page.evaluate(() => {
   for (let f = 0; f < 20; f++) window.__game.tick();
   RB.applyImpulse(b, NaN, NaN); // poison the velocity
   let crashed = false;
-  try { for (let f = 0; f < 60; f++) window.__game.tick(); } catch (e) { crashed = true; }
+  try { for (let f = 0; f < 60; f++) window.__game.tick(); } catch (_e) { crashed = true; }
   return { crashed, removed: !RB.bodies.includes(b), bodyCount: RB.bodies.length };
 });
 check('NaN velocity does not crash the sim', !nan.crashed, JSON.stringify(nan));
@@ -116,7 +116,7 @@ const healthy = await page.evaluate(() => {
   const b = RB.spawn({ kind: 'box', halfW: 3, halfH: 3 }, 340, 470, { restitution: 0 });
   const startY = b.y;
   let crashed = false;
-  try { for (let f = 0; f < 120; f++) window.__game.tick(); } catch (e) { crashed = true; }
+  try { for (let f = 0; f < 120; f++) window.__game.tick(); } catch (_e) { crashed = true; }
   return { crashed, fell: b.y > startY, restY: b.y, sleeping: b.sleeping };
 });
 check('a fresh body still falls + rests after the runaway (world not locked)',
@@ -139,7 +139,7 @@ const flood = await page.evaluate(() => {
       if (n % 10 === 0) window.__game.tick();
     }
     for (let f = 0; f < 60; f++) window.__game.tick();
-  } catch (e) { crashed = true; }
+  } catch (_e) { crashed = true; }
   let dyn = 0;
   for (const b of RB.bodies) if (b.kind === 'dynamic') dyn++;
   return { crashed, dyn };
@@ -165,7 +165,7 @@ const dense = await page.evaluate(() => {
       RB.applyImpulse(b, (n % 2 ? 1 : -1) * 30, -20); // fast → big collider windows
     }
     for (let f = 0; f < 80; f++) window.__game.tick();
-  } catch (e) { crashed = true; }
+  } catch (_e) { crashed = true; }
   return { crashed };
 });
 check('dense terrain + many fast bodies stays under the collider ceiling (no overflow)', !dense.crashed, JSON.stringify(dense));

@@ -334,7 +334,7 @@ void main() {
 function packCellValue(
   types: Uint8Array,
   colors: Uint32Array,
-  charge: Uint8Array,
+  charge: Uint16Array,
   ci: number,
 ): number {
   const c = colors[ci];
@@ -813,7 +813,7 @@ export class GpuCompose {
   private packWindowRows(
     types: Uint8Array,
     colors: Uint32Array,
-    charge: Uint8Array,
+    charge: Uint16Array,
     camX: number,
     camY: number,
     startRow: number,

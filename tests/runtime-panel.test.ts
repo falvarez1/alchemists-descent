@@ -20,6 +20,8 @@ describe('runtime panel renderer', () => {
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('data-runtime-id="enemy:1"');
     expect(html).toContain('data-runtime-focus="enemy:1"');
+    expect(html).toContain('role="option"');
+    expect(html).toContain('tabindex="0"');
     expect(html).toContain('hp');
   });
 

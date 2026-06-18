@@ -451,8 +451,8 @@ export class Game {
       ctx.flask.update(ctx);
       ctx.enemyCtl.update(ctx);
       // Rigid bodies integrate against THIS frame's settled terrain, after the
-      // sim and the kinematic entities. Impulses from systems that run later this
-      // frame (wands/projectiles → explosions) land on the bodies next frame —
+      // sim and the kinematic entities. Impulses from later systems this frame
+      // (wands, lightning, and any explosions they trigger) land next frame —
       // a one-frame lag that's imperceptible for debris.
       ctx.rigidBodies.update(ctx);
       ctx.vineStrands.update(ctx);

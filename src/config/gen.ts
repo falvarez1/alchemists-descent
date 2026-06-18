@@ -77,8 +77,22 @@ import type { BiomeId } from '@/core/types';
  *      consolidation post-pass (GEN_TUNE.rockFillPasses 2) for residual holes, plus
  *      cosmetic dirt/grass/moss/flower surface dressing. surfacePitDepth eased to 6.
  *      Re-recorded gen-golden + gen-level-golden.
+ * v24: region graph occupancy now uses the runtime body-blocking predicate, and
+ *      failed secret connectors roll back their trial carve instead of leaving
+ *      hidden empty pockets behind.
+ * v25: SOLID WALKABLE ROCK — v23's caPasses+consolidation cleaned the FINE speckle
+ *      but the rock was still ~50% open porous-maze (the holes interconnect, so no
+ *      connectivity-safe fill could touch them). Two changes fix it: (a) earthen
+ *      baseline noiseDensity 0.54->0.66 so the rock starts mostly-solid with the
+ *      carved arteries as the navigable network (Noita-style), and (b) a
+ *      morphological CLOSE (terrainPolish.solidifyRock, GEN_TUNE.rockCloseRadius 2)
+ *      that packs every CONNECTED open feature thinner than 2*r — the swiss-cheese
+ *      speckle — while caverns/tunnels wider than r survive exactly (connectivity-
+ *      safe by construction; findability stays clean). fillEnclosedHoles mops up the
+ *      remaining sealed pockets. Re-recorded gen-golden + gen-level-golden (vault
+ *      unchanged: gilded skips the polish block).
  */
-export const GEN_VERSION = 23;
+export const GEN_VERSION = 25;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox
@@ -114,10 +128,33 @@ export const GEN_TUNE = {
   // = off. Tuned via render + findability before baking the default.
   rockFillPasses: 2,
   rockFillThreshold: 4,
+  // Swiss-cheese de-speckle (terrainPolish.fillEnclosedHoles): flood-fill every
+  // open region and pack any SEALED pocket of <= holeFillMax cells with rock. The
+  // peppered black specks that make solid rock read "porous" are exactly these
+  // small enclosed pockets — the player can never reach them (they're walled in),
+  // so filling them is cosmetic AND connectivity-safe by construction: a region
+  // that connects two caverns (or is an open passage) is large, never filled. 0 = off.
+  holeFillMax: 110,
+  // Morphological CLOSE radius (terrainPolish.solidifyRock). Packs every CONNECTED
+  // open feature thinner than 2*radius — the swiss-cheese speckle that makes solid
+  // rock read porous — while caverns/tunnels wider than the radius are restored
+  // exactly. This is the primary de-porosity lever (fillEnclosedHoles only catches
+  // sealed pockets; the noise speckle is connected). 0 = off; 2 closes <=4-cell gaps.
+  rockCloseRadius: 2,
 };
 
 /** Frozen shipped baseline — the Sandbox worldgen "reset" restores it. */
-export const GEN_TUNE_DEFAULTS: Readonly<typeof GEN_TUNE> = Object.freeze({ ...GEN_TUNE });
+export const GEN_TUNE_DEFAULTS: Readonly<typeof GEN_TUNE> = Object.freeze({
+  ...GEN_TUNE,
+});
+
+const GEN_TUNE_SIGNATURE_KEYS = Object.keys(GEN_TUNE_DEFAULTS) as Array<keyof typeof GEN_TUNE>;
+
+export function genTuneSignature(source: Readonly<typeof GEN_TUNE> = GEN_TUNE): string {
+  return JSON.stringify(GEN_TUNE_SIGNATURE_KEYS.map((key) => [key, source[key]]));
+}
+
+export const GEN_TUNE_DEFAULT_SIGNATURE = genTuneSignature(GEN_TUNE_DEFAULTS);
 
 /**
  * Worldgen LOOK slider metadata shared by the Sandbox (Toolbar) and Builder
@@ -134,10 +171,38 @@ export const WORLDGEN_LOOK_FIELDS: ReadonlyArray<{
   step: number;
   decimals: number;
 }> = [
-  { key: 'caveScale', label: 'Cave size', min: 0.6, max: 2.2, step: 0.05, decimals: 2 },
-  { key: 'surfacePitWidth', label: 'Sink fill width', min: 0, max: 24, step: 1, decimals: 0 },
-  { key: 'surfacePitDepth', label: 'Sink fill depth', min: 1, max: 14, step: 1, decimals: 0 },
-  { key: 'notchPasses', label: 'Notch passes', min: 0, max: 6, step: 1, decimals: 0 },
+  {
+    key: 'caveScale',
+    label: 'Cave size',
+    min: 0.6,
+    max: 2.2,
+    step: 0.05,
+    decimals: 2,
+  },
+  {
+    key: 'surfacePitWidth',
+    label: 'Sink fill width',
+    min: 0,
+    max: 24,
+    step: 1,
+    decimals: 0,
+  },
+  {
+    key: 'surfacePitDepth',
+    label: 'Sink fill depth',
+    min: 1,
+    max: 14,
+    step: 1,
+    decimals: 0,
+  },
+  {
+    key: 'notchPasses',
+    label: 'Notch passes',
+    min: 0,
+    max: 6,
+    step: 1,
+    decimals: 0,
+  },
 ];
 
 /** Per-biome campaign-dressing density channels (recipe key -> slider label),
@@ -318,7 +383,13 @@ export interface GalleryParams {
   galleries: ArterySpec[];
   /** Flattened chambers (rx >> ry). */
   chambers: ChamberParams;
-  sumps: { count: number; rMin: number; rMax: number; yFracMin: number; yFracMax: number };
+  sumps: {
+    count: number;
+    rMin: number;
+    rMax: number;
+    yFracMin: number;
+    yFracMax: number;
+  };
   shafts: ShaftParams;
   spawnRadius: number;
   minArea: number;
@@ -451,7 +522,7 @@ export interface GenDef {
 /** The original earthen skeleton, literal for literal. GOLDEN-HASH LOCKED. */
 export function baselineSkeletonParams(): BaselineSkeletonParams {
   return {
-    noiseDensity: 0.54,
+    noiseDensity: 0.66,
     caPasses: 9,
     arteries: [
       // Primary meandering artery (defines tunnelY / the spawn chamber row).
@@ -701,7 +772,13 @@ export function vaultParams(): VaultParams {
       yFracMax: 0.62,
       xMargin: 90,
     },
-    pillars: { wMin: 3, wMax: 5, spacingMin: 24, spacingMax: 40, heightFrac: 0.9 },
+    pillars: {
+      wMin: 3,
+      wMax: 5,
+      spacingMin: 24,
+      spacingMax: 40,
+      heightFrac: 0.9,
+    },
     arteries: [
       {
         baseFrac: 0.3,
@@ -770,7 +847,15 @@ export function tubeParams(): TubeParams {
       yFracMin: 0.08,
       yFracMax: 0.3,
     },
-    chambers: { count: 20, rMin: 9, rMax: 16, lobes: 4, xMargin: 60, yMin: 100, ySpanOff: 180 },
+    chambers: {
+      count: 20,
+      rMin: 9,
+      rMax: 16,
+      lobes: 4,
+      xMargin: 60,
+      yMin: 100,
+      ySpanOff: 180,
+    },
     spawnRadius: 26,
     minArea: 300,
     tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
@@ -782,7 +867,10 @@ export function tubeParams(): TubeParams {
  * carved, so the param factories stay the literal golden source.
  * ============================================================ */
 
-const scaleArtery = (a: ArterySpec, s: number): ArterySpec => ({ ...a, radius: a.radius * s });
+const scaleArtery = (a: ArterySpec, s: number): ArterySpec => ({
+  ...a,
+  radius: a.radius * s,
+});
 const scaleChambers = (c: ChamberParams, s: number): ChamberParams => ({
   ...c,
   rxBase: c.rxBase * s,
@@ -790,7 +878,10 @@ const scaleChambers = (c: ChamberParams, s: number): ChamberParams => ({
   ryBase: c.ryBase * s,
   ryRand: c.ryRand * s,
 });
-const scaleShaftsRadius = (sh: ShaftParams, s: number): ShaftParams => ({ ...sh, radius: sh.radius * s });
+const scaleShaftsRadius = (sh: ShaftParams, s: number): ShaftParams => ({
+  ...sh,
+  radius: sh.radius * s,
+});
 
 /**
  * Return a copy of `spec` with every OPEN-SPACE carve radius multiplied by `s`.
@@ -836,7 +927,11 @@ export function scaleSkeletonSpec(spec: SkeletonSpec, s: number): SkeletonSpec {
         kind: 'frozenCrevasses',
         params: {
           ...p,
-          tunnels: { ...p.tunnels, radiusMin: p.tunnels.radiusMin * s, radiusMax: p.tunnels.radiusMax * s },
+          tunnels: {
+            ...p.tunnels,
+            radiusMin: p.tunnels.radiusMin * s,
+            radiusMax: p.tunnels.radiusMax * s,
+          },
           shelves: { ...p.shelves, radius: p.shelves.radius * s },
           spawnRadius: p.spawnRadius * s,
           tunnelRadius: p.tunnelRadius * s,
@@ -902,8 +997,16 @@ export function scaleSkeletonSpec(spec: SkeletonSpec, s: number): SkeletonSpec {
         kind: 'volcanicTubes',
         params: {
           ...p,
-          walkers: { ...p.walkers, radiusMin: p.walkers.radiusMin * s, radiusMax: p.walkers.radiusMax * s },
-          chambers: { ...p.chambers, rMin: p.chambers.rMin * s, rMax: p.chambers.rMax * s },
+          walkers: {
+            ...p.walkers,
+            radiusMin: p.walkers.radiusMin * s,
+            radiusMax: p.walkers.radiusMax * s,
+          },
+          chambers: {
+            ...p.chambers,
+            rMin: p.chambers.rMin * s,
+            rMax: p.chambers.rMax * s,
+          },
           spawnRadius: p.spawnRadius * s,
           tunnelRadius: p.tunnelRadius * s,
         },
@@ -993,7 +1096,10 @@ export const GEN: Record<BiomeId, GenDef> = {
     skeleton: { kind: 'timberScaffold', params: scaffoldParams() },
     machines: machineBudget(['powdermill', 'kilnelevator']),
   },
-  scorched: { ...baselineDef(), machines: machineBudget(['powdermill', 'kilnelevator']) },
+  scorched: {
+    ...baselineDef(),
+    machines: machineBudget(['powdermill', 'kilnelevator']),
+  },
   fungal: {
     ...baselineDef(),
     skeleton: { kind: 'fungalPockets', params: fungalParams() },
@@ -1016,7 +1122,11 @@ export const GEN: Record<BiomeId, GenDef> = {
     ...baselineDef(),
     skeleton: { kind: 'crystalVaults', params: vaultParams() },
     goldPockets: 260,
-    prefabs: { ...defaultPrefabBudget(), count: [1, 2], tags: ['vault', 'setpiece'] },
+    prefabs: {
+      ...defaultPrefabBudget(),
+      count: [1, 2],
+      tags: ['vault', 'setpiece'],
+    },
     machines: machineBudget(['crystalrelay']),
   },
 };

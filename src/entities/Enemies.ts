@@ -1596,6 +1596,19 @@ export class Enemies implements EnemyControlApi {
       // Burning foes PANIC — flail erratically instead of marching their line.
       if (e.status.burning > 0 && e.grounded) e.vx += (Math.random() - 0.5) * 1.3;
 
+      // ELECTROCUTED — any foe touching a live conductor is STUCK to it: the
+      // current overrides its AI, so a slime can't leap away and a walker can't
+      // march off. It just convulses in place (the violent shake + crawling arcs
+      // are drawn in EnemySprites). Cancel this frame's intended motion entirely;
+      // the status's own 1-2s timer (status.ts) frees it once the metal stops
+      // conducting. Knockback still bypasses (tickKnock ran earlier).
+      if (e.status.electrified > 0) {
+        e.vx = 0;
+        e.vy = 0;
+        e.fx = 0;
+        e.fy = 0;
+      }
+
       // Integrate movement (slimes/golems/mages collide; imps/wisps/bats drift).
       // Difficulty scales the step distance = effective speed (level 3 = ×1).
       const spd = difficultyMods(ctx.state).enemySpeed;

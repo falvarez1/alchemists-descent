@@ -27,8 +27,12 @@ export class World {
   readonly life: Int16Array;
   /** Set when a cell moved this sim tick, so it is not simulated twice. */
   readonly moved: Uint8Array;
-  /** Electrical charge ticks remaining (chain lightning, sparks). */
-  readonly charge: Uint8Array;
+  /** Electrical charge per cell (chain lightning, sparks). Uint16, not Uint8:
+   *  conduction reach ≈ deposit / falloff, so carrying a current hundreds of
+   *  cells across metal needs a strictly-decreasing gradient with values well
+   *  past 255. The renderer only reads charge as a binary "lit" bit, so the
+   *  wider range costs nothing on the GPU side. */
+  readonly charge: Uint16Array;
   /** Sparse index of charged cells, used to avoid full-window electrical discovery every substep. */
   readonly activeCharges = new Set<number>();
   /** Coarse tiles already scanned for loaded/generated direct charge writes. */
@@ -45,7 +49,7 @@ export class World {
     this.colors = new Uint32Array(n).fill(EMPTY_COLOR);
     this.life = new Int16Array(n);
     this.moved = new Uint8Array(n);
-    this.charge = new Uint8Array(n);
+    this.charge = new Uint16Array(n);
     this.simBounds = { x0: 0, x1: width, y0: 0, y1: height };
   }
 
@@ -87,7 +91,7 @@ export class World {
 
   /** Set charge while keeping the sparse active-charge index in step. */
   setChargeAt(i: number, charge: number): void {
-    const q = Math.max(0, Math.min(255, charge | 0));
+    const q = Math.max(0, Math.min(65535, charge | 0));
     this.charge[i] = q;
     if (q > 0) this.activeCharges.add(i);
     else this.activeCharges.delete(i);

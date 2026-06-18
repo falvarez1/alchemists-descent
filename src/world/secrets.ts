@@ -88,6 +88,10 @@ export function breachSkinColorFn(biome: BiomeId, rng: Rng): () => number {
   };
 }
 
+function isSecretHostTerrain(t: number): boolean {
+  return blocksEntity(t) && t !== Cell.Metal;
+}
+
 /**
  * Stamp 4-7 sealed secret chambers into the rock flanking the main path.
  * Every secret is real cells (THE ONE COMMANDMENT): an elliptical hollow, a
@@ -98,13 +102,7 @@ export function breachSkinColorFn(biome: BiomeId, rng: Rng): () => number {
  * Reserved-ledger ground (prefab footprints etc.) is rejected; the guard is
  * inert while the ledger is empty or absent.
  */
-export function stampSecrets(
-  ctx: Ctx,
-  rng: Rng,
-  graph: RegionGraph,
-  biome: BiomeId,
-  ledger?: PlacementLedger,
-): number {
+export function stampSecrets(ctx: Ctx, rng: Rng, graph: RegionGraph, biome: BiomeId, ledger?: PlacementLedger): number {
   const world = ctx.world;
   const W = world.width;
   const H = world.height;
@@ -126,14 +124,14 @@ export function stampSecrets(
   const breachCell: Cell = breachSkinCell(biome);
   const breachColor = breachSkinColorFn(biome, rng);
 
-  const allWallEllipse = (cx: number, cy: number, rx: number, ry: number): boolean => {
+  const allHostTerrainEllipse = (cx: number, cy: number, rx: number, ry: number): boolean => {
     for (let dy = -ry; dy <= ry; dy++) {
       for (let dx = -rx; dx <= rx; dx++) {
         if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) > 1) continue;
         const X = cx + dx,
           Y = cy + dy;
         if (X < 2 || X >= W - 2 || Y < 2 || Y >= H - 2) return false;
-        if (world.types[X + Y * W] !== Cell.Wall) return false;
+        if (!isSecretHostTerrain(world.types[X + Y * W])) return false;
       }
     }
     return true;
@@ -152,7 +150,29 @@ export function stampSecrets(
     const ry = 9 + rng.int(6); // 9-14
     if (cx - rx < 3 || cx + rx >= W - 3 || cy - ry < 3 || cy + ry >= H - 8) continue;
     if (ledger && ledger.intersects(cx - rx - 2, cy - ry - 2, cx + rx + 2, cy + ry + 2)) continue;
-    if (!allWallEllipse(cx, cy, rx, ry)) continue;
+    if (!allHostTerrainEllipse(cx, cy, rx, ry)) continue;
+
+    const touched = new Map<number, { type: number; color: number; life: number; charge: number; colorOverride: boolean }>();
+    const remember = (i: number): void => {
+      if (touched.has(i)) return;
+      touched.set(i, {
+        type: world.types[i],
+        color: world.colors[i],
+        life: world.life[i],
+        charge: world.charge[i],
+        colorOverride: world.colorOverrides.has(i),
+      });
+    };
+    const rollback = (): void => {
+      for (const [i, cell] of touched) {
+        world.types[i] = cell.type;
+        world.colors[i] = cell.color;
+        world.life[i] = cell.life;
+        world.setChargeAt(i, cell.charge);
+        if (cell.colorOverride) world.colorOverrides.add(i);
+        else world.colorOverrides.delete(i);
+      }
+    };
 
     // Chamber: elliptical hollow (bedrock metal is never carved).
     for (let dy = -ry; dy <= ry; dy++) {
@@ -160,10 +180,11 @@ export function stampSecrets(
         if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) > 1) continue;
         const i = cx + dx + (cy + dy) * W;
         if (world.types[i] === Cell.Metal) continue;
+        remember(i);
         world.types[i] = Cell.Empty;
         world.colors[i] = EMPTY_COLOR;
         world.life[i] = 0;
-        world.charge[i] = 0;
+        world.clearChargeAt(i);
       }
     }
 
@@ -205,10 +226,11 @@ export function stampSecrets(
           if (dx * dx + dy * dy > 5) continue; // 5-wide bore
           const i = ix + dx + (iy + dy) * W;
           if (world.types[i] === Cell.Metal) continue;
+          remember(i);
           world.types[i] = Cell.Empty;
           world.colors[i] = EMPTY_COLOR;
           world.life[i] = 0;
-          world.charge[i] = 0;
+          world.clearChargeAt(i);
         }
       }
       stepXs.push(ix);
@@ -218,10 +240,13 @@ export function stampSecrets(
     // If the bore never reached open space (ran into deep rock / out of bounds),
     // the chamber would be a SEALED, undiscoverable pocket. Don't dress it with a
     // breach skin + tell (which would falsely advertise reachable treasure) or
-    // count it — leave the empty carve and try another candidate. (This path only
+    // count it — roll the trial back and try another candidate. (This path only
     // diverges from the old behavior when a connector actually fails, so seeds
     // where every bore reaches are byte-identical.)
-    if (!reachedOpen) continue;
+    if (!reachedOpen) {
+      rollback();
+      continue;
+    }
 
     // Reseal the last 5 steps with the breach skin (only cells we just dug).
     const skinX: number[] = [];
@@ -282,10 +307,8 @@ export function stampSecrets(
       fillPile(80 + rng.int(71), Cell.Gold, goldColor); // gold hoard
     } else if (roll < 0.8) {
       // material cache, themed by biome
-      const cache: Cell =
-        biome === 'frozen' ? Cell.Nitrogen : biome === 'scorched' ? Cell.Gunpowder : Cell.Oil;
-      const cacheColor =
-        cache === Cell.Nitrogen ? nitrogenColor : cache === Cell.Gunpowder ? gunpowderColor : oilColor;
+      const cache: Cell = biome === 'frozen' ? Cell.Nitrogen : biome === 'scorched' ? Cell.Gunpowder : Cell.Oil;
+      const cacheColor = cache === Cell.Nitrogen ? nitrogenColor : cache === Cell.Gunpowder ? gunpowderColor : oilColor;
       fillPile(60 + rng.int(41), cache, cacheColor);
     } else {
       fillPile(90, Cell.Slime, slimeColor); // slime nest

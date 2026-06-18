@@ -8,7 +8,15 @@ import { chromium } from 'playwright-core';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0, fail = 0;
-const check = (name, ok, detail = '') => { ok ? (pass++, console.log(`  ok    ${name}`)) : (fail++, console.log(`  FAIL  ${name} ${detail}`)); };
+const check = (name, ok, detail = '') => {
+  if (ok) {
+    pass++;
+    console.log(`  ok    ${name}`);
+  } else {
+    fail++;
+    console.log(`  FAIL  ${name} ${detail}`);
+  }
+};
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
@@ -84,7 +92,6 @@ const indAt = async (clientX, clientY, fromId) => {
   return r; // leave mouse down; caller releases
 };
 const leftZone = await indAt(d.left + d.width * 0.08, d.top + d.height * 0.5, 'builder-world');
-const midZone = await page.evaluate(() => null); // move to center while still dragging
 await page.mouse.move((await box('#builder-dock-bottom')).cx, (await box('#builder-dock-bottom')).cy, { steps: 8 });
 await page.waitForTimeout(60);
 const centerZone = await page.evaluate(() => { const el = document.querySelector('.builder-drop-indicator'); if (!el || getComputedStyle(el).display === 'none') return null; const b = el.getBoundingClientRect(); return { left: Math.round(b.left), width: Math.round(b.width) }; });

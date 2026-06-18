@@ -1,6 +1,7 @@
 import { CARD_DEFS } from '@/combat/wands/cards';
 import type { EventMap } from '@/core/events';
 import type { Ctx } from '@/core/types';
+import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 
 type WaystonePromptRequest = EventMap['waystonePrompt'];
 
@@ -13,6 +14,7 @@ type WaystonePromptRequest = EventMap['waystonePrompt'];
 export class WaystonePromptOverlay {
   private readonly root: HTMLElement;
   private active: WaystonePromptRequest | null = null;
+  private readonly focusTrap: ModalFocusTrap;
   private wasPaused = false;
 
   constructor(private readonly ctx: Ctx) {
@@ -22,6 +24,10 @@ export class WaystonePromptOverlay {
     this.root.setAttribute('aria-hidden', 'true');
     this.root.addEventListener('keydown', (event) => event.stopPropagation());
     document.body.appendChild(this.root);
+    this.focusTrap = createModalFocusTrap(this.root, {
+      initialFocus: () => this.root.querySelector<HTMLButtonElement>('.waystone-prompt-btn'),
+      onEscape: () => this.close('dismiss'),
+    });
 
     ctx.events.on('waystonePrompt', (request) => this.open(request));
   }
@@ -31,6 +37,7 @@ export class WaystonePromptOverlay {
     this.active = request;
     this.wasPaused = this.ctx.state.paused;
     this.ctx.state.paused = true;
+    this.focusTrap.activate();
     this.render(request);
   }
 
@@ -75,7 +82,7 @@ export class WaystonePromptOverlay {
     this.root.appendChild(panel);
 
     window.setTimeout(() => {
-      this.root.querySelector<HTMLButtonElement>('.waystone-prompt-btn')?.focus();
+      this.focusTrap.focusInitial(this.root.querySelector<HTMLButtonElement>('.waystone-prompt-btn'));
     }, 0);
   }
 
@@ -95,6 +102,7 @@ export class WaystonePromptOverlay {
     this.root.classList.remove('visible');
     this.root.setAttribute('aria-hidden', 'true');
     this.root.innerHTML = '';
+    this.focusTrap.deactivate();
     this.ctx.state.paused = this.wasPaused;
     if (action === 'equip') request.onEquip();
     else request.onDismiss();

@@ -29,7 +29,7 @@ await page.waitForFunction(() => window.__game.ctx.levels._transitioning === fal
 // helper that runs inside the page: teleport, tick, report current hint + DOM
 const probe = async (setup) => page.evaluate((setupSrc) => {
   const ctx = window.__game.ctx;
-  // eslint-disable-next-line no-new-func
+
   (new Function('ctx', setupSrc))(ctx);
   ctx.player.dead = false;
   for (let f = 0; f < 8; f++) window.__game.tick();

@@ -27,7 +27,6 @@ const r = await page.evaluate(async () => {
   // in real play — the user's prompt, in the same gated block, fires).
   ctx.levels._transitioning = false;
   const p = ctx.player, LAVA = 11, STONE = 12;
-  const w0 = ctx.world; // capture to detect a mid-run world swap (sandbox detach)
   const w = () => ctx.world; // always write/read the LIVE world
   const rt = ctx.levels.current;
   // Levels.update early-returns if the player is dead, so keep him ALIVE but

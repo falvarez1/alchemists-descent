@@ -7,9 +7,8 @@
 //
 // Shape of the analysis:
 // - Downsampled occupancy: one analysis cell per 4x4 world block, OPEN unless
-//   the block-center world cell is load-bearing solid (Wall/Metal/Stone/Ice/
-//   Wood). Liquids, powders, gas and empty space all count as open — a flooded
-//   gallery is still a room.
+//   the block-center world cell blocks moving bodies. Liquids, gas, soft growth
+//   and empty space all count as open — a flooded gallery is still a room.
 // - Regions: iterative 4-connected flood fill over the open cells.
 // - Edges: for every solid cell, scan the two axes up to SCAN_REACH cells each
 //   way; where two different regions face each other across the solid run, the
@@ -19,7 +18,7 @@
 //   breach; small regions off that path are flagged as natural secret pockets.
 
 import type { Region, RegionEdge, RegionGraph } from '@/core/types';
-import { Cell } from '@/sim/CellType';
+import { blocksEntity } from '@/sim/CellType';
 import type { World } from '@/sim/World';
 
 /** Downsample factor: one analysis cell covers a 4x4 world block. */
@@ -34,13 +33,11 @@ const BREACHABLE_THICKNESS = 8;
 const ANCHOR_SEARCH = 6;
 
 /**
- * Load-bearing solids for region analysis. Deliberately NOT CellType.isSolid:
- * vines are climbable greenery, not architecture, so they stay open here.
+ * Body-blocking cells for region analysis. Runtime collision already treats
+ * soft growth as pass-through, so vines/moss/fungus stay open here too.
  */
 function isRegionSolid(t: number): boolean {
-  return (
-    t === Cell.Wall || t === Cell.Metal || t === Cell.Stone || t === Cell.Ice || t === Cell.Wood
-  );
+  return blocksEntity(t);
 }
 
 /**
@@ -146,13 +143,7 @@ function extract(
   //    candidate wall — keep the thinnest one (and its midpoint) per pair.
   const edgeMap = new Map<number, RegionEdge>();
   const n = regions.length;
-  const recordEdge = (
-    la: number,
-    lb: number,
-    runLen: number,
-    midBx: number,
-    midBy: number,
-  ): void => {
+  const recordEdge = (la: number, lb: number, runLen: number, midBx: number, midBy: number): void => {
     const a = Math.min(la, lb);
     const b = Math.max(la, lb);
     const thickness = runLen * SCALE;
@@ -242,7 +233,17 @@ function extract(
   }
   for (const r of regions) r.isPocket = r.area < POCKET_AREA && !r.onMainPath;
 
-  return { scale: SCALE, w, h, labels, regions, edges, mainPath, spawnRegion, exitRegion };
+  return {
+    scale: SCALE,
+    w,
+    h,
+    labels,
+    regions,
+    edges,
+    mainPath,
+    spawnRegion,
+    exitRegion,
+  };
 }
 
 /**
@@ -250,14 +251,7 @@ function extract(
  * downsampled cells (rings of increasing Chebyshev radius) when the position
  * lands on solid. Falls back to the largest region, else -1.
  */
-function regionNear(
-  labels: Int32Array,
-  w: number,
-  h: number,
-  px: number,
-  py: number,
-  regions: Region[],
-): number {
+function regionNear(labels: Int32Array, w: number, h: number, px: number, py: number, regions: Region[]): number {
   const bx0 = Math.min(w - 1, Math.max(0, Math.floor(px / SCALE)));
   const by0 = Math.min(h - 1, Math.max(0, Math.floor(py / SCALE)));
   for (let r = 0; r <= ANCHOR_SEARCH; r++) {
@@ -284,12 +278,7 @@ function regionNear(
  * (minWallThickness <= BREACHABLE_THICKNESS). Returns the region-id path, or
  * null when the exit is unreachable through thin walls.
  */
-function breachablePath(
-  regionCount: number,
-  edges: RegionEdge[],
-  from: number,
-  to: number,
-): number[] | null {
+function breachablePath(regionCount: number, edges: RegionEdge[], from: number, to: number): number[] | null {
   const adj = new Map<number, number[]>();
   for (const e of edges) {
     if (e.minWallThickness > BREACHABLE_THICKNESS) continue;

@@ -58,16 +58,19 @@ export function dressWalkSurface(world: World, opts: SurfaceDressOptions): void 
       if (t[x + (y - 1) * W] !== Cell.Empty || t[x + (y - 2) * W] !== Cell.Empty) continue;
       if (crown === 'frost') {
         col[i] = packRGB(206, 220, 238); // snow cap
+        world.colorOverrides.add(i);
         continue;
       }
       const hr = hash2(x, y, seed + 131);
       if (hr < flowerChance) col[i] = packRGB(214, 96, 150); // pink flower
       else if (hr < flowerChance + 0.06) col[i] = packRGB(206, 186, 84); // yellow flower
       else col[i] = grassColor(x, seed); // grass / moss
+      world.colorOverrides.add(i);
       for (let d = 1; d <= 3; d++) {
         const ii = x + (y + d) * W;
         if (t[ii] !== Cell.Wall) break;
         col[ii] = dirtColor(x, y + d, seed);
+        world.colorOverrides.add(ii);
       }
     }
   }

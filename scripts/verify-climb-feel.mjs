@@ -60,7 +60,7 @@ const climbSetup = (paintSrc, px, py, keysSrc) => `
 
 // ---- 2. climb speed: rises clearly faster than the old 5-frame/cell rate ----
 const speed = await page.evaluate((setup) => {
-  // eslint-disable-next-line no-new-func
+
   new Function(setup)();
   const ctx = window.__game.ctx, p = ctx.player;
   const startY = p.y;
@@ -72,7 +72,7 @@ check('climbing is faster (>=16 cells in 60 frames; was ~12)', speed.climbed >= 
 
 // ---- 3. climb tilt: the body leans parallel to an angled (receding) wall ----
 const tilt = await page.evaluate((setup) => {
-  // eslint-disable-next-line no-new-func
+
   new Function(setup)();
   const ctx = window.__game.ctx, p = ctx.player;
   for (let f = 0; f < 30; f++) window.__game.tick();
@@ -85,7 +85,7 @@ check('body leans into an angled wall (climbLean clearly non-zero)', tilt.lean >
 
 // ---- 4. the reach limit: a face beyond climbing reach drops the climb -------
 const release = await page.evaluate((setup) => {
-  // eslint-disable-next-line no-new-func
+
   new Function(setup)();
   const ctx = window.__game.ctx, p = ctx.player;
   for (let f = 0; f < 12; f++) window.__game.tick();
@@ -98,7 +98,7 @@ check('a face beyond climbing reach drops the climb', release.climbing === false
 
 // ---- 5. snug-to-wall: the body closes the grip gap (no climbing on air) -----
 const gap = await page.evaluate((setup) => {
-  // eslint-disable-next-line no-new-func
+
   new Function(setup)();
   const ctx = window.__game.ctx, p = ctx.player;
   for (let f = 0; f < 10; f++) window.__game.tick();
@@ -109,9 +109,7 @@ check('the body snugs to the wall (grip gap <= 2 cells)', gap.gap <= 2 && gap.ga
 
 // ---- screenshot of the angled-wall climb for an eyeball check ---------------
 await page.evaluate((setup) => {
-  // eslint-disable-next-line no-new-func
   new Function(setup)();
-  const ctx = window.__game.ctx;
   for (let f = 0; f < 20; f++) window.__game.tick();
 }, climbSetup('for(let y=340;y<=470;y++){const Lx=210+Math.round((410-y)*0.3);stone(Lx,y,Lx+18,y);}', 204, 410, ''));
 await page.waitForTimeout(250);

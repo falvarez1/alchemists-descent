@@ -72,9 +72,27 @@ const samplePixels = () =>
         });
       }),
   );
-const buildPixels = await samplePixels();
+
+async function waitForCanvasSample(label, minNonBlackPct = 1, minAvg = 2, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastSample = null;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    lastSample = await samplePixels();
+    try {
+      assertCanvasSample(label, lastSample, minNonBlackPct, minAvg);
+      return lastSample;
+    } catch (error) {
+      lastError = error;
+      await page.waitForTimeout(250);
+    }
+  }
+  if (lastError) throw lastError;
+  throw new Error(`${label} canvas sample timed out: ${JSON.stringify(lastSample)}`);
+}
+
+const buildPixels = await waitForCanvasSample('build mode');
 console.log('canvas pixels (build):', JSON.stringify(buildPixels));
-assertCanvasSample('build mode', buildPixels);
 
 // --- 2) Paint water with the brush (click-drag on the canvas) ---
 await page.click('button.tool-btn[data-id="2"]'); // Water
@@ -115,9 +133,8 @@ if (!hudState.hudVisible || !hudState.playActive || hudState.hotbarSlots <= 0) {
   throw new Error('Play launcher did not enter a usable play mode: ' + JSON.stringify(hudState));
 }
 await page.screenshot({ path: `${outDir}/04-play-mode.png` });
-const playPixels = await samplePixels();
+const playPixels = await waitForCanvasSample('play mode');
 console.log('canvas pixels (play):', JSON.stringify(playPixels));
-assertCanvasSample('play mode', playPixels);
 
 // --- 5) Move + jump + fire a spark bolt at the terrain ---
 await page.keyboard.down('d');

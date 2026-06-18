@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
@@ -31,5 +31,8 @@ export default defineConfig({
     watch: {
       ignored: ['**/verify-out/**', '**/dist/**', '**/coverage/**'],
     },
+  },
+  test: {
+    testTimeout: 60_000,
   },
 });

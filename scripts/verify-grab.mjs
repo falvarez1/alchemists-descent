@@ -28,7 +28,6 @@ const r = await page.evaluate(async () => {
   const tick = (n) => { for (let f = 0; f < n; f++) window.__game.tick(); };
   await ctx.console.exec('run test --level physics-test --world campaign-level');
   tick(20);
-  const w = ctx.world;
   const rb = ctx.rigidBodies;
   const p = ctx.player;
   ctx.input.mouse.x = 1100; ctx.input.mouse.y = 430; // park cursor right -> aim ~ 0

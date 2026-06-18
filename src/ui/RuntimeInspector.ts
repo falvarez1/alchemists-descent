@@ -42,6 +42,7 @@ export class RuntimeInspector {
     this.root.addEventListener('mousedown', (event) => event.stopPropagation());
     this.root.addEventListener('mouseup', (event) => event.stopPropagation());
     this.root.addEventListener('click', (event) => this.handleClick(event));
+    this.root.addEventListener('keydown', (event) => this.handleKeyDown(event));
     this.root.addEventListener('input', (event) => this.handleInput(event));
     this.root.addEventListener('change', (event) => this.handleInput(event));
 
@@ -218,7 +219,46 @@ export class RuntimeInspector {
     }
   }
 
-  private focusRuntimeRow(id: string): void {
+  private handleKeyDown(event: KeyboardEvent): void {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (this.focusRouter.isTextEntryTarget(target)) return;
+    const row = target.closest<HTMLElement>('[data-runtime-id]');
+    if (!row || !this.root.contains(row)) return;
+
+    if (event.code === 'Enter' || event.code === 'Space') {
+      event.preventDefault();
+      event.stopPropagation();
+      const id = row.dataset.runtimeId ?? '';
+      if (id) this.focusRuntimeRow(id, { restoreRowFocus: true });
+      return;
+    }
+
+    const rows = this.runtimeRows();
+    const index = rows.indexOf(row);
+    if (rows.length === 0 || index < 0) return;
+    let nextIndex = index;
+    if (event.code === 'ArrowDown' || event.code === 'ArrowRight') nextIndex = Math.min(rows.length - 1, index + 1);
+    else if (event.code === 'ArrowUp' || event.code === 'ArrowLeft') nextIndex = Math.max(0, index - 1);
+    else if (event.code === 'Home') nextIndex = 0;
+    else if (event.code === 'End') nextIndex = rows.length - 1;
+    else return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    rows[nextIndex]?.focus({ preventScroll: true });
+  }
+
+  private runtimeRows(): HTMLElement[] {
+    return Array.from(this.root.querySelectorAll<HTMLElement>('[data-runtime-id]'));
+  }
+
+  private focusRenderedRow(id: string): void {
+    const row = this.runtimeRows().find((candidate) => candidate.dataset.runtimeId === id);
+    row?.focus({ preventScroll: true });
+  }
+
+  private focusRuntimeRow(id: string, options: { restoreRowFocus?: boolean } = {}): void {
     this.selectedId = id;
     const snapshot = this.sampleSnapshot(true);
     const row = snapshot.selectedRow ?? snapshot.rows.find((candidate) => candidate.id === id) ?? null;
@@ -230,6 +270,7 @@ export class RuntimeInspector {
     this.ctx.state.runtimeInspectionLight = focus;
     this.ctx.camera.setInspectionFocus(focus.x, focus.y, { snap: !this.followSelectedEntity });
     this.render(false);
+    if (options.restoreRowFocus) this.focusRenderedRow(id);
   }
 
   private updateSelectedRuntimeTarget(options: { updateCamera: boolean; snapCamera: boolean }): void {

@@ -15,10 +15,8 @@ const check = (name, ok, detail = '') => {
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
-let lastDialog = null;
 let nextPromptAnswer = null;
 page.on('dialog', (d) => {
-  lastDialog = { type: d.type(), message: d.message(), value: d.defaultValue() };
   if (d.type() === 'prompt' && nextPromptAnswer !== null) {
     const v = nextPromptAnswer;
     nextPromptAnswer = null;

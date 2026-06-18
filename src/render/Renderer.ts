@@ -34,6 +34,7 @@ class WebGLRenderBackend implements RendererBackend {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.OrthographicCamera;
+  private readonly textureData: Float32Array | Uint8Array;
   private readonly texture: THREE.DataTexture;
   private readonly quadMesh: THREE.Mesh;
   private readonly basicMaterial: THREE.MeshBasicMaterial;
@@ -97,12 +98,15 @@ class WebGLRenderBackend implements RendererBackend {
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
     this.pixelData = new Float32Array(VIEW_W * VIEW_H * 4);
+    this.textureData = this.floatTextureSupported
+      ? this.pixelData
+      : new Uint8Array(VIEW_W * VIEW_H * 4);
     this.texture = new THREE.DataTexture(
-      this.pixelData,
+      this.textureData,
       VIEW_W,
       VIEW_H,
       THREE.RGBAFormat,
-      THREE.FloatType,
+      this.floatTextureSupported ? THREE.FloatType : THREE.UnsignedByteType,
     );
     this.texture.needsUpdate = true;
     this.texture.minFilter = THREE.NearestFilter;
@@ -158,8 +162,19 @@ class WebGLRenderBackend implements RendererBackend {
 
   /** Flag the GPU texture for re-upload after the buffer was written. */
   markTextureDirty(): void {
+    if (!this.floatTextureSupported) this.packPixelDataToBytes();
     this.texture.needsUpdate = true;
     this.gpuFrame = false;
+  }
+
+  private packPixelDataToBytes(): void {
+    const dst = this.textureData;
+    if (!(dst instanceof Uint8Array)) return;
+    const src = this.pixelData;
+    for (let i = 0; i < src.length; i++) {
+      const v = src[i];
+      dst[i] = v <= 0 ? 0 : v >= 1 ? 255 : Math.round(v * 255);
+    }
   }
 
   /** WebGL2 is required (integer textures, R8/R32F); CPU path is the fallback. */
@@ -190,7 +205,7 @@ class WebGLRenderBackend implements RendererBackend {
 
   getBackendStatus(): RenderBackendStatus {
     const webgl2 = this.renderer.capabilities.isWebGL2;
-    const webglAvailable = !this.contextLost && this.floatTextureSupported;
+    const webglAvailable = !this.contextLost;
     const navigatorGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
     const secureContext = typeof window === 'undefined' ? false : window.isSecureContext === true;
     const decision = chooseRenderBackend({
@@ -215,9 +230,9 @@ class WebGLRenderBackend implements RendererBackend {
       reason: this.contextLost
         ? 'webgl-context-lost'
         : !this.floatTextureSupported
-          ? 'webgl-float-texture-unavailable'
+          ? this.fallbackReason ?? 'webgl-unsigned-byte-texture-fallback'
           : this.fallbackReason ?? decision.reason,
-      fallback: this.fallbackReason !== null || decision.fallback,
+      fallback: this.fallbackReason !== null || decision.fallback || !this.floatTextureSupported,
       canvas: {
         width: this.renderer.domElement.width,
         height: this.renderer.domElement.height,

@@ -40,6 +40,7 @@ const GAMEPLAY_KEY_CODES = new Set([
   'KeyQ',
   'KeyX',
   'KeyF',
+  'KeyG',
   'KeyR',
   'Digit1',
   'Digit2',
@@ -49,6 +50,10 @@ const GAMEPLAY_KEY_CODES = new Set([
   'Digit6',
   'Tab',
 ]);
+
+export function isGameplayKeyCode(code: string): boolean {
+  return GAMEPLAY_KEY_CODES.has(code) || code.startsWith('Digit');
+}
 
 const BUILDER_REQUEST_CLOSE_EVENT = 'builder-request-close';
 
@@ -330,7 +335,7 @@ export class InputManager {
   }
 
   private isGameplayKey(code: string): boolean {
-    return GAMEPLAY_KEY_CODES.has(code) || code.startsWith('Digit');
+    return isGameplayKeyCode(code);
   }
 
   private claimPlayKey(e: KeyboardEvent): void {

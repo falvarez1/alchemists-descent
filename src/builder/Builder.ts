@@ -877,7 +877,7 @@ export class Builder {
   private prefabSelectedAnchorId: string | null = null;
   private placedPrefabAnchors: PlacedPrefabAnchor[] = [];
   /** Scarred planes captured on playtest return, for BAKE. */
-  private playtestScars: { types: Uint8Array; life: Int16Array; charge: Uint8Array } | null = null;
+  private playtestScars: { types: Uint8Array; life: Int16Array; charge: Uint16Array } | null = null;
   /** True while the disposable custom runtime came from Builder, not header PLAY. */
   private builderPlaytestActive = false;
   /** Header BUILDER / banner return path; header SANDBOX deliberately abandons instead. */
@@ -950,7 +950,7 @@ export class Builder {
     types: Uint8Array;
     colors: Uint32Array;
     life: Int16Array;
-    charge: Uint8Array;
+    charge: Uint16Array;
   } | null = null;
   private settling = false;
   /** paintDirty as it stood when the settle began — a zero-diff KEEP must
@@ -7097,11 +7097,11 @@ export class Builder {
       g.chargeFalloff = v;
       this.ctx.events.emit('paramsChanged');
     });
-    this.sliderRow(elec, 'Charge Strength (reach)', g.chargeStrength, 0.5, 5, 0.5, (v) => `${v.toFixed(1)}x`, (v) => {
+    this.sliderRow(elec, 'Charge Strength (reach)', g.chargeStrength, 1, 30, 1, (v) => `${v.toFixed(0)}x`, (v) => {
       g.chargeStrength = v;
       this.ctx.events.emit('paramsChanged');
     });
-    this.sliderRow(elec, 'Charge Decay (duration)', g.chargeDecay, 1, 10, 1, (v) => v.toFixed(0), (v) => {
+    this.sliderRow(elec, 'Charge Decay (duration)', g.chargeDecay, 1, 20, 1, (v) => v.toFixed(0), (v) => {
       g.chargeDecay = v;
       this.ctx.events.emit('paramsChanged');
     });

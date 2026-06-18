@@ -479,7 +479,8 @@ export class PlayerControl implements PlayerControlApi {
    *  on diveT > 0, so a plain fall onto a foe never triggers it. */
   private tryStompEnemy(ctx: Ctx): void {
     const player = ctx.player;
-    for (const e of ctx.enemies) {
+    for (const e of ctx.enemies.slice()) {
+      if (!ctx.enemies.includes(e)) continue;
       if (STOMP_IMMUNE.has(e.kind)) continue;
       const def = ctx.enemyCtl.defs[e.kind];
       if (Math.abs(player.x - e.x) > PLAYER_HALF_W + def.halfW) continue; // no horizontal overlap
@@ -605,7 +606,8 @@ export class PlayerControl implements PlayerControlApi {
     }
 
     // Enemies in the cone: knockback + contact damage.
-    for (const e of ctx.enemies) {
+    for (const e of ctx.enemies.slice()) {
+      if (!ctx.enemies.includes(e)) continue;
       const dx = e.x - ox;
       const dy = e.y - 5 - oy;
       const d = Math.hypot(dx, dy) || 1;
@@ -747,6 +749,34 @@ export class PlayerControl implements PlayerControlApi {
     // ground is correctly re-detected at the end of this frame.
     ctx.player.grounded = false;
     ctx.vineStrands.releaseSwing();
+  }
+
+  resetTransientState(ctx: Ctx): void {
+    this.releaseVine(ctx);
+    this.clearCorpse(ctx);
+    this.resetClimbState(ctx.player);
+    ctx.player.crawling = false;
+    ctx.player.crawlT = 0;
+    ctx.player.swinging = false;
+    this.animStarted = false;
+    this.framesSinceGrounded = 99;
+    this.jumpBufferFrames = 0;
+    this.jumpRiseFrames = 0;
+    this.prevJumpHeld = false;
+    this.kickCooldownT = 0;
+    this.swingAX = 0;
+    this.swingAY = 0;
+    this.swingLen = 0;
+    this.swingJumpPrev = false;
+    this.prevWallJumpHeld = false;
+    this.grabBufferFrames = 0;
+    this.prevGrabHeld = false;
+    this.levitFrames = 0;
+    this.lastStrideStep = 0;
+    this.idleFrames = 0;
+    this.prevInLiquid = false;
+    this.statusSlow = 1;
+    this.prevCramped = false;
   }
 
   /** Pendulum while latched to a vine: gravity + a rigid rope constraint (radial
@@ -952,6 +982,9 @@ export class PlayerControl implements PlayerControlApi {
     player.crawling = false; // arrivals are standing-safe
     player.crawlT = 0;
     this.resetClimbState(player);
+    this.resetTransientState(this.ctx);
+    this.ctx.fx.hitstop = 0;
+    this.ctx.fx.deathSlowMo = 0;
     this.ctx.events.emit('playerRespawned');
   }
 
@@ -2107,7 +2140,8 @@ export class PlayerControl implements PlayerControlApi {
         }
       }
       // grounded foes near the impact get knocked off their feet
-      for (const e of ctx.enemies) {
+      for (const e of ctx.enemies.slice()) {
+        if (!ctx.enemies.includes(e)) continue;
         if (Math.abs(e.x - player.x) < 26 && Math.abs(e.y - player.y) < 10) {
           ctx.enemyCtl.damage(e, 1, Math.sign(e.x - player.x || 1) * 1.6, -1.8);
         }

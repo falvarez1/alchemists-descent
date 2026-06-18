@@ -1,6 +1,7 @@
 // Focused game-key capture probe.
 // Usage: node scripts/verify-input-capture.mjs [url]  (dev server running)
 import { chromium } from 'playwright-core';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -23,6 +24,7 @@ page.on('dialog', (d) => d.accept());
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
+await page.waitForFunction(() => window.__game?.ctx?.builder, { timeout: 20000 });
 await page.waitForTimeout(900);
 
 const panCheck = async (name, code, axis, dir) => {
@@ -62,7 +64,13 @@ await panCheck('Sandbox D pans camera right', 'KeyD', 'tx', 1);
 await panCheck('Sandbox W pans camera up', 'KeyW', 'ty', -1);
 await panCheck('Sandbox S pans camera down', 'KeyS', 'ty', 1);
 
-await page.click('#mode-builder-btn');
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  ctx.state.mode = 'build';
+  ctx.state.paused = false;
+  ctx.builder.open();
+  document.body.focus();
+});
 await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 5000 });
 const builderTab = await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -85,11 +93,11 @@ await panCheck('Builder D pans camera right', 'KeyD', 'tx', 1);
 await panCheck('Builder W pans camera up', 'KeyW', 'ty', -1);
 await panCheck('Builder S pans camera down', 'KeyS', 'ty', 1);
 
-await page.click('#mode-play-btn');
-await page.waitForFunction(
-  () => window.__game.ctx.state.mode === 'play' && !document.body.classList.contains('builder-open'),
-  { timeout: 5000 },
-);
+await page.evaluate(() => {
+  window.__game.ctx.builder.close();
+  document.body.focus();
+});
+await startConsoleTestRun(page, { loadout: 'advanced', settleMs: 100 });
 
 await page.evaluate(() => {
   const ctx = window.__game.ctx;

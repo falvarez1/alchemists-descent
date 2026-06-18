@@ -36,15 +36,25 @@ async function auditSeed(seed) {
           const ctx = window.__game.ctx;
           const { validateFindability } = await import('/src/world/validate.ts');
 
+          const waitForSettledFindability = async (rt) => {
+            let latest = null;
+            const deadline = performance.now() + 1600;
+            while (performance.now() < deadline) {
+              latest = validateFindability(rt);
+              if (!latest.some((i) => i.severity === 'error')) return latest;
+              await new Promise((r) => setTimeout(r, 100));
+            }
+            return latest ?? validateFindability(rt);
+          };
+
           const out = [];
           for (const id of IDS) {
             if (id !== 'd1') {
               ctx.levels.leaveLevel();
               ctx.levels.enterLevel(ctx, id);
-              await new Promise((r) => setTimeout(r, 350));
             }
             const rt = ctx.levels.current;
-            const all = validateFindability(rt);
+            const all = await waitForSettledFindability(rt);
             const issues = all
               .filter((i) => i.severity === 'error')
               .map((i) => `${i.what}@${i.x},${i.y}`);

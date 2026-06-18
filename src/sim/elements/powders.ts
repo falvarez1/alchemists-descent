@@ -16,8 +16,7 @@ export function handleSand(ctx: Ctx, x: number, y: number, type: Cell): void {
   if (type === Cell.Sand) {
     const i = w.idx(x, y);
     if (w.charge[i] > 6 && Math.random() < 0.22) {
-      w.types[i] = Cell.Glass;
-      w.colors[i] = glassColor();
+      w.replaceCellAt(i, Cell.Glass, glassColor());
       return;
     }
     if (Math.random() < 0.1) {
@@ -29,8 +28,7 @@ export function handleSand(ctx: Ctx, x: number, y: number, type: Cell): void {
           w.types[w.idx(nx, ny)] === Cell.Lava &&
           Math.random() < 0.22
         ) {
-          w.types[i] = Cell.Glass;
-          w.colors[i] = glassColor();
+          w.replaceCellAt(i, Cell.Glass, glassColor());
           return;
         }
       }

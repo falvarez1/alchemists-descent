@@ -1,11 +1,41 @@
 import { describe, expect, it } from 'vitest';
 
+import { createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
-import type { Ctx, LevelRuntime } from '@/core/types';
+import type { Ctx, Enemy, LevelRuntime } from '@/core/types';
+import { ENEMY_DEFS } from '@/entities/Enemies';
 import { PlayerControl, climbBrushesCell, createPlayer } from '@/entities/Player';
-import { sampleAndTickStatus } from '@/entities/status';
+import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
+
+function testEnemy(x: number, y: number): Enemy {
+  return {
+    kind: 'slime',
+    x,
+    y,
+    fx: 0,
+    fy: 0,
+    vx: 0,
+    vy: 0,
+    hp: 1,
+    maxHp: 1,
+    flash: 0,
+    timer: 0,
+    attackCd: 0,
+    bobPhase: 0,
+    grounded: false,
+    stride: 0,
+    splat: 0,
+    prevG: false,
+    blink: 0,
+    jetFuel: 0,
+    jetCd: 0,
+    stuckT: 0,
+    status: createDefaultStatus(),
+    dmgK: 1,
+  };
+}
 
 describe('player death economy', () => {
   it('halves incoming damage while stoneskin is active', () => {
@@ -130,6 +160,101 @@ describe('player death economy', () => {
     expect(player.status.burning).toBe(0);
     expect(player.status.electrified).toBe(0);
     expect(player.status.swift).toBe(70);
+  });
+
+  it('clears respawn-only fx and private movement buffers on checkpoint respawn', () => {
+    const player = createPlayer();
+    player.dead = true;
+    player.swinging = true;
+    player.climbing = true;
+    player.crawling = true;
+    player.crawlT = 6;
+    let vineReleaseCount = 0;
+    const ctx = {
+      player,
+      world: new World(),
+      state: { score: 0, mode: 'play' },
+      levels: {
+        current: { pickups: [] },
+        respawnPoint: () => ({ x: 44, y: 55 }),
+      },
+      events: new EventBus(),
+      telemetry: { count: () => undefined },
+      particles: { burst: () => undefined },
+      audio: { squelch: () => undefined, boom: () => undefined },
+      fx: { screenShake: 0, bloomKick: 0, digBeam: null, hitstop: 6, deathSlowMo: 40 },
+      vineStrands: { releaseSwing: () => { vineReleaseCount++; } },
+    } as unknown as Ctx;
+    const control = new PlayerControl(ctx);
+    const internals = control as unknown as {
+      animStarted: boolean;
+      jumpBufferFrames: number;
+      kickCooldownT: number;
+      swinging: boolean;
+      prevGrabHeld: boolean;
+    };
+    internals.animStarted = true;
+    internals.jumpBufferFrames = 12;
+    internals.kickCooldownT = 9;
+    internals.swinging = true;
+    internals.prevGrabHeld = true;
+
+    control.respawn();
+
+    expect(ctx.fx.hitstop).toBe(0);
+    expect(ctx.fx.deathSlowMo).toBe(0);
+    expect(internals.animStarted).toBe(false);
+    expect(internals.jumpBufferFrames).toBe(0);
+    expect(internals.kickCooldownT).toBe(0);
+    expect(internals.swinging).toBe(false);
+    expect(internals.prevGrabHeld).toBe(false);
+    expect(player.swinging).toBe(false);
+    expect(player.climbing).toBe(false);
+    expect(player.crawling).toBe(false);
+    expect(player.crawlT).toBe(0);
+    expect(vineReleaseCount).toBe(1);
+  });
+
+  it('does not skip enemies when kick damage removes from the live enemy array', () => {
+    const player = createPlayer();
+    player.x = 100;
+    player.y = 100;
+    player.aimAngle = 0;
+    const first = testEnemy(112, 97);
+    const second = testEnemy(118, 97);
+    const enemies = [first, second];
+    const damaged: Enemy[] = [];
+    const ctx = {
+      player,
+      world: new World(),
+      enemies,
+      state: { mode: 'play' },
+      params: createGameParams(),
+      rigidBodies: {
+        bodies: [],
+        applyMomentumAt: () => undefined,
+      },
+      enemyCtl: {
+        defs: ENEMY_DEFS,
+        damage: (enemy: Enemy) => {
+          damaged.push(enemy);
+          const index = enemies.indexOf(enemy);
+          if (index >= 0) {
+            const last = enemies.length - 1;
+            if (index !== last) enemies[index] = enemies[last];
+            enemies.pop();
+          }
+        },
+      },
+      particles: { list: [], spawn: () => undefined },
+      vineStrands: { applyRadialImpulse: () => undefined },
+      audio: { tone: () => undefined, noiseBurst: () => undefined },
+    } as unknown as Ctx;
+
+    new PlayerControl(ctx).kick(ctx);
+
+    expect(new Set(damaged)).toEqual(new Set([first, second]));
+    expect(enemies).toHaveLength(0);
   });
 
   it('only lets wall climbing brush soft growth and debris cells', () => {

@@ -6,7 +6,10 @@ import { VineStrands } from '@/entities/VineStrands';
 import { CELL_COUNT, Cell } from '@/sim/CellType';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
+import { handleNitrogen } from '@/sim/elements/liquids';
 import { handleFungus, handleMoss } from '@/sim/elements/newMaterials';
+import { handleSand } from '@/sim/elements/powders';
+import { handleFire } from '@/sim/elements/thermal';
 import { handleVines } from '@/sim/elements/vines';
 
 function attachVineStrands(ctx: Ctx): Ctx {
@@ -15,6 +18,20 @@ function attachVineStrands(ctx: Ctx): Ctx {
   ctx.events = events as Ctx['events'];
   ctx.vineStrands = new VineStrands(ctx);
   return ctx;
+}
+
+function dirtyCell(world: World, i: number, type: Cell): void {
+  world.types[i] = type;
+  world.colors[i] = 0x112233;
+  world.life[i] = 47;
+  world.setChargeAt(i, 9);
+  world.colorOverrides.add(i);
+}
+
+function expectNoTransientMetadata(world: World, i: number): void {
+  expect(world.charge[i]).toBe(0);
+  expect(world.activeCharges.has(i)).toBe(false);
+  expect(world.colorOverrides.has(i)).toBe(false);
 }
 
 describe('cell ABI contracts', () => {
@@ -199,6 +216,56 @@ describe('World.swap', () => {
     expect(world.types[world.idx(3, 3)]).toBe(Cell.Vines);
     expect(world.types[world.idx(3, 4)]).toBe(Cell.Empty);
     expect(ctx.vineStrands.strands).toHaveLength(0);
+  });
+});
+
+describe('cell material conversions', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('clears transient metadata when charged sand fuses into glass', () => {
+    const world = new World(6, 6);
+    const i = world.idx(2, 2);
+    dirtyCell(world, i, Cell.Sand);
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    handleSand({ world, params: createGameParams() } as unknown as Ctx, 2, 2, Cell.Sand);
+
+    expect(world.types[i]).toBe(Cell.Glass);
+    expect(world.life[i]).toBe(0);
+    expectNoTransientMetadata(world, i);
+  });
+
+  it('clears transient metadata when nitrogen freezes or boils neighboring cells', () => {
+    const world = new World(6, 6);
+    const source = world.idx(2, 2);
+    const target = world.idx(3, 2);
+    dirtyCell(world, source, Cell.Nitrogen);
+    dirtyCell(world, target, Cell.Water);
+
+    handleNitrogen({ world, params: createGameParams() } as unknown as Ctx, 2, 2);
+
+    expect(world.types[target]).toBe(Cell.Ice);
+    expect(world.life[target]).toBe(0);
+    expectNoTransientMetadata(world, target);
+    expect(world.types[source]).toBe(Cell.Smoke);
+    expect(world.life[source]).toBe(20);
+    expectNoTransientMetadata(world, source);
+  });
+
+  it('clears transient metadata when fire burns out to empty space', () => {
+    const world = new World(6, 6);
+    const i = world.idx(2, 2);
+    dirtyCell(world, i, Cell.Fire);
+    world.life[i] = 1;
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    handleFire({ world, params: createGameParams() } as unknown as Ctx, 2, 2);
+
+    expect(world.types[i]).toBe(Cell.Empty);
+    expect(world.life[i]).toBe(0);
+    expectNoTransientMetadata(world, i);
   });
 });
 
