@@ -10,6 +10,7 @@ import {
   stoneColor,
 } from '@/sim/colors';
 import type { Ctx, Projectile, SpellId, SpellsApi } from '@/core/types';
+import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
 
 /** Gold per RawOre cell mined. Kept modest (raw ore < refined gold's ~10/cell) —
  *  caches are plentiful and buried, so the per-cell value guards the economy. */
@@ -224,7 +225,7 @@ export class Spells implements SpellsApi {
 
     if (player.spell === 'bolt') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
-      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'bolt', life: 180, age: 0, charging: false, hostile: false });
+      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'bolt', life: PROJECTILE_LIFE.bolt, age: 0, charging: false, hostile: false });
       this.ctx.audio.zap();
     } else if (player.spell === 'scatter') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
@@ -255,15 +256,15 @@ export class Spells implements SpellsApi {
       this.castEmberStorm(tip.x, tip.y, a);
     } else if (player.spell === 'frostshard') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
-      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'iceshard', life: 140, age: 0, charging: false, hostile: false });
+      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'iceshard', life: PROJECTILE_LIFE.iceshard, age: 0, charging: false, hostile: false });
       this.ctx.audio.zap();
     } else if (player.spell === 'icelance') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
-      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'icelance', life: 90, age: 0, charging: false, hostile: false });
+      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'icelance', life: PROJECTILE_LIFE.icelance, age: 0, charging: false, hostile: false });
       this.ctx.audio.tone(1400, 220, 0.16, 'sine', 0.10);
     } else if (player.spell === 'wisp') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
-      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'wisp', life: 260, age: 0, charging: false, hostile: false });
+      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'wisp', life: PROJECTILE_LIFE.wisp, age: 0, charging: false, hostile: false });
       this.ctx.audio.zap();
     } else if (player.spell === 'dig') {
       player.mana -= sp.manaCost;
@@ -277,19 +278,19 @@ export class Spells implements SpellsApi {
       }
     } else if (player.spell === 'warp') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
-      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'warp', life: 90, age: 0, charging: false, hostile: false });
+      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'warp', life: PROJECTILE_LIFE.warp, age: 0, charging: false, hostile: false });
       this.ctx.audio.zap();
     } else if (player.spell === 'conjure') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       this.conjureStone(input.mouse.x, input.mouse.y, player.x, player.y - 9);
     } else if (player.spell === 'meteor') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
-      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce! - 1.0, type: 'meteor', life: 300, age: 0, charging: false, hostile: false });
+      projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce! - 1.0, type: 'meteor', life: PROJECTILE_LIFE.meteor, age: 0, charging: false, hostile: false });
       this.ctx.audio.boom(8);
     } else if (player.spell === 'blackhole') {
       if (input.activeChargingBlackHole) return;
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
-      const p: Projectile = { x: input.mouse.x, y: input.mouse.y, vx: 0, vy: 0, type: 'blackhole', vortexRad: sp.baseRadius!, life: 240, age: 0, charging: true, hostile: false };
+      const p: Projectile = { x: input.mouse.x, y: input.mouse.y, vx: 0, vy: 0, type: 'blackhole', vortexRad: sp.baseRadius!, life: PROJECTILE_LIFE.blackhole, age: 0, charging: true, hostile: false };
       projectiles.push(p);
       input.activeChargingBlackHole = p;
     }
@@ -316,7 +317,7 @@ export class Spells implements SpellsApi {
     const { camera, projectiles, input } = this.ctx;
     const spells = this.ctx.params.spells;
     if (type === 'blackhole') {
-      const p: Projectile = { x: targetX, y: targetY, vx: 0, vy: 0, type: type, vortexRad: spells.blackhole.baseRadius!, life: 240, age: 0, charging: true, hostile: false };
+      const p: Projectile = { x: targetX, y: targetY, vx: 0, vy: 0, type: type, vortexRad: spells.blackhole.baseRadius!, life: PROJECTILE_LIFE.blackhole, age: 0, charging: true, hostile: false };
       projectiles.push(p);
       input.activeChargingBlackHole = p;
     } else if (type === 'lightning') {
@@ -336,7 +337,7 @@ export class Spells implements SpellsApi {
     } else if (type === 'icelance') {
       const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
       const angle = Math.atan2(targetY - startY, targetX - startX);
-      projectiles.push({ x: startX, y: startY, vx: Math.cos(angle) * spells.icelance.velocityForce!, vy: Math.sin(angle) * spells.icelance.velocityForce!, type: 'icelance', life: 90, age: 0, charging: false, hostile: false });
+      projectiles.push({ x: startX, y: startY, vx: Math.cos(angle) * spells.icelance.velocityForce!, vy: Math.sin(angle) * spells.icelance.velocityForce!, type: 'icelance', life: PROJECTILE_LIFE.icelance, age: 0, charging: false, hostile: false });
       this.ctx.audio.tone(1400, 220, 0.16, 'sine', 0.10);
     } else if (type === 'scatter') {
       const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
@@ -356,10 +357,11 @@ export class Spells implements SpellsApi {
         : spells.bomb.velocityForce!;
       const life =
         type === 'bomb' ? Math.floor(spells.bomb.fuseTicks!)
-        : type === 'wisp' ? 260
-        : type === 'meteor' ? 300
-        : type === 'frostshard' ? 140
-        : 180;
+        : type === 'wisp' ? PROJECTILE_LIFE.wisp
+        : type === 'meteor' ? PROJECTILE_LIFE.meteor
+        : type === 'frostshard' ? PROJECTILE_LIFE.iceshard
+        : type === 'warp' ? PROJECTILE_LIFE.warp
+        : PROJECTILE_LIFE.bolt;
       projectiles.push({
         x: startX,
         y: startY,

@@ -110,6 +110,10 @@ export const SPELL_PARAMS: Record<SpellId, SpellParams> = {
   blackhole: { name: 'Black Hole', baseRadius: 24, chargeRate: 0.9, collapseLimit: 140, manaCost: 55, cooldown: 90 },
 };
 
+/** Deep snapshot of the shipped spell tunings, captured at load before any live
+ *  edits mutate SPELL_PARAMS — the reset target and the persistence diff base. */
+export const SPELL_PARAM_DEFAULTS: Readonly<Record<SpellId, SpellParams>> = structuredClone(SPELL_PARAMS);
+
 export const SPELL_ORDER: SpellId[] = [
   'bolt',
   'scatter',

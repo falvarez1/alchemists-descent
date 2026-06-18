@@ -178,6 +178,7 @@ export function stampSecrets(
     const stepYs: number[] = [];
     let hx = cx + ux * rx; // exactly on the ellipse boundary along u
     let hy = cy + uy * ry;
+    let reachedOpen = false; // did the bore actually get within reach of open space?
     for (let s = 0; s < 300; s++) {
       hx += ux;
       hy += uy;
@@ -195,7 +196,10 @@ export function stampSecrets(
           if (!blocksEntity(world.types[aX + aY * W])) reached = true;
         }
       }
-      if (reached) break;
+      if (reached) {
+        reachedOpen = true;
+        break;
+      }
       for (let dy = -2; dy <= 2; dy++) {
         for (let dx = -2; dx <= 2; dx++) {
           if (dx * dx + dy * dy > 5) continue; // 5-wide bore
@@ -210,6 +214,14 @@ export function stampSecrets(
       stepXs.push(ix);
       stepYs.push(iy);
     }
+
+    // If the bore never reached open space (ran into deep rock / out of bounds),
+    // the chamber would be a SEALED, undiscoverable pocket. Don't dress it with a
+    // breach skin + tell (which would falsely advertise reachable treasure) or
+    // count it — leave the empty carve and try another candidate. (This path only
+    // diverges from the old behavior when a connector actually fails, so seeds
+    // where every bore reaches are byte-identical.)
+    if (!reachedOpen) continue;
 
     // Reseal the last 5 steps with the breach skin (only cells we just dug).
     const skinX: number[] = [];

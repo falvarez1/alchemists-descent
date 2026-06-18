@@ -5,11 +5,31 @@ import { EnemySpatialIndex } from '@/entities/enemySpatial';
 import { bodyMaterialDef } from '@/entities/bodyMaterials';
 import { Cell, isGas } from '@/sim/CellType';
 
+/** A jagged lightning path between two points (perpendicular jitter, peaking
+ *  mid-span, snapping back to the endpoint). Same look as the chain-bolt arcs. */
+function jaggedArc(x0: number, y0: number, x1: number, y1: number): Array<{ x: number; y: number }> {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const dist = Math.hypot(dx, dy) || 1;
+  const steps = Math.max(2, Math.min(18, Math.round(dist)));
+  const nx = -dy / dist; // perpendicular unit
+  const ny = dx / dist;
+  const amp = Math.min(3, dist * 0.25);
+  const pts: Array<{ x: number; y: number }> = [{ x: x0, y: y0 }];
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const j = i === steps ? 0 : (Math.random() - 0.5) * 2 * amp * Math.sin(t * Math.PI);
+    pts.push({ x: x0 + dx * t + nx * j, y: y0 + dy * t + ny * j });
+  }
+  return pts;
+}
+
 // ===================== Chain Lightning =====================
 export class Lightning implements LightningApi {
   readonly arcs: LightningArc[] = [];
   private readonly enemyIndex = new EnemySpatialIndex();
   private readonly enemyScratch: Ctx['enemies'] = [];
+  private readonly ambientPool: Array<{ x: number; y: number }> = [];
 
   constructor(private readonly ctx: Ctx) {}
 
@@ -109,6 +129,53 @@ export class Lightning implements LightningApi {
     for (let i = this.arcs.length - 1; i >= 0; i--) {
       this.arcs[i].life--;
       if (this.arcs[i].life <= 0) this.arcs.splice(i, 1);
+    }
+  }
+
+  /** Crackle: while cells carry charge, bridge nearby charged cells with short,
+   *  dim, flickering arcs so an electrified pool reads as branching lightning —
+   *  not just static cyan. Self-limited (no charge → no arcs) and frame-throttled. */
+  ambientDischarge(): void {
+    const RANGE = 16; // longest cell gap an ambient arc bridges
+    const MAX_ARCS = 5; // max arcs spawned per frame (the short arc life gives the flicker)
+    const POOL_CAP = 160; // cap on charged cells scanned per frame
+    const ctx = this.ctx;
+    const w = ctx.world;
+    const sim = w.simBounds;
+    const pool = this.ambientPool;
+    pool.length = 0;
+    for (const ci of w.activeCharges) {
+      if (w.charge[ci] <= 0) continue;
+      const y = (ci / w.width) | 0;
+      const x = ci - y * w.width;
+      if (x < sim.x0 || x >= sim.x1 || y < sim.y0 || y >= sim.y1) continue;
+      pool.push({ x: x + 0.5, y: y + 0.5 });
+      if (pool.length >= POOL_CAP) break;
+    }
+    if (pool.length < 2) return;
+    const range2 = RANGE * RANGE;
+    const count = Math.min(MAX_ARCS, 1 + (pool.length >> 3));
+    for (let a = 0; a < count; a++) {
+      const p0 = pool[(Math.random() * pool.length) | 0];
+      // nearest of a few random candidates, within range — keeps arcs short + local
+      let p1: { x: number; y: number } | null = null;
+      let best = range2;
+      for (let t = 0; t < 5; t++) {
+        const cand = pool[(Math.random() * pool.length) | 0];
+        const dx = cand.x - p0.x;
+        const dy = cand.y - p0.y;
+        const d = dx * dx + dy * dy;
+        if (d > 1 && d < best) {
+          best = d;
+          p1 = cand;
+        }
+      }
+      if (!p1) continue;
+      this.arcs.push({
+        pts: jaggedArc(p0.x, p0.y, p1.x, p1.y),
+        life: 2 + ((Math.random() * 3) | 0),
+        intensity: 0.3 + Math.random() * 0.3,
+      });
     }
   }
 

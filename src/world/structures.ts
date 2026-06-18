@@ -101,6 +101,29 @@ export function placeStructures(
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
     carvePocketCells(w, cx, cy, rx, ry);
 
+  /** Carve a pocket room and lay a flat stone shelf one row below its bottom —
+   *  the standard puzzle-chamber floor. Only fills Empty cells (so it never
+   *  vandalizes a Metal pedestal), matching every hand-inlined copy this
+   *  replaces. `floorHalfW` spans the walkable sill (independent of the room
+   *  radius). */
+  const carveRoomWithFloor = (
+    cx: number,
+    cy: number,
+    rx: number,
+    ry: number,
+    floorHalfW: number,
+  ): void => {
+    carvePocket(cx, cy, rx, ry);
+    const Y = cy + 11;
+    for (let dx = -floorHalfW; dx <= floorHalfW; dx++) {
+      if (w.inBounds(cx + dx, Y) && w.types[w.idx(cx + dx, Y)] === Cell.Empty) {
+        const i = w.idx(cx + dx, Y);
+        w.types[i] = Cell.Stone;
+        w.colors[i] = stoneColor();
+      }
+    }
+  };
+
   /** Drop to the first standable floor below (cap 60 cells). */
   const settleY = (x: number, y: number): number => {
     for (let yy = y; yy < Math.min(HEIGHT - 8, y + 60); yy++) {
@@ -620,16 +643,8 @@ export function placeStructures(
       vx = 130 + Math.floor(rng.next() * (WIDTH - 260));
       vy = Math.floor(HEIGHT * (0.3 + rng.next() * 0.42));
     }
-    // chamber: carved room with a stone floor
-    carvePocket(vx, vy, 14, 12); // floor at the pocket BOTTOM: >= 22 above it
-    for (let dx = -13; dx <= 13; dx++) {
-      const Y = vy + 11;
-      if (w.inBounds(vx + dx, Y) && w.types[w.idx(vx + dx, Y)] === Cell.Empty) {
-        const i = w.idx(vx + dx, Y);
-        w.types[i] = Cell.Stone;
-        w.colors[i] = stoneColor();
-      }
-    }
+    // chamber: carved room with a stone floor (>= 22 clear above the shelf)
+    carveRoomWithFloor(vx, vy, 14, 12, 13);
     // loot
     pickups.push(makePickup('chest', vx, vy + 10));
     if (rng.next() < 0.5) pickups.push(makePickup('heart', vx + 6, vy + 10));
@@ -641,21 +656,16 @@ export function placeStructures(
       carvePocket(doorX + side * s, vy + 2 + Math.floor(Math.sin(s * 0.4) * 2), 10, 12);
     }
     const door = makeDoor(ctx, mechanisms, Math.min(doorX, doorX + side * 2) - 1, vy - 8, 4, 22);
-    // mechanism alternates: plate puzzles and lever/brazier puzzles.
+    // mechanism archetype: plate / lever / brazier puzzles, rolled uniformly.
+    // (The old `(vaultIdx + bit) % 3` made the brazier reachable ONLY on a 2nd
+    // vault's 1-bit — so it almost never appeared. Same single rng draw, so the
+    // stream position is unchanged; only the chosen mechanism differs.)
     // The trigger gets its own carved antechamber with a stone shelf —
     // contiguous with the corridor, so it is always standing in walkable
     // space instead of wherever settleY happened to drop it.
-    const mechRoll = (vaultIdx + (rng.next() < 0.5 ? 0 : 1)) % 3;
+    const mechRoll = Math.floor(rng.next() * 3);
     const mx = Math.floor(clamp(doorX + side * 22, 10, WIDTH - 11));
-    carvePocket(mx, vy, 11, 12); // shelf at the pocket BOTTOM (no mid-bar)
-    for (let dx = -10; dx <= 10; dx++) {
-      const Y = vy + 11;
-      if (w.inBounds(mx + dx, Y) && w.types[w.idx(mx + dx, Y)] === Cell.Empty) {
-        const i = w.idx(mx + dx, Y);
-        w.types[i] = Cell.Stone;
-        w.colors[i] = stoneColor();
-      }
-    }
+    carveRoomWithFloor(mx, vy, 11, 12, 10); // shelf at the pocket BOTTOM (no mid-bar)
     const my = vy + 10;
     if (mechRoll === 0) makePlate(w, mechanisms, Math.floor(clamp(mx - 3, 4, WIDTH - 12)), my + 1, 7, door);
     else if (mechRoll === 1) makeLever(mechanisms, mx, my, door);
@@ -850,15 +860,7 @@ export function placeStructures(
       // gaps) — fall back to the sluice, which water can only help.
       if (def.biome === 'flooded' && archetype >= 4) archetype = 2;
       // main chamber + sealed loot pocket on the right
-      carvePocket(px2, py2, 16, 12); // floor at the pocket BOTTOM
-      for (let dx = -16; dx <= 16; dx++) {
-        const Y = py2 + 11;
-        if (w.inBounds(px2 + dx, Y) && w.types[w.idx(px2 + dx, Y)] === Cell.Empty) {
-          const i = w.idx(px2 + dx, Y);
-          w.types[i] = Cell.Stone;
-          w.colors[i] = stoneColor();
-        }
-      }
+      carveRoomWithFloor(px2, py2, 16, 12, 16); // main chamber + stone shelf
       carvePocket(px2 + 26, py2 + 1, 10, 12);
       // Door-front apron: the bowl's ellipse pinches at the door column, so
       // a 9x17 wizard never fits there organically — which made the

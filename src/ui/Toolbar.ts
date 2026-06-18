@@ -151,6 +151,7 @@ export class Toolbar {
     document.getElementById('btn-worldgen-reset')?.addEventListener('click', () => {
       Object.assign(GEN_TUNE, GEN_TUNE_DEFAULTS);
       this.rebuildWorldgenTune();
+      this.ctx.events.emit('paramsChanged'); // clear the persisted worldgen diff
       ensureSandboxWorldDetached(this.ctx);
       this.ctx.worldgen.regenerate(this.ctx);
     });
@@ -181,6 +182,9 @@ export class Toolbar {
       const v = parseFloat(input.value);
       set(v);
       val.textContent = fmt(v);
+      // worldgen is a one-shot bake, but emit so the tuning store persists the
+      // dial across reloads (it shows on the next Generate Caves).
+      this.ctx.events.emit('paramsChanged');
     });
     row.append(top, input);
     host.appendChild(row);

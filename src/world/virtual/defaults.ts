@@ -82,6 +82,10 @@ export function createDefaultVirtualGenerationParams(): VirtualWorldDef['generat
     edgeRoughness: 0.38,
     pocketDensity: 0.3,
     crackDensity: 0.2,
+    // Neutral = the shipped grand-cave look (GEN_TUNE_DEFAULTS.caveScale). The
+    // World Map mirrors the live GEN_TUNE.caveScale onto this per generation;
+    // caveMultiplier() in ChunkGenerator normalizes 1.5 -> x1.0.
+    caveScale: 1.5,
   };
 }
 

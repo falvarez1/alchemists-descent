@@ -236,6 +236,11 @@ export interface VirtualGenerationParams {
   edgeRoughness: number;
   pocketDensity: number;
   crackDensity: number;
+  /** Multiplier on the chunk gen's carve radii (pockets, cracks, spline/shaft
+   *  tunnels) — the virtual-gen analog of GEN_TUNE.caveScale, carried in the def
+   *  so it survives the worker boundary. Undefined = 1.5 (the shipped grand-cave
+   *  default). The World Map panel mirrors GEN_TUNE.caveScale into this. */
+  caveScale?: number;
 }
 
 export interface VirtualChunkMeta {

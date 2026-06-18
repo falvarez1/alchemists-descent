@@ -1,5 +1,6 @@
 import { DEATH_SLOWMO_FRAMES, DEATH_SLOWMO_MIN, VIEW_H, VIEW_W } from '@/config/constants';
 import { createDefaultPostFxSettings, createDefaultRenderSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
+import { installTuningPersistence } from '@/config/tuningStore';
 import { EventBus } from '@/core/events';
 import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
@@ -180,6 +181,11 @@ export class Game {
     ctx.perf = this.perfHud;
     ctx.console = createConsoleApi(ctx);
     this.ctx = ctx;
+
+    // Rehydrate live tuning (Global Controls, player feel, worldgen look, material/
+    // spell params) from localStorage BEFORE the UI seeds its sliders or the first
+    // level generates, then persist on every paramsChanged. Survives HMR + refresh.
+    installTuningPersistence(ctx);
 
     ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
     ctx.events.on('waveStarted', ({ num }) => ctx.telemetry.count(`wave.reached.${num}`));
@@ -445,6 +451,7 @@ export class Game {
       ctx.wands.update(ctx);
       ctx.particles.update(ctx);
       ctx.lightning.update();
+      ctx.lightning.ambientDischarge();
       this.updateBuildModeHeldSpells();
       this.perfHud.mark('entities', performance.now() - tEnt);
     }

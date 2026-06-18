@@ -34,6 +34,31 @@ export interface FindabilityRepairResult {
 const PW = 4;
 const PH = 17;
 
+// Reused full-grid scratch for the BFS/erosion passes. These buffers are pure
+// internal workspace (NEVER returned — the masks return their own `seen`/`fits`),
+// so sharing them across calls removes the fresh Int32Array(W*H)/Uint8Array(W*H)
+// the gauge-rescue pass otherwise allocates on every wizardMask/reachableMask
+// call (dozens per tight seed → tens of MB of GC churn behind the load curtain).
+let scratchQx = new Int32Array(0);
+let scratchQy = new Int32Array(0);
+function bfsQueues(n: number): [Int32Array, Int32Array] {
+  if (scratchQx.length < n) {
+    scratchQx = new Int32Array(n);
+    scratchQy = new Int32Array(n);
+  }
+  // Queue cells are written at `tail` before being read at `head`, so only the
+  // freshly-written prefix is ever read — no reset needed between calls.
+  return [scratchQx, scratchQy];
+}
+
+let scratchHRun = new Uint8Array(0);
+function hRunScratch(n: number): Uint8Array {
+  // hRun is written conditionally (1s only), so a reused buffer must be cleared.
+  if (scratchHRun.length < n) scratchHRun = new Uint8Array(n);
+  else scratchHRun.fill(0);
+  return scratchHRun;
+}
+
 /**
  * Positions where the full 9x17 body FITS (with the loose-rubble rule).
  * Used by the wizard mask below AND by generation (connectToCaves targets
@@ -49,7 +74,7 @@ function fitsOf(w: { width: number; height: number; types: Uint8Array }): Uint8A
     H = w.height;
   const blocks = computeLooseRubbleBlockingMask(w);
   // separable erosion: where does a 9-wide x 17-tall clear box fit?
-  const hRun = new Uint8Array(W * H);
+  const hRun = hRunScratch(W * H);
   for (let y = 0; y < H; y++) {
     let run = 0;
     for (let x = 0; x < W; x++) {
@@ -83,8 +108,7 @@ export function wizardMask(runtime: LevelRuntime): Uint8Array {
   const fits = fitsOf(w);
   // BFS over fitting positions (4-adjacent; levitation handles vertical)
   const seen = new Uint8Array(W * H);
-  const qx = new Int32Array(W * H);
-  const qy = new Int32Array(W * H);
+  const [qx, qy] = bfsQueues(W * H);
   let head = 0,
     tail = 0;
   const push = (x: number, y: number): void => {
@@ -120,8 +144,7 @@ export function reachableMask(runtime: LevelRuntime): Uint8Array {
   const W = w.width,
     H = w.height;
   const seen = new Uint8Array(W * H);
-  const qx = new Int32Array(W * H);
-  const qy = new Int32Array(W * H);
+  const [qx, qy] = bfsQueues(W * H);
   let head = 0,
     tail = 0;
   const push = (x: number, y: number): void => {

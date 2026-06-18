@@ -172,6 +172,11 @@ export function tunnelTo(
   ty: number,
   radius: number,
   sweep?: { halfW: number; up: number; down: number },
+  // Lower bound on carved rows. Defaults to 26 (the old hardcoded clamp) so
+  // every existing caller is byte-identical; the gauge-rescue pass passes a
+  // lower value when its target sits above row 26, which the hardcoded clamp
+  // would otherwise pull DOWN — producing a tunnel that never reaches it.
+  minY = 26,
 ): Array<[number, number]> {
   const steps: Array<[number, number]> = [];
   let x = fromX,
@@ -182,7 +187,7 @@ export function tunnelTo(
     x += Math.sign(tx - x) * (rng.next() < 0.8 ? 1 : 0) + Math.floor((rng.next() - 0.5) * 2);
     y += Math.sign(ty - y) * (rng.next() < 0.8 ? 1 : 0);
     x = Math.floor(clamp(x, radius + 2, WIDTH - radius - 3));
-    y = Math.floor(clamp(y, 26, HEIGHT - 12));
+    y = Math.floor(clamp(y, minY, HEIGHT - 12));
     carvePocket(world, x, y, radius, radius);
     if (sweep) {
       carveRect(world, x - sweep.halfW, y - sweep.up, x + sweep.halfW, y + sweep.down);

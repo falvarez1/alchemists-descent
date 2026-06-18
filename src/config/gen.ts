@@ -55,8 +55,13 @@ import type { BiomeId } from '@/core/types';
  * v19: mineral-vug fill — buried swiss-cheese air pockets pack with cave material
  *      (mostly solid stone/coal, ~19% hidden non-glowing RawOre caches, a rare
  *      crystal geode), discovered by digging + the wizard's light.
+ * v20: review fixes (post-generateCaves, so the earthen golden hashes are
+ *      UNCHANGED) — mechanism-vault archetype now rolls uniformly so the brazier
+ *      puzzle actually appears; gauge-rescue tunnels can reach a target above
+ *      row 26; a secret connector that never reaches open space no longer leaves
+ *      an undiscoverable sealed chamber with a misleading tell.
  */
-export const GEN_VERSION = 19;
+export const GEN_VERSION = 20;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

@@ -423,6 +423,7 @@ function paintOrganicCell(types: Uint8Array, size: number, x: number, y: number,
 function carveOrganicPockets(def: VirtualWorldDef, scratch: Scratch): void {
   const density = clamp01(generationNumber(def.generation.pocketDensity, 0.3));
   if (density <= 0) return;
+  const caveMul = caveMultiplier(def);
   const spacing = 38;
   const maxRadius = 18 + Math.floor(clamp01(generationNumber(def.generation.edgeRoughness, 0.38)) * 10);
   const x0 = Math.floor((scratch.originX - maxRadius) / spacing);
@@ -437,8 +438,8 @@ function carveOrganicPockets(def: VirtualWorldDef, scratch: Scratch): void {
       const lx = Math.round(wx - scratch.originX);
       const ly = Math.round(wy - scratch.originY);
       if (!hasSurfaceNear(scratch, lx, ly, maxRadius + 8)) continue;
-      const rx = 5 + unitHash2i(def.seed ^ 0xc2b2ae35, gx, gy) * maxRadius;
-      const ry = 4 + unitHash2i(def.seed ^ 0x27d4eb2f, gx, gy) * Math.max(7, maxRadius * 0.72);
+      const rx = (5 + unitHash2i(def.seed ^ 0xc2b2ae35, gx, gy) * maxRadius) * caveMul;
+      const ry = (4 + unitHash2i(def.seed ^ 0x27d4eb2f, gx, gy) * Math.max(7, maxRadius * 0.72)) * caveMul;
       carveOrganicEllipse(def, scratch, wx, wy, rx, ry, 0.9);
     }
   }
@@ -447,6 +448,7 @@ function carveOrganicPockets(def: VirtualWorldDef, scratch: Scratch): void {
 function carveOrganicCracks(def: VirtualWorldDef, scratch: Scratch): void {
   const density = clamp01(generationNumber(def.generation.crackDensity, 0.2));
   if (density <= 0) return;
+  const caveMul = caveMultiplier(def);
   const spacing = 84;
   const maxLength = 70;
   const x0 = Math.floor((scratch.originX - maxLength) / spacing);
@@ -463,7 +465,7 @@ function carveOrganicCracks(def: VirtualWorldDef, scratch: Scratch): void {
       if (lx >= 0 && ly >= 0 && lx < scratch.size && ly < scratch.size && !hasSurfaceNear(scratch, lx, ly, 26)) continue;
       const angle = unitHash2i(def.seed ^ 0x165667b1, gx, gy) * Math.PI * 2;
       const length = 28 + unitHash2i(def.seed ^ 0xd3a2646c, gx, gy) * maxLength;
-      const radius = 1.5 + unitHash2i(def.seed ^ 0x51ed270b, gx, gy) * 2.5;
+      const radius = (1.5 + unitHash2i(def.seed ^ 0x51ed270b, gx, gy) * 2.5) * caveMul;
       const steps = Math.max(4, Math.ceil(length / 5));
       const dx = Math.cos(angle);
       const dy = Math.sin(angle);
@@ -496,17 +498,19 @@ function carveInstruction(
     case 'spline':
       carveSpline(def, scratch, resolved, instruction, instructionIndex);
       break;
-    case 'chamber':
+    case 'chamber': {
+      const caveMul = caveMultiplier(def);
       carveOrganicEllipse(
         def,
         scratch,
         resolved.x0 + instruction.x * def.tileset.tileSize,
         resolved.y0 + instruction.y * def.tileset.tileSize,
-        instruction.rx,
-        instruction.ry,
+        instruction.rx * caveMul,
+        instruction.ry * caveMul,
         1,
       );
       break;
+    }
     case 'shaft':
       carveShaft(def, scratch, resolved, instruction, instructionIndex);
       break;
@@ -521,6 +525,7 @@ function carveSpline(
   instructionIndex: number,
 ): void {
   const size = def.tileset.tileSize;
+  const caveMul = caveMultiplier(def);
   const a = edgePoint(instruction.from, size, resolved.tile);
   const b = edgePoint(instruction.to, size, resolved.tile);
   const dx = b.x - a.x;
@@ -540,7 +545,7 @@ function carveSpline(
       signedUnitHash2i(def.seed ^ instructionIndex ^ 0x5bd1e995, resolved.tx * 997 + s, resolved.ty) *
         instruction.jitter *
         0.58;
-    carveOrganicDisc(def, scratch, wx + px * wobble, wy + py * wobble, instruction.radius, 0.75);
+    carveOrganicDisc(def, scratch, wx + px * wobble, wy + py * wobble, instruction.radius * caveMul, 0.75);
   }
 }
 
@@ -552,6 +557,7 @@ function carveShaft(
   instructionIndex: number,
 ): void {
   const size = def.tileset.tileSize;
+  const caveMul = caveMultiplier(def);
   const baseX = resolved.x0 + instruction.x * size;
   for (let y = 0; y < size; y += 4) {
     const wy = resolved.y0 + y;
@@ -560,7 +566,7 @@ function carveShaft(
       signedUnitHash2i(def.seed ^ instructionIndex ^ 0x27d4eb2f, resolved.tx, resolved.ty * 4096 + y) *
         instruction.roughness *
         12;
-    carveOrganicDisc(def, scratch, baseX + wobble, wy, instruction.radius, 0.65);
+    carveOrganicDisc(def, scratch, baseX + wobble, wy, instruction.radius * caveMul, 0.65);
   }
 }
 
@@ -1556,6 +1562,16 @@ function clamp01(value: number): number {
 
 function generationNumber(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
+}
+
+/** The shipped virtual carves were authored at the look that GEN_TUNE calls
+ *  caveScale 1.5, so normalize the def's caveScale against that: 1.5 -> x1.0
+ *  (identical to today), 2.0 -> wider tunnels, 1.0 -> tighter. Carried in the
+ *  def so live GEN_TUNE edits reach the worker. Clamped to a sane band so a
+ *  stray value can't merge every tunnel into one cavern or pinch them shut. */
+function caveMultiplier(def: VirtualWorldDef): number {
+  const cs = generationNumber(def.generation.caveScale ?? 1.5, 1.5);
+  return Math.max(0.45, Math.min(1.6, cs / 1.5));
 }
 
 function generationInt(value: number, fallback: number, min: number, max: number): number {

@@ -996,6 +996,9 @@ export interface LightningApi {
   readonly arcs: LightningArc[];
   cast(ox: number, oy: number, angle: number): void;
   update(): void;
+  /** Flickering branch arcs between nearby charged cells, so an electrified area
+   *  visibly crackles. Called once per frame; self-limited to charged regions. */
+  ambientDischarge(): void;
   clear(): void;
 }
 

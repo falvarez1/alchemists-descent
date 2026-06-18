@@ -1,5 +1,6 @@
 import { LEVELS } from '@/config/worldgraph';
 import { BIOMES } from '@/config/biomes';
+import { GEN_TUNE } from '@/config/gen';
 import { randomSeed } from '@/core/rng';
 import { escapeHtml } from '@/core/strings';
 import type { BiomeId, LevelDef } from '@/core/types';
@@ -783,6 +784,13 @@ export class VirtualWorldPanel {
       return;
     }
     const def = this.currentDef();
+    // Mirror the live GEN_TUNE cave-size knob (the Sandbox/Builder "Cave size"
+    // slider) into the def so it crosses the worker boundary; when it changes,
+    // drop the cached chunks so the window actually re-carves at the new scale.
+    if (def.generation.caveScale !== GEN_TUNE.caveScale) {
+      def.generation.caveScale = GEN_TUNE.caveScale;
+      this.chunks.clear();
+    }
     const profile = this.selectedProfile;
     const centerCx = Math.floor(this.camX / def.chunkSize);
     const centerCy = Math.floor(this.camY / def.chunkSize);

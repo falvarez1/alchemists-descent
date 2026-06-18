@@ -1029,15 +1029,19 @@ export class WorldGen implements WorldGenApi {
       const SWEEP = { halfW: 10, up: 25, down: 12 }; // gauge-guaranteed gallery
       const rescueAt = (px: number, py: number, pass: () => boolean): boolean => {
         carveRect(ctx.world, px - SWEEP.halfW, py - 24, px + SWEEP.halfW, py + 4);
+        // Let the rescue tunnel reach a chamber/target ABOVE the default row-26
+        // floor (the rescue chamber's top is py-24); for deep features (every
+        // case in the shipped seeds) this stays 26, so carve output is unchanged.
+        const rescueMinY = Math.min(26, py - 24);
         const target = nearestWiz(px, py - 10) ?? {
           x: Math.floor(spawn.x),
           y: Math.floor(spawn.y) - 4,
         };
-        tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP);
+        tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP, rescueMinY);
         wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
         cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
         if (pass()) return true;
-        tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP);
+        tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY);
         wiz = wizardMask({ world: ctx.world, spawn } as unknown as Parameters<typeof wizardMask>[0]);
         cell = reachableMask({ world: ctx.world, spawn } as unknown as Parameters<typeof reachableMask>[0]);
         return pass();

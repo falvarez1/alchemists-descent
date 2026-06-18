@@ -131,6 +131,10 @@ export class Inspector {
       document.getElementById(`dyn-input-${propKey}`)!.addEventListener('input', (e) => {
         const val = parseFloat((e.target as HTMLInputElement).value); fields[propKey] = val;
         document.getElementById(`dyn-val-${propKey}`)!.textContent = formatVal(propKey, val);
+        // Re-sync other mirrors of this material/spell AND let the tuning store
+        // persist the edit (these per-material sliders are the one tuning surface
+        // that didn't emit this before).
+        this.ctx.events.emit('paramsChanged');
       });
     });
 

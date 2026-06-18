@@ -1,8 +1,9 @@
 import type { AuthoredLight, BiomeId, Ctx, GeneratedScenePlacement, LevelDef, PlayerState, WandRuntimeSnapshot } from '@/core/types';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { BIOMES as BIOME_DEFS } from '@/config/biomes';
-import { GEN, defaultSkeletonSpec } from '@/config/gen';
+import { GEN, GEN_TUNE, GEN_TUNE_DEFAULTS, defaultSkeletonSpec } from '@/config/gen';
 import type { SkeletonSpec } from '@/config/gen';
+import { EXTRAS, campaignDressingRecipeForBiome } from '@/world/biomeExtras';
 import { createDefaultPostFxSettings, createDefaultWandLightSettings, GLOBAL_PARAM_DEFAULTS, MATERIAL_PARAM_DEFAULTS, PLAYER_TUNING_DEFAULTS } from '@/config/params';
 import { LEVELS, vaultHostId } from '@/config/worldgraph';
 import { randomSeed, fnv1aString } from '@/core/rng';
@@ -6833,6 +6834,10 @@ export class Builder {
       range.value = String(next);
       number.value = String(next);
       range.setAttribute('aria-valuetext', fmt(next));
+      // Let the tuning store persist tuning-singleton edits (player feel, worldgen
+      // look, material params) across reloads. The Builder doesn't listen to this
+      // event, so there's no rebuild loop; the Sandbox inspector just resyncs.
+      this.ctx.events.emit('paramsChanged');
     };
     range.setAttribute('aria-valuetext', fmt(shown));
     range.addEventListener('input', () => apply(Number(range.value)));
@@ -7044,7 +7049,19 @@ export class Builder {
       },
     ]);
 
+    // Spark/lightning conduction (also live via console `set global.charge*`).
+    const elec = this.worldSection(host, 'ELECTRICAL');
+    this.sliderRow(elec, 'Charge Falloff (spread)', g.chargeFalloff, 1, 6, 1, (v) => v.toFixed(0), (v) => {
+      g.chargeFalloff = v;
+      this.ctx.events.emit('paramsChanged');
+    });
+    this.sliderRow(elec, 'Charge Decay (duration)', g.chargeDecay, 1, 10, 1, (v) => v.toFixed(0), (v) => {
+      g.chargeDecay = v;
+      this.ctx.events.emit('paramsChanged');
+    });
+
     this.buildPlayerPhysicsSections(host);
+    this.buildWorldgenLookSection(host);
 
     const previewSection = this.worldSection(host, 'WAND PREVIEW');
     this.checkboxRow(previewSection, 'Cursor Wand Light', this.wandLightPreviewOn, (value) => {
@@ -7102,6 +7119,33 @@ export class Builder {
           this.status('WAND LIGHT RESET');
         },
       },
+    ]);
+  }
+
+  /** Worldgen LOOK tuning — the same GEN_TUNE (cave size + walk-surface sink fill)
+   *  and per-biome dressing densities as the Sandbox panel. Tweak, then REGENERATE
+   *  to bake a fresh cave with the new look. Mirrors index.html's "Look tuning". */
+  private buildWorldgenLookSection(host: HTMLElement): void {
+    const t = GEN_TUNE;
+    const sec = this.worldSection(host, 'WORLDGEN LOOK');
+    this.numberRow(sec, 'Cave size', t.caveScale, 0.6, 2.2, 0.05, (v) => v.toFixed(2), (v) => { t.caveScale = v; });
+    this.numberRow(sec, 'Sink fill width', t.surfacePitWidth, 0, 24, 1, (v) => String(Math.round(v)), (v) => { t.surfacePitWidth = Math.round(v); });
+    this.numberRow(sec, 'Sink fill depth', t.surfacePitDepth, 1, 14, 1, (v) => String(Math.round(v)), (v) => { t.surfacePitDepth = Math.round(v); });
+    this.numberRow(sec, 'Notch passes', t.notchPasses, 0, 6, 1, (v) => String(Math.round(v)), (v) => { t.notchPasses = Math.round(v); });
+    const extras = EXTRAS[this.doc.biome] as unknown as Record<string, number | undefined>;
+    this.numberRow(sec, 'Gold richness', extras.goldBonus ?? 1, 0, 3, 0.1, (v) => v.toFixed(1), (v) => { extras.goldBonus = v; });
+    const recipe = campaignDressingRecipeForBiome(this.doc.biome) as unknown as Record<string, number>;
+    const dressing: Array<[string, string]> = [
+      ['oreDensity', 'Ore density'], ['glowDensity', 'Glow density'], ['liquidDensity', 'Liquid density'],
+      ['rubbleDensity', 'Rubble/moss density'], ['hangingDensity', 'Vine density'],
+    ];
+    for (const [key, label] of dressing) {
+      if (typeof recipe[key] !== 'number') continue;
+      this.numberRow(sec, label, recipe[key], 0, 2, 0.02, (v) => v.toFixed(2), (v) => { recipe[key] = v; });
+    }
+    this.worldActionRow(sec, [
+      { label: 'REGENERATE CAVES', title: 'Re-run worldgen with these look values', run: () => { void this.guardedWorldGen('caves'); } },
+      { label: 'RESET LOOK', title: 'Restore the shipped worldgen look', run: () => { Object.assign(GEN_TUNE, GEN_TUNE_DEFAULTS); this.ctx.events.emit('paramsChanged'); this.buildGlobalPanel(); } },
     ]);
   }
 

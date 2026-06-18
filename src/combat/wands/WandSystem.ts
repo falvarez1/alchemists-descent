@@ -17,6 +17,7 @@ import { ALL_CARD_IDS, CARD_DEFS, isCardId } from './cards';
 import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
+import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
 import { DEPTH_PROJECTILE_POOL, randomCard, WAYSTONE_MOD_POOL } from './rewardPools';
 
 /**
@@ -364,7 +365,7 @@ export class WandSystem implements WandsApi {
       for (let n = 0; n < count; n++) {
         const a = jitter() + (n > 0 ? (Math.random() * 2 - 1) * STACK_JITTER : 0);
         const v = sp.bolt.velocityForce! * action.speedMul;
-        const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'bolt', life: 180, age: 0, charging: false, hostile: false };
+        const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'bolt', life: PROJECTILE_LIFE.bolt, age: 0, charging: false, hostile: false };
         ctx.projectiles.push(p);
         this.markProjectile(ctx, p, action);
       }
@@ -405,7 +406,7 @@ export class WandSystem implements WandsApi {
     } else if (action.card === 'warp') {
       const a = jitter();
       const v = sp.warp.velocityForce! * action.speedMul;
-      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'warp', life: 90, age: 0, charging: false, hostile: false, mul: action.dmgMul };
+      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'warp', life: PROJECTILE_LIFE.warp, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
       ctx.audio.zap();
@@ -413,7 +414,7 @@ export class WandSystem implements WandsApi {
       // One charging singularity at a time (original rule) — extra casts fizzle.
       if (ctx.input.activeChargingBlackHole) return;
       const charging = options.origin !== 'trigger';
-      const p: Projectile = { x, y, vx: 0, vy: 0, type: 'blackhole', vortexRad: sp.blackhole.baseRadius!, life: 240, age: 0, charging, hostile: false };
+      const p: Projectile = { x, y, vx: 0, vy: 0, type: 'blackhole', vortexRad: sp.blackhole.baseRadius!, life: PROJECTILE_LIFE.blackhole, age: 0, charging, hostile: false };
       ctx.projectiles.push(p);
       if (charging) ctx.input.activeChargingBlackHole = p;
       this.markProjectile(ctx, p, action);
@@ -430,14 +431,14 @@ export class WandSystem implements WandsApi {
     } else if (action.card === 'frostshard') {
       const a = jitter();
       const v = 11 * action.speedMul;
-      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'iceshard', life: 180, age: 0, charging: false, hostile: false, mul: action.dmgMul };
+      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'iceshard', life: PROJECTILE_LIFE.iceshard, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
       ctx.audio.tone(1100, 500, 0.08, 'sine', 0.09);
     } else if (action.card === 'icelance') {
       const a = jitter();
       const v = 16 * action.speedMul;
-      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'icelance', life: 140, age: 0, charging: false, hostile: false, mul: action.dmgMul };
+      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'icelance', life: PROJECTILE_LIFE.icelance, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
       ctx.audio.tone(1500, 700, 0.1, 'triangle', 0.1);
@@ -447,7 +448,7 @@ export class WandSystem implements WandsApi {
       for (let n = 0; n < seekers; n++) {
         const a = jitter() + (n > 0 ? 0.5 : 0);
         const v = 4.5 * action.speedMul;
-        const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'wisp', life: 240, age: 0, charging: false, hostile: false, mul: action.dmgMul };
+        const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'wisp', life: PROJECTILE_LIFE.wisp, age: 0, charging: false, hostile: false, mul: action.dmgMul };
         ctx.projectiles.push(p);
         this.markProjectile(ctx, p, action);
       }
@@ -456,7 +457,7 @@ export class WandSystem implements WandsApi {
       // Lobbed in a heavy arc — the upward bias makes the descent count.
       const a = jitter();
       const v = 6.5 * action.speedMul;
-      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2.2, type: 'meteor', life: 300, age: 0, charging: false, hostile: false, mul: action.dmgMul };
+      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2.2, type: 'meteor', life: PROJECTILE_LIFE.meteor, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
       ctx.audio.tone(120, 40, 0.4, 'sawtooth', 0.18);
