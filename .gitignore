@@ -8,3 +8,8 @@ build/
 .agents/
 .codex-vite-*.log
 .claude/projects/
+
+# transient tool/process logs
+.codex_*.log
+*.out.log
+*.err.log
