@@ -90,6 +90,10 @@ export class Critters implements CrittersApi {
     return this.pool.remove(critter);
   }
 
+  spawn(kind: CritterKind, x: number, y: number): Critter {
+    return this.add(kind, x, y);
+  }
+
   clear(): void {
     this.pool.clear();
   }
@@ -183,8 +187,8 @@ export class Critters implements CrittersApi {
     }
   }
 
-  private add(kind: CritterKind, x: number, y: number): void {
-    this.pool.add({
+  private add(kind: CritterKind, x: number, y: number): Critter {
+    const critter: Critter = {
       kind,
       x,
       y,
@@ -193,7 +197,9 @@ export class Critters implements CrittersApi {
       phase: Math.random() * Math.PI * 2,
       gasp: 0,
       facing: Math.random() < 0.5 ? -1 : 1,
-    });
+    };
+    this.pool.add(critter);
+    return critter;
   }
 
   /* ---------------- behavior ---------------- */

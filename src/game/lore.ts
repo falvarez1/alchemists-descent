@@ -1,4 +1,5 @@
 import type { Ctx } from '@/core/types';
+import { LEGACY_LORE_KEY, loadDiscoveredMaterials, recordMaterialDiscovery } from '@/game/GrimoireStore';
 import { Cell } from '@/sim/CellType';
 
 /**
@@ -7,7 +8,7 @@ import { Cell } from '@/sim/CellType';
  * "Knowledge is progression": this turns the deep material rules into Grimoire
  * entries instead of a tutorial wall. Persisted across expeditions like recipes.
  */
-export const LORE_KEY = 'noita-grimoire-lore';
+export const LORE_KEY = LEGACY_LORE_KEY;
 
 export interface LoreEntry {
   title: string;
@@ -33,25 +34,9 @@ export const MATERIAL_LORE: Partial<Record<number, LoreEntry>> = {
   [Cell.Nitrogen]: { title: 'Liquid Nitrogen', body: 'Bitter cold — freezes what it pools against.' },
 };
 
-// In-memory cache so the per-frame examine check never hits localStorage on the
-// hot path; we only write on an actual new discovery.
-let cache: Record<string, boolean> | null = null;
-
-function known(): Record<string, boolean> {
-  if (cache === null) {
-    try {
-      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(LORE_KEY) : null;
-      cache = raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
-    } catch {
-      cache = {};
-    }
-  }
-  return cache;
-}
-
 /** Snapshot of discovered lore ids (for the Grimoire render). */
 export function discoveredLore(): Record<string, boolean> {
-  return { ...known() };
+  return loadDiscoveredMaterials();
 }
 
 /**
@@ -61,14 +46,7 @@ export function discoveredLore(): Record<string, boolean> {
 export function recordLore(ctx: Ctx, cell: number): LoreEntry | null {
   const entry = MATERIAL_LORE[cell];
   if (!entry) return null;
-  const k = known();
-  if (k[cell]) return null;
-  k[cell] = true;
-  try {
-    localStorage.setItem(LORE_KEY, JSON.stringify(k));
-  } catch {
-    // private mode — discovery still holds for the session via the cache
-  }
+  if (!recordMaterialDiscovery(ctx, String(cell), entry.title)) return null;
   ctx.events.emit('toast', { text: `Grimoire — learned of ${entry.title}` });
   return entry;
 }

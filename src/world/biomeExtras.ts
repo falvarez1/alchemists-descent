@@ -57,7 +57,7 @@ export interface BiomeExtras {
 export const EXTRAS: Record<BiomeId, BiomeExtras> = {
   earthen: { foes: { slime: 5, bat: 3, imp: 2, golem: 1 }, goldBonus: 1, mossPatches: 22 },
   fungal: {
-    foes: { slime: 4, spitter: 4, bat: 3, bomber: 1 },
+    foes: { slime: 4, spitter: 4, bat: 3, bomber: 1, weaver: 0.4 },
     goldBonus: 1,
     fungusPatches: 160,
     healSprings: 3,
@@ -71,7 +71,7 @@ export const EXTRAS: Record<BiomeId, BiomeExtras> = {
     mossPatches: 48,
   },
   timber: {
-    foes: { imp: 4, slime: 3, bomber: 3, bat: 2 },
+    foes: { imp: 4, slime: 3, bomber: 3, bat: 2, weaver: 0.25 },
     goldBonus: 1.1,
     mossPatches: 26,
   },

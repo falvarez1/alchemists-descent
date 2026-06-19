@@ -1,7 +1,7 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
-import type { CardId, Critter, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
+import type { CardId, Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { Cell } from '@/sim/CellType';
@@ -17,6 +17,7 @@ import {
   smokeColor,
   stoneColor,
   toxicColor,
+  vineColor,
 } from '@/sim/colors';
 import { splatterStain } from '@/sim/stains';
 
@@ -54,6 +55,8 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   bat: { hp: 16, halfW: 3, h: 5, bounty: 15, gore: Cell.Blood, goreFn: bloodColor },
   spitter: { hp: 55, halfW: 5, h: 11, bounty: 60, gore: Cell.Toxic, goreFn: toxicColor },
   bomber: { hp: 34, halfW: 5, h: 8, bounty: 45, gore: Cell.Fire, goreFn: fireColor },
+  // Eight-legged Fungal/Timber elite: controls space by writing real vine webbing.
+  weaver: { hp: 260, halfW: 12, h: 18, bounty: 220, gore: Cell.Blood, goreFn: bloodColor },
   // The Kiln Colossus: the run's final door. Water is the strategy.
   colossus: { hp: 520, halfW: 13, h: 26, bounty: 600, gore: Cell.Stone, goreFn: stoneColor },
   // Wave F: slime egg clutch — destroy it now or fight what hatches later
@@ -68,6 +71,9 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
  *  or colossus gushes. The factor is clamped to a sane band (see goreCount). */
 const GORE_REF_AREA = 50;
 const ENV_DAMAGE_FEEDBACK_COOLDOWN = 12;
+const WEAVER_PREY: ReadonlySet<CritterKind> = new Set<CritterKind>(['moth', 'firefly', 'beetle', 'fly']);
+const WEAVER_DISTURBANCE_WAKE_PAD = 88;
+const WEAVER_CRANKY_FRAMES = 260;
 
 // --- Gust knockback (the player's kick is a wind blast; see Player.kick) ----
 const GUST_REF_MASS = 40; // a slime-ish footprint (halfW·h); push scales inversely
@@ -109,7 +115,10 @@ export function enemyStateLabel(e: Enemy): string {
   if (e.status.burning > 0) return 'panicking'; // on fire → flailing
   if (e.status.electrified > 0) return 'shocked';
   if ((e.wary ?? 0) > 0) return 'wary'; // recoiling from a hazard edge
+  if (e.kind === 'weaver' && (e.windup ?? 0) > 0) return 'poised';
+  if (e.kind === 'weaver' && e.blink > 0) return 'weaving';
   if (e.sleeping) return 'asleep';
+  if (e.kind === 'weaver' && (e.cranky ?? 0) > 0) return 'cranky';
   if (e.windup) return 'winding up';
   if (e.alerted) return 'hunting';
   if (e.patrol && e.patrol.length > 0) return 'patrolling';
@@ -119,7 +128,25 @@ export function enemyStateLabel(e: Enemy): string {
 export class Enemies implements EnemyControlApi {
   readonly defs: Record<EnemyKind, EnemyDef> = ENEMY_DEFS;
 
-  constructor(private ctx: Ctx) {}
+  private readonly disposers: Array<() => void> = [];
+
+  constructor(private ctx: Ctx) {
+    const onStrike = ctx.events?.on('structureStrike', ({ x, y, radius }) => {
+      this.wakeSleepingWeaversNear(x, y, radius + WEAVER_DISTURBANCE_WAKE_PAD, 'disturbance');
+    });
+    const onImpact = ctx.events?.on('groundImpact', ({ x, y, radius, strength }) => {
+      this.wakeSleepingWeaversNear(x, y, radius + WEAVER_DISTURBANCE_WAKE_PAD + strength * 18, 'disturbance');
+    });
+    if (onStrike) this.disposers.push(onStrike);
+    if (onImpact) this.disposers.push(onImpact);
+  }
+
+  /** Tear down the page-lifetime EventBus subscriptions (symmetry with the
+   *  constructor; the Game disposes this alongside the other singletons). */
+  dispose(): void {
+    for (const d of this.disposers) d();
+    this.disposers.length = 0;
+  }
 
   spawn(kind: EnemyKind, x: number, y: number): void {
     const ctx = this.ctx;
@@ -694,6 +721,162 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
+  private weaverFooting(e: Enemy, def: EnemyDef): number {
+    const w = this.ctx.world;
+    const cx = Math.floor(e.x);
+    const foot = Math.floor(e.y);
+    let support = 0;
+    let hazard = 0;
+    for (let dy = -2; dy <= 4; dy += 2) {
+      for (let dx = -def.halfW - 4; dx <= def.halfW + 4; dx += 4) {
+        const x = cx + dx;
+        const y = foot + dy;
+        if (!w.inBounds(x, y)) continue;
+        const t = w.types[w.idx(x, y)];
+        if (
+          t === Cell.Vines ||
+          t === Cell.Fungus ||
+          t === Cell.Moss ||
+          t === Cell.Slime ||
+          t === Cell.Glowshroom
+        ) {
+          support += 1;
+        } else if (enemyLethalCell(e.kind, t)) {
+          hazard += 1;
+        }
+      }
+    }
+    return clamp((support - hazard * 1.5) / 7, 0, 1);
+  }
+
+  private weaveThread(e: Enemy, tx: number, ty: number): void {
+    const ctx = this.ctx;
+    const w = ctx.world;
+    const sx = Math.floor(e.x);
+    const sy = Math.floor(e.y - this.defs[e.kind].h * 0.55);
+    const ex = Math.floor(clamp(tx, 3, WIDTH - 4));
+    const ey = Math.floor(clamp(ty, 8, HEIGHT - 8));
+    const steps = Math.max(10, Math.ceil(Math.hypot(ex - sx, ey - sy)));
+    let placed = 0;
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      const sag = Math.sin(t * Math.PI) * 5;
+      const wobble = Math.sin((e.timer + k * 7) * 0.43) * 1.5;
+      const x = Math.round(sx + (ex - sx) * t + wobble);
+      const y = Math.round(sy + (ey - sy) * t + sag);
+      for (let oy = 0; oy <= (k % 5 === 0 ? 1 : 0); oy++) {
+        if (!w.inBounds(x, y + oy)) continue;
+        const i = w.idx(x, y + oy);
+        if (w.types[i] !== Cell.Empty) continue;
+        w.replaceCellAt(i, Cell.Vines, vineColor());
+        placed++;
+      }
+    }
+    if (placed > 0) {
+      ctx.audio.squelch();
+      ctx.particles.burst(ex, ey, Math.min(10, placed), Cell.Vines, vineColor, 1.1);
+    }
+  }
+
+  private weaverNeedleStrike(e: Enemy, tx: number, ty: number): void {
+    const ctx = this.ctx;
+    const x = Math.floor(clamp(tx, 3, WIDTH - 4));
+    const y = Math.floor(clamp(ty, 8, HEIGHT - 8));
+    ctx.particles.burst(x, y, 9, Cell.Sand, stoneColor, 1.5);
+    ctx.audio.hollowKnock();
+    this.shakeAt(x, y, 0.008, 0.035);
+    const dx = ctx.player.x - x;
+    const dy = ctx.player.y - 8 - y;
+    if (!ctx.player.dead && Math.abs(dx) < 15 && Math.abs(dy) < 18) {
+      ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(ctx.player.x - e.x || 1) * 4.0, -2.2);
+      ctx.particles.burst(ctx.player.x, ctx.player.y - 8, 7, Cell.Blood, bloodColor, 1.4);
+    }
+  }
+
+  private wakeWeaver(
+    e: Enemy,
+    source: 'proximity' | 'harm' | 'disturbance',
+  ): void {
+    const ctx = this.ctx;
+    e.sleeping = false;
+    e.alerted = true;
+    e.blink = 0;
+    const disturbed = source === 'disturbance';
+    if (disturbed) {
+      e.cranky = Math.max(e.cranky ?? 0, WEAVER_CRANKY_FRAMES);
+      e.recoil = Math.max(e.recoil ?? 0, 10);
+      e.attackCd = Math.min(e.attackCd, 24);
+      const dir = Math.sign(ctx.player.x - e.x || 1);
+      e.vx += dir * 0.42;
+    } else {
+      e.windup = Math.max(e.windup ?? 0, source === 'harm' ? 8 : 14);
+      e.attackCd = Math.max(e.attackCd, 34);
+    }
+    ctx.audio.tone(disturbed ? 130 : 160, disturbed ? 55 : 70, disturbed ? 0.38 : 0.28, 'triangle', 0.08);
+    ctx.particles.burst(e.x, e.y - this.defs[e.kind].h, disturbed ? 12 : 8, Cell.Vines, vineColor, 1.1);
+  }
+
+  private wakeSleepingWeaversNear(
+    x: number,
+    y: number,
+    radius: number,
+    source: 'disturbance',
+  ): number {
+    const r2 = radius * radius;
+    let woken = 0;
+    for (const e of this.ctx.enemies) {
+      if (e.kind !== 'weaver' || !e.sleeping) continue;
+      const def = this.defs[e.kind];
+      const dx = e.x - x;
+      const dy = e.y - def.h * 0.5 - y;
+      if (dx * dx + dy * dy > r2) continue;
+      this.wakeWeaver(e, source);
+      woken++;
+    }
+    return woken;
+  }
+
+  private findWeaverPrey(e: Enemy, radius = 86): Critter | null {
+    const r2 = radius * radius;
+    let best: Critter | null = null;
+    let bestD2 = r2;
+    for (const cr of this.ctx.critters.list) {
+      if (!WEAVER_PREY.has(cr.kind)) continue;
+      const dx = cr.x - e.x;
+      const dy = cr.y - (e.y - 8);
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        best = cr;
+        bestD2 = d2;
+      }
+    }
+    return best;
+  }
+
+  private weaverFeed(e: Enemy): boolean {
+    const prey = this.findWeaverPrey(e);
+    if (!prey) return false;
+    const dx = prey.x - e.x;
+    const dy = prey.y - (e.y - 8);
+    const d = Math.hypot(dx, dy) || 1;
+    if (d < 12) {
+      this.ctx.particles.burst(prey.x, prey.y, 5, null, () => packRGB(150, 165, 105), 0.9, {
+        grav: 0.04,
+      });
+      this.ctx.critters.remove(prey);
+      e.hp = Math.min(e.maxHp, e.hp + 14);
+      e.recoil = Math.max(e.recoil ?? 0, 10);
+      e.attackCd = Math.max(e.attackCd, 22);
+      this.ctx.audio.squelch();
+      return true;
+    }
+
+    const support = e.weaverSupport ?? 0;
+    e.vx += (dx / d) * (0.055 + support * 0.035);
+    if (e.grounded && Math.abs(dx) < 10 && dy < -12) e.vy -= 0.08;
+    return true;
+  }
+
   /** True if the cell just ahead of a grounded walker (foot ±1, in dir) is lethal
    *  to it — used so it refuses to voluntarily step into lava/fire/acid. */
   private lethalAhead(e: Enemy, def: EnemyDef, dir: number): boolean {
@@ -747,6 +930,7 @@ export class Enemies implements EnemyControlApi {
       if (e.flash > 0) e.flash--;
       if ((e.envDamageFeedbackCd ?? 0) > 0) e.envDamageFeedbackCd = (e.envDamageFeedbackCd ?? 0) - 1;
       if ((e.wary ?? 0) > 0) e.wary = (e.wary ?? 0) - 1;
+      if ((e.cranky ?? 0) > 0) e.cranky = (e.cranky ?? 0) - 1;
       e.timer++;
       if (e.attackCd > 0) e.attackCd--;
       this.enemyEnvironmentDamage(e, i);
@@ -1053,6 +1237,96 @@ export class Enemies implements EnemyControlApi {
             ctx.audio.tone(900, 60, 0.3, 'square', 0.1);
           }
         }
+      } else if (e.kind === 'weaver') {
+        // The Weaver reads its footing, then controls the room by writing
+        // real vine strands. The legs are rendered with IK; the grid mechanics
+        // are here so burning/cutting growth changes how confidently it moves.
+        e.vy += 0.32;
+        e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+        if (e.timer % 6 === 0) e.weaverSupport = this.weaverFooting(e, def);
+        const support = e.weaverSupport ?? 0;
+        const cranky = (e.cranky ?? 0) > 0;
+        const confidence = 0.7 + support * 0.45 + (cranky ? 0.25 : 0);
+
+        if ((e.recoil ?? 0) > 0) e.recoil = (e.recoil ?? 0) - 1;
+
+        if (e.sleeping) {
+          e.vx = 0;
+          e.vy = 0;
+          const forcedAwake = e.hp < e.maxHp || e.status.burning > 0 || e.status.electrified > 0;
+          if (forcedAwake || (targetAlive && pDist < 82)) {
+            this.wakeWeaver(e, forcedAwake ? 'harm' : 'proximity');
+          } else if (e.timer % 180 === 0) {
+            this.weaveThread(e, e.x + (Math.random() - 0.5) * 28, e.y - 18 - Math.random() * 18);
+          }
+          continue;
+        }
+
+        if (e.blink > 0) {
+          // Thread-spit telegraph: rooted, then a sagging vine line appears
+          // through the air near the alchemist.
+          e.blink--;
+          e.vx *= 0.62;
+          if (e.timer % 3 === 0) {
+            ctx.particles.spawn(
+              e.x + (Math.random() - 0.5) * 14,
+              e.y - 10 - Math.random() * 6,
+              (Math.random() - 0.5) * 0.2,
+              -0.25,
+              null,
+              vineColor(),
+              18,
+              { grav: -0.01, glow: 0.4 },
+            );
+          }
+          if (e.blink === 0 && targetAlive) {
+            const side = Math.sign(pdx || 1);
+            this.weaveThread(e, player.x - side * 10, player.y - 12);
+            e.attackCd = 115 + Math.floor(Math.random() * 45);
+          }
+        } else if ((e.windup ?? 0) > 0) {
+          // Needle Step: one foreleg lifts; the sprite exaggerates the poised
+          // leg while this countdown holds the body still.
+          e.windup = (e.windup ?? 1) - 1;
+          e.vx *= 0.55;
+          if (e.windup === 0 && targetAlive) {
+            this.weaverNeedleStrike(e, player.x, player.y - 8);
+            e.recoil = 12;
+            e.attackCd = 95 + Math.floor(Math.random() * 35);
+          }
+        } else {
+          const feeding = (!e.alerted || !targetAlive || pDist > 130) && this.weaverFeed(e);
+          if (feeding) {
+            e.bobPhase += 0.08;
+          } else if (!e.alerted && e.patrol && e.patrol.length > 0) {
+            const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
+            if (Math.abs(wp[0] - e.x) < 12) e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
+            else if (e.timer % 3 === 0) e.vx += Math.sign(wp[0] - e.x) * 0.07 * confidence;
+          } else if (targetAlive && (cranky || e.timer % 2 === 0)) {
+            const tooClose = pDist < 46;
+            const dir = tooClose ? -Math.sign(pdx || 1) : Math.sign(pdx || 1);
+            e.vx += dir * 0.06 * confidence;
+          }
+
+          if (targetAlive && e.attackCd === 0 && e.alerted) {
+            if (Math.abs(pdx) < 13 && Math.abs(pdy) < 20) {
+              // Point-blank contact bite: instant (no telegraph this close) and it
+              // claims the cooldown, so the needle windup can't also fire this frame.
+              ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx || 1) * -3.0, -2.0);
+              e.attackCd = 80;
+            } else if (pDist < 92 && Math.abs(pdy) < 62) {
+              e.windup = e.status.burning > 0 ? 10 : 18;
+              ctx.audio.tone(180, 90, 0.35, 'triangle', 0.09);
+            } else if (pDist < 285) {
+              e.blink = e.status.burning > 0 ? 10 : 18;
+              ctx.audio.noiseBurst(0.08, 1300, 0.08, true);
+            }
+          }
+        }
+
+        e.vx *= e.grounded ? 0.86 : 0.97;
+        const maxWeaverSpeed = (e.status.burning > 0 ? 1.0 : 0.72) + support * 0.35 + (cranky ? 0.22 : 0);
+        e.vx = clamp(e.vx, -maxWeaverSpeed, maxWeaverSpeed);
       } else if (e.kind === 'imp') {
         // Hover at a standoff distance, strafe, lob fireballs
         e.bobPhase += 0.09;
@@ -1628,7 +1902,7 @@ export class Enemies implements EnemyControlApi {
         }
       } else {
         const stepUp =
-          e.kind === 'colossus' ? 3 : e.kind === 'golem' || e.kind === 'leviathan' ? 2 : 1;
+          e.kind === 'weaver' ? 4 : e.kind === 'colossus' ? 3 : e.kind === 'golem' || e.kind === 'leviathan' ? 2 : 1;
         // WARY OF THE EDGE: a grounded walker won't voluntarily step into a cell
         // that's lethal to it (lava/fire/acid). Fail-open — it only cancels this
         // frame's step and re-aims next frame, so it never hard-locks a path.

@@ -198,6 +198,7 @@ export type EnemyKind =
   | 'bat'
   | 'spitter'
   | 'bomber'
+  | 'weaver'
   | 'colossus'
   // Wave F: a glistening slime egg clutch — destroy it or it hatches
   | 'eggs'
@@ -211,6 +212,15 @@ export interface EnemyDef {
   bounty: number;
   gore: Cell;
   goreFn: () => number;
+}
+
+export interface WeaverLegState {
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  lift: number;
+  phase: number;
 }
 
 export interface Enemy {
@@ -280,6 +290,12 @@ export interface Enemy {
   /** Frames of wary recoil after refusing to step into a lethal cell (lava/fire/
    *  acid it isn't immune to) — drives the "wary" inspector state. */
   wary?: number;
+  /** Weaver: renderer-owned IK foot targets. Transient visual state; not saved. */
+  weaverLegs?: WeaverLegState[];
+  /** Weaver: growth-footing confidence sampled by AI and read by the sprite. */
+  weaverSupport?: number;
+  /** Weaver: frames of irritated pursuit after being disturbed awake. */
+  cranky?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
@@ -306,6 +322,9 @@ export interface Critter {
 
 export interface CrittersApi {
   readonly list: readonly Critter[];
+  /** Test arenas and authored runtime setups can seed live prey without reaching
+   *  into the critter pool internals. Ambient auto-spawn still owns normal play. */
+  spawn(kind: CritterKind, x: number, y: number): Critter;
   update(ctx: Ctx): void;
   /** Concussion/heat kills the small things too (splat + remove). */
   killAt(ctx: Ctx, x: number, y: number, radius: number): void;
@@ -1101,6 +1120,8 @@ export interface RigidBody {
   burnT?: number;
   /** P2 reaction: frames left frozen (frost dampens its velocity); 0/undefined = not frozen. */
   frozenT?: number;
+  /** Cooldown for impact-noise events emitted when the body slams into terrain. */
+  impactNoiseCd?: number;
   tag?: string;
   data?: Record<string, unknown>;
   /** Fired on a hard terrain impact; `speed` is the pre-impact contact speed. */
@@ -1695,6 +1716,8 @@ export type CardId =
   | 'electriccharge'
   | 'critwet'
   | 'shorthoming'
+  | 'frostcharge'
+  | 'shattercrit'
   | 'trigger'
   | 'bounce';
 
@@ -1719,6 +1742,10 @@ export interface CastAction {
   critWet: boolean;
   /** Short-range homing correction for normal projectile bodies. */
   shortHoming: boolean;
+  /** Freeze struck targets and lightly frost struck terrain. */
+  frostCharge: boolean;
+  /** Conditional crit if the struck enemy was already frozen or touching cryo cells. */
+  shatterCrit: boolean;
   /** Terrain bounces remaining before the projectile detonates. */
   bounces: number;
   /** Cast at the impact point (depth-1 trigger payload), or null. */

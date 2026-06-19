@@ -33,6 +33,13 @@ export const LEVELS: Record<string, LevelDef> = {
     depth: 0,
     nextLevelId: null,
   },
+  'weaver-test': {
+    id: 'weaver-test',
+    name: 'WEAVER TEST LAIR',
+    biome: 'fungal',
+    depth: 0,
+    nextLevelId: null,
+  },
 };
 
 export const START_LEVEL = 'd1';

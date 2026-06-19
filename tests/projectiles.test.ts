@@ -34,6 +34,8 @@ describe('projectile trigger payloads', () => {
       electricCharge: false,
       critWet: false,
       shortHoming: false,
+      frostCharge: false,
+      shatterCrit: false,
       bounces: 0,
       triggered: null,
     };
@@ -352,6 +354,8 @@ describe('projectile trigger payloads', () => {
       electricCharge: false,
       critWet: false,
       shortHoming: false,
+      frostCharge: false,
+      shatterCrit: false,
       bounces: 0,
       triggered: [{
         card: 'spark',
@@ -364,6 +368,8 @@ describe('projectile trigger payloads', () => {
         electricCharge: false,
         critWet: false,
         shortHoming: false,
+        frostCharge: false,
+        shatterCrit: false,
         bounces: 0,
         triggered: null,
       }],
@@ -728,6 +734,128 @@ describe('projectile trigger payloads', () => {
     expect(wetDamage[0]).toBeCloseTo(18 * 1.8);
   });
 
+  it('freezes hit enemies with Frost Charge', () => {
+    const world = new World();
+    const projectile: Projectile = {
+      x: 5,
+      y: 5,
+      vx: 1,
+      vy: 0,
+      type: 'bolt',
+      life: 10,
+      age: 0,
+      charging: false,
+      hostile: false,
+    };
+    const enemy = enemyAt(6, 10);
+    PROJECTILE_MODS.set(projectile, { frostCharge: true });
+
+    new Projectiles().update(modifierCtx(world, projectile, { enemies: [enemy] }));
+
+    expect(enemy.status.frozen).toBe(120);
+  });
+
+  it('applies Shatter Frozen only to targets frozen before the hit', () => {
+    const dryWorld = new World();
+    const frozenWorld = new World();
+    const dryProjectile: Projectile = {
+      x: 5,
+      y: 5,
+      vx: 1,
+      vy: 0,
+      type: 'bolt',
+      life: 10,
+      age: 0,
+      charging: false,
+      hostile: false,
+    };
+    const frozenProjectile: Projectile = { ...dryProjectile };
+    const dryEnemy = enemyAt(6, 10);
+    const frozenEnemy = enemyAt(6, 10);
+    frozenEnemy.status.frozen = 20;
+    const dryDamage: number[] = [];
+    const frozenDamage: number[] = [];
+    PROJECTILE_MODS.set(dryProjectile, { shatterCrit: true });
+    PROJECTILE_MODS.set(frozenProjectile, { shatterCrit: true });
+
+    new Projectiles().update(modifierCtx(dryWorld, dryProjectile, { enemies: [dryEnemy], damage: dryDamage }));
+    new Projectiles().update(modifierCtx(frozenWorld, frozenProjectile, { enemies: [frozenEnemy], damage: frozenDamage }));
+
+    expect(dryDamage[0]).toBeCloseTo(18);
+    expect(frozenDamage[0]).toBeCloseTo(18 * 2);
+  });
+
+  it('allows Shatter Frozen when the target is touching ice or nitrogen', () => {
+    const world = new World();
+    const projectile: Projectile = {
+      x: 5,
+      y: 5,
+      vx: 1,
+      vy: 0,
+      type: 'bolt',
+      life: 10,
+      age: 0,
+      charging: false,
+      hostile: false,
+    };
+    const enemy = enemyAt(6, 10);
+    world.types[world.idx(6, 10)] = Cell.Ice;
+    const damage: number[] = [];
+    PROJECTILE_MODS.set(projectile, { shatterCrit: true });
+
+    new Projectiles().update(modifierCtx(world, projectile, { enemies: [enemy], damage }));
+
+    expect(damage[0]).toBeCloseTo(18 * 2);
+  });
+
+  it('does not let a dry Frost Charge plus Shatter Frozen hit self-prime its crit', () => {
+    const world = new World();
+    const projectile: Projectile = {
+      x: 5,
+      y: 5,
+      vx: 1,
+      vy: 0,
+      type: 'bolt',
+      life: 10,
+      age: 0,
+      charging: false,
+      hostile: false,
+    };
+    const enemy = enemyAt(6, 10);
+    const damage: number[] = [];
+    PROJECTILE_MODS.set(projectile, { frostCharge: true, shatterCrit: true });
+
+    new Projectiles().update(modifierCtx(world, projectile, { enemies: [enemy], damage }));
+
+    expect(damage[0]).toBeCloseTo(18);
+    expect(enemy.status.frozen).toBe(120);
+  });
+
+  it('freezes a bounded real-cell terrain splash with Frost Charge', () => {
+    const world = new World();
+    const wall = world.idx(6, 5);
+    const water = world.idx(7, 5);
+    world.types[wall] = Cell.Stone;
+    world.types[water] = Cell.Water;
+    const projectile: Projectile = {
+      x: 5,
+      y: 5,
+      vx: 1,
+      vy: 0,
+      type: 'bolt',
+      life: 10,
+      age: 0,
+      charging: false,
+      hostile: false,
+    };
+    PROJECTILE_MODS.set(projectile, { frostCharge: true });
+
+    new Projectiles().update(modifierCtx(world, projectile));
+
+    expect(world.types[water]).toBe(Cell.Ice);
+    expect(countCells(world, Cell.Ice)).toBeLessThanOrEqual(8);
+  });
+
   it('advances large blackhole terrain slices across repeated sim substeps in the same render frame', () => {
     const random = vi.spyOn(Math, 'random').mockReturnValue(1);
     try {
@@ -790,6 +918,7 @@ function modifierCtx(
     enemies?: Enemy[];
     frameCount?: number;
     player?: Partial<Ctx['player']>;
+    damage?: number[];
   } = {},
 ): Ctx {
   return {
@@ -820,7 +949,7 @@ function modifierCtx(
     },
     enemyCtl: {
       defs: { slime: { halfW: 4, h: 8 } },
-      damage: () => undefined,
+      damage: (_enemy: Enemy, amount: number) => opts.damage?.push(amount),
     },
     playerCtl: {
       damage: () => undefined,

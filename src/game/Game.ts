@@ -20,6 +20,7 @@ import { VineStrands } from '@/entities/VineStrands';
 import { Brewing } from '@/game/Brewing';
 import { createConsoleApi } from '@/game/console/commands';
 import { Critters } from '@/game/Critters';
+import { GrimoireInteractionObserver } from '@/game/GrimoireInteractions';
 import { HintSystem } from '@/game/Hints';
 import { Levels } from '@/game/Levels';
 import { Mechanisms } from '@/game/Mechanisms';
@@ -90,6 +91,7 @@ export class Game {
   private readonly inspector: Inspector;
   private readonly perfHud = new PerfHud();
   private readonly brewing = new Brewing();
+  private readonly grimoireInteractions = new GrimoireInteractionObserver();
   private readonly restoreSavedMode: () => void;
   private modePersistDisposer: (() => void) | null = null;
   private visibilityDisposer: (() => void) | null = null;
@@ -168,7 +170,9 @@ export class Game {
     ctx.rigidBodies = new RigidBodies(ctx);
     ctx.vineStrands = new VineStrands(ctx);
     ctx.playerCtl = new PlayerControl(ctx);
-    ctx.enemyCtl = new Enemies(ctx);
+    const enemyCtl = new Enemies(ctx);
+    ctx.enemyCtl = enemyCtl;
+    this.disposables.push(enemyCtl);
     ctx.spells = new Spells(ctx);
     ctx.simulation = new Simulation();
     ctx.worldgen = new WorldGen();
@@ -462,6 +466,8 @@ export class Game {
 
     if (!frozen) {
       const tSim = performance.now();
+      // Read contact pairs before the sim consumes them into steam/ice/stone.
+      this.grimoireInteractions.update(ctx);
       ctx.simulation.update(ctx);
       this.perfHud.mark('sim', performance.now() - tSim);
 

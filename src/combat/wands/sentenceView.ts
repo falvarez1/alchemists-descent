@@ -9,10 +9,19 @@ export interface WandSentenceLine {
   slots: number[];
 }
 
+export type WandSlotLinkKind = 'modifier' | 'multicast' | 'trigger-host' | 'trigger-payload';
+
+export interface WandSlotLink {
+  kind: WandSlotLinkKind;
+  from: number;
+  to: number;
+}
+
 export interface WandSentenceView {
   lines: WandSentenceLine[];
   warnings: string[];
   slotRelations: Partial<Record<number, number[]>>;
+  slotLinks: Partial<Record<number, WandSlotLink[]>>;
   slotWarnings: Partial<Record<number, string[]>>;
 }
 
@@ -70,6 +79,8 @@ const SPREAD_EFFECT_CARDS = new Set<CardId>([
   'meteor',
 ]);
 
+const MAX_ACTIONS_PER_GROUP = 6;
+
 function modifierHasEffect(modifier: CardId, host: CardId): boolean {
   if (modifier === 'speed') return SPEED_EFFECT_CARDS.has(host);
   if (modifier === 'heavy') return DAMAGE_EFFECT_CARDS.has(host);
@@ -100,6 +111,19 @@ function addRelation(map: Partial<Record<number, number[]>>, a: number, b: numbe
   addOneWayRelation(map, b, a);
 }
 
+function addSlotLink(map: Partial<Record<number, WandSlotLink[]>>, link: WandSlotLink): void {
+  const add = (slot: number): void => {
+    const list = (map[slot] ??= []);
+    if (!list.some((existing) =>
+      existing.kind === link.kind && existing.from === link.from && existing.to === link.to
+    )) {
+      list.push(link);
+    }
+  };
+  add(link.from);
+  add(link.to);
+}
+
 function addWarning(map: Partial<Record<number, string[]>>, slot: number, warning: string): void {
   (map[slot] ??= []).push(warning);
 }
@@ -112,6 +136,8 @@ function actionPhrase(action: CastGroup['actions'][number]): string {
   if (action.electricCharge) parts.push('Electric');
   if (action.critWet) parts.push('Wet-Crit');
   if (action.shortHoming) parts.push('Short-Homing');
+  if (action.frostCharge) parts.push('Frost-Charged');
+  if (action.shatterCrit) parts.push('Shatter-Crit');
   if (action.bounces > 0) parts.push('Bouncing');
   if (action.speedMul > 1.05 && SPEED_EFFECT_CARDS.has(action.card)) parts.push('Swift');
   if (action.dmgMul > 1.05 && DAMAGE_EFFECT_CARDS.has(action.card)) parts.push('Heavy');
@@ -160,6 +186,7 @@ function analyzeMulticastDebt(
   cards: (CardId | null)[],
   warnings: string[],
   slotRelations: Partial<Record<number, number[]>>,
+  slotLinks: Partial<Record<number, WandSlotLink[]>>,
   slotWarnings: Partial<Record<number, string[]>>,
 ): void {
   let pendingOwed = 0;
@@ -201,7 +228,10 @@ function analyzeMulticastDebt(
 
     active.found++;
     active.actionsInChunk++;
-    for (const multicastSlot of active.slots) addRelation(slotRelations, multicastSlot, slot);
+    for (const multicastSlot of active.slots) {
+      addRelation(slotRelations, multicastSlot, slot);
+      addSlotLink(slotLinks, { kind: 'multicast', from: multicastSlot, to: slot });
+    }
     if (active.found >= active.owed) active = null;
     else if (active.actionsInChunk >= 6) active.actionsInChunk = 0;
   }
@@ -210,12 +240,93 @@ function analyzeMulticastDebt(
   if (pendingSlots.length > 0) addMulticastWarning(cards, warnings, slotWarnings, pendingSlots, pendingOwed, 0);
 }
 
+function analyzeTriggerLinks(
+  cards: (CardId | null)[],
+  slotLinks: Partial<Record<number, WandSlotLink[]>>,
+): void {
+  const rawGroups: Array<{ projectileSlots: number[]; triggerSlots: number[] }> = [];
+  const triggerHosts = new Map<number, number>();
+  let pendingSize = 0;
+  let pendingTriggerSlots: number[] = [];
+  let owed = 0;
+  let actionsInGroup = 0;
+  let cur: { projectileSlots: number[]; triggerSlots: number[] } | null = null;
+
+  const finishCur = (): void => {
+    if (!cur || cur.projectileSlots.length === 0) return;
+    rawGroups.push({
+      projectileSlots: [...cur.projectileSlots],
+      triggerSlots: [...cur.triggerSlots],
+    });
+    cur = null;
+    actionsInGroup = 0;
+  };
+
+  for (let slot = 0; slot < cards.length; slot++) {
+    const id = cards[slot];
+    if (!id) continue;
+    const def = CARD_DEFS[id];
+    if (def.kind === 'modifier') {
+      if (id === 'trigger') pendingTriggerSlots.push(slot);
+      continue;
+    }
+    if (def.kind === 'multicast') {
+      const size = MULTICAST_SIZE[id] ?? 1;
+      if (cur) owed += size;
+      else pendingSize += size;
+      continue;
+    }
+
+    if (!cur) {
+      cur = {
+        projectileSlots: [],
+        triggerSlots: [],
+      };
+      owed = Math.max(1, pendingSize);
+      pendingSize = 0;
+    }
+
+    cur.projectileSlots.push(slot);
+    actionsInGroup++;
+    cur.triggerSlots.push(...pendingTriggerSlots);
+    for (const triggerSlot of pendingTriggerSlots) triggerHosts.set(triggerSlot, slot);
+    pendingTriggerSlots = [];
+    owed--;
+
+    if (actionsInGroup >= MAX_ACTIONS_PER_GROUP && owed > 0) {
+      finishCur();
+      cur = { projectileSlots: [], triggerSlots: [] };
+    }
+    if (owed <= 0) finishCur();
+  }
+  finishCur();
+
+  for (let groupIndex = 0; groupIndex < rawGroups.length; groupIndex++) {
+    const group = rawGroups[groupIndex];
+    if (group.triggerSlots.length === 0) continue;
+    const payload = rawGroups[groupIndex + 1] ?? null;
+    // A trigger with no following payload group arms nothing — compileWand leaves
+    // the host's `triggered` null and a "no payload group" warning fires — so emit
+    // no links rather than badge the host as wired.
+    if (!payload) continue;
+    for (const triggerSlot of group.triggerSlots) {
+      const host = triggerHosts.get(triggerSlot);
+      if (host !== undefined) addSlotLink(slotLinks, { kind: 'trigger-host', from: triggerSlot, to: host });
+      for (const projectileSlot of payload.projectileSlots) {
+        addSlotLink(slotLinks, { kind: 'trigger-payload', from: triggerSlot, to: projectileSlot });
+      }
+    }
+    groupIndex++;
+  }
+}
+
 function analyzeSlots(
   cards: (CardId | null)[],
   program: CastGroup[],
-): Pick<WandSentenceView, 'warnings' | 'slotRelations' | 'slotWarnings'> {
+): Pick<WandSentenceView, 'warnings' | 'slotRelations' | 'slotLinks' | 'slotWarnings'> {
   const warnings: string[] = [];
   const slotRelations: Partial<Record<number, number[]>> = {};
+  const slotLinks: Partial<Record<number, WandSlotLink[]>> = {};
   const slotWarnings: Partial<Record<number, string[]>> = {};
   const pendingModifierSlots: number[] = [];
 
@@ -232,13 +343,16 @@ function analyzeSlots(
         addWarning(slotWarnings, slot, warning);
       } else {
         addRelation(slotRelations, slot, host);
+        if (id !== 'trigger') addSlotLink(slotLinks, { kind: 'modifier', from: slot, to: host });
         const hostId = cards[host];
         const projectileBodyMod =
           id === 'watertrail' ||
           id === 'oiltrail' ||
           id === 'electriccharge' ||
           id === 'critwet' ||
-          id === 'shorthoming';
+          id === 'shorthoming' ||
+          id === 'frostcharge' ||
+          id === 'shattercrit';
         if (projectileBodyMod && hostId && !PROJECTILE_MOD_HOST_CARDS.has(hostId)) {
           const warning = `${def.name} in slot ${slotLabel(slot)} needs a projectile body; ${cardName(hostId)} in slot ${slotLabel(host)} cannot carry it`;
           warnings.push(warning);
@@ -260,7 +374,8 @@ function analyzeSlots(
     pendingModifierSlots.length = 0;
   }
 
-  analyzeMulticastDebt(cards, warnings, slotRelations, slotWarnings);
+  analyzeMulticastDebt(cards, warnings, slotRelations, slotLinks, slotWarnings);
+  analyzeTriggerLinks(cards, slotLinks);
 
   for (const group of program) {
     const slots = Array.from(new Set(group.slots));
@@ -297,7 +412,7 @@ function analyzeSlots(
     }
   }
 
-  return { warnings, slotRelations, slotWarnings };
+  return { warnings, slotRelations, slotLinks, slotWarnings };
 }
 
 function normalizedCastIndex(castIndex: number, programLength: number): number {

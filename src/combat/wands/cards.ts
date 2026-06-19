@@ -217,6 +217,22 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
     manaCost: 6,
     blurb: 'Next projectile nudges toward a nearby hostile after it leaves the wand',
   },
+  frostcharge: {
+    id: 'frostcharge',
+    name: 'Frost Charge',
+    kind: 'modifier',
+    tags: ['Status', 'Combo', 'Setup'],
+    manaCost: 8,
+    blurb: 'Next projectile freezes targets and leaves a small rime splash on terrain',
+  },
+  shattercrit: {
+    id: 'shattercrit',
+    name: 'Shatter Frozen',
+    kind: 'modifier',
+    tags: ['Damage', 'Combo'],
+    manaCost: 8,
+    blurb: 'Next projectile hits harder if the target was already frozen or touching ice',
+  },
   bounce: {
     id: 'bounce',
     name: 'Bouncing Charm',

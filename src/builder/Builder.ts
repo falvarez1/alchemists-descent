@@ -10865,17 +10865,17 @@ export class Builder {
         closeId: 'bi-close',
         closeLabel: 'Close inspector',
       }) +
-      `<div class="bi-panel-body bi-generated-scene">
+      `<div class="bi-panel-body bi-generated-scene" data-inspector-kind="generated-scene" data-generated-scene-id="${escapeAttr(scene.id)}" data-scene-id="${escapeAttr(scene.sceneId)}" data-slot-id="${escapeAttr(scene.slotId)}">
         <div class="bi-section">
           <div class="bi-head">GENERATED PIXEL SCENE</div>
           <div class="bi-id">${escapeHtml(scene.id)}</div>
-          <div class="bi-row"><span>Name</span><b>${escapeHtml(scene.label)}</b></div>
-          <div class="bi-row"><span>Scene</span><b>${escapeHtml(scene.sceneId)}</b></div>
-          <div class="bi-row"><span>Slot</span><b>${escapeHtml(scene.slotId)}</b></div>
-          <div class="bi-row"><span>Bounds</span><b>${scene.x0},${scene.y0} - ${scene.x1},${scene.y1}</b></div>
-          <div class="bi-row"><span>Size</span><b>${width}x${height}</b></div>
-          <div class="bi-row"><span>Chunk</span><b title="${escapeAttr(source)}">${escapeHtml(source)}</b></div>
-          <div class="bi-row"><span>Content</span><b>${scene.objectCount} obj / ${scene.lightCount} light / ${scene.linkCount} link</b></div>
+          <div class="bi-row" data-gen-field="name"><span>Name</span><b>${escapeHtml(scene.label)}</b></div>
+          <div class="bi-row" data-gen-field="scene"><span>Scene</span><b>${escapeHtml(scene.sceneId)}</b></div>
+          <div class="bi-row" data-gen-field="slot"><span>Slot</span><b>${escapeHtml(scene.slotId)}</b></div>
+          <div class="bi-row" data-gen-field="bounds"><span>Bounds</span><b>${scene.x0},${scene.y0} - ${scene.x1},${scene.y1}</b></div>
+          <div class="bi-row" data-gen-field="size"><span>Size</span><b>${width}x${height}</b></div>
+          <div class="bi-row" data-gen-field="source-chunk"><span>Chunk</span><b title="${escapeAttr(source)}">${escapeHtml(source)}</b></div>
+          <div class="bi-row" data-gen-field="content"><span>Content</span><b>${scene.objectCount} obj / ${scene.lightCount} light / ${scene.linkCount} link</b></div>
           <div class="bpd-message">Generated scenes are read-only runtime content. Capture Prefab converts the visible cells plus valid generated objects and lights into an editable authored prefab.</div>
           <div class="bi-action-row">
             <button id="bi-gen-frame" type="button">Frame</button>

@@ -218,7 +218,22 @@ const r4 = await page.evaluate(async () => {
   ctx.input.mouse.y = by + 1;
   ctx.wands.castActionAt(
     ctx,
-    { card: 'vitrify', speedMul: 1, dmgMul: 1, spreadAdd: 0, infused: false, bounces: 0, triggered: null },
+    {
+      card: 'vitrify',
+      speedMul: 1,
+      dmgMul: 1,
+      spreadAdd: 0,
+      infused: false,
+      waterTrail: 0,
+      oilTrail: 0,
+      electricCharge: false,
+      critWet: false,
+      shortHoming: false,
+      frostCharge: false,
+      shatterCrit: false,
+      bounces: 0,
+      triggered: null,
+    },
     p.x,
     p.y - 8,
     0,

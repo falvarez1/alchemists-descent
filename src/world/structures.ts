@@ -468,7 +468,7 @@ export function placeStructures(
       w.life[w.idx(X, labY + 6)] = 360 + Math.floor(rng.next() * 90);
     }
 
-    // Water-prep station: a contained basin beside heat, not a flood trap.
+    // Water-prep station: a contained basin beside heat and a lava cup, not a flood trap.
     const waterX = labX + s * 4;
     for (let X = waterX - 5; X <= waterX + 5; X++) hew(X, labY + 10);
     for (const X of [waterX - 5, waterX + 5]) {
@@ -480,6 +480,15 @@ export function placeStructures(
     }
     set(waterX + s * 7, labY + 9, Cell.Fire, packRGB(255, 104, 28));
     w.life[w.idx(waterX + s * 7, labY + 9)] = 260;
+    const lavaWallA = waterX - s * 8;
+    const lavaWallB = waterX - s * 5;
+    const lavaX0 = Math.min(lavaWallA, lavaWallB);
+    const lavaX1 = Math.max(lavaWallA, lavaWallB);
+    for (let X = lavaX0; X <= lavaX1; X++) hew(X, labY + 10);
+    for (const X of [lavaWallA, lavaWallB]) {
+      for (let Y = labY + 7; Y <= labY + 10; Y++) hew(X, Y);
+    }
+    for (let X = lavaX0 + 1; X <= lavaX1 - 1; X++) set(X, labY + 9, Cell.Lava, packRGB(255, 95, 24));
 
     // Spark station: a real charge latch opens an optional sample shutter.
     const doorX = labX + s * 18;

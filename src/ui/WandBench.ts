@@ -1,7 +1,7 @@
 import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskState, type PerkId } from '@/core/types';
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/WandSystem';
-import { buildWandSentenceView, type WandSentenceView } from '@/combat/wands/sentenceView';
+import { buildWandSentenceView, type WandSentenceView, type WandSlotLinkKind } from '@/combat/wands/sentenceView';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import { Cell } from '@/sim/CellType';
 import { cardIconName, ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
@@ -36,6 +36,8 @@ const CARD_RECIPE_HINTS: Partial<Record<CardId, string[]>> = {
   critwet: ['Pairs with Water Trail or any wet target.'],
   electriccharge: ['Pairs with Water Trail and conductor cells.'],
   oiltrail: ['Pairs with Flame as a visible fuse.'],
+  frostcharge: ['Pairs with Shatter Frozen as the setup hit.'],
+  shattercrit: ['Pairs with Frost Charge or naturally frozen targets.'],
   trigger: ['Put a host projectile next, then a payload group after it.'],
   infuser: ['Uses the active flask material as the projectile trail.'],
 };
@@ -86,6 +88,14 @@ const PERK_LABELS: Array<{ id: PerkId; name: string }> = [
 type BenchDragSource =
   | { kind: 'collection'; index: number; id: CardId }
   | { kind: 'slot'; wand: 0 | 1; slot: number; id: CardId };
+
+interface SlotLinkSummary {
+  outgoingSlots: number[];
+  incomingSlots: number[];
+  badgeLabel: string;
+  badgeClass: string;
+  titleLines: string[];
+}
 
 export function canOpenWandBench(ctx: Ctx): boolean {
   if (ctx.state.mode !== 'play' || ctx.player.dead) return false;
@@ -695,13 +705,16 @@ export class WandBench {
     if (id === null) {
       tile.title = 'Empty slot';
     } else {
-      const warningText = view.slotWarnings[s]?.join('\n');
-      tile.title = warningText ? cardTitle(id) + '\n' + warningText : cardTitle(id);
-      tile.setAttribute('aria-label', cardTitle(id));
+      const slotLinks = this.describeSlotLinks(w, s, view);
+      const warningLines = view.slotWarnings[s] ?? [];
+      const titleParts = [cardTitle(id), ...(slotLinks?.titleLines ?? []), ...warningLines];
+      tile.title = titleParts.join('\n');
+      tile.setAttribute('aria-label', titleParts.join(' - '));
       tile.tabIndex = 0;
       if (this.inspectedCard === id) tile.classList.add('inspected');
       const icon = makeIconCanvas(cardIconName(id), 3);
       if (icon) tile.appendChild(icon);
+      if (slotLinks) this.appendSlotLinkBadge(tile, slotLinks);
       const cost = document.createElement('div');
       cost.className = 'cost';
       cost.textContent = String(CARD_DEFS[id].manaCost);
@@ -733,6 +746,85 @@ export class WandBench {
     });
     tile.addEventListener('click', () => this.onSlotClick(w, s, id));
     return tile;
+  }
+
+  private describeSlotLinks(w: 0 | 1, s: number, view: WandSentenceView): SlotLinkSummary | null {
+    const links = view.slotLinks[s] ?? [];
+    if (links.length === 0) return null;
+
+    const outgoingByKind = new Map<WandSlotLinkKind, number[]>();
+    const incoming = new Set<number>();
+    for (const link of links) {
+      if (link.from === s) {
+        const targets = outgoingByKind.get(link.kind) ?? [];
+        if (!targets.includes(link.to)) targets.push(link.to);
+        outgoingByKind.set(link.kind, targets);
+      }
+      if (link.to === s) incoming.add(link.from);
+    }
+
+    // Dedupe across kinds so a slot that is e.g. both a multicast and a trigger
+    // target isn't listed twice in the data-bench-affects-slots attribute.
+    const outgoingSlots = [...new Set(Array.from(outgoingByKind.values()).flat())];
+    const incomingSlots = [...incoming].sort((a, b) => a - b);
+
+    const cards = this.ctx.wands.wands[w].cards;
+    const titleLines: string[] = [];
+    for (const kind of ['modifier', 'multicast', 'trigger-host', 'trigger-payload'] as const) {
+      const targets = outgoingByKind.get(kind) ?? [];
+      if (targets.length > 0) titleLines.push(this.outgoingSlotLine(kind, targets, cards));
+    }
+    if (incomingSlots.length > 0) {
+      titleLines.push('Affected by ' + this.namedSlotList(incomingSlots, cards));
+    }
+
+    const hasOutgoing = outgoingSlots.length > 0;
+    const hasIncoming = incomingSlots.length > 0;
+    const badgeLabel = hasOutgoing
+      ? this.compactSlotBadge('→', outgoingSlots)
+      : this.compactSlotBadge('←', incomingSlots);
+    const badgeClass = hasOutgoing && hasIncoming ? 'mixed' : hasOutgoing ? 'outgoing' : 'incoming';
+    return { outgoingSlots, incomingSlots, badgeLabel, badgeClass, titleLines };
+  }
+
+  private appendSlotLinkBadge(tile: HTMLElement, summary: SlotLinkSummary): void {
+    tile.classList.add('has-slot-link', 'has-' + summary.badgeClass + '-link');
+    if (summary.outgoingSlots.length > 0) {
+      tile.dataset.benchAffectsSlots = summary.outgoingSlots.map((slot) => String(slot + 1)).join(',');
+    }
+    if (summary.incomingSlots.length > 0) {
+      tile.dataset.benchAffectedBySlots = summary.incomingSlots.map((slot) => String(slot + 1)).join(',');
+    }
+
+    const badge = document.createElement('span');
+    badge.className = 'bench-slot-link ' + summary.badgeClass;
+    badge.textContent = summary.badgeLabel;
+    badge.setAttribute('aria-hidden', 'true');
+    tile.appendChild(badge);
+  }
+
+  private outgoingSlotLine(kind: WandSlotLinkKind, slots: number[], cards: (CardId | null)[]): string {
+    const verb =
+      kind === 'multicast' ? 'Groups ' :
+      kind === 'trigger-host' ? 'Arms host ' :
+      kind === 'trigger-payload' ? 'Triggers payload ' :
+      'Affects ';
+    return verb + this.namedSlotList(slots, cards);
+  }
+
+  private namedSlotList(slots: number[], cards: (CardId | null)[]): string {
+    const sorted = [...new Set(slots)].sort((a, b) => a - b);
+    const slotWord = sorted.length === 1 ? 'slot ' : 'slots ';
+    return slotWord + sorted.map((slot) => {
+      const id = cards[slot];
+      return String(slot + 1) + (id ? ' (' + CARD_DEFS[id].name + ')' : '');
+    }).join(', ');
+  }
+
+  private compactSlotBadge(prefix: string, slots: number[]): string {
+    const sorted = [...new Set(slots)].sort((a, b) => a - b);
+    if (sorted.length <= 2) return prefix + sorted.map((slot) => String(slot + 1)).join(',');
+    return prefix + sorted.length + 'x';
   }
 
   private highlightRelatedSlots(w: 0 | 1, s: number): void {

@@ -34,6 +34,8 @@ export class CellInspector {
     if (e.code !== 'KeyI' || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    this.examine();
     this.toggle();
   };
 
@@ -52,6 +54,14 @@ export class CellInspector {
 
   /** Public so a tick hook (or a probe) can refresh without the rAF loop. */
   update(): void {
+    this.renderCellReadout(false);
+  }
+
+  examine(): void {
+    this.renderCellReadout(true);
+  }
+
+  private renderCellReadout(discover: boolean): void {
     const w = this.ctx.world;
     const x = Math.floor(this.ctx.input.mouse.x);
     const y = Math.floor(this.ctx.input.mouse.y);
@@ -64,10 +74,7 @@ export class CellInspector {
     const c = w.colors[i];
     const mat = MATERIAL_PARAMS[t];
     const name = mat?.name ?? `cell #${t}`;
-    // Examining IS discovery: the first look at a cataloged material inscribes its
-    // lore into the Grimoire. Allowed in every mode (the Sandbox paint mode is
-    // internally 'build') — it only ever adds to the player's persistent knowledge.
-    recordLore(this.ctx, t);
+    if (discover) recordLore(this.ctx, t);
     const lore = MATERIAL_LORE[t];
     // Nearest enemy within ~12 cells of the cursor: show its live AI state.
     let near: { kind: string; state: string; hp: number; maxHp: number } | null = null;

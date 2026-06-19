@@ -153,7 +153,9 @@ function pointOverlapsPlayer(ctx: Ctx, x: number, y: number): boolean {
   return Math.abs(x - ctx.player.x) <= 5 && y <= ctx.player.y + 1 && y >= ctx.player.y - 18;
 }
 
-function bodyTouchesWater(ctx: Ctx, enemy: Ctx['enemies'][number]): boolean {
+/** Scan the cells overlapping an enemy's body box (±2-cell margin, 2-cell stride)
+ *  for any matching `match` — shared by the wet-crit and shatter-crit checks. */
+function bodyTouchesCell(ctx: Ctx, enemy: Ctx['enemies'][number], match: (type: number) => boolean): boolean {
   const world = ctx.world;
   const def = ctx.enemyCtl.defs[enemy.kind];
   const x0 = Math.floor(enemy.x - def.halfW - 2);
@@ -162,15 +164,32 @@ function bodyTouchesWater(ctx: Ctx, enemy: Ctx['enemies'][number]): boolean {
   const y1 = Math.floor(enemy.y + 2);
   for (let y = y0; y <= y1; y += 2) {
     for (let x = x0; x <= x1; x += 2) {
-      if (world.inBounds(x, y) && world.types[world.idx(x, y)] === Cell.Water) return true;
+      if (world.inBounds(x, y) && match(world.types[world.idx(x, y)])) return true;
     }
   }
   return false;
 }
 
+function bodyTouchesWater(ctx: Ctx, enemy: Ctx['enemies'][number]): boolean {
+  return bodyTouchesCell(ctx, enemy, (t) => t === Cell.Water);
+}
+
+function bodyTouchesCryo(ctx: Ctx, enemy: Ctx['enemies'][number]): boolean {
+  return bodyTouchesCell(ctx, enemy, (t) => t === Cell.Ice || t === Cell.Nitrogen);
+}
+
 function wetCritArmed(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]): boolean {
   const mods = PROJECTILE_MODS.get(p);
   return mods?.critWet === true && (enemy.status.wet > 0 || bodyTouchesWater(ctx, enemy));
+}
+
+function shatterCritArmed(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]): boolean {
+  const mods = PROJECTILE_MODS.get(p);
+  return mods?.shatterCrit === true && (enemy.status.frozen > 0 || bodyTouchesCryo(ctx, enemy));
+}
+
+function conditionalCritMul(wetCrit: boolean, shatterCrit: boolean): number {
+  return Math.min(3, (wetCrit ? 1.8 : 1) * (shatterCrit ? 2 : 1));
 }
 
 function wetCritFeedback(ctx: Ctx, x: number, y: number): void {
@@ -179,6 +198,14 @@ function wetCritFeedback(ctx: Ctx, x: number, y: number): void {
     grav: 0.02,
   });
   ctx.audio.tone(1180, 120, 0.14, 'triangle', 0.08);
+}
+
+function shatterCritFeedback(ctx: Ctx, x: number, y: number): void {
+  ctx.particles.burst(x, y - 7, 14, null, () => packRGB(220, 245, 255), 2.2, {
+    glow: 2.5,
+    grav: 0.04,
+  });
+  ctx.audio.tone(1640, 100, 0.16, 'triangle', 0.1);
 }
 
 function electricFeedback(ctx: Ctx, x: number, y: number): void {
@@ -195,6 +222,8 @@ function pruneProjectileMods(p: Projectile, mods: ProjectileModState): void {
     mods.oilTrailBudget !== undefined ||
     mods.electricCharge === true ||
     mods.critWet === true ||
+    mods.frostCharge === true ||
+    mods.shatterCrit === true ||
     mods.shortHomingFrames !== undefined
   ) {
     return;
@@ -229,6 +258,62 @@ function applyElectricChargeToTerrain(ctx: Ctx, p: Projectile, gx: number, gy: n
   if (mods?.electricCharge !== true) return;
   chargeNearby(ctx, gx, gy, 4, 14);
   electricFeedback(ctx, gx, gy);
+}
+
+function frostChargeFeedback(ctx: Ctx, x: number, y: number): void {
+  ctx.particles.burst(x, y - 5, 8, null, () => packRGB(190, 235, 255), 1.5, {
+    glow: 1.8,
+    grav: 0.03,
+  });
+  ctx.audio.tone(940, 180, 0.1, 'sine', 0.07);
+}
+
+function applyFrostChargeToEnemy(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]): void {
+  const mods = PROJECTILE_MODS.get(p);
+  if (mods?.frostCharge !== true) return;
+  enemy.status.frozen = Math.max(enemy.status.frozen ?? 0, 120);
+  frostChargeFeedback(ctx, enemy.x, enemy.y);
+}
+
+function smallFrostSplash(ctx: Ctx, cx: number, cy: number): void {
+  const world = ctx.world;
+  let frozen = 0;
+  for (const { dx, dy } of diskOffsets(3)) {
+    if (frozen >= 8) break;
+    const x = cx + dx;
+    const y = cy + dy;
+    if (!world.inBounds(x, y) || pointOverlapsPlayer(ctx, x, y)) continue;
+    const idx = world.idx(x, y);
+    if (world.types[idx] === Cell.Water) {
+      world.replaceCellAt(idx, Cell.Ice, iceColor());
+      frozen++;
+    }
+  }
+  for (const { dx, dy } of diskOffsets(3)) {
+    if (frozen >= 8) break;
+    const x = cx + dx;
+    const y = cy + dy;
+    if (!world.inBounds(x, y) || pointOverlapsPlayer(ctx, x, y)) continue;
+    const idx = world.idx(x, y);
+    if (world.types[idx] !== Cell.Empty) continue;
+    let nearSolid = false;
+    for (let k = 0; k < 4 && !nearSolid; k++) {
+      const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
+      const ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+      if (world.inBounds(nx, ny) && isSolid(world.types[world.idx(nx, ny)])) nearSolid = true;
+    }
+    if (nearSolid) {
+      world.replaceCellAt(idx, Cell.Ice, iceColor());
+      frozen++;
+    }
+  }
+  if (frozen > 0) frostChargeFeedback(ctx, cx, cy);
+}
+
+function applyFrostChargeToTerrain(ctx: Ctx, p: Projectile, gx: number, gy: number): void {
+  const mods = PROJECTILE_MODS.get(p);
+  if (mods?.frostCharge !== true) return;
+  smallFrostSplash(ctx, gx, gy);
 }
 
 function shedTrail(
@@ -690,14 +775,19 @@ export class Projectiles implements ProjectilesApi {
               dy = e.y - 5 - p.y;
             if (dx * dx + dy * dy < 130) {
               const wetCrit = wetCritArmed(ctx, p, e);
+              const shatterCrit = shatterCritArmed(ctx, p, e);
+              const critMul = conditionalCritMul(wetCrit, shatterCrit);
               applyElectricChargeToEnemy(ctx, p, e);
-              this.damageEnemy(ctx, e, 30 * (p.mul ?? 1) * (wetCrit ? 1.8 : 1), p.vx * 0.4, -0.8);
+              this.damageEnemy(ctx, e, 30 * (p.mul ?? 1) * critMul, p.vx * 0.4, -0.8);
+              // Ice lance deep-freezes inherently; a Frost Charge mod's 120 would be
+              // subsumed by this 150, so applying it here would only be dead work.
               e.status.frozen = Math.max(e.status.frozen, 150);
               ctx.particles.burst(e.x, e.y - 5, 10, null, () => packRGB(200, 240, 255), 2.2, {
                 glow: 1.8,
                 grav: 0.08,
               });
               if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
+              if (shatterCrit) shatterCritFeedback(ctx, e.x, e.y);
               ctx.audio.tone(900 + Math.random() * 300, 130, 0.12, 'sine', 0.08);
             }
           }
@@ -772,8 +862,10 @@ export class Projectiles implements ProjectilesApi {
               dy = e.y - 5 - p.y;
             if (dx * dx + dy * dy < (p.type === 'meteor' ? 200 : 120)) {
               const wetCrit = wetCritArmed(ctx, p, e);
-              const damageMul = mul * (wetCrit ? 1.8 : 1);
-              const explosionMul = wetCrit ? 1.8 : 1;
+              const shatterCrit = shatterCritArmed(ctx, p, e);
+              const critMul = conditionalCritMul(wetCrit, shatterCrit);
+              const damageMul = mul * critMul;
+              const explosionMul = critMul;
               applyElectricChargeToEnemy(ctx, p, e);
               if (p.type === 'bolt') {
                 this.damageEnemy(ctx, e, 18 * damageMul, p.vx * 0.8, -1.6);
@@ -791,7 +883,9 @@ export class Projectiles implements ProjectilesApi {
               } else {
                 this.triggerExplosion(ctx, p.x, p.y, 40, damageMul);
               }
+              applyFrostChargeToEnemy(ctx, p, e);
               if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
+              if (shatterCrit) shatterCritFeedback(ctx, e.x, e.y);
               releaseTriggered(ctx, p);
               this.removeAt(projectiles, i);
               hit = true;
@@ -826,6 +920,7 @@ export class Projectiles implements ProjectilesApi {
         const col = world.types[world.idx(gx, gy)];
         if (col !== Cell.Empty && !isGas(col)) {
           applyElectricChargeToTerrain(ctx, p, gx, gy);
+          applyFrostChargeToTerrain(ctx, p, gx, gy);
           // Hollow-wall tell (pillar 10): a player shot striking a thin wall
           // with open space behind it knocks hollow — probed through the real
           // cells along the impact direction. The speed gate keeps a bomb

@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '@/core/types';
 import { Brewing } from '@/game/Brewing';
+import { resetGrimoireCacheForTests } from '@/game/GrimoireStore';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 
@@ -54,7 +55,12 @@ function basinCount(world: World, cell: Cell): number {
 }
 
 describe('brewing progress', () => {
+  beforeEach(() => {
+    resetGrimoireCacheForTests();
+  });
+
   afterEach(() => {
+    resetGrimoireCacheForTests();
     vi.unstubAllGlobals();
   });
 

@@ -97,8 +97,11 @@ import type { BiomeId } from '@/core/types';
  *      soft-growth cells (bodies pass through; they burn/wither/creep on their
  *      own). Deterministic placement shifts cell types on verdant levels — re-
  *      recorded gen-golden + gen-level-golden (d8 + vault unchanged: not moss-crown).
+ * v27: D1 Spell Lab water-prep station now includes a contained lava cup beside
+ *      the basin, completing the first-run water/lava flask lesson. Full-level
+ *      cell output changed for d1; re-recorded gen-level-golden only.
  */
-export const GEN_VERSION = 26;
+export const GEN_VERSION = 27;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

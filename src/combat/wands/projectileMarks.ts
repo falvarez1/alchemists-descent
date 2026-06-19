@@ -40,6 +40,10 @@ export interface ProjectileModState {
   shortHomingFrames?: number;
   /** Frame cadence for homing retargeting. */
   shortHomingCadence?: number;
+  /** Freeze struck targets and lightly frost struck terrain. */
+  frostCharge?: boolean;
+  /** Conditional crit when the struck target was already frozen or touching cryo cells. */
+  shatterCrit?: boolean;
 }
 
 /** Aggregate review-content projectile modifier state. */

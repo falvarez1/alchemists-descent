@@ -1445,6 +1445,29 @@ describe('generated scene capture', () => {
     expect(skippedLinks).toBe(2);
   });
 
+  it('deduplicates object link and light ids in one shared namespace', () => {
+    const scene = genScene({
+      objects: [
+        { id: 'dup', kind: 'lever', x: 20, y: 20, params: {} },
+        { id: 'door', kind: 'door', x: 30, y: 30, params: {} },
+      ],
+      links: [
+        { id: 'dup', fromId: 'dup', toId: 'door', kind: 'triggerDoor' },
+      ],
+      lights: [
+        { id: 'dup', x: 25, y: 25, color: '#fff', intensity: 1, radius: 20 },
+      ],
+    });
+
+    const { doc } = generatedSceneCaptureDocument(scene, 'earthen');
+
+    expect(doc.objects.map((object) => object.id)).toEqual(['dup', 'door']);
+    expect(doc.links).toEqual([
+      expect.objectContaining({ id: 'dup-1', fromId: 'dup', toId: 'door' }),
+    ]);
+    expect(doc.lights.map((light) => light.id)).toEqual(['dup-2']);
+  });
+
   it('captures in-bounds lights with defaults and an id fallback', () => {
     const scene = genScene({
       lights: [

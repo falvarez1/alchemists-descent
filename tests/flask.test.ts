@@ -41,6 +41,7 @@ function makeFlaskCtx(flask = new Flask()): Ctx {
     wands: {
       collection: [],
       wands: [],
+      resetLoadout: () => undefined,
       grantCard: () => undefined,
     },
   } as unknown as Ctx;
@@ -87,6 +88,19 @@ describe('Flask runtime state', () => {
 });
 
 describe('run test kit flask setup', () => {
+  it('seeds fresh expeditions with a water starter flask', () => {
+    const ctx = makeFlaskCtx();
+    const levels = new Levels(ctx);
+    const internals = levels as unknown as {
+      applyLoadoutPreset(ctx: Ctx, preset: 'fresh'): void;
+    };
+
+    internals.applyLoadoutPreset(ctx, 'fresh');
+
+    expect(ctx.flask.activeIndex).toBe(0);
+    expect(ctx.flask.state).toMatchObject({ material: Cell.Water, count: 300 });
+  });
+
   it('honors an explicit active flask index for legacy single-flask setup', () => {
     const ctx = makeFlaskCtx();
     const levels = new Levels(ctx);

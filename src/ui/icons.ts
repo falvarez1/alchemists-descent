@@ -172,6 +172,12 @@ export const PIXEL_ICONS: Record<string, PixelIconDef> = {
   'card-shorthoming': { p: { a: '#312e81', b: '#a78bfa', c: '#fef3c7' }, g: [
     "...........","....bbb....","..bb...bb..",".b..c..b...",".b.ccc.b...",".b..c..b...",
     "..bb.bbb...","....bb.....","...bb......","..b........","..........."]},
+  'card-frostcharge': { p: { a: '#0e7490', b: '#67e8f9', c: '#f0f9ff' }, g: [
+    ".....c.....","..c..b..c..","...b.b.b...","....bbb....",".cbbbbbbbc.",
+    "....bbb....","...b.b.b...","..c..b..c..",".....c.....","...........","..........."]},
+  'card-shattercrit': { p: { a: '#155e75', b: '#a5f3fc', c: '#ffffff' }, g: [
+    ".....c.....","....cbc....","..b.c.c.b..","...b.c.b...","ccccacccccc",
+    "...b.c.b...","..b.c.c.b..","....cbc....",".....c.....","...........","..........."]},
   'card-trigger': { p: { a: '#ef4444', b: '#fca5a5', c: '#ffffff' }, g: [
     ".....a.....",".....a.....","...aaaaa...","..a..b..a..",".a...b...a.","aab.bcb.baa",
     ".a...b...a.","..a..b..a..","...aaaaa...",".....a.....",".....a....."]},

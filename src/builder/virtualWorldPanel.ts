@@ -45,6 +45,31 @@ interface VirtualProfileStats {
   sceneCount: number;
 }
 
+export function effectiveVirtualWorldDef(source: VirtualWorldDef, useGlobalDressing: boolean): VirtualWorldDef {
+  let def = structuredClone(source);
+  def = {
+    ...def,
+    generation: {
+      ...def.generation,
+      caveScale: GEN_TUNE.caveScale,
+      fillSurfacePits: GEN_TUNE.fillSurfacePits,
+      surfacePitWidth: GEN_TUNE.surfacePitWidth,
+      surfacePitDepth: GEN_TUNE.surfacePitDepth,
+      notchPasses: GEN_TUNE.notchPasses,
+    },
+  };
+
+  if (useGlobalDressing) {
+    const biomes: Record<string, VirtualBiomeDressingRecipe> = {};
+    for (const biome of Object.keys(def.dressing.biomes)) {
+      biomes[biome] = { ...campaignDressingRecipeForBiome(biome as BiomeId) };
+    }
+    def = { ...def, dressing: { ...def.dressing, biomes: biomes as VirtualWorldDef['dressing']['biomes'] } };
+  }
+
+  return def;
+}
+
 interface CachedPreviewChunk {
   chunk: TransferableVirtualChunk;
   canvas: HTMLCanvasElement;
@@ -801,35 +826,7 @@ export class VirtualWorldPanel {
       this.renderControls();
       return;
     }
-    // Mirror the global Look-tuning TERRAIN knobs (cave size + walk-surface sink
-    // fill) onto the def so they cross the worker boundary — exactly as the
-    // Sandbox/Builder worldgen sliders drive the legacy generator. CLONE first
-    // (def + generation) so the STORED authored def is never mutated, mirroring
-    // the dressing branch below — otherwise Profile Diff and exported JSON would
-    // silently carry the live GEN_TUNE values.
-    let def = this.currentDef();
-    def = {
-      ...def,
-      generation: {
-        ...def.generation,
-        caveScale: GEN_TUNE.caveScale,
-        fillSurfacePits: GEN_TUNE.fillSurfacePits,
-        surfacePitWidth: GEN_TUNE.surfacePitWidth,
-        surfacePitDepth: GEN_TUNE.surfacePitDepth,
-        notchPasses: GEN_TUNE.notchPasses,
-      },
-    };
-
-    // Optional: overlay the global campaign dressing recipes (Look-tuning ore/
-    // glow/rubble/vine densities) over this profile's own dressing. Shallow-clone
-    // so the stored authored recipes are never mutated.
-    if (this.useGlobalDressing) {
-      const biomes: Record<string, VirtualBiomeDressingRecipe> = {};
-      for (const biome of Object.keys(def.dressing.biomes)) {
-        biomes[biome] = { ...campaignDressingRecipeForBiome(biome as BiomeId) };
-      }
-      def = { ...def, dressing: { ...def.dressing, biomes: biomes as VirtualWorldDef['dressing']['biomes'] } };
-    }
+    const def = effectiveVirtualWorldDef(this.currentDef(), this.useGlobalDressing);
 
     // Unified cache signature: any change to the baked-in global look (terrain
     // knobs or the overlaid dressing) drops cached chunks so the window re-bakes.
@@ -944,7 +941,7 @@ export class VirtualWorldPanel {
 
   private playWindow(): void {
     this.cancel();
-    const def = structuredClone(this.currentDef());
+    const def = effectiveVirtualWorldDef(this.currentDef(), this.useGlobalDressing);
     const center = { x: Math.floor(this.camX), y: Math.floor(this.camY) };
     this.status = 'ready';
     this.statusText = `Launching play window at ${center.x},${center.y}`;
@@ -1662,4 +1659,3 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-

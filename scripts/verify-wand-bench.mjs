@@ -49,6 +49,31 @@ const sampleRefugeMarker = () => page.evaluate(() => {
   return { hasRefuge: true, highlighted, blue };
 });
 
+const sampleBenchBadgeLayout = () => page.evaluate(() => {
+  const badges = [...document.querySelectorAll('#wand-bench .bench-slot-link')];
+  return badges.map((badge) => {
+    const slot = badge.closest('.bench-slot');
+    const cost = slot?.querySelector('.cost');
+    const badgeRect = badge.getBoundingClientRect();
+    const costRect = cost?.getBoundingClientRect();
+    const intersectsCost = !!costRect &&
+      badgeRect.left < costRect.right &&
+      badgeRect.right > costRect.left &&
+      badgeRect.top < costRect.bottom &&
+      badgeRect.bottom > costRect.top;
+    return {
+      text: badge.textContent ?? '',
+      slot: slot?.getAttribute('data-bench-slot') ?? '',
+      affects: slot?.getAttribute('data-bench-affects-slots') ?? '',
+      affectedBy: slot?.getAttribute('data-bench-affected-by-slots') ?? '',
+      aria: slot?.getAttribute('aria-label') ?? '',
+      visible: badgeRect.width > 4 && badgeRect.height > 4,
+      fitsText: badge.scrollWidth <= badge.clientWidth + 1,
+      intersectsCost,
+    };
+  });
+});
+
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.console, { timeout: 20000 });
 await startConsoleTestRun(page, {
@@ -368,6 +393,53 @@ const triggerRelations = await page.evaluate(() => ({
   payload: document.querySelector('#wand-bench [data-bench-wand="0"][data-bench-slot="2"]')?.classList.contains('sentence-related') === true,
 }));
 check('Bench highlights trigger host and payload slots', triggerRelations.host && triggerRelations.payload, JSON.stringify(triggerRelations));
+
+const triggerBadgeProbe = await page.evaluate(() => {
+  const slot = (index) => document.querySelector(`#wand-bench [data-bench-wand="0"][data-bench-slot="${index}"]`);
+  const trigger = slot(0);
+  const host = slot(1);
+  const payload = slot(2);
+  trigger?.focus();
+  return {
+    triggerAffects: trigger?.getAttribute('data-bench-affects-slots') ?? '',
+    triggerBadge: trigger?.querySelector('.bench-slot-link')?.textContent ?? '',
+    triggerAria: trigger?.getAttribute('aria-label') ?? '',
+    hostAffectedBy: host?.getAttribute('data-bench-affected-by-slots') ?? '',
+    payloadAffectedBy: payload?.getAttribute('data-bench-affected-by-slots') ?? '',
+    focused: document.activeElement === trigger,
+  };
+});
+check(
+  'Bench badges label trigger source, host, and payload slots',
+  triggerBadgeProbe.triggerAffects === '2,3' &&
+    triggerBadgeProbe.triggerBadge === '→2,3' &&
+    triggerBadgeProbe.hostAffectedBy === '1' &&
+    triggerBadgeProbe.payloadAffectedBy === '1' &&
+    triggerBadgeProbe.triggerAria.includes('Arms host slot 2') &&
+    triggerBadgeProbe.triggerAria.includes('Triggers payload slot 3') &&
+    triggerBadgeProbe.focused,
+  JSON.stringify(triggerBadgeProbe),
+);
+
+const badgeLayout = await sampleBenchBadgeLayout();
+check(
+  'Bench relationship badges fit without covering mana costs',
+  badgeLayout.length >= 4 &&
+    badgeLayout.every((badge) => badge.visible && badge.fitsText && !badge.intersectsCost),
+  JSON.stringify(badgeLayout),
+);
+
+await page.setViewportSize({ width: 900, height: 650 });
+await page.waitForTimeout(120);
+const compactBadgeLayout = await sampleBenchBadgeLayout();
+check(
+  'Bench relationship badges remain readable in a narrow viewport',
+  compactBadgeLayout.length >= 4 &&
+    compactBadgeLayout.every((badge) => badge.visible && badge.fitsText && !badge.intersectsCost),
+  JSON.stringify(compactBadgeLayout),
+);
+await page.setViewportSize({ width: 1440, height: 900 });
+await page.waitForTimeout(120);
 
 await page.locator('#wand-bench .bench-card-collection [data-bench-card-id="speed"]').hover();
 const collectionInspect = await page.evaluate(() => document.querySelector('#wand-bench .bench-inspect')?.textContent ?? '');

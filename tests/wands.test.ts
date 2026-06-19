@@ -102,6 +102,17 @@ describe('compileWand', () => {
     expect(program[0].actions[0].dmgMul).toBe(1); // host spark untouched
   });
 
+  it('preserves frost combo modifiers inside trigger payload actions', () => {
+    const program = compileWand(['trigger', 'frostcharge', 'spark', 'shattercrit', 'spark']);
+    expect(program).toHaveLength(1);
+    const host = program[0].actions[0];
+    const payload = host.triggered!;
+
+    expect(host).toMatchObject({ card: 'spark', frostCharge: true, shatterCrit: false });
+    expect(payload[0]).toMatchObject({ card: 'spark', frostCharge: false, shatterCrit: true });
+    expect(program[0].manaCost).toBe(44);
+  });
+
   it('ignores triggers inside a triggered payload (depth-1 clamp)', () => {
     const program = compileWand(['trigger', 'spark', 'trigger', 'bomb', 'spark']);
     expect(program).toHaveLength(2);
@@ -134,6 +145,8 @@ describe('compileWand', () => {
       electricCharge: false,
       critWet: false,
       shortHoming: false,
+      frostCharge: false,
+      shatterCrit: false,
       bounces: 0,
       triggered: null,
     });
@@ -162,7 +175,7 @@ describe('compileWand', () => {
   });
 
   it('marks review-only setup modifiers on the action they modify', () => {
-    const program = compileWand(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'spark', 'spark']);
+    const program = compileWand(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'frostcharge', 'shattercrit', 'spark', 'spark']);
     expect(program).toHaveLength(2);
 
     const wetSpark = program[0].actions[0];
@@ -172,7 +185,9 @@ describe('compileWand', () => {
     expect(wetSpark.electricCharge).toBe(true);
     expect(wetSpark.critWet).toBe(true);
     expect(wetSpark.shortHoming).toBe(true);
-    expect(program[0].manaCost).toBe(43);
+    expect(wetSpark.frostCharge).toBe(true);
+    expect(wetSpark.shatterCrit).toBe(true);
+    expect(program[0].manaCost).toBe(59);
 
     const drySpark = program[1].actions[0];
     expect(drySpark.card).toBe('spark');
@@ -181,6 +196,8 @@ describe('compileWand', () => {
     expect(drySpark.electricCharge).toBe(false);
     expect(drySpark.critWet).toBe(false);
     expect(drySpark.shortHoming).toBe(false);
+    expect(drySpark.frostCharge).toBe(false);
+    expect(drySpark.shatterCrit).toBe(false);
   });
 
   it('caps review-only trail budgets and strips projectile-body modifiers from unsupported casts', () => {
@@ -192,14 +209,16 @@ describe('compileWand', () => {
     expect(oilCapped[0].actions[0].oilTrail).toBe(14);
     expect(oilCapped[0].manaCost).toBe(24);
 
-    const unsupported = compileWand(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'lightning']);
+    const unsupported = compileWand(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'frostcharge', 'shattercrit', 'lightning']);
     expect(unsupported[0].actions[0].card).toBe('lightning');
     expect(unsupported[0].actions[0].waterTrail).toBe(0);
     expect(unsupported[0].actions[0].oilTrail).toBe(0);
     expect(unsupported[0].actions[0].electricCharge).toBe(false);
     expect(unsupported[0].actions[0].critWet).toBe(false);
     expect(unsupported[0].actions[0].shortHoming).toBe(false);
-    expect(unsupported[0].manaCost).toBe(59);
+    expect(unsupported[0].actions[0].frostCharge).toBe(false);
+    expect(unsupported[0].actions[0].shatterCrit).toBe(false);
+    expect(unsupported[0].manaCost).toBe(75);
   });
 
   it('keeps built-in review loadouts from silently stripping review-only projectile-body modifiers', () => {
@@ -225,6 +244,7 @@ describe('compileWand', () => {
       'wet-crit-primer',
       'fuse-primer',
       'trigger-primer',
+      'frost-shatter-primer',
     ]));
 
     for (const loadout of REVIEW_WAND_LOADOUTS) {
@@ -237,6 +257,7 @@ describe('compileWand', () => {
     expect(loadouts.get('wet-crit-primer')?.cards).toEqual(['watertrail', 'critwet', 'spark']);
     expect(loadouts.get('fuse-primer')?.cards).toEqual(['oiltrail', 'spark', 'flame']);
     expect(loadouts.get('trigger-primer')?.cards).toEqual(['trigger', 'spark', 'bomb']);
+    expect(loadouts.get('frost-shatter-primer')?.cards).toEqual(['frostcharge', 'spark', 'shattercrit', 'spark']);
   });
 });
 
@@ -271,43 +292,53 @@ describe('wand sentence view', () => {
     expect(view.warnings).toEqual([]);
     expect(view.slotRelations[0]).toEqual(expect.arrayContaining([1]));
     expect(view.slotRelations[1]).toEqual(expect.arrayContaining([0]));
+    expect(view.slotLinks[0]).toEqual(expect.arrayContaining([{ kind: 'modifier', from: 0, to: 1 }]));
+    expect(view.slotLinks[1]).toEqual(expect.arrayContaining([{ kind: 'modifier', from: 0, to: 1 }]));
+  });
+
+  it('exposes directional modifier and multicast links for bench badges', () => {
+    const view = buildWandSentenceView(['double', 'speed', 'spark', 'spark']);
+
+    expect(view.slotLinks[0]).toEqual(expect.arrayContaining([
+      { kind: 'multicast', from: 0, to: 2 },
+      { kind: 'multicast', from: 0, to: 3 },
+    ]));
+    expect(view.slotLinks[1]).toEqual(expect.arrayContaining([{ kind: 'modifier', from: 1, to: 2 }]));
+    expect(view.slotLinks[2]).toEqual(expect.arrayContaining([
+      { kind: 'multicast', from: 0, to: 2 },
+      { kind: 'modifier', from: 1, to: 2 },
+    ]));
+    expect(view.slotLinks[3]).toEqual(expect.arrayContaining([{ kind: 'multicast', from: 0, to: 3 }]));
   });
 
   it('describes wet setup modifiers in the next-cast sentence', () => {
-    const view = buildWandSentenceView(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'spark']);
+    const view = buildWandSentenceView(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'frostcharge', 'shattercrit', 'spark']);
     expect(view.lines[0]).toMatchObject({
-      label: 'Next: Water-Trail Oil-Wick Electric Wet-Crit Short-Homing Spark Bolt',
-      detail: '43 mana - slots 1, 2, 3, 4, 5, 6',
-      manaCost: 43,
-      slots: [0, 1, 2, 3, 4, 5],
+      label: 'Next: Water-Trail Oil-Wick Electric Wet-Crit Short-Homing Frost-Charged Shatter-Crit Spark Bolt',
+      detail: '59 mana - slots 1, 2, 3, 4, 5, 6, 7, 8',
+      manaCost: 59,
+      slots: [0, 1, 2, 3, 4, 5, 6, 7],
     });
   });
 
   it('warns when projectile-body modifiers target casts without projectile bodies', () => {
-    const view = buildWandSentenceView(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'lightning']);
+    const view = buildWandSentenceView(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'frostcharge', 'shattercrit', 'lightning']);
     expect(view.lines[0]).toMatchObject({
       label: 'Next: Chain Lightning',
-      detail: '59 mana - slots 1, 2, 3, 4, 5, 6',
+      detail: '75 mana - slots 1, 2, 3, 4, 5, 6, 7, 8',
     });
-    expect(view.warnings).toEqual(expect.arrayContaining([
-      'Water Trail in slot 1 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
-      'Oil Wick in slot 2 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
-      'Electric Charge in slot 3 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
-      'Critical on Wet in slot 4 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
-      'Short Homing in slot 5 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
-    ]));
-    expect(view.slotWarnings[0]).toContain('Water Trail in slot 1 needs a projectile body; Chain Lightning in slot 6 cannot carry it');
-    expect(view.slotWarnings[1]).toContain('Oil Wick in slot 2 needs a projectile body; Chain Lightning in slot 6 cannot carry it');
-    expect(view.slotWarnings[2]).toContain('Electric Charge in slot 3 needs a projectile body; Chain Lightning in slot 6 cannot carry it');
-    expect(view.slotWarnings[3]).toContain('Critical on Wet in slot 4 needs a projectile body; Chain Lightning in slot 6 cannot carry it');
-    expect(view.slotWarnings[4]).toContain('Short Homing in slot 5 needs a projectile body; Chain Lightning in slot 6 cannot carry it');
-    expect(view.slotWarnings[5]).toEqual(expect.arrayContaining([
-      'Water Trail in slot 1 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
-      'Oil Wick in slot 2 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
-      'Electric Charge in slot 3 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
-      'Critical on Wet in slot 4 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
-      'Short Homing in slot 5 needs a projectile body; Chain Lightning in slot 6 cannot carry it',
-    ]));
+    const warnings = [
+      'Water Trail in slot 1 needs a projectile body; Chain Lightning in slot 8 cannot carry it',
+      'Oil Wick in slot 2 needs a projectile body; Chain Lightning in slot 8 cannot carry it',
+      'Electric Charge in slot 3 needs a projectile body; Chain Lightning in slot 8 cannot carry it',
+      'Critical on Wet in slot 4 needs a projectile body; Chain Lightning in slot 8 cannot carry it',
+      'Short Homing in slot 5 needs a projectile body; Chain Lightning in slot 8 cannot carry it',
+      'Frost Charge in slot 6 needs a projectile body; Chain Lightning in slot 8 cannot carry it',
+      'Shatter Frozen in slot 7 needs a projectile body; Chain Lightning in slot 8 cannot carry it',
+    ];
+    expect(view.warnings).toEqual(expect.arrayContaining(warnings));
+    for (let i = 0; i < warnings.length; i++) expect(view.slotWarnings[i]).toContain(warnings[i]);
+    expect(view.slotWarnings[7]).toEqual(expect.arrayContaining(warnings));
   });
 
   it('warns when basic modifiers target casts without that effect surface', () => {
@@ -317,6 +348,8 @@ describe('wand sentence view', () => {
     expect(view.warnings).toContain('Heavy Charm in slot 1 has no damage effect on Warp Bolt in slot 2');
     expect(view.slotWarnings[0]).toContain('Heavy Charm in slot 1 has no damage effect on Warp Bolt in slot 2');
     expect(view.slotWarnings[1]).toContain('Heavy Charm in slot 1 has no damage effect on Warp Bolt in slot 2');
+    expect(view.slotLinks[0]).toEqual(expect.arrayContaining([{ kind: 'modifier', from: 0, to: 1 }]));
+    expect(view.slotLinks[1]).toEqual(expect.arrayContaining([{ kind: 'modifier', from: 0, to: 1 }]));
   });
 
   it('describes trigger payloads as one upfront-paid cast', () => {
@@ -330,6 +363,36 @@ describe('wand sentence view', () => {
     expect(view.warnings).toEqual([]);
     expect(view.slotRelations[0]).toEqual(expect.arrayContaining([1, 2]));
     expect(view.slotRelations[1]).toEqual(expect.arrayContaining([0, 2]));
+    expect(view.slotLinks[0]).toEqual(expect.arrayContaining([
+      { kind: 'trigger-host', from: 0, to: 1 },
+      { kind: 'trigger-payload', from: 0, to: 2 },
+    ]));
+    expect(view.slotLinks[1]).toEqual(expect.arrayContaining([{ kind: 'trigger-host', from: 0, to: 1 }]));
+    expect(view.slotLinks[2]).toEqual(expect.arrayContaining([{ kind: 'trigger-payload', from: 0, to: 2 }]));
+  });
+
+  it('keeps trigger payload modifier links separate from trigger host and payload links', () => {
+    const view = buildWandSentenceView(['trigger', 'spark', 'heavy', 'bomb']);
+
+    expect(view.slotLinks[0]).toEqual(expect.arrayContaining([
+      { kind: 'trigger-host', from: 0, to: 1 },
+      { kind: 'trigger-payload', from: 0, to: 3 },
+    ]));
+    expect(view.slotLinks[2]).toEqual(expect.arrayContaining([{ kind: 'modifier', from: 2, to: 3 }]));
+    expect(view.slotLinks[3]).toEqual(expect.arrayContaining([
+      { kind: 'trigger-payload', from: 0, to: 3 },
+      { kind: 'modifier', from: 2, to: 3 },
+    ]));
+  });
+
+  it('does not badge ignored nested triggers as active trigger sources', () => {
+    const view = buildWandSentenceView(['trigger', 'spark', 'trigger', 'bomb', 'spark']);
+
+    expect(view.slotLinks[0]).toEqual(expect.arrayContaining([
+      { kind: 'trigger-host', from: 0, to: 1 },
+      { kind: 'trigger-payload', from: 0, to: 3 },
+    ]));
+    expect((view.slotLinks[2] ?? []).filter((link) => link.from === 2)).toEqual([]);
   });
 
   it('warns when a trigger has a host but no payload group', () => {
@@ -389,6 +452,7 @@ describe('wand bench card organization', () => {
     expect(cardMatchesBenchFilter('speed', 'modifier')).toBe(true);
     expect(cardMatchesBenchFilter('double', 'multicast')).toBe(true);
     expect(cardMatchesBenchFilter('watertrail', 'setup')).toBe(true);
+    expect(cardMatchesBenchFilter('frostcharge', 'setup')).toBe(true);
     expect(cardMatchesBenchFilter('conjure', 'terrain')).toBe(true);
     expect(cardMatchesBenchFilter('critwet', 'terrain')).toBe(false);
   });
@@ -397,6 +461,8 @@ describe('wand bench card organization', () => {
     expect(recipeHintsForCard('watertrail').join(' ')).toContain('Critical on Wet');
     expect(recipeHintsForCard('watertrail').join(' ')).toContain('Electric Charge');
     expect(recipeHintsForCard('oiltrail').join(' ')).toContain('Flame');
+    expect(recipeHintsForCard('frostcharge').join(' ')).toContain('Shatter Frozen');
+    expect(recipeHintsForCard('shattercrit').join(' ')).toContain('Frost Charge');
     expect(recipeHintsForCard('trigger').join(' ')).toContain('payload');
     expect(recipeHintsForCard('spark')).toEqual([]);
   });
@@ -655,6 +721,8 @@ function action(card: CardId, overrides: Partial<CastAction> = {}): CastAction {
     electricCharge: false,
     critWet: false,
     shortHoming: false,
+    frostCharge: false,
+    shatterCrit: false,
     bounces: 0,
     triggered: null,
     ...overrides,

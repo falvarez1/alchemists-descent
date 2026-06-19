@@ -32,7 +32,13 @@ function listCards(): ContentItem[] {
     const def = CARD_DEFS[id];
     const kind = def.kind === 'projectile' ? 'card' : 'modifier';
     const status: ContentStatus | undefined =
-      id === 'watertrail' || id === 'oiltrail' || id === 'electriccharge' || id === 'critwet' || id === 'shorthoming'
+      id === 'watertrail' ||
+      id === 'oiltrail' ||
+      id === 'electriccharge' ||
+      id === 'critwet' ||
+      id === 'shorthoming' ||
+      id === 'frostcharge' ||
+      id === 'shattercrit'
         ? 'review'
         : undefined;
     return item({
@@ -264,7 +270,9 @@ function cardMaterialDeps(def: CardDef): ContentDependency[] {
   if (def.id === 'flame') deps.push(dep('material', 'cell-5', 'emits fire'));
   if (def.id === 'bomb') deps.push(dep('material', 'cell-8', 'blast/gunpowder behavior'));
   if (def.id === 'vitriol') deps.push(dep('material', 'cell-7', 'sprays acid'));
-  if (def.id === 'frostshard' || def.id === 'icelance') deps.push(dep('material', 'cell-10', 'freezing/ice behavior'));
+  if (def.id === 'frostshard' || def.id === 'icelance' || def.id === 'frostcharge' || def.id === 'shattercrit') {
+    deps.push(dep('material', 'cell-10', 'freezing/ice behavior'));
+  }
   if (def.id === 'meteor' || def.id === 'conjure') deps.push(dep('material', 'cell-12', 'creates or throws stone'));
   if (def.id === 'vitrify') deps.push(dep('material', 'cell-31', 'creates glass'));
   return deps;

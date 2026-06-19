@@ -69,21 +69,32 @@ function fnv1a(bytes: Uint8Array): string {
 }
 
 function levelTypeHash(def: LevelDef, seed: number): string {
+  return fnv1a(generateLevelState(def, seed).world.types);
+}
+
+function generateLevelState(def: LevelDef, seed: number): ReturnType<WorldGen['generateLevel']> & { world: World } {
   const world = new World();
   const gen = new WorldGen();
   const ctx = makeCtx(world, seed);
   ctx.worldgen = gen;
-  gen.generateLevel(ctx, def, seed);
-  return fnv1a(ctx.world.types);
+  return { ...gen.generateLevel(ctx, def, seed), world };
 }
 
-// Re-recorded for GEN_VERSION 26: living walk-through ground cover (grass +
-// glowshroom/fungus tufts) is planted on moss-crown walk surfaces in generateCaves
-// (world/surfaceDress.plantGroundCover), shifting cell types on those levels. d8
-// and vault are UNCHANGED — their biomes aren't moss-crowned / skip the polish
-// block, so no cover is planted. (v25 was noiseDensity 0.66 + the solidifyRock close.)
+function cellsNear(world: World, marker: { x: number; y: number }, cell: Cell, radius: number): number {
+  let count = 0;
+  for (let y = Math.floor(marker.y - radius); y <= Math.floor(marker.y + radius); y++) {
+    for (let x = Math.floor(marker.x - radius); x <= Math.floor(marker.x + radius); x++) {
+      if (world.inBounds(x, y) && world.types[world.idx(x, y)] === cell) count++;
+    }
+  }
+  return count;
+}
+
+// Re-recorded for GEN_VERSION 27: D1 Spell Lab gained a contained lava cup in
+// placeStructures. Only d1 changes; v26's living ground cover note still explains
+// the moss-crown hashes below, while d8/vault remain unchanged.
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '4c7570c1' },
+  { id: 'd1', seed: 1337, hash: '04459183' },
   { id: 'd4', seed: 1337, hash: 'ea181c61' },
   { id: 'd8', seed: 1337, hash: '7f87cbd4' },
   { id: 'vault', seed: 1337, hash: '36b10aba' },
@@ -94,6 +105,33 @@ describe('full generateLevel golden hashes', () => {
   for (const { id, seed, hash } of GOLDEN) {
     it(`${id} @ seed ${seed} reproduces the locked cell-type output`, () => {
       expect(levelTypeHash(LEVELS[id], seed)).toBe(hash);
+    });
+  }
+});
+
+describe('D1 Spell Lab generation', () => {
+  for (const seed of [1, 42, 1337]) {
+    it(`places all required real-cell teaching stations at seed ${seed}`, () => {
+      const level = generateLevelState(LEVELS.d1, seed);
+      const lab = level.spellLab;
+      expect(lab).toBeTruthy();
+      expect(cellsNear(level.world, lab!, Cell.Sand, 28)).toBeGreaterThan(0);
+      expect(cellsNear(level.world, lab!, Cell.Wood, 28)).toBeGreaterThan(0);
+      expect(cellsNear(level.world, lab!, Cell.Fire, 28)).toBeGreaterThan(0);
+      expect(cellsNear(level.world, lab!, Cell.Water, 28)).toBeGreaterThan(0);
+      expect(cellsNear(level.world, lab!, Cell.Lava, 28)).toBeGreaterThan(0);
+      expect(level.mechanisms.some((m) =>
+        m.kind === 'chargelatch' &&
+        Math.abs(m.x - lab!.x) < 30 &&
+        Math.abs(m.y - lab!.y) < 20,
+      )).toBe(true);
+      expect(level.pickups.some((p) =>
+        !p.taken &&
+        p.kind === 'tome' &&
+        p.data.card === 'heavy' &&
+        Math.abs(p.x - lab!.rewardX) <= 2 &&
+        Math.abs(p.y - lab!.rewardY) <= 2,
+      )).toBe(true);
     });
   }
 });

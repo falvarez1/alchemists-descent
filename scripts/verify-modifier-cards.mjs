@@ -41,6 +41,8 @@ const result = await page.evaluate(() => {
     electricCharge: false,
     critWet: true,
     shortHoming: false,
+    frostCharge: false,
+    shatterCrit: false,
     bounces: 0,
     triggered: null,
   };
@@ -162,8 +164,33 @@ const result = await page.evaluate(() => {
     return 100 - enemy.hp;
   };
 
+  const hitWithMods = (mods, setupEnemy) => {
+    clearRect(255, 80, 320, 130);
+    ctx.projectiles.length = 0;
+    ctx.enemies.length = 0;
+    ctx.enemyCtl.spawn('slime', 290, 110);
+    const enemy = ctx.enemies[ctx.enemies.length - 1];
+    enemy.hp = 100;
+    enemy.maxHp = 100;
+    enemy.status.wet = 0;
+    enemy.status.frozen = 0;
+    if (setupEnemy) setupEnemy(enemy);
+    ctx.wands.castActionAt(ctx, { ...action, waterTrail: 0, critWet: false, ...mods }, enemy.x - 10, enemy.y - 5, 0);
+    const projectile = ctx.projectiles[ctx.projectiles.length - 1];
+    projectile.x = enemy.x - 1;
+    projectile.y = enemy.y - 5;
+    projectile.vx = 1;
+    projectile.vy = 0;
+    runProjectiles(1);
+    return { damage: 100 - enemy.hp, frozen: enemy.status.frozen ?? 0 };
+  };
+
   const dryDamage = hit(false);
   const wetDamage = hit(true);
+  const frostHit = hitWithMods({ frostCharge: true }, null);
+  const shatterDry = hitWithMods({ shatterCrit: true }, null);
+  const shatterFrozen = hitWithMods({ shatterCrit: true }, (enemy) => { enemy.status.frozen = 90; });
+  const comboDry = hitWithMods({ frostCharge: true, shatterCrit: true }, null);
   return {
     reviewCards: ctx.wands.wands[0].cards,
     waterCells,
@@ -173,6 +200,10 @@ const result = await page.evaluate(() => {
     homingVy,
     dryDamage,
     wetDamage,
+    frostHit,
+    shatterDry,
+    shatterFrozen,
+    comboDry,
   };
 });
 
@@ -191,6 +222,14 @@ check('Electric Charge energizes conductor cells', result.conductorCharge > 0, J
 check('Electric Charge electrifies hit enemies', result.electricStatus > 0, JSON.stringify(result));
 check('Short Homing bends projectile velocity toward a target', result.homingVy > 0, JSON.stringify(result));
 check('Critical on Wet outperforms dry crit-marked Spark', result.wetDamage > result.dryDamage * 1.5, JSON.stringify(result));
+check('Frost Charge freezes hit enemies', result.frostHit.frozen >= 120, JSON.stringify(result));
+check('Shatter Frozen ignores dry targets', result.shatterDry.damage <= result.dryDamage * 1.1, JSON.stringify(result));
+check('Shatter Frozen crits targets that were already frozen', result.shatterFrozen.damage > result.shatterDry.damage * 1.8, JSON.stringify(result));
+check(
+  'Frost Charge plus Shatter Frozen freezes but does not self-prime a dry crit',
+  result.comboDry.frozen >= 120 && result.comboDry.damage <= result.shatterDry.damage * 1.1,
+  JSON.stringify(result),
+);
 check('No page errors', pageErrors.length === 0, pageErrors.join('\n'));
 
 await browser.close();

@@ -2141,6 +2141,7 @@ export class PlayerControl implements PlayerControlApi {
       player.diveT = 0;
       player.landTimer = 10;
       ctx.audio.landThud(1);
+      ctx.events.emit('groundImpact', { x: player.x, y: player.y, radius: 54, strength: 1 });
       ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.014, 0.04);
       for (const dir of [-1, 1]) {
         for (let k = 0; k < 6; k++) {
@@ -2197,6 +2198,8 @@ export class PlayerControl implements PlayerControlApi {
       // landing feedback: thud scaled to the fall; dust + shake on hard hits
       ctx.audio.landThud((player.fallPeak - 2.2) / 4);
       if (player.fallPeak > 3.5) {
+        const strength = clamp((player.fallPeak - 3.5) / 3.5, 0.25, 1);
+        ctx.events.emit('groundImpact', { x: player.x, y: player.y, radius: 28 + strength * 28, strength });
         ctx.particles.burst(
           player.x,
           player.y,

@@ -68,6 +68,9 @@ const SHATTER_FALLOFF = 0.4; // blast must land within (1 - d/radius) ≥ this t
 const SHATTER_POWER = 1.5; // ...and strength·falloff ≥ this (a bomb shatters, a weak spark only shoves)
 const SHATTER_PIECES = 3; // small crates a large one breaks into
 const STOMP_BOUNCE = 3.2; // upward pop when a dive-stomp smashes a destructible crate
+const BODY_IMPACT_NOISE_MIN_SPEED = 1.7; // cells/frame before a body slam can wake sleepers
+const BODY_IMPACT_NOISE_MIN_DELTA = 1.25; // abrupt velocity change required, not just gravity/drag
+const BODY_IMPACT_NOISE_COOLDOWN = 18;
 const WATER_DRAG = 0.15; // per-frame velocity damp while fully submerged (viscosity)
 const SPLASH_MIN_SPEED = 1.2 * PF; // min downward speed (cells/s) to splash on water entry
 const GRAB_REACH = 18; // cells in front of the player a body can be grabbed from
@@ -597,6 +600,9 @@ export class RigidBodies implements RigidBodiesApi {
     for (const body of this.bodies) {
       const rb = this.handles.get(body);
       if (!rb) continue;
+      if ((body.impactNoiseCd ?? 0) > 0) body.impactNoiseCd = (body.impactNoiseCd ?? 0) - 1;
+      const oldVx = body.vx;
+      const oldVy = body.vy;
       // Clamp/sanitise before the mirror is read: a non-finite position can't be
       // recovered (drop the body); a non-finite or runaway velocity is clamped so
       // it never blows up the terrain-collider window and crashes Rapier.
@@ -613,11 +619,37 @@ export class RigidBodies implements RigidBodiesApi {
       body.vy = v.y / PF;
       body.va = rb.angvel() / PF;
       body.sleeping = rb.isSleeping();
+      this.emitBodyImpactNoise(ctx, body, oldVx, oldVy, body.vx, body.vy);
     }
     if (dead) for (const body of dead) this.remove(body);
     this.reactBodies(ctx);
     this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
     this.resolvePlayer(ctx);
+  }
+
+  private emitBodyImpactNoise(
+    ctx: Ctx,
+    body: RigidBody,
+    oldVx: number,
+    oldVy: number,
+    newVx: number,
+    newVy: number,
+  ): void {
+    if (body.kind !== 'dynamic' || body.tag === 'player-corpse' || (body.impactNoiseCd ?? 0) > 0) return;
+    const oldSpeed = Math.hypot(oldVx, oldVy);
+    if (oldSpeed < BODY_IMPACT_NOISE_MIN_SPEED) return;
+    const delta = Math.hypot(oldVx - newVx, oldVy - newVy);
+    if (delta < BODY_IMPACT_NOISE_MIN_DELTA) return;
+    if (!this.scanFootprint(ctx.world, body, 2, blocksEntity)) return;
+
+    const strength = Math.min(1, Math.max(0.25, (delta - BODY_IMPACT_NOISE_MIN_DELTA) / 4));
+    body.impactNoiseCd = BODY_IMPACT_NOISE_COOLDOWN;
+    ctx.events.emit('groundImpact', {
+      x: body.x,
+      y: body.y,
+      radius: 18 + strength * 28,
+      strength,
+    });
   }
 
   /** Sync terrain colliders and step Rapier inside a guard. A wasm solver overflow
@@ -911,6 +943,7 @@ export class RigidBodies implements RigidBodiesApi {
       // it was a STOMP onto a destructible crate, smash it and pop off the wreck.
       if (player.diveT > 0) {
         player.diveT = 0;
+        this.ctx.events.emit('groundImpact', { x: player.x, y: player.y, radius: 44, strength: 0.85 });
         const destructible = body.material ? bodyMaterialDef(body.material).gore !== null : false;
         if (destructible) {
           this.smashBody(body);

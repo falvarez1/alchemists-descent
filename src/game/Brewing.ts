@@ -1,4 +1,5 @@
 import type { Ctx } from '@/core/types';
+import { recordRecipeDiscovery } from '@/game/GrimoireStore';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN } from '@/sim/colors';
 
@@ -79,18 +80,7 @@ const HEAT_BOTTOM = 4;
 
 /** Sustained heat+ingredient sampler ticks (1 tick per 4 frames) to finish a brew. */
 const BREW_TICKS_REQUIRED = 90;
-export const GRIMOIRE_KEY = 'noita-grimoire';
-
-/** Which recipe ids have been discovered (brewed at least once), from the
- *  persistent grimoire store. Recipe knowledge survives across expeditions. */
-export function loadDiscoveredRecipes(): Record<string, boolean> {
-  try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(GRIMOIRE_KEY) : null;
-    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
-}
+export { GRIMOIRE_KEY, loadDiscoveredRecipes } from '@/game/GrimoireStore';
 const DISCOVERY_BOUNTY = 100;
 
 /** Loose powders count as brewable mass alongside liquids (they sink into the bowl). */
@@ -245,20 +235,7 @@ export class Brewing {
 
   /** Grimoire: first-ever brew of a recipe pays a one-time gold bounty. */
   private recordDiscovery(ctx: Ctx, recipe: Recipe): boolean {
-    let known: Record<string, boolean> = {};
-    try {
-      const raw = localStorage.getItem(GRIMOIRE_KEY);
-      if (raw) known = JSON.parse(raw) as Record<string, boolean>;
-    } catch {
-      known = {};
-    }
-    if (known[recipe.id]) return false;
-    known[recipe.id] = true;
-    try {
-      localStorage.setItem(GRIMOIRE_KEY, JSON.stringify(known));
-    } catch {
-      // Storage unavailable (private mode) — the bounty still pays this session.
-    }
+    if (!recordRecipeDiscovery(ctx, recipe.id, recipe.name)) return false;
     ctx.state.score += DISCOVERY_BOUNTY;
     ctx.events.emit('scoreChanged', { score: ctx.state.score });
     ctx.events.emit('recipeDiscovered', { name: recipe.name, bounty: DISCOVERY_BOUNTY });

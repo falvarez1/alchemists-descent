@@ -51,6 +51,10 @@ export interface EventMap {
   recipeDiscovered: { name: string; bounty: number };
   /** Any completed cauldron recipe, including recipes already known in the Grimoire. */
   recipeBrewed: { id: string; name: string; firstDiscovery: boolean };
+  /** Any first-time Grimoire entry persisted by the unified knowledge store. */
+  grimoireEntryDiscovered: { kind: 'recipe' | 'material' | 'interaction'; id: string; title: string };
+  /** A real sim/material interaction was observed near the player and may be inscribed. */
+  worldInteractionObserved: { id: string; title: string; x: number; y: number };
   /** A spell card entered the collection — banner + bench refresh. */
   cardGranted: { id: string; name: string };
   /** Gameplay asks presentation to show an unskippable choice of spell cards. */
@@ -68,6 +72,9 @@ export interface EventMap {
   hintTeach: { key: string; title: string; body: string };
   /** A concussive strike landed at (x, y) — mechanisms/rune vaults listen. */
   structureStrike: { x: number; y: number; radius: number };
+  /** A player body impact landed at (x, y) — enemy hearing listens without
+   *  treating it as a mechanism/rune strike. */
+  groundImpact: { x: number; y: number; radius: number; strength: number };
   /** Short corner toast ("GOLDEN KEY ACQUIRED", "+20 MAX HP", ...). */
   toast: { text: string };
   /** The HUD objective line ("FIND THE GOLDEN KEY" -> "REACH THE PORTAL"). */

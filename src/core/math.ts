@@ -7,6 +7,23 @@ export function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+/** Walk the integer points of a line from (x0,y0) to (x1,y1), invoking `plot`
+ *  at each step (endpoints inclusive). Step count tracks pixel length so the
+ *  line is gap-free. Shared by sprite limbs and other pixel/cell line drawing. */
+export function traceLine(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  plot: (x: number, y: number, t: number) => void,
+): void {
+  const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+  for (let k = 0; k <= steps; k++) {
+    const t = k / steps;
+    plot(Math.round(x0 + (x1 - x0) * t), Math.round(y0 + (y1 - y0) * t), t);
+  }
+}
+
 /** Cubic smoothstep easing (Hermite) of t in [0,1]: t*t*(3-2t). */
 export function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);

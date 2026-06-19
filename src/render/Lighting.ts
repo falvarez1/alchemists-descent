@@ -525,6 +525,11 @@ export class Lighting implements LightField {
       } else if (e.kind === 'mage') {
         const pulse = 0.8 + Math.sin(ctx.state.frameCount * 0.1 + e.bobPhase) * 0.2;
         this.seedLight(e.x, e.y - 6, 0.8 * pulse, 0.3 * pulse, 1.0 * pulse);
+      } else if (e.kind === 'weaver') {
+        const pulse = 0.55 + Math.sin(ctx.state.frameCount * 0.11 + e.bobPhase) * 0.25;
+        const attack = (e.windup ?? 0) > 0 || e.blink > 0 ? 0.45 : 0;
+        this.seedLight(e.x, e.y - 14, 0.18 + attack, 0.7 + attack, 0.28 + attack * 0.25);
+        this.seedLight(e.x, e.y - 6, pulse * 0.12, pulse * 0.35, pulse * 0.14);
       }
     }
 

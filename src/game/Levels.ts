@@ -61,6 +61,7 @@ import { World } from '@/sim/World';
 import { EXTRAS } from '@/world/biomeExtras';
 import { extractRegionGraph } from '@/world/regions';
 import { buildPhysicsArena } from '@/world/physicsArena';
+import { buildWeaverArena } from '@/world/weaverArena';
 import {
   createDefaultVirtualWorldDef,
   cropMaterializedWindow,
@@ -82,6 +83,8 @@ const WAYSTONE_LIGHT_TICKS = 30;
 const WAYSTONE_FIRE_CARDS: readonly CardId[] = ['flame', 'emberstorm', 'meteor'];
 /** Cells: walking this close to an unlit waystone raises the help prompt once. */
 const WAYSTONE_PROMPT_RADIUS = 26;
+/** D1 starter water: enough for a first experiment, below a full flask. */
+const FRESH_STARTER_WATER_CELLS = 300;
 /** Minimum placement distance (cells) between a placed enemy and the level spawn. */
 const POPULATION_SPAWN_CLEARANCE = 220;
 const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, 80, 0] as const;
@@ -1037,7 +1040,11 @@ export class Levels implements LevelsApi {
 
   private applyLoadoutPreset(ctx: Ctx, preset: RunLoadoutPreset): void {
     ctx.wands.resetLoadout();
-    if (preset === 'fresh') return;
+    if (preset === 'fresh') {
+      ctx.flask.setSlot(0, Cell.Water, FRESH_STARTER_WATER_CELLS);
+      ctx.flask.selectSlot(0);
+      return;
+    }
     if (preset === 'advanced') {
       ctx.player.maxHp = 140;
       ctx.player.hp = ctx.player.maxHp;
@@ -1884,9 +1891,12 @@ export class Levels implements LevelsApi {
     // The physics test arena stamps its authored terrain + rigid bodies AFTER
     // levelChanged (which clears the body pool), so the bodies persist.
     if (id === 'physics-test') buildPhysicsArena(ctx);
+    if (id === 'weaver-test') buildWeaverArena(ctx);
     ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
     ctx.events.emit('objectiveChanged', {
-      text: runtime.portal
+      text: id === 'weaver-test'
+        ? 'STUDY THE WEAVER LAIR'
+        : runtime.portal
         ? runtime.keyTaken
           ? 'RETURN TO THE PORTAL'
           : 'FIND THE GOLDEN KEY'
@@ -2083,7 +2093,10 @@ export class Levels implements LevelsApi {
       const scaled = Math.round(count * countScale);
       for (let i = 0; i < scaled; i++) {
         const spot = this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h);
-        if (spot) this.spawnSeededEnemy(ctx, kind, spot.x, spot.y, rng);
+        if (spot) {
+          const enemy = this.spawnSeededEnemy(ctx, kind, spot.x, spot.y, rng);
+          if (enemy?.kind === 'weaver') this.stampWeaverLair(ctx, spot.x, spot.y, rng);
+        }
       }
     }
 
@@ -2221,6 +2234,57 @@ export class Levels implements LevelsApi {
     enemy.timer = rng.int(80);
     enemy.bobPhase = rng.next() * Math.PI * 2;
     return enemy;
+  }
+
+  private stampWeaverLair(ctx: Ctx, x: number, y: number, rng: Rng): void {
+    const world = ctx.world;
+    const paint = (px: number, py: number, type: Cell): boolean => {
+      if (!world.inBounds(px, py)) return false;
+      const i = world.idx(px, py);
+      if (world.types[i] !== Cell.Empty) return false;
+      const fn = COLOR_FN[type];
+      world.replaceCellAt(i, type, fn ? fn() : EMPTY_COLOR);
+      return true;
+    };
+    const hasSupportBelow = (px: number, py: number): boolean => {
+      if (!world.inBounds(px, py + 1)) return false;
+      return blocksEntity(world.types[world.idx(px, py + 1)]);
+    };
+
+    // Hanging curtains: find nearby ceiling lips and pull short, burnable
+    // vine strands down into the reachable chamber.
+    for (let n = 0; n < 10; n++) {
+      const ax = Math.floor(x - 46 + rng.int(93));
+      let anchorY = -1;
+      for (let yy = Math.floor(y - 70); yy <= Math.floor(y - 12); yy++) {
+        if (!world.inBounds(ax, yy) || !world.inBounds(ax, yy + 1)) continue;
+        if (blocksEntity(world.types[world.idx(ax, yy)]) && world.types[world.idx(ax, yy + 1)] === Cell.Empty) {
+          anchorY = yy + 1;
+          break;
+        }
+      }
+      if (anchorY < 0) continue;
+      const len = 7 + rng.int(15);
+      for (let k = 0; k < len; k++) {
+        const px = ax + Math.round(Math.sin((k + n) * 0.8) * 1.4);
+        const py = anchorY + k;
+        if (!paint(px, py, Cell.Vines) && k > 2) break;
+        if (rng.next() < 0.18) paint(px + (rng.next() < 0.5 ? -1 : 1), py, Cell.Vines);
+      }
+    }
+
+    // Floor threads and growth: soft cells only, so no route is blocked.
+    for (let n = 0; n < 150; n++) {
+      const px = Math.floor(x - 54 + rng.int(109));
+      const py = Math.floor(y - 16 + rng.int(29));
+      if (!world.inBounds(px, py)) continue;
+      if (rng.next() < 0.45) {
+        paint(px, py, Cell.Vines);
+      } else if (hasSupportBelow(px, py)) {
+        const roll = rng.next();
+        paint(px, py, roll < 0.45 ? Cell.Moss : roll < 0.82 ? Cell.Fungus : Cell.Glowshroom);
+      }
+    }
   }
 
   /* ---------------- waystones ---------------- */

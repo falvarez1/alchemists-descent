@@ -51,6 +51,8 @@ interface ModPack {
   electricCharge: boolean;
   critWet: boolean;
   shortHoming: boolean;
+  frostCharge: boolean;
+  shatterCrit: boolean;
   bounces: number;
   trigger: boolean;
   /** Mana of the modifier cards in the pack, charged to the consuming group. */
@@ -70,6 +72,8 @@ function freshPack(): ModPack {
     electricCharge: false,
     critWet: false,
     shortHoming: false,
+    frostCharge: false,
+    shatterCrit: false,
     bounces: 0,
     trigger: false,
     mana: 0,
@@ -119,6 +123,8 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
       else if (id === 'electriccharge') pack.electricCharge = true;
       else if (id === 'critwet') pack.critWet = true;
       else if (id === 'shorthoming') pack.shortHoming = true;
+      else if (id === 'frostcharge') pack.frostCharge = true;
+      else if (id === 'shattercrit') pack.shatterCrit = true;
       else if (id === 'bounce') pack.bounces = 2;
       else if (id === 'trigger') pack.trigger = true;
     } else if (def.kind === 'multicast') {
@@ -154,6 +160,8 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
           electricCharge: supportsProjectileMods ? pack.electricCharge : false,
           critWet: supportsProjectileMods ? pack.critWet : false,
           shortHoming: supportsProjectileMods ? pack.shortHoming : false,
+          frostCharge: supportsProjectileMods ? pack.frostCharge : false,
+          shatterCrit: supportsProjectileMods ? pack.shatterCrit : false,
           bounces: pack.bounces,
           triggered: null,
         },

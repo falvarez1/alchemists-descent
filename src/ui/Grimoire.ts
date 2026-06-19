@@ -1,5 +1,7 @@
 import type { Ctx } from '@/core/types';
 import { RECIPES, loadDiscoveredRecipes, type Recipe } from '@/game/Brewing';
+import { GRIMOIRE_INTERACTIONS } from '@/game/GrimoireInteractions';
+import { loadDiscoveredInteractions } from '@/game/GrimoireStore';
 import { MATERIAL_LORE, discoveredLore } from '@/game/lore';
 import { MATERIAL_PARAMS } from '@/config/params';
 
@@ -80,12 +82,18 @@ export class Grimoire {
     const lore = discoveredLore();
     const loreEntries = Object.entries(MATERIAL_LORE).filter(([id]) => lore[id]);
     const total = Object.keys(MATERIAL_LORE).length;
+    const interactions = loadDiscoveredInteractions();
+    const interactionEntries = GRIMOIRE_INTERACTIONS.filter((entry) => interactions[entry.id]);
     this.right.innerHTML =
       `<div class="gr-head">Material Lore</div>` +
-      (loreEntries.length
+      (loreEntries.length || interactionEntries.length
         ? `<div class="gr-section">Materials &mdash; ${loreEntries.length} / ${total} studied</div>` +
           loreEntries
             .map(([, e]) => `<div class="gr-entry"><div class="gr-title">${e!.title}</div><div class="gr-sub">${e!.body}</div></div>`)
+            .join('') +
+          `<div class="gr-section">Interactions &mdash; ${interactionEntries.length} / ${GRIMOIRE_INTERACTIONS.length} witnessed</div>` +
+          interactionEntries
+            .map((entry) => `<div class="gr-entry"><div class="gr-title">${entry.title}</div><div class="gr-sub">${entry.body}</div></div>`)
             .join('')
         : `<div class="gr-empty">Examine the world (press <b>I</b>) to record what its materials do, and brew in a cauldron to inscribe new elixirs.</div>`);
   }

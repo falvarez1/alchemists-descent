@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { BIOMES } from '@/config/biomes';
+import { GEN_TUNE } from '@/config/gen';
+import { effectiveVirtualWorldDef } from '@/builder/virtualWorldPanel';
 import { Cell } from '@/sim/CellType';
+import { campaignDressingRecipeForBiome } from '@/world/biomeExtras';
 import {
   biomeIndexFromId,
   createDefaultVirtualWorldDef,
@@ -726,6 +729,61 @@ describe('virtual world prototype', () => {
     ]);
   });
 
+  it('drops cropped virtual scene links when either endpoint leaves the crop', () => {
+    const chunk = generateVirtualChunk(createDefaultVirtualWorldDef(5158), 0, 0);
+    const placement: VirtualScenePlacementInstance = {
+      id: 'crop-link-scene',
+      x: 10,
+      y: 10,
+      w: 80,
+      h: 40,
+      objects: [
+        { id: 'kept-a', kind: 'lever', x: 20, y: 20, params: {} },
+        { id: 'kept-b', kind: 'door', x: 25, y: 22, params: {} },
+        { id: 'dropped', kind: 'door', x: 78, y: 20, params: {} },
+      ],
+      links: [
+        { id: 'kept-link', fromId: 'kept-a', toId: 'kept-b', kind: 'triggerDoor' },
+        { id: 'drop-link', fromId: 'kept-a', toId: 'dropped', kind: 'triggerDoor' },
+      ],
+      lights: [
+        { id: 'kept-light', x: 22, y: 24, color: '#ffffff', intensity: 0.6, radius: 32 },
+        { id: 'dropped-light', x: 78, y: 20, color: '#ffffff', intensity: 0.6, radius: 32 },
+      ],
+    };
+    chunk.meta.scenes = [placement.id];
+    chunk.meta.scenePlacements = [placement];
+
+    const materialized = materializeChunks([chunk]);
+    const crop = cropMaterializedWindow(materialized, 0, 0, 40, 40);
+
+    expect(crop.scenePlacements).toEqual([
+      expect.objectContaining({
+        id: placement.id,
+        x: 10,
+        y: 10,
+        w: 80,
+        h: 40,
+        objectCount: 2,
+        linkCount: 1,
+        lightCount: 1,
+        objects: [
+          expect.objectContaining({ id: 'kept-a', x: 20, y: 20 }),
+          expect.objectContaining({ id: 'kept-b', x: 25, y: 22 }),
+        ],
+        links: [
+          expect.objectContaining({ id: 'kept-link', fromId: 'kept-a', toId: 'kept-b' }),
+        ],
+        lights: [
+          expect.objectContaining({ id: 'kept-light', x: 22, y: 24 }),
+        ],
+      }),
+    ]);
+    expect(crop.sceneObjects.map((object) => object.id)).toEqual(['kept-a', 'kept-b']);
+    expect(crop.sceneLights.map((light) => light.id)).toEqual(['kept-light']);
+    expect(crop.stats).toMatchObject({ sceneObjects: 2, sceneLights: 1 });
+  });
+
   it('leaves oversized crop rows empty instead of repeating the edge row', () => {
     const def = createDefaultVirtualWorldDef(5156);
     const materialized = materializeChunks([generateVirtualChunk(def, 0, 0)]);
@@ -932,6 +990,47 @@ describe('virtual world content pack', () => {
       expect(
         /scene-fungal-pocket|scene-mushroom-grove|scene-glowcap-hollow/.test(id),
       ).toBe(true);
+    }
+  });
+});
+
+describe('virtual world effective definition parity', () => {
+  it('applies global terrain and dressing overlays without mutating the authored profile', () => {
+    const def = createDefaultVirtualWorldDef(20260618);
+    const originalTune = {
+      caveScale: GEN_TUNE.caveScale,
+      fillSurfacePits: GEN_TUNE.fillSurfacePits,
+      surfacePitWidth: GEN_TUNE.surfacePitWidth,
+      surfacePitDepth: GEN_TUNE.surfacePitDepth,
+      notchPasses: GEN_TUNE.notchPasses,
+    };
+    const originalDef = structuredClone(def);
+
+    try {
+      GEN_TUNE.caveScale = 1.37;
+      GEN_TUNE.fillSurfacePits = !originalTune.fillSurfacePits;
+      GEN_TUNE.surfacePitWidth = originalTune.surfacePitWidth + 3;
+      GEN_TUNE.surfacePitDepth = originalTune.surfacePitDepth + 2;
+      GEN_TUNE.notchPasses = originalTune.notchPasses + 1;
+
+      const local = effectiveVirtualWorldDef(def, false);
+      expect(local).not.toBe(def);
+      expect(local.generation).toMatchObject({
+        caveScale: GEN_TUNE.caveScale,
+        fillSurfacePits: GEN_TUNE.fillSurfacePits,
+        surfacePitWidth: GEN_TUNE.surfacePitWidth,
+        surfacePitDepth: GEN_TUNE.surfacePitDepth,
+        notchPasses: GEN_TUNE.notchPasses,
+      });
+      expect(local.dressing.biomes).toEqual(def.dressing.biomes);
+
+      const global = effectiveVirtualWorldDef(def, true);
+      expect(global.generation).toMatchObject(local.generation);
+      expect(global.dressing.biomes.earthen).toEqual(campaignDressingRecipeForBiome('earthen'));
+      expect(global.dressing.biomes.earthen).not.toBe(def.dressing.biomes.earthen);
+      expect(def).toEqual(originalDef);
+    } finally {
+      Object.assign(GEN_TUNE, originalTune);
     }
   });
 });

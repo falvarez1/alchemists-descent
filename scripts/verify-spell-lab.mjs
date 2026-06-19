@@ -52,10 +52,16 @@ const lab = await page.evaluate(() => {
   return {
     level: rt.def.id,
     marker,
+    starterFlask: {
+      active: ctx.flask.activeIndex,
+      material: ctx.flask.state.material,
+      count: ctx.flask.state.count,
+    },
     reward: reward ? { kind: reward.kind, card: reward.data.card, x: reward.x, y: reward.y } : null,
     sand: cellsNear(1),
     water: cellsNear(2),
     fire: cellsNear(5),
+    lava: cellsNear(11),
     wood: cellsNear(4),
     chargeLatch: marker
       ? rt.mechanisms.some((m) =>
@@ -68,8 +74,13 @@ const lab = await page.evaluate(() => {
 
 check('D1 runtime exposes a Spell Lab marker', lab.level === 'd1' && !!lab.marker, JSON.stringify(lab));
 check(
-  'Spell Lab has all four real-cell teaching stations',
-  lab.sand > 0 && lab.wood > 0 && lab.fire > 0 && lab.water > 0 && lab.chargeLatch,
+  'Fresh expedition starts with a water flask for the first lab experiments',
+  lab.starterFlask.active === 0 && lab.starterFlask.material === 2 && lab.starterFlask.count === 300,
+  JSON.stringify(lab.starterFlask),
+);
+check(
+  'Spell Lab has all required real-cell teaching stations',
+  lab.sand > 0 && lab.wood > 0 && lab.fire > 0 && lab.water > 0 && lab.lava > 0 && lab.chargeLatch,
   JSON.stringify(lab),
 );
 check('Spell Lab reward is a preferred Heavy tome', lab.reward?.kind === 'tome' && lab.reward.card === 'heavy', JSON.stringify(lab));

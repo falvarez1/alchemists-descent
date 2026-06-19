@@ -1,8 +1,42 @@
-import type { Ctx, Enemy } from '@/core/types';
+import type { Ctx, Enemy, WeaverLegState } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
-import { clamp } from '@/core/math';
+import { clamp, traceLine } from '@/core/math';
+import { blocksEntity, Cell } from '@/sim/CellType';
 
 type RGB = readonly [number, number, number];
+
+const WEAVER_REST = [
+  { side: -1, hipX: -5, hipY: 15, footX: -22, footY: 1, phase: 0.0 },
+  { side: -1, hipX: -7, hipY: 13, footX: -25, footY: -2, phase: Math.PI },
+  { side: -1, hipX: -7, hipY: 10, footX: -23, footY: 2, phase: Math.PI * 0.5 },
+  { side: -1, hipX: -5, hipY: 8, footX: -18, footY: 0, phase: Math.PI * 1.5 },
+  { side: 1, hipX: 5, hipY: 15, footX: 22, footY: 1, phase: Math.PI },
+  { side: 1, hipX: 7, hipY: 13, footX: 25, footY: -2, phase: 0.0 },
+  { side: 1, hipX: 7, hipY: 10, footX: 23, footY: 2, phase: Math.PI * 1.5 },
+  { side: 1, hipX: 5, hipY: 8, footX: 18, footY: 0, phase: Math.PI * 0.5 },
+] as const;
+
+function weaverFootSurface(ctx: Ctx, x: number, y: number): number {
+  const w = ctx.world;
+  const sx = Math.floor(clamp(x, 1, w.width - 2));
+  const sy = Math.floor(clamp(y, 2, w.height - 3));
+  for (let dy = -7; dy <= 9; dy++) {
+    const yy = sy + dy;
+    if (!w.inBounds(sx, yy)) continue;
+    const t = w.types[w.idx(sx, yy)];
+    if (
+      blocksEntity(t) ||
+      t === Cell.Vines ||
+      t === Cell.Fungus ||
+      t === Cell.Moss ||
+      t === Cell.Slime ||
+      t === Cell.Glowshroom
+    ) {
+      return yy - 1;
+    }
+  }
+  return sy;
+}
 
 /**
  * Procedural enemy sprites (original drawEnemySprite): slime squash & stretch
@@ -349,6 +383,137 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       const eyeY = Math.max(1, Math.round(H * 0.4));
       P(look - 1, eyeY, 0.05, 0.02, 0.02);
       P(look + 1, eyeY, 0.05, 0.02, 0.02);
+    }
+  } else if (e.kind === 'weaver') {
+    // --- Weaver: eight long IK legs with renderer-owned planted feet ---
+    const wx2 = e.x + (e.fx || 0);
+    const wdrv = wx2 - (e._px === undefined ? wx2 : e._px);
+    e._px = wx2;
+    e._svx = (e._svx || 0) * 0.6 + wdrv * 0.4;
+    const asleep = e.sleeping === true;
+    const moving = !asleep && e.grounded && (Math.abs(e._svx) > 0.035 || e.alerted);
+    if (moving) e.stride += Math.max(0.015, Math.abs(e._svx) * 0.2);
+    const face = Math.abs(e._svx) > 0.05 ? Math.sign(e._svx) : look;
+    const support = e.weaverSupport ?? 0;
+    const poised = !asleep && (e.windup ?? 0) > 0;
+    const weaving = !asleep && e.blink > 0;
+    const cranky = !asleep && (e.cranky ?? 0) > 0;
+
+    if (!e.weaverLegs || e.weaverLegs.length !== WEAVER_REST.length) {
+      e.weaverLegs = WEAVER_REST.map((r) => {
+        const fx = e.x + r.footX;
+        const fy = weaverFootSurface(ctx, fx, e.y - r.footY);
+        return {
+          x: fx,
+          y: fy,
+          tx: fx,
+          ty: fy,
+          lift: 0,
+          phase: r.phase,
+        };
+      });
+    }
+
+    const lineW = (x0: number, y0: number, x1: number, y1: number, col: RGB, glow = false): void => {
+      traceLine(x0, y0, x1, y1, (px, py) => {
+        const dx = px - bx;
+        const dy = by - py;
+        if (glow) PE(dx, dy, col[0], col[1], col[2]);
+        else P(dx, dy, col[0], col[1], col[2]);
+      });
+    };
+    const dotW = (x: number, y: number, col: RGB, glow = false): void => {
+      const dx = Math.round(x) - bx;
+      const dy = by - Math.round(y);
+      if (glow) PE(dx, dy, col[0], col[1], col[2]);
+      else P(dx, dy, col[0], col[1], col[2]);
+    };
+
+    const LEG: RGB = [0.13, 0.09, 0.11];
+    const LEG_HI: RGB = [0.24 + support * 0.08, 0.2 + support * 0.12, 0.18];
+    const LEG_WARN: RGB = [0.35, 0.95, 0.42];
+    const attackLeg = face >= 0 ? 4 : 0;
+    for (let i = 0; i < WEAVER_REST.length; i++) {
+      const rest = WEAVER_REST[i];
+      const leg = e.weaverLegs[i] as WeaverLegState;
+      const gait = e.stride + rest.phase;
+      const swing = moving && Math.sin(gait) > 0.58;
+      const reach = moving ? Math.sin(gait) * 3.2 + face * 2.2 : Math.sin(frameCount * 0.025 + i) * 0.8;
+      let tx = e.x + rest.footX + reach;
+      // Default footing target's surface is raycast lazily — only the branch that
+      // actually plants on terrain pays for it (asleep/poised/weaving skip it).
+      let ty = 0;
+      if (asleep) {
+        tx = e.x + rest.footX * 0.58;
+        ty = weaverFootSurface(ctx, tx, e.y - 2 + Math.abs(rest.side) * 2);
+        leg.lift *= 0.45;
+      } else if (poised && i === attackLeg) {
+        const aimT = 1 - clamp((e.windup ?? 0) / 18, 0, 1);
+        tx = ctx.player.x - face * (4 - aimT * 8);
+        ty = ctx.player.y - 9;
+        leg.lift = Math.max(leg.lift, 0.95);
+      } else if (weaving && i === attackLeg + 1) {
+        tx = e.x + face * 17;
+        ty = e.y - 14;
+        leg.lift = Math.max(leg.lift, 0.7);
+      } else {
+        ty = weaverFootSurface(ctx, tx, e.y - rest.footY);
+        if (swing || Math.hypot(leg.tx - tx, leg.ty - ty) > 8) {
+          leg.tx = tx;
+          leg.ty = ty;
+          leg.lift = Math.max(leg.lift, 0.75);
+        }
+      }
+      leg.x += (leg.tx - leg.x) * (poised && i === attackLeg ? 0.26 : 0.16);
+      leg.y += (leg.ty - leg.y) * 0.16;
+      leg.lift *= 0.88;
+
+      const hipX = e.x + rest.hipX;
+      const hipY = e.y - rest.hipY + Math.sin(frameCount * 0.03 + i) * 0.5;
+      const footX = leg.x;
+      const footY = leg.y - Math.sin(leg.lift * Math.PI) * 5.5;
+      const dx = footX - hipX;
+      const dy = footY - hipY;
+      const dist = Math.max(1, Math.hypot(dx, dy));
+      const nx = -dy / dist;
+      const ny = dx / dist;
+      const bend = rest.side * (5.2 + (i % 2) * 1.4);
+      const kneeX = (hipX + footX) * 0.5 + nx * bend;
+      const kneeY = (hipY + footY) * 0.5 + ny * bend - 2.5 - leg.lift * 3;
+      const hot = poised && i === attackLeg;
+      lineW(hipX, hipY, kneeX, kneeY, hot ? LEG_WARN : LEG);
+      lineW(kneeX, kneeY, footX, footY, hot ? LEG_WARN : LEG_HI, hot);
+      dotW(footX, footY, hot ? LEG_WARN : LEG_HI, hot);
+    }
+
+    const BODY: RGB = asleep ? [0.1, 0.08, 0.09] : [0.16, 0.11, 0.13];
+    const BODY_D: RGB = asleep ? [0.04, 0.035, 0.045] : [0.07, 0.05, 0.06];
+    const BODY_L: RGB = asleep ? [0.15, 0.12, 0.13] : [0.27, 0.21, 0.22];
+    const bellyBob = asleep ? -1 : Math.round(Math.sin(e.stride * 0.6 + e.bobPhase) * (moving ? 1 : 0.4));
+    const crouch = asleep ? -2 : poised ? -1 : (e.recoil ?? 0) > 0 ? 1 : 0;
+    // abdomen
+    for (let dy = 4; dy <= 13; dy++) {
+      const t = (dy - 8.5) / 5.8;
+      const w2 = Math.max(2, Math.round(10 * Math.sqrt(Math.max(0, 1 - t * t))));
+      for (let dx = -w2; dx <= w2; dx++) {
+        P(dx - face * 3, dy + bellyBob + crouch, Math.abs(dx) >= w2 ? BODY_D[0] : BODY[0], Math.abs(dx) >= w2 ? BODY_D[1] : BODY[1], Math.abs(dx) >= w2 ? BODY_D[2] : BODY[2]);
+      }
+    }
+    // thorax and head
+    for (let dy = 9; dy <= 17; dy++) {
+      const w2 = dy >= 15 ? 5 : 7;
+      for (let dx = -w2; dx <= w2; dx++) P(dx + face * 3, dy + crouch, ...(Math.abs(dx) >= w2 ? BODY_D : BODY_L));
+    }
+    for (let dx = -3; dx <= 3; dx++) {
+      P(dx + face * 9, 15 + crouch, ...BODY_D);
+      P(dx + face * 9, 14 + crouch, ...BODY);
+    }
+    const eyePulse = asleep ? 0.1 : 0.55 + Math.sin(frameCount * 0.11 + e.bobPhase) * 0.25 + (poised ? 0.35 : 0) + (cranky ? 0.28 : 0);
+    PE(face * 10, 15 + crouch, 0.18 * eyePulse * boost, 0.95 * eyePulse * boost, 0.32 * eyePulse * boost);
+    PE(face * 8, 15 + crouch, 0.14 * eyePulse * boost, 0.72 * eyePulse * boost, 0.25 * eyePulse * boost);
+    if (weaving) {
+      const spit = 0.5 + Math.sin(frameCount * 0.6) * 0.3;
+      lineW(e.x + face * 10, e.y - 12, e.x + face * 17, e.y - 14, [0.18 * spit, 0.9 * spit, 0.24 * spit], true);
     }
   } else if (e.kind === 'golem') {
     // --- Heavy stride driven by real displacement, arms, breath, pulsing core ---

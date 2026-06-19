@@ -80,6 +80,8 @@ const DEFAULT_FLAME_ACTION: CastAction = {
   electricCharge: false,
   critWet: false,
   shortHoming: false,
+  frostCharge: false,
+  shatterCrit: false,
   bounces: 0,
   triggered: null,
 };
@@ -103,6 +105,7 @@ export const REVIEW_WAND_LOADOUTS: BuiltInWandLoadout[] = [
   { id: 'wet-crit-primer', name: 'Wet Crit Primer', frameId: 'brass', cards: ['watertrail', 'critwet', 'spark'], status: 'review' },
   { id: 'fuse-primer', name: 'Fuse Primer', frameId: 'brass', cards: ['oiltrail', 'spark', 'flame'], status: 'review' },
   { id: 'trigger-primer', name: 'Trigger Primer', frameId: 'brass', cards: ['trigger', 'spark', 'bomb'], status: 'review' },
+  { id: 'frost-shatter-primer', name: 'Frost Shatter Primer', frameId: 'brass', cards: ['frostcharge', 'spark', 'shattercrit', 'spark'], status: 'review' },
 ];
 
 const REVIEW_WAND_CARDS: [CardId[], CardId[]] = [
@@ -582,7 +585,9 @@ export class WandSystem implements WandsApi {
       action.oilTrail > 0 ||
       action.electricCharge ||
       action.critWet ||
-      action.shortHoming
+      action.shortHoming ||
+      action.frostCharge ||
+      action.shatterCrit
     ) {
       const mods = ensureProjectileMods(p);
       if (action.waterTrail > 0) {
@@ -595,6 +600,8 @@ export class WandSystem implements WandsApi {
       }
       if (action.electricCharge) mods.electricCharge = true;
       if (action.critWet) mods.critWet = true;
+      if (action.frostCharge) mods.frostCharge = true;
+      if (action.shatterCrit) mods.shatterCrit = true;
       if (action.shortHoming) {
         mods.shortHomingFrames = 90;
         mods.shortHomingCadence = 4;

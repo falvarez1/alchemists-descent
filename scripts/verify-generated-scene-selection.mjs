@@ -82,25 +82,78 @@ try {
     await page.waitForTimeout(200);
   }
 
-  const selection = await page.evaluate(() => {
+  const selection = await page.evaluate(async () => {
+    const captureModule = await import('/src/builder/generatedSceneCapture.ts');
     const builder = window.__game.ctx.builder;
     const scene = builder?.selectedGeneratedScene?.();
-    const capture = scene ? builder.generatedSceneCaptureDocument(scene) : null;
-    const inspector = document.getElementById('builder-inspector')?.textContent ?? '';
+    const capture = scene ? captureModule.generatedSceneCaptureDocument(scene, builder?.doc?.biome ?? 'earthen') : null;
+    const inspectorRoot = document.querySelector('#builder-inspector .bi-generated-scene');
+    const rowText = (field) =>
+      document.querySelector(`#builder-inspector [data-gen-field="${field}"] b`)?.textContent?.trim() ?? '';
+    const buttonState = (id) => {
+      const button = document.getElementById(id);
+      return button instanceof HTMLButtonElement ? { exists: true, disabled: button.disabled } : { exists: false, disabled: true };
+    };
     return {
       selected: scene?.id ?? '',
-      inspector,
+      expected: window.__generatedSceneProbeId ?? '',
+      selectedId: builder?.selectedId ?? null,
+      selectedIds: builder?.selectedIds?.size ?? -1,
+      inspectorText: document.getElementById('builder-inspector')?.textContent ?? '',
+      inspectorRoot: inspectorRoot instanceof HTMLElement,
+      inspectorKind: inspectorRoot instanceof HTMLElement ? inspectorRoot.dataset.inspectorKind ?? '' : '',
+      inspectorGeneratedSceneId: inspectorRoot instanceof HTMLElement ? inspectorRoot.dataset.generatedSceneId ?? '' : '',
+      inspectorSceneId: inspectorRoot instanceof HTMLElement ? inspectorRoot.dataset.sceneId ?? '' : '',
+      inspectorSlotId: inspectorRoot instanceof HTMLElement ? inspectorRoot.dataset.slotId ?? '' : '',
+      boundsRow: rowText('bounds'),
+      sizeRow: rowText('size'),
+      contentRow: rowText('content'),
+      sourceChunkRow: rowText('source-chunk'),
       regionArmed: builder?.region !== null,
       captureObjects: capture?.doc.objects.length ?? 0,
       captureLights: capture?.doc.lights.length ?? 0,
-      captureButton: document.getElementById('bi-gen-capture') instanceof HTMLButtonElement,
-      frameButton: document.getElementById('bi-gen-frame') instanceof HTMLButtonElement,
+      captureButton: buttonState('bi-gen-capture'),
+      frameButton: buttonState('bi-gen-frame'),
+      worldButton: buttonState('bi-gen-world'),
+      copyButton: buttonState('bi-gen-copy'),
     };
   });
-  check('clicking a generated scene opens the generated-scene inspector', selection.selected !== '' && selection.inspector.includes('GENERATED PIXEL SCENE'), JSON.stringify(selection));
-  check('generated-scene selection does not arm normal region tools', selection.regionArmed === false, JSON.stringify(selection));
+  check('clicking a generated scene selects the probed runtime scene', selection.selected !== '' && selection.selected === selection.expected, JSON.stringify(selection));
+  check('generated-scene inspector exposes stable scene metadata hooks', selection.inspectorRoot && selection.inspectorKind === 'generated-scene' && selection.inspectorGeneratedSceneId === selection.selected && selection.inspectorSceneId !== '' && selection.inspectorSlotId !== '', JSON.stringify(selection));
+  check('generated-scene inspector exposes stable field rows', selection.inspectorText.includes('GENERATED PIXEL SCENE') && selection.boundsRow !== '' && selection.sizeRow !== '' && selection.contentRow.includes('obj') && selection.sourceChunkRow !== '', JSON.stringify(selection));
+  check('generated-scene selection clears normal object, multi-select, and region state', selection.selectedId === null && selection.selectedIds === 0 && selection.regionArmed === false, JSON.stringify(selection));
   check('generated-scene capture model includes scene objects or lights', selection.captureObjects + selection.captureLights > 0, JSON.stringify(selection));
-  check('generated-scene inspector exposes frame and capture actions', selection.captureButton && selection.frameButton, JSON.stringify(selection));
+  check('generated-scene inspector exposes enabled frame/world/copy/capture actions', [selection.frameButton, selection.worldButton, selection.copyButton, selection.captureButton].every((button) => button.exists && !button.disabled), JSON.stringify(selection));
+
+  await page.click('#bi-gen-frame');
+  await page.waitForTimeout(80);
+  const framed = await page.evaluate(async () => {
+    const constants = await import('/src/config/constants.ts');
+    const builder = window.__game.ctx.builder;
+    const scene = builder?.selectedGeneratedScene?.();
+    if (!scene) return null;
+    const expectedX = (scene.x0 + scene.x1) / 2;
+    const expectedY = (scene.y0 + scene.y1) / 2;
+    const actualX = window.__game.ctx.camera.x + constants.VIEW_W / 2;
+    const actualY = window.__game.ctx.camera.y + constants.VIEW_H / 2;
+    return {
+      expectedX,
+      expectedY,
+      actualX,
+      actualY,
+      dx: Math.abs(actualX - expectedX),
+      dy: Math.abs(actualY - expectedY),
+    };
+  });
+  check('generated-scene Frame action recenters the camera near the scene center', framed !== null && framed.dx <= 1 && framed.dy <= 1, JSON.stringify(framed));
+
+  await page.click('#bi-gen-world');
+  await page.waitForSelector('#builder-virtual-world', { state: 'visible', timeout: 5000 });
+  const worldPanelOpen = await page.evaluate(() => {
+    const panel = document.getElementById('builder-virtual-world');
+    return panel instanceof HTMLElement && getComputedStyle(panel).display !== 'none' && panel.offsetParent !== null;
+  });
+  check('generated-scene World Map action opens the virtual world panel', worldPanelOpen, String(worldPanelOpen));
   check('no page errors', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 300));
 } finally {
   console.log(`\n${pass} passed, ${fail} failed`);
