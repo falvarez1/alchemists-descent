@@ -21,6 +21,17 @@ const CRAWL_POSE = 'prone' as 'prone' | 'allfours';
 const SILHOUETTE_MARKS = new Set<number>();
 const WAND_KEYS = new Set<number>();
 
+// --- Blood soak (driven by player.bloodStain, a 0..MAX soak charge that BUILDS
+// the more/longer he wades — see Player.ts). The robe hem + boots redden in
+// proportion: faint after a quick step, deep crimson once he's truly waded.
+// The charge saturates the colour at BLOOD_STAIN_FULL and keeps banking past it
+// purely as lifetime, so a full soak holds red then fades as it drains (~1 min).
+// Strongest at the feet, tapering up the legs to nothing by STAIN_RISE cells.
+const BLOOD_STAIN_FULL = 1000; // soak charge at which the stain reads fully saturated red
+const STAIN_RISE = 8; // cells above the feet the stain climbs before it vanishes
+const STAIN_STRENGTH = 0.82; // max blend toward blood at the boots (keeps a little base tone)
+const STAIN_R = 0.5, STAIN_G = 0.06, STAIN_B = 0.09; // soaked-cloth blood (darker than fresh spray)
+
 /**
  * Procedural wizard sprite (original drawPlayerSprite): boots ride a stride
  * wheel, the robe sways and flares, the torso leans with smoothed velocity,
@@ -42,9 +53,25 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   const marks = SILHOUETTE_MARKS;
   marks.clear();
   let recording = true;
+  // Soak intensity (0..1): climbs as he wades (player.bloodStain accrues),
+  // saturating at BLOOD_STAIN_FULL, then eases back down as the charge drains.
+  // Gated on `recording` (the body pass) so the wand shaft + tip glow — drawn
+  // after stampOutline() flips it off — are never reddened.
+  const stainK = clamp(player.bloodStain / BLOOD_STAIN_FULL, 0, 1);
   const s: PixelSurface = {
     setPx(x: number, y: number, r: number, g: number, b: number): void {
-      if (recording) marks.add((Math.round(x) & 0xfff) | ((Math.round(y) & 0xfff) << 12));
+      if (recording) {
+        marks.add((Math.round(x) & 0xfff) | ((Math.round(y) & 0xfff) << 12));
+        if (stainK > 0) {
+          const depth = player.y - y; // 0 at the boots, climbing the legs
+          if (depth >= 0 && depth <= STAIN_RISE) {
+            const k = stainK * (1 - depth / STAIN_RISE) * STAIN_STRENGTH;
+            r += (STAIN_R - r) * k;
+            g += (STAIN_G - g) * k;
+            b += (STAIN_B - b) * k;
+          }
+        }
+      }
       out.setPx(x, y, r, g, b);
     },
     addPx(x: number, y: number, r: number, g: number, b: number): void {

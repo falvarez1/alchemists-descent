@@ -198,14 +198,19 @@ export class Game {
 
     ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
     ctx.events.on('waveStarted', ({ num }) => ctx.telemetry.count(`wave.reached.${num}`));
-    this.levelCurtainDisposer = ctx.events.on('levelCurtain', ({ visible, holdMs = 0, onComplete }) => {
+    this.levelCurtainDisposer = ctx.events.on('levelCurtain', ({ visible, holdMs = 0, title, detail, onComplete }) => {
       if (this.levelCurtainTimer !== null) {
         window.clearTimeout(this.levelCurtainTimer);
         this.levelCurtainTimer = null;
       }
       const curtain = document.getElementById('level-curtain');
+      const titleEl = document.getElementById('level-curtain-title');
+      const detailEl = document.getElementById('level-curtain-detail');
+      if (title && titleEl) titleEl.textContent = title;
+      if (detail && detailEl) detailEl.textContent = detail;
       if (visible) {
         curtain?.classList.add('visible');
+        curtain?.setAttribute('aria-hidden', 'false');
         // Force reflow so the curtain class commits before synchronous generation.
         if (curtain) void curtain.offsetHeight;
         onComplete?.();
@@ -213,6 +218,7 @@ export class Game {
       }
       const hide = (): void => {
         curtain?.classList.remove('visible');
+        curtain?.setAttribute('aria-hidden', 'true');
         this.levelCurtainTimer = null;
         onComplete?.();
       };

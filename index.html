@@ -247,7 +247,20 @@
                     <div class="go-stats">REACHED <span id="go-wave">D1</span> &middot; PURSED <span id="go-gold">0</span> oz OF GOLD<br>THE CAVES RECLAIM ANOTHER ALCHEMIST</div>
                     <button id="respawn-btn">RISE AGAIN</button>
                 </div>
-                <div id="level-curtain"></div>
+                <div id="level-curtain" aria-hidden="true">
+                    <div class="level-curtain-panel" role="status" aria-live="polite" aria-atomic="true">
+                        <div class="run-launcher-loading-sigil" aria-hidden="true">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <div class="run-launcher-loading-copy">
+                            <strong id="level-curtain-title">Opening the descent</strong>
+                            <span id="level-curtain-detail">Drawing the cave mouth open.</span>
+                        </div>
+                        <div class="run-launcher-loading-bar" aria-hidden="true"><i></i></div>
+                    </div>
+                </div>
                 <div id="minimap-overlay"><canvas id="minimap-canvas"></canvas><div id="minimap-caption"></div></div>
                 <div id="wand-bench"></div>
             </div>

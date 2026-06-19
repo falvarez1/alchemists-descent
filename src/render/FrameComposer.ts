@@ -771,9 +771,10 @@ export class FrameComposer implements PixelSurface {
           const x = a.x + dx * t;
           const y = a.y + dy * t;
           const lt = this.light.sample(x, y);
-          const r = baseR * Math.max(0.16, lt.r) * 1.05;
-          const g = baseG * Math.max(0.18, lt.g) * 1.1;
-          const b2 = baseB * Math.max(0.14, lt.b);
+          const webGlow = strand.web === true ? 0.22 : 0;
+          const r = baseR * (Math.max(0.16, lt.r) * 1.05 + webGlow * 0.45);
+          const g = baseG * (Math.max(0.18, lt.g) * 1.1 + webGlow);
+          const b2 = baseB * (Math.max(0.14, lt.b) + webGlow * 0.45);
           for (let w = -half; w <= half + 1e-6; w += 1) this.setPx(x + perpX * w, y + perpY * w, r, g, b2);
         }
       }

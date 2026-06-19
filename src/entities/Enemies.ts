@@ -4,7 +4,7 @@ import { clamp } from '@/core/math';
 import type { CardId, Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
-import { Cell } from '@/sim/CellType';
+import { blocksEntity, Cell, isSoftGrowth } from '@/sim/CellType';
 import {
   acidColor,
   bloodColor,
@@ -56,7 +56,12 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   spitter: { hp: 55, halfW: 5, h: 11, bounty: 60, gore: Cell.Toxic, goreFn: toxicColor },
   bomber: { hp: 34, halfW: 5, h: 8, bounty: 45, gore: Cell.Fire, goreFn: fireColor },
   // Eight-legged Fungal/Timber elite: controls space by writing real vine webbing.
-  weaver: { hp: 260, halfW: 12, h: 18, bounty: 220, gore: Cell.Blood, goreFn: bloodColor },
+  // halfW 9 is the drawn abdomen, NOT the ~12-cell leg span: a 19-wide collision
+  // box lets the weaver place and path through normal cave corridors (a 25-wide
+  // box wedged in fungal/timber tunnels and froze its AI). Its legs still splay
+  // visually onto the walls. Hit detection is query-radius based, so the smaller
+  // box doesn't shrink how readily player shots connect.
+  weaver: { hp: 260, halfW: 9, h: 18, bounty: 220, gore: Cell.Blood, goreFn: bloodColor },
   // The Kiln Colossus: the run's final door. Water is the strategy.
   colossus: { hp: 520, halfW: 13, h: 26, bounty: 600, gore: Cell.Stone, goreFn: stoneColor },
   // Wave F: slime egg clutch — destroy it now or fight what hatches later
@@ -74,6 +79,9 @@ const ENV_DAMAGE_FEEDBACK_COOLDOWN = 12;
 const WEAVER_PREY: ReadonlySet<CritterKind> = new Set<CritterKind>(['moth', 'firefly', 'beetle', 'fly']);
 const WEAVER_DISTURBANCE_WAKE_PAD = 88;
 const WEAVER_CRANKY_FRAMES = 260;
+const WEAVER_TRAIL_WEB_COOLDOWN = 18;
+const WEAVER_TRAIL_LOCAL_BUDGET = 34;
+const WEAVER_SUPPORT_REGIONS = [-56, -44, -31, -18, 18, 31, 44, 56] as const;
 
 // --- Gust knockback (the player's kick is a wind blast; see Player.kick) ----
 const GUST_REF_MASS = 40; // a slime-ish footprint (halfW·h); push scales inversely
@@ -733,20 +741,68 @@ export class Enemies implements EnemyControlApi {
         const y = foot + dy;
         if (!w.inBounds(x, y)) continue;
         const t = w.types[w.idx(x, y)];
-        if (
-          t === Cell.Vines ||
-          t === Cell.Fungus ||
-          t === Cell.Moss ||
-          t === Cell.Slime ||
-          t === Cell.Glowshroom
-        ) {
+        if (isSoftGrowth(t)) {
           support += 1;
         } else if (enemyLethalCell(e.kind, t)) {
           hazard += 1;
         }
       }
     }
-    return clamp((support - hazard * 1.5) / 7, 0, 1);
+    // The sample grid yields up to ~28 cells, so divide by 14: support reaches
+    // full footing at ~half growth coverage and then visibly DROPS as the player
+    // burns the web away. (The /7 this replaced saturated to 1.0 after only a
+    // handful of cells, so cutting the weaver's footing barely registered.)
+    return clamp((support - hazard * 1.5) / 14, 0, 1);
+  }
+
+  private weaverPhysicalFooting(e: Enemy): { support: number; anchors: number; centerX: number } {
+    const w = this.ctx.world;
+    const cx = Math.floor(e.x);
+    const foot = Math.floor(e.y);
+    let support = 0;
+    let anchors = 0;
+    let centerX = 0;
+
+    for (const offset of WEAVER_SUPPORT_REGIONS) {
+      const targetX = cx + offset;
+      let best = 0;
+      let bestX = targetX;
+      for (let yy = foot - 18; yy <= foot + 22; yy += 2) {
+        if (yy < 1 || yy >= HEIGHT - 1) continue;
+        for (let xx = targetX - 12; xx <= targetX + 12; xx += 3) {
+          if (!w.inBounds(xx, yy)) continue;
+          const t = w.types[w.idx(xx, yy)];
+          const growth = isSoftGrowth(t);
+          const load = growth ? 0.95 : this.ctx.physics.cellBlocks(xx, yy) ? 1 : blocksEntity(t) ? 0.55 : 0;
+          if (load <= 0) continue;
+          const exposed =
+            (w.inBounds(xx, yy - 1) && !this.ctx.physics.cellBlocks(xx, yy - 1)) ||
+            (w.inBounds(xx - 1, yy) && !this.ctx.physics.cellBlocks(xx - 1, yy)) ||
+            (w.inBounds(xx + 1, yy) && !this.ctx.physics.cellBlocks(xx + 1, yy)) ||
+            (w.inBounds(xx, yy + 1) && !this.ctx.physics.cellBlocks(xx, yy + 1));
+          if (!exposed) continue;
+          const dx = Math.abs(xx - targetX);
+          const dy = Math.abs(yy - foot);
+          const reachPenalty = Math.min(0.78, dx * 0.045 + dy * 0.025);
+          const score = load * (1 - reachPenalty) + (growth ? 0.16 : 0);
+          if (score > best) {
+            best = score;
+            bestX = xx;
+          }
+        }
+      }
+      if (best > 0.22) {
+        anchors++;
+        support += clamp(best, 0, 1);
+        centerX += bestX;
+      }
+    }
+
+    return {
+      support: clamp(support / WEAVER_SUPPORT_REGIONS.length, 0, 1),
+      anchors,
+      centerX: anchors > 0 ? centerX / anchors : e.x,
+    };
   }
 
   private weaveThread(e: Enemy, tx: number, ty: number): void {
@@ -756,26 +812,134 @@ export class Enemies implements EnemyControlApi {
     const sy = Math.floor(e.y - this.defs[e.kind].h * 0.55);
     const ex = Math.floor(clamp(tx, 3, WIDTH - 4));
     const ey = Math.floor(clamp(ty, 8, HEIGHT - 8));
-    const steps = Math.max(10, Math.ceil(Math.hypot(ex - sx, ey - sy)));
+    const dx = ex - sx;
+    const dy = ey - sy;
+    const len = Math.hypot(dx, dy) || 1;
+    const dirX = dx / len;
+    const dirY = dy / len;
+    const shotLen = Math.max(58, Math.min(138, len * 0.78 + 18));
+    const headX = sx + dirX * shotLen;
+    const headY = sy + dirY * shotLen;
     let placed = 0;
-    for (let k = 0; k <= steps; k++) {
-      const t = k / steps;
-      const sag = Math.sin(t * Math.PI) * 5;
-      const wobble = Math.sin((e.timer + k * 7) * 0.43) * 1.5;
-      const x = Math.round(sx + (ex - sx) * t + wobble);
-      const y = Math.round(sy + (ey - sy) * t + sag);
-      for (let oy = 0; oy <= (k % 5 === 0 ? 1 : 0); oy++) {
-        if (!w.inBounds(x, y + oy)) continue;
-        const i = w.idx(x, y + oy);
+    ctx.vineStrands.addWebShot(sx + 0.5, sy + 0.5, dirX, dirY, {
+      color: vineColor(),
+      length: shotLen,
+      speed: 3.0 + Math.min(1.2, len / 180),
+      slack: 0.04 + Math.min(0.04, len / 1200),
+      lifetime: 360,
+      ashOnExpire: true,
+    });
+    const anchorX = Math.floor(headX);
+    const anchorY = Math.floor(headY);
+    let supported = false;
+    for (let ay = anchorY - 1; ay <= anchorY + 1 && !supported; ay++) {
+      for (let ax = anchorX - 1; ax <= anchorX + 1; ax++) {
+        if (!w.inBounds(ax, ay)) continue;
+        const t = w.types[w.idx(ax, ay)];
+        if (blocksEntity(t) || isSoftGrowth(t)) {
+          supported = true;
+          break;
+        }
+      }
+    }
+    if (supported) {
+      for (let oy = -1; oy <= 1; oy++) {
+        const x = anchorX;
+        const y = anchorY + oy;
+        if (!w.inBounds(x, y)) continue;
+        const i = w.idx(x, y);
         if (w.types[i] !== Cell.Empty) continue;
         w.replaceCellAt(i, Cell.Vines, vineColor());
+        w.life[i] = 160 + Math.floor(Math.random() * 70);
         placed++;
       }
     }
-    if (placed > 0) {
-      ctx.audio.squelch();
-      ctx.particles.burst(ex, ey, Math.min(10, placed), Cell.Vines, vineColor, 1.1);
+    ctx.audio.squelch();
+    ctx.particles.burst(headX, headY, Math.max(5, Math.min(10, placed + 4)), Cell.Vines, vineColor, 1.1);
+  }
+
+  private weaveFootTrail(e: Enemy, support: number): void {
+    const ctx = this.ctx;
+    const w = ctx.world;
+    const cx = Math.floor(e.x);
+    const foot = Math.floor(e.y);
+    let localVines = 0;
+    for (let dy = -6; dy <= 5; dy += 2) {
+      for (let dx = -18; dx <= 18; dx += 3) {
+        const x = cx + dx;
+        const y = foot + dy;
+        if (w.inBounds(x, y) && w.types[w.idx(x, y)] === Cell.Vines) localVines++;
+      }
     }
+    if (localVines > WEAVER_TRAIL_LOCAL_BUDGET) return;
+    let placed = 0;
+    const radius = (e.cranky ?? 0) > 0 ? 16 : 11;
+    for (let n = 0; n < 10 && placed < 5; n++) {
+      const x = cx + Math.floor((Math.random() * 2 - 1) * radius);
+      const y = foot - 2 + Math.floor(Math.random() * 6);
+      if (!w.inBounds(x, y)) continue;
+      const i = w.idx(x, y);
+      if (w.types[i] !== Cell.Empty) continue;
+      const below = w.inBounds(x, y + 1) ? w.types[w.idx(x, y + 1)] : Cell.Empty;
+      const above = w.inBounds(x, y - 1) ? w.types[w.idx(x, y - 1)] : Cell.Empty;
+      const left = w.inBounds(x - 1, y) ? w.types[w.idx(x - 1, y)] : Cell.Empty;
+      const right = w.inBounds(x + 1, y) ? w.types[w.idx(x + 1, y)] : Cell.Empty;
+      // Anything solid OR soft growth gives a strand something to cling to,
+      // including walls/ceilings when the floor has been cut away.
+      const cling =
+        blocksEntity(below) ||
+        blocksEntity(above) ||
+        blocksEntity(left) ||
+        blocksEntity(right) ||
+        isSoftGrowth(below) ||
+        isSoftGrowth(above) ||
+        isSoftGrowth(left) ||
+        isSoftGrowth(right);
+      if (!cling && support > 0.45) continue;
+      w.replaceCellAt(i, Cell.Vines, vineColor());
+      w.life[i] = 120 + Math.floor(Math.random() * 70);
+      placed++;
+    }
+    if (placed > 0 && (e.cranky ?? 0) > 0) {
+      ctx.particles.burst(e.x, e.y - 4, Math.min(placed + 2, 7), Cell.Vines, vineColor, 0.8);
+    }
+  }
+
+  private disturbLair(e: Enemy, tx: number, ty: number): void {
+    const ctx = this.ctx;
+    this.weaveThread(e, tx, ty);
+    e.webPulse = Math.max(e.webPulse ?? 0, 18);
+    ctx.critters.scatter(e.x, e.y - 8, 96, 2.2);
+    ctx.vineStrands.applyRadialImpulse(e.x, e.y - 20, 115, 3.4);
+    this.shakeAt(e.x, e.y, 0.012, 0.035);
+  }
+
+  private findWeaverAnchor(e: Enemy): CellCandidate | null {
+    const w = this.ctx.world;
+    const cx = Math.floor(e.x);
+    const cy = Math.floor(e.y);
+    let best: CellCandidate | null = null;
+    for (let dy = -28; dy <= 18; dy += 3) {
+      for (let dx = -82; dx <= 82; dx += 4) {
+        const x = cx + dx;
+        const y = cy + dy;
+        if (!w.inBounds(x, y)) continue;
+        const t = w.types[w.idx(x, y)];
+        const growth = isSoftGrowth(t);
+        if (!growth && !blocksEntity(t)) continue;
+        const exposed =
+          (w.inBounds(x, y - 1) && !this.ctx.physics.cellBlocks(x, y - 1)) ||
+          (w.inBounds(x - 1, y) && !this.ctx.physics.cellBlocks(x - 1, y)) ||
+          (w.inBounds(x + 1, y) && !this.ctx.physics.cellBlocks(x + 1, y)) ||
+          (w.inBounds(x, y + 1) && !this.ctx.physics.cellBlocks(x, y + 1));
+        if (!exposed) continue;
+        const sidePenalty = Math.abs(dx) < 12 ? 80 : 0;
+        const growthBonus = growth ? -140 : 0;
+        const d2 = dx * dx + dy * dy * 1.25 + sidePenalty + growthBonus;
+        if (!best || d2 < best.d2) best = { x, y, d2 };
+      }
+    }
+    return best;
   }
 
   private weaverNeedleStrike(e: Enemy, tx: number, ty: number): void {
@@ -785,6 +949,7 @@ export class Enemies implements EnemyControlApi {
     ctx.particles.burst(x, y, 9, Cell.Sand, stoneColor, 1.5);
     ctx.audio.hollowKnock();
     this.shakeAt(x, y, 0.008, 0.035);
+    if (ctx.world.inBounds(x, y) && blocksEntity(ctx.world.types[ctx.world.idx(x, y)])) return;
     const dx = ctx.player.x - x;
     const dy = ctx.player.y - 8 - y;
     if (!ctx.player.dead && Math.abs(dx) < 15 && Math.abs(dy) < 18) {
@@ -796,6 +961,8 @@ export class Enemies implements EnemyControlApi {
   private wakeWeaver(
     e: Enemy,
     source: 'proximity' | 'harm' | 'disturbance',
+    tx = e.x,
+    ty = e.y,
   ): void {
     const ctx = this.ctx;
     e.sleeping = false;
@@ -806,11 +973,13 @@ export class Enemies implements EnemyControlApi {
       e.cranky = Math.max(e.cranky ?? 0, WEAVER_CRANKY_FRAMES);
       e.recoil = Math.max(e.recoil ?? 0, 10);
       e.attackCd = Math.min(e.attackCd, 24);
-      const dir = Math.sign(ctx.player.x - e.x || 1);
+      const dir = Math.sign(tx - e.x || ctx.player.x - e.x || 1);
       e.vx += dir * 0.42;
+      this.disturbLair(e, tx, ty);
     } else {
       e.windup = Math.max(e.windup ?? 0, source === 'harm' ? 8 : 14);
       e.attackCd = Math.max(e.attackCd, 34);
+      e.webPulse = Math.max(e.webPulse ?? 0, 10);
     }
     ctx.audio.tone(disturbed ? 130 : 160, disturbed ? 55 : 70, disturbed ? 0.38 : 0.28, 'triangle', 0.08);
     ctx.particles.burst(e.x, e.y - this.defs[e.kind].h, disturbed ? 12 : 8, Cell.Vines, vineColor, 1.1);
@@ -830,7 +999,7 @@ export class Enemies implements EnemyControlApi {
       const dx = e.x - x;
       const dy = e.y - def.h * 0.5 - y;
       if (dx * dx + dy * dy > r2) continue;
-      this.wakeWeaver(e, source);
+      this.wakeWeaver(e, source, x, y);
       woken++;
     }
     return woken;
@@ -866,6 +1035,7 @@ export class Enemies implements EnemyControlApi {
       this.ctx.critters.remove(prey);
       e.hp = Math.min(e.maxHp, e.hp + 14);
       e.recoil = Math.max(e.recoil ?? 0, 10);
+      e.weaverFeedT = Math.max(e.weaverFeedT ?? 0, 18);
       e.attackCd = Math.max(e.attackCd, 22);
       this.ctx.audio.squelch();
       return true;
@@ -874,6 +1044,7 @@ export class Enemies implements EnemyControlApi {
     const support = e.weaverSupport ?? 0;
     e.vx += (dx / d) * (0.055 + support * 0.035);
     if (e.grounded && Math.abs(dx) < 10 && dy < -12) e.vy -= 0.08;
+    if (d < 34) e.weaverFeedT = Math.max(e.weaverFeedT ?? 0, 8);
     return true;
   }
 
@@ -887,6 +1058,21 @@ export class Enemies implements EnemyControlApi {
       if (w.inBounds(X, Y) && enemyLethalCell(e.kind, w.types[w.idx(X, Y)])) return true;
     }
     return false;
+  }
+
+  /** True if there's no floor just ahead within a short, steppable drop — the lip
+   *  of a hole/cliff. A grounded Weaver uses this to refuse to stride out over a
+   *  drop it can't step down into (so it stops at the edge and reaches/recentres
+   *  instead of walking off into the void it just had dug out from under it).
+   *  `depth` is how far down it will tolerate a step before calling it a void. */
+  private dropAhead(e: Enemy, def: EnemyDef, dir: number, depth = 12): boolean {
+    const w = this.ctx.world;
+    const X = Math.floor(e.x) + dir * (def.halfW + 2);
+    const foot = Math.floor(e.y);
+    for (let Y = foot - 1; Y <= foot + depth; Y++) {
+      if (w.inBounds(X, Y) && this.ctx.physics.cellBlocks(X, Y)) return false; // floor within reach
+    }
+    return true;
   }
 
   private enemyEnvironmentDamage(e: Enemy, index?: number): void {
@@ -931,6 +1117,8 @@ export class Enemies implements EnemyControlApi {
       if ((e.envDamageFeedbackCd ?? 0) > 0) e.envDamageFeedbackCd = (e.envDamageFeedbackCd ?? 0) - 1;
       if ((e.wary ?? 0) > 0) e.wary = (e.wary ?? 0) - 1;
       if ((e.cranky ?? 0) > 0) e.cranky = (e.cranky ?? 0) - 1;
+      if ((e.webPulse ?? 0) > 0) e.webPulse = (e.webPulse ?? 0) - 1;
+      if ((e.weaverFeedT ?? 0) > 0) e.weaverFeedT = (e.weaverFeedT ?? 0) - 1;
       e.timer++;
       if (e.attackCd > 0) e.attackCd--;
       this.enemyEnvironmentDamage(e, i);
@@ -1243,10 +1431,29 @@ export class Enemies implements EnemyControlApi {
         // are here so burning/cutting growth changes how confidently it moves.
         e.vy += 0.32;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
-        if (e.timer % 6 === 0) e.weaverSupport = this.weaverFooting(e, def);
+        if (e.timer % 6 === 0) {
+          e.weaverSupport = this.weaverFooting(e, def);
+          const physical = this.weaverPhysicalFooting(e);
+          e.weaverPhysicalSupport = physical.support;
+          e.weaverAnchorCount = physical.anchors;
+          e.weaverSupportCenterX = physical.centerX;
+        }
         const support = e.weaverSupport ?? 0;
+        const physicalSupport = e.weaverPhysicalSupport ?? (e.grounded ? 0.45 : 0);
+        const anchorCount = e.weaverAnchorCount ?? (physicalSupport > 0.35 ? 4 : 0);
+        const visualSupport = e.weaverVisualSupport ?? physicalSupport;
+        const visualPlanted = e.weaverVisualPlanted ?? anchorCount;
         const cranky = (e.cranky ?? 0) > 0;
-        const confidence = 0.7 + support * 0.45 + (cranky ? 0.25 : 0);
+        const unsupported = physicalSupport < 0.34 || anchorCount < 3 || visualSupport < 0.28 || visualPlanted < 3;
+        e.weaverFallT = unsupported ? Math.min(90, (e.weaverFallT ?? 0) + 1) : Math.max(0, (e.weaverFallT ?? 0) - 3);
+        const panic = clamp((e.weaverFallT ?? 0) / 45, 0, 1);
+        // Footing CRISIS keys off real load-bearing terrain, NOT preferred growth:
+        // plain stone is perfectly stable footing (growth merely makes it better
+        // and faster — see confidence/maxWeaverSpeed below). The Weaver only drops
+        // into recovery / no-attack when it PHYSICALLY loses its footing, so on a
+        // bare-stone arena it still stands tall, chases, and strikes normally.
+        const unstable = unsupported || (e.weaverFallT ?? 0) > 16;
+        const confidence = 0.62 + support * 0.36 + physicalSupport * 0.28 + (cranky ? 0.25 : 0) - panic * 0.2;
 
         if ((e.recoil ?? 0) > 0) e.recoil = (e.recoil ?? 0) - 1;
 
@@ -1260,6 +1467,62 @@ export class Enemies implements EnemyControlApi {
             this.weaveThread(e, e.x + (Math.random() - 0.5) * 28, e.y - 18 - Math.random() * 18);
           }
           continue;
+        }
+
+        // Continuous balance: ALWAYS ease the body toward the centre of its real
+        // footing, so it never teeters out over a hole — ~0 when well-centred,
+        // firm when a foot region has dropped away. This is the decisive "back
+        // onto solid ground / stand up properly" correction, and it runs whether
+        // or not the creature has tipped into the full recovery state.
+        const balanceDx = (e.weaverSupportCenterX ?? e.x) - e.x;
+        if (anchorCount >= 1 && Math.abs(balanceDx) > 4) {
+          e.vx += clamp(balanceDx * 0.02, -0.22, 0.22);
+        }
+
+        if (unstable) {
+          // Only when truly STRANDED (nothing load-bearing under it) does it lunge
+          // for a far anchor to bridge to; partial footing is handled by the
+          // continuous balance above, which pulls it back over solid ground.
+          const hasFooting = anchorCount >= 1 || physicalSupport > 0.1;
+          const anchor = this.findWeaverAnchor(e);
+          if (anchor) {
+            const dx = anchor.x - e.x;
+            const dy = anchor.y - e.y;
+            const d = Math.hypot(dx, dy) || 1;
+            const seekK = hasFooting ? 0.05 : 0.14; // lunge hard only when stranded over the void
+            e.vx += (dx / d) * (seekK + panic * 0.09);
+            if (anchorCount >= 4 && physicalSupport > 0.48 && e.vy > 0) {
+              e.vy *= 0.9;
+            } else if (dy < -4 && e.timer % 10 === 0) {
+              e.vy -= 0.04 + panic * 0.055;
+            }
+            if (Math.abs(dx) > 18) e.vx += Math.sign(dx) * 0.03 * panic;
+            if (e.timer % 15 === 0) this.weaveFootTrail(e, support);
+          } else if (e.timer % 7 === 0) {
+            this.weaveFootTrail(e, support);
+          }
+          if (unsupported) {
+            e.attackCd = Math.max(e.attackCd, 28);
+            e.webPulse = Math.max(e.webPulse ?? 0, 6);
+            if (visualSupport < 0.26) {
+              e.grounded = false;
+              e.vy += 0.16 + panic * 0.16;
+              e.vx *= 0.88;
+            }
+            if ((e.windup ?? 0) > 0) {
+              e.windup = 0;
+              e.needleX = undefined;
+              e.needleY = undefined;
+            }
+            if ((e.blink ?? 0) > 0) e.blink = 0;
+          }
+          if (e.timer % 34 === 0) {
+            e.recoil = Math.max(e.recoil ?? 0, 8);
+            e.webPulse = Math.max(e.webPulse ?? 0, 10);
+            e.vx *= unsupported ? 0.72 : 0.48;
+            e.attackCd = Math.max(e.attackCd, 24);
+            ctx.particles.burst(e.x, e.y - 3, 5, Cell.Smoke, smokeColor, 0.65, { grav: 0.02 });
+          }
         }
 
         if (e.blink > 0) {
@@ -1289,8 +1552,22 @@ export class Enemies implements EnemyControlApi {
           // leg while this countdown holds the body still.
           e.windup = (e.windup ?? 1) - 1;
           e.vx *= 0.55;
+          if (e.timer % 4 === 0) {
+            ctx.particles.spawn(
+              e.needleX ?? player.x,
+              e.needleY ?? player.y - 8,
+              (Math.random() - 0.5) * 0.12,
+              -0.08,
+              null,
+              vineColor(),
+              10,
+              { grav: -0.005, glow: 0.35 },
+            );
+          }
           if (e.windup === 0 && targetAlive) {
-            this.weaverNeedleStrike(e, player.x, player.y - 8);
+            this.weaverNeedleStrike(e, e.needleX ?? player.x, e.needleY ?? player.y - 8);
+            e.needleX = undefined;
+            e.needleY = undefined;
             e.recoil = 12;
             e.attackCd = 95 + Math.floor(Math.random() * 35);
           }
@@ -1302,30 +1579,53 @@ export class Enemies implements EnemyControlApi {
             const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
             if (Math.abs(wp[0] - e.x) < 12) e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
             else if (e.timer % 3 === 0) e.vx += Math.sign(wp[0] - e.x) * 0.07 * confidence;
-          } else if (targetAlive && (cranky || e.timer % 2 === 0)) {
+          } else if (targetAlive && !unstable && (cranky || e.timer % 2 === 0)) {
+            // Chase pressure yields to footing: while unstable, recovery owns
+            // horizontal intent. Under an OVERHEAD target it holds position and
+            // rears up (no sideways fidget), and it never strides out over a drop
+            // it can't step down into — it stops at the lip and reaches instead of
+            // walking off into the void.
             const tooClose = pDist < 46;
-            const dir = tooClose ? -Math.sign(pdx || 1) : Math.sign(pdx || 1);
+            let dir = tooClose ? -Math.sign(pdx || 1) : Math.sign(pdx || 1);
+            if (!tooClose && Math.abs(pdx) <= 12) dir = 0; // overhead: stand and rear
+            if (dir !== 0 && this.dropAhead(e, def, dir)) dir = 0; // edge wariness
             e.vx += dir * 0.06 * confidence;
           }
 
-          if (targetAlive && e.attackCd === 0 && e.alerted) {
+          if (targetAlive && e.attackCd === 0 && e.alerted && !unstable) {
             if (Math.abs(pdx) < 13 && Math.abs(pdy) < 20) {
               // Point-blank contact bite: instant (no telegraph this close) and it
               // claims the cooldown, so the needle windup can't also fire this frame.
               ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx || 1) * -3.0, -2.0);
               e.attackCd = 80;
             } else if (pDist < 92 && Math.abs(pdy) < 62) {
-              e.windup = e.status.burning > 0 ? 10 : 18;
+              e.windup = e.status.burning > 0 ? 10 : cranky ? 12 : 18;
+              e.needleX = player.x;
+              e.needleY = player.y - 8;
+              if (this.findWeaverAnchor(e)) e.webPulse = Math.max(e.webPulse ?? 0, 8);
               ctx.audio.tone(180, 90, 0.35, 'triangle', 0.09);
             } else if (pDist < 285) {
-              e.blink = e.status.burning > 0 ? 10 : 18;
+              e.blink = e.status.burning > 0 ? 10 : cranky ? 9 : 18;
               ctx.audio.noiseBurst(0.08, 1300, 0.08, true);
             }
           }
         }
 
-        e.vx *= e.grounded ? 0.86 : 0.97;
-        const maxWeaverSpeed = (e.status.burning > 0 ? 1.0 : 0.72) + support * 0.35 + (cranky ? 0.22 : 0);
+        if ((e.grounded || unsupported) && (cranky || support < 0.55) && e.timer % WEAVER_TRAIL_WEB_COOLDOWN === 0) {
+          this.weaveFootTrail(e, support);
+        }
+        e.vx *= e.grounded ? 0.86 : 0.97 - panic * 0.05;
+        // While recovering footing the body needs its legs back under it FAST, so
+        // a teetering Weaver gets a temporary scramble-speed bump to relocate
+        // instead of inching off the lip at the panic-throttled crawl.
+        const recovering = unstable && (anchorCount >= 1 || physicalSupport > 0.1);
+        const maxWeaverSpeed =
+          (e.status.burning > 0 ? 1.0 : 0.72) +
+          support * 0.28 +
+          physicalSupport * 0.18 +
+          (cranky ? 0.22 : 0) +
+          (recovering ? 0.5 : 0) -
+          panic * 0.16;
         e.vx = clamp(e.vx, -maxWeaverSpeed, maxWeaverSpeed);
       } else if (e.kind === 'imp') {
         // Hover at a standoff distance, strafe, lob fireballs
@@ -1902,7 +2202,7 @@ export class Enemies implements EnemyControlApi {
         }
       } else {
         const stepUp =
-          e.kind === 'weaver' ? 4 : e.kind === 'colossus' ? 3 : e.kind === 'golem' || e.kind === 'leviathan' ? 2 : 1;
+          e.kind === 'weaver' ? 6 : e.kind === 'colossus' ? 3 : e.kind === 'golem' || e.kind === 'leviathan' ? 2 : 1;
         // WARY OF THE EDGE: a grounded walker won't voluntarily step into a cell
         // that's lethal to it (lava/fire/acid). Fail-open — it only cancels this
         // frame's step and re-aims next frame, so it never hard-locks a path.

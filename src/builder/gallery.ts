@@ -171,13 +171,14 @@ const ENEMY_DESC: Partial<Record<EnemyKind, string>> = {
   spitter: 'Lobs corrosive gobs from range.',
   bomber: 'Walks its payload to you, fuse first.',
   eggs: 'A clutch. It is not dormant.',
+  weaver: 'Eight-legged lair guardian. Plants long IK feet, writes vine threads, and stumbles when stripped of growth.',
   colossus: 'The Kiln Colossus. Water is the strategy.',
   leviathan: 'The Sunken Leviathan. Water is its armor — take the water away.',
 };
 
 const ENEMY_KINDS: EnemyKind[] = [
   'slime', 'imp', 'golem', 'acidslime', 'wisp', 'mage', 'bat', 'spitter', 'bomber', 'eggs', 'colossus',
-  'leviathan',
+  'weaver', 'leviathan',
 ];
 
 /**
@@ -1466,6 +1467,58 @@ export class Gallery {
           alerted: true,
           step: (e, f) => {
             e.fusing = Math.max(1, 100 - (f % 130)); // strobe speeds toward boom
+          },
+        },
+      ],
+      weaver: [
+        walk(16, 0.034),
+        {
+          label: 'SLEEPING',
+          setup: (e) => {
+            e.sleeping = true;
+            e.alerted = false;
+            e.weaverSupport = 1;
+            this.paint(RX - 22, FY - 34, RX + 22, FY - 32, Cell.Stone);
+            for (let x = RX - 18; x <= RX + 18; x += 9) this.paint(x, FY - 31, x, FY - 6, Cell.Vines);
+          },
+        },
+        {
+          label: 'NEEDLE STEP',
+          alerted: true,
+          setup: (e) => {
+            e.weaverSupport = 1;
+          },
+          step: (e, f) => {
+            e.windup = Math.max(1, 18 - (f % 54));
+            e.needleX = RX + 19;
+            e.needleY = FY - 11;
+          },
+        },
+        {
+          label: 'THREAD SPIT',
+          alerted: true,
+          setup: (e) => {
+            e.weaverSupport = 1;
+          },
+          step: (e, f) => {
+            e.blink = Math.max(1, 18 - (f % 60));
+            e.webPulse = Math.max(0, 18 - (f % 60));
+          },
+        },
+        {
+          label: 'FOOTING LOST',
+          alerted: true,
+          setup: (e) => {
+            e.weaverSupport = 0;
+            e.cranky = 160;
+            e.webPulse = 18;
+            this.paint(RX - 24, FY - 1, RX + 24, FY - 1, Cell.Empty);
+            this.paint(RX - 28, FY - 3, RX - 20, FY - 1, Cell.Vines);
+            this.paint(RX + 20, FY - 3, RX + 28, FY - 1, Cell.Vines);
+          },
+          step: (e, f) => {
+            e.recoil = f % 34 < 12 ? 12 - (f % 12) : 0;
+            e.webPulse = Math.max(0, 18 - (f % 34));
           },
         },
       ],

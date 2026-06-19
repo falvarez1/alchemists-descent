@@ -112,6 +112,29 @@ The house principles, in order of authority:
   - grounded foes within 26 cells are chipped (1 dmg) and knocked off their feet.
 - Water cancels the dive into the normal splash. State: `player.diveT`.
 
+### Wading through fresh blood (the gore is a real liquid)
+
+A Weaver bleeds out a wet `Cell.Blood` pool you have to *slog* through — it
+isn't set dressing you skate over. Each frame the lower body is scanned for wet
+blood (`updatePlayer`'s BLOOD WADE block); one count drives three things:
+
+- **Bog-down.** Blood cells hugging the legs (sample box `WADE_SAMPLE_H` 9 tall ×
+  ±`PLAYER_HALF_W`) normalize against `WADE_FULL_CELLS` 48 into `wade01`; that
+  sheds up to `WADE_SLOW_MAX` 0.55 of both run accel and top speed. A thin film
+  barely registers; a shin-deep wade trudges (~40% slower, measured).
+- **Robe soak (builds with exposure).** Wading banks soak charge into
+  `player.bloodStain` — `WADE_STAIN_GAIN` 18/f scaled 0.35–1.0× by depth
+  (`wade01`), capped at `BLOOD_STAIN_MAX` 3600. The sprite reddens boots + hem
+  in proportion (`BLOOD_STAIN_FULL` 1000 = fully saturated; lower `STAIN_RISE`
+  8 cells, tapering up, gated on the silhouette pass so the wand glow never
+  bleeds red): faint after a quick step, deep crimson once he's truly waded. Off
+  the blood the charge drains 1/f, so a full soak holds red then fades — ~1 min.
+- **A wake.** Plowing through at speed (`|vx| > WADE_WAKE_MIN_SPEED` 0.5) shoves
+  the surface up into a crest at the leading foot (a real `world.swap`, mass
+  conserved) and flings droplets of the pool's *own* colour (cosmetic motes, so
+  the wake can never flood the sim) — plus the odd soft splash. The grid
+  explains every part of it.
+
 ### Kick / force push (F)
 
 A single button that is half melee, half *blast of air* — Newton both ways.
@@ -432,6 +455,7 @@ levitation horizontal: own control (levitHorizControl 1.0×) — decoupled from 
 air inertia: input caps at maxRun but never snaps carried momentum down; airborne vx *= airDrag (0.985) each frame instead of the ground 0.72 — sprint carries into jump/levitate, glide coasts (±12 sanity rail). Builder → LEVITATION → Air momentum (drag)
 gore/blood: count = baseline × global.bloodAmount × channelMul(material) × sizeFactor. sizeFactor = clamp(halfW·h / 50, 0.3, 4) (bat barely spatters, golem/colossus gushes). channelMul keys off the sprayed cell: Cell.Blood→goreBlood, Cell.Slime→goreSlime, Cell.Acid/Toxic→goreOoze, else 1 — so red blood, green slime, and glowing ooze tune discretely. bloodAmount is the master: 0 = bloodless, 1 = shipped, up to 10 = maximum gore / Tarantino mode. All in Builder → Global Controls → GORE (Overall 0–10×, channels 0–4×). Particle pool MAX_PARTICLES=4200 caps extremes gracefully; gold bounty shower is NOT scaled
 blood staining: blood particles stain (stainCell) the sturdy surface they strike (Wall/Wood/Stone/Ice), and flowing/pooling blood liquid stains the floor/walls it touches each substep (handleViscousLiquid) — red soaks in permanently (tints world.colors, not types, so golden hashes unaffected)
+blood wading: wet Cell.Blood at the legs (sample 9 tall × ±4) / WADE_FULL_CELLS 48 = wade01; sheds ≤0.55× of accel+maxRun (shin-deep ≈ −40%). Contact (≥4 cells) BANKS soak charge into player.bloodStain (+18/f ×0.35–1.0 by depth, cap 3600) → sprite reddens boots+hem the more/longer he wades (BLOOD_STAIN_FULL 1000 = full crimson, over 8 cells); off the blood drains 1/f, holds then fades ≈ 1 min. Moving (|vx|>0.5) shoves a crest up (world.swap) + flings the pool's own-colour cosmetic droplets + soft splash
 run accel 0.5 ground / 0.575 air · max run 2.6 · crouch 0.38x · peek +48 cells
 dive: entry 5.6, floor 4.6, terminal 6.4 (normal 5.0), drift x0.86/f
 slam: 26-cell knock radius, 1 dmg, ≤12 powder cells popped

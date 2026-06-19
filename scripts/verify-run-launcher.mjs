@@ -205,7 +205,48 @@ const virtualControls = await page.evaluate(() => ({
 }));
 check('Virtual-world selection disables authored level picker', virtualControls.levelDisabled, JSON.stringify(virtualControls));
 await page.fill('#run-launcher [data-field="seed"]', '2468');
+const launchFeedback = page.waitForFunction(() => {
+  const loading = document.querySelector('[data-section="launching"]');
+  const loadingStyle = loading ? getComputedStyle(loading) : null;
+  const startButton = document.querySelector('.run-launcher-start');
+  const state = {
+    launcherOpen: document.getElementById('run-launcher')?.classList.contains('visible') ?? false,
+    launching: document.getElementById('run-launcher')?.classList.contains('launching') ?? false,
+    loadingVisible: Boolean(
+      loading &&
+        loadingStyle &&
+        loadingStyle.display !== 'none' &&
+        loadingStyle.visibility !== 'hidden' &&
+        loadingStyle.opacity !== '0',
+    ),
+    detail: document.querySelector('[data-field="launching-detail"]')?.textContent ?? '',
+    startText: startButton?.textContent ?? '',
+    startDisabled: startButton instanceof HTMLButtonElement ? startButton.disabled : false,
+  };
+  if (
+    state.launcherOpen &&
+    state.launching &&
+    state.loadingVisible &&
+    state.detail.length > 0 &&
+    state.startText.includes('OPENING') &&
+    state.startDisabled
+  ) {
+    return state;
+  }
+  return false;
+}, undefined, { timeout: 5000 });
 await page.click('#run-launcher .run-launcher-start');
+const launchingState = await (await launchFeedback).jsonValue();
+check(
+  'Launcher shows launch feedback while starting',
+  launchingState.launcherOpen &&
+    launchingState.launching &&
+    launchingState.loadingVisible &&
+    launchingState.detail.length > 0 &&
+    launchingState.startText.includes('OPENING') &&
+    launchingState.startDisabled,
+  JSON.stringify(launchingState),
+);
 await page.waitForFunction(
   () =>
     window.__game.ctx.state.mode === 'play' &&
@@ -230,6 +271,50 @@ check(
     virtualState.flaskSlots[0]?.material === 2 &&
     virtualState.flaskSlots[0]?.count === 450,
   JSON.stringify({ active: virtualState.activeFlaskIndex, state: virtualState.flask, slots: virtualState.flaskSlots }),
+);
+await page.waitForFunction(
+  () => !document.getElementById('level-curtain')?.classList.contains('visible'),
+  undefined,
+  { timeout: 5000 },
+);
+await page.keyboard.press('Escape');
+await page.waitForSelector('#pause-overlay.visible', { timeout: 5000 });
+const restartFeedback = page.waitForFunction(() => {
+  const curtain = document.getElementById('level-curtain');
+  const title = document.getElementById('level-curtain-title')?.textContent ?? '';
+  const detail = document.getElementById('level-curtain-detail')?.textContent ?? '';
+  const spinner = curtain?.querySelector('.run-launcher-loading-sigil');
+  const bar = curtain?.querySelector('.run-launcher-loading-bar');
+  const state = {
+    visible: curtain?.classList.contains('visible') ?? false,
+    title,
+    detail,
+    pauseClosed: !document.getElementById('pause-overlay')?.classList.contains('visible'),
+    spinnerVisible: Boolean(spinner && getComputedStyle(spinner).display !== 'none'),
+    barVisible: Boolean(bar && getComputedStyle(bar).display !== 'none'),
+  };
+  return state.visible && state.detail.length > 0 && state.pauseClosed && state.spinnerVisible && state.barVisible
+    ? state
+    : false;
+}, undefined, { timeout: 5000 });
+await page.click('#pause-restart');
+const restartLoadingState = await (await restartFeedback).jsonValue();
+check(
+  'Pause restart shows level loading feedback',
+  restartLoadingState.visible &&
+    restartLoadingState.pauseClosed &&
+    restartLoadingState.detail.length > 0 &&
+    restartLoadingState.spinnerVisible &&
+    restartLoadingState.barVisible,
+  JSON.stringify(restartLoadingState),
+);
+await page.waitForFunction(
+  () =>
+    window.__game.ctx.state.mode === 'play' &&
+    window.__game.ctx.levels.current?.def.id === 'virtual-test' &&
+    !document.getElementById('level-curtain')?.classList.contains('visible'),
+  undefined,
+  { timeout: 30000 },
 );
 
 await resetLauncherStorageAndReload();

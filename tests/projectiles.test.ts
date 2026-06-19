@@ -831,6 +831,40 @@ describe('projectile trigger payloads', () => {
     expect(enemy.status.frozen).toBe(120);
   });
 
+  it('does not let a piercing ice lance re-hit a target to self-prime its shatter crit', () => {
+    const world = new World();
+    const projectile: Projectile = {
+      x: 5,
+      y: 5,
+      vx: 0,
+      vy: 0,
+      type: 'icelance',
+      life: 100,
+      age: 0,
+      charging: false,
+      hostile: false,
+    };
+    const enemy = enemyAt(6, 10);
+    enemy.hp = 1000; // survive the first pierce so it can be re-queried
+    enemy.status.frozen = 0; // real enemies start initialized (createDefaultStatus)
+    const damage: number[] = [];
+    PROJECTILE_MODS.set(projectile, { shatterCrit: true });
+    const projectiles = new Projectiles();
+
+    // First pass: a dry target takes base 30 (no shatter) and is deep-frozen to 150.
+    projectiles.update(modifierCtx(world, projectile, { enemies: [enemy], damage, frameCount: 1 }));
+    expect(damage).toHaveLength(1);
+    expect(damage[0]).toBeCloseTo(30);
+    expect(enemy.status.frozen).toBe(150);
+
+    // The lance lingers on the same now-frozen target. Clearing flash simulates the
+    // ~4 ticks the old bug needed; the lance must NOT re-pierce and read its OWN
+    // freeze as a 2x shatter crit (that would push a second, 60-damage hit).
+    enemy.flash = 0;
+    projectiles.update(modifierCtx(world, projectile, { enemies: [enemy], damage, frameCount: 2 }));
+    expect(damage).toHaveLength(1);
+  });
+
   it('freezes a bounded real-cell terrain splash with Frost Charge', () => {
     const world = new World();
     const wall = world.idx(6, 5);

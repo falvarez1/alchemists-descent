@@ -49,19 +49,18 @@ function isTransmutableSolid(type: number): boolean {
   return type === Cell.Wall || type === Cell.Wood || type === Cell.Stone;
 }
 
-function matchWaterFire(ctx: Ctx, x: number, y: number, _i: number): boolean {
-  const type = ctx.world.types[ctx.world.idx(x, y)];
-  if (type !== Cell.Water) return false;
+function matchWaterFire(ctx: Ctx, x: number, y: number, i: number): boolean {
+  if (ctx.world.types[i] !== Cell.Water) return false;
   return hasNeighbor(ctx, x, y, (neighbor) => neighbor === Cell.Fire || neighbor === Cell.Ember);
 }
 
-function matchLavaWater(ctx: Ctx, x: number, y: number, _i: number): boolean {
-  if (ctx.world.types[ctx.world.idx(x, y)] !== Cell.Lava) return false;
+function matchLavaWater(ctx: Ctx, x: number, y: number, i: number): boolean {
+  if (ctx.world.types[i] !== Cell.Lava) return false;
   return hasNeighbor(ctx, x, y, (neighbor) => neighbor === Cell.Water);
 }
 
-function matchNitrogenWater(ctx: Ctx, x: number, y: number, _i: number): boolean {
-  if (ctx.world.types[ctx.world.idx(x, y)] !== Cell.Nitrogen) return false;
+function matchNitrogenWater(ctx: Ctx, x: number, y: number, i: number): boolean {
+  if (ctx.world.types[i] !== Cell.Nitrogen) return false;
   return hasNeighbor(ctx, x, y, (neighbor) => neighbor === Cell.Water);
 }
 
@@ -71,17 +70,21 @@ function matchChargedConductor(ctx: Ctx, x: number, y: number, i: number): boole
   return hasNeighbor(ctx, x, y, (neighbor) => isConductor(neighbor));
 }
 
-function matchAcidWaterTransmutation(ctx: Ctx, x: number, y: number, _i: number): boolean {
-  const type = ctx.world.types[ctx.world.idx(x, y)];
-  if (!isTransmutableSolid(type)) return false;
+function matchAcidWaterTransmutation(ctx: Ctx, x: number, y: number, i: number): boolean {
+  if (!isTransmutableSolid(ctx.world.types[i])) return false;
+  const world = ctx.world;
   let acid = false;
   let water = false;
-  hasNeighbor(ctx, x, y, (neighbor) => {
+  for (const [dx, dy] of OFFSETS) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (!world.inBounds(nx, ny)) continue;
+    const neighbor = world.types[world.idx(nx, ny)];
     if (neighbor === Cell.Acid) acid = true;
-    if (neighbor === Cell.Water) water = true;
-    return acid && water;
-  });
-  return acid && water;
+    else if (neighbor === Cell.Water) water = true;
+    if (acid && water) return true;
+  }
+  return false;
 }
 
 const RULES: readonly InteractionRule[] = [
@@ -152,12 +155,11 @@ export function scanGrimoireInteractions(ctx: Ctx, skip?: ReadonlySet<string>): 
 export class GrimoireInteractionObserver {
   private lastScanFrame = -SCAN_PERIOD_FRAMES;
   // Known rule ids, loaded from the store once then kept in sync as we record.
+  // Once its size reaches RULES.length every interaction is witnessed and update()
+  // early-returns — no separate latch flag needed.
   private known: Set<string> | null = null;
-  // Latched once every rule is witnessed so update() becomes a single boolean test.
-  private allKnown = false;
 
   update(ctx: Ctx): void {
-    if (this.allKnown) return;
     if (ctx.state.mode !== 'play' || ctx.state.paused) return;
     if (ctx.state.frameCount - this.lastScanFrame < SCAN_PERIOD_FRAMES) return;
     this.lastScanFrame = ctx.state.frameCount;
@@ -166,20 +168,18 @@ export class GrimoireInteractionObserver {
       const discovered = loadDiscoveredInteractions();
       this.known = new Set(RULES.filter((rule) => discovered[rule.id]).map((rule) => rule.id));
     }
-    if (this.known.size >= RULES.length) {
-      this.allKnown = true;
-      return;
-    }
+    if (this.known.size >= RULES.length) return; // every interaction already witnessed
 
     // The scan skips already-known rules, so every match here is genuinely new.
+    // Record EVERY co-occurring match this scan — a second interaction that turns
+    // true in the same window must not be dropped, since its cells may be gone by
+    // the next scan (e.g. steam consuming the water that triggered it).
     for (const match of scanGrimoireInteractions(ctx, this.known)) {
       if (recordInteractionDiscovery(ctx, match.id, match.title)) {
         ctx.events.emit('worldInteractionObserved', match);
         ctx.events.emit('toast', { text: `Grimoire - observed ${match.title}` });
       }
       this.known.add(match.id);
-      if (this.known.size >= RULES.length) this.allKnown = true;
-      return;
     }
   }
 }

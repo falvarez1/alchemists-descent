@@ -50,6 +50,18 @@ const GUST_ENEMY_PUSH = 5; // kick wind-gust shove scalar for enemies (mass-scal
 const MOVE_ACCEL_CAP = 0.6; // max per-frame ground-speed gain — high top speeds (Swift stacks / God Mode) RAMP up over several frames instead of snapping to max
 const LIQUID_SPLASH_MIN_SPEED = 1.2;
 const LIQUID_STOMP_SPLASH_MIN_SPEED = 2.2;
+// ---- Blood wading (fresh gore is a real liquid you have to slog through).
+// The wet Cell.Blood hugging the lower body is counted each frame; that one
+// number drives a movement drag, a robe stain, and a spattering wake. Tuned so
+// a shallow film barely drags and a leg-deep wade is a real trudge. See the
+// "BLOOD WADE" block in update().
+const WADE_SAMPLE_H = 9; // cells up from the feet the leg-deep blood scan reaches
+const WADE_FULL_CELLS = 48; // blood-cell count that reads as a full leg-deep wade (drag saturates here)
+const WADE_SLOW_MAX = 0.55; // fraction of ground accel / top run-speed shed at a full wade
+const WADE_STAIN_TOUCH_MIN = 4; // blood cells at the legs that count as "stepped in it" (soaks the robe)
+const WADE_WAKE_MIN_SPEED = 0.5; // |vx| below which plowing through throws no wake
+const BLOOD_STAIN_MAX = 3600; // soak-charge cap — a full soak lingers ~60s (at 60Hz) once he leaves the blood
+const WADE_STAIN_GAIN = 18; // soak charge banked per frame of wading (×0.35–1.0 with depth) — deeper/longer = redder
 // Fine horizontal control + variable jump height (Celeste-style) used to live as
 // module consts here; they now live on ctx.params.player (moveSoftStart,
 // groundStopDecay/Snap, airGlideSpeed, airStopDecay, jumpCut, jumpHoldWindow,
@@ -186,6 +198,7 @@ export function createPlayer(): PlayerState {
     climbIntentY: 0,
     climbLean: 0,
     robe: { ox: 0, vx: 0 },
+    bloodStain: 0,
   };
 }
 
@@ -1010,6 +1023,7 @@ export class PlayerControl implements PlayerControlApi {
     player.invuln = 90;
     player.crawling = false; // arrivals are standing-safe
     player.crawlT = 0;
+    player.bloodStain = 0; // a fresh robe on every arrival
     this.resetClimbState(player);
     this.resetTransientState(this.ctx);
     this.ctx.fx.hitstop = 0;
@@ -1258,6 +1272,72 @@ export class PlayerControl implements PlayerControlApi {
       player.crouchT = Math.min(10, player.crouchT + 2);
     } else if (player.crouchT > 0) player.crouchT = Math.max(0, player.crouchT - 2);
 
+    // ---- BLOOD WADE (design: if the grid can't explain it, it doesn't ship).
+    // Fresh blood pooling around the legs is a liquid you have to slog through.
+    // Count the wet Cell.Blood hugging the lower body; that drives the drag
+    // (folded into accel/maxRun below), the robe soak, and the wake.
+    let bloodWadeCells = 0;
+    const wadeTop = Math.min(bodyH, WADE_SAMPLE_H);
+    for (let dy = 0; dy <= wadeTop; dy++) {
+      for (let dx = -PLAYER_HALF_W; dx <= PLAYER_HALF_W; dx++) {
+        const X = player.x + dx,
+          Y = player.y - dy;
+        if (!world.inBounds(X, Y)) continue;
+        if (world.types[world.idx(X, Y)] === Cell.Blood) bloodWadeCells++;
+      }
+    }
+    const wade01 = Math.min(1, bloodWadeCells / WADE_FULL_CELLS);
+    const wadeSlow = 1 - wade01 * WADE_SLOW_MAX;
+    // Soak the robe: the stain BUILDS with exposure — deeper blood (wade01) and
+    // more time both bank charge, so the robe reddens the more/longer he wades
+    // (saturating at the cap, which also sets the ~1 min lifetime). Off the
+    // blood the charge drains 1/frame. The sprite tints in proportion.
+    if (bloodWadeCells >= WADE_STAIN_TOUCH_MIN) {
+      player.bloodStain = Math.min(BLOOD_STAIN_MAX, player.bloodStain + WADE_STAIN_GAIN * (0.35 + 0.65 * wade01));
+    } else if (player.bloodStain > 0) {
+      player.bloodStain--;
+    }
+    // A visible wake: plowing through at speed shoves the pool up into a crest
+    // (a real swap, mass conserved) and flings droplets of its own colour
+    // (cosmetic type=null motes, so the wake can never flood the sim).
+    if (
+      wade01 > 0 &&
+      player.grounded &&
+      Math.abs(player.vx) > WADE_WAKE_MIN_SPEED &&
+      ctx.state.frameCount % 2 === 0
+    ) {
+      const dir = player.vx >= 0 ? 1 : -1;
+      const leadX = Math.round(player.x + dir * PLAYER_HALF_W);
+      let kicked = 0;
+      for (let dy = 0; dy <= 5 && kicked < 3; dy++) {
+        const Y = player.y - dy;
+        if (!world.inBounds(leadX, Y)) continue;
+        const i = world.idx(leadX, Y);
+        if (world.types[i] !== Cell.Blood) continue;
+        const col = world.colors[i];
+        ctx.particles.spawn(
+          leadX + 0.5,
+          Y,
+          dir * (0.5 + Math.random() * 0.9) + player.vx * 0.18,
+          -0.45 - Math.random() * 1.0,
+          null,
+          col,
+          12 + ((Math.random() * 10) | 0),
+          { grav: 0.18 },
+        );
+        // shove this surface cell up a row when there's headroom (a bow-wave crest)
+        if (
+          Math.random() < 0.5 &&
+          world.inBounds(leadX, Y - 1) &&
+          world.types[world.idx(leadX, Y - 1)] === Cell.Empty
+        ) {
+          world.swap(leadX, Y, leadX, Y - 1);
+        }
+        kicked++;
+      }
+      if (Math.random() < 0.05) ctx.audio.splash(0.18 + Math.random() * 0.18);
+    }
+
     // air control: stronger mid-air acceleration for Ori-like corrections.
     // Swift potion (x1.5) and Swift Soles boon (x1.18) stack on top — but those
     // are GROUND legs. While the levitation jet is lit (levitFrames>0 means we
@@ -1277,10 +1357,12 @@ export class PlayerControl implements PlayerControlApi {
     // frames (a natural ramp) instead of snapping to max in ~5 frames flat. The
     // cap only bites at high speedK (Swift/God Mode); normal, crawl, and the
     // gentle levitation accel stay well under it and are unchanged.
-    const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK, MOVE_ACCEL_CAP),
+    // wadeSlow (≤1) bogs both the accel and the top speed when slogging through
+    // blood — a leg-deep wade trudges, a thin film barely registers.
+    const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK * wadeSlow, MOVE_ACCEL_CAP),
       // Cap the boosted top speed (Swift/God Mode) so it stays inside the
       // precision curve; crawl/crouch then scale down from the capped run.
-      maxRun = Math.min(2.6 * speedK, lp.maxRunCap) * stanceK;
+      maxRun = Math.min(2.6 * speedK, lp.maxRunCap) * stanceK * wadeSlow;
     // Soft-start: ease in from a standstill (a tap stays slow + precise), ramping
     // to full accel with speed. Applies in the air too, so a fresh airborne tap is
     // gentle while CARRIED speed (already near maxRun) still gets full control.

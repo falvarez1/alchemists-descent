@@ -1,41 +1,135 @@
 import type { Ctx, Enemy, WeaverLegState } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
-import { clamp, traceLine } from '@/core/math';
-import { blocksEntity, Cell } from '@/sim/CellType';
+import { clamp, lerp, traceLine } from '@/core/math';
+import { blocksEntity, isSoftGrowth } from '@/sim/CellType';
 
 type RGB = readonly [number, number, number];
 
 const WEAVER_REST = [
-  { side: -1, hipX: -5, hipY: 15, footX: -22, footY: 1, phase: 0.0 },
-  { side: -1, hipX: -7, hipY: 13, footX: -25, footY: -2, phase: Math.PI },
-  { side: -1, hipX: -7, hipY: 10, footX: -23, footY: 2, phase: Math.PI * 0.5 },
-  { side: -1, hipX: -5, hipY: 8, footX: -18, footY: 0, phase: Math.PI * 1.5 },
-  { side: 1, hipX: 5, hipY: 15, footX: 22, footY: 1, phase: Math.PI },
-  { side: 1, hipX: 7, hipY: 13, footX: 25, footY: -2, phase: 0.0 },
-  { side: 1, hipX: 7, hipY: 10, footX: 23, footY: 2, phase: Math.PI * 1.5 },
-  { side: 1, hipX: 5, hipY: 8, footX: 18, footY: 0, phase: Math.PI * 0.5 },
+  { side: -1, hipX: -5, hipY: 16, footX: -46, footY: 1, phase: 0.0 },
+  { side: -1, hipX: -8, hipY: 14, footX: -54, footY: -3, phase: Math.PI },
+  { side: -1, hipX: -8, hipY: 11, footX: -51, footY: 3, phase: Math.PI * 0.5 },
+  { side: -1, hipX: -5, hipY: 8, footX: -41, footY: 0, phase: Math.PI * 1.5 },
+  { side: 1, hipX: 5, hipY: 16, footX: 46, footY: 1, phase: Math.PI },
+  { side: 1, hipX: 8, hipY: 14, footX: 54, footY: -3, phase: 0.0 },
+  { side: 1, hipX: 8, hipY: 11, footX: 51, footY: 3, phase: Math.PI * 1.5 },
+  { side: 1, hipX: 5, hipY: 8, footX: 41, footY: 0, phase: Math.PI * 0.5 },
 ] as const;
 
-function weaverFootSurface(ctx: Ctx, x: number, y: number): number {
+// Natural reach per leg = the summed length of its three bones. Set well ABOVE the
+// rest hip->foot span (×1.65) so the long legs carry real slack: the knee arches
+// high above the leg line (the spider silhouette) across the whole gait range
+// instead of locking straight. Precomputed once; the IK splits it femur/patella/tarsus.
+const WEAVER_LEG_REACH = WEAVER_REST.map(
+  (r) => Math.hypot(r.footX - r.hipX, r.footY - r.hipY) * 1.65,
+);
+
+interface WeaverFootTarget {
+  x: number;
+  y: number;
+  planted: boolean;
+  strain: number;
+  surface: NonNullable<WeaverLegState['surface']>;
+}
+
+function weaverCanFootOccupy(ctx: Ctx, x: number, y: number): boolean {
   const w = ctx.world;
-  const sx = Math.floor(clamp(x, 1, w.width - 2));
-  const sy = Math.floor(clamp(y, 2, w.height - 3));
-  for (let dy = -7; dy <= 9; dy++) {
-    const yy = sy + dy;
-    if (!w.inBounds(sx, yy)) continue;
-    const t = w.types[w.idx(sx, yy)];
-    if (
-      blocksEntity(t) ||
-      t === Cell.Vines ||
-      t === Cell.Fungus ||
-      t === Cell.Moss ||
-      t === Cell.Slime ||
-      t === Cell.Glowshroom
-    ) {
-      return yy - 1;
+  if (!w.inBounds(x, y)) return false;
+  return !blocksEntity(w.types[w.idx(x, y)]);
+}
+
+function weaverFootStillSupported(ctx: Ctx, footX: number, footY: number): boolean {
+  const w = ctx.world;
+  const fx = Math.floor(footX);
+  const fy = Math.floor(footY);
+  for (let yy = fy - 2; yy <= fy + 2; yy++) {
+    if (yy < 1 || yy >= w.height - 1) continue;
+    for (let xx = fx - 2; xx <= fx + 2; xx++) {
+      if (xx < 1 || xx >= w.width - 1) continue;
+      const t = w.types[xx + yy * w.width];
+      if (!blocksEntity(t) && !isSoftGrowth(t)) continue;
+      const candidates = [
+        [xx + 0.5, yy - 0.5],
+        [xx - 0.5, yy + 0.15],
+        [xx + 1.5, yy + 0.15],
+        [xx + 0.5, yy + 1.5],
+      ] as const;
+      for (const [cx, cy] of candidates) {
+        if (Math.hypot(cx - footX, cy - footY) < 2.8) return true;
+      }
     }
   }
-  return sy;
+  return false;
+}
+
+function weaverFootTarget(
+  ctx: Ctx,
+  desiredX: number,
+  desiredY: number,
+  hipX: number,
+  hipY: number,
+  side: number,
+  desperate: boolean,
+): WeaverFootTarget {
+  const w = ctx.world;
+  const width = w.width;
+  const height = w.height;
+  const sx = Math.floor(clamp(desiredX, 2, width - 3));
+  const sy = Math.floor(clamp(desiredY, 3, height - 4));
+  // Desperate legs (footing cut away) sweep a much WIDER horizontal arc so a leg
+  // over a hole can find the near/far rim and bridge it instead of giving up.
+  const searchX = desperate ? 42 : 18;
+  const searchUp = desperate ? 26 : 12;
+  const searchDown = desperate ? 34 : 18;
+  const maxReach = desperate ? 90 : 74;
+  let best: WeaverFootTarget | null = null;
+  let bestScore = Infinity;
+  const addCandidate = (
+    fx: number,
+    fy: number,
+    faceBias: number,
+    clingBonus: number,
+    surface: NonNullable<WeaverLegState['surface']>,
+  ): void => {
+    const hipDist = Math.hypot(fx - hipX, fy - hipY);
+    if (hipDist > maxReach) return;
+    const dx = fx - desiredX;
+    const dy = fy - desiredY;
+    const sidePenalty = Math.sign(fx - hipX || side) === side ? 0 : 16;
+    const score = dx * dx + dy * dy * 1.35 + sidePenalty + faceBias - clingBonus;
+    if (score >= bestScore) return;
+    bestScore = score;
+    best = { x: fx, y: fy, planted: true, strain: clamp(hipDist / maxReach, 0, 1), surface };
+  };
+
+  for (let yy = sy - searchUp; yy <= sy + searchDown; yy++) {
+    if (yy < 1 || yy >= height - 1) continue;
+    for (let xx = sx - searchX; xx <= sx + searchX; xx++) {
+      if (xx < 1 || xx >= width - 1) continue;
+      const t = w.types[xx + yy * width];
+      if (!blocksEntity(t) && !isSoftGrowth(t)) continue;
+      const clingBonus = isSoftGrowth(t) ? 4 : 0;
+      if (weaverCanFootOccupy(ctx, xx, yy - 1)) addCandidate(xx + 0.5, yy - 0.5, 0, clingBonus, 'floor');
+      if (weaverCanFootOccupy(ctx, xx - 1, yy)) addCandidate(xx - 0.5, yy + 0.15, 5, clingBonus, 'rightWall');
+      if (weaverCanFootOccupy(ctx, xx + 1, yy)) addCandidate(xx + 1.5, yy + 0.15, 5, clingBonus, 'leftWall');
+      if (weaverCanFootOccupy(ctx, xx, yy + 1)) addCandidate(xx + 0.5, yy + 1.5, 9, clingBonus, 'ceiling');
+    }
+  }
+  if (best) return best;
+
+  // No purchase anywhere in reach: do NOT let the leg hang limp into the void
+  // (the "dead limb dangling in a hole" look). Pull the foot UP toward the hip
+  // into a raised, feeling-for-grip pose, tucked a touch outward — it reads as
+  // the spider lifting that leg and probing, not a corpse limb sagging down.
+  const reachOut = desperate ? 8 : 5;
+  const tuckUp = desperate ? 9 : 6;
+  return {
+    x: clamp(hipX + side * reachOut, 2, width - 3),
+    y: clamp(hipY + tuckUp, 3, height - 4),
+    planted: false,
+    strain: 1,
+    surface: 'failed',
+  };
 }
 
 /**
@@ -394,33 +488,79 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const moving = !asleep && e.grounded && (Math.abs(e._svx) > 0.035 || e.alerted);
     if (moving) e.stride += Math.max(0.015, Math.abs(e._svx) * 0.2);
     const face = Math.abs(e._svx) > 0.05 ? Math.sign(e._svx) : look;
-    const support = e.weaverSupport ?? 0;
+    const support = e.weaverSupport ?? 0.65;
     const poised = !asleep && (e.windup ?? 0) > 0;
     const weaving = !asleep && e.blink > 0;
     const cranky = !asleep && (e.cranky ?? 0) > 0;
+    // Visual instability tracks REAL footing loss (physical support / fall timer),
+    // not the growth-confidence `support` — bare stone reads as a calm, planted
+    // stance, while cut-away terrain reads as the scrambling wobble.
+    const unstable = !asleep && ((e.weaverPhysicalSupport ?? 0.6) < 0.32 || (e.weaverFallT ?? 0) > 10);
+    const pulse = Math.max(0, e.webPulse ?? 0) / 18;
+    const feedCrouch = !asleep && (e.weaverFeedT ?? 0) > 0;
+    const supportPanic = clamp((e.weaverFallT ?? 0) / 45, 0, 1);
+    const priorVisualSupport = e.weaverVisualSupport ?? 1;
+    // REAR-UP REACH: an alerted Weaver with the alchemist hovering OVERHEAD rises
+    // on its back legs and reaches up. Gated to a nearby target (so it doesn't
+    // rear at someone across the room) and to a STABLE stance (footing first).
+    const headY = e.y - def.h * 0.5;
+    const overhead = e.alerted && !asleep ? clamp((headY - ctx.player.y) / 58, 0, 1) : 0;
+    const nearX = e.alerted && !asleep ? clamp(1 - Math.abs(ctx.player.x - e.x) / 170, 0, 1) : 0;
+    const reachTarget = unstable || feedCrouch || poised || weaving ? 0 : overhead * (0.35 + 0.65 * nearX);
+    e.weaverReach = lerp(e.weaverReach ?? 0, reachTarget, 0.06);
+    const reach01 = e.weaverReach ?? 0;
+    const REAR_BONUS = 12; // extra body lift at a full overhead reach (rears tall)
+    const bodyLiftTarget =
+      (asleep
+        ? 1
+        : feedCrouch
+          ? 2
+          : poised || weaving
+            ? 7
+            : unstable
+              ? 5
+              : 13.5) + reach01 * REAR_BONUS;
+    const supportedLiftTarget = bodyLiftTarget * (0.35 + priorVisualSupport * 0.65) - supportPanic * 7.5;
+    e.weaverBodyLift = lerp(e.weaverBodyLift ?? supportedLiftTarget, supportedLiftTarget, 0.07);
+    const bodyLift = e.weaverBodyLift ?? bodyLiftTarget;
 
     if (!e.weaverLegs || e.weaverLegs.length !== WEAVER_REST.length) {
       e.weaverLegs = WEAVER_REST.map((r) => {
         const fx = e.x + r.footX;
-        const fy = weaverFootSurface(ctx, fx, e.y - r.footY);
+        const target = weaverFootTarget(ctx, fx, e.y - r.footY, e.x + r.hipX, e.y - r.hipY, r.side, true);
         return {
-          x: fx,
-          y: fy,
-          tx: fx,
-          ty: fy,
+          x: target.x,
+          y: target.y,
+          tx: target.x,
+          ty: target.y,
           lift: 0,
-          phase: r.phase,
+          plantAge: 0,
+          planted: target.planted,
+          strain: target.strain,
+          surface: target.surface,
+          failT: target.planted ? 0 : 1,
+          smoothTx: target.x,
+          smoothTy: target.y,
+          stepCooldown: 0,
         };
       });
     }
 
+    // One reused traceLine plot callback + ambient colour/glow, so each leg
+    // segment doesn't allocate a fresh closure every frame (8 legs x 2 segments
+    // x every on-screen weaver, per frame). lineCol is set before every use.
+    let lineCol: RGB = [0, 0, 0];
+    let lineGlow = false;
+    const plotLine = (px: number, py: number): void => {
+      const dx = px - bx;
+      const dy = by - py;
+      if (lineGlow) PE(dx, dy, lineCol[0], lineCol[1], lineCol[2]);
+      else P(dx, dy, lineCol[0], lineCol[1], lineCol[2]);
+    };
     const lineW = (x0: number, y0: number, x1: number, y1: number, col: RGB, glow = false): void => {
-      traceLine(x0, y0, x1, y1, (px, py) => {
-        const dx = px - bx;
-        const dy = by - py;
-        if (glow) PE(dx, dy, col[0], col[1], col[2]);
-        else P(dx, dy, col[0], col[1], col[2]);
-      });
+      lineCol = col;
+      lineGlow = glow;
+      traceLine(x0, y0, x1, y1, plotLine);
     };
     const dotW = (x: number, y: number, col: RGB, glow = false): void => {
       const dx = Math.round(x) - bx;
@@ -429,91 +569,350 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       else P(dx, dy, col[0], col[1], col[2]);
     };
 
-    const LEG: RGB = [0.13, 0.09, 0.11];
-    const LEG_HI: RGB = [0.24 + support * 0.08, 0.2 + support * 0.12, 0.18];
+    const LEG: RGB = unstable ? [0.2, 0.08, 0.1] : [0.13, 0.09, 0.11];
+    const LEG_HI: RGB = [
+      0.24 + support * 0.08 + pulse * 0.08,
+      0.2 + support * 0.12 + pulse * 0.25,
+      0.18 + pulse * 0.05,
+    ];
+    const LEG_MID: RGB = [
+      0.18 + support * 0.06 + pulse * 0.05,
+      0.14 + support * 0.1 + pulse * 0.16,
+      0.13 + pulse * 0.04,
+    ];
+    const JOINT: RGB = [0.28 + pulse * 0.08, 0.23 + support * 0.12 + pulse * 0.18, 0.2];
     const LEG_WARN: RGB = [0.35, 0.95, 0.42];
+    const PLANT_DOT: RGB = [0.32, 0.62, 0.26];
     const attackLeg = face >= 0 ? 4 : 0;
+    let plantedLegs = 0;
+    let leftPlants = 0;
+    let rightPlants = 0;
+    let plantLoadSum = 0;
+    let strainSum = 0;
     for (let i = 0; i < WEAVER_REST.length; i++) {
       const rest = WEAVER_REST[i];
       const leg = e.weaverLegs[i] as WeaverLegState;
-      const gait = e.stride + rest.phase;
-      const swing = moving && Math.sin(gait) > 0.58;
-      const reach = moving ? Math.sin(gait) * 3.2 + face * 2.2 : Math.sin(frameCount * 0.025 + i) * 0.8;
+      const tetrapod = i === 0 || i === 2 || i === 5 || i === 7 ? 0 : Math.PI;
+      const gait = e.stride * (cranky ? 1.35 : unstable ? 1.08 : 1) + tetrapod + rest.phase * 0.08;
+      leg.stepCooldown = Math.max(0, (leg.stepCooldown ?? 0) - 1);
+      const swingGate = cranky ? 0.5 : unstable ? 0.42 : 0.68;
+      const swing = moving && Math.sin(gait) > swingGate;
+      const reachAmp = cranky ? 3.8 : unstable ? 4.4 : 2.6;
+      const reach = moving
+        ? Math.sin(gait) * reachAmp + face * (cranky ? 3.6 : 2.2)
+        : Math.sin(frameCount * 0.025 + i) * 0.8;
       let tx = e.x + rest.footX + reach;
       // Default footing target's surface is raycast lazily — only the branch that
       // actually plants on terrain pays for it (asleep/poised/weaving skip it).
       let ty = 0;
+      const startStep = (
+        nx: number,
+        ny: number,
+        lift: number,
+        surface: NonNullable<WeaverLegState['surface']>,
+        strain: number,
+      ): void => {
+        if ((leg.step ?? 0) > 0) return;
+        leg.fromX = leg.x;
+        leg.fromY = leg.y;
+        leg.tx = nx;
+        leg.ty = ny;
+        leg.step = 0.001;
+        leg.lift = lift;
+        leg.plantAge = 0;
+        leg.planted = false;
+        leg.surface = surface;
+        leg.strain = strain;
+      };
+      const dampTarget = (target: WeaverFootTarget, alpha: number): WeaverFootTarget => {
+        leg.smoothTx = lerp(leg.smoothTx ?? target.x, target.x, alpha);
+        leg.smoothTy = lerp(leg.smoothTy ?? target.y, target.y, alpha);
+        return { ...target, x: leg.smoothTx, y: leg.smoothTy };
+      };
+      const hipX =
+        e.x +
+        rest.hipX +
+        Math.round(((e.weaverTilt ?? 0) * (rest.hipY - 12)) * 0.15);
+      const hipY =
+        e.y -
+        rest.hipY -
+        bodyLift +
+        Math.sin(frameCount * 0.03 + i) * 0.5 +
+        (unstable ? Math.sin(frameCount * 0.37 + i) * 1.0 : 0);
       if (asleep) {
         tx = e.x + rest.footX * 0.58;
-        ty = weaverFootSurface(ctx, tx, e.y - 2 + Math.abs(rest.side) * 2);
+        const target = dampTarget(weaverFootTarget(ctx, tx, e.y - 2 + Math.abs(rest.side) * 2, hipX, hipY, rest.side, false), 0.05);
+        tx = target.x;
+        ty = target.y;
+        leg.step = undefined;
+        leg.plantAge = 0;
+        leg.planted = target.planted;
+        leg.surface = target.surface;
+        leg.strain = target.strain;
+        leg.failT = target.planted ? Math.max(0, (leg.failT ?? 0) - 2) : (leg.failT ?? 0) + 1;
+        leg.x += (tx - leg.x) * 0.08;
+        leg.y += (ty - leg.y) * 0.08;
         leg.lift *= 0.45;
       } else if (poised && i === attackLeg) {
         const aimT = 1 - clamp((e.windup ?? 0) / 18, 0, 1);
-        tx = ctx.player.x - face * (4 - aimT * 8);
-        ty = ctx.player.y - 9;
+        tx = (e.needleX ?? ctx.player.x) - face * (4 - aimT * 8);
+        ty = e.needleY ?? ctx.player.y - 9;
+        leg.step = undefined;
+        leg.plantAge = 0;
+        leg.planted = false;
+        leg.surface = 'failed';
+        leg.strain = 1;
+        leg.failT = (leg.failT ?? 0) + 1;
+        leg.x += (tx - leg.x) * 0.26;
+        leg.y += (ty - leg.y) * 0.26;
         leg.lift = Math.max(leg.lift, 0.95);
       } else if (weaving && i === attackLeg + 1) {
         tx = e.x + face * 17;
         ty = e.y - 14;
+        leg.step = undefined;
+        leg.plantAge = 0;
+        leg.planted = false;
+        leg.surface = 'failed';
+        leg.strain = 1;
+        leg.failT = (leg.failT ?? 0) + 1;
+        leg.x += (tx - leg.x) * 0.2;
+        leg.y += (ty - leg.y) * 0.2;
         leg.lift = Math.max(leg.lift, 0.7);
+      } else if (reach01 > 0.5 && i === attackLeg && Math.abs(e._svx) < 0.3) {
+        // Reaching for the alchemist overhead: the front leg paws UP toward him,
+        // clamped to the leg's real reach so the bones stay connected (not a calm
+        // plant, not the green attack-leg either — a slow grasping feeler).
+        let rx = ctx.player.x - face * 3;
+        let ry = ctx.player.y + 2;
+        const rd = Math.hypot(rx - hipX, ry - hipY) || 1;
+        const maxR = WEAVER_LEG_REACH[i] * 0.95;
+        if (rd > maxR) {
+          rx = hipX + ((rx - hipX) / rd) * maxR;
+          ry = hipY + ((ry - hipY) / rd) * maxR;
+        }
+        tx = rx;
+        ty = ry;
+        leg.step = undefined;
+        leg.plantAge = 0;
+        leg.planted = false;
+        leg.surface = 'failed';
+        leg.strain = 0.6;
+        leg.failT = 0; // a deliberate reach, not a distressed search
+        leg.x += (rx - leg.x) * 0.1;
+        leg.y += (ry - leg.y) * 0.1;
+        leg.lift = Math.max(leg.lift, 0.55);
       } else {
-        ty = weaverFootSurface(ctx, tx, e.y - rest.footY);
-        if (swing || Math.hypot(leg.tx - tx, leg.ty - ty) > 8) {
-          leg.tx = tx;
-          leg.ty = ty;
-          leg.lift = Math.max(leg.lift, 0.75);
+        if (unstable) tx += Math.sin(frameCount * 0.19 + i * 1.7) * 2.6;
+        const rawTarget = weaverFootTarget(ctx, tx, e.y - rest.footY, hipX, hipY, rest.side, unstable || (e.weaverFallT ?? 0) > 18);
+        const currentSupported = leg.planted === true && weaverFootStillSupported(ctx, leg.x, leg.y);
+        const hipLoad = Math.hypot(hipX - leg.x, hipY - leg.y) / WEAVER_LEG_REACH[i];
+        const targetDelta = Math.hypot(rawTarget.x - leg.x, rawTarget.y - leg.y);
+        if (currentSupported) {
+          leg.surface = leg.surface === 'failed' ? rawTarget.surface : leg.surface;
+          leg.strain = clamp(hipLoad, 0, 1);
+          leg.failT = 0;
+        }
+
+        const minPlantAge = cranky ? 12 : unstable ? 10 : 24;
+        const loadStep = hipLoad > (unstable ? 0.86 : 0.8);
+        const driftStep = targetDelta > (unstable ? 26 : 36);
+        const gaitStep = swing && targetDelta > (unstable ? 14 : 20);
+        const shouldStep =
+          rawTarget.planted &&
+          (!currentSupported || ((leg.plantAge ?? 0) > minPlantAge && (loadStep || driftStep || gaitStep)));
+
+        if (shouldStep) {
+          const target = dampTarget(rawTarget, currentSupported ? 0.22 : 0.12);
+          startStep(target.x, target.y, cranky ? 0.78 : unstable ? 0.88 : 0.62, target.surface, target.strain);
+        } else if (currentSupported) {
+          leg.smoothTx = leg.x;
+          leg.smoothTy = leg.y;
+          leg.lift *= 0.35;
+          leg.plantAge = (leg.plantAge ?? 0) + 1;
+        } else if (!rawTarget.planted) {
+          const target = dampTarget(rawTarget, 0.035);
+          const search = Math.sin(frameCount * 0.12 + i * 1.83) * (unstable ? 0.9 : 0.55);
+          leg.step = undefined;
+          leg.plantAge = 0;
+          leg.planted = false;
+          leg.surface = 'failed';
+          leg.strain = 1;
+          leg.failT = (leg.failT ?? 0) + 1;
+          leg.x = lerp(leg.x, target.x + search, unstable ? 0.045 : 0.035);
+          leg.y = lerp(leg.y, target.y + Math.abs(search) * 0.2, 0.04);
+          leg.lift *= 0.18;
+        } else {
+          const target = dampTarget(rawTarget, 0.08);
+          startStep(target.x, target.y, cranky ? 0.78 : unstable ? 0.88 : 0.62, target.surface, target.strain);
+        }
+        if ((leg.step ?? 0) > 0) {
+          const speed = cranky ? 0.13 : unstable ? 0.072 : 0.085;
+          const step = Math.min(1, (leg.step ?? 0) + speed);
+          const smooth = step * step * (3 - 2 * step);
+          leg.x = (leg.fromX ?? leg.x) + (leg.tx - (leg.fromX ?? leg.x)) * smooth;
+          leg.y = (leg.fromY ?? leg.y) + (leg.ty - (leg.fromY ?? leg.y)) * smooth;
+          leg.lift = Math.sin(step * Math.PI) * (cranky ? 1.05 : unstable ? 1.15 : 0.9);
+          leg.planted = false;
+          leg.failT = (leg.failT ?? 0) + 1;
+          leg.step = step >= 1 ? undefined : step;
+          if (step >= 1) {
+            leg.x = leg.tx;
+            leg.y = leg.ty;
+            leg.lift = 0;
+            leg.plantAge = 1;
+            leg.planted = true;
+            leg.failT = 0;
+            leg.stepCooldown = cranky ? 5 : unstable ? 4 : 10;
+          }
+        } else {
+          leg.lift *= 0.35;
         }
       }
-      leg.x += (leg.tx - leg.x) * (poised && i === attackLeg ? 0.26 : 0.16);
-      leg.y += (leg.ty - leg.y) * 0.16;
-      leg.lift *= 0.88;
 
-      const hipX = e.x + rest.hipX;
-      const hipY = e.y - rest.hipY + Math.sin(frameCount * 0.03 + i) * 0.5;
       const footX = leg.x;
-      const footY = leg.y - Math.sin(leg.lift * Math.PI) * 5.5;
-      const dx = footX - hipX;
-      const dy = footY - hipY;
-      const dist = Math.max(1, Math.hypot(dx, dy));
-      const nx = -dy / dist;
-      const ny = dx / dist;
-      const bend = rest.side * (5.2 + (i % 2) * 1.4);
-      const kneeX = (hipX + footX) * 0.5 + nx * bend;
-      const kneeY = (hipY + footY) * 0.5 + ny * bend - 2.5 - leg.lift * 3;
+      const footY = leg.y - leg.lift * (cranky ? 7.2 : unstable ? 8.0 : 5.5);
       const hot = poised && i === attackLeg;
-      lineW(hipX, hipY, kneeX, kneeY, hot ? LEG_WARN : LEG);
-      lineW(kneeX, kneeY, footX, footY, hot ? LEG_WARN : LEG_HI, hot);
-      dotW(footX, footY, hot ? LEG_WARN : LEG_HI, hot);
+      const searching = !leg.planted && (leg.step ?? 0) === undefined && (leg.failT ?? 0) > 6;
+      const failing = searching || (leg.strain ?? 0) > 0.96;
+      if (leg.planted) {
+        const plantLoad = clamp(1 - Math.max(0, (leg.strain ?? 0) - 0.84) / 0.14, 0, 1);
+        plantLoadSum += plantLoad;
+        if (plantLoad > 0.25) {
+          plantedLegs++;
+          if (rest.side < 0) leftPlants++;
+          else rightPlants++;
+        }
+      }
+      strainSum += leg.strain ?? 0;
+      // --- Real length-preserving IK: two joints (femur->patella->tarsus) of FIXED
+      // bone length, so the long legs ARTICULATE instead of rubber-stretching.
+      // FABRIK solves the joint chain from the fixed hip to the planted foot; the
+      // joints are then reflected onto the "up" side of the hip->foot chord so the
+      // elbow always rides high (the spider silhouette). Reflection is rigid, so it
+      // preserves the bone lengths the solve just enforced.
+      const Lnat = WEAVER_LEG_REACH[i] * (hot ? 1.05 : failing ? 1.08 : 1);
+      const L1 = Lnat * 0.38;
+      const L2 = Lnat * 0.32;
+      const L3 = Lnat * 0.3;
+      let j1x: number, j1y: number, j2x: number, j2y: number;
+      const legSpan = Math.hypot(footX - hipX, footY - hipY);
+      if (legSpan >= L1 + L2 + L3) {
+        // Foot beyond the leg's span: lay the bones straight toward it.
+        const ux = (footX - hipX) / (legSpan || 1);
+        const uy = (footY - hipY) / (legSpan || 1);
+        j1x = hipX + ux * L1;
+        j1y = hipY + uy * L1;
+        j2x = j1x + ux * L2;
+        j2y = j1y + uy * L2;
+      } else {
+        // Seed the knees raised & outward so the solve settles into the up-bent pose.
+        j1x = hipX + (footX - hipX) * 0.3 + rest.side * (Lnat * 0.17);
+        j1y = Math.min(hipY, footY) - Lnat * 0.34;
+        j2x = hipX + (footX - hipX) * 0.7 + rest.side * (Lnat * 0.04);
+        j2y = footY - Lnat * (failing ? 0.05 : 0.16);
+        for (let it = 0; it < 4; it++) {
+          // backward pass from the planted foot
+          let vx = j2x - footX, vy = j2y - footY, d = Math.hypot(vx, vy) || 1;
+          j2x = footX + (vx / d) * L3; j2y = footY + (vy / d) * L3;
+          vx = j1x - j2x; vy = j1y - j2y; d = Math.hypot(vx, vy) || 1;
+          j1x = j2x + (vx / d) * L2; j1y = j2y + (vy / d) * L2;
+          // forward pass from the fixed hip
+          vx = j1x - hipX; vy = j1y - hipY; d = Math.hypot(vx, vy) || 1;
+          j1x = hipX + (vx / d) * L1; j1y = hipY + (vy / d) * L1;
+          vx = j2x - j1x; vy = j2y - j1y; d = Math.hypot(vx, vy) || 1;
+          j2x = j1x + (vx / d) * L2; j2y = j1y + (vy / d) * L2;
+        }
+      }
+      // Force the elbow to the high side of the hip->foot chord (smaller y = up).
+      {
+        const cx = footX - hipX, cy = footY - hipY;
+        const nn = cx * cx + cy * cy || 1;
+        const f1 = (2 * (cx * (j1y - hipY) - cy * (j1x - hipX))) / nn;
+        if (j1y - f1 * cx < j1y) {
+          // reflecting the chain raises the upper joint -> mirror both joints
+          j1x += f1 * cy; j1y -= f1 * cx;
+          const f2 = (2 * (cx * (j2y - hipY) - cy * (j2x - hipX))) / nn;
+          j2x += f2 * cy; j2y -= f2 * cx;
+        }
+      }
+      const upperX = j1x, upperY = j1y;
+      const lowerX = j2x, lowerY = j2y;
+      const jointDot = (x: number, y: number, col: RGB, glow = false): void => {
+        dotW(x, y, col, glow);
+        dotW(x + rest.side, y, col, glow);
+        dotW(x, y + 1, col, glow);
+      };
+      lineW(hipX, hipY, upperX, upperY, hot || failing ? LEG_WARN : LEG, hot || failing);
+      lineW(upperX, upperY, lowerX, lowerY, hot || failing ? LEG_WARN : LEG_MID, hot || failing);
+      lineW(lowerX, lowerY, footX, footY, hot || failing ? LEG_WARN : LEG_HI, hot || failing);
+      jointDot(upperX, upperY, hot || failing ? LEG_WARN : JOINT, hot || failing);
+      jointDot(lowerX, lowerY, hot || failing ? LEG_WARN : JOINT, hot || failing);
+      dotW(footX, footY, hot || failing ? LEG_WARN : LEG_HI, hot || failing);
+      if (leg.planted && !failing && !hot && (leg.plantAge ?? 0) === 1) dotW(footX, footY - 1, PLANT_DOT, true);
     }
 
-    const BODY: RGB = asleep ? [0.1, 0.08, 0.09] : [0.16, 0.11, 0.13];
+    const plantSupport = plantLoadSum / WEAVER_REST.length;
+    e.weaverVisualSupport = plantSupport;
+    e.weaverVisualPlanted = plantedLegs;
+    const avgStrain = strainSum / WEAVER_REST.length;
+    const fallPose = clamp(Math.max(1 - plantSupport, (e.weaverFallT ?? 0) / 45), 0, 1);
+    const targetTilt = clamp(
+      (rightPlants - leftPlants) * 0.22 + Math.sin(frameCount * 0.11 + e.bobPhase) * fallPose * 0.65,
+      -1.25,
+      1.25,
+    );
+    e.weaverTilt = (e.weaverTilt ?? 0) * 0.82 + targetTilt * 0.18;
+
+    const BODY: RGB = asleep
+      ? [0.1, 0.08, 0.09]
+      : unstable || fallPose > 0.35
+        ? [0.2, 0.09, 0.11]
+        : [0.16, 0.11, 0.13];
     const BODY_D: RGB = asleep ? [0.04, 0.035, 0.045] : [0.07, 0.05, 0.06];
     const BODY_L: RGB = asleep ? [0.15, 0.12, 0.13] : [0.27, 0.21, 0.22];
-    const bellyBob = asleep ? -1 : Math.round(Math.sin(e.stride * 0.6 + e.bobPhase) * (moving ? 1 : 0.4));
-    const crouch = asleep ? -2 : poised ? -1 : (e.recoil ?? 0) > 0 ? 1 : 0;
+    const bellyBob = asleep
+      ? -1
+      : Math.round(
+        Math.sin(e.stride * (cranky ? 0.95 : 0.6) + e.bobPhase) * (moving ? (cranky ? 2 : 1) : 0.4) +
+          Math.sin(frameCount * 0.17 + e.bobPhase) * fallPose,
+      );
+    const crouch = asleep ? -2 : poised ? -1 : (e.recoil ?? 0) > 0 ? 1 : unstable ? 0 : 0;
+    const bodyJitter = cranky || unstable ? Math.round(Math.sin(frameCount * 0.45 + e.bobPhase) * pulse) : 0;
+    const sag = Math.round(fallPose * 5 + avgStrain * 1.4);
+    const bodyDrawLift = Math.round(bodyLift * (0.25 + plantSupport * 0.75) - fallPose * 2.5);
+    const tilt = e.weaverTilt ?? 0;
+    const tiltShift = (dy: number): number => bodyJitter + Math.round((dy - 11) * tilt * 0.35);
     // abdomen
     for (let dy = 4; dy <= 13; dy++) {
       const t = (dy - 8.5) / 5.8;
       const w2 = Math.max(2, Math.round(10 * Math.sqrt(Math.max(0, 1 - t * t))));
       for (let dx = -w2; dx <= w2; dx++) {
-        P(dx - face * 3, dy + bellyBob + crouch, Math.abs(dx) >= w2 ? BODY_D[0] : BODY[0], Math.abs(dx) >= w2 ? BODY_D[1] : BODY[1], Math.abs(dx) >= w2 ? BODY_D[2] : BODY[2]);
+        P(
+          dx - face * 3 + tiltShift(dy),
+          dy + bellyBob + crouch + bodyDrawLift - sag,
+          Math.abs(dx) >= w2 ? BODY_D[0] : BODY[0],
+          Math.abs(dx) >= w2 ? BODY_D[1] : BODY[1],
+          Math.abs(dx) >= w2 ? BODY_D[2] : BODY[2],
+        );
       }
     }
     // thorax and head
     for (let dy = 9; dy <= 17; dy++) {
       const w2 = dy >= 15 ? 5 : 7;
-      for (let dx = -w2; dx <= w2; dx++) P(dx + face * 3, dy + crouch, ...(Math.abs(dx) >= w2 ? BODY_D : BODY_L));
+      for (let dx = -w2; dx <= w2; dx++) {
+        P(dx + face * 3 + tiltShift(dy), dy + crouch + bodyDrawLift - sag, ...(Math.abs(dx) >= w2 ? BODY_D : BODY_L));
+      }
     }
     for (let dx = -3; dx <= 3; dx++) {
-      P(dx + face * 9, 15 + crouch, ...BODY_D);
-      P(dx + face * 9, 14 + crouch, ...BODY);
+      P(dx + face * 9 + tiltShift(15), 15 + crouch + bodyDrawLift - sag, ...BODY_D);
+      P(dx + face * 9 + tiltShift(14), 14 + crouch + bodyDrawLift - sag, ...BODY);
     }
-    const eyePulse = asleep ? 0.1 : 0.55 + Math.sin(frameCount * 0.11 + e.bobPhase) * 0.25 + (poised ? 0.35 : 0) + (cranky ? 0.28 : 0);
-    PE(face * 10, 15 + crouch, 0.18 * eyePulse * boost, 0.95 * eyePulse * boost, 0.32 * eyePulse * boost);
-    PE(face * 8, 15 + crouch, 0.14 * eyePulse * boost, 0.72 * eyePulse * boost, 0.25 * eyePulse * boost);
+    const eyePulse = asleep ? 0.1 : 0.55 + Math.sin(frameCount * 0.11 + e.bobPhase) * 0.25 + (poised ? 0.35 : 0) + (cranky ? 0.28 : 0) + pulse * 0.45;
+    PE(face * 10 + tiltShift(15), 15 + crouch + bodyDrawLift - sag, 0.18 * eyePulse * boost, 0.95 * eyePulse * boost, 0.32 * eyePulse * boost);
+    PE(face * 8 + tiltShift(15), 15 + crouch + bodyDrawLift - sag, 0.14 * eyePulse * boost, 0.72 * eyePulse * boost, 0.25 * eyePulse * boost);
     if (weaving) {
       const spit = 0.5 + Math.sin(frameCount * 0.6) * 0.3;
-      lineW(e.x + face * 10, e.y - 12, e.x + face * 17, e.y - 14, [0.18 * spit, 0.9 * spit, 0.24 * spit], true);
+      lineW(e.x + face * 10, e.y - 12 - bodyDrawLift, e.x + face * 17, e.y - 14 - bodyDrawLift, [0.18 * spit, 0.9 * spit, 0.24 * spit], true);
     }
   } else if (e.kind === 'golem') {
     // --- Heavy stride driven by real displacement, arms, breath, pulsing core ---

@@ -6,7 +6,7 @@ import type {
   VineStrandsApi,
 } from '@/core/types';
 import { blocksEntity, Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
-import { packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
+import { ashColor, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 
@@ -47,6 +47,9 @@ const TENDRIL_MAX_WIDTH = 4; // only THIN hanging tendrils sway; loops/drapes st
 const TENDRIL_FAR_MARGIN = 120; // cells past the view before a lifted vine re-settles
 const SHAKE_SWAY_MIN = 0.012; // screenShake below this doesn't stir the vines
 const SHAKE_SWAY_GAIN = 12; // shake → per-node jitter amplitude
+const WEB_MIN_NODES = 9;
+const WEB_MAX_NODES = 30;
+const WEB_DEFAULT_LIFETIME = 540;
 
 interface VineNode extends VineStrandNodeView {
   x: number;
@@ -54,6 +57,8 @@ interface VineNode extends VineStrandNodeView {
   px: number;
   py: number;
   contact: boolean;
+  pinX?: number;
+  pinY?: number;
 }
 
 interface VineSegment extends VineStrandSegmentView {
@@ -83,6 +88,14 @@ interface VineStrand extends VineStrandView {
   grabbed?: boolean;
   grabX?: number;
   grabY?: number;
+  /** Weaver web strand: pinned line/lattice or free launched spit. */
+  web?: boolean;
+  freeWeb?: boolean;
+  tailX?: number;
+  tailY?: number;
+  maxAge?: number;
+  denWeb?: boolean;
+  ashOnExpire?: boolean;
 }
 
 export class VineStrands implements VineStrandsApi {
@@ -149,12 +162,7 @@ export class VineStrands implements VineStrandsApi {
     }
 
     if (anchored || truncated) return false;
-    if (this.strands.length >= MAX_ACTIVE_STRANDS) {
-      // Evict the oldest NON-persistent strand (never settle a hanging rope/vine).
-      const victim = this.strands.findIndex((s) => !s.persistent);
-      if (victim === -1) return false;
-      this.settleStrand(world, this.strands.splice(victim, 1)[0]);
-    }
+    if (!this.reserveDetachedStrandSlot(world)) return false;
 
     const nodes: VineNode[] = [];
     for (let i = 0; i < count; i++) {
@@ -219,6 +227,230 @@ export class VineStrands implements VineStrandsApi {
     });
   }
 
+  addWebLine(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    opts: { thickness?: number; color?: number; slack?: number; lifetime?: number; kickX?: number; kickY?: number } = {},
+  ): void {
+    if (!this.reserveWebStrandSlot()) return;
+
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const len = Math.hypot(dx, dy);
+    if (len < 2) return;
+    const n = Math.max(WEB_MIN_NODES, Math.min(WEB_MAX_NODES, Math.ceil(len / 5)));
+    const slack = opts.slack ?? 0.16;
+    const kickX = opts.kickX ?? (dx / len) * 0.9;
+    const kickY = opts.kickY ?? (dy / len) * 0.35 - 0.45;
+    const nodes: VineNode[] = [];
+    for (let i = 0; i < n; i++) {
+      const t = n > 1 ? i / (n - 1) : 0;
+      const sag = Math.sin(t * Math.PI) * Math.min(28, len * slack);
+      const flutter = Math.sin(t * Math.PI * 4.0) * 0.9;
+      const x = x0 + dx * t + flutter;
+      const y = y0 + dy * t + sag;
+      const free = Math.sin(t * Math.PI);
+      nodes.push({
+        x,
+        y,
+        px: x - kickX * free,
+        py: y - kickY * free,
+        contact: false,
+      });
+    }
+    const segments: VineSegment[] = [];
+    for (let i = 0; i + 1 < n; i++) {
+      const a = nodes[i];
+      const b = nodes[i + 1];
+      segments.push({ a: i, b: i + 1, rest: Math.hypot(b.x - a.x, b.y - a.y) });
+    }
+    this.strands.push({
+      nodes,
+      segments,
+      color: opts.color ?? packRGB(80, 190, 72),
+      age: 0,
+      settleT: 0,
+      web: true,
+      anchorX: x0,
+      anchorY: y0,
+      tailX: x1,
+      tailY: y1,
+      thickness: Math.max(1, Math.round(opts.thickness ?? 1)),
+      maxAge: Math.max(90, Math.round(opts.lifetime ?? WEB_DEFAULT_LIFETIME)),
+    });
+  }
+
+  addWebShot(
+    x: number,
+    y: number,
+    dirX: number,
+    dirY: number,
+    opts: {
+      length?: number;
+      speed?: number;
+      thickness?: number;
+      color?: number;
+      slack?: number;
+      lifetime?: number;
+      ashOnExpire?: boolean;
+    } = {},
+  ): void {
+    if (!this.reserveWebStrandSlot()) return;
+
+    const d = Math.hypot(dirX, dirY);
+    if (d < 0.001) return;
+    const nx = dirX / d;
+    const ny = dirY / d;
+    const px = -ny;
+    const py = nx;
+    const len = Math.max(24, Math.min(150, opts.length ?? 112));
+    const n = Math.max(WEB_MIN_NODES, Math.min(WEB_MAX_NODES, Math.ceil(len / 5)));
+    const speed = Math.max(0.2, Math.min(6, opts.speed ?? 3.4));
+    const slack = Math.max(0, Math.min(0.22, opts.slack ?? 0.045));
+    const nodes: VineNode[] = [];
+    for (let i = 0; i < n; i++) {
+      const t = n > 1 ? i / (n - 1) : 0;
+      const side = Math.sin(t * Math.PI * 3.0) * Math.min(4.5, len * slack);
+      const sag = Math.sin(t * Math.PI) * Math.min(9, len * slack);
+      const nodeX = x + nx * len * t + px * side;
+      const nodeY = y + ny * len * t + py * side + sag;
+      const lead = 0.42 + t * 0.72;
+      const ripple = Math.sin(t * Math.PI * 2.0) * 0.18;
+      const vx = nx * speed * lead + px * ripple;
+      const vy = ny * speed * lead + py * ripple - 0.1 * (1 - t);
+      nodes.push({
+        x: nodeX,
+        y: nodeY,
+        px: nodeX - vx,
+        py: nodeY - vy,
+        contact: false,
+      });
+    }
+    const segments: VineSegment[] = [];
+    for (let i = 0; i + 1 < n; i++) {
+      const a = nodes[i];
+      const b = nodes[i + 1];
+      segments.push({ a: i, b: i + 1, rest: Math.hypot(b.x - a.x, b.y - a.y) });
+    }
+    this.strands.push({
+      nodes,
+      segments,
+      color: opts.color ?? packRGB(80, 190, 72),
+      age: 0,
+      settleT: 0,
+      web: true,
+      freeWeb: true,
+      thickness: Math.max(1, Math.round(opts.thickness ?? 1)),
+      maxAge: Math.max(45, Math.round(opts.lifetime ?? WEB_DEFAULT_LIFETIME)),
+      ashOnExpire: opts.ashOnExpire === true,
+    });
+  }
+
+  addWebLattice(
+    cx: number,
+    cy: number,
+    radius: number,
+    opts: { radials?: number; rings?: number; color?: number; thickness?: number; jitter?: number } = {},
+  ): void {
+    if (!this.reserveWebStrandSlot()) return;
+
+    const radials = Math.max(6, Math.min(14, Math.round(opts.radials ?? 10)));
+    const rings = Math.max(3, Math.min(8, Math.round(opts.rings ?? 5)));
+    const jitter = opts.jitter ?? 0.09;
+    const nodes: VineNode[] = [];
+    const center: VineNode = { x: cx, y: cy, px: cx, py: cy, contact: false };
+    nodes.push(center);
+    const nodeAt = (ring: number, spoke: number): number => 1 + (ring - 1) * radials + (spoke % radials);
+
+    for (let ring = 1; ring <= rings; ring++) {
+      const rt = ring / rings;
+      const baseRadius = radius * rt;
+      for (let spoke = 0; spoke < radials; spoke++) {
+        const angle =
+          (spoke / radials) * Math.PI * 2 +
+          Math.sin(ring * 1.7 + spoke * 0.63) * jitter +
+          rt * 0.22;
+        const wobble = 1 + Math.sin(spoke * 2.1 + ring * 0.9) * 0.045;
+        const x = cx + Math.cos(angle) * baseRadius * wobble;
+        const y = cy + Math.sin(angle) * baseRadius * wobble * 0.72;
+        const outer = ring === rings;
+        nodes.push({
+          x,
+          y,
+          px: x + Math.sin(spoke * 1.9) * 0.12,
+          py: y - Math.cos(ring + spoke) * 0.12,
+          contact: false,
+          pinX: outer ? x : undefined,
+          pinY: outer ? y : undefined,
+        });
+      }
+    }
+
+    const segments: VineSegment[] = [];
+    const addSeg = (a: number, b: number, slack = 1): void => {
+      const na = nodes[a];
+      const nb = nodes[b];
+      segments.push({ a, b, rest: Math.hypot(nb.x - na.x, nb.y - na.y) * slack });
+    };
+    for (let spoke = 0; spoke < radials; spoke++) {
+      addSeg(0, nodeAt(1, spoke), 1.02);
+      for (let ring = 1; ring < rings; ring++) addSeg(nodeAt(ring, spoke), nodeAt(ring + 1, spoke), 1.04);
+    }
+    for (let ring = 1; ring <= rings; ring++) {
+      for (let spoke = 0; spoke < radials; spoke++) {
+        addSeg(nodeAt(ring, spoke), nodeAt(ring, spoke + 1), ring % 2 === 0 ? 1.03 : 1.08);
+        if (ring < rings && spoke % 2 === ring % 2) addSeg(nodeAt(ring, spoke), nodeAt(ring + 1, spoke + 1), 1.1);
+      }
+    }
+
+    this.strands.push({
+      nodes,
+      segments,
+      color: opts.color ?? packRGB(72, 164, 68),
+      age: 0,
+      settleT: 0,
+      web: true,
+      denWeb: true,
+      thickness: Math.max(1, Math.round(opts.thickness ?? 1)),
+    });
+  }
+
+  private reserveDetachedStrandSlot(world: World): boolean {
+    if (this.strands.length < MAX_ACTIVE_STRANDS) return true;
+
+    let victim = this.strands.findIndex((s) => !s.web && !s.persistent && !s.tendril);
+    if (victim === -1) victim = this.strands.findIndex((s) => s.tendril);
+    if (victim === -1) return false;
+
+    const removed = this.strands.splice(victim, 1)[0];
+    if (removed.tendril) this.settleTendril(world, removed);
+    else this.settleStrand(world, removed);
+    return true;
+  }
+
+  private reserveWebStrandSlot(): boolean {
+    if (this.strands.length < MAX_ACTIVE_STRANDS) return true;
+
+    const world = this.ctx.world;
+    const selectors: Array<(s: VineStrand) => boolean> = [
+      (s) => !s.web && !s.persistent && !s.tendril,
+      (s) => s.tendril === true,
+      (s) => s.web === true && s.denWeb !== true,
+      (s) => s.persistent === true && s.grabbed !== true && s.web !== true,
+    ];
+    for (const select of selectors) {
+      const victim = this.strands.findIndex(select);
+      if (victim === -1) continue;
+      const removed = this.strands.splice(victim, 1)[0];
+      if (removed.tendril) this.settleTendril(world, removed);
+      else if (!removed.web && !removed.persistent) this.settleStrand(world, removed);
+      return true;
+    }
+    return false;
+  }
+
   grabSwing(px: number, py: number, maxDist: number): { anchorX: number; anchorY: number; length: number } | null {
     let best: VineStrand | null = null;
     let bestD = maxDist * maxDist;
@@ -268,6 +500,11 @@ export class VineStrands implements VineStrandsApi {
     for (let i = this.strands.length - 1; i >= 0; i--) {
       const strand = this.strands[i];
       this.stepStrand(ctx, strand);
+      if (strand.web && strand.maxAge !== undefined && strand.age >= strand.maxAge) {
+        if (strand.ashOnExpire) this.settleStrandAs(ctx.world, strand, Cell.Ash, ashColor, 0.7);
+        this.strands.splice(i, 1);
+        continue;
+      }
       if (this.shouldSettle(strand)) {
         this.settleStrand(ctx.world, strand);
         this.strands.splice(i, 1);
@@ -307,9 +544,9 @@ export class VineStrands implements VineStrandsApi {
     const x1 = Math.min(world.width - 2, camX + VIEW_W);
     const y1 = Math.min(world.height - 2, camY + VIEW_H);
     let lifted = 0;
-    for (let y = y0; y <= y1 && lifted < LIFT_PER_PASS; y++) {
+    for (let y = y0; y <= y1 && lifted < LIFT_PER_PASS && this.strands.length < MAX_ACTIVE_STRANDS; y++) {
       const row = y * world.width;
-      for (let x = x0; x <= x1 && lifted < LIFT_PER_PASS; x++) {
+      for (let x = x0; x <= x1 && lifted < LIFT_PER_PASS && this.strands.length < MAX_ACTIVE_STRANDS; x++) {
         if (world.types[row + x] !== Cell.Vines) continue;
         // a tendril TOP hangs from load-bearing solid directly above
         if (!isLoadBearingAnchor(world.types[row + x - world.width])) continue;
@@ -504,10 +741,10 @@ export class VineStrands implements VineStrandsApi {
     for (let iter = 0; iter < SOLVER_ITERATIONS; iter++) {
       for (const segment of strand.segments) this.solveSegment(strand.nodes, segment);
       // Pin the anchor through the solve so the rope hangs from a fixed point.
-      if (strand.persistent || strand.tendril) this.pinAnchor(strand);
+      if (strand.persistent || strand.tendril || strand.web) this.pinAnchors(strand);
       for (const node of strand.nodes) this.resolveTerrain(ctx.world, node);
     }
-    if (strand.persistent || strand.tendril) this.pinAnchor(strand);
+    if (strand.persistent || strand.tendril || strand.web) this.pinAnchors(strand);
 
     for (const node of strand.nodes) {
       speedSum += Math.hypot(node.x - node.px, node.y - node.py);
@@ -593,6 +830,24 @@ export class VineStrands implements VineStrandsApi {
     a.py = a.y;
   }
 
+  private pinAnchors(strand: VineStrand): void {
+    if (!strand.denWeb && !strand.freeWeb) this.pinAnchor(strand);
+    if (strand.web && strand.tailX !== undefined && strand.tailY !== undefined) {
+      const b = strand.nodes[strand.nodes.length - 1];
+      b.x = strand.tailX;
+      b.y = strand.tailY;
+      b.px = b.x;
+      b.py = b.y;
+    }
+    for (const node of strand.nodes) {
+      if (node.pinX === undefined || node.pinY === undefined) continue;
+      node.x = node.pinX;
+      node.y = node.pinY;
+      node.px = node.x;
+      node.py = node.y;
+    }
+  }
+
   /** A hanging strand is supported while there is load-bearing terrain at, or
    *  directly above, its top anchor point (what it's tied to). */
   private anchorSupported(world: World, strand: VineStrand): boolean {
@@ -609,36 +864,56 @@ export class VineStrands implements VineStrandsApi {
   private shouldSettle(strand: VineStrand): boolean {
     if (strand.persistent) return false; // hanging ropes/vines never settle to cells
     if (strand.tendril) return false; // lifted vines re-settle via manageHangingVines (far/cut)
+    if (strand.web) return false; // Weaver threads are live strands; they fade instead of freezing into lines
     if (strand.settleT >= SETTLE_FRAMES) return true;
     return strand.age >= MAX_AGE_FRAMES && strand.settleT > 0;
   }
 
   private settleStrand(world: World, strand: VineStrand): void {
+    this.settleStrandAs(world, strand, Cell.Vines, () => strand.color, 1.6);
+  }
+
+  private settleStrandAs(
+    world: World,
+    strand: VineStrand,
+    cellType: Cell,
+    colorFn: () => number,
+    density: number,
+  ): void {
     for (const segment of strand.segments) {
       const a = strand.nodes[segment.a];
       const b = strand.nodes[segment.b];
-      this.paintLine(world, a.x, a.y, b.x, b.y, strand.color);
+      this.paintLineAs(world, a.x, a.y, b.x, b.y, cellType, colorFn, density);
     }
     if (strand.segments.length === 0) {
-      for (const node of strand.nodes) this.paintVineAt(world, node.x, node.y, strand.color);
+      for (const node of strand.nodes) this.paintCellAt(world, node.x, node.y, cellType, colorFn());
     }
   }
 
-  private paintLine(world: World, x0: number, y0: number, x1: number, y1: number, color: number): void {
-    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 1.6));
+  private paintLineAs(
+    world: World,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    cellType: Cell,
+    colorFn: () => number,
+    density: number,
+  ): void {
+    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * density));
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
-      this.paintVineAt(world, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, color);
+      this.paintCellAt(world, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, cellType, colorFn());
     }
   }
 
-  private paintVineAt(world: World, x: number, y: number, color: number): void {
+  private paintCellAt(world: World, x: number, y: number, cellType: Cell, color: number): void {
     const cx = Math.floor(x);
     const cy = Math.floor(y);
     if (!world.inBounds(cx, cy)) return;
     const i = world.idx(cx, cy);
     if (world.types[i] !== Cell.Empty) return;
-    world.replaceCellAt(i, Cell.Vines, color);
+    world.replaceCellAt(i, cellType, color);
     world.life[i] = -1;
     world.moved[i] = world.movedTick;
   }

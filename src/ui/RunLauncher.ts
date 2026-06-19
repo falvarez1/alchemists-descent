@@ -10,6 +10,7 @@ const PREFS_KEY = 'noita-run-launcher-prefs-v3';
 const LEGACY_PREFS_KEY = 'noita-run-launcher-prefs-v2';
 const DIFFICULTY_KEY = 'alchemists-descent-difficulty-v1';
 const RUN_LAUNCHER_STATE_EVENT = 'run-launcher-state';
+const MIN_LAUNCH_VISIBLE_MS = 360;
 
 /** One-line "what this does" blurb per difficulty, shown under the selector. */
 const DIFFICULTY_BLURB: Record<Difficulty, string> = {
@@ -333,8 +334,11 @@ export class RunLauncher {
   private readonly kitSection: HTMLElement;
   private readonly kitTabButtons: HTMLButtonElement[];
   private readonly kitPanels: HTMLElement[];
+  private readonly closeButton: HTMLButtonElement;
   private readonly startButton: HTMLButtonElement;
   private readonly statusEl: HTMLDivElement;
+  private readonly loadingEl: HTMLElement;
+  private readonly loadingDetailEl: HTMLElement;
   private mode: RunMode = 'normal';
   private activeKitTab: KitTab = 'vitals';
   private activeFlaskSlot = 0;
@@ -345,6 +349,7 @@ export class RunLauncher {
   private lastFocused: HTMLElement | null = null;
   private pendingSource: LauncherSource = 'play-button';
   private suppressPresetApply = false;
+  private launching = false;
 
   constructor(private readonly ctx: Ctx) {
     this.root = document.createElement('div');
@@ -494,6 +499,18 @@ export class RunLauncher {
           <div class="run-launcher-status" aria-live="polite"></div>
           <button type="button" class="run-launcher-start">START</button>
         </div>
+        <div class="run-launcher-loading" data-section="launching" aria-hidden="true">
+          <div class="run-launcher-loading-sigil" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="run-launcher-loading-copy">
+            <strong>Opening the descent</strong>
+            <span data-field="launching-detail">Drawing the cave mouth open.</span>
+          </div>
+          <div class="run-launcher-loading-bar" aria-hidden="true"><i></i></div>
+        </div>
       </div>
     `;
 
@@ -519,8 +536,11 @@ export class RunLauncher {
     this.kitSection = this.root.querySelector<HTMLElement>('[data-section="kit"]')!;
     this.kitTabButtons = Array.from(this.root.querySelectorAll<HTMLButtonElement>('[data-kit-tab]'));
     this.kitPanels = Array.from(this.root.querySelectorAll<HTMLElement>('[data-kit-panel]'));
+    this.closeButton = this.root.querySelector<HTMLButtonElement>('.run-launcher-close')!;
     this.startButton = this.root.querySelector<HTMLButtonElement>('.run-launcher-start')!;
     this.statusEl = this.root.querySelector<HTMLDivElement>('.run-launcher-status')!;
+    this.loadingEl = this.root.querySelector<HTMLElement>('[data-section="launching"]')!;
+    this.loadingDetailEl = this.root.querySelector<HTMLElement>('[data-field="launching-detail"]')!;
 
     this.populateLevels();
     this.flaskSlotButtons = this.populateFlaskSlots();
@@ -536,12 +556,14 @@ export class RunLauncher {
     document.getElementById('mode-play-btn')?.addEventListener('click', this.onPlayButtonClick, true);
     window.addEventListener('run-launcher-request', this.onRunLauncherRequest);
 
-    this.root.querySelector<HTMLButtonElement>('.run-launcher-close')?.addEventListener('click', () => this.close());
+    this.closeButton.addEventListener('click', () => this.close());
     this.root.addEventListener('click', (e) => {
       if (e.target === this.root) this.close();
     });
     this.root.addEventListener('keydown', (e) => this.onKeyDown(e));
-    this.continueButton.addEventListener('click', () => this.startContinue());
+    this.continueButton.addEventListener('click', () => {
+      void this.startContinue();
+    });
     this.normalButton.addEventListener('click', () => this.setMode('normal'));
     this.testButton.addEventListener('click', () => this.setMode('test'));
     this.worldSelect.addEventListener('change', () => this.sync());
@@ -646,6 +668,7 @@ export class RunLauncher {
   }
 
   close(): void {
+    if (this.launching) return;
     this.root.classList.remove('visible');
     this.root.setAttribute('aria-hidden', 'true');
     this.pendingSource = 'play-button';
@@ -835,6 +858,7 @@ export class RunLauncher {
   }
 
   private setMode(mode: RunMode): void {
+    if (this.launching) return;
     this.savePrefs();
     this.mode = mode;
     if (mode === 'test' && this.worldSelect.value === 'campaign') {
@@ -849,6 +873,7 @@ export class RunLauncher {
   }
 
   private sync(persist = true): void {
+    if (this.launching) return;
     const status = this.ctx.levels.runStatus(this.ctx);
     const canContinue = this.canContinue(status);
     this.continueButton.disabled = !canContinue;
@@ -894,16 +919,19 @@ export class RunLauncher {
     return status.level !== null && status.playtestSource === null && !status.debugGodMode;
   }
 
-  private startContinue(): void {
+  private async startContinue(): Promise<void> {
+    if (this.launching) return;
+    const launchedAt = await this.beginLaunching('Restoring the last clean descent.');
     const started = this.ctx.levels.startRun(this.ctx, {
       mode: 'normal',
       worldSource: 'campaign',
       continueSave: true,
     });
-    this.finish(started.ok, started.message);
+    await this.finish(started.ok, started.message, launchedAt);
   }
 
   private async startConfigured(): Promise<void> {
+    if (this.launching) return;
     const worldSource = this.mode === 'test' ? (this.worldSelect.value as RunWorldSource) : 'campaign';
     const seed = Number(this.seedInput.value);
     if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
@@ -920,6 +948,7 @@ export class RunLauncher {
       if (!ok) return;
     }
     this.savePrefs();
+    const launchedAt = await this.beginLaunching(this.launchDetail(worldSource));
     const started = this.ctx.levels.startRun(this.ctx, {
       mode: this.mode,
       worldSource,
@@ -930,15 +959,61 @@ export class RunLauncher {
       kit: this.mode === 'test' ? this.readKit() : undefined,
       continueSave: false,
     });
-    this.finish(started.ok, started.message);
+    await this.finish(started.ok, started.message, launchedAt);
   }
 
-  private finish(ok: boolean, message: string): void {
+  private async finish(ok: boolean, message: string, launchedAt: number): Promise<void> {
+    await this.holdLaunchState(launchedAt);
     this.statusEl.textContent = message;
-    if (!ok) return;
+    if (!ok) {
+      this.setLaunching(false);
+      this.statusEl.textContent = message;
+      return;
+    }
     const source = this.pendingSource;
+    this.setLaunching(false);
     this.close();
     window.dispatchEvent(new CustomEvent('run-launcher-started', { detail: { source } }));
+  }
+
+  private launchDetail(worldSource: RunWorldSource): string {
+    if (this.mode === 'test' && worldSource === 'virtual-world') return 'Materializing a disposable test cavern.';
+    if (this.mode === 'test') return 'Packing the test kit and waking the chosen level.';
+    return 'Preparing a clean D1 expedition.';
+  }
+
+  private async beginLaunching(detail: string): Promise<number> {
+    const launchedAt = performance.now();
+    this.setLaunching(true, detail);
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+    return launchedAt;
+  }
+
+  private async holdLaunchState(launchedAt: number): Promise<void> {
+    const remaining = MIN_LAUNCH_VISIBLE_MS - (performance.now() - launchedAt);
+    if (remaining <= 0) return;
+    await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
+  }
+
+  private setLaunching(launching: boolean, detail = 'Drawing the cave mouth open.'): void {
+    this.launching = launching;
+    this.root.classList.toggle('launching', launching);
+    this.root.setAttribute('aria-busy', launching ? 'true' : 'false');
+    this.loadingEl.setAttribute('aria-hidden', launching ? 'false' : 'true');
+    this.loadingDetailEl.textContent = detail;
+    for (const control of this.launchControls()) control.disabled = launching;
+    if (launching) {
+      this.statusEl.textContent = 'The fun is coming.';
+      this.startButton.textContent = 'OPENING...';
+      return;
+    }
+    this.sync(false);
+  }
+
+  private launchControls(): Array<HTMLInputElement | HTMLSelectElement | HTMLButtonElement> {
+    return Array.from(this.root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('button, input, select'));
   }
 
   private applyPresetDefaults(preset: RunLoadoutPreset): void {
@@ -1213,6 +1288,7 @@ export class RunLauncher {
     e.stopPropagation();
     if (e.code === 'Escape') {
       e.preventDefault();
+      if (this.launching) return;
       this.close();
       return;
     }

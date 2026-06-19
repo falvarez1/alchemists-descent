@@ -9,6 +9,7 @@ import { appDialog } from '@/ui/AppDialog';
  */
 export class PauseOverlay {
   private active = false;
+  private restarting = false;
 
   constructor(private ctx: Ctx) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -72,6 +73,7 @@ export class PauseOverlay {
    *  launcher uses (inferring mode/world/seed from the live run). A normal expedition is a
    *  persistent descent, so restarting it is confirmed first. */
   private async restartLevel(): Promise<void> {
+    if (this.restarting) return;
     if (document.body.classList.contains('builder-open')) return;
     const status = this.ctx.levels.runStatus(this.ctx);
     if (!status.level) return;
@@ -84,18 +86,38 @@ export class PauseOverlay {
       if (!ok) return;
     }
     this.resume();
-    const seed = status.worldSeed >>> 0;
-    const started = status.level.id.startsWith('virtual')
-      ? this.ctx.levels.startRun(this.ctx, { mode: 'test', worldSource: 'virtual-world', seed })
-      : this.ctx.levels.startRun(this.ctx, {
-          mode: status.playtestSource === 'test' ? 'test' : 'normal',
-          worldSource: 'campaign-level',
-          levelId: status.level.id,
-          seed,
-          loadout: status.playtestSource === 'test' ? 'advanced' : 'fresh',
-          continueSave: false,
-        });
-    if (!started.ok) this.ctx.events.emit('toast', { text: started.message });
+    this.restarting = true;
+    try {
+      await this.beginRestartLoading(status.level.name);
+      const seed = status.worldSeed >>> 0;
+      const started = status.level.id.startsWith('virtual')
+        ? this.ctx.levels.startRun(this.ctx, { mode: 'test', worldSource: 'virtual-world', seed })
+        : this.ctx.levels.startRun(this.ctx, {
+            mode: status.playtestSource === 'test' ? 'test' : 'normal',
+            worldSource: 'campaign-level',
+            levelId: status.level.id,
+            seed,
+            loadout: status.playtestSource === 'test' ? 'advanced' : 'fresh',
+            continueSave: false,
+          });
+      if (!started.ok) {
+        this.ctx.events.emit('levelCurtain', { visible: false });
+        this.ctx.events.emit('toast', { text: started.message });
+      }
+    } finally {
+      this.restarting = false;
+    }
+  }
+
+  private async beginRestartLoading(levelName: string): Promise<void> {
+    this.ctx.events.emit('levelCurtain', {
+      visible: true,
+      title: 'Restarting level',
+      detail: `Rebuilding ${levelName}.`,
+    });
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
   }
 
   private toggle(): void {

@@ -341,6 +341,136 @@ describe('VineStrands', () => {
     expect(afterCenter - beforeCenter).toBeGreaterThan(0.1);
     expect(maxVelocity).toBeGreaterThan(0.1);
   });
+
+  it('spins Weaver thread spit as a pinned Verlet strand, not a static cell line', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const world = new World(120, 80);
+    const ctx = attachVineStrands({
+      world,
+      events: { on: () => undefined },
+      state: { mode: 'play', frameCount: 1 },
+      camera: { x: 0, y: 0 },
+      fx: { screenShake: 0 },
+      player: { x: 44, y: 44, dead: false },
+    } as unknown as Ctx);
+
+    ctx.vineStrands.addWebLine(20.5, 20.5, 92.5, 34.5, { lifetime: 120, kickX: 1.1, kickY: -0.8 });
+    const strand = ctx.vineStrands.strands[0];
+    const middle = strand.nodes[Math.floor(strand.nodes.length / 2)];
+    const before = { x: middle.x, y: middle.y };
+
+    ctx.vineStrands.applyRadialImpulse(50, 24, 44, 2.4);
+    for (let i = 0; i < 12; i++) ctx.vineStrands.update(ctx);
+
+    expect(strand.web).toBe(true);
+    expect(strand.nodes[0].x).toBeCloseTo(20.5, 4);
+    expect(strand.nodes[strand.nodes.length - 1].x).toBeCloseTo(92.5, 4);
+    expect(Math.hypot(middle.x - before.x, middle.y - before.y)).toBeGreaterThan(0.3);
+    let vines = 0;
+    for (const t of world.types) if (t === Cell.Vines) vines++;
+    expect(vines).toBe(0);
+  });
+
+  it('launches Weaver spit as an unpinned falling strand that expires into Ash', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const world = new World(140, 100);
+    const ctx = attachVineStrands({
+      world,
+      events: { on: () => undefined },
+      state: { mode: 'play', frameCount: 1 },
+      camera: { x: 0, y: 0 },
+      fx: { screenShake: 0 },
+      player: { x: 10, y: 90, dead: false },
+    } as unknown as Ctx);
+
+    ctx.vineStrands.addWebShot(20.5, 20.5, 1, -0.05, {
+      length: 54,
+      speed: 2.4,
+      lifetime: 12,
+      ashOnExpire: true,
+    });
+    const strand = ctx.vineStrands.strands[0];
+    const tail = strand.nodes[0];
+    const head = strand.nodes[strand.nodes.length - 1];
+    const beforeTail = { x: tail.x, y: tail.y };
+    const beforeHead = { x: head.x, y: head.y };
+
+    for (let i = 0; i < 5; i++) ctx.vineStrands.update(ctx);
+
+    expect(strand.web).toBe(true);
+    expect(strand.freeWeb).toBe(true);
+    expect(tail.x).toBeGreaterThan(beforeTail.x + 1);
+    expect(head.x).toBeGreaterThan(beforeHead.x + 4);
+    expect(head.y).toBeGreaterThan(beforeHead.y - 3);
+
+    for (let i = 0; i < 48 && ctx.vineStrands.strands.length > 0; i++) ctx.vineStrands.update(ctx);
+
+    let ash = 0;
+    let vines = 0;
+    for (const t of world.types) {
+      if (t === Cell.Ash) ash++;
+      if (t === Cell.Vines) vines++;
+    }
+    expect(ctx.vineStrands.strands).toHaveLength(0);
+    expect(ash).toBeGreaterThan(0);
+    expect(vines).toBe(0);
+  });
+
+  it('spins Weaver den webs as pinned radial lattices', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const world = new World(160, 120);
+    const ctx = attachVineStrands({
+      world,
+      events: { on: () => undefined },
+      state: { mode: 'play', frameCount: 1 },
+      camera: { x: 0, y: 0 },
+      fx: { screenShake: 0 },
+      player: { x: 10, y: 110, dead: false },
+    } as unknown as Ctx);
+
+    ctx.vineStrands.addWebLattice(80, 54, 38, { radials: 8, rings: 4, jitter: 0 });
+    const strand = ctx.vineStrands.strands[0];
+    const pinned = strand.nodes[strand.nodes.length - 1];
+    const pinBefore = { x: pinned.x, y: pinned.y };
+    const center = strand.nodes[0];
+    const centerBefore = { x: center.x, y: center.y };
+
+    ctx.vineStrands.applyRadialImpulse(80, 54, 60, 2.0);
+    for (let i = 0; i < 18; i++) ctx.vineStrands.update(ctx);
+
+    expect(strand.web).toBe(true);
+    expect(strand.segments.length).toBeGreaterThan(strand.nodes.length);
+    expect(pinned.x).toBeCloseTo(pinBefore.x, 4);
+    expect(pinned.y).toBeCloseTo(pinBefore.y, 4);
+    expect(Math.hypot(center.x - centerBefore.x, center.y - centerBefore.y)).toBeGreaterThan(0.1);
+  });
+
+  it('keeps Weaver den webs when incidental vine detaches saturate the strand pool', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const world = new World(180, 130);
+    const ctx = attachVineStrands({
+      world,
+      events: { on: () => undefined },
+      state: { mode: 'play', frameCount: 1 },
+      camera: { x: 0, y: 0 },
+      fx: { screenShake: 0 },
+      player: { x: 10, y: 110, dead: false },
+    } as unknown as Ctx);
+
+    ctx.vineStrands.addWebLattice(80, 54, 38, { radials: 8, rings: 4, jitter: 0 });
+    const denWeb = ctx.vineStrands.strands[0];
+
+    for (let n = 0; n < 70; n++) {
+      const x = 5 + (n % 23) * 7;
+      const y = 96 + Math.floor(n / 23) * 7;
+      world.replaceCellAt(world.idx(x, y), Cell.Vines, 0x227733);
+      ctx.vineStrands.detachCluster(x, y);
+    }
+
+    expect(ctx.vineStrands.strands).toContain(denWeb);
+    expect(ctx.vineStrands.strands.filter((s) => s.web === true && s.denWeb === true)).toHaveLength(1);
+    expect(ctx.vineStrands.strands.length).toBeLessThanOrEqual(48);
+  });
 });
 
 describe('Simulation moved epoch', () => {

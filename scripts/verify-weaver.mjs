@@ -9,6 +9,16 @@ const url = process.argv[2] || 'http://127.0.0.1:5173/';
 const outDir = 'verify-out';
 mkdirSync(outDir, { recursive: true });
 
+const CELL = Object.freeze({
+  Empty: 0,
+  Stone: 12,
+  Vines: 15,
+  Slime: 19,
+  Fungus: 30,
+  Glowshroom: 33,
+  Moss: 34,
+});
+
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 
@@ -51,12 +61,12 @@ const samplePixels = () =>
   );
 
 const countVines = () =>
-  page.evaluate(() => {
+  page.evaluate((cell) => {
     const world = window.__game.ctx.world;
     let vines = 0;
-    for (let i = 0; i < world.types.length; i++) if (world.types[i] === 15) vines++;
+    for (let i = 0; i < world.types.length; i++) if (world.types[i] === cell.Vines) vines++;
     return vines;
-  });
+  }, CELL);
 
 try {
   console.log('navigating to', url);
@@ -72,33 +82,211 @@ try {
     settleMs: 500,
   });
 
-  const initial = await page.evaluate(() => {
+  const initial = await page.evaluate((cell) => {
     const ctx = window.__game.ctx;
     const world = ctx.world;
     const weavers = ctx.enemies.filter((e) => e.kind === 'weaver');
     let vines = 0;
     let growth = 0;
+    let airborneCombatVines = 0;
     for (let i = 0; i < world.types.length; i++) {
       const t = world.types[i];
-      if (t === 15) vines++;
-      if (t === 15 || t === 30 || t === 33 || t === 34) growth++;
+      if (t === cell.Vines) vines++;
+      if (t === cell.Vines || t === cell.Fungus || t === cell.Glowshroom || t === cell.Moss) growth++;
     }
+    for (let y = 620; y <= 730; y++) {
+      for (let x = 470; x <= 1390; x++) {
+        if (world.inBounds(x, y) && world.types[world.idx(x, y)] === cell.Vines) airborneCombatVines++;
+      }
+    }
+    const webStrands = ctx.vineStrands.strands.filter((s) => s.web === true);
     return {
       level: ctx.levels.current?.def?.id ?? null,
       weavers: weavers.length,
       sleeping: weavers.filter((e) => e.sleeping).length,
       critters: ctx.critters.list.length,
+      wakeProps: ctx.rigidBodies.bodies.filter((b) => b.x >= 150 && b.x <= 215 && b.y >= 720).length,
       vines,
       growth,
+      airborneCombatVines,
+      webStrands: webStrands.length,
+      denWebs: webStrands.filter((s) => s.denWeb === true).length,
     };
-  });
+  }, CELL);
   console.log('initial:', JSON.stringify(initial));
   if (initial.level !== 'weaver-test') throw new Error(`Expected weaver-test, got ${initial.level}`);
-  if (initial.weavers < 3) throw new Error(`Expected at least 3 Weavers, got ${initial.weavers}`);
+  if (initial.weavers < 4) throw new Error(`Expected at least 4 Weavers, got ${initial.weavers}`);
   if (initial.sleeping < 1) throw new Error('Expected a sleeping Weaver in the lair');
-  if (initial.critters < 6) throw new Error(`Expected seeded prey critters, got ${initial.critters}`);
+  if (initial.critters < 5) throw new Error(`Expected seeded prey critters, got ${initial.critters}`);
+  if (initial.wakeProps < 2) throw new Error(`Expected two authored wake props, got ${initial.wakeProps}`);
   if (initial.vines < 80 || initial.growth < 200) {
     throw new Error(`Expected webbed fungal arena, got vines=${initial.vines} growth=${initial.growth}`);
+  }
+  if (initial.airborneCombatVines > 5) {
+    throw new Error(`Expected combat-lane web dressing to be live strands, got ${initial.airborneCombatVines} airborne Vine cells`);
+  }
+  if (initial.webStrands < 1 || initial.denWebs < 1) {
+    throw new Error(`Expected live Weaver den web strand, got webs=${initial.webStrands} denWebs=${initial.denWebs}`);
+  }
+
+  const gaitSetup = await page.evaluate(() => {
+    const ctx = window.__game.ctx;
+    const gaiter = ctx.enemies
+      .filter((e) => e.kind === 'weaver')
+      .sort((a, b) => Math.abs(a.x - 512) - Math.abs(b.x - 512))[0];
+    if (!gaiter) throw new Error('No gait-lane Weaver');
+    gaiter.alerted = false;
+    gaiter.sleeping = false;
+    // Clear prey near the gait lane so the patrolling Weaver tests its STANCE and
+    // doesn't crouch to feed mid-sample (that drops bodyLift to the feed value).
+    for (const cr of ctx.critters.list.slice()) {
+      if (Math.abs(cr.x - gaiter.x) < 160 && Math.abs(cr.y - gaiter.y) < 120) ctx.critters.remove(cr);
+    }
+    gaiter.weaverFeedT = 0;
+    gaiter.patrol = [
+      [512, 742],
+      [900, 741],
+    ];
+    gaiter.patrolIdx = 1;
+    gaiter.attackCd = 220;
+    ctx.player.x = 130;
+    ctx.player.y = 741;
+    ctx.player.vx = ctx.player.vy = ctx.player.fx = ctx.player.fy = 0;
+    ctx.camera.snapTo(gaiter.x + 120, gaiter.y - 100);
+    return { x: gaiter.x, y: gaiter.y };
+  });
+  await page.waitForTimeout(1200);
+  const gaitResult = await page.evaluate((setup) => {
+    const gaiter = window.__game.ctx.enemies
+      .filter((e) => e.kind === 'weaver')
+      .sort((a, b) => Math.abs(a.x - setup.x) - Math.abs(b.x - setup.x))[0];
+    return {
+      x: gaiter?.x ?? setup.x,
+      y: gaiter?.y ?? setup.y,
+      legs: gaiter?.weaverLegs?.length ?? 0,
+      smoothedLegs: gaiter?.weaverLegs?.filter((leg) => Number.isFinite(leg.smoothTx) && Number.isFinite(leg.smoothTy)).length ?? 0,
+      bodyLift: gaiter?.weaverBodyLift ?? 0,
+      visualSupport: gaiter?.weaverVisualSupport ?? 0,
+      visualPlanted: gaiter?.weaverVisualPlanted ?? 0,
+      alerted: gaiter?.alerted === true,
+      support: gaiter?.weaverSupport ?? 0,
+    };
+  }, gaitSetup);
+  console.log('gait:', JSON.stringify({ setup: gaitSetup, result: gaitResult }));
+  if (gaitResult.legs !== 8) throw new Error(`Gait Weaver did not render 8 legs, got ${gaitResult.legs}`);
+  if (gaitResult.smoothedLegs !== 8 || gaitResult.bodyLift < 9) {
+    throw new Error(`Gait Weaver did not keep smoothed high-stance leg state: ${JSON.stringify(gaitResult)}`);
+  }
+  if (gaitResult.visualSupport < 0.35 || gaitResult.visualPlanted < 3) {
+    throw new Error(`Gait Weaver did not keep enough stable visual leg support: ${JSON.stringify(gaitResult)}`);
+  }
+  if (Math.abs(gaitResult.x - gaitSetup.x) < 4) {
+    throw new Error(`Gait Weaver did not patrol the uneven lane: start=${gaitSetup.x} end=${gaitResult.x}`);
+  }
+
+  const unstableSetup = await page.evaluate(
+    ({ setup, cell }) => {
+      const ctx = window.__game.ctx;
+      const world = ctx.world;
+      const gaiter = ctx.enemies
+        .filter((e) => e.kind === 'weaver')
+        .sort((a, b) => Math.abs(a.x - setup.x) - Math.abs(b.x - setup.x))[0];
+      if (!gaiter) throw new Error('No Weaver available for unsupported-footing probe');
+      const cx = Math.round(gaiter.x);
+      const cy = Math.round(gaiter.y);
+      const holeHalfW = 64;
+      for (let y = cy - 24; y <= cy + 34; y++) {
+        for (let x = cx - 92; x <= cx + 92; x++) {
+          if (!world.inBounds(x, y)) continue;
+          const i = world.idx(x, y);
+          const dx = x - cx;
+          if (Math.abs(dx) <= holeHalfW) {
+            world.clearCellAt(i);
+          } else if (y >= cy + 1 && y <= cy + 8) {
+            world.replaceCellAt(i, cell.Stone, 0x777777);
+          } else if ((Math.abs(dx) === holeHalfW + 2 || Math.abs(dx) === holeHalfW + 3) && y >= cy - 8 && y <= cy + 12) {
+            world.replaceCellAt(i, cell.Stone, 0x777777);
+          } else if (y < cy + 1) {
+            world.clearCellAt(i);
+          }
+        }
+      }
+      let vinesBefore = 0;
+      for (let i = 0; i < world.types.length; i++) if (world.types[i] === cell.Vines) vinesBefore++;
+      gaiter.sleeping = false;
+      gaiter.alerted = true;
+      gaiter.cranky = 0;
+      gaiter.attackCd = 220;
+      gaiter.weaverSupport = 0;
+      gaiter.weaverPhysicalSupport = 0;
+      gaiter.weaverAnchorCount = 0;
+      gaiter.weaverFallT = 0;
+      gaiter.weaverTilt = 0;
+      gaiter.weaverLegs = undefined;
+      gaiter.recoil = 0;
+      gaiter.webPulse = 0;
+      gaiter.vx = 0.8;
+      gaiter.vy = 0;
+      gaiter.timer = 33;
+      ctx.player.x = gaiter.x + 240;
+      ctx.player.y = gaiter.y;
+      ctx.player.vx = ctx.player.vy = ctx.player.fx = ctx.player.fy = 0;
+      return { x: gaiter.x, y: gaiter.y, vinesBefore };
+    },
+    { setup: gaitSetup, cell: CELL },
+  );
+  await page.waitForTimeout(420);
+  const unstableResult = await page.evaluate(
+    ({ setup, cell }) => {
+      const ctx = window.__game.ctx;
+      const world = ctx.world;
+      const gaiter = ctx.enemies
+        .filter((e) => e.kind === 'weaver')
+        .sort((a, b) => Math.abs(a.x - setup.x) - Math.abs(b.x - setup.x))[0];
+      let vines = 0;
+      for (let i = 0; i < world.types.length; i++) if (world.types[i] === cell.Vines) vines++;
+      const legs = gaiter?.weaverLegs ?? [];
+      const plantedLegs = legs.filter((leg) => leg.planted === true).length;
+      const failedLegs = legs.filter((leg) => leg.planted !== true || (leg.failT ?? 0) > 0).length;
+      const wallContacts = legs.filter((leg) => leg.surface === 'leftWall' || leg.surface === 'rightWall').length;
+      const maxStrain = legs.reduce((max, leg) => Math.max(max, leg.strain ?? 0), 0);
+      return {
+        recoil: gaiter?.recoil ?? 0,
+        webPulse: gaiter?.webPulse ?? 0,
+        attackCd: gaiter?.attackCd ?? 0,
+        support: gaiter?.weaverSupport ?? 1,
+        physicalSupport: gaiter?.weaverPhysicalSupport ?? 1,
+        anchorCount: gaiter?.weaverAnchorCount ?? 8,
+        visualSupport: gaiter?.weaverVisualSupport ?? 1,
+        visualPlanted: gaiter?.weaverVisualPlanted ?? 8,
+        fallT: gaiter?.weaverFallT ?? 0,
+        tilt: gaiter?.weaverTilt ?? 0,
+        y: gaiter?.y ?? setup.y,
+        vy: gaiter?.vy ?? 0,
+        plantedLegs,
+        failedLegs,
+        wallContacts,
+        maxStrain,
+        newVines: vines - setup.vinesBefore,
+      };
+    },
+    { setup: unstableSetup, cell: CELL },
+  );
+  console.log('cut-floor-footing:', JSON.stringify({ setup: unstableSetup, result: unstableResult }));
+  if (unstableResult.webPulse <= 0 || unstableResult.attackCd < 18) {
+    throw new Error(`Cut-floor Weaver did not suppress attacks/stumble visibly: ${JSON.stringify(unstableResult)}`);
+  }
+  if (unstableResult.fallT < 4 || unstableResult.physicalSupport > 0.55) {
+    throw new Error(`Cut-floor Weaver did not enter unsupported body state: ${JSON.stringify(unstableResult)}`);
+  }
+  if (unstableResult.visualSupport > 0.4 || unstableResult.visualPlanted > 4) {
+    throw new Error(`Cut-floor Weaver still reported too many visual leg contacts: ${JSON.stringify(unstableResult)}`);
+  }
+  if (unstableResult.failedLegs < 1 || unstableResult.maxStrain < 0.7) {
+    throw new Error(`Cut-floor Weaver legs did not show failed/strained contact search: ${JSON.stringify(unstableResult)}`);
+  }
+  if (unstableResult.wallContacts < 1 && unstableResult.plantedLegs > 6) {
+    throw new Error(`Cut-floor Weaver stayed calm instead of spreading to side footholds: ${JSON.stringify(unstableResult)}`);
   }
 
   const feedSetup = await page.evaluate(() => {
@@ -139,21 +327,57 @@ try {
     throw new Error(`Feeder did not heal from prey: before=${feedSetup.hpBefore} after=${feedResult.hp}`);
   }
 
-  const sleepSetup = await page.evaluate(() => {
+  const sleepSetup = await page.evaluate((cell) => {
     const ctx = window.__game.ctx;
+    const world = ctx.world;
     const sleeper = ctx.enemies.find((e) => e.kind === 'weaver' && e.sleeping);
     if (!sleeper) throw new Error('No sleeping Weaver');
     sleeper.sleeping = true;
     sleeper.alerted = false;
     sleeper.cranky = 0;
+    sleeper.webPulse = 0;
     sleeper.attackCd = 80;
     ctx.camera.snapTo(sleeper.x, sleeper.y - 90);
     ctx.player.x = sleeper.x - 220;
     ctx.player.y = sleeper.y;
     ctx.player.vx = ctx.player.vy = ctx.player.fx = ctx.player.fy = 0;
+    ctx.fx.screenShake = 0;
+    const critter = ctx.critters.spawn('fly', sleeper.x + 48, sleeper.y - 8);
+    ctx.vineStrands.addHanging(sleeper.x, sleeper.y - 58, 72);
+    const strand = ctx.vineStrands.strands[ctx.vineStrands.strands.length - 1];
+    const node = strand?.nodes?.[Math.min(8, (strand?.nodes?.length ?? 1) - 1)];
+    const nodeBefore =
+      node && Number.isFinite(node.px) && Number.isFinite(node.py) ? { px: node.px, py: node.py } : null;
+    for (let y = Math.floor(sleeper.y) - 24; y <= Math.floor(sleeper.y) - 4; y++) {
+      for (let x = Math.floor(sleeper.x) - 8; x <= Math.floor(sleeper.x) + 34; x++) {
+        if (!world.inBounds(x, y)) continue;
+        world.clearCellAt(world.idx(x, y));
+      }
+    }
+    let vinesBefore = 0;
+    for (let i = 0; i < world.types.length; i++) if (world.types[i] === cell.Vines) vinesBefore++;
+    const websBefore = ctx.vineStrands.strands.filter((s) => s.web === true).length;
     ctx.events.emit('groundImpact', { x: sleeper.x + 24, y: sleeper.y - 8, radius: 28, strength: 1 });
-    return { x: sleeper.x, y: sleeper.y };
-  });
+    let vinesAfter = 0;
+    for (let i = 0; i < world.types.length; i++) if (world.types[i] === cell.Vines) vinesAfter++;
+    const websAfter = ctx.vineStrands.strands.filter((s) => s.web === true).length;
+    const scatterSpeed = Math.hypot(critter.vx, critter.vy);
+    const vineImpulse =
+      node && nodeBefore && Number.isFinite(node.px) && Number.isFinite(node.py)
+        ? Math.abs(node.px - nodeBefore.px) + Math.abs(node.py - nodeBefore.py)
+        : 0;
+    return {
+      x: sleeper.x,
+      y: sleeper.y,
+      webPulse: sleeper.webPulse ?? 0,
+      newVines: vinesAfter - vinesBefore,
+      newWebs: websAfter - websBefore,
+      scatterSpeed,
+      startle: critter.startle ?? 0,
+      screenShake: ctx.fx.screenShake,
+      vineImpulse,
+    };
+  }, CELL);
   await page.waitForTimeout(350);
   const sleepResult = await page.evaluate((setup) => {
     const sleeper = window.__game.ctx.enemies
@@ -167,6 +391,19 @@ try {
     };
   }, sleepSetup);
   console.log('sleep-ground-impact:', JSON.stringify({ setup: sleepSetup, result: sleepResult }));
+  if (sleepSetup.webPulse <= 0) throw new Error('Ground-impact disturbance did not set Weaver webPulse');
+  if (sleepSetup.newVines < 1 && sleepSetup.newWebs < 1) {
+    throw new Error(
+      `Ground-impact disturbance did not write sparse web anchors or live strands, got vines=${sleepSetup.newVines} webs=${sleepSetup.newWebs}`,
+    );
+  }
+  if (sleepSetup.scatterSpeed <= 0.25 || sleepSetup.startle <= 0) {
+    throw new Error(`Ground-impact disturbance did not scatter nearby critter: ${JSON.stringify(sleepSetup)}`);
+  }
+  if (sleepSetup.vineImpulse <= 0) {
+    throw new Error(`Ground-impact disturbance did not impulse nearby hanging vine: ${JSON.stringify(sleepSetup)}`);
+  }
+  if (sleepSetup.screenShake <= 0) throw new Error('Ground-impact disturbance did not shake the screen');
   if (sleepResult.sleeping || !sleepResult.alerted || sleepResult.cranky <= 0) {
     throw new Error('Sleeping Weaver did not wake cranky from nearby ground impact');
   }
@@ -179,18 +416,24 @@ try {
     sleeper.sleeping = true;
     sleeper.alerted = false;
     sleeper.cranky = 0;
+    sleeper.webPulse = 0;
     sleeper.attackCd = 80;
     ctx.player.x = sleeper.x - 220;
     ctx.player.y = sleeper.y;
+    ctx.fx.screenShake = 0;
     ctx.events.emit('structureStrike', { x: sleeper.x + 18, y: sleeper.y - 8, radius: 6 });
     return {
       sleeping: sleeper.sleeping === true,
       alerted: sleeper.alerted === true,
       cranky: sleeper.cranky ?? 0,
+      webPulse: sleeper.webPulse ?? 0,
+      screenShake: ctx.fx.screenShake,
       attackCd: sleeper.attackCd,
     };
   }, sleepSetup);
   console.log('sleep-structure-strike:', JSON.stringify(strikeResult));
+  if (strikeResult.webPulse <= 0) throw new Error('Structure-strike disturbance did not set Weaver webPulse');
+  if (strikeResult.screenShake <= 0) throw new Error('Structure-strike disturbance did not shake the screen');
   if (strikeResult.sleeping || !strikeResult.alerted || strikeResult.cranky <= 0) {
     throw new Error('Sleeping Weaver did not wake cranky from nearby structure strike');
   }
@@ -233,61 +476,341 @@ try {
     throw new Error('Sleeping Weaver did not wake cranky from nearby rigid-body impact');
   }
 
-  const vinesBeforeAttack = await countVines();
-  const attackSetup = await page.evaluate(() => {
+  const supportSetup = await page.evaluate((cell) => {
     const ctx = window.__game.ctx;
     const sentinel = ctx.enemies
       .filter((e) => e.kind === 'weaver')
-      .sort((a, b) => b.x - a.x)[0];
-    if (!sentinel) throw new Error('No attack-lane Weaver');
-    ctx.camera.snapTo(sentinel.x, sentinel.y - 95);
-    ctx.player.x = sentinel.x - 74;
+      .sort((a, b) => Math.abs(a.x - 1260) - Math.abs(b.x - 1260))[0];
+    if (!sentinel) throw new Error('No support-test Weaver');
+    for (const e of ctx.enemies) {
+      if (e !== sentinel && e.kind === 'weaver') {
+        e.attackCd = Math.max(e.attackCd ?? 0, 240);
+        e.blink = 0;
+        e.windup = 0;
+      }
+    }
+    const world = ctx.world;
+    const cx = Math.floor(sentinel.x);
+    const cy = Math.floor(sentinel.y);
+    for (let y = cy - 18; y <= cy + 5; y++) {
+      for (let x = cx - 74; x <= cx + 74; x++) {
+        if (!world.inBounds(x, y)) continue;
+        const i = world.idx(x, y);
+        const t = world.types[i];
+        if (
+          t === cell.Vines ||
+          t === cell.Fungus ||
+          t === cell.Moss ||
+          t === cell.Slime ||
+          t === cell.Glowshroom
+        ) {
+          world.clearCellAt(i);
+        }
+      }
+    }
+    let localVinesBefore = 0;
+    for (let y = cy - 18; y <= cy + 8; y++) {
+      for (let x = cx - 80; x <= cx + 80; x++) {
+        if (world.inBounds(x, y) && world.types[world.idx(x, y)] === cell.Vines) localVinesBefore++;
+      }
+    }
+    ctx.camera.snapTo(sentinel.x + 100, sentinel.y - 95);
+    ctx.player.x = sentinel.x - 260;
     ctx.player.y = sentinel.y;
     ctx.player.vx = ctx.player.vy = ctx.player.fx = ctx.player.fy = 0;
     sentinel.alerted = true;
     sentinel.sleeping = false;
-    sentinel.attackCd = 0;
-    sentinel.blink = 5;
-    sentinel.weaverSupport = 1;
-    return { x: sentinel.x, y: sentinel.y };
-  });
-  await page.waitForTimeout(1400);
-  await page.screenshot({ path: `${outDir}/weaver-runtime.png` });
-
-  const result = await page.evaluate(
-    ({ attackSetup, vinesBeforeAttack }) => {
+    sentinel.attackCd = 80;
+    sentinel.blink = 0;
+    sentinel.windup = 0;
+    sentinel.cranky = 180;
+    sentinel.webPulse = 0;
+    sentinel.weaverSupport = 0;
+    sentinel.grounded = true;
+    sentinel.vx = 0;
+    sentinel.vy = 0;
+    return { x: sentinel.x, y: sentinel.y, localVinesBefore };
+  }, CELL);
+  await page.waitForTimeout(900);
+  const supportResult = await page.evaluate(
+    ({ setup, cell }) => {
       const ctx = window.__game.ctx;
       const world = ctx.world;
       const sentinel = ctx.enemies
         .filter((e) => e.kind === 'weaver')
-        .sort((a, b) => Math.abs(a.x - attackSetup.x) - Math.abs(b.x - attackSetup.x))[0];
-      let vines = 0;
-      for (let i = 0; i < world.types.length; i++) if (world.types[i] === 15) vines++;
+        .sort((a, b) => Math.abs(a.x - setup.x) - Math.abs(b.x - setup.x))[0];
+      const cx = Math.floor(setup.x);
+      const cy = Math.floor(setup.y);
+      let localVines = 0;
+      for (let y = cy - 18; y <= cy + 8; y++) {
+        for (let x = cx - 80; x <= cx + 80; x++) {
+          if (world.inBounds(x, y) && world.types[world.idx(x, y)] === cell.Vines) localVines++;
+        }
+      }
       return {
         sentinel: sentinel
           ? {
-              hp: sentinel.hp,
               x: sentinel.x,
               y: sentinel.y,
               blink: sentinel.blink,
               windup: sentinel.windup ?? 0,
+              support: sentinel.weaverSupport ?? 0,
+              webPulse: sentinel.webPulse ?? 0,
+              recoil: sentinel.recoil ?? 0,
+              attackCd: sentinel.attackCd ?? 0,
+            }
+          : null,
+        localVines,
+        newLocalVines: localVines - setup.localVinesBefore,
+      };
+    },
+    { setup: supportSetup, cell: CELL },
+  );
+  console.log('support-loss:', JSON.stringify({ setup: supportSetup, result: supportResult }));
+  if (!supportResult.sentinel) throw new Error('Support-test Weaver missing');
+  if (supportResult.newLocalVines < 1) {
+    throw new Error(`Support recovery did not write foot-trail vines, got ${supportResult.newLocalVines}`);
+  }
+  if (supportResult.newLocalVines > 80) {
+    throw new Error(`Support recovery wrote too many local vines, got ${supportResult.newLocalVines}`);
+  }
+  if (supportResult.sentinel.windup > 0 || supportResult.sentinel.blink > 0) {
+    throw new Error(`Unstable Weaver started an attack: ${JSON.stringify(supportResult.sentinel)}`);
+  }
+
+  const vinesBeforeThread = await countVines();
+  const threadSetup = await page.evaluate((cell) => {
+    const ctx = window.__game.ctx;
+    const sentinel = ctx.enemies
+      .filter((e) => e.kind === 'weaver')
+      .sort((a, b) => Math.abs(a.x - 1260) - Math.abs(b.x - 1260))[0];
+    if (!sentinel) throw new Error('No thread-test Weaver');
+    const world = ctx.world;
+    const foot = Math.floor(sentinel.y);
+    for (let y = foot - 1; y <= foot + 2; y++) {
+      for (let x = Math.floor(sentinel.x) - 72; x <= Math.floor(sentinel.x) + 72; x += 2) {
+        if (!world.inBounds(x, y)) continue;
+        world.replaceCellAt(world.idx(x, y), cell.Moss, 0x4f8a45);
+      }
+    }
+    const playerX = Math.floor(sentinel.x - 154);
+    const playerY = Math.floor(sentinel.y - 58);
+    for (let x = playerX - 8; x <= playerX + 8; x++) {
+      if (world.inBounds(x, playerY + 1)) world.replaceCellAt(world.idx(x, playerY + 1), cell.Stone, 0x777777);
+    }
+    ctx.camera.snapTo(sentinel.x - 35, sentinel.y - 120);
+    ctx.player.x = playerX;
+    ctx.player.y = playerY;
+    ctx.player.hp = ctx.player.maxHp;
+    ctx.player.dead = false;
+    ctx.player.vx = ctx.player.vy = ctx.player.fx = ctx.player.fy = 0;
+    sentinel.alerted = true;
+    sentinel.sleeping = false;
+    sentinel.attackCd = 0;
+    sentinel.blink = 0;
+    sentinel.windup = 0;
+    sentinel.cranky = 0;
+    sentinel.webPulse = 0;
+    sentinel.weaverSupport = 1;
+    sentinel.weaverPhysicalSupport = 1;
+    sentinel.weaverAnchorCount = 8;
+    sentinel.weaverFallT = 0;
+    sentinel.grounded = true;
+    sentinel.vx = 0;
+    sentinel.vy = 0;
+    return {
+      x: sentinel.x,
+      y: sentinel.y,
+      websBefore: ctx.vineStrands.strands.filter((s) => s.web === true).length,
+    };
+  }, CELL);
+  await page.waitForTimeout(240);
+  const threadTelegraph = await page.evaluate((setup) => {
+    const sentinel = window.__game.ctx.enemies
+      .filter((e) => e.kind === 'weaver')
+      .sort((a, b) => Math.abs(a.x - setup.x) - Math.abs(b.x - setup.x))[0];
+    return { blink: sentinel?.blink ?? 0, windup: sentinel?.windup ?? 0 };
+  }, threadSetup);
+  await page.waitForTimeout(1050);
+  const threadResult = await page.evaluate(
+    ({ setup, vinesBefore, cell }) => {
+      const ctx = window.__game.ctx;
+      const world = ctx.world;
+      const sentinel = ctx.enemies
+        .filter((e) => e.kind === 'weaver')
+        .sort((a, b) => Math.abs(a.x - setup.x) - Math.abs(b.x - setup.x))[0];
+      let vines = 0;
+      for (let i = 0; i < world.types.length; i++) if (world.types[i] === cell.Vines) vines++;
+      const webStrands = ctx.vineStrands.strands.filter((s) => s.web === true);
+      const web = webStrands[webStrands.length - 1] ?? null;
+      const mid = web?.nodes?.[Math.floor(web.nodes.length / 2)] ?? null;
+      const first = web?.nodes?.[0] ?? null;
+      const last = web?.nodes?.[Math.max(0, (web?.nodes?.length ?? 1) - 1)] ?? null;
+      return {
+        sentinel: sentinel
+          ? {
+              x: sentinel.x,
+              y: sentinel.y,
+              blink: sentinel.blink,
+              windup: sentinel.windup ?? 0,
+              attackCd: sentinel.attackCd ?? 0,
               legs: sentinel.weaverLegs?.length ?? 0,
               support: sentinel.weaverSupport ?? 0,
             }
           : null,
         vines,
-        newVines: vines - vinesBeforeAttack,
-        enemies: ctx.enemies.length,
+        newVines: vines - vinesBefore,
+        webCount: webStrands.length,
+        newWebs: webStrands.length - setup.websBefore,
+        web: web
+          ? {
+              nodes: web.nodes.length,
+              segments: web.segments.length,
+              freeWeb: web.freeWeb === true,
+              ashOnExpire: web.ashOnExpire === true,
+              midX: mid?.x ?? null,
+              midY: mid?.y ?? null,
+              firstX: first?.x ?? null,
+              firstY: first?.y ?? null,
+              lastX: last?.x ?? null,
+              lastY: last?.y ?? null,
+            }
+          : null,
       };
     },
-    { attackSetup, vinesBeforeAttack },
+    { setup: threadSetup, vinesBefore: vinesBeforeThread, cell: CELL },
   );
+  await page.waitForTimeout(300);
+  const threadMotion = await page.evaluate(() => {
+    const ctx = window.__game.ctx;
+    const webStrands = ctx.vineStrands.strands.filter((s) => s.web === true);
+    const web = webStrands[webStrands.length - 1] ?? null;
+    const mid = web?.nodes?.[Math.floor(web.nodes.length / 2)] ?? null;
+    return mid ? { midX: mid.x, midY: mid.y } : null;
+  });
+  const threadMove =
+    threadResult.web && threadMotion
+      ? Math.hypot(threadMotion.midX - threadResult.web.midX, threadMotion.midY - threadResult.web.midY)
+      : 0;
+  console.log(
+    'thread-spit:',
+    JSON.stringify({ setup: threadSetup, telegraph: threadTelegraph, result: threadResult, motion: threadMotion, threadMove }),
+  );
+  if (!threadResult.sentinel) throw new Error('Thread-test Weaver missing');
+  if (threadTelegraph.blink <= 0 || threadTelegraph.windup > 0) {
+    throw new Error(`Mid-range Weaver did not naturally choose Thread Spit: ${JSON.stringify(threadTelegraph)}`);
+  }
+  if (threadResult.newWebs < 1 || !threadResult.web) {
+    throw new Error(`Expected natural Thread Spit to add a live web strand, got ${JSON.stringify(threadResult)}`);
+  }
+  if (threadResult.web.freeWeb !== true || threadResult.web.ashOnExpire !== true) {
+    throw new Error(`Thread Spit web should be an unpinned launched strand that expires to Ash: ${JSON.stringify(threadResult.web)}`);
+  }
+  if (threadResult.web.nodes < 9 || threadResult.web.segments < threadResult.web.nodes - 1) {
+    throw new Error(`Thread Spit web does not have enough Verlet structure: ${JSON.stringify(threadResult.web)}`);
+  }
+  if (threadResult.newVines > 140) {
+    throw new Error(`Thread Spit likely painted a static vine line instead of a live strand, vine delta=${threadResult.newVines}`);
+  }
+  // A live free-Verlet web keeps a little residual jitter (gravity + constraints)
+  // even as it settles onto terrain; a static painted vine line is dead-still at 0.
+  // The structure checks above already prove it's a real strand, so this only needs
+  // to catch the static-line case — keep the floor low so a settled web isn't flaky.
+  if (threadMove <= 0.005) {
+    throw new Error(`Thread Spit web did not keep moving as live Verlet cloth, movement=${threadMove}`);
+  }
+
+  const needleSetup = await page.evaluate(({ setup, cell }) => {
+    const ctx = window.__game.ctx;
+    const world = ctx.world;
+    const sentinel = ctx.enemies
+      .filter((e) => e.kind === 'weaver')
+      .sort((a, b) => Math.abs(a.x - setup.x) - Math.abs(b.x - setup.x))[0];
+    if (!sentinel) throw new Error('No needle-test Weaver');
+    const foot = Math.floor(sentinel.y);
+    for (let y = foot - 1; y <= foot + 2; y++) {
+      for (let x = Math.floor(sentinel.x) - 72; x <= Math.floor(sentinel.x) + 72; x += 2) {
+        if (!world.inBounds(x, y)) continue;
+        world.replaceCellAt(world.idx(x, y), cell.Moss, 0x4f8a45);
+      }
+    }
+    ctx.camera.snapTo(sentinel.x, sentinel.y - 95);
+    ctx.player.x = sentinel.x - 58;
+    ctx.player.y = sentinel.y;
+    ctx.player.hp = ctx.player.maxHp;
+    ctx.player.dead = false;
+    ctx.player.vx = ctx.player.vy = ctx.player.fx = ctx.player.fy = 0;
+    sentinel.alerted = true;
+    sentinel.sleeping = false;
+    sentinel.attackCd = 0;
+    sentinel.blink = 0;
+    sentinel.windup = 0;
+    sentinel.needleX = undefined;
+    sentinel.needleY = undefined;
+    sentinel.weaverSupport = 1;
+    sentinel.weaverPhysicalSupport = 1;
+    sentinel.weaverAnchorCount = 8;
+    sentinel.weaverFallT = 0;
+    sentinel.grounded = true;
+    sentinel.timer = 5;
+    sentinel.vx = 0;
+    sentinel.vy = 0;
+    return { x: sentinel.x, y: sentinel.y, hpBefore: ctx.player.hp };
+  }, { setup: threadSetup, cell: CELL });
+  await page.waitForTimeout(180);
+  const needleTelegraph = await page.evaluate((setup) => {
+    const sentinel = window.__game.ctx.enemies
+      .filter((e) => e.kind === 'weaver')
+      .sort((a, b) => Math.abs(a.x - setup.x) - Math.abs(b.x - setup.x))[0];
+    return {
+      windup: sentinel?.windup ?? 0,
+      blink: sentinel?.blink ?? 0,
+      needleX: sentinel?.needleX ?? null,
+      needleY: sentinel?.needleY ?? null,
+    };
+  }, needleSetup);
+  await page.waitForTimeout(650);
+  await page.screenshot({ path: `${outDir}/weaver-runtime.png` });
+
+  const result = await page.evaluate((setup) => {
+    const ctx = window.__game.ctx;
+    const sentinel = ctx.enemies
+      .filter((e) => e.kind === 'weaver')
+      .sort((a, b) => Math.abs(a.x - setup.x) - Math.abs(b.x - setup.x))[0];
+    return {
+      sentinel: sentinel
+        ? {
+            hp: sentinel.hp,
+            x: sentinel.x,
+            y: sentinel.y,
+            blink: sentinel.blink,
+            windup: sentinel.windup ?? 0,
+            attackCd: sentinel.attackCd ?? 0,
+            legs: sentinel.weaverLegs?.length ?? 0,
+            support: sentinel.weaverSupport ?? 0,
+            needleX: sentinel.needleX ?? null,
+            needleY: sentinel.needleY ?? null,
+          }
+        : null,
+      playerHp: ctx.player.hp,
+      playerHpBefore: setup.hpBefore,
+      enemies: ctx.enemies.length,
+    };
+  }, needleSetup);
   const pixels = await samplePixels();
-  console.log('result:', JSON.stringify(result));
+  console.log('needle-step:', JSON.stringify({ setup: needleSetup, telegraph: needleTelegraph, result }));
   console.log('pixels:', JSON.stringify(pixels));
-  if (!result.sentinel) throw new Error('Attack-lane Weaver missing after runtime wait');
+  if (!result.sentinel) throw new Error('Needle-test Weaver missing after runtime wait');
   if (result.sentinel.legs !== 8) throw new Error(`Expected 8 IK legs, got ${result.sentinel.legs}`);
-  if (result.newVines < 6) throw new Error(`Expected thread spit to add vines, got ${result.newVines}`);
+  if (needleTelegraph.windup <= 0 || needleTelegraph.blink > 0 || needleTelegraph.needleX === null) {
+    throw new Error(`Close-range Weaver did not naturally choose Needle Step: ${JSON.stringify(needleTelegraph)}`);
+  }
+  if (result.playerHp >= result.playerHpBefore) {
+    throw new Error(`Needle Step did not damage the player: before=${result.playerHpBefore} after=${result.playerHp}`);
+  }
+  if (result.sentinel.needleX !== null || result.sentinel.needleY !== null) {
+    throw new Error(`Needle Step target was not cleared after strike: ${JSON.stringify(result.sentinel)}`);
+  }
   if (pixels.error || pixels.nonBlackPct < 1 || pixels.avg < 2) {
     throw new Error(`Canvas appears blank: ${JSON.stringify(pixels)}`);
   }

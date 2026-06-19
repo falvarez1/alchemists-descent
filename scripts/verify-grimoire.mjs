@@ -68,29 +68,35 @@ state = await page.evaluate(() => JSON.parse(localStorage.getItem('noita-grimoir
 check('Second explicit examine records Lava lore', state.materials?.['11'] === true, JSON.stringify(state));
 
 await startConsoleTestRun(page, { seed: 1, settleMs: 100 });
-await page.evaluate(() => {
-  const ctx = window.__game.ctx;
-  const world = ctx.world;
-  const x = Math.floor(ctx.player.x + 16);
-  const y = Math.floor(ctx.player.y - 8);
-  for (let yy = y - 2; yy <= y + 2; yy++) {
-    for (let xx = x - 2; xx <= x + 2; xx++) {
-      if (!world.inBounds(xx, yy)) continue;
-      const i = world.idx(xx, yy);
-      world.clearCellAt(i);
+// Lava and water react to steam/stone within a few sim frames, but the interaction
+// observer only scans every ~15 frames — so a single one-shot placement can be gone
+// before any scan lands on it (a race the assertion used to lose intermittently).
+// Re-stamp the pair each tick until the observer witnesses it; in real play water
+// pours as a sustained stream, so a persisting contact is the faithful case.
+let interactionRecorded = false;
+for (let attempt = 0; attempt < 120 && !interactionRecorded; attempt++) {
+  interactionRecorded = await page.evaluate(() => {
+    const ctx = window.__game.ctx;
+    const world = ctx.world;
+    const x = Math.floor(ctx.player.x + 16);
+    const y = Math.floor(ctx.player.y - 8);
+    for (let yy = y - 2; yy <= y + 2; yy++) {
+      for (let xx = x - 2; xx <= x + 2; xx++) {
+        if (!world.inBounds(xx, yy)) continue;
+        world.clearCellAt(world.idx(xx, yy));
+      }
     }
-  }
-  const lava = world.idx(x, y);
-  const water = world.idx(x + 1, y);
-  world.types[lava] = 11;
-  world.colors[lava] = 0xff5f18;
-  world.types[water] = 2;
-  world.colors[water] = 0x367ed0;
-});
-await page.waitForFunction(() => {
-  const raw = localStorage.getItem('noita-grimoire');
-  return raw && JSON.parse(raw).interactions?.['lava-flashes-water'] === true;
-}, null, { timeout: 5000 });
+    const lava = world.idx(x, y);
+    const water = world.idx(x + 1, y);
+    world.types[lava] = 11;
+    world.colors[lava] = 0xff5f18;
+    world.types[water] = 2;
+    world.colors[water] = 0x367ed0;
+    const raw = localStorage.getItem('noita-grimoire');
+    return !!(raw && JSON.parse(raw).interactions?.['lava-flashes-water'] === true);
+  });
+  if (!interactionRecorded) await page.waitForTimeout(50);
+}
 state = await page.evaluate(() => JSON.parse(localStorage.getItem('noita-grimoire') ?? '{}'));
 check('Near-player lava and water contact records an interaction entry', state.interactions?.['lava-flashes-water'] === true, JSON.stringify(state));
 

@@ -41,16 +41,6 @@ export function buildWeaverArena(ctx: Ctx): void {
     fill(x0, y, x1, BOT, Cell.Stone);
     for (let x = x0; x <= x1; x++) cell(x, y - 1, growth);
   };
-  const thread = (x0: number, y0: number, x1: number, y1: number): void => {
-    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
-    for (let k = 0; k <= steps; k++) {
-      const t = k / steps;
-      const x = Math.round(x0 + (x1 - x0) * t + Math.sin(k * 0.8) * 1.4);
-      const y = Math.round(y0 + (y1 - y0) * t + Math.sin(t * Math.PI) * 4);
-      if (w.inBounds(x, y) && w.types[w.idx(x, y)] === Cell.Empty) cell(x, y, Cell.Vines);
-    }
-  };
-
   w.clear();
   ctx.rigidBodies.clear();
   ctx.vineStrands.clear();
@@ -96,11 +86,29 @@ export function buildWeaverArena(ctx: Ctx): void {
       thickness: x % 44 === 0 ? 3 : 2,
       color: packRGB(62, 138, 55),
     });
-    thread(x, 592, x + 10, FLOOR - 18);
   }
+  ctx.vineStrands.addWebLattice(350, FLOOR - 78, 88, {
+    radials: 12,
+    rings: 6,
+    thickness: 1,
+    color: packRGB(70, 172, 68),
+    jitter: 0.08,
+  });
   fill(310, FLOOR - 12, 386, FLOOR - 8, Cell.Fungus);
   fill(322, FLOOR - 16, 374, FLOOR - 13, Cell.Vines);
   for (let x = 260; x <= 430; x += 34) cell(x, FLOOR - 2, Cell.Glowshroom);
+  // Kickable wake props: hit or shove these into the alcove to wake the sleeper
+  // through real rigid-body impact noise instead of proximity.
+  ctx.rigidBodies.spawn({ kind: 'box', halfW: 4, halfH: 4 }, 170, FLOOR - 10, {
+    material: 'wood',
+    friction: 0.65,
+    restitution: 0.12,
+  });
+  ctx.rigidBodies.spawn({ kind: 'circle', radius: 5 }, 194, FLOOR - 10, {
+    material: 'stone',
+    friction: 0.8,
+    restitution: 0.08,
+  });
 
   // Gait lane: adjacent surfaces vary by <=4 cells so the body can traverse it
   // while the long legs visibly replant and search for growth.
@@ -114,7 +122,6 @@ export function buildWeaverArena(ctx: Ctx): void {
     [861, 920, FLOOR - 1, Cell.Moss],
   ];
   for (const [x0, x1, y, growth] of gait) shelf(x0, x1, y, growth);
-  for (let x = 500; x <= 890; x += 39) thread(x, FLOOR - 48 - (x % 3) * 5, x + 48, FLOOR - 8);
   fill(560, FLOOR, 586, BOT - 1, Cell.Empty);
   fill(560, FLOOR + 11, 586, BOT, Cell.Stone);
   fill(760, FLOOR - 5, 786, BOT - 1, Cell.Empty);
@@ -129,8 +136,6 @@ export function buildWeaverArena(ctx: Ctx): void {
   }
   fill(935, FLOOR - 10, 940, FLOOR - 1, Cell.Stone);
   fill(1122, FLOOR - 10, 1127, FLOOR - 1, Cell.Stone);
-  thread(942, FLOOR - 34, 1118, FLOOR - 18);
-  thread(964, FLOOR - 52, 1092, FLOOR - 10);
 
   // Attack lane and counterplay bench: open space for thread spit / needle step,
   // with material patches the player can ignite, douse, or electrify.
@@ -139,7 +144,14 @@ export function buildWeaverArena(ctx: Ctx): void {
   fill(1278, FLOOR - 5, 1320, FLOOR - 1, Cell.Water);
   fill(1360, FLOOR - 2, 1384, FLOOR - 1, Cell.Ice);
   for (let x = 1188; x <= 1370; x += 36) cell(x, FLOOR - 2, Cell.Glowshroom);
-  thread(1168, FLOOR - 42, 1345, FLOOR - 18);
+
+  // Support-loss strip: bare stone with web anchors just outside the pad. Lure
+  // the Weaver here after burning/cutting growth and it must recover footing
+  // instead of keeping its normal confident attack cadence.
+  fill(1408, FLOOR, 1468, BOT, Cell.Stone);
+  fill(1408, FLOOR - 1, 1468, FLOOR - 1, Cell.Empty);
+  fill(1396, FLOOR - 3, 1406, FLOOR - 1, Cell.Vines);
+  fill(1470, FLOOR - 3, 1480, FLOOR - 1, Cell.Vines);
 
   const spawnWeaver = (x: number, y: number): Enemy | null => {
     const before = ctx.enemies.length;
@@ -159,6 +171,16 @@ export function buildWeaverArena(ctx: Ctx): void {
     sleeper.sleeping = true;
     sleeper.alerted = false;
     sleeper.attackCd = 120;
+  }
+  const gaiter = spawnWeaver(512, FLOOR);
+  if (gaiter) {
+    gaiter.alerted = false;
+    gaiter.attackCd = 220;
+    gaiter.patrol = [
+      [512, FLOOR],
+      [900, FLOOR - 1],
+    ];
+    gaiter.patrolIdx = 1;
   }
   const feeder = spawnWeaver(1028, FLOOR - 3);
   if (feeder) {

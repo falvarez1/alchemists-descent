@@ -42,16 +42,56 @@ function readStorage(key: string): unknown {
   }
 }
 
-function writeStorage(record: GrimoireRecord): void {
+function writeStorage(record: GrimoireRecord): boolean {
   try {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(GRIMOIRE_KEY, JSON.stringify(record));
+    if (typeof localStorage === 'undefined') return false;
+    localStorage.setItem(GRIMOIRE_KEY, JSON.stringify(record));
+    return true;
   } catch {
     // Private mode or quota errors: the in-memory cache still records the session.
+    return false;
   }
 }
 
+function removeStorage(key: string): void {
+  try {
+    if (typeof localStorage !== 'undefined' && typeof localStorage.removeItem === 'function') {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Best-effort cleanup; a failure just leaves the legacy key in place.
+  }
+}
+
+function cloneRecord(record: GrimoireRecord): GrimoireRecord {
+  return {
+    version: 2,
+    recipes: { ...record.recipes },
+    materials: { ...record.materials },
+    interactions: { ...record.interactions },
+  };
+}
+
+/** True if `raw` carries the nested map shape (current v2 or a future schema) —
+ *  as opposed to a truly legacy FLAT recipes-only map. */
+function hasNestedMaps(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const r = raw as Record<string, unknown>;
+  return (
+    (!!r.recipes && typeof r.recipes === 'object') ||
+    (!!r.materials && typeof r.materials === 'object') ||
+    (!!r.interactions && typeof r.interactions === 'object')
+  );
+}
+
 function normalizePrimary(raw: unknown): GrimoireRecord {
-  if (raw && typeof raw === 'object' && (raw as { version?: unknown }).version === 2) {
+  // Any record carrying the nested {recipes,materials,interactions} shape — the
+  // current v2 OR a FUTURE version whose known fields we can still read — is
+  // preserved field-by-field. Flattening a versioned record would drop materials
+  // and interactions, and the eager re-write below would then overwrite the real
+  // save with an empty one (permanent loss). Only a truly legacy FLAT map (no
+  // nested objects) is read as the old recipes-only format.
+  if (hasNestedMaps(raw)) {
     const source = raw as Partial<GrimoireRecord>;
     return {
       version: 2,
@@ -60,30 +100,39 @@ function normalizePrimary(raw: unknown): GrimoireRecord {
       interactions: boolMap(source.interactions),
     };
   }
-  const legacyRecipes = boolMap(raw);
-  return { ...emptyRecord(), recipes: legacyRecipes };
+  return { ...emptyRecord(), recipes: boolMap(raw) };
 }
 
 export function loadGrimoireRecord(): GrimoireRecord {
-  if (cache) return {
-    version: 2,
-    recipes: { ...cache.recipes },
-    materials: { ...cache.materials },
-    interactions: { ...cache.interactions },
-  };
+  if (cache) return cloneRecord(cache);
 
   const primaryRaw = readStorage(GRIMOIRE_KEY);
   const record = normalizePrimary(primaryRaw);
+  // A record from a newer schema (version > 2) is read for what we can, but never
+  // re-persisted here — writing our v2 projection back would downgrade and corrupt
+  // it for the newer code that owns it.
+  const primaryVersion =
+    primaryRaw && typeof primaryRaw === 'object' ? (primaryRaw as { version?: unknown }).version : undefined;
+  const isFutureFormat = typeof primaryVersion === 'number' && primaryVersion > 2;
+  // Persist only when we actually transformed something: a flat legacy map we just
+  // upgraded to v2, or legacy lore we merged in. A fresh / empty / already-v2
+  // record is left untouched (no eager write on first run).
+  const legacyUpgrade = primaryRaw !== null && !hasNestedMaps(primaryRaw);
+  let mergedLegacyLore = false;
   const legacyLore = boolMap(readStorage(LEGACY_LORE_KEY));
-  let changed = primaryRaw === null || !(primaryRaw && typeof primaryRaw === 'object' && (primaryRaw as { version?: unknown }).version === 2);
   for (const [id, known] of Object.entries(legacyLore)) {
     if (!known || record.materials[id]) continue;
     record.materials[id] = true;
-    changed = true;
+    mergedLegacyLore = true;
   }
   cache = record;
-  if (changed) writeStorage(record);
-  return loadGrimoireRecord();
+  if (!isFutureFormat && (legacyUpgrade || mergedLegacyLore)) {
+    const persisted = writeStorage(record);
+    // True one-time migration: once legacy lore is folded into the unified record
+    // AND persisted, drop the legacy key so it can't be re-merged on every load.
+    if (persisted && mergedLegacyLore) removeStorage(LEGACY_LORE_KEY);
+  }
+  return cloneRecord(record);
 }
 
 function update(mutator: (record: GrimoireRecord) => boolean): boolean {
@@ -139,4 +188,16 @@ export function recordInteractionDiscovery(ctx: Ctx, id: string, title: string):
 
 export function resetGrimoireCacheForTests(): void {
   cache = null;
+}
+
+// Cross-tab safety: if another document rewrites or clears our keys, drop the
+// in-memory cache so the next read re-syncs from localStorage instead of
+// overwriting their change with our stale snapshot. (Same-document writes go
+// through update()/this module, so they keep the cache coherent themselves.)
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === GRIMOIRE_KEY || event.key === LEGACY_LORE_KEY || event.key === null) {
+      cache = null;
+    }
+  });
 }

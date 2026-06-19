@@ -65,6 +65,26 @@ function diskOffsets(radius: number): readonly DiskOffset[] {
   return cached;
 }
 
+/** A live ice-lance pierces a given enemy at most once. Without this the lance
+ *  can re-enter an enemy it has already frozen (once the e.flash gate lapses)
+ *  and read its OWN inflicted freeze to self-arm a shatter crit. */
+const LANCE_HITS = new WeakMap<Projectile, Set<Ctx['enemies'][number]>>();
+
+/** Frost Charge lays its terrain rime ONCE per projectile — a bouncing or
+ *  lingering bolt must not re-ice a fresh disc on every wall contact. */
+const FROST_TERRAIN_DONE = new WeakSet<Projectile>();
+
+/** True if any 4-neighbour of (x,y) is solid — the rime test shared by
+ *  freezeSplash and smallFrostSplash. */
+function hasSolidNeighbor(world: World, x: number, y: number): boolean {
+  for (let k = 0; k < 4; k++) {
+    const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
+    const ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+    if (world.inBounds(nx, ny) && isSolid(world.types[world.idx(nx, ny)])) return true;
+  }
+  return false;
+}
+
 /** Frost shard impact: freeze standing water, rime exposed surfaces — never inside the player. */
 function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
   const world = ctx.world;
@@ -85,13 +105,7 @@ function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
         world.replaceCellAt(ci, Cell.Ice, iceColor());
       } else if (t === Cell.Empty && Math.random() < 0.35) {
         // thin rime on solid-adjacent air cells
-        let nearSolid = false;
-        for (let k = 0; k < 4 && !nearSolid; k++) {
-          const nx = X + (k === 0 ? 1 : k === 1 ? -1 : 0);
-          const ny = Y + (k === 2 ? 1 : k === 3 ? -1 : 0);
-          if (world.inBounds(nx, ny) && isSolid(world.types[world.idx(nx, ny)])) nearSolid = true;
-        }
-        if (nearSolid) {
+        if (hasSolidNeighbor(world, X, Y)) {
           world.replaceCellAt(ci, Cell.Ice, iceColor());
         }
       }
@@ -271,7 +285,10 @@ function frostChargeFeedback(ctx: Ctx, x: number, y: number): void {
 function applyFrostChargeToEnemy(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]): void {
   const mods = PROJECTILE_MODS.get(p);
   if (mods?.frostCharge !== true) return;
-  enemy.status.frozen = Math.max(enemy.status.frozen ?? 0, 120);
+  // Always deepen the chill: top up by 120 (to a 240-frame cap) so a target that
+  // is already briefly frozen is REFRESHED rather than left untouched. On an
+  // unfrozen enemy this still lands exactly 120.
+  enemy.status.frozen = Math.min(240, (enemy.status.frozen ?? 0) + 120);
   frostChargeFeedback(ctx, enemy.x, enemy.y);
 }
 
@@ -296,13 +313,7 @@ function smallFrostSplash(ctx: Ctx, cx: number, cy: number): void {
     if (!world.inBounds(x, y) || pointOverlapsPlayer(ctx, x, y)) continue;
     const idx = world.idx(x, y);
     if (world.types[idx] !== Cell.Empty) continue;
-    let nearSolid = false;
-    for (let k = 0; k < 4 && !nearSolid; k++) {
-      const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
-      const ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
-      if (world.inBounds(nx, ny) && isSolid(world.types[world.idx(nx, ny)])) nearSolid = true;
-    }
-    if (nearSolid) {
+    if (hasSolidNeighbor(world, x, y)) {
       world.replaceCellAt(idx, Cell.Ice, iceColor());
       frozen++;
     }
@@ -313,6 +324,8 @@ function smallFrostSplash(ctx: Ctx, cx: number, cy: number): void {
 function applyFrostChargeToTerrain(ctx: Ctx, p: Projectile, gx: number, gy: number): void {
   const mods = PROJECTILE_MODS.get(p);
   if (mods?.frostCharge !== true) return;
+  if (FROST_TERRAIN_DONE.has(p)) return; // one rime splash per projectile (bounce/linger safe)
+  FROST_TERRAIN_DONE.add(p);
   smallFrostSplash(ctx, gx, gy);
 }
 
@@ -770,10 +783,16 @@ export class Projectiles implements ProjectilesApi {
         if (!p.hostile && p.type === 'icelance') {
           for (const e of this.enemyIndex.query(p.x, p.y + 5, 12, this.enemyScratch)) {
             if (!this.enemyIndex.has(e)) continue;
-            if (e.flash > 2) continue; // already struck by this lance pass
+            // Pierce each enemy at most once. The e.flash gate alone let the lance
+            // re-enter a target after ~4 ticks and read its OWN inflicted freeze to
+            // self-arm the shatter crit; the per-lance hit set closes that.
+            const lanceHits = LANCE_HITS.get(p);
+            if (e.flash > 2 || lanceHits?.has(e)) continue;
             const dx = e.x - p.x,
               dy = e.y - 5 - p.y;
             if (dx * dx + dy * dy < 130) {
+              if (lanceHits) lanceHits.add(e);
+              else LANCE_HITS.set(p, new Set([e]));
               const wetCrit = wetCritArmed(ctx, p, e);
               const shatterCrit = shatterCritArmed(ctx, p, e);
               const critMul = conditionalCritMul(wetCrit, shatterCrit);

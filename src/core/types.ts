@@ -157,6 +157,13 @@ export interface PlayerState {
   climbLean: number;
   /** Robe hem cloth spring: lagged horizontal offset (same idea as the hat). */
   robe: { ox: number; vx: number };
+  /**
+   * Blood soak (frames left): stepping through fresh Cell.Blood stains the
+   * boots + robe hem. Refreshed to full every frame he's still in the gore,
+   * then counts down (~1 min) once he leaves; the sprite reddens the lower
+   * body in proportion. Purely cosmetic — cleared on respawn.
+   */
+  bloodStain: number;
 }
 
 export const PLAYER_HALF_W = 4;
@@ -220,7 +227,17 @@ export interface WeaverLegState {
   tx: number;
   ty: number;
   lift: number;
-  phase: number;
+  planted?: boolean;
+  strain?: number;
+  surface?: 'floor' | 'leftWall' | 'rightWall' | 'ceiling' | 'failed';
+  failT?: number;
+  smoothTx?: number;
+  smoothTy?: number;
+  stepCooldown?: number;
+  step?: number;
+  fromX?: number;
+  fromY?: number;
+  plantAge?: number;
 }
 
 export interface Enemy {
@@ -294,8 +311,35 @@ export interface Enemy {
   weaverLegs?: WeaverLegState[];
   /** Weaver: growth-footing confidence sampled by AI and read by the sprite. */
   weaverSupport?: number;
+  /** Weaver: load-bearing terrain/strand coverage under reachable leg regions. */
+  weaverPhysicalSupport?: number;
+  /** Weaver: AI-side count of reachable support regions; debug/probe signal. */
+  weaverAnchorCount?: number;
+  /** Weaver: renderer-reported fraction of IK legs currently planted on footholds. */
+  weaverVisualSupport?: number;
+  /** Weaver: renderer-reported planted IK leg count. */
+  weaverVisualPlanted?: number;
+  /** Weaver: frames spent in poor foothold support; drives awkward sag/tilt. */
+  weaverFallT?: number;
+  /** Weaver: smoothed body lean from asymmetric footholds (-left, +right). */
+  weaverTilt?: number;
+  /** Weaver: smoothed render-only body lift; high stance unless crouching/reaching. */
+  weaverBodyLift?: number;
+  /** Weaver: smoothed rear-up reach (0..1) when an alerted target hovers overhead —
+   *  the body rises on its back legs and a foreleg paws upward toward the player. */
+  weaverReach?: number;
+  /** Weaver: x of the weighted centre of currently-load-bearing footing (AI side).
+   *  Drives a decisive recentre back over solid ground when footing is cut away. */
+  weaverSupportCenterX?: number;
+  /** Weaver: short render signal while lowering to feed on prey. */
+  weaverFeedT?: number;
   /** Weaver: frames of irritated pursuit after being disturbed awake. */
   cranky?: number;
+  /** Weaver: short visual pulse after a web-sense disturbance or support stumble. */
+  webPulse?: number;
+  /** Weaver: locked Needle Step target chosen at windup start. */
+  needleX?: number;
+  needleY?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
@@ -1210,6 +1254,10 @@ export interface VineStrandView {
   readonly color: number;
   /** Render width in cells (1 = a thin strand; >1 = a thick rope/vine). */
   readonly thickness?: number;
+  /** Weaver web strand: live Verlet geometry, not settled grid vines. */
+  readonly web?: boolean;
+  /** Launched Weaver spit: no pinned endpoints, flies and falls under Verlet. */
+  readonly freeWeb?: boolean;
 }
 
 export interface VineStrandsApi {
@@ -1220,6 +1268,43 @@ export interface VineStrandsApi {
   /** Add a PERSISTENT strand pinned at (x,y) hanging `length` cells down — a rope
    *  or thick vine that sways, collides, and reacts to the player (never settles). */
   addHanging(x: number, y: number, length: number, opts?: { thickness?: number; color?: number }): void;
+  /** Add a dynamic Weaver web between two points. The endpoints pin while the
+   *  middle solves with Verlet, so the strand sags, sways, and reacts to pushes
+   *  instead of becoming a static diagonal cell line. */
+  addWebLine(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    opts?: { thickness?: number; color?: number; slack?: number; lifetime?: number; kickX?: number; kickY?: number },
+  ): void;
+  /** Add a launched Weaver web strand. It has a bounded length and initial
+   *  velocity, but no pinned endpoint; if it does not hit terrain, gravity pulls
+   *  the whole strand down. */
+  addWebShot(
+    x: number,
+    y: number,
+    dirX: number,
+    dirY: number,
+    opts?: {
+      length?: number;
+      speed?: number;
+      thickness?: number;
+      color?: number;
+      slack?: number;
+      lifetime?: number;
+      ashOnExpire?: boolean;
+    },
+  ): void;
+  /** Add a pinned radial/spiral Weaver-den web. Built from distance constraints
+   *  and pinned outer anchors, so the web flexes under impulse instead of being
+   *  painted as static cells. */
+  addWebLattice(
+    cx: number,
+    cy: number,
+    radius: number,
+    opts?: { radials?: number; rings?: number; color?: number; thickness?: number; jitter?: number },
+  ): void;
   update(ctx: Ctx): void;
   clear(): void;
   applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void;

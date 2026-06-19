@@ -1,6 +1,6 @@
 import type { CardId } from '@/core/types';
 import { CARD_DEFS, MULTICAST_SIZE, PROJECTILE_MOD_HOST_CARDS } from './cards';
-import { compileWand, type CastGroup } from './compiler';
+import { compileWand, MAX_ACTIONS_PER_GROUP, type CastGroup } from './compiler';
 
 export interface WandSentenceLine {
   label: string;
@@ -78,8 +78,6 @@ const SPREAD_EFFECT_CARDS = new Set<CardId>([
   'wisp',
   'meteor',
 ]);
-
-const MAX_ACTIONS_PER_GROUP = 6;
 
 function modifierHasEffect(modifier: CardId, host: CardId): boolean {
   if (modifier === 'speed') return SPEED_EFFECT_CARDS.has(host);
@@ -240,6 +238,13 @@ function analyzeMulticastDebt(
   if (pendingSlots.length > 0) addMulticastWarning(cards, warnings, slotWarnings, pendingSlots, pendingOwed, 0);
 }
 
+// This re-walks the raw card list with the SAME grouping rules as compiler.ts
+// pass-1/pass-2 (multicast debt, the shared MAX_ACTIONS_PER_GROUP cap, trigger
+// host = preceding projectile, payload = the next group). It can't read them off
+// the compiled CastGroup[] because compileWand folds each trigger host and its
+// payload into ONE group (slots merged, host action.triggered set), discarding
+// the slot-level boundary the bench badges need. Keep this walk in lockstep with
+// compiler.ts — the shared cap constant removes the easiest drift.
 function analyzeTriggerLinks(
   cards: (CardId | null)[],
   slotLinks: Partial<Record<number, WandSlotLink[]>>,

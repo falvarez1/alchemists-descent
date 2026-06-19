@@ -92,6 +92,11 @@ const POPULATION_ATTEMPTS_PER_PASS = 36;
 const ROOST_ATTEMPTS_PER_PASS = 160;
 const VIRTUAL_PICKUP_KINDS = new Set<PickupKind>(['goldpile', 'heart', 'tome', 'chest', 'potion', 'key']);
 
+interface TransitionCurtainCopy {
+  title?: string;
+  detail?: string;
+}
+
 function clearFrameStops(ctx: Ctx): void {
   const fx = (ctx as { fx?: Ctx['fx'] }).fx;
   if (!fx) return;
@@ -403,8 +408,12 @@ export class Levels implements LevelsApi {
 
   constructor(private ctx: Ctx) {}
 
-  private showTransitionCurtain(ctx: Ctx): void {
-    ctx.events.emit('levelCurtain', { visible: true });
+  private showTransitionCurtain(ctx: Ctx, copy: TransitionCurtainCopy = {}): void {
+    ctx.events.emit('levelCurtain', {
+      visible: true,
+      title: copy.title ?? 'Opening the descent',
+      detail: copy.detail ?? 'Drawing the cave mouth open.',
+    });
   }
 
   private finishTransitionWithCurtain(ctx: Ctx): void {
@@ -451,6 +460,10 @@ export class Levels implements LevelsApi {
       ctx.state.playtestSource = 'test';
       this.applyLoadoutPreset(ctx, config.loadout ?? 'advanced');
       if (config.kit) this.applyTestKit(ctx, config.kit);
+      this.showTransitionCurtain(ctx, {
+        title: 'Opening the descent',
+        detail: 'Materializing a disposable test cavern.',
+      });
       const runtime = this.createVirtualTestRuntime(ctx, seed);
       this.enterAdHocRuntime(ctx, runtime, 'EXPLORE THE CHUNKED WORLD PROTOTYPE');
       ctx.events.emit('toast', { text: 'TEST RUN: CHUNKED VIRTUAL WORLD' });
@@ -716,6 +729,11 @@ export class Levels implements LevelsApi {
    * no generation, hand-placed enemies kept, no exit (the level IS the game).
    */
   playCurrentWorld(ctx: Ctx): void {
+    this._transitioning = true;
+    this.showTransitionCurtain(ctx, {
+      title: 'Opening playtest',
+      detail: 'Seating the authored world.',
+    });
     if (this.expeditionSeed === null) this.expeditionSeed = ctx.state.worldSeed >>> 0;
     if (this.currentId !== 'custom') this.preCustomCurrentId = this.currentId;
     const def: LevelDef = {
@@ -754,6 +772,7 @@ export class Levels implements LevelsApi {
     }
     ctx.events.emit('levelChanged', { depth: 1, name: def.name });
     ctx.events.emit('objectiveChanged', { text: 'YOUR LEVEL — YOUR RULES' });
+    this.finishTransitionWithCurtain(ctx);
   }
 
   playVirtualWindow(ctx: Ctx, def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void {
@@ -763,6 +782,10 @@ export class Levels implements LevelsApi {
     this.expeditionSeed = ctx.state.worldSeed;
     ctx.state.playtestSource = 'test';
     this.applyLoadoutPreset(ctx, 'advanced');
+    this.showTransitionCurtain(ctx, {
+      title: 'Opening playtest',
+      detail: 'Materializing the tuned virtual window.',
+    });
     const runtime = this.createVirtualWindowRuntime(ctx, def, center, previewRadius);
     this.enterAdHocRuntime(ctx, runtime, 'EXPLORE THE TUNED CHUNKED WORLD');
     ctx.events.emit('toast', { text: 'TEST RUN: BUILDER VIRTUAL WORLD' });
@@ -1474,7 +1497,10 @@ export class Levels implements LevelsApi {
 
   private enterAdHocRuntime(ctx: Ctx, runtime: LevelRuntime, objective: string): void {
     this._transitioning = true;
-    this.showTransitionCurtain(ctx);
+    this.showTransitionCurtain(ctx, {
+      title: 'Opening playtest',
+      detail: `Preparing ${runtime.def.name}.`,
+    });
 
     this.levels.set(runtime.def.id, runtime);
     this.currentId = runtime.def.id;
@@ -1819,7 +1845,10 @@ export class Levels implements LevelsApi {
     if (!def) return;
     this._transitioning = true;
 
-    this.showTransitionCurtain(ctx);
+    this.showTransitionCurtain(ctx, {
+      title: 'Opening the descent',
+      detail: `Preparing ${def.name}.`,
+    });
 
     // This level is about to become CURRENT and mutate — its cached blob dies.
     this.blobCache.delete(id);
@@ -2253,6 +2282,13 @@ export class Levels implements LevelsApi {
 
     // Hanging curtains: find nearby ceiling lips and pull short, burnable
     // vine strands down into the reachable chamber.
+    ctx.vineStrands.addWebLattice(x, y - 48 - rng.int(18), 42 + rng.int(24), {
+      radials: 8 + rng.int(5),
+      rings: 4 + rng.int(3),
+      thickness: 1,
+      color: packRGB(66 + rng.int(24), 148 + rng.int(42), 58 + rng.int(24)),
+      jitter: 0.06 + rng.next() * 0.08,
+    });
     for (let n = 0; n < 10; n++) {
       const ax = Math.floor(x - 46 + rng.int(93));
       let anchorY = -1;
@@ -2265,10 +2301,18 @@ export class Levels implements LevelsApi {
       }
       if (anchorY < 0) continue;
       const len = 7 + rng.int(15);
+      let misses = 0;
       for (let k = 0; k < len; k++) {
         const px = ax + Math.round(Math.sin((k + n) * 0.8) * 1.4);
         const py = anchorY + k;
-        if (!paint(px, py, Cell.Vines) && k > 2) break;
+        // Drape OVER pre-existing growth instead of truncating at it (fungal
+        // ceilings already carry moss/fungus); only bail once the strand runs
+        // into a sustained solid mass.
+        if (!paint(px, py, Cell.Vines)) {
+          if (k > 2 && ++misses > 3) break;
+          continue;
+        }
+        misses = 0;
         if (rng.next() < 0.18) paint(px + (rng.next() < 0.5 ? -1 : 1), py, Cell.Vines);
       }
     }

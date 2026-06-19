@@ -23,7 +23,7 @@ export const POINT_ROTATE_KINDS: ReadonlySet<EditorObjectKind> = new Set([
   'pickup',
 ] as EditorObjectKind[]);
 
-export const PATROL_KINDS = new Set(['slime', 'acidslime', 'golem', 'bomber']);
+export const PATROL_KINDS = new Set(['slime', 'acidslime', 'golem', 'bomber', 'weaver']);
 export const EMITTER_DIR: Record<number, string> = { 0: 'down', 90: 'left', 180: 'up', 270: 'right' };
 
 export const ENEMY_KINDS: EnemyKind[] = [
@@ -37,6 +37,7 @@ export const ENEMY_KINDS: EnemyKind[] = [
   'spitter',
   'bomber',
   'eggs',
+  'weaver',
   'colossus',
   'leviathan',
 ];

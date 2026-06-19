@@ -36,7 +36,9 @@ export interface CastGroup {
 }
 
 const MAX_DMG_MUL = 4;
-const MAX_ACTIONS_PER_GROUP = 6;
+/** Max projectile actions per cast group (excess spills onward). Exported so the
+ *  bench's sentence view shares the exact cap instead of re-declaring it. */
+export const MAX_ACTIONS_PER_GROUP = 6;
 const WATER_TRAIL_BUDGET = 18;
 const OIL_TRAIL_BUDGET = 14;
 

@@ -119,6 +119,33 @@ body impacts and nearby structure strikes:
 - if either lands near a sleeping Weaver, it wakes cranky, targets the player,
   and gets a short pursuit bump instead of returning to prey behavior.
 
+## Expert Polish Pass
+
+The follow-up pass treats the Weaver as an encounter system, not only an enemy
+sprite:
+
+- Gait: legs use planted foot targets with alternating tetrapod groups. Feet
+  stay anchored until a swing phase or overreach starts a real step, then snap
+  back into a planted state with a small contact flash.
+- Attack readability: `Needle Step` locks its target when the windup begins.
+  The raised foreleg, particle flecks, and damage all reference that committed
+  point, so sidestepping the tell is possible.
+- Footing failure: when support drops too low, the Weaver prioritizes finding
+  nearby growth anchors or spinning short foot-trail vines. It defers new
+  attacks while unstable and shows a web pulse/recoil stumble.
+- Lair disturbance: stomps, structure hits, and rigid-body impacts wake the
+  sleeper cranky, tug nearby hanging vines, scatter cave life, shake the screen,
+  and write a fresh sense-thread toward the noise source.
+- Playground coverage: the `weaver-test` arena includes a sleeping alcove with
+  kickable props, an uneven gait lane with a patrolling Weaver, a feeding pen,
+  a natural attack lane, and a bare-stone support-loss strip.
+- Authoring coverage: Builder enemy placement and patrol tooling include
+  `weaver`, and the gallery previews sleeping, gait, Thread Spit, Needle Step,
+  and footing-loss states.
+- Runtime verification: the browser probe validates natural Thread Spit and
+  Needle Step selection, IK leg count, feeding, stomp/strike/body-impact wakeup,
+  support-loss recovery, and bounded local vine growth.
+
 ## Future Extensions
 
 - Dedicated `Weaver Lair` prefab through the prefab placement pipeline, with a

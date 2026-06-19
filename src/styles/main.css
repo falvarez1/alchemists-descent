@@ -407,10 +407,14 @@ body.play-active.runtime-inspector-open #viewport-container {
 }
 .run-launcher.visible { display: flex; animation: overlay-in 0.12s ease; }
 .run-launcher-panel {
-    width: min(980px, 96vw); max-height: min(720px, 92vh); display: grid;
+    position: relative; width: min(980px, 96vw); max-height: min(720px, 92vh); display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden;
     border: 1px solid #263442; border-radius: 7px;
     background: rgba(9, 13, 19, 0.98); box-shadow: 0 24px 70px rgba(0,0,0,0.66);
+}
+.run-launcher.launching .run-launcher-panel {
+    border-color: rgba(125, 211, 252, 0.54);
+    box-shadow: 0 24px 70px rgba(0,0,0,0.66), 0 0 30px rgba(56, 189, 248, 0.16);
 }
 .run-launcher-head, .run-launcher-foot {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -428,7 +432,9 @@ body.play-active.runtime-inspector-open #viewport-container {
 .run-launcher-body {
     min-height: 0; display: grid; grid-template-columns: minmax(190px, 0.62fr) minmax(420px, 1.38fr);
     gap: 14px; padding: 14px; overflow: auto;
+    transition: opacity 0.12s ease, filter 0.12s ease;
 }
+.run-launcher.launching .run-launcher-body { opacity: 0.48; filter: saturate(0.72); }
 .run-launcher-column { display: grid; gap: 8px; align-content: start; }
 .run-launcher-choice {
     min-height: 72px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 5px;
@@ -481,10 +487,66 @@ body.play-active.runtime-inspector-open #viewport-container {
     cursor: pointer;
 }
 .run-launcher-seed button:hover, .run-launcher-start:hover:not(:disabled) { border-color: #7dd3fc; color: #f8fafc; }
-.run-launcher-start { width: 108px; background: #142018; border-color: #2f8f54; color: #b9f6cf; }
+.run-launcher-start { width: 124px; background: #142018; border-color: #2f8f54; color: #b9f6cf; }
 .run-launcher-start:disabled { opacity: 0.45; cursor: not-allowed; }
+.run-launcher.launching .run-launcher-start:disabled {
+    opacity: 1; border-color: #6ee7b7; color: #d1fae5; background: #13251c;
+}
 .run-launcher-status {
     min-width: 0; color: #9fb6cc; font: 800 10px/1.45 var(--mono); overflow-wrap: anywhere;
+}
+.run-launcher-loading {
+    position: absolute; left: 14px; right: 14px; bottom: 58px; z-index: 3;
+    display: grid; grid-template-columns: 46px minmax(0, 1fr); align-items: center; gap: 12px;
+    padding: 12px; border: 1px solid rgba(125, 211, 252, 0.42); border-radius: 6px;
+    background: linear-gradient(135deg, rgba(8, 13, 19, 0.98), rgba(10, 24, 22, 0.98));
+    box-shadow: 0 12px 38px rgba(0,0,0,0.5), inset 0 0 34px rgba(56, 189, 248, 0.08);
+    opacity: 0; pointer-events: none; transform: translateY(8px);
+    transition: transform 0.12s ease;
+}
+.run-launcher.launching .run-launcher-loading { opacity: 1; transform: translateY(0); }
+.run-launcher-loading-sigil {
+    position: relative; width: 42px; height: 42px; border: 1px solid rgba(125, 211, 252, 0.36);
+    border-radius: 50%; background: radial-gradient(circle, rgba(125, 211, 252, 0.18) 0 18%, rgba(11,17,25,0.92) 19% 100%);
+    box-shadow: inset 0 0 18px rgba(45, 212, 191, 0.16), 0 0 18px rgba(56, 189, 248, 0.18);
+}
+.run-launcher-loading-sigil span {
+    position: absolute; inset: 8px; border: 2px solid transparent; border-top-color: #7dd3fc; border-right-color: rgba(110, 231, 183, 0.78);
+    border-radius: 50%; animation: run-launcher-spin 0.82s linear infinite;
+}
+.run-launcher-loading-sigil span:nth-child(2) {
+    inset: 13px; border-top-color: #facc15; border-right-color: rgba(125, 211, 252, 0.54);
+    animation-duration: 1.25s; animation-direction: reverse;
+}
+.run-launcher-loading-sigil span:nth-child(3) {
+    inset: 18px; border-top-color: #f8fafc; border-right-color: transparent;
+    animation-duration: 0.58s;
+}
+.run-launcher-loading-copy {
+    min-width: 0; display: grid; gap: 4px;
+}
+.run-launcher-loading-copy strong {
+    color: #f8fafc; font: 900 13px/1.1 var(--mono); letter-spacing: 1.6px; text-transform: uppercase;
+}
+.run-launcher-loading-copy span {
+    min-width: 0; color: #9fb6cc; font: 800 10px/1.35 var(--mono); overflow-wrap: anywhere;
+}
+.run-launcher-loading-bar {
+    grid-column: 1 / -1; height: 5px; overflow: hidden; border-radius: 999px;
+    background: rgba(31, 42, 54, 0.96);
+}
+.run-launcher-loading-bar i {
+    display: block; width: 42%; height: 100%; border-radius: inherit;
+    background: linear-gradient(90deg, rgba(125, 211, 252, 0.1), #7dd3fc 45%, #6ee7b7);
+    box-shadow: 0 0 14px rgba(125, 211, 252, 0.54);
+    animation: run-launcher-load 0.92s ease-in-out infinite;
+}
+@keyframes run-launcher-spin {
+    to { transform: rotate(360deg); }
+}
+@keyframes run-launcher-load {
+    0% { transform: translateX(-110%); }
+    100% { transform: translateX(250%); }
 }
 .run-launcher-hidden { display: none !important; }
 .run-launcher-normal-summary {
@@ -587,6 +649,16 @@ body.play-active.runtime-inspector-open #viewport-container {
     .run-launcher-flask-row { grid-template-columns: 16px minmax(0, 1fr) 44px; }
     .run-launcher-flask-row input[type="range"] { grid-column: 2 / -1; }
     .run-launcher-choice { min-height: 58px; }
+    .run-launcher-loading { grid-template-columns: 38px minmax(0, 1fr); left: 10px; right: 10px; bottom: 58px; }
+    .run-launcher-loading-sigil { width: 36px; height: 36px; }
+    .run-launcher-loading-copy strong { font-size: 11px; letter-spacing: 1.1px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .run-launcher-loading-sigil span,
+    .run-launcher-loading-bar i {
+        animation: none;
+    }
+    .run-launcher-loading-bar i { transform: translateX(70%); }
 }
 
 #wave-banner {
@@ -681,10 +753,23 @@ body.play-active.runtime-inspector-open #viewport-container {
 
 /* Streamed level transitions: fades to black over the well drop, lifts on arrival */
 #level-curtain {
-    position: absolute; inset: 0; background: #050308; opacity: 0;
-    pointer-events: none; transition: opacity 0.35s ease; z-index: 6;
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 18px; box-sizing: border-box; background: rgba(5, 3, 8, 0.94); opacity: 0;
+    pointer-events: none; transition: opacity 0.35s ease; z-index: 6; font-family: var(--mono);
 }
 #level-curtain.visible { opacity: 1; }
+.level-curtain-panel {
+    width: min(480px, 100%); display: grid; grid-template-columns: 46px minmax(0, 1fr);
+    align-items: center; gap: 12px; padding: 12px; border: 1px solid rgba(125, 211, 252, 0.48);
+    border-radius: 6px; background: linear-gradient(135deg, rgba(8, 13, 19, 0.98), rgba(10, 24, 22, 0.98));
+    box-shadow: 0 18px 52px rgba(0,0,0,0.62), inset 0 0 34px rgba(56, 189, 248, 0.1);
+    transform: translateY(8px); transition: transform 0.12s ease;
+}
+#level-curtain.visible .level-curtain-panel { transform: translateY(0); }
+.level-curtain-panel .run-launcher-loading-bar { margin-top: 2px; }
+@media (max-width: 720px) {
+    .level-curtain-panel { grid-template-columns: 38px minmax(0, 1fr); }
+}
 
 /* ---------- Minimap overlay (M, play mode) ---------- */
 #minimap-overlay {
