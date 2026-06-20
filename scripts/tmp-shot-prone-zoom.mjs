@@ -2,7 +2,7 @@
 // ceiling (cheek-flat CRAMPED variant), and a dead-end scrunch. Throwaway.
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
-import { startConsoleTestRun } from './run-helpers.mjs';
+import { getGameViewSize, startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -11,6 +11,7 @@ const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1500);
+const viewSize = await getGameViewSize(page);
 await startConsoleTestRun(page, { settleMs: 400 });
 
 const setup = (slab, endWall) => page.evaluate(({ slab, endWall }) => {
@@ -52,20 +53,20 @@ const shot = async (name) => {
     ctx.particles.clear();
   });
   await page.waitForTimeout(150);
-  const clip = await page.evaluate(() => {
+  const clip = await page.evaluate((view) => {
     const c = document.querySelector('#canvas-holder > canvas');
     const r = c.getBoundingClientRect();
     const ctx = window.__game.ctx;
     const z = ctx.camera.zoom;
-    const ux = (((ctx.player.x - ctx.camera.renderX) / 525 - 0.5) * z + 0.5);
-    const uy = (((ctx.player.y - 5 - ctx.camera.renderY) / 357 - 0.5) * z + 0.5);
+    const ux = (((ctx.player.x - ctx.camera.renderX) / view.w - 0.5) * z + 0.5);
+    const uy = (((ctx.player.y - 5 - ctx.camera.renderY) / view.h - 0.5) * z + 0.5);
     return {
       x: Math.max(0, r.left + ux * r.width - 180),
       y: Math.max(0, r.top + uy * r.height - 110),
       width: 360,
       height: 220,
     };
-  });
+  }, viewSize);
   await page.screenshot({ path: `verify-out/pronezoom-${name}.png`, clip });
   await page.evaluate(() => { window.__game.ctx.state.paused = false; });
 };

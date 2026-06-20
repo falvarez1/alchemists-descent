@@ -1075,6 +1075,39 @@ export class Enemies implements EnemyControlApi {
     return true;
   }
 
+  /** A surface a spider leg can grip: load-bearing terrain OR soft growth (vines,
+   *  moss — it hooks its claws into those too). Matches the renderer's foothold
+   *  test so the legs visibly land where the climb AI believes there's purchase. */
+  private climbGrips(x: number, y: number): boolean {
+    const w = this.ctx.world;
+    if (!w.inBounds(x, y)) return false;
+    const t = w.types[w.idx(x, y)];
+    return blocksEntity(t) || isSoftGrowth(t);
+  }
+
+  /** Height (in cells) of a climbable wall standing just ahead in `dir`, measured
+   *  up from the Weaver's foot — 0 if the way is open or only a short step-over.
+   *  Requires grippable terrain beside the foot (so a high ledge with clear air at
+   *  foot level doesn't read as a wall), then counts the unbroken rise above it.
+   *  A giant spider scales anything that out-tops the 6-cell step it can stride. */
+  private weaverWallAhead(e: Enemy, def: EnemyDef, dir: number): number {
+    const w = this.ctx.world;
+    const X = Math.floor(e.x) + dir * (def.halfW + 1);
+    const foot = Math.floor(e.y);
+    let footed = false;
+    for (let Y = foot - 1; Y <= foot + 2; Y++) {
+      if (this.climbGrips(X, Y)) { footed = true; break; }
+    }
+    if (!footed) return 0;
+    let h = 0;
+    for (let Y = foot - 1; Y >= foot - 90; Y--) {
+      if (!w.inBounds(X, Y)) break;
+      if (this.climbGrips(X, Y)) h = foot - Y;
+      else break; // first clear cell up the face is the top of this wall
+    }
+    return h;
+  }
+
   private enemyEnvironmentDamage(e: Enemy, index?: number): void {
     const ctx = this.ctx;
     const def = this.defs[e.kind];
@@ -1484,7 +1517,54 @@ export class Enemies implements EnemyControlApi {
           e.vx += clamp(balanceDx * 0.02, -0.22, 0.22);
         }
 
-        if (unstable) {
+        // --- WALL CLIMB: a giant spider scales sheer walls its legs can grip ----
+        // When the quarry is up and out of stride-reach behind a wall taller than
+        // the 6-cell step it can manage, the Weaver latches onto the face and walks
+        // straight up it (the render IK grips left/right-wall footholds on its own),
+        // then crests onto the ledge via the same step-up that mounts low ledges.
+        // Clinging reads as "unsupported" to the footing metric, so the climb must
+        // OWN movement this frame — it suppresses the stranded-recovery flailing and
+        // the fall, and drives its own up-the-wall velocity past the balance nudge.
+        let climbing = false;
+        let climbDir = e.weaverClimbDir ?? 0;
+        if (e.alerted && targetAlive && !e.sleeping && (e.blink ?? 0) === 0 && (e.windup ?? 0) === 0) {
+          const targetAbove = pdy < 8; // quarry at or above the body (pdy<0 ⇒ above)
+          const toward = Math.sign(pdx) || climbDir || 1;
+          let bestDir = 0;
+          let bestH = 0;
+          for (const d of toward >= 0 ? [1, -1] : [-1, 1]) {
+            const h = this.weaverWallAhead(e, def, d);
+            if (h > bestH) {
+              bestH = h;
+              bestDir = d;
+            }
+          }
+          const climbedT = e.weaverClimbT ?? 0;
+          if (targetAbove && bestH > 7) {
+            climbing = true;
+            climbDir = bestDir;
+          } else if (climbedT > 0 && climbedT < 600 && targetAbove && !e.grounded && climbDir !== 0) {
+            // latched mid-climb: stay on the wall through the crest until we land on
+            // a ledge (or the quarry drops below us) — never release into a fall at
+            // the very lip. The 600-frame cap is a stuck-on-a-sheer-face backstop.
+            climbing = true;
+          }
+        }
+        if (climbing) {
+          if ((e.weaverClimbT ?? 0) === 0) {
+            // latch-on: a grip chirp + a puff of silk where the claws bite in
+            ctx.audio.tone(150, 70, 0.3, 'triangle', 0.07);
+            ctx.particles.burst(e.x + climbDir * (def.halfW + 1), e.y - def.h * 0.4, 4, Cell.Smoke, smokeColor, 0.5, { grav: -0.01 });
+          }
+          e.weaverClimbDir = climbDir;
+          e.weaverClimbT = (e.weaverClimbT ?? 0) + 1;
+          e.weaverFallT = 0; // it is holding the wall, not falling
+        } else {
+          e.weaverClimbDir = 0;
+          e.weaverClimbT = 0;
+        }
+
+        if (unstable && !climbing) {
           // Only when truly STRANDED (nothing load-bearing under it) does it lunge
           // for a far anchor to bridge to; partial footing is handled by the
           // continuous balance above, which pulls it back over solid ground.
@@ -1584,7 +1664,7 @@ export class Enemies implements EnemyControlApi {
             const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
             if (Math.abs(wp[0] - e.x) < 12) e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
             else if (e.timer % 3 === 0) e.vx += Math.sign(wp[0] - e.x) * 0.07 * confidence;
-          } else if (targetAlive && !unstable && (cranky || e.timer % 2 === 0)) {
+          } else if (targetAlive && !unstable && !climbing && (cranky || e.timer % 2 === 0)) {
             // Chase pressure yields to footing: while unstable, recovery owns
             // horizontal intent. Under an OVERHEAD target it holds position and
             // rears up (no sideways fidget), and it never strides out over a drop
@@ -1631,6 +1711,19 @@ export class Enemies implements EnemyControlApi {
           (cranky ? 0.22 : 0) +
           (recovering ? 0.5 : 0) -
           panic * 0.16;
+        if (climbing) {
+          // Up the face while the quarry is above; once level (or crested) hold and
+          // let the lean carry the body over the lip. The integrator's 6-cell step-up
+          // does the actual mount once the foot rises within reach of the top, so a
+          // plain up + into-the-wall push scales and crests the whole wall on its own.
+          const climbSpeed = cranky ? 1.05 : 0.85;
+          const faceH = this.weaverWallAhead(e, def, climbDir);
+          const vyTarget = pdy < -6 && faceH > 3 ? -climbSpeed : 0;
+          e.vy += (vyTarget - e.vy) * (vyTarget < 0 ? 0.5 : 0.4);
+          e.vy = clamp(e.vy, -climbSpeed, 0.6);
+          e.vx += climbDir * 0.12 * (cranky ? 1.15 : 1);
+          if (e.timer % 9 === 0) this.weaveFootTrail(e, support); // silk anchors up the wall
+        }
         e.vx = clamp(e.vx, -maxWeaverSpeed, maxWeaverSpeed);
       } else if (e.kind === 'imp') {
         // Hover at a standoff distance, strafe, lob fireballs

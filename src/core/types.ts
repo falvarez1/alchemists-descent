@@ -334,6 +334,12 @@ export interface Enemy {
   /** Weaver: x of the weighted centre of currently-load-bearing footing (AI side).
    *  Drives a decisive recentre back over solid ground when footing is cut away. */
   weaverSupportCenterX?: number;
+  /** Weaver: side of a wall it's actively scaling (-1 left, +1 right, 0 not climbing).
+   *  A giant spider latches onto sheer walls taller than it can step over and walks
+   *  straight up to reach a quarry perched above; the render leans the body into it. */
+  weaverClimbDir?: number;
+  /** Weaver: frames spent on the current wall climb (latches the mount over the lip). */
+  weaverClimbT?: number;
   /** Weaver: short render signal while lowering to feed on prey. */
   weaverFeedT?: number;
   /** Weaver: frames of irritated pursuit after being disturbed awake. */

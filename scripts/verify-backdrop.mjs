@@ -1,6 +1,7 @@
 // Backdrop editor/runtime gate.
 // Usage: node scripts/verify-backdrop.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
+import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -24,6 +25,7 @@ page.on('dialog', (d) => d.accept());
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.console, { timeout: 20000 });
 await page.waitForTimeout(1200);
+const viewSize = await getGameViewSize(page);
 
 await page.click('#mode-builder-btn');
 await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 6000 });
@@ -143,15 +145,7 @@ await page.evaluate(() => {
 await page.click('[data-menu="edit"]');
 await page.click('#b-capture');
 await page.click('.bp-tool[data-kind="spawn"]');
-const spawnPoint = await page.evaluate(() => {
-  const ctx = window.__game.ctx;
-  const r = document.getElementById('builder-overlay').getBoundingClientRect();
-  const wx = 620;
-  const wy = 616;
-  const ux = ((wx - ctx.camera.renderX) / 525 - 0.5) * ctx.camera.zoom + 0.5;
-  const uy = ((wy - ctx.camera.renderY) / 357 - 0.5) * ctx.camera.zoom + 0.5;
-  return { x: r.left + ux * r.width, y: r.top + uy * r.height };
-});
+const spawnPoint = await worldToBuilderClient(page, 620, 616, { viewSize });
 await page.mouse.click(spawnPoint.x, spawnPoint.y);
 await page.waitForTimeout(120);
 await page.click('#b-playtest');

@@ -4,6 +4,7 @@
 // door logic live, playtest-from-here, overlays, share codes.
 // Usage: node scripts/verify-builder-pro.mjs [url]  (dev server must be running)
 import { chromium } from 'playwright-core';
+import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -56,16 +57,10 @@ await page.evaluate(() => {
   ctx.camera.snapTo(600, 500);
 });
 await page.waitForTimeout(200);
+const viewSize = await getGameViewSize(page);
 
 const toClient = async (wx, wy) =>
-  page.evaluate(([wx, wy]) => {
-    const ctx = window.__game.ctx;
-    const r = document.getElementById('builder-overlay').getBoundingClientRect();
-    const VIEW_W = 525, VIEW_H = 357;
-    const ux = ((wx - ctx.camera.renderX) / VIEW_W - 0.5) * ctx.camera.zoom + 0.5;
-    const uy = ((wy - ctx.camera.renderY) / VIEW_H - 0.5) * ctx.camera.zoom + 0.5;
-    return { x: r.left + ux * r.width, y: r.top + uy * r.height };
-  }, [wx, wy]);
+  worldToBuilderClient(page, wx, wy, { viewSize });
 
 const acceptAppPrompt = async (value) => {
   await page.waitForSelector('.app-dialog-root .app-dialog-input', { timeout: 5000 });
@@ -203,20 +198,19 @@ const arenaChecksum = () =>
     return sum;
   });
 const sampleBuilderCanvas = (wx, wy) =>
-  page.evaluate(([wx, wy]) => {
+  page.evaluate(({ wx, wy, view }) => {
     const ctx = window.__game.ctx;
     const overlay = document.getElementById('builder-overlay');
     const canvas = document.getElementById('builder-canvas');
     const r = overlay.getBoundingClientRect();
-    const VIEW_W = 525, VIEW_H = 357;
-    const ux = ((wx - ctx.camera.renderX) / VIEW_W - 0.5) * ctx.camera.zoom + 0.5;
-    const uy = ((wy - ctx.camera.renderY) / VIEW_H - 0.5) * ctx.camera.zoom + 0.5;
+    const ux = ((wx - ctx.camera.renderX) / view.w - 0.5) * ctx.camera.zoom + 0.5;
+    const uy = ((wy - ctx.camera.renderY) / view.h - 0.5) * ctx.camera.zoom + 0.5;
     const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(ux * canvas.width)));
     const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(uy * canvas.height)));
     if (ux < 0 || ux > 1 || uy < 0 || uy > 1 || r.width === 0 || r.height === 0) return { r: 0, g: 0, b: 0, a: 0 };
     const p = canvas.getContext('2d').getImageData(x, y, 1, 1).data;
     return { r: p[0], g: p[1], b: p[2], a: p[3] };
-  }, [wx, wy]);
+  }, { wx, wy, view: viewSize });
 // paint STATIC stone block A through the UI, then snapshot it into a save
 await page.evaluate(() => {
   window.__game.ctx.state.currentElement = 12;

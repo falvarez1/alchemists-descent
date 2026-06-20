@@ -8,6 +8,7 @@
 // Usage: node scripts/verify-sprites.mjs [url]   (dev server running)
 import { chromium } from 'playwright-core';
 import { deflateSync } from 'node:zlib';
+import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -126,16 +127,10 @@ await page.evaluate(() => {
   ctx.camera.snapTo(600, 500);
 });
 await page.waitForTimeout(200);
+const viewSize = await getGameViewSize(page);
 
 const toClient = async (wx, wy) =>
-  page.evaluate(([wx, wy]) => {
-    const ctx = window.__game.ctx;
-    const r = document.getElementById('builder-overlay').getBoundingClientRect();
-    const VIEW_W = 525, VIEW_H = 357;
-    const ux = ((wx - ctx.camera.renderX) / VIEW_W - 0.5) * ctx.camera.zoom + 0.5;
-    const uy = ((wy - ctx.camera.renderY) / VIEW_H - 0.5) * ctx.camera.zoom + 0.5;
-    return { x: r.left + ux * r.width, y: r.top + uy * r.height };
-  }, [wx, wy]);
+  worldToBuilderClient(page, wx, wy, { viewSize });
 
 /* ---------- import through the real file chooser ---------- */
 console.log('-- import (Aseprite JSON + sheet PNG paired by basename)');
@@ -237,11 +232,10 @@ check('shared RuntimeSprite decoded (2 frames) + emissive honored', runtime.fram
 check('decor footprint stays non-blocking (visual-only invariant)', runtime.blocked === 0, `${runtime.blocked} blocking cells`);
 
 // read the displayed canvas at the decor across ~40 rAF frames
-const samples = await page.evaluate(([DECOR]) => new Promise((resolve) => {
+const samples = await page.evaluate(([DECOR, view]) => new Promise((resolve) => {
   const ctx = window.__game.ctx;
   // the holder also hosts tiny icon canvases — the renderer's is the big one
   const gl = [...document.querySelectorAll('#canvas-holder canvas')].find((c) => c.width > 300);
-  const VIEW_W = 525, VIEW_H = 357;
   const tmp = document.createElement('canvas');
   tmp.width = gl.width;
   tmp.height = gl.height;
@@ -250,8 +244,8 @@ const samples = await page.evaluate(([DECOR]) => new Promise((resolve) => {
   const step = () => {
     g.drawImage(gl, 0, 0);
     const zoom = ctx.camera.zoom || 1;
-    const ux = ((DECOR.x - ctx.camera.renderX) / VIEW_W - 0.5) * zoom + 0.5;
-    const uy = ((DECOR.y - ctx.camera.renderY) / VIEW_H - 0.5) * zoom + 0.5;
+    const ux = ((DECOR.x - ctx.camera.renderX) / view.w - 0.5) * zoom + 0.5;
+    const uy = ((DECOR.y - ctx.camera.renderY) / view.h - 0.5) * zoom + 0.5;
     const cx = Math.round(ux * tmp.width), cy = Math.round(uy * tmp.height);
     const px = g.getImageData(cx - 4, cy - 4, 9, 9).data;
     let r = 0, gg = 0, b = 0, n = 0;
@@ -261,7 +255,7 @@ const samples = await page.evaluate(([DECOR]) => new Promise((resolve) => {
     else requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
-}), [DECOR]);
+}), [DECOR, viewSize]);
 
 const redFrames = samples.filter(([r, , b]) => r > b + 12).length;
 const blueFrames = samples.filter(([r, , b]) => b > r + 12).length;

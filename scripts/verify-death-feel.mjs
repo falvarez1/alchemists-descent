@@ -6,6 +6,7 @@
 // Also drops screenshots of the tumble for an eyeball check.
 // Usage: node scripts/verify-death-feel.mjs [url]
 import { chromium } from 'playwright-core';
+import { getGameViewSize } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0, fail = 0;
@@ -25,6 +26,7 @@ await page.waitForFunction(() => window.__game?.ctx?.playerCtl, { timeout: 20000
 await page.evaluate(() => window.__game.ctx.levels.startRun(window.__game.ctx, { mode: 'test', worldSource: 'campaign-level', levelId: 'physics-test', seed: 1, loadout: 'fresh' }));
 await page.waitForFunction(() => window.__game.ctx.levels.current?.def.id === 'physics-test', { timeout: 20000 });
 await page.waitForFunction(() => window.__game.ctx.levels._transitioning === false, { timeout: 10000 });
+const viewSize = await getGameViewSize(page);
 
 // place the player on a platform mid-world, then kill him
 const setup = await page.evaluate(() => {
@@ -60,9 +62,9 @@ check('slow-mo throttles the sim then recovers (death window << normal)', slow.d
 
 // the slow-mo above settled the old corpse — respawn and re-kill for a fresh
 // tumble, then check camera-follow + that the ragdoll body actually animates
-const track = await page.evaluate(() => {
+const track = await page.evaluate((view) => {
   const ctx = window.__game.ctx, p = ctx.player;
-  const X = 800, Y = 520, VIEW_W = 525;
+  const X = 800, Y = 520;
   ctx.playerCtl.respawn();
   p.x = X; p.y = Y; p.vx = 1.4; p.vy = -0.5; p.fx = 0; p.fy = 0; p.dead = false; p.hp = p.maxHp;
   ctx.camera.snapTo(X, Y);
@@ -71,10 +73,10 @@ const track = await page.evaluate(() => {
   const angs = [];
   for (let f = 0; f < 8; f++) { window.__game.tick(); const c = ctx.rigidBodies.bodies.find((b) => b.tag === 'player-corpse'); angs.push(c ? +c.angle.toFixed(3) : null); }
   const c2 = ctx.rigidBodies.bodies.find((b) => b.tag === 'player-corpse');
-  const camTargetsCorpse = c2 ? Math.abs(ctx.camera.tx - (c2.x - VIEW_W / 2)) < 2 : false;
+  const camTargetsCorpse = c2 ? Math.abs(ctx.camera.tx - (c2.x - view.w / 2)) < 2 : false;
   const moved = angs.some((a, i) => i > 0 && a !== angs[i - 1]);
   return { camTargetsCorpse, moved, present: !!c2 };
-});
+}, viewSize);
 check('camera tracks the tumbling corpse', track.camTargetsCorpse, JSON.stringify(track));
 check('the ragdoll body keeps tumbling (animates)', track.moved && track.present, JSON.stringify(track));
 

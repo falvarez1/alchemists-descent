@@ -3,7 +3,7 @@
 // poses for visual review (verify-out/anim-*.png).
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
-import { startConsoleTestRun } from './run-helpers.mjs';
+import { getGameViewSize, startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -21,6 +21,7 @@ page.on('pageerror', (e) => console.log('PAGEERROR', String(e)));
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2000);
+const viewSize = await getGameViewSize(page);
 
 // The descent enters d1 behind a curtain; carving before the world swap
 // lands means the new level erases the arena. Wait it out.
@@ -83,20 +84,20 @@ const park = (x) =>
     p.x = px; p.y = 534; p.vx = 0; p.vy = 0;
   }, x);
 const shot = async (name) => {
-  const clip = await page.evaluate(() => {
+  const clip = await page.evaluate((view) => {
     const c = document.querySelector('#canvas-holder > canvas');
     const r = c.getBoundingClientRect();
     const ctx = window.__game.ctx;
     const z = ctx.camera.zoom;
-    const ux = (((ctx.player.x - ctx.camera.renderX) / 525 - 0.5) * z + 0.5);
-    const uy = (((ctx.player.y - 9 - ctx.camera.renderY) / 357 - 0.5) * z + 0.5);
+    const ux = (((ctx.player.x - ctx.camera.renderX) / view.w - 0.5) * z + 0.5);
+    const uy = (((ctx.player.y - 9 - ctx.camera.renderY) / view.h - 0.5) * z + 0.5);
     return {
       x: Math.max(0, r.left + ux * r.width - 110),
       y: Math.max(0, r.top + uy * r.height - 110),
       width: 220,
       height: 220,
     };
-  });
+  }, viewSize);
   await page.screenshot({ path: `verify-out/anim-${name}.png`, clip });
 };
 

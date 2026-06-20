@@ -14,6 +14,7 @@
 //   3. DIRECTIONAL — flipping the aim flips which side reaches far.
 //   4. NEVER DIMS — on-axis >= perpendicular at every distance (beam only adds).
 import { chromium } from 'playwright-core';
+import { getGameViewSize } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0,
@@ -37,16 +38,15 @@ page.on('dialog', (d) => d.accept());
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1000);
+const viewSize = await getGameViewSize(page);
 
 const OFFSETS = [20, 60, 100, 140, 180]; // world cells from the wand tip
 
-const data = await page.evaluate((OFFSETS) => {
+const data = await page.evaluate(({ OFFSETS, view }) => {
   const game = window.__game;
   const ctx = game.ctx;
   const light = game.composer.light; // Lighting instance (private at TS level)
   const w = ctx.world;
-  const VIEW_W = 525,
-    VIEW_H = 357;
   const AMBIENT = ctx.params.global.ambient;
 
   const PX = 600,
@@ -82,8 +82,8 @@ const data = await page.evaluate((OFFSETS) => {
     p.aimAngle = aim;
     const tipX = PX + Math.cos(aim) * 9;
     const tipY = PY - 9 + Math.sin(aim) * 9;
-    ctx.camera.renderX = Math.round(tipX - VIEW_W / 2);
-    ctx.camera.renderY = Math.round(tipY - VIEW_H / 2);
+    ctx.camera.renderX = Math.round(tipX - view.w / 2);
+    ctx.camera.renderY = Math.round(tipY - view.h / 2);
     light.build(ctx);
     const along = OFFSETS.map((d) => light.sample(tipX + Math.cos(aim) * d, tipY + Math.sin(aim) * d).r);
     // perpendicular: rotate the offset 90°
@@ -99,7 +99,7 @@ const data = await page.evaluate((OFFSETS) => {
 
   Object.assign(wand, saved);
   return { right, left, ambientFloor, offsets: OFFSETS };
-}, OFFSETS);
+}, { OFFSETS, view: viewSize });
 
 console.log('\nLit (R channel), distance from wand tip:');
 console.log('  offset      :', data.offsets.map((d) => String(d).padStart(8)).join(''));
@@ -163,15 +163,13 @@ check(
 //    that remains is the non-occluded glow painting through terrain. With the
 //    wall removed, the same cell is lit by the (much brighter) beam, proving the
 //    shadow contrast still reads.
-const occ = await page.evaluate(() => {
+const occ = await page.evaluate((view) => {
   const game = window.__game;
   const ctx = game.ctx;
   const light = game.composer.light;
   const w = ctx.world;
   const Stone = 12,
     Empty = 0;
-  const VIEW_W = 525,
-    VIEW_H = 357;
   const AMBIENT = ctx.params.global.ambient;
   const PX = 600,
     PY = 500;
@@ -189,8 +187,8 @@ const occ = await page.evaluate(() => {
 
   const tipX = PX + 9,
     tipY = PY - 9;
-  ctx.camera.renderX = Math.round(tipX - VIEW_W / 2);
-  ctx.camera.renderY = Math.round(tipY - VIEW_H / 2);
+  ctx.camera.renderX = Math.round(tipX - view.w / 2);
+  ctx.camera.renderY = Math.round(tipY - view.h / 2);
 
   const sampleAt = 26; // cells ahead of the tip — inner cone where the glow is brightest
   const wallAt = 16; // wall sits between the tip and the sample point
@@ -214,7 +212,7 @@ const occ = await page.evaluate(() => {
   const shadow = buildAndSample(true); // behind the wall: glow only
   const open = buildAndSample(false); // no wall: beam + omni + glow
   return { shadow, open, floor: AMBIENT * AMBIENT };
-});
+}, viewSize);
 
 console.log(
   `\nNon-occluded glow (inner cone): behind-wall=${occ.shadow.toFixed(4)} open=${occ.open.toFixed(4)} floor=${occ.floor.toFixed(4)}`,

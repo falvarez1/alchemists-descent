@@ -5,6 +5,7 @@
 // bake-from-playtest, rotate, solo lights.
 // Usage: node scripts/verify-builder-ux.mjs [url]  (dev server must be running)
 import { chromium } from 'playwright-core';
+import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -961,15 +962,10 @@ await page.evaluate(() => {
   ctx.camera.snapTo(600, 500);
 });
 await page.waitForTimeout(200);
+const viewSize = await getGameViewSize(page);
 
 const toClient = async (wx, wy) =>
-  page.evaluate(([wx, wy]) => {
-    const ctx = window.__game.ctx;
-    const r = document.getElementById('builder-overlay').getBoundingClientRect();
-    const ux = ((wx - ctx.camera.renderX) / 525 - 0.5) * ctx.camera.zoom + 0.5;
-    const uy = ((wy - ctx.camera.renderY) / 357 - 0.5) * ctx.camera.zoom + 0.5;
-    return { x: r.left + ux * r.width, y: r.top + uy * r.height };
-  }, [wx, wy]);
+  worldToBuilderClient(page, wx, wy, { viewSize });
 
 /* ---------- material swatches: icons, popover, drag-to-paint, layout ---------- */
 console.log('-- material swatches');

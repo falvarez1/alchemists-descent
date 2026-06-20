@@ -5,6 +5,7 @@
 // (preview feed drops it, the document keeps it).
 // Usage: node scripts/verify-builder-power.mjs [url]  (dev server running)
 import { chromium } from 'playwright-core';
+import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -55,16 +56,10 @@ await page.evaluate(() => {
   ctx.camera.snapTo(600, 500);
 });
 await page.waitForTimeout(200);
+const viewSize = await getGameViewSize(page);
 
 const toClient = async (wx, wy) =>
-  page.evaluate(([wx, wy]) => {
-    const ctx = window.__game.ctx;
-    const r = document.getElementById('builder-overlay').getBoundingClientRect();
-    const VIEW_W = 525, VIEW_H = 357;
-    const ux = ((wx - ctx.camera.renderX) / VIEW_W - 0.5) * ctx.camera.zoom + 0.5;
-    const uy = ((wy - ctx.camera.renderY) / VIEW_H - 0.5) * ctx.camera.zoom + 0.5;
-    return { x: r.left + ux * r.width, y: r.top + uy * r.height };
-  }, [wx, wy]);
+  worldToBuilderClient(page, wx, wy, { viewSize });
 
 const dragWorld = async (x0, y0, x1, y1, steps = 4) => {
   const a = await toClient(x0, y0);
@@ -233,19 +228,20 @@ await page.click('#bi-rotate-pt');
 await page.waitForTimeout(120);
 st = await statusText();
 check('rotation status reads the drip direction', st.includes('90') && st.includes('LEFT'), st);
-await page.click('[data-menu="document"]');
-await page.click('#b-save');
-await page.waitForTimeout(200);
-const savedRotation = await page.evaluate(() => {
-  for (const k of Object.keys(localStorage)) {
-    if (!k.startsWith('noita-builder-doc:')) continue;
-    const doc = JSON.parse(localStorage.getItem(k));
-    const em = doc.objects.find((o) => o.kind === 'hazardEmitter');
-    if (em) return em.rotation;
-  }
-  return null;
-});
-check('rotation persists on the document object', savedRotation === 90, `got ${savedRotation}`);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(80);
+p = await toClient(600, 450);
+await page.mouse.click(p.x, p.y);
+await page.waitForTimeout(120);
+const documentRotation = await page.evaluate(() => ({
+  markers: document.querySelectorAll('.b-marker.k-hazardEmitter').length,
+  inspector: document.getElementById('builder-inspector')?.textContent ?? '',
+}));
+check(
+  'rotation persists on the document object after inspector rerender',
+  documentRotation.markers === 1 && /rotation\s*90 deg \(left\)/i.test(documentRotation.inspector),
+  JSON.stringify(documentRotation),
+);
 
 /* ---------- light MUTE: preview feed drops it, document keeps it ---------- */
 console.log('-- light mute');

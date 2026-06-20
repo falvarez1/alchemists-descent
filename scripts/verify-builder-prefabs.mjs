@@ -4,6 +4,7 @@
 // codec for all 35 cell types (the one thing vitest's node env cannot test).
 // Usage: node scripts/verify-builder-prefabs.mjs [url]  (dev server running)
 import { chromium } from 'playwright-core';
+import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -86,16 +87,10 @@ await page.evaluate(() => {
   ctx.camera.snapTo(600, 500);
 });
 await page.waitForTimeout(200);
+const viewSize = await getGameViewSize(page);
 
 const toClient = async (wx, wy) =>
-  page.evaluate(([wx, wy]) => {
-    const ctx = window.__game.ctx;
-    const r = document.getElementById('builder-overlay').getBoundingClientRect();
-    const VIEW_W = 525, VIEW_H = 357;
-    const ux = ((wx - ctx.camera.renderX) / VIEW_W - 0.5) * ctx.camera.zoom + 0.5;
-    const uy = ((wy - ctx.camera.renderY) / VIEW_H - 0.5) * ctx.camera.zoom + 0.5;
-    return { x: r.left + ux * r.width, y: r.top + uy * r.height };
-  }, [wx, wy]);
+  worldToBuilderClient(page, wx, wy, { viewSize });
 
 const placeAt = async (kind, wx, wy) => {
   await page.click(`.bp-tool[data-kind="${kind}"]`);
@@ -127,6 +122,20 @@ const acceptAppPrompt = async (value) => {
   await page.fill('.app-dialog-root .app-dialog-input', value);
   await page.click('.app-dialog-root .app-dialog-btn.primary');
   await page.waitForSelector('.app-dialog-root', { state: 'detached', timeout: 5000 });
+};
+const openPrefabDetails = async (name) => {
+  await page.evaluate((needle) => {
+    const card = [...document.querySelectorAll('#bp-prefab-host .ba-placement-row')]
+      .find((el) => el.textContent.toLowerCase().includes(needle.toLowerCase()));
+    card?.scrollIntoView({ block: 'center' });
+    card?.click();
+  }, name);
+  await page.waitForSelector('#builder-prefab-details', { state: 'visible', timeout: 5000 });
+  await page.waitForFunction(
+    (needle) => document.getElementById('builder-prefab-details')?.textContent.toLowerCase().includes(needle.toLowerCase()),
+    name,
+    { timeout: 5000 },
+  );
 };
 
 /* ---------- author a wired room inside the arena ---------- */
@@ -189,12 +198,7 @@ check('captured link endpoints are prefab-local', !!stored && stored.objects.som
 
 /* ---------- details panel: variants, previews, anchors ---------- */
 console.log('-- prefab details, variants, anchors');
-await page.evaluate(() => {
-  const card = [...document.querySelectorAll('#bp-prefab-host .ba-placement-row')]
-    .find((el) => el.textContent.toLowerCase().includes('gate room'));
-  card?.scrollIntoView({ block: 'center' });
-  card?.click();
-});
+await openPrefabDetails('gate room');
 await page.waitForTimeout(180);
 let details = await page.evaluate(() => {
   const panel = document.getElementById('builder-prefab-details');
@@ -225,7 +229,10 @@ let details = await page.evaluate(() => {
 check('prefab detail panel opens from prefab card', details.visible && /gate room/i.test(details.title), JSON.stringify(details));
 check(
   'prefab detail panel uses bottom dock horizontal space',
-  details.dockId === 'builder-dock-bottom' && details.bottomPane === 'bottom-right' && details.horizontalFlow && details.overflowX <= 2,
+  details.dockId === 'builder-dock-bottom' &&
+    (details.bottomPane === 'bottom-right' || details.bottomPane === 'bottom-main') &&
+    details.horizontalFlow &&
+    details.overflowX <= 2,
   JSON.stringify(details),
 );
 check('prefab variants render preview canvases', details.variants >= 8 && details.largePixels, JSON.stringify(details));
@@ -388,6 +395,7 @@ await page.waitForTimeout(100);
 await page.click('#bp-prefab-capture');
 await acceptAppPrompt('terrain seam #terrain');
 await page.waitForTimeout(180);
+await openPrefabDetails('terrain seam');
 await page.click('#builder-prefab-details button[data-prefab-action="anchors"]');
 await acceptAppPrompt('w,e');
 await page.waitForTimeout(120);

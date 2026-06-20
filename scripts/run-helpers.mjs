@@ -110,3 +110,24 @@ export async function startConsoleTestRun(page, options = {}) {
 export async function startConsolePlayRun(page, options = {}) {
   return startConsoleRun(page, { subcommand: 'new', ...options });
 }
+
+export async function getGameViewSize(page) {
+  return page.evaluate(async () => {
+    const constants = await import('/src/config/constants.ts');
+    return { w: constants.VIEW_W, h: constants.VIEW_H };
+  });
+}
+
+export async function worldToBuilderClient(page, wx, wy, options = {}) {
+  const view = options.viewSize ?? await getGameViewSize(page);
+  const overlayId = options.overlayId ?? 'builder-overlay';
+  return page.evaluate(({ wx, wy, view, overlayId }) => {
+    const ctx = window.__game.ctx;
+    const overlay = document.getElementById(overlayId);
+    if (!overlay) throw new Error(`missing #${overlayId}`);
+    const r = overlay.getBoundingClientRect();
+    const ux = ((wx - ctx.camera.renderX) / view.w - 0.5) * ctx.camera.zoom + 0.5;
+    const uy = ((wy - ctx.camera.renderY) / view.h - 0.5) * ctx.camera.zoom + 0.5;
+    return { x: r.left + ux * r.width, y: r.top + uy * r.height };
+  }, { wx, wy, view, overlayId });
+}
