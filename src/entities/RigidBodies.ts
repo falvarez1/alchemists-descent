@@ -298,6 +298,23 @@ export class RigidBodies implements RigidBodiesApi {
     return null;
   }
 
+  /** Debug tool: teleport a body to follow the cursor. The debug freeze skips the
+   *  solver step, so we set the Rapier translation directly (velocity-steering
+   *  would do nothing without a step) and mirror it onto the body for the render. */
+  dragTo(body: RigidBody, x: number, y: number): void {
+    const rb = this.handles.get(body);
+    if (rb) {
+      rb.setTranslation({ x, y }, true);
+      rb.setLinvel({ x: 0, y: 0 }, true);
+      rb.setAngvel(0, true);
+    }
+    body.x = x;
+    body.y = y;
+    body.vx = 0;
+    body.vy = 0;
+    body.va = 0;
+  }
+
   grab(ctx: Ctx): void {
     if (this.held) return;
     const p = ctx.player;
@@ -588,6 +605,10 @@ export class RigidBodies implements RigidBodiesApi {
   }
 
   update(ctx: Ctx): void {
+    // Debug freeze (Runtime panel): hold every body still by skipping the solver
+    // step entirely. The grabbed body (if any) is repositioned by DebugTool.dragTo,
+    // which sets its Rapier translation directly without a step.
+    if (ctx.state.mode === 'play' && ctx.debug.active) return;
     this.processDetonations(ctx);
     // Terrain sync + the solver step are the two places a degenerate contact/
     // collider pile can overflow Rapier's wasm stack. That overflow leaves the

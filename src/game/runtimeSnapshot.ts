@@ -268,8 +268,11 @@ export function inferRuntimeSource(ctx: Ctx): RuntimeSnapshotSource {
   if (ctx.state.playtestSource === 'test') {
     return { id: 'test-run', label: 'Test Run', detail: 'Disposable launcher/debug runtime' };
   }
-  if (ctx.state.debugGodMode) {
-    return { id: 'debug-run', label: 'Debug-Tainted Run', detail: 'Current expedition is debug-tainted' };
+  if (ctx.state.debugGodMode || ctx.debug?.active === true) {
+    const detail = ctx.debug?.active === true
+      ? 'Runtime freeze/drag is active; current pose is not saveable'
+      : 'Current expedition is debug-tainted';
+    return { id: 'debug-run', label: 'Debug-Tainted Run', detail };
   }
   return { id: 'expedition', label: 'Expedition', detail: 'Persistent current expedition runtime' };
 }
@@ -612,6 +615,15 @@ function projectileRadius(projectile: Projectile): number {
   if (projectile.type === 'meteor' || projectile.type === 'blackhole') return 5;
   if (projectile.type === 'bomb' || projectile.type === 'fireball' || projectile.type === 'acidglob') return 3;
   return 2;
+}
+
+/**
+ * Stable per-object runtime row id (e.g. `enemy:42`). The same object always
+ * resolves to the same id (WeakMap-backed), so the debug tool can match a live
+ * entity to the row the user ticked without threading references through the UI.
+ */
+export function runtimeObjectId(prefix: string, object: object): string {
+  return objectId(prefix, object);
 }
 
 function objectId(prefix: string, object: object): string {

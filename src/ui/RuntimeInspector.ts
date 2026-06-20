@@ -50,7 +50,10 @@ export class RuntimeInspector {
     ctx.events.on('modeChanged', ({ mode }) => {
       this.syncButton();
       this.invalidateSnapshot();
-      if (mode !== 'play') this.close();
+      if (mode !== 'play') {
+        this.ctx.debug.setActive(false);
+        this.close();
+      }
     });
     ctx.events.on('levelChanged', () => {
       this.clearInspectionSelection();
@@ -154,6 +157,8 @@ export class RuntimeInspector {
       showFocusActions: false,
       showCameraControls: true,
       cameraFollowEnabled: this.followSelectedEntity,
+      debugActive: this.ctx.debug.active,
+      liveIds: this.ctx.debug.live,
     });
     this.root.scrollTop = scrollTop;
   }
@@ -203,6 +208,17 @@ export class RuntimeInspector {
       if (this.followSelectedEntity) {
         this.updateSelectedRuntimeTarget({ updateCamera: true, snapCamera: false });
       }
+      return;
+    }
+    if (target.id === 'brt-debug') {
+      this.ctx.debug.setActive(target.checked);
+      this.render(false);
+      return;
+    }
+    if (target.classList.contains('brt-live')) {
+      const id = target.dataset.runtimeLive ?? '';
+      if (id) this.ctx.debug.setLive(id, target.checked);
+      this.render(false);
     }
   }
 
@@ -213,6 +229,9 @@ export class RuntimeInspector {
       this.close();
       return;
     }
+    // Form controls (search, debug toggle, per-row "live") run through handleInput;
+    // don't let a click on one also select/focus its enclosing row.
+    if (target.closest('input') || target.closest('label')) return;
     const chip = target.closest<HTMLButtonElement>('button[data-runtime-filter]');
     if (chip && this.root.contains(chip)) {
       const filter = chip.dataset.runtimeFilter as RuntimeEntityGroup;

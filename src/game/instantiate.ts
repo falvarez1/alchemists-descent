@@ -14,7 +14,14 @@ import type {
   Waystone,
 } from '@/core/types';
 import type { EditorLight, EditorLink, EditorObject } from '@/builder/document';
-import { paramNum } from '@/builder/document';
+import {
+  AUTHORED_LIGHT_BLOOM_MAX,
+  AUTHORED_LIGHT_FLICKER_MAX,
+  AUTHORED_LIGHT_INTENSITY_MAX,
+  AUTHORED_LIGHT_RADIUS_MAX,
+  AUTHORED_LIGHT_RADIUS_MIN,
+  paramNum,
+} from '@/builder/document';
 import { resolveLoopTag, spritePhase } from '@/builder/assets/sprites';
 import type { SpriteAsset } from '@/builder/assets/sprites';
 import { resolveRuntimeSprite } from '@/builder/assets/spritelib';
@@ -471,18 +478,26 @@ function instantiateTrigger(
 export function toAuthoredLight(l: EditorLight, n: number): AuthoredLight {
   const hex = /^#?([0-9a-f]{6})$/i.exec(l.color.trim());
   const rgb = hex ? parseInt(hex[1], 16) : 0xffffff;
+  const intensity = clampFinite(l.intensity, 0, AUTHORED_LIGHT_INTENSITY_MAX, 1);
+  const radius = clampFinite(l.radius, AUTHORED_LIGHT_RADIUS_MIN, AUTHORED_LIGHT_RADIUS_MAX, 60);
+  const bloom = clampFinite(l.bloom, 0, AUTHORED_LIGHT_BLOOM_MAX, 0);
+  const flicker = clampFinite(l.flicker, 0, AUTHORED_LIGHT_FLICKER_MAX, 0);
   return {
     x: Math.floor(l.x),
     y: Math.floor(l.y),
     r: ((rgb >> 16) & 0xff) / 255,
     g: ((rgb >> 8) & 0xff) / 255,
     b: (rgb & 0xff) / 255,
-    intensity: l.intensity,
-    radius: l.radius,
-    bloom: l.bloom,
-    flicker: l.flicker,
+    intensity,
+    radius,
+    bloom,
+    flicker,
     flickerPhase: (n * 2.39996) % (Math.PI * 2),
     falloff: l.falloff,
     occluded: l.occluded,
   };
+}
+
+function clampFinite(value: number, min: number, max: number, fallback: number): number {
+  return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
 }

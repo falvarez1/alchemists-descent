@@ -1104,6 +1104,7 @@ export class Enemies implements EnemyControlApi {
     const enemies = ctx.enemies;
     const player = ctx.player;
     const targetAlive = !player.dead;
+    const debugEnemyAttacksSuppressed = ctx.debug?.active === true;
 
     const sim = ctx.world.simBounds;
     for (let i = enemies.length - 1; i >= 0; i--) {
@@ -1113,6 +1114,9 @@ export class Enemies implements EnemyControlApi {
       // Freeze foes far outside the simulation window — they wake when you approach
       if (e.x < sim.x0 - 60 || e.x > sim.x1 + 60 || e.y < sim.y0 - 60 || e.y > sim.y1 + 60)
         continue;
+      // Debug freeze (Runtime panel): a posed/dragged foe skips its AI entirely
+      // while the renderer keeps drawing it (and solving a held Weaver's legs).
+      if (ctx.debug.frozenEnemy(e)) continue;
       if (e.flash > 0) e.flash--;
       if ((e.envDamageFeedbackCd ?? 0) > 0) e.envDamageFeedbackCd = (e.envDamageFeedbackCd ?? 0) - 1;
       if ((e.wary ?? 0) > 0) e.wary = (e.wary ?? 0) - 1;
@@ -1120,7 +1124,7 @@ export class Enemies implements EnemyControlApi {
       if ((e.webPulse ?? 0) > 0) e.webPulse = (e.webPulse ?? 0) - 1;
       if ((e.weaverFeedT ?? 0) > 0) e.weaverFeedT = (e.weaverFeedT ?? 0) - 1;
       e.timer++;
-      if (e.attackCd > 0) e.attackCd--;
+      if (e.attackCd > 0 && !debugEnemyAttacksSuppressed) e.attackCd--;
       this.enemyEnvironmentDamage(e, i);
       if (enemies[i] !== e) continue; // died from environment
 
@@ -1144,6 +1148,7 @@ export class Enemies implements EnemyControlApi {
       const pdx = player.x - e.x,
         pdy = player.y - 9 - (e.y - 5);
       const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
+      const canAttackTarget = targetAlive && !debugEnemyAttacksSuppressed;
 
       // THE NOTICE: the first time a foe clocks you, it says so — a blip and
       // a spark of attention over its head. The colossus announces itself
@@ -1251,7 +1256,7 @@ export class Enemies implements EnemyControlApi {
           }
         }
         // Melee contact
-        if (targetAlive && e.attackCd === 0 && Math.abs(pdx) < 11 && Math.abs(pdy) < 17) {
+        if (canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 11 && Math.abs(pdy) < 17) {
           ctx.playerCtl.damage(
             (e.kind === 'acidslime' ? 10 : 12) * (e.dmgK ?? 1),
             Math.sign(pdx) * -3.6,
@@ -1266,8 +1271,8 @@ export class Enemies implements EnemyControlApi {
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
         if (e.grounded) e.vy = 0;
         const due =
-          e.timer > 1400 + e.bobPhase * 220 ||
-          (targetAlive && pDist < 36 && e.timer > 240);
+          !debugEnemyAttacksSuppressed &&
+          (e.timer > 1400 + e.bobPhase * 220 || (targetAlive && pDist < 36 && e.timer > 240));
         if (due) {
           const brood = 2 + (e.bobPhase > Math.PI ? 1 : 0);
           for (let b2 = 0; b2 < brood; b2++) {
@@ -1331,10 +1336,10 @@ export class Enemies implements EnemyControlApi {
           e.vy += 0.18;
         } else if (e.windup) {
           // ANTICIPATION: brake and flare the wings for a beat — THEN the dart
-          e.windup--;
+          if (!debugEnemyAttacksSuppressed) e.windup--;
           e.vx *= 0.72;
           e.vy = e.vy * 0.72 - 0.06; // hover-lift while flaring
-          if (e.windup === 0 && targetAlive) {
+          if (e.windup === 0 && canAttackTarget) {
             const d = pDist || 1;
             e.swoop = 12;
             e.vx = (pdx / d) * 2.5;
@@ -1345,12 +1350,12 @@ export class Enemies implements EnemyControlApi {
           const d = pDist || 1;
           e.vx += (pdx / d) * 0.14;
           e.vy += (pdy / d) * 0.14;
-          if (pDist < 64 && e.attackCd === 0 && !e.swoop) e.windup = 8;
+          if (canAttackTarget && pDist < 64 && e.attackCd === 0 && !e.swoop) e.windup = 8;
         } else if (!hunting) {
           e.vx += (Math.random() - 0.5) * 0.1;
           e.vy += (Math.random() - 0.5) * 0.1;
         }
-        if (e.swoop) e.swoop--;
+        if (e.swoop && !debugEnemyAttacksSuppressed) e.swoop--;
         e.vy += Math.sin(e.bobPhase) * 0.08;
         // a committed dart briefly outruns the normal flight cap
         const batMax = e.swoop ? 2.6 : 1.7;
@@ -1360,7 +1365,7 @@ export class Enemies implements EnemyControlApi {
           e.y -= 1;
           e.vy = -0.6;
         }
-        if (targetAlive && e.attackCd === 0 && Math.abs(pdx) < 8 && Math.abs(pdy) < 12) {
+        if (canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 8 && Math.abs(pdy) < 12) {
           ctx.playerCtl.damage(6 * (e.dmgK ?? 1), Math.sign(pdx) * -2.2, -1.6);
           e.attackCd = 50;
           // dart away after the bite
@@ -1373,7 +1378,7 @@ export class Enemies implements EnemyControlApi {
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
         e.vx *= 0.4;
         if ((e.recoil ?? 0) > 0) e.recoil = (e.recoil ?? 0) - 1;
-        if (targetAlive && e.attackCd === 0 && pDist < 280) {
+        if (canAttackTarget && e.attackCd === 0 && pDist < 280) {
           const arc = Math.atan2(pdy - Math.min(60, pDist * 0.35), pdx);
           const spd = 2.6 + pDist * 0.006;
           ctx.projectiles.push({
@@ -1396,7 +1401,7 @@ export class Enemies implements EnemyControlApi {
         e.vy += 0.3;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
         if ((e.fusing ?? 0) > 0) {
-          e.fusing = (e.fusing ?? 0) - 1;
+          if (!debugEnemyAttacksSuppressed) e.fusing = (e.fusing ?? 0) - 1;
           e.vx *= 0.5;
           if (e.fusing === 0) {
             this.killAt(i, e, 0, 0);
@@ -1420,7 +1425,7 @@ export class Enemies implements EnemyControlApi {
               e.vy = -2.2;
             }
           }
-          if (targetAlive && pDist < 34) {
+          if (canAttackTarget && pDist < 34) {
             e.fusing = 36; // light the fuse
             ctx.audio.tone(900, 60, 0.3, 'square', 0.1);
           }
@@ -1463,7 +1468,7 @@ export class Enemies implements EnemyControlApi {
           const forcedAwake = e.hp < e.maxHp || e.status.burning > 0 || e.status.electrified > 0;
           if (forcedAwake || (targetAlive && pDist < 82)) {
             this.wakeWeaver(e, forcedAwake ? 'harm' : 'proximity');
-          } else if (e.timer % 180 === 0) {
+          } else if (!debugEnemyAttacksSuppressed && e.timer % 180 === 0) {
             this.weaveThread(e, e.x + (Math.random() - 0.5) * 28, e.y - 18 - Math.random() * 18);
           }
           continue;
@@ -1528,9 +1533,9 @@ export class Enemies implements EnemyControlApi {
         if (e.blink > 0) {
           // Thread-spit telegraph: rooted, then a sagging vine line appears
           // through the air near the alchemist.
-          e.blink--;
           e.vx *= 0.62;
-          if (e.timer % 3 === 0) {
+          if (!debugEnemyAttacksSuppressed) e.blink--;
+          if (!debugEnemyAttacksSuppressed && e.timer % 3 === 0) {
             ctx.particles.spawn(
               e.x + (Math.random() - 0.5) * 14,
               e.y - 10 - Math.random() * 6,
@@ -1542,7 +1547,7 @@ export class Enemies implements EnemyControlApi {
               { grav: -0.01, glow: 0.4 },
             );
           }
-          if (e.blink === 0 && targetAlive) {
+          if (e.blink === 0 && canAttackTarget) {
             const side = Math.sign(pdx || 1);
             this.weaveThread(e, player.x - side * 10, player.y - 12);
             e.attackCd = 115 + Math.floor(Math.random() * 45);
@@ -1550,9 +1555,9 @@ export class Enemies implements EnemyControlApi {
         } else if ((e.windup ?? 0) > 0) {
           // Needle Step: one foreleg lifts; the sprite exaggerates the poised
           // leg while this countdown holds the body still.
-          e.windup = (e.windup ?? 1) - 1;
           e.vx *= 0.55;
-          if (e.timer % 4 === 0) {
+          if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
+          if (!debugEnemyAttacksSuppressed && e.timer % 4 === 0) {
             ctx.particles.spawn(
               e.needleX ?? player.x,
               e.needleY ?? player.y - 8,
@@ -1564,7 +1569,7 @@ export class Enemies implements EnemyControlApi {
               { grav: -0.005, glow: 0.35 },
             );
           }
-          if (e.windup === 0 && targetAlive) {
+          if (e.windup === 0 && canAttackTarget) {
             this.weaverNeedleStrike(e, e.needleX ?? player.x, e.needleY ?? player.y - 8);
             e.needleX = undefined;
             e.needleY = undefined;
@@ -1592,7 +1597,7 @@ export class Enemies implements EnemyControlApi {
             e.vx += dir * 0.06 * confidence;
           }
 
-          if (targetAlive && e.attackCd === 0 && e.alerted && !unstable) {
+          if (canAttackTarget && e.attackCd === 0 && e.alerted && !unstable) {
             if (Math.abs(pdx) < 13 && Math.abs(pdy) < 20) {
               // Point-blank contact bite: instant (no telegraph this close) and it
               // claims the cooldown, so the needle windup can't also fire this frame.
@@ -1650,7 +1655,7 @@ export class Enemies implements EnemyControlApi {
           e.y -= 1;
           e.vy = -0.5;
         }
-        if (targetAlive && e.attackCd === 0 && pDist < 300) {
+        if (canAttackTarget && e.attackCd === 0 && pDist < 300) {
           const fa = Math.atan2(pdy, pdx) + (Math.random() - 0.5) * 0.16;
           ctx.projectiles.push({
             x: e.x,
@@ -1690,7 +1695,7 @@ export class Enemies implements EnemyControlApi {
           e.y -= 1;
           e.vy = -0.5;
         }
-        if (targetAlive && e.attackCd === 0 && pDist < 320) {
+        if (canAttackTarget && e.attackCd === 0 && pDist < 320) {
           const fa = Math.atan2(pdy, pdx) + (Math.random() - 0.5) * 0.14;
           ctx.projectiles.push({
             x: e.x,
@@ -1740,9 +1745,9 @@ export class Enemies implements EnemyControlApi {
 
         if (e.blink > 0) {
           // Telegraph window: rooted, purple motes rise off the robe
-          e.blink--;
           e.vx *= 0.7;
-          if (e.timer % 2 === 0) {
+          if (!debugEnemyAttacksSuppressed) e.blink--;
+          if (!debugEnemyAttacksSuppressed && e.timer % 2 === 0) {
             ctx.particles.spawn(
               e.x + ((Math.random() * 13) | 0) - 6,
               e.y - ((Math.random() * def.h) | 0),
@@ -1754,11 +1759,11 @@ export class Enemies implements EnemyControlApi {
               { grav: -0.02, glow: 1.9 },
             );
           }
-          if (e.blink === 0 && targetAlive) this.telekinesisVolley(e);
+          if (e.blink === 0 && canAttackTarget) this.telekinesisVolley(e);
         } else {
           if (targetAlive) e.vx += Math.sign(pdx) * 0.04;
           e.vx = clamp(e.vx, -0.45, 0.45);
-          if (targetAlive && e.attackCd === 0 && pDist < 340) {
+          if (canAttackTarget && e.attackCd === 0 && pDist < 340) {
             e.blink = 20; // begin the 20-frame telegraph
             e.attackCd = 180 + Math.floor(Math.random() * 80);
           }
@@ -1845,7 +1850,7 @@ export class Enemies implements EnemyControlApi {
           );
         }
 
-        if (targetAlive && e.attackCd === 0) {
+        if (canAttackTarget && e.attackCd === 0) {
           if (Math.abs(pdx) < 32 && Math.abs(pdy) < 32) {
             // GROUND SLAM: a real explosion at the fist — far enough out that
             // the blast radius (r*1.5) cannot reach the colossus's own body
@@ -1962,7 +1967,7 @@ export class Enemies implements EnemyControlApi {
         // surface — gravity reels the leap back into the pool)
         if (
           sub &&
-          targetAlive &&
+          canAttackTarget &&
           e.attackCd === 0 &&
           pDist < 90 &&
           (e.windup ?? 0) === 0 &&
@@ -1972,10 +1977,10 @@ export class Enemies implements EnemyControlApi {
           ctx.audio.tone(70, 160, 0.5, 'sawtooth', 0.14);
         }
         if ((e.windup ?? 0) > 0) {
-          e.windup = (e.windup ?? 1) - 1;
           e.vx *= 0.8;
           e.vy *= 0.8;
-          if (e.windup === 0 && targetAlive) {
+          if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
+          if (e.windup === 0 && canAttackTarget) {
             e.swoop = 18;
             const a = Math.atan2(player.y - 8 - e.y, player.x - e.x);
             e.vx = Math.cos(a) * 3.4;
@@ -1984,9 +1989,9 @@ export class Enemies implements EnemyControlApi {
           }
         }
         if ((e.swoop ?? 0) > 0) {
-          e.swoop = (e.swoop ?? 1) - 1;
+          if (!debugEnemyAttacksSuppressed) e.swoop = (e.swoop ?? 1) - 1;
           if (!sub) e.vy += 0.12; // a breaching arc falls back home
-          if (targetAlive && e.attackCd === 0 && Math.abs(pdx) < 12 && Math.abs(pdy) < 16) {
+          if (canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 12 && Math.abs(pdy) < 16) {
             // THE BITE
             ctx.playerCtl.damage(16 * (e.dmgK ?? 1), Math.sign(pdx) * -4.2, -2.8);
             e.attackCd = 140;
@@ -1999,7 +2004,7 @@ export class Enemies implements EnemyControlApi {
         // POOL VOLLEY: the ranged arm — only while it HAS a pool
         if (
           sub &&
-          targetAlive &&
+          canAttackTarget &&
           e.alerted &&
           e.attackCd === 0 &&
           pDist >= 90 &&
@@ -2013,7 +2018,7 @@ export class Enemies implements EnemyControlApi {
 
         // contact graze outside the committed bite
         if (
-          targetAlive &&
+          canAttackTarget &&
           (e.swoop ?? 0) === 0 &&
           e.attackCd < 100 &&
           Math.abs(pdx) < 11 &&
@@ -2142,7 +2147,7 @@ export class Enemies implements EnemyControlApi {
           }
         }
         // Rock throw
-        if (targetAlive && e.attackCd === 0 && pDist > 50 && pDist < 360) {
+        if (canAttackTarget && e.attackCd === 0 && pDist > 50 && pDist < 360) {
           for (let r = 0; r < 3; r++) {
             const ta = Math.atan2(pdy - 38 - r * 7, pdx);
             const spd = 4.0 + Math.random() * 1.2;
@@ -2160,7 +2165,7 @@ export class Enemies implements EnemyControlApi {
           ctx.audio.boom(4);
           e.attackCd = 240;
         }
-        if (targetAlive && e.attackCd < 200 && Math.abs(pdx) < 15 && Math.abs(pdy) < 22) {
+        if (canAttackTarget && e.attackCd < 200 && Math.abs(pdx) < 15 && Math.abs(pdy) < 22) {
           // dmgK so depth + difficulty scale this slam like every other attack.
           ctx.playerCtl.damage(20 * (e.dmgK ?? 1), Math.sign(pdx) * -5.0, -3.6);
           e.attackCd = 220;

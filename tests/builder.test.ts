@@ -4,6 +4,12 @@ import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { rleEncode } from '@/core/rle';
 import {
+  AUTHORED_LIGHT_BLOOM_MAX,
+  AUTHORED_LIGHT_FLICKER_MAX,
+  AUTHORED_LIGHT_INTENSITY_MAX,
+  AUTHORED_LIGHT_RADIUS_MAX,
+  AUTHORED_LIGHT_RADIUS_MIN,
+  AUTHORED_LIGHT_RUNTIME_CAP,
   createEmptyDocument,
   freshId,
   objectFootprint,
@@ -26,7 +32,7 @@ import { Builder } from '@/builder/Builder';
 import { CommandRegistry } from '@/ui/editor/CommandRegistry';
 import { buildScratchGrid, buildValidationOverlayDiagnostics, playtestBlockingIssues, validateDocument } from '@/builder/validate';
 import { renderValidationPanel } from '@/builder/validationPanel';
-import { toAuthoredLight } from '@/builder/compile';
+import { capRuntimeAuthoredLights, toAuthoredLight } from '@/builder/compile';
 import { PreviewRuntime } from '@/builder/PreviewRuntime';
 import {
   hitProjectedGizmoHandle,
@@ -1384,6 +1390,48 @@ describe('compile helpers', () => {
     expect(al.g).toBeCloseTo(0.5, 1);
     expect(al.b).toBe(0);
     expect(al.intensity).toBe(1.5);
+  });
+
+  it('clamps authored light runtime cost at the shared conversion boundary', () => {
+    const al = toAuthoredLight(
+      {
+        id: 'huge', x: 10, y: 20, color: '#ffffff', intensity: 999, radius: 999,
+        bloom: 999, flicker: 999, falloff: 'soft', occluded: false, locked: false, hidden: false,
+      },
+      0,
+    );
+    expect(al.intensity).toBe(AUTHORED_LIGHT_INTENSITY_MAX);
+    expect(al.radius).toBe(AUTHORED_LIGHT_RADIUS_MAX);
+    expect(al.bloom).toBe(AUTHORED_LIGHT_BLOOM_MAX);
+    expect(al.flicker).toBe(AUTHORED_LIGHT_FLICKER_MAX);
+
+    const tiny = toAuthoredLight(
+      {
+        id: 'tiny', x: 10, y: 20, color: '#ffffff', intensity: -999, radius: -999,
+        bloom: -999, flicker: -999, falloff: 'soft', occluded: false, locked: false, hidden: false,
+      },
+      0,
+    );
+    expect(tiny.intensity).toBe(0);
+    expect(tiny.radius).toBe(AUTHORED_LIGHT_RADIUS_MIN);
+    expect(tiny.bloom).toBe(0);
+    expect(tiny.flicker).toBe(0);
+  });
+
+  it('caps runtime authored lights for Builder playtest', () => {
+    const lights = Array.from({ length: AUTHORED_LIGHT_RUNTIME_CAP + 5 }, (_, i) =>
+      toAuthoredLight(
+        {
+          id: `l${i}`, x: i, y: 20, color: '#ffffff', intensity: 1, radius: 40,
+          bloom: 0, flicker: 0, falloff: 'soft', occluded: true, locked: false, hidden: false,
+        },
+        i,
+      ),
+    );
+    const capped = capRuntimeAuthoredLights(lights);
+    expect(capped).toHaveLength(AUTHORED_LIGHT_RUNTIME_CAP);
+    expect(capped[0].x).toBe(0);
+    expect(capped[capped.length - 1].x).toBe(AUTHORED_LIGHT_RUNTIME_CAP - 1);
   });
 });
 

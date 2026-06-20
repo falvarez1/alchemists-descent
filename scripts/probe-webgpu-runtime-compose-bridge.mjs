@@ -20,8 +20,6 @@ import {
 const outDir = 'verify-out/webgpu-runtime-compose-bridge';
 const timestamp = Date.now();
 const providedBaseUrl = process.argv[2] ?? null;
-const VIEW_W = 525;
-const VIEW_H = 357;
 const COPY_SRC_USAGE = 0x01;
 const STORAGE_BINDING_USAGE = 0x08;
 
@@ -79,8 +77,8 @@ function validateStatus(status) {
     if (outputStorage.format !== 'rgba8unorm') {
       failures.push(`expected rgba8unorm output storage, got ${outputStorage.format}`);
     }
-    if (outputStorage.width !== VIEW_W || outputStorage.height !== VIEW_H) {
-      failures.push(`expected ${VIEW_W}x${VIEW_H} output storage, got ${outputStorage.width}x${outputStorage.height}`);
+    if (!Number.isFinite(outputStorage.width) || !Number.isFinite(outputStorage.height) || outputStorage.width <= 0 || outputStorage.height <= 0) {
+      failures.push(`expected positive output storage dimensions, got ${outputStorage.width}x${outputStorage.height}`);
     }
     if (outputStorage.mipLevelCount !== 1) {
       failures.push(`expected one mip level, got ${outputStorage.mipLevelCount}`);

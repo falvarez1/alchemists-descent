@@ -135,21 +135,21 @@ try {
       .filter((e) => e.kind === 'weaver')
       .sort((a, b) => Math.abs(a.x - 512) - Math.abs(b.x - 512))[0];
     if (!gaiter) throw new Error('No gait-lane Weaver');
-    gaiter.alerted = false;
+    // Test the gait STANCE deterministically: an ALERTED weaver with a nearby
+    // player can't drop into a prey feed-crouch (feeding needs !alerted OR a far
+    // player), so it walks at full height regardless of stray moths. Clear prey
+    // too, belt-and-suspenders.
+    gaiter.alerted = true;
     gaiter.sleeping = false;
-    // Clear prey near the gait lane so the patrolling Weaver tests its STANCE and
-    // doesn't crouch to feed mid-sample (that drops bodyLift to the feed value).
-    for (const cr of ctx.critters.list.slice()) {
-      if (Math.abs(cr.x - gaiter.x) < 160 && Math.abs(cr.y - gaiter.y) < 120) ctx.critters.remove(cr);
-    }
+    for (const cr of ctx.critters.list.slice()) ctx.critters.remove(cr);
     gaiter.weaverFeedT = 0;
     gaiter.patrol = [
       [512, 742],
       [900, 741],
     ];
     gaiter.patrolIdx = 1;
-    gaiter.attackCd = 220;
-    ctx.player.x = 130;
+    gaiter.attackCd = 600; // don't let an attack interrupt the walk
+    ctx.player.x = gaiter.x - 70; // within 130px keeps feeding disabled; it chases/strafes (walks)
     ctx.player.y = 741;
     ctx.player.vx = ctx.player.vy = ctx.player.fx = ctx.player.fy = 0;
     ctx.camera.snapTo(gaiter.x + 120, gaiter.y - 100);

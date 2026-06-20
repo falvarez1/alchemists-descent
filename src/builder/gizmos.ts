@@ -1,5 +1,6 @@
 import { objectFootprint, paramNum } from '@/builder/document';
 import type { EditorLight, EditorObject, EditorObjectKind } from '@/builder/document';
+import { AUTHORED_LIGHT_RADIUS_MAX, AUTHORED_LIGHT_RADIUS_MIN } from '@/builder/document';
 
 export type GizmoOwnerKind = 'object' | 'light';
 export type GizmoHandleKind =
@@ -274,7 +275,7 @@ export function lightRadiusFromDrag(
   worldX: number,
   worldY: number,
 ): number {
-  return clampInt(Math.round(Math.hypot(worldX - light.x, worldY - light.y)), 4, 160);
+  return clampInt(Math.round(Math.hypot(worldX - light.x, worldY - light.y)), AUTHORED_LIGHT_RADIUS_MIN, AUTHORED_LIGHT_RADIUS_MAX);
 }
 
 function clampInt(value: number, min: number, max: number): number {

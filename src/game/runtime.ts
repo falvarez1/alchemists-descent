@@ -36,6 +36,7 @@ export function makeLevelRuntime(
       | 'placedPrefabs'
       | 'generatedScenes'
       | 'decors'
+      | 'weaverLairWebs'
       | 'refuge'
       | 'spellLab'
       | 'vaultArch'
@@ -54,6 +55,7 @@ export function makeLevelRuntime(
     mechanisms: [],
     runeVaults: [],
     boss: null,
+    weaverLairWebs: [],
     ...base,
   };
   runtime.mechanismTriggers = buildMechanismTriggerIndex(runtime.mechanisms);

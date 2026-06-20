@@ -70,6 +70,7 @@ function weaverFootTarget(
   hipY: number,
   side: number,
   desperate: boolean,
+  lifted = false,
 ): WeaverFootTarget {
   const w = ctx.world;
   const width = w.width;
@@ -117,10 +118,20 @@ function weaverFootTarget(
   }
   if (best) return best;
 
-  // No purchase anywhere in reach: do NOT let the leg hang limp into the void
-  // (the "dead limb dangling in a hole" look). Pull the foot UP toward the hip
-  // into a raised, feeling-for-grip pose, tucked a touch outward — it reads as
-  // the spider lifting that leg and probing, not a corpse limb sagging down.
+  // No purchase anywhere in reach. Two different reads depending on the body:
+  // a LIFTED/held weaver lets the leg HANG DOWN under its own weight (so picking
+  // it up by the body dangles the legs); a GROUNDED one pulls the foot UP toward
+  // the hip into a raised, feeling-for-grip pose (not a dead limb sagging into a
+  // hole — see the footing-recovery note).
+  if (lifted) {
+    return {
+      x: clamp(hipX + side * 3, 2, width - 3),
+      y: clamp(hipY + (desperate ? 34 : 27), 3, height - 4),
+      planted: false,
+      strain: 1,
+      surface: 'failed',
+    };
+  }
   const reachOut = desperate ? 8 : 5;
   const tuckUp = desperate ? 9 : 6;
   return {
@@ -485,8 +496,10 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     e._px = wx2;
     e._svx = (e._svx || 0) * 0.6 + wdrv * 0.4;
     const asleep = e.sleeping === true;
+    // Lifted off any surface (held by the debug drag, or simply airborne): legs
+    // with no foothold dangle DOWN instead of tucking up toward the hip.
+    const lifted = !asleep && e.grounded === false;
     const moving = !asleep && e.grounded && (Math.abs(e._svx) > 0.035 || e.alerted);
-    if (moving) e.stride += Math.max(0.015, Math.abs(e._svx) * 0.2);
     const face = Math.abs(e._svx) > 0.05 ? Math.sign(e._svx) : look;
     const support = e.weaverSupport ?? 0.65;
     const poised = !asleep && (e.windup ?? 0) > 0;
@@ -506,12 +519,24 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const headY = e.y - def.h * 0.5;
     const overhead = e.alerted && !asleep ? clamp((headY - ctx.player.y) / 58, 0, 1) : 0;
     const nearX = e.alerted && !asleep ? clamp(1 - Math.abs(ctx.player.x - e.x) / 170, 0, 1) : 0;
-    const reachTarget = unstable || feedCrouch || poised || weaving ? 0 : overhead * (0.35 + 0.65 * nearX);
+    const reachTarget = unstable || feedCrouch || poised || weaving || lifted ? 0 : overhead * (0.35 + 0.65 * nearX);
     e.weaverReach = lerp(e.weaverReach ?? 0, reachTarget, 0.06);
     const reach01 = e.weaverReach ?? 0;
+    // AGGRESSION: alerted + actually pursuing (moving, not feeding/rearing/falling)
+    // swaps the calm tetrapod walk for a fast, low, lunging rippled chase. Cranky
+    // pegs it to full; it snaps on quicker than it eases off.
+    const aggroTarget =
+      e.alerted && moving && !feedCrouch && !unstable && !poised && !weaving && !lifted && reach01 < 0.3
+        ? clamp(0.45 + (cranky ? 0.55 : 0) + Math.min(0.35, Math.abs(e._svx) * 0.5), 0, 1)
+        : 0;
+    e.weaverAggro = lerp(e.weaverAggro ?? 0, aggroTarget, aggroTarget > (e.weaverAggro ?? 0) ? 0.08 : 0.04);
+    const aggro = e.weaverAggro ?? 0;
+    if (moving) e.stride += Math.max(0.015, Math.abs(e._svx) * 0.2) * (1 + aggro * 0.85);
     const REAR_BONUS = 12; // extra body lift at a full overhead reach (rears tall)
     const bodyLiftTarget =
-      (asleep
+      (lifted
+        ? 3 // held/airborne: the body relaxes low so the legs hang below it
+        : asleep
         ? 1
         : feedCrouch
           ? 2
@@ -519,7 +544,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
             ? 7
             : unstable
               ? 5
-              : 13.5) + reach01 * REAR_BONUS;
+              : 13.5) + reach01 * REAR_BONUS - aggro * 3; // chase hugs the ground
     const supportedLiftTarget = bodyLiftTarget * (0.35 + priorVisualSupport * 0.65) - supportPanic * 7.5;
     e.weaverBodyLift = lerp(e.weaverBodyLift ?? supportedLiftTarget, supportedLiftTarget, 0.07);
     const bodyLift = e.weaverBodyLift ?? bodyLiftTarget;
@@ -593,13 +618,19 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       const rest = WEAVER_REST[i];
       const leg = e.weaverLegs[i] as WeaverLegState;
       const tetrapod = i === 0 || i === 2 || i === 5 || i === 7 ? 0 : Math.PI;
-      const gait = e.stride * (cranky ? 1.35 : unstable ? 1.08 : 1) + tetrapod + rest.phase * 0.08;
+      // The calm walk's clean alternating tetrapod ramps into a fast front-to-back
+      // RIPPLE as aggression rises (each leg lags its neighbour) — a frantic,
+      // low predatory scuttle instead of a measured stride.
+      const ripple = (i % 4) * 1.1; // staggered wave across each side
+      const pattern = lerp(tetrapod, ripple, aggro);
+      const cadence = (cranky ? 1.35 : unstable ? 1.08 : 1) * (1 + aggro * 0.6);
+      const gait = e.stride * cadence + pattern + rest.phase * 0.08;
       leg.stepCooldown = Math.max(0, (leg.stepCooldown ?? 0) - 1);
-      const swingGate = cranky ? 0.5 : unstable ? 0.42 : 0.68;
+      const swingGate = lerp(unstable ? 0.42 : 0.68, 0.32, aggro) - (cranky ? 0.04 : 0);
       const swing = moving && Math.sin(gait) > swingGate;
-      const reachAmp = cranky ? 3.8 : unstable ? 4.4 : 2.6;
+      const reachAmp = lerp(unstable ? 4.4 : 2.6, 4.8, aggro) + (cranky ? 0.4 : 0);
       const reach = moving
-        ? Math.sin(gait) * reachAmp + face * (cranky ? 3.6 : 2.2)
+        ? Math.sin(gait) * reachAmp + face * lerp(2.2, 4.4, aggro) // lunges further forward
         : Math.sin(frameCount * 0.025 + i) * 0.8;
       let tx = e.x + rest.footX + reach;
       // Default footing target's surface is raycast lazily — only the branch that
@@ -703,9 +734,12 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
         leg.lift = Math.max(leg.lift, 0.55);
       } else {
         if (unstable) tx += Math.sin(frameCount * 0.19 + i * 1.7) * 2.6;
-        const rawTarget = weaverFootTarget(ctx, tx, e.y - rest.footY, hipX, hipY, rest.side, unstable || (e.weaverFallT ?? 0) > 18);
-        const currentSupported = leg.planted === true && weaverFootStillSupported(ctx, leg.x, leg.y);
+        const rawTarget = weaverFootTarget(ctx, tx, e.y - rest.footY, hipX, hipY, rest.side, unstable || (e.weaverFallT ?? 0) > 18, lifted);
         const hipLoad = Math.hypot(hipX - leg.x, hipY - leg.y) / WEAVER_LEG_REACH[i];
+        // A foot stretched past the leg's real reach can't still be "supported" — it
+        // must let go and re-step. Without this, a yanked/teleported/lifted body
+        // drags a glued foot across the level on an impossibly long leg.
+        const currentSupported = leg.planted === true && hipLoad <= 1.12 && weaverFootStillSupported(ctx, leg.x, leg.y);
         const targetDelta = Math.hypot(rawTarget.x - leg.x, rawTarget.y - leg.y);
         if (currentSupported) {
           leg.surface = leg.surface === 'failed' ? rawTarget.surface : leg.surface;
@@ -730,7 +764,12 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
           leg.lift *= 0.35;
           leg.plantAge = (leg.plantAge ?? 0) + 1;
         } else if (!rawTarget.planted) {
-          const target = dampTarget(rawTarget, 0.035);
+          // Reel the foot toward where it should hang: fast when it's far (a yank
+          // or a big lift dragged the body off its old foothold), gentle when it's
+          // just feeling around nearby. The damp tracks the same speed so the
+          // smoothed target can't throttle the reel-in.
+          const pull = clamp(targetDelta / 50, unstable ? 0.05 : 0.04, 0.34);
+          const target = dampTarget(rawTarget, pull);
           const search = Math.sin(frameCount * 0.12 + i * 1.83) * (unstable ? 0.9 : 0.55);
           leg.step = undefined;
           leg.plantAge = 0;
@@ -738,8 +777,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
           leg.surface = 'failed';
           leg.strain = 1;
           leg.failT = (leg.failT ?? 0) + 1;
-          leg.x = lerp(leg.x, target.x + search, unstable ? 0.045 : 0.035);
-          leg.y = lerp(leg.y, target.y + Math.abs(search) * 0.2, 0.04);
+          leg.x = lerp(leg.x, target.x + search, pull);
+          leg.y = lerp(leg.y, target.y + Math.abs(search) * 0.2, pull);
           leg.lift *= 0.18;
         } else {
           const target = dampTarget(rawTarget, 0.08);

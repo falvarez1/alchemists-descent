@@ -901,7 +901,7 @@ export class RunLauncher {
       this.statusEl.textContent = 'Test runs are disposable, can jump to any campaign level, and never overwrite expedition saves.';
     } else if (canContinue) {
       this.statusEl.textContent = 'New Expedition starts clean at D1. Continue resumes the current or saved descent.';
-    } else if (status.level && (status.playtestSource !== null || status.debugGodMode)) {
+    } else if (status.level && (status.playtestSource !== null || status.debugTainted)) {
       this.statusEl.textContent = 'Current play state is disposable/debug-tainted. Start New creates a clean expedition.';
     } else {
       this.statusEl.textContent = 'New Expedition starts at D1 with normal progression and autosave.';
@@ -910,13 +910,13 @@ export class RunLauncher {
   }
 
   private canContinue(status: RunStatus): boolean {
-    const cleanCurrent = status.level !== null && status.playtestSource === null && !status.debugGodMode;
+    const cleanCurrent = status.level !== null && status.playtestSource === null && !status.debugTainted;
     return status.savedExpedition || cleanCurrent;
   }
 
   private shouldConfirmNewExpedition(status: RunStatus): boolean {
     if (status.savedExpedition) return true;
-    return status.level !== null && status.playtestSource === null && !status.debugGodMode;
+    return status.level !== null && status.playtestSource === null && !status.debugTainted;
   }
 
   private async startContinue(): Promise<void> {

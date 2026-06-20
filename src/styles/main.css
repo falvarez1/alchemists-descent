@@ -2328,6 +2328,10 @@ body.builder-open #builder-issues { bottom: 182px; }
     font: 800 10px var(--mono); text-transform: uppercase;
 }
 .brt-toggle input { margin: 0; accent-color: var(--bui-accent); }
+.brt-debug-hint { opacity: 0.72; margin-top: 4px; }
+.brt-live-wrap { display: inline-flex; align-items: center; gap: 3px; color: #7f94aa; font: 800 8px var(--mono); text-transform: uppercase; cursor: pointer; }
+.brt-live-wrap input { margin: 0; accent-color: var(--bui-accent); cursor: pointer; }
+.bo-row.brt-live-row { border-color: var(--bui-accent); background: #0b2330; }
 .brt-detail-card { border: 1px solid #111a24; background: #080d13; border-radius: 4px; padding: 6px; display: grid; gap: 5px; }
 .brt-detail-title { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .brt-detail-title b { color: #d6e6f5; font: 800 11px var(--mono); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

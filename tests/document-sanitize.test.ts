@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createEmptyDocument, sanitizeImportedDoc } from '@/builder/document';
+import {
+  AUTHORED_LIGHT_BLOOM_MAX,
+  AUTHORED_LIGHT_FLICKER_MAX,
+  AUTHORED_LIGHT_INTENSITY_MAX,
+  AUTHORED_LIGHT_RADIUS_MAX,
+  AUTHORED_LIGHT_RADIUS_MIN,
+  createEmptyDocument,
+  sanitizeImportedDoc,
+} from '@/builder/document';
 import type { EditorDocument } from '@/builder/document';
 import { rleEncode } from '@/core/rle';
 import { WIDTH, HEIGHT } from '@/config/constants';
@@ -56,6 +64,41 @@ describe('document sanitizer — save/share ingestion (review hardening)', () =>
     // The light shared the object's id; the importer must re-id it so the
     // validator's single-namespace duplicate check can never fire.
     expect(out.lights[0].id).not.toBe('x');
+  });
+
+  it('clamps imported light values to the runtime budget', () => {
+    const hi = baseDoc();
+    hi.lights = [
+      {
+        id: 'huge',
+        x: 24,
+        y: 24,
+        color: '#ffffff',
+        intensity: 999,
+        radius: 999,
+        bloom: 999,
+        flicker: 999,
+        falloff: 'soft',
+        occluded: true,
+        locked: false,
+        hidden: false,
+      },
+    ];
+    expect(sanitizeImportedDoc(hi)!.lights[0]).toMatchObject({
+      intensity: AUTHORED_LIGHT_INTENSITY_MAX,
+      radius: AUTHORED_LIGHT_RADIUS_MAX,
+      bloom: AUTHORED_LIGHT_BLOOM_MAX,
+      flicker: AUTHORED_LIGHT_FLICKER_MAX,
+    });
+
+    const lo = baseDoc();
+    lo.lights = [{ ...hi.lights[0], id: 'tiny', intensity: -5, radius: 1, bloom: -2, flicker: -3 }];
+    expect(sanitizeImportedDoc(lo)!.lights[0]).toMatchObject({
+      intensity: 0,
+      radius: AUTHORED_LIGHT_RADIUS_MIN,
+      bloom: 0,
+      flicker: 0,
+    });
   });
 
   it('accepts a full-grid terrain RLE and rejects a short one', () => {

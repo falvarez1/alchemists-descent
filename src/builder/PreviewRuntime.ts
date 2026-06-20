@@ -1,6 +1,6 @@
 import type { AuthoredLight, Ctx, ExitPortal, HazardEmitter, Mechanism, Pickup, PrefabEnemy, RuneVault } from '@/core/types';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
-import { applyWorldLayer } from '@/builder/document';
+import { AUTHORED_LIGHT_RUNTIME_CAP, applyWorldLayer } from '@/builder/document';
 import type { EditorDocument, EditorWorldLayer } from '@/builder/document';
 import { instantiateObjects, makeInstantiationSink } from '@/game/instantiate';
 import type { CellSetter } from '@/builder/stamps';
@@ -41,7 +41,6 @@ export interface PreviewRuntimeDrawContext {
 const MAX_MECHANISMS = 256;
 const MAX_RUNE_VAULTS = 128;
 const MAX_EMITTERS = 96;
-const MAX_LIGHTS = 128;
 const MAX_PICKUPS = 256;
 const MAX_PREVIEW_ENEMIES = 256;
 const MAX_CATCHUP_FRAMES = 4;
@@ -153,8 +152,8 @@ export class PreviewRuntime {
     this.emitters = sink.emitters.slice(0, MAX_EMITTERS);
     this.enemySpawns = sink.enemies.slice(0, MAX_PREVIEW_ENEMIES);
     this.portal = sink.portal ?? null;
-    this.lights = sink.authoredLights.slice(0, MAX_LIGHTS);
-    this.lightIds = doc.lights.filter((light) => !light.hidden).slice(0, MAX_LIGHTS).map((light) => light.id);
+    this.lights = sink.authoredLights.slice(0, AUTHORED_LIGHT_RUNTIME_CAP);
+    this.lightIds = doc.lights.filter((light) => !light.hidden).slice(0, AUTHORED_LIGHT_RUNTIME_CAP).map((light) => light.id);
     this.nonEmptyCells = countNonEmpty(this.world);
     this.changedCells = rebuildChangedMask(this.world, this.sourceTypes, this.sourceColors, this.diffMask);
     const capReasons = previewCapReasons({
@@ -792,7 +791,7 @@ function previewCapReasons(counts: PreviewCapCounts): string[] {
   if (counts.enemies > MAX_PREVIEW_ENEMIES) reasons.push('enemies');
   if (counts.runeVaults > MAX_RUNE_VAULTS) reasons.push('rune links');
   if (counts.emitters > MAX_EMITTERS) reasons.push('emitters');
-  if (counts.lights > MAX_LIGHTS) reasons.push('lights');
+  if (counts.lights > AUTHORED_LIGHT_RUNTIME_CAP) reasons.push('lights');
   return reasons;
 }
 

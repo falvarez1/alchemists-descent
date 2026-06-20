@@ -35,13 +35,15 @@ export class DebugTool implements DebugControl {
     }
   }
 
+  setLive(id: string, live: boolean): boolean {
+    if (!this.supportsLiveId(id)) return false;
+    if (live) this.live.add(id);
+    else this.live.delete(id);
+    return this.live.has(id);
+  }
+
   toggleLive(id: string): boolean {
-    if (this.live.has(id)) {
-      this.live.delete(id);
-      return false;
-    }
-    this.live.add(id);
-    return true;
+    return this.setLive(id, !this.live.has(id));
   }
 
   frozenEnemy(e: Enemy): boolean {
@@ -98,21 +100,36 @@ export class DebugTool implements DebugControl {
       ctx.rigidBodies.dragTo(this.dragRef as RigidBody, mx, my);
       return;
     }
-    const ent = this.dragRef as { x: number; y: number; vx: number; vy: number; fx: number; fy: number };
-    ent.x = mx;
-    ent.y = my;
-    ent.vx = 0;
-    ent.vy = 0;
-    ent.fx = 0;
-    ent.fy = 0;
     if (this.dragKind === 'enemy') {
       const e = this.dragRef as Enemy;
+      e.x = mx;
+      e.y = my;
+      e.vx = 0;
+      e.vy = 0;
+      e.fx = 0;
+      e.fy = 0;
       const def = ctx.enemyCtl.defs[e.kind];
       // Lifted vs set-down: recompute footing so a held Weaver's legs DANGLE in
       // the air and PLANT the instant it's lowered near a surface — the renderer
       // reads e.grounded to choose between the two (see EnemySprites weaver).
       e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+      return;
     }
+    if (this.dragKind === 'player') {
+      const p = ctx.player;
+      p.x = mx;
+      p.y = my;
+      p.vx = 0;
+      p.vy = 0;
+      p.fx = 0;
+      p.fy = 0;
+      return;
+    }
+    const c = this.dragRef as Critter;
+    c.x = mx;
+    c.y = my;
+    c.vx = 0;
+    c.vy = 0;
   }
 
   private begin(kind: DragKind, ref: { x: number; y: number }, x: number, y: number): boolean {
@@ -121,5 +138,9 @@ export class DebugTool implements DebugControl {
     this.dragDX = ref.x - x; // keep the grab point under the cursor (no snap)
     this.dragDY = ref.y - y;
     return true;
+  }
+
+  private supportsLiveId(id: string): boolean {
+    return id === 'player' || id.startsWith('enemy:') || id.startsWith('critter:');
   }
 }

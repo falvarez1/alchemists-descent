@@ -317,6 +317,8 @@ function makeCtx(): Ctx {
               ? 'debug-tainted'
               : null,
         debugGodMode: ctx.state.debugGodMode,
+        debugActive: false,
+        debugTainted: ctx.state.debugGodMode,
         expeditionSeed: ctx.state.mode === 'play' ? ctx.state.worldSeed : null,
         worldSeed: ctx.state.worldSeed,
         level: current ? { id: current.def.id, name: current.def.name, depth: current.def.depth } : null,

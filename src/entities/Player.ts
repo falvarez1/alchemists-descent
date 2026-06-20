@@ -1278,10 +1278,12 @@ export class PlayerControl implements PlayerControlApi {
     // (folded into accel/maxRun below), the robe soak, and the wake.
     let bloodWadeCells = 0;
     const wadeTop = Math.min(bodyH, WADE_SAMPLE_H);
+    const sampleX = Math.floor(player.x);
+    const sampleY = Math.floor(player.y);
     for (let dy = 0; dy <= wadeTop; dy++) {
       for (let dx = -PLAYER_HALF_W; dx <= PLAYER_HALF_W; dx++) {
-        const X = player.x + dx,
-          Y = player.y - dy;
+        const X = sampleX + dx,
+          Y = sampleY - dy;
         if (!world.inBounds(X, Y)) continue;
         if (world.types[world.idx(X, Y)] === Cell.Blood) bloodWadeCells++;
       }
@@ -1310,7 +1312,7 @@ export class PlayerControl implements PlayerControlApi {
       const leadX = Math.round(player.x + dir * PLAYER_HALF_W);
       let kicked = 0;
       for (let dy = 0; dy <= 5 && kicked < 3; dy++) {
-        const Y = player.y - dy;
+        const Y = sampleY - dy;
         if (!world.inBounds(leadX, Y)) continue;
         const i = world.idx(leadX, Y);
         if (world.types[i] !== Cell.Blood) continue;

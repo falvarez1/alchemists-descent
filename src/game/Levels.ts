@@ -46,6 +46,7 @@ import type {
   FlaskBottleState,
   WandLoadoutSave,
   WandRuntimeSnapshot,
+  WeaverLairWeb,
   Waystone,
 } from '@/core/types';
 import { createPlayer, grantFullReviewKit } from '@/entities/Player';
@@ -77,6 +78,12 @@ import {
 const CURTAIN_HOLD_MS = 450;
 /** Run after loose materials have begun settling, before the findability audit's 350 ms read. */
 const SETTLED_FINDABILITY_REPAIR_MS = 300;
+/** Authored test arenas REBUILD their terrain after generation (buildWeaverArena /
+ *  buildPhysicsArena wipe the world and stamp a hand-designed layout). They must
+ *  skip the procedural findability repair, which would otherwise "rescue" the now-
+ *  wiped campaign features by carving Metal-sleeved tunnels straight through the
+ *  authored level. They own their own reachability. */
+const AUTHORED_TEST_ARENAS = new Set(['weaver-test', 'physics-test']);
 /** Waystone bowl fire checks run every 4th frame; this many hot checks light it. */
 const WAYSTONE_LIGHT_TICKS = 30;
 /** Fire spells the waystone proximity prompt can offer to equip, best-first. */
@@ -181,6 +188,7 @@ interface SavedLevelBlob {
   portalOpen: boolean;
   litOrder: number[];
   enemies: SavedEnemyState[];
+  weaverLairWebs?: WeaverLairWeb[];
 }
 
 interface ExpeditionSave {
@@ -230,6 +238,29 @@ function sparseNonZeroPairs(arr: Int16Array | Uint8Array | Uint16Array): Array<[
   const out: Array<[number, number]> = [];
   for (let i = 0; i < arr.length; i++) {
     if (arr[i] !== 0) out.push([i, arr[i]]);
+  }
+  return out;
+}
+
+function sanitizeWeaverLairWebs(value: readonly WeaverLairWeb[] | undefined): WeaverLairWeb[] {
+  if (!value) return [];
+  const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+  const out: WeaverLairWeb[] = [];
+  for (const web of value) {
+    if (
+      !web ||
+      !finite(web.x) ||
+      !finite(web.y) ||
+      !finite(web.radius) ||
+      !finite(web.radials) ||
+      !finite(web.rings) ||
+      !finite(web.thickness) ||
+      !finite(web.color) ||
+      !finite(web.jitter)
+    ) {
+      continue;
+    }
+    out.push({ ...web, color: web.color >>> 0 });
   }
   return out;
 }
@@ -294,7 +325,8 @@ function isSavedLevelBlobShape(value: unknown): value is SavedLevelBlob {
     Array.isArray(b.waystones) &&
     Array.isArray(b.runeVaults) &&
     Array.isArray(b.litOrder) &&
-    (b.colorOverrides === undefined || Array.isArray(b.colorOverrides))
+    (b.colorOverrides === undefined || Array.isArray(b.colorOverrides)) &&
+    (b.weaverLairWebs === undefined || Array.isArray(b.weaverLairWebs))
   );
 }
 
@@ -553,12 +585,14 @@ export class Levels implements LevelsApi {
 
   runStatus(ctx: Ctx): RunStatus {
     const rt = this.current;
+    const debugActive = ctx.debug?.active === true;
+    const debugTainted = ctx.state.debugGodMode || debugActive;
     const autosaveBlockReason: RunStatus['autosaveBlockReason'] =
       ctx.state.mode !== 'play'
         ? 'not-play'
         : ctx.state.playtestSource !== null
           ? 'playtest'
-          : ctx.state.debugGodMode
+          : debugTainted
             ? 'debug-tainted'
             : ctx.player.dead
               ? 'dead'
@@ -570,6 +604,8 @@ export class Levels implements LevelsApi {
       autosaveEnabled: autosaveBlockReason === null,
       autosaveBlockReason,
       debugGodMode: ctx.state.debugGodMode,
+      debugActive,
+      debugTainted,
       expeditionSeed: this.expeditionSeed,
       worldSeed: (this.expeditionSeed ?? ctx.state.worldSeed) >>> 0,
       level: rt ? { id: rt.def.id, name: rt.def.name, depth: rt.def.depth } : null,
@@ -836,6 +872,7 @@ export class Levels implements LevelsApi {
 
   saveExpedition(ctx: Ctx): void {
     if (ctx.player.dead) return;
+    if (ctx.debug?.active === true) return;
     this.writeExpeditionSave(ctx, this.snapshotPlayerForSave(ctx));
   }
 
@@ -871,6 +908,7 @@ export class Levels implements LevelsApi {
     if (!LEVELS[this.currentId]) return;
     if (ctx.state.playtestSource !== null) return;
     if (ctx.state.debugGodMode) return;
+    if (ctx.debug?.active === true) return;
     const currentId = this.currentId;
     // Sync the live hostile roster into the current runtime before reading it.
     this.leaveLevel();
@@ -1531,6 +1569,7 @@ export class Levels implements LevelsApi {
       depth: runtime.def.depth,
       name: runtime.def.name,
     });
+    this.restoreWeaverLairWebs(ctx, runtime);
     ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
     ctx.events.emit('objectiveChanged', { text: objective });
 
@@ -1564,6 +1603,7 @@ export class Levels implements LevelsApi {
       portalOpen: rt.portal?.open ?? false,
       litOrder: this.litOrder.get(id) ?? [],
       enemies: rt.enemies.map(snapshotEnemyForSave),
+      ...(rt.weaverLairWebs.length > 0 ? { weaverLairWebs: rt.weaverLairWebs } : {}),
     };
   }
 
@@ -1788,6 +1828,7 @@ export class Levels implements LevelsApi {
       ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
       ...(pristine.spellLab ? { spellLab: pristine.spellLab } : {}),
       ...(pristine.vaultArch ? { vaultArch: pristine.vaultArch } : {}),
+      weaverLairWebs: sanitizeWeaverLairWebs(blob.weaverLairWebs),
     });
 
     // A door/valve saved MID-retraction comes back with state=1 (open) but its
@@ -1823,6 +1864,18 @@ export class Levels implements LevelsApi {
       if (ws) return { x: ws.x, y: ws.y - 2 };
     }
     return { x: runtime.spawn.x, y: runtime.spawn.y };
+  }
+
+  private restoreWeaverLairWebs(ctx: Ctx, runtime: LevelRuntime): void {
+    for (const web of runtime.weaverLairWebs) {
+      ctx.vineStrands.addWebLattice(web.x, web.y, web.radius, {
+        radials: web.radials,
+        rings: web.rings,
+        thickness: web.thickness,
+        color: web.color,
+        jitter: web.jitter,
+      });
+    }
   }
 
   /* ---------------- transitions ---------------- */
@@ -1917,6 +1970,7 @@ export class Levels implements LevelsApi {
       this.seedRuntimeReviewKit(ctx, runtime);
     }
     ctx.events.emit('levelChanged', { depth: def.depth, name: def.name });
+    this.restoreWeaverLairWebs(ctx, runtime);
     // The physics test arena stamps its authored terrain + rigid bodies AFTER
     // levelChanged (which clears the body pool), so the bodies persist.
     if (id === 'physics-test') buildPhysicsArena(ctx);
@@ -2001,6 +2055,9 @@ export class Levels implements LevelsApi {
 
   private scheduleSettledFindabilityRepair(ctx: Ctx, runtime: LevelRuntime): void {
     const id = runtime.def.id;
+    // Authored arenas own their layout; the procedural repair would carve
+    // Metal-sleeved rescue tunnels through it (see AUTHORED_TEST_ARENAS).
+    if (AUTHORED_TEST_ARENAS.has(id)) return;
     const token = ++this.findabilityRepairToken;
     globalThis.setTimeout(() => {
       if (token !== this.findabilityRepairToken || this.currentId !== id || this.current !== runtime) return;
@@ -2049,7 +2106,8 @@ export class Levels implements LevelsApi {
       y: exit.sealY - 12,
     });
     const populationReach = wizardMask(makeLevelRuntime({ def, world, spawn, regions }));
-    this.placePopulation(ctx, def, spawn, regions, populationReach, new Rng(hashSeed(seed, 'population')));
+    const weaverLairWebs: WeaverLairWeb[] = [];
+    this.placePopulation(ctx, def, spawn, regions, populationReach, new Rng(hashSeed(seed, 'population')), weaverLairWebs);
     // Boss arenas: the Kiln Colossus at the bottom of the run; the Sunken
     // Leviathan in d4's perched cistern (the marker carries the kind).
     if (boss) ctx.enemyCtl.spawn(boss.kind ?? 'colossus', boss.x, boss.y);
@@ -2094,11 +2152,15 @@ export class Levels implements LevelsApi {
       ...(refuge ? { refuge } : {}),
       ...(spellLab ? { spellLab } : {}),
       ...(vaultArch ? { vaultArch } : {}),
+      weaverLairWebs,
     });
 
     // Findability fail-open: validator-matched progression breaks carve an
     // explicit rescue route, then DEV still shouts because the generator regressed.
-    this.repairFindability(ctx, runtime, 'initial');
+    // Authored arenas discard this generated world moments later (build*Arena), so
+    // there's nothing to make reachable — and its Metal rescue sleeves would only
+    // be wiped by the rebuild anyway.
+    if (!AUTHORED_TEST_ARENAS.has(def.id)) this.repairFindability(ctx, runtime, 'initial');
 
     return runtime;
   }
@@ -2111,6 +2173,7 @@ export class Levels implements LevelsApi {
     regions: LevelRuntime['regions'],
     reachable: Uint8Array,
     rng: Rng,
+    weaverLairWebs: WeaverLairWeb[],
   ): void {
     // Depth sets the headcount; the biome's foes table sets the mix; difficulty
     // scales the whole headcount (the "enemy rate is insane" knob). Level 3 = ×1.
@@ -2124,7 +2187,7 @@ export class Levels implements LevelsApi {
         const spot = this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h);
         if (spot) {
           const enemy = this.spawnSeededEnemy(ctx, kind, spot.x, spot.y, rng);
-          if (enemy?.kind === 'weaver') this.stampWeaverLair(ctx, spot.x, spot.y, rng);
+          if (enemy?.kind === 'weaver') this.stampWeaverLair(ctx, spot.x, spot.y, rng, weaverLairWebs);
         }
       }
     }
@@ -2265,7 +2328,7 @@ export class Levels implements LevelsApi {
     return enemy;
   }
 
-  private stampWeaverLair(ctx: Ctx, x: number, y: number, rng: Rng): void {
+  private stampWeaverLair(ctx: Ctx, x: number, y: number, rng: Rng, weaverLairWebs: WeaverLairWeb[]): void {
     const world = ctx.world;
     const paint = (px: number, py: number, type: Cell): boolean => {
       if (!world.inBounds(px, py)) return false;
@@ -2282,7 +2345,10 @@ export class Levels implements LevelsApi {
 
     // Hanging curtains: find nearby ceiling lips and pull short, burnable
     // vine strands down into the reachable chamber.
-    ctx.vineStrands.addWebLattice(x, y - 48 - rng.int(18), 42 + rng.int(24), {
+    weaverLairWebs.push({
+      x,
+      y: y - 48 - rng.int(18),
+      radius: 42 + rng.int(24),
       radials: 8 + rng.int(5),
       rings: 4 + rng.int(3),
       thickness: 1,

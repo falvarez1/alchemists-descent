@@ -224,6 +224,14 @@ export class InputManager {
     ctx.input.mouse.x = coords.x;
     ctx.input.mouse.y = coords.y;
 
+    // Debug freeze/drag (Runtime panel): the mouse grabs and drags entities
+    // instead of firing/painting. LMB grabs whatever entity is under the cursor;
+    // it then follows the mouse (DebugTool.update) until the button is released.
+    if (ctx.debug.active && ctx.state.mode === 'play') {
+      if (e.button === 0) ctx.debug.grabAt(coords.x, coords.y);
+      return;
+    }
+
     // Right mouse: a game verb, never the browser menu.
     if (e.button === 2) {
       if (ctx.state.mode === 'play') {
@@ -287,6 +295,10 @@ export class InputManager {
 
   private onMouseUp(): void {
     const { ctx } = this;
+    if (ctx.debug.active && ctx.state.mode === 'play') {
+      ctx.debug.release();
+      return;
+    }
     ctx.input.isDrawing = false;
     ctx.input.lastX = null;
     ctx.input.lastY = null;
@@ -658,6 +670,7 @@ export class InputManager {
   setMode(mode: GameMode): void {
     const { ctx } = this;
     if (mode === ctx.state.mode) return;
+    if (mode !== 'play') ctx.debug.setActive(false);
     ctx.state.mode = mode;
     ctx.events.emit('modeChanged', { mode });
 

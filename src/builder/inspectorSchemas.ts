@@ -1,6 +1,6 @@
 import type { EnemyKind, PickupKind } from '@/core/types';
 import { sentenceCase } from '@/core/strings';
-import { paramNum } from '@/builder/document';
+import { AUTHORED_LIGHT_RADIUS_MAX, AUTHORED_LIGHT_RADIUS_MIN, paramNum } from '@/builder/document';
 import type { EditorDocument, EditorLight, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
 import type { SpriteAsset } from '@/builder/assets/sprites';
 import type { EditorField, FieldOption } from '@/ui/editor/Fields';
@@ -232,7 +232,7 @@ export function lightInspectorSchema(light: EditorLight, context: LightInspector
     ),
     field({ kind: 'color', id: 'light.color', label: 'color', value: light.color, dataset: { lf: 'color' } }, docCommand('builder.inspector.light.color', { lightId: light.id })),
     field(numericLightField('light.intensity', 'intensity', light.intensity, { lf: 'intensity' }, 0.1, 4, 0.1), docCommand('builder.inspector.light.intensity', { lightId: light.id })),
-    field(numericLightField('light.radius', 'radius', light.radius, { lf: 'radius' }, 4, 160), docCommand('builder.inspector.light.radius', { lightId: light.id })),
+    field(numericLightField('light.radius', 'radius', light.radius, { lf: 'radius' }, AUTHORED_LIGHT_RADIUS_MIN, AUTHORED_LIGHT_RADIUS_MAX), docCommand('builder.inspector.light.radius', { lightId: light.id })),
     field(numericLightField('light.bloom', 'bloom', light.bloom, { lf: 'bloom' }, 0, 1, 0.05), docCommand('builder.inspector.light.bloom', { lightId: light.id })),
     field(numericLightField('light.flicker', 'flicker', light.flicker, { lf: 'flicker' }, 0, 1, 0.05), docCommand('builder.inspector.light.flicker', { lightId: light.id })),
     field(

@@ -3,7 +3,14 @@ import type { World } from '@/sim/World';
 import { CELL_COUNT, Cell } from '@/sim/CellType';
 import { writeCell } from '@/builder/terrain';
 import type { PatchRecorder, Region } from '@/builder/terrain';
-import { freshId } from '@/builder/document';
+import {
+  AUTHORED_LIGHT_BLOOM_MAX,
+  AUTHORED_LIGHT_FLICKER_MAX,
+  AUTHORED_LIGHT_INTENSITY_MAX,
+  AUTHORED_LIGHT_RADIUS_MAX,
+  AUTHORED_LIGHT_RADIUS_MIN,
+  freshId,
+} from '@/builder/document';
 import type {
   EditorDocument,
   EditorLight,
@@ -730,10 +737,10 @@ export function sanitizePrefab(
       x: clampInt(l.x, 0, w - 1),
       y: clampInt(l.y, 0, h - 1),
       color: typeof l.color === 'string' ? l.color : '#ffb060',
-      intensity: num(l.intensity) ? Math.max(0, Math.min(4, l.intensity)) : 1,
-      radius: num(l.radius) ? Math.max(4, Math.min(300, l.radius)) : 60,
-      bloom: num(l.bloom) ? Math.max(0, Math.min(2, l.bloom)) : 0,
-      flicker: num(l.flicker) ? Math.max(0, Math.min(1, l.flicker)) : 0,
+      intensity: num(l.intensity) ? Math.max(0, Math.min(AUTHORED_LIGHT_INTENSITY_MAX, l.intensity)) : 1,
+      radius: num(l.radius) ? Math.max(AUTHORED_LIGHT_RADIUS_MIN, Math.min(AUTHORED_LIGHT_RADIUS_MAX, l.radius)) : 60,
+      bloom: num(l.bloom) ? Math.max(0, Math.min(AUTHORED_LIGHT_BLOOM_MAX, l.bloom)) : 0,
+      flicker: num(l.flicker) ? Math.max(0, Math.min(AUTHORED_LIGHT_FLICKER_MAX, l.flicker)) : 0,
       falloff: l.falloff === 'linear' || l.falloff === 'sharp' ? l.falloff : 'soft',
       occluded: l.occluded !== false,
       locked: l.locked === true,

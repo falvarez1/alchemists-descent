@@ -106,11 +106,13 @@ export class Critters implements CrittersApi {
     if (ctx.state.mode !== 'play' || ctx.state.paused) return;
     const frame = ctx.state.frameCount;
 
-    if (frame % 30 === 0) this.trySpawn(ctx);
-    this.updateCritters(ctx);
-    this.ambientGrid(ctx, frame);
-    this.shedFromShake(ctx);
-    if (frame % 90 === 0) this.ambientAudio(ctx);
+    if (!ctx.debug.active && frame % 30 === 0) this.trySpawn(ctx);
+    this.updateCritters(ctx); // per-critter debug-freeze gate inside
+    if (!ctx.debug.active) {
+      this.ambientGrid(ctx, frame);
+      this.shedFromShake(ctx);
+      if (frame % 90 === 0) this.ambientAudio(ctx);
+    }
   }
 
   /* ---------------- spawning: life grows out of local context ---------------- */
@@ -209,6 +211,7 @@ export class Critters implements CrittersApi {
     const player = ctx.player;
     for (let idx = this.list.length - 1; idx >= 0; idx--) {
       const c = this.list[idx];
+      if (ctx.debug.frozenCritter(c)) continue; // posed/dragged in debug mode
       c.phase += 0.13;
       const xi = Math.floor(c.x),
         yi = Math.floor(c.y);

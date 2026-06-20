@@ -18,6 +18,7 @@ const PROBES = [
   'verify-app-dialogs.mjs',
   'verify-card-offers.mjs',
   'verify-runtime-ui.mjs',
+  'verify-debug-tool.mjs',
 ];
 
 function ping(targetUrl) {

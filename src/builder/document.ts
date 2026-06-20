@@ -509,6 +509,12 @@ const DOC_SPRITE_CAP = 512;
 const DOC_SPARSE_CAP = 500_000;
 const SHARE_COMPRESSED_MAX_BYTES = 2_000_000;
 const SHARE_JSON_MAX_BYTES = 12_000_000;
+export const AUTHORED_LIGHT_RADIUS_MIN = 4;
+export const AUTHORED_LIGHT_RADIUS_MAX = 160;
+export const AUTHORED_LIGHT_INTENSITY_MAX = 4;
+export const AUTHORED_LIGHT_BLOOM_MAX = 2;
+export const AUTHORED_LIGHT_FLICKER_MAX = 1;
+export const AUTHORED_LIGHT_RUNTIME_CAP = 128;
 
 const OBJECT_KINDS = new Set<EditorObjectKind>([
   'spawn', 'enemy', 'pickup', 'exitPortal', 'waystone', 'exitWell', 'cauldron',
@@ -719,10 +725,10 @@ function sanitizeLight(raw: unknown, usedIds: Set<string>): EditorLight | null {
     x: clampInt(light.x, 0, WIDTH - 1),
     y: clampInt(light.y, 0, HEIGHT - 1),
     color,
-    intensity: num(light.intensity) ? clampNum(light.intensity, 0, 4) : 1,
-    radius: num(light.radius) ? clampNum(light.radius, 4, 480) : 60,
-    bloom: num(light.bloom) ? clampNum(light.bloom, 0, 2) : 0,
-    flicker: num(light.flicker) ? clampNum(light.flicker, 0, 1) : 0,
+    intensity: num(light.intensity) ? clampNum(light.intensity, 0, AUTHORED_LIGHT_INTENSITY_MAX) : 1,
+    radius: num(light.radius) ? clampNum(light.radius, AUTHORED_LIGHT_RADIUS_MIN, AUTHORED_LIGHT_RADIUS_MAX) : 60,
+    bloom: num(light.bloom) ? clampNum(light.bloom, 0, AUTHORED_LIGHT_BLOOM_MAX) : 0,
+    flicker: num(light.flicker) ? clampNum(light.flicker, 0, AUTHORED_LIGHT_FLICKER_MAX) : 0,
     falloff: LIGHT_FALLOFFS.has(light.falloff) ? light.falloff : 'soft',
     occluded: light.occluded !== false,
     locked: light.locked === true,

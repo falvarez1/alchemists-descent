@@ -69,6 +69,57 @@ describe('runtime panel renderer', () => {
     expect(html).toContain('checked');
   });
 
+  it('only offers debug-live controls for rows the debug tool can actually run', () => {
+    const snapshot = makeSnapshot();
+    snapshot.rows.push(
+      {
+        id: 'enemy:hidden',
+        group: 'enemies',
+        kind: 'slime',
+        label: 'hidden slime',
+        sublabel: '900, 20 - hp 4/10',
+        x: 900,
+        y: 20,
+        hp: 4,
+        maxHp: 10,
+        visible: false,
+        badges: [],
+        fields: [],
+        searchText: 'hidden enemy',
+      },
+      {
+        id: 'critter:1',
+        group: 'critters',
+        kind: 'moth',
+        label: 'moth',
+        sublabel: '15, 20',
+        x: 15,
+        y: 20,
+        visible: false,
+        badges: [],
+        fields: [],
+        searchText: 'critter moth',
+      },
+    );
+
+    const html = renderRuntimePanel({
+      snapshot,
+      query: '',
+      filters: new Set(),
+      showOverlayControls: false,
+      showFocusActions: false,
+      showCameraControls: true,
+      debugActive: true,
+      liveIds: new Set(['enemy:1', 'projectile:1', 'enemy:hidden', 'critter:1']),
+    });
+
+    expect(html).toContain('data-runtime-live="enemy:1"');
+    expect(html).toContain('data-runtime-live="critter:1"');
+    expect(html).not.toContain('data-runtime-live="projectile:1"');
+    expect(html).not.toContain('data-runtime-live="enemy:hidden"');
+    expect(html.match(/brt-live-row/g)?.length).toBe(2);
+  });
+
   it('points author-mode empty runtime panels at Logic Preview', () => {
     const snapshot = makeSnapshot();
     snapshot.source = { id: 'build', label: 'Builder Authoring', detail: 'No active play runtime' };

@@ -5,7 +5,15 @@ import { Cell } from '@/sim/CellType';
 import { PatchRecorder } from '@/builder/terrain';
 import type { Region } from '@/builder/terrain';
 import { paintTerrainCmd } from '@/builder/commands';
-import { createEmptyDocument, freshId } from '@/builder/document';
+import {
+  AUTHORED_LIGHT_BLOOM_MAX,
+  AUTHORED_LIGHT_FLICKER_MAX,
+  AUTHORED_LIGHT_INTENSITY_MAX,
+  AUTHORED_LIGHT_RADIUS_MAX,
+  AUTHORED_LIGHT_RADIUS_MIN,
+  createEmptyDocument,
+  freshId,
+} from '@/builder/document';
 import type { EditorDocument, EditorObject, EditorObjectKind } from '@/builder/document';
 import {
   capturePrefab,
@@ -405,6 +413,53 @@ describe('prefab import sanitization', () => {
     expect(got!.prefab.objects.length).toBe(3);
     expect(got!.prefab.links.length).toBe(1);
     expect(got!.warnings.length).toBe(3);
+  });
+
+  it('clamps imported prefab light values to the runtime budget', () => {
+    const p = valid();
+    p.lights = [
+      {
+        id: 'huge',
+        x: 10,
+        y: 10,
+        color: '#ffffff',
+        intensity: 999,
+        radius: 999,
+        bloom: 999,
+        flicker: 999,
+        falloff: 'soft',
+        occluded: true,
+        locked: false,
+        hidden: false,
+      },
+      {
+        id: 'tiny',
+        x: 11,
+        y: 11,
+        color: '#ffffff',
+        intensity: -5,
+        radius: 1,
+        bloom: -2,
+        flicker: -3,
+        falloff: 'soft',
+        occluded: true,
+        locked: false,
+        hidden: false,
+      },
+    ];
+    const got = sanitizePrefab(JSON.parse(JSON.stringify(p)))!;
+    expect(got.prefab.lights[0]).toMatchObject({
+      intensity: AUTHORED_LIGHT_INTENSITY_MAX,
+      radius: AUTHORED_LIGHT_RADIUS_MAX,
+      bloom: AUTHORED_LIGHT_BLOOM_MAX,
+      flicker: AUTHORED_LIGHT_FLICKER_MAX,
+    });
+    expect(got.prefab.lights[1]).toMatchObject({
+      intensity: 0,
+      radius: AUTHORED_LIGHT_RADIUS_MIN,
+      bloom: 0,
+      flicker: 0,
+    });
   });
 
   it('clamps anchors and sparse pairs into bounds', () => {

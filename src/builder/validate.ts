@@ -1,7 +1,13 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { computeLooseRubbleBlockingMask } from '@/sim/collision';
-import { decodeTypes, paramNum } from '@/builder/document';
+import {
+  AUTHORED_LIGHT_INTENSITY_MAX,
+  AUTHORED_LIGHT_RADIUS_MAX,
+  AUTHORED_LIGHT_RADIUS_MIN,
+  decodeTypes,
+  paramNum,
+} from '@/builder/document';
 import type { EditorDocument, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
 import { kindLabel } from '@/builder/kindLabel';
 import { POTION_KINDS } from '@/core/pickupDefs';
@@ -926,10 +932,10 @@ export function validateDocument(doc: EditorDocument): DocIssue[] {
 
   // ---- lights sanity ----
   for (const l of doc.lights) {
-    if (l.radius < 4 || l.radius > 160)
-      push('warning', 'light radius ' + l.radius + ' outside sane range 4-160', l.id);
-    if (l.intensity <= 0 || l.intensity > 4)
-      push('warning', 'light intensity ' + l.intensity + ' outside sane range 0-4', l.id);
+    if (l.radius < AUTHORED_LIGHT_RADIUS_MIN || l.radius > AUTHORED_LIGHT_RADIUS_MAX)
+      push('warning', 'light radius ' + l.radius + ` outside sane range ${AUTHORED_LIGHT_RADIUS_MIN}-${AUTHORED_LIGHT_RADIUS_MAX}`, l.id);
+    if (l.intensity <= 0 || l.intensity > AUTHORED_LIGHT_INTENSITY_MAX)
+      push('warning', 'light intensity ' + l.intensity + ` outside sane range 0-${AUTHORED_LIGHT_INTENSITY_MAX}`, l.id);
   }
 
   // ---- animated decor volume (visual-only by invariant, but not free to draw) ----

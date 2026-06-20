@@ -20,6 +20,7 @@ import { VineStrands } from '@/entities/VineStrands';
 import { Brewing } from '@/game/Brewing';
 import { createConsoleApi } from '@/game/console/commands';
 import { Critters } from '@/game/Critters';
+import { DebugTool } from '@/game/DebugTool';
 import { GrimoireInteractionObserver } from '@/game/GrimoireInteractions';
 import { HintSystem } from '@/game/Hints';
 import { Levels } from '@/game/Levels';
@@ -187,6 +188,7 @@ export class Game {
     ctx.sanctum = new Sanctum(ctx);
     ctx.critters = new Critters(ctx);
     ctx.hints = new HintSystem(ctx);
+    ctx.debug = new DebugTool(ctx);
     ctx.perf = this.perfHud;
     ctx.console = createConsoleApi(ctx);
     this.ctx = ctx;
@@ -325,6 +327,7 @@ export class Game {
         document.hidden &&
         this.ctx.state.mode === 'play' &&
         this.ctx.state.playtestSource === null &&
+        !this.ctx.debug.active &&
         !this.ctx.player.dead
       ) {
         this.ctx.levels.saveExpedition(this.ctx);
@@ -455,6 +458,7 @@ export class Game {
       ctx.state.mode === 'play' &&
       ctx.state.playtestSource === null &&
       !ctx.state.paused &&
+      !ctx.debug.active &&
       !ctx.player.dead &&
       ctx.state.frameCount % 1800 === 0
     ) {
@@ -471,35 +475,47 @@ export class Game {
     ctx.camera.updateSimBounds(ctx.world);
 
     if (!frozen) {
+      // Debug freeze (Runtime panel): the material sim and the non-selected
+      // entity systems hold still so the world can be inspected/posed; enemies,
+      // critters, the player, and the drag tool stay gated per-entity by `live`.
+      const dbg = ctx.debug;
+      const debugActive = ctx.state.mode === 'play' && dbg.active;
       const tSim = performance.now();
-      // Read contact pairs before the sim consumes them into steam/ice/stone.
-      this.grimoireInteractions.update(ctx);
-      ctx.simulation.update(ctx);
+      if (!debugActive) {
+        // Read contact pairs before the sim consumes them into steam/ice/stone.
+        this.grimoireInteractions.update(ctx);
+        ctx.simulation.update(ctx);
+      }
       this.perfHud.mark('sim', performance.now() - tSim);
 
       const tEnt = performance.now();
-      ctx.playerCtl.update(ctx);
-      ctx.flask.update(ctx);
-      ctx.enemyCtl.update(ctx);
+      if (!dbg.frozenPlayer()) ctx.playerCtl.update(ctx);
+      if (!debugActive) ctx.flask.update(ctx);
+      ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy
       // Rigid bodies integrate against THIS frame's settled terrain, after the
       // sim and the kinematic entities. Impulses from later systems this frame
       // (wands, lightning, and any explosions they trigger) land next frame —
       // a one-frame lag that's imperceptible for debris.
-      ctx.rigidBodies.update(ctx);
-      ctx.vineStrands.update(ctx);
-      // The descent replaced wave survival (Wave B): levels own population,
-      // transitions, waystones, and the explored mask.
-      ctx.levels.update(ctx);
-      ctx.pickups.update(ctx);
-      ctx.mechanisms.update(ctx);
-      ctx.critters.update(ctx);
-      this.brewing.update(ctx);
-      ctx.hints.update(ctx);
-      ctx.wands.update(ctx);
-      ctx.particles.update(ctx);
-      ctx.lightning.update();
-      ctx.lightning.ambientDischarge();
+      ctx.rigidBodies.update(ctx); // self-freezes when debug is active
+      if (!debugActive) {
+        ctx.vineStrands.update(ctx);
+        // The descent replaced wave survival (Wave B): levels own population,
+        // transitions, waystones, and the explored mask.
+        ctx.levels.update(ctx);
+        ctx.pickups.update(ctx);
+        ctx.mechanisms.update(ctx);
+      }
+      ctx.critters.update(ctx); // self-gates per critter
+      if (!debugActive) {
+        this.brewing.update(ctx);
+        ctx.hints.update(ctx);
+        ctx.wands.update(ctx);
+        ctx.particles.update(ctx);
+        ctx.lightning.update();
+        ctx.lightning.ambientDischarge();
+      }
       this.updateBuildModeHeldSpells();
+      if (debugActive) dbg.update(); // drag the grabbed entity to the cursor
       this.perfHud.mark('entities', performance.now() - tEnt);
     }
 

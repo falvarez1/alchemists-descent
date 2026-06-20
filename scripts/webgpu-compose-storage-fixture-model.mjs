@@ -2,8 +2,8 @@ import { DataUtils } from 'three';
 
 export const WORLD_W = 1600;
 export const WORLD_H = 1064;
-export const VIEW_W = 525;
-export const VIEW_H = 357;
+export const VIEW_W = 575;
+export const VIEW_H = 391;
 export const SCALE = 2;
 export const COMPOSE_PAD = 64;
 export const WIN_W = VIEW_W + COMPOSE_PAD * 2;

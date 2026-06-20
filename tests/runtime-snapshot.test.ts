@@ -214,6 +214,7 @@ describe('runtime entity snapshot', () => {
     expect(inferRuntimeSource(makeCtx({ playtestSource: 'sandbox' })).id).toBe('sandbox-playtest');
     expect(inferRuntimeSource(makeCtx({ playtestSource: 'test' })).id).toBe('test-run');
     expect(inferRuntimeSource(makeCtx({ playtestSource: null, debugGodMode: true })).id).toBe('debug-run');
+    expect(inferRuntimeSource(makeCtx({ playtestSource: null, debugActive: true })).id).toBe('debug-run');
   });
 });
 
@@ -221,6 +222,7 @@ function makeCtx(options: {
   mode?: 'build' | 'play';
   playtestSource?: 'builder' | 'sandbox' | 'test' | null;
   debugGodMode?: boolean;
+  debugActive?: boolean;
   enemies?: Enemy[];
   projectiles?: Projectile[];
   pickups?: Pickup[];
@@ -269,6 +271,7 @@ function makeCtx(options: {
     critters: { list: [] },
     particles: { list: options.particles ?? [] },
     levels: { current },
+    debug: { active: options.debugActive ?? false },
   } as unknown as Ctx;
 }
 

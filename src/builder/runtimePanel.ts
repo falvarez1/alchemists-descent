@@ -20,6 +20,9 @@ export interface RuntimePanelModel {
   showFocusActions?: boolean;
   showCameraControls?: boolean;
   cameraFollowEnabled?: boolean;
+  /** Debug freeze/drag tool: whether it's active, and which row ids are kept live. */
+  debugActive?: boolean;
+  liveIds?: ReadonlySet<string>;
   collapsedSections?: Readonly<Record<string, boolean>>;
 }
 
@@ -58,8 +61,10 @@ export function renderRuntimePanel(model: RuntimePanelModel): string {
   </div>`).join('');
   const emptyRows = runtimeEmptyRows(snapshot);
   const sourceNote = runtimeSourceNote(snapshot);
+  const debugActive = model.debugActive === true;
+  const liveIds = model.liveIds;
   const rowHtml = rows.length > 0
-    ? rows.map((row) => renderRuntimeRow(row, snapshot.selectedId === row.id, showFocusActions)).join('')
+    ? rows.map((row) => renderRuntimeRow(row, snapshot.selectedId === row.id, showFocusActions, debugActive, liveIds?.has(row.id) === true)).join('')
     : `<div class="bo-empty b-empty">${esc(emptyRows)}</div>`;
   const selected = snapshot.selectedRow;
   return `
@@ -73,6 +78,7 @@ export function renderRuntimePanel(model: RuntimePanelModel): string {
     </div>
     ${sourceNote ? `<div class="bo-empty b-empty brt-source-note">${esc(sourceNote)}</div>` : ''}
     ${showCameraControls ? renderRuntimeCameraControls(model, model.cameraFollowEnabled === true) : ''}
+    ${showCameraControls ? renderRuntimeDebugControls(model, debugActive) : ''}
     <div class="brt-counts">${countCards}</div>
     ${section(model, 'runtime.particles', 'Particle Aggregate', `
       ${renderParticleAggregate(snapshot)}
@@ -101,6 +107,24 @@ function renderRuntimeCameraControls(model: RuntimePanelModel, cameraFollowEnabl
       <span>Follow Entity</span>
     </label>`,
     'brt-camera',
+  );
+}
+
+function renderRuntimeDebugControls(model: RuntimePanelModel, active: boolean): string {
+  const hint = active
+    ? 'Frozen. Drag entities on the canvas. Tick player, visible enemy, or critter rows to keep them simulating.'
+    : 'Freeze every entity; drag any of them around the map with the mouse to test placement.';
+  return section(
+    model,
+    'runtime.debug',
+    'Debug',
+    `
+    <label class="brt-toggle">
+      <input id="brt-debug" type="checkbox"${active ? ' checked' : ''}>
+      <span>Debug Freeze + Drag</span>
+    </label>
+    <div class="bo-row-sub brt-debug-hint">${hint}</div>`,
+    'brt-debug',
   );
 }
 
@@ -151,14 +175,20 @@ function renderParticleAggregate(snapshot: RuntimeEntitySnapshot): string {
   </div>${mats}`;
 }
 
-function renderRuntimeRow(row: RuntimeEntityRow, selected: boolean, showFocusActions: boolean): string {
+function renderRuntimeRow(row: RuntimeEntityRow, selected: boolean, showFocusActions: boolean, debugActive = false, live = false): string {
   const badges = row.badges.map((badge) => `<span class="bo-badge">${esc(badge)}</span>`).join('');
-  const actions = showFocusActions
-    ? `<div class="bo-row-actions">
-      <button type="button" data-runtime-focus="${escAttr(row.id)}">Focus</button>
-    </div>`
+  const canLive = canDebugLive(row);
+  const liveToggle = debugActive && canLive
+    ? `<label class="brt-live-wrap" title="Keep this entity simulating while frozen">
+      <input type="checkbox" class="brt-live" data-runtime-live="${escAttr(row.id)}"${live ? ' checked' : ''}>
+      <span>live</span>
+    </label>`
     : '';
-  return `<div class="bo-row brt-row ${selected ? ' selected' : ''}${row.visible ? '' : ' hidden-row'}" role="option" tabindex="0" aria-selected="${selected ? 'true' : 'false'}" data-runtime-id="${escAttr(row.id)}">
+  const focus = showFocusActions
+    ? `<button type="button" data-runtime-focus="${escAttr(row.id)}">Focus</button>`
+    : '';
+  const actions = liveToggle || focus ? `<div class="bo-row-actions">${liveToggle}${focus}</div>` : '';
+  return `<div class="bo-row brt-row ${selected ? ' selected' : ''}${row.visible ? '' : ' hidden-row'}${debugActive && live && canLive ? ' brt-live-row' : ''}" role="option" tabindex="0" aria-selected="${selected ? 'true' : 'false'}" data-runtime-id="${escAttr(row.id)}">
     <div class="bo-row-main">
       <div class="bo-row-title">${esc(row.label)}</div>
       <div class="bo-row-sub">${esc(row.sublabel)}</div>
@@ -166,6 +196,13 @@ function renderRuntimeRow(row: RuntimeEntityRow, selected: boolean, showFocusAct
     </div>
     ${actions}
   </div>`;
+}
+
+function canDebugLive(row: RuntimeEntityRow): boolean {
+  if (row.group === 'player' || row.group === 'critters') return true;
+  // Hidden enemy rows may already be outside the active sim bounds, where enemy
+  // update culls them before the debug-live gate.
+  return row.group === 'enemies' && row.visible;
 }
 
 function renderRuntimeDetail(row: RuntimeEntityRow, showFocusActions: boolean): string {

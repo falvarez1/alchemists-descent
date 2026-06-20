@@ -31,6 +31,7 @@ await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const w = ctx.world;
   const Metal = 13;
+  w.clear();
   for (let y = 375; y <= 625; y++)
     for (let x = 430; x <= 770; x++) {
       const i = w.idx(x, y);
@@ -50,17 +51,20 @@ await page.evaluate(() => {
   ctx.camera.snapTo(600, 500);
 });
 await page.waitForTimeout(200);
+const viewSize = await page.evaluate(async () => {
+  const mod = await import('/src/config/constants.ts');
+  return { w: mod.VIEW_W, h: mod.VIEW_H };
+});
 
 /** world cell -> client pixel (the overlay transform, computed live). */
 const toClient = async (wx, wy) =>
-  page.evaluate(([wx, wy]) => {
+  page.evaluate(([wx, wy, view]) => {
     const ctx = window.__game.ctx;
     const r = document.getElementById('builder-overlay').getBoundingClientRect();
-    const VIEW_W = 525, VIEW_H = 357;
-    const ux = ((wx - ctx.camera.renderX) / VIEW_W - 0.5) * ctx.camera.zoom + 0.5;
-    const uy = ((wy - ctx.camera.renderY) / VIEW_H - 0.5) * ctx.camera.zoom + 0.5;
+    const ux = ((wx - ctx.camera.renderX) / view.w - 0.5) * ctx.camera.zoom + 0.5;
+    const uy = ((wy - ctx.camera.renderY) / view.h - 0.5) * ctx.camera.zoom + 0.5;
     return { x: r.left + ux * r.width, y: r.top + uy * r.height };
-  }, [wx, wy]);
+  }, [wx, wy, viewSize]);
 
 const cellType = (x, y) =>
   page.evaluate(([x, y]) => window.__game.ctx.world.types[window.__game.ctx.world.idx(x, y)], [x, y]);
@@ -331,6 +335,67 @@ const procCount2 = await page.evaluate(() => {
 });
 check('procedural history saved with the document', procCount2 === 1, `got ${procCount2}`);
 
+/* ---------- review hardening: abusive authored lights stay bounded in playtest ---------- */
+console.log('-- authored light runtime bounds');
+const authoredLightLimits = await page.evaluate(async () => {
+  const mod = await import('/src/builder/document.ts');
+  return {
+    cap: mod.AUTHORED_LIGHT_RUNTIME_CAP,
+    maxRadius: mod.AUTHORED_LIGHT_RADIUS_MAX,
+    maxIntensity: mod.AUTHORED_LIGHT_INTENSITY_MAX,
+  };
+});
+const injectedLightDoc = await page.evaluate((limits) => {
+  const builder = window.__game.ctx.builder;
+  if (!builder?.doc) return { ok: false, reason: 'missing builder doc' };
+  for (let i = 0; i < limits.cap + 5; i++) {
+    builder.doc.lights.push({
+      id: `probe-light-${i}`,
+      x: 520 + (i % 20) * 2,
+      y: 500 + Math.floor(i / 20) * 2,
+      color: '#ffffff',
+      intensity: 999,
+      radius: 999,
+      bloom: 999,
+      flicker: 999,
+      falloff: 'soft',
+      occluded: false,
+      locked: false,
+      hidden: false,
+    });
+  }
+  return { ok: true, documentLights: builder.doc.lights.length };
+}, authoredLightLimits);
+check('probe injected over-cap authored lights into the Builder document', injectedLightDoc.ok, JSON.stringify(injectedLightDoc));
+await page.click('#b-playtest');
+await page.waitForFunction(
+  () => window.__game.ctx.state.mode === 'play' && window.__game.ctx.state.playtestSource === 'builder',
+  { timeout: 10000 },
+);
+await page.waitForTimeout(400);
+const boundedRuntimeLights = await page.evaluate(() => {
+  const lights = window.__game.ctx.levels.current?.authoredLights ?? [];
+  return {
+    count: lights.length,
+    maxRadius: Math.max(...lights.map((light) => light.radius)),
+    maxIntensity: Math.max(...lights.map((light) => light.intensity)),
+    finite: lights.every((light) =>
+      Number.isFinite(light.radius) &&
+      Number.isFinite(light.intensity) &&
+      Number.isFinite(light.bloom) &&
+      Number.isFinite(light.flicker),
+    ),
+  };
+});
+check(
+  'Builder playtest caps and clamps abusive authored lights',
+  boundedRuntimeLights.count === authoredLightLimits.cap &&
+    boundedRuntimeLights.maxRadius === authoredLightLimits.maxRadius &&
+    boundedRuntimeLights.maxIntensity === authoredLightLimits.maxIntensity &&
+    boundedRuntimeLights.finite,
+  JSON.stringify(boundedRuntimeLights),
+);
+
 /* ---------- Phase 7: validation repair action smoke, isolated page ---------- */
 console.log('-- validation repairs');
 const repairContext = await browser.newContext({ viewport: { width: 1500, height: 900 } });
@@ -395,6 +460,7 @@ await repairPage.evaluate(() => {
   const ctx = window.__game.ctx;
   const w = ctx.world;
   const Metal = 13;
+  w.clear();
   for (let y = 375; y <= 625; y++)
     for (let x = 430; x <= 770; x++) {
       const i = w.idx(x, y);
@@ -408,14 +474,13 @@ await repairPage.evaluate(() => {
 });
 await repairPage.waitForTimeout(120);
 const repairToClient = async (wx, wy) =>
-  repairPage.evaluate(([wx, wy]) => {
+  repairPage.evaluate(([wx, wy, view]) => {
     const ctx = window.__game.ctx;
     const r = document.getElementById('builder-overlay').getBoundingClientRect();
-    const VIEW_W = 525, VIEW_H = 357;
-    const ux = ((wx - ctx.camera.renderX) / VIEW_W - 0.5) * ctx.camera.zoom + 0.5;
-    const uy = ((wy - ctx.camera.renderY) / VIEW_H - 0.5) * ctx.camera.zoom + 0.5;
+    const ux = ((wx - ctx.camera.renderX) / view.w - 0.5) * ctx.camera.zoom + 0.5;
+    const uy = ((wy - ctx.camera.renderY) / view.h - 0.5) * ctx.camera.zoom + 0.5;
     return { x: r.left + ux * r.width, y: r.top + uy * r.height };
-  }, [wx, wy]);
+  }, [wx, wy, viewSize]);
 const repairPlaceAt = async (kind, wx, wy) => {
   await repairPage.click(`.bp-tool[data-kind="${kind}"]`);
   const p = await repairToClient(wx, wy);
@@ -512,7 +577,7 @@ const wellCasingBlock = await repairPage.evaluate(() => ({
 check(
   'playtest-here refuses cursor spawns inside exit-well casing below the plug',
   wellCasingBlock.mode !== 'play' &&
-    wellCasingBlock.status.includes('CURSOR OVERLAPS EXITWELL FOOTPRINT') &&
+    /CURSOR OVERLAPS EXIT ?WELL FOOTPRINT/.test(wellCasingBlock.status) &&
     wellCasingBlock.inspector.includes('exitwell'),
   JSON.stringify(wellCasingBlock),
 );
@@ -563,7 +628,12 @@ check(
   hiddenLinkSelection.selectedCount >= 1 && hiddenLinkSelection.inspector.includes('plate'),
   JSON.stringify(hiddenLinkSelection),
 );
-await repairPage.click('#builder-issues .b-issue[data-issue-code="builder.link.hiddenEndpoint"] [data-validation-action="removeDeadLink"]');
+await repairPage.evaluate(() => {
+  const button = document.querySelector(
+    '#builder-issues .b-issue[data-issue-code="builder.link.hiddenEndpoint"] [data-validation-action="removeDeadLink"]',
+  );
+  if (button instanceof HTMLButtonElement) button.click();
+});
 await repairPage.waitForTimeout(160);
 const hiddenLinkRepairAfter = await repairPage.evaluate(() => ({
   issueStillPresent: Boolean(document.querySelector('#builder-issues .b-issue[data-issue-code="builder.link.hiddenEndpoint"]')),

@@ -328,6 +328,9 @@ export interface Enemy {
   /** Weaver: smoothed rear-up reach (0..1) when an alerted target hovers overhead —
    *  the body rises on its back legs and a foreleg paws upward toward the player. */
   weaverReach?: number;
+  /** Weaver: smoothed aggression (0..1) while alerted and pursuing — swaps the calm
+   *  tetrapod walk for a faster, lower-slung, lunging rippled chase gait. */
+  weaverAggro?: number;
   /** Weaver: x of the weighted centre of currently-load-bearing footing (AI side).
    *  Drives a decisive recentre back over solid ground when footing is cut away. */
   weaverSupportCenterX?: number;
@@ -855,6 +858,10 @@ export interface RunStatus {
   autosaveEnabled: boolean;
   autosaveBlockReason: 'not-play' | 'playtest' | 'debug-tainted' | 'dead' | null;
   debugGodMode: boolean;
+  /** Runtime panel freeze/drag is active; the current pose is intentionally not saveable. */
+  debugActive: boolean;
+  /** Any debug state that makes the current run non-clean for continue/new-run decisions. */
+  debugTainted: boolean;
   expeditionSeed: number | null;
   worldSeed: number;
   level: { id: string; name: string; depth: number } | null;
@@ -1220,6 +1227,9 @@ export interface RigidBodiesApi {
   /** The dynamic body whose shape contains world point (x,y) (small grace
    *  margin), or null. Used by projectiles to detect a body strike. */
   hitTest(x: number, y: number): RigidBody | null;
+  /** Debug tool: teleport a body to (x,y) in world cells (used while the debug
+   *  freeze is active, so no solver step is running). */
+  dragTo(body: RigidBody, x: number, y: number): void;
   /** Grab the nearest light body in front of the player (held = tracks the hand
    *  point each frame). No-op if already holding or nothing's in reach. */
   grab(ctx: Ctx): void;
@@ -1258,6 +1268,17 @@ export interface VineStrandView {
   readonly web?: boolean;
   /** Launched Weaver spit: no pinned endpoints, flies and falls under Verlet. */
   readonly freeWeb?: boolean;
+}
+
+export interface WeaverLairWeb {
+  x: number;
+  y: number;
+  radius: number;
+  radials: number;
+  rings: number;
+  thickness: number;
+  color: number;
+  jitter: number;
 }
 
 export interface VineStrandsApi {
@@ -2243,6 +2264,8 @@ export interface LevelRuntime {
   generatedScenes?: GeneratedScenePlacement[];
   /** Animated sprite decor (visual-only — see RuntimeDecor). */
   decors?: RuntimeDecor[];
+  /** Generated Weaver-den lattice descriptors replayed after levelChanged clears live strands. */
+  weaverLairWebs: WeaverLairWeb[];
   /** The Refuge's offering shrine point — E in reach opens the Sanctum shop. */
   refuge?: { x: number; y: number };
   /** D1 teaching alcove: real-cell stations plus its reward pedestal. */
@@ -2297,6 +2320,33 @@ export interface LevelsApi {
  * The game context — every shared dependency, wired once in Game.ts
  * ============================================================ */
 
+/**
+ * Debug freeze/drag tool (Runtime panel). When `active`, every entity is frozen
+ * except those whose runtime-row id is in `live`; the mouse grabs and drags any
+ * entity around the map (a held Weaver keeps solving its IK legs onto whatever
+ * comes into reach). All transient — never serialized.
+ */
+export interface DebugControl {
+  active: boolean;
+  /** Runtime-row ids the user has ticked to keep simulating while frozen. */
+  readonly live: ReadonlySet<string>;
+  /** The entity currently grabbed by the mouse (null when not dragging). */
+  readonly dragRef: object | null;
+  setActive(active: boolean): void;
+  /** Assign live membership idempotently; unsupported ids are ignored. */
+  setLive(id: string, live: boolean): boolean;
+  /** Toggle a row id in/out of the live set; returns the new membership. */
+  toggleLive(id: string): boolean;
+  frozenEnemy(e: Enemy): boolean;
+  frozenCritter(c: Critter): boolean;
+  frozenPlayer(): boolean;
+  /** Grab whatever entity is under (x,y) in world cells; true if one was grabbed. */
+  grabAt(x: number, y: number): boolean;
+  release(): void;
+  /** Move the grabbed entity to the cursor; call each tick while active. */
+  update(): void;
+}
+
 export interface Ctx {
   world: World;
   events: EventBus;
@@ -2336,4 +2386,5 @@ export interface Ctx {
   sanctum: SanctumApi;
   critters: CrittersApi;
   hints: HintApi;
+  debug: DebugControl;
 }

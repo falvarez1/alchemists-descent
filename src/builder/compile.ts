@@ -1,7 +1,7 @@
-import type { Ctx } from '@/core/types';
+import type { AuthoredLight, Ctx } from '@/core/types';
 import { buildMechanismTriggerIndex } from '@/core/mechanisms';
 import type { EditorDocument } from '@/builder/document';
-import { applyWorldLayer } from '@/builder/document';
+import { AUTHORED_LIGHT_RUNTIME_CAP, applyWorldLayer } from '@/builder/document';
 import { sanitizeBackdropSettings } from '@/config/backdrop';
 import { playtestBlockingIssues, validateDocument } from '@/builder/validate';
 import type { DocIssue } from '@/builder/validate';
@@ -116,13 +116,17 @@ export function compileAndPlaytest(
 
   // 7) Authored lights onto the runtime for Lighting.build.
   if (sink.authoredLights.length > 0) {
-    runtime.authoredLights = sink.authoredLights;
+    runtime.authoredLights = capRuntimeAuthoredLights(sink.authoredLights);
   }
 
   // refresh the live snapshot the runtime keeps
   runtime.enemies.length = 0;
   runtime.enemies.push(...ctx.enemies);
   return true;
+}
+
+export function capRuntimeAuthoredLights(lights: readonly AuthoredLight[]): AuthoredLight[] {
+  return lights.slice(0, AUTHORED_LIGHT_RUNTIME_CAP);
 }
 
 function resetPlayerForPlaytest(ctx: Ctx): void {

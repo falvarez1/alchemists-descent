@@ -57,7 +57,9 @@ const variantValue = parseValue(variantArg);
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await newBenchmarkPage(browser, { diagnosticsLabel: 'perf-ab' });
 page.on('pageerror', (error) => console.error('PAGE ERROR:', String(error)));
-await page.goto(url, { waitUntil: 'networkidle' });
+await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
+await page.waitForFunction(() => window.__game?.ctx, null, { timeout: 120000 });
+await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => undefined);
 await page.waitForTimeout(2000);
 await startConsoleTestRun(page, { seed: 777, settleMs: 1500 });
 
@@ -133,6 +135,7 @@ const result = await page.evaluate(
     const collectRuntimeCapabilities = (value) => {
       const requestedBackend = requestedBackendForValue(value);
       const canvas = pickRendererCanvas();
+      const backendStatus = window.__game?.getRenderBackendStatus?.() ?? null;
       const runtime = {
         requestedBackend,
         actualBackend: 'unknown',
@@ -140,6 +143,7 @@ const result = await page.evaluate(
         feature: { path: featurePath, value },
         postFxGpuCompose: Boolean(ctx.state.postFx?.gpuCompose),
         render: { ...ctx.state.render },
+        backendStatus,
         canvas: canvas ? { width: canvas.width, height: canvas.height } : null,
         gl: null,
       };
@@ -173,8 +177,10 @@ const result = await page.evaluate(
           unmaskedRenderer: debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : null,
         };
       }
+      if (backendStatus?.actual) runtime.actualBackend = backendStatus.actual;
       runtime.fellBackToWebGL2 =
-        requestedBackend === 'webgpu' && runtime.actualBackend === 'webgl2';
+        requestedBackend === 'webgpu' &&
+        (runtime.actualBackend === 'webgl2' || backendStatus?.fallback === true);
       return runtime;
     };
 
@@ -394,6 +400,7 @@ const result = await page.evaluate(
       });
       window.__perfRecord = false;
       const samples = window.__perfSamples;
+      const endCapabilities = collectRuntimeCapabilities(prepared.appliedValue);
       for (let i = 0; i < samples.length; i++) {
         for (const bucket of ['sim', 'entities', 'compose', 'gl', 'render', 'frame']) {
           const value = samples[i]?.[bucket];
@@ -409,6 +416,7 @@ const result = await page.evaluate(
         samples,
         appliedValue: prepared.appliedValue,
         capabilities: prepared.capabilities,
+        endCapabilities,
         setupCounts: prepared.setupCounts,
       };
     };
@@ -443,6 +451,7 @@ const result = await page.evaluate(
           samples: recorded.samples.length,
           setupCounts: recorded.setupCounts,
           capabilities: recorded.capabilities,
+          endCapabilities: recorded.endCapabilities,
           frame: recorded.samples.map((sample) => sample.frame),
         });
       }
@@ -542,6 +551,7 @@ const payload = {
       label: block.label,
       value: block.value,
       capabilities: block.capabilities,
+      endCapabilities: block.endCapabilities,
     })),
   },
   summaries: {

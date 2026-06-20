@@ -19,16 +19,26 @@ import {
 const outDir = 'verify-out/webgpu-live-compose';
 const timestamp = Date.now();
 const providedBaseUrl = process.argv[2] ?? null;
-const VIEW_W = 525;
-const VIEW_H = 357;
-const WIN_W = 653;
-const WIN_H = 485;
-const LIGHT_W = 263;
-const LIGHT_H = 179;
+const COMPOSE_PAD = 64;
 const PARAM_BYTES = 160 * 4;
 
 function align(value, alignment) {
   return Math.ceil(value / alignment) * alignment;
+}
+
+function composeDimensions(status) {
+  const storage = status?.webgpu?.compose?.outputStorage;
+  const viewW = storage?.width;
+  const viewH = storage?.height;
+  if (!Number.isFinite(viewW) || !Number.isFinite(viewH)) return null;
+  return {
+    viewW,
+    viewH,
+    winW: viewW + COMPOSE_PAD * 2,
+    winH: viewH + COMPOSE_PAD * 2,
+    lightW: (viewW >> 1) + 1,
+    lightH: (viewH >> 1) + 1,
+  };
 }
 
 async function startViteServer() {
@@ -84,8 +94,8 @@ function validateStatus(status) {
     failures.push('live compose outputStorage metadata missing');
   } else {
     if (storage.format !== 'rgba16float') failures.push(`expected rgba16float storage, got ${storage.format}`);
-    if (storage.width !== 525 || storage.height !== 357) {
-      failures.push(`expected 525x357 storage, got ${storage.width}x${storage.height}`);
+    if (!Number.isFinite(storage.width) || !Number.isFinite(storage.height) || storage.width <= 0 || storage.height <= 0) {
+      failures.push(`expected positive storage dimensions, got ${storage.width}x${storage.height}`);
     }
     if (storage.mipLevelCount !== 1) failures.push(`expected one mip level, got ${storage.mipLevelCount}`);
   }
@@ -95,22 +105,25 @@ function validateStatus(status) {
 function validateLiveMetrics(status) {
   const failures = [];
   const metrics = status?.webgpu?.compose?.liveMetrics;
+  const dims = composeDimensions(status);
   if (!metrics) {
     failures.push('live compose metrics missing after GPU-composed frame');
     return failures;
   }
+  if (!dims) {
+    failures.push('live compose storage dimensions missing for metrics validation');
+    return failures;
+  }
 
-  const expectedWorldLogical = WIN_W * WIN_H * 4;
-  const expectedWorldSubmitted = align(WIN_W * 4, 256) * WIN_H;
-  const expectedOverlayLogical = VIEW_W * VIEW_H * 8;
-  const expectedOverlaySubmitted = align(VIEW_W * 8, 256) * VIEW_H;
-  const expectedLightLogical = LIGHT_W * LIGHT_H * 16;
-  const expectedLightSubmitted = align(LIGHT_W * 16, 256) * LIGHT_H;
+  const expectedWorldLogical = dims.winW * dims.winH * 4;
+  const expectedWorldSubmitted = align(dims.winW * 4, 256) * dims.winH;
+  const expectedVisibleWorldLogical = dims.viewW * (dims.viewH + 1) * 4;
+  const expectedVisibleWorldSubmitted = align(dims.viewW * 4, 256) * (dims.viewH + 1);
+  const expectedOverlayLogical = dims.viewW * dims.viewH * 8;
+  const expectedOverlaySubmitted = align(dims.viewW * 8, 256) * dims.viewH;
+  const expectedLightLogical = dims.lightW * dims.lightH * 16;
+  const expectedLightSubmitted = align(dims.lightW * 16, 256) * dims.lightH;
   const expectedLutBytes = 256 * 4;
-  const expectedMinLogical =
-    expectedWorldLogical + expectedOverlayLogical + expectedLutBytes + PARAM_BYTES;
-  const expectedMinSubmitted =
-    expectedWorldSubmitted + expectedOverlaySubmitted + expectedLutBytes + PARAM_BYTES;
 
   const finiteNonNegative = [
     'beginFrameCpuMs',
@@ -132,33 +145,48 @@ function validateLiveMetrics(status) {
     }
   }
 
-  if (metrics.outputPixels !== VIEW_W * VIEW_H) {
-    failures.push(`live metrics outputPixels expected ${VIEW_W * VIEW_H}, got ${metrics.outputPixels}`);
+  if (metrics.outputPixels !== dims.viewW * dims.viewH) {
+    failures.push(`live metrics outputPixels expected ${dims.viewW * dims.viewH}, got ${metrics.outputPixels}`);
   }
-  if (metrics.dispatchWorkgroupsX !== Math.ceil(VIEW_W / 8)) {
-    failures.push(`live metrics dispatchWorkgroupsX expected ${Math.ceil(VIEW_W / 8)}, got ${metrics.dispatchWorkgroupsX}`);
+  if (metrics.dispatchWorkgroupsX !== Math.ceil(dims.viewW / 8)) {
+    failures.push(`live metrics dispatchWorkgroupsX expected ${Math.ceil(dims.viewW / 8)}, got ${metrics.dispatchWorkgroupsX}`);
   }
-  if (metrics.dispatchWorkgroupsY !== Math.ceil(VIEW_H / 8)) {
-    failures.push(`live metrics dispatchWorkgroupsY expected ${Math.ceil(VIEW_H / 8)}, got ${metrics.dispatchWorkgroupsY}`);
+  if (metrics.dispatchWorkgroupsY !== Math.ceil(dims.viewH / 8)) {
+    failures.push(`live metrics dispatchWorkgroupsY expected ${Math.ceil(dims.viewH / 8)}, got ${metrics.dispatchWorkgroupsY}`);
   }
-  if (metrics.packWindowBytes !== expectedWorldLogical) {
-    failures.push(`live metrics packWindowBytes expected ${expectedWorldLogical}, got ${metrics.packWindowBytes}`);
-  }
-  if (metrics.worldWindowLogicalUploadBytes !== expectedWorldLogical) {
-    failures.push(`live metrics world logical bytes expected ${expectedWorldLogical}, got ${metrics.worldWindowLogicalUploadBytes}`);
-  }
-  if (metrics.worldWindowSubmittedUploadBytes !== expectedWorldSubmitted) {
-    failures.push(`live metrics world submitted bytes expected ${expectedWorldSubmitted}, got ${metrics.worldWindowSubmittedUploadBytes}`);
-  }
-  if (metrics.overlayLogicalUploadBytes !== expectedOverlayLogical) {
-    failures.push(`live metrics overlay logical bytes expected ${expectedOverlayLogical}, got ${metrics.overlayLogicalUploadBytes}`);
-  }
-  if (metrics.overlaySubmittedUploadBytes !== expectedOverlaySubmitted) {
-    failures.push(`live metrics overlay submitted bytes expected ${expectedOverlaySubmitted}, got ${metrics.overlaySubmittedUploadBytes}`);
-  }
-  if (metrics.lutLogicalUploadBytes !== expectedLutBytes || metrics.lutSubmittedUploadBytes !== expectedLutBytes) {
+  const worldUploadMatches =
+    (metrics.worldWindowLogicalUploadBytes === expectedVisibleWorldLogical &&
+      metrics.worldWindowSubmittedUploadBytes === expectedVisibleWorldSubmitted) ||
+    (metrics.worldWindowLogicalUploadBytes === expectedWorldLogical &&
+      metrics.worldWindowSubmittedUploadBytes === expectedWorldSubmitted);
+  if (!worldUploadMatches) {
     failures.push(
-      `live metrics LUT bytes expected ${expectedLutBytes}, got logical=${metrics.lutLogicalUploadBytes} submitted=${metrics.lutSubmittedUploadBytes}`,
+      `live metrics world bytes expected visible ${expectedVisibleWorldLogical}/${expectedVisibleWorldSubmitted} ` +
+        `or full ${expectedWorldLogical}/${expectedWorldSubmitted}, got ` +
+        `${metrics.worldWindowLogicalUploadBytes}/${metrics.worldWindowSubmittedUploadBytes}`,
+    );
+  }
+  if (metrics.packWindowBytes !== metrics.worldWindowLogicalUploadBytes) {
+    failures.push(
+      `live metrics packWindowBytes ${metrics.packWindowBytes} should match world logical upload ${metrics.worldWindowLogicalUploadBytes}`,
+    );
+  }
+  const overlayUploadMatches =
+    (metrics.overlayLogicalUploadBytes === 0 && metrics.overlaySubmittedUploadBytes === 0) ||
+    (metrics.overlayLogicalUploadBytes === expectedOverlayLogical &&
+      metrics.overlaySubmittedUploadBytes === expectedOverlaySubmitted);
+  if (!overlayUploadMatches) {
+    failures.push(
+      `live metrics overlay bytes expected 0/0 or ${expectedOverlayLogical}/${expectedOverlaySubmitted}, got ` +
+        `${metrics.overlayLogicalUploadBytes}/${metrics.overlaySubmittedUploadBytes}`,
+    );
+  }
+  const lutUploadMatches =
+    (metrics.lutLogicalUploadBytes === 0 && metrics.lutSubmittedUploadBytes === 0) ||
+    (metrics.lutLogicalUploadBytes === expectedLutBytes && metrics.lutSubmittedUploadBytes === expectedLutBytes);
+  if (!lutUploadMatches) {
+    failures.push(
+      `live metrics LUT bytes expected 0/0 or ${expectedLutBytes}/${expectedLutBytes}, got logical=${metrics.lutLogicalUploadBytes} submitted=${metrics.lutSubmittedUploadBytes}`,
     );
   }
   if (metrics.paramsUploadBytes !== PARAM_BYTES) {
@@ -171,12 +199,36 @@ function validateLiveMetrics(status) {
     if (metrics.lightSubmittedUploadBytes !== expectedLightSubmitted) {
       failures.push(`live metrics light submitted bytes expected ${expectedLightSubmitted}, got ${metrics.lightSubmittedUploadBytes}`);
     }
+  } else if (metrics.lightLogicalUploadBytes !== 0 || metrics.lightSubmittedUploadBytes !== 0) {
+    failures.push(
+      `live metrics light bytes should be 0 when lightUploadedThisFrame=false, got ` +
+        `${metrics.lightLogicalUploadBytes}/${metrics.lightSubmittedUploadBytes}`,
+    );
   }
-  if (metrics.totalLogicalUploadBytes < expectedMinLogical) {
-    failures.push(`live metrics total logical bytes ${metrics.totalLogicalUploadBytes} below minimum ${expectedMinLogical}`);
+  if (metrics.backdropSubmittedUploadBytes < metrics.backdropLogicalUploadBytes) {
+    failures.push(
+      `live metrics backdrop submitted bytes ${metrics.backdropSubmittedUploadBytes} below logical ${metrics.backdropLogicalUploadBytes}`,
+    );
   }
-  if (metrics.totalSubmittedUploadBytes < expectedMinSubmitted) {
-    failures.push(`live metrics total submitted bytes ${metrics.totalSubmittedUploadBytes} below minimum ${expectedMinSubmitted}`);
+  const expectedTotalLogical =
+    metrics.worldWindowLogicalUploadBytes +
+    metrics.lightLogicalUploadBytes +
+    metrics.lutLogicalUploadBytes +
+    metrics.paramsUploadBytes +
+    metrics.backdropLogicalUploadBytes +
+    metrics.overlayLogicalUploadBytes;
+  const expectedTotalSubmitted =
+    metrics.worldWindowSubmittedUploadBytes +
+    metrics.lightSubmittedUploadBytes +
+    metrics.lutSubmittedUploadBytes +
+    metrics.paramsUploadBytes +
+    metrics.backdropSubmittedUploadBytes +
+    metrics.overlaySubmittedUploadBytes;
+  if (metrics.totalLogicalUploadBytes !== expectedTotalLogical) {
+    failures.push(`live metrics total logical bytes expected ${expectedTotalLogical}, got ${metrics.totalLogicalUploadBytes}`);
+  }
+  if (metrics.totalSubmittedUploadBytes !== expectedTotalSubmitted) {
+    failures.push(`live metrics total submitted bytes expected ${expectedTotalSubmitted}, got ${metrics.totalSubmittedUploadBytes}`);
   }
   if (metrics.totalSubmittedUploadBytes < metrics.totalLogicalUploadBytes) {
     failures.push('live metrics submitted bytes should be >= logical bytes');

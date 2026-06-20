@@ -233,6 +233,7 @@ describe('player death economy', () => {
       rigidBodies: {
         bodies: [],
         applyMomentumAt: () => undefined,
+        dragTo: () => undefined,
       },
       enemyCtl: {
         defs: ENEMY_DEFS,

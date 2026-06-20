@@ -1709,6 +1709,7 @@ export class Gallery {
         applyMomentumAt: noop,
         applyRadialImpulse: noop,
         hitTest: () => null,
+        dragTo: noop,
         grab: noop,
         release: noop,
         igniteArea: () => 0,
@@ -1929,7 +1930,7 @@ export class Gallery {
       rigidBodies: {
         bodies: [], spawn: () => { throw new Error('Gallery previews do not spawn rigid bodies'); },
         remove: noop, clear: noop, update: noop, applyImpulse: noop, applyImpulseAt: noop,
-        applyMomentumAt: noop, applyRadialImpulse: noop, hitTest: () => null, grab: noop, release: noop, igniteArea: () => 0,
+        applyMomentumAt: noop, applyRadialImpulse: noop, hitTest: () => null, dragTo: noop, grab: noop, release: noop, igniteArea: () => 0,
       },
       levels: { current: this.runtime },
     } as unknown as Ctx;

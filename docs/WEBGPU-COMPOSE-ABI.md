@@ -12,11 +12,11 @@ benchmark entry documents a deliberate, measured deviation.
 | Contract | Value | Source |
 |---|---:|---|
 | World grid | `1600 x 1064` cells | `WIDTH`, `HEIGHT` |
-| View window | `525 x 357` cells | `VIEW_W`, `VIEW_H` |
-| Renderer canvas | `1050 x 714` pixels | `RENDER_W`, `RENDER_H` |
-| Light field | `263 x 179` samples | `(VIEW_W >> 1) + 1`, `(VIEW_H >> 1) + 1` |
+| View window | `575 x 391` cells | `VIEW_W`, `VIEW_H` |
+| Renderer canvas | `1150 x 782` pixels | `RENDER_W`, `RENDER_H` |
+| Light field | `288 x 196` samples | `(VIEW_W >> 1) + 1`, `(VIEW_H >> 1) + 1` |
 | Distortion pad | `64` cells | `COMPOSE_PAD` |
-| Padded world window | `653 x 485` texels | `VIEW + 2 * COMPOSE_PAD` |
+| Padded world window | `703 x 519` texels | `VIEW + 2 * COMPOSE_PAD` |
 | Max shockwaves | `8` | `MAX_WAVES` |
 | Max black-hole lenses | `4` | `MAX_LENSES` |
 
@@ -24,10 +24,10 @@ benchmark entry documents a deliberate, measured deviation.
 
 | Resource | Current WebGL2 Form | Preferred WebGPU Form | Size | Cadence | Notes |
 |---|---|---|---:|---|---|
-| World window | `RGBA8UI` `DataTexture` | `textureLoad` from an exact integer texture where Three/TSL supports it; otherwise `rgba8unorm` with rounded byte recovery after parity proof | `653 x 485 x 4` = `1,266,820` bytes | every composed frame | RGB stores cell color bytes. A stores `type | 0x80` when charged. Rows are world-space top-to-bottom inside the padded window. |
-| Light field | `RGBA32F` `DataTexture` | `textureLoad` from `rgba32float`, or a storage texture produced by later lighting compute | `263 x 179 x 16` = `753,232` bytes | only when lighting rebuilds | RGB are `lightR/G/B`; alpha is `1`. Lighting still rebuilds on CPU in Phase 4. |
+| World window | `RGBA8UI` `DataTexture` | `textureLoad` from an exact integer texture where Three/TSL supports it; otherwise `rgba8unorm` with rounded byte recovery after parity proof | `703 x 519 x 4` = `1,459,428` bytes | every composed frame | RGB stores cell color bytes. A stores `type | 0x80` when charged. Rows are world-space top-to-bottom inside the padded window. |
+| Light field | `RGBA32F` `DataTexture` | `textureLoad` from `rgba32float`, or a storage texture produced by later lighting compute | `288 x 196 x 16` = `903,168` bytes | only when lighting rebuilds | RGB are `lightR/G/B`; alpha is `1`. Lighting still rebuilds on CPU in Phase 4. |
 | Bloom LUT | `R32F` `DataTexture` | `textureLoad` from `r32float`, or a uniform/storage array if that proves simpler and equal | `256 x 4` = `1,024` bytes | every frame | One bloom weight per material id. Material params are live-mutated. |
-| Overlay | `RGBA16F` `DataTexture` plus CPU float staging | `textureLoad` from `rgba16float`; later storage texture only if it reduces upload cost | `525 x 357 x 8` = `1,499,400` bytes on GPU | dirty rect or full upload each frame | `setPx` writes RGB and alpha `1`; `addPx` adds RGB and leaves alpha. Shader computes `(alpha > 0.5 ? 0 : terrain) + overlay.rgb`. |
+| Overlay | `RGBA16F` `DataTexture` plus CPU float staging | `textureLoad` from `rgba16float`; later storage texture only if it reduces upload cost | `575 x 391 x 8` = `1,798,600` bytes on GPU | dirty rect or full upload each frame | `setPx` writes RGB and alpha `1`; `addPx` adds RGB and leaves alpha. Shader computes `(alpha > 0.5 ? 0 : terrain) + overlay.rgb`. |
 | Backdrop layers | 5 repeating RGBA8 textures | 5 repeating sampled textures | content-dependent | on layer version change | Each layer has independent speed, opacity, visibility, scale, and offset. |
 | Shockwaves | uniform arrays | uniform buffer or TSL uniforms | under 256 bytes | every frame | `cx, cy, currentRadius, maxRadius` plus separate strength. |
 | Lenses | uniform arrays | uniform buffer or TSL uniforms | under 128 bytes | every frame | `cx, cy, R, K`. |
@@ -73,9 +73,9 @@ packed into 16-byte aligned slots.
 - If the port uses raw `GPUQueue.writeTexture` or buffer-to-texture copies, any
   staged `bytesPerRow` must satisfy WebGPU's 256-byte row-pitch rule where the
   API requires it. Padded staging row sizes are:
-  - world window RGBA8: `653 * 4 = 2612`, padded to `2816`.
-  - light field RGBA32F: `263 * 16 = 4208`, padded to `4352`.
-  - overlay RGBA16F: `525 * 8 = 4200`, padded to `4352`.
+  - world window RGBA8: `703 * 4 = 2812`, padded to `2816`.
+  - light field RGBA32F: `288 * 16 = 4608`, already aligned.
+  - overlay RGBA16F: `575 * 8 = 4600`, padded to `4608`.
   - bloom LUT R32F: `256 * 4 = 1024`, already aligned.
 - The WebGL2 path currently writes the world window through a `Uint32Array`
   over `Uint8Array` storage, relying on browser little-endian byte order to
@@ -119,12 +119,12 @@ port must check the active device at runtime. Required minimums:
 
 | Limit | Required By Phase 4 | Current Need |
 |---|---:|---|
-| `maxTextureDimension2D` | at least current largest backdrop dimension `2172` and padded world window `653` | world window, overlay, light, backdrop textures |
+| `maxTextureDimension2D` | at least current largest backdrop dimension `2172` and padded world window `703` | world window, overlay, light, backdrop textures |
 | `maxSampledTexturesPerShaderStage` | at least `9` | world, light, LUT, 5 backdrop layers, overlay |
 | `maxSamplersPerShaderStage` | at least `2` | nearest textures plus repeating backdrop textures |
 | `maxUniformBufferBindingSize` | at least `4 KiB` | compose scalars, waves, lenses, backdrop config |
-| `maxStorageBufferBindingSize` | at least `1.3 MiB` only if using storage buffers | world window fallback buffer |
-| `maxBufferSize` | at least padded overlay staging size `1,553,664` bytes only if staging through GPU buffers | overlay/world staging fallback |
+| `maxStorageBufferBindingSize` | at least `1.46 MiB` only if using storage buffers | world window fallback buffer |
+| `maxBufferSize` | at least padded overlay staging size `1,801,728` bytes only if staging through GPU buffers | overlay/world staging fallback |
 
 If a required limit is missing or below the chosen layout, WebGPU compose must
 report unavailable and leave `postFx.gpuCompose` on the existing WebGL2 or CPU
