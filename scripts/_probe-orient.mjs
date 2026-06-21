@@ -108,7 +108,7 @@ try {
   console.log('FLOOR  ', JSON.stringify(floor), 'deg=', DEG(floor.orient));
 
   // =================== 2) WALL (real climb, proven setup) ===================
-  const base = await page.evaluate(() => {
+  await page.evaluate(() => {
     const ctx = window.__game.ctx,
       w = ctx.world;
     const fy = 742,

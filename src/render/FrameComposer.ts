@@ -10,7 +10,16 @@ import type {
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { COMPOSE_MAX_LENSES, COMPOSE_MAX_WAVES } from '@/render/composeLimits';
-import { VIGNETTE_BASE } from '@/render/lightingModel';
+import {
+  LIGHT_CLAMP,
+  LIGHT_KNEE_MAX,
+  LIGHT_KNEE_SLOPE,
+  LIGHT_KNEE_START,
+  LIGHT_READABILITY_FLOOR,
+  SELF_GLOW_BASE,
+  SELF_GLOW_SCALE,
+  VIGNETTE_BASE,
+} from '@/render/lightingModel';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
 import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -47,6 +56,10 @@ export class FrameComposer implements PixelSurface {
   /** Integer camera snapshot for the current frame (original renderCamX/renderCamY). */
   private renderCamX = 0;
   private renderCamY = 0;
+  private lastLightBuildFrame = -1;
+  private lastLightBuildRenderX = Number.NaN;
+  private lastLightBuildRenderY = Number.NaN;
+  private lastLightBuildGpuCompose = false;
 
   /**
    * Non-null while composing a GPU frame (postFx.gpuCompose): the terrain
@@ -204,8 +217,21 @@ export class FrameComposer implements PixelSurface {
         lenses.push(lens);
       }
     }
-    const lightRebuilt = frameCount % 2 === 0 || frameCount < 5;
-    if (lightRebuilt) this.light.build(ctx);
+    const lightBuildDue = frameCount % 2 === 0 || frameCount < 5;
+    const gpuComposeRequested = ctx.state.postFx.gpuCompose && this.target.gpuComposeAvailable;
+    const lightRebuilt =
+      lightBuildDue &&
+      (this.lastLightBuildFrame !== frameCount ||
+        this.lastLightBuildRenderX !== this.renderCamX ||
+        this.lastLightBuildRenderY !== this.renderCamY ||
+        this.lastLightBuildGpuCompose !== gpuComposeRequested);
+    if (lightRebuilt) {
+      this.light.build(ctx);
+      this.lastLightBuildFrame = frameCount;
+      this.lastLightBuildRenderX = this.renderCamX;
+      this.lastLightBuildRenderY = this.renderCamY;
+      this.lastLightBuildGpuCompose = gpuComposeRequested;
+    }
 
     // GPU frame composition (perf ticket #8): the terrain pass runs as a
     // fragment/compute shader; sprites keep drawing through setPx/addPx into
@@ -421,11 +447,11 @@ export class FrameComposer implements PixelSurface {
           {
             const li = (vy >> 1) * LW + (vx >> 1);
             const vg = 1 - vigScale * (1 - vignette[vy * VIEW_W + vx]);
-            let lf0 = Math.min(2.2, lightR[li]) * vg;
+            let lf0 = Math.min(LIGHT_CLAMP, lightR[li]) * vg;
             r = (r * 0.62 + ambient * 0.022) * vg + r * lf0 * lf0 * 0.72;
-            lf0 = Math.min(2.2, lightG[li]) * vg;
+            lf0 = Math.min(LIGHT_CLAMP, lightG[li]) * vg;
             g = (g * 0.62 + ambient * 0.022) * vg + g * lf0 * lf0 * 0.72;
-            lf0 = Math.min(2.2, lightB[li]) * vg;
+            lf0 = Math.min(LIGHT_CLAMP, lightB[li]) * vg;
             b = (b * 0.62 + ambient * 0.032) * vg + b * lf0 * lf0 * 0.72;
             // air itself catches the glow near strong light
             r += Math.max(0, lightR[li] - 0.25) * 0.045 * vg;
@@ -506,27 +532,27 @@ export class FrameComposer implements PixelSurface {
           // squared: compensates the sRGB output curve so darkness reads as darkness.
           // The small additive floor keeps shadowed rock readable as silhouette
           // (the BFS rim shading baked into cell colors carries the detail).
-          const floor = 0.06 * vg;
+          const floor = LIGHT_READABILITY_FLOOR * vg;
           // Emissive cells are LIGHT SOURCES: their own brightness must not be
           // crushed by the screen vignette (it sits inside the squared light
           // factor, so corners rendered at ~23% and bloom only fired near the
           // center). The vignette-free self-glow floor keeps lava/fire/crystal
           // equally bloom-bright across the whole frame.
-          const selfGlow = scalar > 0 ? 0.45 + scalar * 1.55 : 0;
+          const selfGlow = scalar > 0 ? SELF_GLOW_BASE + scalar * SELF_GLOW_SCALE : 0;
           // Soft knee on lit (non-emissive) cells: strong light keeps its REACH
           // but the top end compresses, so the wand no longer blows nearby
           // floor into a white bloom wash that swallows levers and pickups.
-          let lf = (ambient + Math.min(2.2, lightR[li])) * vg;
+          let lf = (ambient + Math.min(LIGHT_CLAMP, lightR[li])) * vg;
           let lit = lf * lf;
-          if (lit > 1.25) lit = Math.min(2.0, 1.25 + (lit - 1.25) * 0.3);
+          if (lit > LIGHT_KNEE_START) lit = Math.min(LIGHT_KNEE_MAX, LIGHT_KNEE_START + (lit - LIGHT_KNEE_START) * LIGHT_KNEE_SLOPE);
           r = r * Math.max(lit, selfGlow) + r * floor;
-          lf = (ambient + Math.min(2.2, lightG[li])) * vg;
+          lf = (ambient + Math.min(LIGHT_CLAMP, lightG[li])) * vg;
           lit = lf * lf;
-          if (lit > 1.25) lit = Math.min(2.0, 1.25 + (lit - 1.25) * 0.3);
+          if (lit > LIGHT_KNEE_START) lit = Math.min(LIGHT_KNEE_MAX, LIGHT_KNEE_START + (lit - LIGHT_KNEE_START) * LIGHT_KNEE_SLOPE);
           g = g * Math.max(lit, selfGlow) + g * floor;
-          lf = (ambient + Math.min(2.2, lightB[li])) * vg;
+          lf = (ambient + Math.min(LIGHT_CLAMP, lightB[li])) * vg;
           lit = lf * lf;
-          if (lit > 1.25) lit = Math.min(2.0, 1.25 + (lit - 1.25) * 0.3);
+          if (lit > LIGHT_KNEE_START) lit = Math.min(LIGHT_KNEE_MAX, LIGHT_KNEE_START + (lit - LIGHT_KNEE_START) * LIGHT_KNEE_SLOPE);
           b = b * Math.max(lit, selfGlow) + b * floor;
         }
         pixelData[bufferIdx] = r * intensity + ringGlow * 0.55;
@@ -899,7 +925,8 @@ export class FrameComposer implements PixelSurface {
     const world = ctx.world;
     const cx = ws.x;
     let hot = 0;
-    for (let dy = -3; dy <= -1; dy++)
+    // Match Levels.updateWaystones: the bowl rect is the cup floor + 2 above.
+    for (let dy = -2; dy <= 0; dy++)
       for (let dx = -2; dx <= 2; dx++)
         if (world.inBounds(cx + dx, ws.y + dy) && this.isHotCell(world.types[world.idx(cx + dx, ws.y + dy)])) hot++;
     const lit = ws.lit;
@@ -982,17 +1009,26 @@ export class FrameComposer implements PixelSurface {
         this.addPx(cx - 5, ws.y - t, 0.7, 0.4, 0.08);
         this.addPx(cx + 5, ws.y - t, 0.7, 0.4, 0.08);
       }
-    } else if (frame % 80 < 22) {
-      this.addPx(cx, ws.y - 2, 0.1, 0.07, 0.04);
+    } else {
+      // Unlit + cold: the empty bowl BREATHES a faint amber "feed me fire" glow
+      // so the eye lands on the dish — not the glyph or the crown. This is the
+      // spot you bring fire to; make the affordance unmistakable.
+      const pulse = 0.16 + Math.sin(frame * 0.08 + cx) * 0.08;
+      this.addPx(cx, ws.y - 1, pulse, pulse * 0.6, pulse * 0.2);
+      this.addPx(cx - 1, ws.y - 1, pulse * 0.7, pulse * 0.42, pulse * 0.14);
+      this.addPx(cx + 1, ws.y - 1, pulse * 0.7, pulse * 0.42, pulse * 0.14);
+      this.addPx(cx, ws.y - 2, pulse * 0.55, pulse * 0.33, pulse * 0.1);
     }
 
-    // objective chevron over the crown when unlit + player near
+    // objective chevron pointing DOWN at the bowl when unlit + player near —
+    // the actionable spot is the dish at the foot, so lead the eye there (the
+    // tall stele + lit flame are the long-range landmark on their own).
     if (!lit) {
       const pdx = ws.x - ctx.player.x, pdy = ws.y - ctx.player.y;
       if (pdx * pdx + pdy * pdy < 80 * 80) {
         const bob = Math.round(Math.sin(frame * 0.12) * 1.5);
-        const ay = topY - 5 + bob;
-        const c = 0.55 + Math.sin(frame * 0.12) * 0.25;
+        const ay = ws.y - 8 + bob;
+        const c = 0.6 + Math.sin(frame * 0.12) * 0.28;
         this.addPx(cx - 2, ay, c, c * 0.85, c * 0.35);
         this.addPx(cx + 2, ay, c, c * 0.85, c * 0.35);
         this.addPx(cx - 1, ay + 1, c, c * 0.85, c * 0.35);

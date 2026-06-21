@@ -16,6 +16,16 @@ import type {
   RenderBackendWebGpuComposeStatus,
 } from '@/render/pixels';
 import {
+  COMPOSE_PAD,
+  LIGHT_CLAMP,
+  LIGHT_KNEE_MAX,
+  LIGHT_KNEE_SLOPE,
+  LIGHT_KNEE_START,
+  LIGHT_READABILITY_FLOOR,
+  SELF_GLOW_BASE,
+  SELF_GLOW_SCALE,
+} from '@/render/lightingModel';
+import {
   resolveThreeStorageTextureAccess,
   type WebGpuStorageTextureAccess,
   type WebGpuTextureLike,
@@ -23,13 +33,13 @@ import {
 import { Cell } from '@/sim/CellType';
 import type { World } from '@/sim/World';
 
-const COMPOSE_PAD = 64;
 const WIN_W = VIEW_W + COMPOSE_PAD * 2;
 const WIN_H = VIEW_H + COMPOSE_PAD * 2;
 const MAX_BACKDROP_LAYERS = 5;
 const TWO_PI = Math.PI * 2;
 const LIGHT_W = (VIEW_W >> 1) + 1;
 const LIGHT_H = (VIEW_H >> 1) + 1;
+const OVERLAY_FULL_UPLOAD_RATIO = 0.65;
 
 const GPU_TEXTURE_USAGE_COPY_DST = 0x02;
 const GPU_TEXTURE_USAGE_TEXTURE_BINDING = 0x04;
@@ -135,6 +145,13 @@ interface TimedUploadStats extends UploadStats {
   cpuMs: number;
 }
 
+interface DirtyRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 function rendererDevice(renderer: WebGPURenderer): RuntimeGpuDevice | null {
   return (renderer as RendererDeviceProbe).backend?.device ?? null;
 }
@@ -223,6 +240,10 @@ class WebGpuOverlay implements OverlaySurface {
   private readonly touched = new Uint8Array(VIEW_W * VIEW_H);
   private written = new Uint32Array(8192);
   private count = 0;
+  private dirtyX0 = VIEW_W;
+  private dirtyY0 = VIEW_H;
+  private dirtyX1 = -1;
+  private dirtyY1 = -1;
 
   get touchedCount(): number {
     return this.count;
@@ -231,6 +252,7 @@ class WebGpuOverlay implements OverlaySurface {
   mark(pixelIdx: number): void {
     if (this.touched[pixelIdx] !== 0) return;
     this.touched[pixelIdx] = 1;
+    this.markDirty(pixelIdx);
     if (this.count === this.written.length) {
       const grown = new Uint32Array(this.written.length * 2);
       grown.set(this.written);
@@ -253,11 +275,12 @@ class WebGpuOverlay implements OverlaySurface {
       half[offset + 2] = 0;
       half[offset + 3] = 0;
       touched[pixel] = 0;
+      this.markDirty(pixel);
     }
     this.count = 0;
   }
 
-  commit(): void {
+  commit(): DirtyRect | null {
     const { data, half, written } = this;
     for (let k = 0; k < this.count; k++) {
       const offset = written[k] * 4;
@@ -266,6 +289,31 @@ class WebGpuOverlay implements OverlaySurface {
       half[offset + 2] = DataUtils.toHalfFloat(data[offset + 2]);
       half[offset + 3] = DataUtils.toHalfFloat(data[offset + 3]);
     }
+    return this.consumeDirtyRect();
+  }
+
+  private markDirty(pixelIdx: number): void {
+    const x = pixelIdx % VIEW_W;
+    const y = Math.floor(pixelIdx / VIEW_W);
+    if (x < this.dirtyX0) this.dirtyX0 = x;
+    if (x > this.dirtyX1) this.dirtyX1 = x;
+    if (y < this.dirtyY0) this.dirtyY0 = y;
+    if (y > this.dirtyY1) this.dirtyY1 = y;
+  }
+
+  private consumeDirtyRect(): DirtyRect | null {
+    if (this.dirtyX1 < this.dirtyX0 || this.dirtyY1 < this.dirtyY0) return null;
+    const rect = {
+      x: this.dirtyX0,
+      y: this.dirtyY0,
+      w: this.dirtyX1 - this.dirtyX0 + 1,
+      h: this.dirtyY1 - this.dirtyY0 + 1,
+    };
+    this.dirtyX0 = VIEW_W;
+    this.dirtyY0 = VIEW_H;
+    this.dirtyX1 = -1;
+    this.dirtyY1 = -1;
+    return rect;
   }
 }
 
@@ -312,8 +360,8 @@ fn flickerRand(v: vec2<f32>, salt: f32) -> f32 {
 
 fn softLit(lf: f32) -> f32 {
   var lit = lf * lf;
-  if (lit > 1.25) {
-    lit = min(2.0, 1.25 + (lit - 1.25) * 0.3);
+  if (lit > ${LIGHT_KNEE_START.toFixed(2)}) {
+    lit = min(${LIGHT_KNEE_MAX.toFixed(1)}, ${LIGHT_KNEE_START.toFixed(2)} + (lit - ${LIGHT_KNEE_START.toFixed(2)}) * ${LIGHT_KNEE_SLOPE.toFixed(1)});
   }
   return lit;
 }
@@ -442,11 +490,11 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
       var r = bg.r * depthShade;
       var g = bg.g * depthShade;
       var b = bg.b * depthShade;
-      var lf0 = min(2.2, light.r) * vg;
+      var lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.r) * vg;
       r = (r * 0.62 + ambient * 0.022) * vg + r * lf0 * lf0 * 0.72;
-      lf0 = min(2.2, light.g) * vg;
+      lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.g) * vg;
       g = (g * 0.62 + ambient * 0.022) * vg + g * lf0 * lf0 * 0.72;
-      lf0 = min(2.2, light.b) * vg;
+      lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.b) * vg;
       b = (b * 0.62 + ambient * 0.032) * vg + b * lf0 * lf0 * 0.72;
       r = r + max(0.0, light.r - 0.25) * 0.045 * vg;
       g = g + max(0.0, light.g - 0.25) * 0.04 * vg;
@@ -491,12 +539,12 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
         let chargeGlow = select(boost * 1.2, boost * 0.35, typeId == ${Cell.Metal});
         intensity = chargeGlow * (0.3 + flickerRand(vec2<f32>(f32(wx), f32(wy)), 2.3) * 1.1);
       }
-      let floorL = 0.06 * vg;
-      let selfGlow = select(0.0, 0.45 + scalar * 1.55, scalar > 0.0);
+      let floorL = ${LIGHT_READABILITY_FLOOR.toFixed(2)} * vg;
+      let selfGlow = select(0.0, ${SELF_GLOW_BASE.toFixed(2)} + scalar * ${SELF_GLOW_SCALE.toFixed(2)}, scalar > 0.0);
       c = vec3<f32>(
-        base.r * max(softLit((ambient + min(2.2, light.r)) * vg), selfGlow) + base.r * floorL,
-        base.g * max(softLit((ambient + min(2.2, light.g)) * vg), selfGlow) + base.g * floorL,
-        base.b * max(softLit((ambient + min(2.2, light.b)) * vg), selfGlow) + base.b * floorL
+        base.r * max(softLit((ambient + min(${LIGHT_CLAMP.toFixed(1)}, light.r)) * vg), selfGlow) + base.r * floorL,
+        base.g * max(softLit((ambient + min(${LIGHT_CLAMP.toFixed(1)}, light.g)) * vg), selfGlow) + base.g * floorL,
+        base.b * max(softLit((ambient + min(${LIGHT_CLAMP.toFixed(1)}, light.b)) * vg), selfGlow) + base.b * floorL
       ) * intensity + ringGlow * vec3<f32>(0.55, 0.42, 0.26);
     }
   }
@@ -753,13 +801,19 @@ export class WebGpuLiveCompose {
     // resident texture must be zero before we stop re-uploading.
     if (touchedCount > 0 || this.overlayGpuDirty) {
       const overlayPackStart = performance.now();
-      this.overlay.commit();
+      const dirty = this.overlay.commit();
       if (metrics) metrics.overlayPackCpuMs = performance.now() - overlayPackStart;
-      const overlayUpload = this.timedUploadTexture(this.overlayTexture, this.overlay.half, VIEW_W, VIEW_H, VIEW_W * 8, this.overlayPadScratch);
-      if (metrics) {
-        metrics.overlayLogicalUploadBytes = overlayUpload.logicalBytes;
-        metrics.overlaySubmittedUploadBytes = overlayUpload.submittedBytes;
-        metrics.overlayUploadCpuMs = overlayUpload.cpuMs;
+      if (dirty) {
+        const dirtyPixels = dirty.w * dirty.h;
+        const overlayUpload =
+          dirtyPixels >= VIEW_W * VIEW_H * OVERLAY_FULL_UPLOAD_RATIO
+            ? this.timedUploadTexture(this.overlayTexture, this.overlay.half, VIEW_W, VIEW_H, VIEW_W * 8, this.overlayPadScratch)
+            : this.timedUploadOverlayRegion(dirty);
+        if (metrics) {
+          metrics.overlayLogicalUploadBytes = overlayUpload.logicalBytes;
+          metrics.overlaySubmittedUploadBytes = overlayUpload.submittedBytes;
+          metrics.overlayUploadCpuMs = overlayUpload.cpuMs;
+        }
       }
       this.overlayGpuDirty = touchedCount > 0;
     }
@@ -970,6 +1024,34 @@ export class WebGpuLiveCompose {
   ): TimedUploadStats {
     const start = performance.now();
     const stats = this.uploadTextureRegion(texture, data, width, height, bytesPerRow, originX, originY, logicalRowBytes);
+    return {
+      ...stats,
+      cpuMs: performance.now() - start,
+    };
+  }
+
+  private timedUploadOverlayRegion(dirty: DirtyRect): TimedUploadStats {
+    const start = performance.now();
+    const logicalRowBytes = dirty.w * 8;
+    const bytesPerRow = align(logicalRowBytes, 256);
+    const neededBytes = bytesPerRow * dirty.h;
+    const scratch = this.overlayPadScratch;
+    scratch.fill(0, 0, neededBytes);
+    const src = byteView(this.overlay.half);
+    for (let row = 0; row < dirty.h; row++) {
+      const srcOffset = ((dirty.y + row) * VIEW_W + dirty.x) * 8;
+      scratch.set(src.subarray(srcOffset, srcOffset + logicalRowBytes), row * bytesPerRow);
+    }
+    const stats = this.uploadTextureRegion(
+      this.overlayTexture,
+      scratch.subarray(0, neededBytes),
+      dirty.w,
+      dirty.h,
+      bytesPerRow,
+      dirty.x,
+      dirty.y,
+      logicalRowBytes,
+    );
     return {
       ...stats,
       cpuMs: performance.now() - start,

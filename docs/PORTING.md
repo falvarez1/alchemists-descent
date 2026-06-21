@@ -143,6 +143,15 @@ manipulated `[r,g,b]` channels (coagulation darkening, stains, shading), use
     are pure helpers, not stateful systems, so the coupling is benign and intentional;
     they are treated as shared foundation-tier utilities. Do not route them through Ctx
     just to satisfy the letter of the allowlist.
+15. Waystone ignition scans the bowl rect `dy = -2..0` (the cup FLOOR row `ws.y`
+    plus the two cells above) — not the original `dy = -3..-1`. Worldgen anchors
+    `ws.y` one cell above the stone floor, so brought fire/lava pools at `ws.y`
+    itself; the old rect started one row too high and never counted it, so cave
+    waystones could not be lit by hand at all (the physics-arena checkpoint, which
+    anchors `ws.y` ON the floor, lined up by luck and masked it). The render's
+    "almost lit" heat tell (`FrameComposer.drawRunestone`) scans the same rect.
+    Ignition also keeps a small coyote-time grace (`WAYSTONE_HEAT_GRACE`) so a
+    flame-jet burst gap doesn't hard-reset progress; a longer gutter still resets.
 
 Everything else: identical behavior — confirmed by a 13-agent adversarial fidelity
 audit (zero critical/major divergences) on 2026-06-10.

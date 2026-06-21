@@ -173,12 +173,32 @@ function validateLiveMetrics(status) {
   }
   const overlayUploadMatches =
     (metrics.overlayLogicalUploadBytes === 0 && metrics.overlaySubmittedUploadBytes === 0) ||
-    (metrics.overlayLogicalUploadBytes === expectedOverlayLogical &&
-      metrics.overlaySubmittedUploadBytes === expectedOverlaySubmitted);
+    (metrics.overlayLogicalUploadBytes > 0 &&
+      metrics.overlayLogicalUploadBytes <= expectedOverlayLogical &&
+      metrics.overlaySubmittedUploadBytes >= metrics.overlayLogicalUploadBytes &&
+      metrics.overlaySubmittedUploadBytes <= expectedOverlaySubmitted);
   if (!overlayUploadMatches) {
     failures.push(
-      `live metrics overlay bytes expected 0/0 or ${expectedOverlayLogical}/${expectedOverlaySubmitted}, got ` +
+      `live metrics overlay bytes expected 0/0 or <= full ${expectedOverlayLogical}/${expectedOverlaySubmitted}, got ` +
         `${metrics.overlayLogicalUploadBytes}/${metrics.overlaySubmittedUploadBytes}`,
+    );
+  }
+  if (
+    metrics.overlayLogicalUploadBytes > 0 &&
+    metrics.overlayLogicalUploadBytes < expectedOverlayLogical &&
+    metrics.overlaySubmittedUploadBytes >= expectedOverlaySubmitted
+  ) {
+    failures.push(
+      `live metrics sparse overlay upload submitted ${metrics.overlaySubmittedUploadBytes} bytes; expected below full ${expectedOverlaySubmitted}`,
+    );
+  }
+  if (
+    metrics.overlayTouchedPixels > 0 &&
+    metrics.overlayTouchedPixels <= 4096 &&
+    metrics.overlayLogicalUploadBytes >= expectedOverlayLogical
+  ) {
+    failures.push(
+      `live metrics sparse overlay frame touched ${metrics.overlayTouchedPixels} pixels but uploaded full overlay ${metrics.overlayLogicalUploadBytes} bytes`,
     );
   }
   const lutUploadMatches =

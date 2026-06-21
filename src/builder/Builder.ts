@@ -5579,7 +5579,7 @@ export class Builder {
               this.ctx.world.types[i] = patch.before.types[n];
               this.ctx.world.colors[i] = patch.before.colors[n];
               this.ctx.world.life[i] = patch.before.life[n];
-              this.ctx.world.charge[i] = patch.before.charge[n];
+              this.ctx.world.setChargeAt(i, patch.before.charge[n]);
             }
             this.renderInspector();
             return;
@@ -5739,7 +5739,7 @@ export class Builder {
         w.types[i] = s.before.types[n];
         w.colors[i] = s.before.colors[n];
         w.life[i] = s.before.life[n];
-        w.charge[i] = s.before.charge[n];
+        w.setChargeAt(i, s.before.charge[n]);
       }
       this.renderInspector();
       return;
@@ -7783,7 +7783,7 @@ export class Builder {
       w.types[i] = p.before.types[n];
       w.colors[i] = p.before.colors[n];
       w.life[i] = p.before.life[n];
-      w.charge[i] = p.before.charge[n];
+      w.setChargeAt(i, p.before.charge[n]);
     }
     if (!silent) this.syncProcPanel();
   }
@@ -8914,7 +8914,7 @@ export class Builder {
           const fn = COLOR_FN[scars.types[i]];
           w.colors[i] = fn ? fn() : EMPTY_COLOR;
           w.life[i] = scars.life[i];
-          w.charge[i] = scars.charge[i];
+          w.setChargeAt(i, scars.charge[i]);
           n++;
         }
       }
@@ -8941,7 +8941,7 @@ export class Builder {
       const fn = COLOR_FN[w.types[i]];
       w.colors[i] = fn ? fn() : EMPTY_COLOR;
       w.life[i] = scars.life[i];
-      w.charge[i] = scars.charge[i];
+      w.setChargeAt(i, scars.charge[i]);
     }
     this.cmds.clear();
     this.markTerrainDirty();

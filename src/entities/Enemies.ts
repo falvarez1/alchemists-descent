@@ -1545,8 +1545,31 @@ export class Enemies implements EnemyControlApi {
         // recovery; above it, just let the legs walk.
         // ...and never while scaling/cresting a wall (weaverCrest>0): the centroid lags
         // toward the face it just left and would haul the body back off the climb.
-        if (anchorCount >= 1 && unsupported && Math.abs(balanceDx) > 5 && (e.weaverCrest ?? 0) === 0) {
-          e.vx += clamp(balanceDx * 0.025, -0.24, 0.24);
+        // Fires in a crisis (small imbalance) OR whenever the support has shifted HARD
+        // to one side — teetering on the lip of a hole — even if the footing metric
+        // hasn't tipped to "unsupported" (a half-cut floor reads as pSup~0.38, not a
+        // crisis, yet the body is hanging over the void and must shuffle onto solid
+        // ground). A normal stride's centroid lag is small, so the wide gate is safe.
+        // Teetering = the support has shifted hard to one side AND there's an actual
+        // VOID on the opposite (unsupported) side — i.e. the body is hanging over the
+        // lip of a hole and must shuffle back onto solid ground. The void check is what
+        // separates this from a brisk walk: a fast body trails its 6-frame support
+        // centroid by >16 too, but on full ground there's NO drop on the lagging side,
+        // so recentring (which would haul the chase to a crawl — the known pitfall)
+        // stays off. dropAhead probes the side away from the centroid.
+        const recenterDir = Math.sign(balanceDx);
+        const voidSide = -recenterDir;
+        // ...but NOT when that void is the way DOWN to the quarry: at the lip of a
+        // ledge with prey below on the drop side, it should descend (chase), not back
+        // away. Mirrors the chase's chasingDownOverEdge so the two never fight.
+        const descendingToPrey = pdy > 10 && Math.sign(pdx || 1) === voidSide;
+        const teetering =
+          Math.abs(balanceDx) > 14 &&
+          recenterDir !== 0 &&
+          !descendingToPrey &&
+          this.dropAhead(e, def, voidSide, 8);
+        if (anchorCount >= 1 && Math.abs(balanceDx) > 5 && (unsupported || teetering) && (e.weaverCrest ?? 0) === 0) {
+          e.vx += clamp(balanceDx * 0.03, -0.3, 0.3);
         }
 
         // --- WALL CLIMB: a giant spider scales sheer walls its legs can grip ----
@@ -1578,7 +1601,14 @@ export class Enemies implements EnemyControlApi {
           // the far side (climb up, crest, descend). Engaging only on "quarry above"
           // left it pinned against a wall when the alchemist stood across a pillar at
           // the same height — exactly the stuck-walking-into-the-wall the report shows.
-          const barrierAhead = bestH > 7 && (targetAbove || Math.abs(pdx) > def.halfW + 2);
+          // Engage when a wall taller than a step-over is a BARRIER between us and the
+          // quarry: either the quarry is overhead, or it's level/below on the far side
+          // of a wall that lies TOWARD it (bestDir === the way to the quarry). The
+          // direction check matters — without it, a weaver teetering on the lip of a
+          // cut-away floor would scramble UP the hole's edge (a wall on the side AWAY
+          // from the quarry) instead of recentring onto solid ground.
+          const barrierAhead =
+            bestH > 7 && (targetAbove || (Math.abs(pdx) > def.halfW + 2 && bestDir === Math.sign(pdx)));
           if (barrierAhead) {
             climbing = true;
             climbDir = bestDir;
@@ -1621,6 +1651,22 @@ export class Enemies implements EnemyControlApi {
         // Cresting: just came off a climb and is scrabbling over the top. Footing
         // reads unstable here (legs splayed across the lip), but recovery must NOT own
         // movement — the chase has to carry it over and down toward the quarry.
+        // It also can't "settle" on a top narrower than its own body, so while it's
+        // perched above a quarry that's across AND below, keep the crest alive: the
+        // chase then flows it over the thin lip and down the far face instead of
+        // teetering in place and re-centring forever.
+        // ONLY sustains a crest a CLIMB actually started (weaverCrest already >0):
+        // it must never invent one during a footing-loss recovery (cut-away floor),
+        // where the weaver has to recentre onto solid ground, not chase off the lip.
+        const onNarrowCrest =
+          !climbing &&
+          (e.weaverCrest ?? 0) > 0 &&
+          unstable &&
+          e.grounded &&
+          pdy > 10 &&
+          Math.abs(pdx) > def.halfW + 2 &&
+          e.y < player.y - 16;
+        if (onNarrowCrest) e.weaverCrest = Math.max(e.weaverCrest ?? 0, 12);
         const cresting = !climbing && (e.weaverCrest ?? 0) > 0;
 
         if (unstable && !climbing && !cresting) {

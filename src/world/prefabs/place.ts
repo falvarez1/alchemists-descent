@@ -73,7 +73,7 @@ export function placePrefabs(
     const fn = COLOR_FN[t];
     world.colors[i] = fn ? fn() : EMPTY_COLOR;
     world.life[i] = 0;
-    world.charge[i] = 0;
+    world.clearChargeAt(i);
   };
 
   const usedIds = new Set<string>();
@@ -90,11 +90,9 @@ export function placePrefabs(
 
     const at = findSite(world, rng, ledger, prefab, budget, site, placed);
     if (!at) {
-      if (import.meta.env.DEV) {
-        console.warn(
-          `[prefabs] skipped ${prefab.id} (slot ${slot + 1}/${slots}) — no site after 9000 tries`,
-        );
-      }
+      console.warn(
+        `[prefabs] skipped ${prefab.id} (slot ${slot + 1}/${slots}) - no site after 11000 tries`,
+      );
       continue;
     }
     usedIds.add(prefab.id);
@@ -135,7 +133,9 @@ export function placePrefabs(
  *   tier 1 (tries <4000): footprint+margin >=80% solid rock, zero Metal,
  *     off reserved ground, full spawn/well/spacing clearances;
  *   tier 2 (<7000): rock >=50%, clearances x0.65;
- *   tier 3 (<9000): only Metal-free + ledger + half clearances.
+ *   tier 3 (<9000): only Metal-free + ledger + half clearances;
+ *   tier 4 (<11000): Metal-free + ledger, quarter spawn/spacing clearance,
+ *     no well clearance.
  */
 function findSite(
   world: World,
@@ -152,16 +152,17 @@ function findSite(
   const ySpan = HEIGHT - 60 - h - 24;
   if (xSpan < 1 || ySpan < 1) return null;
 
-  for (let tries = 0; tries < 9000; tries++) {
+  for (let tries = 0; tries < 11000; tries++) {
     const rockMin = tries < 4000 ? 0.8 : tries < 7000 ? 0.5 : 0;
-    const distK = tries < 4000 ? 1 : tries < 7000 ? 0.65 : 0.5;
+    const distK = tries < 4000 ? 1 : tries < 7000 ? 0.65 : tries < 9000 ? 0.5 : 0.25;
+    const enforceWellClearance = tries < 9000;
     const x0 = 6 + rng.int(xSpan);
     const y0 = 24 + rng.int(ySpan);
     const cx = x0 + w / 2,
       cy = y0 + h / 2;
 
     if (Math.hypot(cx - site.spawn.x, cy - site.spawn.y) < budget.minSpawnDist * distK) continue;
-    if (Math.abs(cx - site.wellX) < WELL_CLEARANCE * distK) continue;
+    if (enforceWellClearance && Math.abs(cx - site.wellX) < WELL_CLEARANCE * distK) continue;
     let crowded = false;
     for (const p of placed) {
       const pcx = (p.x0 + p.x1) / 2,
@@ -227,7 +228,7 @@ function stampPrefab(world: World, prefab: PrefabDef, x0: number, y0: number): v
       const fn = COLOR_FN[t];
       world.colors[i] = fn ? fn() : EMPTY_COLOR;
       world.life[i] = 0;
-      world.charge[i] = 0;
+      world.clearChargeAt(i);
     }
   }
   const overlay = (
@@ -247,7 +248,7 @@ function stampPrefab(world: World, prefab: PrefabDef, x0: number, y0: number): v
     world.life[i] = v;
   });
   overlay(prefab.charge, (i, v) => {
-    world.charge[i] = v;
+    world.setChargeAt(i, v);
   });
   overlay(prefab.colorOverrides, (i, v) => {
     world.colors[i] = v;

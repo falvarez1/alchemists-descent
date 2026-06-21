@@ -118,6 +118,26 @@ describe('builder terrain tools', () => {
     expect(w.types[w.idx(105, 105)]).toBe(Cell.Stone);
   });
 
+  it('terrain paint replay keeps the active charge index in sync', () => {
+    const w = new World();
+    const i = w.idx(24, 24);
+    const before = { idxs: [i], types: [Cell.Empty], colors: [w.colors[i]], life: [0], charge: [0] };
+    const after = { idxs: [i], types: [Cell.Water], colors: [w.colors[i]], life: [0], charge: [7] };
+    const cmd = paintTerrainCmd(w, before, after);
+
+    cmd.do({} as never);
+    expect(w.charge[i]).toBe(7);
+    expect(w.activeCharges.has(i)).toBe(true);
+
+    cmd.undo({} as never);
+    expect(w.charge[i]).toBe(0);
+    expect(w.activeCharges.has(i)).toBe(false);
+
+    cmd.do({} as never);
+    expect(w.charge[i]).toBe(7);
+    expect(w.activeCharges.has(i)).toBe(true);
+  });
+
   it('outline rect stamps only the rim', () => {
     const w = new World();
     const rec = new PatchRecorder(w);

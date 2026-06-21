@@ -60,7 +60,9 @@ const loaded = await record('LOADED (~12k particles)', ({ COUNT }) => {
   ctx.particles.pool.max = COUNT + 1000; // robust vs HMR state
   const w = ctx.world;
   const cx = Math.floor(ctx.camera.x), cy = Math.floor(ctx.camera.y);
-  const VW = 525, VH = 357;
+  const canvas = document.querySelector('canvas');
+  const VW = Math.max(1, Math.floor((canvas?.width ?? 1050) / 2));
+  const VH = Math.max(1, Math.floor((canvas?.height ?? 714) / 2));
   let placed = 0;
   for (let attempt = 0; attempt < COUNT * 8 && placed < COUNT; attempt++) {
     const x = cx + (Math.random() * VW | 0), y = cy + (Math.random() * VH | 0);

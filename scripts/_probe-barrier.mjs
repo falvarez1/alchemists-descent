@@ -49,12 +49,13 @@ try {
     if (r) r.style.opacity = '0';
   });
 
-  const env = await page.evaluate(() => {
+  const WIDTH_ARG = Number(process.argv[3] || 18);
+  const env = await page.evaluate((wArg) => {
     const ctx = window.__game.ctx,
       w = ctx.world;
     const fy = 742,
       pillarL = 600,
-      pillarR = 618,
+      pillarR = 600 + wArg,
       pillarTop = fy - 52;
     // clear a wide bay, lay a floor, raise one pillar between weaver and prey
     for (let x = 360; x <= 900; x++)
@@ -74,9 +75,9 @@ try {
     // weaver LEFT of the pillar, alchemist RIGHT of it — SAME ground level
     e.x = 540; e.y = fy - 1; e.vx = e.vy = 0; e.alerted = true; e.cranky = 600; e.sleeping = false; e.attackCd = 9999;
     e.weaverClimbT = 0; e.weaverClimbDir = 0; e.patrol = undefined;
-    ctx.player.x = 700; ctx.player.y = fy - 2; ctx.player.hp = ctx.player.maxHp = 99999;
+    ctx.player.x = pillarR + 80; ctx.player.y = fy - 2; ctx.player.hp = ctx.player.maxHp = 99999;
     return { fy, pillarL, pillarR, pillarTop };
-  });
+  }, WIDTH_ARG);
 
   const sample = () =>
     page.evaluate(() => {
@@ -87,6 +88,8 @@ try {
         climbT: e.weaverClimbT ?? 0, climbDir: e.weaverClimbDir ?? 0,
         grounded: e.grounded === true, orient: +(e.weaverOrient ?? 0).toFixed(2),
         pdx: Math.round(ctx.player.x - e.x),
+        vx: +(e.vx ?? 0).toFixed(2), pSup: +(e.weaverPhysicalSupport ?? 0).toFixed(2), anc: e.weaverAnchorCount ?? 0,
+        bal: Math.round((e.weaverSupportCenterX ?? e.x) - e.x), crest: e.weaverCrest ?? 0, cranky: e.cranky ?? 0,
       };
     });
 

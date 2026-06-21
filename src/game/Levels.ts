@@ -86,6 +86,10 @@ const SETTLED_FINDABILITY_REPAIR_MS = 300;
 const AUTHORED_TEST_ARENAS = new Set(['weaver-test', 'physics-test']);
 /** Waystone bowl fire checks run every 4th frame; this many hot checks light it. */
 const WAYSTONE_LIGHT_TICKS = 30;
+/** Cold bowl checks tolerated before ignition progress resets — coyote time for
+ *  flame-jet burst gaps and re-aiming (4-frame cadence, so 3 ≈ 12 frames). A
+ *  longer gutter still fully resets, so a cold bowl never shows a false "almost". */
+const WAYSTONE_HEAT_GRACE = 3;
 /** Fire spells the waystone proximity prompt can offer to equip, best-first. */
 const WAYSTONE_FIRE_CARDS: readonly CardId[] = ['flame', 'emberstorm', 'meteor'];
 /** Cells: walking this close to an unlit waystone raises the help prompt once. */
@@ -444,6 +448,8 @@ export class Levels implements LevelsApi {
 
   /** Per-waystone accumulated hot ticks for the CURRENT level (reset on enter). */
   private waystoneHeat: number[] = [];
+  /** Per-waystone consecutive COLD checks (grace coyote-time; see WAYSTONE_HEAT_GRACE). */
+  private waystoneCold: number[] = [];
   /** Waystone indices per level id, in the order they were lit (last = respawn anchor). */
   private litOrder = new Map<string, number[]>();
   /** Re-armed whenever the player is outside every unlit waystone's prompt radius. */
@@ -1983,6 +1989,7 @@ export class Levels implements LevelsApi {
     this.currentId = id;
     this.scheduleSettledFindabilityRepair(ctx, runtime);
     this.waystoneHeat = new Array<number>(runtime.waystones.length).fill(0);
+    this.waystoneCold = new Array<number>(runtime.waystones.length).fill(0);
     this.waystonePromptArmed = true;
     this.waystonePromptOpen = false;
     this.lastEnemiesEmit = ctx.enemies.length;
@@ -2435,7 +2442,13 @@ export class Levels implements LevelsApi {
       const ws = runtime.waystones[i];
       if (ws.lit) continue;
       let fire = 0;
-      for (let dy = -3; dy <= -1; dy++) {
+      // The bowl rect is the cup FLOOR (ws.y) and the two cells above it — where
+      // brought fire/lava actually pools. Worldgen anchors ws.y one cell above
+      // the stone floor, so the old dy=-3..-1 rect scanned OVER the top of the
+      // cup and never saw fire resting in it (the checkpoint then refused to
+      // light no matter where you sprayed; the physics arena, which anchors
+      // ws.y on the floor, lined up by luck). See docs/PORTING.md.
+      for (let dy = -2; dy <= 0; dy++) {
         for (let dx = -2; dx <= 2; dx++) {
           const X = ws.x + dx,
             Y = ws.y + dy;
@@ -2444,11 +2457,20 @@ export class Levels implements LevelsApi {
           if (t === Cell.Fire || t === Cell.Lava || t === Cell.Ember) fire++;
         }
       }
-      // `?? 0` tolerates a waystone added after enterLevel sized the heat array
-      // (the physics arena pushes its checkpoint during the post-enter build).
-      this.waystoneHeat[i] = fire > 0 ? (this.waystoneHeat[i] ?? 0) + 1 : 0;
+      // `?? 0` tolerates a waystone added after enterLevel sized the arrays (the
+      // physics arena pushes its checkpoint during the post-enter build).
+      if (fire > 0) {
+        this.waystoneHeat[i] = (this.waystoneHeat[i] ?? 0) + 1;
+        this.waystoneCold[i] = 0;
+      } else {
+        // Coyote time: a brief gut-out (a flame-jet burst gap, a re-aim) holds
+        // progress; a gutter past the grace fully resets so a long-cold bowl
+        // never shows a false "almost lit" tell.
+        this.waystoneCold[i] = (this.waystoneCold[i] ?? 0) + 1;
+        if ((this.waystoneCold[i] ?? 0) > WAYSTONE_HEAT_GRACE) this.waystoneHeat[i] = 0;
+      }
       // Expose ignition progress for the render's "almost lit" tell.
-      ws.heat = Math.min(1, this.waystoneHeat[i] / WAYSTONE_LIGHT_TICKS);
+      ws.heat = Math.min(1, (this.waystoneHeat[i] ?? 0) / WAYSTONE_LIGHT_TICKS);
       if (fire > 0 && ctx.state.frameCount % 16 === 0) {
         ctx.particles.spawn(
           ws.x + (Math.random() - 0.5) * 4,
@@ -2461,7 +2483,7 @@ export class Levels implements LevelsApi {
           { glow: 1.8, grav: -0.01 },
         );
       }
-      if (this.waystoneHeat[i] >= WAYSTONE_LIGHT_TICKS) this.lightWaystone(ctx, runtime, i);
+      if ((this.waystoneHeat[i] ?? 0) >= WAYSTONE_LIGHT_TICKS) this.lightWaystone(ctx, runtime, i);
     }
   }
 

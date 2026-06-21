@@ -14,13 +14,13 @@ const timestamp = Date.now();
 const providedBaseUrl = process.argv[2] ?? null;
 const cases = [
   { label: 'baseline-powerish', w: 128, h: 96, scale: 4, expectedStatus: 'passed' },
-  { label: 'view-width-small-height', w: 525, h: 96, scale: 2, expectedStatus: 'passed' },
-  { label: 'small-width-view-height', w: 128, h: 357, scale: 2, expectedStatus: 'passed' },
-  { label: 'aligned-view-neighbor', w: 512, h: 360, scale: 2, expectedStatus: 'passed' },
-  { label: 'view-width-aligned-height', w: 525, h: 360, scale: 2, expectedStatus: 'passed' },
-  { label: 'aligned-width-view-height', w: 528, h: 357, scale: 2, expectedStatus: 'passed' },
-  { label: 'production-view', w: 525, h: 357, scale: 2, expectedStatus: 'passed' },
-  { label: 'production-view-padded-storage', w: 525, h: 357, storageW: 576, scale: 2, expectedStatus: 'passed' },
+  { label: 'view-width-small-height', w: 575, h: 96, scale: 2, expectedStatus: 'passed' },
+  { label: 'small-width-view-height', w: 128, h: 391, scale: 2, expectedStatus: 'passed' },
+  { label: 'aligned-view-neighbor', w: 576, h: 392, scale: 2, expectedStatus: 'passed' },
+  { label: 'view-width-aligned-height', w: 575, h: 392, scale: 2, expectedStatus: 'passed' },
+  { label: 'aligned-width-view-height', w: 576, h: 391, scale: 2, expectedStatus: 'passed' },
+  { label: 'production-view', w: 575, h: 391, scale: 2, expectedStatus: 'passed' },
+  { label: 'production-view-padded-storage', w: 575, h: 391, storageW: 576, scale: 2, expectedStatus: 'passed' },
 ];
 
 async function startViteServer() {

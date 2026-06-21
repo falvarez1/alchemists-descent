@@ -141,7 +141,7 @@ export class PreviewRuntime {
       const fn = COLOR_FN[t];
       this.world.colors[i] = fn ? fn() : EMPTY_COLOR;
       this.world.life[i] = 0;
-      this.world.charge[i] = 0;
+      this.world.clearChargeAt(i);
     };
     instantiateObjects(previewCtx, sink, doc.objects, doc.links, doc.lights, 0, 0, set, {
       docSprites: doc.assets?.sprites,
@@ -750,7 +750,7 @@ export class PreviewRuntime {
     this.world.types[i] = type;
     this.world.colors[i] = color;
     this.world.life[i] = life;
-    this.world.charge[i] = charge;
+    this.world.setChargeAt(i, charge);
     if (previous === Cell.Empty && type !== Cell.Empty) this.nonEmptyCells++;
     else if (previous !== Cell.Empty && type === Cell.Empty) this.nonEmptyCells--;
     this.updateDiff(i);

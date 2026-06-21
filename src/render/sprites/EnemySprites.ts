@@ -1057,43 +1057,51 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     // left, π ceiling — blending smoothly through corners.
     let targetOrient = 0;
     const climbDir = e.weaverClimbDir ?? 0;
-    if ((e.weaverClimbT ?? 0) > 0 && climbDir !== 0) {
-      // Actively scaling a wall: the AI knows which side the face is on, so square the
-      // body onto it (+x wall → +π/2, −x wall → −π/2). Authoritative over the leg
-      // vote here, because a sheer-face scramble keeps few feet cleanly planted.
-      targetOrient = (climbDir * Math.PI) / 2;
-    } else if (fW > 0.001) {
+    if (fW > 0.001) {
       const mx = fSx / fW;
       const my = fSy / fW;
-      const vxx = fSxx / fW - mx * mx; // variance along x
-      const vyy = fSyy / fW - my * my; // variance along y
-      const vxy = fSxy / fW - mx * my; // covariance
-      const spread = vxx + vyy;
-      if (spread < 1.2) {
-        // feet bunched into a point — can't fit a line; fall back to the centre-to-
-        // mean direction (still tells floor from ceiling) and let smoothing carry it.
-        targetOrient = Math.atan2(mx - bodyCX, my - bodyCY);
+      const offX = mx - bodyCX; // mean foot offset from the body centre
+      const offY = my - bodyCY;
+      // Covariance of the foot cloud → its principal axis is the surface tangent; the
+      // perpendicular minor axis is the surface normal (thin for a real flat surface).
+      const vxx = fSxx / fW - mx * mx;
+      const vyy = fSyy / fW - my * my;
+      const vxy = fSxy / fW - mx * my;
+      const tr = vxx + vyy;
+      const det = vxx * vyy - vxy * vxy;
+      const disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
+      const lMin = Math.max(0, tr / 2 - disc); // variance ACROSS the normal
+      const tang = 0.5 * Math.atan2(2 * vxy, vxx - vyy);
+      const nx = -Math.sin(tang);
+      const ny = Math.cos(tang);
+      const proj = offX * nx + offY * ny; // body's offset from the foot cloud along the normal
+      if (Math.abs(proj) < Math.sqrt(lMin) * 0.85) {
+        // The body sits INSIDE the foot cloud along the normal — feet straddle it
+        // (a chimney/tunnel with walls on BOTH sides). The normal's sign is genuinely
+        // ambiguous, so PCA would flip the body ±90° every frame: the paused-spider
+        // spasm. Pin it UPRIGHT — the one stable resolution, and it lets the spider
+        // chimney straight up a tunnel instead of fighting which wall to face.
+        targetOrient = 0;
+      } else if ((e.weaverClimbT ?? 0) > 0 && climbDir !== 0) {
+        // Scaling a single committed wall: square the body onto it (+x → +π/2).
+        targetOrient = (climbDir * Math.PI) / 2;
       } else {
-        // principal axis of the foot cloud = the surface tangent; its perpendicular
-        // is the normal. Sign it to point from the surface toward the body (open air).
-        const tang = 0.5 * Math.atan2(2 * vxy, vxx - vyy);
-        let nx = -Math.sin(tang);
-        let ny = Math.cos(tang);
-        if ((bodyCX - mx) * nx + (bodyCY - my) * ny < 0) {
-          nx = -nx;
-          ny = -ny;
-        }
-        // g = into the surface = −normal; θ = atan2(g.x, g.y) aims legs at it.
-        targetOrient = Math.atan2(-nx, -ny);
+        // g = into the surface = the normal pointed TOWARD the feet (the surface side).
+        const gx = proj >= 0 ? nx : -nx;
+        const gy = proj >= 0 ? ny : -ny;
+        targetOrient = Math.atan2(gx, gy); // 0 floor, ±π/2 wall, ±π ceiling
       }
     }
-    // a touch of extra lean from a footing wobble so a scrambling stance still reads.
-    targetOrient += Math.sin(frameCount * 0.11 + e.bobPhase) * fallPose * 0.18;
     let dOrient = targetOrient - orient;
     while (dOrient > Math.PI) dOrient -= Math.PI * 2;
     while (dOrient < -Math.PI) dOrient += Math.PI * 2;
     // ease in; quicker while actively moving so transitions over corners feel alive.
-    e.weaverOrient = orient + dOrient * (asleep ? 0.05 : moving ? 0.2 : 0.12);
+    let nextOrient = orient + dOrient * (asleep ? 0.05 : moving ? 0.2 : 0.12);
+    // keep the stored angle in (−π, π] so it never spirals out of range over a long
+    // chase (cos/sin don't care, but readers/probes and the wobble term stay sane).
+    if (nextOrient > Math.PI) nextOrient -= Math.PI * 2;
+    else if (nextOrient < -Math.PI) nextOrient += Math.PI * 2;
+    e.weaverOrient = nextOrient;
     e.weaverTilt = e.weaverOrient; // kept for any external readers; now the true angle
 
     const BODY: RGB = asleep

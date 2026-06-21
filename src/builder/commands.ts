@@ -161,7 +161,7 @@ export function paintTerrainCmd(world: World, before: CellPatch, after: CellPatc
       world.types[i] = p.types[n];
       world.colors[i] = p.colors[n];
       world.life[i] = p.life[n];
-      world.charge[i] = p.charge[n];
+      world.setChargeAt(i, p.charge[n]);
     }
   };
   return {

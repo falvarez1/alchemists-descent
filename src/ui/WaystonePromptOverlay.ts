@@ -66,14 +66,14 @@ export class WaystonePromptOverlay {
     if (request.card) {
       const name = CARD_DEFS[request.card].name;
       body.textContent =
-        'This checkpoint lights when fire fills its bowl. You carry the ' +
+        'This checkpoint lights when you fill the stone bowl at its base with fire. You carry the ' +
         name +
-        ' card — seat it on your wand to light the brazier? This replaces the wand’s current spells.';
+        ' card — seat it on your wand, then hold its flame on the bowl until the brazier catches? This replaces the wand’s current spells.';
       row.appendChild(this.button('EQUIP ' + name.toUpperCase(), true, () => this.close('equip')));
       row.appendChild(this.button('NOT NOW', false, () => this.close('dismiss')));
     } else {
       body.textContent =
-        'This checkpoint lights when fire fills its bowl, but your wand can’t make fire yet. Bring fire to it: siphon lava with the flask (E) and pour it on the coals (Q), push something burning into the bowl, or find a fire spell card.';
+        'This checkpoint lights when you fill the stone bowl at its base with fire, but your wand can’t make fire yet. Bring fire to it: siphon lava with the flask (E) and pour it into the bowl (Q), push something burning onto it, or find a fire spell card.';
       row.appendChild(this.button('GOT IT', true, () => this.close('dismiss')));
     }
 

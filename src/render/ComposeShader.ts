@@ -4,7 +4,17 @@ import { DataUtils } from 'three';
 import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { COMPOSE_MAX_LENSES, COMPOSE_MAX_WAVES } from '@/render/composeLimits';
-import { VIGNETTE_BASE } from '@/render/lightingModel';
+import {
+  COMPOSE_PAD,
+  LIGHT_CLAMP,
+  LIGHT_KNEE_MAX,
+  LIGHT_KNEE_SLOPE,
+  LIGHT_KNEE_START,
+  LIGHT_READABILITY_FLOOR,
+  SELF_GLOW_BASE,
+  SELF_GLOW_SCALE,
+  VIGNETTE_BASE,
+} from '@/render/lightingModel';
 import type { Ctx, MaterialParams } from '@/core/types';
 import type {
   CompositorLens,
@@ -33,16 +43,7 @@ import type { World } from '@/sim/World';
  *  - distortion    : shockwave + black-hole lens uniform arrays
  */
 
-/**
- * Distortion pad around the view window. Shockwave offset is bounded by
- * |strength| <= 16 (singularity ring −16, explosions +12); the lens offset by
- * K·1.221 per axis with K = 4 + vortexRad·0.16 and vortexRad capped at 140
- * (collapseLimit) → ~33 cells. One wave + one max lens ≈ 49; 64 leaves head-
- * room for two stacked wave fronts. The shader clamps lookups to the window,
- * so distortions beyond the pad diverge from the CPU (which clamps to world
- * bounds) — the parity probe asserts a max-size black hole at the view edge.
- */
-export const COMPOSE_PAD = 64;
+export { COMPOSE_PAD } from '@/render/lightingModel';
 
 const WIN_W = VIEW_W + 2 * COMPOSE_PAD;
 const WIN_H = VIEW_H + 2 * COMPOSE_PAD;
@@ -243,11 +244,11 @@ void main() {
       float r = bg.r * depthShade;
       float g = bg.g * depthShade;
       float b = bg.b * depthShade;
-      float lf0 = min(2.2, light.r) * vg;
+      float lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.r) * vg;
       r = (r * 0.62 + uAmbient * 0.022) * vg + r * lf0 * lf0 * 0.72;
-      lf0 = min(2.2, light.g) * vg;
+      lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.g) * vg;
       g = (g * 0.62 + uAmbient * 0.022) * vg + g * lf0 * lf0 * 0.72;
-      lf0 = min(2.2, light.b) * vg;
+      lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.b) * vg;
       b = (b * 0.62 + uAmbient * 0.032) * vg + b * lf0 * lf0 * 0.72;
       // air itself catches the glow near strong light
       r += max(0.0, light.r - 0.25) * 0.045 * vg;
@@ -306,19 +307,19 @@ void main() {
       // The lighting law (per channel): vignette, ambient, clamp 2.2, square,
       // soft knee above 1.25, vignette-free selfGlow for emissives, plus the
       // 0.06 readability floor. Ported verbatim from FrameComposer.
-      float floorL = 0.06 * vg;
-      float selfGlow = scalar > 0.0 ? 0.45 + scalar * 1.55 : 0.0;
-      float lf = (uAmbient + min(2.2, light.r)) * vg;
+      float floorL = ${LIGHT_READABILITY_FLOOR.toFixed(2)} * vg;
+      float selfGlow = scalar > 0.0 ? ${SELF_GLOW_BASE.toFixed(2)} + scalar * ${SELF_GLOW_SCALE.toFixed(2)} : 0.0;
+      float lf = (uAmbient + min(${LIGHT_CLAMP.toFixed(1)}, light.r)) * vg;
       float lit = lf * lf;
-      if (lit > 1.25) lit = min(2.0, 1.25 + (lit - 1.25) * 0.3);
+      if (lit > ${LIGHT_KNEE_START.toFixed(2)}) lit = min(${LIGHT_KNEE_MAX.toFixed(1)}, ${LIGHT_KNEE_START.toFixed(2)} + (lit - ${LIGHT_KNEE_START.toFixed(2)}) * ${LIGHT_KNEE_SLOPE.toFixed(1)});
       r = r * max(lit, selfGlow) + r * floorL;
-      lf = (uAmbient + min(2.2, light.g)) * vg;
+      lf = (uAmbient + min(${LIGHT_CLAMP.toFixed(1)}, light.g)) * vg;
       lit = lf * lf;
-      if (lit > 1.25) lit = min(2.0, 1.25 + (lit - 1.25) * 0.3);
+      if (lit > ${LIGHT_KNEE_START.toFixed(2)}) lit = min(${LIGHT_KNEE_MAX.toFixed(1)}, ${LIGHT_KNEE_START.toFixed(2)} + (lit - ${LIGHT_KNEE_START.toFixed(2)}) * ${LIGHT_KNEE_SLOPE.toFixed(1)});
       g = g * max(lit, selfGlow) + g * floorL;
-      lf = (uAmbient + min(2.2, light.b)) * vg;
+      lf = (uAmbient + min(${LIGHT_CLAMP.toFixed(1)}, light.b)) * vg;
       lit = lf * lf;
-      if (lit > 1.25) lit = min(2.0, 1.25 + (lit - 1.25) * 0.3);
+      if (lit > ${LIGHT_KNEE_START.toFixed(2)}) lit = min(${LIGHT_KNEE_MAX.toFixed(1)}, ${LIGHT_KNEE_START.toFixed(2)} + (lit - ${LIGHT_KNEE_START.toFixed(2)}) * ${LIGHT_KNEE_SLOPE.toFixed(1)});
       b = b * max(lit, selfGlow) + b * floorL;
 
       c = vec3(r, g, b) * intensity + ringGlow * vec3(0.55, 0.42, 0.26);
@@ -459,6 +460,7 @@ export class GpuCompose {
   private overlayUploadCapacity = 0;
   private overlaySubUploadFailed = false;
   private readonly overlayUploadPos = new THREE.Vector2();
+  private lightUploaded = false;
 
   private readonly waveA: THREE.Vector4[] = [];
   private readonly waveS = new Float32Array(COMPOSE_MAX_WAVES);
@@ -586,7 +588,10 @@ export class GpuCompose {
     this.packWindow(ctx.world, camX, camY, ctx.shockwaves.length > 0 || lenses.length > 0);
     this.winTex.needsUpdate = true;
 
-    if (lightRebuilt) this.uploadLight(light);
+    if (lightRebuilt || !this.lightUploaded) {
+      this.uploadLight(light);
+      this.lightUploaded = true;
+    }
     this.updateLut(ctx.params.materials);
     this.syncBackdropTextures();
 
@@ -664,6 +669,7 @@ export class GpuCompose {
     }
 
     try {
+      this.overlayUploadTex!.needsUpdate = true;
       this.overlayUploadPos.set(dirty.x, dirty.y);
       this.renderer.copyTextureToTexture(
         this.overlayUploadTex!,

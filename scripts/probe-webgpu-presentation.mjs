@@ -563,11 +563,18 @@ try {
   };
   const failures = [];
   const warnings = [];
+  const expectedCanvas = {
+    width: webglOff.status.canvas.width,
+    height: webglOff.status.canvas.height,
+  };
   for (const variant of [webglOff, webgpuOff, webglOn, webgpuOn]) {
     if (variant.consoleErrors.length > 0) failures.push(`${variant.label}: console errors`);
     if (variant.pageErrors.length > 0) failures.push(`${variant.label}: page errors`);
-    if (variant.status.canvas.width !== 1050 || variant.status.canvas.height !== 714) {
-      failures.push(`${variant.label}: unexpected canvas size`);
+    if (variant.status.canvas.width !== expectedCanvas.width || variant.status.canvas.height !== expectedCanvas.height) {
+      failures.push(
+        `${variant.label}: unexpected canvas size ${variant.status.canvas.width}x${variant.status.canvas.height}; ` +
+          `expected ${expectedCanvas.width}x${expectedCanvas.height}`,
+      );
     }
     if (variant.identity.holderCanvasCount !== 1 || !variant.identity.holderConnected) {
       failures.push(`${variant.label}: canvas-holder ownership changed`);
@@ -604,11 +611,11 @@ try {
   if (postOffDiff.meanChannelDelta > 6 || postOffDiff.differingPixelPct > 25) {
     failures.push('post-off WebGPU screenshot diverged beyond tolerance');
   }
-  if (postOnDiff.meanChannelDelta > 16) {
+  if (postOnDiff.meanChannelDelta > 12) {
     failures.push('post-on WebGPU screenshot diverged beyond tolerance');
   }
-  if (postOnDiff.differingPixelPct > 50) {
-    warnings.push('post-on bloom differs visibly; Phase 3 documents this as the single-pass TSL bloom approximation');
+  if (postOnDiff.differingPixelPct > 45) {
+    failures.push('post-on WebGPU screenshot changed more than 45% of pixels');
   }
   if (presentation.postOffGlMean.pct > 20) {
     warnings.push('post-off no-post WebGPU path is slower than WebGL; WebGPU shell remains boot-gated');

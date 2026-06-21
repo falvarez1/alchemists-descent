@@ -3,16 +3,11 @@ import type {
   Ctx,
   Enemy,
   EnemyKind,
-  ExplosionApi,
-  LightningApi,
   Mechanism,
-  PhysicsApi,
   Projectile,
-  ProjectilesApi,
   RuneVault,
   RuntimeDecor,
   SpellId,
-  SpellsApi,
 } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { EventBus } from '@/core/events';
@@ -160,6 +155,35 @@ const FULLBRIGHT = {
   sample: () => ({ r: 1, g: 1, b: 1 }),
 } as unknown as LightField;
 
+type GalleryPreviewCtx = Record<string, unknown>;
+
+function createGalleryPreviewCtx(fields: GalleryPreviewCtx): Ctx {
+  return fields as unknown as Ctx;
+}
+
+function installGalleryCombatRuntime(ctx: Ctx): Simulation {
+  Object.assign(ctx as object, {
+    spells: new Spells(ctx),
+    lightning: new Lightning(ctx),
+    explosions: new Explosions(ctx),
+    physics: new Physics(ctx),
+    projectileCtl: new Projectiles(),
+  });
+  return new Simulation();
+}
+
+function installGalleryPlayerSpriteRuntime(ctx: Ctx, cramped: boolean): void {
+  Object.assign(ctx as object, {
+    spells: new Spells(ctx),
+    input: { bombCharge: 0 },
+    physics: { entityFree: () => !cramped, cellBlocks: () => false },
+  });
+}
+
+function resetGalleryKickCooldown(playerCtl: PlayerControl): void {
+  Object.assign(playerCtl as object, { kickCooldownT: 0 });
+}
+
 const ENEMY_DESC: Partial<Record<EnemyKind, string>> = {
   slime: 'Squash-and-stretch hopper. Splits its gaze around the room until alerted.',
   acidslime: 'A slime in acid greens — its blood eats the floor.',
@@ -248,7 +272,7 @@ export class Gallery {
     private hooks: GalleryHooks,
   ) {
     const noop = (): void => undefined;
-    this.stub = {
+    this.stub = createGalleryPreviewCtx({
       world: this.world,
       events: this.events,
       enemies: [],
@@ -261,7 +285,7 @@ export class Gallery {
       params: hooks.ctx.params,
       levels: { current: this.runtime },
       fx: { screenShake: 0 },
-    } as unknown as Ctx;
+    });
     this.mech = new Mechanisms(this.stub);
     this.events.on('toast', ({ text }) => {
       this.caption = text;
@@ -891,7 +915,7 @@ export class Gallery {
           if (st === 1) {
             this.paint(RX - 9, FY - 3, RX - 7, FY - 1, Cell.Water);
             for (let y = FY - 3; y <= FY - 1; y++) {
-              for (let x = RX - 9; x <= RX - 7; x++) this.world.charge[this.world.idx(x, y)] = 3;
+              for (let x = RX - 9; x <= RX - 7; x++) this.world.setChargeAt(this.world.idx(x, y), 3);
             }
           }
           return { bounds, cells: true, step: this.stepMech, draw: (s, f) => this.drawMechs(s, f) };
@@ -1130,7 +1154,7 @@ export class Gallery {
   /* ===================== entity items ===================== */
 
   private entityCtx(player: unknown): Ctx {
-    return {
+    return createGalleryPreviewCtx({
       player,
       state: this.stubState,
       camera: { renderX: 0, renderY: 0, x: 0, y: 0 },
@@ -1138,7 +1162,7 @@ export class Gallery {
       params: this.hooks.ctx.params,
       world: this.world,
       enemies: [],
-    } as unknown as Ctx;
+    });
   }
 
   private fakeEnemy(kind: EnemyKind, x: number, y: number, alerted: boolean): Enemy {
@@ -1207,15 +1231,8 @@ export class Gallery {
         // manager for the bomb charge, and physics for crawl headroom — the
         // muzzle comes from the REAL Spells service (it reads only player
         // fields), the rest are honest stubs
-        const x = ctx as unknown as {
-          spells: Spells;
-          input: { bombCharge: number };
-          physics: { entityFree: () => boolean; cellBlocks: () => boolean };
-        };
-        x.spells = new Spells(ctx);
-        x.input = { bombCharge: 0 };
         const cramped = st === 8;
-        x.physics = { entityFree: () => !cramped, cellBlocks: () => false };
+        installGalleryPlayerSpriteRuntime(ctx, cramped);
         const TELLS = ['WET', 'OILED', 'FROZEN', 'STONESKIN', 'SWIFT', 'TORCHBEARER'] as const;
         return {
           bounds: { x0: RX - 24, y0: FY - 28, x1: RX + 24, y1: FY + 4 },
@@ -1658,7 +1675,7 @@ export class Gallery {
       activeChargingBlackHole: null as Projectile | null,
       siphonHeld: false, pourHeld: false, drinkHeld: false,
     };
-    const ctx = {
+    const ctx = createGalleryPreviewCtx({
       world: this.world,
       events: this.events,
       enemies,
@@ -1716,14 +1733,9 @@ export class Gallery {
         igniteArea: () => 0,
       },
       levels: { current: this.runtime },
-    } as unknown as Ctx;
+    });
     // the real combat stack, wired to the scratch ctx (constructor-injected)
-    (ctx as { spells: SpellsApi }).spells = new Spells(ctx);
-    (ctx as { lightning: LightningApi }).lightning = new Lightning(ctx);
-    (ctx as { explosions: ExplosionApi }).explosions = new Explosions(ctx);
-    (ctx as { physics: PhysicsApi }).physics = new Physics(ctx);
-    (ctx as { projectileCtl: ProjectilesApi }).projectileCtl = new Projectiles();
-    const sim = new Simulation();
+    const sim = installGalleryCombatRuntime(ctx);
 
     // cast cadence: one-shots on a cycle; streams hold the trigger; bomb
     // charges then releases; the black hole charges, detaches, and collapses
@@ -1912,7 +1924,7 @@ export class Gallery {
       buildSpellHeld: false, bombCharge: -1, activeChargingBlackHole: null as Projectile | null,
       siphonHeld: false, pourHeld: false, drinkHeld: false,
     };
-    const ctx = {
+    const ctx = createGalleryPreviewCtx({
       world: this.world,
       events: this.events,
       enemies: [] as Enemy[],
@@ -1934,16 +1946,11 @@ export class Gallery {
         applyMomentumAt: noop, applyRadialImpulse: noop, hitTest: () => null, dragTo: noop, grab: noop, release: noop, igniteArea: () => 0,
       },
       levels: { current: this.runtime },
-    } as unknown as Ctx;
+    });
     // the real combat stack the sim leans on (so cells settle correctly), plus the
     // REAL player controller — kick() is the actual game implementation.
-    (ctx as { spells: SpellsApi }).spells = new Spells(ctx);
-    (ctx as { lightning: LightningApi }).lightning = new Lightning(ctx);
-    (ctx as { explosions: ExplosionApi }).explosions = new Explosions(ctx);
-    (ctx as { physics: PhysicsApi }).physics = new Physics(ctx);
-    (ctx as { projectileCtl: ProjectilesApi }).projectileCtl = new Projectiles();
+    const sim = installGalleryCombatRuntime(ctx);
     const playerCtl = new PlayerControl(ctx);
-    const sim = new Simulation();
 
     paintStage();
     const cycle = 150;
@@ -1964,7 +1971,7 @@ export class Gallery {
         fake.grounded = true; fake.firing = false; fake._svx = 0; fake._svy = 0;
         fake.aimAngle = 0; fake.facing = 1;
         if (t === 40) {
-          (playerCtl as unknown as { kickCooldownT: number }).kickCooldownT = 0;
+          resetGalleryKickCooldown(playerCtl);
           playerCtl.kick(ctx);
           this.caption = 'FORCE PUSH (F) — a blast of air';
           this.captionT = 70;

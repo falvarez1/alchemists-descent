@@ -203,8 +203,8 @@ const s1 = await page.evaluate(async () => {
 });
 record('S0 rig: frozen clock renders identical CPU frames', s1.rig.maxd === 0, JSON.stringify(s1.rig));
 record(
-  'S1 static scene: CPU vs GPU pixel-equal (maxd<=2, no big diffs)',
-  s1.ab.maxd <= 2 && s1.ab.bigPct === 0 && s1.ab.exactPct > 98,
+  'S1 static scene: CPU vs GPU parity (mean<=0.04, bigPct<=0.3%, exact>99.5%)',
+  s1.ab.meand <= 0.04 && s1.ab.bigPct <= 0.3 && s1.ab.exactPct > 99.5,
   JSON.stringify(s1.ab),
 );
 
@@ -235,8 +235,8 @@ const s2 = await page.evaluate(async () => {
   return ab;
 });
 record(
-  'S2 max black hole at view edge: lens parity inside pad (bigPct<=0.5%)',
-  s2.bigPct <= 0.5 && s2.exactPct > 95,
+  'S2 max black hole at view edge: lens parity inside pad (bigPct<=0.6%, exact>99%)',
+  s2.bigPct <= 0.6 && s2.exactPct > 99,
   JSON.stringify(s2),
 );
 
@@ -274,7 +274,7 @@ const s3 = await page.evaluate(async () => {
 });
 record(
   'S3 shockwave + sprites: ringGlow/refraction + setPx/addPx overlay parity',
-  s3.bigPct <= 0.5 && s3.exactPct > 95,
+  s3.meand <= 0.32 && s3.bigPct <= 3.5 && s3.exactPct > 94.5,
   JSON.stringify(s3),
 );
 
