@@ -22,17 +22,19 @@ import { probeHollow } from '@/world/secrets';
  * heavy metal one barely moves. Explosive types add their blast on top.
  */
 const PROJECTILE_PUSH: Partial<Record<ProjectileType, number>> = {
-  bolt: 50,
+  bolt: 90,
   pellet: 28,
   fireball: 55,
   meteor: 130,
   wisp: 36,
-  iceshard: 42,
+  iceshard: 90,
   frostbolt: 36,
   acidglob: 40,
   icelance: 80,
   bomb: 45,
 };
+
+const FROST_BODY_MOMENTUM_GRACE = 10;
 
 /** Solid-for-projectiles test (same gate as the impact check in update()). */
 function solidAt(world: World, x: number, y: number): boolean {
@@ -411,10 +413,14 @@ export class Projectiles implements ProjectilesApi {
   private impactBody(ctx: Ctx, p: Projectile, body: RigidBody): 'consume' | 'bounce' | 'pierce' {
     const spd = Math.hypot(p.vx, p.vy) || 1;
     const push = PROJECTILE_PUSH[p.type] ?? 30;
-    ctx.rigidBodies.applyMomentumAt(body, (p.vx / spd) * push, (p.vy / spd) * push, p.x, p.y);
+    const mx = (p.vx / spd) * push;
+    const my = (p.vy / spd) * push;
+    ctx.rigidBodies.applyMomentumAt(body, mx * 0.7, my * 0.7, body.x, body.y);
+    ctx.rigidBodies.applyMomentumAt(body, mx * 0.3, my * 0.3, p.x, p.y);
     switch (p.type) {
       case 'icelance':
         body.frozenT = 90; // a frost lance freezes what it pierces
+        body.frostMomentumGrace = Math.max(body.frostMomentumGrace ?? 0, FROST_BODY_MOMENTUM_GRACE);
         return 'pierce';
       case 'bomb':
         p.vx *= -0.3;
@@ -439,10 +445,12 @@ export class Projectiles implements ProjectilesApi {
         break;
       case 'iceshard':
         body.frozenT = 90;
-        freezeSplash(ctx, p.x, p.y, 7);
+        body.frostMomentumGrace = Math.max(body.frostMomentumGrace ?? 0, FROST_BODY_MOMENTUM_GRACE);
+        ctx.particles.burst(p.x, p.y, 10, null, iceColor, 1.5, { glow: 1.7, grav: 0.02 });
         break;
       case 'frostbolt':
         body.frozenT = 90;
+        body.frostMomentumGrace = Math.max(body.frostMomentumGrace ?? 0, FROST_BODY_MOMENTUM_GRACE);
         ctx.particles.burst(p.x, p.y, 10, null, iceColor, 1.3, { glow: 1.5, grav: 0.02 });
         break;
       case 'acidglob':

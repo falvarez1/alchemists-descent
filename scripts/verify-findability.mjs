@@ -38,10 +38,16 @@ async function auditSeed(seed) {
 
           const waitForSettledFindability = async (rt) => {
             let latest = null;
-            const deadline = performance.now() + 1600;
+            let consecutiveClean = 0;
+            const deadline = performance.now() + 1800;
             while (performance.now() < deadline) {
               latest = validateFindability(rt);
-              if (!latest.some((i) => i.severity === 'error')) return latest;
+              if (!latest.some((i) => i.severity === 'error')) {
+                consecutiveClean++;
+                if (consecutiveClean >= 3) return latest;
+              } else {
+                consecutiveClean = 0;
+              }
               await new Promise((r) => setTimeout(r, 100));
             }
             return latest ?? validateFindability(rt);
@@ -58,7 +64,9 @@ async function auditSeed(seed) {
             const issues = all
               .filter((i) => i.severity === 'error')
               .map((i) => `${i.what}@${i.x},${i.y}`);
-            const buried = all.filter((i) => i.severity === 'info').length;
+            const buried = all
+              .filter((i) => i.severity === 'info')
+              .map((i) => `${i.what}@${i.x},${i.y}`);
             // 'sensor' joined the lock roster with the Freeze Bridge (archetype 4)
             const sensors = rt.mechanisms.filter((m) =>
               ['scale', 'buoy', 'chargelatch', 'sensor'].includes(m.kind),
@@ -112,8 +120,7 @@ for (const seed of seeds) {
         (lv.spellLab ? '' : ' [NO SPELL LAB]') +
         (lv.prefabs <= 0 ? ' [NO PREFAB]' : '') +
         (lv.machines <= 0 ? ' [NO MACHINE]' : '') +
-        (lv.issues.length ? ' unreachable: ' + lv.issues.join(' ') : '') +
-        (lv.buried ? ` (${lv.buried} buried treasure)` : ''),
+        (lv.issues.length ? ' unreachable: ' + lv.issues.join(' ') : ''),
     );
   }
 }

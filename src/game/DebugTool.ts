@@ -27,6 +27,7 @@ export class DebugTool implements DebugControl {
   }
 
   setActive(active: boolean): void {
+    if (active) this.markTainted();
     if (this.active === active) return;
     this.active = active;
     if (!active) {
@@ -37,6 +38,7 @@ export class DebugTool implements DebugControl {
 
   setLive(id: string, live: boolean): boolean {
     if (!this.supportsLiveId(id)) return false;
+    if (this.activeInPlay()) this.markTainted();
     if (live) this.live.add(id);
     else this.live.delete(id);
     return this.live.has(id);
@@ -93,6 +95,7 @@ export class DebugTool implements DebugControl {
 
   update(): void {
     if (!this.activeInPlay() || this.dragRef === null || this.dragKind === null) return;
+    this.markTainted();
     const ctx = this.ctx;
     const mx = ctx.input.mouse.x + this.dragDX;
     const my = ctx.input.mouse.y + this.dragDY;
@@ -133,6 +136,7 @@ export class DebugTool implements DebugControl {
   }
 
   private begin(kind: DragKind, ref: { x: number; y: number }, x: number, y: number): boolean {
+    this.markTainted();
     this.dragKind = kind;
     this.dragRef = ref;
     this.dragDX = ref.x - x; // keep the grab point under the cursor (no snap)
@@ -142,5 +146,9 @@ export class DebugTool implements DebugControl {
 
   private supportsLiveId(id: string): boolean {
     return id === 'player' || id.startsWith('enemy:') || id.startsWith('critter:');
+  }
+
+  private markTainted(): void {
+    this.ctx.state.debugTainted = true;
   }
 }

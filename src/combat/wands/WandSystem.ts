@@ -759,7 +759,7 @@ export class WandSystem implements WandsApi {
         castIndex: w.castIndex,
       })),
       lastDryFire: this.lastDryFire,
-      flameBurst: this.flameBurst,
+      flameBurst: 0,
       depthsGranted: [...this.depthsGranted],
       infuserGranted: this.infuserGranted,
     };
@@ -787,7 +787,8 @@ export class WandSystem implements WandsApi {
       this.compiled[i as 0 | 1] = null;
     }
     this.lastDryFire = data.lastDryFire;
-    this.flameBurst = Math.max(0, Math.floor(data.flameBurst));
+    this.flameBurst = 0;
+    this.flameBurstAction = null;
     this.depthsGranted.clear();
     for (const depth of data.depthsGranted) {
       if (Number.isFinite(depth)) this.depthsGranted.add(Math.floor(depth));
@@ -825,6 +826,7 @@ export class WandSystem implements WandsApi {
     this.depthsGranted.clear();
     this.infuserGranted = false;
     this.flameBurst = 0;
+    this.flameBurstAction = null;
     this.lastDryFire = -99;
     this._active = 0;
     this.ctx.events.emit('wandChanged');
@@ -833,6 +835,11 @@ export class WandSystem implements WandsApi {
   grantReviewLoadout(): void {
     this.applyReviewLoadout();
     this.ctx.events.emit('wandChanged');
+  }
+
+  clearTransientState(): void {
+    this.flameBurst = 0;
+    this.flameBurstAction = null;
   }
 
   private applyReviewLoadout(): void {

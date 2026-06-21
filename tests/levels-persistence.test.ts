@@ -137,6 +137,42 @@ describe('level enemy persistence', () => {
     expect(revived.patrol).toEqual([[1, 77]]);
   });
 
+  it('rejects invalid saved enemy kinds before they reach runtime definition lookups', () => {
+    const saved = snapshotEnemyForSave(enemy());
+    const revived = reviveSavedEnemy({ ...saved, kind: 'bogus' as never });
+
+    expect(revived.kind).toBe('slime');
+
+    const levels = new Levels({} as Ctx);
+    const validBlob = {
+      id: 'd1',
+      rle: '',
+      explored: '',
+      life: [],
+      charge: [],
+      pickups: [],
+      mechanisms: [],
+      waystones: [],
+      runeVaults: [],
+      litOrder: [],
+      keyTaken: false,
+      portalOpen: false,
+      enemies: [{ ...saved, kind: 'bogus' }],
+    };
+    const shape = levels as unknown as { isExpeditionSaveShape(value: unknown): boolean };
+    expect(
+      shape.isExpeditionSaveShape({
+        v: 1,
+        currentId: 'd1',
+        expeditionSeed: 1,
+        score: 0,
+        levels: [validBlob],
+        loadout: {},
+        player: { x: 0, y: 0, hp: 1, maxHp: 1, levit: 0, maxLevit: 1, perks: {} },
+      }),
+    ).toBe(false);
+  });
+
   it('clamps oversized saved Weaver lair webs on restore', () => {
     const savedWorld = new World();
     const ctx = {
@@ -201,13 +237,28 @@ describe('level enemy persistence', () => {
 
   it('exiting a custom playtest restores the previous expedition pointer', () => {
     const world = new World();
+    let particlesCleared = false;
+    let lightningCleared = false;
+    let wandsCleared = false;
+    let bottleCancelled = false;
     const ctx = {
       world,
       enemies: [],
-      projectiles: [],
+      projectiles: [{ x: 1, y: 1, vx: 0, vy: 0, type: 'bolt', life: 3, age: 0, charging: false, hostile: false }],
+      shockwaves: [{ x: 1, y: 1 }],
+      particles: { clear: () => { particlesCleared = true; } },
+      lightning: { clear: () => { lightningCleared = true; } },
+      wands: { clearTransientState: () => { wandsCleared = true; } },
+      input: {
+        activeChargingBlackHole: null,
+        releaseHeldInput: () => undefined,
+      },
+      fx: { digBeam: { x0: 0, y0: 0, x1: 1, y1: 1, life: 1 } },
+      flask: { cancelBottle: () => { bottleCancelled = true; } },
       state: {
         currentBiome: 'earthen',
         debugGodMode: false,
+        debugTainted: false,
         worldSeed: 123,
       },
       player: {
@@ -251,6 +302,13 @@ describe('level enemy persistence', () => {
 
     levels.playCurrentWorld(ctx);
     expect(levels.current?.def.id).toBe('custom');
+    expect(ctx.projectiles).toHaveLength(0);
+    expect(ctx.shockwaves).toHaveLength(0);
+    expect(ctx.fx.digBeam).toBeNull();
+    expect(particlesCleared).toBe(true);
+    expect(lightningCleared).toBe(true);
+    expect(wandsCleared).toBe(true);
+    expect(bottleCancelled).toBe(true);
 
     levels.exitCustomPlaytest(ctx);
     expect(levels.current?.def.id).toBe('d1');
@@ -310,6 +368,7 @@ describe('level enemy persistence', () => {
         state: {
           playtestSource: null,
           debugGodMode: false,
+          debugTainted: false,
           score: 0,
           worldSeed: 42,
         },
@@ -349,6 +408,11 @@ describe('level enemy persistence', () => {
       expect(store.get('noita-expedition')).toBeUndefined();
 
       ctx.player.dead = false;
+      ctx.state.debugTainted = true;
+      levels.saveExpedition(ctx);
+      expect(store.get('noita-expedition')).toBeUndefined();
+
+      ctx.state.debugTainted = false;
       internals.levels.set('virtual-builder-test', {
         ...runtime,
         def: { ...runtime.def, id: 'virtual-builder-test' },
@@ -567,7 +631,7 @@ describe('level enemy persistence', () => {
       };
       expect(save.genTuneSignature).toBe(genTuneSignature());
       expect(save.loadout).toEqual(loadout);
-      expect(save.wands).toEqual(wands);
+      expect(save.wands).toEqual({ ...wands, flameBurst: 0 });
       expect(save.flasks).toEqual({
         activeIndex: 1,
         slots: [

@@ -16,7 +16,7 @@
 // keeps >= 18 clear beneath. tests/prefabs-worldgen.test.ts enforces this
 // with a true 9x17-clearance BFS.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadCellAbi } from './cell-abi.mjs';
@@ -186,7 +186,20 @@ const all = [
   ['plate-vault.json', plateVault()],
   ['ruin-gallery.json', ruinGallery()],
 ];
+const checkOnly = process.argv.includes('--check');
 for (const [file, p] of all) {
-  writeFileSync(join(outDir, file), JSON.stringify(p, null, 2) + '\n');
-  console.log(`wrote ${file} (${p.w}x${p.h}, ${p.objects.length} objects, ${p.anchors.length} anchors)`);
+  const path = join(outDir, file);
+  const next = JSON.stringify(p, null, 2) + '\n';
+  if (checkOnly) {
+    const current = readFileSync(path, 'utf8');
+    if (current !== next) {
+      console.error(`stale ${file}; run node scripts/gen-builtin-prefabs.mjs`);
+      process.exitCode = 1;
+    } else {
+      console.log(`ok ${file}`);
+    }
+  } else {
+    writeFileSync(path, next);
+    console.log(`wrote ${file} (${p.w}x${p.h}, ${p.objects.length} objects, ${p.anchors.length} anchors)`);
+  }
 }

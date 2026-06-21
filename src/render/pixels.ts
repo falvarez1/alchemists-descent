@@ -172,13 +172,15 @@ export interface ParallaxLayers {
   readonly ready: boolean;
 }
 
-/** A black-hole image lens as the composer feeds it to the distortion pass. */
+/** An image-distortion lens as the composer feeds it to the distortion pass:
+ *  a black-hole swirl, or (K < 0) a telekinetic heat-haze shimmer. */
 export interface CompositorLens {
   cx: number;
   cy: number;
-  /** Influence radius (vortexRad * 2.1). */
+  /** Influence radius (vortexRad * 2.1 for a swirl; body-size + pad for haze). */
   R: number;
-  /** Pinch strength (4 + vortexRad * 0.16). */
+  /** Pinch strength (4 + vortexRad * 0.16). A NEGATIVE K marks a heat-haze
+   *  shimmer instead of a swirl: |K| is the warp amplitude in cells. */
   K: number;
 }
 

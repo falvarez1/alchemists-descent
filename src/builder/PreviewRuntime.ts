@@ -16,6 +16,12 @@ import type {
   RuntimeEntitySnapshot,
   RuntimeSnapshotOptions,
 } from '@/game/runtimeSnapshot';
+import {
+  BUOY_LATCH_FRAMES,
+  DEFAULT_TRIGGER_LATCH_FRAMES,
+  SENSOR_MOMENTARY_LATCH_FRAMES,
+  SENSOR_SCAN_MOD,
+} from '@/game/Mechanisms';
 
 export interface PreviewRuntimeStatus {
   ready: boolean;
@@ -409,14 +415,37 @@ export class PreviewRuntime {
       if (mechanism.kind === 'plate') {
         const pressed = this.sensePlate(mechanism);
         mechanism.pressed = pressed;
-        if (pressed) mechanism.state = 420;
+        if (pressed) mechanism.state = DEFAULT_TRIGGER_LATCH_FRAMES;
         else if (mechanism.state > 0) mechanism.state--;
-      } else if (mechanism.kind === 'scale' || mechanism.kind === 'buoy' || mechanism.kind === 'sensor') {
+      } else if (mechanism.kind === 'scale') {
         const reading = this.senseZone(mechanism);
         mechanism.reading = reading;
-        const enough = reading >= (mechanism.threshold ?? 1);
-        if (enough) mechanism.state = mechanism.latch === 'permanent' ? 1 : mechanism.latchFrames ?? 420;
-        else if (mechanism.latch !== 'permanent' && mechanism.state > 0) mechanism.state--;
+        const enough = reading >= (mechanism.threshold ?? 24);
+        if (enough) mechanism.state = DEFAULT_TRIGGER_LATCH_FRAMES;
+        else if (mechanism.state > 0) mechanism.state--;
+      } else if (mechanism.kind === 'buoy') {
+        const reading = this.senseZone(mechanism);
+        mechanism.reading = reading;
+        const enough = reading >= (mechanism.threshold ?? 28);
+        if (enough) mechanism.state = BUOY_LATCH_FRAMES;
+        else if (mechanism.state > 0) mechanism.state--;
+      } else if (mechanism.kind === 'sensor') {
+        const latch = mechanism.latch ?? 'timed';
+        if (!(latch === 'permanent' && mechanism.state === 1)) {
+          if ((frame + mechanism.id) % SENSOR_SCAN_MOD === 0) {
+            mechanism.reading = this.senseZone(mechanism);
+          }
+          const enough = (mechanism.reading ?? 0) >= (mechanism.threshold ?? 8);
+          if (latch === 'permanent') {
+            if (enough) mechanism.state = 1;
+          } else if (latch === 'momentary') {
+            if (enough) mechanism.state = SENSOR_MOMENTARY_LATCH_FRAMES;
+            else if (mechanism.state > 0) mechanism.state--;
+          } else {
+            if (enough) mechanism.state = mechanism.latchFrames ?? DEFAULT_TRIGGER_LATCH_FRAMES;
+            else if (mechanism.state > 0) mechanism.state--;
+          }
+        }
       } else if (mechanism.kind === 'brazier') {
         if (mechanism.state !== 1 && this.senseBrazier(mechanism)) mechanism.state = 1;
         if (mechanism.state === 1 && frame % 6 === 0) this.seedBrazierFire(mechanism);

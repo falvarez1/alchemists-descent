@@ -54,14 +54,14 @@ export const GLOBAL_PARAM_DEFAULTS: Readonly<GlobalParams> = Object.freeze({ ...
 export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Sand]: { name: 'Sand', friction: 0.5, densityWeight: 0.9 },
   [Cell.Gunpowder]: { name: 'Gunpowder', friction: 0.4, blastRadius: 38 },
-  [Cell.Wood]: { name: 'Wood', flammability: 0.2, carbonSmokeGen: 0.4 },
+  [Cell.Wood]: { name: 'Wood', flammability: 0.1, carbonSmokeGen: 0.4 },
   [Cell.Vines]: { name: 'Vines', flammability: 0.45 },
   [Cell.Water]: { name: 'Water', flowRate: 0.85, poolingFactor: 0.95 },
-  [Cell.Oil]: { name: 'Oil', flowRate: 0.7, burnDuration: 75 },
+  [Cell.Oil]: { name: 'Oil', flowRate: 0.7, burnDuration: 280, igniteChance: 0.08 },
   [Cell.Nitrogen]: { name: 'Liquid Nitrogen', flowRate: 0.8, evaporationSpeed: 0.05 },
   [Cell.Lava]: { name: 'Lava', flowRate: 0.3, meltRange: 0.7, bloomWeight: 0.6 },
   [Cell.Acid]: { name: 'Acid', flowRate: 0.65, corrosiveSpeed: 0.8, bloomWeight: 0.3 },
-  [Cell.Fire]: { name: 'Fire', particleLife: 30, upwardSpread: 0.55, bloomWeight: 0.9 },
+  [Cell.Fire]: { name: 'Fire', particleLife: 300, upwardSpread: 0.55, bloomWeight: 0.85 },
   [Cell.Smoke]: { name: 'Smoke', floatSpeed: 0.5, dispersion: 0.05, bloomWeight: 0.1 },
   [Cell.Steam]: { name: 'Steam', bloomWeight: 0.15 },
   [Cell.Ice]: { name: 'Ice', insulationRating: 0.85 },
@@ -69,7 +69,7 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Gold]: { name: 'Gold Powder', friction: 0.55, densityWeight: 0.98, bloomWeight: 0.15 },
   [Cell.Blood]: { name: 'Blood', flowRate: 0.55, coagulation: 0.002 },
   [Cell.Slime]: { name: 'Slime', flowRate: 0.15, bloomWeight: 0.2 },
-  [Cell.Ember]: { name: 'Ember', fallChance: 0.4, igniteChance: 0.015, bloomWeight: 0.7 },
+  [Cell.Ember]: { name: 'Ember', fallChance: 0.4, igniteChance: 0.015, bloomWeight: 0.35 },
   // Brewed elixirs: inert viscous liquids whose glow (bloomWeight) is the in-world discovery tell.
   [Cell.ElixirLife]: { name: 'Elixir of Life', flowRate: 0.6, bloomWeight: 0.35 },
   [Cell.ElixirLevity]: { name: 'Elixir of Levity', flowRate: 0.6, bloomWeight: 0.45 },
@@ -90,7 +90,7 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Moss]: { name: 'Cave Moss', flammability: 0.25, bloomWeight: 0.08 },
   // The Gilded Vault's philosopher's dust: a heavy glittering powder whose
   // bloom IS the discovery tell (light is information).
-  [Cell.Catalyst]: { name: 'Aurum Catalyst', friction: 0.55, densityWeight: 0.96, bloomWeight: 0.5 },
+  [Cell.Catalyst]: { name: 'Aurum Catalyst', friction: 0.55, densityWeight: 0.96, bloomWeight: 0.35 },
   // Hidden ore: a static rock (no bloom — the WHOLE point is it stays dark until lit).
   [Cell.RawOre]: { name: 'Raw Ore', bloomWeight: 0 },
   // Walk-through ground cover. Deliberately LOW spread: a flame catches the blade
@@ -111,11 +111,11 @@ export const SPELL_PARAMS: Record<SpellId, SpellParams> = {
   // velocityForce is the UNMODIFIED base: a starter Spark Bolt lobs slowly (you
   // can read its travel wake). The 'speed' modifier (×1.6 in the wand compiler)
   // scales it back up — one speed card ≈ 12.8, restoring the old snappy feel.
-  bolt: { name: 'Spark Bolt', velocityForce: 8, explosionRadius: 14, manaCost: 12, cooldown: 12 },
-  scatter: { name: 'Scatter Hex', pellets: 5, velocityForce: 9.5, spread: 0.42, explosionRadius: 6, manaCost: 15, cooldown: 20 },
+  bolt: { name: 'Spark Bolt', velocityForce: 9.5, explosionRadius: 6.5, manaCost: 12, cooldown: 12 },
+  scatter: { name: 'Scatter Hex', pellets: 6, velocityForce: 7.5, spread: 0.42, explosionRadius: 6, manaCost: 15, cooldown: 20 },
   bomb: { name: 'Cast Bomb', velocityForce: 7.5, fuseTicks: 120, explosionRadius: 52, manaCost: 28, cooldown: 40 },
   lightning: { name: 'Chain Lightning', range: 340, branches: 2, damage: 28, manaCost: 30, cooldown: 30 },
-  flame: { name: 'Flamethrower', heat: 22, spread: 0.35, manaCost: 1.4, cooldown: 0 },
+  flame: { name: 'Flamethrower', heat: 22, spread: 0.15, manaCost: 1.4, cooldown: 0 },
   emberstorm: { name: 'Ember Storm', count: 16, manaCost: 18, cooldown: 30 },
   vitriol: { name: 'Vitriol Spray', spread: 0.30, manaCost: 1.7, cooldown: 0 },
   frostshard: { name: 'Frost Shard', velocityForce: 11, freezeRadius: 7, damage: 16, manaCost: 16, cooldown: 16 },

@@ -75,7 +75,7 @@ function makeCtx(frameCount: number): Ctx {
     particles: { list: [] },
     lightning: { arcs: [] },
     fx: { digBeam: null },
-    rigidBodies: { bodies: [] },
+    rigidBodies: { bodies: [], heldBody: () => null },
     vineStrands: { strands: [] },
     enemies: [],
     enemyCtl: { defs: {} },

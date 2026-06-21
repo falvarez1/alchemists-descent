@@ -268,7 +268,7 @@ export function inferRuntimeSource(ctx: Ctx): RuntimeSnapshotSource {
   if (ctx.state.playtestSource === 'test') {
     return { id: 'test-run', label: 'Test Run', detail: 'Disposable launcher/debug runtime' };
   }
-  if (ctx.state.debugGodMode || ctx.debug?.active === true) {
+  if (ctx.state.debugGodMode || ctx.state.debugTainted === true || ctx.debug?.active === true) {
     const detail = ctx.debug?.active === true
       ? 'Runtime freeze/drag is active; current pose is not saveable'
       : 'Current expedition is debug-tainted';

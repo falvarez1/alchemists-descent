@@ -181,8 +181,7 @@ export function sampleAndTickStatus(
       if (world.inBounds(a.x, a.y)) {
         const i = world.idx(a.x, a.y);
         if (world.types[i] === Cell.Empty) {
-          world.types[i] = Cell.Fire;
-          world.colors[i] = fireColor();
+          world.replaceCellAt(i, Cell.Fire, fireColor());
           world.life[i] = 25 + Math.floor(Math.random() * 10);
         }
       }

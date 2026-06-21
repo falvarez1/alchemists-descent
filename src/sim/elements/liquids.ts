@@ -201,7 +201,44 @@ export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
 
 export function handleOil(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  // Indexed loop over the offset constant — hot per-cell path.
+  const ci = w.idx(x, y);
+  const P = ctx.params.materials[Cell.Oil];
+
+  // BURNING SLICK (life > 0): the oil cell burns IN PLACE for its full
+  // burnDuration, throwing a short flame upward every frame (the visible fire +
+  // the heat a brazier/waystone reads) and creeping the burn into neighbouring
+  // oil. A sustained pool fire — NOT an instant flash that rises away. This is
+  // what lets oil poured in a bowl actually hold a checkpoint lit.
+  if (w.life[ci] > 0) {
+    w.life[ci]--;
+    if (w.inBounds(x, y - 1)) {
+      const ai = w.idx(x, y - 1);
+      const at = w.types[ai];
+      if (at === Cell.Empty || at === Cell.Smoke) {
+        w.replaceCellAt(ai, Cell.Fire, fireColor());
+        w.life[ai] = 16 + Math.floor(Math.random() * 16);
+      }
+    }
+    for (let k = 0; k < IGNITION_OFFSETS.length; k++) {
+      const o = IGNITION_OFFSETS[k];
+      const tx = x + o[0],
+        ty = y + o[1];
+      if (!w.inBounds(tx, ty)) continue;
+      const ti = w.idx(tx, ty);
+      if (w.types[ti] === Cell.Oil && w.life[ti] === 0 && Math.random() < P.igniteChance!) {
+        w.life[ti] = P.burnDuration! + Math.floor(Math.random() * 30);
+      }
+    }
+    if (w.life[ci] <= 0) {
+      // spent: the last of the slick flares off as a brief flame, then it's gone
+      w.replaceCellAt(ci, Cell.Fire, fireColor());
+      w.life[ci] = 20 + Math.floor(Math.random() * 20);
+    }
+    return; // a burning slick stays put — it does not flow
+  }
+
+  // UNLIT oil: catch from an adjacent flame/charge (gradual), STARTING a burn in
+  // place; otherwise flow like a liquid.
   for (let k = 0; k < IGNITION_OFFSETS.length; k++) {
     const o = IGNITION_OFFSETS[k];
     const tx = x + o[0];
@@ -210,10 +247,11 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
       w.inBounds(tx, ty) &&
       (w.types[w.idx(tx, ty)] === Cell.Fire || w.charge[w.idx(tx, ty)] > 0)
     ) {
-      const ci = w.idx(x, y);
-      w.replaceCellAt(ci, Cell.Fire, fireColor());
-      w.life[ci] = Math.floor(Math.random() * 30) + ctx.params.materials[Cell.Oil].burnDuration!;
-      return;
+      if (Math.random() < P.igniteChance!) {
+        w.life[ci] = P.burnDuration! + Math.floor(Math.random() * 30);
+        return;
+      }
+      break; // adjacent to flame but didn't catch this frame — let it flow, retry next tick
     }
   }
   if (

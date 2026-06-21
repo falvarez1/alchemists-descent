@@ -24,6 +24,7 @@
     "verify:builder-ux": "node scripts/verify-builder-ux.mjs",
     "verify:builder-responsive": "node scripts/verify-builder-responsive.mjs",
     "verify:builder-dock-split": "node scripts/verify-builder-dock-split.mjs",
+    "verify:prefab-generators": "node scripts/gen-builtin-prefabs.mjs --check && node scripts/gen-machine-prefabs.mjs --check",
     "verify:virtual-playtest": "node scripts/verify-virtual-playtest.mjs",
     "verify:campaign-playtest": "node scripts/verify-campaign-playtest.mjs",
     "bench:virtual-world": "node scripts/bench-virtual-world.mjs",

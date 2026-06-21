@@ -450,9 +450,18 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
       if (ld2 <= radius * radius && ld2 >= 1.0) {
         let ld = sqrt(ld2);
         let pull = 1.0 - ld / radius;
-        let k = pull * pull * p(base + 3u);
-        lookupX = lookupX + i32(floor(ldx / ld * k - ldy / ld * k * 0.7));
-        lookupY = lookupY + i32(floor(ldy / ld * k + ldx / ld * k * 0.7));
+        let kraw = p(base + 3u);
+        if (kraw < 0.0) {
+          // heat-haze shimmer (K < 0): animated horizontal warp + a little vertical.
+          // Phase p(6u) = (frameCount * 0.16) mod 2pi, matching the CPU/WebGL paths.
+          let amp = -kraw;
+          lookupX = lookupX + i32(floor(sin(f32(wy) * 0.55 + p(6u) + p(base)) * amp * pull));
+          lookupY = lookupY + i32(floor(cos(f32(wx) * 0.7 + p(6u) * 0.8) * amp * 0.4 * pull));
+        } else {
+          let k = pull * pull * kraw;
+          lookupX = lookupX + i32(floor(ldx / ld * k - ldy / ld * k * 0.7));
+          lookupY = lookupY + i32(floor(ldy / ld * k + ldx / ld * k * 0.7));
+        }
       }
     }
     lookupX = clamp(lookupX, 0, ${WIDTH - 1});

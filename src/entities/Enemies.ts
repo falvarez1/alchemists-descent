@@ -1584,7 +1584,6 @@ export class Enemies implements EnemyControlApi {
         let climbDir = e.weaverClimbDir ?? 0;
         let climbWall = 0; // height of the adjacent wall this frame (drives the ascent)
         if (e.alerted && targetAlive && !e.sleeping) {
-          const targetAbove = pdy < 8; // quarry at or above the body (pdy<0 ⇒ above)
           const toward = Math.sign(pdx) || climbDir || 1;
           let bestDir = 0;
           let bestH = 0;
@@ -1596,23 +1595,30 @@ export class Enemies implements EnemyControlApi {
             }
           }
           const climbedT = e.weaverClimbT ?? 0;
-          // A wall taller than a step-over standing toward the quarry is a BARRIER
-          // between them — scale it whether the quarry is overhead OR level/below on
-          // the far side (climb up, crest, descend). Engaging only on "quarry above"
-          // left it pinned against a wall when the alchemist stood across a pillar at
-          // the same height — exactly the stuck-walking-into-the-wall the report shows.
-          // Engage when a wall taller than a step-over is a BARRIER between us and the
-          // quarry: either the quarry is overhead, or it's level/below on the far side
-          // of a wall that lies TOWARD it (bestDir === the way to the quarry). The
-          // direction check matters — without it, a weaver teetering on the lip of a
-          // cut-away floor would scramble UP the hole's edge (a wall on the side AWAY
-          // from the quarry) instead of recentring onto solid ground.
-          const barrierAhead =
-            bestH > 7 && (targetAbove || (Math.abs(pdx) > def.halfW + 2 && bestDir === Math.sign(pdx)));
-          if (barrierAhead) {
+          // Climb a wall ONLY when it actually leads TOWARD the quarry: it's a barrier
+          // standing between us and the quarry (bestDir is the way to it — handles a
+          // quarry level/below on the far side, climb up→crest→descend), OR the quarry
+          // is genuinely OVERHEAD with little horizontal lead (climb the nearest wall
+          // straight up to it). NEVER climb a wall on the side AWAY from a quarry that's
+          // level/below: that was the endless climb-the-pillar-while-the-player-stands-
+          // below loop — there it must DESCEND and pursue, not scale the wall behind it.
+          // (Same reason it must not scramble up a cut-floor hole's edge.)
+          const playerOverhead = pdy < -10 && Math.abs(pdx) < 56;
+          const barrierTowardQuarry = Math.abs(pdx) > def.halfW + 2 && bestDir === Math.sign(pdx || 1);
+          const barrierAhead = bestH > 7 && (playerOverhead || barrierTowardQuarry);
+          // CLIMB DOWN: elevated (airborne off a ledge/web) with a quarry BELOW and a
+          // wall beside to grip — descend it UNDER CONTROL toward the quarry instead of
+          // free-falling. A free-fall off a pillar lands the spider in a deep footing-
+          // recovery stall (fallT spikes), which read as it freezing at the base; a
+          // gripped climb-down lands gently and it keeps hunting.
+          const descendToQuarry = pdy > 24 && !e.grounded && bestH > 7;
+          if (barrierAhead || descendToQuarry) {
             climbing = true;
             climbDir = bestDir;
             climbWall = bestH;
+            // latch the vertical intent ONCE: a pure descend (quarry below, no barrier
+            // toward it) climbs DOWN; anything else climbs UP to crest/reach.
+            e.weaverDescend = descendToQuarry && !barrierAhead;
           } else if (climbedT > 0 && climbedT < 600 && !e.grounded && climbDir !== 0) {
             // latched mid-climb: stay on the wall through the crest until we mount a
             // ledge (grounded) or the wall genuinely ends. Crucially this no longer
@@ -1647,6 +1653,7 @@ export class Enemies implements EnemyControlApi {
         } else {
           e.weaverClimbDir = 0;
           e.weaverClimbT = 0;
+          e.weaverDescend = false;
         }
         // Cresting: just came off a climb and is scrabbling over the top. Footing
         // reads unstable here (legs splayed across the lip), but recovery must NOT own
@@ -1763,9 +1770,11 @@ export class Enemies implements EnemyControlApi {
             e.attackCd = 95 + Math.floor(Math.random() * 35);
           }
         } else {
-          // An irritated (cranky) Weaver is hunting YOU — it won't break off to snack
-          // on ambient prey, which previously let it idle-feed instead of giving chase.
-          const feeding = !cranky && (!e.alerted || !targetAlive || pDist > 130) && this.weaverFeed(e);
+          // A weaver that has CLOCKED you commits to the hunt — it does not break off to
+          // snack on ambient critters while you're in sight (that read as a dim-witted,
+          // distracted spider, and stalled the chase as it drifted toward a passing bug
+          // instead of closing on you). Only an UNAWARE/idle weaver feeds.
+          const feeding = !cranky && (!e.alerted || !targetAlive) && this.weaverFeed(e);
           if (feeding) {
             e.bobPhase += 0.08;
           } else if (!e.alerted && e.patrol && e.patrol.length > 0) {
@@ -1824,7 +1833,12 @@ export class Enemies implements EnemyControlApi {
               e.needleY = player.y - 8;
               if (this.findWeaverAnchor(e)) e.webPulse = Math.max(e.webPulse ?? 0, 8);
               ctx.audio.tone(180, 90, 0.35, 'triangle', 0.09);
-            } else if (!climbing && pDist < 285) {
+            } else if (!climbing && Math.abs(pdy) > 50 && pDist < 285) {
+              // Thread-spit only at a quarry it CAN'T just walk up to — one separated
+              // VERTICALLY (above/below, behind a gap). A same-level quarry gets closed
+              // on and bitten instead of stalled at range spitting web (the spit roots
+              // it, so firing it mid-approach on flat ground stalls the whole hunt and
+              // reads as a passive spider). Spit stays the reach for out-of-stride prey.
               e.blink = e.status.burning > 0 ? 10 : cranky ? 9 : 18;
               ctx.audio.noiseBurst(0.08, 1300, 0.08, true);
             }
@@ -1854,10 +1868,15 @@ export class Enemies implements EnemyControlApi {
           // a barrier to reach prey that's level with it on the FAR side (climb up,
           // crest, come down the other side), not only one perched directly overhead.
           const climbSpeed = cranky ? 1.4 : 1.1;
-          const ascending = climbWall > 3; // wall still beside the foot to grip and rise
-          const vyTarget = ascending ? -climbSpeed : 0;
-          e.vy += (vyTarget - e.vy) * (vyTarget < 0 ? 0.6 : 0.4);
-          e.vy = clamp(e.vy, -climbSpeed, 0.6);
+          // Move along the face per the LATCHED intent: DOWN to a quarry below
+          // (controlled — capped, never a free-fall), else UP while a wall is still
+          // beside the foot, then hold to crest. Using the latched flag (not the live
+          // pdy) stops the up/down oscillation when the quarry is right at its level.
+          const descending = e.weaverDescend === true;
+          const ascending = !descending && climbWall > 3;
+          const vyTarget = descending ? climbSpeed * 0.9 : ascending ? -climbSpeed : 0;
+          e.vy += (vyTarget - e.vy) * (vyTarget !== 0 ? 0.6 : 0.4);
+          e.vy = clamp(e.vy, -climbSpeed, descending ? climbSpeed : 0.6);
           e.vx += climbDir * 0.14 * (cranky ? 1.2 : 1); // hug / lean over the wall
           if (e.timer % 8 === 0) this.weaveFootTrail(e, support); // silk anchors up the wall
         }

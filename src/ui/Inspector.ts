@@ -23,7 +23,11 @@ export function paramSliderSpec(propKey: string, value?: number): {
     max = 1,
     step = 0.05,
     label = propKey;
-  if (propKey === 'blastRadius' || propKey === 'burnDuration' || propKey === 'particleLife' || propKey === 'fuseTicks' || propKey === 'collapseLimit' || propKey === 'baseRadius') { min = 5; max = 100; step = 1; }
+  // burn/particle lifetimes run to several seconds (oil=175, fire particleLife=300),
+  // so cap these high enough to actually reach those values — a 100-frame max
+  // silently clamped them BELOW their own defaults.
+  if (propKey === 'burnDuration' || propKey === 'particleLife') { min = 5; max = 360; step = 5; }
+  else if (propKey === 'blastRadius' || propKey === 'fuseTicks' || propKey === 'collapseLimit' || propKey === 'baseRadius') { min = 5; max = 100; step = 1; }
   if (propKey === 'velocityForce' || propKey === 'explosionRadius') { min = 1; max = 20; step = 0.5; }
   if (propKey === 'range') { min = 20; max = 250; step = 5; }
   if (propKey === 'branches') { min = 0; max = 6; step = 1; }

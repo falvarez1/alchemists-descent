@@ -76,6 +76,15 @@ function weaverFootTarget(
   const w = ctx.world;
   const width = w.width;
   const height = w.height;
+  if (lifted) {
+    return {
+      x: clamp(hipX + side * 3, 2, width - 3),
+      y: clamp(hipY + (desperate ? 34 : 27), 3, height - 4),
+      planted: false,
+      strain: 1,
+      surface: 'failed',
+    };
+  }
   const sx = Math.floor(clamp(desiredX, 2, width - 3));
   const sy = Math.floor(clamp(desiredY, 3, height - 4));
   // Desperate legs (footing cut away) sweep a much WIDER horizontal arc so a leg
@@ -158,20 +167,9 @@ function weaverFootTarget(
     if (ringBest) return ringBest;
   }
 
-  // No purchase anywhere in reach. Two different reads depending on the body:
-  // a LIFTED/held weaver lets the leg HANG DOWN under its own weight (so picking
-  // it up by the body dangles the legs); a GROUNDED one pulls the foot UP toward
-  // the hip into a raised, feeling-for-grip pose (not a dead limb sagging into a
-  // hole — see the footing-recovery note).
-  if (lifted) {
-    return {
-      x: clamp(hipX + side * 3, 2, width - 3),
-      y: clamp(hipY + (desperate ? 34 : 27), 3, height - 4),
-      planted: false,
-      strain: 1,
-      surface: 'failed',
-    };
-  }
+  // No purchase anywhere in reach: pull the foot UP toward the hip into a
+  // raised, feeling-for-grip pose (not a dead limb sagging into a hole — see the
+  // footing-recovery note). Lifted/held bodies return the hanging target above.
   const reachOut = desperate ? 8 : 5;
   const tuckUp = desperate ? 9 : 6;
   return {
@@ -566,9 +564,13 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     e._px = wx2;
     e._svx = (e._svx || 0) * 0.6 + wdrv * 0.4;
     const asleep = e.sleeping === true;
-    // Lifted off any surface (held by the debug drag, or simply airborne): legs
-    // with no foothold dangle DOWN instead of tucking up toward the hip.
+    // Lifted off any surface: legs with no foothold dangle DOWN instead of
+    // tucking up toward the hip. Debug-dragged bodies force that hanging target
+    // even if a wall/ceiling is within reach, so posing a Weaver does not glue
+    // its feet to old surfaces.
     const lifted = !asleep && e.grounded === false;
+    const debugHeld = !asleep && ctx.debug?.dragRef === e;
+    const debugDangle = debugHeld && lifted;
     const moving = !asleep && e.grounded && (Math.abs(e._svx) > 0.035 || e.alerted);
     const face = Math.abs(e._svx) > 0.05 ? Math.sign(e._svx) : look;
     const support = e.weaverSupport ?? 0.65;
@@ -862,7 +864,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
         leg.lift = Math.max(leg.lift, 0.55);
       } else {
         if (unstable) tx += Math.sin(frameCount * 0.19 + i * 1.7) * 2.6;
-        const rawTarget = weaverFootTarget(ctx, tx, e.y - rest.footY, hipX, hipY, rest.side, unstable || (e.weaverFallT ?? 0) > 18, lifted);
+        const rawTarget = weaverFootTarget(ctx, tx, e.y - rest.footY, hipX, hipY, rest.side, unstable || (e.weaverFallT ?? 0) > 18, debugDangle);
         const hardResetReach = WEAVER_LEG_REACH[i] * WEAVER_LEG_HARD_RESET;
         const staleSpan = Math.hypot(leg.x - hipX, leg.y - hipY);
         if (
@@ -877,7 +879,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
         // A foot stretched past the leg's real reach can't still be "supported" — it
         // must let go and re-step. Without this, a yanked/teleported/lifted body
         // drags a glued foot across the level on an impossibly long leg.
-        const currentSupported = leg.planted === true && hipLoad <= 1.12 && weaverFootStillSupported(ctx, leg.x, leg.y);
+        const currentSupported = !debugDangle && leg.planted === true && hipLoad <= 1.12 && weaverFootStillSupported(ctx, leg.x, leg.y);
         const targetDelta = Math.hypot(rawTarget.x - leg.x, rawTarget.y - leg.y);
         if (currentSupported) {
           leg.surface = leg.surface === 'failed' ? rawTarget.surface : leg.surface;

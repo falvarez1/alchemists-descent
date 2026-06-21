@@ -80,6 +80,55 @@ describe('cell ABI contracts', () => {
     expect(CELL_COUNT).toBe(38);
     expect(Math.max(...Object.values(Cell))).toBeLessThan(128);
   });
+
+  it('routes every cell id through either simulation behavior or an explicit static skip', () => {
+    const routed = [
+      Cell.Empty,
+      Cell.Wall,
+      Cell.Wood,
+      Cell.Stone,
+      Cell.Metal,
+      Cell.Crystal,
+      Cell.Glass,
+      Cell.Glowshroom,
+      Cell.RawOre,
+      Cell.Sand,
+      Cell.Gold,
+      Cell.Catalyst,
+      Cell.Water,
+      Cell.Fire,
+      Cell.Ember,
+      Cell.Oil,
+      Cell.Acid,
+      Cell.Gunpowder,
+      Cell.Lava,
+      Cell.Nitrogen,
+      Cell.Snow,
+      Cell.Coal,
+      Cell.Ash,
+      Cell.Toxic,
+      Cell.Healium,
+      Cell.Teleportium,
+      Cell.Blood,
+      Cell.Slime,
+      Cell.ElixirLife,
+      Cell.ElixirLevity,
+      Cell.ElixirStone,
+      Cell.Steam,
+      Cell.Smoke,
+      Cell.Ice,
+      Cell.Vines,
+      Cell.Fungus,
+      Cell.Moss,
+      Cell.Grass,
+    ];
+    const unique = new Set(routed);
+    const missing = Array.from({ length: CELL_COUNT }, (_, id) => id).filter((id) => !unique.has(id as Cell));
+
+    expect(routed).toHaveLength(CELL_COUNT);
+    expect(unique.size).toBe(CELL_COUNT);
+    expect(missing).toEqual([]);
+  });
 });
 
 describe('World.swap', () => {

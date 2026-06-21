@@ -21,7 +21,7 @@ const spreadCharge = new Map<number, number>();
 /** This grid ticks once per sim SUBSTEP (~6×/frame), but charge must decay only
  *  once per FRAME — otherwise a charge of N vanishes in ~N/6 frames, far too fast
  *  to see now that the spread no longer re-seeds at full strength. */
-let lastDecayFrame = -1;
+const lastDecayFrameByWorld = new WeakMap<object, number>();
 /** Cells the conduction front advances per substep (×6 substeps/frame). A SMALL
  *  value keeps the visible racing crawl — high enough to feel fast, low enough
  *  that it never fills as an instant solid slab (that killed the crackle look). */
@@ -124,8 +124,8 @@ export function updateElectricalGrid(ctx: Ctx): void {
   }
   // Decay ONCE PER FRAME (gated on frameCount), so `chargeDecay` reads as charge
   // lost per frame — the glow duration. The same once-per-frame pass runs erosion.
-  if (ctx.state.frameCount !== lastDecayFrame) {
-    lastDecayFrame = ctx.state.frameCount;
+  if (ctx.state.frameCount !== (lastDecayFrameByWorld.get(w) ?? -1)) {
+    lastDecayFrameByWorld.set(w, ctx.state.frameCount);
     const erosion = ctx.params?.global?.chargeErosion ?? 0;
     const eroding = erosion > 0 && ctx.particles !== undefined;
     for (const ci of charged) {

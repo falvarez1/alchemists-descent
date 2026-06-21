@@ -2,7 +2,7 @@ import { chromium } from 'playwright-core';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 
-const url = process.argv[2] || 'http://localhost:5174/';
+const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });

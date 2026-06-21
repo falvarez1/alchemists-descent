@@ -297,7 +297,11 @@ try {
       .sort((a, b) => Math.abs(a.x - 1028) - Math.abs(b.x - 1028))[0];
     if (!feeder) throw new Error('No feeder Weaver');
     ctx.camera.snapTo(feeder.x, feeder.y - 90);
-    ctx.player.x = feeder.x - 180;
+    // Feeding now happens only when the weaver is UNAWARE of the alchemist — an alerted
+    // weaver commits to the hunt and won't break off to snack. Park the player at the
+    // far-left spawn: well out of the feeder's ~300px sense AND clear of the sleeper at
+    // x~350 (don't wake it within 82px, or the later sleep scenarios find no sleeper).
+    ctx.player.x = 150;
     ctx.player.y = feeder.y;
     ctx.player.vx = ctx.player.vy = ctx.player.fx = ctx.player.fy = 0;
     feeder.alerted = false;

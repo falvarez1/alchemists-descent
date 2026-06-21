@@ -209,10 +209,17 @@ void main() {
         if (ld2 > L.z * L.z || ld2 < 1.0) continue;
         float ld = sqrt(ld2);
         float pull = 1.0 - ld / L.z;
-        float k = pull * pull * L.w;
-        // sample from further out (pinch) with a tangential swirl
-        lookupX += int(floor(ldx / ld * k - ldy / ld * k * 0.7));
-        lookupY += int(floor(ldy / ld * k + ldx / ld * k * 0.7));
+        if (L.w < 0.0) {
+          // heat-haze shimmer (K < 0): animated horizontal warp + a little vertical
+          float amp = -L.w;
+          lookupX += int(floor(sin(float(wy) * 0.55 + uPhaseWater + L.x) * amp * pull));
+          lookupY += int(floor(cos(float(wx) * 0.7 + uPhaseWater * 0.8) * amp * 0.4 * pull));
+        } else {
+          float k = pull * pull * L.w;
+          // sample from further out (pinch) with a tangential swirl
+          lookupX += int(floor(ldx / ld * k - ldy / ld * k * 0.7));
+          lookupY += int(floor(ldy / ld * k + ldx / ld * k * 0.7));
+        }
       }
       lookupX = clamp(lookupX, 0, ${WIDTH - 1});
       lookupY = clamp(lookupY, 0, ${HEIGHT - 1});

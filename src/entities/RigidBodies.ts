@@ -54,11 +54,12 @@ const MAX_TERRAIN_CELLS = 2800; // total terrain colliders requested per frame
 const REFERENCE_MASS = 45; // a "typical" crate; blast/kick scale a body's throw by REFERENCE_MASS / mass
 const PUSH_MASS_MAX = 60; // player shoves bodies up to this mass (light wood); heavier ones block
 const MIN_PUSH = 0.7; // minimum shove speed (cells/frame) when the player leans on a light body
-const PUSH_TRANSFER = 1.35; // fraction of the player's walk speed transferred into the shoved body
+const PUSH_TRANSFER = 5.4; // fraction of the player's walk speed transferred into the shoved body
 // Reused flood-fill scratch for the loose-rubble test on terrain colliders (so a
 // body, like the player, walks through small floating cell clusters instead of snagging).
 const TERRAIN_SCRATCH: CollisionScratch = { x: new Int32Array(32), y: new Int32Array(32) };
-const BURN_FRAMES = 150; // a flammable (wood) body burns ~2.5s before it chars to ash
+const BURN_FRAMES = 300; // a flammable (wood) body burns ~5s before it chars to ash — long
+//                          enough that a crate set on a brazier/waystone bowl can light it
 const FROST_CONTACT_FRAMES = 50; // freeze duration refreshed each frame a body touches ice
 const FROST_DAMP = 0.65; // per-frame velocity retention while frozen (locks it in place)
 const DIG_PUSH = 24; // mass-aware momentum the dig beam imparts to bodies in its path
@@ -76,13 +77,17 @@ const SPLASH_MIN_SPEED = 1.2 * PF; // min downward speed (cells/s) to splash on 
 const GRAB_REACH = 18; // cells in front of the player a body can be grabbed from
 const GRAB_ARC = 1.1; // grab cone half-angle (radians)
 const GRAB_MASS_MAX = 200; // heaviest body the player can grab (large-metal is too heavy)
-const GRAB_HOLD_DIST = 12; // distance the held body floats in front of the hands
+const GRAB_HOLD_DIST = 20; // distance the held body floats in front of the hands
 const GRAB_STIFFNESS = 0.45; // per-frame fraction of the gap the held body closes
 const GRAB_MAX_SPEED = 7; // cap on the held body's tracking speed (cells/frame)
 const THROW_SPEED = 9; // launch speed when the held body is thrown (cells/frame)
 const TELE_REACH = 130; // telekinesis: how far the cursor-targeted lift reaches
 const TELE_MASS_MAX = 700; // telekinesis lifts ANY crate/boulder (incl. large metal ~374)
 const TELE_CURSOR_GRACE = 7; // cells of slack: grab the body nearest the cursor within this
+const RIP_CHARGE_FRAMES = 20; // frames of held-E tug before a plank cracks off a platform
+const RIP_HALF_W = 3; // torn plank chunk: up to 7 cells wide...
+const RIP_HALF_H = 2; // ...and 5 tall (timber platforms are ~4 thick)
+const RIP_MIN_CELLS = 4; // a tug only yields a body if it frees at least this much wood
 const BARREL_FUSE = 45; // frames a lit explosive barrel burns before it blows
 const BARREL_BLAST = 24; // explosion radius of a detonating barrel
 
@@ -106,6 +111,8 @@ export class RigidBodies implements RigidBodiesApi {
   private nextId = 1;
   /** The body the player is currently carrying (grab/throw), or null. */
   private held: RigidBody | null = null;
+  /** Held-E "tug" progress while tearing a plank off a wood platform (see updatePlankRip). */
+  private ripCharge = 0;
   /** Explosive barrels queued to detonate (processed once per tick → chains ripple). */
   private detonations: RigidBody[] = [];
 
@@ -353,6 +360,10 @@ export class RigidBodies implements RigidBodiesApi {
     return this.held !== null;
   }
 
+  heldBody(): RigidBody | null {
+    return this.held;
+  }
+
   grabAtCursor(ctx: Ctx): boolean {
     if (this.held) return false;
     const p = ctx.player;
@@ -435,8 +446,18 @@ export class RigidBodies implements RigidBodiesApi {
       this.held = null;
       return;
     }
-    const hx = p.x + Math.cos(p.aimAngle) * GRAB_HOLD_DIST;
-    const hy = p.y - 8 + Math.sin(p.aimAngle) * GRAB_HOLD_DIST;
+    // Float the body PAST the wand tip: the hold distance grows with the body's
+    // own reach so its near edge clears the wand instead of clipping the hand.
+    const [hex, hey] = bodyExtents(held);
+    const dirX = Math.cos(p.aimAngle);
+    const dirY = Math.sin(p.aimAngle);
+    // A slow telekinetic float: a gentle along-aim breathe plus a perpendicular
+    // sway, so the object visibly hovers in the field instead of locking rigid.
+    const ph = ctx.state.frameCount * 0.09 + held.id * 1.7;
+    const dist = GRAB_HOLD_DIST + Math.max(hex, hey) + Math.sin(ph) * 0.9;
+    const sway = Math.sin(ph * 0.7 + 1.3) * 1.1;
+    const hx = p.x + dirX * dist - dirY * sway;
+    const hy = p.y - 8 + dirY * dist + dirX * sway;
     const t = rb.translation();
     let vx = (hx - t.x) * GRAB_STIFFNESS * PF;
     let vy = (hy - t.y) * GRAB_STIFFNESS * PF;
@@ -458,6 +479,94 @@ export class RigidBodies implements RigidBodiesApi {
       const rr = Math.max(ex, ey) + 1.5;
       ctx.particles.spawn(held.x + Math.cos(ang) * rr, held.y + Math.sin(ang) * rr, Math.cos(ang) * 0.25, Math.sin(ang) * 0.25, null, packRGB(150, 205, 255), 12 + ((Math.random() * 8) | 0), { glow: 1.8, grav: 0 });
     }
+  }
+
+  /**
+   * Hold E aimed at a wooden platform to TEAR a plank loose: a short tug
+   * (RIP_CHARGE_FRAMES) cracks a small chunk of real Cell.Wood off the platform
+   * into a carried rigid body you can drop/throw onto a brazier or barricade.
+   * Cursor-targeted like telekinesis; the flask siphon (also E-held) can't
+   * collide because a plank cell is never a liquid.
+   */
+  private updatePlankRip(ctx: Ctx): void {
+    const p = ctx.player;
+    if (this.held || !ctx.input.siphonHeld || p.dead || p.climbing || ctx.state.mode !== 'play') {
+      this.ripCharge = 0;
+      return;
+    }
+    const world = ctx.world;
+    const mx = Math.floor(ctx.input.mouse.x);
+    const my = Math.floor(ctx.input.mouse.y);
+    if (
+      !world.inBounds(mx, my) ||
+      world.types[world.idx(mx, my)] !== Cell.Wood ||
+      Math.hypot(mx - p.x, my - (p.y - 8)) > TELE_REACH
+    ) {
+      this.ripCharge = 0;
+      return;
+    }
+    this.ripCharge++;
+    // cracking feedback that intensifies as the plank gives way
+    if (this.ripCharge % 4 === 0) {
+      ctx.particles.spawn(
+        mx + (Math.random() - 0.5) * 5,
+        my + (Math.random() - 0.5) * 3,
+        (Math.random() - 0.5) * 0.4,
+        -0.15 - Math.random() * 0.3,
+        null,
+        packRGB(150, 110, 60),
+        12 + ((Math.random() * 8) | 0),
+        { grav: 0.05 },
+      );
+      ctx.audio.tone(110 + this.ripCharge * 6, 45, 0.04, 'square', 0.05);
+    }
+    if (this.ripCharge >= RIP_CHARGE_FRAMES) {
+      this.ripCharge = 0;
+      this.ripPlank(ctx, mx, my);
+    }
+  }
+
+  /** Carve a small plank chunk out of the wood terrain at (mx,my) and hand the
+   *  player the resulting wood body (auto-levitated, like a fresh telekinesis grab). */
+  private ripPlank(ctx: Ctx, mx: number, my: number): void {
+    const world = ctx.world;
+    const cells: number[] = [];
+    let minX = mx, maxX = mx, minY = my, maxY = my;
+    let sumR = 0, sumG = 0, sumB = 0;
+    for (let dy = -RIP_HALF_H; dy <= RIP_HALF_H; dy++) {
+      for (let dx = -RIP_HALF_W; dx <= RIP_HALF_W; dx++) {
+        const X = mx + dx, Y = my + dy;
+        if (!world.inBounds(X, Y)) continue;
+        const i = world.idx(X, Y);
+        if (world.types[i] !== Cell.Wood) continue;
+        cells.push(i);
+        const c = world.colors[i];
+        sumR += (c >> 16) & 255;
+        sumG += (c >> 8) & 255;
+        sumB += c & 255;
+        if (X < minX) minX = X;
+        if (X > maxX) maxX = X;
+        if (Y < minY) minY = Y;
+        if (Y > maxY) maxY = Y;
+      }
+    }
+    if (cells.length < RIP_MIN_CELLS) return; // not enough plank under the cursor
+    for (const i of cells) world.clearCellAt(i);
+    const n = cells.length;
+    const color = packRGB(Math.round(sumR / n), Math.round(sumG / n), Math.round(sumB / n));
+    const cx = (minX + maxX + 1) / 2;
+    const cy = (minY + maxY + 1) / 2;
+    const halfW = Math.max(2, (maxX - minX + 1) / 2);
+    const halfH = Math.max(1.5, (maxY - minY + 1) / 2);
+    const body = this.spawn({ kind: 'box', halfW, halfH }, cx, cy, {
+      material: 'wood',
+      color,
+      friction: 0.6,
+      restitution: 0.15,
+    });
+    this.held = body; // the torn plank levitates straight to the hand
+    ctx.audio.tone(90, 170, 0.12, 'sawtooth', 0.1); // timber tearing free
+    ctx.particles.burst(cx, cy, 12, null, () => color, 1.1, { grav: 0.05 });
   }
 
   applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void {
@@ -645,6 +754,7 @@ export class RigidBodies implements RigidBodiesApi {
     if (dead) for (const body of dead) this.remove(body);
     this.reactBodies(ctx);
     this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
+    this.updatePlankRip(ctx); // hold E aimed at a wood platform to tear a plank loose
     this.resolvePlayer(ctx);
   }
 
@@ -741,7 +851,9 @@ export class RigidBodies implements RigidBodiesApi {
             { grav: -0.02, glow: 2.4 },
           );
           if (ctx.state.frameCount % 5 === 0) ctx.particles.spawn(body.x, body.y - 3, 0, -0.4, null, smokeColor(), 40, { grav: -0.02 });
-          if (Math.random() < 0.12) this.shedFire(world, body);
+          // Steady real-fire embers from the underside — dense enough to keep a
+          // brazier/waystone bowl lit while the crate sits in it (not just a few sparks).
+          if (body.burnT % 2 === 0) this.shedFire(world, body);
           if (body.burnT <= 0) {
             if (body.payload === 'explosive') {
               this.queueDetonation(body); // the detonation removes it
@@ -761,7 +873,9 @@ export class RigidBodies implements RigidBodiesApi {
       if (body.frozenT && body.frozenT > 0) {
         body.frozenT--;
         const rb = this.handles.get(body);
-        if (rb) {
+        if (body.frostMomentumGrace && body.frostMomentumGrace > 0) {
+          body.frostMomentumGrace--;
+        } else if (rb) {
           const v = rb.linvel();
           rb.setLinvel({ x: v.x * FROST_DAMP, y: v.y * FROST_DAMP }, true);
           rb.setAngvel(rb.angvel() * FROST_DAMP, true);
@@ -769,6 +883,7 @@ export class RigidBodies implements RigidBodiesApi {
         if (ctx.state.frameCount % 8 === 0)
           ctx.particles.spawn(body.x + (Math.random() - 0.5) * 4, body.y + (Math.random() - 0.5) * 4, 0, 0.1, null, packRGB(180, 225, 255), 16, { glow: 1.4 });
       }
+      if (!body.frozenT || body.frozenT <= 0) body.frostMomentumGrace = undefined;
 
       // WATER — Archimedes buoyancy (material vs water) + viscous drag, with a
       // splash of real water cells when a body first plunges in fast.
@@ -856,16 +971,20 @@ export class RigidBodies implements RigidBodiesApi {
     return false;
   }
 
-  /** A burning body spits a real fire cell into an empty footprint cell (spreads). */
+  /** A burning body spits real fire cells into its LOWER footprint (and just below).
+   *  Seeding low — where a resting crate meets a bowl — pools fire where the
+   *  checkpoint reads it; fire rises, so it fills upward through the bowl. */
   private shedFire(world: World, body: RigidBody): void {
     const [ex, ey] = bodyExtents(body);
-    const x = Math.floor(body.x + (Math.random() * 2 - 1) * ex);
-    const y = Math.floor(body.y + (Math.random() * 2 - 1) * ey);
-    if (!world.inBounds(x, y)) return;
-    const idx = world.idx(x, y);
-    if (world.types[idx] === Cell.Empty) {
-      world.replaceCellAt(idx, Cell.Fire, fireColor());
-      world.life[idx] = 30 + Math.floor(Math.random() * 30);
+    for (let k = 0; k < 2; k++) {
+      const x = Math.floor(body.x + (Math.random() * 2 - 1) * ex);
+      const y = Math.floor(body.y - ey * 0.4 + Math.random() * (ey * 1.6 + 2));
+      if (!world.inBounds(x, y)) continue;
+      const idx = world.idx(x, y);
+      if (world.types[idx] === Cell.Empty) {
+        world.replaceCellAt(idx, Cell.Fire, fireColor());
+        world.life[idx] = 45 + Math.floor(Math.random() * 45);
+      }
     }
   }
 
@@ -957,7 +1076,8 @@ export class RigidBodies implements RigidBodiesApi {
     // 1) Standing on top — 1-cell ground tolerance (no flicker), penetration
     //    capped by fall speed so a fast drop still snaps cleanly to the surface.
     const landTol = Math.max(2, player.vy + 1);
-    if (player.vy >= -0.1 && feetY >= bT - 1 && feetY <= bT + landTol && headY < bT) {
+    const centeredOnTop = player.x >= bL && player.x <= bR;
+    if (centeredOnTop && player.vy >= -0.1 && feetY >= bT - 1 && feetY <= bT + landTol && headY < bT) {
       player.y = Math.round(bT); // keep the player on integer cells (the grid oracle is cell-indexed)
       if (player.vy > 0) player.vy = 0;
       player.grounded = true;
@@ -1007,9 +1127,10 @@ export class RigidBodies implements RigidBodiesApi {
     const light = mass <= PUSH_MASS_MAX;
     const prevPX = player.x - player.vx;
     const prevBX = body.x - body.vx;
+    const fastBody = Math.abs(body.vx) > PLAYER_HALF_W;
     let pushLeft: boolean;
-    if (prevPX + PLAYER_HALF_W <= prevBX - ex + 0.5) pushLeft = true; // was clear on the LEFT
-    else if (prevPX - PLAYER_HALF_W >= prevBX + ex - 0.5) pushLeft = false; // was clear on the RIGHT
+    if (!fastBody && prevPX + PLAYER_HALF_W <= prevBX - ex + 0.5) pushLeft = true; // was clear on the LEFT
+    else if (!fastBody && prevPX - PLAYER_HALF_W >= prevBX + ex - 0.5) pushLeft = false; // was clear on the RIGHT
     else pushLeft = player.x < body.x; // overlapping last frame too: nearest face by centre
     const shove = Math.max(Math.abs(player.vx), MIN_PUSH) * PUSH_TRANSFER;
     if (pushLeft) {

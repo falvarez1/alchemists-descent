@@ -57,22 +57,30 @@ const saveProbe = await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const priorPlaytestSource = ctx.state.playtestSource;
   const priorDebugGodMode = ctx.state.debugGodMode;
+  const priorDebugTainted = ctx.state.debugTainted;
   localStorage.removeItem('noita-expedition');
   ctx.state.playtestSource = null;
   ctx.state.debugGodMode = false;
+  ctx.state.debugTainted = false;
+  ctx.debug.setActive(true);
   ctx.levels.saveExpedition(ctx);
   const blockedWhileDebugActive = localStorage.getItem('noita-expedition') === null;
   ctx.debug.setActive(false);
   ctx.levels.saveExpedition(ctx);
-  const savedWhenDebugOff = localStorage.getItem('noita-expedition') !== null;
+  const blockedAfterDebugOff = localStorage.getItem('noita-expedition') === null;
+  ctx.state.debugTainted = false;
+  ctx.levels.saveExpedition(ctx);
+  const savedWhenClean = localStorage.getItem('noita-expedition') !== null;
   localStorage.removeItem('noita-expedition');
   ctx.state.playtestSource = priorPlaytestSource;
   ctx.state.debugGodMode = priorDebugGodMode;
+  ctx.state.debugTainted = priorDebugTainted;
   ctx.debug.setActive(true);
-  return { blockedWhileDebugActive, savedWhenDebugOff };
+  return { blockedWhileDebugActive, blockedAfterDebugOff, savedWhenClean };
 });
 ok(saveProbe.blockedWhileDebugActive, 'saveExpedition wrote a save while Debug was active');
-ok(saveProbe.savedWhenDebugOff, 'saveExpedition did not write after Debug was disabled for the control check');
+ok(saveProbe.blockedAfterDebugOff, 'saveExpedition wrote a save after Debug was disabled but the run was tainted');
+ok(saveProbe.savedWhenClean, 'saveExpedition did not write after clearing debug taint for the control check');
 
 // --- leaving Play clears the freeze instead of leaking into Build/Sandbox ---
 const modeClear = await page.evaluate(async () => {
@@ -338,6 +346,23 @@ const resumed = await page.evaluate((b) => {
   return xs.some((x, i) => Math.abs(x - b[i]) > 0.5);
 }, beforeOff);
 ok(resumed, 'Entities did not resume after Debug off');
+
+// --- debug level jumps are tainted and cannot checkpoint progression ---
+const jumpSaveProbe = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  localStorage.removeItem('noita-expedition');
+  ctx.state.playtestSource = null;
+  ctx.state.debugGodMode = false;
+  ctx.state.debugTainted = false;
+  const jumped = ctx.levels.debugEnterLevel(ctx, 'd1');
+  const tainted = ctx.state.debugTainted === true;
+  ctx.levels.saveExpedition(ctx);
+  const blocked = localStorage.getItem('noita-expedition') === null;
+  localStorage.removeItem('noita-expedition');
+  return { jumped, tainted, blocked };
+});
+ok(jumpSaveProbe.jumped, `debugEnterLevel failed (${JSON.stringify(jumpSaveProbe)})`);
+ok(jumpSaveProbe.tainted && jumpSaveProbe.blocked, `debugEnterLevel did not taint/block saves (${JSON.stringify(jumpSaveProbe)})`);
 
 await browser.close();
 console.log(

@@ -95,7 +95,30 @@ describe('updateElectricalGrid', () => {
 
     expect(world.charge[restored]).toBe(4);
   });
+
+  it('decays independent worlds on the same frame count', () => {
+    const params = createGameParams();
+    params.global.chargeFalloff = 1;
+    params.global.chargeDecay = 1;
+    const frameCount = ++testFrame;
+    const first = chargedWorld();
+    const second = chargedWorld();
+
+    updateElectricalGrid({ world: first, params, state: { frameCount } } as Ctx);
+    updateElectricalGrid({ world: second, params, state: { frameCount } } as Ctx);
+
+    expect(first.charge[first.idx(3, 3)]).toBe(4);
+    expect(second.charge[second.idx(3, 3)]).toBe(4);
+  });
 });
+
+function chargedWorld(): World {
+  const world = new World(8, 8);
+  const source = world.idx(3, 3);
+  world.types[source] = Cell.Metal;
+  world.charge[source] = 5;
+  return world;
+}
 
 // Decay now fires once per FRAME (updateElectricalGrid gates on frameCount), so
 // each call gets a fresh, advancing frame — every decay-expecting call decays.

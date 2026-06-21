@@ -73,6 +73,7 @@ import {
   type VirtualSceneObject,
   type VirtualWorldDef,
 } from '@/world/virtual';
+import { isEnemyKind } from '@/core/types';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
 const CURTAIN_HOLD_MS = 450;
@@ -345,6 +346,7 @@ function isSavedLevelBlobShape(value: unknown): value is SavedLevelBlob {
     Array.isArray(b.life) &&
     Array.isArray(b.charge) &&
     Array.isArray(b.enemies) &&
+    b.enemies.every(isSavedEnemyShape) &&
     Array.isArray(b.pickups) &&
     Array.isArray(b.mechanisms) &&
     Array.isArray(b.waystones) &&
@@ -352,6 +354,19 @@ function isSavedLevelBlobShape(value: unknown): value is SavedLevelBlob {
     Array.isArray(b.litOrder) &&
     (b.colorOverrides === undefined || Array.isArray(b.colorOverrides)) &&
     (b.weaverLairWebs === undefined || Array.isArray(b.weaverLairWebs))
+  );
+}
+
+function isSavedEnemyShape(value: unknown): value is SavedEnemyState {
+  if (!value || typeof value !== 'object') return false;
+  const e = value as Partial<SavedEnemyState>;
+  return (
+    isEnemyKind(e.kind) &&
+    typeof e.x === 'number' &&
+    typeof e.y === 'number' &&
+    typeof e.hp === 'number' &&
+    typeof e.maxHp === 'number' &&
+    (e.dmgK === undefined || typeof e.dmgK === 'number')
   );
 }
 
@@ -390,7 +405,7 @@ export function reviveSavedEnemy(se: SavedEnemyState): Enemy {
   // x/y/hp/maxHp the way the lesser fields below already are.
   const maxHp = Math.max(1, finiteNumber(se.maxHp, 1));
   const enemy: Enemy = {
-    kind: se.kind,
+    kind: isEnemyKind(se.kind) ? se.kind : 'slime',
     x: finiteNumber(se.x, 0),
     y: finiteNumber(se.y, 0),
     fx: 0,
@@ -466,6 +481,10 @@ export class Levels implements LevelsApi {
   private findabilityRepairToken = 0;
 
   constructor(private ctx: Ctx) {}
+
+  private debugTainted(ctx: Ctx): boolean {
+    return ctx.state.debugGodMode || ctx.state.debugTainted === true || ctx.debug?.active === true;
+  }
 
   private showTransitionCurtain(ctx: Ctx, copy: TransitionCurtainCopy = {}): void {
     ctx.events.emit('levelCurtain', {
@@ -552,7 +571,7 @@ export class Levels implements LevelsApi {
     this.enterPlayMode(ctx);
 
     if (mode === 'normal' && worldSource === 'campaign' && config.continueSave !== false) {
-      if (ctx.state.playtestSource !== null || ctx.state.debugGodMode) {
+      if (ctx.state.playtestSource !== null || ctx.state.debugGodMode || ctx.state.debugTainted === true) {
         this.resetRunState(ctx, { clearSave: false });
       }
       ctx.state.playtestSource = null;
@@ -613,7 +632,7 @@ export class Levels implements LevelsApi {
   runStatus(ctx: Ctx): RunStatus {
     const rt = this.current;
     const debugActive = ctx.debug?.active === true;
-    const debugTainted = ctx.state.debugGodMode || debugActive;
+    const debugTainted = this.debugTainted(ctx);
     const autosaveBlockReason: RunStatus['autosaveBlockReason'] =
       ctx.state.mode !== 'play'
         ? 'not-play'
@@ -797,6 +816,8 @@ export class Levels implements LevelsApi {
       title: 'Opening playtest',
       detail: 'Seating the authored world.',
     });
+    resetCombatTransients(ctx, { simulationAccumulator: true });
+    ctx.flask.cancelBottle();
     if (this.expeditionSeed === null) this.expeditionSeed = ctx.state.worldSeed >>> 0;
     if (this.currentId !== 'custom') this.preCustomCurrentId = this.currentId;
     const def: LevelDef = {
@@ -899,7 +920,7 @@ export class Levels implements LevelsApi {
 
   saveExpedition(ctx: Ctx): void {
     if (ctx.player.dead) return;
-    if (ctx.debug?.active === true) return;
+    if (this.debugTainted(ctx)) return;
     this.writeExpeditionSave(ctx, this.snapshotPlayerForSave(ctx));
   }
 
@@ -934,8 +955,7 @@ export class Levels implements LevelsApi {
     if (!this.currentId || this.currentId === 'custom') return;
     if (!LEVELS[this.currentId]) return;
     if (ctx.state.playtestSource !== null) return;
-    if (ctx.state.debugGodMode) return;
-    if (ctx.debug?.active === true) return;
+    if (this.debugTainted(ctx)) return;
     const currentId = this.currentId;
     // Sync the live hostile roster into the current runtime before reading it.
     this.leaveLevel();
@@ -968,7 +988,7 @@ export class Levels implements LevelsApi {
       score: ctx.state.score,
       player: playerSave,
       loadout: ctx.wands.snapshotLoadout(),
-      wands: ctx.wands.snapshotRuntimeState(),
+      wands: this.snapshotWandsForSave(ctx),
       flasks: this.snapshotFlasks(ctx),
       levels: blobs,
     };
@@ -977,6 +997,13 @@ export class Levels implements LevelsApi {
     } catch {
       // quota — the expedition just lives and dies with the tab
     }
+  }
+
+  private snapshotWandsForSave(ctx: Ctx): WandRuntimeSnapshot {
+    return {
+      ...ctx.wands.snapshotRuntimeState(),
+      flameBurst: 0,
+    };
   }
 
   hasSavedExpedition(): boolean {
@@ -1066,9 +1093,15 @@ export class Levels implements LevelsApi {
   debugEnterLevel(ctx: Ctx, id: string): boolean {
     if (!LEVELS[id]) return false;
     if (ctx.state.mode !== 'play') return false;
+    ctx.state.debugTainted = true;
     if (!this.currentId) this.startDescent(ctx);
     this.leaveLevel();
-    this.enterLevel(ctx, id);
+    this.checkpointSaveSuppression++;
+    try {
+      this.enterLevel(ctx, id);
+    } finally {
+      this.checkpointSaveSuppression--;
+    }
     return this.current?.def.id === id;
   }
 
@@ -1085,6 +1118,7 @@ export class Levels implements LevelsApi {
 
   private resetRunState(ctx: Ctx, options: { clearSave: boolean }): void {
     if (options.clearSave) this.abandonExpedition();
+    ctx.state.debugTainted = false;
     this.levels.clear();
     this.currentId = null;
     this.preCustomCurrentId = null;
@@ -1548,14 +1582,10 @@ export class Levels implements LevelsApi {
         if (!world.inBounds(x, y)) continue;
         const i = world.idx(x, y);
         if (y >= cy + 2 && y <= cy + 5) {
-          world.types[i] = Cell.Stone;
-          world.colors[i] = packRGB(82, 78, 86);
+          world.replaceCellAt(i, Cell.Stone, packRGB(82, 78, 86));
         } else {
-          world.types[i] = Cell.Empty;
-          world.colors[i] = EMPTY_COLOR;
+          world.clearCellAt(i);
         }
-        world.life[i] = 0;
-        world.charge[i] = 0;
       }
     }
   }
@@ -2003,6 +2033,9 @@ export class Levels implements LevelsApi {
     // levelChanged (which clears the body pool), so the bodies persist.
     if (id === 'physics-test') buildPhysicsArena(ctx);
     if (id === 'weaver-test') buildWeaverArena(ctx);
+    // Loose wood crates (carry-able fuel) AFTER levelChanged clears the body pool,
+    // same as the arenas — so they persist for the visit.
+    this.spawnLevelCrates(ctx, runtime);
     ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
     ctx.events.emit('objectiveChanged', {
       text: id === 'weaver-test'
@@ -2427,6 +2460,71 @@ export class Levels implements LevelsApi {
     }
   }
 
+  /* ---------------- loose crates ---------------- */
+
+  /**
+   * Loose wooden crates as carry-able fuel/props: 1-2 within reach of every
+   * waystone (so a fireless wizard can still light the checkpoint by hauling a
+   * crate onto the bowl and burning it) plus a few scattered across the level.
+   * Bodies are per-level transient (cleared on levelChanged), so this re-runs on
+   * each entry — deterministic per seed, never duplicated. Skips authored arenas.
+   */
+  private spawnLevelCrates(ctx: Ctx, runtime: LevelRuntime): void {
+    const id = runtime.def.id;
+    if (id === 'physics-test' || id === 'weaver-test' || id === 'custom') return;
+    if (runtime.waystones.length === 0) return; // only normal descent levels
+    const world = ctx.world;
+    const seed = (this.expeditionSeed ?? ctx.state.worldSeed) >>> 0;
+    const rng = new Rng(hashSeed(seed, 'crates:' + id));
+    // Chunky, haul-able crates: 8–12 cells wide (a few 14). Big enough to read as
+    // real cargo and to make a satisfying brazier-feeding payload.
+    const crateHalf = (): number => 4 + Math.floor(rng.next() * 3); // 4,5,6 → 8/10/12 wide
+    const isOpenT = (t: number): boolean => t === Cell.Empty || t === Cell.Water;
+    // Rest a wood crate on the first standable floor at or below (x, yStart): an
+    // open cell with solid ground under it and crate-sized clearance around it.
+    const drop = (x: number, yStart: number, half: number): boolean => {
+      x = Math.floor(x);
+      if (x < half + 2 || x >= WIDTH - half - 2) return false;
+      for (let y = Math.max(half + 2, Math.floor(yStart)); y < HEIGHT - 4; y++) {
+        if (!isOpenT(world.types[world.idx(x, y)])) continue;
+        if (!blocksEntity(world.types[world.idx(x, y + 1)])) continue;
+        // crate-sized pocket of open air above the floor (height + width)
+        let clear = true;
+        for (let dy = 1; dy <= half * 2 + 1 && clear; dy++) {
+          if (!isOpenT(world.types[world.idx(x, y - dy)])) clear = false;
+        }
+        for (let dx = -half; dx <= half && clear; dx++) {
+          if (!isOpenT(world.types[world.idx(x + dx, y)])) clear = false;
+        }
+        if (!clear) continue;
+        ctx.rigidBodies.spawn({ kind: 'box', halfW: half, halfH: half }, x, y - half, {
+          material: 'wood',
+          friction: 0.6,
+          restitution: 0.2,
+        });
+        return true;
+      }
+      return false;
+    };
+    // 1-2 crates beside each waystone — guaranteed checkpoint fuel
+    for (const ws of runtime.waystones) {
+      const want = 1 + (rng.next() < 0.5 ? 1 : 0);
+      let placed = 0;
+      for (let attempt = 0; attempt < 12 && placed < want; attempt++) {
+        const half = crateHalf();
+        const side = rng.next() < 0.5 ? -1 : 1;
+        const ox = ws.x + side * (8 + Math.floor(rng.next() * 9));
+        if (drop(ox, ws.y - half - 2, half)) placed++;
+      }
+    }
+    // ~3-5 scattered crates as general physics props
+    const scatter = 3 + Math.floor(rng.next() * 3);
+    for (let k = 0; k < scatter; k++) {
+      const half = crateHalf();
+      drop(20 + Math.floor(rng.next() * (WIDTH - 40)), HEIGHT * 0.22, half);
+    }
+  }
+
   /* ---------------- waystones ---------------- */
 
   /**
@@ -2532,8 +2630,7 @@ export class Levels implements LevelsApi {
         Y = ws.y + dy;
       if (!world.inBounds(X, Y)) continue;
       const wi = world.idx(X, Y);
-      world.types[wi] = Cell.Ember;
-      world.colors[wi] = emberColor();
+      world.replaceCellAt(wi, Cell.Ember, emberColor());
       world.life[wi] = 560 + Math.floor(Math.random() * 90);
     }
 

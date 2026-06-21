@@ -26,8 +26,6 @@ await page.waitForTimeout(400);
 const r = await page.evaluate(async () => {
   const ctx = window.__game.ctx;
   const tick = (n) => { for (let f = 0; f < n; f++) window.__game.tick(); };
-  await ctx.console.exec('run test --level physics-test --world campaign-level');
-  tick(20);
   const rb = ctx.rigidBodies;
   const p = ctx.player;
   const FLOOR_Y = 695; // crate centre rests ~696.5 on the y=700 arena floor
@@ -35,69 +33,82 @@ const r = await page.evaluate(async () => {
   const fire = (type, x, y) => ctx.projectiles.push({ x, y, vx: 9, vy: 0, type, life: 120, age: 0, charging: false, hostile: false, mul: 1 });
   const relInput = () => { for (const k of ['left', 'right', 'up', 'jump', 'down']) ctx.input.keys[k] = false; };
   const placePlayer = (x, y) => { p.dead = false; p.crawling = false; p.climbing = false; p.diveT = 0; p.x = x; p.y = y; p.vx = 0; p.vy = 0; p.fx = 0; p.fy = 0; };
-  relInput();
 
-  // ---- B2b: player STANDS on a heavy metal crate (no fall-through) ----
-  rb.clear();
-  const stand = box(350, 'metal');
-  tick(40);
-  const crateTop = stand.y - 3.5;
-  placePlayer(stand.x, 660);
-  tick(80);
-  const standY = p.y;
-  const standGrounded = p.grounded === true;
-  const stoodOnCrate = standY < crateTop + 2 && standY > crateTop - 4;
-  // jump off it (grounded was set by the resolve last frame)
-  const preJumpY = p.y;
-  ctx.input.keys.jump = true; tick(2); ctx.input.keys.jump = false; tick(10);
-  const jumpedOff = p.y < preJumpY - 6;
-  relInput();
+  const resetArena = async () => {
+    await ctx.console.exec('run test --level physics-test --world campaign-level');
+    tick(20);
+    relInput();
+    ctx.projectiles.length = 0;
+    rb.clear();
+    placePlayer(250, 699);
+  };
 
-  // ---- B2b: player SHOVES a light wood crate by walking into it. Carve a clean
-  //      bed clear of the dispenser/lever furniture (x798/818) and stairs (x864). ----
-  rb.clear();
-  const shove = box(360, 'wood');
-  tick(40);
-  const sx0 = shove.x;
-  placePlayer(shove.x - 10, 699); // player at ~830
-  ctx.input.keys.right = true;
-  tick(12); // crate ends ~858, still on open floor (short of the staircase at 864)
-  ctx.input.keys.right = false;
-  const shovePush = shove.x - sx0;
-  const playerLeftOfCrate = p.x < shove.x;
-  relInput();
-  tick(5);
+  const measureStand = async () => {
+    await resetArena();
+    const stand = box(350, 'metal');
+    tick(40);
+    const crateTop = stand.y - 3.5;
+    placePlayer(stand.x, 660);
+    tick(80);
+    const standY = p.y;
+    const standGrounded = p.grounded === true;
+    const stoodOnCrate = standY < crateTop + 2 && standY > crateTop - 4;
+    const preJumpY = p.y;
+    ctx.input.keys.jump = true; tick(2); ctx.input.keys.jump = false; tick(10);
+    const jumpedOff = p.y < preJumpY - 6;
+    relInput();
+    return { standY, crateTop, standGrounded, stoodOnCrate, jumpedOff };
+  };
 
-  // ---- B2a: iceshard shove, wood vs metal (pure momentum, no blast) ----
-  rb.clear();
-  const w1 = box(350, 'wood');
-  tick(40);
-  const wx0 = w1.x;
-  fire('iceshard', w1.x - 25, w1.y);
-  tick(45);
-  const woodPush = w1.x - wx0;
+  const measureShove = async () => {
+    await resetArena();
+    const shove = box(360, 'wood');
+    tick(40);
+    const sx0 = shove.x;
+    placePlayer(shove.x - 10, 699);
+    ctx.input.keys.right = true;
+    tick(12);
+    ctx.input.keys.right = false;
+    const shovePush = shove.x - sx0;
+    const playerLeftOfCrate = p.x < shove.x;
+    relInput();
+    return { shovePush, playerLeftOfCrate };
+  };
 
-  rb.clear();
-  const m1 = box(350, 'metal');
-  tick(40);
-  const mx0 = m1.x;
-  fire('iceshard', m1.x - 25, m1.y);
-  tick(45);
-  const metalPush = m1.x - mx0;
+  const measureProjectile = async (type, material, frames) => {
+    await resetArena();
+    const body = box(350, material);
+    tick(40);
+    const x0 = body.x;
+    placePlayer(250, 699);
+    ctx.projectiles.length = 0;
+    fire(type, body.x - 25, body.y);
+    let peak = 0;
+    for (let f = 0; f < frames; f++) {
+      tick(1);
+      peak = Math.max(peak, Math.abs(body.x - x0));
+    }
+    return { final: body.x - x0, peak };
+  };
 
-  // ---- B2a: a bolt (the common case) clearly moves a wood crate (erodes floor) ----
-  rb.clear();
-  const w2 = box(350, 'wood');
-  tick(40);
-  const bx0 = w2.x;
-  fire('bolt', w2.x - 25, w2.y);
-  tick(30);
-  const boltPush = Math.abs(w2.x - bx0);
+  const stand = await measureStand();
+  const shove = await measureShove();
+  const wood = await measureProjectile('iceshard', 'wood', 45);
+  const metal = await measureProjectile('iceshard', 'metal', 45);
+  const bolt = await measureProjectile('bolt', 'wood', 30);
 
   return {
-    woodPush: +woodPush.toFixed(2), metalPush: +metalPush.toFixed(2), boltPush: +boltPush.toFixed(2),
-    standY: +standY.toFixed(2), crateTop: +crateTop.toFixed(2), standGrounded, stoodOnCrate, jumpedOff,
-    shovePush: +shovePush.toFixed(2), playerLeftOfCrate,
+    woodPush: +wood.final.toFixed(2),
+    metalPush: +metal.final.toFixed(2),
+    boltPush: +bolt.peak.toFixed(2),
+    boltFinal: +bolt.final.toFixed(2),
+    standY: +stand.standY.toFixed(2),
+    crateTop: +stand.crateTop.toFixed(2),
+    standGrounded: stand.standGrounded,
+    stoodOnCrate: stand.stoodOnCrate,
+    jumpedOff: stand.jumpedOff,
+    shovePush: +shove.shovePush.toFixed(2),
+    playerLeftOfCrate: shove.playerLeftOfCrate,
   };
 });
 

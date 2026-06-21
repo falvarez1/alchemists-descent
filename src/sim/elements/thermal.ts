@@ -75,7 +75,11 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
       w.replaceCellAt(ni, Cell.Fire, fireColor());
       w.life[ni] = 40 + Math.floor(Math.random() * 50);
     }
-    if ((n === Cell.Oil || n === Cell.Gunpowder) && Math.random() < P.igniteChance! * 7) {
+    if (n === Cell.Oil && w.life[ni] === 0 && Math.random() < P.igniteChance! * 7) {
+      // an ember on an oil slick starts it burning IN PLACE (handleOil throws the
+      // flame each frame for burnDuration) — a sustained pool fire, not a flash.
+      w.life[ni] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(Math.random() * 30);
+    } else if (n === Cell.Gunpowder && Math.random() < P.igniteChance! * 7) {
       w.replaceCellAt(ni, Cell.Fire, fireColor());
       w.life[ni] = 60 + Math.floor(Math.random() * 60);
     }
@@ -196,9 +200,11 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.replaceCellAt(ti, Cell.Steam, packRGB(255, 175, 205));
         w.life[ti] = 40;
       }
-      if (n === Cell.Oil) {
-        w.replaceCellAt(ti, Cell.Fire, fireColor());
-        w.life[ti] = ctx.params.materials[Cell.Oil].burnDuration!;
+      if (n === Cell.Oil && w.life[ti] === 0 && Math.random() < ctx.params.materials[Cell.Oil].igniteChance!) {
+        // Start the slick burning IN PLACE (handleOil throws the flame each frame
+        // for burnDuration). Don't flash it to a fire cell that just rises away —
+        // a sustained pool fire is what lets oil in a bowl hold a checkpoint lit.
+        w.life[ti] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(Math.random() * 30);
       }
       if (n === Cell.Gunpowder) {
         ctx.explosions.trigger(tx, ty, ctx.params.materials[Cell.Gunpowder].blastRadius!);

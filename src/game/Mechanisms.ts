@@ -476,6 +476,10 @@ export function makePlug(
 /** Hard cap on sensor/counterweight zone area (malformed prefabs must not
  *  buy themselves giant per-frame scans). */
 export const SENSOR_ZONE_CAP = 1600; // 40x40
+export const DEFAULT_TRIGGER_LATCH_FRAMES = 420;
+export const BUOY_LATCH_FRAMES = 600;
+export const SENSOR_SCAN_MOD = 4;
+export const SENSOR_MOMENTARY_LATCH_FRAMES = 6;
 
 function clampZone(zone: { x0: number; y0: number; x1: number; y1: number }): {
   x0: number;
@@ -745,7 +749,7 @@ export class Mechanisms implements MechanismsApi {
       } else if (m.kind === 'plate') {
         const was = m.pressed === true;
         m.pressed = this.sensePlate(ctx, m);
-        if (m.pressed) m.state = 420; // stays open ~7s after weight lifts
+        if (m.pressed) m.state = DEFAULT_TRIGGER_LATCH_FRAMES; // stays open ~7s after weight lifts
         else if (m.state > 0) m.state--;
         if (m.pressed && !was) {
           ctx.audio.tone(140, 90, 0.1, 'square', 0.14);
@@ -773,7 +777,7 @@ export class Mechanisms implements MechanismsApi {
             glow: 0.8,
           });
         }
-        if (enough) m.state = 420;
+        if (enough) m.state = DEFAULT_TRIGGER_LATCH_FRAMES;
         else if (m.state > 0) m.state--;
       } else if (m.kind === 'buoy' && m.zone) {
         // SLUICE: pooled liquid lifts the float
@@ -793,7 +797,7 @@ export class Mechanisms implements MechanismsApi {
             glow: 0.8,
           });
         }
-        if (afloat) m.state = 600; // generous latch: pools drain slowly anyway
+        if (afloat) m.state = BUOY_LATCH_FRAMES; // generous latch: pools drain slowly anyway
         else if (m.state > 0) m.state--;
       } else if (m.kind === 'chargelatch' && m.zone) {
         // CHARGE-LATCH: one spark anywhere in the zone latches it forever —
@@ -834,7 +838,7 @@ export class Mechanisms implements MechanismsApi {
         // by id); the latch covers the scan latency.
         const latch = m.latch ?? 'timed';
         if (!(latch === 'permanent' && m.state === 1)) {
-          if ((ctx.state.frameCount + m.id) % 4 === 0) {
+          if ((ctx.state.frameCount + m.id) % SENSOR_SCAN_MOD === 0) {
             m.reading = this.senseZone(ctx, m);
           }
           const hot = (m.reading ?? 0) >= (m.threshold ?? 8);
@@ -843,10 +847,10 @@ export class Mechanisms implements MechanismsApi {
             if (hot) m.state = 1;
           } else if (latch === 'momentary') {
             // hold just long enough to bridge the scan cadence
-            if (hot) m.state = 6;
+            if (hot) m.state = SENSOR_MOMENTARY_LATCH_FRAMES;
             else if (m.state > 0) m.state--;
           } else {
-            if (hot) m.state = m.latchFrames ?? 420;
+            if (hot) m.state = m.latchFrames ?? DEFAULT_TRIGGER_LATCH_FRAMES;
             else if (m.state > 0) m.state--;
           }
           if (!was && this.satisfied(m)) {
@@ -860,7 +864,7 @@ export class Mechanisms implements MechanismsApi {
       } else if (m.kind === 'counterweight' && m.zone) {
         // COUNTERWEIGHT: pure material mass in the bucket — bodies don't
         // count, only what stays poured. Latches PERMANENTLY at threshold.
-        if (m.state === 0 && (ctx.state.frameCount + m.id) % 4 === 0) {
+        if (m.state === 0 && (ctx.state.frameCount + m.id) % SENSOR_SCAN_MOD === 0) {
           let weight = 0;
           for (let X = m.zone.x0; X <= m.zone.x1; X++) {
             for (let Y = m.zone.y0; Y <= m.zone.y1; Y++) {

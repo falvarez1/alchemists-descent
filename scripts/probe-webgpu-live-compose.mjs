@@ -326,6 +326,7 @@ function validateVisual(result) {
   const staticDiff = result?.staticDiff;
   const postFxDiff = result?.postFxDiff;
   const lava = result?.lava;
+  const disabledComposeProbe = result?.disabledComposeProbe;
 
   if (!staticDiff) {
     failures.push('staticDiff missing');
@@ -350,6 +351,20 @@ function validateVisual(result) {
     const greenDev = Math.abs(lava.gpu.mean[1] - lava.cpu.mean[1]) / Math.max(1, lava.cpu.mean[1]);
     if (redDev > 0.04) failures.push(`lava red mean deviation ${(redDev * 100).toFixed(2)}% > 4%`);
     if (greenDev > 0.04) failures.push(`lava green mean deviation ${(greenDev * 100).toFixed(2)}% > 4%`);
+  }
+
+  if (!disabledComposeProbe) {
+    failures.push('disabled compose fallback probe missing');
+  } else {
+    if (disabledComposeProbe.renderCompose !== false) {
+      failures.push(`disabled compose probe expected render.compose=false, got ${disabledComposeProbe.renderCompose}`);
+    }
+    if (disabledComposeProbe.postFxStayedOn !== true) {
+      failures.push('disabled compose fallback flipped postFx.gpuCompose off');
+    }
+    if (disabledComposeProbe.status?.features?.compose !== false) {
+      failures.push(`disabled compose status should report compose=false, got ${disabledComposeProbe.status?.features?.compose}`);
+    }
   }
 
   return failures;
@@ -651,6 +666,16 @@ try {
     await wait(150);
     const postGpu = await capture();
     const statusAfterGpuFrame = window.__game.getRenderBackendStatus();
+    ctx.state.render.compose = false;
+    ctx.state.postFx.gpuCompose = true;
+    await wait(150);
+    const disabledComposeProbe = {
+      postFxStayedOn: ctx.state.postFx.gpuCompose === true,
+      renderCompose: ctx.state.render.compose,
+      status: window.__game.getRenderBackendStatus(),
+    };
+    ctx.state.render.compose = true;
+    await wait(150);
 
     Math.random = originalRandom;
     return {
@@ -661,6 +686,7 @@ try {
         gpu: { mean: meanRgb(lavaGpu) },
       },
       statusAfterGpuFrame,
+      disabledComposeProbe,
     };
   });
 

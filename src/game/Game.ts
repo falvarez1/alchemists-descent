@@ -100,6 +100,7 @@ export class Game {
   private animationFrameId: number | null = null;
   private started = false;
   private disposed = false;
+  private lastVisualFxDecayFrame = -1;
   /** Page-lifetime UI singletons whose global listeners/timers must be torn down on HMR dispose. */
   private readonly disposables: { dispose(): void }[] = [];
 
@@ -118,6 +119,7 @@ export class Game {
       difficulty: 2, // shipped balance until a run picks otherwise
       paused: false,
       debugGodMode: false,
+      debugTainted: false,
       postFx: createDefaultPostFxSettings(),
       render: createDefaultRenderSettings(),
       wandLight: createDefaultWandLightSettings(),
@@ -397,8 +399,9 @@ export class Game {
       const scale = DEATH_SLOWMO_MIN + (1 - DEATH_SLOWMO_MIN) * (1 - t); // MIN -> 1
       stepBudget = Game.STEP_MS / scale;
     }
+    const frameWorkStart = performance.now();
     if (this.stepDebt < stepBudget) {
-      this.renderFrame();
+      this.renderFrame(frameWorkStart);
       return;
     }
     let ticks = 0;
@@ -408,17 +411,17 @@ export class Game {
       this.tick(false);
     }
     if (this.stepDebt >= stepBudget) this.stepDebt = 0; // drop unpayable debt
-    this.renderFrame();
+    this.renderFrame(frameWorkStart);
   };
 
   private tick = (render = true): void => {
+    const frameWorkStart = performance.now();
     this.updateFixedTick();
-    if (render) this.renderFrame();
+    if (render) this.renderFrame(frameWorkStart);
   };
 
   private updateFixedTick(): void {
     const ctx = this.ctx;
-    const tFrame = performance.now();
     ctx.state.frameCount++;
 
     // Expedition autosave: every ~30s of play, a closed tab costs nothing.
@@ -427,6 +430,8 @@ export class Game {
       ctx.state.playtestSource === null &&
       !ctx.state.paused &&
       !ctx.debug.active &&
+      !ctx.state.debugTainted &&
+      !ctx.state.debugGodMode &&
       !ctx.player.dead &&
       ctx.state.frameCount % 1800 === 0
     ) {
@@ -487,10 +492,9 @@ export class Game {
       this.perfHud.mark('entities', performance.now() - tEnt);
     }
 
-    this.perfHud.mark('frame', performance.now() - tFrame);
   }
 
-  private renderFrame(): void {
+  private renderFrame(frameWorkStart = performance.now()): void {
     const ctx = this.ctx;
     const tRender = performance.now();
     this.composer.compose(ctx);
@@ -511,6 +515,17 @@ export class Game {
       const minVisibleLife = digBeam.physicsLife > 0 ? 1 : 0;
       digBeam.life = Math.max(minVisibleLife, digBeam.life - 1);
     }
+    this.decayVisualFxOncePerFrame(ctx);
+    this.perfHud.mark('frame', performance.now() - frameWorkStart);
+  }
+
+  private decayVisualFxOncePerFrame(ctx: Ctx): void {
+    if (this.lastVisualFxDecayFrame === ctx.state.frameCount) return;
+    this.lastVisualFxDecayFrame = ctx.state.frameCount;
+    if (ctx.fx.screenShake > 0.0005) ctx.fx.screenShake *= 0.88;
+    else ctx.fx.screenShake = 0;
+    if (ctx.fx.bloomKick > 0.001) ctx.fx.bloomKick *= 0.86;
+    else ctx.fx.bloomKick = 0;
   }
 
   /** Build-mode dig/flame streams while the mouse is held (original lines 3250-3262). */

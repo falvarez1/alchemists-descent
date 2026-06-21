@@ -704,9 +704,6 @@ export class WebGpuRenderBackend implements RendererBackend {
     if (ctx.fx.screenShake > 0.0005) {
       ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
       oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
-      ctx.fx.screenShake *= 0.88;
-    } else {
-      ctx.fx.screenShake = 0;
     }
 
     const post = ctx.state.postFx;
@@ -725,8 +722,6 @@ export class WebGpuRenderBackend implements RendererBackend {
         ? (Math.max(0, 0.35 - ctx.player.hp / ctx.player.maxHp) / 0.35) * post.hurtPulse
         : 0;
 
-    if (ctx.fx.bloomKick > 0.001) ctx.fx.bloomKick *= 0.86;
-    else ctx.fx.bloomKick = 0;
     this.quadOffset.value.set(ox * ctx.camera.zoom, oy * ctx.camera.zoom);
     this.quadScale.value.set(
       (1 + 4 / VIEW_W) * ctx.camera.zoom,

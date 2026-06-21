@@ -217,8 +217,25 @@ export class FrameComposer implements PixelSurface {
         lenses.push(lens);
       }
     }
+    // A telekinetically-held body warps the air around it — a heat-haze shimmer
+    // (negative-K lens). Burning cargo shimmers harder; a cold hold ripples gently.
+    const heldBody = ctx.rigidBodies.heldBody();
+    if (heldBody && lenses.length < COMPOSE_MAX_LENSES) {
+      const r =
+        heldBody.shape.kind === 'circle'
+          ? heldBody.shape.radius
+          : Math.hypot(heldBody.shape.halfW, heldBody.shape.halfH);
+      const lens = this.acquireLens();
+      lens.cx = heldBody.x;
+      lens.cy = heldBody.y - r * 0.4; // bias upward — heat rises
+      lens.R = r + 8;
+      lens.K = -(heldBody.burnT && heldBody.burnT > 0 ? 3.4 : 2.1);
+      lenses.push(lens);
+    }
     const lightBuildDue = frameCount % 2 === 0 || frameCount < 5;
-    const gpuComposeRequested = ctx.state.postFx.gpuCompose && this.target.gpuComposeAvailable;
+    const webGpuLiveComposeDisabled = ctx.state.render?.backend === 'webgpu' && !ctx.state.render.compose;
+    const gpuComposeRequested =
+      ctx.state.postFx.gpuCompose && !webGpuLiveComposeDisabled && this.target.gpuComposeAvailable;
     const lightRebuilt =
       lightBuildDue &&
       (this.lastLightBuildFrame !== frameCount ||
@@ -237,7 +254,7 @@ export class FrameComposer implements PixelSurface {
     // fragment/compute shader; sprites keep drawing through setPx/addPx into
     // the overlay. WebGPU live compose has its own runtime gate because the
     // renderer syncs settings after composition, not before it.
-    if (ctx.state.postFx.gpuCompose && this.target.gpuComposeAvailable) {
+    if (gpuComposeRequested) {
       try {
         this.overlay = this.target.beginGpuCompose(ctx, this.light, this.layers, lenses, lightRebuilt);
       } catch (error) {
@@ -398,10 +415,19 @@ export class FrameComposer implements PixelSurface {
             if (ld2 > L.R * L.R || ld2 < 1) continue;
             const ld = Math.sqrt(ld2);
             const pull = 1 - ld / L.R;
-            const k = pull * pull * L.K;
-            // sample from further out (pinch) with a tangential swirl
-            lookupX += Math.floor((ldx / ld) * k - (ldy / ld) * k * 0.7);
-            lookupY += Math.floor((ldy / ld) * k + (ldx / ld) * k * 0.7);
+            if (L.K < 0) {
+              // heat-haze: animated horizontal shimmer (+ a little vertical),
+              // fading at the edge. Phase matches uPhaseWater / p(6u) on the GPU.
+              const amp = -L.K;
+              const ph = frameCount * 0.16;
+              lookupX += Math.floor(Math.sin(wy * 0.55 + ph + L.cx) * amp * pull);
+              lookupY += Math.floor(Math.cos(wx * 0.7 + ph * 0.8) * amp * 0.4 * pull);
+            } else {
+              const k = pull * pull * L.K;
+              // sample from further out (pinch) with a tangential swirl
+              lookupX += Math.floor((ldx / ld) * k - (ldy / ld) * k * 0.7);
+              lookupY += Math.floor((ldy / ld) * k + (ldx / ld) * k * 0.7);
+            }
           }
           if (lookupX < 0) lookupX = 0;
           else if (lookupX >= WIDTH) lookupX = WIDTH - 1;

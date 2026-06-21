@@ -100,8 +100,11 @@ import type { BiomeId } from '@/core/types';
  * v27: D1 Spell Lab water-prep station now includes a contained lava cup beside
  *      the basin, completing the first-run water/lava flask lesson. Full-level
  *      cell output changed for d1; re-recorded gen-level-golden only.
+ * v28: mineral-vug fill now skips reward pickup guard boxes after all prefab
+ *      and structure pickups are merged, preventing late rock fill from burying
+ *      generated non-key rewards. Full-level output changed on affected seeds.
  */
-export const GEN_VERSION = 27;
+export const GEN_VERSION = 28;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

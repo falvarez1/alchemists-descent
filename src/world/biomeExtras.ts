@@ -1010,9 +1010,15 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
  * or any reserved structure/spawn footprint — so traversal is never affected
  * (re-verified by the findability audit). Runs late in generateLevel.
  */
-export function fillMineralVugs(ctx: Ctx, rng: Rng, ledger: PlacementLedger): void {
+export function fillMineralVugs(
+  ctx: Ctx,
+  rng: Rng,
+  ledger: PlacementLedger,
+  options: { pickups?: readonly Pickup[] } = {},
+): void {
   const w = ctx.world;
   const floorBand = HEIGHT - 52;
+  const protectedPickups = options.pickups ?? [];
   const visited = new Uint8Array(WIDTH * HEIGHT);
   const FILL_CHANCE = 0.7;
   const MIN_CELLS = 6; // skip 1-5 cell specks
@@ -1050,6 +1056,7 @@ export function fillMineralVugs(ctx: Ctx, rng: Rng, ledger: PlacementLedger): vo
       if (tooBig || count < MIN_CELLS) continue;
       if (rng.next() > FILL_CHANCE) continue; // leave some pockets open for variety
       if (ledger.intersects(minX, minY, maxX, maxY)) continue; // respect reserved footprints
+      if (intersectsPickupGuard(protectedPickups, minX, minY, maxX, maxY)) continue;
       // Mostly solid common rock; ~16% a hidden RawOre cache; ~4% a crystal geode.
       const roll = rng.next();
       const mat = roll < 0.58 ? Cell.Stone : roll < 0.8 ? Cell.Coal : roll < 0.96 ? Cell.RawOre : Cell.Crystal;
@@ -1057,4 +1064,16 @@ export function fillMineralVugs(ctx: Ctx, rng: Rng, ledger: PlacementLedger): vo
       for (const c of comp) w.replaceCellAt(c, mat, fn());
     }
   }
+}
+
+function intersectsPickupGuard(pickups: readonly Pickup[], x0: number, y0: number, x1: number, y1: number): boolean {
+  for (const pickup of pickups) {
+    if (pickup.taken) continue;
+    const px0 = pickup.x - 10;
+    const px1 = pickup.x + 10;
+    const py0 = pickup.y - 12;
+    const py1 = pickup.y + 6;
+    if (x0 <= px1 && x1 >= px0 && y0 <= py1 && y1 >= py0) return true;
+  }
+  return false;
 }

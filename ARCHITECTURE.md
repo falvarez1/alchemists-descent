@@ -177,13 +177,13 @@ constants assume it — do not "unify" it without retuning the whole game.
 
 **Frame order is a contract.** Per frame, in `Game.ts`:
 `frameCount++ → camera.update → camera.updateSimBounds → simulation.update (substeps:
-harvester → electrical → projectiles → shockwave aging → moved-clear → material sweep →
+new moved epoch → harvester → electrical → projectiles → shockwave aging → material sweep →
 ice/vines pass) → playerCtl.update → flask.update → enemyCtl.update → rigidBodies.update →
 vineStrands.update → levels.update → pickups.update → mechanisms.update → critters.update →
 brewing.update → hints.update → wands.update → particles.update → lightning.update →
-HUD update (even frames, play mode) → minimap.update → renderer.render
-(snapshot renderCam → compose pixels → bloom/shake transforms → composer.render) →
-digBeam decay`.
+compose pixels/light → HUD update (even frames, play mode) → minimap.update →
+renderer.render (bloom/shake transforms → composer.render) → digBeam decay →
+bloom/shake decay once per fixed frame`.
 Several behaviors silently depend on this order (sim bounds derive from camera; spells
 aim with the *previous* frame's render snapshot; lighting rebuilds on even frames).
 

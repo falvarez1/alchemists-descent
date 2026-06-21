@@ -217,10 +217,7 @@ export class Brewing {
         if (!world.inBounds(x, y)) continue;
         const i = world.idx(x, y);
         if (!isBrewable(world.types[i])) continue;
-        world.types[i] = recipe.elixir;
-        world.colors[i] = colorFn();
-        world.life[i] = 0;
-        world.charge[i] = 0;
+        world.replaceCellAt(i, recipe.elixir, colorFn());
       }
     }
     ctx.particles.burst(cauldron.x, cauldron.y + BASIN_TOP, 24, null, colorFn, 2.0, {

@@ -195,22 +195,31 @@ export const PLAYER_CRAWL_H = 9;
  */
 export const PLAYER_CRAWL_STEP_UP = 5;
 
-export type EnemyKind =
-  | 'slime'
-  | 'imp'
-  | 'golem'
-  | 'acidslime'
-  | 'wisp'
-  | 'mage'
-  | 'bat'
-  | 'spitter'
-  | 'bomber'
-  | 'weaver'
-  | 'colossus'
+export const ENEMY_KINDS = [
+  'slime',
+  'imp',
+  'golem',
+  'acidslime',
+  'wisp',
+  'mage',
+  'bat',
+  'spitter',
+  'bomber',
+  'weaver',
+  'colossus',
   // Wave F: a glistening slime egg clutch — destroy it or it hatches
-  | 'eggs'
+  'eggs',
   // The d4 mid-boss: water is its armor; drain the arena or electrify it
-  | 'leviathan';
+  'leviathan',
+] as const;
+
+export type EnemyKind = (typeof ENEMY_KINDS)[number];
+
+const ENEMY_KIND_SET: ReadonlySet<string> = new Set(ENEMY_KINDS);
+
+export function isEnemyKind(value: unknown): value is EnemyKind {
+  return typeof value === 'string' && ENEMY_KIND_SET.has(value);
+}
 
 export interface EnemyDef {
   hp: number;
@@ -349,6 +358,11 @@ export interface Enemy {
    *  even when its footing reads unstable — so it flows over a thin barrier and down
    *  the far side toward prey instead of stranding on the narrow top in recovery. */
   weaverCrest?: number;
+  /** Weaver: latched vertical climb intent — true = descending a wall toward a quarry
+   *  below, false = ascending toward one above/across. Set when the climb engages and
+   *  held for its duration so the body doesn't oscillate up/down when its quarry sits
+   *  right at its level mid-face. */
+  weaverDescend?: boolean;
   /** Weaver: free-moving head — smoothed render offset (x,y) and spring velocity of the
    *  cephalothorax. It turns to track prey, scans when idle and leads the walk, sprung so
    *  it overshoots and settles organically instead of snapping to the body's facing. */
@@ -919,6 +933,8 @@ export interface GameStateData {
   paused: boolean;
   /** Transient QA mode enabled by the debug console key; never autosaved. */
   debugGodMode: boolean;
+  /** Latched by debug tooling that can pose gameplay state; blocks clean autosaves. */
+  debugTainted: boolean;
   postFx: PostFxSettings;
   render: RenderSettings;
   /** Runtime-tunable wand light defaults shared by Play and Builder preview. */
@@ -1202,6 +1218,8 @@ export interface RigidBody {
   burnT?: number;
   /** P2 reaction: frames left frozen (frost dampens its velocity); 0/undefined = not frozen. */
   frozenT?: number;
+  /** Fresh frost-projectile impacts preserve momentum briefly before freeze damping wins. */
+  frostMomentumGrace?: number;
   /** Cooldown for impact-noise events emitted when the body slams into terrain. */
   impactNoiseCd?: number;
   tag?: string;
@@ -1269,6 +1287,9 @@ export interface RigidBodiesApi {
   grabAtCursor(ctx: Ctx): boolean;
   /** Whether a body is currently held/levitated. */
   isHolding(): boolean;
+  /** The body currently held/levitated (or null) — for render hooks like the
+   *  telekinetic heat-haze. Read-only; never mutate the returned body. */
+  heldBody(): RigidBody | null;
   /** Let go of the held body: throwIt=true flings it along the aim (carrying the
    *  player's momentum); false sets it down gently where it floats. No-op if none. */
   release(ctx: Ctx, throwIt?: boolean): void;
@@ -1971,6 +1992,8 @@ export interface WandsApi {
   /** Disposable playtest support: capture / restore full wand runtime state. */
   snapshotRuntimeState(): WandRuntimeSnapshot;
   restoreRuntimeState(data: WandRuntimeSnapshot): void;
+  /** Clear cast-stream state that must not cross runtime transitions or saves. */
+  clearTransientState?(): void;
   /** Legacy save migration: mark first-visit depth grants already represented by old loadouts. */
   markDepthGrantsThrough(depth: number): void;
   /** Execute one compiled action at an arbitrary impact point (trigger payloads, tools). */

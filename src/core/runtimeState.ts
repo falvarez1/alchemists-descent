@@ -8,6 +8,7 @@ export interface CombatTransientResetOptions {
   shockwaves?: boolean;
   particles?: boolean;
   lightning?: boolean;
+  wands?: boolean;
   heldInputs?: boolean;
   digBeam?: boolean;
   simulationAccumulator?: boolean;
@@ -18,6 +19,7 @@ const DEFAULT_RESET: Required<CombatTransientResetOptions> = {
   shockwaves: true,
   particles: true,
   lightning: true,
+  wands: true,
   heldInputs: true,
   digBeam: true,
   simulationAccumulator: false,
@@ -79,6 +81,7 @@ export function resetCombatTransients(ctx: Ctx, options: CombatTransientResetOpt
   if (opts.shockwaves && ctx.shockwaves) ctx.shockwaves.length = 0;
   if (opts.particles) ctx.particles?.clear();
   if (opts.lightning) ctx.lightning?.clear();
+  if (opts.wands) ctx.wands?.clearTransientState?.();
   if (opts.heldInputs) {
     if (ctx.input?.releaseHeldInput) ctx.input.releaseHeldInput();
     else resetHeldSpellInputs(ctx);

@@ -2,7 +2,7 @@ import { chromium } from 'playwright-core';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 
-const url = process.argv[2] || 'http://localhost:5174/';
+const url = process.argv[2] || 'http://localhost:5173/';
 const tag = process.argv[3] || 'before'; // 'before' | 'after'
 const csOverride = process.argv[4] !== undefined ? Number(process.argv[4]) : null; // chargeStrength override
 mkdirSync('verify-out', { recursive: true });

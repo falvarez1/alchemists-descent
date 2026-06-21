@@ -276,9 +276,6 @@ class WebGLRenderBackend implements RendererBackend {
     if (ctx.fx.screenShake > 0.0005) {
       ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
       oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
-      ctx.fx.screenShake *= 0.88;
-    } else {
-      ctx.fx.screenShake = 0;
     }
     this.quadMesh.position.x = ox * ctx.camera.zoom;
     this.quadMesh.position.y = oy * ctx.camera.zoom;
@@ -288,8 +285,8 @@ class WebGLRenderBackend implements RendererBackend {
       1,
     );
 
-    // Blast-wave bloom surge decays back to baseline. PostFx reads
-    // bloomKick/screenShake BEFORE decay so kicks land this frame.
+    // Blast-wave bloom surge is tick-decayed by Game after this frame draws, so
+    // WebGL/WebGPU and high-refresh displays sample the same FX values.
     const post = ctx.state.postFx;
     this.renderer.toneMapping = post.tonemap ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = post.enabled ? post.exposure : 1.0;
@@ -299,8 +296,6 @@ class WebGLRenderBackend implements RendererBackend {
     this.bloomPass.threshold = post.bloomThreshold;
     this.postFx.pass.enabled = post.enabled && post.lensEnabled;
     this.postFx.update(ctx);
-    if (ctx.fx.bloomKick > 0.001) ctx.fx.bloomKick *= 0.86;
-    else ctx.fx.bloomKick = 0;
 
     if (post.enabled) this.composer.render();
     else this.renderer.render(this.scene, this.camera);

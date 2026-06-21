@@ -90,15 +90,15 @@ function cellsNear(world: World, marker: { x: number; y: number }, cell: Cell, r
   return count;
 }
 
-// Re-recorded for GEN_VERSION 27: D1 Spell Lab gained a contained lava cup in
-// placeStructures. Only d1 changes; v26's living ground cover note still explains
-// the moss-crown hashes below, while d8/vault remain unchanged.
+// Re-recorded for GEN_VERSION 28: mineral-vug fill now protects reward pickup
+// guard boxes after prefab/structure pickups are merged, so late rock fill no
+// longer buries generated non-key rewards.
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   { id: 'd1', seed: 1337, hash: '04459183' },
   { id: 'd4', seed: 1337, hash: 'ea181c61' },
-  { id: 'd8', seed: 1337, hash: '7f87cbd4' },
-  { id: 'vault', seed: 1337, hash: '36b10aba' },
-  { id: 'd2', seed: 42, hash: '96da8a86' },
+  { id: 'd8', seed: 1337, hash: '611e7f10' },
+  { id: 'vault', seed: 1337, hash: '265b5823' },
+  { id: 'd2', seed: 42, hash: '9652a5e2' },
 ];
 
 describe('full generateLevel golden hashes', () => {

@@ -1192,7 +1192,7 @@ export class WorldGen implements WorldGenApi {
     // material (mostly solid stone/coal, ~19% hidden RawOre caches, a rare geode).
     // Forked stream, only ENCLOSED small pockets, respects the ledger — so it
     // can't shift structure placement or disconnect the reachable graph.
-    fillMineralVugs(ctx, new Rng(hashSeed(seed >>> 0, 'mineral-vugs')), ledger);
+    fillMineralVugs(ctx, new Rng(hashSeed(seed >>> 0, 'mineral-vugs')), ledger, { pickups });
     stage('mineral-vugs');
 
     // 8c) GAUGE RESCUE: run the same connectivity audits the validator runs.
