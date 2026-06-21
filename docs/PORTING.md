@@ -152,6 +152,25 @@ manipulated `[r,g,b]` channels (coagulation darkening, stains, shading), use
     "almost lit" heat tell (`FrameComposer.drawRunestone`) scans the same rect.
     Ignition also keeps a small coyote-time grace (`WAYSTONE_HEAT_GRACE`) so a
     flame-jet burst gap doesn't hard-reset progress; a longer gutter still resets.
+16. Oil and Coal BURN IN PLACE instead of flashing to fire. The original lit oil
+    by swapping the cell to `Fire` (and coal likewise) — the whole pool flashed
+    and the flames rose away in a few frames, so `burnDuration` never kept a spot
+    lit (it only set the lifetime of fire that had already left). Now a lit cell
+    keeps its own type and uses its `life` plane as a burn-down timer, throwing a
+    short Fire cell upward each frame and creeping the burn into its neighbours
+    (`igniteChance` gates the spread) for the full `burnDuration` — a sustained
+    fuel that can hold a brazier/waystone bowl lit. Oil is a fluid fire: it keeps
+    FLOWING while burning and wisps away as Smoke when spent (no solid residue).
+    Coal is a glowing ember bed: it stays put and chars to Ash. New defaults: oil
+    `burnDuration` 175→280 + `igniteChance` 0.08; coal 170→240. The Inspector's
+    `burnDuration`/`particleLife` slider cap was also raised 100→360 (it had been
+    clamped below oil's own default, so the slider only ever shortened the burn).
+    Lava→oil/coal and ember/fire→oil/coal ignitions all start the in-place burn.
+17. Held rigid bodies render a telekinetic HEAT-HAZE: `FrameComposer.compose`
+    pushes a negative-`K` `CompositorLens` at the held body (`rigidBodies.heldBody`),
+    and all three compose paths (CPU reference, WebGL GLSL, WebGPU WGSL) treat a
+    negative K as an animated shimmer warp instead of a black-hole swirl. Purely
+    visual; no new uniforms (phase reuses the existing `frameCount*0.16`).
 
 Everything else: identical behavior — confirmed by a 13-agent adversarial fidelity
 audit (zero critical/major divergences) on 2026-06-10.

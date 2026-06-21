@@ -437,6 +437,9 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
     lookupX = clamp(lookupX, 0, ${WIDTH - 1});
     lookupY = clamp(lookupY, 0, ${HEIGHT - 1});
 
+    // Heat-haze offset (haze lenses only), reused to warp the backdrop below.
+    var hazeX: i32 = 0;
+    var hazeY: i32 = 0;
     let lensCount = min(i32(p(13u)), ${COMPOSE_MAX_LENSES});
     for (var i = 0; i < ${COMPOSE_MAX_LENSES}; i = i + 1) {
       if (i >= lensCount) {
@@ -455,8 +458,12 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
           // heat-haze shimmer (K < 0): animated horizontal warp + a little vertical.
           // Phase p(6u) = (frameCount * 0.16) mod 2pi, matching the CPU/WebGL paths.
           let amp = -kraw;
-          lookupX = lookupX + i32(floor(sin(f32(wy) * 0.55 + p(6u) + p(base)) * amp * pull));
-          lookupY = lookupY + i32(floor(cos(f32(wx) * 0.7 + p(6u) * 0.8) * amp * 0.4 * pull));
+          let hx = i32(floor(sin(f32(wy) * 0.55 + p(6u) + p(base)) * amp * pull));
+          let hy = i32(floor(cos(f32(wx) * 0.7 + p(6u) * 0.8) * amp * 0.4 * pull));
+          lookupX = lookupX + hx;
+          lookupY = lookupY + hy;
+          hazeX = hazeX + hx;
+          hazeY = hazeY + hy;
         } else {
           let k = pull * pull * kraw;
           lookupX = lookupX + i32(floor(ldx / ld * k - ldy / ld * k * 0.7));
@@ -479,20 +486,24 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
 
     if (typeId == ${Cell.Empty}) {
       var bg = vec3<f32>(0.004, 0.005, 0.009);
+      // shift the backdrop sample by the heat-haze offset so the distant cave
+      // shimmers behind a held (hot) object, matching the foreground warp
+      let bvx = vx + hazeX;
+      let bvy = vy + hazeY;
       if (p(${BACKDROP_BASE}u + 2u) > 0.5 && p(${BACKDROP_BASE}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop0, backdropCoord(${BACKDROP_BASE}u, vx, vy, camX, camY), 0), p(${BACKDROP_BASE}u + 1u));
+        bg = applyBackdropSample(bg, textureLoad(uBackdrop0, backdropCoord(${BACKDROP_BASE}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE}u + 1u));
       }
       if (p(${BACKDROP_BASE + BACKDROP_STRIDE}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop1, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE}u, vx, vy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE}u + 1u));
+        bg = applyBackdropSample(bg, textureLoad(uBackdrop1, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE}u + 1u));
       }
       if (p(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop2, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u, vx, vy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u + 1u));
+        bg = applyBackdropSample(bg, textureLoad(uBackdrop2, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u + 1u));
       }
       if (p(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop3, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u, vx, vy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u + 1u));
+        bg = applyBackdropSample(bg, textureLoad(uBackdrop3, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u + 1u));
       }
       if (p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop4, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u, vx, vy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 1u));
+        bg = applyBackdropSample(bg, textureLoad(uBackdrop4, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 1u));
       }
       bg = gradeBackdrop(bg);
       let depthShade = 0.78 + 0.22 * (1.0 - f32(wy) / ${HEIGHT.toFixed(1)});

@@ -204,11 +204,11 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
   const ci = w.idx(x, y);
   const P = ctx.params.materials[Cell.Oil];
 
-  // BURNING SLICK (life > 0): the oil cell burns IN PLACE for its full
-  // burnDuration, throwing a short flame upward every frame (the visible fire +
-  // the heat a brazier/waystone reads) and creeping the burn into neighbouring
-  // oil. A sustained pool fire — NOT an instant flash that rises away. This is
-  // what lets oil poured in a bowl actually hold a checkpoint lit.
+  // BURNING SLICK (life > 0): a fluid fire. The oil keeps FLOWING while it burns
+  // for its full burnDuration, throwing a short flame upward every frame (the
+  // visible fire + the heat a brazier/waystone reads) and creeping the burn into
+  // neighbouring oil — a spreading, sloshing pool fire, not a frozen block. A
+  // liquid burns CLEAN: when spent it wisps away as smoke, never a solid ash.
   if (w.life[ci] > 0) {
     w.life[ci]--;
     if (w.inBounds(x, y - 1)) {
@@ -229,31 +229,62 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
         w.life[ti] = P.burnDuration! + Math.floor(Math.random() * 30);
       }
     }
-    if (w.life[ci] <= 0) {
-      // spent: the last of the slick flares off as a brief flame, then it's gone
-      w.replaceCellAt(ci, Cell.Fire, fireColor());
-      w.life[ci] = 20 + Math.floor(Math.random() * 20);
+    // Greasy black smoke curls off the slick — a light haze while it burns hot,
+    // THICKENING as the fuel runs low (the dirty tail of an oil fire).
+    const lowFuel = w.life[ci] < 70;
+    if (Math.random() < (lowFuel ? 0.18 : 0.05)) {
+      ctx.particles.spawn(
+        x + (Math.random() - 0.5) * 2,
+        y - 2,
+        (Math.random() - 0.5) * 0.25,
+        -0.3 - Math.random() * 0.3,
+        null,
+        smokeColor(),
+        50 + Math.floor(Math.random() * 50),
+        { grav: -0.02 },
+      );
     }
-    return; // a burning slick stays put — it does not flow
+    if (w.life[ci] <= 0) {
+      // gutters out in a curl of greasy smoke: the cell becomes a longer-lived
+      // smoke cell, plus a little puff so a dying pool rolls a real cloud.
+      w.replaceCellAt(ci, Cell.Smoke, smokeColor());
+      w.life[ci] = 40 + Math.floor(Math.random() * 30);
+      for (let s = 0; s < 3; s++) {
+        ctx.particles.spawn(
+          x + (Math.random() - 0.5) * 2.5,
+          y - 1 - Math.floor(Math.random() * 2),
+          (Math.random() - 0.5) * 0.35,
+          -0.35 - Math.random() * 0.4,
+          null,
+          smokeColor(),
+          70 + Math.floor(Math.random() * 50),
+          { grav: -0.025 },
+        );
+      }
+      return;
+    }
+    // ...and fall through to the liquid flow below — a burning slick still flows.
+  } else {
+    // UNLIT oil: catch from an adjacent flame/charge (gradual), STARTING a burn in
+    // place; otherwise flow like a liquid.
+    for (let k = 0; k < IGNITION_OFFSETS.length; k++) {
+      const o = IGNITION_OFFSETS[k];
+      const tx = x + o[0];
+      const ty = y + o[1];
+      if (
+        w.inBounds(tx, ty) &&
+        (w.types[w.idx(tx, ty)] === Cell.Fire || w.charge[w.idx(tx, ty)] > 0)
+      ) {
+        if (Math.random() < P.igniteChance!) {
+          w.life[ci] = P.burnDuration! + Math.floor(Math.random() * 30);
+          return;
+        }
+        break; // adjacent to flame but didn't catch this frame — let it flow, retry next tick
+      }
+    }
   }
 
-  // UNLIT oil: catch from an adjacent flame/charge (gradual), STARTING a burn in
-  // place; otherwise flow like a liquid.
-  for (let k = 0; k < IGNITION_OFFSETS.length; k++) {
-    const o = IGNITION_OFFSETS[k];
-    const tx = x + o[0];
-    const ty = y + o[1];
-    if (
-      w.inBounds(tx, ty) &&
-      (w.types[w.idx(tx, ty)] === Cell.Fire || w.charge[w.idx(tx, ty)] > 0)
-    ) {
-      if (Math.random() < P.igniteChance!) {
-        w.life[ci] = P.burnDuration! + Math.floor(Math.random() * 30);
-        return;
-      }
-      break; // adjacent to flame but didn't catch this frame — let it flow, retry next tick
-    }
-  }
+  // LIQUID FLOW (lit or unlit — oil is fluid either way)
   if (
     w.inBounds(x, y + 1) &&
     (w.types[w.idx(x, y + 1)] === Cell.Empty ||
@@ -264,7 +295,7 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
     return;
   }
   const dir = Math.random() < 0.5 ? 1 : -1;
-  if (Math.random() < ctx.params.materials[Cell.Oil].flowRate!) {
+  if (Math.random() < P.flowRate!) {
     if (
       w.inBounds(x + dir, y) &&
       (w.types[w.idx(x + dir, y)] === Cell.Empty || w.types[w.idx(x + dir, y)] === Cell.Steam)
@@ -423,9 +454,9 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 35;
       }
-      if (n === Cell.Coal && Math.random() < 0.15) {
-        w.replaceCellAt(ti, Cell.Fire, fireColor());
-        w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration!;
+      if (n === Cell.Coal && w.life[ti] === 0 && Math.random() < 0.15) {
+        // lava lights coal into a burning ember bed (burns in place — handleCoal)
+        w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration! + Math.floor(Math.random() * 40);
       }
       if (n === Cell.Toxic && Math.random() < 0.3) {
         w.replaceCellAt(ti, Cell.Smoke, smokeColor());

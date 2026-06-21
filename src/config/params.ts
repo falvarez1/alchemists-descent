@@ -81,7 +81,7 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Healium]: { name: 'Healium', flowRate: 0.55, evaporationSpeed: 0.004, bloomWeight: 0.35 },
   [Cell.Teleportium]: { name: 'Teleportium', flowRate: 0.6, bloomWeight: 0.4 },
   [Cell.Snow]: { name: 'Snow', friction: 0.3 },
-  [Cell.Coal]: { name: 'Coal', friction: 0.45, burnDuration: 170, igniteChance: 0.08 },
+  [Cell.Coal]: { name: 'Coal', friction: 0.45, burnDuration: 240, igniteChance: 0.08 },
   [Cell.Crystal]: { name: 'Mana Crystal', bloomWeight: 0.45 },
   [Cell.Glowshroom]: { name: 'Glowshroom', flammability: 0.3, bloomWeight: 0.4 },
   [Cell.Fungus]: { name: 'Glowcap Fungus', flammability: 0.5, bloomWeight: 0.3 },

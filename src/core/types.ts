@@ -482,6 +482,10 @@ export interface FlyingParticle {
   homing: boolean;
   value: number;
   hostileDmg: number;
+  /** Pour/hose streams set this: the particle deposits its cell when it lands
+   *  AND when its life expires (or it leaves the map), so siphoned material is
+   *  conserved even when sprayed over open space. Default false. */
+  deposit: boolean;
 }
 
 export interface ParticleOpts {
@@ -490,6 +494,8 @@ export interface ParticleOpts {
   homing?: boolean;
   value?: number;
   hostileDmg?: number;
+  /** See FlyingParticle.deposit — conserve the carried cell on expiry. */
+  deposit?: boolean;
 }
 
 export interface Shockwave {
@@ -1216,6 +1222,9 @@ export interface RigidBody {
   restT?: number;
   /** P2 reaction: frames left on fire (flammable bodies burn up to ash); 0/undefined = not burning. */
   burnT?: number;
+  /** Frames before this body can deal contact damage to a foe again (so one
+   *  thrown crate hits a given enemy once, not every frame it overlaps). */
+  hitCd?: number;
   /** P2 reaction: frames left frozen (frost dampens its velocity); 0/undefined = not frozen. */
   frozenT?: number;
   /** Fresh frost-projectile impacts preserve momentum briefly before freeze damping wins. */
@@ -1417,6 +1426,10 @@ export interface EnemyControlApi {
   readonly defs: Record<EnemyKind, EnemyDef>;
   spawn(kind: EnemyKind, x: number, y: number): void;
   damage(e: Enemy, amount: number, kx: number, ky: number): void;
+  /** A hazard cell (lava/fire/acid) splashes the point (x,y): if a foe harmed by
+   *  `cell` overlaps it, deal the matching environmental damage (and ignite it for
+   *  fire/lava) and return true. Used by poured/sprayed material hitting a foe. */
+  splashHazard(x: number, y: number, cell: number): boolean;
   kill(e: Enemy, kx: number, ky: number): void;
   /** Blow a foe along (dirX,dirY) with a wind-gust shove (the player's kick),
    *  mass-scaled so a bat is hurled and a golem barely rocks. Light foes enter a

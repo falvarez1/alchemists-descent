@@ -72,6 +72,9 @@ const STOMP_BOUNCE = 3.2; // upward pop when a dive-stomp smashes a destructible
 const BODY_IMPACT_NOISE_MIN_SPEED = 1.7; // cells/frame before a body slam can wake sleepers
 const BODY_IMPACT_NOISE_MIN_DELTA = 1.25; // abrupt velocity change required, not just gravity/drag
 const BODY_IMPACT_NOISE_COOLDOWN = 18;
+const BODY_HIT_MIN_SPEED = 2.6; // a body must move this fast (cells/frame) to hurt a foe
+const BODY_HIT_COOLDOWN = 16; // frames before the same body can damage a foe again (one throw = one hit)
+const BODY_HIT_DMG_K = 1.5; // contact damage per cell/frame of impact speed, scaled by body mass
 const WATER_DRAG = 0.15; // per-frame velocity damp while fully submerged (viscosity)
 const SPLASH_MIN_SPEED = 1.2 * PF; // min downward speed (cells/s) to splash on water entry
 const GRAB_REACH = 18; // cells in front of the player a body can be grabbed from
@@ -569,6 +572,44 @@ export class RigidBodies implements RigidBodiesApi {
     ctx.particles.burst(cx, cy, 12, null, () => color, 1.1, { grav: 0.05 });
   }
 
+  /** A fast dynamic body (a thrown crate, a blasted boulder) that overlaps a foe
+   *  deals momentum-scaled contact damage + knockback, once per cooldown so one
+   *  throw lands one hit instead of grinding every frame it touches. */
+  private resolveBodyEnemyHits(ctx: Ctx): void {
+    if (ctx.state.mode !== 'play') return;
+    const enemies = ctx.enemies;
+    if (enemies.length === 0) return;
+    for (const body of this.bodies) {
+      if (body.hitCd !== undefined && body.hitCd > 0) body.hitCd--;
+      if (body.kind !== 'dynamic' || body === this.held) continue;
+      if (body.hitCd !== undefined && body.hitCd > 0) continue;
+      const sp = Math.hypot(body.vx, body.vy);
+      if (sp < BODY_HIT_MIN_SPEED) continue;
+      const [ex, ey] = bodyExtents(body);
+      for (const e of enemies) {
+        const def = ctx.enemyCtl.defs[e.kind];
+        if (Math.abs(body.x - e.x) > ex + def.halfW) continue;
+        if (body.y - ey > e.y || body.y + ey < e.y - def.h) continue;
+        const mass = body.invMass && body.invMass > 0 ? 1 / body.invMass : REFERENCE_MASS;
+        const massF = Math.sqrt(Math.min(3, mass / REFERENCE_MASS));
+        const dmg = Math.min(70, Math.round(sp * BODY_HIT_DMG_K * massF) + 4);
+        ctx.enemyCtl.damage(e, dmg, body.vx * 0.8, body.vy * 0.45 - 0.4);
+        body.hitCd = BODY_HIT_COOLDOWN;
+        // the body sheds momentum into the foe — slow the Rapier handle too, so a
+        // thrown crate visibly thuds into the enemy instead of ghosting through.
+        const rb = this.handles.get(body);
+        if (rb) {
+          const v = rb.linvel();
+          rb.setLinvel({ x: v.x * 0.55, y: v.y * 0.55 }, true);
+        }
+        body.vx *= 0.55;
+        body.vy *= 0.55;
+        ctx.audio.tone(150, 130, 0.08, 'square', 0.12);
+        break; // one foe per body per cooldown
+      }
+    }
+  }
+
   applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void {
     if (radius <= 0) return;
     let toShatter: RigidBody[] | null = null;
@@ -756,6 +797,7 @@ export class RigidBodies implements RigidBodiesApi {
     this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
     this.updatePlankRip(ctx); // hold E aimed at a wood platform to tear a plank loose
     this.resolvePlayer(ctx);
+    this.resolveBodyEnemyHits(ctx); // thrown/flung bodies bludgeon foes they strike
   }
 
   private emitBodyImpactNoise(

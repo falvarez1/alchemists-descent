@@ -13,7 +13,6 @@ const SIPHON_RADIUS = 8;
 const SIPHON_REACH = 70;
 const SIPHON_RATE = 40;
 const POUR_RATE = 10;
-const POUR_RADIUS = 2;
 const THROW_FORCE = 6.5;
 const BOTTLE_GRAV = 0.18;
 /** Spill blob never grows past this radius; any overflow splashes out as particles. */
@@ -202,44 +201,36 @@ export class Flask implements FlaskApi {
       this.refuse(ctx); // tipping an empty flask
       return;
     }
-    const { world } = ctx;
     const tip = ctx.spells.wandTip();
-    const cx = Math.round(tip.x), cy = Math.round(tip.y);
     const colorFn = COLOR_FN[material];
+    const aim = ctx.player.aimAngle;
+    const dirX = Math.cos(aim), dirY = Math.sin(aim);
+    const liquid = isLiquid(material);
 
-    let released = 0;
-    for (let dy = -POUR_RADIUS; dy <= POUR_RADIUS && released < POUR_RATE; dy++) {
-      for (let dx = -POUR_RADIUS; dx <= POUR_RADIUS && released < POUR_RATE; dx++) {
-        if (dx * dx + dy * dy > POUR_RADIUS * POUR_RADIUS) continue;
-        if (s.count === 0) break;
-        const x = cx + dx, y = cy + dy;
-        if (!world.inBounds(x, y)) continue;
-        const i = world.idx(x, y);
-        const t = world.types[i];
-        if (t !== Cell.Empty && !isGas(t)) continue;
-        world.replaceCellAt(i, material, colorFn());
-        s.count--;
-        released++;
-      }
-    }
-    if (released === 0) return;
-    if (ctx.state.frameCount % 2 === 0) {
-      const aim = ctx.player.aimAngle;
-      for (let j = 0; j < Math.min(3, released); j++) {
-        ctx.particles.spawn(
-          tip.x + Math.cos(aim) * j,
-          tip.y + Math.sin(aim) * j,
-          Math.cos(aim) * (0.45 + Math.random() * 0.25),
-          Math.sin(aim) * (0.45 + Math.random() * 0.25) + 0.2,
-          null,
-          colorFn(),
-          12 + Math.floor(Math.random() * 7),
-          { grav: isLiquid(material) ? 0.08 : 0.13, glow: 0.6 },
-        );
-      }
+    // SPRAY out of the wand tip in an arc, like a hose: the stream LEAVES the
+    // wand along the aim and falls under gravity, so a pour of lava lands where
+    // you point — not straight down on the wizard's own head. Each droplet
+    // carries a real cell that deposits when it lands (deposit:true also drops it
+    // on expiry, so siphoned material is conserved even over open space).
+    const n = Math.min(POUR_RATE, s.count);
+    const glow = material === Cell.Lava ? 1.4 : material === Cell.Acid ? 0.7 : 0.35;
+    for (let j = 0; j < n; j++) {
+      const a = aim + (Math.random() - 0.5) * 0.16; // a little nozzle spread
+      const sp = 2.4 + Math.random() * 1.1; // exit speed (cells/frame)
+      ctx.particles.spawn(
+        tip.x + dirX * 2,
+        tip.y + dirY * 2,
+        Math.cos(a) * sp,
+        Math.sin(a) * sp - 0.25, // a touch of lift gives the hose arc
+        material,
+        colorFn(),
+        55 + Math.floor(Math.random() * 25),
+        { grav: liquid ? 0.11 : 0.15, glow, deposit: true },
+      );
+      s.count--;
     }
     if (ctx.state.frameCount % 8 === 0) ctx.audio.noiseBurst(0.06, 600, 0.035);
-    ctx.telemetry.count('flask.pour.' + this.materialName(ctx, material), released);
+    ctx.telemetry.count('flask.pour.' + this.materialName(ctx, material), n);
     if (s.count === 0) s.material = null;
   }
 

@@ -200,6 +200,9 @@ void main() {
       lookupX = clamp(lookupX, 0, ${WIDTH - 1});
       lookupY = clamp(lookupY, 0, ${HEIGHT - 1});
     }
+    // Heat-haze offset (haze lenses only), reused to warp the backdrop below.
+    int hazeX = 0;
+    int hazeY = 0;
     if (uLensCount > 0) {
       for (int i = 0; i < uLensCount; i++) {
         vec4 L = uLens[i];
@@ -212,8 +215,12 @@ void main() {
         if (L.w < 0.0) {
           // heat-haze shimmer (K < 0): animated horizontal warp + a little vertical
           float amp = -L.w;
-          lookupX += int(floor(sin(float(wy) * 0.55 + uPhaseWater + L.x) * amp * pull));
-          lookupY += int(floor(cos(float(wx) * 0.7 + uPhaseWater * 0.8) * amp * 0.4 * pull));
+          int hx = int(floor(sin(float(wy) * 0.55 + uPhaseWater + L.x) * amp * pull));
+          int hy = int(floor(cos(float(wx) * 0.7 + uPhaseWater * 0.8) * amp * 0.4 * pull));
+          lookupX += hx;
+          lookupY += hy;
+          hazeX += hx;
+          hazeY += hy;
         } else {
           float k = pull * pull * L.w;
           // sample from further out (pinch) with a tangential swirl
@@ -241,11 +248,15 @@ void main() {
       // Ordered PNG parallax composite. Every layer carries its own alpha and
       // scrolls with its own multiplier, so texture and cutout never drift.
       vec3 bg = vec3(0.004, 0.005, 0.009);
-      overBackdrop(bg, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, vx, vy);
-      overBackdrop(bg, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, vx, vy);
-      overBackdrop(bg, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, vx, vy);
-      overBackdrop(bg, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, vx, vy);
-      overBackdrop(bg, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, vx, vy);
+      // shift the backdrop sample by the heat-haze offset so the distant cave
+      // shimmers behind a held (hot) object, matching the foreground warp
+      int bvx = vx + hazeX;
+      int bvy = vy + hazeY;
+      overBackdrop(bg, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, bvx, bvy);
+      overBackdrop(bg, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, bvx, bvy);
+      overBackdrop(bg, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, bvx, bvy);
+      overBackdrop(bg, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, bvx, bvy);
+      overBackdrop(bg, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, bvx, bvy);
       bg = gradeBackdrop(bg);
       float depthShade = 0.78 + 0.22 * (1.0 - float(wy) / ${HEIGHT.toFixed(1)});
       float r = bg.r * depthShade;

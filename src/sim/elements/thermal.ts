@@ -183,9 +183,9 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.life[ti] = 16; // a single blade flares briefly; low flammability keeps the spread a slow sputter
         if (Math.random() < 0.3) spawnSmoke(ctx, x, y);
       }
-      if (n === Cell.Coal && Math.random() < ctx.params.materials[Cell.Coal].igniteChance!) {
-        w.replaceCellAt(ti, Cell.Fire, fireColor());
-        w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration!;
+      if (n === Cell.Coal && w.life[ti] === 0 && Math.random() < ctx.params.materials[Cell.Coal].igniteChance!) {
+        // start the coal burning IN PLACE (handleCoal throws the flame) — not a flash
+        w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration! + Math.floor(Math.random() * 40);
       }
       if (n === Cell.Toxic && Math.random() < ctx.params.materials[Cell.Toxic].flammability!) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());

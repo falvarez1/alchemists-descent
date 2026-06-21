@@ -1,7 +1,7 @@
 import { MAX_PARTICLES } from '@/config/constants';
 import type { Ctx } from '@/core/types';
 import { Cell, isGas, isLiquid, isSoftGrowth, isSolid } from '@/sim/CellType';
-import { fireColor, fungusColor, grassColor, mossColor, packRGB, waterColor } from '@/sim/colors';
+import { ashColor, fireColor, fungusColor, grassColor, mossColor, packRGB, waterColor } from '@/sim/colors';
 import { handleViscousLiquid } from '@/sim/elements/liquids';
 import { spawnSmoke } from '@/sim/elements/thermal';
 
@@ -61,17 +61,49 @@ export function handleSnow(ctx: Ctx, x: number, y: number): void {
 
 export function handleCoal(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
+  const ci = w.idx(x, y);
   const P = ctx.params.materials[Cell.Coal];
-  // Slow to catch, but burns long and hot once lit
+
+  // BURNING coal (life > 0): a glowing ember bed. Slow to catch, but once lit it
+  // burns IN PLACE for its full burnDuration — throwing a flame upward every
+  // frame (the heat a brazier/waystone reads) and creeping the burn into adjacent
+  // coal — then chars to ASH. Like the oil slick: a sustained fuel, not a flash.
+  if (w.life[ci] > 0) {
+    w.life[ci]--;
+    if (w.inBounds(x, y - 1)) {
+      const ai = w.idx(x, y - 1);
+      const at = w.types[ai];
+      if (at === Cell.Empty || at === Cell.Smoke) {
+        w.replaceCellAt(ai, Cell.Fire, fireColor());
+        w.life[ai] = 14 + Math.floor(Math.random() * 14);
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      const nx = x + (i === 0 ? 1 : i === 1 ? -1 : 0);
+      const ny = y + (i === 2 ? 1 : i === 3 ? -1 : 0);
+      if (!w.inBounds(nx, ny)) continue;
+      const ni = w.idx(nx, ny);
+      if (w.types[ni] === Cell.Coal && w.life[ni] === 0 && Math.random() < P.igniteChance!) {
+        w.life[ni] = P.burnDuration! + Math.floor(Math.random() * 40);
+      }
+    }
+    if (w.life[ci] <= 0) {
+      // spent — coal chars to ash (a solid residue that drifts off over ~2-3s)
+      w.replaceCellAt(ci, Cell.Ash, ashColor());
+      w.life[ci] = 110 + Math.floor(Math.random() * 80);
+    }
+    return; // a burning ember bed stays put
+  }
+
+  // UNLIT coal: slow to catch from adjacent fire/lava (gradual), starting a burn
+  // in place; otherwise settle under gravity.
   for (let i = 0; i < 4; i++) {
     const nx = x + (i === 0 ? 1 : i === 1 ? -1 : 0);
     const ny = y + (i === 2 ? 1 : i === 3 ? -1 : 0);
     if (!w.inBounds(nx, ny)) continue;
     const n = w.types[w.idx(nx, ny)];
     if ((n === Cell.Fire || n === Cell.Lava) && Math.random() < P.igniteChance!) {
-      const i2 = w.idx(x, y);
-      w.replaceCellAt(i2, Cell.Fire, fireColor());
-      w.life[i2] = P.burnDuration! + Math.floor(Math.random() * 40);
+      w.life[ci] = P.burnDuration! + Math.floor(Math.random() * 40);
       return;
     }
   }

@@ -256,6 +256,27 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
+  /** A hazard cell (lava/fire/acid) splashes (x,y): if a foe harmed by `cell`
+   *  overlaps the point, deal the matching env damage (and ignite it for
+   *  fire/lava) and return true. Lets poured/sprayed material strike foes. */
+  splashHazard(x: number, y: number, cell: number): boolean {
+    if (this.ctx.state.mode !== 'play') return false;
+    for (const e of this.ctx.enemies) {
+      const def = this.defs[e.kind];
+      if (Math.abs(x - e.x) > def.halfW + 1) continue;
+      if (y > e.y + 2 || y < e.y - def.h - 2) continue;
+      if (!enemyLethalCell(e.kind, cell)) continue; // imp shrugs off lava, acidslime off acid
+      const dmg = cell === Cell.Lava ? 1.6 : cell === Cell.Acid ? 0.9 : 0.7;
+      this.damage(e, dmg, (Math.random() - 0.5) * 0.6, -0.3);
+      if (cell === Cell.Lava || cell === Cell.Fire) {
+        const imm = STATUS_IMMUNE[e.kind];
+        if (!imm?.burning) e.status.burning = Math.max(e.status.burning, 90);
+      }
+      return true;
+    }
+    return false;
+  }
+
   damage(e: Enemy, amount: number, kx: number, ky: number): void {
     const ctx = this.ctx;
     // WATER IS THE LEVIATHAN'S ARMOR: while the body is actually in water
@@ -767,7 +788,12 @@ export class Enemies implements EnemyControlApi {
       const targetX = cx + offset;
       let best = 0;
       let bestX = targetX;
-      for (let yy = foot - 18; yy <= foot + 22; yy += 2) {
+      // step y by 1, not 2: a flat floor's only LOAD-BEARING (exposed) cell is its
+      // surface row — the cells beneath are buried and don't count. Stepping by 2
+      // skipped that row whenever the body's foot sat at an odd y, so the weaver read
+      // as "unsupported" while standing on solid ground (foot parity = stable or not!),
+      // which spuriously tripped footing-recovery and froze its chase/climb.
+      for (let yy = foot - 18; yy <= foot + 22; yy += 1) {
         if (yy < 1 || yy >= HEIGHT - 1) continue;
         for (let xx = targetX - 12; xx <= targetX + 12; xx += 3) {
           if (!w.inBounds(xx, yy)) continue;
@@ -1117,7 +1143,9 @@ export class Enemies implements EnemyControlApi {
     const foot = Math.floor(e.y);
     const base = Math.floor(e.x);
     const order = prefer >= 0 ? [1, -1] : [-1, 1];
-    for (let dist = def.halfW + 1; dist <= maxDist; dist++) {
+    // step by 2: returns the nearest wall, and the +-1 cell precision doesn't matter
+    // when the body then marches to it. Keeps the now-wide (≈300px) sweep cheap.
+    for (let dist = def.halfW + 1; dist <= maxDist; dist += 2) {
       for (const dir of order) {
         if (this.wallColumnHeight(base + dir * dist, foot) > 7) return dir;
       }
@@ -1595,17 +1623,18 @@ export class Enemies implements EnemyControlApi {
             }
           }
           const climbedT = e.weaverClimbT ?? 0;
-          // Climb a wall ONLY when it actually leads TOWARD the quarry: it's a barrier
-          // standing between us and the quarry (bestDir is the way to it — handles a
-          // quarry level/below on the far side, climb up→crest→descend), OR the quarry
-          // is genuinely OVERHEAD with little horizontal lead (climb the nearest wall
-          // straight up to it). NEVER climb a wall on the side AWAY from a quarry that's
-          // level/below: that was the endless climb-the-pillar-while-the-player-stands-
-          // below loop — there it must DESCEND and pursue, not scale the wall behind it.
-          // (Same reason it must not scramble up a cut-floor hole's edge.)
-          const playerOverhead = pdy < -10 && Math.abs(pdx) < 56;
+          // When the quarry is ABOVE, climb ANY adjacent wall — the goal is to get UP
+          // (then traverse along the top toward it), so the wall need not be on the
+          // quarry's horizontal side. This matters because the chase marches the weaver
+          // to the nearest wall to begin a climb, which often puts that wall on the far
+          // side of an overhead quarry; the old "toward the quarry only" rule then
+          // refused the climb and it stood below pawing the air (the report).
+          // For a LEVEL/BELOW quarry the directional rule still holds: only scale a wall
+          // that's a barrier BETWEEN us and it — never the wall on the side away from it
+          // (that was the endless climb-the-pillar / scramble-up-a-hole's-edge loop).
+          const playerAbove = pdy < -24;
           const barrierTowardQuarry = Math.abs(pdx) > def.halfW + 2 && bestDir === Math.sign(pdx || 1);
-          const barrierAhead = bestH > 7 && (playerOverhead || barrierTowardQuarry);
+          const barrierAhead = bestH > 7 && (playerAbove || barrierTowardQuarry);
           // CLIMB DOWN: elevated (airborne off a ledge/web) with a quarry BELOW and a
           // wall beside to grip — descend it UNDER CONTROL toward the quarry instead of
           // free-falling. A free-fall off a pillar lands the spider in a deep footing-
@@ -1781,7 +1810,7 @@ export class Enemies implements EnemyControlApi {
             const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
             if (Math.abs(wp[0] - e.x) < 12) e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
             else if (e.timer % 3 === 0) e.vx += Math.sign(wp[0] - e.x) * 0.07 * confidence;
-          } else if (targetAlive && !climbing && (!unstable || cresting) && (cranky || e.timer % 2 === 0)) {
+          } else if (targetAlive && !climbing && (!unstable || cresting) && (cranky || e.alerted || e.timer % 2 === 0)) {
             // Chase pressure yields to footing: while unstable, recovery owns
             // horizontal intent — EXCEPT while cresting, where the chase must carry the
             // body over a narrow top and down the far side toward the quarry.
@@ -1789,14 +1818,17 @@ export class Enemies implements EnemyControlApi {
             // into — it stops at the lip and reaches instead of walking into the void.
             const tooClose = pDist < 46;
             let dir = tooClose ? -Math.sign(pdx || 1) : Math.sign(pdx || 1);
-            if (!tooClose && Math.abs(pdx) <= 12) dir = 0; // overhead: stand and rear
-            // QUARRY OVERHEAD with no horizontal lead to follow: don't just rear and
-            // paw — find the nearest wall its claws can grip and march to its base to
-            // climb. Only when dir is already 0 (truly overhead); a sideways chase
-            // already walks it into the wall on the way, and must NOT be flipped
-            // toward some far wall on the OPPOSITE side of the quarry.
-            if (dir === 0 && pdy < -18) {
-              dir = this.weaverSeekWall(e, def, 70, Math.sign(pdx || 1));
+            // QUARRY ABOVE: a climber goes UP after it. Range out for the nearest
+            // scalable wall in a WIDE arc (not just the 70px directly beside it) and
+            // march to its base — the climb engages there and carries it up to the
+            // ledge. This is what stops it standing UNDER an overhead platform pawing
+            // the air (the report): it climbs around to the top instead. With no wall in
+            // reach it keeps closing under the quarry rather than freezing in a rear-up.
+            if (pdy < -24 && !climbing) {
+              const wallDir = this.weaverSeekWall(e, def, 300, Math.sign(pdx || 1));
+              if (wallDir !== 0) dir = wallDir;
+            } else if (!tooClose && Math.abs(pdx) <= 12) {
+              dir = 0; // level/in-line with the quarry: hold
             }
             // Edge-wary so it won't stride into a void it gains nothing from — but a
             // spider WILL go over the lip to chase prey that's down below in that
@@ -1809,10 +1841,15 @@ export class Enemies implements EnemyControlApi {
             // (coil, ease the pace) then surge forward — instead of one flat creep. A
             // cranky Weaver loses the patience and rushes flat-out. weaverStalk carries
             // the wave to the renderer so the body's coil/lunge matches the footwork.
-            const stalking = dir !== 0 && !cranky && !tooClose && pDist > 58 && pDist < 260;
+            const stalking = dir !== 0 && !cranky && !tooClose && pDist > 58 && pDist < 200;
             const surgeWave = Math.sin(e.timer * 0.06);
             e.weaverStalk = (e.weaverStalk ?? 0) + ((stalking ? surgeWave : 0) - (e.weaverStalk ?? 0)) * 0.2;
-            e.vx += dir * 0.06 * confidence * (stalking ? 1 + 0.75 * surgeWave : 1);
+            // The stalk's gather phase only EASES the pace (×0.4..×1.6) — it must never
+            // stall the approach to a crawl, or a stable weaver never actually closes.
+            // (The decisive speedup is pursuing every frame while alerted, above; the
+            // base push stays gentle so the chase doesn't peg aggression and flatten the
+            // signature high gait stance.)
+            e.vx += dir * 0.06 * confidence * (stalking ? 1 + 0.6 * surgeWave : 1);
             // a firm extra shove while cresting, to break free of a narrow top instead
             // of teetering on it, and commit to the descent toward the quarry.
             if (cresting && dir !== 0) e.vx += dir * 0.16;

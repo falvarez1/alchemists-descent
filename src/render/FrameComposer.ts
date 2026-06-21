@@ -228,8 +228,8 @@ export class FrameComposer implements PixelSurface {
       const lens = this.acquireLens();
       lens.cx = heldBody.x;
       lens.cy = heldBody.y - r * 0.4; // bias upward — heat rises
-      lens.R = r + 8;
-      lens.K = -(heldBody.burnT && heldBody.burnT > 0 ? 3.4 : 2.1);
+      lens.R = r + 11;
+      lens.K = -(heldBody.burnT && heldBody.burnT > 0 ? 6.5 : 4.2);
       lenses.push(lens);
     }
     const lightBuildDue = frameCount % 2 === 0 || frameCount < 5;
@@ -406,6 +406,11 @@ export class FrameComposer implements PixelSurface {
           else if (lookupY >= HEIGHT) lookupY = HEIGHT - 1;
         }
 
+        // Heat-haze shimmer offset (haze lenses only) — applied to BOTH the
+        // terrain lookup and the backdrop sample below, so the hot air bends the
+        // distant cave behind a held object too, not just the foreground rock.
+        let hazeX = 0,
+          hazeY = 0;
         if (lensLen > 0) {
           for (let li = 0; li < lensLen; li++) {
             const L = lenses[li];
@@ -420,8 +425,12 @@ export class FrameComposer implements PixelSurface {
               // fading at the edge. Phase matches uPhaseWater / p(6u) on the GPU.
               const amp = -L.K;
               const ph = frameCount * 0.16;
-              lookupX += Math.floor(Math.sin(wy * 0.55 + ph + L.cx) * amp * pull);
-              lookupY += Math.floor(Math.cos(wx * 0.7 + ph * 0.8) * amp * 0.4 * pull);
+              const hx = Math.floor(Math.sin(wy * 0.55 + ph + L.cx) * amp * pull);
+              const hy = Math.floor(Math.cos(wx * 0.7 + ph * 0.8) * amp * 0.4 * pull);
+              lookupX += hx;
+              lookupY += hy;
+              hazeX += hx;
+              hazeY += hy;
             } else {
               const k = pull * pull * L.K;
               // sample from further out (pinch) with a tangential swirl
@@ -447,8 +456,12 @@ export class FrameComposer implements PixelSurface {
           r = 0.004;
           g = 0.005;
           b = 0.009;
+          // shift the backdrop sample column/row by the heat-haze offset so the
+          // distant cave shimmers behind a held (hot) object, like the terrain does
+          const bvx = hazeX !== 0 ? (vx + hazeX < 0 ? 0 : vx + hazeX >= VIEW_W ? VIEW_W - 1 : vx + hazeX) : vx;
+          const bvy = hazeY !== 0 ? (vy + hazeY < 0 ? 0 : vy + hazeY >= VIEW_H ? VIEW_H - 1 : vy + hazeY) : vy;
           for (const active of activeBackdropLayers) {
-            const si = (active.ySamples[vy] * active.width + active.xSamples[vx]) * 4;
+            const si = (active.ySamples[bvy] * active.width + active.xSamples[bvx]) * 4;
             const a = (active.pixels[si + 3] / 255) * active.opacity;
             if (a <= 0.001) continue;
             const ia = 1 - a;

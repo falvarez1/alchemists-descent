@@ -41,6 +41,7 @@ export class Particles implements ParticlesApi {
     p.homing = (opts && opts.homing) || false;
     p.value = opts && opts.value !== undefined ? Math.max(0, Math.floor(opts.value)) : 10;
     p.hostileDmg = (opts && opts.hostileDmg) || 0;
+    p.deposit = (opts && opts.deposit) || false;
     this.pool.add(p);
   }
 
@@ -132,10 +133,25 @@ export class Particles implements ParticlesApi {
         gy = Math.floor(p.y);
 
       if (!world.inBounds(gx, gy)) {
+        // a pour stream that flies off the map still drops its cell at the last
+        // in-bounds step, so siphoned material is conserved
+        if (p.deposit && p.type !== null) {
+          const bx = Math.floor(p.x - p.vx),
+            by = Math.floor(p.y - p.vy);
+          if (world.inBounds(bx, by)) {
+            const bi = world.idx(bx, by);
+            if (world.types[bi] === Cell.Empty || isGas(world.types[bi])) world.replaceCellAt(bi, p.type, p.color);
+          }
+        }
         this.removeAt(i);
         continue;
       }
       if (p.life <= 0) {
+        // a pour stream that runs out of arc mid-air drops its cell where it is
+        if (p.deposit && p.type !== null) {
+          const di = world.idx(gx, gy);
+          if (world.types[di] === Cell.Empty || isGas(world.types[di])) world.replaceCellAt(di, p.type, p.color);
+        }
         this.removeAt(i);
         continue;
       }
@@ -149,6 +165,17 @@ export class Particles implements ParticlesApi {
           this.removeAt(i);
           continue;
         }
+      }
+
+      // A poured/sprayed HAZARD droplet (lava/fire/acid) that strikes a foe
+      // splashes its material onto it — the stream burns enemies it hits.
+      if (
+        p.deposit &&
+        (p.type === Cell.Lava || p.type === Cell.Fire || p.type === Cell.Acid) &&
+        ctx.enemyCtl.splashHazard(p.x, p.y, p.type)
+      ) {
+        this.removeAt(i);
+        continue;
       }
 
       const cell = world.types[world.idx(gx, gy)];
@@ -170,12 +197,30 @@ export class Particles implements ParticlesApi {
           if (!(hitLiquid && blockingDebris)) {
             const bx = Math.floor(p.x - p.vx),
               by = Math.floor(p.y - p.vy);
+            let placed = false;
             if (world.inBounds(bx, by)) {
               const bi = world.idx(bx, by);
               if (world.types[bi] === Cell.Empty || isGas(world.types[bi])) {
                 world.replaceCellAt(bi, p.type, p.color);
                 if (p.type === Cell.Fire) world.life[bi] = 18 + Math.floor(Math.random() * 18);
                 if (p.type === Cell.Smoke) world.life[bi] = 30 + Math.floor(Math.random() * 30);
+                placed = true;
+              }
+            }
+            // Pour streams CONSERVE: if the spot behind was full (a dense stream
+            // piling up), drop the carried cell into a nearby empty cell instead
+            // of losing the siphoned material.
+            if (!placed && p.deposit) {
+              const cand: ReadonlyArray<readonly [number, number]> = [
+                [gx, gy - 1], [gx - 1, gy], [gx + 1, gy], [gx, gy - 2],
+              ];
+              for (const [cxp, cyp] of cand) {
+                if (!world.inBounds(cxp, cyp)) continue;
+                const cidx = world.idx(cxp, cyp);
+                if (world.types[cidx] === Cell.Empty || isGas(world.types[cidx])) {
+                  world.replaceCellAt(cidx, p.type, p.color);
+                  break;
+                }
               }
             }
           }
