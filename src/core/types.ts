@@ -381,6 +381,28 @@ export interface Enemy {
   /** Weaver: locked Needle Step target chosen at windup start. */
   needleX?: number;
   needleY?: number;
+
+  /* --- Behavior drives & reflexes (the threat-aware AI layer in Enemies.ts).
+   *  Leveled states, like the elemental status timers: they integrate stimuli
+   *  and decay, and the arbiter reads them to pick dodge / flee / avoid / press.
+   *  Per-kind temperament weights make a slime dumb and a bat flighty. --- */
+  /** 0..1 self-preservation pressure: rises with sensed threats, low HP, being on fire. */
+  fear?: number;
+  /** 0..1 drive to press the attack: rises with proximity, taking hits, confident footing. */
+  aggression?: number;
+  /** Active reflex DODGE timer (frames) + its committed velocity (a sidestep/back-hop). */
+  dodgeT?: number;
+  /** Frames until it will CONSIDER dodging again — one roll per incoming threat, so
+   *  a brute can't reflexively jink every frame a crate lingers in range. */
+  dodgeCd?: number;
+  dodgeVX?: number;
+  /** One-shot dodge hop (consumed the frame it's applied). */
+  dodgeVY?: number;
+  /** Active FLEE commit timer (frames) + horizontal direction (-1/+1) away from danger. */
+  fleeT?: number;
+  fleeDir?: number;
+  /** 0..1 multiplier the arbiter folds into the per-kind chase speed when hesitating. */
+  chaseScale?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
@@ -1986,6 +2008,9 @@ export interface WandsApi {
   readonly collection: CardId[];
   /** Per-frame while player.firing (play mode): advance + cast the program. */
   fire(ctx: Ctx): void;
+  /** The active Flame Jet stream this frame (wand tip + aim + reach/half-angle),
+   *  or null. A read-only sense so the enemy AI can sidestep out of the cone. */
+  streamFlameInfo(ctx: Ctx): { x: number; y: number; angle: number; reach: number; cone: number } | null;
   /** Per-frame always: cooldowns, recharge, wand mana regen. */
   update(ctx: Ctx): void;
   grantCard(ctx: Ctx, id: CardId): void;

@@ -107,6 +107,34 @@ const STATUS_IMMUNE: Partial<
   leviathan: { burning: true },
 };
 
+/** Per-kind TEMPERAMENT: how each foe weights the threat-aware behavior drives.
+ *  - fear: how strongly sensed danger + low HP raise the fear drive (0 = fearless brute).
+ *  - dodge: 0..1 reflex chance to actually twitch clear of an imminent hit.
+ *  - fleeAt: fear level at which it commits to retreating (>=1 = never flees).
+ *  - seekWater: when on fire, flee toward the nearest water to douse. */
+interface Temperament {
+  fear: number;
+  dodge: number;
+  fleeAt: number;
+  seekWater: boolean;
+}
+const DEFAULT_TEMPERAMENT: Temperament = { fear: 0.7, dodge: 0.45, fleeAt: 0.7, seekWater: true };
+const TEMPERAMENT: Partial<Record<EnemyKind, Temperament>> = {
+  slime: { fear: 0.4, dodge: 0.12, fleeAt: 0.95, seekWater: false }, // dumb, barely flinches
+  acidslime: { fear: 0.4, dodge: 0.12, fleeAt: 0.95, seekWater: false },
+  eggs: { fear: 0, dodge: 0, fleeAt: 2, seekWater: false }, // inert
+  bat: { fear: 1.3, dodge: 0.85, fleeAt: 0.45, seekWater: false }, // flighty, panics
+  imp: { fear: 0.6, dodge: 0.72, fleeAt: 0.6, seekWater: false }, // smart kiter (fire-immune)
+  wisp: { fear: 0.9, dodge: 0.7, fleeAt: 0.4, seekWater: false }, // skittish frost caster
+  spitter: { fear: 0.85, dodge: 0.55, fleeAt: 0.5, seekWater: true }, // cowardly
+  bomber: { fear: 0.2, dodge: 0.3, fleeAt: 1.5, seekWater: false }, // suicidal — WANTS to reach you
+  mage: { fear: 0.9, dodge: 0.62, fleeAt: 0.45, seekWater: true }, // cowardly caster
+  weaver: { fear: 0.5, dodge: 0.5, fleeAt: 0.72, seekWater: true }, // cunning but committed
+  golem: { fear: 0.18, dodge: 0.28, fleeAt: 1.5, seekWater: false }, // brute, shrugs it off
+  colossus: { fear: 0, dodge: 0, fleeAt: 2, seekWater: false }, // fearless boss
+  leviathan: { fear: 0, dodge: 0.12, fleeAt: 2, seekWater: false }, // fearless (water is its home)
+};
+
 /** Does cell `c` deal environmental harm to `kind`? Single source of truth for
  *  both the env-damage tick and the wary look-ahead (so they never disagree):
  *  fire/lava burn everything but the imp; acid eats everything but the acidslime. */
@@ -1101,6 +1129,242 @@ export class Enemies implements EnemyControlApi {
     return true;
   }
 
+  /* ============================================================
+   * THREAT-AWARE BEHAVIOR (drives + reflexes). Bolted on top of the per-kind AI:
+   * updateBehavior() runs BEFORE the per-kind branch (senses danger, integrates
+   * the fear/aggression drives, decides a dodge/flee reflex); the integration
+   * seam then OVERRIDES the per-kind vx/vy with that reflex. Per-kind TEMPERAMENT
+   * weights make a slime dumb and a bat flighty. Fail-open: reflexes are short,
+   * timed, and never hard-lock — a stuck foe re-decides next frame.
+   * ============================================================ */
+
+  /** Reused per-frame threat read (no per-enemy allocation on the hot path).
+   *  tvx/tvy = unit velocity of the single most-urgent imminent threat (for the
+   *  perpendicular dodge); fleeX/fleeY = aggregate "away from danger" direction. */
+  private readonly threat = { level: 0, fleeX: 0, fleeY: 0, imminent: false, tvx: 0, tvy: 0 };
+  /** The player's active Flame Jet cone this frame (sampled once in update), or null. */
+  private flameStream: { x: number; y: number; angle: number; reach: number; cone: number } | null = null;
+
+  /** Scan the foe's surroundings for danger and fill this.threat: nearby lethal
+   *  cells (lava/fire/acid pools), fast rigid bodies on a collision course
+   *  (thrown/pulled crates, blast debris), incoming player projectiles, and self
+   *  harm (on fire / low HP). `fleeX/fleeY` point AWAY from the danger. */
+  private senseThreat(e: Enemy, def: EnemyDef): void {
+    const t = this.threat;
+    t.level = 0;
+    t.fleeX = 0;
+    t.fleeY = 0;
+    t.imminent = false;
+    t.tvx = 0;
+    t.tvy = 0;
+    let bestU = 0; // urgency of the most pressing imminent threat (drives the dodge axis)
+    const ctx = this.ctx;
+    const w = ctx.world;
+    const ex = e.x;
+    const ey = e.y - def.h * 0.5;
+
+    // (a) HAZARD CELLS in a small box → flee away from the nearest lethal cell.
+    const R = def.halfW + 9;
+    let hzX = 0,
+      hzY = 0,
+      hzN = 0,
+      hzNear = 0;
+    for (let dy = -def.h - 2; dy <= 3; dy += 2) {
+      for (let dx = -R; dx <= R; dx += 2) {
+        const X = Math.floor(e.x) + dx;
+        const Y = Math.floor(e.y) + dy;
+        if (!w.inBounds(X, Y) || !enemyLethalCell(e.kind, w.types[w.idx(X, Y)])) continue;
+        const d = Math.hypot(dx, dy) || 1;
+        hzX += -dx / d;
+        hzY += -dy / d;
+        hzN++;
+        const prox = 1 - Math.min(1, d / R);
+        if (prox > hzNear) hzNear = prox;
+      }
+    }
+    if (hzN > 0) {
+      const m = Math.hypot(hzX, hzY) || 1;
+      t.fleeX += (hzX / m) * (0.5 + hzNear * 0.5);
+      t.fleeY += (hzY / m) * 0.3;
+      t.level = Math.max(t.level, 0.35 + hzNear * 0.55);
+    }
+
+    // (b) FAST RIGID BODIES on a collision course (thrown/pulled crate, debris).
+    for (const b of ctx.rigidBodies.bodies) {
+      if (b.kind !== 'dynamic') continue;
+      const sp = Math.hypot(b.vx, b.vy);
+      if (sp < 2.2) continue;
+      const rdx = ex - b.x;
+      const rdy = ey - b.y;
+      const dist = Math.hypot(rdx, rdy);
+      if (dist > 60 || dist < 0.5) continue;
+      const toward = (b.vx * rdx + b.vy * rdy) / (sp * dist); // body velocity · body→me
+      if (toward < 0.4) continue;
+      const tti = dist / sp;
+      if (tti > 26) continue;
+      const urgency = (1 - tti / 26) * Math.min(1, toward);
+      t.fleeX += rdx / dist;
+      t.fleeY += (rdy / dist) * 0.4;
+      t.level = Math.max(t.level, 0.55 + urgency * 0.45);
+      if (tti < 14 && urgency > bestU) {
+        t.imminent = true;
+        bestU = urgency;
+        t.tvx = b.vx / sp;
+        t.tvy = b.vy / sp;
+      }
+    }
+
+    // (c) INCOMING PLAYER PROJECTILES headed at me.
+    for (const pr of ctx.projectiles) {
+      if (pr.hostile) continue; // its own kind's shots
+      const sp = Math.hypot(pr.vx, pr.vy);
+      if (sp < 1) continue;
+      const rdx = ex - pr.x;
+      const rdy = ey - pr.y;
+      const dist = Math.hypot(rdx, rdy);
+      if (dist > 70 || dist < 0.5) continue;
+      const toward = (pr.vx * rdx + pr.vy * rdy) / (sp * dist);
+      if (toward < 0.6) continue;
+      const tti = dist / sp;
+      if (tti > 22) continue;
+      t.fleeX += (rdx / dist) * 0.8;
+      t.level = Math.max(t.level, 0.5 + (1 - tti / 22) * 0.4);
+      const purg = (1 - tti / 22) * toward;
+      if (tti < 12 && purg > bestU) {
+        t.imminent = true;
+        bestU = purg;
+        t.tvx = pr.vx / sp;
+        t.tvy = pr.vy / sp;
+      }
+    }
+
+    // (d) SELF: on fire, or badly wounded.
+    if (e.status.burning > 0) t.level = Math.max(t.level, 0.85);
+    const hpFrac = e.hp / Math.max(1, e.maxHp);
+    if (hpFrac < 0.35) t.level = Math.max(t.level, 0.4 + (0.35 - hpFrac) * 1.2);
+
+    // (e) THE PLAYER'S FLAME-JET CONE — sidestep ACROSS the stream to get out of
+    //     its line (only foes fire actually harms; an imp basks in it).
+    const fs = this.flameStream;
+    const G = globalThis as Record<string, number>;
+    if (fs) G.__fsNN = (G.__fsNN ?? 0) + 1;
+    if (fs && enemyLethalCell(e.kind, Cell.Fire)) {
+      G.__fsLeth = (G.__fsLeth ?? 0) + 1;
+      const dx = ex - fs.x;
+      const dy = ey - fs.y;
+      const dist = Math.hypot(dx, dy);
+      G.__fsDist = Math.round(dist);
+      if (dist > 0.5 && dist < fs.reach) {
+        let da = Math.atan2(dy, dx) - fs.angle;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        G.__fsDa = Math.round(Math.abs(da) * 100);
+        if (Math.abs(da) < fs.cone + 0.3) {
+          G.__fsCone = (G.__fsCone ?? 0) + 1;
+          const ax = Math.cos(fs.angle);
+          const ay = Math.sin(fs.angle);
+          let perpX = -ay; // sidestep perpendicular to the stream axis
+          let perpY = ax;
+          if (perpX * dx + perpY * dy < 0) {
+            perpX = -perpX; // toward whichever side the foe is already on
+            perpY = -perpY;
+          }
+          t.fleeX += perpX;
+          t.fleeY += perpY * 0.5;
+          const urg = 1 - dist / fs.reach;
+          t.level = Math.max(t.level, 0.6 + urg * 0.4);
+          if (Math.abs(da) < fs.cone && urg > bestU) {
+            t.imminent = true;
+            bestU = urg;
+            t.tvx = ax;
+            t.tvy = ay;
+          }
+        }
+      }
+    }
+  }
+
+  /** The arbiter: sense danger, integrate the fear/aggression drives, and commit
+   *  a dodge or flee reflex. Mutates the drive/reflex fields on `e`; the
+   *  integration seam reads them to override the per-kind movement this frame. */
+  private updateBehavior(e: Enemy, def: EnemyDef, pdx: number, _pdy: number, pDist: number): void {
+    if ((e.dodgeT ?? 0) > 0) e.dodgeT = (e.dodgeT ?? 0) - 1;
+    if ((e.dodgeCd ?? 0) > 0) e.dodgeCd = (e.dodgeCd ?? 0) - 1;
+    if ((e.fleeT ?? 0) > 0) e.fleeT = (e.fleeT ?? 0) - 1;
+    if (e.kind === 'eggs') return;
+    const temp = TEMPERAMENT[e.kind] ?? DEFAULT_TEMPERAMENT;
+
+    this.senseThreat(e, def);
+    const t = this.threat;
+    const threat = Math.min(1, t.level * temp.fear);
+
+    // FEAR rises fast toward the sensed threat, ebbs slowly when safe.
+    const fear0 = e.fear ?? 0;
+    e.fear = threat > fear0 ? threat : Math.max(threat, fear0 - 0.02);
+
+    // AGGRESSION rises near the player + when freshly hit (vengeance), bleeds off
+    // when scared or alone.
+    const close = pDist < 200 ? 1 - pDist / 200 : 0;
+    const vengeance = (e.flash ?? 0) > 0 ? 0.04 : 0;
+    e.aggression = Math.max(
+      0,
+      Math.min(1, (e.aggression ?? 0) + close * 0.02 + vengeance - (e.fear ?? 0) * 0.03 - 0.005),
+    );
+
+    // CHASE SCALE: fear makes a foe hesitate; aggression only offsets that (never
+    // a speed-up past normal, so boss/per-kind tuning is preserved).
+    e.chaseScale = Math.max(0.25, Math.min(1, 1 - (e.fear ?? 0) * 0.7 + (e.aggression ?? 0) * 0.15));
+
+    // REFLEX DODGE: an imminent crate/bolt → SIDESTEP perpendicular to its path
+    // (fleeing straight away can't outrun a fast projectile; a jink across its
+    // line does). Gated by the kind's dodge skill.
+    if (t.imminent && (e.dodgeT ?? 0) <= 0 && (e.dodgeCd ?? 0) <= 0 && e.alerted) {
+      e.dodgeCd = 22; // one roll per incoming threat (set whether it dodges or not)
+      if (Math.random() >= temp.dodge) {
+        // declined this jink — a brute tanks it
+      } else {
+      let px = -t.tvy; // perpendicular to the threat's velocity
+      let py = t.tvx;
+      if (px * t.fleeX + py * t.fleeY < 0) {
+        px = -px; // pick the side that also leans away from the threat
+        py = -py;
+      }
+      if (e.grounded && py > 0.2) py = -Math.abs(py); // can't dodge into the floor — hop up
+      const pm = Math.hypot(px, py) || 1;
+      e.dodgeT = 12;
+      e.dodgeVX = (px / pm) * 2.7;
+      e.dodgeVY = (py / pm) * 2.7;
+      e.fear = Math.max(e.fear ?? 0, 0.5);
+      }
+    }
+
+    // FLEE: high fear → commit to retreating; seek water if on fire and hates it.
+    if ((e.fear ?? 0) >= temp.fleeAt && (e.fleeT ?? 0) <= 0) {
+      let dir = t.fleeX !== 0 ? Math.sign(t.fleeX) : -Math.sign(pdx || 1);
+      if (e.status.burning > 0 && temp.seekWater) {
+        const wdir = this.nearestWaterDir(e, def);
+        if (wdir !== 0) dir = wdir;
+      }
+      e.fleeT = 26;
+      e.fleeDir = dir;
+    }
+  }
+
+  /** Horizontal direction (-1/+1) toward the nearest water within reach, else 0.
+   *  A burning foe that hates fire uses this to bolt for a douse. */
+  private nearestWaterDir(e: Enemy, def: EnemyDef): number {
+    const w = this.ctx.world;
+    for (let r = 3; r <= 42; r += 3) {
+      for (const dir of [-1, 1] as const) {
+        const X = Math.floor(e.x) + dir * r;
+        for (let dy = -def.h; dy <= 4; dy += 2) {
+          const Y = Math.floor(e.y) + dy;
+          if (w.inBounds(X, Y) && w.types[w.idx(X, Y)] === Cell.Water) return dir;
+        }
+      }
+    }
+    return 0;
+  }
+
   /** A surface a spider leg can grip: load-bearing terrain OR soft growth (vines,
    *  moss — it hooks its claws into those too). Matches the renderer's foothold
    *  test so the legs visibly land where the climb AI believes there's purchase. */
@@ -1183,6 +1447,9 @@ export class Enemies implements EnemyControlApi {
     const player = ctx.player;
     const targetAlive = !player.dead;
     const debugEnemyAttacksSuppressed = ctx.debug?.active === true;
+    // The player's active Flame Jet cone this frame, sampled once so every foe's
+    // threat scan can sidestep out of it (the stream is the same for all of them).
+    this.flameStream = ctx.wands?.streamFlameInfo?.(ctx) ?? null;
 
     const sim = ctx.world.simBounds;
     for (let i = enemies.length - 1; i >= 0; i--) {
@@ -1288,6 +1555,11 @@ export class Enemies implements EnemyControlApi {
           { grav: 0.1 },
         );
       }
+
+      // THREAT-AWARE REFLEXES: sense danger, run the fear/aggression drives, and
+      // arm a dodge/flee. The per-kind branch below still decides chase/attack as
+      // before; the integration seam lets an armed reflex override it this frame.
+      this.updateBehavior(e, def, pdx, pdy, pDist);
 
       if (e.kind === 'slime' || e.kind === 'acidslime') {
         e.vy += 0.3;
@@ -2458,8 +2730,31 @@ export class Enemies implements EnemyControlApi {
         }
       }
 
-      // Burning foes PANIC — flail erratically instead of marching their line.
-      if (e.status.burning > 0 && e.grounded) e.vx += (Math.random() - 0.5) * 1.3;
+      // THREAT REFLEXES OVERRIDE the per-kind decision this frame: a committed
+      // dodge twitches the body clear of an incoming hit; a flee retreats;
+      // otherwise fear just scales the chase back. Fearless bosses' weights make
+      // this a near-no-op. (Electrocution below still wins — it zeroes motion.)
+      const fleeingNow = (e.fleeT ?? 0) > 0;
+      if ((e.dodgeT ?? 0) > 0) {
+        e.vx = e.dodgeVX ?? e.vx;
+        // Fliers sustain the vertical jink (they steer freely); grounded foes get
+        // a single upward HOP (then gravity arcs them back down over the threat).
+        const flier = e.kind === 'imp' || e.kind === 'wisp' || e.kind === 'bat';
+        if (flier) {
+          e.vy = e.dodgeVY ?? e.vy;
+        } else if (e.dodgeVY) {
+          e.vy = e.dodgeVY;
+          e.dodgeVY = 0;
+        }
+      } else if (fleeingNow) {
+        e.vx = (e.fleeDir ?? -Math.sign(pdx || 1)) * 1.7;
+      } else if ((e.chaseScale ?? 1) !== 1) {
+        e.vx *= e.chaseScale ?? 1;
+      }
+
+      // Burning foes that AREN'T fleeing flail erratically (panic); a directed
+      // flee (bolting for water) replaces the random thrash.
+      if (e.status.burning > 0 && e.grounded && !fleeingNow) e.vx += (Math.random() - 0.5) * 1.3;
 
       // ELECTROCUTED — any foe touching a live conductor is STUCK to it: the
       // current overrides its AI, so a slime can't leap away and a walker can't

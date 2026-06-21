@@ -552,6 +552,12 @@ export class WandSystem implements WandsApi {
     }
   }
 
+  streamFlameInfo(ctx: Ctx): { x: number; y: number; angle: number; reach: number; cone: number } | null {
+    if (this.flameBurst <= 0 || ctx.state.mode !== 'play' || ctx.player.dead) return null;
+    const tip = ctx.spells.wandTip();
+    return { x: tip.x, y: tip.y, angle: ctx.player.aimAngle, reach: FLAME_REACH, cone: FLAME_CONE };
+  }
+
   private sprayFlameAt(ctx: Ctx, x: number, y: number, angle: number, action: CastAction): void {
     this.sprayFlameParticles(
       ctx,
