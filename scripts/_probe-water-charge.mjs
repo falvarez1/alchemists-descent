@@ -67,7 +67,8 @@ const settle = (frames) => page.evaluate(({ frames, cx, surf }) => new Promise((
   let n = 0; const t = () => {
     ctx.player.x = cx; ctx.player.y = surf - 30; ctx.player.vx = ctx.player.vy = 0;
     ctx.camera.zoomLock = 1; ctx.camera.snapTo(cx, surf + 6);
-    (++n < frames ? requestAnimationFrame(t) : res());
+    if (++n < frames) requestAnimationFrame(t);
+    else res();
   }; requestAnimationFrame(t);
 }), { frames, cx: base.cx, surf: base.surf });
 await settle(40);

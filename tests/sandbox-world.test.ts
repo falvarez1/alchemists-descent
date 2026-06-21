@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Ctx, Projectile } from '@/core/types';
-import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
+import { ensureSandboxWorldDetached } from '@/core/runtimeState';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 

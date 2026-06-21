@@ -3,12 +3,24 @@
 // 0 particles (baseline), then with ~12k held alive, same scene/session.
 // Usage: node scripts/perf-particles-12k.mjs [count] [frames]
 import { chromium } from 'playwright-core';
-import { newBenchmarkPage, summarizeBuckets, addSampleBuckets, emptyBuckets, printBucketSummary, writeJson } from './perf-harness.mjs';
+import {
+  newBenchmarkPage,
+  summarizeBuckets,
+  addSampleBuckets,
+  emptyBuckets,
+  printBucketSummary,
+  writeJson,
+  evaluateSummaryThresholds,
+  parseThresholdEnv,
+  printThresholdFailures,
+} from './perf-harness.mjs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const COUNT = Number(process.argv[3] ?? 12000);
 const FRAMES = Number(process.argv[4] ?? 300);
+const SUMMARY_THRESHOLDS = parseThresholdEnv('PERF_PARTICLE_THRESHOLDS');
+const MAX_PARTICLE_DELTA_MS = parseThresholdEnv('PERF_PARTICLE_DELTA_MS');
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await newBenchmarkPage(browser, { diagnosticsLabel: 'perf-12k' });
@@ -61,8 +73,11 @@ const loaded = await record('LOADED (~12k particles)', ({ COUNT }) => {
 });
 
 console.log('\n=== PARTICLE DELTA (12k − baseline), per frame ===');
+const thresholdFailures = evaluateSummaryThresholds(loaded, SUMMARY_THRESHOLDS);
 for (const k of ['sim', 'entities', 'compose', 'gl', 'render', 'frame']) {
   const d = loaded[k].mean - baseline[k].mean;
+  const limit = MAX_PARTICLE_DELTA_MS?.[k];
+  if (Number.isFinite(limit) && d > limit) thresholdFailures.push(`${k}.deltaMean ${d.toFixed(3)}ms > ${limit}ms`);
   console.log(`${k.padEnd(10)} ${baseline[k].mean.toFixed(3)} -> ${loaded[k].mean.toFixed(3)}ms   Δ ${d >= 0 ? '+' : ''}${d.toFixed(3)}ms`);
 }
 writeJson('verify-out/perf-particles-12k.json', { createdAt: new Date().toISOString(), count: COUNT, frames: FRAMES, baseline, loaded });
@@ -70,3 +85,5 @@ writeJson('verify-out/perf-particles-12k.json', { createdAt: new Date().toISOStr
 await page.context().close();
 await browser.close();
 console.log('\nwrote verify-out/perf-particles-12k.json');
+printThresholdFailures('perf-particles-12k', thresholdFailures);
+if (thresholdFailures.length > 0) process.exitCode = 1;

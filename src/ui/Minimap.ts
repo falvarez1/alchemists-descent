@@ -6,7 +6,7 @@ import { COLOR_FN, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { PICKUP_COLOR, POTION_DEFS } from '@/core/pickupDefs';
 import { PopoverHost, type RectLike } from '@/ui/editor/PopoverHost';
 import { fillMaterialPopover } from '@/ui/materialInfo';
-import { resetHeldSpellInputs } from '@/game/transients';
+import { resetHeldSpellInputs } from '@/core/runtimeState';
 
 /** Fog color for unexplored map cells (#0a0a10). */
 const UNEXPLORED = packRGB(10, 10, 16);

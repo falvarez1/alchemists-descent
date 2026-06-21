@@ -20,6 +20,9 @@ import {
   emptyBuckets,
   newBenchmarkPage,
   printBucketSummary,
+  evaluateSummaryThresholds,
+  parseThresholdEnv,
+  printThresholdFailures,
   summarizeBuckets,
   welchT,
   writeJson,
@@ -30,6 +33,8 @@ const url = process.argv[3] ?? 'http://localhost:5173/';
 const RUNS = Number(process.argv[4] ?? 3);
 const FRAMES = Number(process.argv[5] ?? 700);
 const GPU_COMPOSE_MODE = process.env.PERF_GPU_COMPOSE ?? 'current';
+const SUMMARY_THRESHOLDS = parseThresholdEnv('PERF_SCENE_THRESHOLDS');
+const MAX_REGRESSION_PCT = Number(process.env.PERF_MAX_REGRESSION_PCT ?? NaN);
 if (!['0', '1', 'current'].includes(GPU_COMPOSE_MODE)) {
   throw new Error('PERF_GPU_COMPOSE must be 0, 1, or current');
 }
@@ -131,6 +136,7 @@ for (let run = 0; run < RUNS; run++) {
         ['spitter', -100], ['spitter', 100],
       ];
       for (const [kind, dx] of roster) ctx.enemyCtl.spawn(kind, px + dx, py + 10);
+      for (let i = 0; i < 24; i++) ctx.enemyCtl.spawn('weaver', px + 520 + i * 24, py - 20);
 
       // scripted explosions during recording keep particle pressure high
       const offsets = [-90, -45, 0, 45, 90];
@@ -261,6 +267,7 @@ writeJson(`verify-out/perf-${label}.json`, payload);
 writeJson(`verify-out/perf-${label}-${Date.now()}.json`, payload);
 
 printBucketSummary(label, summary, summaryKeys);
+const thresholdFailures = evaluateSummaryThresholds(summary, SUMMARY_THRESHOLDS);
 
 if (label !== 'before' && existsSync('verify-out/perf-before.json')) {
   const before = JSON.parse(readFileSync('verify-out/perf-before.json', 'utf8'));
@@ -270,6 +277,9 @@ if (label !== 'before' && existsSync('verify-out/perf-before.json')) {
     const b = all[k];
     if (a.length === 0 || b.length === 0) continue;
     const result = welchT(a, b);
+    if (Number.isFinite(MAX_REGRESSION_PCT) && result.pct > MAX_REGRESSION_PCT) {
+      thresholdFailures.push(`${k}.regression ${result.pct.toFixed(1)}% > ${MAX_REGRESSION_PCT}%`);
+    }
     console.log(
       `${k.padEnd(10)} ${result.control.mean.toFixed(3)} -> ${result.variant.mean.toFixed(3)}ms  (${
         result.pct >= 0 ? '+' : ''
@@ -277,3 +287,5 @@ if (label !== 'before' && existsSync('verify-out/perf-before.json')) {
     );
   }
 }
+printThresholdFailures('perf-scene', thresholdFailures);
+if (thresholdFailures.length > 0) process.exitCode = 1;

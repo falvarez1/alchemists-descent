@@ -5,8 +5,7 @@ import { bindRange, type Binding } from '@/ui/domBind';
 
 /** Initial GameStateData.brushSize (Game.ts) — the reset target for the brush slider. */
 const BRUSH_DEFAULT = 6;
-import { resetCombatTransients } from '@/game/transients';
-import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
+import { ensureSandboxWorldDetached, resetCombatTransients } from '@/core/runtimeState';
 
 // ===================== Adaptive UI Form Inspectors =====================
 

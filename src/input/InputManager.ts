@@ -4,8 +4,7 @@ import { VIEW_W, VIEW_H } from '@/config/constants';
 import { SPELL_ORDER } from '@/config/params';
 import { packRGB } from '@/sim/colors';
 import { spawnCircle, drawLine } from '@/sim/brush';
-import { cancelChargingBlackHole, resetHeldSpellInputs } from '@/game/transients';
-import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
+import { cancelChargingBlackHole, ensureSandboxWorldDetached, resetHeldSpellInputs } from '@/core/runtimeState';
 import { BUILDER_REQUEST_CLOSE_EVENT } from '@/app/builderCloseRequest';
 import type { BuilderCloseRequestDetail } from '@/app/builderCloseRequest';
 

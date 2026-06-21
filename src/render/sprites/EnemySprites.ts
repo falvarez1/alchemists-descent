@@ -119,6 +119,45 @@ function weaverFootTarget(
   }
   if (best) return best;
 
+  // Nothing near the DESIRED spot — sweep outward from the hip for the nearest
+  // grippable surface within the leg's real reach. This is what lets a leg on the
+  // open-air side of a wall (or under a ledge) reach BACK to the surface the body is
+  // gripping instead of flailing into the void, and it never draws a leg across a
+  // gap because the foothold it returns is genuinely within reach of the hip. It is
+  // orientation-independent (pure nearest-surface), so it can't feed back into the
+  // body's tilt. A truly airborne weaver finds no surface in reach and falls through
+  // to the dangle below.
+  const hxF = Math.floor(hipX);
+  const hyF = Math.floor(hipY);
+  for (let r = 5; r <= maxReach; r += 3) {
+    let ringBest: WeaverFootTarget | null = null;
+    let ringBestD = Infinity;
+    const consider = (
+      fx: number,
+      fy: number,
+      surface: NonNullable<WeaverLegState['surface']>,
+    ): void => {
+      const d = Math.hypot(fx - hipX, fy - hipY);
+      if (d > maxReach || d >= ringBestD) return;
+      ringBestD = d;
+      ringBest = { x: fx, y: fy, planted: true, strain: clamp(d / maxReach, 0, 1), surface };
+    };
+    const steps = Math.max(10, Math.round(r * 1.1));
+    for (let a = 0; a < steps; a++) {
+      const ang = (a / steps) * Math.PI * 2;
+      const xx = hxF + Math.round(Math.cos(ang) * r);
+      const yy = hyF + Math.round(Math.sin(ang) * r);
+      if (xx < 1 || xx >= width - 1 || yy < 1 || yy >= height - 1) continue;
+      const t = w.types[xx + yy * width];
+      if (!blocksEntity(t) && !isSoftGrowth(t)) continue;
+      if (weaverCanFootOccupy(ctx, xx, yy - 1)) consider(xx + 0.5, yy - 0.5, 'floor');
+      if (weaverCanFootOccupy(ctx, xx - 1, yy)) consider(xx - 0.5, yy + 0.15, 'rightWall');
+      if (weaverCanFootOccupy(ctx, xx + 1, yy)) consider(xx + 1.5, yy + 0.15, 'leftWall');
+      if (weaverCanFootOccupy(ctx, xx, yy + 1)) consider(xx + 0.5, yy + 1.5, 'ceiling');
+    }
+    if (ringBest) return ringBest;
+  }
+
   // No purchase anywhere in reach. Two different reads depending on the body:
   // a LIFTED/held weaver lets the leg HANG DOWN under its own weight (so picking
   // it up by the body dangles the legs); a GROUNDED one pulls the foot UP toward
@@ -663,10 +702,50 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const PLANT_DOT: RGB = [0.32, 0.62, 0.26];
     const attackLeg = face >= 0 ? 4 : 0;
     let plantedLegs = 0;
-    let leftPlants = 0;
-    let rightPlants = 0;
     let plantLoadSum = 0;
     let strainSum = 0;
+    // --- BODY ORIENTATION: the whole creature rotates so its legs point at whatever
+    // surface they grip. `orient` is last frame's smoothed angle (0 floor, +π/2 wall
+    // on its right, −π/2 wall on its left, π ceiling); we place the hips & draw the
+    // body through it this frame, then re-derive the target from THIS frame's planted
+    // feet below. Rotation is rigid about the body centre (WV_PIVOT above the foot
+    // anchor), so on flat ground (orient 0) every offset is identity — zero change.
+    const orient = e.weaverOrient ?? 0;
+    const cosO = Math.cos(orient);
+    const sinO = Math.sin(orient);
+    const WV_PIVOT = 9;
+    // body-local (dx right, dyUp up; origin at the foot anchor) -> P()'s local frame,
+    // rotated about the body centre.
+    const wvOff = (dx: number, dyUp: number): [number, number] => {
+      const ly = dyUp - WV_PIVOT;
+      return [dx * cosO - ly * sinO, WV_PIVOT + (dx * sinO + ly * cosO)];
+    };
+    const PR = (dx: number, dyUp: number, r: number, g: number, b: number): void => {
+      const [lx, lyUp] = wvOff(dx, dyUp);
+      P(Math.round(lx), Math.round(lyUp), r, g, b);
+    };
+    const PER = (dx: number, dyUp: number, r: number, g: number, b: number): void => {
+      const [lx, lyUp] = wvOff(dx, dyUp);
+      PE(Math.round(lx), Math.round(lyUp), r, g, b);
+    };
+    // world position of a body-local point (leg hips, head/spit origin).
+    const wvWorld = (dx: number, dyUp: number): [number, number] => {
+      const [lx, lyUp] = wvOff(dx, dyUp);
+      return [e.x + lx, e.y - lyUp];
+    };
+    const bodyCX = e.x;
+    const bodyCY = e.y - WV_PIVOT;
+    // Weighted moments of the planted-foot cloud (world coords). Their covariance
+    // gives the line the feet lie along (PCA) — the surface — whose normal is the
+    // body's "up". This is far steadier than the mean foot direction: the feet splay
+    // wide but sit only ~9 below the body, so a mean-direction normal swings on every
+    // stride, whereas the line-fit normal stays put as long as the feet are coplanar.
+    let fW = 0; // Σ weight
+    let fSx = 0; // Σ w·x
+    let fSy = 0; // Σ w·y
+    let fSxx = 0; // Σ w·x²
+    let fSyy = 0; // Σ w·y²
+    let fSxy = 0; // Σ w·x·y
     for (let i = 0; i < WEAVER_REST.length; i++) {
       const rest = WEAVER_REST[i];
       const leg = e.weaverLegs[i] as WeaverLegState;
@@ -713,16 +792,12 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
         leg.smoothTy = lerp(leg.smoothTy ?? target.y, target.y, alpha);
         return { ...target, x: leg.smoothTx, y: leg.smoothTy };
       };
-      const hipX =
-        e.x +
-        rest.hipX +
-        Math.round(((e.weaverTilt ?? 0) * (rest.hipY - 12)) * 0.15);
-      const hipY =
-        e.y -
-        rest.hipY -
-        bodyLift +
-        Math.sin(frameCount * 0.03 + i) * 0.5 +
+      const hipUp =
+        rest.hipY +
+        bodyLift -
+        Math.sin(frameCount * 0.03 + i) * 0.5 -
         (unstable ? Math.sin(frameCount * 0.37 + i) * 1.0 : 0);
+      const [hipX, hipY] = wvWorld(rest.hipX, hipUp);
       if (asleep) {
         tx = e.x + rest.footX * 0.58;
         const target = dampTarget(weaverFootTarget(ctx, tx, e.y - 2 + Math.abs(rest.side) * 2, hipX, hipY, rest.side, false), 0.05);
@@ -879,11 +954,20 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       if (leg.planted) {
         const plantLoad = clamp(1 - Math.max(0, (leg.strain ?? 0) - 0.84) / 0.14, 0, 1);
         plantLoadSum += plantLoad;
-        if (plantLoad > 0.25) {
-          plantedLegs++;
-          if (rest.side < 0) leftPlants++;
-          else rightPlants++;
-        }
+        if (plantLoad > 0.25) plantedLegs++;
+        // Orientation: feed this contact point into the foot-cloud moments. EVERY
+        // planted foot votes, not just well-loaded ones — a wall-climbing leg is
+        // stretched (low plantLoad) yet still marks where the surface lies. Floored
+        // weight keeps stretched feet meaningful.
+        const gw = Math.max(0.2, plantLoad);
+        const fx = leg.x;
+        const fy = leg.y;
+        fW += gw;
+        fSx += gw * fx;
+        fSy += gw * fy;
+        fSxx += gw * fx * fx;
+        fSyy += gw * fy * fy;
+        fSxy += gw * fx * fy;
       }
       strainSum += leg.strain ?? 0;
       // --- Real length-preserving IK: two joints (femur->patella->tarsus) of FIXED
@@ -968,12 +1052,49 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     e.weaverVisualPlanted = plantedLegs;
     const avgStrain = strainSum / WEAVER_REST.length;
     const fallPose = clamp(Math.max(1 - plantSupport, (e.weaverFallT ?? 0) / 45), 0, 1);
-    const targetTilt = clamp(
-      (rightPlants - leftPlants) * 0.22 + Math.sin(frameCount * 0.11 + e.bobPhase) * fallPose * 0.65,
-      -1.25,
-      1.25,
-    );
-    e.weaverTilt = (e.weaverTilt ?? 0) * 0.82 + targetTilt * 0.18;
+    // Re-derive the body orientation from where the feet actually landed. θ aims the
+    // legs at the gripped surface: 0 floor, +π/2 wall on its right, −π/2 wall on its
+    // left, π ceiling — blending smoothly through corners.
+    let targetOrient = 0;
+    const climbDir = e.weaverClimbDir ?? 0;
+    if ((e.weaverClimbT ?? 0) > 0 && climbDir !== 0) {
+      // Actively scaling a wall: the AI knows which side the face is on, so square the
+      // body onto it (+x wall → +π/2, −x wall → −π/2). Authoritative over the leg
+      // vote here, because a sheer-face scramble keeps few feet cleanly planted.
+      targetOrient = (climbDir * Math.PI) / 2;
+    } else if (fW > 0.001) {
+      const mx = fSx / fW;
+      const my = fSy / fW;
+      const vxx = fSxx / fW - mx * mx; // variance along x
+      const vyy = fSyy / fW - my * my; // variance along y
+      const vxy = fSxy / fW - mx * my; // covariance
+      const spread = vxx + vyy;
+      if (spread < 1.2) {
+        // feet bunched into a point — can't fit a line; fall back to the centre-to-
+        // mean direction (still tells floor from ceiling) and let smoothing carry it.
+        targetOrient = Math.atan2(mx - bodyCX, my - bodyCY);
+      } else {
+        // principal axis of the foot cloud = the surface tangent; its perpendicular
+        // is the normal. Sign it to point from the surface toward the body (open air).
+        const tang = 0.5 * Math.atan2(2 * vxy, vxx - vyy);
+        let nx = -Math.sin(tang);
+        let ny = Math.cos(tang);
+        if ((bodyCX - mx) * nx + (bodyCY - my) * ny < 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+        // g = into the surface = −normal; θ = atan2(g.x, g.y) aims legs at it.
+        targetOrient = Math.atan2(-nx, -ny);
+      }
+    }
+    // a touch of extra lean from a footing wobble so a scrambling stance still reads.
+    targetOrient += Math.sin(frameCount * 0.11 + e.bobPhase) * fallPose * 0.18;
+    let dOrient = targetOrient - orient;
+    while (dOrient > Math.PI) dOrient -= Math.PI * 2;
+    while (dOrient < -Math.PI) dOrient += Math.PI * 2;
+    // ease in; quicker while actively moving so transitions over corners feel alive.
+    e.weaverOrient = orient + dOrient * (asleep ? 0.05 : moving ? 0.2 : 0.12);
+    e.weaverTilt = e.weaverOrient; // kept for any external readers; now the true angle
 
     const BODY: RGB = asleep
       ? [0.1, 0.08, 0.09]
@@ -992,8 +1113,9 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const bodyJitter = cranky || unstable ? Math.round(Math.sin(frameCount * 0.45 + e.bobPhase) * pulse) : 0;
     const sag = Math.round(fallPose * 5 + avgStrain * 1.4);
     const bodyDrawLift = Math.round(bodyLift * (0.25 + plantSupport * 0.75) - fallPose * 2.5);
-    const tilt = e.weaverTilt ?? 0;
-    const tiltShift = (dy: number): number => bodyJitter + Math.round((dy - 11) * tilt * 0.35);
+    // body lean is now a true rotation (e.weaverOrient, applied by PR/PER/wvWorld);
+    // tiltShift only carries the agitated jitter shake so the silhouette still buzzes.
+    const tiltShift = (_dy: number): number => bodyJitter;
     // PREDATORY STALK coil/lunge (driven by the AI's stalk wave): the cephalothorax
     // eases BACK to gather then drives FORWARD on the surge, dipping into the coil —
     // so the body visibly winds and springs with the paced approach.
@@ -1005,12 +1127,12 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const gaitSway = moving ? Math.round(Math.sin(e.stride * 0.5 + e.bobPhase + 1.2) * (cranky ? 1.5 : 0.95)) : 0;
     const abX = Math.round(stalkX * 0.3) + gaitSway;
     const abY = Math.round(stalkY * 0.5);
-    // abdomen
+    // abdomen — drawn through PR so the whole body rotates onto the gripped surface.
     for (let dy = 4; dy <= 13; dy++) {
       const t = (dy - 8.5) / 5.8;
       const w2 = Math.max(2, Math.round(10 * Math.sqrt(Math.max(0, 1 - t * t))));
       for (let dx = -w2; dx <= w2; dx++) {
-        P(
+        PR(
           dx - face * 3 + tiltShift(dy) + abX,
           dy + bellyBob + crouch + bodyDrawLift - sag - abY,
           Math.abs(dx) >= w2 ? BODY_D[0] : BODY[0],
@@ -1023,7 +1145,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     for (let dy = 9; dy <= 17; dy++) {
       const w2 = dy >= 15 ? 5 : 7;
       for (let dx = -w2; dx <= w2; dx++) {
-        P(dx + face * 3 + tiltShift(dy) + stalkX, dy + crouch + bodyDrawLift - sag - stalkY, ...(Math.abs(dx) >= w2 ? BODY_D : BODY_L));
+        PR(dx + face * 3 + tiltShift(dy) + stalkX, dy + crouch + bodyDrawLift - sag - stalkY, ...(Math.abs(dx) >= w2 ? BODY_D : BODY_L));
       }
     }
     // --- FREE HEAD: a cephalon slung ahead of the thorax on a short flexible neck,
@@ -1034,25 +1156,27 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const headCY = neckTopY + headDY;
     for (let n = 1; n <= 2; n++) {
       const f = n / 3;
-      const nx = Math.round(neckBaseX + (headCX - neckBaseX) * f);
-      const ny = Math.round(neckTopY + (headCY - neckTopY) * f);
-      P(nx, ny, ...BODY);
-      P(nx, ny - 1, ...BODY_D);
+      const nx = neckBaseX + (headCX - neckBaseX) * f;
+      const ny = neckTopY + (headCY - neckTopY) * f;
+      PR(nx, ny, ...BODY);
+      PR(nx, ny - 1, ...BODY_D);
     }
     for (let hy = -2; hy <= 2; hy++) {
       const hw = Math.abs(hy) >= 2 ? 2 : 3;
       for (let hx = -hw; hx <= hw; hx++) {
-        P(headCX + hx, headCY + hy, ...(Math.abs(hx) >= hw || Math.abs(hy) >= 2 ? BODY_D : BODY_L));
+        PR(headCX + hx, headCY + hy, ...(Math.abs(hx) >= hw || Math.abs(hy) >= 2 ? BODY_D : BODY_L));
       }
     }
     const eyePulse = asleep ? 0.1 : 0.55 + Math.sin(frameCount * 0.11 + e.bobPhase) * 0.25 + (poised ? 0.35 : 0) + (cranky ? 0.28 : 0) + pulse * 0.45;
     // a faint independent eye dart while unaware — the gaze flicks even when the head is still
     const dart = aware ? 0 : Math.round(Math.sin(frameCount * 0.08 + e.bobPhase * 2) * 0.7);
-    PE(headCX + face * 2 + dart, headCY - 1, 0.18 * eyePulse * boost, 0.95 * eyePulse * boost, 0.32 * eyePulse * boost);
-    PE(headCX + face * 1 + dart, headCY, 0.14 * eyePulse * boost, 0.72 * eyePulse * boost, 0.25 * eyePulse * boost);
+    PER(headCX + face * 2 + dart, headCY - 1, 0.18 * eyePulse * boost, 0.95 * eyePulse * boost, 0.32 * eyePulse * boost);
+    PER(headCX + face * 1 + dart, headCY, 0.14 * eyePulse * boost, 0.72 * eyePulse * boost, 0.25 * eyePulse * boost);
     if (weaving) {
       const spit = 0.5 + Math.sin(frameCount * 0.6) * 0.3;
-      lineW(e.x + headCX + face * 2, e.y - headCY - 1, e.x + headCX + face * 9, e.y - headCY - 3, [0.18 * spit, 0.9 * spit, 0.24 * spit], true);
+      const [sx0, sy0] = wvWorld(headCX + face * 2, headCY + 1);
+      const [sx1, sy1] = wvWorld(headCX + face * 9, headCY + 3);
+      lineW(sx0, sy0, sx1, sy1, [0.18 * spit, 0.9 * spit, 0.24 * spit], true);
     }
   } else if (e.kind === 'golem') {
     // --- Heavy stride driven by real displacement, arms, breath, pulsing core ---

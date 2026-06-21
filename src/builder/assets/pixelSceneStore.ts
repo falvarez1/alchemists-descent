@@ -1,4 +1,4 @@
-import type { PixelSceneDef } from '@/world/virtual/types';
+import type { PixelSceneDef } from '@/authoring/virtualWorld';
 import { serializePixelScene, parsePixelScene, type PixelSceneJson } from '@/world/virtual/pixelSceneJson';
 
 /**

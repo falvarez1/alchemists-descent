@@ -1173,6 +1173,7 @@ export class Enemies implements EnemyControlApi {
       if ((e.cranky ?? 0) > 0) e.cranky = (e.cranky ?? 0) - 1;
       if ((e.webPulse ?? 0) > 0) e.webPulse = (e.webPulse ?? 0) - 1;
       if ((e.weaverFeedT ?? 0) > 0) e.weaverFeedT = (e.weaverFeedT ?? 0) - 1;
+      if ((e.weaverCrest ?? 0) > 0) e.weaverCrest = (e.weaverCrest ?? 0) - 1;
       e.timer++;
       if (e.attackCd > 0 && !debugEnemyAttacksSuppressed) e.attackCd--;
       this.enemyEnvironmentDamage(e, i);
@@ -1542,7 +1543,9 @@ export class Enemies implements EnemyControlApi {
         // both crawled the chase to a halt AND shoved the Weaver back off any wall it
         // approached to climb. Below the crisis line the unstable block already owns
         // recovery; above it, just let the legs walk.
-        if (anchorCount >= 1 && unsupported && Math.abs(balanceDx) > 5) {
+        // ...and never while scaling/cresting a wall (weaverCrest>0): the centroid lags
+        // toward the face it just left and would haul the body back off the climb.
+        if (anchorCount >= 1 && unsupported && Math.abs(balanceDx) > 5 && (e.weaverCrest ?? 0) === 0) {
           e.vx += clamp(balanceDx * 0.025, -0.24, 0.24);
         }
 
@@ -1570,16 +1573,26 @@ export class Enemies implements EnemyControlApi {
             }
           }
           const climbedT = e.weaverClimbT ?? 0;
-          if (targetAbove && bestH > 7) {
+          // A wall taller than a step-over standing toward the quarry is a BARRIER
+          // between them — scale it whether the quarry is overhead OR level/below on
+          // the far side (climb up, crest, descend). Engaging only on "quarry above"
+          // left it pinned against a wall when the alchemist stood across a pillar at
+          // the same height — exactly the stuck-walking-into-the-wall the report shows.
+          const barrierAhead = bestH > 7 && (targetAbove || Math.abs(pdx) > def.halfW + 2);
+          if (barrierAhead) {
             climbing = true;
             climbDir = bestDir;
             climbWall = bestH;
-          } else if (climbedT > 0 && climbedT < 600 && targetAbove && !e.grounded && climbDir !== 0) {
-            // latched mid-climb: stay on the wall through the crest until we land on
-            // a ledge (or the quarry drops below us) — never release into a fall at
-            // the very lip. The 600-frame cap is a stuck-on-a-sheer-face backstop.
-            climbing = true;
-            climbWall = this.weaverWallAhead(e, def, climbDir);
+          } else if (climbedT > 0 && climbedT < 600 && !e.grounded && climbDir !== 0) {
+            // latched mid-climb: stay on the wall through the crest until we mount a
+            // ledge (grounded) or the wall genuinely ends. Crucially this no longer
+            // requires the quarry to stay overhead — once the spider rises above a
+            // level target it must keep climbing to crest, not release into a fall.
+            const stillWall = this.weaverWallAhead(e, def, climbDir);
+            if (stillWall > 3 || climbedT < 50) {
+              climbing = true;
+              climbWall = stillWall;
+            }
           }
         }
         if (climbing) {
@@ -1597,15 +1610,24 @@ export class Enemies implements EnemyControlApi {
           e.weaverClimbDir = climbDir;
           e.weaverClimbT = (e.weaverClimbT ?? 0) + 1;
           e.weaverFallT = 0; // it is holding the wall, not falling
+          // refresh the crest window so that, the moment it mounts the top, the chase
+          // can still drag it ACROSS and off the far lip before footing-recovery would
+          // otherwise strand it on a too-narrow crest.
+          e.weaverCrest = 26;
         } else {
           e.weaverClimbDir = 0;
           e.weaverClimbT = 0;
         }
+        // Cresting: just came off a climb and is scrabbling over the top. Footing
+        // reads unstable here (legs splayed across the lip), but recovery must NOT own
+        // movement — the chase has to carry it over and down toward the quarry.
+        const cresting = !climbing && (e.weaverCrest ?? 0) > 0;
 
-        if (unstable && !climbing) {
+        if (unstable && !climbing && !cresting) {
           // Only when truly STRANDED (nothing load-bearing under it) does it lunge
           // for a far anchor to bridge to; partial footing is handled by the
           // continuous balance above, which pulls it back over solid ground.
+          // (Suppressed while cresting — there the chase, not recovery, owns motion.)
           const hasFooting = anchorCount >= 1 || physicalSupport > 0.1;
           const anchor = this.findWeaverAnchor(e);
           if (anchor) {
@@ -1704,9 +1726,11 @@ export class Enemies implements EnemyControlApi {
             const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
             if (Math.abs(wp[0] - e.x) < 12) e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
             else if (e.timer % 3 === 0) e.vx += Math.sign(wp[0] - e.x) * 0.07 * confidence;
-          } else if (targetAlive && !unstable && !climbing && (cranky || e.timer % 2 === 0)) {
+          } else if (targetAlive && !climbing && (!unstable || cresting) && (cranky || e.timer % 2 === 0)) {
             // Chase pressure yields to footing: while unstable, recovery owns
-            // horizontal intent. It never strides out over a drop it can't step down
+            // horizontal intent — EXCEPT while cresting, where the chase must carry the
+            // body over a narrow top and down the far side toward the quarry.
+            // It never strides out over a drop it can't step down
             // into — it stops at the lip and reaches instead of walking into the void.
             const tooClose = pDist < 46;
             let dir = tooClose ? -Math.sign(pdx || 1) : Math.sign(pdx || 1);
@@ -1719,7 +1743,13 @@ export class Enemies implements EnemyControlApi {
             if (dir === 0 && pdy < -18) {
               dir = this.weaverSeekWall(e, def, 70, Math.sign(pdx || 1));
             }
-            if (dir !== 0 && this.dropAhead(e, def, dir)) dir = 0; // edge wariness
+            // Edge-wary so it won't stride into a void it gains nothing from — but a
+            // spider WILL go over the lip to chase prey that's down below in that
+            // direction (it crests an obstacle then drops/climbs down the far face).
+            // Without this it crested a barrier and then froze at the top edge,
+            // refusing to descend toward a quarry waiting at the bottom.
+            const chasingDownOverEdge = pdy > 10 && Math.sign(pdx || 1) === dir;
+            if (dir !== 0 && !chasingDownOverEdge && this.dropAhead(e, def, dir)) dir = 0;
             // PREDATORY STALK: at a stand-off it hunts in deliberate pulses — gather
             // (coil, ease the pace) then surge forward — instead of one flat creep. A
             // cranky Weaver loses the patience and rushes flat-out. weaverStalk carries
@@ -1728,6 +1758,9 @@ export class Enemies implements EnemyControlApi {
             const surgeWave = Math.sin(e.timer * 0.06);
             e.weaverStalk = (e.weaverStalk ?? 0) + ((stalking ? surgeWave : 0) - (e.weaverStalk ?? 0)) * 0.2;
             e.vx += dir * 0.06 * confidence * (stalking ? 1 + 0.75 * surgeWave : 1);
+            // a firm extra shove while cresting, to break free of a narrow top instead
+            // of teetering on it, and commit to the descent toward the quarry.
+            if (cresting && dir !== 0) e.vx += dir * 0.16;
           }
 
           if (canAttackTarget && e.attackCd === 0 && e.alerted && !unstable) {
@@ -1768,11 +1801,14 @@ export class Enemies implements EnemyControlApi {
           (recovering ? 0.5 : 0) -
           panic * 0.16;
         if (climbing) {
-          // Haul up the face while the quarry is above; once level with it (or once
-          // the foot crests above the wall top) hold height and let the lean carry
-          // the body over the lip — the integrator's 6-cell step-up does the mount.
+          // Haul up the face while there's still wall beside the body; once the foot
+          // crests above the wall top (climbWall falls away) hold height and let the
+          // lean carry the body over the lip — the integrator's 6-cell step-up mounts.
+          // Ascending keys off the WALL, not the quarry's height: a giant spider scales
+          // a barrier to reach prey that's level with it on the FAR side (climb up,
+          // crest, come down the other side), not only one perched directly overhead.
           const climbSpeed = cranky ? 1.4 : 1.1;
-          const ascending = pdy < -6 && climbWall > 3; // wall still beside the foot & prey above
+          const ascending = climbWall > 3; // wall still beside the foot to grip and rise
           const vyTarget = ascending ? -climbSpeed : 0;
           e.vy += (vyTarget - e.vy) * (vyTarget < 0 ? 0.6 : 0.4);
           e.vy = clamp(e.vy, -climbSpeed, 0.6);

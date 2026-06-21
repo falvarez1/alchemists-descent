@@ -8,7 +8,7 @@ import { bindSelect } from '@/ui/domBind';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
-import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
+import { ensureSandboxWorldDetached } from '@/core/runtimeState';
 
 export type SelectionChangedFn = (id: string | number, mode: 'element' | 'spell') => void;
 

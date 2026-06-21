@@ -11,7 +11,7 @@ import type { Ctx, EnemyKind, PerkId, PlayerControlApi, PlayerState, RigidBody }
 import { PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
 import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { makePickup } from '@/core/pickupDefs';
-import { resetCombatTransients } from '@/game/transients';
+import { resetCombatTransients } from '@/core/runtimeState';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
 
@@ -520,8 +520,8 @@ export class PlayerControl implements PlayerControlApi {
    *  on diveT > 0, so a plain fall onto a foe never triggers it. */
   private tryStompEnemy(ctx: Ctx): void {
     const player = ctx.player;
-    for (const e of ctx.enemies.slice()) {
-      if (!ctx.enemies.includes(e)) continue;
+    for (let i = ctx.enemies.length - 1; i >= 0; i--) {
+      const e = ctx.enemies[i];
       if (STOMP_IMMUNE.has(e.kind)) continue;
       const def = ctx.enemyCtl.defs[e.kind];
       if (Math.abs(player.x - e.x) > PLAYER_HALF_W + def.halfW) continue; // no horizontal overlap
@@ -673,8 +673,8 @@ export class PlayerControl implements PlayerControlApi {
     }
 
     // Enemies in the cone: knockback + contact damage.
-    for (const e of ctx.enemies.slice()) {
-      if (!ctx.enemies.includes(e)) continue;
+    for (let i = ctx.enemies.length - 1; i >= 0; i--) {
+      const e = ctx.enemies[i];
       const dx = e.x - ox;
       const dy = e.y - 5 - oy;
       const d = Math.hypot(dx, dy) || 1;
@@ -2299,8 +2299,8 @@ export class PlayerControl implements PlayerControlApi {
         }
       }
       // grounded foes near the impact get knocked off their feet
-      for (const e of ctx.enemies.slice()) {
-        if (!ctx.enemies.includes(e)) continue;
+      for (let i = ctx.enemies.length - 1; i >= 0; i--) {
+        const e = ctx.enemies[i];
         if (Math.abs(e.x - player.x) < 26 && Math.abs(e.y - player.y) < 10) {
           ctx.enemyCtl.damage(e, 1, Math.sign(e.x - player.x || 1) * 1.6, -1.8);
         }

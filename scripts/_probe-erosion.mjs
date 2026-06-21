@@ -62,7 +62,8 @@ const tick = (frames, charge) => page.evaluate(({ frames, charge, b }) => new Pr
       }
     }
     ctx.camera.zoomLock = 1; ctx.camera.snapTo((b.poolX0 + b.wallX1) / 2, (b.top + b.bot) / 2);
-    (++n < frames ? requestAnimationFrame(t) : res());
+    if (++n < frames) requestAnimationFrame(t);
+    else res();
   }; requestAnimationFrame(t);
 }), { frames, charge, b: base });
 

@@ -565,12 +565,27 @@ export class FrameComposer implements PixelSurface {
     this.drawVineStrands(ctx, 'foreground');
 
     // Entities on top
-    for (const e of ctx.enemies) this.drawEnemy(this, this.light, ctx, e);
+    for (const e of ctx.enemies) {
+      if (this.enemyInRenderView(ctx, e)) this.drawEnemy(this, this.light, ctx, e);
+    }
     // Excavation beam: white-hot core, tight amber sheath, light cast onto nearby rock
     drawDigBeam(this, ctx);
 
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
     this.drawPlayerRagdoll(ctx);
+  }
+
+  private enemyInRenderView(ctx: Ctx, e: Enemy): boolean {
+    const def = ctx.enemyCtl.defs[e.kind];
+    const pad = e.kind === 'weaver' ? 120 : e.kind === 'leviathan' ? 96 : 48;
+    const halfW = (def?.halfW ?? 12) + pad;
+    const height = (def?.h ?? 24) + pad;
+    return (
+      e.x + halfW >= this.renderCamX &&
+      e.x - halfW <= this.renderCamX + VIEW_W &&
+      e.y + pad >= this.renderCamY &&
+      e.y - height <= this.renderCamY + VIEW_H
+    );
   }
 
   /** Rigid bodies: rotated boxes and circles, flat-shaded with a darker rim for

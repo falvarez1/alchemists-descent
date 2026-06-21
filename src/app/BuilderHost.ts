@@ -58,6 +58,7 @@ export interface BuilderHost {
 class RuntimeBuilderHost implements BuilderHost {
   private nextPauseClaimId = 1;
   private readonly activePauseClaims = new Set<number>();
+  private pauseOverride: boolean | null = null;
 
   constructor(private readonly ctx: Ctx) {}
 
@@ -95,7 +96,7 @@ class RuntimeBuilderHost implements BuilderHost {
 
   claimPause(reason: BuilderPauseReason, options: BuilderPauseClaimOptions = {}): BuilderPauseClaim {
     const alreadyPaused = this.ctx.state.paused;
-    const held = !alreadyPaused || options.inheritExisting === true;
+    const held = !alreadyPaused || this.activePauseClaims.size > 0 || options.inheritExisting === true;
     const claim: BuilderPauseClaim = {
       id: this.nextPauseClaimId++,
       reason,
@@ -103,17 +104,24 @@ class RuntimeBuilderHost implements BuilderHost {
     };
     if (!held) return claim;
     this.activePauseClaims.add(claim.id);
-    this.ctx.state.paused = true;
+    this.pauseOverride = null;
+    this.syncPauseState();
     return claim;
   }
 
   releasePause(claim: BuilderPauseClaim | null): void {
     if (!claim?.held || !this.activePauseClaims.delete(claim.id)) return;
-    this.ctx.state.paused = false;
+    this.syncPauseState();
   }
 
-  setPaused(paused: boolean, _reason: BuilderPauseReason): void {
-    this.ctx.state.paused = paused;
+  setPaused(paused: boolean, reason: BuilderPauseReason): void {
+    if (reason === 'settle-preview' && paused) this.pauseOverride = null;
+    else this.pauseOverride = paused;
+    this.syncPauseState();
+  }
+
+  private syncPauseState(): void {
+    this.ctx.state.paused = this.pauseOverride ?? this.activePauseClaims.size > 0;
   }
 
   snapCameraTo(x: number, y: number): void {

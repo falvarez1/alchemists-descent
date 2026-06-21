@@ -11,7 +11,7 @@ import {
   spawnPrefabEnemy,
 } from '@/game/instantiate';
 import { getStoredSprite } from '@/builder/assets/spritelib';
-import { cancelChargingBlackHole, resetCombatTransients, resetHeldSpellInputs } from '@/game/transients';
+import { cancelChargingBlackHole, resetCombatTransients, resetHeldSpellInputs } from '@/core/runtimeState';
 import type { CellSetter } from '@/builder/stamps';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { createDefaultStatus } from '@/entities/status';

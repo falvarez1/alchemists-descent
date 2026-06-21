@@ -166,6 +166,54 @@ export function printBucketSummary(label, summary, keys = Object.keys(summary)) 
   }
 }
 
+export function parseThresholdEnv(name) {
+  const raw = process.env[name];
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`${name} must be valid JSON: ${String(error)}`);
+  }
+}
+
+export function evaluateSummaryThresholds(summary, thresholds) {
+  if (!thresholds) return [];
+  const failures = [];
+  for (const [bucket, config] of Object.entries(thresholds)) {
+    const stats = summary[bucket];
+    if (!stats) {
+      failures.push(`${bucket}: missing summary bucket`);
+      continue;
+    }
+    if (typeof config === 'number') {
+      if (stats.p95 > config) failures.push(`${bucket}.p95 ${stats.p95.toFixed(3)} > ${config}`);
+      continue;
+    }
+    if (!config || typeof config !== 'object') {
+      failures.push(`${bucket}: threshold must be a number or stat object`);
+      continue;
+    }
+    for (const [stat, limit] of Object.entries(config)) {
+      if (!Number.isFinite(limit)) {
+        failures.push(`${bucket}.${stat}: threshold must be finite`);
+        continue;
+      }
+      if (!Number.isFinite(stats[stat])) {
+        failures.push(`${bucket}.${stat}: missing summary stat`);
+        continue;
+      }
+      if (stats[stat] > limit) failures.push(`${bucket}.${stat} ${stats[stat].toFixed(3)} > ${limit}`);
+    }
+  }
+  return failures;
+}
+
+export function printThresholdFailures(label, failures) {
+  if (failures.length === 0) return;
+  console.error(`\n=== ${label} THRESHOLD FAILURES ===`);
+  for (const failure of failures) console.error(`  ${failure}`);
+}
+
 export function printBucketComparison(controlLabel, variantLabel, controlRaw, variantRaw, keys) {
   console.log(`\n=== SAME-SESSION A/B: ${controlLabel} -> ${variantLabel} ===`);
   console.log('bucket       before     after      delta       pct       t       p');

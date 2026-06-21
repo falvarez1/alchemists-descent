@@ -3,7 +3,7 @@ import { Cell } from '@/sim/CellType';
 import { getDefaultPixelSceneLibrary } from '@/world/virtual/defaults';
 import { serializePixelScene, parsePixelScene } from '@/world/virtual/pixelSceneJson';
 import { validatePixelScene } from '@/world/virtual/pixelSceneValidate';
-import { listUserScenes, saveUserScene, deleteUserScene, userSceneExists } from '@/world/virtual/pixelSceneStore';
+import { listUserScenes, saveUserScene, deleteUserScene, userSceneExists } from '@/builder/assets/pixelSceneStore';
 import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
 import { PIXEL_SCENE_BIOME_FILL, type PixelSceneDef } from '@/world/virtual/types';
 

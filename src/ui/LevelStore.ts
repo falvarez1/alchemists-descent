@@ -3,8 +3,7 @@ import { rleDecodeExact, rleEncode } from '@/core/rle';
 import { CELL_COUNT, Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { appDialog } from '@/ui/AppDialog';
-import { resetCombatTransients } from '@/game/transients';
-import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
+import { ensureSandboxWorldDetached, resetCombatTransients } from '@/core/runtimeState';
 
 /**
  * The Level Library (build mode): save the painted world to localStorage,

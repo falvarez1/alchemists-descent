@@ -9,7 +9,7 @@ import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
 import { emissiveGlowRgb } from '@/world/virtual/emissive';
 import { serializePixelScene, parsePixelScene, type PixelSceneJson } from '@/world/virtual/pixelSceneJson';
 import { validatePixelScene } from '@/world/virtual/pixelSceneValidate';
-import { listUserScenes, saveUserScene, deleteUserScene, userSceneExists } from '@/world/virtual/pixelSceneStore';
+import { listUserScenes, saveUserScene, deleteUserScene, userSceneExists } from '@/builder/assets/pixelSceneStore';
 import { VIRTUAL_SCENE_KINDS } from '@/world/virtual/defaults';
 import { PIXEL_SCENE_BIOME_FILL, type PixelSceneDef, type VirtualChunk, type VirtualScenePlacementInstance, type VirtualSceneKind } from '@/world/virtual/types';
 import type { BiomeId } from '@/core/types';

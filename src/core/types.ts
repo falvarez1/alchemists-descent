@@ -1,7 +1,7 @@
 import type { World } from '@/sim/World';
 import type { EventBus } from '@/core/events';
 import type { Cell } from '@/sim/CellType';
-import type { VirtualWorldDef } from '@/world/virtual/types';
+import type { VirtualWorldDef } from '@/authoring/virtualWorld';
 
 /* ============================================================
  * Entity data
@@ -345,6 +345,10 @@ export interface Enemy {
   weaverClimbDir?: number;
   /** Weaver: frames spent on the current wall climb (latches the mount over the lip). */
   weaverClimbT?: number;
+  /** Weaver: short window after a climb where the chase drives it ACROSS/OFF a crest
+   *  even when its footing reads unstable — so it flows over a thin barrier and down
+   *  the far side toward prey instead of stranding on the narrow top in recovery. */
+  weaverCrest?: number;
   /** Weaver: free-moving head — smoothed render offset (x,y) and spring velocity of the
    *  cephalothorax. It turns to track prey, scans when idle and leads the walk, sprung so
    *  it overshoots and settles organically instead of snapping to the body's facing. */

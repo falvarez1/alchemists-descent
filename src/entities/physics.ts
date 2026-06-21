@@ -14,11 +14,34 @@ export class Physics implements PhysicsApi {
   private readonly _cfX = new Int32Array(24);
   private readonly _cfY = new Int32Array(24);
   private readonly _collisionScratch = { x: this._cfX, y: this._cfY };
+  private readonly _moveBlockMemo = new Map<number, boolean>();
 
   constructor(private ctx: Ctx) {}
 
   cellBlocks(X: number, Y: number): boolean {
     return cellBlocksEntityWithLooseRubble(this.ctx.world, X, Y, this._collisionScratch);
+  }
+
+  private cellBlocksForMove(X: number, Y: number): boolean {
+    const key = X + Y * WIDTH;
+    const cached = this._moveBlockMemo.get(key);
+    if (cached !== undefined) return cached;
+    const blocked = this.cellBlocks(X, Y);
+    this._moveBlockMemo.set(key, blocked);
+    return blocked;
+  }
+
+  private entityFreeForMove(cx: number, cy: number, halfW: number, h: number): boolean {
+    for (let dx = -halfW; dx <= halfW; dx++) {
+      for (let dy = 0; dy < h; dy++) {
+        const X = cx + dx,
+          Y = cy - dy;
+        if (X < 0 || X >= WIDTH || Y >= HEIGHT) return false;
+        if (Y < 0) continue;
+        if (this.cellBlocksForMove(X, Y)) return false;
+      }
+    }
+    return true;
   }
 
   entityFree(cx: number, cy: number, halfW: number, h: number): boolean {
@@ -73,8 +96,9 @@ export class Physics implements PhysicsApi {
     stepUp: number,
     slip = 0,
   ): boolean {
+    this._moveBlockMemo.clear();
     if (dy !== 0) {
-      if (this.entityFree(ent.x, ent.y + dy, halfW, h)) {
+      if (this.entityFreeForMove(ent.x, ent.y + dy, halfW, h)) {
         ent.y += dy;
         this.crushLooseDebris(ent, halfW, h);
         return true;
@@ -86,13 +110,13 @@ export class Physics implements PhysicsApi {
       // side fails entityFree first), capped at `slip` cells.
       if (slip) {
         for (let s = 1; s <= slip; s++) {
-          if (this.entityFree(ent.x + s, ent.y + dy, halfW, h)) {
+          if (this.entityFreeForMove(ent.x + s, ent.y + dy, halfW, h)) {
             ent.x += s;
             ent.y += dy;
             this.crushLooseDebris(ent, halfW, h);
             return true;
           }
-          if (this.entityFree(ent.x - s, ent.y + dy, halfW, h)) {
+          if (this.entityFreeForMove(ent.x - s, ent.y + dy, halfW, h)) {
             ent.x -= s;
             ent.y += dy;
             this.crushLooseDebris(ent, halfW, h);
@@ -102,14 +126,14 @@ export class Physics implements PhysicsApi {
       }
       return false;
     }
-    if (this.entityFree(ent.x + dx, ent.y, halfW, h)) {
+    if (this.entityFreeForMove(ent.x + dx, ent.y, halfW, h)) {
       ent.x += dx;
       this.crushLooseDebris(ent, halfW, h);
       return true;
     }
     if (stepUp) {
       for (let s = 1; s <= stepUp; s++) {
-        if (this.entityFree(ent.x + dx, ent.y - s, halfW, h)) {
+        if (this.entityFreeForMove(ent.x + dx, ent.y - s, halfW, h)) {
           ent.x += dx;
           ent.y -= s;
           this.crushLooseDebris(ent, halfW, h);
@@ -123,7 +147,7 @@ export class Physics implements PhysicsApi {
     // so it only frees a snag where there's actually open space below.
     if (slip) {
       for (let s = 1; s <= slip; s++) {
-        if (this.entityFree(ent.x + dx, ent.y + s, halfW, h)) {
+        if (this.entityFreeForMove(ent.x + dx, ent.y + s, halfW, h)) {
           ent.x += dx;
           ent.y += s;
           this.crushLooseDebris(ent, halfW, h);

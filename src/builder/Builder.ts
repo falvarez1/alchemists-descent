@@ -61,7 +61,7 @@ import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
-import { resetCombatTransients } from '@/game/transients';
+import { resetCombatTransients } from '@/core/runtimeState';
 import { PreviewRuntime } from '@/builder/PreviewRuntime';
 import {
   capturePrefab,
@@ -226,7 +226,7 @@ import { buildRuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
 import type { RuntimeEntityGroup, RuntimeEntitySnapshot, RuntimeSnapshotOptions } from '@/game/runtimeSnapshot';
 import { VirtualWorldPanel } from '@/builder/virtualWorldPanel';
 import { PixelSceneEditor } from '@/builder/pixelSceneEditor';
-import type { VirtualWorldDef } from '@/world/virtual/types';
+import type { VirtualWorldDef } from '@/authoring/virtualWorld';
 import { renderAssetBrowserPanel, renderAssetPlacementPanel } from '@/builder/assetBrowserPanel';
 import type { AssetBrowserView } from '@/builder/assetBrowserPanel';
 import { renderAssetDetailPanel } from '@/builder/assetDetailPanel';

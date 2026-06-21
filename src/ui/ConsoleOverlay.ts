@@ -1,7 +1,7 @@
 import type { CommandResult, Ctx } from '@/core/types';
 import { loadConsoleBinds, loadConsoleWatches, normalizeBindKey, saveConsoleWatches } from '@/game/console/prefs';
 import { upsertConsoleScript } from '@/game/console/scripts';
-import { cancelChargingBlackHole, resetHeldSpellInputs } from '@/game/transients';
+import { cancelChargingBlackHole, resetHeldSpellInputs } from '@/core/runtimeState';
 import { isRunLauncherOpen } from '@/ui/RunLauncher';
 import { FocusRouter, isEditorTextEntryTarget } from '@/ui/editor/FocusRouter';
 
