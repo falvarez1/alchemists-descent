@@ -69,6 +69,10 @@ const STACK_JITTER = 0.06;
 /** Flame card: frames of stream burst per cast / hard cap while spamming. */
 const FLAME_BURST_FRAMES = 4;
 const FLAME_BURST_CAP = 16;
+/** Flame-jet damage cone: foes within this reach (cells) and half-angle (radians)
+ *  of the stream get scorched + set ablaze each frame the jet engulfs them. */
+const FLAME_REACH = 36;
+const FLAME_CONE = 0.5;
 const DEFAULT_FLAME_ACTION: CastAction = {
   card: 'flame',
   speedMul: 1,
@@ -574,6 +578,23 @@ export class WandSystem implements WandsApi {
       const spd = (3.2 + Math.random() * 2.2) * action.speedMul;
       ctx.particles.spawn(x, y, Math.cos(a) * spd + carryVx, Math.sin(a) * spd, Cell.Fire, fireColor(),
         14 + Math.floor(Math.random() * 12), { grav: -0.015, glow: 2.2 });
+    }
+    // The flame CONE burns foes it ENGULFS — direct scorch + sets them ablaze, so
+    // the Flame Jet is a weapon, not just a terrain tool. (The fast fire stream
+    // flew straight through enemies, depositing its fire on the wall behind them;
+    // the env-damage tick only bit foes standing in cells the fire happened to land
+    // on. Mirrors how poured lava now strikes enemies via splashHazard.)
+    if (ctx.state.mode === 'play' && (ctx.enemies?.length ?? 0) > 0) {
+      for (const e of ctx.enemies) {
+        const dx = e.x - x,
+          dy = e.y - 5 - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > FLAME_REACH * FLAME_REACH || d2 < 1) continue;
+        let da = Math.atan2(dy, dx) - angle;
+        da = Math.atan2(Math.sin(da), Math.cos(da)); // normalize to [-pi, pi]
+        if (Math.abs(da) > FLAME_CONE) continue;
+        ctx.enemyCtl.splashHazard(e.x, e.y - 5, Cell.Fire);
+      }
     }
   }
 

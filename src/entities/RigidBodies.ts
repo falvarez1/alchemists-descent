@@ -572,16 +572,18 @@ export class RigidBodies implements RigidBodiesApi {
     ctx.particles.burst(cx, cy, 12, null, () => color, 1.1, { grav: 0.05 });
   }
 
-  /** A fast dynamic body (a thrown crate, a blasted boulder) that overlaps a foe
-   *  deals momentum-scaled contact damage + knockback, once per cooldown so one
-   *  throw lands one hit instead of grinding every frame it touches. */
+  /** A fast dynamic body (a thrown crate, a blasted boulder, OR one being yanked
+   *  toward the hand by telekinesis) that overlaps a foe deals momentum-scaled
+   *  contact damage + knockback, once per cooldown so a pass lands one hit instead
+   *  of grinding every frame. The speed gate means a body floating gently at the
+   *  hand doesn't hit — only one actually flying through a foe does. */
   private resolveBodyEnemyHits(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const enemies = ctx.enemies;
     if (enemies.length === 0) return;
     for (const body of this.bodies) {
       if (body.hitCd !== undefined && body.hitCd > 0) body.hitCd--;
-      if (body.kind !== 'dynamic' || body === this.held) continue;
+      if (body.kind !== 'dynamic') continue; // held bodies CAN hit (the pull) — gated by speed
       if (body.hitCd !== undefined && body.hitCd > 0) continue;
       const sp = Math.hypot(body.vx, body.vy);
       if (sp < BODY_HIT_MIN_SPEED) continue;
@@ -595,15 +597,19 @@ export class RigidBodies implements RigidBodiesApi {
         const dmg = Math.min(70, Math.round(sp * BODY_HIT_DMG_K * massF) + 4);
         ctx.enemyCtl.damage(e, dmg, body.vx * 0.8, body.vy * 0.45 - 0.4);
         body.hitCd = BODY_HIT_COOLDOWN;
-        // the body sheds momentum into the foe — slow the Rapier handle too, so a
-        // thrown crate visibly thuds into the enemy instead of ghosting through.
-        const rb = this.handles.get(body);
-        if (rb) {
-          const v = rb.linvel();
-          rb.setLinvel({ x: v.x * 0.55, y: v.y * 0.55 }, true);
+        // A THROWN body sheds momentum into the foe (slow the Rapier handle so it
+        // thuds in instead of ghosting through). A body being PULLED toward the
+        // hand keeps going — trackHeld owns its velocity — so it bludgeons foes in
+        // its path on the way in, then floats on to you.
+        if (body !== this.held) {
+          const rb = this.handles.get(body);
+          if (rb) {
+            const v = rb.linvel();
+            rb.setLinvel({ x: v.x * 0.55, y: v.y * 0.55 }, true);
+          }
+          body.vx *= 0.55;
+          body.vy *= 0.55;
         }
-        body.vx *= 0.55;
-        body.vy *= 0.55;
         ctx.audio.tone(150, 130, 0.08, 'square', 0.12);
         break; // one foe per body per cooldown
       }
