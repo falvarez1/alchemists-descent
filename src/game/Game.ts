@@ -6,7 +6,6 @@ import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
 import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode } from '@/core/types';
 import { AudioEngine } from '@/audio/AudioEngine';
-import type { Builder } from '@/builder/Builder';
 import { Flask } from '@/combat/Flask';
 import { Lightning } from '@/combat/Lightning';
 import { WandSystem } from '@/combat/wands/WandSystem';
@@ -99,7 +98,6 @@ export class Game {
   private levelCurtainDisposer: (() => void) | null = null;
   private levelCurtainTimer: number | null = null;
   private animationFrameId: number | null = null;
-  private builderPromise: Promise<Builder> | null = null;
   private started = false;
   private disposed = false;
   /** Page-lifetime UI singletons whose global listeners/timers must be torn down on HMR dispose. */
@@ -255,9 +253,6 @@ export class Game {
     this.disposables.push(new LevelStore(ctx));
     // Header PLAY opens the canonical run launcher; Builder playtests bypass it.
     this.disposables.push(new RunLauncher(ctx));
-    // The authoring overlay (injects its own DOM + header button).
-    this.builderPromise = this.mountBuilder(ctx);
-    void this.builderPromise.catch(() => undefined);
     // ESC pause + the Handbook (H); pause registers FIRST so its keydown
     // handler sees the help overlay still open and yields ESC to it.
     this.disposables.push(new PauseOverlay(ctx));
@@ -276,35 +271,8 @@ export class Game {
       if (!import.meta.env.DEV) return;
       const mode = readAppMode();
       if (mode === 'play') inputManager.setMode('play');
-      else if (mode === 'builder') this.openBuilderWhenReady();
       // null -> nothing saved; boot stays in the default Sandbox.
     };
-  }
-
-  private mountBuilder(ctx: Ctx): Promise<Builder> {
-    return import('@/builder/Builder')
-      .then(({ Builder: BuilderCtor }) => {
-        const builder = new BuilderCtor(ctx);
-        if (this.disposed) {
-          builder.dispose();
-          return builder;
-        }
-        this.disposables.push(builder);
-        if (import.meta.env.DEV) {
-          (ctx as Ctx & { builder?: Builder }).builder = builder;
-        }
-        return builder;
-      })
-      .catch((error) => {
-        console.error('Builder failed to load', error);
-        throw error;
-      });
-  }
-
-  private openBuilderWhenReady(): void {
-    void this.builderPromise
-      ?.then((builder) => builder.open())
-      .catch(() => undefined);
   }
 
   /** Boot sequence (original lines 4106-4117), then kick off the rAF loop. */
@@ -535,9 +503,14 @@ export class Game {
     this.perfHud.mark('gl', performance.now() - tGl);
     this.perfHud.mark('render', performance.now() - tRender);
 
-    // Dig beam fades after 3 drawn frames (decay moved out of the renderer —
-    // approved deviation 7; same cadence as the original).
-    if (ctx.fx.digBeam && ctx.fx.digBeam.life > 0) ctx.fx.digBeam.life--;
+    // Dig beam fades on drawn frames, but physics lifetime is fixed-tick based.
+    // High-refresh render frames must not expire the shove before the next tick.
+    const digBeam = ctx.fx.digBeam;
+    if (digBeam && digBeam.life > 0) {
+      digBeam.physicsLife ??= digBeam.life;
+      const minVisibleLife = digBeam.physicsLife > 0 ? 1 : 0;
+      digBeam.life = Math.max(minVisibleLife, digBeam.life - 1);
+    }
   }
 
   /** Build-mode dig/flame streams while the mouse is held (original lines 3250-3262). */

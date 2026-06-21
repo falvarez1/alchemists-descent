@@ -898,7 +898,9 @@ export class RigidBodies implements RigidBodiesApi {
   /** The dig beam (if active this frame) shoves bodies in its path, mass-aware. */
   private digPush(ctx: Ctx): void {
     const beam = ctx.fx.digBeam;
-    if (!beam || beam.life <= 0) return;
+    if (!beam) return;
+    beam.physicsLife ??= beam.life;
+    if (beam.physicsLife <= 0) return;
     const dx = beam.x1 - beam.x0;
     const dy = beam.y1 - beam.y0;
     const len = Math.hypot(dx, dy) || 1;
@@ -914,6 +916,7 @@ export class RigidBodies implements RigidBodiesApi {
       if (d > reach) continue;
       this.applyMomentumAt(body, ux * DIG_PUSH, uy * DIG_PUSH, body.x, body.y);
     }
+    beam.physicsLife--;
   }
 
   /**

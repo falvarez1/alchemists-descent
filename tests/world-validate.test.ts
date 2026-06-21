@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { LevelRuntime, Mechanism } from '@/core/types';
 import { makePickup } from '@/core/pickupDefs';
-import { Cell } from '@/sim/CellType';
+import { blocksEntity, Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { failOpenFindability, validateFindability } from '@/world/validate';
 
@@ -223,6 +223,20 @@ describe('findability validation', () => {
       expect.arrayContaining([expect.objectContaining({ what: 'vault-arch', severity: 'error' })]),
     );
     expect(result.remaining.some((issue) => issue.what === 'vault-arch' && issue.severity === 'error')).toBe(false);
+  });
+
+  it('does not turn open air into solid rescue rails', () => {
+    const runtime = runtimeWithHostVaultArch(true);
+    const world = runtime.world;
+    const before = world.types.slice();
+
+    failOpenFindability(runtime);
+
+    let newOpenBlockers = 0;
+    for (let i = 0; i < before.length; i++) {
+      if (before[i] === Cell.Empty && blocksEntity(world.types[i])) newOpenBlockers++;
+    }
+    expect(newOpenBlockers).toBe(0);
   });
 
   it('keeps fail-open rescue routes reachable after loose material settles', () => {

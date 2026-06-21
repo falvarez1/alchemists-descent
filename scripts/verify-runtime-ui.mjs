@@ -1,8 +1,8 @@
 // Focused runtime UI accessibility probe: Runtime Inspector keyboard rows and
 // modal focus traps for standalone Play overlays.
 // Usage: node scripts/verify-runtime-ui.mjs [url]  (dev server running)
-import { chromium } from 'playwright-core';
-import { startConsoleTestRun } from './run-helpers.mjs';
+import { launchBrowser } from './browser-launch.mjs';
+import { isBenignDevConsoleError, startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -18,10 +18,14 @@ const check = (name, ok, detail = '') => {
   }
 };
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const pageErrors = [];
+const consoleErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
+page.on('console', (msg) => {
+  if (msg.type() === 'error' && !isBenignDevConsoleError(msg.text())) consoleErrors.push(msg.text());
+});
 page.on('dialog', (dialog) => dialog.dismiss().catch(() => undefined));
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
@@ -132,7 +136,7 @@ check(
 );
 check('Waystone prompt Escape dismisses the modal without opening Pause', waystoneEscapeState.dismissed && !waystoneEscapeState.pauseOpen, JSON.stringify(waystoneEscapeState));
 
-check('No page errors', pageErrors.length === 0, pageErrors.join('\n'));
+check('No page or console errors', pageErrors.length === 0 && consoleErrors.length === 0, [...pageErrors, ...consoleErrors].join('\n'));
 
 await browser.close();
 console.log(`\nruntime-ui probe: ${pass} passed, ${fail} failed`);

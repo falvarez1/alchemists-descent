@@ -8,19 +8,22 @@
 // that a campaign level actually renders rich in the real game.
 //
 // Usage: node scripts/verify-campaign-playtest.mjs [url] [levelId]  (needs a DEV server + Edge)
-import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { launchBrowser } from './browser-launch.mjs';
+import { isBenignDevConsoleError } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const levelId = (process.argv[3] || 'd1').toLowerCase();
 const outDir = 'verify-out';
 mkdirSync(outDir, { recursive: true });
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 const consoleErrors = [];
 const pageErrors = [];
-page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+page.on('console', (m) => {
+  if (m.type() === 'error' && !isBenignDevConsoleError(m.text())) consoleErrors.push(m.text());
+});
 page.on('pageerror', (e) => pageErrors.push(String(e)));
 
 const samplePixels = () =>
@@ -91,12 +94,15 @@ const playSample = await sampleBest(12);
 console.log('campaign play canvas:', JSON.stringify(playSample));
 await page.screenshot({ path: `${outDir}/campaign-playtest-${levelId}.png` });
 
-// Judge richness RELATIVE to the proven-good sandbox build view (dark cave game).
+// Judge richness mostly relative to the proven-good sandbox build view, but cap
+// the relative target. The build view can be brighter and denser than a real
+// campaign cave after spawn framing; the authored-light/bright-pixel checks
+// below still catch the broken "dull black grid" failure this probe targets.
 const fail = [];
 if (runtime.id !== levelId) fail.push(`expected ${levelId} runtime, got ${runtime.id}`);
 if (playSample.error) fail.push('play canvas sample failed: ' + playSample.error);
-const minNonBlack = Math.max(5, buildSample.nonBlackPct * 0.6);
-const minAvg = Math.max(4, buildSample.avg * 0.6);
+const minNonBlack = Math.min(Math.max(5, buildSample.nonBlackPct * 0.6), 32);
+const minAvg = Math.min(Math.max(4, buildSample.avg * 0.6), 10);
 if (!(playSample.nonBlackPct >= minNonBlack)) fail.push(`campaign render sparse: nonBlackPct=${playSample.nonBlackPct} < ${minNonBlack.toFixed(1)}`);
 if (!(playSample.avg >= minAvg)) fail.push(`campaign render dark: avg=${playSample.avg} < ${minAvg.toFixed(1)}`);
 if (!(runtime.authoredLights > 0)) fail.push(`campaign level authored no lights (got ${runtime.authoredLights})`);

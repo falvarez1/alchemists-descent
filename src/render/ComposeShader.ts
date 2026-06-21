@@ -3,6 +3,7 @@ import { DataUtils } from 'three';
 
 import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
+import { COMPOSE_MAX_LENSES, COMPOSE_MAX_WAVES } from '@/render/composeLimits';
 import { VIGNETTE_BASE } from '@/render/lightingModel';
 import type { Ctx, MaterialParams } from '@/core/types';
 import type {
@@ -45,8 +46,6 @@ export const COMPOSE_PAD = 64;
 
 const WIN_W = VIEW_W + 2 * COMPOSE_PAD;
 const WIN_H = VIEW_H + 2 * COMPOSE_PAD;
-const MAX_WAVES = 8;
-const MAX_LENSES = 4;
 const TWO_PI = Math.PI * 2;
 const OVERLAY_FULL_UPLOAD_RATIO = 0.65;
 
@@ -121,10 +120,10 @@ uniform float uPhaseShroom; // (frameCount * 0.045) mod 2pi
 uniform float uPhaseSway;   // (frameCount * 0.035) mod 2pi
 uniform float uFlickerSeed; // re-rolled per frame
 uniform float uFlickerMid;  // debug: 1 = freeze stochastic flicker at 0.5
-uniform vec4 uWaveA[${MAX_WAVES}];  // cx, cy, currentRadius, maxRadius
-uniform float uWaveS[${MAX_WAVES}]; // strength (negative = implosion)
+uniform vec4 uWaveA[${COMPOSE_MAX_WAVES}];  // cx, cy, currentRadius, maxRadius
+uniform float uWaveS[${COMPOSE_MAX_WAVES}]; // strength (negative = implosion)
 uniform int uWaveCount;
-uniform vec4 uLens[${MAX_LENSES}];  // cx, cy, R, K
+uniform vec4 uLens[${COMPOSE_MAX_LENSES}];  // cx, cy, R, K
 uniform int uLensCount;
 
 in vec2 vUv;
@@ -462,7 +461,7 @@ export class GpuCompose {
   private readonly overlayUploadPos = new THREE.Vector2();
 
   private readonly waveA: THREE.Vector4[] = [];
-  private readonly waveS = new Float32Array(MAX_WAVES);
+  private readonly waveS = new Float32Array(COMPOSE_MAX_WAVES);
   private readonly lensV: THREE.Vector4[] = [];
 
   constructor(
@@ -518,8 +517,8 @@ export class GpuCompose {
     this.overlayTex.minFilter = this.overlayTex.magFilter = THREE.NearestFilter;
     this.overlayTex.needsUpdate = true;
 
-    for (let i = 0; i < MAX_WAVES; i++) this.waveA.push(new THREE.Vector4());
-    for (let i = 0; i < MAX_LENSES; i++) this.lensV.push(new THREE.Vector4());
+    for (let i = 0; i < COMPOSE_MAX_WAVES; i++) this.waveA.push(new THREE.Vector4());
+    for (let i = 0; i < COMPOSE_MAX_LENSES; i++) this.lensV.push(new THREE.Vector4());
 
     this.material = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3,
@@ -611,7 +610,7 @@ export class GpuCompose {
     u.uFlickerMid.value = dbg.__composeFlickerMid === true ? 1 : 0;
 
     const waves = ctx.shockwaves;
-    const wCount = Math.min(waves.length, MAX_WAVES);
+    const wCount = Math.min(waves.length, COMPOSE_MAX_WAVES);
     for (let i = 0; i < wCount; i++) {
       const w = waves[i];
       this.waveA[i].set(w.cx, w.cy, w.currentRadius, w.maxRadius);
@@ -619,7 +618,7 @@ export class GpuCompose {
     }
     u.uWaveCount.value = wCount;
 
-    const lCount = Math.min(lenses.length, MAX_LENSES);
+    const lCount = Math.min(lenses.length, COMPOSE_MAX_LENSES);
     for (let i = 0; i < lCount; i++) {
       const L = lenses[i];
       this.lensV[i].set(L.cx, L.cy, L.R, L.K);

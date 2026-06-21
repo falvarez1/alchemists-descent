@@ -9,9 +9,10 @@ import type {
 } from '@/render/pixels';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
+import { COMPOSE_MAX_LENSES, COMPOSE_MAX_WAVES } from '@/render/composeLimits';
 import { VIGNETTE_BASE } from '@/render/lightingModel';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
-import { Cell, isLiquid } from '@/sim/CellType';
+import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
 import {
@@ -194,7 +195,7 @@ export class FrameComposer implements PixelSurface {
     const lenses = this.lenses;
     lenses.length = 0;
     for (const pr of ctx.projectiles) {
-      if (pr.type === 'blackhole') {
+      if (pr.type === 'blackhole' && lenses.length < COMPOSE_MAX_LENSES) {
         const lens = this.acquireLens();
         lens.cx = pr.x;
         lens.cy = pr.y;
@@ -325,8 +326,8 @@ export class FrameComposer implements PixelSurface {
       activeBackdropLayers.push(descriptor);
     }
     const pixelData = this.target.pixelData;
-    const wavesLen = ctx.shockwaves.length;
-    const lensLen = lenses.length;
+    const wavesLen = Math.min(ctx.shockwaves.length, COMPOSE_MAX_WAVES);
+    const lensLen = Math.min(lenses.length, COMPOSE_MAX_LENSES);
     const boostG = ctx.params.global.maxBrightness;
 
     for (let vy = 0; vy < VIEW_H; vy++) {
@@ -553,6 +554,7 @@ export class FrameComposer implements PixelSurface {
     // just above terrain and UNDER every gameplay-readable overlay — a torch
     // sprite must never mask a pickup glyph, a portal ring, or a lever arm.
     this.drawDecors(ctx);
+    this.drawVineStrands(ctx, 'den');
     // Landmarks, pickups + the exit portal (under entities so foes read on top)
     this.drawLandmarks(ctx);
     this.drawPickupsAndPortal(ctx);
@@ -560,7 +562,7 @@ export class FrameComposer implements PixelSurface {
     this.drawCritters(ctx);
     this.drawFlaskEffects(ctx);
     this.drawRigidBodies(ctx);
-    this.drawVineStrands(ctx);
+    this.drawVineStrands(ctx, 'foreground');
 
     // Entities on top
     for (const e of ctx.enemies) this.drawEnemy(this, this.light, ctx, e);
@@ -749,10 +751,15 @@ export class FrameComposer implements PixelSurface {
     for (let dx = -2; dx <= 2; dx++) this.setPx(cx + dx, topY + 5, 0.28 * lr, 0.28 * lg, 0.3 * lb);
   }
 
-  private drawVineStrands(ctx: Ctx): void {
+  private drawVineStrands(ctx: Ctx, layer: 'den' | 'foreground'): void {
     const strands = ctx.vineStrands?.strands;
     if (!strands?.length) return;
+    const drawDen = layer === 'den';
+    const world = ctx.world;
+    const camX = this.renderCamX;
+    const camY = this.renderCamY;
     for (const strand of strands) {
+      if ((strand.denWeb === true) !== drawDen) continue;
       const baseR = this.unpackR01(strand.color);
       const baseG = this.unpackG01(strand.color);
       const baseB = this.unpackB01(strand.color);
@@ -763,6 +770,13 @@ export class FrameComposer implements PixelSurface {
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const len = Math.hypot(dx, dy) || 1;
+        if (
+          Math.max(a.x, b.x) < camX - 2 ||
+          Math.min(a.x, b.x) > camX + VIEW_W + 2 ||
+          Math.max(a.y, b.y) < camY - 2 ||
+          Math.min(a.y, b.y) > camY + VIEW_H + 2
+        )
+          continue;
         const perpX = -dy / len; // unit perpendicular, for thickness
         const perpY = dx / len;
         const steps = Math.max(1, Math.ceil(len * 1.8));
@@ -770,16 +784,30 @@ export class FrameComposer implements PixelSurface {
           const t = i / steps;
           const x = a.x + dx * t;
           const y = a.y + dy * t;
+          if (x < camX - 2 || x > camX + VIEW_W + 2 || y < camY - 2 || y > camY + VIEW_H + 2) continue;
+          if (strand.web === true) {
+            const cx = Math.floor(x);
+            const cy = Math.floor(y);
+            if (!world.inBounds(cx, cy)) continue;
+            const cell = world.types[world.idx(cx, cy)];
+            if (blocksEntity(cell) && !isSoftGrowth(cell)) continue;
+          }
           const lt = this.light.sample(x, y);
           const webGlow = strand.web === true ? 0.22 : 0;
-          const r = baseR * (Math.max(0.16, lt.r) * 1.05 + webGlow * 0.45);
-          const g = baseG * (Math.max(0.18, lt.g) * 1.1 + webGlow);
-          const b2 = baseB * (Math.max(0.14, lt.b) + webGlow * 0.45);
-          for (let w = -half; w <= half + 1e-6; w += 1) this.setPx(x + perpX * w, y + perpY * w, r, g, b2);
+          const denMul = strand.denWeb === true ? 0.42 : 1;
+          const r = baseR * (Math.max(0.16, lt.r) * 1.05 + webGlow * 0.45) * denMul;
+          const g = baseG * (Math.max(0.18, lt.g) * 1.1 + webGlow) * denMul;
+          const b2 = baseB * (Math.max(0.14, lt.b) + webGlow * 0.45) * denMul;
+          for (let w = -half; w <= half + 1e-6; w += 1) {
+            if (strand.denWeb === true) this.addPx(x + perpX * w, y + perpY * w, r, g, b2);
+            else this.setPx(x + perpX * w, y + perpY * w, r, g, b2);
+          }
         }
       }
       if (strand.segments.length === 0) {
         for (const node of strand.nodes) {
+          if (node.x < camX - 2 || node.x > camX + VIEW_W + 2 || node.y < camY - 2 || node.y > camY + VIEW_H + 2)
+            continue;
           const lt = this.light.sample(node.x, node.y);
           this.setPx(
             node.x,

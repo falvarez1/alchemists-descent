@@ -23,6 +23,7 @@ const WEAVER_REST = [
 const WEAVER_LEG_REACH = WEAVER_REST.map(
   (r) => Math.hypot(r.footX - r.hipX, r.footY - r.hipY) * 1.65,
 );
+const WEAVER_LEG_HARD_RESET = 1.28;
 
 interface WeaverFootTarget {
   x: number;
@@ -141,6 +142,36 @@ function weaverFootTarget(
     strain: 1,
     surface: 'failed',
   };
+}
+
+function resetWeaverLegToTarget(
+  leg: WeaverLegState,
+  target: WeaverFootTarget,
+  hipX: number,
+  hipY: number,
+  maxReach: number,
+): void {
+  const dx = target.x - hipX;
+  const dy = target.y - hipY;
+  const dist = Math.hypot(dx, dy);
+  const targetInReach = dist <= maxReach || dist <= 0.001;
+  const x = targetInReach ? target.x : hipX + (dx / dist) * maxReach;
+  const y = targetInReach ? target.y : hipY + (dy / dist) * maxReach;
+  leg.x = x;
+  leg.y = y;
+  leg.tx = x;
+  leg.ty = y;
+  leg.fromX = undefined;
+  leg.fromY = undefined;
+  leg.step = undefined;
+  leg.lift = 0;
+  leg.smoothTx = x;
+  leg.smoothTy = y;
+  leg.planted = target.planted && targetInReach;
+  leg.surface = leg.planted ? target.surface : 'failed';
+  leg.strain = leg.planted ? target.strain : 1;
+  leg.failT = leg.planted ? 0 : Math.max(1, leg.failT ?? 0);
+  leg.plantAge = leg.planted ? 1 : 0;
 }
 
 /**
@@ -549,6 +580,28 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     e.weaverBodyLift = lerp(e.weaverBodyLift ?? supportedLiftTarget, supportedLiftTarget, 0.07);
     const bodyLift = e.weaverBodyLift ?? bodyLiftTarget;
 
+    // FREE HEAD: the cephalothorax is slung on a short neck and carried by a light
+    // spring, so it turns to TRACK the alchemist (horizontal sweep + pitch), SCANS
+    // the room on a slow wander when unaware, LEADS the body as it walks, and never
+    // simply snaps to the facing. Overshoot + settle reads as a living, craning head.
+    const aware = e.alerted && !asleep;
+    const headPdx = ctx.player.x - e.x;
+    const headPdy = ctx.player.y - (e.y - def.h * 0.62);
+    const trackX = aware ? clamp(headPdx / 52, -1, 1) : Math.sin(frameCount * 0.017 + e.bobPhase * 2.7) * 0.7;
+    // pitch: render dy increases UPWARD, and an overhead alchemist sits at headPdy<0,
+    // so the head must rise (positive) toward a target above — negate the screen delta.
+    const trackY = aware ? clamp(-headPdy / 60, -1, 1.2) : Math.sin(frameCount * 0.012 + e.bobPhase * 1.3) * 0.4;
+    const idleBob = Math.sin(frameCount * 0.05 + e.bobPhase) * (aware ? 0.5 : 0.3);
+    const headTX = clamp(trackX * 3.6 + e._svx * 0.8 + (aware ? 0 : face * 0.6), -5.5, 5.5);
+    const headTY = clamp(trackY * 3.1 + reach01 * 2 + idleBob + (cranky ? Math.sin(frameCount * 0.4) * 0.5 : 0), -4, 4.5);
+    const headStiff = cranky ? 0.27 : poised || weaving ? 0.34 : 0.18; // snappier when agitated/striking
+    e.weaverHeadVX = (e.weaverHeadVX ?? 0) * 0.74 + (headTX - (e.weaverHeadX ?? 0)) * headStiff;
+    e.weaverHeadVY = (e.weaverHeadVY ?? 0) * 0.74 + (headTY - (e.weaverHeadY ?? 0)) * headStiff;
+    e.weaverHeadX = clamp((e.weaverHeadX ?? 0) + e.weaverHeadVX, -7, 7);
+    e.weaverHeadY = clamp((e.weaverHeadY ?? 0) + e.weaverHeadVY, -5, 6);
+    const headDX = asleep ? 0 : Math.round(e.weaverHeadX ?? 0);
+    const headDY = asleep ? -1 : Math.round(e.weaverHeadY ?? 0);
+
     if (!e.weaverLegs || e.weaverLegs.length !== WEAVER_REST.length) {
       e.weaverLegs = WEAVER_REST.map((r) => {
         const fx = e.x + r.footX;
@@ -735,6 +788,16 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       } else {
         if (unstable) tx += Math.sin(frameCount * 0.19 + i * 1.7) * 2.6;
         const rawTarget = weaverFootTarget(ctx, tx, e.y - rest.footY, hipX, hipY, rest.side, unstable || (e.weaverFallT ?? 0) > 18, lifted);
+        const hardResetReach = WEAVER_LEG_REACH[i] * WEAVER_LEG_HARD_RESET;
+        const staleSpan = Math.hypot(leg.x - hipX, leg.y - hipY);
+        if (
+          !Number.isFinite(leg.x) ||
+          !Number.isFinite(leg.y) ||
+          !Number.isFinite(staleSpan) ||
+          staleSpan > hardResetReach
+        ) {
+          resetWeaverLegToTarget(leg, rawTarget, hipX, hipY, WEAVER_LEG_REACH[i]);
+        }
         const hipLoad = Math.hypot(hipX - leg.x, hipY - leg.y) / WEAVER_LEG_REACH[i];
         // A foot stretched past the leg's real reach can't still be "supported" — it
         // must let go and re-step. Without this, a yanked/teleported/lifted body
@@ -834,25 +897,35 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       const L2 = Lnat * 0.32;
       const L3 = Lnat * 0.3;
       let j1x: number, j1y: number, j2x: number, j2y: number;
-      const legSpan = Math.hypot(footX - hipX, footY - hipY);
+      const legSpanRaw = Math.hypot(footX - hipX, footY - hipY);
+      const chainReach = L1 + L2 + L3;
+      let ikFootX = footX;
+      let ikFootY = footY;
+      if (legSpanRaw > chainReach) {
+        const ux = (footX - hipX) / (legSpanRaw || 1);
+        const uy = (footY - hipY) / (legSpanRaw || 1);
+        ikFootX = hipX + ux * chainReach;
+        ikFootY = hipY + uy * chainReach;
+      }
+      const legSpan = Math.min(legSpanRaw, chainReach);
       if (legSpan >= L1 + L2 + L3) {
         // Foot beyond the leg's span: lay the bones straight toward it.
-        const ux = (footX - hipX) / (legSpan || 1);
-        const uy = (footY - hipY) / (legSpan || 1);
+        const ux = (ikFootX - hipX) / (legSpan || 1);
+        const uy = (ikFootY - hipY) / (legSpan || 1);
         j1x = hipX + ux * L1;
         j1y = hipY + uy * L1;
         j2x = j1x + ux * L2;
         j2y = j1y + uy * L2;
       } else {
         // Seed the knees raised & outward so the solve settles into the up-bent pose.
-        j1x = hipX + (footX - hipX) * 0.3 + rest.side * (Lnat * 0.17);
-        j1y = Math.min(hipY, footY) - Lnat * 0.34;
-        j2x = hipX + (footX - hipX) * 0.7 + rest.side * (Lnat * 0.04);
-        j2y = footY - Lnat * (failing ? 0.05 : 0.16);
+        j1x = hipX + (ikFootX - hipX) * 0.3 + rest.side * (Lnat * 0.17);
+        j1y = Math.min(hipY, ikFootY) - Lnat * 0.34;
+        j2x = hipX + (ikFootX - hipX) * 0.7 + rest.side * (Lnat * 0.04);
+        j2y = ikFootY - Lnat * (failing ? 0.05 : 0.16);
         for (let it = 0; it < 4; it++) {
           // backward pass from the planted foot
-          let vx = j2x - footX, vy = j2y - footY, d = Math.hypot(vx, vy) || 1;
-          j2x = footX + (vx / d) * L3; j2y = footY + (vy / d) * L3;
+          let vx = j2x - ikFootX, vy = j2y - ikFootY, d = Math.hypot(vx, vy) || 1;
+          j2x = ikFootX + (vx / d) * L3; j2y = ikFootY + (vy / d) * L3;
           vx = j1x - j2x; vy = j1y - j2y; d = Math.hypot(vx, vy) || 1;
           j1x = j2x + (vx / d) * L2; j1y = j2y + (vy / d) * L2;
           // forward pass from the fixed hip
@@ -864,7 +937,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       }
       // Force the elbow to the high side of the hip->foot chord (smaller y = up).
       {
-        const cx = footX - hipX, cy = footY - hipY;
+        const cx = ikFootX - hipX, cy = ikFootY - hipY;
         const nn = cx * cx + cy * cy || 1;
         const f1 = (2 * (cx * (j1y - hipY) - cy * (j1x - hipX))) / nn;
         if (j1y - f1 * cx < j1y) {
@@ -883,11 +956,11 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       };
       lineW(hipX, hipY, upperX, upperY, hot || failing ? LEG_WARN : LEG, hot || failing);
       lineW(upperX, upperY, lowerX, lowerY, hot || failing ? LEG_WARN : LEG_MID, hot || failing);
-      lineW(lowerX, lowerY, footX, footY, hot || failing ? LEG_WARN : LEG_HI, hot || failing);
+      lineW(lowerX, lowerY, ikFootX, ikFootY, hot || failing ? LEG_WARN : LEG_HI, hot || failing);
       jointDot(upperX, upperY, hot || failing ? LEG_WARN : JOINT, hot || failing);
       jointDot(lowerX, lowerY, hot || failing ? LEG_WARN : JOINT, hot || failing);
-      dotW(footX, footY, hot || failing ? LEG_WARN : LEG_HI, hot || failing);
-      if (leg.planted && !failing && !hot && (leg.plantAge ?? 0) === 1) dotW(footX, footY - 1, PLANT_DOT, true);
+      dotW(ikFootX, ikFootY, hot || failing ? LEG_WARN : LEG_HI, hot || failing);
+      if (leg.planted && !failing && !hot && (leg.plantAge ?? 0) === 1) dotW(ikFootX, ikFootY - 1, PLANT_DOT, true);
     }
 
     const plantSupport = plantLoadSum / WEAVER_REST.length;
@@ -921,14 +994,25 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const bodyDrawLift = Math.round(bodyLift * (0.25 + plantSupport * 0.75) - fallPose * 2.5);
     const tilt = e.weaverTilt ?? 0;
     const tiltShift = (dy: number): number => bodyJitter + Math.round((dy - 11) * tilt * 0.35);
+    // PREDATORY STALK coil/lunge (driven by the AI's stalk wave): the cephalothorax
+    // eases BACK to gather then drives FORWARD on the surge, dipping into the coil —
+    // so the body visibly winds and springs with the paced approach.
+    const stalk = asleep ? 0 : e.weaverStalk ?? 0; // -1 gather .. +1 lunge
+    const stalkX = Math.round(stalk * face * 2.4);
+    const stalkY = Math.round(Math.max(0, -stalk) * 1.7);
+    // ORGANIC WALK: the heavy abdomen rocks side-to-side a half-beat behind the legs
+    // instead of riding rigidly level — an articulated, weight-shifting gait.
+    const gaitSway = moving ? Math.round(Math.sin(e.stride * 0.5 + e.bobPhase + 1.2) * (cranky ? 1.5 : 0.95)) : 0;
+    const abX = Math.round(stalkX * 0.3) + gaitSway;
+    const abY = Math.round(stalkY * 0.5);
     // abdomen
     for (let dy = 4; dy <= 13; dy++) {
       const t = (dy - 8.5) / 5.8;
       const w2 = Math.max(2, Math.round(10 * Math.sqrt(Math.max(0, 1 - t * t))));
       for (let dx = -w2; dx <= w2; dx++) {
         P(
-          dx - face * 3 + tiltShift(dy),
-          dy + bellyBob + crouch + bodyDrawLift - sag,
+          dx - face * 3 + tiltShift(dy) + abX,
+          dy + bellyBob + crouch + bodyDrawLift - sag - abY,
           Math.abs(dx) >= w2 ? BODY_D[0] : BODY[0],
           Math.abs(dx) >= w2 ? BODY_D[1] : BODY[1],
           Math.abs(dx) >= w2 ? BODY_D[2] : BODY[2],
@@ -939,19 +1023,36 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     for (let dy = 9; dy <= 17; dy++) {
       const w2 = dy >= 15 ? 5 : 7;
       for (let dx = -w2; dx <= w2; dx++) {
-        P(dx + face * 3 + tiltShift(dy), dy + crouch + bodyDrawLift - sag, ...(Math.abs(dx) >= w2 ? BODY_D : BODY_L));
+        P(dx + face * 3 + tiltShift(dy) + stalkX, dy + crouch + bodyDrawLift - sag - stalkY, ...(Math.abs(dx) >= w2 ? BODY_D : BODY_L));
       }
     }
-    for (let dx = -3; dx <= 3; dx++) {
-      P(dx + face * 9 + tiltShift(15), 15 + crouch + bodyDrawLift - sag, ...BODY_D);
-      P(dx + face * 9 + tiltShift(14), 14 + crouch + bodyDrawLift - sag, ...BODY);
+    // --- FREE HEAD: a cephalon slung ahead of the thorax on a short flexible neck,
+    // carried by the head spring so it cranes, pitches and bobs as its own segment ---
+    const neckBaseX = face * 4 + tiltShift(15) + stalkX;
+    const neckTopY = 15 + crouch + bodyDrawLift - sag - stalkY;
+    const headCX = face * 9 + headDX + tiltShift(15) + stalkX;
+    const headCY = neckTopY + headDY;
+    for (let n = 1; n <= 2; n++) {
+      const f = n / 3;
+      const nx = Math.round(neckBaseX + (headCX - neckBaseX) * f);
+      const ny = Math.round(neckTopY + (headCY - neckTopY) * f);
+      P(nx, ny, ...BODY);
+      P(nx, ny - 1, ...BODY_D);
+    }
+    for (let hy = -2; hy <= 2; hy++) {
+      const hw = Math.abs(hy) >= 2 ? 2 : 3;
+      for (let hx = -hw; hx <= hw; hx++) {
+        P(headCX + hx, headCY + hy, ...(Math.abs(hx) >= hw || Math.abs(hy) >= 2 ? BODY_D : BODY_L));
+      }
     }
     const eyePulse = asleep ? 0.1 : 0.55 + Math.sin(frameCount * 0.11 + e.bobPhase) * 0.25 + (poised ? 0.35 : 0) + (cranky ? 0.28 : 0) + pulse * 0.45;
-    PE(face * 10 + tiltShift(15), 15 + crouch + bodyDrawLift - sag, 0.18 * eyePulse * boost, 0.95 * eyePulse * boost, 0.32 * eyePulse * boost);
-    PE(face * 8 + tiltShift(15), 15 + crouch + bodyDrawLift - sag, 0.14 * eyePulse * boost, 0.72 * eyePulse * boost, 0.25 * eyePulse * boost);
+    // a faint independent eye dart while unaware — the gaze flicks even when the head is still
+    const dart = aware ? 0 : Math.round(Math.sin(frameCount * 0.08 + e.bobPhase * 2) * 0.7);
+    PE(headCX + face * 2 + dart, headCY - 1, 0.18 * eyePulse * boost, 0.95 * eyePulse * boost, 0.32 * eyePulse * boost);
+    PE(headCX + face * 1 + dart, headCY, 0.14 * eyePulse * boost, 0.72 * eyePulse * boost, 0.25 * eyePulse * boost);
     if (weaving) {
       const spit = 0.5 + Math.sin(frameCount * 0.6) * 0.3;
-      lineW(e.x + face * 10, e.y - 12 - bodyDrawLift, e.x + face * 17, e.y - 14 - bodyDrawLift, [0.18 * spit, 0.9 * spit, 0.24 * spit], true);
+      lineW(e.x + headCX + face * 2, e.y - headCY - 1, e.x + headCX + face * 9, e.y - headCY - 3, [0.18 * spit, 0.9 * spit, 0.24 * spit], true);
     }
   } else if (e.kind === 'golem') {
     // --- Heavy stride driven by real displacement, arms, breath, pulsing core ---

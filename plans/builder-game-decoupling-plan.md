@@ -1,8 +1,22 @@
 # Builder/Game Decoupling Plan
 
-Status: proposal, not implemented.
+Status: implementation in progress.
 Created: 2026-06-20.
 Scope: architecture, source ownership, build boundaries, playtest integration, persistence, and validation for separating the Builder tool surface from the player-facing game runtime without forking gameplay semantics.
+
+Implementation update:
+
+- Phase 0 boundary guardrails are implemented: `verify:builder-boundaries` is wired into `package.json` and CI.
+- The first neutral authored-contract layer is implemented under `src/authoring` for document shapes, prefab contracts, sprite runtime contracts, and structural stamps.
+- Runtime, worldgen, and player-facing UI no longer import Builder-owned modules; strict boundary verification passes with zero violations.
+- Builder remains available through a lazy shell-owned launcher button.
+- Runtime Inspector panel rendering moved under `src/ui/diagnostics` with Builder compatibility re-exports.
+- Bundle guardrails are implemented: Vite emits a manifest, `verify:builder-bundle` checks that the player entry's static graph excludes `src/builder`, CI runs that check after the production build, and `verify:builder-prod-network` proves production preview does not request the Builder chunk before the launcher is clicked. CI also installs Chromium and runs the network probe against the GitHub Pages base path.
+- The release-probe wrapper is implemented as `verify:builder-decoupling`: it runs strict boundaries, typecheck, production build, bundle scan, production-preview lazy-load verification, and the key dev-server browser probes under a managed server.
+- `preview:dist` serves the built `dist` directory at an explicit base path, because Vite preview serves `dist` at `/` and is not a faithful local server for a GitHub Pages-base artifact.
+- Probe reliability was hardened for lazy Builder loading, managed browser launch fallback, asset-row drag waits, and benign Vite HMR websocket noise.
+- The first command/snapshot `BuilderHost` facade is implemented in `src/app/BuilderHost.ts`; the shell-owned launcher passes `{ ctx, host }` to Builder while migration is in progress. Builder event subscriptions, pause ownership, camera commands, parameter-change notifications, toast reporting, and transient visual-state writes now route through the host.
+- Remaining planned work is to continue moving playtest/world lifecycle, runtime snapshot reads, and residual Builder-internal compatibility shim imports onto host or neutral `src/authoring` contracts until `new Builder(host)` is possible.
 
 ## Executive Summary
 
@@ -331,6 +345,8 @@ Do this after content extraction.
 - Add a bundle check script that scans built manifest/chunks for accidental Builder inclusion in the game entry.
 - Add a production-preview network probe proving Builder JS is not requested before opening Builder.
 
+Implementation note: Vite naturally emits `assets/Builder-*.js` as the dynamic Builder chunk after the lazy launcher change. A forced manual chunk was tested and rejected because Rollup placed shared symbols in that chunk, making the player entry import it statically. The accepted guard is manifest/sourcemap verification plus the production network probe.
+
 ### Stage 3: Optional Separate Entry
 
 Only after Stage 1 and 2 are stable:
@@ -464,9 +480,9 @@ Add a host/facade between Builder and the full runtime `Ctx`.
 
 Deliverables:
 
-- New `src/game/BuilderHost.ts` or `src/app/BuilderHost.ts`.
-- `createBuilderHost(ctx): BuilderHost`.
-- `Builder` constructor accepts `{ host, contentServices }` or `BuilderHost`.
+- New `src/game/BuilderHost.ts` or `src/app/BuilderHost.ts`. Implemented as `src/app/BuilderHost.ts`.
+- `createBuilderHost(ctx): BuilderHost`. Implemented as the shell-owned facade used by `BuilderLauncher`.
+- `Builder` constructor accepts `{ host, contentServices }` or `BuilderHost`. Implemented as transitional `{ ctx, host }`; this is allowed by the migration rule but is not the final exit state.
 - Builder direct `ctx` access starts shrinking by subsystem.
 - Host API is command/snapshot based and does not expose public `EventBus`, mutable `GameStateData`, raw `World` replacement, or runtime entity arrays.
 
@@ -486,11 +502,11 @@ Initial host methods should cover:
 
 Migration order inside Builder:
 
-1. Pause and mode changes.
+1. Pause and mode changes. Started: mode/world edit subscriptions and pause ownership route through `BuilderHost`.
 2. Playtest start/return.
 3. World detach/scratch world adoption.
-4. Camera lock/snap.
-5. Parameter updates.
+4. Camera lock/snap. Started: camera snap and zoom-lock commands route through `BuilderHost`.
+5. Parameter updates. Started: `paramsChanged` notifications route through `BuilderHost`.
 6. Runtime overlay snapshot reads.
 7. Remaining direct `ctx` reads.
 

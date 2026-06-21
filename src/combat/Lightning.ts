@@ -1,7 +1,7 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
+import { EnemySpatialIndex } from '@/core/enemySpatial';
 import type { Ctx, LightningApi, LightningArc } from '@/core/types';
-import { EnemySpatialIndex } from '@/entities/enemySpatial';
 import { bodyMaterialDef } from '@/entities/bodyMaterials';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { chargeDeposit } from '@/sim/electrical';

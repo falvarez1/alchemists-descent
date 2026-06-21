@@ -1,6 +1,26 @@
-import { base64ToBytes, bytesToBase64 } from '@/core/rle';
-import { fnv1aString } from '@/core/rng';
-import type { RuntimeSprite } from '@/core/types';
+import { bytesToBase64 } from '@/core/rle';
+import {
+  decodeFramePx,
+  freshSpriteId,
+  SPRITE_DIM_CAP,
+  SPRITE_ENCODED_CAP,
+  SPRITE_FRAME_CAP,
+} from '@/authoring/sprites';
+import type { SpriteAsset, SpriteFrame, SpriteTag, SpriteTagDir } from '@/authoring/sprites';
+export {
+  decodeFramePx,
+  decodeRuntimeSprite,
+  durationToTicks,
+  freshSpriteId,
+  resolveLoopTag,
+  sanitizeSpriteAsset,
+  SPRITE_DIM_CAP,
+  SPRITE_ENCODED_CAP,
+  SPRITE_FRAME_CAP,
+  spriteContentSig,
+  spritePhase,
+} from '@/authoring/sprites';
+export type { SpriteAsset, SpriteFrame, SpriteTag, SpriteTagDir } from '@/authoring/sprites';
 
 /**
  * SpriteAsset v1 — the authored animated-sprite format (Aseprite pipeline).
@@ -21,62 +41,10 @@ import type { RuntimeSprite } from '@/core/types';
  * spritelib.ts.
  */
 
-export type SpriteTagDir = 'forward' | 'reverse' | 'pingpong';
-
-export interface SpriteTag {
-  name: string;
-  /** Inclusive frame range. */
-  from: number;
-  to: number;
-  dir: SpriteTagDir;
-}
-
-export interface SpriteFrame {
-  durationMs: number;
-  /** base64 of raw RGBA bytes, exactly w*h*4 of them. */
-  px: string;
-}
-
-export interface SpriteAsset {
-  v: 1;
-  kind: 'sprite';
-  id: string;
-  name: string;
-  w: number;
-  h: number;
-  frames: SpriteFrame[];
-  tags: SpriteTag[];
-  /** Emissive sprites are their own light source: drawn raw, never light-multiplied. */
-  emissive: boolean;
-}
-
-/** Hard caps — a sprite is a torch, not a cutscene. */
-export const SPRITE_DIM_CAP = 128;
-export const SPRITE_FRAME_CAP = 64;
-/** Cap on the JSON-encoded asset (localStorage + share codes stay sane). */
-export const SPRITE_ENCODED_CAP = 512 * 1024;
-
-/** Aseprite durations are milliseconds; the game runs 60Hz ticks. */
-export function durationToTicks(ms: number): number {
-  return Math.max(1, Math.round(ms / (1000 / 60)));
-}
-
-let spriteIdCounter = 0;
-/** Local id maker (NOT document.ts freshId — that import would be cyclic). */
-export function freshSpriteId(): string {
-  return 'sprite-' + Date.now().toString(36) + '-' + (spriteIdCounter++).toString(36);
-}
-
 /* ---------------- raw pixel codec ---------------- */
 
 export function encodeFramePx(data: Uint8ClampedArray): string {
   return bytesToBase64(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-}
-
-export function decodeFramePx(px: string, w: number, h: number): Uint8ClampedArray {
-  const out = new Uint8Array(w * h * 4);
-  base64ToBytes(px, out);
-  return new Uint8ClampedArray(out.buffer);
 }
 
 /* ---------------- Aseprite "Export Sprite Sheet" JSON ---------------- */
@@ -306,104 +274,6 @@ function finishAsset(
     throw new Error(`sprite encodes to ${Math.round(encoded / 1024)}KB (cap ${SPRITE_ENCODED_CAP / 1024}KB)`);
   }
   return asset;
-}
-
-/* ---------------- import sanitization (validate-then-accept) ---------------- */
-
-/**
- * Mirror of sanitizePrefab for sprites: every field validated before the
- * asset is allowed anywhere near the library or a document. Null on garbage;
- * never throws. Frame px MUST decode to exactly w*h*4 bytes.
- */
-export function sanitizeSpriteAsset(parsed: unknown): SpriteAsset | null {
-  const s = parsed as SpriteAsset;
-  if (!s || s.v !== 1 || s.kind !== 'sprite') return null;
-  if (typeof s.w !== 'number' || typeof s.h !== 'number') return null;
-  const w = Math.floor(s.w),
-    h = Math.floor(s.h);
-  if (w < 1 || h < 1 || w > SPRITE_DIM_CAP || h > SPRITE_DIM_CAP) return null;
-  if (!Array.isArray(s.frames) || s.frames.length < 1 || s.frames.length > SPRITE_FRAME_CAP) {
-    return null;
-  }
-  const expected = Math.ceil((w * h * 4) / 3) * 4; // exact base64 length (rle pads)
-  const frames: SpriteFrame[] = [];
-  for (const f of s.frames) {
-    if (!f || typeof f.px !== 'string' || f.px.length !== expected) return null;
-    try {
-      atob(f.px);
-    } catch {
-      return null;
-    }
-    const ms = typeof f.durationMs === 'number' && Number.isFinite(f.durationMs) ? f.durationMs : 100;
-    frames.push({ durationMs: Math.max(1, Math.min(10000, ms)), px: f.px });
-  }
-  const tags: SpriteTag[] = [];
-  if (Array.isArray(s.tags)) {
-    for (const t of s.tags) {
-      if (!t || typeof t.name !== 'string') continue;
-      let from = typeof t.from === 'number' ? Math.floor(t.from) : 0;
-      let to = typeof t.to === 'number' ? Math.floor(t.to) : frames.length - 1;
-      from = Math.max(0, Math.min(frames.length - 1, from));
-      to = Math.max(0, Math.min(frames.length - 1, to));
-      if (to < from) [from, to] = [to, from];
-      tags.push({ name: t.name, from, to, dir: tagDir(t.dir) });
-    }
-  }
-  const out: SpriteAsset = {
-    v: 1,
-    kind: 'sprite',
-    id: typeof s.id === 'string' && s.id ? s.id : freshSpriteId(),
-    name: typeof s.name === 'string' && s.name.trim() ? s.name.trim() : 'sprite',
-    w,
-    h,
-    frames,
-    tags,
-    emissive: s.emissive === true,
-  };
-  if (JSON.stringify(out).length > SPRITE_ENCODED_CAP) return null;
-  return out;
-}
-
-/** Content identity (id/name excluded) — import collisions re-id on mismatch. */
-export function spriteContentSig(s: SpriteAsset): number {
-  // Chained FNV-1a fold (seed carries between parts) — byte-identical to the
-  // prior single running-hash loop.
-  let hash = fnv1aString(`${s.w}x${s.h}:${s.emissive ? 1 : 0}`);
-  for (const f of s.frames) hash = fnv1aString(`${f.durationMs};${f.px}`, hash);
-  for (const t of s.tags) hash = fnv1aString(`${t.name},${t.from},${t.to},${t.dir}`, hash);
-  return hash;
-}
-
-/* ---------------- runtime decode ---------------- */
-
-/** Decode an asset into render-ready frame buffers (done ONCE per compile;
- *  every decor instance referencing the same asset shares this object). */
-export function decodeRuntimeSprite(asset: SpriteAsset): RuntimeSprite {
-  const frames: RuntimeSprite['frames'] = [];
-  const starts: number[] = [];
-  let total = 0;
-  for (const f of asset.frames) {
-    const ticks = durationToTicks(f.durationMs);
-    starts.push(total);
-    total += ticks;
-    frames.push({ ticks, data: decodeFramePx(f.px, asset.w, asset.h) });
-  }
-  return { w: asset.w, h: asset.h, frames, starts, totalTicks: total, emissive: asset.emissive };
-}
-
-/** A loop tag by name; missing/empty name = the whole strip, forward. */
-export function resolveLoopTag(
-  asset: SpriteAsset,
-  tagName: string,
-): { from: number; to: number; dir: SpriteTagDir } {
-  const tag = tagName ? asset.tags.find((t) => t.name === tagName) : undefined;
-  if (tag) return { from: tag.from, to: tag.to, dir: tag.dir };
-  return { from: 0, to: asset.frames.length - 1, dir: 'forward' };
-}
-
-/** Stable per-decor phase from the object id (identical torches desync). */
-export function spritePhase(objectId: string): number {
-  return fnv1aString(objectId) % 1024;
 }
 
 /* ---------------- export (closes the Aseprite round-trip) ---------------- */

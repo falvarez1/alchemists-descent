@@ -12,6 +12,7 @@ import {
   AUTHORED_LIGHT_RADIUS_MAX,
   AUTHORED_LIGHT_RADIUS_MIN,
   createEmptyDocument,
+  EDITOR_OBJECT_KINDS,
   freshId,
 } from '@/builder/document';
 import type { EditorDocument, EditorObject, EditorObjectKind } from '@/builder/document';
@@ -413,6 +414,29 @@ describe('prefab import sanitization', () => {
     expect(got!.prefab.objects.length).toBe(3);
     expect(got!.prefab.links.length).toBe(1);
     expect(got!.warnings.length).toBe(3);
+  });
+
+  it('accepts every canonical object kind except level spawn objects', () => {
+    const p = valid();
+    p.objects = EDITOR_OBJECT_KINDS.map((kind, index) => ({
+      id: `obj-${kind}`,
+      kind,
+      x: 2 + index,
+      y: 3,
+      rotation: 0,
+      locked: false,
+      hidden: false,
+      params: {},
+    }));
+    p.links = [];
+
+    const got = sanitizePrefab(p);
+
+    expect(got).not.toBeNull();
+    expect(got!.prefab.objects.map((object) => object.kind)).toEqual(
+      EDITOR_OBJECT_KINDS.filter((kind) => kind !== 'spawn'),
+    );
+    expect(got!.warnings).toContain('dropped a spawn object (prefabs are rooms, not levels)');
   });
 
   it('clamps imported prefab light values to the runtime budget', () => {

@@ -4,8 +4,8 @@
 // polygon/magic regions, patrol, hazard emitters, notes, mood ambient,
 // bake-from-playtest, rotate, solo lights.
 // Usage: node scripts/verify-builder-ux.mjs [url]  (dev server must be running)
-import { chromium } from 'playwright-core';
-import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
+import { launchBrowser } from './browser-launch.mjs';
+import { getGameViewSize, isBenignDevConsoleError, worldToBuilderClient } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -27,11 +27,15 @@ const activatePanel = async (id) => {
   await page.waitForTimeout(70);
 };
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 page.on('dialog', (d) => d.accept());
 const pageErrors = [];
+const consoleErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
+page.on('console', (msg) => {
+  if (msg.type() === 'error' && !isBenignDevConsoleError(msg.text())) consoleErrors.push(msg.text());
+});
 await page.addInitScript(() => {
   localStorage.removeItem('noita-builder-workspace-v1');
   localStorage.removeItem('noita-builder-draft');
@@ -63,7 +67,7 @@ await page.waitForTimeout(150);
 /* ---------- Builder-native left panel ---------- */
 console.log('-- builder panel');
 await page.click('#mode-builder-btn');
-await page.waitForTimeout(300);
+await page.waitForSelector('#builder-root .bp-swatch', { timeout: 15000 });
 const panel = await page.evaluate(() => ({
   sidebarHidden: getComputedStyle(document.getElementById('left-toolbar')).display === 'none',
   swatches: document.querySelectorAll('.bp-swatch').length,
@@ -456,20 +460,20 @@ check(
     rightPopover.bottom <= rightPopover.vh,
   JSON.stringify(rightPopover),
 );
-// With palette + inspector tabbed together in the right dock, dragging the
-// palette tab to the dock bottom re-docks it last (VS Code tab reorder).
+// With palette + inspector tabbed together in the right dock, dragging a tab
+// inside the tab band reorders it without crossing into a split/drop target.
 await activatePanel('builder-palette');
 const rightOrderBefore = await page.evaluate(() =>
   [...document.querySelectorAll('#builder-dock-right .builder-dock-tabs .editor-tab')].map((el) => el.dataset.tabId),
 );
 const reorderStart = await page.evaluate(() => {
-  const handle = document.querySelector('#builder-dock-right .builder-dock-tabs .editor-tab[data-tab-id="builder-palette"]');
+  const handle = document.querySelector('#builder-dock-right .builder-dock-tabs .editor-tab[data-tab-id]');
   const r = handle.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  return { id: handle.getAttribute('data-tab-id'), x: r.left + r.width / 2, y: r.top + r.height / 2 };
 });
 const reorderDrop = await page.evaluate(() => {
-  const r = document.getElementById('builder-dock-right').getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.bottom - 18 };
+  const r = document.querySelector('#builder-dock-right .builder-dock-tabs .editor-tabs-list').getBoundingClientRect();
+  return { x: r.right - 8, y: r.top + r.height / 2 };
 });
 await page.mouse.move(reorderStart.x, reorderStart.y);
 await page.mouse.down();
@@ -484,12 +488,14 @@ check(
   rightOrderAfter.length === rightOrderBefore.length &&
     rightOrderAfter.includes('builder-palette') &&
     rightOrderAfter.includes('builder-inspector') &&
-    rightOrderAfter.at(-1) === 'builder-palette',
-  JSON.stringify({ rightOrderBefore, rightOrderAfter }),
+    rightOrderAfter.at(-1) === reorderStart.id,
+  JSON.stringify({ rightOrderBefore, rightOrderAfter, dragged: reorderStart.id }),
 );
 const scrollbarStyles = await page.evaluate(() =>
   ['builder-dock-left', 'builder-dock-right', 'builder-palette', 'builder-inspector'].map((id) => {
-    const cs = getComputedStyle(document.getElementById(id));
+    const el = document.getElementById(id);
+    if (!el) return { id, width: '', color: '', missing: true };
+    const cs = getComputedStyle(el);
     return { id, width: cs.scrollbarWidth, color: cs.scrollbarColor };
   }),
 );
@@ -1392,8 +1398,20 @@ await page.mouse.down();
 await page.mouse.move(hiddenLightDragTarget.x, hiddenLightDragTarget.y, { steps: 5 });
 await page.mouse.up();
 await page.waitForTimeout(120);
+const hiddenWhileHidden = await page.evaluate(() => ({
+  visibleMarkers: document.querySelectorAll('.b-marker.k-light:not(.ghost)').length,
+  selectedLights: document.querySelectorAll('.b-marker.k-light.sel').length,
+}));
+check(
+  'hidden light ignores canvas drag while hidden',
+  hiddenWhileHidden.visibleMarkers === 0 && hiddenWhileHidden.selectedLights === 0,
+  JSON.stringify(hiddenWhileHidden),
+);
+await page.evaluate(() => {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+});
 await page.keyboard.press('Control+z');
-await page.waitForTimeout(160);
+await page.waitForTimeout(180);
 await page.mouse.click(hiddenLightStart.x, hiddenLightStart.y);
 await page.waitForTimeout(120);
 const hiddenLightDrag = await page.evaluate(() => ({
@@ -1407,6 +1425,7 @@ check(
   JSON.stringify(hiddenLightDrag),
 );
 
+await page.keyboard.press('Escape');
 await page.keyboard.press('Control+k');
 await page.waitForTimeout(80);
 await page.fill('#bp-cmdk-input', 'fit authored');
@@ -1552,18 +1571,21 @@ await page.keyboard.press('o'); // back to NONE
 
 /* ---------- layers ---------- */
 console.log('-- layers');
+const gameplayMarkerCount = () =>
+  page.evaluate(() => document.querySelectorAll('.b-marker:not(.k-light)').length);
+const gameplayMarkersBeforeLayerToggle = await gameplayMarkerCount();
 await page.evaluate(() => {
   document.querySelector('.bp-layer[data-layer="gameplay"] [data-vis]').click();
 });
 await page.waitForTimeout(120);
-markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
+markers = await gameplayMarkerCount();
 check('hiding the gameplay layer hides its markers', markers === 0, `got ${markers}`);
 await page.evaluate(() => {
   document.querySelector('.bp-layer[data-layer="gameplay"] [data-vis]').click();
 });
 await page.waitForTimeout(120);
-markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
-check('showing it brings them back', markers === 4, `got ${markers}`);
+markers = await gameplayMarkerCount();
+check('showing it brings them back', markers === gameplayMarkersBeforeLayerToggle, `got ${markers}, before ${gameplayMarkersBeforeLayerToggle}`);
 
 /* ---------- outliner + link graph ---------- */
 console.log('-- outliner & graph');
@@ -2102,8 +2124,8 @@ const invalidLightNumber = await page.evaluate(() => ({
   status: document.getElementById('builder-status')?.textContent ?? '',
 }));
 check(
-  'light numeric inspector enforces schema min/max before command commit',
-  invalidLightNumber.radius === radiusBefore && invalidLightNumber.status.includes('RADIUS MUST BE >= 4'),
+  'light numeric inspector clamps schema min/max on commit',
+  invalidLightNumber.radius === '4' && invalidLightNumber.status.includes('RADIUS CLAMPED TO 4'),
   JSON.stringify({ ...invalidLightNumber, before: radiusBefore }),
 );
 await page.click('#bi-solo');
@@ -2111,7 +2133,11 @@ await page.waitForTimeout(200);
 const solo = await page.evaluate(() => window.__game.ctx.state.editorLights?.length ?? 0);
 check('solo narrows the light preview to one', solo === 1, `got ${solo}`);
 
-check('no page errors', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 300));
+check(
+  'no page or console errors',
+  pageErrors.length === 0 && consoleErrors.length === 0,
+  [...pageErrors, ...consoleErrors].join(' | ').slice(0, 300),
+);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await browser.close();

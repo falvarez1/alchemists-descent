@@ -83,6 +83,14 @@ export async function waitForRunReady(page, { timeout = 30000 } = {}) {
   );
 }
 
+export function isBenignDevConsoleError(text) {
+  return (
+    /WebSocket connection to 'ws:\/\/[^']+' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED/.test(
+      String(text),
+    )
+  );
+}
+
 export async function startConsoleRun(page, options = {}) {
   const {
     clearSavedExpedition = true,

@@ -1080,6 +1080,7 @@ export class Gallery {
     instantiateObjects(this.stub, sink, p.objects, p.links, p.lights, PX, PY, set, {
       docSprites: this.hooks.docSprites(),
       spriteCache: this.spriteCache,
+      spriteLookup: (id) => this.hooks.sprites().find((sprite) => sprite.id === id) ?? null,
     });
     this.runtime.mechanisms.push(...sink.mechanisms);
     this.runtime.runeVaults.push(...sink.runeVaults);

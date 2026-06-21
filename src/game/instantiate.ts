@@ -13,7 +13,6 @@ import type {
   RuntimeDecor,
   Waystone,
 } from '@/core/types';
-import type { EditorLight, EditorLink, EditorObject } from '@/builder/document';
 import {
   AUTHORED_LIGHT_BLOOM_MAX,
   AUTHORED_LIGHT_FLICKER_MAX,
@@ -21,11 +20,12 @@ import {
   AUTHORED_LIGHT_RADIUS_MAX,
   AUTHORED_LIGHT_RADIUS_MIN,
   paramNum,
-} from '@/builder/document';
-import { resolveLoopTag, spritePhase } from '@/builder/assets/sprites';
-import type { SpriteAsset } from '@/builder/assets/sprites';
-import { resolveRuntimeSprite } from '@/builder/assets/spritelib';
-import type { ResolvedSprite } from '@/builder/assets/spritelib';
+} from '@/authoring/document';
+import type { EditorLight, EditorLink, EditorObject } from '@/authoring/document';
+import { resolveLoopTag, spritePhase } from '@/authoring/sprites';
+import type { SpriteAsset } from '@/authoring/sprites';
+import { resolveRuntimeSprite } from '@/authoring/spriteRuntime';
+import type { ResolvedSprite, SpriteAssetLookup } from '@/authoring/spriteRuntime';
 import { ALL_CARD_IDS } from '@/combat/wands/cards';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import {
@@ -49,8 +49,8 @@ import {
   stampExitWell,
   stampRuneDoor,
   stampRunePedestal,
-} from '@/builder/stamps';
-import type { CellSetter } from '@/builder/stamps';
+} from '@/authoring/stamps';
+import type { CellSetter } from '@/authoring/stamps';
 import { Cell } from '@/sim/CellType';
 import { HEIGHT } from '@/config/constants';
 
@@ -209,9 +209,12 @@ export function instantiateObjects(
     docSprites?: SpriteAsset[];
     /** Shared decode cache — worldgen threads one across all its prefabs. */
     spriteCache?: Map<string, ResolvedSprite | null>;
+    /** Optional external sprite resolver; Builder passes local sprite storage here. */
+    spriteLookup?: SpriteAssetLookup;
   },
 ): void {
   const spriteCache = opts?.spriteCache ?? new Map<string, ResolvedSprite | null>();
+  const spriteLookup = opts?.spriteLookup ?? (() => null);
   // 1) Simple objects + structural landmarks.
   for (const o of objects) {
     if (o.hidden) continue;
@@ -248,11 +251,11 @@ export function instantiateObjects(
       // doesn't know it's there. A decor WITHOUT a spriteId is the legacy
       // designer note: annotation only, never compiles. An UNRESOLVABLE
       // spriteId is silently skipped — a missing visual must never break
-      // compile or generation (sprites resolve from the document's embedded
-      // assets first, then the local sprite library).
+      // compile or generation (Builder can provide a local-library lookup;
+      // document-embedded assets remain the portable fallback).
       const spriteId = typeof o.params.spriteId === 'string' ? o.params.spriteId : '';
       if (spriteId !== '') {
-        const resolved = resolveRuntimeSprite(spriteId, opts?.docSprites, spriteCache);
+        const resolved = resolveRuntimeSprite(spriteId, opts?.docSprites, spriteCache, spriteLookup);
         if (resolved) {
           const loopTag = typeof o.params.loopTag === 'string' ? o.params.loopTag : '';
           const { from, to, dir } = resolveLoopTag(resolved.asset, loopTag);

@@ -8,8 +8,8 @@ import {
 } from '@/combat/wands/projectileMarks';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
+import { EnemySpatialIndex } from '@/core/enemySpatial';
 import type { Ctx, Projectile, ProjectilesApi, ProjectileType, RigidBody } from '@/core/types';
-import { EnemySpatialIndex } from '@/entities/enemySpatial';
 import { Cell, isConductor, isGas, isSolid } from '@/sim/CellType';
 import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';

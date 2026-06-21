@@ -3,6 +3,7 @@ import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { AUTHORED_LIGHT_RUNTIME_CAP, applyWorldLayer } from '@/builder/document';
 import type { EditorDocument, EditorWorldLayer } from '@/builder/document';
 import { instantiateObjects, makeInstantiationSink } from '@/game/instantiate';
+import { getStoredSprite } from '@/builder/assets/spritelib';
 import type { CellSetter } from '@/builder/stamps';
 import { buildMechanismTriggerIndex } from '@/core/mechanisms';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
@@ -144,6 +145,7 @@ export class PreviewRuntime {
     };
     instantiateObjects(previewCtx, sink, doc.objects, doc.links, doc.lights, 0, 0, set, {
       docSprites: doc.assets?.sprites,
+      spriteLookup: getStoredSprite,
     });
     this.pickups = sink.pickups.slice(0, MAX_PICKUPS);
     this.mechanisms = sink.mechanisms;

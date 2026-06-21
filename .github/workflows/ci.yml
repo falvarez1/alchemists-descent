@@ -34,11 +34,39 @@ jobs:
       - name: Typecheck (tsc --noEmit, strict)
         run: npm run typecheck
 
+      - name: Builder boundary guard
+        run: npm run verify:builder-boundaries
+
       - name: Lint
         run: npm run lint
 
       - name: Tests
         run: npm test
+
+      - name: Production build
+        run: GH_PAGES=true npm run build
+
+      - name: Builder bundle boundary
+        run: npm run verify:builder-bundle
+
+      - name: Install Chromium for browser probes
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Builder production lazy-load network probe
+        env:
+          PLAYWRIGHT_BROWSER_CHANNEL: chromium
+        run: |
+          npm run preview:dist -- --host 127.0.0.1 --port 4173 --base /alchemists-descent/ &
+          PREVIEW_PID=$!
+          trap "kill $PREVIEW_PID" EXIT
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:4173/alchemists-descent/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4173/alchemists-descent/ >/dev/null
+          npm run verify:builder-prod-network -- http://127.0.0.1:4173/alchemists-descent/
 
       - name: AssemblyScript WASM generation
         run: |

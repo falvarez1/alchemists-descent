@@ -3,7 +3,7 @@
 // multi-select/marquee/duplicate, stamps (capture/arm/paste), OR + SEQUENCE
 // door logic live, playtest-from-here, overlays, share codes.
 // Usage: node scripts/verify-builder-pro.mjs [url]  (dev server must be running)
-import { chromium } from 'playwright-core';
+import { launchBrowser } from './browser-launch.mjs';
 import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
@@ -14,7 +14,7 @@ const check = (name, ok, detail = '') => {
   else { fail++; console.log(`  FAIL  ${name} ${detail}`); }
 };
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 let nextPromptAnswer = null;
 page.on('dialog', (d) => {
@@ -32,12 +32,36 @@ await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
 
 /* ---------- builder + arena ---------- */
-await page.click('#mode-builder-btn');
-await page.waitForTimeout(300);
+const enterBuilder = async () => {
+  const open = await page.evaluate(() => document.body.classList.contains('builder-open'));
+  if (!open) await page.click('#mode-builder-btn');
+  await page.waitForFunction(
+    () => document.body.classList.contains('builder-open') && !!document.getElementById('builder-overlay'),
+    { timeout: 15000 },
+  );
+  await page.waitForTimeout(350);
+};
+
+const clearBuilderStorage = async () =>
+  page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (
+        key.startsWith('noita-builder-doc:') ||
+        key.startsWith('noita-builder-prefab:') ||
+        key === 'noita-builder-draft'
+      ) {
+        localStorage.removeItem(key);
+      }
+    }
+  });
+
+await clearBuilderStorage();
+await enterBuilder();
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const w = ctx.world;
   const Metal = 13;
+  w.clear();
   for (let y = 375; y <= 625; y++)
     for (let x = 430; x <= 770; x++) {
       const i = w.idx(x, y);
@@ -182,6 +206,11 @@ await page.evaluate(() => {
 console.log('-- settle gating');
 const readSavedRle = () =>
   page.evaluate(() => {
+    const currentId = document.getElementById('b-doc-select')?.value;
+    if (currentId) {
+      const raw = localStorage.getItem(`noita-builder-doc:${currentId}`);
+      if (raw) return JSON.parse(raw).world?.rle ?? null;
+    }
     for (let n = 0; n < localStorage.length; n++) {
       const k = localStorage.key(n);
       if (k && k.startsWith('noita-builder-doc:')) {
@@ -197,6 +226,17 @@ const arenaChecksum = () =>
     for (let y = 375; y <= 625; y++) for (let x = 430; x <= 770; x++) sum += w.types[w.idx(x, y)];
     return sum;
   });
+const countStone = (x0, y0, x1, y1) =>
+  page.evaluate(([x0, y0, x1, y1]) => {
+    const w = window.__game.ctx.world;
+    let n = 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (w.types[w.idx(x, y)] === 12) n++;
+      }
+    }
+    return n;
+  }, [x0, y0, x1, y1]);
 const sampleBuilderCanvas = (wx, wy) =>
   page.evaluate(({ wx, wy, view }) => {
     const ctx = window.__game.ctx;
@@ -217,6 +257,11 @@ await page.evaluate(() => {
   window.__game.ctx.state.activeInputMode = 'element';
 });
 const paintBlock = async (x0, y0, x1, y1) => {
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    window.__game.ctx.state.currentElement = 12;
+    window.__game.ctx.state.activeInputMode = 'element';
+  });
   await page.click('.bp-tool[data-tool="rectFill"]');
   const sa = await toClient(x0, y0);
   const sb = await toClient(x1, y1);
@@ -227,6 +272,8 @@ const paintBlock = async (x0, y0, x1, y1) => {
   await page.waitForTimeout(120);
 };
 await paintBlock(640, 500, 650, 510);
+const blockA = await countStone(640, 500, 650, 510);
+check('block A painted through the UI before first save', blockA >= 100, `got ${blockA}`);
 await page.click('[data-menu="document"]');
 await page.click('#b-save');
 await page.waitForTimeout(200);
@@ -235,6 +282,8 @@ const rle1 = await readSavedRle();
 // stone never moves, so KEEP reports "nothing moved" — and must NOT launder
 // away block B's dirty flag
 await paintBlock(660, 500, 670, 510);
+const blockB = await countStone(660, 500, 670, 510);
+check('block B painted through the UI before zero-diff settle', blockB >= 100, `got ${blockB}`);
 await holdSettle(1200); // hold-to-run; release leaves KEEP/REVERT pending
 await page.click('#bp-proc-btn'); // open the procedural panel
 const sumBefore = await arenaChecksum();
@@ -344,11 +393,7 @@ await page.keyboard.press('Control+z');
 await page.keyboard.press('Escape');
 await page.keyboard.press('Escape'); // clear region
 // clean up the library so re-runs start from zero
-await page.evaluate(() => {
-  for (const key of Object.keys(localStorage)) {
-    if (key.startsWith('noita-builder-prefab:')) localStorage.removeItem(key);
-  }
-});
+await clearBuilderStorage();
 
 /* ---------- OR and SEQUENCE doors, live in the runtime ---------- */
 console.log('-- door logic live');
@@ -386,7 +431,7 @@ await link(510, 619, 651, 590);
 await link(545, 619, 651, 590);
 await page.click('#b-playtest');
 await page.waitForFunction(
-  () => window.__game.ctx.levels.current && !window.__game.ctx.levels.transitioning,
+  () => window.__game?.ctx?.levels.current && !window.__game.ctx.levels.transitioning,
   { timeout: 10000 },
 );
 await page.waitForTimeout(500);
@@ -410,8 +455,7 @@ const orState = await page.evaluate(() => {
 check('ONE plate opens an OR door', orState === 1, `state ${orState}`);
 
 // sequence: same wiring, door logic sequence, drive out of order then in order
-await page.click('#mode-builder-btn');
-await page.waitForTimeout(400);
+await enterBuilder();
 const doorSel = await page.evaluate(() => {
   // select the door through validation issue-free path: click its marker via canvas hit
   return true;
@@ -464,8 +508,7 @@ check('first step advances the chain', seqResult.afterFirst.seq === 1, JSON.stri
 check('completing the sequence latches the door open', seqResult.done && seqResult.state === 1, JSON.stringify(seqResult));
 
 /* fail-open doctrine on sequence chains: wreck every trigger, gate gives way */
-await page.click('#mode-builder-btn');
-await page.waitForTimeout(400);
+await enterBuilder();
 await page.click('#b-playtest');
 await page.waitForFunction(
   () => window.__game.ctx.levels.current && !window.__game.ctx.levels.transitioning,
@@ -483,8 +526,7 @@ const failOpen = await page.evaluate(async () => {
 check('wrecking every sequence trigger fails the chain OPEN', failOpen.done && failOpen.state === 1, JSON.stringify(failOpen));
 
 /* wreck-BEHIND-the-cursor: breaking an already-fired step must not wedge */
-await page.click('#mode-builder-btn');
-await page.waitForTimeout(400);
+await enterBuilder();
 await page.click('#b-playtest');
 await page.waitForFunction(
   () => window.__game.ctx.levels.current && !window.__game.ctx.levels.transitioning,
@@ -510,8 +552,7 @@ check('wrecking an already-fired step cannot wedge the chain', wreckBehind.mid.s
 
 /* ---------- live preview session: disposable, Builder-owned ---------- */
 console.log('-- live preview session');
-await page.click('#mode-builder-btn');
-await page.waitForTimeout(400);
+await enterBuilder();
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
   ctx.camera.zoomLock = 1;
@@ -595,8 +636,7 @@ await page.keyboard.press('Escape');
 /* ---------- playtest-from-here (T) ---------- */
 console.log('-- playtest from here');
 if (!(await page.evaluate(() => document.body.classList.contains('builder-open')))) {
-  await page.click('#mode-builder-btn');
-  await page.waitForTimeout(400);
+  await enterBuilder();
 }
 await page.keyboard.press('Escape');
 await page.waitForTimeout(60);
@@ -635,8 +675,7 @@ check('T playtests at the cursor', Math.abs(tpos.x - 700) < 20, JSON.stringify(t
 
 /* ---------- overlays + share code round trip ---------- */
 console.log('-- overlays & share');
-await page.click('#mode-builder-btn');
-await page.waitForTimeout(400);
+await enterBuilder();
 await page.keyboard.press('o');
 let overlayLabel = await page.evaluate(() => document.getElementById('bp-overlay-btn').textContent);
 check('O cycles the readability overlay', overlayLabel.includes('LIGHT'), overlayLabel);

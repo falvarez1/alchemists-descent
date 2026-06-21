@@ -2,7 +2,8 @@
 // drag-to-stage placement, safe-delete usage blocking, and durable import reports.
 // Usage: node scripts/verify-builder-assets.mjs [url]  (dev server running)
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright-core';
+import { launchBrowser } from './browser-launch.mjs';
+import { isBenignDevConsoleError } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -12,10 +13,14 @@ const check = (name, ok, detail = '') => {
   else { fail++; console.log(`  FAIL  ${name} ${detail}`); }
 };
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
 const pageErrors = [];
+const consoleErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
+page.on('console', (msg) => {
+  if (msg.type() === 'error' && !isBenignDevConsoleError(msg.text())) consoleErrors.push(msg.text());
+});
 
 await page.addInitScript(() => {
   for (const key of Object.keys(localStorage)) {
@@ -108,7 +113,7 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1800);
 await page.click('#mode-builder-btn');
-await page.waitForTimeout(300);
+await page.waitForSelector('#builder-root .bp-swatch', { timeout: 15000 });
 
 const clickBuilderStage = async (xFrac = 0.5, yFrac = 0.5) => {
   const point = await page.evaluate(({ xFrac: xf, yFrac: yf }) => {
@@ -121,10 +126,16 @@ const clickBuilderStage = async (xFrac = 0.5, yFrac = 0.5) => {
 };
 
 const dragAssetRowToStage = async (assetId, xFrac = 0.5, yFrac = 0.5) => {
+  await page.waitForFunction(
+    (id) => Boolean(document.querySelector(`#builder-assets [data-asset-id="${CSS.escape(id)}"]`)),
+    assetId,
+    { timeout: 5000 },
+  ).catch(() => undefined);
   return page.evaluate(({ assetId: id, xFrac: xf, yFrac: yf }) => {
     const source = document.querySelector(`#builder-assets [data-asset-id="${CSS.escape(id)}"]`);
     const overlay = document.getElementById('builder-overlay');
     if (!source || !overlay) return { ok: false, reason: 'missing source or overlay' };
+    source.scrollIntoView({ block: 'center', inline: 'nearest' });
     const overlayRect = overlay.getBoundingClientRect();
     const sourceRect = source.getBoundingClientRect();
     const draggable = source.getAttribute('draggable');
@@ -953,7 +964,11 @@ check(
   JSON.stringify(documentOpenState),
 );
 
-check('no page errors during asset browser probe', pageErrors.length === 0, pageErrors.join('\n'));
+check(
+  'no page or console errors during asset browser probe',
+  pageErrors.length === 0 && consoleErrors.length === 0,
+  [...pageErrors, ...consoleErrors].join('\n'),
+);
 
 await browser.close();
 console.log(`\nverify-builder-assets: ${pass} passed, ${fail} failed`);

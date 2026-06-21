@@ -5,6 +5,7 @@ import { Fn, instanceIndex, textureStore, uint, uvec2, vec4 } from 'three/tsl';
 import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import type { Ctx, MaterialParams } from '@/core/types';
+import { COMPOSE_MAX_LENSES, COMPOSE_MAX_WAVES } from '@/render/composeLimits';
 import type {
   CompositorLens,
   LightField,
@@ -25,8 +26,6 @@ import type { World } from '@/sim/World';
 const COMPOSE_PAD = 64;
 const WIN_W = VIEW_W + COMPOSE_PAD * 2;
 const WIN_H = VIEW_H + COMPOSE_PAD * 2;
-const MAX_WAVES = 8;
-const MAX_LENSES = 4;
 const MAX_BACKDROP_LAYERS = 5;
 const TWO_PI = Math.PI * 2;
 const LIGHT_W = (VIEW_W >> 1) + 1;
@@ -43,7 +42,7 @@ const BACKDROP_BASE = 32;
 const BACKDROP_STRIDE = 8;
 const WAVE_BASE = BACKDROP_BASE + MAX_BACKDROP_LAYERS * BACKDROP_STRIDE;
 const WAVE_STRIDE = 8;
-const LENS_BASE = WAVE_BASE + MAX_WAVES * WAVE_STRIDE;
+const LENS_BASE = WAVE_BASE + COMPOSE_MAX_WAVES * WAVE_STRIDE;
 const LENS_STRIDE = 4;
 
 interface RuntimeGpuQueue {
@@ -366,8 +365,8 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
     var lookupX = wx;
     var lookupY = wy;
     var ringGlow = 0.0;
-    let waveCount = min(i32(p(12u)), ${MAX_WAVES});
-    for (var i = 0; i < ${MAX_WAVES}; i = i + 1) {
+    let waveCount = min(i32(p(12u)), ${COMPOSE_MAX_WAVES});
+    for (var i = 0; i < ${COMPOSE_MAX_WAVES}; i = i + 1) {
       if (i >= waveCount) {
         break;
       }
@@ -390,8 +389,8 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
     lookupX = clamp(lookupX, 0, ${WIDTH - 1});
     lookupY = clamp(lookupY, 0, ${HEIGHT - 1});
 
-    let lensCount = min(i32(p(13u)), ${MAX_LENSES});
-    for (var i = 0; i < ${MAX_LENSES}; i = i + 1) {
+    let lensCount = min(i32(p(13u)), ${COMPOSE_MAX_LENSES});
+    for (var i = 0; i < ${COMPOSE_MAX_LENSES}; i = i + 1) {
       if (i >= lensCount) {
         break;
       }
@@ -1104,8 +1103,8 @@ export class WebGpuLiveCompose {
     params[9] = Math.random() * 4096;
     params[10] = dbg.__composeFlickerMid === true ? 1 : 0;
     params[11] = (ctx.state.frameCount * 0.035) % TWO_PI;
-    params[12] = Math.min(ctx.shockwaves.length, MAX_WAVES);
-    params[13] = Math.min(lenses.length, MAX_LENSES);
+    params[12] = Math.min(ctx.shockwaves.length, COMPOSE_MAX_WAVES);
+    params[13] = Math.min(lenses.length, COMPOSE_MAX_LENSES);
 
     const backdropProfile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
     params[14] = backdropProfile.grade.exposure;
@@ -1137,7 +1136,7 @@ export class WebGpuLiveCompose {
       params[base + 7] = setting.offsetY;
     }
 
-    const waveCount = Math.min(ctx.shockwaves.length, MAX_WAVES);
+    const waveCount = Math.min(ctx.shockwaves.length, COMPOSE_MAX_WAVES);
     for (let i = 0; i < waveCount; i++) {
       const wave = ctx.shockwaves[i];
       const base = WAVE_BASE + i * WAVE_STRIDE;
@@ -1148,7 +1147,7 @@ export class WebGpuLiveCompose {
       params[base + 4] = wave.strength;
     }
 
-    const lensCount = Math.min(lenses.length, MAX_LENSES);
+    const lensCount = Math.min(lenses.length, COMPOSE_MAX_LENSES);
     for (let i = 0; i < lensCount; i++) {
       const lens = lenses[i];
       const base = LENS_BASE + i * LENS_STRIDE;

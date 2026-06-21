@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Enemy } from '@/core/types';
-import { EnemySpatialIndex } from '@/entities/enemySpatial';
+import { EnemySpatialIndex } from '@/core/enemySpatial';
 
 describe('EnemySpatialIndex', () => {
   it('returns reusable nearby bucket candidates without scanning unrelated buckets', () => {

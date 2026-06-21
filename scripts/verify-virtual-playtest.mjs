@@ -4,18 +4,21 @@
 // renderer end of the pipeline in the actual game.
 //
 // Usage: node scripts/verify-virtual-playtest.mjs [url]  (needs a DEV server + Edge)
-import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { launchBrowser } from './browser-launch.mjs';
+import { isBenignDevConsoleError } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const outDir = 'verify-out';
 mkdirSync(outDir, { recursive: true });
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 const consoleErrors = [];
 const pageErrors = [];
-page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+page.on('console', (m) => {
+  if (m.type() === 'error' && !isBenignDevConsoleError(m.text())) consoleErrors.push(m.text());
+});
 page.on('pageerror', (e) => pageErrors.push(String(e)));
 
 // Sample the GL canvas inside rAF (no preserveDrawingBuffer needed). Reports coverage,

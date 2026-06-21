@@ -323,6 +323,11 @@ export interface Enemy {
   weaverFallT?: number;
   /** Weaver: smoothed body lean from asymmetric footholds (-left, +right). */
   weaverTilt?: number;
+  /** Weaver: smoothed body orientation (radians). The whole creature rotates so its
+   *  legs point at whatever surface they grip — 0 on a floor, ±π/2 on a wall, π under
+   *  a ceiling, blending through corners. Derived every frame from the planted feet,
+   *  so it tilts to climb / hangs upside-down even while Debug-frozen and dragged. */
+  weaverOrient?: number;
   /** Weaver: smoothed render-only body lift; high stance unless crouching/reaching. */
   weaverBodyLift?: number;
   /** Weaver: smoothed rear-up reach (0..1) when an alerted target hovers overhead —
@@ -340,6 +345,15 @@ export interface Enemy {
   weaverClimbDir?: number;
   /** Weaver: frames spent on the current wall climb (latches the mount over the lip). */
   weaverClimbT?: number;
+  /** Weaver: free-moving head — smoothed render offset (x,y) and spring velocity of the
+   *  cephalothorax. It turns to track prey, scans when idle and leads the walk, sprung so
+   *  it overshoots and settles organically instead of snapping to the body's facing. */
+  weaverHeadX?: number;
+  weaverHeadY?: number;
+  weaverHeadVX?: number;
+  weaverHeadVY?: number;
+  /** Weaver: smoothed predatory-stalk drive (0..1) — paced lunge/coil bursts at mid range. */
+  weaverStalk?: number;
   /** Weaver: short render signal while lowering to feed on prey. */
   weaverFeedT?: number;
   /** Weaver: frames of irritated pursuit after being disturbed awake. */
@@ -481,6 +495,8 @@ export interface DigBeam {
   y0: number;
   x1: number;
   y1: number;
+  /** Fixed-tick physics budget; render-only frames must not consume this. */
+  physicsLife?: number;
   life: number;
 }
 
@@ -631,6 +647,11 @@ export interface GlobalParams {
   /** Shock damage per status tick a body spends electrified (standing in a charged
    *  conductor). Wet bodies take a multiple of this — the lightning combo. */
   shockDamage: number;
+  /** Electro-EROSION: how fast a live current arcs into and spalls the SOLID terrain
+   *  touching it (walls/stone crumble; Metal conducts and is immune). 0 = off; ~1 = a
+   *  zap chips the surface and a sustained current drills through over a second or two.
+   *  Scales with the local charge magnitude, so only a real current bites. */
+  chargeErosion: number;
 }
 
 export interface PostFxSettings {
@@ -1274,6 +1295,8 @@ export interface VineStrandView {
   readonly web?: boolean;
   /** Launched Weaver spit: no pinned endpoints, flies and falls under Verlet. */
   readonly freeWeb?: boolean;
+  /** Persistent den dressing web: render as background set dressing. */
+  readonly denWeb?: boolean;
 }
 
 export interface WeaverLairWeb {

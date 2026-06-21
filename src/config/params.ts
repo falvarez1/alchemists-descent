@@ -38,10 +38,14 @@ export const GLOBAL_PARAMS: GlobalParams = {
   // as crackling electricity. Metal carries it ~3x farther than water (water loses
   // charge 3x faster per hop). Charge is Uint16 so very high strengths don't clip.
   chargeFalloff: 1,
-  chargeStrength: 2.5,
+  chargeStrength: 3.5,
   chargeDecay: 1,
   // Damage per status tick spent in a charged conductor (wet bodies take ~3×).
-  shockDamage: 0.2,
+  shockDamage: 9.2,
+  // Electro-erosion: a live current arcs into the solid terrain it touches and spalls
+  // it (walls/stone crumble to debris; Metal conducts and is immune). 0 = off. ~1 chips
+  // on a zap and drills through under a sustained current; scales with charge magnitude.
+  chargeErosion: 1.0,
 };
 
 /** Frozen baseline captured at load — the Builder section "reset" restores it. */

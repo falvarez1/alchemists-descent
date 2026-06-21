@@ -3,14 +3,14 @@
 // inside the live game. Usage:
 //   node scripts/verify-findability.mjs [url] [seedCsv]
 // Defaults: http://localhost:5173/  seeds 1,5,1337,42
-import { chromium } from 'playwright-core';
+import { launchBrowser } from './browser-launch.mjs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const seeds = (process.argv[3] ?? '1,5,1337,42').split(',').map(Number);
 const DEPTHS = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'vault'];
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser({ headless: true });
 let failures = 0;
 let missingWaveE = 0;
 let totalPrefabs = 0;

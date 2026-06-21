@@ -4,7 +4,7 @@
 // panel out collapses it; an empty dock shows a single full-area drop guide (no
 // doubled indicator); and every empty-dock guide brightens on hover.
 // Usage: node scripts/verify-builder-dock-split.mjs [url]  (dev server must be running)
-import { chromium } from 'playwright-core';
+import { launchBrowser } from './browser-launch.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -14,7 +14,7 @@ const check = (name, ok, detail = '') => {
   else { fail++; console.log(`  FAIL  ${name} ${detail}`); }
 };
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 const errs = [];
 page.on('pageerror', (e) => errs.push(String(e)));
@@ -22,7 +22,10 @@ page.on('pageerror', (e) => errs.push(String(e)));
 const enterBuilder = async () => {
   const open = await page.evaluate(() => document.body.classList.contains('builder-open'));
   if (!open) await page.click('#mode-builder-btn');
-  await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 10000 });
+  await page.waitForFunction(
+    () => document.body.classList.contains('builder-open') && !!document.getElementById('builder-overlay'),
+    { timeout: 15000 },
+  );
   await page.waitForTimeout(350);
 };
 

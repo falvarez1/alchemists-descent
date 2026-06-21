@@ -20,6 +20,7 @@ const PROBES = [
   'verify-runtime-ui.mjs',
   'verify-debug-tool.mjs',
 ];
+const PROBE_TIMEOUT_MS = 240_000;
 
 function ping(targetUrl) {
   return new Promise((resolve) => {
@@ -62,10 +63,25 @@ async function pickPort(startPort) {
   throw new Error(`No free port found from ${startPort} to ${startPort + 19}`);
 }
 
+function killChild(child) {
+  if (!child?.pid) return;
+  if (process.platform === 'win32') {
+    spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+  } else {
+    child.kill('SIGTERM');
+  }
+}
+
 function runProbe(probe) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [`scripts/${probe}`, url], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      out += `\nTimed out after ${PROBE_TIMEOUT_MS}ms`;
+      killChild(child);
+    }, PROBE_TIMEOUT_MS);
     child.stdout.on('data', (chunk) => {
       out += chunk;
     });
@@ -73,9 +89,11 @@ function runProbe(probe) {
       out += chunk;
     });
     child.on('close', (code) => {
+      clearTimeout(timer);
       const clean = out.trim();
-      const summary = clean.split(/\r?\n/).slice(-3).join(' | ') || (code === 0 ? 'ok' : 'errored');
-      resolve({ probe, code: code ?? 1, summary });
+      const exitCode = timedOut ? 1 : code ?? 1;
+      const summary = clean.split(/\r?\n/).slice(-3).join(' | ') || (exitCode === 0 ? 'ok' : 'errored');
+      resolve({ probe, code: exitCode, summary });
     });
   });
 }
@@ -84,8 +102,7 @@ let server = null;
 function cleanup() {
   if (!server) return;
   try {
-    if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(server.pid), '/T', '/F'], { stdio: 'ignore' });
-    else server.kill('SIGTERM');
+    killChild(server);
   } catch {
     // best effort
   }

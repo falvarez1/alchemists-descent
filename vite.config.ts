@@ -13,6 +13,7 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    manifest: true,
     sourcemap: true,
     chunkSizeWarningLimit: 1800,
     rollupOptions: {

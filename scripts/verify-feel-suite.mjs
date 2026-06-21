@@ -18,11 +18,13 @@ const PROBES = [
   'verify-tap-precision.mjs',
   'verify-jump-precision.mjs',
   'verify-air-tap.mjs',
+  'verify-slope-speed.mjs',
   'verify-stomp.mjs',
   'verify-rawore.mjs',
   'verify-lava-water.mjs',
   'verify-difficulty.mjs',
 ];
+const PROBE_TIMEOUT_MS = 240_000;
 
 function ping(u) {
   return new Promise((resolve) => {
@@ -41,15 +43,34 @@ async function waitForServer(u, timeoutMs) {
   return false;
 }
 
+function killChild(child) {
+  if (!child?.pid) return;
+  if (process.platform === 'win32') {
+    spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+  } else {
+    child.kill('SIGTERM');
+  }
+}
+
 function runProbe(probe) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [`scripts/${probe}`, url], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      out += `\nTimed out after ${PROBE_TIMEOUT_MS}ms`;
+      killChild(child);
+    }, PROBE_TIMEOUT_MS);
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { out += d; });
     child.on('close', (code) => {
+      clearTimeout(timer);
       const m = out.match(/(\d+) passed, (\d+) failed/);
-      resolve({ probe, code: code ?? 1, summary: m ? `${m[1]} passed, ${m[2]} failed` : code === 0 ? 'ok' : 'errored' });
+      const exitCode = timedOut ? 1 : code ?? 1;
+      const tail = out.trim().split(/\r?\n/).slice(-3).join(' | ');
+      const summary = m ? `${m[1]} passed, ${m[2]} failed` : exitCode === 0 ? 'ok' : tail || 'errored';
+      resolve({ probe, code: exitCode, summary });
     });
   });
 }
@@ -58,8 +79,7 @@ let server = null;
 function cleanup() {
   if (!server) return;
   try {
-    if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(server.pid), '/T', '/F'], { stdio: 'ignore' });
-    else server.kill('SIGTERM');
+    killChild(server);
   } catch { /* best effort */ }
   server = null;
 }

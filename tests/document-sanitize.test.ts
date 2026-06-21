@@ -6,6 +6,8 @@ import {
   AUTHORED_LIGHT_RADIUS_MAX,
   AUTHORED_LIGHT_RADIUS_MIN,
   createEmptyDocument,
+  EDITOR_LINK_KINDS,
+  EDITOR_OBJECT_KINDS,
   sanitizeImportedDoc,
 } from '@/builder/document';
 import type { EditorDocument } from '@/builder/document';
@@ -109,5 +111,31 @@ describe('document sanitizer — save/share ingestion (review hardening)', () =>
     const short = baseDoc();
     short.world = { rle: rleEncode(new Uint8Array(WIDTH * HEIGHT - 64)) };
     expect(sanitizeImportedDoc(short)).toBeNull();
+  });
+
+  it('keeps every canonical object and link kind during sanitization', () => {
+    const doc = baseDoc();
+    doc.objects = EDITOR_OBJECT_KINDS.map((kind, index) => ({
+      id: `obj-${kind}`,
+      kind,
+      x: 12 + index,
+      y: 20 + index,
+      rotation: 0,
+      locked: false,
+      hidden: false,
+      params: {},
+    }));
+    doc.links = EDITOR_LINK_KINDS.map((kind) => ({
+      id: `link-${kind}`,
+      fromId: doc.objects[0].id,
+      toId: doc.objects[1].id,
+      kind,
+      ...(kind === 'logic' ? { logic: 'and' as const } : {}),
+    }));
+
+    const out = sanitizeImportedDoc(doc)!;
+
+    expect(out.objects.map((object) => object.kind)).toEqual([...EDITOR_OBJECT_KINDS]);
+    expect(out.links.map((link) => link.kind)).toEqual([...EDITOR_LINK_KINDS]);
   });
 });

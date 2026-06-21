@@ -12,6 +12,7 @@ mkdirSync(outDir, { recursive: true });
 const CELL = Object.freeze({
   Empty: 0,
   Stone: 12,
+  Ash: 32,
   Vines: 15,
   Slime: 19,
   Fungus: 30,
@@ -692,9 +693,63 @@ try {
     threadResult.web && threadMotion
       ? Math.hypot(threadMotion.midX - threadResult.web.midX, threadMotion.midY - threadResult.web.midY)
       : 0;
+  const threadExpiry = await page.evaluate(async (cell) => {
+    const ctx = window.__game.ctx;
+    const world = ctx.world;
+    const webStrands = ctx.vineStrands.strands.filter((s) => s.web === true && s.freeWeb === true);
+    const web = webStrands[webStrands.length - 1] ?? null;
+    if (!web) return { found: false };
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const node of web.nodes) {
+      minX = Math.min(minX, Math.floor(node.x) - 8);
+      minY = Math.min(minY, Math.floor(node.y) - 8);
+      maxX = Math.max(maxX, Math.floor(node.x) + 8);
+      maxY = Math.max(maxY, Math.floor(node.y) + 8);
+    }
+    minX = Math.max(0, minX);
+    minY = Math.max(0, minY);
+    maxX = Math.min(world.width - 1, maxX);
+    maxY = Math.min(world.height - 1, maxY);
+    const countAsh = () => {
+      let ash = 0;
+      let blockingAsh = 0;
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          const i = world.idx(x, y);
+          if (world.types[i] !== cell.Ash) continue;
+          ash++;
+          if (ctx.physics.cellBlocks(x, y)) blockingAsh++;
+        }
+      }
+      return { ash, blockingAsh };
+    };
+    const before = countAsh();
+    web.maxAge = Math.min(web.maxAge ?? web.age + 2, web.age + 2);
+    await new Promise((resolve) => {
+      let frames = 0;
+      const tick = () => {
+        frames++;
+        if (frames >= 8) resolve();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    const after = countAsh();
+    return {
+      found: true,
+      before,
+      after,
+      deltaAsh: after.ash - before.ash,
+      deltaBlockingAsh: after.blockingAsh - before.blockingAsh,
+      remainingFreeWebs: ctx.vineStrands.strands.filter((s) => s.web === true && s.freeWeb === true).length,
+    };
+  }, CELL);
   console.log(
     'thread-spit:',
-    JSON.stringify({ setup: threadSetup, telegraph: threadTelegraph, result: threadResult, motion: threadMotion, threadMove }),
+    JSON.stringify({ setup: threadSetup, telegraph: threadTelegraph, result: threadResult, motion: threadMotion, threadMove, expiry: threadExpiry }),
   );
   if (!threadResult.sentinel) throw new Error('Thread-test Weaver missing');
   if (threadTelegraph.blink <= 0 || threadTelegraph.windup > 0) {
@@ -718,6 +773,12 @@ try {
   // to catch the static-line case — keep the floor low so a settled web isn't flaky.
   if (threadMove <= 0.005) {
     throw new Error(`Thread Spit web did not keep moving as live Verlet cloth, movement=${threadMove}`);
+  }
+  if (!threadExpiry.found || threadExpiry.remainingFreeWebs >= threadResult.webCount) {
+    throw new Error(`Thread Spit web did not expire during residue check: ${JSON.stringify(threadExpiry)}`);
+  }
+  if (threadExpiry.deltaAsh > 9 || threadExpiry.deltaBlockingAsh > 0) {
+    throw new Error(`Thread Spit expiry should shed only sparse nonblocking Ash, or no Ash when unsafe: ${JSON.stringify(threadExpiry)}`);
   }
 
   const needleSetup = await page.evaluate(({ setup, cell }) => {

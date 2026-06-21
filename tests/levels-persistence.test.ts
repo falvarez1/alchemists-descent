@@ -7,6 +7,7 @@ import { createDefaultStatus } from '@/entities/status';
 import { Levels, reviveSavedEnemy, snapshotEnemyForSave } from '@/game/Levels';
 import { makePickup } from '@/core/pickupDefs';
 import { makeLevelRuntime } from '@/game/runtime';
+import { rleEncode } from '@/core/rle';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 
@@ -134,6 +135,68 @@ describe('level enemy persistence', () => {
 
     expect(saved.patrol).toEqual([[1, 2]]);
     expect(revived.patrol).toEqual([[1, 77]]);
+  });
+
+  it('clamps oversized saved Weaver lair webs on restore', () => {
+    const savedWorld = new World();
+    const ctx = {
+      world: savedWorld,
+      enemies: [],
+      state: { worldSeed: 99 },
+      worldgen: {
+        generateLevel: () => ({
+          exit: { x: 100, sealY: 140, halfW: 8 },
+          waystones: [],
+          spawn: { x: 24, y: 48 },
+          cauldron: null,
+          pickups: [],
+          portal: null,
+          mechanisms: [],
+          runeVaults: [],
+          boss: null,
+          vaultArch: null,
+          vaultHoard: null,
+          spellLab: null,
+          prefabEnemies: [],
+          placedPrefabs: [],
+          authoredLights: [],
+          emitters: [],
+          decors: [],
+          refuge: null,
+        }),
+      },
+    } as unknown as Ctx;
+    const levels = new Levels(ctx);
+    const blob = {
+      id: 'd2',
+      rle: rleEncode(savedWorld.types),
+      life: [],
+      charge: [],
+      explored: '',
+      waystones: [],
+      pickups: [],
+      mechanisms: [],
+      runeVaults: [],
+      keyTaken: false,
+      portalOpen: false,
+      litOrder: [],
+      enemies: [],
+      weaverLairWebs: [{ x: 80, y: 70, radius: 500, radials: 40, rings: 30, thickness: 8, color: -1, jitter: 4 }],
+    };
+
+    const restored = (levels as unknown as {
+      restoreLevel(ctx: Ctx, def: typeof LEVELS.d2, blob: typeof blob): LevelRuntime;
+    }).restoreLevel(ctx, LEVELS.d2, blob);
+
+    expect(restored.weaverLairWebs).toHaveLength(1);
+    expect(restored.weaverLairWebs[0]).toMatchObject({
+      radius: 34,
+      radials: 8,
+      rings: 4,
+      thickness: 1,
+      color: 0xffffff,
+    });
+    expect(restored.weaverLairWebs[0].jitter).toBeCloseTo(0.12);
   });
 
   it('exiting a custom playtest restores the previous expedition pointer', () => {

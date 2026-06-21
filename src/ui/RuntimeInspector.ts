@@ -1,15 +1,14 @@
-import { renderRuntimePanel } from '@/builder/runtimePanel';
+import { renderRuntimePanel } from '@/ui/diagnostics/runtimePanel';
 import type { Ctx } from '@/core/types';
 import { buildRuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
 import type { RuntimeEntityGroup, RuntimeEntityRow, RuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
-import { FocusRouter } from '@/ui/editor/FocusRouter';
+import { isRuntimeTextEntryTarget } from '@/ui/diagnostics/runtimeChrome';
 
 const RUNTIME_INSPECTOR_REFRESH_FRAMES = 30;
 
 export class RuntimeInspector {
   private readonly root: HTMLDivElement;
   private readonly button: HTMLButtonElement | null;
-  private readonly focusRouter = new FocusRouter();
   private query = '';
   private filters = new Set<RuntimeEntityGroup>();
   private selectedId: string | null = null;
@@ -133,7 +132,7 @@ export class RuntimeInspector {
       const frame = this.ctx.state.frameCount;
       const active = document.activeElement;
       const focusInside = active instanceof HTMLElement && this.root.contains(active);
-      const editingText = focusInside && this.focusRouter.isTextEntryTarget(active);
+      const editingText = focusInside && isRuntimeTextEntryTarget(active);
       if (
         !this.pointerInside &&
         !focusInside &&
@@ -250,7 +249,7 @@ export class RuntimeInspector {
   private handleKeyDown(event: KeyboardEvent): void {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (this.focusRouter.isTextEntryTarget(target)) return;
+    if (isRuntimeTextEntryTarget(target)) return;
     const row = target.closest<HTMLElement>('[data-runtime-id]');
     if (!row || !this.root.contains(row)) return;
 

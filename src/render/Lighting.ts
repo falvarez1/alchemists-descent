@@ -43,11 +43,10 @@ const GLOW_HALF_SPREAD = 0.7; // radians (~40°) — wider/softer than the focus
 const GLOW_RADIUS_SCALE = 0.7; // wraps the wizard's surroundings, doesn't tunnel far
 const GLOW_INTENSITY_SCALE = 0.3; // faint ambient fill — must not wash out the shadows
 const GLOW_EDGE_MIN = 0.15; // very soft cone edge
-// Hard ceiling on the glow's deposited light value. Bloom (a global threshold
-// pass at ~0.85 final luma) fires once a lit cell pushes past ~0.95 light. By
-// capping the glow below that, its terrain fill never feeds the bloom pass —
-// while the brighter occluded beam/omni still bloom where they win the max.
-const GLOW_BLOOM_CAP = 0.6;
+// Hard ceiling on the glow's deposited light-field value. sample() adds ambient
+// and squares the result before terrain/bloom see it, so this raw cap must sit
+// below the apparent bloom threshold after that post-lighting transform.
+const GLOW_BLOOM_CAP = 0.48;
 
 const RAYCAST_RAYS = 540;
 const RAY_DIR_X = new Float32Array(RAYCAST_RAYS);

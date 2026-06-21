@@ -276,6 +276,9 @@ function markStableRepairPathInterior(runtime: LevelRuntime, interior: Uint8Arra
 function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly FindabilityIssue[]): void {
   const world = runtime.world;
   const interior = new Uint8Array(world.width * world.height);
+  // Brace only material that was already blocking. Painting the shell into open
+  // air creates permanent diagonal rails through playable space.
+  const originalTypes = world.types.slice();
   for (const issue of issues) markStableRepairPathInterior(runtime, interior, issue);
   for (let i = 0; i < interior.length; i++) {
     if (interior[i]) world.clearCellAt(i);
@@ -300,7 +303,7 @@ function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly Findabil
           }
         }
       }
-      if (nearInterior) world.replaceCellAt(i, Cell.Metal, REPAIR_SLEEVE_COLOR);
+      if (nearInterior && blocksEntity(originalTypes[i])) world.replaceCellAt(i, Cell.Metal, REPAIR_SLEEVE_COLOR);
     }
   }
 }

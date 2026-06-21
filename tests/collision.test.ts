@@ -70,4 +70,16 @@ describe('loose-rubble collision parity', () => {
       expect(fits[42 + 50 * world.width]).toBe(1);
     }
   });
+
+  it('keeps ash residue pass-through even when it forms long connected trails', () => {
+    const world = new World();
+    for (let n = 0; n < 20; n++) set(world, 40 + n, 30 + n, Cell.Ash);
+
+    expect(blocksEntity(Cell.Ash)).toBe(false);
+    expect(cellBlocksEntityWithLooseRubble(world, 40, 30)).toBe(false);
+    expect(computeLooseRubbleBlockingMask(world)[45 + 35 * world.width]).toBe(0);
+
+    const fits = computeFits(world);
+    expect(fits[45 + 50 * world.width]).toBe(1);
+  });
 });

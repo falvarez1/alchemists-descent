@@ -10,6 +10,7 @@ import {
   makeInstantiationSink,
   spawnPrefabEnemy,
 } from '@/game/instantiate';
+import { getStoredSprite } from '@/builder/assets/spritelib';
 import { cancelChargingBlackHole, resetCombatTransients, resetHeldSpellInputs } from '@/game/transients';
 import type { CellSetter } from '@/builder/stamps';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
@@ -103,6 +104,7 @@ export function compileAndPlaytest(
     // sprite decor resolves from the local library first, then the document's
     // embedded fallback (decoded once; instances share frame buffers)
     docSprites: doc.assets?.sprites,
+    spriteLookup: getStoredSprite,
   });
   runtime.mechanismTriggers = buildMechanismTriggerIndex(runtime.mechanisms);
   if (sink.portal !== undefined) runtime.portal = sink.portal;

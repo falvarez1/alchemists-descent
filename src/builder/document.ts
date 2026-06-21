@@ -1,4 +1,4 @@
-import type { BackdropSettings, BiomeId, Ctx } from '@/core/types';
+import type { BiomeId, Ctx } from '@/core/types';
 import { base64ToBytes, bytesToBase64, rleDecode, rleDecodeExact, rleEncode, sparsePairs } from '@/core/rle';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { BIOMES } from '@/config/biomes';
@@ -7,8 +7,28 @@ import { clamp, hash2, valueNoise } from '@/core/math';
 import { Cell, CELL_COUNT } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
-import { sanitizeSpriteAsset } from '@/builder/assets/sprites';
-import type { SpriteAsset } from '@/builder/assets/sprites';
+import {
+  AUTHORED_LIGHT_BLOOM_MAX,
+  AUTHORED_LIGHT_FLICKER_MAX,
+  AUTHORED_LIGHT_INTENSITY_MAX,
+  AUTHORED_LIGHT_RADIUS_MAX,
+  AUTHORED_LIGHT_RADIUS_MIN,
+  EDITOR_LINK_KINDS,
+  EDITOR_OBJECT_KINDS,
+  freshId,
+  objectFootprint,
+} from '@/authoring/document';
+import type {
+  EditorDocument,
+  EditorLight,
+  EditorLink,
+  EditorObject,
+  EditorObjectKind,
+  EditorWorldLayer,
+  ProceduralPass,
+} from '@/authoring/document';
+import { sanitizeSpriteAsset } from '@/authoring/sprites';
+import type { SpriteAsset } from '@/authoring/sprites';
 import {
   crownDeepTint,
   crownFringeTint,
@@ -16,201 +36,34 @@ import {
   mossUnderColor,
 } from '@/world/crownPalette';
 import { dressWalkSurface } from '@/world/surfaceDress';
+export {
+  AUTHORED_LIGHT_BLOOM_MAX,
+  AUTHORED_LIGHT_FLICKER_MAX,
+  AUTHORED_LIGHT_INTENSITY_MAX,
+  AUTHORED_LIGHT_RADIUS_MAX,
+  AUTHORED_LIGHT_RADIUS_MIN,
+  AUTHORED_LIGHT_RUNTIME_CAP,
+  EDITOR_LINK_KINDS,
+  EDITOR_OBJECT_KINDS,
+  freshId,
+  objectFootprint,
+  paramNum,
+} from '@/authoring/document';
+export type {
+  EditorDocument,
+  EditorLight,
+  EditorLink,
+  EditorObject,
+  EditorObjectKind,
+  EditorWorldLayer,
+  ProceduralPass,
+} from '@/authoring/document';
 
 /**
- * EditorDocument v2 (docs/BUILDER.md): the durable authoring layer. The
- * document stores design INTENT — terrain as a layer, every non-cell thing
- * as an object record, links/lights as their own records. Playtest compiles
- * a runtime from it; runtime scars never flow back unless explicitly baked.
- *
- * Phase status: objects (spawn/enemy/pickup/portal/waystone) are live;
- * links (Phase 6), lights (Phase 7), and procedural history (Phase 8) are
- * carried in the schema so later phases slot in without migration.
+ * Builder compatibility module. The durable authored-content contracts live in
+ * `authoring/document`; this file owns Builder-specific capture, persistence,
+ * and share-code sanitization.
  */
-
-export type EditorObjectKind =
-  | 'spawn'
-  | 'enemy'
-  | 'pickup'
-  | 'exitPortal'
-  | 'waystone'
-  // reserved for later phases (schema-stable, not yet placeable)
-  | 'exitWell'
-  | 'cauldron'
-  | 'door'
-  | 'plate'
-  | 'lever'
-  | 'brazier'
-  | 'scale'
-  | 'buoy'
-  | 'chargeLatch'
-  | 'runeGlyph'
-  | 'runeDoor'
-  | 'bossMarker'
-  | 'terrainStamp'
-  | 'vegetationStamp'
-  | 'hazardEmitter'
-  | 'decor'
-  // machine primitives (docs/MACHINE-PRIMITIVES-AND-STRUCTURES-PLAN.md):
-  // valve/relay receive links like doors; sensor/counterweight/plug emit
-  | 'valve'
-  | 'plug'
-  | 'sensor'
-  | 'counterweight'
-  | 'relay';
-
-export interface EditorObject {
-  id: string;
-  kind: EditorObjectKind;
-  x: number;
-  y: number;
-  rotation: 0 | 90 | 180 | 270;
-  locked: boolean;
-  hidden: boolean;
-  /** Group membership: selecting one member selects the whole group. */
-  group?: string;
-  params: Record<string, unknown>;
-}
-
-export interface EditorLink {
-  id: string;
-  fromId: string;
-  toId: string;
-  kind: 'triggerDoor' | 'runeDoor' | 'keyPortal' | 'bossGate' | 'logic';
-  logic?: 'and' | 'or' | 'sequence';
-}
-
-export interface EditorLight {
-  id: string;
-  x: number;
-  y: number;
-  color: string;
-  intensity: number;
-  radius: number;
-  bloom: number;
-  flicker: number;
-  falloff: 'soft' | 'linear' | 'sharp';
-  occluded: boolean;
-  locked: boolean;
-  hidden: boolean;
-}
-
-export interface EditorWorldLayer {
-  rle: string;
-  /** Biome used to reconstruct generated terrain paint when the layer is restored. */
-  biome?: BiomeId;
-  /** World seed at capture time; fallback source for old documents with no paintSeed. */
-  seed?: number;
-  /** CaveGenerator's material/crown paint seed for deterministic biome wall colors. */
-  paintSeed?: number;
-  life?: Array<[number, number]>;
-  charge?: Array<[number, number]>;
-  /** Optional full packed-color plane for generated layers whose paint is not sparse. */
-  colors?: string;
-  colorOverrides?: Array<[number, number]>;
-}
-
-export interface ProceduralPass {
-  id: string;
-  pass: string;
-  seed: number;
-  params: Record<string, unknown>;
-  appliedAt: string;
-}
-
-export interface EditorDocument {
-  v: 2;
-  id: string;
-  name: string;
-  biome: BiomeId;
-  size: { w: number; h: number };
-  world: EditorWorldLayer | null;
-  objects: EditorObject[];
-  links: EditorLink[];
-  lights: EditorLight[];
-  proceduralHistory: ProceduralPass[];
-  validation: { at: string; errors: number; warnings: number } | null;
-  /** Aesthetics metadata: ambient override (null = game default) and a
-   *  free-form ambience tag. Compiled playtests apply the ambient. */
-  mood?: { ambient: number | null; ambience: string };
-  /** Document-owned parallax backdrop tuning; exported/shared with the level. */
-  backdrop?: BackdropSettings;
-  /** Optional level profile id used by Builder playtests of this document. */
-  backdropProfileId?: string | null;
-  /** Embedded assets (additive, v stays 2 — old loaders ignore the field).
-   *  SAVE/EXPORT/SHARE embed exactly the sprites referenced by decor
-   *  objects (spritelib.embedSprites); IMPORT merges them into the local
-   *  library. Old builds open such docs fine — sprite decor compiles to
-   *  nothing there, which is safe: decor is visual-only by invariant. */
-  assets?: { sprites: SpriteAsset[] };
-}
-
-let idCounter = 0;
-export function freshId(prefix: string): string {
-  return prefix + '-' + Date.now().toString(36) + '-' + (idCounter++).toString(36);
-}
-
-/** Read a numeric object param with a per-kind fallback. */
-export function paramNum(o: EditorObject, key: string, fallback: number): number {
-  const v = o.params[key];
-  return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
-}
-
-/** Largest an axis-aligned mechanism slab (door/runeDoor/valve/plug w & h) may
- *  span: a generous bound that still keeps oversized authored params from
- *  feeding world-sized reachability/exclusion loops downstream. */
-const MAX_SLAB_DIM = 64;
-
-/** Slab width/height param clamped to [1, MAX_SLAB_DIM]. */
-function slabDim(o: EditorObject, key: string, fallback: number): number {
-  return Math.max(1, Math.min(MAX_SLAB_DIM, Math.floor(paramNum(o, key, fallback))));
-}
-
-/**
- * World-cell bounding box of an object's structural footprint (door slabs,
- * sensor basins, the well shaft mouth...). Point objects return null.
- * Shared by the editor canvas (hit test + outline boxes), validation
- * (closed-door stamping), and anything that needs "how big is this thing".
- */
-export function objectFootprint(
-  o: EditorObject,
-): { x0: number; y0: number; x1: number; y1: number } | null {
-  switch (o.kind) {
-    case 'door':
-      return { x0: o.x, y0: o.y, x1: o.x + slabDim(o, 'w', 3) - 1, y1: o.y + slabDim(o, 'h', 13) - 1 };
-    case 'runeDoor':
-      return { x0: o.x, y0: o.y, x1: o.x + slabDim(o, 'w', 2) - 1, y1: o.y + slabDim(o, 'h', 11) - 1 };
-    case 'plate': {
-      const hw = Math.floor(paramNum(o, 'w', 5) / 2);
-      return { x0: o.x - hw, y0: o.y - 1, x1: o.x - hw + paramNum(o, 'w', 5) - 1, y1: o.y };
-    }
-    case 'scale': {
-      const hw = Math.floor(paramNum(o, 'w', 7) / 2);
-      return { x0: o.x - hw - 1, y0: o.y - 7, x1: o.x - hw + paramNum(o, 'w', 7), y1: o.y };
-    }
-    case 'buoy': {
-      const half = Math.max(2, Math.floor(paramNum(o, 'w', 13) / 2));
-      return { x0: o.x - half, y0: o.y - paramNum(o, 'depth', 4), x1: o.x + half, y1: o.y };
-    }
-    case 'exitWell': {
-      const hw = paramNum(o, 'halfW', 14);
-      return { x0: o.x - hw - 3, y0: o.y - 14, x1: o.x + hw + 3, y1: o.y + 13 };
-    }
-    case 'cauldron':
-      return { x0: o.x - 4, y0: o.y - 5, x1: o.x + 4, y1: o.y };
-    case 'valve':
-      return { x0: o.x, y0: o.y, x1: o.x + slabDim(o, 'w', 5) - 1, y1: o.y + slabDim(o, 'h', 2) - 1 };
-    case 'plug':
-      return { x0: o.x, y0: o.y, x1: o.x + slabDim(o, 'w', 3) - 1, y1: o.y + slabDim(o, 'h', 3) - 1 };
-    case 'counterweight': {
-      // mirrors makeCounterweight: pan row + 4-tall lips at both ends
-      const hw = Math.floor(paramNum(o, 'w', 7) / 2);
-      return { x0: o.x - hw - 1, y0: o.y - 7, x1: o.x - hw + paramNum(o, 'w', 7), y1: o.y };
-    }
-    default:
-      return null;
-  }
-}
 
 /**
  * Cells the playtest-scar BAKE must never fossilize into terrain: the
@@ -509,20 +362,9 @@ const DOC_SPRITE_CAP = 512;
 const DOC_SPARSE_CAP = 500_000;
 const SHARE_COMPRESSED_MAX_BYTES = 2_000_000;
 const SHARE_JSON_MAX_BYTES = 12_000_000;
-export const AUTHORED_LIGHT_RADIUS_MIN = 4;
-export const AUTHORED_LIGHT_RADIUS_MAX = 160;
-export const AUTHORED_LIGHT_INTENSITY_MAX = 4;
-export const AUTHORED_LIGHT_BLOOM_MAX = 2;
-export const AUTHORED_LIGHT_FLICKER_MAX = 1;
-export const AUTHORED_LIGHT_RUNTIME_CAP = 128;
 
-const OBJECT_KINDS = new Set<EditorObjectKind>([
-  'spawn', 'enemy', 'pickup', 'exitPortal', 'waystone', 'exitWell', 'cauldron',
-  'door', 'plate', 'lever', 'brazier', 'scale', 'buoy', 'chargeLatch', 'runeGlyph',
-  'runeDoor', 'bossMarker', 'terrainStamp', 'vegetationStamp', 'hazardEmitter', 'decor',
-  'valve', 'plug', 'sensor', 'counterweight', 'relay',
-]);
-const LINK_KINDS = new Set<EditorLink['kind']>(['triggerDoor', 'runeDoor', 'keyPortal', 'bossGate', 'logic']);
+const OBJECT_KINDS = new Set<EditorObjectKind>(EDITOR_OBJECT_KINDS);
+const LINK_KINDS = new Set<EditorLink['kind']>(EDITOR_LINK_KINDS);
 const LINK_LOGICS = new Set<NonNullable<EditorLink['logic']>>(['and', 'or', 'sequence']);
 const LIGHT_FALLOFFS = new Set<EditorLight['falloff']>(['soft', 'linear', 'sharp']);
 

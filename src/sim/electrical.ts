@@ -1,5 +1,5 @@
 import type { Ctx } from '@/core/types';
-import { Cell, isConductor, isLiquid } from '@/sim/CellType';
+import { blocksEntity, Cell, isConductor, isSolid } from '@/sim/CellType';
 
 /**
  * The charge a strike injects, scaled by the live `chargeStrength` (reach) knob.
@@ -32,6 +32,10 @@ const CRAWL_HOPS = 4;
  *  bloom down). A direct water hit writes straight into the water and spreads
  *  water→water UNCAPPED, so that effect is untouched. */
 const WATER_INTAKE_CAP = 15;
+/** A current weaker than this won't erode terrain — a faded spark shouldn't crumble rock. */
+const EROSION_MIN_CHARGE = 6;
+/** Electric fleck thrown off each spalled terrain cell (packed 0xRRGGBB cyan-white). */
+const SPARK_COLOR = 0x9fe8ff;
 
 function materialConductivity(ctx: Ctx, t: number): number {
   const tuned = ctx.params?.materials?.[t]?.conductivity;
@@ -73,17 +77,20 @@ export function updateElectricalGrid(ctx: Ctx): void {
   // to the strike and dies out instead of re-seeding at full strength — which let
   // the front circulate through a connected pool and re-ignite decayed cells
   // indefinitely (the cyan glow that "multiplied" across water/blood/ooze).
-  const trySpread = (tx: number, ty: number, src: number, srcLiquid: boolean): void => {
+  const trySpread = (tx: number, ty: number, src: number, srcSolid: boolean): void => {
     if (!w.inBounds(tx, ty)) return;
     const ti = tx + ty * w.width;
     const tt = w.types[ti];
     if (isConductor(tt) && w.charge[ti] === 0) {
       const falloff = conductorFalloff(ctx, tt, base);
       let v = src - falloff;
-      // Solid (metal) → liquid (water): cap the intake so the water lights only a
-      // thin crackling layer, not a deep bright pool (less bloom). Liquid→liquid
-      // (a direct water hit spreading through itself) is never capped — untouched.
-      if (!srcLiquid && tt === Cell.Water) v = Math.min(v, WATER_INTAKE_CAP);
+      // Cap intake ONLY when the source is a SOLID conductor (metal): water sitting
+      // on an energized metal plate lights a thin crackling layer, not a deep bright
+      // pool (keeps bloom down). A SPARK/BLAST that lands IN the water charges it
+      // through its own vaporized cells (empty/steam/fire — not solid), and a direct
+      // water-hit spreads water→water; both must stay UNCAPPED or the bolt-in-water
+      // ripple flatlines (the cap used to throttle every non-liquid source).
+      if (srcSolid && tt === Cell.Water) v = Math.min(v, WATER_INTAKE_CAP);
       if (v > 0) {
         const prev = spreadCharge.get(ti);
         if (prev === undefined || v > prev) spreadCharge.set(ti, v);
@@ -101,11 +108,11 @@ export function updateElectricalGrid(ctx: Ctx): void {
       const y = Math.floor(ci / w.width);
       const x = ci - y * w.width;
       const c = w.charge[ci];
-      const srcLiquid = isLiquid(w.types[ci]);
-      trySpread(x + 1, y, c, srcLiquid);
-      trySpread(x - 1, y, c, srcLiquid);
-      trySpread(x, y + 1, c, srcLiquid);
-      trySpread(x - 1, y - 1, c, srcLiquid);
+      const srcSolid = isSolid(w.types[ci]);
+      trySpread(x + 1, y, c, srcSolid);
+      trySpread(x - 1, y, c, srcSolid);
+      trySpread(x, y + 1, c, srcSolid);
+      trySpread(x - 1, y - 1, c, srcSolid);
     }
     if (spreadCharge.size === 0) break;
     const next: number[] = [];
@@ -116,11 +123,38 @@ export function updateElectricalGrid(ctx: Ctx): void {
     frontier = next;
   }
   // Decay ONCE PER FRAME (gated on frameCount), so `chargeDecay` reads as charge
-  // lost per frame — the glow duration.
+  // lost per frame — the glow duration. The same once-per-frame pass runs erosion.
   if (ctx.state.frameCount !== lastDecayFrame) {
     lastDecayFrame = ctx.state.frameCount;
+    const erosion = ctx.params?.global?.chargeErosion ?? 0;
+    const eroding = erosion > 0 && ctx.particles !== undefined;
     for (const ci of charged) {
-      const next = w.charge[ci] - decay;
+      const cc = w.charge[ci];
+      // ELECTRO-EROSION: a live current arcs into the SOLID terrain it touches and
+      // spalls it — a zap chips the surface, a sustained current drills through (the
+      // freed cell lets the conductor seep in and carry the charge deeper). Metal
+      // conducts and is immune; the bite scales with local charge so a faded spark
+      // doesn't crumble the world, and decay below makes it self-limiting.
+      if (eroding && cc > EROSION_MIN_CHARGE) {
+        const y = Math.floor(ci / w.width);
+        const x = ci - y * w.width;
+        const bite = erosion * Math.min(1, cc / 110) * 0.045;
+        for (let k = 0; k < 4; k++) {
+          const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
+          const ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+          if (!w.inBounds(nx, ny)) continue;
+          const ni = nx + ny * w.width;
+          const tt = w.types[ni];
+          if (tt === Cell.Metal || !blocksEntity(tt)) continue; // metal conducts; skip air/growth
+          if (Math.random() < bite) {
+            // a debris fleck of the spalled rock + a hot electric spark, then it's gone
+            ctx.particles.spawn(nx + 0.5, ny + 0.5, (Math.random() - 0.5) * 1.4, -0.5 - Math.random(), tt, w.colors[ni], 55, { glow: 0.3 });
+            ctx.particles.spawn(nx + 0.5, ny + 0.5, (Math.random() - 0.5) * 0.9, -0.3 - Math.random() * 0.5, null, SPARK_COLOR, 10, { glow: 1.6 });
+            w.clearCellAt(ni);
+          }
+        }
+      }
+      const next = cc - decay;
       w.setChargeAt(ci, next > 0 ? next : 0);
     }
   }

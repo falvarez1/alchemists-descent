@@ -50,6 +50,8 @@ const SHAKE_SWAY_GAIN = 12; // shake → per-node jitter amplitude
 const WEB_MIN_NODES = 9;
 const WEB_MAX_NODES = 30;
 const WEB_DEFAULT_LIFETIME = 540;
+const WEB_ASH_MAX_FLECKS = 9;
+const WEB_ASH_LIFETIME = 180;
 
 interface VineNode extends VineStrandNodeView {
   x: number;
@@ -501,7 +503,7 @@ export class VineStrands implements VineStrandsApi {
       const strand = this.strands[i];
       this.stepStrand(ctx, strand);
       if (strand.web && strand.maxAge !== undefined && strand.age >= strand.maxAge) {
-        if (strand.ashOnExpire) this.settleStrandAs(ctx.world, strand, Cell.Ash, ashColor, 0.7);
+        if (strand.ashOnExpire) this.shedStrandAsh(ctx.world, strand);
         this.strands.splice(i, 1);
         continue;
       }
@@ -871,6 +873,33 @@ export class VineStrands implements VineStrandsApi {
 
   private settleStrand(world: World, strand: VineStrand): void {
     this.settleStrandAs(world, strand, Cell.Vines, () => strand.color, 1.6);
+  }
+
+  private shedStrandAsh(world: World, strand: VineStrand): void {
+    const stride = Math.max(2, Math.ceil(strand.nodes.length / WEB_ASH_MAX_FLECKS));
+    for (let i = 0; i < strand.nodes.length; i += stride) {
+      this.paintLooseAshAt(world, strand.nodes[i].x, strand.nodes[i].y);
+    }
+  }
+
+  private paintLooseAshAt(world: World, x: number, y: number): void {
+    const cx = Math.floor(x);
+    const cy = Math.floor(y);
+    if (!world.inBounds(cx, cy)) return;
+    const i = world.idx(cx, cy);
+    if (world.types[i] !== Cell.Empty) return;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (!world.inBounds(nx, ny)) continue;
+        if (blocksEntity(world.types[world.idx(nx, ny)])) return;
+      }
+    }
+    world.replaceCellAt(i, Cell.Ash, ashColor());
+    world.life[i] = WEB_ASH_LIFETIME;
+    world.moved[i] = world.movedTick;
   }
 
   private settleStrandAs(

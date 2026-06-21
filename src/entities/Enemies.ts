@@ -1085,27 +1085,44 @@ export class Enemies implements EnemyControlApi {
     return blocksEntity(t) || isSoftGrowth(t);
   }
 
-  /** Height (in cells) of a climbable wall standing just ahead in `dir`, measured
-   *  up from the Weaver's foot — 0 if the way is open or only a short step-over.
-   *  Requires grippable terrain beside the foot (so a high ledge with clear air at
-   *  foot level doesn't read as a wall), then counts the unbroken rise above it.
-   *  A giant spider scales anything that out-tops the 6-cell step it can stride. */
-  private weaverWallAhead(e: Enemy, def: EnemyDef, dir: number): number {
+  /** Climb height of the wall column standing at world `X` beside `foot`: 0 unless
+   *  there's grippable terrain beside the foot (so a high ledge with clear air at
+   *  foot level doesn't read as a wall), else the unbroken rise above it. A giant
+   *  spider scales anything that out-tops the 6-cell step it can stride. */
+  private wallColumnHeight(X: number, foot: number): number {
     const w = this.ctx.world;
-    const X = Math.floor(e.x) + dir * (def.halfW + 1);
-    const foot = Math.floor(e.y);
     let footed = false;
     for (let Y = foot - 1; Y <= foot + 2; Y++) {
       if (this.climbGrips(X, Y)) { footed = true; break; }
     }
     if (!footed) return 0;
     let h = 0;
-    for (let Y = foot - 1; Y >= foot - 90; Y--) {
+    for (let Y = foot - 1; Y >= foot - 96; Y--) {
       if (!w.inBounds(X, Y)) break;
       if (this.climbGrips(X, Y)) h = foot - Y;
       else break; // first clear cell up the face is the top of this wall
     }
     return h;
+  }
+
+  /** Height of a climbable wall immediately ahead in `dir` (adjacent to the body). */
+  private weaverWallAhead(e: Enemy, def: EnemyDef, dir: number): number {
+    return this.wallColumnHeight(Math.floor(e.x) + dir * (def.halfW + 1), Math.floor(e.y));
+  }
+
+  /** Nearest sheer wall (taller than a step-over) within `maxDist` to either side —
+   *  where the spider should march to BEGIN a climb when its quarry is perched
+   *  overhead and out of stride-reach. Nearest wins; ties break toward `prefer`. */
+  private weaverSeekWall(e: Enemy, def: EnemyDef, maxDist: number, prefer: number): number {
+    const foot = Math.floor(e.y);
+    const base = Math.floor(e.x);
+    const order = prefer >= 0 ? [1, -1] : [-1, 1];
+    for (let dist = def.halfW + 1; dist <= maxDist; dist++) {
+      for (const dir of order) {
+        if (this.wallColumnHeight(base + dir * dist, foot) > 7) return dir;
+      }
+    }
+    return 0;
   }
 
   private enemyEnvironmentDamage(e: Enemy, index?: number): void {
@@ -1480,9 +1497,14 @@ export class Enemies implements EnemyControlApi {
         const physicalSupport = e.weaverPhysicalSupport ?? (e.grounded ? 0.45 : 0);
         const anchorCount = e.weaverAnchorCount ?? (physicalSupport > 0.35 ? 4 : 0);
         const visualSupport = e.weaverVisualSupport ?? physicalSupport;
-        const visualPlanted = e.weaverVisualPlanted ?? anchorCount;
         const cranky = (e.cranky ?? 0) > 0;
-        const unsupported = physicalSupport < 0.34 || anchorCount < 3 || visualSupport < 0.28 || visualPlanted < 3;
+        // Footing loss keys off REAL TERRAIN under the body, not the renderer's
+        // per-frame planted-leg count: a brisk gait swings 3-4 legs at once, and
+        // folding that into "unsupported" made the Weaver flicker into recovery on
+        // every stride — flailing its legs and stalling its own chase. The visual
+        // plant count only escalates an ALREADY-physical crisis (the deep-stranded
+        // confirmation below), never invents one on solid ground.
+        const unsupported = physicalSupport < 0.34 || anchorCount < 3;
         e.weaverFallT = unsupported ? Math.min(90, (e.weaverFallT ?? 0) + 1) : Math.max(0, (e.weaverFallT ?? 0) - 3);
         const panic = clamp((e.weaverFallT ?? 0) / 45, 0, 1);
         // Footing CRISIS keys off real load-bearing terrain, NOT preferred growth:
@@ -1513,8 +1535,15 @@ export class Enemies implements EnemyControlApi {
         // onto solid ground / stand up properly" correction, and it runs whether
         // or not the creature has tipped into the full recovery state.
         const balanceDx = (e.weaverSupportCenterX ?? e.x) - e.x;
-        if (anchorCount >= 1 && Math.abs(balanceDx) > 4) {
-          e.vx += clamp(balanceDx * 0.02, -0.22, 0.22);
+        // Recentre over solid footing — but ONLY in a real footing crisis (the load
+        // under it is actually gone). The support centroid is resampled every 6
+        // frames, so on good ground it always trails a walking body by a stride, and
+        // it also drifts toward whichever side has a wall — so recentring-while-OK
+        // both crawled the chase to a halt AND shoved the Weaver back off any wall it
+        // approached to climb. Below the crisis line the unstable block already owns
+        // recovery; above it, just let the legs walk.
+        if (anchorCount >= 1 && unsupported && Math.abs(balanceDx) > 5) {
+          e.vx += clamp(balanceDx * 0.025, -0.24, 0.24);
         }
 
         // --- WALL CLIMB: a giant spider scales sheer walls its legs can grip ----
@@ -1527,7 +1556,8 @@ export class Enemies implements EnemyControlApi {
         // the fall, and drives its own up-the-wall velocity past the balance nudge.
         let climbing = false;
         let climbDir = e.weaverClimbDir ?? 0;
-        if (e.alerted && targetAlive && !e.sleeping && (e.blink ?? 0) === 0 && (e.windup ?? 0) === 0) {
+        let climbWall = 0; // height of the adjacent wall this frame (drives the ascent)
+        if (e.alerted && targetAlive && !e.sleeping) {
           const targetAbove = pdy < 8; // quarry at or above the body (pdy<0 ⇒ above)
           const toward = Math.sign(pdx) || climbDir || 1;
           let bestDir = 0;
@@ -1543,11 +1573,13 @@ export class Enemies implements EnemyControlApi {
           if (targetAbove && bestH > 7) {
             climbing = true;
             climbDir = bestDir;
+            climbWall = bestH;
           } else if (climbedT > 0 && climbedT < 600 && targetAbove && !e.grounded && climbDir !== 0) {
             // latched mid-climb: stay on the wall through the crest until we land on
             // a ledge (or the quarry drops below us) — never release into a fall at
             // the very lip. The 600-frame cap is a stuck-on-a-sheer-face backstop.
             climbing = true;
+            climbWall = this.weaverWallAhead(e, def, climbDir);
           }
         }
         if (climbing) {
@@ -1556,6 +1588,12 @@ export class Enemies implements EnemyControlApi {
             ctx.audio.tone(150, 70, 0.3, 'triangle', 0.07);
             ctx.particles.burst(e.x + climbDir * (def.halfW + 1), e.y - def.h * 0.4, 4, Cell.Smoke, smokeColor, 0.5, { grav: -0.01 });
           }
+          // committed to the wall: cancel any ranged telegraph that would root it and
+          // drop the climb (the on/off flicker that read as helpless flailing).
+          e.blink = 0;
+          e.windup = 0;
+          e.needleX = undefined;
+          e.needleY = undefined;
           e.weaverClimbDir = climbDir;
           e.weaverClimbT = (e.weaverClimbT ?? 0) + 1;
           e.weaverFallT = 0; // it is holding the wall, not falling
@@ -1657,7 +1695,9 @@ export class Enemies implements EnemyControlApi {
             e.attackCd = 95 + Math.floor(Math.random() * 35);
           }
         } else {
-          const feeding = (!e.alerted || !targetAlive || pDist > 130) && this.weaverFeed(e);
+          // An irritated (cranky) Weaver is hunting YOU — it won't break off to snack
+          // on ambient prey, which previously let it idle-feed instead of giving chase.
+          const feeding = !cranky && (!e.alerted || !targetAlive || pDist > 130) && this.weaverFeed(e);
           if (feeding) {
             e.bobPhase += 0.08;
           } else if (!e.alerted && e.patrol && e.patrol.length > 0) {
@@ -1666,30 +1706,46 @@ export class Enemies implements EnemyControlApi {
             else if (e.timer % 3 === 0) e.vx += Math.sign(wp[0] - e.x) * 0.07 * confidence;
           } else if (targetAlive && !unstable && !climbing && (cranky || e.timer % 2 === 0)) {
             // Chase pressure yields to footing: while unstable, recovery owns
-            // horizontal intent. Under an OVERHEAD target it holds position and
-            // rears up (no sideways fidget), and it never strides out over a drop
-            // it can't step down into — it stops at the lip and reaches instead of
-            // walking off into the void.
+            // horizontal intent. It never strides out over a drop it can't step down
+            // into — it stops at the lip and reaches instead of walking into the void.
             const tooClose = pDist < 46;
             let dir = tooClose ? -Math.sign(pdx || 1) : Math.sign(pdx || 1);
             if (!tooClose && Math.abs(pdx) <= 12) dir = 0; // overhead: stand and rear
+            // QUARRY OVERHEAD with no horizontal lead to follow: don't just rear and
+            // paw — find the nearest wall its claws can grip and march to its base to
+            // climb. Only when dir is already 0 (truly overhead); a sideways chase
+            // already walks it into the wall on the way, and must NOT be flipped
+            // toward some far wall on the OPPOSITE side of the quarry.
+            if (dir === 0 && pdy < -18) {
+              dir = this.weaverSeekWall(e, def, 70, Math.sign(pdx || 1));
+            }
             if (dir !== 0 && this.dropAhead(e, def, dir)) dir = 0; // edge wariness
-            e.vx += dir * 0.06 * confidence;
+            // PREDATORY STALK: at a stand-off it hunts in deliberate pulses — gather
+            // (coil, ease the pace) then surge forward — instead of one flat creep. A
+            // cranky Weaver loses the patience and rushes flat-out. weaverStalk carries
+            // the wave to the renderer so the body's coil/lunge matches the footwork.
+            const stalking = dir !== 0 && !cranky && !tooClose && pDist > 58 && pDist < 260;
+            const surgeWave = Math.sin(e.timer * 0.06);
+            e.weaverStalk = (e.weaverStalk ?? 0) + ((stalking ? surgeWave : 0) - (e.weaverStalk ?? 0)) * 0.2;
+            e.vx += dir * 0.06 * confidence * (stalking ? 1 + 0.75 * surgeWave : 1);
           }
 
           if (canAttackTarget && e.attackCd === 0 && e.alerted && !unstable) {
             if (Math.abs(pdx) < 13 && Math.abs(pdy) < 20) {
               // Point-blank contact bite: instant (no telegraph this close) and it
               // claims the cooldown, so the needle windup can't also fire this frame.
+              // Allowed mid-climb — it can still bite prey it has clung up beside.
               ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx || 1) * -3.0, -2.0);
               e.attackCd = 80;
-            } else if (pDist < 92 && Math.abs(pdy) < 62) {
+            } else if (!climbing && pDist < 92 && Math.abs(pdy) < 62) {
+              // Rooted telegraphs need footing — never start one mid-climb (it would
+              // freeze the ascent and drop the Weaver back down the wall).
               e.windup = e.status.burning > 0 ? 10 : cranky ? 12 : 18;
               e.needleX = player.x;
               e.needleY = player.y - 8;
               if (this.findWeaverAnchor(e)) e.webPulse = Math.max(e.webPulse ?? 0, 8);
               ctx.audio.tone(180, 90, 0.35, 'triangle', 0.09);
-            } else if (pDist < 285) {
+            } else if (!climbing && pDist < 285) {
               e.blink = e.status.burning > 0 ? 10 : cranky ? 9 : 18;
               ctx.audio.noiseBurst(0.08, 1300, 0.08, true);
             }
@@ -1712,17 +1768,16 @@ export class Enemies implements EnemyControlApi {
           (recovering ? 0.5 : 0) -
           panic * 0.16;
         if (climbing) {
-          // Up the face while the quarry is above; once level (or crested) hold and
-          // let the lean carry the body over the lip. The integrator's 6-cell step-up
-          // does the actual mount once the foot rises within reach of the top, so a
-          // plain up + into-the-wall push scales and crests the whole wall on its own.
-          const climbSpeed = cranky ? 1.05 : 0.85;
-          const faceH = this.weaverWallAhead(e, def, climbDir);
-          const vyTarget = pdy < -6 && faceH > 3 ? -climbSpeed : 0;
-          e.vy += (vyTarget - e.vy) * (vyTarget < 0 ? 0.5 : 0.4);
+          // Haul up the face while the quarry is above; once level with it (or once
+          // the foot crests above the wall top) hold height and let the lean carry
+          // the body over the lip — the integrator's 6-cell step-up does the mount.
+          const climbSpeed = cranky ? 1.4 : 1.1;
+          const ascending = pdy < -6 && climbWall > 3; // wall still beside the foot & prey above
+          const vyTarget = ascending ? -climbSpeed : 0;
+          e.vy += (vyTarget - e.vy) * (vyTarget < 0 ? 0.6 : 0.4);
           e.vy = clamp(e.vy, -climbSpeed, 0.6);
-          e.vx += climbDir * 0.12 * (cranky ? 1.15 : 1);
-          if (e.timer % 9 === 0) this.weaveFootTrail(e, support); // silk anchors up the wall
+          e.vx += climbDir * 0.14 * (cranky ? 1.2 : 1); // hug / lean over the wall
+          if (e.timer % 8 === 0) this.weaveFootTrail(e, support); // silk anchors up the wall
         }
         e.vx = clamp(e.vx, -maxWeaverSpeed, maxWeaverSpeed);
       } else if (e.kind === 'imp') {

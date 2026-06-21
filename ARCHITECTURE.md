@@ -11,6 +11,9 @@ now a modular TypeScript + Vite project.
 index.html              DOM shell (toolbar, canvas holder, HUD overlays, inspector)
 src/
   main.ts               Entry point: builds Game, starts the loop
+  app/                  Shell-owned app lifecycle glue outside the frame loop
+    BuilderLauncher.ts    Lazy Builder chunk entry point and dev reload restore
+    BuilderHost.ts        Transitional command/snapshot facade between Builder and Ctx
   styles/main.css       All styling (extracted from the original <style>)
   config/               Tunable data, no logic
     constants.ts          World/view dimensions, sim margin, particle cap
@@ -20,6 +23,13 @@ src/
     types.ts              THE contract file: entity shapes + service APIs + Ctx
     events.ts             Typed synchronous EventBus (gameplay → UI decoupling)
     math.ts               clamp, hash2, valueNoise
+  authoring/             Neutral authored-content contracts shared by Builder,
+                          worldgen, and runtime instantiation; no DOM/localStorage/Ctx
+    document.ts           EditorDocument object/link/light/world-layer shapes + pure helpers
+    prefab.ts             PrefabDef schema, cell decoding, sanitization
+    sprites.ts            SpriteAsset schema, frame decoding, runtime sprite helpers
+    spriteRuntime.ts      Runtime sprite resolution surface
+    stamps.ts             Pure structural cell stamp helpers
   sim/                  Cellular automata
     CellType.ts           Append-only Cell ids + material classification predicates
     World.ts              Flat typed-array grid state (types/colors/life/moved/charge)
@@ -55,11 +65,11 @@ src/
     fortress.ts           Multi-material real-cell fortress stamp
   builder/                The Builder authoring tool (see docs/BUILDER.md)
     Builder.ts            Editor overlay: tools, canvas, panels, dispatch
-    document.ts           EditorDocument v2 schema, library, share codes
-    prefablib.ts          PrefabDef v1: capture/rotate/mirror/paste/sanitize (shared contract)
+    document.ts           Builder capture, persistence, share codes; re-exports neutral document contracts
+    prefablib.ts          Builder prefab capture/rotate/mirror/paste helpers around neutral PrefabDef
     selection.ts          Floating cell selection (lift/transform/commit)
     symmetry.ts           Mirror painting math
-    assets/               PNG codec, cell<->RGBA pixmap, SpriteAsset + Aseprite parser, file IO
+    assets/               Builder asset UI/import/export/file IO; pure SpriteAsset pieces live in authoring/
   render/
     Renderer.ts           Three.js renderer/composer/bloom/PostFx + camera quad transforms
     Camera.ts             Lerp follow, idle zoom, sim-bounds derivation
@@ -95,14 +105,17 @@ assets) and compiles it into a disposable `LevelRuntime` for playtest. Do not
 grow one save format into another's job; Sandbox saves, Builder documents, and
 expedition saves serve different purposes. See `docs/BUILDER.md`.
 
-**The prefab pipeline ties authoring to generation.** `PrefabDef` v1
-(`src/builder/prefablib.ts`) is one shared contract with three consumers: the
-Builder prefab library (capture/paste with objects+links+lights), the asset
-pipeline (terrain ⇄ palette-marked PNG for external pixel editors, plus
-`.prefab.json`), and worldgen (`src/world/prefabs/` places built-in prefabs
+**The prefab pipeline ties authoring to generation.** `PrefabDef` v1 now lives
+in the neutral authored-contract layer (`src/authoring/prefab.ts`). It has three
+consumers: the Builder prefab library (capture/paste with objects+links+lights),
+the asset pipeline (terrain ⇄ palette-marked PNG for external pixel editors,
+plus `.prefab.json`), and worldgen (`src/world/prefabs/` places built-in prefabs
 into generated levels through the region graph, tunneling their anchors to the
 cave network and instantiating their objects through the SAME
-`src/game/instantiate.ts` path the playtest compiler uses).
+`src/game/instantiate.ts` path the playtest compiler uses). Builder modules may
+re-export compatibility shims during the decoupling migration, but runtime and
+worldgen code should import authored document/prefab/sprite/stamp contracts from
+`src/authoring`, not `src/builder`.
 
 **Worldgen pipeline order** (generateLevel): caves (per-biome skeleton from
 `config/gen.ts` → shared paint + decoration stages) → bedrock/well/waystones →

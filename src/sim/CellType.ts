@@ -149,7 +149,6 @@ export function blocksEntity(t: number): boolean {
     t === Cell.Gunpowder ||
     t === Cell.Snow ||
     t === Cell.Coal ||
-    t === Cell.Ash ||
     t === Cell.Catalyst
   );
 }

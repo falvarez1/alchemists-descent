@@ -2,12 +2,12 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import type { PrefabBudget } from '@/config/gen';
 import type { Rng } from '@/core/rng';
 import type { Ctx, PlacedPrefab, RegionGraph } from '@/core/types';
-import { decodePrefabCells } from '@/builder/prefablib';
-import type { PrefabAnchor, PrefabDef } from '@/builder/prefablib';
-import type { CellSetter } from '@/builder/stamps';
+import { decodePrefabCells } from '@/authoring/prefab';
+import type { PrefabAnchor, PrefabDef } from '@/authoring/prefab';
+import type { CellSetter } from '@/authoring/stamps';
 import { instantiateObjects } from '@/game/instantiate';
 import type { InstantiationSink } from '@/game/instantiate';
-import type { ResolvedSprite } from '@/builder/assets/spritelib';
+import type { ResolvedSprite } from '@/authoring/spriteRuntime';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import type { World } from '@/sim/World';
@@ -117,7 +117,7 @@ export function placePrefabs(
       at.x0,
       at.y0,
       set,
-      { spriteCache },
+      { spriteCache, spriteLookup: () => null },
     );
     placed.push({
       id: prefab.id,

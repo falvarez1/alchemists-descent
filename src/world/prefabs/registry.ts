@@ -1,5 +1,5 @@
-import { sanitizePrefab } from '@/builder/prefablib';
-import type { PrefabDef } from '@/builder/prefablib';
+import { sanitizePrefab } from '@/authoring/prefab';
+import type { PrefabDef } from '@/authoring/prefab';
 
 /**
  * Built-in prefab registry for descent worldgen. Descent generation uses

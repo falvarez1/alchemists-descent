@@ -158,11 +158,11 @@ check(
   '',
 );
 
-// 5) NON-OCCLUDED AMBIENT GLOW — put a wall across the aim and sample a cell
-//    behind it. The occluded omni light + beam are blocked there, so any light
-//    that remains is the non-occluded glow painting through terrain. With the
-//    wall removed, the same cell is lit by the (much brighter) beam, proving the
-//    shadow contrast still reads.
+// 5) NON-OCCLUDED AMBIENT GLOW — put a thick wall across the aim and sample a
+//    cell behind it. The occluded omni light + beam are attenuated out by the
+//    wall, so any meaningful light that remains is the non-occluded glow
+//    painting through terrain. With the wall removed, the same cell is lit by
+//    the brighter beam, proving the shadow contrast still reads.
 const occ = await page.evaluate((view) => {
   const game = window.__game;
   const ctx = game.ctx;
@@ -190,14 +190,15 @@ const occ = await page.evaluate((view) => {
   ctx.camera.renderX = Math.round(tipX - view.w / 2);
   ctx.camera.renderY = Math.round(tipY - view.h / 2);
 
-  const sampleAt = 26; // cells ahead of the tip — inner cone where the glow is brightest
-  const wallAt = 16; // wall sits between the tip and the sample point
+  const sampleAt = 42; // cells ahead of the tip — still inside the glow cone
+  const wallAt = 10; // wall sits between the tip and the sample point
+  const wallW = 24; // thick enough to kill normal occluded wand bleed
 
   const buildAndSample = (withWall) => {
     w.clear();
     if (withWall) {
-      for (let x = tipX + wallAt; x <= tipX + wallAt + 3; x++) {
-        for (let y = tipY - 20; y <= tipY + 20; y++) {
+      for (let x = tipX + wallAt; x <= tipX + wallAt + wallW - 1; x++) {
+        for (let y = tipY - 32; y <= tipY + 32; y++) {
           const i = w.idx(x, y);
           w.types[i] = Stone;
           w.colors[i] = 0x555048;
@@ -222,12 +223,13 @@ check(
   occ.shadow > occ.floor * 1.4,
   `behind-wall=${occ.shadow.toFixed(4)} floor=${occ.floor.toFixed(4)}`,
 );
-// The bloom pass fires once a lit cell pushes past ~1.06 (terrain × lit > 0.85).
+// The bloom pass fires once a lit cell pushes past ~1.06 (terrain x lit > 0.85).
 // The glow cap must keep its fill below that so the third light never blooms.
+const BLOOM_SAFE_LIT_MAX = 0.85;
 check(
   'glow fill stays below the bloom threshold (capped — no bloom from the glow)',
-  occ.shadow < 0.85,
-  `behind-wall=${occ.shadow.toFixed(4)} (must be < 0.85)`,
+  occ.shadow < BLOOM_SAFE_LIT_MAX,
+  `behind-wall=${occ.shadow.toFixed(4)} (must be < ${BLOOM_SAFE_LIT_MAX.toFixed(2)})`,
 );
 check(
   'shadow still reads: directly-lit cell is much brighter than behind the wall',

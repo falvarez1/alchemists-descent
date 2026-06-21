@@ -590,8 +590,28 @@ describe('decor instantiation', () => {
       0,
       0,
       noSet,
+      { spriteLookup: getStoredSprite },
     );
     expect(sink.decors.length).toBe(1);
+  });
+
+  it('does not read the local sprite library unless a caller supplies a lookup', () => {
+    const a = makeAsset('stored-worldgen', 8, 8, [[1, 2, 3]]);
+    saveSprite(a);
+    const sink = makeInstantiationSink();
+
+    instantiateObjects(
+      noCtx,
+      sink,
+      [makeObj('decor', 'idWorldgen', 5, 5, { spriteId: a.id })],
+      [],
+      [],
+      0,
+      0,
+      noSet,
+    );
+
+    expect(sink.decors).toEqual([]);
   });
 
   it('prefers the local library copy over an embedded stale copy at runtime', () => {
@@ -609,7 +629,7 @@ describe('decor instantiation', () => {
       0,
       0,
       noSet,
-      { docSprites: [embedded] },
+      { docSprites: [embedded], spriteLookup: getStoredSprite },
     );
 
     expect(sink.decors.length).toBe(1);

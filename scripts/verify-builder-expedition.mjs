@@ -2,8 +2,8 @@
 // edit the expedition level's live World (the save-family bleed blocker).
 // The Builder detaches onto a scratch world; PLAY re-attaches the real one.
 // Usage: node scripts/verify-builder-expedition.mjs [url]
-import { chromium } from 'playwright-core';
-import { startConsolePlayRun, waitForRunReady } from './run-helpers.mjs';
+import { launchBrowser } from './browser-launch.mjs';
+import { isBenignDevConsoleError, startConsolePlayRun, waitForRunReady } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -13,11 +13,15 @@ const check = (name, ok, detail = '') => {
   else { fail++; console.log(`  FAIL  ${name} ${detail}`); }
 };
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 page.on('dialog', (d) => d.accept());
 const pageErrors = [];
+const consoleErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
+page.on('console', (msg) => {
+  if (msg.type() === 'error' && !isBenignDevConsoleError(msg.text())) consoleErrors.push(msg.text());
+});
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
@@ -159,7 +163,7 @@ const playAgain = await page.evaluate(() => {
 });
 check('header Play exits Builder and resumes the game', playAgain.id !== 'custom' && playAgain.rootHidden && playAgain.attached, JSON.stringify(playAgain));
 
-check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
+check('no page or console errors', pageErrors.length === 0 && consoleErrors.length === 0, [...pageErrors, ...consoleErrors].join(' | '));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await browser.close();

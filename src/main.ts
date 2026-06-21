@@ -1,6 +1,8 @@
 import '@/styles/main.css';
 import { Game } from '@/game/Game';
+import { BuilderLauncher } from '@/app/BuilderLauncher';
 import { initRapier } from '@/entities/rapierInit';
+import { readAppMode } from '@/game/modePersist';
 
 const bootOverlay = document.getElementById('boot-overlay');
 const bootStatus = document.getElementById('boot-status');
@@ -18,14 +20,18 @@ requestAnimationFrame(() =>
       if (bootStatus) bootStatus.textContent = 'LOADING PHYSICS…';
       await initRapier();
 
+      const savedMode = import.meta.env.DEV ? readAppMode() : null;
       const game = new Game(holder);
+      const builderLauncher = new BuilderLauncher(game.ctx);
       game.start();
+      if (import.meta.env.DEV && savedMode === 'builder') builderLauncher.open();
 
       if (import.meta.env.DEV) {
         // Debug handle for the console and headless verification scripts.
         const debugWindow = window as unknown as { __game?: Game };
         debugWindow.__game = game;
         import.meta.hot?.dispose(() => {
+          builderLauncher.dispose();
           game.dispose();
           if (debugWindow.__game === game) delete debugWindow.__game;
         });

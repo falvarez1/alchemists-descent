@@ -11,6 +11,8 @@
 
 /** Refuse to decode anything larger before allocating buffers. File-internal. */
 const PNG_DIM_CAP = 2048;
+const PNG_HEADER_BYTES = 24;
+const PNG_BYTE_CAP = 32 * 1024 * 1024;
 
 /**
  * Read width/height straight out of a PNG's IHDR chunk (the first chunk in a
@@ -54,10 +56,13 @@ export async function rgbaToPngBlob(
 export async function pngBlobToRgba(
   blob: Blob,
 ): Promise<{ rgba: Uint8ClampedArray; w: number; h: number }> {
+  if (blob.size > PNG_BYTE_CAP) {
+    throw new Error(`PNG file larger than ${Math.floor(PNG_BYTE_CAP / (1024 * 1024))}MB`);
+  }
   // Cap dimensions from the IHDR header BEFORE createImageBitmap rasterizes the
   // image, so a small-on-disk but huge-in-memory PNG is rejected up front. The
   // post-decode check below still guards non-PNG blobs and unparseable headers.
-  const header = pngHeaderDimensions(new Uint8Array(await blob.arrayBuffer()));
+  const header = pngHeaderDimensions(new Uint8Array(await blob.slice(0, PNG_HEADER_BYTES).arrayBuffer()));
   if (header && (header.w > PNG_DIM_CAP || header.h > PNG_DIM_CAP)) {
     throw new Error(`image larger than ${PNG_DIM_CAP}px`);
   }

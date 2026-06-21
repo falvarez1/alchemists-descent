@@ -1,20 +1,20 @@
-// Runtime verification: drive the game in headless Edge via playwright-core.
+// Runtime verification: drive the game in headless Chromium via playwright-core.
 // Usage: node scripts/verify-game.mjs [url]
-import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
-import { waitForRunReady } from './run-helpers.mjs';
+import { launchBrowser } from './browser-launch.mjs';
+import { isBenignDevConsoleError, waitForRunReady } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const outDir = 'verify-out';
 mkdirSync(outDir, { recursive: true });
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 
 const consoleErrors = [];
 const pageErrors = [];
 page.on('console', (msg) => {
-  if (msg.type() === 'error') consoleErrors.push(msg.text());
+  if (msg.type() === 'error' && !isBenignDevConsoleError(msg.text())) consoleErrors.push(msg.text());
 });
 page.on('pageerror', (err) => pageErrors.push(String(err)));
 

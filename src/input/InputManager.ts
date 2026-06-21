@@ -6,6 +6,8 @@ import { packRGB } from '@/sim/colors';
 import { spawnCircle, drawLine } from '@/sim/brush';
 import { cancelChargingBlackHole, resetHeldSpellInputs } from '@/game/transients';
 import { ensureSandboxWorldDetached } from '@/game/sandboxWorld';
+import { BUILDER_REQUEST_CLOSE_EVENT } from '@/app/builderCloseRequest';
+import type { BuilderCloseRequestDetail } from '@/app/builderCloseRequest';
 
 type KeyboardLockApi = {
   lock?: (keyCodes?: string[]) => Promise<void>;
@@ -53,13 +55,6 @@ const GAMEPLAY_KEY_CODES = new Set([
 
 export function isGameplayKeyCode(code: string): boolean {
   return GAMEPLAY_KEY_CODES.has(code) || code.startsWith('Digit');
-}
-
-const BUILDER_REQUEST_CLOSE_EVENT = 'builder-request-close';
-
-interface BuilderCloseRequestDetail {
-  reason: 'play-button';
-  result?: Promise<boolean>;
 }
 
 const KEYBOARD_LOCK_CODES = [
@@ -647,10 +642,16 @@ export class InputManager {
   private async handlePlayButtonClick(): Promise<void> {
     const { ctx } = this;
     ctx.audio.ensure();
+    const wasBuilderOpen = document.body.classList.contains('builder-open');
     if (!(await this.closeOpenBuilderForPlay())) return;
+    const resumeParkedExpedition =
+      wasBuilderOpen &&
+      ctx.levels.current !== null &&
+      ctx.levels.current.def.id !== 'custom';
     if (
       !document.body.classList.contains('builder-open') &&
       ctx.state.playtestSource === null &&
+      !resumeParkedExpedition &&
       this.requestRunLauncher('play-button')
     ) {
       return;

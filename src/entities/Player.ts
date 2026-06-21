@@ -552,6 +552,32 @@ export class PlayerControl implements PlayerControlApi {
 
   constructor(private ctx: Ctx) {}
 
+  private tryHorizontalGroundStep(ctx: Ctx, dir: -1 | 1, bodyH: number, stepUp: number, followGround: boolean): number | null {
+    const player = ctx.player;
+    const startY = player.y;
+    if (!ctx.physics.tryMoveEntity(player, dir, 0, PLAYER_HALF_W, bodyH, stepUp, PLAYER_CEIL_SLIP)) return null;
+
+    if (followGround && player.y >= startY && ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1)) {
+      const unsupportedY = player.y;
+      let foundGround = false;
+      for (let s = 0; s < stepUp; s++) {
+        if (!ctx.physics.tryMoveEntity(player, 0, 1, PLAYER_HALF_W, bodyH, 0)) break;
+        if (!ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1)) {
+          foundGround = true;
+          break;
+        }
+      }
+      if (foundGround) {
+        player.vy = Math.min(player.vy, 0);
+        player.fy = 0;
+      } else {
+        player.y = unsupportedY;
+      }
+    }
+
+    return Math.max(1, Math.hypot(1, player.y - startY));
+  }
+
   private reduceIncomingDamage(amount: number, minimum = 0): number {
     if (this.ctx.player.status.stoneskin > 0) amount *= 0.5;
     return Math.max(minimum, amount);
@@ -1802,25 +1828,30 @@ export class PlayerControl implements PlayerControlApi {
       // so it never clips the jump impulse.
       player.vy = clamp(player.vy, ctx.params.player.vyCapUp, player.diveT > 0 ? 6.4 : 5.0);
 
-      // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling)
+      // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling).
+      // A step that also changes elevation spends its diagonal path length from
+      // the horizontal budget, so steep inclines do not run at flat-ground speed.
       player.fx += player.vx;
+      const followGround = player.grounded && supportedByTerrain;
       while (player.fx >= 1) {
         // stepUp climbs floor lips; PLAYER_CEIL_SLIP ducks under a ceiling that
         // steps down in the travel direction (else a tiny lip pins the slide).
-        if (!ctx.physics.tryMoveEntity(player, 1, 0, PLAYER_HALF_W, bodyH, stepUp, PLAYER_CEIL_SLIP)) {
+        const cost = this.tryHorizontalGroundStep(ctx, 1, bodyH, stepUp, followGround);
+        if (cost === null) {
           player.vx = 0;
           player.fx = 0;
           break;
         }
-        player.fx -= 1;
+        player.fx -= cost;
       }
       while (player.fx <= -1) {
-        if (!ctx.physics.tryMoveEntity(player, -1, 0, PLAYER_HALF_W, bodyH, stepUp, PLAYER_CEIL_SLIP)) {
+        const cost = this.tryHorizontalGroundStep(ctx, -1, bodyH, stepUp, followGround);
+        if (cost === null) {
           player.vx = 0;
           player.fx = 0;
           break;
         }
-        player.fx += 1;
+        player.fx += cost;
       }
 
       // Move vertically

@@ -6,6 +6,7 @@ import { VineStrands } from '@/entities/VineStrands';
 import { CELL_COUNT, Cell } from '@/sim/CellType';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
+import { cellBlocksEntityWithLooseRubble } from '@/sim/collision';
 import { handleNitrogen } from '@/sim/elements/liquids';
 import { handleFungus, handleMoss } from '@/sim/elements/newMaterials';
 import { handleSand } from '@/sim/elements/powders';
@@ -371,7 +372,7 @@ describe('VineStrands', () => {
     expect(vines).toBe(0);
   });
 
-  it('launches Weaver spit as an unpinned falling strand that expires into Ash', () => {
+  it('launches Weaver spit as an unpinned falling strand that expires into sparse nonblocking Ash', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const world = new World(140, 100);
     const ctx = attachVineStrands({
@@ -413,7 +414,16 @@ describe('VineStrands', () => {
     }
     expect(ctx.vineStrands.strands).toHaveLength(0);
     expect(ash).toBeGreaterThan(0);
+    expect(ash).toBeLessThan(10);
     expect(vines).toBe(0);
+    for (let y = 0; y < world.height; y++) {
+      for (let x = 0; x < world.width; x++) {
+        const i = world.idx(x, y);
+        if (world.types[i] !== Cell.Ash) continue;
+        expect(world.life[i]).toBeGreaterThan(0);
+        expect(cellBlocksEntityWithLooseRubble(world, x, y)).toBe(false);
+      }
+    }
   });
 
   it('spins Weaver den webs as pinned radial lattices', () => {

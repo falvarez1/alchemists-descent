@@ -90,13 +90,20 @@ export function handleCoal(ctx: Ctx, x: number, y: number): void {
 
 export function handleAsh(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
+  const ci = w.idx(x, y);
+  if (w.life[ci] > 0) {
+    w.life[ci]--;
+    if (w.life[ci] <= 0) {
+      w.clearCellAt(ci);
+      return;
+    }
+  }
   // Featherlight residue — drifts as it falls, dissolves in water
   for (let i = 0; i < 4; i++) {
     const nx = x + (i === 0 ? 1 : i === 1 ? -1 : 0);
     const ny = y + (i === 2 ? 1 : i === 3 ? -1 : 0);
     if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Water && Math.random() < 0.1) {
-      const i2 = w.idx(x, y);
-      w.clearCellAt(i2);
+      w.clearCellAt(ci);
       return;
     }
   }

@@ -1,4 +1,7 @@
 import type { AuthoredLight, BiomeId, Ctx, GeneratedScenePlacement, LevelDef, PlayerState, WandRuntimeSnapshot } from '@/core/types';
+import { BUILDER_REQUEST_CLOSE_EVENT } from '@/app/builderCloseRequest';
+import type { BuilderCloseRequestDetail } from '@/app/builderCloseRequest';
+import type { BuilderHost, BuilderPauseClaim } from '@/app/BuilderHost';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { BIOMES as BIOME_DEFS } from '@/config/biomes';
 import { GEN, GEN_TUNE, GEN_TUNE_DEFAULTS, WORLDGEN_DRESSING_CHANNELS, WORLDGEN_LOOK_FIELDS, defaultSkeletonSpec } from '@/config/gen';
@@ -470,14 +473,8 @@ const MECH_KINDS: ReadonlySet<EditorObjectKind> = new Set([
 const familyOf = (o: EditorObject): LayerFamily => (MECH_KINDS.has(o.kind) ? 'mech' : 'gameplay');
 
 const DRAFT_KEY = 'noita-builder-draft';
-const BUILDER_REQUEST_CLOSE_EVENT = 'builder-request-close';
 /** Settle previews bigger than this commit without undo (memory honesty). */
 const SETTLE_UNDO_CAP = 400000;
-
-interface BuilderCloseRequestDetail {
-  reason: 'play-button';
-  result?: Promise<boolean>;
-}
 
 /** Tiny procedural pixel previews for the palette popovers (28x28). */
 type PreviewDraw = (g: CanvasRenderingContext2D) => void;
@@ -756,7 +753,14 @@ type AssetBrowserFocusTarget =
   | { kind: 'batch-clear' };
 type PlacementPaletteFocusTarget = { palette: 'prefab' | 'sprite'; assetId: string };
 
+export interface BuilderRuntimeDependencies {
+  ctx: Ctx;
+  host: BuilderHost;
+}
+
 export class Builder {
+  private readonly ctx: Ctx;
+  private readonly host: BuilderHost;
   private doc: EditorDocument;
   private readonly cmds = new CommandStack(() => this.doc, (cmd) => this.markDocumentChanged(cmd));
   private readonly uiCommands = new CommandRegistry((id, reason) => this.status(`${id}: ${reason}`, true));
@@ -780,7 +784,7 @@ export class Builder {
   private cmdkActiveIndex = 0;
   private cmdkHits: CommandSpec[] = [];
   private isOpen = false;
-  private ownsPause = false;
+  private pauseClaim: BuilderPauseClaim | null = null;
   private returningFromPlaytest = false;
   private documentRevision = 0;
   private savedDocumentRevision = 0;
@@ -994,13 +998,17 @@ export class Builder {
   private markerLayer!: HTMLDivElement;
   private markers = new Map<string, HTMLDivElement>();
   private modeBtn!: HTMLButtonElement;
+  private modeBtnOwned = false;
   private intentModal: HTMLDivElement | null = null;
-  private intentModalPaused = false;
+  private intentModalPauseClaim: BuilderPauseClaim | null = null;
   private intentModalKeydown: ((e: KeyboardEvent) => void) | null = null;
   private rafId = 0;
   private statusTimer = 0;
 
-  constructor(private ctx: Ctx) {
+  constructor(runtime: BuilderRuntimeDependencies) {
+    this.ctx = runtime.ctx;
+    this.host = runtime.host;
+    const ctx = this.ctx;
     this.previewRuntime = new PreviewRuntime(ctx);
     this.doc = createEmptyDocument('untitled', ctx.state.currentBiome);
     this.worldgenLevelId = this.levelIdForBiome(this.doc.biome);
@@ -1036,7 +1044,7 @@ export class Builder {
     this.disposers.push(() => window.removeEventListener(DEV_CONSOLE_STATE_EVENT, this.onDevConsoleState as EventListener));
     // Entering play (PLAY button) while authoring closes the overlay; the
     // document survives for the next open.
-    this.disposers.push(ctx.events.on('modeChanged', ({ mode }) => {
+    this.disposers.push(this.host.subscribe('modeChanged', ({ mode }) => {
       if (mode === 'play' && this.isOpen) {
         void this.requestClose().then((closed) => {
           if (!closed && this.isOpen) (document.getElementById('mode-build-btn') as HTMLButtonElement | null)?.click();
@@ -1045,7 +1053,7 @@ export class Builder {
       if (mode === 'build' && this.builderPlaytestActive && !this.isOpen && !this.builderReturnRequested) {
         this.builderReturnRequested = true;
         this.returningFromPlaytest = true;
-        this.openWithIntent('continue-document', false);
+        this.openWithIntent('continue-document', null);
         return;
       }
       // a mood-overridden playtest must not leak its ambient into the
@@ -1055,7 +1063,7 @@ export class Builder {
         this.prevAmbient = null;
       }
     }));
-    this.disposers.push(ctx.events.on('worldEdited', (edit) => {
+    this.disposers.push(this.host.subscribe('worldEdited', (edit) => {
       if (!this.isOpen) return;
       this.markTerrainDirty();
       this.status(`${edit.command.toUpperCase()} EDITED ${edit.cells} LIVE CELLS`, true);
@@ -1118,10 +1126,15 @@ export class Builder {
       this.showOpenIntentModal();
       return;
     }
-    this.openWithIntent('continue-document', false);
+    this.openWithIntent('continue-document', null);
   }
 
-  private openWithIntent(intent: BuilderOpenIntent, inheritPause = false): void {
+  toggleFromLauncher(): void {
+    if (this.isOpen) void this.requestClose();
+    else this.open();
+  }
+
+  private openWithIntent(intent: BuilderOpenIntent, inheritedPauseClaim: BuilderPauseClaim | null = null): void {
     if (this.isOpen) return;
     const wasReturningFromPlaytest = this.returningFromPlaytest;
     this.hideOpenIntentModal(false);
@@ -1159,12 +1172,13 @@ export class Builder {
     this.sessionMode = 'author';
     this.previewRuntime.stop();
     this.previewRuntimeDirty = true;
-    this.ctx.state.editorLights = null;
+    this.host.setBuilderVisualState({ editorLights: null });
     this.syncWandLightPreview();
     this.syncSessionButtons();
-    if (!this.ctx.state.paused || inheritPause) {
-      this.ctx.state.paused = true;
-      this.ownsPause = true;
+    if (inheritedPauseClaim) {
+      this.pauseClaim = inheritedPauseClaim;
+    } else if (!this.host.getModeSnapshot().paused) {
+      this.pauseClaim = this.host.claimPause('authoring-session');
     }
     if (detached) {
       this.root.style.display = '';
@@ -1209,7 +1223,7 @@ export class Builder {
     document.body.classList.add('builder-open');
     this.syncConsoleForBuilderOpen();
     this.applyWorkspaceLayout();
-    this.ctx.camera.zoomLock = this.zoomTarget;
+    this.host.setCameraZoomLock(this.zoomTarget);
     this.refreshDocSelect();
     this.syncAll();
     this.refreshPrefabs();
@@ -1233,15 +1247,12 @@ export class Builder {
       window.clearTimeout(this.draftRetryTimer);
       this.draftRetryTimer = 0;
     }
-    this.ctx.camera.zoomLock = null;
+    this.host.setCameraZoomLock(null);
     this.previewRuntime.stop();
     this.previewRuntimeDirty = true;
-    this.ctx.state.editorLights = null;
-    this.ctx.state.builderWandLightPreview.enabled = false;
-    if (this.ownsPause) {
-      this.ctx.state.paused = false;
-      this.ownsPause = false;
-    }
+    this.host.setBuilderVisualState({ editorLights: null, wandLightPreviewEnabled: false });
+    this.host.releasePause(this.pauseClaim);
+    this.pauseClaim = null;
     this.tool = 'select';
     this.setBuilderHelp(false);
     this.backdropPreview?.close();
@@ -1273,7 +1284,7 @@ export class Builder {
     if (this.disposed) return;
     this.disposed = true;
     this.close();
-    this.hideOpenIntentModal(false);
+    this.hideOpenIntentModal(true);
     this.previewRuntime.stop();
     this.gallery?.dispose();
     this.gallery = null;
@@ -1292,7 +1303,8 @@ export class Builder {
     this.cancelGizmoDrag(true);
     for (const dispose of this.disposers.splice(0).reverse()) dispose();
     this.root.remove();
-    this.modeBtn.remove();
+    this.modeBtn.classList.remove('active');
+    if (this.modeBtnOwned) this.modeBtn.remove();
     document.body.classList.remove('builder-open', 'builder-playtest-active');
     if ((this.ctx as Ctx & { builder?: Builder }).builder === this) delete (this.ctx as Ctx & { builder?: Builder }).builder;
   }
@@ -3205,15 +3217,11 @@ export class Builder {
   private showOpenIntentModal(): void {
     if (this.intentModal) return;
     if (!this.ctx.levels.current) {
-      this.openWithIntent('continue-document', false);
+      this.openWithIntent('continue-document', null);
       return;
     }
 
-    this.intentModalPaused = false;
-    if (!this.ctx.state.paused) {
-      this.ctx.state.paused = true;
-      this.intentModalPaused = true;
-    }
+    this.intentModalPauseClaim = this.host.claimPause('open-intent-modal');
 
     const rt = this.ctx.levels.current;
     const hasWork = this.hasAuthoringWork();
@@ -3240,9 +3248,10 @@ export class Builder {
         this.hideOpenIntentModal(true);
         return;
       }
-      const inheritPause = this.intentModalPaused;
+      const inheritedPauseClaim = this.intentModalPauseClaim?.held === true ? this.intentModalPauseClaim : null;
+      this.intentModalPauseClaim = null;
       this.hideOpenIntentModal(false);
-      this.openWithIntent(intent, inheritPause);
+      this.openWithIntent(intent, inheritedPauseClaim);
     };
 
     modal
@@ -3312,8 +3321,8 @@ export class Builder {
     }
     this.intentModal.remove();
     this.intentModal = null;
-    if (restorePause && this.intentModalPaused) this.ctx.state.paused = false;
-    this.intentModalPaused = false;
+    if (restorePause) this.host.releasePause(this.intentModalPauseClaim);
+    this.intentModalPauseClaim = null;
   }
 
   private hasAuthoringWork(): boolean {
@@ -3446,12 +3455,17 @@ export class Builder {
   /* ===================== DOM scaffold ===================== */
 
   private buildDom(): void {
-    // Header toggle, third seat in the existing mode switch.
-    this.modeBtn = document.createElement('button');
+    // Header toggle, third seat in the existing mode switch. The app shell may
+    // create this before Builder lazy-loads; reuse it to avoid duplicate buttons.
+    const existingModeBtn = document.getElementById('mode-builder-btn') as HTMLButtonElement | null;
+    this.modeBtn = existingModeBtn ?? document.createElement('button');
+    this.modeBtnOwned = existingModeBtn === null;
     this.modeBtn.id = 'mode-builder-btn';
     this.modeBtn.textContent = 'BUILDER';
-    this.modeBtn.addEventListener('click', () => (this.isOpen ? void this.requestClose() : this.open()));
-    document.querySelector('.mode-switch')?.appendChild(this.modeBtn);
+    if (this.modeBtnOwned) {
+      this.modeBtn.addEventListener('click', () => this.toggleFromLauncher());
+      document.querySelector('.mode-switch')?.appendChild(this.modeBtn);
+    }
 
     const holder = document.getElementById('canvas-holder');
     const viewport = document.getElementById('viewport-container');
@@ -4215,7 +4229,7 @@ export class Builder {
     if (mode === 'author') {
       // Logic Preview is visual-only; returning to Author clears transient preview feeds.
       this.previewRuntime.stop();
-      this.ctx.state.editorLights = null;
+      this.host.setBuilderVisualState({ editorLights: null });
       this.status('AUTHOR VIEW');
     } else {
       this.resetPreviewRuntime('LOGIC PREVIEW');
@@ -5979,7 +5993,7 @@ export class Builder {
       this.ctx.worldgen.generateCaves(this.ctx);
       if (this.ctx.worldgen.spawnHint) this.upsertGeneratedSpawn(this.ctx.worldgen.spawnHint);
     }
-    if (this.ctx.worldgen.spawnHint) this.ctx.camera.snapTo(this.ctx.worldgen.spawnHint.x, this.ctx.worldgen.spawnHint.y);
+    if (this.ctx.worldgen.spawnHint) this.host.snapCameraTo(this.ctx.worldgen.spawnHint.x, this.ctx.worldgen.spawnHint.y);
     this.doc.world = captureWorldLayer(this.ctx);
     this.paintDirty = false;
     this.markDocumentChanged();
@@ -6476,7 +6490,7 @@ export class Builder {
   private frameSelection(): void {
     const generatedScene = this.selectedGeneratedScene();
     if (generatedScene) {
-      this.ctx.camera.snapTo((generatedScene.x0 + generatedScene.x1) / 2, (generatedScene.y0 + generatedScene.y1) / 2);
+      this.host.snapCameraTo((generatedScene.x0 + generatedScene.x1) / 2, (generatedScene.y0 + generatedScene.y1) / 2);
       return;
     }
     const obj = this.selected();
@@ -6492,19 +6506,19 @@ export class Builder {
         cy = (f.y0 + f.y1) / 2;
       }
     }
-    this.ctx.camera.snapTo(cx, cy);
+    this.host.snapCameraTo(cx, cy);
   }
 
   private setBuilderZoom(value: number, silent = false): void {
     this.zoomTarget = Math.max(0.5, Math.min(4, value));
-    this.ctx.camera.zoomLock = this.zoomTarget;
+    this.host.setCameraZoomLock(this.zoomTarget);
     if (!silent) this.status(`ZOOM ${this.zoomTarget.toFixed(2)}x`);
   }
 
   private fitAuthoredBounds(): void {
     const bounds = this.authoredBounds();
     if (!bounds) {
-      this.ctx.camera.snapTo(WIDTH / 2, HEIGHT / 2);
+      this.host.snapCameraTo(WIDTH / 2, HEIGHT / 2);
       this.setBuilderZoom(1, true);
       this.status('FIT WORLD CENTER');
       return;
@@ -6513,7 +6527,7 @@ export class Builder {
     const w = Math.max(1, bounds.x1 - bounds.x0 + pad * 2);
     const h = Math.max(1, bounds.y1 - bounds.y0 + pad * 2);
     const zoom = Math.max(0.5, Math.min(4, Math.min(VIEW_W / w, VIEW_H / h)));
-    this.ctx.camera.snapTo((bounds.x0 + bounds.x1) / 2, (bounds.y0 + bounds.y1) / 2);
+    this.host.snapCameraTo((bounds.x0 + bounds.x1) / 2, (bounds.y0 + bounds.y1) / 2);
     this.setBuilderZoom(zoom, true);
     this.status(`FITTED AUTHORED BOUNDS (${Math.round(bounds.x1 - bounds.x0)} x ${Math.round(bounds.y1 - bounds.y0)})`);
   }
@@ -6525,7 +6539,7 @@ export class Builder {
       return;
     }
     this.select(spawn.id);
-    this.ctx.camera.snapTo(spawn.x, spawn.y);
+    this.host.snapCameraTo(spawn.x, spawn.y);
     this.status('CENTERED ON SPAWN');
   }
 
@@ -6544,7 +6558,7 @@ export class Builder {
       return;
     }
     if (issue.location) {
-      this.ctx.camera.snapTo(issue.location.x, issue.location.y);
+      this.host.snapCameraTo(issue.location.x, issue.location.y);
       this.status('CENTERED VALIDATION ISSUE');
       return;
     }
@@ -6918,7 +6932,7 @@ export class Builder {
       // Let the tuning store persist tuning-singleton edits (player feel, worldgen
       // look, material params) across reloads. The Builder doesn't listen to this
       // event, so there's no rebuild loop; the Sandbox inspector just resyncs.
-      this.ctx.events.emit('paramsChanged');
+      this.host.notifyParamsChanged();
     };
     range.setAttribute('aria-valuetext', fmt(shown));
     range.addEventListener('input', () => apply(Number(range.value)));
@@ -7123,7 +7137,7 @@ export class Builder {
         title: 'Restore simulation, lighting, and gore multipliers to shipped defaults',
         run: () => {
           Object.assign(this.ctx.params.global, GLOBAL_PARAM_DEFAULTS);
-          this.ctx.events.emit('paramsChanged'); // Sandbox Global Controls re-sync
+          this.host.notifyParamsChanged(); // Sandbox Global Controls re-sync
           this.buildGlobalPanel();
           this.status('SIM + GORE RESET');
         },
@@ -7134,19 +7148,19 @@ export class Builder {
     const elec = this.worldSection(host, 'ELECTRICAL');
     this.sliderRow(elec, 'Charge Falloff (spread)', g.chargeFalloff, 1, 6, 1, (v) => v.toFixed(0), (v) => {
       g.chargeFalloff = v;
-      this.ctx.events.emit('paramsChanged');
+      this.host.notifyParamsChanged();
     });
     this.sliderRow(elec, 'Charge Strength (reach)', g.chargeStrength, 0.5, 5, 0.5, (v) => `${v.toFixed(1)}x`, (v) => {
       g.chargeStrength = v;
-      this.ctx.events.emit('paramsChanged');
+      this.host.notifyParamsChanged();
     });
     this.sliderRow(elec, 'Charge Decay (duration)', g.chargeDecay, 1, 10, 1, (v) => v.toFixed(0), (v) => {
       g.chargeDecay = v;
-      this.ctx.events.emit('paramsChanged');
+      this.host.notifyParamsChanged();
     });
     this.sliderRow(elec, 'Shock Damage', g.shockDamage, 0, 1, 0.05, (v) => v.toFixed(2), (v) => {
       g.shockDamage = v;
-      this.ctx.events.emit('paramsChanged');
+      this.host.notifyParamsChanged();
     });
 
     this.buildPlayerPhysicsSections(host);
@@ -7236,7 +7250,7 @@ export class Builder {
     }
     this.worldActionRow(sec, [
       { label: 'REGENERATE CAVES', title: 'Re-run worldgen with these look values', run: () => { void this.guardedWorldGen('caves'); } },
-      { label: 'RESET LOOK', title: 'Restore the shipped worldgen look', run: () => { Object.assign(GEN_TUNE, GEN_TUNE_DEFAULTS); this.ctx.events.emit('paramsChanged'); this.buildGlobalPanel(); } },
+      { label: 'RESET LOOK', title: 'Restore the shipped worldgen look', run: () => { Object.assign(GEN_TUNE, GEN_TUNE_DEFAULTS); this.host.notifyParamsChanged(); this.buildGlobalPanel(); } },
     ]);
   }
 
@@ -7829,7 +7843,7 @@ export class Builder {
       const r = this.minimap.getBoundingClientRect();
       const wx = ((e.clientX - r.left) / r.width) * WIDTH;
       const wy = ((e.clientY - r.top) / r.height) * HEIGHT;
-      this.ctx.camera.snapTo(wx, wy);
+      this.host.snapCameraTo(wx, wy);
       this.drawMinimap();
     };
     this.minimap.addEventListener('pointerdown', (e) => {
@@ -9114,7 +9128,7 @@ export class Builder {
       charge: w.charge.slice(),
     };
     this.settling = true;
-    this.ctx.state.paused = false; // the sim runs for real — that IS the preview
+    this.host.setPaused(false, 'settle-preview'); // the sim runs for real — that IS the preview
     this.status('SETTLING — HOLD TO CONTINUE, RELEASE TO DECIDE');
     this.syncSettleButtons();
   }
@@ -9122,7 +9136,7 @@ export class Builder {
   private stopSettleRun(): void {
     if (!this.settling || !this.settleSnap) return;
     this.settling = false;
-    this.ctx.state.paused = true;
+    this.host.setPaused(true, 'settle-preview');
     this.status('SETTLED — KEEP OR REVERT');
     this.syncSettleButtons();
   }
@@ -9133,7 +9147,7 @@ export class Builder {
     if (this.settling) {
       // mid-run decision: stop the clock first
       this.settling = false;
-      this.ctx.state.paused = true;
+      this.host.setPaused(true, 'settle-preview');
     }
     this.settleSnap = null;
     const w = this.ctx.world;
@@ -9223,9 +9237,10 @@ export class Builder {
   }
 
   private syncWandLightPreview(): void {
+    const enabled = this.isOpen && this.wandLightPreviewOn;
+    this.host.setBuilderVisualState({ wandLightPreviewEnabled: enabled });
     const preview = this.ctx.state.builderWandLightPreview;
-    preview.enabled = this.isOpen && this.wandLightPreviewOn;
-    if (!preview.enabled) return;
+    if (!enabled) return;
     if (this.lastMouseClient) this.lastMouse = this.clientToWorld(this.lastMouseClient.x, this.lastMouseClient.y);
     preview.x = this.lastMouse.x;
     preview.y = this.lastMouse.y;
@@ -9871,16 +9886,17 @@ export class Builder {
     // live light preview: authored lights feed the real light field
     // (solo narrows the feed to one light; MUTE drops a light from the
     // preview only — muted lights still compile)
+    let editorLights: AuthoredLight[] | null = null;
     if (!this.lightPreviewOn) {
-      state.editorLights = null;
+      editorLights = null;
     } else if (this.sessionMode === 'live') {
       const previewLights = this.previewRuntime.authoredLights({
         mutedIds: this.mutedLightIds,
         soloId: this.soloLightId,
       });
-      state.editorLights = previewLights.length > 0 ? previewLights : null;
+      editorLights = previewLights.length > 0 ? previewLights : null;
     } else {
-      state.editorLights =
+      editorLights =
         this.doc.lights.length > 0
           ? this.doc.lights
               .filter(
@@ -9892,6 +9908,7 @@ export class Builder {
               .map((l, n) => ({ ...toAuthoredLight(l, n), flicker: 0 }))
           : null;
     }
+    this.host.setBuilderVisualState({ editorLights });
 
     if (!this.minimapImage || state.frameCount % 12 === 0) this.refreshMinimapTerrain();
     this.drawMinimap();
@@ -11432,7 +11449,7 @@ export class Builder {
     }
     const focusX = row.bounds ? (row.bounds.x0 + row.bounds.x1) / 2 : row.x;
     const focusY = row.bounds ? (row.bounds.y0 + row.bounds.y1) / 2 : row.y;
-    this.ctx.camera.snapTo(focusX, focusY);
+    this.host.snapCameraTo(focusX, focusY);
     this.status(`FOCUSED ${row.label.toUpperCase()} @ ${Math.round(focusX)}, ${Math.round(focusY)}`);
     this.renderRuntimePanel(false);
   }
@@ -13241,7 +13258,7 @@ export class Builder {
       }
     }
     if (issue.location) {
-      this.ctx.camera.snapTo(issue.location.x, issue.location.y);
+      this.host.snapCameraTo(issue.location.x, issue.location.y);
       return true;
     }
     return false;

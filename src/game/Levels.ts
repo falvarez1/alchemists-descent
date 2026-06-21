@@ -81,8 +81,8 @@ const SETTLED_FINDABILITY_REPAIR_MS = 300;
 /** Authored test arenas REBUILD their terrain after generation (buildWeaverArena /
  *  buildPhysicsArena wipe the world and stamp a hand-designed layout). They must
  *  skip the procedural findability repair, which would otherwise "rescue" the now-
- *  wiped campaign features by carving Metal-sleeved tunnels straight through the
- *  authored level. They own their own reachability. */
+ *  wiped campaign features by carving braced tunnels through the authored level.
+ *  They own their own reachability. */
 const AUTHORED_TEST_ARENAS = new Set(['weaver-test', 'physics-test']);
 /** Waystone bowl fire checks run every 4th frame; this many hot checks light it. */
 const WAYSTONE_LIGHT_TICKS = 30;
@@ -92,6 +92,17 @@ const WAYSTONE_FIRE_CARDS: readonly CardId[] = ['flame', 'emberstorm', 'meteor']
 const WAYSTONE_PROMPT_RADIUS = 26;
 /** D1 starter water: enough for a first experiment, below a full flask. */
 const FRESH_STARTER_WATER_CELLS = 300;
+/** Campaign Weaver lair webs are background dressing; the authored test arena can go larger. */
+const WEAVER_LAIR_WEB_RADIUS_MIN = 24;
+const WEAVER_LAIR_WEB_RADIUS_MAX = 34;
+const WEAVER_LAIR_WEB_RADIAL_MIN = 6;
+const WEAVER_LAIR_WEB_RADIAL_MAX = 8;
+const WEAVER_LAIR_WEB_RING_MIN = 3;
+const WEAVER_LAIR_WEB_RING_MAX = 4;
+const WEAVER_LAIR_WEB_BODY_CLEARANCE = 18;
+const WEAVER_LAIR_WEB_THICKNESS = 1;
+const WEAVER_LAIR_WEB_JITTER_MIN = 0.04;
+const WEAVER_LAIR_WEB_JITTER_MAX = 0.12;
 /** Minimum placement distance (cells) between a placed enemy and the level spawn. */
 const POPULATION_SPAWN_CLEARANCE = 220;
 const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, 80, 0] as const;
@@ -245,6 +256,7 @@ function sparseNonZeroPairs(arr: Int16Array | Uint8Array | Uint16Array): Array<[
 function sanitizeWeaverLairWebs(value: readonly WeaverLairWeb[] | undefined): WeaverLairWeb[] {
   if (!value) return [];
   const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+  const clamp = (n: number, min: number, max: number): number => Math.max(min, Math.min(max, n));
   const out: WeaverLairWeb[] = [];
   for (const web of value) {
     if (
@@ -260,7 +272,16 @@ function sanitizeWeaverLairWebs(value: readonly WeaverLairWeb[] | undefined): We
     ) {
       continue;
     }
-    out.push({ ...web, color: web.color >>> 0 });
+    out.push({
+      x: web.x,
+      y: web.y,
+      radius: clamp(web.radius, WEAVER_LAIR_WEB_RADIUS_MIN, WEAVER_LAIR_WEB_RADIUS_MAX),
+      radials: Math.round(clamp(web.radials, WEAVER_LAIR_WEB_RADIAL_MIN, WEAVER_LAIR_WEB_RADIAL_MAX)),
+      rings: Math.round(clamp(web.rings, WEAVER_LAIR_WEB_RING_MIN, WEAVER_LAIR_WEB_RING_MAX)),
+      thickness: WEAVER_LAIR_WEB_THICKNESS,
+      color: (web.color >>> 0) & 0xffffff,
+      jitter: clamp(web.jitter, WEAVER_LAIR_WEB_JITTER_MIN, WEAVER_LAIR_WEB_JITTER_MAX),
+    });
   }
   return out;
 }
@@ -2056,7 +2077,7 @@ export class Levels implements LevelsApi {
   private scheduleSettledFindabilityRepair(ctx: Ctx, runtime: LevelRuntime): void {
     const id = runtime.def.id;
     // Authored arenas own their layout; the procedural repair would carve
-    // Metal-sleeved rescue tunnels through it (see AUTHORED_TEST_ARENAS).
+    // rescue tunnels through it (see AUTHORED_TEST_ARENAS).
     if (AUTHORED_TEST_ARENAS.has(id)) return;
     const token = ++this.findabilityRepairToken;
     globalThis.setTimeout(() => {
@@ -2344,16 +2365,18 @@ export class Levels implements LevelsApi {
     };
 
     // Hanging curtains: find nearby ceiling lips and pull short, burnable
-    // vine strands down into the reachable chamber.
+    // vine strands down into the reachable chamber. The live lattice stays
+    // compact and above the body lane; otherwise it reads as a foreground cage.
+    const webRadius = WEAVER_LAIR_WEB_RADIUS_MIN + rng.int(WEAVER_LAIR_WEB_RADIUS_MAX - WEAVER_LAIR_WEB_RADIUS_MIN + 1);
     weaverLairWebs.push({
       x,
-      y: y - 48 - rng.int(18),
-      radius: 42 + rng.int(24),
-      radials: 8 + rng.int(5),
-      rings: 4 + rng.int(3),
-      thickness: 1,
+      y: y - webRadius - WEAVER_LAIR_WEB_BODY_CLEARANCE - 6 - rng.int(10),
+      radius: webRadius,
+      radials: WEAVER_LAIR_WEB_RADIAL_MIN + rng.int(WEAVER_LAIR_WEB_RADIAL_MAX - WEAVER_LAIR_WEB_RADIAL_MIN + 1),
+      rings: WEAVER_LAIR_WEB_RING_MIN + rng.int(WEAVER_LAIR_WEB_RING_MAX - WEAVER_LAIR_WEB_RING_MIN + 1),
+      thickness: WEAVER_LAIR_WEB_THICKNESS,
       color: packRGB(66 + rng.int(24), 148 + rng.int(42), 58 + rng.int(24)),
-      jitter: 0.06 + rng.next() * 0.08,
+      jitter: WEAVER_LAIR_WEB_JITTER_MIN + rng.next() * (WEAVER_LAIR_WEB_JITTER_MAX - WEAVER_LAIR_WEB_JITTER_MIN),
     });
     for (let n = 0; n < 10; n++) {
       const ax = Math.floor(x - 46 + rng.int(93));

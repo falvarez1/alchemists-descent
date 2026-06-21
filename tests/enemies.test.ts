@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { LEVELS, populationForLevel } from '@/config/worldgraph';
 import { EventBus } from '@/core/events';
-import type { Critter, Ctx, Enemy, EnemyDef } from '@/core/types';
+import { Rng } from '@/core/rng';
+import type { Critter, Ctx, Enemy, EnemyDef, WeaverLairWeb } from '@/core/types';
 import { ENEMY_KINDS as BUILDER_ENEMY_KINDS, PATROL_KINDS } from '@/builder/inspectorSchemas';
 import { Enemies, ENEMY_DEFS } from '@/entities/Enemies';
-import { Cell } from '@/sim/CellType';
+import { Levels } from '@/game/Levels';
+import { blocksEntity, Cell, isSoftGrowth } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { EXTRAS } from '@/world/biomeExtras';
 
@@ -69,6 +71,37 @@ describe('weaver encounter contract', () => {
   it('keeps Builder enemy authoring in sync with runtime enemy definitions', () => {
     expect([...BUILDER_ENEMY_KINDS].sort()).toEqual(Object.keys(ENEMY_DEFS).sort());
     expect(PATROL_KINDS.has('weaver')).toBe(true);
+  });
+
+  it('stamps compact campaign lair webs above the Weaver body lane', () => {
+    const world = new World(180, 140);
+    world.types.fill(Cell.Empty);
+    for (let x = 30; x <= 150; x++) world.replaceCellAt(world.idx(x, 50), Cell.Stone, 0x555055);
+    const before = world.types.slice();
+    const ctx = { world } as unknown as Ctx;
+    const levels = new Levels(ctx);
+    const webs: WeaverLairWeb[] = [];
+
+    (levels as unknown as {
+      stampWeaverLair(ctx: Ctx, x: number, y: number, rng: Rng, weaverLairWebs: WeaverLairWeb[]): void;
+    }).stampWeaverLair(ctx, 90, 96, new Rng(7), webs);
+
+    expect(webs).toHaveLength(1);
+    const web = webs[0];
+    expect(web.radius).toBeGreaterThanOrEqual(24);
+    expect(web.radius).toBeLessThanOrEqual(34);
+    expect(web.radials).toBeGreaterThanOrEqual(6);
+    expect(web.radials).toBeLessThanOrEqual(8);
+    expect(web.rings).toBeGreaterThanOrEqual(3);
+    expect(web.rings).toBeLessThanOrEqual(4);
+    expect(web.thickness).toBe(1);
+    expect(web.y + web.radius).toBeLessThanOrEqual(96 - 18);
+
+    for (let i = 0; i < before.length; i++) {
+      if (before[i] !== Cell.Empty || world.types[i] === Cell.Empty) continue;
+      expect(isSoftGrowth(world.types[i])).toBe(true);
+      expect(blocksEntity(world.types[i])).toBe(false);
+    }
   });
 
   it('explains thread spit through a launched live web strand without open-air anchors', () => {
