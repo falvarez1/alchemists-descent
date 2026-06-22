@@ -54,11 +54,11 @@ try {
   });
   const grab = (f, s) => page.evaluate(() => new Promise(res => { const ctx = window.__game.ctx, e = ctx.enemies.find(g => g.__watch === 1); ctx.camera.zoomLock = 1; ctx.camera.snapTo((e.x + ctx.player.x) / 2, (e.y + ctx.player.y) / 2 - 10); requestAnimationFrame(() => res(document.querySelector('#canvas-holder > canvas').toDataURL('image/png'))); })).then(d => writeFileSync('verify-out/overhead-' + f + '.png', Buffer.from(d.split(',')[1], 'base64')));
   let minDist = 99999, everClimbed = false, minY = 99999;
-  for (let f = 0; f <= 600; f++) {
+  for (let f = 0; f <= 900; f++) {
     await page.evaluate(() => { const ctx = window.__game.ctx; ctx.player.hp = ctx.player.maxHp = 99999; return new Promise(r => requestAnimationFrame(r)); });
     const s = await sample(); minDist = Math.min(minDist, s.dist); minY = Math.min(minY, s.y); if (s.climbT > 0) everClimbed = true;
     if (f % 75 === 0) console.log('t' + f, JSON.stringify(s));
-    if (f === 600) await grab(f, s);
+    if (f === 900) await grab(f, s);
   }
   // It must actually GET UP onto the shelf (minY near shelfTop), not just stand
   // directly below the quarry (where straight-line dist is small but it never climbed).

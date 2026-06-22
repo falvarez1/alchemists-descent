@@ -6,14 +6,17 @@ import { blocksEntity, isSoftGrowth } from '@/sim/CellType';
 type RGB = readonly [number, number, number];
 
 const WEAVER_REST = [
-  { side: -1, hipX: -5, hipY: 16, footX: -46, footY: 1, phase: 0.0 },
-  { side: -1, hipX: -8, hipY: 14, footX: -54, footY: -3, phase: Math.PI },
-  { side: -1, hipX: -8, hipY: 11, footX: -51, footY: 3, phase: Math.PI * 0.5 },
-  { side: -1, hipX: -5, hipY: 8, footX: -41, footY: 0, phase: Math.PI * 1.5 },
-  { side: 1, hipX: 5, hipY: 16, footX: 46, footY: 1, phase: Math.PI },
-  { side: 1, hipX: 8, hipY: 14, footX: 54, footY: -3, phase: 0.0 },
-  { side: 1, hipX: 8, hipY: 11, footX: 51, footY: 3, phase: Math.PI * 1.5 },
-  { side: 1, hipX: 5, hipY: 8, footX: 41, footY: 0, phase: Math.PI * 0.5 },
+  // Eight legs FANNED front-to-back (feet spread along the ground, not bunched at one
+  // far point) and pulled in a touch from the old daddy-long-legs splay, for a compact,
+  // purposeful spider stance. Front legs reach forward & nearer, rear legs trail farther.
+  { side: -1, hipX: -5, hipY: 16, footX: -28, footY: 2, phase: 0.0 },
+  { side: -1, hipX: -8, hipY: 14, footX: -38, footY: -1, phase: Math.PI },
+  { side: -1, hipX: -8, hipY: 11, footX: -45, footY: 2, phase: Math.PI * 0.5 },
+  { side: -1, hipX: -5, hipY: 8, footX: -48, footY: 0, phase: Math.PI * 1.5 },
+  { side: 1, hipX: 5, hipY: 16, footX: 28, footY: 2, phase: Math.PI },
+  { side: 1, hipX: 8, hipY: 14, footX: 38, footY: -1, phase: 0.0 },
+  { side: 1, hipX: 8, hipY: 11, footX: 45, footY: 2, phase: Math.PI * 1.5 },
+  { side: 1, hipX: 5, hipY: 8, footX: 48, footY: 0, phase: Math.PI * 0.5 },
 ] as const;
 
 // Natural reach per leg = the summed length of its three bones. Set well ABOVE the
@@ -258,6 +261,24 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     : Math.sin(frameCount * 0.02 + e.bobPhase * 3.7) > 0
       ? 1
       : -1;
+
+  // --- Threat telegraph (shared, kind-agnostic): a brief startle mark above the
+  //     crown the instant a creature COMMITS a reflex — so the threat-aware AI
+  //     (fear/dodge/flee in Enemies.ts) reads on screen. Derived from the reflex
+  //     timers at their peak (dodgeT max 12, fleeT max 26), so it carries no new
+  //     state and fades over a few frames. Drawn emissive so it shows in shadow,
+  //     kicked toward the escape direction for a touch of intent.
+  const startleD = (e.dodgeT ?? 0) >= 10 ? (e.dodgeT ?? 0) - 9 : 0; // 1..3 on commit
+  const startleF = (e.fleeT ?? 0) >= 23 ? Math.min(3, (e.fleeT ?? 0) - 22) : 0; // 1..3
+  const startle = Math.max(startleD, startleF);
+  if (startle > 0 && !flash) {
+    const ty = def.h + 3; // just clear of the tallest crown
+    const lean = (startleD > 0 ? (e.dodgeVX ?? 0) : (e.fleeDir ?? 0)) >= 0 ? 1 : -1;
+    const a = 0.5 + startle * 0.2; // brightest on the commit frame, ~0.7..1.1
+    PE(lean, ty + 1, a, a * 0.9, a * 0.5); // stroke top (slanted toward escape)
+    PE(0, ty, a, a * 0.9, a * 0.5); // stroke
+    PE(0, ty - 2, a * 0.9, a * 0.85, a * 0.45); // the dot — a tiny "!"
+  }
 
   if (e.kind === 'slime' || e.kind === 'acidslime') {
     // --- Squash & stretch: tall in flight, splat on landing, wobble at rest ---
@@ -577,10 +598,14 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const poised = !asleep && (e.windup ?? 0) > 0;
     const weaving = !asleep && e.blink > 0;
     const cranky = !asleep && (e.cranky ?? 0) > 0;
+    // A committed wall climb is DELIBERATE, not a scramble — even though clinging reads
+    // as low physical support. Excluding it from `unstable` gives the climb the calm,
+    // measured leg animation (no jitter, no oversized flail) instead of the distress wobble.
+    const climbingNow = !asleep && (e.weaverClimbT ?? 0) > 0;
     // Visual instability tracks REAL footing loss (physical support / fall timer),
     // not the growth-confidence `support` — bare stone reads as a calm, planted
     // stance, while cut-away terrain reads as the scrambling wobble.
-    const unstable = !asleep && ((e.weaverPhysicalSupport ?? 0.6) < 0.32 || (e.weaverFallT ?? 0) > 10);
+    const unstable = !asleep && !climbingNow && ((e.weaverPhysicalSupport ?? 0.6) < 0.32 || (e.weaverFallT ?? 0) > 10);
     const pulse = Math.max(0, e.webPulse ?? 0) / 18;
     const feedCrouch = !asleep && (e.weaverFeedT ?? 0) > 0;
     const supportPanic = clamp((e.weaverFallT ?? 0) / 45, 0, 1);
@@ -756,13 +781,16 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       // RIPPLE as aggression rises (each leg lags its neighbour) — a frantic,
       // low predatory scuttle instead of a measured stride.
       const ripple = (i % 4) * 1.1; // staggered wave across each side
-      const pattern = lerp(tetrapod, ripple, aggro);
+      // Even the CALM walk carries a little ripple so the eight legs cascade in a
+      // metachronal wave instead of clapping down in two rigid tetrapod groups — reads
+      // far more like a real spider flowing along than a wind-up toy.
+      const pattern = lerp(tetrapod, ripple, Math.max(0.32, aggro));
       const cadence = (cranky ? 1.35 : unstable ? 1.08 : 1) * (1 + aggro * 0.6);
       const gait = e.stride * cadence + pattern + rest.phase * 0.08;
       leg.stepCooldown = Math.max(0, (leg.stepCooldown ?? 0) - 1);
       const swingGate = lerp(unstable ? 0.42 : 0.68, 0.32, aggro) - (cranky ? 0.04 : 0);
       const swing = moving && Math.sin(gait) > swingGate;
-      const reachAmp = lerp(unstable ? 4.4 : 2.6, 4.8, aggro) + (cranky ? 0.4 : 0);
+      const reachAmp = lerp(unstable ? 4.4 : 4.0, 5.6, aggro) + (cranky ? 0.4 : 0);
       const reach = moving
         ? Math.sin(gait) * reachAmp + face * lerp(2.2, 4.4, aggro) // lunges further forward
         : Math.sin(frameCount * 0.025 + i) * 0.8;
@@ -863,8 +891,15 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
         leg.y += (ry - leg.y) * 0.1;
         leg.lift = Math.max(leg.lift, 0.55);
       } else {
-        if (unstable) tx += Math.sin(frameCount * 0.19 + i * 1.7) * 2.6;
-        const rawTarget = weaverFootTarget(ctx, tx, e.y - rest.footY, hipX, hipY, rest.side, unstable || (e.weaverFallT ?? 0) > 18, debugDangle);
+        let footLocalX = rest.footX + reach;
+        if (unstable) footLocalX += Math.sin(frameCount * 0.19 + i * 1.7) * 2.6;
+        // Climbing: reach for footholds ON the gripped surface — rotate the desired foot
+        // into the body frame so the legs spread ALONG the wall and grip TOWARD it,
+        // instead of half of them splaying into the open air beside it (the clumsy climb).
+        // Safe from the orientation feedback loop: a climb's orientation is AI-driven
+        // (climbDir), not derived from the feet, so moving the targets can't spin it.
+        const [dfx, dfy] = climbingNow ? wvWorld(footLocalX, rest.footY) : [e.x + footLocalX, e.y - rest.footY];
+        const rawTarget = weaverFootTarget(ctx, dfx, dfy, hipX, hipY, rest.side, unstable || (e.weaverFallT ?? 0) > 18, debugDangle);
         const hardResetReach = WEAVER_LEG_REACH[i] * WEAVER_LEG_HARD_RESET;
         const staleSpan = Math.hypot(leg.x - hipX, leg.y - hipY);
         if (

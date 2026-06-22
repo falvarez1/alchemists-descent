@@ -363,6 +363,9 @@ export interface Enemy {
    *  held for its duration so the body doesn't oscillate up/down when its quarry sits
    *  right at its level mid-face. */
   weaverDescend?: boolean;
+  /** Weaver: cached "march to the nearest scalable wall" direction toward an overhead
+   *  quarry, refreshed every few frames so the wide wall sweep isn't paid every tick. */
+  weaverSeekDir?: number;
   /** Weaver: free-moving head — smoothed render offset (x,y) and spring velocity of the
    *  cephalothorax. It turns to track prey, scans when idle and leads the walk, sprung so
    *  it overshoots and settles organically instead of snapping to the body's facing. */
@@ -1891,6 +1894,7 @@ export type CardId =
   | 'blackhole'
   // upgrade-port payload cards
   | 'vitriol'
+  | 'cryojet'
   | 'frostshard'
   | 'icelance'
   | 'wisp'

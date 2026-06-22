@@ -1246,20 +1246,14 @@ export class Enemies implements EnemyControlApi {
     // (e) THE PLAYER'S FLAME-JET CONE — sidestep ACROSS the stream to get out of
     //     its line (only foes fire actually harms; an imp basks in it).
     const fs = this.flameStream;
-    const G = globalThis as Record<string, number>;
-    if (fs) G.__fsNN = (G.__fsNN ?? 0) + 1;
     if (fs && enemyLethalCell(e.kind, Cell.Fire)) {
-      G.__fsLeth = (G.__fsLeth ?? 0) + 1;
       const dx = ex - fs.x;
       const dy = ey - fs.y;
       const dist = Math.hypot(dx, dy);
-      G.__fsDist = Math.round(dist);
       if (dist > 0.5 && dist < fs.reach) {
         let da = Math.atan2(dy, dx) - fs.angle;
         da = Math.atan2(Math.sin(da), Math.cos(da));
-        G.__fsDa = Math.round(Math.abs(da) * 100);
         if (Math.abs(da) < fs.cone + 0.3) {
-          G.__fsCone = (G.__fsCone ?? 0) + 1;
           const ax = Math.cos(fs.angle);
           const ay = Math.sin(fs.angle);
           let perpX = -ay; // sidestep perpendicular to the stream axis
@@ -1334,6 +1328,9 @@ export class Enemies implements EnemyControlApi {
       e.dodgeVX = (px / pm) * 2.7;
       e.dodgeVY = (py / pm) * 2.7;
       e.fear = Math.max(e.fear ?? 0, 0.5);
+      // a soft airy whiff on the commit — gated to near the alchemist so a
+      // swarm jinking at once doesn't roar (off-screen foes are frozen anyway).
+      if (pDist < 160) this.ctx.audio.noiseBurst(0.05, 1500, 0.045, true);
       }
     }
 
@@ -2097,10 +2094,14 @@ export class Enemies implements EnemyControlApi {
             // the air (the report): it climbs around to the top instead. With no wall in
             // reach it keeps closing under the quarry rather than freezing in a rear-up.
             if (pdy < -24 && !climbing) {
-              const wallDir = this.weaverSeekWall(e, def, 300, Math.sign(pdx || 1));
-              if (wallDir !== 0) dir = wallDir;
-            } else if (!tooClose && Math.abs(pdx) <= 12) {
-              dir = 0; // level/in-line with the quarry: hold
+              // refresh the wide wall sweep only every 6th frame (cached otherwise) —
+              // the wall it should march to is stable, and the sweep is the costliest
+              // per-tick AI step.
+              if (e.timer % 6 === 0) e.weaverSeekDir = this.weaverSeekWall(e, def, 300, Math.sign(pdx || 1));
+              if ((e.weaverSeekDir ?? 0) !== 0) dir = e.weaverSeekDir as number;
+            } else {
+              e.weaverSeekDir = 0;
+              if (!tooClose && Math.abs(pdx) <= 12) dir = 0; // level/in-line with the quarry: hold
             }
             // Edge-wary so it won't stride into a void it gains nothing from — but a
             // spider WILL go over the lip to chase prey that's down below in that

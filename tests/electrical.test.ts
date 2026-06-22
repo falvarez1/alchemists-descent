@@ -7,15 +7,15 @@ import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 
 describe('updateElectricalGrid', () => {
-  it('spreads ATTENUATED charge to water/metal neighbors only (acid/blood no longer conduct) and decays the source', () => {
+  it('spreads ATTENUATED charge to water/metal/blood neighbors only and decays the source', () => {
     const world = new World(8, 8);
     const source = world.idx(3, 3);
     world.types[source] = Cell.Metal;
     world.charge[source] = 8;
     world.types[world.idx(4, 3)] = Cell.Water; // x+1     conductor
     world.types[world.idx(2, 3)] = Cell.Metal; // x-1     conductor
-    world.types[world.idx(3, 4)] = Cell.Acid; // x,y+1    no longer conducts
-    world.types[world.idx(2, 2)] = Cell.Blood; // x-1,y-1 no longer conducts
+    world.types[world.idx(3, 4)] = Cell.Acid; // x,y+1    still inert
+    world.types[world.idx(2, 2)] = Cell.Blood; // x-1,y-1 conducts as wet gore
     world.types[world.idx(3, 2)] = Cell.Metal; // x,y-1   not in the neighbor list
 
     updateElectricalGrid(ctxFor(world));
@@ -23,10 +23,10 @@ describe('updateElectricalGrid', () => {
     expect(world.charge[source]).toBe(7); // decays by 1
     expect(world.charge[world.idx(4, 3)]).toBe(5); // water: src - base*3 (far less conductive)
     expect(world.charge[world.idx(2, 3)]).toBe(7); // metal: src - base (carries far)
-    expect(world.charge[world.idx(3, 4)]).toBe(0); // acid no longer conducts
-    expect(world.charge[world.idx(2, 2)]).toBe(0); // blood no longer conducts
+    expect(world.charge[world.idx(3, 4)]).toBe(0); // acid does not conduct
+    expect(world.charge[world.idx(2, 2)]).toBe(5); // blood: water-like falloff by material tuning
     // The front now advances a few cells per call (CRAWL_HOPS), so this cell is
-    // reached on the 2nd hop via the water neighbour's diagonal: 5 (water) - 1 (metal).
+    // reached on the 2nd hop through the water/blood diagonal paths.
     expect(world.charge[world.idx(3, 2)]).toBe(4);
   });
 

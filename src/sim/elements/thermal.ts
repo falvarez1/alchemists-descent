@@ -11,6 +11,7 @@ import {
   steamColor,
   waterColor,
 } from '@/sim/colors';
+import { igniteGunpowder } from '@/sim/elements/powders';
 // FIRE_REACTION_OFFSETS was the local name for the shared asymmetric ignition list.
 import { CARDINAL_OFFSETS, IGNITION_OFFSETS as FIRE_REACTION_OFFSETS } from '@/sim/neighborOffsets';
 
@@ -80,8 +81,7 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
       // flame each frame for burnDuration) — a sustained pool fire, not a flash.
       w.life[ni] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(Math.random() * 30);
     } else if (n === Cell.Gunpowder && Math.random() < P.igniteChance! * 7) {
-      w.replaceCellAt(ni, Cell.Fire, fireColor());
-      w.life[ni] = 60 + Math.floor(Math.random() * 60);
+      igniteGunpowder(ctx, nx, ny);
     }
   }
   // Drift downward slowly, fluttering sideways like a falling spark
@@ -207,7 +207,7 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.life[ti] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(Math.random() * 30);
       }
       if (n === Cell.Gunpowder) {
-        ctx.explosions.trigger(tx, ty, ctx.params.materials[Cell.Gunpowder].blastRadius!);
+        igniteGunpowder(ctx, tx, ty);
         return;
       }
       if (n === Cell.Ice) {

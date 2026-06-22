@@ -23,15 +23,16 @@ export const MATERIAL_LORE: Partial<Record<number, LoreEntry>> = {
   [Cell.Acid]: { title: 'Acid', body: 'Eats through most solids. Beside water it transmutes rock into gold.' },
   [Cell.Oil]: { title: 'Oil', body: 'Slick and flammable — a long, creeping fuse once it catches.' },
   [Cell.Toxic]: { title: 'Toxic Sludge', body: 'Caustic ooze; clean water thins it back to water.' },
-  [Cell.Sand]: { title: 'Sand', body: 'Loose grain that pours and piles. Intense heat fuses it to glass.' },
+  [Cell.Sand]: { title: 'Sand', body: 'Loose grain that pours and piles. Heat or strong charge fuses it to glass.' },
   [Cell.Wood]: { title: 'Wood', body: 'Catches fire readily and burns down to ash.' },
   [Cell.Ice]: { title: 'Ice', body: 'Frozen and slick; fire and lava melt it back to water.' },
   [Cell.Metal]: { title: 'Metal', body: 'Conducts electricity far and fast — a path for lightning.' },
   [Cell.Gold]: { title: 'Gold', body: "Heavy, glittering dust — the alchemist's prize." },
-  [Cell.Gunpowder]: { title: 'Gunpowder', body: 'A packed charge. One spark and it detonates.' },
+  [Cell.Blood]: { title: 'Blood', body: 'Wet gore conducts a current and slows whatever wades through it.' },
+  [Cell.Gunpowder]: { title: 'Gunpowder', body: 'Thin trails burn like fuses. Packed clumps answer a spark with a blast.' },
   [Cell.Glowshroom]: { title: 'Glowshroom', body: 'Living light clinging to the rock, soft and breathing.' },
   [Cell.Crystal]: { title: 'Mana Crystal', body: 'Bright crystal that glints with stored magic.' },
-  [Cell.Nitrogen]: { title: 'Liquid Nitrogen', body: 'Bitter cold — freezes what it pools against.' },
+  [Cell.Nitrogen]: { title: 'Liquid Nitrogen', body: 'Bitter cold — freezes surface water into ice bridges.' },
 };
 
 /** Snapshot of discovered lore ids (for the Grimoire render). */

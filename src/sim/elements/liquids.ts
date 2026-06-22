@@ -1,10 +1,12 @@
 import type { Ctx } from '@/core/types';
-import { Cell } from '@/sim/CellType';
+import { Cell, isGas, isSoftGrowth, isSolid } from '@/sim/CellType';
 import {
   EMPTY_COLOR,
   fireColor,
+  fungusColor,
   goldColor,
   iceColor,
+  mossColor,
   obsidianColor,
   packRGB,
   smokeColor,
@@ -13,6 +15,7 @@ import {
   unpackB,
   unpackG,
   unpackR,
+  vineColor,
   waterColor,
 } from '@/sim/colors';
 import { CARDINAL_OFFSETS, IGNITION_OFFSETS } from '@/sim/neighborOffsets';
@@ -52,6 +55,52 @@ function lavaCanPass(t: number): boolean {
   return t === Cell.Empty || t === Cell.Steam || t === Cell.Oil || t === Cell.Acid || t === Cell.Smoke;
 }
 
+function loadBearingGrowthSupport(t: number): boolean {
+  return isSolid(t) && !isSoftGrowth(t);
+}
+
+function hasLoadBearingNeighbor(ctx: Ctx, x: number, y: number): boolean {
+  const w = ctx.world;
+  for (let k = 0; k < CARDINAL_OFFSETS.length; k++) {
+    const o = CARDINAL_OFFSETS[k];
+    const nx = x + o[0];
+    const ny = y + o[1];
+    if (w.inBounds(nx, ny) && loadBearingGrowthSupport(w.types[w.idx(nx, ny)])) return true;
+  }
+  return false;
+}
+
+function waterFeedsLivingGrowth(ctx: Ctx, x: number, y: number): boolean {
+  const w = ctx.world;
+  const ci = w.idx(x, y);
+  for (let k = 0; k < CARDINAL_OFFSETS.length; k++) {
+    const o = CARDINAL_OFFSETS[k];
+    const nx = x + o[0];
+    const ny = y + o[1];
+    if (!w.inBounds(nx, ny)) continue;
+    const n = w.types[w.idx(nx, ny)];
+    if (n === Cell.Vines && Math.random() < 0.08) {
+      w.replaceCellAt(ci, Cell.Vines, vineColor());
+      w.life[ci] = 65 + Math.floor(Math.random() * 50);
+      w.moved[ci] = w.movedTick;
+      return true;
+    }
+    if (n === Cell.Moss && hasLoadBearingNeighbor(ctx, x, y) && Math.random() < 0.055) {
+      w.replaceCellAt(ci, Cell.Moss, mossColor());
+      w.life[ci] = 12 + Math.floor(Math.random() * 14);
+      w.moved[ci] = w.movedTick;
+      return true;
+    }
+    if (n === Cell.Fungus && hasLoadBearingNeighbor(ctx, x, y) && Math.random() < 0.04) {
+      w.replaceCellAt(ci, Cell.Fungus, fungusColor());
+      w.life[ci] = 16 + Math.floor(Math.random() * 20);
+      w.moved[ci] = w.movedTick;
+      return true;
+    }
+  }
+  return false;
+}
+
 export function handleWater(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   // Clean water dilutes toxic sludge it touches
@@ -67,6 +116,7 @@ export function handleWater(ctx: Ctx, x: number, y: number): void {
       }
     }
   }
+  if (waterFeedsLivingGrowth(ctx, x, y)) return;
   if (w.inBounds(x, y + 1) && waterCanPass(w.types[w.idx(x, y + 1)])) {
     w.swap(x, y, x, y + 1);
     return;
@@ -148,6 +198,40 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
   }
 }
 
+function bridgeWaterSurface(ctx: Ctx, x: number, y: number): boolean {
+  const w = ctx.world;
+  if (!w.inBounds(x, y) || w.types[w.idx(x, y)] !== Cell.Water) return false;
+  if (!w.inBounds(x, y - 1)) return true;
+  const above = w.types[w.idx(x, y - 1)];
+  return above === Cell.Empty || above === Cell.Nitrogen || isGas(above);
+}
+
+function freezeWaterCell(ctx: Ctx, x: number, y: number): boolean {
+  const w = ctx.world;
+  if (!w.inBounds(x, y)) return false;
+  const i = w.idx(x, y);
+  if (w.types[i] !== Cell.Water) return false;
+  w.replaceCellAt(i, Cell.Ice, iceColor());
+  w.moved[i] = w.movedTick;
+  return true;
+}
+
+function freezeCryoBridge(ctx: Ctx, x: number, y: number): void {
+  freezeWaterCell(ctx, x, y);
+  const w = ctx.world;
+  for (let dir = -1; dir <= 1; dir += 2) {
+    for (let step = 1; step <= 4; step++) {
+      const nx = x + dir * step;
+      if (!bridgeWaterSurface(ctx, nx, y)) break;
+      freezeWaterCell(ctx, nx, y);
+      const below = y + 1;
+      if (w.inBounds(nx, below) && w.types[w.idx(nx, below)] === Cell.Water && Math.random() < 0.22) {
+        freezeWaterCell(ctx, nx, below);
+      }
+    }
+  }
+}
+
 export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const ci = w.idx(x, y);
@@ -160,7 +244,7 @@ export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
       const ti = w.idx(tx, ty);
       const n = w.types[ti];
       if (n === Cell.Water) {
-        w.replaceCellAt(ti, Cell.Ice, iceColor());
+        freezeCryoBridge(ctx, tx, ty);
         w.replaceCellAt(ci, Cell.Smoke, smokeColor());
         w.life[ci] = 20;
         return;

@@ -270,6 +270,7 @@ function cardMaterialDeps(def: CardDef): ContentDependency[] {
   if (def.id === 'flame') deps.push(dep('material', 'cell-5', 'emits fire'));
   if (def.id === 'bomb') deps.push(dep('material', 'cell-8', 'blast/gunpowder behavior'));
   if (def.id === 'vitriol') deps.push(dep('material', 'cell-7', 'sprays acid'));
+  if (def.id === 'cryojet') deps.push(dep('material', 'cell-16', 'sprays liquid nitrogen'));
   if (def.id === 'frostshard' || def.id === 'icelance' || def.id === 'frostcharge' || def.id === 'shattercrit') {
     deps.push(dep('material', 'cell-10', 'freezing/ice behavior'));
   }

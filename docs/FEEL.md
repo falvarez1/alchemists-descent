@@ -266,6 +266,73 @@ Layered, bottom to top:
 | Bomber | Fuse strobe — jiggles, then strobes white as `e.fusing` burns down |
 | Colossus | Slam/volley wind-ups; bellows when it notices you |
 
+### Threat-aware AI — fear, dodge & flee (`entities/Enemies.ts`)
+
+A reactive layer bolted **on top of** the per-kind AI so foes don't walk into
+their own deaths now that poured/thrown/sprayed hazards hurt them. Each frame an
+in-window foe runs `updateBehavior()` *before* its kind branch: **sense → integrate
+drives → commit a reflex**, then an integration seam OVERRIDES the per-kind `vx/vy`
+with that reflex. Runs at tick rate; fail-open — every reflex is short and timed, so
+a stuck foe just re-decides next frame. Fearless bosses' weights make it a near-no-op.
+
+**Senses** (`senseThreat`, fills one reused threat read — no per-foe allocation):
+- **(a) Hazard cells** — a box (`halfW+9` wide) scanned for `enemyLethalCell`
+  pools (lava/fire/acid, per-kind: an imp ignores fire, an acid slime ignores acid);
+  flee vector points away from the nearest, weighted by proximity.
+- **(b) Fast rigid bodies** on a collision course — thrown/pulled crates, blast
+  debris: speed ≥ 2.2, within 60 cells, velocity actually pointed at me
+  (`toward > 0.4`), time-to-impact < 26. Imminent if tti < 14.
+- **(c) Incoming player projectiles** (non-hostile) — within 70 cells, `toward > 0.6`,
+  tti < 22. Imminent if tti < 12.
+- **(d) Self** — on fire (threat 0.85) or wounded (< 35% hp ramps in).
+- **(e) The player's Flame-Jet cone** — sampled once/frame (`wands.streamFlameInfo`);
+  a fire-vulnerable foe inside the cone sidesteps *across* the stream axis. An imp
+  basks in it (same `enemyLethalCell` gate as the damage).
+
+**Drives** (leveled, like the elemental status timers — they integrate and decay):
+- **fear** (0..1) rises fast toward sensed threat × the kind's `fear` weight, ebbs
+  slowly (`-0.02/f`) when safe.
+- **aggression** (0..1) rises near the player (`+0.02`) and when freshly hit
+  (`+0.04`, vengeance), bleeds off when scared/alone.
+- **chaseScale** = `clamp(1 − 0.7·fear + 0.15·aggression, 0.25, 1)` — fear makes a
+  foe hesitate; aggression only offsets it (never a speed-up past the per-kind cap).
+
+**Reflexes** (the arbiter):
+- **DODGE** — an imminent threat triggers a SIDESTEP *perpendicular* to the threat's
+  velocity (a jink across its line — you can't outrun a fast crate by fleeing
+  straight away), @2.7 for 12 frames. One roll per incoming threat (`dodgeCd 22`,
+  set whether or not it dodges), gated by the kind's `dodge` chance. Fliers sustain
+  the vertical jink; grounded foes get a single upward hop, then gravity arcs them
+  back over the threat.
+- **FLEE** — fear ≥ the kind's `fleeAt` commits a 26-frame retreat @1.7 away from
+  danger; if on fire and `seekWater`, it bolts for the nearest water to douse instead.
+
+**The tell (so the intelligence reads on screen):** the instant a foe commits a
+dodge or flee, a warm slanted **"!"** pops above its crown (emissive — shows in
+shadow; suppressed during the damage flash; kicked toward the escape direction) plus
+a soft airy **whiff** (gated to within 160 cells so a swarm jinking at once doesn't
+roar). Kind-agnostic, drawn in the shared path of `EnemySprites.ts`; carries **no new
+state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fleeT ≥ 23`).
+
+**Per-kind TEMPERAMENT** — the weights that make a slime dumb and a bat flighty:
+
+| Kind | fear | dodge | fleeAt | feel |
+|---|---|---|---|---|
+| slime / acidslime | 0.4 | 0.12 | 0.95 | dumb, barely flinches |
+| bat | 1.3 | 0.85 | 0.45 | flighty, panics |
+| imp | 0.6 | 0.72 | 0.6 | smart kiter (fire-immune) |
+| wisp | 0.9 | 0.7 | 0.4 | skittish frost caster |
+| spitter | 0.85 | 0.55 | 0.5 | cowardly (seeks water) |
+| bomber | 0.2 | 0.3 | 1.5 | suicidal — *wants* to reach you |
+| mage | 0.9 | 0.62 | 0.45 | cowardly caster (seeks water) |
+| weaver | 0.5 | 0.5 | 0.72 | cunning but committed |
+| golem | 0.18 | 0.28 | 1.5 | brute, shrugs it off |
+| colossus | 0 | 0 | never | fearless boss |
+| leviathan | 0 | 0.12 | never | fearless (water is home) |
+| *(default)* | 0.7 | 0.45 | 0.7 | — |
+
+(`fleeAt ≥ 1` = never flees, since fear caps at 1. Eggs are inert: `0/0/2`.)
+
 ### Wounded postures (< 40% hp)
 
 - **Slimes droop** — the membrane sags wide and low at rest — and spring
@@ -469,6 +536,10 @@ slime windup 7f chase / 12f wander · wounded hop 0.55-0.85x at <40% hp
 patrol: advance <14 cells (slime) / <10 (golem) · de-alert 300f beyond 300 cells
 sequence chime 300+90·step Hz / break 120 Hz saw · emitter rate clamp ≥2f
 bat flare 8f at <64 cells · swoop 12f cap 2.6 · tumble 14f, ~1.2%/f at <40% hp
+enemy threat-sense (in-window foes, tick rate): hazard box halfW+9 (per-kind enemyLethalCell) · fast body dist<60 tti<26 toward>0.4 (imminent tti<14) · projectile dist<70 tti<22 toward>0.6 (imminent tti<12) · flame-cone reach 36 / half-angle 0.5 +0.3 slack · self: burning .85, hp<35% ramps
+enemy drives: fear → sensed threat × kind-fear, decay 0.02/f · aggression +0.02 close +0.04 on-hit −0.03·fear −0.005/f · chaseScale clamp(1 − 0.7·fear + 0.15·agg, 0.25, 1)
+enemy reflex: dodge ⊥ to threat vel @2.7 ×12f, one roll/threat (dodgeCd 22) gated by kind dodge% (fliers sustain vy, grounded one hop) · flee 26f @1.7 away (toward water if burning+seekWater) · startle "!" tell @dodgeT≥10|fleeT≥23 + airy whiff (pDist<160)
+temperament fear/dodge/fleeAt: slime .4/.12/.95 · bat 1.3/.85/.45 · imp .6/.72/.6 · wisp .9/.7/.4 · spitter .85/.55/.5 · bomber .2/.3/never · mage .9/.62/.45 · weaver .5/.5/.72 · golem .18/.28/never · colossus 0/0/never · default .7/.45/.7
 player eye seeks threats <80 cells · enemy gaze locks only when alerted
 shake falloff dead at 420 cells · hitstop 3f at ≥8 dmg · heartbeat <25% hp
 sim window camera ±60 · player 9x17 cells · staff ~11 cells, muzzle at d=9

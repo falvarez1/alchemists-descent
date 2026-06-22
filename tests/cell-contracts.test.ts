@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createGameParams } from '@/config/params';
 import type { Ctx } from '@/core/types';
 import { VineStrands } from '@/entities/VineStrands';
-import { CELL_COUNT, Cell } from '@/sim/CellType';
+import { CELL_COUNT, Cell, isConductor } from '@/sim/CellType';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
 import { cellBlocksEntityWithLooseRubble } from '@/sim/collision';
-import { handleNitrogen } from '@/sim/elements/liquids';
+import { handleNitrogen, handleWater } from '@/sim/elements/liquids';
 import { handleFungus, handleMoss } from '@/sim/elements/newMaterials';
-import { handleSand } from '@/sim/elements/powders';
+import { handleGunpowder, handleSand } from '@/sim/elements/powders';
 import { handleFire } from '@/sim/elements/thermal';
 import { handleVines } from '@/sim/elements/vines';
 
@@ -33,6 +33,37 @@ function expectNoTransientMetadata(world: World, i: number): void {
   expect(world.charge[i]).toBe(0);
   expect(world.activeCharges.has(i)).toBe(false);
   expect(world.colorOverrides.has(i)).toBe(false);
+}
+
+function stampBrushDisc(world: World, cx: number, cy: number, radius: number, type: Cell): void {
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy <= radius * radius && world.inBounds(cx + dx, cy + dy)) {
+        world.replaceCellAt(world.idx(cx + dx, cy + dy), type, 0x555555);
+      }
+    }
+  }
+}
+
+function stampBrushLine(world: World, x0: number, y0: number, x1: number, y1: number, radius: number, type: Cell): void {
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  for (;;) {
+    stampBrushDisc(world, x0, y0, radius, type);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x0 += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
 }
 
 describe('cell ABI contracts', () => {
@@ -128,6 +159,13 @@ describe('cell ABI contracts', () => {
     expect(routed).toHaveLength(CELL_COUNT);
     expect(unique.size).toBe(CELL_COUNT);
     expect(missing).toEqual([]);
+  });
+
+  it('keeps blood in the conductor set for gore-lightning combos', () => {
+    expect(isConductor(Cell.Water)).toBe(true);
+    expect(isConductor(Cell.Blood)).toBe(true);
+    expect(isConductor(Cell.Acid)).toBe(false);
+    expect(isConductor(Cell.Toxic)).toBe(false);
   });
 });
 
@@ -288,6 +326,69 @@ describe('cell material conversions', () => {
     expectNoTransientMetadata(world, i);
   });
 
+  it('fuses sand into glass beside open flame for sandcasting', () => {
+    const world = new World(6, 6);
+    const i = world.idx(2, 2);
+    world.types[i] = Cell.Sand;
+    world.types[world.idx(3, 2)] = Cell.Fire;
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    handleSand({ world, params: createGameParams() } as unknown as Ctx, 2, 2, Cell.Sand);
+
+    expect(world.types[i]).toBe(Cell.Glass);
+  });
+
+  it('burns thin gunpowder trails as fuses instead of detonating them', () => {
+    const world = new World(8, 5);
+    const explosions = { trigger: vi.fn() };
+    world.replaceCellAt(world.idx(2, 2), Cell.Fire, 0xff6600);
+    world.life[world.idx(2, 2)] = 10;
+    for (let x = 3; x <= 5; x++) world.replaceCellAt(world.idx(x, 2), Cell.Gunpowder, 0x555555);
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    handleFire({
+      world,
+      params: createGameParams(),
+      explosions,
+      particles: { list: [], spawn: vi.fn() },
+    } as unknown as Ctx, 2, 2);
+
+    expect(explosions.trigger).not.toHaveBeenCalled();
+    expect(world.types[world.idx(3, 2)]).toBe(Cell.Fire);
+  });
+
+  it('burns 1-radius brush gunpowder strokes as fuses instead of detonating the trail', () => {
+    const world = new World(18, 8);
+    const explosions = { trigger: vi.fn() };
+    stampBrushLine(world, 4, 3, 14, 3, 1, Cell.Gunpowder);
+    world.replaceCellAt(world.idx(3, 3), Cell.Fire, 0xff6600);
+    world.life[world.idx(3, 3)] = 180;
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    handleFire({
+      world,
+      params: createGameParams(),
+      explosions,
+      particles: { list: [], spawn: vi.fn() },
+    } as unknown as Ctx, 3, 3);
+
+    expect(explosions.trigger).not.toHaveBeenCalled();
+    expect(world.types[world.idx(4, 3)]).toBe(Cell.Fire);
+  });
+
+  it('detonates packed gunpowder clumps when ignited', () => {
+    const world = new World(8, 8);
+    const explosions = { trigger: vi.fn() };
+    for (let y = 1; y <= 5; y++) {
+      for (let x = 1; x <= 5; x++) world.replaceCellAt(world.idx(x, y), Cell.Gunpowder, 0x555555);
+    }
+    world.replaceCellAt(world.idx(4, 3), Cell.Fire, 0xff6600);
+
+    handleGunpowder({ world, params: createGameParams(), explosions } as unknown as Ctx, 3, 3);
+
+    expect(explosions.trigger).toHaveBeenCalledWith(3, 3, createGameParams().materials[Cell.Gunpowder].blastRadius);
+  });
+
   it('clears transient metadata when nitrogen freezes or boils neighboring cells', () => {
     const world = new World(6, 6);
     const source = world.idx(2, 2);
@@ -303,6 +404,31 @@ describe('cell material conversions', () => {
     expect(world.types[source]).toBe(Cell.Smoke);
     expect(world.life[source]).toBe(20);
     expectNoTransientMetadata(world, source);
+  });
+
+  it('freezes surface water into a bridge strip when nitrogen touches it', () => {
+    const world = new World(10, 6);
+    for (let x = 1; x <= 7; x++) world.replaceCellAt(world.idx(x, 2), Cell.Water, 0x2266ff);
+    world.replaceCellAt(world.idx(4, 1), Cell.Nitrogen, 0xd4f7ff);
+
+    handleNitrogen({ world, params: createGameParams() } as unknown as Ctx, 4, 1);
+
+    for (let x = 1; x <= 7; x++) expect(world.types[world.idx(x, 2)]).toBe(Cell.Ice);
+  });
+
+  it('lets poured water wake nearby living growth', () => {
+    const world = new World(6, 6);
+    world.movedTick = 12;
+    const water = world.idx(3, 3);
+    world.replaceCellAt(water, Cell.Water, 0x2266ff);
+    world.replaceCellAt(world.idx(2, 3), Cell.Vines, 0x228833);
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    handleWater({ world, params: createGameParams() } as unknown as Ctx, 3, 3);
+
+    expect(world.types[water]).toBe(Cell.Vines);
+    expect(world.life[water]).toBeGreaterThan(0);
+    expect(world.moved[water]).toBe(12);
   });
 
   it('clears transient metadata when fire burns out to empty space', () => {

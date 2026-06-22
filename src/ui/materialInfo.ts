@@ -12,21 +12,21 @@ import { paramSliderSpec } from '@/ui/Inspector';
 export const MATERIAL_INFO: Record<number, string> = {
   [Cell.Empty]: 'Erases painted cells back to open air.',
   [Cell.Sand]:
-    'Loose powder: falls, piles, and sinks through liquids. Lava contact or a strong electric charge fuses it into Glass.',
+    'Loose powder: falls, piles, and sinks through liquids. Fire, embers, lava, burning coal, or a strong electric charge can fuse it into Glass.',
   [Cell.Water]:
-    'Flows and pools. Quenches fire into steam, hardens lava into Stone, dilutes Toxic Sludge, feeds vine growth, and conducts lightning. Drinking it snuffs any flames on you.',
+    'Flows and pools. Quenches fire into steam, hardens lava into Stone, dilutes Toxic Sludge, feeds living growth, and conducts lightning. Drinking it snuffs any flames on you.',
   [Cell.Wall]:
     'Inert structural rock. Acid dissolves it — and beside water (rarely) or Aurum Catalyst (readily) the bite transmutes it into Gold Powder instead.',
   [Cell.Wood]:
     'Solid timber that catches fire and smokes as it burns. Acid eats it, or transmutes it to Gold Powder when water or Aurum Catalyst sits beside the bite.',
   [Cell.Fire]:
-    'Spreads to anything flammable, climbs upward, and detonates gunpowder. Water turns it to steam; burnt-out flames occasionally leave drifting Ash.',
+    'Spreads to anything flammable and climbs upward. It burns thin gunpowder trails as fuses but detonates packed clumps. Water turns it to steam; burnt-out flames occasionally leave drifting Ash.',
   [Cell.Oil]:
     'Flammable liquid that floats on water. Fire or any electric spark ignites it into a long burn.',
   [Cell.Acid]:
     'Eats through everything but Metal and Aurum Catalyst, fizzing into steam and consuming itself. Beside water (rarely) or the Catalyst (readily) the bite transmutes rock, wood, and stone into Gold Powder. Caustic to the touch.',
   [Cell.Gunpowder]:
-    'Powder that detonates the moment fire or an electric charge reaches it — one grain takes the whole pile.',
+    'Powder that can be poured from the flask. Thin trails burn as fuses; packed clumps detonate when fire or an electric charge reaches them.',
   [Cell.Steam]:
     'Hot vapor that rises and cools, condensing back into water under ceilings.',
   [Cell.Ice]:
@@ -41,15 +41,15 @@ export const MATERIAL_INFO: Record<number, string> = {
   [Cell.Vines]:
     'Pass-through living growth that drinks neighboring water and spreads — hanging, creeping, climbing — until its energy is spent. Very flammable.',
   [Cell.Nitrogen]:
-    'Cryogenic liquid: freezes water into Ice and shocks lava into Stone, boiling away as it works. Slowly evaporates on its own.',
+    'Cryogenic liquid: freezes surface water into bridgeable Ice strips and shocks lava into Stone, boiling away as it works. Slowly evaporates on its own.',
   [Cell.Gold]:
     'Heavy precious powder. Dig it loose in play mode and the grains home to your purse. Acid alchemy creates it; the cauldron accepts it as an ingredient.',
   [Cell.Blood]:
-    'Spilled by wounded creatures. Stains rock and timber and slowly darkens as it dries.',
+    'Spilled by wounded creatures. Stains rock and timber, slows the legs, conducts lightning while wet, and slowly darkens as it dries.',
   [Cell.Slime]:
     'Glowing goo the alchemist absorbs on contact to heal. Fire occasionally renders it into Acid.',
   [Cell.Ember]:
-    'Drifting sparks that smoulder wood and vines and instantly light oil or gunpowder. Water or Liquid Nitrogen quenches them to steam.',
+    'Drifting sparks that smoulder wood and vines, light oil, and burn or detonate gunpowder based on the local clump. Water or Liquid Nitrogen quenches them to steam.',
   [Cell.ElixirLife]:
     'Brewed regeneration draught: siphon it (E) and drink (X) to mend over time. In the world it sits inert — its glow is the tell.',
   [Cell.ElixirLevity]:
@@ -71,7 +71,7 @@ export const MATERIAL_INFO: Record<number, string> = {
   [Cell.Fungus]:
     'Pass-through bioluminescent colony that creeps along solid surfaces until its energy is spent, then settles in to glow. Burns readily.',
   [Cell.Glass]:
-    'Translucent solid fused from sand by lava or lightning. Lets light through; acid dissolves it.',
+    'Translucent solid fused from sand by heat or lightning. Lets light through; acid dissolves it.',
   [Cell.Ash]:
     'Featherlight burnt residue: drifts sideways as it falls and dissolves in water.',
   [Cell.Glowshroom]:

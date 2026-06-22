@@ -36,6 +36,7 @@ const CARD_RECIPE_HINTS: Partial<Record<CardId, string[]>> = {
   critwet: ['Pairs with Water Trail or any wet target.'],
   electriccharge: ['Pairs with Water Trail and conductor cells.'],
   oiltrail: ['Pairs with Flame as a visible fuse.'],
+  cryojet: ['Freezes water into bridgeable ice strips.'],
   frostcharge: ['Pairs with Shatter Frozen as the setup hit.'],
   shattercrit: ['Pairs with Frost Charge or naturally frozen targets.'],
   trigger: ['Put a host projectile next, then a payload group after it.'],

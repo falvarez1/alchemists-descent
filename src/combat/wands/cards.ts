@@ -85,6 +85,14 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
     manaCost: 2,
     blurb: 'A streaming spray of real acid — melts what it pools on',
   },
+  cryojet: {
+    id: 'cryojet',
+    name: 'Cryo Jet',
+    kind: 'projectile',
+    tags: ['Terrain', 'Status', 'Setup'],
+    manaCost: 3,
+    blurb: 'A streaming spray of real liquid nitrogen — freezes water into bridges',
+  },
   frostshard: {
     id: 'frostshard',
     name: 'Frost Shard',

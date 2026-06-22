@@ -63,6 +63,21 @@ describe('electrified shock', () => {
     expect(wet.damage).toBeGreaterThan(dry.damage);
   });
 
+  it('shocks a body wading through charged blood', () => {
+    const world = new World(24, 24);
+    fillBody(world, Cell.Blood, 12, 14, 3, 8);
+    const { ctx, zap, spark } = ctxWith(world);
+    const body = { x: 12, y: 14, status: createDefaultStatus() };
+
+    const eff = sampleAndTickStatus(ctx, body, 3, 8);
+
+    expect(body.status.electrified).toBeGreaterThan(0);
+    expect(body.status.wet).toBe(0);
+    expect(eff.damage).toBeGreaterThan(0);
+    expect(zap).toHaveBeenCalledTimes(1);
+    expect(spark).toHaveBeenCalled();
+  });
+
   it('shocks a body standing ON a charged conductor (charge underfoot, dry)', () => {
     const world = new World(24, 24);
     // a charged metal floor right under the feet — nothing in the body box

@@ -153,6 +153,13 @@ describe('compileWand', () => {
     expect(program[0].manaCost).toBe(2);
   });
 
+  it('compiles [cryojet] alone to a low-cost stream action', () => {
+    const program = compileWand(['cryojet']);
+    expect(program).toHaveLength(1);
+    expect(program[0].actions[0].card).toBe('cryojet');
+    expect(program[0].manaCost).toBe(3);
+  });
+
   it('skips null slots entirely (slot indices still point at the real slots)', () => {
     const sparse = compileWand([null, 'speed', null, 'spark', null]);
     const dense = compileWand(['speed', 'spark']);
@@ -462,6 +469,7 @@ describe('wand bench card organization', () => {
     expect(recipeHintsForCard('watertrail').join(' ')).toContain('Electric Charge');
     expect(recipeHintsForCard('oiltrail').join(' ')).toContain('Flame');
     expect(recipeHintsForCard('frostcharge').join(' ')).toContain('Shatter Frozen');
+    expect(recipeHintsForCard('cryojet').join(' ')).toContain('bridgeable ice');
     expect(recipeHintsForCard('shattercrit').join(' ')).toContain('Frost Charge');
     expect(recipeHintsForCard('trigger').join(' ')).toContain('payload');
     expect(recipeHintsForCard('spark')).toEqual([]);
@@ -830,6 +838,16 @@ describe('WandSystem trigger executor', () => {
 
     expect(ctx.spawned).toHaveLength(8);
     expect(ctx.spawned.every((particle) => particle.type === Cell.Fire)).toBe(true);
+  });
+
+  it('sprays real nitrogen from Cryo Jet', () => {
+    const ctx = makeCastCtx();
+    const wands = new WandSystem(ctx);
+
+    wands.castActionAt(ctx, action('cryojet', { dmgMul: 2, speedMul: 1.4, spreadAdd: 0.12 }), 40, 41, 0);
+
+    expect(ctx.spawned).toHaveLength(8);
+    expect(ctx.spawned.every((particle) => particle.x === 40 && particle.y === 41 && particle.type === Cell.Nitrogen)).toBe(true);
   });
 
   it('carries heavy modifiers onto bomb projectiles', () => {

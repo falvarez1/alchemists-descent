@@ -12,7 +12,7 @@ import type {
   WandState,
 } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
-import { acidColor, emberColor, fireColor, glassColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
+import { acidColor, emberColor, fireColor, glassColor, nitrogenColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
 import { ALL_CARD_IDS, CARD_DEFS, isCardId } from './cards';
 import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
@@ -435,6 +435,16 @@ export class WandSystem implements WandsApi {
           30 + Math.floor(Math.random() * 20), { grav: 0.05, glow: 0.8 });
       }
       if (ctx.state.frameCount % 6 === 0) ctx.audio.noiseBurst(0.1, 1400, 0.07, true);
+    } else if (action.card === 'cryojet') {
+      // Stream card: real nitrogen cells, tuned for bridge-making over pools.
+      const count = 5 + Math.max(0, Math.round(action.dmgMul) - 1) * 3;
+      for (let j = 0; j < count; j++) {
+        const a = jitter() + (Math.random() - 0.5) * 0.24;
+        const spd = (3.1 + Math.random() * 2.1) * action.speedMul;
+        ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd - 0.12, Cell.Nitrogen, nitrogenColor(),
+          34 + Math.floor(Math.random() * 22), { grav: 0.08, glow: 0.9, deposit: true });
+      }
+      if (ctx.state.frameCount % 6 === 0) ctx.audio.noiseBurst(0.08, 1900, 0.06, true);
     } else if (action.card === 'frostshard') {
       const a = jitter();
       const v = 11 * action.speedMul;

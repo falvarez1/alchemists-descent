@@ -1,12 +1,111 @@
 import type { Ctx } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
-import { glassColor } from '@/sim/colors';
+import { fireColor, glassColor } from '@/sim/colors';
 import { IGNITION_OFFSETS } from '@/sim/neighborOffsets';
 
 /* ===================== Element Physics Behaviors ===================== */
 
+const GUNPOWDER_CLUMP_SCAN_RADIUS = 4;
+const GUNPOWDER_CLUMP_MIN_MASS = 13; // a radius-2 dot, not a radius-1 brush trail
+const GUNPOWDER_CLUMP_MIN_SPAN = 4;
+const GUNPOWDER_CLUMP_MAX_ANISOTROPY = 2.5;
+const GUNPOWDER_FUSE_CADENCE = 4;
+
 function powderCanPass(t: number): boolean {
   return t === Cell.Empty || (isLiquid(t) && t !== Cell.Lava) || isGas(t);
+}
+
+function countLocalGunpowder(ctx: Ctx, x: number, y: number): number {
+  const w = ctx.world;
+  let count = 0;
+  for (let oy = -GUNPOWDER_CLUMP_SCAN_RADIUS; oy <= GUNPOWDER_CLUMP_SCAN_RADIUS; oy++) {
+    for (let ox = -GUNPOWDER_CLUMP_SCAN_RADIUS; ox <= GUNPOWDER_CLUMP_SCAN_RADIUS; ox++) {
+      const nx = x + ox;
+      const ny = y + oy;
+      if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Gunpowder) count++;
+    }
+  }
+  return count;
+}
+
+function gunpowderBlastRadius(ctx: Ctx, localMass: number): number {
+  const cap = ctx.params.materials[Cell.Gunpowder].blastRadius!;
+  return Math.min(cap, 12 + localMass * 4);
+}
+
+function isPackedGunpowderClump(ctx: Ctx, x: number, y: number): boolean {
+  const w = ctx.world;
+  let mass = 0;
+  let minX = x;
+  let maxX = x;
+  let minY = y;
+  let maxY = y;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXX = 0;
+  let sumYY = 0;
+  let sumXY = 0;
+
+  for (let oy = -GUNPOWDER_CLUMP_SCAN_RADIUS; oy <= GUNPOWDER_CLUMP_SCAN_RADIUS; oy++) {
+    for (let ox = -GUNPOWDER_CLUMP_SCAN_RADIUS; ox <= GUNPOWDER_CLUMP_SCAN_RADIUS; ox++) {
+      const nx = x + ox;
+      const ny = y + oy;
+      if (!w.inBounds(nx, ny) || w.types[w.idx(nx, ny)] !== Cell.Gunpowder) continue;
+      mass++;
+      if (nx < minX) minX = nx;
+      if (nx > maxX) maxX = nx;
+      if (ny < minY) minY = ny;
+      if (ny > maxY) maxY = ny;
+      sumX += nx;
+      sumY += ny;
+      sumXX += nx * nx;
+      sumYY += ny * ny;
+      sumXY += nx * ny;
+    }
+  }
+
+  if (mass < GUNPOWDER_CLUMP_MIN_MASS) return false;
+  const spanX = maxX - minX + 1;
+  const spanY = maxY - minY + 1;
+  if (spanX < GUNPOWDER_CLUMP_MIN_SPAN || spanY < GUNPOWDER_CLUMP_MIN_SPAN) return false;
+
+  const invMass = 1 / mass;
+  const meanX = sumX * invMass;
+  const meanY = sumY * invMass;
+  const varX = sumXX * invMass - meanX * meanX;
+  const varY = sumYY * invMass - meanY * meanY;
+  const cov = sumXY * invMass - meanX * meanY;
+  const trace = varX + varY;
+  const determinant = varX * varY - cov * cov;
+  const root = Math.sqrt(Math.max(0, trace * trace * 0.25 - determinant));
+  const major = trace * 0.5 + root;
+  const minor = trace * 0.5 - root;
+  if (minor <= 0.01) return false;
+
+  return major / minor <= GUNPOWDER_CLUMP_MAX_ANISOTROPY;
+}
+
+export function igniteGunpowder(ctx: Ctx, x: number, y: number): void {
+  const w = ctx.world;
+  if (!w.inBounds(x, y)) return;
+  const i = w.idx(x, y);
+  if (w.types[i] !== Cell.Gunpowder) return;
+
+  const localMass = countLocalGunpowder(ctx, x, y);
+  if (isPackedGunpowderClump(ctx, x, y)) {
+    ctx.explosions.trigger(x, y, gunpowderBlastRadius(ctx, localMass));
+    return;
+  }
+
+  // Thin trails should burn as a visible fuse, not flash-convert the whole line
+  // in one frame. Stagger by cell coordinate so a brush stroke catches in a
+  // rolling front while packed clumps above still detonate immediately.
+  const frame = ctx.state?.frameCount;
+  if (frame !== undefined && (frame + x + y) % GUNPOWDER_FUSE_CADENCE !== 0) return;
+
+  w.replaceCellAt(i, Cell.Fire, fireColor());
+  w.life[i] = 34 + localMass * 8 + Math.floor(Math.random() * 16);
+  w.moved[i] = w.movedTick;
 }
 
 /** Falling-powder behavior shared by SAND and GOLD (type selects the params). */
@@ -19,18 +118,20 @@ export function handleSand(ctx: Ctx, x: number, y: number, type: Cell): void {
       w.replaceCellAt(i, Cell.Glass, glassColor());
       return;
     }
-    if (Math.random() < 0.1) {
-      for (let k = 0; k < 4; k++) {
-        const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
-        const ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
-        if (
-          w.inBounds(nx, ny) &&
-          w.types[w.idx(nx, ny)] === Cell.Lava &&
-          Math.random() < 0.22
-        ) {
-          w.replaceCellAt(i, Cell.Glass, glassColor());
-          return;
-        }
+    for (let k = 0; k < 4; k++) {
+      const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
+      const ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+      if (!w.inBounds(nx, ny)) continue;
+      const ni = w.idx(nx, ny);
+      const n = w.types[ni];
+      const fuseChance =
+        n === Cell.Lava ? 0.22 :
+        n === Cell.Fire || n === Cell.Ember ? 0.08 :
+        n === Cell.Coal && w.life[ni] > 0 ? 0.12 :
+        0;
+      if (fuseChance > 0 && Math.random() < fuseChance) {
+        w.replaceCellAt(i, Cell.Glass, glassColor());
+        return;
       }
     }
   }
@@ -63,7 +164,7 @@ export function handleGunpowder(ctx: Ctx, x: number, y: number): void {
       w.inBounds(tx, ty) &&
       (w.types[w.idx(tx, ty)] === Cell.Fire || w.charge[w.idx(tx, ty)] > 0)
     ) {
-      ctx.explosions.trigger(x, y, ctx.params.materials[Cell.Gunpowder].blastRadius!);
+      igniteGunpowder(ctx, x, y);
       return;
     }
   }

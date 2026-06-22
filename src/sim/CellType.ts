@@ -110,11 +110,11 @@ export function isSoftGrowth(t: number): boolean {
 }
 
 /** Materials that carry electrical charge (chain lightning, sparks).
- *  Acid/Toxic/Blood were dropped: charge conducting through gore/ooze made the
- *  cyan electrified glow spread across those pools. Only water, molten rock, and
- *  metal carry charge now. */
+ *  Acid/Toxic stay inert so ooze does not turn whole caves into cyan glow. Blood
+ *  conducts again as a short-lived wet gore pool, giving combat spills a real
+ *  lightning-combo role beside water, molten rock, and metal. */
 export function isConductor(t: number): boolean {
-  return t === Cell.Water || t === Cell.Lava || t === Cell.Metal;
+  return t === Cell.Water || t === Cell.Lava || t === Cell.Metal || t === Cell.Blood;
 }
 
 export function isLiquid(t: number): boolean {

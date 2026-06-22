@@ -67,7 +67,7 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Ice]: { name: 'Ice', insulationRating: 0.85 },
   [Cell.Metal]: { name: 'Metal', conductivity: 0.95 },
   [Cell.Gold]: { name: 'Gold Powder', friction: 0.55, densityWeight: 0.98, bloomWeight: 0.15 },
-  [Cell.Blood]: { name: 'Blood', flowRate: 0.55, coagulation: 0.002 },
+  [Cell.Blood]: { name: 'Blood', flowRate: 0.55, coagulation: 0.002, conductivity: 0.35 },
   [Cell.Slime]: { name: 'Slime', flowRate: 0.15, bloomWeight: 0.2 },
   [Cell.Ember]: { name: 'Ember', fallChance: 0.4, igniteChance: 0.015, bloomWeight: 0.35 },
   // Brewed elixirs: inert viscous liquids whose glow (bloomWeight) is the in-world discovery tell.

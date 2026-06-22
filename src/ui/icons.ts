@@ -230,7 +230,7 @@ const LEGACY_CARD_ICON: Record<string, string> = {
   spark: 'bolt', bomb: 'bomb', lightning: 'lightning', flame: 'flame',
   dig: 'dig', warp: 'warp', blackhole: 'blackhole',
   // Upgrade-port payload cards: every one now has dedicated pixel art.
-  vitriol: 'vitriol', frostshard: 'frostshard', icelance: 'icelance', wisp: 'wisp',
+  vitriol: 'vitriol', cryojet: 'nitrogen', frostshard: 'frostshard', icelance: 'icelance', wisp: 'wisp',
   meteor: 'meteor', conjure: 'conjure', emberstorm: 'emberstorm', vitrify: 'vitrify',
 };
 
