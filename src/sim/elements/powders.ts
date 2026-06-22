@@ -1,25 +1,36 @@
-import type { Ctx } from '@/core/types';
+import type { Ctx, MaterialParams } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { fireColor, glassColor } from '@/sim/colors';
 import { IGNITION_OFFSETS } from '@/sim/neighborOffsets';
 
 /* ===================== Element Physics Behaviors ===================== */
 
-const GUNPOWDER_CLUMP_SCAN_RADIUS = 4;
-const GUNPOWDER_CLUMP_MIN_MASS = 13; // a radius-2 dot, not a radius-1 brush trail
-const GUNPOWDER_CLUMP_MIN_SPAN = 4;
-const GUNPOWDER_CLUMP_MAX_ANISOTROPY = 2.5;
-const GUNPOWDER_FUSE_CADENCE = 4;
+const DEFAULT_GUNPOWDER_CLUMP_SCAN_RADIUS = 4;
+const DEFAULT_GUNPOWDER_CLUMP_MIN_MASS = 13; // a radius-2 dot, not a radius-1 brush trail
+const DEFAULT_GUNPOWDER_CLUMP_MIN_SPAN = 5;
+const DEFAULT_GUNPOWDER_CLUMP_MAX_ANISOTROPY = 2.5;
+const DEFAULT_GUNPOWDER_FUSE_CADENCE = 4;
+const DEFAULT_GUNPOWDER_BLAST_RADIUS = 38;
 
 function powderCanPass(t: number): boolean {
   return t === Cell.Empty || (isLiquid(t) && t !== Cell.Lava) || isGas(t);
 }
 
+function gunpowderNumberParam(ctx: Ctx, key: keyof MaterialParams, fallback: number): number {
+  const value = ctx.params.materials[Cell.Gunpowder]?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function gunpowderIntParam(ctx: Ctx, key: keyof MaterialParams, fallback: number, min = 1): number {
+  return Math.max(min, Math.round(gunpowderNumberParam(ctx, key, fallback)));
+}
+
 function countLocalGunpowder(ctx: Ctx, x: number, y: number): number {
   const w = ctx.world;
+  const scanRadius = gunpowderIntParam(ctx, 'clumpScanRadius', DEFAULT_GUNPOWDER_CLUMP_SCAN_RADIUS);
   let count = 0;
-  for (let oy = -GUNPOWDER_CLUMP_SCAN_RADIUS; oy <= GUNPOWDER_CLUMP_SCAN_RADIUS; oy++) {
-    for (let ox = -GUNPOWDER_CLUMP_SCAN_RADIUS; ox <= GUNPOWDER_CLUMP_SCAN_RADIUS; ox++) {
+  for (let oy = -scanRadius; oy <= scanRadius; oy++) {
+    for (let ox = -scanRadius; ox <= scanRadius; ox++) {
       const nx = x + ox;
       const ny = y + oy;
       if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Gunpowder) count++;
@@ -29,12 +40,19 @@ function countLocalGunpowder(ctx: Ctx, x: number, y: number): number {
 }
 
 function gunpowderBlastRadius(ctx: Ctx, localMass: number): number {
-  const cap = ctx.params.materials[Cell.Gunpowder].blastRadius!;
+  const cap = gunpowderNumberParam(ctx, 'blastRadius', DEFAULT_GUNPOWDER_BLAST_RADIUS);
   return Math.min(cap, 12 + localMass * 4);
 }
 
 function isPackedGunpowderClump(ctx: Ctx, x: number, y: number): boolean {
   const w = ctx.world;
+  const scanRadius = gunpowderIntParam(ctx, 'clumpScanRadius', DEFAULT_GUNPOWDER_CLUMP_SCAN_RADIUS);
+  const minMass = gunpowderIntParam(ctx, 'clumpMinMass', DEFAULT_GUNPOWDER_CLUMP_MIN_MASS);
+  const minSpan = gunpowderIntParam(ctx, 'clumpMinSpan', DEFAULT_GUNPOWDER_CLUMP_MIN_SPAN);
+  const maxAnisotropy = Math.max(
+    1,
+    gunpowderNumberParam(ctx, 'clumpMaxAnisotropy', DEFAULT_GUNPOWDER_CLUMP_MAX_ANISOTROPY),
+  );
   let mass = 0;
   let minX = x;
   let maxX = x;
@@ -46,8 +64,8 @@ function isPackedGunpowderClump(ctx: Ctx, x: number, y: number): boolean {
   let sumYY = 0;
   let sumXY = 0;
 
-  for (let oy = -GUNPOWDER_CLUMP_SCAN_RADIUS; oy <= GUNPOWDER_CLUMP_SCAN_RADIUS; oy++) {
-    for (let ox = -GUNPOWDER_CLUMP_SCAN_RADIUS; ox <= GUNPOWDER_CLUMP_SCAN_RADIUS; ox++) {
+  for (let oy = -scanRadius; oy <= scanRadius; oy++) {
+    for (let ox = -scanRadius; ox <= scanRadius; ox++) {
       const nx = x + ox;
       const ny = y + oy;
       if (!w.inBounds(nx, ny) || w.types[w.idx(nx, ny)] !== Cell.Gunpowder) continue;
@@ -64,10 +82,10 @@ function isPackedGunpowderClump(ctx: Ctx, x: number, y: number): boolean {
     }
   }
 
-  if (mass < GUNPOWDER_CLUMP_MIN_MASS) return false;
+  if (mass < minMass) return false;
   const spanX = maxX - minX + 1;
   const spanY = maxY - minY + 1;
-  if (spanX < GUNPOWDER_CLUMP_MIN_SPAN || spanY < GUNPOWDER_CLUMP_MIN_SPAN) return false;
+  if (spanX < minSpan || spanY < minSpan) return false;
 
   const invMass = 1 / mass;
   const meanX = sumX * invMass;
@@ -82,7 +100,7 @@ function isPackedGunpowderClump(ctx: Ctx, x: number, y: number): boolean {
   const minor = trace * 0.5 - root;
   if (minor <= 0.01) return false;
 
-  return major / minor <= GUNPOWDER_CLUMP_MAX_ANISOTROPY;
+  return major / minor <= maxAnisotropy;
 }
 
 export function igniteGunpowder(ctx: Ctx, x: number, y: number): void {
@@ -101,7 +119,8 @@ export function igniteGunpowder(ctx: Ctx, x: number, y: number): void {
   // in one frame. Stagger by cell coordinate so a brush stroke catches in a
   // rolling front while packed clumps above still detonate immediately.
   const frame = ctx.state?.frameCount;
-  if (frame !== undefined && (frame + x + y) % GUNPOWDER_FUSE_CADENCE !== 0) return;
+  const cadence = gunpowderIntParam(ctx, 'fuseCadence', DEFAULT_GUNPOWDER_FUSE_CADENCE);
+  if (frame !== undefined && cadence > 1 && (frame + x + y) % cadence !== 0) return;
 
   w.replaceCellAt(i, Cell.Fire, fireColor());
   w.life[i] = 34 + localMass * 8 + Math.floor(Math.random() * 16);

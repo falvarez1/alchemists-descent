@@ -558,6 +558,11 @@ export interface MaterialParams {
   friction?: number;
   densityWeight?: number;
   blastRadius?: number;
+  clumpScanRadius?: number;
+  clumpMinMass?: number;
+  clumpMinSpan?: number;
+  clumpMaxAnisotropy?: number;
+  fuseCadence?: number;
   flammability?: number;
   carbonSmokeGen?: number;
   climbRate?: number;
@@ -1509,6 +1514,31 @@ export interface SimulationApi {
   /** Fixed-step accumulator: runs 0-6 processFrame substeps per render frame. */
   update(ctx: Ctx): void;
   processFrame(ctx: Ctx): void;
+}
+
+export interface TimeControlStatus {
+  manual: boolean;
+  queuedTicks: number;
+  rewindAvailable: number;
+  historyLimit: number;
+  frameCount: number;
+  lastAction: string;
+}
+
+export interface TimeControlApi {
+  readonly manual: boolean;
+  readonly queuedTicks: number;
+  readonly rewindAvailable: number;
+  readonly historyLimit: number;
+  setManual(active: boolean): void;
+  queueTicks(count: number): number;
+  takeQueuedTicks(max: number): number;
+  beforeTick(): void;
+  afterManualTicks(count: number): void;
+  rewindTicks(count: number): number;
+  captureCheckpoint(): boolean;
+  clearHistory(): void;
+  status(): TimeControlStatus;
 }
 
 export interface WorldGenApi {
@@ -2485,4 +2515,5 @@ export interface Ctx {
   critters: CrittersApi;
   hints: HintApi;
   debug: DebugControl;
+  time: TimeControlApi;
 }

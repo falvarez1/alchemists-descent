@@ -2,6 +2,8 @@ import type { Ctx, MaterialParams, SpellId, SpellParams } from '@/core/types';
 import { formatStep } from '@/core/strings';
 import { GLOBAL_PARAM_DEFAULTS } from '@/config/params';
 import { bindRange, type Binding } from '@/ui/domBind';
+import { mountTimeControlsPanel } from '@/ui/TimeControlsPanel';
+import { PopoverHost } from '@/ui/editor/PopoverHost';
 
 /** Initial GameStateData.brushSize (Game.ts) — the reset target for the brush slider. */
 const BRUSH_DEFAULT = 6;
@@ -28,6 +30,11 @@ export function paramSliderSpec(propKey: string, value?: number): {
   // silently clamped them BELOW their own defaults.
   if (propKey === 'burnDuration' || propKey === 'particleLife') { min = 5; max = 360; step = 5; }
   else if (propKey === 'blastRadius' || propKey === 'fuseTicks' || propKey === 'collapseLimit' || propKey === 'baseRadius') { min = 5; max = 100; step = 1; }
+  else if (propKey === 'clumpScanRadius') { min = 1; max = 8; step = 1; }
+  else if (propKey === 'clumpMinMass') { min = 1; max = 128; step = 1; }
+  else if (propKey === 'clumpMinSpan') { min = 1; max = 16; step = 1; }
+  else if (propKey === 'clumpMaxAnisotropy') { min = 1; max = 8; step = 0.1; label = 'clumpMaxStretch'; }
+  else if (propKey === 'fuseCadence') { min = 1; max = 12; step = 1; }
   if (propKey === 'velocityForce' || propKey === 'explosionRadius') { min = 1; max = 20; step = 0.5; }
   if (propKey === 'range') { min = 20; max = 250; step = 5; }
   if (propKey === 'branches') { min = 0; max = 6; step = 1; }
@@ -65,6 +72,81 @@ export function paramSliderSpec(propKey: string, value?: number): {
 }
 
 /**
+ * Plain-language explanation for each tunable param key — shown in the hover
+ * popover beside the inspector sliders so a dial's effect is legible without
+ * reading the sim. Keyed by the raw profile key (not the display label). UI
+ * copy only — the handlers in `sim/elements` and `combat/` are the truth;
+ * keep these honest when behaviors change. Keys with no entry simply get no
+ * info icon.
+ */
+export const PARAM_INFO: Record<string, string> = {
+  // ---- Powder / material physics ----
+  friction:
+    "How much a falling grain's sideways slide is damped. Higher piles it into steeper, stickier heaps; lower lets it spread out flatter.",
+  densityWeight:
+    'Relative weight when this material sinks through or floats over liquids. Heavier sinks, lighter rises.',
+  fallChance:
+    'Chance per substep that a settled grain actually falls. Lower makes the powder drift and settle more lazily.',
+  // ---- Gunpowder detonation ----
+  blastRadius:
+    "Upper cap on a packed clump's explosion radius. Bigger clumps blast wider, but never past this limit.",
+  clumpScanRadius:
+    'Half-width of the square scanned around an ignited grain to measure the surrounding powder. Larger reads more neighbors as one mass.',
+  clumpMinMass:
+    'Minimum grains inside the scan box for it to count as a packed clump that detonates — below it, the powder just burns as a fuse.',
+  clumpMinSpan:
+    'Minimum width AND height (in cells) the powder must cover to detonate. Keeps thin one-cell trails burning as fuses instead of blowing.',
+  clumpMaxAnisotropy:
+    'How stretched a clump may be and still detonate (long axis ÷ short axis). Low demands a roundish blob; high lets long streaks blow.',
+  fuseCadence:
+    'Frames between steps of the burning front as a thin fuse trail catches. Higher burns the fuse slower and more visibly.',
+  // ---- Combustion ----
+  flammability: 'How readily contact with fire or embers ignites this material. Higher catches faster.',
+  igniteChance: 'Chance that this material sets a flammable neighbor alight on contact.',
+  carbonSmokeGen: 'How much smoke this fuel gives off while it burns.',
+  burnDuration: 'How long (in frames) this material keeps burning once lit, before it is consumed.',
+  // ---- Liquids / gases ----
+  flowRate: 'How fast this liquid spreads sideways to find its level. Higher is runnier.',
+  poolingFactor: 'How readily this liquid settles and stacks into deep pools versus running off thin.',
+  viscosity: 'Resistance to flow. Higher is thick and sluggish (sludge); lower is thin and runny.',
+  floatSpeed: 'How quickly this lighter-than-water liquid (oil) rises back to the surface.',
+  evaporationSpeed: 'Chance per substep that a cell of this liquid evaporates away on its own.',
+  coagulation: 'Rate at which spilled blood thickens and dries into a stain.',
+  corrosiveSpeed: 'How quickly acid eats through the materials it touches.',
+  upwardSpread: 'Tendency of this gas/flame to climb upward rather than drift sideways.',
+  dispersion: 'How widely this gas scatters and thins out as it rises.',
+  meltRange: 'How far heat reaches to melt this solid (ice / snow) back into liquid.',
+  // ---- Growth ----
+  climbRate: 'Chance per tick that this living growth climbs upward along a surface.',
+  hangRate: 'Chance per tick that this living growth droops and hangs downward.',
+  // ---- Thermal / electrical ----
+  insulationRating: 'How strongly this material resists passing heat to its neighbors.',
+  conductivity: 'How readily this material carries electric charge and chain lightning.',
+  // ---- Render ----
+  bloomWeight: 'How strongly this material feeds the bloom/glow post-effect (shown as a percentage).',
+  particleLife: 'Lifetime, in frames, of the sparks and particles this material throws off.',
+
+  // ---- Spell dials ----
+  manaCost: 'Mana spent each time this spell is cast.',
+  cooldown: 'Frames you must wait between casts of this spell.',
+  velocityForce: 'Launch speed of the projectile this spell fires.',
+  explosionRadius: 'Radius of the blast this spell produces on impact.',
+  fuseTicks: 'Delay, in frames, before a thrown or placed charge detonates.',
+  range: 'How far this spell reaches before it fizzles out.',
+  branches: 'How many forks a lightning / chain effect splits into.',
+  pellets: 'How many projectiles a single cast scatters (shotgun spread).',
+  damage: 'Hit-point damage dealt per projectile or strike.',
+  freezeRadius: 'Radius within which this spell freezes water and chills targets.',
+  heat: 'How much heat this spell dumps into the cells it touches (to ignite or melt).',
+  spread: 'How wide a cone the pellets / projectiles fan out across.',
+  radius: 'Area-of-effect radius of this spell.',
+  count: 'How many cells or objects this spell conjures.',
+  baseRadius: 'Starting radius of the effect before it grows.',
+  chargeRate: 'How fast this spell builds power while the cast is held.',
+  collapseLimit: 'Size cap on the implosion / collapse this spell triggers.',
+};
+
+/**
  * Right-hand inspector panel: per-material / per-spell parameter sliders
  * (mutating the live `ctx.params` profiles in place), the global sim
  * sliders, the clear-world button and the sound toggle.
@@ -72,11 +154,14 @@ export function paramSliderSpec(propKey: string, value?: number): {
 export class Inspector {
   /** Tears down the previous context-inspector paramsChanged subscription before each rebuild. */
   private contextInspectorOff: (() => void) | null = null;
+  /** Floating popovers for the per-param info icons (hover → explanation). */
+  private readonly popovers = new PopoverHost();
 
   constructor(private ctx: Ctx) {
     this.wireGlobalControls();
     this.wireGpuComposeToggle();
     this.wireWebGpuComposeToggle();
+    this.mountTimeControls();
     this.wireClearButton();
     this.wireSoundToggle();
   }
@@ -86,6 +171,8 @@ export class Inspector {
     // rebuilding, so we never leak listeners that point at destroyed DOM.
     this.contextInspectorOff?.();
     this.contextInspectorOff = null;
+    // A lingering info popover would point at an icon we're about to destroy.
+    this.popovers.hide('param-info-pop');
     const container = document.getElementById('material-dynamic-controls')!;
     container.innerHTML = '';
 
@@ -113,16 +200,36 @@ export class Inspector {
     Object.keys(profile).forEach(propKey => {
       if (propKey === 'name') return;
       const { min, max, step, label: labelText } = paramSliderSpec(propKey, fields[propKey]);
+      const displayLabel = labelText.replace(/([A-Z])/g, ' $1');
+      const info = PARAM_INFO[propKey];
 
       const wrapper = document.createElement('div');
       wrapper.innerHTML = `
           <div class="control-label-wrapper">
-              <label style="text-transform: capitalize;">${labelText.replace(/([A-Z])/g, ' $1')}</label>
+              <span class="ctrl-label-left">
+                  <label style="text-transform: capitalize;">${displayLabel}</label>
+                  ${info ? `<span class="param-info-icon" role="img" aria-label="${displayLabel.trim()} — details">i</span>` : ''}
+              </span>
               <span id="dyn-val-${propKey}" class="val-display">${propKey === 'bloomWeight' ? (fields[propKey] * 100).toFixed(0) + '%' : formatStep(fields[propKey], step)}</span>
           </div>
           <input type="range" id="dyn-input-${propKey}" min="${min}" max="${max}" step="${step}" value="${fields[propKey]}">
       `;
       group.appendChild(wrapper);
+
+      // Hover the "i" → a floating popover explaining the dial.
+      if (info) {
+        const icon = wrapper.querySelector<HTMLElement>('.param-info-icon');
+        if (icon) {
+          this.popovers.attachHover(icon, {
+            id: 'param-info-pop',
+            preferredSide: 'left',
+            delayMs: 60,
+            render: (el) => {
+              el.innerHTML = `<div class="param-pop-title">${displayLabel}</div><div class="param-pop-desc">${info}</div>`;
+            },
+          });
+        }
+      }
     });
     container.appendChild(group);
 
@@ -178,6 +285,11 @@ export class Inspector {
     // Re-read the live params whenever ANYTHING changes them (console `param`,
     // Builder sliders, a reset) so this panel mirrors them without a reload.
     ctx.events.on('paramsChanged', () => bindings.forEach((b) => b.resync()));
+  }
+
+  private mountTimeControls(): void {
+    const host = document.getElementById('sandbox-time-controls');
+    if (host) mountTimeControlsPanel(this.ctx, host, { surface: 'sandbox' });
   }
 
   private wireGpuComposeToggle(): void {

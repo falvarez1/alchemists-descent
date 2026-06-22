@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createGameParams } from '@/config/params';
-import type { Ctx } from '@/core/types';
+import type { Ctx, MaterialParams } from '@/core/types';
 import { VineStrands } from '@/entities/VineStrands';
 import { CELL_COUNT, Cell, isConductor } from '@/sim/CellType';
 import { Simulation } from '@/sim/Simulation';
@@ -64,6 +64,15 @@ function stampBrushLine(world: World, x0: number, y0: number, x1: number, y1: nu
       y0 += sy;
     }
   }
+}
+
+function createGameParamsWithGunpowder(overrides: Partial<MaterialParams>) {
+  const params = createGameParams();
+  params.materials = {
+    ...params.materials,
+    [Cell.Gunpowder]: { ...params.materials[Cell.Gunpowder], ...overrides },
+  };
+  return params;
 }
 
 describe('cell ABI contracts', () => {
@@ -387,6 +396,28 @@ describe('cell material conversions', () => {
     handleGunpowder({ world, params: createGameParams(), explosions } as unknown as Ctx, 3, 3);
 
     expect(explosions.trigger).toHaveBeenCalledWith(3, 3, createGameParams().materials[Cell.Gunpowder].blastRadius);
+  });
+
+  it('uses gunpowder material params to decide whether a clump can explode', () => {
+    const world = new World(8, 8);
+    const explosions = { trigger: vi.fn() };
+    for (let y = 1; y <= 5; y++) {
+      for (let x = 1; x <= 5; x++) world.replaceCellAt(world.idx(x, y), Cell.Gunpowder, 0x555555);
+    }
+    world.replaceCellAt(world.idx(4, 3), Cell.Fire, 0xff6600);
+
+    handleGunpowder(
+      {
+        world,
+        params: createGameParamsWithGunpowder({ clumpMinMass: 30 }),
+        explosions,
+      } as unknown as Ctx,
+      3,
+      3,
+    );
+
+    expect(explosions.trigger).not.toHaveBeenCalled();
+    expect(world.types[world.idx(3, 3)]).toBe(Cell.Fire);
   });
 
   it('clears transient metadata when nitrogen freezes or boils neighboring cells', () => {

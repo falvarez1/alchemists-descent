@@ -21,6 +21,7 @@ export interface RuntimePanelModel {
   showOverlayControls?: boolean;
   showFocusActions?: boolean;
   showCameraControls?: boolean;
+  showTimeControls?: boolean;
   cameraFollowEnabled?: boolean;
   /** Debug freeze/drag tool: whether it's active, and which row ids are kept live. */
   debugActive?: boolean;
@@ -45,6 +46,7 @@ export function renderRuntimePanel(model: RuntimePanelModel): string {
   const showOverlayControls = model.showOverlayControls ?? true;
   const showFocusActions = model.showFocusActions ?? true;
   const showCameraControls = model.showCameraControls ?? false;
+  const showTimeControls = model.showTimeControls ?? false;
   const rows = filterRuntimeRows(snapshot.rows, model.query, model.filters);
   const header = runtimePanelHeader({
     title: 'Runtime',
@@ -81,6 +83,7 @@ export function renderRuntimePanel(model: RuntimePanelModel): string {
     ${sourceNote ? `<div class="bo-empty b-empty brt-source-note">${esc(sourceNote)}</div>` : ''}
     ${showCameraControls ? renderRuntimeCameraControls(model, model.cameraFollowEnabled === true) : ''}
     ${showCameraControls ? renderRuntimeDebugControls(model, debugActive) : ''}
+    ${showTimeControls ? renderRuntimeTimeControls(model) : ''}
     <div class="brt-counts">${countCards}</div>
     ${section(model, 'runtime.particles', 'Particle Aggregate', `
       ${renderParticleAggregate(snapshot)}
@@ -127,6 +130,16 @@ function renderRuntimeDebugControls(model: RuntimePanelModel, active: boolean): 
     </label>
     <div class="bo-row-sub brt-debug-hint">${hint}</div>`,
     'brt-debug',
+  );
+}
+
+function renderRuntimeTimeControls(model: RuntimePanelModel): string {
+  return section(
+    model,
+    'runtime.time',
+    'Time',
+    '<div id="brt-time-controls"></div>',
+    'brt-time',
   );
 }
 

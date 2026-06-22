@@ -3,6 +3,7 @@ import type { Ctx } from '@/core/types';
 import { buildRuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
 import type { RuntimeEntityGroup, RuntimeEntityRow, RuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
 import { isRuntimeTextEntryTarget } from '@/ui/diagnostics/runtimeChrome';
+import { mountTimeControlsPanel } from '@/ui/TimeControlsPanel';
 
 const RUNTIME_INSPECTOR_REFRESH_FRAMES = 30;
 
@@ -18,6 +19,7 @@ export class RuntimeInspector {
   private pointerInside = false;
   private followSelectedEntity = false;
   private rafId: number | null = null;
+  private timeControlsDispose: (() => void) | null = null;
   private readonly onButtonClick = (): void => this.toggle();
 
   constructor(private readonly ctx: Ctx) {
@@ -63,6 +65,7 @@ export class RuntimeInspector {
 
   dispose(): void {
     this.close();
+    this.unmountTimeControls();
     this.button?.removeEventListener('click', this.onButtonClick);
     this.root.remove();
     this.button?.classList.remove('lit');
@@ -103,6 +106,7 @@ export class RuntimeInspector {
     this.button?.classList.remove('lit');
     document.body.classList.remove('runtime-inspector-open');
     this.clearInspectionSelection();
+    this.unmountTimeControls();
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
@@ -148,6 +152,7 @@ export class RuntimeInspector {
   private render(forceSnapshot: boolean): void {
     const snapshot = this.sampleSnapshot(forceSnapshot);
     const scrollTop = this.root.scrollTop;
+    this.unmountTimeControls();
     this.root.innerHTML = renderRuntimePanel({
       snapshot,
       query: this.query,
@@ -155,11 +160,19 @@ export class RuntimeInspector {
       showOverlayControls: false,
       showFocusActions: false,
       showCameraControls: true,
+      showTimeControls: true,
       cameraFollowEnabled: this.followSelectedEntity,
       debugActive: this.ctx.debug.active,
       liveIds: this.ctx.debug.live,
     });
+    const timeHost = this.root.querySelector<HTMLElement>('#brt-time-controls');
+    this.timeControlsDispose = timeHost ? mountTimeControlsPanel(this.ctx, timeHost, { surface: 'runtime' }) : null;
     this.root.scrollTop = scrollTop;
+  }
+
+  private unmountTimeControls(): void {
+    this.timeControlsDispose?.();
+    this.timeControlsDispose = null;
   }
 
   private sampleSnapshot(force: boolean): RuntimeEntitySnapshot {

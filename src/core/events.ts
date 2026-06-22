@@ -1,4 +1,4 @@
-import type { CardId } from '@/core/types';
+import type { CardId, TimeControlStatus } from '@/core/types';
 
 /**
  * Minimal synchronous typed event bus.
@@ -24,6 +24,8 @@ export interface EventMap {
    *  command, or a Builder reset). Panels that mirror params — the Sandbox
    *  Global Controls — re-sync their sliders from the live values. */
   paramsChanged: undefined;
+  /** Manual stepping / rewind history changed; Sandbox, Builder, and debug panels re-sync. */
+  timeControlsChanged: TimeControlStatus;
   /** A wave began — HUD updates the wave number readout. */
   waveStarted: { num: number };
   /** Show the big center-screen banner text for ~2.2s. */
@@ -94,7 +96,7 @@ export interface EventMap {
    * divergence without importing Builder into gameplay code.
    */
   worldEdited: {
-    source: 'console';
+    source: 'console' | 'time-controls';
     command: string;
     target: string;
     bounds: { x0: number; y0: number; x1: number; y1: number };

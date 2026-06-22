@@ -1533,6 +1533,23 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
 .val-display.resettable { cursor: pointer; }
 .val-display.overridden { color: #ffb454; }
 .val-display.overridden::after { content: ' \2022'; opacity: 0.75; } /* a small dot = "differs from default" */
+/* Label + its info icon hug each other on the left; the value still floats right. */
+.control-label-wrapper .ctrl-label-left { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.control-label-wrapper .ctrl-label-left label { min-width: 0; } /* let short labels sit tight against the icon */
+/* The "i" info badge: hover it for the parameter explanation popover. */
+.param-info-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 13px; height: 13px; border-radius: 50%; box-sizing: border-box;
+    border: 1px solid #3a4a5e; color: #7c93ab;
+    font-family: var(--mono); font-size: 9px; font-style: italic; font-weight: 700;
+    line-height: 1; text-transform: none; cursor: help; user-select: none; flex-shrink: 0;
+    transition: color 0.12s ease, border-color 0.12s ease;
+}
+.param-info-icon:hover { color: var(--accent-blue); border-color: var(--accent-blue); }
+/* Info popover body (PopoverHost adds the shared .editor-popover chrome). */
+#param-info-pop { width: 220px; max-width: calc(100vw - 16px); padding: 9px 11px; display: flex; flex-direction: column; gap: 5px; z-index: 80; }
+#param-info-pop .param-pop-title { font-size: 11px; font-weight: 700; color: #dbe6f3; text-transform: capitalize; }
+#param-info-pop .param-pop-desc { font-size: 10px; line-height: 1.5; color: #8fa3b8; }
 
 /* ===================== Grimoire (the wizard's book, toggle J) ===================== */
 #grimoire-overlay {
@@ -1586,6 +1603,64 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
     padding: 7px 8px; border-radius: 5px; cursor: pointer;
 }
 .post-reset-btn:hover { border-color: var(--accent-blue); color: #e5edff; background: #172033; }
+
+.time-controls {
+    display: flex; flex-direction: column; gap: 8px; min-width: 0;
+    font-family: var(--mono); color: #9fb6cc;
+}
+.time-controls .tc-topline {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.time-controls .tc-toggle {
+    display: inline-flex; align-items: center; gap: 6px; color: #d6e6f5;
+    font-size: 10px; font-weight: 850; text-transform: uppercase; cursor: pointer;
+}
+.time-controls .tc-toggle input {
+    margin: 0; accent-color: var(--accent-blue); cursor: pointer;
+}
+.time-controls .tc-status {
+    min-width: 0; max-width: 94px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #64758a; font-size: 9px; font-weight: 850; text-transform: uppercase;
+}
+.time-controls.manual .tc-status { color: #86efac; }
+.time-controls .tc-readouts {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px;
+}
+.time-controls .tc-readouts span {
+    min-width: 0; border: 1px solid #1b2735; background: #0b1018; border-radius: 4px;
+    padding: 4px 5px; color: #65778c; font-size: 8px; font-weight: 850;
+    text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.time-controls .tc-readouts b {
+    display: block; margin-top: 1px; color: #d6e6f5; font-size: 10px; overflow: hidden; text-overflow: ellipsis;
+}
+.time-controls .tc-row {
+    display: grid; grid-template-columns: 42px repeat(3, minmax(0, 1fr)); gap: 4px; align-items: center;
+}
+.time-controls .tc-row-secondary { grid-template-columns: 42px repeat(2, minmax(0, 1fr)); }
+.time-controls .tc-row span {
+    min-width: 0; color: #65778c; font-size: 8px; font-weight: 850; text-transform: uppercase;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.time-controls button {
+    min-width: 0; height: 24px; padding: 0 4px; border-radius: 4px;
+    border: 1px solid #25303d; background: #0e1219; color: #a9bad0;
+    font-family: var(--mono); font-size: 9px; font-weight: 850; cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.time-controls button:hover:not(:disabled),
+.time-controls button:focus-visible {
+    border-color: var(--accent-blue); color: #e5edff; background: #122033; outline: none;
+}
+.time-controls button:disabled { opacity: 0.42; cursor: not-allowed; }
+.control-panel-group.time-control-panel-group { gap: 10px; }
+#builder-root .time-controls .tc-toggle input,
+#builder-root .time-controls button:focus-visible { accent-color: var(--bui-accent); }
+#builder-root .time-controls button:hover:not(:disabled),
+#builder-root .time-controls button:focus-visible {
+    border-color: var(--bui-accent); color: #e7f6ff; background: #102033;
+}
+#builder-root .time-controls.manual .tc-status { color: #4ade80; }
 
 button#clear-btn { background: #221212; border: 1px solid #441a1a; color: #ff6666; font-weight: 600; padding: 10px; border-radius: 5px; cursor: pointer; margin-top: auto; transition: all 0.15s ease; }
 button#clear-btn:hover { background: var(--accent-danger); color: white; border-color: transparent; }

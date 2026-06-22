@@ -25,6 +25,7 @@ import { HintSystem } from '@/game/Hints';
 import { Levels } from '@/game/Levels';
 import { Mechanisms } from '@/game/Mechanisms';
 import { Pickups } from '@/game/Pickups';
+import { TimeControls } from '@/game/TimeControls';
 import { createWaveState } from '@/game/WaveDirector';
 import { InputManager } from '@/input/InputManager';
 import { currentAppMode, readAppMode, saveAppMode } from '@/game/modePersist';
@@ -189,6 +190,7 @@ export class Game {
     ctx.critters = new Critters(ctx);
     ctx.hints = new HintSystem(ctx);
     ctx.debug = new DebugTool(ctx);
+    ctx.time = new TimeControls(ctx);
     ctx.perf = this.perfHud;
     ctx.console = createConsoleApi(ctx);
     this.ctx = ctx;
@@ -400,6 +402,14 @@ export class Game {
       stepBudget = Game.STEP_MS / scale;
     }
     const frameWorkStart = performance.now();
+    if (this.ctx.time.manual) {
+      this.stepDebt = 0;
+      const ticks = this.ctx.time.takeQueuedTicks(60);
+      for (let i = 0; i < ticks; i++) this.tick(false, { forcePaused: true });
+      this.ctx.time.afterManualTicks(ticks);
+      this.renderFrame(frameWorkStart);
+      return;
+    }
     if (this.stepDebt < stepBudget) {
       this.renderFrame(frameWorkStart);
       return;
@@ -414,13 +424,14 @@ export class Game {
     this.renderFrame(frameWorkStart);
   };
 
-  private tick = (render = true): void => {
+  private tick = (render = true, options: { forcePaused?: boolean } = {}): void => {
     const frameWorkStart = performance.now();
-    this.updateFixedTick();
+    this.ctx.time.beforeTick();
+    this.updateFixedTick(options);
     if (render) this.renderFrame(frameWorkStart);
   };
 
-  private updateFixedTick(): void {
+  private updateFixedTick(options: { forcePaused?: boolean } = {}): void {
     const ctx = this.ctx;
     ctx.state.frameCount++;
 
@@ -440,9 +451,10 @@ export class Game {
 
     // Impact hitstop freezes gameplay for a beat; the Sanctum pauses it
     // outright. Rendering continues through both.
-    const frozen = ctx.fx.hitstop > 0 || ctx.state.paused;
-    if (ctx.fx.hitstop > 0 && !ctx.state.paused) ctx.fx.hitstop--;
-    if (ctx.fx.deathSlowMo > 0 && !ctx.state.paused && !frozen) ctx.fx.deathSlowMo--;
+    const forcePaused = options.forcePaused === true;
+    const frozen = (ctx.fx.hitstop > 0 || ctx.state.paused) && !forcePaused;
+    if (ctx.fx.hitstop > 0 && (!ctx.state.paused || forcePaused)) ctx.fx.hitstop--;
+    if (ctx.fx.deathSlowMo > 0 && (!ctx.state.paused || forcePaused) && !frozen) ctx.fx.deathSlowMo--;
 
     ctx.camera.update(ctx);
     ctx.camera.updateSimBounds(ctx.world);

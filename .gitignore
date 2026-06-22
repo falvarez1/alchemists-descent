@@ -13,3 +13,5 @@ build/
 .codex_*.log
 *.out.log
 *.err.log
+output/playwright/**/*.png
+output/**/*.png

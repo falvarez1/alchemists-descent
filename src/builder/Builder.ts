@@ -163,6 +163,7 @@ import { PASSES, runPass } from '@/builder/procedural';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { paramSliderSpec } from '@/ui/Inspector';
 import { fillMaterialPopover } from '@/ui/materialInfo';
+import { mountTimeControlsPanel } from '@/ui/TimeControlsPanel';
 import { CommandRegistry } from '@/ui/editor/CommandRegistry';
 import { DockHost } from '@/ui/editor/DockHost';
 import { FocusRouter } from '@/ui/editor/FocusRouter';
@@ -859,6 +860,8 @@ export class Builder {
   private runtimeOverlays: RuntimeOverlayState = { ...DEFAULT_RUNTIME_OVERLAYS };
   private runtimeOverlaySnapshot: RuntimeEntitySnapshot | null = null;
   private runtimeOverlaySnapshotFrame = -1;
+  private globalTimeControlsDispose: (() => void) | null = null;
+  private runtimeTimeControlsDispose: (() => void) | null = null;
   private linkGraphQuery = '';
   private contextLinkId: string | null = null;
   private readonly assetStore = new LocalStorageAssetStore();
@@ -1294,6 +1297,8 @@ export class Builder {
     this.virtualWorldPanel = null;
     this.sceneEditor?.close();
     this.sceneEditor = null;
+    this.unmountGlobalTimeControls();
+    this.unmountRuntimeTimeControls();
     window.clearInterval(this.autosaveTimer);
     window.clearTimeout(this.draftRetryTimer);
     window.clearTimeout(this.statusTimer);
@@ -7095,6 +7100,7 @@ export class Builder {
 
   private buildGlobalPanel(): void {
     const host = this.el<HTMLDivElement>('bg-controls');
+    this.unmountGlobalTimeControls();
     host.innerHTML = '';
     const g = this.ctx.params.global;
     const simSection = this.worldSection(host, 'SIMULATION');
@@ -7112,6 +7118,9 @@ export class Builder {
       this.el<HTMLInputElement>('bp-brush').value = String(v);
       this.el('bp-brush-val').textContent = String(v);
     });
+
+    const timeSection = this.worldSection(host, 'TIME CONTROLS');
+    this.globalTimeControlsDispose = mountTimeControlsPanel(this.ctx, timeSection, { surface: 'builder' });
 
     const goreSection = this.worldSection(host, 'GORE');
     // Master: 0 = bloodless … 1 = shipped … 10 = maximum gore (Tarantino mode).
@@ -7625,6 +7634,7 @@ export class Builder {
           run: () => {
             const defaults = MATERIAL_PARAM_DEFAULTS[cell];
             if (defaults) Object.assign(this.ctx.params.materials[cell], defaults);
+            this.host.notifyParamsChanged();
             this.buildMatPanel();
             this.status('MATERIAL RESET');
           },
@@ -11286,13 +11296,17 @@ export class Builder {
     const panelScroll = panel.scrollTop;
     const rowsScroll = panel.querySelector<HTMLElement>('.brt-rows')?.scrollTop ?? 0;
     const snapshot = this.sampleRuntimeSnapshot(forceSnapshot);
+    this.unmountRuntimeTimeControls();
     panel.innerHTML = renderRuntimePanel({
       snapshot,
       query: this.runtimeQuery,
       filters: this.runtimeFilters,
       overlays: this.runtimeOverlays,
       collapsedSections: this.workspaceLayout.collapsedSections,
+      showTimeControls: true,
     });
+    const timeHost = panel.querySelector<HTMLElement>('#brt-time-controls');
+    this.runtimeTimeControlsDispose = timeHost ? mountTimeControlsPanel(this.ctx, timeHost, { surface: 'runtime' }) : null;
     this.restoreStructurePanelScroll(panel, panelScroll, [['.brt-rows', rowsScroll]]);
     this.refreshPanelDragHandles(panel);
     this.wireCollapsibleSections(panel);
@@ -11354,6 +11368,16 @@ export class Builder {
         if (id) this.focusRuntimeRow(id);
       });
     }
+  }
+
+  private unmountGlobalTimeControls(): void {
+    this.globalTimeControlsDispose?.();
+    this.globalTimeControlsDispose = null;
+  }
+
+  private unmountRuntimeTimeControls(): void {
+    this.runtimeTimeControlsDispose?.();
+    this.runtimeTimeControlsDispose = null;
   }
 
   private sampleRuntimeSnapshot(force: boolean): RuntimeEntitySnapshot {

@@ -53,7 +53,16 @@ export const GLOBAL_PARAM_DEFAULTS: Readonly<GlobalParams> = Object.freeze({ ...
 
 export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Sand]: { name: 'Sand', friction: 0.5, densityWeight: 0.9 },
-  [Cell.Gunpowder]: { name: 'Gunpowder', friction: 0.4, blastRadius: 38 },
+  [Cell.Gunpowder]: {
+    name: 'Gunpowder',
+    friction: 0.4,
+    blastRadius: 38,
+    clumpScanRadius: 2,
+    clumpMinMass: 18,
+    clumpMinSpan: 5,
+    clumpMaxAnisotropy: 2.5,
+    fuseCadence: 3,
+  },
   [Cell.Wood]: { name: 'Wood', flammability: 0.1, carbonSmokeGen: 0.4 },
   [Cell.Vines]: { name: 'Vines', flammability: 0.45 },
   [Cell.Water]: { name: 'Water', flowRate: 0.85, poolingFactor: 0.95 },
