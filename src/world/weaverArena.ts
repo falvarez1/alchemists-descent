@@ -51,6 +51,7 @@ export function buildWeaverArena(ctx: Ctx): void {
   ctx.params.global.ambient = WEAVER_AMBIENT;
   const runtime = ctx.levels.current;
   if (runtime) {
+    runtime.inspectionMarkers = [];
     const black = createDefaultBackdropSettings();
     for (const spec of BACKDROP_LAYER_SPECS) {
       black.layers[spec.id].visible = false;
@@ -180,14 +181,24 @@ export function buildWeaverArena(ctx: Ctx): void {
         }
       }
     };
-    // A little tree: a short wooden trunk under a round mossy/ferny canopy.
+    // A little mushroom: soft-growth stem under a round mossy/ferny canopy.
+    // It is authored dressing, not cover; using Fungus keeps it non-collidable.
     const tree = (x: number, baseY: number, trunk: number): void => {
-      for (let d = 0; d < trunk; d++) cell(x, baseY - d, Cell.Wood);
+      for (let d = 0; d < trunk; d++) cell(x, baseY - d, Cell.Fungus);
       const cy = baseY - trunk;
       for (let dy = -4; dy <= 1; dy++) for (let dx = -4; dx <= 4; dx++) {
         if (dx * dx + dy * dy * 2.5 <= 14) cell(x + dx, cy + dy, (x + dx + dy) % 3 === 0 ? Cell.Fungus : Cell.Moss);
       }
       cell(x, cy - 3, Cell.Glowshroom);
+      runtime?.inspectionMarkers?.push({
+        kind: 'prefab',
+        label: 'Mushroom',
+        x0: x - 5,
+        y0: cy - 5,
+        x1: x + 5,
+        y1: baseY + 1,
+        detail: 'Weaver test map dressing',
+      });
     };
     // A rounded mossy boulder resting on a ledge.
     const boulder = (x: number, baseY: number, r: number): void => {

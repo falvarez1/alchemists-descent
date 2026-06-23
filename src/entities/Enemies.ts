@@ -26,6 +26,7 @@ interface CellCandidate {
   x: number;
   y: number;
   d2: number;
+  over?: number;
 }
 
 function addNearestCandidate(list: CellCandidate[], cap: number, x: number, y: number, d2: number): void {
@@ -42,6 +43,13 @@ function addNearestCandidate(list: CellCandidate[], cap: number, x: number, y: n
     }
   }
   if (d2 < worstD2) list[worst] = { x, y, d2 };
+}
+
+function weaverWallLeapXProgress(t: number): number {
+  const launchRise = 0.32;
+  if (t <= launchRise) return 0;
+  const u = clamp((t - launchRise) / (1 - launchRise), 0, 1);
+  return u * u * (3 - 2 * u);
 }
 
 export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
@@ -82,6 +90,12 @@ const WEAVER_CRANKY_FRAMES = 260;
 const WEAVER_TRAIL_WEB_COOLDOWN = 18;
 const WEAVER_TRAIL_LOCAL_BUDGET = 34;
 const WEAVER_SUPPORT_REGIONS = [-56, -44, -31, -18, 18, 31, 44, 56] as const;
+const WEAVER_WALL_DISMOUNT_MAX_OVER = 230;
+const WEAVER_WALL_STEP_MAX_OVER = 72;
+const WEAVER_WALL_DISMOUNT_RETRY_FRAMES = 8;
+const WEAVER_WALL_LEAP_CELLS_PER_FRAME = 4.4;
+const WEAVER_WALL_LEAP_MIN_FRAMES = 18;
+const WEAVER_WALL_LEAP_MAX_FRAMES = 58;
 
 // --- Gust knockback (the player's kick is a wind blast; see Player.kick) ----
 const GUST_REF_MASS = 40; // a slime-ish footprint (halfW·h); push scales inversely
@@ -384,6 +398,7 @@ export class Enemies implements EnemyControlApi {
    *  a wall smashes the foe against it (slamWall). */
   private tickKnock(e: Enemy, def: EnemyDef): boolean {
     if ((e.knockT ?? 0) <= 0) return false;
+    if (e.kind === 'weaver') this.clearWeaverWallLeap(e);
     e.knockT = (e.knockT ?? 0) - 1;
     const ctx = this.ctx;
     const vx = (e.knockVx ?? 0) * KNOCK_DRAG;
@@ -1023,16 +1038,19 @@ export class Enemies implements EnemyControlApi {
     e.alerted = true;
     e.blink = 0;
     const disturbed = source === 'disturbance';
+    const wakeRush = disturbed ? WEAVER_CRANKY_FRAMES : source === 'harm' ? 180 : 130;
+    e.cranky = Math.max(e.cranky ?? 0, wakeRush);
     if (disturbed) {
-      e.cranky = Math.max(e.cranky ?? 0, WEAVER_CRANKY_FRAMES);
       e.recoil = Math.max(e.recoil ?? 0, 10);
       e.attackCd = Math.min(e.attackCd, 24);
       const dir = Math.sign(tx - e.x || ctx.player.x - e.x || 1);
       e.vx += dir * 0.42;
       this.disturbLair(e, tx, ty);
     } else {
-      e.windup = Math.max(e.windup ?? 0, source === 'harm' ? 8 : 14);
-      e.attackCd = Math.max(e.attackCd, 34);
+      const dir = Math.sign(ctx.player.x - e.x || tx - e.x || 1);
+      e.vx += dir * (source === 'harm' ? 0.52 : 0.38);
+      e.windup = Math.max(e.windup ?? 0, source === 'harm' ? 6 : 0);
+      e.attackCd = Math.max(e.attackCd, source === 'harm' ? 22 : 18);
       e.webPulse = Math.max(e.webPulse ?? 0, 10);
     }
     ctx.audio.tone(disturbed ? 130 : 160, disturbed ? 55 : 70, disturbed ? 0.38 : 0.28, 'triangle', 0.08);
@@ -1397,6 +1415,45 @@ export class Enemies implements EnemyControlApi {
     return this.wallColumnHeight(Math.floor(e.x) + dir * (def.halfW + 1), Math.floor(e.y));
   }
 
+  private weaverLandingCellSupports(x: number, y: number): boolean {
+    const w = this.ctx.world;
+    if (!w.inBounds(x, y)) return false;
+    return blocksEntity(w.types[w.idx(x, y)]);
+  }
+
+  private weaverLandingSupportedFast(x: number, y: number, halfW: number): boolean {
+    const foot = y + 1;
+    const mid = Math.floor(halfW / 2);
+    return (
+      this.weaverLandingCellSupports(x - halfW, foot) &&
+      this.weaverLandingCellSupports(x - mid, foot) &&
+      this.weaverLandingCellSupports(x, foot) &&
+      this.weaverLandingCellSupports(x + mid, foot) &&
+      this.weaverLandingCellSupports(x + halfW, foot)
+    );
+  }
+
+  private weaverBodySpaceClearFast(x: number, y: number, halfW: number, h: number): boolean {
+    const w = this.ctx.world;
+    for (let dx = -halfW; dx <= halfW; dx += 4) {
+      for (let dy = 0; dy < h; dy += 3) {
+        const sx = x + dx;
+        const sy = y - dy;
+        if (sx < 0 || sx >= WIDTH || sy >= HEIGHT) return false;
+        if (sy < 0) continue;
+        if (blocksEntity(w.types[w.idx(sx, sy)])) return false;
+      }
+    }
+    for (let dy = 0; dy < h; dy += 3) {
+      const sx = x + halfW;
+      const sy = y - dy;
+      if (sx < 0 || sx >= WIDTH || sy >= HEIGHT) return false;
+      if (sy < 0) continue;
+      if (blocksEntity(w.types[w.idx(sx, sy)])) return false;
+    }
+    return true;
+  }
+
   /** Nearest sheer wall (taller than a step-over) within `maxDist` to either side —
    *  where the spider should march to BEGIN a climb when its quarry is perched
    *  overhead and out of stride-reach. Nearest wins; ties break toward `prefer`. */
@@ -1412,6 +1469,214 @@ export class Enemies implements EnemyControlApi {
       }
     }
     return 0;
+  }
+
+  /** A wall-climbing Weaver can step/jump off the face onto a nearby platform.
+   *  Generic walker step-up only moves one cell sideways at a time; with a wide
+   *  spider body that can leave it pawing at the lip until footing recovery pulls
+   *  it back down. This searches for a real standable cell toward the quarry and
+   *  only commits when a short arced path is clear. */
+  private findWeaverWallDismount(e: Enemy, def: EnemyDef, dir: number): CellCandidate | null {
+    const ctx = this.ctx;
+    const playerFoot = Math.floor(ctx.player.y);
+    const cx = Math.floor(e.x);
+    const cy = Math.floor(e.y);
+    const yMin = Math.max(def.h + 2, cy - 42, playerFoot - 54);
+    const yMax = Math.min(HEIGHT - 3, cy + 20, playerFoot + 54);
+    const maxYRadius = Math.max(Math.abs(yMin - playerFoot), Math.abs(yMax - playerFoot));
+    for (let over = def.halfW + 4; over <= WEAVER_WALL_DISMOUNT_MAX_OVER; over += 4) {
+      const x = cx + dir * over;
+      if (x < def.halfW + 2 || x > WIDTH - def.halfW - 3) continue;
+      for (let yRadius = 0; yRadius <= maxYRadius; yRadius++) {
+        const yAttempts = yRadius === 0 ? 1 : 2;
+        for (let attempt = 0; attempt < yAttempts; attempt++) {
+          const y = playerFoot + (attempt === 0 ? -yRadius : yRadius);
+          if (y < yMin || y > yMax) continue;
+          if (!this.weaverLandingSupportedFast(x, y, def.halfW)) continue;
+          if (!this.weaverBodySpaceClearFast(x, y, def.halfW, def.h)) continue;
+          if (!ctx.physics.entityFree(x, y, def.halfW, def.h)) continue;
+          if (ctx.physics.entityFree(x, y + 1, def.halfW, 1)) continue;
+          if (!this.weaverLandingSupported(x, y, def.halfW)) continue;
+          if (!this.weaverWallDismountPathClear(e, def, x, y)) continue;
+          const playerDx = Math.abs(x - ctx.player.x);
+          const playerDy = Math.abs(y - playerFoot);
+          const dy = y - cy;
+          const climbCost = Math.max(0, -dy) * 0.4 + Math.max(0, dy) * 1.1;
+          const score = playerDx * 0.7 + playerDy * 1.3 + over * 0.18 + climbCost;
+          return { x, y, d2: score, over };
+        }
+      }
+    }
+    return null;
+  }
+
+  private weaverLandingSupported(x: number, y: number, halfW: number): boolean {
+    const ctx = this.ctx;
+    const foot = y + 1;
+    for (const dx of [-halfW, -Math.floor(halfW / 2), 0, Math.floor(halfW / 2), halfW]) {
+      if (!ctx.physics.cellBlocks(x + dx, foot)) return false;
+    }
+    return true;
+  }
+
+  private weaverWallDismountPathClear(e: Enemy, def: EnemyDef, x: number, y: number): boolean {
+    const ctx = this.ctx;
+    const dx = x - e.x;
+    const dy = y - e.y;
+    const hop = clamp(Math.abs(dx) * 0.28 + Math.max(0, -dy) * 0.3 + 8, 10, 28);
+    for (let step = 1; step <= 4; step++) {
+      const t = step / 5;
+      const sx = Math.round(e.x + dx * weaverWallLeapXProgress(t));
+      const sy = Math.round(e.y + dy * t - Math.sin(t * Math.PI) * hop);
+      if (!ctx.physics.entityFree(sx, sy, def.halfW, def.h)) return false;
+    }
+    return true;
+  }
+
+  private clearWeaverWallLeap(e: Enemy): void {
+    e.weaverLeapT = undefined;
+    e.weaverLeapDuration = undefined;
+    e.weaverLeapStartX = undefined;
+    e.weaverLeapStartY = undefined;
+    e.weaverLeapTargetX = undefined;
+    e.weaverLeapTargetY = undefined;
+    e.weaverLeapDir = undefined;
+    e.weaverDismountCheckFrame = undefined;
+    e.weaverDismountDir = undefined;
+  }
+
+  private startWeaverWallLeap(e: Enemy, def: EnemyDef, landing: CellCandidate, dir: number): void {
+    const dx = landing.x - e.x;
+    const dy = landing.y - e.y;
+    const distance = Math.hypot(dx, dy);
+    const duration = Math.round(
+      clamp(distance / WEAVER_WALL_LEAP_CELLS_PER_FRAME, WEAVER_WALL_LEAP_MIN_FRAMES, WEAVER_WALL_LEAP_MAX_FRAMES),
+    );
+    e.weaverLeapT = 0;
+    e.weaverLeapDuration = duration;
+    e.weaverLeapStartX = e.x;
+    e.weaverLeapStartY = e.y;
+    e.weaverLeapTargetX = landing.x;
+    e.weaverLeapTargetY = landing.y;
+    e.weaverLeapDir = dir;
+    e.fx = 0;
+    e.fy = 0;
+    e.vx = 0;
+    e.vy = 0;
+    e.grounded = false;
+    e.weaverClimbT = 0;
+    e.weaverClimbDir = dir;
+    e.weaverDescend = false;
+    e.weaverCrest = Math.max(e.weaverCrest ?? 0, duration + 20);
+    e.weaverFallT = 0;
+    e.weaverSeekDir = 0;
+    e.blink = 0;
+    e.windup = 0;
+    e.needleX = undefined;
+    e.needleY = undefined;
+    this.ctx.particles.burst(e.x + dir * (def.halfW + 1), e.y - 8, 5, Cell.Vines, vineColor, 0.65, { grav: -0.01 });
+  }
+
+  private tickWeaverWallLeap(e: Enemy, def: EnemyDef): boolean {
+    const duration = e.weaverLeapDuration ?? 0;
+    const startX = e.weaverLeapStartX;
+    const startY = e.weaverLeapStartY;
+    const targetX = e.weaverLeapTargetX;
+    const targetY = e.weaverLeapTargetY;
+    if (
+      duration <= 0 ||
+      startX === undefined ||
+      startY === undefined ||
+      targetX === undefined ||
+      targetY === undefined
+    ) {
+      this.clearWeaverWallLeap(e);
+      return false;
+    }
+
+    const ctx = this.ctx;
+    const nextT = Math.min(duration, (e.weaverLeapT ?? 0) + 1);
+    const t = nextT / duration;
+    const dx = targetX - startX;
+    const dy = targetY - startY;
+    const hop = clamp(Math.abs(dx) * 0.28 + Math.max(0, -dy) * 0.3 + 8, 10, 28);
+    const nx = Math.round(startX + dx * weaverWallLeapXProgress(t));
+    const ny = Math.round(startY + dy * t - Math.sin(t * Math.PI) * hop);
+
+    if (!ctx.physics.entityFree(nx, ny, def.halfW, def.h)) {
+      this.clearWeaverWallLeap(e);
+      e.weaverCrest = Math.max(e.weaverCrest ?? 0, 12);
+      return false;
+    }
+
+    e.x = nx;
+    e.y = ny;
+    e.fx = 0;
+    e.fy = 0;
+    e.vx = 0;
+    e.vy = 0;
+    e.grounded = false;
+    e.weaverLeapT = nextT;
+    e.weaverClimbDir = e.weaverLeapDir ?? Math.sign(dx || 1);
+    e.weaverClimbT = 0;
+    e.weaverDescend = false;
+    e.weaverFallT = 0;
+    e.weaverSeekDir = 0;
+    e.weaverCrest = Math.max(e.weaverCrest ?? 0, duration - nextT + 12);
+
+    if (nextT >= duration) {
+      if (!ctx.physics.entityFree(targetX, targetY, def.halfW, def.h) || ctx.physics.entityFree(targetX, targetY + 1, def.halfW, 1)) {
+        this.clearWeaverWallLeap(e);
+        return false;
+      }
+      e.x = targetX;
+      e.y = targetY;
+      e.grounded = true;
+      e.weaverCrest = Math.max(e.weaverCrest ?? 0, 34);
+      this.clearWeaverWallLeap(e);
+      ctx.physics.crushLooseDebris(e, def.halfW, def.h);
+      ctx.particles.burst(e.x - (e.weaverClimbDir ?? 1) * (def.halfW + 2), e.y - 8, 4, Cell.Vines, vineColor, 0.65, {
+        grav: -0.01,
+      });
+    }
+    return true;
+  }
+
+  private tryWeaverWallDismount(e: Enemy, def: EnemyDef, dir: number): boolean {
+    const frame = this.ctx.state.frameCount;
+    if ((e.weaverDismountCheckFrame ?? 0) > frame && e.weaverDismountDir === dir) return false;
+    e.weaverDismountDir = dir;
+    const landing = this.findWeaverWallDismount(e, def, dir);
+    if (!landing) {
+      e.weaverDismountCheckFrame = frame + WEAVER_WALL_DISMOUNT_RETRY_FRAMES;
+      return false;
+    }
+    e.weaverDismountCheckFrame = undefined;
+    const ctx = this.ctx;
+    const lx = landing.x;
+    const ly = landing.y;
+    if ((landing.over ?? Math.abs(lx - e.x)) > WEAVER_WALL_STEP_MAX_OVER) {
+      this.startWeaverWallLeap(e, def, landing, dir);
+      return true;
+    }
+    e.x = lx;
+    e.y = ly;
+    e.fx = 0;
+    e.fy = 0;
+    e.vx = dir * 0.45;
+    e.vy = 0;
+    e.grounded = true;
+    e.weaverClimbT = 0;
+    e.weaverClimbDir = dir;
+    e.weaverDescend = false;
+    e.weaverCrest = Math.max(e.weaverCrest ?? 0, 34);
+    e.weaverFallT = 0;
+    e.weaverSeekDir = 0;
+    ctx.physics.crushLooseDebris(e, def.halfW, def.h);
+    if (e.timer % 4 === 0) {
+      ctx.particles.burst(e.x - dir * (def.halfW + 2), e.y - 8, 4, Cell.Vines, vineColor, 0.65, { grav: -0.01 });
+    }
+    return true;
   }
 
   private enemyEnvironmentDamage(e: Enemy, index?: number): void {
@@ -1487,6 +1752,7 @@ export class Enemies implements EnemyControlApi {
       // Gust-launched foes fly ballistically (AI + flight cap suppressed) until
       // they land, slow, or smash into a wall — see gustShove/tickKnock.
       if (this.tickKnock(e, def)) continue;
+      if (e.kind === 'weaver' && this.tickWeaverWallLeap(e, def)) continue;
 
       const pdx = player.x - e.x,
         pdy = player.y - 9 - (e.y - 5);
@@ -1880,6 +2146,7 @@ export class Enemies implements EnemyControlApi {
         let climbing = false;
         let climbDir = e.weaverClimbDir ?? 0;
         let climbWall = 0; // height of the adjacent wall this frame (drives the ascent)
+        let wallDismounted = false;
         if (e.alerted && targetAlive && !e.sleeping) {
           const toward = Math.sign(pdx) || climbDir || 1;
           let bestDir = 0;
@@ -1948,8 +2215,15 @@ export class Enemies implements EnemyControlApi {
           // can still drag it ACROSS and off the far lip before footing-recovery would
           // otherwise strand it on a too-narrow crest.
           e.weaverCrest = 26;
+          if (!e.weaverDescend && (climbWall <= 18 || e.y <= player.y + 32)) {
+            wallDismounted = this.tryWeaverWallDismount(e, def, climbDir);
+            if (wallDismounted) {
+              climbing = false;
+              climbWall = 0;
+            }
+          }
         } else {
-          e.weaverClimbDir = 0;
+          if ((e.weaverCrest ?? 0) === 0) e.weaverClimbDir = 0;
           e.weaverClimbT = 0;
           e.weaverDescend = false;
         }
@@ -2085,8 +2359,11 @@ export class Enemies implements EnemyControlApi {
             // body over a narrow top and down the far side toward the quarry.
             // It never strides out over a drop it can't step down
             // into — it stops at the lip and reaches instead of walking into the void.
-            const tooClose = pDist < 46;
-            let dir = tooClose ? -Math.sign(pdx || 1) : Math.sign(pdx || 1);
+            const towardTarget = Math.sign(pdx || 1);
+            const retreatDir = -towardTarget;
+            const retreatWouldDrop = this.dropAhead(e, def, retreatDir, 8);
+            const tooClose = pDist < (cranky ? 28 : 46) && !retreatWouldDrop;
+            let dir = tooClose ? retreatDir : towardTarget;
             // QUARRY ABOVE: a climber goes UP after it. Range out for the nearest
             // scalable wall in a WIDE arc (not just the 70px directly beside it) and
             // march to its base — the climb engages there and carries it up to the
@@ -2122,7 +2399,8 @@ export class Enemies implements EnemyControlApi {
             // (The decisive speedup is pursuing every frame while alerted, above; the
             // base push stays gentle so the chase doesn't peg aggression and flatten the
             // signature high gait stance.)
-            e.vx += dir * 0.06 * confidence * (stalking ? 1 + 0.6 * surgeWave : 1);
+            const chasePush = cranky ? 0.18 : 0.06;
+            e.vx += dir * chasePush * confidence * (stalking ? 1 + 0.6 * surgeWave : 1);
             // a firm extra shove while cresting, to break free of a narrow top instead
             // of teetering on it, and commit to the descent toward the quarry.
             if (cresting && dir !== 0) e.vx += dir * 0.16;
@@ -2167,10 +2445,10 @@ export class Enemies implements EnemyControlApi {
           (e.status.burning > 0 ? 1.0 : 0.72) +
           support * 0.28 +
           physicalSupport * 0.18 +
-          (cranky ? 0.22 : 0) +
+          (cranky ? 0.58 : 0) +
           (recovering ? 0.5 : 0) -
           panic * 0.16;
-        if (climbing) {
+        if (climbing && !wallDismounted) {
           // Haul up the face while there's still wall beside the body; once the foot
           // crests above the wall top (climbWall falls away) hold height and let the
           // lean carry the body over the lip — the integrator's 6-cell step-up mounts.
@@ -2789,7 +3067,15 @@ export class Enemies implements EnemyControlApi {
         }
       } else {
         const stepUp =
-          e.kind === 'weaver' ? 6 : e.kind === 'colossus' ? 3 : e.kind === 'golem' || e.kind === 'leviathan' ? 2 : 1;
+          e.kind === 'weaver'
+            ? (e.weaverCrest ?? 0) > 0
+              ? 14
+              : 6
+            : e.kind === 'colossus'
+              ? 3
+              : e.kind === 'golem' || e.kind === 'leviathan'
+                ? 2
+                : 1;
         // WARY OF THE EDGE: a grounded walker won't voluntarily step into a cell
         // that's lethal to it (lava/fire/acid). Fail-open — it only cancels this
         // frame's step and re-aims next frame, so it never hard-locks a path.

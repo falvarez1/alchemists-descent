@@ -52,7 +52,7 @@ try {
     }
     return { x: Math.round(e.x), y: Math.round(e.y), floorBelow, vinesNear, dx: Math.round(p.x - e.x), dy: Math.round(p.y - e.y), dist: Math.round(Math.hypot(p.x - e.x, p.y - e.y)), climbT: e.weaverClimbT ?? 0, grounded: e.grounded === true, vx: +(e.vx ?? 0).toFixed(2), wallRightAt, pSup: +(e.weaverPhysicalSupport ?? 0).toFixed(2), anc: e.weaverAnchorCount ?? -1, fallT: e.weaverFallT ?? 0, scx: Math.round((e.weaverSupportCenterX ?? e.x) - e.x), reach: +(e.weaverReach ?? 0).toFixed(2) };
   });
-  const grab = (f, s) => page.evaluate(() => new Promise(res => { const ctx = window.__game.ctx, e = ctx.enemies.find(g => g.__watch === 1); ctx.camera.zoomLock = 1; ctx.camera.snapTo((e.x + ctx.player.x) / 2, (e.y + ctx.player.y) / 2 - 10); requestAnimationFrame(() => res(document.querySelector('#canvas-holder > canvas').toDataURL('image/png'))); })).then(d => writeFileSync('verify-out/overhead-' + f + '.png', Buffer.from(d.split(',')[1], 'base64')));
+  const grab = (f, _s) => page.evaluate(() => new Promise(res => { const ctx = window.__game.ctx, e = ctx.enemies.find(g => g.__watch === 1); ctx.camera.zoomLock = 1; ctx.camera.snapTo((e.x + ctx.player.x) / 2, (e.y + ctx.player.y) / 2 - 10); requestAnimationFrame(() => res(document.querySelector('#canvas-holder > canvas').toDataURL('image/png'))); })).then(d => writeFileSync('verify-out/overhead-' + f + '.png', Buffer.from(d.split(',')[1], 'base64')));
   let minDist = 99999, everClimbed = false, minY = 99999;
   for (let f = 0; f <= 900; f++) {
     await page.evaluate(() => { const ctx = window.__game.ctx; ctx.player.hp = ctx.player.maxHp = 99999; return new Promise(r => requestAnimationFrame(r)); });

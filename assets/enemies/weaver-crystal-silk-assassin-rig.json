@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "weaver-crystal-silk-assassin",
+  "atlas": "weaver-crystal-silk-assassin-rig-parts-transparent.png",
+  "source": "weaver-concept-05-crystal-silk-assassin.png",
+  "description": "Image-backed component rig for the Weaver enemy. Crop rectangles are in atlas pixels; w/h and pivot values are runtime pixel-sprite dimensions.",
+  "legParts": {
+    "upper": ["legUpperA", "legUpperB", "legUpperC"],
+    "lower": ["legLowerA", "legLowerB", "legLowerC"],
+    "foot": ["footA", "footB", "footC"]
+  },
+  "parts": {
+    "head": { "sx": 38, "sy": 19, "sw": 321, "sh": 304, "w": 23, "h": 22, "pivotX": 12, "pivotY": 12 },
+    "mandibleA": { "sx": 351, "sy": 126, "sw": 71, "sh": 202, "w": 7, "h": 17, "pivotX": 3, "pivotY": 3 },
+    "mandibleB": { "sx": 463, "sy": 133, "sw": 73, "sh": 198, "w": 7, "h": 17, "pivotX": 3, "pivotY": 3 },
+    "thorax": { "sx": 576, "sy": 47, "sw": 234, "sh": 285, "w": 22, "h": 25, "pivotX": 11, "pivotY": 13 },
+    "abdomen": { "sx": 879, "sy": 40, "sw": 340, "sh": 300, "w": 31, "h": 24, "pivotX": 15, "pivotY": 12 },
+    "spinnerets": { "sx": 854, "sy": 366, "sw": 353, "sh": 235, "w": 24, "h": 15, "pivotX": 12, "pivotY": 8 },
+    "crystalSpine": { "sx": 42, "sy": 345, "sw": 448, "sh": 238, "w": 30, "h": 16, "pivotX": 15, "pivotY": 14 },
+    "jointCap": { "sx": 565, "sy": 379, "sw": 129, "sh": 165, "w": 9, "h": 11, "pivotX": 4, "pivotY": 6 },
+    "legUpperA": { "sx": 92, "sy": 611, "sw": 192, "sh": 190, "w": 8, "h": 22, "pivotX": 4, "pivotY": 1 },
+    "legUpperB": { "sx": 312, "sy": 614, "sw": 156, "sh": 195, "w": 7, "h": 22, "pivotX": 3, "pivotY": 1 },
+    "legUpperC": { "sx": 510, "sy": 611, "sw": 126, "sh": 204, "w": 7, "h": 23, "pivotX": 3, "pivotY": 1 },
+    "legLowerA": { "sx": 59, "sy": 813, "sw": 76, "sh": 236, "w": 6, "h": 24, "pivotX": 3, "pivotY": 1 },
+    "legLowerB": { "sx": 301, "sy": 822, "sw": 59, "sh": 217, "w": 5, "h": 22, "pivotX": 2, "pivotY": 1 },
+    "legLowerC": { "sx": 504, "sy": 828, "sw": 53, "sh": 208, "w": 5, "h": 21, "pivotX": 2, "pivotY": 1 },
+    "footA": { "sx": 67, "sy": 1052, "sw": 65, "sh": 152, "w": 6, "h": 13, "pivotX": 3, "pivotY": 1 },
+    "footB": { "sx": 307, "sy": 1044, "sw": 57, "sh": 159, "w": 6, "h": 13, "pivotX": 3, "pivotY": 1 },
+    "footC": { "sx": 513, "sy": 1046, "sw": 49, "sh": 157, "w": 5, "h": 13, "pivotX": 2, "pivotY": 1 },
+    "silk": { "sx": 1036, "sy": 696, "sw": 153, "sh": 484, "w": 9, "h": 34, "pivotX": 4, "pivotY": 1 }
+  }
+}

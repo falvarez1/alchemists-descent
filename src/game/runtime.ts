@@ -34,6 +34,7 @@ export function makeLevelRuntime(
       | 'backdropLevelId'
       | 'emitters'
       | 'placedPrefabs'
+      | 'inspectionMarkers'
       | 'generatedScenes'
       | 'decors'
       | 'weaverLairWebs'

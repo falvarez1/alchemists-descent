@@ -243,6 +243,8 @@ export interface WeaverLegState {
   smoothTx?: number;
   smoothTy?: number;
   stepCooldown?: number;
+  supportOk?: boolean;
+  supportCheckFrame?: number;
   step?: number;
   fromX?: number;
   fromY?: number;
@@ -366,6 +368,19 @@ export interface Enemy {
   /** Weaver: cached "march to the nearest scalable wall" direction toward an overhead
    *  quarry, refreshed every few frames so the wide wall sweep isn't paid every tick. */
   weaverSeekDir?: number;
+  /** Weaver: next frame at which the expensive wall-to-platform dismount search may retry. */
+  weaverDismountCheckFrame?: number;
+  /** Weaver: direction used for the last dismount search throttle. */
+  weaverDismountDir?: number;
+  /** Weaver: visible wall-to-platform pounce, used for long dismounts that must not
+   *  relocate the body in a single simulation tick. */
+  weaverLeapT?: number;
+  weaverLeapDuration?: number;
+  weaverLeapStartX?: number;
+  weaverLeapStartY?: number;
+  weaverLeapTargetX?: number;
+  weaverLeapTargetY?: number;
+  weaverLeapDir?: number;
   /** Weaver: free-moving head — smoothed render offset (x,y) and spring velocity of the
    *  cephalothorax. It turns to track prey, scans when idle and leads the walk, sprung so
    *  it overshoots and settles organically instead of snapping to the body's facing. */
@@ -375,6 +390,8 @@ export interface Enemy {
   weaverHeadVY?: number;
   /** Weaver: smoothed predatory-stalk drive (0..1) — paced lunge/coil bursts at mid range. */
   weaverStalk?: number;
+  /** Weaver: render-facing hysteresis so sub-pixel wall/chase corrections do not flip the sprite every frame. */
+  weaverFaceDir?: number;
   /** Weaver: short render signal while lowering to feed on prey. */
   weaverFeedT?: number;
   /** Weaver: frames of irritated pursuit after being disturbed awake. */
@@ -2253,6 +2270,20 @@ export interface PlacedPrefab {
   y1: number;
 }
 
+/** Lightweight runtime-only labels for authored cell dressing that is not a
+ *  live entity, mechanism, or Builder prefab object. Used by the `I` inspector
+ *  so decorative cell clusters can report their intended object name instead
+ *  of only the material currently under the cursor. */
+export interface RuntimeInspectionMarker {
+  kind: 'prefab' | 'decor' | 'landmark';
+  label: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  detail?: string;
+}
+
 export interface GeneratedSceneObjectPlacement {
   id: string;
   kind: string;
@@ -2388,6 +2419,8 @@ export interface LevelRuntime {
   emitters?: HazardEmitter[];
   /** Authored prefabs stamped into this level by worldgen (audit/debug). */
   placedPrefabs?: PlacedPrefab[];
+  /** Runtime-only authored-object labels for cell-built dressing. */
+  inspectionMarkers?: RuntimeInspectionMarker[];
   /** Generated virtual pixel-scene footprints (read-only audit/selection handles). */
   generatedScenes?: GeneratedScenePlacement[];
   /** Animated sprite decor (visual-only — see RuntimeDecor). */
