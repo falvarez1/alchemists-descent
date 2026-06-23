@@ -3,7 +3,8 @@
 //  2) when the ground under its legs is cut away it dangles instead of
 //     recentring onto solid footing;
 //  3) it climbs a wall toward a platform, then retreats from the lip instead
-//     of committing onto the platform.
+//     of committing onto the platform;
+//  4) it can climb around a wall-top lip onto an adjacent platform.
 // Writes zoomed screenshots and prints pass/fail metrics.
 import { chromium } from 'playwright-core';
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -218,6 +219,113 @@ await grab('verify-out/weaver-wall-dismount.png', (c) => {
 });
 console.log('CREST:', JSON.stringify(crestState));
 
+// ---------------- Scenario 4: wall-top lip directly beside the platform ----------------
+const lipSetup = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const world = ctx.world;
+  const STONE = 12;
+  for (let y = 430; y <= 700; y++) {
+    for (let x = 500; x <= 880; x++) {
+      if (world.inBounds(x, y)) world.clearCellAt(world.idx(x, y));
+    }
+  }
+  for (let y = 501; y <= 660; y++) {
+    for (let x = 650; x <= 652; x++) {
+      if (world.inBounds(x, y)) world.replaceCellAt(world.idx(x, y), STONE, 0x777777);
+    }
+  }
+  const platformStart = 653;
+  const platformEnd = 830;
+  for (let y = 501; y <= 508; y++) {
+    for (let x = platformStart; x <= platformEnd; x++) {
+      if (world.inBounds(x, y)) world.replaceCellAt(world.idx(x, y), STONE, 0x777777);
+    }
+  }
+  for (let y = 661; y <= 668; y++) {
+    for (let x = 520; x <= 650; x++) {
+      if (world.inBounds(x, y)) world.replaceCellAt(world.idx(x, y), STONE, 0x777777);
+    }
+  }
+  ctx.enemies.length = 0;
+  ctx.enemyCtl.spawn('weaver', 640, 660);
+  const w = ctx.enemies[0];
+  w.x = 640; w.y = 660; w.vx = 0; w.vy = 0; w.fx = 0; w.fy = 0;
+  w.sleeping = false; w.alerted = true; w.attackCd = 9999; w.blink = 0; w.windup = 0; w.cranky = 180;
+  ctx.player.x = 720; ctx.player.y = 500; ctx.player.vx = 0; ctx.player.vy = 0; ctx.player.fx = 0; ctx.player.fy = 0;
+  ctx.camera.snapTo(690, 560);
+  return { x: w.x, y: w.y, platformStart, platformEnd };
+});
+const lipState = await page.evaluate((s) => new Promise((resolve) => {
+  const ctx = window.__game.ctx;
+  const def = ctx.enemyCtl.defs.weaver;
+  const start = performance.now();
+  let last = null;
+  let maxFrameJump = 0;
+  let sampleCount = 0;
+  let reachedLipHeight = false;
+
+  const read = () => {
+    const w = ctx.enemies[0];
+    if (!w) return null;
+    return {
+      x: w.x,
+      y: w.y,
+      t: performance.now(),
+      climbT: w.weaverClimbT ?? 0,
+      crest: w.weaverCrest ?? 0,
+      grounded: w.grounded === true,
+    };
+  };
+
+  const finish = () => {
+    const w = ctx.enemies[0];
+    const onPlatform =
+      w.x >= s.platformStart + def.halfW &&
+      w.x <= s.platformEnd - def.halfW &&
+      w.y <= 505 &&
+      !ctx.physics.entityFree(w.x, w.y + 1, def.halfW, 1);
+    resolve({
+      x: w.x,
+      y: w.y,
+      vx: w.vx,
+      vy: w.vy,
+      grounded: w.grounded === true,
+      climbT: w.weaverClimbT ?? 0,
+      crest: w.weaverCrest ?? 0,
+      climbDir: w.weaverClimbDir ?? 0,
+      fallT: w.weaverFallT ?? 0,
+      onPlatform,
+      reachedLipHeight,
+      platformStart: s.platformStart,
+      platformEnd: s.platformEnd,
+      requiredX: s.platformStart + def.halfW,
+      maxFrameJump,
+      sampleCount,
+    });
+  };
+
+  const step = () => {
+    const next = read();
+    if (next) {
+      sampleCount++;
+      reachedLipHeight = reachedLipHeight || next.y <= 532;
+      if (last) {
+        const dt = next.t - last.t;
+        if (dt < 80) maxFrameJump = Math.max(maxFrameJump, Math.hypot(next.x - last.x, next.y - last.y));
+      }
+      last = next;
+    }
+    if (performance.now() - start >= 3800) finish();
+    else requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}), lipSetup);
+await grab('verify-out/weaver-wall-lip-dismount.png', (c) => {
+  const w = c.enemies[0];
+  return { cx: w.x, cy: w.y - 22 };
+});
+console.log('LIP:', JSON.stringify(lipState));
+
 await browser.close();
 
 const problems = [];
@@ -230,10 +338,14 @@ if (!(cutState.maxDangle < 16)) problems.push(`legs still dangle deep into the h
 if (!crestState.onPlatform) problems.push(`did not commit from wall onto platform (x=${crestState.x.toFixed(1)} required>=${crestState.requiredX}, y=${crestState.y.toFixed(1)}, grounded=${crestState.grounded})`);
 if (!crestState.leapSeen) problems.push('far wall dismount did not use the visible leap state');
 if (!(crestState.maxFrameJump <= 24)) problems.push(`wall dismount moved too far in one frame (maxFrameJump=${crestState.maxFrameJump.toFixed(1)} cells)`);
+if (!lipState.reachedLipHeight) problems.push(`lip dismount never reached platform height (y=${lipState.y.toFixed(1)})`);
+if (!lipState.onPlatform) problems.push(`did not mount adjacent wall lip onto platform (x=${lipState.x.toFixed(1)} required>=${lipState.requiredX}, y=${lipState.y.toFixed(1)}, grounded=${lipState.grounded})`);
+if (!(lipState.maxFrameJump <= 34)) problems.push(`adjacent lip dismount moved too far in one frame (maxFrameJump=${lipState.maxFrameJump.toFixed(1)} cells)`);
 if (pageErrors.length) problems.push('pageErrors: ' + pageErrors.join('; '));
 
 console.log('\nrear-up: reach=' + reachState.reach.toFixed(2) + ' bodyLift=' + reachState.bodyLift.toFixed(1) + ' topReach=' + reachState.topReach.toFixed(1));
 console.log('cut-recover: movedRight=' + cutState.movedRight.toFixed(1) + ' grounded=' + cutState.grounded + ' maxDangle=' + cutState.maxDangle.toFixed(1));
 console.log('wall-dismount: x=' + crestState.x.toFixed(1) + ' y=' + crestState.y.toFixed(1) + ' grounded=' + crestState.grounded + ' onPlatform=' + crestState.onPlatform + ' maxFrameJump=' + crestState.maxFrameJump.toFixed(1));
+console.log('wall-lip: x=' + lipState.x.toFixed(1) + ' y=' + lipState.y.toFixed(1) + ' grounded=' + lipState.grounded + ' onPlatform=' + lipState.onPlatform + ' maxFrameJump=' + lipState.maxFrameJump.toFixed(1));
 if (problems.length) { console.error('\nFAIL:\n - ' + problems.join('\n - ')); process.exit(1); }
-console.log('\nPASS — Weaver rears, recentres, and visibly commits from wall to platform.');
+console.log('\nPASS — Weaver rears, recentres, and visibly commits from wall to platform/lip.');

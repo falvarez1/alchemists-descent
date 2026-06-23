@@ -230,6 +230,23 @@ export interface EnemyDef {
   goreFn: () => number;
 }
 
+export interface ProceduralLegIkState {
+  upperX: number;
+  upperY: number;
+  lowerX: number;
+  lowerY: number;
+  footX: number;
+  footY: number;
+  upperAngle: number;
+  lowerAngle: number;
+  footAngle: number;
+  upperFlex: number;
+  lowerFlex: number;
+  extension: number;
+  poleSide: number;
+  flags: number;
+}
+
 export interface WeaverLegState {
   x: number;
   y: number;
@@ -249,6 +266,7 @@ export interface WeaverLegState {
   fromX?: number;
   fromY?: number;
   plantAge?: number;
+  ik?: ProceduralLegIkState;
 }
 
 export interface Enemy {

@@ -91,8 +91,8 @@ const WEAVER_TRAIL_WEB_COOLDOWN = 18;
 const WEAVER_TRAIL_LOCAL_BUDGET = 34;
 const WEAVER_SUPPORT_REGIONS = [-56, -44, -31, -18, 18, 31, 44, 56] as const;
 const WEAVER_WALL_DISMOUNT_MAX_OVER = 230;
-const WEAVER_WALL_STEP_MAX_OVER = 72;
-const WEAVER_WALL_DISMOUNT_RETRY_FRAMES = 8;
+const WEAVER_WALL_STEP_MAX_OVER = 14;
+const WEAVER_WALL_DISMOUNT_RETRY_FRAMES = 4;
 const WEAVER_WALL_LEAP_CELLS_PER_FRAME = 4.4;
 const WEAVER_WALL_LEAP_MIN_FRAMES = 18;
 const WEAVER_WALL_LEAP_MAX_FRAMES = 58;
@@ -1520,7 +1520,6 @@ export class Enemies implements EnemyControlApi {
   }
 
   private weaverWallDismountPathClear(e: Enemy, def: EnemyDef, x: number, y: number): boolean {
-    const ctx = this.ctx;
     const dx = x - e.x;
     const dy = y - e.y;
     const hop = clamp(Math.abs(dx) * 0.28 + Math.max(0, -dy) * 0.3 + 8, 10, 28);
@@ -1528,9 +1527,16 @@ export class Enemies implements EnemyControlApi {
       const t = step / 5;
       const sx = Math.round(e.x + dx * weaverWallLeapXProgress(t));
       const sy = Math.round(e.y + dy * t - Math.sin(t * Math.PI) * hop);
-      if (!ctx.physics.entityFree(sx, sy, def.halfW, def.h)) return false;
+      if (!this.weaverWallLeapBodyClearAt(sx, sy, def, t)) return false;
     }
     return true;
+  }
+
+  private weaverWallLeapBodyClearAt(x: number, y: number, def: EnemyDef, t: number): boolean {
+    const sweepHalfW =
+      t < 0.5 ? Math.max(4, Math.ceil(def.halfW * 0.5)) : t < 0.8 ? Math.max(6, Math.ceil(def.halfW * 0.75)) : def.halfW;
+    const sweepH = t < 0.5 ? Math.max(9, Math.ceil(def.h * 0.72)) : def.h;
+    return this.ctx.physics.entityFree(x, y, sweepHalfW, sweepH);
   }
 
   private clearWeaverWallLeap(e: Enemy): void {
@@ -1603,7 +1609,7 @@ export class Enemies implements EnemyControlApi {
     const nx = Math.round(startX + dx * weaverWallLeapXProgress(t));
     const ny = Math.round(startY + dy * t - Math.sin(t * Math.PI) * hop);
 
-    if (!ctx.physics.entityFree(nx, ny, def.halfW, def.h)) {
+    if (!this.weaverWallLeapBodyClearAt(nx, ny, def, t)) {
       this.clearWeaverWallLeap(e);
       e.weaverCrest = Math.max(e.weaverCrest ?? 0, 12);
       return false;
@@ -2215,7 +2221,12 @@ export class Enemies implements EnemyControlApi {
           // can still drag it ACROSS and off the far lip before footing-recovery would
           // otherwise strand it on a too-narrow crest.
           e.weaverCrest = 26;
-          if (!e.weaverDescend && (climbWall <= 18 || e.y <= player.y + 32)) {
+          const dismountTowardPrey = Math.sign(pdx || climbDir || 1) === climbDir;
+          const closeToPreyLedge =
+            dismountTowardPrey &&
+            Math.abs(pdx) <= WEAVER_WALL_DISMOUNT_MAX_OVER + def.halfW * 3 &&
+            e.y <= player.y + 76;
+          if (!e.weaverDescend && (climbWall <= 26 || e.y <= player.y + 44 || closeToPreyLedge)) {
             wallDismounted = this.tryWeaverWallDismount(e, def, climbDir);
             if (wallDismounted) {
               climbing = false;
@@ -2399,8 +2410,8 @@ export class Enemies implements EnemyControlApi {
             // (The decisive speedup is pursuing every frame while alerted, above; the
             // base push stays gentle so the chase doesn't peg aggression and flatten the
             // signature high gait stance.)
-            const chasePush = cranky ? 0.18 : 0.06;
-            e.vx += dir * chasePush * confidence * (stalking ? 1 + 0.6 * surgeWave : 1);
+            const chasePush = cranky ? 0.27 : 0.1;
+            e.vx += dir * chasePush * confidence * (stalking ? 1 + 0.75 * surgeWave : 1);
             // a firm extra shove while cresting, to break free of a narrow top instead
             // of teetering on it, and commit to the descent toward the quarry.
             if (cresting && dir !== 0) e.vx += dir * 0.16;
@@ -2442,10 +2453,10 @@ export class Enemies implements EnemyControlApi {
         // instead of inching off the lip at the panic-throttled crawl.
         const recovering = unstable && (anchorCount >= 1 || physicalSupport > 0.1);
         const maxWeaverSpeed =
-          (e.status.burning > 0 ? 1.0 : 0.72) +
-          support * 0.28 +
-          physicalSupport * 0.18 +
-          (cranky ? 0.58 : 0) +
+          (e.status.burning > 0 ? 1.25 : 0.92) +
+          support * 0.34 +
+          physicalSupport * 0.24 +
+          (cranky ? 0.78 : 0) +
           (recovering ? 0.5 : 0) -
           panic * 0.16;
         if (climbing && !wallDismounted) {
