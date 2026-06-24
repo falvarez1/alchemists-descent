@@ -9,9 +9,11 @@ import type {
   RuntimeDecor,
   SpellId,
 } from '@/core/types';
+import { ENEMY_KINDS } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { EventBus } from '@/core/events';
 import { escapeHtml } from '@/core/strings';
+import { ENEMY_ENTITY_PROFILES, PLAYER_ENTITY_PROFILE, type EntityTraitProfile } from '@/content/entityProfiles';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { bloodColor, COLOR_FN, EMPTY_COLOR, packRGB, stoneColor, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -125,6 +127,7 @@ interface GalleryItem {
   name: string;
   meta: string;
   desc: string;
+  traits?: EntityTraitProfile;
   glyph: string;
   glyphCss: string;
   states: string[];
@@ -183,27 +186,6 @@ function installGalleryPlayerSpriteRuntime(ctx: Ctx, cramped: boolean): void {
 function resetGalleryKickCooldown(playerCtl: PlayerControl): void {
   Object.assign(playerCtl as object, { kickCooldownT: 0 });
 }
-
-const ENEMY_DESC: Partial<Record<EnemyKind, string>> = {
-  slime: 'Squash-and-stretch hopper. Splits its gaze around the room until alerted.',
-  acidslime: 'A slime in acid greens — its blood eats the floor.',
-  imp: 'Self-lit hover-flapper. Dives in arcs.',
-  golem: 'Heavy strider with a pulsing core. Leaves dents in the dark.',
-  wisp: 'A guttering diamond of light. The room follows it.',
-  mage: 'Hooded telekinetic — hands flare when it channels.',
-  bat: 'Sleeps on ceilings; wakes as a flutter of leather.',
-  spitter: 'Lobs corrosive gobs from range.',
-  bomber: 'Walks its payload to you, fuse first.',
-  eggs: 'A clutch. It is not dormant.',
-  weaver: 'Eight-legged lair guardian. Plants long IK feet, writes vine threads, and stumbles when stripped of growth.',
-  colossus: 'The Kiln Colossus. Water is the strategy.',
-  leviathan: 'The Sunken Leviathan. Water is its armor — take the water away.',
-};
-
-const ENEMY_KINDS: EnemyKind[] = [
-  'slime', 'imp', 'golem', 'acidslime', 'wisp', 'mage', 'bat', 'spitter', 'bomber', 'eggs', 'colossus',
-  'weaver', 'leviathan',
-];
 
 /**
  * Where each tactical-spell demo aims: 'foe' fires at the target dummy,
@@ -455,16 +437,21 @@ export class Gallery {
 
   private applyFilter(): void {
     const q = this.searchEl.value.trim().toLowerCase();
-    this.filtered = q
-      ? this.items.filter(
-          (i) =>
-            i.name.toLowerCase().includes(q) ||
-            i.meta.toLowerCase().includes(q) ||
-            i.section.toLowerCase().includes(q),
-        )
-      : this.items;
+    this.filtered = q ? this.items.filter((i) => this.itemSearchText(i).includes(q)) : this.items;
     this.renderList();
     this.select(0);
+  }
+
+  private itemSearchText(i: GalleryItem): string {
+    const traits = i.traits
+      ? [
+          ...i.traits.behaviors,
+          ...i.traits.emotions,
+          ...i.traits.strengths,
+          ...i.traits.weaknesses,
+        ]
+      : [];
+    return [i.name, i.meta, i.section, i.desc, ...i.states, ...(i.spells ?? []), ...traits].join(' ').toLowerCase();
   }
 
   private select(n: number): void {
@@ -764,6 +751,7 @@ export class Gallery {
       `<div class="bg-iname">${escapeHtml(it.name)}</div>` +
       `<div class="bg-imeta">${escapeHtml(it.meta)}</div>` +
       `<div class="bg-idesc">${escapeHtml(it.desc)}</div>` +
+      this.renderEntityTraits(it.traits) +
       (it.states.length > 1 ? `<div class="bg-ihead">STATES</div><div class="bg-chips">${chips}</div>` : '') +
       (it.spells
         ? `<div class="bg-ihead">TACTICAL SPELLS</div><div class="bg-chips bg-spellchips">${spellChips}</div>`
@@ -774,6 +762,22 @@ export class Gallery {
     for (const b of this.infoEl.querySelectorAll<HTMLButtonElement>('.bg-chip[data-sp]')) {
       b.addEventListener('click', () => this.setSpell(Number(b.dataset.sp)));
     }
+  }
+
+  private renderEntityTraits(traits: EntityTraitProfile | undefined): string {
+    if (!traits) return '';
+    const row = (label: string, values: string[]): string =>
+      `<section class="bg-trait"><div class="bg-traithead">${escapeHtml(label)}</div><ul>${values
+        .map((value) => `<li>${escapeHtml(value)}</li>`)
+        .join('')}</ul></section>`;
+    return (
+      '<div class="bg-traits">' +
+      row('BEHAVIORS', traits.behaviors) +
+      row('EMOTIONS', traits.emotions) +
+      row('STRENGTHS', traits.strengths) +
+      row('WEAKNESSES', traits.weaknesses) +
+      '</div>'
+    );
   }
 
   /* ===================== mechanism rigs ===================== */
@@ -1206,11 +1210,8 @@ export class Gallery {
       section: 'ENTITIES',
       name: 'The Alchemist',
       meta: `player · 9×17 · ${PLAYER_STATES.length} states`,
-      desc:
-        'The procedural wizard: stride-wheel boots, swaying robe, 4-segment spring hat, wand glow toward the aim. ' +
-        'He faces your cursor; CAST aims the wand straight at it. ' +
-        'TACTICAL SPELLS put him on a firing range — live casts against a target dummy or the practice fort, real cells and all. ' +
-        'FORCE PUSH (F) fires the real kick: a blast of air that bursts a patch of ash into flying motes (in play it blows enemies back, smashes small foes into walls, scatters critters, and bends vines).',
+      desc: PLAYER_ENTITY_PROFILE.description,
+      traits: PLAYER_ENTITY_PROFILE.traits,
       glyph: '@',
       glyphCss: '#c084fc',
       states: PLAYER_STATES,
@@ -1563,13 +1564,15 @@ export class Gallery {
 
     for (const kind of ENEMY_KINDS) {
       const extra = EXTRA[kind] ?? [];
+      const profile = ENEMY_ENTITY_PROFILES[kind];
       items.push({
         id: 'ent-' + kind,
         section: 'ENTITIES',
         name: kind.charAt(0).toUpperCase() + kind.slice(1),
         meta: `enemy · ${2 + extra.length} states`,
-        desc: (ENEMY_DESC[kind] ?? 'A cave dweller.') +
+        desc: profile.description +
           ' CALM creatures scan the room on a slow wander; ALERTED ones lock their gaze onto YOUR CURSOR over the stage.',
+        traits: profile.traits,
         glyph: 'E',
         glyphCss: '#f87171',
         states: ['CALM', 'ALERTED', ...extra.map((s) => s.label)],

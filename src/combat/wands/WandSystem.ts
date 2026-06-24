@@ -66,6 +66,13 @@ const WAYSTONE_MOD_BIAS = 0.75;
 
 /** Extra aim jitter for the stacked bolts of a dmgMul > 1 spark cast. */
 const STACK_JITTER = 0.06;
+/**
+ * God-mode HELD-fire cadence: a flat interval between auto-fired casts while the
+ * button is held — ~3 casts/sec at the 60Hz tick (no per-frame firehose, no
+ * recharge stall). A fresh CLICK bypasses this entirely (see fire()), so you can
+ * still fire as fast as you can click.
+ */
+const GOD_CAST_DELAY = 20;
 /** Flame card: frames of stream burst per cast / hard cap while spamming. */
 const FLAME_BURST_FRAMES = 4;
 const FLAME_BURST_CAP = 16;
@@ -128,6 +135,22 @@ function startingCollection(): CardId[] {
     collection.push(id);
   }
   return collection;
+}
+
+function shuffledCards(cards: readonly CardId[]): CardId[] {
+  const out = [...cards];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function takeUnused(pool: readonly CardId[], used: ReadonlySet<CardId>): CardId | null {
+  for (const card of pool) {
+    if (!used.has(card)) return card;
+  }
+  return null;
 }
 
 /**
@@ -219,7 +242,14 @@ export class WandSystem implements WandsApi {
     if (ctx.player.recharge > 0 || ctx.player.pullT > 0 || ctx.player.climbing) return;
     if (ctx.input.activeChargingBlackHole) return;
     const wand = this.wands[this._active];
-    if (wand.cooldown > 0) return;
+    // God mode: a wand never runs dry. A fresh CLICK (the press edge) fires
+    // instantly — fire as fast as you can click — while a HELD button is throttled
+    // to the quick GOD_CAST_DELAY interval set below, so shots don't pile up.
+    const godMode = ctx.state.debugGodMode === true;
+    if (godMode) wand.mana = wand.frame.manaMax;
+    const freshClick = ctx.player.firePressed === true;
+    ctx.player.firePressed = false;
+    if (wand.cooldown > 0 && !(godMode && freshClick)) return;
     const program = this.program(this._active);
     if (program.length === 0) {
       this.tryPickStrike(ctx);
@@ -245,12 +275,14 @@ export class WandSystem implements WandsApi {
       return;
     }
 
-    wand.mana -= group.manaCost;
+    if (!godMode) wand.mana -= group.manaCost;
     wand.castIndex++;
     const wrapped = wand.castIndex >= program.length;
     if (wrapped) wand.castIndex = 0;
     // Recharge stacks onto the cast delay when the cycle wraps to the top.
-    wand.cooldown = wand.frame.castDelay + (wrapped ? wand.frame.recharge : 0);
+    // God mode short-circuits to one quick flat interval (no recharge stall),
+    // so holding fire stays snappy without becoming a per-frame stream.
+    wand.cooldown = godMode ? GOD_CAST_DELAY : wand.frame.castDelay + (wrapped ? wand.frame.recharge : 0);
     wand.cooldownMax = wand.cooldown;
     // CAST RECOIL: the arm kicks back along the aim and the hat takes the
     // jolt through its spring — heavier groups kick harder.
@@ -357,20 +389,24 @@ export class WandSystem implements WandsApi {
     const action: CastAction = ctx.player.perks.might
       ? { ...actionIn, dmgMul: Math.min(4, actionIn.dmgMul * 1.25) }
       : actionIn;
+    // God mode: every shot flies dead on the aim — no wand/card spread jitter.
+    const godMode = ctx.state.debugGodMode === true;
     const sourceSpread = options.origin === 'trigger' && options.sourceSpread !== undefined
       ? options.sourceSpread
       : frame.spread;
-    const jitter = (): number => angle + (Math.random() * 2 - 1) * (sourceSpread + action.spreadAdd);
+    const jitter = (): number =>
+      godMode ? angle : angle + (Math.random() * 2 - 1) * (sourceSpread + action.spreadAdd);
     const targetPoint = (): { x: number; y: number } => options.target ?? ctx.input.mouse;
     const sp = ctx.params.spells;
     ctx.telemetry.count('card.cast.' + action.card);
+    ctx.events.emit('cardCast', { id: action.card, origin: options.origin, x, y });
 
     if (action.card === 'spark') {
       // 'heavy = more bolts' v1 (see class doc): one bolt, plus stacked
       // extras for dmgMul > 1 at a touch more spread.
       const count = Math.max(1, Math.round(action.dmgMul));
       for (let n = 0; n < count; n++) {
-        const a = jitter() + (n > 0 ? (Math.random() * 2 - 1) * STACK_JITTER : 0);
+        const a = jitter() + (n > 0 && !godMode ? (Math.random() * 2 - 1) * STACK_JITTER : 0);
         const v = sp.bolt.velocityForce! * action.speedMul;
         const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'bolt', life: PROJECTILE_LIFE.bolt, age: 0, charging: false, hostile: false };
         ctx.projectiles.push(p);
@@ -871,6 +907,43 @@ export class WandSystem implements WandsApi {
 
   grantReviewLoadout(): void {
     this.applyReviewLoadout();
+    this.ctx.events.emit('wandChanged');
+  }
+
+  debugShuffleLoadout(): void {
+    const frames = [WAND_FRAMES.brass, WAND_FRAMES.void] as const;
+    const projectilePool = shuffledCards(ALL_CARD_IDS.filter((id) => CARD_DEFS[id].kind === 'projectile'));
+    const fullPool = shuffledCards(ALL_CARD_IDS);
+    const used = new Set<CardId>();
+    for (let i = 0; i < this.wands.length; i++) {
+      const wand = this.wands[i];
+      const frame = frames[i];
+      const cards: Array<CardId | null> = [];
+      const opener = takeUnused(projectilePool, used) ?? takeUnused(fullPool, used);
+      if (opener) {
+        cards.push(opener);
+        used.add(opener);
+      }
+      while (cards.length < frame.capacity) {
+        const next = takeUnused(fullPool, used);
+        if (!next) break;
+        cards.push(next);
+        used.add(next);
+      }
+      while (cards.length < frame.capacity) cards.push(null);
+      wand.frame = frame;
+      wand.cards.length = 0;
+      wand.cards.push(...cards);
+      wand.mana = frame.manaMax;
+      wand.cooldown = 0;
+      wand.castIndex = 0;
+      delete wand.cooldownMax;
+      this.compiled[i as 0 | 1] = null;
+    }
+    this.collection.length = 0;
+    this.collection.push(...ALL_CARD_IDS.filter((id) => !used.has(id)));
+    this.infuserGranted = true;
+    this.ctx.events.emit('toast', { text: 'WAND CARDS RESHUFFLED' });
     this.ctx.events.emit('wandChanged');
   }
 

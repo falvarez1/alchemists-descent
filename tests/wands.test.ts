@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { compileWand } from '@/combat/wands/compiler';
 import { buildWandSentenceView, nextWandSentence } from '@/combat/wands/sentenceView';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, WandSystem } from '@/combat/wands/WandSystem';
@@ -9,6 +10,7 @@ import { EventBus } from '@/core/events';
 import type { CardId, CastAction, Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
+import { introControlHintForObjective } from '@/game/introObjectives';
 import { cardGrantBenchCue, contextualObjectiveText } from '@/ui/Hud';
 import { canOpenWandBench, cardMatchesBenchFilter, recipeHintsForCard, wandBenchUnavailableCue } from '@/ui/WandBench';
 
@@ -516,6 +518,8 @@ describe('HUD contextual objectives', () => {
     const afterKey = objectiveCtx({ portal: { x: 500, y: 100, open: false }, keyTaken: true });
 
     expect(contextualObjectiveText(beforeKey, 'anything')).toBe('FIND THE GOLDEN KEY');
+    expect(contextualObjectiveText(beforeKey, 'MOVE THROUGH THE CAVE')).toBe('MOVE THROUGH THE CAVE');
+    expect(contextualObjectiveText(beforeKey, 'REFUGE BENCH: SLOT HEAVY')).toBe('REFUGE BENCH: SLOT HEAVY');
     expect(contextualObjectiveText(afterKey, 'anything')).toBe('RETURN TO THE PORTAL');
   });
 
@@ -545,6 +549,29 @@ describe('HUD contextual objectives', () => {
 
     expect(cardGrantBenchCue(away)).toBe('BENCH IN REFUGE EAST ABOVE - 78 STEPS');
     expect(cardGrantBenchCue(near)).toBe('BENCH AVAILABLE IN REFUGE');
+  });
+});
+
+describe('HUD intro control hints', () => {
+  it('maps intro objectives to stage-specific control prompts', () => {
+    expect(introControlHintForObjective('MOVE THROUGH THE CAVE')?.map((part) => part.key)).toEqual([
+      'A / D',
+      'SPACE',
+      'S + move',
+    ]);
+    expect(introControlHintForObjective('WAND II: EXCAVATE ROCK OR SAND')?.map((part) => part.key)).toContain('2 / wheel');
+    expect(introControlHintForObjective('STARTER FLASK: USE THE WATER')?.map((part) => part.key)).toEqual([
+      'E',
+      'Q',
+      'X',
+      'RMB',
+    ]);
+    expect(introControlHintForObjective('SPELL LAB: SPARK THE COIL')?.map((part) => part.key)).toEqual([
+      '1',
+      'LMB',
+    ]);
+    expect(introControlHintForObjective('REFUGE BENCH: SLOT HEAVY')?.map((part) => part.key)).toContain('B');
+    expect(introControlHintForObjective('FIND THE GOLDEN KEY')).toBeNull();
   });
 });
 
@@ -645,6 +672,57 @@ describe('WandSystem runtime snapshots', () => {
     expect(after.cooldown).toBe(before.cooldown);
   });
 
+  it('god mode: fresh clicks fire instantly, a held button caps at the quick interval', () => {
+    const ctx = makeCastCtx();
+    ctx.state.debugGodMode = true;
+    const wands = new WandSystem(ctx);
+    wands.loadLoadout({
+      active: 0,
+      collection: ['spark'],
+      wands: [{ frameId: 'oak', cards: ['spark', null, null], mana: 90 }],
+    });
+
+    // A click fires and arms a short interval; mana never drains.
+    ctx.player.firePressed = true;
+    wands.fire(ctx);
+    const after = wands.snapshotRuntimeState().wands[0];
+    expect(after.cooldown).toBeGreaterThan(0);
+    // A real held-fire interval, still quicker than the wand's full normal
+    // castDelay+recharge cadence.
+    expect(after.cooldown).toBeLessThan(WAND_FRAMES.oak.castDelay + WAND_FRAMES.oak.recharge);
+    expect(after.mana).toBe(WAND_FRAMES.oak.manaMax);
+    let shots = ctx.projectiles.length;
+    expect(shots).toBeGreaterThan(0);
+
+    // HOLDING (no new press) during the cooldown is gated — no stacking.
+    wands.fire(ctx);
+    expect(ctx.projectiles.length).toBe(shots);
+    shots = ctx.projectiles.length;
+
+    // A FRESH CLICK bypasses the cooldown — as fast as you can click.
+    ctx.player.firePressed = true;
+    wands.fire(ctx);
+    expect(ctx.projectiles.length).toBeGreaterThan(shots);
+  });
+
+  it('removes shot spread in god mode — the bolt flies dead on the aim', () => {
+    const ctx = makeCastCtx();
+    ctx.state.debugGodMode = true;
+    ctx.player.aimAngle = 0.3;
+    const wands = new WandSystem(ctx);
+    // Brass normally jitters (spread 0.08); god mode must zero it out.
+    wands.loadLoadout({
+      active: 0,
+      collection: ['spark'],
+      wands: [{ frameId: 'brass', cards: ['spark', null, null, null, null], mana: 160 }],
+    });
+
+    wands.fire(ctx);
+
+    const p = ctx.projectiles[0];
+    expect(Math.atan2(p.vy, p.vx)).toBeCloseTo(0.3, 6);
+  });
+
   it('uses a zero-mana pick strike with downward pogo on dry fire', () => {
     const ctx = makeCastCtx();
     let eroded: { x: number; y: number; rad: number } | null = null;
@@ -715,6 +793,26 @@ describe('WandSystem metaprogression', () => {
     expect(wands.collection).not.toContain('spark');
     expect(wands.collection).not.toContain('dig');
   });
+
+  it('debug shuffle rebuilds review wands from the canonical card catalog', () => {
+    const ctx = {
+      events: new EventBus(),
+      telemetry: { count: () => undefined },
+      audio: { wandSwap: () => undefined },
+      state: { mode: 'play' },
+      player: {},
+    } as unknown as Ctx;
+    const wands = new WandSystem(ctx);
+
+    wands.debugShuffleLoadout();
+
+    expect(wands.wands.map((wand) => wand.frame.id)).toEqual(['brass', 'void']);
+    expect(wands.wands.every((wand) => wand.cards.some((id) => id !== null && CARD_DEFS[id].kind === 'projectile'))).toBe(true);
+    const slotted = wands.wands.flatMap((wand) => wand.cards).filter((id): id is CardId => id !== null);
+    expect(new Set(slotted).size).toBe(slotted.length);
+    expect(slotted.every((id) => ALL_CARD_IDS.includes(id))).toBe(true);
+    expect(wands.collection).toEqual(ALL_CARD_IDS.filter((id) => !slotted.includes(id)));
+  });
 });
 
 function action(card: CardId, overrides: Partial<CastAction> = {}): CastAction {
@@ -765,6 +863,10 @@ function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: num
       dead: false,
       aimAngle: 0,
       vx: 0,
+      vy: 0,
+      grounded: false,
+      hat: { vx: 0, vy: 0 },
+      robe: { vx: 0, vy: 0 },
       mana: 0,
       maxMana: 0,
     },

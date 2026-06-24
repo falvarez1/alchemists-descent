@@ -63,10 +63,15 @@ export interface PlayerState {
   grounded: boolean;
   inLiquid: boolean;
   dead: boolean;
+  /** Last damaging source to touch the player; copied into the death overlay. */
+  lastDamageSource?: string | null;
   invuln: number;
   spell: SpellId;
   cooldown: number;
   firing: boolean;
+  /** Set on the LMB press edge, consumed by the first cast of that click. Lets
+   *  god mode fire instantly per click while a HELD button stays interval-capped. */
+  firePressed?: boolean;
   // procedural animation state
   stridePhase: number;
   landTimer: number;
@@ -185,6 +190,15 @@ export const PLAYER_VERT_SLIP = 3;
  * ceiling snags — a ceiling that steps UP never blocked you in the first place.
  */
 export const PLAYER_CEIL_SLIP = 3;
+/**
+ * Airborne ceiling "duck": while levitating or jumping there is no floor under
+ * you, so following a ceiling that slopes DOWN in your travel direction relies
+ * entirely on this duck (the upward thrust fights the descent, and a free float
+ * carries you UP a rising ceiling with no equivalent help going down). The
+ * grounded PLAYER_CEIL_SLIP is kept tight to protect run feel; airborne gets a
+ * roomier duck so a descending ceiling reads as "ride it down", not a wall.
+ */
+export const PLAYER_AIR_CEIL_SLIP = 7;
 /** Crawl gauge (CRAWL.md rule zero): 9 in any direction — optional tier only. */
 export const PLAYER_CRAWL_H = 9;
 /**
@@ -313,6 +327,8 @@ export interface Enemy {
   swoop?: number;
   /** Wounded bat: frames of flutter-tumble (the wings failing). */
   tumble?: number;
+  /** Bat: frames of slime-gummed wings; it drops to the floor and cannot bite. */
+  slimed?: number;
   /** Builder-authored patrol waypoints: un-alerted walkers/hoppers loop
    *  these instead of free-wandering (generated levels never set this). */
   patrol?: Array<[number, number]>;
@@ -525,6 +541,8 @@ export interface Projectile {
   vortexRad?: number;
   /** Damage/radius multiplier applied at impact (wand 'heavy', perks). Default 1. */
   mul?: number;
+  /** Optional player-facing source label for hostile projectile deaths. */
+  source?: string;
 }
 
 export interface FlyingParticle {
@@ -542,6 +560,7 @@ export interface FlyingParticle {
   homing: boolean;
   value: number;
   hostileDmg: number;
+  hostileSource?: string | null;
   /** Pour/hose streams set this: the particle deposits its cell when it lands
    *  AND when its life expires (or it leaves the map), so siphoned material is
    *  conserved even when sprayed over open space. Default false. */
@@ -554,6 +573,7 @@ export interface ParticleOpts {
   homing?: boolean;
   value?: number;
   hostileDmg?: number;
+  hostileSource?: string;
   /** See FlyingParticle.deposit — conserve the carried cell on expiry. */
   deposit?: boolean;
 }
@@ -1187,7 +1207,7 @@ export interface ParticlesApi {
 }
 
 export interface ExplosionApi {
-  trigger(cx: number, cy: number, radius: number, options?: { enemyDamageMul?: number }): void;
+  trigger(cx: number, cy: number, radius: number, options?: { enemyDamageMul?: number; playerDamageSource?: string }): void;
 }
 
 export interface LightningApi {
@@ -1481,7 +1501,7 @@ export interface PlayerControlApi {
   releaseVine(ctx: Ctx): void;
   /** Clear private one-frame movement buffers and presentation state after run/level transitions. */
   resetTransientState(ctx: Ctx): void;
-  kill(): void;
+  kill(src?: string): void;
   respawn(): void;
   findSpawnPoint(): { x: number; y: number };
   update(ctx: Ctx): void;
@@ -1587,7 +1607,7 @@ export interface WorldGenApi {
   /**
    * Descent-mode generation into ctx.world (the caller swaps the level's World
    * in first): runs generateCaves for the level's biome with the given seed,
-   * then dresses the level — bedrock floor, sealed exit well, waystone braziers.
+   * then dresses the level — sealed bedrock floor, exit portal anchor, waystone braziers.
    */
   generateLevel(
     ctx: Ctx,
@@ -2109,6 +2129,8 @@ export interface WandsApi {
   resetLoadout(): void;
   /** QA/debug command: upgrade both wands and expose every card. */
   grantReviewLoadout(): void;
+  /** QA/debug play HUD: randomize review wands without opening the bench. */
+  debugShuffleLoadout(): void;
   /**
    * Wandwright progression (Sanctum shop): rebuild a wand around a better
    * frame. Slotted cards are kept, mana refills. False if the frame id is
@@ -2180,7 +2202,7 @@ export interface RegionGraph {
   labels: Int32Array;
   regions: Region[];
   edges: RegionEdge[];
-  /** Region ids along the BFS path spawn -> exit well. */
+  /** Region ids along the BFS path spawn -> exit portal anchor. */
   mainPath: number[];
   spawnRegion: number;
   exitRegion: number;
@@ -2196,7 +2218,7 @@ export interface LevelDef {
   biome: BiomeId;
   /** 1-based descent depth; scales enemy population. */
   depth: number;
-  /** Level reached by breaking this level's floor well, or null for the last floor. */
+  /** Level reached through this level's exit portal, or null for the last floor. */
   nextLevelId: string | null;
   /**
    * A branch level hangs OFF the descent spine: it is entered through a
@@ -2230,7 +2252,7 @@ export interface Waystone {
 }
 
 export interface LevelExitWell {
-  /** Center column of the well shaft. */
+  /** Center column of the sealed exit/portal anchor. */
   x: number;
   /** Top row of the seal plug. */
   sealY: number;
@@ -2464,8 +2486,8 @@ export interface LevelsApi {
   /** Generate D1 (or resume) and swap it into ctx. Idempotent. */
   startDescent(ctx: Ctx): void;
   /**
-   * Per-frame (play mode): well-fall detection -> level transition,
-   * waystone lighting checks, explored-mask stamping.
+   * Per-frame (play mode): explicit portal progression, waystone lighting checks,
+   * explored-mask stamping.
    */
   update(ctx: Ctx): void;
   /** Respawn anchor: last lit waystone in the current level, else level spawn. */

@@ -138,10 +138,10 @@ check(
   levCurve[9] < 0 && Math.abs(levCurve[9]) < 0.6,
   `vy[9]=${levCurve[9].toFixed(3)}`,
 );
-check('mid ramp ~frame 30 still building', levCurve[29] < -0.6 && levCurve[29] > -1.6, `vy[29]=${levCurve[29].toFixed(3)}`);
+check('mid ramp ~frame 30 still building under D1 pacing', levCurve[29] < -0.35 && levCurve[29] > -1.35, `vy[29]=${levCurve[29].toFixed(3)}`);
 check(
-  'settles to a comfy terminal (~3.3), NOT the -4.6 cap',
-  Math.abs(levCurve[79]) > 2.9 && Math.abs(levCurve[79]) < 3.7,
+  'settles to a comfy paced D1 terminal (~2.7), NOT the -4.6 cap',
+  Math.abs(levCurve[79]) > 2.4 && Math.abs(levCurve[79]) < 3.1,
   `vy[79]=${levCurve[79].toFixed(3)}`,
 );
 check('terminal climb is settled by frame 80', settled < 0.2, `|vy79-vy69|=${settled.toFixed(3)}`);
@@ -239,7 +239,7 @@ check('cosmetic recoil intact (recoilT + hat kick)', single.recoilT > 0 && singl
 
 const dbl = await fireOnce(false, ['double', 'spark', 'spark'], 100, 0);
 check('double spark kicks harder than single', Math.abs(dbl.vx) > Math.abs(single.vx) + 0.3, `dbl=${dbl.vx.toFixed(3)} vs single=${single.vx.toFixed(3)}`);
-check('double spark recoil in range (~1.9)', Math.abs(dbl.vx) > 1.5 && Math.abs(dbl.vx) < 2.5, `vx=${dbl.vx.toFixed(3)}`);
+check('double spark recoil in range (~1.5)', Math.abs(dbl.vx) > 1.45 && Math.abs(dbl.vx) < 2.5, `vx=${dbl.vx.toFixed(3)}`);
 
 const capped = await fireOnce(false, ['spark'], 100, 0, 1.0); // perMomentum=1 → way over cap
 check('recoil is capped at recoilMaxImpulse (4.0)', Math.abs(capped.vx) > 3.8 && Math.abs(capped.vx) < 4.2, `vx=${capped.vx.toFixed(3)}`);
@@ -255,7 +255,7 @@ check('rocket-jump: firing down airborne boosts you up (net vy < 0 despite gravi
 // make levitation skate sideways — flight uses its own horizontal control.
 const swift = await page.evaluate(() => {
   const ctx = window.__game.ctx;
-  // Ground run with Swift → max run ~2.6×1.5 = 3.9
+  // Ground run with Swift on D1 pacing -> ~2.6 x 1.5 x 0.90 = 3.5
   window.__feel.scene(true);
   window.__feel.run(2);
   const p = ctx.player;
@@ -266,7 +266,7 @@ const swift = await page.evaluate(() => {
   window.__feel.run(50);
   const groundVx = p.vx;
   ctx.input.keys.right = false;
-  // Levitating with Swift → horizontal stays decoupled (~2.6, NOT 3.9)
+  // Levitating with Swift on D1 pacing stays decoupled (~2.3, NOT 3.5)
   window.__feel.scene(false);
   window.__feel.run(12);
   const q = ctx.player;
@@ -283,8 +283,8 @@ const swift = await page.evaluate(() => {
   ctx.input.keys.right = false;
   return { groundVx, levVx };
 });
-check('Swift speeds the ground run (~3.9)', swift.groundVx > 3.5 && swift.groundVx < 4.2, `vx=${swift.groundVx.toFixed(2)}`);
-check('levitation horizontal is decoupled from Swift (~2.6, not 3.9)', swift.levVx > 2.3 && swift.levVx < 3.0, `vx=${swift.levVx.toFixed(2)}`);
+check('Swift speeds the D1 ground run (~3.5)', swift.groundVx > 3.25 && swift.groundVx < 3.75, `vx=${swift.groundVx.toFixed(2)}`);
+check('levitation horizontal is decoupled from Swift (~2.3, not 3.5)', swift.levVx > 2.1 && swift.levVx < 2.55, `vx=${swift.levVx.toFixed(2)}`);
 
 // =========================== AIR INERTIA / MOMENTUM ========================
 // A fast run must carry into a jump/levitate (no instant snap), and a glide
@@ -360,7 +360,7 @@ const inertia = await page.evaluate(() => {
   return { groundVx, airVxAfterJump, swiftGroundVx, levitVx, preReleaseVx, coastVx };
 });
 check('jumping out of a run keeps horizontal momentum', inertia.airVxAfterJump > inertia.groundVx * 0.8, JSON.stringify(inertia));
-check('swift sprint reaches ~3.9 on the ground', inertia.swiftGroundVx > 3.5, JSON.stringify(inertia));
+check('swift sprint reaches paced D1 speed on the ground', inertia.swiftGroundVx > 3.25, JSON.stringify(inertia));
 check('sprint momentum carries into levitation (no snap to 2.6)', inertia.levitVx > 3.0, JSON.stringify(inertia));
 check('levitating glide coasts when steering is released', inertia.coastVx > inertia.preReleaseVx * 0.6, JSON.stringify(inertia));
 

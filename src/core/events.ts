@@ -11,7 +11,7 @@ export interface EventMap {
   /** Gold total changed — HUD score readouts re-render. */
   scoreChanged: { score: number };
   /** Player hit 0 HP — UI preps the game-over text (overlay deferred to the ragdoll settle). */
-  playerDied: { depth: number; level: string; gold: number };
+  playerDied: { depth: number; level: string; gold: number; cause: string };
   /** The death ragdoll has settled (or timed out) — UI reveals the game-over overlay. */
   playerCorpseSettled: undefined;
   /** Player came back — UI hides the game-over overlay. */
@@ -59,6 +59,8 @@ export interface EventMap {
   worldInteractionObserved: { id: string; title: string; x: number; y: number };
   /** A spell card entered the collection — banner + bench refresh. */
   cardGranted: { id: string; name: string };
+  /** A compiled spell action actually fired from a wand or trigger payload. */
+  cardCast: { id: CardId; origin: 'wand' | 'trigger'; x: number; y: number };
   /** Gameplay asks presentation to show an unskippable choice of spell cards. */
   cardOfferRequested: {
     source: 'tome' | 'sanctum';
@@ -91,6 +93,8 @@ export interface EventMap {
   dryFire: undefined;
   /** Flask verb refused (empty pour/throw, siphon into a full flask). */
   flaskDry: undefined;
+  /** A flask verb moved real material between inventory, world, or player. */
+  flaskUsed: { verb: 'siphon' | 'pour' | 'throw' | 'drink'; material: number | null; amount: number };
   /**
    * Transitional bridge: raw live-world edits from dev tools can mark Builder
    * divergence without importing Builder into gameplay code.

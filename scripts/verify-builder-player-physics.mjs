@@ -44,6 +44,12 @@ const labels = await page.evaluate(() =>
   [...document.querySelectorAll('#bg-controls .bw-label span')].map((s) => s.textContent.trim()),
 );
 const expected = [
+  'D1 player speed',
+  'Player depth ramp',
+  'D1 vertical speed',
+  'Vertical depth ramp',
+  'D1 enemy speed',
+  'Enemy depth ramp',
   'Lift: base thrust',
   'Lift: ramp gain',
   'Lift: ramp frames',
@@ -59,7 +65,8 @@ const expected = [
 for (const e of expected) check(`row present: ${e}`, labels.includes(e), `have: ${labels.join(', ')}`);
 
 // Sliders write straight into ctx.params.player.
-const bind = await page.evaluate(() => {
+const bind = await page.evaluate(async () => {
+  const { PROGRESSION_PACING } = await import('/src/config/pacing.ts');
   const ctx = window.__game.ctx;
   const rowRange = (labelText) => {
     const span = [...document.querySelectorAll('#bg-controls .bw-label span')].find(
@@ -94,6 +101,16 @@ const bind = await page.evaluate(() => {
   out.slimeAfter = ctx.params.global.goreSlime;
   drive('Glowing Ooze (acid/toxic)', 2.5);
   out.oozeAfter = ctx.params.global.goreOoze;
+  out.pacingBefore = {
+    playerStart: PROGRESSION_PACING.playerStart,
+    enemyStart: PROGRESSION_PACING.enemyStart,
+  };
+  drive('D1 player speed', 0.58);
+  drive('D1 enemy speed', 0.4);
+  out.pacingAfter = {
+    playerStart: PROGRESSION_PACING.playerStart,
+    enemyStart: PROGRESSION_PACING.enemyStart,
+  };
   return out;
 });
 check('levitThrust0 slider mutates params.player', bind.thrustAfter === 0.5 && bind.thrustBefore !== 0.5, JSON.stringify(bind));
@@ -103,6 +120,25 @@ check('Overall Gore slider reaches 9.5 (0–10 range)', bind.goreAfter === 9.5, 
 check('Red Blood channel slider mutates params.global', bind.bloodAfter === 3.5, JSON.stringify(bind));
 check('Green Slime channel slider mutates params.global', bind.slimeAfter === 0, JSON.stringify(bind));
 check('Glowing Ooze channel slider mutates params.global', bind.oozeAfter === 2.5, JSON.stringify(bind));
+check('D1 player speed slider mutates progression pacing', bind.pacingAfter.playerStart === 0.58, JSON.stringify(bind));
+check('D1 enemy speed slider mutates progression pacing', bind.pacingAfter.enemyStart === 0.4, JSON.stringify(bind));
+
+const clickedPacingReset = await page.evaluate(() => {
+  const btn = [...document.querySelectorAll('#bg-controls .bw-actions button')].find(
+    (b) => b.textContent.trim() === 'RESET PACING',
+  );
+  if (!btn) return false;
+  btn.click();
+  return true;
+});
+check('RESET PACING button present', clickedPacingReset);
+await page.waitForTimeout(200);
+const afterPacingReset = await page.evaluate(async () => {
+  const { PROGRESSION_PACING } = await import('/src/config/pacing.ts');
+  return { playerStart: PROGRESSION_PACING.playerStart, enemyStart: PROGRESSION_PACING.enemyStart };
+});
+check('reset restores D1 player speed (0.74)', Math.abs(afterPacingReset.playerStart - 0.74) < 1e-6, JSON.stringify(afterPacingReset));
+check('reset restores D1 enemy speed (0.55)', Math.abs(afterPacingReset.enemyStart - 0.55) < 1e-6, JSON.stringify(afterPacingReset));
 
 // RESET PLAYER PHYSICS restores shipped defaults (invoke its real handler).
 const clickedReset = await page.evaluate(() => {

@@ -180,7 +180,7 @@ constants assume it — do not "unify" it without retuning the whole game.
 new moved epoch → harvester → electrical → projectiles → shockwave aging → material sweep →
 ice/vines pass) → playerCtl.update → flask.update → enemyCtl.update → rigidBodies.update →
 vineStrands.update → levels.update → pickups.update → mechanisms.update → critters.update →
-brewing.update → hints.update → wands.update → particles.update → lightning.update →
+brewing.update → hints.update → introProgression.update → wands.update → particles.update → lightning.update →
 compose pixels/light → HUD update (even frames, play mode) → minimap.update →
 renderer.render (bloom/shake transforms → composer.render) → digBeam decay →
 bloom/shake decay once per fixed frame`.

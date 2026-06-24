@@ -13,6 +13,7 @@ export function createModalFocusTrap(
 ): ModalFocusTrap {
   let active = false;
   let previousFocus: HTMLElement | null = null;
+  let redirectingFocus = false;
 
   const focusableControls = (): HTMLElement[] =>
     Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((el) => {
@@ -22,7 +23,16 @@ export function createModalFocusTrap(
 
   const focusInitial = (target: HTMLElement | null = null): void => {
     const preferred = target ?? options.initialFocus?.() ?? focusableControls()[0] ?? root;
-    preferred.focus({ preventScroll: true });
+    if (preferred === document.activeElement || redirectingFocus) return;
+    if (preferred === root && !root.hasAttribute('tabindex')) root.tabIndex = -1;
+    redirectingFocus = true;
+    try {
+      preferred.focus({ preventScroll: true });
+    } finally {
+      window.queueMicrotask(() => {
+        redirectingFocus = false;
+      });
+    }
   };
 
   const onDocumentFocusIn = (event: FocusEvent): void => {

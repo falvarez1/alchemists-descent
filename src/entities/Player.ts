@@ -7,9 +7,11 @@
 import { DEATH_SLOWMO_FRAMES, HEIGHT, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
-import type { Ctx, EnemyKind, PerkId, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
-import { PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
+import type { Ctx, EnemyKind, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
+import { PLAYER_AIR_CEIL_SLIP, PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
 import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
+import { playerMovementPace, playerVerticalPace } from '@/game/progressionPacing';
+import { PERK_IDS } from '@/content/perks';
 import { makePickup } from '@/core/pickupDefs';
 import { resetCombatTransients } from '@/core/runtimeState';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
@@ -77,19 +79,6 @@ const SWING_MAX_LEN = 150;
 const TELEPORT_SEARCH_RADIUS_SQ = TELEPORT_SEARCH_RADIUS * TELEPORT_SEARCH_RADIUS;
 const TELEPORT_MAX_VISITED = 60000;
 const TELEPORT_MAX_CANDIDATES = 384;
-const REVIEW_PERKS: PerkId[] = [
-  'might',
-  'vampirism',
-  'featherweight',
-  'manafont',
-  'swiftfoot',
-  'torchbearer',
-  'ironhide',
-  'flameward',
-  'toxinward',
-  'goldmagnet',
-];
-
 export function climbBrushesCell(t: number): boolean {
   return t === Cell.Snow || t === Cell.Ash || t === Cell.Moss || t === Cell.Fungus;
 }
@@ -124,7 +113,7 @@ export function grantFullReviewKit(player: PlayerState): void {
   player.status.stoneskin = Math.max(player.status.stoneskin, REVIEW_STATUS_FRAMES);
   player.status.swift = Math.max(player.status.swift, REVIEW_STATUS_FRAMES);
   player.status.torch = Math.max(player.status.torch, REVIEW_STATUS_FRAMES);
-  for (const perk of REVIEW_PERKS) player.perks[perk] = true;
+  for (const perk of PERK_IDS) player.perks[perk] = true;
 }
 
 /**
@@ -152,6 +141,8 @@ export function createPlayer(): PlayerState {
     grounded: false,
     inLiquid: false,
     dead: false,
+    firePressed: false,
+    lastDamageSource: null,
     invuln: 0,
     spell: 'bolt',
     cooldown: 0,
@@ -555,7 +546,10 @@ export class PlayerControl implements PlayerControlApi {
   private tryHorizontalGroundStep(ctx: Ctx, dir: -1 | 1, bodyH: number, stepUp: number, followGround: boolean): number | null {
     const player = ctx.player;
     const startY = player.y;
-    if (!ctx.physics.tryMoveEntity(player, dir, 0, PLAYER_HALF_W, bodyH, stepUp, PLAYER_CEIL_SLIP)) return null;
+    // Airborne (levitating/jumping) gets a roomier ceiling-duck so a ceiling that
+    // slopes DOWN in the travel direction can be followed instead of pinning you.
+    const ceilSlip = player.grounded ? PLAYER_CEIL_SLIP : PLAYER_AIR_CEIL_SLIP;
+    if (!ctx.physics.tryMoveEntity(player, dir, 0, PLAYER_HALF_W, bodyH, stepUp, ceilSlip)) return null;
 
     if (followGround && player.y >= startY && ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1)) {
       const unsupportedY = player.y;
@@ -579,8 +573,22 @@ export class PlayerControl implements PlayerControlApi {
   }
 
   private reduceIncomingDamage(amount: number, minimum = 0): number {
+    if (this.ctx.state?.debugGodMode) return 0;
     if (this.ctx.player.status.stoneskin > 0) amount *= 0.5;
     return Math.max(minimum, amount);
+  }
+
+  private noteDamageSource(source: string | undefined): string {
+    const cause = source && source.length > 0 ? source : 'unknown';
+    this.ctx.player.lastDamageSource = cause;
+    return cause;
+  }
+
+  private statusDamageSource(player: PlayerState): string {
+    if (player.status.electrified > 0) return player.status.wet > 0 ? 'wet-electrocution' : 'electrocution';
+    if (player.status.burning > 0) return player.status.oiled > 0 ? 'oiled-fire' : 'burning';
+    if (player.status.frozen > 0) return 'frostbolt';
+    return 'status';
   }
 
   /** Original: damagePlayer(amount, kx, ky) — lines 1565-1575. */
@@ -588,6 +596,14 @@ export class PlayerControl implements PlayerControlApi {
     const ctx = this.ctx;
     const player = ctx.player;
     if (player.dead || player.invuln > 0) return;
+    if (ctx.state.debugGodMode) {
+      this.noteDamageSource(src);
+      player.dead = false;
+      player.hp = player.maxHp;
+      player.invuln = Math.max(player.invuln, 15);
+      return;
+    }
+    const source = this.noteDamageSource(src);
     // Sanctum boon resistances by damage source
     if (src === 'explosion' && player.perks.ironhide) amount *= 0.4;
     if (src === 'fire' && player.perks.flameward) amount *= 0.4;
@@ -613,7 +629,7 @@ export class PlayerControl implements PlayerControlApi {
     if (amount >= 8) ctx.fx.hitstop = 3;
     // Blood spray — the Noita way
     ctx.particles.burst(player.x, player.y - 7, Math.min(16, 5 + amount * 0.4), Cell.Blood, bloodColor, 2.4);
-    if (player.hp <= 0) this.kill();
+    if (player.hp <= 0) this.kill(source);
   }
 
   /** Add a velocity impulse (cells/frame) to the player — the shared verb for
@@ -909,10 +925,17 @@ export class PlayerControl implements PlayerControlApi {
   }
 
   /** Original: killPlayer() — lines 1577-1587. */
-  kill(): void {
+  kill(src?: string): void {
     const ctx = this.ctx;
     const player = ctx.player;
     if (player.dead) return;
+    if (ctx.state.debugGodMode) {
+      player.dead = false;
+      player.hp = player.maxHp;
+      ctx.events.emit('playerDeathCleared');
+      return;
+    }
+    const source = src ?? player.lastDamageSource ?? this.noteDamageSource('unknown');
     this.releaseVine(ctx); // let go of any vine before ragdolling
     player.dead = true;
     player.hp = 0;
@@ -972,6 +995,7 @@ export class PlayerControl implements PlayerControlApi {
       depth: level?.depth ?? ctx.waves.num,
       level: level?.name ?? 'Arena',
       gold: ctx.state.score,
+      cause: source,
     });
   }
 
@@ -1046,6 +1070,7 @@ export class PlayerControl implements PlayerControlApi {
     player.levit = player.maxLevit;
     clearElementalStatus(player.status);
     player.dead = false;
+    player.lastDamageSource = null;
     player.invuln = 90;
     player.crawling = false; // arrivals are standing-safe
     player.crawlT = 0;
@@ -1248,9 +1273,10 @@ export class PlayerControl implements PlayerControlApi {
       );
       this.statusSlow = slowFactor;
       if (damage > 0) {
+        const source = this.noteDamageSource(this.statusDamageSource(player));
         player.hp -= this.reduceIncomingDamage(damage);
         if (player.hp <= 0) {
-          this.kill();
+          this.kill(source);
           return;
         }
       }
@@ -1374,11 +1400,14 @@ export class PlayerControl implements PlayerControlApi {
     // sideways far faster than it climbs. This is also the hook for future
     // levitation enhancement cards/spells.
     const lp = ctx.params.player;
+    const movePace = playerMovementPace(ctx);
+    const verticalPace = playerVerticalPace(ctx);
     const levitatingMove =
       this.levitFrames > 0 && !player.grounded && !player.inLiquid && !player.climbing;
     const speedK = levitatingMove
       ? lp.levitHorizControl
       : (player.status.swift > 0 ? 1.5 : 1) * (player.perks.swiftfoot ? 1.18 : 1);
+    const pacedSpeedK = speedK * movePace;
     // crouch-creep 0.38; crawl 0.32 — slow is the crawl's whole cost
     const stanceK = player.crawling ? 0.32 : crouching ? 0.38 : 1;
     // Cap the per-frame speed gain so a high top speed builds up over several
@@ -1387,14 +1416,15 @@ export class PlayerControl implements PlayerControlApi {
     // gentle levitation accel stay well under it and are unchanged.
     // wadeSlow (≤1) bogs both the accel and the top speed when slogging through
     // blood — a leg-deep wade trudges, a thin film barely registers.
-    const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * speedK * stanceK * wadeSlow, MOVE_ACCEL_CAP),
+    const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * pacedSpeedK * stanceK * wadeSlow, MOVE_ACCEL_CAP),
       // Cap the boosted top speed (Swift/God Mode) so it stays inside the
       // precision curve; crawl/crouch then scale down from the capped run.
-      maxRun = Math.min(2.6 * speedK, lp.maxRunCap) * stanceK * wadeSlow;
+      maxRun = Math.min(2.6 * pacedSpeedK, lp.maxRunCap) * stanceK * wadeSlow;
     // Soft-start: ease in from a standstill (a tap stays slow + precise), ramping
     // to full accel with speed. Applies in the air too, so a fresh airborne tap is
     // gentle while CARRIED speed (already near maxRun) still gets full control.
     const stepAccel = accel * (lp.moveSoftStart + (1 - lp.moveSoftStart) * Math.min(1, Math.abs(player.vx) / maxRun));
+    const airGlideSpeed = lp.airGlideSpeed * movePace;
     if (!player.climbing) {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
       // back DOWN — a fast run carried into a jump/levitate keeps its speed (you
@@ -1420,7 +1450,7 @@ export class PlayerControl implements PlayerControlApi {
         // Airborne / levitating: a fast run still GLIDES (carried momentum bleeds
         // slowly through airDrag), but a quick low-speed TAP stops fast so it's a
         // small nudge, not a 60-cell skate. The ±12 rail caps stacked recoil.
-        if (!keys.left && !keys.right && Math.abs(player.vx) < lp.airGlideSpeed) {
+        if (!keys.left && !keys.right && Math.abs(player.vx) < airGlideSpeed) {
           player.vx *= lp.airStopDecay;
           if (Math.abs(player.vx) < lp.groundStopSnap) player.vx = 0;
         } else {
@@ -1444,6 +1474,7 @@ export class PlayerControl implements PlayerControlApi {
       tpTouch = false,
       fungusBrush = false,
       sampledSplashColor: number | null = null;
+    const hazardBySource: Record<string, number> = { fire: 0, lava: 0, acid: 0, toxic: 0 };
     for (let dy = 0; dy < bodyH; dy += 2) {
       for (let dx = -4; dx <= 4; dx += 2) {
         const X = player.x + dx,
@@ -1458,10 +1489,26 @@ export class PlayerControl implements PlayerControlApi {
           }
           if (c === Cell.Water || c === Cell.Blood) waterOrBloodCount++;
         }
-        if (c === Cell.Fire) hazardDmg += 0.22 * pyro;
-        if (c === Cell.Lava) hazardDmg += 0.62 * pyro;
-        if (c === Cell.Acid) hazardDmg += 0.32 * toxi;
-        if (c === Cell.Toxic) hazardDmg += 0.2 * toxi;
+        if (c === Cell.Fire) {
+          const d = 0.22 * pyro;
+          hazardDmg += d;
+          hazardBySource.fire += d;
+        }
+        if (c === Cell.Lava) {
+          const d = 0.62 * pyro;
+          hazardDmg += d;
+          hazardBySource.lava += d;
+        }
+        if (c === Cell.Acid) {
+          const d = 0.32 * toxi;
+          hazardDmg += d;
+          hazardBySource.acid += d;
+        }
+        if (c === Cell.Toxic) {
+          const d = 0.2 * toxi;
+          hazardDmg += d;
+          hazardBySource.toxic += d;
+        }
         if (c === Cell.Healium) {
           healTouch += 0.14;
           // consumed as it heals
@@ -1528,13 +1575,19 @@ export class PlayerControl implements PlayerControlApi {
     }
     if (tpTouch && player.tpCool <= 0) this.randomTeleport(ctx);
     if (hazardDmg > 0) {
+      const source = this.noteDamageSource(
+        Object.entries(hazardBySource).reduce<[string, number]>(
+          (best, current) => current[1] > best[1] ? current : best,
+          ['unknown', 0],
+        )[0],
+      );
       player.hp -= this.reduceIncomingDamage(hazardDmg);
       if (ctx.state.frameCount % 14 === 0) {
         ctx.audio.hurt();
         ctx.particles.burst(player.x, player.y - 7, 4, Cell.Smoke, smokeColor, 1.1);
       }
       if (player.hp <= 0) {
-        this.kill();
+        this.kill(source);
         return;
       }
     }
@@ -1708,7 +1761,7 @@ export class PlayerControl implements PlayerControlApi {
         // coyote time: a press within 6 frames of walking off a ledge still gets the full jump
         const coyote = jumpPressed && this.framesSinceGrounded <= 6;
         if (player.grounded || player.inLiquid || coyote) {
-          player.vy = -3.7;
+          player.vy = -3.7 * verticalPace;
           player.grounded = false;
           player.stretchT = 6; // launch stretch (anti-squash)
           this.framesSinceGrounded = 99; // consumed — no double coyote jumps
@@ -1729,7 +1782,7 @@ export class PlayerControl implements PlayerControlApi {
           // also damps a fall you catch mid-air. Apply it EVERY frame (the
           // simulated curve depends on the drag hitting positive vy too).
           const t = Math.min(this.levitFrames / lp.levitRampFrames, 1);
-          const thrust = lp.levitThrust0 + lp.levitThrustGain * t * t * t;
+          const thrust = (lp.levitThrust0 + lp.levitThrustGain * t * t * t) * verticalPace;
           player.vy -= thrust;
           player.vy *= lp.levitDrag;
           // Levity potion (Wave C): levitation burns no levit while the timer runs
@@ -1826,7 +1879,7 @@ export class PlayerControl implements PlayerControlApi {
       // dive overrides the normal terminal velocity (5.0). The up-cap is a pure
       // safety net (levitDrag settles the climb well under it); keep it ≤ -3.7
       // so it never clips the jump impulse.
-      player.vy = clamp(player.vy, ctx.params.player.vyCapUp, player.diveT > 0 ? 6.4 : 5.0);
+      player.vy = clamp(player.vy, ctx.params.player.vyCapUp * verticalPace, player.diveT > 0 ? 6.4 : 5.0);
 
       // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling).
       // A step that also changes elevation spends its diagonal path length from
@@ -1885,7 +1938,7 @@ export class PlayerControl implements PlayerControlApi {
       if (player.grounded) {
         // jump buffer: a press made just before touchdown fires on the landing frame
         if (this.jumpBufferFrames > 0 && !player.crawling) {
-          player.vy = -3.7;
+          player.vy = -3.7 * verticalPace;
           player.grounded = false;
           player.fallPeak = 0; // this landing was consumed by the jump
           player.stretchT = 6;
@@ -2006,9 +2059,12 @@ export class PlayerControl implements PlayerControlApi {
       st.wet = 120;
       st.burning = 0;
     }
-    s.count -= sips;
-    if (s.count === 0) s.material = null;
+    if (!ctx.state.debugGodMode) {
+      s.count -= sips;
+      if (s.count === 0) s.material = null;
+    }
     if (ctx.state.frameCount % 10 === 0) ctx.audio.tone(300, 180, 0.08, 'sine', 0.12);
+    ctx.events.emit('flaskUsed', { verb: 'drink', material: m, amount: sips });
   }
 
   /**

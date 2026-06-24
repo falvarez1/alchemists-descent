@@ -2,8 +2,9 @@ import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
 import type { CardId, Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
-import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
+import { createDefaultStatus, rollCatchFire, sampleAndTickStatus } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
+import { enemyMovementPace } from '@/game/progressionPacing';
 import { blocksEntity, Cell, isSoftGrowth } from '@/sim/CellType';
 import {
   acidColor,
@@ -108,6 +109,7 @@ const SLAM_MASS_MAX = 26; // only SMALL foes (bat 15, eggs 20) gib on a wall; he
 const SLAM_MIN_SPEED = 3.5; // ...and only above a real impact speed (cells/frame), not a gentle bump
 const SLAM_DMG_BASE = 12; // base wall-slam damage...
 const SLAM_DMG_PER_SPEED = 2.4; // ...plus this per cell/frame of impact speed (small foes gib outright)
+const BAT_SLIME_GROUNDED_FRAMES = 7 * 60;
 
 /** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
 const STATUS_IMMUNE: Partial<
@@ -164,6 +166,7 @@ export function enemyStateLabel(e: Enemy): string {
   if (e.status.frozen > 0) return 'frozen';
   if (e.status.burning > 0) return 'panicking'; // on fire → flailing
   if (e.status.electrified > 0) return 'shocked';
+  if (e.kind === 'bat' && (e.slimed ?? 0) > 0) return 'slimed';
   if ((e.wary ?? 0) > 0) return 'wary'; // recoiling from a hazard edge
   if (e.kind === 'weaver' && (e.windup ?? 0) > 0) return 'poised';
   if (e.kind === 'weaver' && e.blink > 0) return 'weaving';
@@ -196,6 +199,35 @@ export class Enemies implements EnemyControlApi {
   dispose(): void {
     for (const d of this.disposers) d();
     this.disposers.length = 0;
+  }
+
+  private batTouchesSlime(e: Enemy, def: EnemyDef): boolean {
+    const world = this.ctx.world;
+    const cx = Math.floor(e.x);
+    const bottom = Math.floor(e.y);
+    for (let y = bottom - def.h - 1; y <= bottom + 1; y++) {
+      for (let x = cx - def.halfW - 2; x <= cx + def.halfW + 2; x++) {
+        if (!world.inBounds(x, y)) continue;
+        if (world.types[world.idx(x, y)] === Cell.Slime) return true;
+      }
+    }
+    return false;
+  }
+
+  private gumBatWingsWithSlime(e: Enemy, def: EnemyDef): void {
+    if (e.kind !== 'bat' || !this.batTouchesSlime(e, def)) return;
+    const wasSlimed = (e.slimed ?? 0) > 0;
+    e.slimed = BAT_SLIME_GROUNDED_FRAMES;
+    e.sleeping = false;
+    e.windup = 0;
+    e.swoop = 0;
+    if (!wasSlimed) {
+      e.tumble = Math.max(e.tumble ?? 0, 12);
+      e.vx *= 0.45;
+      e.vy = Math.max(e.vy, 0.7);
+      this.ctx.particles.burst(e.x, e.y - def.h * 0.6, 10, Cell.Slime, slimeColor, 1.4, { grav: 0.08 });
+      this.ctx.audio.squelch();
+    }
   }
 
   spawn(kind: EnemyKind, x: number, y: number): void {
@@ -311,8 +343,9 @@ export class Enemies implements EnemyControlApi {
       const dmg = cell === Cell.Lava ? 1.6 : cell === Cell.Acid ? 0.9 : 0.7;
       this.damage(e, dmg, (Math.random() - 0.5) * 0.6, -0.3);
       if (cell === Cell.Lava || cell === Cell.Fire) {
-        const imm = STATUS_IMMUNE[e.kind];
-        if (!imm?.burning) e.status.burning = Math.max(e.status.burning, 90);
+        // Same percentage-based catch as passive exposure: a single lava splash
+        // is much likelier to ignite than a fire splash; a stream re-rolls each hit.
+        rollCatchFire(e.status, cell === Cell.Fire ? 1 : 0, cell === Cell.Lava ? 1 : 0, STATUS_IMMUNE[e.kind]?.burning === true);
       }
       return true;
     }
@@ -535,7 +568,7 @@ export class Enemies implements EnemyControlApi {
     const def = this.defs[e.kind];
     // Bombers go out the only way they know how
     if (e.kind === 'bomber') {
-      ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(Math.random() * 3));
+      ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(Math.random() * 3), { playerDamageSource: 'bomber' });
       this.dropBounty(e, def);
       this.maybeDropPotion(e);
       if (ctx.player.perks.vampirism && !ctx.player.dead) {
@@ -576,7 +609,7 @@ export class Enemies implements EnemyControlApi {
     }
     // The Kiln Colossus: the run ends here, loudly.
     if (e.kind === 'colossus') {
-      ctx.explosions.trigger(e.x, e.y - 10, 28);
+      ctx.explosions.trigger(e.x, e.y - 10, 28, { playerDamageSource: 'colossus-death' });
       ctx.particles.burst(e.x, e.y - 12, this.goreCount(e, 40, Cell.Stone), Cell.Stone, stoneColor, 4.5);
       ctx.particles.burst(e.x, e.y - 12, 24, null, () => packRGB(255, 170, 40), 3.8, {
         glow: 2.6,
@@ -739,6 +772,7 @@ export class Enemies implements EnemyControlApi {
       const spd = 3.6 + Math.random() * 0.8;
       ctx.particles.spawn(c.x, c.y, Math.cos(aim) * spd, Math.sin(aim) * spd, t, color, 170, {
         hostileDmg: 6,
+        hostileSource: 'powder-mage-debris',
         glow: 0.6,
         grav: 0.015,
       });
@@ -783,6 +817,7 @@ export class Enemies implements EnemyControlApi {
       const spd = 3.2 + Math.random() * 0.9;
       ctx.particles.spawn(c.x, c.y, Math.cos(aim) * spd, Math.sin(aim) * spd - 0.4, Cell.Water, color, 170, {
         hostileDmg: 5,
+        hostileSource: 'leviathan-water',
         glow: 0.5,
         grav: 0.03,
       });
@@ -1022,7 +1057,7 @@ export class Enemies implements EnemyControlApi {
     const dx = ctx.player.x - x;
     const dy = ctx.player.y - 8 - y;
     if (!ctx.player.dead && Math.abs(dx) < 15 && Math.abs(dy) < 18) {
-      ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(ctx.player.x - e.x || 1) * 4.0, -2.2);
+      ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(ctx.player.x - e.x || 1) * 4.0, -2.2, 'weaver-needle');
       ctx.particles.burst(ctx.player.x, ctx.player.y - 8, 7, Cell.Blood, bloodColor, 1.4);
     }
   }
@@ -1737,10 +1772,12 @@ export class Enemies implements EnemyControlApi {
       if ((e.webPulse ?? 0) > 0) e.webPulse = (e.webPulse ?? 0) - 1;
       if ((e.weaverFeedT ?? 0) > 0) e.weaverFeedT = (e.weaverFeedT ?? 0) - 1;
       if ((e.weaverCrest ?? 0) > 0) e.weaverCrest = (e.weaverCrest ?? 0) - 1;
+      if ((e.slimed ?? 0) > 0 && !debugEnemyAttacksSuppressed) e.slimed = (e.slimed ?? 0) - 1;
       e.timer++;
       if (e.attackCd > 0 && !debugEnemyAttacksSuppressed) e.attackCd--;
       this.enemyEnvironmentDamage(e, i);
       if (enemies[i] !== e) continue; // died from environment
+      this.gumBatWingsWithSlime(e, def);
 
       // Sim-sampled statuses (DESIGN pillar 5/9): every 2nd frame the cells
       // touching the body ARE the status — damage lands straight on hp (no
@@ -1881,6 +1918,7 @@ export class Enemies implements EnemyControlApi {
             (e.kind === 'acidslime' ? 10 : 12) * (e.dmgK ?? 1),
             Math.sign(pdx) * -3.6,
             -2.8,
+            e.kind === 'acidslime' ? 'acidslime-bite' : 'slime-bite',
           );
           e.attackCd = 45;
         }
@@ -1905,8 +1943,9 @@ export class Enemies implements EnemyControlApi {
           continue;
         }
       } else if (e.kind === 'bat') {
+        const wingsSlimed = (e.slimed ?? 0) > 0;
         // Roosting (Wave F): hangs dormant from the ceiling until disturbed
-        if (e.sleeping) {
+        if (e.sleeping && !wingsSlimed) {
           e.vx = 0;
           e.vy = 0;
           if (targetAlive && pDist < 70) {
@@ -1916,11 +1955,12 @@ export class Enemies implements EnemyControlApi {
           }
           continue;
         }
+        if (wingsSlimed) e.sleeping = false;
         // Erratic flying swarmer: darts at the wizard, contact bites.
         // Wave F predation: a moth nearby is easier prey than the wizard.
         e.bobPhase += 0.22;
         let hunting = false;
-        if (!targetAlive || pDist > 120) {
+        if (!wingsSlimed && (!targetAlive || pDist > 120)) {
           let prey = null as Critter | null;
           const critters = ctx.critters.list;
           for (let ci2 = 0; ci2 < critters.length; ci2++) {
@@ -1949,8 +1989,17 @@ export class Enemies implements EnemyControlApi {
         }
         // Wounded wings fail in bursts (Rain World body language): a
         // flutter-tumble that sinks and scrambles before the bat recovers.
-        if (e.hp / e.maxHp < 0.4 && !e.tumble && Math.random() < 0.012) e.tumble = 14;
-        if (e.tumble) {
+        if (!wingsSlimed && e.hp / e.maxHp < 0.4 && !e.tumble && Math.random() < 0.012) e.tumble = 14;
+        if (wingsSlimed) {
+          e.windup = 0;
+          e.swoop = 0;
+          e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+          e.vy += 0.34;
+          e.vx *= e.grounded ? 0.78 : 0.94;
+          e.vx += (Math.random() - 0.5) * (e.grounded ? 0.18 : 0.1);
+          if (e.grounded && e.timer % 13 === 0) e.vy = -0.55 - Math.random() * 0.2;
+          if ((e.tumble ?? 0) > 0 && !debugEnemyAttacksSuppressed) e.tumble = (e.tumble ?? 0) - 1;
+        } else if (e.tumble) {
           e.tumble--;
           e.vx += (Math.random() - 0.5) * 0.5;
           e.vy += 0.18;
@@ -1976,17 +2025,17 @@ export class Enemies implements EnemyControlApi {
           e.vy += (Math.random() - 0.5) * 0.1;
         }
         if (e.swoop && !debugEnemyAttacksSuppressed) e.swoop--;
-        e.vy += Math.sin(e.bobPhase) * 0.08;
-        // a committed dart briefly outruns the normal flight cap
-        const batMax = e.swoop ? 2.6 : 1.7;
+        e.vy += Math.sin(e.bobPhase) * (wingsSlimed ? 0.02 : 0.08);
+        // a committed dart briefly outruns the normal flight cap; slimed wings only twitch
+        const batMax = wingsSlimed ? 1.0 : e.swoop ? 2.6 : 1.7;
         e.vx = clamp(e.vx, -batMax, batMax);
-        e.vy = clamp(e.vy, -batMax, batMax);
-        if (!ctx.physics.entityFree(e.x, e.y, def.halfW, def.h)) {
+        e.vy = clamp(e.vy, wingsSlimed ? -0.85 : -batMax, wingsSlimed ? 2.0 : batMax);
+        if (!wingsSlimed && !ctx.physics.entityFree(e.x, e.y, def.halfW, def.h)) {
           e.y -= 1;
           e.vy = -0.6;
         }
-        if (canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 8 && Math.abs(pdy) < 12) {
-          ctx.playerCtl.damage(6 * (e.dmgK ?? 1), Math.sign(pdx) * -2.2, -1.6);
+        if (!wingsSlimed && canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 8 && Math.abs(pdy) < 12) {
+          ctx.playerCtl.damage(6 * (e.dmgK ?? 1), Math.sign(pdx) * -2.2, -1.6, 'bat-bite');
           e.attackCd = 50;
           // dart away after the bite
           e.vx = -Math.sign(pdx) * 1.6;
@@ -2011,6 +2060,7 @@ export class Enemies implements EnemyControlApi {
             age: 0,
             charging: false,
             hostile: true,
+            source: 'acidglob',
           });
           ctx.audio.flame();
           e.recoil = 14;
@@ -2422,7 +2472,7 @@ export class Enemies implements EnemyControlApi {
               // Point-blank contact bite: instant (no telegraph this close) and it
               // claims the cooldown, so the needle windup can't also fire this frame.
               // Allowed mid-climb — it can still bite prey it has clung up beside.
-              ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx || 1) * -3.0, -2.0);
+              ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx || 1) * -3.0, -2.0, 'weaver-bite');
               e.attackCd = 80;
             } else if (!climbing && pDist < 92 && Math.abs(pdy) < 62) {
               // Rooted telegraphs need footing — never start one mid-climb (it would
@@ -2515,6 +2565,7 @@ export class Enemies implements EnemyControlApi {
             age: 0,
             charging: false,
             hostile: true,
+            source: 'hostile-fireball',
           });
           ctx.audio.zap();
           e.attackCd = 130 + Math.floor(Math.random() * 70);
@@ -2555,6 +2606,7 @@ export class Enemies implements EnemyControlApi {
             age: 0,
             charging: false,
             hostile: true,
+            source: 'frostbolt',
           });
           ctx.audio.tone(820, 1300, 0.12, 'sine', 0.09);
           e.attackCd = 140 + Math.floor(Math.random() * 60);
@@ -2702,7 +2754,7 @@ export class Enemies implements EnemyControlApi {
           if (Math.abs(pdx) < 32 && Math.abs(pdy) < 32) {
             // GROUND SLAM: a real explosion at the fist — far enough out that
             // the blast radius (r*1.5) cannot reach the colossus's own body
-            ctx.explosions.trigger(e.x + Math.sign(pdx) * 18, e.y - 2, 11);
+            ctx.explosions.trigger(e.x + Math.sign(pdx) * 18, e.y - 2, 11, { playerDamageSource: 'colossus-slam' });
             ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.03, 0.06);
             e.attackCd = 150 + Math.floor(Math.random() * 40);
           } else if (Math.abs(pdx) < 300) {
@@ -2718,6 +2770,7 @@ export class Enemies implements EnemyControlApi {
                 age: 0,
                 charging: false,
                 hostile: true,
+                source: 'colossus-fireball',
               });
             }
             ctx.audio.tone(90, 220, 0.4, 'sawtooth', 0.16);
@@ -2841,7 +2894,7 @@ export class Enemies implements EnemyControlApi {
           if (!sub) e.vy += 0.12; // a breaching arc falls back home
           if (canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 12 && Math.abs(pdy) < 16) {
             // THE BITE
-            ctx.playerCtl.damage(16 * (e.dmgK ?? 1), Math.sign(pdx) * -4.2, -2.8);
+            ctx.playerCtl.damage(16 * (e.dmgK ?? 1), Math.sign(pdx) * -4.2, -2.8, 'leviathan-bite');
             e.attackCd = 140;
             e.swoop = 0;
           } else if (e.swoop === 0) {
@@ -2872,7 +2925,7 @@ export class Enemies implements EnemyControlApi {
           Math.abs(pdx) < 11 &&
           Math.abs(pdy) < 14
         ) {
-          ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * -3.0, -2.0);
+          ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * -3.0, -2.0, 'leviathan-graze');
           e.attackCd = Math.max(e.attackCd, 120);
         }
       } else if (e.kind === 'golem') {
@@ -2911,15 +2964,30 @@ export class Enemies implements EnemyControlApi {
           }
           if (ctx.state.frameCount % 7 === 0)
             ctx.particles.burst(e.x, e.y + 2, 1, Cell.Smoke, smokeColor, 0.5);
-          // cut thrust once level with the wizard or back on solid ground
-          if (targetAlive && player.y > e.y - 12) e.jetFuel = Math.min(e.jetFuel, 6);
+          // Cut thrust once level with the wizard, but ONLY with ground under us
+          // to land on — still out over a gap, keep burning so we actually clear
+          // it instead of stalling at his height and dropping straight in.
+          const landingBelow = !ctx.physics.entityFree(e.x, e.y + 4, def.halfW, 4);
+          if (targetAlive && player.y > e.y - 12 && landingBelow) e.jetFuel = Math.min(e.jetFuel, 6);
           if (e.grounded && e.vy >= 0) e.jetFuel = 0;
         } else if (e.jetCd === 0 && targetAlive) {
-          const needLift = player.y < e.y - 28 && Math.abs(pdx) < 230; // wizard is up on a ledge
+          const dir = Math.sign(pdx) || 1;
+          // Wizard perched on a ledge above us (lower bar than before so a normal
+          // platform — not just a sheer climb — pulls the golem up after you).
+          const perchedAbove = player.y < e.y - 14 && Math.abs(pdx) < 260;
+          // ...or an open gap/pit between us and the wizard: the way ahead is clear
+          // at body height but the floor falls away there, so we can't walk across.
+          const gapAhead =
+            e.grounded &&
+            Math.abs(pdx) > 10 &&
+            Math.abs(pdx) < 260 &&
+            player.y <= e.y + 28 &&
+            ctx.physics.entityFree(e.x + dir * (def.halfW + 2), e.y, def.halfW, def.h) &&
+            ctx.physics.entityFree(e.x + dir * (def.halfW + 3), e.y + 5, def.halfW, 5);
           const fallingHard = !e.grounded && e.vy > 2.3; // tumbling into a pit
-          if (needLift || fallingHard) {
+          if (perchedAbove || gapAhead || fallingHard) {
             e.jetFuel = 95 + Math.floor(Math.random() * 50);
-            e.jetCd = 280;
+            e.jetCd = 190;
             ctx.audio.tone(110 + Math.random() * 30, 260, 0.35, 'sawtooth', 0.11);
           }
         }
@@ -3007,7 +3075,7 @@ export class Enemies implements EnemyControlApi {
               Cell.Stone,
               stoneColor(),
               200,
-              { hostileDmg: 9 },
+              { hostileDmg: 9, hostileSource: 'golem-rock' },
             );
           }
           ctx.audio.boom(4);
@@ -3015,7 +3083,7 @@ export class Enemies implements EnemyControlApi {
         }
         if (canAttackTarget && e.attackCd < 200 && Math.abs(pdx) < 15 && Math.abs(pdy) < 22) {
           // dmgK so depth + difficulty scale this slam like every other attack.
-          ctx.playerCtl.damage(20 * (e.dmgK ?? 1), Math.sign(pdx) * -5.0, -3.6);
+          ctx.playerCtl.damage(20 * (e.dmgK ?? 1), Math.sign(pdx) * -5.0, -3.6, 'golem-slam');
           e.attackCd = 220;
         }
       }
@@ -3029,7 +3097,7 @@ export class Enemies implements EnemyControlApi {
         e.vx = e.dodgeVX ?? e.vx;
         // Fliers sustain the vertical jink (they steer freely); grounded foes get
         // a single upward HOP (then gravity arcs them back down over the threat).
-        const flier = e.kind === 'imp' || e.kind === 'wisp' || e.kind === 'bat';
+        const flier = e.kind === 'imp' || e.kind === 'wisp' || (e.kind === 'bat' && (e.slimed ?? 0) <= 0);
         if (flier) {
           e.vy = e.dodgeVY ?? e.vy;
         } else if (e.dodgeVY) {
@@ -3059,10 +3127,10 @@ export class Enemies implements EnemyControlApi {
         e.fy = 0;
       }
 
-      // Integrate movement (slimes/golems/mages collide; imps/wisps/bats drift).
-      // Difficulty scales the step distance = effective speed (level 3 = ×1).
-      const spd = difficultyMods(ctx.state).enemySpeed;
-      if (e.kind === 'imp' || e.kind === 'wisp' || e.kind === 'bat') {
+      // Integrate movement (grounded foes collide; imps/wisps and airborne bats drift).
+      // Difficulty and descent pacing scale the step distance = effective speed.
+      const spd = difficultyMods(ctx.state).enemySpeed * enemyMovementPace(ctx);
+      if (e.kind === 'imp' || e.kind === 'wisp' || (e.kind === 'bat' && (e.slimed ?? 0) <= 0)) {
         // Drift via sub-cell accumulators so e.x / e.y stay integers (grid indices)
         e.fx += e.vx * spd;
         e.fy += e.vy * spd;

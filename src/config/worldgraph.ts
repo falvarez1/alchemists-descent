@@ -1,11 +1,11 @@
 import type { EnemyKind, LevelDef } from '@/core/types';
 
 /**
- * The descent: a vertical stack of persistent levels connected by sealed
- * wells in each floor — plus the first BRANCH: the Gilded Vault, a secret
+ * The descent: a vertical stack of persistent levels connected by explicit
+ * exit portals — plus the first BRANCH: the Gilded Vault, a secret
  * level off the spine. Its hidden arch generates in one mid-descent host
  * (d2-d4, picked per expedition seed — vaultHostId) and its own arch leads
- * back to that host at the same depth. No well reaches it; no well leaves it.
+ * back to that host at the same depth. No descent portal reaches it; no portal leaves it.
  */
 export const LEVELS: Record<string, LevelDef> = {
   d1: { id: 'd1', name: 'EARTHEN HOLLOWS', biome: 'earthen', depth: 1, nextLevelId: 'd2' },

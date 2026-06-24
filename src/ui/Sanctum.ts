@@ -6,6 +6,7 @@ import {
 } from '@/combat/wands/rewardPools';
 import type { CardId, Ctx, PerkId, SanctumApi } from '@/core/types';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
+import { SANCTUM_PERK_DEFS } from '@/content/perks';
 
 /**
  * The Sanctum (upgrade-port meta layer): a paused rest stop between depths.
@@ -33,15 +34,13 @@ const PERKS: SanctumPerk[] = [
       ctx.player.hp = ctx.player.maxHp;
     },
   },
-  { id: 'manafont', flag: 'manafont', name: 'Mana Font', desc: 'Wand mana regenerates 60% faster', apply: () => {} },
-  { id: 'featherweight', flag: 'featherweight', name: 'Featherweight', desc: 'Levitation drains 45% slower', apply: () => {} },
-  { id: 'ironhide', flag: 'ironhide', name: 'Blast Shield', desc: 'Explosions deal 60% less to you', apply: () => {} },
-  { id: 'flameward', flag: 'flameward', name: 'Pyro Skin', desc: 'Fire and lava deal 60% less; you cannot catch fire', apply: () => {} },
-  { id: 'toxinward', flag: 'toxinward', name: 'Toxicology', desc: 'Acid and toxin deal 75% less', apply: () => {} },
-  { id: 'vampirism', flag: 'vampirism', name: 'Vampirism', desc: 'Kills restore 2 HP', apply: () => {} },
-  { id: 'goldmagnet', flag: 'goldmagnet', name: 'Gold Sense', desc: 'Your gold pull reaches much further', apply: () => {} },
-  { id: 'swiftfoot', flag: 'swiftfoot', name: 'Swift Soles', desc: 'Move 18% faster', apply: () => {} },
-  { id: 'might', flag: 'might', name: 'Power Surge', desc: 'All spell damage +25%', apply: () => {} },
+  ...SANCTUM_PERK_DEFS.map((perk) => ({
+    id: perk.id,
+    flag: perk.id,
+    name: perk.sanctumName,
+    desc: perk.desc,
+    apply: () => undefined,
+  })),
 ];
 
 function el(id: string): HTMLElement {

@@ -92,7 +92,7 @@ export class Lightning implements LightningApi {
             if (e.hp <= 0) this.enemyIndex.syncLive(ctx.enemies);
           }
         }
-        ctx.explosions.trigger(body.x, body.y, 3);
+        ctx.explosions.trigger(body.x, body.y, 3, { playerDamageSource: 'lightning' });
         struck = true;
         break;
       }
@@ -100,7 +100,7 @@ export class Lightning implements LightningApi {
       const c = world.types[world.idx(gx, gy)];
       if (c !== Cell.Empty && !isGas(c) && c !== Cell.Fire) {
         world.setChargeAt(world.idx(gx, gy), chargeDeposit(ctx, 20));
-        ctx.explosions.trigger(x, y, 4);
+        ctx.explosions.trigger(x, y, 4, { playerDamageSource: 'lightning' });
         this.enemyIndex.syncLive(ctx.enemies);
         struck = true;
       }

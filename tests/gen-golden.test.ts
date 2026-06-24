@@ -55,11 +55,13 @@ function fnv1a(bytes: Uint8Array): string {
 // the dressed walk surface (world/surfaceDress.plantGroundCover). Placement is
 // hash2-deterministic, so the cell TYPES these hashes lock shift on every moss-crown
 // ledge. (v25 was noiseDensity 0.54->0.66 + the solidifyRock close.)
+// Re-recorded for GEN_VERSION 30: the open strip below the caves is now packed to
+// solid rock (terrain runs down to the bedrock), so the cell types shift on every seed.
 const GOLDEN: Record<number, { hash: string; spawn: { x: number; y: number } }> = {
-  1: { hash: 'dba1ca07', spawn: { x: 800, y: 550 } },
-  5: { hash: '7e732aab', spawn: { x: 800, y: 413 } },
-  1337: { hash: 'c3c7a180', spawn: { x: 800, y: 396 } },
-  123456789: { hash: '739afd34', spawn: { x: 800, y: 542 } },
+  1: { hash: 'b72c4707', spawn: { x: 800, y: 550 } },
+  5: { hash: '59fda7ab', spawn: { x: 800, y: 413 } },
+  1337: { hash: 'e94afc80', spawn: { x: 800, y: 396 } },
+  123456789: { hash: '991e5834', spawn: { x: 800, y: 542 } },
 };
 
 const RECIPE_FIELDS: Array<keyof VirtualBiomeDressingRecipe> = [

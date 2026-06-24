@@ -10,7 +10,7 @@ import { chargeDeposit } from '@/sim/electrical';
 export class Explosions implements ExplosionApi {
   constructor(private ctx: Ctx) {}
 
-  trigger(cx: number, cy: number, radius: number, options: { enemyDamageMul?: number } = {}): void {
+  trigger(cx: number, cy: number, radius: number, options: { enemyDamageMul?: number; playerDamageSource?: string } = {}): void {
     const ctx = this.ctx;
     const world = ctx.world;
     cx = Math.floor(cx);
@@ -173,7 +173,7 @@ export class Explosions implements ExplosionApi {
       const d = Math.sqrt(dx * dx + dy * dy);
       if (d < radius * 1.5) {
         const dmg = Math.min(42, Math.max(3, (1 - d / (radius * 1.5)) * radius * 2.0));
-        ctx.playerCtl.damage(dmg, (dx / (d || 1)) * 2.4, -1.8, 'explosion');
+        ctx.playerCtl.damage(dmg, (dx / (d || 1)) * 2.4, -1.8, options.playerDamageSource ?? 'explosion');
       }
       // The blast wave billows the wizard's cloth (reaches past the damage radius).
       const hat = ctx.player.hat, robe = ctx.player.robe;

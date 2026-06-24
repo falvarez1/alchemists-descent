@@ -110,3 +110,61 @@ describe('electrified shock', () => {
     expect(eff.damage).toBe(0);
   });
 });
+
+describe('catch fire (percentage-based)', () => {
+  function fillBox(world: World, cell: number, cx: number, cy: number, halfW: number, h: number): void {
+    for (let dy = 0; dy < h; dy++) for (let dx = -halfW; dx <= halfW; dx++) world.types[world.idx(cx + dx, cy - dy)] = cell;
+  }
+  function plainCtx(world: World): Ctx {
+    return {
+      world,
+      params: createGameParams(),
+      particles: { spawn: () => {} },
+      audio: { zap: () => {} },
+      lightning: { spark: () => {} },
+      state: { frameCount: 0 },
+    } as unknown as Ctx;
+  }
+
+  it('ignites a body engulfed in fire (hot enough → certain)', () => {
+    const world = new World(40, 40);
+    fillBox(world, Cell.Fire, 20, 30, 4, 17);
+    const body = { x: 20, y: 30, status: createDefaultStatus() };
+    sampleAndTickStatus(plainCtx(world), body, 4, 17, undefined, 2);
+    expect(body.status.burning).toBeGreaterThan(0);
+  });
+
+  it('ignites a body engulfed in lava (a furnace — even more heat)', () => {
+    const world = new World(40, 40);
+    fillBox(world, Cell.Lava, 20, 30, 4, 17);
+    const body = { x: 20, y: 30, status: createDefaultStatus() };
+    sampleAndTickStatus(plainCtx(world), body, 4, 17, undefined, 2);
+    expect(body.status.burning).toBeGreaterThan(0);
+  });
+
+  it('never ignites a fire-immune body (imp / flameward)', () => {
+    const world = new World(40, 40);
+    fillBox(world, Cell.Lava, 20, 30, 4, 17);
+    const body = { x: 20, y: 30, status: createDefaultStatus() };
+    sampleAndTickStatus(plainCtx(world), body, 4, 17, { burning: true }, 2);
+    expect(body.status.burning).toBe(0);
+  });
+
+  it('a light lick is a sub-certain roll, decided by the percentage', () => {
+    const world = new World(40, 40);
+    world.types[world.idx(20, 30)] = Cell.Fire; // a single fire cell at the body
+    const lucky = { x: 20, y: 30, status: createDefaultStatus() };
+    const unlucky = { x: 20, y: 30, status: createDefaultStatus() };
+    const r = vi.spyOn(Math, 'random');
+    try {
+      r.mockReturnValue(0); // rolls under the small chance → catches
+      sampleAndTickStatus(plainCtx(world), lucky, 4, 17, undefined, 2);
+      r.mockReturnValue(0.999); // rolls over the chance → does not catch
+      sampleAndTickStatus(plainCtx(world), unlucky, 4, 17, undefined, 2);
+    } finally {
+      r.mockRestore();
+    }
+    expect(lucky.status.burning).toBeGreaterThan(0);
+    expect(unlucky.status.burning).toBe(0);
+  });
+});

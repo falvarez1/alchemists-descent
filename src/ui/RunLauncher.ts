@@ -1,4 +1,6 @@
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
+import { flaskMaterialOptions } from '@/content/flaskMaterials';
+import { PERK_DEFS, PERK_IDS } from '@/content/perks';
 import { DEFAULT_DIFFICULTY, asDifficulty } from '@/config/difficulty';
 import { LEVELS } from '@/config/worldgraph';
 import { FLASK_SLOT_COUNT, type CardId, type Ctx, type Difficulty, type FlaskSlotConfig, type PerkId, type RunLoadoutPreset, type RunMode, type RunStatus, type RunTestKitConfig, type RunWorldSource } from '@/core/types';
@@ -40,19 +42,6 @@ const LEVEL_IDS = Object.values(LEVELS).sort((a, b) => {
   if (a.branch !== b.branch) return a.branch ? 1 : -1;
   return a.depth - b.depth || a.id.localeCompare(b.id);
 });
-
-const PERK_CHOICES: Array<{ id: PerkId; name: string }> = [
-  { id: 'might', name: 'Might' },
-  { id: 'vampirism', name: 'Vampirism' },
-  { id: 'featherweight', name: 'Featherweight' },
-  { id: 'manafont', name: 'Mana Font' },
-  { id: 'swiftfoot', name: 'Swift Foot' },
-  { id: 'torchbearer', name: 'Torchbearer' },
-  { id: 'ironhide', name: 'Ironhide' },
-  { id: 'flameward', name: 'Flame Ward' },
-  { id: 'toxinward', name: 'Toxin Ward' },
-  { id: 'goldmagnet', name: 'Gold Magnet' },
-];
 
 const ADVANCED_CARDS: CardId[] = ['lightning', 'bomb', 'speed', 'heavy', 'bounce', 'trigger'];
 const KIT_TABS = ['vitals', 'cards', 'perks', 'flask'] as const;
@@ -97,7 +86,7 @@ function optionLabel(id: string): string {
 }
 
 const CARD_ID_SET = new Set<CardId>(ALL_CARD_IDS);
-const PERK_ID_SET = new Set<PerkId>(PERK_CHOICES.map((perk) => perk.id));
+const PERK_ID_SET = new Set<PerkId>(PERK_IDS);
 
 function parsePrefs(raw: string | null): LauncherPrefs | null {
   if (!raw) return null;
@@ -259,7 +248,7 @@ export function sanitizeLauncherPrefs(value: unknown): LauncherPrefs | null {
     if (activeFlaskIndex !== undefined) test.activeFlaskIndex = activeFlaskIndex;
     const cards = uniqueKnown(testSource.cards, CARD_ID_SET, ALL_CARD_IDS.length);
     if (cards) test.cards = cards;
-    const perks = uniqueKnown(testSource.perks, PERK_ID_SET, PERK_CHOICES.length);
+    const perks = uniqueKnown(testSource.perks, PERK_ID_SET, PERK_IDS.length);
     if (perks) test.perks = perks;
     if (validCardFilter(testSource.cardFilter)) test.cardFilter = testSource.cardFilter;
     const cardSearch = optionalText(testSource.cardSearch, 80);
@@ -730,10 +719,7 @@ export class RunLauncher {
     outputs: HTMLOutputElement[];
   } {
     const host = this.root.querySelector<HTMLDivElement>('[data-field="flask-materials"]')!;
-    const entries = Object.entries(this.ctx.params.materials)
-      .map(([id, def]) => ({ id: Number(id), name: def.name }))
-      .filter((entry) => entry.id !== Cell.Empty && Number.isFinite(entry.id))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const entries = flaskMaterialOptions(this.ctx.params.materials);
     const rows: HTMLElement[] = [];
     const radios: HTMLInputElement[] = [];
     const sliders: HTMLInputElement[] = [];
@@ -818,7 +804,7 @@ export class RunLauncher {
 
   private populatePerks(): HTMLInputElement[] {
     const host = this.root.querySelector<HTMLDivElement>('[data-field="perks"]')!;
-    return PERK_CHOICES.map((perk) => {
+    return PERK_DEFS.map((perk) => {
       const label = document.createElement('label');
       label.className = 'run-launcher-check';
       label.innerHTML = `<input type="checkbox" value="${perk.id}" /><span>${perk.name}</span>`;
@@ -1018,7 +1004,7 @@ export class RunLauncher {
 
   private applyPresetDefaults(preset: RunLoadoutPreset): void {
     const cards = preset === 'review' ? ALL_CARD_IDS : preset === 'advanced' ? ADVANCED_CARDS : [];
-    const perks = preset === 'review' ? PERK_CHOICES.map((perk) => perk.id) : [];
+    const perks = preset === 'review' ? [...PERK_IDS] : [];
     this.goldInput.value = preset === 'review' ? '1000' : preset === 'advanced' ? '250' : '0';
     this.maxHpInput.value = preset === 'review' ? '999' : preset === 'advanced' ? '140' : '100';
     this.hpInput.value = this.maxHpInput.value;

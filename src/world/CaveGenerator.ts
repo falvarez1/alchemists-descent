@@ -509,6 +509,28 @@ export class WorldGen implements WorldGenApi {
       // wither on their own. See world/surfaceDress.plantGroundCover.
       plantGroundCover(world, dressOpts);
     }
+
+    // SOLID TO THE FLOOR: the old open strip below the caves (a vestige of the
+    // removed fall-through wells) becomes real rock, so a level never ends in an
+    // empty void above the bedrock — terrain runs all the way down. Flood biomes
+    // already filled their bottom with water, so only genuinely-empty cells pack.
+    // Deep-core shade + grain keep it from reading as a flat slab.
+    const deepBand = B.bands[2];
+    for (let y = FLOOR_BAND; y < HEIGHT; y++) {
+      for (let x = 0; x < WIDTH; x++) {
+        const i = x + y * WIDTH;
+        if (world.types[i] !== Cell.Empty) continue;
+        world.types[i] = Cell.Wall;
+        const grain = 0.85 + valueNoise(x, y, 0.12, seed + 5) * 0.3;
+        const jit = 0.92 + hash2(x, y, seed + 11) * 0.16;
+        const shade = 0.44; // deep core, far from any air
+        world.colors[i] = packRGB(
+          Math.min(255, Math.floor(deepBand[0] * grain * shade * jit)),
+          Math.min(255, Math.floor(deepBand[1] * grain * shade * jit)),
+          Math.min(255, Math.floor(deepBand[2] * grain * shade * jit)),
+        );
+      }
+    }
   }
 
   /** GAUGE RESCUE: re-run the validator connectivity audits and carve a
@@ -728,10 +750,10 @@ export class WorldGen implements WorldGenApi {
 
   /**
    * Descent-mode generation (Wave B/C): base biome caves, then the level dressing —
-   * an indestructible bedrock floor, a stone-sealed exit well through it, two unlit
-   * waystone braziers along the lower artery, sim-obeying secrets stamped off the
-   * region graph, a cauldron basin beside the first waystone, and (depth 1 only)
-   * the two onboarding moments near spawn. Layout randomness flows through this.rng
+   * an indestructible bedrock floor, an explicit portal anchor above sealed ground,
+   * two unlit waystone braziers along the lower artery, sim-obeying secrets stamped
+   * off the region graph, a cauldron basin beside the first waystone, and (depth 1
+   * only) the two onboarding moments near spawn. Layout randomness flows through this.rng
    * (re-seeded by generateCaves from worldSeed), so a level replays identically
    * from its seed. No enemies here — the levels manager places those.
    */
@@ -794,13 +816,16 @@ export class WorldGen implements WorldGenApi {
       world.charge[i] = 0;
     };
 
-    // 2) Bedrock: the bottom 6 rows become metal (explosion/acid/dig-proof),
-    //    so the floor is indestructible everywhere except the well.
+    // 2) Bedrock: the bottom 6 rows become metal (explosion/acid/dig-proof).
+    //    Descent is explicit through the key portal now, so the terrain never
+    //    ends in a hidden fall-through shaft.
     for (let y = HEIGHT - 6; y < HEIGHT; y++) {
       for (let x = 0; x < WIDTH; x++) setCell(x, y, Cell.Metal, bedrockColor());
     }
 
-    // 3) Exit well: a cased shaft through the bedrock, locked by a stone plug.
+    // 3) Exit anchor: a sealed, readable portal site above bedrock. Older builds
+    //    cut an open shaft through the floor here; keep the plug/approach tell,
+    //    but leave the bottom terrain closed.
     const halfW = 14;
     const sealY = HEIGHT - 46;
     let wellX = spawn.x >= WIDTH / 2 ? Math.floor(WIDTH * 0.2) : Math.floor(WIDTH * 0.8);
@@ -811,19 +836,8 @@ export class WorldGen implements WorldGenApi {
       break;
     }
 
-    // Open shaft from the floor band straight through the bedrock (open bottom).
-    for (let y = HEIGHT - 52; y < HEIGHT; y++) {
-      for (let dx = -halfW; dx <= halfW; dx++) setCell(wellX + dx, y, Cell.Empty, EMPTY_COLOR);
-    }
-    // Indestructible casing flanking the shaft below the seal: the floor band is an
-    // open strip, so without these walls the plug could simply be walked around.
-    for (let y = sealY; y < HEIGHT; y++) {
-      for (let t = 1; t <= 3; t++) {
-        setCell(wellX - halfW - t, y, Cell.Metal, bedrockColor());
-        setCell(wellX + halfW + t, y, Cell.Metal, bedrockColor());
-      }
-    }
-    // The plug: 14 rows of diggable/blastable stone — that IS the lock.
+    // The old plug remains as a visible stone mound under the portal shrine,
+    // but breaking it no longer bypasses the explicit key/bench progression.
     for (let y = sealY; y < sealY + 14; y++) {
       for (let dx = -halfW; dx <= halfW; dx++) setCell(wellX + dx, y, Cell.Stone, stoneColor());
     }

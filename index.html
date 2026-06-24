@@ -161,6 +161,7 @@
                 <div id="game-hud">
                     <div id="hud-left">
                         <div id="spell-hotbar"></div>
+                        <div id="god-tools" aria-label="God mode QA tools"></div>
                         <div class="vitals">
                             <div class="vital-row"><div class="vital-label">HP</div><div class="vital-track"><div class="vital-fill" id="hp-fill"></div></div></div>
                             <div class="vital-row"><div class="vital-label">MANA</div><div class="vital-track"><div class="vital-fill" id="mana-fill"></div></div></div>
@@ -186,7 +187,7 @@
                     <div id="controls-hint">
                         <b>A / D</b> move &nbsp; <b>SPACE</b> jump / levitate &nbsp; <b>S</b> crouch &middot; +move: crawl &middot; air: dive<br>
                         <b>SHIFT / C</b> grab wall &middot; <b>W / S</b> climb while grabbed &nbsp; <b>FULLSCREEN PLAY</b> attempts key lock<br>
-                        <b>MOUSE</b> aim + fire &nbsp; <b>RMB</b> throw flask &nbsp; <b>1/2</b> wands &nbsp; <b>TAB</b> sandbox<br>
+                        <b>MOUSE</b> aim + fire &nbsp; <b>RMB</b> throw flask &nbsp; <b>1/2</b> wands<br>
                         <b>E</b> siphon / lever &nbsp; <b>Q</b> pour &nbsp; <b>X</b> drink &nbsp; <b>F</b> kick &nbsp; <b>G</b> grab / throw &nbsp; <b>3-6</b> flasks &nbsp; <b>M</b> map &nbsp; <b>H</b> help &nbsp; <b>ESC</b> pause &nbsp; <b>B</b> wand bench &nbsp; <b>&#96;</b> console
                     </div>
                     <div id="wave-banner"><div class="big" id="banner-big">WAVE 1</div><div class="small" id="banner-small">HOSTILES INBOUND</div></div>
@@ -245,6 +246,7 @@
                 <div id="gameover-overlay">
                     <div class="go-title">YOU DIED</div>
                     <div class="go-stats">REACHED <span id="go-wave">D1</span> &middot; PURSED <span id="go-gold">0</span> oz OF GOLD<br>THE CAVES RECLAIM ANOTHER ALCHEMIST</div>
+                    <div id="go-cause" class="go-cause">THE CAVES DECLINE TO SPECIFY</div>
                     <button id="respawn-btn">RISE AGAIN</button>
                 </div>
                 <div id="level-curtain" aria-hidden="true">

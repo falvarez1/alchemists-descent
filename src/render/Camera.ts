@@ -7,6 +7,16 @@ const AIM_LOOKAHEAD_DEADZONE = 28;
 const AIM_LOOKAHEAD_FULL_DISTANCE = 150;
 const AIM_LOOKAHEAD_LERP = 0.12;
 
+/**
+ * How far the camera may travel BELOW the world floor. The world ends in solid
+ * bedrock, so there is nothing to walk to down there — but letting the view drop
+ * past the edge keeps the wizard (and any entities/prefabs near the floor) framed
+ * instead of pinned to the bottom of the screen. Everything past the edge renders
+ * as flat black void (see FrameComposer). Half a viewport lets the deepest stand
+ * still center on screen.
+ */
+const CAMERA_BOTTOM_VOID = Math.floor(VIEW_H / 2);
+
 
 /**
  * Smooth lerp-follow camera. In play mode it tracks the player with a small
@@ -70,7 +80,7 @@ export class Camera implements CameraApi {
       if (input.keys.down) this.ty += pan;
     }
     this.tx = clamp(this.tx, 0, WIDTH - VIEW_W);
-    this.ty = clamp(this.ty, 0, HEIGHT - VIEW_H);
+    this.ty = clamp(this.ty, 0, HEIGHT - VIEW_H + CAMERA_BOTTOM_VOID);
     this.x += (this.tx - this.x) * 0.085;
     this.y += (this.ty - this.y) * 0.085;
 

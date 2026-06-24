@@ -111,7 +111,7 @@ export function igniteGunpowder(ctx: Ctx, x: number, y: number): void {
 
   const localMass = countLocalGunpowder(ctx, x, y);
   if (isPackedGunpowderClump(ctx, x, y)) {
-    ctx.explosions.trigger(x, y, gunpowderBlastRadius(ctx, localMass));
+    ctx.explosions.trigger(x, y, gunpowderBlastRadius(ctx, localMass), { playerDamageSource: 'gunpowder' });
     return;
   }
 

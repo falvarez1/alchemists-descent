@@ -1,19 +1,16 @@
 // ===================== Levels (the Descent) =====================
 // Wave B: the arena becomes a vertical stack of persistent levels connected
-// by sealed wells. Each visited level stays a LIVE World instance in RAM for
+// by explicit key portals. Each visited level stays a LIVE World instance in RAM for
 // the whole session — your scars stay exactly as you left them when you
 // return (no snapshot codec yet; that arrives with persistence/autosave).
 //
 // v1 decisions encoded here:
-// - The descent is linear d1->d5 (worldgraph.ts); going down = breaking the
-//   floor well's plug and falling through. Re-ascending an open well is
-//   allowed by levitation (both levels stay live).
-// - Arrival placement: whether descending OR re-ascending, the player is
-//   placed at the destination level's spawn chamber. Spawning inside the well
-//   column is unsafe while plug debris settles; revisit when wells get
-//   per-direction arrival points.
-// - The bottom of the run (d5) has no exit: the player is clamped above the
-//   world floor instead of falling out.
+// - The descent is linear d1->d8 (worldgraph.ts); going down = finding the
+//   golden key and stepping into the portal. D1 additionally requires the
+//   Wand Bench lesson, because later depths do not place a bench.
+// - Arrival placement always uses the destination level's spawn chamber.
+// - Falling to the bottom of any level is clamped for safety, never treated as
+//   a hidden transition.
 
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/config/gen';
@@ -50,6 +47,8 @@ import type {
   Waystone,
 } from '@/core/types';
 import { createPlayer, grantFullReviewKit } from '@/entities/Player';
+import { PERK_IDS } from '@/content/perks';
+import { INTRO_REWARD_CARD } from '@/game/introObjectives';
 import { createDefaultStatus } from '@/entities/status';
 import { spawnPrefabEnemy, toAuthoredLight } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
@@ -140,18 +139,7 @@ interface PopulationSpotOptions {
 /* ---------------- expedition save format (localStorage) ---------------- */
 
 const EXPEDITION_KEY = 'noita-expedition';
-const LEGACY_REVIEW_PERKS = [
-  'might',
-  'vampirism',
-  'featherweight',
-  'manafont',
-  'swiftfoot',
-  'torchbearer',
-  'ironhide',
-  'flameward',
-  'toxinward',
-  'goldmagnet',
-];
+const LEGACY_REVIEW_PERKS = PERK_IDS;
 const LEGACY_REVIEW_WANDS = [
   {
     frameId: 'brass',
@@ -688,9 +676,21 @@ export class Levels implements LevelsApi {
     this.enterLevel(ctx, START_LEVEL);
   }
 
+  private firstLevelBenchGateSatisfied(ctx: Ctx, runtime: LevelRuntime): boolean {
+    if (runtime.def.id !== START_LEVEL || runtime.def.depth !== 1 || runtime.def.branch) return true;
+    return ctx.wands.wands.some((wand) => wand.cards.includes(INTRO_REWARD_CARD));
+  }
+
+  private firstLevelBenchGateCue(ctx: Ctx, runtime: LevelRuntime): string {
+    if (this.firstLevelBenchGateSatisfied(ctx, runtime)) return 'RETURN TO THE PORTAL';
+    if (ctx.wands.collection.includes(INTRO_REWARD_CARD)) return 'SLOT HEAVY AT THE WAND BENCH';
+    if (runtime.spellLab) return 'CLAIM HEAVY FROM THE SPELL LAB';
+    return 'USE THE WAND BENCH BEFORE DESCENDING';
+  }
+
   /**
-   * Per-frame (play mode): well-fall detection -> level transition, waystone
-   * lighting checks, explored-mask stamping, hostile-count events.
+   * Per-frame (play mode): explicit portal progression, waystone lighting checks,
+   * explored-mask stamping, hostile-count events.
    */
   update(ctx: Ctx): void {
     if (ctx.state.mode !== 'play' || this._transitioning || ctx.player.dead) return;
@@ -698,14 +698,8 @@ export class Levels implements LevelsApi {
     if (!runtime) return;
     const player = ctx.player;
 
-    // WELL FALL: dropping past the world floor means the exit plug is broken
+    // Floor safety: terrain no longer opens into a hidden descent shaft.
     if (player.y >= HEIGHT - 10) {
-      if (runtime.def.nextLevelId) {
-        this.leaveLevel();
-        this.enterLevel(ctx, runtime.def.nextLevelId);
-        return;
-      }
-      // Bottom of the run (v1): nothing below the Scorched Core
       player.y = HEIGHT - 12;
       player.vy = 0;
       player.fy = 0;
@@ -720,6 +714,15 @@ export class Levels implements LevelsApi {
       const pdy = player.y - 6 - portal.y;
       const near = pdx * pdx + pdy * pdy < 100;
       if (near && runtime.keyTaken) {
+        if (!this.firstLevelBenchGateSatisfied(ctx, runtime)) {
+          if (ctx.state.frameCount % 90 === 0) {
+            const cue = this.firstLevelBenchGateCue(ctx, runtime);
+            ctx.events.emit('toast', { text: cue });
+            ctx.events.emit('objectiveChanged', { text: cue });
+            ctx.events.emit('refugePing');
+          }
+          return;
+        }
         if (!portal.open) {
           portal.open = true;
           ctx.audio.portalWhoosh();
@@ -2042,7 +2045,9 @@ export class Levels implements LevelsApi {
         ? 'STUDY THE WEAVER LAIR'
         : runtime.portal
         ? runtime.keyTaken
-          ? 'RETURN TO THE PORTAL'
+          ? this.firstLevelBenchGateSatisfied(ctx, runtime)
+            ? 'RETURN TO THE PORTAL'
+            : this.firstLevelBenchGateCue(ctx, runtime)
           : 'FIND THE GOLDEN KEY'
         : runtime.boss
           ? 'SLAY THE KILN COLOSSUS'

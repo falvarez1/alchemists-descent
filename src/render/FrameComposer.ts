@@ -270,6 +270,7 @@ export class FrameComposer implements PixelSurface {
     }
 
     this.composeOverlays(ctx);
+    this.maskVoidBelowWorldFloor(ctx);
 
     if (this.overlay !== null) {
       try {
@@ -320,6 +321,7 @@ export class FrameComposer implements PixelSurface {
     const frameCount = ctx.state.frameCount;
     const ambient = ctx.params.global.ambient;
     const world = ctx.world;
+    const worldFloor = world.height;
     const types = world.types;
     const cellColors = world.colors;
     const charge = world.charge;
@@ -375,6 +377,18 @@ export class FrameComposer implements PixelSurface {
 
     for (let vy = 0; vy < VIEW_H; vy++) {
       const wy = renderCamY + vy;
+      // Below the world floor (the camera is allowed to pan past the edge to keep
+      // the wizard framed): flat black void, not a smear of the bottom row.
+      if (wy >= worldFloor) {
+        for (let vx = 0; vx < VIEW_W; vx++) {
+          const bi = ((VIEW_H - 1 - vy) * VIEW_W + vx) * 4;
+          pixelData[bi] = 0;
+          pixelData[bi + 1] = 0;
+          pixelData[bi + 2] = 0;
+          pixelData[bi + 3] = 1;
+        }
+        continue;
+      }
       for (let vx = 0; vx < VIEW_W; vx++) {
         const wx = renderCamX + vx;
         let lookupX = wx,
@@ -608,6 +622,29 @@ export class FrameComposer implements PixelSurface {
    * thousand pixels, reads game state, and mutates entity animation fields
    * (EnemySprites/PlayerSprite contract): this stays CPU on BOTH compose paths.
    */
+  /**
+   * The camera may pan BELOW the world floor (to keep the wizard framed near the
+   * bottom of small worlds, and to show a clean edge on the chunked-world
+   * prototype). Re-assert flat black for every view row past the floor AFTER the
+   * overlays, so no sprite, light, particle, or sparse edge cell bleeds into the
+   * void — it reads as "nothing's there", which is the truth.
+   */
+  private maskVoidBelowWorldFloor(ctx: Ctx): void {
+    const firstVoidVy = ctx.world.height - this.renderCamY;
+    if (firstVoidVy >= VIEW_H) return; // the floor is below the view — nothing to mask
+    const pixelData = this.target.pixelData;
+    for (let vy = Math.max(0, firstVoidVy); vy < VIEW_H; vy++) {
+      const rowBase = (VIEW_H - 1 - vy) * VIEW_W;
+      for (let vx = 0; vx < VIEW_W; vx++) {
+        const bi = (rowBase + vx) * 4;
+        pixelData[bi] = 0;
+        pixelData[bi + 1] = 0;
+        pixelData[bi + 2] = 0;
+        pixelData[bi + 3] = 1;
+      }
+    }
+  }
+
   private composeOverlays(ctx: Ctx): void {
     // Ballistic debris / embers / coins, lightning arcs, projectiles — the
     // combat FX overlays live in sprites/FxSprites (shared with the gallery).

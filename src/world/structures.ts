@@ -49,10 +49,9 @@ import type { PlacementLedger } from '@/world/connect';
 
 /**
  * Landmark structures placed after generation (upgrade-port meta layer):
- * the exit portal beside the well mouth, a key vault on a far region, one
- * heart pocket, tome pedestals, chests, and loose gold along the arteries.
- * The golden key opens the portal; the well plug remains as the diggers'
- * secret bypass.
+ * the exit portal, a key vault on a far region, the D1 Refuge/bench, one heart
+ * pocket, tome pedestals, chests, and loose gold along the arteries. The
+ * golden key opens the portal; D1 also requires the bench lesson before descent.
  */
 
 export function placeStructures(
@@ -163,9 +162,10 @@ export function placeStructures(
   }
   const portal: ExitPortal | null = def.nextLevelId ? { x: portalX, y: portalY, open: false } : null;
 
-  // ---- The Refuge: a hewn rest alcove off the portal shrine ----
-  // One per level, hanging from the shrine's own flank ramp (so it inherits
-  // the shrine's guaranteed connectivity). Fixtures are real cells:
+  // ---- D1 Refuge: a hewn rest alcove near the starting spawn ----
+  // The bench is an onboarding/progression fixture, not a recurring lower-depth
+  // shop. Keep it close enough to the initial cave that the Heavy-slot lesson is
+  // part of the first route instead of a late backtrack. Fixtures are real cells:
   //  - a healing spring whose spout is an eternal Healium drip emitter set
   //    AT the pool's full line — emitters only stamp into Empty, so a full
   //    pool stops the drip and a drink re-starts it ("springs re-drip" is
@@ -176,14 +176,32 @@ export function placeStructures(
   //    it is between you and the old ones;
   //  - a wood-and-anvil work bench (the B-key bench's physical home);
   //  - one warm authored light, because a refuge must read as shelter.
-  {
-    const candidates: Array<[number, number]> = [
-      [portalX + 44, portalY - 6],
-      [portalX - 44, portalY - 6],
+  if (def.depth === 1 && !def.branch) {
+    const refugeSide = Math.sign(portalX - spawn.x) || (spawn.x < WIDTH / 2 ? 1 : -1);
+    const refugeY = Math.floor(clamp(spawn.y + 2, 34, HEIGHT - 96));
+    const baseCandidates: Array<[number, number]> = [
+      [Math.floor(spawn.x + refugeSide * 64), refugeY],
+      [Math.floor(spawn.x - refugeSide * 64), refugeY],
+      [Math.floor(spawn.x + refugeSide * 86), refugeY],
+      [Math.floor(spawn.x - refugeSide * 86), refugeY],
     ];
-    for (const [rx, ry] of candidates) {
+    const candidates: Array<[number, number, number]> = [
+      ...baseCandidates.map(([rx, ry]) => [rx, ry, 25] as [number, number, number]),
+      ...baseCandidates.map(([rx, ry]) => [rx, ry, Number.POSITIVE_INFINITY] as [number, number, number]),
+    ];
+    const intersectsBlockingRefugeReservation = (x0: number, y0: number, x1: number, y1: number): boolean => {
+      const a0 = Math.min(x0, x1),
+        a1 = Math.max(x0, x1),
+        b0 = Math.min(y0, y1),
+        b1 = Math.max(y0, y1);
+      return ledger.rects().some((r) => {
+        if (r.label === 'spawn' || r.label === 'onboarding') return false;
+        return a0 <= r.x1 && a1 >= r.x0 && b0 <= r.y1 && b1 >= r.y0;
+      });
+    };
+    for (const [rx, ry, looseLimit] of candidates) {
       if (rx - 13 < 4 || rx + 13 > WIDTH - 4 || ry - 12 < 4 || ry + 12 > HEIGHT - 16) continue;
-      if (ledger.intersects(rx - 12, ry - 12, rx + 12, ry + 12)) continue;
+      if (intersectsBlockingRefugeReservation(rx - 12, ry - 12, rx + 12, ry + 12)) continue;
       let metal = 0,
         loose = 0;
       for (let Y = ry - 14; Y <= ry + 14; Y++) {
@@ -205,12 +223,12 @@ export function placeStructures(
           }
         }
       }
-      if (metal > 0) continue; // never hew through a casing or a vault
-      if (loose > 25) continue; // a seed pocket would pour into the alcove
-      const s = Math.sign(rx - portalX);
+      if (metal > 0) continue;
+      if (loose > looseLimit) continue;
+      const s = Math.sign(rx - spawn.x) || refugeSide;
       carveRectCells(w, rx - 10, ry - 10, rx + 10, ry + 10);
-      // SOLID SHELL, unconditional (except casings): the portal cavern is
-      // heavily carved, so a candidate site can stand in OPEN AIR — and an
+      // SOLID SHELL, unconditional (except casings): the spawn-side gallery is
+      // deliberately carved, so a candidate site can stand in OPEN AIR — and an
       // oil/gunpowder reservoir anywhere above rains straight in and
       // buries the spring for minutes (observed). A hewn refuge gets a
       // real roof, real walls, and a sealed underfloor; the gallery's
@@ -234,16 +252,18 @@ export function placeStructures(
       }
       // re-open the interior (the shell loop just sealed its rim rows)
       carveRectCells(w, rx - 10, ry - 9, rx + 10, ry + 9);
-      // gauge-guaranteed gallery to the shrine's flank ramp. It STARTS 22
+      // gauge-guaranteed gallery back to the spawn chamber. It STARTS 22
       // cells out so the swept rect (up 21!) can never notch the roof; the
       // start disc alone opens a walk-height doorway through the wall.
+      const galleryTargetX = Math.floor(clamp(spawn.x + s * 20, 18, WIDTH - 19));
+      const galleryTargetY = Math.floor(clamp(spawn.y + 4, 24, HEIGHT - 24));
       const gallery = tunnelTo(
         w,
         rng,
         rx - s * 22,
         ry + 4,
-        portalX + s * 22,
-        portalY + 2,
+        galleryTargetX,
+        galleryTargetY,
         12,
         { halfW: 7, up: 21, down: 9 },
       );
@@ -408,9 +428,9 @@ export function placeStructures(
   // (the only depth-1 level is non-branch; the only branch is depth 4). If a
   // depth-1 branch is ever added, gate one of these blocks explicitly.
   if (def.depth === 1) {
-    const s = refuge ? Math.sign(refuge.x - portalX) || 1 : 1;
-    const rCx = refuge ? Math.floor(refuge.x) : portalX + s * 22;
-    const rCy = refuge ? Math.floor(refuge.y - 7) : portalY + 2;
+    const s = refuge ? Math.sign(refuge.x - spawn.x) || 1 : Math.sign(portalX - spawn.x) || 1;
+    const rCx = refuge ? Math.floor(refuge.x) : Math.floor(clamp(spawn.x + s * 82, 34, WIDTH - 35));
+    const rCy = refuge ? Math.floor(refuge.y - 7) : Math.floor(clamp(spawn.y, 36, HEIGHT - 72));
     let labX = Math.floor(clamp(rCx + s * 42, 34, WIDTH - 35));
     let labY = rCy;
     if (ledger.intersects(labX - 28, labY - 16, labX + 28, labY + 16)) {

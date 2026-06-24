@@ -4,6 +4,7 @@ import { FLASK_SLOT_COUNT, type BodyMaterial, type CardId, type CommandInfo, typ
 import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { grantFullReviewKit } from '@/entities/Player';
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
+import { PERK_IDS, isPerkId } from '@/content/perks';
 import { Cell, CELL_COUNT } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { ConsoleCommandRegistry, parseConsoleLine } from '@/game/console/registry';
@@ -39,19 +40,6 @@ const RENDER_BACKEND_MODES = ['webgl', 'webgpu', 'auto'] as const;
 const RUN_SUBCOMMANDS = ['status', 'continue', 'resume', 'new', 'fresh', 'test', 'save', 'abandon'] as const;
 const RUN_WORLD_SOURCES = ['campaign', 'campaign-level', 'virtual-world', 'virtual'] as const;
 const RUN_LOADOUTS = ['fresh', 'advanced', 'review'] as const;
-const RUN_PERKS: PerkId[] = [
-  'might',
-  'vampirism',
-  'featherweight',
-  'manafont',
-  'swiftfoot',
-  'torchbearer',
-  'ironhide',
-  'flameward',
-  'toxinward',
-  'goldmagnet',
-];
-
 const GOD_FLASKS: FlaskSlotConfig[] = [
   { material: Cell.ElixirLife, count: 600 },
   { material: Cell.ElixirLevity, count: 600 },
@@ -533,8 +521,8 @@ function parseCardId(raw: string): keyof typeof CARD_DEFS | CommandResult {
 
 function parsePerkId(raw: string): PerkId | CommandResult {
   const key = raw.toLowerCase();
-  if (RUN_PERKS.includes(key as PerkId)) return key as PerkId;
-  return result(false, `Unknown perk "${raw}"`, { code: 'parse-perk', raw, expected: RUN_PERKS });
+  if (isPerkId(key)) return key;
+  return result(false, `Unknown perk "${raw}"`, { code: 'parse-perk', raw, expected: PERK_IDS });
 }
 
 function parseLevelId(raw: string): string | CommandResult {
@@ -1371,7 +1359,7 @@ function parseRunOptions(ctx: Ctx, args: string[]): ParsedRunOptions | CommandRe
       const parsed = readValue(arg, i);
       if (!parsed.value) return result(false, 'Usage: --perks <all|perk,perk,...>', { code: 'usage' });
       if (parsed.value.toLowerCase() === 'all') {
-        kit.perks = [...RUN_PERKS];
+        kit.perks = [...PERK_IDS];
       } else {
         const perks: PerkId[] = [];
         for (const raw of parseRunList(parsed.value)) {
@@ -1487,7 +1475,7 @@ function runCommandCompletions(req: CompletionRequest): string[] {
   if (prev === '--loadout') return matching(RUN_LOADOUTS, token);
   if (prev === '--world') return matching(RUN_WORLD_SOURCES, token);
   if (prev === '--cards') return matching(['all', ...Object.keys(CARD_DEFS)], token);
-  if (prev === '--perks') return matching(['all', ...RUN_PERKS], token);
+  if (prev === '--perks') return matching(['all', ...PERK_IDS], token);
   if (prev === '--flask') return matching(['empty', 'water', 'acid', 'lava', 'oil'], token);
   if (prev === '--flasks') return matching(['water:600', 'water:450,acid:200', 'empty,water:300'], token);
   if (prev === '--active-flask') return matching(['1', '2', '3', '4'], token);
@@ -1495,7 +1483,7 @@ function runCommandCompletions(req: CompletionRequest): string[] {
   if (token.startsWith('--loadout=')) return matching(RUN_LOADOUTS.map((id) => '--loadout=' + id), token);
   if (token.startsWith('--world=')) return matching(RUN_WORLD_SOURCES.map((id) => '--world=' + id), token);
   if (token.startsWith('--cards=')) return matching(['--cards=all', ...Object.keys(CARD_DEFS).map((id) => '--cards=' + id)], token);
-  if (token.startsWith('--perks=')) return matching(['--perks=all', ...RUN_PERKS.map((id) => '--perks=' + id)], token);
+  if (token.startsWith('--perks=')) return matching(['--perks=all', ...PERK_IDS.map((id) => '--perks=' + id)], token);
   if (token.startsWith('--flask=')) return matching(['--flask=empty', '--flask=water:600', '--flask=acid:300', '--flask=lava:300', '--flask=oil:300'], token);
   if (token.startsWith('--')) {
     return matching([
@@ -1744,8 +1732,22 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
 
   add({
     name: 'god',
-    info: info('game.god', 'God Kit', 'god [--target expedition]', 'Grant every debug capability, card, perk, and potion.', 'game'),
+    info: info('game.god', 'God Kit', 'god [off] [--target expedition]', 'Grant every debug capability, card, perk, and potion. "god off" turns it back off.', 'game'),
     run: (ctx, args) => {
+      // `god off` / `god = off` / `god disable` turns god mode back off. The
+      // granted cards, perks, and flasks stay; you are simply mortal again
+      // (damage, death, cast cadence, and flask depletion all return).
+      const directives = args.map((a) => a.toLowerCase());
+      if (directives.some((a) => a === 'off' || a === 'disable' || a === 'false' || a === '0')) {
+        const wasOn = ctx.state.debugGodMode;
+        ctx.state.debugGodMode = false;
+        ctx.events.emit('toast', { text: wasOn ? 'GOD MODE DISABLED' : 'GOD MODE ALREADY OFF' });
+        return result(true, wasOn ? 'God mode disabled. Granted items remain; you are mortal again.' : 'God mode was already off.', {
+          target: 'expedition',
+          disabled: true,
+          wasOn,
+        });
+      }
       const target = resolveTarget(ctx, args, 'god');
       if (!target.ok) return target.result;
       const blocked = blockBuilderPlaytestPersistentState('god', target.target);

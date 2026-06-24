@@ -316,6 +316,59 @@ body.runtime-inspector-open #viewport-container {
 
 /* Noita-style inventory bar (play mode, top-left): the active wand's program */
 #spell-hotbar { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.god-tools-actions { display: flex; gap: 5px; align-items: center; }
+#god-tools {
+    display: none;
+    width: min(300px, calc(100vw - 24px));
+    pointer-events: auto;
+    flex-direction: column;
+    gap: 5px;
+    padding: 6px;
+    background: rgba(11,17,25,0.82);
+    border: 1px dashed rgba(125,211,252,0.48);
+    border-radius: 4px;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.45);
+}
+#god-tools.visible { display: flex; }
+.god-tool-btn,
+.god-power {
+    min-height: 24px;
+    border: 1px dashed #2b3b4c;
+    border-radius: 4px;
+    background: rgba(8,12,18,0.86);
+    color: rgba(224,242,254,0.74);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0;
+    cursor: pointer;
+}
+.god-tool-btn {
+    width: 100%;
+    padding: 0 8px;
+}
+.god-tool-btn:hover,
+.god-power:hover {
+    border-color: #7dd3fc;
+    color: #e0f2fe;
+}
+.god-power-row {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+}
+.god-power {
+    width: 100%;
+    min-width: 0;
+    padding: 0 3px;
+    color: rgba(255,255,255,0.4);
+}
+.god-power.active {
+    border-color: #9c6a44;
+    color: #e9d5ff;
+    background: rgba(34,24,17,0.88);
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.42);
+}
 .wand-slots { display: flex; gap: 5px; }
 /* Cards aren't selectable in play (the bench owns editing) — tiles are read-only. */
 .wand-slots .hot-slot { cursor: default; }
@@ -1509,6 +1562,11 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
 #gameover-overlay .go-title { font-size: 30px; font-weight: 800; letter-spacing: 8px; color: #fca5a5; text-shadow: 0 0 28px rgba(239,68,68,0.8); }
 #gameover-overlay .go-stats { font-family: var(--mono); font-size: 14px; color: rgba(255,255,255,0.7); letter-spacing: 1px; text-align: center; line-height: 2; }
 #gameover-overlay .go-stats span { color: var(--accent-gold); font-weight: 700; }
+#gameover-overlay .go-cause {
+    max-width: min(760px, calc(100vw - 48px)); padding: 8px 14px; border-top: 1px solid rgba(252,165,165,0.26);
+    border-bottom: 1px solid rgba(252,165,165,0.18); color: #ffd1d1; font-family: var(--mono); font-size: 14px;
+    line-height: 1.5; letter-spacing: 1px; text-align: center; text-shadow: 0 0 18px rgba(239,68,68,0.36);
+}
 #respawn-btn {
     background: #2a1336; border: 1px solid var(--accent-purple); color: #e9d5ff; font-weight: 700;
     letter-spacing: 2px; font-size: 15px; padding: 11px 30px; border-radius: 6px; cursor: pointer;
@@ -3797,6 +3855,19 @@ body.builder-playtest-active #mode-play-btn.active {
 #builder-gallery .bg-iname { font-size: 14px; font-weight: 800; color: #dbe6f3; margin-bottom: 2px; }
 #builder-gallery .bg-imeta { font-size: 9px; color: #5a6878; margin-bottom: 10px; }
 #builder-gallery .bg-idesc { line-height: 1.55; color: #aebccd; margin-bottom: 14px; }
+#builder-gallery .bg-traits {
+    display: grid; gap: 8px; margin: 0 0 14px;
+}
+#builder-gallery .bg-trait {
+    border: 1px solid #17212d; background: #0a0f15; border-radius: 6px; padding: 8px 9px;
+}
+#builder-gallery .bg-traithead {
+    font-size: 9px; font-weight: 800; letter-spacing: 1.2px; color: #7dd3fc; margin-bottom: 5px;
+}
+#builder-gallery .bg-trait ul {
+    margin: 0; padding-left: 14px; color: #aebccd; line-height: 1.45;
+}
+#builder-gallery .bg-trait li + li { margin-top: 4px; }
 #builder-gallery .bg-ihead { font-size: 9px; font-weight: 800; letter-spacing: 1.4px; color: #5a6878; margin-bottom: 6px; }
 #builder-gallery .bg-chips { display: flex; flex-wrap: wrap; gap: 5px; }
 #builder-gallery .bg-chip {

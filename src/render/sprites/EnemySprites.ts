@@ -479,14 +479,17 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     // dart, a swoop sweeps them tight, and a tumble scrambles the beat. ---
     const flaring = (e.windup ?? 0) > 0;
     const swooping = (e.swoop ?? 0) > 0;
-    const tumbling = (e.tumble ?? 0) > 0;
+    const slimed = (e.slimed ?? 0) > 0;
+    const tumbling = (e.tumble ?? 0) > 0 || slimed;
     const hover =
-      Math.round(Math.sin(e.bobPhase) * 1.2) +
+      (slimed ? 0 : Math.round(Math.sin(e.bobPhase) * 1.2)) +
       (tumbling ? Math.round((Math.random() - 0.5) * 2) : 0);
     const Q = (dx: number, dy: number, r: number, g: number, b: number): void =>
       P(dx, dy + hover, r, g, b);
     const V: RGB = [0.36, 0.22, 0.46],
-      VD: RGB = [0.2, 0.11, 0.27];
+      VD: RGB = [0.2, 0.11, 0.27],
+      SL: RGB = [0.16, 0.52, 0.18],
+      SLD: RGB = [0.08, 0.34, 0.12];
     const wingUp = tumbling
       ? frameCount % 4 < 2 // panicked double-time flutter
       : flaring
@@ -515,6 +518,11 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     } else {
       Q(-2, 1, ...V); Q(-3, 1, ...VD); Q(-4, 0, ...VD);
       Q(2, 1, ...V); Q(3, 1, ...VD); Q(4, 0, ...VD);
+    }
+    if (slimed) {
+      Q(-3, wingUp ? 4 : 1, ...SLD); Q(3, wingUp ? 4 : 1, ...SLD);
+      Q(-2, 2, ...SL); Q(2, 2, ...SL);
+      Q(0, 1, ...SLD);
     }
   } else if (e.kind === 'spitter') {
     // --- Rooted toxic bulb: swaying stalk, maw recoils after each lob ---

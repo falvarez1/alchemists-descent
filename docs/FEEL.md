@@ -27,7 +27,7 @@ The house principles, in order of authority:
 |---|---|---|
 | Coyote time | A jump press within 6 frames of walking off a ledge still gets the full jump | `entities/Player.ts` |
 | Jump buffer | A press up to 8 frames before touchdown fires on the landing frame | `Player.ts` |
-| Air control | Mid-air acceleration (0.575) is *stronger* than ground (0.5) for Ori-like corrections. Input accelerates only UP TO maxRun and never drags carried momentum back down, so a fast run carries into a jump/levitate; airborne uses gentle `airDrag` (0.985) inertia instead of the ground's 0.72 stop — flight coasts and keeps momentum | `Player.ts` |
+| Air control | Mid-air acceleration (0.575) is *stronger* than ground (0.5) for Ori-like corrections, then paced by early descent depth. D1 starts at 0.74x horizontal / 0.84x vertical so new players can read the cave; baseline returns by D5, while Swift/Swift Soles/Levity visibly push through the slower start. Input accelerates only UP TO maxRun and never drags carried momentum back down, so a fast run carries into a jump/levitate; airborne uses gentle `airDrag` (0.985) inertia instead of the ground's 0.72 stop — flight coasts and keeps momentum | `Player.ts`, `progressionPacing.ts` |
 | Levitation spool | Thrust starts at a near-hover 0.33 (gravity 0.28) and builds t³ to 0.57 over 48 frames; a per-frame 0.92 drag makes climb speed *asymptote* to ~3.3 cells/frame (90% by ~f51) instead of snapping to the cap. A tap feathers height, a hold winds slowly into a climb; releasing resets the spool. The exhaust plume scales with the spool. Refuels on ground/liquid contact. Live-tunable in `params.player` (Builder → Global Controls → LEVITATION; adjustable mid-playtest) | `Player.ts` + `config/params.ts` + `Builder.ts` |
 | Levitation sputter | Below 20% fuel the jet coughs — exhaust gaps + put-put audio — so panic starts *before* the fall | `Player.ts` + `AudioEngine.sputter` |
 | Step-up | 2-cell ledges are walked up automatically (step-up 5 in the entity mover) | `entities/physics.ts` |
@@ -515,7 +515,7 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
 ## Tuning quick-reference (this codex's load-bearing numbers)
 
 ```
-coyote 6f · jump buffer 8f · jump vy -3.7 · gravity 0.28 (liquid 0.12)
+coyote 6f · jump buffer 8f · jump vy -3.7 paced by depth · gravity 0.28 (liquid 0.12)
 levitation spool: 0.33 -> 0.57 thrust over 48f (t-cubed ease-in) + 0.92/f drag -> ~3.3 terminal climb
 wand recoil: base 6 + sum(proj speed×count), ×0.06 -> impulse, cap 4.0, ground ×0.55 (opposite aim; down+airborne = rocket-jump)
 levitation horizontal: own control (levitHorizControl 1.0×) — decoupled from ground Swift/Swift-Soles buffs
@@ -523,7 +523,7 @@ air inertia: input caps at maxRun but never snaps carried momentum down; airborn
 gore/blood: count = baseline × global.bloodAmount × channelMul(material) × sizeFactor. sizeFactor = clamp(halfW·h / 50, 0.3, 4) (bat barely spatters, golem/colossus gushes). channelMul keys off the sprayed cell: Cell.Blood→goreBlood, Cell.Slime→goreSlime, Cell.Acid/Toxic→goreOoze, else 1 — so red blood, green slime, and glowing ooze tune discretely. bloodAmount is the master: 0 = bloodless, 1 = shipped, up to 10 = maximum gore / Tarantino mode. All in Builder → Global Controls → GORE (Overall 0–10×, channels 0–4×). Particle pool MAX_PARTICLES=4200 caps extremes gracefully; gold bounty shower is NOT scaled
 blood staining: blood particles stain (stainCell) the sturdy surface they strike (Wall/Wood/Stone/Ice), and flowing/pooling blood liquid stains the floor/walls it touches each substep (handleViscousLiquid) — red soaks in permanently (tints world.colors, not types, so golden hashes unaffected)
 blood wading: wet Cell.Blood at the legs (sample 9 tall × ±4) / WADE_FULL_CELLS 48 = wade01; sheds ≤0.55× of accel+maxRun (shin-deep ≈ −40%). Contact (≥4 cells) BANKS soak charge into player.bloodStain (+18/f ×0.35–1.0 by depth, cap 3600) → sprite reddens boots+hem the more/longer he wades (BLOOD_STAIN_FULL 1000 = full crimson, over 8 cells); off the blood drains 1/f, holds then fades ≈ 1 min. Moving (|vx|>0.5) shoves a crest up (world.swap) + flings the pool's own-colour cosmetic droplets + soft splash
-run accel 0.5 ground / 0.575 air · max run 2.6 · crouch 0.38x · peek +48 cells
+run accel 0.5 ground / 0.575 air · max run 2.6 paced by depth · crouch 0.38x · peek +48 cells
 dive: entry 5.6, floor 4.6, terminal 6.4 (normal 5.0), drift x0.86/f
 slam: 26-cell knock radius, 1 dmg, ≤12 powder cells popped
 kick (F): melee cone range 22 / ±52° / 8 dmg / cd 22 · gust cone range 32 (1.5× fan) · kickImpulse 75 (mass-aware) · self-recoil 3.0×max(0.5,reaction), down=stomp-launch
@@ -538,7 +538,7 @@ sequence chime 300+90·step Hz / break 120 Hz saw · emitter rate clamp ≥2f
 bat flare 8f at <64 cells · swoop 12f cap 2.6 · tumble 14f, ~1.2%/f at <40% hp
 enemy threat-sense (in-window foes, tick rate): hazard box halfW+9 (per-kind enemyLethalCell) · fast body dist<60 tti<26 toward>0.4 (imminent tti<14) · projectile dist<70 tti<22 toward>0.6 (imminent tti<12) · flame-cone reach 36 / half-angle 0.5 +0.3 slack · self: burning .85, hp<35% ramps
 enemy drives: fear → sensed threat × kind-fear, decay 0.02/f · aggression +0.02 close +0.04 on-hit −0.03·fear −0.005/f · chaseScale clamp(1 − 0.7·fear + 0.15·agg, 0.25, 1)
-enemy reflex: dodge ⊥ to threat vel @2.7 ×12f, one roll/threat (dodgeCd 22) gated by kind dodge% (fliers sustain vy, grounded one hop) · flee 26f @1.7 away (toward water if burning+seekWater) · startle "!" tell @dodgeT≥10|fleeT≥23 + airy whiff (pDist<160)
+enemy reflex: dodge ⊥ to threat vel @2.7 ×12f, one roll/threat (dodgeCd 22) gated by kind dodge% (fliers sustain vy, grounded one hop) · flee 26f @1.7 away (toward water if burning+seekWater) · final movement integrates at 0.55x on D1, ramping +0.09/depth to 1.0x by D6 before difficulty · startle "!" tell @dodgeT≥10|fleeT≥23 + airy whiff (pDist<160)
 temperament fear/dodge/fleeAt: slime .4/.12/.95 · bat 1.3/.85/.45 · imp .6/.72/.6 · wisp .9/.7/.4 · spitter .85/.55/.5 · bomber .2/.3/never · mage .9/.62/.45 · weaver .5/.5/.72 · golem .18/.28/never · colossus 0/0/never · default .7/.45/.7
 player eye seeks threats <80 cells · enemy gaze locks only when alerted
 shake falloff dead at 420 cells · hitstop 3f at ≥8 dmg · heartbeat <25% hp

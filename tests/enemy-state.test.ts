@@ -35,6 +35,7 @@ describe('enemyStateLabel', () => {
     expect(enemyStateLabel(enemy({ status: { ...createDefaultStatus(), burning: 20 } }))).toBe('panicking');
     expect(enemyStateLabel(enemy({ status: { ...createDefaultStatus(), frozen: 20 } }))).toBe('frozen');
     expect(enemyStateLabel(enemy({ status: { ...createDefaultStatus(), electrified: 20 } }))).toBe('shocked');
+    expect(enemyStateLabel(enemy({ kind: 'bat', slimed: 120 }))).toBe('slimed');
     // launched (knockback) outranks the rest
     expect(enemyStateLabel(enemy({ knockT: 5, status: { ...createDefaultStatus(), frozen: 9 } }))).toBe('launched');
   });

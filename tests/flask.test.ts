@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { Flask } from '@/combat/Flask';
 import type { Ctx, RunTestKitConfig } from '@/core/types';
+import { PlayerControl } from '@/entities/Player';
+import { createDefaultStatus } from '@/entities/status';
 import { Levels } from '@/game/Levels';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
@@ -21,6 +23,7 @@ function makeFlaskCtx(flask = new Flask()): Ctx {
       hp: 100,
       maxLevit: 100,
       levit: 100,
+      status: createDefaultStatus(),
       perks: {},
     },
     input: { mouse: { x: 32, y: 12 } },
@@ -99,6 +102,37 @@ describe('run test kit flask setup', () => {
 
     expect(ctx.flask.activeIndex).toBe(0);
     expect(ctx.flask.state).toMatchObject({ material: Cell.Water, count: 300 });
+  });
+
+  it('keeps thrown flask inventory full in god mode', () => {
+    const flask = new Flask();
+    flask.setSlot(0, Cell.Water, 50);
+    const ctx = makeFlaskCtx(flask);
+    ctx.state.debugGodMode = true;
+
+    flask.throwFlask(ctx);
+
+    expect(flask.bottleView()).toMatchObject({ material: Cell.Water, count: 50 });
+    expect(flask.state).toMatchObject({ material: Cell.Water, count: 50 });
+  });
+
+  it('keeps poured and drunk flask contents from depleting in god mode', () => {
+    const flask = new Flask();
+    flask.setSlot(0, Cell.Water, 30);
+    const ctx = makeFlaskCtx(flask);
+    ctx.state.debugGodMode = true;
+    ctx.input.pourHeld = true;
+
+    flask.update(ctx);
+
+    expect(flask.state).toMatchObject({ material: Cell.Water, count: 30 });
+
+    flask.setSlot(0, Cell.ElixirLife, 5);
+    const playerCtl = new PlayerControl(ctx) as unknown as { drink(ctx: Ctx): void };
+    playerCtl.drink(ctx);
+
+    expect(flask.state).toMatchObject({ material: Cell.ElixirLife, count: 5 });
+    expect(ctx.player.status.regen).toBe(20);
   });
 
   it('honors an explicit active flask index for legacy single-flask setup', () => {

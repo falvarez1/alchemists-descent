@@ -41,6 +41,7 @@ export class Particles implements ParticlesApi {
     p.homing = (opts && opts.homing) || false;
     p.value = opts && opts.value !== undefined ? Math.max(0, Math.floor(opts.value)) : 10;
     p.hostileDmg = (opts && opts.hostileDmg) || 0;
+    p.hostileSource = opts?.hostileSource ?? null;
     p.deposit = (opts && opts.deposit) || false;
     this.pool.add(p);
   }
@@ -161,7 +162,7 @@ export class Particles implements ParticlesApi {
         const dx = player.x - p.x,
           dy = player.y - 3 - p.y;
         if (dx * dx + dy * dy < 9) {
-          ctx.playerCtl.damage(p.hostileDmg, p.vx * 1.5, -1);
+          ctx.playerCtl.damage(p.hostileDmg, p.vx * 1.5, -1, p.hostileSource ?? 'hostile-debris');
           this.removeAt(i);
           continue;
         }

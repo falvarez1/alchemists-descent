@@ -10,6 +10,7 @@ import {
   PLAYER_TUNING_DEFAULTS,
 } from '@/config/params';
 import { GEN_TUNE, GEN_TUNE_DEFAULTS } from '@/config/gen';
+import { PROGRESSION_PACING, PROGRESSION_PACING_DEFAULTS } from '@/config/pacing';
 
 /**
  * Live-tuning persistence.
@@ -38,6 +39,7 @@ type Bag = Record<string, unknown>;
 interface TuningSnapshot {
   global?: Flat;
   player?: Flat;
+  pacing?: Flat;
   gen?: Flat;
   materials?: Record<string, Flat>;
   spells?: Record<string, Flat>;
@@ -100,6 +102,8 @@ export function captureTuning(ctx?: Ctx): TuningSnapshot {
   if (g) snap.global = g;
   const p = diffFlat(PLAYER_PARAMS, PLAYER_TUNING_DEFAULTS);
   if (p) snap.player = p;
+  const pacing = diffFlat(PROGRESSION_PACING, PROGRESSION_PACING_DEFAULTS);
+  if (pacing) snap.pacing = pacing;
   const gen = diffFlat(GEN_TUNE, GEN_TUNE_DEFAULTS);
   if (gen) snap.gen = gen;
 
@@ -132,6 +136,7 @@ export function captureTuning(ctx?: Ctx): TuningSnapshot {
 function restoreSnapshot(snap: TuningSnapshot, ctx?: Ctx): void {
   applyFlat(GLOBAL_PARAMS, GLOBAL_PARAM_DEFAULTS, snap.global);
   applyFlat(PLAYER_PARAMS, PLAYER_TUNING_DEFAULTS, snap.player);
+  applyFlat(PROGRESSION_PACING, PROGRESSION_PACING_DEFAULTS, snap.pacing);
   applyFlat(GEN_TUNE, GEN_TUNE_DEFAULTS, snap.gen);
   if (snap.materials) {
     for (const id of Object.keys(snap.materials)) {

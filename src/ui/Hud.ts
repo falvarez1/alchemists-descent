@@ -1,7 +1,15 @@
-import type { Ctx } from '@/core/types';
+import type { Ctx, PerkId } from '@/core/types';
 import { CARD_DEFS } from '@/combat/wands/cards';
+import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { nextWandSentence } from '@/combat/wands/sentenceView';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
+import { deathCauseLine } from '@/ui/deathCauses';
+import {
+  INTRO_OBJECTIVE,
+  INTRO_PRE_KEY_OBJECTIVES,
+  INTRO_REWARD_CARD,
+  introControlHintForObjective,
+} from '@/game/introObjectives';
 import { cardIconName, makeIconCanvas } from '@/ui/icons';
 
 /** Non-null getElementById — all HUD elements exist statically in index.html. */
@@ -12,11 +20,16 @@ function el(id: string): HTMLElement {
 const BENCH_OBJECTIVE_FRAMES = 720;
 const WAYSTONE_OBJECTIVE_RADIUS_SQ = 72 * 72;
 
+function introCompletionCardSlotted(ctx: Ctx): boolean {
+  const wands = ctx.wands.wands;
+  return Array.isArray(wands) && wands.some((wand) => wand.cards.includes(INTRO_REWARD_CARD));
+}
+
 export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFrames = 0): string {
   if (ctx.state.mode !== 'play') return fallback;
   const runtime = ctx.levels.current;
   if (!runtime) return fallback;
-  if (benchNudgeFrames > 0 && runtime.refuge && ctx.wands.collection.length > 0) return 'BENCH AVAILABLE IN REFUGE';
+  if (benchNudgeFrames > 0 && runtime.refuge && ctx.wands.collection.length > 0) return INTRO_OBJECTIVE.benchAvailable;
   const nearUnlitWaystone = runtime.waystones.some((waystone) => {
     if (waystone.lit) return false;
     const dx = waystone.x - ctx.player.x;
@@ -24,7 +37,12 @@ export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFr
     return dx * dx + dy * dy <= WAYSTONE_OBJECTIVE_RADIUS_SQ;
   });
   if (nearUnlitWaystone && !runtime.keyTaken) return 'LIGHT WAYSTONE: BRING FIRE';
-  if (runtime.portal) return runtime.keyTaken ? 'RETURN TO THE PORTAL' : 'FIND THE GOLDEN KEY';
+  if (runtime.portal) {
+    if (runtime.keyTaken) return INTRO_OBJECTIVE.returnPortal;
+    return INTRO_PRE_KEY_OBJECTIVES.has(fallback) && !introCompletionCardSlotted(ctx)
+      ? fallback
+      : INTRO_OBJECTIVE.findKey;
+  }
   return fallback;
 }
 
@@ -60,6 +78,7 @@ export class Hud {
   private rechargeFill: HTMLElement | null = null;
   /** Readable spell sentence for the active wand's next click. */
   private castCaption: HTMLElement | null = null;
+  private readonly godPowerButtons = new Map<PerkId, HTMLButtonElement>();
   /** Rolling gold display: ticks toward the true score instead of snapping. */
   private displayedGold = 0;
   /** Frame the last dry-fire flash started (clears the class after it). */
@@ -76,10 +95,13 @@ export class Hud {
   private readonly hudGold = el('hud-gold');
   private readonly keyIndicator = el('key-indicator');
   private readonly hudCards = el('hud-cards');
+  private readonly godTools = el('god-tools');
   private readonly flaskFill = el('flask-fill');
   private readonly damageVignette = el('damage-vignette');
   private readonly objectiveNode = el('objective');
   private readonly interactionHintNode = el('interaction-hint');
+  private readonly controlsHintNode = el('controls-hint');
+  private readonly controlsHintDefaultHtml = this.controlsHintNode.innerHTML;
   private readonly disposers: Array<() => void> = [];
   private readonly timeouts = new Set<number>();
 
@@ -95,6 +117,7 @@ export class Hud {
     const tomeIcon = makeIconCanvas('tome', 2);
     if (tomeIcon) tomeIconHost.appendChild(tomeIcon);
     this.buildFlaskBelt();
+    this.buildGodTools();
 
     // Dry fire: the mana bar itself flinches red so the WHY is unmissable.
     this.disposers.push(ctx.events.on('dryFire', () => {
@@ -184,10 +207,11 @@ export class Hud {
       el('enemies-left').textContent = String(count);
     }));
 
-    this.disposers.push(ctx.events.on('playerDied', ({ depth, level, gold }) => {
+    this.disposers.push(ctx.events.on('playerDied', ({ depth, level, gold, cause }) => {
       // Prep the overlay text but DON'T show it yet — the wizard ragdolls first.
       el('go-wave').textContent = 'D' + depth + ' - ' + level.toUpperCase();
       el('go-gold').textContent = String(gold);
+      el('go-cause').textContent = deathCauseLine(cause, this.ctx.state.frameCount);
     }));
     this.disposers.push(ctx.events.on('playerCorpseSettled', () => {
       // The corpse has come to rest (tombstone is up) — now offer the respawn.
@@ -221,6 +245,8 @@ export class Hud {
     this.timeouts.clear();
     el('gold-chip-icon').replaceChildren();
     el('cards-chip-icon').replaceChildren();
+    this.godTools.replaceChildren();
+    this.godPowerButtons.clear();
   }
 
   private setHudTimeout(callback: () => void, ms: number): number {
@@ -261,11 +287,89 @@ export class Hud {
     this.setHudTimeout(() => banner.classList.remove('show'), 2200);
   }
 
+  private buildGodTools(): void {
+    this.godTools.replaceChildren();
+    this.godPowerButtons.clear();
+
+    const actions = document.createElement('div');
+    actions.className = 'god-tools-actions';
+    const shuffle = document.createElement('button');
+    shuffle.type = 'button';
+    shuffle.className = 'god-tool-btn';
+    shuffle.textContent = 'RESHUFFLE CARDS';
+    shuffle.title = 'God mode: reshuffle active wand cards without opening the bench';
+    shuffle.addEventListener('click', () => {
+      if (!this.ctx.state.debugGodMode) return;
+      this.ctx.wands.debugShuffleLoadout();
+    });
+    actions.appendChild(shuffle);
+    this.godTools.appendChild(actions);
+
+    const powers = document.createElement('div');
+    powers.className = 'god-power-row';
+    for (const perk of PERK_DEFS) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'god-power';
+      chip.textContent = perk.shortLabel;
+      chip.title = perk.name;
+      chip.setAttribute('aria-label', perk.shortLabel + ' power');
+      chip.addEventListener('click', () => {
+        if (!this.ctx.state.debugGodMode) return;
+        const enabled = togglePerkActive(this.ctx, perk.id);
+        this.ctx.events.emit('toast', { text: perk.shortLabel + (enabled ? ' POWER READY' : ' POWER OFF') });
+        this.renderGodTools(this.ctx);
+      });
+      this.godPowerButtons.set(perk.id, chip);
+      powers.appendChild(chip);
+    }
+    this.godTools.appendChild(powers);
+  }
+
+  private renderGodTools(ctx: Ctx): void {
+    const visible = ctx.state.mode === 'play' && ctx.state.debugGodMode === true;
+    this.godTools.classList.toggle('visible', visible);
+    this.godTools.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    for (const perk of PERK_DEFS) {
+      const button = this.godPowerButtons.get(perk.id);
+      if (!button) continue;
+      const active = isPerkActive(ctx, perk.id);
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  }
+
   private renderObjective(): void {
     const left = Math.max(0, this.benchObjectiveUntil - this.ctx.state.frameCount);
     const text = contextualObjectiveText(this.ctx, this.objectiveBase, left);
     const node = this.objectiveNode;
     if (node.textContent !== text) node.textContent = text;
+    this.renderIntroControlHint(text);
+  }
+
+  private renderIntroControlHint(objectiveText: string): void {
+    const hint = introControlHintForObjective(objectiveText);
+    const node = this.controlsHintNode;
+    if (!hint || this.ctx.state.mode !== 'play') {
+      if (node.dataset.introHint === 'true') {
+        node.innerHTML = this.controlsHintDefaultHtml;
+        node.dataset.introHint = 'false';
+        delete node.dataset.introHintKey;
+      }
+      return;
+    }
+    const key = hint.map((part) => `${part.key}:${part.label}`).join('|');
+    if (node.dataset.introHint === 'true' && node.dataset.introHintKey === key) return;
+    node.replaceChildren();
+    hint.forEach((part, index) => {
+      if (index > 0) node.appendChild(document.createTextNode('  ·  '));
+      const keyNode = document.createElement('b');
+      keyNode.textContent = part.key;
+      node.appendChild(keyNode);
+      node.appendChild(document.createTextNode(' ' + part.label));
+    });
+    node.dataset.introHint = 'true';
+    node.dataset.introHintKey = key;
   }
 
   /** Tier-2 contextual hint: the nearest interactable's "what to do" line. */
@@ -360,6 +464,7 @@ export class Hud {
     const player = ctx.player;
     this.renderObjective();
     this.renderInteractionHint(ctx);
+    this.renderGodTools(ctx);
     this.hpFill.style.width = Math.max(0, (player.hp / player.maxHp) * 100) + '%';
     // player.mana mirrors the active wand's tank (WandSystem guarantee), so
     // the mana bar tracks the wand with no extra wiring here.

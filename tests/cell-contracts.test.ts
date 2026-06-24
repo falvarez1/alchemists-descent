@@ -395,7 +395,9 @@ describe('cell material conversions', () => {
 
     handleGunpowder({ world, params: createGameParams(), explosions } as unknown as Ctx, 3, 3);
 
-    expect(explosions.trigger).toHaveBeenCalledWith(3, 3, createGameParams().materials[Cell.Gunpowder].blastRadius);
+    expect(explosions.trigger).toHaveBeenCalledWith(3, 3, createGameParams().materials[Cell.Gunpowder].blastRadius, {
+      playerDamageSource: 'gunpowder',
+    });
   });
 
   it('uses gunpowder material params to decide whether a clump can explode', () => {

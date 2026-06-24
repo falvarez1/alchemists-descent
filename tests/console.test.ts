@@ -135,6 +135,7 @@ function makeCtx(): Ctx {
       collection.length = 0;
       collection.push(...ALL_CARD_IDS);
     },
+    debugShuffleLoadout: () => undefined,
     upgradeFrame: () => false,
     nextCastSlots: () => [],
   };
@@ -379,6 +380,24 @@ describe('console registry', () => {
     expect(ctx.player.x).toBe(105);
     expect(ctx.player.y).toBe(117);
     expect(res.data).toMatchObject({ target: 'sandbox', resolved: { x: 105, y: 117, free: true } });
+  });
+
+  it('turns god mode back off with "god off" and "god = off"', async () => {
+    const ctx = makeCtx();
+
+    ctx.state.debugGodMode = true;
+    const off = await ctx.console.exec('god off');
+    expect(off).toMatchObject({ ok: true, data: { disabled: true, wasOn: true } });
+    expect(ctx.state.debugGodMode).toBe(false);
+
+    ctx.state.debugGodMode = true;
+    const eqOff = await ctx.console.exec('god = off');
+    expect(eqOff.ok).toBe(true);
+    expect(ctx.state.debugGodMode).toBe(false);
+
+    const already = await ctx.console.exec('god off');
+    expect(already).toMatchObject({ ok: true, data: { disabled: true, wasOn: false } });
+    expect(ctx.state.debugGodMode).toBe(false);
   });
 
   it('paints cells and reports data through the automation API', async () => {

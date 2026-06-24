@@ -15,6 +15,18 @@ type ElementalStatus = 'burning' | 'frozen' | 'electrified' | 'wet' | 'oiled';
 const SHOCK_WET_MULT = 3; // a wet body conducts — far more shock damage (the combo)
 const SHOCK_ZAP = 3; // one-time hit the instant a dry/wet body becomes electrified
 
+// CATCH FIRE — ignition is percentage-based and scales with HEAT (how many flame
+// cells lick the body, weighted by how hot they are) and EXPOSURE TIME (each
+// status sample re-rolls, so a sustained lick eventually catches). Sampled every
+// 2nd frame (~30×/s), so with these odds an open Fire cell lights a bare body in
+// ~1s, a Lava cell in a blink, and being engulfed (or oiled) crosses the
+// deterministic "hot enough" line and ignites at once. Fire-immune bodies (imps,
+// the flameward player) never roll.
+const FIRE_IGNITE_CHANCE = 0.03; // per Fire cell, per sample
+const LAVA_IGNITE_CHANCE = 0.16; // per Lava cell, per sample — a furnace next to open flame
+const OIL_IGNITE_MULT = 5; // an oiled body goes up fast
+const IGNITE_HOT_ENOUGH = 1; // accumulated heat ≥ this ignites with certainty
+
 interface StatusBody {
   x: number;
   y: number;
@@ -35,6 +47,27 @@ export function createDefaultStatus(): EntityStatus {
     swift: 0,
     torch: 0,
   };
+}
+
+/**
+ * Percentage-based catch-fire roll. `fireCells` / `lavaCells` are how much open
+ * flame vs molten lava is touching the body for this hit; hotter (lava) + more
+ * cells + oil all raise the odds, and crossing the "hot enough" heat line
+ * (engulfed / oiled / a lava bath) ignites for certain. Sustained exposure just
+ * re-rolls until it catches. Returns true if the body is alight afterward; a
+ * no-op for fire-immune bodies. Shared by passive exposure (sampleAndTickStatus)
+ * and direct splash hits so the two stay consistent.
+ */
+export function rollCatchFire(status: EntityStatus, fireCells: number, lavaCells: number, immune = false): boolean {
+  if (immune) return false;
+  const heat = (fireCells * FIRE_IGNITE_CHANCE + lavaCells * LAVA_IGNITE_CHANCE) * (status.oiled > 0 ? OIL_IGNITE_MULT : 1);
+  if (heat <= 0) return status.burning > 0;
+  if (status.burning > 0 || heat >= IGNITE_HOT_ENOUGH || Math.random() < heat) {
+    // staying in the flames refreshes the burn; a fresh catch lights it.
+    status.burning = status.oiled > 0 ? 300 : 90;
+    return true;
+  }
+  return false;
 }
 
 /** Death/respawn clears grid-inflicted transient harm but preserves potion boons. */
@@ -89,6 +122,7 @@ export function sampleAndTickStatus(
   let water = 0,
     oil = 0,
     fire = 0,
+    lava = 0,
     nitrogen = 0,
     charged = 0;
   for (let dy = 0; dy < h; dy += 2) {
@@ -100,7 +134,8 @@ export function sampleAndTickStatus(
       const t = world.types[i];
       if (t === Cell.Water) water++;
       else if (t === Cell.Oil) oil++;
-      else if (t === Cell.Fire || t === Cell.Lava) fire++;
+      else if (t === Cell.Fire) fire++;
+      else if (t === Cell.Lava) lava++;
       else if (t === Cell.Nitrogen) nitrogen++;
       if (world.charge[i] > 0) charged++;
     }
@@ -135,7 +170,9 @@ export function sampleAndTickStatus(
     }
   }
   if (oil >= 3 && st.wet === 0 && !immune?.oiled) st.oiled = 600;
-  if (fire >= 1 && !immune?.burning) st.burning = Math.max(st.burning, st.oiled > 0 ? 300 : 90);
+  // CATCH FIRE (percentage-based): hotter flame + more cells + oil all raise the
+  // per-sample odds, and sustained exposure re-rolls until it catches.
+  if (!immune?.burning) rollCatchFire(st, fire, lava);
   if (nitrogen >= 2 && !immune?.frozen) st.frozen = Math.max(st.frozen, 100);
   // Touching a live conductor electrocutes for 1-2s. While still in the current
   // it tops back up (decays to ~1s, re-rolls), so a body stuck to charged metal

@@ -103,8 +103,13 @@ import type { BiomeId } from '@/core/types';
  * v28: mineral-vug fill now skips reward pickup guard boxes after all prefab
  *      and structure pickups are merged, preventing late rock fill from burying
  *      generated non-key rewards. Full-level output changed on affected seeds.
+ * v29: bottom well shafts removed; D1 Refuge/bench moved near spawn and later
+ *      depths no longer place a Refuge. Full-level output changed.
+ * v30: the open strip below the caves is packed to solid rock — terrain now runs
+ *      all the way down to the bedrock instead of leaving an empty bottom void.
+ *      Full-level + base-cave output changed on every seed.
  */
-export const GEN_VERSION = 28;
+export const GEN_VERSION = 30;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

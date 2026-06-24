@@ -1,9 +1,10 @@
-import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskState, type PerkId } from '@/core/types';
+import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskState } from '@/core/types';
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/WandSystem';
 import { buildWandSentenceView, type WandSentenceView, type WandSlotLinkKind } from '@/combat/wands/sentenceView';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
-import { Cell } from '@/sim/CellType';
+import { flaskMaterialOptions } from '@/content/flaskMaterials';
+import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { cardIconName, ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 
 /** Non-null getElementById — the bench root exists statically in index.html. */
@@ -63,29 +64,6 @@ const POTION_ICON: Record<string, string> = {
   torch: 'fire',
 };
 
-const FLASK_FILL_CHOICES = [
-  { id: 'water', name: 'Water', label: 'WATER', cell: Cell.Water },
-  { id: 'acid', name: 'Acid', label: 'ACID', cell: Cell.Acid },
-  { id: 'lava', name: 'Lava', label: 'LAVA', cell: Cell.Lava },
-  { id: 'nitrogen', name: 'Liquid Nitrogen', label: 'N2', cell: Cell.Nitrogen },
-  { id: 'life', name: 'Elixir of Life', label: 'LIFE', cell: Cell.ElixirLife },
-  { id: 'levity', name: 'Elixir of Levity', label: 'LEV', cell: Cell.ElixirLevity },
-  { id: 'stone', name: 'Elixir of Stone', label: 'STONE', cell: Cell.ElixirStone },
-] as const;
-
-const PERK_LABELS: Array<{ id: PerkId; name: string }> = [
-  { id: 'might', name: 'MIGHT' },
-  { id: 'vampirism', name: 'VAMP' },
-  { id: 'featherweight', name: 'FEATHER' },
-  { id: 'manafont', name: 'MANA' },
-  { id: 'swiftfoot', name: 'SWIFT' },
-  { id: 'torchbearer', name: 'TORCH' },
-  { id: 'ironhide', name: 'IRON' },
-  { id: 'flameward', name: 'FIRE' },
-  { id: 'toxinward', name: 'TOXIN' },
-  { id: 'goldmagnet', name: 'GOLD' },
-];
-
 type BenchDragSource =
   | { kind: 'collection'; index: number; id: CardId }
   | { kind: 'slot'; wand: 0 | 1; slot: number; id: CardId };
@@ -111,8 +89,12 @@ export function canOpenWandBench(ctx: Ctx): boolean {
 }
 
 export function wandBenchUnavailableCue(ctx: Ctx): string {
-  const refuge = ctx.levels.current?.refuge;
-  if (!refuge) return 'WAND BENCH WAITS IN THE REFUGE';
+  const runtime = ctx.levels.current;
+  const refuge = runtime?.refuge;
+  if (!refuge) {
+    if (runtime && runtime.def.depth > 1) return 'WAND BENCH WAS ON DEPTH 1';
+    return 'WAND BENCH WAITS IN THE REFUGE';
+  }
   const dx = refuge.x - ctx.player.x;
   const dy = refuge.y - ctx.player.y;
   const dist = Math.max(1, Math.round(Math.hypot(dx, dy)));
@@ -411,15 +393,17 @@ export class WandBench {
     this.appendSection(root, 'ACTIVE POWERS');
     const powers = document.createElement('div');
     powers.className = 'bench-powers';
-    PERK_LABELS.forEach(({ id, name }) => {
+    PERK_DEFS.forEach(({ id, shortLabel }) => {
+      const active = isPerkActive(this.ctx, id);
       const chip = document.createElement('button');
       chip.type = 'button';
-      chip.className = 'bench-power' + (this.ctx.player.perks[id] ? ' active' : '');
-      chip.textContent = name;
-      chip.setAttribute('aria-label', name + ' power is active');
+      chip.className = 'bench-power' + (active ? ' active' : '');
+      chip.textContent = shortLabel;
+      chip.setAttribute('aria-label', shortLabel + ' power');
+      chip.setAttribute('aria-pressed', String(active));
       chip.addEventListener('click', () => {
-        this.ctx.player.perks[id] = true;
-        this.ctx.events.emit('toast', { text: name + ' POWER READY' });
+        const enabled = togglePerkActive(this.ctx, id);
+        this.ctx.events.emit('toast', { text: shortLabel + (enabled ? ' POWER READY' : ' POWER OFF') });
         this.render();
       });
       powers.appendChild(chip);
@@ -554,9 +538,9 @@ export class WandBench {
     emptyOption.value = '';
     emptyOption.textContent = 'Empty';
     select.appendChild(emptyOption);
-    for (const fill of FLASK_FILL_CHOICES) {
+    for (const fill of flaskMaterialOptions(this.ctx.params.materials)) {
       const option = document.createElement('option');
-      option.value = String(fill.cell);
+      option.value = String(fill.id);
       option.textContent = fill.name;
       select.appendChild(option);
     }

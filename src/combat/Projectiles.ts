@@ -398,8 +398,18 @@ export class Projectiles implements ProjectilesApi {
     }
   }
 
-  private triggerExplosion(ctx: Ctx, x: number, y: number, radius: number, enemyDamageMul = 1): void {
-    ctx.explosions.trigger(x, y, radius, enemyDamageMul === 1 ? undefined : { enemyDamageMul });
+  private triggerExplosion(
+    ctx: Ctx,
+    x: number,
+    y: number,
+    radius: number,
+    enemyDamageMul = 1,
+    playerDamageSource = 'self-explosion',
+  ): void {
+    const options = enemyDamageMul === 1 && playerDamageSource === 'self-explosion'
+      ? undefined
+      : { enemyDamageMul, playerDamageSource };
+    ctx.explosions.trigger(x, y, radius, options);
     this.enemyIndex.syncLive(ctx.enemies);
     this.indexedEnemyCount = ctx.enemies.length;
   }
@@ -857,14 +867,15 @@ export class Projectiles implements ProjectilesApi {
             dy = ctx.player.y - (crawl ? 4 : 9) - p.y;
           if (dx * dx + dy * dy < (crawl ? 45 : 85)) {
             if (p.type === 'frostbolt') {
-              ctx.playerCtl.damage(6, p.vx * 0.8, -0.6);
+              ctx.playerCtl.damage(6, p.vx * 0.8, -0.6, p.source ?? 'frostbolt');
               ctx.player.status.frozen = Math.max(ctx.player.status.frozen, 120);
             } else if (p.type === 'acidglob') {
-              ctx.playerCtl.damage(8, p.vx * 1.3, -1.6, 'acid');
+              ctx.playerCtl.damage(8, p.vx * 1.3, -1.6, p.source ?? 'acidglob');
               splashLiquid(ctx, p.x, p.y, Cell.Acid, acidColor, 3);
             } else {
-              ctx.playerCtl.damage(11, p.vx * 1.7, -2.3, 'explosion');
-              this.triggerExplosion(ctx, p.x, p.y, 10);
+              const source = p.source ?? 'hostile-fireball';
+              ctx.playerCtl.damage(11, p.vx * 1.7, -2.3, source);
+              this.triggerExplosion(ctx, p.x, p.y, 10, 1, source);
             }
             this.removeAt(projectiles, i);
             removed = true;
@@ -1046,7 +1057,7 @@ export class Projectiles implements ProjectilesApi {
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'fireball') {
-            this.triggerExplosion(ctx, gx, gy, 10);
+            this.triggerExplosion(ctx, gx, gy, 10, 1, p.hostile ? p.source ?? 'hostile-fireball' : 'self-explosion');
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'frostbolt') {

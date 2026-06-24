@@ -107,11 +107,12 @@ const counts = await page.evaluate(() => {
     mech: items.filter((t) => t === 'mechanism').length,
     prefab: items.filter((t) => t.includes('builtin') || t.includes('library')).length,
     entity: items.filter((t) => t.startsWith('enemy') || t.startsWith('player')).length,
+    expectedEntity: 1 + Object.keys(window.__game.ctx.enemyCtl.defs).length,
   };
 });
 check('13 mechanism items', counts.mech === 13, JSON.stringify(counts));
 check('all 7 builtin prefabs listed', counts.prefab >= 7, String(counts.prefab));
-check('player + 12 enemies listed', counts.entity === 13, String(counts.entity));
+check(`player + ${counts.expectedEntity - 1} enemies listed`, counts.entity === counts.expectedEntity, JSON.stringify(counts));
 
 /* ---------- the stage is alive ---------- */
 const snap = () =>
@@ -151,6 +152,34 @@ const realClick = async (selector, textOf, want) => {
 };
 const selectItem = (name) => realClick('#builder-gallery .bg-item', '.bg-name', name);
 const clickChip = (label) => realClick('#builder-gallery .bg-chip', null, label);
+const entitySections = ['BEHAVIORS', 'EMOTIONS', 'STRENGTHS', 'WEAKNESSES'];
+
+await selectItem('The Alchemist');
+const playerInfo = await page.$eval('#bg-info', (e) => e.textContent ?? '');
+check(
+  'alchemist shows all entity profile sections',
+  entitySections.every((label) => playerInfo.includes(label)) && playerInfo.includes('Focused under pressure'),
+  playerInfo,
+);
+
+await selectItem('Bat');
+const batInfo = await page.$eval('#bg-info', (e) => e.textContent ?? '');
+check(
+  'bat shows behavior/emotion/strength/weakness profile with slime counterplay',
+  entitySections.every((label) => batInfo.includes(label)) &&
+    batInfo.includes('Slime gums its wings') &&
+    batInfo.includes('about seven seconds'),
+  batInfo,
+);
+
+await page.fill('#bg-search', 'gums its wings');
+await page.waitForTimeout(200);
+const traitSearchNames = await page.$$eval('#builder-gallery .bg-item .bg-name', (els) =>
+  els.map((e) => e.textContent ?? ''),
+);
+check('entity profile text participates in gallery search', traitSearchNames.includes('Bat'), JSON.stringify(traitSearchNames));
+await page.fill('#bg-search', '');
+await page.waitForTimeout(200);
 
 const brazierClicked = await selectItem('Brazier');
 const selName = await page.evaluate(
@@ -286,6 +315,9 @@ const selIdx = await page.evaluate(() =>
 );
 check('arrow keys navigate items', selIdx === 1, String(selIdx));
 
+await page.evaluate(() => {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+});
 await page.keyboard.press('Escape');
 await page.waitForTimeout(200);
 check('ESC closes the gallery', !(await page.isVisible('#builder-gallery')));

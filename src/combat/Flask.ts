@@ -20,6 +20,10 @@ const MAX_SPILL_RADIUS = 20;
 
 const GLASS_COLOR = packRGB(200, 230, 255);
 
+function infiniteFlask(ctx: Ctx): boolean {
+  return ctx.state.debugGodMode === true;
+}
+
 function hasLineOfSight(ctx: Ctx, fromX: number, fromY: number, toX: number, toY: number): boolean {
   const dx = toX - fromX;
   const dy = toY - fromY;
@@ -126,11 +130,14 @@ export class Flask implements FlaskApi {
       count: s.count,
     };
     ctx.audio.tone(520, 320, 0.08, 'sine', 0.06);
-    if (s.material !== null) {
-      ctx.telemetry.count('flask.throw.' + this.materialName(ctx, s.material));
+    const thrownMaterial = s.material;
+    const thrownAmount = s.count;
+    if (thrownMaterial !== null) ctx.telemetry.count('flask.throw.' + this.materialName(ctx, thrownMaterial));
+    if (!infiniteFlask(ctx)) {
+      s.material = null;
+      s.count = 0;
     }
-    s.material = null;
-    s.count = 0;
+    ctx.events.emit('flaskUsed', { verb: 'throw', material: thrownMaterial, amount: thrownAmount });
   }
 
   /** Refused flask verb: hollow click + the FLSK bar flinches (throttled). */
@@ -191,6 +198,7 @@ export class Flask implements FlaskApi {
     }
     if (ctx.state.frameCount % 8 === 0) ctx.audio.noiseBurst(0.08, 900, 0.05, true);
     ctx.telemetry.count('flask.siphon.' + this.materialName(ctx, s.material), taken);
+    ctx.events.emit('flaskUsed', { verb: 'siphon', material: s.material, amount: taken });
   }
 
   // ===================== Pour =====================
@@ -212,6 +220,7 @@ export class Flask implements FlaskApi {
     // you point — not straight down on the wizard's own head. Each droplet
     // carries a real cell that deposits when it lands (deposit:true also drops it
     // on expiry, so siphoned material is conserved even over open space).
+    const infinite = infiniteFlask(ctx);
     const n = Math.min(POUR_RATE, s.count);
     const glow = material === Cell.Lava ? 1.4 : material === Cell.Acid ? 0.7 : 0.35;
     for (let j = 0; j < n; j++) {
@@ -227,11 +236,12 @@ export class Flask implements FlaskApi {
         55 + Math.floor(Math.random() * 25),
         { grav: liquid ? 0.11 : 0.15, glow, deposit: true },
       );
-      s.count--;
+      if (!infinite) s.count--;
     }
     if (ctx.state.frameCount % 8 === 0) ctx.audio.noiseBurst(0.06, 600, 0.035);
     ctx.telemetry.count('flask.pour.' + this.materialName(ctx, material), n);
-    if (s.count === 0) s.material = null;
+    if (!infinite && s.count === 0) s.material = null;
+    ctx.events.emit('flaskUsed', { verb: 'pour', material, amount: n });
   }
 
   // ===================== Thrown bottle =====================

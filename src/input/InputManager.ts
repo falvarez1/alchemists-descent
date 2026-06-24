@@ -252,7 +252,10 @@ export class InputManager {
 
     if (ctx.state.mode === 'play') {
       if (ctx.player.climbing) return;
-      if (!ctx.player.dead) ctx.player.firing = true;
+      if (!ctx.player.dead) {
+        ctx.player.firing = true;
+        ctx.player.firePressed = true; // press edge: god mode fires this click instantly
+      }
       return;
     }
 
@@ -422,15 +425,17 @@ export class InputManager {
     ctx.audio.ensure();
     if (e.code === 'Tab') {
       e.preventDefault();
+      // Tab no longer drops PLAY into the Sandbox. It still leaves the Sandbox /
+      // opens the run launcher; the SANDBOX and PLAY buttons switch either way.
+      if (ctx.state.mode !== 'build') return;
       if (
-        ctx.state.mode === 'build' &&
         !document.body.classList.contains('builder-open') &&
         ctx.state.playtestSource === null &&
         this.requestRunLauncher('tab')
       ) {
         return;
       }
-      this.setMode(ctx.state.mode === 'build' ? 'play' : 'build');
+      this.setMode('play');
       return;
     }
 

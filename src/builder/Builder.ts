@@ -5,6 +5,7 @@ import type { BuilderHost, BuilderPauseClaim } from '@/app/BuilderHost';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { BIOMES as BIOME_DEFS } from '@/config/biomes';
 import { GEN, GEN_TUNE, GEN_TUNE_DEFAULTS, WORLDGEN_DRESSING_CHANNELS, WORLDGEN_LOOK_FIELDS, defaultSkeletonSpec } from '@/config/gen';
+import { PROGRESSION_PACING, PROGRESSION_PACING_DEFAULTS } from '@/config/pacing';
 import type { SkeletonSpec } from '@/config/gen';
 import { EXTRAS, campaignDressingRecipeForBiome } from '@/world/biomeExtras';
 import { createDefaultPostFxSettings, createDefaultWandLightSettings, GLOBAL_PARAM_DEFAULTS, MATERIAL_PARAM_DEFAULTS, PLAYER_TUNING_DEFAULTS } from '@/config/params';
@@ -7172,6 +7173,7 @@ export class Builder {
       this.host.notifyParamsChanged();
     });
 
+    this.buildProgressionPacingSection(host);
     this.buildPlayerPhysicsSections(host);
     this.buildWorldgenLookSection(host);
 
@@ -7260,6 +7262,41 @@ export class Builder {
     this.worldActionRow(sec, [
       { label: 'REGENERATE CAVES', title: 'Re-run worldgen with these look values', run: () => { void this.guardedWorldGen('caves'); } },
       { label: 'RESET LOOK', title: 'Restore the shipped worldgen look', run: () => { Object.assign(GEN_TUNE, GEN_TUNE_DEFAULTS); this.host.notifyParamsChanged(); this.buildGlobalPanel(); } },
+    ]);
+  }
+
+  private buildProgressionPacingSection(host: HTMLElement): void {
+    const p = PROGRESSION_PACING;
+    const pacing = this.worldSection(host, 'PROGRESSION PACING');
+    this.numberRow(pacing, 'D1 player speed', p.playerStart, 0.45, 1, 0.01, (v) => v.toFixed(2) + 'x', (v) => {
+      p.playerStart = v;
+    });
+    this.numberRow(pacing, 'Player depth ramp', p.playerDepthStep, 0, 0.18, 0.005, (v) => '+' + v.toFixed(3), (v) => {
+      p.playerDepthStep = v;
+    });
+    this.numberRow(pacing, 'D1 vertical speed', p.verticalStart, 0.45, 1, 0.01, (v) => v.toFixed(2) + 'x', (v) => {
+      p.verticalStart = v;
+    });
+    this.numberRow(pacing, 'Vertical depth ramp', p.verticalDepthStep, 0, 0.15, 0.005, (v) => '+' + v.toFixed(3), (v) => {
+      p.verticalDepthStep = v;
+    });
+    this.numberRow(pacing, 'D1 enemy speed', p.enemyStart, 0.25, 1, 0.01, (v) => v.toFixed(2) + 'x', (v) => {
+      p.enemyStart = v;
+    });
+    this.numberRow(pacing, 'Enemy depth ramp', p.enemyDepthStep, 0, 0.18, 0.005, (v) => '+' + v.toFixed(3), (v) => {
+      p.enemyDepthStep = v;
+    });
+    this.worldActionRow(pacing, [
+      {
+        label: 'RESET PACING',
+        title: 'Restore shipped early-progression pacing values',
+        run: () => {
+          Object.assign(PROGRESSION_PACING, PROGRESSION_PACING_DEFAULTS);
+          this.host.notifyParamsChanged();
+          this.buildGlobalPanel();
+          this.status('PROGRESSION PACING RESET');
+        },
+      },
     ]);
   }
 

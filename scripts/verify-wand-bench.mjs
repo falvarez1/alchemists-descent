@@ -597,6 +597,18 @@ check(
   JSON.stringify(compactUi),
 );
 
+const flaskMaterialOptions = await page.evaluate(() => ({
+  options: [...document.querySelectorAll('#wand-bench [data-bench-flask-slot="0"] [data-bench-flask-material] option')]
+    .map((option) => ({ value: option.value, text: option.textContent?.trim() ?? '' })),
+  materialCount: Object.keys(window.__game.ctx.params.materials).length,
+}));
+check(
+  'Bench flask dropdown includes Slime and registry-backed materials',
+  flaskMaterialOptions.options.some((option) => option.value === '19' && option.text === 'Slime') &&
+    flaskMaterialOptions.options.length >= flaskMaterialOptions.materialCount,
+  JSON.stringify(flaskMaterialOptions.options.slice(0, 12)),
+);
+
 await page.selectOption('#wand-bench [data-bench-flask-slot="1"] [data-bench-flask-material]', '21');
 await page.selectOption('#wand-bench [data-bench-flask-slot="2"] [data-bench-flask-material]', '7');
 const flaskState = await page.evaluate(() => {

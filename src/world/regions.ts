@@ -213,7 +213,7 @@ function extract(
   const edges = [...edgeMap.values()];
 
   // 3) Anchors + main path. Spawn/exit may land on a solid downsampled cell
-  //    (a brazier base, the well plug) — search outward a little, then fall
+  //    (a brazier base, the portal frame) — search outward a little, then fall
   //    back to the largest region rather than poisoning every consumer.
   const spawnRegion = regionNear(labels, w, h, spawn.x, spawn.y, regions);
   const exitRegion = regionNear(labels, w, h, exit.x, exit.y, regions);

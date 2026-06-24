@@ -90,15 +90,26 @@ function cellsNear(world: World, marker: { x: number; y: number }, cell: Cell, r
   return count;
 }
 
-// Re-recorded for GEN_VERSION 28: mineral-vug fill now protects reward pickup
-// guard boxes after prefab/structure pickups are merged, so late rock fill no
-// longer buries generated non-key rewards.
+function emptyBottomExitCells(level: ReturnType<typeof generateLevelState>): number {
+  const { exit, world } = level;
+  let count = 0;
+  for (let y = world.height - 6; y < world.height; y++) {
+    for (let dx = -exit.halfW; dx <= exit.halfW; dx++) {
+      const x = exit.x + dx;
+      if (world.inBounds(x, y) && world.types[world.idx(x, y)] === Cell.Empty) count++;
+    }
+  }
+  return count;
+}
+
+// Re-recorded for GEN_VERSION 30: the open strip below the caves is packed to solid
+// rock (terrain runs all the way down to the bedrock), shifting cell types on every seed.
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '04459183' },
-  { id: 'd4', seed: 1337, hash: 'ea181c61' },
-  { id: 'd8', seed: 1337, hash: '611e7f10' },
-  { id: 'vault', seed: 1337, hash: '265b5823' },
-  { id: 'd2', seed: 42, hash: '9652a5e2' },
+  { id: 'd1', seed: 1337, hash: '2d066867' },
+  { id: 'd4', seed: 1337, hash: 'e061b436' },
+  { id: 'd8', seed: 1337, hash: '85cbff75' },
+  { id: 'vault', seed: 1337, hash: '20798ecd' },
+  { id: 'd2', seed: 42, hash: '94bc3274' },
 ];
 
 describe('full generateLevel golden hashes', () => {
@@ -134,4 +145,23 @@ describe('D1 Spell Lab generation', () => {
       )).toBe(true);
     });
   }
+});
+
+describe('D1 bench progression geometry', () => {
+  for (const seed of [1, 42, 1337]) {
+    it(`places the only Refuge bench near spawn and seals the old bottom shaft at seed ${seed}`, () => {
+      const level = generateLevelState(LEVELS.d1, seed);
+      expect(level.refuge).toBeTruthy();
+      const refuge = level.refuge!;
+      const dist = Math.hypot(refuge.x - level.spawn.x, refuge.y - level.spawn.y);
+      expect(dist).toBeLessThanOrEqual(150);
+      expect(emptyBottomExitCells(level)).toBe(0);
+    });
+  }
+
+  it('does not place recurring Refuge benches below D1', () => {
+    for (const id of ['d2', 'd4', 'd8', 'vault'] as const) {
+      expect(generateLevelState(LEVELS[id], 1337).refuge).toBeNull();
+    }
+  });
 });

@@ -756,7 +756,7 @@ export class RigidBodies implements RigidBodiesApi {
       const by = body.y;
       this.remove(body); // remove before the blast so it isn't re-queued by its own explosion
       ctx.particles.burst(bx, by, 26, null, () => packRGB(255, 180, 70), 2.8, { glow: 2.8, grav: 0.02 });
-      ctx.explosions.trigger(bx, by, BARREL_BLAST);
+      ctx.explosions.trigger(bx, by, BARREL_BLAST, { playerDamageSource: 'barrel-explosion' });
     }
   }
 

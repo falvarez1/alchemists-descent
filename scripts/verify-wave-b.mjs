@@ -1,5 +1,5 @@
-// Wave B runtime probes: descent start, placed population, minimap, level
-// transition through the well, waystone lighting, waystone respawn.
+// Wave B runtime probes: descent start, placed population, minimap, explicit
+// portal transition, waystone lighting, waystone respawn.
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { startConsolePlayRun } from './run-helpers.mjs';
@@ -97,13 +97,34 @@ const respawnProbe = await page.evaluate(async () => {
 });
 console.log('respawn probe:', JSON.stringify(respawnProbe));
 
-// Descend: drop the player to the world bottom -> transition to D2.
+// Descend: complete the D1 bench/key gate, step into the portal, choose a boon.
+const sanctum = await page.evaluate(async () => {
+  const g = window.__game;
+  const ctx = g.ctx;
+  const lvl = ctx.levels.current;
+  if (!ctx.wands.wands.some((wand) => wand.cards.includes('heavy'))) {
+    ctx.wands.grantCard(ctx, 'heavy');
+    const heavyIndex = ctx.wands.collection.indexOf('heavy');
+    if (heavyIndex >= 0) ctx.wands.slotCollectionCard(heavyIndex, 0, 1);
+  }
+  lvl.keyTaken = true;
+  ctx.player.x = lvl.portal.x;
+  ctx.player.y = lvl.portal.y + 6;
+  ctx.player.vy = 0;
+  ctx.state.paused = false;
+  await new Promise((r) => setTimeout(r, 800));
+  return { open: ctx.sanctum.isOpen };
+});
+console.log('sanctum opened for descent:', JSON.stringify(sanctum));
+if (await page.locator('#waystone-prompt-overlay.visible').count()) {
+  await page.locator('#waystone-prompt-overlay.visible .waystone-prompt-btn').last().click();
+}
+await page.locator('#sanctum-overlay .perk-card').first().click();
+await page.locator('#descend-btn').click();
+await page.waitForFunction(() => window.__game.ctx.levels.current?.def.id === 'd2', null, { timeout: 15000 });
 const d2 = await page.evaluate(async () => {
   const g = window.__game;
   const ctx = g.ctx;
-  ctx.player.y = 1064 - 11;
-  ctx.player.vy = 0;
-  await new Promise((r) => setTimeout(r, 1800));
   const lvl = ctx.levels.current;
   return {
     id: lvl?.def.id,
