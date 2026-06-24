@@ -784,6 +784,8 @@ export class WorldGen implements WorldGenApi {
     vaultHoard: { x: number; y: number } | null;
     /** D1 only: the open-air start point on the surface, above the cave mouth. */
     surfaceSpawn: { x: number; y: number } | null;
+    /** D1 only: the horizon row — Empty above it renders as open sky. */
+    surfaceSkyLine: number | null;
   } {
     // DEV stage timing — generation runs synchronously behind the curtain,
     // so a slow stage is a felt hitch; shout when the total crosses 400ms.
@@ -1245,11 +1247,13 @@ export class WorldGen implements WorldGenApi {
     // cave proper. (Only depth-1 non-branch is D1; the structures pass already
     // relies on this identity.)
     let surfaceSpawn: { x: number; y: number } | null = null;
+    let surfaceSkyLine: number | null = null;
     let surfaceLights: AuthoredLight[] = [];
     let surfaceDecors: RuntimeDecor[] = [];
     if (def.depth === 1 && !def.branch) {
       const surf = this.dressIntroSurface(world, spawn);
       surfaceSpawn = surf.surfaceSpawn;
+      surfaceSkyLine = surf.skyLine;
       surfaceLights = surf.lights;
       surfaceDecors = surf.decors;
     }
@@ -1276,6 +1280,7 @@ export class WorldGen implements WorldGenApi {
       vaultArch,
       vaultHoard,
       surfaceSpawn,
+      surfaceSkyLine,
     };
   }
 
@@ -1290,9 +1295,41 @@ export class WorldGen implements WorldGenApi {
   private dressIntroSurface(
     world: World,
     spawn: { x: number; y: number },
-  ): { surfaceSpawn: { x: number; y: number }; lights: AuthoredLight[]; decors: RuntimeDecor[] } {
-    const lights: AuthoredLight[] = [];
+  ): { surfaceSpawn: { x: number; y: number }; skyLine: number; lights: AuthoredLight[]; decors: RuntimeDecor[] } {
     const seed = this.paintSeed ?? 0;
+
+    // D1 surface geometry — all values preserve the locked generation (gen-golden).
+    // Named here so the landscape is tunable in one place rather than as magic
+    // numbers buried in the carving loops below.
+    const SURFACE_RISE = 96; // grass line this many cells above the cave spawn
+    const GROUND_MIN = 110; // keep the rolling horizon clear of the world edges
+    const GROUND_MAX = HEIGHT - 240;
+    const GROUND_NOISE_FREQ = 0.014;
+    const GROUND_WAVE = 26; // rolling-horizon amplitude
+    const SOIL = 14; // packed soil/stone band dividing surface from cave
+    const SHAFT_HALF = 4; // cave-mouth shaft half-width
+    const MOUTH_TIMBER = 12; // timbered jamb height beside the mouth
+    const SPAWN_OFFSET = 210; // wizard starts this far to the open side of the mouth
+    const CABIN_OFFSET = 26; // cabin sits just behind the spawn
+
+    // Surface scatter — deterministic per-column hash thresholds (hash2 is pure,
+    // so these read as plain probabilities).
+    const TUFT_CHANCE = 0.55; // a grass blade stands on this column …
+    const FLOWER_PINK = 0.045; // … recolored a pink wildflower below this …
+    const FLOWER_YELLOW = 0.08; // … a yellow one below this
+    const TALL_BLADE = 0.2; // and an occasional second, taller blade
+    const STONE_CHANCE = 0.05; // a field stone …
+    const STONE_PAIR = 0.4; // … sometimes paired with one beside it
+    const PINK_FLOWER = packRGB(214, 96, 150);
+    const YELLOW_FLOWER = packRGB(206, 186, 84);
+
+    // Trees framing the scene — kept clear of the mouth, cabin, and start.
+    const TREE_TARGET = 5;
+    const TREE_TRIES = 70;
+    const TREE_CLEAR_MOUTH = 44;
+    const TREE_CLEAR_CABIN = 24;
+    const TREE_CLEAR_SPAWN = 26;
+
     const set = (x: number, y: number, t: Cell, color: number): void => {
       if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
       const i = x + y * WIDTH;
@@ -1312,10 +1349,9 @@ export class WorldGen implements WorldGenApi {
 
     // Surface line: ~96 cells above the cave spawn so there is generous sky but a
     // short, readable descent. Gently rolling, not a dead-flat shelf.
-    const groundBase = Math.floor(clamp(spawn.y - 96, 110, HEIGHT - 240));
-    const SOIL = 14;
+    const groundBase = Math.floor(clamp(spawn.y - SURFACE_RISE, GROUND_MIN, GROUND_MAX));
     const groundAt = (x: number): number =>
-      groundBase + Math.round((valueNoise(x, 13, 0.014, seed + 61) - 0.5) * 26);
+      groundBase + Math.round((valueNoise(x, 13, GROUND_NOISE_FREQ, seed + 61) - 0.5) * GROUND_WAVE);
 
     // Sky overhead, a grass crown, and a packed soil layer dividing surface from cave.
     for (let x = 0; x < WIDTH; x++) {
@@ -1330,62 +1366,78 @@ export class WorldGen implements WorldGenApi {
     // The cave mouth: a timbered shaft straight down into the spawn chamber.
     const mouthX = Math.floor(clamp(spawn.x, 90, WIDTH - 90));
     const mouthGy = groundAt(mouthX);
-    const shaftHalf = 4;
     for (let y = mouthGy - 1; y <= spawn.y + 2; y++) {
-      for (let dx = -shaftHalf; dx <= shaftHalf; dx++) set(mouthX + dx, y, Cell.Empty, EMPTY_COLOR);
+      for (let dx = -SHAFT_HALF; dx <= SHAFT_HALF; dx++) set(mouthX + dx, y, Cell.Empty, EMPTY_COLOR);
     }
-    for (let dy = 0; dy <= 12; dy++) {
-      set(mouthX - shaftHalf - 1, mouthGy - dy, Cell.Wood, woodColor());
-      set(mouthX + shaftHalf + 1, mouthGy - dy, Cell.Wood, woodColor());
+    for (let dy = 0; dy <= MOUTH_TIMBER; dy++) {
+      set(mouthX - SHAFT_HALF - 1, mouthGy - dy, Cell.Wood, woodColor());
+      set(mouthX + SHAFT_HALF + 1, mouthGy - dy, Cell.Wood, woodColor());
     }
-    for (let dx = -shaftHalf - 1; dx <= shaftHalf + 1; dx++) set(mouthX + dx, mouthGy - 13, Cell.Wood, woodColor());
-    for (let dx = -shaftHalf - 1; dx <= shaftHalf + 1; dx++) set(mouthX + dx, mouthGy - 12, Cell.Wood, woodColor());
+    for (let dx = -SHAFT_HALF - 1; dx <= SHAFT_HALF + 1; dx++) set(mouthX + dx, mouthGy - MOUTH_TIMBER - 1, Cell.Wood, woodColor());
+    for (let dx = -SHAFT_HALF - 1; dx <= SHAFT_HALF + 1; dx++) set(mouthX + dx, mouthGy - MOUTH_TIMBER, Cell.Wood, woodColor());
 
     // Start the wizard out on the grass, off to the open side of the mouth.
     const side = mouthX > WIDTH / 2 ? -1 : 1;
-    const spawnX = Math.floor(clamp(mouthX + side * 210, 60, WIDTH - 60));
+    const spawnX = Math.floor(clamp(mouthX + side * SPAWN_OFFSET, 60, WIDTH - 60));
     const spawnGy = groundAt(spawnX);
     const surfaceSpawn = { x: spawnX, y: spawnGy - 1 };
 
     // A starter cabin behind the spawn — shelter at your back, the cave mouth ahead.
-    const cabinX = Math.floor(clamp(spawnX + side * 26, 30, WIDTH - 30));
+    const cabinX = Math.floor(clamp(spawnX + side * CABIN_OFFSET, 30, WIDTH - 30));
     this.stampStarterCabin(world, set, cabinX, groundAt(cabinX));
 
     // Grass tufts, wildflowers, and scattered field stones for a living surface.
     for (let x = 6; x < WIDTH - 6; x += 2) {
       const gy = groundAt(x);
       const r = hash2(x, gy, seed + 81);
-      if (r < 0.55) {
-        if (r < 0.045) set(x, gy - 1, Cell.Grass, packRGB(214, 96, 150)); // pink wildflower
-        else if (r < 0.08) set(x, gy - 1, Cell.Grass, packRGB(206, 186, 84)); // yellow wildflower
+      if (r < TUFT_CHANCE) {
+        if (r < FLOWER_PINK) set(x, gy - 1, Cell.Grass, PINK_FLOWER);
+        else if (r < FLOWER_YELLOW) set(x, gy - 1, Cell.Grass, YELLOW_FLOWER);
         else set(x, gy - 1, Cell.Grass, grassColor(x, gy - 1));
-        if (r < 0.2) set(x, gy - 2, Cell.Grass, grassColor(x, gy - 2)); // a taller blade
+        if (r < TALL_BLADE) set(x, gy - 2, Cell.Grass, grassColor(x, gy - 2)); // a taller blade
       }
-      if (hash2(x, gy, seed + 82) < 0.05) {
+      if (hash2(x, gy, seed + 82) < STONE_CHANCE) {
         set(x, gy - 1, Cell.Stone, stoneColor());
-        if (hash2(x, gy, seed + 83) < 0.4) set(x + 1, gy - 1, Cell.Stone, stoneColor());
+        if (hash2(x, gy, seed + 83) < STONE_PAIR) set(x + 1, gy - 1, Cell.Stone, stoneColor());
       }
     }
 
     // A few trees — real wood trunks, leafy mossy canopies — clear of the cabin,
     // the mouth, and the start so they frame the scene without blocking it.
     let trees = 0;
-    for (let attempt = 0; attempt < 70 && trees < 5; attempt++) {
+    for (let attempt = 0; attempt < TREE_TRIES && trees < TREE_TARGET; attempt++) {
       const tx = 70 + Math.floor(hash2(attempt, 3, seed + 91) * (WIDTH - 140));
-      if (Math.abs(tx - mouthX) < 44 || Math.abs(tx - cabinX) < 24 || Math.abs(tx - spawnX) < 26) continue;
+      if (
+        Math.abs(tx - mouthX) < TREE_CLEAR_MOUTH ||
+        Math.abs(tx - cabinX) < TREE_CLEAR_CABIN ||
+        Math.abs(tx - spawnX) < TREE_CLEAR_SPAWN
+      ) {
+        continue;
+      }
       this.stampSurfaceTree(set, tx, groundAt(tx), 9 + Math.floor(hash2(tx, 5, seed + 92) * 7), seed + tx);
       trees++;
     }
 
     // A signpost on the approach to the cave mouth — "the way down".
-    this.stampSignpost(set, Math.floor(clamp(mouthX + side * (shaftHalf + 12), 20, WIDTH - 20)), groundAt(mouthX + side * (shaftHalf + 12)));
+    const signColumn = mouthX + side * (SHAFT_HALF + 12);
+    this.stampSignpost(set, Math.floor(clamp(signColumn, 20, WIDTH - 20)), groundAt(signColumn));
 
-    // Daylight: a strong warm wash so the surface reads as the bright outdoors.
-    // Non-occluded lights paint their whole falloff disk into the light field
-    // (occluded ones only seed a point), so two stacked rows of overlapping disks
-    // flood the surface evenly. A contained radius keeps the bright band hugging
-    // the surface, so the deep cave below still goes dark (just a soft glow down
-    // the mine shaft near the entrance).
+    // skyLine: the surface horizon. Empty cells above it render as open daytime
+    // sky (FrameComposer) instead of the distant-cave backdrop.
+    return { surfaceSpawn, skyLine: groundBase, lights: this.buildSurfaceDaylight(groundAt, groundBase), decors: [] };
+  }
+
+  /**
+   * The D1 surface daylight rig: two stacked rows of overlapping NON-occluded
+   * fill disks. Non-occluded lights paint their whole falloff disk into the light
+   * field (occluded ones only seed a point), so the overlapping disks flood the
+   * surface evenly. A contained radius keeps the bright band hugging the grass so
+   * the deep cave below still goes dark — just a soft glow down the mine shaft.
+   * The sky gradient itself now carries the sky's brightness, so these fills only
+   * need to lift the terrain and horizon.
+   */
+  private buildSurfaceDaylight(groundAt: (x: number) => number, groundBase: number): AuthoredLight[] {
+    const lights: AuthoredLight[] = [];
     const COUNT = 16;
     for (let i = 0; i < COUNT; i++) {
       const lx = Math.floor((WIDTH * (i + 0.5)) / COUNT);
@@ -1393,15 +1445,15 @@ export class WorldGen implements WorldGenApi {
       // bright ground-hugging fill
       lights.push({
         x: lx, y: surf - 44, r: 1, g: 0.95, b: 0.82,
-        intensity: 2.6, radius: 124, bloom: 0.16, flicker: 0, flickerPhase: 0, falloff: 'soft', occluded: false,
+        intensity: 1.9, radius: 124, bloom: 0.12, flicker: 0, flickerPhase: 0, falloff: 'soft', occluded: false,
       });
       // softer high sky glow
       lights.push({
         x: lx, y: Math.max(18, groundBase - 118), r: 0.96, g: 0.93, b: 0.86,
-        intensity: 1.7, radius: 178, bloom: 0.08, flicker: 0, flickerPhase: 0, falloff: 'soft', occluded: false,
+        intensity: 1.15, radius: 178, bloom: 0.06, flicker: 0, flickerPhase: 0, falloff: 'soft', occluded: false,
       });
     }
-    return { surfaceSpawn, lights, decors: [] };
+    return lights;
   }
 
   /** A surface tree: a real wood trunk (it burns) crowned by a mossy canopy. */

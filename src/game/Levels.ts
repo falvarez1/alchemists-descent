@@ -53,6 +53,7 @@ import { createDefaultStatus } from '@/entities/status';
 import { spawnPrefabEnemy, toAuthoredLight } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { makeLevelRuntime } from '@/game/runtime';
+import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
 import { blocksEntity, Cell } from '@/sim/CellType';
@@ -701,7 +702,8 @@ export class Levels implements LevelsApi {
     // Noita-style intro: the wizard starts on the surface and the cave mouth is
     // the first lesson. Mark the descent once he drops well below the grass — the
     // intro tutorial reads this, and later arrivals/respawns use the cave spawn.
-    if (runtime.surfaceSpawn && !runtime.surfaceDescended && player.y > runtime.surfaceSpawn.y + 70) {
+    const surfaceSpawn = runtime.surfaceSpawn;
+    if (surfaceSpawn && !runtime.surfaceDescended && player.y > surfaceSpawn.y + SURFACE_DESCENT_DROP) {
       runtime.surfaceDescended = true;
       ctx.events.emit('toast', { text: 'INTO THE DEPTHS' });
     }
@@ -2047,7 +2049,7 @@ export class Levels implements LevelsApi {
     // the wizard OUT ON THE SURFACE (the Noita-style intro) — once he has dropped
     // down the cave mouth, every later arrival/respawn uses the cave spawn.
     const player = ctx.player;
-    const arrival = runtime.surfaceSpawn && !runtime.surfaceDescended ? runtime.surfaceSpawn : runtime.spawn;
+    const arrival = introArrivalSpawn(runtime);
     player.x = arrival.x;
     player.y = arrival.y;
     player.vx = 0;
@@ -2207,6 +2209,7 @@ export class Levels implements LevelsApi {
       vaultArch,
       vaultHoard,
       surfaceSpawn,
+      surfaceSkyLine,
     } = ctx.worldgen.generateLevel(ctx, def, seed, {
       hostArch: def.id === vaultHostId(expeditionSeed),
     });
@@ -2264,6 +2267,7 @@ export class Levels implements LevelsApi {
       ...(spellLab ? { spellLab } : {}),
       ...(vaultArch ? { vaultArch } : {}),
       ...(surfaceSpawn ? { surfaceSpawn } : {}),
+      ...(surfaceSkyLine !== null ? { skyLine: surfaceSkyLine } : {}),
       weaverLairWebs,
     });
 

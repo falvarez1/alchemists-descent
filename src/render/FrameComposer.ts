@@ -20,6 +20,7 @@ import {
   SELF_GLOW_SCALE,
   VIGNETTE_BASE,
 } from '@/render/lightingModel';
+import { SKY } from '@/render/skyAtmosphere';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
 import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -44,6 +45,17 @@ interface ActiveBackdropLayer {
 // before the first compose populates them (they are never sampled while inert).
 const EMPTY_BACKDROP_PIXELS = new Uint8ClampedArray(0);
 const EMPTY_SAMPLES = new Int32Array(0);
+
+/**
+ * The 3-arg GLSL `smoothstep(edge0, edge1, x)`, replicated bit-for-bit (descending
+ * edges included, via the signed `(x-e0)/(e1-e0)` divide) so the daytime-sky math
+ * here stays pixel-equal to ComposeShader's GPU port. NOT core/math's 1-arg easing.
+ */
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  let t = (x - edge0) / (edge1 - edge0);
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return t * t * (3 - 2 * t);
+}
 
 /**
  * Composes each frame's CPU-side pixel buffer (original updateWebGLBuffers):
@@ -322,6 +334,21 @@ export class FrameComposer implements PixelSurface {
     const ambient = ctx.params.global.ambient;
     const world = ctx.world;
     const worldFloor = world.height;
+    // D1 surface intro: Empty cells above this horizon paint as open daytime sky
+    // instead of the distant-cave backdrop (0 = no surface, e.g. every deeper level).
+    const skyLine = ctx.levels.current?.skyLine ?? 0;
+    // Slow daytime cloud drift (matches uPhaseSky on the GPU). Reduced mod 2pi so
+    // the f32-equivalent sine args stay small over long sessions.
+    const skyPhase = (frameCount * SKY.DRIFT_SPEED) % (Math.PI * 2);
+    // Sky tuning is owned by render/skyAtmosphere.ts (SKY); both this CPU loop and
+    // ComposeShader's GLSL read from it so the two paths can never drift. Hoist the
+    // sub-objects to locals so the per-pixel sky branch stays on monomorphic reads.
+    const skyGrad = SKY.gradient;
+    const skySun = SKY.sun;
+    const skyClouds = SKY.clouds;
+    const cloudOcts = SKY.clouds.octaves;
+    const hillFar = SKY.hillFar;
+    const hillNear = SKY.hillNear;
     const types = world.types;
     const cellColors = world.colors;
     const charge = world.charge;
@@ -464,52 +491,128 @@ export class FrameComposer implements PixelSurface {
 
         let r: number, g: number, b: number;
         if (type === Cell.Empty) {
-          // Ordered PNG parallax composite. Every layer carries its own alpha
-          // and scrolls with its own multiplier, so texture and cutout never
-          // drift apart.
-          r = 0.004;
-          g = 0.005;
-          b = 0.009;
-          // shift the backdrop sample column/row by the heat-haze offset so the
-          // distant cave shimmers behind a held (hot) object, like the terrain does
-          const bvx = hazeX !== 0 ? (vx + hazeX < 0 ? 0 : vx + hazeX >= VIEW_W ? VIEW_W - 1 : vx + hazeX) : vx;
-          const bvy = hazeY !== 0 ? (vy + hazeY < 0 ? 0 : vy + hazeY >= VIEW_H ? VIEW_H - 1 : vy + hazeY) : vy;
-          for (const active of activeBackdropLayers) {
-            const si = (active.ySamples[bvy] * active.width + active.xSamples[bvx]) * 4;
-            const a = (active.pixels[si + 3] / 255) * active.opacity;
-            if (a <= 0.001) continue;
-            const ia = 1 - a;
-            r = r * ia + (active.pixels[si] / 255) * a;
-            g = g * ia + (active.pixels[si + 1] / 255) * a;
-            b = b * ia + (active.pixels[si + 2] / 255) * a;
+          const isSky = skyLine > 0 && wy < skyLine;
+          if (isSky) {
+            // OPEN DAYTIME SKY (D1 surface intro): gradient + distant sun + drifting
+            // clouds + two parallax hill ridges, in place of the distant-cave
+            // backdrop. Rendered self-luminous below (not dimmed by the cave-lighting
+            // formula) so it reads as flat open daytime. ALL tuning is SKY (see
+            // render/skyAtmosphere.ts); ComposeShader's GLSL runs the identical math.
+            const t = wy / skyLine;
+            r = skyGrad.rBase + skyGrad.rHorizon * t;
+            g = skyGrad.gBase + skyGrad.gHorizon * t;
+            b = skyGrad.bBase + skyGrad.bHorizon * t;
+            // Distant sun: pinned to a screen position (parallax-infinity) so it
+            // never slides as the camera pans — bright core inside a soft halo.
+            const sdx = vx - skySun.screenX;
+            const sdy = vy - skySun.screenY;
+            const sd = Math.sqrt(sdx * sdx + sdy * sdy);
+            const sunHalo = Math.pow(Math.max(0, 1 - sd / skySun.haloRadius), skySun.haloPower);
+            const sunCore = smoothstep(skySun.coreEdge0, skySun.coreEdge1, sd);
+            const sunM = Math.min(1, sunHalo * skySun.haloStrength + sunCore);
+            r += (skySun.r - r) * sunM;
+            g += (skySun.g - g) * sunM;
+            b += (skySun.b - b) * sunM;
+            // Drifting clouds: layered 2-D sines (SKY.clouds.octaves); drift carried
+            // by skyPhase added per-term so a 2pi wrap is seamless. Confined to a
+            // mid-sky band so zenith and horizon stay clear.
+            const cpx = wx - renderCamX * skyClouds.parallax;
+            const cax = cpx * skyClouds.freqX;
+            const cay = wy * skyClouds.freqY;
+            let cn = 0;
+            for (let oi = 0; oi < cloudOcts.length; oi++) {
+              const o = cloudOcts[oi];
+              cn += o.amp * Math.sin(cax * o.fx + cay * o.fy + (o.drift ? skyPhase : 0));
+            }
+            cn = cn * 0.5 + 0.5;
+            const cBand =
+              smoothstep(skyClouds.bandRiseLo, skyClouds.bandRiseHi, t) *
+              (1 - smoothstep(skyClouds.bandFadeLo, skyClouds.bandFadeHi, t));
+            const cloud = smoothstep(skyClouds.threshLo, skyClouds.threshHi, cn) * cBand * skyClouds.opacity;
+            r += (skyClouds.r - r) * cloud;
+            g += (skyClouds.g - g) * cloud;
+            b += (skyClouds.b - b) * cloud;
+            // Distant hills: two atmospheric ridgelines rising from the horizon,
+            // each at its own slow parallax. Near ridge is taller, darker, drawn
+            // last so it occludes the far one — classic background-parallax depth.
+            const hfx = wx - renderCamX * hillFar.parallax;
+            const farTop =
+              skyLine -
+              (hillFar.base +
+                hillFar.amp *
+                  (0.5 + 0.5 * Math.sin(hfx * hillFar.freq + hillFar.phase) + hillFar.amp2 * Math.sin(hfx * hillFar.freq2)));
+            const farM = smoothstep(farTop - hillFar.edge, farTop + hillFar.edge, wy) * hillFar.opacity;
+            r += (hillFar.r - r) * farM;
+            g += (hillFar.g - g) * farM;
+            b += (hillFar.b - b) * farM;
+            const hnx = wx - renderCamX * hillNear.parallax;
+            const nearTop =
+              skyLine -
+              (hillNear.base +
+                hillNear.amp *
+                  (0.5 + 0.5 * Math.sin(hnx * hillNear.freq) + hillNear.amp2 * Math.sin(hnx * hillNear.freq2 + hillNear.phase)));
+            const nearM = smoothstep(nearTop - hillNear.edge, nearTop + hillNear.edge, wy) * hillNear.opacity;
+            r += (hillNear.r - r) * nearM;
+            g += (hillNear.g - g) * nearM;
+            b += (hillNear.b - b) * nearM;
+          } else {
+            // Ordered PNG parallax composite. Every layer carries its own alpha
+            // and scrolls with its own multiplier, so texture and cutout never
+            // drift apart.
+            r = 0.004;
+            g = 0.005;
+            b = 0.009;
+            // shift the backdrop sample column/row by the heat-haze offset so the
+            // distant cave shimmers behind a held (hot) object, like the terrain does
+            const bvx = hazeX !== 0 ? (vx + hazeX < 0 ? 0 : vx + hazeX >= VIEW_W ? VIEW_W - 1 : vx + hazeX) : vx;
+            const bvy = hazeY !== 0 ? (vy + hazeY < 0 ? 0 : vy + hazeY >= VIEW_H ? VIEW_H - 1 : vy + hazeY) : vy;
+            for (const active of activeBackdropLayers) {
+              const si = (active.ySamples[bvy] * active.width + active.xSamples[bvx]) * 4;
+              const a = (active.pixels[si + 3] / 255) * active.opacity;
+              if (a <= 0.001) continue;
+              const ia = 1 - a;
+              r = r * ia + (active.pixels[si] / 255) * a;
+              g = g * ia + (active.pixels[si + 1] / 255) * a;
+              b = b * ia + (active.pixels[si + 2] / 255) * a;
+            }
+            r = (r * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+            g = (g * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+            b = (b * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+            const luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
+            r = luma + (r - luma) * backdropSaturation;
+            g = luma + (g - luma) * backdropSaturation;
+            b = luma + (b - luma) * backdropSaturation;
+            r = r <= 0 ? 0 : r >= 1 ? 1 : r ** backdropInvGamma;
+            g = g <= 0 ? 0 : g >= 1 ? 1 : g ** backdropInvGamma;
+            b = b <= 0 ? 0 : b >= 1 ? 1 : b ** backdropInvGamma;
+            const depthShade = 0.78 + 0.22 * (1 - wy / HEIGHT);
+            r *= depthShade;
+            g *= depthShade;
+            b *= depthShade;
           }
-          r = (r * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
-          g = (g * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
-          b = (b * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
-          const luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
-          r = luma + (r - luma) * backdropSaturation;
-          g = luma + (g - luma) * backdropSaturation;
-          b = luma + (b - luma) * backdropSaturation;
-          r = r <= 0 ? 0 : r >= 1 ? 1 : r ** backdropInvGamma;
-          g = g <= 0 ? 0 : g >= 1 ? 1 : g ** backdropInvGamma;
-          b = b <= 0 ? 0 : b >= 1 ? 1 : b ** backdropInvGamma;
-          const depthShade = 0.78 + 0.22 * (1 - wy / HEIGHT);
-          r *= depthShade;
-          g *= depthShade;
-          b *= depthShade;
           {
             const li = (vy >> 1) * LW + (vx >> 1);
             const vg = 1 - vigScale * (1 - vignette[vy * VIEW_W + vx]);
-            let lf0 = Math.min(LIGHT_CLAMP, lightR[li]) * vg;
-            r = (r * 0.62 + ambient * 0.022) * vg + r * lf0 * lf0 * 0.72;
-            lf0 = Math.min(LIGHT_CLAMP, lightG[li]) * vg;
-            g = (g * 0.62 + ambient * 0.022) * vg + g * lf0 * lf0 * 0.72;
-            lf0 = Math.min(LIGHT_CLAMP, lightB[li]) * vg;
-            b = (b * 0.62 + ambient * 0.032) * vg + b * lf0 * lf0 * 0.72;
-            // air itself catches the glow near strong light
-            r += Math.max(0, lightR[li] - 0.25) * 0.045 * vg;
-            g += Math.max(0, lightG[li] - 0.25) * 0.04 * vg;
-            b += Math.max(0, lightB[li] - 0.25) * 0.035 * vg;
+            if (isSky) {
+              // Self-luminous daylight: the gradient at full strength, lifted a
+              // touch by the warm fill near the sun, vignetted at the rim.
+              const sun = Math.min(LIGHT_CLAMP, Math.max(lightR[li], lightG[li], lightB[li]));
+              const k = vg * (0.92 + sun * 0.3);
+              r *= k;
+              g *= k;
+              b *= k;
+            } else {
+              let lf0 = Math.min(LIGHT_CLAMP, lightR[li]) * vg;
+              r = (r * 0.62 + ambient * 0.022) * vg + r * lf0 * lf0 * 0.72;
+              lf0 = Math.min(LIGHT_CLAMP, lightG[li]) * vg;
+              g = (g * 0.62 + ambient * 0.022) * vg + g * lf0 * lf0 * 0.72;
+              lf0 = Math.min(LIGHT_CLAMP, lightB[li]) * vg;
+              b = (b * 0.62 + ambient * 0.032) * vg + b * lf0 * lf0 * 0.72;
+              // air itself catches the glow near strong light
+              r += Math.max(0, lightR[li] - 0.25) * 0.045 * vg;
+              g += Math.max(0, lightG[li] - 0.25) * 0.04 * vg;
+              b += Math.max(0, lightB[li] - 0.25) * 0.035 * vg;
+            }
           }
           if (ringGlow > 0) {
             r += ringGlow * 0.55;

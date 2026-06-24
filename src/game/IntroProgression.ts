@@ -1,6 +1,7 @@
 import { START_LEVEL } from '@/config/worldgraph';
 import type { CardId, Ctx, LevelRuntime } from '@/core/types';
 import { INTRO_OBJECTIVE, INTRO_REWARD_CARD } from '@/game/introObjectives';
+import { introArrivalSpawn, isOnIntroSurface } from '@/game/surfaceIntro';
 import { Cell } from '@/sim/CellType';
 
 type IntroStage = 'surface' | 'movement' | 'spark' | 'dig' | 'flask' | 'spellLab' | 'bench' | 'complete';
@@ -158,7 +159,7 @@ export class IntroProgression {
     this.levelId = runtime.def.id;
     // Track movement from wherever the wizard actually starts — the surface on
     // first entry, the cave spawn otherwise.
-    const start = runtime.surfaceSpawn && !runtime.surfaceDescended ? runtime.surfaceSpawn : runtime.spawn;
+    const start = introArrivalSpawn(runtime);
     this.startX = start.x;
     this.startY = start.y;
     this.startLevit = ctx.player.levit;
@@ -191,7 +192,7 @@ export class IntroProgression {
 
   private resolveStage(ctx: Ctx, runtime: LevelRuntime): IntroStage {
     // Still up top in the daylight: the only lesson is to drop into the cave.
-    if (runtime.surfaceSpawn && !runtime.surfaceDescended) return 'surface';
+    if (isOnIntroSurface(runtime)) return 'surface';
     if (runtime.spellLab && !cardSlotted(ctx, INTRO_REWARD_CARD)) {
       if (ctx.wands.collection.includes(INTRO_REWARD_CARD)) return 'bench';
       if (runtime.keyTaken || this.flags.reachedLab || this.flags.labDug || this.flags.labWatered || this.flags.labSparked) {

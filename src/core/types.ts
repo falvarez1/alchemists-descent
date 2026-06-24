@@ -1650,6 +1650,8 @@ export interface WorldGenApi {
     refuge: { x: number; y: number } | null;
     /** D1 only: the open-air start on the surface, above the cave mouth. */
     surfaceSpawn: { x: number; y: number } | null;
+    /** D1 only: horizon row — Empty cells above it render as open daytime sky. */
+    surfaceSkyLine: number | null;
   };
 }
 
@@ -2472,6 +2474,8 @@ export interface LevelRuntime {
   /** D1 Noita-style surface intro: the open-air start above the cave mouth. The
    *  player begins HERE on first entry (revisits/respawns use the cave spawn). */
   surfaceSpawn?: { x: number; y: number };
+  /** D1 horizon row: the renderer paints open daytime sky for Empty cells above it. */
+  skyLine?: number;
   /** Set once the wizard has descended the cave mouth into the cave proper. */
   surfaceDescended?: boolean;
   /** The Refuge's offering shrine point — E in reach opens the Sanctum shop. */

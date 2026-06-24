@@ -23,8 +23,12 @@ import type {
   ParallaxBitmapLayer,
   ParallaxLayers,
 } from '@/render/pixels';
+import { cloudSumGlsl, glslFloat, SKY } from '@/render/skyAtmosphere';
 import { Cell } from '@/sim/CellType';
 import type { World } from '@/sim/World';
+
+/** Short alias for embedding SKY tuning numbers as GLSL float literals below. */
+const flt = glslFloat;
 
 /* ===================== GPU Frame Composition (perf ticket #8) =====================
  * The FrameComposer terrain loop, ported formula-for-formula into a fragment
@@ -113,12 +117,14 @@ uniform vec2 uBackdropOff4;
 uniform vec4 uBackdropGrade; // exposure, brightness, contrast, inverse gamma
 uniform float uBackdropSaturation;
 uniform float uAmbient;
+uniform float uSkyLine;    // D1 surface intro: Empty cells above this row paint as open sky (0 = none)
 uniform float uBoost;      // maxBrightness
 uniform float uVignette;   // screen vignette strength (postFx.vignette; 0.52 shipped)
 uniform int uGlintFrame;   // frameCount % 97 (crystal glint is integer math)
 uniform float uPhaseWater;  // (frameCount * 0.16)  mod 2pi
 uniform float uPhaseShroom; // (frameCount * 0.045) mod 2pi
 uniform float uPhaseSway;   // (frameCount * 0.035) mod 2pi
+uniform float uPhaseSky;    // (frameCount * 0.004) mod 2pi — slow daytime cloud drift
 uniform float uFlickerSeed; // re-rolled per frame
 uniform float uFlickerMid;  // debug: 1 = freeze stochastic flicker at 0.5
 uniform vec4 uWaveA[${COMPOSE_MAX_WAVES}];  // cx, cy, currentRadius, maxRadius
@@ -245,33 +251,88 @@ void main() {
     float vg = 1.0 - uVignette * ((dxv * dxv + dyv * dyv) / ${VIG_MAXR2.toFixed(1)});
 
     if (type == ${Cell.Empty}) {
-      // Ordered PNG parallax composite. Every layer carries its own alpha and
-      // scrolls with its own multiplier, so texture and cutout never drift.
-      vec3 bg = vec3(0.004, 0.005, 0.009);
-      // shift the backdrop sample by the heat-haze offset so the distant cave
-      // shimmers behind a held (hot) object, matching the foreground warp
-      int bvx = vx + hazeX;
-      int bvy = vy + hazeY;
-      overBackdrop(bg, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, bvx, bvy);
-      overBackdrop(bg, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, bvx, bvy);
-      overBackdrop(bg, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, bvx, bvy);
-      overBackdrop(bg, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, bvx, bvy);
-      overBackdrop(bg, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, bvx, bvy);
-      bg = gradeBackdrop(bg);
-      float depthShade = 0.78 + 0.22 * (1.0 - float(wy) / ${HEIGHT.toFixed(1)});
+      bool isSky = (uSkyLine > 0.0 && float(wy) < uSkyLine);
+      vec3 bg;
+      float depthShade = 1.0;
+      if (isSky) {
+        // OPEN DAYTIME SKY (D1 surface intro): a soft gradient — day-blue overhead
+        // fading to a warm haze at the horizon — instead of the distant-cave
+        // backdrop, with a distant sun, drifting clouds, and two parallax hill
+        // ridges. EVERY tuning number comes from render/skyAtmosphere.ts (SKY);
+        // the CPU FrameComposer path runs the identical math, so change the look
+        // THERE, never by editing literals here. The daylight fill lights brighten
+        // the result in the shared self-luminous pass below.
+        float t = float(wy) / uSkyLine;
+        bg = vec3(${flt(SKY.gradient.rBase)} + ${flt(SKY.gradient.rHorizon)} * t,
+                  ${flt(SKY.gradient.gBase)} + ${flt(SKY.gradient.gHorizon)} * t,
+                  ${flt(SKY.gradient.bBase)} + ${flt(SKY.gradient.bHorizon)} * t);
+        // Distant sun: pinned to a screen position (parallax-infinity) so it never
+        // slides as the camera pans — a bright core inside a soft warm halo.
+        float sd = length(vec2(float(vx) - ${flt(SKY.sun.screenX)}, float(vy) - ${flt(SKY.sun.screenY)}));
+        float sunHalo = pow(max(0.0, 1.0 - sd / ${flt(SKY.sun.haloRadius)}), ${flt(SKY.sun.haloPower)});
+        float sunCore = smoothstep(${flt(SKY.sun.coreEdge0)}, ${flt(SKY.sun.coreEdge1)}, sd);
+        bg = mix(bg, vec3(${flt(SKY.sun.r)}, ${flt(SKY.sun.g)}, ${flt(SKY.sun.b)}), clamp(sunHalo * ${flt(SKY.sun.haloStrength)} + sunCore, 0.0, 1.0));
+        // Drifting clouds: layered 2-D sines (cloudSumGlsl unrolls SKY.clouds.octaves)
+        // at a slow parallax, drift carried by uPhaseSky added per-term so a 2pi
+        // wrap is seamless. Confined to a mid-sky band so zenith/horizon stay clear.
+        float cpx = float(wx) - float(uCam.x) * ${flt(SKY.clouds.parallax)};
+        float cax = cpx * ${flt(SKY.clouds.freqX)};
+        float cay = float(wy) * ${flt(SKY.clouds.freqY)};
+        float cn = ${cloudSumGlsl()};
+        cn = cn * 0.5 + 0.5;
+        float cBand = smoothstep(${flt(SKY.clouds.bandRiseLo)}, ${flt(SKY.clouds.bandRiseHi)}, t)
+                    * (1.0 - smoothstep(${flt(SKY.clouds.bandFadeLo)}, ${flt(SKY.clouds.bandFadeHi)}, t));
+        float cloud = smoothstep(${flt(SKY.clouds.threshLo)}, ${flt(SKY.clouds.threshHi)}, cn) * cBand;
+        bg = mix(bg, vec3(${flt(SKY.clouds.r)}, ${flt(SKY.clouds.g)}, ${flt(SKY.clouds.b)}), cloud * ${flt(SKY.clouds.opacity)});
+        // Distant hills: two atmospheric ridgelines rising from the horizon, each
+        // at its own slow parallax. Near ridge is taller, darker, drawn last so it
+        // occludes the far one — classic background-parallax depth.
+        float hfx = float(wx) - float(uCam.x) * ${flt(SKY.hillFar.parallax)};
+        float farTop = uSkyLine - (${flt(SKY.hillFar.base)} + ${flt(SKY.hillFar.amp)} * (0.5 + 0.5 * sin(hfx * ${flt(SKY.hillFar.freq)} + ${flt(SKY.hillFar.phase)}) + ${flt(SKY.hillFar.amp2)} * sin(hfx * ${flt(SKY.hillFar.freq2)})));
+        bg = mix(bg, vec3(${flt(SKY.hillFar.r)}, ${flt(SKY.hillFar.g)}, ${flt(SKY.hillFar.b)}), smoothstep(farTop - ${flt(SKY.hillFar.edge)}, farTop + ${flt(SKY.hillFar.edge)}, float(wy)) * ${flt(SKY.hillFar.opacity)});
+        float hnx = float(wx) - float(uCam.x) * ${flt(SKY.hillNear.parallax)};
+        float nearTop = uSkyLine - (${flt(SKY.hillNear.base)} + ${flt(SKY.hillNear.amp)} * (0.5 + 0.5 * sin(hnx * ${flt(SKY.hillNear.freq)}) + ${flt(SKY.hillNear.amp2)} * sin(hnx * ${flt(SKY.hillNear.freq2)} + ${flt(SKY.hillNear.phase)})));
+        bg = mix(bg, vec3(${flt(SKY.hillNear.r)}, ${flt(SKY.hillNear.g)}, ${flt(SKY.hillNear.b)}), smoothstep(nearTop - ${flt(SKY.hillNear.edge)}, nearTop + ${flt(SKY.hillNear.edge)}, float(wy)) * ${flt(SKY.hillNear.opacity)});
+      } else {
+        // Ordered PNG parallax composite. Every layer carries its own alpha and
+        // scrolls with its own multiplier, so texture and cutout never drift.
+        bg = vec3(0.004, 0.005, 0.009);
+        // shift the backdrop sample by the heat-haze offset so the distant cave
+        // shimmers behind a held (hot) object, matching the foreground warp
+        int bvx = vx + hazeX;
+        int bvy = vy + hazeY;
+        overBackdrop(bg, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, bvx, bvy);
+        overBackdrop(bg, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, bvx, bvy);
+        overBackdrop(bg, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, bvx, bvy);
+        overBackdrop(bg, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, bvx, bvy);
+        overBackdrop(bg, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, bvx, bvy);
+        bg = gradeBackdrop(bg);
+        depthShade = 0.78 + 0.22 * (1.0 - float(wy) / ${HEIGHT.toFixed(1)});
+      }
       float r = bg.r * depthShade;
       float g = bg.g * depthShade;
       float b = bg.b * depthShade;
-      float lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.r) * vg;
-      r = (r * 0.62 + uAmbient * 0.022) * vg + r * lf0 * lf0 * 0.72;
-      lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.g) * vg;
-      g = (g * 0.62 + uAmbient * 0.022) * vg + g * lf0 * lf0 * 0.72;
-      lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.b) * vg;
-      b = (b * 0.62 + uAmbient * 0.032) * vg + b * lf0 * lf0 * 0.72;
-      // air itself catches the glow near strong light
-      r += max(0.0, light.r - 0.25) * 0.045 * vg;
-      g += max(0.0, light.g - 0.25) * 0.04 * vg;
-      b += max(0.0, light.b - 0.25) * 0.035 * vg;
+      if (isSky) {
+        // Self-luminous daylight: the sky shows its gradient at full strength,
+        // lifted a touch by the warm fill near the sun and vignetted at the rim —
+        // no dependence on point-light orbs, so it reads as flat open daytime.
+        float sun = min(${LIGHT_CLAMP.toFixed(1)}, max(light.r, max(light.g, light.b)));
+        float k = vg * (0.92 + sun * 0.3);
+        r = bg.r * k;
+        g = bg.g * k;
+        b = bg.b * k;
+      } else {
+        float lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.r) * vg;
+        r = (r * 0.62 + uAmbient * 0.022) * vg + r * lf0 * lf0 * 0.72;
+        lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.g) * vg;
+        g = (g * 0.62 + uAmbient * 0.022) * vg + g * lf0 * lf0 * 0.72;
+        lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.b) * vg;
+        b = (b * 0.62 + uAmbient * 0.032) * vg + b * lf0 * lf0 * 0.72;
+        // air itself catches the glow near strong light
+        r += max(0.0, light.r - 0.25) * 0.045 * vg;
+        g += max(0.0, light.g - 0.25) * 0.04 * vg;
+        b += max(0.0, light.b - 0.25) * 0.035 * vg;
+      }
       c = vec3(r, g, b) + ringGlow * vec3(0.55, 0.42, 0.26);
     } else {
       float r = float(cell.r) / 255.0;
@@ -574,12 +635,14 @@ export class GpuCompose {
         uBackdropGrade: { value: new THREE.Vector4(0, 0, 1, 1) },
         uBackdropSaturation: { value: 1 },
         uAmbient: { value: 0 },
+        uSkyLine: { value: 0 },
         uBoost: { value: 1 },
         uVignette: { value: VIGNETTE_BASE },
         uGlintFrame: { value: 0 },
         uPhaseWater: { value: 0 },
         uPhaseShroom: { value: 0 },
         uPhaseSway: { value: 0 },
+        uPhaseSky: { value: 0 },
         uFlickerSeed: { value: 0 },
         uFlickerMid: { value: 0 },
         uWaveA: { value: this.waveA },
@@ -618,6 +681,7 @@ export class GpuCompose {
     (u.uWinOrigin.value as THREE.Vector2).set(camX - COMPOSE_PAD, camY - COMPOSE_PAD);
     this.updateBackdropUniforms(ctx);
     u.uAmbient.value = ctx.params.global.ambient;
+    u.uSkyLine.value = ctx.levels.current?.skyLine ?? 0;
     u.uBoost.value = ctx.params.global.maxBrightness;
     u.uVignette.value = ctx.state.postFx.vignette;
 
@@ -628,6 +692,7 @@ export class GpuCompose {
     u.uPhaseWater.value = (frameCount * 0.16) % TWO_PI;
     u.uPhaseShroom.value = (frameCount * 0.045) % TWO_PI;
     u.uPhaseSway.value = (frameCount * 0.035) % TWO_PI;
+    u.uPhaseSky.value = (frameCount * SKY.DRIFT_SPEED) % TWO_PI;
     u.uFlickerSeed.value = Math.random() * 4096;
     const dbg = window as unknown as { __composeFlickerMid?: boolean };
     u.uFlickerMid.value = dbg.__composeFlickerMid === true ? 1 : 0;
