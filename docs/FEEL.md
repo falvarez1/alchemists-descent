@@ -436,6 +436,19 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   uniform emissive self-glow floor (no vignetted emissives), lit-cell soft knee
   (1.25/0.3/2.0) so bright floors don't bloom-wash, PostFx chromatic
   aberration + grain + low-HP pulse.
+- **D1 daytime sky (the Noita-style surface intro):** above the horizon row
+  (`skyLine`), Empty cells render as open daylight instead of the distant-cave
+  backdrop — a vertical gradient (cool day-blue overhead → warm haze at the
+  horizon), a distant sun pinned to a screen position (parallax-infinity: a
+  bright core in a soft halo, radius 150), drifting clouds (layered 2-D sines in
+  a mid-sky band, ~0.004/frame drift, added per-octave so the 2π wrap is
+  seamless), and two parallax hill ridges (a far one plus a taller/darker near
+  one that occludes it). The sky is *self-luminous* — drawn at full strength,
+  not dimmed by the cave-lighting curve — so it reads as flat open daytime; the
+  surface fill lights only lift the terrain and horizon. ALL tuning lives in one
+  place, `SKY` in `render/skyAtmosphere.ts`, which both compose paths read (the
+  GPU shader interpolates it into GLSL, the cloud sum is generated from
+  `SKY.clouds.octaves`), so the CPU and GPU sky can never drift apart.
 - **Post-FX tuning surface:** the right panel can toggle all post-processing,
   bloom, and the lens layer independently. Defaults: exposure 1.05, bloom
   strength 0.35, radius 0.20, threshold 0.85, bloom kick 1.00x, base split
@@ -543,6 +556,7 @@ temperament fear/dodge/fleeAt: slime .4/.12/.95 · bat 1.3/.85/.45 · imp .6/.72
 player eye seeks threats <80 cells · enemy gaze locks only when alerted
 shake falloff dead at 420 cells · hitstop 3f at ≥8 dmg · heartbeat <25% hp
 sim window camera ±60 · player 9x17 cells · staff ~11 cells, muzzle at d=9
+D1 sky (SKY in render/skyAtmosphere.ts): gradient base (0.36,0.53,0.78)→horizon (+0.28,+0.06,−0.28)·t · sun screen 0.72·VIEW_W,0.17·VIEW_H, halo r150 pow2.4, core 13→6 · clouds 4 octaves, parallax 0.82, drift 0.004/f, band t∈0.12–0.66, opacity 0.45 · hills far parallax 0.5 base26 / near parallax 0.32 base40 (taller+darker, drawn last)
 ```
 
 When changing any of these: one at a time, deliberately, and say so in the

@@ -30,6 +30,10 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # verify-builder-power.mjs, verify-sprites.mjs, verify-machines.mjs,
 # verify-gallery.mjs
 # Worldgen eyeball/diag: shot-biomes.mjs (overview PNGs), diag-biome.mjs
+# Gameplay/runtime probes (dev server running): verify-intro-progression.mjs
+# (D1 surface intro → descent → onboarding spine), verify-descent-progression.mjs,
+# verify-progression-pacing.mjs, verify-bat-slime.mjs, verify-death-causes.mjs,
+# verify-god-mode-qa.mjs
 node scripts/gen-builtin-prefabs.mjs   # regenerate src/world/prefabs/builtin/*.json
 node scripts/gen-machine-prefabs.mjs   # regenerate the machine-*.json structure prefabs
 ```

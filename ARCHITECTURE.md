@@ -55,6 +55,9 @@ src/
     Game.ts               Composition root: builds Ctx, owns the frame order
     WaveDirector.ts       createWaveState() — the small kill/counter state that
                           outlived the retired wave-survival director
+    surfaceIntro.ts       D1 Noita-style surface-intro arrival predicates
+                          (isOnIntroSurface / introArrivalSpawn), shared by
+                          Levels and IntroProgression
   world/
     CaveGenerator.ts      Generation pipeline host: skeleton dispatch + paint + decorations
     carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)
@@ -80,6 +83,10 @@ src/
                           loop as a fragment shader + world-window packer + sprite
                           overlay texture; CPU loop stays the look reference
                           (docs/GPU-COMPOSE-PLAN.md, parity-probed)
+    skyAtmosphere.ts      D1 daytime-sky tuning (SKY) — THE single source both
+                          FrameComposer and ComposeShader read (the latter
+                          interpolates it into GLSL) so the CPU/GPU sky (gradient,
+                          sun, drifting clouds, parallax hills) can never drift
     sprites/              Procedural pixel sprites (player wizard, enemies)
   audio/
     AudioEngine.ts        Procedural WebAudio SFX synthesis
