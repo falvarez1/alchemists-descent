@@ -31,12 +31,13 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.console, { timeout: 20000 });
 await page.evaluate(() => {
   localStorage.removeItem('alchemists-descent-seen-hints-v1');
-  window.__introProbe = { objectives: [], teaches: [], casts: [], flasks: [] };
+  window.__introProbe = { objectives: [], teaches: [], casts: [], flasks: [], toasts: [] };
   const ctx = window.__game.ctx;
   ctx.events.on('objectiveChanged', (e) => window.__introProbe.objectives.push(e.text));
   ctx.events.on('hintTeach', (e) => window.__introProbe.teaches.push(e.key));
   ctx.events.on('cardCast', (e) => window.__introProbe.casts.push(`${e.origin}:${e.id}`));
   ctx.events.on('flaskUsed', (e) => window.__introProbe.flasks.push(`${e.verb}:${e.amount}`));
+  ctx.events.on('toast', (e) => window.__introProbe.toasts.push(e.text));
 });
 
 await startConsolePlayRun(page, { seed: 7, settleMs: 900 });
@@ -60,8 +61,8 @@ const boot = await page.evaluate(() => {
 check('fresh run starts at D1', boot.levelId === 'd1' && boot.depth === 1, JSON.stringify(boot));
 check('starter kit has Spark, Dig, and water flask', boot.wands[0]?.[0] === 'spark' && boot.wands[1]?.[0] === 'dig' && boot.starterFlask.count === 300, JSON.stringify(boot));
 check('D1 generated the Spell Lab annex', !!boot.spellLab, JSON.stringify(boot));
-check('intro objective starts on movement', /MOVE THROUGH THE CAVE/.test(boot.objective), JSON.stringify(boot));
-check('movement objective shows movement controls', /A \/ D/.test(boot.controls) && /SPACE/.test(boot.controls), JSON.stringify(boot));
+check('intro objective starts on the surface', /DESCEND INTO THE CAVE/.test(boot.objective), JSON.stringify(boot));
+check('surface objective shows surface controls', /surface/.test(boot.controls) && /drop in/.test(boot.controls), JSON.stringify(boot));
 
 const advance = async (setup) => {
   await page.evaluate((source) => {
@@ -75,6 +76,20 @@ const advance = async (setup) => {
     controls: document.getElementById('controls-hint')?.textContent ?? '',
   }));
 };
+
+// Drop down the cave mouth: place the wizard in the spawn chamber (well below the
+// surface, but WITHOUT jumping) so the descent is detected and the intro hands
+// off from the surface stage to movement — exactly as a real fall would.
+const descend = await advance(`
+  const rt = ctx.levels.current;
+  ctx.player.x = rt.spawn.x;
+  ctx.player.y = rt.spawn.y;
+  ctx.player.vx = 0;
+  ctx.player.vy = 0;
+`);
+check('dropping into the cave mouth flips to the movement objective', /MOVE THROUGH THE CAVE/.test(descend.objective), JSON.stringify(descend));
+check('movement objective shows movement controls', /A \/ D/.test(descend.controls) && /SPACE/.test(descend.controls), JSON.stringify(descend));
+check('descending fires the INTO THE DEPTHS toast', (await page.evaluate(() => window.__introProbe.toasts)).some((t) => /DEPTH/i.test(t)), '');
 
 let objective = await advance(`
   const rt = ctx.levels.current;
@@ -223,7 +238,7 @@ const resetAfterReward = await page.evaluate(() => {
 check('intro reset after slotted Heavy stays on the key loop', resetAfterReward.heavySlotted && /FIND THE GOLDEN KEY/.test(resetAfterReward.objective), JSON.stringify(resetAfterReward));
 
 const events = await page.evaluate(() => window.__introProbe);
-check('intro teach cards fired for the core stages', ['intro-movement', 'intro-spark', 'intro-dig', 'intro-flask', 'intro-spellLab', 'intro-bench'].every((key) => events.teaches.includes(key)), JSON.stringify(events.teaches));
+check('intro teach cards fired for the core stages', ['intro-surface', 'intro-movement', 'intro-spark', 'intro-dig', 'intro-flask', 'intro-spellLab', 'intro-bench'].every((key) => events.teaches.includes(key)), JSON.stringify(events.teaches));
 check('intro releases to the golden-key loop after Heavy is slotted', events.objectives.includes('FIND THE GOLDEN KEY'), JSON.stringify(events.objectives));
 check('lab station objectives were observed', ['SPELL LAB: EXCAVATE THE SAND', 'SPELL LAB: POUR WATER ON HEAT', 'SPELL LAB: SPARK THE COIL', 'SPELL LAB: CLAIM THE TOME'].every((text) => events.objectives.includes(text)), JSON.stringify(events.objectives));
 check('wand and flask gameplay events were observed', events.casts.filter((c) => c === 'wand:spark').length >= 2 && events.casts.filter((c) => c === 'wand:dig').length >= 2 && events.flasks.some((f) => f.startsWith('pour:')), JSON.stringify(events));
