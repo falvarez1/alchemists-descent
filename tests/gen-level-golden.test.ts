@@ -104,8 +104,9 @@ function emptyBottomExitCells(level: ReturnType<typeof generateLevelState>): num
 
 // Re-recorded for GEN_VERSION 30: the open strip below the caves is packed to solid
 // rock (terrain runs all the way down to the bedrock), shifting cell types on every seed.
+// GEN_VERSION 31: D1 gains the surface intro (sky/grass/cabin/cave-mouth) — d1 only.
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '2d066867' },
+  { id: 'd1', seed: 1337, hash: 'd9b6b61a' },
   { id: 'd4', seed: 1337, hash: 'e061b436' },
   { id: 'd8', seed: 1337, hash: '85cbff75' },
   { id: 'vault', seed: 1337, hash: '20798ecd' },
@@ -162,6 +163,37 @@ describe('D1 bench progression geometry', () => {
   it('does not place recurring Refuge benches below D1', () => {
     for (const id of ['d2', 'd4', 'd8', 'vault'] as const) {
       expect(generateLevelState(LEVELS[id], 1337).refuge).toBeNull();
+    }
+  });
+});
+
+describe('D1 Noita-style surface intro', () => {
+  for (const seed of [1, 42, 1337]) {
+    it(`starts the wizard on a daylit surface above an open cave mouth at seed ${seed}`, () => {
+      const level = generateLevelState(LEVELS.d1, seed);
+      expect(level.surfaceSpawn).toBeTruthy();
+      const surf = level.surfaceSpawn!;
+      const W = level.world.width;
+      // The surface start sits well above the cave spawn chamber.
+      expect(surf.y).toBeLessThan(level.spawn.y - 40);
+      // Open daylight sky directly overhead — the wizard begins outdoors.
+      expect(level.world.types[surf.x + (surf.y - 24) * W]).toBe(Cell.Empty);
+      expect(level.world.types[surf.x + (surf.y - 60) * W]).toBe(Cell.Empty);
+      // The wizard stands on solid ground.
+      expect(level.world.types[surf.x + (surf.y + 1) * W]).not.toBe(Cell.Empty);
+      // The cave mouth: a mostly-open shaft from the surface down to the spawn.
+      let open = 0;
+      const top = level.spawn.y - 80;
+      for (let y = top; y < level.spawn.y; y++) {
+        if (level.world.types[level.spawn.x + y * W] === Cell.Empty) open++;
+      }
+      expect(open).toBeGreaterThan((level.spawn.y - top) * 0.5);
+    });
+  }
+
+  it('only caps D1 with a surface — deeper levels have none', () => {
+    for (const id of ['d2', 'd4', 'd8', 'vault'] as const) {
+      expect(generateLevelState(LEVELS[id], 1337).surfaceSpawn).toBeNull();
     }
   });
 });

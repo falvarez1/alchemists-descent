@@ -108,8 +108,11 @@ import type { BiomeId } from '@/core/types';
  * v30: the open strip below the caves is packed to solid rock — terrain now runs
  *      all the way down to the bedrock instead of leaving an empty bottom void.
  *      Full-level + base-cave output changed on every seed.
+ * v31: D1 gains the Noita-style surface intro — open sky, a rolling grass
+ *      surface, a starter cabin, and a timbered cave mouth above the spawn
+ *      chamber. D1 full-level output changed; other depths unaffected.
  */
-export const GEN_VERSION = 30;
+export const GEN_VERSION = 31;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

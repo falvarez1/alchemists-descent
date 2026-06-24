@@ -698,6 +698,14 @@ export class Levels implements LevelsApi {
     if (!runtime) return;
     const player = ctx.player;
 
+    // Noita-style intro: the wizard starts on the surface and the cave mouth is
+    // the first lesson. Mark the descent once he drops well below the grass — the
+    // intro tutorial reads this, and later arrivals/respawns use the cave spawn.
+    if (runtime.surfaceSpawn && !runtime.surfaceDescended && player.y > runtime.surfaceSpawn.y + 70) {
+      runtime.surfaceDescended = true;
+      ctx.events.emit('toast', { text: 'INTO THE DEPTHS' });
+    }
+
     // Floor safety: terrain no longer opens into a hidden descent shaft.
     if (player.y >= HEIGHT - 10) {
       player.y = HEIGHT - 12;
@@ -1308,6 +1316,7 @@ export class Levels implements LevelsApi {
     ctx.worldgen.spawnHint = null;
     const spawn = this.findVirtualSpawn(world);
     this.carveVirtualSpawn(world, spawn.x, spawn.y);
+    this.sealVirtualWorldBoundary(world);
     ctx.worldgen.spawnHint = spawn;
     this.warnVirtualMaterializationDrops(ctx, crop.stats);
     const sceneRuntime = this.virtualSceneRuntime(ctx, crop.sceneObjects, crop.sceneLights, 0, 0, world);
@@ -1577,6 +1586,39 @@ export class Levels implements LevelsApi {
       if (world.inBounds(x, y) && blocksEntity(world.types[world.idx(x, y)])) return true;
     }
     return false;
+  }
+
+  /**
+   * Seal the chunked-world window with a real boundary. The runtime is a static
+   * crop the player is already confined to (entity physics clamps to the world
+   * box); this turns that invisible wall into an honest one — an indestructible
+   * bedrock lip you cannot dig or blast through, with the sparse outer fringe
+   * packed solid so the seam reads as rock, not light-shafting holes. Past the lip
+   * the camera shows flat black void (FrameComposer.maskVoidBelowWorldFloor): a
+   * very large world with a designed edge, exactly as intended.
+   */
+  private sealVirtualWorldBoundary(world: World): void {
+    const RIM = 6; // indestructible bedrock — the hard edge
+    const FRINGE = 22; // pack the sparse fringe behind the lip
+    const W = world.width;
+    const H = world.height;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const d = Math.min(x, y, W - 1 - x, H - 1 - y);
+        if (d >= FRINGE) continue;
+        const i = world.idx(x, y);
+        const n = (x * 53 + y * 131) & 7;
+        if (d < RIM) {
+          world.types[i] = Cell.Metal;
+          world.colors[i] = packRGB(52 + n, 58 + n, 70 + n);
+          world.life[i] = 0;
+          world.charge[i] = 0;
+        } else if (world.types[i] === Cell.Empty) {
+          world.types[i] = Cell.Wall;
+          world.colors[i] = packRGB(38 + n, 34 + n, 29 + n);
+        }
+      }
+    }
   }
 
   private carveVirtualSpawn(world: World, cx: number, cy: number): void {
@@ -2001,11 +2043,13 @@ export class Levels implements LevelsApi {
     resetCombatTransients(ctx);
     ctx.flask.cancelBottle();
 
-    // v1: arrival (descending or re-ascending) always places the player at
-    // the destination level's spawn chamber — see file header
+    // Arrival: normally the destination's spawn chamber. D1's first entry starts
+    // the wizard OUT ON THE SURFACE (the Noita-style intro) — once he has dropped
+    // down the cave mouth, every later arrival/respawn uses the cave spawn.
     const player = ctx.player;
-    player.x = runtime.spawn.x;
-    player.y = runtime.spawn.y;
+    const arrival = runtime.surfaceSpawn && !runtime.surfaceDescended ? runtime.surfaceSpawn : runtime.spawn;
+    player.x = arrival.x;
+    player.y = arrival.y;
     player.vx = 0;
     player.vy = 0;
     player.fx = 0;
@@ -2162,6 +2206,7 @@ export class Levels implements LevelsApi {
       spellLab,
       vaultArch,
       vaultHoard,
+      surfaceSpawn,
     } = ctx.worldgen.generateLevel(ctx, def, seed, {
       hostArch: def.id === vaultHostId(expeditionSeed),
     });
@@ -2218,6 +2263,7 @@ export class Levels implements LevelsApi {
       ...(refuge ? { refuge } : {}),
       ...(spellLab ? { spellLab } : {}),
       ...(vaultArch ? { vaultArch } : {}),
+      ...(surfaceSpawn ? { surfaceSpawn } : {}),
       weaverLairWebs,
     });
 

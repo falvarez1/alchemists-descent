@@ -41,6 +41,7 @@ export function makeLevelRuntime(
       | 'refuge'
       | 'spellLab'
       | 'vaultArch'
+      | 'surfaceSpawn'
     >
   >,
 ): LevelRuntime {

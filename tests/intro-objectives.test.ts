@@ -29,6 +29,7 @@ describe('intro objective contract', () => {
 
   it('keeps every staged onboarding line in the pre-key passthrough set', () => {
     const staged = [
+      INTRO_OBJECTIVE.surface,
       INTRO_OBJECTIVE.movement,
       INTRO_OBJECTIVE.spark,
       INTRO_OBJECTIVE.dig,

@@ -15,6 +15,7 @@ import type { CardId } from '@/core/types';
 export const INTRO_REWARD_CARD: CardId = 'heavy';
 
 export const INTRO_OBJECTIVE = {
+  surface: 'DESCEND INTO THE CAVE',
   movement: 'MOVE THROUGH THE CAVE',
   spark: 'WAND I: FIRE A SPARK',
   dig: 'WAND II: EXCAVATE ROCK OR SAND',
@@ -36,6 +37,7 @@ export const INTRO_OBJECTIVE = {
  * a post-key nudge, so it is deliberately absent.)
  */
 export const INTRO_PRE_KEY_OBJECTIVES: ReadonlySet<string> = new Set([
+  INTRO_OBJECTIVE.surface,
   INTRO_OBJECTIVE.movement,
   INTRO_OBJECTIVE.spark,
   INTRO_OBJECTIVE.dig,
@@ -61,6 +63,11 @@ const BENCH_HINT: readonly IntroControlHintPart[] = [
 
 /** Per-objective control prompt shown under the objective line during onboarding. */
 const INTRO_CONTROL_HINTS: Readonly<Record<string, readonly IntroControlHintPart[]>> = {
+  [INTRO_OBJECTIVE.surface]: [
+    { key: 'A / D', label: 'explore the surface' },
+    { key: 'SPACE', label: 'jump' },
+    { key: 'cave mouth', label: 'drop in to descend' },
+  ],
   [INTRO_OBJECTIVE.movement]: [
     { key: 'A / D', label: 'move' },
     { key: 'SPACE', label: 'jump / levitate' },

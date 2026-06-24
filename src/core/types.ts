@@ -1648,6 +1648,8 @@ export interface WorldGenApi {
     decors: RuntimeDecor[];
     /** The Refuge's offering shrine (E opens the Sanctum shop), if hewn. */
     refuge: { x: number; y: number } | null;
+    /** D1 only: the open-air start on the surface, above the cave mouth. */
+    surfaceSpawn: { x: number; y: number } | null;
   };
 }
 
@@ -2467,6 +2469,11 @@ export interface LevelRuntime {
   decors?: RuntimeDecor[];
   /** Generated Weaver-den lattice descriptors replayed after levelChanged clears live strands. */
   weaverLairWebs: WeaverLairWeb[];
+  /** D1 Noita-style surface intro: the open-air start above the cave mouth. The
+   *  player begins HERE on first entry (revisits/respawns use the cave spawn). */
+  surfaceSpawn?: { x: number; y: number };
+  /** Set once the wizard has descended the cave mouth into the cave proper. */
+  surfaceDescended?: boolean;
   /** The Refuge's offering shrine point — E in reach opens the Sanctum shop. */
   refuge?: { x: number; y: number };
   /** D1 teaching alcove: real-cell stations plus its reward pedestal. */

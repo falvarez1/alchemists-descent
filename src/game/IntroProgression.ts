@@ -3,7 +3,7 @@ import type { CardId, Ctx, LevelRuntime } from '@/core/types';
 import { INTRO_OBJECTIVE, INTRO_REWARD_CARD } from '@/game/introObjectives';
 import { Cell } from '@/sim/CellType';
 
-type IntroStage = 'movement' | 'spark' | 'dig' | 'flask' | 'spellLab' | 'bench' | 'complete';
+type IntroStage = 'surface' | 'movement' | 'spark' | 'dig' | 'flask' | 'spellLab' | 'bench' | 'complete';
 
 interface IntroFlags {
   moved: boolean;
@@ -22,6 +22,11 @@ const JUMP_DISTANCE = 5;
 const LAB_RADIUS = 54;
 
 const STAGE_COPY: Record<IntroStage, { objective: string; title: string; body: string }> = {
+  surface: {
+    objective: INTRO_OBJECTIVE.surface,
+    title: 'The Descent Begins',
+    body: 'Welcome, alchemist. The cave mouth beside your cabin is the way down. Move with A and D, jump with SPACE, then drop into the shaft to begin.',
+  },
   movement: {
     objective: INTRO_OBJECTIVE.movement,
     title: 'The Descent',
@@ -151,8 +156,11 @@ export class IntroProgression {
 
   private resetFor(runtime: LevelRuntime, ctx: Ctx): void {
     this.levelId = runtime.def.id;
-    this.startX = runtime.spawn.x;
-    this.startY = runtime.spawn.y;
+    // Track movement from wherever the wizard actually starts — the surface on
+    // first entry, the cave spawn otherwise.
+    const start = runtime.surfaceSpawn && !runtime.surfaceDescended ? runtime.surfaceSpawn : runtime.spawn;
+    this.startX = start.x;
+    this.startY = start.y;
     this.startLevit = ctx.player.levit;
     this.flags = initialFlags();
     this.stage = null;
@@ -182,6 +190,8 @@ export class IntroProgression {
   }
 
   private resolveStage(ctx: Ctx, runtime: LevelRuntime): IntroStage {
+    // Still up top in the daylight: the only lesson is to drop into the cave.
+    if (runtime.surfaceSpawn && !runtime.surfaceDescended) return 'surface';
     if (runtime.spellLab && !cardSlotted(ctx, INTRO_REWARD_CARD)) {
       if (ctx.wands.collection.includes(INTRO_REWARD_CARD)) return 'bench';
       if (runtime.keyTaken || this.flags.reachedLab || this.flags.labDug || this.flags.labWatered || this.flags.labSparked) {

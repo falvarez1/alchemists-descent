@@ -23,6 +23,7 @@ import type {
   WorldGenApi,
 } from '@/core/types';
 import { Cell } from '@/sim/CellType';
+import type { World } from '@/sim/World';
 import {
   COLOR_FN,
   EMPTY_COLOR,
@@ -781,6 +782,8 @@ export class WorldGen implements WorldGenApi {
     spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null;
     vaultArch: VaultArch | null;
     vaultHoard: { x: number; y: number } | null;
+    /** D1 only: the open-air start point on the surface, above the cave mouth. */
+    surfaceSpawn: { x: number; y: number } | null;
   } {
     // DEV stage timing — generation runs synchronously behind the curtain,
     // so a slow stage is a felt hitch; shout when the total crosses 400ms.
@@ -1237,6 +1240,21 @@ export class WorldGen implements WorldGenApi {
       }
     }
 
+    // 9.5) D1 ONLY — the Noita-style surface intro: cap the cave with open sky,
+    // grass, a cabin, and a timbered cave mouth the wizard descends to reach the
+    // cave proper. (Only depth-1 non-branch is D1; the structures pass already
+    // relies on this identity.)
+    let surfaceSpawn: { x: number; y: number } | null = null;
+    let surfaceLights: AuthoredLight[] = [];
+    let surfaceDecors: RuntimeDecor[] = [];
+    if (def.depth === 1 && !def.branch) {
+      const surf = this.dressIntroSurface(world, spawn);
+      surfaceSpawn = surf.surfaceSpawn;
+      surfaceLights = surf.lights;
+      surfaceDecors = surf.decors;
+    }
+    stage('intro-surface');
+
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
     return {
       exit: { x: wellX, sealY, halfW },
@@ -1250,13 +1268,211 @@ export class WorldGen implements WorldGenApi {
       boss,
       prefabEnemies: sink.enemies,
       placedPrefabs,
-      authoredLights: [...sink.authoredLights, ...structLights],
+      authoredLights: [...sink.authoredLights, ...structLights, ...surfaceLights],
       emitters: [...sink.emitters, ...structEmitters],
-      decors: sink.decors,
+      decors: [...sink.decors, ...surfaceDecors],
       refuge,
       spellLab,
       vaultArch,
       vaultHoard,
+      surfaceSpawn,
     };
+  }
+
+  /**
+   * D1 Noita-style surface intro. Caps the top of the cave with open daylight
+   * sky, a gently rolling grass surface, a starter cabin, and a timbered mine
+   * mouth whose shaft drops into the existing spawn chamber. The wizard starts
+   * out here (see LevelRuntime.surfaceSpawn) and descends into the cave — the
+   * first thing the game asks of you, taught by the level itself. Deterministic
+   * (this.rng / paintSeed only), so the golden hash stays replayable.
+   */
+  private dressIntroSurface(
+    world: World,
+    spawn: { x: number; y: number },
+  ): { surfaceSpawn: { x: number; y: number }; lights: AuthoredLight[]; decors: RuntimeDecor[] } {
+    const lights: AuthoredLight[] = [];
+    const seed = this.paintSeed ?? 0;
+    const set = (x: number, y: number, t: Cell, color: number): void => {
+      if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
+      const i = x + y * WIDTH;
+      world.types[i] = t;
+      world.colors[i] = color;
+      world.life[i] = 0;
+      world.charge[i] = 0;
+    };
+    const grassColor = (x: number, y: number): number => {
+      const j = (hash2(x, y, seed + 71) * 26) | 0;
+      return packRGB(58 + j, 132 + ((hash2(x, y, seed + 72) * 30) | 0), 48 + ((j / 2) | 0));
+    };
+    const dirtColor = (x: number, y: number): number => {
+      const j = (hash2(x, y, seed + 73) * 18) | 0;
+      return packRGB(92 + j, 62 + ((j * 2) / 3) | 0, 40 + ((j / 2) | 0));
+    };
+
+    // Surface line: ~96 cells above the cave spawn so there is generous sky but a
+    // short, readable descent. Gently rolling, not a dead-flat shelf.
+    const groundBase = Math.floor(clamp(spawn.y - 96, 110, HEIGHT - 240));
+    const SOIL = 14;
+    const groundAt = (x: number): number =>
+      groundBase + Math.round((valueNoise(x, 13, 0.014, seed + 61) - 0.5) * 26);
+
+    // Sky overhead, a grass crown, and a packed soil layer dividing surface from cave.
+    for (let x = 0; x < WIDTH; x++) {
+      const gy = groundAt(x);
+      for (let y = 0; y < gy; y++) set(x, y, Cell.Empty, EMPTY_COLOR);
+      set(x, gy, Cell.Grass, grassColor(x, gy));
+      for (let y = gy + 1; y <= gy + SOIL; y++) {
+        set(x, y, y >= gy + SOIL - 4 ? Cell.Stone : Cell.Wall, dirtColor(x, y));
+      }
+    }
+
+    // The cave mouth: a timbered shaft straight down into the spawn chamber.
+    const mouthX = Math.floor(clamp(spawn.x, 90, WIDTH - 90));
+    const mouthGy = groundAt(mouthX);
+    const shaftHalf = 4;
+    for (let y = mouthGy - 1; y <= spawn.y + 2; y++) {
+      for (let dx = -shaftHalf; dx <= shaftHalf; dx++) set(mouthX + dx, y, Cell.Empty, EMPTY_COLOR);
+    }
+    for (let dy = 0; dy <= 12; dy++) {
+      set(mouthX - shaftHalf - 1, mouthGy - dy, Cell.Wood, woodColor());
+      set(mouthX + shaftHalf + 1, mouthGy - dy, Cell.Wood, woodColor());
+    }
+    for (let dx = -shaftHalf - 1; dx <= shaftHalf + 1; dx++) set(mouthX + dx, mouthGy - 13, Cell.Wood, woodColor());
+    for (let dx = -shaftHalf - 1; dx <= shaftHalf + 1; dx++) set(mouthX + dx, mouthGy - 12, Cell.Wood, woodColor());
+
+    // Start the wizard out on the grass, off to the open side of the mouth.
+    const side = mouthX > WIDTH / 2 ? -1 : 1;
+    const spawnX = Math.floor(clamp(mouthX + side * 210, 60, WIDTH - 60));
+    const spawnGy = groundAt(spawnX);
+    const surfaceSpawn = { x: spawnX, y: spawnGy - 1 };
+
+    // A starter cabin behind the spawn — shelter at your back, the cave mouth ahead.
+    const cabinX = Math.floor(clamp(spawnX + side * 26, 30, WIDTH - 30));
+    this.stampStarterCabin(world, set, cabinX, groundAt(cabinX));
+
+    // Grass tufts, wildflowers, and scattered field stones for a living surface.
+    for (let x = 6; x < WIDTH - 6; x += 2) {
+      const gy = groundAt(x);
+      const r = hash2(x, gy, seed + 81);
+      if (r < 0.55) {
+        if (r < 0.045) set(x, gy - 1, Cell.Grass, packRGB(214, 96, 150)); // pink wildflower
+        else if (r < 0.08) set(x, gy - 1, Cell.Grass, packRGB(206, 186, 84)); // yellow wildflower
+        else set(x, gy - 1, Cell.Grass, grassColor(x, gy - 1));
+        if (r < 0.2) set(x, gy - 2, Cell.Grass, grassColor(x, gy - 2)); // a taller blade
+      }
+      if (hash2(x, gy, seed + 82) < 0.05) {
+        set(x, gy - 1, Cell.Stone, stoneColor());
+        if (hash2(x, gy, seed + 83) < 0.4) set(x + 1, gy - 1, Cell.Stone, stoneColor());
+      }
+    }
+
+    // A few trees — real wood trunks, leafy mossy canopies — clear of the cabin,
+    // the mouth, and the start so they frame the scene without blocking it.
+    let trees = 0;
+    for (let attempt = 0; attempt < 70 && trees < 5; attempt++) {
+      const tx = 70 + Math.floor(hash2(attempt, 3, seed + 91) * (WIDTH - 140));
+      if (Math.abs(tx - mouthX) < 44 || Math.abs(tx - cabinX) < 24 || Math.abs(tx - spawnX) < 26) continue;
+      this.stampSurfaceTree(set, tx, groundAt(tx), 9 + Math.floor(hash2(tx, 5, seed + 92) * 7), seed + tx);
+      trees++;
+    }
+
+    // A signpost on the approach to the cave mouth — "the way down".
+    this.stampSignpost(set, Math.floor(clamp(mouthX + side * (shaftHalf + 12), 20, WIDTH - 20)), groundAt(mouthX + side * (shaftHalf + 12)));
+
+    // Daylight: a strong warm wash so the surface reads as the bright outdoors.
+    // Non-occluded lights paint their whole falloff disk into the light field
+    // (occluded ones only seed a point), so two stacked rows of overlapping disks
+    // flood the surface evenly. A contained radius keeps the bright band hugging
+    // the surface, so the deep cave below still goes dark (just a soft glow down
+    // the mine shaft near the entrance).
+    const COUNT = 16;
+    for (let i = 0; i < COUNT; i++) {
+      const lx = Math.floor((WIDTH * (i + 0.5)) / COUNT);
+      const surf = groundAt(lx);
+      // bright ground-hugging fill
+      lights.push({
+        x: lx, y: surf - 44, r: 1, g: 0.95, b: 0.82,
+        intensity: 2.6, radius: 124, bloom: 0.16, flicker: 0, flickerPhase: 0, falloff: 'soft', occluded: false,
+      });
+      // softer high sky glow
+      lights.push({
+        x: lx, y: Math.max(18, groundBase - 118), r: 0.96, g: 0.93, b: 0.86,
+        intensity: 1.7, radius: 178, bloom: 0.08, flicker: 0, flickerPhase: 0, falloff: 'soft', occluded: false,
+      });
+    }
+    return { surfaceSpawn, lights, decors: [] };
+  }
+
+  /** A surface tree: a real wood trunk (it burns) crowned by a mossy canopy. */
+  private stampSurfaceTree(
+    set: (x: number, y: number, t: Cell, color: number) => void,
+    tx: number,
+    baseY: number,
+    trunkH: number,
+    seed: number,
+  ): void {
+    for (let dy = 0; dy < trunkH; dy++) {
+      set(tx, baseY - 1 - dy, Cell.Wood, woodColor());
+      // an occasional fork gives the trunk some character
+      if (dy > 2 && dy < trunkH - 3 && hash2(tx, dy, seed + 4) < 0.22) {
+        set(tx + (hash2(tx, dy, seed + 5) < 0.5 ? 1 : -1), baseY - 1 - dy, Cell.Wood, woodColor());
+      }
+    }
+    const cyTop = baseY - trunkH;
+    const cr = 5 + ((seed >> 3) & 2);
+    for (let dy = -cr; dy <= cr - 1; dy++) {
+      for (let dx = -cr; dx <= cr; dx++) {
+        if (dx * dx + dy * dy > cr * cr) continue;
+        if (hash2(tx + dx, cyTop + dy, seed + 7) > 0.82) continue; // ragged edge
+        const g = (hash2(tx + dx, cyTop + dy, seed + 9) * 44) | 0;
+        set(tx + dx, cyTop + dy, Cell.Moss, packRGB(46 + ((g / 2) | 0), 118 + g, 44 + ((g / 3) | 0)));
+      }
+    }
+  }
+
+  /** A weathered wooden signpost — a post and a board — pointing the way down. */
+  private stampSignpost(
+    set: (x: number, y: number, t: Cell, color: number) => void,
+    x: number,
+    baseY: number,
+  ): void {
+    for (let dy = 1; dy <= 7; dy++) set(x, baseY - dy, Cell.Wood, woodColor());
+    for (let dx = -3; dx <= 3; dx++) {
+      set(x + dx, baseY - 6, Cell.Wood, woodColor());
+      set(x + dx, baseY - 7, Cell.Wood, woodColor());
+    }
+  }
+
+  /** A small wooden hut on the surface: floor, two walls, a peaked roof, an open
+   *  doorway facing the cave mouth. Pure cells — it really burns. */
+  private stampStarterCabin(
+    world: World,
+    set: (x: number, y: number, t: Cell, color: number) => void,
+    cx: number,
+    groundY: number,
+  ): void {
+    const HW = 6;
+    const H = 9;
+    const floor = groundY;
+    // floor plank + side walls
+    for (let dx = -HW; dx <= HW; dx++) set(cx + dx, floor, Cell.Wood, woodColor());
+    for (let dy = 1; dy <= H; dy++) {
+      set(cx - HW, floor - dy, Cell.Wood, woodColor());
+      set(cx + HW, floor - dy, Cell.Wood, woodColor());
+    }
+    // peaked roof
+    for (let dx = -HW - 1; dx <= HW + 1; dx++) {
+      const peak = H + 1 + Math.round((HW + 1 - Math.abs(dx)) * 0.6);
+      set(cx + dx, floor - peak, Cell.Wood, woodColor());
+      set(cx + dx, floor - peak + 1, Cell.Wood, woodColor());
+    }
+    // doorway: clear a 3-wide x 5-tall opening in the near wall and the interior
+    for (let dy = 1; dy <= H; dy++) {
+      for (let dx = -HW + 1; dx <= HW - 1; dx++) {
+        if (dy <= 5 && Math.abs(dx) <= 1) set(cx + dx, floor - dy, Cell.Empty, EMPTY_COLOR);
+        else if (world.types[cx + dx + (floor - dy) * WIDTH] !== Cell.Wood) set(cx + dx, floor - dy, Cell.Empty, EMPTY_COLOR);
+      }
+    }
   }
 }
