@@ -139,7 +139,7 @@ export class HintSystem implements HintApi {
           info: {
             key: 'spell-lab',
             line: rewardTaken
-              ? 'Spell Lab cleared — slot the new card at the Refuge bench'
+              ? 'Spell Lab cleared — press B to slot the new card at the wand bench'
               : 'Spell Lab: dig sand, burn wood, use water, spark the coil, claim the tome',
             world: { x: lab.x, y: lab.y },
           },

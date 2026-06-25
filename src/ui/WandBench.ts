@@ -19,7 +19,6 @@ function cardTitle(id: CardId): string {
 }
 
 const BENCH_STATUS_CAP = 3600;
-const BENCH_REFUGE_RADIUS = 48;
 
 export type BenchCardFilter = 'all' | 'projectile' | 'modifier' | 'multicast' | 'setup' | 'terrain';
 
@@ -38,6 +37,7 @@ const CARD_RECIPE_HINTS: Partial<Record<CardId, string[]>> = {
   electriccharge: ['Pairs with Water Trail and conductor cells.'],
   oiltrail: ['Pairs with Flame as a visible fuse.'],
   cryojet: ['Freezes water into bridgeable ice strips.'],
+  aquajet: ['Douses fire and leaves targets wet for Critical on Wet / Electric Charge.'],
   frostcharge: ['Pairs with Shatter Frozen as the setup hit.'],
   shattercrit: ['Pairs with Frost Charge or naturally frozen targets.'],
   trigger: ['Put a host projectile next, then a payload group after it.'],
@@ -77,32 +77,10 @@ interface SlotLinkSummary {
 }
 
 export function canOpenWandBench(ctx: Ctx): boolean {
-  if (ctx.state.mode !== 'play' || ctx.player.dead) return false;
-  const runtime = ctx.levels.current;
-  if (!runtime) return false;
-  if (ctx.state.debugGodMode) return true;
-  const refuge = runtime.refuge;
-  if (!refuge) return false;
-  const dx = refuge.x - ctx.player.x;
-  const dy = refuge.y - ctx.player.y;
-  return dx * dx + dy * dy <= BENCH_REFUGE_RADIUS * BENCH_REFUGE_RADIUS;
-}
-
-export function wandBenchUnavailableCue(ctx: Ctx): string {
-  const runtime = ctx.levels.current;
-  const refuge = runtime?.refuge;
-  if (!refuge) {
-    if (runtime && runtime.def.depth > 1) return 'WAND BENCH WAS ON DEPTH 1';
-    return 'WAND BENCH WAITS IN THE REFUGE';
-  }
-  const dx = refuge.x - ctx.player.x;
-  const dy = refuge.y - ctx.player.y;
-  const dist = Math.max(1, Math.round(Math.hypot(dx, dy)));
-  const dirs: string[] = [];
-  if (Math.abs(dx) > 18) dirs.push(dx > 0 ? 'EAST' : 'WEST');
-  if (Math.abs(dy) > 18) dirs.push(dy > 0 ? 'BELOW' : 'ABOVE');
-  const dir = dirs.length > 0 ? ' ' + dirs.join(' ') : '';
-  return 'WAND BENCH IN REFUGE' + dir + ' - ' + dist + ' STEPS';
+  // The bench is the alchemist's own kit — openable any time in play, on any
+  // floor (not just at the Refuge). Opening it pauses the sim, so it never
+  // overlaps live combat regardless of where you pop it open.
+  return ctx.state.mode === 'play' && !ctx.player.dead && ctx.levels.current !== null;
 }
 
 // ===================== Wand Bench =====================
@@ -125,7 +103,7 @@ export class WandBench {
   private inspectedCard: CardId | null = null;
   private dragSource: BenchDragSource | null = null;
   private collectionFilter: BenchCardFilter = 'all';
-  private refugeWatchTimer: number | null = null;
+  private closeWatchTimer: number | null = null;
   /** Sim pause state captured when the bench opens, restored on close. */
   private wasPaused = false;
 
@@ -144,7 +122,7 @@ export class WandBench {
       }
       this.render();
     });
-    this.refugeWatchTimer = window.setInterval(() => {
+    this.closeWatchTimer = window.setInterval(() => {
       if (this.visible && !canOpenWandBench(this.ctx)) this.setVisible(false);
     }, 250);
   }
@@ -157,9 +135,9 @@ export class WandBench {
 
   dispose(): void {
     window.removeEventListener('keydown', this.onKeyDown);
-    if (this.refugeWatchTimer !== null) {
-      window.clearInterval(this.refugeWatchTimer);
-      this.refugeWatchTimer = null;
+    if (this.closeWatchTimer !== null) {
+      window.clearInterval(this.closeWatchTimer);
+      this.closeWatchTimer = null;
     }
   }
 
@@ -185,11 +163,7 @@ export class WandBench {
       this.setVisible(false);
       return;
     }
-    if (!canOpenWandBench(this.ctx)) {
-      this.ctx.events.emit('toast', { text: wandBenchUnavailableCue(this.ctx) });
-      this.ctx.events.emit('refugePing');
-      return;
-    }
+    if (!canOpenWandBench(this.ctx)) return; // dead / not in a run
     this.setVisible(true);
   }
 

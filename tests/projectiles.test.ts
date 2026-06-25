@@ -36,6 +36,7 @@ describe('projectile trigger payloads', () => {
       shortHoming: false,
       frostCharge: false,
       shatterCrit: false,
+      pyreCrit: false,
       bounces: 0,
       triggered: null,
     };
@@ -356,6 +357,7 @@ describe('projectile trigger payloads', () => {
       shortHoming: false,
       frostCharge: false,
       shatterCrit: false,
+      pyreCrit: false,
       bounces: 0,
       triggered: [{
         card: 'spark',
@@ -370,6 +372,7 @@ describe('projectile trigger payloads', () => {
         shortHoming: false,
         frostCharge: false,
         shatterCrit: false,
+        pyreCrit: false,
         bounces: 0,
         triggered: null,
       }],
@@ -806,6 +809,61 @@ describe('projectile trigger payloads', () => {
     new Projectiles().update(modifierCtx(world, projectile, { enemies: [enemy], damage }));
 
     expect(damage[0]).toBeCloseTo(18 * 2);
+  });
+
+  it('applies Critical on Burning only to targets already burning', () => {
+    const dryWorld = new World();
+    const burningWorld = new World();
+    const dryProjectile: Projectile = {
+      x: 5,
+      y: 5,
+      vx: 1,
+      vy: 0,
+      type: 'bolt',
+      life: 10,
+      age: 0,
+      charging: false,
+      hostile: false,
+    };
+    const burningProjectile: Projectile = { ...dryProjectile };
+    const dryEnemy = enemyAt(6, 10);
+    const burningEnemy = enemyAt(6, 10);
+    burningEnemy.status.burning = 20;
+    const dryDamage: number[] = [];
+    const burningDamage: number[] = [];
+    PROJECTILE_MODS.set(dryProjectile, { pyreCrit: true });
+    PROJECTILE_MODS.set(burningProjectile, { pyreCrit: true });
+
+    new Projectiles().update(modifierCtx(dryWorld, dryProjectile, { enemies: [dryEnemy], damage: dryDamage }));
+    new Projectiles().update(
+      modifierCtx(burningWorld, burningProjectile, { enemies: [burningEnemy], damage: burningDamage }),
+    );
+
+    expect(dryDamage[0]).toBeCloseTo(18);
+    expect(burningDamage[0]).toBeCloseTo(18 * 1.9);
+  });
+
+  it('allows Critical on Burning when the target is standing in fire', () => {
+    const world = new World();
+    const projectile: Projectile = {
+      x: 5,
+      y: 5,
+      vx: 1,
+      vy: 0,
+      type: 'bolt',
+      life: 10,
+      age: 0,
+      charging: false,
+      hostile: false,
+    };
+    const enemy = enemyAt(6, 10);
+    world.types[world.idx(6, 10)] = Cell.Fire;
+    const damage: number[] = [];
+    PROJECTILE_MODS.set(projectile, { pyreCrit: true });
+
+    new Projectiles().update(modifierCtx(world, projectile, { enemies: [enemy], damage }));
+
+    expect(damage[0]).toBeCloseTo(18 * 1.9);
   });
 
   it('does not let a dry Frost Charge plus Shatter Frozen hit self-prime its crit', () => {

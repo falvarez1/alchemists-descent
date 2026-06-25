@@ -664,6 +664,8 @@ export class Enemies implements EnemyControlApi {
       // ...and a real wet pool at the feet that the spray keeps feeding
       this.seedGorePool(e.x, e.y - 2, e.kind === 'golem' ? 5 : e.kind === 'bat' ? 1 : 3);
     }
+    // A felled foe goes out in the colour of whatever was killing it.
+    this.elementalDeathFlourish(e, def);
     this.dropBounty(e, def);
     this.maybeDropPotion(e);
     // Vampirism boon: every kill feeds the alchemist
@@ -673,6 +675,36 @@ export class Enemies implements EnemyControlApi {
     ctx.audio.squelch();
     this.shakeAt(e.x, e.y, 0.012, 0.04);
     ctx.waves.kills++;
+  }
+
+  /**
+   * A felled foe goes out in the colour of whatever was killing it: frozen bodies
+   * SHATTER into ice, burning ones BURST into a final whoosh, the shocked DISCHARGE,
+   * the soaked SPLASH. Reads the real status, so it caps the elemental combo loop
+   * (prime → see it → punish it → finish it). Layered over the gib but dominant
+   * enough to read; audio/lightning guarded (`?.`) for minimal test stubs.
+   */
+  private elementalDeathFlourish(e: Enemy, def: EnemyDef): void {
+    const ctx = this.ctx;
+    const st = e.status;
+    if (st.frozen > 0) {
+      ctx.particles.burst(e.x, e.y - 5, this.goreCount(e, 20, Cell.Ice), Cell.Ice, iceColor, 3.8);
+      ctx.particles.burst(e.x, e.y - 6, 12, null, () => packRGB(225, 245, 255), 2.6, { glow: 2.3, grav: 0.05 });
+      ctx.audio.shatter?.();
+      ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick ?? 0, 0.6);
+    } else if (st.burning > 0) {
+      ctx.particles.burst(e.x, e.y - 6, 22, null, () => fireColor(), 3.4, { glow: 2.6, grav: -0.05 });
+      ctx.particles.burst(e.x, e.y - 5, this.goreCount(e, 12, Cell.Fire), Cell.Fire, fireColor, 2.6);
+      ctx.audio.brazier?.();
+      ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick ?? 0, 0.7);
+    } else if (st.electrified > 0) {
+      ctx.particles.burst(e.x, e.y - 5, 16, null, () => packRGB(120, 240, 255), 3.0, { glow: 2.6, grav: 0 });
+      ctx.lightning?.spark?.(e.x - def.halfW, e.y - def.h, e.x + def.halfW, e.y - 2);
+      ctx.audio.zap?.();
+    } else if (st.wet > 0) {
+      ctx.particles.burst(e.x, e.y - 5, 16, null, () => packRGB(110, 180, 235), 3.0, { glow: 0.5, grav: 0.1 });
+      ctx.audio.splash?.(0.6);
+    }
   }
 
   /**

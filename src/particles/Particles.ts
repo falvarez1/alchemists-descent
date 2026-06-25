@@ -16,6 +16,9 @@ export class Particles implements ParticlesApi {
   private readonly pool = new EntityPool<FlyingParticle>({ max: MAX_PARTICLES, untracked: true });
   private readonly free: FlyingParticle[] = [];
   readonly list = this.pool.list;
+  /** Loot cascade: coins vacuumed up in quick succession ring up the scale. */
+  private coinStreak = 0;
+  private lastCoinFrame = -999;
 
   spawn(
     x: number,
@@ -120,7 +123,24 @@ export class Particles implements ParticlesApi {
         if (d < 2.5) {
           ctx.state.score += p.value;
           ctx.events.emit('scoreChanged', { score: ctx.state.score });
-          ctx.audio.coin();
+          // Loot cascade: coins vacuumed up in quick succession ring UP the scale
+          // (a satisfying ching-ching-ching on a fat bounty shower) and pop a gold
+          // sparkle at the wizard. The streak resets after a short gap.
+          const frame = ctx.state.frameCount;
+          if (frame - this.lastCoinFrame > 24) this.coinStreak = 0;
+          this.lastCoinFrame = frame;
+          this.coinStreak++;
+          ctx.audio.coin(this.coinStreak);
+          this.spawn(
+            player.x + (Math.random() - 0.5) * 4,
+            player.y - 3 - Math.random() * 4,
+            (Math.random() - 0.5) * 0.6,
+            -0.5 - Math.random() * 0.5,
+            null,
+            0xffe078,
+            8 + ((Math.random() * 6) | 0),
+            { grav: 0.05, glow: 1.4 },
+          );
           this.removeAt(i);
           continue;
         }

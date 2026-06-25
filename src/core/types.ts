@@ -1136,6 +1136,10 @@ export interface AudioApi {
   doorGrind(): void;
   /** A brazier catching: whoosh + rising triangle. */
   brazier(): void;
+  /** A soft, throttled fire crackle for a body that is alight (status.burning). */
+  sizzle(): void;
+  /** The airy hiss of water flashing to steam on lava. */
+  steam(): void;
   /** A broken mechanism groaning before its gate falls open. */
   groan(): void;
   /** Tiny cave-life chirp (crickets, moths near the lamp). */
@@ -1170,7 +1174,7 @@ export interface AudioApi {
   alert(): void;
   /** Waystone ignition: a deep bronze gong with overtones. */
   gong(): void;
-  coin(): void;
+  coin(streak?: number): void;
   hurt(): void;
   jump(): void;
   squelch(): void;
@@ -2006,6 +2010,8 @@ export type CardId =
   | 'shorthoming'
   | 'frostcharge'
   | 'shattercrit'
+  | 'pyrecrit'
+  | 'aquajet'
   | 'trigger'
   | 'bounce';
 
@@ -2034,6 +2040,8 @@ export interface CastAction {
   frostCharge: boolean;
   /** Conditional crit if the struck enemy was already frozen or touching cryo cells. */
   shatterCrit: boolean;
+  /** Conditional crit if the struck enemy is burning or standing in fire/lava. */
+  pyreCrit: boolean;
   /** Terrain bounces remaining before the projectile detonates. */
   bounces: number;
   /** Cast at the impact point (depth-1 trigger payload), or null. */

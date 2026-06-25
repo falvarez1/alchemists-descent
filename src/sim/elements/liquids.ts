@@ -519,6 +519,22 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
           // Boring down / spreading: just the occasional fleck, so lava out-bores it.
           w.replaceCellAt(ci, Cell.Stone, obsidianColor());
         }
+        // The quench is VIOLENT: vent a billow of steam + an airy hiss. Sampled
+        // (and rolled AFTER the crust logic so its RNG is untouched) so a wide
+        // water-on-lava front bursts dramatically without flooding the pool.
+        if (Math.random() < 0.18) {
+          ctx.particles.spawn(
+            tx + (Math.random() - 0.5),
+            ty - Math.random(),
+            (Math.random() - 0.5) * 0.7,
+            -0.6 - Math.random() * 0.9,
+            null,
+            steamColor(),
+            26 + Math.floor(Math.random() * 16),
+            { grav: -0.04, glow: 0.5 },
+          );
+          ctx.audio.steam();
+        }
         return;
       }
       if (n === Cell.Ice && Math.random() < ctx.params.materials[Cell.Lava].meltRange!) {

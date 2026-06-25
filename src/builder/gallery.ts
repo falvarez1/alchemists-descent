@@ -96,7 +96,7 @@ const GALLERY_NOOP_AUDIO: AudioApi = (() => {
     toggle: () => false,
     tone: s, noiseBurst: s, boom: s, zap: s, lightning: s, hollowKnock: s,
     bubble: s, shatter: s, pickup: s, chest: s, keyJingle: s, portalWhoosh: s,
-    learn: s, drinkPotion: s, lever: s, doorGrind: s, brazier: s,
+    learn: s, drinkPotion: s, lever: s, doorGrind: s, brazier: s, sizzle: s, steam: s,
     groan: s, chirp: s, skitter: s, drip: s, dryFire: s, wandSwap: s, sputter: s,
     heartbeat: s, cardPick: s, cardSlot: s, footstep: s, crawlShuffle: s,
     crampedBump: s, landThud: s, splash: s, alert: s, gong: s, coin: s, hurt: s,

@@ -56,7 +56,7 @@ const STAGE_COPY: Record<IntroStage, { objective: string; title: string; body: s
   bench: {
     objective: INTRO_OBJECTIVE.bench,
     title: 'Wand Bench',
-    body: 'At the Refuge, slot Heavy into a wand to change how the next casts behave. Cards are progression; the bench turns them into verbs.',
+    body: 'Press B to open the wand bench (anywhere, any floor) and slot Heavy into a wand to change how the next casts behave. Cards are progression; the bench turns them into verbs.',
   },
   complete: {
     objective: INTRO_OBJECTIVE.findKey,

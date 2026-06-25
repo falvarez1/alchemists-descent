@@ -25,6 +25,34 @@ function set(world: World, x: number, y: number, type: Cell, color = 0x777777): 
   world.replaceCellAt(world.idx(x, y), type, color);
 }
 
+describe('loot cascade', () => {
+  it('rings coins UP the scale on a fast streak, resetting after a gap', () => {
+    const streaks: number[] = [];
+    const world = new World(16, 16);
+    const ctx = {
+      world,
+      player: { x: 8, y: 8, dead: false },
+      state: { mode: 'play', score: 0, frameCount: 0 },
+      events: { emit: () => undefined },
+      audio: { coin: (s = 0) => streaks.push(s) },
+    } as unknown as Ctx;
+    const particles = new Particles();
+    const grabCoin = () => {
+      particles.spawn(8, 5, 0, 0, null, 0xffe078, 30, { homing: true, value: 10 });
+      particles.update(ctx);
+    };
+
+    grabCoin(); // first coin → streak 1
+    ctx.state.frameCount = 6;
+    grabCoin(); // within the gap → streak 2
+    ctx.state.frameCount = 40;
+    grabCoin(); // after the gap → resets to 1
+
+    expect(streaks).toEqual([1, 2, 1]);
+    expect(ctx.state.score).toBe(30);
+  });
+});
+
 describe('gore particle deposition', () => {
   it('does not create blood cells when a blood particle expires in open air', () => {
     const world = new World(32, 32);

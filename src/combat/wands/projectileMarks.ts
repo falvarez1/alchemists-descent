@@ -44,6 +44,8 @@ export interface ProjectileModState {
   frostCharge?: boolean;
   /** Conditional crit when the struck target was already frozen or touching cryo cells. */
   shatterCrit?: boolean;
+  /** Conditional crit when the struck target is burning or standing in fire/lava. */
+  pyreCrit?: boolean;
 }
 
 /** Aggregate review-content projectile modifier state. */

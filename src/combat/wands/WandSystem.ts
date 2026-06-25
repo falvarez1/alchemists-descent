@@ -12,7 +12,7 @@ import type {
   WandState,
 } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
-import { acidColor, emberColor, fireColor, glassColor, nitrogenColor, packRGB, smokeColor, stoneColor } from '@/sim/colors';
+import { acidColor, emberColor, fireColor, glassColor, nitrogenColor, packRGB, smokeColor, stoneColor, waterColor } from '@/sim/colors';
 import { ALL_CARD_IDS, CARD_DEFS, isCardId } from './cards';
 import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
@@ -93,6 +93,7 @@ const DEFAULT_FLAME_ACTION: CastAction = {
   shortHoming: false,
   frostCharge: false,
   shatterCrit: false,
+  pyreCrit: false,
   bounces: 0,
   triggered: null,
 };
@@ -481,6 +482,17 @@ export class WandSystem implements WandsApi {
           34 + Math.floor(Math.random() * 22), { grav: 0.08, glow: 0.9, deposit: true });
       }
       if (ctx.state.frameCount % 6 === 0) ctx.audio.noiseBurst(0.08, 1900, 0.06, true);
+    } else if (action.card === 'aquajet') {
+      // Stream card: real water cells. Pools douse fire (fire + water -> steam in
+      // the sim), flood basins, and leave foes WET — priming critwet / electric.
+      const count = 5 + Math.max(0, Math.round(action.dmgMul) - 1) * 3;
+      for (let j = 0; j < count; j++) {
+        const a = jitter() + (Math.random() - 0.5) * 0.26;
+        const spd = (2.8 + Math.random() * 2.0) * action.speedMul;
+        ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd, Cell.Water, waterColor(),
+          34 + Math.floor(Math.random() * 22), { grav: 0.12, glow: 0.35, deposit: true });
+      }
+      if (ctx.state.frameCount % 6 === 0) ctx.audio.splash(0.5);
     } else if (action.card === 'frostshard') {
       const a = jitter();
       const v = 11 * action.speedMul;
@@ -660,7 +672,8 @@ export class WandSystem implements WandsApi {
       action.critWet ||
       action.shortHoming ||
       action.frostCharge ||
-      action.shatterCrit
+      action.shatterCrit ||
+      action.pyreCrit
     ) {
       const mods = ensureProjectileMods(p);
       if (action.waterTrail > 0) {
@@ -675,6 +688,7 @@ export class WandSystem implements WandsApi {
       if (action.critWet) mods.critWet = true;
       if (action.frostCharge) mods.frostCharge = true;
       if (action.shatterCrit) mods.shatterCrit = true;
+      if (action.pyreCrit) mods.pyreCrit = true;
       if (action.shortHoming) {
         mods.shortHomingFrames = 90;
         mods.shortHomingCadence = 4;

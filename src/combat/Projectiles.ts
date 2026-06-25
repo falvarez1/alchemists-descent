@@ -204,24 +204,80 @@ function shatterCritArmed(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]
   return mods?.shatterCrit === true && (enemy.status.frozen > 0 || bodyTouchesCryo(ctx, enemy));
 }
 
-function conditionalCritMul(wetCrit: boolean, shatterCrit: boolean): number {
-  return Math.min(3, (wetCrit ? 1.8 : 1) * (shatterCrit ? 2 : 1));
+function bodyTouchesFlame(ctx: Ctx, enemy: Ctx['enemies'][number]): boolean {
+  return bodyTouchesCell(ctx, enemy, (t) => t === Cell.Fire || t === Cell.Lava);
+}
+
+function pyreCritArmed(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]): boolean {
+  const mods = PROJECTILE_MODS.get(p);
+  return mods?.pyreCrit === true && (enemy.status.burning > 0 || bodyTouchesFlame(ctx, enemy));
+}
+
+function conditionalCritMul(wetCrit: boolean, shatterCrit: boolean, pyreCrit: boolean): number {
+  return Math.min(3, (wetCrit ? 1.8 : 1) * (shatterCrit ? 2 : 1) * (pyreCrit ? 1.9 : 1));
+}
+
+/**
+ * Per-element styling for an elemental crit's payoff. The three crits (Wet,
+ * Shatter, Pyre) were near-identical copy-paste; they now share one feedback
+ * routine so a "primed combo landed" reads consistently and is tuned in one place.
+ */
+interface ElementalCritFx {
+  burst: number;
+  color: () => number;
+  speed: number;
+  glow: number;
+  grav: number;
+  toneFreq: number;
+  toneEnd: number;
+  toneDur: number;
+  toneType: OscillatorType;
+  toneVol: number;
+}
+
+const WET_CRIT_FX: ElementalCritFx = {
+  burst: 12, color: () => packRGB(100, 210, 255), speed: 2.0, glow: 2.2, grav: 0.02,
+  toneFreq: 1180, toneEnd: 120, toneDur: 0.14, toneType: 'triangle', toneVol: 0.08,
+};
+const SHATTER_CRIT_FX: ElementalCritFx = {
+  burst: 14, color: () => packRGB(220, 245, 255), speed: 2.2, glow: 2.5, grav: 0.04,
+  toneFreq: 1640, toneEnd: 100, toneDur: 0.16, toneType: 'triangle', toneVol: 0.1,
+};
+const PYRE_CRIT_FX: ElementalCritFx = {
+  burst: 13, color: () => packRGB(255, 150 + ((Math.random() * 60) | 0), 40), speed: 2.1, glow: 2.4, grav: -0.04,
+  toneFreq: 380, toneEnd: 170, toneDur: 0.13, toneType: 'sawtooth', toneVol: 0.09,
+};
+
+/**
+ * Land a primed elemental crit as a genuine PAYOFF, not just another tick of
+ * damage: the element's directional spray, PLUS a crisp expanding ring and a
+ * brief bloom/shake pop. Subtle per-hit (it can fire fast on a crit-spam build),
+ * but enough that nailing the setup reads.
+ */
+function elementalCritFeedback(ctx: Ctx, x: number, y: number, fx: ElementalCritFx): void {
+  ctx.particles.burst(x, y - 6, fx.burst, null, fx.color, fx.speed, { glow: fx.glow, grav: fx.grav });
+  const RING = 10;
+  for (let i = 0; i < RING; i++) {
+    const a = (i / RING) * Math.PI * 2;
+    const sp = fx.speed * 1.4;
+    ctx.particles.spawn(x, y - 5, Math.cos(a) * sp, Math.sin(a) * sp, null, fx.color(),
+      11 + ((Math.random() * 6) | 0), { grav: 0, glow: fx.glow });
+  }
+  ctx.fx.bloomKick = Math.min(1.1, ctx.fx.bloomKick + 0.5);
+  ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.008, 0.05);
+  ctx.audio.tone(fx.toneFreq, fx.toneEnd, fx.toneDur, fx.toneType, fx.toneVol);
 }
 
 function wetCritFeedback(ctx: Ctx, x: number, y: number): void {
-  ctx.particles.burst(x, y - 6, 12, null, () => packRGB(100, 210, 255), 2.0, {
-    glow: 2.2,
-    grav: 0.02,
-  });
-  ctx.audio.tone(1180, 120, 0.14, 'triangle', 0.08);
+  elementalCritFeedback(ctx, x, y, WET_CRIT_FX);
 }
 
 function shatterCritFeedback(ctx: Ctx, x: number, y: number): void {
-  ctx.particles.burst(x, y - 7, 14, null, () => packRGB(220, 245, 255), 2.2, {
-    glow: 2.5,
-    grav: 0.04,
-  });
-  ctx.audio.tone(1640, 100, 0.16, 'triangle', 0.1);
+  elementalCritFeedback(ctx, x, y, SHATTER_CRIT_FX);
+}
+
+function pyreCritFeedback(ctx: Ctx, x: number, y: number): void {
+  elementalCritFeedback(ctx, x, y, PYRE_CRIT_FX);
 }
 
 function electricFeedback(ctx: Ctx, x: number, y: number): void {
@@ -240,6 +296,7 @@ function pruneProjectileMods(p: Projectile, mods: ProjectileModState): void {
     mods.critWet === true ||
     mods.frostCharge === true ||
     mods.shatterCrit === true ||
+    mods.pyreCrit === true ||
     mods.shortHomingFrames !== undefined
   ) {
     return;
@@ -813,7 +870,8 @@ export class Projectiles implements ProjectilesApi {
               else LANCE_HITS.set(p, new Set([e]));
               const wetCrit = wetCritArmed(ctx, p, e);
               const shatterCrit = shatterCritArmed(ctx, p, e);
-              const critMul = conditionalCritMul(wetCrit, shatterCrit);
+              const pyreCrit = pyreCritArmed(ctx, p, e);
+              const critMul = conditionalCritMul(wetCrit, shatterCrit, pyreCrit);
               applyElectricChargeToEnemy(ctx, p, e);
               this.damageEnemy(ctx, e, 30 * (p.mul ?? 1) * critMul, p.vx * 0.4, -0.8);
               // Ice lance deep-freezes inherently; a Frost Charge mod's 120 would be
@@ -825,6 +883,7 @@ export class Projectiles implements ProjectilesApi {
               });
               if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
               if (shatterCrit) shatterCritFeedback(ctx, e.x, e.y);
+              if (pyreCrit) pyreCritFeedback(ctx, e.x, e.y);
               ctx.audio.tone(900 + Math.random() * 300, 130, 0.12, 'sine', 0.08);
             }
           }
@@ -901,7 +960,8 @@ export class Projectiles implements ProjectilesApi {
             if (dx * dx + dy * dy < (p.type === 'meteor' ? 200 : 120)) {
               const wetCrit = wetCritArmed(ctx, p, e);
               const shatterCrit = shatterCritArmed(ctx, p, e);
-              const critMul = conditionalCritMul(wetCrit, shatterCrit);
+              const pyreCrit = pyreCritArmed(ctx, p, e);
+              const critMul = conditionalCritMul(wetCrit, shatterCrit, pyreCrit);
               const damageMul = mul * critMul;
               const explosionMul = critMul;
               applyElectricChargeToEnemy(ctx, p, e);
@@ -924,6 +984,7 @@ export class Projectiles implements ProjectilesApi {
               applyFrostChargeToEnemy(ctx, p, e);
               if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
               if (shatterCrit) shatterCritFeedback(ctx, e.x, e.y);
+              if (pyreCrit) pyreCritFeedback(ctx, e.x, e.y);
               releaseTriggered(ctx, p);
               this.removeAt(projectiles, i);
               hit = true;

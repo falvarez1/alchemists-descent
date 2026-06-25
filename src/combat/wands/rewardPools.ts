@@ -3,7 +3,7 @@ import { CARD_DEFS } from './cards';
 
 export const STARTER_GRAMMAR_POOL: readonly CardId[] = ['speed', 'heavy', 'spread', 'double', 'flame'];
 
-export const TERRAIN_VERB_POOL: readonly CardId[] = ['dig', 'conjure', 'vitriol', 'cryojet', 'frostshard'];
+export const TERRAIN_VERB_POOL: readonly CardId[] = ['dig', 'conjure', 'vitriol', 'cryojet', 'aquajet', 'frostshard'];
 
 export const COMBO_SETUP_POOL: readonly CardId[] = [
   'watertrail',
@@ -11,6 +11,7 @@ export const COMBO_SETUP_POOL: readonly CardId[] = [
   'critwet',
   'oiltrail',
   'shorthoming',
+  'pyrecrit',
 ];
 
 export const WAYSTONE_MOD_POOL: readonly CardId[] = [

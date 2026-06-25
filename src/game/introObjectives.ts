@@ -11,7 +11,7 @@ import type { CardId } from '@/core/types';
  * control prompt with nothing to catch it.
  */
 
-/** Card the D1 Spell Lab grants and the Refuge bench must slot before descent. */
+/** Card the D1 Spell Lab grants and the wand bench must slot before descent. */
 export const INTRO_REWARD_CARD: CardId = 'heavy';
 
 export const INTRO_OBJECTIVE = {
@@ -25,8 +25,8 @@ export const INTRO_OBJECTIVE = {
   labWater: 'SPELL LAB: POUR WATER ON HEAT',
   labSpark: 'SPELL LAB: SPARK THE COIL',
   labTome: 'SPELL LAB: CLAIM THE TOME',
-  bench: 'REFUGE BENCH: SLOT HEAVY',
-  benchAvailable: 'BENCH AVAILABLE IN REFUGE',
+  bench: 'WAND BENCH: SLOT HEAVY',
+  benchAvailable: 'WAND BENCH READY — PRESS B',
   returnPortal: 'RETURN TO THE PORTAL',
   findKey: 'FIND THE GOLDEN KEY',
 } as const;
@@ -56,7 +56,7 @@ export interface IntroControlHintPart {
 }
 
 const BENCH_HINT: readonly IntroControlHintPart[] = [
-  { key: 'B', label: 'open bench at Refuge' },
+  { key: 'B', label: 'open wand bench' },
   { key: 'Heavy', label: 'slot card' },
   { key: '1 / 2', label: 'choose wand' },
 ];

@@ -167,4 +167,49 @@ describe('catch fire (percentage-based)', () => {
     expect(lucky.status.burning).toBeGreaterThan(0);
     expect(unlucky.status.burning).toBe(0);
   });
+
+  it('a wet body sheds a readable drip tell on its cadence frame', () => {
+    const world = new World(40, 40);
+    const spawn = vi.fn();
+    const ctx = {
+      world,
+      params: createGameParams(),
+      particles: { spawn },
+      audio: { zap: () => {}, sizzle: () => {} },
+      lightning: { spark: () => {} },
+      state: { frameCount: 0 }, // frame % 9 === 0 → the wet tell beat runs
+    } as unknown as Ctx;
+    const body = { x: 20, y: 30, status: createDefaultStatus() };
+    body.status.wet = 120; // soaked, no water cells around (just the lingering timer)
+
+    const r = vi.spyOn(Math, 'random').mockReturnValue(0); // force the sparse drip
+    try {
+      sampleAndTickStatus(ctx, body, 4, 17, undefined, 1);
+    } finally {
+      r.mockRestore();
+    }
+
+    expect(spawn).toHaveBeenCalled();
+  });
+
+  it('a burning body crackles (audio sizzle) and sheds fire each visual frame', () => {
+    const world = new World(40, 40);
+    const sizzle = vi.fn();
+    const spawn = vi.fn();
+    const ctx = {
+      world,
+      params: createGameParams(),
+      particles: { spawn },
+      audio: { zap: () => {}, sizzle },
+      lightning: { spark: () => {} },
+      state: { frameCount: 0 }, // frame % 4 === 0 → the burning visual/audio beat runs
+    } as unknown as Ctx;
+    const body = { x: 20, y: 30, status: createDefaultStatus() };
+    body.status.burning = 90; // already alight (no fire cells needed)
+
+    sampleAndTickStatus(ctx, body, 4, 17, undefined, 1);
+
+    expect(sizzle).toHaveBeenCalled();
+    expect(spawn).toHaveBeenCalled();
+  });
 });

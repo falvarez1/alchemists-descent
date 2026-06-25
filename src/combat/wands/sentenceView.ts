@@ -139,6 +139,7 @@ function actionPhrase(action: CastGroup['actions'][number]): string {
   if (action.shortHoming) parts.push('Short-Homing');
   if (action.frostCharge) parts.push('Frost-Charged');
   if (action.shatterCrit) parts.push('Shatter-Crit');
+  if (action.pyreCrit) parts.push('Pyre-Crit');
   if (action.bounces > 0) parts.push('Bouncing');
   if (action.speedMul > 1.05 && SPEED_EFFECT_CARDS.has(action.card)) parts.push('Swift');
   if (action.dmgMul > 1.05 && DAMAGE_EFFECT_CARDS.has(action.card)) parts.push('Heavy');
@@ -360,7 +361,8 @@ function analyzeSlots(
           id === 'critwet' ||
           id === 'shorthoming' ||
           id === 'frostcharge' ||
-          id === 'shattercrit';
+          id === 'shattercrit' ||
+          id === 'pyrecrit';
         if (projectileBodyMod && hostId && !PROJECTILE_MOD_HOST_CARDS.has(hostId)) {
           const warning = `${def.name} in slot ${slotLabel(slot)} needs a projectile body; ${cardName(hostId)} in slot ${slotLabel(host)} cannot carry it`;
           warnings.push(warning);

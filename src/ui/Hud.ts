@@ -29,7 +29,7 @@ export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFr
   if (ctx.state.mode !== 'play') return fallback;
   const runtime = ctx.levels.current;
   if (!runtime) return fallback;
-  if (benchNudgeFrames > 0 && runtime.refuge && ctx.wands.collection.length > 0) return INTRO_OBJECTIVE.benchAvailable;
+  if (benchNudgeFrames > 0 && ctx.wands.collection.length > 0) return INTRO_OBJECTIVE.benchAvailable;
   const nearUnlitWaystone = runtime.waystones.some((waystone) => {
     if (waystone.lit) return false;
     const dx = waystone.x - ctx.player.x;
@@ -48,16 +48,8 @@ export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFr
 
 export function cardGrantBenchCue(ctx: Ctx): string {
   if (ctx.state.mode !== 'play') return 'NEW SPELL CARD';
-  const refuge = ctx.levels.current?.refuge;
-  if (!refuge) return 'NEW SPELL CARD - FIND REFUGE';
-  const dx = refuge.x - ctx.player.x;
-  const dy = refuge.y - ctx.player.y;
-  const dist = Math.max(1, Math.round(Math.hypot(dx, dy)));
-  if (dist <= 48) return 'BENCH AVAILABLE IN REFUGE';
-  const dirs: string[] = [];
-  if (Math.abs(dx) > 18) dirs.push(dx > 0 ? 'EAST' : 'WEST');
-  if (Math.abs(dy) > 18) dirs.push(dy > 0 ? 'BELOW' : 'ABOVE');
-  return 'BENCH IN REFUGE' + (dirs.length > 0 ? ' ' + dirs.join(' ') : '') + ' - ' + dist + ' STEPS';
+  // The bench opens anywhere now — just slot it whenever you like.
+  return 'NEW SPELL CARD — PRESS B TO SLOT';
 }
 
 // ===================== HUD =====================
@@ -164,7 +156,6 @@ export class Hud {
     this.disposers.push(ctx.events.on('cardGranted', ({ name }) => {
       this.showBanner(name + ' ACQUIRED', cardGrantBenchCue(this.ctx));
       this.benchObjectiveUntil = this.ctx.state.frameCount + BENCH_OBJECTIVE_FRAMES;
-      this.ctx.events.emit('refugePing');
       this.renderObjective();
       const chip = el('cards-chip');
       chip.classList.remove('flash');

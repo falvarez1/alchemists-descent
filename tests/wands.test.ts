@@ -12,7 +12,7 @@ import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { introControlHintForObjective } from '@/game/introObjectives';
 import { cardGrantBenchCue, contextualObjectiveText } from '@/ui/Hud';
-import { canOpenWandBench, cardMatchesBenchFilter, recipeHintsForCard, wandBenchUnavailableCue } from '@/ui/WandBench';
+import { canOpenWandBench, cardMatchesBenchFilter, recipeHintsForCard } from '@/ui/WandBench';
 
 /**
  * The cast compiler is a PURE function of the slot list, so every rule that
@@ -149,6 +149,7 @@ describe('compileWand', () => {
       shortHoming: false,
       frostCharge: false,
       shatterCrit: false,
+      pyreCrit: false,
       bounces: 0,
       triggered: null,
     });
@@ -160,6 +161,13 @@ describe('compileWand', () => {
     expect(program).toHaveLength(1);
     expect(program[0].actions[0].card).toBe('cryojet');
     expect(program[0].manaCost).toBe(3);
+  });
+
+  it('compiles [aquajet] alone to a low-cost water stream action', () => {
+    const program = compileWand(['aquajet']);
+    expect(program).toHaveLength(1);
+    expect(program[0].actions[0].card).toBe('aquajet');
+    expect(program[0].manaCost).toBe(2);
   });
 
   it('skips null slots entirely (slot indices still point at the real slots)', () => {
@@ -184,7 +192,7 @@ describe('compileWand', () => {
   });
 
   it('marks review-only setup modifiers on the action they modify', () => {
-    const program = compileWand(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'frostcharge', 'shattercrit', 'spark', 'spark']);
+    const program = compileWand(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'frostcharge', 'shattercrit', 'pyrecrit', 'spark', 'spark']);
     expect(program).toHaveLength(2);
 
     const wetSpark = program[0].actions[0];
@@ -196,7 +204,8 @@ describe('compileWand', () => {
     expect(wetSpark.shortHoming).toBe(true);
     expect(wetSpark.frostCharge).toBe(true);
     expect(wetSpark.shatterCrit).toBe(true);
-    expect(program[0].manaCost).toBe(59);
+    expect(wetSpark.pyreCrit).toBe(true);
+    expect(program[0].manaCost).toBe(66);
 
     const drySpark = program[1].actions[0];
     expect(drySpark.card).toBe('spark');
@@ -207,6 +216,7 @@ describe('compileWand', () => {
     expect(drySpark.shortHoming).toBe(false);
     expect(drySpark.frostCharge).toBe(false);
     expect(drySpark.shatterCrit).toBe(false);
+    expect(drySpark.pyreCrit).toBe(false);
   });
 
   it('caps review-only trail budgets and strips projectile-body modifiers from unsupported casts', () => {
@@ -218,7 +228,7 @@ describe('compileWand', () => {
     expect(oilCapped[0].actions[0].oilTrail).toBe(14);
     expect(oilCapped[0].manaCost).toBe(24);
 
-    const unsupported = compileWand(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'frostcharge', 'shattercrit', 'lightning']);
+    const unsupported = compileWand(['watertrail', 'oiltrail', 'electriccharge', 'critwet', 'shorthoming', 'frostcharge', 'shattercrit', 'pyrecrit', 'lightning']);
     expect(unsupported[0].actions[0].card).toBe('lightning');
     expect(unsupported[0].actions[0].waterTrail).toBe(0);
     expect(unsupported[0].actions[0].oilTrail).toBe(0);
@@ -227,7 +237,8 @@ describe('compileWand', () => {
     expect(unsupported[0].actions[0].shortHoming).toBe(false);
     expect(unsupported[0].actions[0].frostCharge).toBe(false);
     expect(unsupported[0].actions[0].shatterCrit).toBe(false);
-    expect(unsupported[0].manaCost).toBe(75);
+    expect(unsupported[0].actions[0].pyreCrit).toBe(false);
+    expect(unsupported[0].manaCost).toBe(82);
   });
 
   it('keeps built-in review loadouts from silently stripping review-only projectile-body modifiers', () => {
@@ -510,7 +521,7 @@ describe('HUD contextual objectives', () => {
       portal: { x: 500, y: 100, open: false },
     });
 
-    expect(contextualObjectiveText(ctx, 'FIND THE GOLDEN KEY', 60)).toBe('BENCH AVAILABLE IN REFUGE');
+    expect(contextualObjectiveText(ctx, 'FIND THE GOLDEN KEY', 60)).toBe('WAND BENCH READY — PRESS B');
   });
 
   it('shows portal and key state with plan wording', () => {
@@ -519,7 +530,7 @@ describe('HUD contextual objectives', () => {
 
     expect(contextualObjectiveText(beforeKey, 'anything')).toBe('FIND THE GOLDEN KEY');
     expect(contextualObjectiveText(beforeKey, 'MOVE THROUGH THE CAVE')).toBe('MOVE THROUGH THE CAVE');
-    expect(contextualObjectiveText(beforeKey, 'REFUGE BENCH: SLOT HEAVY')).toBe('REFUGE BENCH: SLOT HEAVY');
+    expect(contextualObjectiveText(beforeKey, 'WAND BENCH: SLOT HEAVY')).toBe('WAND BENCH: SLOT HEAVY');
     expect(contextualObjectiveText(afterKey, 'anything')).toBe('RETURN TO THE PORTAL');
   });
 
@@ -537,18 +548,11 @@ describe('HUD contextual objectives', () => {
     expect(contextualObjectiveText(litWaystone, 'EXPLORE')).toBe('EXPLORE');
   });
 
-  it('gives card-grant bench directions even before the Refuge map marker is visible', () => {
-    const away = objectiveCtx({
-      player: { x: 60, y: 150 },
-      refuge: { x: 120, y: 100 },
-    });
-    const near = objectiveCtx({
-      player: { x: 118, y: 100 },
-      refuge: { x: 120, y: 100 },
-    });
-
-    expect(cardGrantBenchCue(away)).toBe('BENCH IN REFUGE EAST ABOVE - 78 STEPS');
-    expect(cardGrantBenchCue(near)).toBe('BENCH AVAILABLE IN REFUGE');
+  it('points a card grant at the bench (B), which opens anywhere now', () => {
+    // Position no longer matters — the bench is the alchemist's own kit, so the
+    // cue is the same far from (or without) any Refuge.
+    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 60, y: 150 } }))).toBe('NEW SPELL CARD — PRESS B TO SLOT');
+    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 9000, y: 9000 } }))).toBe('NEW SPELL CARD — PRESS B TO SLOT');
   });
 });
 
@@ -570,7 +574,7 @@ describe('HUD intro control hints', () => {
       '1',
       'LMB',
     ]);
-    expect(introControlHintForObjective('REFUGE BENCH: SLOT HEAVY')?.map((part) => part.key)).toContain('B');
+    expect(introControlHintForObjective('WAND BENCH: SLOT HEAVY')?.map((part) => part.key)).toContain('B');
     expect(introControlHintForObjective('FIND THE GOLDEN KEY')).toBeNull();
   });
 });
@@ -829,6 +833,7 @@ function action(card: CardId, overrides: Partial<CastAction> = {}): CastAction {
     shortHoming: false,
     frostCharge: false,
     shatterCrit: false,
+    pyreCrit: false,
     bounces: 0,
     triggered: null,
     ...overrides,
@@ -851,6 +856,7 @@ function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: num
       dryFire: () => undefined,
       learn: () => undefined,
       wandSwap: () => undefined,
+      splash: () => undefined,
     },
     params: createGameParams(),
     state: { mode: 'play', frameCount: 1 },
@@ -901,6 +907,17 @@ describe('WandSystem trigger executor', () => {
 
     expect(ctx.world.types[ctx.world.idx(24, 25)]).toBe(Cell.Stone);
     expect(ctx.world.types[ctx.world.idx(180, 180)]).toBe(Cell.Empty);
+  });
+
+  it('aqua jet sprays a stream of real water particles', () => {
+    const ctx = makeCastCtx();
+    const wands = new WandSystem(ctx);
+
+    wands.castActionAt(ctx, action('aquajet'), 20, 20, 0);
+
+    const waterParticles = ctx.spawned.filter((s) => s.type === Cell.Water);
+    expect(waterParticles.length).toBeGreaterThanOrEqual(5); // base stream count
+    expect(ctx.spawned.every((s) => s.type === Cell.Water)).toBe(true);
   });
 
   it('uses the impact point for triggered vitrify instead of the live mouse', () => {
@@ -1031,40 +1048,22 @@ describe('wand bench access', () => {
     return {
       state: { mode: 'play' },
       player: { x: 100, y: 100, dead: false },
-      levels: {
-        current: {
-          refuge: { x: 120, y: 100 },
-          cauldron: null,
-        },
-      },
+      levels: { current: { cauldron: null } },
       ...overrides,
     } as unknown as Ctx;
   }
 
-  it('opens only in play near the Refuge', () => {
+  it('opens any time in play, on any floor (not just at the Refuge)', () => {
     expect(canOpenWandBench(benchCtx())).toBe(true);
-    expect(canOpenWandBench(benchCtx({ player: { x: 220, y: 100, dead: false } } as Partial<Ctx>))).toBe(false);
+    // far from any Refuge — still opens (the bench is the alchemist's own kit)
+    expect(canOpenWandBench(benchCtx({ player: { x: 9000, y: 9000, dead: false } } as Partial<Ctx>))).toBe(true);
+    // a deeper floor with no Refuge at all — still opens
+    expect(canOpenWandBench(benchCtx({ levels: { current: { refuge: undefined } } } as Partial<Ctx>))).toBe(true);
+  });
+
+  it('stays closed in build mode, when dead, or with no active level', () => {
     expect(canOpenWandBench(benchCtx({ state: { mode: 'build' } } as Partial<Ctx>))).toBe(false);
     expect(canOpenWandBench(benchCtx({ player: { x: 100, y: 100, dead: true } } as Partial<Ctx>))).toBe(false);
-    expect(canOpenWandBench(benchCtx({
-      levels: { current: { refuge: undefined, cauldron: { x: 110, y: 100 } } },
-    } as Partial<Ctx>))).toBe(false);
-  });
-
-  it('opens from anywhere in play once god mode is active', () => {
-    expect(canOpenWandBench(benchCtx({
-      state: { mode: 'play', debugGodMode: true },
-      player: { x: 400, y: 100, dead: false },
-    } as Partial<Ctx>))).toBe(true);
-    expect(canOpenWandBench(benchCtx({
-      state: { mode: 'build', debugGodMode: true },
-    } as Partial<Ctx>))).toBe(false);
-  });
-
-  it('explains the Refuge direction when the bench is unavailable', () => {
-    expect(wandBenchUnavailableCue(benchCtx({
-      player: { x: 60, y: 150, dead: false },
-      levels: { current: { refuge: { x: 120, y: 100 }, cauldron: null } },
-    } as Partial<Ctx>))).toBe('WAND BENCH IN REFUGE EAST ABOVE - 78 STEPS');
+    expect(canOpenWandBench(benchCtx({ levels: { current: null } } as Partial<Ctx>))).toBe(false);
   });
 });

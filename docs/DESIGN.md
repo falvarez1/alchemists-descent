@@ -62,7 +62,9 @@ physics lock at the chokepoint → break the floor seal, drop down the well.
    (the 7 legacy spells become cards), deterministic no-shuffle left-to-right
    compiler, depth-1 trigger cap, ×4 damage clamp enforced in the compiler.
    P3's flask-fed trail mod becomes the **Infuser** card (load it by pouring a flask).
-   Wands are indestructible. Bench lives in the Refuge.
+   Wands are indestructible. The wand bench (B) is the alchemist's own kit — it
+   opens anywhere, any floor (it pauses the sim while open, so it never overlaps
+   live combat). The Refuge still hosts the offering shrine / Sanctum shop (E).
 7. **Cauldron brewing + Grimoire** (P3) — brewing reads a literal grid histogram of
    what's in the basin with heat beneath; mis-brews are content; recipes persist
    across expeditions. ~5 potions at launch. This is where the title earns "Alchemist".

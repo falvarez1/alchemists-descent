@@ -178,6 +178,9 @@ export const PIXEL_ICONS: Record<string, PixelIconDef> = {
   'card-shattercrit': { p: { a: '#155e75', b: '#a5f3fc', c: '#ffffff' }, g: [
     ".....c.....","....cbc....","..b.c.c.b..","...b.c.b...","ccccacccccc",
     "...b.c.b...","..b.c.c.b..","....cbc....",".....c.....","...........","..........."]},
+  'card-pyrecrit': { p: { a: '#7c2d12', b: '#f97316', c: '#fde047' }, g: [
+    "...........",".....a.....","....aaa....","....aba....","...ab.ba...","...ab.ba...",
+    "..ab.c.ba..","..abc.cba..","..abcccba..","...abbba...","....aaa...."]},
   'card-trigger': { p: { a: '#ef4444', b: '#fca5a5', c: '#ffffff' }, g: [
     ".....a.....",".....a.....","...aaaaa...","..a..b..a..",".a...b...a.","aab.bcb.baa",
     ".a...b...a.","..a..b..a..","...aaaaa...",".....a.....",".....a....."]},
@@ -230,7 +233,7 @@ const LEGACY_CARD_ICON: Record<string, string> = {
   spark: 'bolt', bomb: 'bomb', lightning: 'lightning', flame: 'flame',
   dig: 'dig', warp: 'warp', blackhole: 'blackhole',
   // Upgrade-port payload cards: every one now has dedicated pixel art.
-  vitriol: 'vitriol', cryojet: 'nitrogen', frostshard: 'frostshard', icelance: 'icelance', wisp: 'wisp',
+  vitriol: 'vitriol', cryojet: 'nitrogen', aquajet: 'water', frostshard: 'frostshard', icelance: 'icelance', wisp: 'wisp',
   meteor: 'meteor', conjure: 'conjure', emberstorm: 'emberstorm', vitrify: 'vitrify',
 };
 

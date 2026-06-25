@@ -211,6 +211,24 @@ export function sampleAndTickStatus(
         12 + Math.floor(Math.random() * 8),
         { grav: -0.02, glow: 2.2 },
       );
+      // A body alight crackles — soft and globally throttled so a bonfire of foes
+      // never firehoses the mix. Guarded (`?.`) for status-only test stubs.
+      ctx.audio.sizzle?.();
+      // ...and now and then it spits a brighter ember that leaps and glows, so a
+      // burning body reads HOT at a glance (and a pyre-crit target is unmistakable).
+      if (Math.random() < 0.3) {
+        const s = randomEdgeCell(body, halfW, h);
+        ctx.particles.spawn(
+          s.x,
+          s.y,
+          (Math.random() - 0.5) * 0.8,
+          -1.0 - Math.random() * 0.9,
+          null,
+          packRGB(255, 196 + ((Math.random() * 50) | 0), 70),
+          20 + Math.floor(Math.random() * 12),
+          { grav: -0.04, glow: 2.7 },
+        );
+      }
     }
     // Burning sheds REAL fire — the grid must be able to explain the flames
     if (Math.random() < 0.02) {
@@ -252,6 +270,22 @@ export function sampleAndTickStatus(
     const a = randomEdgeCell(body, halfW, h);
     const b = randomEdgeCell(body, halfW, h);
     ctx.lightning?.spark?.(a.x, a.y, b.x, b.y);
+  }
+  // WET: a glistening body sheds the odd runnel — the readable tell that a target
+  // is soaked (primes Wet-Crit, conducts shock). Kept sparse so a doused crowd
+  // doesn't fizz. Enemies had no wet tell at all before this; the player's sprite
+  // sheen (PlayerSprite) layers on top.
+  if (st.wet > 0 && frame % 9 === 0 && Math.random() < 0.7) {
+    const e = randomEdgeCell(body, halfW, h);
+    ctx.particles.spawn(e.x, e.y, (Math.random() - 0.5) * 0.25, 0.2 + Math.random() * 0.4, null,
+      packRGB(120, 185, 240), 13 + Math.floor(Math.random() * 8), { grav: 0.08, glow: 0.45 });
+  }
+  // OILED: a dark, glossy slick weeping a heavy drip — reads "coated, flammable"
+  // (an ignite waiting to happen, and it burns 5x faster once lit).
+  if (st.oiled > 0 && frame % 12 === 0) {
+    const e = randomEdgeCell(body, halfW, h);
+    ctx.particles.spawn(e.x, e.y, (Math.random() - 0.5) * 0.2, 0.12 + Math.random() * 0.3, null,
+      packRGB(70, 58, 40), 15 + Math.floor(Math.random() * 8), { grav: 0.05, glow: 0.5 });
   }
 
   // Shock is now a real, tunable threat (global.shockDamage), with wet amplified

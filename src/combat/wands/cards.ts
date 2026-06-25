@@ -93,6 +93,14 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
     manaCost: 3,
     blurb: 'A streaming spray of real liquid nitrogen — freezes water into bridges',
   },
+  aquajet: {
+    id: 'aquajet',
+    name: 'Aqua Jet',
+    kind: 'projectile',
+    tags: ['Terrain', 'Setup', 'Combo'],
+    manaCost: 2,
+    blurb: 'A streaming spray of real water — douses fire, floods pools, leaves targets wet',
+  },
   frostshard: {
     id: 'frostshard',
     name: 'Frost Shard',
@@ -240,6 +248,14 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
     tags: ['Damage', 'Combo'],
     manaCost: 8,
     blurb: 'Next projectile hits harder if the target was already frozen or touching ice',
+  },
+  pyrecrit: {
+    id: 'pyrecrit',
+    name: 'Critical on Burning',
+    kind: 'modifier',
+    tags: ['Damage', 'Combo'],
+    manaCost: 7,
+    blurb: 'Next projectile hits harder if the target is burning or standing in fire',
   },
   bounce: {
     id: 'bounce',

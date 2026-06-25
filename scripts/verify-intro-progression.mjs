@@ -196,7 +196,7 @@ check('lab Spark advances to tome objective', /CLAIM THE TOME/.test(objective.ob
 objective = await advance(`
   ctx.wands.grantCard(ctx, 'heavy');
 `);
-check('claiming lab reward enters the bench loop', /SLOT HEAVY|BENCH AVAILABLE/.test(objective.objective), JSON.stringify(objective));
+check('claiming lab reward enters the bench loop', /SLOT HEAVY|WAND BENCH/.test(objective.objective), JSON.stringify(objective));
 check('bench objective shows bench controls', /B/.test(objective.controls) && /Heavy/.test(objective.controls), JSON.stringify(objective));
 
 const benchResult = await page.evaluate(() => {

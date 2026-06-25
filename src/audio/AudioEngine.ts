@@ -90,7 +90,14 @@ export class AudioEngine implements AudioApi {
 
   lightning(): void { this.noiseBurst(0.22, 2400, 0.35, true); this.tone(1400, 90, 0.18, 'sawtooth', 0.22); }
 
-  coin(): void { if (!this.throttled('coin', 50)) return; this.tone(880, 880, 0.07, 'sine', 0.16); setTimeout(() => this.tone(1318, 1318, 0.10, 'sine', 0.15), 55); }
+  coin(streak = 0): void {
+    if (!this.throttled('coin', 45)) return;
+    // A two-note ching that climbs the scale as a bounty shower cascades in —
+    // one semitone per coin in the streak, capped at an octave.
+    const mul = Math.pow(2, Math.min(Math.max(0, streak - 1), 12) / 12);
+    this.tone(880 * mul, 880 * mul, 0.07, 'sine', 0.16);
+    setTimeout(() => this.tone(1318 * mul, 1318 * mul, 0.10, 'sine', 0.15), 55);
+  }
 
   hurt(): void { if (!this.throttled('hurt', 200)) return; this.tone(220, 70, 0.16, 'sawtooth', 0.28); }
 
@@ -123,6 +130,12 @@ export class AudioEngine implements AudioApi {
   doorGrind(): void { if (!this.throttled('door', 200)) return; this.noiseBurst(0.35, 240, 0.22); this.tone(60, 45, 0.35, 'sawtooth', 0.12); }
 
   brazier(): void { this.noiseBurst(0.3, 700, 0.18); this.tone(220, 480, 0.3, 'triangle', 0.14); }
+
+  /** A soft, throttled fire crackle for a body that is alight (status.burning). */
+  sizzle(): void { if (!this.throttled('sizzle', 240)) return; this.noiseBurst(0.09, 1700, 0.05, true); this.tone(300, 170, 0.07, 'sawtooth', 0.045); }
+
+  /** The airy hiss of water flashing to steam on lava (throttled — a wide front sustains it). */
+  steam(): void { if (!this.throttled('steam', 150)) return; this.noiseBurst(0.16, 2200, 0.06, true); this.tone(520, 240, 0.1, 'sine', 0.02); }
 
   groan(): void { if (!this.throttled('groan', 400)) return; this.tone(72, 38, 0.7, 'sawtooth', 0.16); this.noiseBurst(0.45, 160, 0.12); }
 
