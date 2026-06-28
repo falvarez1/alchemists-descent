@@ -127,6 +127,29 @@ describe('minimap POI markers', () => {
     expect(potion.fields).toEqual(expect.arrayContaining([{ label: 'potion', value: 'POTION OF SWIFTNESS' }]));
   });
 
+  it('reveals generated encounter lair POIs after discovery', () => {
+    const level = runtime({
+      placedPrefabs: [
+        { id: 'encounter-lair-rootloper-grove', x0: 300, y0: 200, x1: 377, y1: 247 },
+        { id: 'machine-powdermill', x0: 500, y0: 200, x1: 560, y1: 250 },
+      ],
+    });
+
+    expect(collectMinimapPois(ctx(level), level).map((poi) => poi.id)).not.toEqual(
+      expect.arrayContaining(['encounter:0:encounter-lair-rootloper-grove']),
+    );
+
+    markExplored(level, 338, 223);
+    const pois = collectMinimapPois(ctx(level), level);
+    const encounter = pois.find((poi) => poi.id === 'encounter:0:encounter-lair-rootloper-grove');
+
+    expect(encounter?.kind).toBe('encounter');
+    expect(encounter?.title).toBe('Root Loper Grove');
+    expect(encounter?.tags).toEqual(expect.arrayContaining(['encounter', 'rootloper']));
+    expect(encounter?.fields).toEqual(expect.arrayContaining([{ label: 'footprint', value: '78 x 48' }]));
+    expect(pois.map((poi) => poi.id)).not.toEqual(expect.arrayContaining(['encounter:1:machine-powdermill']));
+  });
+
   it('adds popovers for discovered small mechanism markers beyond doors', () => {
     const door: Mechanism = {
       id: 2,

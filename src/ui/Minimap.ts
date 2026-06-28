@@ -31,6 +31,7 @@ export type MinimapPoiKind =
   | 'refuge'
   | 'spellLab'
   | 'vaultArch'
+  | 'encounter'
   | 'pickup'
   | 'mechanism'
   | 'runeVault'
@@ -300,6 +301,37 @@ function shouldShowMechanismPoi(level: NonNullable<Ctx['levels']['current']>, me
   return isExplored(level, mechanism.x >> 3, mechanism.y >> 3);
 }
 
+function encounterLairInfo(id: string): { title: string; description: string; color: string; glyph: string; tags: string[] } | null {
+  if (id === 'encounter-lair-rootloper-grove') {
+    return {
+      title: 'Root Loper Grove',
+      description: 'A living overgrowth pocket where Root Lopers anchor through vines, moss, and fungus.',
+      color: '#65a30d',
+      glyph: 'T',
+      tags: ['encounter', 'rootloper', 'growth'],
+    };
+  }
+  if (id === 'encounter-lair-rillback-pool') {
+    return {
+      title: 'Rillback Pool',
+      description: 'A retained flooded pocket with a wet Rillback and conductive water to exploit.',
+      color: '#38bdf8',
+      glyph: 'E',
+      tags: ['encounter', 'rillback', 'pool'],
+    };
+  }
+  if (id === 'encounter-lair-stonemaw-seam') {
+    return {
+      title: 'Stone Maw Seam',
+      description: 'An ore-rich wall pocket watched by a Stone Maw that can chew local rock.',
+      color: '#f59e0b',
+      glyph: 'M',
+      tags: ['encounter', 'stonemaw', 'ore'],
+    };
+  }
+  return null;
+}
+
 function shouldShowMaterialPoi(cell: number): boolean {
   return cell >= 0 && cell < CELL_COUNT && !GENERIC_TERRAIN_CELLS.has(cell);
 }
@@ -500,6 +532,34 @@ export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['c
       }));
     }
   }
+
+  level.placedPrefabs?.forEach((prefab, index) => {
+    const info = encounterLairInfo(prefab.id);
+    if (!info) return;
+    const worldX = Math.floor((prefab.x0 + prefab.x1) / 2);
+    const worldY = Math.floor((prefab.y0 + prefab.y1) / 2);
+    if (!isExplored(level, worldX >> 3, worldY >> 3)) return;
+    pois.push(makePoi({
+      id: `encounter:${index}:${prefab.id}`,
+      kind: 'encounter',
+      title: info.title,
+      description: info.description,
+      tags: info.tags,
+      fields: [
+        { label: 'footprint', value: `${prefab.x1 - prefab.x0 + 1} x ${prefab.y1 - prefab.y0 + 1}` },
+        { label: 'source', value: prefab.id },
+      ],
+      worldX,
+      worldY,
+      width: 3,
+      height: 3,
+      offsetX: -1,
+      offsetY: -1,
+      color: info.color,
+      glyph: info.glyph,
+      hitRadius: 8,
+    }));
+  });
 
   level.pickups.forEach((pickup, index) => {
     if (!shouldShowPickupPoi(level, pickup)) return;
