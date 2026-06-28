@@ -160,18 +160,18 @@ await page.waitForTimeout(500);
 await page.screenshot({ path: `${outDir}/06-flamethrower.png` });
 console.log('flamethrower burst done');
 
-// --- 7) Probe: TAB back to build mid-action, then back to play ---
-await page.keyboard.press('Tab');
+// --- 7) Probe: leave play through the real SANDBOX control, then resume through PLAY launcher ---
+await page.click('#mode-build-btn');
 await page.waitForTimeout(400);
 const backInBuild = await page.evaluate(() => !document.body.classList.contains('play-active'));
-await page.keyboard.press('Tab');
+await page.click('#mode-play-btn');
 await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
 await page.evaluate(() => document.querySelector('#run-launcher [data-action="continue"]')?.click());
 await waitForRunReady(page);
 const backInPlay = await page.evaluate(() => document.body.classList.contains('play-active'));
-console.log('tab toggle: backInBuild=', backInBuild, 'backInPlay=', backInPlay);
-if (!backInBuild || !backInPlay) throw new Error('TAB launcher roundtrip failed.');
-await page.screenshot({ path: `${outDir}/07-after-tab-roundtrip.png` });
+console.log('mode button launcher roundtrip: backInBuild=', backInBuild, 'backInPlay=', backInPlay);
+if (!backInBuild || !backInPlay) throw new Error('Mode button launcher roundtrip failed.');
+await page.screenshot({ path: `${outDir}/07-after-mode-roundtrip.png` });
 
 // --- 8) FPS sample ---
 const fps = await page.evaluate(

@@ -50,6 +50,7 @@ import { polishCaveTerrain, consolidateRock, fillEnclosedHoles, solidifyRock } f
 import { dressWalkSurface, plantGroundCover } from '@/world/surfaceDress';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
+import { placeEncounterLairs } from '@/world/encounterLairs';
 import { stampSecrets } from '@/world/secrets';
 import { computeFits, reachableMask, wizardMask } from '@/world/validate';
 import { placeStructures } from '@/world/structures';
@@ -1213,6 +1214,27 @@ export class WorldGen implements WorldGenApi {
     // can't shift structure placement or disconnect the reachable graph.
     fillMineralVugs(ctx, new Rng(hashSeed(seed >>> 0, 'mineral-vugs')), ledger, { pickups });
     stage('mineral-vugs');
+
+    // 8b.7) Optional encounter lairs: small authored ecology pockets for the
+    // organic enemy trio. They run after broad dressing/vug fill so their
+    // signatures survive, but before rescue so downstream terrain audits see
+    // the final cells. The encounter-lair probe owns lair reachability checks.
+    const placedEncounterLairs = placeEncounterLairs(
+      ctx,
+      new Rng(hashSeed(seed >>> 0, 'encounter-lairs')),
+      graph,
+      ledger,
+      sink,
+      def,
+      { spawn, wellX },
+      fits,
+    );
+    if (placedEncounterLairs.length > 0) {
+      placedPrefabs = placedPrefabs.concat(placedEncounterLairs);
+      graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+      fits.set(computeFits(ctx.world));
+    }
+    stage('encounter-lairs');
 
     // 8c) GAUGE RESCUE: run the same connectivity audits the validator runs.
     //     Hands-on locks and door fronts use wizard connectivity (9x17 fits,

@@ -1,5 +1,5 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
-import { randomCard, TOME_REWARD_POOL } from '@/combat/wands/rewardPools';
+import { randomCard, TOME_REWARD_POOL } from '@/content/cardRewardPools';
 import { clamp, hash2 } from '@/core/math';
 import type { Rng } from '@/core/rng';
 import type {
@@ -27,7 +27,7 @@ import {
   makeSensor,
   makeValve,
   setValveCells,
-} from '@/game/Mechanisms';
+} from '@/core/mechanismFactories';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { Cell } from '@/sim/CellType';
 import {

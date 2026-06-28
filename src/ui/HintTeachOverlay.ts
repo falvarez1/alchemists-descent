@@ -11,6 +11,7 @@ const DISMISS_MS = 9000;
  */
 export class HintTeachOverlay {
   private readonly root: HTMLElement;
+  private readonly offHintTeach: () => void;
   private hideTimer = 0;
 
   constructor(ctx: Ctx) {
@@ -21,7 +22,7 @@ export class HintTeachOverlay {
     this.root.addEventListener('click', () => this.hide());
     document.body.appendChild(this.root);
 
-    ctx.events.on('hintTeach', ({ title, body }) => this.show(title, body));
+    this.offHintTeach = ctx.events.on('hintTeach', ({ title, body }) => this.show(title, body));
   }
 
   private show(title: string, body: string): void {
@@ -59,6 +60,7 @@ export class HintTeachOverlay {
   }
 
   dispose(): void {
+    this.offHintTeach();
     window.clearTimeout(this.hideTimer);
     this.root.remove();
   }

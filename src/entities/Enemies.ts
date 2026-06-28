@@ -1,24 +1,30 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
-import type { CardId, Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
+import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
+import { ENEMY_DEFS } from '@/content/enemyDefs';
+export { ENEMY_DEFS } from '@/content/enemyDefs';
 import { createDefaultStatus, rollCatchFire, sampleAndTickStatus } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
+import { LEVIATHAN_REWARD_POOL, randomCard } from '@/content/cardRewardPools';
 import { enemyMovementPace } from '@/game/progressionPacing';
-import { blocksEntity, Cell, isSoftGrowth } from '@/sim/CellType';
+import { blocksEntity, Cell, isConductor, isSoftGrowth } from '@/sim/CellType';
 import {
   acidColor,
+  ashColor,
   bloodColor,
+  COLOR_FN,
   fireColor,
   goldColor,
   iceColor,
-  nitrogenColor,
+  mossColor,
   packRGB,
   slimeColor,
   smokeColor,
   stoneColor,
   toxicColor,
   vineColor,
+  waterColor,
 } from '@/sim/colors';
 import { splatterStain } from '@/sim/stains';
 
@@ -53,33 +59,6 @@ function weaverWallLeapXProgress(t: number): number {
   return u * u * (3 - 2 * u);
 }
 
-export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
-  slime: { hp: 48, halfW: 5, h: 8, bounty: 30, gore: Cell.Slime, goreFn: slimeColor },
-  imp: { hp: 40, halfW: 5, h: 12, bounty: 50, gore: Cell.Fire, goreFn: fireColor },
-  golem: { hp: 170, halfW: 7, h: 20, bounty: 150, gore: Cell.Stone, goreFn: stoneColor },
-  acidslime: { hp: 40, halfW: 5, h: 8, bounty: 45, gore: Cell.Acid, goreFn: acidColor },
-  wisp: { hp: 22, halfW: 4, h: 8, bounty: 60, gore: Cell.Nitrogen, goreFn: nitrogenColor },
-  mage: { hp: 60, halfW: 5, h: 14, bounty: 120, gore: Cell.Blood, goreFn: bloodColor },
-  // Upgrade port (noita-alchemists-descent.html)
-  bat: { hp: 16, halfW: 3, h: 5, bounty: 15, gore: Cell.Blood, goreFn: bloodColor },
-  spitter: { hp: 55, halfW: 5, h: 11, bounty: 60, gore: Cell.Toxic, goreFn: toxicColor },
-  bomber: { hp: 34, halfW: 5, h: 8, bounty: 45, gore: Cell.Fire, goreFn: fireColor },
-  // Eight-legged Fungal/Timber elite: controls space by writing real vine webbing.
-  // halfW 9 is the drawn abdomen, NOT the ~12-cell leg span: a 19-wide collision
-  // box lets the weaver place and path through normal cave corridors (a 25-wide
-  // box wedged in fungal/timber tunnels and froze its AI). Its legs still splay
-  // visually onto the walls. Hit detection is query-radius based, so the smaller
-  // box doesn't shrink how readily player shots connect.
-  weaver: { hp: 260, halfW: 9, h: 18, bounty: 220, gore: Cell.Blood, goreFn: bloodColor },
-  // The Kiln Colossus: the run's final door. Water is the strategy.
-  colossus: { hp: 520, halfW: 13, h: 26, bounty: 600, gore: Cell.Stone, goreFn: stoneColor },
-  // Wave F: slime egg clutch — destroy it now or fight what hatches later
-  eggs: { hp: 14, halfW: 4, h: 5, bounty: 25, gore: Cell.Slime, goreFn: slimeColor },
-  // The Sunken Leviathan: d4's mid-boss. Water is its armor — drain the
-  // cistern or electrify it (it bleeds CONDUCTOR into its own pool).
-  leviathan: { hp: 460, halfW: 9, h: 14, bounty: 450, gore: Cell.Blood, goreFn: bloodColor },
-};
-
 /** Reference enemy footprint (halfW×h) that sprays the baseline gore counts.
  *  Mid-size foes (~slime/spitter) sit near 1×; a bat barely spatters, a golem
  *  or colossus gushes. The factor is clamped to a sane band (see goreCount). */
@@ -97,6 +76,13 @@ const WEAVER_WALL_DISMOUNT_RETRY_FRAMES = 4;
 const WEAVER_WALL_LEAP_CELLS_PER_FRAME = 4.4;
 const WEAVER_WALL_LEAP_MIN_FRAMES = 18;
 const WEAVER_WALL_LEAP_MAX_FRAMES = 58;
+const ROOT_LOPER_GROWTH_BUDGET = 34;
+const ROOT_LOPER_LOCAL_GROWTH_BUDGET = 26;
+const ROOT_LOPER_SUPPORT_SCAN = 18;
+const STONE_MAW_CHEW_MAX_CELLS = 7;
+const STONE_MAW_CHEW_COOLDOWN = 28;
+const RILLBACK_CHARGE_WINDUP_FRAMES = 18;
+const RILLBACK_WET_THRESHOLD = 0.28;
 
 // --- Gust knockback (the player's kick is a wind blast; see Player.kick) ----
 const GUST_REF_MASS = 40; // a slime-ish footprint (halfW·h); push scales inversely
@@ -110,17 +96,28 @@ const SLAM_MIN_SPEED = 3.5; // ...and only above a real impact speed (cells/fram
 const SLAM_DMG_BASE = 12; // base wall-slam damage...
 const SLAM_DMG_PER_SPEED = 2.4; // ...plus this per cell/frame of impact speed (small foes gib outright)
 const BAT_SLIME_GROUNDED_FRAMES = 7 * 60;
+const MAGE_TELEKINESIS_CELLS = new Set<number>([
+  Cell.Sand,
+  Cell.Gold,
+  Cell.Gunpowder,
+  Cell.Snow,
+  Cell.Coal,
+  Cell.Ash,
+  Cell.Catalyst,
+  Cell.RawOre,
+]);
 
 /** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
 const STATUS_IMMUNE: Partial<
-  Record<EnemyKind, Partial<Record<'burning' | 'frozen' | 'electrified' | 'wet' | 'oiled', boolean>>>
+  Record<EnemyKind, Partial<Record<'burning' | 'frozen' | 'electrified' | 'wet' | 'oiled' | 'toxic' | 'healium' | 'teleportium', boolean>>>
 > = {
   imp: { burning: true },
   wisp: { frozen: true },
+  spitter: { toxic: true },
   // The kiln cannot burn or freeze — but it CAN be doused (wet = thermal shock)
-  colossus: { burning: true, frozen: true },
+  colossus: { burning: true, frozen: true, teleportium: true },
   // A soaked hide never catches — but cold stiffens it and charge cooks it
-  leviathan: { burning: true },
+  leviathan: { burning: true, teleportium: true },
 };
 
 /** Per-kind TEMPERAMENT: how each foe weights the threat-aware behavior drives.
@@ -146,18 +143,60 @@ const TEMPERAMENT: Partial<Record<EnemyKind, Temperament>> = {
   bomber: { fear: 0.2, dodge: 0.3, fleeAt: 1.5, seekWater: false }, // suicidal — WANTS to reach you
   mage: { fear: 0.9, dodge: 0.62, fleeAt: 0.45, seekWater: true }, // cowardly caster
   weaver: { fear: 0.5, dodge: 0.5, fleeAt: 0.72, seekWater: true }, // cunning but committed
+  rootloper: { fear: 0.7, dodge: 0.4, fleeAt: 0.68, seekWater: false }, // anchor-first, fire-wary
+  stonemaw: { fear: 0.1, dodge: 0.08, fleeAt: 1.6, seekWater: false }, // blind brute
+  rillback: { fear: 0.35, dodge: 0.42, fleeAt: 0.9, seekWater: true }, // brave while wet
   golem: { fear: 0.18, dodge: 0.28, fleeAt: 1.5, seekWater: false }, // brute, shrugs it off
   colossus: { fear: 0, dodge: 0, fleeAt: 2, seekWater: false }, // fearless boss
   leviathan: { fear: 0, dodge: 0.12, fleeAt: 2, seekWater: false }, // fearless (water is its home)
 };
 
 /** Does cell `c` deal environmental harm to `kind`? Single source of truth for
- *  both the env-damage tick and the wary look-ahead (so they never disagree):
- *  fire/lava burn everything but the imp; acid eats everything but the acidslime. */
+ *  wary look-ahead and threat scanning. Fire/lava burn everything but the imp;
+ *  acid eats everything but the acidslime; Toxic poisons everything but the
+ *  spitter that carries it. */
 export function enemyLethalCell(kind: EnemyKind, c: number): boolean {
   if ((c === Cell.Fire || c === Cell.Lava) && kind !== 'imp') return true;
   if (c === Cell.Acid && kind !== 'acidslime') return true;
+  if (c === Cell.Toxic && kind !== 'spitter') return true;
   return false;
+}
+
+function directEnvironmentDamage(kind: EnemyKind, c: number): number {
+  if ((c === Cell.Fire || c === Cell.Lava) && kind !== 'imp') return c === Cell.Lava ? 1.6 : 0.7;
+  if (c === Cell.Acid && kind !== 'acidslime') return 0.9;
+  return 0;
+}
+
+function weaverSupportGrowth(t: number): boolean {
+  return isSoftGrowth(t) || t === Cell.Slime;
+}
+
+function rootLoperGrowth(t: number): boolean {
+  return isSoftGrowth(t) || t === Cell.Wood;
+}
+
+function stoneMawChewable(t: number): boolean {
+  return (
+    t === Cell.Wall ||
+    t === Cell.Stone ||
+    t === Cell.RawOre ||
+    t === Cell.Coal ||
+    t === Cell.Sand ||
+    t === Cell.Ash
+  );
+}
+
+function rillbackPreferredLiquid(t: number): boolean {
+  return t === Cell.Water || t === Cell.Blood || t === Cell.Slime || t === Cell.Healium || t === Cell.ElixirLife;
+}
+
+function rillbackChargeableLiquid(t: number): boolean {
+  return (t === Cell.Water || t === Cell.Blood) && isConductor(t);
+}
+
+function colorForCell(t: number): number {
+  return COLOR_FN[t]?.() ?? packRGB(120, 120, 120);
 }
 
 /** Human-readable AI state for the cell inspector ("panicking", "wary", …). */
@@ -168,6 +207,11 @@ export function enemyStateLabel(e: Enemy): string {
   if (e.status.electrified > 0) return 'shocked';
   if (e.kind === 'bat' && (e.slimed ?? 0) > 0) return 'slimed';
   if ((e.wary ?? 0) > 0) return 'wary'; // recoiling from a hazard edge
+  if (e.kind === 'rootloper' && (e.rootPanic ?? 0) > 0) return 'unrooted';
+  if (e.kind === 'stonemaw' && (e.mawChewT ?? 0) > 0) return 'chewing';
+  if (e.kind === 'stonemaw' && (e.mawStun ?? 0) > 0) return 'stunned';
+  if (e.kind === 'rillback' && (e.rillChargeWindup ?? 0) > 0) return 'charging';
+  if (e.kind === 'rillback' && (e.rillWet ?? 0) < RILLBACK_WET_THRESHOLD) return 'beached';
   if (e.kind === 'weaver' && (e.windup ?? 0) > 0) return 'poised';
   if (e.kind === 'weaver' && e.blink > 0) return 'weaving';
   if (e.sleeping) return 'asleep';
@@ -230,7 +274,7 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
-  spawn(kind: EnemyKind, x: number, y: number): void {
+  spawn(kind: EnemyKind, x: number, y: number): Enemy | null {
     const ctx = this.ctx;
     const def = this.defs[kind];
     // Find an open pocket: scan downward from the requested point, retrying nearby columns
@@ -249,14 +293,14 @@ export class Enemies implements EnemyControlApi {
         }
       }
     }
-    if (sy < 0) sy = Math.max(def.h, Math.floor(y)); // last resort
+    if (sy < 0) return null;
     // Depth scaling: tougher and harder-hitting the deeper you descend; difficulty
     // multiplies both on top (level 3 = ×1, so the shipped curve is untouched).
     const depth = ctx.state.mode === 'play' ? (ctx.levels.current?.def.depth ?? 1) : 1;
     const diff = difficultyMods(ctx.state);
     const hpMul = (1 + (depth - 1) * 0.16) * diff.enemyHp;
     const dmgK = (1 + (depth - 1) * 0.1) * diff.enemyDamage;
-    ctx.enemies.push({
+    const enemy: Enemy = {
       kind,
       x: sx,
       y: sy,
@@ -280,8 +324,10 @@ export class Enemies implements EnemyControlApi {
       jetCd: 0,
       stuckT: 0,
       status: createDefaultStatus(),
-    });
+    };
+    ctx.enemies.push(enemy);
     ctx.particles.burst(sx, sy, 6, Cell.Smoke, smokeColor, 0.9);
+    return enemy;
   }
 
   /** Per-material gore channel for the cell being sprayed (red blood, green
@@ -330,7 +376,7 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
-  /** A hazard cell (lava/fire/acid) splashes (x,y): if a foe harmed by `cell`
+  /** A hazard cell (lava/fire/acid/toxic) splashes (x,y): if a foe harmed by `cell`
    *  overlaps the point, deal the matching env damage (and ignite it for
    *  fire/lava) and return true. Lets poured/sprayed material strike foes. */
   splashHazard(x: number, y: number, cell: number): boolean {
@@ -339,8 +385,9 @@ export class Enemies implements EnemyControlApi {
       const def = this.defs[e.kind];
       if (Math.abs(x - e.x) > def.halfW + 1) continue;
       if (y > e.y + 2 || y < e.y - def.h - 2) continue;
-      if (!enemyLethalCell(e.kind, cell)) continue; // imp shrugs off lava, acidslime off acid
-      const dmg = cell === Cell.Lava ? 1.6 : cell === Cell.Acid ? 0.9 : 0.7;
+      if (!enemyLethalCell(e.kind, cell)) continue; // imp shrugs off lava, acidslime off acid, spitter off toxic
+      const dmg = cell === Cell.Toxic ? 0.7 : directEnvironmentDamage(e.kind, cell);
+      if (dmg <= 0) continue;
       this.damage(e, dmg, (Math.random() - 0.5) * 0.6, -0.3);
       if (cell === Cell.Lava || cell === Cell.Fire) {
         // Same percentage-based catch as passive exposure: a single lava splash
@@ -591,11 +638,10 @@ export class Enemies implements EnemyControlApi {
       this.dropBounty(e, def);
       const runtime = ctx.levels.current;
       if (runtime && ctx.state.mode === 'play') {
-        const REWARD_CARDS: CardId[] = ['icelance', 'meteor', 'blackhole', 'triple', 'trigger'];
         runtime.pickups.push(makePickup('heart', e.x - 5, e.y - 8));
         runtime.pickups.push(
           makePickup('tome', e.x + 5, e.y - 8, {
-            card: REWARD_CARDS[Math.floor(Math.random() * REWARD_CARDS.length)],
+            card: randomCard(LEVIATHAN_REWARD_POOL),
           }),
         );
       }
@@ -625,6 +671,25 @@ export class Enemies implements EnemyControlApi {
       // The run is complete — the save has nothing left to protect.
       ctx.levels.abandonExpedition();
       return;
+    }
+    if (e.kind === 'stonemaw') {
+      const w = ctx.world;
+      const cx = Math.floor(e.x);
+      const cy = Math.floor(e.y - def.h * 0.45);
+      let opened = 0;
+      for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -6; dx <= 6; dx++) {
+          if (dx * dx * 0.55 + dy * dy > 16) continue;
+          const x = cx + dx;
+          const y = cy + dy;
+          if (!w.inBounds(x, y) || this.stoneMawProtectedCell(x, y)) continue;
+          const idx = w.idx(x, y);
+          if (!stoneMawChewable(w.types[idx])) continue;
+          w.clearCellAt(idx);
+          opened++;
+        }
+      }
+      if (opened > 0) ctx.particles.burst(cx, cy, Math.min(16, opened), Cell.Sand, stoneColor, 1.4);
     }
     // Gib burst + gold bounty shower
     ctx.particles.burst(
@@ -767,12 +832,12 @@ export class Enemies implements EnemyControlApi {
   }
 
   /**
-   * Powder Mage telekinesis: tear up to 14 powder cells (Sand/Gold/Gunpowder,
-   * nearest-first within 40 cells) OUT of the grid and hurl them at the player
-   * as hostile debris. The level itself is the ammunition — whatever misses
-   * re-deposits as real cells where it lands.
+   * Powder Mage telekinesis: tear up to 14 loose cells (powders, ore, ash, snow,
+   * coal; nearest-first within 40 cells) OUT of the grid and hurl them at the
+   * player as hostile debris. The level itself is the ammunition — whatever
+   * misses re-deposits as real cells where it lands.
    */
-  private telekinesisVolley(e: Enemy): void {
+  private telekinesisVolley(e: Enemy): boolean {
     const ctx = this.ctx;
     const world = ctx.world;
     const player = ctx.player;
@@ -787,13 +852,14 @@ export class Enemies implements EnemyControlApi {
           ny = ey + dy;
         if (!world.inBounds(nx, ny)) continue;
         const t = world.types[world.idx(nx, ny)];
-        if (t === Cell.Sand || t === Cell.Gold || t === Cell.Gunpowder) {
+        if (MAGE_TELEKINESIS_CELLS.has(t)) {
           addNearestCandidate(found, 14, nx, ny, d2);
         }
       }
     }
     found.sort((a, b) => a.d2 - b.d2);
     const n = Math.min(14, found.length);
+    if (n === 0) return false;
     for (let k = 0; k < n; k++) {
       const c = found[k];
       const ci = world.idx(c.x, c.y);
@@ -809,10 +875,9 @@ export class Enemies implements EnemyControlApi {
         grav: 0.015,
       });
     }
-    if (n > 0) {
-      ctx.audio.tone(240, 70, 0.3, 'sawtooth', 0.12);
-      this.shakeAt(e.x, e.y, 0.006, 0.04);
-    }
+    ctx.audio.tone(240, 70, 0.3, 'sawtooth', 0.12);
+    this.shakeAt(e.x, e.y, 0.006, 0.04);
+    return true;
   }
 
   /**
@@ -860,6 +925,232 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
+  private rootLoperFooting(e: Enemy, def: EnemyDef): { support: number; growth: number; hazard: number; seekDir: number } {
+    const w = this.ctx.world;
+    const cx = Math.floor(e.x);
+    const foot = Math.floor(e.y);
+    let growth = 0;
+    let load = 0;
+    let hazard = 0;
+    let left = 0;
+    let right = 0;
+    for (let dy = -def.h; dy <= 5; dy += 3) {
+      for (let dx = -ROOT_LOPER_SUPPORT_SCAN; dx <= ROOT_LOPER_SUPPORT_SCAN; dx += 3) {
+        const x = cx + dx;
+        const y = foot + dy;
+        if (!w.inBounds(x, y)) continue;
+        const t = w.types[w.idx(x, y)];
+        const isGrowth = rootLoperGrowth(t);
+        if (isGrowth) {
+          growth++;
+          if (dx < 0) left += 1.4;
+          else if (dx > 0) right += 1.4;
+        } else if (this.ctx.physics.cellBlocks(x, y) || blocksEntity(t)) {
+          load += 0.35;
+          if (dx < 0) left += 0.25;
+          else if (dx > 0) right += 0.25;
+        } else if (enemyLethalCell(e.kind, t)) {
+          hazard++;
+        }
+      }
+    }
+    const support = clamp((growth * 1.2 + load - hazard * 1.8) / 13, 0, 1);
+    const seekDir = Math.abs(left - right) < 1 ? 0 : right > left ? 1 : -1;
+    return { support, growth, hazard, seekDir };
+  }
+
+  private stampRootLoperGrowth(e: Enemy, support: number): number {
+    if ((e.rootGrowthBudget ?? ROOT_LOPER_GROWTH_BUDGET) <= 0) return 0;
+    const ctx = this.ctx;
+    const w = ctx.world;
+    const cx = Math.floor(e.x);
+    const foot = Math.floor(e.y);
+    let localGrowth = 0;
+    for (let y = foot - 9; y <= foot + 6; y += 2) {
+      for (let x = cx - 18; x <= cx + 18; x += 2) {
+        if (w.inBounds(x, y) && rootLoperGrowth(w.types[w.idx(x, y)])) localGrowth++;
+      }
+    }
+    if (localGrowth >= ROOT_LOPER_LOCAL_GROWTH_BUDGET) return 0;
+
+    let placed = 0;
+    for (let attempt = 0; attempt < 10 && placed < 2; attempt++) {
+      const x = cx + Math.floor((Math.random() * 2 - 1) * (support > 0.45 ? 16 : 10));
+      const y = foot - 3 + Math.floor(Math.random() * 9);
+      if (!w.inBounds(x, y)) continue;
+      if (Math.abs(x - ctx.player.x) <= 7 && y <= ctx.player.y + 2 && y >= ctx.player.y - 20) continue;
+      const i = w.idx(x, y);
+      if (w.types[i] !== Cell.Empty) continue;
+      const below = w.inBounds(x, y + 1) ? w.types[w.idx(x, y + 1)] : Cell.Empty;
+      const above = w.inBounds(x, y - 1) ? w.types[w.idx(x, y - 1)] : Cell.Empty;
+      const left = w.inBounds(x - 1, y) ? w.types[w.idx(x - 1, y)] : Cell.Empty;
+      const right = w.inBounds(x + 1, y) ? w.types[w.idx(x + 1, y)] : Cell.Empty;
+      const cling =
+        blocksEntity(below) ||
+        blocksEntity(above) ||
+        blocksEntity(left) ||
+        blocksEntity(right) ||
+        rootLoperGrowth(below) ||
+        rootLoperGrowth(above) ||
+        rootLoperGrowth(left) ||
+        rootLoperGrowth(right);
+      if (!cling) continue;
+      const material =
+        rootLoperGrowth(left) || rootLoperGrowth(right) || rootLoperGrowth(above)
+          ? Cell.Vines
+          : support > 0.55 && Math.random() < 0.45
+            ? Cell.Fungus
+            : Cell.Moss;
+      w.replaceCellAt(i, material, material === Cell.Vines ? vineColor() : material === Cell.Fungus ? COLOR_FN[Cell.Fungus]() : mossColor());
+      w.life[i] = 180 + Math.floor(Math.random() * 120);
+      e.rootGrowthBudget = Math.max(0, (e.rootGrowthBudget ?? ROOT_LOPER_GROWTH_BUDGET) - 1);
+      placed++;
+    }
+    if (placed > 0) ctx.particles.burst(e.x, e.y - 5, placed + 2, Cell.Vines, vineColor, 0.65, { grav: -0.01 });
+    return placed;
+  }
+
+  private stoneMawProtectedCell(x: number, y: number): boolean {
+    const rt = this.ctx.levels?.current;
+    if (!rt) return false;
+    const near = (px: number, py: number, r: number): boolean => {
+      const dx = x - px;
+      const dy = y - py;
+      return dx * dx + dy * dy <= r * r;
+    };
+    if (near(rt.spawn.x, rt.spawn.y, 42)) return true;
+    if (rt.cauldron && near(rt.cauldron.x, rt.cauldron.y, 30)) return true;
+    if (rt.portal && near(rt.portal.x, rt.portal.y, 38)) return true;
+    if (rt.exit) {
+      if (Math.abs(x - rt.exit.x) <= rt.exit.halfW + 14 && Math.abs(y - rt.exit.sealY) <= 38) return true;
+    }
+    for (const ws of rt.waystones ?? []) if (near(ws.x, ws.y, 34)) return true;
+    for (const m of rt.mechanisms ?? []) {
+      if (x >= m.x - 10 && x <= m.x + m.w + 10 && y >= m.y - m.h - 10 && y <= m.y + 10) return true;
+    }
+    for (const rv of rt.runeVaults ?? []) {
+      for (const [dx, dy] of rv.door) if (Math.abs(x - dx) <= 8 && Math.abs(y - dy) <= 8) return true;
+      if (near(rv.rx, rv.ry, 18)) return true;
+    }
+    return false;
+  }
+
+  private stoneMawChewBrush(e: Enemy, def: EnemyDef): number {
+    const ctx = this.ctx;
+    const w = ctx.world;
+    const dir = e.mawDir === -1 || e.mawDir === 1 ? e.mawDir : Math.sign(ctx.player.x - e.x || e.vx || 1);
+    e.mawDir = dir;
+    const mouthX = Math.floor(e.x + dir * (def.halfW + 1));
+    const mouthY = Math.floor(e.y - def.h * 0.45);
+    let chewed = 0;
+    for (let ax = 0; ax <= 6 && chewed < STONE_MAW_CHEW_MAX_CELLS; ax++) {
+      const x = mouthX + dir * ax;
+      for (let dy = -3; dy <= 3 && chewed < STONE_MAW_CHEW_MAX_CELLS; dy++) {
+        if (ax * ax * 0.55 + dy * dy > 14) continue;
+        const y = mouthY + dy;
+        if (!w.inBounds(x, y) || this.stoneMawProtectedCell(x, y)) continue;
+        const i = w.idx(x, y);
+        const t = w.types[i];
+        if (!stoneMawChewable(t)) continue;
+        const color = w.colors[i];
+        w.clearCellAt(i);
+        chewed++;
+        if (Math.random() < 0.5) {
+          ctx.particles.spawn(x, y, -dir * (0.25 + Math.random() * 0.7), -0.2 - Math.random() * 0.7, t, color, 70, {
+            grav: 0.09,
+          });
+        }
+        const spoilY = y + 1;
+        if (chewed <= 3 && w.inBounds(x - dir, spoilY)) {
+          const si = w.idx(x - dir, spoilY);
+          if (w.types[si] === Cell.Empty && Math.random() < 0.35) {
+            const spoil = t === Cell.Ash || Math.random() < 0.25 ? Cell.Ash : Cell.Sand;
+            w.replaceCellAt(si, spoil, spoil === Cell.Ash ? ashColor() : colorForCell(Cell.Sand));
+          }
+        }
+      }
+    }
+    if (chewed > 0) {
+      e.mawChewT = Math.max(e.mawChewT ?? 0, 14);
+      e.mawChewCd = STONE_MAW_CHEW_COOLDOWN + Math.floor(Math.random() * 10);
+      ctx.audio.hollowKnock();
+      ctx.particles.burst(mouthX, mouthY, Math.min(10, chewed + 2), Cell.Sand, stoneColor, 1.1);
+      this.shakeAt(mouthX, mouthY, 0.004, 0.025);
+    }
+    return chewed;
+  }
+
+  private stoneMawMouthHazard(e: Enemy, def: EnemyDef): boolean {
+    const w = this.ctx.world;
+    const dir = e.mawDir === -1 || e.mawDir === 1 ? e.mawDir : Math.sign(this.ctx.player.x - e.x || e.vx || 1);
+    const mouthX = Math.floor(e.x + dir * (def.halfW + 1));
+    const mouthY = Math.floor(e.y - def.h * 0.45);
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -1; dx <= 3; dx++) {
+        const x = mouthX + dir * dx;
+        const y = mouthY + dy;
+        if (!w.inBounds(x, y)) continue;
+        const t = w.types[w.idx(x, y)];
+        if (t === Cell.Acid || t === Cell.Toxic || t === Cell.Nitrogen || t === Cell.Ice) return true;
+      }
+    }
+    return false;
+  }
+
+  private rillbackLiquidFooting(e: Enemy, def: EnemyDef): { wet: number; hazard: number; conductor: number } {
+    const w = this.ctx.world;
+    let wet = 0;
+    let hazard = 0;
+    let conductor = 0;
+    let samples = 0;
+    for (let dy = 0; dy < def.h; dy += 2) {
+      for (let dx = -def.halfW; dx <= def.halfW; dx += 2) {
+        const x = Math.floor(e.x) + dx;
+        const y = Math.floor(e.y) - dy;
+        if (!w.inBounds(x, y)) continue;
+        samples++;
+        const t = w.types[w.idx(x, y)];
+        if (rillbackPreferredLiquid(t)) wet++;
+        else if (t === Cell.Lava || t === Cell.Acid || t === Cell.Toxic) hazard++;
+        if (rillbackChargeableLiquid(t)) conductor++;
+      }
+    }
+    const denom = Math.max(1, samples);
+    return { wet: wet / denom, hazard: hazard / denom, conductor };
+  }
+
+  private rillbackChargePulse(e: Enemy, def: EnemyDef): number {
+    if ((e.rillChargeCd ?? 0) > 0) return 0;
+    const ctx = this.ctx;
+    const w = ctx.world;
+    const cx = Math.floor(e.x);
+    const cy = Math.floor(e.y - def.h * 0.45);
+    let charged = 0;
+    for (let dy = -5; dy <= 5 && charged < 8; dy++) {
+      for (let dx = -7; dx <= 7 && charged < 8; dx++) {
+        if (dx * dx + dy * dy > 48) continue;
+        const x = cx + dx;
+        const y = cy + dy;
+        if (!w.inBounds(x, y)) continue;
+        const i = w.idx(x, y);
+        const t = w.types[i];
+        if (!rillbackChargeableLiquid(t)) continue;
+        w.setChargeAt(i, Math.max(w.charge[i], 6));
+        charged++;
+      }
+    }
+    if (charged > 0) {
+      e.rillChargeCd = 95 + Math.floor(Math.random() * 45);
+      e.blink = Math.max(e.blink, 10);
+      ctx.audio.zap();
+      ctx.particles.burst(e.x, e.y - def.h * 0.5, Math.min(10, charged + 2), null, () => packRGB(120, 230, 255), 1.3, {
+        glow: 2.0,
+        grav: -0.03,
+      });
+    }
+    return charged;
+  }
+
   private weaverFooting(e: Enemy, def: EnemyDef): number {
     const w = this.ctx.world;
     const cx = Math.floor(e.x);
@@ -872,7 +1163,7 @@ export class Enemies implements EnemyControlApi {
         const y = foot + dy;
         if (!w.inBounds(x, y)) continue;
         const t = w.types[w.idx(x, y)];
-        if (isSoftGrowth(t)) {
+        if (weaverSupportGrowth(t)) {
           support += 1;
         } else if (enemyLethalCell(e.kind, t)) {
           hazard += 1;
@@ -908,7 +1199,7 @@ export class Enemies implements EnemyControlApi {
         for (let xx = targetX - 12; xx <= targetX + 12; xx += 3) {
           if (!w.inBounds(xx, yy)) continue;
           const t = w.types[w.idx(xx, yy)];
-          const growth = isSoftGrowth(t);
+          const growth = weaverSupportGrowth(t);
           const load = growth ? 0.95 : this.ctx.physics.cellBlocks(xx, yy) ? 1 : blocksEntity(t) ? 0.55 : 0;
           if (load <= 0) continue;
           const exposed =
@@ -972,7 +1263,7 @@ export class Enemies implements EnemyControlApi {
       for (let ax = anchorX - 1; ax <= anchorX + 1; ax++) {
         if (!w.inBounds(ax, ay)) continue;
         const t = w.types[w.idx(ax, ay)];
-        if (blocksEntity(t) || isSoftGrowth(t)) {
+        if (blocksEntity(t) || weaverSupportGrowth(t)) {
           supported = true;
           break;
         }
@@ -1027,10 +1318,10 @@ export class Enemies implements EnemyControlApi {
         blocksEntity(above) ||
         blocksEntity(left) ||
         blocksEntity(right) ||
-        isSoftGrowth(below) ||
-        isSoftGrowth(above) ||
-        isSoftGrowth(left) ||
-        isSoftGrowth(right);
+        weaverSupportGrowth(below) ||
+        weaverSupportGrowth(above) ||
+        weaverSupportGrowth(left) ||
+        weaverSupportGrowth(right);
       if (!cling && support > 0.45) continue;
       w.replaceCellAt(i, Cell.Vines, vineColor());
       w.life[i] = 120 + Math.floor(Math.random() * 70);
@@ -1061,7 +1352,7 @@ export class Enemies implements EnemyControlApi {
         const y = cy + dy;
         if (!w.inBounds(x, y)) continue;
         const t = w.types[w.idx(x, y)];
-        const growth = isSoftGrowth(t);
+        const growth = weaverSupportGrowth(t);
         if (!growth && !blocksEntity(t)) continue;
         const exposed =
           (w.inBounds(x, y - 1) && !this.ctx.physics.cellBlocks(x, y - 1)) ||
@@ -1454,7 +1745,7 @@ export class Enemies implements EnemyControlApi {
     const w = this.ctx.world;
     if (!w.inBounds(x, y)) return false;
     const t = w.types[w.idx(x, y)];
-    return blocksEntity(t) || isSoftGrowth(t);
+    return blocksEntity(t) || weaverSupportGrowth(t);
   }
 
   /** Climb height of the wall column standing at world `X` beside `foot`: 0 unless
@@ -1757,11 +2048,14 @@ export class Enemies implements EnemyControlApi {
     const def = this.defs[e.kind];
     let dmg = 0;
     for (let dy = 0; dy < def.h; dy += 2) {
-      const X = Math.floor(e.x),
-        Y = Math.floor(e.y) - dy;
-      if (!ctx.world.inBounds(X, Y)) continue;
-      const c = ctx.world.types[ctx.world.idx(X, Y)];
-      if (enemyLethalCell(e.kind, c)) dmg += c === Cell.Lava ? 1.6 : c === Cell.Acid ? 0.9 : 0.7;
+      let rowDmg = 0;
+      for (let dx = -def.halfW; dx <= def.halfW; dx += 2) {
+        const X = Math.floor(e.x) + dx,
+          Y = Math.floor(e.y) - dy;
+        if (!ctx.world.inBounds(X, Y)) continue;
+        rowDmg = Math.max(rowDmg, directEnvironmentDamage(e.kind, ctx.world.types[ctx.world.idx(X, Y)]));
+      }
+      dmg += rowDmg;
     }
     if (dmg <= 0) return;
     if ((e.envDamageFeedbackCd ?? 0) <= 0) {
@@ -1773,6 +2067,29 @@ export class Enemies implements EnemyControlApi {
     if (e.hp <= 0) {
       if (index === undefined) this.kill(e, 0, 0);
       else this.killAt(index, e, 0, 0);
+    }
+  }
+
+  private teleportEnemy(e: Enemy, def: EnemyDef): void {
+    const ctx = this.ctx;
+    e.tpCool = 120;
+    const color = (): number => packRGB(185, 110, 255);
+    ctx.particles.burst(e.x, e.y - def.h * 0.5, 12, null, color, 2.0, { glow: 2.2, grav: 0 });
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 28 + Math.random() * 68;
+      const nx = Math.floor(clamp(e.x + Math.cos(a) * r, def.halfW + 2, WIDTH - def.halfW - 3));
+      const ny = Math.floor(clamp(e.y + Math.sin(a) * r, def.h + 1, HEIGHT - 3));
+      if (!ctx.physics.entityFree(nx, ny, def.halfW, def.h)) continue;
+      e.x = nx;
+      e.y = ny;
+      e.vx = 0;
+      e.vy = 0;
+      e.fx = 0;
+      e.fy = 0;
+      ctx.particles.burst(nx, ny - def.h * 0.5, 12, null, color, 2.0, { glow: 2.2, grav: 0 });
+      ctx.audio.tone(660, 1320, 0.14, 'sine', 0.12);
+      return;
     }
   }
 
@@ -1805,6 +2122,7 @@ export class Enemies implements EnemyControlApi {
       if ((e.weaverFeedT ?? 0) > 0) e.weaverFeedT = (e.weaverFeedT ?? 0) - 1;
       if ((e.weaverCrest ?? 0) > 0) e.weaverCrest = (e.weaverCrest ?? 0) - 1;
       if ((e.slimed ?? 0) > 0 && !debugEnemyAttacksSuppressed) e.slimed = (e.slimed ?? 0) - 1;
+      if ((e.tpCool ?? 0) > 0) e.tpCool = (e.tpCool ?? 0) - 1;
       e.timer++;
       if (e.attackCd > 0 && !debugEnemyAttacksSuppressed) e.attackCd--;
       this.enemyEnvironmentDamage(e, i);
@@ -1816,11 +2134,27 @@ export class Enemies implements EnemyControlApi {
       // flash), and a frozen body's horizontal speed is scaled once per sample.
       if (e.timer % 2 === 0) {
         const eff = sampleAndTickStatus(ctx, e, def.halfW, def.h, STATUS_IMMUNE[e.kind], 2);
+        if (eff.healing > 0 && e.hp < e.maxHp) {
+          e.hp = Math.min(e.maxHp, e.hp + eff.healing);
+          if (ctx.state.frameCount % 10 === 0) {
+            ctx.particles.spawn(
+              e.x + (Math.random() - 0.5) * def.halfW,
+              e.y - def.h * 0.5 - Math.random() * def.h * 0.4,
+              (Math.random() - 0.5) * 0.25,
+              -0.45 - Math.random() * 0.3,
+              null,
+              packRGB(255, 150, 195),
+              22,
+              { glow: 1.8, grav: -0.01 },
+            );
+          }
+        }
         if (eff.damage > 0) e.hp -= eff.damage;
         if (e.hp <= 0) {
           this.killAt(i, e, 0, 0);
           continue;
         }
+        if (eff.teleportTouch && (e.tpCool ?? 0) <= 0) this.teleportEnemy(e, def);
         if (eff.slowFactor !== 1) e.vx *= eff.slowFactor;
       }
 
@@ -2132,6 +2466,68 @@ export class Enemies implements EnemyControlApi {
             ctx.audio.tone(900, 60, 0.3, 'square', 0.1);
           }
         }
+      } else if (e.kind === 'rootloper') {
+        // Tanglewrist Root Loper: an overgrowth predator that moves best when
+        // real vines/moss/fungus/wood give its tendrils something to plant in.
+        e.vy += 0.31;
+        e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+        if ((e.rootPanic ?? 0) > 0) e.rootPanic = (e.rootPanic ?? 0) - 1;
+        if (e.status.burning > 0) e.rootPanic = Math.max(e.rootPanic ?? 0, 42);
+        if (e.timer % 6 === 0) {
+          const footing = this.rootLoperFooting(e, def);
+          e.rootSupport = footing.support;
+          e.rootSeekDir = footing.seekDir;
+          if (footing.hazard > 0 || footing.support < 0.18) e.rootPanic = Math.max(e.rootPanic ?? 0, 18);
+        }
+        const support = e.rootSupport ?? (e.grounded ? 0.25 : 0);
+        const panicked = (e.rootPanic ?? 0) > 0;
+
+        if ((e.windup ?? 0) > 0) {
+          e.vx *= 0.68;
+          if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
+          if (e.windup === 0 && canAttackTarget) {
+            const tx = e.rootLashX ?? ctx.player.x;
+            const ty = e.rootLashY ?? ctx.player.y - 9;
+            const dx = ctx.player.x - tx;
+            const dy = ctx.player.y - 9 - ty;
+            if (Math.abs(ctx.player.x - e.x) < 62 && Math.abs(ctx.player.y - 9 - (e.y - 7)) < 34 && dx * dx + dy * dy < 28 * 28) {
+              ctx.playerCtl.damage(13 * (e.dmgK ?? 1), Math.sign(ctx.player.x - e.x || 1) * -3.2, -1.8, 'rootloper-lash');
+              ctx.particles.burst(ctx.player.x, ctx.player.y - 10, 5, Cell.Vines, vineColor, 1.0);
+            }
+            e.attackCd = 70;
+            e.rootLashX = undefined;
+            e.rootLashY = undefined;
+          }
+        } else if (canAttackTarget && e.attackCd === 0 && pDist < 62 && Math.abs(pdy) < 36 && support > 0.12) {
+          e.windup = 13;
+          e.rootLashX = ctx.player.x;
+          e.rootLashY = ctx.player.y - 9;
+          e.attackCd = 18;
+          ctx.audio.tone(220, 120, 0.12, 'triangle', 0.06);
+        }
+
+        if (e.grounded) {
+          e.vx *= panicked ? 0.72 : 0.84;
+          if (panicked) {
+            e.vx += (Math.random() - 0.5) * 0.6 - Math.sign(pdx || 1) * 0.06;
+          } else if (!e.alerted && e.patrol && e.patrol.length > 0) {
+            const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
+            if (Math.abs(wp[0] - e.x) < 10) e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
+            e.vx += Math.sign(wp[0] - e.x || 1) * (0.035 + support * 0.045);
+          } else if (targetAlive) {
+            e.vx += Math.sign(pdx || e.rootSeekDir || 1) * (0.04 + support * 0.075);
+            if (Math.abs(pdx) < 18) e.vx *= 0.4;
+            if (pdy < -24 && support > 0.36 && e.timer % 44 === 0) e.vy = -1.7 - support * 0.45;
+          } else {
+            e.vx += (e.rootSeekDir ?? 0) * 0.035;
+          }
+        } else {
+          e.vx += (e.rootSeekDir ?? 0) * 0.018;
+        }
+
+        if (!panicked && support > 0.22 && e.timer % 18 === 0) this.stampRootLoperGrowth(e, support);
+        const maxRootSpeed = panicked ? 0.75 : 0.55 + support * 0.85;
+        e.vx = clamp(e.vx, -maxRootSpeed, maxRootSpeed);
       } else if (e.kind === 'weaver') {
         // The Weaver reads its footing, then controls the room by writing
         // real vine strands. The legs are rendered with IK; the grid mechanics
@@ -2691,7 +3087,7 @@ export class Enemies implements EnemyControlApi {
               { grav: -0.02, glow: 1.9 },
             );
           }
-          if (e.blink === 0 && canAttackTarget) this.telekinesisVolley(e);
+          if (e.blink === 0 && canAttackTarget && !this.telekinesisVolley(e)) e.attackCd = Math.min(e.attackCd, 35);
         } else {
           if (targetAlive) e.vx += Math.sign(pdx) * 0.04;
           e.vx = clamp(e.vx, -0.45, 0.45);
@@ -2809,6 +3205,105 @@ export class Enemies implements EnemyControlApi {
             e.attackCd = 170 + Math.floor(Math.random() * 50);
           }
         }
+      } else if (e.kind === 'rillback') {
+        // Rillback Silt Eel: a small pool predator. Wet body = fluid S-curve
+        // steering and a short living-conductor pulse; dry body = weak flops.
+        if ((e.rillChargeCd ?? 0) > 0) e.rillChargeCd = (e.rillChargeCd ?? 0) - 1;
+        const chargeWinding = (e.rillChargeWindup ?? 0) > 0;
+        if ((e.rillChargeWindup ?? 0) > 0) e.rillChargeWindup = (e.rillChargeWindup ?? 0) - 1;
+        const chargeReady = chargeWinding && (e.rillChargeWindup ?? 0) <= 0;
+        if ((e.blink ?? 0) > 0) e.blink--;
+        if (e.timer % 4 === 0) {
+          const footing = this.rillbackLiquidFooting(e, def);
+          e.rillWet = footing.wet;
+          if (footing.hazard > 0) {
+            e.hp -= footing.hazard * 1.2;
+            e.flash = Math.max(e.flash, 2);
+            if (e.hp <= 0) {
+              this.killAt(i, e, 0, 0);
+              continue;
+            }
+          }
+        }
+        const wet = e.rillWet ?? 0;
+        const swimming = wet >= RILLBACK_WET_THRESHOLD;
+        if (!swimming) e.rillChargeWindup = 0;
+        if (swimming) {
+          e.grounded = false;
+          e.vx *= 0.95;
+          e.vy *= 0.9;
+          if (targetAlive && e.alerted && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
+            const d = pDist || 1;
+            e.vx += (pdx / d) * (0.07 + wet * 0.08);
+            e.vy += (pdy / d) * (0.05 + wet * 0.05);
+          } else {
+            e.vx += Math.cos(e.timer * 0.035 + e.bobPhase) * 0.025;
+            e.vy += Math.sin(e.timer * 0.06 + e.bobPhase) * 0.02;
+          }
+          if (canAttackTarget && e.attackCd === 0 && pDist < 72 && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
+            e.windup = 10;
+            ctx.audio.tone(95, 170, 0.22, 'sine', 0.08);
+          }
+          if (
+            canAttackTarget &&
+            e.alerted &&
+            pDist < 220 &&
+            (e.rillChargeCd ?? 0) <= 0 &&
+            (e.rillChargeWindup ?? 0) <= 0 &&
+            e.timer % 25 === 0
+          ) {
+            e.rillChargeWindup = RILLBACK_CHARGE_WINDUP_FRAMES;
+            e.blink = Math.max(e.blink, RILLBACK_CHARGE_WINDUP_FRAMES);
+            ctx.audio.tone(280, 520, 0.18, 'sine', 0.07);
+          }
+          if (chargeReady && (e.rillChargeCd ?? 0) <= 0) {
+            this.rillbackChargePulse(e, def);
+          }
+          if (ctx.state.frameCount % 9 === 0) {
+            ctx.particles.spawn(e.x - Math.sign(e.vx || pdx || 1) * 5, e.y - 4, -e.vx * 0.12, -0.25, null, waterColor(), 12, {
+              grav: -0.03,
+            });
+          }
+        } else {
+          e.vy += 0.34;
+          e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+          e.vx *= e.grounded ? 0.8 : 0.94;
+          if (e.grounded && e.timer % 34 === 0) {
+            e.vy = -1.1 - Math.random() * 0.4;
+            e.vx += (targetAlive ? Math.sign(pdx || 1) : Math.random() < 0.5 ? -1 : 1) * 0.45;
+            ctx.audio.squelch();
+          }
+        }
+
+        if ((e.windup ?? 0) > 0) {
+          e.vx *= 0.82;
+          e.vy *= 0.82;
+          if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
+          if (e.windup === 0 && canAttackTarget && swimming) {
+            const a = Math.atan2(ctx.player.y - 9 - e.y, ctx.player.x - e.x);
+            e.swoop = 12;
+            e.vx = Math.cos(a) * 2.45;
+            e.vy = Math.sin(a) * 1.85;
+            ctx.audio.noiseBurst(0.08, 850, 0.08, true);
+          }
+        }
+        if ((e.swoop ?? 0) > 0) {
+          if (!debugEnemyAttacksSuppressed) e.swoop = (e.swoop ?? 1) - 1;
+          if (canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 10 && Math.abs(pdy) < 13) {
+            ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * -3.1, -1.9, 'rillback-bite');
+            e.attackCd = 85;
+            e.swoop = 0;
+          } else if (e.swoop === 0) {
+            e.attackCd = Math.max(e.attackCd, 55);
+          }
+        }
+        if (!swimming && canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 9 && Math.abs(pdy) < 12) {
+          ctx.playerCtl.damage(4 * (e.dmgK ?? 1), Math.sign(pdx) * -1.4, -0.7, 'rillback-flop');
+          e.attackCd = 55;
+        }
+        const maxRill = swimming ? 1.25 + wet * 0.75 : 0.7;
+        e.vx = clamp(e.vx, -maxRill, maxRill);
+        e.vy = clamp(e.vy, swimming ? -1.2 : -1.7, swimming ? 1.2 : 2.4);
       } else if (e.kind === 'leviathan') {
         // ===== THE SUNKEN LEVIATHAN =====
         // d4's mid-boss, the Kiln's mirror: WATER IS ITS ARMOR. Submerged it
@@ -2960,6 +3455,71 @@ export class Enemies implements EnemyControlApi {
           ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * -3.0, -2.0, 'leviathan-graze');
           e.attackCd = Math.max(e.attackCd, 120);
         }
+      } else if (e.kind === 'stonemaw') {
+        // Stone Maw: listens through the rock, commits to tiny chew bursts,
+        // and only opens terrain. It never writes blockers or eats Metal/Glass.
+        if ((e.mawChewCd ?? 0) > 0) e.mawChewCd = (e.mawChewCd ?? 0) - 1;
+        if ((e.mawChewT ?? 0) > 0) e.mawChewT = (e.mawChewT ?? 0) - 1;
+        if ((e.mawStun ?? 0) > 0) e.mawStun = (e.mawStun ?? 0) - 1;
+        e.vy += 0.34;
+        e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+        const mouthStunned = e.status.frozen > 0 || e.status.electrified > 0 || this.stoneMawMouthHazard(e, def);
+        if (mouthStunned) {
+          e.mawStun = Math.max(e.mawStun ?? 0, 34);
+          e.mawChewT = 0;
+          e.mawChewCd = Math.max(e.mawChewCd ?? 0, 28);
+        }
+
+        if ((e.mawStun ?? 0) > 0) {
+          e.vx *= 0.55;
+          e.windup = 0;
+          if (ctx.state.frameCount % 6 === 0) {
+            ctx.particles.burst(e.x, e.y - def.h * 0.4, 2, Cell.Sand, stoneColor, 0.7);
+          }
+        } else if ((e.windup ?? 0) > 0) {
+          e.vx *= 0.62;
+          if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
+          if (e.windup === 0 && canAttackTarget && Math.abs(pdx) < 18 && Math.abs(pdy) < 19) {
+            ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(pdx) * -4.1, -2.4, 'stonemaw-bite');
+            e.attackCd = 115;
+            e.mawChewT = Math.max(e.mawChewT ?? 0, 10);
+            ctx.audio.hollowKnock();
+          }
+        } else {
+          const dir = Math.sign(pdx || e.mawDir || 1);
+          e.mawDir = dir;
+          if (targetAlive && e.timer % 3 === 0) e.vx += dir * 0.055;
+          e.vx *= e.grounded ? 0.88 : 0.96;
+          const blockedAhead =
+            !ctx.physics.entityFree(e.x + dir * (def.halfW + 2), e.y, def.halfW, def.h) ||
+            (!e.grounded && Math.abs(pdy) < 24 && Math.abs(pdx) < 80);
+          if (
+            (e.mawChewCd ?? 0) <= 0 &&
+            (e.mawChewT ?? 0) <= 0 &&
+            (blockedAhead || (targetAlive && pDist < 92 && e.timer % 46 === 0))
+          ) {
+            const chewed = this.stoneMawChewBrush(e, def);
+            if (chewed === 0) {
+              e.mawChewCd = 26;
+              e.mawStun = Math.max(e.mawStun ?? 0, 8);
+            }
+          }
+        }
+
+        if (
+          canAttackTarget &&
+          e.attackCd === 0 &&
+          (e.windup ?? 0) <= 0 &&
+          (e.mawStun ?? 0) <= 0 &&
+          Math.abs(pdx) < 17 &&
+          Math.abs(pdy) < 18
+        ) {
+          e.windup = 12;
+          e.attackCd = 20;
+          e.mawChewT = Math.max(e.mawChewT ?? 0, 8);
+          ctx.audio.tone(82, 150, 0.2, 'sawtooth', 0.08);
+        }
+        e.vx = clamp(e.vx, -0.82, 0.82);
       } else if (e.kind === 'golem') {
         e.vy += 0.33;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
@@ -3184,8 +3744,16 @@ export class Enemies implements EnemyControlApi {
               : 6
             : e.kind === 'colossus'
               ? 3
-              : e.kind === 'golem' || e.kind === 'leviathan'
+              : e.kind === 'golem' || e.kind === 'leviathan' || e.kind === 'stonemaw'
                 ? 2
+                : e.kind === 'rootloper'
+                  ? (e.rootSupport ?? 0) > 0.42
+                    ? 4
+                    : 2
+                  : e.kind === 'rillback'
+                    ? (e.rillWet ?? 0) >= RILLBACK_WET_THRESHOLD
+                      ? 2
+                      : 1
                 : 1;
         // WARY OF THE EDGE: a grounded walker won't voluntarily step into a cell
         // that's lethal to it (lava/fire/acid). Fail-open — it only cancels this

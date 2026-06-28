@@ -601,6 +601,146 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       P(look - 1, eyeY, 0.05, 0.02, 0.02);
       P(look + 1, eyeY, 0.05, 0.02, 0.02);
     }
+  } else if (e.kind === 'rootloper') {
+    // --- Tanglewrist Root Loper: tendrils plant, body stretches, anchors panic ---
+    const support = e.rootSupport ?? 0;
+    const panic = (e.rootPanic ?? 0) > 0;
+    const pull = Math.sin(frameCount * (panic ? 0.22 : 0.08) + e.bobPhase);
+    const lean = clamp(Math.round(e.vx * 3), -3, 3);
+    const bodyLift = Math.round(support * 2) - (panic ? 1 : 0);
+    const R: RGB = panic ? [0.42, 0.28, 0.18] : [0.18, 0.46, 0.25];
+    const RD: RGB = panic ? [0.22, 0.14, 0.1] : [0.08, 0.23, 0.12];
+    const RL: RGB = [0.36, 0.78, 0.38];
+    const lineRoot = (x0: number, y0: number, x1: number, y1: number, col: RGB, glow = false): void => {
+      const steps = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0)));
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        const x = Math.round(x0 + (x1 - x0) * t);
+        const y = Math.round(y0 + (y1 - y0) * t);
+        (glow ? PE : P)(x, y, ...col);
+      }
+    };
+    for (let arm = 0; arm < 6; arm++) {
+      const side = arm < 3 ? -1 : 1;
+      const rank = arm % 3;
+      const hipX = side * (2 + rank);
+      const hipY = 5 + rank * 2 + bodyLift;
+      const phase = frameCount * (panic ? 0.18 : 0.055) + e.bobPhase + arm * 1.7;
+      const reach = 9 + rank * 3 + support * 5;
+      const footX = side * reach + Math.round(Math.sin(phase) * (panic ? 4 : 2)) + lean;
+      const footY = Math.max(0, hipY - 7 - rank + Math.round(Math.cos(phase) * (panic ? 3 : 1)));
+      lineRoot(hipX + lean, hipY, Math.round((hipX + footX) * 0.5), Math.round((hipY + footY) * 0.5 + 2), RD);
+      lineRoot(Math.round((hipX + footX) * 0.5), Math.round((hipY + footY) * 0.5 + 2), footX, footY, panic ? RD : RL);
+      if (support > 0.45 && frameCount % 20 < 8) PE(footX, footY, 0.16, 0.65, 0.2);
+    }
+    const stretch = (e.windup ?? 0) > 0 ? 2 : Math.round(pull * 1.5);
+    for (let dy = 3; dy <= 12; dy++) {
+      const hw = dy < 7 ? 3 : 4;
+      for (let dx = -hw; dx <= hw; dx++) {
+        const edge = Math.abs(dx) === hw || dy === 3 || dy === 12;
+        P(dx + lean + Math.round((dy - 8) * 0.18 * look) + stretch, dy + bodyLift, ...(edge ? RD : R));
+      }
+    }
+    // Head and honest eyes, pulled toward the committed lash target while winding up.
+    const headX = look * (4 + ((e.windup ?? 0) > 0 ? 2 : 0)) + lean + stretch;
+    for (let dx = -2; dx <= 2; dx++) P(headX + dx, 13 + bodyLift, ...(Math.abs(dx) === 2 ? RD : R));
+    PE(headX + look, 13 + bodyLift, 0.62, 0.95, 0.58);
+    if ((e.windup ?? 0) > 0) {
+      const lash = 1 - (e.windup ?? 0) / 13;
+      const tx = e.rootLashX !== undefined ? e.rootLashX - e.x : look * 24;
+      const ty = e.rootLashY !== undefined ? e.y - e.rootLashY : -2;
+      const len = Math.hypot(tx, ty) || 1;
+      const reach = 10 + lash * 18;
+      const lx = Math.round((tx / len) * Math.min(reach, 30));
+      const ly = Math.round(11 + bodyLift + (ty / len) * Math.min(reach, 22));
+      lineRoot(headX, 11 + bodyLift, lx, ly + Math.round(Math.sin(frameCount * 0.5) * 1.5), [0.2, 0.95, 0.22], true);
+    }
+  } else if (e.kind === 'stonemaw') {
+    // --- Stone Maw: pressure-wave worm, mouth plates open while chewing ---
+    const dir = e.mawDir === -1 || e.mawDir === 1 ? e.mawDir : look;
+    const chew = e.mawChewT ?? 0;
+    const stunned = (e.mawStun ?? 0) > 0;
+    const pulse = Math.sin(frameCount * (chew > 0 ? 0.28 : 0.08) + e.bobPhase);
+    const S: RGB = stunned ? [0.28, 0.32, 0.34] : [0.42, 0.36, 0.32];
+    const SD: RGB = [0.18, 0.16, 0.15];
+    const SL: RGB = [0.58, 0.5, 0.42];
+    for (let seg = 0; seg < 6; seg++) {
+      const sx = -dir * (seg * 4 - 8);
+      const sy = 5 + Math.round(Math.sin(seg * 0.9 + pulse) * (stunned ? 1 : 2));
+      const radius = Math.max(2, 5 - Math.floor(seg * 0.45) + (chew > 0 && seg < 2 ? 1 : 0));
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (dx * dx + dy * dy > radius * radius) continue;
+          const edge = dx * dx + dy * dy >= (radius - 1) * (radius - 1);
+          P(sx + dx, sy + dy, ...(edge ? SD : S));
+        }
+      }
+      if (seg > 0) P(sx + dir * 2, sy + 3, ...SL);
+    }
+    const mouthX = dir * 12;
+    const gape = chew > 0 ? 3 : stunned ? 1 : 0;
+    for (let k = 0; k <= 4; k++) {
+      P(mouthX + dir * k, 7 + gape, ...SD);
+      P(mouthX + dir * k, 3 - gape, ...SD);
+    }
+    if (chew > 0 && frameCount % 2 === 0) {
+      PE(mouthX + dir * 6, 5, 0.7, 0.58, 0.35);
+      PE(mouthX + dir * 8, 6, 0.45, 0.38, 0.25);
+    }
+  } else if (e.kind === 'rillback') {
+    // --- Rillback Silt Eel: trailing linked body, stiff cyan charge pulse ---
+    const wet = e.rillWet ?? 0;
+    const charging = (e.rillChargeWindup ?? 0) > 0;
+    const charged = charging || (e.blink ?? 0) > 0 || e.status.electrified > 0;
+    const count = 7;
+    if (!e.rillSegments || e.rillSegments.length !== count) {
+      e.rillSegments = Array.from({ length: count }, (_, idx) => ({ x: e.x - look * idx * 3, y: e.y - 4 }));
+    }
+    e.rillSegments[0].x += (e.x - e.rillSegments[0].x) * 0.55;
+    e.rillSegments[0].y += (e.y - 4 - e.rillSegments[0].y) * 0.55;
+    for (let idx = 1; idx < count; idx++) {
+      const prev = e.rillSegments[idx - 1];
+      const seg = e.rillSegments[idx];
+      const dx = prev.x - seg.x;
+      const dy = prev.y - seg.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const desired = wet >= 0.28 ? 3.8 : 2.8;
+      seg.x += (dx / d) * (d - desired) * 0.45;
+      seg.y += (dy / d) * (d - desired) * 0.45;
+      if (wet >= 0.28) seg.y += Math.sin(frameCount * 0.18 + idx * 0.9 + e.bobPhase) * 0.12;
+    }
+    const A: RGB = wet >= 0.28 ? [0.12, 0.34, 0.36] : [0.18, 0.23, 0.22];
+    const AD: RGB = [0.05, 0.16, 0.17];
+    const AL: RGB = charged ? [0.2, 0.9, 1.1] : [0.2, 0.5, 0.5];
+    for (let idx = count - 1; idx >= 0; idx--) {
+      const seg = e.rillSegments[idx];
+      const dx = Math.round(seg.x - bx);
+      const dy = Math.round(by - seg.y);
+      const r = idx === 0 ? 3 : Math.max(1, 3 - Math.floor(idx / 3));
+      for (let yy = -r; yy <= r; yy++) {
+        for (let xx = -r; xx <= r; xx++) {
+          if (xx * xx + yy * yy > r * r) continue;
+          P(dx + xx, dy + yy, ...(xx * xx + yy * yy >= (r - 1) * (r - 1) ? AD : A));
+        }
+      }
+      if (charged && idx % 2 === 0) {
+        const lift = charging ? Math.round(Math.sin(frameCount * 0.75 + idx) * 1.5) : 0;
+        PE(dx, dy + 1 + lift, ...AL);
+      }
+    }
+    const head = e.rillSegments[0];
+    const hx = Math.round(head.x - bx);
+    const hy = Math.round(by - head.y);
+    PE(hx + look, hy + 1, charged ? 0.35 : 0.75, charged ? 0.9 : 0.85, charged ? 1.1 : 0.78);
+    if (charging) {
+      P(hx - look * 2, hy - 3, 0.16, 0.62, 0.92);
+      P(hx, hy - 4, 0.2, 0.82, 1.1);
+      P(hx + look * 2, hy - 3, 0.16, 0.62, 0.92);
+    }
+    if ((e.windup ?? 0) > 0 || (e.swoop ?? 0) > 0) {
+      P(hx + look * 3, hy, 0.8, 0.86, 0.78);
+      P(hx + look * 4, hy - 1, 0.8, 0.86, 0.78);
+    }
   } else if (e.kind === 'weaver') {
     // --- Weaver: eight long IK legs with renderer-owned planted feet ---
     const wx2 = e.x + (e.fx || 0);

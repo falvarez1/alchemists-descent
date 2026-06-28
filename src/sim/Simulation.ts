@@ -28,6 +28,7 @@ import { runHarvesterField } from '@/sim/harvester';
 /* ===================== Core Simulation Frame ===================== */
 export class Simulation implements SimulationApi {
   accumulator = 0;
+  private readonly sparseGrowthCells: number[] = [];
 
   /** Fixed-step accumulator: runs 0-6 processFrame substeps per render frame. */
   update(ctx: Ctx): void {
@@ -73,7 +74,8 @@ export class Simulation implements SimulationApi {
     const tick = world.movedTick;
 
     const spanW = sim.x1 - sim.x0;
-    let runSparsePass = false;
+    const sparseGrowthCells = this.sparseGrowthCells;
+    sparseGrowthCells.length = 0;
     for (let y = sim.y1 - 1; y >= sim.y0; y--) {
       const leftToRight = Math.random() < 0.5;
       for (let i = 0; i < spanW; i++) {
@@ -105,7 +107,7 @@ export class Simulation implements SimulationApi {
             type === Cell.Moss ||
             type === Cell.Grass
           ) {
-            runSparsePass = true;
+            sparseGrowthCells.push(ci);
           }
           continue;
         }
@@ -163,19 +165,17 @@ export class Simulation implements SimulationApi {
       }
     }
 
-    if (runSparsePass) {
-      for (let y = sim.y1 - 1; y >= sim.y0; y--) {
-        for (let x = sim.x0; x < sim.x1; x++) {
-          const ci = x + y * world.width;
-          // Type check FIRST: these materials are sparse, so the moved-epoch
-          // load short-circuits away for almost every cell.
-          const t2 = world.types[ci];
-          if (t2 === Cell.Ice && movedArr[ci] !== tick) handleIce(ctx, x, y);
-          else if (t2 === Cell.Vines && movedArr[ci] !== tick) handleVines(ctx, x, y);
-          else if (t2 === Cell.Fungus && movedArr[ci] !== tick) handleFungus(ctx, x, y);
-          else if (t2 === Cell.Moss && movedArr[ci] !== tick) handleMoss(ctx, x, y);
-          else if (t2 === Cell.Grass && movedArr[ci] !== tick) handleGrass(ctx, x, y);
-        }
+    if (sparseGrowthCells.length > 0) {
+      for (const ci of sparseGrowthCells) {
+        if (movedArr[ci] === tick) continue;
+        const t2 = world.types[ci];
+        const y = Math.floor(ci / world.width);
+        const x = ci - y * world.width;
+        if (t2 === Cell.Ice) handleIce(ctx, x, y);
+        else if (t2 === Cell.Vines) handleVines(ctx, x, y);
+        else if (t2 === Cell.Fungus) handleFungus(ctx, x, y);
+        else if (t2 === Cell.Moss) handleMoss(ctx, x, y);
+        else if (t2 === Cell.Grass) handleGrass(ctx, x, y);
       }
     }
   }

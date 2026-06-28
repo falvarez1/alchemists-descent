@@ -11,6 +11,7 @@ export class CardOfferOverlay {
   private active: CardOfferRequest | null = null;
   private readonly queue: CardOfferRequest[] = [];
   private readonly focusTrap: ModalFocusTrap;
+  private readonly offCardOfferRequested: () => void;
   private wasPaused = false;
 
   constructor(private readonly ctx: Ctx) {
@@ -24,7 +25,7 @@ export class CardOfferOverlay {
       initialFocus: () => this.root.querySelector<HTMLButtonElement>('.card-offer-card'),
     });
 
-    ctx.events.on('cardOfferRequested', (request) => this.open(request));
+    this.offCardOfferRequested = ctx.events.on('cardOfferRequested', (request) => this.open(request));
   }
 
   private open(request: CardOfferRequest): void {
@@ -131,6 +132,7 @@ export class CardOfferOverlay {
   }
 
   dispose(): void {
+    this.offCardOfferRequested();
     this.queue.length = 0;
     this.active = null;
     this.focusTrap.deactivate({ restoreFocus: false });

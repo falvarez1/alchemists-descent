@@ -24,7 +24,6 @@ import { VIEW_H, VIEW_W } from '@/config/constants';
 // precedent: the gallery IS a consumer of the real runtime — previews must
 // animate with the same code the game runs, or they drift into fiction.
 import {
-  Mechanisms,
   makeBrazier,
   makeBuoy,
   makeChargeLatch,
@@ -39,7 +38,8 @@ import {
   makeValve,
   setDoorCells,
   setValveCells,
-} from '@/game/Mechanisms';
+} from '@/core/mechanismFactories';
+import { Mechanisms } from '@/game/Mechanisms';
 import { instantiateObjects, makeInstantiationSink } from '@/game/instantiate';
 import { stampBuoyBasin } from '@/builder/stamps';
 import type { CellSetter } from '@/builder/stamps';

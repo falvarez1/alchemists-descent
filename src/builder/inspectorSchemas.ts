@@ -1,4 +1,4 @@
-import type { EnemyKind, PickupKind } from '@/core/types';
+import { ENEMY_KINDS as CORE_ENEMY_KINDS, PICKUP_KINDS as CORE_PICKUP_KINDS, type EnemyKind, type PickupKind } from '@/core/types';
 import { sentenceCase } from '@/core/strings';
 import { AUTHORED_LIGHT_RADIUS_MAX, AUTHORED_LIGHT_RADIUS_MIN, paramNum } from '@/builder/document';
 import type { EditorDocument, EditorLight, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
@@ -23,26 +23,12 @@ export const POINT_ROTATE_KINDS: ReadonlySet<EditorObjectKind> = new Set([
   'pickup',
 ] as EditorObjectKind[]);
 
-export const PATROL_KINDS = new Set(['slime', 'acidslime', 'golem', 'bomber', 'weaver']);
+export const PATROL_KINDS = new Set(['slime', 'acidslime', 'golem', 'bomber', 'weaver', 'rootloper']);
 export const EMITTER_DIR: Record<number, string> = { 0: 'down', 90: 'left', 180: 'up', 270: 'right' };
 
-export const ENEMY_KINDS: EnemyKind[] = [
-  'slime',
-  'imp',
-  'golem',
-  'acidslime',
-  'wisp',
-  'mage',
-  'bat',
-  'spitter',
-  'bomber',
-  'eggs',
-  'weaver',
-  'colossus',
-  'leviathan',
-];
+export const ENEMY_KINDS: EnemyKind[] = [...CORE_ENEMY_KINDS];
 
-export const PICKUP_KINDS: PickupKind[] = ['goldpile', 'heart', 'tome', 'chest', 'potion', 'key'];
+export const PICKUP_KINDS: PickupKind[] = [...CORE_PICKUP_KINDS];
 const CARD_PICKUP_OPTIONS: FieldOption[] = [
   { value: '', label: 'random' },
   ...[...TOME_REWARD_POOL, 'vitrify'].map((id) => ({ value: id, label: id })),
@@ -186,7 +172,7 @@ function sharedParamItems(objects: EditorObject[], context: ObjectInspectorSchem
   const kind = rep.kind;
   // Same EditorObjectKind AND same sub-kind discriminator (enemy/pickup carry
   // their type in params.kind, which decides which conditional rows exist) — a
-  // slime+bat selection must NOT re-emit the bat-only 'sleeping' row and write
+  // Mixed selections must NOT re-emit enemy-kind-specific rows like sleeping and write
   // it onto the slime.
   if (!objects.every((obj) => obj.kind === kind && obj.params.kind === rep.params.kind)) return [];
   const out: InspectorSchemaItem[] = [];
@@ -412,7 +398,9 @@ function objectKindItems(obj: EditorObject, context: ObjectInspectorSchemaContex
 
 function enemyItems(obj: EditorObject, context: ObjectInspectorSchemaContext): InspectorSchemaItem[] {
   const items: InspectorSchemaItem[] = [paramSelect(obj, 'kind', 'kind', ENEMY_KINDS, 'slime')];
-  if (obj.params.kind === 'bat') items.push(paramCheckbox(obj, 'sleeping', 'roosting'));
+  if (obj.params.kind === 'bat' || obj.params.kind === 'weaver') {
+    items.push(paramCheckbox(obj, 'sleeping', obj.params.kind === 'bat' ? 'roosting' : 'sleeping'));
+  }
   if (PATROL_KINDS.has(String(obj.params.kind))) {
     const n = Array.isArray(obj.params.patrol) ? (obj.params.patrol as unknown[]).length : 0;
     items.push(

@@ -20,6 +20,7 @@ export class RuntimeInspector {
   private followSelectedEntity = false;
   private rafId: number | null = null;
   private timeControlsDispose: (() => void) | null = null;
+  private readonly eventDisposers: Array<() => void> = [];
   private readonly onButtonClick = (): void => this.toggle();
 
   constructor(private readonly ctx: Ctx) {
@@ -48,22 +49,23 @@ export class RuntimeInspector {
     this.root.addEventListener('input', (event) => this.handleInput(event));
     this.root.addEventListener('change', (event) => this.handleInput(event));
 
-    ctx.events.on('modeChanged', ({ mode }) => {
+    this.eventDisposers.push(ctx.events.on('modeChanged', ({ mode }) => {
       this.syncButton();
       this.invalidateSnapshot();
       if (mode !== 'play') {
         this.ctx.debug.setActive(false);
         this.close();
       }
-    });
-    ctx.events.on('levelChanged', () => {
+    }));
+    this.eventDisposers.push(ctx.events.on('levelChanged', () => {
       this.clearInspectionSelection();
       if (this.openState) this.render(true);
-    });
+    }));
     this.syncButton();
   }
 
   dispose(): void {
+    for (const dispose of this.eventDisposers.splice(0)) dispose();
     this.close();
     this.unmountTimeControls();
     this.button?.removeEventListener('click', this.onButtonClick);

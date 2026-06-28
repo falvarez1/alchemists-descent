@@ -42,7 +42,7 @@ import {
   makeSensor,
   makeValve,
   setDoorCells,
-} from '@/game/Mechanisms';
+} from '@/core/mechanismFactories';
 import {
   stampBuoyBasin,
   stampCauldron,
@@ -172,10 +172,9 @@ export function makeInstantiationSink(): InstantiationSink {
 
 /** Spawn a deferred enemy record live (sleeping-bat + patrol fixups). */
 export function spawnPrefabEnemy(ctx: Ctx, rec: PrefabEnemy): void {
-  ctx.enemyCtl.spawn(rec.kind, rec.x, rec.y);
-  const e = ctx.enemies[ctx.enemies.length - 1];
+  const e = ctx.enemyCtl.spawn(rec.kind, rec.x, rec.y);
   if (!e) return;
-  if (rec.sleeping === true && e.kind === 'bat') {
+  if (rec.sleeping === true && (e.kind === 'bat' || e.kind === 'weaver')) {
     e.sleeping = true;
     e.x = rec.x;
     e.y = rec.y;
@@ -223,7 +222,7 @@ export function instantiateObjects(
     if (o.kind === 'enemy') {
       const kind = (o.params.kind as EnemyKind) ?? 'slime';
       const rec: PrefabEnemy = { kind, x: ox, y: oy, sourceId: o.id };
-      if (o.params.sleeping === true && kind === 'bat') rec.sleeping = true;
+      if (o.params.sleeping === true && (kind === 'bat' || kind === 'weaver')) rec.sleeping = true;
       if (Array.isArray(o.params.patrol) && (o.params.patrol as unknown[]).length > 0) {
         rec.patrol = (o.params.patrol as Array<[number, number]>).map(([px, py]) => [
           Math.floor(px) + originX,

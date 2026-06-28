@@ -15,6 +15,7 @@ export class WaystonePromptOverlay {
   private readonly root: HTMLElement;
   private active: WaystonePromptRequest | null = null;
   private readonly focusTrap: ModalFocusTrap;
+  private readonly offWaystonePrompt: () => void;
   private wasPaused = false;
 
   constructor(private readonly ctx: Ctx) {
@@ -29,7 +30,7 @@ export class WaystonePromptOverlay {
       onEscape: () => this.close('dismiss'),
     });
 
-    ctx.events.on('waystonePrompt', (request) => this.open(request));
+    this.offWaystonePrompt = ctx.events.on('waystonePrompt', (request) => this.open(request));
   }
 
   private open(request: WaystonePromptRequest): void {
@@ -109,6 +110,7 @@ export class WaystonePromptOverlay {
   }
 
   dispose(): void {
+    this.offWaystonePrompt();
     this.active = null;
     this.focusTrap.deactivate({ restoreFocus: false });
     this.root.remove();

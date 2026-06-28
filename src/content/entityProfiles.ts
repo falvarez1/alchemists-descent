@@ -332,4 +332,79 @@ export const ENEMY_ENTITY_PROFILES: Record<EnemyKind, EntityProfile> = {
       ],
     },
   },
+  rootloper: {
+    description: 'Tanglewrist Root Loper. Plants root-arms into living growth and pulls itself through the cave.',
+    traits: {
+      behaviors: [
+        'Samples nearby vines, moss, fungus, grass, and wood before it commits to movement.',
+        'Writes capped patches of soft growth that can become footing, cover, or fuel.',
+        'Telegraphs a short tendril lash before striking at close range.',
+      ],
+      emotions: [
+        'Cautious when unrooted.',
+        'Predatory when surrounded by growth.',
+        'Panicked when fire or acid strips away its anchors.',
+      ],
+      strengths: [
+        'Moves best through overgrown fungal and timber rooms.',
+        'Can make traversal scaffolds and combat clutter from real cells.',
+        'Its growth can help or hurt the player depending on how the room is used.',
+      ],
+      weaknesses: [
+        'Fire burns its support and forces a stumble window.',
+        'Acid and toxic pools undercut its anchor confidence.',
+        'Bare stone and metal rooms make it slower and easier to read.',
+      ],
+    },
+  },
+  stonemaw: {
+    description: 'Stone Maw. A blind burrower that listens through rock and chews only what can safely become a tunnel.',
+    traits: {
+      behaviors: [
+        'Turns toward vibration and pressure, then opens short bites through allowed rock.',
+        'Leaves passable pockets and loose spoil instead of creating blockers.',
+        'Recoils when cold, acid, or toxic cells touch its chewing face.',
+      ],
+      emotions: [
+        'Patient and subterranean.',
+        'Brutal once its mouth finds purchase.',
+        'Defensive when its bite is chemically or thermally interrupted.',
+      ],
+      strengths: [
+        'Can create shortcuts, expose ore, and connect hazards in useful or dangerous ways.',
+        'Heavy body and high health make it difficult to shove around casually.',
+        'Its terrain edits are real, persistent scars in the expedition.',
+      ],
+      weaknesses: [
+        'Metal and glass stop its chewing.',
+        'Freeze, acid, toxic sludge, and electrification create reliable stun windows.',
+        'Its bounded bite cadence gives players time to bait or avoid the next tunnel.',
+      ],
+    },
+  },
+  rillback: {
+    description: 'Rillback Silt Eel. A small pool predator whose spine comes alive in liquid and fails on dry stone.',
+    traits: {
+      behaviors: [
+        'Swims through water, blood, and slime with a short coiled lunge.',
+        'Flops weakly when beached outside a wet footprint.',
+        'Pulses a small charge into nearby water and blood, creating brief conductor threats.',
+      ],
+      emotions: [
+        'Sinuous and confident while submerged.',
+        'Desperate and messy on dry ground.',
+        'Opportunistic around flooded fights and spilled blood.',
+      ],
+      strengths: [
+        'Wet rooms let it steer freely and attack from odd angles.',
+        'Local charge pulses make flooded combat tactically volatile.',
+        'Its body language clearly changes between swimming and beaching.',
+      ],
+      weaknesses: [
+        'Draining, freezing, or walling off pools removes most of its threat.',
+        'Acid, toxic sludge, and lava punish it like other flesh enemies.',
+        'Dry trenches and stone barriers make it predictable.',
+      ],
+    },
+  },
 };

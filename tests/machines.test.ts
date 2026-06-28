@@ -5,7 +5,6 @@ import { rleEncode } from '@/core/rle';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import {
-  Mechanisms,
   SENSOR_ZONE_CAP,
   makeCounterweight,
   makeDoor,
@@ -14,7 +13,8 @@ import {
   makeRelay,
   makeSensor,
   makeValve,
-} from '@/game/Mechanisms';
+} from '@/core/mechanismFactories';
+import { Mechanisms } from '@/game/Mechanisms';
 import { instantiateObjects, makeInstantiationSink } from '@/game/instantiate';
 import { createEmptyDocument, freshId } from '@/builder/document';
 import type { EditorDocument, EditorObject, EditorObjectKind } from '@/builder/document';

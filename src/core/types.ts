@@ -225,6 +225,9 @@ export const ENEMY_KINDS = [
   'eggs',
   // The d4 mid-boss: water is its armor; drain the arena or electrify it
   'leviathan',
+  'rootloper',
+  'stonemaw',
+  'rillback',
 ] as const;
 
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
@@ -305,6 +308,8 @@ export interface Enemy {
   jetFuel: number;
   jetCd: number;
   stuckT: number;
+  /** Teleportium contact cooldown; prevents liquid pools from strobe-warping enemies. */
+  tpCool?: number;
   // lazily-added smoothed displacement trackers (sprite animation)
   _px?: number;
   _svx?: number;
@@ -435,6 +440,34 @@ export interface Enemy {
   /** Weaver: locked Needle Step target chosen at windup start. */
   needleX?: number;
   needleY?: number;
+
+  /** Root Loper: sampled confidence from nearby vines/moss/fungus/wood. */
+  rootSupport?: number;
+  /** Root Loper: lifetime cap for stamped soft-growth cells. */
+  rootGrowthBudget?: number;
+  /** Root Loper: frames of anchor panic after fire/acid/footing loss. */
+  rootPanic?: number;
+  /** Root Loper: last horizontal direction that found better growth footing. */
+  rootSeekDir?: number;
+  /** Root Loper: committed lash target chosen at windup start. */
+  rootLashX?: number;
+  rootLashY?: number;
+  /** Stone Maw: committed chewing frames; sprite reads it as mouth-open pressure. */
+  mawChewT?: number;
+  /** Stone Maw: cooldown before another terrain bite. */
+  mawChewCd?: number;
+  /** Stone Maw: last burrow direction. */
+  mawDir?: number;
+  /** Stone Maw: short stun/recoil after cold, acid, or overextension. */
+  mawStun?: number;
+  /** Rillback: liquid coverage sampled from the body footprint (0..1). */
+  rillWet?: number;
+  /** Rillback: cooldown before another living-conductor pulse. */
+  rillChargeCd?: number;
+  /** Rillback: visible pre-pulse frames before a local conductor charge. */
+  rillChargeWindup?: number;
+  /** Rillback: render-owned trailing body segments. */
+  rillSegments?: Array<{ x: number; y: number }>;
 
   /* --- Behavior drives & reflexes (the threat-aware AI layer in Enemies.ts).
    *  Leveled states, like the elemental status timers: they integrate stimuli
@@ -1513,7 +1546,7 @@ export interface PlayerControlApi {
 
 export interface EnemyControlApi {
   readonly defs: Record<EnemyKind, EnemyDef>;
-  spawn(kind: EnemyKind, x: number, y: number): void;
+  spawn(kind: EnemyKind, x: number, y: number): Enemy | null;
   damage(e: Enemy, amount: number, kx: number, ky: number): void;
   /** A hazard cell (lava/fire/acid) splashes the point (x,y): if a foe harmed by
    *  `cell` overlaps it, deal the matching environmental damage (and ignite it for
@@ -1900,7 +1933,8 @@ export interface RuneVault {
   active: boolean;
 }
 
-export type PickupKind = 'goldpile' | 'heart' | 'tome' | 'chest' | 'potion' | 'key';
+export const PICKUP_KINDS = ['goldpile', 'heart', 'tome', 'chest', 'potion', 'key'] as const;
+export type PickupKind = (typeof PICKUP_KINDS)[number];
 
 export interface Pickup {
   kind: PickupKind;
@@ -2479,6 +2513,13 @@ export interface LevelRuntime {
   decors?: RuntimeDecor[];
   /** Generated Weaver-den lattice descriptors replayed after levelChanged clears live strands. */
   weaverLairWebs: WeaverLairWeb[];
+  /** Generated hostile population audit: planned, placed, and skipped counts by enemy kind. */
+  population?: {
+    planned: Partial<Record<EnemyKind, number>>;
+    placed: Partial<Record<EnemyKind, number>>;
+    skipped: Partial<Record<EnemyKind, number>>;
+    lairs?: Partial<Record<EnemyKind, number>>;
+  };
   /** D1 Noita-style surface intro: the open-air start above the cave mouth. The
    *  player begins HERE on first entry (revisits/respawns use the cave spawn). */
   surfaceSpawn?: { x: number; y: number };

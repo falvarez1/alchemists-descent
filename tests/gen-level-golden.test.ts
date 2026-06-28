@@ -90,6 +90,27 @@ function cellsNear(world: World, marker: { x: number; y: number }, cell: Cell, r
   return count;
 }
 
+function countCellsInRect(world: World, rect: { x0: number; y0: number; x1: number; y1: number }, cells: readonly Cell[]): number {
+  const wanted = new Set<number>(cells);
+  let count = 0;
+  for (let y = rect.y0; y <= rect.y1; y++) {
+    for (let x = rect.x0; x <= rect.x1; x++) {
+      if (world.inBounds(x, y) && wanted.has(world.types[world.idx(x, y)])) count++;
+    }
+  }
+  return count;
+}
+
+function hasEnemyInside(level: ReturnType<typeof generateLevelState>, kind: string, rect: { x0: number; y0: number; x1: number; y1: number }): boolean {
+  return level.prefabEnemies.some((e) =>
+    e.kind === kind &&
+    e.x >= rect.x0 &&
+    e.x <= rect.x1 &&
+    e.y >= rect.y0 &&
+    e.y <= rect.y1,
+  );
+}
+
 function emptyBottomExitCells(level: ReturnType<typeof generateLevelState>): number {
   const { exit, world } = level;
   let count = 0;
@@ -102,15 +123,14 @@ function emptyBottomExitCells(level: ReturnType<typeof generateLevelState>): num
   return count;
 }
 
-// Re-recorded for GEN_VERSION 30: the open strip below the caves is packed to solid
-// rock (terrain runs all the way down to the bedrock), shifting cell types on every seed.
-// GEN_VERSION 31: D1 gains the surface intro (sky/grass/cabin/cave-mouth) — d1 only.
+// Re-recorded for GEN_VERSION 32: signature depths now get real-cell encounter
+// lairs for the organic enemy trio, shifting full-level cell output where they land.
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   { id: 'd1', seed: 1337, hash: 'd9b6b61a' },
-  { id: 'd4', seed: 1337, hash: 'e061b436' },
-  { id: 'd8', seed: 1337, hash: '85cbff75' },
+  { id: 'd4', seed: 1337, hash: '7f71738f' },
+  { id: 'd8', seed: 1337, hash: '7825a71e' },
   { id: 'vault', seed: 1337, hash: '20798ecd' },
-  { id: 'd2', seed: 42, hash: '94bc3274' },
+  { id: 'd2', seed: 42, hash: '13e28c90' },
 ];
 
 describe('full generateLevel golden hashes', () => {
@@ -145,6 +165,59 @@ describe('D1 Spell Lab generation', () => {
         Math.abs(p.y - lab!.rewardY) <= 2,
       )).toBe(true);
     });
+  }
+});
+
+describe('generated organic encounter lairs', () => {
+  const cases = [
+    {
+      id: 'd2',
+      lair: 'encounter-lair-rootloper-grove',
+      kind: 'rootloper',
+      signature: [Cell.Vines, Cell.Moss, Cell.Fungus, Cell.Glowshroom],
+      minCells: 45,
+    },
+    {
+      id: 'd4',
+      lair: 'encounter-lair-rillback-pool',
+      kind: 'rillback',
+      signature: [Cell.Water, Cell.Blood, Cell.Slime],
+      minCells: 220,
+    },
+    {
+      id: 'd5',
+      lair: 'encounter-lair-rootloper-grove',
+      kind: 'rootloper',
+      signature: [Cell.Vines, Cell.Moss, Cell.Fungus, Cell.Glowshroom],
+      minCells: 45,
+    },
+    {
+      id: 'd6',
+      lair: 'encounter-lair-stonemaw-seam',
+      kind: 'stonemaw',
+      signature: [Cell.RawOre, Cell.Coal],
+      minCells: 45,
+    },
+    {
+      id: 'd8',
+      lair: 'encounter-lair-stonemaw-seam',
+      kind: 'stonemaw',
+      signature: [Cell.RawOre, Cell.Coal],
+      minCells: 45,
+    },
+  ] as const;
+
+  for (const seed of [1, 42, 1337]) {
+    for (const c of cases) {
+      it(`${c.id} @ seed ${seed} places a ${c.kind} lair with real-cell habitat`, () => {
+        const level = generateLevelState(LEVELS[c.id], seed);
+        const lair = level.placedPrefabs.find((p) => p.id === c.lair);
+        expect(lair, `${c.id} ${seed} missing ${c.lair}`).toBeTruthy();
+        expect(hasEnemyInside(level, c.kind, lair!)).toBe(true);
+        expect(countCellsInRect(level.world, lair!, c.signature)).toBeGreaterThanOrEqual(c.minCells);
+        expect(countCellsInRect(level.world, lair!, [Cell.Metal])).toBe(0);
+      });
+    }
   }
 });
 

@@ -165,7 +165,10 @@ export class Pickups implements PickupsApi {
       return;
     }
 
-    const cards = buildCardOffer(TOME_REWARD_POOL, collectOwnedCards(ctx.wands), {
+    const pool = fixedCard && !TOME_REWARD_POOL.includes(fixedCard)
+      ? [fixedCard, ...TOME_REWARD_POOL]
+      : TOME_REWARD_POOL;
+    const cards = buildCardOffer(pool, collectOwnedCards(ctx.wands), {
       preferred: fixedCard ? [fixedCard] : [],
       ensureKind: 'projectile',
     });

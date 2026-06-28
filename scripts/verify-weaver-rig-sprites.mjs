@@ -62,7 +62,7 @@ try {
     ctx.player.vy = 0;
     ctx.camera.zoomLock = 1;
     ctx.camera.snapTo(595, 570);
-    ctx.params.global.ambientLight = Math.max(ctx.params.global.ambientLight, 0.48);
+    ctx.params.global.ambient = Math.max(ctx.params.global.ambient, 0.48);
     ctx.params.global.maxBrightness = Math.max(ctx.params.global.maxBrightness, 2.2);
   });
 

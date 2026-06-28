@@ -112,7 +112,7 @@ export function updateElectricalGrid(ctx: Ctx): void {
       trySpread(x + 1, y, c, srcSolid);
       trySpread(x - 1, y, c, srcSolid);
       trySpread(x, y + 1, c, srcSolid);
-      trySpread(x - 1, y - 1, c, srcSolid);
+      trySpread(x, y - 1, c, srcSolid);
     }
     if (spreadCharge.size === 0) break;
     const next: number[] = [];

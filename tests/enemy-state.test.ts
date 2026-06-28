@@ -17,10 +17,11 @@ describe('enemyLethalCell (wary look-ahead = env-damage rule)', () => {
     expect(enemyLethalCell('imp', Cell.Fire)).toBe(false);
   });
 
-  it('acid is lethal except to the acidslime; toxic/water/stone are safe', () => {
+  it('acid is lethal except to the acidslime; toxic is lethal except to the spitter', () => {
     expect(enemyLethalCell('slime', Cell.Acid)).toBe(true);
     expect(enemyLethalCell('acidslime', Cell.Acid)).toBe(false);
-    expect(enemyLethalCell('slime', Cell.Toxic)).toBe(false);
+    expect(enemyLethalCell('slime', Cell.Toxic)).toBe(true);
+    expect(enemyLethalCell('spitter', Cell.Toxic)).toBe(false);
     expect(enemyLethalCell('slime', Cell.Water)).toBe(false);
     expect(enemyLethalCell('slime', Cell.Stone)).toBe(false);
   });
@@ -36,6 +37,11 @@ describe('enemyStateLabel', () => {
     expect(enemyStateLabel(enemy({ status: { ...createDefaultStatus(), frozen: 20 } }))).toBe('frozen');
     expect(enemyStateLabel(enemy({ status: { ...createDefaultStatus(), electrified: 20 } }))).toBe('shocked');
     expect(enemyStateLabel(enemy({ kind: 'bat', slimed: 120 }))).toBe('slimed');
+    expect(enemyStateLabel(enemy({ kind: 'rootloper', rootPanic: 5 }))).toBe('unrooted');
+    expect(enemyStateLabel(enemy({ kind: 'stonemaw', mawChewT: 4 }))).toBe('chewing');
+    expect(enemyStateLabel(enemy({ kind: 'stonemaw', mawStun: 4 }))).toBe('stunned');
+    expect(enemyStateLabel(enemy({ kind: 'rillback', rillChargeWindup: 4, rillWet: 1 }))).toBe('charging');
+    expect(enemyStateLabel(enemy({ kind: 'rillback', rillWet: 0 }))).toBe('beached');
     // launched (knockback) outranks the rest
     expect(enemyStateLabel(enemy({ knockT: 5, status: { ...createDefaultStatus(), frozen: 9 } }))).toBe('launched');
   });

@@ -1,9 +1,9 @@
 import type { CardDef, EnemyDef, EnemyKind, MaterialParams } from '@/core/types';
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
-import { REVIEW_WAND_LOADOUTS, STARTING_WAND_LOADOUTS, WAND_FRAMES } from '@/combat/wands/WandSystem';
-import { ENEMY_DEFS } from '@/entities/Enemies';
+import { REVIEW_WAND_LOADOUTS, STARTING_WAND_LOADOUTS, WAND_FRAMES } from '@/combat/wands/wandCatalog';
+import { ENEMY_DEFS } from '@/content/enemyDefs';
 import { POTION_DEFS } from '@/core/pickupDefs';
-import { RECIPES } from '@/game/Brewing';
+import { RECIPES } from '@/content/recipes';
 import { LEVELS, populationForLevel } from '@/config/worldgraph';
 import { EXTRAS } from '@/world/biomeExtras';
 import type { ContentDependency, ContentItem, ContentStatus } from '@/content/types';

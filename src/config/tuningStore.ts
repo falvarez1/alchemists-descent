@@ -226,13 +226,25 @@ export function clearTuning(): void {
 /** Boot wiring: rehydrate, then persist (debounced) on every paramsChanged and
  *  flush before the page unloads so an HMR reload or refresh can't drop the last
  *  edit sitting in the debounce window. */
-export function installTuningPersistence(ctx: Ctx): void {
+export function installTuningPersistence(ctx: Ctx): () => void {
   loadTuning(ctx);
-  ctx.events.on('paramsChanged', () => saveTuning(ctx));
+  const offParamsChanged = ctx.events.on('paramsChanged', () => saveTuning(ctx));
+  let removeWindowListeners = (): void => undefined;
   if (typeof window !== 'undefined') {
-    window.addEventListener('pagehide', () => flushTuning(ctx));
-    document.addEventListener('visibilitychange', () => {
+    const onPageHide = (): void => flushTuning(ctx);
+    const onVisibilityChange = (): void => {
       if (document.visibilityState === 'hidden') flushTuning(ctx);
-    });
+    };
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    removeWindowListeners = () => {
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }
+  return () => {
+    offParamsChanged();
+    removeWindowListeners();
+    flushTuning(ctx);
+  };
 }

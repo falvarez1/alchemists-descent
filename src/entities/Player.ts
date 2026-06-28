@@ -9,7 +9,7 @@ import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
 import type { Ctx, EnemyKind, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
 import { PLAYER_AIR_CEIL_SLIP, PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
-import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
+import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus, sampleBodyCells } from '@/entities/status';
 import { playerMovementPace, playerVerticalPace } from '@/game/progressionPacing';
 import { PERK_IDS } from '@/content/perks';
 import { makePickup } from '@/core/pickupDefs';
@@ -1270,6 +1270,7 @@ export class PlayerControl implements PlayerControlApi {
         bodyH,
         player.perks.flameward ? { burning: true } : undefined,
         2,
+        { toxicScale: 0, healiumScale: 0 },
       );
       this.statusSlow = slowFactor;
       if (damage > 0) {
@@ -1467,67 +1468,42 @@ export class PlayerControl implements PlayerControlApi {
     if (player.tpCool > 0) player.tpCool--;
     const pyro = player.perks.flameward ? 0.4 : 1;
     const toxi = player.perks.toxinward ? 0.25 : 1;
-    let liquidCount = 0,
-      waterOrBloodCount = 0,
-      hazardDmg = 0,
-      healTouch = 0,
-      tpTouch = false,
-      fungusBrush = false,
-      sampledSplashColor: number | null = null;
+    let hazardDmg = 0;
     const hazardBySource: Record<string, number> = { fire: 0, lava: 0, acid: 0, toxic: 0 };
-    for (let dy = 0; dy < bodyH; dy += 2) {
-      for (let dx = -4; dx <= 4; dx += 2) {
-        const X = player.x + dx,
-          Y = player.y - dy;
-        if (!world.inBounds(X, Y)) continue;
-        const ci2 = world.idx(X, Y);
-        const c = world.types[ci2];
-        if (isLiquid(c)) {
-          liquidCount++;
-          if (sampledSplashColor === null || c === Cell.Water || c === Cell.Blood) {
-            sampledSplashColor = world.colors[ci2];
-          }
-          if (c === Cell.Water || c === Cell.Blood) waterOrBloodCount++;
-        }
-        if (c === Cell.Fire) {
-          const d = 0.22 * pyro;
-          hazardDmg += d;
-          hazardBySource.fire += d;
-        }
-        if (c === Cell.Lava) {
-          const d = 0.62 * pyro;
-          hazardDmg += d;
-          hazardBySource.lava += d;
-        }
-        if (c === Cell.Acid) {
-          const d = 0.32 * toxi;
-          hazardDmg += d;
-          hazardBySource.acid += d;
-        }
-        if (c === Cell.Toxic) {
-          const d = 0.2 * toxi;
-          hazardDmg += d;
-          hazardBySource.toxic += d;
-        }
-        if (c === Cell.Healium) {
-          healTouch += 0.14;
-          // consumed as it heals
-          if (Math.random() < 0.12) {
-            world.clearCellAt(ci2);
-          }
-        }
-        if (c === Cell.Teleportium) tpTouch = true;
-        if (c === Cell.Fungus || c === Cell.Glowshroom) fungusBrush = true;
+    const contact = sampleBodyCells(ctx, player, PLAYER_HALF_W, bodyH);
+    if (contact.fire > 0) {
+      const d = contact.fire * 0.22 * pyro;
+      hazardDmg += d;
+      hazardBySource.fire += d;
+    }
+    if (contact.lava > 0) {
+      const d = contact.lava * 0.62 * pyro;
+      hazardDmg += d;
+      hazardBySource.lava += d;
+    }
+    if (contact.acid > 0) {
+      const d = contact.acid * 0.32 * toxi;
+      hazardDmg += d;
+      hazardBySource.acid += d;
+    }
+    if (contact.toxic > 0) {
+      const d = contact.toxic * 0.2 * toxi;
+      hazardDmg += d;
+      hazardBySource.toxic += d;
+    }
+    if (contact.healium > 0) {
+      for (const i of contact.healiumCells) {
+        if (Math.random() < 0.12) world.clearCellAt(i);
       }
     }
     // submersion threshold scales to the sampled body (13/45 -> 7/25 crawling)
-    player.inLiquid = liquidCount >= (player.crawling ? 7 : 13);
+    player.inLiquid = contact.liquid >= (player.crawling ? 7 : 13);
     // SPLASH: breaking the surface at speed throws up droplets of whatever
     // you fell into (the pool's own colors — the grid explains the splash).
     if (player.inLiquid && !this.prevInLiquid && player.vy > LIQUID_SPLASH_MIN_SPEED) {
-      const stomping = waterOrBloodCount > 0 && player.diveT > 0 && player.vy > LIQUID_STOMP_SPLASH_MIN_SPEED;
+      const stomping = contact.waterOrBlood > 0 && player.diveT > 0 && player.vy > LIQUID_STOMP_SPLASH_MIN_SPEED;
       const dropletCount = playerLiquidSplashDropletCount(player.vy, stomping);
-      const splashColor = sampledSplashColor ?? packRGB(60, 140, 220);
+      const splashColor = contact.sampledSplashColor ?? packRGB(60, 140, 220);
       const spread = stomping ? 4.8 : 2.2;
       const lift = stomping ? 3.5 : 1.6;
       const sideBias = stomping ? 0.9 : 0.35;
@@ -1549,7 +1525,7 @@ export class PlayerControl implements PlayerControlApi {
     this.prevInLiquid = player.inLiquid;
     // Wave F: brushing through glowcap colonies puffs a little spore cloud
     if (
-      fungusBrush &&
+      contact.fungus > 0 &&
       Math.random() < 0.05 &&
       (Math.abs(player.vx) > 0.4 || Math.abs(player.vy) > 0.4)
     ) {
@@ -1558,8 +1534,8 @@ export class PlayerControl implements PlayerControlApi {
         grav: -0.004,
       });
     }
-    if (healTouch > 0 && player.hp < player.maxHp) {
-      player.hp = Math.min(player.maxHp, player.hp + healTouch);
+    if (contact.healium > 0 && player.hp < player.maxHp) {
+      player.hp = Math.min(player.maxHp, player.hp + contact.healium * 0.14);
       if (ctx.state.frameCount % 10 === 0) {
         ctx.particles.spawn(
           player.x + (Math.random() - 0.5) * 6,
@@ -1573,7 +1549,7 @@ export class PlayerControl implements PlayerControlApi {
         );
       }
     }
-    if (tpTouch && player.tpCool <= 0) this.randomTeleport(ctx);
+    if (contact.teleportium > 0 && player.tpCool <= 0) this.randomTeleport(ctx);
     if (hazardDmg > 0) {
       const source = this.noteDamageSource(
         Object.entries(hazardBySource).reduce<[string, number]>(

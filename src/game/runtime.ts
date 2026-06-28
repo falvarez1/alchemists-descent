@@ -38,6 +38,7 @@ export function makeLevelRuntime(
       | 'generatedScenes'
       | 'decors'
       | 'weaverLairWebs'
+      | 'population'
       | 'refuge'
       | 'spellLab'
       | 'vaultArch'

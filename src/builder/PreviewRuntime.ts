@@ -21,7 +21,7 @@ import {
   DEFAULT_TRIGGER_LATCH_FRAMES,
   SENSOR_MOMENTARY_LATCH_FRAMES,
   SENSOR_SCAN_MOD,
-} from '@/game/Mechanisms';
+} from '@/core/mechanismFactories';
 
 export interface PreviewRuntimeStatus {
   ready: boolean;

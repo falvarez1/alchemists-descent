@@ -9,11 +9,13 @@ import type { Ctx, EntityStatus } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { fireColor, packRGB, steamColor } from '@/sim/colors';
 
-/** Statuses the grid can inflict (potion timers can't be "immune"-blocked). */
-type ElementalStatus = 'burning' | 'frozen' | 'electrified' | 'wet' | 'oiled';
+/** Statuses/contact effects the grid can inflict (potion timers can't be "immune"-blocked). */
+type ElementalStatus = 'burning' | 'frozen' | 'electrified' | 'wet' | 'oiled' | 'toxic' | 'healium' | 'teleportium';
 
 const SHOCK_WET_MULT = 3; // a wet body conducts — far more shock damage (the combo)
 const SHOCK_ZAP = 3; // one-time hit the instant a dry/wet body becomes electrified
+const TOXIC_DAMAGE_PER_CELL = 0.2;
+const HEALIUM_HEAL_PER_CELL = 0.14;
 
 // CATCH FIRE — ignition is percentage-based and scales with HEAT (how many flame
 // cells lick the body, weighted by how hot they are) and EXPOSURE TIME (each
@@ -31,6 +33,37 @@ interface StatusBody {
   x: number;
   y: number;
   status: EntityStatus;
+}
+
+export interface BodyCellSample {
+  water: number;
+  oil: number;
+  fire: number;
+  lava: number;
+  acid: number;
+  nitrogen: number;
+  charged: number;
+  toxic: number;
+  healium: number;
+  teleportium: number;
+  liquid: number;
+  waterOrBlood: number;
+  fungus: number;
+  sampledSplashColor: number | null;
+  healiumCells: number[];
+}
+
+export interface StatusSampleOptions {
+  toxicScale?: number;
+  healiumScale?: number;
+}
+
+export interface StatusSampleResult {
+  damage: number;
+  toxicDamage: number;
+  healing: number;
+  teleportTouch: boolean;
+  slowFactor: number;
 }
 
 /** Every timer at zero: dry, clean, unlit, unenchanted. */
@@ -79,6 +112,86 @@ export function clearElementalStatus(status: EntityStatus): void {
   status.electrified = 0;
 }
 
+export function sampleBodyCells(
+  ctx: Ctx,
+  body: { x: number; y: number },
+  halfW: number,
+  h: number,
+): BodyCellSample {
+  const world = ctx.world;
+  const bx = Math.floor(body.x);
+  const by = Math.floor(body.y);
+  const sample: BodyCellSample = {
+    water: 0,
+    oil: 0,
+    fire: 0,
+    lava: 0,
+    acid: 0,
+    nitrogen: 0,
+    charged: 0,
+    toxic: 0,
+    healium: 0,
+    teleportium: 0,
+    liquid: 0,
+    waterOrBlood: 0,
+    fungus: 0,
+    sampledSplashColor: null,
+    healiumCells: [],
+  };
+
+  for (let dy = 0; dy < h; dy += 2) {
+    for (let dx = -halfW; dx <= halfW; dx += 2) {
+      const X = bx + dx,
+        Y = by - dy;
+      if (!world.inBounds(X, Y)) continue;
+      const i = world.idx(X, Y);
+      const t = world.types[i];
+      if (t === Cell.Water) sample.water++;
+      else if (t === Cell.Oil) sample.oil++;
+      else if (t === Cell.Fire) sample.fire++;
+      else if (t === Cell.Lava) sample.lava++;
+      else if (t === Cell.Acid) sample.acid++;
+      else if (t === Cell.Nitrogen) sample.nitrogen++;
+      else if (t === Cell.Toxic) sample.toxic++;
+      else if (t === Cell.Healium) {
+        sample.healium++;
+        sample.healiumCells.push(i);
+      } else if (t === Cell.Teleportium) sample.teleportium++;
+      if (
+        t === Cell.Water ||
+        t === Cell.Oil ||
+        t === Cell.Acid ||
+        t === Cell.Lava ||
+        t === Cell.Nitrogen ||
+        t === Cell.Blood ||
+        t === Cell.Slime ||
+        t === Cell.ElixirLife ||
+        t === Cell.ElixirLevity ||
+        t === Cell.ElixirStone ||
+        t === Cell.Toxic ||
+        t === Cell.Healium ||
+        t === Cell.Teleportium
+      ) {
+        sample.liquid++;
+        if (sample.sampledSplashColor === null || t === Cell.Water || t === Cell.Blood) {
+          sample.sampledSplashColor = world.colors[i];
+        }
+        if (t === Cell.Water || t === Cell.Blood) sample.waterOrBlood++;
+      }
+      if (t === Cell.Fungus || t === Cell.Glowshroom) sample.fungus++;
+      if (world.charge[i] > 0) sample.charged++;
+    }
+  }
+  // Standing on a charged conductor (a zapped metal floor / electrified water)
+  // counts as contact — sense the cells just underfoot, not only the body box.
+  for (let dx = -halfW; dx <= halfW; dx += 2) {
+    const X = bx + dx;
+    const Y = by + 1;
+    if (world.inBounds(X, Y) && world.charge[world.idx(X, Y)] > 0) sample.charged++;
+  }
+  return sample;
+}
+
 /** Random cell on the body's AABB perimeter (where flames lick off the skin). */
 function randomEdgeCell(body: StatusBody, halfW: number, h: number): { x: number; y: number } {
   const side = Math.floor(Math.random() * 4);
@@ -112,44 +225,18 @@ export function sampleAndTickStatus(
   h: number,
   immune?: Partial<Record<ElementalStatus, boolean>>,
   elapsedFrames = 1,
-): { damage: number; slowFactor: number } {
+  options: StatusSampleOptions = {},
+): StatusSampleResult {
   const world = ctx.world;
   const st = body.status;
   const electrifiedBefore = st.electrified;
   const tickFrames = Math.max(1, Math.floor(elapsedFrames));
 
   // --- Sample: what is the grid touching this body right now? ---
-  let water = 0,
-    oil = 0,
-    fire = 0,
-    lava = 0,
-    nitrogen = 0,
-    charged = 0;
-  for (let dy = 0; dy < h; dy += 2) {
-    for (let dx = -halfW; dx <= halfW; dx += 2) {
-      const X = body.x + dx,
-        Y = body.y - dy;
-      if (!world.inBounds(X, Y)) continue;
-      const i = world.idx(X, Y);
-      const t = world.types[i];
-      if (t === Cell.Water) water++;
-      else if (t === Cell.Oil) oil++;
-      else if (t === Cell.Fire) fire++;
-      else if (t === Cell.Lava) lava++;
-      else if (t === Cell.Nitrogen) nitrogen++;
-      if (world.charge[i] > 0) charged++;
-    }
-  }
-  // Standing on a charged conductor (a zapped metal floor / electrified water)
-  // counts as contact — sense the cells just underfoot, not only the body box.
-  for (let dx = -halfW; dx <= halfW; dx += 2) {
-    const X = body.x + dx;
-    const Y = body.y + 1;
-    if (world.inBounds(X, Y) && world.charge[world.idx(X, Y)] > 0) charged++;
-  }
+  const sample = sampleBodyCells(ctx, body, halfW, h);
 
   // --- Transitions (immune statuses never rise above 0) ---
-  if (water >= 3) {
+  if (sample.water >= 3) {
     if (!immune?.wet) st.wet = 120;
     st.oiled = 0;
     if (st.burning > 0) {
@@ -169,15 +256,15 @@ export function sampleAndTickStatus(
       }
     }
   }
-  if (oil >= 3 && st.wet === 0 && !immune?.oiled) st.oiled = 600;
+  if (sample.oil >= 3 && st.wet === 0 && !immune?.oiled) st.oiled = 600;
   // CATCH FIRE (percentage-based): hotter flame + more cells + oil all raise the
   // per-sample odds, and sustained exposure re-rolls until it catches.
-  if (!immune?.burning) rollCatchFire(st, fire, lava);
-  if (nitrogen >= 2 && !immune?.frozen) st.frozen = Math.max(st.frozen, 100);
+  if (!immune?.burning) rollCatchFire(st, sample.fire, sample.lava);
+  if (sample.nitrogen >= 2 && !immune?.frozen) st.frozen = Math.max(st.frozen, 100);
   // Touching a live conductor electrocutes for 1-2s. While still in the current
   // it tops back up (decays to ~1s, re-rolls), so a body stuck to charged metal
   // stays locked the whole time it conducts and convulses ~1-2s after it fades.
-  if (charged >= 1 && !immune?.electrified && st.electrified < 60) {
+  if (sample.charged >= 1 && !immune?.electrified && st.electrified < 60) {
     st.electrified = 60 + ((Math.random() * 61) | 0); // 60-120 frames @ 60fps
   }
   // The instant a body goes live (0 -> charged) gets a one-time zap + a crack.
@@ -290,12 +377,33 @@ export function sampleAndTickStatus(
 
   // Shock is now a real, tunable threat (global.shockDamage), with wet amplified
   // and a one-time zap the instant a body is electrified.
+  const toxicDamage =
+    immune?.toxic || sample.toxic === 0
+      ? 0
+      : sample.toxic * TOXIC_DAMAGE_PER_CELL * tickFrames * (options.toxicScale ?? 1);
+  const healing =
+    immune?.healium || sample.healium === 0
+      ? 0
+      : sample.healium * HEALIUM_HEAL_PER_CELL * tickFrames * (options.healiumScale ?? 1);
+  if (healing > 0 && sample.healiumCells.length > 0) {
+    for (const i of sample.healiumCells) {
+      if (Math.random() < 0.12 * tickFrames) world.clearCellAt(i);
+    }
+  }
+
   const shock = ctx.params.global.shockDamage;
   const damage =
     (st.burning > 0 ? 0.12 : 0) +
     (st.electrified > 0 ? shock * (st.wet > 0 ? SHOCK_WET_MULT : 1) : 0) +
-    (justShocked ? SHOCK_ZAP : 0);
+    (justShocked ? SHOCK_ZAP : 0) +
+    toxicDamage;
   // Electrified bodies stutter (a mild slow), short of the deep frozen lock.
   const slowFactor = st.frozen > 0 ? 0.55 : st.electrified > 0 ? 0.82 : 1;
-  return { damage, slowFactor };
+  return {
+    damage,
+    toxicDamage,
+    healing,
+    teleportTouch: !immune?.teleportium && sample.teleportium > 0,
+    slowFactor,
+  };
 }

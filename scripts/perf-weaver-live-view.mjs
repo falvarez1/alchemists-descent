@@ -104,7 +104,7 @@ async function prepareScene() {
     ctx.player.fx = 0;
     ctx.player.fy = 0;
     ctx.camera.zoomLock = 1;
-    ctx.params.global.ambientLight = Math.max(ctx.params.global.ambientLight, 0.5);
+    ctx.params.global.ambient = Math.max(ctx.params.global.ambient, 0.5);
     ctx.params.global.maxBrightness = Math.max(ctx.params.global.maxBrightness, 2.2);
     ctx.perf.setVisible(true);
 
@@ -306,8 +306,8 @@ try {
   const failures = [];
   if (control.setup.visibleWeavers !== 0) failures.push(`control expected 0 visible Weavers, saw ${control.setup.visibleWeavers}`);
   if (visible.setup.visibleWeavers < 1) failures.push('visible scenario did not keep a Weaver in view');
-  if (visible.summary.entities.p95 > 4) failures.push(`visible entities.p95 ${visible.summary.entities.p95.toFixed(2)}ms > 4ms`);
-  const renderP95Limit = Math.max(14, control.summary.render.p95 + 8);
+  if (visible.summary.entities.p95 > 2.5) failures.push(`visible entities.p95 ${visible.summary.entities.p95.toFixed(2)}ms > 2.5ms`);
+  const renderP95Limit = 5;
   if (visible.summary.render.p95 > renderP95Limit) {
     failures.push(`visible render.p95 ${visible.summary.render.p95.toFixed(2)}ms > ${renderP95Limit.toFixed(2)}ms`);
   }

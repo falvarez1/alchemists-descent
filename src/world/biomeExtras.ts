@@ -57,7 +57,7 @@ export interface BiomeExtras {
 export const EXTRAS: Record<BiomeId, BiomeExtras> = {
   earthen: { foes: { slime: 5, bat: 3, imp: 2, golem: 1 }, goldBonus: 1, mossPatches: 22 },
   fungal: {
-    foes: { slime: 4, spitter: 4, bat: 3, bomber: 1, weaver: 0.4 },
+    foes: { slime: 4, spitter: 4, bat: 3, bomber: 1, weaver: 0.4, rootloper: 0.6 },
     goldBonus: 1,
     fungusPatches: 160,
     healSprings: 3,
@@ -66,17 +66,17 @@ export const EXTRAS: Record<BiomeId, BiomeExtras> = {
   },
   frozen: { foes: { slime: 3, bat: 4, golem: 3, imp: 1 }, goldBonus: 1, snowDrifts: 90 },
   flooded: {
-    foes: { slime: 5, spitter: 3, bat: 2, golem: 1 },
+    foes: { slime: 5, spitter: 3, bat: 2, golem: 1, rillback: 0.45 },
     goldBonus: 1,
     mossPatches: 48,
   },
   timber: {
-    foes: { imp: 4, slime: 3, bomber: 3, bat: 2, weaver: 0.25 },
+    foes: { imp: 4, slime: 3, bomber: 3, bat: 2, weaver: 0.25, rootloper: 0.4 },
     goldBonus: 1.1,
     mossPatches: 26,
   },
   crystal: {
-    foes: { bat: 5, golem: 3, imp: 2, bomber: 1 },
+    foes: { bat: 5, golem: 3, imp: 2, bomber: 1, stonemaw: 0.35 },
     goldBonus: 1.6,
     crystals: 46,
     shrooms: 40,
@@ -89,7 +89,7 @@ export const EXTRAS: Record<BiomeId, BiomeExtras> = {
     shrooms: 0,
   },
   volcanic: {
-    foes: { imp: 5, bomber: 4, golem: 3, bat: 1 },
+    foes: { imp: 5, bomber: 4, golem: 3, bat: 1, stonemaw: 0.25 },
     goldBonus: 1.4,
     coalSeams: 90,
     shrooms: 0,

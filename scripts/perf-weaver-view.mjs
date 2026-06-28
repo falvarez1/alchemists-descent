@@ -44,6 +44,7 @@ try {
     scenarios: {},
     pageErrors,
     consoleErrors,
+    failures: [],
   };
 
   for (const count of counts) {
@@ -67,7 +68,7 @@ try {
         ctx.player.maxHp = 999999;
         ctx.camera.zoomLock = 1;
         ctx.camera.snapTo(cx, floorY - 44);
-        ctx.params.global.ambientLight = Math.max(ctx.params.global.ambientLight, 0.5);
+        ctx.params.global.ambient = Math.max(ctx.params.global.ambient, 0.5);
         ctx.params.global.maxBrightness = Math.max(ctx.params.global.maxBrightness, 2.2);
 
         for (let y = floorY - 160; y <= floorY + 24; y++) {
@@ -129,15 +130,25 @@ try {
     const summary = summarizeBuckets(raw);
     payload.scenarios[`weavers-${count}`] = { setup: { ...setup, samples: setup.samples.length }, summary };
     printBucketSummary(`weavers-${count}`, summary, ['entities', 'compose', 'render', 'frame']);
+    if (summary.entities.p95 > 2.5) {
+      payload.failures.push(`weavers-${count} entities.p95 ${summary.entities.p95.toFixed(2)}ms > 2.5ms`);
+    }
+    if (summary.render.p95 > 5) {
+      payload.failures.push(`weavers-${count} render.p95 ${summary.render.p95.toFixed(2)}ms > 5ms`);
+    }
+    if (summary.frame.p95 > 25) {
+      payload.failures.push(`weavers-${count} frame.p95 ${summary.frame.p95.toFixed(2)}ms > 25ms`);
+    }
   }
 
   if (pageErrors.length || consoleErrors.length) {
-    throw new Error(`Browser errors: ${JSON.stringify({ pageErrors, consoleErrors })}`);
+    payload.failures.push(`Browser errors: ${JSON.stringify({ pageErrors, consoleErrors })}`);
   }
 
   const out = `verify-out/perf-weaver-view-${sanitizeLabel(counts.join('-'))}-${Date.now()}.json`;
   writeJson(out, payload);
   console.log(`Wrote ${out}`);
+  if (payload.failures.length) throw new Error(payload.failures.join('; '));
 } finally {
   await browser.close();
 }

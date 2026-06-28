@@ -97,6 +97,31 @@ describe('level enemy persistence', () => {
         windup: 4,
         swoop: 7,
         tumble: 2,
+        blink: 11,
+        jetFuel: 1,
+        jetCd: 23,
+        stuckT: 5,
+        slimed: 90,
+        wary: 12,
+        cranky: 33,
+        webPulse: 8,
+        needleX: 155,
+        needleY: 66,
+        tpCool: 44,
+        rootSupport: 0.72,
+        rootGrowthBudget: 12,
+        rootPanic: 9,
+        rootSeekDir: -1,
+        rootLashX: 133,
+        rootLashY: 64,
+        mawChewT: 6,
+        mawChewCd: 24,
+        mawDir: 1,
+        mawStun: 13,
+        rillWet: 0.44,
+        rillChargeCd: 31,
+        rillChargeWindup: 7,
+        status: { ...createDefaultStatus(), burning: 20, electrified: 15, regen: 90 },
         submerged: true,
         dmgK: 1.4,
       }),
@@ -118,6 +143,33 @@ describe('level enemy persistence', () => {
     expect(revived.windup).toBe(4);
     expect(revived.swoop).toBe(7);
     expect(revived.tumble).toBe(2);
+    expect(revived.blink).toBe(11);
+    expect(revived.jetFuel).toBe(1);
+    expect(revived.jetCd).toBe(23);
+    expect(revived.stuckT).toBe(5);
+    expect(revived.slimed).toBe(90);
+    expect(revived.wary).toBe(12);
+    expect(revived.cranky).toBe(33);
+    expect(revived.webPulse).toBe(8);
+    expect(revived.needleX).toBe(155);
+    expect(revived.needleY).toBe(66);
+    expect(revived.tpCool).toBe(44);
+    expect(revived.rootSupport).toBeCloseTo(0.72);
+    expect(revived.rootGrowthBudget).toBe(12);
+    expect(revived.rootPanic).toBe(9);
+    expect(revived.rootSeekDir).toBe(-1);
+    expect(revived.rootLashX).toBe(133);
+    expect(revived.rootLashY).toBe(64);
+    expect(revived.mawChewT).toBe(6);
+    expect(revived.mawChewCd).toBe(24);
+    expect(revived.mawDir).toBe(1);
+    expect(revived.mawStun).toBe(13);
+    expect(revived.rillWet).toBeCloseTo(0.44);
+    expect(revived.rillChargeCd).toBe(31);
+    expect(revived.rillChargeWindup).toBe(7);
+    expect(revived.status.burning).toBe(20);
+    expect(revived.status.electrified).toBe(15);
+    expect(revived.status.regen).toBe(90);
     expect(revived.submerged).toBe(true);
     expect(revived.timer).toBe(17);
     expect(revived.attackCd).toBe(12);
@@ -1077,5 +1129,16 @@ describe('level enemy persistence', () => {
         expect(save.player).toMatchObject({ x: 77, y: 88 });
       });
     });
+  });
+});
+
+describe('level objective labels', () => {
+  it('uses the resident boss kind for objective copy', () => {
+    const levels = new Levels({} as Ctx);
+    const objective = levels as unknown as { bossObjective(kind: 'leviathan' | 'colossus' | undefined): string };
+
+    expect(objective.bossObjective('leviathan')).toBe('DRAIN THE SUNKEN LEVIATHAN');
+    expect(objective.bossObjective('colossus')).toBe('SLAY THE KILN COLOSSUS');
+    expect(objective.bossObjective(undefined)).toBe('SLAY THE KILN COLOSSUS');
   });
 });

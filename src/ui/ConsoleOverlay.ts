@@ -72,6 +72,11 @@ export class ConsoleOverlay {
   private watchRefreshBusy = false;
   private watchHudTimer: number | null = null;
   private readonly focusRouter = new FocusRouter();
+  private readonly eventDisposers: Array<() => void> = [];
+  private readonly onToggleButtonClick = (event: MouseEvent): void => {
+    this.toggle();
+    (event.currentTarget as HTMLButtonElement).blur();
+  };
 
   constructor(private readonly ctx: Ctx) {
     const holder = document.getElementById('canvas-holder') ?? document.body;
@@ -138,13 +143,10 @@ export class ConsoleOverlay {
       this.resetCompletion();
       this.renderHints(this.ctx.console.complete(this.input.value));
     });
-    this.button?.addEventListener('click', (e) => {
-      this.toggle();
-      (e.currentTarget as HTMLButtonElement).blur();
-    });
-    ctx.events.on('toast', ({ text }) => {
+    this.button?.addEventListener('click', this.onToggleButtonClick);
+    this.eventDisposers.push(ctx.events.on('toast', ({ text }) => {
       this.appendLine('mirror', 'toast: ' + text);
-    });
+    }));
     window.addEventListener('error', this.onWindowError);
     window.addEventListener(DEV_CONSOLE_COMMAND_EVENT, this.onConsoleCommand);
     window.addEventListener('unhandledrejection', this.onUnhandledRejection);
@@ -174,6 +176,8 @@ export class ConsoleOverlay {
   private readonly onKeyUpCapture = (e: KeyboardEvent): void => this.onKeyUp(e);
 
   dispose(): void {
+    for (const dispose of this.eventDisposers.splice(0)) dispose();
+    this.button?.removeEventListener('click', this.onToggleButtonClick);
     window.removeEventListener('error', this.onWindowError);
     window.removeEventListener(DEV_CONSOLE_COMMAND_EVENT, this.onConsoleCommand);
     window.removeEventListener('unhandledrejection', this.onUnhandledRejection);
@@ -183,6 +187,9 @@ export class ConsoleOverlay {
       window.clearInterval(this.watchHudTimer);
       this.watchHudTimer = null;
     }
+    this.close();
+    this.root.remove();
+    this.watchEl.remove();
   }
 
   private toggle(): void {

@@ -111,6 +111,50 @@ describe('electrified shock', () => {
   });
 });
 
+describe('body cell contact sampling', () => {
+  it('floors fractional body coordinates before reading the grid', () => {
+    const world = new World(24, 24);
+    world.types[world.idx(9, 14)] = Cell.Water;
+    world.types[world.idx(11, 14)] = Cell.Water;
+    world.types[world.idx(13, 14)] = Cell.Water;
+    const body = { x: 12.5, y: 14.5, status: createDefaultStatus() };
+
+    sampleAndTickStatus(ctxWith(world).ctx, body, 3, 8);
+
+    expect(body.status.wet).toBeGreaterThan(0);
+  });
+
+  it('poisons bodies in toxic sludge unless they are toxic-immune', () => {
+    const world = new World(24, 24);
+    for (let dy = 0; dy < 8; dy += 2) {
+      for (let dx = -3; dx <= 3; dx += 2) world.types[world.idx(12 + dx, 14 - dy)] = Cell.Toxic;
+    }
+    const poisoned = { x: 12, y: 14, status: createDefaultStatus() };
+    const immune = { x: 12, y: 14, status: createDefaultStatus() };
+
+    const a = sampleAndTickStatus(ctxWith(world).ctx, poisoned, 3, 8, undefined, 2);
+    const b = sampleAndTickStatus(ctxWith(world).ctx, immune, 3, 8, { toxic: true }, 2);
+
+    expect(a.toxicDamage).toBeGreaterThan(0);
+    expect(a.damage).toBeGreaterThan(0);
+    expect(b.toxicDamage).toBe(0);
+    expect(b.damage).toBe(0);
+  });
+
+  it('reports healium and teleportium contact through the shared sampler', () => {
+    const world = new World(24, 24);
+    world.types[world.idx(9, 14)] = Cell.Healium;
+    world.colors[world.idx(9, 14)] = 0xff88cc;
+    world.types[world.idx(11, 14)] = Cell.Teleportium;
+    const body = { x: 12, y: 14, status: createDefaultStatus() };
+
+    const eff = sampleAndTickStatus(ctxWith(world).ctx, body, 3, 8, undefined, 2);
+
+    expect(eff.healing).toBeGreaterThan(0);
+    expect(eff.teleportTouch).toBe(true);
+  });
+});
+
 describe('catch fire (percentage-based)', () => {
   function fillBox(world: World, cell: number, cx: number, cy: number, halfW: number, h: number): void {
     for (let dy = 0; dy < h; dy++) for (let dx = -halfW; dx <= halfW; dx++) world.types[world.idx(cx + dx, cy - dy)] = cell;

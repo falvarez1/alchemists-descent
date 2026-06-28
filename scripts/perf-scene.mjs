@@ -33,7 +33,16 @@ const url = process.argv[3] ?? 'http://localhost:5173/';
 const RUNS = Number(process.argv[4] ?? 3);
 const FRAMES = Number(process.argv[5] ?? 700);
 const GPU_COMPOSE_MODE = process.env.PERF_GPU_COMPOSE ?? 'current';
-const SUMMARY_THRESHOLDS = parseThresholdEnv('PERF_SCENE_THRESHOLDS');
+const DEFAULT_SUMMARY_THRESHOLDS = {
+  sim: { p95: 6 },
+  entities: { p95: 2.5 },
+  render: { p95: 5 },
+  frame: { p95: 25 },
+};
+const SUMMARY_THRESHOLDS = {
+  ...DEFAULT_SUMMARY_THRESHOLDS,
+  ...(parseThresholdEnv('PERF_SCENE_THRESHOLDS') ?? {}),
+};
 const MAX_REGRESSION_PCT = Number(process.env.PERF_MAX_REGRESSION_PCT ?? NaN);
 if (!['0', '1', 'current'].includes(GPU_COMPOSE_MODE)) {
   throw new Error('PERF_GPU_COMPOSE must be 0, 1, or current');

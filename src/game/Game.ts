@@ -99,6 +99,7 @@ export class Game {
   private modePersistDisposer: (() => void) | null = null;
   private visibilityDisposer: (() => void) | null = null;
   private levelCurtainDisposer: (() => void) | null = null;
+  private tuningPersistenceDisposer: (() => void) | null = null;
   private levelCurtainTimer: number | null = null;
   private animationFrameId: number | null = null;
   private started = false;
@@ -202,11 +203,11 @@ export class Game {
     // Rehydrate live tuning (Global Controls, player feel, worldgen look, material/
     // spell params) from localStorage BEFORE the UI seeds its sliders or the first
     // level generates, then persist on every paramsChanged. Survives HMR + refresh.
-    installTuningPersistence(ctx);
+    this.tuningPersistenceDisposer = installTuningPersistence(ctx);
 
     ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
     ctx.events.on('waveStarted', ({ num }) => ctx.telemetry.count(`wave.reached.${num}`));
-    this.levelCurtainDisposer = ctx.events.on('levelCurtain', ({ visible, holdMs = 0, title, detail, onComplete }) => {
+    this.levelCurtainDisposer = ctx.events.on('levelCurtain', ({ visible, holdMs = 0, title, detail }) => {
       if (this.levelCurtainTimer !== null) {
         window.clearTimeout(this.levelCurtainTimer);
         this.levelCurtainTimer = null;
@@ -221,14 +222,12 @@ export class Game {
         curtain?.setAttribute('aria-hidden', 'false');
         // Force reflow so the curtain class commits before synchronous generation.
         if (curtain) void curtain.offsetHeight;
-        onComplete?.();
         return;
       }
       const hide = (): void => {
         curtain?.classList.remove('visible');
         curtain?.setAttribute('aria-hidden', 'true');
         this.levelCurtainTimer = null;
-        onComplete?.();
       };
       if (holdMs > 0) this.levelCurtainTimer = window.setTimeout(hide, holdMs);
       else hide();
@@ -333,6 +332,8 @@ export class Game {
     this.visibilityDisposer = null;
     this.levelCurtainDisposer?.();
     this.levelCurtainDisposer = null;
+    this.tuningPersistenceDisposer?.();
+    this.tuningPersistenceDisposer = null;
     if (this.levelCurtainTimer !== null) {
       window.clearTimeout(this.levelCurtainTimer);
       this.levelCurtainTimer = null;

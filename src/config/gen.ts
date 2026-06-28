@@ -111,8 +111,11 @@ import type { BiomeId } from '@/core/types';
  * v31: D1 gains the Noita-style surface intro — open sky, a rolling grass
  *      surface, a starter cabin, and a timbered cave mouth above the spawn
  *      chamber. D1 full-level output changed; other depths unaffected.
+ * v32: organic encounter lairs are carved after mineral-vug fill on signature
+ *      depths: rootloper groves, rillback pools, and stonemaw seams. Full-level
+ *      output changed on affected d2/d4/d5/d6/d8 seeds.
  */
-export const GEN_VERSION = 31;
+export const GEN_VERSION = 32;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

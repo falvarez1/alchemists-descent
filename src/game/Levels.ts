@@ -23,6 +23,7 @@ import type {
   Difficulty,
   Enemy,
   EnemyKind,
+  EntityStatus,
   GeneratedScenePlacement,
   AuthoredLight,
   ExitPortal,
@@ -46,6 +47,7 @@ import type {
   WeaverLairWeb,
   Waystone,
 } from '@/core/types';
+import { PICKUP_KINDS } from '@/core/types';
 import { createPlayer, grantFullReviewKit } from '@/entities/Player';
 import { PERK_IDS } from '@/content/perks';
 import { INTRO_REWARD_CARD } from '@/game/introObjectives';
@@ -56,8 +58,22 @@ import { makeLevelRuntime } from '@/game/runtime';
 import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
-import { blocksEntity, Cell } from '@/sim/CellType';
-import { COLOR_FN, emberColor, EMPTY_COLOR, packRGB } from '@/sim/colors';
+import { blocksEntity, Cell, isSoftGrowth } from '@/sim/CellType';
+import {
+  COLOR_FN,
+  bloodColor,
+  coalColor,
+  emberColor,
+  EMPTY_COLOR,
+  fungusColor,
+  mossColor,
+  packRGB,
+  rawOreColor,
+  slimeColor,
+  stoneColor,
+  vineColor,
+  waterColor,
+} from '@/sim/colors';
 import { World } from '@/sim/World';
 import { EXTRAS } from '@/world/biomeExtras';
 import { extractRegionGraph } from '@/world/regions';
@@ -113,7 +129,7 @@ const POPULATION_SPAWN_CLEARANCE = 220;
 const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, 80, 0] as const;
 const POPULATION_ATTEMPTS_PER_PASS = 36;
 const ROOST_ATTEMPTS_PER_PASS = 160;
-const VIRTUAL_PICKUP_KINDS = new Set<PickupKind>(['goldpile', 'heart', 'tome', 'chest', 'potion', 'key']);
+const VIRTUAL_PICKUP_KINDS = new Set<PickupKind>(PICKUP_KINDS);
 
 interface TransitionCurtainCopy {
   title?: string;
@@ -173,7 +189,32 @@ export interface SavedEnemyState {
   windup?: number;
   swoop?: number;
   tumble?: number;
+  blink?: number;
+  jetFuel?: number;
+  jetCd?: number;
+  stuckT?: number;
+  slimed?: number;
+  wary?: number;
+  cranky?: number;
+  webPulse?: number;
+  needleX?: number;
+  needleY?: number;
+  tpCool?: number;
   submerged?: boolean;
+  rootSupport?: number;
+  rootGrowthBudget?: number;
+  rootPanic?: number;
+  rootSeekDir?: number;
+  rootLashX?: number;
+  rootLashY?: number;
+  mawChewT?: number;
+  mawChewCd?: number;
+  mawDir?: number;
+  mawStun?: number;
+  rillWet?: number;
+  rillChargeCd?: number;
+  rillChargeWindup?: number;
+  status?: Partial<EntityStatus>;
 }
 
 interface SavedLevelBlob {
@@ -317,6 +358,21 @@ function finiteNumber(value: number | undefined, fallback: number): number {
   return value;
 }
 
+function savedStatus(status: EntityStatus): EntityStatus | undefined {
+  const out: EntityStatus = { ...status };
+  return Object.values(out).some((v) => v > 0) ? out : undefined;
+}
+
+function reviveStatus(status: Partial<EntityStatus> | undefined): EntityStatus {
+  const out = createDefaultStatus();
+  if (!status || typeof status !== 'object') return out;
+  for (const key of Object.keys(out) as Array<keyof EntityStatus>) {
+    const value = status[key];
+    if (typeof value === 'number' && Number.isFinite(value)) out[key] = Math.max(0, Math.floor(value));
+  }
+  return out;
+}
+
 /**
  * Per-level-blob shape guard. The top-level save validator must reject a save
  * whose `levels` array carries a structurally-broken blob (missing rle, a
@@ -355,7 +411,8 @@ function isSavedEnemyShape(value: unknown): value is SavedEnemyState {
     typeof e.y === 'number' &&
     typeof e.hp === 'number' &&
     typeof e.maxHp === 'number' &&
-    (e.dmgK === undefined || typeof e.dmgK === 'number')
+    (e.dmgK === undefined || typeof e.dmgK === 'number') &&
+    (e.status === undefined || (typeof e.status === 'object' && e.status !== null))
   );
 }
 
@@ -371,6 +428,8 @@ export function snapshotEnemyForSave(e: Enemy): SavedEnemyState {
     attackCd: e.attackCd,
     bobPhase: e.bobPhase,
   };
+  const status = savedStatus(e.status);
+  if (status) saved.status = status;
   if (e.sleeping === true) saved.sleeping = true;
   if (e.alerted === true) saved.alerted = true;
   if (e.patrol && e.patrol.length > 0) {
@@ -384,7 +443,31 @@ export function snapshotEnemyForSave(e: Enemy): SavedEnemyState {
   if (e.windup !== undefined) saved.windup = e.windup;
   if (e.swoop !== undefined) saved.swoop = e.swoop;
   if (e.tumble !== undefined) saved.tumble = e.tumble;
+  if (e.blink !== 0) saved.blink = e.blink;
+  if (e.jetFuel !== 0) saved.jetFuel = e.jetFuel;
+  if (e.jetCd !== 0) saved.jetCd = e.jetCd;
+  if (e.stuckT !== 0) saved.stuckT = e.stuckT;
+  if (e.slimed !== undefined) saved.slimed = e.slimed;
+  if (e.wary !== undefined) saved.wary = e.wary;
+  if (e.cranky !== undefined) saved.cranky = e.cranky;
+  if (e.webPulse !== undefined) saved.webPulse = e.webPulse;
+  if (e.needleX !== undefined) saved.needleX = e.needleX;
+  if (e.needleY !== undefined) saved.needleY = e.needleY;
+  if (e.tpCool !== undefined) saved.tpCool = e.tpCool;
   if (e.submerged === true) saved.submerged = true;
+  if (e.rootSupport !== undefined) saved.rootSupport = e.rootSupport;
+  if (e.rootGrowthBudget !== undefined) saved.rootGrowthBudget = e.rootGrowthBudget;
+  if (e.rootPanic !== undefined) saved.rootPanic = e.rootPanic;
+  if (e.rootSeekDir !== undefined) saved.rootSeekDir = e.rootSeekDir;
+  if (e.rootLashX !== undefined) saved.rootLashX = e.rootLashX;
+  if (e.rootLashY !== undefined) saved.rootLashY = e.rootLashY;
+  if (e.mawChewT !== undefined) saved.mawChewT = e.mawChewT;
+  if (e.mawChewCd !== undefined) saved.mawChewCd = e.mawChewCd;
+  if (e.mawDir !== undefined) saved.mawDir = e.mawDir;
+  if (e.mawStun !== undefined) saved.mawStun = e.mawStun;
+  if (e.rillWet !== undefined) saved.rillWet = e.rillWet;
+  if (e.rillChargeCd !== undefined) saved.rillChargeCd = e.rillChargeCd;
+  if (e.rillChargeWindup !== undefined) saved.rillChargeWindup = e.rillChargeWindup;
   return saved;
 }
 
@@ -416,7 +499,7 @@ export function reviveSavedEnemy(se: SavedEnemyState): Enemy {
     jetFuel: 0,
     jetCd: 0,
     stuckT: 0,
-    status: createDefaultStatus(),
+    status: reviveStatus(se.status),
   };
   if (se.sleeping === true) enemy.sleeping = true;
   if (se.alerted === true) enemy.alerted = true;
@@ -431,7 +514,31 @@ export function reviveSavedEnemy(se: SavedEnemyState): Enemy {
   if (se.windup !== undefined) enemy.windup = nonNegativeInt(se.windup, 0);
   if (se.swoop !== undefined) enemy.swoop = nonNegativeInt(se.swoop, 0);
   if (se.tumble !== undefined) enemy.tumble = nonNegativeInt(se.tumble, 0);
+  if (se.blink !== undefined) enemy.blink = nonNegativeInt(se.blink, 0);
+  if (se.jetFuel !== undefined) enemy.jetFuel = nonNegativeInt(se.jetFuel, 0);
+  if (se.jetCd !== undefined) enemy.jetCd = nonNegativeInt(se.jetCd, 0);
+  if (se.stuckT !== undefined) enemy.stuckT = nonNegativeInt(se.stuckT, 0);
+  if (se.slimed !== undefined) enemy.slimed = nonNegativeInt(se.slimed, 0);
+  if (se.wary !== undefined) enemy.wary = nonNegativeInt(se.wary, 0);
+  if (se.cranky !== undefined) enemy.cranky = nonNegativeInt(se.cranky, 0);
+  if (se.webPulse !== undefined) enemy.webPulse = nonNegativeInt(se.webPulse, 0);
+  if (se.needleX !== undefined) enemy.needleX = finiteNumber(se.needleX, enemy.x);
+  if (se.needleY !== undefined) enemy.needleY = finiteNumber(se.needleY, enemy.y);
+  if (se.tpCool !== undefined) enemy.tpCool = nonNegativeInt(se.tpCool, 0);
   if (se.submerged === true) enemy.submerged = true;
+  if (se.rootSupport !== undefined) enemy.rootSupport = Math.max(0, Math.min(1, finiteNumber(se.rootSupport, 0)));
+  if (se.rootGrowthBudget !== undefined) enemy.rootGrowthBudget = nonNegativeInt(se.rootGrowthBudget, 0);
+  if (se.rootPanic !== undefined) enemy.rootPanic = nonNegativeInt(se.rootPanic, 0);
+  if (se.rootSeekDir !== undefined) enemy.rootSeekDir = Math.sign(finiteNumber(se.rootSeekDir, 0));
+  if (se.rootLashX !== undefined) enemy.rootLashX = finiteNumber(se.rootLashX, enemy.x);
+  if (se.rootLashY !== undefined) enemy.rootLashY = finiteNumber(se.rootLashY, enemy.y);
+  if (se.mawChewT !== undefined) enemy.mawChewT = nonNegativeInt(se.mawChewT, 0);
+  if (se.mawChewCd !== undefined) enemy.mawChewCd = nonNegativeInt(se.mawChewCd, 0);
+  if (se.mawDir !== undefined) enemy.mawDir = Math.sign(finiteNumber(se.mawDir, 0));
+  if (se.mawStun !== undefined) enemy.mawStun = nonNegativeInt(se.mawStun, 0);
+  if (se.rillWet !== undefined) enemy.rillWet = Math.max(0, Math.min(1, finiteNumber(se.rillWet, 0)));
+  if (se.rillChargeCd !== undefined) enemy.rillChargeCd = nonNegativeInt(se.rillChargeCd, 0);
+  if (se.rillChargeWindup !== undefined) enemy.rillChargeWindup = nonNegativeInt(se.rillChargeWindup, 0);
   return enemy;
 }
 
@@ -442,6 +549,7 @@ export class Levels implements LevelsApi {
   /** Previous expedition pointer while a disposable custom playtest is current. */
   private preCustomCurrentId: string | null = null;
   private _transitioning = false;
+  private transitionFinishTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * worldSeed captured on the FIRST startDescent. Level seeds derive from
@@ -483,16 +591,22 @@ export class Levels implements LevelsApi {
     });
   }
 
+  private clearTransitionFinishTimer(): void {
+    if (this.transitionFinishTimer === null) return;
+    clearTimeout(this.transitionFinishTimer);
+    this.transitionFinishTimer = null;
+  }
+
   private finishTransitionWithCurtain(ctx: Ctx): void {
-    const complete = (): void => {
+    this.clearTransitionFinishTimer();
+    this.transitionFinishTimer = setTimeout(() => {
+      this.transitionFinishTimer = null;
       this._transitioning = false;
-    };
-    const handled = ctx.events.emit('levelCurtain', {
+    }, CURTAIN_HOLD_MS);
+    ctx.events.emit('levelCurtain', {
       visible: false,
       holdMs: CURTAIN_HOLD_MS,
-      onComplete: complete,
     });
-    if (!handled) complete();
   }
 
   get current(): LevelRuntime | null {
@@ -687,6 +801,18 @@ export class Levels implements LevelsApi {
     if (ctx.wands.collection.includes(INTRO_REWARD_CARD)) return 'SLOT HEAVY AT THE WAND BENCH';
     if (runtime.spellLab) return 'CLAIM HEAVY FROM THE SPELL LAB';
     return 'USE THE WAND BENCH BEFORE DESCENDING';
+  }
+
+  private bossObjective(kind: EnemyKind | undefined): string {
+    const resolved = kind ?? 'colossus';
+    switch (resolved) {
+      case 'leviathan':
+        return 'DRAIN THE SUNKEN LEVIATHAN';
+      case 'colossus':
+        return 'SLAY THE KILN COLOSSUS';
+      default:
+        return `SLAY THE ${resolved.toUpperCase()}`;
+    }
   }
 
   /**
@@ -1141,6 +1267,7 @@ export class Levels implements LevelsApi {
     this.reviewKitSeeded.clear();
     this.waystoneHeat = [];
     this.lastEnemiesEmit = -1;
+    this.clearTransitionFinishTimer();
     this._transitioning = false;
     this.expeditionSeed = null;
 
@@ -2096,7 +2223,7 @@ export class Levels implements LevelsApi {
             : this.firstLevelBenchGateCue(ctx, runtime)
           : 'FIND THE GOLDEN KEY'
         : runtime.boss
-          ? 'SLAY THE KILN COLOSSUS'
+          ? this.bossObjective(runtime.boss.kind)
           : def.branch
             ? 'PLUNDER THE HOARD — THE ARCH LEADS HOME'
             : 'THE DEPTHS END HERE — SURVIVE',
@@ -2221,21 +2348,32 @@ export class Levels implements LevelsApi {
     });
     const populationReach = wizardMask(makeLevelRuntime({ def, world, spawn, regions }));
     const weaverLairWebs: WeaverLairWeb[] = [];
-    this.placePopulation(ctx, def, spawn, regions, populationReach, new Rng(hashSeed(seed, 'population')), weaverLairWebs);
+    const population = this.placePopulation(
+      ctx,
+      def,
+      spawn,
+      regions,
+      populationReach,
+      new Rng(hashSeed(seed, 'population')),
+      weaverLairWebs,
+    );
     // Boss arenas: the Kiln Colossus at the bottom of the run; the Sunken
     // Leviathan in d4's perched cistern (the marker carries the kind).
-    if (boss) ctx.enemyCtl.spawn(boss.kind ?? 'colossus', boss.x, boss.y);
+    if (boss && !ctx.enemyCtl.spawn(boss.kind ?? 'colossus', boss.x, boss.y)) {
+      ctx.telemetry.count(`population.skipped.${def.id}.${boss.kind ?? 'colossus'}`);
+    }
     // The Gilded Vault's hoard guards: a pair of elite golems, posted at the
     // chamber flanks (their boosted stats persist through saves — the blob
     // roster records hp/maxHp/dmgK).
     if (vaultHoard) {
       for (const side of [-10, 10]) {
-        ctx.enemyCtl.spawn('golem', vaultHoard.x + side, vaultHoard.y);
-        const g = ctx.enemies[ctx.enemies.length - 1];
+        const g = ctx.enemyCtl.spawn('golem', vaultHoard.x + side, vaultHoard.y);
         if (g && g.kind === 'golem') {
           g.maxHp = Math.round(g.maxHp * 2.6);
           g.hp = g.maxHp;
           g.dmgK = (g.dmgK ?? 1) * 1.6;
+        } else {
+          ctx.telemetry.count(`population.skipped.${def.id}.golem`);
         }
       }
     }
@@ -2269,6 +2407,7 @@ export class Levels implements LevelsApi {
       ...(surfaceSpawn ? { surfaceSpawn } : {}),
       ...(surfaceSkyLine !== null ? { skyLine: surfaceSkyLine } : {}),
       weaverLairWebs,
+      population,
     });
 
     // Findability fail-open: validator-matched progression breaks carve an
@@ -2290,20 +2429,37 @@ export class Levels implements LevelsApi {
     reachable: Uint8Array,
     rng: Rng,
     weaverLairWebs: WeaverLairWeb[],
-  ): void {
+  ): NonNullable<LevelRuntime['population']> {
     // Depth sets the headcount; the biome's foes table sets the mix; difficulty
     // scales the whole headcount (the "enemy rate is insane" knob). Level 3 = ×1.
     const foes = EXTRAS[def.biome].foes;
     const pop = populationForLevel(def, foes);
     const countScale = difficultyMods(ctx.state).enemyCount;
+    const report: NonNullable<LevelRuntime['population']> = { planned: {}, placed: {}, skipped: {}, lairs: {} };
+    const markSkipped = (kind: EnemyKind): void => {
+      report.skipped[kind] = (report.skipped[kind] ?? 0) + 1;
+      ctx.telemetry.count(`population.skipped.${def.id}.${kind}`);
+    };
     for (const [kind, count] of Object.entries(pop) as Array<[EnemyKind, number]>) {
       const enemyDef = ctx.enemyCtl.defs[kind];
       const scaled = Math.round(count * countScale);
+      report.planned[kind] = scaled;
       for (let i = 0; i < scaled; i++) {
-        const spot = this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h);
+        const habitat = this.populationHabitatOptions(ctx, kind);
+        const spot =
+          this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h, habitat) ??
+          this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h);
         if (spot) {
           const enemy = this.spawnSeededEnemy(ctx, kind, spot.x, spot.y, rng);
-          if (enemy?.kind === 'weaver') this.stampWeaverLair(ctx, spot.x, spot.y, rng, weaverLairWebs);
+          if (enemy) {
+            report.placed[kind] = (report.placed[kind] ?? 0) + 1;
+            if (enemy.kind === 'weaver') this.stampWeaverLair(ctx, spot.x, spot.y, rng, weaverLairWebs);
+            this.stampOrganicEnemyLair(ctx, enemy, rng, report);
+          } else {
+            markSkipped(kind);
+          }
+        } else {
+          markSkipped(kind);
         }
       }
     }
@@ -2316,12 +2472,16 @@ export class Levels implements LevelsApi {
         const roost = this.findRoostSpot(ctx, rng, spawn, regions, reachable);
         if (!roost) continue;
         const brood = 3 + rng.int(2);
+        report.planned.bat = (report.planned.bat ?? 0) + brood;
         for (let b = 0; b < brood; b++) {
           const bat = this.spawnSeededEnemy(ctx, 'bat', roost.x + (b - 1) * 5, roost.y + 4, rng);
           if (bat && bat.kind === 'bat') {
+            report.placed.bat = (report.placed.bat ?? 0) + 1;
             bat.sleeping = true;
             bat.y = roost.y + 4; // hang just under the ceiling
             bat.x = roost.x + (b - 1) * 5;
+          } else {
+            markSkipped('bat');
           }
         }
       }
@@ -2334,9 +2494,15 @@ export class Levels implements LevelsApi {
         const spot = this.findPopulationSpot(ctx, rng, spawn, regions, reachable, eggsDef.halfW, eggsDef.h, {
           clearances: [180, 100, 0],
         });
-        if (spot) this.spawnSeededEnemy(ctx, 'eggs', spot.x, spot.y, rng);
+        report.planned.eggs = (report.planned.eggs ?? 0) + 1;
+        if (spot && this.spawnSeededEnemy(ctx, 'eggs', spot.x, spot.y, rng)) {
+          report.placed.eggs = (report.placed.eggs ?? 0) + 1;
+        } else {
+          markSkipped('eggs');
+        }
       }
     }
+    return report;
   }
 
   private findPopulationSpot(
@@ -2379,6 +2545,75 @@ export class Levels implements LevelsApi {
       }
     }
     return null;
+  }
+
+  private populationHabitatOptions(ctx: Ctx, kind: EnemyKind): PopulationSpotOptions {
+    if (kind === 'rootloper') {
+      return {
+        attempts: POPULATION_ATTEMPTS_PER_PASS * 3,
+        extra: (x, y) => this.rootLoperHabitatScore(ctx, x, y) >= 5,
+      };
+    }
+    if (kind === 'stonemaw') {
+      return {
+        attempts: POPULATION_ATTEMPTS_PER_PASS * 3,
+        extra: (x, y) => this.stoneMawHabitatScore(ctx, x, y) >= 10,
+      };
+    }
+    if (kind === 'rillback') {
+      return {
+        attempts: POPULATION_ATTEMPTS_PER_PASS * 3,
+        extra: (x, y) => this.rillbackHabitatScore(ctx, x, y) >= 8,
+      };
+    }
+    return {};
+  }
+
+  private rootLoperHabitatScore(ctx: Ctx, x: number, y: number): number {
+    const world = ctx.world;
+    let score = 0;
+    for (let dy = -18; dy <= 8; dy += 3) {
+      for (let dx = -24; dx <= 24; dx += 3) {
+        const px = Math.floor(x + dx);
+        const py = Math.floor(y + dy);
+        if (!world.inBounds(px, py)) continue;
+        const t = world.types[world.idx(px, py)];
+        if (isSoftGrowth(t) || t === Cell.Wood) score++;
+      }
+    }
+    return score;
+  }
+
+  private stoneMawHabitatScore(ctx: Ctx, x: number, y: number): number {
+    const world = ctx.world;
+    let score = 0;
+    for (let dy = -18; dy <= 8; dy += 3) {
+      for (let dx = -28; dx <= 28; dx += 3) {
+        const px = Math.floor(x + dx);
+        const py = Math.floor(y + dy);
+        if (!world.inBounds(px, py)) continue;
+        const t = world.types[world.idx(px, py)];
+        if (t === Cell.Wall || t === Cell.Stone || t === Cell.RawOre || t === Cell.Coal || t === Cell.Sand || t === Cell.Ash) {
+          score++;
+        }
+      }
+    }
+    return score;
+  }
+
+  private rillbackHabitatScore(ctx: Ctx, x: number, y: number): number {
+    const world = ctx.world;
+    let score = 0;
+    for (let dy = -14; dy <= 6; dy += 2) {
+      for (let dx = -24; dx <= 24; dx += 2) {
+        const px = Math.floor(x + dx);
+        const py = Math.floor(y + dy);
+        if (!world.inBounds(px, py)) continue;
+        const t = world.types[world.idx(px, py)];
+        if (t === Cell.Water || t === Cell.Blood || t === Cell.Slime) score++;
+      }
+    }
+    return score;
   }
 
   private findRoostSpot(
@@ -2435,13 +2670,147 @@ export class Levels implements LevelsApi {
   }
 
   private spawnSeededEnemy(ctx: Ctx, kind: EnemyKind, x: number, y: number, rng: Rng): Enemy | null {
-    const before = ctx.enemies.length;
-    ctx.enemyCtl.spawn(kind, x, y);
-    const enemy = ctx.enemies[before] ?? null;
+    const enemy = ctx.enemyCtl.spawn(kind, x, y);
     if (!enemy) return null;
     enemy.timer = rng.int(80);
     enemy.bobPhase = rng.next() * Math.PI * 2;
     return enemy;
+  }
+
+  private stampOrganicEnemyLair(
+    ctx: Ctx,
+    enemy: Enemy,
+    rng: Rng,
+    report: NonNullable<LevelRuntime['population']>,
+  ): void {
+    let changed = 0;
+    if (enemy.kind === 'rootloper') changed = this.stampRootLoperGrove(ctx, enemy.x, enemy.y, rng);
+    else if (enemy.kind === 'stonemaw') changed = this.stampStoneMawSeam(ctx, enemy.x, enemy.y, rng);
+    else if (enemy.kind === 'rillback') changed = this.stampRillbackPool(ctx, enemy.x, enemy.y, rng);
+    if (changed <= 0) return;
+    report.lairs ??= {};
+    report.lairs[enemy.kind] = (report.lairs[enemy.kind] ?? 0) + 1;
+  }
+
+  private stampRootLoperGrove(ctx: Ctx, x: number, y: number, rng: Rng): number {
+    const world = ctx.world;
+    let changed = 0;
+    const paintEmpty = (px: number, py: number, type: Cell): boolean => {
+      if (!world.inBounds(px, py)) return false;
+      const i = world.idx(px, py);
+      if (world.types[i] !== Cell.Empty) return false;
+      const fn = type === Cell.Vines ? vineColor : type === Cell.Moss ? mossColor : fungusColor;
+      world.replaceCellAt(i, type, fn());
+      changed++;
+      return true;
+    };
+    const hasSupport = (px: number, py: number): boolean => {
+      if (!world.inBounds(px, py + 1)) return false;
+      if (blocksEntity(world.types[world.idx(px, py + 1)])) return true;
+      for (const side of [-1, 1]) {
+        if (world.inBounds(px + side, py) && blocksEntity(world.types[world.idx(px + side, py)])) return true;
+      }
+      return false;
+    };
+
+    for (let n = 0; n < 12; n++) {
+      const ax = Math.floor(x - 48 + rng.int(97));
+      let anchorY = -1;
+      for (let yy = Math.floor(y - 64); yy <= Math.floor(y - 12); yy++) {
+        if (!world.inBounds(ax, yy) || !world.inBounds(ax, yy + 1)) continue;
+        if (blocksEntity(world.types[world.idx(ax, yy)]) && world.types[world.idx(ax, yy + 1)] === Cell.Empty) {
+          anchorY = yy + 1;
+          break;
+        }
+      }
+      if (anchorY < 0) continue;
+      const len = 5 + rng.int(13);
+      for (let k = 0; k < len; k++) {
+        const px = ax + Math.round(Math.sin((k + n) * 0.65) * 1.3);
+        const py = anchorY + k;
+        if (!paintEmpty(px, py, Cell.Vines) && k > 3) break;
+        if (rng.next() < 0.16) paintEmpty(px + (rng.next() < 0.5 ? -1 : 1), py, Cell.Vines);
+      }
+    }
+
+    for (let n = 0; n < 180; n++) {
+      const px = Math.floor(x - 54 + rng.int(109));
+      const py = Math.floor(y - 20 + rng.int(33));
+      if (!world.inBounds(px, py) || !hasSupport(px, py)) continue;
+      const roll = rng.next();
+      paintEmpty(px, py, roll < 0.45 ? Cell.Moss : roll < 0.78 ? Cell.Fungus : Cell.Vines);
+    }
+    return changed;
+  }
+
+  private stampStoneMawSeam(ctx: Ctx, x: number, y: number, rng: Rng): number {
+    const world = ctx.world;
+    let changed = 0;
+    const retint = (px: number, py: number, type: Cell): boolean => {
+      if (!world.inBounds(px, py)) return false;
+      const i = world.idx(px, py);
+      const t = world.types[i];
+      if (t === Cell.Metal || t === Cell.Glass || t === Cell.Empty || t === Cell.Water || t === Cell.Lava) {
+        return false;
+      }
+      if (!blocksEntity(t)) return false;
+      const fn = type === Cell.RawOre ? rawOreColor : type === Cell.Coal ? coalColor : stoneColor;
+      world.replaceCellAt(i, type, fn());
+      changed++;
+      return true;
+    };
+
+    for (let n = 0; n < 150; n++) {
+      const side = rng.next() < 0.5 ? -1 : 1;
+      const px = Math.floor(x + side * (10 + rng.int(42)));
+      const py = Math.floor(y - 24 + rng.int(39));
+      const vein = rng.next();
+      retint(px, py, vein < 0.5 ? Cell.RawOre : vein < 0.78 ? Cell.Coal : Cell.Stone);
+    }
+    // Guaranteed readable seam under the existing floor, still replacing only
+    // already-blocking cells, so the lair cannot create a new route blocker.
+    for (let dx = -18; dx <= 18; dx++) {
+      for (let dy = 1; dy <= 5; dy++) {
+        if ((dx * dx) / (18 * 18) + (dy * dy) / 25 > 1) continue;
+        if (rng.next() < 0.34) retint(Math.floor(x + dx), Math.floor(y + dy), rng.next() < 0.7 ? Cell.RawOre : Cell.Coal);
+      }
+    }
+    return changed;
+  }
+
+  private stampRillbackPool(ctx: Ctx, x: number, y: number, rng: Rng): number {
+    const world = ctx.world;
+    let changed = 0;
+    const paintLiquid = (px: number, py: number, type: Cell): boolean => {
+      if (!world.inBounds(px, py)) return false;
+      const i = world.idx(px, py);
+      const t = world.types[i];
+      if (t !== Cell.Empty && t !== Cell.Water && t !== Cell.Blood && t !== Cell.Slime) return false;
+      const fn = type === Cell.Blood ? bloodColor : type === Cell.Slime ? slimeColor : waterColor;
+      world.replaceCellAt(i, type, fn());
+      world.life[i] = 0;
+      changed++;
+      return true;
+    };
+
+    for (let dy = -11; dy <= 2; dy++) {
+      for (let dx = -24; dx <= 24; dx++) {
+        if ((dx * dx) / (24 * 24) + (dy * dy) / (12 * 12) > 1) continue;
+        const roll = rng.next();
+        const type = roll < 0.06 ? Cell.Blood : roll < 0.13 ? Cell.Slime : Cell.Water;
+        paintLiquid(Math.floor(x + dx), Math.floor(y + dy), type);
+      }
+    }
+    for (let n = 0; n < 40; n++) {
+      const px = Math.floor(x - 28 + rng.int(57));
+      const py = Math.floor(y - 13 + rng.int(17));
+      if (!world.inBounds(px, py) || !world.inBounds(px, py + 1)) continue;
+      if (world.types[world.idx(px, py)] === Cell.Empty && blocksEntity(world.types[world.idx(px, py + 1)])) {
+        world.replaceCellAt(world.idx(px, py), Cell.Moss, mossColor());
+        changed++;
+      }
+    }
+    return changed;
   }
 
   private stampWeaverLair(ctx: Ctx, x: number, y: number, rng: Rng, weaverLairWebs: WeaverLairWeb[]): void {

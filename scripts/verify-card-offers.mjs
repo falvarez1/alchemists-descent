@@ -116,7 +116,9 @@ const beforeShop = await page.evaluate(() => {
     'dig',
     'conjure',
     'vitriol',
+    'cryojet',
     'frostshard',
+    'aquajet',
     'bomb',
     'lightning',
     'warp',
@@ -130,6 +132,7 @@ const beforeShop = await page.evaluate(() => {
     'triple',
     'watertrail',
     'shorthoming',
+    'pyrecrit',
   );
   ctx.events.emit('scoreChanged', { score: ctx.state.score });
   ctx.sanctum.openShop(ctx);

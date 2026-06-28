@@ -170,7 +170,8 @@ try {
   const dismountMax = setup.timers.tryWeaverWallDismount?.max ?? 0;
   const failures = [];
   if (dismountMax > 8) failures.push(`tryWeaverWallDismount.max ${dismountMax.toFixed(2)}ms > 8ms`);
-  if (summary.entities.p95 > 4) failures.push(`entities.p95 ${summary.entities.p95.toFixed(2)}ms > 4ms`);
+  if (summary.entities.p95 > 2.5) failures.push(`entities.p95 ${summary.entities.p95.toFixed(2)}ms > 2.5ms`);
+  if (summary.render.p95 > 5) failures.push(`render.p95 ${summary.render.p95.toFixed(2)}ms > 5ms`);
   if (summary.frame.p95 > 25) failures.push(`frame.p95 ${summary.frame.p95.toFixed(2)}ms > 25ms`);
 
   const out = `verify-out/perf-weaver-wall-dismount-${sanitizeLabel(String(durationMs))}-${Date.now()}.json`;

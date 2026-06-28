@@ -64,6 +64,7 @@ import { World } from '@/sim/World';
 import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
 import { resetCombatTransients } from '@/core/runtimeState';
 import { PreviewRuntime } from '@/builder/PreviewRuntime';
+import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 import {
   capturePrefab,
   decodePrefabCells,
@@ -979,6 +980,7 @@ export class Builder {
   private codeBusy = false;
   private builderHelpOpen = false;
   private builderHelpReturnFocus: HTMLElement | null = null;
+  private builderHelpFocusTrap: ModalFocusTrap | null = null;
   private cmdkReturnFocus: HTMLElement | null = null;
   private workspaceLayout: WorkspaceLayout = loadWorkspaceLayout();
   private dockHost!: DockHost;
@@ -1006,6 +1008,7 @@ export class Builder {
   private intentModal: HTMLDivElement | null = null;
   private intentModalPauseClaim: BuilderPauseClaim | null = null;
   private intentModalKeydown: ((e: KeyboardEvent) => void) | null = null;
+  private intentModalFocusTrap: ModalFocusTrap | null = null;
   private rafId = 0;
   private statusTimer = 0;
 
@@ -1440,6 +1443,10 @@ export class Builder {
     help.addEventListener('pointerdown', (e) => {
       if (e.target === help) this.setBuilderHelp(false);
     });
+    this.builderHelpFocusTrap = createModalFocusTrap(help, {
+      onEscape: () => this.setBuilderHelp(false),
+      initialFocus: () => this.el<HTMLButtonElement>('builder-help-close'),
+    });
   }
 
   private setBuilderHelp(open: boolean): void {
@@ -1453,10 +1460,12 @@ export class Builder {
     if (open && !wasOpen) {
       this.builderHelpReturnFocus =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      this.el<HTMLButtonElement>('builder-help-close').focus({ preventScroll: true });
+      this.builderHelpFocusTrap?.activate();
+      this.builderHelpFocusTrap?.focusInitial(this.el<HTMLButtonElement>('builder-help-close'));
     } else if (!open && wasOpen) {
       const returnFocus = this.builderHelpReturnFocus;
       this.builderHelpReturnFocus = null;
+      this.builderHelpFocusTrap?.deactivate({ restoreFocus: false });
       if (returnFocus && document.contains(returnFocus)) returnFocus.focus({ preventScroll: true });
     }
   }
@@ -3313,10 +3322,15 @@ export class Builder {
       }
     };
     window.addEventListener('keydown', this.intentModalKeydown, true);
+    this.intentModalFocusTrap = createModalFocusTrap(modal, {
+      onEscape: () => choose('cancel'),
+      initialFocus: () => modal.querySelector<HTMLButtonElement>('[data-intent="current-scene"]'),
+    });
 
     document.body.appendChild(modal);
     this.intentModal = modal;
-    modal.querySelector<HTMLButtonElement>('[data-intent="current-scene"]')?.focus();
+    this.intentModalFocusTrap.activate();
+    this.intentModalFocusTrap.focusInitial();
   }
 
   private hideOpenIntentModal(restorePause: boolean): void {
@@ -3325,6 +3339,8 @@ export class Builder {
       window.removeEventListener('keydown', this.intentModalKeydown, true);
       this.intentModalKeydown = null;
     }
+    this.intentModalFocusTrap?.deactivate({ restoreFocus: false });
+    this.intentModalFocusTrap = null;
     this.intentModal.remove();
     this.intentModal = null;
     if (restorePause) this.host.releasePause(this.intentModalPauseClaim);

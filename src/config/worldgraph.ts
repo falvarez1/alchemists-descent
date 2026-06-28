@@ -63,15 +63,27 @@ export function populationForLevel(
   foes: Partial<Record<EnemyKind, number>>,
 ): Partial<Record<EnemyKind, number>> {
   const depth = def.depth;
-  const total = 24 + depth * 6;
+  const native: Partial<Record<EnemyKind, number>> = {};
+  if (depth >= 2) native.acidslime = 2;
+  if (depth >= 3) native.wisp = 1 + Math.floor(depth / 3);
+  if (depth >= 4) native.mage = Math.max(1, depth - 3);
+  const nativeTotal = Object.values(native).reduce((a, b) => a + (b ?? 0), 0);
+  const reserve =
+    (foes.bat ? 4 : 0) +
+    (foes.slime ? 2 : 0) +
+    (def.depth === 4 && !def.branch ? 1 : 0) +
+    (def.depth === 8 && !def.branch ? 1 : 0) +
+    (def.branch ? 2 : 0);
+  const total = Math.min(70, Math.max(45, 24 + depth * 6));
+  const biomeTotal = Math.max(0, total - reserve - nativeTotal);
   const weightSum = Object.values(foes).reduce((a, b) => a + (b ?? 0), 0) || 1;
   const out: Partial<Record<EnemyKind, number>> = {};
   for (const [kind, weight] of Object.entries(foes) as Array<[EnemyKind, number]>) {
-    out[kind] = Math.round((total * weight) / weightSum);
+    out[kind] = Math.round((biomeTotal * weight) / weightSum);
   }
   // Wave C natives keep their depth gating on top of the biome roster.
-  if (depth >= 2) out.acidslime = (out.acidslime ?? 0) + 2;
-  if (depth >= 3) out.wisp = (out.wisp ?? 0) + 1 + Math.floor(depth / 3);
-  if (depth >= 4) out.mage = (out.mage ?? 0) + Math.max(1, depth - 3);
+  for (const [kind, count] of Object.entries(native) as Array<[EnemyKind, number]>) {
+    out[kind] = (out[kind] ?? 0) + count;
+  }
   return out;
 }

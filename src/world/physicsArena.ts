@@ -1,7 +1,7 @@
 import type { BodyMaterial, Ctx, Mechanism } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, packRGB } from '@/sim/colors';
-import { makeDispenser, makeLever, makePlate, makeRelay } from '@/game/Mechanisms';
+import { makeDispenser, makeLever, makePlate, makeRelay } from '@/core/mechanismFactories';
 import { BACKDROP_LAYER_SPECS, createDefaultBackdropSettings } from '@/config/backdrop';
 
 /**

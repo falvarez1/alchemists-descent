@@ -35,7 +35,7 @@ export interface EventMap {
   /** The player arrived in a level — HUD shows depth + biome name. */
   levelChanged: { depth: number; name: string };
   /** Gameplay requests the level-transition curtain; Game owns DOM/timing. */
-  levelCurtain: { visible: boolean; holdMs?: number; title?: string; detail?: string; onComplete?: () => void };
+  levelCurtain: { visible: boolean; holdMs?: number; title?: string; detail?: string };
   /** A waystone brazier caught fire — checkpoint set. */
   waystoneLit: undefined;
   /**

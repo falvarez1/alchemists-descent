@@ -106,22 +106,23 @@ export class WandBench {
   private closeWatchTimer: number | null = null;
   /** Sim pause state captured when the bench opens, restored on close. */
   private wasPaused = false;
+  private readonly eventDisposers: Array<() => void> = [];
 
   constructor(private ctx: Ctx) {
     window.addEventListener('keydown', this.onKeyDown);
 
     // The bench is a play-mode verb; leaving play always closes it.
-    ctx.events.on('modeChanged', ({ mode }) => {
+    this.eventDisposers.push(ctx.events.on('modeChanged', ({ mode }) => {
       if (mode !== 'play') this.setVisible(false);
-    });
-    ctx.events.on('wandChanged', () => {
+    }));
+    this.eventDisposers.push(ctx.events.on('wandChanged', () => {
       if (!this.visible) return;
       if (!canOpenWandBench(this.ctx)) {
         this.setVisible(false);
         return;
       }
       this.render();
-    });
+    }));
     this.closeWatchTimer = window.setInterval(() => {
       if (this.visible && !canOpenWandBench(this.ctx)) this.setVisible(false);
     }, 250);
@@ -134,6 +135,7 @@ export class WandBench {
   };
 
   dispose(): void {
+    for (const dispose of this.eventDisposers.splice(0)) dispose();
     window.removeEventListener('keydown', this.onKeyDown);
     if (this.closeWatchTimer !== null) {
       window.clearInterval(this.closeWatchTimer);

@@ -529,6 +529,10 @@ export class Lighting implements LightField {
         const attack = (e.windup ?? 0) > 0 || e.blink > 0 ? 0.45 : 0;
         this.seedLight(e.x, e.y - 14, 0.18 + attack, 0.7 + attack, 0.28 + attack * 0.25);
         this.seedLight(e.x, e.y - 6, pulse * 0.12, pulse * 0.35, pulse * 0.14);
+      } else if (e.kind === 'rillback' && (e.blink > 0 || (e.rillChargeWindup ?? 0) > 0)) {
+        const windup = e.rillChargeWindup ?? 0;
+        const flash = 0.35 + Math.max(e.blink, windup) * 0.06;
+        this.seedLight(e.x, e.y - 5, flash * 0.25, flash * 0.8, flash);
       }
     }
 

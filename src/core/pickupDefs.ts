@@ -1,4 +1,5 @@
 import type { EntityStatus, Pickup, PickupKind } from '@/core/types';
+export { PICKUP_KINDS } from '@/core/types';
 import { packRGB } from '@/sim/colors';
 
 /** Instant potions: drinking applies a timed status; gameplay handles collection. */

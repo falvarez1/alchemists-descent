@@ -11,6 +11,7 @@ import {
 import type { EditorDocument, EditorLink, EditorObject, EditorObjectKind } from '@/builder/document';
 import { kindLabel } from '@/builder/kindLabel';
 import { POTION_KINDS } from '@/core/pickupDefs';
+import { PICKUP_KINDS } from '@/core/types';
 import { TOME_REWARD_POOL } from '@/combat/wands/rewardPools';
 import { PLUG_CELLS, SENSOR_FILTER_CELLS, VALVE_CELLS } from '@/game/instantiate';
 import {
@@ -80,7 +81,7 @@ const PLAYTEST_BLOCKING_CODES = new Set([
 ]);
 const VALID_TOME_CARDS = new Set<string>([...TOME_REWARD_POOL, 'vitrify']);
 const VALID_POTIONS = new Set<string>(POTION_KINDS);
-const VALID_PICKUP_KINDS = new Set(['goldpile', 'heart', 'tome', 'chest', 'potion', 'key']);
+const VALID_PICKUP_KINDS = new Set<string>(PICKUP_KINDS);
 
 /**
  * Validation deliberately reports authoring and findability errors that are

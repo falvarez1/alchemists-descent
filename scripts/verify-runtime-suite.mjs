@@ -19,6 +19,9 @@ const PROBES = [
   'verify-card-offers.mjs',
   'verify-runtime-ui.mjs',
   'verify-debug-tool.mjs',
+  'verify-encounter-lairs.mjs',
+  'verify-organic-enemy-trio.mjs',
+  'verify-organic-enemy-trio-sprites.mjs',
 ];
 const PROBE_TIMEOUT_MS = 240_000;
 
