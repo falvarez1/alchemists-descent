@@ -196,7 +196,7 @@ function packCellValue(types: Uint8Array, colors: Uint32Array, charge: Uint16Arr
 }
 
 function createLiveMetrics(frameId: number): RenderBackendWebGpuComposeLiveMetrics {
-  return {
+  return resetLiveMetrics({
     frameId,
     outputPixels: VIEW_W * VIEW_H,
     dispatchWorkgroupsX: Math.ceil(VIEW_W / 8),
@@ -231,7 +231,56 @@ function createLiveMetrics(frameId: number): RenderBackendWebGpuComposeLiveMetri
     commandEncodeSubmitCpuMs: 0,
     totalLogicalUploadBytes: 0,
     totalSubmittedUploadBytes: 0,
-  };
+  }, frameId);
+}
+
+function resetLiveMetrics(
+  metrics: RenderBackendWebGpuComposeLiveMetrics,
+  frameId: number,
+): RenderBackendWebGpuComposeLiveMetrics {
+  metrics.frameId = frameId;
+  metrics.outputPixels = VIEW_W * VIEW_H;
+  metrics.dispatchWorkgroupsX = Math.ceil(VIEW_W / 8);
+  metrics.dispatchWorkgroupsY = Math.ceil(VIEW_H / 8);
+  metrics.beginFrameCpuMs = 0;
+  metrics.commitCpuMs = 0;
+  metrics.packWindowCpuMs = 0;
+  metrics.packWindowBytes = WIN_W * WIN_H * 4;
+  metrics.worldWindowLogicalUploadBytes = 0;
+  metrics.worldWindowSubmittedUploadBytes = 0;
+  metrics.worldWindowUploadCpuMs = 0;
+  metrics.lightUploadedThisFrame = false;
+  metrics.lightPackCpuMs = 0;
+  metrics.lightLogicalUploadBytes = 0;
+  metrics.lightSubmittedUploadBytes = 0;
+  metrics.lightUploadCpuMs = 0;
+  metrics.lutPackCpuMs = 0;
+  metrics.lutLogicalUploadBytes = 0;
+  metrics.lutSubmittedUploadBytes = 0;
+  metrics.lutUploadCpuMs = 0;
+  metrics.paramsUploadBytes = 0;
+  metrics.paramsUploadCpuMs = 0;
+  metrics.backdropTextureUploads = 0;
+  metrics.backdropLogicalUploadBytes = 0;
+  metrics.backdropSubmittedUploadBytes = 0;
+  metrics.backdropUploadCpuMs = 0;
+  metrics.overlayTouchedPixels = 0;
+  metrics.overlayPackCpuMs = 0;
+  metrics.overlayLogicalUploadBytes = 0;
+  metrics.overlaySubmittedUploadBytes = 0;
+  metrics.overlayUploadCpuMs = 0;
+  metrics.commandEncodeSubmitCpuMs = 0;
+  metrics.totalLogicalUploadBytes = 0;
+  metrics.totalSubmittedUploadBytes = 0;
+  return metrics;
+}
+
+function copyLiveMetrics(
+  target: RenderBackendWebGpuComposeLiveMetrics,
+  source: RenderBackendWebGpuComposeLiveMetrics,
+): RenderBackendWebGpuComposeLiveMetrics {
+  Object.assign(target, source);
+  return target;
 }
 
 class WebGpuOverlay implements OverlaySurface {
@@ -631,6 +680,8 @@ export class WebGpuLiveCompose {
   // pixels. When this frame touches nothing AND the GPU already holds an all-zero
   // overlay, commit() can skip the full-texture pad+upload (~1.5MB) entirely.
   private overlayGpuDirty = false;
+  private readonly metricsScratch = createLiveMetrics(0);
+  private readonly lastMetricsScratch = createLiveMetrics(0);
   private currentMetrics: RenderBackendWebGpuComposeLiveMetrics | null = null;
   private lastMetrics: RenderBackendWebGpuComposeLiveMetrics | null = null;
   private uncapturedErrorHandler: ((event: RuntimeGpuUncapturedErrorEvent) => void) | null = null;
@@ -755,7 +806,7 @@ export class WebGpuLiveCompose {
   ): OverlaySurface {
     if (!this.available || !this.device) throw new Error('WebGPU live compose is not initialized');
     const frameStart = performance.now();
-    const metrics = createLiveMetrics(ctx.state.frameCount);
+    const metrics = resetLiveMetrics(this.metricsScratch, ctx.state.frameCount);
     this.currentMetrics = metrics;
     const camX = ctx.camera.renderX;
     const camY = ctx.camera.renderY;
@@ -858,8 +909,8 @@ export class WebGpuLiveCompose {
       metrics.commandEncodeSubmitCpuMs = performance.now() - commandStart;
       metrics.commitCpuMs = performance.now() - commitStart;
       this.refreshTotalUploadBytes(metrics);
-      this.lastMetrics = { ...metrics };
-      this.status.liveMetrics = { ...metrics };
+      this.lastMetrics = copyLiveMetrics(this.lastMetricsScratch, metrics);
+      this.status.liveMetrics = this.lastMetrics;
     }
   }
 
