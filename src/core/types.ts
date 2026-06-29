@@ -247,6 +247,13 @@ export interface EnemyDef {
   goreFn: () => number;
 }
 
+export interface EnemySpawnOptions {
+  /** Require the requested grid point to be clear instead of relocating downward/nearby. */
+  exact?: boolean;
+  /** Deterministic RNG source for seeded population placement. */
+  rng?: () => number;
+}
+
 export interface ProceduralLegIkState {
   upperX: number;
   upperY: number;
@@ -1546,7 +1553,7 @@ export interface PlayerControlApi {
 
 export interface EnemyControlApi {
   readonly defs: Record<EnemyKind, EnemyDef>;
-  spawn(kind: EnemyKind, x: number, y: number): Enemy | null;
+  spawn(kind: EnemyKind, x: number, y: number, opts?: EnemySpawnOptions): Enemy | null;
   damage(e: Enemy, amount: number, kx: number, ky: number): void;
   /** A hazard cell (lava/fire/acid) splashes the point (x,y): if a foe harmed by
    *  `cell` overlaps it, deal the matching environmental damage (and ignite it for

@@ -2700,10 +2700,8 @@ export class Levels implements LevelsApi {
   }
 
   private spawnSeededEnemy(ctx: Ctx, kind: EnemyKind, x: number, y: number, rng: Rng): Enemy | null {
-    const enemy = ctx.enemyCtl.spawn(kind, x, y);
+    const enemy = ctx.enemyCtl.spawn(kind, x, y, { rng: () => rng.next() });
     if (!enemy) return null;
-    enemy.timer = rng.int(80);
-    enemy.bobPhase = rng.next() * Math.PI * 2;
     return enemy;
   }
 

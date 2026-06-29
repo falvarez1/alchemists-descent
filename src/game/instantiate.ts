@@ -172,12 +172,10 @@ export function makeInstantiationSink(): InstantiationSink {
 
 /** Spawn a deferred enemy record live (sleeping-bat + patrol fixups). */
 export function spawnPrefabEnemy(ctx: Ctx, rec: PrefabEnemy): void {
-  const e = ctx.enemyCtl.spawn(rec.kind, rec.x, rec.y);
+  const e = ctx.enemyCtl.spawn(rec.kind, rec.x, rec.y, { exact: true });
   if (!e) return;
   if (rec.sleeping === true && (e.kind === 'bat' || e.kind === 'weaver')) {
     e.sleeping = true;
-    e.x = rec.x;
-    e.y = rec.y;
   }
   if (rec.patrol && rec.patrol.length > 0) {
     e.patrol = rec.patrol.map(([px, py]) => [px, py] as [number, number]);

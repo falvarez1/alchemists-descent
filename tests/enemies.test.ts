@@ -3,14 +3,53 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LEVELS, populationForLevel } from '@/config/worldgraph';
 import { EventBus } from '@/core/events';
 import { Rng } from '@/core/rng';
-import type { Critter, Ctx, Enemy, EnemyDef, WeaverLairWeb } from '@/core/types';
+import type { Critter, Ctx, Enemy, EnemyDef, EnemySpawnOptions, WeaverLairWeb } from '@/core/types';
 import { ENEMY_KINDS as BUILDER_ENEMY_KINDS, PATROL_KINDS } from '@/builder/inspectorSchemas';
-import { Enemies, ENEMY_DEFS } from '@/entities/Enemies';
+import { Enemies, ENEMY_DEFS, enemyLethalCell } from '@/entities/Enemies';
 import { spawnPrefabEnemy } from '@/game/instantiate';
 import { Levels } from '@/game/Levels';
 import { blocksEntity, Cell, isSoftGrowth } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { EXTRAS } from '@/world/biomeExtras';
+
+function makeEnemy(kind: Enemy['kind'], overrides: Partial<Enemy> = {}): Enemy {
+  return {
+    kind,
+    x: 40,
+    y: 40,
+    fx: 0,
+    fy: 0,
+    vx: 0,
+    vy: 0,
+    hp: 20,
+    maxHp: 20,
+    flash: 0,
+    timer: 0,
+    attackCd: 0,
+    bobPhase: 0,
+    grounded: false,
+    stride: 0,
+    splat: 0,
+    prevG: false,
+    blink: 0,
+    jetFuel: 0,
+    jetCd: 0,
+    stuckT: 0,
+    status: {
+      wet: 0,
+      oiled: 0,
+      burning: 0,
+      frozen: 0,
+      electrified: 0,
+      regen: 0,
+      levity: 0,
+      stoneskin: 0,
+      swift: 0,
+      torch: 0,
+    },
+    ...overrides,
+  };
+}
 
 describe('enemy bounty economy', () => {
   it('splits non-multiple bounties into exact-value homing coins', () => {
@@ -61,51 +100,94 @@ describe('enemy controller edge cases', () => {
     expect(ctx.enemies).toHaveLength(0);
   });
 
-  it('preserves authored sleeping state for prefab Weavers', () => {
-    const spawned: Enemy = {
-      kind: 'weaver',
-      x: 0,
-      y: 0,
-      fx: 0,
-      fy: 0,
-      vx: 0,
-      vy: 0,
-      hp: 1,
-      maxHp: 1,
-      flash: 0,
-      timer: 0,
-      attackCd: 0,
-      bobPhase: 0,
-      grounded: false,
-      stride: 0,
-      splat: 0,
-      prevG: false,
-      blink: 0,
-      jetFuel: 0,
-      jetCd: 0,
-      stuckT: 0,
-      status: {
-        wet: 0,
-        oiled: 0,
-        burning: 0,
-        frozen: 0,
-        electrified: 0,
-        regen: 0,
-        levity: 0,
-        stoneskin: 0,
-        swift: 0,
-        torch: 0,
-      },
-    };
+  it('returns null for unknown enemy kinds instead of reading missing defs', () => {
     const ctx = {
-      enemyCtl: { spawn: () => spawned },
+      physics: { entityFree: () => true },
+      enemies: [],
+    } as unknown as Ctx;
+    const enemies = new Enemies(ctx);
+
+    expect(enemies.spawn('not-a-kind' as never, 40, 40)).toBeNull();
+    expect(ctx.enemies).toHaveLength(0);
+  });
+
+  it('supports exact authored spawns without relocating into another pocket', () => {
+    const ctx = {
+      state: { mode: 'build' },
+      physics: {
+        entityFree: (_x: number, y: number) => y >= 45,
+      },
+      particles: { burst: () => undefined },
+      enemies: [],
+    } as unknown as Ctx;
+    const enemies = new Enemies(ctx);
+
+    expect(enemies.spawn('slime', 40, 40, { exact: true })).toBeNull();
+    const relocated = enemies.spawn('slime', 40, 40, { rng: () => 0.5 });
+
+    expect(relocated?.y).toBe(45);
+    expect(ctx.enemies).toHaveLength(1);
+  });
+
+  it('preserves authored sleeping state for prefab Weavers', () => {
+    const calls: Array<{ kind: Enemy['kind']; x: number; y: number; opts?: EnemySpawnOptions }> = [];
+    const spawned = makeEnemy('weaver', { x: 11, y: 12, hp: 1, maxHp: 1 });
+    const ctx = {
+      enemyCtl: {
+        spawn: (kind: Enemy['kind'], x: number, y: number, opts?: EnemySpawnOptions) => {
+          calls.push({ kind, x, y, opts });
+          return spawned;
+        },
+      },
     } as unknown as Ctx;
 
     spawnPrefabEnemy(ctx, { kind: 'weaver', x: 42, y: 36, sleeping: true });
 
+    expect(calls).toEqual([{ kind: 'weaver', x: 42, y: 36, opts: { exact: true } }]);
     expect(spawned.sleeping).toBe(true);
-    expect(spawned.x).toBe(42);
-    expect(spawned.y).toBe(36);
+    expect(spawned.x).toBe(11);
+    expect(spawned.y).toBe(12);
+  });
+
+  it('wakes and alerts sleeping enemies when they take damage', () => {
+    const enemy = makeEnemy('bat', { sleeping: true, alerted: false, vy: 0 });
+    const ctx = {
+      particles: {
+        burst: () => undefined,
+        spawn: () => undefined,
+      },
+      world: new World(80, 80),
+      enemies: [enemy],
+      params: { global: { bloodAmount: 1, goreBlood: 1, goreSlime: 1, goreOoze: 1 } },
+    } as unknown as Ctx;
+    const enemies = new Enemies(ctx);
+
+    enemies.damage(enemy, 3, 0, 0);
+
+    expect(enemy.sleeping).toBe(false);
+    expect(enemy.alerted).toBe(true);
+    expect(enemy.vy).toBeGreaterThan(0);
+  });
+
+  it('uses one fireproof hazard contract for bosses and imps', () => {
+    expect(enemyLethalCell('imp', Cell.Fire)).toBe(false);
+    expect(enemyLethalCell('colossus', Cell.Lava)).toBe(false);
+    expect(enemyLethalCell('leviathan', Cell.Fire)).toBe(false);
+    expect(enemyLethalCell('slime', Cell.Fire)).toBe(true);
+
+    const world = new World(60, 60);
+    const colossus = makeEnemy('colossus', { x: 20, y: 30, hp: 30, maxHp: 30, envDamageFeedbackCd: 99 });
+    world.types[world.idx(20, 30)] = Cell.Lava;
+    const ctx = {
+      world,
+      particles: { burst: () => undefined },
+      enemies: [colossus],
+    } as unknown as Ctx;
+    const enemies = new Enemies(ctx);
+
+    (enemies as unknown as { enemyEnvironmentDamage(e: Enemy): void }).enemyEnvironmentDamage(colossus);
+
+    expect(colossus.hp).toBe(30);
   });
 
   it('samples environmental damage across the enemy footprint', () => {
@@ -160,6 +242,47 @@ describe('enemy controller edge cases', () => {
     expect((enemies as unknown as { telekinesisVolley(e: Enemy): boolean }).telekinesisVolley(mage)).toBe(true);
     expect(spawned.some((p) => p.type === Cell.Ash)).toBe(true);
     expect(world.types[world.idx(48, 42)]).toBe(Cell.Empty);
+  });
+
+  it('lets the Powder Mage chip real stone when loose ammunition is unavailable', () => {
+    const world = new World(120, 90);
+    const spawned: Array<{ type: number | null }> = [];
+    const ctx = {
+      world,
+      player: { x: 86, y: 44 },
+      particles: {
+        spawn: (_x: number, _y: number, _vx: number, _vy: number, type: number | null) => spawned.push({ type }),
+      },
+      audio: { tone: () => undefined },
+      camera: { x: 0, y: 0 },
+      fx: { screenShake: 0 },
+      levels: { current: null },
+    } as unknown as Ctx;
+    const enemies = new Enemies(ctx);
+    const mage = makeEnemy('mage', { x: 50, y: 45 });
+    const chip = world.idx(56, 32);
+    world.replaceCellAt(chip, Cell.Stone, 0x777777);
+
+    expect((enemies as unknown as { mageVolley(e: Enemy): boolean }).mageVolley(mage)).toBe(true);
+
+    expect(spawned.some((p) => p.type === Cell.Stone)).toBe(true);
+    expect(world.types[chip]).toBe(Cell.Empty);
+  });
+
+  it('lets Spitters root into the grid with toxic habitat cells', () => {
+    const world = new World(80, 70);
+    const spitter = makeEnemy('spitter', { x: 34, y: 44, timer: 30, grounded: true });
+    world.replaceCellAt(world.idx(34, 46), Cell.Stone, 0x777777);
+    const ctx = {
+      world,
+      state: { frameCount: 0 },
+      particles: { burst: () => undefined },
+    } as unknown as Ctx;
+    const enemies = new Enemies(ctx);
+
+    (enemies as unknown as { spitterRootHabitat(e: Enemy, def: EnemyDef): void }).spitterRootHabitat(spitter, ENEMY_DEFS.spitter);
+
+    expect(world.types[world.idx(34, 45)]).toBe(Cell.Toxic);
   });
 
   it('reads Root Loper footing from real growth and stamps only capped soft growth', () => {
@@ -245,6 +368,72 @@ describe('enemy controller edge cases', () => {
     const opened = before.reduce((sum, t, i) => sum + (t !== Cell.Empty && world.types[i] === Cell.Empty ? 1 : 0), 0);
     expect(opened).toBe(chewed);
     expect(spawned.length).toBeLessThanOrEqual(chewed);
+  });
+
+  it('shares the protected terrain brush for Golem punches near progression objects', () => {
+    const ctx = {
+      levels: {
+        current: {
+          spawn: { x: 10, y: 10 },
+          mechanisms: [{ x: 44, y: 48, w: 10, h: 14 }],
+          runeVaults: [],
+          waystones: [],
+        },
+      },
+    } as unknown as Ctx;
+    const enemies = new Enemies(ctx);
+
+    expect((enemies as unknown as { protectedCellInRadius(x: number, y: number, radius: number): boolean }).protectedCellInRadius(50, 42, 6)).toBe(
+      true,
+    );
+    expect((enemies as unknown as { protectedCellInRadius(x: number, y: number, radius: number): boolean }).protectedCellInRadius(80, 60, 6)).toBe(
+      false,
+    );
+  });
+
+  it('collides flying enemies against walls instead of drifting through them', () => {
+    const ctx = {
+      physics: {
+        tryMoveEntity: (ent: { x: number; y: number }, dx: number, dy: number) => {
+          if (dx > 0 && ent.x >= 50) return false;
+          ent.x += dx;
+          ent.y += dy;
+          return true;
+        },
+      },
+    } as unknown as Ctx;
+    const enemies = new Enemies(ctx);
+    const imp = makeEnemy('imp', { x: 50, y: 40, vx: 3, vy: 0, fx: 0, fy: 0 });
+
+    (enemies as unknown as { integrateFlying(e: Enemy, def: EnemyDef, spd: number): void }).integrateFlying(imp, ENEMY_DEFS.imp, 1);
+
+    expect(imp.x).toBe(50);
+    expect(imp.vx).toBe(0);
+  });
+
+  it('lets offscreen egg clutches keep aging and hatch without running full combat AI', () => {
+    const egg = makeEnemy('eggs', { timer: 1500, bobPhase: 0, x: 30, y: 30 });
+    const enemiesList: Enemy[] = [egg];
+    const ctx = {
+      enemies: enemiesList,
+      enemyCtl: {
+        spawn: (kind: Enemy['kind'], x: number, y: number) => {
+          const e = makeEnemy(kind, { x, y });
+          enemiesList.push(e);
+          return e;
+        },
+      },
+    } as unknown as Ctx;
+    const enemies = new Enemies(ctx);
+
+    (enemies as unknown as { tickOffscreenLifecycle(index: number, e: Enemy, debugEnemyAttacksSuppressed: boolean): void }).tickOffscreenLifecycle(
+      0,
+      egg,
+      false,
+    );
+
+    expect(ctx.enemies).toHaveLength(2);
+    expect(ctx.enemies.every((e) => e.kind === 'slime')).toBe(true);
   });
 
   it('lets Rillback read wetness and charge only water or blood conductors', () => {

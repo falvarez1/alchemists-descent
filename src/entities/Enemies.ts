@@ -1,7 +1,7 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
-import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind } from '@/core/types';
+import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind, EnemySpawnOptions } from '@/core/types';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 export { ENEMY_DEFS } from '@/content/enemyDefs';
 import { createDefaultStatus, rollCatchFire, sampleAndTickStatus } from '@/entities/status';
@@ -106,6 +106,7 @@ const MAGE_TELEKINESIS_CELLS = new Set<number>([
   Cell.Catalyst,
   Cell.RawOre,
 ]);
+const MAGE_CHIP_CELLS = new Set<number>([Cell.Wall, Cell.Stone, Cell.RawOre, Cell.Coal, Cell.Crystal]);
 
 /** Cells a kind shrugs off when statuses are sampled: imps bathe in fire, wisps in cold. */
 const STATUS_IMMUNE: Partial<
@@ -151,19 +152,21 @@ const TEMPERAMENT: Partial<Record<EnemyKind, Temperament>> = {
   leviathan: { fear: 0, dodge: 0.12, fleeAt: 2, seekWater: false }, // fearless (water is its home)
 };
 
+const FIREPROOF: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['imp', 'colossus', 'leviathan']);
+
 /** Does cell `c` deal environmental harm to `kind`? Single source of truth for
- *  wary look-ahead and threat scanning. Fire/lava burn everything but the imp;
- *  acid eats everything but the acidslime; Toxic poisons everything but the
- *  spitter that carries it. */
+ *  wary look-ahead and threat scanning. Fire/lava burn everything but fireproof
+ *  foes; acid eats everything but the acidslime; Toxic poisons everything but
+ *  the spitter that carries it. */
 export function enemyLethalCell(kind: EnemyKind, c: number): boolean {
-  if ((c === Cell.Fire || c === Cell.Lava) && kind !== 'imp') return true;
+  if ((c === Cell.Fire || c === Cell.Lava) && !FIREPROOF.has(kind)) return true;
   if (c === Cell.Acid && kind !== 'acidslime') return true;
   if (c === Cell.Toxic && kind !== 'spitter') return true;
   return false;
 }
 
 function directEnvironmentDamage(kind: EnemyKind, c: number): number {
-  if ((c === Cell.Fire || c === Cell.Lava) && kind !== 'imp') return c === Cell.Lava ? 1.6 : 0.7;
+  if ((c === Cell.Fire || c === Cell.Lava) && !FIREPROOF.has(kind)) return c === Cell.Lava ? 1.6 : 0.7;
   if (c === Cell.Acid && kind !== 'acidslime') return 0.9;
   return 0;
 }
@@ -274,22 +277,45 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
-  spawn(kind: EnemyKind, x: number, y: number): Enemy | null {
+  private alertFromDamage(e: Enemy): void {
+    if (e.kind === 'eggs') return;
+    const wasSleeping = e.sleeping === true;
+    e.alerted = true;
+    e.sleeping = false;
+    e.calmT = 0;
+    if (e.kind === 'bat' && wasSleeping) {
+      e.windup = 0;
+      e.swoop = 0;
+      e.vy = Math.max(e.vy, 1.0);
+    } else if (e.kind === 'weaver' && wasSleeping) {
+      e.cranky = Math.max(e.cranky ?? 0, WEAVER_CRANKY_FRAMES);
+      e.webPulse = Math.max(e.webPulse ?? 0, 18);
+    }
+  }
+
+  spawn(kind: EnemyKind, x: number, y: number, opts: EnemySpawnOptions = {}): Enemy | null {
     const ctx = this.ctx;
-    const def = this.defs[kind];
+    const def = (this.defs as Partial<Record<EnemyKind, EnemyDef>>)[kind];
+    if (!def) return null;
+    const rng = opts.rng ?? Math.random;
     // Find an open pocket: scan downward from the requested point, retrying nearby columns
-    let sx = Math.floor(clamp(x, def.halfW + 2, WIDTH - def.halfW - 3));
+    let sx = Math.floor(opts.exact === true ? x : clamp(x, def.halfW + 2, WIDTH - def.halfW - 3));
     let sy = -1;
-    for (let attempt = 0; attempt < 10 && sy < 0; attempt++) {
-      const tx =
-        attempt === 0
-          ? sx
-          : Math.floor(clamp(sx + (Math.random() - 0.5) * 240, def.halfW + 2, WIDTH - def.halfW - 3));
-      for (let yy = Math.max(def.h, Math.floor(y)); yy < HEIGHT - 2; yy++) {
-        if (ctx.physics.entityFree(tx, yy, def.halfW, def.h)) {
-          sx = tx;
-          sy = yy;
-          break;
+    if (opts.exact === true) {
+      const ey = Math.floor(y);
+      if (ctx.physics.entityFree(sx, ey, def.halfW, def.h)) sy = ey;
+    } else {
+      for (let attempt = 0; attempt < 10 && sy < 0; attempt++) {
+        const tx =
+          attempt === 0
+            ? sx
+            : Math.floor(clamp(sx + (rng() - 0.5) * 240, def.halfW + 2, WIDTH - def.halfW - 3));
+        for (let yy = Math.max(def.h, Math.floor(y)); yy < HEIGHT - 2; yy++) {
+          if (ctx.physics.entityFree(tx, yy, def.halfW, def.h)) {
+            sx = tx;
+            sy = yy;
+            break;
+          }
         }
       }
     }
@@ -312,9 +338,9 @@ export class Enemies implements EnemyControlApi {
       maxHp: Math.round(def.hp * hpMul),
       dmgK,
       flash: 0,
-      timer: Math.floor(Math.random() * 80),
+      timer: Math.floor(rng() * 80),
       attackCd: 60,
-      bobPhase: Math.random() * Math.PI * 2,
+      bobPhase: rng() * Math.PI * 2,
       grounded: false,
       stride: 0,
       splat: 0,
@@ -385,7 +411,7 @@ export class Enemies implements EnemyControlApi {
       const def = this.defs[e.kind];
       if (Math.abs(x - e.x) > def.halfW + 1) continue;
       if (y > e.y + 2 || y < e.y - def.h - 2) continue;
-      if (!enemyLethalCell(e.kind, cell)) continue; // imp shrugs off lava, acidslime off acid, spitter off toxic
+      if (!enemyLethalCell(e.kind, cell)) continue;
       const dmg = cell === Cell.Toxic ? 0.7 : directEnvironmentDamage(e.kind, cell);
       if (dmg <= 0) continue;
       this.damage(e, dmg, (Math.random() - 0.5) * 0.6, -0.3);
@@ -401,6 +427,7 @@ export class Enemies implements EnemyControlApi {
 
   damage(e: Enemy, amount: number, kx: number, ky: number): void {
     const ctx = this.ctx;
+    if (amount > 0) this.alertFromDamage(e);
     // WATER IS THE LEVIATHAN'S ARMOR: while the body is actually in water
     // (cell census, not the wet meter) hits glance off — and SAY so, every
     // time, with a cold shimmer and a dull plink. Drain the pool.
@@ -465,6 +492,7 @@ export class Enemies implements EnemyControlApi {
     const def = this.defs[e.kind];
     const mass = def.halfW * def.h; // footprint proxy: bat 15, slime 40, golem 140
     const push = strength * clamp(GUST_REF_MASS / mass, GUST_MASS_LO, GUST_MASS_HI);
+    e.alerted = true;
     e.sleeping = false; // a roosting bat is knocked loose
     e.knockVx = (e.knockVx ?? 0) + dirX * push;
     e.knockVy = (e.knockVy ?? 0) + dirY * push - push * 0.18; // a touch of lift
@@ -880,6 +908,93 @@ export class Enemies implements EnemyControlApi {
     return true;
   }
 
+  private mageChipVolley(e: Enemy): boolean {
+    const ctx = this.ctx;
+    const world = ctx.world;
+    const player = ctx.player;
+    const ex = Math.floor(e.x);
+    const ey = Math.floor(e.y) - 7;
+    const found: CellCandidate[] = [];
+    for (let dy = -34; dy <= 34; dy++) {
+      for (let dx = -34; dx <= 34; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 > 1156 || d2 < 36) continue;
+        const nx = ex + dx;
+        const ny = ey + dy;
+        if (!world.inBounds(nx, ny) || this.stoneMawProtectedCell(nx, ny)) continue;
+        const t = world.types[world.idx(nx, ny)];
+        if (MAGE_CHIP_CELLS.has(t)) addNearestCandidate(found, 5, nx, ny, d2);
+      }
+    }
+    found.sort((a, b) => a.d2 - b.d2);
+    const n = Math.min(5, found.length);
+    if (n === 0) return false;
+    for (let k = 0; k < n; k++) {
+      const c = found[k];
+      const ci = world.idx(c.x, c.y);
+      const t = world.types[ci];
+      const color = world.colors[ci] || colorForCell(t);
+      world.clearCellAt(ci);
+      const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (Math.random() - 0.5) * 0.18;
+      const spd = 3.2 + Math.random() * 0.7;
+      ctx.particles.spawn(c.x, c.y, Math.cos(aim) * spd, Math.sin(aim) * spd - 0.15, t, color, 150, {
+        hostileDmg: 5,
+        hostileSource: 'powder-mage-shard',
+        grav: 0.025,
+      });
+    }
+    ctx.audio.tone(180, 90, 0.22, 'sawtooth', 0.1);
+    this.shakeAt(e.x, e.y, 0.004, 0.025);
+    return true;
+  }
+
+  private mageVolley(e: Enemy): boolean {
+    return this.telekinesisVolley(e) || this.mageChipVolley(e);
+  }
+
+  private spitterRootHabitat(e: Enemy, def: EnemyDef): void {
+    if (!e.grounded || e.timer % 30 !== 0) return;
+    const ctx = this.ctx;
+    const w = ctx.world;
+    const cx = Math.floor(e.x);
+    const foot = Math.floor(e.y);
+    let growthNearby = false;
+    for (let dy = -def.h; dy <= 2 && !growthNearby; dy++) {
+      for (let dx = -def.halfW - 2; dx <= def.halfW + 2; dx++) {
+        const x = cx + dx;
+        const y = foot + dy;
+        if (!w.inBounds(x, y)) continue;
+        const t = w.types[w.idx(x, y)];
+        if (isSoftGrowth(t) || t === Cell.Slime || t === Cell.Toxic) {
+          growthNearby = true;
+          break;
+        }
+      }
+    }
+    const offsets: ReadonlyArray<readonly [number, number]> = [
+      [0, 1],
+      [-2, 1],
+      [2, 1],
+      [-def.halfW - 1, 0],
+      [def.halfW + 1, 0],
+    ];
+    for (const [dx, dy] of offsets) {
+      const x = cx + dx;
+      const y = foot + dy;
+      if (!w.inBounds(x, y)) continue;
+      const i = w.idx(x, y);
+      if (w.types[i] !== Cell.Empty) continue;
+      const below = w.inBounds(x, y + 1) ? w.types[w.idx(x, y + 1)] : Cell.Empty;
+      const clings = blocksEntity(below) || isSoftGrowth(below) || below === Cell.Slime || below === Cell.Toxic;
+      if (!clings) continue;
+      const cell = growthNearby && Math.random() < 0.45 ? Cell.Vines : Cell.Toxic;
+      w.replaceCellAt(i, cell, cell === Cell.Vines ? vineColor() : toxicColor());
+      w.life[i] = cell === Cell.Toxic ? 260 : 220;
+      if (ctx.state.frameCount % 3 === 0) ctx.particles.burst(x, y, 2, cell, cell === Cell.Vines ? vineColor : toxicColor, 0.45);
+      return;
+    }
+  }
+
   /**
    * The leviathan's ranged arm: it TEARS WATER OUT OF ITS OWN POOL and
    * throws it (the powder mage's trick, aimed through a liquid). The level
@@ -1035,6 +1150,17 @@ export class Enemies implements EnemyControlApi {
     return false;
   }
 
+  private protectedCellInRadius(cx: number, cy: number, radius: number): boolean {
+    const r2 = radius * radius;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        if (this.stoneMawProtectedCell(cx + dx, cy + dy)) return true;
+      }
+    }
+    return false;
+  }
+
   private stoneMawChewBrush(e: Enemy, def: EnemyDef): number {
     const ctx = this.ctx;
     const w = ctx.world;
@@ -1118,6 +1244,7 @@ export class Enemies implements EnemyControlApi {
     const denom = Math.max(1, samples);
     return { wet: wet / denom, hazard: hazard / denom, conductor };
   }
+
 
   private rillbackChargePulse(e: Enemy, def: EnemyDef): number {
     if ((e.rillChargeCd ?? 0) > 0) return 0;
@@ -1503,6 +1630,70 @@ export class Enemies implements EnemyControlApi {
       if (w.inBounds(X, Y) && this.ctx.physics.cellBlocks(X, Y)) return false; // floor within reach
     }
     return true;
+  }
+
+  private traceCellsClear(x0: number, y0: number, x1: number, y1: number, ignoreNear = 8): boolean {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy));
+    if (steps <= ignoreNear * 2) return true;
+    for (let s = ignoreNear; s <= steps - ignoreNear; s += 3) {
+      const t = s / steps;
+      const x = Math.floor(x0 + dx * t);
+      const y = Math.floor(y0 + dy * t);
+      if (this.ctx.physics.cellBlocks(x, y)) return false;
+    }
+    return true;
+  }
+
+  private hasAttackLine(e: Enemy, def: EnemyDef, lob = false): boolean {
+    const sx = e.x;
+    const sy = e.y - def.h * 0.65;
+    const tx = this.ctx.player.x;
+    const ty = this.ctx.player.y - 9;
+    if (!lob) return this.traceCellsClear(sx, sy, tx, ty);
+    const apexY = Math.min(sy, ty) - Math.min(54, 20 + Math.abs(tx - sx) * 0.12);
+    return this.traceCellsClear(sx, sy, (sx + tx) * 0.5, apexY, 6) && this.traceCellsClear((sx + tx) * 0.5, apexY, tx, ty, 6);
+  }
+
+  private integrateFlying(e: Enemy, def: EnemyDef, spd: number): void {
+    const ctx = this.ctx;
+    e.fx += e.vx * spd;
+    while (e.fx >= 1) {
+      if (!ctx.physics.tryMoveEntity(e, 1, 0, def.halfW, def.h, 0, 3)) {
+        e.vx = 0;
+        e.fx = 0;
+        break;
+      }
+      e.fx -= 1;
+    }
+    while (e.fx <= -1) {
+      if (!ctx.physics.tryMoveEntity(e, -1, 0, def.halfW, def.h, 0, 3)) {
+        e.vx = 0;
+        e.fx = 0;
+        break;
+      }
+      e.fx += 1;
+    }
+    e.fy += e.vy * spd;
+    while (e.fy >= 1) {
+      if (!ctx.physics.tryMoveEntity(e, 0, 1, def.halfW, def.h, 0, 4)) {
+        e.vy = Math.min(0, e.vy);
+        e.fy = 0;
+        break;
+      }
+      e.fy -= 1;
+    }
+    while (e.fy <= -1) {
+      if (!ctx.physics.tryMoveEntity(e, 0, -1, def.halfW, def.h, 0, 4)) {
+        e.vy = Math.max(0, e.vy);
+        e.fy = 0;
+        break;
+      }
+      e.fy += 1;
+    }
+    e.x = Math.floor(clamp(e.x, def.halfW + 2, WIDTH - def.halfW - 3));
+    e.y = Math.floor(clamp(e.y, def.h + 1, HEIGHT - 3));
   }
 
   /* ============================================================
@@ -2063,6 +2254,7 @@ export class Enemies implements EnemyControlApi {
       e.flash = Math.max(e.flash, 2);
       ctx.particles.burst(e.x, e.y - 5, 3, Cell.Smoke, smokeColor, 0.7, { grav: 0.02 });
     }
+    this.alertFromDamage(e);
     e.hp -= dmg;
     if (e.hp <= 0) {
       if (index === undefined) this.kill(e, 0, 0);
@@ -2093,6 +2285,33 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
+  private hatchEggClutchAt(index: number, e: Enemy, noisy: boolean): void {
+    const ctx = this.ctx;
+    const brood = 2 + (e.bobPhase > Math.PI ? 1 : 0);
+    for (let b2 = 0; b2 < brood; b2++) {
+      ctx.enemyCtl.spawn('slime', e.x + (b2 - 1) * 4, e.y - 2);
+    }
+    if (noisy) {
+      ctx.particles.burst(e.x, e.y - 3, 14, Cell.Slime, slimeColor, 2.0);
+      ctx.audio.squelch();
+      ctx.events.emit('toast', { text: 'AN EGG CLUTCH HATCHES' });
+    }
+    this.removeEnemyAt(index);
+  }
+
+  private tickOffscreenLifecycle(index: number, e: Enemy, debugEnemyAttacksSuppressed: boolean): void {
+    if (e.flash > 0) e.flash--;
+    if ((e.envDamageFeedbackCd ?? 0) > 0) e.envDamageFeedbackCd = (e.envDamageFeedbackCd ?? 0) - 1;
+    if ((e.fusing ?? 0) > 0 && !debugEnemyAttacksSuppressed) {
+      e.fusing = (e.fusing ?? 0) - 1;
+      if (e.fusing === 0) this.killAt(index, e, 0, 0);
+      return;
+    }
+    if (e.kind !== 'eggs' || debugEnemyAttacksSuppressed) return;
+    e.timer++;
+    if (e.timer > 1400 + e.bobPhase * 220) this.hatchEggClutchAt(index, e, false);
+  }
+
   update(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const enemies = ctx.enemies;
@@ -2108,12 +2327,16 @@ export class Enemies implements EnemyControlApi {
       const e = enemies[i];
       if (!e) continue;
       const def = this.defs[e.kind];
-      // Freeze foes far outside the simulation window — they wake when you approach
-      if (e.x < sim.x0 - 60 || e.x > sim.x1 + 60 || e.y < sim.y0 - 60 || e.y > sim.y1 + 60)
-        continue;
       // Debug freeze (Runtime panel): a posed/dragged foe skips its AI entirely
       // while the renderer keeps drawing it (and solving a held Weaver's legs).
       if (ctx.debug.frozenEnemy(e)) continue;
+      // Keep expensive combat AI inside the simulation window, but let ecology
+      // timers with consequences age offscreen so clutches and lit fuses do not
+      // pause forever just because the camera moved away.
+      if (e.x < sim.x0 - 60 || e.x > sim.x1 + 60 || e.y < sim.y0 - 60 || e.y > sim.y1 + 60) {
+        this.tickOffscreenLifecycle(i, e, debugEnemyAttacksSuppressed);
+        continue;
+      }
       if (e.flash > 0) e.flash--;
       if ((e.envDamageFeedbackCd ?? 0) > 0) e.envDamageFeedbackCd = (e.envDamageFeedbackCd ?? 0) - 1;
       if ((e.wary ?? 0) > 0) e.wary = (e.wary ?? 0) - 1;
@@ -2298,14 +2521,7 @@ export class Enemies implements EnemyControlApi {
           !debugEnemyAttacksSuppressed &&
           (e.timer > 1400 + e.bobPhase * 220 || (targetAlive && pDist < 36 && e.timer > 240));
         if (due) {
-          const brood = 2 + (e.bobPhase > Math.PI ? 1 : 0);
-          for (let b2 = 0; b2 < brood; b2++) {
-            ctx.enemyCtl.spawn('slime', e.x + (b2 - 1) * 4, e.y - 2);
-          }
-          ctx.particles.burst(e.x, e.y - 3, 14, Cell.Slime, slimeColor, 2.0);
-          ctx.audio.squelch();
-          ctx.events.emit('toast', { text: 'AN EGG CLUTCH HATCHES' });
-          this.removeEnemyAt(i);
+          this.hatchEggClutchAt(i, e, true);
           continue;
         }
       } else if (e.kind === 'bat') {
@@ -2412,8 +2628,9 @@ export class Enemies implements EnemyControlApi {
         e.vy += 0.33;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
         e.vx *= 0.4;
+        this.spitterRootHabitat(e, def);
         if ((e.recoil ?? 0) > 0) e.recoil = (e.recoil ?? 0) - 1;
-        if (canAttackTarget && e.attackCd === 0 && pDist < 280) {
+        if (canAttackTarget && e.attackCd === 0 && pDist < 280 && this.hasAttackLine(e, def, true)) {
           const arc = Math.atan2(pdy - Math.min(60, pDist * 0.35), pdx);
           const spd = 2.6 + pDist * 0.006;
           ctx.projectiles.push({
@@ -2981,7 +3198,7 @@ export class Enemies implements EnemyControlApi {
           e.y -= 1;
           e.vy = -0.5;
         }
-        if (canAttackTarget && e.attackCd === 0 && pDist < 300) {
+        if (canAttackTarget && e.attackCd === 0 && pDist < 300 && this.hasAttackLine(e, def)) {
           const fa = Math.atan2(pdy, pdx) + (Math.random() - 0.5) * 0.16;
           ctx.projectiles.push({
             x: e.x,
@@ -3022,7 +3239,7 @@ export class Enemies implements EnemyControlApi {
           e.y -= 1;
           e.vy = -0.5;
         }
-        if (canAttackTarget && e.attackCd === 0 && pDist < 320) {
+        if (canAttackTarget && e.attackCd === 0 && pDist < 320 && this.hasAttackLine(e, def)) {
           const fa = Math.atan2(pdy, pdx) + (Math.random() - 0.5) * 0.14;
           ctx.projectiles.push({
             x: e.x,
@@ -3087,11 +3304,12 @@ export class Enemies implements EnemyControlApi {
               { grav: -0.02, glow: 1.9 },
             );
           }
-          if (e.blink === 0 && canAttackTarget && !this.telekinesisVolley(e)) e.attackCd = Math.min(e.attackCd, 35);
+          if (e.blink === 0 && canAttackTarget && (!this.hasAttackLine(e, def, true) || !this.mageVolley(e)))
+            e.attackCd = Math.max(e.attackCd, 95);
         } else {
           if (targetAlive) e.vx += Math.sign(pdx) * 0.04;
           e.vx = clamp(e.vx, -0.45, 0.45);
-          if (canAttackTarget && e.attackCd === 0 && pDist < 340) {
+          if (canAttackTarget && e.attackCd === 0 && pDist < 340 && this.hasAttackLine(e, def, true)) {
             e.blink = 20; // begin the 20-frame telegraph
             e.attackCd = 180 + Math.floor(Math.random() * 80);
           }
@@ -3185,7 +3403,7 @@ export class Enemies implements EnemyControlApi {
             ctx.explosions.trigger(e.x + Math.sign(pdx) * 18, e.y - 2, 11, { playerDamageSource: 'colossus-slam' });
             ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.03, 0.06);
             e.attackCd = 150 + Math.floor(Math.random() * 40);
-          } else if (Math.abs(pdx) < 300) {
+          } else if (Math.abs(pdx) < 300 && this.hasAttackLine(e, def, true)) {
             // MOLTEN VOLLEY: three lobbed gobs of kiln-fire
             for (let v = -1; v <= 1; v++) {
               ctx.projectiles.push({
@@ -3437,6 +3655,7 @@ export class Enemies implements EnemyControlApi {
           e.attackCd === 0 &&
           pDist >= 90 &&
           pDist < 320 &&
+          this.hasAttackLine(e, def, true) &&
           (e.windup ?? 0) === 0 &&
           (e.swoop ?? 0) === 0
         ) {
@@ -3613,9 +3832,13 @@ export class Enemies implements EnemyControlApi {
                 // stone fists vs stone wall: the wall loses
                 const fx2 = Math.floor(e.x + dir * (def.halfW + 3));
                 const fy2 = Math.floor(e.y - 8);
-                ctx.spells.erodeAt(fx2, fy2, 6);
-                ctx.particles.burst(fx2, fy2, 9, Cell.Sand, stoneColor, 1.9);
                 e.punching = 16; // wind-up + haymaker (sprite reads this)
+                if (!this.protectedCellInRadius(fx2, fy2, 6)) {
+                  ctx.spells.erodeAt(fx2, fy2, 6);
+                  ctx.particles.burst(fx2, fy2, 9, Cell.Sand, stoneColor, 1.9);
+                } else {
+                  e.wary = Math.max(e.wary ?? 0, 18);
+                }
                 // The thud is only felt where it is SEEN: no off-screen
                 // rumble, and a gentler hand than before.
                 const camX = Math.floor(ctx.camera.x),
@@ -3655,7 +3878,7 @@ export class Enemies implements EnemyControlApi {
           }
         }
         // Rock throw
-        if (canAttackTarget && e.attackCd === 0 && pDist > 50 && pDist < 360) {
+        if (canAttackTarget && e.attackCd === 0 && pDist > 50 && pDist < 360 && this.hasAttackLine(e, def, true)) {
           for (let r = 0; r < 3; r++) {
             const ta = Math.atan2(pdy - 38 - r * 7, pdx);
             const spd = 4.0 + Math.random() * 1.2;
@@ -3719,23 +3942,11 @@ export class Enemies implements EnemyControlApi {
         e.fy = 0;
       }
 
-      // Integrate movement (grounded foes collide; imps/wisps and airborne bats drift).
+      // Integrate movement (walkers step; flyers collide and slip around small nubs).
       // Difficulty and descent pacing scale the step distance = effective speed.
       const spd = difficultyMods(ctx.state).enemySpeed * enemyMovementPace(ctx);
       if (e.kind === 'imp' || e.kind === 'wisp' || (e.kind === 'bat' && (e.slimed ?? 0) <= 0)) {
-        // Drift via sub-cell accumulators so e.x / e.y stay integers (grid indices)
-        e.fx += e.vx * spd;
-        e.fy += e.vy * spd;
-        const sx = Math.trunc(e.fx),
-          sy = Math.trunc(e.fy);
-        if (sx !== 0) {
-          e.x = Math.floor(clamp(e.x + sx, 6, WIDTH - 7));
-          e.fx -= sx;
-        }
-        if (sy !== 0) {
-          e.y = Math.floor(clamp(e.y + sy, 14, HEIGHT - 7));
-          e.fy -= sy;
-        }
+        this.integrateFlying(e, def, spd);
       } else {
         const stepUp =
           e.kind === 'weaver'
@@ -3754,7 +3965,7 @@ export class Enemies implements EnemyControlApi {
                     ? (e.rillWet ?? 0) >= RILLBACK_WET_THRESHOLD
                       ? 2
                       : 1
-                : 1;
+                    : 1;
         // WARY OF THE EDGE: a grounded walker won't voluntarily step into a cell
         // that's lethal to it (lava/fire/acid). Fail-open — it only cancels this
         // frame's step and re-aims next frame, so it never hard-locks a path.
