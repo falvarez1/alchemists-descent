@@ -43,16 +43,22 @@ const LIGHT_SHY: ReadonlySet<CritterKind> = new Set<CritterKind>(['beetle', 'fly
 
 export class Critters implements CrittersApi {
   private readonly pool = new EntityPool<Critter>();
+  private readonly eventDisposers: Array<() => void> = [];
   readonly list = this.pool.list;
 
   constructor(ctx: Ctx) {
-    ctx.events.on('structureStrike', ({ x, y, radius }) =>
-      this.killAt(ctx, x, y, radius + 4),
+    this.eventDisposers.push(
+      ctx.events.on('structureStrike', ({ x, y, radius }) =>
+        this.killAt(ctx, x, y, radius + 4),
+      ),
     );
     // entering a new depth scatters the old fauna
-    ctx.events.on('levelChanged', () => {
-      this.clear();
-    });
+    this.eventDisposers.push(ctx.events.on('levelChanged', () => this.clear()));
+  }
+
+  dispose(): void {
+    for (const dispose of this.eventDisposers.splice(0).reverse()) dispose();
+    this.clear();
   }
 
   killAt(ctx: Ctx, x: number, y: number, radius: number): void {
@@ -357,8 +363,7 @@ export class Critters implements CrittersApi {
               const ti = w.idx(xi + ddx, yi + ddy);
               const tt = w.types[ti];
               if (tt === Cell.Fungus || tt === Cell.Moss) {
-                w.types[ti] = Cell.Empty;
-                w.colors[ti] = 0x08080c;
+                w.clearCellAt(ti);
                 ctx.particles.burst(xi + ddx, yi + ddy, 2, null, () => packRGB(90, 160, 80), 0.6);
                 break;
               }
@@ -425,8 +430,7 @@ export class Critters implements CrittersApi {
           }
           if (poolBelow) {
             const di = w.idx(x, solidY + 1);
-            w.types[di] = Cell.Water;
-            w.colors[di] = waterColor();
+            w.replaceCellAt(di, Cell.Water, waterColor());
             if (Math.random() < 0.3) ctx.audio.drip();
           }
         }

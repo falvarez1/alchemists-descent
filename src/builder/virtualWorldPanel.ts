@@ -359,6 +359,8 @@ export class VirtualWorldPanel {
    *  a change invalidates the chunk cache so the window re-bakes. */
   private lastLookSig = '';
   private raf = 0;
+  private autoGenerateTimer: number | null = null;
+  private disposed = false;
   private lastAutoCenter = '';
   private hoverWorld: { x: number; y: number } | null = null;
   private drag: { pointerId: number; x: number; y: number } | null = null;
@@ -387,6 +389,7 @@ export class VirtualWorldPanel {
   }
 
   cancel(): void {
+    this.clearAutoGenerateTimer();
     if (this.activeJobId > 0) {
       this.backend.cancel(this.activeJobId);
       this.activeJobId = 0;
@@ -399,6 +402,7 @@ export class VirtualWorldPanel {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.cancel();
     this.backend.dispose();
     cancelAnimationFrame(this.raf);
@@ -813,6 +817,7 @@ export class VirtualWorldPanel {
   }
 
   private async generateWindow(): Promise<void> {
+    if (this.disposed) return;
     const selectedInfo = this.selectedBackendInfo();
     if (!selectedInfo.implemented) {
       this.status = 'error';
@@ -853,6 +858,7 @@ export class VirtualWorldPanel {
         await this.backend.init(def);
         this.backendInitialized = true;
       }
+      if (this.disposed || this.activeJobId !== jobId) return;
       const started = performance.now();
       const result = await this.backend.generateWindow({
         jobId,
@@ -864,7 +870,7 @@ export class VirtualWorldPanel {
         centerCy,
         requestedPlanes: ['previewRgba'],
       });
-      if (this.activeJobId !== jobId || this.selectedProfile !== profile) return;
+      if (this.disposed || this.activeJobId !== jobId || this.selectedProfile !== profile) return;
       for (const chunk of result.chunks) this.cacheChunk(profile, chunk);
       this.lastMetrics = {
         ...result.metrics,
@@ -1035,7 +1041,7 @@ export class VirtualWorldPanel {
   }
 
   private maybeAutoGenerate(): void {
-    if (!this.autoFill || this.status === 'generating') return;
+    if (this.disposed || !this.autoFill || this.status === 'generating') return;
     const key = this.autoCenterKey();
     if (key === this.lastAutoCenter) return;
     if (this.windowFullyCached()) {
@@ -1043,11 +1049,25 @@ export class VirtualWorldPanel {
       return;
     }
     this.lastAutoCenter = key;
-    window.setTimeout(() => {
-      if (this.autoFill && this.autoCenterKey() === key && this.status !== 'generating' && !this.windowFullyCached()) {
+    this.clearAutoGenerateTimer();
+    this.autoGenerateTimer = window.setTimeout(() => {
+      this.autoGenerateTimer = null;
+      if (
+        !this.disposed &&
+        this.autoFill &&
+        this.autoCenterKey() === key &&
+        this.status !== 'generating' &&
+        !this.windowFullyCached()
+      ) {
         void this.generateWindow();
       }
     }, 90);
+  }
+
+  private clearAutoGenerateTimer(): void {
+    if (this.autoGenerateTimer === null) return;
+    window.clearTimeout(this.autoGenerateTimer);
+    this.autoGenerateTimer = null;
   }
 
   private requestDraw(): void {

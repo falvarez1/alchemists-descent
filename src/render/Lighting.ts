@@ -52,6 +52,12 @@ const RAYCAST_RAYS = 540;
 const RAY_DIR_X = new Float32Array(RAYCAST_RAYS);
 const RAY_DIR_Y = new Float32Array(RAYCAST_RAYS);
 
+interface AuthoredFalloffCell {
+  dx: number;
+  dy: number;
+  f: number;
+}
+
 for (let k = 0; k < RAYCAST_RAYS; k++) {
   const a = (k / RAYCAST_RAYS) * Math.PI * 2;
   RAY_DIR_X[k] = Math.cos(a);
@@ -74,6 +80,7 @@ export class Lighting implements LightField {
 
   private wandFlicker = 1;
   private wandFlickerTarget = 1;
+  private readonly authoredFalloffCache = new Map<string, AuthoredFalloffCell[]>();
 
   /**
    * Stored by build(); sample() is only ever called after build() within a
@@ -175,27 +182,39 @@ export class Lighting implements LightField {
       const clx = (al.x - renderCamX) >> 1,
         cly = (al.y - renderCamY) >> 1;
       if (clx < -R || clx > LW + R || cly < -R || cly > LH + R) continue;
-      for (let dy = -R; dy <= R; dy++) {
-        const py = cly + dy;
+      for (const cell of this.authoredFalloffMask(R, al.falloff, al.bloom)) {
+        const py = cly + cell.dy;
         if (py < 0 || py >= LH) continue;
-        for (let dx = -R; dx <= R; dx++) {
-          const px = clx + dx;
-          if (px < 0 || px >= LW) continue;
-          const t = Math.sqrt(dx * dx + dy * dy) / R;
-          if (t > 1) continue;
-          let f: number;
-          if (al.falloff === 'linear') f = 1 - t;
-          else if (al.falloff === 'sharp') f = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
-          else f = (1 - t * t) * 0.8; // soft: gentle dome
-          if (t < 0.15) f *= 1 + al.bloom; // hot core feeds the bloom pass
-          const i = py * LW + px;
-          const v = I * f;
-          if (v * al.r > this.lightR[i]) this.lightR[i] = v * al.r;
-          if (v * al.g > this.lightG[i]) this.lightG[i] = v * al.g;
-          if (v * al.b > this.lightB[i]) this.lightB[i] = v * al.b;
-        }
+        const px = clx + cell.dx;
+        if (px < 0 || px >= LW) continue;
+        const i = py * LW + px;
+        const v = I * cell.f;
+        if (v * al.r > this.lightR[i]) this.lightR[i] = v * al.r;
+        if (v * al.g > this.lightG[i]) this.lightG[i] = v * al.g;
+        if (v * al.b > this.lightB[i]) this.lightB[i] = v * al.b;
       }
     }
+  }
+
+  private authoredFalloffMask(radius: number, falloff: AuthoredLight['falloff'], bloom: number): AuthoredFalloffCell[] {
+    const key = `${radius}|${falloff}|${bloom.toFixed(3)}`;
+    const cached = this.authoredFalloffCache.get(key);
+    if (cached) return cached;
+    const cells: AuthoredFalloffCell[] = [];
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const t = Math.sqrt(dx * dx + dy * dy) / radius;
+        if (t > 1) continue;
+        let f: number;
+        if (falloff === 'linear') f = 1 - t;
+        else if (falloff === 'sharp') f = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+        else f = (1 - t * t) * 0.8;
+        if (t < 0.15) f *= 1 + bloom;
+        cells.push({ dx, dy, f });
+      }
+    }
+    this.authoredFalloffCache.set(key, cells);
+    return cells;
   }
 
   private seedLight(wx: number, wy: number, r: number, g: number, b: number): void {

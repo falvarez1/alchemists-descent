@@ -410,6 +410,9 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
   if (ov.a <= 0.5) {
     let wx = camX + vx;
     let wy = camY + vy;
+    if (wy >= ${HEIGHT}) {
+      c = vec3<f32>(0.0);
+    } else {
     var lookupX = wx;
     var lookupY = wy;
     var ringGlow = 0.0;
@@ -567,14 +570,19 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
         base.b * max(softLit((ambient + min(${LIGHT_CLAMP.toFixed(1)}, light.b)) * vg), selfGlow) + base.b * floorL
       ) * intensity + ringGlow * vec3<f32>(0.55, 0.42, 0.26);
     }
+    }
   }
 
+  var outColor = c + ov.rgb;
+  if (camY + vy >= ${HEIGHT}) {
+    outColor = vec3<f32>(0.0);
+  }
   textureStore(
     uOutput,
     vec2<i32>(col, rowB),
     // Overlay combine matches the CPU/WebGL reference exactly: no >=0 clamp here
     // (addPx can ride negative; the float16 store keeps parity with ComposeShader).
-    vec4<f32>(c + ov.rgb, 1.0)
+    vec4<f32>(outColor, 1.0)
   );
 }
 `;

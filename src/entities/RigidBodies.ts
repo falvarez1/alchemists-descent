@@ -1,10 +1,10 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { bodyMaterialDef, WATER_DENSITY } from '@/content/bodyMaterials';
 import type { Ctx, RigidBodiesApi, RigidBody, RigidShape, SpawnBodyOpts } from '@/core/types';
 import { PLAYER_CRAWL_H, PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { cellBlocksEntityWithLooseRubble, type CollisionScratch } from '@/sim/collision';
 import { ashColor, COLOR_FN, fireColor, packRGB, smokeColor } from '@/sim/colors';
-import { bodyMaterialDef, WATER_DENSITY } from '@/entities/bodyMaterials';
 import type { World } from '@/sim/World';
 import { RAPIER } from '@/entities/rapierInit';
 
@@ -118,11 +118,17 @@ export class RigidBodies implements RigidBodiesApi {
   private ripCharge = 0;
   /** Explosive barrels queued to detonate (processed once per tick → chains ripple). */
   private detonations: RigidBody[] = [];
+  private readonly eventDisposers: Array<() => void> = [];
 
   constructor(private readonly ctx: Ctx) {
     this.world = this.createWorld();
     // Bodies are per-level transient state (like projectiles/particles).
-    ctx.events.on('levelChanged', () => this.clear());
+    this.eventDisposers.push(ctx.events.on('levelChanged', () => this.clear()));
+  }
+
+  dispose(): void {
+    for (const dispose of this.eventDisposers.splice(0).reverse()) dispose();
+    this.clear();
   }
 
   /** Build a fresh Rapier world (gravity + fixed dt). Used at construction and to

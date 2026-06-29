@@ -1,5 +1,9 @@
 import type { Ctx } from '@/core/types';
-import { loadDiscoveredInteractions, recordInteractionDiscovery } from '@/game/GrimoireStore';
+import { loadDiscoveredInteractions, recordInteractionDiscovery } from '@/core/grimoireStore';
+import {
+  GRIMOIRE_INTERACTIONS,
+  type GrimoireInteractionEntry,
+} from '@/content/grimoireInteractions';
 import { Cell, isConductor } from '@/sim/CellType';
 
 interface InteractionMatch {
@@ -7,12 +11,6 @@ interface InteractionMatch {
   title: string;
   x: number;
   y: number;
-}
-
-export interface GrimoireInteractionEntry {
-  id: string;
-  title: string;
-  body: string;
 }
 
 type InteractionMatcher = (ctx: Ctx, x: number, y: number, i: number) => boolean;
@@ -89,42 +87,28 @@ function matchAcidWaterTransmutation(ctx: Ctx, x: number, y: number, i: number):
 
 const RULES: readonly InteractionRule[] = [
   {
-    id: 'water-quench-fire',
-    title: 'Water Quenches Fire',
-    body: 'Water and flame collapse into steam; carry water when wood and embers block the path.',
+    ...GRIMOIRE_INTERACTIONS[0]!,
     match: matchWaterFire,
   },
   {
-    id: 'lava-flashes-water',
-    title: 'Lava Flashes Water',
-    body: 'Water touching lava bursts to steam and can chill molten rock into stone crust.',
+    ...GRIMOIRE_INTERACTIONS[1]!,
     match: matchLavaWater,
   },
   {
-    id: 'nitrogen-freezes-water',
-    title: 'Nitrogen Freezes Water',
-    body: 'Liquid nitrogen flash-freezes nearby water into ice before it boils away.',
+    ...GRIMOIRE_INTERACTIONS[2]!,
     match: matchNitrogenWater,
   },
   {
-    id: 'charge-conductors',
-    title: 'Conductive Paths',
-    body: 'Charge travels through water, lava, and metal; wet metal rooms can become circuits.',
+    ...GRIMOIRE_INTERACTIONS[3]!,
     match: matchChargedConductor,
   },
   {
-    id: 'acid-water-transmutation',
-    title: 'Acid Solvent Alchemy',
-    body: 'Acid beside water can turn eaten rock into gold, but the reaction is rare and local.',
+    ...GRIMOIRE_INTERACTIONS[4]!,
     match: matchAcidWaterTransmutation,
   },
 ];
 
-export const GRIMOIRE_INTERACTIONS: readonly GrimoireInteractionEntry[] = RULES.map(({ id, title, body }) => ({
-  id,
-  title,
-  body,
-}));
+export { GRIMOIRE_INTERACTIONS } from '@/content/grimoireInteractions';
 
 export function scanGrimoireInteractions(ctx: Ctx, skip?: ReadonlySet<string>): InteractionMatch[] {
   const world = ctx.world;

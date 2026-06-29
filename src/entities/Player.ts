@@ -10,7 +10,7 @@ import { clamp } from '@/core/math';
 import type { Ctx, EnemyKind, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
 import { PLAYER_AIR_CEIL_SLIP, PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
 import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus, sampleBodyCells } from '@/entities/status';
-import { playerMovementPace, playerVerticalPace } from '@/game/progressionPacing';
+import { playerMovementPace, playerVerticalPace } from '@/core/progressionPacing';
 import { PERK_IDS } from '@/content/perks';
 import { makePickup } from '@/core/pickupDefs';
 import { resetCombatTransients } from '@/core/runtimeState';

@@ -601,6 +601,8 @@ export interface FlyingParticle {
   value: number;
   hostileDmg: number;
   hostileSource?: string | null;
+  /** Explosion terrain flakes settle as soft residue instead of rebuilding blocking rubble. */
+  looseDebris: boolean;
   /** Pour/hose streams set this: the particle deposits its cell when it lands
    *  AND when its life expires (or it leaves the map), so siphoned material is
    *  conserved even when sprayed over open space. Default false. */
@@ -614,6 +616,8 @@ export interface ParticleOpts {
   value?: number;
   hostileDmg?: number;
   hostileSource?: string;
+  /** Explosion terrain flakes should leave nonblocking residue when they land. */
+  looseDebris?: boolean;
   /** See FlyingParticle.deposit — conserve the carried cell on expiry. */
   deposit?: boolean;
 }

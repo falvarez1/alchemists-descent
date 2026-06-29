@@ -8,7 +8,7 @@ import { Levels, reviveSavedEnemy, snapshotEnemyForSave } from '@/game/Levels';
 import { makePickup } from '@/core/pickupDefs';
 import { makeLevelRuntime } from '@/game/runtime';
 import { rleEncode } from '@/core/rle';
-import { Cell } from '@/sim/CellType';
+import { Cell, CELL_COUNT } from '@/sim/CellType';
 import { World } from '@/sim/World';
 
 function enemy(overrides: Partial<Enemy> = {}): Enemy {
@@ -77,6 +77,42 @@ function withLevelDom<T>(run: () => T): T {
     if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
     else delete (globalThis as typeof globalThis & { window?: Window }).window;
   }
+}
+
+function makeRestoreCtx(): Ctx {
+  return {
+    world: new World(),
+    enemies: [],
+    state: { worldSeed: 99 },
+    worldgen: {
+      generateLevel: () => ({
+        exit: { x: 100, sealY: 140, halfW: 8 },
+        waystones: [],
+        spawn: { x: 24, y: 48 },
+        cauldron: null,
+        pickups: [],
+        portal: null,
+        mechanisms: [],
+        runeVaults: [],
+        boss: null,
+        vaultArch: null,
+        vaultHoard: null,
+        spellLab: null,
+        prefabEnemies: [],
+        placedPrefabs: [],
+        authoredLights: [],
+        emitters: [],
+        decors: [],
+        refuge: null,
+      }),
+    },
+  } as unknown as Ctx;
+}
+
+function restoreSavedBlob(levels: Levels, ctx: Ctx, blob: unknown): LevelRuntime {
+  return (levels as unknown as {
+    restoreLevel(ctx: Ctx, def: typeof LEVELS.d2, blob: typeof blob): LevelRuntime;
+  }).restoreLevel(ctx, LEVELS.d2, blob);
 }
 
 describe('level enemy persistence', () => {
@@ -285,6 +321,76 @@ describe('level enemy persistence', () => {
       color: 0xffffff,
     });
     expect(restored.weaverLairWebs[0].jitter).toBeCloseTo(0.12);
+  });
+
+  it('rejects saved levels with invalid material ids before restore mutates the world', () => {
+    const savedWorld = new World();
+    savedWorld.types[0] = CELL_COUNT;
+    const ctx = makeRestoreCtx();
+    const levels = new Levels(ctx);
+    const blob = {
+      id: 'd2',
+      rle: rleEncode(savedWorld.types),
+      life: [],
+      charge: [],
+      explored: '',
+      waystones: [],
+      pickups: [],
+      mechanisms: [],
+      runeVaults: [],
+      keyTaken: false,
+      portalOpen: false,
+      litOrder: [],
+      enemies: [],
+    };
+
+    expect(() => restoreSavedBlob(levels, ctx, blob)).toThrow(/invalid cell id/);
+  });
+
+  it('restores open timed valves by clearing their material and regenerating old-save countdowns', () => {
+    const savedWorld = new World();
+    for (let y = 100; y < 102; y++) {
+      for (let x = 100; x < 103; x++) savedWorld.types[savedWorld.idx(x, y)] = Cell.Stone;
+    }
+    const ctx = makeRestoreCtx();
+    const levels = new Levels(ctx);
+    const blob = {
+      id: 'd2',
+      rle: rleEncode(savedWorld.types),
+      life: [],
+      charge: [],
+      explored: '',
+      waystones: [],
+      pickups: [],
+      mechanisms: [
+        {
+          id: 1,
+          kind: 'valve',
+          x: 100,
+          y: 100,
+          w: 3,
+          h: 2,
+          state: 1,
+          targetId: -1,
+          material: Cell.Stone,
+          autoCloseFrames: 20,
+        },
+      ],
+      runeVaults: [],
+      keyTaken: false,
+      portalOpen: false,
+      litOrder: [],
+      enemies: [],
+    };
+
+    const restored = restoreSavedBlob(levels, ctx, blob);
+    const valve = restored.mechanisms[0]!;
+    expect(valve).toMatchObject({ closeT: 20, prevWant: true });
+    for (let y = 100; y < 102; y++) {
+      for (let x = 100; x < 103; x++) {
+        expect(restored.world.types[restored.world.idx(x, y)]).toBe(Cell.Empty);
+      }
+    }
   });
 
   it('restores, clears, and sanitizes saved map waypoints', () => {

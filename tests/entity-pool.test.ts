@@ -185,6 +185,7 @@ describe('Particles adapter', () => {
       glow: 2,
       homing: true,
       hostileDmg: 6,
+      looseDebris: true,
     });
     const first = particles.list[0];
     const types = new Uint8Array(100);
@@ -216,6 +217,7 @@ describe('Particles adapter', () => {
       glow: 0,
       homing: false,
       hostileDmg: 0,
+      looseDebris: false,
     });
   });
 });

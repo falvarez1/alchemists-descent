@@ -102,9 +102,18 @@ interface VineStrand extends VineStrandView {
 
 export class VineStrands implements VineStrandsApi {
   readonly strands: VineStrand[] = [];
+  private readonly eventDisposers: Array<() => void> = [];
+  private readonly clusterQueueX = new Int16Array(MAX_CLUSTER_CELLS);
+  private readonly clusterQueueY = new Int16Array(MAX_CLUSTER_CELLS);
+  private readonly clusterCellIndexes = new Int32Array(MAX_CLUSTER_CELLS);
+  private readonly clusterNodeByCell = new Map<number, number>();
 
   constructor(private readonly ctx: Ctx) {
-    ctx.events.on('levelChanged', () => this.clear());
+    this.eventDisposers.push(ctx.events.on('levelChanged', () => this.clear()));
+  }
+
+  dispose(): void {
+    for (const dispose of this.eventDisposers.splice(0).reverse()) dispose();
   }
 
   detachCluster(x: number, y: number): boolean {
@@ -113,10 +122,11 @@ export class VineStrands implements VineStrandsApi {
     const start = world.idx(x, y);
     if (world.types[start] !== Cell.Vines) return false;
 
-    const queueX = new Int16Array(MAX_CLUSTER_CELLS);
-    const queueY = new Int16Array(MAX_CLUSTER_CELLS);
-    const cellIndexes = new Int32Array(MAX_CLUSTER_CELLS);
-    const nodeByCell = new Map<number, number>();
+    const queueX = this.clusterQueueX;
+    const queueY = this.clusterQueueY;
+    const cellIndexes = this.clusterCellIndexes;
+    const nodeByCell = this.clusterNodeByCell;
+    nodeByCell.clear();
     let head = 0;
     let count = 1;
     let anchored = false;
@@ -561,10 +571,11 @@ export class VineStrands implements VineStrandsApi {
    *  tendril strand pinned at that top; clears the cells (the strand IS them now).
    *  Returns false if it isn't a danging tendril (no free bottom / too small). */
   private liftHangingCluster(world: World, sx: number, sy: number): boolean {
-    const queueX = new Int16Array(MAX_CLUSTER_CELLS);
-    const queueY = new Int16Array(MAX_CLUSTER_CELLS);
-    const cellIndexes = new Int32Array(MAX_CLUSTER_CELLS);
-    const nodeByCell = new Map<number, number>();
+    const queueX = this.clusterQueueX;
+    const queueY = this.clusterQueueY;
+    const cellIndexes = this.clusterCellIndexes;
+    const nodeByCell = this.clusterNodeByCell;
+    nodeByCell.clear();
     let head = 0;
     let count = 1;
     let truncated = false;

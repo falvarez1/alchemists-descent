@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Ctx } from '@/core/types';
 import { playerLiquidSplashDropletCount } from '@/entities/Player';
 import { Particles } from '@/particles/Particles';
-import { Cell } from '@/sim/CellType';
+import { Cell, blocksEntity } from '@/sim/CellType';
 import { canDryBloodOnSurface } from '@/sim/stains';
 import { World } from '@/sim/World';
 
@@ -88,6 +88,19 @@ describe('gore particle deposition', () => {
     expect(particles.list).toHaveLength(0);
     expect(world.types[world.idx(10, 8)]).toBe(Cell.Empty);
     expect(world.types[world.idx(10, 10)]).toBe(Cell.Blood);
+  });
+
+  it('settles loose explosion stone particles as pass-through ash', () => {
+    const world = new World(32, 32);
+    const particles = new Particles();
+    set(world, 10, 10, Cell.Stone);
+
+    particles.spawn(10, 8, 0, 2, Cell.Stone, 0x777777, 20, { grav: 0, looseDebris: true });
+    particles.update(makeCtx(world));
+
+    expect(particles.list).toHaveLength(0);
+    expect(world.types[world.idx(10, 8)]).toBe(Cell.Ash);
+    expect(blocksEntity(world.types[world.idx(10, 8)])).toBe(false);
   });
 });
 

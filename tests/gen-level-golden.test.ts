@@ -4,9 +4,12 @@ import { createDefaultPostFxSettings } from '@/config/params';
 import { LEVELS } from '@/config/worldgraph';
 import type { Ctx, GameStateData, LevelDef } from '@/core/types';
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { fnv1aString } from '@/core/rng';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { WorldGen } from '@/world/CaveGenerator';
+import { makeLevelRuntime } from '@/game/runtime';
+import { validateFindability } from '@/world/validate';
 
 /**
  * FULL-generateLevel golden lock. tests/gen-golden.test.ts only hashes
@@ -72,6 +75,10 @@ function levelTypeHash(def: LevelDef, seed: number): string {
   return fnv1a(generateLevelState(def, seed).world.types);
 }
 
+function runtimeLevelSeed(expeditionSeed: number, levelId: keyof typeof LEVELS): number {
+  return (expeditionSeed ^ fnv1aString(levelId)) >>> 0;
+}
+
 function generateLevelState(def: LevelDef, seed: number): ReturnType<WorldGen['generateLevel']> & { world: World } {
   const world = new World();
   const gen = new WorldGen();
@@ -123,14 +130,14 @@ function emptyBottomExitCells(level: ReturnType<typeof generateLevelState>): num
   return count;
 }
 
-// Re-recorded for GEN_VERSION 32: signature depths now get real-cell encounter
-// lairs for the organic enemy trio, shifting full-level cell output where they land.
+// Re-recorded for GEN_VERSION 34: mechanism-vault trigger antechambers use
+// swept wizard-gauge connectors so their hands-on controls stay walkable.
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: 'd9b6b61a' },
-  { id: 'd4', seed: 1337, hash: '7f71738f' },
-  { id: 'd8', seed: 1337, hash: '7825a71e' },
-  { id: 'vault', seed: 1337, hash: '20798ecd' },
-  { id: 'd2', seed: 42, hash: '13e28c90' },
+  { id: 'd1', seed: 1337, hash: '31b54fa4' },
+  { id: 'd4', seed: 1337, hash: '252ec3d4' },
+  { id: 'd8', seed: 1337, hash: 'b90cea1a' },
+  { id: 'vault', seed: 1337, hash: 'bb8069aa' },
+  { id: 'd2', seed: 42, hash: '520e5093' },
 ];
 
 describe('full generateLevel golden hashes', () => {
@@ -139,6 +146,30 @@ describe('full generateLevel golden hashes', () => {
       expect(levelTypeHash(LEVELS[id], seed)).toBe(hash);
     });
   }
+});
+
+describe('full generateLevel findability regressions', () => {
+  it('keeps the D1 seed 42 mechanism-vault plate walkable by the wizard body', () => {
+    const level = generateLevelState(LEVELS.d1, runtimeLevelSeed(42, 'd1'));
+    const runtime = makeLevelRuntime({
+      def: LEVELS.d1,
+      world: level.world,
+      spawn: level.spawn,
+      regions: null,
+      mechanisms: level.mechanisms,
+      pickups: level.pickups,
+      waystones: level.waystones,
+      runeVaults: level.runeVaults,
+      exit: level.exit,
+      portal: level.portal,
+      cauldron: level.cauldron,
+      refuge: level.refuge ?? undefined,
+      spellLab: level.spellLab ?? undefined,
+      vaultArch: level.vaultArch ?? undefined,
+    });
+
+    expect(validateFindability(runtime).filter((issue) => issue.severity === 'error')).toEqual([]);
+  });
 });
 
 describe('D1 Spell Lab generation', () => {

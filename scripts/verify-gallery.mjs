@@ -251,6 +251,8 @@ for (const name of entityNames) {
 check(`all ${entityNames.length} entities render a body`, allDrew);
 check('no preview draw failures', drawWarnings.length === 0, drawWarnings.join(' | '));
 
+await page.fill('#bg-search', 'The Alchemist');
+await page.waitForTimeout(200);
 await selectItem('The Alchemist');
 await clickChip('RUN');
 const r1 = await snap();
@@ -259,6 +261,8 @@ const r2 = await snap();
 await page.waitForTimeout(300);
 const r3 = await snap();
 check('the alchemist runs (stride animates)', r1.sum !== r2.sum || r2.sum !== r3.sum);
+await page.fill('#bg-search', '');
+await page.waitForTimeout(200);
 
 /* ---------- animation states + cursor gaze ---------- */
 const chipsOf = () =>
@@ -280,6 +284,38 @@ check(
 );
 await selectItem('Bomber');
 check('bomber carries its FUSING state', (await chipsOf()).includes('FUSING (loop)'));
+await selectItem('Rootloper');
+const rootChips = await chipsOf();
+check(
+  'rootloper carries rooted, growth, lash, and panic states',
+  ['ROOTED CREEP', 'GROWTH WEAVE', 'TENDRIL LASH', 'ANCHOR PANIC'].every((label) => rootChips.includes(label)),
+  JSON.stringify(rootChips),
+);
+await selectItem('Stonemaw');
+const mawChips = await chipsOf();
+check(
+  'stonemaw carries chew, tunnel, bite, and stun states',
+  ['CHEW BURST', 'TUNNELING', 'BITE WINDUP', 'COLD STUN'].every((label) => mawChips.includes(label)),
+  JSON.stringify(mawChips),
+);
+await selectItem('Rillback');
+const rillChips = await chipsOf();
+check(
+  'rillback carries swim, lunge, charge, pulse, and beached states',
+  ['SWIM S-CURVE', 'LUNGE WINDUP', 'CHARGE WINDUP', 'CONDUCTOR PULSE', 'BEACHED FLOP'].every((label) => rillChips.includes(label)),
+  JSON.stringify(rillChips),
+);
+await page.fill('#bg-search', 'The Alchemist');
+await page.waitForTimeout(200);
+await selectItem('The Alchemist');
+const playerChips = await chipsOf();
+check(
+  'the alchemist carries telekinesis power rigs',
+  ['TELEKINESIS LIFT/HOLD', 'TELEKINESIS THROW', 'PLANK RIP', 'FORCE PUSH (F)'].every((label) => playerChips.includes(label)),
+  JSON.stringify(playerChips),
+);
+await page.fill('#bg-search', '');
+await page.waitForTimeout(200);
 
 // alerted gaze: the stage maps the mouse to world cells (dataset readout)
 await selectItem('Slime');

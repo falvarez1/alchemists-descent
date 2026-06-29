@@ -1,7 +1,6 @@
 import type {
   AuthoredLight,
   Ctx,
-  EnemyKind,
   ExitPortal,
   HazardEmitter,
   LevelExitWell,
@@ -13,6 +12,7 @@ import type {
   RuntimeDecor,
   Waystone,
 } from '@/core/types';
+import { isEnemyKind } from '@/core/types';
 import {
   AUTHORED_LIGHT_BLOOM_MAX,
   AUTHORED_LIGHT_FLICKER_MAX,
@@ -78,8 +78,29 @@ function fixedPotionParam(value: unknown): string | undefined {
   return POTION_ID_SET.has(value) ? value : undefined;
 }
 
+export const EMITTER_CELL_OPTIONS = [
+  'water',
+  'oil',
+  'acid',
+  'lava',
+  'fire',
+  'ember',
+  'sand',
+  'snow',
+  'smoke',
+  'nitrogen',
+  'healium',
+] as const;
+export type EmitterCellName = (typeof EMITTER_CELL_OPTIONS)[number];
+
+const EMITTER_CELL_NAME_SET: ReadonlySet<string> = new Set(EMITTER_CELL_OPTIONS);
+
+export function isEmitterCellName(value: unknown): value is EmitterCellName {
+  return typeof value === 'string' && EMITTER_CELL_NAME_SET.has(value);
+}
+
 /** Hazard emitter material names -> cell ids (the inspector's choices). */
-export const EMITTER_CELLS: Record<string, number> = {
+export const EMITTER_CELLS: Record<EmitterCellName, number> = {
   water: Cell.Water,
   oil: Cell.Oil,
   acid: Cell.Acid,
@@ -92,6 +113,10 @@ export const EMITTER_CELLS: Record<string, number> = {
   nitrogen: Cell.Nitrogen,
   healium: Cell.Healium,
 };
+
+export function emitterCellFromParam(value: unknown): number {
+  return isEmitterCellName(value) ? EMITTER_CELLS[value] : Cell.Water;
+}
 
 /** Valve gate material names -> cell ids (rigid, channel-blocking). */
 export const VALVE_CELLS: Record<string, number> = {
@@ -218,7 +243,7 @@ export function instantiateObjects(
     const ox = Math.floor(o.x) + originX,
       oy = Math.floor(o.y) + originY;
     if (o.kind === 'enemy') {
-      const kind = (o.params.kind as EnemyKind) ?? 'slime';
+      const kind = isEnemyKind(o.params.kind) ? o.params.kind : 'slime';
       const rec: PrefabEnemy = { kind, x: ox, y: oy, sourceId: o.id };
       if (o.params.sleeping === true && (kind === 'bat' || kind === 'weaver')) rec.sleeping = true;
       if (Array.isArray(o.params.patrol) && (o.params.patrol as unknown[]).length > 0) {
@@ -233,7 +258,7 @@ export function instantiateObjects(
       sink.emitters.push({
         x: ox,
         y: oy,
-        cell: EMITTER_CELLS[String(o.params.cell ?? 'water')] ?? Cell.Water,
+        cell: emitterCellFromParam(o.params.cell),
         rate: Math.max(2, paramNum(o, 'rate', 30)),
         // the object's rotation is the drip direction (0=down, 90=left,
         // 180=up, 270=right); burst/phase let banks of emitters stagger

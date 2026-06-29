@@ -1,6 +1,6 @@
 // Focused card-offer probe.
 // Usage: node scripts/verify-card-offers.mjs [url]  (dev server running)
-import { chromium } from 'playwright-core';
+import { launchBrowser } from './browser-launch.mjs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
@@ -17,7 +17,7 @@ const check = (name, ok, detail = '') => {
   }
 };
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));

@@ -183,7 +183,8 @@ entity AI run at rAF rate. This split is inherited from the original and all tun
 constants assume it — do not "unify" it without retuning the whole game.
 
 **Frame order is a contract.** Per frame, in `Game.ts`:
-`frameCount++ → camera.update → camera.updateSimBounds → simulation.update (substeps:
+`frameCount++ → camera.update → camera.updateSimBounds → grimoireInteractions.update →
+simulation.update (substeps:
 new moved epoch → harvester → electrical → projectiles → shockwave aging → material sweep →
 ice/vines pass) → playerCtl.update → flask.update → enemyCtl.update → rigidBodies.update →
 vineStrands.update → levels.update → pickups.update → mechanisms.update → critters.update →

@@ -21,6 +21,7 @@ const PROBES = [
   'verify-debug-tool.mjs',
   'verify-minimap-popovers.mjs',
   'verify-minimap-waypoint.mjs',
+  'verify-explosion-debris.mjs',
   'verify-encounter-lairs.mjs',
   'verify-enemy-ai-regressions.mjs',
   'verify-organic-enemy-trio.mjs',

@@ -1,4 +1,5 @@
 export type PerfPhase = 'sim' | 'entities' | 'render' | 'compose' | 'gl' | 'frame';
+export type PerfSample = Record<PerfPhase, number> & { didTick: boolean; tickCount: number };
 
 const EMA_ALPHA = 0.1;
 /** Per-phase budgets in ms (DESIGN.md frame-budget ledger). The combined
@@ -111,24 +112,35 @@ export class PerfHud {
 
   /** Per-frame scratch for the profiling hook (no cost unless recording). */
   private pending: Record<PerfPhase, number> = { sim: 0, entities: 0, render: 0, compose: 0, gl: 0, frame: 0 };
+  private pendingTickCount = 0;
+
+  beginFrame(tickCount: number): void {
+    this.pendingTickCount = Math.max(0, Math.floor(tickCount));
+  }
 
   mark(phase: PerfPhase, ms: number): void {
     const prev = this.ema[phase];
     this.ema[phase] = prev === 0 ? ms : prev + (ms - prev) * EMA_ALPHA;
-    this.pending[phase] = ms;
+    if (phase === 'sim' || phase === 'entities') this.pending[phase] += ms;
+    else this.pending[phase] = ms;
     if (phase !== 'frame') return;
     this.frameMarks++;
     // Profiling hook: scripts set window.__perfRecord and read __perfSamples —
     // raw per-frame bucket times, no EMA smoothing, no overhead when off.
     const w = window as unknown as {
       __perfRecord?: boolean;
-      __perfSamples?: Array<Record<PerfPhase, number>>;
+      __perfSamples?: PerfSample[];
     };
     if (w.__perfRecord) {
-      (w.__perfSamples ??= []).push({ ...this.pending });
-      this.pending.sim = 0;
-      this.pending.entities = 0;
+      (w.__perfSamples ??= []).push({
+        ...this.pending,
+        didTick: this.pendingTickCount > 0,
+        tickCount: this.pendingTickCount,
+      });
     }
+    this.pending.sim = 0;
+    this.pending.entities = 0;
+    this.pendingTickCount = 0;
     if (this._visible && this.frameMarks % 10 === 0) this.refresh();
   }
 

@@ -1,5 +1,6 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
+import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind, EnemySpawnOptions } from '@/core/types';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
@@ -7,7 +8,7 @@ export { ENEMY_DEFS } from '@/content/enemyDefs';
 import { createDefaultStatus, rollCatchFire, sampleAndTickStatus } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { LEVIATHAN_REWARD_POOL, randomCard } from '@/content/cardRewardPools';
-import { enemyMovementPace } from '@/game/progressionPacing';
+import { enemyMovementPace } from '@/core/progressionPacing';
 import { blocksEntity, Cell, isConductor, isSoftGrowth } from '@/sim/CellType';
 import {
   acidColor,
@@ -82,8 +83,6 @@ const ROOT_LOPER_SUPPORT_SCAN = 18;
 const STONE_MAW_CHEW_MAX_CELLS = 7;
 const STONE_MAW_CHEW_COOLDOWN = 28;
 const RILLBACK_CHARGE_WINDUP_FRAMES = 18;
-const RILLBACK_WET_THRESHOLD = 0.28;
-
 // --- Gust knockback (the player's kick is a wind blast; see Player.kick) ----
 const GUST_REF_MASS = 40; // a slime-ish footprint (halfW·h); push scales inversely
 const GUST_MASS_LO = 0.2; // heaviest foes barely budge
@@ -119,6 +118,9 @@ const STATUS_IMMUNE: Partial<
   colossus: { burning: true, frozen: true, teleportium: true },
   // A soaked hide never catches — but cold stiffens it and charge cooks it
   leviathan: { burning: true, teleportium: true },
+  // Rillbacks are the living conductor in their pool; their own charge pulse
+  // should threaten the player, not instantly shock the eel to death.
+  rillback: { electrified: true },
 };
 
 /** Per-kind TEMPERAMENT: how each foe weights the threat-aware behavior drives.
@@ -202,33 +204,13 @@ function colorForCell(t: number): number {
   return COLOR_FN[t]?.() ?? packRGB(120, 120, 120);
 }
 
-/** Human-readable AI state for the cell inspector ("panicking", "wary", …). */
-export function enemyStateLabel(e: Enemy): string {
-  if ((e.knockT ?? 0) > 0) return 'launched';
-  if (e.status.frozen > 0) return 'frozen';
-  if (e.status.burning > 0) return 'panicking'; // on fire → flailing
-  if (e.status.electrified > 0) return 'shocked';
-  if (e.kind === 'bat' && (e.slimed ?? 0) > 0) return 'slimed';
-  if ((e.wary ?? 0) > 0) return 'wary'; // recoiling from a hazard edge
-  if (e.kind === 'rootloper' && (e.rootPanic ?? 0) > 0) return 'unrooted';
-  if (e.kind === 'stonemaw' && (e.mawChewT ?? 0) > 0) return 'chewing';
-  if (e.kind === 'stonemaw' && (e.mawStun ?? 0) > 0) return 'stunned';
-  if (e.kind === 'rillback' && (e.rillChargeWindup ?? 0) > 0) return 'charging';
-  if (e.kind === 'rillback' && (e.rillWet ?? 0) < RILLBACK_WET_THRESHOLD) return 'beached';
-  if (e.kind === 'weaver' && (e.windup ?? 0) > 0) return 'poised';
-  if (e.kind === 'weaver' && e.blink > 0) return 'weaving';
-  if (e.sleeping) return 'asleep';
-  if (e.kind === 'weaver' && (e.cranky ?? 0) > 0) return 'cranky';
-  if (e.windup) return 'winding up';
-  if (e.alerted) return 'hunting';
-  if (e.patrol && e.patrol.length > 0) return 'patrolling';
-  return 'idle';
-}
+export { enemyStateLabel } from '@/core/enemyState';
 
 export class Enemies implements EnemyControlApi {
   readonly defs: Record<EnemyKind, EnemyDef> = ENEMY_DEFS;
 
   private readonly disposers: Array<() => void> = [];
+  private readonly rillbackLiquidSeek = { dx: 0, dy: 0 };
 
   constructor(private ctx: Ctx) {
     const onStrike = ctx.events?.on('structureStrike', ({ x, y, radius }) => {
@@ -1245,6 +1227,33 @@ export class Enemies implements EnemyControlApi {
     return { wet: wet / denom, hazard: hazard / denom, conductor };
   }
 
+  private findRillbackLiquidSeek(e: Enemy, def: EnemyDef, radius: number): boolean {
+    const w = this.ctx.world;
+    const cx = Math.floor(e.x);
+    const cy = Math.floor(e.y - def.h * 0.45);
+    const r2 = radius * radius;
+    let bestD2 = Infinity;
+    let bestX = cx;
+    let bestY = cy;
+    for (let dy = -radius; dy <= radius; dy += 3) {
+      for (let dx = -radius; dx <= radius; dx += 3) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 === 0 || d2 > r2 || d2 >= bestD2) continue;
+        const x = cx + dx;
+        const y = cy + dy;
+        if (!w.inBounds(x, y)) continue;
+        if (!rillbackPreferredLiquid(w.types[w.idx(x, y)])) continue;
+        bestD2 = d2;
+        bestX = x;
+        bestY = y;
+      }
+    }
+    if (!Number.isFinite(bestD2)) return false;
+    const dist = Math.sqrt(bestD2) || 1;
+    this.rillbackLiquidSeek.dx = (bestX - cx) / dist;
+    this.rillbackLiquidSeek.dy = (bestY - cy) / dist;
+    return true;
+  }
 
   private rillbackChargePulse(e: Enemy, def: EnemyDef): number {
     if ((e.rillChargeCd ?? 0) > 0) return 0;
@@ -3450,6 +3459,10 @@ export class Enemies implements EnemyControlApi {
           e.grounded = false;
           e.vx *= 0.95;
           e.vy *= 0.9;
+          if (wet < 0.85 && this.findRillbackLiquidSeek(e, def, 46)) {
+            e.vx += this.rillbackLiquidSeek.dx * 0.14;
+            e.vy += this.rillbackLiquidSeek.dy * 0.12;
+          }
           if (targetAlive && e.alerted && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
             const d = pDist || 1;
             e.vx += (pdx / d) * (0.07 + wet * 0.08);
@@ -3486,6 +3499,10 @@ export class Enemies implements EnemyControlApi {
           e.vy += 0.34;
           e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
           e.vx *= e.grounded ? 0.8 : 0.94;
+          if (this.findRillbackLiquidSeek(e, def, 64)) {
+            e.vx += this.rillbackLiquidSeek.dx * 0.24;
+            e.vy += this.rillbackLiquidSeek.dy * 0.18;
+          }
           if (e.grounded && e.timer % 34 === 0) {
             e.vy = -1.1 - Math.random() * 0.4;
             e.vx += (targetAlive ? Math.sign(pdx || 1) : Math.random() < 0.5 ? -1 : 1) * 0.45;
@@ -3963,7 +3980,7 @@ export class Enemies implements EnemyControlApi {
                     : 2
                   : e.kind === 'rillback'
                     ? (e.rillWet ?? 0) >= RILLBACK_WET_THRESHOLD
-                      ? 2
+                      ? 0
                       : 1
                     : 1;
         // WARY OF THE EDGE: a grounded walker won't voluntarily step into a cell

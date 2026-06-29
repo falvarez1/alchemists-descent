@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Ctx } from '@/core/types';
 import { PROGRESSION_PACING, PROGRESSION_PACING_DEFAULTS } from '@/config/pacing';
 import { createPlayer } from '@/entities/Player';
-import { enemyMovementPace, playerMovementPace, playerVerticalPace } from '@/game/progressionPacing';
+import { enemyMovementPace, playerMovementPace, playerVerticalPace } from '@/core/progressionPacing';
 
 function ctxAtDepth(depth: number): Ctx {
   return {

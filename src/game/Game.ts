@@ -105,6 +105,8 @@ export class Game {
   private started = false;
   private disposed = false;
   private lastVisualFxDecayFrame = -1;
+  private composeDirty = true;
+  private lastComposeSignature = -1;
   /** Page-lifetime UI singletons whose global listeners/timers must be torn down on HMR dispose. */
   private readonly disposables: { dispose(): void }[] = [];
 
@@ -151,10 +153,11 @@ export class Game {
 
     // Assembled in two steps: data first, then services that close over ctx.
     // Services only USE ctx at runtime, after wiring completes.
+    const audio = new AudioEngine();
     const ctx = {
       world: new World(),
       events: new EventBus(),
-      audio: new AudioEngine(),
+      audio,
       params: createGameParams(),
       state,
       input,
@@ -166,14 +169,22 @@ export class Game {
       shockwaves: [],
       waves: createWaveState(),
     } as unknown as Ctx;
+    this.disposables.push(audio);
+    ctx.events.on('paramsChanged', () => {
+      this.composeDirty = true;
+    });
 
     ctx.particles = new Particles();
     ctx.explosions = new Explosions(ctx);
     ctx.lightning = new Lightning(ctx);
     ctx.projectileCtl = new Projectiles();
     ctx.physics = new Physics(ctx);
-    ctx.rigidBodies = new RigidBodies(ctx);
-    ctx.vineStrands = new VineStrands(ctx);
+    const rigidBodies = new RigidBodies(ctx);
+    ctx.rigidBodies = rigidBodies;
+    this.disposables.push(rigidBodies);
+    const vineStrands = new VineStrands(ctx);
+    ctx.vineStrands = vineStrands;
+    this.disposables.push(vineStrands);
     ctx.playerCtl = new PlayerControl(ctx);
     const enemyCtl = new Enemies(ctx);
     ctx.enemyCtl = enemyCtl;
@@ -185,12 +196,22 @@ export class Game {
     const telemetry = new Telemetry();
     ctx.telemetry = telemetry;
     this.disposables.push(telemetry);
-    ctx.levels = new Levels(ctx);
-    ctx.wands = new WandSystem(ctx);
+    const levels = new Levels(ctx);
+    ctx.levels = levels;
+    this.disposables.push(levels);
+    const wands = new WandSystem(ctx);
+    ctx.wands = wands;
+    this.disposables.push(wands);
     ctx.pickups = new Pickups();
-    ctx.mechanisms = new Mechanisms(ctx);
-    ctx.sanctum = new Sanctum(ctx);
-    ctx.critters = new Critters(ctx);
+    const mechanisms = new Mechanisms(ctx);
+    ctx.mechanisms = mechanisms;
+    this.disposables.push(mechanisms);
+    const sanctum = new Sanctum(ctx);
+    ctx.sanctum = sanctum;
+    this.disposables.push(sanctum);
+    const critters = new Critters(ctx);
+    ctx.critters = critters;
+    this.disposables.push(critters);
     ctx.hints = new HintSystem(ctx);
     this.introProgression = new IntroProgression(ctx);
     this.disposables.push(this.introProgression);
@@ -265,7 +286,9 @@ export class Game {
     this.disposables.push(new PauseOverlay(ctx));
     this.disposables.push(new HelpOverlay(ctx));
     this.inspector = new Inspector(ctx);
+    this.disposables.push(this.inspector);
     this.toolbar = new Toolbar(ctx, (id, mode) => this.inspector.generateContextInspector(id, mode));
+    this.disposables.push(this.toolbar);
     // Debug cell readout under the cursor (toggle with `I`). Self-managing; lives
     // for the page lifetime like the other DOM-wiring UI modules above.
     this.disposables.push(new CellInspector(ctx));
@@ -412,11 +435,11 @@ export class Game {
       const ticks = this.ctx.time.takeQueuedTicks(60);
       for (let i = 0; i < ticks; i++) this.tick(false, { forcePaused: true });
       this.ctx.time.afterManualTicks(ticks);
-      this.renderFrame(frameWorkStart);
+      this.renderFrame(frameWorkStart, ticks);
       return;
     }
     if (this.stepDebt < stepBudget) {
-      this.renderFrame(frameWorkStart);
+      this.renderFrame(frameWorkStart, 0);
       return;
     }
     let ticks = 0;
@@ -426,14 +449,14 @@ export class Game {
       this.tick(false);
     }
     if (this.stepDebt >= stepBudget) this.stepDebt = 0; // drop unpayable debt
-    this.renderFrame(frameWorkStart);
+    this.renderFrame(frameWorkStart, ticks);
   };
 
   private tick = (render = true, options: { forcePaused?: boolean } = {}): void => {
     const frameWorkStart = performance.now();
     this.ctx.time.beforeTick();
     this.updateFixedTick(options);
-    if (render) this.renderFrame(frameWorkStart);
+    if (render) this.renderFrame(frameWorkStart, 1);
   };
 
   private updateFixedTick(options: { forcePaused?: boolean } = {}): void {
@@ -512,12 +535,19 @@ export class Game {
 
   }
 
-  private renderFrame(frameWorkStart = performance.now()): void {
+  private renderFrame(frameWorkStart = performance.now(), tickCount = 0): void {
     const ctx = this.ctx;
+    this.perfHud.beginFrame(tickCount);
     const tRender = performance.now();
-    this.composer.compose(ctx);
+    const signature = this.composeSignature(ctx);
+    const shouldCompose = tickCount > 0 || this.composeDirty || signature !== this.lastComposeSignature;
+    if (shouldCompose) {
+      this.composer.compose(ctx);
+      this.lastComposeSignature = signature;
+      this.composeDirty = false;
+    }
     const tCompose = performance.now();
-    this.perfHud.mark('compose', tCompose - tRender);
+    this.perfHud.mark('compose', shouldCompose ? tCompose - tRender : 0);
     if (ctx.state.mode === 'play' && ctx.state.frameCount % 2 === 0) this.hud.update(ctx);
     this.minimap.update(ctx);
     const tGl = performance.now();
@@ -535,6 +565,41 @@ export class Game {
     }
     this.decayVisualFxOncePerFrame(ctx);
     this.perfHud.mark('frame', performance.now() - frameWorkStart);
+  }
+
+  private composeSignature(ctx: Ctx): number {
+    const input = ctx.input;
+    const digBeam = ctx.fx.digBeam;
+    const post = ctx.state.postFx;
+    const render = ctx.state.render;
+    let h = 2166136261;
+    const mix = (value: number): void => {
+      h = Math.imul(h ^ (value | 0), 16777619) >>> 0;
+    };
+    const mixFloat = (value: number): void => mix(Math.round(value * 1000));
+    mix(Math.floor(ctx.camera.x));
+    mix(Math.floor(ctx.camera.y));
+    mix(ctx.state.mode === 'play' ? 1 : 0);
+    mix(ctx.state.frameCount);
+    mix(input.mouse.x | 0);
+    mix(input.mouse.y | 0);
+    mix(input.siphonHeld ? 1 : 0);
+    mix(input.pourHeld ? 1 : 0);
+    mix(input.buildSpellHeld ? 1 : 0);
+    if (digBeam) {
+      mix(digBeam.life);
+      mix(digBeam.x0 | 0);
+      mix(digBeam.y0 | 0);
+      mix(digBeam.x1 | 0);
+      mix(digBeam.y1 | 0);
+    } else {
+      mix(0);
+    }
+    mix(post.gpuCompose ? 1 : 0);
+    mix(render.compose ? 1 : 0);
+    mixFloat(ctx.params.global.ambient);
+    mixFloat(ctx.params.global.maxBrightness);
+    return h;
   }
 
   private decayVisualFxOncePerFrame(ctx: Ctx): void {

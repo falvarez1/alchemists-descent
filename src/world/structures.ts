@@ -46,6 +46,7 @@ import {
   tunnelTo,
 } from '@/world/connect';
 import type { PlacementLedger } from '@/world/connect';
+import { wizardMask } from '@/world/validate';
 
 /**
  * Landmark structures placed after generation (upgrade-port meta layer):
@@ -138,6 +139,49 @@ export function placeStructures(
    */
   const connectToCaves = (fromX: number, fromY: number): void => {
     connectToCavesFrom(w, rng, graph, fromX, fromY, 12, fits);
+  };
+  const connectVaultTriggerAntechamber = (fromX: number, fromY: number, side: number): void => {
+    const sweep = { halfW: 7, up: 21, down: 9 };
+    let best: { cx: number; cy: number } | null = null;
+    let bestD = Infinity;
+    for (const onlyMain of [true, false]) {
+      for (const reg of graph.regions) {
+        if (side * (reg.cx - fromX) < 24) continue;
+        if (onlyMain && !reg.onMainPath) continue;
+        if (!onlyMain && reg.area < 60) continue;
+        const d = (reg.cx - fromX) * (reg.cx - fromX) + (reg.cy - fromY) * (reg.cy - fromY);
+        if (d < bestD) {
+          bestD = d;
+          best = { cx: reg.cx, cy: reg.cy };
+        }
+      }
+      if (best) break;
+    }
+    if (best) {
+      tunnelTo(w, rng, fromX, fromY, Math.floor(best.cx), Math.floor(best.cy), 12, sweep);
+    } else {
+      connectToCavesFrom(w, rng, graph, fromX, fromY, 12, fits, sweep);
+    }
+  };
+  const vaultTriggerSide = (vx: number, vy: number, randomSide: number): number => {
+    const reachable = wizardMask({ world: w, spawn });
+    const score = (side: number): number => {
+      const cx = Math.floor(vx + side * 35);
+      const cy = Math.floor(vy + 10);
+      let count = 0;
+      for (let dy = -28; dy <= 28; dy++) {
+        for (let dx = -28; dx <= 28; dx++) {
+          const X = cx + dx;
+          const Y = cy + dy;
+          if (X <= 0 || Y <= 0 || X >= WIDTH || Y >= HEIGHT) continue;
+          if (reachable[X + Y * WIDTH]) count++;
+        }
+      }
+      return count;
+    };
+    const randomScore = score(randomSide);
+    const oppositeScore = score(-randomSide);
+    return oppositeScore > randomScore ? -randomSide : randomSide;
   };
 
   // ---- Exit portal: a carved shrine right above the well's seal plug ----
@@ -683,7 +727,7 @@ export function placeStructures(
     if (rng.next() < 0.5) pickups.push(makePickup('heart', vx + 6, vy + 10));
 
     // entry corridor on a random side, sealed with a metal door
-    const side = rng.next() < 0.5 ? -1 : 1;
+    const side = vaultTriggerSide(vx, vy, rng.next() < 0.5 ? -1 : 1);
     const doorX = vx + side * 13;
     for (let s = 0; s < 16; s++) {
       carvePocket(doorX + side * s, vy + 2 + Math.floor(Math.sin(s * 0.4) * 2), 10, 12);
@@ -703,8 +747,10 @@ export function placeStructures(
     if (mechRoll === 0) makePlate(w, mechanisms, Math.floor(clamp(mx - 3, 4, WIDTH - 12)), my + 1, 7, door);
     else if (mechRoll === 1) makeLever(mechanisms, mx, my, door);
     else makeBrazier(w, mechanisms, mx, my, door);
-    // the antechamber joins the cave network
-    connectToCaves(mx + side * 6, vy + 2);
+    // The trigger is hands-on: connect the antechamber on the trigger's side of
+    // the door with the swept wizard gauge, so the nearest-main-path tunnel
+    // cannot route through the door slab and leave the plate body-unreachable.
+    connectVaultTriggerAntechamber(mx + side * 6, vy + 2, side);
   }
 
   // ---- Sealed rune vaults: metal strongrooms opened by a distant rune glyph ----

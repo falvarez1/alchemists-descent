@@ -5,6 +5,7 @@ import type {
   EnemyKind,
   Mechanism,
   Projectile,
+  RigidBody,
   RuneVault,
   RuntimeDecor,
   SpellId,
@@ -135,6 +136,7 @@ interface GalleryItem {
   spells?: string[];
   /** ...and the rig factory a spell chip switches the stage to. */
   buildSpell?: (spellIdx: number) => StageRig;
+  spellGroupLabel?: string;
   thumb?: () => HTMLCanvasElement | null;
   build: (state: number) => StageRig;
 }
@@ -158,7 +160,12 @@ const FULLBRIGHT = {
   sample: () => ({ r: 1, g: 1, b: 1 }),
 } as unknown as LightField;
 
-type GalleryPreviewCtx = Record<string, unknown>;
+type GalleryPreviewCtx = Partial<Record<keyof Ctx, unknown>> & {
+  world: World;
+  events: EventBus;
+  state: unknown;
+  camera: unknown;
+};
 
 function createGalleryPreviewCtx(fields: GalleryPreviewCtx): Ctx {
   return fields as unknown as Ctx;
@@ -198,6 +205,15 @@ const SPELL_TARGET: Record<SpellId, 'foe' | 'fort'> = {
   wisp: 'foe', dig: 'fort', conjure: 'fort', warp: 'fort', meteor: 'fort',
   blackhole: 'fort',
 };
+
+type PlayerPowerId = 'telekinesis-lift' | 'telekinesis-throw' | 'plank-rip' | 'force-push';
+
+const PLAYER_POWER_RIGS: ReadonlyArray<{ id: PlayerPowerId; label: string }> = [
+  { id: 'telekinesis-lift', label: 'TELEKINESIS LIFT/HOLD' },
+  { id: 'telekinesis-throw', label: 'TELEKINESIS THROW' },
+  { id: 'plank-rip', label: 'PLANK RIP' },
+  { id: 'force-push', label: 'FORCE PUSH (F)' },
+];
 
 export class Gallery {
   private root: HTMLDivElement;
@@ -754,7 +770,7 @@ export class Gallery {
       this.renderEntityTraits(it.traits) +
       (it.states.length > 1 ? `<div class="bg-ihead">STATES</div><div class="bg-chips">${chips}</div>` : '') +
       (it.spells
-        ? `<div class="bg-ihead">TACTICAL SPELLS</div><div class="bg-chips bg-spellchips">${spellChips}</div>`
+        ? `<div class="bg-ihead">${escapeHtml(it.spellGroupLabel ?? 'TACTICAL SPELLS')}</div><div class="bg-chips bg-spellchips">${spellChips}</div>`
         : '');
     for (const b of this.infoEl.querySelectorAll<HTMLButtonElement>('.bg-chip[data-s]')) {
       b.addEventListener('click', () => this.setState(Number(b.dataset.s)));
@@ -1165,6 +1181,7 @@ export class Gallery {
       enemyCtl: this.hooks.ctx.enemyCtl,
       params: this.hooks.ctx.params,
       world: this.world,
+      events: this.events,
       enemies: [],
     });
   }
@@ -1202,9 +1219,9 @@ export class Gallery {
     const SPELL_LABELS = SPELL_ORDER.map((id) =>
       this.hooks.ctx.params.spells[id].name.toUpperCase(),
     );
-    // ...plus the kick, which isn't a spell but is the player's other "cast":
-    // a force-push blast of air. Appended after the spells; see buildKickRig.
-    const PLAYER_RIGS = [...SPELL_LABELS, 'FORCE PUSH (F)'];
+    // ...plus the telekinetic powers that share the combat verb space but are
+    // not spell cards: lift/hold, throw, plank-rip, and the force-push kick.
+    const PLAYER_RIGS = [...SPELL_LABELS, ...PLAYER_POWER_RIGS.map((rig) => rig.label)];
     items.push({
       id: 'ent-player',
       section: 'ENTITIES',
@@ -1216,7 +1233,13 @@ export class Gallery {
       glyphCss: '#c084fc',
       states: PLAYER_STATES,
       spells: PLAYER_RIGS,
-      buildSpell: (n) => (n < SPELL_ORDER.length ? this.buildSpellRig(SPELL_ORDER[n]) : this.buildKickRig()),
+      spellGroupLabel: 'TACTICAL SPELLS & TELEKINESIS',
+      buildSpell: (n) => {
+        if (n < SPELL_ORDER.length) return this.buildSpellRig(SPELL_ORDER[n]);
+        const power = PLAYER_POWER_RIGS[n - SPELL_ORDER.length]?.id;
+        if (power === 'force-push') return this.buildKickRig();
+        return this.buildTelekinesisRig(power ?? 'telekinesis-lift');
+      },
       build: (st) => {
         this.stageFloor(RX - 30, RX + 30);
         // the poses that live against rock bring their rock along
@@ -1486,6 +1509,257 @@ export class Gallery {
           alerted: true,
           step: (e, f) => {
             e.fusing = Math.max(1, 100 - (f % 130)); // strobe speeds toward boom
+          },
+        },
+      ],
+      rootloper: [
+        {
+          label: 'ROOTED CREEP',
+          alerted: true,
+          setup: (e) => {
+            e.rootSupport = 0.82;
+            e.rootGrowthBudget = 22;
+            this.paint(RX - 25, FY - 5, RX + 25, FY - 2, Cell.Moss);
+            this.paint(RX - 18, FY - 9, RX - 14, FY - 3, Cell.Vines);
+            this.paint(RX + 13, FY - 9, RX + 18, FY - 3, Cell.Vines);
+          },
+          step: (e, f) => {
+            e.x = RX + Math.sin(f * 0.045) * 13;
+            e.vx = Math.cos(f * 0.045) * 0.65;
+            e.rootSupport = 0.68 + Math.sin(f * 0.07) * 0.18;
+          },
+        },
+        {
+          label: 'GROWTH WEAVE',
+          setup: (e) => {
+            e.rootSupport = 0.95;
+            e.rootGrowthBudget = 34;
+            this.paint(RX - 22, FY - 6, RX + 22, FY - 2, Cell.Fungus);
+            this.paint(RX - 26, FY - 12, RX - 24, FY - 3, Cell.Vines);
+            this.paint(RX + 24, FY - 12, RX + 26, FY - 3, Cell.Vines);
+          },
+          step: (e, f) => {
+            e.rootSupport = 0.8 + Math.sin(f * 0.1) * 0.15;
+            e.windup = f % 70 < 22 ? 8 : 0;
+            if (f % 14 === 0) {
+              const x = RX - 22 + ((f / 14) % 11) * 4;
+              this.paint(x, FY - 9, x + 1, FY - 7, Cell.Moss);
+            }
+          },
+        },
+        {
+          label: 'TENDRIL LASH',
+          alerted: true,
+          setup: (e) => {
+            e.rootSupport = 0.72;
+            e.rootLashX = RX + 30;
+            e.rootLashY = FY - 10;
+            this.paint(RX - 24, FY - 6, RX + 24, FY - 3, Cell.Moss);
+          },
+          step: (e, f) => {
+            const t = f % 58;
+            e.windup = t < 28 ? Math.max(1, 13 - Math.floor(t / 2)) : 0;
+            e.rootLashX = RX + 31 + Math.sin(f * 0.08) * 3;
+            e.rootLashY = FY - 10 + Math.cos(f * 0.07) * 2;
+          },
+        },
+        {
+          label: 'ANCHOR PANIC',
+          alerted: true,
+          setup: (e) => {
+            e.rootSupport = 0.12;
+            e.rootPanic = 64;
+            this.paint(RX - 22, FY - 4, RX - 9, FY - 2, Cell.Fire, 28);
+            this.paint(RX + 8, FY - 4, RX + 21, FY - 2, Cell.Acid);
+          },
+          step: (e, f) => {
+            e.rootPanic = 36 - (f % 36);
+            e.rootSupport = 0.1 + Math.sin(f * 0.23) * 0.05;
+            e.vx = Math.sin(f * 0.28) * 0.75;
+          },
+        },
+        {
+          label: 'BARE STONE STUMBLE',
+          setup: (e) => {
+            e.rootSupport = 0.06;
+            e.rootSeekDir = -1;
+          },
+          step: (e, f) => {
+            e.rootSupport = 0.06 + (f % 50 < 8 ? 0.1 : 0);
+            e.vx = Math.sin(f * 0.1) * 0.25;
+            e.y = FY + (f % 70 < 8 ? 1 : 0);
+          },
+        },
+      ],
+      stonemaw: [
+        {
+          label: 'LISTENING SEAM',
+          alerted: true,
+          setup: (e) => {
+            e.mawDir = 1;
+            this.paint(RX + 14, FY - 23, RX + 30, FY, Cell.Stone);
+            this.paint(RX + 23, FY - 17, RX + 27, FY - 12, Cell.RawOre);
+          },
+          step: (e, f) => {
+            e.mawChewT = f % 70 < 9 ? 3 : 0;
+            e.vx = Math.sin(f * 0.045) * 0.18;
+          },
+        },
+        {
+          label: 'CHEW BURST',
+          alerted: true,
+          setup: (e) => {
+            e.mawDir = 1;
+            this.paint(RX + 13, FY - 18, RX + 29, FY - 2, Cell.Stone);
+          },
+          step: (e, f) => {
+            const t = f % 54;
+            e.mawChewT = t < 22 ? Math.max(1, 14 - Math.floor(t / 2)) : 0;
+            if (t === 18) this.paint(RX + 18, FY - 12, RX + 23, FY - 7, Cell.Empty);
+          },
+        },
+        {
+          label: 'TUNNELING',
+          alerted: true,
+          setup: (e) => {
+            e.mawDir = 1;
+            this.paint(RX - 4, FY - 19, RX + 34, FY - 1, Cell.Stone);
+            this.paint(RX - 4, FY - 10, RX + 5, FY - 6, Cell.Empty);
+          },
+          step: (e, f) => {
+            e.x = RX - 2 + (f % 120) * 0.22;
+            e.mawChewT = f % 24 < 11 ? 8 : 0;
+            e.vx = 0.45;
+          },
+        },
+        {
+          label: 'BITE WINDUP',
+          alerted: true,
+          setup: (e) => {
+            e.mawDir = 1;
+            e.mawChewT = 8;
+          },
+          step: (e, f) => {
+            const t = f % 62;
+            e.windup = t < 30 ? Math.max(1, 12 - Math.floor(t / 3)) : 0;
+            e.mawChewT = t < 34 ? 10 : 0;
+          },
+        },
+        {
+          label: 'COLD STUN',
+          setup: (e) => {
+            e.mawStun = 42;
+            e.status.frozen = 90;
+            this.paint(RX - 12, FY - 5, RX + 12, FY - 2, Cell.Ice);
+          },
+          step: (e, f) => {
+            e.mawStun = 32 - (f % 32);
+            e.vx = Math.sin(f * 0.2) * 0.12;
+          },
+        },
+        {
+          label: 'ACID RECOIL',
+          setup: (e) => {
+            e.mawStun = 28;
+            this.paint(RX + 8, FY - 5, RX + 25, FY - 2, Cell.Acid);
+          },
+          step: (e, f) => {
+            e.mawStun = 24 - (f % 24);
+            e.mawDir = -1;
+            e.vx = -0.28;
+          },
+        },
+      ],
+      rillback: [
+        {
+          label: 'SWIM S-CURVE',
+          alerted: true,
+          setup: (e) => {
+            e.rillWet = 0.88;
+            e.grounded = false;
+            e.y = FY - 4;
+            this.paint(RX - 28, FY - 9, RX + 28, FY, Cell.Water);
+          },
+          step: (e, f) => {
+            e.x = RX + Math.sin(f * 0.055) * 18;
+            e.y = FY - 5 + Math.sin(f * 0.11) * 3;
+            e.vx = Math.cos(f * 0.055) * 0.8;
+            e.rillWet = 0.78 + Math.sin(f * 0.08) * 0.12;
+          },
+        },
+        {
+          label: 'LUNGE WINDUP',
+          alerted: true,
+          setup: (e) => {
+            e.rillWet = 0.82;
+            e.grounded = false;
+            this.paint(RX - 28, FY - 9, RX + 28, FY, Cell.Water);
+          },
+          step: (e, f) => {
+            const t = f % 58;
+            e.windup = t < 28 ? Math.max(1, 10 - Math.floor(t / 3)) : 0;
+            e.vx = t < 28 ? -0.25 : 0.8;
+          },
+        },
+        {
+          label: 'BITE SWOOP',
+          alerted: true,
+          setup: (e) => {
+            e.rillWet = 0.84;
+            e.grounded = false;
+            this.paint(RX - 28, FY - 9, RX + 28, FY, Cell.Water);
+          },
+          step: (e, f) => {
+            const t = f % 70;
+            e.swoop = t < 26 ? 12 : 0;
+            e.x = RX - 20 + Math.min(t, 48) * 0.8;
+            e.y = FY - 7 + Math.sin(t * 0.18) * 4;
+            e.vx = t < 26 ? 1.7 : 0.25;
+          },
+        },
+        {
+          label: 'CHARGE WINDUP',
+          alerted: true,
+          setup: (e) => {
+            e.rillWet = 0.92;
+            e.grounded = false;
+            this.paint(RX - 30, FY - 9, RX + 30, FY, Cell.Water);
+            this.paint(RX + 14, FY - 8, RX + 24, FY - 1, Cell.Blood);
+          },
+          step: (e, f) => {
+            e.rillChargeWindup = Math.max(1, 28 - (f % 38));
+            e.blink = Math.max(e.blink ?? 0, e.rillChargeWindup);
+          },
+        },
+        {
+          label: 'CONDUCTOR PULSE',
+          alerted: true,
+          setup: (e) => {
+            e.rillWet = 0.95;
+            e.grounded = false;
+            e.status.electrified = 100;
+            this.paint(RX - 30, FY - 9, RX + 30, FY, Cell.Water);
+            this.paint(RX - 6, FY - 8, RX + 10, FY - 1, Cell.Blood);
+          },
+          step: (e, f) => {
+            e.blink = 12;
+            e.rillChargeWindup = f % 44 < 18 ? 8 : 0;
+            e.status.electrified = 80;
+          },
+        },
+        {
+          label: 'BEACHED FLOP',
+          setup: (e) => {
+            e.rillWet = 0.04;
+            e.grounded = true;
+            e.y = FY;
+          },
+          step: (e, f) => {
+            const t = f % 52;
+            e.rillWet = 0.04;
+            e.vx = Math.sin(f * 0.12) * 0.35;
+            e.vy = t < 10 ? -1.1 + t * 0.15 : 0.2;
+            e.y = FY - Math.max(0, Math.round(5 * Math.sin(Math.PI * Math.min(t, 22) / 22)));
           },
         },
       ],
@@ -1882,6 +2156,306 @@ export class Gallery {
           this.safeDraw('enemy-golem', () => drawEnemySprite(s, FULLBRIGHT, ctx, dummy));
         }
         drawDigBeam(s, ctx);
+        this.safeDraw('player', () => drawPlayerSprite(s, FULLBRIGHT, ctx));
+      },
+    };
+  }
+
+  private drawGalleryRigidBody(s: PixelSurface, body: RigidBody): void {
+    const r = ((body.color >> 16) & 0xff) / 255;
+    const g = ((body.color >> 8) & 0xff) / 255;
+    const b = (body.color & 0xff) / 255;
+    const cos = Math.cos(body.angle);
+    const sin = Math.sin(body.angle);
+    const reach = body.shape.kind === 'circle'
+      ? body.shape.radius
+      : Math.hypot(body.shape.halfW, body.shape.halfH);
+    const x0 = Math.floor(body.x - reach);
+    const x1 = Math.ceil(body.x + reach);
+    const y0 = Math.floor(body.y - reach);
+    const y1 = Math.ceil(body.y + reach);
+    for (let yy = y0; yy <= y1; yy++) {
+      for (let xx = x0; xx <= x1; xx++) {
+        const dx = xx + 0.5 - body.x;
+        const dy = yy + 0.5 - body.y;
+        const lx = dx * cos + dy * sin;
+        const ly = -dx * sin + dy * cos;
+        let edge = 1;
+        if (body.shape.kind === 'circle') {
+          const rad = body.shape.radius;
+          if (dx * dx + dy * dy > rad * rad) continue;
+          if (dx * dx + dy * dy > (rad - 1) * (rad - 1)) edge = 0.58;
+          else if (lx > 0 && Math.abs(ly) < 0.9) edge = 0.5;
+        } else {
+          const { halfW, halfH } = body.shape;
+          if (Math.abs(lx) > halfW || Math.abs(ly) > halfH) continue;
+          if (Math.abs(lx) > halfW - 1 || Math.abs(ly) > halfH - 1) edge = 0.58;
+        }
+        s.setPx(xx, yy, r * edge, g * edge, b * edge);
+      }
+    }
+  }
+
+  private drawTelekinesisField(
+    s: PixelSurface,
+    player: Ctx['player'],
+    body: RigidBody,
+    frame: number,
+    active: boolean,
+  ): void {
+    if (!active) return;
+    const handX = player.x + Math.cos(player.aimAngle) * 9;
+    const handY = player.y - 9 + Math.sin(player.aimAngle) * 5;
+    const dx = body.x - handX;
+    const dy = body.y - handY;
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy)));
+    for (let k = 0; k <= steps; k += 2) {
+      const t = k / steps;
+      const wobble = Math.sin(frame * 0.2 + t * 8) * 0.8;
+      const x = handX + dx * t - (dy / steps) * wobble;
+      const y = handY + dy * t + (dx / steps) * wobble;
+      const a = 0.08 + 0.18 * Math.sin(Math.PI * t);
+      s.addPx(x, y, 0.08 * a, 0.38 * a, 0.7 * a);
+    }
+    const radius = body.shape.kind === 'circle'
+      ? body.shape.radius + 2
+      : Math.hypot(body.shape.halfW, body.shape.halfH) + 1;
+    for (let n = 0; n < 16; n++) {
+      const a = frame * 0.06 + n * (Math.PI * 2 / 16);
+      s.addPx(body.x + Math.cos(a) * radius, body.y + Math.sin(a) * radius, 0.05, 0.22, 0.42);
+    }
+  }
+
+  private buildTelekinesisRig(mode: PlayerPowerId): StageRig {
+    if (mode === 'force-push') return this.buildKickRig();
+    const PXC = RX - 50;
+    const bodyHome = { x: RX + 18, y: FY - 5 };
+    const ripX0 = RX + 8;
+    const ripX1 = RX + 24;
+    const ripY0 = FY - 27;
+    const ripY1 = FY - 21;
+    const bounds = { x0: PXC - 18, y0: FY - 58, x1: RX + 58, y1: FY + 8 };
+    const isRip = mode === 'plank-rip';
+    const isThrow = mode === 'telekinesis-throw';
+    const body = {
+      id: 8801,
+      kind: 'dynamic',
+      shape: isRip ? { kind: 'box', halfW: 4.5, halfH: 2.2 } : { kind: 'box', halfW: 6, halfH: 4 },
+      x: bodyHome.x,
+      y: bodyHome.y,
+      vx: 0,
+      vy: 0,
+      angle: 0,
+      va: 0,
+      restitution: 0.15,
+      friction: 0.6,
+      color: packRGB(128, 88, 48),
+      material: 'wood',
+      sleeping: false,
+    } as RigidBody;
+    const bodyState = { held: false, visible: !isRip };
+
+    const paintStage = (): void => {
+      this.paint(bounds.x0, bounds.y0, bounds.x1, bounds.y1, Cell.Empty);
+      this.paint(bounds.x0, FY + 1, bounds.x1, FY + 8, Cell.Stone);
+      this.paint(bounds.x0, FY - 42, bounds.x0 + 3, FY, Cell.Stone);
+      this.paint(bounds.x1 - 4, FY - 42, bounds.x1, FY, Cell.Stone);
+      if (isRip) {
+        this.paint(ripX0, ripY0, ripX1, ripY1, Cell.Wood);
+        this.paint(ripX0 - 4, ripY0 - 2, ripX1 + 4, ripY0 - 1, Cell.Stone);
+      } else {
+        this.paint(bodyHome.x - 7, FY - 1, bodyHome.x + 7, FY, Cell.Wood);
+      }
+    };
+
+    const sb = this.world.simBounds;
+    sb.x0 = Math.max(0, bounds.x0 - 2);
+    sb.y0 = Math.max(0, bounds.y0 - 2);
+    sb.x1 = Math.min(this.world.width, bounds.x1 + 3);
+    sb.y1 = Math.min(this.world.height, FY + 9);
+
+    const fake = createPlayer();
+    fake.x = PXC;
+    fake.y = FY;
+    fake.facing = 1;
+    fake.mana = fake.maxMana = 9999;
+
+    const noop = (): void => undefined;
+    const particles = new Particles();
+    const ctx = createGalleryPreviewCtx({
+      world: this.world,
+      events: this.events,
+      enemies: [] as Enemy[],
+      player: fake,
+      playerCtl: { damage: noop, kill: noop, respawn: noop },
+      enemyCtl: { defs: this.hooks.ctx.enemyCtl.defs, spawn: noop, damage: noop, splashHazard: () => false },
+      camera: { x: RX - Math.floor(VIEW_W / 2), y: FY - Math.floor(VIEW_H / 2), renderX: 0, renderY: 0 },
+      state: this.stubState,
+      params: this.hooks.ctx.params,
+      audio: GALLERY_NOOP_AUDIO,
+      particles,
+      projectiles: [] as Projectile[],
+      shockwaves: [],
+      input: { bombCharge: -1 },
+      fx: { screenShake: 0, bloomKick: 0, digBeam: null, hitstop: 0 },
+      rigidBodies: {
+        bodies: [body],
+        playerCorpse: null,
+        heldBody: () => (bodyState.held && bodyState.visible ? body : null),
+        isHolding: () => bodyState.held,
+      },
+      levels: { current: this.runtime },
+    });
+    installGalleryPlayerSpriteRuntime(ctx, false);
+    ctx.input.bombCharge = -1;
+
+    const handTarget = (frame: number): { x: number; y: number } => {
+      const sway = Math.sin(frame * 0.08 + body.id) * 1.1;
+      return {
+        x: fake.x + Math.cos(fake.aimAngle) * 26 - Math.sin(fake.aimAngle) * sway,
+        y: fake.y - 8 + Math.sin(fake.aimAngle) * 14 + Math.cos(fake.aimAngle) * sway,
+      };
+    };
+    const liftTowardHand = (frame: number, k = 0.22): void => {
+      const h = handTarget(frame);
+      body.vx = (h.x - body.x) * k;
+      body.vy = (h.y - body.y) * k;
+      body.x += body.vx;
+      body.y += body.vy;
+      body.angle += Math.sin(frame * 0.12) * 0.015;
+    };
+
+    paintStage();
+    const cycle = isRip ? 230 : isThrow ? 210 : 180;
+    let startF = -1;
+    let released = false;
+    let ripped = false;
+    return {
+      bounds,
+      cells: true,
+      step: (f) => {
+        if (startF < 0) startF = f;
+        const t = (f - startF) % cycle;
+        if (t === 0) {
+          paintStage();
+          particles.clear();
+          body.x = isRip ? (ripX0 + ripX1) / 2 : bodyHome.x;
+          body.y = isRip ? (ripY0 + ripY1) / 2 : bodyHome.y;
+          body.vx = body.vy = body.angle = body.va = 0;
+          bodyState.held = false;
+          bodyState.visible = !isRip;
+          released = false;
+          ripped = false;
+          fake.x = PXC;
+          fake.y = FY;
+          fake.vx = fake.vy = 0;
+        }
+        if (fake.blinkTimer > 0) fake.blinkTimer--;
+        else if (Math.random() < 0.006) fake.blinkTimer = 8;
+        fake.grounded = true;
+        fake._svx = 0;
+        fake._svy = 0;
+        const aim = isRip
+          ? { x: (ripX0 + ripX1) / 2, y: (ripY0 + ripY1) / 2 }
+          : { x: body.x, y: body.y };
+        fake.aimAngle = Math.atan2(aim.y - (fake.y - 9), aim.x - fake.x);
+        fake.facing = 1;
+        fake.firing = false;
+
+        if (isRip) {
+          fake.firing = t >= 12 && t < 142;
+          if (t >= 12 && t < 62 && t % 4 === 0) {
+            particles.spawn(
+              ripX0 + Math.random() * (ripX1 - ripX0),
+              ripY0 + Math.random() * (ripY1 - ripY0),
+              (Math.random() - 0.5) * 0.45,
+              -0.2 - Math.random() * 0.25,
+              null,
+              packRGB(150, 110, 60),
+              18,
+              { grav: 0.04 },
+            );
+          }
+          if (!ripped && t >= 62) {
+            this.paint(ripX0 + 3, ripY0 + 1, ripX1 - 3, ripY1 - 1, Cell.Empty);
+            bodyState.visible = true;
+            bodyState.held = true;
+            ripped = true;
+            this.caption = 'PLANK RIP — wood becomes a carried body';
+            this.captionT = 90;
+          }
+          if (bodyState.held) liftTowardHand(f, 0.18);
+          if (t >= 145 && bodyState.held && !released) {
+            released = true;
+            bodyState.held = false;
+            body.vx = Math.cos(fake.aimAngle) * 5.4;
+            body.vy = Math.sin(fake.aimAngle) * 3.4 - 0.5;
+            body.va = 0.18;
+          }
+        } else if (isThrow) {
+          fake.firing = t >= 18 && t < 96;
+          if (t >= 20 && t < 88) {
+            bodyState.held = true;
+            liftTowardHand(f, 0.2);
+          }
+          if (!released && t >= 88) {
+            released = true;
+            bodyState.held = false;
+            body.vx = Math.cos(fake.aimAngle) * 7.2;
+            body.vy = Math.sin(fake.aimAngle) * 4.2 - 0.9;
+            body.va = 0.28;
+            fake.recoilT = 6;
+            this.caption = 'TELEKINESIS THROW — carried mass becomes a weapon';
+            this.captionT = 90;
+          }
+        } else {
+          fake.firing = t >= 18 && t < 130;
+          if (t >= 20 && t < 130) {
+            bodyState.held = true;
+            liftTowardHand(f, 0.18);
+          } else if (t >= 130) {
+            bodyState.held = false;
+            body.vy += 0.18;
+          }
+        }
+
+        if (!bodyState.held && bodyState.visible) {
+          body.x += body.vx;
+          body.y += body.vy;
+          body.vy += 0.22;
+          body.angle += body.va ?? 0;
+          if (body.y > FY - 4) {
+            body.y = FY - 4;
+            body.vy *= -0.28;
+            body.vx *= 0.78;
+            body.va *= 0.62;
+          }
+          if (body.x > bounds.x1 - 8) {
+            body.x = bounds.x1 - 8;
+            body.vx *= -0.35;
+            body.va *= -0.6;
+          }
+        }
+        if (bodyState.held && bodyState.visible && f % 2 === 0) {
+          const a = Math.random() * Math.PI * 2;
+          const rr = body.shape.kind === 'circle' ? body.shape.radius + 2 : Math.hypot(body.shape.halfW, body.shape.halfH) + 1;
+          particles.spawn(
+            body.x + Math.cos(a) * rr,
+            body.y + Math.sin(a) * rr,
+            Math.cos(a) * 0.18,
+            Math.sin(a) * 0.18,
+            null,
+            packRGB(150, 205, 255),
+            14,
+            { glow: 1.8, grav: 0 },
+          );
+        }
+        particles.update(ctx);
+      },
+      draw: (s, f) => {
+        if (bodyState.visible) this.drawGalleryRigidBody(s, body);
+        if (bodyState.visible) this.drawTelekinesisField(s, fake, body, f, bodyState.held);
+        drawParticles(s, FULLBRIGHT, ctx);
         this.safeDraw('player', () => drawPlayerSprite(s, FULLBRIGHT, ctx));
       },
     };

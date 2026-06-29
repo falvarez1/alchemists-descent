@@ -1,9 +1,9 @@
 // At a high top speed (Swift stacks / God Mode) pressing a direction must RAMP up
 // over several frames, not snap to max in one — the per-frame gain is capped.
-import { chromium } from 'playwright-core';
+import { launchBrowser } from './browser-launch.mjs';
 
-const url = process.argv[2] || 'http://127.0.0.1:5219/';
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const url = process.argv[2] || 'http://localhost:5173/';
+const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1400, height: 860 } });
 const errs = [];
 page.on('pageerror', (e) => errs.push(String(e)));

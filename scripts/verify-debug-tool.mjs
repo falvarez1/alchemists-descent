@@ -1,10 +1,10 @@
-import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { launchBrowser } from './browser-launch.mjs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e)));

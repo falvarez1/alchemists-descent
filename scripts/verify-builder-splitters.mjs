@@ -1,9 +1,9 @@
 // Dock-resize sash probe: VS Code-style splitters at each dock's inner edge.
 // Drags each splitter and asserts the dock grows; verifies persistence across reload.
 // Usage: node scripts/verify-builder-splitters.mjs [url]  (dev server must be running)
-import { chromium } from 'playwright-core';
+import { launchBrowser } from './browser-launch.mjs';
 
-const url = process.argv[2] || 'http://localhost:5191/';
+const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
 let fail = 0;
 const check = (name, ok, detail = '') => {
@@ -11,7 +11,7 @@ const check = (name, ok, detail = '') => {
   else { fail++; console.log(`  FAIL  ${name} ${detail}`); }
 };
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 const errs = [];
 page.on('pageerror', (e) => errs.push(String(e)));

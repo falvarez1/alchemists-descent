@@ -1,8 +1,161 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, ExplosionApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
-import { crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
+import { ashColor, crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
+
+const BLAST_DEBRIS_MARGIN = 8;
+const BLAST_DEBRIS_DUST_CAP = 28;
+const BLAST_ASH_LIFE_MIN = 70;
+const BLAST_ASH_LIFE_SPAN = 70;
+
+const DIR8: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+];
+
+function blastConnectivityCell(t: number): boolean {
+  return blocksEntity(t);
+}
+
+function blastDebrisCell(t: number): boolean {
+  return (
+    t === Cell.Wall ||
+    t === Cell.Wood ||
+    t === Cell.Stone ||
+    t === Cell.Ice ||
+    t === Cell.Crystal ||
+    t === Cell.Glass ||
+    t === Cell.RawOre ||
+    t === Cell.Coal
+  );
+}
+
+function softenDisconnectedBlastDebris(
+  ctx: Ctx,
+  cx: number,
+  cy: number,
+  radius: number,
+  blastTouched: Uint8Array,
+): void {
+  const world = ctx.world;
+  const cleanupR = radius + Math.max(BLAST_DEBRIS_MARGIN, Math.ceil(radius * 0.22));
+  const cleanupR2 = cleanupR * cleanupR;
+  const minX = Math.max(0, cx - cleanupR);
+  const maxX = Math.min(world.width - 1, cx + cleanupR);
+  const minY = Math.max(0, cy - cleanupR);
+  const maxY = Math.min(world.height - 1, cy + cleanupR);
+  const localW = maxX - minX + 1;
+  const localH = maxY - minY + 1;
+  if (localW <= 0 || localH <= 0) return;
+
+  const localLen = localW * localH;
+  const seen = new Uint8Array(localLen);
+  const qx = new Int32Array(localLen);
+  const qy = new Int32Array(localLen);
+  const dxs = new Int32Array(localLen);
+  const dys = new Int32Array(localLen);
+  const localIdx = (x: number, y: number) => x - minX + (y - minY) * localW;
+  const inCleanup = (x: number, y: number): boolean => {
+    const dx = x - cx;
+    const dy = y - cy;
+    return dx * dx + dy * dy <= cleanupR2;
+  };
+  const touchedByBlast = (x: number, y: number): boolean => {
+    if (blastTouched[world.idx(x, y)]) return true;
+    for (const [ox, oy] of DIR8) {
+      const nx = x + ox;
+      const ny = y + oy;
+      if (world.inBounds(nx, ny) && blastTouched[world.idx(nx, ny)]) return true;
+    }
+    return false;
+  };
+
+  for (let sy = minY; sy <= maxY; sy++) {
+    for (let sx = minX; sx <= maxX; sx++) {
+      if (!inCleanup(sx, sy)) continue;
+      const startLocal = localIdx(sx, sy);
+      if (seen[startLocal]) continue;
+      const startType = world.types[world.idx(sx, sy)];
+      if (!blastConnectivityCell(startType)) continue;
+
+      seen[startLocal] = 1;
+      qx[0] = sx;
+      qy[0] = sy;
+      let head = 0;
+      let tail = 1;
+      let debrisCount = 0;
+      let anchored = startType === Cell.Metal;
+      let touched = false;
+
+      while (head < tail) {
+        const x = qx[head];
+        const y = qy[head];
+        head++;
+        const wi = world.idx(x, y);
+        const t = world.types[wi];
+        const insideCleanup = inCleanup(x, y);
+        if (!insideCleanup || x === minX || x === maxX || y === minY || y === maxY || t === Cell.Metal) {
+          anchored = true;
+        }
+        if (insideCleanup && touchedByBlast(x, y)) touched = true;
+        if (insideCleanup && blastDebrisCell(t)) {
+          dxs[debrisCount] = x;
+          dys[debrisCount] = y;
+          debrisCount++;
+        }
+
+        for (const [ox, oy] of DIR8) {
+          const nx = x + ox;
+          const ny = y + oy;
+          if (!world.inBounds(nx, ny)) continue;
+          if (nx < minX || nx > maxX || ny < minY || ny > maxY) {
+            if (blastConnectivityCell(world.types[world.idx(nx, ny)])) anchored = true;
+            continue;
+          }
+          const ni = localIdx(nx, ny);
+          if (seen[ni]) continue;
+          if (!blastConnectivityCell(world.types[world.idx(nx, ny)])) continue;
+          seen[ni] = 1;
+          qx[tail] = nx;
+          qy[tail] = ny;
+          tail++;
+        }
+      }
+
+      if (anchored || !touched || debrisCount === 0) continue;
+      let dust = 0;
+      for (let n = 0; n < debrisCount; n++) {
+        const x = dxs[n];
+        const y = dys[n];
+        const i = world.idx(x, y);
+        world.replaceCellAt(i, Cell.Ash, ashColor());
+        world.life[i] = BLAST_ASH_LIFE_MIN + Math.floor(Math.random() * BLAST_ASH_LIFE_SPAN);
+        world.moved[i] = world.movedTick;
+        if (dust < BLAST_DEBRIS_DUST_CAP && Math.random() < 0.35) {
+          dust++;
+          const d = Math.hypot(x - cx, y - cy) || 1;
+          ctx.particles.spawn(
+            x,
+            y,
+            ((x - cx) / d) * 0.7 + (Math.random() - 0.5) * 0.6,
+            ((y - cy) / d) * 0.45 - 0.5 - Math.random() * 0.4,
+            Cell.Ash,
+            world.colors[i],
+            40,
+            { grav: 0.08 },
+          );
+        }
+      }
+    }
+  }
+}
 
 /**
  * Explosions. Ported from triggerExplosion (noita-sandbox.html lines 718-800).
@@ -40,6 +193,7 @@ export class Explosions implements ExplosionApi {
     }
     // Concussion is a valid puzzle input: levers and rune switches listen.
     ctx.events.emit('structureStrike', { x: cx, y: cy, radius: radius + 4 });
+    const blastTouched = new Uint8Array(world.types.length);
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -49,6 +203,7 @@ export class Explosions implements ExplosionApi {
           if (!world.inBounds(nx, ny)) continue;
           const ni = world.idx(nx, ny);
           const orig = world.types[ni];
+          if (orig !== Cell.Empty) blastTouched[ni] = 1;
           if (orig !== Cell.Metal) {
             // Terrain crumbles fully near the core, raggedly at the rim
             if (
@@ -89,7 +244,7 @@ export class Explosions implements ExplosionApi {
                 orig,
                 world.colors[ni],
                 90,
-                { glow: orig === Cell.Lava || orig === Cell.Gold ? 1.5 : 0 },
+                { glow: orig === Cell.Lava || orig === Cell.Gold ? 1.5 : 0, looseDebris: true },
               );
             }
             if (Math.random() < 0.3) {
@@ -130,6 +285,7 @@ export class Explosions implements ExplosionApi {
         const t = world.types[ni];
         // Heat fuses sand at the blast rim into glass
         if (t === Cell.Sand && Math.random() < 0.4) {
+          blastTouched[ni] = 1;
           world.replaceCellAt(ni, Cell.Glass, glassColor());
           continue;
         }
@@ -146,9 +302,15 @@ export class Explosions implements ExplosionApi {
             70,
           );
         }
+        blastTouched[ni] = 1;
         world.clearCellAt(ni);
       }
     }
+
+    // Any blast-isolated crust that no longer connects back to the cave mass
+    // becomes soft ash. It stays visible and physical to the sim, but stops
+    // pinning the player as a floating post-explosion wall.
+    softenDisconnectedBlastDebris(ctx, cx, cy, radius, blastTouched);
 
     // Sparks fountain for drama
     ctx.particles.burst(cx, cy, Math.min(14, 4 + Math.floor(radius * 0.5)), Cell.Fire, fireColor, 1.8, {

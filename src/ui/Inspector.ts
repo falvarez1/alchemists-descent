@@ -156,6 +156,7 @@ export class Inspector {
   private contextInspectorOff: (() => void) | null = null;
   /** Floating popovers for the per-param info icons (hover → explanation). */
   private readonly popovers = new PopoverHost();
+  private readonly disposers: Array<() => void> = [];
 
   constructor(private ctx: Ctx) {
     this.wireGlobalControls();
@@ -164,6 +165,20 @@ export class Inspector {
     this.mountTimeControls();
     this.wireClearButton();
     this.wireSoundToggle();
+  }
+
+  dispose(): void {
+    this.contextInspectorOff?.();
+    this.contextInspectorOff = null;
+    for (const dispose of this.disposers.splice(0).reverse()) dispose();
+    this.popovers.dispose();
+    document.getElementById('material-dynamic-controls')?.replaceChildren();
+  }
+
+  private listen(target: EventTarget | null, type: string, listener: EventListener): void {
+    if (!target) return;
+    target.addEventListener(type, listener);
+    this.disposers.push(() => target.removeEventListener(type, listener));
   }
 
   generateContextInspector(id: string | number, mode: 'element' | 'spell'): void {
@@ -284,12 +299,13 @@ export class Inspector {
     ];
     // Re-read the live params whenever ANYTHING changes them (console `param`,
     // Builder sliders, a reset) so this panel mirrors them without a reload.
-    ctx.events.on('paramsChanged', () => bindings.forEach((b) => b.resync()));
+    const off = ctx.events.on('paramsChanged', () => bindings.forEach((b) => b.resync()));
+    this.disposers.push(off, () => bindings.forEach((b) => b.dispose?.()));
   }
 
   private mountTimeControls(): void {
     const host = document.getElementById('sandbox-time-controls');
-    if (host) mountTimeControlsPanel(this.ctx, host, { surface: 'sandbox' });
+    if (host) this.disposers.push(mountTimeControlsPanel(this.ctx, host, { surface: 'sandbox' }));
   }
 
   private wireGpuComposeToggle(): void {
@@ -299,11 +315,12 @@ export class Inspector {
     const syncGpuBtn = (): void => {
       gpuBtn.classList.toggle('lit', post.gpuCompose);
     };
-    gpuBtn.addEventListener('click', () => {
+    const onClick = (): void => {
       post.gpuCompose = !post.gpuCompose;
       syncGpuBtn();
       gpuBtn.blur(); // a focused button would eat Space/Enter mid-play
-    });
+    };
+    this.listen(gpuBtn, 'click', onClick);
     syncGpuBtn();
   }
 
@@ -331,7 +348,7 @@ export class Inspector {
         ? `WebGPU raw WGSL compose: ${render.compose ? 'on' : 'off'}`
         : 'Click to reload with WebGPU raw WGSL compose enabled';
     };
-    btn.addEventListener('click', () => {
+    const onClick = (): void => {
       if (!canToggle()) {
         bootIntoWebGpuCompose();
         return;
@@ -339,13 +356,15 @@ export class Inspector {
       render.compose = !render.compose;
       syncBtn();
       btn.blur();
-    });
+    };
+    this.listen(btn, 'click', onClick);
     syncBtn();
   }
 
   private wireClearButton(): void {
     const ctx = this.ctx;
-    document.getElementById('clear-btn')!.addEventListener('click', () => {
+    const clearBtn = document.getElementById('clear-btn');
+    this.listen(clearBtn, 'click', () => {
       ensureSandboxWorldDetached(ctx);
       ctx.world.clear();
       resetCombatTransients(ctx, { simulationAccumulator: true });
@@ -368,7 +387,7 @@ export class Inspector {
       btn.textContent = on ? 'SND ON' : 'SND OFF';
       btn.classList.toggle('muted', !on);
     };
-    btn.addEventListener('click', () => {
+    this.listen(btn, 'click', () => {
       const on = ctx.audio.toggle();
       if (on) ctx.audio.ensure(); // original: turning sound on (re)creates the AudioContext
       paint(on);

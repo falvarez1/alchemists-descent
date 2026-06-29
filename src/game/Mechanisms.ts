@@ -37,10 +37,15 @@ export {
 export class Mechanisms implements MechanismsApi {
   private readonly sequenceScratch: Mechanism[] = [];
   private readonly edgeScratch: boolean[] = [];
+  private readonly eventDisposers: Array<() => void> = [];
 
   constructor(private ctx: Ctx) {
     // Explosions / projectile impacts / dig hits all announce themselves here.
-    ctx.events.on('structureStrike', ({ x, y, radius }) => this.strike(this.ctx, x, y, radius));
+    this.eventDisposers.push(ctx.events.on('structureStrike', ({ x, y, radius }) => this.strike(this.ctx, x, y, radius)));
+  }
+
+  dispose(): void {
+    for (const dispose of this.eventDisposers.splice(0).reverse()) dispose();
   }
 
   update(ctx: Ctx): void {

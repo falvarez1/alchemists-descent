@@ -2,6 +2,7 @@ import type {
   CardId,
   CastActionExecutionContext,
   Ctx,
+  Enemy,
   Projectile,
   SpellId,
   SpellParams,
@@ -17,7 +18,7 @@ import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
-import { DEPTH_PROJECTILE_POOL, randomCard, WAYSTONE_MOD_POOL } from './rewardPools';
+import { buildCardOffer, collectOwnedCards, DEPTH_PROJECTILE_POOL, WAYSTONE_MOD_POOL } from './rewardPools';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES } from '@/combat/wands/wandCatalog';
 export { REVIEW_WAND_LOADOUTS, STARTING_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/wandCatalog';
 
@@ -158,33 +159,40 @@ export class WandSystem implements WandsApi {
   private flameBurst = 0;
   /** Modifiers captured by the most recent flame-card burst. */
   private flameBurstAction: CastAction | null = null;
+  /** Scratch target list so flame can damage enemies without iterating a mutating live array. */
+  private readonly flameTargets: Enemy[] = [];
   /** Depths whose first-visit projectile card was already granted. */
   private readonly depthsGranted = new Set<number>();
   private infuserGranted = false;
   private lastPickFrame = -99;
+  private readonly eventDisposers: Array<() => void> = [];
 
   constructor(private readonly ctx: Ctx) {
     // Card economy v1: the world hands out cards through existing events.
-    ctx.events.on('waystoneLit', () => {
+    this.eventDisposers.push(ctx.events.on('waystoneLit', () => {
       const pool = Math.random() < WAYSTONE_MOD_BIAS ? WAYSTONE_MOD_POOL : DEPTH_PROJECTILE_POOL;
-      this.grantCard(this.ctx, randomCard(pool));
-    });
-    ctx.events.on('levelChanged', ({ depth }) => {
+      this.grantRandomCardFromPool(pool);
+    }));
+    this.eventDisposers.push(ctx.events.on('levelChanged', ({ depth }) => {
       if (depth < 2 || this.depthsGranted.has(depth)) return;
       this.depthsGranted.add(depth);
-      this.grantCard(this.ctx, randomCard(DEPTH_PROJECTILE_POOL));
-    });
+      this.grantRandomCardFromPool(DEPTH_PROJECTILE_POOL);
+    }));
     // Brewing real materials proves you speak material — the Infuser answers.
-    ctx.events.on('recipeBrewed', () => this.grantInfuser(ctx));
+    this.eventDisposers.push(ctx.events.on('recipeBrewed', () => this.grantInfuser(ctx)));
     // Respawn refills the player pool (Levels does); keep the wands in step
     // so death isn't compounded by dry-firing at the waystone.
-    ctx.events.on('playerRespawned', () => {
+    this.eventDisposers.push(ctx.events.on('playerRespawned', () => {
       for (const w of this.wands) {
         w.mana = w.frame.manaMax;
         w.cooldown = 0;
         w.castIndex = 0;
       }
-    });
+    }));
+  }
+
+  dispose(): void {
+    for (const dispose of this.eventDisposers.splice(0).reverse()) dispose();
   }
 
   get active(): 0 | 1 {
@@ -616,6 +624,8 @@ export class WandSystem implements WandsApi {
     // the env-damage tick only bit foes standing in cells the fire happened to land
     // on. Mirrors how poured lava now strikes enemies via splashHazard.)
     if (ctx.state.mode === 'play' && (ctx.enemies?.length ?? 0) > 0) {
+      const targets = this.flameTargets;
+      targets.length = 0;
       for (const e of ctx.enemies) {
         const dx = e.x - x,
           dy = e.y - 5 - y;
@@ -624,8 +634,13 @@ export class WandSystem implements WandsApi {
         let da = Math.atan2(dy, dx) - angle;
         da = Math.atan2(Math.sin(da), Math.cos(da)); // normalize to [-pi, pi]
         if (Math.abs(da) > FLAME_CONE) continue;
+        targets.push(e);
+      }
+      for (const e of targets) {
+        if (e.hp <= 0) continue;
         ctx.enemyCtl.splashHazard(e.x, e.y - 5, Cell.Fire);
       }
+      targets.length = 0;
     }
   }
 
@@ -722,6 +737,11 @@ export class WandSystem implements WandsApi {
   }
 
   /* ---------------- collection + bench ---------------- */
+
+  private grantRandomCardFromPool(pool: readonly CardId[]): void {
+    const card = buildCardOffer(pool, collectOwnedCards(this), { count: 1 })[0] ?? 'spark';
+    this.grantCard(this.ctx, card);
+  }
 
   grantCard(ctx: Ctx, id: CardId): void {
     if (id === 'infuser') this.infuserGranted = true;

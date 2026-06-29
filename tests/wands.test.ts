@@ -7,7 +7,8 @@ import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, WandSystem } from '@/combat/wands/Wa
 import { TRIGGERED, TRIGGER_SOURCE_SPREAD } from '@/combat/wands/projectileMarks';
 import { createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
-import type { CardId, CastAction, Ctx } from '@/core/types';
+import type { CardId, CastAction, Ctx, Enemy } from '@/core/types';
+import { createDefaultStatus } from '@/entities/status';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { introControlHintForObjective } from '@/game/introObjectives';
@@ -895,6 +896,33 @@ function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: num
   return ctx;
 }
 
+function makeTestEnemy(x: number, y: number): Enemy {
+  return {
+    kind: 'slime',
+    x,
+    y,
+    fx: 0,
+    fy: 0,
+    vx: 0,
+    vy: 0,
+    hp: 1,
+    maxHp: 1,
+    flash: 0,
+    timer: 0,
+    attackCd: 0,
+    bobPhase: 0,
+    grounded: false,
+    stride: 0,
+    splat: 0,
+    prevG: false,
+    blink: 0,
+    jetFuel: 0,
+    jetCd: 0,
+    stuckT: 0,
+    status: createDefaultStatus(),
+  };
+}
+
 describe('WandSystem trigger executor', () => {
   it('uses the impact point for triggered conjure instead of the live mouse', () => {
     const ctx = makeCastCtx();
@@ -946,6 +974,40 @@ describe('WandSystem trigger executor', () => {
 
     expect(ctx.spawned.length).toBeGreaterThan(0);
     expect(ctx.spawned.every((particle) => particle.x === 40 && particle.y === 41 && particle.type === Cell.Fire)).toBe(true);
+  });
+
+  it('scorches every engulfed enemy when an earlier hit removes by swap-pop', () => {
+    const ctx = makeCastCtx();
+    const first = makeTestEnemy(55, 46);
+    const second = makeTestEnemy(64, 46);
+    ctx.enemies = [first, second];
+    const hits: Enemy[] = [];
+    ctx.enemyCtl = {
+      splashHazard(x: number, y: number, _cell: number): boolean {
+        const victim = ctx.enemies.find(
+          (enemy) => enemy.hp > 0 && Math.abs(enemy.x - x) < 0.001 && Math.abs(enemy.y - 5 - y) < 0.001,
+        );
+        if (!victim) return false;
+        hits.push(victim);
+        if (victim === first) {
+          const index = ctx.enemies.indexOf(victim);
+          if (index >= 0) {
+            ctx.enemies[index] = ctx.enemies[ctx.enemies.length - 1];
+            ctx.enemies.pop();
+          }
+          victim.hp = 0;
+        }
+        return true;
+      },
+    } as unknown as Ctx['enemyCtl'];
+    const wands = new WandSystem(ctx);
+
+    wands.castActionAt(ctx, action('flame'), 40, 41, 0, {
+      origin: 'trigger',
+      target: { x: 40, y: 41 },
+    });
+
+    expect(hits).toEqual([first, second]);
   });
 
   it('applies damage modifiers to live flame stream density', () => {

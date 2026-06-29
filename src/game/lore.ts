@@ -1,5 +1,5 @@
 import type { Ctx } from '@/core/types';
-import { LEGACY_LORE_KEY, loadDiscoveredMaterials, recordMaterialDiscovery } from '@/game/GrimoireStore';
+import { LEGACY_LORE_KEY, loadDiscoveredMaterials, recordMaterialDiscovery } from '@/core/grimoireStore';
 import { Cell } from '@/sim/CellType';
 
 /**

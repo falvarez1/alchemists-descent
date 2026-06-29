@@ -140,6 +140,44 @@ function runtimeWithHostVaultArch(blocked: boolean): LevelRuntime {
   } as unknown as LevelRuntime;
 }
 
+function runtimeWithPrefabBlockedLever(): LevelRuntime {
+  const world = new World(72, 56);
+  world.types.fill(Cell.Empty);
+  for (let y = 1; y < 55; y++) world.types[world.idx(32, y)] = Cell.Stone;
+  const lever: Mechanism = {
+    id: 1,
+    kind: 'lever',
+    x: 54,
+    y: 30,
+    w: 1,
+    h: 1,
+    state: 0,
+    targetId: -1,
+    body: [
+      [53, 31],
+      [54, 31],
+      [55, 31],
+    ],
+  };
+  for (const [x, y] of lever.body!) world.types[world.idx(x, y)] = Cell.Metal;
+  return {
+    def: { id: 'test', name: 'Test', biome: 'earthen', depth: 1, nextLevelId: null },
+    world,
+    enemies: [],
+    waystones: [],
+    pickups: [],
+    mechanisms: [lever],
+    runeVaults: [],
+    spawn: { x: 12, y: 30 },
+    explored: new Uint8Array(world.width * world.height),
+    regions: null,
+    cauldron: null,
+    portal: null,
+    keyTaken: false,
+    placedPrefabs: [{ id: 'blocked-machine', x0: 20, y0: 10, x1: 60, y1: 40 }],
+  } as unknown as LevelRuntime;
+}
+
 function settleSand(world: World, frames: number): void {
   for (let frame = 0; frame < frames; frame++) {
     for (let y = world.height - 2; y >= 1; y--) {
@@ -237,6 +275,32 @@ describe('findability validation', () => {
       if (before[i] === Cell.Empty && blocksEntity(world.types[i])) newOpenBlockers++;
     }
     expect(newOpenBlockers).toBe(0);
+  });
+
+  it('does not erase protected vault arch metal while carving fail-open routes', () => {
+    const runtime = runtimeWithHostVaultArch(true);
+    const world = runtime.world;
+    const arch = runtime.vaultArch!;
+    const protectedIndex = world.idx(arch.discoverX!, arch.discoverY!);
+    world.types[protectedIndex] = Cell.Metal;
+
+    failOpenFindability(runtime);
+
+    expect(world.types[protectedIndex]).toBe(Cell.Metal);
+  });
+
+  it('carves through prefab footprints when required triggers are otherwise unreachable', () => {
+    const runtime = runtimeWithPrefabBlockedLever();
+
+    const result = failOpenFindability(runtime);
+
+    expect(result.repaired).toEqual(
+      expect.arrayContaining([expect.objectContaining({ what: 'lever', severity: 'error' })]),
+    );
+    expect(result.remaining.some((issue) => issue.what === 'lever' && issue.severity === 'error')).toBe(false);
+    for (const [x, y] of runtime.mechanisms[0]!.body!) {
+      expect(runtime.world.types[runtime.world.idx(x, y)]).toBe(Cell.Metal);
+    }
   });
 
   it('keeps fail-open rescue routes reachable after loose material settles', () => {

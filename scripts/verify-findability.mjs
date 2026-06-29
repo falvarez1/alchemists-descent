@@ -39,7 +39,12 @@ async function auditSeed(seed) {
           const waitForSettledFindability = async (rt) => {
             let latest = null;
             let consecutiveClean = 0;
-            const deadline = performance.now() + 1800;
+            // Levels schedule a settled fail-open repair shortly after entry.
+            // Running the full validator in a tight loop can monopolize the
+            // browser thread enough to delay that timer, so give the runtime a
+            // quiet window first and then sample for stable cleanliness.
+            await new Promise((r) => setTimeout(r, 700));
+            const deadline = performance.now() + 2600;
             while (performance.now() < deadline) {
               latest = validateFindability(rt);
               if (!latest.some((i) => i.severity === 'error')) {
@@ -81,8 +86,12 @@ async function auditSeed(seed) {
               Object.values(braziersByDoor).some((n) => n >= 3);
             const placedPrefabs = rt.placedPrefabs ?? [];
             const machines = placedPrefabs.filter((p) => String(p.id ?? '').startsWith('machine-')).length;
+            const surfaceConflicts =
+              rt.def.id === 'd1' && Number.isFinite(rt.surfaceSkyLine)
+                ? placedPrefabs.filter((p) => p.y0 <= rt.surfaceSkyLine + 44).map((p) => `${p.id}@${p.x0},${p.y0}`)
+                : [];
             const spellLab = id !== 'd1' || !!rt.spellLab;
-            out.push({ id, waveE, spellLab, issues, buried, prefabs: placedPrefabs.length, machines });
+            out.push({ id, waveE, spellLab, issues, buried, prefabs: placedPrefabs.length, machines, surfaceConflicts });
           }
           return out;
         },
@@ -107,8 +116,9 @@ for (const seed of seeds) {
   }
 
   for (const lv of results) {
-    const bad = lv.issues.length > 0 || !lv.waveE || !lv.spellLab;
+    const bad = lv.issues.length > 0 || !lv.waveE || !lv.spellLab || lv.surfaceConflicts.length > 0;
     if (lv.issues.length) failures++;
+    if (lv.surfaceConflicts.length) failures++;
     if (!lv.waveE) missingWaveE++;
     if (!lv.spellLab) missingSpellLabs++;
     if (lv.prefabs <= 0) missingPrefabs++;
@@ -120,6 +130,7 @@ for (const seed of seeds) {
         (lv.spellLab ? '' : ' [NO SPELL LAB]') +
         (lv.prefabs <= 0 ? ' [NO PREFAB]' : '') +
         (lv.machines <= 0 ? ' [NO MACHINE]' : '') +
+        (lv.surfaceConflicts.length ? ' surface-conflict: ' + lv.surfaceConflicts.join(' ') : '') +
         (lv.issues.length ? ' unreachable: ' + lv.issues.join(' ') : ''),
     );
   }

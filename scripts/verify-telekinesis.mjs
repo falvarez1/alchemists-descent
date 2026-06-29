@@ -1,9 +1,9 @@
 // Telekinesis (E): lift the crate the MOUSE CURSOR is on → it levitates and tracks
 // the hand; E again drops it, F throws it; works at range on ANY crate.
-import { chromium } from 'playwright-core';
+import { launchBrowser } from './browser-launch.mjs';
 
-const url = process.argv[2] || 'http://127.0.0.1:5219/';
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const url = process.argv[2] || 'http://localhost:5173/';
+const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1400, height: 860 } });
 const errs = [];
 page.on('pageerror', (e) => errs.push(String(e)));

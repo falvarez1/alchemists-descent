@@ -114,8 +114,14 @@ import type { BiomeId } from '@/core/types';
  * v32: organic encounter lairs are carved after mineral-vug fill on signature
  *      depths: rootloper groves, rillback pools, and stonemaw seams. Full-level
  *      output changed on affected d2/d4/d5/d6/d8 seeds.
+ * v33: worldgen validation now treats encounter lair affordances as first-class
+ *      findability targets, so generated lair entrances and rewards are audited
+ *      alongside gates, sensors, glyphs, and other progression-critical features.
+ * v34: mechanism-vault trigger antechambers use swept wizard-gauge connectors,
+ *      preventing cell-reachable pressure plates from being body-unreachable
+ *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 32;
+export const GEN_VERSION = 34;
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

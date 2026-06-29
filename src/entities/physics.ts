@@ -87,6 +87,24 @@ export class Physics implements PhysicsApi {
     }
   }
 
+  private tryMoveTo(
+    ent: { x: number; y: number },
+    nextX: number,
+    nextY: number,
+    moveDx: number,
+    moveDy: number,
+    halfW: number,
+    h: number,
+  ): boolean {
+    void moveDx;
+    void moveDy;
+    if (!this.entityFreeForMove(nextX, nextY, halfW, h)) return false;
+    ent.x = nextX;
+    ent.y = nextY;
+    this.crushLooseDebris(ent, halfW, h);
+    return true;
+  }
+
   tryMoveEntity(
     ent: { x: number; y: number },
     dx: number,
@@ -98,11 +116,7 @@ export class Physics implements PhysicsApi {
   ): boolean {
     this._moveBlockMemo.clear();
     if (dy !== 0) {
-      if (this.entityFreeForMove(ent.x, ent.y + dy, halfW, h)) {
-        ent.y += dy;
-        this.crushLooseDebris(ent, halfW, h);
-        return true;
-      }
+      if (this.tryMoveTo(ent, ent.x, ent.y + dy, 0, dy, halfW, h)) return true;
       // Lateral "slip": the vertical mirror of stepUp. A small wall nub catching
       // a shoulder shouldn't pin a vertical climb (levitating up a tunnel) any
       // more than a low ledge stops a run — nudge sideways the minimum needed to
@@ -110,35 +124,16 @@ export class Physics implements PhysicsApi {
       // side fails entityFree first), capped at `slip` cells.
       if (slip) {
         for (let s = 1; s <= slip; s++) {
-          if (this.entityFreeForMove(ent.x + s, ent.y + dy, halfW, h)) {
-            ent.x += s;
-            ent.y += dy;
-            this.crushLooseDebris(ent, halfW, h);
-            return true;
-          }
-          if (this.entityFreeForMove(ent.x - s, ent.y + dy, halfW, h)) {
-            ent.x -= s;
-            ent.y += dy;
-            this.crushLooseDebris(ent, halfW, h);
-            return true;
-          }
+          if (this.tryMoveTo(ent, ent.x + s, ent.y + dy, s, dy, halfW, h)) return true;
+          if (this.tryMoveTo(ent, ent.x - s, ent.y + dy, -s, dy, halfW, h)) return true;
         }
       }
       return false;
     }
-    if (this.entityFreeForMove(ent.x + dx, ent.y, halfW, h)) {
-      ent.x += dx;
-      this.crushLooseDebris(ent, halfW, h);
-      return true;
-    }
+    if (this.tryMoveTo(ent, ent.x + dx, ent.y, dx, 0, halfW, h)) return true;
     if (stepUp) {
       for (let s = 1; s <= stepUp; s++) {
-        if (this.entityFreeForMove(ent.x + dx, ent.y - s, halfW, h)) {
-          ent.x += dx;
-          ent.y -= s;
-          this.crushLooseDebris(ent, halfW, h);
-          return true;
-        }
+        if (this.tryMoveTo(ent, ent.x + dx, ent.y - s, dx, -s, halfW, h)) return true;
       }
     }
     // Step-DOWN: the ceiling mirror of stepUp. Pressed up against a ceiling, a
@@ -147,12 +142,7 @@ export class Physics implements PhysicsApi {
     // so it only frees a snag where there's actually open space below.
     if (slip) {
       for (let s = 1; s <= slip; s++) {
-        if (this.entityFreeForMove(ent.x + dx, ent.y + s, halfW, h)) {
-          ent.x += dx;
-          ent.y += s;
-          this.crushLooseDebris(ent, halfW, h);
-          return true;
-        }
+        if (this.tryMoveTo(ent, ent.x + dx, ent.y + s, dx, s, halfW, h)) return true;
       }
     }
     return false;

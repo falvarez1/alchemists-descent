@@ -1,6 +1,6 @@
 // Focused minimap POI popover probe.
 // Usage: node scripts/verify-minimap-popovers.mjs [url]  (dev server running)
-import { chromium } from 'playwright-core';
+import { launchBrowser } from './browser-launch.mjs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
@@ -17,7 +17,7 @@ const check = (name, ok, detail = '') => {
   }
 };
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
@@ -34,6 +34,8 @@ async function hoverMarker(canvasSelector, marker) {
     };
   }, { canvasSelector, marker });
   if (!point) return false;
+  await page.mouse.move(1, 1);
+  await page.waitForTimeout(20);
   await page.mouse.move(point.x, point.y);
   await page.waitForTimeout(120);
   return true;
@@ -74,6 +76,12 @@ async function livePickupMarker(kind, options = {}) {
       })[0]
       : matches[0];
     if (!pickup) return null;
+    if (near) {
+      pickup.x = near.x;
+      pickup.y = near.y;
+      pickup.vx = 0;
+      pickup.vy = 0;
+    }
     rt.explored[(pickup.x >> 3) + (pickup.y >> 3) * canvas.width] = 1;
     return { x: pickup.x, y: pickup.y, offsetX: 1, offsetY: 1 };
   }, { kind, amount: options.amount, near: options.near });
@@ -129,10 +137,13 @@ const markers = await page.evaluate(() => {
     occupied.push(found);
     return found;
   };
+  const portalMap = freeMapSpot();
   const heartMap = freeMapSpot();
   const chestMap = freeMapSpot();
   const leverMap = freeMapSpot();
   const goldMap = freeMapSpot();
+  const portalX = portalMap.mx * 8 + 4;
+  const portalY = portalMap.my * 8 + 4;
   const heartX = heartMap.mx * 8 + 4;
   const heartY = heartMap.my * 8 + 4;
   const chestX = chestMap.mx * 8 + 4;
@@ -142,6 +153,7 @@ const markers = await page.evaluate(() => {
   const goldX = goldMap.mx * 8 + 4;
   const goldY = goldMap.my * 8 + 4;
   const maxMechanismId = rt.mechanisms.reduce((max, mechanism) => Math.max(max, mechanism.id), 0);
+  rt.portal = { x: portalX, y: portalY, open: false };
   rt.pickups.push({ kind: 'heart', x: heartX, y: heartY, vx: 0, vy: 0, taken: false, data: {} });
   rt.pickups.push({ kind: 'chest', x: chestX, y: chestY, vx: 0, vy: 0, taken: false, data: { amount: 42 } });
   rt.mechanisms.push({
@@ -157,6 +169,15 @@ const markers = await page.evaluate(() => {
   const goldIndex = rt.world.idx(goldX, goldY);
   rt.world.types[goldIndex] = 17; // Cell.Gold
   rt.world.colors[goldIndex] = 0xffd23c;
+  for (let dx = -1; dx <= 1; dx++) {
+    const supportX = goldX + dx;
+    const supportY = goldY + 1;
+    if (!rt.world.inBounds(supportX, supportY)) continue;
+    const supportIndex = rt.world.idx(supportX, supportY);
+    rt.world.types[supportIndex] = 13; // Cell.Metal
+    rt.world.colors[supportIndex] = 0x8f9ba8;
+  }
+  mark(portalX, portalY);
   mark(chestX, chestY);
   mark(leverX, leverY);
   mark(goldX, goldY);
@@ -257,12 +278,29 @@ await page.evaluate((gold) => {
   if (!rt) return;
   const gx = gold.x >> 3;
   const gy = gold.y >> 3;
-  rt.mechanisms = rt.mechanisms.filter((mechanism) => {
+  const goldIndex = rt.world.idx(gold.x, gold.y);
+  rt.world.types[goldIndex] = 17; // Cell.Gold
+  rt.world.colors[goldIndex] = 0xffd23c;
+  for (let dx = -1; dx <= 1; dx++) {
+    const supportX = gold.x + dx;
+    const supportY = gold.y + 1;
+    if (!rt.world.inBounds(supportX, supportY)) continue;
+    const supportIndex = rt.world.idx(supportX, supportY);
+    rt.world.types[supportIndex] = 13; // Cell.Metal
+    rt.world.colors[supportIndex] = 0x8f9ba8;
+  }
+  const canvas = document.getElementById('minimap-corner');
+  const width = canvas instanceof HTMLCanvasElement ? canvas.width : 200;
+  rt.explored[gx + gy * width] = 1;
+  for (let i = rt.mechanisms.length - 1; i >= 0; i--) {
+    const mechanism = rt.mechanisms[i];
     const dx = (mechanism.x >> 3) - gx;
     const dy = (mechanism.y >> 3) - gy;
-    return dx * dx + dy * dy > 100;
-  });
+    if (dx * dx + dy * dy <= 100) rt.mechanisms.splice(i, 1);
+  }
 }, markers.gold);
+await page.mouse.move(1, 1);
+await page.waitForTimeout(40);
 await hoverMarker('#minimap-corner', markers.gold);
 const goldPop = await popoverState();
 check(

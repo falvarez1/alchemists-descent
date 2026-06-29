@@ -11,6 +11,7 @@
 import { chromium } from 'playwright-core';
 import { startConsoleTestRun } from './run-helpers.mjs';
 import {
+  addSampleBuckets,
   captureCanvasPng,
   collectBackendCapabilities,
   collectWebGpuAdapterCapabilities,
@@ -440,11 +441,7 @@ const result = await page.evaluate(
       orders.push(order.map(([label]) => label).join(' -> '));
       for (const [label, value, sink] of order) {
         const recorded = await recordBlock(label, value, blocks.length);
-        for (const sample of recorded.samples) {
-          for (const bucket of ['sim', 'entities', 'compose', 'gl', 'render', 'frame']) {
-            sink[bucket].push(sample[bucket]);
-          }
-        }
+        addSampleBuckets(sink, recorded.samples);
         blocks.push({
           label,
           value: recorded.appliedValue,

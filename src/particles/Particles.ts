@@ -2,6 +2,7 @@ import type { Ctx, FlyingParticle, ParticleOpts, ParticlesApi } from '@/core/typ
 import { EntityPool } from '@/entities/ecs';
 import { MAX_PARTICLES } from '@/config/constants';
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
+import { ashColor } from '@/sim/colors';
 import { stainCell } from '@/sim/stains';
 
 /**
@@ -45,8 +46,16 @@ export class Particles implements ParticlesApi {
     p.value = opts && opts.value !== undefined ? Math.max(0, Math.floor(opts.value)) : 10;
     p.hostileDmg = (opts && opts.hostileDmg) || 0;
     p.hostileSource = opts?.hostileSource ?? null;
+    p.looseDebris = opts?.looseDebris ?? false;
     p.deposit = (opts && opts.deposit) || false;
     this.pool.add(p);
+  }
+
+  private depositedType(p: FlyingParticle): { type: number; color: number } {
+    if (p.looseDebris && p.type !== null && blocksEntity(p.type) && p.type !== Cell.Metal && p.type !== Cell.Gold) {
+      return { type: Cell.Ash, color: ashColor() };
+    }
+    return { type: p.type!, color: p.color };
   }
 
   burst(
@@ -161,7 +170,10 @@ export class Particles implements ParticlesApi {
             by = Math.floor(p.y - p.vy);
           if (world.inBounds(bx, by)) {
             const bi = world.idx(bx, by);
-            if (world.types[bi] === Cell.Empty || isGas(world.types[bi])) world.replaceCellAt(bi, p.type, p.color);
+            if (world.types[bi] === Cell.Empty || isGas(world.types[bi])) {
+              const deposit = this.depositedType(p);
+              world.replaceCellAt(bi, deposit.type, deposit.color);
+            }
           }
         }
         this.removeAt(i);
@@ -171,7 +183,10 @@ export class Particles implements ParticlesApi {
         // a pour stream that runs out of arc mid-air drops its cell where it is
         if (p.deposit && p.type !== null) {
           const di = world.idx(gx, gy);
-          if (world.types[di] === Cell.Empty || isGas(world.types[di])) world.replaceCellAt(di, p.type, p.color);
+          if (world.types[di] === Cell.Empty || isGas(world.types[di])) {
+            const deposit = this.depositedType(p);
+            world.replaceCellAt(di, deposit.type, deposit.color);
+          }
         }
         this.removeAt(i);
         continue;
@@ -222,9 +237,10 @@ export class Particles implements ParticlesApi {
             if (world.inBounds(bx, by)) {
               const bi = world.idx(bx, by);
               if (world.types[bi] === Cell.Empty || isGas(world.types[bi])) {
-                world.replaceCellAt(bi, p.type, p.color);
-                if (p.type === Cell.Fire) world.life[bi] = 18 + Math.floor(Math.random() * 18);
-                if (p.type === Cell.Smoke) world.life[bi] = 30 + Math.floor(Math.random() * 30);
+                const deposit = this.depositedType(p);
+                world.replaceCellAt(bi, deposit.type, deposit.color);
+                if (deposit.type === Cell.Fire) world.life[bi] = 18 + Math.floor(Math.random() * 18);
+                if (deposit.type === Cell.Smoke) world.life[bi] = 30 + Math.floor(Math.random() * 30);
                 placed = true;
               }
             }
@@ -239,7 +255,8 @@ export class Particles implements ParticlesApi {
                 if (!world.inBounds(cxp, cyp)) continue;
                 const cidx = world.idx(cxp, cyp);
                 if (world.types[cidx] === Cell.Empty || isGas(world.types[cidx])) {
-                  world.replaceCellAt(cidx, p.type, p.color);
+                  const deposit = this.depositedType(p);
+                  world.replaceCellAt(cidx, deposit.type, deposit.color);
                   break;
                 }
               }

@@ -934,20 +934,24 @@ describe('builder validation', () => {
     expect(issues.some((issue) => issue.code === 'builder.pickup.potion.invalid')).toBe(true);
   });
 
-  it('blocks playtest for invalid pickups and duplicate ids that the compiler cannot honor', () => {
+  it('blocks playtest for invalid authored runtime ids that the compiler cannot honor', () => {
     const doc = createEmptyDocument('compile-blockers', 'earthen');
     const spawn = makeObj('spawn', 120, 158);
+    const badEnemy = makeObj('enemy', 126, 158, { kind: 'not-a-foe' });
+    const badEmitter = makeObj('hazardEmitter', 128, 158, { cell: 'not-a-cell' });
     const badKind = makeObj('pickup', 130, 158, { kind: 'mystery' });
     const badCard = makeObj('pickup', 140, 158, { kind: 'tome', card: 'no-such-card' });
     const badPotion = makeObj('pickup', 150, 158, { kind: 'potion', potion: 'no-such-potion' });
     badPotion.id = badCard.id;
-    doc.objects.push(spawn, badKind, badCard, badPotion);
+    doc.objects.push(spawn, badEnemy, badEmitter, badKind, badCard, badPotion);
 
     const blockerCodes = playtestBlockingIssues(validateDocument(doc), 'authored-spawn')
       .map((issue) => issue.code)
       .sort();
 
     expect(blockerCodes).toEqual(expect.arrayContaining([
+      'builder.enemy.kind.invalid',
+      'builder.hazardEmitter.cell.invalid',
       'builder.id.duplicate',
       'builder.pickup.card.invalid',
       'builder.pickup.kind.invalid',

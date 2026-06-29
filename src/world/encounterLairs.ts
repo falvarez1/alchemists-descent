@@ -18,7 +18,8 @@ import {
   woodColor,
 } from '@/sim/colors';
 import type { World } from '@/sim/World';
-import { PlacementLedger, carvePocket, carveRect, connectToCaves } from '@/world/connect';
+import { PlacementLedger, carvePocket, carveRect, connectToCaves, tunnelTo } from '@/world/connect';
+import { wizardMask } from '@/world/validate';
 
 interface LairSpec {
   id: string;
@@ -65,7 +66,15 @@ export function placeEncounterLairs(
     const rollback = snapshotWorld(ctx.world);
     const stamp = stampLair(ctx.world, rng, spec, at);
     carvePocket(ctx.world, stamp.mouth.x, stamp.mouth.y, 11, 13);
-    const steps = connectToCaves(ctx.world, rng, graph, stamp.mouth.x, stamp.mouth.y, 12, fits, { halfW: 7, up: 21, down: 9 });
+    let steps = connectToCaves(ctx.world, rng, graph, stamp.mouth.x, stamp.mouth.y, 12, fits, { halfW: 7, up: 21, down: 9 });
+    if (steps.length === 0) {
+      const target = nearestConnectorTarget(graph, stamp.mouth.x, stamp.mouth.y);
+      if (target) {
+        steps = Math.abs(stamp.mouth.x - target.x) <= 3 && Math.abs(stamp.mouth.y - target.y) <= 3
+          ? [[stamp.mouth.x, stamp.mouth.y]]
+          : tunnelTo(ctx.world, rng, stamp.mouth.x, stamp.mouth.y, target.x, target.y, 12, { halfW: 7, up: 21, down: 9 });
+      }
+    }
     if (steps.length === 0) {
       restoreWorld(ctx.world, rollback);
       console.warn(`[encounter-lairs] skipped ${spec.id} for ${def.id} - connector failed`);
@@ -74,6 +83,17 @@ export function placeEncounterLairs(
     if (spec.kind === 'rillback') {
       sealRillbackPool(ctx.world, at, spec);
       carveRillbackDryAccess(ctx.world, at, spec);
+    }
+    if (!lairWizardReachable(ctx.world, site.spawn, at, spec, stamp.spawn)) {
+      const target = nearestWizardCell(ctx.world, site.spawn, stamp.mouth.x, stamp.mouth.y);
+      if (target) {
+        tunnelTo(ctx.world, rng, stamp.mouth.x, stamp.mouth.y, target.x, target.y, 12, { halfW: 7, up: 21, down: 9 });
+      }
+      if (!lairWizardReachable(ctx.world, site.spawn, at, spec, stamp.spawn)) {
+        restoreWorld(ctx.world, rollback);
+        console.warn(`[encounter-lairs] skipped ${spec.id} for ${def.id} - not wizard-reachable`);
+        continue;
+      }
     }
 
     ledger.reserve(
@@ -208,7 +228,7 @@ function findLairSite(
     return { x0, y0 };
   }
 
-  return null;
+  return fallbackLairSite(world, graph, ledger, spec, site, placed);
 }
 
 function containsMetal(world: World, x0: number, y0: number, x1: number, y1: number): boolean {
@@ -220,6 +240,63 @@ function containsMetal(world: World, x0: number, y0: number, x1: number, y1: num
   return false;
 }
 
+function fallbackLairSite(
+  world: World,
+  graph: RegionGraph,
+  ledger: PlacementLedger,
+  spec: LairSpec,
+  site: { spawn: { x: number; y: number }; wellX: number },
+  placed: readonly PlacedPrefab[],
+): LairSite | null {
+  const minX = 12;
+  const maxX = WIDTH - spec.w - 12;
+  const minY = 42;
+  const maxY = HEIGHT - spec.h - 68;
+  if (maxX < minX || maxY < minY) return null;
+
+  const regions = [...graph.regions]
+    .filter((reg) => reg.area >= 60)
+    .sort((a, b) => {
+      if (a.onMainPath !== b.onMainPath) return a.onMainPath ? -1 : 1;
+      const ad = Math.hypot(a.cx - site.spawn.x, a.cy - site.spawn.y);
+      const bd = Math.hypot(b.cx - site.spawn.x, b.cy - site.spawn.y);
+      return bd - ad;
+    });
+  const anchors = regions.length > 0
+    ? regions.map((reg) => ({ x: reg.cx, y: reg.cy }))
+    : [
+        { x: WIDTH - site.spawn.x, y: site.spawn.y },
+        { x: WIDTH * 0.5, y: HEIGHT * 0.55 },
+      ];
+  const offsets = [
+    [0, 0],
+    [-96, 0],
+    [96, 0],
+    [0, -72],
+    [0, 72],
+    [-128, -64],
+    [128, -64],
+    [-128, 64],
+    [128, 64],
+  ] as const;
+
+  for (const anchor of anchors) {
+    for (const [ox, oy] of offsets) {
+      const x0 = Math.floor(Math.max(minX, Math.min(maxX, anchor.x + ox - spec.w / 2)));
+      const y0 = Math.floor(Math.max(minY, Math.min(maxY, anchor.y + oy - spec.h / 2)));
+      const cx = x0 + spec.w / 2;
+      const cy = y0 + spec.h / 2;
+      if (Math.hypot(cx - site.spawn.x, cy - site.spawn.y) < spec.minSpawnDist * 0.35) continue;
+      if (Math.abs(cx - site.wellX) < 42) continue;
+      if (ledger.intersects(x0 - LAIR_MARGIN, y0 - LAIR_MARGIN, x0 + spec.w + LAIR_MARGIN, y0 + spec.h + LAIR_MARGIN)) continue;
+      if (placed.some((p) => Math.hypot(cx - (p.x0 + p.x1) / 2, cy - (p.y0 + p.y1) / 2) < 72)) continue;
+      if (containsMetal(world, x0 - 2, y0 - 2, x0 + spec.w + 1, y0 + spec.h + 1)) continue;
+      return { x0, y0 };
+    }
+  }
+  return null;
+}
+
 function distanceToMainPath(graph: RegionGraph, x: number, y: number): number {
   let best = Infinity;
   for (const onlyMain of [true, false]) {
@@ -229,6 +306,74 @@ function distanceToMainPath(graph: RegionGraph, x: number, y: number): number {
       best = Math.min(best, Math.hypot(reg.cx - x, reg.cy - y));
     }
     if (Number.isFinite(best)) break;
+  }
+  return best;
+}
+
+function nearestConnectorTarget(graph: RegionGraph, x: number, y: number): { x: number; y: number } | null {
+  let best: { x: number; y: number } | null = null;
+  let bestD = Infinity;
+  for (const onlyMain of [true, false]) {
+    for (const reg of graph.regions) {
+      if (onlyMain && !reg.onMainPath) continue;
+      if (!onlyMain && reg.area < 60) continue;
+      const d = (reg.cx - x) * (reg.cx - x) + (reg.cy - y) * (reg.cy - y);
+      if (d < bestD) {
+        bestD = d;
+        best = { x: Math.floor(reg.cx), y: Math.floor(reg.cy) };
+      }
+    }
+    if (best) break;
+  }
+  return best;
+}
+
+function lairWizardReachable(
+  world: World,
+  spawn: { x: number; y: number },
+  at: LairSite,
+  spec: LairSpec,
+  resident: { x: number; y: number },
+): boolean {
+  const mask = wizardMask({ world, spawn });
+  let reachableFootprint = 0;
+  for (let y = at.y0; y < at.y0 + spec.h; y++) {
+    for (let x = at.x0; x < at.x0 + spec.w; x++) {
+      if (world.inBounds(x, y) && mask[world.idx(x, y)]) reachableFootprint++;
+    }
+  }
+  if (reachableFootprint >= 30) return true;
+
+  const residentX = Math.floor(resident.x);
+  const residentY = Math.floor(resident.y);
+  for (let dy = -20; dy <= 20; dy++) {
+    for (let dx = -20; dx <= 20; dx++) {
+      const x = residentX + dx;
+      const y = residentY + dy;
+      if (world.inBounds(x, y) && mask[world.idx(x, y)]) return true;
+    }
+  }
+  return false;
+}
+
+function nearestWizardCell(
+  world: World,
+  spawn: { x: number; y: number },
+  x: number,
+  y: number,
+): { x: number; y: number } | null {
+  const mask = wizardMask({ world, spawn });
+  let best: { x: number; y: number } | null = null;
+  let bestD = Infinity;
+  for (let yy = 2; yy < world.height - 2; yy += 3) {
+    for (let xx = 2; xx < world.width - 2; xx += 3) {
+      if (!mask[world.idx(xx, yy)]) continue;
+      const d = (xx - x) * (xx - x) + (yy - y) * (yy - y);
+      if (d < bestD) {
+        bestD = d;
+        best = { x: xx, y: yy };
+      }
+    }
   }
   return best;
 }

@@ -80,7 +80,7 @@ try {
   // the three paused screenshots captured.
   await page.evaluate(() => {
     const ctx = window.__game.ctx;
-    ctx.debug.active = true; // global debug freeze: AI stops, the renderer keeps solving — the PAUSE case
+    ctx.debug.setActive(true); // global debug freeze: AI stops, the renderer keeps solving — the PAUSE case
   });
   let pausedSwing = 0, pPrev = null, pMin = 9, pMax = -9, legSwing = 0;
   for (let f = 0; f < 40; f++) {

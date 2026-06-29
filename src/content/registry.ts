@@ -73,7 +73,7 @@ function listWandFrames(): ContentItem[] {
     name: frame.name,
     description: `${frame.capacity} slots, ${frame.manaMax} mana, ${frame.castDelay}f cast delay, ${frame.recharge}f recharge.`,
     tags: ['wand', 'frame', `capacity-${frame.capacity}`],
-    source: 'src/combat/wands/WandSystem.ts:WAND_FRAMES',
+    source: 'src/combat/wands/wandCatalog.ts:WAND_FRAMES',
     dependencies: [
       dep('code', 'src/combat/wands/WandSystem.ts', 'runtime frame stats and save/load path'),
       dep('code', 'src/ui/Hud.ts', 'HUD mirrors active wand frame slots'),
@@ -90,7 +90,7 @@ function listWandLoadouts(): ContentItem[] {
     description: `${loadout.frameId} frame with ${loadout.cards.join(', ')}.`,
     tags: ['wand', 'loadout', loadout.status],
     status: loadout.status,
-    source: 'src/combat/wands/WandSystem.ts:STARTING_WAND_LOADOUTS/REVIEW_WAND_LOADOUTS',
+    source: 'src/combat/wands/wandCatalog.ts:STARTING_WAND_LOADOUTS/REVIEW_WAND_LOADOUTS',
     dependencies: [
       dep('wandFrame', loadout.frameId, 'loadout frame'),
       ...loadout.cards.map((id) => {
@@ -127,7 +127,7 @@ function listRecipesAndElixirs(materials: Record<number, MaterialParams>): Conte
       name: titleCase(recipe.name),
       description: recipe.needs.map((need) => `${need.min} ${materialName(materials, need.cell)}`).join(' + '),
       tags: ['brew', 'recipe'],
-      source: 'src/game/Brewing.ts:RECIPES',
+      source: 'src/content/recipes.ts:RECIPES',
       dependencies: [
         dep('elixir', `cell-${recipe.elixir}`, 'brews this elixir'),
         ...recipe.needs.map((need) => dep('material', `cell-${need.cell}`, `requires ${need.min} cells`)),
@@ -141,7 +141,7 @@ function listRecipesAndElixirs(materials: Record<number, MaterialParams>): Conte
       name: titleCase(recipe.name),
       description: `Brewed cell ${recipe.elixir}; discovered through the ${recipe.id} recipe.`,
       tags: ['brew', 'elixir', `cell-${recipe.elixir}`],
-      source: 'src/game/Brewing.ts:RECIPES',
+      source: 'src/content/recipes.ts:RECIPES',
       dependencies: [
         dep('recipe', recipe.id, 'discovery recipe'),
         dep('material', `cell-${recipe.elixir}`, 'runtime material produced by the brew'),
@@ -176,7 +176,7 @@ function listEnemies(): ContentItem[] {
     name: titleCase(kind),
     description: `${def.hp} hp, ${def.bounty} gold bounty, ${def.h} cells tall.`,
     tags: ['enemy', `hp-${def.hp}`, `bounty-${def.bounty}`],
-    source: 'src/entities/Enemies.ts:ENEMY_DEFS',
+    source: 'src/content/enemyDefs.ts:ENEMY_DEFS',
     dependencies: [
       dep('material', `cell-${def.gore}`, 'death/gore material'),
       dep('code', 'src/entities/Enemies.ts', 'AI and combat behavior'),
@@ -219,7 +219,7 @@ function listSpellLabScenarios(): ContentItem[] {
     description: `Read-only Spell Lab metadata for the ${loadout.name} loadout.`,
     tags: ['spell-lab', 'scenario', loadout.status],
     status: loadout.status === 'review' ? 'review' : 'editorOnly',
-    source: 'src/combat/wands/WandSystem.ts:*_WAND_LOADOUTS',
+    source: 'src/combat/wands/wandCatalog.ts:*_WAND_LOADOUTS',
     dependencies: [dep('wandLoadout', loadout.id, 'loadout under test')],
     payload: { id: `${loadout.id}-spell-lab`, loadoutId: loadout.id, cards: loadout.cards },
   }));

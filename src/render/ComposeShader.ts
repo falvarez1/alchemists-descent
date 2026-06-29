@@ -181,6 +181,9 @@ void main() {
     int wx = uCam.x + vx;
     int wy = uCam.y + vy;
 
+    if (wy >= ${HEIGHT}) {
+      c = vec3(0.0);
+    } else {
     // --- Distorted lookup: shockwave ring refraction + black-hole lenses ---
     int lookupX = wx;
     int lookupY = wy;
@@ -403,10 +406,15 @@ void main() {
 
       c = vec3(r, g, b) * intensity + ringGlow * vec3(0.55, 0.42, 0.26);
     }
+    }
   }
 
   // Overlay combine: setPx (a=1) replaced terrain above; addPx is additive.
-  gl_FragColor = vec4(c + ov.rgb, 1.0);
+  // Re-apply the world-floor mask after overlay combine so sprites/particles
+  // cannot leak into the camera void below small or chunked worlds.
+  vec3 outColor = c + ov.rgb;
+  if (uCam.y + vy >= ${HEIGHT}) outColor = vec3(0.0);
+  gl_FragColor = vec4(outColor, 1.0);
 
   #include <tonemapping_fragment>
   #include <colorspace_fragment>

@@ -52,7 +52,9 @@ export function addSampleBuckets(target, samples) {
       if (!Number.isFinite(value)) {
         throw new Error(`Perf sample ${index} is missing finite "${key}" timing`);
       }
-      target[key].push(value);
+      if ((key === 'sim' || key === 'entities') && sample.didTick === false) continue;
+      const tickCount = Number.isFinite(sample.tickCount) && sample.tickCount > 0 ? sample.tickCount : 1;
+      target[key].push(key === 'sim' || key === 'entities' ? value / tickCount : value);
     }
   });
 }

@@ -736,6 +736,7 @@ export class FrameComposer implements PixelSurface {
     const firstVoidVy = ctx.world.height - this.renderCamY;
     if (firstVoidVy >= VIEW_H) return; // the floor is below the view — nothing to mask
     const pixelData = this.target.pixelData;
+    const overlay = this.overlay;
     for (let vy = Math.max(0, firstVoidVy); vy < VIEW_H; vy++) {
       const rowBase = (VIEW_H - 1 - vy) * VIEW_W;
       for (let vx = 0; vx < VIEW_W; vx++) {
@@ -744,6 +745,13 @@ export class FrameComposer implements PixelSurface {
         pixelData[bi + 1] = 0;
         pixelData[bi + 2] = 0;
         pixelData[bi + 3] = 1;
+        if (overlay !== null) {
+          overlay.data[bi] = 0;
+          overlay.data[bi + 1] = 0;
+          overlay.data[bi + 2] = 0;
+          overlay.data[bi + 3] = 1;
+          overlay.mark(rowBase + vx);
+        }
       }
     }
   }

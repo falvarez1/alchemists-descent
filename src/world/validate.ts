@@ -273,15 +273,73 @@ function markStableRepairPathInterior(runtime: LevelRuntime, interior: Uint8Arra
   }
 }
 
+function markProtectedRect(runtime: LevelRuntime, protectedCells: Uint8Array, x0: number, y0: number, x1: number, y1: number): void {
+  const world = runtime.world;
+  const minX = Math.max(0, Math.floor(Math.min(x0, x1)));
+  const maxX = Math.min(world.width - 1, Math.ceil(Math.max(x0, x1)));
+  const minY = Math.max(0, Math.floor(Math.min(y0, y1)));
+  const maxY = Math.min(world.height - 1, Math.ceil(Math.max(y0, y1)));
+  for (let y = minY; y <= maxY; y++) {
+    const row = y * world.width;
+    for (let x = minX; x <= maxX; x++) protectedCells[row + x] = 1;
+  }
+}
+
+function markProtectedPoint(runtime: LevelRuntime, protectedCells: Uint8Array, x: number, y: number, r = 2): void {
+  markProtectedRect(runtime, protectedCells, x - r, y - r, x + r, y + r);
+}
+
+function protectedRepairMask(runtime: LevelRuntime): Uint8Array {
+  const protectedCells = new Uint8Array(runtime.world.width * runtime.world.height);
+  for (const m of runtime.mechanisms) {
+    markProtectedRect(runtime, protectedCells, m.x, m.y, m.x + m.w - 1, m.y + m.h - 1);
+    for (const cell of m.body ?? []) markProtectedPoint(runtime, protectedCells, cell[0], cell[1], 1);
+  }
+  for (const v of runtime.runeVaults) {
+    for (const cell of v.door ?? []) markProtectedPoint(runtime, protectedCells, cell[0], cell[1], 1);
+  }
+  for (const p of runtime.pickups) {
+    if (p.kind === 'key') markProtectedPoint(runtime, protectedCells, p.x, p.y, 2);
+  }
+  for (const ws of runtime.waystones) markProtectedPoint(runtime, protectedCells, ws.x, ws.y, 3);
+  if (runtime.exit) {
+    markProtectedRect(
+      runtime,
+      protectedCells,
+      runtime.exit.x - runtime.exit.halfW - 1,
+      runtime.exit.sealY - 1,
+      runtime.exit.x + runtime.exit.halfW + 1,
+      runtime.exit.sealY + 18,
+    );
+  }
+  if (runtime.portal) markProtectedPoint(runtime, protectedCells, runtime.portal.x, runtime.portal.y, 5);
+  if (runtime.cauldron) markProtectedPoint(runtime, protectedCells, runtime.cauldron.x, runtime.cauldron.y, 5);
+  if (runtime.refuge) markProtectedPoint(runtime, protectedCells, runtime.refuge.x, runtime.refuge.y, 5);
+  if (runtime.spellLab) {
+    markProtectedPoint(runtime, protectedCells, runtime.spellLab.x, runtime.spellLab.y, 8);
+    markProtectedPoint(runtime, protectedCells, runtime.spellLab.rewardX, runtime.spellLab.rewardY, 5);
+  }
+  if (runtime.vaultArch) {
+    const arch = runtime.vaultArch;
+    markProtectedPoint(runtime, protectedCells, arch.x, arch.y, 8);
+    markProtectedPoint(runtime, protectedCells, arch.backX, arch.backY, 5);
+    if (arch.discoverX !== undefined && arch.discoverY !== undefined) {
+      markProtectedPoint(runtime, protectedCells, arch.discoverX, arch.discoverY, 5);
+    }
+  }
+  return protectedCells;
+}
+
 function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly FindabilityIssue[]): void {
   const world = runtime.world;
   const interior = new Uint8Array(world.width * world.height);
+  const protectedCells = protectedRepairMask(runtime);
   // Brace only material that was already blocking. Painting the shell into open
   // air creates permanent diagonal rails through playable space.
   const originalTypes = world.types.slice();
   for (const issue of issues) markStableRepairPathInterior(runtime, interior, issue);
   for (let i = 0; i < interior.length; i++) {
-    if (interior[i]) world.clearCellAt(i);
+    if (interior[i] && !protectedCells[i]) world.clearCellAt(i);
   }
 
   for (let y = 1; y < world.height - 1; y++) {
@@ -303,7 +361,9 @@ function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly Findabil
           }
         }
       }
-      if (nearInterior && blocksEntity(originalTypes[i])) world.replaceCellAt(i, Cell.Metal, REPAIR_SLEEVE_COLOR);
+      if (nearInterior && !protectedCells[i] && blocksEntity(originalTypes[i])) {
+        world.replaceCellAt(i, Cell.Metal, REPAIR_SLEEVE_COLOR);
+      }
     }
   }
 }

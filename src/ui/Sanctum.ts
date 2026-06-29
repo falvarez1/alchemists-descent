@@ -50,11 +50,16 @@ function el(id: string): HTMLElement {
 export class Sanctum implements SanctumApi {
   private _open = false;
   private onDescend: (() => void) | null = null;
+  private readonly onDescendClick = (): void => this.close();
   /** Pause state we found on open, so close() restores it rather than force-resuming a pause we didn't take. */
   private wasPaused = false;
 
   constructor(private ctx: Ctx) {
-    el('descend-btn').addEventListener('click', () => this.close());
+    el('descend-btn').addEventListener('click', this.onDescendClick);
+  }
+
+  dispose(): void {
+    el('descend-btn').removeEventListener('click', this.onDescendClick);
   }
 
   get isOpen(): boolean {

@@ -20,6 +20,8 @@ export type SelectionChangedFn = (id: string | number, mode: 'element' | 'spell'
  */
 export class Toolbar {
   private readonly popovers = new PopoverHost();
+  private readonly disposers: Array<() => void> = [];
+  private readonly worldgenTuneDisposers: Array<() => void> = [];
 
   constructor(
     private ctx: Ctx,
@@ -32,6 +34,28 @@ export class Toolbar {
     this.wireMaterialPopovers();
   }
 
+  dispose(): void {
+    this.clearWorldgenTuneDisposers();
+    for (const dispose of this.disposers.splice(0).reverse()) dispose();
+    this.popovers.dispose();
+  }
+
+  private listen(target: EventTarget | null, type: string, listener: EventListener, options?: AddEventListenerOptions): void {
+    if (!target) return;
+    target.addEventListener(type, listener, options);
+    this.disposers.push(() => target.removeEventListener(type, listener, options));
+  }
+
+  private listenWorldgenTune(target: EventTarget | null, type: string, listener: EventListener): void {
+    if (!target) return;
+    target.addEventListener(type, listener);
+    this.worldgenTuneDisposers.push(() => target.removeEventListener(type, listener));
+  }
+
+  private clearWorldgenTuneDisposers(): void {
+    for (const dispose of this.worldgenTuneDisposers.splice(0).reverse()) dispose();
+  }
+
   /**
    * Instant material popover (same content as the Builder palette's): icon,
    * name, sim classification, gameplay description, live tunables. Fixed-
@@ -41,13 +65,13 @@ export class Toolbar {
     const bar = document.getElementById('left-toolbar');
     if (!bar) return;
     // the buttons move under the cursor on scroll — drop the popover
-    bar.addEventListener('scroll', () => this.hideMatPopover(), { passive: true });
+    this.listen(bar, 'scroll', () => this.hideMatPopover(), { passive: true });
     for (const btn of document.querySelectorAll<HTMLButtonElement>(
       '.tool-btn[data-mode="element"]',
     )) {
       const id = Number(btn.dataset.id);
-      btn.addEventListener('mouseenter', () => this.showMatPopover(btn, id));
-      btn.addEventListener('mouseleave', () => this.hideMatPopover());
+      this.listen(btn, 'mouseenter', () => this.showMatPopover(btn, id));
+      this.listen(btn, 'mouseleave', () => this.hideMatPopover());
     }
   }
 
@@ -72,7 +96,7 @@ export class Toolbar {
     const filter = document.getElementById('toolbar-filter') as HTMLInputElement | null;
     const bar = document.getElementById('left-toolbar');
     if (!filter || !bar) return;
-    filter.addEventListener('input', () => {
+    this.listen(filter, 'input', () => {
       const q = filter.value.trim().toLowerCase();
       let title: HTMLElement | null = null;
       let titleHasHit = false;
@@ -108,7 +132,7 @@ export class Toolbar {
 
   private wireToolButtons(): void {
     document.querySelectorAll('.tool-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      this.listen(btn, 'click', (e) => {
         document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
         const t = e.target as HTMLElement;
         const target = t.classList.contains('tool-btn') ? t : t.parentElement!;
@@ -127,13 +151,13 @@ export class Toolbar {
   }
 
   private wireWorldGen(): void {
-    document.getElementById('btn-caves')!.addEventListener('click', () => {
+    this.listen(document.getElementById('btn-caves'), 'click', () => {
       ensureSandboxWorldDetached(this.ctx);
       this.ctx.worldgen.regenerate(this.ctx);
     });
     // Options sourced from BIOMES (not a hard-coded HTML subset) and the dropdown
     // seeded from the live currentBiome, so it lists every biome and reflects state.
-    bindSelect({
+    const biomeBinding = bindSelect({
       select: 'biome-select',
       options: (Object.keys(BIOMES) as BiomeId[]).map((id) => ({ value: id, label: 'Biome: ' + BIOMES[id].name })),
       get: () => this.ctx.state.currentBiome,
@@ -144,11 +168,12 @@ export class Toolbar {
         this.ctx.worldgen.regenerate(this.ctx);
       },
     });
-    document.getElementById('btn-fortress')!.addEventListener('click', () => {
+    this.disposers.push(() => biomeBinding.dispose?.());
+    this.listen(document.getElementById('btn-fortress'), 'click', () => {
       ensureSandboxWorldDetached(this.ctx);
       this.ctx.worldgen.spawnFortress(this.ctx);
     });
-    document.getElementById('btn-worldgen-reset')?.addEventListener('click', () => {
+    this.listen(document.getElementById('btn-worldgen-reset'), 'click', () => {
       Object.assign(GEN_TUNE, GEN_TUNE_DEFAULTS);
       this.rebuildWorldgenTune();
       this.ctx.events.emit('paramsChanged'); // clear the persisted worldgen diff
@@ -178,7 +203,7 @@ export class Toolbar {
     input.max = String(max);
     input.step = String(step);
     input.value = String(get());
-    input.addEventListener('input', () => {
+    this.listenWorldgenTune(input, 'input', () => {
       const v = parseFloat(input.value);
       set(v);
       val.textContent = fmt(v);
@@ -195,6 +220,7 @@ export class Toolbar {
   private rebuildWorldgenTune(): void {
     const host = document.getElementById('worldgen-tune');
     if (!host) return;
+    this.clearWorldgenTuneDisposers();
     host.innerHTML = '';
     // Field list + ranges come from the shared WORLDGEN_LOOK_FIELDS descriptor so
     // this panel and the Builder's worldgen LOOK panel can't drift apart.
@@ -222,8 +248,8 @@ export class Toolbar {
   }
 
   private wireEnemyDroppers(): void {
-    document.getElementById('btn-spawn-slime')!.addEventListener('click', () => this.dropEnemyAtTop('slime'));
-    document.getElementById('btn-spawn-imp')!.addEventListener('click', () => this.dropEnemyAtTop('imp'));
-    document.getElementById('btn-spawn-golem')!.addEventListener('click', () => this.dropEnemyAtTop('golem'));
+    this.listen(document.getElementById('btn-spawn-slime'), 'click', () => this.dropEnemyAtTop('slime'));
+    this.listen(document.getElementById('btn-spawn-imp'), 'click', () => this.dropEnemyAtTop('imp'));
+    this.listen(document.getElementById('btn-spawn-golem'), 'click', () => this.dropEnemyAtTop('golem'));
   }
 }

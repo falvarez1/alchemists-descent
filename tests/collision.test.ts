@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Ctx } from '@/core/types';
 import { Physics } from '@/entities/physics';
@@ -9,6 +9,14 @@ import { computeFits } from '@/world/validate';
 
 function set(world: World, x: number, y: number, t: Cell): void {
   world.types[world.idx(x, y)] = t;
+}
+
+function physicsCtx(world: World): Ctx {
+  return {
+    world,
+    particles: { spawn: vi.fn() },
+    state: { mode: 'play' },
+  } as unknown as Ctx;
 }
 
 describe('loose-rubble collision parity', () => {
@@ -81,5 +89,49 @@ describe('loose-rubble collision parity', () => {
 
     const fits = computeFits(world);
     expect(fits[45 + 50 * world.width]).toBe(1);
+  });
+
+  it('keeps five-plus-cell floating geometry blocking instead of erasing it', () => {
+    const world = new World();
+    for (let x = 38; x <= 42; x++) set(world, x, 33, Cell.Stone);
+    const ctx = physicsCtx(world);
+    const physics = new Physics(ctx);
+    const ent = { x: 40, y: 50 };
+
+    expect(cellBlocksEntityWithLooseRubble(world, 40, 33)).toBe(true);
+    expect(physics.tryMoveEntity(ent, 0, -1, 4, 17, 0)).toBe(false);
+
+    expect(ent.y).toBe(50);
+    for (let x = 38; x <= 42; x++) expect(world.types[world.idx(x, 33)]).toBe(Cell.Stone);
+    expect(ctx.particles.spawn).not.toHaveBeenCalled();
+  });
+
+  it('does not sweep terrain connected to a real ceiling mass', () => {
+    const world = new World();
+    for (let y = 20; y <= 33; y++) {
+      for (let x = 10; x <= 70; x++) set(world, x, y, Cell.Stone);
+    }
+    const ctx = physicsCtx(world);
+    const physics = new Physics(ctx);
+    const ent = { x: 40, y: 50 };
+
+    expect(physics.tryMoveEntity(ent, 0, -1, 4, 17, 0)).toBe(false);
+
+    expect(ent.y).toBe(50);
+    expect(world.types[world.idx(40, 33)]).toBe(Cell.Stone);
+    expect(ctx.particles.spawn).not.toHaveBeenCalled();
+  });
+
+  it('keeps floating metal collision-solid instead of sweepable', () => {
+    const world = new World();
+    for (let x = 38; x <= 42; x++) set(world, x, 33, Cell.Metal);
+    const ctx = physicsCtx(world);
+    const physics = new Physics(ctx);
+    const ent = { x: 40, y: 50 };
+
+    expect(physics.tryMoveEntity(ent, 0, -1, 4, 17, 0)).toBe(false);
+
+    expect(ent.y).toBe(50);
+    expect(world.types[world.idx(40, 33)]).toBe(Cell.Metal);
   });
 });

@@ -13,8 +13,8 @@ import type { Ctx, Projectile, ProjectilesApi, ProjectileType, RigidBody } from 
 import { Cell, isConductor, isGas, isSolid } from '@/sim/CellType';
 import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
+import { probeHollow } from '@/sim/hollow';
 import type { World } from '@/sim/World';
-import { probeHollow } from '@/world/secrets';
 
 /**
  * Per-type impulse a player projectile imparts to a rigid body it strikes —

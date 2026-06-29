@@ -10,6 +10,7 @@ type WorkerLike = {
 
 const worker = self as unknown as WorkerLike;
 let def: VirtualWorldDef | null = null;
+let defVersion = 0;
 const canceled = new Set<number>();
 
 worker.addEventListener('message', (event) => {
@@ -20,6 +21,7 @@ async function handleMessage(msg: VirtualWorkerRequest): Promise<void> {
   try {
     if (msg.kind === 'init' || msg.kind === 'updateDef') {
       def = msg.def;
+      defVersion++;
       canceled.clear();
       worker.postMessage({ kind: 'ready' });
       return;
@@ -31,6 +33,7 @@ async function handleMessage(msg: VirtualWorkerRequest): Promise<void> {
     }
     if (!def) throw new Error('Virtual world worker has not been initialized');
     if (msg.kind === 'generateChunk') {
+      const jobDef = def;
       if (canceled.has(msg.req.jobId)) {
         // Settle the backend's pending promise (it stays parked in pendingChunks until a
         // chunk/error/canceled message arrives) and drop the id so the set can't grow unbounded.
@@ -38,12 +41,14 @@ async function handleMessage(msg: VirtualWorkerRequest): Promise<void> {
         canceled.delete(msg.req.jobId);
         return;
       }
-      const chunk = generateVirtualChunk(def, msg.req.cx, msg.req.cy);
+      const chunk = generateVirtualChunk(jobDef, msg.req.cx, msg.req.cy);
       const transferable = toTransferableChunk(chunk, msg.req.requestedPlanes);
       worker.postMessage({ kind: 'chunk', jobId: msg.req.jobId, chunk: transferable.chunk }, transferable.transfer);
       return;
     }
     if (msg.kind === 'generateWindow') {
+      const jobDef = def;
+      const jobDefVersion = defVersion;
       const start = now();
       let chunks = 0;
       let generatedBytes = 0;
@@ -54,12 +59,17 @@ async function handleMessage(msg: VirtualWorkerRequest): Promise<void> {
       let sceneCount = 0;
       let sinceYield = 0;
       for (const [cx, cy] of sortedWindowCoords(msg.req)) {
+        if (jobDefVersion !== defVersion) {
+          worker.postMessage({ kind: 'canceled', jobId: msg.req.jobId });
+          canceled.delete(msg.req.jobId);
+          return;
+        }
         if (canceled.has(msg.req.jobId)) {
           worker.postMessage({ kind: 'canceled', jobId: msg.req.jobId });
           canceled.delete(msg.req.jobId);
           return;
         }
-        const chunk = generateVirtualChunk(def, cx, cy);
+        const chunk = generateVirtualChunk(jobDef, cx, cy);
         const transferable = toTransferableChunk(chunk, msg.req.requestedPlanes);
         chunks++;
         generatedBytes += transferable.chunk.metrics.generatedBytes;
@@ -74,6 +84,11 @@ async function handleMessage(msg: VirtualWorkerRequest): Promise<void> {
           sinceYield = 0;
           await yieldToWorkerQueue();
         }
+      }
+      if (jobDefVersion !== defVersion) {
+        worker.postMessage({ kind: 'canceled', jobId: msg.req.jobId });
+        canceled.delete(msg.req.jobId);
+        return;
       }
       canceled.delete(msg.req.jobId);
       worker.postMessage({

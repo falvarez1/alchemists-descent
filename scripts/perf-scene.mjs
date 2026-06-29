@@ -7,8 +7,8 @@
 // current app setting untouched
 // (cross-session comparison only — scripts/perf-ab-compose.mjs is the
 // drift-proof same-session A/B).
-import { chromium } from 'playwright-core';
 import { readFileSync, existsSync } from 'node:fs';
+import { launchBrowser } from './browser-launch.mjs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 import {
   addSampleBuckets,
@@ -48,7 +48,7 @@ if (!['0', '1', 'current'].includes(GPU_COMPOSE_MODE)) {
   throw new Error('PERF_GPU_COMPOSE must be 0, 1, or current');
 }
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser({ headless: true });
 const all = emptyBuckets(['autosaveMs', 'heapUsedDeltaMB', 'heapTotalDeltaMB']);
 let firstRunCapabilities = null;
 let webgpuCapabilities = null;

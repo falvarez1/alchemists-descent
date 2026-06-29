@@ -1,6 +1,6 @@
 import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskState } from '@/core/types';
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
-import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/WandSystem';
+import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/wandCatalog';
 import { buildWandSentenceView, type WandSentenceView, type WandSlotLinkKind } from '@/combat/wands/sentenceView';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import { flaskMaterialOptions } from '@/content/flaskMaterials';

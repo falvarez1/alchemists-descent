@@ -56,6 +56,26 @@ export function isGameplayKeyCode(code: string): boolean {
   return GAMEPLAY_KEY_CODES.has(code) || code.startsWith('Digit');
 }
 
+export const KEYBOARD_UI_BLOCK_SELECTOR = [
+  '.app-dialog-root',
+  '.editor-command-menu.open',
+  '.editor-popover.interactive',
+  '#run-launcher.visible',
+  '#minimap-overlay.visible',
+  '#dev-console.open',
+  '#runtime-inspector.open',
+  '#card-offer-overlay.visible',
+  '#waystone-prompt-overlay.visible',
+  '#pause-overlay.visible',
+  '#help-overlay.visible',
+  '#sanctum-overlay.visible',
+  '#wand-bench.visible',
+].join(', ');
+
+export function isKeyboardUiOwnerActive(doc: Document = document): boolean {
+  return Boolean(doc.querySelector(KEYBOARD_UI_BLOCK_SELECTOR));
+}
+
 const KEYBOARD_LOCK_CODES = [
   ...GAMEPLAY_KEY_CODES,
   'KeyB',
@@ -336,9 +356,7 @@ export class InputManager {
   private shouldIgnoreKeyboard(e: KeyboardEvent): boolean {
     return (
       e.isComposing ||
-      Boolean(document.querySelector(
-        '.app-dialog-root, .editor-command-menu.open, .editor-popover.interactive, #run-launcher.visible, #minimap-overlay.visible, #dev-console.open',
-      )) ||
+      isKeyboardUiOwnerActive() ||
       isEditableTarget(e.target)
     );
   }
@@ -425,6 +443,7 @@ export class InputManager {
     ctx.audio.ensure();
     if (e.code === 'Tab') {
       e.preventDefault();
+      if (document.body.classList.contains('builder-open')) return;
       // Tab no longer drops PLAY into the Sandbox. It still leaves the Sandbox /
       // opens the run launcher; the SANDBOX and PLAY buttons switch either way.
       if (ctx.state.mode !== 'build') return;
@@ -711,8 +730,12 @@ export class InputManager {
     } else {
       this.clearHeldInput();
       this.exitImmersive();
-      if (ctx.state.playtestSource === 'sandbox') ctx.levels.exitCustomPlaytest(ctx);
-      ensureSandboxWorldDetached(ctx);
+      if (ctx.state.playtestSource !== null) {
+        ensureSandboxWorldDetached(ctx, 'SANDBOX WORLD DETACHED FROM TEST RUN');
+        ctx.levels.exitDisposableRuntime(ctx);
+      } else {
+        ensureSandboxWorldDetached(ctx);
+      }
     }
   }
 }

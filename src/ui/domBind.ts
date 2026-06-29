@@ -14,6 +14,8 @@ import { escapeAttr, escapeHtml } from '@/core/strings';
 export interface Binding {
   /** Re-read the live value into the control. Skips a control being dragged. */
   resync(): void;
+  /** Remove DOM listeners owned by this binding. */
+  dispose?(): void;
 }
 
 export function bindRange(opts: {
@@ -43,24 +45,34 @@ export function bindRange(opts: {
     if (slider && document.activeElement !== slider) slider.value = String(v);
     refresh(v);
   };
-  slider?.addEventListener('input', () => {
+  const onSliderInput = (): void => {
+    if (!slider) return;
     const v = parseFloat(slider.value);
     opts.set(v);
     refresh(v);
     opts.onInput?.();
-  });
+  };
+  slider?.addEventListener('input', onSliderInput);
+  let onReadoutClick: (() => void) | null = null;
   if (def !== undefined && readout) {
     readout.classList.add('resettable');
     readout.title = `Click to reset to default (${fmt(def)})`;
-    readout.addEventListener('click', () => {
+    onReadoutClick = (): void => {
       opts.set(def);
       if (slider) slider.value = String(def);
       refresh(def);
       opts.onInput?.();
-    });
+    };
+    readout.addEventListener('click', onReadoutClick);
   }
   resync();
-  return { resync };
+  return {
+    resync,
+    dispose: () => {
+      slider?.removeEventListener('input', onSliderInput);
+      if (onReadoutClick) readout?.removeEventListener('click', onReadoutClick);
+    },
+  };
 }
 
 export function bindSelect(opts: {
@@ -80,10 +92,15 @@ export function bindSelect(opts: {
   const resync = (): void => {
     if (select && document.activeElement !== select) select.value = opts.get();
   };
-  select?.addEventListener('change', () => {
+  const onChange = (): void => {
+    if (!select) return;
     opts.set(select.value);
     opts.onChange?.();
-  });
+  };
+  select?.addEventListener('change', onChange);
   resync();
-  return { resync };
+  return {
+    resync,
+    dispose: () => select?.removeEventListener('change', onChange),
+  };
 }

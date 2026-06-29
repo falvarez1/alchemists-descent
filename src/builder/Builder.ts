@@ -62,6 +62,7 @@ import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
+import { EMITTER_CELL_OPTIONS } from '@/game/instantiate';
 import { resetCombatTransients } from '@/core/runtimeState';
 import { PreviewRuntime } from '@/builder/PreviewRuntime';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
@@ -3397,7 +3398,7 @@ export class Builder {
     this.mutedLightIds.clear();
     this.clearPlacedPrefabAnchors();
     this.cmds.clear();
-    this.markDocumentSaved();
+    this.markDocumentChanged();
     this.select(null);
     this.paintDirty = false;
     this.region = null;
@@ -4765,21 +4766,21 @@ export class Builder {
         close();
       });
     }
-    document.addEventListener('pointerdown', (event) => {
+    const closeMenusOnPointerDown = (event: PointerEvent): void => {
       if (openMenu === null) return;
       if (!(event.target as HTMLElement | null)?.closest('#builder-bar .builder-menubar, #builder-bar .builder-menu-dropdown')) close();
-    });
-    window.addEventListener(
-      'keydown',
-      (event) => {
-        if (openMenu !== null && event.key === 'Escape') {
-          event.preventDefault();
-          event.stopPropagation();
-          close();
-        }
-      },
-      true,
-    );
+    };
+    document.addEventListener('pointerdown', closeMenusOnPointerDown);
+    this.disposers.push(() => document.removeEventListener('pointerdown', closeMenusOnPointerDown));
+    const closeMenusOnEscape = (event: KeyboardEvent): void => {
+      if (openMenu !== null && event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      }
+    };
+    window.addEventListener('keydown', closeMenusOnEscape, true);
+    this.disposers.push(() => window.removeEventListener('keydown', closeMenusOnEscape, true));
   }
 
   /** VS Code-style: tick the View menu items whose panel is currently visible. */
@@ -4934,32 +4935,55 @@ export class Builder {
     this.prePlaytestWands = this.snapshotWands();
     if (this.prevAmbient === null) this.prevAmbient = this.ctx.params.global.ambient;
     this.close();
-    if (!compileAndPlaytest(this.ctx, this.doc, spawnAt ? { spawnAt } : undefined)) {
-      this.builderPlaytestActive = false;
-      this.returningFromPlaytest = false;
-      this.lastPlaytestSpawn = null;
-      this.ctx.state.playtestSource = null;
-      if (this.prevAmbient !== null) {
-        this.ctx.params.global.ambient = this.prevAmbient;
-        this.prevAmbient = null;
+    try {
+      if (!compileAndPlaytest(this.ctx, this.doc, spawnAt ? { spawnAt } : undefined)) {
+        this.rollbackBuilderPlaytestCompileFailure('PLAYTEST COMPILE FAILED');
+        return;
       }
-      this.open();
-      this.status('PLAYTEST COMPILE FAILED', true);
+    } catch (error) {
+      console.warn('Builder playtest compile threw', error);
+      this.rollbackBuilderPlaytestCompileFailure('PLAYTEST COMPILE ERROR');
       return;
     }
     this.setPlaytestBanner(true);
     (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
   }
 
+  private rollbackBuilderPlaytestCompileFailure(message: string): void {
+    this.builderPlaytestActive = false;
+    this.returningFromPlaytest = false;
+    this.lastPlaytestSpawn = null;
+    this.ctx.state.playtestSource = null;
+    if (this.prevAmbient !== null) {
+      this.ctx.params.global.ambient = this.prevAmbient;
+      this.prevAmbient = null;
+    }
+    this.restorePrePlaytestPlayer();
+    this.restorePrePlaytestWands();
+    this.open();
+    this.status(message, true);
+  }
+
   private restartBuilderPlaytest(): void {
     if (!this.builderPlaytestActive) return;
     if (this.prevAmbient !== null) this.ctx.params.global.ambient = this.prevAmbient;
     this.ctx.state.playtestSource = 'builder';
-    compileAndPlaytest(
-      this.ctx,
-      this.doc,
-      this.lastPlaytestSpawn ? { spawnAt: this.lastPlaytestSpawn } : undefined,
-    );
+    try {
+      if (
+        !compileAndPlaytest(
+          this.ctx,
+          this.doc,
+          this.lastPlaytestSpawn ? { spawnAt: this.lastPlaytestSpawn } : undefined,
+        )
+      ) {
+        this.rollbackBuilderPlaytestCompileFailure('PLAYTEST COMPILE FAILED');
+        return;
+      }
+    } catch (error) {
+      console.warn('Builder playtest restart threw', error);
+      this.rollbackBuilderPlaytestCompileFailure('PLAYTEST COMPILE ERROR');
+      return;
+    }
     this.setPlaytestBanner(true);
     (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
   }
@@ -5493,7 +5517,7 @@ export class Builder {
       }
       if (targets.length > 0) this.drag = { targets, grabX: pos.x, grabY: pos.y };
     });
-    window.addEventListener('mousemove', (e) => {
+    const onOverlayMouseMove = (e: MouseEvent): void => {
       if (!this.isOpen) return; // permanent global listener — do nothing while the Builder is closed
       const pos = this.mouseToWorld(e);
       this.lastMouseClient = { x: e.clientX, y: e.clientY };
@@ -5551,8 +5575,10 @@ export class Builder {
         m.t.x = this.snap(m.ox + dx, e.altKey);
         m.t.y = this.snap(m.oy + dy, e.altKey);
       }
-    });
-    window.addEventListener('mouseup', () => {
+    };
+    window.addEventListener('mousemove', onOverlayMouseMove);
+    this.disposers.push(() => window.removeEventListener('mousemove', onOverlayMouseMove));
+    const onOverlayMouseUp = (): void => {
       if (!this.isOpen) return; // permanent global listener — drag state is already cleared by close()
       if (this.gizmoDrag) {
         this.commitGizmoDrag();
@@ -5647,7 +5673,9 @@ export class Builder {
       }
       this.cmds.run(cmds.length === 1 ? cmds[0] : compositeCmd('move ' + cmds.length + ' things', cmds));
       this.renderInspector();
-    });
+    };
+    window.addEventListener('mouseup', onOverlayMouseUp);
+    this.disposers.push(() => window.removeEventListener('mouseup', onOverlayMouseUp));
   }
 
   /** Marquee select: everything whose anchor falls in the box (tiny box = deselect). */
@@ -7957,7 +7985,7 @@ export class Builder {
         e.preventDefault(); // no text selection while dragging
       });
     }
-    window.addEventListener('mousemove', (e) => {
+    const onPaletteMouseMove = (e: MouseEvent): void => {
       const d = this.palDrag;
       if (!d) return;
       if (!d.ghost) {
@@ -7970,8 +7998,10 @@ export class Builder {
       }
       d.ghost.style.left = e.clientX + 'px';
       d.ghost.style.top = e.clientY + 'px';
-    });
-    window.addEventListener('mouseup', (e) => {
+    };
+    window.addEventListener('mousemove', onPaletteMouseMove);
+    this.disposers.push(() => window.removeEventListener('mousemove', onPaletteMouseMove));
+    const onPaletteMouseUp = (e: MouseEvent): void => {
       const d = this.palDrag;
       if (!d) return;
       this.palDrag = null;
@@ -7985,7 +8015,9 @@ export class Builder {
       const pos = this.mouseToWorld(e);
       if (d.kind === 'light') this.placeLight(pos.x, pos.y);
       else this.place(d.kind, pos.x, pos.y);
-    });
+    };
+    window.addEventListener('mouseup', onPaletteMouseUp);
+    this.disposers.push(() => window.removeEventListener('mouseup', onPaletteMouseUp));
 
     const settle = this.el<HTMLButtonElement>('bp-settle');
     settle.addEventListener('pointerdown', (e) => {
@@ -8006,7 +8038,9 @@ export class Builder {
       e.preventDefault();
       this.startSettle();
     });
-    window.addEventListener('mouseup', () => this.stopSettleRun());
+    const onSettleMouseUp = (): void => this.stopSettleRun();
+    window.addEventListener('mouseup', onSettleMouseUp);
+    this.disposers.push(() => window.removeEventListener('mouseup', onSettleMouseUp));
     this.el('bp-settle-keep').addEventListener('click', () => this.finishSettle(true));
     this.el('bp-settle-revert').addEventListener('click', () => this.finishSettle(false));
 
@@ -13618,7 +13652,7 @@ function builderDocumentTemplates(): Record<string, EditorDocument> {
   }));
 }
 
-const EMITTER_DROP_MATERIALS = new Set(['water', 'oil', 'acid', 'lava', 'fire', 'ember', 'sand', 'snow', 'smoke']);
+const EMITTER_DROP_MATERIALS = new Set<string>(EMITTER_CELL_OPTIONS);
 const VALVE_DROP_MATERIALS = new Set(['metal', 'stone', 'wood', 'glass']);
 const PLUG_DROP_MATERIALS = new Set(['wood', 'ash', 'glass', 'coal', 'stone', 'sand', 'metal']);
 const SENSOR_DROP_MATERIALS = new Set([

@@ -1,7 +1,7 @@
 import type { Ctx } from '@/core/types';
+import { loadDiscoveredInteractions } from '@/core/grimoireStore';
+import { GRIMOIRE_INTERACTIONS } from '@/content/grimoireInteractions';
 import { RECIPES, loadDiscoveredRecipes, type Recipe } from '@/game/Brewing';
-import { GRIMOIRE_INTERACTIONS } from '@/game/GrimoireInteractions';
-import { loadDiscoveredInteractions } from '@/game/GrimoireStore';
 import { MATERIAL_LORE, discoveredLore } from '@/game/lore';
 import { MATERIAL_PARAMS } from '@/config/params';
 

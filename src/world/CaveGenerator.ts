@@ -67,6 +67,19 @@ const N4: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
 ];
 
+// D1 surface geometry. The same values reserve protected placement space before
+// prefabs and later carve the visible intro surface.
+const INTRO_SURFACE_RISE = 96;
+const INTRO_SURFACE_GROUND_MIN = 110;
+const INTRO_SURFACE_GROUND_MAX = HEIGHT - 240;
+const INTRO_SURFACE_GROUND_NOISE_FREQ = 0.014;
+const INTRO_SURFACE_GROUND_WAVE = 26;
+const INTRO_SURFACE_SOIL = 14;
+const INTRO_SURFACE_SHAFT_HALF = 4;
+const INTRO_SURFACE_MOUTH_TIMBER = 12;
+const INTRO_SURFACE_SPAWN_OFFSET = 210;
+const INTRO_SURFACE_CABIN_OFFSET = 26;
+
 function shouldLogDevDiagnostics(): boolean {
   if (!import.meta.env.DEV || import.meta.env.MODE === 'test') return false;
   const runtime = globalThis as typeof globalThis & {
@@ -643,6 +656,21 @@ export class WorldGen implements WorldGenApi {
         rescued.push(label);
         if (!attempt()) failedRescues.push(label);
       };
+      const failOpenTargetDoor = (trigger: Mechanism, pass: () => boolean): boolean => {
+        const door = mechanisms.find((candidate) => candidate.kind === 'door' && candidate.id === trigger.targetId);
+        if (!door) return false;
+        for (let y = door.y; y < door.y + door.h; y++) {
+          for (let x = door.x; x < door.x + door.w; x++) {
+            if (!ctx.world.inBounds(x, y)) continue;
+            const i = ctx.world.idx(x, y);
+            if (ctx.world.types[i] === Cell.Metal) ctx.world.clearCellAt(i);
+          }
+        }
+        door.state = 1;
+        wiz = wizardMask({ world: ctx.world, spawn });
+        cell = reachableMask({ world: ctx.world, spawn });
+        return pass();
+      };
       const inSpellLab = (x: number, y: number): boolean =>
         !!spellLab &&
         x >= spellLab.x - 30 &&
@@ -698,8 +726,9 @@ export class WorldGen implements WorldGenApi {
           );
         } else if (HANDS_ON.has(m.kind)) {
           const pass = (): boolean => wizNear(m.x, m.y - 2, 6);
-          if (pass() && wizNearCount(m.x, m.y - 2, 6) >= 40) continue;
-          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
+          const stable = (): boolean => wizNearCount(m.x, m.y - 2, 6) >= 40;
+          if (pass() && stable()) continue;
+          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, stable) || failOpenTargetDoor(m, stable));
         } else if (CELL_REACH.has(m.kind)) {
           const pass = (): boolean => cellNear(m.x, m.y - 2, 5);
           if (pass()) continue;
@@ -743,6 +772,12 @@ export class WorldGen implements WorldGenApi {
         if (!pass() || wizNearCount(cx, cy, 10) < 64) {
           recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass));
         }
+      }
+      for (const m of mechanisms) {
+        if (!HANDS_ON.has(m.kind) || m.targetId < 0) continue;
+        const stable = (): boolean => wizNearCount(m.x, m.y - 2, 6) >= 40;
+        if (stable()) continue;
+        recordRescue(`${m.kind}-target-door@${m.x},${m.y}`, () => failOpenTargetDoor(m, stable));
       }
       if (shouldLogDevDiagnostics() && rescued.length > 0) {
         const suffix = failedRescues.length > 0 ? `; still cut off: ${failedRescues.join(' ')}` : '';
@@ -942,6 +977,7 @@ export class WorldGen implements WorldGenApi {
     const ledger = new PlacementLedger();
     ledger.reserve(spawn.x - 60, spawn.y - 60, spawn.x + 60, spawn.y + 60, 'spawn');
     ledger.reserve(wellX - halfW - 6, 0, wellX + halfW + 6, HEIGHT - 1, 'exit-well');
+    if (def.depth === 1 && !def.branch) this.reserveIntroSurfaceFootprint(ledger, spawn);
     for (let n = 0; n < waystones.length; n++) {
       const ws = waystones[n];
       const rx = n === 0 ? 34 : 12; // ws[0]'s wider margin also covers the cauldron site
@@ -1281,6 +1317,12 @@ export class WorldGen implements WorldGenApi {
     }
     stage('intro-surface');
 
+    // Final terrain dressing can invalidate a route that was clean during the
+    // main rescue pass (D1's surface cap is the usual culprit). Validate the
+    // finished cell field before handing it to Levels/runtime repair.
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron);
+    stage('final-gauge-rescue');
+
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
     return {
       exit: { x: wellX, sealY, halfW },
@@ -1306,6 +1348,16 @@ export class WorldGen implements WorldGenApi {
     };
   }
 
+  private reserveIntroSurfaceFootprint(ledger: PlacementLedger, spawn: { x: number; y: number }): void {
+    const groundBase = Math.floor(clamp(spawn.y - INTRO_SURFACE_RISE, INTRO_SURFACE_GROUND_MIN, INTRO_SURFACE_GROUND_MAX));
+    const protectedY = Math.ceil(groundBase + INTRO_SURFACE_GROUND_WAVE + INTRO_SURFACE_SOIL + 6);
+    ledger.reserve(0, 0, WIDTH - 1, protectedY, 'intro-surface');
+
+    const mouthX = Math.floor(clamp(spawn.x, 90, WIDTH - 90));
+    const shaftPad = INTRO_SURFACE_SHAFT_HALF + 10;
+    ledger.reserve(mouthX - shaftPad, 0, mouthX + shaftPad, spawn.y + 8, 'intro-surface-shaft');
+  }
+
   /**
    * D1 Noita-style surface intro. Caps the top of the cave with open daylight
    * sky, a gently rolling grass surface, a starter cabin, and a timbered mine
@@ -1323,17 +1375,6 @@ export class WorldGen implements WorldGenApi {
     // D1 surface geometry — all values preserve the locked generation (gen-golden).
     // Named here so the landscape is tunable in one place rather than as magic
     // numbers buried in the carving loops below.
-    const SURFACE_RISE = 96; // grass line this many cells above the cave spawn
-    const GROUND_MIN = 110; // keep the rolling horizon clear of the world edges
-    const GROUND_MAX = HEIGHT - 240;
-    const GROUND_NOISE_FREQ = 0.014;
-    const GROUND_WAVE = 26; // rolling-horizon amplitude
-    const SOIL = 14; // packed soil/stone band dividing surface from cave
-    const SHAFT_HALF = 4; // cave-mouth shaft half-width
-    const MOUTH_TIMBER = 12; // timbered jamb height beside the mouth
-    const SPAWN_OFFSET = 210; // wizard starts this far to the open side of the mouth
-    const CABIN_OFFSET = 26; // cabin sits just behind the spawn
-
     // Surface scatter — deterministic per-column hash thresholds (hash2 is pure,
     // so these read as plain probabilities).
     const TUFT_CHANCE = 0.55; // a grass blade stands on this column …
@@ -1371,17 +1412,17 @@ export class WorldGen implements WorldGenApi {
 
     // Surface line: ~96 cells above the cave spawn so there is generous sky but a
     // short, readable descent. Gently rolling, not a dead-flat shelf.
-    const groundBase = Math.floor(clamp(spawn.y - SURFACE_RISE, GROUND_MIN, GROUND_MAX));
+    const groundBase = Math.floor(clamp(spawn.y - INTRO_SURFACE_RISE, INTRO_SURFACE_GROUND_MIN, INTRO_SURFACE_GROUND_MAX));
     const groundAt = (x: number): number =>
-      groundBase + Math.round((valueNoise(x, 13, GROUND_NOISE_FREQ, seed + 61) - 0.5) * GROUND_WAVE);
+      groundBase + Math.round((valueNoise(x, 13, INTRO_SURFACE_GROUND_NOISE_FREQ, seed + 61) - 0.5) * INTRO_SURFACE_GROUND_WAVE);
 
     // Sky overhead, a grass crown, and a packed soil layer dividing surface from cave.
     for (let x = 0; x < WIDTH; x++) {
       const gy = groundAt(x);
       for (let y = 0; y < gy; y++) set(x, y, Cell.Empty, EMPTY_COLOR);
       set(x, gy, Cell.Grass, grassColor(x, gy));
-      for (let y = gy + 1; y <= gy + SOIL; y++) {
-        set(x, y, y >= gy + SOIL - 4 ? Cell.Stone : Cell.Wall, dirtColor(x, y));
+      for (let y = gy + 1; y <= gy + INTRO_SURFACE_SOIL; y++) {
+        set(x, y, y >= gy + INTRO_SURFACE_SOIL - 4 ? Cell.Stone : Cell.Wall, dirtColor(x, y));
       }
     }
 
@@ -1389,23 +1430,23 @@ export class WorldGen implements WorldGenApi {
     const mouthX = Math.floor(clamp(spawn.x, 90, WIDTH - 90));
     const mouthGy = groundAt(mouthX);
     for (let y = mouthGy - 1; y <= spawn.y + 2; y++) {
-      for (let dx = -SHAFT_HALF; dx <= SHAFT_HALF; dx++) set(mouthX + dx, y, Cell.Empty, EMPTY_COLOR);
+      for (let dx = -INTRO_SURFACE_SHAFT_HALF; dx <= INTRO_SURFACE_SHAFT_HALF; dx++) set(mouthX + dx, y, Cell.Empty, EMPTY_COLOR);
     }
-    for (let dy = 0; dy <= MOUTH_TIMBER; dy++) {
-      set(mouthX - SHAFT_HALF - 1, mouthGy - dy, Cell.Wood, woodColor());
-      set(mouthX + SHAFT_HALF + 1, mouthGy - dy, Cell.Wood, woodColor());
+    for (let dy = 0; dy <= INTRO_SURFACE_MOUTH_TIMBER; dy++) {
+      set(mouthX - INTRO_SURFACE_SHAFT_HALF - 1, mouthGy - dy, Cell.Wood, woodColor());
+      set(mouthX + INTRO_SURFACE_SHAFT_HALF + 1, mouthGy - dy, Cell.Wood, woodColor());
     }
-    for (let dx = -SHAFT_HALF - 1; dx <= SHAFT_HALF + 1; dx++) set(mouthX + dx, mouthGy - MOUTH_TIMBER - 1, Cell.Wood, woodColor());
-    for (let dx = -SHAFT_HALF - 1; dx <= SHAFT_HALF + 1; dx++) set(mouthX + dx, mouthGy - MOUTH_TIMBER, Cell.Wood, woodColor());
+    for (let dx = -INTRO_SURFACE_SHAFT_HALF - 1; dx <= INTRO_SURFACE_SHAFT_HALF + 1; dx++) set(mouthX + dx, mouthGy - INTRO_SURFACE_MOUTH_TIMBER - 1, Cell.Wood, woodColor());
+    for (let dx = -INTRO_SURFACE_SHAFT_HALF - 1; dx <= INTRO_SURFACE_SHAFT_HALF + 1; dx++) set(mouthX + dx, mouthGy - INTRO_SURFACE_MOUTH_TIMBER, Cell.Wood, woodColor());
 
     // Start the wizard out on the grass, off to the open side of the mouth.
     const side = mouthX > WIDTH / 2 ? -1 : 1;
-    const spawnX = Math.floor(clamp(mouthX + side * SPAWN_OFFSET, 60, WIDTH - 60));
+    const spawnX = Math.floor(clamp(mouthX + side * INTRO_SURFACE_SPAWN_OFFSET, 60, WIDTH - 60));
     const spawnGy = groundAt(spawnX);
     const surfaceSpawn = { x: spawnX, y: spawnGy - 1 };
 
     // A starter cabin behind the spawn — shelter at your back, the cave mouth ahead.
-    const cabinX = Math.floor(clamp(spawnX + side * CABIN_OFFSET, 30, WIDTH - 30));
+    const cabinX = Math.floor(clamp(spawnX + side * INTRO_SURFACE_CABIN_OFFSET, 30, WIDTH - 30));
     this.stampStarterCabin(world, set, cabinX, groundAt(cabinX));
 
     // Grass tufts, wildflowers, and scattered field stones for a living surface.
@@ -1441,7 +1482,7 @@ export class WorldGen implements WorldGenApi {
     }
 
     // A signpost on the approach to the cave mouth — "the way down".
-    const signColumn = mouthX + side * (SHAFT_HALF + 12);
+    const signColumn = mouthX + side * (INTRO_SURFACE_SHAFT_HALF + 12);
     this.stampSignpost(set, Math.floor(clamp(signColumn, 20, WIDTH - 20)), groundAt(signColumn));
 
     // skyLine: the surface horizon. Empty cells above it render as open daytime

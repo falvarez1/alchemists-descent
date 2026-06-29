@@ -15,6 +15,7 @@ import type {
 } from '@/ui/editor/InspectorSchema';
 import { POTION_KINDS } from '@/core/pickupDefs';
 import { TOME_REWARD_POOL } from '@/combat/wands/rewardPools';
+import { EMITTER_CELL_OPTIONS } from '@/game/instantiate';
 
 export const POINT_ROTATE_KINDS: ReadonlySet<EditorObjectKind> = new Set([
   'enemy',
@@ -429,9 +430,8 @@ function enemyItems(obj: EditorObject, context: ObjectInspectorSchemaContext): I
 }
 
 function hazardEmitterItems(obj: EditorObject): InspectorSchemaItem[] {
-  const cells = ['water', 'oil', 'acid', 'lava', 'fire', 'ember', 'sand', 'snow', 'smoke'];
   return [
-    paramSelect(obj, 'cell', 'material', cells, 'water'),
+    paramSelect(obj, 'cell', 'material', [...EMITTER_CELL_OPTIONS], 'water'),
     paramNumber(obj, 'rate', 'rate (frames)', 30, { min: 2 }),
     paramNumber(obj, 'burst', 'burst (cells)', 1, { min: 1, max: 8 }),
     paramNumber(obj, 'phase', 'phase (frames)', 0, { min: 0 }),

@@ -2,7 +2,7 @@ import type { Ctx } from '@/core/types';
 import type { Recipe } from '@/content/recipes';
 import { RECIPES } from '@/content/recipes';
 export { RECIPES, type Recipe } from '@/content/recipes';
-import { recordRecipeDiscovery } from '@/game/GrimoireStore';
+import { recordRecipeDiscovery } from '@/core/grimoireStore';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN } from '@/sim/colors';
 
@@ -37,7 +37,7 @@ const HEAT_BOTTOM = 4;
 
 /** Sustained heat+ingredient sampler ticks (1 tick per 4 frames) to finish a brew. */
 const BREW_TICKS_REQUIRED = 90;
-export { GRIMOIRE_KEY, loadDiscoveredRecipes } from '@/game/GrimoireStore';
+export { GRIMOIRE_KEY, loadDiscoveredRecipes } from '@/core/grimoireStore';
 const DISCOVERY_BOUNTY = 100;
 
 /** Loose powders count as brewable mass alongside liquids (they sink into the bowl). */

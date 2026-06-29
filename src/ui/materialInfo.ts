@@ -80,6 +80,10 @@ export const MATERIAL_INFO: Record<number, string> = {
     'Pass-through damp green creep that slowly spreads over wet rock and stops where the cave runs dry. Burns short and smoky.',
   [Cell.Catalyst]:
     "The philosopher's dust. Acid biting rock, wood, or stone beside it transmutes them into Gold Powder, consuming a grain of dust per conversion. Acid cannot eat the dust itself.",
+  [Cell.RawOre]:
+    'Dark host rock veined with gold. It does not glow on its own, but a light sweep reveals flecks; digging breaks it into collectable Gold Powder.',
+  [Cell.Grass]:
+    'Walk-through ground cover planted on cave floors and the surface. It spreads lightly along damp ground and catches fire like dry brush.',
 };
 
 /**

@@ -24,7 +24,6 @@ page.on('dialog', (d) => d.accept());
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
-await page.waitForFunction(() => window.__game?.ctx?.builder, { timeout: 20000 });
 await page.waitForTimeout(900);
 
 const panCheck = async (name, code, axis, dir) => {
@@ -64,11 +63,14 @@ await panCheck('Sandbox D pans camera right', 'KeyD', 'tx', 1);
 await panCheck('Sandbox W pans camera up', 'KeyW', 'ty', -1);
 await panCheck('Sandbox S pans camera down', 'KeyS', 'ty', 1);
 
+await page.locator('#mode-builder-btn').click();
+await page.waitForFunction(() => window.__game?.ctx?.builder && document.body.classList.contains('builder-open'), {
+  timeout: 20000,
+});
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
   ctx.state.mode = 'build';
   ctx.state.paused = false;
-  ctx.builder.open();
   document.body.focus();
 });
 await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 5000 });

@@ -59,7 +59,7 @@ import { makeLevelRuntime } from '@/game/runtime';
 import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
-import { blocksEntity, Cell, isSoftGrowth } from '@/sim/CellType';
+import { blocksEntity, Cell, CELL_COUNT, isSoftGrowth } from '@/sim/CellType';
 import {
   COLOR_FN,
   bloodColor,
@@ -354,9 +354,10 @@ function isMapWaypointShape(value: unknown): value is MapWaypoint | null {
  * `dispBodies`, which holds LIVE RigidBody references — JSON.stringify would
  * strip their functions and persist a detached snapshot, so on restore a
  * dispenser would come back with phantom bodies that throttle real emissions.
- * The in-progress retraction queue (`dissolve`) and the various recomputed
- * counters are likewise transient. All true gameplay state — `state`, `broken`,
- * `body`, `seqDone`/`seqFired`, valve `material`/`oneShot`, etc. — is preserved.
+ * The in-progress retraction queue (`dissolve`) and various recomputed counters
+ * are likewise transient. All true gameplay state — `state`, `broken`, `body`,
+ * `seqDone`/`seqFired`, valve `material`/`oneShot`, and timed-valve edge/timer
+ * state — is preserved.
  */
 function sanitizeMechanismForSave(m: Mechanism): Mechanism {
   const copy: Mechanism = { ...m };
@@ -368,11 +369,22 @@ function sanitizeMechanismForSave(m: Mechanism): Mechanism {
   delete copy.seq;
   delete copy.reading;
   delete copy.closePending;
-  delete copy.closeT;
-  delete copy.prevWant;
+  if (copy.closeT !== undefined) {
+    copy.closeT = Number.isFinite(copy.closeT) ? Math.max(1, Math.floor(copy.closeT)) : undefined;
+    if (copy.closeT === undefined) delete copy.closeT;
+  }
+  if (copy.prevWant !== undefined && typeof copy.prevWant !== 'boolean') delete copy.prevWant;
   delete copy.fuseT;
   delete copy.dispCoolT;
   return copy;
+}
+
+function validateSavedCellTypes(types: Uint8Array, levelId: string): void {
+  for (let i = 0; i < types.length; i++) {
+    if (types[i] >= CELL_COUNT) {
+      throw new Error(`Saved level "${levelId}" has invalid cell id ${types[i]} at ${i}`);
+    }
+  }
 }
 
 function nonNegativeInt(value: number | undefined, fallback: number): number {
@@ -604,8 +616,18 @@ export class Levels implements LevelsApi {
   private checkpointSaveSuppression = 0;
   /** Guards delayed settled-findability repair against stale level transitions. */
   private findabilityRepairToken = 0;
+  private settledFindabilityTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private ctx: Ctx) {}
+
+  dispose(): void {
+    this.clearTransitionFinishTimer();
+    if (this.settledFindabilityTimer !== null) {
+      clearTimeout(this.settledFindabilityTimer);
+      this.settledFindabilityTimer = null;
+    }
+    this.findabilityRepairToken++;
+  }
 
   private debugTainted(ctx: Ctx): boolean {
     return ctx.state.debugGodMode || ctx.state.debugTainted === true || ctx.debug?.active === true;
@@ -1062,8 +1084,18 @@ export class Levels implements LevelsApi {
 
   exitDisposableRuntime(ctx: Ctx): void {
     const id = this.currentId;
-    if (!id || LEVELS[id]) return;
-    this.levels.delete(id);
+    if (ctx.state.playtestSource === 'builder' || id === 'custom') {
+      this.exitCustomPlaytest(ctx);
+      return;
+    }
+    if (id && !LEVELS[id]) this.levels.delete(id);
+    if (ctx.state.playtestSource === 'test') {
+      this.levels.clear();
+      this.savedBlobs.clear();
+      this.blobCache.clear();
+      this.litOrder.clear();
+      this.expeditionSeed = null;
+    }
     this.currentId = null;
     this.preCustomCurrentId = null;
     ctx.state.playtestSource = null;
@@ -2023,6 +2055,7 @@ export class Levels implements LevelsApi {
 
     const savedTypes = new Uint8Array(world.types.length);
     if (!rleDecodeExact(blob.rle, savedTypes)) throw new Error(`Saved level "${def.id}" RLE length mismatch`);
+    validateSavedCellTypes(savedTypes, def.id);
     for (let i = 0; i < savedTypes.length; i++) {
       if (savedTypes[i] !== world.types[i]) {
         world.types[i] = savedTypes[i];
@@ -2094,17 +2127,29 @@ export class Levels implements LevelsApi {
 
     // A door/valve saved MID-retraction comes back with state=1 (open) but its
     // transient dissolve queue was dropped on save, so the partially-cleared
-    // Metal in the restored RLE would stay stuck forever. Finish the retraction:
-    // an open gate must have no Metal left in its footprint.
+    // blocker material in the restored RLE would stay stuck forever. Finish the
+    // retraction: an open gate must have no closed blocker cells left in its
+    // footprint.
     for (const m of runtime.mechanisms) {
       if (m.state !== 1 || (m.kind !== 'door' && m.kind !== 'valve')) continue;
+      const blocker = m.kind === 'valve' ? (m.material ?? Cell.Metal) : Cell.Metal;
+      if (
+        m.kind === 'valve' &&
+        m.oneShot !== true &&
+        m.autoCloseFrames !== undefined &&
+        m.autoCloseFrames > 0 &&
+        m.closeT === undefined
+      ) {
+        m.closeT = Math.max(1, Math.floor(m.autoCloseFrames));
+        m.prevWant = true;
+      }
       for (let dy = 0; dy < m.h; dy++) {
         for (let dx = 0; dx < m.w; dx++) {
           const X = m.x + dx,
             Y = m.y + dy;
           if (!world.inBounds(X, Y)) continue;
           const i = world.idx(X, Y);
-          if (world.types[i] === Cell.Metal) world.clearCellAt(i);
+          if (world.types[i] === blocker) world.clearCellAt(i);
         }
       }
     }
@@ -2328,7 +2373,12 @@ export class Levels implements LevelsApi {
     // rescue tunnels through it (see AUTHORED_TEST_ARENAS).
     if (AUTHORED_TEST_ARENAS.has(id)) return;
     const token = ++this.findabilityRepairToken;
-    globalThis.setTimeout(() => {
+    if (this.settledFindabilityTimer !== null) {
+      clearTimeout(this.settledFindabilityTimer);
+      this.settledFindabilityTimer = null;
+    }
+    this.settledFindabilityTimer = globalThis.setTimeout(() => {
+      if (this.settledFindabilityTimer !== null) this.settledFindabilityTimer = null;
       if (token !== this.findabilityRepairToken || this.currentId !== id || this.current !== runtime) return;
       if (this.repairFindability(ctx, runtime, 'settled') && this.checkpointSaveSuppression === 0) {
         this.saveExpedition(ctx);

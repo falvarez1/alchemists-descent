@@ -8,8 +8,8 @@ import {
   type RuntimeInspectionMarker,
 } from '@/core/types';
 import { MATERIAL_PARAMS } from '@/config/params';
+import { enemyStateLabel } from '@/core/enemyState';
 import { humanizeIdentifier } from '@/core/strings';
-import { enemyStateLabel } from '@/entities/Enemies';
 import { MATERIAL_LORE, recordLore } from '@/game/lore';
 import { isConductor } from '@/sim/CellType';
 import { unpackB, unpackG, unpackR } from '@/sim/colors';

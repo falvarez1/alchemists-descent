@@ -126,7 +126,11 @@ try {
           const waitForFindability = async (rt) => {
             let latest = [];
             let cleanFrames = 0;
-            const deadline = performance.now() + 1800;
+            // Let the level's scheduled settled repair run before the heavy
+            // validator loop starts; otherwise the probe itself can delay the
+            // browser timer it is trying to observe.
+            await sleep(700);
+            const deadline = performance.now() + 2600;
             while (performance.now() < deadline) {
               latest = validateFindability(rt);
               if (latest.every((issue) => issue.severity !== 'error')) {

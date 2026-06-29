@@ -52,6 +52,25 @@ jobs:
       - name: Install Chromium for browser probes
         run: npx playwright-core install --with-deps chromium
 
+      - name: Runtime browser safety probes
+        env:
+          PLAYWRIGHT_BROWSER_CHANNEL: chromium
+        run: |
+          npm run dev -- --host 127.0.0.1 --port 5173 &
+          DEV_PID=$!
+          trap "kill $DEV_PID" EXIT
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:5173/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:5173/ >/dev/null
+          npm run verify:runtime-ui -- http://127.0.0.1:5173/
+          node scripts/verify-debug-tool.mjs http://127.0.0.1:5173/
+          node scripts/verify-builder-expedition.mjs http://127.0.0.1:5173/
+          npm run verify:findability -- http://127.0.0.1:5173/
+
       - name: Builder production lazy-load network probe
         env:
           PLAYWRIGHT_BROWSER_CHANNEL: chromium
