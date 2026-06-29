@@ -287,6 +287,74 @@ describe('level enemy persistence', () => {
     expect(restored.weaverLairWebs[0].jitter).toBeCloseTo(0.12);
   });
 
+  it('restores, clears, and sanitizes saved map waypoints', () => {
+    const restoreWithWaypoint = (mapWaypoint?: unknown): LevelRuntime => {
+      const savedWorld = new World();
+      const ctx = {
+        world: savedWorld,
+        enemies: [],
+        state: { worldSeed: 99 },
+        worldgen: {
+          generateLevel: () => ({
+            exit: { x: 100, sealY: 140, halfW: 8 },
+            waystones: [],
+            spawn: { x: 24, y: 48 },
+            cauldron: null,
+            pickups: [],
+            portal: null,
+            mechanisms: [],
+            runeVaults: [],
+            boss: null,
+            vaultArch: null,
+            vaultHoard: null,
+            spellLab: null,
+            prefabEnemies: [],
+            placedPrefabs: [],
+            authoredLights: [],
+            emitters: [],
+            decors: [],
+            refuge: null,
+          }),
+        },
+      } as unknown as Ctx;
+      const levels = new Levels(ctx);
+      const blob = {
+        id: 'd2',
+        rle: rleEncode(savedWorld.types),
+        life: [],
+        charge: [],
+        explored: '',
+        waystones: [],
+        pickups: [],
+        mechanisms: [],
+        runeVaults: [],
+        keyTaken: false,
+        portalOpen: false,
+        litOrder: [],
+        enemies: [],
+        ...(mapWaypoint !== undefined ? { mapWaypoint } : {}),
+      };
+
+      return (levels as unknown as {
+        restoreLevel(ctx: Ctx, def: typeof LEVELS.d2, blob: typeof blob): LevelRuntime;
+      }).restoreLevel(ctx, LEVELS.d2, blob);
+    };
+
+    expect(restoreWithWaypoint({ x: 300, y: 200, label: 'Gate Route' }).mapWaypoint).toEqual({
+      x: 300,
+      y: 200,
+      label: 'Gate Route',
+    });
+    expect(restoreWithWaypoint(null).mapWaypoint).toBeNull();
+    expect(restoreWithWaypoint().mapWaypoint).toBeNull();
+    expect(restoreWithWaypoint({ x: 99999, y: -20, label: '   ' }).mapWaypoint).toEqual({
+      x: 1599,
+      y: 0,
+      label: 'Waypoint',
+    });
+    expect(restoreWithWaypoint({ x: Number.NaN, y: 20, label: 'Bad' }).mapWaypoint).toBeNull();
+  });
+
   it('exiting a custom playtest restores the previous expedition pointer', () => {
     const world = new World();
     let particlesCleared = false;
@@ -653,6 +721,7 @@ describe('level enemy persistence', () => {
         regions: null,
       });
       runtime.pickups.push(makePickup('tome', 66, 77, { card: 'spark', offerPending: true }));
+      runtime.mapWaypoint = { x: 333, y: 444, label: 'Portal Route' };
       const internals = levels as unknown as {
         currentId: string | null;
         levels: Map<string, LevelRuntime>;
@@ -679,6 +748,7 @@ describe('level enemy persistence', () => {
           life: Array<[number, number]>;
           charge: Array<[number, number]>;
           pickups: Array<{ kind: string; data: { offerPending?: boolean } }>;
+          mapWaypoint?: { x: number; y: number; label: string } | null;
         }>;
       };
       expect(save.genTuneSignature).toBe(genTuneSignature());
@@ -698,6 +768,7 @@ describe('level enemy persistence', () => {
         kind: 'tome',
         data: { offerPending: false },
       });
+      expect(save.levels[0].mapWaypoint).toEqual({ x: 333, y: 444, label: 'Portal Route' });
     });
   });
 

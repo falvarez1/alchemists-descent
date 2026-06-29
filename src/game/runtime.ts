@@ -38,6 +38,7 @@ export function makeLevelRuntime(
       | 'generatedScenes'
       | 'decors'
       | 'weaverLairWebs'
+      | 'mapWaypoint'
       | 'population'
       | 'refuge'
       | 'spellLab'
@@ -60,6 +61,7 @@ export function makeLevelRuntime(
     runeVaults: [],
     boss: null,
     weaverLairWebs: [],
+    mapWaypoint: null,
     ...base,
   };
   runtime.mechanismTriggers = buildMechanismTriggerIndex(runtime.mechanisms);

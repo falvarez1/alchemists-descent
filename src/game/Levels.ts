@@ -30,6 +30,7 @@ import type {
   LevelDef,
   LevelRuntime,
   LevelsApi,
+  MapWaypoint,
   Mechanism,
   Pickup,
   PickupKind,
@@ -235,6 +236,7 @@ interface SavedLevelBlob {
   litOrder: number[];
   enemies: SavedEnemyState[];
   weaverLairWebs?: WeaverLairWeb[];
+  mapWaypoint?: MapWaypoint | null;
 }
 
 interface ExpeditionSave {
@@ -321,6 +323,31 @@ function sanitizeWeaverLairWebs(value: readonly WeaverLairWeb[] | undefined): We
   return out;
 }
 
+function sanitizeMapWaypoint(value: MapWaypoint | null | undefined, world?: World): MapWaypoint | null {
+  if (!value || typeof value !== 'object') return null;
+  const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+  if (!finite(value.x) || !finite(value.y)) return null;
+  const maxX = world ? world.width - 1 : WIDTH - 1;
+  const maxY = world ? world.height - 1 : HEIGHT - 1;
+  const rawLabel = typeof value.label === 'string' && value.label.trim().length > 0 ? value.label.trim() : 'Waypoint';
+  return {
+    x: Math.max(0, Math.min(maxX, Math.round(value.x))),
+    y: Math.max(0, Math.min(maxY, Math.round(value.y))),
+    label: rawLabel.slice(0, 48),
+  };
+}
+
+function isMapWaypointShape(value: unknown): value is MapWaypoint | null {
+  if (value === null || value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const waypoint = value as Partial<MapWaypoint>;
+  return (
+    typeof waypoint.x === 'number' &&
+    typeof waypoint.y === 'number' &&
+    (waypoint.label === undefined || typeof waypoint.label === 'string')
+  );
+}
+
 /**
  * Project a runtime mechanism into a save-safe snapshot: drop the live/transient
  * fields the Mechanism type marks as not-persisted. The critical one is
@@ -398,7 +425,8 @@ function isSavedLevelBlobShape(value: unknown): value is SavedLevelBlob {
     Array.isArray(b.runeVaults) &&
     Array.isArray(b.litOrder) &&
     (b.colorOverrides === undefined || Array.isArray(b.colorOverrides)) &&
-    (b.weaverLairWebs === undefined || Array.isArray(b.weaverLairWebs))
+    (b.weaverLairWebs === undefined || Array.isArray(b.weaverLairWebs)) &&
+    (b.mapWaypoint === undefined || isMapWaypointShape(b.mapWaypoint))
   );
 }
 
@@ -1834,6 +1862,7 @@ export class Levels implements LevelsApi {
       portalOpen: rt.portal?.open ?? false,
       litOrder: this.litOrder.get(id) ?? [],
       enemies: rt.enemies.map(snapshotEnemyForSave),
+      mapWaypoint: sanitizeMapWaypoint(rt.mapWaypoint, rt.world),
       ...(rt.weaverLairWebs.length > 0 ? { weaverLairWebs: rt.weaverLairWebs } : {}),
     };
   }
@@ -2059,6 +2088,7 @@ export class Levels implements LevelsApi {
       ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
       ...(pristine.spellLab ? { spellLab: pristine.spellLab } : {}),
       ...(pristine.vaultArch ? { vaultArch: pristine.vaultArch } : {}),
+      mapWaypoint: sanitizeMapWaypoint(blob.mapWaypoint, world),
       weaverLairWebs: sanitizeWeaverLairWebs(blob.weaverLairWebs),
     });
 

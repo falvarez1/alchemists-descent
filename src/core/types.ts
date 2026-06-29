@@ -2356,6 +2356,14 @@ export interface PlacedPrefab {
   y1: number;
 }
 
+/** Player-authored navigation pin set from the full minimap. One active pin per
+ *  level keeps navigation fast without turning the HUD into a marker manager. */
+export interface MapWaypoint {
+  x: number;
+  y: number;
+  label: string;
+}
+
 /** Lightweight runtime-only labels for authored cell dressing that is not a
  *  live entity, mechanism, or Builder prefab object. Used by the `I` inspector
  *  so decorative cell clusters can report their intended object name instead
@@ -2513,6 +2521,8 @@ export interface LevelRuntime {
   decors?: RuntimeDecor[];
   /** Generated Weaver-den lattice descriptors replayed after levelChanged clears live strands. */
   weaverLairWebs: WeaverLairWeb[];
+  /** Player-authored minimap target for the HUD compass. */
+  mapWaypoint?: MapWaypoint | null;
   /** Generated hostile population audit: planned, placed, and skipped counts by enemy kind. */
   population?: {
     planned: Partial<Record<EnemyKind, number>>;

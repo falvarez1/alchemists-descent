@@ -19,6 +19,8 @@ const PROBES = [
   'verify-card-offers.mjs',
   'verify-runtime-ui.mjs',
   'verify-debug-tool.mjs',
+  'verify-minimap-popovers.mjs',
+  'verify-minimap-waypoint.mjs',
   'verify-encounter-lairs.mjs',
   'verify-organic-enemy-trio.mjs',
   'verify-organic-enemy-trio-sprites.mjs',

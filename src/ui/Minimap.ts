@@ -1,9 +1,10 @@
-import type { Ctx, Mechanism, Pickup, PickupKind } from '@/core/types';
-import { MINIMAP_W, MINIMAP_H } from '@/config/constants';
+import type { Ctx, MapWaypoint, Mechanism, Pickup, PickupKind } from '@/core/types';
+import { MINIMAP_W, MINIMAP_H, VIEW_W, VIEW_H } from '@/config/constants';
 import { MATERIAL_PARAMS } from '@/config/params';
 import { CELL_COUNT, Cell } from '@/sim/CellType';
 import { COLOR_FN, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { PICKUP_COLOR, POTION_DEFS } from '@/core/pickupDefs';
+import { humanizeIdentifier } from '@/core/strings';
 import { PopoverHost, type RectLike } from '@/ui/editor/PopoverHost';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { resetHeldSpellInputs } from '@/core/runtimeState';
@@ -24,6 +25,7 @@ function el(id: string): HTMLElement {
 const POI_POPOVER_ID = 'minimap-poi-pop';
 
 export type MinimapPoiKind =
+  | 'spawn'
   | 'portal'
   | 'exit'
   | 'waystone'
@@ -32,6 +34,10 @@ export type MinimapPoiKind =
   | 'spellLab'
   | 'vaultArch'
   | 'encounter'
+  | 'prefab'
+  | 'scene'
+  | 'boss'
+  | 'waypoint'
   | 'pickup'
   | 'mechanism'
   | 'runeVault'
@@ -96,8 +102,18 @@ function isExplored(level: NonNullable<Ctx['levels']['current']>, mapX: number, 
   return mapX >= 0 && mapX < MINIMAP_W && mapY >= 0 && mapY < MINIMAP_H && level.explored[mapIndex(mapX, mapY)] > 0;
 }
 
+function isWorldExplored(level: NonNullable<Ctx['levels']['current']>, worldX: number, worldY: number): boolean {
+  return isExplored(level, worldX >> 3, worldY >> 3);
+}
+
 function coordField(x: number, y: number): { label: string; value: string } {
   return { label: 'position', value: `${Math.round(x)}, ${Math.round(y)}` };
+}
+
+function distanceField(ctx: Ctx, x: number, y: number): { label: string; value: string } {
+  const dx = x - ctx.player.x;
+  const dy = y - ctx.player.y;
+  return { label: 'range', value: `${Math.round(Math.hypot(dx, dy))} cells` };
 }
 
 function colorHex(packed: number): string {
@@ -301,6 +317,14 @@ function shouldShowMechanismPoi(level: NonNullable<Ctx['levels']['current']>, me
   return isExplored(level, mechanism.x >> 3, mechanism.y >> 3);
 }
 
+function clampWaypoint(level: NonNullable<Ctx['levels']['current']>, waypoint: MapWaypoint): MapWaypoint {
+  return {
+    x: Math.max(0, Math.min(level.world.width - 1, Math.round(waypoint.x))),
+    y: Math.max(0, Math.min(level.world.height - 1, Math.round(waypoint.y))),
+    label: waypoint.label.trim().slice(0, 48) || 'Waypoint',
+  };
+}
+
 function encounterLairInfo(id: string): { title: string; description: string; color: string; glyph: string; tags: string[] } | null {
   if (id === 'encounter-lair-rootloper-grove') {
     return {
@@ -327,6 +351,29 @@ function encounterLairInfo(id: string): { title: string; description: string; co
       color: '#f59e0b',
       glyph: 'M',
       tags: ['encounter', 'stonemaw', 'ore'],
+    };
+  }
+  return null;
+}
+
+function prefabMapInfo(id: string): { title: string; description: string; color: string; glyph: string; tags: string[] } | null {
+  if (id.startsWith('machine-')) {
+    const name = humanizeIdentifier(id.replace(/^machine-/, ''));
+    return {
+      title: `${name} Machine`,
+      description: 'A discovered generated machine room. Trace its gates, pans, valves, and material feeds from here.',
+      color: '#2dd4bf',
+      glyph: 'F',
+      tags: ['prefab', 'machine', 'mechanism'],
+    };
+  }
+  if (id.startsWith('virtual:')) {
+    return {
+      title: 'Virtual World Chunk',
+      description: 'A materialized virtual-world chunk footprint in this test window.',
+      color: '#93c5fd',
+      glyph: 'V',
+      tags: ['prefab', 'virtual'],
     };
   }
   return null;
@@ -380,6 +427,24 @@ export function findMinimapMaterialPoi(
 
 export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['current']>): MinimapPoi[] {
   const pois: MinimapPoi[] = [];
+
+  const entry = level.surfaceSpawn && !level.surfaceDescended ? level.surfaceSpawn : level.spawn;
+  pois.push(makePoi({
+    id: 'spawn',
+    kind: 'spawn',
+    title: level.surfaceSpawn && !level.surfaceDescended ? 'Surface Entry' : 'Cave Entry',
+    description: 'The arrival point for this depth and the fallback respawn anchor if no waystone is lit.',
+    tags: ['entry', 'anchor'],
+    fields: [distanceField(ctx, entry.x, entry.y)],
+    worldX: entry.x,
+    worldY: entry.y,
+    width: 2,
+    height: 2,
+    offsetX: -1,
+    offsetY: -1,
+    color: '#86efac',
+    glyph: 'S',
+  }));
 
   if (level.portal) {
     pois.push(makePoi({
@@ -533,21 +598,44 @@ export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['c
     }
   }
 
+  if (level.boss && isWorldExplored(level, level.boss.x, level.boss.y)) {
+    const kind = level.boss.kind ?? 'colossus';
+    pois.push(makePoi({
+      id: 'boss-arena',
+      kind: 'boss',
+      title: `${humanizeIdentifier(kind)} Arena`,
+      description: 'A discovered boss chamber. Treat the terrain, liquids, and cover as part of the fight.',
+      tags: ['boss', kind],
+      fields: [distanceField(ctx, level.boss.x, level.boss.y)],
+      worldX: level.boss.x,
+      worldY: level.boss.y,
+      width: 4,
+      height: 4,
+      offsetX: -2,
+      offsetY: -2,
+      color: '#ef4444',
+      glyph: '!',
+      hitRadius: 9,
+    }));
+  }
+
   level.placedPrefabs?.forEach((prefab, index) => {
-    const info = encounterLairInfo(prefab.id);
-    if (!info) return;
+    const encounterInfo = encounterLairInfo(prefab.id);
+    const prefabInfo = encounterInfo ?? prefabMapInfo(prefab.id);
+    if (!prefabInfo) return;
     const worldX = Math.floor((prefab.x0 + prefab.x1) / 2);
     const worldY = Math.floor((prefab.y0 + prefab.y1) / 2);
     if (!isExplored(level, worldX >> 3, worldY >> 3)) return;
     pois.push(makePoi({
-      id: `encounter:${index}:${prefab.id}`,
-      kind: 'encounter',
-      title: info.title,
-      description: info.description,
-      tags: info.tags,
+      id: `${encounterInfo ? 'encounter' : 'prefab'}:${index}:${prefab.id}`,
+      kind: encounterInfo ? 'encounter' : 'prefab',
+      title: prefabInfo.title,
+      description: prefabInfo.description,
+      tags: prefabInfo.tags,
       fields: [
         { label: 'footprint', value: `${prefab.x1 - prefab.x0 + 1} x ${prefab.y1 - prefab.y0 + 1}` },
         { label: 'source', value: prefab.id },
+        distanceField(ctx, worldX, worldY),
       ],
       worldX,
       worldY,
@@ -555,8 +643,37 @@ export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['c
       height: 3,
       offsetX: -1,
       offsetY: -1,
-      color: info.color,
-      glyph: info.glyph,
+      color: prefabInfo.color,
+      glyph: prefabInfo.glyph,
+      hitRadius: 8,
+    }));
+  });
+
+  level.generatedScenes?.forEach((scene, index) => {
+    const worldX = Math.floor((scene.x0 + scene.x1) / 2);
+    const worldY = Math.floor((scene.y0 + scene.y1) / 2);
+    if (!isWorldExplored(level, worldX, worldY)) return;
+    pois.push(makePoi({
+      id: `scene:${index}:${scene.id}`,
+      kind: 'scene',
+      title: scene.label || humanizeIdentifier(scene.sceneId),
+      description: 'A generated virtual-world scene footprint with inspectable objects, links, and authored lights.',
+      tags: ['scene', scene.source, scene.slotId],
+      fields: [
+        { label: 'objects', value: String(scene.objectCount) },
+        { label: 'links', value: String(scene.linkCount) },
+        { label: 'lights', value: String(scene.lightCount) },
+        { label: 'footprint', value: `${scene.x1 - scene.x0 + 1} x ${scene.y1 - scene.y0 + 1}` },
+        distanceField(ctx, worldX, worldY),
+      ],
+      worldX,
+      worldY,
+      width: 3,
+      height: 3,
+      offsetX: -1,
+      offsetY: -1,
+      color: '#60a5fa',
+      glyph: 'Q',
       hitRadius: 8,
     }));
   });
@@ -624,6 +741,27 @@ export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['c
     }));
   });
 
+  if (level.mapWaypoint) {
+    const waypoint = clampWaypoint(level, level.mapWaypoint);
+    pois.push(makePoi({
+      id: 'map-waypoint',
+      kind: 'waypoint',
+      title: waypoint.label,
+      description: 'Player-set navigation target. The compass marker points here during play.',
+      tags: ['waypoint', 'route'],
+      fields: [distanceField(ctx, waypoint.x, waypoint.y)],
+      worldX: waypoint.x,
+      worldY: waypoint.y,
+      width: 3,
+      height: 3,
+      offsetX: -1,
+      offsetY: -1,
+      color: '#facc15',
+      glyph: '*',
+      hitRadius: 9,
+    }));
+  }
+
   pois.push(makePoi({
     id: 'player',
     kind: 'player',
@@ -650,6 +788,7 @@ export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['c
 export function hitTestMinimapPoi(pois: readonly MinimapPoi[], mapX: number, mapY: number): MinimapPoi | null {
   let best: MinimapPoi | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
+  let bestPriority = -1;
   for (const poi of pois) {
     const cx = poi.drawX + poi.width / 2;
     const cy = poi.drawY + poi.height / 2;
@@ -657,12 +796,20 @@ export function hitTestMinimapPoi(pois: readonly MinimapPoi[], mapX: number, map
     const dy = mapY - cy;
     const dist = dx * dx + dy * dy;
     const radiusSq = poi.hitRadius * poi.hitRadius;
-    if (dist <= radiusSq && dist <= bestDistance) {
+    const priority = poiHitPriority(poi);
+    if (dist <= radiusSq && (dist < bestDistance - 0.001 || (Math.abs(dist - bestDistance) <= 0.001 && priority > bestPriority))) {
       best = poi;
       bestDistance = dist;
+      bestPriority = priority;
     }
   }
   return best;
+}
+
+function poiHitPriority(poi: MinimapPoi): number {
+  if (poi.kind === 'player') return 0;
+  if (poi.kind === 'waypoint') return 1;
+  return 2;
 }
 
 function fillMinimapPoiPopover(pop: HTMLDivElement, poi: MinimapPoi): void {
@@ -754,6 +901,9 @@ export class Minimap {
   /** Always-on corner panel (play mode), refreshed on a slower cadence. */
   private readonly corner: CanvasRenderingContext2D;
   private readonly cornerEl: HTMLCanvasElement;
+  private readonly waypointEl: HTMLDivElement;
+  private readonly waypointArrow: HTMLDivElement;
+  private readonly waypointRange: HTMLDivElement;
   /** One representative packed 0xRRGGBB per cell type, frozen at construction. */
   private readonly palette: Uint32Array;
   private visible = false;
@@ -787,8 +937,13 @@ export class Minimap {
     this.img = this.c2d.createImageData(MINIMAP_W, MINIMAP_H);
     this.cornerEl = el('minimap-corner') as HTMLCanvasElement;
     this.corner = this.cornerEl.getContext('2d')!;
+    this.waypointEl = this.createWaypointIndicator();
+    this.waypointArrow = this.waypointEl.querySelector('.waypoint-arrow') as HTMLDivElement;
+    this.waypointRange = this.waypointEl.querySelector('.waypoint-range') as HTMLDivElement;
+    this.canvas.title = 'Click explored map cells or markers to set a waypoint. Right-click clears it.';
     this.wirePoiPopovers(this.canvas);
     this.wirePoiPopovers(this.cornerEl);
+    this.wireWaypointControls();
 
     this.palette = new Uint32Array(CELL_COUNT);
     for (let t = 0; t < CELL_COUNT; t++) {
@@ -821,13 +976,109 @@ export class Minimap {
   dispose(): void {
     this.setVisible(false);
     this.hidePoiPopover();
+    this.waypointEl.remove();
+    this.popovers.dispose();
     for (const dispose of this.disposers.splice(0)) dispose();
+  }
+
+  private createWaypointIndicator(): HTMLDivElement {
+    const root = document.createElement('div');
+    root.id = 'waypoint-indicator';
+    root.setAttribute('aria-hidden', 'true');
+    const sigil = document.createElement('div');
+    sigil.className = 'waypoint-sigil';
+    const arrow = document.createElement('div');
+    arrow.className = 'waypoint-arrow';
+    sigil.appendChild(arrow);
+    const range = document.createElement('div');
+    range.className = 'waypoint-range';
+    root.append(sigil, range);
+    el('game-hud').appendChild(root);
+    return root;
+  }
+
+  private wireWaypointControls(): void {
+    const onMouseDown = (event: MouseEvent): void => this.handleMapWaypointPointer(event);
+    const onContextMenu = (event: MouseEvent): void => event.preventDefault();
+    this.canvas.addEventListener('mousedown', onMouseDown);
+    this.canvas.addEventListener('contextmenu', onContextMenu);
+    this.disposers.push(() => {
+      this.canvas.removeEventListener('mousedown', onMouseDown);
+      this.canvas.removeEventListener('contextmenu', onContextMenu);
+    });
+  }
+
+  private mapPointFromEvent(canvas: HTMLCanvasElement, event: MouseEvent): { mapX: number; mapY: number } | null {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return {
+      mapX: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      mapY: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  }
+
+  private handleMapWaypointPointer(event: MouseEvent): void {
+    const level = this.ctx.levels.current;
+    if (!this.visible || this.ctx.state.mode !== 'play' || !level) return;
+    if (event.button !== 0 && event.button !== 2) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.button === 2) {
+      this.clearMapWaypoint(true);
+      return;
+    }
+
+    const point = this.mapPointFromEvent(this.canvas, event);
+    if (!point) return;
+    const livePois = collectMinimapPois(this.ctx, level);
+    this.cachedPois = livePois;
+    const poi = hitTestMinimapPoi(livePois, point.mapX, point.mapY);
+    if (poi && poi.kind !== 'player') {
+      this.setMapWaypoint(level, poi.worldX, poi.worldY, poi.title);
+      return;
+    }
+
+    const mx = Math.floor(point.mapX);
+    const my = Math.floor(point.mapY);
+    if (!isExplored(level, mx, my)) {
+      this.ctx.events.emit('toast', { text: 'CHART UNKNOWN' });
+      return;
+    }
+
+    const x = Math.max(0, Math.min(level.world.width - 1, mx * 8 + 4));
+    const y = Math.max(0, Math.min(level.world.height - 1, my * 8 + 4));
+    this.setMapWaypoint(level, x, y, 'Waypoint');
+  }
+
+  private setMapWaypoint(level: NonNullable<Ctx['levels']['current']>, x: number, y: number, label: string): void {
+    level.mapWaypoint = clampWaypoint(level, { x, y, label });
+    this.waypointPulse = 150;
+    this.ctx.events.emit('toast', { text: 'WAYPOINT SET' });
+    this.redraw(this.ctx);
+    this.redrawCorner(this.ctx);
+    this.ctx.levels.saveExpedition(this.ctx);
+    this.updateWaypointIndicator(this.ctx);
+  }
+
+  private clearMapWaypoint(showToast: boolean): void {
+    const level = this.ctx.levels.current;
+    if (!level?.mapWaypoint) return;
+    level.mapWaypoint = null;
+    this.waypointPulse = 0;
+    if (showToast) this.ctx.events.emit('toast', { text: 'WAYPOINT CLEARED' });
+    this.redraw(this.ctx);
+    this.redrawCorner(this.ctx);
+    this.ctx.levels.saveExpedition(this.ctx);
+    this.updateWaypointIndicator(this.ctx);
   }
 
   /** Frames left of the go-to-the-portal ping. */
   private portalPing = 0;
   /** Frames left of the go-to-the-Refuge ping. */
   private refugePing = 0;
+  /** Frames left of the fresh waypoint pulse. */
+  private waypointPulse = 0;
 
   /** Sim pause state captured when the full map opens, restored on close. */
   private wasPaused = false;
@@ -855,6 +1106,8 @@ export class Minimap {
   update(ctx: Ctx): void {
     if (this.portalPing > 0) this.portalPing--;
     if (this.refugePing > 0) this.refugePing--;
+    if (this.waypointPulse > 0) this.waypointPulse--;
+    this.updateWaypointIndicator(ctx);
     // Always-on corner panel: a slower cadence keeps it nearly free —
     // except while the portal ping flashes, which earns a fast refresh.
     const cadence = this.portalPing > 0 || this.refugePing > 0 ? 8 : 30;
@@ -863,12 +1116,57 @@ export class Minimap {
     this.redraw(ctx);
   }
 
+  private updateWaypointIndicator(ctx: Ctx): void {
+    const level = ctx.levels.current;
+    const waypoint = level?.mapWaypoint ? clampWaypoint(level, level.mapWaypoint) : null;
+    const hidden =
+      ctx.state.mode !== 'play' ||
+      ctx.player.dead ||
+      (ctx.state.paused && !this.visible) ||
+      waypoint === null;
+    this.waypointEl.classList.toggle('visible', !hidden);
+    this.waypointEl.classList.toggle('fresh', this.waypointPulse > 0);
+    this.waypointEl.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+    if (hidden || !waypoint) return;
+
+    const dx = waypoint.x - ctx.player.x;
+    const dy = waypoint.y - ctx.player.y;
+    const distance = Math.hypot(dx, dy);
+    const rawX = ((waypoint.x - ctx.camera.renderX) / VIEW_W) * 100;
+    const rawY = ((waypoint.y - ctx.camera.renderY) / VIEW_H) * 100;
+    const edge = 8;
+    const onScreen = rawX >= edge && rawX <= 100 - edge && rawY >= edge && rawY <= 100 - edge;
+    let posX = rawX;
+    let posY = rawY;
+    if (!onScreen) {
+      let vx = rawX - 50;
+      let vy = rawY - 50;
+      if (Math.abs(vx) < 0.001 && Math.abs(vy) < 0.001) {
+        vx = dx;
+        vy = dy;
+      }
+      const scaleX = Math.abs(vx) > 0.001 ? (50 - edge) / Math.abs(vx) : Number.POSITIVE_INFINITY;
+      const scaleY = Math.abs(vy) > 0.001 ? (50 - edge) / Math.abs(vy) : Number.POSITIVE_INFINITY;
+      const scale = Math.min(scaleX, scaleY, 1);
+      posX = 50 + vx * scale;
+      posY = 50 + vy * scale;
+    }
+
+    this.waypointEl.style.left = `${posX}%`;
+    this.waypointEl.style.top = `${posY}%`;
+    this.waypointEl.classList.toggle('onscreen', onScreen);
+    this.waypointEl.classList.toggle('near', distance < 14);
+    this.waypointArrow.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
+    this.waypointRange.textContent = distance < 14 ? 'HERE' : String(Math.round(distance));
+  }
+
   /** The compact top-right map: terrain + landmark dots, no caption. */
   private redrawCorner(ctx: Ctx): void {
     const level = ctx.levels.current;
     if (!level) return;
     this.paintTerrain(level);
     this.corner.putImageData(this.img, 0, 0);
+    this.paintViewport(this.corner, ctx);
     this.paintMarkers(this.corner, ctx, level);
   }
 
@@ -878,11 +1176,16 @@ export class Minimap {
 
     const exploredCount = this.paintTerrain(level);
     this.c2d.putImageData(this.img, 0, 0);
+    this.paintViewport(this.c2d, ctx);
     this.paintMarkers(this.c2d, ctx, level);
 
     const pct = Math.round((exploredCount / level.explored.length) * 100);
+    const waypointText = level.mapWaypoint
+      ? ` · waypoint ${Math.round(Math.hypot(level.mapWaypoint.x - ctx.player.x, level.mapWaypoint.y - ctx.player.y))} cells`
+      : '';
+    const poiCount = this.cachedPois.filter((poi) => poi.kind !== 'player').length;
     el('minimap-caption').textContent =
-      'D' + level.def.depth + ' · ' + level.def.name + ' — ' + pct + '% explored';
+      'D' + level.def.depth + ' · ' + level.def.name + ' — ' + pct + '% explored · ' + poiCount + ' markers' + waypointText;
   }
 
   private wirePoiPopovers(canvas: HTMLCanvasElement): void {
@@ -912,7 +1215,9 @@ export class Minimap {
     }
     const mapX = ((event.clientX - rect.left) / rect.width) * canvas.width;
     const mapY = ((event.clientY - rect.top) / rect.height) * canvas.height;
-    const poi = hitTestMinimapPoi(this.cachedPois, mapX, mapY);
+    const livePois = collectMinimapPois(this.ctx, level);
+    this.cachedPois = livePois;
+    const poi = hitTestMinimapPoi(livePois, mapX, mapY);
     if (poi) {
       canvas.style.cursor = 'help';
       this.popovers.show({
@@ -928,7 +1233,11 @@ export class Minimap {
 
     const material = findMinimapMaterialPoi(level, mapX, mapY);
     if (!material) {
-      canvas.style.cursor = '';
+      if (canvas === this.canvas && this.visible) {
+        canvas.style.cursor = isExplored(level, Math.floor(mapX), Math.floor(mapY)) ? 'crosshair' : 'not-allowed';
+      } else {
+        canvas.style.cursor = '';
+      }
       this.hidePoiPopover();
       return;
     }
@@ -1010,6 +1319,20 @@ export class Minimap {
     return exploredCount;
   }
 
+  private paintViewport(g: CanvasRenderingContext2D, ctx: Ctx): void {
+    const x = ctx.camera.renderX / 8;
+    const y = ctx.camera.renderY / 8;
+    const w = VIEW_W / 8;
+    const h = VIEW_H / 8;
+    g.save();
+    g.strokeStyle = 'rgba(255, 235, 200, 0.72)';
+    g.lineWidth = 1;
+    g.strokeRect(Math.floor(x) + 0.5, Math.floor(y) + 0.5, Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+    g.strokeStyle = 'rgba(6, 8, 12, 0.78)';
+    g.strokeRect(Math.floor(x) - 0.5, Math.floor(y) - 0.5, Math.max(1, Math.round(w)) + 2, Math.max(1, Math.round(h)) + 2);
+    g.restore();
+  }
+
   /** Landmark dots: portal, well, lit waystones, cauldron, key/hearts/tomes, player. */
   private paintMarkers(
     g: CanvasRenderingContext2D,
@@ -1028,8 +1351,34 @@ export class Minimap {
         g.fillStyle = '#ffffff';
         g.fillRect(poi.mapX - 3, poi.mapY - 3, 7, 7);
       }
-      g.fillStyle = poi.color;
-      g.fillRect(poi.drawX, poi.drawY, poi.width, poi.height);
+      if (poi.kind === 'waypoint') {
+        this.paintWaypointMarker(g, poi, ctx.state.frameCount);
+      } else if (poi.kind === 'player') {
+        g.fillStyle = '#05070b';
+        g.fillRect(poi.drawX - 1, poi.drawY - 1, poi.width + 2, poi.height + 2);
+        g.fillStyle = poi.color;
+        g.fillRect(poi.drawX, poi.drawY, poi.width, poi.height);
+      } else {
+        g.fillStyle = poi.color;
+        g.fillRect(poi.drawX, poi.drawY, poi.width, poi.height);
+      }
+    }
+  }
+
+  private paintWaypointMarker(g: CanvasRenderingContext2D, poi: MinimapPoi, frame: number): void {
+    const cx = poi.drawX + Math.floor(poi.width / 2);
+    const cy = poi.drawY + Math.floor(poi.height / 2);
+    const flash = frame % 34 < 17;
+    g.fillStyle = '#05070b';
+    g.fillRect(cx - 2, cy - 2, 5, 5);
+    g.fillStyle = poi.color;
+    g.fillRect(cx, cy - 2, 1, 5);
+    g.fillRect(cx - 2, cy, 5, 1);
+    g.strokeStyle = flash ? '#fff7ad' : '#facc15';
+    g.strokeRect(cx - 3, cy - 3, 7, 7);
+    if (flash) {
+      g.strokeStyle = 'rgba(250, 204, 21, 0.6)';
+      g.strokeRect(cx - 5, cy - 5, 11, 11);
     }
   }
 }

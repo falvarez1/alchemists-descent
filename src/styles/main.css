@@ -208,6 +208,49 @@ body.runtime-inspector-open #viewport-container {
 #game-hud { position: absolute; inset: 0; pointer-events: none; font-family: var(--mono); display: none; }
 #game-hud.visible { display: block; }
 
+#waypoint-indicator {
+    position: absolute; left: 50%; top: 50%; z-index: 3; display: none;
+    transform: translate(-50%, -50%); align-items: center; flex-direction: column; gap: 4px;
+    pointer-events: none; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.85));
+}
+#waypoint-indicator.visible { display: flex; }
+.waypoint-sigil {
+    position: relative; width: 36px; height: 36px;
+}
+.waypoint-sigil::before {
+    content: ""; position: absolute; inset: 6px; transform: rotate(45deg);
+    border: 1px solid rgba(250,204,21,0.92);
+    background: rgba(14, 12, 8, 0.32);
+    box-shadow: inset 0 0 9px rgba(250,204,21,0.18), 0 0 10px rgba(250,204,21,0.28);
+}
+.waypoint-sigil::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px;
+    margin: -2px 0 0 -2px; background: #fff7ad; box-shadow: 0 0 7px rgba(250,204,21,0.9);
+}
+.waypoint-arrow {
+    position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+    margin-left: -5px; margin-top: -14px;
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-bottom: 17px solid #f8fafc; transform-origin: 50% 82%;
+}
+.waypoint-range {
+    min-width: 34px; padding: 2px 5px; border: 1px dashed rgba(250,204,21,0.58);
+    border-radius: 3px; background: rgba(8,6,12,0.68);
+    color: rgba(255,247,173,0.88); font: 900 10px/1 var(--mono);
+    letter-spacing: 0; text-align: center; text-shadow: 0 1px 2px #000;
+}
+#waypoint-indicator.onscreen .waypoint-sigil { width: 24px; height: 24px; opacity: 0.82; }
+#waypoint-indicator.onscreen .waypoint-sigil::before { inset: 4px; }
+#waypoint-indicator.onscreen .waypoint-sigil::after { width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px; }
+#waypoint-indicator.onscreen .waypoint-arrow { display: none; }
+#waypoint-indicator.onscreen .waypoint-range { display: none; }
+#waypoint-indicator.near .waypoint-range { color: #f8fafc; border-color: rgba(248,250,252,0.7); }
+#waypoint-indicator.fresh .waypoint-sigil::before { animation: waypoint-set-pulse 0.7s steps(4, end) infinite; }
+@keyframes waypoint-set-pulse {
+    0%, 100% { box-shadow: inset 0 0 9px rgba(250,204,21,0.18), 0 0 10px rgba(250,204,21,0.25); }
+    50% { box-shadow: inset 0 0 12px rgba(250,204,21,0.34), 0 0 18px rgba(250,204,21,0.58); }
+}
+
 /* Left HUD column: hotbar stacks above vitals in flow — they can never
    overlap, however many wand rows the hotbar grows. */
 #hud-left { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 9px; }
@@ -836,7 +879,8 @@ body.play-active.runtime-inspector-open #viewport-container {
 #minimap-canvas { width: 100%; height: auto; image-rendering: pixelated; flex-shrink: 1; min-height: 0; pointer-events: auto; }
 #minimap-caption {
     font-family: var(--mono); font-size: 13px; letter-spacing: 2px;
-    color: rgba(255,235,200,0.75); text-shadow: 0 1px 3px #000; white-space: nowrap;
+    color: rgba(255,235,200,0.75); text-shadow: 0 1px 3px #000; text-align: center;
+    white-space: normal; overflow-wrap: anywhere;
 }
 #minimap-poi-pop.map-poi-pop {
     z-index: 82; width: 220px; max-width: calc(100vw - 16px);

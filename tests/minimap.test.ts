@@ -150,6 +150,65 @@ describe('minimap POI markers', () => {
     expect(pois.map((poi) => poi.id)).not.toEqual(expect.arrayContaining(['encounter:1:machine-powdermill']));
   });
 
+  it('maps entry, discovered boss, machine, generated scene, and waypoint details', () => {
+    const level = runtime({
+      surfaceSpawn: { x: 72, y: 48 },
+      surfaceDescended: false,
+      boss: { x: 600, y: 256, kind: 'leviathan' },
+      placedPrefabs: [{ id: 'machine-powdermill', x0: 480, y0: 200, x1: 540, y1: 248 }],
+      generatedScenes: [{
+        id: 'scene-1',
+        source: 'virtual-world',
+        sceneId: 'ore_pump',
+        slotId: 'main',
+        label: 'Ore Pump',
+        x0: 680,
+        y0: 260,
+        x1: 720,
+        y1: 300,
+        objectCount: 3,
+        linkCount: 2,
+        lightCount: 1,
+        objects: [],
+        links: [],
+        lights: [],
+      }],
+      mapWaypoint: { x: 712, y: 288, label: 'Ore Pump' },
+    });
+
+    markExplored(level, 600, 256);
+    markExplored(level, 510, 224);
+    markExplored(level, 700, 280);
+
+    const pois = collectMinimapPois(ctx(level), level);
+
+    expect(pois.map((poi) => poi.id)).toEqual(
+      expect.arrayContaining(['spawn', 'boss-arena', 'prefab:0:machine-powdermill', 'scene:0:scene-1', 'map-waypoint']),
+    );
+    expect(pois.find((poi) => poi.id === 'spawn')?.title).toBe('Surface Entry');
+    expect(pois.find((poi) => poi.id === 'boss-arena')?.title).toBe('Leviathan Arena');
+    expect(pois.find((poi) => poi.id === 'prefab:0:machine-powdermill')?.title).toBe('Powdermill Machine');
+    expect(pois.find((poi) => poi.id === 'scene:0:scene-1')?.fields).toEqual(
+      expect.arrayContaining([{ label: 'objects', value: '3' }]),
+    );
+    const waypoint = pois.find((poi) => poi.id === 'map-waypoint')!;
+    expect(waypoint.kind).toBe('waypoint');
+    expect(waypoint.title).toBe('Ore Pump');
+    expect(waypoint.fields.some((field) => field.label === 'range')).toBe(true);
+    expect(hitTestMinimapPoi(pois, waypoint.drawX + 1.5, waypoint.drawY + 1.5)?.id).toBe('map-waypoint');
+  });
+
+  it('prefers concrete POIs over waypoint hit targets at the same map point', () => {
+    const level = runtime({
+      portal: { x: 160, y: 120, open: false },
+      mapWaypoint: { x: 160, y: 120, label: 'Exit Portal' },
+    });
+    const pois = collectMinimapPois(ctx(level), level);
+    const portal = pois.find((poi) => poi.id === 'portal')!;
+
+    expect(hitTestMinimapPoi(pois, portal.drawX + portal.width / 2, portal.drawY + portal.height / 2)?.id).toBe('portal');
+  });
+
   it('adds popovers for discovered small mechanism markers beyond doors', () => {
     const door: Mechanism = {
       id: 2,
