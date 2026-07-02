@@ -2,7 +2,7 @@ import type { Ctx, SimulationApi } from '@/core/types';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { canDryBloodOnSurface, stainCell } from '@/sim/stains';
 import { handleGas, handleMarshGas } from '@/sim/elements/gas';
-import { maybeReact } from '@/sim/reactions';
+import { maybeReact, refreshSecretReaction } from '@/sim/reactions';
 import {
   handleAcid,
   handleLava,
@@ -33,6 +33,9 @@ export class Simulation implements SimulationApi {
 
   /** Fixed-step accumulator: runs 0-6 processFrame substeps per render frame. */
   update(ctx: Ctx): void {
+    // the run's SECRET world reaction re-derives from the seed (one integer
+    // compare when nothing changed — covers new runs, resumes, playtests)
+    refreshSecretReaction(ctx);
     this.accumulator += ctx.params.global.simSpeed;
     let safetyLimit = 0;
     while (this.accumulator >= 1.0 && safetyLimit < 6) {

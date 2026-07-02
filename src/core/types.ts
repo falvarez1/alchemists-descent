@@ -1088,6 +1088,10 @@ export interface RunStatus {
 }
 
 export interface GameStateData {
+  /** The run's SECRET alchemy reaction (derived from worldSeed; see
+   *  sim/reactions.ts). Surfaced for probes and the inspector — the player
+   *  learns it from the discovery toast, not from here. */
+  secretReaction?: { a: number; b: number; name: string };
   mode: GameMode;
   score: number;
   frameCount: number;

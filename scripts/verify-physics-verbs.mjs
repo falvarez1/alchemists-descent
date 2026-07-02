@@ -235,6 +235,54 @@ await page.waitForTimeout(2500);
   check('acid vitrified the lava into glass', glass > 8, `glass=${glass}`);
   check('the dust transmuted blood into healium', healium > 6, `healium=${healium}`);
 }
+// ------------------------------------------- 5) the SECRET world reaction
+console.log('scenario: the run secret fires and announces itself');
+await buildChamber();
+const secretResult = await page.evaluate(async () => {
+  const ctx = window.__game.ctx;
+  const w = ctx.world;
+  const secret = ctx.state.secretReaction;
+  if (!secret) return { ok: false, reason: 'no secret derived' };
+  // stand the wizard beside the stage so the discovery counts as WITNESSED
+  ctx.player.x = 560; ctx.player.y = 534;
+  let announced = false;
+  const off = ctx.events.on('toast', (t) => {
+    if (t && typeof t.text === 'string' && t.text.includes('SECRET ALCHEMY')) announced = true;
+  });
+  // paint the pair interleaved for maximal contact
+  const colorFor = (t) => (t === 2 ? 0x2369f0 : 0x777767);
+  for (let y = 524; y <= 536; y++)
+    for (let x = 585; x <= 635; x++) {
+      const i = w.idx(x, y);
+      if (w.types[i] !== 0) continue;
+      const t = ((x / 4) | 0) % 2 === 0 ? secret.a : secret.b;
+      w.types[i] = t; w.colors[i] = colorFor(t);
+    }
+  const count = (t) => {
+    let n = 0;
+    for (let y = 500; y <= 545; y++)
+      for (let x = 522; x <= 698; x++) if (w.types[w.idx(x, y)] === t) n++;
+    return n;
+  };
+  const beforeA = count(secret.a);
+  const beforeB = count(secret.b);
+  await new Promise((r) => setTimeout(r, 3500));
+  const afterA = count(secret.a);
+  const afterB = count(secret.b);
+  off();
+  return {
+    ok: true,
+    name: secret.name,
+    consumed: beforeA + beforeB - (afterA + afterB),
+    transformed: afterA !== beforeA || afterB !== beforeB,
+    announced,
+  };
+});
+{
+  check('a secret is derived for the run', secretResult.ok === true, JSON.stringify(secretResult));
+  check(`the secret transmutes ("${secretResult.name ?? '?'}")`, secretResult.transformed === true, JSON.stringify(secretResult));
+  check('the discovery announces itself', secretResult.announced === true, '');
+}
 check('no page errors', pageErrors.length === 0, pageErrors.join('; '));
 
 console.log(`\n${pass} ok, ${fail} failed`);
