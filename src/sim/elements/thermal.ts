@@ -76,6 +76,11 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
       w.replaceCellAt(ni, Cell.Fire, fireColor());
       w.life[ni] = 40 + Math.floor(Math.random() * 50);
     }
+    if (n === Cell.MarshGas) {
+      // even a drifting ember lights bog vapor at a touch
+      w.replaceCellAt(ni, Cell.Fire, fireColor());
+      w.life[ni] = 22 + Math.floor(Math.random() * 14);
+    }
     if (n === Cell.Oil && w.life[ni] === 0 && Math.random() < P.igniteChance! * 7) {
       // an ember on an oil slick starts it burning IN PLACE (handleOil throws the
       // flame each frame for burnDuration) — a sustained pool fire, not a flash.
@@ -212,6 +217,11 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
       }
       if (n === Cell.Ice) {
         handleIce(ctx, tx, ty);
+      }
+      if (n === Cell.MarshGas) {
+        // bog vapor catches INSTANTLY - the racing front, not a smoulder
+        w.replaceCellAt(ti, Cell.Fire, fireColor());
+        w.life[ti] = 22 + Math.floor(Math.random() * 14);
       }
       if (n === Cell.Blood && Math.random() < 0.06) {
         w.replaceCellAt(ti, Cell.Smoke, smokeColor());

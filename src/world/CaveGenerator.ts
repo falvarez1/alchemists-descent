@@ -1272,6 +1272,11 @@ export class WorldGen implements WorldGenApi {
     }
     stage('encounter-lairs');
 
+    // (A GLOBAL powder settle was tried here and reverted: suspended powder
+    // PLUGS are a deliberate authored primitive — the spell lab's dig-station
+    // sand plug, the well plug bypass — and a world-wide settle destroys
+    // them. Lair stamps settle their own rect instead; see encounterLairs.)
+
     // 8c) GAUGE RESCUE: run the same connectivity audits the validator runs.
     //     Hands-on locks and door fronts use wizard connectivity (9x17 fits,
     //     spawn-connected). Machine-fed/ranged locks use cell connectivity.

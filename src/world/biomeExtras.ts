@@ -25,8 +25,7 @@ import {
   healiumColor,
   mossColor,
   snowColor,
-  stoneColor,
-} from '@/sim/colors';
+  stoneColor, marshGasColor, } from '@/sim/colors';
 
 /**
  * Per-biome content beyond the core BiomeDef (which is frozen in types.ts):
@@ -48,6 +47,8 @@ export interface BiomeExtras {
   snowDrifts?: number;
   /** Cave-moss seed patches near standing water (Wave F: damp rock greens over). */
   mossPatches?: number;
+  /** Flammable marsh-gas pockets pooled under cave ceilings (fungal/flooded). */
+  marshGasPockets?: number;
   /** Gold veins threaded through wall rock (the Gilded Vault's hoard look). */
   goldVeins?: number;
   /** Aurum Catalyst seams embedded in wall rock — mine the philosopher's dust. */
@@ -63,12 +64,14 @@ export const EXTRAS: Record<BiomeId, BiomeExtras> = {
     healSprings: 3,
     shrooms: 26,
     mossPatches: 30,
+    marshGasPockets: 9,
   },
   frozen: { foes: { slime: 3, bat: 4, golem: 3, imp: 1 }, goldBonus: 1, snowDrifts: 90 },
   flooded: {
     foes: { slime: 5, spitter: 3, bat: 2, golem: 1, rillback: 0.45 },
     goldBonus: 1,
     mossPatches: 48,
+    marshGasPockets: 6,
   },
   timber: {
     foes: { imp: 4, slime: 3, bomber: 3, bat: 2, weaver: 0.25, rootloper: 0.4 },
@@ -996,6 +999,65 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
         }
       }
       sd++;
+    }
+  }
+
+  // MARSH GAS POCKETS: flammable vapor pooled under cave ceilings. Placed
+  // LAST so biomes without a budget draw zero extra rng (the earthen golden
+  // hashes stay byte-identical). Gas blocks nothing (isGas), so findability
+  // is untouched; lighting one is the player's own doing. Each pocket hugs
+  // the first ceiling above an open cavity - already pooled, so distant
+  // unsimulated chunks look correct before the sim ever touches them.
+  if (B.marshGasPockets) {
+    // FORKED stream: later pipeline stages (lairs, mineral vugs) share `rng`,
+    // so drawing from it here would shift their placements. The fork draws
+    // freely and deterministically without moving the main sequence.
+    const gasRng = rng.fork(0x6d5a);
+    let gp = 0;
+    for (let attempt = 0; attempt < B.marshGasPockets * 70 && gp < B.marshGasPockets; attempt++) {
+      const x = 14 + Math.floor(gasRng.next() * (WIDTH - 28));
+      const y = 20 + Math.floor(gasRng.next() * (FLOOR_BAND - 40));
+      if (w.types[w.idx(x, y)] !== Cell.Empty) continue;
+      // find the ceiling within a short reach above
+      let ceilY = -1;
+      for (let up = 1; up <= 10; up++) {
+        if (!w.inBounds(x, y - up)) break;
+        if (isSolid(w.types[w.idx(x, y - up)])) {
+          ceilY = y - up + 1;
+          break;
+        }
+      }
+      if (ceilY < 0) continue;
+      // keep pockets away from the arrival point - the first breath of a
+      // level must never be a fuse the player didn't light
+      if (spawn && Math.abs(x - spawn.x) < 70 && Math.abs(ceilY - spawn.y) < 70) continue;
+      const halfW = 5 + Math.floor(gasRng.next() * 6);
+      const depth = 3 + Math.floor(gasRng.next() * 3);
+      let painted = 0;
+      for (let dx = -halfW; dx <= halfW; dx++) {
+        const columnDepth = Math.max(1, Math.round(depth * (1 - Math.abs(dx) / (halfW + 1))));
+        // each column hangs from ITS OWN ceiling, so the pocket drapes over
+        // uneven rock instead of floating mid-air beside it
+        let top = -1;
+        for (let up = 0; up <= 6; up++) {
+          if (!w.inBounds(x + dx, ceilY - up)) break;
+          if (isSolid(w.types[w.idx(x + dx, ceilY - up)])) {
+            top = ceilY - up + 1;
+            break;
+          }
+          if (up === 6) top = ceilY;
+        }
+        if (top < 0) top = ceilY;
+        for (let dy = 0; dy < columnDepth; dy++) {
+          const px = x + dx;
+          const py = top + dy;
+          if (!w.inBounds(px, py)) continue;
+          if (w.types[w.idx(px, py)] !== Cell.Empty) continue;
+          set(px, py, Cell.MarshGas, marshGasColor());
+          painted++;
+        }
+      }
+      if (painted > 14) gp++;
     }
   }
 }

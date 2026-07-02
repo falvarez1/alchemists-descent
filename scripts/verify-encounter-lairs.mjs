@@ -167,10 +167,23 @@ try {
               : null;
             const nearbyLiquid = c.kind === 'rillback' ? countCells(liquidRect, ['Water', 'Blood']) : 0;
             const settledResidents = enemiesInRect(lair, c.kind);
-            const cellReach = rt ? reachableMask(rt) : null;
-            const wizardReach = rt ? wizardMask(rt) : null;
-            const lairCellReachCells = countMaskInRect(cellReach, lair);
-            const lairWizardReachCells = countMaskInRect(wizardReach, lair);
+            // Mask sampling gets the same settle-tolerance the findability
+            // wait above has: the level SIMULATES while this audits, and a
+            // transient falling-debris plug along the fit-path can zero the
+            // wizard mask for a moment (the d6 stonemaw flake). Retry until
+            // the masks stabilize open, or accept the fail after the window.
+            let cellReach = null;
+            let wizardReach = null;
+            let lairCellReachCells = 0;
+            let lairWizardReachCells = 0;
+            for (let tryN = 0; tryN < 10; tryN++) {
+              cellReach = rt ? reachableMask(rt) : null;
+              wizardReach = rt ? wizardMask(rt) : null;
+              lairCellReachCells = countMaskInRect(cellReach, lair);
+              lairWizardReachCells = countMaskInRect(wizardReach, lair);
+              if (lairWizardReachCells > 0 && lairCellReachCells > 0) break;
+              await sleep(400);
+            }
             const residentCellReachable = !!cellReach && residents.some((e) => near(cellReach, e.x, e.y, 12));
             const residentWizardReachable = !!wizardReach && residents.some((e) => near(wizardReach, e.x, e.y, 20));
             const lairCellReachable = lairCellReachCells >= 80 || residentCellReachable;

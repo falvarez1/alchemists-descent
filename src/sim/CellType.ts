@@ -61,6 +61,13 @@ export const Cell = {
   // catching and racing fire like dry brush (thermal). Planted on the walkable
   // surface by world/surfaceDress.plantGroundCover alongside mushroom tufts.
   Grass: 37,
+  // MARSH GAS: flammable bog vapor. Rises and POOLS under ceilings (no
+  // dissipation - the pocket you can see is the pocket that ignites); any
+  // fire/lava/ember contact turns it to flame instantly, so a lit pocket
+  // burns as a racing front. Seeded under cave ceilings in fungal/flooded
+  // biomes (applyBiomeExtras) - mining or a stray fireball writes the set
+  // piece. Fail-open: a blast only ever OPENS terrain.
+  MarshGas: 38,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
@@ -72,7 +79,7 @@ export type Cell = (typeof Cell)[keyof typeof Cell];
  * stay <= 127. Ids are append-only and top out at 37 today, so there is room
  * for 90 more materials; if id 128 is ever near, the charge bit moves first.
  */
-export const CELL_COUNT = 38;
+export const CELL_COUNT = 39;
 
 /**
  * Classification predicates take plain numbers so values read straight out of
@@ -136,7 +143,7 @@ export function isLiquid(t: number): boolean {
 }
 
 export function isGas(t: number): boolean {
-  return t === Cell.Steam || t === Cell.Smoke;
+  return t === Cell.Steam || t === Cell.Smoke || t === Cell.MarshGas;
 }
 
 /** Materials that obstruct moving bodies (player, enemies, projectiles). */

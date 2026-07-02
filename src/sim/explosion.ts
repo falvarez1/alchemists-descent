@@ -214,6 +214,12 @@ export class Explosions implements ExplosionApi {
           if (!world.inBounds(nx, ny)) continue;
           const ni = world.idx(nx, ny);
           const orig = world.types[ni];
+          if (orig === Cell.MarshGas) {
+            // a blast doesn't erase a gas pocket - it LIGHTS it
+            world.replaceCellAt(ni, Cell.Fire, fireColor());
+            world.life[ni] = 24 + Math.floor(Math.random() * 12);
+            continue;
+          }
           if (orig !== Cell.Empty) blastTouched[ni] = 1;
           if (orig !== Cell.Metal) {
             // Terrain crumbles fully near the core, raggedly at the rim

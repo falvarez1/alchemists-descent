@@ -84,6 +84,8 @@ export const MATERIAL_INFO: Record<number, string> = {
     'Dark host rock veined with gold. It does not glow on its own, but a light sweep reveals flecks; digging breaks it into collectable Gold Powder.',
   [Cell.Grass]:
     'Walk-through ground cover planted on cave floors and the surface. It spreads lightly along damp ground and catches fire like dry brush.',
+  [Cell.MarshGas]:
+    'Flammable bog vapor that rises and pools under cave ceilings. It never disperses on its own - and the faintest spark turns the whole pocket into a racing wall of flame.',
 };
 
 /**

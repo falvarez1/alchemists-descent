@@ -84,6 +84,14 @@ export function placeEncounterLairs(
       sealRillbackPool(ctx.world, at, spec);
       carveRillbackDryAccess(ctx.world, at, spec);
     }
+    settlePowderInRect(
+      ctx.world,
+      at.x0 - 16,
+      at.y0 - 16,
+      at.x0 + spec.w + 15,
+      at.y0 + spec.h + 15,
+    );
+    hardenCorridorAgainstPowder(ctx.world, steps, 7, 21, 9);
     if (!lairWizardReachable(ctx.world, site.spawn, at, spec, stamp.spawn)) {
       const target = nearestWizardCell(ctx.world, site.spawn, stamp.mouth.x, stamp.mouth.y);
       if (target) {
@@ -376,6 +384,80 @@ function nearestWizardCell(
     }
   }
   return best;
+}
+
+/**
+ * Deterministically settle loose powder (sand/coal/gunpowder/snow) inside a
+ * rect: every grain falls straight down onto the first support. Generation
+ * scatters powder over air for the look, but the LIVE sim drops it within
+ * seconds — so a generation-time "wizard-reachable" verdict could be false
+ * the moment a player arrives (a stonemaw seam's coal buried its own lair on
+ * d6 seed=42; settled chokes elsewhere flickered the findability audit).
+ * Settling before any reachability pass makes generation judge the settled
+ * truth. One O(height) column compaction per column; only Empty counts as
+ * fall-through (powder resting on liquid stays put — conservative).
+ */
+function settlePowderInRect(world: World, x0: number, y0: number, x1: number, y1: number): void {
+  const isPowder = (t: number): boolean =>
+    t === Cell.Sand || t === Cell.Coal || t === Cell.Gunpowder || t === Cell.Snow;
+  const lo = Math.max(1, y0);
+  const hi = Math.min(world.height - 2, y1);
+  for (let x = Math.max(1, x0); x <= Math.min(world.width - 2, x1); x++) {
+    let dropTo = hi; // lowest slot a grain scanned above may land in
+    for (let y = hi; y >= lo; y--) {
+      const t = world.types[world.idx(x, y)];
+      if (isPowder(t)) {
+        if (dropTo !== y) world.swap(x, y, x, dropTo);
+        dropTo--;
+      } else if (t !== Cell.Empty) {
+        dropTo = y - 1; // solid/liquid support: grains above rest on it
+      }
+    }
+  }
+}
+
+/**
+ * Fuse loose powder that BORDERS the connector's carved air into stone. The
+ * live sim topples powder with Math.random, so the same dune above a corridor
+ * settles differently on every visit — one shape leaves the 9x17 fit open,
+ * another pours in and buries it (the seed=42 d6 stonemaw coin-flip). A thin
+ * fused rim makes the corridor topple-proof no matter which way the dice go,
+ * while every dune that DOESN'T touch the corridor keeps its physics.
+ */
+function hardenCorridorAgainstPowder(
+  world: World,
+  steps: ReadonlyArray<readonly [number, number]>,
+  halfW: number,
+  up: number,
+  down: number,
+): void {
+  const isPowder = (t: number): boolean =>
+    t === Cell.Sand || t === Cell.Coal || t === Cell.Gunpowder || t === Cell.Snow;
+  for (const [sx, sy] of steps) {
+    for (let dx = -(halfW + 2); dx <= halfW + 2; dx++) {
+      for (let dy = -(up + 2); dy <= down + 2; dy++) {
+        const x = sx + dx;
+        const y = sy + dy;
+        if (!world.inBounds(x, y)) continue;
+        if (world.types[world.idx(x, y)] !== Cell.Empty) continue;
+        // fuse any powder face touching this air cell (sides + overhead)
+        for (const [nx, ny] of [
+          [x, y - 1],
+          [x - 1, y],
+          [x + 1, y],
+        ] as const) {
+          if (!world.inBounds(nx, ny)) continue;
+          const ni = world.idx(nx, ny);
+          if (isPowder(world.types[ni])) {
+            world.types[ni] = Cell.Stone;
+            world.colors[ni] = stoneColor();
+            world.life[ni] = 0;
+            world.charge[ni] = 0;
+          }
+        }
+      }
+    }
+  }
 }
 
 function stampLair(world: World, rng: Rng, spec: LairSpec, at: LairSite): LairStamp {

@@ -10,6 +10,14 @@ export class Rng {
     this.s = seed >>> 0;
   }
 
+  /** A new independent stream derived from the CURRENT state + salt, WITHOUT
+   *  advancing this stream. Side passes (decorations added after content that
+   *  is placement-sensitive) draw from a fork so they can never shift the
+   *  main generation sequence — adding a pass must not move a lair. */
+  fork(salt: number): Rng {
+    return new Rng((this.s ^ Math.imul(salt, 0x9e3779b1)) >>> 0);
+  }
+
   /** Next sample in [0, 1) — drop-in for the global random function. */
   next(): number {
     this.s = (this.s + 0x6d2b79f5) >>> 0;

@@ -1,7 +1,7 @@
 import type { Ctx, SimulationApi } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { canDryBloodOnSurface, stainCell } from '@/sim/stains';
-import { handleGas } from '@/sim/elements/gas';
+import { handleGas, handleMarshGas } from '@/sim/elements/gas';
 import {
   handleAcid,
   handleLava,
@@ -162,6 +162,7 @@ export class Simulation implements SimulationApi {
             ctx.params.materials[Cell.Smoke].floatSpeed!,
             ctx.params.materials[Cell.Smoke].dispersion!,
           );
+        else if (type === Cell.MarshGas) handleMarshGas(ctx, x, y);
       }
     }
 

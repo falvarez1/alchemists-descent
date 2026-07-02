@@ -116,8 +116,9 @@ describe('cell ABI contracts', () => {
       Catalyst: 35,
       RawOre: 36,
       Grass: 37,
+      MarshGas: 38,
     });
-    expect(CELL_COUNT).toBe(38);
+    expect(CELL_COUNT).toBe(39);
     expect(Math.max(...Object.values(Cell))).toBeLessThan(128);
   });
 
@@ -161,6 +162,7 @@ describe('cell ABI contracts', () => {
       Cell.Fungus,
       Cell.Moss,
       Cell.Grass,
+      Cell.MarshGas,
     ];
     const unique = new Set(routed);
     const missing = Array.from({ length: CELL_COUNT }, (_, id) => id).filter((id) => !unique.has(id as Cell));

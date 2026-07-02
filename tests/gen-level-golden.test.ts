@@ -132,12 +132,43 @@ function emptyBottomExitCells(level: ReturnType<typeof generateLevelState>): num
 
 // Re-recorded for GEN_VERSION 34: mechanism-vault trigger antechambers use
 // swept wizard-gauge connectors so their hands-on controls stay walkable.
+describe('marsh-gas ceiling pockets', () => {
+  it('fungal levels generate gas pockets pooled under ceilings', () => {
+    const { world } = generateLevelState(LEVELS.d2, 42);
+    let gas = 0;
+    let ceilinged = 0;
+    for (let y = 1; y < world.height - 1; y++) {
+      for (let x = 1; x < world.width - 1; x++) {
+        if (world.types[world.idx(x, y)] !== Cell.MarshGas) continue;
+        gas++;
+        // pooled: solid rock within a short reach straight above
+        for (let up = 1; up <= 8; up++) {
+          const t = world.types[world.idx(x, y - up)];
+          if (t !== Cell.Empty && t !== Cell.MarshGas) {
+            ceilinged++;
+            break;
+          }
+        }
+      }
+    }
+    expect(gas).toBeGreaterThan(120); // the biome budget really landed
+    expect(ceilinged / gas).toBeGreaterThan(0.9); // and it hangs, not floats
+  });
+
+  it('earthen levels generate NONE (no budget -> zero rng draws -> hashes hold)', () => {
+    const { world } = generateLevelState(LEVELS.d1, 1337);
+    let gas = 0;
+    for (let i = 0; i < world.types.length; i++) if (world.types[i] === Cell.MarshGas) gas++;
+    expect(gas).toBe(0);
+  });
+});
+
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   { id: 'd1', seed: 1337, hash: '31b54fa4' },
-  { id: 'd4', seed: 1337, hash: '252ec3d4' },
-  { id: 'd8', seed: 1337, hash: 'b90cea1a' },
+  { id: 'd4', seed: 1337, hash: '6ed396c1' }, // re-recorded: marsh-gas ceiling pockets (flooded biome, forked rng)
+  { id: 'd8', seed: 1337, hash: '00a62fa2' }, // re-recorded: lair powder settled + connector rim fused
   { id: 'vault', seed: 1337, hash: 'bb8069aa' },
-  { id: 'd2', seed: 42, hash: '520e5093' },
+  { id: 'd2', seed: 42, hash: 'e911f4cf' }, // re-recorded: marsh-gas ceiling pockets (fungal biome, forked rng)
 ];
 
 describe('full generateLevel golden hashes', () => {

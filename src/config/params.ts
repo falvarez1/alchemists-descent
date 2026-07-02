@@ -72,6 +72,7 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Acid]: { name: 'Acid', flowRate: 0.65, corrosiveSpeed: 0.8, bloomWeight: 0.3 },
   [Cell.Fire]: { name: 'Fire', particleLife: 300, upwardSpread: 0.55, bloomWeight: 0.85 },
   [Cell.Smoke]: { name: 'Smoke', floatSpeed: 0.5, dispersion: 0.05, bloomWeight: 0.1 },
+  [Cell.MarshGas]: { name: 'Marsh Gas', floatSpeed: 0.42, dispersion: 0.45, bloomWeight: 0.24 },
   [Cell.Steam]: { name: 'Steam', bloomWeight: 0.15 },
   [Cell.Ice]: { name: 'Ice', insulationRating: 0.85 },
   [Cell.Metal]: { name: 'Metal', conductivity: 0.95 },

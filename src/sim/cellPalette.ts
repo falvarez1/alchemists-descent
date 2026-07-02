@@ -61,6 +61,7 @@ export const CELL_PALETTE: readonly number[] = [
   packRGB(255, 150, 60), // 35 Catalyst
   packRGB(120, 95, 45), //  36 RawOre (dark gold-flecked rock)
   packRGB(124, 176, 52), // 37 Grass (yellow-green lawn blades)
+  packRGB(151, 158, 84), // 38 MarshGas (murky bog vapor)
 ];
 
 /** Display names, indexed by cell id (import reports, .gpl swatch labels). */
@@ -103,6 +104,7 @@ export const CELL_NAME: readonly string[] = [
   'Catalyst',
   'Raw Ore',
   'Grass',
+  'Marsh Gas',
 ];
 
 export function paletteColor(t: number): number {
