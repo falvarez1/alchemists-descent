@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 35; // 35: marsh-gas ceiling pockets in fungal/flooded biomes
+export const GEN_VERSION = 36; // 36: gunpowder seams laced through ore/coal vugs
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

@@ -155,6 +155,20 @@ describe('marsh-gas ceiling pockets', () => {
     expect(ceilinged / gas).toBeGreaterThan(0.9); // and it hangs, not floats
   });
 
+  it('ore/coal vugs are laced with gunpowder seams', () => {
+    // (No world-wide "never beside heat" assertion: the cave SKELETON also
+    // seeds volatile oil/gunpowder pockets - CaveGenerator seedsOilBias -
+    // which may legitimately neighbour lava veins. The vug lacing's own
+    // lace-time guard skips hot-adjacent cells; the property asserted here
+    // is that the seams land at all.)
+    const { world } = generateLevelState(LEVELS.d1, 1337);
+    let seams = 0;
+    for (let i = 0; i < world.types.length; i++) {
+      if (world.types[i] === Cell.Gunpowder) seams++;
+    }
+    expect(seams).toBeGreaterThan(8);
+  });
+
   it('earthen levels generate NONE (no budget -> zero rng draws -> hashes hold)', () => {
     const { world } = generateLevelState(LEVELS.d1, 1337);
     let gas = 0;
@@ -164,11 +178,11 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '31b54fa4' },
-  { id: 'd4', seed: 1337, hash: '6ed396c1' }, // re-recorded: marsh-gas ceiling pockets (flooded biome, forked rng)
-  { id: 'd8', seed: 1337, hash: '00a62fa2' }, // re-recorded: lair powder settled + connector rim fused
-  { id: 'vault', seed: 1337, hash: 'bb8069aa' },
-  { id: 'd2', seed: 42, hash: 'e911f4cf' }, // re-recorded: marsh-gas ceiling pockets (fungal biome, forked rng)
+  { id: 'd1', seed: 1337, hash: '4ef69480' }, // re-recorded: gunpowder seams in ore/coal vugs
+  { id: 'd4', seed: 1337, hash: '880b8755' }, // re-recorded: gas pockets + gunpowder seams
+  { id: 'd8', seed: 1337, hash: '51e6187e' }, // re-recorded: lair settle/rim + gunpowder seams
+  { id: 'vault', seed: 1337, hash: '0a76f43a' }, // re-recorded: gunpowder seams in ore/coal vugs
+  { id: 'd2', seed: 42, hash: 'f40d531b' }, // re-recorded: gas pockets + gunpowder seams
 ];
 
 describe('full generateLevel golden hashes', () => {

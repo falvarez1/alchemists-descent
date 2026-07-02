@@ -1124,6 +1124,37 @@ export function fillMineralVugs(
       const mat = roll < 0.58 ? Cell.Stone : roll < 0.8 ? Cell.Coal : roll < 0.96 ? Cell.RawOre : Cell.Crystal;
       const fn = COLOR_FN[mat];
       for (const c of comp) w.replaceCellAt(c, mat, fn());
+      // GUNPOWDER SEAMS: ore caches and coal beds carry a volatile lacing —
+      // mining them with fire-based spells detonates the seam, so the greedy
+      // fast dig is a wager and the careful excavate is the craft. FORKED rng
+      // (per-cell draws on the main stream would shift lair placement — the
+      // d6 lesson); never laced beside existing heat, so no cache self-pops
+      // the moment the sim first touches it. Fail-open: a blast only opens
+      // rock, and gold spilled by the pop still homes to the wizard.
+      if (mat === Cell.RawOre || mat === Cell.Coal) {
+        const seamRng = rng.fork(0x5ea3 ^ comp[0]);
+        const laceChance = mat === Cell.RawOre ? 0.13 : 0.07;
+        for (const c of comp) {
+          if (seamRng.next() >= laceChance) continue;
+          const cx = c % WIDTH;
+          const cy = (c / WIDTH) | 0;
+          let hot = false;
+          for (const [ddx, ddy] of [
+            [0, 1],
+            [0, -1],
+            [1, 0],
+            [-1, 0],
+          ] as const) {
+            const t = w.inBounds(cx + ddx, cy + ddy) ? w.types[w.idx(cx + ddx, cy + ddy)] : Cell.Empty;
+            if (t === Cell.Lava || t === Cell.Fire || t === Cell.Ember) {
+              hot = true;
+              break;
+            }
+          }
+          if (hot) continue;
+          w.replaceCellAt(c, Cell.Gunpowder, COLOR_FN[Cell.Gunpowder]());
+        }
+      }
     }
   }
 }

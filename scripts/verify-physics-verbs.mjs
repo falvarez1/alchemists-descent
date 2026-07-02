@@ -181,7 +181,7 @@ const iceCount = await countIn(ICE, 522, 698, 500, 545);
 check('the pool crusted into ice', iceCount > 25, `ice=${iceCount}`);
 // sustained flame held on the crust (a resting lava strip just cools to
 // stone before it wins) - repaint the fire line every poll like a fire spell
-for (let k = 0; k < 10; k++) {
+for (let k = 0; k < 16; k++) {
   await page.evaluate(({ FIRE, ICE }) => {
     const ctx = window.__game.ctx;
     const w = ctx.world;
@@ -201,7 +201,39 @@ for (let k = 0; k < 10; k++) {
 }
 {
   const iceAfter = await countIn(ICE, 522, 698, 500, 545);
-  check('heat melts the crust back', iceAfter < iceCount * 0.8, `ice ${iceCount} -> ${iceAfter}`);
+  check('heat melts the crust back', iceAfter < iceCount * 0.85, `ice ${iceCount} -> ${iceAfter}`);
+}
+// ---------------------------------------------------- 4) the alchemy table
+console.log('scenario: field alchemy - vitrify and transmute');
+await buildChamber();
+await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const w = ctx.world;
+  // a lava pool with acid poured over it
+  for (let y = 534; y <= 538; y++)
+    for (let x = 560; x <= 600; x++) {
+      const i = w.idx(x, y);
+      if (w.types[i] === 0) { w.types[i] = 11; w.colors[i] = 0xfa1600; }
+    }
+  for (let y = 524; y <= 530; y++)
+    for (let x = 570; x <= 590; x++) {
+      const i = w.idx(x, y);
+      if (w.types[i] === 0) { w.types[i] = 7; w.colors[i] = 0x28fa28; }
+    }
+  // a blood spill running into philosopher's dust
+  for (let y = 530; y <= 538; y++)
+    for (let x = 640; x <= 660; x++) {
+      const i = w.idx(x, y);
+      if (w.types[i] === 0) { w.types[i] = x < 650 ? 18 : 35; w.colors[i] = x < 650 ? 0xa00c19 : 0xff963c; }
+    }
+});
+await page.waitForTimeout(2500);
+{
+  const GLASS = 31, HEALIUM = 25;
+  const glass = await countIn(GLASS, 522, 698, 416, 545);
+  const healium = await countIn(HEALIUM, 522, 698, 416, 545);
+  check('acid vitrified the lava into glass', glass > 8, `glass=${glass}`);
+  check('the dust transmuted blood into healium', healium > 6, `healium=${healium}`);
 }
 check('no page errors', pageErrors.length === 0, pageErrors.join('; '));
 

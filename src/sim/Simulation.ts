@@ -1,7 +1,8 @@
 import type { Ctx, SimulationApi } from '@/core/types';
-import { Cell } from '@/sim/CellType';
+import { Cell, isLiquid } from '@/sim/CellType';
 import { canDryBloodOnSurface, stainCell } from '@/sim/stains';
 import { handleGas, handleMarshGas } from '@/sim/elements/gas';
+import { maybeReact } from '@/sim/reactions';
 import {
   handleAcid,
   handleLava,
@@ -111,6 +112,11 @@ export class Simulation implements SimulationApi {
           }
           continue;
         }
+
+        // THE ALCHEMY TABLE: liquids consult the data-driven pair reactions
+        // first — a listed pair (acid+lava -> glass, blood+catalyst ->
+        // healium...) wins over the cell's generic handler for this substep.
+        if (isLiquid(type) && maybeReact(ctx, x, y, type)) continue;
 
         if (type === Cell.Sand || type === Cell.Gold || type === Cell.Catalyst)
           handleSand(ctx, x, y, type);
