@@ -1,12 +1,10 @@
-import type { Ctx, Enemy, WeaverLegState } from '@/core/types';
+import type { Ctx, Enemy } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { clamp, lerp, traceLine } from '@/core/math';
-import {
-  LEG_IK_FLAG_ENVELOPE_CLAMPED,
-  LEG_IK_FLAG_EXTENSION_CLAMPED,
-  solveConstrainedLegIk,
-} from '@/render/animation/ConstrainedLegIk';
-import { blocksEntity, isSoftGrowth } from '@/sim/CellType';
+import { solveConstrainedLegIk } from '@/render/animation/ConstrainedLegIk';
+// Pure pose data/math from the Weaver's tick-rate locomotion — the renderer
+// reads the rig it owns (no gameplay coupling; nothing here is called back).
+import { WEAVER_LEG_REACH_LOCO, WEAVER_LOCO_REST, weaverHipWorld } from '@/entities/weaverLocomotion';
 import {
   drawWeaverRigPart,
   drawWeaverRigSegment,
@@ -18,215 +16,12 @@ import {
 
 type RGB = readonly [number, number, number];
 
-const WEAVER_REST = [
-  // Compact spider stance: feet sit under the mass instead of fanning into giant
-  // high arcs. The phases form a grounded alternating tetrapod with only a small
-  // metachronal ripple when agitated.
-  { side: -1, hipX: -5, hipY: 15, footX: -24, footY: 2, phase: 0.0 },
-  { side: -1, hipX: -8, hipY: 13, footX: -31, footY: 0, phase: Math.PI },
-  { side: -1, hipX: -8, hipY: 10, footX: -34, footY: 1, phase: Math.PI * 0.5 },
-  { side: -1, hipX: -5, hipY: 7, footX: -28, footY: 0, phase: Math.PI * 1.5 },
-  { side: 1, hipX: 5, hipY: 15, footX: 24, footY: 2, phase: Math.PI },
-  { side: 1, hipX: 8, hipY: 13, footX: 31, footY: 0, phase: 0.0 },
-  { side: 1, hipX: 8, hipY: 10, footX: 34, footY: 1, phase: Math.PI * 1.5 },
-  { side: 1, hipX: 5, hipY: 7, footX: 28, footY: 0, phase: Math.PI * 0.5 },
-] as const;
-
-// Natural reach per leg = the summed length of its three bones. A modest slack
-// factor keeps the segmented-leg silhouette without the old daddy-long-legs span
-// that made the walk read as a flailing bicycle.
-const WEAVER_LEG_REACH = WEAVER_REST.map(
-  (r) => Math.hypot(r.footX - r.hipX, r.footY - r.hipY) * 1.38,
-);
-const WEAVER_LEG_HARD_RESET = 1.28;
-
-interface WeaverFootTarget {
-  x: number;
-  y: number;
-  planted: boolean;
-  strain: number;
-  surface: NonNullable<WeaverLegState['surface']>;
-}
-
-function weaverCanFootOccupy(ctx: Ctx, x: number, y: number): boolean {
-  const w = ctx.world;
-  if (!w.inBounds(x, y)) return false;
-  return !blocksEntity(w.types[w.idx(x, y)]);
-}
-
-function weaverFootStillSupported(ctx: Ctx, footX: number, footY: number): boolean {
-  const w = ctx.world;
-  const fx = Math.floor(footX);
-  const fy = Math.floor(footY);
-  for (let yy = fy - 2; yy <= fy + 2; yy++) {
-    if (yy < 1 || yy >= w.height - 1) continue;
-    for (let xx = fx - 2; xx <= fx + 2; xx++) {
-      if (xx < 1 || xx >= w.width - 1) continue;
-      const t = w.types[xx + yy * w.width];
-      if (!blocksEntity(t) && !isSoftGrowth(t)) continue;
-      const candidates = [
-        [xx + 0.5, yy - 0.5],
-        [xx - 0.5, yy + 0.15],
-        [xx + 1.5, yy + 0.15],
-        [xx + 0.5, yy + 1.5],
-      ] as const;
-      for (const [cx, cy] of candidates) {
-        if (Math.hypot(cx - footX, cy - footY) < 2.8) return true;
-      }
-    }
-  }
-  return false;
-}
-
-function weaverFootTarget(
-  ctx: Ctx,
-  desiredX: number,
-  desiredY: number,
-  hipX: number,
-  hipY: number,
-  side: number,
-  desperate: boolean,
-  lifted = false,
-): WeaverFootTarget {
-  const w = ctx.world;
-  const width = w.width;
-  const height = w.height;
-  if (lifted) {
-    return {
-      x: clamp(hipX + side * 3, 2, width - 3),
-      y: clamp(hipY + (desperate ? 34 : 27), 3, height - 4),
-      planted: false,
-      strain: 1,
-      surface: 'failed',
-    };
-  }
-  const sx = Math.floor(clamp(desiredX, 2, width - 3));
-  const sy = Math.floor(clamp(desiredY, 3, height - 4));
-  // Desperate legs (footing cut away) sweep a much WIDER horizontal arc so a leg
-  // over a hole can find the near/far rim and bridge it instead of giving up.
-  const searchX = desperate ? 42 : 18;
-  const searchUp = desperate ? 26 : 12;
-  const searchDown = desperate ? 34 : 18;
-  const maxReach = desperate ? 90 : 74;
-  let best: WeaverFootTarget | null = null;
-  let bestScore = Infinity;
-  const addCandidate = (
-    fx: number,
-    fy: number,
-    faceBias: number,
-    clingBonus: number,
-    surface: NonNullable<WeaverLegState['surface']>,
-  ): void => {
-    const hipDist = Math.hypot(fx - hipX, fy - hipY);
-    if (hipDist > maxReach) return;
-    const dx = fx - desiredX;
-    const dy = fy - desiredY;
-    const sidePenalty = Math.sign(fx - hipX || side) === side ? 0 : 16;
-    const score = dx * dx + dy * dy * 1.35 + sidePenalty + faceBias - clingBonus;
-    if (score >= bestScore) return;
-    bestScore = score;
-    best = { x: fx, y: fy, planted: true, strain: clamp(hipDist / maxReach, 0, 1), surface };
-  };
-
-  for (let yy = sy - searchUp; yy <= sy + searchDown; yy++) {
-    if (yy < 1 || yy >= height - 1) continue;
-    for (let xx = sx - searchX; xx <= sx + searchX; xx++) {
-      if (xx < 1 || xx >= width - 1) continue;
-      const t = w.types[xx + yy * width];
-      if (!blocksEntity(t) && !isSoftGrowth(t)) continue;
-      const clingBonus = isSoftGrowth(t) ? 4 : 0;
-      if (weaverCanFootOccupy(ctx, xx, yy - 1)) addCandidate(xx + 0.5, yy - 0.5, 0, clingBonus, 'floor');
-      if (weaverCanFootOccupy(ctx, xx - 1, yy)) addCandidate(xx - 0.5, yy + 0.15, 5, clingBonus, 'rightWall');
-      if (weaverCanFootOccupy(ctx, xx + 1, yy)) addCandidate(xx + 1.5, yy + 0.15, 5, clingBonus, 'leftWall');
-      if (weaverCanFootOccupy(ctx, xx, yy + 1)) addCandidate(xx + 0.5, yy + 1.5, 9, clingBonus, 'ceiling');
-    }
-  }
-  if (best) return best;
-
-  // Nothing near the DESIRED spot — sweep outward from the hip for the nearest
-  // grippable surface within the leg's real reach. This is what lets a leg on the
-  // open-air side of a wall (or under a ledge) reach BACK to the surface the body is
-  // gripping instead of flailing into the void, and it never draws a leg across a
-  // gap because the foothold it returns is genuinely within reach of the hip. It is
-  // orientation-independent (pure nearest-surface), so it can't feed back into the
-  // body's tilt. A truly airborne weaver finds no surface in reach and falls through
-  // to the dangle below.
-  const hxF = Math.floor(hipX);
-  const hyF = Math.floor(hipY);
-  for (let r = 5; r <= maxReach; r += 3) {
-    let ringBest: WeaverFootTarget | null = null;
-    let ringBestD = Infinity;
-    const consider = (
-      fx: number,
-      fy: number,
-      surface: NonNullable<WeaverLegState['surface']>,
-    ): void => {
-      const d = Math.hypot(fx - hipX, fy - hipY);
-      if (d > maxReach || d >= ringBestD) return;
-      ringBestD = d;
-      ringBest = { x: fx, y: fy, planted: true, strain: clamp(d / maxReach, 0, 1), surface };
-    };
-    const steps = Math.max(10, Math.round(r * 1.1));
-    for (let a = 0; a < steps; a++) {
-      const ang = (a / steps) * Math.PI * 2;
-      const xx = hxF + Math.round(Math.cos(ang) * r);
-      const yy = hyF + Math.round(Math.sin(ang) * r);
-      if (xx < 1 || xx >= width - 1 || yy < 1 || yy >= height - 1) continue;
-      const t = w.types[xx + yy * width];
-      if (!blocksEntity(t) && !isSoftGrowth(t)) continue;
-      if (weaverCanFootOccupy(ctx, xx, yy - 1)) consider(xx + 0.5, yy - 0.5, 'floor');
-      if (weaverCanFootOccupy(ctx, xx - 1, yy)) consider(xx - 0.5, yy + 0.15, 'rightWall');
-      if (weaverCanFootOccupy(ctx, xx + 1, yy)) consider(xx + 1.5, yy + 0.15, 'leftWall');
-      if (weaverCanFootOccupy(ctx, xx, yy + 1)) consider(xx + 0.5, yy + 1.5, 'ceiling');
-    }
-    if (ringBest) return ringBest;
-  }
-
-  // No purchase anywhere in reach: pull the foot UP toward the hip into a
-  // raised, feeling-for-grip pose (not a dead limb sagging into a hole — see the
-  // footing-recovery note). Lifted/held bodies return the hanging target above.
-  const reachOut = desperate ? 8 : 5;
-  const tuckUp = desperate ? 9 : 6;
-  return {
-    x: clamp(hipX + side * reachOut, 2, width - 3),
-    y: clamp(hipY + tuckUp, 3, height - 4),
-    planted: false,
-    strain: 1,
-    surface: 'failed',
-  };
-}
-
-function resetWeaverLegToTarget(
-  leg: WeaverLegState,
-  target: WeaverFootTarget,
-  hipX: number,
-  hipY: number,
-  maxReach: number,
-): void {
-  const dx = target.x - hipX;
-  const dy = target.y - hipY;
-  const dist = Math.hypot(dx, dy);
-  const targetInReach = dist <= maxReach || dist <= 0.001;
-  const x = targetInReach ? target.x : hipX + (dx / dist) * maxReach;
-  const y = targetInReach ? target.y : hipY + (dy / dist) * maxReach;
-  leg.x = x;
-  leg.y = y;
-  leg.tx = x;
-  leg.ty = y;
-  leg.fromX = undefined;
-  leg.fromY = undefined;
-  leg.step = undefined;
-  leg.lift = 0;
-  leg.smoothTx = x;
-  leg.smoothTy = y;
-  leg.planted = target.planted && targetInReach;
-  leg.surface = leg.planted ? target.surface : 'failed';
-  leg.strain = leg.planted ? target.strain : 1;
-  leg.failT = leg.planted ? 0 : Math.max(1, leg.failT ?? 0);
-  leg.plantAge = leg.planted ? 1 : 0;
-  leg.supportOk = leg.planted;
-  leg.supportCheckFrame = undefined;
-  leg.ik = undefined;
+/** Deterministic per-frame flicker noise in [0,1): keyed to the SIM clock
+ *  (frameCount freezes while paused; rAF keeps drawing) so paused frames hold
+ *  perfectly still instead of vibrating with per-draw Math.random(). */
+function flickerNoise(frameCount: number, seed: number): number {
+  const h = Math.sin(frameCount * 12.9898 + seed * 78.233) * 43758.5453;
+  return h - Math.floor(h);
 }
 
 /**
@@ -257,8 +52,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   // the sim pins them to the live conductor, see Enemies.ts). Every pixel draws
   // off this shaken origin, so the whole creature vibrates while current crawls it.
   const conv = e.status.electrified > 0;
-  const bx = conv ? e.x + ((Math.random() * 5) | 0) - 2 : e.x;
-  const by = conv ? e.y + ((Math.random() * 3) | 0) - 1 : e.y;
+  const bx = conv ? e.x + ((flickerNoise(frameCount, e.bobPhase * 7.1) * 5) | 0) - 2 : e.x;
+  const by = conv ? e.y + ((flickerNoise(frameCount, e.bobPhase * 3.7 + 11) * 3) | 0) - 1 : e.y;
   const P = (dx: number, dy: number, r: number, g: number, b: number): void => {
     if (flash) s.setPx(bx + dx, by - dy, 2.2, 2.2, 2.2);
     else s.setPx(bx + dx, by - dy, r * bR, g * bG, b * bB);
@@ -300,7 +95,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     if (e.grounded && !e.prevG && Math.abs(e.vy) < 0.1) e.splat = 8;
     e.prevG = e.grounded;
     if (e.splat > 0) e.splat--;
-    if (e.blink > 0) e.blink--; else if (Math.random() < 0.008) e.blink = 6;
+    if (e.blink > 0) e.blink--; else if (flickerNoise(frameCount, e.bobPhase * 5.3) < 0.008) e.blink = 6;
 
     let sy = 1, sx = 1;
     if (!e.grounded) { sy = 1 + Math.min(0.45, Math.abs(e.vy) * 0.13); sx = 1 / sy; }
@@ -343,7 +138,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     // --- Hover bob (visual), 3-pose wing flap, wagging tail ---
     const hover = Math.round(Math.sin(e.bobPhase) * 1.6);
     const Q = (dx: number, dy: number, r: number, g: number, b: number): void => P(dx, dy + hover, r, g, b);
-    const flick = 0.85 + Math.random() * 0.45;
+    const flick = 0.85 + flickerNoise(frameCount, e.bobPhase * 9.2) * 0.45;
     const O: RGB = [1.0 * flick * 1.5, 0.42 * flick * 1.5, 0.05], OD: RGB = [0.55, 0.18, 0.03];
     const leanI = clamp(Math.round(e.vx * 2.2), -2, 2);
     const ph = frameCount % 18;
@@ -357,7 +152,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     for (let dx = -2; dx <= 2; dx++) Q(dx + leanI, 10, ...O);
     for (let dx = -3; dx <= 3; dx++) Q(dx + leanI, 9, ...(Math.abs(dx) === 3 ? OD : O));
     // burning eyes flicker
-    const eb = 1.3 + Math.random() * 0.5;
+    const eb = 1.3 + flickerNoise(frameCount, e.bobPhase * 4.4 + 3) * 0.5;
     Q(look - 1 + leanI, 9, eb * boost * 0.35, eb * boost * 0.30, 0.12);
     Q(look + 1 + leanI, 9, eb * boost * 0.35, eb * boost * 0.30, 0.12);
     // body
@@ -381,7 +176,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   } else if (e.kind === 'wisp') {
     // --- Frost wisp: a self-lit 5x7 diamond of cold light, guttering ---
     const hover = Math.round(Math.sin(e.bobPhase) * 1.5);
-    const flick = 0.8 + Math.random() * 0.35 + Math.sin(frameCount * 0.23 + e.bobPhase) * 0.12;
+    const flick = 0.8 + flickerNoise(frameCount, e.bobPhase * 6.6) * 0.35 + Math.sin(frameCount * 0.23 + e.bobPhase) * 0.12;
     const W7 = [0, 1, 2, 2, 2, 1, 0] as const;
     for (let dy = 0; dy < 7; dy++) {
       const hw = W7[dy];
@@ -428,7 +223,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     // hands: a purple glow that flares while the telegraph runs
     const channeling = e.blink > 0;
     const hg =
-      (channeling ? 1.6 + Math.random() * 0.6 : 0.55 + Math.sin(frameCount * 0.09 + e.bobPhase) * 0.18) *
+      (channeling ? 1.6 + flickerNoise(frameCount, e.bobPhase * 8.5) * 0.6 : 0.55 + Math.sin(frameCount * 0.09 + e.bobPhase) * 0.18) *
       boost * 0.5;
     PE(-6, 5, hg * 0.8, hg * 0.32, hg);
     PE(6, 5, hg * 0.8, hg * 0.32, hg);
@@ -483,7 +278,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const tumbling = (e.tumble ?? 0) > 0 || slimed;
     const hover =
       (slimed ? 0 : Math.round(Math.sin(e.bobPhase) * 1.2)) +
-      (tumbling ? Math.round((Math.random() - 0.5) * 2) : 0);
+      (tumbling ? Math.round((flickerNoise(frameCount, e.bobPhase * 5.9) - 0.5) * 2) : 0);
     const Q = (dx: number, dy: number, r: number, g: number, b: number): void =>
       P(dx, dy + hover, r, g, b);
     const V: RGB = [0.36, 0.22, 0.46],
@@ -504,7 +299,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     // ears
     Q(-1, 3, ...VD); Q(1, 3, ...VD);
     // eyes glint red (emissive — they pierce the dark)
-    const ef = 0.8 + Math.random() * 0.5;
+    const ef = 0.8 + flickerNoise(frameCount, e.bobPhase * 3.3 + 7) * 0.5;
     PE(look === 1 ? 0 : -1, 2 + hover, ef * boost * 0.4, 0.04, 0.04);
     PE(look === 1 ? 1 : 0, 2 + hover, ef * boost * 0.4, 0.04, 0.04);
     // wings: snap between raised and swept
@@ -742,99 +537,61 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       P(hx + look * 4, hy - 1, 0.8, 0.86, 0.78);
     }
   } else if (e.kind === 'weaver') {
-    // --- Weaver: eight long IK legs with renderer-owned planted feet ---
-    const wx2 = e.x + (e.fx || 0);
-    const wdrv = wx2 - (e._px === undefined ? wx2 : e._px);
-    e._px = wx2;
-    e._svx = (e._svx || 0) * 0.6 + wdrv * 0.4;
+    // --- Weaver: draws the tick-owned surface-crawler rig ---
+    // Locomotion (entities/weaverLocomotion) owns the body pose, orientation
+    // and the load-bearing feet at tick rate; this branch is pure presentation
+    // (constrained IK through the rig parts, the sprung head, attack poses,
+    // glow). It decides nothing about where feet grip, and gameplay reads
+    // nothing it writes.
+    const loco = e.weaverLoco;
     const asleep = e.sleeping === true;
-    const climbingNow = !asleep && ((e.weaverClimbT ?? 0) > 0 || (e.weaverLeapT ?? 0) > 0);
-    // Lifted off any surface: legs with no foothold dangle DOWN instead of
-    // tucking up toward the hip. Debug-dragged bodies force that hanging target
-    // even if a wall/ceiling is within reach, so posing a Weaver does not glue
-    // its feet to old surfaces.
-    const lifted = !asleep && e.grounded === false && !climbingNow;
-    const debugHeld = !asleep && ctx.debug?.dragRef === e;
-    const debugDangle = debugHeld && lifted;
-    const moving = !asleep && (climbingNow || (e.grounded && (Math.abs(e._svx) > 0.035 || e.alerted)));
-    const previousFace = e.weaverFaceDir === -1 || e.weaverFaceDir === 1 ? e.weaverFaceDir : look;
-    const targetDx = ctx.player.x - e.x;
-    const face =
-      e.alerted && Math.abs(targetDx) > 32
-        ? Math.sign(targetDx)
-        : !e.alerted && Math.abs(e._svx) > 0.26
-          ? Math.sign(e._svx)
-          : previousFace;
-    e.weaverFaceDir = face;
+    const airborneNow = !asleep && (loco?.mode ?? 'attached') === 'airborne';
+    const recovering = (loco?.recoverT ?? 0) > 0;
+    const speedNow = loco?.speed ?? 0;
+    const orient = loco?.orient ?? 0;
+    const bodyFace = loco?.face ?? 1;
+    const stride = loco?.stride ?? 0;
+    const nX = loco?.nx ?? 0;
+    const nY = loco?.ny ?? -1;
+    const moving = !asleep && (airborneNow || speedNow > 0.08);
+    const wallwork = !asleep && !airborneNow && Math.abs(orient) > 0.6; // on a wall/ceiling
+    const unstable = !asleep && !airborneNow && (recovering || (e.weaverFallT ?? 0) > 10);
     const support = e.weaverSupport ?? 0.65;
     const poised = !asleep && (e.windup ?? 0) > 0;
     const weaving = !asleep && e.blink > 0;
     const cranky = !asleep && (e.cranky ?? 0) > 0;
-    // A committed wall climb is DELIBERATE, not a scramble — even though clinging reads
-    // as low physical support. Excluding it from `unstable` gives the climb the calm,
-    // measured leg animation (no jitter, no oversized flail) instead of the distress wobble.
-    // Visual instability tracks REAL footing loss (physical support / fall timer),
-    // not the growth-confidence `support` — bare stone reads as a calm, planted
-    // stance, while cut-away terrain reads as the scrambling wobble.
-    const unstable = !asleep && !climbingNow && ((e.weaverPhysicalSupport ?? 0.6) < 0.32 || (e.weaverFallT ?? 0) > 10);
     const pulse = Math.max(0, e.webPulse ?? 0) / 18;
     const feedCrouch = !asleep && (e.weaverFeedT ?? 0) > 0;
-    const supportPanic = clamp((e.weaverFallT ?? 0) / 45, 0, 1);
-    const priorVisualSupport = e.weaverVisualSupport ?? 1;
-    // REAR-UP REACH: an alerted Weaver with the alchemist hovering OVERHEAD rises
-    // on its back legs and reaches up. Gated to a nearby target (so it doesn't
-    // rear at someone across the room) and to a STABLE stance (footing first).
-    const headY = e.y - def.h * 0.5;
-    const overhead = e.alerted && !asleep ? clamp((headY - ctx.player.y) / 58, 0, 1) : 0;
+    const fallPose = airborneNow ? clamp((e.weaverFallT ?? 0) / 45, 0, 1) : 0;
+    const aim = Math.sign(ctx.player.x - e.x || 1); // world-x aim for attack poses
+
+    // REAR-UP REACH: pose smoothing for the grasping front leg + head crane
+    // (the physical rise comes from the locomotion's 'rear' stance).
+    const headYW = e.y - def.h * 0.5;
+    const overhead = e.alerted && !asleep ? clamp((headYW - ctx.player.y) / 58, 0, 1) : 0;
     const nearX = e.alerted && !asleep ? clamp(1 - Math.abs(ctx.player.x - e.x) / 170, 0, 1) : 0;
-    const reachTarget = unstable || feedCrouch || poised || weaving || lifted ? 0 : overhead * (0.35 + 0.65 * nearX);
+    const reachTarget =
+      unstable || airborneNow || feedCrouch || poised || weaving ? 0 : overhead * (0.35 + 0.65 * nearX);
     e.weaverReach = lerp(e.weaverReach ?? 0, reachTarget, 0.06);
     const reach01 = e.weaverReach ?? 0;
-    // AGGRESSION: alerted + actually pursuing (moving, not feeding/rearing/falling)
-    // swaps the calm tetrapod walk for a fast, low, lunging rippled chase. Cranky
-    // pegs it to full; it snaps on quicker than it eases off.
+    // AGGRESSION: alerted + actually closing = lower, hungrier posture cues.
     const aggroTarget =
-      e.alerted && moving && !feedCrouch && !unstable && !poised && !weaving && !lifted && reach01 < 0.3
-        ? clamp(0.45 + (cranky ? 0.55 : 0) + Math.min(0.35, Math.abs(e._svx) * 0.5), 0, 1)
+      e.alerted && moving && !feedCrouch && !unstable && !poised && !weaving && reach01 < 0.3
+        ? clamp(0.45 + (cranky ? 0.55 : 0) + Math.min(0.35, speedNow * 0.4), 0, 1)
         : 0;
     e.weaverAggro = lerp(e.weaverAggro ?? 0, aggroTarget, aggroTarget > (e.weaverAggro ?? 0) ? 0.08 : 0.04);
     const aggro = e.weaverAggro ?? 0;
-    if (moving) {
-      const climbStride = climbingNow ? Math.abs(e.vy) * 0.16 + Math.abs(e.vx) * 0.08 : 0;
-      e.stride += Math.max(0.018, Math.abs(e._svx) * 0.28 + climbStride) * (1 + aggro * 0.85);
-    }
-    const REAR_BONUS = 12; // extra body lift at a full overhead reach (rears tall)
-    const bodyLiftTarget =
-      (lifted
-        ? 3 // held/airborne: the body relaxes low so the legs hang below it
-        : asleep
-        ? 1
-        : feedCrouch
-          ? 2
-          : poised || weaving
-            ? 7
-            : unstable
-              ? 5
-              : 13.5) + reach01 * REAR_BONUS - aggro * 1.4; // chase lowers slightly without belly-dragging
-    const normalLiftSupport = 0.48 + priorVisualSupport * 0.52;
-    const reachLiftSupport = 0.82 + priorVisualSupport * 0.18;
-    const supportedLiftTarget = bodyLiftTarget * lerp(normalLiftSupport, reachLiftSupport, reach01) - supportPanic * 7.5;
-    e.weaverBodyLift = lerp(e.weaverBodyLift ?? supportedLiftTarget, supportedLiftTarget, 0.07);
-    const bodyLift = e.weaverBodyLift ?? bodyLiftTarget;
 
-    // FREE HEAD: the cephalothorax is slung on a short neck and carried by a light
-    // spring, so it turns to TRACK the alchemist (horizontal sweep + pitch), SCANS
-    // the room on a slow wander when unaware, LEADS the body as it walks, and never
-    // simply snaps to the facing. Overshoot + settle reads as a living, craning head.
+    // FREE HEAD: the cephalothorax is slung on a short neck and carried by a
+    // light spring, so it TRACKS the alchemist, SCANS when unaware, LEADS the
+    // crawl, and never simply snaps to the facing. Cosmetic only.
     const aware = e.alerted && !asleep;
     const headPdx = ctx.player.x - e.x;
     const headPdy = ctx.player.y - (e.y - def.h * 0.62);
     const trackX = aware ? clamp(headPdx / 52, -1, 1) : Math.sin(frameCount * 0.017 + e.bobPhase * 2.7) * 0.7;
-    // pitch: render dy increases UPWARD, and an overhead alchemist sits at headPdy<0,
-    // so the head must rise (positive) toward a target above — negate the screen delta.
     const trackY = aware ? clamp(-headPdy / 60, -1, 1.2) : Math.sin(frameCount * 0.012 + e.bobPhase * 1.3) * 0.4;
     const idleBob = Math.sin(frameCount * 0.05 + e.bobPhase) * (aware ? 0.5 : 0.3);
-    const headTX = clamp(trackX * 3.6 + e._svx * 0.8 + (aware ? 0 : face * 0.6), -5.5, 5.5);
+    const headTX = clamp(trackX * 3.6 + (loco?.vx ?? 0) * 1.4 + (aware ? 0 : bodyFace * 0.6), -5.5, 5.5);
     const headTY = clamp(trackY * 3.1 + reach01 * 2 + idleBob + (cranky ? Math.sin(frameCount * 0.4) * 0.5 : 0), -4, 4.5);
     const headStiff = cranky ? 0.27 : poised || weaving ? 0.34 : 0.18; // snappier when agitated/striking
     e.weaverHeadVX = (e.weaverHeadVX ?? 0) * 0.74 + (headTX - (e.weaverHeadX ?? 0)) * headStiff;
@@ -844,31 +601,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const headDX = asleep ? 0 : Math.round(e.weaverHeadX ?? 0);
     const headDY = asleep ? -1 : Math.round(e.weaverHeadY ?? 0);
 
-    if (!e.weaverLegs || e.weaverLegs.length !== WEAVER_REST.length) {
-      e.weaverLegs = WEAVER_REST.map((r) => {
-        const fx = e.x + r.footX;
-        const target = weaverFootTarget(ctx, fx, e.y - r.footY, e.x + r.hipX, e.y - r.hipY, r.side, true);
-        return {
-          x: target.x,
-          y: target.y,
-          tx: target.x,
-          ty: target.y,
-          lift: 0,
-          plantAge: 0,
-          planted: target.planted,
-          strain: target.strain,
-          surface: target.surface,
-          failT: target.planted ? 0 : 1,
-          smoothTx: target.x,
-          smoothTy: target.y,
-          stepCooldown: 0,
-        };
-      });
-    }
-
     // One reused traceLine plot callback + ambient colour/glow, so each leg
-    // segment doesn't allocate a fresh closure every frame (8 legs x 2 segments
-    // x every on-screen weaver, per frame). lineCol is set before every use.
+    // segment doesn't allocate a fresh closure every frame.
     let lineCol: RGB = [0, 0, 0];
     let lineGlow = false;
     const plotLine = (px: number, py: number): void => {
@@ -905,22 +639,15 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const JOINT: RGB = [0.28 + pulse * 0.08, 0.23 + support * 0.12 + pulse * 0.18, 0.2];
     const LEG_WARN: RGB = [0.35, 0.95, 0.42];
     const PLANT_DOT: RGB = [0.32, 0.62, 0.26];
-    const attackLeg = face >= 0 ? 4 : 0;
-    let plantedLegs = 0;
-    let plantLoadSum = 0;
-    let strainSum = 0;
-    // --- BODY ORIENTATION: the whole creature rotates so its legs point at whatever
-    // surface they grip. `orient` is last frame's smoothed angle (0 floor, +π/2 wall
-    // on its right, −π/2 wall on its left, π ceiling); we place the hips & draw the
-    // body through it this frame, then re-derive the target from THIS frame's planted
-    // feet below. Rotation is rigid about the body centre (WV_PIVOT above the foot
-    // anchor), so on flat ground (orient 0) every offset is identity — zero change.
-    const orient = e.weaverOrient ?? 0;
+    // --- BODY ORIENTATION comes straight from the locomotion (0 floor, ±π/2
+    // wall, π ceiling — the chimney straddle is pinned upright at tick rate).
+    // Rotation is rigid about the body centre (WV_PIVOT above the anchor), so
+    // on flat ground every offset is identity — zero change.
     const cosO = Math.cos(orient);
     const sinO = Math.sin(orient);
     const WV_PIVOT = 9;
-    // body-local (dx right, dyUp up; origin at the foot anchor) -> P()'s local frame,
-    // rotated about the body centre.
+    // body-local (dx right, dyUp up; origin at the foot anchor) -> P()'s local
+    // frame, rotated about the body centre.
     const wvOff = (dx: number, dyUp: number): [number, number] => {
       const ly = dyUp - WV_PIVOT;
       return [dx * cosO - ly * sinO, WV_PIVOT + (dx * sinO + ly * cosO)];
@@ -933,7 +660,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       const [lx, lyUp] = wvOff(dx, dyUp);
       PE(Math.round(lx), Math.round(lyUp), r, g, b);
     };
-    // world position of a body-local point (leg hips, head/spit origin).
+    // world position of a body-local point (head/spit origin).
     const wvWorld = (dx: number, dyUp: number): [number, number] => {
       const [lx, lyUp] = wvOff(dx, dyUp);
       return [e.x + lx, e.y - lyUp];
@@ -943,337 +670,87 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const basisUp = wvWorld(0, 1);
     const legBasisX = { x: basisRight[0] - basisOrigin[0], y: basisRight[1] - basisOrigin[1] };
     const legBasisY = { x: basisUp[0] - basisOrigin[0], y: basisUp[1] - basisOrigin[1] };
-    const bodyCX = e.x;
-    const bodyCY = e.y - WV_PIVOT;
-    // Weighted moments of the planted-foot cloud (world coords). Their covariance
-    // gives the line the feet lie along (PCA) — the surface — whose normal is the
-    // body's "up". This is far steadier than the mean foot direction: the feet splay
-    // wide but sit only ~9 below the body, so a mean-direction normal swings on every
-    // stride, whereas the line-fit normal stays put as long as the feet are coplanar.
-    let fW = 0; // Σ weight
-    let fSx = 0; // Σ w·x
-    let fSy = 0; // Σ w·y
-    let fSxx = 0; // Σ w·x²
-    let fSyy = 0; // Σ w·y²
-    let fSxy = 0; // Σ w·x·y
     const rigLegOptions = { light: rigLight, flash, boost, flipX: false, alpha: 1 };
     const rigJointAOptions = { light: rigLight, flash, boost, flipX: false, alpha: 1 };
     const rigJointBOptions = { light: rigLight, flash, boost, flipX: false, alpha: 1 };
-    let airborneLegs = e.weaverLegs.reduce((n, leg) => n + (leg.planted === true ? 0 : 1), 0);
-    const runAirborneBudget = cranky || aggro > 0.55 ? 4 : 3;
-    const normalAirborneBudget = climbingNow ? 4 : unstable ? 4 : runAirborneBudget;
-    const urgentAirborneBudget = climbingNow ? 6 : unstable ? 6 : 5;
-    for (let i = 0; i < WEAVER_REST.length; i++) {
-      const rest = WEAVER_REST[i];
-      const leg = e.weaverLegs[i] as WeaverLegState;
-      const tetrapod = i === 0 || i === 2 || i === 5 || i === 7 ? 0 : Math.PI;
-      const ripple = rest.phase;
-      const rippleBlend = clamp((climbingNow ? 0.3 : 0.12) + aggro * 0.24 + (cranky ? 0.08 : 0), 0, 0.46);
-      const pattern = lerp(tetrapod, ripple, rippleBlend);
-      const cadence = (climbingNow ? 1.08 : cranky ? 1.34 : unstable ? 1.0 : 1.08) * (1 + aggro * 0.42);
-      const gait = e.stride * cadence + pattern;
-      leg.stepCooldown = Math.max(0, (leg.stepCooldown ?? 0) - 1);
-      const swingGate = climbingNow ? 0.54 : lerp(unstable ? 0.66 : 0.7, cranky ? 0.48 : 0.56, aggro);
-      const swing = moving && Math.sin(gait) > swingGate;
-      const canLiftForPose = leg.planted !== true || airborneLegs < urgentAirborneBudget;
-      const reachAmp = (climbingNow ? 3.0 : lerp(unstable ? 2.8 : 3.0, 4.8, aggro)) + (cranky ? 0.35 : 0);
-      const reach = moving
-        ? Math.sin(gait) * reachAmp + (climbingNow ? 0 : face * lerp(0.9, 2.4, aggro))
-        : Math.sin(frameCount * 0.025 + i) * 0.8;
-      let tx = e.x + rest.footX + reach;
-      // Default footing target's surface is raycast lazily — only the branch that
-      // actually plants on terrain pays for it (asleep/poised/weaving skip it).
-      let ty = 0;
-      const startStep = (
-        nx: number,
-        ny: number,
-        lift: number,
-        surface: NonNullable<WeaverLegState['surface']>,
-        strain: number,
-      ): void => {
-        if ((leg.step ?? 0) > 0) return;
-        leg.fromX = leg.x;
-        leg.fromY = leg.y;
-        leg.tx = nx;
-        leg.ty = ny;
-        leg.step = 0.001;
-        leg.lift = lift;
-        leg.plantAge = 0;
-        leg.planted = false;
-        leg.surface = surface;
-        leg.strain = strain;
-        leg.supportOk = false;
-        leg.supportCheckFrame = undefined;
-      };
-      const dampTarget = (target: WeaverFootTarget, alpha: number): WeaverFootTarget => {
-        leg.smoothTx = lerp(leg.smoothTx ?? target.x, target.x, alpha);
-        leg.smoothTy = lerp(leg.smoothTy ?? target.y, target.y, alpha);
-        return { ...target, x: leg.smoothTx, y: leg.smoothTy };
-      };
-      const hipUp =
-        rest.hipY +
-        bodyLift -
-        Math.sin(frameCount * 0.03 + i) * 0.5 -
-        (unstable ? Math.sin(frameCount * 0.37 + i) * 1.0 : 0);
-      const [hipX, hipY] = wvWorld(rest.hipX, hipUp);
-      if (asleep) {
-        tx = e.x + rest.footX * 0.58;
-        const target = dampTarget(weaverFootTarget(ctx, tx, e.y - 2 + Math.abs(rest.side) * 2, hipX, hipY, rest.side, false), 0.05);
-        tx = target.x;
-        ty = target.y;
-        leg.step = undefined;
-        leg.plantAge = 0;
-        leg.planted = target.planted;
-        leg.surface = target.surface;
-        leg.strain = target.strain;
-        leg.failT = target.planted ? Math.max(0, (leg.failT ?? 0) - 2) : (leg.failT ?? 0) + 1;
-        leg.supportOk = target.planted;
-        leg.supportCheckFrame = undefined;
-        leg.x += (tx - leg.x) * 0.08;
-        leg.y += (ty - leg.y) * 0.08;
-        leg.lift *= 0.45;
-      } else if (poised && i === attackLeg && canLiftForPose) {
-        if (leg.planted === true) airborneLegs++;
+    const attackLeg = 4; // positive-arc legs always point toward the head
+    let strainSum = 0;
+    for (let i = 0; i < WEAVER_LOCO_REST.length; i++) {
+      const rest = WEAVER_LOCO_REST[i];
+      const leg = loco ? loco.legs[i] : undefined;
+      const hip = loco
+        ? weaverHipWorld(loco, i)
+        : { x: e.x + rest.hipArc * bodyFace, y: e.y - rest.hipOut };
+      const hipX = hip.x;
+      const hipY = hip.y - Math.sin(frameCount * 0.03 + i) * 0.4; // breathing
+      const hot = poised && i === attackLeg;
+      const grasping = !hot && reach01 > 0.5 && i === attackLeg;
+      const silkLeg = weaving && i === attackLeg + 1;
+      // tick-owned foot; the 0..1 swing phase lifts along the surface normal
+      const liftCells = (leg?.lift ?? 0) * (3.3 + speedNow * 1.5);
+      let footX = leg ? leg.x + nX * liftCells : e.x + rest.arc * 0.6 * bodyFace;
+      let footY = leg ? leg.y + nY * liftCells : e.y;
+      if (hot) {
+        // Needle Step: the poised foreleg aims at the locked target
         const aimT = 1 - clamp((e.windup ?? 0) / 18, 0, 1);
-        tx = (e.needleX ?? ctx.player.x) - face * (4 - aimT * 8);
-        ty = e.needleY ?? ctx.player.y - 9;
-        leg.step = undefined;
-        leg.plantAge = 0;
-        leg.planted = false;
-        leg.surface = 'failed';
-        leg.strain = 1;
-        leg.failT = (leg.failT ?? 0) + 1;
-        leg.supportOk = false;
-        leg.supportCheckFrame = undefined;
-        leg.x += (tx - leg.x) * 0.26;
-        leg.y += (ty - leg.y) * 0.26;
-        leg.lift = Math.max(leg.lift, 0.62);
-      } else if (weaving && i === attackLeg + 1 && canLiftForPose) {
-        if (leg.planted === true) airborneLegs++;
-        tx = e.x + face * 17;
-        ty = e.y - 14;
-        leg.step = undefined;
-        leg.plantAge = 0;
-        leg.planted = false;
-        leg.surface = 'failed';
-        leg.strain = 1;
-        leg.failT = (leg.failT ?? 0) + 1;
-        leg.supportOk = false;
-        leg.supportCheckFrame = undefined;
-        leg.x += (tx - leg.x) * 0.2;
-        leg.y += (ty - leg.y) * 0.2;
-        leg.lift = Math.max(leg.lift, 0.5);
-      } else if (reach01 > 0.5 && i === attackLeg) {
-        if (leg.planted === true) airborneLegs++;
-        // Reaching for the alchemist overhead: the front leg paws UP toward him,
-        // clamped to the leg's real reach so the bones stay connected (not a calm
-        // plant, not the green attack-leg either — a slow grasping feeler).
-        let rx = ctx.player.x - face * 3;
+        footX = (e.needleX ?? ctx.player.x) - aim * (4 - aimT * 8);
+        footY = e.needleY ?? ctx.player.y - 9;
+      } else if (silkLeg) {
+        // Thread-spit: the second foreleg braces high while silk streams
+        footX = e.x + aim * 17;
+        footY = e.y - 14;
+      } else if (grasping) {
+        // Rear-up: the front leg paws up toward the hovering alchemist,
+        // clamped to the leg's real reach so the bones stay connected.
+        let rx = ctx.player.x - aim * 3;
         let ry = ctx.player.y + 2;
         const rd = Math.hypot(rx - hipX, ry - hipY) || 1;
-        const maxR = WEAVER_LEG_REACH[i] * 1.24;
+        const maxR = WEAVER_LEG_REACH_LOCO[i] * 1.24;
         if (rd > maxR) {
           rx = hipX + ((rx - hipX) / rd) * maxR;
           ry = hipY + ((ry - hipY) / rd) * maxR;
         }
-        tx = rx;
-        ty = ry;
-        leg.step = undefined;
-        leg.plantAge = 0;
-        leg.planted = false;
-        leg.surface = 'failed';
-        leg.strain = 0.6;
-        leg.failT = 0; // a deliberate reach, not a distressed search
-        leg.supportOk = false;
-        leg.supportCheckFrame = undefined;
-        leg.x += (rx - leg.x) * 0.16;
-        leg.y += (ry - leg.y) * 0.16;
-        leg.lift = Math.max(leg.lift, 0.45);
-      } else {
-        let footLocalX = rest.footX + reach;
-        if (unstable) footLocalX += Math.sin(frameCount * 0.19 + i * 1.7) * 2.6;
-        // Climbing: reach for footholds ON the gripped surface — rotate the desired foot
-        // into the body frame so the legs spread ALONG the wall and grip TOWARD it,
-        // instead of half of them splaying into the open air beside it (the clumsy climb).
-        // Safe from the orientation feedback loop: a climb's orientation is AI-driven
-        // (climbDir), not derived from the feet, so moving the targets can't spin it.
-        const [dfx, dfy] = climbingNow ? wvWorld(footLocalX, rest.footY) : [e.x + footLocalX, e.y - rest.footY];
-        const hardResetReach = WEAVER_LEG_REACH[i] * WEAVER_LEG_HARD_RESET;
-        const staleSpan = Math.hypot(leg.x - hipX, leg.y - hipY);
-        const hardReset =
-          !Number.isFinite(leg.x) ||
-          !Number.isFinite(leg.y) ||
-          !Number.isFinite(staleSpan) ||
-          staleSpan > hardResetReach;
-        const hipLoad = Math.hypot(hipX - leg.x, hipY - leg.y) / WEAVER_LEG_REACH[i];
-        // A foot stretched past the leg's real reach can't still be "supported" — it
-        // must let go and re-step. Without this, a yanked/teleported/lifted body
-        // drags a glued foot across the level on an impossibly long leg.
-        let currentSupported = false;
-        if (!debugDangle && leg.planted === true && hipLoad <= 1.12 && !hardReset) {
-          const supportCheckDue = leg.supportOk === undefined || (leg.supportCheckFrame ?? 0) <= frameCount;
-          if (supportCheckDue) {
-            leg.supportOk = weaverFootStillSupported(ctx, leg.x, leg.y);
-            leg.supportCheckFrame = frameCount + (unstable || (e.weaverFallT ?? 0) > 0 ? 1 : 3);
-          }
-          currentSupported = leg.supportOk === true;
-        } else {
-          leg.supportOk = false;
-          leg.supportCheckFrame = undefined;
-        }
-        const minPlantAge = climbingNow ? 8 : cranky ? 7 : unstable ? 10 : 12;
-        const loadStep = hipLoad > (climbingNow ? 0.74 : unstable ? 0.82 : 0.74);
-        const driftLimit = climbingNow ? 20 : unstable ? 24 : 34;
-        const gaitLimit = climbingNow ? 12 : unstable ? 14 : 20;
-        const desiredDelta = Math.hypot(dfx - leg.x, dfy - leg.y);
-        const plantOldEnough = (leg.plantAge ?? 0) > minPlantAge;
-        const needsTarget =
-          hardReset ||
-          !currentSupported ||
-          (plantOldEnough && (loadStep || desiredDelta > driftLimit || (swing && desiredDelta > gaitLimit)));
-        const rawTarget = needsTarget
-          ? weaverFootTarget(ctx, dfx, dfy, hipX, hipY, rest.side, unstable || (e.weaverFallT ?? 0) > 18, debugDangle)
-          : null;
-        if (hardReset && rawTarget) resetWeaverLegToTarget(leg, rawTarget, hipX, hipY, WEAVER_LEG_REACH[i]);
-        const targetDelta = rawTarget ? Math.hypot(rawTarget.x - leg.x, rawTarget.y - leg.y) : desiredDelta;
-        if (currentSupported) {
-          if (rawTarget && leg.surface === 'failed') leg.surface = rawTarget.surface;
-          leg.strain = clamp(hipLoad, 0, 1);
-          leg.failT = 0;
-        }
-        const driftStep = targetDelta > driftLimit;
-        const gaitStep = swing && targetDelta > gaitLimit;
-        const urgentStep = hardReset || !currentSupported || driftStep || loadStep;
-        const airborneBudget = urgentStep ? urgentAirborneBudget : normalAirborneBudget;
-        const canLiftAnotherLeg = leg.planted !== true || airborneLegs < airborneBudget;
-        const shouldStep =
-          rawTarget !== null &&
-          rawTarget.planted &&
-          canLiftAnotherLeg &&
-          (!currentSupported || (plantOldEnough && (loadStep || driftStep || gaitStep)));
-
-        if (shouldStep) {
-          if (leg.planted === true) airborneLegs++;
-          const target = dampTarget(rawTarget, currentSupported ? 0.22 : 0.12);
-          startStep(target.x, target.y, climbingNow ? 0.58 : cranky ? 0.68 : unstable ? 0.7 : 0.58, target.surface, target.strain);
-        } else if (currentSupported) {
-          leg.smoothTx = leg.x;
-          leg.smoothTy = leg.y;
-          leg.lift *= 0.35;
-          leg.plantAge = (leg.plantAge ?? 0) + 1;
-        } else if (rawTarget && !rawTarget.planted) {
-          // Reel the foot toward where it should hang: fast when it's far (a yank
-          // or a big lift dragged the body off its old foothold), gentle when it's
-          // just feeling around nearby. The damp tracks the same speed so the
-          // smoothed target can't throttle the reel-in.
-          const pull = clamp(targetDelta / 50, unstable ? 0.05 : 0.04, 0.34);
-          const target = dampTarget(rawTarget, pull);
-          const search = Math.sin(frameCount * 0.12 + i * 1.83) * (unstable ? 0.9 : 0.55);
-          leg.step = undefined;
-          leg.plantAge = 0;
-          leg.planted = false;
-          leg.surface = 'failed';
-          leg.strain = 1;
-          leg.failT = (leg.failT ?? 0) + 1;
-          leg.supportOk = false;
-          leg.supportCheckFrame = undefined;
-          leg.x = lerp(leg.x, target.x + search, pull);
-          leg.y = lerp(leg.y, target.y + Math.abs(search) * 0.2, pull);
-          leg.lift *= 0.18;
-        } else if (rawTarget) {
-          const target = dampTarget(rawTarget, leg.planted === true ? 0.05 : 0.08);
-          if (leg.planted !== true || airborneLegs < urgentAirborneBudget) {
-            if (leg.planted === true) airborneLegs++;
-            startStep(target.x, target.y, climbingNow ? 0.58 : cranky ? 0.68 : unstable ? 0.7 : 0.58, target.surface, target.strain);
-          } else {
-            leg.x = lerp(leg.x, target.x, 0.04);
-            leg.y = lerp(leg.y, target.y, 0.04);
-            leg.lift *= 0.18;
-          }
-        }
-        if ((leg.step ?? 0) > 0) {
-          const speed = climbingNow ? 0.13 : cranky ? 0.17 : unstable ? 0.09 : 0.13;
-          const step = Math.min(1, (leg.step ?? 0) + speed);
-          const smooth = step * step * (3 - 2 * step);
-          leg.x = (leg.fromX ?? leg.x) + (leg.tx - (leg.fromX ?? leg.x)) * smooth;
-          leg.y = (leg.fromY ?? leg.y) + (leg.ty - (leg.fromY ?? leg.y)) * smooth;
-          leg.lift = Math.sin(step * Math.PI) * (climbingNow ? 0.66 : cranky ? 0.74 : unstable ? 0.78 : 0.64);
-          leg.planted = false;
-          leg.failT = (leg.failT ?? 0) + 1;
-          leg.supportOk = false;
-          leg.supportCheckFrame = undefined;
-          leg.step = step >= 1 ? undefined : step;
-          if (step >= 1) {
-            leg.x = leg.tx;
-            leg.y = leg.ty;
-            leg.lift = 0;
-            leg.plantAge = 1;
-            leg.planted = true;
-            leg.failT = 0;
-            leg.stepCooldown = climbingNow ? 4 : cranky ? 4 : unstable ? 5 : 6;
-            leg.supportOk = true;
-            leg.supportCheckFrame = frameCount + 1;
-            airborneLegs = Math.max(0, airborneLegs - 1);
-          }
-        } else {
-          leg.lift *= 0.35;
-        }
+        footX = rx;
+        footY = ry;
       }
-
-      const footX = leg.x;
-      const stepLiftCells = climbingNow ? 3.8 : cranky ? 4.0 : unstable ? 4.8 : 3.6;
-      const footY = leg.y - leg.lift * stepLiftCells;
-      const hot = poised && i === attackLeg;
-      const searching = !leg.planted && (leg.step ?? 0) === undefined && (leg.failT ?? 0) > 6;
-      const failing = searching || (leg.strain ?? 0) > 0.96;
-      if (leg.planted) {
-        const plantLoad = clamp(1 - Math.max(0, (leg.strain ?? 0) - 0.84) / 0.14, 0, 1);
-        plantLoadSum += plantLoad;
-        if (plantLoad > 0.25) plantedLegs++;
-        // Orientation: feed this contact point into the foot-cloud moments. EVERY
-        // planted foot votes, not just well-loaded ones — a wall-climbing leg is
-        // stretched (low plantLoad) yet still marks where the surface lies. Floored
-        // weight keeps stretched feet meaningful.
-        const gw = Math.max(0.2, plantLoad);
-        const fx = leg.x;
-        const fy = leg.y;
-        fW += gw;
-        fSx += gw * fx;
-        fSy += gw * fy;
-        fSxx += gw * fx * fx;
-        fSyy += gw * fy * fy;
-        fSxy += gw * fx * fy;
-      }
-      strainSum += leg.strain ?? 0;
-      // --- Animator-style constrained IK: target envelope + pole vector + flex limits.
-      // The old solver preserved length but went fully straight at max span, creating
-      // hyper-extended spider legs. This shared solver clamps the body-local reachable
-      // zone, keeps a visible bend, pins knees to the outward/up pole, and damps segment
-      // angles so future long-legged creatures can reuse the same rig discipline.
-      const Lnat = WEAVER_LEG_REACH[i] * (hot ? 1.05 : reach01 > 0.5 && i === attackLeg ? 1.2 : failing ? 1.08 : 1);
-      const L1 = Lnat * 0.38;
-      const L2 = Lnat * 0.32;
-      const L3 = Lnat * 0.3;
+      const planted = leg?.planted === true && !hot && !silkLeg && !grasping;
+      const strain = leg?.strain ?? 0.4;
+      strainSum += strain;
+      const searching =
+        !asleep && !airborneNow && leg !== undefined && !leg.planted && leg.stepT < 0 && !hot && !silkLeg && !grasping;
+      // warn-glow means "this leg can find no grip" — never a planted leg at
+      // full stretch (strain rides ~1.0 right before every re-step)
+      const failing = searching;
+      // --- Animator-style constrained IK: target envelope + pole vector + flex
+      // limits, damped between frames — shared rig discipline (ConstrainedLegIk).
+      const sideLocal = Math.sign(rest.arc) * bodyFace || 1;
+      const Lnat = WEAVER_LEG_REACH_LOCO[i] * (hot ? 1.05 : grasping ? 1.2 : failing ? 1.08 : 1);
+      // long femur, tapering tibia/tarsus: the reference silhouette
+      const L1 = Lnat * 0.4;
+      const L2 = Lnat * 0.34;
+      const L3 = Lnat * 0.26;
       const chainReach = L1 + L2 + L3;
       const sideNear = chainReach * 0.06;
-      const sideFar = chainReach * (hot || reach01 > 0.5 ? 0.9 : climbingNow ? 0.82 : 0.78);
-      const downReach = chainReach * (debugDangle ? 0.9 : unstable ? 0.72 : 0.6);
-      const upReach = chainReach * (hot || reach01 > 0.5 ? 0.52 : climbingNow ? 0.42 : 0.24);
+      const sideFar = chainReach * (hot || grasping ? 0.9 : wallwork ? 0.84 : 0.82);
+      const downReach = chainReach * (airborneNow ? 0.9 : unstable ? 0.72 : 0.62);
+      const upReach = chainReach * (hot || grasping ? 0.52 : wallwork ? 0.42 : 0.3);
       const envelope = {
         basisX: legBasisX,
         basisY: legBasisY,
-        minX: rest.side < 0 ? -sideFar : sideNear,
-        maxX: rest.side < 0 ? -sideNear : sideFar,
+        minX: sideLocal < 0 ? -sideFar : sideNear,
+        maxX: sideLocal < 0 ? -sideNear : sideFar,
         minY: -downReach,
         maxY: upReach,
         minRadius: chainReach * 0.16,
         maxRadius: chainReach * (hot || failing ? 0.91 : 0.86),
       };
-      const poleOut = hot ? 0.64 : climbingNow ? 0.82 : 0.98;
-      const poleUp = hot ? 0.48 : climbingNow ? 0.46 : 0.3;
+      // knees arch HIGH above the back (the towering-legs read): the pole
+      // points mostly UP so the generous chain slack is spent on knee height
+      const poleOut = hot ? 0.64 : wallwork ? 0.6 : 0.5;
+      const poleUp = hot ? 0.5 : wallwork ? 0.85 : 1.0;
       const pole = {
-        x: legBasisX.x * rest.side * poleOut + legBasisY.x * poleUp,
-        y: legBasisX.y * rest.side * poleOut + legBasisY.y * poleUp,
+        x: legBasisX.x * sideLocal * poleOut + legBasisY.x * poleUp,
+        y: legBasisX.y * sideLocal * poleOut + legBasisY.y * poleUp,
       };
       const ik = solveConstrainedLegIk({
         hip: { x: hipX, y: hipY },
@@ -1282,32 +759,31 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
         pole,
         envelope,
         limits: {
-          maxExtension: hot || reach01 > 0.5 ? 0.9 : failing ? 0.88 : 0.84,
-          minFlex: hot ? 0.2 : failing ? 0.24 : 0.28,
-          maxFlex: unstable ? 2.32 : 2.16,
-          maxAngularStep: climbingNow ? 0.36 : cranky ? 0.4 : unstable ? 0.34 : 0.28,
+          maxExtension: hot || grasping ? 0.92 : failing ? 0.9 : 0.87,
+          minFlex: hot ? 0.2 : failing ? 0.24 : 0.3,
+          maxFlex: unstable ? 2.6 : 2.55,
+          maxAngularStep: wallwork ? 0.36 : cranky ? 0.4 : unstable ? 0.34 : 0.28,
+          // tall tented knees: spend the chain slack on arch height
+          archScale: hot || grasping ? 1.1 : wallwork ? 1.55 : 2.0,
         },
-        previous: leg.ik,
+        previous: leg?.ik,
         iterations: 5,
       });
-      leg.ik = ik.state;
-      if (
-        leg.planted &&
-        (ik.state.flags & (LEG_IK_FLAG_ENVELOPE_CLAMPED | LEG_IK_FLAG_EXTENSION_CLAMPED)) !== 0
-      ) {
-        leg.strain = Math.max(leg.strain ?? 0, 0.98);
-      }
-      const upperX = ik.upper.x, upperY = ik.upper.y;
-      const lowerX = ik.lower.x, lowerY = ik.lower.y;
-      const ikFootX = ik.foot.x, ikFootY = ik.foot.y;
+      if (leg) leg.ik = ik.state;
+      const upperX = ik.upper.x,
+        upperY = ik.upper.y;
+      const lowerX = ik.lower.x,
+        lowerY = ik.lower.y;
+      const ikFootX = ik.foot.x,
+        ikFootY = ik.foot.y;
       const jointDot = (x: number, y: number, col: RGB, glow = false): void => {
         dotW(x, y, col, glow);
-        dotW(x + rest.side, y, col, glow);
+        dotW(x + sideLocal, y, col, glow);
         dotW(x, y + 1, col, glow);
       };
       if (rigReady) {
         const legAlpha = hot || failing ? 0.9 : 1;
-        const flipLeg = rest.side < 0;
+        const flipLeg = sideLocal < 0;
         rigLegOptions.flipX = flipLeg;
         rigLegOptions.alpha = legAlpha;
         drawWeaverRigSegment(s, weaverUpperLegPart(i), hipX, hipY, upperX, upperY, rigLegOptions);
@@ -1328,69 +804,13 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
         jointDot(upperX, upperY, hot || failing ? LEG_WARN : JOINT, hot || failing);
         jointDot(lowerX, lowerY, hot || failing ? LEG_WARN : JOINT, hot || failing);
         dotW(ikFootX, ikFootY, hot || failing ? LEG_WARN : LEG_HI, hot || failing);
-        if (!rigReady && leg.planted && !failing && !hot && (leg.plantAge ?? 0) === 1) {
+        if (!rigReady && planted && !failing && !hot && leg && leg.lift === 0) {
           dotW(ikFootX, ikFootY - 1, PLANT_DOT, true);
         }
       }
     }
 
-    const plantSupport = plantLoadSum / WEAVER_REST.length;
-    e.weaverVisualSupport = plantSupport;
-    e.weaverVisualPlanted = plantedLegs;
-    const avgStrain = strainSum / WEAVER_REST.length;
-    const fallPose = clamp(Math.max(1 - plantSupport, (e.weaverFallT ?? 0) / 45), 0, 1);
-    // Re-derive the body orientation from where the feet actually landed. θ aims the
-    // legs at the gripped surface: 0 floor, +π/2 wall on its right, −π/2 wall on its
-    // left, π ceiling — blending smoothly through corners.
-    let targetOrient = 0;
-    const climbDir = e.weaverClimbDir ?? 0;
-    if (fW > 0.001) {
-      const mx = fSx / fW;
-      const my = fSy / fW;
-      const offX = mx - bodyCX; // mean foot offset from the body centre
-      const offY = my - bodyCY;
-      // Covariance of the foot cloud → its principal axis is the surface tangent; the
-      // perpendicular minor axis is the surface normal (thin for a real flat surface).
-      const vxx = fSxx / fW - mx * mx;
-      const vyy = fSyy / fW - my * my;
-      const vxy = fSxy / fW - mx * my;
-      const tr = vxx + vyy;
-      const det = vxx * vyy - vxy * vxy;
-      const disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
-      const lMin = Math.max(0, tr / 2 - disc); // variance ACROSS the normal
-      const tang = 0.5 * Math.atan2(2 * vxy, vxx - vyy);
-      const nx = -Math.sin(tang);
-      const ny = Math.cos(tang);
-      const proj = offX * nx + offY * ny; // body's offset from the foot cloud along the normal
-      if (Math.abs(proj) < Math.sqrt(lMin) * 0.85) {
-        // The body sits INSIDE the foot cloud along the normal — feet straddle it
-        // (a chimney/tunnel with walls on BOTH sides). The normal's sign is genuinely
-        // ambiguous, so PCA would flip the body ±90° every frame: the paused-spider
-        // spasm. Pin it UPRIGHT — the one stable resolution, and it lets the spider
-        // chimney straight up a tunnel instead of fighting which wall to face.
-        targetOrient = 0;
-      } else if ((e.weaverClimbT ?? 0) > 0 && climbDir !== 0) {
-        // Scaling a single committed wall: square the body onto it (+x → +π/2).
-        targetOrient = (climbDir * Math.PI) / 2;
-      } else {
-        // g = into the surface = the normal pointed TOWARD the feet (the surface side).
-        const gx = proj >= 0 ? nx : -nx;
-        const gy = proj >= 0 ? ny : -ny;
-        targetOrient = Math.atan2(gx, gy); // 0 floor, ±π/2 wall, ±π ceiling
-      }
-    }
-    let dOrient = targetOrient - orient;
-    while (dOrient > Math.PI) dOrient -= Math.PI * 2;
-    while (dOrient < -Math.PI) dOrient += Math.PI * 2;
-    // ease in; quicker while actively moving so transitions over corners feel alive.
-    let nextOrient = orient + dOrient * (asleep ? 0.05 : moving ? 0.2 : 0.12);
-    // keep the stored angle in (−π, π] so it never spirals out of range over a long
-    // chase (cos/sin don't care, but readers/probes and the wobble term stay sane).
-    if (nextOrient > Math.PI) nextOrient -= Math.PI * 2;
-    else if (nextOrient < -Math.PI) nextOrient += Math.PI * 2;
-    e.weaverOrient = nextOrient;
-    e.weaverTilt = e.weaverOrient; // kept for any external readers; now the true angle
-
+    const avgStrain = strainSum / WEAVER_LOCO_REST.length;
     const BODY: RGB = asleep
       ? [0.1, 0.08, 0.09]
       : unstable || fallPose > 0.35
@@ -1401,41 +821,38 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const bellyBob = asleep
       ? -1
       : Math.round(
-        Math.sin(e.stride * (cranky ? 0.95 : 0.6) + e.bobPhase) * (moving ? (cranky ? 2 : 1) : 0.4) +
-          Math.sin(frameCount * 0.17 + e.bobPhase) * fallPose,
-      );
-    const crouch = asleep ? -2 : poised ? -1 : (e.recoil ?? 0) > 0 ? 1 : unstable ? 0 : 0;
+          Math.sin(stride * (cranky ? 0.95 : 0.6) + e.bobPhase) * (moving ? (cranky ? 2 : 1) : 0.4) +
+            Math.sin(frameCount * 0.17 + e.bobPhase) * fallPose,
+        );
+    const crouch = asleep ? -2 : poised ? -1 : (e.recoil ?? 0) > 0 ? 1 : recovering ? -2 : 0;
     const bodyJitter = cranky || unstable ? Math.round(Math.sin(frameCount * 0.45 + e.bobPhase) * pulse) : 0;
-    const sag = Math.round(fallPose * 5 + avgStrain * 1.4);
-    const bodyDrawLift = Math.round(bodyLift * (0.25 + plantSupport * 0.75) - fallPose * 2.5);
-    // body lean is now a true rotation (e.weaverOrient, applied by PR/PER/wvWorld);
-    // tiltShift only carries the agitated jitter shake so the silhouette still buzzes.
+    const sag = Math.round(fallPose * 4 + avgStrain * 1.2);
+    // The PHYSICAL ride height already carries stance (the locomotion squeezes
+    // through tunnels, crouches to sleep, rears to reach) — the draw offset
+    // only adds pose flavour around the true body centre.
+    const bodyDrawLift = Math.round(-fallPose * 2.5 + reach01 * 2);
     const tiltShift = (_dy: number): number => bodyJitter;
-    // PREDATORY STALK coil/lunge (driven by the AI's stalk wave): the cephalothorax
-    // eases BACK to gather then drives FORWARD on the surge, dipping into the coil —
-    // so the body visibly winds and springs with the paced approach.
+    // PREDATORY STALK coil/lunge (driven by the AI's stalk wave).
     const stalk = asleep ? 0 : e.weaverStalk ?? 0; // -1 gather .. +1 lunge
-    const stalkX = Math.round(stalk * face * 2.4);
+    const stalkX = Math.round(stalk * bodyFace * 2.4);
     const stalkY = Math.round(Math.max(0, -stalk) * 1.7);
-    // ORGANIC WALK: the heavy abdomen rocks side-to-side a half-beat behind the legs
-    // instead of riding rigidly level — an articulated, weight-shifting gait.
-    const gaitSway = moving ? Math.round(Math.sin(e.stride * 0.5 + e.bobPhase + 1.2) * (cranky ? 1.5 : 0.95)) : 0;
+    // ORGANIC WALK: the heavy abdomen rocks a half-beat behind the legs.
+    const gaitSway = moving ? Math.round(Math.sin(stride * 0.5 + e.bobPhase + 1.2) * (cranky ? 1.5 : 0.95)) : 0;
     const abX = Math.round(stalkX * 0.3) + gaitSway;
     const abY = Math.round(stalkY * 0.5);
-    // --- FREE HEAD: a cephalon slung ahead of the thorax on a short flexible neck,
-    // carried by the head spring so it cranes, pitches and bobs as its own segment ---
-    const neckBaseX = face * 4 + tiltShift(15) + stalkX;
+    // FREE HEAD: a cephalon slung ahead of the thorax on a short flexible neck.
+    const neckBaseX = bodyFace * 4 + tiltShift(15) + stalkX;
     const neckTopY = 15 + crouch + bodyDrawLift - sag - stalkY;
-    const headCX = face * 9 + headDX + tiltShift(15) + stalkX;
+    const headCX = bodyFace * 9 + headDX + tiltShift(15) + stalkX;
     const headCY = neckTopY + headDY;
     if (!rigReady) {
-      // abdomen — drawn through PR so the whole body rotates onto the gripped surface.
+      // abdomen — drawn through PR so the whole body rotates onto the surface.
       for (let dy = 4; dy <= 13; dy++) {
         const t = (dy - 8.5) / 5.8;
         const w2 = Math.max(2, Math.round(10 * Math.sqrt(Math.max(0, 1 - t * t))));
         for (let dx = -w2; dx <= w2; dx++) {
           PR(
-            dx - face * 3 + tiltShift(dy) + abX,
+            dx - bodyFace * 3 + tiltShift(dy) + abX,
             dy + bellyBob + crouch + bodyDrawLift - sag - abY,
             Math.abs(dx) >= w2 ? BODY_D[0] : BODY[0],
             Math.abs(dx) >= w2 ? BODY_D[1] : BODY[1],
@@ -1447,15 +864,15 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       for (let dy = 9; dy <= 17; dy++) {
         const w2 = dy >= 15 ? 5 : 7;
         for (let dx = -w2; dx <= w2; dx++) {
-          PR(dx + face * 3 + tiltShift(dy) + stalkX, dy + crouch + bodyDrawLift - sag - stalkY, ...(Math.abs(dx) >= w2 ? BODY_D : BODY_L));
+          PR(dx + bodyFace * 3 + tiltShift(dy) + stalkX, dy + crouch + bodyDrawLift - sag - stalkY, ...(Math.abs(dx) >= w2 ? BODY_D : BODY_L));
         }
       }
       for (let n = 1; n <= 2; n++) {
         const f = n / 3;
-        const nx = neckBaseX + (headCX - neckBaseX) * f;
-        const ny = neckTopY + (headCY - neckTopY) * f;
-        PR(nx, ny, ...BODY);
-        PR(nx, ny - 1, ...BODY_D);
+        const nx2 = neckBaseX + (headCX - neckBaseX) * f;
+        const ny2 = neckTopY + (headCY - neckTopY) * f;
+        PR(nx2, ny2, ...BODY);
+        PR(nx2, ny2 - 1, ...BODY_D);
       }
       for (let hy = -2; hy <= 2; hy++) {
         const hw = Math.abs(hy) >= 2 ? 2 : 3;
@@ -1466,38 +883,40 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     }
     if (rigReady) {
       const rigAngle = -orient;
-      const rigFlip = face > 0;
+      const rigFlip = bodyFace > 0;
       const bodyAlpha = asleep ? 0.78 : unstable || fallPose > 0.45 ? 0.9 : 0.98;
       const bodyRigOptions = { light: rigLight, flash, boost, flipX: rigFlip, alpha: bodyAlpha };
       const bodyDetailRigOptions = { light: rigLight, flash, boost, flipX: rigFlip, alpha: bodyAlpha * 0.92 };
       const mandibleARigOptions = { light: rigLight, flash, boost, flipX: rigFlip, alpha: bodyAlpha * 0.88 };
       const mandibleBRigOptions = { light: rigLight, flash, boost, flipX: rigFlip, alpha: bodyAlpha * 0.82 };
-      let p = wvWorld(-face * 4 + abX, 9 + bellyBob + crouch + bodyDrawLift - sag - abY);
+      let p = wvWorld(-bodyFace * 4 + abX, 9 + bellyBob + crouch + bodyDrawLift - sag - abY);
       drawWeaverRigPart(s, 'abdomen', p[0], p[1], rigAngle, bodyRigOptions);
-      p = wvWorld(face * 3 + stalkX, 13 + crouch + bodyDrawLift - sag - stalkY);
+      p = wvWorld(bodyFace * 3 + stalkX, 13 + crouch + bodyDrawLift - sag - stalkY);
       drawWeaverRigPart(s, 'thorax', p[0], p[1], rigAngle, bodyRigOptions);
       p = wvWorld(headCX, headCY);
       drawWeaverRigPart(s, 'head', p[0], p[1], rigAngle, bodyRigOptions);
-      p = wvWorld(-face * 4 + abX, 18 + bodyDrawLift - sag - abY);
+      p = wvWorld(-bodyFace * 4 + abX, 18 + bodyDrawLift - sag - abY);
       drawWeaverRigPart(s, 'crystalSpine', p[0], p[1], rigAngle, bodyDetailRigOptions);
-      p = wvWorld(-face * 17 + abX, 8 + bellyBob + crouch + bodyDrawLift - sag - abY);
+      p = wvWorld(-bodyFace * 17 + abX, 8 + bellyBob + crouch + bodyDrawLift - sag - abY);
       drawWeaverRigPart(s, 'spinnerets', p[0], p[1], rigAngle, bodyDetailRigOptions);
-      p = wvWorld(headCX + face * 4, headCY - 1);
-      drawWeaverRigPart(s, 'mandibleA', p[0], p[1], rigAngle + face * 0.18, mandibleARigOptions);
-      p = wvWorld(headCX + face * 5, headCY + 1);
-      drawWeaverRigPart(s, 'mandibleB', p[0], p[1], rigAngle - face * 0.16, mandibleBRigOptions);
+      p = wvWorld(headCX + bodyFace * 4, headCY - 1);
+      drawWeaverRigPart(s, 'mandibleA', p[0], p[1], rigAngle + bodyFace * 0.18, mandibleARigOptions);
+      p = wvWorld(headCX + bodyFace * 5, headCY + 1);
+      drawWeaverRigPart(s, 'mandibleB', p[0], p[1], rigAngle - bodyFace * 0.16, mandibleBRigOptions);
     }
-    const eyePulse = asleep ? 0.1 : 0.55 + Math.sin(frameCount * 0.11 + e.bobPhase) * 0.25 + (poised ? 0.35 : 0) + (cranky ? 0.28 : 0) + pulse * 0.45;
+    const eyePulse = asleep
+      ? 0.1
+      : 0.55 + Math.sin(frameCount * 0.11 + e.bobPhase) * 0.25 + (poised ? 0.35 : 0) + (cranky ? 0.28 : 0) + pulse * 0.45 + aggro * 0.2;
     // a faint independent eye dart while unaware — the gaze flicks even when the head is still
     const dart = aware ? 0 : Math.round(Math.sin(frameCount * 0.08 + e.bobPhase * 2) * 0.7);
-    PER(headCX + face * 2 + dart, headCY - 1, 0.18 * eyePulse * boost, 0.95 * eyePulse * boost, 0.32 * eyePulse * boost);
-    PER(headCX + face * 1 + dart, headCY, 0.14 * eyePulse * boost, 0.72 * eyePulse * boost, 0.25 * eyePulse * boost);
+    PER(headCX + bodyFace * 2 + dart, headCY - 1, 0.18 * eyePulse * boost, 0.95 * eyePulse * boost, 0.32 * eyePulse * boost);
+    PER(headCX + bodyFace * 1 + dart, headCY, 0.14 * eyePulse * boost, 0.72 * eyePulse * boost, 0.25 * eyePulse * boost);
     if (weaving) {
       const spit = 0.5 + Math.sin(frameCount * 0.6) * 0.3;
-      const [sx0, sy0] = wvWorld(headCX + face * 2, headCY + 1);
-      const [sx1, sy1] = wvWorld(headCX + face * 9, headCY + 3);
+      const [sx0, sy0] = wvWorld(headCX + bodyFace * 2, headCY + 1);
+      const [sx1, sy1] = wvWorld(headCX + bodyFace * 9, headCY + 3);
       if (rigReady) {
-        const silkRigOptions = { light: rigLight, flash, boost, flipX: face < 0, alpha: 0.52 + spit * 0.35 };
+        const silkRigOptions = { light: rigLight, flash, boost, flipX: bodyFace < 0, alpha: 0.52 + spit * 0.35 };
         drawWeaverRigSegment(s, 'silk', sx0, sy0, sx1, sy1, silkRigOptions);
       }
       lineW(sx0, sy0, sx1, sy1, [0.18 * spit, 0.9 * spit, 0.24 * spit], true);
@@ -1505,7 +924,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   } else if (e.kind === 'golem') {
     // --- Heavy stride driven by real displacement, arms, breath, pulsing core ---
     const gx2 = e.x + (e.fx || 0);
-    const grv = gx2 - (e._px === undefined ? gx2 : e._px);
+    const grvRaw = gx2 - (e._px === undefined ? gx2 : e._px);
+    const grv = Math.abs(grvRaw) > 8 ? 0 : grvRaw; // teleport = no stride pop
     e._px = gx2;
     e._svx = (e._svx || 0) * 0.55 + grv * 0.45;
     const walking = e.grounded && Math.abs(e._svx) > 0.08;
@@ -1586,7 +1006,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     PE(0, 9 + B, corePulse * 0.4, corePulse * 0.3, 0.05);
     // thruster flames while the jets burn
     if (e.jetFuel > 0) {
-      const jf = (1.2 + Math.random() * 0.8) * boost * 0.4;
+      const jf = (1.2 + flickerNoise(frameCount, e.bobPhase * 7.7 + 5) * 0.8) * boost * 0.4;
       PE(-3 + legA, -1, jf, jf * 0.6, 0.1);
       PE(3 + legB, -1, jf, jf * 0.6, 0.1);
       PE(-3 + legA, -2, jf * 0.7, jf * 0.35, 0.05);
@@ -1595,7 +1015,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   } else if (e.kind === 'colossus') {
     // --- THE KILN COLOSSUS: a walking furnace of cracked basalt ---
     const cx2 = e.x + (e.fx || 0);
-    const cdrv = cx2 - (e._px === undefined ? cx2 : e._px);
+    const cdrvRaw = cx2 - (e._px === undefined ? cx2 : e._px);
+    const cdrv = Math.abs(cdrvRaw) > 8 ? 0 : cdrvRaw; // teleport = no stride pop
     e._px = cx2;
     e._svx = (e._svx || 0) * 0.55 + cdrv * 0.45;
     const cWalking = e.grounded && Math.abs(e._svx) > 0.05;
@@ -1667,7 +1088,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   } else if (e.kind === 'leviathan') {
     // --- THE SUNKEN LEVIATHAN: an armored deep-fish with an angler's lamp ---
     const lx2 = e.x + (e.fx || 0);
-    const ldrv = lx2 - (e._px === undefined ? lx2 : e._px);
+    const ldrvRaw = lx2 - (e._px === undefined ? lx2 : e._px);
+    const ldrv = Math.abs(ldrvRaw) > 8 ? 0 : ldrvRaw; // teleport = no stride pop
     e._px = lx2;
     e._svx = (e._svx || 0) * 0.6 + ldrv * 0.4;
     const dir = Math.abs(e._svx) > 0.05 ? Math.sign(e._svx) : look;

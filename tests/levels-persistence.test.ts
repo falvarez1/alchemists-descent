@@ -174,12 +174,15 @@ describe('level enemy persistence', () => {
     expect(revived.patrolIdx).toBe(1);
     expect(revived.calmT).toBe(83);
     expect(revived.recoil).toBe(6);
-    expect(revived.fusing).toBe(45);
-    expect(revived.punching).toBe(9);
-    expect(revived.windup).toBe(4);
-    expect(revived.swoop).toBe(7);
+    // MID-ATTACK TELEGRAPHS ARE DELIBERATELY NOT REVIVED (invariant #5:
+    // transient combat state clears on transitions) — a fuse lit or a windup
+    // begun during a prior visit must not resume with its tell already spent.
+    expect(revived.fusing).toBeUndefined();
+    expect(revived.punching).toBeUndefined();
+    expect(revived.windup).toBeUndefined();
+    expect(revived.swoop).toBeUndefined();
     expect(revived.tumble).toBe(2);
-    expect(revived.blink).toBe(11);
+    expect(revived.blink).toBe(0);
     expect(revived.jetFuel).toBe(1);
     expect(revived.jetCd).toBe(23);
     expect(revived.stuckT).toBe(5);
@@ -187,8 +190,8 @@ describe('level enemy persistence', () => {
     expect(revived.wary).toBe(12);
     expect(revived.cranky).toBe(33);
     expect(revived.webPulse).toBe(8);
-    expect(revived.needleX).toBe(155);
-    expect(revived.needleY).toBe(66);
+    expect(revived.needleX).toBeUndefined(); // belongs to the dropped windup
+    expect(revived.needleY).toBeUndefined();
     expect(revived.tpCool).toBe(44);
     expect(revived.rootSupport).toBeCloseTo(0.72);
     expect(revived.rootGrowthBudget).toBe(12);
@@ -202,7 +205,7 @@ describe('level enemy persistence', () => {
     expect(revived.mawStun).toBe(13);
     expect(revived.rillWet).toBeCloseTo(0.44);
     expect(revived.rillChargeCd).toBe(31);
-    expect(revived.rillChargeWindup).toBe(7);
+    expect(revived.rillChargeWindup).toBeUndefined(); // telegraph — not revived
     expect(revived.status.burning).toBe(20);
     expect(revived.status.electrified).toBe(15);
     expect(revived.status.regen).toBe(90);

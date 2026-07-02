@@ -1150,8 +1150,18 @@ export class Projectiles implements ProjectilesApi {
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'bomb') {
-            p.vx *= -0.3;
-            p.vy *= -0.2;
+            // reflect only the axis whose substep entered the solid (cf. the
+            // Bounce-card ricochet above) — reversing both made a bomb landing
+            // flat on a floor kick BACKWARD; the untouched axis keeps rolling
+            // with a friction scrub instead.
+            const prevGx = Math.floor(p.x - p.vx / steps);
+            const prevGy = Math.floor(p.y - p.vy / steps);
+            const hitFromXStep = solidAt(world, gx, prevGy);
+            const hitFromYStep = solidAt(world, prevGx, gy);
+            if (hitFromXStep || !hitFromYStep) p.vx *= -0.3;
+            else p.vx *= 0.6;
+            if (hitFromYStep || !hitFromXStep) p.vy *= -0.2;
+            else p.vy *= 0.8;
             p.x += p.vx;
             p.y += p.vy;
           }

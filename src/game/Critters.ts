@@ -333,6 +333,7 @@ export class Critters implements CrittersApi {
           if (c.gasp % 22 === 0) c.vy = -1.4 - Math.random();
           if (c.gasp > 260) {
             ctx.particles.burst(c.x, c.y, 4, Cell.Blood, () => packRGB(180, 40, 50), 1.1);
+            ctx.audio.squelch(); // the arc ends audibly, not in silence
             this.removeAt(idx);
             continue;
           }
@@ -365,6 +366,7 @@ export class Critters implements CrittersApi {
               if (tt === Cell.Fungus || tt === Cell.Moss) {
                 w.clearCellAt(ti);
                 ctx.particles.burst(xi + ddx, yi + ddy, 2, null, () => packRGB(90, 160, 80), 0.6);
+                ctx.audio.skitter(); // a faint nibble — the ecology is audible
                 break;
               }
             }

@@ -1,8 +1,11 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
-import type { Ctx, ExplosionApi } from '@/core/types';
+import type { Ctx, Enemy, ExplosionApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { ashColor, crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
+
+/** Reused blast-carve scratch — see the note at its use site in trigger(). */
+let blastTouchedScratch = new Uint8Array(0);
 
 const BLAST_DEBRIS_MARGIN = 8;
 const BLAST_DEBRIS_DUST_CAP = 28;
@@ -193,7 +196,15 @@ export class Explosions implements ExplosionApi {
     }
     // Concussion is a valid puzzle input: levers and rune switches listen.
     ctx.events.emit('structureStrike', { x: cx, y: cy, radius: radius + 4 });
-    const blastTouched = new Uint8Array(world.types.length);
+    // Reused scratch (a fresh grid-sized buffer per blast was ~1.7 MB of GC
+    // churn under multicast/chained detonations). Nest-safe: every read/write
+    // of this buffer completes before the entity-damage loop below — the only
+    // point a nested trigger (bomber death) can re-enter this function.
+    if (blastTouchedScratch.length < world.types.length) {
+      blastTouchedScratch = new Uint8Array(world.types.length);
+    }
+    const blastTouched = blastTouchedScratch;
+    blastTouched.fill(0, 0, world.types.length);
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -318,16 +329,26 @@ export class Explosions implements ExplosionApi {
       grav: 0.1,
     });
 
-    // Entity damage
-    for (let i = ctx.enemies.length - 1; i >= 0; i--) {
-      const e = ctx.enemies[i];
-      const dx = e.x - cx,
-        dy = e.y - cy;
+    // Entity damage. damage() can kill RE-ENTRANTLY: a bomber/colossus death
+    // triggers a nested explosion that swap-removes enemies from ctx.enemies
+    // while this loop runs — indexing the live array crashed the tick (a blast
+    // catching a slime and a bomber together was enough) and the reshuffle
+    // could feed a survivor the same blast twice. Snapshot the victims first;
+    // anyone a nested blast already finished is skipped by the hp check.
+    const victims: Enemy[] = [];
+    const blastReach = radius * 1.6;
+    for (const e of ctx.enemies) {
+      const dx = e.x - cx;
+      const dy = e.y - cy;
+      if (dx * dx + dy * dy < blastReach * blastReach) victims.push(e);
+    }
+    for (const e of victims) {
+      if (e.hp <= 0) continue; // a nested blast already finished it
+      const dx = e.x - cx;
+      const dy = e.y - cy;
       const d = Math.sqrt(dx * dx + dy * dy);
-      if (d < radius * 1.6) {
-        const dmg = Math.max(4, (1 - d / (radius * 1.6)) * radius * 2.4);
-        ctx.enemyCtl.damage(e, dmg * (options.enemyDamageMul ?? 1), (dx / (d || 1)) * 2.2, -1.6);
-      }
+      const dmg = Math.max(4, (1 - d / blastReach) * radius * 2.4);
+      ctx.enemyCtl.damage(e, dmg * (options.enemyDamageMul ?? 1), (dx / (d || 1)) * 2.2, -1.6);
     }
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
       const dx = ctx.player.x - cx,

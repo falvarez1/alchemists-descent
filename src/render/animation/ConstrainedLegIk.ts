@@ -32,6 +32,9 @@ export interface LegIkLimits {
   maxFlex?: number;
   /** Maximum absolute segment-angle delta per rendered frame. */
   maxAngularStep?: number;
+  /** Scales the knee arch seeded toward the pole (1 = the classic profile;
+   *  >1 spends chain slack on tall, tented knees — long-legged climbers). */
+  archScale?: number;
 }
 
 export interface ConstrainedLegIkInput {
@@ -60,6 +63,30 @@ const EPS = 0.0001;
 export function solveConstrainedLegIk(input: ConstrainedLegIkInput): ConstrainedLegIkSolution {
   const [l1, l2, l3] = input.lengths;
   const chain = Math.max(EPS, l1 + l2 + l3);
+  // POSE CACHE: when neither the hip nor the target has meaningfully moved
+  // since the last full solve, the solved pose is still valid — return it and
+  // skip the whole envelope/FABRIK/limit pipeline (and its Vec2 churn). Idle
+  // and slow-striding legs hit this most frames; drift forces a real solve
+  // roughly every 0.35 cells of accumulated motion.
+  const prev = input.previous;
+  if (
+    prev &&
+    prev.hipX !== undefined &&
+    prev.hipY !== undefined &&
+    prev.targetX !== undefined &&
+    prev.targetY !== undefined &&
+    Math.abs(prev.hipX - input.hip.x) < 0.35 &&
+    Math.abs(prev.hipY - input.hip.y) < 0.35 &&
+    Math.abs(prev.targetX - input.target.x) < 0.35 &&
+    Math.abs(prev.targetY - input.target.y) < 0.35
+  ) {
+    return {
+      upper: { x: prev.upperX, y: prev.upperY },
+      lower: { x: prev.lowerX, y: prev.lowerY },
+      foot: { x: prev.footX, y: prev.footY },
+      state: prev,
+    };
+  }
   const maxExtension = clamp(input.limits?.maxExtension ?? DEFAULT_MAX_EXTENSION, 0.45, 0.985);
   const minFlex = clamp(input.limits?.minFlex ?? DEFAULT_MIN_FLEX, 0.02, Math.PI - 0.02);
   const maxFlex = clamp(input.limits?.maxFlex ?? DEFAULT_MAX_FLEX, minFlex + 0.02, Math.PI - 0.02);
@@ -84,7 +111,8 @@ export function solveConstrainedLegIk(input: ConstrainedLegIkInput): Constrained
 
   const chord = normalize(sub(foot, input.hip), { x: 1, y: 0 });
   const pole = projectPole(input.pole, chord);
-  let pose = fabrikSolve(input.hip, foot, input.lengths, pole, input.iterations ?? 5);
+  const archScale = clamp(input.limits?.archScale ?? 1, 0.25, 3);
+  let pose = fabrikSolve(input.hip, foot, input.lengths, pole, input.iterations ?? 5, archScale);
   const poleCorrected = correctPole(input.hip, foot, pose.upper, pose.lower, pole);
   pose = poleCorrected.pose;
   if (poleCorrected.corrected) flags |= LEG_IK_FLAG_POLE_CORRECTED;
@@ -149,6 +177,10 @@ export function solveConstrainedLegIk(input: ConstrainedLegIkInput): Constrained
     extension: finalExtension,
     poleSide,
     flags,
+    hipX: input.hip.x,
+    hipY: input.hip.y,
+    targetX: input.target.x,
+    targetY: input.target.y,
   };
   return { upper: pose.upper, lower: pose.lower, foot: pose.foot, state };
 }
@@ -187,13 +219,14 @@ function fabrikSolve(
   lengths: readonly [number, number, number],
   pole: Vec2,
   iterations: number,
+  archScale = 1,
 ): { upper: Vec2; lower: Vec2; foot: Vec2 } {
   const [l1, l2, l3] = lengths;
   const chord = normalize(sub(foot, hip), { x: 1, y: 0 });
   const span = distance(hip, foot);
   const chain = l1 + l2 + l3;
   const slack = Math.max(0, chain - span);
-  const arch = clamp(chain * 0.1 + slack * 0.16, chain * 0.07, chain * 0.24);
+  const arch = clamp(chain * 0.1 + slack * 0.16, chain * 0.07, chain * 0.24) * archScale;
   let upper = add(hip, add(scale(chord, span * 0.32), scale(pole, arch)));
   let lower = add(hip, add(scale(chord, span * 0.68), scale(pole, arch * 0.24)));
   let end = foot;

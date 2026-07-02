@@ -119,8 +119,8 @@ try {
             weaver: {
               x: Math.round(w.x),
               y: Math.round(w.y),
-              planted: w.weaverVisualPlanted ?? 0,
-              rigLegs: Array.isArray(w.weaverLegs) ? w.weaverLegs.length : 0,
+              planted: w.weaverLoco ? w.weaverLoco.legs.filter((l) => l.planted).length : 0,
+              rigLegs: w.weaverLoco ? w.weaverLoco.legs.length : 0,
             },
           },
         });

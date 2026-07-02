@@ -66,9 +66,6 @@ try {
     w.blink = 0;
     w.recoil = 0;
     w.weaverFallT = 0;
-    w.weaverCrest = 0;
-    w.weaverClimbT = 0;
-    w.weaverClimbDir = 0;
 
     ctx.player.x = cx + 78;
     ctx.player.y = floorY;

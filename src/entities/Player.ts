@@ -212,6 +212,13 @@ export class PlayerControl implements PlayerControlApi {
   private jumpRiseFrames = 0;
   /** Rigid-body footing gets a short grace before jump-cut so launches clear the body. */
   private jumpCutGraceFrames = 0;
+  /** Frames the climb may not re-latch after a wall-jump (held Grab would
+   *  otherwise re-grab the wall the launch just left). */
+  private climbRelatchCd = 0;
+  /** A mantle was reached with the jump key held (W doubles as climb-up):
+   *  the grounded hold-to-hop must wait for a RELEASE, or every W-held
+   *  top-out instantly hops off the ledge it just pulled onto. */
+  private jumpNeedsRelease = false;
   /** Edge detector for the jump key. */
   private prevJumpHeld = false;
   /** Frames until the player can kick again. */
@@ -443,6 +450,7 @@ export class PlayerControl implements PlayerControlApi {
         player.grounded = true;
         player.stretchT = 6; // a little pull-up pop
         player.hat.vy -= 1.4;
+        this.jumpNeedsRelease = true; // W got him up here; W must not hop him off
         this.stopClimb(player);
         ctx.particles.burst(nx, ny - 2, 7, null, () => packRGB(150, 140, 120), 1.2, { grav: 0.05 });
         ctx.audio.noiseBurst(0.05, 300, 0.08, true);
@@ -1570,12 +1578,14 @@ export class PlayerControl implements PlayerControlApi {
 
     const jumpPressed = keys.jump && !this.prevJumpHeld;
     this.prevJumpHeld = keys.jump;
+    if (!keys.jump) this.jumpNeedsRelease = false;
     const wallJumpPressed = keys.wallJump && !this.prevWallJumpHeld;
     this.prevWallJumpHeld = keys.wallJump;
     const grabPressed = keys.grab && !this.prevGrabHeld;
     this.prevGrabHeld = keys.grab;
     if (grabPressed) this.grabBufferFrames = 10;
     else if (this.grabBufferFrames > 0) this.grabBufferFrames--;
+    if (this.climbRelatchCd > 0) this.climbRelatchCd--;
 
     // jump buffer: remember a fresh press for up to 8 frames before touchdown
     // (a press while crawling stands, and Space while climbing wall-jumps)
@@ -1591,6 +1601,7 @@ export class PlayerControl implements PlayerControlApi {
       !player.crawling &&
       !player.inLiquid &&
       !restrained &&
+      this.climbRelatchCd <= 0 &&
       (keys.grab || this.grabBufferFrames > 0);
     if (!player.climbing && canClimb) {
       const side = this.findClimbFace(ctx, PLAYER_H);
@@ -1606,7 +1617,9 @@ export class PlayerControl implements PlayerControlApi {
       const leanTarget = this.climbLeanTarget(ctx);
       if (!keys.grab || player.inLiquid || restrained) {
         this.stopClimb(player);
-      } else if (wallJumpPressed || keys.wallJump) {
+      } else if (wallJumpPressed) {
+        // EDGE-triggered (the || keys.wallJump level-check made this fire every
+        // held frame: 2-4 stacked launches per tap, re-grabbing between them)
         const away = -player.climbDir;
         this.stopClimb(player);
         player.vx = away * 2.4;
@@ -1620,6 +1633,8 @@ export class PlayerControl implements PlayerControlApi {
         this.framesSinceGrounded = 99;
         this.jumpBufferFrames = 0;
         this.grabBufferFrames = 0;
+        this.climbRelatchCd = 8; // the launch must actually LEAVE the wall
+        this.jumpRiseFrames = lp.jumpHoldWindow; // cuttable rise; jet stays blocked
         ctx.audio.jump();
         ctx.particles.burst(player.x - player.climbDir * 3, player.y - 8, 5, null, () => {
           const g = 128 + Math.floor(Math.random() * 50);
@@ -1645,7 +1660,14 @@ export class PlayerControl implements PlayerControlApi {
         // mantle onto it (top-out) rather than just dropping. Otherwise the
         // "healthy limit" is the reach itself — a too-shallow ramp or a face that
         // receded out of reach stops anchoring, dropping him to a walk/fall.
-        if (!(keys.up && this.tryMantle(ctx))) this.stopClimb(player);
+        if (keys.up && this.tryMantle(ctx)) {
+          // the mantle owns this frame: keys.jump includes W/Up, so falling
+          // through to the grounded-jump block would instantly launch him
+          // off every ledge he tops out onto
+          handledByClimb = true;
+        } else {
+          this.stopClimb(player);
+        }
       } else {
         const climbIntent = keys.up === keys.down ? 0 : keys.up ? -1 : 1;
         player.climbIntentY = climbIntent;
@@ -1736,7 +1758,9 @@ export class PlayerControl implements PlayerControlApi {
       if (keys.jump && !player.crawling) {
         // coyote time: a press within 6 frames of walking off a ledge still gets the full jump
         const coyote = jumpPressed && this.framesSinceGrounded <= 6;
-        if (player.grounded || player.inLiquid || coyote) {
+        // hold-to-hop stands down after a mantle until the key is re-pressed
+        const groundedJumpOk = player.grounded && !this.jumpNeedsRelease;
+        if (groundedJumpOk || player.inLiquid || coyote) {
           player.vy = -3.7 * verticalPace;
           player.grounded = false;
           player.stretchT = 6; // launch stretch (anti-squash)
@@ -1763,7 +1787,7 @@ export class PlayerControl implements PlayerControlApi {
           player.vy *= lp.levitDrag;
           // Levity potion (Wave C): levitation burns no levit while the timer runs
           if (player.status.levity <= 0)
-            player.levit -= 1.15 * (player.perks.featherweight ? 0.55 : 1);
+            player.levit = Math.max(0, player.levit - 1.15 * (player.perks.featherweight ? 0.55 : 1));
           this.levitFrames++;
           // SPUTTER WARNING: below 20% fuel the jet coughs — gaps in the
           // exhaust, a put-put under the hum — panic BEFORE the fall starts.
@@ -1921,6 +1945,9 @@ export class PlayerControl implements PlayerControlApi {
           this.jumpBufferFrames = 0;
           this.framesSinceGrounded = 99;
           this.jumpCutGraceFrames = 0;
+          // same feel contract as the primary jump: the rise is cuttable (an
+          // already-released buffered tap cuts to a hop) and blocks the jet
+          this.jumpRiseFrames = lp.jumpHoldWindow;
           ctx.audio.jump();
         } else {
           this.framesSinceGrounded = 0; // coyote time anchor
@@ -2287,6 +2314,7 @@ export class PlayerControl implements PlayerControlApi {
     if (player.grounded && player.diveT > 0) {
       player.diveT = 0;
       player.landTimer = 10;
+      player.fallPeak = 0; // the slam IS the landing — no second thud/impact below
       ctx.audio.landThud(1);
       ctx.events.emit('groundImpact', { x: player.x, y: player.y, radius: 54, strength: 1 });
       ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.014, 0.04);

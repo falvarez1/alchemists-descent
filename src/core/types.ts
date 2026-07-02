@@ -269,28 +269,108 @@ export interface ProceduralLegIkState {
   extension: number;
   poleSide: number;
   flags: number;
+  /** hip/target of the last FULL solve — lets the solver return its cached
+   *  pose when neither has meaningfully moved (idle legs, paused frames). */
+  hipX?: number;
+  hipY?: number;
+  targetX?: number;
+  targetY?: number;
 }
 
+/** One Weaver leg, owned by the tick-rate locomotion (entities/weaverLocomotion).
+ *  The renderer draws these; it never decides where feet go. */
 export interface WeaverLegState {
+  /** world foot position */
   x: number;
   y: number;
+  /** foot is gripping a real cell (load-bearing) */
+  planted: boolean;
+  /** swing progress 0..1; < 0 = not swinging */
+  stepT: number;
+  fromX: number;
+  fromY: number;
+  targetX: number;
+  targetY: number;
+  /** cells of foot lift along the surface normal mid-swing */
+  lift: number;
+  /** 0..1 hip-to-foot stretch (1 = at the reach limit) */
+  strain: number;
+  /** render-side damped IK memory (cosmetic only) */
+  ik?: ProceduralLegIkState;
+}
+
+/** What the Weaver's AI wants from its locomotion this tick. */
+export interface WeaverIntent {
+  move: 'hold' | 'toward' | 'drift';
+  /** target for 'toward' (and the watch point for facing/rearing) */
   tx: number;
   ty: number;
-  lift: number;
-  planted?: boolean;
-  strain?: number;
-  surface?: 'floor' | 'leftWall' | 'rightWall' | 'ceiling' | 'failed';
-  failT?: number;
-  smoothTx?: number;
-  smoothTy?: number;
-  stepCooldown?: number;
-  supportOk?: boolean;
-  supportCheckFrame?: number;
-  step?: number;
-  fromX?: number;
-  fromY?: number;
-  plantAge?: number;
-  ik?: ProceduralLegIkState;
+  /** 0 calm .. 1 flat-out */
+  urgency: number;
+  stance: 'normal' | 'crouch' | 'rear' | 'sleep';
+  /** difficulty/pacing/status multiplier on the crawl speed (default 1) */
+  speedScale?: number;
+}
+
+/** The Weaver surface-crawler state: body suspended from load-bearing feet,
+ *  riding a spring above a surface anchor that slides along the terrain
+ *  contour. One model owns position, orientation and feet, at tick rate. */
+export interface WeaverLocoState {
+  mode: 'attached' | 'airborne';
+  /** float body centre (world) */
+  px: number;
+  py: number;
+  /** body velocity (spring motion while attached; ballistic while airborne) */
+  vx: number;
+  vy: number;
+  /** airborne sub-cell accumulators */
+  fx: number;
+  fy: number;
+  /** surface anchor point on the contour */
+  sx: number;
+  sy: number;
+  /** smoothed surface normal (unit, out of the surface) */
+  nx: number;
+  ny: number;
+  /** body angle for render: 0 floor, ±π/2 walls, π ceiling */
+  orient: number;
+  /** crawl direction along the tangent basis */
+  dir: 1 | -1;
+  /** which way the head points along the tangent basis */
+  face: 1 | -1;
+  /** current arc speed (cells/tick) */
+  speed: number;
+  /** gait phase; advances with real arc speed (never with wall-clock) */
+  stride: number;
+  /** current ride height above the surface */
+  ride: number;
+  fallT: number;
+  /** landing recovery after a fall/leap */
+  recoverT: number;
+  /** fresh-leap window during which re-grab is suppressed */
+  leapT: number;
+  /** direction-choice hysteresis */
+  navCommit: number;
+  /** ticks the commanded direction has made no progress */
+  blocked: number;
+  /** ticks the anchor has had no surface (attached grace) */
+  detachGrace: number;
+  /** smoothed web/growth coverage under the local contour (0..1) */
+  webGrip: number;
+  /** arc distance to the gap/lethal edge ahead (0 = none in window) */
+  gapAhead: number;
+  /** deep-probe route cache: direction whose far march comes closest */
+  deepDir: 1 | -1;
+  deepBest: number;
+  /** arc distance (cells) along the probed route to its closest-approach point */
+  deepArc: number;
+  deepAge: number;
+  /** arc cells left committed to the deep route (survives the greedy local minimum) */
+  deepHold: number;
+  legs: WeaverLegState[];
+  /** e.x/e.y as last written — detects external displacement (knockback…) */
+  ex: number;
+  ey: number;
 }
 
 export interface Enemy {
@@ -320,6 +400,9 @@ export interface Enemy {
   // lazily-added smoothed displacement trackers (sprite animation)
   _px?: number;
   _svx?: number;
+  /** frameCount of the last update-loop visit — guards against a mid-loop
+   *  swap-remove double-updating an already-processed enemy this tick. */
+  _tickStamp?: number;
   status: EntityStatus;
   /** Depth-scaled damage multiplier (1 at depth 1). */
   dmgK?: number;
@@ -364,69 +447,20 @@ export interface Enemy {
   /** Frames of wary recoil after refusing to step into a lethal cell (lava/fire/
    *  acid it isn't immune to) — drives the "wary" inspector state. */
   wary?: number;
-  /** Weaver: renderer-owned IK foot targets. Transient visual state; not saved. */
-  weaverLegs?: WeaverLegState[];
+  /** Weaver: the surface-crawler locomotion state (entities/weaverLocomotion).
+   *  Owns body pose, orientation and the load-bearing feet at tick rate. */
+  weaverLoco?: WeaverLocoState;
   /** Weaver: growth-footing confidence sampled by AI and read by the sprite. */
   weaverSupport?: number;
-  /** Weaver: load-bearing terrain/strand coverage under reachable leg regions. */
-  weaverPhysicalSupport?: number;
-  /** Weaver: AI-side count of reachable support regions; debug/probe signal. */
-  weaverAnchorCount?: number;
-  /** Weaver: renderer-reported fraction of IK legs currently planted on footholds. */
-  weaverVisualSupport?: number;
-  /** Weaver: renderer-reported planted IK leg count. */
-  weaverVisualPlanted?: number;
-  /** Weaver: frames spent in poor foothold support; drives awkward sag/tilt. */
+  /** Weaver: mirror of weaverLoco.fallT for probes/inspector. */
   weaverFallT?: number;
-  /** Weaver: smoothed body lean from asymmetric footholds (-left, +right). */
-  weaverTilt?: number;
-  /** Weaver: smoothed body orientation (radians). The whole creature rotates so its
-   *  legs point at whatever surface they grip — 0 on a floor, ±π/2 on a wall, π under
-   *  a ceiling, blending through corners. Derived every frame from the planted feet,
-   *  so it tilts to climb / hangs upside-down even while Debug-frozen and dragged. */
+  /** Weaver: mirror of weaverLoco.orient (radians; 0 floor, ±π/2 walls, π ceiling). */
   weaverOrient?: number;
-  /** Weaver: smoothed render-only body lift; high stance unless crouching/reaching. */
-  weaverBodyLift?: number;
   /** Weaver: smoothed rear-up reach (0..1) when an alerted target hovers overhead —
    *  the body rises on its back legs and a foreleg paws upward toward the player. */
   weaverReach?: number;
-  /** Weaver: smoothed aggression (0..1) while alerted and pursuing — swaps the calm
-   *  tetrapod walk for a faster, lower-slung, lunging rippled chase gait. */
+  /** Weaver: smoothed aggression (0..1) while alerted and pursuing (render pacing). */
   weaverAggro?: number;
-  /** Weaver: x of the weighted centre of currently-load-bearing footing (AI side).
-   *  Drives a decisive recentre back over solid ground when footing is cut away. */
-  weaverSupportCenterX?: number;
-  /** Weaver: side of a wall it's actively scaling (-1 left, +1 right, 0 not climbing).
-   *  A giant spider latches onto sheer walls taller than it can step over and walks
-   *  straight up to reach a quarry perched above; the render leans the body into it. */
-  weaverClimbDir?: number;
-  /** Weaver: frames spent on the current wall climb (latches the mount over the lip). */
-  weaverClimbT?: number;
-  /** Weaver: short window after a climb where the chase drives it ACROSS/OFF a crest
-   *  even when its footing reads unstable — so it flows over a thin barrier and down
-   *  the far side toward prey instead of stranding on the narrow top in recovery. */
-  weaverCrest?: number;
-  /** Weaver: latched vertical climb intent — true = descending a wall toward a quarry
-   *  below, false = ascending toward one above/across. Set when the climb engages and
-   *  held for its duration so the body doesn't oscillate up/down when its quarry sits
-   *  right at its level mid-face. */
-  weaverDescend?: boolean;
-  /** Weaver: cached "march to the nearest scalable wall" direction toward an overhead
-   *  quarry, refreshed every few frames so the wide wall sweep isn't paid every tick. */
-  weaverSeekDir?: number;
-  /** Weaver: next frame at which the expensive wall-to-platform dismount search may retry. */
-  weaverDismountCheckFrame?: number;
-  /** Weaver: direction used for the last dismount search throttle. */
-  weaverDismountDir?: number;
-  /** Weaver: visible wall-to-platform pounce, used for long dismounts that must not
-   *  relocate the body in a single simulation tick. */
-  weaverLeapT?: number;
-  weaverLeapDuration?: number;
-  weaverLeapStartX?: number;
-  weaverLeapStartY?: number;
-  weaverLeapTargetX?: number;
-  weaverLeapTargetY?: number;
-  weaverLeapDir?: number;
   /** Weaver: free-moving head — smoothed render offset (x,y) and spring velocity of the
    *  cephalothorax. It turns to track prey, scans when idle and leads the walk, sprung so
    *  it overshoots and settles organically instead of snapping to the body's facing. */
@@ -436,10 +470,14 @@ export interface Enemy {
   weaverHeadVY?: number;
   /** Weaver: smoothed predatory-stalk drive (0..1) — paced lunge/coil bursts at mid range. */
   weaverStalk?: number;
-  /** Weaver: render-facing hysteresis so sub-pixel wall/chase corrections do not flip the sprite every frame. */
-  weaverFaceDir?: number;
   /** Weaver: short render signal while lowering to feed on prey. */
   weaverFeedT?: number;
+  /** Weaver: pounce cooldown so the ballistic leap stays a deliberate beat. */
+  weaverPounceCd?: number;
+  /** Weaver: predator impatience — pDist at the last progress check, and how
+   *  many consecutive checks the chase failed to close (clear-line pounce). */
+  weaverProgressRef?: number;
+  weaverImpatience?: number;
   /** Weaver: frames of irritated pursuit after being disturbed awake. */
   cranky?: number;
   /** Weaver: short visual pulse after a web-sense disturbance or support stumble. */

@@ -217,13 +217,17 @@ export class RigidBodies implements RigidBodiesApi {
    *  un-held dynamic body in a quiet puff, so debris fades instead of crashing Rapier.
    *  Long-lived tagged bodies (the player corpse, polled every frame by tickCorpse)
    *  are exempt — a spawn flood must never evict the ragdoll out from under its owner. */
-  private evictOldestDynamic(): void {
+  private evictOldestDynamic(): boolean {
     let victim: RigidBody | null = null;
     for (const b of this.bodies) if (b.kind === 'dynamic' && !this.evictionProtected(b) && b.sleeping) { victim = b; break; }
     if (!victim) for (const b of this.bodies) if (b.kind === 'dynamic' && !this.evictionProtected(b)) { victim = b; break; }
-    if (!victim) return;
+    // No unprotected victim (held body + player corpse are the only exemptions,
+    // so this needs the whole cap to be protected — soft-exceeding by that pair
+    // is harmless and honest, versus evicting a body an owner is polling).
+    if (!victim) return false;
     this.ctx.particles.burst(victim.x, victim.y, 6, null, () => packRGB(150, 140, 120), 1.2, { grav: 0.05 });
     this.remove(victim);
+    return true;
   }
 
   /** A body the eviction sweep must never claim: the one the player is holding, or
@@ -1103,11 +1107,13 @@ export class RigidBodies implements RigidBodiesApi {
     const player = ctx.player;
     if (ctx.state.mode !== 'play' || player.dead || player.climbing || player.swinging) return;
     const bodyH = player.crawling ? PLAYER_CRAWL_H : PLAYER_H;
-    // Snapshot: a stomp can smashBody() mid-loop, splicing this.bodies — iterating
-    // the live array would skip the neighbor. Re-check membership so we never
-    // resolve (or double-smash) a body already removed this frame.
-    for (const body of this.bodies.slice()) {
-      if (body.kind !== 'dynamic') continue;
+    // Iterate BACKWARD over the live array (no per-frame slice() allocation):
+    // a stomp can smashBody() mid-loop, but with a downward index a splice can
+    // at worst re-visit one body, and resolvePlayerVsBody is idempotent; the
+    // handles.has() check below skips anything already removed this frame.
+    for (let bi = this.bodies.length - 1; bi >= 0; bi--) {
+      const body = this.bodies[bi];
+      if (!body || body.kind !== 'dynamic') continue;
       if (body === this.held) continue; // don't shove the player off its own carried body
       if (!this.handles.has(body)) continue; // removed (smashed) earlier this frame
       if (Math.abs(body.x - player.x) > 48 || Math.abs(body.y - player.y) > 48) continue;

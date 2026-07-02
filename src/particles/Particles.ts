@@ -159,7 +159,7 @@ export class Particles implements ParticlesApi {
 
       p.x += p.vx;
       p.y += p.vy;
-      const gx = Math.floor(p.x),
+      let gx = Math.floor(p.x),
         gy = Math.floor(p.y);
 
       if (!world.inBounds(gx, gy)) {
@@ -192,11 +192,40 @@ export class Particles implements ParticlesApi {
         continue;
       }
 
-      // Hostile thrown debris (golem rocks) can strike the player
+      // Hostile thrown debris (golem rocks, shrapnel) can strike the player —
+      // SWEPT cell-by-cell: at 3-4 cells/frame the single-step test could jump
+      // a thin wall between frames (hitting through cover), and it tested the
+      // player BEFORE terrain, landing hits on the same step the shot entered
+      // a wall. Terrain is now tested first at every substep; a wall strike
+      // stops the shot at the entry cell and falls through to the ordinary
+      // terrain handling (splash/stain/deposit) below.
       if (p.hostileDmg > 0 && ctx.state.mode === 'play' && !player.dead) {
-        const dx = player.x - p.x,
-          dy = player.y - 3 - p.y;
-        if (dx * dx + dy * dy < 9) {
+        const steps = Math.max(1, Math.ceil(Math.max(Math.abs(p.vx), Math.abs(p.vy))));
+        let struckPlayer = false;
+        for (let s = 1; s <= steps; s++) {
+          const t = s / steps;
+          const sx = p.x - p.vx * (1 - t);
+          const sy = p.y - p.vy * (1 - t);
+          const cgx = Math.floor(sx);
+          const cgy = Math.floor(sy);
+          if (world.inBounds(cgx, cgy)) {
+            const c = world.types[world.idx(cgx, cgy)];
+            if (c !== Cell.Empty && !isGas(c)) {
+              p.x = sx;
+              p.y = sy;
+              gx = cgx;
+              gy = cgy;
+              break; // cover holds — the shot dies on the wall, not the player
+            }
+          }
+          const dx = player.x - sx;
+          const dy = player.y - 3 - sy;
+          if (dx * dx + dy * dy < 9) {
+            struckPlayer = true;
+            break;
+          }
+        }
+        if (struckPlayer) {
           ctx.playerCtl.damage(p.hostileDmg, p.vx * 1.5, -1, p.hostileSource ?? 'hostile-debris');
           this.removeAt(i);
           continue;

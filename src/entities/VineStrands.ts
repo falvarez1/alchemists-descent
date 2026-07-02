@@ -85,6 +85,10 @@ interface VineStrand extends VineStrandView {
    *  it re-settles to its ORIGINAL cells when it drifts far off-screen (or is cut). */
   tendril?: boolean;
   originCells?: number[];
+  /** The World this strand's cells were CLEARED from (lift/detach). Levels
+   *  persist as live World instances, and by the time levelChanged fires
+   *  ctx.world is already the NEW level — settling must target this one. */
+  originWorld?: World;
   originColor?: number;
   /** Player is swinging on this strand: it lays taut from anchor to (grabX,grabY). */
   grabbed?: boolean;
@@ -109,7 +113,7 @@ export class VineStrands implements VineStrandsApi {
   private readonly clusterNodeByCell = new Map<number, number>();
 
   constructor(private readonly ctx: Ctx) {
-    this.eventDisposers.push(ctx.events.on('levelChanged', () => this.clear()));
+    this.eventDisposers.push(ctx.events.on('levelChanged', () => this.settleAndClear()));
   }
 
   dispose(): void {
@@ -212,11 +216,15 @@ export class VineStrands implements VineStrandsApi {
       color: packRGB(Math.round(colorR * inv), Math.round(colorG * inv), Math.round(colorB * inv)),
       age: 0,
       settleT: 0,
+      originWorld: world,
     });
     return true;
   }
 
   addHanging(x: number, y: number, length: number, opts: { thickness?: number; color?: number } = {}): void {
+    // honor the strand budget like every other adder — build-time callers are
+    // bounded today, but a runtime caller must not blow past the verlet cap
+    if (!this.reserveWebStrandSlot()) return;
     const n = Math.max(2, Math.floor(length));
     const ax = x + 0.5;
     const ay = y + 0.5;
@@ -450,7 +458,9 @@ export class VineStrands implements VineStrandsApi {
       (s) => !s.web && !s.persistent && !s.tendril,
       (s) => s.tendril === true,
       (s) => s.web === true && s.denWeb !== true,
-      (s) => s.persistent === true && s.grabbed !== true && s.web !== true,
+      // NOTE: persistent (authored) ropes are deliberately NOT evictable —
+      // weaver web spam must never silently delete a level's rope. With only
+      // persistent strands left, the new web simply doesn't spawn (fail-open).
     ];
     for (const select of selectors) {
       const victim = this.strands.findIndex(select);
@@ -653,6 +663,7 @@ export class VineStrands implements VineStrandsApi {
       anchorY: sy + 0.5,
       originCells: origin,
       originColor: color,
+      originWorld: world,
     });
     return true;
   }
@@ -689,6 +700,21 @@ export class VineStrands implements VineStrandsApi {
 
   clear(): void {
     this.strands.length = 0;
+  }
+
+  /** Level transition: any strand still HOLDING grid cells (a lifted tendril,
+   *  a cut cluster mid-fall) settles back into the world those cells came
+   *  from before the strand list drops — otherwise the persisted World (and
+   *  the checkpoint save taken on every transition) has the vines permanently
+   *  erased. Web/persistent strands never cleared cells and are just dropped. */
+  private settleAndClear(): void {
+    for (const strand of this.strands) {
+      const world = strand.originWorld;
+      if (!world) continue;
+      if (strand.originCells) this.settleTendril(world, strand);
+      else if (!strand.web && !strand.persistent) this.settleStrand(world, strand);
+    }
+    this.clear();
   }
 
   applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void {

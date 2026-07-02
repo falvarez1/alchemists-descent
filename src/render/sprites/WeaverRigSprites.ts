@@ -86,11 +86,36 @@ const SEGMENT_EMISSIVE = 6;
 
 const EMISSIVE_ON = 1;
 
-const MANIFEST = parseRigManifest(weaverRigManifestRaw);
-const PART_SPECS = MANIFEST.parts;
-const UPPER_PARTS = MANIFEST.legParts.upper;
-const LOWER_PARTS = MANIFEST.legParts.lower;
-const FOOT_PARTS = MANIFEST.legParts.foot;
+// Silhouette discipline (reference art): the BODY is a compact, low-slung
+// mass dwarfed by long arched legs. The atlas parts are drawn oversized, so
+// body parts shrink at rasterize time; leg segments keep full detail (they
+// stretch along the bone anyway) and only slim slightly across it.
+const PART_RENDER_SCALE: Partial<Record<WeaverRigPartName, number>> = {
+  head: 0.58,
+  mandibleA: 0.58,
+  mandibleB: 0.58,
+  thorax: 0.58,
+  abdomen: 0.6,
+  spinnerets: 0.58,
+  crystalSpine: 0.62,
+  jointCap: 0.6,
+};
+
+// A malformed manifest must NOT take every enemy sprite down with it — this
+// module is imported top-level by EnemySprites, so parse failures degrade to
+// the procedural fallback renderer (loadState 'failed') instead of throwing.
+const MANIFEST = ((): WeaverRigManifest | null => {
+  try {
+    return parseRigManifest(weaverRigManifestRaw);
+  } catch (err) {
+    console.error('Weaver rig manifest rejected; using procedural fallback.', err);
+    return null;
+  }
+})();
+const PART_SPECS = MANIFEST?.parts ?? null;
+const UPPER_PARTS = MANIFEST?.legParts.upper ?? [];
+const LOWER_PARTS = MANIFEST?.legParts.lower ?? [];
+const FOOT_PARTS = MANIFEST?.legParts.foot ?? [];
 
 let loadState: 'idle' | 'loading' | 'ready' | 'failed' = 'idle';
 const rasterParts = new Map<WeaverRigPartName, RasterPart>();
@@ -208,7 +233,7 @@ function getPart(name: WeaverRigPartName): RasterPart | null {
 
 function ensureWeaverRigLoaded(): void {
   if (loadState !== 'idle') return;
-  if (typeof Image === 'undefined' || typeof document === 'undefined') {
+  if (!PART_SPECS || typeof Image === 'undefined' || typeof document === 'undefined') {
     loadState = 'failed';
     return;
   }
@@ -223,7 +248,7 @@ function ensureWeaverRigLoaded(): void {
       if (!sourceCtx) throw new Error('2d context unavailable');
       sourceCtx.drawImage(img, 0, 0);
       for (const [name, spec] of Object.entries(PART_SPECS) as Array<[WeaverRigPartName, PartSpec]>) {
-        rasterParts.set(name, rasterizePart(source, spec));
+        rasterParts.set(name, rasterizePart(source, spec, PART_RENDER_SCALE[name] ?? 1));
       }
       loadState = 'ready';
     } catch {
@@ -238,36 +263,40 @@ function ensureWeaverRigLoaded(): void {
   img.src = weaverRigUrl;
 }
 
-function rasterizePart(source: HTMLCanvasElement, spec: PartSpec): RasterPart {
+function rasterizePart(source: HTMLCanvasElement, spec: PartSpec, scale = 1): RasterPart {
+  const w = Math.max(1, Math.round(spec.w * scale));
+  const h = Math.max(1, Math.round(spec.h * scale));
+  const pivotX = spec.pivotX * scale;
+  const pivotY = spec.pivotY * scale;
   const canvas = document.createElement('canvas');
-  canvas.width = spec.w;
-  canvas.height = spec.h;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('2d context unavailable');
-  ctx.clearRect(0, 0, spec.w, spec.h);
+  ctx.clearRect(0, 0, w, h);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(source, spec.sx, spec.sy, spec.sw, spec.sh, 0, 0, spec.w, spec.h);
-  const imageData = ctx.getImageData(0, 0, spec.w, spec.h).data;
+  ctx.drawImage(source, spec.sx, spec.sy, spec.sw, spec.sh, 0, 0, w, h);
+  const imageData = ctx.getImageData(0, 0, w, h).data;
   const pixels: number[] = [];
   const flippedPixels: number[] = [];
   const segmentPixels: number[] = [];
   const flippedSegmentPixels: number[] = [];
-  for (let py = 0; py < spec.h; py++) {
-    const t = spec.h <= 1 ? 0 : py / (spec.h - 1);
-    for (let px = 0; px < spec.w; px++) {
-      const src = (py * spec.w + px) * 4;
+  for (let py = 0; py < h; py++) {
+    const t = h <= 1 ? 0 : py / (h - 1);
+    for (let px = 0; px < w; px++) {
+      const src = (py * w + px) * 4;
       const alpha = (imageData[src + 3] ?? 0) / 255;
       if (alpha <= 0.08) continue;
       const r = (imageData[src] ?? 0) / 255;
       const g = (imageData[src + 1] ?? 0) / 255;
       const b = (imageData[src + 2] ?? 0) / 255;
       const emissive = isRigPixelEmissive(imageData[src] ?? 0, imageData[src + 1] ?? 0, imageData[src + 2] ?? 0);
-      const x = px - spec.pivotX;
-      const y = py - spec.pivotY;
-      const flippedX = spec.w - 1 - px - spec.pivotX;
-      const side = px - spec.pivotX;
-      const flippedSide = spec.w - 1 - px - spec.pivotX;
+      const x = px - pivotX;
+      const y = py - pivotY;
+      const flippedX = w - 1 - px - pivotX;
+      const side = (px - pivotX) * 0.9; // slim the strip across the bone
+      const flippedSide = (w - 1 - px - pivotX) * 0.9;
       const emissiveValue = emissive ? EMISSIVE_ON : 0;
       pixels.push(x, y, r, g, b, alpha, emissiveValue);
       flippedPixels.push(flippedX, y, r, g, b, alpha, emissiveValue);

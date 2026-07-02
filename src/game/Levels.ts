@@ -549,12 +549,13 @@ export function reviveSavedEnemy(se: SavedEnemyState): Enemy {
   }
   if (se.calmT !== undefined) enemy.calmT = nonNegativeInt(se.calmT, 0);
   if (se.recoil !== undefined) enemy.recoil = nonNegativeInt(se.recoil, 0);
-  if (se.fusing !== undefined) enemy.fusing = nonNegativeInt(se.fusing, 0);
-  if (se.punching !== undefined) enemy.punching = nonNegativeInt(se.punching, 0);
-  if (se.windup !== undefined) enemy.windup = nonNegativeInt(se.windup, 0);
-  if (se.swoop !== undefined) enemy.swoop = nonNegativeInt(se.swoop, 0);
+  // MID-ATTACK TELEGRAPHS ARE NOT REVIVED (invariant #5: transient combat
+  // state clears on transitions): a fuse lit or a windup begun during a prior
+  // visit would otherwise resume/complete on arrival with its tell already
+  // spent — a bomber near spawn could pop with no warning. The fields stay in
+  // the save shape (ABI), they are just deliberately ignored here:
+  // fusing / windup / swoop / blink / punching, and the rill charge below.
   if (se.tumble !== undefined) enemy.tumble = nonNegativeInt(se.tumble, 0);
-  if (se.blink !== undefined) enemy.blink = nonNegativeInt(se.blink, 0);
   if (se.jetFuel !== undefined) enemy.jetFuel = nonNegativeInt(se.jetFuel, 0);
   if (se.jetCd !== undefined) enemy.jetCd = nonNegativeInt(se.jetCd, 0);
   if (se.stuckT !== undefined) enemy.stuckT = nonNegativeInt(se.stuckT, 0);
@@ -562,8 +563,6 @@ export function reviveSavedEnemy(se: SavedEnemyState): Enemy {
   if (se.wary !== undefined) enemy.wary = nonNegativeInt(se.wary, 0);
   if (se.cranky !== undefined) enemy.cranky = nonNegativeInt(se.cranky, 0);
   if (se.webPulse !== undefined) enemy.webPulse = nonNegativeInt(se.webPulse, 0);
-  if (se.needleX !== undefined) enemy.needleX = finiteNumber(se.needleX, enemy.x);
-  if (se.needleY !== undefined) enemy.needleY = finiteNumber(se.needleY, enemy.y);
   if (se.tpCool !== undefined) enemy.tpCool = nonNegativeInt(se.tpCool, 0);
   if (se.submerged === true) enemy.submerged = true;
   if (se.rootSupport !== undefined) enemy.rootSupport = Math.max(0, Math.min(1, finiteNumber(se.rootSupport, 0)));
@@ -578,7 +577,6 @@ export function reviveSavedEnemy(se: SavedEnemyState): Enemy {
   if (se.mawStun !== undefined) enemy.mawStun = nonNegativeInt(se.mawStun, 0);
   if (se.rillWet !== undefined) enemy.rillWet = Math.max(0, Math.min(1, finiteNumber(se.rillWet, 0)));
   if (se.rillChargeCd !== undefined) enemy.rillChargeCd = nonNegativeInt(se.rillChargeCd, 0);
-  if (se.rillChargeWindup !== undefined) enemy.rillChargeWindup = nonNegativeInt(se.rillChargeWindup, 0);
   return enemy;
 }
 

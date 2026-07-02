@@ -700,9 +700,14 @@ describe('weaver encounter contract', () => {
       weaverSupport: 1,
     } as Enemy;
 
-    const fed = (enemies as unknown as { weaverFeed(e: Enemy): boolean }).weaverFeed(weaver);
+    const helpers = enemies as unknown as {
+      findWeaverPrey(e: Enemy): Critter | null;
+      weaverTryEat(e: Enemy, prey: Critter): void;
+    };
+    const found = helpers.findWeaverPrey(weaver);
 
-    expect(fed).toBe(true);
+    expect(found).toBe(prey);
+    helpers.weaverTryEat(weaver, prey);
     expect(critters).toHaveLength(0);
     expect(weaver.hp).toBeGreaterThan(200);
     expect(weaver.recoil).toBeGreaterThan(0);

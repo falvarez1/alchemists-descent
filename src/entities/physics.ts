@@ -124,8 +124,21 @@ export class Physics implements PhysicsApi {
       // side fails entityFree first), capped at `slip` cells.
       if (slip) {
         for (let s = 1; s <= slip; s++) {
-          if (this.tryMoveTo(ent, ent.x + s, ent.y + dy, s, dy, halfW, h)) return true;
-          if (this.tryMoveTo(ent, ent.x - s, ent.y + dy, -s, dy, halfW, h)) return true;
+          // A slip is a DIAGONAL: require the sideways leg of the L to be
+          // walkable first, or a body can teleport through a 1-wide seam
+          // whose intermediate cells it never actually fit through.
+          if (
+            this.entityFreeForMove(ent.x + s, ent.y, halfW, h) &&
+            this.tryMoveTo(ent, ent.x + s, ent.y + dy, s, dy, halfW, h)
+          ) {
+            return true;
+          }
+          if (
+            this.entityFreeForMove(ent.x - s, ent.y, halfW, h) &&
+            this.tryMoveTo(ent, ent.x - s, ent.y + dy, -s, dy, halfW, h)
+          ) {
+            return true;
+          }
         }
       }
       return false;
@@ -142,7 +155,13 @@ export class Physics implements PhysicsApi {
     // so it only frees a snag where there's actually open space below.
     if (slip) {
       for (let s = 1; s <= slip; s++) {
-        if (this.tryMoveTo(ent, ent.x + dx, ent.y + s, dx, s, halfW, h)) return true;
+        // same L-shape rule as the lateral slip above (duck first, then over)
+        if (
+          this.entityFreeForMove(ent.x, ent.y + s, halfW, h) &&
+          this.tryMoveTo(ent, ent.x + dx, ent.y + s, dx, s, halfW, h)
+        ) {
+          return true;
+        }
       }
     }
     return false;

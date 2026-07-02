@@ -60,7 +60,6 @@ try {
     weaver.blink = 0;
     weaver.windup = 0;
     weaver.patrol = undefined;
-    weaver.weaverLegs = undefined;
 
     ctx.player.x = playerX;
     ctx.player.y = floorY;
@@ -91,7 +90,7 @@ try {
         weaver.cranky = Math.max(weaver.cranky ?? 0, 90);
         ctx.camera.snapTo((weaver.x + ctx.player.x) * 0.5, floorY - 34);
 
-        const legs = weaver.weaverLegs ?? [];
+        const legs = weaver.weaverLoco?.legs ?? [];
         const planted = legs.filter((leg) => leg.planted === true).length;
         const swinging = Math.max(0, legs.length - planted);
         maxSwingingLegs = Math.max(maxSwingingLegs, swinging);
@@ -146,9 +145,12 @@ try {
   await captureCanvasPng(page, png);
 
   const failures = [];
-  if (result.closed < 170) failures.push(`closed too little distance (${result.closed.toFixed(1)} cells)`);
-  if (result.maxAbsVx < 1.8) failures.push(`maxAbsVx too low (${result.maxAbsVx.toFixed(2)})`);
-  if (result.avgPursuitVx < 0.95) failures.push(`avgPursuitVx too low (${result.avgPursuitVx.toFixed(2)})`);
+  // Thresholds match the surface-crawler profile (entities/weaverLocomotion):
+  // a committed steady crawl (URGENT_SPEED x difficulty x pacing) punctuated by
+  // ballistic pounce bursts - not the old velocity-cap burst accel model.
+  if (result.closed < 150) failures.push(`closed too little distance (${result.closed.toFixed(1)} cells)`);
+  if (result.maxAbsVx < 1.45) failures.push(`maxAbsVx too low (${result.maxAbsVx.toFixed(2)})`);
+  if (result.avgPursuitVx < 0.9) failures.push(`avgPursuitVx too low (${result.avgPursuitVx.toFixed(2)})`);
   if (result.maxSwingingLegs > 5) failures.push(`too many legs off-plant (${result.maxSwingingLegs})`);
   if (result.minPlantedLegs < 3) failures.push(`too few planted legs (${result.minPlantedLegs})`);
   if (result.maxRawLift > 0.9) failures.push(`foot lift too high (${result.maxRawLift.toFixed(2)})`);
