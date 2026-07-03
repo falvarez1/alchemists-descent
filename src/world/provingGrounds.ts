@@ -49,11 +49,17 @@ function stamp(ctx: Ctx): {
   ctx.vineStrands.clear();
   ctx.critters.clear();
   ctx.enemies.length = 0;
-  // shell: sealed box with a flat main floor
-  fill(40, 300, WIDTH - 40, 316, Cell.Wall); // ceiling
+  // shell: sealed box with a flat main floor and a LOW ceiling — everything
+  // in a proving ground lives at eye level (the first draft hung galleries
+  // 150+ cells overhead in the dark; the wizard saw an empty floor)
+  const CEIL = FLOOR - 96;
+  fill(40, CEIL - 16, WIDTH - 40, CEIL, Cell.Wall); // ceiling
   fill(40, FLOOR, WIDTH - 40, BOT, Cell.Stone); // floor
-  fill(40, 300, 56, BOT, Cell.Wall); // left wall
-  fill(WIDTH - 56, 300, WIDTH - 40, BOT, Cell.Wall); // right wall
+  fill(40, CEIL - 16, 56, BOT, Cell.Wall); // left wall
+  fill(WIDTH - 56, CEIL - 16, WIDTH - 40, BOT, Cell.Wall); // right wall
+  // glowshroom lighting rows: real light sources every 40 cells, so the
+  // grounds are readable regardless of the level's ambient plumbing
+  for (let x = 80; x < WIDTH - 60; x += 40) cell(x, CEIL + 1, Cell.Glowshroom);
   return { cell, fill, basin };
 }
 
@@ -124,28 +130,29 @@ export function buildAlchemyArena(ctx: Ctx): void {
  *  gunpowder-laced ore wall to mine — carefully, or not. */
 export function buildGasArena(ctx: Ctx): void {
   const { cell, fill } = stamp(ctx);
-  // gallery 1: a low ceiling shelf holding a big gas pocket, with a plugged
-  // torch niche — dig the 2-cell sand plug to introduce the flame
-  fill(120, 420, 480, 436, Cell.Wall); // shelf ceiling
-  fill(120, 437, 480, 442, Cell.MarshGas);
-  fill(150, 470, 156, 480, Cell.Wall); // torch niche
-  for (let y = 452; y <= 468; y++) cell(152, y, Cell.Fire);
-  fill(150, 444, 156, 450, Cell.Sand); // the plug between torch and pocket
-  // gallery 2: gas over a gunpowder-laced ore wall — the two-stage disaster
-  fill(620, 380, 980, 396, Cell.Wall);
-  fill(620, 397, 980, 404, Cell.MarshGas);
-  fill(660, 560, 900, FLOOR - 1, Cell.RawOre);
-  for (let x = 675; x < 900; x += 9) {
-    for (let y = 566; y < FLOOR - 4; y += 8) {
+  const CEIL = FLOOR - 96;
+  // BAY 1 — the plugged torch: gas pools under the shell ceiling; a glowing
+  // lava well sits at floor level with a sand plug capping its chimney. Dig
+  // the plug and the heat climbs into the pocket.
+  fill(120, CEIL + 1, 470, CEIL + 22, Cell.MarshGas);
+  fill(280, FLOOR - 26, 300, FLOOR - 1, Cell.Metal); // the well
+  fill(284, FLOOR - 22, 296, FLOOR - 4, Cell.Lava);
+  fill(284, FLOOR - 30, 296, FLOOR - 27, Cell.Sand); // the plug on top
+  fill(478, CEIL, 494, FLOOR - 1, Cell.Wall); // bay divider
+  mark(ctx, 120, CEIL, 470, FLOOR, 'Plugged torch bay', 'Gas overhead; dig the sand cap off the lava well');
+  // BAY 2 — the laced seam: an ore wall AT eye level, gas pooled above it
+  fill(520, CEIL + 1, 940, CEIL + 16, Cell.MarshGas);
+  fill(620, FLOOR - 70, 850, FLOOR - 1, Cell.RawOre);
+  for (let x = 632; x < 850; x += 9) {
+    for (let y = FLOOR - 64; y < FLOOR - 4; y += 8) {
       cell(x + ((y * 7) % 5), y, Cell.Gunpowder);
     }
   }
-  mark(ctx, 120, 420, 480, 452, 'Gas pocket + plugged torch', 'Dig the sand plug below-left; the flame finds the pocket');
-  mark(ctx, 660, 380, 900, FLOOR, 'Laced ore seam', 'Gunpowder threads the ore — excavate carefully, or don’t');
-  mark(ctx, 1100, 360, 1400, 392, 'The clean pocket', 'Detonate it from range — or keep it as a trap for the bomber');
-  // gallery 3: a clean pocket to husband — or detonate from range
-  fill(1100, 360, 1400, 376, Cell.Wall);
-  fill(1100, 377, 1400, 390, Cell.MarshGas);
+  fill(948, CEIL, 964, FLOOR - 1, Cell.Wall); // bay divider
+  mark(ctx, 620, FLOOR - 70, 850, FLOOR, 'Laced ore seam', 'Gunpowder threads the ore — excavate carefully, or don’t');
+  // BAY 3 — the clean pocket + the wandering fuse
+  fill(1000, CEIL + 1, 1420, CEIL + 26, Cell.MarshGas);
+  mark(ctx, 1000, CEIL, 1420, CEIL + 30, 'The clean pocket', 'Detonate it from range — or let the bomber do it');
   ctx.enemyCtl.spawn('bomber', 1250, FLOOR - 2); // the wandering fuse
   arrive(
     ctx,
@@ -164,8 +171,8 @@ export function buildFrostArena(ctx: Ctx): void {
   fill(340, FLOOR - 62, 358, BOT, Cell.Stone); // near quay
   fill(1042, FLOOR - 62, 1060, BOT, Cell.Stone); // far quay
   // fire pit on the near shore: re-melt your bridge behind you
-  fill(250, FLOOR - 4, 290, FLOOR - 1, Cell.Coal);
-  for (let x = 255; x <= 285; x += 6) fill(x, FLOOR - 6, x + 1, FLOOR - 5, Cell.Fire);
+  fill(248, FLOOR - 8, 292, FLOOR - 1, Cell.Metal); // fire pit = lava brazier
+  fill(252, FLOOR - 6, 288, FLOOR - 2, Cell.Lava);
   // flask reagent tubs for grenade practice
   basin(120, 170, 10, Cell.Water);
   basin(1150, 1200, 8, Cell.Lava);
