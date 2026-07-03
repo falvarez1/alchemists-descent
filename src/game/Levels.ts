@@ -2291,7 +2291,13 @@ export class Levels implements LevelsApi {
     this.spawnLevelCrates(ctx, runtime);
     ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
     ctx.events.emit('objectiveChanged', {
-      text: id === 'weaver-test'
+      text: id === 'alchemy-test'
+        ? 'COMBINE THE TUBS — EVERY REACTION IS REAL CELLS'
+        : id === 'gas-test'
+        ? 'THE GASWORKS — EVERY POCKET IS A FUSE'
+        : id === 'frost-test'
+        ? 'FREEZE A CROSSING — THROW WHAT BURNS'
+        : id === 'weaver-test'
         ? 'STUDY THE WEAVER LAIR'
         : runtime.portal
         ? runtime.keyTaken

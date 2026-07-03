@@ -14,6 +14,7 @@ import { COLOR_FN, packRGB } from '@/sim/colors';
 
 const FLOOR = 640;
 const BOT = 664;
+const GROUNDS_AMBIENT = 0.85; // a proving ground must be READABLE (weaver-arena pattern)
 
 function stamp(ctx: Ctx): {
   cell: (x: number, y: number, t: number) => void;
@@ -41,6 +42,9 @@ function stamp(ctx: Ctx): {
     fill(x0, FLOOR - depth, x1, FLOOR - 1, t);
   };
   w.clear();
+  ctx.params.global.ambient = GROUNDS_AMBIENT;
+  const runtime = ctx.levels.current;
+  if (runtime) runtime.inspectionMarkers = [];
   ctx.rigidBodies.clear();
   ctx.vineStrands.clear();
   ctx.critters.clear();
@@ -51,6 +55,10 @@ function stamp(ctx: Ctx): {
   fill(40, 300, 56, BOT, Cell.Wall); // left wall
   fill(WIDTH - 56, 300, WIDTH - 40, BOT, Cell.Wall); // right wall
   return { cell, fill, basin };
+}
+
+function mark(ctx: Ctx, x0: number, y0: number, x1: number, y1: number, label: string, detail: string): void {
+  ctx.levels.current?.inspectionMarkers?.push({ kind: 'prefab', label, x0, y0, x1, y1, detail });
 }
 
 function arrive(ctx: Ctx, x: number, objective: string, hint: string): void {
@@ -82,6 +90,19 @@ export function buildAlchemyArena(ctx: Ctx): void {
   fill(860, FLOOR - 8, 900, FLOOR - 1, Cell.Ash); // ash heap (secret fodder)
   fill(930, FLOOR - 8, 970, FLOOR - 1, Cell.Snow); // snow bank
   fill(1000, FLOOR - 8, 1040, FLOOR - 1, Cell.Coal); // coal bed
+  const tubs: Array<[number, number, string, string]> = [
+    [120, 180, 'Water tub', 'Dilutes toxic; quenches lava; freezes under frost'],
+    [230, 290, 'Acid tub', 'Pour onto LAVA to vitrify it into glass'],
+    [340, 400, 'Lava tub', 'Acid vitrifies it; water quenches it'],
+    [450, 510, 'Slime tub', 'Acid digests slime into toxic sludge'],
+    [560, 620, 'Blood tub', 'Runs it into the catalyst heap for healing mist'],
+    [670, 730, 'Toxic tub', 'Flood it with water to cleanse it'],
+    [790, 830, 'Catalyst heap', 'Transmutes blood into healium; consumed grain by grain'],
+    [860, 900, 'Ash heap', 'Secret-reaction fodder'],
+    [930, 970, 'Snow bank', 'Secret-reaction fodder'],
+    [1000, 1040, 'Coal bed', 'Secret-reaction fodder'],
+  ];
+  for (const [x0, x1, label, detail] of tubs) mark(ctx, x0 - 3, FLOOR - 16, x1 + 3, BOT, label, detail);
   // THE RUN'S SECRET, pre-staged: its two reagents in adjacent tubs with a
   // 6-cell stone dam between them — breach the dam and watch
   const secret = ctx.state.secretReaction;
@@ -89,6 +110,7 @@ export function buildAlchemyArena(ctx: Ctx): void {
     basin(1120, 1170, 10, secret.a as Cell);
     basin(1182, 1232, 10, secret.b as Cell);
     ctx.events.emit('toast', { text: 'THE FAR TUBS HOLD THIS RUN’S SECRET PAIR — BREACH THE DAM' });
+    mark(ctx, 1115, FLOOR - 16, 1237, BOT, 'THE RUN’S SECRET PAIR', 'Breach the dam between these two tubs and watch');
   }
   arrive(
     ctx,
@@ -112,12 +134,15 @@ export function buildGasArena(ctx: Ctx): void {
   // gallery 2: gas over a gunpowder-laced ore wall — the two-stage disaster
   fill(620, 380, 980, 396, Cell.Wall);
   fill(620, 397, 980, 404, Cell.MarshGas);
-  fill(620, 500, 980, FLOOR - 1, Cell.RawOre);
-  for (let x = 640; x < 980; x += 9) {
-    for (let y = 510; y < FLOOR - 4; y += 11) {
+  fill(660, 560, 900, FLOOR - 1, Cell.RawOre);
+  for (let x = 675; x < 900; x += 9) {
+    for (let y = 566; y < FLOOR - 4; y += 8) {
       cell(x + ((y * 7) % 5), y, Cell.Gunpowder);
     }
   }
+  mark(ctx, 120, 420, 480, 452, 'Gas pocket + plugged torch', 'Dig the sand plug below-left; the flame finds the pocket');
+  mark(ctx, 660, 380, 900, FLOOR, 'Laced ore seam', 'Gunpowder threads the ore — excavate carefully, or don’t');
+  mark(ctx, 1100, 360, 1400, 392, 'The clean pocket', 'Detonate it from range — or keep it as a trap for the bomber');
   // gallery 3: a clean pocket to husband — or detonate from range
   fill(1100, 360, 1400, 376, Cell.Wall);
   fill(1100, 377, 1400, 390, Cell.MarshGas);
@@ -149,6 +174,8 @@ export function buildFrostArena(ctx: Ctx): void {
   ctx.enemyCtl.spawn('slime', 1120, FLOOR - 2);
   ctx.enemyCtl.spawn('slime', 1220, FLOOR - 2);
   ctx.enemyCtl.spawn('bat', 1180, FLOOR - 120);
+  mark(ctx, 360, FLOOR - 62, 1040, FLOOR, 'The lake', 'Icelance the surface into a bridge; the fire pit melts it back');
+  mark(ctx, 250, FLOOR - 8, 290, FLOOR, 'Fire pit', 'Re-melt your bridge behind you');
   arrive(
     ctx,
     120,
