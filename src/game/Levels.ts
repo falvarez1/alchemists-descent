@@ -80,6 +80,7 @@ import { EXTRAS } from '@/world/biomeExtras';
 import { extractRegionGraph } from '@/world/regions';
 import { buildPhysicsArena } from '@/world/physicsArena';
 import { buildWeaverArena } from '@/world/weaverArena';
+import { buildAlchemyArena, buildFrostArena, buildGasArena } from '@/world/provingGrounds';
 import {
   createDefaultVirtualWorldDef,
   cropMaterializedWindow,
@@ -101,7 +102,7 @@ const SETTLED_FINDABILITY_REPAIR_MS = 300;
  *  skip the procedural findability repair, which would otherwise "rescue" the now-
  *  wiped campaign features by carving braced tunnels through the authored level.
  *  They own their own reachability. */
-const AUTHORED_TEST_ARENAS = new Set(['weaver-test', 'physics-test']);
+const AUTHORED_TEST_ARENAS = new Set(['weaver-test', 'physics-test', 'alchemy-test', 'gas-test', 'frost-test']);
 /** Waystone bowl fire checks run every 4th frame; this many hot checks light it. */
 const WAYSTONE_LIGHT_TICKS = 30;
 /** Cold bowl checks tolerated before ignition progress resets — coyote time for
@@ -2282,6 +2283,9 @@ export class Levels implements LevelsApi {
     // levelChanged (which clears the body pool), so the bodies persist.
     if (id === 'physics-test') buildPhysicsArena(ctx);
     if (id === 'weaver-test') buildWeaverArena(ctx);
+    if (id === 'alchemy-test') buildAlchemyArena(ctx);
+    if (id === 'gas-test') buildGasArena(ctx);
+    if (id === 'frost-test') buildFrostArena(ctx);
     // Loose wood crates (carry-able fuel) AFTER levelChanged clears the body pool,
     // same as the arenas — so they persist for the visit.
     this.spawnLevelCrates(ctx, runtime);

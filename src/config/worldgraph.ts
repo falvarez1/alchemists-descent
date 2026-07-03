@@ -40,6 +40,27 @@ export const LEVELS: Record<string, LevelDef> = {
     depth: 0,
     nextLevelId: null,
   },
+  'alchemy-test': {
+    id: 'alchemy-test',
+    name: 'ALCHEMY PROVING GROUNDS',
+    biome: 'fungal',
+    depth: 0,
+    nextLevelId: null,
+  },
+  'gas-test': {
+    id: 'gas-test',
+    name: 'THE GASWORKS',
+    biome: 'fungal',
+    depth: 0,
+    nextLevelId: null,
+  },
+  'frost-test': {
+    id: 'frost-test',
+    name: 'FLASK & FROST RANGE',
+    biome: 'frozen',
+    depth: 0,
+    nextLevelId: null,
+  },
 };
 
 export const START_LEVEL = 'd1';
