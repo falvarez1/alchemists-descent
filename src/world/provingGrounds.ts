@@ -67,15 +67,17 @@ function mark(ctx: Ctx, x0: number, y0: number, x1: number, y1: number, label: s
   ctx.levels.current?.inspectionMarkers?.push({ kind: 'prefab', label, x0, y0, x1, y1, detail });
 }
 
-function arrive(ctx: Ctx, x: number, objective: string, hint: string): void {
+function arrive(ctx: Ctx, x: number, objective: string, hint: string, y = FLOOR - 2): void {
   const p = ctx.player;
   p.x = x;
-  p.y = FLOOR - 2;
+  p.y = y;
+  const rt = ctx.levels.current;
+  if (rt) rt.spawn = { x, y }; // respawn INTO the arena, not the old void spawn
   p.vx = 0;
   p.vy = 0;
   p.fx = 0;
   p.fy = 0;
-  ctx.camera.snapTo(x, FLOOR - 90);
+  ctx.camera.snapTo(x, y - 88);
   ctx.events.emit('objectiveChanged', { text: objective });
   ctx.events.emit('toast', { text: hint });
 }
@@ -115,6 +117,9 @@ export function buildAlchemyArena(ctx: Ctx): void {
   if (secret) {
     basin(1120, 1170, 10, secret.a as Cell);
     basin(1182, 1232, 10, secret.b as Cell);
+    // the DAM between them is SAND — metal basin walls are indestructible,
+    // and an unbreachable "breach the dam" is a lie. Dig or kick it open.
+    fill(1172, FLOOR - 14, 1180, FLOOR - 1, Cell.Sand);
     ctx.events.emit('toast', { text: 'THE FAR TUBS HOLD THIS RUN’S SECRET PAIR — BREACH THE DAM' });
     mark(ctx, 1115, FLOOR - 16, 1237, BOT, 'THE RUN’S SECRET PAIR', 'Breach the dam between these two tubs and watch');
   }
@@ -165,28 +170,37 @@ export function buildGasArena(ctx: Ctx): void {
 /** FLASK & FROST RANGE: freeze a crossing over deep water, melt it back,
  *  and practice flask grenades on live targets. */
 export function buildFrostArena(ctx: Ctx): void {
-  const { fill, basin } = stamp(ctx);
-  // the lake: a wide deep-water span with a far shore
-  fill(360, FLOOR - 60, 1040, FLOOR - 1, Cell.Water);
-  fill(340, FLOOR - 62, 358, BOT, Cell.Stone); // near quay
-  fill(1042, FLOOR - 62, 1060, BOT, Cell.Stone); // far quay
+  const { fill } = stamp(ctx);
+  // RAISED SHORES with the lake sunk between them — the first draft piled a
+  // 60-cell wall of water ABOVE the walking floor (an aquarium, not a lake;
+  // the blueprint shot made that obvious). Shores are stone platforms; the
+  // water surface sits just below their lips, so the crossing reads true.
+  const SHORE = FLOOR - 40; // walkway level on both shores
+  fill(57, SHORE, 358, FLOOR - 1, Cell.Stone); // near shore platform
+  fill(1042, SHORE, WIDTH - 57, FLOOR - 1, Cell.Stone); // far shore platform
+  fill(360, SHORE + 2, 1040, FLOOR - 1, Cell.Water); // the lake, below the lips
   // fire pit on the near shore: re-melt your bridge behind you
-  fill(248, FLOOR - 8, 292, FLOOR - 1, Cell.Metal); // fire pit = lava brazier
-  fill(252, FLOOR - 6, 288, FLOOR - 2, Cell.Lava);
-  // flask reagent tubs for grenade practice
-  basin(120, 170, 10, Cell.Water);
-  basin(1150, 1200, 8, Cell.Lava);
-  basin(1260, 1310, 10, Cell.Acid);
+  fill(248, SHORE - 8, 292, SHORE - 1, Cell.Metal); // brazier
+  fill(252, SHORE - 6, 288, SHORE - 2, Cell.Lava);
+  // flask reagent tubs on the shores (basins are floor-relative, so build
+  // them by hand at shore level)
+  fill(118, SHORE - 14, 172, SHORE - 1, Cell.Metal);
+  fill(121, SHORE - 12, 169, SHORE - 2, Cell.Water);
+  fill(1148, SHORE - 12, 1202, SHORE - 1, Cell.Metal);
+  fill(1151, SHORE - 10, 1199, SHORE - 2, Cell.Lava);
+  fill(1258, SHORE - 14, 1312, SHORE - 1, Cell.Metal);
+  fill(1261, SHORE - 12, 1309, SHORE - 2, Cell.Acid);
   // live targets on the far shore
-  ctx.enemyCtl.spawn('slime', 1120, FLOOR - 2);
-  ctx.enemyCtl.spawn('slime', 1220, FLOOR - 2);
-  ctx.enemyCtl.spawn('bat', 1180, FLOOR - 120);
-  mark(ctx, 360, FLOOR - 62, 1040, FLOOR, 'The lake', 'Icelance the surface into a bridge; the fire pit melts it back');
-  mark(ctx, 250, FLOOR - 8, 290, FLOOR, 'Fire pit', 'Re-melt your bridge behind you');
+  ctx.enemyCtl.spawn('slime', 1120, SHORE - 2);
+  ctx.enemyCtl.spawn('slime', 1230, SHORE - 2);
+  ctx.enemyCtl.spawn('bat', 1180, SHORE - 80);
+  mark(ctx, 360, SHORE, 1040, FLOOR, 'The lake', 'Icelance the surface into a bridge; the brazier melts it back');
+  mark(ctx, 246, SHORE - 10, 294, SHORE, 'Lava brazier', 'Re-melt your bridge behind you');
   arrive(
     ctx,
-    120,
+    200,
     'FREEZE A CROSSING — THROW WHAT BURNS',
     'FROST RANGE: icelance the lake to bridge it; fill the flask and throw it',
+    SHORE - 2,
   );
 }

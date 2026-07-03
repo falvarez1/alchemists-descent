@@ -29,7 +29,10 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # verify-builder-pro.mjs, verify-builder-ux.mjs, verify-builder-prefabs.mjs,
 # verify-builder-power.mjs, verify-sprites.mjs, verify-machines.mjs,
 # verify-gallery.mjs
-# Worldgen eyeball/diag: shot-biomes.mjs (overview PNGs), diag-biome.mjs
+# Worldgen eyeball/diag: shot-biomes.mjs (overview PNGs), diag-biome.mjs,
+# shot-blueprint.mjs <levelId...> (FULL-level HUD-free blueprint PNG with
+# labeled inspection markers + spawn/player/enemy dots - THE way to judge
+# any authored level's layout; camera crops cannot show the big picture)
 # Gameplay/runtime probes (dev server running): verify-intro-progression.mjs
 # (D1 surface intro → descent → onboarding spine), verify-descent-progression.mjs,
 # verify-progression-pacing.mjs, verify-bat-slime.mjs, verify-death-causes.mjs,
