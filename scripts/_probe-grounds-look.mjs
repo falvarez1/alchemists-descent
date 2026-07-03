@@ -47,17 +47,21 @@ const enter = (id) =>
 
 await enter('gas-test');
 await page.waitForTimeout(900);
-await shotAt('gas-torch', 300, 636);
-await shotAt('gas-seam', 780, 550);
-await shotAt('gas-clean', 1250, 500);
+await shotAt('gas-bell', 215, 636);
+await shotAt('gas-fuse', 470, 636);
+await shotAt('gas-vein', 765, 636);
+await shotAt('gas-dolmen', 1130, 636);
 
 await enter('alchemy-test');
 await page.waitForTimeout(900);
-await shotAt('alch-tubs', 400, 636);
-await shotAt('alch-secret', 1170, 636);
+await shotAt('alch-tubs', 300, 636);
+await shotAt('alch-heaps', 745, 636);
+// stand BESIDE the shrine, not at its center — x1140 y636 is inside the
+// trough liquid (a lava/acid secret pair kills the probe subject)
+await shotAt('alch-secret', 1225, 636);
 
 await enter('frost-test');
 await page.waitForTimeout(900);
-await shotAt('frost-lake', 620, 600);
+await shotAt('frost-lake', 330, 596); // near-shore edge, looking out over the bergs
 
 await browser.close();
