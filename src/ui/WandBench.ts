@@ -91,10 +91,11 @@ export function canOpenWandBench(ctx: Ctx): boolean {
  * filled slot empty-handed returns its card to the collection; clicking a
  * filled slot while holding swaps.
  *
- * Pause-light BY DESIGN: the simulation keeps running underneath (the descent
- * is forgiving; bench at your own risk). All edits go through
- * ctx.wands.slotCard — the bench never mutates wand state directly, and it
- * re-renders from ctx.wands on every open and on wandChanged while open.
+ * Opening the bench pauses the sim (see setVisible): tinkering is a safe modal
+ * read, like the Grimoire — the prior pause state is restored on close so it
+ * nests under the pause menu. All edits go through ctx.wands.slotCard — the
+ * bench never mutates wand state directly, and it re-renders from ctx.wands on
+ * every open and on wandChanged while open.
  */
 export class WandBench {
   private visible = false;

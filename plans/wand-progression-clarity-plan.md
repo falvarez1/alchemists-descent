@@ -1,7 +1,7 @@
 # Wand Mechanics And Progression Clarity Plan
 
-Status: implemented through Phase 6; bench pause/slow-time remains a playtest decision.
-Date: 2026-06-15. Updated: 2026-06-16.
+Status: implemented through Phase 6; bench pause DECIDED and shipped (2026-07): opening the bench pauses the sim like the Grimoire's modal-read rule, restoring the prior pause state on close (WandBench.setVisible).
+Date: 2026-06-15. Updated: 2026-07-11.
 Scope: play-mode wand readability, first-run teaching, spell-card rewards, and the first small modifier/content slice. Builder authoring support is out of scope except where validation probes need test fixtures.
 
 ## Completion Update
@@ -17,7 +17,10 @@ Implemented:
 
 Deferred:
 
-- Bench pause or slow-time behavior. The current rule remains live simulation under the bench until playtesting says otherwise.
+- (resolved 2026-07) Bench pause or slow-time behavior — the bench now pauses
+  the sim on open (same modal-read rule as the Grimoire overlay), restoring the
+  prior pause state on close. Revisit only if playtesting shows the pause
+  drains tension.
 
 ## Problem
 
