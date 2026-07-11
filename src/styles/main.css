@@ -1244,6 +1244,9 @@ body.play-active.runtime-inspector-open #viewport-container {
 #pause-overlay .pause-actions button:hover { background: #2a1640; color: #f5f3ff; }
 #pause-overlay .pause-actions #pause-launcher { border-color: #22c55e; color: #86efac; }
 #pause-overlay .pause-actions #pause-launcher:hover { background: #14331f; color: #dcfce7; }
+#pause-overlay .pause-actions #pause-copy-report { border-color: #eab308; color: #fde68a; }
+#pause-overlay .pause-actions #pause-copy-report:hover { background: #3a2c07; color: #fef9c3; }
+#pause-overlay #pause-build { margin-top: 14px; font-size: 11px; letter-spacing: 1px; color: rgba(255,255,255,0.35); }
 
 .app-dialog-root {
     position: fixed; inset: 0; z-index: 120;

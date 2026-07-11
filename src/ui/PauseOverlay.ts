@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import { isRunLauncherOpen } from '@/ui/RunLauncher';
 import { appDialog } from '@/ui/AppDialog';
+import { BUILD_STAMP, buildPlaytestReport } from '@/ui/playtestReport';
 
 /**
  * ESC pause. Owns its own pause claim so it never fights the Sanctum, the
@@ -16,6 +17,9 @@ export class PauseOverlay {
     document.getElementById('pause-exit-fullscreen')?.addEventListener('click', this.onExitFullscreenClick);
     document.getElementById('pause-restart')?.addEventListener('click', this.onRestartClick);
     document.getElementById('pause-launcher')?.addEventListener('click', this.onLauncherClick);
+    document.getElementById('pause-copy-report')?.addEventListener('click', this.onCopyReportClick);
+    const build = document.getElementById('pause-build');
+    if (build) build.textContent = `build ${BUILD_STAMP}`;
     document.addEventListener('fullscreenchange', this.onFullscreenChange);
     this.syncFullscreenButton();
   }
@@ -47,13 +51,30 @@ export class PauseOverlay {
 
   private readonly onLauncherClick = (): void => this.openLauncher();
 
+  private readonly onCopyReportClick = (): void => void this.copyReport();
+
   private readonly onFullscreenChange = (): void => this.syncFullscreenButton();
+
+  /** Copy the playtest report to the clipboard; if the browser blocks the
+   *  clipboard (permissions, non-secure context), print it to the console so
+   *  the report is never simply lost. */
+  private async copyReport(): Promise<void> {
+    const text = buildPlaytestReport(this.ctx);
+    try {
+      await navigator.clipboard.writeText(text);
+      this.ctx.events.emit('toast', { text: 'PLAYTEST REPORT COPIED — PASTE IT WITH YOUR FEEDBACK' });
+    } catch {
+      console.info(`[playtest report]\n${text}`);
+      this.ctx.events.emit('toast', { text: 'CLIPBOARD BLOCKED — REPORT PRINTED TO CONSOLE (F12)' });
+    }
+  }
 
   dispose(): void {
     window.removeEventListener('keydown', this.onKeyDown);
     document.getElementById('pause-exit-fullscreen')?.removeEventListener('click', this.onExitFullscreenClick);
     document.getElementById('pause-restart')?.removeEventListener('click', this.onRestartClick);
     document.getElementById('pause-launcher')?.removeEventListener('click', this.onLauncherClick);
+    document.getElementById('pause-copy-report')?.removeEventListener('click', this.onCopyReportClick);
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
   }
 

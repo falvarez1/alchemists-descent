@@ -226,7 +226,14 @@ export class Game {
     // level generates, then persist on every paramsChanged. Survives HMR + refresh.
     this.tuningPersistenceDisposer = installTuningPersistence(ctx);
 
-    ctx.events.on('playerDied', () => ctx.telemetry.count('death'));
+    ctx.events.on('playerDied', ({ depth, cause }) => {
+      ctx.telemetry.count('death');
+      ctx.telemetry.count(`death.cause.${cause}`);
+      ctx.telemetry.count(`death.depth.${depth}`);
+    });
+    // Depth funnel: how far testers actually get (each entry counts, so
+    // revisits inflate it — read it as traffic, not unique clears).
+    ctx.events.on('levelChanged', ({ depth }) => ctx.telemetry.count(`depth.entered.${depth}`));
     ctx.events.on('waveStarted', ({ num }) => ctx.telemetry.count(`wave.reached.${num}`));
     this.levelCurtainDisposer = ctx.events.on('levelCurtain', ({ visible, holdMs = 0, title, detail }) => {
       if (this.levelCurtainTimer !== null) {
@@ -475,6 +482,12 @@ export class Game {
       ctx.state.frameCount % 1800 === 0
     ) {
       ctx.levels.saveExpedition(ctx);
+    }
+
+    // Unpaused play time in minutes (60Hz fixed tick → 3600 frames/min): the
+    // denominator for every playtest rate (deaths/hour, depth/hour).
+    if (ctx.state.mode === 'play' && !ctx.state.paused && ctx.state.frameCount % 3600 === 0) {
+      ctx.telemetry.count('play.minutes');
     }
 
     // Impact hitstop freezes gameplay for a beat; the Sanctum pauses it

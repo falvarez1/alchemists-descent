@@ -1,7 +1,24 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
+
+// Build stamp baked into the bundle (see __BUILD_STAMP__ in src/vite-env.d.ts):
+// playtest feedback is only actionable when it names the exact build it came
+// from. Commit hash + UTC time; falls back cleanly when git is unavailable.
+function buildStamp(): string {
+  let hash = 'nogit';
+  try {
+    hash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    // shallow CI checkout without git or tarball build — the timestamp still identifies it
+  }
+  return `${hash} ${new Date().toISOString().slice(0, 16)}Z`;
+}
 
 export default defineConfig({
+  define: {
+    __BUILD_STAMP__: JSON.stringify(buildStamp()),
+  },
   // GitHub Pages serves a project site under /<repo>/, so the deploy build needs
   // that base for assets to resolve. The CI workflow sets GH_PAGES=true; local
   // dev and `npm run build` stay at '/'.
