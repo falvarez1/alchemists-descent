@@ -373,9 +373,11 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   door rattles you; across the cavern it's a tremor; off-screen it is nothing.
 - **Damage:** blood spray scales with the hit; the damage vignette pulses; a
   slow heartbeat starts under 25% HP and turns urgent under 12%.
-- **Death, the Noita way:** ~75% of carried gold spills as physical gold piles
-  at the corpse. The world keeps every scar; you respawn at the last lit
-  waystone and walk back to reclaim it.
+- **Death, the Noita way:** a difficulty-scaled slice of carried gold (8–20%,
+  15% at the shipped Conjurer baseline — `deathPenalty` in `config/difficulty.ts`)
+  spills as physical gold piles at the corpse. The world keeps every scar; you
+  respawn at the last lit waystone (invuln 120, common hostiles thinned within
+  200 cells of the anchor so you get one clean breath) and walk back to reclaim it.
 - **Charged bomb throw:** power meter dots march out along the aim past the
   staff head as the charge builds.
 - **Flask handling:** siphon draws a faint dotted material-colored line from

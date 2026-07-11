@@ -45,6 +45,10 @@ const result = await page.evaluate(async () => {
     p.vy = 0;
     p.fx = 0;
     p.fy = 0;
+    // Clear the previous death's freeze/slow-mo residue, or this case's ticks
+    // get eaten by hitstop and the status DoT never lands (flaky probe).
+    ctx.fx.hitstop = 0;
+    ctx.fx.deathSlowMo = 0;
     ctx.state.mode = 'play';
     ctx.state.paused = false;
   };
@@ -68,7 +72,7 @@ const result = await page.evaluate(async () => {
   ctx.player.hp = 0.5;
   ctx.player.status.wet = 90;
   ctx.player.status.electrified = 90;
-  tick(4);
+  tick(8);
   ctx.events.emit('playerCorpseSettled');
   const shock = {
     text: causeText(),

@@ -141,6 +141,7 @@ describe('player death economy', () => {
     const ctx = {
       player,
       world: new World(),
+      enemies: [],
       state: { score: 0, mode: 'play' },
       levels: {
         current: { pickups: [] },
@@ -173,6 +174,7 @@ describe('player death economy', () => {
     const ctx = {
       player,
       world: new World(),
+      enemies: [],
       state: { score: 0, mode: 'play' },
       levels: {
         current: { pickups: [] },
@@ -213,6 +215,36 @@ describe('player death economy', () => {
     expect(player.crawling).toBe(false);
     expect(player.crawlT).toBe(0);
     expect(vineReleaseCount).toBe(1);
+  });
+
+  it('thins common hostiles around the respawn anchor but keeps set pieces and distant foes', () => {
+    const player = createPlayer();
+    player.dead = true;
+    const camper = testEnemy(50, 60); // ~8 cells from the anchor: cleared
+    const distant = testEnemy(360, 55); // ~316 cells away: persists
+    const boss = { ...testEnemy(48, 58), kind: 'leviathan' as const }; // set piece: exempt
+    const enemies = [camper, distant, boss];
+    const ctx = {
+      player,
+      world: new World(),
+      enemies,
+      state: { score: 0, mode: 'play' },
+      levels: {
+        current: { pickups: [] },
+        respawnPoint: () => ({ x: 44, y: 55 }),
+      },
+      events: new EventBus(),
+      telemetry: { count: () => undefined },
+      particles: { burst: () => undefined },
+      audio: { squelch: () => undefined, boom: () => undefined },
+      fx: { screenShake: 0 },
+    } as unknown as Ctx;
+
+    new PlayerControl(ctx).respawn();
+
+    expect(ctx.enemies).toBe(enemies); // in-place mutation, never reassigned
+    expect(enemies).toEqual([distant, boss]);
+    expect(player.invuln).toBe(120);
   });
 
   it('does not skip enemies when kick damage removes from the live enemy array', () => {

@@ -46,6 +46,16 @@ const CLIMB_LEAN_MAX = 0.32;
 /** How fast the rendered lean eases toward the measured wall angle (heavy = calm). */
 const CLIMB_LEAN_EASE = 0.12;
 const TELEPORT_SEARCH_RADIUS = 260;
+// Anti-death-loop guard (adopted from the upgrade prototype's respawn economics,
+// docs/UPGRADE-DELTA.md): common hostiles inside this radius of the respawn
+// anchor are cleared so the walk back can start — you never respawn into the
+// same teeth. Set pieces (bosses, egg clutches) are exempt: deleting a boss
+// would skip content, not save a life.
+const RESPAWN_CLEAR_RADIUS = 200;
+const RESPAWN_CLEAR_EXEMPT: ReadonlySet<EnemyKind> = new Set(['colossus', 'leviathan', 'eggs']);
+/** Death respawns earn a longer invuln grace than the arrival default (90) —
+ *  the prototype used 120 and it reads as "you get one clean breath". */
+const RESPAWN_DEATH_INVULN = 120;
 // Vine swing (#2): latch a hanging vine and pendulum on it; pump with left/right.
 const KICK_BASE_RECOIL = 0.5; // kick always self-pushes this fraction even into open air (so it works mid-air like wand recoil); a solid hit ramps to 1
 const GUST_ENEMY_PUSH = 5; // kick wind-gust shove scalar for enemies (mass-scaled in EnemyControl.gustShove)
@@ -1097,12 +1107,22 @@ export class PlayerControl implements PlayerControlApi {
     this.releaseVine(ctx);
 
     // Descent (Wave B): come back at the last lit waystone (or the level
-    // spawn) with the world UNTOUCHED — enemies, scars, and hostile fire all
-    // persist. The toll already happened: the spilled gold waits where you
-    // fell, guarded by whatever killed you.
+    // spawn) with the world intact — scars, hostile fire, and every enemy
+    // beyond the anchor pocket persist. The toll already happened: the spilled
+    // gold waits where you fell, guarded by whatever killed you.
     if (ctx.levels.current) {
       const rp = ctx.levels.respawnPoint()!;
       this.resetPlayerAt(rp.x, rp.y);
+      // Anti-death-loop guard: thin common hostiles camping the anchor.
+      let keep = 0;
+      for (const e of ctx.enemies) {
+        const dx = e.x - rp.x;
+        const dy = e.y - rp.y;
+        const far = dx * dx + dy * dy > RESPAWN_CLEAR_RADIUS * RESPAWN_CLEAR_RADIUS;
+        if (far || RESPAWN_CLEAR_EXEMPT.has(e.kind)) ctx.enemies[keep++] = e;
+      }
+      ctx.enemies.length = keep;
+      ctx.player.invuln = RESPAWN_DEATH_INVULN;
       ctx.telemetry.count('death.goldLost');
       ctx.particles.burst(rp.x, rp.y - 7, 20, null, () => packRGB(200, 160, 255), 2.7, {
         glow: 2.2,
