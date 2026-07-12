@@ -58,6 +58,7 @@ function addNearestCandidate(list: CellCandidate[], cap: number, x: number, y: n
  *  Mid-size foes (~slime/spitter) sit near 1×; a bat barely spatters, a golem
  *  or colossus gushes. The factor is clamped to a sane band (see goreCount). */
 const GORE_REF_AREA = 50;
+const GORE_CHUNK_TTL = 540; // ~9s a felled foe's body chunks linger before clearing
 const ENV_DAMAGE_FEEDBACK_COOLDOWN = 12;
 const WEAVER_PREY: ReadonlySet<CritterKind> = new Set<CritterKind>(['moth', 'firefly', 'beetle', 'fly']);
 const WEAVER_DISTURBANCE_WAKE_PAD = 88;
@@ -744,6 +745,10 @@ export class Enemies implements EnemyControlApi {
       // ...and a real wet pool at the feet that the spray keeps feeding
       this.seedGorePool(e.x, e.y - 2, e.kind === 'golem' ? 5 : e.kind === 'bat' ? 1 : 3);
     }
+    // Substantial bodies leave physical remains: a few gore-coloured chunks
+    // tumble off with the death impulse, bounce, and settle (Rain World's
+    // physical death). Bosses/bombers returned early with their own deaths.
+    this.spawnDeathChunks(e, def, kx, ky);
     // A felled foe goes out in the colour of whatever was killing it.
     this.elementalDeathFlourish(e, def);
     this.dropBounty(e, def);
@@ -755,6 +760,45 @@ export class Enemies implements EnemyControlApi {
     ctx.audio.squelch();
     this.shakeAt(e.x, e.y, 0.012, 0.04);
     ctx.waves.kills++;
+  }
+
+  /**
+   * Physical death remains: a substantial foe throws 1–3 small gore-coloured
+   * body chunks that inherit the death impulse (plus scatter + spin), tumble,
+   * and come to rest — the "the body is real" follow-through the pure-particle
+   * gib never gave. Reuses the rigid-body system (bounded + self-cleaning via
+   * goreTtl), so it adds physicality with no new physics. Tiny/ethereal foes
+   * (bat, wisp, imp, eggs, bomber) just spray; the chunks are for bodies with
+   * mass to fling. Skipped without a physics world (tests) or outside play.
+   */
+  private spawnDeathChunks(e: Enemy, def: EnemyDef, kx: number, ky: number): void {
+    const ctx = this.ctx;
+    if (ctx.state.mode !== 'play' || !ctx.rigidBodies?.spawn) return;
+    if (e.kind === 'imp' || e.kind === 'wisp' || e.kind === 'bat' || e.kind === 'eggs' || e.kind === 'bomber') return;
+    const area = def.halfW * def.h;
+    if (area < 54) return;
+    const n = area > 130 ? 3 : area > 78 ? 2 : 1;
+    const baseVx = (kx || 0) * 0.6;
+    const baseVy = Math.min(0, (ky || 0) * 0.5) - 1.3;
+    const maxPh = Math.max(2, Math.min(4, Math.round(def.halfW * 0.5)));
+    for (let i = 0; i < n; i++) {
+      const ph = 2 + Math.floor(Math.random() * (maxPh - 1));
+      ctx.rigidBodies.spawn(
+        { kind: 'box', halfW: ph, halfH: ph },
+        e.x + (Math.random() - 0.5) * def.halfW,
+        e.y - def.h * 0.5 + (Math.random() - 0.5) * def.h * 0.4,
+        {
+          density: 0.7,
+          color: def.goreFn(),
+          restitution: 0.24,
+          friction: 0.78,
+          vx: baseVx + (Math.random() - 0.5) * 3.4,
+          vy: baseVy - Math.random() * 2.2,
+          va: (Math.random() - 0.5) * 0.7,
+          tag: 'gore-chunk',
+        },
+      ).goreTtl = GORE_CHUNK_TTL + Math.floor(Math.random() * 180);
+    }
   }
 
   /**

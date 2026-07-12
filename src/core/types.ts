@@ -1406,6 +1406,9 @@ export interface RigidBody {
   frostMomentumGrace?: number;
   /** Cooldown for impact-noise events emitted when the body slams into terrain. */
   impactNoiseCd?: number;
+  /** Gore-chunk lifetime (frames): a felled foe's body pieces tumble, come to
+   *  rest as remains, then quietly clear when this expires so they never pile up. */
+  goreTtl?: number;
   tag?: string;
   data?: Record<string, unknown>;
   /** Fired on a hard terrain impact; `speed` is the pre-impact contact speed. */

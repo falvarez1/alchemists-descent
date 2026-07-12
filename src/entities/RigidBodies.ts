@@ -60,6 +60,11 @@ const PUSH_TRANSFER = 5.4; // fraction of the player's walk speed transferred in
 const TERRAIN_SCRATCH: CollisionScratch = { x: new Int32Array(32), y: new Int32Array(32) };
 const BURN_FRAMES = 300; // a flammable (wood) body burns ~5s before it chars to ash — long
 //                          enough that a crate set on a brazier/waystone bowl can light it
+// Gore chunks (a felled foe's tumbling body pieces): linger as remains, then
+// clear. They count down faster once they've come to rest so settled viscera
+// clears while airborne pieces still get their full tumble. The initial
+// lifetime is set by the spawner (Enemies.spawnDeathChunks) via body.goreTtl.
+const GORE_CHUNK_SETTLED_DRAIN = 3; // extra ttl drained per frame once asleep
 const FROST_CONTACT_FRAMES = 50; // freeze duration refreshed each frame a body touches ice
 const FROST_DAMP = 0.65; // per-frame velocity retention while frozen (locks it in place)
 const DIG_PUSH = 24; // mass-aware momentum the dig beam imparts to bodies in its path
@@ -809,6 +814,7 @@ export class RigidBodies implements RigidBodiesApi {
       this.emitBodyImpactNoise(ctx, body, oldVx, oldVy, body.vx, body.vy);
     }
     if (dead) for (const body of dead) this.remove(body);
+    this.tickGoreChunks(ctx);
     this.reactBodies(ctx);
     this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
     this.updatePlankRip(ctx); // hold E aimed at a wood platform to tear a plank loose
@@ -881,6 +887,35 @@ export class RigidBodies implements RigidBodiesApi {
    * the dig beam shoves bodies aside. (Lightning→metal lives in Lightning.cast;
    * direct projectile hits in Projectiles.impactBody.)
    */
+  /** Age out gore chunks: a felled foe's body pieces tumble, come to rest as
+   *  remains, then quietly dissolve so they never accumulate. Settled pieces
+   *  drain faster than airborne ones, so a still-flying chunk keeps its arc. */
+  private tickGoreChunks(ctx: Ctx): void {
+    for (let i = this.bodies.length - 1; i >= 0; i--) {
+      const body = this.bodies[i];
+      if (body.goreTtl === undefined) continue;
+      body.goreTtl -= body.sleeping ? 1 + GORE_CHUNK_SETTLED_DRAIN : 1;
+      if (body.goreTtl > 0) continue;
+      // A small mote of its own colour marks where the remains sink away.
+      const r = (body.color >> 16) & 0xff;
+      const g = (body.color >> 8) & 0xff;
+      const bl = body.color & 0xff;
+      for (let k = 0; k < 3; k++) {
+        ctx.particles.spawn(
+          body.x + (Math.random() - 0.5) * 3,
+          body.y + (Math.random() - 0.5) * 3,
+          (Math.random() - 0.5) * 0.3,
+          0.2 + Math.random() * 0.2,
+          null,
+          packRGB(r, g, bl),
+          24,
+          { grav: 0.04 },
+        );
+      }
+      this.remove(body);
+    }
+  }
+
   private reactBodies(ctx: Ctx): void {
     const world = ctx.world;
     for (let i = this.bodies.length - 1; i >= 0; i--) {
