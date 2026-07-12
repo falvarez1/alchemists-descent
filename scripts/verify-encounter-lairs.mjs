@@ -130,7 +130,12 @@ try {
             // validator loop starts; otherwise the probe itself can delay the
             // browser timer it is trying to observe.
             await sleep(700);
-            const deadline = performance.now() + 2600;
+            // The level's own repair cascade runs through ~6.5 s after entry
+            // (SETTLED_FINDABILITY_REPAIR_DELAYS_MS): a powder column can seal
+            // a route ~2 s in and the next cascade step tears it back open.
+            // The audit asserts CONVERGENCE, so its window must outlast the
+            // cascade's final step.
+            const deadline = performance.now() + 8000;
             while (performance.now() < deadline) {
               latest = validateFindability(rt);
               if (latest.every((issue) => issue.severity !== 'error')) {

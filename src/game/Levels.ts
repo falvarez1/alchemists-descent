@@ -95,8 +95,14 @@ import { isEnemyKind } from '@/core/types';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
 const CURTAIN_HOLD_MS = 450;
-/** Run after loose materials have begun settling, before the findability audit's 350 ms read. */
-const SETTLED_FINDABILITY_REPAIR_MS = 300;
+/** Post-entry findability re-checks. One shot at 300 ms proved too early: a
+ *  tall powder column overhanging a fit-route pinch drains grain-by-grain and
+ *  can seal the route ~2 s after entry (d6 seed 5's gold seam sealed the
+ *  machine-vault approach — 1,500 wizard cells lost — AFTER the old single
+ *  check had already passed). The cascade re-audits until entry settling is
+ *  genuinely over; each check only carves when an error-severity issue
+ *  exists, so healthy levels pay three cheap validations and nothing more. */
+const SETTLED_FINDABILITY_REPAIR_DELAYS_MS = [300, 1600, 2900, 4400, 6500];
 /** Authored test arenas REBUILD their terrain after generation (buildWeaverArena /
  *  buildPhysicsArena wipe the world and stamp a hand-designed layout). They must
  *  skip the procedural findability repair, which would otherwise "rescue" the now-
@@ -2385,13 +2391,21 @@ export class Levels implements LevelsApi {
       clearTimeout(this.settledFindabilityTimer);
       this.settledFindabilityTimer = null;
     }
-    this.settledFindabilityTimer = globalThis.setTimeout(() => {
+    const runStep = (step: number): void => {
       if (this.settledFindabilityTimer !== null) this.settledFindabilityTimer = null;
       if (token !== this.findabilityRepairToken || this.currentId !== id || this.current !== runtime) return;
       if (this.repairFindability(ctx, runtime, 'settled') && this.checkpointSaveSuppression === 0) {
         this.saveExpedition(ctx);
       }
-    }, SETTLED_FINDABILITY_REPAIR_MS);
+      const next = step + 1;
+      if (next < SETTLED_FINDABILITY_REPAIR_DELAYS_MS.length) {
+        this.settledFindabilityTimer = globalThis.setTimeout(
+          () => runStep(next),
+          SETTLED_FINDABILITY_REPAIR_DELAYS_MS[next] - SETTLED_FINDABILITY_REPAIR_DELAYS_MS[step],
+        );
+      }
+    };
+    this.settledFindabilityTimer = globalThis.setTimeout(() => runStep(0), SETTLED_FINDABILITY_REPAIR_DELAYS_MS[0]);
   }
 
   /** Generate a fresh level World into ctx and place its hostile population. */
