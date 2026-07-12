@@ -1,6 +1,12 @@
 # Next Gameplay Action Plan
 
-Status: action plan, not implemented.
+Status: largely implemented by later waves (2026-07-11 audit). Workstream 1
+(D1 first-10-minutes) shipped via the surface intro + IntroProgression +
+Spell Lab; Workstream 2 (Grimoire) shipped as GrimoireStore/Interactions +
+the J-key book overlay + the 2026-07 teach-once hints; Workstream 3 (frost
+combo) shipped and was promoted to live reward pools in 2026-07 after
+verify-modifier-cards proved it. Workstreams 4 (visual parity audit) and 5
+(generated scene inspector/capture) remain the open items.
 Created: 2026-06-18.
 
 ## Purpose

@@ -11,6 +11,12 @@ export const COMBO_SETUP_POOL: readonly CardId[] = [
   'oiltrail',
   'shorthoming',
   'pyrecrit',
+  // The frozen combo, promoted from review-only in 2026-07 after
+  // verify-modifier-cards proved it end to end: Frost Charge is the setup
+  // (freeze on hit + bounded rime), Shatter Frozen is the payoff (2x on
+  // frozen/ice-touching targets, inside the 3x conditional-crit cap).
+  'frostcharge',
+  'shattercrit',
 ];
 
 export const WAYSTONE_MOD_POOL: readonly CardId[] = [

@@ -24,7 +24,16 @@ describe('card reward pools', () => {
   });
 
   it('puts Phase 4 combo setup modifiers in normal live reward pools', () => {
-    expect(COMBO_SETUP_POOL).toEqual(['watertrail', 'electriccharge', 'critwet', 'oiltrail', 'shorthoming', 'pyrecrit']);
+    expect(COMBO_SETUP_POOL).toEqual([
+      'watertrail',
+      'electriccharge',
+      'critwet',
+      'oiltrail',
+      'shorthoming',
+      'pyrecrit',
+      'frostcharge',
+      'shattercrit',
+    ]);
     expect(new Set(COMBO_SETUP_POOL).size).toBe(COMBO_SETUP_POOL.length);
     for (const card of COMBO_SETUP_POOL) {
       expect(CARD_DEFS[card].kind).toBe('modifier');
