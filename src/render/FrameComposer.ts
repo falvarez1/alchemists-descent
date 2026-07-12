@@ -1,4 +1,5 @@
 import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
+import { PLAYER_HALF_W } from '@/core/types';
 import type {
   CompositorLens,
   LightField,
@@ -45,6 +46,15 @@ interface ActiveBackdropLayer {
 // before the first compose populates them (they are never sampled while inert).
 const EMPTY_BACKDROP_PIXELS = new Uint8ClampedArray(0);
 const EMPTY_SAMPLES = new Int32Array(0);
+
+/** Contact-shadow tuning (see drawContactShadow). Cast STRAIGHT DOWN onto the
+ *  first surface below a body; height-aware so airborne bodies mark fainter and
+ *  wider, and the body-to-blob gap reads as verticality. */
+const CONTACT_SHADOW_MAX_DROP = 110; // cells below the feet we search for ground
+const CONTACT_SHADOW_MAX_SPREAD = 1.6; // blob-widening cap as a body rises
+const CONTACT_SHADOW_FADE_HEIGHT = 104; // cells of rise over which the blob fades out
+const CONTACT_SHADOW_MAX_LEAN = 4; // cells the blob leans away from the brighter side
+const CONTACT_SHADOW_MAX_RX = 64; // hard cap on blob half-width (boss-safe perf bound)
 
 /**
  * The 3-arg GLSL `smoothstep(edge0, edge1, x)`, replicated bit-for-bit (descending
@@ -777,7 +787,14 @@ export class FrameComposer implements PixelSurface {
     this.drawRigidBodies(ctx);
     this.drawVineStrands(ctx, 'foreground');
 
-    // Entities on top
+    // Entities on top. Contact shadows first, under everything, so a body's
+    // own sprite and its neighbours draw over the shared ground darkening.
+    for (const e of ctx.enemies) {
+      if (this.enemyInRenderView(ctx, e)) this.drawEnemyContactShadow(ctx, e);
+    }
+    if (ctx.state.mode === 'play' && !ctx.player.dead) {
+      this.drawContactShadow(ctx, ctx.player.x, ctx.player.y, PLAYER_HALF_W + 1, 0.58);
+    }
     for (const e of ctx.enemies) {
       if (this.enemyInRenderView(ctx, e)) this.drawEnemy(this, this.light, ctx, e);
     }
@@ -799,6 +816,95 @@ export class FrameComposer implements PixelSurface {
       e.y + pad >= this.renderCamY &&
       e.y - height <= this.renderCamY + VIEW_H
     );
+  }
+
+  /**
+   * A soft contact shadow cast straight down onto the ground under a body. It
+   * grounds every actor in the world: a slime squatting on rock gets a tight
+   * dark puddle at its feet; an airborne bat gets a wider, fainter blob far
+   * below, and the body-to-blob gap reads as height — the platformer
+   * verticality tell. Pure negative-addPx darkening in the overlay pass: no
+   * light-field or shader work, and it composes identically on the CPU and GPU
+   * paths (final image is terrain + overlay, so negative overlay darkens
+   * terrain). Only lit ground is darkened, so a shadow never crushes an
+   * already-black crevice into a void.
+   *
+   * `cx`/`footY` are the body's ground-contact point in world cells; `halfW`
+   * sizes the blob; `coreStrength` is the darkening at the blob's center.
+   */
+  private drawContactShadow(ctx: Ctx, cx: number, footY: number, halfW: number, coreStrength: number): void {
+    if (ctx.state.mode !== 'play') return;
+    const world = ctx.world;
+    const ix = Math.round(cx);
+    const fy = Math.round(footY);
+    // March down to the first real surface (solid or liquid); pass through soft
+    // growth (grass/moss the body stands in) and open air. A bottomless drop
+    // below the body casts no shadow.
+    let groundY = -1;
+    for (let dy = 0; dy <= CONTACT_SHADOW_MAX_DROP; dy++) {
+      const y = fy + dy;
+      if (!world.inBounds(ix, y)) break;
+      const t = world.types[world.idx(ix, y)];
+      if ((blocksEntity(t) || isLiquid(t)) && !isSoftGrowth(t)) {
+        groundY = y;
+        break;
+      }
+    }
+    if (groundY < 0) return;
+    const height = Math.max(0, groundY - footY);
+    // Widen + soften with height; a high flyer barely marks the floor.
+    const spread = 1 + Math.min(CONTACT_SHADOW_MAX_SPREAD, height / 44);
+    const rx = Math.min(CONTACT_SHADOW_MAX_RX, Math.max(2, halfW * 0.85 * spread));
+    const ry = Math.max(1.4, rx * 0.34);
+    const heightFade = Math.max(0, 1 - height / CONTACT_SHADOW_FADE_HEIGHT);
+    let opacity = coreStrength * heightFade * heightFade;
+    if (opacity < 0.02) return;
+    // A shadow is only visible where there is light to block: scale by the
+    // ground's own brightness so a bright floor takes a proportionally deeper
+    // shadow (the composited pixel is brighter there, so more must be
+    // subtracted to read) while a dark crevice stays gentle and never crushes
+    // to a void.
+    const litHere = this.light.sample(cx, groundY);
+    const lum = 0.3 * litHere.r + 0.5 * litHere.g + 0.2 * litHere.b;
+    opacity *= Math.min(1.6, 0.3 + lum);
+    if (opacity < 0.02) return;
+    // Directional lean: nudge the blob toward the darker horizontal side so it
+    // falls away from the dominant light (subtle — mostly straight down). Sample
+    // one side at a time; light.sample returns a shared, reused object.
+    const sl = this.light.sample(cx - 11, groundY);
+    const litL = sl.r + sl.g + sl.b;
+    const sr = this.light.sample(cx + 11, groundY);
+    const litR = sr.r + sr.g + sr.b;
+    let lean = (litL - litR) * 1.7;
+    lean = lean < -CONTACT_SHADOW_MAX_LEAN ? -CONTACT_SHADOW_MAX_LEAN : lean > CONTACT_SHADOW_MAX_LEAN ? CONTACT_SHADOW_MAX_LEAN : lean;
+    const bcx = cx + lean;
+    // Stamp a soft ellipse of negative light, biased just onto the surface so
+    // the darkening hugs the ground rather than floating in the air above it.
+    const cy = groundY + ry * 0.35;
+    const irx = Math.ceil(rx);
+    for (let dx = -irx; dx <= irx; dx++) {
+      const nx = dx / rx;
+      if (nx < -1 || nx > 1) continue;
+      const colBand = 1 - nx * nx;
+      const half = ry * Math.sqrt(colBand);
+      const iry = Math.ceil(half);
+      for (let dy = -iry; dy <= iry; dy++) {
+        const ny = dy / ry;
+        const f = colBand - ny * ny;
+        if (f <= 0) continue;
+        const a = f * opacity;
+        this.addPx(bcx + dx, cy + dy, -a, -a, -a);
+      }
+    }
+  }
+
+  /** Per-enemy contact-shadow params: bigger, softer bodies read as heavier
+   *  shadows; self-lit fliers (imp/wisp) cast a touch fainter. */
+  private drawEnemyContactShadow(ctx: Ctx, e: Enemy): void {
+    const def = ctx.enemyCtl.defs[e.kind];
+    const halfW = def?.halfW ?? 10;
+    const faint = e.kind === 'imp' || e.kind === 'wisp' ? 0.72 : 1;
+    this.drawContactShadow(ctx, e.x, e.y, halfW + 1, 0.55 * faint);
   }
 
   /** Rigid bodies: rotated boxes and circles, flat-shaded with a darker rim for
@@ -842,6 +948,7 @@ export class FrameComposer implements PixelSurface {
         b.y - reach > this.renderCamY + VIEW_H
       )
         continue;
+      this.drawContactShadow(ctx, b.x, b.y + reach, reach, 0.5);
       const x0 = Math.floor(b.x - reach);
       const x1 = Math.ceil(b.x + reach);
       const y0 = Math.floor(b.y - reach);
