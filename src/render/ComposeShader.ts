@@ -124,6 +124,7 @@ uniform int uGlintFrame;   // frameCount % 97 (crystal glint is integer math)
 uniform float uPhaseWater;  // (frameCount * 0.16)  mod 2pi
 uniform float uPhaseShroom; // (frameCount * 0.045) mod 2pi
 uniform float uPhaseSway;   // (frameCount * 0.035) mod 2pi
+uniform float uWind;        // slow gusting breeze value (~[-1.4,1.4]); shifts the growth sway
 uniform float uPhaseSky;    // (frameCount * 0.004) mod 2pi — slow daytime cloud drift
 uniform float uFlickerSeed; // re-rolled per frame
 uniform float uFlickerMid;  // debug: 1 = freeze stochastic flicker at 0.5
@@ -370,8 +371,10 @@ void main() {
         r *= breath;
         g *= 1.02 + (breath - 0.9) * 0.9;
         b *= breath;
-      } else if (type == ${Cell.Vines} || type == ${Cell.Moss} || type == ${Cell.Fungus}) {
-        float living = 0.94 + sin(uPhaseSway + float(wx) * 0.13 + float(wy) * 0.29) * 0.08;
+      } else if (type == ${Cell.Vines} || type == ${Cell.Moss} || type == ${Cell.Fungus} || type == ${Cell.Grass}) {
+        // Living growth sways with a coherent breeze (uWind gusts the phase so a
+        // whole meadow leans together) instead of sitting dead-flat.
+        float living = 0.94 + sin(uPhaseSway + uWind + float(wx) * 0.13 + float(wy) * 0.29) * 0.08;
         g *= living;
       }
 
@@ -650,6 +653,7 @@ export class GpuCompose {
         uPhaseWater: { value: 0 },
         uPhaseShroom: { value: 0 },
         uPhaseSway: { value: 0 },
+        uWind: { value: 0 },
         uPhaseSky: { value: 0 },
         uFlickerSeed: { value: 0 },
         uFlickerMid: { value: 0 },
@@ -700,6 +704,10 @@ export class GpuCompose {
     u.uPhaseWater.value = (frameCount * 0.16) % TWO_PI;
     u.uPhaseShroom.value = (frameCount * 0.045) % TWO_PI;
     u.uPhaseSway.value = (frameCount * 0.035) % TWO_PI;
+    // Gusting breeze: two slow sines beat into an irregular wind that shifts the
+    // growth sway. Reduced-argument (mod 2pi) so the f32 sines don't drift.
+    u.uWind.value =
+      Math.sin((frameCount * 0.008) % TWO_PI) + 0.4 * Math.sin((frameCount * 0.019) % TWO_PI);
     u.uPhaseSky.value = (frameCount * SKY.DRIFT_SPEED) % TWO_PI;
     u.uFlickerSeed.value = Math.random() * 4096;
     const dbg = window as unknown as { __composeFlickerMid?: boolean };

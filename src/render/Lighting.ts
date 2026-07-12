@@ -47,6 +47,8 @@ const GLOW_EDGE_MIN = 0.15; // very soft cone edge
 // and squares the result before terrain/bloom see it, so this raw cap must sit
 // below the apparent bloom threshold after that post-lighting transform.
 const GLOW_BLOOM_CAP = 0.48;
+// Radius² (cells) within which Glowshroom caps flare toward the passing player.
+const GLOW_REACT_R2 = 26 * 26;
 
 const RAYCAST_RAYS = 540;
 const RAY_DIR_X = new Float32Array(RAYCAST_RAYS);
@@ -237,6 +239,11 @@ export class Lighting implements LightField {
     const world = ctx.world;
     const renderCamX = ctx.camera.renderX,
       renderCamY = ctx.camera.renderY;
+    // Reactive bioluminescence: glow-caps flare as the alchemist passes through
+    // them. Off-mode/dead → park the point far away so the flare never fires.
+    const glowReact = ctx.state.mode === 'play' && !ctx.player.dead;
+    const px = glowReact ? ctx.player.x : -1e9;
+    const py = glowReact ? ctx.player.y : -1e9;
 
     // Attenuation map + emissive material seeding
     for (let ly = 0; ly < LH; ly++) {
@@ -310,10 +317,18 @@ export class Lighting implements LightField {
             lightB[i] = Math.max(lightB[i], f * 0.12);
           }
         } else if (t === Cell.Glowshroom) {
-          if (lightG[i] < 0.4) {
-            lightR[i] = Math.max(lightR[i], 0.16);
-            lightG[i] = 0.4;
-            lightB[i] = Math.max(lightB[i], 0.2);
+          // Bioluminescent (finally living up to the name): a slow pulse ripples
+          // across a colony (phase from cell position), and the caps FLARE as
+          // the alchemist passes close — light that answers what moves through it.
+          let f = 0.4 + Math.sin(ctx.state.frameCount * 0.05 + wx * 0.19 + wy * 0.23) * 0.12;
+          const gdx = wx - px;
+          const gdy = wy - py;
+          const gd2 = gdx * gdx + gdy * gdy;
+          if (gd2 < GLOW_REACT_R2) f += (1 - gd2 / GLOW_REACT_R2) * 0.55;
+          if (lightG[i] < f) {
+            lightR[i] = Math.max(lightR[i], f * 0.42);
+            lightG[i] = f;
+            lightB[i] = Math.max(lightB[i], f * 0.55);
           }
         } else if (t === Cell.Moss) {
           // the faintest living shimmer — only readable in true dark

@@ -350,6 +350,11 @@ export class FrameComposer implements PixelSurface {
     // Slow daytime cloud drift (matches uPhaseSky on the GPU). Reduced mod 2pi so
     // the f32-equivalent sine args stay small over long sessions.
     const skyPhase = (frameCount * SKY.DRIFT_SPEED) % (Math.PI * 2);
+    // Coherent breeze that gusts the living-growth sway (mirrors uWind on the GPU
+    // — same two-octave sum, same mod-2pi reduction — so both compose paths agree).
+    const wind =
+      Math.sin((frameCount * 0.008) % (Math.PI * 2)) +
+      0.4 * Math.sin((frameCount * 0.019) % (Math.PI * 2));
     // Sky tuning is owned by render/skyAtmosphere.ts (SKY); both this CPU loop and
     // ComposeShader's GLSL read from it so the two paths can never drift. Hoist the
     // sub-objects to locals so the per-pixel sky branch stays on monomorphic reads.
@@ -670,8 +675,10 @@ export class FrameComposer implements PixelSurface {
           r *= breath;
           g *= 1.02 + (breath - 0.9) * 0.9;
           b *= breath;
-        } else if (type === Cell.Vines || type === Cell.Moss || type === Cell.Fungus) {
-          const living = 0.94 + Math.sin(frameCount * 0.035 + wx * 0.13 + wy * 0.29) * 0.08;
+        } else if (type === Cell.Vines || type === Cell.Moss || type === Cell.Fungus || type === Cell.Grass) {
+          // Living growth sways with a coherent breeze (wind gusts the phase so a
+          // whole patch leans together instead of shimmering per-cell). Matches the shader.
+          const living = 0.94 + Math.sin(frameCount * 0.035 + wind + wx * 0.13 + wy * 0.29) * 0.08;
           g *= living;
         }
 
