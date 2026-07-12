@@ -156,6 +156,7 @@ export class WandBench {
       this.wasPaused = this.ctx.state.paused;
       this.ctx.state.paused = true;
       this.render();
+      this.ctx.events.emit('benchOpened');
     } else {
       this.ctx.state.paused = this.wasPaused;
     }

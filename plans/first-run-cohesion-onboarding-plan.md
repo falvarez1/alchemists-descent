@@ -1,6 +1,20 @@
 # First-Run Cohesion And Onboarding Plan
 
-Status: proposal, not implemented as a complete slice.
+Status: superseded in structure, implemented in spirit (2026-07-11 audit).
+`src/game/IntroProgression.ts` + `src/game/introObjectives.ts` + `src/game/Hints.ts`
+now own the D1 teaching spine this plan proposed — do NOT build the separate
+FirstRunDirector below; it would double-fire objectives and popovers. The intro
+deliberately re-runs on every fresh D1 run (its flags are in-memory, re-derived
+from runtime state) — good for playtesting; HintSystem popovers stay teach-once
+across sessions via seenHints. The 2026-07 gap-closing pass added the missing
+knowledge-loop connections as event-driven teach-onces in HintSystem:
+`grimoire-observed` (first witnessed reaction → "press J"), `wand-sentence`
+(first bench open → cards read left to right, via the new `benchOpened` event),
+`inspect-cell` (at the Spell Lab, after its own popover → "press I"), and
+`map-open` (first descent to D2 → "press M"). Deliberately deferred: persisted
+first-run flags, crouch-crawl proximity teaching (CRAWL.md open questions are
+pending playtest), and refuge/waystone flags (WaystonePromptOverlay already
+teaches waystones more richly than this plan asked for).
 Created: 2026-06-20.
 Scope: the first 10 minutes of a fresh expedition, including controls, component mechanics, wands, spell cards, the Grimoire, Refuge/bench use, and descent goals.
 

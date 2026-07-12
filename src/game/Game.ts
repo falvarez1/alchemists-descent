@@ -212,7 +212,9 @@ export class Game {
     const critters = new Critters(ctx);
     ctx.critters = critters;
     this.disposables.push(critters);
-    ctx.hints = new HintSystem(ctx);
+    const hints = new HintSystem(ctx);
+    ctx.hints = hints;
+    this.disposables.push(hints);
     this.introProgression = new IntroProgression(ctx);
     this.disposables.push(this.introProgression);
     ctx.debug = new DebugTool(ctx);
@@ -234,6 +236,7 @@ export class Game {
     // Depth funnel: how far testers actually get (each entry counts, so
     // revisits inflate it — read it as traffic, not unique clears).
     ctx.events.on('levelChanged', ({ depth }) => ctx.telemetry.count(`depth.entered.${depth}`));
+    ctx.events.on('benchOpened', () => ctx.telemetry.count('bench.opened'));
     ctx.events.on('waveStarted', ({ num }) => ctx.telemetry.count(`wave.reached.${num}`));
     this.levelCurtainDisposer = ctx.events.on('levelCurtain', ({ visible, holdMs = 0, title, detail }) => {
       if (this.levelCurtainTimer !== null) {

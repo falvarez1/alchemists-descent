@@ -39,13 +39,54 @@ const FLASK_SCAN = 10; // half-box (cells) swept around the player for siphonabl
 export class HintSystem implements HintApi {
   private _current: HintInfo | null = null;
   private readonly taught: Set<string>;
+  private readonly disposers: Array<() => void> = [];
 
-  constructor(_ctx: Ctx) {
+  constructor(ctx: Ctx) {
     this.taught = new Set<string>(getSeenHints());
+    // Event-driven teach-onces: knowledge-loop connections no proximity scan
+    // can see — the reaction already happened, the card is already in hand.
+    this.disposers.push(
+      ctx.events.on('worldInteractionObserved', () => {
+        this.teachOnce(ctx, 'grimoire-observed', {
+          title: 'The Grimoire Watches',
+          body: 'Reactions you witness are inscribed in your Grimoire. Press J to read what the cave has taught you.',
+        });
+      }),
+      // Taught at the bench itself (not on card grant — that beat already
+      // belongs to the intro's own popover, and the overlay shows one at a time).
+      ctx.events.on('benchOpened', () => {
+        this.teachOnce(ctx, 'wand-sentence', {
+          title: 'Reading a Wand',
+          body: 'A wand casts its cards left to right — modifiers charge the projectile that follows them. Hover a card to see exactly which slots it touches.',
+        });
+      }),
+      ctx.events.on('levelChanged', ({ depth }) => {
+        // Taught on the first descent, not in the first 30 seconds: D2 arrival
+        // is a calm beat, and by then there is ground worth remembering.
+        if (depth >= 2) {
+          this.teachOnce(ctx, 'map-open', {
+            title: 'The Map',
+            body: 'Press M for the map — explored ground, waystones, and a click plants a waypoint compass.',
+          });
+        }
+      }),
+    );
+  }
+
+  dispose(): void {
+    for (const dispose of this.disposers.splice(0)) dispose();
   }
 
   get current(): HintInfo | null {
     return this._current;
+  }
+
+  /** Mark a hint taught (persisted) and fire its one-time popover. */
+  private teachOnce(ctx: Ctx, key: string, teach: Teach): void {
+    if (this.taught.has(key)) return;
+    this.taught.add(key);
+    markHintSeen(key);
+    ctx.events.emit('hintTeach', { key, title: teach.title, body: teach.body });
   }
 
   update(ctx: Ctx): void {
@@ -148,6 +189,24 @@ export class HintSystem implements HintApi {
             body: 'A safe annex for practicing the starter verbs on real cells. The tome is the reward for speaking the cave language.',
           },
         });
+        // Second lesson at the same stations: examining. Offered only after the
+        // lab's own popover has fired and until its one popover lands, so it
+        // never fights the spell-lab hint for the line.
+        if (this.taught.has('spell-lab') && !this.taught.has('inspect-cell')) {
+          consider({
+            priority: 2.2,
+            dist2: d2,
+            info: {
+              key: 'inspect-cell',
+              line: 'Press I to examine a cell — its lore lands in your Grimoire',
+              world: { x: lab.x, y: lab.y },
+            },
+            teach: {
+              title: 'Examining Materials',
+              body: 'Point at any cell and press I. Its nature — how it burns, flows, conducts — is inscribed in your Grimoire (J).',
+            },
+          });
+        }
       }
     }
 
@@ -237,11 +296,7 @@ export class HintSystem implements HintApi {
       if (!best || c.priority > best.priority || (c.priority === best.priority && c.dist2 < best.dist2)) best = c;
     }
     this._current = best ? best.info : null;
-    if (best && best.teach && !this.taught.has(best.info.key)) {
-      this.taught.add(best.info.key);
-      markHintSeen(best.info.key);
-      ctx.events.emit('hintTeach', { key: best.info.key, title: best.teach.title, body: best.teach.body });
-    }
+    if (best && best.teach) this.teachOnce(ctx, best.info.key, best.teach);
   }
 }
 
