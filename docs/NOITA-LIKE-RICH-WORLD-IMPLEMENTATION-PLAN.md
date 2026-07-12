@@ -183,10 +183,23 @@ Completed:
 - Added generated-scene adoption into Builder after returning from virtual playtest.
 - Added main-canvas generated-scene overlay rendering and selection by generated scene bounds.
 
+Done (2026-07 parity pass):
+
+- Root def-level divergence found and fixed: `createDefaultVirtualGenerationParams`
+  carried a STALE baked mirror of GEN_TUNE's walk-surface fields (6/4/2 vs the
+  v22 shipped 20/6/3), so Play Mode virtual runs and Builder playtest generated
+  different terrain at identical settings, and Play Mode ignored live Look
+  tuning entirely. The factory now reads live `GEN_TUNE` — both paths share one
+  source of truth (`tests/virtual-parity.test.ts` pins the mirror and guards
+  the virtual-vs-campaign dressing recipe tables against silent drift).
+  Both paths were already confirmed to converge on the same
+  materialize/crop/light-transfer code (`createVirtualRuntimeFromChunks`), so
+  remaining visual differences are def-intent (profile presets) or window-rect
+  placement, not pipeline drops.
+
 Still Pending:
 
-- Add explicit create-vs-playtest parity tests for Builder preview, virtual materialization, and Builder Play Window.
-- Confirm that normal Play Mode and Builder Playtest render the same generated virtual window with the same material colors, grass/surface accents, lights, lava, gold, and props.
+- Screenshot-level confirmation that normal Play Mode and Builder Playtest render the same generated virtual window with the same material colors, grass/surface accents, lights, lava, gold, and props (the def-level root cause above is fixed; this is the belt-and-suspenders visual pass).
 - Expand sparse runtime object support beyond the currently supported basic virtual scene object mapping.
 - Add stronger warnings/UI for dropped scene metadata when caps are hit.
 - Decide whether generated scenes should become editable Builder documents through "Capture Scene" or remain read-only generated overlays.

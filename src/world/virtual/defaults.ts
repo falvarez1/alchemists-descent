@@ -1,4 +1,5 @@
 import { BIOMES } from '@/config/biomes';
+import { GEN_TUNE } from '@/config/gen';
 import { Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import type {
@@ -82,15 +83,17 @@ export function createDefaultVirtualGenerationParams(): VirtualWorldDef['generat
     edgeRoughness: 0.38,
     pocketDensity: 0.3,
     crackDensity: 0.2,
-    // Neutral = the shipped grand-cave look (GEN_TUNE_DEFAULTS.caveScale). The
-    // World Map mirrors the live GEN_TUNE.caveScale onto this per generation;
-    // caveMultiplier() in ChunkGenerator normalizes 1.5 -> x1.0.
-    caveScale: 1.5,
-    // Walk-surface sink/notch fill, mirrored from GEN_TUNE (same shipped values).
-    fillSurfacePits: true,
-    surfacePitWidth: 6,
-    surfacePitDepth: 4,
-    notchPasses: 2,
+    // Read the LIVE GEN_TUNE at construction — one source of truth for the
+    // walk-surface look. The old baked mirror (6/4/2) silently went stale when
+    // gen.ts v22 raised the sink-fill defaults (20/6/3), so Play Mode virtual
+    // runs and Builder playtest generated DIFFERENT terrain at identical
+    // settings. Builder's effectiveVirtualWorldDef applies the same values;
+    // caveMultiplier() in ChunkGenerator normalizes caveScale 1.5 -> x1.0.
+    caveScale: GEN_TUNE.caveScale,
+    fillSurfacePits: GEN_TUNE.fillSurfacePits,
+    surfacePitWidth: GEN_TUNE.surfacePitWidth,
+    surfacePitDepth: GEN_TUNE.surfacePitDepth,
+    notchPasses: GEN_TUNE.notchPasses,
     // Hidden-ore / mineral-vug fill of enclosed pockets (parity with legacy).
     mineralVugs: true,
   };
