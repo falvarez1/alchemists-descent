@@ -1962,6 +1962,43 @@ export class Enemies implements EnemyControlApi {
     if (e.timer > 1400 + e.bobPhase * 220) this.hatchEggClutchAt(index, e, false);
   }
 
+  /** Rain World body weight: latch peak fall speed while airborne, then thump an
+   *  impact-squash spring on landing so the walking kinds compress under their
+   *  own weight and spring back with a slight overshoot. Blob kinds run their own
+   *  volume-preserving splat (EnemySprites), so they opt out and stay neutral. */
+  private tickImpactSquash(e: Enemy): void {
+    if (e.kind === 'slime' || e.kind === 'acidslime' || e.kind === 'bomber') return;
+    if (!e.grounded) {
+      // Only the downward plunge stores impact energy; rising counts for nothing.
+      if (e.vy > (e.airVy ?? 0)) e.airVy = e.vy;
+    } else {
+      const fall = e.airVy ?? 0;
+      if (fall > 1.1) {
+        // Compress in proportion to impact, capped so a long drop still reads clean.
+        e.squashVel = (e.squashVel ?? 0) + Math.min(0.8, fall * 0.095);
+        if (fall > 2.2) {
+          // A real thud kicks a little dust off the feet (earthy, settles fast).
+          const c = this.ctx;
+          c.particles.burst(
+            e.x,
+            e.y - 1,
+            Math.min(9, 3 + (fall | 0)),
+            null,
+            () => packRGB(150, 140, 122),
+            Math.min(2.4, 0.9 + fall * 0.2),
+            { grav: 0.05 },
+          );
+        }
+      }
+      e.airVy = 0;
+    }
+    // Damped spring back to rest; it overshoots once into a slight stretch (the bounce).
+    let sv = (e.squashVel ?? 0) - (e.squash ?? 0) * 0.33;
+    sv *= 0.8;
+    e.squash = (e.squash ?? 0) + sv;
+    e.squashVel = sv;
+  }
+
   update(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const enemies = ctx.enemies;
@@ -2019,6 +2056,9 @@ export class Enemies implements EnemyControlApi {
       this.enemyEnvironmentDamage(e, i);
       if (enemies[i] !== e) continue; // died from environment
       this.gumBatWingsWithSlime(e, def);
+      // Body weight: read last frame's grounded/vy (before this frame's branch
+      // moves them) so a landing thump lands on the same frame it touches down.
+      this.tickImpactSquash(e);
 
       // Sim-sampled statuses (DESIGN pillar 5/9): every 2nd frame the cells
       // touching the body ARE the status — damage lands straight on hp (no

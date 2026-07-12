@@ -54,13 +54,23 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   const conv = e.status.electrified > 0;
   const bx = conv ? e.x + ((flickerNoise(frameCount, e.bobPhase * 7.1) * 5) | 0) - 2 : e.x;
   const by = conv ? e.y + ((flickerNoise(frameCount, e.bobPhase * 3.7 + 11) * 3) | 0) - 1 : e.y;
+  // Impact-squash (Rain World body weight): a landing thump compresses the body
+  // vertically, anchored at the feet (dy = 0), then springs back through a slight
+  // stretch overshoot. The spring lives on the entity (Enemies.tickImpactSquash).
+  // Blob kinds (slime/acidslime/bomber) run their own volume-preserving splat, so
+  // they stay neutral here. At rest (squash 0 → syq 1) sq() is identity: every
+  // pixel is exactly where it was, so unlanded enemies render byte-for-byte as before.
+  const blobKind = e.kind === 'slime' || e.kind === 'acidslime' || e.kind === 'bomber';
+  const bodySquash = blobKind ? 0 : (e.squash ?? 0);
+  const syq = bodySquash !== 0 ? clamp(1 - bodySquash * 0.55, 0.68, 1.03) : 1;
+  const sq = (dy: number): number => (syq === 1 ? dy : Math.round(dy * syq));
   const P = (dx: number, dy: number, r: number, g: number, b: number): void => {
-    if (flash) s.setPx(bx + dx, by - dy, 2.2, 2.2, 2.2);
-    else s.setPx(bx + dx, by - dy, r * bR, g * bG, b * bB);
+    if (flash) s.setPx(bx + dx, by - sq(dy), 2.2, 2.2, 2.2);
+    else s.setPx(bx + dx, by - sq(dy), r * bR, g * bG, b * bB);
   };
   const PE = (dx: number, dy: number, r: number, g: number, b: number): void => {
-    if (flash) s.setPx(bx + dx, by - dy, 2.2, 2.2, 2.2);
-    else s.setPx(bx + dx, by - dy, r, g, b);
+    if (flash) s.setPx(bx + dx, by - sq(dy), 2.2, 2.2, 2.2);
+    else s.setPx(bx + dx, by - sq(dy), r, g, b);
   };
   // Eyes are honest (Rain World): an unaware creature scans the room on a
   // slow wander; only an ALERTED one locks its gaze onto the alchemist.

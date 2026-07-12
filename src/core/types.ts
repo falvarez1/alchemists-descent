@@ -416,6 +416,15 @@ export interface Enemy {
   punching?: number;
   /** Has noticed the alchemist at least once (alert blip fired). */
   alerted?: boolean;
+  /** Impact-squash spring (Rain World body weight): a hard landing compresses
+   *  the body vertically, then it springs back with a slight overshoot. Neutral
+   *  at 0 (sprite is then pixel-identical to no-squash). Positive = compressed.
+   *  Blob kinds (slime/acidslime/bomber) run their own volume-preserving splat
+   *  and opt out. Driven at tick rate in Enemies.update, read in the sprite. */
+  squash?: number;
+  squashVel?: number;
+  /** Peak downward speed latched while airborne, spent on the next landing thump. */
+  airVy?: number;
   /** Anticipation frames: a slime gathering before its hop / a bat flaring before the dart. */
   windup?: number;
   /** Bat: frames of the committed high-speed dart after the flare. */
