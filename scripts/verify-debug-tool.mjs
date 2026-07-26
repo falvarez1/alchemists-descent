@@ -153,19 +153,17 @@ const liveId = livePick?.id ?? null;
 ok(liveId !== null, 'No weaver row with a live checkbox found');
 const liveInSet = await page.evaluate((id) => window.__game.ctx.debug.live.has(id), liveId);
 ok(liveInSet, 'Ticking a row did not add it to ctx.debug.live');
-const beforeLive = await page.evaluate((targetX) => {
-  const ws = window.__game.ctx.enemies.filter((e) => e.kind === 'weaver');
-  let targetIndex = -1;
-  let best = Infinity;
-  ws.forEach((e, i) => {
-    const dist = Math.abs(e.x - targetX);
-    if (dist < best) {
-      best = dist;
-      targetIndex = i;
-    }
-  });
+const beforeLive = await page.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const ws = ctx.enemies.filter((e) => e.kind === 'weaver');
+  // Ask the debug tool which weaver is live rather than guessing by distance
+  // to a hardcoded lane x. The ticked row and the nearest-to-x weaver are
+  // chosen independently, so they only coincided by luck — on a slower runner
+  // they picked different weavers and the "live one did not move" assertion
+  // was measuring a deliberately frozen enemy.
+  const targetIndex = ws.findIndex((e) => !ctx.debug.frozenEnemy(e));
   return { targetIndex, positions: ws.map((e) => ({ x: e.x, y: e.y })) };
-}, GAIT_TARGET_X);
+});
 ok(beforeLive.targetIndex >= 0, 'No gait-lane Weaver found for selective-live movement check');
 await page.waitForTimeout(800);
 const liveMove = await page.evaluate(({ b, id }) => {
@@ -302,8 +300,11 @@ const dragRes = await page.evaluate(async () => {
     };
     requestAnimationFrame(t);
   });
-  const legs = w.weaverLegs ?? [];
-  return { grabbed, x: w.x, y: w.y, tx, ty, grounded: w.grounded === true, planted: legs.filter((l) => l.planted).length, footBelow: legs.reduce((m, l) => Math.max(m, l.y - w.y), -99) };
+  // Legs live on the surface-crawler locomotion state; `weaverLegs` was the
+  // pre-rebuild field and has not existed for some time, so this silently read
+  // an empty array and every leg assertion below failed on a sentinel.
+  const legs = w.weaverLoco?.legs ?? [];
+  return { grabbed, x: w.x, y: w.y, tx, ty, grounded: w.grounded === true, legCount: legs.length, planted: legs.filter((l) => l.planted).length, footBelow: legs.reduce((m, l) => Math.max(m, l.y - w.y), -99) };
 });
 ok(dragRes.grabbed, 'grabAt did not grab the weaver body');
 ok(Math.hypot(dragRes.x - dragRes.tx, dragRes.y - dragRes.ty) < 4, `dragged weaver did not follow the cursor (at ${dragRes.x.toFixed(0)},${dragRes.y.toFixed(0)} vs ${dragRes.tx},${dragRes.ty})`);
@@ -325,9 +326,11 @@ const plantRes = await page.evaluate(async () => {
     };
     requestAnimationFrame(t);
   });
-  const legs = w.weaverLegs ?? [];
-  const floor = legs.filter((l) => l.planted && l.surface === 'floor').length;
-  return { grounded: w.grounded === true, planted: legs.filter((l) => l.planted).length, floor };
+  const legs = w.weaverLoco?.legs ?? [];
+  // WeaverLegState carries no `surface` tag, so "found the floor" is read off
+  // the geometry: a planted foot sitting at the floor line (top = 742).
+  const floor = legs.filter((l) => l.planted && l.y >= 740).length;
+  return { grounded: w.grounded === true, legCount: legs.length, planted: legs.filter((l) => l.planted).length, floor };
 });
 ok(plantRes.grounded, 'lowered-to-floor weaver not grounded');
 // A spider replants a few legs at a time (the tetrapod gait), so it won't slam
