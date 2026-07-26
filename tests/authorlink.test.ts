@@ -586,6 +586,19 @@ describe('resolveAuthorLinkConfig', () => {
     expect(prod.url).toBe(`ws://localhost:5173${AUTHORLINK_PATH}?room=moss`);
   });
 
+  it('does not auto-link an automated page', () => {
+    // The repo drives a dozen headless probes against one dev server. With dev
+    // auto-linking, every probe page would join room `local` and apply every
+    // other page's tuning and terrain — independent probes silently becoming
+    // one shared session.
+    expect(resolveAuthorLinkConfig('', true, loc, undefined, undefined, true).enabled).toBe(false);
+    // ...but an automated page that ASKS for a room still gets one; the
+    // AuthorLink probes depend on this.
+    expect(resolveAuthorLinkConfig('?link=probe', true, loc, undefined, undefined, true).enabled).toBe(true);
+    // A human dev window is unaffected.
+    expect(resolveAuthorLinkConfig('', true, loc, undefined, undefined, false).enabled).toBe(true);
+  });
+
   it('upgrades the scheme on https and accepts an external relay', () => {
     const secure = resolveAuthorLinkConfig('?link=on', false, { protocol: 'https:', host: 'x.dev' });
     expect(secure.url.startsWith('wss://x.dev')).toBe(true);

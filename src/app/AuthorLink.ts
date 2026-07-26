@@ -112,6 +112,14 @@ const PUBLISH_DEBOUNCE_MS = 60;
  *   ?link=off          force off (dev escape hatch)
  *   ?link=<room>       force on, named room
  *   VITE_AUTHORLINK_URL override the relay origin (two machines)
+ *
+ * AUTOMATED PAGES DO NOT AUTO-LINK. The repo drives a dozen headless probes
+ * against one dev server, often several pages at once. With dev auto-linking,
+ * every one of those pages would silently join room `local` and start applying
+ * each other's tuning and terrain — turning independent probes into a shared
+ * session and producing failures that look like real regressions in whatever
+ * probe happened to run second. An automated page must ask for the link by
+ * name; the AuthorLink probes do exactly that.
  */
 export function resolveAuthorLinkConfig(
   search: string,
@@ -119,11 +127,13 @@ export function resolveAuthorLinkConfig(
   location: { protocol: string; host: string },
   envUrl?: string,
   envToken?: string,
+  isAutomated = false,
 ): AuthorLinkConfig {
   const params = new URLSearchParams(search);
   const link = params.get('link');
   const room = link && link !== 'off' && link !== 'on' ? link : AUTHORLINK_DEFAULT_ROOM;
-  const enabled = link === 'off' ? false : isDev || Boolean(link);
+  const autoLink = isDev && !isAutomated;
+  const enabled = link === 'off' ? false : autoLink || Boolean(link);
   const base = envUrl && envUrl.length > 0 ? envUrl.replace(/\/$/, '') : null;
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const origin = base ?? `${scheme}//${location.host}`;
