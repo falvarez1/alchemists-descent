@@ -853,12 +853,27 @@ snapshot and revision counter survive losing the object. That was the risk
 worth being nervous about; a relay that dropped its snapshot on eviction looks
 healthy until a room goes quiet.
 
-Deploy is the one thing not done, and cannot be here: it needs a Cloudflare
-account. `servers/authorlink/README.md` has the exact steps, and
-`ALLOWED_ORIGINS` is already set for the project's Pages origin. **Still
-unverified without a deploy:** `wss://` TLS termination at the edge, and
-Cloudflare's real hibernation *eviction* policy (a local restart proves
-`restore()` works, not when the platform chooses to evict).
+**It has now also been deployed and verified on the real edge** — 9/9 via
+`npm run verify:authorlink-edge`, against a *temporary preview* account
+(`wrangler deploy --temporary`, which needs no Cloudflare signup). That
+confirmed TLS termination, the Durable Object serving a room from Cloudflare's
+runtime, range validation, token gating, a 403 origin refusal at the handshake,
+and snapshot catch-up from live DO storage. On a temporary account secrets are
+unavailable, so the room token went in as a plaintext `--var` — fine for a
+throwaway, not for a real deployment, which should use
+`wrangler secret put ROOM_TOKEN`.
+
+Two probe lessons, now encoded: a freshly deployed Worker needs a few seconds
+to propagate (the first run, seconds after deploy, was refused outright), and
+edge waits are not localhost waits (a 700 ms settle produced a false failure
+that read as broken token handling).
+
+**Still unverified:** Cloudflare's real hibernation *eviction* policy. The
+local workerd restart proves `restore()` works and the live probe proves
+storage round-trips, but neither forces the platform to evict an idle object.
+
+A durable deployment still needs an account: `servers/authorlink/README.md` has
+the steps, and `ALLOWED_ORIGINS` is already set for the project's Pages origin.
 
 Two bugs this phase shook out:
 

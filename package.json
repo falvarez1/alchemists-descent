@@ -28,6 +28,7 @@
     "verify:authorlink": "node scripts/verify-authorlink.mjs",
     "verify:authorlink-hosted": "node scripts/verify-authorlink-hosted.mjs",
     "verify:authorlink-worker": "node scripts/verify-authorlink-worker.mjs",
+    "verify:authorlink-edge": "node scripts/verify-authorlink-edge.mjs",
     "authorlink:deploy": "wrangler deploy --cwd servers/authorlink",
     "verify:tuning-ranges": "node scripts/gen-tuning-ranges.mjs --check",
     "gen:tuning-ranges": "node scripts/gen-tuning-ranges.mjs",

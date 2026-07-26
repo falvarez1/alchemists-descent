@@ -98,6 +98,26 @@ client against an external relay origin, serves `dist` from a different port,
 and checks cross-origin connect, token gating, range rejection, and origin
 refusal through the real UI plus raw sockets.
 
-**Still unverified without a deploy:** `wss://` TLS termination at the edge,
-and Cloudflare's real hibernation *eviction* policy (a local restart proves
-`restore()` works, but not when the platform chooses to evict).
+`verify:authorlink-edge` runs against a DEPLOYED relay over real `wss://`:
+
+```powershell
+node scripts/verify-authorlink-edge.mjs <token-file> <host>
+# AUTHORLINK_ORIGIN must match an ALLOWED_ORIGINS entry exactly
+```
+
+It has been run once, against a temporary preview deployment — 9/9. That
+confirmed TLS termination at the edge, the Durable Object serving a room from
+Cloudflare's runtime, range validation, token gating, origin refusal (403 at
+the handshake), and snapshot catch-up from live DO storage.
+
+Two things that probe taught us, both baked into it now:
+
+- **Give a fresh deploy time to propagate.** The very first run, seconds after
+  `wrangler deploy`, was refused outright; the identical run minutes later
+  passed.
+- **Edge waits are not localhost waits.** A 700 ms settle produced a false
+  failure that read as broken token handling. It uses 1.5 s.
+
+**Still unverified:** Cloudflare's real hibernation *eviction* policy. A local
+workerd restart proves `restore()` works, and the live probe proves storage
+round-trips, but neither forces the platform to actually evict an idle object.
