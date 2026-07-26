@@ -1,7 +1,8 @@
 import type { World } from '@/sim/World';
 import { blocksEntity, Cell, isGas } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
-import type { CellPatch } from '@/builder/commands';
+import type { CellPatch } from '@/authoring/cellPatch';
+import { createCellPatch } from '@/authoring/cellPatch';
 
 /**
  * Builder terrain tools (docs/BUILDER.md Phase 4): deterministic authored
@@ -24,7 +25,7 @@ export interface Region {
 /** Snapshots cells before mutation; one snapshot per cell per operation. */
 export class PatchRecorder {
   private readonly seen = new Set<number>();
-  private readonly before: CellPatch = { idxs: [], types: [], colors: [], life: [], charge: [] };
+  private readonly before: CellPatch = createCellPatch();
 
   constructor(private readonly w: World) {}
 
@@ -47,8 +48,8 @@ export class PatchRecorder {
   finish(): { before: CellPatch; after: CellPatch } | null {
     const w = this.w;
     const s = this.before;
-    const before: CellPatch = { idxs: [], types: [], colors: [], life: [], charge: [] };
-    const after: CellPatch = { idxs: [], types: [], colors: [], life: [], charge: [] };
+    const before: CellPatch = createCellPatch();
+    const after: CellPatch = createCellPatch();
     for (let n = 0; n < s.idxs.length; n++) {
       const i = s.idxs[n];
       if (
