@@ -41,6 +41,7 @@ requestAnimationFrame(() =>
         window.location,
         import.meta.env.VITE_AUTHORLINK_URL,
         import.meta.env.VITE_AUTHORLINK_TOKEN,
+        navigator.webdriver === true,
       );
       const authorLink = installAuthorLink(game.ctx, linkConfig);
       const linkIndicator = authorLink ? new AuthorLinkIndicator(linkConfig.room) : null;
