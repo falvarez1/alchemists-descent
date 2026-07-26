@@ -1,0 +1,31 @@
+# Cloudflare deploy config for the AuthorLink relay.
+#
+# Nothing here runs or bills until someone with a Cloudflare account runs
+# `wrangler deploy` from this directory. See README.md.
+
+name = "alchemists-descent-authorlink"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[[durable_objects.bindings]]
+name = "AUTHORLINK_ROOM"
+class_name = "AuthorLinkRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AuthorLinkRoom"]
+
+[vars]
+# Comma-separated EXACT origins allowed to open a room. Empty means any, which
+# is wrong for anything reachable. The check is exact-match on the Origin
+# header: host only, no path, and http/https matter.
+#
+# - GitHub Pages serves the project site from the OWNER origin; the
+#   /alchemists-descent/ path is not part of the Origin header.
+# - The localhost entries let `npm run dev` and the dist preview talk to the
+#   hosted relay too, which is how you A/B a local client against real wss://.
+ALLOWED_ORIGINS = "https://falvarez1.github.io,http://localhost:5173,http://localhost:8792"
+
+# ROOM_TOKEN is a secret, not a var. Set it with:
+#   wrangler secret put ROOM_TOKEN
+# Without it the room accepts writes from anyone who can reach the URL.

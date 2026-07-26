@@ -24,8 +24,13 @@ if (!existsSync(manifestPath)) {
 
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 const entries = Object.entries(manifest);
-const entryKey = entries.find(([, entry]) => entry.isEntry)?.[0];
-if (!entryKey) fail('Vite manifest has no entry chunk');
+// The PLAYER entry specifically. There are two HTML entries now
+// (index.html and builder.html) and `find(isEntry)` would happily lock onto
+// whichever came first — silently checking the editor route instead of the
+// one that must never ship Builder code, and passing either way.
+const entryKey = entries.find(([key, entry]) => entry.isEntry && normalize(key) === 'index.html')?.[0];
+if (!entryKey) fail('Vite manifest has no index.html entry chunk');
+const builderRouteKey = entries.find(([key, entry]) => entry.isEntry && normalize(key) === 'builder.html')?.[0];
 
 function manifestEntry(key) {
   const entry = manifest[key];
@@ -110,8 +115,23 @@ for (const file of builderFileSet) {
   }
 }
 
+// The Builder route may boot straight into the editor, but it must still get
+// there by dynamic import — otherwise the shared chunks it pulls in start
+// carrying editor code that index.html also loads.
+if (builderRouteKey) {
+  const routeGraph = collectStaticGraph(builderRouteKey);
+  const routeStaticBuilder = [];
+  for (const key of routeGraph) {
+    const entry = manifestEntry(key);
+    if (entryHasBuilderOwnedSource(key, entry)) routeStaticBuilder.push(`${key} -> ${entry.file}`);
+  }
+  if (routeStaticBuilder.length > 0) {
+    fail(`builder.html statically includes Builder-owned modules: ${routeStaticBuilder.join(', ')}`);
+  }
+}
+
 console.log(
-  `Builder bundle boundary passed: entry=${entryKey}, staticChunks=${staticGraph.size}, builderChunks=${[
-    ...builderFileSet,
-  ].join(', ')}`,
+  `Builder bundle boundary passed: playerEntry=${entryKey}, builderRoute=${
+    builderRouteKey ?? 'none'
+  }, staticChunks=${staticGraph.size}, builderChunks=${[...builderFileSet].join(', ')}`,
 );

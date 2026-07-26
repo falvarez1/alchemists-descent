@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Purple Llama Studio — Alchemist's Descent</title>
+    <title>Builder — Alchemist's Descent</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2307070a'/%3E%3Crect x='3' y='9' width='3' height='3' fill='%23d4af37'/%3E%3Crect x='6' y='6' width='3' height='3' fill='%23a855f7'/%3E%3Crect x='9' y='9' width='3' height='3' fill='%233a7bd5'/%3E%3C/svg%3E">
     <style>
       /* Critical boot styles, inlined on purpose: the app stylesheet loads
@@ -35,7 +35,7 @@
 
     <div id="boot-overlay">
         <div class="boot-title">PURPLE LLAMA STUDIO</div>
-        <div class="boot-sub">ALCHEMIST'S DESCENT</div>
+        <div class="boot-sub">BUILDER</div>
         <div class="boot-dots"><span></span><span></span><span></span></div>
         <div id="boot-status">CONJURING THE CAVES&hellip;</div>
     </div>
@@ -58,64 +58,13 @@
     </header>
 
     <div id="workbench">
-        <div id="left-toolbar">
-            <input id="toolbar-filter" type="text" placeholder="&#9906; filter tools&hellip;" spellcheck="false">
-            <div class="section-title">World Generation</div>
-            <select id="biome-select" class="biome-select">
-                <option value="earthen" selected>Biome: Earthen Hollows</option>
-                <option value="frozen">Biome: Frozen Depths</option>
-                <option value="flooded">Biome: Flooded Caverns</option>
-                <option value="timber">Biome: Timberworks</option>
-                <option value="scorched">Biome: Scorched Wastes</option>
-            </select>
-            <button class="action-btn" id="btn-caves">Generate Caves</button>
-            <button class="action-btn" id="btn-fortress">Spawn Fortress</button>
-            <details id="worldgen-tune-wrap" class="wg-tune-wrap">
-                <summary>Look tuning <span class="wg-tune-hint">tweak &rarr; Generate Caves</span></summary>
-                <div id="worldgen-tune" class="wg-tune"></div>
-                <button class="action-btn" id="btn-worldgen-reset">Reset look</button>
-            </details>
-
-            <!-- Material palette is rendered by Toolbar.ts from
-                 src/content/materialPalette.ts (single source: the Builder
-                 reads the same catalog, and cell ids are a save ABI that must
-                 not be re-typed into markup). -->
-            <div id="material-palette"></div>
-
-            <div class="section-title">Tactical Spells</div>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="bolt"><span class="color-indicator" style="background:#00d2ff"></span>Spark Bolt</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="scatter"><span class="color-indicator" style="background:#ffb347"></span>Scatter Hex</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="bomb"><span class="color-indicator" style="background:#ff3b3b"></span>Cast Bomb</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="lightning"><span class="color-indicator" style="background:#e0f2ff"></span>Chain Lightning</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="flame"><span class="color-indicator" style="background:#ff7a18"></span>Flamethrower</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="emberstorm"><span class="color-indicator" style="background:#ffae42"></span>Ember Storm</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="vitriol"><span class="color-indicator" style="background:#84e63f"></span>Vitriol Spray</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="frostshard"><span class="color-indicator" style="background:#7dd3fc"></span>Frost Shard</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="icelance"><span class="color-indicator" style="background:#38bdf8"></span>Ice Lance</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="wisp"><span class="color-indicator" style="background:#2dd4bf"></span>Seeker Wisp</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="dig"><span class="color-indicator" style="background:#fbbf24"></span>Excavate Ray</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="conjure"><span class="color-indicator" style="background:#9b9388"></span>Conjure Stone</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="warp"><span class="color-indicator" style="background:#c084fc"></span>Warp Bolt</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="meteor"><span class="color-indicator" style="background:#ff5a1e"></span>Meteor</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="blackhole"><span class="color-indicator" style="background:#a855f7"></span>Black Hole</button>
-
-            <div class="section-title">Hostiles (Sandbox)</div>
-            <button class="action-btn dropper-slime" id="btn-spawn-slime">Drop Slime</button>
-            <button class="action-btn dropper-imp" id="btn-spawn-imp">Drop Fire Imp</button>
-            <button class="action-btn dropper-golem" id="btn-spawn-golem">Drop Stone Golem</button>
-
-            <div class="section-title">Level Library</div>
-            <button class="action-btn" id="btn-level-save">Save Level</button>
-            <select id="level-select" class="biome-select" disabled></select>
-            <button class="action-btn" id="btn-level-load">Load Level</button>
-            <button class="action-btn" id="btn-level-delete">Delete Level</button>
-            <button class="action-btn" id="btn-level-export">Export .json</button>
-            <label class="action-btn" for="level-import" style="text-align:center;cursor:pointer;">Import .json</label>
-            <input type="file" id="level-import" accept=".json" style="display:none">
-            <button class="action-btn" id="btn-level-playtest" style="border-color:#78350f;color:#fcd34d;background:#1d1407;">Playtest Level</button>
-
-            <div class="section-title">Expedition</div>
-            <button class="action-btn" id="btn-expedition-abandon">Abandon Saved Expedition</button>
+        <div id="left-toolbar" class="builder-entry-toolbar">
+            <div class="section-title">Builder</div>
+            <p class="builder-entry-note">
+                This window is the editor. The Sandbox palette lives on the
+                <a href="/">game page</a>; open that in a second window and the
+                two stay in sync over AuthorLink.
+            </p>
         </div>
 
         <div id="viewport-container">
@@ -261,6 +210,6 @@
         </div>
     </div>
 
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/app/builderEntry.ts"></script>
 </body>
 </html>

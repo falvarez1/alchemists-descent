@@ -5,6 +5,8 @@ import { BIOMES } from '@/config/biomes';
 import { GEN_TUNE, GEN_TUNE_DEFAULTS, WORLDGEN_DRESSING_CHANNELS, WORLDGEN_LOOK_FIELDS } from '@/config/gen';
 import { EXTRAS, campaignDressingRecipeForBiome } from '@/world/biomeExtras';
 import { bindSelect } from '@/ui/domBind';
+import { escapeAttr, escapeHtml } from '@/core/strings';
+import { MATERIAL_PALETTE } from '@/content/materialPalette';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
@@ -27,6 +29,10 @@ export class Toolbar {
     private ctx: Ctx,
     private onSelectionChanged: SelectionChangedFn,
   ) {
+    // Render before wiring: `wireToolButtons` binds whatever `.tool-btn`
+    // elements exist, so the generated material buttons must be in the DOM
+    // first. Absent container (the standalone Builder route) is a no-op.
+    this.renderMaterialPalette();
     this.wireToolButtons();
     this.wireWorldGen();
     this.wireEnemyDroppers();
@@ -128,6 +134,39 @@ export class Toolbar {
       const dot = btn.querySelector('.color-indicator');
       if (dot) btn.replaceChild(icon, dot); else btn.prepend(icon);
     });
+  }
+
+  /**
+   * Build the material buttons from the shared catalog.
+   *
+   * The markup used to be hand-written in `index.html`, which duplicated cell
+   * ids (an append-only save ABI) into HTML and made the Builder clone them
+   * back out of the DOM. `src/content/materialPalette.ts` is the source now.
+   */
+  private renderMaterialPalette(): void {
+    const anchor = document.getElementById('material-palette');
+    if (!anchor) return;
+    const parts: string[] = [];
+    for (const group of MATERIAL_PALETTE) {
+      parts.push(`<div class="section-title">${escapeHtml(group.title)}</div>`);
+      for (const item of group.items) {
+        parts.push(
+          `<button class="tool-btn" data-mode="element" data-id="${item.id}">` +
+            `<span class="color-indicator" style="background:${escapeAttr(item.color)}"></span>` +
+            `${escapeHtml(item.label)}</button>`,
+        );
+      }
+    }
+    const holder = document.createElement('div');
+    holder.innerHTML = parts.join('');
+    // Splice the buttons in as DIRECT children of #left-toolbar, replacing the
+    // placeholder. The toolbar filter walks `bar.children` and toggles each
+    // one, so a wrapper div would make the whole palette a single unfilterable
+    // element — the section titles have to be siblings of their buttons.
+    anchor.replaceWith(...Array.from(holder.childNodes));
+    document
+      .querySelector(`#left-toolbar .tool-btn[data-id="${this.ctx.state.currentElement}"]`)
+      ?.classList.add('active');
   }
 
   private wireToolButtons(): void {

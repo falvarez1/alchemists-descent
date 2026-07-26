@@ -102,6 +102,21 @@ body.builder-open .hud-wrapper { gap: 6px; min-width: 0; }
 .sound-btn.lit { background: #0f1f18; border-color: #1f4d3a; color: #6ee7b7; }
 #immersive-play-btn { border-color: #3b2a13; color: #fcd34d; }
 #immersive-play-btn.lit { background: #2a1d08; border-color: #9c6a22; color: #fde68a; }
+/* AuthorLink pill: a linked window has to be able to tell at a glance whether
+   the other window is still listening, so peers>0 is the only "lit" state. */
+.authorlink-pill { min-width: 62px; letter-spacing: 1px; }
+.authorlink-pill:disabled { opacity: 1; }
+.authorlink-pill[data-state='connecting'],
+.authorlink-pill[data-state='reconnecting'] { color: #9c8a4a; border-color: #3b3320; }
+.authorlink-pill[data-state='connected'] { background: #101c26; border-color: #1f3f55; color: #7dd3fc; }
+.authorlink-pill[data-state='error'] { background: #241014; border-color: #5c2029; color: #fca5a5; }
+/* Connected but on a different level: every edit is being refused, so this
+   outranks the peer count and is the one pill state that is clickable. */
+.authorlink-pill[data-state='mismatch'] { background: #2a1d08; border-color: #9c6a22; color: #fbbf24; cursor: pointer; }
+.authorlink-pill[data-state='mismatch']:hover { background: #3a2809; color: #fde68a; }
+/* Standalone Builder route: the left rail has no Sandbox palette to show. */
+.builder-entry-note { font-size: 11px; line-height: 1.7; color: var(--text-muted); padding: 0 4px; }
+.builder-entry-note a { color: #7dd3fc; }
 
 #workbench { display: flex; flex: 1; height: calc(100vh - 49px); }
 
