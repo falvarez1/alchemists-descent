@@ -8,12 +8,21 @@ now a modular TypeScript + Vite project.
 ## Layout
 
 ```
-index.html              DOM shell (toolbar, canvas holder, HUD overlays, inspector)
+index.html              Player DOM shell (toolbar, canvas holder, HUD overlays, inspector)
+builder.html            Editor route: same shell minus the Sandbox palette
 src/
-  main.ts               Entry point: builds Game, starts the loop
+  main.ts               Player entry: builds Game, starts the loop
   app/                  Shell-owned app lifecycle glue outside the frame loop
     BuilderLauncher.ts    Lazy Builder chunk entry point and dev reload restore
     BuilderHost.ts        Transitional command/snapshot facade between Builder and Ctx
+    AuthorLink.ts         Binds the net layer to Ctx: live tuning/terrain/console
+                          sync between two windows (docs/REALTIME-...-SPEC.md)
+    AuthorLinkIndicator.ts  Header LINK pill (peers, and the amber "different
+                          worlds" state that pulls the peer's grid on click)
+    builderEntry.ts       /builder.html entry: Game + AuthorLink, Builder opened
+    authorLinkObjects.ts  Applies a remote authored set into the live runtime
+                          through the SAME instantiateObjects the compiler uses,
+                          and tears down only what it created
   styles/main.css       All styling (extracted from the original <style>)
   config/               Tunable data, no logic
     constants.ts          World/view dimensions, sim margin, particle cap
@@ -22,6 +31,8 @@ src/
   core/
     types.ts              THE contract file: entity shapes + service APIs + Ctx
     events.ts             Typed synchronous EventBus (gameplay → UI decoupling)
+    storageOwner.ts       Single-writer election so two linked windows sharing
+                          one localStorage cannot stomp each other
     math.ts               clamp, hash2, valueNoise
   authoring/             Neutral authored-content contracts shared by Builder,
                           worldgen, and runtime instantiation; no DOM/localStorage/Ctx
@@ -30,6 +41,19 @@ src/
     sprites.ts            SpriteAsset schema, frame decoding, runtime sprite helpers
     spriteRuntime.ts      Runtime sprite resolution surface
     stamps.ts             Pure structural cell stamp helpers
+    cellPatch.ts          Sparse cell diff: the Builder's undo payload AND the
+                          AuthorLink terrain wire format (apply/bounds/validate)
+    worldLayer.ts         EditorWorldLayer codec (capture/apply/repaint). Colors are
+                          re-derived from the paint seed, not shipped, so a whole
+                          1600x1064 cave world serializes to ~75 KB
+  net/                   Optional realtime layer; no Ctx, no World, no DOM but WebSocket
+    authorLinkProtocol.ts  Envelope, message union, payload validators, size caps
+    AuthorLinkClient.ts    Socket lifecycle, reconnect, heartbeat, echo drop
+    tuningPatch.ts         Dotted tuning paths <-> the live config singletons
+                           (allowlist DERIVED from shipped defaults, never authored)
+servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
+                         host (scripts/authorlink-server.mjs) and the Cloudflare
+                         Durable Object (worker.js) only own sockets + storage
   sim/                  Cellular automata
     CellType.ts           Append-only Cell ids + material classification predicates
     World.ts              Flat typed-array grid state (types/colors/life/moved/charge)

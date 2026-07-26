@@ -16,3 +16,7 @@ build/
 output/playwright/**/*.png
 output/**/*.png
 samples/*.png
+
+# wrangler dev local state (Durable Object storage, workerd cache)
+.wrangler/
+servers/authorlink/.wrangler/

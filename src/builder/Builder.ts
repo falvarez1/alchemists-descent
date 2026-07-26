@@ -53,7 +53,7 @@ import {
   setObjectGroupCmd,
   setObjectRotationCmd,
 } from '@/builder/commands';
-import type { CellPatch, Command } from '@/builder/commands';
+import type { CellPatch, Command, CommandDirection } from '@/builder/commands';
 import { rleEncode } from '@/core/rle';
 import { formatStep, plural } from '@/core/strings';
 import { kindLabel } from '@/builder/kindLabel';
@@ -64,6 +64,7 @@ import { World } from '@/sim/World';
 import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
 import { EMITTER_CELL_OPTIONS } from '@/game/instantiate';
 import { resetCombatTransients } from '@/core/runtimeState';
+import { BUILDER_EXTRA_SWATCHES, MATERIAL_SWATCHES } from '@/content/materialPalette';
 import { PreviewRuntime } from '@/builder/PreviewRuntime';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 import {
@@ -766,7 +767,7 @@ export class Builder {
   private readonly ctx: Ctx;
   private readonly host: BuilderHost;
   private doc: EditorDocument;
-  private readonly cmds = new CommandStack(() => this.doc, (cmd) => this.markDocumentChanged(cmd));
+  private readonly cmds = new CommandStack(() => this.doc, (cmd, dir) => this.markDocumentChanged(cmd, dir));
   private readonly uiCommands = new CommandRegistry((id, reason) => this.status(`${id}: ${reason}`, true));
   private readonly keymap = new Keymap(this.uiCommands);
   private readonly focusRouter = new FocusRouter();
@@ -805,6 +806,8 @@ export class Builder {
   private activeOverlaysScratch = new Set<BuilderOverlayId>();
   /** Live world has terrain edits the document hasn't captured yet. */
   private paintDirty = false;
+  /** Coalesces an object drag into one authored-set publish (AuthorLink). */
+  private authoredSetPublishTimer: number | null = null;
 
   /** Primary selection (drives the inspector); selectedIds is the full set. */
   private selectedId: string | null = null;
@@ -1291,6 +1294,10 @@ export class Builder {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.authoredSetPublishTimer !== null) {
+      window.clearTimeout(this.authoredSetPublishTimer);
+      this.authoredSetPublishTimer = null;
+    }
     this.close();
     this.hideOpenIntentModal(true);
     this.previewRuntime.stop();
@@ -3851,24 +3858,17 @@ export class Builder {
       }
     }
 
-    // MATERIALS: cloned from the Sandbox toolbar's buttons (one source of
-    // truth in index.html) — the Builder owns the whole left edge now —
-    // plus authoring-only extras the Sandbox doesn't paint (Stone: well
-    // plugs, basins, and rune doors are made of it).
+    // MATERIALS come from the shared catalog, not from the Sandbox toolbar's
+    // DOM. Cloning those buttons used to work because there was exactly one
+    // page; it left the editor silently empty on the standalone /builder.html
+    // route, which ships no Sandbox palette.
     const matGrid = this.el<HTMLDivElement>('bp-materials');
     const materialIds = new Set<number>();
-    for (const src of document.querySelectorAll<HTMLButtonElement>('.tool-btn[data-mode="element"]')) {
-      const id = Number(src.dataset.id);
-      if (materialIds.has(id)) continue;
-      materialIds.add(id);
-      this.addMaterialSwatch(
-        matGrid,
-        id,
-        (src.textContent ?? '').trim(),
-        src.querySelector<HTMLElement>('.color-indicator')?.style.background ?? '#888',
-      );
+    for (const swatch of [...MATERIAL_SWATCHES, ...BUILDER_EXTRA_SWATCHES]) {
+      if (materialIds.has(swatch.id)) continue;
+      materialIds.add(swatch.id);
+      this.addMaterialSwatch(matGrid, swatch.id, swatch.label, swatch.color);
     }
-    if (!materialIds.has(12)) this.addMaterialSwatch(matGrid, 12, 'Stone', '#8a8a92');
   }
 
   /* ---------- the instant popover (every palette button gets one) ---------- */
@@ -4461,7 +4461,7 @@ export class Builder {
     this.status(issues.length === 0 ? 'VALID — NO ISSUES' : plural(issues.length, 'ISSUE', 'ISSUES'));
   }
 
-  private markDocumentChanged(cmd?: Command): void {
+  private markDocumentChanged(cmd?: Command, direction: CommandDirection = 'do'): void {
     this.documentRevision++;
     this.validationDirty = true;
     // The persisted validation snapshot only reflects the doc as it was when
@@ -4471,7 +4471,44 @@ export class Builder {
     this.previewRuntimeDirty = true;
     if (cmd?.label === 'edit backdrop' || cmd?.label === 'edit backdrop grade') this.syncDocBackdropToLive();
     if ((cmd?.cells ?? 0) > 0) this.markTerrainDirty(false);
+    this.publishTerrainToLink(cmd, direction);
+    this.publishAuthoredSetToLink();
     this.scheduleValidationPanelRefresh();
+  }
+
+  /**
+   * Mirror the document's authored records into any linked window.
+   *
+   * Debounced and whole-set: dragging an object fires a command per frame, and
+   * the receiver replaces its copy wholesale anyway, so coalescing to the last
+   * state of a gesture is both cheaper and exactly as correct.
+   */
+  private publishAuthoredSetToLink(): void {
+    if (this.authoredSetPublishTimer !== null) return;
+    this.authoredSetPublishTimer = window.setTimeout(() => {
+      this.authoredSetPublishTimer = null;
+      if (this.disposed) return;
+      this.host.publishAuthoredSet({
+        objects: this.doc.objects,
+        links: this.doc.links,
+        lights: this.doc.lights,
+      });
+    }, 120);
+  }
+
+  /**
+   * Mirror this terrain edit into any linked window (AuthorLink Phase 1).
+   *
+   * The command carries both halves of the stroke, so which one goes on the
+   * wire depends on the direction the stack just replayed: an undo must send
+   * `before` or the other window keeps the cells we just removed.
+   */
+  private publishTerrainToLink(cmd: Command | undefined, direction: CommandDirection): void {
+    const terrain = cmd?.terrain;
+    if (!terrain) return;
+    const patch = direction === 'undo' ? terrain.before : terrain.after;
+    if (patch.idxs.length === 0) return;
+    this.host.publishTerrainPatch(patch, cmd?.label ?? 'paint');
   }
 
   private markTerrainDirty(trackRevision = true): void {

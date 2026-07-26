@@ -4,29 +4,37 @@ import { BuilderLauncher } from '@/app/BuilderLauncher';
 import { installAuthorLink, resolveAuthorLinkConfig } from '@/app/AuthorLink';
 import { AuthorLinkIndicator } from '@/app/AuthorLinkIndicator';
 import { initRapier } from '@/entities/rapierInit';
-import { readAppMode } from '@/game/modePersist';
+
+/**
+ * Standalone Builder route (`/builder.html`).
+ *
+ * This is the editor window of the two-window workflow: it boots straight into
+ * the Builder with AuthorLink live, so the other window can stay on `/` playing
+ * the game. Same `Game`, same `Ctx`, same Builder — only the entry differs.
+ *
+ * WHAT THIS DOES AND DOES NOT SAVE. It drops the Sandbox tool palette (~10 KB
+ * of markup and its wiring) and removes the click needed to get into the
+ * editor. It does NOT yet skip Rapier or the gameplay update systems: those
+ * are built by the one composition root in `Game`, and forking that into a
+ * second, authoring-only root is exactly the "two fake games" outcome the
+ * Builder decoupling plan rules out. Narrowing it is a later slice, gated on
+ * `Game` growing an explicit authoring profile rather than on this file.
+ */
 
 const bootOverlay = document.getElementById('boot-overlay');
 const bootStatus = document.getElementById('boot-status');
 
-// Two rAFs = one committed frame: the styled boot overlay gets painted
-// before synchronous worldgen blocks the main thread.
 requestAnimationFrame(() =>
   requestAnimationFrame(async () => {
     try {
       const holder = document.getElementById('canvas-holder');
       if (!holder) throw new Error('missing #canvas-holder');
 
-      // The rigid-body engine (Rapier2D) is WASM — initialise it before the
-      // Game constructor builds the physics world.
       if (bootStatus) bootStatus.textContent = 'LOADING PHYSICS…';
       await initRapier();
 
-      const savedMode = import.meta.env.DEV ? readAppMode() : null;
       const game = new Game(holder);
 
-      // AuthorLink before the Builder: the launcher hands the link to the
-      // host, so the Builder can publish terrain from the moment it opens.
       const linkConfig = resolveAuthorLinkConfig(
         window.location.search,
         import.meta.env.DEV,
@@ -45,28 +53,27 @@ requestAnimationFrame(() =>
 
       const builderLauncher = new BuilderLauncher(game.ctx, authorLink);
       game.start();
-      if (import.meta.env.DEV && savedMode === 'builder') builderLauncher.open();
+      // The whole point of the route: no click to get into the editor.
+      builderLauncher.open();
 
-      if (import.meta.env.DEV) {
-        // Debug handle for the console and headless verification scripts.
-        const debugWindow = window as unknown as { __game?: Game; __authorLink?: typeof authorLink };
-        debugWindow.__game = game;
-        debugWindow.__authorLink = authorLink;
-        import.meta.hot?.dispose(() => {
-          for (const dispose of linkDisposers.splice(0).reverse()) dispose();
-          linkIndicator?.dispose();
-          authorLink?.dispose();
-          builderLauncher.dispose();
-          game.dispose();
-          if (debugWindow.__game === game) delete debugWindow.__game;
-          delete debugWindow.__authorLink;
-        });
-      }
+      if (bootStatus) bootStatus.textContent = 'OPENING THE BUILDER…';
+
+      const debugWindow = window as unknown as { __game?: Game; __authorLink?: typeof authorLink };
+      debugWindow.__game = game;
+      debugWindow.__authorLink = authorLink;
+      import.meta.hot?.dispose(() => {
+        for (const dispose of linkDisposers.splice(0).reverse()) dispose();
+        linkIndicator?.dispose();
+        authorLink?.dispose();
+        builderLauncher.dispose();
+        game.dispose();
+        if (debugWindow.__game === game) delete debugWindow.__game;
+        delete debugWindow.__authorLink;
+      });
 
       bootOverlay?.classList.add('done');
       setTimeout(() => bootOverlay?.remove(), 600);
     } catch (err) {
-      // A hung loader is worse than no loader: put the failure on screen.
       if (bootStatus) {
         bootStatus.textContent = 'BOOT FAILED — ' + String(err);
         bootStatus.classList.add('error');

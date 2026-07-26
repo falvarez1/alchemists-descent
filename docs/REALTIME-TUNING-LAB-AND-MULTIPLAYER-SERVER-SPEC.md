@@ -1,79 +1,369 @@
-# Realtime Tuning Lab and Multiplayer Server Spec
+# Realtime Authoring Link and Multiplayer Server Spec
 
-- Status: preliminary design and technology research
-- Date: 2026-06-20
-- Scope: static GitHub Pages client plus a separate realtime server for shared
-  tuning now and multiplayer later.
+- Status: **Phases 1-4 shipped** (AuthorLink: tuning, terrain, authored
+  objects, console, shared-world sync, a standalone `/builder.html` route, and
+  a strict hosted relay with a Cloudflare Durable Object host). Phases 5+ are
+  alternative-backend and multiplayer research.
+- Created: 2026-06-20. Phases 1-4 landed 2026-07-26.
+- Scope: a static GitHub Pages client plus a separate realtime service — live
+  cross-window authoring now, shared tuning rooms next, multiplayer later.
 
 ## Executive Direction
 
 Host the Vite static build on GitHub Pages and keep every realtime feature in a
-separate service reached over `wss://`. GitHub Pages is static hosting for HTML,
-CSS, and JavaScript, so it is a good fit for the game client but not for room
-state, streaming, WebSocket fanout, authority, persistence, or matchmaking.
+separate service reached over `ws://` (dev) or `wss://` (hosted). GitHub Pages
+is static hosting for HTML, CSS, and JavaScript, so it is a good fit for the
+game client but not for room state, streaming, WebSocket fanout, authority,
+persistence, or matchmaking.
 
-The first server feature should be a dedicated Tuning Lab, not multiplayer. It
-should let one or more game clients and one or more lab clients join a named
-room, change allowlisted tuning values, and see those changes applied live on
-all connected machines. The protocol and validation should be designed so the
-same room/session model can later grow into multiplayer without exposing raw
-runtime state or accepting arbitrary client mutations.
+The first server feature is **AuthorLink**, not multiplayer: a room that lets an
+editor window and a game window run side by side and stay in step. It is
+deliberately built so the same room/session model can grow into a hosted Tuning
+Lab and then into multiplayer, without ever exposing raw runtime state or
+accepting arbitrary client mutations.
 
-Recommended first implementation path:
+Naming note: earlier drafts called this the "Tuning Lab" and assumed a
+lab-client / game-client split. Implementation collapsed that distinction — see
+[Symmetric peers](#decision-symmetric-peers-not-labgame-roles) — so the shipped
+feature is named AuthorLink and "Tuning Lab" now refers only to the future
+*hosted, multi-machine* form of the same room.
 
-1. Define a provider-neutral realtime protocol in the client.
-2. Add a local Node or Bun `ws` reference server for fast development and tests.
-3. Spike Cloudflare Durable Objects as the first hosted Tuning Lab relay.
-4. Spike SpacetimeDB and .NET SignalR/Orleans separately before choosing a
-   future multiplayer authority stack.
+---
+
+## Shipped: AuthorLink Phases 1-4
+
+Two windows of the app join a named room and stay in sync across three
+channels. Neither window is authoritative; both publish and both apply.
+
+### Using it
+
+```powershell
+npm run dev
+# game:   http://localhost:5173/
+# editor: http://localhost:5173/builder.html      (boots straight into the Builder)
+```
+
+Both routes join the same room automatically in dev. `/` with the BUILDER
+button still works — the standalone route just skips the Sandbox palette and
+the click.
+
+The header shows a `LINK n` pill: `n` is the number of other windows in the
+room. Everything else is automatic.
+
+| Situation | How |
+| --- | --- |
+| Separate rooms on one machine | `?link=roomname` on both windows |
+| Turn it off in dev | `?link=off` |
+| Turn it on in a production build | `?link=roomname` (off by default) |
+| Two machines / standalone relay | `npm run authorlink:server -- --port 8787`, then `VITE_AUTHORLINK_URL=ws://host:8787` |
+
+### Channels
+
+| Channel | Source | Applied as |
+| --- | --- | --- |
+| `tuning` | any `paramsChanged` | sparse diff onto the live config singletons, then `paramsChanged` re-emitted so Inspector/Builder mirrors resync |
+| `cells` | Builder `CommandStack` terrain commands | `applyCellPatch` into the live `World` **only when the patch's `WorldIdentity` matches ours**, then a `worldEdited` event |
+| `cmd` | explicit publish | `ctx.console.exec(line)` on every peer |
+| `objects` | any Builder document command (debounced 120 ms) | the peer tears down what it previously instantiated and re-runs the shared `instantiateObjects` for the whole set |
+| `world.announce` | join, and any local world change (500 ms identity poll) | peer world table; drives the mismatch state |
+| `world.request` / `world.snapshot` | the `LINK ≠` pill | `applyWorldLayer` replaces this window's grid with the peer's live one |
+
+### Same level, or nothing happens
+
+Two connected windows are not necessarily looking at the same world, and this is
+the difference between the feature working and the feature quietly corrupting a
+level. A `CellPatch` is *only indices* into `x + y * width`, and every world in
+this game is 1600x1064 — so matching dimensions prove nothing. An untagged
+stroke aimed at a sandbox cave lands at the same array offsets inside a live D3.
+
+So every window publishes a `WorldIdentity`:
+
+```ts
+{ kind: 'level' | 'sandbox' | 'custom', levelId, biome, seed, genVersion, width, height }
+```
+
+- Patches carry it and are **refused** when it is not ours (amber pill + toast).
+- `genVersion` is part of it, so two tabs on different builds are never peers.
+- The `LINK ≠` pill pulls the peer's live grid over `world.snapshot`.
+
+**A pulled world keeps the SENDER's identity.** After pulling a peer's live
+`d2`, this window holds d2's cells but has no level runtime, so a ctx-derived
+identity would call it `sandbox` and the next poll would revert the adoption —
+straight back to "different worlds", refusing every stroke. The adoption is
+held until this window's own world genuinely changes underneath it.
+
+### Authored objects: whole-set, not per-record
+
+A remote object edit replaces the **entire** authored set rather than diffing
+one record. That is deliberate:
+
+- Links wire doors to triggers across records, and `instantiateObjects`
+  resolves that in one ordered pass (objects → doors → triggers → rune links).
+  Per-record messages would need a second wiring path that could drift from
+  the playtest compiler — the exact "playtest drift" risk the Builder
+  decoupling plan calls out.
+- An authored set is tens of records and a few KB. There is nothing to save.
+- It is idempotent: no delete/upsert bookkeeping to get wrong.
+
+**It can only touch what it made.** The sync records the exact entity
+references it pushed into the runtime; anything the receiving window generated
+for itself — worldgen mechanisms, campaign pickups, wandering enemies — is
+never removed, because it was never recorded. An editor holding an empty
+document cannot wipe a live level.
+
+**Doors need explicit un-stamping.** A closed door's metal is written by the
+runtime during `Mechanisms.update`, not by the instantiation `CellSetter`, so
+the teardown cell-patch never captured it — and `setDoorCells(open)` only
+queues a dissolve that `Mechanisms.update` drains, which will never run for a
+mechanism being removed. Without special handling, deleting a door welds a
+permanent metal slab across the level: precisely the physics-chaos softlock
+the design rules forbid. Teardown therefore clears the door footprint
+directly, and only cells that are *still* its metal.
+
+Authored objects need a level runtime to live in. A Sandbox window that never
+started a run reports that instead of dropping the set silently.
+
+### Files
+
+```text
+src/authoring/cellPatch.ts        CellPatch contract + apply/bounds/validate (neutral layer)
+src/net/authorLinkProtocol.ts     envelope, message union, payload validators, limits
+src/net/AuthorLinkClient.ts       socket lifecycle, reconnect, heartbeat, echo drop, typed fan-out
+src/net/tuningPatch.ts            tuning paths <-> live config singletons
+src/app/AuthorLink.ts             Ctx binding: channel wiring, echo suppression, config resolution
+src/app/AuthorLinkIndicator.ts    header status pill
+src/app/BuilderHost.ts            +publishTerrainPatch / getLinkStatus / subscribeLinkStatus
+scripts/authorlink-server.mjs     the relay (attachable + standalone)
+scripts/vite-plugin-authorlink.mjs  mounts the relay on the dev server
+tests/authorlink.test.ts          28 unit tests
+scripts/verify-authorlink.mjs     two-browser-context probe (npm run verify:authorlink)
+src/app/authorLinkObjects.ts      authored-set instantiation + teardown against a live runtime
+src/core/storageOwner.ts          single-writer election for shared localStorage keys
+src/app/builderEntry.ts           /builder.html entry: boots straight into the Builder
+src/content/materialPalette.ts    the material catalog both the Sandbox and Builder read
+builder.html                      the editor route (second Vite input)
+src/config/tuningRanges.ts        derived per-path bounds for strict rooms
+servers/authorlink/room.mjs       the ONE room implementation, host-agnostic
+servers/authorlink/worker.js      Cloudflare Durable Object host
+servers/authorlink/wrangler.toml  deploy config (nothing runs until deployed)
+scripts/gen-tuning-ranges.mjs     emits the relay's plain-JS range table
+scripts/verify-authorlink-hosted.mjs  production build + external strict relay
+```
+
+### Decisions worth keeping
+
+#### Decision: the transport is a private WebSocket path, not Vite HMR
+
+Vite's HMR channel would have been zero-dependency, but `import.meta.hot` is
+stripped from production builds, so an HMR-based link could never graduate past
+dev — and sharing the reload socket entangles authoring traffic with reload
+semantics. A private path (`/__authorlink`) on the same port costs one `ws`
+devDependency and makes the client code identical in dev and production. The
+relay attaches via `noServer: true` + a manual `upgrade` handler so it claims
+only its own path and leaves Vite's HMR socket alone.
+
+#### Decision: symmetric peers, not lab/game roles
+
+The original draft had `lab`, `game`, `spectator`, and `admin` roles with
+different write permissions. Implementation dropped that: every peer publishes
+and every peer applies, and `role` survives only as a presentation label in the
+presence list. Reasons:
+
+- The interesting workflow is bidirectional. You tune from the editor, but you
+  also want to nudge a value from the game window while playing it.
+- Role negotiation would have to re-run every time a window opens or closes the
+  Builder, which is a mode toggle, not a session boundary.
+- It keeps the relay dumb: validate the envelope, stamp a revision, fan out.
+
+Authority becomes necessary for multiplayer. It is not necessary for authoring,
+and adding it early would have bought nothing.
+
+#### Decision: the tuning allowlist is derived, not authored
+
+Phase 0 originally called for a hand-written `src/config/tuningSchema.ts` with
+per-path metadata. That file was **not** built, on purpose. `tuningPatch.ts`
+derives the allowlist from the shipped defaults instead: a path is valid iff the
+defaults object has that key with a number or boolean value.
+
+- `config/params.ts` is already the single source of truth for what a dial is.
+  A parallel schema would go stale the first time someone added one, and a
+  stale allowlist *silently drops* changes rather than failing loudly.
+- The default's type is the accepted type, so a boolean can never land on a
+  number dial — type checking for free.
+- It matches what `config/tuningStore.ts` already does for localStorage, so
+  persistence and the wire cannot disagree about what is tunable.
+
+What is genuinely lost is per-path `min`/`max`/`step`/`runtimeImpact`/
+`stability` metadata. That is real, and it is what a *hosted* room will need
+(see Phase 4). A local dev link between two windows the same person owns does
+not need range clamping to be safe.
+
+#### Decision: terrain is forwarded, never accumulated
+
+The relay keeps one piece of state — the room's accumulated tuning — because
+that is the only thing a late-joining window cannot reconstruct for itself.
+Terrain is deliberately not accumulated: replaying an hour of strokes onto a
+freshly generated world would produce garbage. A late joiner starts from its own
+world and syncs forward. Whole-document resync is Phase 2's job.
+
+#### Decision: sends while disconnected are dropped, not queued
+
+Queued tuning would replay a stale slider drag on reconnect, and queued cell
+patches would stamp terrain into a world that has since regenerated. On
+reconnect the client re-publishes a fresh sparse tuning snapshot instead, which
+is both smaller and correct.
+
+### Safety properties actually implemented
+
+- `CellPatch` cell ids are validated against `CELL_COUNT` before they are
+  stamped. Cell ids are an append-only save ABI, so a patch from a newer build
+  can name a material this build has no behavior for; the whole patch is
+  refused rather than putting an unsimulatable id in the grid.
+- Cell indices are validated against the receiving world's length, and the
+  patch is refused outright if the sending world's dimensions differ (indices
+  are `x + y * width`, so a mismatch would smear the stroke diagonally).
+- Charge is written through `World.setChargeAt`, never the raw array, so the
+  sparse active-charge index stays in step with the electrical pass.
+- Per-message cap (512 KB) and per-patch cap (40k cells), enforced on both
+  ends; a whole-world replace is a document resync, not a socket message.
+- Per-client rate limit (240 msg/s) in the relay.
+- Echo control has two independent guards: the client drops messages carrying
+  its own `clientId`, and the binding suppresses the outbound tuning publisher
+  while a remote patch is being applied.
+- The link is off by default in production builds. A shipped build never opens
+  a socket the player did not ask for.
+
+### Verified
+
+```powershell
+npx vitest run tests/authorlink.test.ts   # 46 passed
+npm run verify:authorlink                 # 27 passed (two browser contexts)
+```
+
+The probe drives a real Builder brush drag with real mouse events in one
+browser context and asserts every published cell appears in the other. It also
+puts the two windows on deliberately different worlds, asserts the stroke is
+**refused**, pulls the peer world, and asserts the same stroke then lands.
+
+Phase 2, verified in the browser with real palette clicks: a door placed in
+the Builder window appeared in a live D1 expedition's runtime (13 → 14
+mechanisms, `door@1031,177`, trigger index rebuilt), and deleting it returned
+the runtime to 13 with the metal cleared. A linked lever+door pair is covered
+by the probe, which asserts the lever's `targetId` resolves to the door.
+
+Phase 1, end-to-end check against the real scenario: a game window playing a live `d2`
+expedition (player, enemies, an explosion crater), an editor window that pulled
+that level through the pill, and a 5,095-cell arch painted in the Builder —
+5,095 of 5,095 present in the game window, with the game still on `d2`.
+
+### Two bugs this shook out, and what they cost
+
+Recorded because both were invisible from the code and both would have come
+back.
+
+1. **Feedback loop via status notifications.** `AuthorLinkStatus` includes
+   `revision`, which moves with *every* relayed message, and `onStatus` fires
+   on any field change. A handler that announced "on connect" therefore
+   announced once per message received — an unbounded storm between two peers
+   that pinned the relay at its 240/s rate limit and silently starved the
+   tuning and cell channels. Fixed by reacting to a kind *transition*. A second
+   variant (replying to every `world.announce`) was fixed by replying only to a
+   peer we have not met. Both have regression tests.
+2. **An idleness assertion that could not fail.** The probe checked "revision
+   stops climbing", but a client's revision only advances when it *receives*
+   something, so a heartbeat pong makes it jump several counts with nobody
+   talking — and conversely it looked stable while a storm was underway. The
+   check now counts what each window *sends* while idle, which is the thing
+   that actually matters, and it runs last, after every channel has fired.
+
+The general lesson for this transport: **assert on what a peer emits, not on
+what it observes.** Observed counters lag and lie; emitted counters do not.
+
+### Known gaps (deliberate, not oversights)
+
+- **Object sync replaces, it does not merge.** Each authored edit re-runs the
+  whole set, so mechanism runtime state resets (a door you had opened closes).
+  Acceptable for an authoring loop — you are recompiling authored intent — but
+  it is not a live-object protocol.
+- **An unlinked trigger does not instantiate.** A lever with no link has no
+  target, so the shared instantiation pass skips it. That is existing game
+  semantics, not a link limitation, but it surprises you the first time.
+- **Pull is one-shot.** Either window can pull (both show the amber pill), so
+  it is bidirectional in practice, but there is no continuous follow.
+- **A pulled world is a grid, not a session.** The editor gets the peer's
+  cells, not its enemies or pickups. Authored objects then sync on top.
+- **Edits land in a *live* simulation.** Paint a crystal arch into a running
+  D2 and the sim immediately acts on it — fire spreads, liquids drain, loose
+  material falls. That is correct and is the point of editing the real game,
+  but it means the receiving window is not a still canvas. For a stable
+  comparison, stop its clock (`ctx.time.setManual(true)`); `state.paused`
+  alone is honoured by the fixed tick but is easy to have reset out from under
+  you by a level transition.
+- **Shared `localStorage` has no owner rule.** Both windows write
+  `ad:tuning:v1`, and a second window with the Builder open would also write
+  `noita-builder-draft`. Same-value writes are benign; a real single-writer
+  lock is Phase 2.
+- **No range clamping on tuning values.** Fine for a local link, required for a
+  hosted room. Phase 4.
+- **No auth.** The dev relay accepts any connection to the port. Anything
+  hosted needs origin checks and room tokens (see Security).
+
+---
 
 ## Current Game Integration Points
 
-The game already has the right local seam for live tuning:
+The game already had the right local seam for live tuning, and AuthorLink was
+built on it rather than beside it:
 
 - `src/config/tuningStore.ts` captures sparse diffs for `global`, `player`,
-  `gen`, `materials`, `spells`, and `brushSize`.
+  `pacing`, `gen`, `materials`, `spells`, and `brushSize`.
 - `Game` installs tuning persistence once during boot with
   `installTuningPersistence(ctx)`.
 - Sandbox and Builder controls emit the shared `paramsChanged` event after
   tuning mutations.
-- Existing local persistence stores sparse diffs against shipped defaults, which
-  is the correct shape for a network patch.
+- Local persistence stores sparse diffs against shipped defaults, which is
+  exactly the right shape for a network patch.
+- `src/builder/commands.ts` `CellPatch` was already a serializable sparse cell
+  diff built for undo; it is now the wire format too, and lives in
+  `src/authoring/cellPatch.ts` so `src/net` can use it without crossing the
+  Builder boundary.
+- `EventMap.worldEdited` already existed as the "raw live-world edits from dev
+  tools" bridge, carrying dirty bounds; remote patches emit it with
+  `source: 'authorlink'`.
 
-The remote tuning client should build on that seam:
-
-- Listen for local `paramsChanged`.
-- Capture a sparse diff.
-- Send only changed allowlisted paths to the realtime server.
-- Apply remote patches to the same mutable tuning singletons.
-- Emit `paramsChanged` after applying remote patches so Inspector, Builder, and
-  runtime mirrors resync.
-- Suppress echo loops by tagging each outbound change with `clientId`,
-  `mutationId`, and `baseRevision`.
-
-Known tuning debt to resolve before the feature feels complete:
+Known tuning debt still outstanding:
 
 - Some wand/card modifier behavior still lives as constants in runtime code,
-  especially in `src/combat/wands/compiler.ts`. Those values should move behind
-  structured tuning objects before the lab claims full spell/card coverage.
-- Network tuning must never mutate raw `Ctx`, `World`, entity arrays, DOM nodes,
-  or arbitrary JavaScript. It only applies typed tuning documents.
+  especially in `src/combat/wands/compiler.ts`. Those values must move behind
+  structured tuning objects before the link can claim full spell/card coverage.
+- Network tuning must never mutate raw `Ctx`, `World`, entity arrays, DOM
+  nodes, or arbitrary JavaScript. It only applies typed tuning documents.
+  (Terrain is the one exception and it goes through its own validated,
+  size-capped channel.)
 
 ## Goals
 
-- Cross-computer live tuning for global params, player movement, worldgen,
-  materials, spells, and eventually card/wand constants.
-- A separate Tuning Lab browser surface that can run beside the game.
+Met in Phase 1:
+
+- Cross-window live tuning for global params, player movement, worldgen,
+  materials, and spells.
+- A separate authoring window that can run beside the game.
 - Room-based sessions with explicit connect/disconnect state.
-- Snapshot-on-join so a late client receives current room state.
-- Patch fanout with revision ordering and conflict visibility.
-- Validation, range checks, path allowlists, rate limits, and role checks.
+- Snapshot-on-join for tuning, so a late window receives current room state.
+- Patch fanout with revision ordering.
+- Path allowlists and type checks.
 - Static client deployable to GitHub Pages with no server dependency unless the
-  user explicitly enables realtime tuning.
+  user explicitly enables the link.
+
+Still open:
+
+- Cross-*machine* tuning against a hosted relay.
+- Card/wand constants in the tuning schema.
+- Range checks, rate limits per path, role checks, and conflict visibility.
 - Architecture that can later support multiplayer room lifecycle, presence,
   matchmaking, and server authority.
 
-## Non-Goals For The First Slice
+## Non-Goals For The Next Slice
 
 - No multiplayer gameplay implementation.
 - No full world-grid streaming.
@@ -84,192 +374,115 @@ Known tuning debt to resolve before the feature feels complete:
 
 ## Client Architecture
 
-Add a small realtime client layer that is optional at runtime.
+Shipped shape (see the file table above). The layering rule that matters:
 
-Suggested files:
+```text
+src/net/**        protocol + socket + pure patch appliers. No Ctx, no World, no DOM
+                  beyond WebSocket. Boundary-enforced: may not import src/builder.
+src/app/**        binds the net layer to a live Ctx; owns config resolution and UI.
+src/builder/**    reaches the link ONLY through BuilderHost, never directly.
+```
 
-- `src/net/realtimeProtocol.ts`
-  - shared message types, version constants, validation helpers.
-- `src/net/TuningClient.ts`
-  - WebSocket connection, reconnect, heartbeats, outgoing patch queue.
-- `src/net/applyTuningPatch.ts`
-  - allowlisted application of remote values to live tuning objects.
-- `src/ui/TuningConnectionPanel.ts`
-  - connect status, room id, role, last patch, errors, disconnect.
-- `src/app/tuningLab.ts`
-  - optional dedicated lab entrypoint if the Builder/game split wants separate
-    bundles later.
+`BuilderHost` gaining `publishTerrainPatch` is not incidental — it is the
+migration path the Builder/Game decoupling plan already wanted. Routing the
+publish through the host kept the editor free of both a net-layer import and a
+module-level singleton.
 
-Connection should be opt-in:
+Connection is opt-in outside dev:
 
-- Query string: `?tune=room-id`.
-- Local dev env: `VITE_TUNING_SERVER_URL=ws://localhost:8787`.
-- Production env: `VITE_TUNING_SERVER_URL=wss://tuning.example.com`.
-- UI command: "Connect Tuning Lab" from diagnostics/developer surfaces.
-
-The game should continue to run normally when the server is absent.
+- Query string: `?link=<room>` (or `?link=off` to suppress in dev).
+- Env override: `VITE_AUTHORLINK_URL=ws://host:8787`.
+- Default: on in dev, off in production.
 
 ## Room Model
 
-Each room has:
+Each room holds:
 
-- `roomId`: short, human-shareable id.
-- `protocolVersion`: client/server compatibility guard.
-- `schemaVersion`: tuning schema revision.
-- `revision`: monotonically increasing integer.
-- `snapshot`: current sparse tuning document.
-- `clients`: presence records for connected clients.
-- `locks`: optional path locks for sliders being dragged.
-- `history`: bounded recent patch log for reconnect and debugging.
+- `id`: short, human-shareable.
+- `revision`: monotonically increasing integer, stamped by the relay on every
+  relayed message.
+- `tuning`: accumulated sparse tuning document (the join snapshot).
+- `clients`: connected sockets with a display role and a rate-limit window.
 
-Roles:
+Roles (`sandbox` | `play` | `builder`) are presentation only. See
+[Symmetric peers](#decision-symmetric-peers-not-labgame-roles).
 
-- `lab`: can propose tuning changes and manage presets.
-- `game`: receives patches, can optionally publish local game-side changes.
-- `spectator`: receives state only.
-- `admin`: can reset room, kick clients, and commit presets.
+## Protocol
 
-## Protocol Draft
+JSON. Move hot paths to MessagePack only if patches become large or frequent
+enough to justify the tooling — a 1000-cell stroke is ~20 KB of JSON, which is
+nowhere near that threshold.
 
-Use JSON first. Move hot paths to MessagePack only if the patches become large
-or frequent enough to justify binary tooling.
-
-Envelope:
+Envelope (`src/net/authorLinkProtocol.ts`):
 
 ```ts
-type RealtimeMessage = {
-  type: string;
+interface Envelope<T extends string, P> {
+  type: T;
   protocol: 1;
-  roomId: string;
+  room: string;
   clientId: string;
-  mutationId?: string;
-  revision?: number;
+  /** Room revision. Assigned by the relay on broadcast; 0 on client send. */
+  revision: number;
   sentAt: number;
-  payload?: unknown;
-};
+  payload: P;
+}
 ```
 
 Message types:
 
-- `hello`
-  - client sends desired room, role, schema version, app build hash.
-- `welcome`
-  - server assigns `clientId`, current `revision`, role, and capabilities.
-- `snapshot.request`
-  - client asks for the current room snapshot.
-- `snapshot`
-  - server sends the full sparse room document.
-- `patch`
-  - client proposes typed path/value changes against `baseRevision`.
-- `patch.applied`
-  - server broadcasts accepted patch with new `revision`.
-- `patch.rejected`
-  - server rejects invalid path, stale base, rate limit, or role violation.
-- `presence`
-  - server broadcasts join, leave, role, cursor/focus, and client metadata.
-- `lock.acquire`
-  - lab client claims a tuning path while dragging or editing.
-- `lock.release`
-  - lab client releases a path.
-- `preset.commit`
-  - admin asks server to persist/export a named tuning snapshot.
-- `preset.revert`
-  - admin asks room to revert to a known snapshot.
-- `ping` / `pong`
-  - heartbeat and latency measurement.
-- `error`
-  - non-patch protocol errors.
+| Type | Direction | Purpose |
+| --- | --- | --- |
+| `hello` | client → relay | announce room, role, build stamp |
+| `welcome` | relay → client | assign revision, peer count, tuning snapshot |
+| `presence` | relay → clients | peer count and roles changed |
+| `tuning` | relayed | sparse `{ path, value }[]` |
+| `cells` | relayed | `{ width, height, patch, label }` |
+| `cmd` | relayed | `{ line }`, run through `ctx.console.exec` |
+| `world.announce` | relayed | this window's `WorldIdentity` |
+| `world.request` | directed | ask ONE peer for its grid (directed, so three windows do not all answer) |
+| `world.snapshot` | relayed | `EditorWorldLayer` for the whole world |
+| `ping` / `pong` | both | heartbeat |
+| `error` | relay → client | `protocol` / `rejected` / `rate-limit` / `too-large` |
 
-Patch payload:
+`tuning`, `cells`, `cmd`, and the three `world.*` types are relayed; the rest
+are answered by the relay. Size caps are per-type: 512 KB for the incremental
+channels, 16 MB for `world.snapshot`, which is a rare explicit user action and
+falls back to shipping a whole color plane when the paint cannot be re-derived. The relay duplicates the protocol constants rather than importing the
+TypeScript module (it must run under plain Node with no build step);
+`tests/authorlink.test.ts` asserts the two copies agree, because drift there is
+a silent wire break.
 
-```ts
-type TuningPatch = {
-  baseRevision: number;
-  changes: Array<{
-    path: string;
-    value: number | boolean;
-    previous?: number | boolean;
-  }>;
-};
+Tuning path families, validated against the shipped defaults at apply time:
+
+```text
+global.<key>              GLOBAL_PARAMS
+player.<key>              PLAYER_PARAMS
+pacing.<key>              PROGRESSION_PACING
+gen.<key>                 GEN_TUNE
+materials.<cellId>.<key>  MATERIAL_PARAMS[cellId]
+spells.<spellId>.<key>    SPELL_PARAMS[spellId]
 ```
 
-Example:
-
-```json
-{
-  "type": "patch",
-  "protocol": 1,
-  "roomId": "moss-lab",
-  "clientId": "lab-7",
-  "mutationId": "01j0-lab-7-42",
-  "revision": 12,
-  "sentAt": 1781985600000,
-  "payload": {
-    "baseRevision": 12,
-    "changes": [
-      { "path": "spells.spark.electricPower", "value": 42 },
-      { "path": "player.maxSpeed", "value": 3.8 }
-    ]
-  }
-}
-```
-
-## Tuning Schema
-
-The server validates paths. The client may render more controls, but the server
-is the final gate for shared rooms.
-
-Initial path families:
-
-- `global.<key>`
-- `player.<key>`
-- `gen.<key>`
-- `materials.<cellId>.<key>`
-- `spells.<spellId>.<key>`
-- `brushSize`
-
-Planned path families:
-
-- `cards.<cardId>.<key>`
-- `wands.<key>`
-- `enemies.<enemyKind>.<key>`
-- `biomes.<biomeId>.<key>`
-
-Each path definition should include:
-
-- `type`: `number` or `boolean`.
-- `min`, `max`, and `step` for numbers.
-- `defaultValue`.
-- `label` and `group` for lab UI.
-- `runtimeImpact`: `instant`, `nextCast`, `nextLevel`, or `restart`.
-- `stability`: `safe`, `experimental`, or `dangerous`.
-- `owner`: module or system responsible for the value.
-
-This schema can be generated from the local defaults plus explicit metadata.
-Do not infer ranges from sliders alone; server-side validation needs stable
-limits independent of UI.
+Planned families: `cards.<cardId>.<key>`, `wands.<key>`,
+`enemies.<enemyKind>.<key>`, `biomes.<biomeId>.<key>`.
 
 ## Server Responsibilities
 
-The Tuning Lab server owns:
+The relay owns:
 
-- WebSocket accept/close lifecycle.
-- Room creation and lookup.
-- Snapshot storage for active rooms.
-- Patch validation.
-- Revision assignment.
-- Fanout to clients in the room.
-- Presence and optional path locks.
-- Bounded room history.
-- Rate limiting.
-- Origin checks.
-- Authentication or room-token checks.
-- Optional preset export/import.
+- WebSocket accept/close lifecycle on its own path.
+- Room creation, lookup, and teardown when the last client leaves.
+- The accumulated tuning snapshot for active rooms.
+- Envelope validation, revision assignment, fanout.
+- Presence.
+- Per-client rate limiting and message size caps.
 
-The server does not own:
+A hosted relay must additionally own origin checks, room-token auth, bounded
+room history, and optional preset export/import.
 
-- Local game rendering.
-- Local world simulation for the first Tuning Lab slice.
+The relay does not own:
+
+- Local game rendering or world simulation.
 - Builder document internals.
 - Expedition saves.
 - Arbitrary script execution.
@@ -286,27 +499,27 @@ Future multiplayer server authority owns:
 
 ## Security
 
-Minimum controls:
+Shipped (local dev relay): envelope validation, unknown-path rejection,
+type checks, non-finite rejection, message size cap, patch cell cap, per-client
+rate limit, cell-id ABI validation, off-by-default in production.
+
+Required before anything is hosted:
 
 - Require `wss://` in production.
-- Validate WebSocket `Origin` against the GitHub Pages domain or custom domain.
+- Validate WebSocket `Origin` against the Pages domain or custom domain.
 - Require room tokens for writable roles.
 - Use one-time or short-lived invite links for public builds.
-- Apply per-client and per-room message rate limits.
-- Reject unknown paths, wrong types, non-finite numbers, and out-of-range values.
-- Cap patch size and batch size.
+- Per-room (not just per-client) rate limits.
+- Range checks against per-path `min`/`max`.
 - Track `clientId`, `mutationId`, and revision for replay/idempotency.
-- Never trust client-provided role or display name.
-- Keep `spectator` as the default role for unauthenticated clients.
+- Never trust a client-provided role or display name.
 - Keep server logs free of secret room tokens.
 
 ## Persistence
 
 Start with in-memory active room state plus explicit export.
 
-Recommended phases:
-
-1. Active room memory only.
+1. Active room memory only. **(shipped)**
 2. Room snapshot persisted to server storage for reconnect after idle.
 3. Named presets exported as JSON documents.
 4. Presets imported into repo-side content after review.
@@ -329,13 +542,14 @@ Design principles for later multiplayer:
 - Keep simulation state partitionable by room and region.
 - Add deterministic replay tests before trusting rollback or client prediction.
 - Keep fixed-step simulation cadence explicit.
-- Avoid using the Tuning Lab protocol for gameplay state. Reuse the transport
-  and room lifecycle, but define separate gameplay message types.
+- Do not use the AuthorLink protocol for gameplay state. Reuse the transport
+  and room lifecycle, but define separate gameplay message types — AuthorLink
+  is explicitly a trusted-peer dev tool with no authority model.
 - Prefer small co-op/arena experiments before attempting a shared full descent.
 
 Likely multiplayer progression:
 
-1. Shared Tuning Lab only.
+1. Shared authoring link only. **(shipped, local)**
 2. Shared read-only spectators or ghost trails.
 3. Small room co-op prototype with server-mediated inputs.
 4. Authoritative arena or challenge room with bounded map size.
@@ -538,131 +752,212 @@ Concerns:
 
 ## Implementation Plan
 
-### Phase 0 - Schema Inventory
+Phases 1–2 of the original plan are done and are recorded above under
+[Shipped](#shipped-authorlink-phase-1). Phase 0 was deliberately skipped — see
+[the derived-allowlist decision](#decision-the-tuning-allowlist-is-derived-not-authored).
+The remaining phases are re-baselined below.
 
-- Inventory current tuning values from `params.ts`, `gen.ts`, material params,
-  spell params, wand constants, and card modifier constants.
-- Add explicit metadata for range, step, runtime impact, and stability.
-- Decide which values are safe for remote tuning.
-- Move hardcoded wand/card modifier constants into typed tuning objects.
+### Phase 1 - Local AuthorLink — SHIPPED 2026-07-26
 
-Deliverable:
+Delivered: provider-neutral protocol, WebSocket client with reconnect and
+heartbeat, echo suppression, room snapshot on join, tuning + cells + cmd
+channels, header status pill, a reference relay that attaches to the Vite dev
+server or runs standalone, 28 unit tests, and a two-browser-context probe.
 
-- `src/config/tuningSchema.ts`
-- Tests for path validation and defaults.
+Original Phase 1 and Phase 2 ("Reference Local Server") collapsed into one
+slice, because mounting the relay on the dev server made the reference server a
+prerequisite of the first demo rather than a follow-up.
 
-### Phase 1 - Provider-Neutral Client Protocol
+### Phase 2 - Authored Objects And Resync — SHIPPED 2026-07-26
 
-- Add `realtimeProtocol.ts` message types.
-- Add `captureTuningPatch` and `applyTuningPatch` helpers.
-- Add `TuningClient` with reconnect, heartbeat, echo suppression, and room
-  snapshot handling.
-- Add UI status for disconnected, connecting, connected, stale, and rejected.
-- Keep realtime disabled by default.
+Delivered: the `objects` channel (whole authored set, world-tagged, debounced
+120 ms from the Builder command stack), teardown that removes only what the
+link created and restores the cells it stamped, explicit door un-stamping,
+`mechanismTriggers` rebuild on every apply, a single-writer election for shared
+`localStorage`, and incoming-edit feedback (coalesced toast + a soft bloom
+pulse) so a remote edit reads as your collaborator working rather than a glitch.
 
-Deliverable:
+Two design changes against the original plan:
 
-- Game can connect to `ws://localhost:<port>` and sync patches across two local
-  browser tabs.
+- **Whole-set instead of per-record upsert/delete.** Per-record messages would
+  have needed a second link-wiring path alongside `instantiateObjects`; see
+  [Authored objects](#authored-objects-whole-set-not-per-record).
+- **No `doc` / `resync.request` message.** `world.snapshot` (Phase 1) already
+  carries the grid, and the authored set is republished on every edit, so a
+  drifted window converges by pulling the world and receiving the next set.
+  A third resync path would have been redundant.
 
-### Phase 2 - Reference Local Server
+Not done: the tier-3 `compileAndPlaytest` fallback for structural changes
+(biome, document size, import). In practice a structural change alters the
+world identity, which surfaces as a mismatch the pill can resolve — the
+explicit recompile has not yet been needed.
 
-- Add a small `servers/tuning-local` package or `scripts/tuning-server.mjs`.
-- Implement room memory, revision assignment, validation, fanout, and history.
-- Add Playwright probe with two browser contexts:
-  - connect both clients to one room,
-  - change a tuning value in client A,
-  - assert client B updates and emits `paramsChanged`,
-  - reconnect client B and assert snapshot catch-up.
+### Phase 3 - Separate Builder Entry — PARTIALLY SHIPPED 2026-07-26
 
-Deliverable:
+Delivered: `builder.html` + `src/app/builderEntry.ts` as a second Vite input,
+booting straight into the Builder with AuthorLink live. The bundle-boundary
+guard now checks BOTH routes explicitly — it had silently latched onto
+whichever entry `find(isEntry)` returned first, which would have let the player
+entry regress unnoticed the moment a second entry existed.
 
-- Repeatable local verification before testing any hosted provider.
+The prerequisite turned out to be real, and load-bearing in a way the plan
+under-stated: `index.html` did not merely *duplicate* the material palette, the
+**Builder cloned its own palette out of those DOM buttons**. The standalone
+route shipped no Sandbox markup, so the editor came up with a single material.
+`src/content/materialPalette.ts` is now the single source — the Sandbox toolbar
+renders from it and the Builder reads it directly, so cell ids (an append-only
+save ABI) are no longer re-typed into HTML.
 
-### Phase 3 - Hosted Tuning Relay Spike
+One subtlety worth keeping: the generated buttons must be spliced in as DIRECT
+children of `#left-toolbar`. The toolbar filter walks `bar.children` and toggles
+each one, so wrapping the palette in a container makes it a single unfilterable
+element — caught by `verify-builder-ux`, not by any unit test.
 
-Primary spike: Cloudflare Durable Objects.
+NOT delivered: the editor window still boots Rapier and the gameplay update
+systems. Those come from the one composition root in `Game`, and forking it
+into an authoring-only root is the "two fake games" outcome the Builder
+decoupling plan rules out. Narrowing it needs `Game` to grow an explicit
+authoring profile first; that is a `Game` change, not an entry-point change.
 
-- Implement one Durable Object per room.
-- Persist current snapshot and revision.
-- Batch slider updates during drags.
-- Validate origin and token.
-- Test from GitHub Pages preview or static build served from `dist`.
+### Phase 4 - Hosted Relay — SHIPPED 2026-07-26 (deploy pending an account)
 
-Alternative spike: PartyKit if Durable Object boilerplate slows the first pass.
+Delivered:
 
-Deliverable:
+- **One room implementation, two hosts.** `servers/authorlink/room.mjs` is
+  pure and host-agnostic; `handle()` returns DELIVERIES and the host performs
+  them. The Node `ws` server and the Cloudflare Durable Object both run it
+  verbatim, so a hosted room and `npm run dev` cannot disagree about what is
+  legal. A test asserts neither host has grown its own copy.
+- **Cloudflare Durable Object host** (`worker.js` + `wrangler.toml`), one DO
+  per room via `idFromName`, hibernation-aware (`acceptWebSocket`) with the
+  room snapshot persisted and restored — a relay that dropped its snapshot on
+  hibernation would work perfectly until the room went quiet and then silently
+  stop catching up late joiners. Storage writes are coalesced ~250 ms so a
+  slider drag does not dominate latency and billing.
+- **Strict mode**: origin allowlist refused at the HTTP upgrade, room token
+  required for writes (an untokened client is welcomed read-only rather than
+  disconnected, so the failure is legible), and per-path range validation.
+- **Range schema, still derived not authored.** `src/config/tuningRanges.ts`
+  reads `paramSliderSpec` and `WORLDGEN_LOOK_FIELDS`; only the three
+  `global.*` sliders are hand-listed, and a test asserts they match
+  `index.html`. `scripts/gen-tuning-ranges.mjs` emits the plain-JS table the
+  relay hosts use, with `--check` for CI.
+- **Drag batching** was already satisfied by the client's 60 ms coalescing
+  publisher; a drag produces one diff, not one message per input event.
 
-- Two computers can tune one room against the static client.
+The Durable Object itself IS verified, without an account:
+`npm run verify:authorlink-worker` runs `worker.js` in workerd via
+`wrangler dev --local`, with a real DO binding and real `state.storage` — 14/14,
+including a **full Worker restart mid-probe** proving the room's tuning
+snapshot and revision counter survive losing the object. That was the risk
+worth being nervous about; a relay that dropped its snapshot on eviction looks
+healthy until a room goes quiet.
 
-### Phase 4 - SpacetimeDB Spike
+Deploy is the one thing not done, and cannot be here: it needs a Cloudflare
+account. `servers/authorlink/README.md` has the exact steps, and
+`ALLOWED_ORIGINS` is already set for the project's Pages origin. **Still
+unverified without a deploy:** `wss://` TLS termination at the edge, and
+Cloudflare's real hibernation *eviction* policy (a local restart proves
+`restore()` works, not when the platform chooses to evict).
 
-- Create a tiny SpacetimeDB module with room, presence, tuning values, and patch
-  log tables.
-- Implement reducers for join, patch, and preset commit.
-- Generate browser bindings.
-- Compare developer workflow, latency, schema evolution, and deployment story.
+Two bugs this phase shook out:
 
-Deliverable:
+1. **The origin check ran too late.** The Node host accepted the WebSocket
+   upgrade and then called `socket.close()`. The client still saw a successful
+   `onopen`, and anything it pushed in that window was already delivered — a
+   disconnect, not a refusal. The check now refuses the HTTP upgrade with a
+   403 before the handshake completes. Caught by the probe, which asserted
+   "cannot open the room" rather than "gets closed eventually".
+2. **Nine inspector sliders exclude their own shipped default** — for example
+   `spells.bomb.explosionRadius` defaults to 52 behind a 1..20 slider, so
+   touching it snaps the value down with no way back. Found by an invariant
+   test written for the range schema, not by the UI. The schema widens to
+   admit the default so a hosted room does not inherit the bug; the underlying
+   UI defect is tracked in `KNOWN_SLIDER_CLAMPS` so the list cannot grow
+   silently. Fixing `paramSliderSpec` is a separate, user-visible change.
 
-- Recommendation: keep as candidate, adopt, or reject for this game.
+Verified: `npm run verify:authorlink-worker` — 14/14 against the real Durable
+Object under workerd, and `npm run verify:authorlink-hosted` — 13/13. It builds the static
+client against an EXTERNAL relay origin, serves `dist` from a different port,
+and drives a real Sandbox slider across a cross-origin socket, then uses raw
+sockets for the protocol edges a slider physically cannot reach (out-of-range,
+unboundable path, missing token, bad origin).
 
-### Phase 5 - .NET Server Spike
+Alternative spike (PartyKit) not needed: the Durable Object host was not the
+slow part.
 
-- Create a .NET realtime prototype with SignalR groups.
-- Add typed DTOs, validation, auth token checks, health endpoints, and OpenAPI
-  for non-WebSocket operations.
-- Optional Orleans room grain prototype for room state ownership.
-- Test Redis or Azure SignalR scale-out only if we need multi-instance hosting.
+### Phase 5 - SpacetimeDB Spike
 
-Deliverable:
+- Model `Room`, `ClientPresence`, `TuningPath`, `TuningValue`, and `PatchLog`.
+- Implement reducers: `join_room`, `submit_patch`, `set_presence`,
+  `commit_preset`.
+- Subscribe clients to only their room.
+- Measure patch fanout latency and dev friction from the browser client.
 
-- Recommendation against Cloudflare/SpacetimeDB/Colyseus for long-term server.
+Deliverable: recommendation — keep as candidate, adopt, or reject.
 
-### Phase 6 - Multiplayer Research Prototype
+### Phase 6 - .NET Server Spike
 
-- Choose one bounded gameplay scenario, not the full game:
-  - tiny arena,
-  - fixed seed,
-  - two players,
-  - no expedition persistence,
-  - limited sand region,
-  - input commands only.
-- Measure bandwidth for:
-  - input-only plus server events,
-  - region deltas,
-  - periodic snapshots,
-  - client prediction with correction.
+- ASP.NET Core prototype with SignalR groups.
+- Typed DTOs, validation, auth token checks, health endpoints, OpenAPI for
+  non-WebSocket operations.
+- Optional Orleans room-grain prototype.
+- Redis or Azure SignalR scale-out only if multi-instance hosting is needed.
 
-Deliverable:
+Deliverable: a recommendation for or against the edge-relay options.
 
-- Data-backed multiplayer architecture decision.
+### Phase 7 - Multiplayer Research Prototype
 
-## Acceptance Criteria For First Tuning Release
+- One bounded scenario: tiny arena, fixed seed, two players, no expedition
+  persistence, limited sand region, input commands only.
+- Measure bandwidth for input-only plus server events, region deltas, periodic
+  snapshots, and client prediction with correction.
 
-- Static GitHub Pages build can connect to an external `wss://` tuning server.
-- Realtime connection is off unless explicitly enabled.
-- Two clients in the same room receive accepted tuning patches.
-- Late join receives the current room snapshot.
-- Reconnect recovers without losing the latest room revision.
-- Invalid paths, wrong types, and out-of-range values are rejected visibly.
-- `paramsChanged` fires after remote patches so existing UI mirrors update.
-- LocalStorage tuning persistence still works without the server.
-- Server does not accept raw world/entity/runtime mutation commands.
-- Browser probe covers two connected clients and reconnect.
+Deliverable: a data-backed multiplayer architecture decision.
+
+## Acceptance Criteria
+
+### First release (met)
+
+- Two windows in the same room receive accepted tuning patches. ✅
+- Late join receives the current room tuning snapshot. ✅
+- Reconnect recovers without losing the latest room revision. ✅
+- Invalid paths, wrong types, and out-of-ABI cell ids are rejected. ✅
+- `paramsChanged` fires after remote patches so existing UI mirrors update. ✅
+- LocalStorage tuning persistence still works without the relay. ✅
+- The relay does not accept raw world/entity/runtime mutation commands. ✅
+- A browser probe covers two connected contexts. ✅
+- Realtime is off in production unless explicitly enabled. ✅
+
+### Hosted release (not yet met)
+
+- A static GitHub Pages build can connect to an external `wss://` relay.
+- Out-of-range values are rejected visibly.
+- Origin and room-token checks pass a hostile-client review.
+- The probe covers reconnect against a hosted relay, not just a local one.
 
 ## Open Questions
 
-- Is the Tuning Lab private-dev only, or should public builds expose it behind a
-  hidden developer command?
-- Do writable rooms need accounts, or are room tokens sufficient?
-- Should the first hosted relay live under Cloudflare, a small VM, or a .NET app
-  host?
+Resolved by Phase 1:
+
+- ~~Is the lab private-dev only, or exposed behind a hidden command?~~ Dev-only
+  by default; production requires an explicit `?link=` opt-in.
+- ~~Should the first relay be Cloudflare, a VM, or a .NET app host?~~ For local
+  authoring, none — it rides the Vite dev server. The hosted question is
+  deferred to Phase 4 and unchanged.
+- ~~Do we need a hand-authored tuning schema?~~ No; derive it from the shipped
+  defaults. Revisit only when a hosted room needs range metadata.
+
+Still open:
+
+- Do writable hosted rooms need accounts, or are room tokens sufficient?
 - Do presets become repo JSON files, downloadable artifacts, or server records?
 - Which gameplay constants must move into the tuning schema before this is
-  worth using daily?
+  worth using daily? (`src/combat/wands/compiler.ts` is the known offender.)
 - What is the first multiplayer target: ghost/spectator, co-op arena, or shared
   expedition?
+- Should terrain patches move to a binary encoding? Not needed at current
+  stroke sizes; revisit if whole-region tools start publishing.
 
 ## Source Notes
 

@@ -21,6 +21,10 @@ npm test                   # vitest run (all tests, in tests/)
 npx vitest run tests/wands.test.ts        # single test file
 npx vitest run -t "name"                  # single test by name
 npm run verify:findability # multi-seed BFS audit of generated content (gate for worldgen changes)
+npm run verify:authorlink  # two-browser-context probe of the cross-window editor link
+npm run verify:authorlink-hosted  # production build + EXTERNAL strict relay (origin/token/ranges)
+npm run authorlink:server  # standalone AuthorLink relay (dev server hosts one already)
+npm run gen:tuning-ranges  # regenerate the relay's range table (--check in verify:tuning-ranges)
 npm run lint               # eslint src
 node scripts/verify-game.mjs   # headless browser smoke test (needs dev server running + Edge)
 node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs saved baseline)
@@ -67,11 +71,34 @@ dev server. `scripts/verify-*.mjs` show the pattern.
   saves), the Builder authoring tool (`EditorDocument` v2 in `src/builder/`, compiles disposable
   playtest runtimes — see `docs/BUILDER.md`), and expedition runtime saves. Don't grow one
   format into another's job.
+- **AuthorLink is the cross-window editor link** (`src/net/` + `src/app/AuthorLink.ts`). Two
+  windows of the app join a room over a WebSocket the dev server hosts, and live tuning,
+  Builder terrain strokes, and console lines sync between them. Peers are symmetric — no
+  authority. `src/net` must not import `src/builder`; the Builder publishes only through
+  `BuilderHost.publishTerrainPatch`.
+  Authored objects/links/lights sync as a WHOLE SET through the same
+  `instantiateObjects` the playtest compiler uses; the receiver removes only what
+  the link created (deleting a door explicitly un-stamps its metal, which the
+  runtime — not the instantiation setter — wrote).
+  **Every cell patch is tagged with a `WorldIdentity` and refused on mismatch.** A `CellPatch`
+  is only indices, and every world is 1600×1064, so size proves nothing — without the tag a
+  Builder stroke lands at the same offsets inside an unrelated level. The amber `LINK ≠` pill
+  pulls the peer's live grid over. The editor has its own route (`/builder.html`,
+  a second Vite input) — `verify:builder-bundle` checks BOTH entries.
+  Relay behavior lives ONCE in `servers/authorlink/room.mjs`; the Node host and the
+  Cloudflare Durable Object host only own sockets. Hosted rooms run strict (origin
+  allowlist at the upgrade, room token for writes, per-path ranges from
+  `src/config/tuningRanges.ts`). Relay origin/token are BUILD-TIME env only — never
+  the URL. See `docs/REALTIME-TUNING-LAB-AND-MULTIPLAYER-SERVER-SPEC.md`.
+- **The material palette is `src/content/materialPalette.ts`, not markup.** The Sandbox
+  toolbar renders from it and the Builder reads it directly; never re-type cell ids into
+  HTML. Toolbar splices the buttons in as DIRECT children of `#left-toolbar` because the
+  filter walks `bar.children`.
 
 ## Hard invariants
 
 1. **Cell IDs are append-only forever** (save-format ABI). `CELL_COUNT` in `sim/CellType.ts`
-   must match (currently 37; RawOre=36 is the highest taken id). Never renumber or reuse.
+   must match (currently 39; MarshGas=38 is the highest taken id). Never renumber or reuse.
    The marker palette in `sim/cellPalette.ts` is the same kind of ABI (it identifies
    materials in every exported terrain PNG): one appended color per new cell type,
    ≥12 Manhattan RGB from every existing entry, never edited (test-enforced).

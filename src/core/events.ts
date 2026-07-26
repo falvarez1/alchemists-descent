@@ -102,7 +102,7 @@ export interface EventMap {
    * divergence without importing Builder into gameplay code.
    */
   worldEdited: {
-    source: 'console' | 'time-controls';
+    source: 'console' | 'time-controls' | 'authorlink';
     command: string;
     target: string;
     bounds: { x0: number; y0: number; x1: number; y1: number };

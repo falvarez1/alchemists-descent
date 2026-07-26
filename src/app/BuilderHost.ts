@@ -1,5 +1,9 @@
 import type { EventMap } from '@/core/events';
 import type { AuthoredLight, BiomeId, Ctx, GameMode, PlaytestSource } from '@/core/types';
+import type { CellPatch } from '@/authoring/cellPatch';
+import type { AuthorLinkHandle, AuthorLinkWorldState } from '@/app/AuthorLink';
+import type { AuthoredSet } from '@/app/authorLinkObjects';
+import type { AuthorLinkStatus } from '@/net/authorLinkProtocol';
 
 export interface BuilderModeSnapshot {
   mode: GameMode;
@@ -53,6 +57,22 @@ export interface BuilderHost {
   snapCameraTo(x: number, y: number): void;
   setCameraZoomLock(value: number | null): void;
   setBuilderVisualState(patch: BuilderVisualStatePatch): void;
+  /**
+   * Forward a terrain stroke to any linked window (AuthorLink). A no-op when
+   * no link is active, so Builder never has to branch on it. Routing through
+   * the host keeps the editor free of a net-layer import and free of a
+   * module-level singleton, which is the whole point of the host migration.
+   */
+  publishTerrainPatch(patch: CellPatch, label: string): void;
+  /** Publish the document's authored records; a linked window re-instantiates them. */
+  publishAuthoredSet(set: AuthoredSet): void;
+  getLinkStatus(): AuthorLinkStatus | null;
+  subscribeLinkStatus(handler: (status: AuthorLinkStatus) => void): () => void;
+  /** Null when no link is active. `mismatch` means edits are being refused. */
+  getLinkWorldState(): AuthorLinkWorldState | null;
+  subscribeLinkWorldState(handler: (state: AuthorLinkWorldState) => void): () => void;
+  /** Replace this window's grid with a linked peer's. Destructive; user-initiated only. */
+  pullLinkedWorld(): Promise<boolean>;
 }
 
 class RuntimeBuilderHost implements BuilderHost {
@@ -60,7 +80,10 @@ class RuntimeBuilderHost implements BuilderHost {
   private readonly activePauseClaims = new Set<number>();
   private pauseOverride: boolean | null = null;
 
-  constructor(private readonly ctx: Ctx) {}
+  constructor(
+    private readonly ctx: Ctx,
+    private readonly link: AuthorLinkHandle | null = null,
+  ) {}
 
   getModeSnapshot(): BuilderModeSnapshot {
     return {
@@ -138,8 +161,36 @@ class RuntimeBuilderHost implements BuilderHost {
       this.ctx.state.builderWandLightPreview.enabled = patch.wandLightPreviewEnabled;
     }
   }
+
+  publishTerrainPatch(patch: CellPatch, label: string): void {
+    this.link?.publishTerrainPatch(patch, label);
+  }
+
+  publishAuthoredSet(set: AuthoredSet): void {
+    this.link?.publishAuthoredSet(set);
+  }
+
+  getLinkStatus(): AuthorLinkStatus | null {
+    return this.link?.getStatus() ?? null;
+  }
+
+  subscribeLinkStatus(handler: (status: AuthorLinkStatus) => void): () => void {
+    return this.link?.onStatus(handler) ?? (() => undefined);
+  }
+
+  getLinkWorldState(): AuthorLinkWorldState | null {
+    return this.link?.getWorldState() ?? null;
+  }
+
+  subscribeLinkWorldState(handler: (state: AuthorLinkWorldState) => void): () => void {
+    return this.link?.onWorldState(handler) ?? (() => undefined);
+  }
+
+  pullLinkedWorld(): Promise<boolean> {
+    return this.link?.pullWorldFrom() ?? Promise.resolve(false);
+  }
 }
 
-export function createBuilderHost(ctx: Ctx): BuilderHost {
-  return new RuntimeBuilderHost(ctx);
+export function createBuilderHost(ctx: Ctx, link: AuthorLinkHandle | null = null): BuilderHost {
+  return new RuntimeBuilderHost(ctx, link);
 }

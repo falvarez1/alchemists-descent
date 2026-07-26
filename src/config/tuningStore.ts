@@ -11,6 +11,7 @@ import {
 } from '@/config/params';
 import { GEN_TUNE, GEN_TUNE_DEFAULTS } from '@/config/gen';
 import { PROGRESSION_PACING, PROGRESSION_PACING_DEFAULTS } from '@/config/pacing';
+import { createStorageOwner } from '@/core/storageOwner';
 
 /**
  * Live-tuning persistence.
@@ -228,12 +229,21 @@ export function clearTuning(): void {
  *  edit sitting in the debounce window. */
 export function installTuningPersistence(ctx: Ctx): () => void {
   loadTuning(ctx);
-  const offParamsChanged = ctx.events.on('paramsChanged', () => saveTuning(ctx));
+  // Two AuthorLink windows share one localStorage. Only the focused window
+  // writes, so a background tab cannot flush a stale snapshot over the tuning
+  // you are actively dialing in. Reads are unrestricted; only writes elect.
+  const owner = createStorageOwner();
+  const offParamsChanged = ctx.events.on('paramsChanged', () => {
+    if (owner.owns) saveTuning(ctx);
+  });
   let removeWindowListeners = (): void => undefined;
   if (typeof window !== 'undefined') {
-    const onPageHide = (): void => flushTuning(ctx);
+    const onPageHide = (): void => {
+      if (owner.owns) flushTuning(ctx);
+    };
     const onVisibilityChange = (): void => {
-      if (document.visibilityState === 'hidden') flushTuning(ctx);
+      // Hiding is exactly when a non-owner used to stomp the owner's data.
+      if (document.visibilityState === 'hidden' && owner.owns) flushTuning(ctx);
     };
     window.addEventListener('pagehide', onPageHide);
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -245,6 +255,7 @@ export function installTuningPersistence(ctx: Ctx): () => void {
   return () => {
     offParamsChanged();
     removeWindowListeners();
-    flushTuning(ctx);
+    if (owner.owns) flushTuning(ctx);
+    owner.dispose();
   };
 }

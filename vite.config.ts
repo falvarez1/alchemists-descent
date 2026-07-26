@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
+// @ts-expect-error -- plain-JS dev plugin; it must also run standalone under node
+import { authorLinkPlugin } from './scripts/vite-plugin-authorlink.mjs';
 
 // Build stamp baked into the bundle (see __BUILD_STAMP__ in src/vite-env.d.ts):
 // playtest feedback is only actionable when it names the exact build it came
@@ -16,6 +18,7 @@ function buildStamp(): string {
 }
 
 export default defineConfig({
+  plugins: [authorLinkPlugin()],
   define: {
     __BUILD_STAMP__: JSON.stringify(buildStamp()),
   },
@@ -34,6 +37,12 @@ export default defineConfig({
     sourcemap: true,
     chunkSizeWarningLimit: 1800,
     rollupOptions: {
+      // Two routes: the player entry and the standalone Builder window. They
+      // share every chunk, so the second entry costs a few KB of HTML.
+      input: {
+        index: fileURLToPath(new URL('./index.html', import.meta.url)),
+        builder: fileURLToPath(new URL('./builder.html', import.meta.url)),
+      },
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
