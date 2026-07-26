@@ -165,7 +165,22 @@ const beforeLive = await page.evaluate(() => {
   return { targetIndex, positions: ws.map((e) => ({ x: e.x, y: e.y })) };
 });
 ok(beforeLive.targetIndex >= 0, 'No gait-lane Weaver found for selective-live movement check');
-await page.waitForTimeout(800);
+// Wait for the live weaver to ACTUALLY move rather than for 800ms of wall
+// clock. Ticks are rAF-driven and a headless CI runner with no GPU renders a
+// fraction of the frames a desktop does, so a fixed sleep bought ~16 ticks
+// there against ~48 here — the weaver had barely left standstill (vx -0.01 vs
+// -0.99) and the assertion read as "gait never resumed".
+await page
+  .waitForFunction(
+    ({ index, fromX }) => {
+      const ws = window.__game.ctx.enemies.filter((e) => e.kind === 'weaver');
+      const target = ws[index];
+      return target ? Math.abs(target.x - fromX) > 1 : false;
+    },
+    { index: beforeLive.targetIndex, fromX: beforeLive.positions[beforeLive.targetIndex].x },
+    { timeout: 20000 },
+  )
+  .catch(() => undefined); // let the assertion below report the detail
 const liveMove = await page.evaluate(({ b, id }) => {
   const ctx = window.__game.ctx;
   const ws = ctx.enemies.filter((e) => e.kind === 'weaver');
