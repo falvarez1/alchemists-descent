@@ -1,5 +1,7 @@
 import type { EditorDocument, EditorLight, EditorLink, EditorObject } from '@/builder/document';
 import type { World } from '@/sim/World';
+import type { CellPatch } from '@/authoring/cellPatch';
+import { applyCellPatch, createCellPatch } from '@/authoring/cellPatch';
 
 /**
  * Command-based undo/redo (docs/BUILDER.md): every edit is a do/undo pair
@@ -13,7 +15,18 @@ export interface Command {
   undo(doc: EditorDocument): void;
   /** Approximate retained cell count (terrain patches) for stack budgeting. */
   cells?: number;
+  /**
+   * Terrain payload, exposed so observers can forward the edit somewhere
+   * else — AuthorLink puts it on the wire so a second window can replay the
+   * same stroke. Present only on terrain commands. `do` replays `after`;
+   * `undo` replays `before`, which is why {@link CommandStack} tells its
+   * listener which direction ran.
+   */
+  terrain?: { before: CellPatch; after: CellPatch };
 }
+
+/** Which way a command was just replayed — see {@link Command.terrain}. */
+export type CommandDirection = 'do' | 'undo';
 
 /** Total cells of terrain patches the undo stack may retain (~memory cap). */
 const STACK_CELL_BUDGET = 3_000_000;
@@ -25,12 +38,12 @@ export class CommandStack {
 
   constructor(
     private readonly doc: () => EditorDocument,
-    private readonly onChange?: (cmd?: Command) => void,
+    private readonly onChange?: (cmd?: Command, direction?: CommandDirection) => void,
   ) {}
 
   run(cmd: Command): void {
     cmd.do(this.doc());
-    this.onChange?.(cmd);
+    this.onChange?.(cmd, 'do');
     this.done.push(cmd);
     this.retainedCells += cmd.cells ?? 0;
     this.undone.length = 0; // a new edit forks history
@@ -49,7 +62,7 @@ export class CommandStack {
     const cmd = this.done.pop();
     if (!cmd) return null;
     cmd.undo(this.doc());
-    this.onChange?.(cmd);
+    this.onChange?.(cmd, 'undo');
     this.undone.push(cmd);
     return cmd.label;
   }
@@ -58,7 +71,7 @@ export class CommandStack {
     const cmd = this.undone.pop();
     if (!cmd) return null;
     cmd.do(this.doc());
-    this.onChange?.(cmd);
+    this.onChange?.(cmd, 'do');
     this.done.push(cmd);
     return cmd.label;
   }
@@ -137,13 +150,8 @@ export function moveObjectCmd(obj: EditorObject, toX: number, toY: number): Comm
 /* ---------------- terrain paint command ---------------- */
 
 /** Sparse cell patch: parallel arrays over the same index list. */
-export interface CellPatch {
-  idxs: number[];
-  types: number[];
-  colors: number[];
-  life: number[];
-  charge: number[];
-}
+/** The sparse cell diff now lives in the neutral authored-contract layer. */
+export type { CellPatch };
 
 /**
  * One paint stroke over the LIVE world (the pre-Phase-4 terrain layer).
@@ -155,20 +163,12 @@ export interface CellPatch {
  * commands (prefab paste, floating-selection moves) depend on this.
  */
 export function paintTerrainCmd(world: World, before: CellPatch, after: CellPatch): Command {
-  const apply = (p: CellPatch): void => {
-    for (let n = 0; n < p.idxs.length; n++) {
-      const i = p.idxs[n];
-      world.types[i] = p.types[n];
-      world.colors[i] = p.colors[n];
-      world.life[i] = p.life[n];
-      world.setChargeAt(i, p.charge[n]);
-    }
-  };
   return {
     label: 'paint',
-    do: () => apply(after),
-    undo: () => apply(before),
+    do: () => void applyCellPatch(world, after),
+    undo: () => void applyCellPatch(world, before),
     cells: before.idxs.length * 2,
+    terrain: { before, after },
   };
 }
 
@@ -368,7 +368,32 @@ export function compositeCmd(label: string, cmds: Command[]): Command {
       for (let n = cmds.length - 1; n >= 0; n--) cmds[n].undo(doc);
     },
     cells: cmds.reduce((s, c) => s + (c.cells ?? 0), 0),
+    // A prefab paste or floating-selection commit is a composite whose terrain
+    // parts must still reach a linked window as one stroke, so merge them.
+    terrain: mergeTerrain(cmds),
   };
+}
+
+function mergeTerrain(cmds: readonly Command[]): { before: CellPatch; after: CellPatch } | undefined {
+  const parts = cmds.map((c) => c.terrain).filter((t): t is { before: CellPatch; after: CellPatch } => t !== undefined);
+  if (parts.length === 0) return undefined;
+  if (parts.length === 1) return parts[0];
+  const before = createCellPatch();
+  const after = createCellPatch();
+  // Later parts win on overlap, matching the sequential do() replay order.
+  for (const part of parts) {
+    pushPatch(before, part.before);
+    pushPatch(after, part.after);
+  }
+  return { before, after };
+}
+
+function pushPatch(into: CellPatch, from: CellPatch): void {
+  into.idxs.push(...from.idxs);
+  into.types.push(...from.types);
+  into.colors.push(...from.colors);
+  into.life.push(...from.life);
+  into.charge.push(...from.charge);
 }
 
 export function editParamCmd(obj: EditorObject, key: string, value: unknown): Command {
