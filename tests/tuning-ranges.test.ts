@@ -88,11 +88,13 @@ describe('tuning ranges', () => {
     // The relay hosts run plain JS and cannot import the TS schema, so the
     // table is generated. A stale table means a hosted room silently refuses
     // changes the client considers legal.
-    const generated = readFileSync('servers/authorlink/tuningRanges.generated.mjs', 'utf8');
-    const table = JSON.parse(/export const TUNING_RANGES = ([\s\S]*?);\n/.exec(generated)![1]) as Record<
-      string,
-      { min: number; max: number }
-    >;
+    // Normalize line endings first: git checks this out CRLF on Windows and
+    // LF on Linux, so a pattern anchored on a bare \n passes in CI and fails
+    // on a dev machine — a flake that looks like a real schema mismatch.
+    const generated = readFileSync('servers/authorlink/tuningRanges.generated.mjs', 'utf8').replace(/\r\n/g, '\n');
+    const match = /export const TUNING_RANGES = ([\s\S]*?);\n/.exec(generated);
+    expect(match, 'could not find TUNING_RANGES in the generated table').not.toBeNull();
+    const table = JSON.parse(match![1]) as Record<string, { min: number; max: number }>;
     const mismatches: string[] = [];
     for (const path of listTuningPaths()) {
       const range = tuningRangeFor(path);

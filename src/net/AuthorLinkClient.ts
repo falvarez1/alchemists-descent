@@ -44,6 +44,15 @@ export interface AuthorLinkClientOptions {
   now?: () => number;
 }
 
+/**
+ * `readyState` values, spelled out rather than read off the global
+ * `WebSocket`. Node 20 — what CI runs — has no global WebSocket, so touching
+ * `WebSocket.OPEN` threw here even when a socket was injected for tests. The
+ * numbers are fixed by the WHATWG spec and cannot drift.
+ */
+const SOCKET_CONNECTING = 0;
+const SOCKET_OPEN = 1;
+
 const HEARTBEAT_MS = 15_000;
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 8_000;
@@ -117,7 +126,7 @@ export class AuthorLinkClient {
   }
 
   get connected(): boolean {
-    return this.socket?.readyState === WebSocket.OPEN;
+    return this.socket?.readyState === SOCKET_OPEN;
   }
 
   on<T extends AuthorLinkMessageType>(type: T, handler: AuthorLinkHandler<T>): () => void {
@@ -227,7 +236,7 @@ export class AuthorLinkClient {
     socket.removeEventListener('message', this.onMessage);
     socket.removeEventListener('close', this.onClose);
     socket.removeEventListener('error', this.onError);
-    if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close();
+    if (socket.readyState === SOCKET_OPEN || socket.readyState === SOCKET_CONNECTING) socket.close();
   }
 
   private scheduleReconnect(): void {

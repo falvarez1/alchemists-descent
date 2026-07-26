@@ -647,6 +647,23 @@ function makeClient(): { client: AuthorLinkClient; socket: FakeSocket } {
 }
 
 describe('AuthorLinkClient', () => {
+  it('works on a runtime with no global WebSocket', () => {
+    // CI runs Node 20, which has none. The client reached for `WebSocket.OPEN`
+    // even when a socket was injected, so every one of these tests threw
+    // there while passing on a newer local Node. `readyState` values are
+    // spec-fixed numbers; the class must not need the global at all.
+    const saved = Reflect.get(globalThis, 'WebSocket');
+    Reflect.deleteProperty(globalThis, 'WebSocket');
+    try {
+      const { client, socket } = makeClient();
+      expect(client.connected).toBe(true);
+      expect(JSON.parse(socket.sent[0]).type).toBe('hello');
+      client.dispose();
+    } finally {
+      if (saved !== undefined) Reflect.set(globalThis, 'WebSocket', saved);
+    }
+  });
+
   it('says hello on open with its role', () => {
     const { client, socket } = makeClient();
     const hello = JSON.parse(socket.sent[0]);
