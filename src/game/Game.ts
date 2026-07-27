@@ -65,6 +65,7 @@ import { RuntimeInspector } from '@/ui/RuntimeInspector';
 import { Toolbar } from '@/ui/Toolbar';
 import { WandBench } from '@/ui/WandBench';
 import { WorldGen } from '@/world/CaveGenerator';
+import { SANDBOX_FOCUS, stampSandboxArena } from '@/world/sandboxArena';
 import { reseedTickStreams } from '@/core/simRandom';
 
 function initialRenderBackendOverride(): RenderBackendMode | null {
@@ -335,9 +336,13 @@ export class Game {
     this.hud.buildHotbar();
     this.ctx.events.emit('scoreChanged', { score: this.ctx.state.score });
 
-    this.ctx.worldgen.generateCaves(this.ctx);
-    const hint = this.ctx.worldgen.spawnHint;
-    if (hint) this.ctx.camera.snapTo(hint.x, hint.y);
+    // Boot into the WORKSHOP, not campaign cave terrain. `generateCaves` builds
+    // a level you never play, and since GEN_VERSION 30 it packs everything below
+    // the caves solid to bedrock — so the app opened on a misleading picture of
+    // itself with nowhere to actually drop sand. "Generate Caves" is still one
+    // click away for anyone who wants the generator.
+    stampSandboxArena(this.ctx);
+    this.ctx.camera.snapTo(SANDBOX_FOCUS.x, SANDBOX_FOCUS.y);
 
     // A hidden tab is the most likely prelude to a closed one — checkpoint.
     const checkpointOnHidden = (): void => {

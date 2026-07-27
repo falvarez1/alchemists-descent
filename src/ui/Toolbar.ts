@@ -11,6 +11,7 @@ import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
 import { ensureSandboxWorldDetached } from '@/core/runtimeState';
+import { SANDBOX_FOCUS, stampSandboxArena } from '@/world/sandboxArena';
 
 export type SelectionChangedFn = (id: string | number, mode: 'element' | 'spell') => void;
 
@@ -190,6 +191,11 @@ export class Toolbar {
   }
 
   private wireWorldGen(): void {
+    this.listen(document.getElementById('btn-sandbox'), 'click', () => {
+      ensureSandboxWorldDetached(this.ctx);
+      stampSandboxArena(this.ctx);
+      this.ctx.camera.snapTo(SANDBOX_FOCUS.x, SANDBOX_FOCUS.y);
+    });
     this.listen(document.getElementById('btn-caves'), 'click', () => {
       ensureSandboxWorldDetached(this.ctx);
       this.ctx.worldgen.regenerate(this.ctx);

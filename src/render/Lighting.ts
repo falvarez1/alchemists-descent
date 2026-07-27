@@ -50,6 +50,13 @@ const GLOW_BLOOM_CAP = 0.48;
 // Radius² (cells) within which Glowshroom caps flare toward the passing player.
 const GLOW_REACT_R2 = 26 * 26;
 
+/** Sandbox work lamp, carried by the cursor: warm, and wide enough to light a
+ *  whole workstation at once. Radius is in HALF-cells, like every raycast here. */
+const SANDBOX_LAMP_R = 2.05;
+const SANDBOX_LAMP_G = 1.86;
+const SANDBOX_LAMP_B = 1.5;
+const SANDBOX_LAMP_RADIUS = 150;
+
 const RAYCAST_RAYS = 540;
 const RAY_DIR_X = new Float32Array(RAYCAST_RAYS);
 const RAY_DIR_Y = new Float32Array(RAYCAST_RAYS);
@@ -638,6 +645,21 @@ export class Lighting implements LightField {
         v = Math.max(lightB[nxt + x], Math.max(lightB[nxt + xl], lightB[nxt + xr]) * 0.955) * a;
         if (v > lightB[i]) lightB[i] = v;
       }
+    }
+
+    // SANDBOX WORK LAMP. Play is lit because the wizard carries a wand; the
+    // sandbox has no wizard, so nothing lit it at all — a mostly-empty workshop
+    // rendered as a black rectangle at the default ambient, and raising that
+    // dial was not an option because Play shares it and wants its gloom.
+    //
+    // This is the missing counterpart: a lamp you carry over the bench. It must
+    // RAYCAST rather than seed a point — the sweeps lose ~14% per half-cell, so
+    // a seeded point fades out within about twenty cells and lights nothing.
+    // Same path as the wand, so it throws real shadows off the shelves and
+    // cups, and it is max-combined like every light here, never additive.
+    if (ctx.state.mode === 'build') {
+      const m = ctx.input.mouse;
+      this.raycastLight(m.x, m.y, SANDBOX_LAMP_R, SANDBOX_LAMP_G, SANDBOX_LAMP_B, SANDBOX_LAMP_RADIUS);
     }
 
     // Runtime inspector selected-entity light: same raycast path as the wand,
