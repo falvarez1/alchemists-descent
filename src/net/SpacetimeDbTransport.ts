@@ -45,7 +45,14 @@ import type { SessionTransport, TransportHandlers, TransportState } from '@/net/
  *
  * The backends are now behaviourally interchangeable, and on tuning this one
  * is strictly better: the relay accumulates in memory and loses it on restart,
- * while a table survives one. See docs/MULTIPLAYER-ARCHITECTURE.md.
+ * while a table survives one.
+ *
+ * NO BINARY, DELIBERATELY. This transport does not advertise `supportsBinary`,
+ * so packed cell frames fall back to JSON here. That is not an omission — it
+ * is Decision 1 of the ADR holding: the grid does not belong in the database.
+ * Cells ride the stream plane; this carries session state. The capability flag
+ * is what lets that architectural line exist without a special case anywhere
+ * in the client. See docs/MULTIPLAYER-ARCHITECTURE.md.
  */
 
 /** What the transport needs a live SpacetimeDB room to do. */

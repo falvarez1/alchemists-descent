@@ -33,6 +33,13 @@ export interface TransportHandlers {
   onOpen(): void;
   /** One inbound frame, already decoded to text. */
   onMessage(data: string): void;
+  /**
+   * One inbound BINARY frame (the stream plane — packed cell columns).
+   *
+   * Optional: a transport that cannot carry binary simply never calls it, and
+   * senders fall back to JSON via `supportsBinary`.
+   */
+  onBinary?(data: Uint8Array): void;
   /** The link went down for any reason; the client owns retrying. */
   onClose(reason?: string): void;
   /** Non-fatal transport trouble, for status display only. */
@@ -51,6 +58,17 @@ export interface SessionTransport {
   open(handlers: TransportHandlers): void;
   /** Deliver one frame. Returns false when the link is not up. */
   send(data: string): boolean;
+  /**
+   * Whether `sendBinary` is usable on this link.
+   *
+   * A CAPABILITY rather than an assumption: the packed cell encoding is worth
+   * ~2x, but a backend that cannot carry bytes must degrade to JSON instead of
+   * silently dropping terrain. Callers branch on this, so adding a
+   * binary-incapable transport later cannot break authoring.
+   */
+  readonly supportsBinary?: boolean;
+  /** Deliver one packed frame. Returns false when unsupported or not up. */
+  sendBinary?(data: Uint8Array): boolean;
   /** Tear down; no handler may fire afterwards. */
   close(): void;
 }
@@ -89,12 +107,17 @@ export class WebSocketTransport implements SessionTransport {
     return this.socket.readyState === SOCKET_OPEN ? 'open' : 'connecting';
   }
 
+  readonly supportsBinary = true;
+
   open(handlers: TransportHandlers): void {
     if (this.closed || this.socket) return;
     this.handlers = handlers;
     let socket: WebSocket;
     try {
       socket = this.factory(this.options.url);
+      // Without this a binary frame arrives as a Blob, which cannot be read
+      // synchronously — the handler would have to go async and reorder frames.
+      socket.binaryType = 'arraybuffer';
     } catch (error) {
       // A constructor throw (bad URL, blocked scheme) is a closed link, not a
       // special case — the client's reconnect path handles both identically.
@@ -110,6 +133,12 @@ export class WebSocketTransport implements SessionTransport {
   }
 
   send(data: string): boolean {
+    if (this.closed || !this.socket || this.socket.readyState !== SOCKET_OPEN) return false;
+    this.socket.send(data);
+    return true;
+  }
+
+  sendBinary(data: Uint8Array): boolean {
     if (this.closed || !this.socket || this.socket.readyState !== SOCKET_OPEN) return false;
     this.socket.send(data);
     return true;
@@ -133,10 +162,15 @@ export class WebSocketTransport implements SessionTransport {
   };
 
   private readonly onMessage = (event: MessageEvent): void => {
-    // Binary frames are not part of the current protocol; the stream plane
-    // that will carry them is a separate transport (see the ADR).
-    if (typeof event.data !== 'string') return;
-    this.handlers?.onMessage(event.data);
+    if (typeof event.data === 'string') {
+      this.handlers?.onMessage(event.data);
+      return;
+    }
+    // The stream plane: packed cell columns. `binaryType` is set to
+    // 'arraybuffer' at open so this stays synchronous and frames keep order.
+    if (event.data instanceof ArrayBuffer) {
+      this.handlers?.onBinary?.(new Uint8Array(event.data));
+    }
   };
 
   private readonly onClose = (): void => {

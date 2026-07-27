@@ -297,6 +297,50 @@ export function createRoom(options) {
       return [{ to: 'others', message: parsed }];
     },
 
+    /**
+     * Relay one BINARY frame (the stream plane — packed cell columns).
+     *
+     * The relay stays deliberately dumb here: it checks that the bytes are
+     * plausibly ours, that the sender may write, and that the frame is within
+     * the incremental cap — then forwards them VERBATIM. It does not decode
+     * the header, because doing so would mean a second copy of the frame
+     * format living on the server, and that copy would drift.
+     *
+     * REVISION. A binary frame advances the room revision but is not rewritten
+     * with it: the header is JSON of variable length, so stamping it would mean
+     * re-serialising, which is exactly the decode this stays out of. Clients
+     * take the sender's stamp instead, which lags but never regresses. That is
+     * fine because `revision` is a status counter here, not a correctness
+     * mechanism — nothing in the cells path branches on it.
+     *
+     * @param {*} client
+     * @param {Uint8Array} bytes
+     * @returns {Array<{to: string, binary?: Uint8Array, message?: object}>}
+     */
+    handleBinary(client, bytes) {
+      const record = clients.get(client);
+      if (!record) return [];
+      if (bytes.length > MAX_MESSAGE_BYTES) {
+        return err('too-large', `binary ${bytes.length} bytes`);
+      }
+
+      const at = now();
+      if (at - record.windowStart > RATE_WINDOW_MS) {
+        record.windowStart = at;
+        record.count = 0;
+      }
+      if (++record.count > RATE_LIMIT) return err('rate-limit', `${RATE_LIMIT}/s exceeded`);
+      if (!record.authed) return err('rejected', 'read-only: no valid room token');
+      // 'ADBF', little-endian, version 1. Enough to refuse a stray upload
+      // without pretending to understand the payload.
+      if (bytes.length < 8 || bytes[0] !== 0x46 || bytes[1] !== 0x42 || bytes[2] !== 0x44 || bytes[3] !== 0x41) {
+        return err('protocol', 'unrecognised binary frame');
+      }
+
+      revision++;
+      return [{ to: 'others', binary: bytes }];
+    },
+
     /** Resolve a delivery target to the concrete clients the host should send to. */
     resolve(sender, to) {
       if (to === 'sender') return [sender];

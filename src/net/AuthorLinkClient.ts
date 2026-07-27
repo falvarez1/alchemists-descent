@@ -10,6 +10,9 @@ import {
 } from '@/net/authorLinkProtocol';
 import { WebSocketTransport } from '@/net/SessionTransport';
 import type { SessionTransport, SessionTransportFactory } from '@/net/SessionTransport';
+import { decodeBinaryFrame, encodeBinaryFrame } from '@/net/binaryFrame';
+import { decodeCellPatch, encodeCellPatch } from '@/authoring/cellPatchCodec';
+import type { CellsPayload } from '@/net/authorLinkProtocol';
 
 /**
  * AuthorLink session semantics: connection lifecycle, reconnect, heartbeat,
@@ -83,6 +86,8 @@ export class AuthorLinkClient {
    */
   private readonly sentCounts = new Map<AuthorLinkMessageType, number>();
   private readonly recvCounts = new Map<AuthorLinkMessageType, number>();
+  /** Stream-plane traffic, kept apart so a fallback to JSON is visible. */
+  private readonly binaryStats = { sentFrames: 0, sentBytes: 0, receivedFrames: 0, receivedBytes: 0 };
 
   constructor(private readonly options: AuthorLinkClientOptions) {
     this.clientId = options.clientId;
@@ -102,6 +107,7 @@ export class AuthorLinkClient {
     transport.open({
       onOpen: this.onOpen,
       onMessage: this.onMessage,
+      onBinary: this.onBinary,
       onClose: this.onClose,
       onError: (detail) => this.onError(detail),
     });
@@ -119,11 +125,22 @@ export class AuthorLinkClient {
     return { ...this.status };
   }
 
-  /** Message traffic by type — diagnostic for feedback loops. */
-  getStats(): { sent: Record<string, number>; received: Record<string, number> } {
+  /**
+   * Message traffic by type — diagnostic for feedback loops.
+   *
+   * `binary` is broken out because a packed frame and a JSON one are both
+   * counted as `cells`: without this, a silent regression to the JSON path
+   * would look identical here and in every probe that reads it.
+   */
+  getStats(): {
+    sent: Record<string, number>;
+    received: Record<string, number>;
+    binary: { sentFrames: number; sentBytes: number; receivedFrames: number; receivedBytes: number };
+  } {
     return {
       sent: Object.fromEntries(this.sentCounts),
       received: Object.fromEntries(this.recvCounts),
+      binary: { ...this.binaryStats },
     };
   }
 
@@ -179,6 +196,100 @@ export class AuthorLinkClient {
     this.sentCounts.set(type, (this.sentCounts.get(type) ?? 0) + 1);
     return true;
   }
+
+  /**
+   * Publish a terrain patch, packed when the link can carry bytes.
+   *
+   * Separate from `send` because this is the one message whose size is
+   * unbounded by anything but the brush: a stroke is ~99% cell columns, which
+   * cost ~26 bytes/cell as JSON digits and 13 packed. Everything else on this
+   * socket is a few hundred bytes and gains nothing from a second encoding.
+   *
+   * Falls back to JSON on a transport without binary, so authoring never
+   * silently stops working when the backend changes.
+   */
+  sendCells(payload: CellsPayload): boolean {
+    if (!this.connected || !this.transport) return false;
+    if (!this.transport.supportsBinary || !this.transport.sendBinary) {
+      return this.send('cells', payload);
+    }
+    // The header is the ordinary envelope minus the heavy part, so a binary
+    // frame routes and logs exactly like a JSON one.
+    const frame = encodeBinaryFrame(
+      {
+        type: 'cells',
+        protocol: AUTHORLINK_PROTOCOL,
+        room: this.room,
+        clientId: this.clientId,
+        revision: this.status.revision,
+        sentAt: this.now(),
+        payload: { world: payload.world, label: payload.label },
+      },
+      encodeCellPatch(payload.patch),
+    );
+    if (!frame) return false;
+    if (frame.byteLength > MAX_MESSAGE_BYTES) {
+      this.setStatus({ detail: `dropped oversized cells (${frame.byteLength}B)` });
+      return false;
+    }
+    if (!this.transport.sendBinary(frame)) return false;
+    this.sentCounts.set('cells', (this.sentCounts.get('cells') ?? 0) + 1);
+    this.binaryStats.sentFrames++;
+    this.binaryStats.sentBytes += frame.byteLength;
+    return true;
+  }
+
+  /**
+   * A packed frame from a peer, rebuilt into the ordinary message shape.
+   *
+   * Subscribers must not be able to tell which encoding a patch arrived in —
+   * otherwise every consumer grows two code paths and they drift.
+   */
+  private readonly onBinary = (bytes: Uint8Array): void => {
+    const frame = decodeBinaryFrame(bytes);
+    if (!frame) return;
+    const header = frame.header as Partial<AuthorLinkMessage> & {
+      payload?: { world?: { width?: number; height?: number }; label?: string };
+    };
+    if (header.type !== 'cells' || header.protocol !== AUTHORLINK_PROTOCOL) return;
+    if (typeof header.clientId !== 'string') return;
+    if (header.clientId === this.clientId) return;
+
+    const world = header.payload?.world;
+    // Bound the decode by the SENDER'S declared world; whether that world is
+    // ours at all is `AuthorLink`'s identity check, which refuses a mismatch
+    // outright. Here we only need a ceiling that cannot be a lie about length.
+    const limit =
+      typeof world?.width === 'number' && typeof world?.height === 'number'
+        ? world.width * world.height
+        : 0;
+    const patch = decodeCellPatch(frame.payload, limit);
+    if (!patch) return;
+
+    this.recvCounts.set('cells', (this.recvCounts.get('cells') ?? 0) + 1);
+    this.binaryStats.receivedFrames++;
+    this.binaryStats.receivedBytes += bytes.byteLength;
+    const revision = typeof header.revision === 'number' ? header.revision : this.status.revision;
+    if (revision > this.status.revision) this.setStatus({ revision });
+
+    const message = {
+      type: 'cells' as const,
+      protocol: AUTHORLINK_PROTOCOL,
+      room: this.room,
+      clientId: header.clientId,
+      revision,
+      sentAt: typeof header.sentAt === 'number' ? header.sentAt : this.now(),
+      payload: {
+        world: world as CellsPayload['world'],
+        label: header.payload?.label ?? 'patch',
+        patch,
+      },
+    } satisfies Extract<AuthorLinkMessage, { type: 'cells' }>;
+
+    const set = this.handlers.get('cells');
+    if (!set) return;
+    for (const handler of [...set]) handler(message);
+  };
 
   private readonly onOpen = (): void => {
     this.reconnectDelay = RECONNECT_MIN_MS;

@@ -537,7 +537,10 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
   return {
     publishTerrainPatch(patch: CellPatch, label: string): void {
       if (patch.idxs.length === 0 || patch.idxs.length > MAX_PATCH_CELLS) return;
-      client.send('cells', { world: myWorld, patch, label });
+      // `sendCells` packs the columns when the link can carry bytes (~2x) and
+      // falls back to JSON when it cannot, so authoring behaves identically
+      // either way.
+      client.sendCells({ world: myWorld, patch, label });
     },
     publishAuthoredSet(set: AuthoredSet): void {
       if (set.objects.length > MAX_AUTHORED_OBJECTS) return;

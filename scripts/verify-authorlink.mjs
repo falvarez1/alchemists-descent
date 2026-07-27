@@ -301,6 +301,23 @@ if (stroke) {
     agreed,
     `${mismatchCount} cells differ`,
   );
+
+  // The stroke above proves cells ARRIVED, not that they took the packed
+  // route — a silent fallback to JSON would satisfy every assertion so far.
+  const editorBinary = await editor.evaluate(() => window.__authorLink.getStats().binary);
+  const gameBinary = await game.evaluate(() => window.__authorLink.getStats().binary);
+  check(
+    'the stroke went over the binary stream plane, not JSON',
+    editorBinary.sentFrames > 0 && gameBinary.receivedFrames > 0,
+    `sent=${editorBinary.sentFrames} received=${gameBinary.receivedFrames}`,
+  );
+  // 13 bytes/cell packed vs ~26 as JSON digits; the header is a rounding error.
+  const perCell = gameBinary.receivedBytes / Math.max(1, stroke.idxs.length);
+  check(
+    'the packed frame costs about 13 bytes per cell',
+    perCell > 12 && perCell < 16,
+    `${perCell.toFixed(1)} B/cell over ${gameBinary.receivedBytes}B`,
+  );
 } else {
   check('the game window replayed the painted cells', false, 'no patch was published');
 }

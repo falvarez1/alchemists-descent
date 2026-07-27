@@ -98,8 +98,10 @@ export class AuthorLinkRoom {
   }
 
   deliver(room, sender, deliveries) {
-    for (const { to, message } of deliveries) {
-      const encoded = JSON.stringify(message);
+    for (const { to, message, binary } of deliveries) {
+      // Binary deliveries are forwarded verbatim; the relay never decodes the
+      // stream plane's payload.
+      const encoded = binary ?? JSON.stringify(message);
       for (const target of room.resolve(sender, to)) {
         try {
           target.send(encoded);
@@ -113,16 +115,29 @@ export class AuthorLinkRoom {
 
   async webSocketMessage(socket, message) {
     const room = await this.ensureRoom(this.roomIdFallback());
-    const text = typeof message === 'string' ? message : new TextDecoder().decode(message);
-    if (text.length > MAX_SNAPSHOT_BYTES) {
-      socket.close(1009, 'message too large');
-      return;
-    }
     // A hibernated DO comes back with sockets it has no room record for.
     // Re-admitting is correct: the client is still connected and will re-send
     // `hello`, so presence and identity converge without a reconnect.
     if (room.resolve(socket, 'all').indexOf(socket) < 0) room.join(socket);
-    this.deliver(room, socket, room.handle(socket, text));
+
+    // An ArrayBuffer here is the stream plane. Decoding it as UTF-8 the way the
+    // text path does would corrupt arbitrary bytes and then fail to parse, so
+    // the two are split before any decoding happens.
+    if (typeof message !== 'string') {
+      const bytes = new Uint8Array(message);
+      if (bytes.length > MAX_SNAPSHOT_BYTES) {
+        socket.close(1009, 'message too large');
+        return;
+      }
+      this.deliver(room, socket, room.handleBinary(socket, bytes));
+      return;
+    }
+
+    if (message.length > MAX_SNAPSHOT_BYTES) {
+      socket.close(1009, 'message too large');
+      return;
+    }
+    this.deliver(room, socket, room.handle(socket, message));
   }
 
   async webSocketClose(socket) {

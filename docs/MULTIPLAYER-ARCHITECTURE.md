@@ -279,9 +279,33 @@ game single-player.
    - Client codegen **PascalCases sum-type variants**, so a server variant
      named `num` must be sent as `Num`. The module names them PascalCase to
      match rather than carry the asymmetry.
-2. **Binary stream plane**: replace JSON `CellPatch` frames with a packed
-   binary encoding. At 13 bytes/cell measured, JSON's ~26 bytes/cell is the
-   easiest 2× on the table, and it is needed either way.
+2. ~~**Binary stream plane**~~ — **done, 2026-07-27.** `CellPatch` now packs to
+   `src/authoring/cellPatchCodec.ts` and rides a binary frame
+   (`src/net/binaryFrame.ts`) through the relay. Verified in two real browsers
+   at **~13 bytes/cell**, against ~26 as JSON — the predicted 2×.
+
+   - **Lossless by construction**: each column is written at the exact width of
+     the `World` plane it mirrors (`types` u8, `colors` u32, `life` i16,
+     `charge` u16). A test asserts those widths still agree rather than
+     trusting the comment, so widening a plane fails loudly instead of
+     truncating silently.
+   - **Column-major, not interleaved**, so each column is a run of
+     same-magnitude values a generic compressor can exploit. Interleaving would
+     hand it 13-byte noise.
+   - **The header stays JSON.** Routing fields are a few dozen bytes against a
+     payload of kilobytes; packing them would buy nothing measurable and cost
+     the ability to read a frame in a debugger.
+   - **The relay never decodes the payload.** It checks the magic, the sender's
+     write right, and the size cap, then forwards verbatim — a second copy of
+     the frame format living on the server is exactly the drift to avoid.
+   - **`supportsBinary` is a capability, not an assumption.** A backend that
+     cannot carry bytes degrades to JSON rather than dropping terrain.
+
+   Note what this means for SpacetimeDB: its transport deliberately does *not*
+   advertise binary, so cells fall back to JSON there. That is not a gap — it
+   is Decision 1 holding. The grid does not belong in the database, and the
+   capability flag is what keeps that architectural line from needing a special
+   case anywhere else.
 3. **Host-authoritative co-op**, bounded: one level, two players, no expedition
    persistence. Measure before widening.
 4. **Determinism**, pursued for replay and golden-frame tests first.

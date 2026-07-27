@@ -93,16 +93,25 @@ export function attachAuthorLink(httpServer, options = {}) {
     log(`join ${roomId} (${room.size} in room)`);
 
     const deliver = (deliveries) => {
-      for (const { to, message } of deliveries) {
-        const encoded = JSON.stringify(message);
+      for (const { to, message, binary } of deliveries) {
+        // A binary delivery is forwarded verbatim; the relay never decodes the
+        // stream plane's payload.
+        const encoded = binary ?? JSON.stringify(message);
         for (const target of room.resolve(socket, to)) {
           if (target.readyState !== target.OPEN) continue;
-          target.send(encoded);
+          target.send(encoded, { binary: binary !== undefined });
         }
       }
     };
 
-    socket.on('message', (raw) => {
+    socket.on('message', (raw, isBinary) => {
+      // `ws` reports the frame's opcode rather than making us guess from the
+      // payload: a packed cell patch can contain any byte sequence, so
+      // sniffing the content would eventually misclassify one as text.
+      if (isBinary) {
+        deliver(room.handleBinary(socket, new Uint8Array(raw)));
+        return;
+      }
       deliver(room.handle(socket, typeof raw === 'string' ? raw : raw.toString('utf8')));
     });
 
