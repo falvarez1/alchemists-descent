@@ -307,9 +307,46 @@ game single-player.
    capability flag is what keeps that architectural line from needing a special
    case anywhere else.
 3. **Host-authoritative co-op**, bounded: one level, two players, no expedition
-   persistence. Measure before widening.
-4. **Determinism**, pursued for replay and golden-frame tests first.
-5. **Rollback/prediction** — only once 4 is real and measured.
+   persistence. **Not started — and it is a project, not a slice.**
+
+   Measured 2026-07-27, because "bounded" was doing a lot of unexamined work in
+   the sentence above: `ctx.player` is a **2,492-line singleton referenced 226
+   times across 46 files**. Camera, HUD, death and respawn, spell targeting,
+   pickups, and the physics bridge all assume exactly one of them. Nothing
+   about the *transport* is missing any more — host election, the session
+   tables, and the binary cell plane are all done and verified. The gap is
+   entirely in the game's own shape.
+
+   Two honest routes, to be chosen deliberately rather than discovered
+   halfway:
+
+   - **Generalise the roster.** Turn `ctx.player` into an indexed set and fix
+     226 call sites. Correct, and it is what real co-op eventually needs, but
+     it touches nearly every gameplay system at once — the exact change this
+     codebase's verification workflow is least able to check in one step.
+   - **Ghost co-presence first.** Render the peer as a non-authoritative
+     visitor driven by the `presence` table: you see their wizard move through
+     your world, but neither sim yields authority. Small, verifiable, ships
+     something real, and it exercises presence and interpolation — the parts
+     most likely to feel wrong — before anything depends on them being right.
+
+   Recommendation: **ghost co-presence first.** It converts the risky part
+   (does streamed movement feel alive at 60 Hz?) into something answerable
+   without a 46-file refactor, and the refactor is easier to justify once the
+   feel is proven rather than assumed.
+4. **Determinism**, pursued for replay and golden-frame tests first. **Not
+   started.** Re-measured 2026-07-27: **503 `Math.random()` sites across 21
+   files** in `sim/`, `entities/`, and `particles/` — unchanged, so the number
+   in this document is current rather than inherited.
+
+   This is mechanical but not small, and it has a failure mode worth naming:
+   **partial determinism is worse than none.** A sim that is reproducible in
+   most places invites people to trust replays that silently diverge. So it is
+   all-or-nothing per subsystem, with a golden-frame test standing behind each
+   one as it converts — which is also why it pays for itself in testing before
+   multiplayer ever ships.
+
+5. **Rollback/prediction** — only once 4 is real and measured. Unchanged.
 
 ## Risks, stated honestly
 
