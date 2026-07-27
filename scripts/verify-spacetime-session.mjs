@@ -187,6 +187,9 @@ async function main() {
   const room = `verify-${process.pid}`;
   const open = [];
   const track = (c) => (open.push(c), c);
+  // AuthorLinkClient reconnects forever by design, so a leaked one keeps the
+  // event loop alive and the probe hangs instead of reporting its failure.
+  const links = [];
 
   try {
     /* ---------- membership and first host ---------- */
@@ -312,6 +315,7 @@ async function main() {
 
     const makeClient = (clientId, role) => {
       const received = [];
+      const welcomes = [];
       const client = new AuthorLinkClient({
         url: URI,
         room: linkRoom,
@@ -330,8 +334,10 @@ async function main() {
           }),
       });
       client.on('tuning', (m) => received.push(m));
+      client.on('welcome', (m) => welcomes.push(m));
       client.connect();
-      return { client, received };
+      links.push(client);
+      return { client, received, welcomes };
     };
 
     const editor = makeClient('link-editor', 'builder');
@@ -346,21 +352,58 @@ async function main() {
     await until('peers counted', () => editor.client.getStatus().peers >= 1, 10000);
     check('presence reports the other window', editor.client.getStatus().peers === 1, `peers=${editor.client.getStatus().peers}`);
 
-    const sent = editor.client.send('tuning', { changes: [{ path: 'global.gravity', value: 0.42 }] });
+    const sent = editor.client.send('tuning', { changes: [{ path: 'global.ambient', value: 0.42 }] });
     check('publish is accepted by the transport', sent === true);
     await until('tuning delivered', () => game.received.length > 0, 10000);
     const delivered = game.received[0];
     check(
       'a tuning change crosses windows intact',
-      delivered?.payload?.changes?.[0]?.path === 'global.gravity' && delivered.payload.changes[0].value === 0.42,
+      delivered?.payload?.changes?.[0]?.path === 'global.ambient' && delivered.payload.changes[0].value === 0.42,
       JSON.stringify(delivered?.payload?.changes?.[0] ?? null),
     );
     check('the sender does not see its own publish', editor.received.length === 0, `${editor.received.length} self-echoes`);
     check('the client tracks a room revision', editor.client.getStatus().revision > 0, `rev ${editor.client.getStatus().revision}`);
 
+    /* ---------- tuning: durable, and inherited by late joiners ---------- */
+    // This is what makes the two backends interchangeable. The relay
+    // accumulates tuning in memory and loses it on restart; here it is a table.
+    console.log('\ntuning catch-up');
+    const late = makeClient('link-late', 'play');
+    await until('late window welcomed', () => late.welcomes.length > 0, 15000);
+    // `global.ambient = 0.42` was published by the editor BEFORE this window
+    // existed, and reaches it only through the durable table.
+    const inherited = late.welcomes[0].payload.tuning ?? [];
+    check(
+      'a window joining mid-session inherits accumulated tuning',
+      inherited.some((c) => c.path === 'global.ambient' && c.value === 0.42),
+      JSON.stringify(inherited),
+    );
+    late.client.dispose();
+
+    const rejectedBefore = editor.client.getStatus().detail;
+    // 9999 is far outside global.ambient's declared bounds.
+    editor.client.send('tuning', { changes: [{ path: 'global.ambient', value: 9999 }] });
+    await until(
+      'strict refusal surfaced',
+      () => editor.client.getStatus().detail !== rejectedBefore,
+      8000,
+    ).catch(() => {});
+    check(
+      'a strict room refuses an out-of-range dial',
+      String(editor.client.getStatus().detail ?? '').includes('out-of-range'),
+      String(editor.client.getStatus().detail ?? 'no detail'),
+    );
+
     editor.client.dispose();
     game.client.dispose();
   } finally {
+    for (const link of links) {
+      try {
+        link.dispose();
+      } catch {
+        /* already gone */
+      }
+    }
     for (const client of open) {
       try {
         client.close();
@@ -379,7 +422,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('\nprobe aborted:', error?.message ?? error);
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    console.error('\nprobe aborted:', error?.message ?? error);
+    process.exitCode = 1;
+  })
+  // SDK sockets and their retry timers outlive `main`; without this the probe
+  // reports its result and then hangs, which reads exactly like a failure.
+  .finally(() => setTimeout(() => process.exit(process.exitCode ?? 0), 500).unref());

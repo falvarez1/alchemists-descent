@@ -34,21 +34,25 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
+import ApplyTuningReducer from "./apply_tuning_reducer";
 import JoinSessionReducer from "./join_session_reducer";
 import LeaveSessionReducer from "./leave_session_reducer";
 import PublishFrameReducer from "./publish_frame_reducer";
 import SendChatReducer from "./send_chat_reducer";
 import SetPresenceReducer from "./set_presence_reducer";
+import SetStrictReducer from "./set_strict_reducer";
 import TransferHostReducer from "./transfer_host_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
 import ChatRow from "./chat_table";
+import ConfigRow from "./config_table";
 import FrameRow from "./frame_table";
 import PlayerRow from "./player_table";
 import PresenceRow from "./presence_table";
 import SessionRow from "./session_table";
+import TuningRow from "./tuning_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -68,6 +72,17 @@ const tablesSchema = __schema({
       { name: 'chat_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, ChatRow),
+  config: __table({
+    name: 'config',
+    indexes: [
+      { accessor: 'id', name: 'config_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'config_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, ConfigRow),
   frame: __table({
     name: 'frame',
     indexes: [
@@ -118,15 +133,35 @@ const tablesSchema = __schema({
       { name: 'session_name_key', constraint: 'unique', columns: ['name'] },
     ],
   }, SessionRow),
+  tuning: __table({
+    name: 'tuning',
+    indexes: [
+      { accessor: 'id', name: 'tuning_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'room', name: 'tuning_room_idx_btree', algorithm: 'btree', columns: [
+        'room',
+      ] },
+      { accessor: 'by_room_path', name: 'tuning_room_path_idx_btree', algorithm: 'btree', columns: [
+        'room',
+        'path',
+      ] },
+    ],
+    constraints: [
+      { name: 'tuning_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, TuningRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
+  __reducerSchema("apply_tuning", ApplyTuningReducer),
   __reducerSchema("join_session", JoinSessionReducer),
   __reducerSchema("leave_session", LeaveSessionReducer),
   __reducerSchema("publish_frame", PublishFrameReducer),
   __reducerSchema("send_chat", SendChatReducer),
   __reducerSchema("set_presence", SetPresenceReducer),
+  __reducerSchema("set_strict", SetStrictReducer),
   __reducerSchema("transfer_host", TransferHostReducer),
 );
 

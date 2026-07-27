@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { AuthorLinkClient } from '@/net/AuthorLinkClient';
-import { MAX_MESSAGE_BYTES } from '@/net/authorLinkProtocol';
+import { MAX_MESSAGE_BYTES, type TuningChange } from '@/net/authorLinkProtocol';
 import {
   SpacetimeDbTransport,
   type SpacetimeConnectOptions,
@@ -30,6 +30,7 @@ const BASE: SpacetimeConnectOptions = {
 
 function fakeRoom(initial: SpacetimeRoomState = { peers: 0, roles: [], revision: 0 }) {
   const published: string[] = [];
+  const tuned: { data: string; changes: TuningChange[] }[] = [];
   let hooks: SpacetimeRoomHooks | null = null;
   let closed = false;
   const transport = new SpacetimeDbTransport({
@@ -42,6 +43,10 @@ function fakeRoom(initial: SpacetimeRoomState = { peers: 0, roles: [], revision:
           published.push(data);
           return true;
         },
+        publishTuning: (data, changes) => {
+          tuned.push({ data, changes });
+          return true;
+        },
         close: () => {
           closed = true;
         },
@@ -51,9 +56,10 @@ function fakeRoom(initial: SpacetimeRoomState = { peers: 0, roles: [], revision:
   return {
     transport,
     published,
+    tuned,
     isClosed: () => closed,
     hooks: () => hooks!,
-    join: (state = initial) => hooks!.onJoined(state),
+    join: (state = initial, tuning?: TuningChange[]) => hooks!.onJoined(state, tuning),
   };
 }
 
@@ -188,6 +194,47 @@ describe('SpacetimeDbTransport', () => {
     expect(presence.payload).toEqual({ peers: 2, roles: ['play', 'builder'] });
   });
 
+  it('routes tuning through the durable reducer, not the opaque frame path', () => {
+    const room = fakeRoom();
+    room.transport.open(collectHandlers());
+    room.join();
+    const changes: TuningChange[] = [{ path: 'global.ambient', value: 0.42 }];
+    const data = envelope('tuning', { changes });
+    expect(room.transport.send(data)).toBe(true);
+    // Durable route, so a window joining later inherits it.
+    expect(room.published).toEqual([]);
+    expect(room.tuned).toHaveLength(1);
+    expect(room.tuned[0].changes).toEqual(changes);
+    // The envelope still travels verbatim, so receivers apply it normally.
+    expect(room.tuned[0].data).toBe(data);
+  });
+
+  it('falls back to an ordinary frame when a tuning payload does not validate', () => {
+    // The receiver's own allowlist is the real gate; a transport that started
+    // refusing malformed protocol would be a second, divergent validator.
+    const room = fakeRoom();
+    room.transport.open(collectHandlers());
+    room.join();
+    const data = envelope('tuning', { changes: 'not-an-array' });
+    expect(room.transport.send(data)).toBe(true);
+    expect(room.tuned).toHaveLength(0);
+    expect(room.published).toEqual([data]);
+  });
+
+  it('hands the accumulated room tuning to a late joiner in its welcome', () => {
+    const room = fakeRoom();
+    const handlers = collectHandlers();
+    room.transport.open(handlers);
+    const inherited: TuningChange[] = [
+      { path: 'global.ambient', value: 0.42 },
+      { path: 'global.simSpeed', value: 2 },
+    ];
+    room.join({ peers: 1, roles: ['play'], revision: 12 }, inherited);
+    room.transport.send(envelope('hello'));
+    const welcome = JSON.parse(handlers.messages[0]);
+    expect(welcome.payload.tuning).toEqual(inherited);
+  });
+
   it('reports a connector throw as a closed link, not an exception', () => {
     const handlers = collectHandlers();
     const transport = new SpacetimeDbTransport({
@@ -249,6 +296,10 @@ describe('AuthorLinkClient over SpacetimeDbTransport', () => {
                 published.push(d);
                 return true;
               },
+              publishTuning: (d) => {
+                published.push(d);
+                return true;
+              },
               close: () => undefined,
             };
           },
@@ -264,9 +315,9 @@ describe('AuthorLinkClient over SpacetimeDbTransport', () => {
     expect(client.getStatus().peers).toBe(1);
     expect(client.getStatus().revision).toBe(5);
 
-    client.send('tuning', { changes: [{ path: 'global.gravity', value: 0.5 }] });
+    client.send('tuning', { changes: [{ path: 'global.ambient', value: 0.5 }] });
     expect(published).toHaveLength(1);
-    expect(JSON.parse(published[0]).payload.changes[0].path).toBe('global.gravity');
+    expect(JSON.parse(published[0]).payload.changes[0].path).toBe('global.ambient');
 
     hooks!.onState({ peers: 2, roles: ['play', 'sandbox'], revision: 6 });
     expect(client.getStatus().peers).toBe(2);
@@ -288,7 +339,7 @@ describe('AuthorLinkClient over SpacetimeDbTransport', () => {
           ...BASE,
           connector: (_o, h) => {
             hooks = h;
-            return { publish: () => true, close: () => undefined };
+            return { publish: () => true, publishTuning: () => true, close: () => undefined };
           },
         }),
     });
@@ -307,7 +358,7 @@ describe('AuthorLinkClient over SpacetimeDbTransport', () => {
       clientId: 'peer-b',
       revision: 2,
       sentAt: 1,
-      payload: { changes: [{ path: 'global.gravity', value: 1 }] },
+      payload: { changes: [{ path: 'global.ambient', value: 1 }] },
     });
     hooks!.onFrame(fromPeer);
     expect(seen).toHaveLength(1);

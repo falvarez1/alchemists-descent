@@ -6,17 +6,21 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
+import ApplyTuningReducer from "../apply_tuning_reducer";
 import JoinSessionReducer from "../join_session_reducer";
 import LeaveSessionReducer from "../leave_session_reducer";
 import PublishFrameReducer from "../publish_frame_reducer";
 import SendChatReducer from "../send_chat_reducer";
 import SetPresenceReducer from "../set_presence_reducer";
+import SetStrictReducer from "../set_strict_reducer";
 import TransferHostReducer from "../transfer_host_reducer";
 
+export type ApplyTuningParams = __Infer<typeof ApplyTuningReducer>;
 export type JoinSessionParams = __Infer<typeof JoinSessionReducer>;
 export type LeaveSessionParams = __Infer<typeof LeaveSessionReducer>;
 export type PublishFrameParams = __Infer<typeof PublishFrameReducer>;
 export type SendChatParams = __Infer<typeof SendChatReducer>;
 export type SetPresenceParams = __Infer<typeof SetPresenceReducer>;
+export type SetStrictParams = __Infer<typeof SetStrictReducer>;
 export type TransferHostParams = __Infer<typeof TransferHostReducer>;
 

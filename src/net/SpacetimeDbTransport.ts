@@ -1,7 +1,9 @@
 import {
   AUTHORLINK_PROTOCOL,
+  isTuningPayload,
   type AuthorLinkMessage,
   type AuthorLinkRole,
+  type TuningChange,
 } from '@/net/authorLinkProtocol';
 import type { SessionTransport, TransportHandlers, TransportState } from '@/net/SessionTransport';
 
@@ -20,9 +22,13 @@ import type { SessionTransport, TransportHandlers, TransportState } from '@/net/
  * mapping is deliberately tiny:
  *
  *   hello  (out) -> already joined during `open`; answered with a synthesized
- *                   `welcome` carrying the live peer count and revision
+ *                   `welcome` carrying the live peer count, revision, and the
+ *                   room's accumulated tuning
  *   ping   (out) -> swallowed. The SDK owns its own liveness; a second
  *                   heartbeat would bill a reducer call to learn nothing.
+ *   tuning (out) -> `applyTuning`, which records it durably AND broadcasts it
+ *                   in ONE transaction, so a room cannot end up disagreeing
+ *                   with itself about its own settings
  *   *      (out) -> `publishFrame`, opaque
  *   frame  (in)  -> delivered verbatim as a message
  *   player (in)  -> synthesized `presence` when the room's roster changes
@@ -37,19 +43,23 @@ import type { SessionTransport, TransportHandlers, TransportState } from '@/net/
  * `clientId`, by design, so a client reconnecting under a new id cannot
  * deadlock itself out of its own updates. No filtering belongs here.
  *
- * KNOWN GAP before this can replace the relay: the relay's `welcome` carries
- * accumulated room tuning so a late window catches up, and this one sends an
- * empty list because the module has no `tuning` table yet. A window joining
- * mid-session will not inherit tuning already applied. Closing it means a
- * `(room, path) -> value` table and folding it into the synthesized welcome —
- * at which point the tuning also survives a server restart, which the relay's
- * in-memory accumulation does not. See docs/MULTIPLAYER-ARCHITECTURE.md.
+ * The backends are now behaviourally interchangeable, and on tuning this one
+ * is strictly better: the relay accumulates in memory and loses it on restart,
+ * while a table survives one. See docs/MULTIPLAYER-ARCHITECTURE.md.
  */
 
 /** What the transport needs a live SpacetimeDB room to do. */
 export interface SpacetimeRoomHandle {
   /** Call `publishFrame`. Returns false when the connection is not usable. */
   publish(data: string): boolean;
+  /**
+   * Call `applyTuning` — record durably and broadcast in one transaction.
+   *
+   * Separate from `publish` because the two must not be able to diverge: if
+   * the durable write and the broadcast were independent calls, a room would
+   * eventually disagree with itself about its own settings.
+   */
+  publishTuning(data: string, changes: TuningChange[]): boolean;
   /** Leave and disconnect. No hook may fire afterwards. */
   close(): void;
 }
@@ -63,8 +73,14 @@ export interface SpacetimeRoomState {
 }
 
 export interface SpacetimeRoomHooks {
-  /** Joined AND subscribed. Anything earlier would race the first frame. */
-  onJoined(state: SpacetimeRoomState): void;
+  /**
+   * Joined AND subscribed. Anything earlier would race the first frame.
+   *
+   * `tuning` is the room's accumulated settings, delivered once here rather
+   * than on every `onState`: the roster changes far more often than the dials
+   * do, and re-reading the whole table on each join/leave would be waste.
+   */
+  onJoined(state: SpacetimeRoomState, tuning?: TuningChange[]): void;
   /** One `frame` row, delivered verbatim. */
   onFrame(data: string): void;
   /** The roster or revision moved. */
@@ -107,6 +123,8 @@ export class SpacetimeDbTransport implements SessionTransport {
   private room: SpacetimeRoomHandle | null = null;
   private status: TransportState = 'connecting';
   private roomState: SpacetimeRoomState = { peers: 0, roles: [], revision: 0 };
+  /** The room's accumulated tuning, handed to the client in `welcome`. */
+  private roomTuning: TuningChange[] = [];
   private readonly now: () => number;
 
   constructor(private readonly options: SpacetimeDbTransportOptions) {
@@ -127,8 +145,9 @@ export class SpacetimeDbTransport implements SessionTransport {
     let room: SpacetimeRoomHandle;
     try {
       room = this.options.connector(this.options, {
-        onJoined: (state) => {
+        onJoined: (state, tuning) => {
           this.roomState = state;
+          this.roomTuning = tuning ?? [];
           this.status = 'open';
           this.handlers?.onOpen();
         },
@@ -163,10 +182,12 @@ export class SpacetimeDbTransport implements SessionTransport {
     // The only inspection this transport does: enough to route three message
     // types that are not frames. Payloads are never read.
     let type = '';
+    let payload: unknown;
     try {
       const parsed: unknown = JSON.parse(data);
       if (typeof parsed === 'object' && parsed !== null) {
         type = String((parsed as { type?: unknown }).type ?? '');
+        payload = (parsed as { payload?: unknown }).payload;
       }
     } catch {
       return false;
@@ -174,18 +195,27 @@ export class SpacetimeDbTransport implements SessionTransport {
 
     if (type === 'hello') {
       // The join already happened in `open`; answer the way the relay would so
-      // the client's connected-state handling is identical on both backends.
+      // the client's connected-state handling is identical on both backends —
+      // including the accumulated tuning a late window needs to catch up.
       this.deliver('welcome', {
         clientId: this.options.clientId,
         revision: this.roomState.revision,
         peers: this.roomState.peers,
-        tuning: [],
+        tuning: this.roomTuning,
       });
       return true;
     }
     // The SDK maintains its own liveness. Forwarding these would spend a
     // transaction per heartbeat to discover something already known.
     if (type === 'ping' || type === 'pong') return true;
+
+    // Tuning takes the durable route so a later joiner inherits it. A payload
+    // that does not validate falls through to an ordinary frame rather than
+    // being dropped: the receiver's own allowlist is the real gate, and this
+    // transport is not the place to start refusing the protocol.
+    if (type === 'tuning' && isTuningPayload(payload)) {
+      return this.room.publishTuning(data, payload.changes);
+    }
 
     return this.room.publish(data);
   }

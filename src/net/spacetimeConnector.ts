@@ -5,7 +5,7 @@ import type {
   SpacetimeRoomHooks,
   SpacetimeRoomState,
 } from '@/net/SpacetimeDbTransport';
-import type { AuthorLinkRole } from '@/net/authorLinkProtocol';
+import type { AuthorLinkRole, TuningChange } from '@/net/authorLinkProtocol';
 
 /**
  * Wires `SpacetimeDbTransport` to a real SpacetimeDB connection.
@@ -54,17 +54,36 @@ interface StdbFrameRow {
   data: string;
 }
 
+/**
+ * The module stores a tuning value as a sum type, so an impossible row — both
+ * set, or neither — cannot exist. Variant tags are PascalCase because client
+ * codegen PascalCases them; the module names them to match.
+ */
+type StdbTuningValue = { tag: 'Num'; value: number } | { tag: 'Bool'; value: boolean };
+
+interface StdbTuningRow {
+  room: string;
+  path: string;
+  value: StdbTuningValue;
+}
+
 export interface StdbConnection {
   connectionId: StdbHexId | null;
   db: {
     player: StdbRowHandle<StdbPlayerRow>;
     session: StdbRowHandle<StdbSessionRow>;
     frame: StdbRowHandle<StdbFrameRow>;
+    tuning: StdbRowHandle<StdbTuningRow>;
   };
   reducers: {
     joinSession(args: { room: string; clientId: string; role: string; build: string }): Promise<void>;
     leaveSession(): Promise<void>;
     publishFrame(args: { room: string; data: string }): Promise<void>;
+    applyTuning(args: {
+      room: string;
+      data: string;
+      changes: { path: string; value: StdbTuningValue }[];
+    }): Promise<void>;
   };
   subscriptionBuilder(): {
     onApplied(cb: () => void): { subscribe(queries: string[]): unknown };
@@ -93,7 +112,15 @@ const ROLES: ReadonlySet<string> = new Set(['sandbox', 'play', 'builder']);
 const asRole = (value: string): AuthorLinkRole => (ROLES.has(value) ? (value as AuthorLinkRole) : 'play');
 
 /** Rows this client's own subscription needs. Presence and chat are not the transport's business. */
-const QUERIES = ['SELECT * FROM session', 'SELECT * FROM player', 'SELECT * FROM frame'];
+const QUERIES = [
+  'SELECT * FROM session',
+  'SELECT * FROM player',
+  'SELECT * FROM frame',
+  'SELECT * FROM tuning',
+];
+
+const toStdbValue = (value: number | boolean): StdbTuningValue =>
+  typeof value === 'boolean' ? { tag: 'Bool', value } : { tag: 'Num', value };
 
 export function createSpacetimeConnector(DbConnection: StdbConnectionClass): SpacetimeConnector {
   return (options: SpacetimeConnectOptions, hooks: SpacetimeRoomHooks): SpacetimeRoomHandle => {
@@ -114,6 +141,12 @@ export function createSpacetimeConnector(DbConnection: StdbConnectionClass): Spa
         revision: session ? Number(session.revision) : 0,
       };
     };
+
+    /** The room's accumulated tuning, for the joining client to catch up on. */
+    const readTuning = (active: StdbConnection): TuningChange[] =>
+      [...active.db.tuning.iter()]
+        .filter((row) => row.room === options.room)
+        .map((row) => ({ path: row.path, value: row.value.value }));
 
     const publishState = (): void => {
       if (!conn || !joined || closed) return;
@@ -146,7 +179,7 @@ export function createSpacetimeConnector(DbConnection: StdbConnectionClass): Spa
               .then(() => {
                 if (closed) return;
                 joined = true;
-                hooks.onJoined(readState(active));
+                hooks.onJoined(readState(active), readTuning(active));
               })
               .catch((error: unknown) => {
                 hooks.onError(String(error));
@@ -175,6 +208,22 @@ export function createSpacetimeConnector(DbConnection: StdbConnectionClass): Spa
         conn.reducers.publishFrame({ room: options.room, data }).catch((error: unknown) => {
           hooks.onError(String(error));
         });
+        return true;
+      },
+      publishTuning(data: string, changes: TuningChange[]): boolean {
+        if (!conn || !joined || closed) return false;
+        conn.reducers
+          .applyTuning({
+            room: options.room,
+            data,
+            changes: changes.map((c) => ({ path: c.path, value: toStdbValue(c.value) })),
+          })
+          .catch((error: unknown) => {
+            // A strict room refuses out-of-range paths; surfacing it as a
+            // transport error puts the reason in the status pill instead of
+            // leaving the dial looking like it moved.
+            hooks.onError(String(error));
+          });
         return true;
       },
       close(): void {

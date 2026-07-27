@@ -21,6 +21,11 @@
 import { schema, table, t, SenderError } from 'spacetimedb/server';
 import type { InferSchema, ReducerCtx } from 'spacetimedb/server';
 
+// Generated from the game's own schema by scripts/gen-tuning-ranges.mjs — the
+// SAME table the relay enforces. Two hosted backends disagreeing about which
+// values are legal is exactly the drift that generator exists to prevent.
+import { tuningRangeFor } from './tuningRanges.generated';
+
 /**
  * Mirror of `MAX_MESSAGE_BYTES` in src/net/authorLinkProtocol.ts.
  *
@@ -32,6 +37,10 @@ const MAX_FRAME_BYTES = 512 * 1024;
 
 /** A room name has to be addressable and loggable; keep it boring. */
 const MAX_ROOM_LEN = 64;
+/** The single `config` row's key. */
+const CONFIG_ROW = 0;
+/** Tuning changes accepted in one call. A drag emits a handful, never hundreds. */
+const MAX_TUNING_CHANGES = 256;
 const MAX_CHAT_LEN = 2000;
 /** Chat kept per room. Old lines fall off so an idle room is not unbounded. */
 const CHAT_KEEP = 200;
@@ -141,7 +150,64 @@ const frame = table(
   },
 );
 
-const spacetimedb = schema({ session, player, presence, chat, frame });
+/**
+ * A tuning value: number or boolean, matching `TuningScalar` in the game.
+ *
+ * A sum type rather than two nullable columns, so an impossible row — both set,
+ * or neither — cannot be represented at all.
+ */
+// Variants are PascalCase deliberately: client codegen PascalCases them, so
+// naming them `num`/`bool` here would leave the server reading `.tag === 'num'`
+// while every client had to write `'Num'`. Matching removes the trap.
+const TuningValue = t.enum('TuningValue', { Num: t.f64(), Bool: t.bool() });
+
+/**
+ * Accumulated room tuning, so a window joining mid-session inherits what has
+ * already been applied.
+ *
+ * The relay does this in memory and loses it on restart. Here it is a table,
+ * so it survives one — which is the first place this backend is strictly
+ * better than the one it can replace, rather than merely equivalent.
+ */
+const tuning = table(
+  {
+    name: 'tuning',
+    public: true,
+    indexes: [{ accessor: 'by_room_path', algorithm: 'btree', columns: ['room', 'path'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    room: t.string().index('btree'),
+    /** Dotted path: `global.gravity`, `materials.11.density`, ... */
+    path: t.string(),
+    value: TuningValue,
+    updatedAt: t.timestamp(),
+  },
+);
+
+/**
+ * Module-wide posture. Exactly one row, written at `init`.
+ *
+ * `owner` is captured from the publisher because a database has no environment
+ * variables to read a policy out of — the equivalent of the relay's deploy-time
+ * config is a row only the publisher may rewrite.
+ */
+const config = table(
+  { name: 'config', public: true },
+  {
+    id: t.u32().primaryKey(),
+    owner: t.identity(),
+    /**
+     * Strict rooms refuse tuning paths they cannot bound, mirroring the hosted
+     * relay. Defaults to TRUE: a published database is network-reachable the
+     * moment it exists, so the safe posture has to be the one you get by
+     * default rather than the one you remember to turn on.
+     */
+    strict: t.bool(),
+  },
+);
+
+const spacetimedb = schema({ session, player, presence, chat, frame, tuning, config });
 export default spacetimedb;
 
 type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
@@ -222,6 +288,40 @@ function requireConnection(ctx: Ctx): ConnectionRef {
   return id;
 }
 
+/** The caller's membership in `room`, or a refusal. */
+function requireMember(ctx: Ctx, conn: ConnectionRef, room: string) {
+  const me = ctx.db.player.connectionId.find(conn);
+  if (!me || me.room !== room) throw new SenderError(`not a member of ${room}`);
+  return me;
+}
+
+function strictMode(ctx: Ctx): boolean {
+  // Absent config means a database published before the row existed; treat the
+  // missing case as strict, so a failure to read policy never widens it.
+  return ctx.db.config.id.find(CONFIG_ROW)?.strict ?? true;
+}
+
+/**
+ * Put one opaque envelope on the room's event table.
+ *
+ * Shared by `publishFrame` and `applyTuning` so both bump the revision and
+ * stamp the sender identically — a tuning change that reached peers by a
+ * different route than a cell patch would be a second protocol to keep honest.
+ */
+function broadcast(
+  ctx: Ctx,
+  room: string,
+  me: { clientId: string },
+  conn: ConnectionRef,
+  data: string,
+): void {
+  if (data.length > MAX_FRAME_BYTES) {
+    throw new SenderError(`frame of ${data.length}B exceeds ${MAX_FRAME_BYTES}B`);
+  }
+  const revision = bumpRevision(ctx, room);
+  ctx.db.frame.insert({ room, senderClientId: me.clientId, senderConnection: conn, revision, data });
+}
+
 /** Drop a room's member and any presence they were publishing. */
 function removeMember(ctx: Ctx, conn: ConnectionRef): string | null {
   const leaving = ctx.db.player.connectionId.find(conn);
@@ -256,8 +356,10 @@ function releaseHost(ctx: Ctx, room: string, conn: ConnectionRef): void {
 
 /* ===================== lifecycle ===================== */
 
-export const init = spacetimedb.init((_ctx) => {
-  // Rooms are created on demand by `joinSession`; nothing to seed.
+export const init = spacetimedb.init((ctx) => {
+  // Rooms are created on demand by `joinSession`. The only thing to seed is the
+  // posture row: who published this, and strict until they say otherwise.
+  ctx.db.config.insert({ id: CONFIG_ROW, owner: ctx.sender, strict: true });
 });
 
 export const onConnect = spacetimedb.clientConnected((_ctx) => {
@@ -380,21 +482,92 @@ export const publishFrame = spacetimedb.reducer(
   (ctx, { room, data }) => {
     const conn = requireConnection(ctx);
     const name = normalizeRoom(room);
-    const me = ctx.db.player.connectionId.find(conn);
-    if (!me || me.room !== name) throw new SenderError(`not a member of ${name}`);
-    if (data.length > MAX_FRAME_BYTES) {
-      throw new SenderError(`frame of ${data.length}B exceeds ${MAX_FRAME_BYTES}B`);
-    }
-    const revision = bumpRevision(ctx, name);
-    ctx.db.frame.insert({
-      room: name,
-      senderClientId: me.clientId,
-      senderConnection: conn,
-      revision,
-      data,
-    });
+    const me = requireMember(ctx, conn, name);
+    broadcast(ctx, name, me, conn, data);
   },
 );
+
+/* ===================== tuning ===================== */
+
+/**
+ * Apply tuning: record it durably AND broadcast it, in one transaction.
+ *
+ * Deliberately not two calls. If the durable table and the broadcast could
+ * fail independently, a room would eventually disagree with itself about its
+ * own settings — peers showing one value while a late joiner inherits another.
+ * A reducer is atomic, so either both happen or neither does.
+ *
+ * `data` is the same opaque envelope `publishFrame` would have carried, so
+ * receivers apply tuning through their normal path and know nothing about this
+ * table. `changes` is the structured mirror this side needs in order to
+ * validate and accumulate.
+ */
+export const applyTuning = spacetimedb.reducer(
+  {
+    room: t.string(),
+    data: t.string(),
+    changes: t.array(t.object('TuningChange', { path: t.string(), value: TuningValue })),
+  },
+  (ctx, { room, data, changes }) => {
+    const conn = requireConnection(ctx);
+    const name = normalizeRoom(room);
+    const me = requireMember(ctx, conn, name);
+    if (changes.length > MAX_TUNING_CHANGES) {
+      throw new SenderError(`${changes.length} changes exceeds ${MAX_TUNING_CHANGES}`);
+    }
+
+    if (strictMode(ctx)) {
+      // Validate EVERYTHING before writing anything: a reducer is atomic, so a
+      // half-applied batch is not a state this can end in — but throwing after
+      // a partial write would still be a confusing thing to reason about.
+      const rejected: string[] = [];
+      for (const change of changes) {
+        const range = tuningRangeFor(change.path);
+        if (!range) {
+          // A shared room accepts only dials it can bound. Silently clamping an
+          // unknown path would let a typo look like it worked.
+          rejected.push(change.path);
+          continue;
+        }
+        if (change.value.tag === 'Num' && (change.value.value < range.min || change.value.value > range.max)) {
+          rejected.push(change.path);
+        }
+      }
+      if (rejected.length > 0) {
+        throw new SenderError(`out-of-range or unknown tuning paths: ${rejected.slice(0, 6).join(', ')}`);
+      }
+    }
+
+    for (const change of changes) {
+      const existing = [...ctx.db.tuning.by_room_path.filter([name, change.path])][0];
+      if (existing) {
+        ctx.db.tuning.id.update({ ...existing, value: change.value, updatedAt: ctx.timestamp });
+      } else {
+        ctx.db.tuning.insert({
+          id: 0n,
+          room: name,
+          path: change.path,
+          value: change.value,
+          updatedAt: ctx.timestamp,
+        });
+      }
+    }
+
+    broadcast(ctx, name, me, conn, data);
+  },
+);
+
+/**
+ * Relax validation for local development, mirroring the relay's non-strict
+ * rooms. Owner-only: this is the one switch that widens what a room accepts,
+ * so it must not be reachable by an ordinary member.
+ */
+export const setStrict = spacetimedb.reducer({ strict: t.bool() }, (ctx, { strict }) => {
+  const row = ctx.db.config.id.find(CONFIG_ROW);
+  if (!row) throw new SenderError('config row missing');
+  if (!row.owner.isEqual(ctx.sender)) throw new SenderError('only the database owner may change strictness');
+  ctx.db.config.id.update({ ...row, strict });
+});
 
 /* ===================== presence ===================== */
 

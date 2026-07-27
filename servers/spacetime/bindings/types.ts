@@ -20,6 +20,13 @@ export const Chat = __t.object("Chat", {
 });
 export type Chat = __Infer<typeof Chat>;
 
+export const Config = __t.object("Config", {
+  id: __t.u32(),
+  owner: __t.identity(),
+  strict: __t.bool(),
+});
+export type Config = __Infer<typeof Config>;
+
 export const Frame = __t.object("Frame", {
   room: __t.string(),
   senderClientId: __t.string(),
@@ -58,4 +65,30 @@ export const Session = __t.object("Session", {
   createdAt: __t.timestamp(),
 });
 export type Session = __Infer<typeof Session>;
+
+export const Tuning = __t.object("Tuning", {
+  id: __t.u64(),
+  room: __t.string(),
+  path: __t.string(),
+  get value() {
+    return TuningValue;
+  },
+  updatedAt: __t.timestamp(),
+});
+export type Tuning = __Infer<typeof Tuning>;
+
+export const TuningChange = __t.object("TuningChange", {
+  path: __t.string(),
+  get value() {
+    return TuningValue;
+  },
+});
+export type TuningChange = __Infer<typeof TuningChange>;
+
+// The tagged union or sum type for the algebraic type `TuningValue`.
+export const TuningValue = __t.enum("TuningValue", {
+  Num: __t.f64(),
+  Bool: __t.bool(),
+});
+export type TuningValue = __Infer<typeof TuningValue>;
 

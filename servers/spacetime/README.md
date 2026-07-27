@@ -73,6 +73,13 @@ nothing about SpacetimeDB.
 - **A reducer returns a promise** that rejects with the module's `SenderError`.
   Guard checks should read that reason rather than infer a refusal from an
   absent side effect.
+- **Client codegen PascalCases sum-type variants.** A server variant named
+  `num` arrives at the client as `Num`, and sending `{ tag: 'num' }` fails with
+  "could not serialize sum type; unknown tag". The module names its variants
+  PascalCase so both sides read identically instead of carrying the asymmetry.
+- **`spacetime publish` takes `-p`, not `--project-path`** (that flag is
+  `init`'s). Publish also needs `--delete-data=always` locally after a schema
+  change.
 
 ## What this must never become
 
@@ -90,12 +97,26 @@ down rather than assumed:
 for editor traffic and would be wrong for gameplay cell traffic — which is on
 the other plane by design, and must stay there.
 
-## Not done yet
+## Tuning
 
-The relay's `welcome` carries accumulated room tuning so a late window catches
-up; the synthesized one sends an empty list because there is no `tuning` table.
-A window joining mid-session will not inherit tuning already applied. Closing
-that gap means a `(room, path) -> value` table folded into the welcome — at
-which point tuning also survives a server restart, which the relay's in-memory
-accumulation does not. **This is the last thing standing between the two
-backends being interchangeable.**
+`applyTuning` records a change durably **and** broadcasts it in one
+transaction. Deliberately not two calls: if the durable write and the broadcast
+could fail independently, a room would eventually disagree with itself about
+its own settings — peers showing one value while a late joiner inherits
+another.
+
+A window joining mid-session inherits the accumulated tuning through its
+`welcome`, matching the relay. On this axis SpacetimeDB is **strictly better**:
+the relay accumulates in memory and loses it on restart; a table survives one.
+
+Strict rooms refuse tuning paths they cannot bound, from
+`tuningRanges.generated.ts` — the **same table the relay enforces**, emitted by
+`scripts/gen-tuning-ranges.mjs` from the game's own schema. Two hosted backends
+disagreeing about which values are legal is exactly the drift that generator
+exists to prevent; it would only have moved the hand-maintained copy from one
+server to another.
+
+Strict defaults to **true**, because a published database is network-reachable
+the moment it exists and the safe posture has to be the one you get by default
+rather than the one you remember to turn on. The owner may relax it for local
+work via `setStrict`.

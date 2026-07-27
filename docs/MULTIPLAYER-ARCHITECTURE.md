@@ -268,11 +268,17 @@ game single-player.
    - `spacetimedb` is a **devDependency only**. The connector takes the
      generated `DbConnection` as a parameter, so `src/net` imports neither the
      SDK nor the codegen output and the shipped bundle is unchanged.
-   - Remaining gap before the backends are interchangeable: the relay's
-     `welcome` carries accumulated room tuning for late joiners and the
-     synthesized one does not. Needs a `(room, path) -> value` table — after
-     which tuning survives a server restart, which the relay's in-memory
-     accumulation does not.
+   - **Closed same day:** durable tuning. `applyTuning` records and broadcasts
+     in ONE transaction, so a room cannot disagree with itself about its own
+     settings; late joiners inherit it through `welcome`. Strict rooms validate
+     against the *same generated range table the relay enforces* — a second
+     hosted backend with its own idea of which values are legal would only have
+     moved the drift, not removed it. The backends are now behaviourally
+     interchangeable, and on tuning SpacetimeDB is strictly better: the relay
+     loses accumulated tuning on restart, a table does not.
+   - Client codegen **PascalCases sum-type variants**, so a server variant
+     named `num` must be sent as `Num`. The module names them PascalCase to
+     match rather than carry the asymmetry.
 2. **Binary stream plane**: replace JSON `CellPatch` frames with a packed
    binary encoding. At 13 bytes/cell measured, JSON's ~26 bytes/cell is the
    easiest 2× on the table, and it is needed either way.
