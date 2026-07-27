@@ -1,4 +1,4 @@
-import type { Ctx } from '@/core/types';
+import type { Ctx, PeerGhostPose } from '@/core/types';
 import type { CellPatch } from '@/authoring/cellPatch';
 import { applyCellPatch, cellPatchBounds, isValidCellPatch } from '@/authoring/cellPatch';
 import { applyWorldLayer, captureWorldLayer } from '@/authoring/worldLayer';
@@ -17,6 +17,12 @@ import {
   isWorldIdentity,
   makeClientId,
   sameWorld,
+  isPeerPosePayload,
+  PEER_FLAG_CLIMBING,
+  PEER_FLAG_CRAWLING,
+  PEER_FLAG_DEAD,
+  PEER_FLAG_FIRING,
+  PEER_FLAG_GROUNDED,
   type AuthorLinkRole,
   type AuthorLinkStatus,
   type TuningChange,
@@ -284,6 +290,11 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
     const next = effectiveIdentity();
     if (sameWorld(next, myWorld)) return;
     myWorld = next;
+    // Phantoms belong to the world we just left. Keeping them would leave
+    // peers standing at coordinates that mean something else entirely in the
+    // new level — the same class of bug the identity check exists to prevent.
+    ctx.peers.clear();
+    lastPose = null;
     announceWorld();
     emitWorldState();
   };
@@ -332,6 +343,103 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
     client.on('tuning', (message) => {
       if (!isTuningPayload(message.payload)) return;
       applyRemoteTuning(message.payload.changes);
+    }),
+  );
+
+  /* ---------------- peer co-presence (stage 3) ---------------- */
+
+  // Poll rather than hook the frame loop: this is a comparison of eight
+  // numbers, it must not run inside the tick, and 20 Hz is already twice the
+  // rate a phantom needs given the receiver interpolates.
+  const POSE_POLL_MS = 50;
+  // Below these, a change is not visible on a character you do not control.
+  const POSE_EPSILON_CELLS = 0.35;
+  const POSE_EPSILON_RADIANS = 0.05;
+  let lastPose: PeerGhostPose | null = null;
+
+  const buildPose = (): PeerGhostPose | null => {
+    // Play mode only, and NOT gated on `state.playerSpawned` — that flag tracks
+    // the sandbox's click-to-place spawn and is explicitly reset to false when
+    // entering a level, so gating on it would silence poses for the entire
+    // campaign, which is the only place co-op means anything.
+    if (ctx.state.mode !== 'play') return null;
+    const p = ctx.player;
+    let flags = 0;
+    if (p.grounded) flags |= PEER_FLAG_GROUNDED;
+    if (p.crawling) flags |= PEER_FLAG_CRAWLING;
+    if (p.climbing) flags |= PEER_FLAG_CLIMBING;
+    if (p.dead) flags |= PEER_FLAG_DEAD;
+    if (p.firing) flags |= PEER_FLAG_FIRING;
+    return {
+      x: p.x,
+      y: p.y,
+      facing: p.facing < 0 ? -1 : 1,
+      vx: p._svx || 0,
+      vy: p._svy || 0,
+      stride: p.stridePhase,
+      aim: p.aimAngle,
+      flags,
+    };
+  };
+
+  /**
+   * Publish only when something actually moved.
+   *
+   * A window whose player is standing still sends NOTHING — no keepalive, no
+   * heartbeat. That is deliberate: the AuthorLink probe asserts an idle room
+   * stays idle, and a pose timer would have quietly broken that invariant
+   * while looking like a feature. Peers that go quiet fade out on the
+   * receiver's staleness timer instead.
+   */
+  const publishPeerPose = (): void => {
+    if (!client.connected) return;
+    const pose = buildPose();
+    if (!pose) return;
+    const prev = lastPose;
+    const moved =
+      !prev ||
+      prev.flags !== pose.flags ||
+      prev.facing !== pose.facing ||
+      Math.abs(prev.x - pose.x) > POSE_EPSILON_CELLS ||
+      Math.abs(prev.y - pose.y) > POSE_EPSILON_CELLS ||
+      Math.abs(prev.aim - pose.aim) > POSE_EPSILON_RADIANS;
+    if (!moved) return;
+    lastPose = pose;
+    client.send('peer', { world: myWorld, ...pose });
+  };
+
+  const poseTimer = window.setInterval(publishPeerPose, POSE_POLL_MS);
+  disposers.push(() => window.clearInterval(poseTimer));
+
+  // An EMPTY room is the only reliable "they are gone" signal. Silence is not:
+  // a peer standing still publishes nothing, so expiring phantoms on silence
+  // would blink a motionless teammate out of existence. `PeerGhosts` keeps its
+  // own long timeout purely as a safety net for a peer that vanishes without
+  // the roster ever noticing.
+  let lastPeerCount = -1;
+  disposers.push(
+    client.onStatus((status) => {
+      if (status.peers === lastPeerCount) return;
+      const emptied = lastPeerCount > 0 && status.peers === 0;
+      lastPeerCount = status.peers;
+      if (emptied) ctx.peers.clear();
+    }),
+  );
+
+  disposers.push(
+    client.on('peer', (message) => {
+      const { payload } = message;
+      if (!isPeerPosePayload(payload)) return;
+      // Same rule as a cell patch: a pose is coordinates, and every world here
+      // is the same size, so identity — not dimensions — is what makes it
+      // meaningful. A peer in another level simply is not in this one.
+      if (!sameWorld(payload.world, myWorld)) {
+        ctx.peers.drop(message.clientId);
+        return;
+      }
+      // Stamped with OUR arrival time: the sender's clock may be seconds off,
+      // and interpolation only needs consistent spacing, not absolute time.
+      ctx.peers.note(message.clientId, payload, Date.now());
     }),
   );
 

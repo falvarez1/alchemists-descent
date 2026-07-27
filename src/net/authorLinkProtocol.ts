@@ -192,6 +192,62 @@ export interface WorldSnapshotPayload {
   layer: EditorWorldLayer;
 }
 
+/* ===================== peer presence ===================== */
+
+/**
+ * Where another window's wizard is, and roughly what it is doing.
+ *
+ * NON-AUTHORITATIVE, deliberately. This is the first slice of co-op
+ * (docs/MULTIPLAYER-ARCHITECTURE.md stage 3): you see a peer move through your
+ * world, but neither simulation yields authority to the other. That ordering
+ * is the point — it answers "does streamed movement feel alive at 60 Hz"
+ * without the 46-file refactor that a shared player roster needs, and the
+ * refactor is far easier to justify once the feel is proven.
+ *
+ * WHY A POSE AND NOT THE PLAYER. `PlayerSprite` reads 40 distinct fields.
+ * Streaming all of them would be both heavy and a lie — a peer's wizard is
+ * rendered as a PHANTOM, visually distinct precisely because it is not
+ * simulated here. So this carries only what a phantom needs to read as alive:
+ * position, facing, motion, and enough gait state to move its legs.
+ *
+ * Sent ON CHANGE, never on a timer. A window whose player is standing still
+ * publishes nothing at all, which keeps the room genuinely idle when it is
+ * idle — an invariant the AuthorLink probe asserts.
+ */
+export interface PeerPosePayload {
+  /** Refused on mismatch, exactly like a cell patch. */
+  world: WorldIdentity;
+  x: number;
+  y: number;
+  /** -1 or 1. */
+  facing: number;
+  /** Cells per frame, used to extrapolate through a dropped sample. */
+  vx: number;
+  vy: number;
+  /** Gait phase, so the legs stride instead of sliding. */
+  stride: number;
+  /** Wand angle in radians. */
+  aim: number;
+  /** Bitfield — see PEER_FLAG_*. Cheaper and more extensible than 6 booleans. */
+  flags: number;
+}
+
+export const PEER_FLAG_GROUNDED = 1 << 0;
+export const PEER_FLAG_CRAWLING = 1 << 1;
+export const PEER_FLAG_CLIMBING = 1 << 2;
+export const PEER_FLAG_DEAD = 1 << 3;
+export const PEER_FLAG_FIRING = 1 << 4;
+
+export function isPeerPosePayload(value: unknown): value is PeerPosePayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Partial<PeerPosePayload>;
+  if (!isWorldIdentity(p.world)) return false;
+  for (const n of [p.x, p.y, p.facing, p.vx, p.vy, p.stride, p.aim, p.flags]) {
+    if (typeof n !== 'number' || !Number.isFinite(n)) return false;
+  }
+  return true;
+}
+
 /* ===================== console ===================== */
 
 export interface CommandPayload {
@@ -253,6 +309,7 @@ export type AuthorLinkMessage =
   | Envelope<'world.announce', WorldAnnouncePayload>
   | Envelope<'world.request', WorldRequestPayload>
   | Envelope<'world.snapshot', WorldSnapshotPayload>
+  | Envelope<'peer', PeerPosePayload>
   | Envelope<'ping', Record<string, never>>
   | Envelope<'pong', Record<string, never>>
   | Envelope<'error', ErrorPayload>;
@@ -268,6 +325,7 @@ export const RELAYED_TYPES: ReadonlySet<AuthorLinkMessageType> = new Set([
   'world.announce',
   'world.request',
   'world.snapshot',
+  'peer',
 ]);
 
 /**
@@ -312,6 +370,7 @@ export function isAuthorLinkMessage(value: unknown): value is AuthorLinkMessage 
     msg.type === 'world.announce' ||
     msg.type === 'world.request' ||
     msg.type === 'world.snapshot' ||
+    msg.type === 'peer' ||
     msg.type === 'ping' ||
     msg.type === 'pong' ||
     msg.type === 'error'

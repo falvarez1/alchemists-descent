@@ -31,6 +31,9 @@ const RELAYED_TYPES = new Set([
   'world.announce',
   'world.request',
   'world.snapshot',
+  // Peer poses (co-presence). Published only when a player actually moves, so
+  // a still window stays silent and an idle room stays idle.
+  'peer',
 ]);
 
 const KNOWN_TYPES = new Set([
@@ -44,6 +47,7 @@ const KNOWN_TYPES = new Set([
   'world.announce',
   'world.request',
   'world.snapshot',
+  'peer',
   'ping',
   'pong',
   'error',

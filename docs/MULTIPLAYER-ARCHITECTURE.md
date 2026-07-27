@@ -330,10 +330,39 @@ game single-player.
      something real, and it exercises presence and interpolation — the parts
      most likely to feel wrong — before anything depends on them being right.
 
-   Recommendation: **ghost co-presence first.** It converts the risky part
-   (does streamed movement feel alive at 60 Hz?) into something answerable
-   without a 46-file refactor, and the refactor is easier to justify once the
-   feel is proven rather than assumed.
+   Chosen: **ghost co-presence first** — and **shipped 2026-07-27**. A peer's
+   wizard now appears in your world as a spectral phantom
+   (`entities/PeerGhosts.ts`, `render/sprites/PeerGhostSprite.ts`), driven by a
+   `peer` pose message. Neither simulation yields authority; `ctx.player` was
+   not touched. 16 live checks in two real browsers
+   (`npm run verify:peer-ghosts`), 11 unit tests on the interpolation.
+
+   What it settled, and what the probe caught that reasoning did not:
+
+   - **An 8-field pose, not a player.** `PlayerSprite` reads 40 fields.
+     Streaming them all would be heavy and dishonest, because a peer is drawn
+     as a phantom, not a second real wizard.
+   - **Additive, never opaque.** A phantom cannot be collided with or shot, so
+     it must not look like it can be. Translucency says so without a tutorial,
+     and a mispredicted position can never occlude the level you are playing.
+   - **Publish on change, never on a timer.** A window whose player stands
+     still sends nothing at all, which keeps the AuthorLink probe's
+     "idle room stays idle" invariant intact instead of quietly breaking it.
+   - **Silence is not absence.** The first cut expired phantoms after 4 s of
+     silence — which, with change-based publishing, made a *motionless
+     teammate vanish*. The roster is the departure signal: `AuthorLink` clears
+     phantoms when the peer count hits zero, and the timeout is only a safety
+     net for a peer that disappears without the roster noticing.
+   - **Extrapolation is short (80 ms).** Same root cause: a gap in samples
+     usually means the peer stopped, not that a packet dropped, so coasting far
+     would sail the phantom past where they are standing and snap it back.
+   - **A gate on `state.playerSpawned` would have silenced the whole
+     campaign.** That flag tracks the sandbox's click-to-place spawn and is
+     reset to false on entering a level. Only the live probe could find that.
+
+   The refactor route (generalising the 226 `ctx.player` references) is now a
+   *choice made against evidence* rather than the only option, and the feel
+   question it was gating is answered.
 4. **Determinism**, pursued for replay and golden-frame tests first. **Not
    started.** Re-measured 2026-07-27: **503 `Math.random()` sites across 21
    files** in `sim/`, `entities/`, and `particles/` — unchanged, so the number

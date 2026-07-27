@@ -109,6 +109,7 @@ export class FrameComposer implements PixelSurface {
     private readonly light: LightField,
     private readonly layers: ParallaxLayers,
     private readonly drawPlayer: (s: PixelSurface, light: LightField, ctx: Ctx) => void,
+    private readonly drawPeers: (s: PixelSurface, light: LightField, ctx: Ctx) => void,
     private readonly drawEnemy: (s: PixelSurface, light: LightField, ctx: Ctx, e: Enemy) => void,
     private readonly drawDecorFn: (
       s: PixelSurface,
@@ -808,6 +809,9 @@ export class FrameComposer implements PixelSurface {
     // Excavation beam: white-hot core, tight amber sheath, light cast onto nearby rock
     drawDigBeam(this, ctx);
 
+    // Peers draw BEFORE the local player so your own wizard is never hidden
+    // behind a phantom you cannot interact with.
+    this.drawPeers(this, this.light, ctx);
     if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
     this.drawPlayerRagdoll(ctx);
   }

@@ -34,6 +34,7 @@
     "spacetime:publish-local": "spacetime publish alchemists-descent --server local --yes -p servers/spacetime/spacetimedb",
     "gen:spacetime-bindings": "spacetime generate --lang typescript --out-dir servers/spacetime/bindings --module-path servers/spacetime/spacetimedb --yes",
     "verify:spacetime": "node scripts/verify-spacetime-session.mjs",
+    "verify:peer-ghosts": "node scripts/verify-peer-ghosts.mjs",
     "verify:tuning-ranges": "node scripts/gen-tuning-ranges.mjs --check",
     "gen:tuning-ranges": "node scripts/gen-tuning-ranges.mjs",
     "authorlink:server": "node scripts/authorlink-server.mjs",

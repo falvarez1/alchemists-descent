@@ -1444,6 +1444,51 @@ export interface SpawnBodyOpts {
   onTerrainHit?: (body: RigidBody, speed: number) => void;
 }
 
+/**
+ * A remote player's pose — what a phantom needs to read as alive.
+ *
+ * Deliberately far smaller than `PlayerState`: `PlayerSprite` reads 40 fields,
+ * and streaming all of them would be heavy AND dishonest, because a peer is
+ * drawn as a non-authoritative phantom rather than a second real wizard. See
+ * `entities/PeerGhosts.ts` and docs/MULTIPLAYER-ARCHITECTURE.md stage 3.
+ */
+export interface PeerGhostPose {
+  x: number;
+  y: number;
+  /** -1 or 1. */
+  facing: number;
+  /** Cells per frame; used to coast through a dropped sample. */
+  vx: number;
+  vy: number;
+  /** Gait phase, so legs stride instead of sliding. */
+  stride: number;
+  /** Wand angle, radians. */
+  aim: number;
+  /** Bitfield; see PEER_FLAG_* in net/authorLinkProtocol. */
+  flags: number;
+}
+
+export interface PeerGhost {
+  /** The peer's AuthorLink client id. */
+  id: string;
+  pose: PeerGhostPose;
+  /** 1 while live, easing to 0 as a silent peer fades out. */
+  alpha: number;
+}
+
+export interface PeerGhostsApi {
+  /** Number of peers currently tracked. */
+  readonly count: number;
+  /** Ingest one remote sample, stamped with OUR arrival time (clocks differ). */
+  note(id: string, pose: PeerGhostPose, atMs: number): void;
+  /** Forget one peer immediately (left the room, or changed world). */
+  drop(id: string): void;
+  /** Forget everyone — used when this window's world changes underneath it. */
+  clear(): void;
+  /** Interpolated phantoms to draw. Returns a REUSED array; do not retain it. */
+  sample(nowMs: number): readonly PeerGhost[];
+}
+
 export interface RigidBodiesApi {
   /** Live list — mutated in place, never reassigned (entity-array invariant). */
   readonly bodies: RigidBody[];
@@ -2708,6 +2753,7 @@ export interface Ctx {
   vineStrands: VineStrandsApi;
   playerCtl: PlayerControlApi;
   enemyCtl: EnemyControlApi;
+  peers: PeerGhostsApi;
   spells: SpellsApi;
   simulation: SimulationApi;
   worldgen: WorldGenApi;

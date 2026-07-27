@@ -40,6 +40,8 @@ import type { RenderBackendStatus } from '@/render/pixels';
 import { drawDecor } from '@/render/sprites/DecorSprites';
 import { drawEnemySprite } from '@/render/sprites/EnemySprites';
 import { drawPlayerSprite } from '@/render/sprites/PlayerSprite';
+import { drawPeerGhosts } from '@/render/sprites/PeerGhostSprite';
+import { PeerGhosts } from '@/entities/PeerGhosts';
 import { Cell } from '@/sim/CellType';
 import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
@@ -186,6 +188,7 @@ export class Game {
     ctx.vineStrands = vineStrands;
     this.disposables.push(vineStrands);
     ctx.playerCtl = new PlayerControl(ctx);
+    ctx.peers = new PeerGhosts();
     const enemyCtl = new Enemies(ctx);
     ctx.enemyCtl = enemyCtl;
     this.disposables.push(enemyCtl);
@@ -270,6 +273,7 @@ export class Game {
       new Lighting(),
       new Background(),
       drawPlayerSprite,
+      drawPeerGhosts,
       drawEnemySprite,
       drawDecor,
     );
