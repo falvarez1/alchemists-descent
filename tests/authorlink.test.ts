@@ -37,6 +37,7 @@ import {
   writeTuningPath,
 } from '@/net/tuningPatch';
 import { AuthorLinkClient } from '@/net/AuthorLinkClient';
+import type { SessionTransport, TransportHandlers } from '@/net/SessionTransport';
 import { resolveAuthorLinkConfig } from '@/app/AuthorLink';
 import { GLOBAL_PARAMS, GLOBAL_PARAM_DEFAULTS, MATERIAL_PARAMS } from '@/config/params';
 import { CELL_COUNT, Cell } from '@/sim/CellType';
@@ -660,6 +661,55 @@ function makeClient(): { client: AuthorLinkClient; socket: FakeSocket } {
 }
 
 describe('AuthorLinkClient', () => {
+  it('runs over a transport that is not a WebSocket at all', () => {
+    // The load-bearing claim of the transport split: multiplayer can carry
+    // these frames over SpacetimeDB (a "message" becomes a row, `send`
+    // becomes a reducer call) without the client learning anything new. If
+    // this test needs a socket to pass, the split is cosmetic.
+    const sent: string[] = [];
+    let handlers: TransportHandlers | null = null;
+    const transport: SessionTransport = {
+      describe: 'test:in-memory',
+      state: 'open',
+      open(h) {
+        handlers = h;
+        h.onOpen();
+      },
+      send(data) {
+        sent.push(data);
+        return true;
+      },
+      close() {
+        handlers = null;
+      },
+    };
+
+    const client = new AuthorLinkClient({
+      url: 'unused://',
+      room: 'local',
+      role: 'builder',
+      build: 'test',
+      clientId: 'me',
+      transportFactory: () => transport,
+      now: () => 7,
+    });
+    client.connect();
+
+    // hello went out over the non-socket transport
+    expect(JSON.parse(sent[0]).type).toBe('hello');
+
+    // ...and inbound frames drive the same semantics: echo suppression,
+    // revision tracking, and typed fan-out all still apply.
+    const seen: string[] = [];
+    client.on('tuning', (m) => seen.push(m.clientId));
+    handlers!.onMessage(JSON.stringify(envelope({ clientId: 'me' })));
+    handlers!.onMessage(JSON.stringify(envelope({ clientId: 'peer', revision: 9 })));
+    expect(seen).toEqual(['peer']);
+    expect(client.getStatus().revision).toBe(9);
+
+    client.dispose();
+  });
+
   it('works on a runtime with no global WebSocket', () => {
     // CI runs Node 20, which has none. The client reached for `WebSocket.OPEN`
     // even when a socket was injected, so every one of these tests threw

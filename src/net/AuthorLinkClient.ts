@@ -8,11 +8,20 @@ import {
   type AuthorLinkRole,
   type AuthorLinkStatus,
 } from '@/net/authorLinkProtocol';
+import { WebSocketTransport } from '@/net/SessionTransport';
+import type { SessionTransport, SessionTransportFactory } from '@/net/SessionTransport';
 
 /**
- * The AuthorLink socket: connection lifecycle, reconnect, heartbeat, and
- * typed fan-out. It knows nothing about the game — no `Ctx`, no `World`, no
- * DOM beyond `WebSocket`. `src/app/AuthorLink.ts` binds it to the runtime.
+ * AuthorLink session semantics: connection lifecycle, reconnect, heartbeat,
+ * echo suppression, revision tracking, and typed fan-out. It knows nothing
+ * about the game — no `Ctx`, no `World` — and, since the transport was
+ * extracted, nothing about WebSockets either. `src/app/AuthorLink.ts` binds it
+ * to the runtime; a `SessionTransport` carries the bytes.
+ *
+ * That split is what lets the editor and multiplayer share one substrate
+ * instead of growing two: swapping in a SpacetimeDB transport changes where
+ * the frames go, not how presence, reconnect, or echo control behave. See
+ * docs/MULTIPLAYER-ARCHITECTURE.md.
  *
  * Behavior worth knowing:
  *
@@ -39,19 +48,15 @@ export interface AuthorLinkClientOptions {
   clientId: string;
   /** Room token for hosted rooms; omitted locally. */
   token?: string;
-  /** Injectable for tests. */
+  /**
+   * Builds a fresh transport per connection attempt. Defaults to a WebSocket
+   * against `url`; a SpacetimeDB transport slots in here unchanged.
+   */
+  transportFactory?: SessionTransportFactory;
+  /** Injectable for tests; ignored when `transportFactory` is supplied. */
   socketFactory?: (url: string) => WebSocket;
   now?: () => number;
 }
-
-/**
- * `readyState` values, spelled out rather than read off the global
- * `WebSocket`. Node 20 — what CI runs — has no global WebSocket, so touching
- * `WebSocket.OPEN` threw here even when a socket was injected for tests. The
- * numbers are fixed by the WHATWG spec and cannot drift.
- */
-const SOCKET_CONNECTING = 0;
-const SOCKET_OPEN = 1;
 
 const HEARTBEAT_MS = 15_000;
 const RECONNECT_MIN_MS = 500;
@@ -61,7 +66,7 @@ export class AuthorLinkClient {
   readonly clientId: string;
   readonly room: string;
 
-  private socket: WebSocket | null = null;
+  private transport: SessionTransport | null = null;
   private readonly handlers = new Map<AuthorLinkMessageType, Set<(m: AuthorLinkMessage) => void>>();
   private readonly statusHandlers = new Set<(s: AuthorLinkStatus) => void>();
   private status: AuthorLinkStatus;
@@ -70,7 +75,7 @@ export class AuthorLinkClient {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
   private readonly now: () => number;
-  private readonly socketFactory: (url: string) => WebSocket;
+  private readonly transportFactory: SessionTransportFactory;
   /**
    * Per-type message counters. Feedback loops on this socket are silent and
    * only show up as a rate-limit much later, so being able to ask "who is
@@ -83,26 +88,23 @@ export class AuthorLinkClient {
     this.clientId = options.clientId;
     this.room = options.room;
     this.now = options.now ?? (() => Date.now());
-    this.socketFactory = options.socketFactory ?? ((url) => new WebSocket(url));
+    this.transportFactory =
+      options.transportFactory ??
+      (() => new WebSocketTransport({ url: options.url, socketFactory: options.socketFactory }));
     this.status = { kind: 'connecting', room: options.room, peers: 0, revision: 0 };
   }
 
   connect(): void {
-    if (this.disposed || this.socket) return;
+    if (this.disposed || this.transport) return;
     this.setStatus({ kind: this.status.revision > 0 ? 'reconnecting' : 'connecting' });
-    let socket: WebSocket;
-    try {
-      socket = this.socketFactory(this.options.url);
-    } catch (error) {
-      this.setStatus({ kind: 'error', detail: String(error) });
-      this.scheduleReconnect();
-      return;
-    }
-    this.socket = socket;
-    socket.addEventListener('open', this.onOpen);
-    socket.addEventListener('message', this.onMessage);
-    socket.addEventListener('close', this.onClose);
-    socket.addEventListener('error', this.onError);
+    const transport = this.transportFactory();
+    this.transport = transport;
+    transport.open({
+      onOpen: this.onOpen,
+      onMessage: this.onMessage,
+      onClose: this.onClose,
+      onError: (detail) => this.onError(detail),
+    });
   }
 
   dispose(): void {
@@ -126,7 +128,7 @@ export class AuthorLinkClient {
   }
 
   get connected(): boolean {
-    return this.socket?.readyState === SOCKET_OPEN;
+    return this.transport?.state === 'open';
   }
 
   on<T extends AuthorLinkMessageType>(type: T, handler: AuthorLinkHandler<T>): () => void {
@@ -151,7 +153,7 @@ export class AuthorLinkClient {
     type: T,
     payload: Extract<AuthorLinkMessage, { type: T }>['payload'],
   ): boolean {
-    if (!this.connected || !this.socket) return false;
+    if (!this.connected || !this.transport) return false;
     const message = {
       type,
       protocol: AUTHORLINK_PROTOCOL,
@@ -173,7 +175,7 @@ export class AuthorLinkClient {
       this.setStatus({ detail: `dropped oversized ${type} (${encoded.length}B)` });
       return false;
     }
-    this.socket.send(encoded);
+    if (!this.transport.send(encoded)) return false;
     this.sentCounts.set(type, (this.sentCounts.get(type) ?? 0) + 1);
     return true;
   }
@@ -189,11 +191,10 @@ export class AuthorLinkClient {
     this.startHeartbeat();
   };
 
-  private readonly onMessage = (event: MessageEvent): void => {
-    if (typeof event.data !== 'string') return;
+  private readonly onMessage = (data: string): void => {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(event.data);
+      parsed = JSON.parse(data);
     } catch {
       return;
     }
@@ -221,22 +222,18 @@ export class AuthorLinkClient {
     this.scheduleReconnect();
   };
 
-  private readonly onError = (): void => {
-    // 'error' is always followed by 'close'; let onClose own the reconnect so
-    // a single failure cannot schedule two timers.
-    this.setStatus({ detail: 'socket error' });
+  private readonly onError = (detail: string): void => {
+    // Transport errors are status only; the transport always follows with a
+    // close, and letting onClose own the reconnect keeps one failure from
+    // scheduling two timers.
+    this.setStatus({ detail });
   };
 
   private teardownSocket(): void {
-    const socket = this.socket;
-    this.socket = null;
+    const transport = this.transport;
+    this.transport = null;
     this.stopHeartbeat();
-    if (!socket) return;
-    socket.removeEventListener('open', this.onOpen);
-    socket.removeEventListener('message', this.onMessage);
-    socket.removeEventListener('close', this.onClose);
-    socket.removeEventListener('error', this.onError);
-    if (socket.readyState === SOCKET_OPEN || socket.readyState === SOCKET_CONNECTING) socket.close();
+    transport?.close();
   }
 
   private scheduleReconnect(): void {

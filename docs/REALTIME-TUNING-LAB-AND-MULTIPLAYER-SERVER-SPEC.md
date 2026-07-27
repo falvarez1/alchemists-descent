@@ -531,6 +531,14 @@ future defaults change.
 
 ## Multiplayer Implications
 
+> **Superseded.** `docs/MULTIPLAYER-ARCHITECTURE.md` (2026-07-27) is the
+> decision record now: two planes, SpacetimeDB for durable session/metagame
+> state, a binary stream plane for the cell grid, host-authoritative first and
+> determinism pursued for replay/testing before multiplayer. It is backed by
+> measurements taken on this codebase — ~5-10k changed cells/second and 504
+> `Math.random()` sites — rather than the estimates below. The principles here
+> still hold; the specifics there are current.
+
 Falling-sand multiplayer is not just "sync every cell." A naive full-grid
 stream will be expensive, hard to reconcile, and brittle under packet loss.
 
