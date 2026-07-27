@@ -65,6 +65,7 @@ import { RuntimeInspector } from '@/ui/RuntimeInspector';
 import { Toolbar } from '@/ui/Toolbar';
 import { WandBench } from '@/ui/WandBench';
 import { WorldGen } from '@/world/CaveGenerator';
+import { reseedTickStreams } from '@/core/simRandom';
 
 function initialRenderBackendOverride(): RenderBackendMode | null {
   if (typeof window === 'undefined') return null;
@@ -476,6 +477,11 @@ export class Game {
   private updateFixedTick(options: { forcePaused?: boolean } = {}): void {
     const ctx = this.ctx;
     ctx.state.frameCount++;
+
+    // Seed this tick's entity and fx streams before ANY system runs, so every
+    // draw inside the tick is a function of (worldSeed, tick) alone. The cell
+    // sim reseeds itself per substep — see Simulation.processFrame.
+    reseedTickStreams(ctx.state.worldSeed, ctx.state.frameCount);
 
     // Expedition autosave: every ~30s of play, a closed tab costs nothing.
     if (

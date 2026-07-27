@@ -1,6 +1,7 @@
 import { Cell } from '@/sim/CellType';
 import { packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import type { World } from '@/sim/World';
+import { simRandom } from '@/core/simRandom';
 
 const BLOOD_DRY_SURFACE_SCAN_LIMIT = 24;
 const drySurfaceScanX = new Int32Array(BLOOD_DRY_SURFACE_SCAN_LIMIT);
@@ -103,8 +104,8 @@ export function splatterStain(world: World, cx: number, cy: number, r: number): 
     for (let dx = -r; dx <= r; dx++) {
       const d2 = dx * dx + dy * dy;
       if (d2 > r * r) continue;
-      if (Math.random() > 0.55 * (1 - d2 / (r * r))) continue;
-      stainCell(world, cx + dx, cy + dy, 118, 14, 20, 0.3 + Math.random() * 0.3);
+      if (simRandom() > 0.55 * (1 - d2 / (r * r))) continue;
+      stainCell(world, cx + dx, cy + dy, 118, 14, 20, 0.3 + simRandom() * 0.3);
     }
   }
 }

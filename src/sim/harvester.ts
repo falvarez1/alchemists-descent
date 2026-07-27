@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { goldColor } from '@/sim/colors';
+import { simRandom } from '@/core/simRandom';
 
 interface HarvestOffset {
   dx: number;
@@ -55,8 +56,8 @@ export function runHarvesterField(ctx: Ctx): void {
         ctx.particles.spawn(
           px,
           py,
-          (Math.random() - 0.5) * 1.4,
-          -0.8 - Math.random(),
+          (simRandom() - 0.5) * 1.4,
+          -0.8 - simRandom(),
           null,
           goldColor(),
           200,

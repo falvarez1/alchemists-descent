@@ -14,6 +14,7 @@ import {
 import { igniteGunpowder } from '@/sim/elements/powders';
 // FIRE_REACTION_OFFSETS was the local name for the shared asymmetric ignition list.
 import { CARDINAL_OFFSETS, IGNITION_OFFSETS as FIRE_REACTION_OFFSETS } from '@/sim/neighborOffsets';
+import { fxRandom, simRandom } from '@/core/simRandom';
 
 /** EXPORTED for cross-handler use: handleFire melts adjacent ice via this. */
 export function handleIce(ctx: Ctx, x: number, y: number): void {
@@ -27,9 +28,9 @@ export function handleIce(ctx: Ctx, x: number, y: number): void {
     if (w.inBounds(tx, ty)) {
       const ti = w.idx(tx, ty);
       if (w.types[ti] === Cell.Fire) {
-        if (Math.random() < 1.0 - ctx.params.materials[Cell.Ice].insulationRating!) {
+        if (simRandom() < 1.0 - ctx.params.materials[Cell.Ice].insulationRating!) {
           const ci = w.idx(x, y);
-          if (Math.random() < 0.40) {
+          if (simRandom() < 0.40) {
             w.replaceCellAt(ci, Cell.Steam, steamColor());
             w.life[ci] = 260;
           } else {
@@ -38,7 +39,7 @@ export function handleIce(ctx: Ctx, x: number, y: number): void {
           return;
         }
       } else if (w.types[ti] === Cell.Lava) {
-        if (Math.random() < 0.4) {
+        if (simRandom() < 0.4) {
           const ci = w.idx(x, y);
           w.replaceCellAt(ci, Cell.Water, waterColor());
           return;
@@ -65,33 +66,33 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
       w.replaceCellAt(ci, Cell.Steam, steamColor());
       w.life[ci] = 28;
       w.moved[ci] = w.movedTick;
-      if (n === Cell.Water && Math.random() < 0.4) {
+      if (n === Cell.Water && simRandom() < 0.4) {
         w.replaceCellAt(ni, Cell.Steam, steamColor());
         w.life[ni] = 24;
       }
       return;
     }
-    if ((n === Cell.Wood || n === Cell.Vines) && Math.random() < P.igniteChance!) {
+    if ((n === Cell.Wood || n === Cell.Vines) && simRandom() < P.igniteChance!) {
       // slow smoulder: a small, short-lived flame that grows or fizzles with the fuel
       w.replaceCellAt(ni, Cell.Fire, fireColor());
-      w.life[ni] = 40 + Math.floor(Math.random() * 50);
+      w.life[ni] = 40 + Math.floor(simRandom() * 50);
     }
     if (n === Cell.MarshGas) {
       // even a drifting ember lights bog vapor at a touch
       w.replaceCellAt(ni, Cell.Fire, fireColor());
-      w.life[ni] = 22 + Math.floor(Math.random() * 14);
+      w.life[ni] = 22 + Math.floor(simRandom() * 14);
     }
-    if (n === Cell.Oil && w.life[ni] === 0 && Math.random() < P.igniteChance! * 7) {
+    if (n === Cell.Oil && w.life[ni] === 0 && simRandom() < P.igniteChance! * 7) {
       // an ember on an oil slick starts it burning IN PLACE (handleOil throws the
       // flame each frame for burnDuration) — a sustained pool fire, not a flash.
-      w.life[ni] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(Math.random() * 30);
-    } else if (n === Cell.Gunpowder && Math.random() < P.igniteChance! * 7) {
+      w.life[ni] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(simRandom() * 30);
+    } else if (n === Cell.Gunpowder && simRandom() < P.igniteChance! * 7) {
       igniteGunpowder(ctx, nx, ny);
     }
   }
   // Drift downward slowly, fluttering sideways like a falling spark
-  if (Math.random() < P.fallChance!) {
-    const drift = Math.random();
+  if (simRandom() < P.fallChance!) {
+    const drift = simRandom();
     const tx = drift < 0.18 ? x - 1 : drift < 0.36 ? x + 1 : x;
     const ty = y + 1;
     if (w.inBounds(tx, ty) && (w.types[w.idx(tx, ty)] === Cell.Empty || isGas(w.types[w.idx(tx, ty)]))) {
@@ -104,13 +105,13 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
     }
   }
   // Resting embers shimmer and occasionally spit a spark
-  if (Math.random() < 0.18) w.colors[w.idx(x, y)] = emberColor();
-  if (Math.random() < 0.0025) {
+  if (fxRandom() < 0.18) w.colors[w.idx(x, y)] = emberColor();
+  if (fxRandom() < 0.0025) {
     ctx.particles.spawn(
       x,
       y - 1,
-      (Math.random() - 0.5) * 0.6,
-      -0.5 - Math.random() * 0.5,
+      (fxRandom() - 0.5) * 0.6,
+      -0.5 - fxRandom() * 0.5,
       null,
       packRGB(255, 150, 40),
       16,
@@ -125,7 +126,7 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
   w.life[ci]--;
   if (w.life[ci] <= 0) {
     // A fraction of burned-out fire leaves drifting ash
-    if (Math.random() < 0.1 && w.inBounds(x, y + 1) && w.types[w.idx(x, y + 1)] !== Cell.Empty) {
+    if (simRandom() < 0.1 && w.inBounds(x, y + 1) && w.types[w.idx(x, y + 1)] !== Cell.Empty) {
       w.replaceCellAt(ci, Cell.Ash, ashColor());
     } else {
       w.clearCellAt(ci);
@@ -134,15 +135,15 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
   }
 
   // Occasionally lift a glowing ember (visual only) — gorgeous with bloom
-  if (Math.random() < 0.012 && ctx.particles.list.length < MAX_PARTICLES - 100) {
+  if (fxRandom() < 0.012 && ctx.particles.list.length < MAX_PARTICLES - 100) {
     ctx.particles.spawn(
-      x + Math.random(),
+      x + fxRandom(),
       y,
-      (Math.random() - 0.5) * 0.3,
-      -0.4 - Math.random() * 0.4,
+      (fxRandom() - 0.5) * 0.3,
+      -0.4 - fxRandom() * 0.4,
       null,
-      packRGB(255, 120 + Math.floor(Math.random() * 90), 10),
-      26 + Math.floor(Math.random() * 20),
+      packRGB(255, 120 + Math.floor(fxRandom() * 90), 10),
+      26 + Math.floor(fxRandom() * 20),
       { grav: -0.012, glow: 2.6 },
     );
   }
@@ -155,48 +156,48 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
     if (w.inBounds(tx, ty)) {
       const ti = w.idx(tx, ty);
       const n = w.types[ti];
-      if (n === Cell.Wood && Math.random() < ctx.params.materials[Cell.Wood].flammability!) {
+      if (n === Cell.Wood && simRandom() < ctx.params.materials[Cell.Wood].flammability!) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 45;
-        if (Math.random() < ctx.params.materials[Cell.Wood].carbonSmokeGen!) spawnSmoke(ctx, x, y);
+        if (simRandom() < ctx.params.materials[Cell.Wood].carbonSmokeGen!) spawnSmoke(ctx, x, y);
       }
-      if (n === Cell.Vines && Math.random() < ctx.params.materials[Cell.Vines].flammability!) {
+      if (n === Cell.Vines && simRandom() < ctx.params.materials[Cell.Vines].flammability!) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 30;
-        if (Math.random() < 0.6) spawnSmoke(ctx, x, y);
+        if (simRandom() < 0.6) spawnSmoke(ctx, x, y);
       }
-      if (n === Cell.Fungus && Math.random() < ctx.params.materials[Cell.Fungus].flammability!) {
+      if (n === Cell.Fungus && simRandom() < ctx.params.materials[Cell.Fungus].flammability!) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 35;
-        if (Math.random() < 0.5) spawnSmoke(ctx, x, y);
+        if (simRandom() < 0.5) spawnSmoke(ctx, x, y);
       }
       if (
         n === Cell.Glowshroom &&
-        Math.random() < ctx.params.materials[Cell.Glowshroom].flammability!
+        simRandom() < ctx.params.materials[Cell.Glowshroom].flammability!
       ) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 40;
-        if (Math.random() < 0.5) spawnSmoke(ctx, x, y);
+        if (simRandom() < 0.5) spawnSmoke(ctx, x, y);
       }
-      if (n === Cell.Moss && Math.random() < ctx.params.materials[Cell.Moss].flammability!) {
+      if (n === Cell.Moss && simRandom() < ctx.params.materials[Cell.Moss].flammability!) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 26; // damp greenery burns short and smoky
-        if (Math.random() < 0.7) spawnSmoke(ctx, x, y);
+        if (simRandom() < 0.7) spawnSmoke(ctx, x, y);
       }
-      if (n === Cell.Grass && Math.random() < ctx.params.materials[Cell.Grass].flammability!) {
+      if (n === Cell.Grass && simRandom() < ctx.params.materials[Cell.Grass].flammability!) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 16; // a single blade flares briefly; low flammability keeps the spread a slow sputter
-        if (Math.random() < 0.3) spawnSmoke(ctx, x, y);
+        if (simRandom() < 0.3) spawnSmoke(ctx, x, y);
       }
-      if (n === Cell.Coal && w.life[ti] === 0 && Math.random() < ctx.params.materials[Cell.Coal].igniteChance!) {
+      if (n === Cell.Coal && w.life[ti] === 0 && simRandom() < ctx.params.materials[Cell.Coal].igniteChance!) {
         // start the coal burning IN PLACE (handleCoal throws the flame) — not a flash
-        w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration! + Math.floor(Math.random() * 40);
+        w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration! + Math.floor(simRandom() * 40);
       }
-      if (n === Cell.Toxic && Math.random() < ctx.params.materials[Cell.Toxic].flammability!) {
+      if (n === Cell.Toxic && simRandom() < ctx.params.materials[Cell.Toxic].flammability!) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 50;
         // Smoke rises from the FIRE cell's position, matching every other fuel branch.
-        if (Math.random() < 0.7) spawnSmoke(ctx, x, y);
+        if (simRandom() < 0.7) spawnSmoke(ctx, x, y);
       }
       if (n === Cell.Snow) {
         w.replaceCellAt(ti, Cell.Water, waterColor());
@@ -205,11 +206,11 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.replaceCellAt(ti, Cell.Steam, packRGB(255, 175, 205));
         w.life[ti] = 40;
       }
-      if (n === Cell.Oil && w.life[ti] === 0 && Math.random() < ctx.params.materials[Cell.Oil].igniteChance!) {
+      if (n === Cell.Oil && w.life[ti] === 0 && simRandom() < ctx.params.materials[Cell.Oil].igniteChance!) {
         // Start the slick burning IN PLACE (handleOil throws the flame each frame
         // for burnDuration). Don't flash it to a fire cell that just rises away —
         // a sustained pool fire is what lets oil in a bowl hold a checkpoint lit.
-        w.life[ti] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(Math.random() * 30);
+        w.life[ti] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(simRandom() * 30);
       }
       if (n === Cell.Gunpowder) {
         igniteGunpowder(ctx, tx, ty);
@@ -221,13 +222,13 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
       if (n === Cell.MarshGas) {
         // bog vapor catches INSTANTLY - the racing front, not a smoulder
         w.replaceCellAt(ti, Cell.Fire, fireColor());
-        w.life[ti] = 22 + Math.floor(Math.random() * 14);
+        w.life[ti] = 22 + Math.floor(simRandom() * 14);
       }
-      if (n === Cell.Blood && Math.random() < 0.06) {
+      if (n === Cell.Blood && simRandom() < 0.06) {
         w.replaceCellAt(ti, Cell.Smoke, smokeColor());
         w.life[ti] = 20;
       }
-      if (n === Cell.Slime && Math.random() < 0.04) {
+      if (n === Cell.Slime && simRandom() < 0.04) {
         w.replaceCellAt(ti, Cell.Acid, acidColor());
       }
       if (n === Cell.Water) {
@@ -241,8 +242,8 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
       }
     }
   }
-  if (Math.random() < ctx.params.materials[Cell.Fire].upwardSpread!) {
-    const dir = Math.random() < 0.5 ? 1 : -1;
+  if (simRandom() < ctx.params.materials[Cell.Fire].upwardSpread!) {
+    const dir = simRandom() < 0.5 ? 1 : -1;
     if (w.inBounds(x, y - 1) && w.types[w.idx(x, y - 1)] === Cell.Empty) w.swap(x, y, x, y - 1);
     else if (w.inBounds(x + dir, y - 1) && w.types[w.idx(x + dir, y - 1)] === Cell.Empty)
       w.swap(x, y, x + dir, y - 1);
@@ -251,11 +252,11 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
 
 export function spawnSmoke(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
-  const sx = x + Math.floor(Math.random() * 3 - 1),
+  const sx = x + Math.floor(simRandom() * 3 - 1),
     sy = y - 1;
   if (w.inBounds(sx, sy) && w.types[w.idx(sx, sy)] === Cell.Empty) {
     const si = w.idx(sx, sy);
     w.replaceCellAt(si, Cell.Smoke, smokeColor());
-    w.life[si] = Math.floor(Math.random() * 50) + 40;
+    w.life[si] = Math.floor(simRandom() * 50) + 40;
   }
 }

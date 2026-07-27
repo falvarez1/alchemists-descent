@@ -92,6 +92,7 @@ import {
   type VirtualWorldDef,
 } from '@/world/virtual';
 import { isEnemyKind } from '@/core/types';
+import { entityRandom } from '@/core/simRandom';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
 const CURTAIN_HOLD_MS = 450;
@@ -976,13 +977,13 @@ export class Levels implements LevelsApi {
       // the arch breathes: a slow shimmer of golden motes (in-view only)
       if (ctx.state.frameCount % 9 === 0 && Math.abs(player.x - arch.x) < 300) {
         ctx.particles.spawn(
-          arch.x - 5 + Math.random() * 10,
-          arch.y - 1 - Math.random() * 5,
-          (Math.random() - 0.5) * 0.15,
-          -0.2 - Math.random() * 0.25,
+          arch.x - 5 + entityRandom() * 10,
+          arch.y - 1 - entityRandom() * 5,
+          (entityRandom() - 0.5) * 0.15,
+          -0.2 - entityRandom() * 0.25,
           null,
-          packRGB(255, 210 + Math.floor(Math.random() * 40), 120),
-          26 + Math.floor(Math.random() * 18),
+          packRGB(255, 210 + Math.floor(entityRandom() * 40), 120),
+          26 + Math.floor(entityRandom() * 18),
           { glow: 1.0, grav: -0.002 },
         );
       }
@@ -3095,13 +3096,13 @@ export class Levels implements LevelsApi {
       ws.heat = Math.min(1, (this.waystoneHeat[i] ?? 0) / WAYSTONE_LIGHT_TICKS);
       if (fire > 0 && ctx.state.frameCount % 16 === 0) {
         ctx.particles.spawn(
-          ws.x + (Math.random() - 0.5) * 4,
+          ws.x + (entityRandom() - 0.5) * 4,
           ws.y - 3,
-          (Math.random() - 0.5) * 0.2,
-          -0.45 - Math.random() * 0.35,
+          (entityRandom() - 0.5) * 0.2,
+          -0.45 - entityRandom() * 0.35,
           null,
           emberColor(),
-          24 + Math.floor(Math.random() * 16),
+          24 + Math.floor(entityRandom() * 16),
           { glow: 1.8, grav: -0.01 },
         );
       }
@@ -3121,13 +3122,13 @@ export class Levels implements LevelsApi {
     ctx.audio.gong();
     for (let k = 0; k < 18; k++) {
       ctx.particles.spawn(
-        ws.x + (Math.random() - 0.5) * 5,
-        ws.y - 3 - Math.random() * 3,
-        (Math.random() - 0.5) * 0.3,
-        -1.0 - Math.random() * 1.6,
+        ws.x + (entityRandom() - 0.5) * 5,
+        ws.y - 3 - entityRandom() * 3,
+        (entityRandom() - 0.5) * 0.3,
+        -1.0 - entityRandom() * 1.6,
         null,
-        packRGB(255, 140 + Math.floor(Math.random() * 90), 30),
-        50 + Math.floor(Math.random() * 40),
+        packRGB(255, 140 + Math.floor(entityRandom() * 90), 30),
+        50 + Math.floor(entityRandom() * 40),
         { glow: 2.2, grav: -0.012 },
       );
     }
@@ -3155,11 +3156,11 @@ export class Levels implements LevelsApi {
       if (!world.inBounds(X, Y)) continue;
       const wi = world.idx(X, Y);
       world.replaceCellAt(wi, Cell.Ember, emberColor());
-      world.life[wi] = 560 + Math.floor(Math.random() * 90);
+      world.life[wi] = 560 + Math.floor(entityRandom() * 90);
     }
 
     // Celebration: gold motes rising, embers tumbling, a two-tone chime
-    ctx.particles.burst(ws.x, ws.y - 3, 26, null, () => packRGB(255, 196 + Math.floor(Math.random() * 40), 64), 2.6, {
+    ctx.particles.burst(ws.x, ws.y - 3, 26, null, () => packRGB(255, 196 + Math.floor(entityRandom() * 40), 64), 2.6, {
       glow: 2.4,
       grav: -0.012,
     });

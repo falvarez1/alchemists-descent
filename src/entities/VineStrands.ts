@@ -9,6 +9,7 @@ import { blocksEntity, Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
 import { ashColor, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { VIEW_H, VIEW_W } from '@/config/constants';
+import { entityRandom } from '@/core/simRandom';
 
 const SUPPORT_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
@@ -182,8 +183,8 @@ export class VineStrands implements VineStrandsApi {
 
     const nodes: VineNode[] = [];
     for (let i = 0; i < count; i++) {
-      const sway = (Math.random() - 0.5) * 0.18 + (i % 2 === 0 ? 0.035 : -0.035);
-      const fall = 0.05 + Math.random() * 0.08;
+      const sway = (entityRandom() - 0.5) * 0.18 + (i % 2 === 0 ? 0.035 : -0.035);
+      const fall = 0.05 + entityRandom() * 0.08;
       nodes.push({
         x: queueX[i] + 0.5,
         y: queueY[i] + 0.5,
@@ -693,7 +694,7 @@ export class VineStrands implements VineStrandsApi {
       const n = strand.nodes.length;
       for (let k = 1; k < n; k++) {
         const node = strand.nodes[k];
-        node.px -= (Math.random() - 0.5) * amp * (k / n);
+        node.px -= (entityRandom() - 0.5) * amp * (k / n);
       }
     }
   }

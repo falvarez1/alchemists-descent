@@ -29,6 +29,7 @@ import {
   waterColor,
 } from '@/sim/colors';
 import { splatterStain } from '@/sim/stains';
+import { entityRandom } from '@/core/simRandom';
 
 // ===================== Enemies =====================
 interface CellCandidate {
@@ -285,7 +286,7 @@ export class Enemies implements EnemyControlApi {
     const ctx = this.ctx;
     const def = (this.defs as Partial<Record<EnemyKind, EnemyDef>>)[kind];
     if (!def) return null;
-    const rng = opts.rng ?? Math.random;
+    const rng = opts.rng ?? entityRandom;
     // Find an open pocket: scan downward from the requested point, retrying nearby columns
     let sx = Math.floor(opts.exact === true ? x : clamp(x, def.halfW + 2, WIDTH - def.halfW - 3));
     let sy = -1;
@@ -380,7 +381,7 @@ export class Enemies implements EnemyControlApi {
     for (let dy = -1; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (dx * dx + dy * dy > r * r) continue;
-        if (Math.random() < 0.45) continue;
+        if (entityRandom() < 0.45) continue;
         const xx = cx + dx;
         const yy = cy + dy;
         if (!w.inBounds(xx, yy)) continue;
@@ -402,7 +403,7 @@ export class Enemies implements EnemyControlApi {
       if (!enemyLethalCell(e.kind, cell)) continue;
       const dmg = cell === Cell.Toxic ? 0.7 : directEnvironmentDamage(e.kind, cell);
       if (dmg <= 0) continue;
-      this.damage(e, dmg, (Math.random() - 0.5) * 0.6, -0.3);
+      this.damage(e, dmg, (entityRandom() - 0.5) * 0.6, -0.3);
       if (cell === Cell.Lava || cell === Cell.Fire) {
         // Same percentage-based catch as passive exposure: a single lava splash
         // is much likelier to ignite than a fire splash; a stream re-rolls each hit.
@@ -443,14 +444,14 @@ export class Enemies implements EnemyControlApi {
     );
     // Wounds bleed: a directional spray that pools where it lands
     if (e.kind !== 'imp') {
-      if (Math.random() < 0.6) splatterStain(ctx.world, e.x - Math.sign(kx || 0) * 3, e.y - 5, 4);
+      if (entityRandom() < 0.6) splatterStain(ctx.world, e.x - Math.sign(kx || 0) * 3, e.y - 5, 4);
       const n = this.goreCount(e, Math.min(22, 5 + Math.floor(amount * 0.8)), Cell.Blood);
       for (let i = 0; i < n; i++) {
         ctx.particles.spawn(
-          e.x + ((Math.random() * 5) | 0) - 2,
-          e.y - 5 + ((Math.random() * 5) | 0) - 2,
-          (kx || 0) * 0.6 + (Math.random() - 0.5) * 2.6,
-          (ky || 0) * 0.5 - 0.6 - Math.random() * 1.8,
+          e.x + ((entityRandom() * 5) | 0) - 2,
+          e.y - 5 + ((entityRandom() * 5) | 0) - 2,
+          (kx || 0) * 0.6 + (entityRandom() - 0.5) * 2.6,
+          (ky || 0) * 0.5 - 0.6 - entityRandom() * 1.8,
           Cell.Blood,
           bloodColor(),
           160,
@@ -571,10 +572,10 @@ export class Enemies implements EnemyControlApi {
     // Blood gouts driven INTO the wall...
     for (let k = 0; k < 14; k++) {
       ctx.particles.spawn(
-        e.x + (Math.random() - 0.5) * def.halfW,
-        e.y - 5 + (Math.random() - 0.5) * def.h,
-        nx * (1 + Math.random() * 2) + (Math.random() - 0.5) * 1.5,
-        ny * (1 + Math.random() * 2) + (Math.random() - 0.5) * 1.5,
+        e.x + (entityRandom() - 0.5) * def.halfW,
+        e.y - 5 + (entityRandom() - 0.5) * def.h,
+        nx * (1 + entityRandom() * 2) + (entityRandom() - 0.5) * 1.5,
+        ny * (1 + entityRandom() * 2) + (entityRandom() - 0.5) * 1.5,
         Cell.Blood,
         bloodColor(),
         150,
@@ -631,7 +632,7 @@ export class Enemies implements EnemyControlApi {
     const def = this.defs[e.kind];
     // Bombers go out the only way they know how
     if (e.kind === 'bomber') {
-      ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(Math.random() * 3), { playerDamageSource: 'bomber' });
+      ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(entityRandom() * 3), { playerDamageSource: 'bomber' });
       this.dropBounty(e, def);
       this.maybeDropPotion(e);
       if (ctx.player.perks.vampirism && !ctx.player.dead) {
@@ -733,8 +734,8 @@ export class Enemies implements EnemyControlApi {
         ctx.particles.spawn(
           e.x,
           e.y - 5,
-          (kx || 0) * 1.0 + (Math.random() - 0.5) * 6.5,
-          (ky || 0) * 0.8 - 2.2 - Math.random() * 3.0,
+          (kx || 0) * 1.0 + (entityRandom() - 0.5) * 6.5,
+          (ky || 0) * 0.8 - 2.2 - entityRandom() * 3.0,
           Cell.Blood,
           bloodColor(),
           240,
@@ -782,22 +783,22 @@ export class Enemies implements EnemyControlApi {
     const baseVy = Math.min(0, (ky || 0) * 0.5) - 1.3;
     const maxPh = Math.max(2, Math.min(4, Math.round(def.halfW * 0.5)));
     for (let i = 0; i < n; i++) {
-      const ph = 2 + Math.floor(Math.random() * (maxPh - 1));
+      const ph = 2 + Math.floor(entityRandom() * (maxPh - 1));
       ctx.rigidBodies.spawn(
         { kind: 'box', halfW: ph, halfH: ph },
-        e.x + (Math.random() - 0.5) * def.halfW,
-        e.y - def.h * 0.5 + (Math.random() - 0.5) * def.h * 0.4,
+        e.x + (entityRandom() - 0.5) * def.halfW,
+        e.y - def.h * 0.5 + (entityRandom() - 0.5) * def.h * 0.4,
         {
           density: 0.7,
           color: def.goreFn(),
           restitution: 0.24,
           friction: 0.78,
-          vx: baseVx + (Math.random() - 0.5) * 3.4,
-          vy: baseVy - Math.random() * 2.2,
-          va: (Math.random() - 0.5) * 0.7,
+          vx: baseVx + (entityRandom() - 0.5) * 3.4,
+          vy: baseVy - entityRandom() * 2.2,
+          va: (entityRandom() - 0.5) * 0.7,
           tag: 'gore-chunk',
         },
-      ).goreTtl = GORE_CHUNK_TTL + Math.floor(Math.random() * 180);
+      ).goreTtl = GORE_CHUNK_TTL + Math.floor(entityRandom() * 180);
     }
   }
 
@@ -851,10 +852,10 @@ export class Enemies implements EnemyControlApi {
     const ctx = this.ctx;
     const runtime = ctx.levels.current;
     if (!runtime || ctx.state.mode !== 'play') return;
-    if (Math.random() < (e.kind === 'golem' ? 0.3 : 0.12)) {
+    if (entityRandom() < (e.kind === 'golem' ? 0.3 : 0.12)) {
       runtime.pickups.push(
         makePickup('potion', e.x, e.y - 5, {
-          potion: POTION_KINDS[Math.floor(Math.random() * POTION_KINDS.length)],
+          potion: POTION_KINDS[Math.floor(entityRandom() * POTION_KINDS.length)],
         }),
       );
     }
@@ -871,8 +872,8 @@ export class Enemies implements EnemyControlApi {
       ctx.particles.spawn(
         e.x,
         e.y - 5,
-        (Math.random() - 0.5) * 4.2,
-        -2.2 - Math.random() * 2.4,
+        (entityRandom() - 0.5) * 4.2,
+        -2.2 - entityRandom() * 2.4,
         null,
         goldColor(),
         300,
@@ -925,8 +926,8 @@ export class Enemies implements EnemyControlApi {
       const t = world.types[ci];
       const color = world.colors[ci];
       world.clearCellAt(ci);
-      const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (Math.random() - 0.5) * 0.24;
-      const spd = 3.6 + Math.random() * 0.8;
+      const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (entityRandom() - 0.5) * 0.24;
+      const spd = 3.6 + entityRandom() * 0.8;
       ctx.particles.spawn(c.x, c.y, Math.cos(aim) * spd, Math.sin(aim) * spd, t, color, 170, {
         hostileDmg: 6,
         hostileSource: 'powder-mage-debris',
@@ -966,8 +967,8 @@ export class Enemies implements EnemyControlApi {
       const t = world.types[ci];
       const color = world.colors[ci] || colorForCell(t);
       world.clearCellAt(ci);
-      const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (Math.random() - 0.5) * 0.18;
-      const spd = 3.2 + Math.random() * 0.7;
+      const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (entityRandom() - 0.5) * 0.18;
+      const spd = 3.2 + entityRandom() * 0.7;
       ctx.particles.spawn(c.x, c.y, Math.cos(aim) * spd, Math.sin(aim) * spd - 0.15, t, color, 150, {
         hostileDmg: 5,
         hostileSource: 'powder-mage-shard',
@@ -1011,7 +1012,7 @@ export class Enemies implements EnemyControlApi {
       const below = w.inBounds(x, y + 1) ? w.types[w.idx(x, y + 1)] : Cell.Empty;
       const clings = blocksEntity(below) || isSoftGrowth(below) || below === Cell.Slime || below === Cell.Toxic;
       if (!clings) continue;
-      const cell = growthNearby && Math.random() < 0.45 ? Cell.Vines : Cell.Toxic;
+      const cell = growthNearby && entityRandom() < 0.45 ? Cell.Vines : Cell.Toxic;
       w.replaceCellAt(i, cell, cell === Cell.Vines ? vineColor() : toxicColor());
       w.life[i] = cell === Cell.Toxic ? 260 : 220;
       if (ctx.state.frameCount % 3 === 0) ctx.particles.burst(x, y, 2, cell, cell === Cell.Vines ? vineColor : toxicColor, 0.45);
@@ -1049,8 +1050,8 @@ export class Enemies implements EnemyControlApi {
       const ci = world.idx(c.x, c.y);
       const color = world.colors[ci];
       world.clearCellAt(ci);
-      const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (Math.random() - 0.5) * 0.2;
-      const spd = 3.2 + Math.random() * 0.9;
+      const aim = Math.atan2(player.y - 9 - c.y, player.x - c.x) + (entityRandom() - 0.5) * 0.2;
+      const spd = 3.2 + entityRandom() * 0.9;
       ctx.particles.spawn(c.x, c.y, Math.cos(aim) * spd, Math.sin(aim) * spd - 0.4, Cell.Water, color, 170, {
         hostileDmg: 5,
         hostileSource: 'leviathan-water',
@@ -1114,8 +1115,8 @@ export class Enemies implements EnemyControlApi {
 
     let placed = 0;
     for (let attempt = 0; attempt < 10 && placed < 2; attempt++) {
-      const x = cx + Math.floor((Math.random() * 2 - 1) * (support > 0.45 ? 16 : 10));
-      const y = foot - 3 + Math.floor(Math.random() * 9);
+      const x = cx + Math.floor((entityRandom() * 2 - 1) * (support > 0.45 ? 16 : 10));
+      const y = foot - 3 + Math.floor(entityRandom() * 9);
       if (!w.inBounds(x, y)) continue;
       if (Math.abs(x - ctx.player.x) <= 7 && y <= ctx.player.y + 2 && y >= ctx.player.y - 20) continue;
       const i = w.idx(x, y);
@@ -1137,11 +1138,11 @@ export class Enemies implements EnemyControlApi {
       const material =
         rootLoperGrowth(left) || rootLoperGrowth(right) || rootLoperGrowth(above)
           ? Cell.Vines
-          : support > 0.55 && Math.random() < 0.45
+          : support > 0.55 && entityRandom() < 0.45
             ? Cell.Fungus
             : Cell.Moss;
       w.replaceCellAt(i, material, material === Cell.Vines ? vineColor() : material === Cell.Fungus ? COLOR_FN[Cell.Fungus]() : mossColor());
-      w.life[i] = 180 + Math.floor(Math.random() * 120);
+      w.life[i] = 180 + Math.floor(entityRandom() * 120);
       e.rootGrowthBudget = Math.max(0, (e.rootGrowthBudget ?? ROOT_LOPER_GROWTH_BUDGET) - 1);
       placed++;
     }
@@ -1205,16 +1206,16 @@ export class Enemies implements EnemyControlApi {
         const color = w.colors[i];
         w.clearCellAt(i);
         chewed++;
-        if (Math.random() < 0.5) {
-          ctx.particles.spawn(x, y, -dir * (0.25 + Math.random() * 0.7), -0.2 - Math.random() * 0.7, t, color, 70, {
+        if (entityRandom() < 0.5) {
+          ctx.particles.spawn(x, y, -dir * (0.25 + entityRandom() * 0.7), -0.2 - entityRandom() * 0.7, t, color, 70, {
             grav: 0.09,
           });
         }
         const spoilY = y + 1;
         if (chewed <= 3 && w.inBounds(x - dir, spoilY)) {
           const si = w.idx(x - dir, spoilY);
-          if (w.types[si] === Cell.Empty && Math.random() < 0.35) {
-            const spoil = t === Cell.Ash || Math.random() < 0.25 ? Cell.Ash : Cell.Sand;
+          if (w.types[si] === Cell.Empty && entityRandom() < 0.35) {
+            const spoil = t === Cell.Ash || entityRandom() < 0.25 ? Cell.Ash : Cell.Sand;
             w.replaceCellAt(si, spoil, spoil === Cell.Ash ? ashColor() : colorForCell(Cell.Sand));
           }
         }
@@ -1222,7 +1223,7 @@ export class Enemies implements EnemyControlApi {
     }
     if (chewed > 0) {
       e.mawChewT = Math.max(e.mawChewT ?? 0, 14);
-      e.mawChewCd = STONE_MAW_CHEW_COOLDOWN + Math.floor(Math.random() * 10);
+      e.mawChewCd = STONE_MAW_CHEW_COOLDOWN + Math.floor(entityRandom() * 10);
       ctx.audio.hollowKnock();
       ctx.particles.burst(mouthX, mouthY, Math.min(10, chewed + 2), Cell.Sand, stoneColor, 1.1);
       this.shakeAt(mouthX, mouthY, 0.004, 0.025);
@@ -1318,7 +1319,7 @@ export class Enemies implements EnemyControlApi {
       }
     }
     if (charged > 0) {
-      e.rillChargeCd = 95 + Math.floor(Math.random() * 45);
+      e.rillChargeCd = 95 + Math.floor(entityRandom() * 45);
       e.blink = Math.max(e.blink, 10);
       ctx.audio.zap();
       ctx.particles.burst(e.x, e.y - def.h * 0.5, Math.min(10, charged + 2), null, () => packRGB(120, 230, 255), 1.3, {
@@ -1400,7 +1401,7 @@ export class Enemies implements EnemyControlApi {
         const i = w.idx(x, y);
         if (w.types[i] !== Cell.Empty) continue;
         w.replaceCellAt(i, Cell.Vines, vineColor());
-        w.life[i] = 160 + Math.floor(Math.random() * 70);
+        w.life[i] = 160 + Math.floor(entityRandom() * 70);
         placed++;
       }
     }
@@ -1425,8 +1426,8 @@ export class Enemies implements EnemyControlApi {
     let placed = 0;
     const radius = (e.cranky ?? 0) > 0 ? 16 : 11;
     for (let n = 0; n < 10 && placed < 5; n++) {
-      const x = cx + Math.floor((Math.random() * 2 - 1) * radius);
-      const y = foot - 2 + Math.floor(Math.random() * 6);
+      const x = cx + Math.floor((entityRandom() * 2 - 1) * radius);
+      const y = foot - 2 + Math.floor(entityRandom() * 6);
       if (!w.inBounds(x, y)) continue;
       const i = w.idx(x, y);
       if (w.types[i] !== Cell.Empty) continue;
@@ -1447,7 +1448,7 @@ export class Enemies implements EnemyControlApi {
         weaverSupportGrowth(right);
       if (!cling && support > 0.45) continue;
       w.replaceCellAt(i, Cell.Vines, vineColor());
-      w.life[i] = 120 + Math.floor(Math.random() * 70);
+      w.life[i] = 120 + Math.floor(entityRandom() * 70);
       placed++;
     }
     if (placed > 0 && (e.cranky ?? 0) > 0) {
@@ -1835,7 +1836,7 @@ export class Enemies implements EnemyControlApi {
     // line does). Gated by the kind's dodge skill.
     if (t.imminent && (e.dodgeT ?? 0) <= 0 && (e.dodgeCd ?? 0) <= 0 && e.alerted) {
       e.dodgeCd = 22; // one roll per incoming threat (set whether it dodges or not)
-      if (Math.random() >= temp.dodge) {
+      if (entityRandom() >= temp.dodge) {
         // declined this jink — a brute tanks it
       } else {
       let px = -t.tvy; // perpendicular to the threat's velocity
@@ -1918,8 +1919,8 @@ export class Enemies implements EnemyControlApi {
     const color = (): number => packRGB(185, 110, 255);
     ctx.particles.burst(e.x, e.y - def.h * 0.5, 12, null, color, 2.0, { glow: 2.2, grav: 0 });
     for (let attempt = 0; attempt < 32; attempt++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 28 + Math.random() * 68;
+      const a = entityRandom() * Math.PI * 2;
+      const r = 28 + entityRandom() * 68;
       const nx = Math.floor(clamp(e.x + Math.cos(a) * r, def.halfW + 2, WIDTH - def.halfW - 3));
       const ny = Math.floor(clamp(e.y + Math.sin(a) * r, def.h + 1, HEIGHT - 3));
       if (!ctx.physics.entityFree(nx, ny, def.halfW, def.h)) continue;
@@ -2069,10 +2070,10 @@ export class Enemies implements EnemyControlApi {
           e.hp = Math.min(e.maxHp, e.hp + eff.healing);
           if (ctx.state.frameCount % 10 === 0) {
             ctx.particles.spawn(
-              e.x + (Math.random() - 0.5) * def.halfW,
-              e.y - def.h * 0.5 - Math.random() * def.h * 0.4,
-              (Math.random() - 0.5) * 0.25,
-              -0.45 - Math.random() * 0.3,
+              e.x + (entityRandom() - 0.5) * def.halfW,
+              e.y - def.h * 0.5 - entityRandom() * def.h * 0.4,
+              (entityRandom() - 0.5) * 0.25,
+              -0.45 - entityRandom() * 0.3,
               null,
               packRGB(255, 150, 195),
               22,
@@ -2147,9 +2148,9 @@ export class Enemies implements EnemyControlApi {
       // WOUNDED TELLS: under 30% a body leaks — you can read who is nearly done.
       if (e.hp < e.maxHp * 0.3 && e.timer % 26 === 0 && e.kind !== 'eggs') {
         ctx.particles.spawn(
-          e.x + (Math.random() - 0.5) * def.halfW,
-          e.y - Math.random() * def.h * 0.6,
-          (Math.random() - 0.5) * 0.2,
+          e.x + (entityRandom() - 0.5) * def.halfW,
+          e.y - entityRandom() * def.h * 0.6,
+          (entityRandom() - 0.5) * 0.2,
           0.4,
           null,
           def.goreFn(),
@@ -2177,19 +2178,19 @@ export class Enemies implements EnemyControlApi {
             e.windup--;
             if (e.windup === 0) {
               // wounded slimes spring shallow and crooked
-              const hurtK = e.hp / e.maxHp < 0.4 ? 0.55 + Math.random() * 0.3 : 1;
+              const hurtK = e.hp / e.maxHp < 0.4 ? 0.55 + entityRandom() * 0.3 : 1;
               if (targetAlive && pDist < 260) {
-                e.vx = Math.sign(pdx) * (1.8 + Math.random() * 0.9) * hurtK;
-                e.vy = (-3.1 - Math.random() * 1.0) * hurtK;
+                e.vx = Math.sign(pdx) * (1.8 + entityRandom() * 0.9) * hurtK;
+                e.vy = (-3.1 - entityRandom() * 1.0) * hurtK;
               } else if (!e.alerted && e.patrol && e.patrol.length > 0) {
                 // PATROL (Builder-authored): hop along the waypoint loop
                 const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
                 if (Math.abs(wp[0] - e.x) < 14)
                   e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
-                e.vx = (Math.sign(wp[0] - e.x) || 1) * (1.5 + Math.random() * 0.7) * hurtK;
-                e.vy = (-2.6 - Math.random() * 0.6) * hurtK;
+                e.vx = (Math.sign(wp[0] - e.x) || 1) * (1.5 + entityRandom() * 0.7) * hurtK;
+                e.vy = (-2.6 - entityRandom() * 0.6) * hurtK;
               } else {
-                e.vx = (Math.random() - 0.5) * 2.8 * hurtK;
+                e.vx = (entityRandom() - 0.5) * 2.8 * hurtK;
                 e.vy = -2.4 * hurtK;
               }
             }
@@ -2240,7 +2241,7 @@ export class Enemies implements EnemyControlApi {
           if (targetAlive && pDist < 70) {
             e.sleeping = false;
             e.vy = 1.2; // drop off the ceiling
-            ctx.audio.tone(1900 + Math.random() * 600, 2600, 0.08, 'square', 0.06);
+            ctx.audio.tone(1900 + entityRandom() * 600, 2600, 0.08, 'square', 0.06);
           }
           continue;
         }
@@ -2278,19 +2279,19 @@ export class Enemies implements EnemyControlApi {
         }
         // Wounded wings fail in bursts (Rain World body language): a
         // flutter-tumble that sinks and scrambles before the bat recovers.
-        if (!wingsSlimed && e.hp / e.maxHp < 0.4 && !e.tumble && Math.random() < 0.012) e.tumble = 14;
+        if (!wingsSlimed && e.hp / e.maxHp < 0.4 && !e.tumble && entityRandom() < 0.012) e.tumble = 14;
         if (wingsSlimed) {
           e.windup = 0;
           e.swoop = 0;
           e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
           e.vy += 0.34;
           e.vx *= e.grounded ? 0.78 : 0.94;
-          e.vx += (Math.random() - 0.5) * (e.grounded ? 0.18 : 0.1);
-          if (e.grounded && e.timer % 13 === 0) e.vy = -0.55 - Math.random() * 0.2;
+          e.vx += (entityRandom() - 0.5) * (e.grounded ? 0.18 : 0.1);
+          if (e.grounded && e.timer % 13 === 0) e.vy = -0.55 - entityRandom() * 0.2;
           if ((e.tumble ?? 0) > 0 && !debugEnemyAttacksSuppressed) e.tumble = (e.tumble ?? 0) - 1;
         } else if (e.tumble) {
           e.tumble--;
-          e.vx += (Math.random() - 0.5) * 0.5;
+          e.vx += (entityRandom() - 0.5) * 0.5;
           e.vy += 0.18;
         } else if (e.windup) {
           // ANTICIPATION: brake and flare the wings for a beat — THEN the dart
@@ -2310,8 +2311,8 @@ export class Enemies implements EnemyControlApi {
           e.vy += (pdy / d) * 0.14;
           if (canAttackTarget && pDist < 64 && e.attackCd === 0 && !e.swoop) e.windup = 8;
         } else if (!hunting) {
-          e.vx += (Math.random() - 0.5) * 0.1;
-          e.vy += (Math.random() - 0.5) * 0.1;
+          e.vx += (entityRandom() - 0.5) * 0.1;
+          e.vy += (entityRandom() - 0.5) * 0.1;
         }
         if (e.swoop && !debugEnemyAttacksSuppressed) e.swoop--;
         e.vy += Math.sin(e.bobPhase) * (wingsSlimed ? 0.02 : 0.08);
@@ -2357,7 +2358,7 @@ export class Enemies implements EnemyControlApi {
           });
           ctx.audio.flame();
           e.recoil = 14;
-          e.attackCd = 150 + Math.floor(Math.random() * 50);
+          e.attackCd = 150 + Math.floor(entityRandom() * 50);
         }
       } else if (e.kind === 'bomber') {
         // Fast hopping slime that fuses and detonates when close
@@ -2374,17 +2375,17 @@ export class Enemies implements EnemyControlApi {
           if (e.grounded) {
             e.vx *= 0.6;
             if (targetAlive && pDist < 300 && e.timer % 32 === 0) {
-              e.vx = Math.sign(pdx) * (2.4 + Math.random() * 0.8);
-              e.vy = -2.8 - Math.random() * 0.8;
+              e.vx = Math.sign(pdx) * (2.4 + entityRandom() * 0.8);
+              e.vy = -2.8 - entityRandom() * 0.8;
             } else if (!e.alerted && e.patrol && e.patrol.length > 0 && e.timer % 110 === 0) {
               // PATROL (Builder-authored): hop along the waypoint loop
               const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
               if (Math.abs(wp[0] - e.x) < 14)
                 e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
-              e.vx = (Math.sign(wp[0] - e.x) || 1) * (2.0 + Math.random() * 0.6);
+              e.vx = (Math.sign(wp[0] - e.x) || 1) * (2.0 + entityRandom() * 0.6);
               e.vy = -2.2;
             } else if (e.timer % 110 === 0) {
-              e.vx = (Math.random() - 0.5) * 3.0;
+              e.vx = (entityRandom() - 0.5) * 3.0;
               e.vy = -2.2;
             }
           }
@@ -2436,7 +2437,7 @@ export class Enemies implements EnemyControlApi {
         if (e.grounded) {
           e.vx *= panicked ? 0.72 : 0.84;
           if (panicked) {
-            e.vx += (Math.random() - 0.5) * 0.6 - Math.sign(pdx || 1) * 0.06;
+            e.vx += (entityRandom() - 0.5) * 0.6 - Math.sign(pdx || 1) * 0.06;
           } else if (!e.alerted && e.patrol && e.patrol.length > 0) {
             const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
             if (Math.abs(wp[0] - e.x) < 10) e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
@@ -2486,7 +2487,7 @@ export class Enemies implements EnemyControlApi {
           if (forcedAwake || (targetAlive && pDist < 82)) {
             this.wakeWeaver(e, forcedAwake ? 'harm' : 'proximity');
           } else if (!debugEnemyAttacksSuppressed && e.timer % 180 === 0) {
-            this.weaveThread(e, e.x + (Math.random() - 0.5) * 28, e.y - 18 - Math.random() * 18);
+            this.weaveThread(e, e.x + (entityRandom() - 0.5) * 28, e.y - 18 - entityRandom() * 18);
           }
         } else if (e.blink > 0) {
           // Thread-spit telegraph: rooted (the crawl coils to a stop), then a
@@ -2495,9 +2496,9 @@ export class Enemies implements EnemyControlApi {
           if (!debugEnemyAttacksSuppressed) e.blink--;
           if (!debugEnemyAttacksSuppressed && e.timer % 3 === 0) {
             ctx.particles.spawn(
-              e.x + (Math.random() - 0.5) * 14,
-              e.y - 10 - Math.random() * 6,
-              (Math.random() - 0.5) * 0.2,
+              e.x + (entityRandom() - 0.5) * 14,
+              e.y - 10 - entityRandom() * 6,
+              (entityRandom() - 0.5) * 0.2,
               -0.25,
               null,
               vineColor(),
@@ -2508,7 +2509,7 @@ export class Enemies implements EnemyControlApi {
           if (e.blink === 0 && canAttackTarget) {
             const side = Math.sign(pdx || 1);
             this.weaveThread(e, player.x - side * 10, player.y - 12);
-            e.attackCd = 115 + Math.floor(Math.random() * 45);
+            e.attackCd = 115 + Math.floor(entityRandom() * 45);
           }
         } else if ((e.windup ?? 0) > 0) {
           // Needle Step: one foreleg lifts; the sprite exaggerates the poised
@@ -2519,7 +2520,7 @@ export class Enemies implements EnemyControlApi {
             ctx.particles.spawn(
               e.needleX ?? player.x,
               e.needleY ?? player.y - 8,
-              (Math.random() - 0.5) * 0.12,
+              (entityRandom() - 0.5) * 0.12,
               -0.08,
               null,
               vineColor(),
@@ -2532,7 +2533,7 @@ export class Enemies implements EnemyControlApi {
             e.needleX = undefined;
             e.needleY = undefined;
             e.recoil = 12;
-            e.attackCd = 95 + Math.floor(Math.random() * 35);
+            e.attackCd = 95 + Math.floor(entityRandom() * 35);
           }
         } else {
           // A weaver that has CLOCKED you commits to the hunt — only an
@@ -2638,8 +2639,8 @@ export class Enemies implements EnemyControlApi {
           const desiredY = player.y - 75;
           e.vy += Math.sign(desiredY - e.y) * 0.09;
         } else {
-          e.vx += (Math.random() - 0.5) * 0.05;
-          e.vy += (Math.random() - 0.5) * 0.05;
+          e.vx += (entityRandom() - 0.5) * 0.05;
+          e.vy += (entityRandom() - 0.5) * 0.05;
         }
         e.vy += Math.sin(e.bobPhase) * 0.04;
         e.vx = clamp(e.vx, -1.3, 1.3);
@@ -2650,7 +2651,7 @@ export class Enemies implements EnemyControlApi {
           e.vy = -0.5;
         }
         if (canAttackTarget && e.alerted && e.attackCd === 0 && pDist < 300 && this.hasAttackLine(e, def)) {
-          const fa = Math.atan2(pdy, pdx) + (Math.random() - 0.5) * 0.16;
+          const fa = Math.atan2(pdy, pdx) + (entityRandom() - 0.5) * 0.16;
           ctx.projectiles.push({
             x: e.x,
             y: e.y - 5,
@@ -2664,7 +2665,7 @@ export class Enemies implements EnemyControlApi {
             source: 'hostile-fireball',
           });
           ctx.audio.zap();
-          e.attackCd = 130 + Math.floor(Math.random() * 70);
+          e.attackCd = 130 + Math.floor(entityRandom() * 70);
         }
       } else if (e.kind === 'wisp') {
         // Frost wisp: hovers high off the player's shoulder (no gravity at all),
@@ -2679,8 +2680,8 @@ export class Enemies implements EnemyControlApi {
           const desiredY = player.y - 60;
           e.vy += Math.sign(desiredY - e.y) * 0.08;
         } else {
-          e.vx += (Math.random() - 0.5) * 0.05;
-          e.vy += (Math.random() - 0.5) * 0.05;
+          e.vx += (entityRandom() - 0.5) * 0.05;
+          e.vy += (entityRandom() - 0.5) * 0.05;
         }
         e.vy += Math.sin(e.bobPhase) * 0.03; // gentle bob
         e.vx = clamp(e.vx, cornered ? -1.54 : -1.1, cornered ? 1.54 : 1.1);
@@ -2691,7 +2692,7 @@ export class Enemies implements EnemyControlApi {
           e.vy = -0.5;
         }
         if (canAttackTarget && e.alerted && e.attackCd === 0 && pDist < 320 && this.hasAttackLine(e, def)) {
-          const fa = Math.atan2(pdy, pdx) + (Math.random() - 0.5) * 0.14;
+          const fa = Math.atan2(pdy, pdx) + (entityRandom() - 0.5) * 0.14;
           ctx.projectiles.push({
             x: e.x,
             y: e.y - 5,
@@ -2705,7 +2706,7 @@ export class Enemies implements EnemyControlApi {
             source: 'frostbolt',
           });
           ctx.audio.tone(820, 1300, 0.12, 'sine', 0.09);
-          e.attackCd = 140 + Math.floor(Math.random() * 60);
+          e.attackCd = 140 + Math.floor(entityRandom() * 60);
         }
         // Every 8th frame the cold soaks downward: water below locks into real
         // ice, lava occasionally skins over into stone
@@ -2724,7 +2725,7 @@ export class Enemies implements EnemyControlApi {
               if (c === Cell.Water) {
                 ctx.world.replaceCellAt(ci, Cell.Ice, iceColor());
                 frozen++;
-              } else if (c === Cell.Lava && Math.random() < 0.1) {
+              } else if (c === Cell.Lava && entityRandom() < 0.1) {
                 ctx.world.replaceCellAt(ci, Cell.Stone, stoneColor());
                 frozen++;
               }
@@ -2745,12 +2746,12 @@ export class Enemies implements EnemyControlApi {
           if (!debugEnemyAttacksSuppressed) e.blink--;
           if (!debugEnemyAttacksSuppressed && e.timer % 2 === 0) {
             ctx.particles.spawn(
-              e.x + ((Math.random() * 13) | 0) - 6,
-              e.y - ((Math.random() * def.h) | 0),
-              (Math.random() - 0.5) * 0.3,
-              -0.5 - Math.random() * 0.7,
+              e.x + ((entityRandom() * 13) | 0) - 6,
+              e.y - ((entityRandom() * def.h) | 0),
+              (entityRandom() - 0.5) * 0.3,
+              -0.5 - entityRandom() * 0.7,
               null,
-              packRGB(150 + ((Math.random() * 70) | 0), 60, 255),
+              packRGB(150 + ((entityRandom() * 70) | 0), 60, 255),
               20,
               { grav: -0.02, glow: 1.9 },
             );
@@ -2762,7 +2763,7 @@ export class Enemies implements EnemyControlApi {
           e.vx = clamp(e.vx, -0.45, 0.45);
           if (canAttackTarget && e.alerted && e.attackCd === 0 && pDist < 340 && this.hasAttackLine(e, def, true)) {
             e.blink = 20; // begin the 20-frame telegraph
-            e.attackCd = 180 + Math.floor(Math.random() * 80);
+            e.attackCd = 180 + Math.floor(entityRandom() * 80);
           }
         }
 
@@ -2772,10 +2773,10 @@ export class Enemies implements EnemyControlApi {
         // burning the charge without moving lost the escape forever, exactly
         // when it was needed most.
         if (e.jetFuel === 0 && e.hp < e.maxHp * 0.5) {
-          const burstCol = (): number => packRGB(180 + ((Math.random() * 60) | 0), 70, 255);
+          const burstCol = (): number => packRGB(180 + ((entityRandom() * 60) | 0), 70, 255);
           for (let attempt = 0; attempt < 20; attempt++) {
-            const a = Math.random() * Math.PI * 2;
-            const r = 40 + Math.random() * 40;
+            const a = entityRandom() * Math.PI * 2;
+            const r = 40 + entityRandom() * 40;
             const nx = Math.floor(clamp(e.x + Math.cos(a) * r, def.halfW + 2, WIDTH - def.halfW - 3));
             const ny = Math.floor(clamp(e.y + Math.sin(a) * r, def.h + 1, HEIGHT - 3));
             if (ctx.physics.entityFree(nx, ny, def.halfW, def.h)) {
@@ -2818,8 +2819,8 @@ export class Enemies implements EnemyControlApi {
           }
           if (ctx.state.frameCount % 4 === 0) {
             ctx.particles.burst(
-              e.x + (Math.random() - 0.5) * 20,
-              e.y - 10 - Math.random() * 14,
+              e.x + (entityRandom() - 0.5) * 20,
+              e.y - 10 - entityRandom() * 14,
               2,
               Cell.Steam,
               () => packRGB(220, 228, 236),
@@ -2847,12 +2848,12 @@ export class Enemies implements EnemyControlApi {
         // Furnace breath: embers rise off the shoulders
         if (ctx.state.frameCount % 5 === 0 && !doused) {
           ctx.particles.spawn(
-            e.x + (Math.random() - 0.5) * 18,
+            e.x + (entityRandom() - 0.5) * 18,
             e.y - def.h + 2,
-            (Math.random() - 0.5) * 0.4,
-            -0.6 - Math.random() * 0.5,
+            (entityRandom() - 0.5) * 0.4,
+            -0.6 - entityRandom() * 0.5,
             null,
-            packRGB(255, 120 + Math.floor(Math.random() * 100), 20),
+            packRGB(255, 120 + Math.floor(entityRandom() * 100), 20),
             18,
             { glow: 2.0, grav: -0.01 },
           );
@@ -2864,15 +2865,15 @@ export class Enemies implements EnemyControlApi {
             // the blast radius (r*1.5) cannot reach the colossus's own body
             ctx.explosions.trigger(e.x + Math.sign(pdx) * 18, e.y - 2, 11, { playerDamageSource: 'colossus-slam' });
             ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.03, 0.06);
-            e.attackCd = 150 + Math.floor(Math.random() * 40);
+            e.attackCd = 150 + Math.floor(entityRandom() * 40);
           } else if (Math.abs(pdx) < 300 && this.hasAttackLine(e, def, true)) {
             // MOLTEN VOLLEY: three lobbed gobs of kiln-fire
             for (let v = -1; v <= 1; v++) {
               ctx.projectiles.push({
                 x: e.x + Math.sign(pdx) * 8,
                 y: e.y - def.h + 4,
-                vx: pdx * 0.014 + v * 0.5 + (Math.random() - 0.5) * 0.4,
-                vy: -1.3 - Math.random() * 0.5,
+                vx: pdx * 0.014 + v * 0.5 + (entityRandom() - 0.5) * 0.4,
+                vy: -1.3 - entityRandom() * 0.5,
                 type: 'fireball',
                 life: 240,
                 age: 0,
@@ -2882,7 +2883,7 @@ export class Enemies implements EnemyControlApi {
               });
             }
             ctx.audio.tone(90, 220, 0.4, 'sawtooth', 0.16);
-            e.attackCd = 170 + Math.floor(Math.random() * 50);
+            e.attackCd = 170 + Math.floor(entityRandom() * 50);
           }
         }
       } else if (e.kind === 'rillback') {
@@ -2957,8 +2958,8 @@ export class Enemies implements EnemyControlApi {
             e.vy += this.rillbackLiquidSeek.dy * 0.18;
           }
           if (e.grounded && e.timer % 34 === 0) {
-            e.vy = -1.1 - Math.random() * 0.4;
-            e.vx += (targetAlive ? Math.sign(pdx || 1) : Math.random() < 0.5 ? -1 : 1) * 0.45;
+            e.vy = -1.1 - entityRandom() * 0.4;
+            e.vx += (targetAlive ? Math.sign(pdx || 1) : entityRandom() < 0.5 ? -1 : 1) * 0.45;
             ctx.audio.squelch();
           }
         }
@@ -3045,9 +3046,9 @@ export class Enemies implements EnemyControlApi {
           if (ctx.state.frameCount % 7 === 0 && Math.abs(e.vx) > 0.5) {
             ctx.particles.spawn(
               e.x - Math.sign(e.vx) * def.halfW,
-              e.y - 6 - Math.random() * 6,
+              e.y - 6 - entityRandom() * 6,
               -e.vx * 0.2,
-              -0.3 - Math.random() * 0.3,
+              -0.3 - entityRandom() * 0.3,
               null,
               packRGB(170, 220, 250),
               14,
@@ -3061,15 +3062,15 @@ export class Enemies implements EnemyControlApi {
           e.vx *= 0.92;
           if (e.grounded && e.timer % 38 === 0) {
             e.vy = -1.8;
-            e.vx = (targetAlive ? Math.sign(pdx) || 1 : Math.random() < 0.5 ? -1 : 1) * 0.85;
+            e.vx = (targetAlive ? Math.sign(pdx) || 1 : entityRandom() < 0.5 ? -1 : 1) * 0.85;
             ctx.audio.squelch();
             this.shakeAt(e.x, e.y, 0.012, 0.04);
           }
           if (ctx.state.frameCount % 11 === 0) {
             ctx.particles.spawn(
-              e.x + (Math.random() - 0.5) * 10,
+              e.x + (entityRandom() - 0.5) * 10,
               e.y - def.h + 2,
-              (Math.random() - 0.5) * 0.4,
+              (entityRandom() - 0.5) * 0.4,
               -0.4,
               null,
               packRGB(150, 200, 230),
@@ -3113,7 +3114,7 @@ export class Enemies implements EnemyControlApi {
             e.attackCd = 140;
             e.swoop = 0;
           } else if (e.swoop === 0) {
-            e.attackCd = Math.max(e.attackCd, 90 + Math.floor(Math.random() * 40));
+            e.attackCd = Math.max(e.attackCd, 90 + Math.floor(entityRandom() * 40));
           }
         }
 
@@ -3130,7 +3131,7 @@ export class Enemies implements EnemyControlApi {
           (e.swoop ?? 0) === 0
         ) {
           this.poolVolley(e);
-          e.attackCd = 150 + Math.floor(Math.random() * 40);
+          e.attackCd = 150 + Math.floor(entityRandom() * 40);
         }
 
         // contact graze outside the committed bite
@@ -3233,12 +3234,12 @@ export class Enemies implements EnemyControlApi {
           // exhaust flame + smoke
           if (ctx.state.frameCount % 2 === 0) {
             ctx.particles.spawn(
-              e.x + Math.floor(Math.random() * 5) - 2,
+              e.x + Math.floor(entityRandom() * 5) - 2,
               e.y + 1,
-              (Math.random() - 0.5) * 0.6,
-              1.3 + Math.random() * 0.8,
+              (entityRandom() - 0.5) * 0.6,
+              1.3 + entityRandom() * 0.8,
               null,
-              packRGB(255, 130 + Math.floor(Math.random() * 90), 25),
+              packRGB(255, 130 + Math.floor(entityRandom() * 90), 25),
               14,
               { glow: 2.2, grav: -0.02 },
             );
@@ -3267,9 +3268,9 @@ export class Enemies implements EnemyControlApi {
             ctx.physics.entityFree(e.x + dir * (def.halfW + 3), e.y + 5, def.halfW, 5);
           const fallingHard = !e.grounded && e.vy > 2.3; // tumbling into a pit
           if (perchedAbove || gapAhead || fallingHard) {
-            e.jetFuel = 95 + Math.floor(Math.random() * 50);
+            e.jetFuel = 95 + Math.floor(entityRandom() * 50);
             e.jetCd = 190;
-            ctx.audio.tone(110 + Math.random() * 30, 260, 0.35, 'sawtooth', 0.11);
+            ctx.audio.tone(110 + entityRandom() * 30, 260, 0.35, 'sawtooth', 0.11);
           }
         }
 
@@ -3295,7 +3296,7 @@ export class Enemies implements EnemyControlApi {
               e.jetFuel = 115;
               e.jetCd = 280;
               e.stuckT = 0;
-              ctx.audio.tone(110 + Math.random() * 30, 260, 0.35, 'sawtooth', 0.11);
+              ctx.audio.tone(110 + entityRandom() * 30, 260, 0.35, 'sawtooth', 0.11);
             } else {
               e.stuckT = (e.stuckT || 0) + 1;
               if (e.stuckT > 50) {
@@ -3323,7 +3324,7 @@ export class Enemies implements EnemyControlApi {
                   e.x < camX + VIEW_W + 8 &&
                   e.y > camY - 8 &&
                   e.y < camY + VIEW_H + 8;
-                if (visible) ctx.audio.tone(60 + Math.random() * 25, 90, 0.2, 'square', 0.16);
+                if (visible) ctx.audio.tone(60 + entityRandom() * 25, 90, 0.2, 'square', 0.16);
                 this.shakeAt(e.x, e.y, 0.006, 0.03);
                 e.stuckT = futile ? -420 : 4; // futile: back off ~7s before retrying
               }
@@ -3342,8 +3343,8 @@ export class Enemies implements EnemyControlApi {
               ctx.particles.spawn(
                 aheadX,
                 e.y - dy,
-                Math.sign(e.vx) * 1.2 + (Math.random() - 0.5),
-                -0.8 - Math.random(),
+                Math.sign(e.vx) * 1.2 + (entityRandom() - 0.5),
+                -0.8 - entityRandom(),
                 c,
                 ctx.world.colors[ci],
                 80,
@@ -3356,7 +3357,7 @@ export class Enemies implements EnemyControlApi {
         if (canAttackTarget && e.alerted && e.attackCd === 0 && pDist > 50 && pDist < 360 && this.hasAttackLine(e, def, true)) {
           for (let r = 0; r < 3; r++) {
             const ta = Math.atan2(pdy - 38 - r * 7, pdx);
-            const spd = 4.0 + Math.random() * 1.2;
+            const spd = 4.0 + entityRandom() * 1.2;
             ctx.particles.spawn(
               e.x,
               e.y - def.h,
@@ -3402,7 +3403,7 @@ export class Enemies implements EnemyControlApi {
 
       // Burning foes that AREN'T fleeing flail erratically (panic); a directed
       // flee (bolting for water) replaces the random thrash.
-      if (e.status.burning > 0 && e.grounded && !fleeingNow) e.vx += (Math.random() - 0.5) * 1.3;
+      if (e.status.burning > 0 && e.grounded && !fleeingNow) e.vx += (entityRandom() - 0.5) * 1.3;
 
       // ELECTROCUTED — any foe touching a live conductor is STUCK to it: the
       // current overrides its AI, so a slime can't leap away and a walker can't

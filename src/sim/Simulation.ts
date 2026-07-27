@@ -25,11 +25,17 @@ import { handleEmber, handleFire, handleIce } from '@/sim/elements/thermal';
 import { handleVines } from '@/sim/elements/vines';
 import { updateElectricalGrid } from '@/sim/electrical';
 import { runHarvesterField } from '@/sim/harvester';
+import { reseedSimSubstep, simRandom } from '@/core/simRandom';
 
 /* ===================== Core Simulation Frame ===================== */
 export class Simulation implements SimulationApi {
   accumulator = 0;
   private readonly sparseGrowthCells: number[] = [];
+  /** Substep index within the current tick, for the per-substep reseed below.
+   *  Derived from `frameCount` rather than from `update`'s loop counter so a
+   *  direct `processFrame` call (settle passes, probes) seeds itself too. */
+  private lastSeededTick = -1;
+  private substep = 0;
 
   /** Fixed-step accumulator: runs 0-6 processFrame substeps per render frame. */
   update(ctx: Ctx): void {
@@ -53,6 +59,16 @@ export class Simulation implements SimulationApi {
   processFrame(ctx: Ctx): void {
     const world = ctx.world;
     const sim = world.simBounds;
+
+    // Every substep gets its own stream. A divergence inside one substep then
+    // cannot offset the next one, which is what lets a failing golden frame
+    // name a tick instead of condemning the whole run.
+    const gameTick = ctx.state.frameCount;
+    if (gameTick !== this.lastSeededTick) {
+      this.lastSeededTick = gameTick;
+      this.substep = 0;
+    }
+    reseedSimSubstep(ctx.state.worldSeed, gameTick, this.substep++);
 
     // New substep = new moved-epoch (see World.movedTick). The old code
     // zeroed every window cell here, column-major, every substep.
@@ -81,7 +97,7 @@ export class Simulation implements SimulationApi {
     const sparseGrowthCells = this.sparseGrowthCells;
     sparseGrowthCells.length = 0;
     for (let y = sim.y1 - 1; y >= sim.y0; y--) {
-      const leftToRight = Math.random() < 0.5;
+      const leftToRight = simRandom() < 0.5;
       for (let i = 0; i < spanW; i++) {
         const x = leftToRight ? sim.x0 + i : sim.x1 - 1 - i;
         const ci = x + y * world.width;
@@ -145,13 +161,13 @@ export class Simulation implements SimulationApi {
         ) {
           if (type === Cell.Blood) {
             // wet blood stains adjacent rock and timber, and slowly soaks in
-            if (Math.random() < 0.10) {
+            if (simRandom() < 0.10) {
               stainCell(world, x, y + 1, 118, 14, 20, 0.22);
-              if (Math.random() < 0.5)
-                stainCell(world, x + (Math.random() < 0.5 ? 1 : -1), y, 118, 14, 20, 0.16);
+              if (simRandom() < 0.5)
+                stainCell(world, x + (simRandom() < 0.5 ? 1 : -1), y, 118, 14, 20, 0.16);
             }
             if (
-              Math.random() < 0.004 &&
+              simRandom() < 0.004 &&
               canDryBloodOnSurface(world, x, y + 1)
             ) {
               stainCell(world, x, y + 1, 110, 12, 18, 0.5);

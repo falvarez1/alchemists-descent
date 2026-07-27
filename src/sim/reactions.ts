@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import { CELL_COUNT, Cell } from '@/sim/CellType';
 import { COLOR_FN, packRGB } from '@/sim/colors';
+import { fxRandom, simRandom } from '@/core/simRandom';
 
 /**
  * ===================== THE ALCHEMY TABLE =====================
@@ -230,7 +231,7 @@ function applyProduct(ctx: Ctx, i: number, to: Cell | null, life: number | undef
     return;
   }
   w.replaceCellAt(i, to, (COLOR_FN[to] ?? (() => packRGB(200, 200, 200)))());
-  if (life !== undefined) w.life[i] = life + ((Math.random() * (life * 0.3)) | 0);
+  if (life !== undefined) w.life[i] = life + ((simRandom() * (life * 0.3)) | 0);
 }
 
 /**
@@ -251,7 +252,7 @@ export function maybeReact(ctx: Ctx, x: number, y: number, t: number): boolean {
     if (ruleIdx === 0) continue;
     const isSecret = ruleIdx === SECRET_SENTINEL;
     const rule = isSecret ? (secretRule as CellReaction) : REACTIONS[ruleIdx - 1];
-    if (Math.random() >= rule.chance) continue;
+    if (simRandom() >= rule.chance) continue;
     const selfIsA = rule.a === t;
     const ci = w.idx(x, y);
     applyProduct(ctx, ci, selfIsA ? rule.aTo : rule.bTo, selfIsA ? rule.aLife : rule.bLife);
@@ -265,12 +266,12 @@ export function maybeReact(ctx: Ctx, x: number, y: number, t: number): boolean {
         ctx.audio.learn();
       }
     }
-    if (rule.sparkColor !== undefined && Math.random() < 0.2) {
+    if (rule.sparkColor !== undefined && fxRandom() < 0.2) {
       ctx.particles.spawn(
         x,
         y - 1,
-        (Math.random() - 0.5) * 0.4,
-        -0.3 - Math.random() * 0.4,
+        (fxRandom() - 0.5) * 0.4,
+        -0.3 - fxRandom() * 0.4,
         null,
         rule.sparkColor,
         12,

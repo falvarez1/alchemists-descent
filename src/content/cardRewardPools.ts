@@ -1,4 +1,5 @@
 import type { CardId } from '@/core/types';
+import { entityRandom } from '@/core/simRandom';
 
 export const STARTER_GRAMMAR_POOL: readonly CardId[] = ['speed', 'heavy', 'spread', 'double', 'flame'];
 
@@ -77,6 +78,6 @@ export const SANCTUM_LOST_PAGES_POOL: readonly CardId[] = [
   ...COMBO_SETUP_POOL,
 ];
 
-export function randomCard(pool: readonly CardId[], rng: () => number = Math.random): CardId {
+export function randomCard(pool: readonly CardId[], rng: () => number = entityRandom): CardId {
   return pool[Math.floor(rng() * pool.length)] ?? 'spark';
 }

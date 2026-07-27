@@ -9,6 +9,7 @@ import { makePickup, POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import type { CardId, Ctx, Pickup, PickupsApi } from '@/core/types';
 import { blocksEntity } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
+import { entityRandom } from '@/core/simRandom';
 
 /**
  * World pickups (upgrade-port meta layer): hearts, spell tomes, chests,
@@ -27,7 +28,7 @@ function validCardId(value: unknown): CardId | undefined {
 
 function potionIdOrRandom(value: unknown): string {
   if (typeof value === 'string' && POTION_IDS.has(value)) return value;
-  return POTION_KINDS[Math.floor(Math.random() * POTION_KINDS.length)] ?? 'vigor';
+  return POTION_KINDS[Math.floor(entityRandom() * POTION_KINDS.length)] ?? 'vigor';
 }
 
 export { makePickup, PICKUP_COLOR, POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
@@ -114,17 +115,17 @@ export class Pickups implements PickupsApi {
     } else if (p.kind === 'chest') {
       // Chests burst into gold piles (and sometimes a potion) where they stand.
       const runtime = ctx.levels.current;
-      const piles = 3 + Math.floor(Math.random() * 3);
+      const piles = 3 + Math.floor(entityRandom() * 3);
       for (let i = 0; i < piles; i++) {
-        const gp = makePickup('goldpile', p.x + (Math.random() - 0.5) * 14, p.y - 4 - Math.random() * 6, {
-          amount: 15 + Math.floor(Math.random() * 25),
+        const gp = makePickup('goldpile', p.x + (entityRandom() - 0.5) * 14, p.y - 4 - entityRandom() * 6, {
+          amount: 15 + Math.floor(entityRandom() * 25),
         });
-        gp.vx = (Math.random() - 0.5) * 1.6;
-        gp.vy = -1.2 - Math.random();
+        gp.vx = (entityRandom() - 0.5) * 1.6;
+        gp.vy = -1.2 - entityRandom();
         runtime?.pickups.push(gp);
       }
-      if (Math.random() < 0.45) {
-        const potion = POTION_KINDS[Math.floor(Math.random() * POTION_KINDS.length)];
+      if (entityRandom() < 0.45) {
+        const potion = POTION_KINDS[Math.floor(entityRandom() * POTION_KINDS.length)];
         runtime?.pickups.push(makePickup('potion', p.x, p.y - 8, { potion }));
       }
       ctx.events.emit('toast', { text: 'CHEST OPENED' });

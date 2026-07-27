@@ -6,6 +6,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Ctx, PhysicsApi } from '@/core/types';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { cellBlocksEntityWithLooseRubble } from '@/sim/collision';
+import { entityRandom } from '@/core/simRandom';
 
 export class Physics implements PhysicsApi {
   // Loose-rubble rule: a solid cell only blocks a moving body if it belongs to a
@@ -74,8 +75,8 @@ export class Physics implements PhysicsApi {
         ctx.particles.spawn(
           X,
           Y,
-          Math.sign(dx || (Math.random() - 0.5)) * (0.8 + Math.random() * 1.2),
-          -0.6 - Math.random() * 1.0,
+          Math.sign(dx || (entityRandom() - 0.5)) * (0.8 + entityRandom() * 1.2),
+          -0.6 - entityRandom() * 1.0,
           t === Cell.Gold ? Cell.Gold : null,
           world.colors[i],
           t === Cell.Gold ? 200 : 40,

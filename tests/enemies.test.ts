@@ -11,6 +11,7 @@ import { Levels } from '@/game/Levels';
 import { blocksEntity, Cell, isSoftGrowth } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { EXTRAS } from '@/world/biomeExtras';
+import { mockRandom } from './helpers/randomSeam';
 
 function makeEnemy(kind: Enemy['kind'], overrides: Partial<Enemy> = {}): Enemy {
   return {
@@ -310,7 +311,7 @@ describe('enemy controller edge cases', () => {
 
     for (let x = 20; x <= 64; x++) world.replaceCellAt(world.idx(x, 44), Cell.Stone, 0x777777);
     const before = world.types.slice();
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
     const placed = (enemies as unknown as { stampRootLoperGrowth(e: Enemy, support: number): number }).stampRootLoperGrowth(
       root,
       0.8,

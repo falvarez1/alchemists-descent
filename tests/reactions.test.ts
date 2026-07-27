@@ -3,6 +3,7 @@ import type { Ctx } from '@/core/types';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { maybeReact, REACTIONS, refreshSecretReaction, SECRET_REACTION_POOL, secretIndexForSeed } from '@/sim/reactions';
 import { World } from '@/sim/World';
+import { mockRandom } from './helpers/randomSeam';
 
 // The alchemy table's contracts: every entry has a liquid participant (the
 // dispatcher hook only runs on liquid cells), products are real cells, and
@@ -46,7 +47,7 @@ describe('alchemy table contracts', () => {
 
 describe('alchemy table transforms', () => {
   it('acid touching lava vitrifies: steam + glass', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0); // every roll passes
+    mockRandom().mockReturnValue(0); // every roll passes
     const world = new World(32, 32);
     world.replaceCellAt(world.idx(10, 10), Cell.Acid, 0x28fa28);
     world.replaceCellAt(world.idx(10, 11), Cell.Lava, 0xfa1600);
@@ -58,7 +59,7 @@ describe('alchemy table transforms', () => {
   });
 
   it('fires symmetrically from the OTHER side of the pair (lava cell active)', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+    mockRandom().mockReturnValue(0);
     const world = new World(32, 32);
     world.replaceCellAt(world.idx(10, 10), Cell.Lava, 0xfa1600);
     world.replaceCellAt(world.idx(10, 11), Cell.Acid, 0x28fa28);
@@ -69,7 +70,7 @@ describe('alchemy table transforms', () => {
   });
 
   it('the philosopher\'s dust transmutes blood to healium and is CONSUMED', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+    mockRandom().mockReturnValue(0);
     const world = new World(32, 32);
     world.replaceCellAt(world.idx(8, 8), Cell.Blood, 0xa00c19);
     world.replaceCellAt(world.idx(9, 8), Cell.Catalyst, 0xff963c);
@@ -79,7 +80,7 @@ describe('alchemy table transforms', () => {
   });
 
   it('a failed roll leaves both cells untouched', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.999); // every roll fails
+    mockRandom().mockReturnValue(0.999); // every roll fails
     const world = new World(32, 32);
     world.replaceCellAt(world.idx(10, 10), Cell.Acid, 0x28fa28);
     world.replaceCellAt(world.idx(10, 11), Cell.Lava, 0xfa1600);
@@ -89,7 +90,7 @@ describe('alchemy table transforms', () => {
   });
 
   it('unlisted neighbours never react (water beside oil is just wet oil)', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+    mockRandom().mockReturnValue(0);
     const world = new World(32, 32);
     world.replaceCellAt(world.idx(10, 10), Cell.Water, 0x2369f0);
     world.replaceCellAt(world.idx(10, 11), Cell.Oil, 0x3a2d23);
@@ -138,7 +139,7 @@ describe('the secret world reaction', () => {
   });
 
   it('the run secret fires, transforms, and announces ONCE near the wizard', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+    mockRandom().mockReturnValue(0);
     const world = new World(64, 64);
     const toasts: string[] = [];
     let chimes = 0;

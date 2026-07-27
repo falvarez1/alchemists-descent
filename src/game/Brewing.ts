@@ -5,6 +5,7 @@ export { RECIPES, type Recipe } from '@/content/recipes';
 import { recordRecipeDiscovery } from '@/core/grimoireStore';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN } from '@/sim/colors';
+import { entityRandom } from '@/core/simRandom';
 
 /**
  * Cauldron brewing (DESIGN.md pillar 7): the basin's contents are read as a
@@ -93,12 +94,12 @@ export class Brewing {
     if (ctx.state.frameCount % 8 === 0) {
       ctx.audio.bubble();
       const colorFn = COLOR_FN[recipe.elixir];
-      const wisps = 1 + (Math.random() < 0.5 ? 1 : 0);
+      const wisps = 1 + (entityRandom() < 0.5 ? 1 : 0);
       for (let j = 0; j < wisps; j++) {
-        const px = cauldron.x + Math.floor(Math.random() * (BASIN_HALF_W * 2 + 1)) - BASIN_HALF_W;
+        const px = cauldron.x + Math.floor(entityRandom() * (BASIN_HALF_W * 2 + 1)) - BASIN_HALF_W;
         const py = cauldron.y + BASIN_TOP - 1;
-        ctx.particles.spawn(px, py, (Math.random() - 0.5) * 0.3, -0.3 - Math.random() * 0.4,
-          null, colorFn(), 25 + Math.floor(Math.random() * 15), { grav: -0.04, glow: 1.3 });
+        ctx.particles.spawn(px, py, (entityRandom() - 0.5) * 0.3, -0.3 - entityRandom() * 0.4,
+          null, colorFn(), 25 + Math.floor(entityRandom() * 15), { grav: -0.04, glow: 1.3 });
       }
     }
 

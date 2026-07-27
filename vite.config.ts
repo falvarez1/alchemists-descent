@@ -61,5 +61,8 @@ export default defineConfig({
   },
   test: {
     testTimeout: 60_000,
+    // Gameplay randomness is seeded module state (core/simRandom.ts); the setup
+    // file resets it between tests so a forced roll cannot leak forward.
+    setupFiles: ['./tests/setup.ts'],
   },
 });

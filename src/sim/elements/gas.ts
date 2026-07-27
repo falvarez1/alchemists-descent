@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import { Cell, isSolid } from '@/sim/CellType';
 import { EMPTY_COLOR, fireColor, marshGasColor, packRGB, waterColor } from '@/sim/colors';
+import { fxRandom, simRandom } from '@/core/simRandom';
 
 /**
  * Shared rising-gas behavior for STEAM and SMOKE.
@@ -19,7 +20,7 @@ export function handleGas(
   w.life[ci]--;
   if (elementId === Cell.Steam) {
     if (w.inBounds(x, y - 1) && isSolid(w.types[w.idx(x, y - 1)])) {
-      if (Math.random() < ctx.params.materials[Cell.Water].poolingFactor!) {
+      if (simRandom() < ctx.params.materials[Cell.Water].poolingFactor!) {
         // replaceCellAt clears life/charge/override in lockstep, matching the
         // life<=0 conversions below so all three Steam->Water/Empty exits agree.
         w.replaceCellAt(ci, Cell.Water, waterColor());
@@ -28,19 +29,19 @@ export function handleGas(
     }
   }
   if (w.life[ci] <= 0) {
-    if (elementId === Cell.Steam && Math.random() < 0.15) {
+    if (elementId === Cell.Steam && simRandom() < 0.15) {
       w.replaceCellAt(ci, Cell.Water, waterColor());
     } else {
       w.replaceCellAt(ci, Cell.Empty, EMPTY_COLOR);
     }
     return;
   }
-  if (Math.random() < flowSpeed) {
+  if (simRandom() < flowSpeed) {
     if (w.inBounds(x, y - 1) && w.types[w.idx(x, y - 1)] === Cell.Empty) {
       w.swap(x, y, x, y - 1);
       return;
     }
-    const dir = Math.random() < 0.5 ? 1 : -1;
+    const dir = simRandom() < 0.5 ? 1 : -1;
     if (w.inBounds(x + dir, y - 1) && w.types[w.idx(x + dir, y - 1)] === Cell.Empty) {
       w.swap(x, y, x + dir, y - 1);
       return;
@@ -49,7 +50,7 @@ export function handleGas(
       w.swap(x, y, x - dir, y - 1);
       return;
     }
-    if (Math.random() < dispRate) {
+    if (simRandom() < dispRate) {
       if (w.inBounds(x + dir, y) && w.types[w.idx(x + dir, y)] === Cell.Empty) {
         w.swap(x, y, x + dir, y);
         return;
@@ -88,13 +89,13 @@ export function handleMarshGas(ctx: Ctx, x: number, y: number): void {
     if (n === Cell.Fire || n === Cell.Lava || n === Cell.Ember) {
       const ci = w.idx(x, y);
       w.replaceCellAt(ci, Cell.Fire, fireColor());
-      w.life[ci] = 22 + Math.floor(Math.random() * 14);
-      if (Math.random() < 0.06) {
+      w.life[ci] = 22 + Math.floor(simRandom() * 14);
+      if (fxRandom() < 0.06) {
         ctx.particles.spawn(
           x,
           y - 1,
-          (Math.random() - 0.5) * 0.5,
-          -0.6 - Math.random() * 0.5,
+          (fxRandom() - 0.5) * 0.5,
+          -0.6 - fxRandom() * 0.5,
           null,
           packRGB(255, 190, 60),
           14,
@@ -106,14 +107,14 @@ export function handleMarshGas(ctx: Ctx, x: number, y: number): void {
   }
   // faint shimmer: the pocket visibly ROILS, so the hazard reads in the dark
   // ("light is information" - a fuse the player can see is a fair fuse)
-  if (Math.random() < 0.04) w.colors[w.idx(x, y)] = marshGasColor();
+  if (simRandom() < 0.04) w.colors[w.idx(x, y)] = marshGasColor();
   const P = ctx.params.materials[Cell.MarshGas];
-  if (Math.random() < P.floatSpeed!) {
+  if (simRandom() < P.floatSpeed!) {
     if (w.inBounds(x, y - 1) && w.types[w.idx(x, y - 1)] === Cell.Empty) {
       w.swap(x, y, x, y - 1);
       return;
     }
-    const dir = Math.random() < 0.5 ? 1 : -1;
+    const dir = simRandom() < 0.5 ? 1 : -1;
     if (w.inBounds(x + dir, y - 1) && w.types[w.idx(x + dir, y - 1)] === Cell.Empty) {
       w.swap(x, y, x + dir, y - 1);
       return;
@@ -123,7 +124,7 @@ export function handleMarshGas(ctx: Ctx, x: number, y: number): void {
       return;
     }
     // blocked above: pool sideways under the ceiling
-    if (Math.random() < P.dispersion!) {
+    if (simRandom() < P.dispersion!) {
       if (w.inBounds(x + dir, y) && w.types[w.idx(x + dir, y)] === Cell.Empty) {
         w.swap(x, y, x + dir, y);
         return;

@@ -3,6 +3,7 @@ import type { Ctx, Enemy, ExplosionApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { ashColor, crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
+import { fxRandom, simRandom } from '@/core/simRandom';
 
 /** Reused blast-carve scratch — see the note at its use site in trigger(). */
 let blastTouchedScratch = new Uint8Array(0);
@@ -139,16 +140,16 @@ function softenDisconnectedBlastDebris(
         const y = dys[n];
         const i = world.idx(x, y);
         world.replaceCellAt(i, Cell.Ash, ashColor());
-        world.life[i] = BLAST_ASH_LIFE_MIN + Math.floor(Math.random() * BLAST_ASH_LIFE_SPAN);
+        world.life[i] = BLAST_ASH_LIFE_MIN + Math.floor(simRandom() * BLAST_ASH_LIFE_SPAN);
         world.moved[i] = world.movedTick;
-        if (dust < BLAST_DEBRIS_DUST_CAP && Math.random() < 0.35) {
+        if (dust < BLAST_DEBRIS_DUST_CAP && simRandom() < 0.35) {
           dust++;
           const d = Math.hypot(x - cx, y - cy) || 1;
           ctx.particles.spawn(
             x,
             y,
-            ((x - cx) / d) * 0.7 + (Math.random() - 0.5) * 0.6,
-            ((y - cy) / d) * 0.45 - 0.5 - Math.random() * 0.4,
+            ((x - cx) / d) * 0.7 + (simRandom() - 0.5) * 0.6,
+            ((y - cy) / d) * 0.45 - 0.5 - simRandom() * 0.4,
             Cell.Ash,
             world.colors[i],
             40,
@@ -217,7 +218,7 @@ export class Explosions implements ExplosionApi {
           if (orig === Cell.MarshGas) {
             // a blast doesn't erase a gas pocket - it LIGHTS it
             world.replaceCellAt(ni, Cell.Fire, fireColor());
-            world.life[ni] = 24 + Math.floor(Math.random() * 12);
+            world.life[ni] = 24 + Math.floor(simRandom() * 12);
             continue;
           }
           if (orig !== Cell.Empty) blastTouched[ni] = 1;
@@ -226,17 +227,17 @@ export class Explosions implements ExplosionApi {
             if (
               orig === Cell.Wall &&
               dx * dx + dy * dy > radius * radius * 0.55 &&
-              Math.random() < 0.45
+              simRandom() < 0.45
             )
               continue;
             // Crystal shatters into a burst of glowing shards
-            if (orig === Cell.Crystal && Math.random() < 0.6) {
+            if (orig === Cell.Crystal && simRandom() < 0.6) {
               const d = Math.sqrt(dx * dx + dy * dy) || 1;
               ctx.particles.spawn(
                 nx,
                 ny,
-                (dx / d) * 2.4 + (Math.random() - 0.5) * 1.6,
-                (dy / d) * 2.0 - 1.6 - Math.random(),
+                (dx / d) * 2.4 + (simRandom() - 0.5) * 1.6,
+                (dy / d) * 2.0 - 1.6 - simRandom(),
                 Cell.Crystal,
                 crystalColor(),
                 110,
@@ -249,27 +250,27 @@ export class Explosions implements ExplosionApi {
               orig !== Cell.Fire &&
               orig !== Cell.Smoke &&
               orig !== Cell.Steam &&
-              Math.random() < 0.22
+              simRandom() < 0.22
             ) {
               const d = Math.sqrt(dx * dx + dy * dy) || 1;
-              const force = (1.2 - d / radius) * 2.6 + Math.random();
+              const force = (1.2 - d / radius) * 2.6 + simRandom();
               ctx.particles.spawn(
                 nx,
                 ny,
-                (dx / d) * force + (Math.random() - 0.5),
-                (dy / d) * force - 1.2 - Math.random(),
+                (dx / d) * force + (simRandom() - 0.5),
+                (dy / d) * force - 1.2 - simRandom(),
                 orig,
                 world.colors[ni],
                 90,
                 { glow: orig === Cell.Lava || orig === Cell.Gold ? 1.5 : 0, looseDebris: true },
               );
             }
-            if (Math.random() < 0.3) {
+            if (simRandom() < 0.3) {
               world.replaceCellAt(ni, Cell.Fire, fireColor());
-              world.life[ni] = Math.floor(Math.random() * 25) + 10;
-            } else if (Math.random() < 0.2) {
+              world.life[ni] = Math.floor(simRandom() * 25) + 10;
+            } else if (simRandom() < 0.2) {
               world.replaceCellAt(ni, Cell.Smoke, smokeColor());
-              world.life[ni] = Math.floor(Math.random() * 30) + 20;
+              world.life[ni] = Math.floor(simRandom() * 30) + 20;
             } else {
               world.clearCellAt(ni);
             }
@@ -277,7 +278,7 @@ export class Explosions implements ExplosionApi {
             // water/metal for several frames, then fades. The base deposit is
             // scaled by chargeStrength (reach) and attenuated by chargeFalloff
             // (spread) / chargeDecay (duration).
-            if (Math.random() < 0.4) world.setChargeAt(ni, chargeDeposit(ctx, 8));
+            if (simRandom() < 0.4) world.setChargeAt(ni, chargeDeposit(ctx, 8));
           } else {
             // Metal doesn't shatter — but it CONDUCTS. The blast rings a strong
             // current through it that spreads across the connected metal (and up
@@ -301,19 +302,19 @@ export class Explosions implements ExplosionApi {
         const ni = world.idx(nx, ny);
         const t = world.types[ni];
         // Heat fuses sand at the blast rim into glass
-        if (t === Cell.Sand && Math.random() < 0.4) {
+        if (t === Cell.Sand && simRandom() < 0.4) {
           blastTouched[ni] = 1;
           world.replaceCellAt(ni, Cell.Glass, glassColor());
           continue;
         }
         if (t === Cell.Empty || t === Cell.Metal || !blocksEntity(t) || ctx.physics.cellBlocks(nx, ny))
           continue;
-        if (Math.random() < 0.25) {
+        if (fxRandom() < 0.25) {
           ctx.particles.spawn(
             nx,
             ny,
-            (Math.random() - 0.5) * 2.0,
-            -0.8 - Math.random(),
+            (fxRandom() - 0.5) * 2.0,
+            -0.8 - fxRandom(),
             t,
             world.colors[ni],
             70,

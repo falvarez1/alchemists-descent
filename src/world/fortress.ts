@@ -3,6 +3,7 @@ import type { Ctx } from '@/core/types';
 import { clamp } from '@/core/math';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, fireColor, metalColor, packRGB, stoneColor, wallColor, woodColor } from '@/sim/colors';
+import { simRandom } from '@/core/simRandom';
 
 /**
  * Stamp a complete sandbox fortress centered in the current view. It is not a
@@ -22,7 +23,7 @@ export function spawnFortress(ctx: Ctx): void {
     const i = world.idx(x, y);
     world.types[i] = type;
     world.colors[i] = color ?? (COLOR_FN[type]?.() ?? EMPTY_COLOR);
-    world.life[i] = type === Cell.Fire ? 260 + Math.floor(Math.random() * 160) : 0;
+    world.life[i] = type === Cell.Fire ? 260 + Math.floor(simRandom() * 160) : 0;
     world.charge[i] = 0;
   };
   const fill = (xa: number, ya: number, xb: number, yb: number, type: Cell, color?: () => number): void => {

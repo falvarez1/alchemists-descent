@@ -2,6 +2,7 @@ import { clamp } from '@/core/math';
 import { FLASK_SLOT_COUNT, type Ctx, type FlaskApi, type FlaskBottleState, type FlaskState } from '@/core/types';
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, packRGB } from '@/sim/colors';
+import { entityRandom } from '@/core/simRandom';
 
 /** Cell types the flask can drink: any liquid, plus the loose powders worth carrying. */
 function siphonable(t: number): boolean {
@@ -185,16 +186,16 @@ export class Flask implements FlaskApi {
     // Streaks getting sucked from the siphon area toward the wizard — bumped up
     // (count + glow) so the pull reads clearly against the brighter wand light.
     const colorFn = COLOR_FN[s.material];
-    const streaks = 4 + (Math.random() < 0.5 ? 2 : 0);
+    const streaks = 4 + (entityRandom() < 0.5 ? 2 : 0);
     for (let j = 0; j < streaks; j++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = Math.random() * SIPHON_RADIUS;
+      const a = entityRandom() * Math.PI * 2;
+      const r = entityRandom() * SIPHON_RADIUS;
       const px = mx + Math.cos(a) * r, py = my + Math.sin(a) * r;
       const dx = player.x - px, dy = (player.y - 9) - py;
       const d = Math.hypot(dx, dy) || 1;
-      const spd = 2.6 + Math.random() * 1.4;
+      const spd = 2.6 + entityRandom() * 1.4;
       ctx.particles.spawn(px, py, (dx / d) * spd, (dy / d) * spd, null, colorFn(),
-        12 + Math.floor(Math.random() * 8), { grav: 0, glow: 1.6 });
+        12 + Math.floor(entityRandom() * 8), { grav: 0, glow: 1.6 });
     }
     if (ctx.state.frameCount % 8 === 0) ctx.audio.noiseBurst(0.08, 900, 0.05, true);
     ctx.telemetry.count('flask.siphon.' + this.materialName(ctx, s.material), taken);
@@ -224,8 +225,8 @@ export class Flask implements FlaskApi {
     const n = Math.min(POUR_RATE, s.count);
     const glow = material === Cell.Lava ? 1.4 : material === Cell.Acid ? 0.7 : 0.35;
     for (let j = 0; j < n; j++) {
-      const a = aim + (Math.random() - 0.5) * 0.16; // a little nozzle spread
-      const sp = 2.4 + Math.random() * 1.1; // exit speed (cells/frame)
+      const a = aim + (entityRandom() - 0.5) * 0.16; // a little nozzle spread
+      const sp = 2.4 + entityRandom() * 1.1; // exit speed (cells/frame)
       ctx.particles.spawn(
         tip.x + dirX * 2,
         tip.y + dirY * 2,
@@ -233,7 +234,7 @@ export class Flask implements FlaskApi {
         Math.sin(a) * sp - 0.25, // a touch of lift gives the hose arc
         material,
         colorFn(),
-        55 + Math.floor(Math.random() * 25),
+        55 + Math.floor(entityRandom() * 25),
         { grav: liquid ? 0.11 : 0.15, glow, deposit: true },
       );
       if (!infinite) s.count--;
@@ -291,10 +292,10 @@ export class Flask implements FlaskApi {
     let remaining = bottle.count;
 
     for (let j = 0; j < 8; j++) {
-      const a = Math.random() * Math.PI * 2;
-      const sp = 1.2 + Math.random() * 1.6;
+      const a = entityRandom() * Math.PI * 2;
+      const sp = 1.2 + entityRandom() * 1.6;
       ctx.particles.spawn(ix, iy, Math.cos(a) * sp, Math.sin(a) * sp - 0.6, null, GLASS_COLOR,
-        25 + Math.floor(Math.random() * 15), { glow: 1.5 });
+        25 + Math.floor(entityRandom() * 15), { glow: 1.5 });
     }
     ctx.audio.tone(1400, 300, 0.12, 'triangle', 0.18);
     ctx.audio.noiseBurst(0.12, 2600, 0.12, true);
@@ -305,10 +306,10 @@ export class Flask implements FlaskApi {
     let splash = Math.round(remaining * 0.3);
     remaining -= splash;
     for (; splash > 0; splash--) {
-      const a = Math.random() * Math.PI * 2;
-      const sp = 0.8 + Math.random() * 2.2;
+      const a = entityRandom() * Math.PI * 2;
+      const sp = 0.8 + entityRandom() * 2.2;
       ctx.particles.spawn(ix, iy, Math.cos(a) * sp, Math.sin(a) * sp - 1.0, material, colorFn(),
-        70 + Math.floor(Math.random() * 50));
+        70 + Math.floor(entityRandom() * 50));
     }
     // The rest pools straight into empty cells, ring by expanding ring.
     const world = ctx.world;
@@ -330,10 +331,10 @@ export class Flask implements FlaskApi {
     }
     // Whatever the cave had no room for still leaves the bottle as splash.
     for (; remaining > 0; remaining--) {
-      const a = Math.random() * Math.PI * 2;
-      const sp = 1.0 + Math.random() * 2.5;
+      const a = entityRandom() * Math.PI * 2;
+      const sp = 1.0 + entityRandom() * 2.5;
       ctx.particles.spawn(ix, iy, Math.cos(a) * sp, Math.sin(a) * sp - 1.2, material, colorFn(),
-        80 + Math.floor(Math.random() * 60));
+        80 + Math.floor(entityRandom() * 60));
     }
   }
 

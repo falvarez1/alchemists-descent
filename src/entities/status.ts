@@ -8,6 +8,7 @@
 import type { Ctx, EntityStatus } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { fireColor, packRGB, steamColor } from '@/sim/colors';
+import { entityRandom } from '@/core/simRandom';
 
 /** Statuses/contact effects the grid can inflict (potion timers can't be "immune"-blocked). */
 type ElementalStatus = 'burning' | 'frozen' | 'electrified' | 'wet' | 'oiled' | 'toxic' | 'healium' | 'teleportium';
@@ -95,7 +96,7 @@ export function rollCatchFire(status: EntityStatus, fireCells: number, lavaCells
   if (immune) return false;
   const heat = (fireCells * FIRE_IGNITE_CHANCE + lavaCells * LAVA_IGNITE_CHANCE) * (status.oiled > 0 ? OIL_IGNITE_MULT : 1);
   if (heat <= 0) return status.burning > 0;
-  if (status.burning > 0 || heat >= IGNITE_HOT_ENOUGH || Math.random() < heat) {
+  if (status.burning > 0 || heat >= IGNITE_HOT_ENOUGH || entityRandom() < heat) {
     // staying in the flames refreshes the burn; a fresh catch lights it.
     status.burning = status.oiled > 0 ? 300 : 90;
     return true;
@@ -194,19 +195,19 @@ export function sampleBodyCells(
 
 /** Random cell on the body's AABB perimeter (where flames lick off the skin). */
 function randomEdgeCell(body: StatusBody, halfW: number, h: number): { x: number; y: number } {
-  const side = Math.floor(Math.random() * 4);
-  if (side === 0) return { x: body.x - halfW, y: body.y - Math.floor(Math.random() * h) };
-  if (side === 1) return { x: body.x + halfW, y: body.y - Math.floor(Math.random() * h) };
-  const ex = body.x - halfW + Math.floor(Math.random() * (halfW * 2 + 1));
+  const side = Math.floor(entityRandom() * 4);
+  if (side === 0) return { x: body.x - halfW, y: body.y - Math.floor(entityRandom() * h) };
+  if (side === 1) return { x: body.x + halfW, y: body.y - Math.floor(entityRandom() * h) };
+  const ex = body.x - halfW + Math.floor(entityRandom() * (halfW * 2 + 1));
   return { x: ex, y: side === 2 ? body.y - h + 1 : body.y };
 }
 
 /** Random cell one step OUTSIDE the body's AABB (where shed fire lands). */
 function randomAdjacentCell(body: StatusBody, halfW: number, h: number): { x: number; y: number } {
-  const side = Math.floor(Math.random() * 4);
-  if (side === 0) return { x: body.x - halfW - 1, y: body.y - Math.floor(Math.random() * h) };
-  if (side === 1) return { x: body.x + halfW + 1, y: body.y - Math.floor(Math.random() * h) };
-  const ex = body.x - halfW + Math.floor(Math.random() * (halfW * 2 + 1));
+  const side = Math.floor(entityRandom() * 4);
+  if (side === 0) return { x: body.x - halfW - 1, y: body.y - Math.floor(entityRandom() * h) };
+  if (side === 1) return { x: body.x + halfW + 1, y: body.y - Math.floor(entityRandom() * h) };
+  const ex = body.x - halfW + Math.floor(entityRandom() * (halfW * 2 + 1));
   return { x: ex, y: side === 2 ? body.y - h : body.y + 1 };
 }
 
@@ -244,13 +245,13 @@ export function sampleAndTickStatus(
       st.burning = 0;
       for (let j = 0; j < 3; j++) {
         ctx.particles.spawn(
-          body.x + (Math.random() - 0.5) * halfW * 2,
-          body.y - Math.random() * h,
-          (Math.random() - 0.5) * 0.5,
-          -0.7 - Math.random() * 0.6,
+          body.x + (entityRandom() - 0.5) * halfW * 2,
+          body.y - entityRandom() * h,
+          (entityRandom() - 0.5) * 0.5,
+          -0.7 - entityRandom() * 0.6,
           null,
           steamColor(),
-          18 + Math.floor(Math.random() * 10),
+          18 + Math.floor(entityRandom() * 10),
           { grav: -0.03 },
         );
       }
@@ -265,7 +266,7 @@ export function sampleAndTickStatus(
   // it tops back up (decays to ~1s, re-rolls), so a body stuck to charged metal
   // stays locked the whole time it conducts and convulses ~1-2s after it fades.
   if (sample.charged >= 1 && !immune?.electrified && st.electrified < 60) {
-    st.electrified = 60 + ((Math.random() * 61) | 0); // 60-120 frames @ 60fps
+    st.electrified = 60 + ((entityRandom() * 61) | 0); // 60-120 frames @ 60fps
   }
   // The instant a body goes live (0 -> charged) gets a one-time zap + a crack.
   const justShocked = electrifiedBefore === 0 && st.electrified > 0;
@@ -291,11 +292,11 @@ export function sampleAndTickStatus(
       ctx.particles.spawn(
         e.x,
         e.y,
-        (Math.random() - 0.5) * 0.5,
-        -0.5 - Math.random() * 0.7,
+        (entityRandom() - 0.5) * 0.5,
+        -0.5 - entityRandom() * 0.7,
         null,
         fireColor(),
-        12 + Math.floor(Math.random() * 8),
+        12 + Math.floor(entityRandom() * 8),
         { grav: -0.02, glow: 2.2 },
       );
       // A body alight crackles — soft and globally throttled so a bonfire of foes
@@ -303,28 +304,28 @@ export function sampleAndTickStatus(
       ctx.audio.sizzle?.();
       // ...and now and then it spits a brighter ember that leaps and glows, so a
       // burning body reads HOT at a glance (and a pyre-crit target is unmistakable).
-      if (Math.random() < 0.3) {
+      if (entityRandom() < 0.3) {
         const s = randomEdgeCell(body, halfW, h);
         ctx.particles.spawn(
           s.x,
           s.y,
-          (Math.random() - 0.5) * 0.8,
-          -1.0 - Math.random() * 0.9,
+          (entityRandom() - 0.5) * 0.8,
+          -1.0 - entityRandom() * 0.9,
           null,
-          packRGB(255, 196 + ((Math.random() * 50) | 0), 70),
-          20 + Math.floor(Math.random() * 12),
+          packRGB(255, 196 + ((entityRandom() * 50) | 0), 70),
+          20 + Math.floor(entityRandom() * 12),
           { grav: -0.04, glow: 2.7 },
         );
       }
     }
     // Burning sheds REAL fire — the grid must be able to explain the flames
-    if (Math.random() < 0.02) {
+    if (entityRandom() < 0.02) {
       const a = randomAdjacentCell(body, halfW, h);
       if (world.inBounds(a.x, a.y)) {
         const i = world.idx(a.x, a.y);
         if (world.types[i] === Cell.Empty) {
           world.replaceCellAt(i, Cell.Fire, fireColor());
-          world.life[i] = 25 + Math.floor(Math.random() * 10);
+          world.life[i] = 25 + Math.floor(entityRandom() * 10);
         }
       }
     }
@@ -334,10 +335,10 @@ export function sampleAndTickStatus(
     ctx.particles.spawn(
       e.x,
       e.y,
-      (Math.random() - 0.5) * 0.3,
-      -0.15 - Math.random() * 0.25,
+      (entityRandom() - 0.5) * 0.3,
+      -0.15 - entityRandom() * 0.25,
       null,
-      packRGB(205 + Math.floor(Math.random() * 30), 235, 255),
+      packRGB(205 + Math.floor(entityRandom() * 30), 235, 255),
       16,
       { grav: -0.005, glow: 0.7 },
     );
@@ -345,7 +346,7 @@ export function sampleAndTickStatus(
   if (st.electrified > 0) {
     if (frame % 5 === 0) {
       const e = randomEdgeCell(body, halfW, h);
-      const sa = Math.random() * Math.PI * 2;
+      const sa = entityRandom() * Math.PI * 2;
       ctx.particles.spawn(e.x, e.y, Math.cos(sa) * 1.4, Math.sin(sa) * 1.4, null, packRGB(80, 240, 255), 7, {
         grav: 0,
         glow: 2.6,
@@ -362,17 +363,17 @@ export function sampleAndTickStatus(
   // is soaked (primes Wet-Crit, conducts shock). Kept sparse so a doused crowd
   // doesn't fizz. Enemies had no wet tell at all before this; the player's sprite
   // sheen (PlayerSprite) layers on top.
-  if (st.wet > 0 && frame % 9 === 0 && Math.random() < 0.7) {
+  if (st.wet > 0 && frame % 9 === 0 && entityRandom() < 0.7) {
     const e = randomEdgeCell(body, halfW, h);
-    ctx.particles.spawn(e.x, e.y, (Math.random() - 0.5) * 0.25, 0.2 + Math.random() * 0.4, null,
-      packRGB(120, 185, 240), 13 + Math.floor(Math.random() * 8), { grav: 0.08, glow: 0.45 });
+    ctx.particles.spawn(e.x, e.y, (entityRandom() - 0.5) * 0.25, 0.2 + entityRandom() * 0.4, null,
+      packRGB(120, 185, 240), 13 + Math.floor(entityRandom() * 8), { grav: 0.08, glow: 0.45 });
   }
   // OILED: a dark, glossy slick weeping a heavy drip — reads "coated, flammable"
   // (an ignite waiting to happen, and it burns 5x faster once lit).
   if (st.oiled > 0 && frame % 12 === 0) {
     const e = randomEdgeCell(body, halfW, h);
-    ctx.particles.spawn(e.x, e.y, (Math.random() - 0.5) * 0.2, 0.12 + Math.random() * 0.3, null,
-      packRGB(70, 58, 40), 15 + Math.floor(Math.random() * 8), { grav: 0.05, glow: 0.5 });
+    ctx.particles.spawn(e.x, e.y, (entityRandom() - 0.5) * 0.2, 0.12 + entityRandom() * 0.3, null,
+      packRGB(70, 58, 40), 15 + Math.floor(entityRandom() * 8), { grav: 0.05, glow: 0.5 });
   }
 
   // Shock is now a real, tunable threat (global.shockDamage), with wet amplified
@@ -387,7 +388,7 @@ export function sampleAndTickStatus(
       : sample.healium * HEALIUM_HEAL_PER_CELL * tickFrames * (options.healiumScale ?? 1);
   if (healing > 0 && sample.healiumCells.length > 0) {
     for (const i of sample.healiumCells) {
-      if (Math.random() < 0.12 * tickFrames) world.clearCellAt(i);
+      if (entityRandom() < 0.12 * tickFrames) world.clearCellAt(i);
     }
   }
 

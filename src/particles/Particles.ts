@@ -4,6 +4,7 @@ import { MAX_PARTICLES } from '@/config/constants';
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import { ashColor } from '@/sim/colors';
 import { stainCell } from '@/sim/stains';
+import { particleRandom } from '@/core/simRandom';
 
 /**
  * Ballistic flying particles: explosion debris, gore, sparks, homing coins,
@@ -68,8 +69,8 @@ export class Particles implements ParticlesApi {
     opts?: ParticleOpts,
   ): void {
     for (let i = 0; i < count; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const s = speed * (0.4 + Math.random() * 0.8);
+      const a = particleRandom() * Math.PI * 2;
+      const s = speed * (0.4 + particleRandom() * 0.8);
       this.spawn(
         cx,
         cy,
@@ -77,7 +78,7 @@ export class Particles implements ParticlesApi {
         Math.sin(a) * s - speed * 0.4,
         type,
         colorFn(),
-        60 + Math.floor(Math.random() * 60),
+        60 + Math.floor(particleRandom() * 60),
         opts,
       );
     }
@@ -87,20 +88,20 @@ export class Particles implements ParticlesApi {
    *  visual (type=null, so they never deposit or splash again, no feedback
    *  loop) plus an occasional soft splash sound. */
   private splash(ctx: Ctx, x: number, y: number, color: number): void {
-    const n = 2 + ((Math.random() * 3) | 0);
+    const n = 2 + ((particleRandom() * 3) | 0);
     for (let k = 0; k < n; k++) {
       this.spawn(
         x,
         y - 1,
-        (Math.random() - 0.5) * 1.8,
-        -0.7 - Math.random() * 1.4,
+        (particleRandom() - 0.5) * 1.8,
+        -0.7 - particleRandom() * 1.4,
         null,
         color,
-        16 + ((Math.random() * 14) | 0),
+        16 + ((particleRandom() * 14) | 0),
         { grav: 0.22 },
       );
     }
-    if (Math.random() < 0.12) ctx.audio.splash(0.4 + Math.random() * 0.3);
+    if (particleRandom() < 0.12) ctx.audio.splash(0.4 + particleRandom() * 0.3);
   }
 
   /**
@@ -141,13 +142,13 @@ export class Particles implements ParticlesApi {
           this.coinStreak++;
           ctx.audio.coin(this.coinStreak);
           this.spawn(
-            player.x + (Math.random() - 0.5) * 4,
-            player.y - 3 - Math.random() * 4,
-            (Math.random() - 0.5) * 0.6,
-            -0.5 - Math.random() * 0.5,
+            player.x + (particleRandom() - 0.5) * 4,
+            player.y - 3 - particleRandom() * 4,
+            (particleRandom() - 0.5) * 0.6,
+            -0.5 - particleRandom() * 0.5,
             null,
             0xffe078,
-            8 + ((Math.random() * 6) | 0),
+            8 + ((particleRandom() * 6) | 0),
             { grav: 0.05, glow: 1.4 },
           );
           this.removeAt(i);
@@ -255,7 +256,7 @@ export class Particles implements ParticlesApi {
         }
         // Blood spatter marks the surface it strikes — a red stain soaked into
         // the wall (stainCell only takes on sturdy materials; sand/etc. churn).
-        if (p.type === Cell.Blood) stainCell(world, gx, gy, 118, 14, 20, 0.35 + Math.random() * 0.25);
+        if (p.type === Cell.Blood) stainCell(world, gx, gy, 118, 14, 20, 0.35 + particleRandom() * 0.25);
         // Deposit at last free position behind us
         if (p.type !== null) {
           const blockingDebris = blocksEntity(p.type);
@@ -268,8 +269,8 @@ export class Particles implements ParticlesApi {
               if (world.types[bi] === Cell.Empty || isGas(world.types[bi])) {
                 const deposit = this.depositedType(p);
                 world.replaceCellAt(bi, deposit.type, deposit.color);
-                if (deposit.type === Cell.Fire) world.life[bi] = 18 + Math.floor(Math.random() * 18);
-                if (deposit.type === Cell.Smoke) world.life[bi] = 30 + Math.floor(Math.random() * 30);
+                if (deposit.type === Cell.Fire) world.life[bi] = 18 + Math.floor(particleRandom() * 18);
+                if (deposit.type === Cell.Smoke) world.life[bi] = 30 + Math.floor(particleRandom() * 30);
                 placed = true;
               }
             }

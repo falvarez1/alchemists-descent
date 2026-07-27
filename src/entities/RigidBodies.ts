@@ -7,6 +7,7 @@ import { cellBlocksEntityWithLooseRubble, type CollisionScratch } from '@/sim/co
 import { ashColor, COLOR_FN, fireColor, packRGB, smokeColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { RAPIER } from '@/entities/rapierInit';
+import { entityRandom } from '@/core/simRandom';
 
 /**
  * Rigid-body layer backed by Rapier2D.
@@ -420,7 +421,7 @@ export class RigidBodies implements RigidBodiesApi {
       const vx = (Math.cos(p.aimAngle) * THROW_SPEED + p.vx * 0.5) * PF;
       const vy = (Math.sin(p.aimAngle) * THROW_SPEED + p.vy * 0.5) * PF;
       rb.setLinvel({ x: vx, y: vy }, true);
-      rb.setAngvel((Math.random() - 0.5) * 6, true);
+      rb.setAngvel((entityRandom() - 0.5) * 6, true);
       held.vx = vx / PF;
       held.vy = vy / PF;
       ctx.audio.tone(210, 90, 0.1, 'square', 0.09); // throw
@@ -447,7 +448,7 @@ export class RigidBodies implements RigidBodiesApi {
       const dy = Math.max(Math.abs(y - body.y) - ey, 0);
       if (dx * dx + dy * dy > r2) continue;
       // explosive barrels burn a short fuse then blow; everything else chars to ash
-      body.burnT = (body.payload === 'explosive' ? BARREL_FUSE : BURN_FRAMES) + Math.floor(Math.random() * 40);
+      body.burnT = (body.payload === 'explosive' ? BARREL_FUSE : BURN_FRAMES) + Math.floor(entityRandom() * 40);
       lit++;
     }
     return lit;
@@ -493,9 +494,9 @@ export class RigidBodies implements RigidBodiesApi {
     // telekinetic aura: a few glowing motes orbit the levitated body
     if (ctx.state.frameCount % 2 === 0) {
       const [ex, ey] = bodyExtents(held);
-      const ang = Math.random() * Math.PI * 2;
+      const ang = entityRandom() * Math.PI * 2;
       const rr = Math.max(ex, ey) + 1.5;
-      ctx.particles.spawn(held.x + Math.cos(ang) * rr, held.y + Math.sin(ang) * rr, Math.cos(ang) * 0.25, Math.sin(ang) * 0.25, null, packRGB(150, 205, 255), 12 + ((Math.random() * 8) | 0), { glow: 1.8, grav: 0 });
+      ctx.particles.spawn(held.x + Math.cos(ang) * rr, held.y + Math.sin(ang) * rr, Math.cos(ang) * 0.25, Math.sin(ang) * 0.25, null, packRGB(150, 205, 255), 12 + ((entityRandom() * 8) | 0), { glow: 1.8, grav: 0 });
     }
   }
 
@@ -527,13 +528,13 @@ export class RigidBodies implements RigidBodiesApi {
     // cracking feedback that intensifies as the plank gives way
     if (this.ripCharge % 4 === 0) {
       ctx.particles.spawn(
-        mx + (Math.random() - 0.5) * 5,
-        my + (Math.random() - 0.5) * 3,
-        (Math.random() - 0.5) * 0.4,
-        -0.15 - Math.random() * 0.3,
+        mx + (entityRandom() - 0.5) * 5,
+        my + (entityRandom() - 0.5) * 3,
+        (entityRandom() - 0.5) * 0.4,
+        -0.15 - entityRandom() * 0.3,
         null,
         packRGB(150, 110, 60),
-        12 + ((Math.random() * 8) | 0),
+        12 + ((entityRandom() * 8) | 0),
         { grav: 0.05 },
       );
       ctx.audio.tone(110 + this.ripCharge * 6, 45, 0.04, 'square', 0.05);
@@ -700,7 +701,7 @@ export class RigidBodies implements RigidBodiesApi {
         for (let x = x0; x <= x1; x++) {
           const idx = world.idx(x, y);
           const t = world.types[idx];
-          if ((t === Cell.Empty || t === Cell.Fire || t === Cell.Smoke || t === Cell.Steam) && Math.random() < 0.55) {
+          if ((t === Cell.Empty || t === Cell.Fire || t === Cell.Smoke || t === Cell.Steam) && entityRandom() < 0.55) {
             world.replaceCellAt(idx, gore, tint());
           }
         }
@@ -709,7 +710,7 @@ export class RigidBodies implements RigidBodiesApi {
     // Pieces: smaller crates of the same material, flung away from the blast.
     const ph = Math.max(2.5, half * 0.42);
     for (let i = 0; i < SHATTER_PIECES; i++) {
-      const a = (i / SHATTER_PIECES) * Math.PI * 2 + Math.random();
+      const a = (i / SHATTER_PIECES) * Math.PI * 2 + entityRandom();
       const sx = bx + Math.cos(a) * half * 0.6;
       const sy = by + Math.sin(a) * half * 0.6;
       const piece = this.spawn({ kind: 'box', halfW: ph, halfH: ph }, sx, sy, { material: mat, friction, restitution });
@@ -743,7 +744,7 @@ export class RigidBodies implements RigidBodiesApi {
         for (let x = x0; x <= x1; x++) {
           const idx = world.idx(x, y);
           const t = world.types[idx];
-          if ((t === Cell.Empty || t === Cell.Fire || t === Cell.Smoke || t === Cell.Steam) && Math.random() < 0.6) {
+          if ((t === Cell.Empty || t === Cell.Fire || t === Cell.Smoke || t === Cell.Steam) && entityRandom() < 0.6) {
             world.replaceCellAt(idx, gore, tint());
           }
         }
@@ -902,10 +903,10 @@ export class RigidBodies implements RigidBodiesApi {
       const bl = body.color & 0xff;
       for (let k = 0; k < 3; k++) {
         ctx.particles.spawn(
-          body.x + (Math.random() - 0.5) * 3,
-          body.y + (Math.random() - 0.5) * 3,
-          (Math.random() - 0.5) * 0.3,
-          0.2 + Math.random() * 0.2,
+          body.x + (entityRandom() - 0.5) * 3,
+          body.y + (entityRandom() - 0.5) * 3,
+          (entityRandom() - 0.5) * 0.3,
+          0.2 + entityRandom() * 0.2,
           null,
           packRGB(r, g, bl),
           24,
@@ -928,16 +929,16 @@ export class RigidBodies implements RigidBodiesApi {
         if (!body.burnT) {
           if (this.scanFootprint(world, body, 1, isHotCell)) {
             // explosive barrels burn a short fuse, then blow instead of charring
-            body.burnT = (body.payload === 'explosive' ? BARREL_FUSE : BURN_FRAMES) + Math.floor(Math.random() * 40);
+            body.burnT = (body.payload === 'explosive' ? BARREL_FUSE : BURN_FRAMES) + Math.floor(entityRandom() * 40);
             ctx.audio.noiseBurst(0.1, 480, 0.05);
           }
         } else {
           body.burnT--;
           ctx.particles.spawn(
-            body.x + (Math.random() - 0.5) * 4,
-            body.y + (Math.random() - 0.5) * 4,
-            (Math.random() - 0.5) * 0.4,
-            -0.5 - Math.random() * 0.5,
+            body.x + (entityRandom() - 0.5) * 4,
+            body.y + (entityRandom() - 0.5) * 4,
+            (entityRandom() - 0.5) * 0.4,
+            -0.5 - entityRandom() * 0.5,
             null,
             fireColor(),
             14,
@@ -974,7 +975,7 @@ export class RigidBodies implements RigidBodiesApi {
           rb.setAngvel(rb.angvel() * FROST_DAMP, true);
         }
         if (ctx.state.frameCount % 8 === 0)
-          ctx.particles.spawn(body.x + (Math.random() - 0.5) * 4, body.y + (Math.random() - 0.5) * 4, 0, 0.1, null, packRGB(180, 225, 255), 16, { glow: 1.4 });
+          ctx.particles.spawn(body.x + (entityRandom() - 0.5) * 4, body.y + (entityRandom() - 0.5) * 4, 0, 0.1, null, packRGB(180, 225, 255), 16, { glow: 1.4 });
       }
       if (!body.frozenT || body.frozenT <= 0) body.frostMomentumGrace = undefined;
 
@@ -1031,12 +1032,12 @@ export class RigidBodies implements RigidBodiesApi {
     const n = Math.min(48, Math.floor(5 + speed * ex));
     const color = COLOR_FN[Cell.Water];
     for (let k = 0; k < n; k++) {
-      const ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.7; // up + spread
-      const sp = 0.7 + Math.random() * speed * 0.6;
+      const ang = -Math.PI / 2 + (entityRandom() - 0.5) * 1.7; // up + spread
+      const sp = 0.7 + entityRandom() * speed * 0.6;
       // erupt ABOVE the body (over air) so droplets arc up and read as a splash
       // instead of being absorbed the instant they spawn inside the pool.
       ctx.particles.spawn(
-        body.x + (Math.random() * 2 - 1) * ex,
+        body.x + (entityRandom() * 2 - 1) * ex,
         body.y - ex,
         Math.cos(ang) * sp,
         Math.sin(ang) * sp - 0.6,
@@ -1070,13 +1071,13 @@ export class RigidBodies implements RigidBodiesApi {
   private shedFire(world: World, body: RigidBody): void {
     const [ex, ey] = bodyExtents(body);
     for (let k = 0; k < 2; k++) {
-      const x = Math.floor(body.x + (Math.random() * 2 - 1) * ex);
-      const y = Math.floor(body.y - ey * 0.4 + Math.random() * (ey * 1.6 + 2));
+      const x = Math.floor(body.x + (entityRandom() * 2 - 1) * ex);
+      const y = Math.floor(body.y - ey * 0.4 + entityRandom() * (ey * 1.6 + 2));
       if (!world.inBounds(x, y)) continue;
       const idx = world.idx(x, y);
       if (world.types[idx] === Cell.Empty) {
         world.replaceCellAt(idx, Cell.Fire, fireColor());
-        world.life[idx] = 45 + Math.floor(Math.random() * 45);
+        world.life[idx] = 45 + Math.floor(entityRandom() * 45);
       }
     }
   }
@@ -1093,7 +1094,7 @@ export class RigidBodies implements RigidBodiesApi {
       for (let x = x0; x <= x1; x++) {
         const idx = world.idx(x, y);
         if (world.types[idx] !== Cell.Empty) continue;
-        const roll = Math.random();
+        const roll = entityRandom();
         if (roll < 0.55) {
           world.replaceCellAt(idx, Cell.Ash, ashColor());
         } else if (roll < 0.68) {

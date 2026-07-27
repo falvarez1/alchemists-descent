@@ -1,5 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { blocksEntity, Cell, isConductor, isSolid } from '@/sim/CellType';
+import { fxRandom, simRandom } from '@/core/simRandom';
 
 /**
  * The charge a strike injects, scaled by the live `chargeStrength` (reach) knob.
@@ -146,10 +147,10 @@ export function updateElectricalGrid(ctx: Ctx): void {
           const ni = nx + ny * w.width;
           const tt = w.types[ni];
           if (tt === Cell.Metal || !blocksEntity(tt)) continue; // metal conducts; skip air/growth
-          if (Math.random() < bite) {
+          if (simRandom() < bite) {
             // a debris fleck of the spalled rock + a hot electric spark, then it's gone
-            ctx.particles.spawn(nx + 0.5, ny + 0.5, (Math.random() - 0.5) * 1.4, -0.5 - Math.random(), tt, w.colors[ni], 55, { glow: 0.3 });
-            ctx.particles.spawn(nx + 0.5, ny + 0.5, (Math.random() - 0.5) * 0.9, -0.3 - Math.random() * 0.5, null, SPARK_COLOR, 10, { glow: 1.6 });
+            ctx.particles.spawn(nx + 0.5, ny + 0.5, (fxRandom() - 0.5) * 1.4, -0.5 - fxRandom(), tt, w.colors[ni], 55, { glow: 0.3 });
+            ctx.particles.spawn(nx + 0.5, ny + 0.5, (fxRandom() - 0.5) * 0.9, -0.3 - fxRandom() * 0.5, null, SPARK_COLOR, 10, { glow: 1.6 });
             w.clearCellAt(ni);
           }
         }

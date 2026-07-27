@@ -10,6 +10,7 @@ import {
   setDoorCells,
   setValveCells,
 } from '@/core/mechanismFactories';
+import { entityRandom } from '@/core/simRandom';
 export {
   BUOY_LATCH_FRAMES,
   DEFAULT_TRIGGER_LATCH_FRAMES,
@@ -258,12 +259,12 @@ export class Mechanisms implements MechanismsApi {
           }
         } else if (ctx.state.frameCount % 6 === 0) {
           // keep it burning: re-seed a flame in the bowl
-          const X = m.x + Math.floor(Math.random() * 3) - 1,
-            Y = m.y - 1 - Math.floor(Math.random() * 2);
+          const X = m.x + Math.floor(entityRandom() * 3) - 1,
+            Y = m.y - 1 - Math.floor(entityRandom() * 2);
           if (world.inBounds(X, Y) && world.types[world.idx(X, Y)] === Cell.Empty) {
             const i = world.idx(X, Y);
             world.replaceCellAt(i, Cell.Fire, fireColor());
-            world.life[i] = 18 + Math.floor(Math.random() * 22);
+            world.life[i] = 18 + Math.floor(entityRandom() * 22);
           }
         }
       }
@@ -297,12 +298,12 @@ export class Mechanisms implements MechanismsApi {
           const i = world.idx(X, Y);
           if (world.types[i] === Cell.Metal) {
             world.clearCellAt(i);
-            if (Math.random() < 0.25) {
+            if (entityRandom() < 0.25) {
               ctx.particles.spawn(
                 X,
                 Y,
-                (Math.random() - 0.5) * 0.8,
-                -0.3 - Math.random() * 0.5,
+                (entityRandom() - 0.5) * 0.8,
+                -0.3 - entityRandom() * 0.5,
                 null,
                 packRGB(150, 160, 180),
                 26,
@@ -346,8 +347,8 @@ export class Mechanisms implements MechanismsApi {
           ctx.particles.spawn(
             dx2,
             dy2,
-            (Math.random() - 0.5) * 1.4,
-            -0.8 - Math.random(),
+            (entityRandom() - 0.5) * 1.4,
+            -0.8 - entityRandom(),
             null,
             packRGB(160, 255, 190),
             26,
@@ -375,8 +376,8 @@ export class Mechanisms implements MechanismsApi {
           if (world.types[i] !== Cell.Empty) continue;
           const fn = COLOR_FN[em.cell];
           world.replaceCellAt(i, em.cell, fn ? fn() : EMPTY_COLOR);
-          if (em.cell === Cell.Fire) world.life[i] = 15 + Math.floor(Math.random() * 30);
-          else if (em.cell === Cell.Smoke) world.life[i] = 30 + Math.floor(Math.random() * 40);
+          if (em.cell === Cell.Fire) world.life[i] = 15 + Math.floor(entityRandom() * 30);
+          else if (em.cell === Cell.Smoke) world.life[i] = 30 + Math.floor(entityRandom() * 40);
         }
       }
     }
@@ -474,12 +475,12 @@ export class Mechanisms implements MechanismsApi {
         const i = world.idx(X, Y);
         if (world.types[i] === mat) {
           world.clearCellAt(i);
-          if (Math.random() < 0.25) {
+          if (entityRandom() < 0.25) {
             ctx.particles.spawn(
               X,
               Y,
-              (Math.random() - 0.5) * 0.7,
-              -0.2 - Math.random() * 0.4,
+              (entityRandom() - 0.5) * 0.7,
+              -0.2 - entityRandom() * 0.4,
               null,
               packRGB(150, 145, 125),
               22,
@@ -584,7 +585,7 @@ export class Mechanisms implements MechanismsApi {
           const i = world.idx(X, Y);
           if (world.types[i] !== Cell.Empty) continue;
           world.replaceCellAt(i, Cell.Fire, fireColor());
-          world.life[i] = 18 + Math.floor(Math.random() * 24);
+          world.life[i] = 18 + Math.floor(entityRandom() * 24);
         }
       }
       // also light any flammable body sitting on the target (a crate/barrel the
@@ -623,8 +624,8 @@ export class Mechanisms implements MechanismsApi {
       if (old) ctx.rigidBodies.remove(old);
     }
     const MATS: BodyMaterial[] = ['wood', 'wood', 'stone', 'metal']; // wood-weighted mix
-    const mat = MATS[Math.floor(Math.random() * MATS.length)];
-    const half = Math.random() < 0.28 ? 5 : 3; // mostly small, the odd large
+    const mat = MATS[Math.floor(entityRandom() * MATS.length)];
+    const half = entityRandom() < 0.28 ? 5 : 3; // mostly small, the odd large
     const body = ctx.rigidBodies.spawn(
       { kind: 'box', halfW: half, halfH: half },
       m.x,
@@ -633,9 +634,9 @@ export class Mechanisms implements MechanismsApi {
         material: mat,
         friction: 0.6,
         restitution: 0.2,
-        vx: (Math.random() - 0.5) * 0.8,
+        vx: (entityRandom() - 0.5) * 0.8,
         vy: 0.6,
-        va: (Math.random() - 0.5) * 0.4,
+        va: (entityRandom() - 0.5) * 0.4,
       },
     );
     bodies.push(body);
@@ -660,12 +661,12 @@ export class Mechanisms implements MechanismsApi {
         const i = world.idx(bx, by);
         if (world.types[i] !== mat) continue;
         world.clearCellAt(i);
-        if (Math.random() < 0.3) {
+        if (entityRandom() < 0.3) {
           ctx.particles.spawn(
             bx,
             by,
-            (Math.random() - 0.5) * 1.2,
-            -0.4 - Math.random() * 0.8,
+            (entityRandom() - 0.5) * 1.2,
+            -0.4 - entityRandom() * 0.8,
             null,
             fn ? fn() : packRGB(150, 150, 150),
             24,
@@ -717,8 +718,8 @@ export class Mechanisms implements MechanismsApi {
       ctx.particles.spawn(
         x0 + (x1 - x0) * t,
         y0 + (y1 - y0) * t,
-        (Math.random() - 0.5) * 0.2,
-        (Math.random() - 0.5) * 0.2,
+        (entityRandom() - 0.5) * 0.2,
+        (entityRandom() - 0.5) * 0.2,
         null,
         packRGB(252, 211, 77),
         10 + k * 2, // staggered lifetimes: the spark visibly TRAVELS

@@ -6,7 +6,7 @@ import { PROJECTILE_MODS, TRIGGERED, TRIGGER_SOURCE_SPREAD } from '@/combat/wand
 import type { CastActionExecutionContext, Ctx, Enemy, Projectile } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
-import { vi } from 'vitest';
+import { mockRandom, restoreRandom } from './helpers/randomSeam';
 
 describe('projectile trigger payloads', () => {
   it('routes terminal impacts through the wand executor', () => {
@@ -540,7 +540,7 @@ describe('projectile trigger payloads', () => {
       hostile: false,
     };
     PROJECTILE_MODS.set(projectile, { waterTrailBudget: 1, waterTrailCadence: 2 });
-    const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
     const ctx = {
       world,
       projectiles: [projectile],
@@ -584,7 +584,7 @@ describe('projectile trigger payloads', () => {
     try {
       new Projectiles().update(ctx);
     } finally {
-      random.mockRestore();
+      restoreRandom();
     }
 
     const waterCells = Array.from(world.types).filter((t) => t === Cell.Water).length;
@@ -606,12 +606,12 @@ describe('projectile trigger payloads', () => {
       hostile: false,
     };
     PROJECTILE_MODS.set(projectile, { oilTrailBudget: 1, oilTrailCadence: 2 });
-    const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
 
     try {
       new Projectiles().update(modifierCtx(world, projectile, { frameCount: 2 }));
     } finally {
-      random.mockRestore();
+      restoreRandom();
     }
 
     const oilCells = Array.from(world.types).filter((t) => t === Cell.Oil).length;
@@ -949,7 +949,7 @@ describe('projectile trigger payloads', () => {
   });
 
   it('advances large blackhole terrain slices across repeated sim substeps in the same render frame', () => {
-    const random = vi.spyOn(Math, 'random').mockReturnValue(1);
+    mockRandom().mockReturnValue(1);
     try {
       const world = new World(180, 180);
       world.types.fill(Cell.Wall);
@@ -979,7 +979,7 @@ describe('projectile trigger payloads', () => {
       expect(projectile.age).toBe(2);
       expect(countCells(world, Cell.Empty)).toBeGreaterThan(afterFirst);
     } finally {
-      random.mockRestore();
+      restoreRandom();
     }
   });
 });

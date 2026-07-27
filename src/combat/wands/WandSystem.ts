@@ -20,6 +20,7 @@ import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
 import { buildCardOffer, collectOwnedCards, DEPTH_PROJECTILE_POOL, WAYSTONE_MOD_POOL } from './rewardPools';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES } from '@/combat/wands/wandCatalog';
+import { entityRandom } from '@/core/simRandom';
 export { REVIEW_WAND_LOADOUTS, STARTING_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/wandCatalog';
 
 /**
@@ -109,7 +110,7 @@ function startingCollection(): CardId[] {
 function shuffledCards(cards: readonly CardId[]): CardId[] {
   const out = [...cards];
   for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(entityRandom() * (i + 1));
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
@@ -170,7 +171,7 @@ export class WandSystem implements WandsApi {
   constructor(private readonly ctx: Ctx) {
     // Card economy v1: the world hands out cards through existing events.
     this.eventDisposers.push(ctx.events.on('waystoneLit', () => {
-      const pool = Math.random() < WAYSTONE_MOD_BIAS ? WAYSTONE_MOD_POOL : DEPTH_PROJECTILE_POOL;
+      const pool = entityRandom() < WAYSTONE_MOD_BIAS ? WAYSTONE_MOD_POOL : DEPTH_PROJECTILE_POOL;
       this.grantRandomCardFromPool(pool);
     }));
     this.eventDisposers.push(ctx.events.on('levelChanged', ({ depth }) => {
@@ -371,7 +372,7 @@ export class WandSystem implements WandsApi {
       ? options.sourceSpread
       : frame.spread;
     const jitter = (): number =>
-      godMode ? angle : angle + (Math.random() * 2 - 1) * (sourceSpread + action.spreadAdd);
+      godMode ? angle : angle + (entityRandom() * 2 - 1) * (sourceSpread + action.spreadAdd);
     const targetPoint = (): { x: number; y: number } => options.target ?? ctx.input.mouse;
     const sp = ctx.params.spells;
     ctx.telemetry.count('card.cast.' + action.card);
@@ -382,7 +383,7 @@ export class WandSystem implements WandsApi {
       // extras for dmgMul > 1 at a touch more spread.
       const count = Math.max(1, Math.round(action.dmgMul));
       for (let n = 0; n < count; n++) {
-        const a = jitter() + (n > 0 && !godMode ? (Math.random() * 2 - 1) * STACK_JITTER : 0);
+        const a = jitter() + (n > 0 && !godMode ? (entityRandom() * 2 - 1) * STACK_JITTER : 0);
         const v = sp.bolt.velocityForce! * action.speedMul;
         const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'bolt', life: PROJECTILE_LIFE.bolt, age: 0, charging: false, hostile: false };
         ctx.projectiles.push(p);
@@ -441,20 +442,20 @@ export class WandSystem implements WandsApi {
       // Stream card: a spray of REAL acid particles that pool where they land.
       const count = 4 + Math.max(0, Math.round(action.dmgMul) - 1) * 2;
       for (let j = 0; j < count; j++) {
-        const a = jitter() + (Math.random() - 0.5) * 0.3;
-        const spd = (3.0 + Math.random() * 2.2) * action.speedMul;
+        const a = jitter() + (entityRandom() - 0.5) * 0.3;
+        const spd = (3.0 + entityRandom() * 2.2) * action.speedMul;
         ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd, Cell.Acid, acidColor(),
-          30 + Math.floor(Math.random() * 20), { grav: 0.05, glow: 0.8 });
+          30 + Math.floor(entityRandom() * 20), { grav: 0.05, glow: 0.8 });
       }
       if (ctx.state.frameCount % 6 === 0) ctx.audio.noiseBurst(0.1, 1400, 0.07, true);
     } else if (action.card === 'cryojet') {
       // Stream card: real nitrogen cells, tuned for bridge-making over pools.
       const count = 5 + Math.max(0, Math.round(action.dmgMul) - 1) * 3;
       for (let j = 0; j < count; j++) {
-        const a = jitter() + (Math.random() - 0.5) * 0.24;
-        const spd = (3.1 + Math.random() * 2.1) * action.speedMul;
+        const a = jitter() + (entityRandom() - 0.5) * 0.24;
+        const spd = (3.1 + entityRandom() * 2.1) * action.speedMul;
         ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd - 0.12, Cell.Nitrogen, nitrogenColor(),
-          34 + Math.floor(Math.random() * 22), { grav: 0.08, glow: 0.9, deposit: true });
+          34 + Math.floor(entityRandom() * 22), { grav: 0.08, glow: 0.9, deposit: true });
       }
       if (ctx.state.frameCount % 6 === 0) ctx.audio.noiseBurst(0.08, 1900, 0.06, true);
     } else if (action.card === 'aquajet') {
@@ -462,10 +463,10 @@ export class WandSystem implements WandsApi {
       // the sim), flood basins, and leave foes WET — priming critwet / electric.
       const count = 5 + Math.max(0, Math.round(action.dmgMul) - 1) * 3;
       for (let j = 0; j < count; j++) {
-        const a = jitter() + (Math.random() - 0.5) * 0.26;
-        const spd = (2.8 + Math.random() * 2.0) * action.speedMul;
+        const a = jitter() + (entityRandom() - 0.5) * 0.26;
+        const spd = (2.8 + entityRandom() * 2.0) * action.speedMul;
         ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd, Cell.Water, waterColor(),
-          34 + Math.floor(Math.random() * 22), { grav: 0.12, glow: 0.35, deposit: true });
+          34 + Math.floor(entityRandom() * 22), { grav: 0.12, glow: 0.35, deposit: true });
       }
       if (ctx.state.frameCount % 6 === 0) ctx.audio.splash(0.5);
     } else if (action.card === 'frostshard') {
@@ -573,11 +574,11 @@ export class WandSystem implements WandsApi {
         ctx.particles.spawn(
           x,
           y - 1,
-          (Math.random() - 0.5) * 3.2 * action.speedMul,
-          -1.4 - Math.random() * 2.2,
+          (entityRandom() - 0.5) * 3.2 * action.speedMul,
+          -1.4 - entityRandom() * 2.2,
           Cell.Ember,
           emberColor(),
-          100 + Math.floor(Math.random() * 80),
+          100 + Math.floor(entityRandom() * 80),
           { grav: 0.06, glow: 1.5 },
         );
       }
@@ -613,10 +614,10 @@ export class WandSystem implements WandsApi {
   ): void {
     const flame = ctx.params.spells.flame;
     for (let j = 0; j < count; j++) {
-      const a = angle + (Math.random() - 0.5) * ((flame.spread ?? 0.28) + action.spreadAdd);
-      const spd = (3.2 + Math.random() * 2.2) * action.speedMul;
+      const a = angle + (entityRandom() - 0.5) * ((flame.spread ?? 0.28) + action.spreadAdd);
+      const spd = (3.2 + entityRandom() * 2.2) * action.speedMul;
       ctx.particles.spawn(x, y, Math.cos(a) * spd + carryVx, Math.sin(a) * spd, Cell.Fire, fireColor(),
-        14 + Math.floor(Math.random() * 12), { grav: -0.015, glow: 2.2 });
+        14 + Math.floor(entityRandom() * 12), { grav: -0.015, glow: 2.2 });
     }
     // The flame CONE burns foes it ENGULFS — direct scorch + sets them ablaze, so
     // the Flame Jet is a weapon, not just a terrain tool. (The fast fire stream

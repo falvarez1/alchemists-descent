@@ -15,6 +15,7 @@ import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '
 import { chargeDeposit } from '@/sim/electrical';
 import { probeHollow } from '@/sim/hollow';
 import type { World } from '@/sim/World';
+import { entityRandom } from '@/core/simRandom';
 
 /**
  * Per-type impulse a player projectile imparts to a rigid body it strikes —
@@ -105,7 +106,7 @@ function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
       const t = world.types[ci];
       if (t === Cell.Water) {
         world.replaceCellAt(ci, Cell.Ice, iceColor());
-      } else if (t === Cell.Empty && Math.random() < 0.35) {
+      } else if (t === Cell.Empty && entityRandom() < 0.35) {
         // thin rime on solid-adjacent air cells
         if (hasSolidNeighbor(world, X, Y)) {
           world.replaceCellAt(ci, Cell.Ice, iceColor());
@@ -244,7 +245,7 @@ const SHATTER_CRIT_FX: ElementalCritFx = {
   toneFreq: 1640, toneEnd: 100, toneDur: 0.16, toneType: 'triangle', toneVol: 0.1,
 };
 const PYRE_CRIT_FX: ElementalCritFx = {
-  burst: 13, color: () => packRGB(255, 150 + ((Math.random() * 60) | 0), 40), speed: 2.1, glow: 2.4, grav: -0.04,
+  burst: 13, color: () => packRGB(255, 150 + ((entityRandom() * 60) | 0), 40), speed: 2.1, glow: 2.4, grav: -0.04,
   toneFreq: 380, toneEnd: 170, toneDur: 0.13, toneType: 'sawtooth', toneVol: 0.09,
 };
 
@@ -261,7 +262,7 @@ function elementalCritFeedback(ctx: Ctx, x: number, y: number, fx: ElementalCrit
     const a = (i / RING) * Math.PI * 2;
     const sp = fx.speed * 1.4;
     ctx.particles.spawn(x, y - 5, Math.cos(a) * sp, Math.sin(a) * sp, null, fx.color(),
-      11 + ((Math.random() * 6) | 0), { grav: 0, glow: fx.glow });
+      11 + ((entityRandom() * 6) | 0), { grav: 0, glow: fx.glow });
   }
   ctx.fx.bloomKick = Math.min(1.1, ctx.fx.bloomKick + 0.5);
   ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.008, 0.05);
@@ -403,8 +404,8 @@ function shedTrail(
   const colorFn = COLOR_FN[cell] ?? (() => EMPTY_COLOR);
   let placed = 0;
   for (let d = 0; d < 2 && placed < budget; d++) {
-    const tx = Math.floor(p.x - (p.vx / spd) * 2 + (Math.random() - 0.5) * 2);
-    const ty = Math.floor(p.y - (p.vy / spd) * 2 + (Math.random() - 0.5) * 2);
+    const tx = Math.floor(p.x - (p.vx / spd) * 2 + (entityRandom() - 0.5) * 2);
+    const ty = Math.floor(p.y - (p.vy / spd) * 2 + (entityRandom() - 0.5) * 2);
     if (!world.inBounds(tx, ty) || pointOverlapsPlayer(ctx, tx, ty)) continue;
     const ti = world.idx(tx, ty);
     const t = world.types[ti];
@@ -588,7 +589,7 @@ export class Projectiles implements ProjectilesApi {
       const t = world.types[ci];
       if (t === Cell.Empty || t === Cell.Metal) continue;
       const d = Math.sqrt(dSq) || 1;
-      if (Math.random() < 0.35) {
+      if (entityRandom() < 0.35) {
         ctx.particles.spawn(
           nx,
           ny,
@@ -607,14 +608,14 @@ export class Projectiles implements ProjectilesApi {
     // Converging ring of violet light
     for (let i = 0; i < 26; i++) {
       const a = (i / 26) * Math.PI * 2;
-      const rr = R * (0.8 + Math.random() * 0.4);
+      const rr = R * (0.8 + entityRandom() * 0.4);
       ctx.particles.spawn(
         cx + Math.cos(a) * rr,
         cy + Math.sin(a) * rr,
         -Math.cos(a) * 3.2,
         -Math.sin(a) * 3.2,
         null,
-        packRGB((190 + Math.random() * 60) | 0, 80, 255),
+        packRGB((190 + entityRandom() * 60) | 0, 80, 255),
         40,
         { grav: 0, glow: 2.8 },
       );
@@ -651,13 +652,13 @@ export class Projectiles implements ProjectilesApi {
             world.clearCellAt(ci);
           } else if (t === Cell.Wall) {
             // bedrock shears loose and streams toward the singularity
-            if (Math.random() < 0.05) {
+            if (entityRandom() < 0.05) {
               const d = Math.sqrt(dSq) || 1;
               ctx.particles.spawn(
                 px,
                 py,
-                (-dx / d) * (1.2 + Math.random() * 1.6),
-                (-dy / d) * (1.2 + Math.random() * 1.6),
+                (-dx / d) * (1.2 + entityRandom() * 1.6),
+                (-dy / d) * (1.2 + entityRandom() * 1.6),
                 null,
                 world.colors[ci],
                 90,
@@ -665,7 +666,7 @@ export class Projectiles implements ProjectilesApi {
               );
               world.clearCellAt(ci);
             }
-          } else if (Math.random() < 0.55) {
+          } else if (entityRandom() < 0.55) {
             const stepX = px - Math.sign(dx),
               stepY = py - Math.sign(dy);
             if (world.inBounds(stepX, stepY)) {
@@ -770,8 +771,8 @@ export class Projectiles implements ProjectilesApi {
           ctx.particles.spawn(
             p.x,
             p.y,
-            (Math.random() - 0.5) * 0.25,
-            (Math.random() - 0.5) * 0.25,
+            (entityRandom() - 0.5) * 0.25,
+            (entityRandom() - 0.5) * 0.25,
             null,
             packRGB(120, 230, 255),
             12,
@@ -801,8 +802,8 @@ export class Projectiles implements ProjectilesApi {
         const spd = Math.hypot(p.vx, p.vy) || 1;
         const colorFn = COLOR_FN[infused.material];
         for (let d = 0; d < 2 && infused.budget > 0; d++) {
-          const tx = Math.floor(p.x - (p.vx / spd) * 2 + (Math.random() - 0.5) * 2);
-          const ty = Math.floor(p.y - (p.vy / spd) * 2 + (Math.random() - 0.5) * 2);
+          const tx = Math.floor(p.x - (p.vx / spd) * 2 + (entityRandom() - 0.5) * 2);
+          const ty = Math.floor(p.y - (p.vy / spd) * 2 + (entityRandom() - 0.5) * 2);
           if (!world.inBounds(tx, ty)) continue;
           const ti = world.idx(tx, ty);
           const t = world.types[ti];
@@ -884,7 +885,7 @@ export class Projectiles implements ProjectilesApi {
               if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
               if (shatterCrit) shatterCritFeedback(ctx, e.x, e.y);
               if (pyreCrit) pyreCritFeedback(ctx, e.x, e.y);
-              ctx.audio.tone(900 + Math.random() * 300, 130, 0.12, 'sine', 0.08);
+              ctx.audio.tone(900 + entityRandom() * 300, 130, 0.12, 'sine', 0.08);
             }
           }
           // freeze water in the wake
@@ -895,7 +896,7 @@ export class Projectiles implements ProjectilesApi {
               if (
                 world.inBounds(wx2, wy2) &&
                 world.types[world.idx(wx2, wy2)] === Cell.Water &&
-                Math.random() < 0.6
+                entityRandom() < 0.6
               ) {
                 const wi = world.idx(wx2, wy2);
                 world.replaceCellAt(wi, Cell.Ice, iceColor());
@@ -903,11 +904,11 @@ export class Projectiles implements ProjectilesApi {
             }
           }
           // frosty contrail
-          if (Math.random() < 0.5)
+          if (entityRandom() < 0.5)
             ctx.particles.spawn(
               p.x,
               p.y,
-              (Math.random() - 0.5) * 0.4,
+              (entityRandom() - 0.5) * 0.4,
               -0.2,
               null,
               packRGB(190, 235, 255),
@@ -1036,8 +1037,8 @@ export class Projectiles implements ProjectilesApi {
                 ctx.particles.spawn(
                   gx,
                   gy,
-                  (Math.random() - 0.5) * 1.4,
-                  -0.4 - Math.random() * 0.9,
+                  (entityRandom() - 0.5) * 1.4,
+                  -0.4 - entityRandom() * 0.9,
                   null,
                   packRGB(145, 145, 152),
                   30,
@@ -1201,8 +1202,8 @@ export class Projectiles implements ProjectilesApi {
         ctx.particles.spawn(
           p.x,
           p.y,
-          (Math.random() - 0.5) * 0.2,
-          (Math.random() - 0.5) * 0.2,
+          (entityRandom() - 0.5) * 0.2,
+          (entityRandom() - 0.5) * 0.2,
           null,
           packRGB(255, 110, 20),
           9,
@@ -1213,11 +1214,11 @@ export class Projectiles implements ProjectilesApi {
         ctx.particles.spawn(
           p.x,
           p.y,
-          (Math.random() - 0.5) * 0.4,
-          (Math.random() - 0.5) * 0.4,
+          (entityRandom() - 0.5) * 0.4,
+          (entityRandom() - 0.5) * 0.4,
           Cell.Fire,
           fireColor(),
-          16 + Math.floor(Math.random() * 10),
+          16 + Math.floor(entityRandom() * 10),
           { grav: -0.01, glow: 2.4 },
         );
       }

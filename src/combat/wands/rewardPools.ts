@@ -1,4 +1,5 @@
 import type { CardId, CardKind, Ctx, WandsApi } from '@/core/types';
+import { entityRandom } from '@/core/simRandom';
 import { CARD_DEFS } from './cards';
 export {
   COMBO_SETUP_POOL,
@@ -28,7 +29,7 @@ export function buildCardOffer(
   options: { count?: number; preferred?: readonly CardId[]; rng?: () => number; ensureKind?: CardKind | readonly CardKind[] } = {},
 ): CardId[] {
   const count = Math.max(1, Math.floor(options.count ?? 3));
-  const rng = options.rng ?? Math.random;
+  const rng = options.rng ?? entityRandom;
   const result: CardId[] = [];
   const preferredSet = new Set(options.preferred ?? []);
   const add = (id: CardId): void => {

@@ -16,6 +16,7 @@ import { makePickup } from '@/core/pickupDefs';
 import { resetCombatTransients } from '@/core/runtimeState';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
+import { entityRandom } from '@/core/simRandom';
 
 const REVIEW_STATUS_FRAMES = 3600;
 const CLIMB_FACE_REACHES = [PLAYER_HALF_W + 1, PLAYER_HALF_W + 2, PLAYER_HALF_W + 3, PLAYER_HALF_W + 4];
@@ -406,8 +407,8 @@ export class PlayerControl implements PlayerControlApi {
       ctx.particles.spawn(
         x,
         y,
-        -side * (0.25 + Math.random() * 0.35),
-        -0.25 - Math.random() * 0.35,
+        -side * (0.25 + entityRandom() * 0.35),
+        -0.25 - entityRandom() * 0.35,
         null,
         world.colors[i],
         32,
@@ -514,12 +515,12 @@ export class PlayerControl implements PlayerControlApi {
       return t === Cell.Empty || isGas(t);
     };
     for (let s = 0; s < 5; s++) {
-      const gx = Math.round(p.x + (Math.random() - 0.5) * 2 * R);
-      const gy = Math.round(p.y - 9 + (Math.random() - 0.5) * 2 * R);
+      const gx = Math.round(p.x + (entityRandom() - 0.5) * 2 * R);
+      const gy = Math.round(p.y - 9 + (entityRandom() - 0.5) * 2 * R);
       if (!w.inBounds(gx, gy) || w.types[w.idx(gx, gy)] !== Cell.RawOre) continue;
       if (!(open(gx - 1, gy) || open(gx + 1, gy) || open(gx, gy - 1) || open(gx, gy + 1))) continue;
-      if (Math.random() < 0.3) {
-        ctx.particles.spawn(gx, gy, (Math.random() - 0.5) * 0.3, -0.15, null, packRGB(255, 222, 130), 12, { glow: 1.9, grav: -0.012 });
+      if (entityRandom() < 0.3) {
+        ctx.particles.spawn(gx, gy, (entityRandom() - 0.5) * 0.3, -0.15, null, packRGB(255, 222, 130), 12, { glow: 1.9, grav: -0.012 });
       }
     }
   }
@@ -781,7 +782,7 @@ export class PlayerControl implements PlayerControlApi {
         if (g <= 0) continue;
         const col = world.colors[ci];
         world.clearCellAt(ci);
-        ctx.particles.spawn(cx + 0.5, cy + 0.5, dirX * (2 + g * 4) + (Math.random() - 0.5) * 1.2, dirY * (2 + g * 4) - 0.5 - Math.random(), t, col, 36 + ((Math.random() * 24) | 0), { grav: isGas(t) ? -0.03 : 0.06, glow: t === Cell.Ember ? 1.2 : 0 });
+        ctx.particles.spawn(cx + 0.5, cy + 0.5, dirX * (2 + g * 4) + (entityRandom() - 0.5) * 1.2, dirY * (2 + g * 4) - 0.5 - entityRandom(), t, col, 36 + ((entityRandom() * 24) | 0), { grav: isGas(t) ? -0.03 : 0.06, glow: t === Cell.Ember ? 1.2 : 0 });
         blown++;
       }
     }
@@ -812,7 +813,7 @@ export class PlayerControl implements PlayerControlApi {
 
     // Feedback: a dust arc along the kick + a low thud + an airy whoosh.
     for (let k = 0; k < 8; k++) {
-      const spread = a + (Math.random() - 0.5) * lp.kickArc * 1.6;
+      const spread = a + (entityRandom() - 0.5) * lp.kickArc * 1.6;
       ctx.particles.spawn(ox + dirX * 4, oy + dirY * 4, Math.cos(spread) * 1.6, Math.sin(spread) * 1.6, null, packRGB(190, 178, 158), 12, { grav: 0.05 });
     }
     ctx.audio.tone(150, 90, 0.14, 'square', 0.09);
@@ -974,11 +975,11 @@ export class PlayerControl implements PlayerControlApi {
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
       const piles = Math.min(spill, 7, 3 + Math.floor(spill / 60));
       for (let i = 0; i < piles; i++) {
-        const gp = makePickup('goldpile', player.x + (Math.random() - 0.5) * 10, player.y - 6, {
+        const gp = makePickup('goldpile', player.x + (entityRandom() - 0.5) * 10, player.y - 6, {
           amount: Math.floor(spill / piles) + (i === 0 ? spill % piles : 0),
         });
-        gp.vx = (Math.random() - 0.5) * 2.2;
-        gp.vy = -1.2 - Math.random() * 1.4;
+        gp.vx = (entityRandom() - 0.5) * 2.2;
+        gp.vy = -1.2 - entityRandom() * 1.4;
         runtime.pickups.push(gp);
       }
       ctx.events.emit('toast', { text: `${spill} oz SCATTERS WHERE YOU FELL` });
@@ -992,9 +993,9 @@ export class PlayerControl implements PlayerControlApi {
         density: 1,
         friction: 0.7,
         restitution: 0.28,
-        vx: player.vx * 0.9 + (Math.random() - 0.5) * 1.2,
+        vx: player.vx * 0.9 + (entityRandom() - 0.5) * 1.2,
         vy: Math.min(player.vy, 0) - 1.6,
-        va: (Math.random() - 0.5) * 0.5 - player.vx * 0.04,
+        va: (entityRandom() - 0.5) * 0.5 - player.vx * 0.04,
         tag: 'player-corpse',
         color: packRGB(70, 110, 190),
       });
@@ -1179,12 +1180,12 @@ export class PlayerControl implements PlayerControlApi {
       player.vx *= 0.7;
       if (ctx.state.frameCount % 3 === 0) {
         ctx.particles.spawn(
-          player.x + (Math.random() - 0.5) * 9,
-          player.y - 2 - Math.random() * 14,
-          (Math.random() - 0.5) * 0.2,
-          -0.6 - Math.random() * 0.4,
+          player.x + (entityRandom() - 0.5) * 9,
+          player.y - 2 - entityRandom() * 14,
+          (entityRandom() - 0.5) * 0.2,
+          -0.6 - entityRandom() * 0.4,
           null,
-          packRGB(255, 110 + Math.floor(Math.random() * 60), 140),
+          packRGB(255, 110 + Math.floor(entityRandom() * 60), 140),
           26,
           { glow: 2.2, grav: -0.01 },
         );
@@ -1225,7 +1226,7 @@ export class PlayerControl implements PlayerControlApi {
         player.hat.vy -= 1.8;
         for (const u of [3, -2]) {
           ctx.particles.burst(player.x + player.facing * u, player.y, 2, null, () => {
-            const g = 115 + Math.floor(Math.random() * 50);
+            const g = 115 + Math.floor(entityRandom() * 50);
             return packRGB(g, g, g - 8);
           }, 0.55, { grav: 0.05 });
         }
@@ -1246,7 +1247,7 @@ export class PlayerControl implements PlayerControlApi {
           player.hat.vy -= 2.4;
           player.hat.vx += player.facing * 1.2;
           ctx.particles.burst(player.x, player.y - 10, 4, null, () => {
-            const g = 120 + Math.floor(Math.random() * 50);
+            const g = 120 + Math.floor(entityRandom() * 50);
             return packRGB(g, g, g - 8);
           }, 0.7, { grav: 0.04 });
         } else {
@@ -1257,9 +1258,9 @@ export class PlayerControl implements PlayerControlApi {
             player.hat.vy -= 1.4;
             ctx.audio.crampedBump();
             ctx.particles.spawn(
-              player.x + (Math.random() - 0.5) * 4,
+              player.x + (entityRandom() - 0.5) * 4,
               player.y - PLAYER_CRAWL_H,
-              (Math.random() - 0.5) * 0.3,
+              (entityRandom() - 0.5) * 0.3,
               0.4,
               null,
               packRGB(122, 112, 98),
@@ -1314,10 +1315,10 @@ export class PlayerControl implements PlayerControlApi {
         // visible mending: soft green motes rise while the potion works
         if (player.hp < player.maxHp && ctx.state.frameCount % 6 === 0) {
           ctx.particles.spawn(
-            player.x + (Math.random() - 0.5) * 8,
-            player.y - 4 - Math.random() * 10,
-            (Math.random() - 0.5) * 0.15,
-            -0.45 - Math.random() * 0.3,
+            player.x + (entityRandom() - 0.5) * 8,
+            player.y - 4 - entityRandom() * 10,
+            (entityRandom() - 0.5) * 0.15,
+            -0.45 - entityRandom() * 0.3,
             null,
             packRGB(110, 230, 130),
             22,
@@ -1345,7 +1346,7 @@ export class PlayerControl implements PlayerControlApi {
       if (player.crouchT === 0) {
         // settle-down puff at the heels
         ctx.particles.burst(player.x, player.y, 3, null, () => {
-          const g = 120 + Math.floor(Math.random() * 50);
+          const g = 120 + Math.floor(entityRandom() * 50);
           return packRGB(g, g, g - 8);
         }, 0.5, { grav: 0.05 });
         player.hat.vy -= 0.8;
@@ -1401,16 +1402,16 @@ export class PlayerControl implements PlayerControlApi {
         ctx.particles.spawn(
           leadX + 0.5,
           Y,
-          dir * (0.5 + Math.random() * 0.9) + player.vx * 0.18,
-          -0.45 - Math.random() * 1.0,
+          dir * (0.5 + entityRandom() * 0.9) + player.vx * 0.18,
+          -0.45 - entityRandom() * 1.0,
           null,
           col,
-          12 + ((Math.random() * 10) | 0),
+          12 + ((entityRandom() * 10) | 0),
           { grav: 0.18 },
         );
         // shove this surface cell up a row when there's headroom (a bow-wave crest)
         if (
-          Math.random() < 0.5 &&
+          entityRandom() < 0.5 &&
           world.inBounds(leadX, Y - 1) &&
           world.types[world.idx(leadX, Y - 1)] === Cell.Empty
         ) {
@@ -1418,7 +1419,7 @@ export class PlayerControl implements PlayerControlApi {
         }
         kicked++;
       }
-      if (Math.random() < 0.05) ctx.audio.splash(0.18 + Math.random() * 0.18);
+      if (entityRandom() < 0.05) ctx.audio.splash(0.18 + entityRandom() * 0.18);
     }
 
     // air control: stronger mid-air acceleration for Ori-like corrections.
@@ -1521,7 +1522,7 @@ export class PlayerControl implements PlayerControlApi {
     }
     if (contact.healium > 0) {
       for (const i of contact.healiumCells) {
-        if (Math.random() < 0.12) world.clearCellAt(i);
+        if (entityRandom() < 0.12) world.clearCellAt(i);
       }
     }
     // submersion threshold scales to the sampled body (13/45 -> 7/25 crawling)
@@ -1538,13 +1539,13 @@ export class PlayerControl implements PlayerControlApi {
       for (let d = 0; d < dropletCount; d++) {
         const side = d % 2 === 0 ? -1 : 1;
         ctx.particles.spawn(
-          player.x + (Math.random() - 0.5) * (stomping ? 14 : 8),
+          player.x + (entityRandom() - 0.5) * (stomping ? 14 : 8),
           player.y - (stomping ? 11 : 14),
-          (Math.random() - 0.5) * spread + side * Math.random() * sideBias,
-          -1.1 - Math.random() * lift,
+          (entityRandom() - 0.5) * spread + side * entityRandom() * sideBias,
+          -1.1 - entityRandom() * lift,
           null,
           splashColor,
-          stomping ? 30 + ((Math.random() * 18) | 0) : 26,
+          stomping ? 30 + ((entityRandom() * 18) | 0) : 26,
           { grav: stomping ? 0.14 : 0.12 },
         );
       }
@@ -1554,7 +1555,7 @@ export class PlayerControl implements PlayerControlApi {
     // Wave F: brushing through glowcap colonies puffs a little spore cloud
     if (
       contact.fungus > 0 &&
-      Math.random() < 0.05 &&
+      entityRandom() < 0.05 &&
       (Math.abs(player.vx) > 0.4 || Math.abs(player.vy) > 0.4)
     ) {
       ctx.particles.burst(player.x, player.y - 8, 5, null, () => packRGB(110, 200, 130), 0.9, {
@@ -1566,10 +1567,10 @@ export class PlayerControl implements PlayerControlApi {
       player.hp = Math.min(player.maxHp, player.hp + contact.healium * 0.14);
       if (ctx.state.frameCount % 10 === 0) {
         ctx.particles.spawn(
-          player.x + (Math.random() - 0.5) * 6,
-          player.y - 8 - Math.random() * 8,
-          (Math.random() - 0.5) * 0.3,
-          -0.5 - Math.random() * 0.4,
+          player.x + (entityRandom() - 0.5) * 6,
+          player.y - 8 - entityRandom() * 8,
+          (entityRandom() - 0.5) * 0.3,
+          -0.5 - entityRandom() * 0.4,
           null,
           packRGB(255, 150, 195),
           24,
@@ -1657,7 +1658,7 @@ export class PlayerControl implements PlayerControlApi {
         this.jumpRiseFrames = lp.jumpHoldWindow; // cuttable rise; jet stays blocked
         ctx.audio.jump();
         ctx.particles.burst(player.x - player.climbDir * 3, player.y - 8, 5, null, () => {
-          const g = 128 + Math.floor(Math.random() * 50);
+          const g = 128 + Math.floor(entityRandom() * 50);
           return packRGB(g, g, g - 12);
         }, 0.75, { grav: 0.04 });
       } else if ((player.climbDir > 0 && keys.left && !keys.right) || (player.climbDir < 0 && keys.right && !keys.left)) {
@@ -1672,7 +1673,7 @@ export class PlayerControl implements PlayerControlApi {
         this.framesSinceGrounded = 99;
         player.hat.vx += away * 1.0;
         ctx.particles.burst(player.x - player.climbDir * 2, player.y - 6, 3, null, () => {
-          const g = 128 + Math.floor(Math.random() * 50);
+          const g = 128 + Math.floor(entityRandom() * 50);
           return packRGB(g, g, g - 12);
         }, 0.6, { grav: 0.05 });
       } else if (!stillOnFace) {
@@ -1740,9 +1741,9 @@ export class PlayerControl implements PlayerControlApi {
               if (ctx.state.frameCount % 8 === 0) {
                 ctx.particles.spawn(
                   player.x + player.climbDir * (PLAYER_HALF_W + 1),
-                  player.y - 7 - Math.random() * 7,
-                  -player.climbDir * (0.15 + Math.random() * 0.25),
-                  0.15 + Math.random() * 0.25,
+                  player.y - 7 - entityRandom() * 7,
+                  -player.climbDir * (0.15 + entityRandom() * 0.25),
+                  0.15 + entityRandom() * 0.25,
                   null,
                   packRGB(118, 111, 98),
                   14,
@@ -1816,9 +1817,9 @@ export class PlayerControl implements PlayerControlApi {
             ctx.audio.sputter();
             if (ctx.state.frameCount % 9 < 4) {
               ctx.particles.spawn(
-                player.x + (Math.random() - 0.5) * 3,
+                player.x + (entityRandom() - 0.5) * 3,
                 player.y + 1,
-                (Math.random() - 0.5) * 0.4,
+                (entityRandom() - 0.5) * 0.4,
                 0.8,
                 null,
                 packRGB(110, 100, 90),
@@ -1831,12 +1832,12 @@ export class PlayerControl implements PlayerControlApi {
             // the plume reads the spool: soft puffs while winding up, a full
             // hard exhaust once the jet is at speed
             ctx.particles.spawn(
-              player.x + (Math.random() - 0.5) * 2,
+              player.x + (entityRandom() - 0.5) * 2,
               player.y + 0.5,
-              (Math.random() - 0.5) * 0.4,
-              (0.7 + Math.random() * 0.5) * (0.55 + 0.45 * t),
+              (entityRandom() - 0.5) * 0.4,
+              (0.7 + entityRandom() * 0.5) * (0.55 + 0.45 * t),
               null,
-              packRGB(255, 150 + Math.floor(Math.random() * 80), 30),
+              packRGB(255, 150 + Math.floor(entityRandom() * 80), 30),
               14,
               { grav: 0.02, glow: 2.2 },
             );
@@ -1885,8 +1886,8 @@ export class PlayerControl implements PlayerControlApi {
         else if (ctx.state.frameCount % 2 === 0) {
           // speed streaks peeling off the shoulders
           ctx.particles.spawn(
-            player.x + (Math.random() - 0.5) * 5,
-            player.y - 13 - Math.random() * 4,
+            player.x + (entityRandom() - 0.5) * 5,
+            player.y - 13 - entityRandom() * 4,
             0,
             -0.7,
             null,
@@ -2042,7 +2043,7 @@ export class PlayerControl implements PlayerControlApi {
           world.clearCellAt(gi);
           player.hp = Math.min(player.maxHp, player.hp + 0.9);
           // green motes drift up into the wizard
-          ctx.particles.spawn(gx, gy, (player.x - gx) * 0.08, -0.5 - Math.random() * 0.5, null, packRGB(110, 255, 150), 18, {
+          ctx.particles.spawn(gx, gy, (player.x - gx) * 0.08, -0.5 - entityRandom() * 0.5, null, packRGB(110, 255, 150), 18, {
             grav: -0.015,
             glow: 2.2,
           });
@@ -2155,7 +2156,7 @@ export class PlayerControl implements PlayerControlApi {
       enqueue(x, y - 1);
     }
     if (candidates.length === 0) return null;
-    return candidates[Math.floor(Math.random() * candidates.length)];
+    return candidates[Math.floor(entityRandom() * candidates.length)];
   }
 
   private isSafeTeleportLanding(ctx: Ctx, x: number, y: number): boolean {
@@ -2240,7 +2241,7 @@ export class PlayerControl implements PlayerControlApi {
           ctx.audio.crawlShuffle();
           if (step % 2 === 0) {
             ctx.particles.spawn(
-              player.x + player.facing * (3 + Math.floor(Math.random() * 2)),
+              player.x + player.facing * (3 + Math.floor(entityRandom() * 2)),
               player.y,
               player.facing * 0.3,
               -0.25,
@@ -2277,7 +2278,7 @@ export class PlayerControl implements PlayerControlApi {
     if (
       player.crawling &&
       Math.abs(player._svx) > 0.3 &&
-      Math.random() < 0.03 &&
+      entityRandom() < 0.03 &&
       !ctx.physics.entityFree(player.x, player.y, 4, PLAYER_CRAWL_H + 1)
     ) {
       player.hat.vy += 0.5;
@@ -2308,7 +2309,7 @@ export class PlayerControl implements PlayerControlApi {
       player.hat.vx += player.skidDir * 2.0; // hat keeps going the old way
       ctx.audio.noiseBurst(0.05, 700, 0.07, true);
       ctx.particles.burst(player.x + player.skidDir * 2, player.y, 4, null, () => {
-        const g = 120 + Math.floor(Math.random() * 60);
+        const g = 120 + Math.floor(entityRandom() * 60);
         return packRGB(g, g, g - 10);
       }, 0.8, { grav: 0.05 });
     }
@@ -2343,10 +2344,10 @@ export class PlayerControl implements PlayerControlApi {
           ctx.particles.spawn(
             player.x + dir * (2 + k),
             player.y,
-            dir * (0.8 + Math.random() * 0.9),
-            -0.5 - Math.random() * 0.7,
+            dir * (0.8 + entityRandom() * 0.9),
+            -0.5 - entityRandom() * 0.7,
             null,
-            packRGB(120 + Math.floor(Math.random() * 70), 130, 115),
+            packRGB(120 + Math.floor(entityRandom() * 70), 130, 115),
             18,
             { grav: 0.07 },
           );
@@ -2371,7 +2372,7 @@ export class PlayerControl implements PlayerControlApi {
           ) {
             const col4 = ws.colors[ci4];
             ws.clearCellAt(ci4);
-            ctx.particles.spawn(X2, Y2, (dx2 / 4) * 1.4, -1.2 - Math.random(), t4, col4, 40, {
+            ctx.particles.spawn(X2, Y2, (dx2 / 4) * 1.4, -1.2 - entityRandom(), t4, col4, 40, {
               grav: 0.12,
             });
             popped++;
@@ -2398,10 +2399,10 @@ export class PlayerControl implements PlayerControlApi {
         ctx.particles.burst(
           player.x,
           player.y,
-          6 + Math.floor(Math.random() * 5),
+          6 + Math.floor(entityRandom() * 5),
           null,
           () => {
-            const g = 110 + Math.floor(Math.random() * 70);
+            const g = 110 + Math.floor(entityRandom() * 70);
             return packRGB(g, g, g);
           },
           0.9,
@@ -2421,7 +2422,7 @@ export class PlayerControl implements PlayerControlApi {
 
     // Occasional blink
     if (player.blinkTimer > 0) player.blinkTimer--;
-    else if (Math.random() < 0.007) player.blinkTimer = 6;
+    else if (entityRandom() < 0.007) player.blinkTimer = 6;
 
     // IDLE FIDGETS: stand still long enough and the alchemist stays alive —
     // straightens the hat, then gives the wand a little flourish of sparks.
@@ -2454,7 +2455,7 @@ export class PlayerControl implements PlayerControlApi {
           Math.cos(player.fidgetT * 0.45) * 0.5,
           Math.sin(player.fidgetT * 0.45) * 0.5 - 0.15,
           null,
-          packRGB(150 + Math.floor(Math.random() * 80), 200, 255),
+          packRGB(150 + Math.floor(entityRandom() * 80), 200, 255),
           16,
           { grav: -0.005, glow: 2.4 },
         );

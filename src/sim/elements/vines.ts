@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import { Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
 import { vineColor } from '@/sim/colors';
+import { simRandom } from '@/core/simRandom';
 
 const SIP_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
@@ -39,7 +40,7 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
   // lifeGrid: 0 = freshly planted (charge it), >0 = growing energy, -1 = dormant.
   let energy = w.life[ci];
   if (energy === 0) {
-    energy = 70 + Math.floor(Math.random() * 55);
+    energy = 70 + Math.floor(simRandom() * 55);
     w.life[ci] = energy;
   }
   if (energy < 0) return;
@@ -51,9 +52,9 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
     const wx = x + o[0];
     const wy = y + o[1];
     if (!w.inBounds(wx, wy) || w.types[w.idx(wx, wy)] !== Cell.Water) continue;
-    if (Math.random() < 0.30) {
+    if (simRandom() < 0.30) {
       const si = w.idx(wx, wy);
-      if (Math.random() < 0.5) {
+      if (simRandom() < 0.5) {
         w.replaceCellAt(si, Cell.Vines, vineColor());
         w.life[si] = Math.min(130, energy + 45);
         w.moved[si] = w.movedTick;
@@ -68,7 +69,7 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
 
   // Growth chance tapers off as energy drains — fast at first, then a crawl, then stop
   const vigor = Math.min(1, energy / 55);
-  if (Math.random() > 0.22 * vigor) return;
+  if (simRandom() > 0.22 * vigor) return;
 
   const solidAt = (sx: number, sy: number) =>
     w.inBounds(sx, sy) && isSolid(w.types[w.idx(sx, sy)]) && w.types[w.idx(sx, sy)] !== Cell.Vines;
@@ -79,20 +80,20 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
   const sprout = (sx: number, sy: number) => {
     const si = w.idx(sx, sy);
     w.replaceCellAt(si, Cell.Vines, vineColor());
-    const child = energy - (11 + Math.floor(Math.random() * 12));
+    const child = energy - (11 + Math.floor(simRandom() * 12));
     w.life[si] = child > 6 ? child : -1;
     w.moved[si] = w.movedTick;
     energy -= 4;
     w.life[ci] = energy > 6 ? energy : -1;
   };
 
-  const roll = Math.random();
+  const roll = simRandom();
   if (roll < 0.42) {
     // Hang downward — only while anchored above, and tendrils thin out fast
     if ((solidAt(x, y - 1) || vineAt(x, y - 1)) && emptyAt(x, y + 1)) sprout(x, y + 1);
   } else if (roll < 0.74) {
     // Creep sideways along surfaces (needs ground below or a wall to cling to)
-    const dir = Math.random() < 0.5 ? 1 : -1;
+    const dir = simRandom() < 0.5 ? 1 : -1;
     const tx = x + dir;
     if (
       emptyAt(tx, y) &&
@@ -107,5 +108,5 @@ export function handleVines(ctx: Ctx, x: number, y: number): void {
   }
 
   // Old vines occasionally settle into dormancy on their own
-  if (Math.random() < 0.003) w.life[ci] = -1;
+  if (simRandom() < 0.003) w.life[ci] = -1;
 }

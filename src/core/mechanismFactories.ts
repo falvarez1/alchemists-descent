@@ -3,6 +3,7 @@ import { hash2 } from '@/core/math';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, packRGB, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
+import { fxRandom } from '@/core/simRandom';
 
 /**
  * Ids only need uniqueness within one level's mechanism list (targetId links
@@ -84,13 +85,13 @@ export function setDoorCells(ctx: Ctx, door: Mechanism, open: boolean): void {
   if (wasOpen && ctx.state.mode === 'play') {
     for (let k = 0; k < 8; k++) {
       ctx.particles.spawn(
-        door.x + Math.random() * door.w,
-        door.y + Math.random() * door.h,
-        (Math.random() - 0.5) * 0.35,
-        -0.2 - Math.random() * 0.35,
+        door.x + fxRandom() * door.w,
+        door.y + fxRandom() * door.h,
+        (fxRandom() - 0.5) * 0.35,
+        -0.2 - fxRandom() * 0.35,
         null,
         packRGB(130, 140, 155),
-        18 + Math.floor(Math.random() * 12),
+        18 + Math.floor(fxRandom() * 12),
         { grav: 0.04, glow: 0.6 },
       );
     }
@@ -402,13 +403,13 @@ export function setValveCells(ctx: Ctx, valve: Mechanism, open: boolean): void {
   if (wasOpen && ctx.state.mode === 'play') {
     for (let k = 0; k < 5; k++) {
       ctx.particles.spawn(
-        valve.x + Math.random() * valve.w,
-        valve.y + Math.random() * valve.h,
-        (Math.random() - 0.5) * 0.3,
-        -0.15 - Math.random() * 0.3,
+        valve.x + fxRandom() * valve.w,
+        valve.y + fxRandom() * valve.h,
+        (fxRandom() - 0.5) * 0.3,
+        -0.15 - fxRandom() * 0.3,
         null,
         packRGB(140, 135, 118),
-        16 + Math.floor(Math.random() * 10),
+        16 + Math.floor(fxRandom() * 10),
         { grav: 0.04, glow: 0.5 },
       );
     }

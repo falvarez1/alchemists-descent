@@ -121,5 +121,14 @@ export class Camera implements CameraApi {
     this.y = this.ty = clamp(y - VIEW_H / 2, 0, HEIGHT - VIEW_H);
     this.renderX = Math.floor(this.x);
     this.renderY = Math.floor(this.y);
+    // Clear the SMOOTHING STATE too, not just the position. Every level entry
+    // snaps, and leaving these behind means the new level starts with the last
+    // one's aim offset baked into the target (so the camera drifts a cell or
+    // two on arrival) and with its idle counter still running (so a fresh level
+    // can begin the idle zoom-in immediately). Found by the determinism probe:
+    // the sim window follows the camera, so a one-cell difference here changed
+    // which cells were simulated at all.
+    this.aimLookaheadX = 0;
+    this.idleFrames = 0;
   }
 }

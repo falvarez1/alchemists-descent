@@ -4,6 +4,7 @@ import { Cell, isGas, isLiquid, isSoftGrowth, isSolid } from '@/sim/CellType';
 import { ashColor, fireColor, fungusColor, grassColor, mossColor, packRGB, waterColor } from '@/sim/colors';
 import { handleViscousLiquid } from '@/sim/elements/liquids';
 import { spawnSmoke } from '@/sim/elements/thermal';
+import { fxRandom, simRandom } from '@/core/simRandom';
 
 /* ---------- Upgrade-port descent materials (noita-alchemists-descent.html) ---------- */
 
@@ -35,19 +36,19 @@ export function handleSnow(ctx: Ctx, x: number, y: number): void {
     const ny = y + (i === 2 ? 1 : i === 3 ? -1 : 0);
     if (!w.inBounds(nx, ny)) continue;
     const n = w.types[w.idx(nx, ny)];
-    if ((n === Cell.Fire || n === Cell.Lava || n === Cell.Ember) && Math.random() < 0.45) {
+    if ((n === Cell.Fire || n === Cell.Lava || n === Cell.Ember) && simRandom() < 0.45) {
       const i2 = w.idx(x, y);
       w.replaceCellAt(i2, Cell.Water, waterColor());
       return;
     }
   }
   // Light powder: settles softly, floats on water
-  if (w.inBounds(x, y + 1) && snowPasses(w.types[w.idx(x, y + 1)]) && Math.random() < 0.7) {
+  if (w.inBounds(x, y + 1) && snowPasses(w.types[w.idx(x, y + 1)]) && simRandom() < 0.7) {
     w.swap(x, y, x, y + 1);
     return;
   }
-  if (Math.random() < ctx.params.materials[Cell.Snow].friction!) {
-    const dir = Math.random() < 0.5 ? 1 : -1;
+  if (simRandom() < ctx.params.materials[Cell.Snow].friction!) {
+    const dir = simRandom() < 0.5 ? 1 : -1;
     if (w.inBounds(x + dir, y + 1) && snowPasses(w.types[w.idx(x + dir, y + 1)])) {
       w.swap(x, y, x + dir, y + 1);
       return;
@@ -75,7 +76,7 @@ export function handleCoal(ctx: Ctx, x: number, y: number): void {
       const at = w.types[ai];
       if (at === Cell.Empty || at === Cell.Smoke) {
         w.replaceCellAt(ai, Cell.Fire, fireColor());
-        w.life[ai] = 14 + Math.floor(Math.random() * 14);
+        w.life[ai] = 14 + Math.floor(simRandom() * 14);
       }
     }
     for (let i = 0; i < 4; i++) {
@@ -83,14 +84,14 @@ export function handleCoal(ctx: Ctx, x: number, y: number): void {
       const ny = y + (i === 2 ? 1 : i === 3 ? -1 : 0);
       if (!w.inBounds(nx, ny)) continue;
       const ni = w.idx(nx, ny);
-      if (w.types[ni] === Cell.Coal && w.life[ni] === 0 && Math.random() < P.igniteChance!) {
-        w.life[ni] = P.burnDuration! + Math.floor(Math.random() * 40);
+      if (w.types[ni] === Cell.Coal && w.life[ni] === 0 && simRandom() < P.igniteChance!) {
+        w.life[ni] = P.burnDuration! + Math.floor(simRandom() * 40);
       }
     }
     if (w.life[ci] <= 0) {
       // spent — coal chars to ash (a solid residue that drifts off over ~2-3s)
       w.replaceCellAt(ci, Cell.Ash, ashColor());
-      w.life[ci] = 110 + Math.floor(Math.random() * 80);
+      w.life[ci] = 110 + Math.floor(simRandom() * 80);
     }
     return; // a burning ember bed stays put
   }
@@ -102,8 +103,8 @@ export function handleCoal(ctx: Ctx, x: number, y: number): void {
     const ny = y + (i === 2 ? 1 : i === 3 ? -1 : 0);
     if (!w.inBounds(nx, ny)) continue;
     const n = w.types[w.idx(nx, ny)];
-    if ((n === Cell.Fire || n === Cell.Lava) && Math.random() < P.igniteChance!) {
-      w.life[ci] = P.burnDuration! + Math.floor(Math.random() * 40);
+    if ((n === Cell.Fire || n === Cell.Lava) && simRandom() < P.igniteChance!) {
+      w.life[ci] = P.burnDuration! + Math.floor(simRandom() * 40);
       return;
     }
   }
@@ -111,8 +112,8 @@ export function handleCoal(ctx: Ctx, x: number, y: number): void {
     w.swap(x, y, x, y + 1);
     return;
   }
-  if (Math.random() < P.friction!) {
-    const dir = Math.random() < 0.5 ? 1 : -1;
+  if (simRandom() < P.friction!) {
+    const dir = simRandom() < 0.5 ? 1 : -1;
     if (w.inBounds(x + dir, y + 1) && coalPasses(w.types[w.idx(x + dir, y + 1)])) {
       w.swap(x, y, x + dir, y + 1);
       return;
@@ -134,26 +135,26 @@ export function handleAsh(ctx: Ctx, x: number, y: number): void {
   for (let i = 0; i < 4; i++) {
     const nx = x + (i === 0 ? 1 : i === 1 ? -1 : 0);
     const ny = y + (i === 2 ? 1 : i === 3 ? -1 : 0);
-    if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Water && Math.random() < 0.1) {
+    if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Water && simRandom() < 0.1) {
       w.clearCellAt(ci);
       return;
     }
   }
-  const drift = Math.random() < 0.35 ? (Math.random() < 0.5 ? 1 : -1) : 0;
+  const drift = simRandom() < 0.35 ? (simRandom() < 0.5 ? 1 : -1) : 0;
   if (
     w.inBounds(x + drift, y + 1) &&
     ashPasses(w.types[w.idx(x + drift, y + 1)]) &&
-    Math.random() < 0.55
+    simRandom() < 0.55
   ) {
     w.swap(x, y, x + drift, y + 1);
     return;
   }
-  if (w.inBounds(x, y + 1) && ashPasses(w.types[w.idx(x, y + 1)]) && Math.random() < 0.5) {
+  if (w.inBounds(x, y + 1) && ashPasses(w.types[w.idx(x, y + 1)]) && simRandom() < 0.5) {
     w.swap(x, y, x, y + 1);
     return;
   }
-  if (Math.random() < ctx.params.materials[Cell.Ash].friction!) {
-    const dir = Math.random() < 0.5 ? 1 : -1;
+  if (simRandom() < ctx.params.materials[Cell.Ash].friction!) {
+    const dir = simRandom() < 0.5 ? 1 : -1;
     if (w.inBounds(x + dir, y + 1) && ashPasses(w.types[w.idx(x + dir, y + 1)])) {
       w.swap(x, y, x + dir, y + 1);
       return;
@@ -169,18 +170,18 @@ export function handleAsh(ctx: Ctx, x: number, y: number): void {
 export function handleMoss(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const i = w.idx(x, y);
-  if (w.life[i] === 0) w.life[i] = 10 + Math.floor(Math.random() * 14);
+  if (w.life[i] === 0) w.life[i] = 10 + Math.floor(simRandom() * 14);
   if (w.life[i] < 0) return;
-  if (Math.random() > 0.02) return; // far slower than fungus — geology pace
+  if (simRandom() > 0.02) return; // far slower than fungus — geology pace
   // dampness: any liquid within a loose 4-cell sniff (5 random samples)
   let damp = false;
   for (let s = 0; s < 5 && !damp; s++) {
-    const sx = x + Math.floor(Math.random() * 9) - 4;
-    const sy = y + Math.floor(Math.random() * 9) - 4;
+    const sx = x + Math.floor(simRandom() * 9) - 4;
+    const sy = y + Math.floor(simRandom() * 9) - 4;
     if (w.inBounds(sx, sy) && isLiquid(w.types[w.idx(sx, sy)])) damp = true;
   }
   if (!damp) return;
-  const d = CARDINAL_DIRS[Math.floor(Math.random() * CARDINAL_DIRS.length)];
+  const d = CARDINAL_DIRS[Math.floor(simRandom() * CARDINAL_DIRS.length)];
   const nx = x + d[0];
   const ny = y + d[1];
   if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Empty) {
@@ -196,7 +197,7 @@ export function handleMoss(ctx: Ctx, x: number, y: number): void {
     if (touching) {
       const ni = w.idx(nx, ny);
       w.replaceCellAt(ni, Cell.Moss, mossColor());
-      w.life[ni] = Math.max(2, w.life[i] - 1 - Math.floor(Math.random() * 3));
+      w.life[ni] = Math.max(2, w.life[i] - 1 - Math.floor(simRandom() * 3));
       w.moved[ni] = w.movedTick;
     }
   }
@@ -212,10 +213,10 @@ export function handleMoss(ctx: Ctx, x: number, y: number): void {
 export function handleFungus(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   const i = w.idx(x, y);
-  if (w.life[i] === 0) w.life[i] = 16 + Math.floor(Math.random() * 22);
+  if (w.life[i] === 0) w.life[i] = 16 + Math.floor(simRandom() * 22);
   if (w.life[i] < 0) return;
-  if (Math.random() > 0.1) return;
-  const d = FUNGUS_DIRS[Math.floor(Math.random() * FUNGUS_DIRS.length)];
+  if (simRandom() > 0.1) return;
+  const d = FUNGUS_DIRS[Math.floor(simRandom() * FUNGUS_DIRS.length)];
   const nx = x + d[0];
   const ny = y + d[1];
   if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Empty) {
@@ -232,7 +233,7 @@ export function handleFungus(ctx: Ctx, x: number, y: number): void {
     if (touching) {
       const ni = w.idx(nx, ny);
       w.replaceCellAt(ni, Cell.Fungus, fungusColor());
-      w.life[ni] = Math.max(2, w.life[i] - 2 - Math.floor(Math.random() * 3));
+      w.life[ni] = Math.max(2, w.life[i] - 2 - Math.floor(simRandom() * 3));
       w.moved[ni] = w.movedTick;
     }
   }
@@ -258,18 +259,18 @@ export function handleGrass(ctx: Ctx, x: number, y: number): void {
   };
   // Wither if the ground was dug out from under the blade (and nothing grassy holds it up).
   if (!rooted(x, y) && (!w.inBounds(x, y + 1) || w.types[w.idx(x, y + 1)] !== Cell.Grass)) {
-    if (Math.random() < 0.25) w.clearCellAt(i);
+    if (simRandom() < 0.25) w.clearCellAt(i);
     return;
   }
-  if (w.life[i] === 0) w.life[i] = 6 + Math.floor(Math.random() * 9);
+  if (w.life[i] === 0) w.life[i] = 6 + Math.floor(simRandom() * 9);
   if (w.life[i] < 0) return;
-  if (Math.random() > 0.05) return; // gentle, grassy pace
-  const dir = Math.random() < 0.5 ? 1 : -1;
+  if (simRandom() > 0.05) return; // gentle, grassy pace
+  const dir = simRandom() < 0.5 ? 1 : -1;
   const nx = x + dir;
   if (w.inBounds(nx, y) && w.types[w.idx(nx, y)] === Cell.Empty && rooted(nx, y)) {
     const ni = w.idx(nx, y);
     w.replaceCellAt(ni, Cell.Grass, grassColor());
-    w.life[ni] = Math.max(2, w.life[i] - 1 - Math.floor(Math.random() * 2));
+    w.life[ni] = Math.max(2, w.life[i] - 1 - Math.floor(simRandom() * 2));
     w.moved[ni] = w.movedTick;
   }
   w.life[i]--;
@@ -284,27 +285,27 @@ export function handleExoticLiquid(ctx: Ctx, x: number, y: number, type: Cell): 
   if (w.types[i] !== type) return; // moved away this frame
   if (
     type === Cell.Healium &&
-    Math.random() < ctx.params.materials[Cell.Healium].evaporationSpeed!
+    simRandom() < ctx.params.materials[Cell.Healium].evaporationSpeed!
   ) {
-    w.replaceCellAt(i, Cell.Steam, packRGB(255, 170 + Math.floor(Math.random() * 30), 200));
+    w.replaceCellAt(i, Cell.Steam, packRGB(255, 170 + Math.floor(simRandom() * 30), 200));
     w.life[i] = 40;
     return;
   }
   if (
     type === Cell.Teleportium &&
-    Math.random() < 0.004 &&
+    fxRandom() < 0.004 &&
     ctx.particles.list.length < MAX_PARTICLES - 60
   ) {
     ctx.particles.spawn(
-      x + Math.random(),
+      x + fxRandom(),
       y,
-      (Math.random() - 0.5) * 0.3,
-      -0.3 - Math.random() * 0.3,
+      (fxRandom() - 0.5) * 0.3,
+      -0.3 - fxRandom() * 0.3,
       null,
       packRGB(190, 110, 255),
       22,
       { grav: -0.01, glow: 2.2 },
     );
   }
-  if (type === Cell.Toxic && Math.random() < 0.0015) spawnSmoke(ctx, x, y);
+  if (type === Cell.Toxic && simRandom() < 0.0015) spawnSmoke(ctx, x, y);
 }

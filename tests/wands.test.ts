@@ -14,6 +14,7 @@ import { World } from '@/sim/World';
 import { introControlHintForObjective } from '@/game/introObjectives';
 import { cardGrantBenchCue, contextualObjectiveText } from '@/ui/Hud';
 import { canOpenWandBench, cardMatchesBenchFilter, recipeHintsForCard } from '@/ui/WandBench';
+import { mockRandom, restoreRandom } from './helpers/randomSeam';
 
 /**
  * The cast compiler is a PURE function of the slot list, so every rule that
@@ -646,11 +647,11 @@ describe('WandSystem runtime snapshots', () => {
       player: {},
     } as unknown as Ctx;
     const wands = new WandSystem(ctx);
-    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    mockRandom().mockReturnValue(0);
     try {
       events.emit('waystoneLit');
     } finally {
-      random.mockRestore();
+      restoreRandom();
     }
 
     expect(wands.collection).not.toContain('infuser');

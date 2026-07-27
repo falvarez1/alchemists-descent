@@ -5,6 +5,7 @@ import { Physics } from '@/entities/physics';
 import { Explosions } from '@/sim/explosion';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { World } from '@/sim/World';
+import { mockRandom } from './helpers/randomSeam';
 
 function set(world: World, x: number, y: number, t: Cell): void {
   world.types[world.idx(x, y)] = t;
@@ -39,7 +40,7 @@ describe('explosion debris cleanup', () => {
   });
 
   it('turns disconnected blast rubble islands into pass-through ash', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    mockRandom().mockReturnValue(0.99);
     const world = new World(80, 60);
     for (let y = 28; y <= 31; y++) {
       for (let x = 36; x <= 43; x++) set(world, x, y, Cell.Stone);
@@ -58,7 +59,7 @@ describe('explosion debris cleanup', () => {
   });
 
   it('preserves old disconnected terrain that the blast never touched', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    mockRandom().mockReturnValue(0.99);
     const world = new World(80, 60);
     for (let y = 28; y <= 31; y++) {
       for (let x = 42; x <= 45; x++) set(world, x, y, Cell.Stone);
@@ -75,7 +76,7 @@ describe('explosion debris cleanup', () => {
   });
 
   it('leaves terrain connected to the surrounding cave mass solid', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    mockRandom().mockReturnValue(0.99);
     const world = new World(80, 60);
     for (let y = 18; y <= 20; y++) {
       for (let x = 14; x <= 28; x++) set(world, x, y, Cell.Stone);
@@ -89,7 +90,7 @@ describe('explosion debris cleanup', () => {
   });
 
   it('keeps isolated metal blocking because metal is engineered blast-proof terrain', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    mockRandom().mockReturnValue(0.99);
     const world = new World(80, 60);
     for (let y = 28; y <= 30; y++) {
       for (let x = 40; x <= 42; x++) set(world, x, y, Cell.Metal);

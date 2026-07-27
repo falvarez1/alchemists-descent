@@ -1,14 +1,19 @@
 import { Cell } from '@/sim/CellType';
+import { fxRandom } from '@/core/simRandom';
 
 /**
  * DETERMINISM BOUNDARY: cell TYPES come from the seeded Rng and are part of the
- * save-format ABI (golden-test-hashed); cell COLORS here are cosmetic tint drawn
- * from `Math.random()` (see `rand` below) and are intentionally NOT seed-stable.
- * The save system regenerates pristine worlds from seed and overlays only
- * player-changed cells, so unchanged terrain is re-tinted differently every load.
- * "Replay the seed" is therefore NOT pixel-deterministic — keep any future
- * color-sensitive persistence out of the seed-only path (persist the color
- * explicitly instead of expecting to regenerate it from the seed).
+ * save-format ABI (golden-test-hashed); cell COLORS here are cosmetic tint.
+ *
+ * Tint draws from the `fx` stream, NOT the `sim` one (core/simRandom.ts). It is
+ * seeded and therefore replayable, but it is deliberately on the stream nothing
+ * branches on — no sim or entity code ever reads `world.colors` to make a
+ * decision, only to carry a value into a particle or a save. Keeping tint off
+ * the sim stream means re-tinting a material can never move a liquid.
+ *
+ * Golden hashes cover cell types, not colors (tests/gen-golden.test.ts), so the
+ * lock is unchanged by this — what changed is that "replay the seed" is now
+ * pixel-deterministic too, where it previously was not.
  */
 
 /** Pack 8-bit RGB channels into a single 0xRRGGBB integer. */
@@ -28,7 +33,7 @@ export function unpackB(c: number): number {
   return c & 0xff;
 }
 
-const rand = (n: number) => Math.floor(Math.random() * n);
+const rand = (n: number) => Math.floor(fxRandom() * n);
 
 /** The dark cave-air backdrop color for empty cells. */
 export const EMPTY_COLOR = packRGB(8, 8, 12);
@@ -57,7 +62,7 @@ export const stoneColor = () => packRGB(85 + rand(15), 80 + rand(15), 85 + rand(
 // to colour the Stone crust that lava chills into under water (a "this was lava"
 // tell) without needing a separate cell — mechanically it's still rock.
 export const obsidianColor = () =>
-  Math.random() < 0.16
+  fxRandom() < 0.16
     ? packRGB(58 + rand(22), 50 + rand(18), 78 + rand(22))
     : packRGB(24 + rand(12), 21 + rand(10), 31 + rand(13));
 export const metalColor = () => packRGB(105 + rand(10), 115 + rand(10), 130 + rand(10));
@@ -85,7 +90,7 @@ export const coalColor = () => {
   return packRGB(c, c, c + 3);
 };
 export const crystalColor = () => {
-  const v = Math.random();
+  const v = fxRandom();
   return packRGB(96 + Math.floor(v * 50), 200 + Math.floor(v * 45), 228 + rand(27));
 };
 export const fungusColor = () => packRGB(40 + rand(20), 190 + rand(35), 150 + rand(30));
@@ -102,14 +107,14 @@ export const grassColor = () => packRGB(96 + rand(40), 160 + rand(40), 52 + rand
 export const marshGasColor = () => packRGB(148 + rand(30), 164 + rand(30), 84 + rand(24));
 // philosopher's dust: rose-gold grains with the occasional white-hot glint
 export const catalystColor = () =>
-  Math.random() < 0.12
+  fxRandom() < 0.12
     ? packRGB(255, 235 + rand(20), 200 + rand(40))
     : packRGB(240 + rand(15), 140 + rand(40), 70 + rand(30));
 // raw ore: dark host rock veined with golden flecks. It carries NO light of its
 // own (Lighting seeds nothing for it), so it sits dark as plain rock until the
 // wizard's beam falls on it and the ~22% gold grains catch the light.
 export const rawOreColor = () =>
-  Math.random() < 0.22
+  fxRandom() < 0.22
     ? packRGB(226 + rand(24), 174 + rand(26), 46 + rand(22)) // gold fleck
     : packRGB(46 + rand(16), 42 + rand(14), 37 + rand(12)); // dark host rock
 

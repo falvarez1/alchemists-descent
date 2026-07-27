@@ -5,6 +5,7 @@ import { EnemySpatialIndex } from '@/core/enemySpatial';
 import type { Ctx, LightningApi, LightningArc } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { chargeDeposit } from '@/sim/electrical';
+import { entityRandom } from '@/core/simRandom';
 
 /** A jagged lightning path between two points (perpendicular jitter, peaking
  *  mid-span, snapping back to the endpoint). Same look as the chain-bolt arcs. */
@@ -19,7 +20,7 @@ function jaggedArc(x0: number, y0: number, x1: number, y1: number): Array<{ x: n
   const pts: Array<{ x: number; y: number }> = [{ x: x0, y: y0 }];
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
-    const j = i === steps ? 0 : (Math.random() - 0.5) * 2 * amp * Math.sin(t * Math.PI);
+    const j = i === steps ? 0 : (entityRandom() - 0.5) * 2 * amp * Math.sin(t * Math.PI);
     pts.push({ x: x0 + dx * t + nx * j, y: y0 + dy * t + ny * j });
   }
   return pts;
@@ -50,7 +51,7 @@ export class Lightning implements LightningApi {
     let struck = false;
 
     for (let i = 0; i < params.range! && !struck; i++) {
-      a += (Math.random() - 0.5) * 0.7;
+      a += (entityRandom() - 0.5) * 0.7;
       a = a * 0.78 + angle * 0.22;
       x += Math.cos(a);
       y += Math.sin(a);
@@ -68,8 +69,8 @@ export class Lightning implements LightningApi {
           ctx.enemyCtl.damage(e, params.damage!, Math.cos(angle) * 1.4, -0.8);
           if (e.hp <= 0) this.enemyIndex.syncLive(ctx.enemies);
           for (let j = 0; j < 5; j++) {
-            const sx = clamp(gx + ((Math.random() * 5) | 0) - 2, 0, WIDTH - 1);
-            const sy = clamp(gy + ((Math.random() * 5) | 0) - 2, 0, HEIGHT - 1);
+            const sx = clamp(gx + ((entityRandom() * 5) | 0) - 2, 0, WIDTH - 1);
+            const sy = clamp(gy + ((entityRandom() * 5) | 0) - 2, 0, HEIGHT - 1);
             world.setChargeAt(world.idx(sx, sy), chargeDeposit(ctx, 8));
           }
           struck = true;
@@ -110,13 +111,13 @@ export class Lightning implements LightningApi {
     // Visual fork branches
     for (let b = 0; b < params.branches!; b++) {
       if (pts.length < 8) break;
-      const start = pts[Math.floor(pts.length * (0.3 + Math.random() * 0.5))];
+      const start = pts[Math.floor(pts.length * (0.3 + entityRandom() * 0.5))];
       const bpts: Array<{ x: number; y: number }> = [{ x: start.x, y: start.y }];
       let bx = start.x,
         by = start.y,
-        ba = angle + (Math.random() - 0.5) * 1.8;
-      for (let i = 0; i < 14 + Math.random() * 12; i++) {
-        ba += (Math.random() - 0.5) * 0.9;
+        ba = angle + (entityRandom() - 0.5) * 1.8;
+      for (let i = 0; i < 14 + entityRandom() * 12; i++) {
+        ba += (entityRandom() - 0.5) * 0.9;
         bx += Math.cos(ba);
         by += Math.sin(ba);
         if (!world.inBounds(Math.floor(bx), Math.floor(by))) break;
@@ -134,7 +135,7 @@ export class Lightning implements LightningApi {
    *  these over a shocked body). Reuses the chain-bolt jagged look + arc list, so
    *  it both draws and seeds light. */
   spark(x0: number, y0: number, x1: number, y1: number): void {
-    this.arcs.push({ pts: jaggedArc(x0, y0, x1, y1), life: 2 + ((Math.random() * 3) | 0), intensity: 0.4 + Math.random() * 0.35 });
+    this.arcs.push({ pts: jaggedArc(x0, y0, x1, y1), life: 2 + ((entityRandom() * 3) | 0), intensity: 0.4 + entityRandom() * 0.35 });
   }
 
   update(): void {
@@ -188,7 +189,7 @@ export class Lightning implements LightningApi {
     const range2 = RANGE * RANGE;
     const count = Math.min(MAX_ARCS, 1 + (poolLen >> 3));
     for (let a = 0; a < count; a++) {
-      const i0 = (Math.random() * poolLen) | 0;
+      const i0 = (entityRandom() * poolLen) | 0;
       const p0x = poolX[i0];
       const p0y = poolY[i0];
       // nearest of a few random candidates, within range — keeps arcs short + local
@@ -197,7 +198,7 @@ export class Lightning implements LightningApi {
       let found = false;
       let best = range2;
       for (let t = 0; t < 5; t++) {
-        const ic = (Math.random() * poolLen) | 0;
+        const ic = (entityRandom() * poolLen) | 0;
         const cx = poolX[ic];
         const cy = poolY[ic];
         const dx = cx - p0x;
@@ -213,8 +214,8 @@ export class Lightning implements LightningApi {
       if (!found) continue;
       this.arcs.push({
         pts: jaggedArc(p0x, p0y, p1x, p1y),
-        life: 2 + ((Math.random() * 3) | 0),
-        intensity: 0.3 + Math.random() * 0.3,
+        life: 2 + ((entityRandom() * 3) | 0),
+        intensity: 0.3 + entityRandom() * 0.3,
       });
     }
   }

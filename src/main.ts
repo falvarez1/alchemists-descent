@@ -5,6 +5,10 @@ import { installAuthorLink, resolveAuthorLinkConfig } from '@/app/AuthorLink';
 import { AuthorLinkIndicator } from '@/app/AuthorLinkIndicator';
 import { initRapier } from '@/entities/rapierInit';
 import { readAppMode } from '@/game/modePersist';
+import { drawCounts, resetDrawCounts, restoreStreams, snapshotStreams } from '@/core/simRandom';
+
+/** Dev-only handle onto the seeded streams (see `core/simRandom.ts`). */
+const simRandomDebug = { drawCounts, resetDrawCounts, snapshotStreams, restoreStreams };
 
 const bootOverlay = document.getElementById('boot-overlay');
 const bootStatus = document.getElementById('boot-status');
@@ -50,9 +54,16 @@ requestAnimationFrame(() =>
 
       if (import.meta.env.DEV) {
         // Debug handle for the console and headless verification scripts.
-        const debugWindow = window as unknown as { __game?: Game; __authorLink?: typeof authorLink };
+        const debugWindow = window as unknown as {
+          __game?: Game;
+          __authorLink?: typeof authorLink;
+          __simRandom?: typeof simRandomDebug;
+        };
         debugWindow.__game = game;
         debugWindow.__authorLink = authorLink;
+        // Stream positions and draw counters, for the determinism probe and for
+        // diagnosing a divergence by hand (which stream drifted, and when).
+        debugWindow.__simRandom = simRandomDebug;
         import.meta.hot?.dispose(() => {
           for (const dispose of linkDisposers.splice(0).reverse()) dispose();
           linkIndicator?.dispose();
@@ -61,6 +72,7 @@ requestAnimationFrame(() =>
           game.dispose();
           if (debugWindow.__game === game) delete debugWindow.__game;
           delete debugWindow.__authorLink;
+          delete debugWindow.__simRandom;
         });
       }
 

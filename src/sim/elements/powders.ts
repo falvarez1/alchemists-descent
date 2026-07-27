@@ -2,6 +2,7 @@ import type { Ctx, MaterialParams } from '@/core/types';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { fireColor, glassColor } from '@/sim/colors';
 import { IGNITION_OFFSETS } from '@/sim/neighborOffsets';
+import { simRandom } from '@/core/simRandom';
 
 /* ===================== Element Physics Behaviors ===================== */
 
@@ -123,7 +124,7 @@ export function igniteGunpowder(ctx: Ctx, x: number, y: number): void {
   if (frame !== undefined && cadence > 1 && (frame + x + y) % cadence !== 0) return;
 
   w.replaceCellAt(i, Cell.Fire, fireColor());
-  w.life[i] = 34 + localMass * 8 + Math.floor(Math.random() * 16);
+  w.life[i] = 34 + localMass * 8 + Math.floor(simRandom() * 16);
   w.moved[i] = w.movedTick;
 }
 
@@ -133,7 +134,7 @@ export function handleSand(ctx: Ctx, x: number, y: number, type: Cell): void {
   // Intense heat or a strong electrical charge fuses sand into glass
   if (type === Cell.Sand) {
     const i = w.idx(x, y);
-    if (w.charge[i] > 6 && Math.random() < 0.22) {
+    if (w.charge[i] > 6 && simRandom() < 0.22) {
       w.replaceCellAt(i, Cell.Glass, glassColor());
       return;
     }
@@ -148,19 +149,19 @@ export function handleSand(ctx: Ctx, x: number, y: number, type: Cell): void {
         n === Cell.Fire || n === Cell.Ember ? 0.08 :
         n === Cell.Coal && w.life[ni] > 0 ? 0.12 :
         0;
-      if (fuseChance > 0 && Math.random() < fuseChance) {
+      if (fuseChance > 0 && simRandom() < fuseChance) {
         w.replaceCellAt(i, Cell.Glass, glassColor());
         return;
       }
     }
   }
   const passRate = ctx.params.materials[type].densityWeight!;
-  if (w.inBounds(x, y + 1) && powderCanPass(w.types[w.idx(x, y + 1)]) && Math.random() < passRate) {
+  if (w.inBounds(x, y + 1) && powderCanPass(w.types[w.idx(x, y + 1)]) && simRandom() < passRate) {
     w.swap(x, y, x, y + 1);
     return;
   }
-  if (Math.random() < ctx.params.materials[type].friction!) {
-    const dir = Math.random() < 0.5 ? 1 : -1;
+  if (simRandom() < ctx.params.materials[type].friction!) {
+    const dir = simRandom() < 0.5 ? 1 : -1;
     if (w.inBounds(x + dir, y + 1) && powderCanPass(w.types[w.idx(x + dir, y + 1)])) {
       w.swap(x, y, x + dir, y + 1);
       return;
@@ -191,8 +192,8 @@ export function handleGunpowder(ctx: Ctx, x: number, y: number): void {
     w.swap(x, y, x, y + 1);
     return;
   }
-  if (Math.random() < ctx.params.materials[Cell.Gunpowder].friction!) {
-    const dir = Math.random() < 0.5 ? 1 : -1;
+  if (simRandom() < ctx.params.materials[Cell.Gunpowder].friction!) {
+    const dir = simRandom() < 0.5 ? 1 : -1;
     if (w.inBounds(x + dir, y + 1) && powderCanPass(w.types[w.idx(x + dir, y + 1)])) {
       w.swap(x, y, x + dir, y + 1);
       return;

@@ -70,16 +70,18 @@ That single fact reframes everything: a full cell-state stream is roughly
 charge u16), and materially less packed. That is a perfectly ordinary network
 stream. It is *also* 5–10k row-writes/second, forever, per session.
 
-### 2. Sim determinism: not currently possible
+### 2. Sim determinism: achieved for the cell sim (stage 4), not yet for a whole run
 
-`Math.random()` appears at **504 call sites across 21 files** in `sim/`,
-`entities/`, and `particles/`. On top of that, `ARCHITECTURE.md` records as a
-deliberately preserved quirk: *"The material sweep randomizes scan direction
-per row; the sim is nondeterministic."*
+*Originally measured as 504 `Math.random()` call sites, and recorded here as a
+blocker.* As of 2026-07-27, 724 sites across `sim/`, `entities/`, `combat/`,
+`game/` and `particles/` draw from seeded, tick-indexed streams instead
+(`src/core/simRandom.ts`), enforced by lint. The randomized per-row scan
+direction is still there — it is now *seeded*, which was always the real point.
 
-Deterministic lockstep — the cheapest multiplayer model by bandwidth, and the
-one that would let a database carry only inputs — is therefore **not available
-today**, and reaching it is a real project, not a flag.
+The **cell simulation replays byte-identically** from a seed, proven in a real
+browser. A **whole run** does not yet: the entity layer still diverges
+intermittently (see Staging item 4). So deterministic lockstep is closer than
+this document originally recorded, but it is not available today.
 
 ---
 
@@ -363,19 +365,62 @@ game single-player.
    The refactor route (generalising the 226 `ctx.player` references) is now a
    *choice made against evidence* rather than the only option, and the feel
    question it was gating is answered.
-4. **Determinism**, pursued for replay and golden-frame tests first. **Not
-   started.** Re-measured 2026-07-27: **503 `Math.random()` sites across 21
-   files** in `sim/`, `entities/`, and `particles/` — unchanged, so the number
-   in this document is current rather than inherited.
+4. **Determinism** — **the cell simulation is done and proven, 2026-07-27; the
+   entity layer is converted but not yet proven.** 724 `Math.random()` call
+   sites moved onto seeded, tick-indexed streams (`src/core/simRandom.ts`).
 
-   This is mechanical but not small, and it has a failure mode worth naming:
-   **partial determinism is worse than none.** A sim that is reproducible in
-   most places invites people to trust replays that silently diverge. So it is
-   all-or-nothing per subsystem, with a golden-frame test standing behind each
-   one as it converts — which is also why it pays for itself in testing before
-   multiplayer ever ships.
+   **Four streams, not one**, because sharing one couples unrelated subsystems:
+   adding a single particle would shift every liquid's settling for the rest of
+   the tick, and a golden-frame test could then only ever report "everything
+   changed".
 
-5. **Rollback/prediction** — only once 4 is real and measured. Unchanged.
+   | Stream | Owns | Why separate |
+   | --- | --- | --- |
+   | `sim` | `src/sim/**` | the cellular automata; reseeded per *substep*, since `Simulation.update` runs 0–6 per tick |
+   | `entity` | `entities/`, `combat/`, `game/` | AI and combat rolls |
+   | `particle` | `particles/` | **state, not cosmetics** — a typed `looseDebris` particle deposits itself back into the grid when it lands |
+   | `fx` | tint, audio cues, null-typed sparks | the only draws nothing ever reads back |
+
+   The `particle` split came from reading `Particles.ts` rather than assuming:
+   particles were first put on the cosmetic stream, which would have let a
+   palette tweak move where explosion debris settles.
+
+   **Enforced, not documented.** ESLint bans `Math.random` in every converted
+   directory *and* bans importing the seeded streams from `render/`, `ui/`,
+   `builder/`, `audio/` — presentation runs at render rate, so a seeded draw
+   there would make the stream depend on frame rate. Both directions are
+   probe-tested. This is the answer to "partial determinism is worse than none":
+   the boundary cannot quietly erode.
+
+   **What is proven** (`npm run verify:determinism`, 7 live checks; plus
+   `tests/sim-golden-frame.test.ts` and `tests/sim-random.test.ts`, 16 unit
+   tests): the cell simulation replays **byte-identically** over 240 ticks on a
+   real generated world in a real browser, with identical per-stream draw
+   counts; different seeds and different inputs diverge. The sim now has the
+   regression test it never had — `gen-golden` locked what the *generator*
+   produces, nothing locked what the sim then *does* to it.
+
+   **What is not.** Whole-tick replay does **not** hold yet. With the grid,
+   camera, player and every clearable subsystem reset to a byte-identical start,
+   the entity stream still takes a different number of draws from about tick 14
+   onward, and the run diverges. It is *intermittent* rather than a clean
+   repeatable difference, which points at a race with asynchronous start-up work
+   rather than a missed seed. The probe **measures** this instead of asserting
+   it, so the number is on the record either way. Until it closes, "replay the
+   seed" is true of the falling-sand sim and not of a whole run.
+
+   Two real bugs the live probe caught, neither findable by reading:
+
+   - **`Camera.snapTo` did not clear its own smoothing state.** It documents
+     itself as bypassing smoothing but left `aimLookaheadX` and `idleFrames`
+     behind, so every level entry inherited the previous level's aim offset and
+     idle-zoom counter. It matters beyond feel because **the sim window follows
+     the camera** — a one-cell difference changes which cells are simulated at
+     all. Fixed.
+   - **`World.clear()` zeroes the moved plane but not its epoch**, so the
+     `movedTick` wrap landed at a different substep depending on history.
+
+5. **Rollback/prediction** — blocked on 4's entity layer, not just on 4.
 
 ## Risks, stated honestly
 

@@ -5,6 +5,7 @@ import type { Ctx } from '@/core/types';
 import { createDefaultStatus, sampleAndTickStatus } from '@/entities/status';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
+import { mockRandom, restoreRandom } from './helpers/randomSeam';
 
 /** A ctx with a real World + spies for the side-effect sinks the status tick touches. */
 function ctxWith(world: World) {
@@ -199,14 +200,14 @@ describe('catch fire (percentage-based)', () => {
     world.types[world.idx(20, 30)] = Cell.Fire; // a single fire cell at the body
     const lucky = { x: 20, y: 30, status: createDefaultStatus() };
     const unlucky = { x: 20, y: 30, status: createDefaultStatus() };
-    const r = vi.spyOn(Math, 'random');
+    const r = mockRandom();
     try {
       r.mockReturnValue(0); // rolls under the small chance → catches
       sampleAndTickStatus(plainCtx(world), lucky, 4, 17, undefined, 2);
       r.mockReturnValue(0.999); // rolls over the chance → does not catch
       sampleAndTickStatus(plainCtx(world), unlucky, 4, 17, undefined, 2);
     } finally {
-      r.mockRestore();
+      restoreRandom();
     }
     expect(lucky.status.burning).toBeGreaterThan(0);
     expect(unlucky.status.burning).toBe(0);
@@ -226,11 +227,11 @@ describe('catch fire (percentage-based)', () => {
     const body = { x: 20, y: 30, status: createDefaultStatus() };
     body.status.wet = 120; // soaked, no water cells around (just the lingering timer)
 
-    const r = vi.spyOn(Math, 'random').mockReturnValue(0); // force the sparse drip
+    mockRandom().mockReturnValue(0); // force the sparse drip
     try {
       sampleAndTickStatus(ctx, body, 4, 17, undefined, 1);
     } finally {
-      r.mockRestore();
+      restoreRandom();
     }
 
     expect(spawn).toHaveBeenCalled();

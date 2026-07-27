@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
+import { simRandom } from '@/core/simRandom';
 
 /**
  * Build-mode painting: a filled disc of the given material at the brush radius.
@@ -27,10 +28,10 @@ export function spawnCircle(ctx: Ctx, centerX: number, centerY: number, type: nu
             const fn = COLOR_FN[type];
             if (type === Cell.Empty) world.clearCellAt(i);
             else world.replaceCellAt(i, type, fn ? fn() : EMPTY_COLOR);
-            if (type === Cell.Smoke) world.life[i] = Math.floor(Math.random() * 40) + 30;
+            if (type === Cell.Smoke) world.life[i] = Math.floor(simRandom() * 40) + 30;
             else if (type === Cell.Fire)
               world.life[i] =
-                Math.floor(Math.random() * (ctx.params.materials[Cell.Fire]?.particleLife || 30)) + 15;
+                Math.floor(simRandom() * (ctx.params.materials[Cell.Fire]?.particleLife || 30)) + 15;
           }
         }
       }

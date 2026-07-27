@@ -3,6 +3,7 @@ import type { Critter, CritterKind, CrittersApi, Ctx } from '@/core/types';
 import { EntityPool } from '@/entities/ecs';
 import { blocksEntity, Cell, isLiquid, isSolid } from '@/sim/CellType';
 import { packRGB, waterColor } from '@/sim/colors';
+import { entityRandom } from '@/core/simRandom';
 
 /**
  * Wave F "The Caves Breathe": the critter layer + ambient cave biology.
@@ -144,8 +145,8 @@ export class Critters implements CrittersApi {
 
     // A few placement attempts per tick; each spawns at most one critter.
     for (let attempt = 0; attempt < 6; attempt++) {
-      const x = camX + Math.floor(Math.random() * VIEW_W);
-      const y = camY + Math.floor(Math.random() * VIEW_H);
+      const x = camX + Math.floor(entityRandom() * VIEW_W);
+      const y = camY + Math.floor(entityRandom() * VIEW_H);
       if (x < 6 || y < 20 || x >= WIDTH - 6 || y >= HEIGHT - 10) continue;
       const i = w.idx(x, y);
       const t = w.types[i];
@@ -171,7 +172,7 @@ export class Critters implements CrittersApi {
         if (
           counts.beetle < CAPS.beetle &&
           isSolid(w.types[w.idx(x, y + 1)]) &&
-          Math.random() < 0.35
+          entityRandom() < 0.35
         ) {
           // beetles prefer fungus country but wander everywhere damp
           this.add('beetle', x, y);
@@ -181,7 +182,7 @@ export class Critters implements CrittersApi {
         if (
           counts.firefly < CAPS.firefly &&
           (biome === 'fungal' || biome === 'timber' || biome === 'earthen' || biome === 'flooded') &&
-          Math.random() < 0.5
+          entityRandom() < 0.5
         ) {
           this.add('firefly', x, y);
           counts.firefly++;
@@ -202,9 +203,9 @@ export class Critters implements CrittersApi {
       y,
       vx: 0,
       vy: 0,
-      phase: Math.random() * Math.PI * 2,
+      phase: entityRandom() * Math.PI * 2,
       gasp: 0,
-      facing: Math.random() < 0.5 ? -1 : 1,
+      facing: entityRandom() < 0.5 ? -1 : 1,
     };
     this.pool.add(critter);
     return critter;
@@ -248,8 +249,8 @@ export class Critters implements CrittersApi {
           }
         }
         for (let s = 0; s < 4; s++) {
-          const sx = xi + ((Math.random() * 29) | 0) - 14;
-          const sy = yi + ((Math.random() * 29) | 0) - 14;
+          const sx = xi + ((entityRandom() * 29) | 0) - 14;
+          const sy = yi + ((entityRandom() * 29) | 0) - 14;
           if (w.inBounds(sx, sy) && isHotGlow(w.types[w.idx(sx, sy)])) {
             const ddx = c.x - sx, ddy = c.y - sy, dd = Math.hypot(ddx, ddy) || 1;
             ax += (ddx / dd) * 0.9; ay += (ddy / dd) * 0.9; threatened = true;
@@ -278,18 +279,18 @@ export class Critters implements CrittersApi {
           c.vy *= 0.99;
         }
         c.facing = c.vx < 0 ? -1 : 1;
-        if ((c.startle ?? 0) === 0 && Math.random() < 0.5) {
+        if ((c.startle ?? 0) === 0 && entityRandom() < 0.5) {
           // a tiny puff as it recovers its composure
           ctx.particles.burst(c.x, c.y, 2, null, () => packRGB(150, 140, 110), 0.6, { grav: 0.04 });
         }
       } else if (c.kind === 'moth') {
         // flutter + LIGHT SEEKING: glow cells nearby, else the raised wand
-        c.vx += Math.sin(c.phase * 1.7) * 0.04 + (Math.random() - 0.5) * 0.05;
-        c.vy += Math.cos(c.phase * 1.3) * 0.035 + (Math.random() - 0.5) * 0.05;
+        c.vx += Math.sin(c.phase * 1.7) * 0.04 + (entityRandom() - 0.5) * 0.05;
+        c.vy += Math.cos(c.phase * 1.3) * 0.035 + (entityRandom() - 0.5) * 0.05;
         let lured = false;
         for (let s = 0; s < 6 && !lured; s++) {
-          const sx = xi + Math.floor(Math.random() * 41) - 20;
-          const sy = yi + Math.floor(Math.random() * 41) - 20;
+          const sx = xi + Math.floor(entityRandom() * 41) - 20;
+          const sy = yi + Math.floor(entityRandom() * 41) - 20;
           if (w.inBounds(sx, sy) && isLure(w.types[w.idx(sx, sy)])) {
             c.vx += Math.sign(sx - c.x) * 0.05;
             c.vy += Math.sign(sy - c.y) * 0.05;
@@ -308,8 +309,8 @@ export class Critters implements CrittersApi {
         c.vx *= 0.93;
         c.vy *= 0.93;
       } else if (c.kind === 'firefly') {
-        c.vx += (Math.random() - 0.5) * 0.03;
-        c.vy += (Math.random() - 0.5) * 0.025 - Math.sin(c.phase * 0.5) * 0.004;
+        c.vx += (entityRandom() - 0.5) * 0.03;
+        c.vy += (entityRandom() - 0.5) * 0.025 - Math.sin(c.phase * 0.5) * 0.004;
         c.vx *= 0.96;
         c.vy *= 0.96;
       } else if (c.kind === 'fish') {
@@ -320,7 +321,7 @@ export class Critters implements CrittersApi {
             pdy = c.y - player.y;
           const close = !player.dead && pdx * pdx + pdy * pdy < 30 * 30;
           c.vx += (close ? Math.sign(pdx) * 0.12 : Math.sin(c.phase * 0.4) * 0.02);
-          c.vy += (Math.random() - 0.5) * 0.02;
+          c.vy += (entityRandom() - 0.5) * 0.02;
           // stay submerged: nudge down if surface is right above
           if (w.inBounds(xi, yi - 1) && w.types[w.idx(xi, yi - 1)] === Cell.Empty) c.vy += 0.04;
           c.vx *= 0.94;
@@ -330,7 +331,7 @@ export class Critters implements CrittersApi {
           // beached: flop, gasp, and eventually a sad little end
           c.gasp++;
           c.vy += 0.18;
-          if (c.gasp % 22 === 0) c.vy = -1.4 - Math.random();
+          if (c.gasp % 22 === 0) c.vy = -1.4 - entityRandom();
           if (c.gasp > 260) {
             ctx.particles.burst(c.x, c.y, 4, Cell.Blood, () => packRGB(180, 40, 50), 1.1);
             ctx.audio.squelch(); // the arc ends audibly, not in silence
@@ -348,10 +349,10 @@ export class Critters implements CrittersApi {
         if (footing) {
           c.vy = 0;
           if (blocksEntity(ahead)) c.facing *= -1;
-          else if (Math.random() < 0.015) c.facing *= -1;
+          else if (entityRandom() < 0.015) c.facing *= -1;
           c.vx = c.facing * 0.12;
           // grazing: nibble adjacent fungus/moss (visible ecology)
-          if (Math.random() < 0.004) {
+          if (entityRandom() < 0.004) {
             for (const [ddx, ddy] of [
               [1, 0],
               [-1, 0],
@@ -376,7 +377,7 @@ export class Critters implements CrittersApi {
         }
       } else if (c.kind === 'fly') {
         // tight nervous orbit above the blood that drew it
-        c.vx += Math.sin(c.phase * 3.1) * 0.08 + (Math.random() - 0.5) * 0.1;
+        c.vx += Math.sin(c.phase * 3.1) * 0.08 + (entityRandom() - 0.5) * 0.1;
         c.vy += Math.cos(c.phase * 2.7) * 0.07;
         c.vx *= 0.86;
         c.vy *= 0.86;
@@ -405,7 +406,7 @@ export class Critters implements CrittersApi {
     // CEILING DRIPS: an overhang above open air sheds a real water droplet
     // (volcanic caves shed ember sparks instead; frozen caves stay silent)
     if (frame % 9 === 0) {
-      const x = camX + Math.floor(Math.random() * VIEW_W);
+      const x = camX + Math.floor(entityRandom() * VIEW_W);
       let solidY = -1;
       for (let y = camY + 4; y < camY + VIEW_H - 30 && y < HEIGHT - 12; y++) {
         if (!w.inBounds(x, y)) break;
@@ -416,13 +417,13 @@ export class Critters implements CrittersApi {
       }
       if (solidY > 0 && w.types[w.idx(x, solidY + 1)] === Cell.Empty) {
         if (biome === 'volcanic' || biome === 'scorched') {
-          if (Math.random() < 0.12) {
+          if (entityRandom() < 0.12) {
             ctx.particles.spawn(x, solidY + 1, 0, 0.6, null, packRGB(255, 140, 30), 40, {
               glow: 1.8,
               grav: 0.06,
             });
           }
-        } else if (Math.random() < 0.2) {
+        } else if (entityRandom() < 0.2) {
           // only drip where water plausibly seeps: liquid somewhere below
           let poolBelow = false;
           for (let yy = solidY + 2; yy < Math.min(HEIGHT - 8, solidY + 44) && !poolBelow; yy++) {
@@ -433,7 +434,7 @@ export class Critters implements CrittersApi {
           if (poolBelow) {
             const di = w.idx(x, solidY + 1);
             w.replaceCellAt(di, Cell.Water, waterColor());
-            if (Math.random() < 0.3) ctx.audio.drip();
+            if (entityRandom() < 0.3) ctx.audio.drip();
           }
         }
       }
@@ -441,14 +442,14 @@ export class Critters implements CrittersApi {
 
     // SPORE DRIFT: glowing motes loosed wherever colonies grow
     if (frame % 6 === 0) {
-      const x = camX + Math.floor(Math.random() * VIEW_W);
-      const y = camY + Math.floor(Math.random() * VIEW_H);
+      const x = camX + Math.floor(entityRandom() * VIEW_W);
+      const y = camY + Math.floor(entityRandom() * VIEW_H);
       if (w.inBounds(x, y) && (w.types[w.idx(x, y)] === Cell.Fungus || w.types[w.idx(x, y)] === Cell.Glowshroom)) {
         ctx.particles.spawn(
           x,
           y - 1,
-          (Math.random() - 0.5) * 0.15,
-          -0.12 - Math.random() * 0.1,
+          (entityRandom() - 0.5) * 0.15,
+          -0.12 - entityRandom() * 0.1,
           null,
           packRGB(110, 200, 130),
           120,
@@ -459,14 +460,14 @@ export class Critters implements CrittersApi {
 
     // DUST MOTES: unlit specks that only show where light finds them
     if (frame % 14 === 0) {
-      const x = camX + Math.floor(Math.random() * VIEW_W);
-      const y = camY + Math.floor(Math.random() * VIEW_H);
+      const x = camX + Math.floor(entityRandom() * VIEW_W);
+      const y = camY + Math.floor(entityRandom() * VIEW_H);
       if (w.inBounds(x, y) && w.types[w.idx(x, y)] === Cell.Empty) {
         ctx.particles.spawn(
           x,
           y,
-          (Math.random() - 0.5) * 0.06,
-          0.05 + Math.random() * 0.05,
+          (entityRandom() - 0.5) * 0.06,
+          0.05 + entityRandom() * 0.05,
           null,
           packRGB(150, 145, 130),
           160,
@@ -477,14 +478,14 @@ export class Critters implements CrittersApi {
 
     // HEAL-SPRING BUBBLES: the pink pools simmer gently
     if (frame % 10 === 0) {
-      const x = camX + Math.floor(Math.random() * VIEW_W);
-      const y = camY + Math.floor(Math.random() * VIEW_H);
+      const x = camX + Math.floor(entityRandom() * VIEW_W);
+      const y = camY + Math.floor(entityRandom() * VIEW_H);
       if (w.inBounds(x, y) && w.types[w.idx(x, y)] === Cell.Healium) {
-        ctx.particles.spawn(x, y - 1, 0, -0.3 - Math.random() * 0.2, null, packRGB(255, 170, 205), 30, {
+        ctx.particles.spawn(x, y - 1, 0, -0.3 - entityRandom() * 0.2, null, packRGB(255, 170, 205), 30, {
           glow: 1.2,
           grav: -0.01,
         });
-        if (Math.random() < 0.15) ctx.audio.bubble();
+        if (entityRandom() < 0.15) ctx.audio.bubble();
       }
     }
   }
@@ -501,7 +502,7 @@ export class Critters implements CrittersApi {
     const camY = Math.floor(ctx.camera.y);
     const tries = Math.min(6, 1 + Math.floor(shake * 60));
     for (let k = 0; k < tries; k++) {
-      const x = camX + Math.floor(Math.random() * VIEW_W);
+      const x = camX + Math.floor(entityRandom() * VIEW_W);
       // walk down to the lowest ceiling cell that has open air just beneath it
       let solidY = -1;
       for (let y = camY + 2; y < camY + VIEW_H - 8 && y < HEIGHT - 6; y++) {
@@ -513,13 +514,13 @@ export class Critters implements CrittersApi {
       }
       if (solidY > 0 && w.inBounds(x, solidY + 1) && w.types[w.idx(x, solidY + 1)] === Cell.Empty) {
         ctx.particles.spawn(
-          x + (Math.random() - 0.5),
+          x + (entityRandom() - 0.5),
           solidY + 1,
-          (Math.random() - 0.5) * 0.25,
-          0.1 + Math.random() * 0.35,
+          (entityRandom() - 0.5) * 0.25,
+          0.1 + entityRandom() * 0.35,
           null,
           packRGB(118, 110, 98),
-          46 + ((Math.random() * 40) | 0),
+          46 + ((entityRandom() * 40) | 0),
           { grav: 0.05 },
         );
       }
@@ -530,14 +531,14 @@ export class Critters implements CrittersApi {
 
   private ambientAudio(ctx: Ctx): void {
     if (this.list.length === 0) return;
-    const c = this.list[Math.floor(Math.random() * this.list.length)];
+    const c = this.list[Math.floor(entityRandom() * this.list.length)];
     const dx = c.x - ctx.player.x,
       dy = c.y - ctx.player.y;
     if (dx * dx + dy * dy > 140 * 140) return;
     if (c.kind === 'moth' || c.kind === 'firefly') {
-      if (Math.random() < 0.4) ctx.audio.chirp();
+      if (entityRandom() < 0.4) ctx.audio.chirp();
     } else if (c.kind === 'beetle' || c.kind === 'fly') {
-      if (Math.random() < 0.5) ctx.audio.skitter();
+      if (entityRandom() < 0.5) ctx.audio.skitter();
     }
   }
 }

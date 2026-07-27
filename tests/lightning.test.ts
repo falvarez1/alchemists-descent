@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Lightning } from '@/combat/Lightning';
 import type { Ctx, Enemy } from '@/core/types';
 import { World } from '@/sim/World';
+import { mockRandom } from './helpers/randomSeam';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -10,7 +11,7 @@ afterEach(() => {
 
 describe('Lightning', () => {
   it('strikes nearby enemies through the spatial index path', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
     const world = new World(64, 64);
     const near = enemyAt(10, 10);
     const far = enemyAt(40, 10);

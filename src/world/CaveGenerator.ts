@@ -3,6 +3,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { GEN, GEN_TUNE, scaleSkeletonSpec } from '@/config/gen';
 import { clamp, hash2, valueNoise } from '@/core/math';
 import { Rng, hashSeed, randomSeed } from '@/core/rng';
+import { reseedAllStreams } from '@/core/simRandom';
 import { makeInstantiationSink } from '@/game/instantiate';
 import type {
   AuthoredLight,
@@ -120,6 +121,10 @@ export class WorldGen implements WorldGenApi {
 
   generateCaves(ctx: Ctx): void {
     this.rng = new Rng(ctx.state.worldSeed >>> 0);
+    // Generation paints tint through the fx stream (sim/colors.ts). Anchoring
+    // every stream here is what makes a fresh world reproducible from its seed
+    // instead of from wherever the previous level happened to leave them.
+    reseedAllStreams(ctx.state.worldSeed >>> 0);
     const world = ctx.world;
     world.clear();
     const B = BIOMES[ctx.state.currentBiome] || BIOMES.earthen;

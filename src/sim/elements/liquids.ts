@@ -20,6 +20,7 @@ import {
 } from '@/sim/colors';
 import { CARDINAL_OFFSETS, IGNITION_OFFSETS } from '@/sim/neighborOffsets';
 import { canDryBloodOnSurface, stainCell } from '@/sim/stains';
+import { fxRandom, simRandom } from '@/core/simRandom';
 
 function waterCanPass(t: number): boolean {
   return t === Cell.Empty || t === Cell.Oil || t === Cell.Steam || t === Cell.Smoke;
@@ -79,21 +80,21 @@ function waterFeedsLivingGrowth(ctx: Ctx, x: number, y: number): boolean {
     const ny = y + o[1];
     if (!w.inBounds(nx, ny)) continue;
     const n = w.types[w.idx(nx, ny)];
-    if (n === Cell.Vines && Math.random() < 0.08) {
+    if (n === Cell.Vines && simRandom() < 0.08) {
       w.replaceCellAt(ci, Cell.Vines, vineColor());
-      w.life[ci] = 65 + Math.floor(Math.random() * 50);
+      w.life[ci] = 65 + Math.floor(simRandom() * 50);
       w.moved[ci] = w.movedTick;
       return true;
     }
-    if (n === Cell.Moss && hasLoadBearingNeighbor(ctx, x, y) && Math.random() < 0.055) {
+    if (n === Cell.Moss && hasLoadBearingNeighbor(ctx, x, y) && simRandom() < 0.055) {
       w.replaceCellAt(ci, Cell.Moss, mossColor());
-      w.life[ci] = 12 + Math.floor(Math.random() * 14);
+      w.life[ci] = 12 + Math.floor(simRandom() * 14);
       w.moved[ci] = w.movedTick;
       return true;
     }
-    if (n === Cell.Fungus && hasLoadBearingNeighbor(ctx, x, y) && Math.random() < 0.04) {
+    if (n === Cell.Fungus && hasLoadBearingNeighbor(ctx, x, y) && simRandom() < 0.04) {
       w.replaceCellAt(ci, Cell.Fungus, fungusColor());
-      w.life[ci] = 16 + Math.floor(Math.random() * 20);
+      w.life[ci] = 16 + Math.floor(simRandom() * 20);
       w.moved[ci] = w.movedTick;
       return true;
     }
@@ -104,7 +105,7 @@ function waterFeedsLivingGrowth(ctx: Ctx, x: number, y: number): boolean {
 export function handleWater(ctx: Ctx, x: number, y: number): void {
   const w = ctx.world;
   // Clean water dilutes toxic sludge it touches
-  if (Math.random() < 0.03) {
+  if (simRandom() < 0.03) {
     for (let k = 0; k < 4; k++) {
       const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
       const ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
@@ -121,7 +122,7 @@ export function handleWater(ctx: Ctx, x: number, y: number): void {
     w.swap(x, y, x, y + 1);
     return;
   }
-  const dir = Math.random() < 0.5 ? 1 : -1;
+  const dir = simRandom() < 0.5 ? 1 : -1;
   if (w.inBounds(x + dir, y + 1) && waterCanPass(w.types[w.idx(x + dir, y + 1)])) {
     w.swap(x, y, x + dir, y + 1);
     return;
@@ -130,7 +131,7 @@ export function handleWater(ctx: Ctx, x: number, y: number): void {
     w.swap(x, y, x - dir, y + 1);
     return;
   }
-  if (Math.random() < ctx.params.materials[Cell.Water].flowRate!) {
+  if (simRandom() < ctx.params.materials[Cell.Water].flowRate!) {
     if (w.inBounds(x + dir, y) && waterCanPass(w.types[w.idx(x + dir, y)])) {
       w.swap(x, y, x + dir, y);
       return;
@@ -148,7 +149,7 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
   // Blood soaks whatever sturdy surface it flows across or pools against — the
   // floor beneath it and the walls beside it pick up a red stain over time
   // (stainCell no-ops on non-sturdy cells, so empty space/sand is unaffected).
-  if (type === Cell.Blood && Math.random() < 0.35) {
+  if (type === Cell.Blood && simRandom() < 0.35) {
     stainCell(w, x, y + 1, 118, 14, 20, 0.16);
     stainCell(w, x + 1, y, 118, 14, 20, 0.1);
     stainCell(w, x - 1, y, 118, 14, 20, 0.1);
@@ -157,7 +158,7 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
     w.swap(x, y, x, y + 1);
     return;
   }
-  const dir = Math.random() < 0.5 ? 1 : -1;
+  const dir = simRandom() < 0.5 ? 1 : -1;
   if (w.inBounds(x + dir, y + 1) && viscousCanPass(w.types[w.idx(x + dir, y + 1)])) {
     w.swap(x, y, x + dir, y + 1);
     return;
@@ -166,7 +167,7 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
     w.swap(x, y, x - dir, y + 1);
     return;
   }
-  if (Math.random() < ctx.params.materials[type].flowRate!) {
+  if (simRandom() < ctx.params.materials[type].flowRate!) {
     if (w.inBounds(x + dir, y) && viscousCanPass(w.types[w.idx(x + dir, y)])) {
       w.swap(x, y, x + dir, y);
       return;
@@ -179,7 +180,7 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
   // Settled blood slowly coagulates (darkens)...
   if (type === Cell.Blood) {
     const i = w.idx(x, y);
-    if (Math.random() < ctx.params.materials[Cell.Blood].coagulation!) {
+    if (simRandom() < ctx.params.materials[Cell.Blood].coagulation!) {
       const c = w.colors[i];
       w.colors[i] = packRGB(
         Math.max(60, unpackR(c) - 30),
@@ -191,7 +192,7 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
     // permanent stain. Deep pools (blood directly overhead) keep their wet body;
     // only the exposed top layer retires, so spray can't drown the level/sim.
     const aboveBlood = w.inBounds(x, y - 1) && w.types[w.idx(x, y - 1)] === Cell.Blood;
-    if (!aboveBlood && Math.random() < BLOOD_DRY && canDryBloodOnSurface(w, x, y + 1)) {
+    if (!aboveBlood && simRandom() < BLOOD_DRY && canDryBloodOnSurface(w, x, y + 1)) {
       stainCell(w, x, y + 1, 96, 12, 16, 0.55);
       w.replaceCellAt(i, Cell.Empty, EMPTY_COLOR);
     }
@@ -225,7 +226,7 @@ function freezeCryoBridge(ctx: Ctx, x: number, y: number): void {
       if (!bridgeWaterSurface(ctx, nx, y)) break;
       freezeWaterCell(ctx, nx, y);
       const below = y + 1;
-      if (w.inBounds(nx, below) && w.types[w.idx(nx, below)] === Cell.Water && Math.random() < 0.22) {
+      if (w.inBounds(nx, below) && w.types[w.idx(nx, below)] === Cell.Water && simRandom() < 0.22) {
         freezeWaterCell(ctx, nx, below);
       }
     }
@@ -266,8 +267,8 @@ export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
     w.swap(x, y, x, y + 1);
     return;
   }
-  const dir = Math.random() < 0.5 ? 1 : -1;
-  if (Math.random() < ctx.params.materials[Cell.Nitrogen].flowRate!) {
+  const dir = simRandom() < 0.5 ? 1 : -1;
+  if (simRandom() < ctx.params.materials[Cell.Nitrogen].flowRate!) {
     if (w.inBounds(x + dir, y) && w.types[w.idx(x + dir, y)] === Cell.Empty) {
       w.swap(x, y, x + dir, y);
       return;
@@ -277,7 +278,7 @@ export function handleNitrogen(ctx: Ctx, x: number, y: number): void {
       return;
     }
   }
-  if (Math.random() < ctx.params.materials[Cell.Nitrogen].evaporationSpeed!) {
+  if (simRandom() < ctx.params.materials[Cell.Nitrogen].evaporationSpeed!) {
     w.replaceCellAt(ci, Cell.Smoke, smokeColor());
     w.life[ci] = 25;
   }
@@ -300,7 +301,7 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
       const at = w.types[ai];
       if (at === Cell.Empty || at === Cell.Smoke) {
         w.replaceCellAt(ai, Cell.Fire, fireColor());
-        w.life[ai] = 16 + Math.floor(Math.random() * 16);
+        w.life[ai] = 16 + Math.floor(simRandom() * 16);
       }
     }
     for (let k = 0; k < IGNITION_OFFSETS.length; k++) {
@@ -309,22 +310,22 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
         ty = y + o[1];
       if (!w.inBounds(tx, ty)) continue;
       const ti = w.idx(tx, ty);
-      if (w.types[ti] === Cell.Oil && w.life[ti] === 0 && Math.random() < P.igniteChance!) {
-        w.life[ti] = P.burnDuration! + Math.floor(Math.random() * 30);
+      if (w.types[ti] === Cell.Oil && w.life[ti] === 0 && simRandom() < P.igniteChance!) {
+        w.life[ti] = P.burnDuration! + Math.floor(simRandom() * 30);
       }
     }
     // Greasy black smoke curls off the slick — a light haze while it burns hot,
     // THICKENING as the fuel runs low (the dirty tail of an oil fire).
     const lowFuel = w.life[ci] < 70;
-    if (Math.random() < (lowFuel ? 0.18 : 0.05)) {
+    if (fxRandom() < (lowFuel ? 0.18 : 0.05)) {
       ctx.particles.spawn(
-        x + (Math.random() - 0.5) * 2,
+        x + (fxRandom() - 0.5) * 2,
         y - 2,
-        (Math.random() - 0.5) * 0.25,
-        -0.3 - Math.random() * 0.3,
+        (fxRandom() - 0.5) * 0.25,
+        -0.3 - fxRandom() * 0.3,
         null,
         smokeColor(),
-        50 + Math.floor(Math.random() * 50),
+        50 + Math.floor(fxRandom() * 50),
         { grav: -0.02 },
       );
     }
@@ -332,16 +333,16 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
       // gutters out in a curl of greasy smoke: the cell becomes a longer-lived
       // smoke cell, plus a little puff so a dying pool rolls a real cloud.
       w.replaceCellAt(ci, Cell.Smoke, smokeColor());
-      w.life[ci] = 40 + Math.floor(Math.random() * 30);
+      w.life[ci] = 40 + Math.floor(simRandom() * 30);
       for (let s = 0; s < 3; s++) {
         ctx.particles.spawn(
-          x + (Math.random() - 0.5) * 2.5,
-          y - 1 - Math.floor(Math.random() * 2),
-          (Math.random() - 0.5) * 0.35,
-          -0.35 - Math.random() * 0.4,
+          x + (simRandom() - 0.5) * 2.5,
+          y - 1 - Math.floor(simRandom() * 2),
+          (simRandom() - 0.5) * 0.35,
+          -0.35 - simRandom() * 0.4,
           null,
           smokeColor(),
-          70 + Math.floor(Math.random() * 50),
+          70 + Math.floor(simRandom() * 50),
           { grav: -0.025 },
         );
       }
@@ -359,8 +360,8 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
         w.inBounds(tx, ty) &&
         (w.types[w.idx(tx, ty)] === Cell.Fire || w.charge[w.idx(tx, ty)] > 0)
       ) {
-        if (Math.random() < P.igniteChance!) {
-          w.life[ci] = P.burnDuration! + Math.floor(Math.random() * 30);
+        if (simRandom() < P.igniteChance!) {
+          w.life[ci] = P.burnDuration! + Math.floor(simRandom() * 30);
           return;
         }
         break; // adjacent to flame but didn't catch this frame — let it flow, retry next tick
@@ -378,8 +379,8 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
     w.swap(x, y, x, y + 1);
     return;
   }
-  const dir = Math.random() < 0.5 ? 1 : -1;
-  if (Math.random() < P.flowRate!) {
+  const dir = simRandom() < 0.5 ? 1 : -1;
+  if (simRandom() < P.flowRate!) {
     if (
       w.inBounds(x + dir, y) &&
       (w.types[w.idx(x + dir, y)] === Cell.Empty || w.types[w.idx(x + dir, y)] === Cell.Steam)
@@ -433,7 +434,7 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
         n !== Cell.Smoke &&
         n !== Cell.Catalyst // acid cannot eat the philosopher's dust
       ) {
-        if (Math.random() < ctx.params.materials[Cell.Acid].corrosiveSpeed!) {
+        if (simRandom() < ctx.params.materials[Cell.Acid].corrosiveSpeed!) {
           // Alchemy needs a solvent: transmutation only fires next to water, and
           // rarely (economy guard — portable acid in flasks made 10% an
           // infinite-money hose; see DESIGN.md "acid->gold nerf"). The Gilded
@@ -447,8 +448,8 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
           if (
             (n === Cell.Wall || n === Cell.Wood || n === Cell.Stone) &&
             (cat >= 0
-              ? Math.random() < 0.45
-              : Math.random() < 0.03 && hasWaterNeighbor(w, tx, ty))
+              ? simRandom() < 0.45
+              : simRandom() < 0.03 && hasWaterNeighbor(w, tx, ty))
           ) {
             w.replaceCellAt(ti, Cell.Gold, goldColor());
             if (cat >= 0) {
@@ -472,8 +473,8 @@ export function handleAcid(ctx: Ctx, x: number, y: number): void {
     w.swap(x, y, x, y + 1);
     return;
   }
-  const dir = Math.random() < 0.5 ? 1 : -1;
-  if (Math.random() < ctx.params.materials[Cell.Acid].flowRate!) {
+  const dir = simRandom() < 0.5 ? 1 : -1;
+  if (simRandom() < ctx.params.materials[Cell.Acid].flowRate!) {
     if (w.inBounds(x + dir, y) && acidCanPass(w.types[w.idx(x + dir, y)])) {
       w.swap(x, y, x + dir, y);
       return;
@@ -512,32 +513,32 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
           w.replaceCellAt(ci, Cell.Stone, obsidianColor());
           for (let d = 1; d <= LAVA_CRUST_DEPTH; d++) {
             const yy = y + d;
-            if (!w.inBounds(x, yy) || w.types[w.idx(x, yy)] !== Cell.Lava || Math.random() >= LAVA_TOP_CRUST_DEEP) break;
+            if (!w.inBounds(x, yy) || w.types[w.idx(x, yy)] !== Cell.Lava || simRandom() >= LAVA_TOP_CRUST_DEEP) break;
             w.replaceCellAt(w.idx(x, yy), Cell.Stone, obsidianColor());
           }
-        } else if (Math.random() < LAVA_CRUST_CHANCE) {
+        } else if (simRandom() < LAVA_CRUST_CHANCE) {
           // Boring down / spreading: just the occasional fleck, so lava out-bores it.
           w.replaceCellAt(ci, Cell.Stone, obsidianColor());
         }
         // The quench is VIOLENT: vent a billow of steam + an airy hiss. Sampled
         // (and rolled AFTER the crust logic so its RNG is untouched) so a wide
         // water-on-lava front bursts dramatically without flooding the pool.
-        if (Math.random() < 0.18) {
+        if (fxRandom() < 0.18) {
           ctx.particles.spawn(
-            tx + (Math.random() - 0.5),
-            ty - Math.random(),
-            (Math.random() - 0.5) * 0.7,
-            -0.6 - Math.random() * 0.9,
+            tx + (fxRandom() - 0.5),
+            ty - fxRandom(),
+            (fxRandom() - 0.5) * 0.7,
+            -0.6 - fxRandom() * 0.9,
             null,
             steamColor(),
-            26 + Math.floor(Math.random() * 16),
+            26 + Math.floor(fxRandom() * 16),
             { grav: -0.04, glow: 0.5 },
           );
           ctx.audio.steam();
         }
         return;
       }
-      if (n === Cell.Ice && Math.random() < ctx.params.materials[Cell.Lava].meltRange!) {
+      if (n === Cell.Ice && simRandom() < ctx.params.materials[Cell.Lava].meltRange!) {
         w.replaceCellAt(ti, Cell.Water, waterColor());
       }
       if (n === Cell.Snow) {
@@ -554,11 +555,11 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 35;
       }
-      if (n === Cell.Coal && w.life[ti] === 0 && Math.random() < 0.15) {
+      if (n === Cell.Coal && w.life[ti] === 0 && simRandom() < 0.15) {
         // lava lights coal into a burning ember bed (burns in place — handleCoal)
-        w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration! + Math.floor(Math.random() * 40);
+        w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration! + Math.floor(simRandom() * 40);
       }
-      if (n === Cell.Toxic && Math.random() < 0.3) {
+      if (n === Cell.Toxic && simRandom() < 0.3) {
         w.replaceCellAt(ti, Cell.Smoke, smokeColor());
         w.life[ti] = 35;
       }
@@ -576,8 +577,8 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
     w.swap(x, y, x, y + 1);
     return;
   }
-  const dir = Math.random() < 0.5 ? 1 : -1;
-  if (Math.random() < ctx.params.materials[Cell.Lava].flowRate!) {
+  const dir = simRandom() < 0.5 ? 1 : -1;
+  if (simRandom() < ctx.params.materials[Cell.Lava].flowRate!) {
     if (w.inBounds(x + dir, y) && lavaCanPass(w.types[w.idx(x + dir, y)])) {
       w.swap(x, y, x + dir, y);
       return;

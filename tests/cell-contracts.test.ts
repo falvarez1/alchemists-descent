@@ -12,6 +12,7 @@ import { handleFungus, handleMoss } from '@/sim/elements/newMaterials';
 import { handleGunpowder, handleSand } from '@/sim/elements/powders';
 import { handleFire } from '@/sim/elements/thermal';
 import { handleVines } from '@/sim/elements/vines';
+import { mockRandom } from './helpers/randomSeam';
 
 function attachVineStrands(ctx: Ctx): Ctx {
   const events = (ctx.events ?? {}) as { on?: () => void };
@@ -240,7 +241,7 @@ describe('World.swap', () => {
     world.life[world.idx(3, 3)] = 10;
     world.types[world.idx(4, 4)] = Cell.Water;
     world.types[world.idx(5, 3)] = Cell.Stone;
-    vi.spyOn(Math, 'random')
+    mockRandom()
       .mockReturnValueOnce(0) // spread
       .mockReturnValueOnce(0.6) // damp sample x
       .mockReturnValueOnce(0.6) // damp sample y
@@ -259,7 +260,7 @@ describe('World.swap', () => {
     world.types[world.idx(3, 3)] = Cell.Fungus;
     world.life[world.idx(3, 3)] = 12;
     world.types[world.idx(5, 3)] = Cell.Stone;
-    vi.spyOn(Math, 'random')
+    mockRandom()
       .mockReturnValueOnce(0) // spread
       .mockReturnValueOnce(0) // +x direction
       .mockReturnValueOnce(0); // child life jitter
@@ -328,7 +329,7 @@ describe('cell material conversions', () => {
     const world = new World(6, 6);
     const i = world.idx(2, 2);
     dirtyCell(world, i, Cell.Sand);
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+    mockRandom().mockReturnValue(0);
 
     handleSand({ world, params: createGameParams() } as unknown as Ctx, 2, 2, Cell.Sand);
 
@@ -342,7 +343,7 @@ describe('cell material conversions', () => {
     const i = world.idx(2, 2);
     world.types[i] = Cell.Sand;
     world.types[world.idx(3, 2)] = Cell.Fire;
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+    mockRandom().mockReturnValue(0);
 
     handleSand({ world, params: createGameParams() } as unknown as Ctx, 2, 2, Cell.Sand);
 
@@ -355,7 +356,7 @@ describe('cell material conversions', () => {
     world.replaceCellAt(world.idx(2, 2), Cell.Fire, 0xff6600);
     world.life[world.idx(2, 2)] = 10;
     for (let x = 3; x <= 5; x++) world.replaceCellAt(world.idx(x, 2), Cell.Gunpowder, 0x555555);
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
 
     handleFire({
       world,
@@ -374,7 +375,7 @@ describe('cell material conversions', () => {
     stampBrushLine(world, 4, 3, 14, 3, 1, Cell.Gunpowder);
     world.replaceCellAt(world.idx(3, 3), Cell.Fire, 0xff6600);
     world.life[world.idx(3, 3)] = 180;
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
 
     handleFire({
       world,
@@ -457,7 +458,7 @@ describe('cell material conversions', () => {
     const water = world.idx(3, 3);
     world.replaceCellAt(water, Cell.Water, 0x2266ff);
     world.replaceCellAt(world.idx(2, 3), Cell.Vines, 0x228833);
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+    mockRandom().mockReturnValue(0);
 
     handleWater({ world, params: createGameParams() } as unknown as Ctx, 3, 3);
 
@@ -471,7 +472,7 @@ describe('cell material conversions', () => {
     const i = world.idx(2, 2);
     dirtyCell(world, i, Cell.Fire);
     world.life[i] = 1;
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
 
     handleFire({ world, params: createGameParams() } as unknown as Ctx, 2, 2);
 
@@ -487,7 +488,7 @@ describe('VineStrands', () => {
   });
 
   it('bends detached vines under impulse and settles them back into the grid', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
     const world = new World(12, 12);
     for (let x = 0; x < world.width; x++) world.types[world.idx(x, 7)] = Cell.Stone;
     world.types[world.idx(5, 3)] = Cell.Vines;
@@ -526,7 +527,7 @@ describe('VineStrands', () => {
   });
 
   it('lets the player brush detached vines into visible motion', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
     const world = new World(12, 12);
     world.types[world.idx(6, 3)] = Cell.Vines;
     world.colors[world.idx(6, 3)] = 0x227733;
@@ -554,7 +555,7 @@ describe('VineStrands', () => {
   });
 
   it('spins Weaver thread spit as a pinned Verlet strand, not a static cell line', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
     const world = new World(120, 80);
     const ctx = attachVineStrands({
       world,
@@ -583,7 +584,7 @@ describe('VineStrands', () => {
   });
 
   it('launches Weaver spit as an unpinned falling strand that expires into sparse nonblocking Ash', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
     const world = new World(140, 100);
     const ctx = attachVineStrands({
       world,
@@ -637,7 +638,7 @@ describe('VineStrands', () => {
   });
 
   it('spins Weaver den webs as pinned radial lattices', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
     const world = new World(160, 120);
     const ctx = attachVineStrands({
       world,
@@ -666,7 +667,7 @@ describe('VineStrands', () => {
   });
 
   it('keeps Weaver den webs when incidental vine detaches saturate the strand pool', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    mockRandom().mockReturnValue(0.5);
     const world = new World(180, 130);
     const ctx = attachVineStrands({
       world,

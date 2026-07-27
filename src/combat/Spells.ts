@@ -11,6 +11,7 @@ import {
 } from '@/sim/colors';
 import type { Ctx, Projectile, SpellId, SpellsApi } from '@/core/types';
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
+import { entityRandom } from '@/core/simRandom';
 
 /** Gold per RawOre cell mined. Kept modest (raw ore < refined gold's ~10/cell) —
  *  caches are plentiful and buried, so the per-cell value guards the economy. */
@@ -70,12 +71,12 @@ export class Spells implements SpellsApi {
           // Mining the hidden ore spills its gold: a homing grain flies to the
           // wizard (the same tell as the gold harvester). Score + chime aggregate
           // after the loop so a radius dig pays once, not per cell.
-          this.ctx.particles.spawn(X, Y, (Math.random() - 0.5) * 1.4, -0.8 - Math.random(),
+          this.ctx.particles.spawn(X, Y, (entityRandom() - 0.5) * 1.4, -0.8 - entityRandom(),
             null, goldColor(), 200, { homing: true, glow: 2.2, grav: 0 });
           world.clearCellAt(i); chewed++; oreCells++;
         } else if (c === Cell.Wall || c === Cell.Sand || c === Cell.Wood || c === Cell.Ice || c === Cell.Vines || c === Cell.Stone || c === Cell.Gunpowder) {
-          if (debris < 2 && Math.random() < 0.16) {
-            this.ctx.particles.spawn(X, Y, (Math.random() - 0.5) * 1.6, -0.7 - Math.random() * 0.9,
+          if (debris < 2 && entityRandom() < 0.16) {
+            this.ctx.particles.spawn(X, Y, (entityRandom() - 0.5) * 1.6, -0.7 - entityRandom() * 0.9,
               c === Cell.Wood ? Cell.Wood : Cell.Sand, world.colors[i], 55);
             debris++;
           }
@@ -127,8 +128,8 @@ export class Spells implements SpellsApi {
   private castScatter(x: number, y: number, angle: number, mul = 1): void {
     const sp = this.ctx.params.spells.scatter;
     for (let i = 0; i < sp.pellets!; i++) {
-      const sa = angle + (Math.random() - 0.5) * sp.spread!;
-      const sv = sp.velocityForce! * (0.85 + Math.random() * 0.3);
+      const sa = angle + (entityRandom() - 0.5) * sp.spread!;
+      const sv = sp.velocityForce! * (0.85 + entityRandom() * 0.3);
       this.ctx.projectiles.push({
         x,
         y,
@@ -150,8 +151,8 @@ export class Spells implements SpellsApi {
     const sp = this.ctx.params.spells.vitriol;
     this.ctx.audio.flame();
     for (let j = 0; j < 3; j++) {
-      const spreadA = angle + (Math.random() - 0.5) * sp.spread!;
-      const speed = 3.0 + Math.random() * 2.0;
+      const spreadA = angle + (entityRandom() - 0.5) * sp.spread!;
+      const speed = 3.0 + entityRandom() * 2.0;
       this.ctx.particles.spawn(
         x,
         y,
@@ -159,7 +160,7 @@ export class Spells implements SpellsApi {
         Math.sin(spreadA) * speed,
         Cell.Acid,
         acidColor(),
-        30 + Math.floor(Math.random() * 16),
+        30 + Math.floor(entityRandom() * 16),
         { grav: 0.06, glow: 1.4 },
       );
     }
@@ -169,8 +170,8 @@ export class Spells implements SpellsApi {
     const sp = this.ctx.params.spells.emberstorm;
     this.ctx.audio.flame();
     for (let j = 0; j < sp.count!; j++) {
-      const ea = angle + (Math.random() - 0.5) * 0.55;
-      const speed = 2.6 + Math.random() * 2.2;
+      const ea = angle + (entityRandom() - 0.5) * 0.55;
+      const speed = 2.6 + entityRandom() * 2.2;
       this.ctx.particles.spawn(
         x,
         y,
@@ -178,7 +179,7 @@ export class Spells implements SpellsApi {
         Math.sin(ea) * speed - 0.8,
         Cell.Ember,
         emberColor(),
-        200 + Math.floor(Math.random() * 120),
+        200 + Math.floor(entityRandom() * 120),
         { grav: 0.05, glow: 2.0 },
       );
     }
@@ -242,11 +243,11 @@ export class Spells implements SpellsApi {
       player.mana -= sp.manaCost;
       this.ctx.audio.flame();
       for (let j = 0; j < 4; j++) {
-        const spreadA = a + (Math.random() - 0.5) * sp.spread!;
-        const spd = 3.2 + Math.random() * 2.2;
+        const spreadA = a + (entityRandom() - 0.5) * sp.spread!;
+        const spd = 3.2 + entityRandom() * 2.2;
         this.ctx.particles.spawn(tip.x, tip.y, Math.cos(spreadA) * spd + player.vx * 0.4,
           Math.sin(spreadA) * spd, Cell.Fire, fireColor(),
-          14 + Math.floor(Math.random() * 12), { grav: -0.015, glow: 2.2 });
+          14 + Math.floor(entityRandom() * 12), { grav: -0.015, glow: 2.2 });
       }
     } else if (player.spell === 'vitriol') {
       player.mana -= sp.manaCost;
@@ -305,10 +306,10 @@ export class Spells implements SpellsApi {
     const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
     const a = Math.atan2(input.mouse.y - startY, input.mouse.x - startX);
     for (let j = 0; j < 3; j++) {
-      const spreadA = a + (Math.random() - 0.5) * this.ctx.params.spells.flame.spread!;
-      const spd = 3.4 + Math.random() * 2.5;
+      const spreadA = a + (entityRandom() - 0.5) * this.ctx.params.spells.flame.spread!;
+      const spd = 3.4 + entityRandom() * 2.5;
       this.ctx.particles.spawn(startX, startY - 1, Math.cos(spreadA) * spd, Math.sin(spreadA) * spd,
-        Cell.Fire, fireColor(), 16 + Math.floor(Math.random() * 12), { grav: -0.015, glow: 2.2 });
+        Cell.Fire, fireColor(), 16 + Math.floor(entityRandom() * 12), { grav: -0.015, glow: 2.2 });
     }
     if (this.ctx.state.frameCount % 10 === 0) this.ctx.audio.flame();
   }
