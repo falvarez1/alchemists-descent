@@ -1,0 +1,22 @@
+/*
+ * SpacetimeDB module tsconfig. This is a SEPARATE TypeScript project from the
+ * game's root tsconfig on purpose: modules run on V8 inside the database, not
+ * in the browser, and the root config's `@/` aliases and DOM assumptions do
+ * not apply here. The root `tsc --noEmit` excludes `servers/`.
+ *
+ * The options below `strict` are required by SpacetimeDB — don't change them.
+ */
+{
+  "compilerOptions": {
+    "strict": true,
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+
+    "target": "ESNext",
+    "lib": ["ES2021"],
+    "module": "ESNext",
+    "isolatedModules": true,
+    "noEmit": true
+  },
+  "include": ["./**/*"]
+}

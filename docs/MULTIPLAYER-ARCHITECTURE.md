@@ -1,8 +1,9 @@
 # Multiplayer Architecture — decisions and evidence
 
-- Status: **decided**; implementation staged. Supersedes the multiplayer
-  sections of `REALTIME-TUNING-LAB-AND-MULTIPLAYER-SERVER-SPEC.md`, which
-  remains the record for AuthorLink itself.
+- Status: **decided**; **stage 1 shipped and verified against a live
+  database**. Supersedes the multiplayer sections of
+  `REALTIME-TUNING-LAB-AND-MULTIPLAYER-SERVER-SPEC.md`, which remains the
+  record for AuthorLink itself.
 - Date: 2026-07-27.
 - Scope: how this game becomes multiplayer without forking the simulation,
   and where SpacetimeDB does and does not belong.
@@ -165,7 +166,37 @@ Note the ordering: determinism pays for itself in *testing and debugging*
 before multiplayer ever ships. That makes it the right next investment even if
 multiplayer slipped indefinitely.
 
-## Decision 5 — the editor and the debugger ride the same substrate
+## Decision 5 — when the host leaves, the session migrates
+
+Decided 2026-07-27. Host-authoritative has exactly one bad failure mode, and it
+needed a rule before stage 3 rather than a discovery during it.
+
+**The session migrates. It does not end.** A host crash-quitting, closing a
+laptop, or losing wifi is an ordinary event over a long expedition; ending
+everyone's run because one machine's tab closed throws away precisely the
+durable progress this plane exists to protect.
+
+The rule, implemented in `servers/spacetime/spacetimedb/src/index.ts` and
+verified live:
+
+- The successor is the **longest-connected surviving member**. Ties break on
+  the connection id's bytes, not on iteration order — two connections dropping
+  in the same instant must not be able to elect different hosts.
+- A **deliberate leave and a dropped socket take the same path**, so a clean
+  exit and a crash cannot diverge. One rule, exercised twice.
+- When the last member leaves, the session row **survives with no host**. Hero
+  state, expedition seed, and progression outlive an empty room; the next join
+  resumes and takes the host role rather than starting over.
+- The host may also hand off deliberately (`transferHost`), and **only** the
+  current host may do so — simulation authority is the one privilege in this
+  schema worth guarding.
+
+What this does *not* yet solve is grid continuity: the successor becomes
+authoritative, but stage 3 must decide whether it adopts the previous host's
+last streamed state or resynchronises from a snapshot. `world.snapshot` already
+does the latter for the editor, so the fallback exists.
+
+## Decision 6 — the editor and the debugger ride the same substrate
 
 This was the explicit requirement, and it is why `SessionTransport` was
 extracted before any of the above is built.
@@ -218,9 +249,30 @@ Nothing built so far is throwaway, and several pieces become load-bearing:
 Each stage is independently valuable; none is a prerequisite for shipping the
 game single-player.
 
-1. **Session tables in SpacetimeDB** (TypeScript module): `session`, `player`,
-   `presence`, `chat`, plus a `SpacetimeDbTransport`. Proves the substrate with
-   the *editor*, where a bug costs nothing, before any gameplay depends on it.
+1. ~~**Session tables in SpacetimeDB**~~ — **done, 2026-07-27.** The module
+   (`servers/spacetime/`) holds `session`, `player`, `presence`, `chat`, and an
+   event-table `frame`; `SpacetimeDbTransport` + `createSpacetimeConnector`
+   carry AuthorLink over it. An **unmodified `AuthorLinkClient`** now runs on
+   either backend. 28 live checks against a real database
+   (`npm run verify:spacetime`), 14 unit tests for the translation layer.
+
+   What stage 1 actually taught us, none of which was in the plan:
+
+   - `ctx.connectionId` is **nullable** — a scheduled reducer or an owner-side
+     `spacetime call` has no connection, so per-window reducers must refuse it.
+   - **Two browser windows share one Identity** (one localStorage token).
+     Membership therefore keys on `ConnectionId`; keying on `Identity` would
+     have silently collapsed the editor's two windows into one player and let
+     a peer migrate the host onto its own other tab. This is the single most
+     load-bearing correction the staging produced.
+   - `spacetimedb` is a **devDependency only**. The connector takes the
+     generated `DbConnection` as a parameter, so `src/net` imports neither the
+     SDK nor the codegen output and the shipped bundle is unchanged.
+   - Remaining gap before the backends are interchangeable: the relay's
+     `welcome` carries accumulated room tuning for late joiners and the
+     synthesized one does not. Needs a `(room, path) -> value` table — after
+     which tuning survives a server restart, which the relay's in-memory
+     accumulation does not.
 2. **Binary stream plane**: replace JSON `CellPatch` frames with a packed
    binary encoding. At 13 bytes/cell measured, JSON's ~26 bytes/cell is the
    easiest 2× on the table, and it is needed either way.
@@ -233,9 +285,10 @@ game single-player.
 
 - **Two planes is two things to operate.** Mitigated by both being reachable
   from one `SessionTransport` seam and one relay codebase, but it is real.
-- **Host-authoritative has a bad failure mode**: the host leaving. Needs an
-  explicit migration story or an accepted "session ends" rule before stage 3
-  ships.
+- ~~**Host-authoritative has a bad failure mode**: the host leaving.~~
+  Resolved by Decision 5 — the session migrates to the longest-connected
+  survivor, implemented and verified. What remains for stage 3 is grid
+  continuity across the handoff, not the handoff itself.
 - **SpacetimeDB is a younger ecosystem** than Postgres or a hand-rolled
   service. The BSL-to-AGPL-with-linking-exception licence is acceptable, and
   self-hosting is a genuine escape hatch, but it is a dependency at the centre

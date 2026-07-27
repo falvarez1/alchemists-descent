@@ -1,0 +1,17 @@
+{
+  "name": "alchemists-descent-session",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Session substrate for Alchemist's Descent — sessions, membership, presence, chat, host migration",
+  "scripts": {
+    "build": "spacetime build",
+    "publish:local": "spacetime publish alchemists-descent --server local --yes"
+  },
+  "dependencies": {
+    "spacetimedb": "2.7.*"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.2"
+  }
+}
