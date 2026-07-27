@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:authoring": "node scripts/build-authoring.mjs",
     "preview": "vite preview",
     "preview:dist": "node scripts/serve-dist.mjs",
     "typecheck": "tsc --noEmit",
@@ -32,6 +33,7 @@
     "authorlink:deploy": "wrangler deploy --cwd servers/authorlink",
     "game:deploy": "npm run build && wrangler pages deploy dist --project-name alchemists-descent --branch main --commit-dirty=true",
     "verify:hosted-game": "node scripts/verify-hosted-game.mjs",
+    "verify:combat-balance": "node scripts/verify-combat-balance.mjs",
     "spacetime:build": "spacetime build -p servers/spacetime/spacetimedb",
     "spacetime:publish-local": "spacetime publish alchemists-descent --server local --yes -p servers/spacetime/spacetimedb",
     "gen:spacetime-bindings": "spacetime generate --lang typescript --out-dir servers/spacetime/bindings --module-path servers/spacetime/spacetimedb --yes",

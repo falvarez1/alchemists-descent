@@ -4,6 +4,15 @@
 declare const __BUILD_STAMP__: string;
 
 /**
+ * Is the authoring surface — the Builder route and the debug toggles — part of
+ * this build? True in dev, false in a production build unless
+ * `VITE_INCLUDE_BUILDER=1`. A compile-time constant rather than a runtime
+ * check, so the branches it guards are dead-code-eliminated and the Builder
+ * chunk is never emitted for a play build.
+ */
+declare const __AUTHORING__: boolean;
+
+/**
  * AuthorLink relay configuration. BUILD-TIME only, never read from the URL:
  * a `?linkServer=` parameter would let any link pointed at a deployed build
  * stream that session's tuning and terrain to an attacker's socket.

@@ -37,11 +37,28 @@ const PROJECTILE_PUSH: Partial<Record<ProjectileType, number>> = {
 
 const FROST_BODY_MOMENTUM_GRACE = 10;
 
+/**
+ * Combat leavings a shot should fly straight through.
+ *
+ * Every other liquid stops a projectile for a reason the player can read —
+ * water quenches a fireball into steam, lava and acid are hazards you aim AT,
+ * oil is fuel you are trying to light. Blood and slime are just what is left on
+ * the floor after a fight, and stopping on them made the arena progressively
+ * harder to shoot across the longer you fought in it: kill something, and your
+ * next shot dies in the puddle it left. That is a difficulty curve nobody
+ * designed, running the wrong way.
+ *
+ * Deliberately NOT all liquids — see docs/PORTING.md.
+ */
+function isSpentGore(t: number): boolean {
+  return t === Cell.Blood || t === Cell.Slime;
+}
+
 /** Solid-for-projectiles test (same gate as the impact check in update()). */
 function solidAt(world: World, x: number, y: number): boolean {
   if (!world.inBounds(x, y)) return true;
   const c = world.types[world.idx(x, y)];
-  return c !== Cell.Empty && !isGas(c);
+  return c !== Cell.Empty && !isGas(c) && !isSpentGore(c);
 }
 
 interface DiskOffset {
@@ -1018,7 +1035,7 @@ export class Projectiles implements ProjectilesApi {
         }
 
         const col = world.types[world.idx(gx, gy)];
-        if (col !== Cell.Empty && !isGas(col)) {
+        if (col !== Cell.Empty && !isGas(col) && !isSpentGore(col)) {
           applyElectricChargeToTerrain(ctx, p, gx, gy);
           applyFrostChargeToTerrain(ctx, p, gx, gy);
           // Hollow-wall tell (pillar 10): a player shot striking a thin wall

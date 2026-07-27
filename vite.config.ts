@@ -17,10 +17,37 @@ function buildStamp(): string {
   return `${hash} ${new Date().toISOString().slice(0, 16)}Z`;
 }
 
-export default defineConfig({
+/**
+ * Authoring surface = the Builder route plus the debug toggles (console,
+ * runtime inspector, GPU/WGSL A-B). Present in dev, ABSENT from a production
+ * build unless explicitly asked for.
+ *
+ * Fail-safe on purpose: a playtester must not be able to reach the level editor
+ * from a link someone sent them, and hiding the button is not enough — the
+ * `builder.html` route and the Builder chunk have to not be in the deployment
+ * at all. So shipping the editor is the thing that takes an explicit flag, not
+ * withholding it. `npm run build:authoring` when you do want it.
+ */
+const authoringEnabled = (mode: string): boolean =>
+  mode !== 'production' || process.env.VITE_INCLUDE_BUILDER === '1';
+
+/** Entry points for this build: the player route always, the Builder route only
+ *  when authoring is enabled. */
+function buildInputs(mode: string): Record<string, string> {
+  const input: Record<string, string> = {
+    index: fileURLToPath(new URL('./index.html', import.meta.url)),
+  };
+  if (authoringEnabled(mode)) {
+    input.builder = fileURLToPath(new URL('./builder.html', import.meta.url));
+  }
+  return input;
+}
+
+export default defineConfig(({ mode }) => ({
   plugins: [authorLinkPlugin()],
   define: {
     __BUILD_STAMP__: JSON.stringify(buildStamp()),
+    __AUTHORING__: JSON.stringify(authoringEnabled(mode)),
   },
   // GitHub Pages serves a project site under /<repo>/, so the deploy build needs
   // that base for assets to resolve. The CI workflow sets GH_PAGES=true; local
@@ -38,11 +65,10 @@ export default defineConfig({
     chunkSizeWarningLimit: 1800,
     rollupOptions: {
       // Two routes: the player entry and the standalone Builder window. They
-      // share every chunk, so the second entry costs a few KB of HTML.
-      input: {
-        index: fileURLToPath(new URL('./index.html', import.meta.url)),
-        builder: fileURLToPath(new URL('./builder.html', import.meta.url)),
-      },
+      // share every chunk, so the second entry costs a few KB of HTML — but a
+      // play build omits the Builder route entirely, so /builder.html 404s
+      // rather than merely being unadvertised.
+      input: buildInputs(mode),
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
@@ -65,4 +91,4 @@ export default defineConfig({
     // file resets it between tests so a forced roll cannot leak forward.
     setupFiles: ['./tests/setup.ts'],
   },
-});
+}));

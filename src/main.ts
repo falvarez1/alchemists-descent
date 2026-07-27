@@ -1,6 +1,5 @@
 import '@/styles/main.css';
 import { Game } from '@/game/Game';
-import { BuilderLauncher } from '@/app/BuilderLauncher';
 import { installAuthorLink, resolveAuthorLinkConfig } from '@/app/AuthorLink';
 import { AuthorLinkIndicator } from '@/app/AuthorLinkIndicator';
 import { initRapier } from '@/entities/rapierInit';
@@ -48,9 +47,24 @@ requestAnimationFrame(() =>
         linkDisposers.push(authorLink.onWorldState((state) => linkIndicator.updateWorlds(state)));
       }
 
-      const builderLauncher = new BuilderLauncher(game.ctx, authorLink);
+      // The Builder is loaded through a DYNAMIC import inside a compile-time
+      // branch. A static import would keep the launcher — and the Builder chunk
+      // it lazily pulls — in a play build even with the button hidden, and a
+      // hidden button is not separation: the tester could still reach it.
+      // `__AUTHORING__` is inlined as `false` there, so Rollup drops the whole
+      // branch and never emits the chunk. See vite.config.ts.
+      let builderLauncher: { open(): void; dispose(): void } | null = null;
+      if (__AUTHORING__) {
+        const { BuilderLauncher } = await import('@/app/BuilderLauncher');
+        builderLauncher = new BuilderLauncher(game.ctx, authorLink);
+      } else {
+        // Same reasoning for the debug surface: console, runtime inspector and
+        // the GPU/WGSL A-B toggles are authoring tools, not player features.
+        // Removing the nodes is enough — every owner looks them up optionally.
+        for (const el of document.querySelectorAll('[data-authoring]')) el.remove();
+      }
       game.start();
-      if (import.meta.env.DEV && savedMode === 'builder') builderLauncher.open();
+      if (import.meta.env.DEV && savedMode === 'builder') builderLauncher?.open();
 
       if (import.meta.env.DEV) {
         // Debug handle for the console and headless verification scripts.
@@ -68,7 +82,7 @@ requestAnimationFrame(() =>
           for (const dispose of linkDisposers.splice(0).reverse()) dispose();
           linkIndicator?.dispose();
           authorLink?.dispose();
-          builderLauncher.dispose();
+          builderLauncher?.dispose();
           game.dispose();
           if (debugWindow.__game === game) delete debugWindow.__game;
           delete debugWindow.__authorLink;

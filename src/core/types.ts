@@ -852,6 +852,17 @@ export interface GlobalParams {
    *  zap chips the surface and a sustained current drills through over a second or two.
    *  Scales with the local charge magnitude, so only a real current bites. */
   chargeErosion: number;
+  /** BASELINE scale on every enemy attack's damage, folded into each foe's
+   *  `dmgK` at spawn beside the depth ramp and the difficulty multiplier.
+   *
+   *  Distinct from `DifficultyMods.enemyDamage`: that is the player-facing
+   *  knob (Apprentice..Archmage) and stays a multiplier ON the shipped
+   *  balance, with difficulty 3 pinned at 1.0 by definition. This is the
+   *  shipped balance itself — the one place to make foes hit softer or harder
+   *  across the board without rewriting fifteen per-attack constants and
+   *  losing the relationships between them (a golem should always land like
+   *  three bats). */
+  enemyDamage: number;
 }
 
 export interface PostFxSettings {

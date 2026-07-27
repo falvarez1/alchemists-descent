@@ -115,6 +115,37 @@ try {
   });
   check('no AuthorLink relay host or token in the bundle', leaked.length === 0, leaked.join(' | '));
 
+  // THE BUILDER MUST NOT BE REACHABLE. A playtester given this link should not
+  // be able to open the level editor, and "we hid the button" is not
+  // separation — check the button, the route, and the chunk independently,
+  // because each can come back on its own.
+  const authoringUi = await page.evaluate(() => ({
+    builderButton: !!document.getElementById('mode-builder-btn'),
+    devButtons: document.querySelectorAll('[data-authoring]').length,
+    console: !!document.getElementById('dev-console-toggle'),
+  }));
+  check('no BUILDER button', !authoringUi.builderButton);
+  check(
+    'no authoring/debug toggles',
+    authoringUi.devButtons === 0 && !authoringUi.console,
+    JSON.stringify(authoringUi),
+  );
+
+  const builderRoute = await page.request.get(new URL('/builder.html', url).href);
+  check(
+    'the /builder.html route is not deployed',
+    builderRoute.status() === 404,
+    `status ${builderRoute.status()} — the editor route is live on a play build`,
+  );
+
+  // The backtick console self-binds a key, so removing its button proves nothing.
+  await page.keyboard.press('Backquote');
+  await new Promise((r) => setTimeout(r, 400));
+  const consoleOpened = await page.evaluate(
+    () => !!document.querySelector('#dev-console.open, #dev-console.visible, .console-overlay.open'),
+  );
+  check('the dev console does not open on backtick', !consoleOpened);
+
   check('no page errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 } finally {
   await context.close().catch(() => {});

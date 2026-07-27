@@ -24,10 +24,17 @@ export const GLOBAL_PARAMS: GlobalParams = {
   // Raised from the original 0.14: with the squared light curve, this floor
   // keeps the caves moody while letting shadowed rock read as silhouette.
   ambient: 0.36,
-  bloodAmount: 7.0,
-  // Blood-specific gore dialed well above the other channels for a gorier,
-  // more Noita-like spray that feeds the corpse pools; other gore channels unchanged.
-  goreBlood: 4.0,
+  // Gore volume. Escalated deliberately over several passes (bloodAmount 1->7,
+  // goreBlood 1->1.3->2.3->4) chasing a Noita-like spray, which compounds to a
+  // 28x multiplier and drowns the floor after two or three kills. Pulled back
+  // ~4x to 6.9x: a kill still throws a real sheet of blood and still feeds a
+  // pool, but an arena stays readable after a fight.
+  //
+  // Note this is a LOOK change only. Blood no longer stopping your shots is a
+  // separate, mechanical fix in combat/Projectiles.ts — the gore dial was never
+  // the right lever for that.
+  bloodAmount: 3.0,
+  goreBlood: 2.3,
   goreSlime: 1.0,
   goreOoze: 0.15,
   // Electrical spark/lightning conduction. The current crawls outward through
@@ -41,11 +48,31 @@ export const GLOBAL_PARAMS: GlobalParams = {
   chargeStrength: 3.5,
   chargeDecay: 1,
   // Damage per status tick spent in a charged conductor (wet bodies take ~3×).
-  shockDamage: 9.2,
+  //
+  // RESTORED to 0.2 from 9.2. Git blames the 9.2 on efa4013 — a large
+  // multi-feature commit about "structural stamps for authored objects" whose
+  // message says nothing about electrical balance, and which edited the
+  // adjacent line from `chargeStrength: 2.5` to `3.5`. `0.2` -> `9.2` is a
+  // stray keystroke, not a decision: it is 46x the intended value and 9x above
+  // the top of this dial's OWN Builder slider, which runs 0..1.
+  //
+  // Status ticks 30x/second, so 9.2 was ~276 dps dry and ~828 wet — a bolt
+  // fired at the ground near your feet electrified what you were standing on
+  // and killed you in well under a second. That one typo is most of what made
+  // combat feel lethal for no visible reason.
+  shockDamage: 0.2,
   // Electro-erosion: a live current arcs into the solid terrain it touches and spalls
   // it (walls/stone crumble to debris; Metal conducts and is immune). 0 = off. ~1 chips
   // on a zap and drills through under a sustained current; scales with charge magnitude.
   chargeErosion: 1.0,
+  // Baseline scale on enemy attack damage. 0.7 because the shipped numbers put
+  // a golem slam at 20 and a stonemaw bite at 18 against 100 player HP — five
+  // or six connected blows, before the depth ramp, with several foes swinging
+  // at once and knockback feeding you into the next one. Scaling here rather
+  // than editing the fifteen per-attack constants keeps their RELATIONSHIPS
+  // intact: a golem still lands like three bats, it just no longer ends the run
+  // in a corridor you could not back out of.
+  enemyDamage: 0.7,
 };
 
 /** Frozen baseline captured at load — the Builder section "reset" restores it. */

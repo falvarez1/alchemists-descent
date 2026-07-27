@@ -314,7 +314,12 @@ export class Enemies implements EnemyControlApi {
     const depth = ctx.state.mode === 'play' ? (ctx.levels.current?.def.depth ?? 1) : 1;
     const diff = difficultyMods(ctx.state);
     const hpMul = (1 + (depth - 1) * 0.16) * diff.enemyHp;
-    const dmgK = (1 + (depth - 1) * 0.1) * diff.enemyDamage;
+    // Baked at spawn, like hpMul — so a live edit to the baseline dial reaches
+    // foes spawned after it, not the ones already on screen. Falls back to 1x
+    // when no tuning is configured (minimal test stubs), matching how
+    // electrical.ts reads its dials; production always carries global params.
+    const baseline = ctx.params?.global?.enemyDamage ?? 1;
+    const dmgK = (1 + (depth - 1) * 0.1) * diff.enemyDamage * baseline;
     const enemy: Enemy = {
       kind,
       x: sx,

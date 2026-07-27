@@ -288,10 +288,15 @@ export class Game {
     this.disposables.push(new HintTeachOverlay(ctx));
     // Self-binds the B key; lives for the page lifetime.
     this.disposables.push(new WandBench(ctx));
-    // Transitional dev console: typed QA commands + automation adapter.
-    this.disposables.push(new ConsoleOverlay(ctx));
-    // Top-level runtime inspector for Play and Builder Playtest.
-    this.disposables.push(new RuntimeInspector(ctx));
+    // Authoring/debug surface. Not constructed at all in a play build — the
+    // console self-binds the backtick key and the inspector can pose gameplay
+    // state, so stripping their header buttons would leave both reachable.
+    if (__AUTHORING__) {
+      // Transitional dev console: typed QA commands + automation adapter.
+      this.disposables.push(new ConsoleOverlay(ctx));
+      // Top-level runtime inspector for Play and Builder Playtest.
+      this.disposables.push(new RuntimeInspector(ctx));
+    }
     // Wires the Level Library buttons; lives for the page lifetime.
     this.disposables.push(new LevelStore(ctx));
     // Header PLAY opens the canonical run launcher; Builder playtests bypass it.
