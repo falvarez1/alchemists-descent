@@ -131,11 +131,22 @@ try {
     JSON.stringify(authoringUi),
   );
 
+  // What matters is that the route does not LOAD THE EDITOR, not what status
+  // it carries: static hosts answer unmatched paths in their own way, and
+  // Cloudflare Pages serves index.html at 200 unless a 404.html is present.
+  // The first version of this check asserted 404 and reported a live editor
+  // when the route was in fact serving the game — right alarm, wrong reason.
   const builderRoute = await page.request.get(new URL('/builder.html', url).href);
+  const builderBody = await builderRoute.text();
   check(
-    'the /builder.html route is not deployed',
+    'the /builder.html route does not serve the editor',
+    !/assets\/(builder|Builder)-/.test(builderBody),
+    `status ${builderRoute.status()}, body references a builder entry`,
+  );
+  check(
+    'a stale editor link 404s instead of silently loading the game',
     builderRoute.status() === 404,
-    `status ${builderRoute.status()} — the editor route is live on a play build`,
+    `status ${builderRoute.status()} — add public/404.html so unmatched paths are honest`,
   );
 
   // The backtick console self-binds a key, so removing its button proves nothing.
