@@ -42,6 +42,30 @@ npm run authorlink:server -- --port 8787 --strict `
   few `gen.*`/`global.*` dials with no authored UI) are **refused** rather than
   guessed at. Closing that gap means giving those dials a declared range.
 
+## Deployed
+
+A live relay exists and is owned by this project's Cloudflare account:
+
+```
+wss://alchemists-descent-authorlink.ajar-red.workers.dev/__authorlink
+```
+
+It runs strict: `ROOM_TOKEN` is a real secret (not a var), and
+`ALLOWED_ORIGINS` comes from `wrangler.toml`. Verified end to end with
+`verify:authorlink-edge` — 9/9 — plus an explicit rotation check that the
+previous token no longer writes.
+
+Two operational notes:
+
+- The account holding it is named **Ajar Red** (it began as a temporary
+  preview account and was claimed). A login with more than one account makes
+  `wrangler` prompt, which hangs a non-interactive shell — pin it:
+  `CLOUDFLARE_ACCOUNT_ID=55c36c9de5247e3c193b45cdf43bb054`.
+- **Rotating the token**: `wrangler secret put ROOM_TOKEN` takes effect on the
+  running Worker without a redeploy. `wrangler deploy` clears plain vars but
+  never deletes secrets, so deploy first and set secrets after if you are
+  moving a value from one to the other.
+
 ## Cloudflare deploy
 
 Requires a Cloudflare account and `wrangler`. **Nothing here runs or bills
