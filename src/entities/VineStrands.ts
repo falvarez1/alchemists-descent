@@ -39,7 +39,7 @@ const SETTLE_FRAMES = 38;
 const MAX_AGE_FRAMES = 720;
 const PLAYER_PUSH_RADIUS = 20;
 const PLAYER_PUSH_STRENGTH = 1.4;
-// Hanging cell-vines come ALIVE near the camera: each is lifted into a soft Verlet
+// Hanging cell-vines come ALIVE near the player: each is lifted into a soft Verlet
 // strand (so it sways like the ropes), then settles back to its cells when far.
 const LIFT_PER_PASS = 4; // most clusters lifted per scan (spreads the flood-fill cost)
 const LIFT_SCAN_CADENCE = 8; // frames between on-screen scans for new tendrils
@@ -112,6 +112,10 @@ export class VineStrands implements VineStrandsApi {
   private readonly clusterQueueY = new Int16Array(MAX_CLUSTER_CELLS);
   private readonly clusterCellIndexes = new Int32Array(MAX_CLUSTER_CELLS);
   private readonly clusterNodeByCell = new Map<number, number>();
+  private supportWorld: World | null = null;
+  private supportEpoch = -1;
+  private supportChecked = new Float64Array(0);
+  private readonly supportProofs = new Map<number, { cells: Int32Array; anchor: number; step: number; valid: boolean }>();
 
   constructor(private readonly ctx: Ctx) {
     this.eventDisposers.push(ctx.events.on('levelChanged', () => this.settleAndClear()));
@@ -126,6 +130,24 @@ export class VineStrands implements VineStrandsApi {
     if (!world.inBounds(x, y)) return false;
     const start = world.idx(x, y);
     if (world.types[start] !== Cell.Vines) return false;
+    if (this.supportWorld !== world || this.supportEpoch !== world.activity.epoch) {
+      this.supportWorld = world; this.supportEpoch = world.activity.epoch;
+      this.supportChecked = new Float64Array(world.types.length);
+      this.supportProofs.clear();
+    }
+    const step = world.activity.stepSerial;
+    if (step > 0 && this.supportChecked[start] === step) return false;
+    const proof = this.supportProofs.get(start);
+    if (proof && step > 0) {
+      if (proof.step !== step) {
+        proof.step = step;
+        proof.valid = isLoadBearingAnchor(world.types[proof.anchor]);
+        if (proof.valid) for (const cell of proof.cells) {
+          if (world.types[cell] !== Cell.Vines) { proof.valid = false; break; }
+        }
+      }
+      if (proof.valid) return false;
+    }
 
     const queueX = this.clusterQueueX;
     const queueY = this.clusterQueueY;
@@ -135,6 +157,7 @@ export class VineStrands implements VineStrandsApi {
     let head = 0;
     let count = 1;
     let anchored = false;
+    let anchorIndex = -1;
     let truncated = false;
     let colorR = 0;
     let colorG = 0;
@@ -174,11 +197,23 @@ export class VineStrands implements VineStrandsApi {
           count++;
         } else if (isLoadBearingAnchor(nt)) {
           anchored = true;
+          anchorIndex = ni;
+          break;
         }
       }
+      // One real anchor supports every cell already reached through this
+      // connected cluster. Do not flood the remaining colony to prove it again.
+      if (anchored) break;
     }
 
-    if (anchored || truncated) return false;
+    if (anchored || truncated) {
+      if (anchored && step > 0) {
+        const proof = { cells: cellIndexes.slice(0, count), anchor: anchorIndex, step, valid: true };
+        for (let i = 0; i < count; i++) this.supportProofs.set(cellIndexes[i], proof);
+      }
+      if (step > 0) for (let i = 0; i < count; i++) this.supportChecked[cellIndexes[i]] = step;
+      return false;
+    }
     if (!this.reserveDetachedStrandSlot(world)) return false;
 
     const nodes: VineNode[] = [];
@@ -536,36 +571,36 @@ export class VineStrands implements VineStrandsApi {
   }
 
   /**
-   * Hanging cell-vines become Verlet soft bodies near the camera (so they sway to
+   * Hanging cell-vines become Verlet soft bodies near the player (so they sway to
    * your approach, the kick gust, blasts, and the world shaking) and settle back
-   * into their original cells when they drift far off-screen. The vine stays REAL
-   * grid material — it's only "soft" while you're close enough to see it move.
+   * into their original cells outside the physical interest region. Panning or
+   * shaking the camera cannot change which authoritative cells become bodies.
    */
   private manageHangingVines(ctx: Ctx): void {
-    if (ctx.state.mode !== 'play' || !ctx.camera) return;
+    if (ctx.state.mode !== 'play') return;
     const world = ctx.world;
-    const camX = Math.floor(ctx.camera.x);
-    const camY = Math.floor(ctx.camera.y);
-    // Re-settle tendrils that drifted well past the view back into cells.
+    const interestX = Math.floor(ctx.player.x - VIEW_W / 2);
+    const interestY = Math.floor(ctx.player.y - VIEW_H / 2);
+    // Re-settle tendrils that drifted well past the player back into cells.
     for (let i = this.strands.length - 1; i >= 0; i--) {
       const s = this.strands[i];
       if (!s.tendril) continue;
       const ax = s.anchorX ?? 0;
       const ay = s.anchorY ?? 0;
       if (
-        ax < camX - TENDRIL_FAR_MARGIN || ax > camX + VIEW_W + TENDRIL_FAR_MARGIN ||
-        ay < camY - TENDRIL_FAR_MARGIN || ay > camY + VIEW_H + TENDRIL_FAR_MARGIN
+        ax < interestX - TENDRIL_FAR_MARGIN || ax > interestX + VIEW_W + TENDRIL_FAR_MARGIN ||
+        ay < interestY - TENDRIL_FAR_MARGIN || ay > interestY + VIEW_H + TENDRIL_FAR_MARGIN
       ) {
         this.settleTendril(world, s);
         this.strands.splice(i, 1);
       }
     }
-    // Scan the view (throttled) for ceiling-hung vine tops and lift them.
+    // Scan the physical interest region for ceiling-hung vine tops.
     if (ctx.state.frameCount % LIFT_SCAN_CADENCE !== 0 || this.strands.length >= MAX_ACTIVE_STRANDS) return;
-    const x0 = Math.max(1, camX);
-    const y0 = Math.max(1, camY);
-    const x1 = Math.min(world.width - 2, camX + VIEW_W);
-    const y1 = Math.min(world.height - 2, camY + VIEW_H);
+    const x0 = Math.max(1, interestX);
+    const y0 = Math.max(1, interestY);
+    const x1 = Math.min(world.width - 2, interestX + VIEW_W);
+    const y1 = Math.min(world.height - 2, interestY + VIEW_H);
     let lifted = 0;
     for (let y = y0; y <= y1 && lifted < LIFT_PER_PASS && this.strands.length < MAX_ACTIVE_STRANDS; y++) {
       const row = y * world.width;

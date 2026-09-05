@@ -1,6 +1,8 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { Cell } from '@/sim/CellType';
 import { EMPTY_COLOR } from '@/sim/colors';
+import { ActivityGrid } from '@/sim/ActivityGrid';
+import { ColorOverrides } from '@/sim/ColorOverrides';
 
 const CHARGE_SCAN_TILE = 64;
 
@@ -14,6 +16,7 @@ const CHARGE_SCAN_TILE = 64;
  * Colors are packed 0xRRGGBB in a Uint32Array — see colors.ts for pack/unpack.
  */
 export class World {
+  readonly activity: ActivityGrid;
   readonly width: number;
   readonly height: number;
 
@@ -22,7 +25,10 @@ export class World {
   /** Packed 0xRRGGBB per cell. */
   readonly colors: Uint32Array;
   /** Sparse color-only scars that must survive expedition save/restore. */
-  readonly colorOverrides = new Set<number>();
+  readonly colorOverrides: ColorOverrides;
+  get mutationVersion(): number { return this.activity.revision + this.colorOverrides.revision; }
+  /** Last authoritative tick that could mutate this world; used by snapshot caching. */
+  simulationTick = 0;
   /** Generic per-cell countdown (fire life, smoke life, ember life, ...). */
   readonly life: Int16Array;
   /** Set when a cell moved this sim tick, so it is not simulated twice. */
@@ -38,19 +44,23 @@ export class World {
   /** Coarse tiles already scanned for loaded/generated direct charge writes. */
   private readonly chargeScanTiles = new Set<number>();
 
-  /** Active simulation window — only cells inside are simulated each tick. */
+  /** Player/physics interest region; distant material work uses ActivityGrid. */
   readonly simBounds: { x0: number; x1: number; y0: number; y1: number };
+  readonly allBounds: { x0: number; x1: number; y0: number; y1: number };
 
   constructor(width = WIDTH, height = HEIGHT) {
     this.width = width;
     this.height = height;
+    this.activity = new ActivityGrid(width, height);
     const n = width * height;
+    this.colorOverrides = new ColorOverrides(n);
     this.types = new Uint8Array(n);
     this.colors = new Uint32Array(n).fill(EMPTY_COLOR);
     this.life = new Int16Array(n);
     this.moved = new Uint8Array(n);
     this.charge = new Uint16Array(n);
     this.simBounds = { x0: 0, x1: width, y0: 0, y1: height };
+    this.allBounds = { x0: 0, x1: width, y0: 0, y1: height };
   }
 
   idx(x: number, y: number): number {
@@ -73,6 +83,7 @@ export class World {
 
   /** Reset a flat-indexed cell to empty space. */
   clearCellAt(i: number): void {
+    this.activity.touchIndex(i);
     this.types[i] = Cell.Empty;
     this.colors[i] = EMPTY_COLOR;
     this.life[i] = 0;
@@ -82,6 +93,7 @@ export class World {
 
   /** Replace a flat-indexed cell with fresh material, clearing transient metadata. */
   replaceCellAt(i: number, t: number, color: number): void {
+    this.activity.touchIndex(i);
     this.types[i] = t;
     this.colors[i] = color;
     this.life[i] = 0;
@@ -91,6 +103,7 @@ export class World {
 
   /** Set charge while keeping the sparse active-charge index in step. */
   setChargeAt(i: number, charge: number): void {
+    this.activity.touchIndex(i);
     const q = Math.max(0, Math.min(65535, charge | 0));
     this.charge[i] = q;
     if (q > 0) this.activeCharges.add(i);
@@ -175,10 +188,19 @@ export class World {
 
   /** Swap the full state of two cells and flag both as moved this tick. */
   swap(x1: number, y1: number, x2: number, y2: number): void {
+    // Adjacent axial halos have an exact rectangular union. Mark it once;
+    // diagonal and distant moves retain their two separate contact halos.
+    if ((x1 === x2 || y1 === y2) && Math.abs(x1 - x2) + Math.abs(y1 - y2) <= 2) {
+      this.activity.touchRect(Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2) + 1, Math.max(y1, y2) + 1);
+    } else {
+      this.activity.touch(x1, y1);
+      this.activity.touch(x2, y2);
+    }
     const a = x1 + y1 * this.width;
     const b = x2 + y2 * this.width;
-    const aOverride = this.colorOverrides.has(a);
-    const bOverride = this.colorOverrides.has(b);
+    const overrides = this.colorOverrides.mask;
+    const aOverride = overrides[a] > 0;
+    const bOverride = overrides[b] > 0;
     const t = this.types[a];
     this.types[a] = this.types[b];
     this.types[b] = t;
@@ -208,6 +230,7 @@ export class World {
 
   /** Wipe the whole grid back to empty space. */
   clear(): void {
+    this.activity.invalidateAll();
     this.types.fill(Cell.Empty);
     this.colors.fill(EMPTY_COLOR);
     this.life.fill(0);

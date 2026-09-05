@@ -67,7 +67,7 @@ describe('updateElectricalGrid', () => {
     expect(world.charge[lava]).toBe(79);
   });
 
-  it('ignores charged cells outside the active simulation window', () => {
+  it('decays charged cells outside the camera interest window', () => {
     const world = new World(8, 8);
     world.simBounds.x0 = 0;
     world.simBounds.x1 = 4;
@@ -79,10 +79,10 @@ describe('updateElectricalGrid', () => {
 
     updateElectricalGrid(ctxFor(world));
 
-    expect(world.charge[outside]).toBe(7);
+    expect(world.charge[outside]).toBe(6);
   });
 
-  it('discovers directly restored charges when the simulation window reaches a new tile', () => {
+  it('discovers restored charges immediately and keeps decaying through a window move', () => {
     const world = new World(128, 8);
     world.simBounds.x0 = 0;
     world.simBounds.x1 = 16;
@@ -93,13 +93,13 @@ describe('updateElectricalGrid', () => {
     world.charge[restored] = 5;
 
     updateElectricalGrid(ctxFor(world));
-    expect(world.charge[restored]).toBe(5);
+    expect(world.charge[restored]).toBe(4);
 
     world.simBounds.x0 = 64;
     world.simBounds.x1 = 96;
     updateElectricalGrid(ctxFor(world));
 
-    expect(world.charge[restored]).toBe(4);
+    expect(world.charge[restored]).toBe(3);
   });
 
   it('decays independent worlds on the same frame count', () => {

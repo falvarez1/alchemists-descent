@@ -153,6 +153,7 @@ describe('enemy controller edge cases', () => {
   it('wakes and alerts sleeping enemies when they take damage', () => {
     const enemy = makeEnemy('bat', { sleeping: true, alerted: false, vy: 0 });
     const ctx = {
+      state: { worldSeed: 7, frameCount: 0 },
       particles: {
         burst: () => undefined,
         spawn: () => undefined,
@@ -203,6 +204,7 @@ describe('enemy controller edge cases', () => {
     } as Enemy;
     world.types[world.idx(25, 30)] = Cell.Acid;
     const ctx = {
+      state: { worldSeed: 7, frameCount: 0 },
       world,
       particles: { burst: () => undefined },
       enemies: [enemy],
@@ -478,30 +480,17 @@ describe('enemy controller edge cases', () => {
 
 describe('weaver encounter contract', () => {
   it('adds sparse organic enemies to biome populations', () => {
-    expect(ENEMY_DEFS.weaver).toMatchObject({ hp: 260, halfW: 9, h: 18 });
+    expect(ENEMY_DEFS.weaver).toMatchObject({ hp: 135, halfW: 9, h: 18 });
     expect(ENEMY_DEFS.rootloper).toMatchObject({ hp: 90, halfW: 6, h: 14 });
     expect(ENEMY_DEFS.stonemaw).toMatchObject({ hp: 150, halfW: 8, h: 10 });
-    expect(ENEMY_DEFS.rillback).toMatchObject({ hp: 58, halfW: 7, h: 8 });
+    expect(ENEMY_DEFS.rillback).toMatchObject({ hp: 78, halfW: 7, h: 8 });
 
-    expect(populationForLevel(LEVELS.d1, EXTRAS.earthen.foes).weaver ?? 0).toBe(0);
-    expect(populationForLevel(LEVELS.d2, EXTRAS.fungal.foes).weaver).toBe(1);
-    expect(populationForLevel(LEVELS.d2, EXTRAS.fungal.foes).rootloper).toBe(2);
-    expect(populationForLevel(LEVELS.d4, EXTRAS.flooded.foes).rillback).toBe(1);
-    expect(populationForLevel(LEVELS.d5, EXTRAS.timber.foes).weaver).toBe(1);
-    expect(populationForLevel(LEVELS.d5, EXTRAS.timber.foes).rootloper).toBe(1);
-    expect(populationForLevel(LEVELS.d6, EXTRAS.crystal.foes).stonemaw).toBe(1);
-    expect(populationForLevel(LEVELS.d8, EXTRAS.volcanic.foes).stonemaw).toBe(1);
-    // Adding the Weaver's weight shifts the ROUNDED counts of the other timber
-    // foes (weightSum 12 -> 12.25): pin the full d5 roster so that rebalance stays
-    // intentional and any future silent drift is caught.
-    expect(populationForLevel(LEVELS.d5, EXTRAS.timber.foes)).toMatchObject({
-      imp: 13,
-      slime: 10,
-      bomber: 10,
-      bat: 7,
-      weaver: 1,
-      rootloper: 1,
-    });
+    expect(populationForLevel(LEVELS.d1, EXTRAS.earthen.foes)).toEqual({ weaver: 2, rillback: 2 });
+    expect(populationForLevel(LEVELS.d2, EXTRAS.fungal.foes)).toEqual({ weaver: 3, rootloper: 4, rillback: 2 });
+    expect(populationForLevel(LEVELS.d4, EXTRAS.flooded.foes).rillback).toBe(5);
+    expect(populationForLevel(LEVELS.d5, EXTRAS.timber.foes)).toEqual({ weaver: 4, rootloper: 4, stonemaw: 2 });
+    expect(populationForLevel(LEVELS.d6, EXTRAS.crystal.foes).stonemaw).toBe(4);
+    expect(populationForLevel(LEVELS.d8, EXTRAS.volcanic.foes).stonemaw).toBe(4);
     expect(LEVELS['weaver-test']).toMatchObject({
       id: 'weaver-test',
       biome: 'fungal',
@@ -523,8 +512,12 @@ describe('weaver encounter contract', () => {
         (def.depth === 8 && !def.branch ? 1 : 0) +
         (def.branch ? 2 : 0);
 
-      expect(base + reserved).toBeLessThanOrEqual(70);
-      expect(base + reserved).toBeGreaterThanOrEqual(45);
+      if (def.branch) {
+        expect(base + reserved).toBeLessThanOrEqual(70);
+      } else {
+        expect(base).toBeGreaterThanOrEqual(4);
+        expect(base).toBeLessThanOrEqual(12);
+      }
     }
   });
 
@@ -679,6 +672,8 @@ describe('weaver encounter contract', () => {
     };
     const critters = [prey];
     const ctx = {
+      world: new World(100, 100),
+      state: { worldSeed: 7, frameCount: 0 },
       critters: {
         list: critters,
         remove: (critter: Critter) => {
@@ -745,6 +740,7 @@ describe('weaver encounter contract', () => {
       events,
       world,
       enemies: [sleeper],
+      state: { worldSeed: 7, frameCount: 0 },
       player: { x: 30, y: 80 },
       audio: {
         squelch: () => {

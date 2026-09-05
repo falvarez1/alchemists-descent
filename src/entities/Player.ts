@@ -1171,9 +1171,11 @@ export class PlayerControl implements PlayerControlApi {
     }
     const channeling = player.recharge > 0;
     const restrained = channeling || player.pullT > 0;
+    const queuedJump = ctx.input.queuedJump;
+    ctx.input.queuedJump = undefined;
     const keys = restrained
       ? { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false }
-      : ctx.input.keys;
+      : queuedJump ? { ...ctx.input.keys, jump: true, wallJump: queuedJump === 'wall' || ctx.input.keys.wallJump } : ctx.input.keys;
     if (channeling) {
       player.recharge--;
       player.hp = Math.min(player.maxHp, player.hp + 0.19);

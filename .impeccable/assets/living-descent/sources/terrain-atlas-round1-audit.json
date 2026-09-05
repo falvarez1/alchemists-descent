@@ -1,0 +1,76 @@
+{
+  "file": "public/assets/living-descent/terrain-atlas.png",
+  "width": 256,
+  "height": 256,
+  "channels": 3,
+  "hasAlpha": false,
+  "bytes": 104028,
+  "sha256": "a13e49df07311122233cde01bbd0a0f19c6ac0991a69c93734016edc53d6ef90",
+  "transparentPixels": 0,
+  "partialAlphaPixels": 0,
+  "embeddedPromptMatchesSidecar": true,
+  "quadrants": [
+    {
+      "id": "slate-masonry",
+      "material": "wet slate masonry and chalk",
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 128,
+      "averageRgb": [
+        54.39,
+        62.95,
+        68.34
+      ],
+      "meanInteriorNeighborRgbDelta": 6.097,
+      "meanWrappedEdgeRgbDelta": 9.104
+    },
+    {
+      "id": "copper-brass",
+      "material": "corroded copper and brass plates",
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 128,
+      "averageRgb": [
+        81.07,
+        51.96,
+        33.94
+      ],
+      "meanInteriorNeighborRgbDelta": 4.329,
+      "meanWrappedEdgeRgbDelta": 6.917
+    },
+    {
+      "id": "wood",
+      "material": "worn timber and iron nail details",
+      "x": 0,
+      "y": 128,
+      "width": 128,
+      "height": 128,
+      "averageRgb": [
+        74.76,
+        57.95,
+        44.66
+      ],
+      "meanInteriorNeighborRgbDelta": 4.092,
+      "meanWrappedEdgeRgbDelta": 19.673
+    },
+    {
+      "id": "mineral-rock",
+      "material": "dark natural mineral rock",
+      "x": 128,
+      "y": 128,
+      "width": 128,
+      "height": 128,
+      "averageRgb": [
+        44.52,
+        51.64,
+        55.72
+      ],
+      "meanInteriorNeighborRgbDelta": 4.338,
+      "meanWrappedEdgeRgbDelta": 8.664
+    }
+  ],
+  "visualEvidence": ".impeccable/assets/living-descent/sources/terrain-atlas-tiling-review.png",
+  "seamNote": "Decoded edge deltas are diagnostic, not proof of periodic equality. Each material was visually inspected in an independent 2x2 repeat; no outer frame or strong lighting seam is present."
+}

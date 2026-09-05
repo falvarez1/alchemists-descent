@@ -1,4 +1,5 @@
 import { DataUtils } from 'three';
+import { prepareTerrainColors } from '@/render/TerrainArt';
 import { HalfFloatType, NearestFilter, RGBAFormat, StorageTexture, WebGPURenderer } from 'three/webgpu';
 import { Fn, instanceIndex, textureStore, uint, uvec2, vec4 } from 'three/tsl';
 
@@ -22,6 +23,7 @@ import {
   LIGHT_KNEE_SLOPE,
   LIGHT_KNEE_START,
   LIGHT_READABILITY_FLOOR,
+  renderAmbient,
   SELF_GLOW_BASE,
   SELF_GLOW_SCALE,
 } from '@/render/lightingModel';
@@ -813,8 +815,8 @@ export class WebGpuLiveCompose {
     const fullWindow = ctx.shockwaves.length > 0 || lenses.length > 0;
     const packStart = performance.now();
     const packedRows = fullWindow
-      ? this.packWindowFull(ctx.world, camX, camY)
-      : this.packWindowVisibleRows(ctx.world, camX, camY);
+      ? this.packWindowFull(ctx.world, prepareTerrainColors(ctx), camX, camY)
+      : this.packWindowVisibleRows(ctx.world, prepareTerrainColors(ctx), camX, camY);
     metrics.packWindowCpuMs = performance.now() - packStart;
     metrics.packWindowBytes = fullWindow
       ? WIN_W * WIN_H * 4
@@ -1255,7 +1257,7 @@ export class WebGpuLiveCompose {
     params[1] = camY;
     params[2] = camX - COMPOSE_PAD;
     params[3] = camY - COMPOSE_PAD;
-    params[4] = ctx.params.global.ambient;
+    params[4] = renderAmbient(ctx);
     params[5] = ctx.params.global.maxBrightness;
     params[6] = (ctx.state.frameCount * 0.16) % TWO_PI;
     params[7] = ctx.state.frameCount % 97;
@@ -1358,10 +1360,8 @@ export class WebGpuLiveCompose {
     return true;
   }
 
-  private packWindowFull(world: World, camX: number, camY: number): number {
-    const types = world.types;
-    const colors = world.colors;
-    const charge = world.charge;
+  private packWindowFull(world: World, colors: Uint32Array, camX: number, camY: number): number {
+    const types = world.types, charge = world.charge;
     const out = this.win32;
     const x0 = camX - COMPOSE_PAD;
     const y0 = camY - COMPOSE_PAD;
@@ -1381,10 +1381,8 @@ export class WebGpuLiveCompose {
     return WIN_H;
   }
 
-  private packWindowVisibleRows(world: World, camX: number, camY: number): number {
-    const types = world.types;
-    const colors = world.colors;
-    const charge = world.charge;
+  private packWindowVisibleRows(world: World, colors: Uint32Array, camX: number, camY: number): number {
+    const types = world.types, charge = world.charge;
     const out = this.winVisible32;
     const rowStride = this.winVisiblePaddedRowBytes >> 2;
     const startRow = COMPOSE_PAD - 1;

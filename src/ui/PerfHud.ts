@@ -1,5 +1,14 @@
+import type { FrameCadence } from '@/game/FixedStepClock';
+
 export type PerfPhase = 'sim' | 'entities' | 'render' | 'compose' | 'gl' | 'frame';
-export type PerfSample = Record<PerfPhase, number> & { didTick: boolean; tickCount: number };
+export type PerfSample = Record<PerfPhase, number> & {
+  didTick: boolean;
+  tickCount: number;
+  interval: number;
+  debt: number;
+  dropped: number;
+};
+export interface PerfTickSample { sim: number; creatures: number; gameplay: number; total: number }
 
 const EMA_ALPHA = 0.1;
 /** Per-phase budgets in ms (DESIGN.md frame-budget ledger). The combined
@@ -19,7 +28,7 @@ const COLOR_OVER = '#ef4444';
 // ===================== Perf HUD =====================
 /**
  * Frame-budget overlay: smoothed (EMA) per-phase timings colored against
- * the ledger budgets, plus fps derived from the whole-frame EMA. Hidden by
+ * the ledger budgets, plus fps derived from requestAnimationFrame intervals. Hidden by
  * default; F3 toggles. Game.step feeds it via mark(phase, ms).
  *
  * Fully programmatic DOM so index.html stays untouched; pointer-events
@@ -42,6 +51,12 @@ export class PerfHud {
   private phaseEls: Record<Exclude<PerfPhase, 'frame'>, HTMLSpanElement>;
   private ema: Record<PerfPhase, number> = { sim: 0, entities: 0, render: 0, compose: 0, gl: 0, frame: 0 };
   private frameMarks = 0;
+  private intervalEma = 0;
+  private tickRate = 0;
+  private rateElapsed = 0;
+  private rateTicks = 0;
+  private droppedMs = 0;
+  private cadence = { interval: 0, debt: 0, dropped: 0 };
   private _visible = false;
 
   constructor() {
@@ -114,8 +129,21 @@ export class PerfHud {
   private pending: Record<PerfPhase, number> = { sim: 0, entities: 0, render: 0, compose: 0, gl: 0, frame: 0 };
   private pendingTickCount = 0;
 
-  beginFrame(tickCount: number): void {
+  beginFrame(tickCount: number, cadence?: Pick<FrameCadence, 'interval' | 'debt' | 'dropped'>): void {
     this.pendingTickCount = Math.max(0, Math.floor(tickCount));
+    if (!cadence) return;
+    this.cadence = cadence;
+    if (cadence.interval > 0) {
+      this.intervalEma = this.intervalEma === 0 ? cadence.interval : this.intervalEma + (cadence.interval - this.intervalEma) * EMA_ALPHA;
+      this.rateElapsed += cadence.interval;
+      this.rateTicks += this.pendingTickCount;
+      this.droppedMs += cadence.dropped;
+      if (this.rateElapsed >= 1000) {
+        this.tickRate = this.rateTicks * 1000 / this.rateElapsed;
+        this.rateElapsed = 0;
+        this.rateTicks = 0;
+      }
+    }
   }
 
   mark(phase: PerfPhase, ms: number): void {
@@ -136,6 +164,9 @@ export class PerfHud {
         ...this.pending,
         didTick: this.pendingTickCount > 0,
         tickCount: this.pendingTickCount,
+        interval: this.cadence.interval,
+        debt: this.cadence.debt,
+        dropped: this.cadence.dropped,
       });
     }
     this.pending.sim = 0;
@@ -144,8 +175,16 @@ export class PerfHud {
     if (this._visible && this.frameMarks % 10 === 0) this.refresh();
   }
 
+  /** Fixed-tick budgets cannot be inferred from a presentation that catches up
+   * several ticks. Preserve each authoritative sample separately. */
+  recordTick(sim: number, creatures: number, gameplay: number, total: number): void {
+    const w = window as unknown as { __perfRecord?: boolean; __perfTicks?: PerfTickSample[] };
+    if (w.__perfRecord) (w.__perfTicks ??= []).push({ sim, creatures, gameplay, total });
+  }
+
   private refresh(): void {
-    this.fpsEl.textContent = 'fps ' + (this.ema.frame > 0 ? Math.round(1000 / this.ema.frame) : 0);
+    const fps = this.intervalEma > 0 ? Math.round(1000 / this.intervalEma) : 0;
+    this.fpsEl.textContent = `${fps} fps · ${this.tickRate.toFixed(1)} ticks/s · debt ${this.cadence.debt.toFixed(1)}ms · lost ${Math.round(this.droppedMs)}ms`;
     const labels = { sim: 'sim', entities: 'ent', render: 'rnd', compose: 'cmp', gl: 'gl' } as const;
     for (const phase of ['sim', 'entities', 'render', 'compose', 'gl'] as const) {
       const el = this.phaseEls[phase];

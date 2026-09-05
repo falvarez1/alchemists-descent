@@ -14,8 +14,11 @@ export class PauseOverlay {
 
   constructor(private ctx: Ctx) {
     window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('game-pause-request', this.onPauseRequest);
+    document.getElementById('expedition-pause')?.addEventListener('click', this.onPauseRequest);
     document.getElementById('pause-exit-fullscreen')?.addEventListener('click', this.onExitFullscreenClick);
     document.getElementById('pause-restart')?.addEventListener('click', this.onRestartClick);
+    document.getElementById('pause-resume')?.addEventListener('click', this.onResumeClick);
     document.getElementById('pause-launcher')?.addEventListener('click', this.onLauncherClick);
     document.getElementById('pause-copy-report')?.addEventListener('click', this.onCopyReportClick);
     const build = document.getElementById('pause-build');
@@ -29,6 +32,7 @@ export class PauseOverlay {
     if (e.defaultPrevented) return;
     // Other modals own ESC (or ignore it) while they are up.
     if (document.querySelector('.app-dialog-root')) return;
+    if (document.querySelector('#player-settings[open], #expedition-entry:not([hidden])')) return;
     if (isRunLauncherOpen()) return;
     if (this.ctx.sanctum.isOpen) return;
     if (document.getElementById('help-overlay')?.classList.contains('visible')) return;
@@ -47,7 +51,14 @@ export class PauseOverlay {
       .finally(() => this.syncFullscreenButton());
   };
 
+  private readonly onPauseRequest = (): void => {
+    if (this.ctx.state.mode !== 'play' || document.querySelector('#player-settings[open]') || this.ctx.sanctum.isOpen) return;
+    if (this.ctx.state.paused && !this.active) return;
+    this.toggle();
+  };
+
   private readonly onRestartClick = (): void => void this.restartLevel();
+  private readonly onResumeClick = (): void => this.resume();
 
   private readonly onLauncherClick = (): void => this.openLauncher();
 
@@ -71,8 +82,11 @@ export class PauseOverlay {
 
   dispose(): void {
     window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('game-pause-request', this.onPauseRequest);
+    document.getElementById('expedition-pause')?.removeEventListener('click', this.onPauseRequest);
     document.getElementById('pause-exit-fullscreen')?.removeEventListener('click', this.onExitFullscreenClick);
     document.getElementById('pause-restart')?.removeEventListener('click', this.onRestartClick);
+    document.getElementById('pause-resume')?.removeEventListener('click', this.onResumeClick);
     document.getElementById('pause-launcher')?.removeEventListener('click', this.onLauncherClick);
     document.getElementById('pause-copy-report')?.removeEventListener('click', this.onCopyReportClick);
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
@@ -145,6 +159,10 @@ export class PauseOverlay {
     this.active = !this.active;
     this.ctx.state.paused = this.active;
     document.getElementById('pause-overlay')?.classList.toggle('visible', this.active);
+    const hint = document.getElementById('pause-input-hint');
+    if (hint) hint.textContent = Array.from(navigator.getGamepads?.() ?? []).some(p => p?.connected)
+      ? 'Start to resume · A to choose' : 'Escape to resume · H for the handbook';
+    if (this.active) document.getElementById('pause-resume')?.focus();
     this.syncFullscreenButton();
   }
 

@@ -273,7 +273,7 @@ class WebGLRenderBackend implements RendererBackend {
     // Sub-cell camera smoothing + screen shake + idle zoom on the render quad
     let ox = -(ctx.camera.x - Math.floor(ctx.camera.x)) * (2 / VIEW_W);
     let oy = (ctx.camera.y - Math.floor(ctx.camera.y)) * (2 / VIEW_H);
-    if (ctx.fx.screenShake > 0.0005) {
+    if (!ctx.state.reduceCameraShake && ctx.fx.screenShake > 0.0005) {
       ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
       oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
     }

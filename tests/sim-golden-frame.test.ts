@@ -130,12 +130,14 @@ function runScene(worldSeed: number, ticks: number): { world: World; sim: Simula
   return { world, sim, ctx };
 }
 
-/** Recorded from the first deterministic run. Re-record ONLY for a deliberate,
- *  commit-flagged change to simulation behaviour. */
+/** Living Descent / GEN_VERSION 37: active-cell traversal and enclosed-water
+ * rejection deliberately change random draws. These snapshots pin that policy. */
 const GOLDEN: Record<number, { state: string; colors: string }> = {
-  1: { state: 'a77c924e', colors: 'ef795e22' },
-  7: { state: '2f92addd', colors: 'b5185aba' },
-  1337: { state: '170c3dac', colors: '8ff27392' },
+  // Living Descent: enclosed oil joins the inactive frontier, while burning
+  // oil and charged contacts stay urgent. This deliberately changes RNG draws.
+  1: { state: '7f84d2f7', colors: '5613f9b2' },
+  7: { state: 'aff887ef', colors: '4894c5af' },
+  1337: { state: '347c19aa', colors: 'd19ae197' },
 };
 
 describe('sim golden frames', () => {
@@ -206,11 +208,11 @@ describe('sim golden frames', () => {
   it('matches the recorded golden hashes', () => {
     for (const seed of Object.keys(GOLDEN).map(Number)) {
       const { world } = runScene(seed, 100);
-      expect({ seed, ...GOLDEN[seed] }).toEqual({
+      expect.soft({
         seed,
         state: hashWorld(world),
         colors: hashColors(world),
-      });
+      }).toEqual({ seed, ...GOLDEN[seed] });
     }
   });
 });

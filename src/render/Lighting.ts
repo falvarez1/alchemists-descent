@@ -1,11 +1,23 @@
+import { propagateLight } from '@/render/propagateLight';
 import { VIEW_H, VIEW_W } from '@/config/constants';
-import { VIGNETTE_BASE } from '@/render/lightingModel';
+import { renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
 import type { LightField, LightSample } from '@/render/pixels';
 
 const RUNTIME_INSPECTION_LIGHT_INTENSITY = 1.2;
 const RUNTIME_INSPECTION_LIGHT_RADIUS = 65;
+
+// Most visible cells neither emit nor carry charge. Their attenuation is a
+// fixed material property, so skip the emitter branch chain for those cells.
+const MATERIAL_ATTENUATION = new Float32Array(256);
+for (let type = 0; type < MATERIAL_ATTENUATION.length; type++) {
+  MATERIAL_ATTENUATION[type] = type === Cell.Empty || isGas(type) ? 0.86
+    : type === Cell.Crystal || type === Cell.Glass || type === Cell.Ice ? 0.84 : isLiquid(type) ? 0.8 : 0.4;
+}
+const EMISSIVE_MATERIAL = new Uint8Array(256);
+for (const type of [Cell.Fire, Cell.Lava, Cell.Ember, Cell.Acid, Cell.Gold, Cell.Fungus,
+  Cell.Crystal, Cell.Catalyst, Cell.Glowshroom, Cell.Moss, Cell.Healium, Cell.Toxic, Cell.Teleportium]) EMISSIVE_MATERIAL[type] = 1;
 
 // Wand "beam": a narrow directional cone cast along the aim, on top of (never
 // instead of) the omni wand light. It reaches further so corridors read deeper
@@ -123,7 +135,7 @@ export class Lighting implements LightField {
   // Sample the lit factor at a world position (for sprites & debris)
   sample(wx: number, wy: number): LightSample {
     const ctx = this.ctx;
-    const AMBIENT = ctx.params.global.ambient;
+    const AMBIENT = renderAmbient(ctx);
     const fx = Math.floor(wx) - ctx.camera.renderX,
       fy = Math.floor(wy) - ctx.camera.renderY;
     const lx = fx >> 1,
@@ -147,11 +159,11 @@ export class Lighting implements LightField {
       vg = 1 - vigScale * (1 - this.vignette[fy * VIEW_W + fx]);
     }
     let f = (AMBIENT + Math.min(2.2, Lr)) * vg;
-    this.lit.r = Math.min(1.8, f * f);
+    this.lit.r = Math.max(0.48 * vg, Math.min(1.8, f * f));
     f = (AMBIENT + Math.min(2.2, Lg)) * vg;
-    this.lit.g = Math.min(1.8, f * f);
+    this.lit.g = Math.max(0.48 * vg, Math.min(1.8, f * f));
     f = (AMBIENT + Math.min(2.2, Lb)) * vg;
-    this.lit.b = Math.min(1.8, f * f);
+    this.lit.b = Math.max(0.48 * vg, Math.min(1.8, f * f));
     return this.lit;
   }
 
@@ -262,14 +274,8 @@ export class Lighting implements LightField {
         const t = world.types[wi];
         const i = row + lx;
         // Translucent solids (ice, glass, crystal) pass most light through
-        lightAtt[i] =
-          t === Cell.Empty || isGas(t)
-            ? 0.86
-            : t === Cell.Crystal || t === Cell.Glass || t === Cell.Ice
-              ? 0.84
-              : isLiquid(t)
-                ? 0.8
-                : 0.4;
+        lightAtt[i] = MATERIAL_ATTENUATION[t] ?? 0.4;
+        if (!EMISSIVE_MATERIAL[t] && !world.charge[wi]) continue;
         if (t === Cell.Fire) {
           const f = 0.9 + Math.random() * 0.5;
           if (f > lightR[i]) {
@@ -568,8 +574,8 @@ export class Lighting implements LightField {
       } else if (e.kind === 'weaver') {
         const pulse = 0.55 + Math.sin(ctx.state.frameCount * 0.11 + e.bobPhase) * 0.25;
         const attack = (e.windup ?? 0) > 0 || e.blink > 0 ? 0.45 : 0;
-        this.seedLight(e.x, e.y - 14, 0.18 + attack, 0.7 + attack, 0.28 + attack * 0.25);
-        this.seedLight(e.x, e.y - 6, pulse * 0.12, pulse * 0.35, pulse * 0.14);
+        this.seedLight(e.x, e.y - 14, 0.35 + attack, 0.30 + attack * 0.7, 0.17 + attack * 0.25);
+        this.seedLight(e.x, e.y - 6, pulse * 0.2, pulse * 0.17, pulse * 0.1);
       } else if (e.kind === 'rillback' && (e.blink > 0 || (e.rillChargeWindup ?? 0) > 0)) {
         const windup = e.rillChargeWindup ?? 0;
         const flash = 0.35 + Math.max(e.blink, windup) * 0.06;
@@ -577,75 +583,7 @@ export class Lighting implements LightField {
       }
     }
 
-    // Four directional sweeps (each pulls from straight + diagonal predecessors)
-    // left -> right
-    for (let y = 0; y < LH; y++) {
-      const row = y * LW;
-      const up = y > 0 ? row - LW : row,
-        dn = y < LH - 1 ? row + LW : row;
-      for (let x = 1; x < LW; x++) {
-        const i = row + x,
-          a = lightAtt[i],
-          j = i - 1;
-        let v = Math.max(lightR[j], Math.max(lightR[up + x - 1], lightR[dn + x - 1]) * 0.955) * a;
-        if (v > lightR[i]) lightR[i] = v;
-        v = Math.max(lightG[j], Math.max(lightG[up + x - 1], lightG[dn + x - 1]) * 0.955) * a;
-        if (v > lightG[i]) lightG[i] = v;
-        v = Math.max(lightB[j], Math.max(lightB[up + x - 1], lightB[dn + x - 1]) * 0.955) * a;
-        if (v > lightB[i]) lightB[i] = v;
-      }
-    }
-    // right -> left
-    for (let y = 0; y < LH; y++) {
-      const row = y * LW;
-      const up = y > 0 ? row - LW : row,
-        dn = y < LH - 1 ? row + LW : row;
-      for (let x = LW - 2; x >= 0; x--) {
-        const i = row + x,
-          a = lightAtt[i],
-          j = i + 1;
-        let v = Math.max(lightR[j], Math.max(lightR[up + x + 1], lightR[dn + x + 1]) * 0.955) * a;
-        if (v > lightR[i]) lightR[i] = v;
-        v = Math.max(lightG[j], Math.max(lightG[up + x + 1], lightG[dn + x + 1]) * 0.955) * a;
-        if (v > lightG[i]) lightG[i] = v;
-        v = Math.max(lightB[j], Math.max(lightB[up + x + 1], lightB[dn + x + 1]) * 0.955) * a;
-        if (v > lightB[i]) lightB[i] = v;
-      }
-    }
-    // top -> bottom
-    for (let y = 1; y < LH; y++) {
-      const row = y * LW,
-        prev = row - LW;
-      for (let x = 0; x < LW; x++) {
-        const i = row + x,
-          a = lightAtt[i];
-        const xl = x > 0 ? x - 1 : x,
-          xr = x < LW - 1 ? x + 1 : x;
-        let v = Math.max(lightR[prev + x], Math.max(lightR[prev + xl], lightR[prev + xr]) * 0.955) * a;
-        if (v > lightR[i]) lightR[i] = v;
-        v = Math.max(lightG[prev + x], Math.max(lightG[prev + xl], lightG[prev + xr]) * 0.955) * a;
-        if (v > lightG[i]) lightG[i] = v;
-        v = Math.max(lightB[prev + x], Math.max(lightB[prev + xl], lightB[prev + xr]) * 0.955) * a;
-        if (v > lightB[i]) lightB[i] = v;
-      }
-    }
-    // bottom -> top
-    for (let y = LH - 2; y >= 0; y--) {
-      const row = y * LW,
-        nxt = row + LW;
-      for (let x = 0; x < LW; x++) {
-        const i = row + x,
-          a = lightAtt[i];
-        const xl = x > 0 ? x - 1 : x,
-          xr = x < LW - 1 ? x + 1 : x;
-        let v = Math.max(lightR[nxt + x], Math.max(lightR[nxt + xl], lightR[nxt + xr]) * 0.955) * a;
-        if (v > lightR[i]) lightR[i] = v;
-        v = Math.max(lightG[nxt + x], Math.max(lightG[nxt + xl], lightG[nxt + xr]) * 0.955) * a;
-        if (v > lightG[i]) lightG[i] = v;
-        v = Math.max(lightB[nxt + x], Math.max(lightB[nxt + xl], lightB[nxt + xr]) * 0.955) * a;
-        if (v > lightB[i]) lightB[i] = v;
-      }
-    }
+    propagateLight(LW, LH, lightR, lightG, lightB, lightAtt);
 
     // SANDBOX WORK LAMP. Play is lit because the wizard carries a wand; the
     // sandbox has no wizard, so nothing lit it at all — a mostly-empty workshop

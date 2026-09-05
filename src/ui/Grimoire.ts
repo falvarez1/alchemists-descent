@@ -27,7 +27,7 @@ export class Grimoire {
     this.overlay.id = 'grimoire-overlay';
     this.overlay.innerHTML = `
       <div class="grimoire-book">
-        <img class="grimoire-img" src="${GRIMOIRE_SRC}" alt="Grimoire" draggable="false">
+        <img class="grimoire-img" data-src="${GRIMOIRE_SRC}" alt="Grimoire" draggable="false">
         <div class="grimoire-page grimoire-left"></div>
         <div class="grimoire-page grimoire-right"></div>
       </div>`;
@@ -56,6 +56,8 @@ export class Grimoire {
     this.open = !this.open;
     this.overlay.classList.toggle('open', this.open);
     if (this.open) {
+      const image = this.overlay.querySelector<HTMLImageElement>('.grimoire-img');
+      if (image && !image.hasAttribute('src')) image.src = image.dataset.src!;
       this.wasPaused = this.ctx.state.paused;
       this.ctx.state.paused = true; // reading the book pauses the world
       this.render();

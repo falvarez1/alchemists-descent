@@ -28,7 +28,7 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   // box wedged in fungal/timber tunnels and froze its AI). Its legs still splay
   // visually onto the walls. Hit detection is query-radius based, so the smaller
   // box doesn't shrink how readily player shots connect.
-  weaver: { hp: 260, halfW: 9, h: 18, bounty: 220, gore: Cell.Blood, goreFn: bloodColor },
+  weaver: { hp: 135, halfW: 9, h: 18, bounty: 110, gore: Cell.Blood, goreFn: bloodColor },
   // The Kiln Colossus: the run's final door. Water is the strategy.
   colossus: { hp: 520, halfW: 13, h: 26, bounty: 600, gore: Cell.Stone, goreFn: stoneColor },
   // Wave F: slime egg clutch - destroy it now or fight what hatches later.
@@ -41,5 +41,5 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   // Blind terrain predator: chews limited rock tunnels, never metal.
   stonemaw: { hp: 150, halfW: 8, h: 10, bounty: 130, gore: Cell.Stone, goreFn: stoneColor },
   // Pool ecology eel: dangerous in liquid, clumsy when beached.
-  rillback: { hp: 58, halfW: 7, h: 8, bounty: 70, gore: Cell.Blood, goreFn: bloodColor },
+  rillback: { hp: 78, halfW: 7, h: 8, bounty: 70, gore: Cell.Blood, goreFn: bloodColor },
 };

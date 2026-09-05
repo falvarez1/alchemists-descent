@@ -30,6 +30,11 @@ import {
 } from '@/sim/colors';
 import { splatterStain } from '@/sim/stains';
 import { entityRandom } from '@/core/simRandom';
+import { ensureCreatureMind, sightClear, tickCreatureMind } from '@/creatures/perception';
+import { tickCreaturePose } from '@/creatures/pose';
+import { localRoute } from '@/creatures/navigation';
+import { pointHitsCreature } from '@/creatures/body';
+import type { CreatureCue } from '@/creatures/types';
 
 // ===================== Enemies =====================
 interface CellCandidate {
@@ -222,12 +227,25 @@ export class Enemies implements EnemyControlApi {
   constructor(private ctx: Ctx) {
     const onStrike = ctx.events?.on('structureStrike', ({ x, y, radius }) => {
       this.wakeSleepingWeaversNear(x, y, radius + WEAVER_DISTURBANCE_WAKE_PAD, 'disturbance');
+      this.cue(x, y, Math.max(180, radius * 5), 1, 'vibration');
     });
     const onImpact = ctx.events?.on('groundImpact', ({ x, y, radius, strength }) => {
       this.wakeSleepingWeaversNear(x, y, radius + WEAVER_DISTURBANCE_WAKE_PAD + strength * 18, 'disturbance');
+      this.cue(x, y, Math.max(90, radius * 3 + strength * 25), Math.min(1, strength), 'vibration');
     });
     if (onStrike) this.disposers.push(onStrike);
     if (onImpact) this.disposers.push(onImpact);
+    const onCast = ctx.events?.on('cardCast', ({ x, y }) => this.cue(x, y, 230, 0.8, 'sound'));
+    if (onCast) this.disposers.push(onCast);
+    const onSignal = ctx.events?.on('creatureSignal', ({ x, y, radius, strength, kind }) => this.cue(x, y, radius, strength, kind));
+    if (onSignal) this.disposers.push(onSignal);
+  }
+
+  private readonly cues: CreatureCue[] = [];
+
+  private cue(x: number, y: number, radius: number, strength: number, kind: CreatureCue['kind']): void {
+    if (this.cues.length >= 32) this.cues.shift();
+    this.cues.push({ x, y, radius, strength, kind, tick: this.ctx.state.frameCount });
   }
 
   /** Tear down the page-lifetime EventBus subscriptions (symmetry with the
@@ -272,6 +290,10 @@ export class Enemies implements EnemyControlApi {
     e.alerted = true;
     e.sleeping = false;
     e.calmT = 0;
+    const mind = ensureCreatureMind(e, this.ctx.state.worldSeed);
+    mind.irritation = Math.max(mind.irritation, 0.6);
+    mind.nextSense = 0;
+    mind.nextDecision = 0;
     if (e.kind === 'bat' && wasSleeping) {
       e.windup = 0;
       e.swoop = 0;
@@ -403,8 +425,7 @@ export class Enemies implements EnemyControlApi {
     if (this.ctx.state.mode !== 'play') return false;
     for (const e of this.ctx.enemies) {
       const def = this.defs[e.kind];
-      if (Math.abs(x - e.x) > def.halfW + 1) continue;
-      if (y > e.y + 2 || y < e.y - def.h - 2) continue;
+      if (!pointHitsCreature(e, def, x, y, 2)) continue;
       if (!enemyLethalCell(e.kind, cell)) continue;
       const dmg = cell === Cell.Toxic ? 0.7 : directEnvironmentDamage(e.kind, cell);
       if (dmg <= 0) continue;
@@ -1480,7 +1501,8 @@ export class Enemies implements EnemyControlApi {
     if (ctx.world.inBounds(x, y) && blocksEntity(ctx.world.types[ctx.world.idx(x, y)])) return;
     const dx = ctx.player.x - x;
     const dy = ctx.player.y - 8 - y;
-    if (!ctx.player.dead && Math.abs(dx) < 15 && Math.abs(dy) < 18) {
+    if (!ctx.player.dead && Math.abs(dx) < 11 && Math.abs(dy) < 14 &&
+      Math.hypot(x - e.x, y - e.y + 9) < 88 && sightClear(ctx.world, e.x, e.y - 9, x, y)) {
       ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(ctx.player.x - e.x || 1) * 4.0, -2.2, 'weaver-needle');
       ctx.particles.burst(ctx.player.x, ctx.player.y - 8, 7, Cell.Blood, bloodColor, 1.4);
     }
@@ -1545,7 +1567,7 @@ export class Enemies implements EnemyControlApi {
       const dx = cr.x - e.x;
       const dy = cr.y - (e.y - 8);
       const d2 = dx * dx + dy * dy;
-      if (d2 < bestD2) {
+      if (d2 < bestD2 && sightClear(this.ctx.world, e.x, e.y - 8, cr.x, cr.y)) {
         best = cr;
         bestD2 = d2;
       }
@@ -1565,6 +1587,11 @@ export class Enemies implements EnemyControlApi {
       });
       this.ctx.critters.remove(prey);
       e.hp = Math.min(e.maxHp, e.hp + 14);
+      const mind = ensureCreatureMind(e, this.ctx.state.worldSeed);
+      mind.hunger = Math.max(0, mind.hunger - 0.45);
+      mind.irritation *= 0.5;
+      mind.intent = 'rest';
+      mind.commitUntil = this.ctx.state.frameCount + 180;
       e.recoil = Math.max(e.recoil ?? 0, 10);
       e.weaverFeedT = Math.max(e.weaverFeedT ?? 0, 18);
       e.attackCd = Math.max(e.attackCd, 22);
@@ -2008,8 +2035,14 @@ export class Enemies implements EnemyControlApi {
   update(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const enemies = ctx.enemies;
-    const player = ctx.player;
-    const targetAlive = !player.dead;
+    const observedPlayer = {
+      x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead,
+      crouching: ctx.input?.keys.down === true, light: ctx.player.status.torch > 0 ? 1 : 0.7,
+    };
+    while (this.cues.length > 0 && ctx.state.frameCount - this.cues[0].tick > 90) this.cues.shift();
+    if (ctx.player.grounded && !observedPlayer.crouching && Math.abs(ctx.player.vx) > 0.7 && ctx.state.frameCount % 14 === 0) {
+      this.cue(ctx.player.x, ctx.player.y, 115, 0.5, 'vibration');
+    }
     const debugEnemyAttacksSuppressed = ctx.debug?.active === true;
     // The player's active Flame Jet cone this frame, sampled once so every foe's
     // threat scan can sidestep out of it (the stream is the same for all of them).
@@ -2047,6 +2080,13 @@ export class Enemies implements EnemyControlApi {
       // pause forever just because the camera moved away.
       if (e.x < sim.x0 - 60 || e.x > sim.x1 + 60 || e.y < sim.y0 - 60 || e.y > sim.y1 + 60) {
         this.tickOffscreenLifecycle(i, e, debugEnemyAttacksSuppressed);
+        if (enemies[i] === e && (ctx.state.frameCount + Math.floor(e.bobPhase * 13)) % 30 === 0) {
+          const mind = tickCreatureMind(ctx.world, e, observedPlayer, this.cues, ctx.state.frameCount, ctx.state.worldSeed);
+          const tx = mind.intent === 'investigate' ? mind.targetX : mind.homeX;
+          if (Math.abs(tx - e.x) > 20 && e.kind !== 'eggs' && !e.sleeping) {
+            ctx.physics.tryMoveEntity(e, Math.sign(tx - e.x), 0, def.halfW, def.h, 2);
+          }
+        }
         continue;
       }
       if (e.flash > 0) e.flash--;
@@ -2099,15 +2139,18 @@ export class Enemies implements EnemyControlApi {
       // they land, slow, or smash into a wall — see gustShove/tickKnock.
       if (this.tickKnock(e, def)) continue;
 
+      const mind = tickCreatureMind(ctx.world, e, observedPlayer, this.cues, ctx.state.frameCount, ctx.state.worldSeed, difficultyMods(ctx.state).enemySense);
+      const player = { x: mind.targetX, y: mind.targetY, vx: mind.targetVx };
+      const targetAlive = !ctx.player.dead && mind.confidence > 0.1 && (mind.intent === 'hunt' || mind.intent === 'investigate');
       const pdx = player.x - e.x,
         pdy = player.y - 9 - (e.y - 5);
       const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
-      const canAttackTarget = targetAlive && !debugEnemyAttacksSuppressed;
+      const canAttackTarget = !ctx.player.dead && mind.visible && mind.intent === 'hunt' && !debugEnemyAttacksSuppressed;
 
       // THE NOTICE: the first time a foe clocks you, it says so — a blip and
       // a spark of attention over its head. The colossus announces itself
       // rather more thoroughly.
-      if (!e.alerted && targetAlive && pDist < 300 * difficultyMods(ctx.state).enemySense && e.kind !== 'eggs' && !e.sleeping) {
+      if (!e.alerted && mind.confidence > 0.55 && e.kind !== 'eggs' && !e.sleeping) {
         e.alerted = true;
         if (e.kind === 'colossus') {
           ctx.audio.tone(46, 110, 0.9, 'sawtooth', 0.22);
@@ -2131,14 +2174,11 @@ export class Enemies implements EnemyControlApi {
         }
       }
 
-      // AUTHORED PATROLS EARN DE-ALERT (Rain World texture): a patroller
-      // that loses you for ~5 seconds shrugs and returns to its route.
-      // Strictly gated on Builder-authored patrol — generated enemies keep
-      // their one-way alert exactly as before.
-      if (e.alerted && e.patrol && e.patrol.length > 0 && e.kind !== 'colossus') {
-        if (!targetAlive || pDist > 300) {
+      // Every animal can lose the trail, including generated populations.
+      if (e.alerted && e.kind !== 'colossus') {
+        if (!mind.visible && mind.confidence < 0.15) {
           e.calmT = (e.calmT ?? 0) + 1;
-          if (e.calmT > 300) {
+          if (e.calmT > 45) {
             e.alerted = false;
             e.calmT = 0;
             // a dim gray puff: the scent went cold
@@ -2423,7 +2463,7 @@ export class Enemies implements EnemyControlApi {
             const ty = e.rootLashY ?? ctx.player.y - 9;
             const dx = ctx.player.x - tx;
             const dy = ctx.player.y - 9 - ty;
-            if (Math.abs(ctx.player.x - e.x) < 62 && Math.abs(ctx.player.y - 9 - (e.y - 7)) < 34 && dx * dx + dy * dy < 28 * 28) {
+            if (Math.abs(ctx.player.x - e.x) < 62 && Math.abs(ctx.player.y - 9 - (e.y - 7)) < 34 && dx * dx + dy * dy < 18 * 18 && sightClear(ctx.world, e.x, e.y - 7, tx, ty)) {
               ctx.playerCtl.damage(13 * (e.dmgK ?? 1), Math.sign(ctx.player.x - e.x || 1) * -3.2, -1.8, 'rootloper-lash');
               ctx.particles.burst(ctx.player.x, ctx.player.y - 10, 5, Cell.Vines, vineColor, 1.0);
             }
@@ -2433,8 +2473,8 @@ export class Enemies implements EnemyControlApi {
           }
         } else if (canAttackTarget && e.attackCd === 0 && pDist < 62 && Math.abs(pdy) < 36 && support > 0.12) {
           e.windup = 13;
-          e.rootLashX = ctx.player.x;
-          e.rootLashY = ctx.player.y - 9;
+          e.rootLashX = player.x;
+          e.rootLashY = player.y - 9;
           e.attackCd = 18;
           ctx.audio.tone(220, 120, 0.12, 'triangle', 0.06);
         }
@@ -2543,7 +2583,7 @@ export class Enemies implements EnemyControlApi {
         } else {
           // A weaver that has CLOCKED you commits to the hunt — only an
           // UNAWARE/idle weaver breaks off to snack on ambient critters.
-          const prey = !cranky && (!e.alerted || !targetAlive) ? this.findWeaverPrey(e) : null;
+          const prey = mind.intent === 'forage' && !cranky ? this.findWeaverPrey(e) : null;
           if (prey) {
             intent.move = 'toward';
             intent.tx = prey.x;
@@ -2551,6 +2591,8 @@ export class Enemies implements EnemyControlApi {
             intent.urgency = 0.25;
             this.weaverTryEat(e, prey);
             e.bobPhase += 0.08;
+          } else if (mind.intent === 'return') {
+            intent.move = 'toward'; intent.tx = mind.homeX; intent.ty = mind.homeY; intent.urgency = 0.2;
           } else if (!e.alerted && e.patrol && e.patrol.length > 0) {
             const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
             if (Math.abs(wp[0] - e.x) < 12) e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
@@ -2606,12 +2648,7 @@ export class Enemies implements EnemyControlApi {
           }
 
           if (canAttackTarget && e.attackCd === 0 && e.alerted && !recovering) {
-            if (Math.abs(pdx) < 13 && Math.abs(pdy) < 20) {
-              // Point-blank contact bite: instant (no telegraph this close) and
-              // it claims the cooldown. Works mid-air too — a pounce that lands.
-              ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx || 1) * -3.0, -2.0, 'weaver-bite');
-              e.attackCd = 80;
-            } else if (attached && pDist < 92 && Math.abs(pdy) < 62) {
+            if (attached && pDist < 92 && Math.abs(pdy) < 62) {
               // Rooted telegraphs need footing.
               e.windup = e.status.burning > 0 ? 10 : cranky ? 12 : 18;
               e.needleX = player.x;
@@ -3388,6 +3425,12 @@ export class Enemies implements EnemyControlApi {
       // dodge twitches the body clear of an incoming hit; a flee retreats;
       // otherwise fear just scales the chase back. Fearless bosses' weights make
       // this a near-no-op. (Electrocution below still wins — it zeroes motion.)
+      if (mind.intent === 'retreat') {
+        e.fleeT = Math.max(e.fleeT ?? 0, 12);
+        e.fleeDir = -Math.sign(mind.targetX - e.x || 1);
+      } else if (mind.intent === 'return' && e.kind !== 'weaver') {
+        e.vx += Math.sign(mind.homeX - e.x) * 0.06;
+      }
       const fleeingNow = (e.fleeT ?? 0) > 0;
       if ((e.dodgeT ?? 0) > 0) {
         e.vx = e.dodgeVX ?? e.vx;
@@ -3444,6 +3487,10 @@ export class Enemies implements EnemyControlApi {
             intent.urgency = 1;
           }
           intent.speedScale = spd * (e.status.frozen > 0 ? 0.5 : 1);
+          if (intent.move === 'toward' && !fleeingNow && (mind.intent === 'investigate' || mind.intent === 'return')) {
+            const route = localRoute(ctx.world, e, def, intent.tx, intent.ty, ctx.state.frameCount);
+            intent.tx = route.x; intent.ty = route.y;
+          }
           tickWeaverLocomotion(ctx, e, def, intent);
         }
       } else {
@@ -3510,6 +3557,11 @@ export class Enemies implements EnemyControlApi {
           e.vy = 0;
         }
       }
+    }
+    for (const enemy of enemies) {
+      if (ctx.debug.frozenEnemy(enemy)) continue;
+      if (enemy.x < sim.x0 - 60 || enemy.x > sim.x1 + 60 || enemy.y < sim.y0 - 60 || enemy.y > sim.y1 + 60) continue;
+      tickCreaturePose(ctx, enemy);
     }
   }
 }

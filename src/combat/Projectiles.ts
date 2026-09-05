@@ -9,6 +9,7 @@ import {
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import { EnemySpatialIndex } from '@/core/enemySpatial';
+import { pointHitsCreature } from '@/creatures/body';
 import type { Ctx, Projectile, ProjectilesApi, ProjectileType, RigidBody } from '@/core/types';
 import { Cell, isConductor, isGas, isSolid } from '@/sim/CellType';
 import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '@/sim/colors';
@@ -874,16 +875,14 @@ export class Projectiles implements ProjectilesApi {
 
         // Ice lance: pierce, deep-freeze, keep flying
         if (!p.hostile && p.type === 'icelance') {
-          for (const e of this.enemyIndex.query(p.x, p.y + 5, 12, this.enemyScratch)) {
+          for (const e of this.enemyIndex.query(p.x, p.y + 5, 50, this.enemyScratch)) {
             if (!this.enemyIndex.has(e)) continue;
             // Pierce each enemy at most once. The e.flash gate alone let the lance
             // re-enter a target after ~4 ticks and read its OWN inflicted freeze to
             // self-arm the shatter crit; the per-lance hit set closes that.
             const lanceHits = LANCE_HITS.get(p);
             if (e.flash > 2 || lanceHits?.has(e)) continue;
-            const dx = e.x - p.x,
-              dy = e.y - 5 - p.y;
-            if (dx * dx + dy * dy < 130) {
+            if (pointHitsCreature(e, ctx.enemyCtl.defs[e.kind], p.x, p.y, 3)) {
               if (lanceHits) lanceHits.add(e);
               else LANCE_HITS.set(p, new Set([e]));
               const wetCrit = wetCritArmed(ctx, p, e);
@@ -971,11 +970,9 @@ export class Projectiles implements ProjectilesApi {
           const mul = p.mul ?? 1;
           let hit = false;
           const hitRadius = p.type === 'meteor' ? 15 : 12;
-          for (const e of this.enemyIndex.query(p.x, p.y + 5, hitRadius, this.enemyScratch)) {
+          for (const e of this.enemyIndex.query(p.x, p.y + 5, hitRadius + 38, this.enemyScratch)) {
             if (!this.enemyIndex.has(e)) continue;
-            const dx = e.x - p.x,
-              dy = e.y - 5 - p.y;
-            if (dx * dx + dy * dy < (p.type === 'meteor' ? 200 : 120)) {
+            if (pointHitsCreature(e, ctx.enemyCtl.defs[e.kind], p.x, p.y, p.type === 'meteor' ? 7 : 2)) {
               const wetCrit = wetCritArmed(ctx, p, e);
               const shatterCrit = shatterCritArmed(ctx, p, e);
               const pyreCrit = pyreCritArmed(ctx, p, e);

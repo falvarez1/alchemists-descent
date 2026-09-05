@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Projectiles } from '@/combat/Projectiles';
+import { ENEMY_DEFS } from '@/content/enemyDefs';
 import type { CastAction } from '@/combat/wands/compiler';
 import { PROJECTILE_MODS, TRIGGERED, TRIGGER_SOURCE_SPREAD } from '@/combat/wands/projectileMarks';
 import type { CastActionExecutionContext, Ctx, Enemy, Projectile } from '@/core/types';
@@ -244,6 +245,7 @@ describe('projectile trigger payloads', () => {
         erodeAt: () => undefined,
       },
       enemyCtl: {
+        defs: ENEMY_DEFS,
         damage: (e: Enemy) => damaged.push(e),
       },
       playerCtl: {
@@ -307,6 +309,7 @@ describe('projectile trigger payloads', () => {
         erodeAt: () => undefined,
       },
       enemyCtl: {
+        defs: ENEMY_DEFS,
         damage: (e: Enemy) => {
           damaged.push(e);
           e.hp = 0;

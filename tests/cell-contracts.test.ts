@@ -483,6 +483,26 @@ describe('cell material conversions', () => {
 });
 
 describe('VineStrands', () => {
+  it('activates hanging material by player proximity independently of the camera', () => {
+    const world = new World(1000, 480);
+    world.replaceCellAt(world.idx(100, 39), Cell.Stone, 0x777777);
+    for (let y = 40; y < 47; y++) world.replaceCellAt(world.idx(100, y), Cell.Vines, 0x447755);
+    const ctx = attachVineStrands({ world, events: { on: () => undefined },
+      state: { mode: 'play', frameCount: 8 }, camera: { x: 700, y: 200 },
+      fx: { screenShake: 0 }, player: { x: 110, y: 80, dead: false } } as unknown as Ctx);
+    ctx.vineStrands.update(ctx);
+    expect(ctx.vineStrands.strands).toHaveLength(1);
+    expect(world.type(100, 43)).toBe(Cell.Empty);
+    ctx.camera.x = 0;
+    ctx.state.frameCount++;
+    ctx.vineStrands.update(ctx);
+    expect(ctx.vineStrands.strands).toHaveLength(1);
+    ctx.player.x = 850;
+    ctx.vineStrands.update(ctx);
+    expect(ctx.vineStrands.strands).toHaveLength(0);
+    expect(world.type(100, 43)).toBe(Cell.Vines);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

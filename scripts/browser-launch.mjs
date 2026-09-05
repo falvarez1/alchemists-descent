@@ -1,4 +1,5 @@
 import { chromium } from 'playwright-core';
+import { archiveBrowserScreenshots } from './screenshot-archive.mjs';
 
 const activeBrowsers = new Set();
 let cleanupInstalled = false;
@@ -33,6 +34,7 @@ function installCleanupHandlers() {
 }
 
 function trackBrowser(browser) {
+  archiveBrowserScreenshots(browser);
   activeBrowsers.add(browser);
   browser.on('disconnected', () => activeBrowsers.delete(browser));
   installCleanupHandlers();

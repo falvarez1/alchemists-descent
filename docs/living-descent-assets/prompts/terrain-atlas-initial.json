@@ -1,0 +1,60 @@
+{
+  "prompt": "Use case: style-transfer.\nAsset type: production pixel-art terrain ALBEDO texture atlas for the original 2D game Alchemist's Descent, Living Descent. Output one exact square PNG, 1024 by 1024 native pixels, designed as a 256 by 256 logical-pixel image enlarged exactly four times. Four equal square material swatches occupy exact quadrants, each corresponding to a 128 by 128 logical-pixel seamless tile. No gutters, no grid lines, no margins, no labels, no outer border, no montage shadows. The exact quadrant boundaries are x=512 and y=512 native pixels.\nInput images: Image 1 The Sluice and Image 2 The Web Gallery are approved MATERIAL references only. Extract their visual language: wet blue-slate, chalk and bone chisel marks, muted corroded copper, warm worn wood, restrained black joints. Repaint original clean reusable surface textures; do not crop screenshots or reproduce scene layout.\nComposition: a flat orthographic surface atlas viewed directly face on. Each quadrant fills its entire square with one material. Every quadrant must separately repeat seamlessly at its left/right and top/bottom edges. Distribute large and small features evenly so no obvious central motif, frame, fade, black border, lighting vignette, or repeated cross appears when tiled. Surface albedo, not a lit 3D object.\nTOP LEFT quarter: wet slate masonry, irregular clustered rectangular stones of varied sizes, about 5 to 7 stones across and 7 to 9 staggered courses. Dark cool blue-slate recessed planes, moderate-sized bone/chalk chiselled faces and sparse warm mineral flecks, restrained thin black mortar joints. Strong hand-placed shapes, broad readable facets, clear material contrast. More mineral chalk detail than a plain dark wall, but not a white wall.\nTOP RIGHT quarter: aged corroded copper and dull brass plates of varied rectangular sizes, overlapping seams, occasional small black iron rivets and scratched mineral patina. Broad muted brown/copper faces, warm brass edge chips, blue-black recessed joins. No saturated orange, green corrosion wash or neon. About 5 to 7 large plates across, varied lengths, restrained rivet density.\nBOTTOM LEFT quarter: old worn timber planks laid horizontally, irregular lengths and gently broken grain lines, scattered nail heads and occasional small end-grain patches. Muted walnut and warm mineral tan highlights, cool charcoal recesses, wide quiet patches. About 7 to 9 broad planks down the tile. No signage, carved symbols or giant knots.\nBOTTOM RIGHT quarter: darker natural mineral rock with irregular angular clustered masses, geological cracks, blue-slate shadow planes, sparse chalk/bone facets and warm mineral veins. Clearly darker and less regular than the masonry; about 5 to 7 broad rock clusters across. No masonry courses, no metal and no crystals protruding from a scene.\nRendering: true handcrafted coarse pixel art, crisp square 4 by 4 native-pixel clusters standing for one logical pixel. Approximately 28 to 40 coherent colors overall, broad deliberate highlight and shadow groups, small numbers of chipped-edge pixels. Far less detailed than a photo or procedural noise. The terrain is the visible interactive middle plane: midtones and chalk/brass/tan highlights are legible against dark background art, with cool blue-slate shadows tying the four materials together.\nConstraints: opaque full bleed square, four exact equal quadrants, seamless individual material tiles, flat diffuse albedo only, no baked scene or platform shape. No outside air, cutout edges, foliage, plants, water, liquid, mist, light rays, glow, characters, creatures, silhouettes, objects placed on surfaces, UI, text, numbers, logos, watermark, chart, labels, or borders. No green wash, no neon, no smooth painterly brushwork or photorealistic granular noise. Preserve the approved references' material language, not their scene.",
+  "tool": "built-in image_gen",
+  "type": "style-transfer",
+  "referenceImages": [
+    ".impeccable/mocks/sluice.png",
+    ".impeccable/mocks/web-gallery.png"
+  ],
+  "role": "opaque live-terrain albedo atlas; simulation retains collision authority",
+  "requestedSourceDimensions": [
+    1024,
+    1024
+  ],
+  "outputDimensions": [
+    256,
+    256
+  ],
+  "quadrants": [
+    {
+      "id": "slate-masonry",
+      "material": "wet slate masonry and chalk",
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "id": "copper-brass",
+      "material": "corroded copper and brass plates",
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "id": "wood",
+      "material": "worn timber and iron nail details",
+      "x": 0,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "id": "mineral-rock",
+      "material": "dark natural mineral rock",
+      "x": 128,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    }
+  ],
+  "sourcePath": ".impeccable/assets/living-descent/sources/terrain-atlas-original.png",
+  "sourceDimensions": [
+    1254,
+    1254
+  ],
+  "logicalReferencePath": ".impeccable/assets/living-descent/sources/terrain-atlas-first-logical.png",
+  "qaStatus": "superseded",
+  "qaNotes": "First layout passed quadrant and repeat review; final refinement broadens face highlights and reduces fine noise."
+}

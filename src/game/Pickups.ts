@@ -139,8 +139,8 @@ export class Pickups implements PickupsApi {
     } else if (p.kind === 'key') {
       const runtime = ctx.levels.current;
       if (runtime) runtime.keyTaken = true;
-      ctx.events.emit('toast', { text: 'GOLDEN KEY ACQUIRED' });
-      ctx.events.emit('objectiveChanged', { text: 'RETURN TO THE PORTAL' });
+      ctx.events.emit('toast', { text: runtime?.living ? 'The brass bell is yours.' : 'GOLDEN KEY ACQUIRED' });
+      ctx.events.emit('objectiveChanged', { text: runtime?.living ? 'Follow the undertow to the lower gate.' : 'RETURN TO THE PORTAL' });
       ctx.audio.keyJingle();
       ctx.particles.burst(p.x, p.y - 2, 16, null, () => packRGB(255, 230, 90), 2.0, {
         glow: 2.2,

@@ -86,6 +86,7 @@ export class HintSystem implements HintApi {
     if (this.taught.has(key)) return;
     this.taught.add(key);
     markHintSeen(key);
+    if (ctx.levels.current?.living) return;
     ctx.events.emit('hintTeach', { key, title: teach.title, body: teach.body });
   }
 
@@ -124,16 +125,8 @@ export class HintSystem implements HintApi {
     if (portal) {
       const d2 = (portal.x - px) ** 2 + (portal.y - py) ** 2;
       if (d2 <= R_GOAL) {
-        const heavySlotted = ctx.wands.wands.some((wand) => wand.cards.includes(INTRO_REWARD_CARD));
-        const benchBlocked = runtime.def.depth === 1 && !runtime.def.branch && runtime.keyTaken && !heavySlotted;
-        let line = 'The portal is sealed — bring it the Golden Key';
-        if (benchBlocked) {
-          if (ctx.wands.collection.includes(INTRO_REWARD_CARD)) {
-            line = 'The portal rejects you — slot Heavy at the Wand Bench';
-          } else {
-            line = 'The portal rejects you — claim Heavy from the Spell Lab';
-          }
-        } else if (portal.open || runtime.keyTaken) {
+        let line = runtime.living ? 'The lower gate is sealed. Bring the brass bell.' : 'The portal is sealed — bring it the Golden Key';
+        if (portal.open || runtime.keyTaken) {
           line = 'The portal is open — step in to descend';
         }
         consider({
@@ -152,7 +145,7 @@ export class HintSystem implements HintApi {
           consider({
             priority: 3,
             dist2: d2,
-            info: { key: 'key', line: 'Grab the Golden Key — it unseals the portal', world: { x: Math.round(pk.x), y: Math.round(pk.y) } },
+            info: { key: 'key', line: runtime.living ? 'Take the brass bell. It opens the lower gate.' : 'Grab the Golden Key — it unseals the portal', world: { x: Math.round(pk.x), y: Math.round(pk.y) } },
             teach: { title: 'The Golden Key', body: 'Take the key, then reach the portal to descend. No key, no exit.' },
           });
         }
@@ -230,7 +223,11 @@ export class HintSystem implements HintApi {
       if (!spec) continue;
       const d2 = (m.x - px) ** 2 + (m.y - py) ** 2;
       if (d2 <= R_OBJECT) {
-        consider({ priority: 2, dist2: d2, info: { key: spec.key, line: spec.line, world: { x: m.x, y: m.y } }, teach: spec.teach });
+        const handwheel = runtime.living && m.id === 8101;
+        consider({ priority: 2, dist2: d2, info: {
+          key: handwheel ? 'works-valve' : spec.key,
+          line: handwheel ? 'Turn valve' : spec.line, world: { x: m.x, y: m.y },
+        }, teach: spec.teach });
       }
     }
 

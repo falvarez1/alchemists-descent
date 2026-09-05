@@ -2,10 +2,13 @@ import { DEATH_SLOWMO_FRAMES, DEATH_SLOWMO_MIN, VIEW_H, VIEW_W } from '@/config/
 import { createDefaultPostFxSettings, createDefaultRenderSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { installTuningPersistence } from '@/config/tuningStore';
 import { EventBus } from '@/core/events';
+import { updateLivingExpedition } from '@/game/LivingExpedition';
+import { ExpeditionEntry } from '@/ui/ExpeditionEntry';
 import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
 import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode } from '@/core/types';
 import { AudioEngine } from '@/audio/AudioEngine';
+import { HabitatAudio } from '@/audio/HabitatAudio';
 import { Flask } from '@/combat/Flask';
 import { Lightning } from '@/combat/Lightning';
 import { WandSystem } from '@/combat/wands/WandSystem';
@@ -17,6 +20,7 @@ import { Physics } from '@/entities/physics';
 import { RigidBodies } from '@/entities/RigidBodies';
 import { VineStrands } from '@/entities/VineStrands';
 import { Brewing } from '@/game/Brewing';
+import { FixedStepClock, type FrameCadence } from '@/game/FixedStepClock';
 import { createConsoleApi } from '@/game/console/commands';
 import { Critters } from '@/game/Critters';
 import { DebugTool } from '@/game/DebugTool';
@@ -92,12 +96,15 @@ export class Game {
   private readonly renderer: Renderer;
   private readonly composer: FrameComposer;
   private readonly hud: Hud;
+  private readonly entry: ExpeditionEntry;
+  private readonly pollInput: () => void;
   private readonly minimap: Minimap;
   private readonly toolbar: Toolbar;
   private readonly inspector: Inspector;
   private readonly introProgression: IntroProgression;
   private readonly perfHud = new PerfHud();
   private readonly brewing = new Brewing();
+  private readonly habitatAudio = new HabitatAudio();
   private readonly grimoireInteractions = new GrimoireInteractionObserver();
   private readonly restoreSavedMode: () => void;
   private modePersistDisposer: (() => void) | null = null;
@@ -318,6 +325,9 @@ export class Game {
     // Wires its DOM listeners in the constructor; lives for the page lifetime.
     const inputManager = new InputManager(this.renderer.domElement, ctx);
     this.disposables.push(inputManager);
+    this.pollInput = () => inputManager.pollGamepad();
+    this.entry = new ExpeditionEntry(ctx);
+    this.disposables.push(this.entry);
     this.restoreSavedMode = () => {
       if (!import.meta.env.DEV) return;
       const mode = readAppMode();
@@ -361,8 +371,12 @@ export class Game {
 
     // Dev-only: return to the mode we were in before a Vite full-reload,
     // instead of always falling back to the Sandbox.
-    this.restoreSavedMode();
-    this.wireModePersistence();
+    void (this.ctx.levels.ready ?? Promise.resolve()).then(() => {
+      if (this.disposed) return;
+      if (this.ctx.state.mode === 'build') this.restoreSavedMode();
+      this.wireModePersistence();
+      this.entry.show();
+    });
 
     this.animationFrameId = requestAnimationFrame(this.step);
   }
@@ -426,8 +440,8 @@ export class Game {
   }
 
   /** Fixed-timestep accumulator (the game is authored in 60Hz frames). */
-  private lastStepTime = 0;
-  private stepDebt = 0;
+  private readonly clock = new FixedStepClock();
+  private cadence: FrameCadence = { interval: 0, ticks: 0, debt: 0, dropped: 0, alpha: 0 };
   private static readonly STEP_MS = 1000 / 60;
 
   /**
@@ -435,15 +449,14 @@ export class Game {
    * probability, and velocity in this game is a per-60Hz-frame constant. With
    * no pacing, a 144Hz monitor ran the WORLD 2.4x faster (and burned 2.4x
    * the CPU). The accumulator runs ticks at 60Hz wall time wherever rAF
-   * lands; at most 2 catch-up ticks so a long hitch slows time instead of
-   * spiraling.
+   * lands. Catch-up is bounded per render, with ordinary debt carried forward
+   * and suspension loss exposed to the performance recorder.
    */
   private step = (now: number): void => {
     if (this.disposed) return;
     this.animationFrameId = requestAnimationFrame(this.step);
-    if (this.lastStepTime === 0) this.lastStepTime = now;
-    this.stepDebt += Math.min(100, now - this.lastStepTime);
-    this.lastStepTime = now;
+    // Poll on presentation frames so Start can also resume a paused simulation.
+    this.pollInput();
     // Death slow-mo: stretch the wall-clock cost of a tick so the sim advances
     // in slow motion (the ramp eases back to real-time as the timer runs out).
     // Render still fires every rAF, so the ragdoll tumble is smooth, not choppy.
@@ -455,25 +468,16 @@ export class Game {
       stepBudget = Game.STEP_MS / scale;
     }
     const frameWorkStart = performance.now();
+    this.cadence = this.clock.advance(now, stepBudget, this.ctx.time.manual || this.ctx.state.paused);
     if (this.ctx.time.manual) {
-      this.stepDebt = 0;
       const ticks = this.ctx.time.takeQueuedTicks(60);
       for (let i = 0; i < ticks; i++) this.tick(false, { forcePaused: true });
       this.ctx.time.afterManualTicks(ticks);
       this.renderFrame(frameWorkStart, ticks);
       return;
     }
-    if (this.stepDebt < stepBudget) {
-      this.renderFrame(frameWorkStart, 0);
-      return;
-    }
     let ticks = 0;
-    while (this.stepDebt >= stepBudget && ticks < 2) {
-      this.stepDebt -= stepBudget;
-      ticks++;
-      this.tick(false);
-    }
-    if (this.stepDebt >= stepBudget) this.stepDebt = 0; // drop unpayable debt
+    for (let i = 0; i < this.cadence.ticks && !this.ctx.state.paused; i++) { this.tick(false); ticks++; }
     this.renderFrame(frameWorkStart, ticks);
   };
 
@@ -486,6 +490,9 @@ export class Game {
 
   private updateFixedTick(options: { forcePaused?: boolean } = {}): void {
     const ctx = this.ctx;
+    if (ctx.state.paused && options.forcePaused !== true) return;
+    const tickStart = performance.now();
+    this.composer.capturePoses(ctx);
     ctx.state.frameCount++;
 
     // Seed this tick's entity and fx streams before ANY system runs, so every
@@ -522,8 +529,18 @@ export class Game {
 
     ctx.camera.update(ctx);
     ctx.camera.updateSimBounds(ctx.world);
+    if (ctx.state.mode === 'play') {
+      // Physical interest follows the body. Camera lead, zoom and inspectors
+      // cannot change which creatures or rigid bodies are awake.
+      const bounds = ctx.world.simBounds;
+      bounds.x0 = Math.max(0, Math.floor(ctx.player.x - VIEW_W / 2 - 80));
+      bounds.x1 = Math.min(ctx.world.width, Math.ceil(ctx.player.x + VIEW_W / 2 + 80));
+      bounds.y0 = Math.max(0, Math.floor(ctx.player.y - VIEW_H / 2 - 80));
+      bounds.y1 = Math.min(ctx.world.height, Math.ceil(ctx.player.y + VIEW_H / 2 + 80));
+    }
 
     if (!frozen) {
+      ctx.world.simulationTick = ctx.state.frameCount;
       // Debug freeze (Runtime panel): the material sim and the non-selected
       // entity systems hold still so the world can be inspected/posed; enemies,
       // critters, the player, and the drag tool stay gated per-entity by `live`.
@@ -535,12 +552,15 @@ export class Game {
         this.grimoireInteractions.update(ctx);
         ctx.simulation.update(ctx);
       }
-      this.perfHud.mark('sim', performance.now() - tSim);
+      const simMs = performance.now() - tSim;
+      this.perfHud.mark('sim', simMs);
 
       const tEnt = performance.now();
       if (!dbg.frozenPlayer()) ctx.playerCtl.update(ctx);
       if (!debugActive) ctx.flask.update(ctx);
+      const enemyStart = performance.now();
       ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy
+      let creatureMs = performance.now() - enemyStart;
       // Rigid bodies integrate against THIS frame's settled terrain, after the
       // sim and the kinematic entities. Impulses from later systems this frame
       // (wands, lightning, and any explosions they trigger) land next frame —
@@ -553,8 +573,12 @@ export class Game {
         ctx.levels.update(ctx);
         ctx.pickups.update(ctx);
         ctx.mechanisms.update(ctx);
+        updateLivingExpedition(ctx);
+        this.habitatAudio.update(ctx);
       }
+      const preyStart = performance.now();
       ctx.critters.update(ctx); // self-gates per critter
+      creatureMs += performance.now() - preyStart;
       if (!debugActive) {
         this.brewing.update(ctx);
         ctx.hints.update(ctx);
@@ -567,18 +591,21 @@ export class Game {
       this.updateBuildModeHeldSpells();
       if (debugActive) dbg.update(); // drag the grabbed entity to the cursor
       this.perfHud.mark('entities', performance.now() - tEnt);
+      const totalMs = performance.now() - tickStart;
+      this.perfHud.recordTick(simMs, creatureMs, Math.max(0, totalMs - simMs - creatureMs), totalMs);
     }
 
   }
 
   private renderFrame(frameWorkStart = performance.now(), tickCount = 0): void {
     const ctx = this.ctx;
-    this.perfHud.beginFrame(tickCount);
+    this.perfHud.beginFrame(tickCount, this.cadence);
     const tRender = performance.now();
     const signature = this.composeSignature(ctx);
-    const shouldCompose = tickCount > 0 || this.composeDirty || signature !== this.lastComposeSignature;
+    const interpolating = ctx.state.mode === 'play' && !ctx.state.paused && !ctx.time.manual;
+    const shouldCompose = tickCount > 0 || this.composeDirty || signature !== this.lastComposeSignature || (interpolating && this.composer.hasMovingPoses(ctx));
     if (shouldCompose) {
-      this.composer.compose(ctx);
+      this.composer.compose(ctx, interpolating ? this.cadence.alpha : 1);
       this.lastComposeSignature = signature;
       this.composeDirty = false;
     }
@@ -617,6 +644,9 @@ export class Game {
     mix(Math.floor(ctx.camera.y));
     mix(ctx.state.mode === 'play' ? 1 : 0);
     mix(ctx.state.frameCount);
+    mix(ctx.world.mutationVersion);
+    mix(ctx.projectiles.length);
+    mix(ctx.shockwaves.length);
     mix(input.mouse.x | 0);
     mix(input.mouse.y | 0);
     mix(input.siphonHeld ? 1 : 0);

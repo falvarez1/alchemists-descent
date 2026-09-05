@@ -251,19 +251,19 @@ export function createDefaultPostFxSettings(): PostFxSettings {
     // same-session A/B and fallback checks (docs/GPU-COMPOSE-PLAN.md).
     gpuCompose: true,
     bloomEnabled: true,
-    bloomStrength: 0.35,
+    bloomStrength: 0.18,
     bloomRadius: 0.2,
     bloomThreshold: 0.85,
-    bloomKickScale: 1.0,
+    bloomKickScale: 0.35,
     lensEnabled: true,
-    aberration: 0.0005,
-    aberrationKick: 0.006,
-    shakeAberration: 0.05,
-    grain: 0.028,
-    hurtPulse: 1.0,
+    aberration: 0,
+    aberrationKick: 0,
+    shakeAberration: 0,
+    grain: 0.006,
+    hurtPulse: 0.4,
     exposure: 1.05,
     tonemap: true,
-    vignette: 0.52,
+    vignette: 0.28,
   };
 }
 
@@ -279,16 +279,16 @@ export function createDefaultRenderSettings(): RenderSettings {
 
 export function createDefaultWandLightSettings(): WandLightSettings {
   return {
-    intensity: 4.6,
+    intensity: 2.4,
     radius: 112,
     r: 1.0,
     g: 0.84,
     b: 0.6,
-    flicker: 0.24,
+    flicker: 0.07,
     fillR: 0.5,
     fillG: 0.45,
     fillB: 0.36,
-    torchIntensity: 5.6,
+    torchIntensity: 3.2,
     torchRadius: 152,
     torchMinFlicker: 1.05,
   };

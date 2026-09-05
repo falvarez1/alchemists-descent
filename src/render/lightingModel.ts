@@ -19,6 +19,12 @@
 /** Screen-vignette strength baked into the CPU `Lighting.vignette` array, used as
  *  the GPU `uVignette` uniform default, and the `FrameComposer` rescale base.
  *  `postFx.vignette` tunes it live; this is the shipped reference value. */
+import type { Ctx } from '@/core/types';
+
+export function renderAmbient(ctx: Ctx): number {
+  return ctx.state.highReadability ? Math.max(0.85, ctx.params.global.ambient) : ctx.params.global.ambient;
+}
+
 export const VIGNETTE_BASE = 0.52;
 
 /**
@@ -31,7 +37,7 @@ export const VIGNETTE_BASE = 0.52;
 export const COMPOSE_PAD = 64;
 
 export const LIGHT_CLAMP = 2.2;
-export const LIGHT_READABILITY_FLOOR = 0.06;
+export const LIGHT_READABILITY_FLOOR = 0.40;
 export const SELF_GLOW_BASE = 0.45;
 export const SELF_GLOW_SCALE = 1.55;
 export const LIGHT_KNEE_START = 1.25;

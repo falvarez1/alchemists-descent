@@ -4,6 +4,7 @@ import { EntityPool } from '@/entities/ecs';
 import { blocksEntity, Cell, isLiquid, isSolid } from '@/sim/CellType';
 import { packRGB, waterColor } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
+import { sightClear } from '@/creatures/perception';
 
 /**
  * Wave F "The Caves Breathe": the critter layer + ambient cave biology.
@@ -53,8 +54,38 @@ export class Critters implements CrittersApi {
         this.killAt(ctx, x, y, radius + 4),
       ),
     );
-    // entering a new depth scatters the old fauna
-    this.eventDisposers.push(ctx.events.on('levelChanged', () => this.clear()));
+    this.eventDisposers.push(ctx.events.on('levelChanged', () => this.enterHabitat(ctx)));
+  }
+
+  private enterHabitat(ctx: Ctx): void {
+    this.clear();
+    const rt = ctx.levels.current;
+    if (!rt) return;
+    if (rt.fauna) {
+      for (const saved of rt.fauna) this.pool.add({ ...saved });
+      return;
+    }
+    const resident = (kind: CritterKind, x: number, y: number): void => {
+      const c = this.add(kind, x, y);
+      c.id = `${rt.def.id}-${kind}-${this.list.length}`;
+      c.homeX = x; c.homeY = y; c.energy = 1;
+    };
+    if (rt.def.id === 'd1') {
+      for (const [x, y] of [[290, 265], [520, 330], [1180, 342], [1350, 350], [915, 695], [290, 744]]) {
+        for (let i = 0; i < 5; i++) resident('firefly', x + Math.sin(i * 1.9) * 22, y + Math.cos(i * 2.3) * 13);
+      }
+      for (const [x, y] of [[640, 400], [680, 410], [755, 420], [355, 808]]) resident('fish', x, y);
+    } else if (rt.def.depth > 0) {
+      // Seed habitats once across the world. Looking away never replaces prey.
+      for (let i = 0; i < 180 && this.list.length < 32; i++) {
+        const x = 20 + Math.floor(entityRandom() * (WIDTH - 40));
+        const y = 25 + Math.floor(entityRandom() * (HEIGHT - 50));
+        const type = ctx.world.type(x, y);
+        if (type === Cell.Water) resident('fish', x, y);
+        else if (type === Cell.Empty) resident(i % 3 ? 'firefly' : 'moth', x, y);
+      }
+    }
+    rt.fauna = this.list.map(c => ({ ...c }));
   }
 
   dispose(): void {
@@ -113,10 +144,10 @@ export class Critters implements CrittersApi {
     if (ctx.state.mode !== 'play' || ctx.state.paused) return;
     const frame = ctx.state.frameCount;
 
-    if (!ctx.debug.active && frame % 30 === 0) this.trySpawn(ctx);
+    if (!ctx.debug.active && !ctx.levels.current?.fauna && frame % 30 === 0) this.trySpawn(ctx);
     this.updateCritters(ctx); // per-critter debug-freeze gate inside
     if (!ctx.debug.active) {
-      this.ambientGrid(ctx, frame);
+      if (!ctx.levels.current?.fauna) this.ambientGrid(ctx, frame);
       this.shedFromShake(ctx);
       if (frame % 90 === 0) this.ambientAudio(ctx);
     }
@@ -219,6 +250,27 @@ export class Critters implements CrittersApi {
     for (let idx = this.list.length - 1; idx >= 0; idx--) {
       const c = this.list[idx];
       if (ctx.debug.frozenCritter(c)) continue; // posed/dragged in debug mode
+      const far = Math.abs(c.x - player.x) > VIEW_W || Math.abs(c.y - player.y) > VIEW_H;
+      if (c.id && far && (ctx.state.frameCount + idx) % 12 !== 0) continue;
+      if (c.id && c.homeX !== undefined && c.homeY !== undefined && c.kind !== 'fish') {
+        let targetX = c.homeX, targetY = c.homeY;
+        for (const lure of ctx.levels.current?.living?.lures ?? []) {
+          if (Math.hypot(lure.x - c.x, lure.y - c.y) < 160 && sightClear(w, c.x, c.y, lure.x, lure.y)) {
+            targetX = lure.x; targetY = lure.y - 9; break;
+          }
+        }
+        c.vx += Math.max(-0.025, Math.min(0.025, (targetX - c.x) * 0.0007));
+        c.vy += Math.max(-0.025, Math.min(0.025, (targetY - c.y) * 0.0007));
+        c.energy = Math.max(0.2, Math.min(1, (c.energy ?? 1) + (Math.hypot(targetX - c.x, targetY - c.y) < 25 ? 0.001 : -0.0002)));
+        for (const predator of ctx.enemies) {
+          if (predator.hp <= 0 || predator.kind !== 'weaver') continue;
+          const dx = c.x - predator.x, dy = c.y - predator.y + 8;
+          const d = Math.hypot(dx, dy);
+          if (d > 1 && d < 42 && sightClear(w, c.x, c.y, predator.x, predator.y - 8)) {
+            c.vx += dx / d * 0.06; c.vy += dy / d * 0.06;
+          }
+        }
+      }
       c.phase += 0.13;
       const xi = Math.floor(c.x),
         yi = Math.floor(c.y);

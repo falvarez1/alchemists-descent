@@ -4,6 +4,8 @@ import { GEN, GEN_TUNE, scaleSkeletonSpec } from '@/config/gen';
 import { clamp, hash2, valueNoise } from '@/core/math';
 import { Rng, hashSeed, randomSeed } from '@/core/rng';
 import { reseedAllStreams } from '@/core/simRandom';
+import { generateBreathingWorks } from '@/world/breathingWorks';
+import { matureVegetation } from '@/world/vegetation';
 import { makeInstantiationSink } from '@/game/instantiate';
 import type {
   AuthoredLight,
@@ -116,6 +118,7 @@ export class WorldGen implements WorldGenApi {
   }
 
   spawnFortress(ctx: Ctx): void {
+    ctx.world.activity.invalidateAll();
     stampFortress(ctx);
   }
 
@@ -828,6 +831,12 @@ export class WorldGen implements WorldGenApi {
     /** D1 only: the horizon row — Empty above it renders as open sky. */
     surfaceSkyLine: number | null;
   } {
+    if (def.id === 'd1') {
+      const works = generateBreathingWorks(ctx, seed);
+      matureVegetation(ctx.world);
+      this.spawnHint = works.spawn;
+      return works;
+    }
     // DEV stage timing — generation runs synchronously behind the curtain,
     // so a slow stage is a felt hitch; shout when the total crosses 400ms.
     const tStart = performance.now();
@@ -1334,6 +1343,7 @@ export class WorldGen implements WorldGenApi {
     stage('final-gauge-rescue');
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
+    matureVegetation(ctx.world);
     return {
       exit: { x: wellX, sealY, halfW },
       waystones,

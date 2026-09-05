@@ -1,4 +1,6 @@
 import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
+import { RenderPoses } from '@/render/RenderPoses';
+import { drawWorksLandmarks, prepareTerrainColors } from '@/render/TerrainArt';
 import { PLAYER_HALF_W } from '@/core/types';
 import type {
   CompositorLens,
@@ -17,6 +19,7 @@ import {
   LIGHT_KNEE_SLOPE,
   LIGHT_KNEE_START,
   LIGHT_READABILITY_FLOOR,
+  renderAmbient,
   SELF_GLOW_BASE,
   SELF_GLOW_SCALE,
   VIGNETTE_BASE,
@@ -103,6 +106,24 @@ export class FrameComposer implements PixelSurface {
     () => ({ pixels: EMPTY_BACKDROP_PIXELS, width: 0, opacity: 0, xSamples: EMPTY_SAMPLES, ySamples: EMPTY_SAMPLES }),
   );
   private readonly activeBackdropLayers: ActiveBackdropLayer[] = [];
+  private readonly poses = new RenderPoses();
+  private alpha = 1;
+  private drawOffsetX = 0;
+  private drawOffsetY = 0;
+
+  capturePoses(ctx: Ctx): void {
+    this.poses.capture(ctx.camera); this.poses.capture(ctx.player);
+    for (const enemy of ctx.enemies) this.poses.capture(enemy);
+  }
+
+  hasMovingPoses(ctx: Ctx): boolean {
+    return this.poses.moving(ctx.camera) || this.poses.moving(ctx.player) || ctx.enemies.some(e => this.poses.moving(e));
+  }
+
+  private positionSprite(body: { x: number; y: number }): void {
+    this.drawOffsetX = this.poses.offset(body, 'x', this.alpha);
+    this.drawOffsetY = this.poses.offset(body, 'y', this.alpha);
+  }
 
   constructor(
     private readonly target: RenderTarget,
@@ -124,8 +145,8 @@ export class FrameComposer implements PixelSurface {
   // GPU path the same writes land in the overlay (a=1 tells the shader to
   // drop the terrain underneath — exactly what overwriting the buffer did).
   setPx(x: number, y: number, r: number, g: number, b: number): void {
-    const vx = Math.round(x) - this.renderCamX,
-      vy = Math.round(y) - this.renderCamY;
+    const vx = Math.round(x + this.drawOffsetX) - this.renderCamX,
+      vy = Math.round(y + this.drawOffsetY) - this.renderCamY;
     if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
     const pi = (VIEW_H - 1 - vy) * VIEW_W + vx;
     const idx = pi * 4;
@@ -147,8 +168,8 @@ export class FrameComposer implements PixelSurface {
   }
 
   addPx(x: number, y: number, r: number, g: number, b: number): void {
-    const vx = Math.round(x) - this.renderCamX,
-      vy = Math.round(y) - this.renderCamY;
+    const vx = Math.round(x + this.drawOffsetX) - this.renderCamX,
+      vy = Math.round(y + this.drawOffsetY) - this.renderCamY;
     if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
     const pi = (VIEW_H - 1 - vy) * VIEW_W + vx;
     const idx = pi * 4;
@@ -218,9 +239,11 @@ export class FrameComposer implements PixelSurface {
     }
   }
 
-  compose(ctx: Ctx): void {
-    ctx.camera.renderX = Math.floor(ctx.camera.x);
-    ctx.camera.renderY = Math.floor(ctx.camera.y);
+  compose(ctx: Ctx, alpha = 1): void {
+    this.alpha = alpha;
+    this.drawOffsetX = 0; this.drawOffsetY = 0;
+    ctx.camera.renderX = Math.floor(ctx.camera.x + this.poses.offset(ctx.camera, 'x', alpha));
+    ctx.camera.renderY = Math.floor(ctx.camera.y + this.poses.offset(ctx.camera, 'y', alpha));
     this.renderCamX = ctx.camera.renderX;
     this.renderCamY = ctx.camera.renderY;
 
@@ -292,6 +315,7 @@ export class FrameComposer implements PixelSurface {
       this.composeTerrainCpu(ctx, lenses);
     }
 
+    drawWorksLandmarks(this, this.light, ctx);
     this.composeOverlays(ctx);
     this.maskVoidBelowWorldFloor(ctx);
 
@@ -306,6 +330,7 @@ export class FrameComposer implements PixelSurface {
         this.overlay = null;
         this.composeTerrainCpu(ctx, lenses);
         this.compositeOverlayToCpu(failedOverlay);
+        this.maskVoidBelowWorldFloor(ctx);
         this.target.markTextureDirty();
       }
     } else {
@@ -342,7 +367,7 @@ export class FrameComposer implements PixelSurface {
     const renderCamX = this.renderCamX;
     const renderCamY = this.renderCamY;
     const frameCount = ctx.state.frameCount;
-    const ambient = ctx.params.global.ambient;
+    const ambient = renderAmbient(ctx);
     const world = ctx.world;
     const worldFloor = world.height;
     // D1 surface intro: Empty cells above this horizon paint as open daytime sky
@@ -366,7 +391,7 @@ export class FrameComposer implements PixelSurface {
     const hillFar = SKY.hillFar;
     const hillNear = SKY.hillNear;
     const types = world.types;
-    const cellColors = world.colors;
+    const cellColors = prepareTerrainColors(ctx);
     const charge = world.charge;
     const materials = ctx.params.materials;
     const { lightR, lightG, lightB, vignette, LW } = this.light;
@@ -751,6 +776,10 @@ export class FrameComposer implements PixelSurface {
    * void — it reads as "nothing's there", which is the truth.
    */
   private maskVoidBelowWorldFloor(ctx: Ctx): void {
+    // Both GPU composers already apply the world-floor mask after the overlay.
+    // Painting a whole black strip here needlessly converts/uploads thousands
+    // of half-float sprite pixels whenever the player reaches a deep floor.
+    if (this.overlay !== null && ctx.world.height === HEIGHT) return;
     const firstVoidVy = ctx.world.height - this.renderCamY;
     if (firstVoidVy >= VIEW_H) return; // the floor is below the view — nothing to mask
     const pixelData = this.target.pixelData;
@@ -798,21 +827,26 @@ export class FrameComposer implements PixelSurface {
     // Entities on top. Contact shadows first, under everything, so a body's
     // own sprite and its neighbours draw over the shared ground darkening.
     for (const e of ctx.enemies) {
+      this.positionSprite(e);
       if (this.enemyInRenderView(ctx, e)) this.drawEnemyContactShadow(ctx, e);
     }
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
+      this.positionSprite(ctx.player);
       this.drawContactShadow(ctx, ctx.player.x, ctx.player.y, PLAYER_HALF_W + 1, 0.58);
     }
     for (const e of ctx.enemies) {
+      this.positionSprite(e);
       if (this.enemyInRenderView(ctx, e)) this.drawEnemy(this, this.light, ctx, e);
     }
+    this.drawOffsetX = 0; this.drawOffsetY = 0;
     // Excavation beam: white-hot core, tight amber sheath, light cast onto nearby rock
     drawDigBeam(this, ctx);
 
     // Peers draw BEFORE the local player so your own wizard is never hidden
     // behind a phantom you cannot interact with.
     this.drawPeers(this, this.light, ctx);
-    if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
+    if (ctx.state.mode === 'play') { this.positionSprite(ctx.player); this.drawPlayer(this, this.light, ctx); }
+    this.drawOffsetX = 0; this.drawOffsetY = 0;
     this.drawPlayerRagdoll(ctx);
   }
 
@@ -1507,6 +1541,14 @@ export class FrameComposer implements PixelSurface {
   private drawCritters(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const frame = ctx.state.frameCount;
+    for (const lure of ctx.levels.current?.living?.lures ?? []) {
+      const x = Math.round(lure.x), y = Math.round(lure.y);
+      const pulse = 0.65 + Math.sin(frame * 0.06 + lure.id) * 0.2;
+      this.setPx(x, y, 0.65, 0.87, 0.66);
+      this.addPx(x, y - 1, 0.4 * pulse, 0.7 * pulse, 0.5 * pulse);
+      this.addPx(x - 1, y, 0.2 * pulse, 0.4 * pulse, 0.28 * pulse);
+      this.addPx(x + 1, y, 0.2 * pulse, 0.4 * pulse, 0.28 * pulse);
+    }
     for (const c of ctx.critters.list) {
       const x = Math.round(c.x),
         y = Math.round(c.y);
@@ -1519,8 +1561,8 @@ export class FrameComposer implements PixelSurface {
       } else if (c.kind === 'firefly') {
         // dark speck, bright abdomen on the pulse
         const pulse = Math.max(0, Math.sin(c.phase * 0.45));
-        this.setPx(x, y, 0.1, 0.12, 0.06);
-        if (pulse > 0.25) this.addPx(x, y + 1, 0.5 * pulse, 1.4 * pulse, 0.25 * pulse);
+        this.setPx(x, y, 0.20, 0.30, 0.25);
+        if (pulse > 0.25) this.addPx(x, y + 1, 0.58 * pulse, 0.94 * pulse, 0.69 * pulse);
       } else if (c.kind === 'fish') {
         const tail = Math.sin(c.phase * 1.6) > 0 ? 1 : 0;
         this.setPx(x, y, 0.5, 0.6, 0.62);
@@ -1587,6 +1629,16 @@ export class FrameComposer implements PixelSurface {
         }
         this.setPx(x, y + lid, 1.2, 1.1, 0.5); // clasp glint
       } else if (p.kind === 'key') {
+        if (runtime.living) {
+          // The opening's gate token is a small brass bell, still using the
+          // existing append-only key pickup/save contract.
+          for (let yy = -4; yy <= 1; yy++) {
+            const width = yy < -2 ? 1 : yy < 0 ? 2 : 3;
+            for (let xx = -width; xx <= width; xx++) this.setPx(x + xx, y + yy, xx === -width ? 0.90 : 0.67, xx === -width ? 0.74 : 0.50, 0.27);
+          }
+          this.setPx(x, y + 3, 0.82, 0.69, 0.37);
+          continue;
+        }
         // bright sparkling key; its bow twitches like it wants the portal
         const twitch = frame % 50 < 6 ? Math.round(Math.sin(frame * 1.7)) : 0;
         const dir = runtime.portal && runtime.portal.x < p.x ? -1 : 1;

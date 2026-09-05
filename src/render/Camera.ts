@@ -93,7 +93,7 @@ export class Camera implements CameraApi {
       !player.grounded ||
       player.firing;
     this.idleFrames = busy ? 0 : this.idleFrames + 1;
-    const zTarget = this.zoomLock ?? (this.idleFrames > 55 ? 1.13 : 1.0);
+    const zTarget = this.zoomLock ?? 1;
     this.zoom += (zTarget - this.zoom) * (this.zoomLock !== null ? 0.16 : 0.035);
   }
 

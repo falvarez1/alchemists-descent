@@ -8,6 +8,8 @@ import type { CardId, TimeControlStatus } from '@/core/types';
  * score subscribe without the sim knowing they exist.
  */
 export interface EventMap {
+  habitatSound: { kind: 'weaver' | 'rillback'; x: number; y: number };
+  creatureSignal: { x: number; y: number; radius: number; strength: number; kind: 'sound' | 'vibration' | 'lure' };
   /** Gold total changed — HUD score readouts re-render. */
   scoreChanged: { score: number };
   /** Player hit 0 HP — UI preps the game-over text (overlay deferred to the ragdoll settle). */

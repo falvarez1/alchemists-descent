@@ -1,0 +1,94 @@
+{
+  "file": "public/assets/living-descent/props-atlas.png",
+  "width": 192,
+  "height": 96,
+  "channels": 4,
+  "hasAlpha": true,
+  "bytes": 19741,
+  "sha256": "e5b1ca5fa97c4cb083ec74b59855563034c9402e4af57416d40476447a5caeb2",
+  "transparentPixels": 13629,
+  "transparentPercent": 73.94205729166667,
+  "partialAlphaPixels": 0,
+  "pixelsOutsideSpriteRectangles": 0,
+  "hotMagentaOpaquePixels": 0,
+  "keyedSourceRgbChangedPixels": 0,
+  "embeddedPromptMatchesSidecar": true,
+  "sprites": [
+    {
+      "id": "brass-valve",
+      "x": 8,
+      "y": 40,
+      "width": 32,
+      "height": 40,
+      "anchor": [
+        16,
+        40
+      ],
+      "anchorMeaning": "bottom center relative to crop",
+      "sourceCrop": {
+        "left": 117,
+        "top": 325,
+        "width": 220,
+        "height": 359
+      },
+      "opaquePixels": 566,
+      "bounds": {
+        "left": 11,
+        "top": 40,
+        "right": 35,
+        "bottom": 79
+      }
+    },
+    {
+      "id": "refuge-hearth",
+      "x": 48,
+      "y": 24,
+      "width": 96,
+      "height": 56,
+      "anchor": [
+        48,
+        56
+      ],
+      "anchorMeaning": "bottom center relative to crop",
+      "sourceCrop": {
+        "left": 454,
+        "top": 176,
+        "width": 818,
+        "height": 508
+      },
+      "opaquePixels": 3665,
+      "bounds": {
+        "left": 51,
+        "top": 24,
+        "right": 140,
+        "bottom": 79
+      }
+    },
+    {
+      "id": "pipe-mouth",
+      "x": 152,
+      "y": 56,
+      "width": 32,
+      "height": 24,
+      "anchor": [
+        16,
+        12
+      ],
+      "anchorMeaning": "center relative to crop",
+      "sourceCrop": {
+        "left": 1402,
+        "top": 477,
+        "width": 256,
+        "height": 207
+      },
+      "opaquePixels": 572,
+      "bounds": {
+        "left": 153,
+        "top": 56,
+        "right": 182,
+        "bottom": 79
+      }
+    }
+  ],
+  "visualEvidence": ".impeccable/assets/living-descent/sources/props-atlas-dark-review.png"
+}

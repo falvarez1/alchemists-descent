@@ -263,6 +263,7 @@ export class IntroProgression {
   }
 
   private isIntroRuntime(ctx: Ctx, runtime: LevelRuntime | null): runtime is LevelRuntime {
+    if (runtime?.living) return false;
     if (!runtime || ctx.state.mode !== 'play' || ctx.player.dead) return false;
     if (runtime.def.id !== START_LEVEL && !runtime.spellLab) return false;
     if (runtime.def.depth !== 1 || runtime.def.branch) return false;

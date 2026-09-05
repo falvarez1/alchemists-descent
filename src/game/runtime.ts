@@ -19,6 +19,8 @@ export function makeLevelRuntime(
     Pick<
       LevelRuntime,
       | 'enemies'
+      | 'fauna'
+      | 'living'
       | 'waystones'
       | 'exit'
       | 'explored'

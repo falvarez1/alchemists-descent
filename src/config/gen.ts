@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 36; // 36: gunpowder seams laced through ore/coal vugs
+export const GEN_VERSION = 38; // 38: route reachability repairs around protected machinery
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

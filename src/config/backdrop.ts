@@ -20,53 +20,53 @@ export interface BackdropLayerSpec {
 export const BACKDROP_SETTINGS_KEY = 'noita-backdrop-settings';
 
 export const DEFAULT_BACKDROP_GRADE: BackdropGradeSettings = {
-  exposure: -1.22,
-  brightness: -0.035,
-  contrast: 1.19,
-  gamma: 1.43,
-  saturation: 0.71,
+  exposure: 0,
+  brightness: 0,
+  contrast: 1,
+  gamma: 1,
+  saturation: 1,
 };
 
 export const BACKDROP_LAYER_SPECS: readonly BackdropLayerSpec[] = [
   {
     id: 'back',
-    label: 'Back layer',
-    file: 'back-layer.png',
-    src: new URL('../../backdrop/back-layer.png', import.meta.url).href,
+    label: 'Distant refinery',
+    file: 'refinery-distance.png',
+    src: `${import.meta.env.BASE_URL}assets/living-descent/refinery-distance.png`,
     defaultSpeed: 0.1,
     defaultOpacity: 1,
   },
   {
     id: 'second',
-    label: 'Second layer',
-    file: 'second-layer.png',
-    src: new URL('../../backdrop/second-layer.png', import.meta.url).href,
-    defaultSpeed: 0.18,
-    defaultOpacity: 1,
+    label: 'Copper machinery',
+    file: 'refinery-machinery.png',
+    src: `${import.meta.env.BASE_URL}assets/living-descent/refinery-machinery.png`,
+    defaultSpeed: 0.15,
+    defaultOpacity: 0.52,
   },
   {
     id: 'third',
     label: 'Third layer',
     file: 'third-layer.png',
-    src: new URL('../../backdrop/third-layer.png', import.meta.url).href,
+    src: '',
     defaultSpeed: 0.3,
-    defaultOpacity: 1,
+    defaultOpacity: 0,
   },
   {
     id: 'fourth',
     label: 'Fourth layer',
     file: 'fourth-layer.png',
-    src: new URL('../../backdrop/fourth-layer.png', import.meta.url).href,
+    src: '',
     defaultSpeed: 0.48,
-    defaultOpacity: 1,
+    defaultOpacity: 0,
   },
   {
     id: 'front',
     label: 'Front layer',
     file: 'front-layer.png',
-    src: new URL('../../backdrop/front-layer.png', import.meta.url).href,
+    src: '',
     defaultSpeed: 0.72,
-    defaultOpacity: 1,
+    defaultOpacity: 0,
   },
 ] as const;
 
@@ -81,7 +81,7 @@ function createDefaultLayer(spec: BackdropLayerSpec): BackdropLayerSettings {
     opacity: spec.defaultOpacity,
     offsetX: 0,
     offsetY: 0,
-    scale: 1,
+    scale: spec.id === 'back' || spec.id === 'second' ? 0.5 : 1,
     visible: true,
   };
 }

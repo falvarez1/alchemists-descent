@@ -2,6 +2,7 @@ import type { World } from '@/sim/World';
 import type { EventBus } from '@/core/events';
 import type { Cell } from '@/sim/CellType';
 import type { VirtualWorldDef } from '@/authoring/virtualWorld';
+import type { CreatureBody, CreatureMind, PlantedFoot } from '@/creatures/types';
 
 /* ============================================================
  * Entity data
@@ -374,6 +375,9 @@ export interface WeaverLocoState {
 }
 
 export interface Enemy {
+  mind?: CreatureMind;
+  body?: CreatureBody;
+  feet?: PlantedFoot[];
   kind: EnemyKind;
   x: number;
   y: number;
@@ -520,7 +524,7 @@ export interface Enemy {
   rillChargeCd?: number;
   /** Rillback: visible pre-pulse frames before a local conductor charge. */
   rillChargeWindup?: number;
-  /** Rillback: render-owned trailing body segments. */
+  /** Tick-owned trailing body nodes (legacy tooling alias). */
   rillSegments?: Array<{ x: number; y: number }>;
 
   /* --- Behavior drives & reflexes (the threat-aware AI layer in Enemies.ts).
@@ -550,8 +554,13 @@ export interface Enemy {
 
 export type CritterKind = 'moth' | 'firefly' | 'fish' | 'beetle' | 'fly';
 
-/** Ambient harmless life. Transient per level — respawned around the camera. */
+/** Harmless habitat residents; expeditions persist them independently of the camera. */
 export interface Critter {
+  /** Habitat residents have stable identities and survive camera/level changes. */
+  id?: string;
+  homeX?: number;
+  homeY?: number;
+  energy?: number;
   kind: CritterKind;
   x: number;
   y: number;
@@ -1108,6 +1117,10 @@ export interface RunStatus {
 }
 
 export interface GameStateData {
+  highReadability?: boolean;
+  creatureCaptions?: boolean;
+  reduceCameraShake?: boolean;
+  reduceFlashes?: boolean;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see
    *  sim/reactions.ts). Surfaced for probes and the inspector — the player
    *  learns it from the discovery toast, not from here. */
@@ -1161,6 +1174,8 @@ export interface Keys {
 }
 
 export interface InputState {
+  /** Short taps survive a keyup between two fixed ticks. */
+  queuedJump?: 'jump' | 'wall';
   keys: Keys;
   /** Cursor position in world-grid coordinates (original mouseGridPosition). */
   mouse: { x: number; y: number };
@@ -1208,6 +1223,7 @@ export interface WaveState {
  * ============================================================ */
 
 export interface AudioApi {
+  worldSound?(kind: 'stone' | 'metal' | 'water' | 'weaver' | 'rillback' | 'pressure', x: number, y: number, listenerX: number, listenerY: number): void;
   readonly enabled: boolean;
   /** Create/resume the AudioContext. Must be called from a user gesture. */
   ensure(): void;
@@ -2597,6 +2613,8 @@ export interface RuntimeDecor {
  * for the whole expedition (v1) — your scars stay exactly as you left them.
  */
 export interface LevelRuntime {
+  fauna?: Critter[];
+  living?: LivingExpeditionState;
   def: LevelDef;
   world: World;
   enemies: Enemy[];
@@ -2666,10 +2684,24 @@ export interface LevelRuntime {
   vaultArch?: VaultArch;
 }
 
+/** Expedition ecology and room progress; separate from Builder documents. */
+export interface LivingExpeditionState {
+  ticks: number;
+  visited: string[];
+  room: string;
+  glowseeds: number;
+  nextLureId: number;
+  lures: Array<{ id: number; x: number; y: number; vx: number; vy: number; life: number }>;
+  rested: boolean;
+  restTicks: number;
+}
+
 export interface LevelsApi {
   /** Null until the descent starts (first play-mode entry). */
   readonly current: LevelRuntime | null;
   readonly transitioning: boolean;
+  /** Diagnostic readiness after the bounded, post-settling route repair. */
+  readonly findabilityReady?: boolean;
   /** Canonical launcher/dev-console run entrypoint. */
   startRun(ctx: Ctx, config: RunStartConfig): RunStartResult;
   /** Canonical status for launcher/dev-console run workflows. */
@@ -2697,8 +2729,11 @@ export interface LevelsApi {
   exitDisposableRuntime(ctx: Ctx): void;
   /** QA/debug command: stock visible potion pickups in the current level. */
   seedReviewKit(ctx: Ctx): void;
-  /** Persist the whole expedition (visited levels + hero) to localStorage. */
+  /** Queue a durable expedition checkpoint. Encoding and I/O run in a worker. */
   saveExpedition(ctx: Ctx): void;
+  readonly ready?: Promise<void>;
+  persistenceStatus?(): { backend: string; state: string; revision: number; error: string | null };
+  flushSaves?(): Promise<{ state: string; revision: number; error: string | null }>;
   /** Persist a post-death checkpoint: world penalty now, hero resumes at the respawn anchor. */
   saveDeathCheckpoint(ctx: Ctx): void;
   hasSavedExpedition(): boolean;

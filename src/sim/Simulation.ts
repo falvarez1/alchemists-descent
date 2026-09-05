@@ -58,7 +58,6 @@ export class Simulation implements SimulationApi {
 
   processFrame(ctx: Ctx): void {
     const world = ctx.world;
-    const sim = world.simBounds;
 
     // Every substep gets its own stream. A divergence inside one substep then
     // cannot offset the next one, which is what lets a failing golden frame
@@ -81,6 +80,8 @@ export class Simulation implements SimulationApi {
     runHarvesterField(ctx);
     updateElectricalGrid(ctx);
     ctx.projectileCtl.update(ctx);
+    world.activity.beginStep(world, ctx.state.mode === 'play' ? world.simBounds : undefined, gameTick);
+    const sim = world.activity.bounds;
 
     for (let i = ctx.shockwaves.length - 1; i >= 0; i--) {
       const w = ctx.shockwaves[i];
@@ -93,116 +94,126 @@ export class Simulation implements SimulationApi {
     const movedArr = world.moved;
     const tick = world.movedTick;
 
-    const spanW = sim.x1 - sim.x0;
+    const firstWord = sim.x0 >> 5, endWord = Math.ceil(sim.x1 / 32);
+    const masks = world.activity.rowMasks, wordsPerRow = world.activity.wordsPerRow;
     const sparseGrowthCells = this.sparseGrowthCells;
     sparseGrowthCells.length = 0;
     for (let y = sim.y1 - 1; y >= sim.y0; y--) {
       const leftToRight = simRandom() < 0.5;
-      for (let i = 0; i < spanW; i++) {
-        const x = leftToRight ? sim.x0 + i : sim.x1 - 1 - i;
-        const ci = x + y * world.width;
-        if (movedArr[ci] === tick) continue;
+      for (let wordOffset = 0; wordOffset < endWord - firstWord; wordOffset++) {
+        const word = leftToRight ? firstWord + wordOffset : endWord - 1 - wordOffset;
+        if (!world.activity.scheduled[(word >> 1) + (y >> 6) * world.activity.columns]) continue;
+        let mask = masks[y * wordsPerRow + word];
+        while (mask !== 0) {
+          const bit = leftToRight ? 31 - Math.clz32(mask & -mask) : 31 - Math.clz32(mask);
+          mask &= ~(1 << bit);
+          const x = word * 32 + bit;
+          const ci = x + y * world.width;
+          if (movedArr[ci] === tick || !world.activity.eligible[ci]) continue;
 
-        const type = world.types[ci] as Cell;
-        if (
-          type === Cell.Empty ||
-          type === Cell.Wall ||
-          type === Cell.Wood ||
-          type === Cell.Stone ||
-          type === Cell.Metal ||
-          type === Cell.Ice ||
-          type === Cell.Vines ||
-          type === Cell.Crystal ||
-          type === Cell.Glass ||
-          type === Cell.Fungus ||
-          type === Cell.Glowshroom ||
-          type === Cell.Moss ||
-          type === Cell.RawOre ||
-          type === Cell.Grass
-        ) {
+          const type = world.types[ci] as Cell;
           if (
+            type === Cell.Empty ||
+            type === Cell.Wall ||
+            type === Cell.Wood ||
+            type === Cell.Stone ||
+            type === Cell.Metal ||
             type === Cell.Ice ||
             type === Cell.Vines ||
+            type === Cell.Crystal ||
+            type === Cell.Glass ||
             type === Cell.Fungus ||
+            type === Cell.Glowshroom ||
             type === Cell.Moss ||
+            type === Cell.RawOre ||
             type === Cell.Grass
           ) {
-            sparseGrowthCells.push(ci);
+            continue;
           }
-          continue;
+
+          // THE ALCHEMY TABLE: liquids consult the data-driven pair reactions
+          // first — a listed pair (acid+lava -> glass, blood+catalyst ->
+          // healium...) wins over the cell's generic handler for this substep.
+          if (isLiquid(type) && maybeReact(ctx, x, y, type)) continue;
+
+          if (type === Cell.Sand || type === Cell.Gold || type === Cell.Catalyst)
+            handleSand(ctx, x, y, type);
+          else if (type === Cell.Water) handleWater(ctx, x, y);
+          else if (type === Cell.Fire) handleFire(ctx, x, y);
+          else if (type === Cell.Ember) handleEmber(ctx, x, y);
+          else if (type === Cell.Oil) handleOil(ctx, x, y);
+          else if (type === Cell.Acid) handleAcid(ctx, x, y);
+          else if (type === Cell.Gunpowder) handleGunpowder(ctx, x, y);
+          else if (type === Cell.Lava) handleLava(ctx, x, y);
+          else if (type === Cell.Nitrogen) handleNitrogen(ctx, x, y);
+          else if (type === Cell.Snow) handleSnow(ctx, x, y);
+          else if (type === Cell.Coal) handleCoal(ctx, x, y);
+          else if (type === Cell.Ash) handleAsh(ctx, x, y);
+          else if (type === Cell.Toxic || type === Cell.Healium || type === Cell.Teleportium)
+            handleExoticLiquid(ctx, x, y, type);
+          else if (
+            type === Cell.Blood ||
+            type === Cell.Slime ||
+            type === Cell.ElixirLife ||
+            type === Cell.ElixirLevity ||
+            type === Cell.ElixirStone
+          ) {
+            if (type === Cell.Blood) {
+              // wet blood stains adjacent rock and timber, and slowly soaks in
+              if (simRandom() < 0.10) {
+                stainCell(world, x, y + 1, 118, 14, 20, 0.22);
+                if (simRandom() < 0.5)
+                  stainCell(world, x + (simRandom() < 0.5 ? 1 : -1), y, 118, 14, 20, 0.16);
+              }
+              if (
+                simRandom() < 0.004 &&
+                canDryBloodOnSurface(world, x, y + 1)
+              ) {
+                stainCell(world, x, y + 1, 110, 12, 18, 0.5);
+                world.clearCellAt(ci);
+                continue;
+              }
+            }
+            handleViscousLiquid(ctx, x, y, type);
+          } else if (type === Cell.Steam)
+            handleGas(ctx, x, y, Cell.Steam, ctx.params.materials[Cell.Water].flowRate!, 0.3);
+          else if (type === Cell.Smoke)
+            handleGas(
+              ctx,
+              x,
+              y,
+              Cell.Smoke,
+              ctx.params.materials[Cell.Smoke].floatSpeed!,
+              ctx.params.materials[Cell.Smoke].dispersion!,
+            );
+          else if (type === Cell.MarshGas) handleMarshGas(ctx, x, y);
         }
-
-        // THE ALCHEMY TABLE: liquids consult the data-driven pair reactions
-        // first — a listed pair (acid+lava -> glass, blood+catalyst ->
-        // healium...) wins over the cell's generic handler for this substep.
-        if (isLiquid(type) && maybeReact(ctx, x, y, type)) continue;
-
-        if (type === Cell.Sand || type === Cell.Gold || type === Cell.Catalyst)
-          handleSand(ctx, x, y, type);
-        else if (type === Cell.Water) handleWater(ctx, x, y);
-        else if (type === Cell.Fire) handleFire(ctx, x, y);
-        else if (type === Cell.Ember) handleEmber(ctx, x, y);
-        else if (type === Cell.Oil) handleOil(ctx, x, y);
-        else if (type === Cell.Acid) handleAcid(ctx, x, y);
-        else if (type === Cell.Gunpowder) handleGunpowder(ctx, x, y);
-        else if (type === Cell.Lava) handleLava(ctx, x, y);
-        else if (type === Cell.Nitrogen) handleNitrogen(ctx, x, y);
-        else if (type === Cell.Snow) handleSnow(ctx, x, y);
-        else if (type === Cell.Coal) handleCoal(ctx, x, y);
-        else if (type === Cell.Ash) handleAsh(ctx, x, y);
-        else if (type === Cell.Toxic || type === Cell.Healium || type === Cell.Teleportium)
-          handleExoticLiquid(ctx, x, y, type);
-        else if (
-          type === Cell.Blood ||
-          type === Cell.Slime ||
-          type === Cell.ElixirLife ||
-          type === Cell.ElixirLevity ||
-          type === Cell.ElixirStone
-        ) {
-          if (type === Cell.Blood) {
-            // wet blood stains adjacent rock and timber, and slowly soaks in
-            if (simRandom() < 0.10) {
-              stainCell(world, x, y + 1, 118, 14, 20, 0.22);
-              if (simRandom() < 0.5)
-                stainCell(world, x + (simRandom() < 0.5 ? 1 : -1), y, 118, 14, 20, 0.16);
-            }
-            if (
-              simRandom() < 0.004 &&
-              canDryBloodOnSurface(world, x, y + 1)
-            ) {
-              stainCell(world, x, y + 1, 110, 12, 18, 0.5);
-              world.clearCellAt(ci);
-              continue;
-            }
-          }
-          handleViscousLiquid(ctx, x, y, type);
-        } else if (type === Cell.Steam)
-          handleGas(ctx, x, y, Cell.Steam, ctx.params.materials[Cell.Water].flowRate!, 0.3);
-        else if (type === Cell.Smoke)
-          handleGas(
-            ctx,
-            x,
-            y,
-            Cell.Smoke,
-            ctx.params.materials[Cell.Smoke].floatSpeed!,
-            ctx.params.materials[Cell.Smoke].dispersion!,
-          );
-        else if (type === Cell.MarshGas) handleMarshGas(ctx, x, y);
       }
     }
 
+    for (let key = 0; key < world.activity.growthCells.length; key++) {
+      if (world.activity.growthScheduled[key]) for (const ci of world.activity.growthCells[key]) sparseGrowthCells.push(ci);
+    }
     if (sparseGrowthCells.length > 0) {
       for (const ci of sparseGrowthCells) {
         if (movedArr[ci] === tick) continue;
         const t2 = world.types[ci];
         const y = Math.floor(ci / world.width);
         const x = ci - y * world.width;
+        // Mature growth has no time-driven work. Only a changed contact halo
+        // needs its support checked; live growth and ice still advance globally.
+        if (world.life[ci] < 0 && t2 !== Cell.Ice &&
+            !world.activity.growthChanged[(x >> 6) + (y >> 6) * world.activity.columns] &&
+            !world.activity.dirty[(x >> 6) + (y >> 6) * world.activity.columns]) continue;
         if (t2 === Cell.Ice) handleIce(ctx, x, y);
         else if (t2 === Cell.Vines) handleVines(ctx, x, y);
         else if (t2 === Cell.Fungus) handleFungus(ctx, x, y);
         else if (t2 === Cell.Moss) handleMoss(ctx, x, y);
         else if (t2 === Cell.Grass) handleGrass(ctx, x, y);
       }
+    }
+    for (let key = 0; key < world.activity.growthChanged.length; key++) {
+      if (world.activity.growthScheduled[key]) world.activity.growthChanged[key] = 0;
     }
   }
 }

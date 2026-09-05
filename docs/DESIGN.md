@@ -1,8 +1,26 @@
-# Alchemist's Descent — Expansion Design
+# Alchemist's Descent — Game Design
 
-The synthesis of a three-designer panel (exploration/world, combat/wands, alchemy/progression)
-plus an adversarial creative-director critique. Raw proposals: `docs/design-panel-raw.md`.
-This file is the canonical design; when it conflicts with the raw panel, this wins.
+## Current contract: The Living Descent
+
+The September 2026 overhaul replaces the former opening and its mandatory bench lesson with **The Breathing Works**, eight connected rooms inside a corroded refinery. This contract supersedes the historical expansion proposal below. The implementation record is [living-descent-implementation.md](living-descent-implementation.md); the accepted proposal is [2026-09-04-engine-and-game-overhaul.md](2026-09-04-engine-and-game-overhaul.md).
+
+Begin or continue an expedition directly from the entry screen. Explore the Intake, cross the Rillback Sluice and Feeding Gallery, find the brass bell in the Silt Garden, then carry it to the Lower Bell gate. A refuge restores health and glowseeds after a brief rest and sets the return checkpoint. A climb reconnects the lower route to the Intake. Deeper campaign progression uses keys and portals; breakable wells remain legacy authoring structures.
+
+The starting kit includes spark and excavation wands, water, nitrogen, oil, and physical glowseeds. Movement starts at full pace. Players can take dry ledges, drain the sluice with its handwheel, alter water with chemistry, or draw prey and predators aside. The optional wand upgrade rewards exploration. The first route requires no compulsory lesson, upgrade, or enemy kill.
+
+Weavers remember what they saw and heard, investigate disturbances, feed, and return to their habitat. Their planted legs support a separate head and articulated posture. Rillbacks move through connected physical body segments and telegraph their attacks. Small fauna persist through saving and returning; offscreen promotion does not create replacement populations. Established vegetation starts dormant; new growth follows material rules.
+
+The ventilation cycle warns before expelling real steam from finite water sources. Shelter, draining and freezing change the consequences. Terrain, chemistry and creature bodies remain authoritative; original raster textures and room landmarks are presentation assets.
+
+The simulation advances at 60 Hz near the player. Distant fluids and growth use staggered 15 Hz updates; active heat, reagents and electrical propagation retain full cadence. The camera has no authority over activation. Mutations wake contact halos; inactive interiors retain their mass and state. Saves use asynchronous worker encoding and atomic IndexedDB checkpoints with previous-generation recovery.
+
+The visual language is wet slate, chalk, worn copper, ivory bodies and restrained local light. A quiet corner HUD shows vitals, the active tool, named flasks and the current room objective. Settings expose text size, reduced flashes, camera shake, high-readability lighting, creature captions and keyboard remapping. Standard gamepad controls include menu navigation and pause/resume.
+
+Automation can establish correctness, visual evidence and measured timing. Unfamiliar-player enjoyment, three uncoached solutions to the same encounter, and cross-hardware acceptance remain explicit human gates. Campaign expansion is not a substitute for those gates.
+
+## Historical expansion rationale
+
+The remaining sections preserve the earlier panel's proposals and implementation history. They are background, not a competing description of the current opening or progression contract. Raw proposals: `docs/design-panel-raw.md`.
 
 ## Vision
 

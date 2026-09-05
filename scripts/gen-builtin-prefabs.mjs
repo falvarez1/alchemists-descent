@@ -191,7 +191,7 @@ for (const [file, p] of all) {
   const path = join(outDir, file);
   const next = JSON.stringify(p, null, 2) + '\n';
   if (checkOnly) {
-    const current = readFileSync(path, 'utf8');
+    const current = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
     if (current !== next) {
       console.error(`stale ${file}; run node scripts/gen-builtin-prefabs.mjs`);
       process.exitCode = 1;

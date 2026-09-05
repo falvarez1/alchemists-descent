@@ -162,7 +162,10 @@ export function drawWeaverRigPart(
     const wx = cx + px * cos - py * sin;
     const wy = cy + px * sin + py * cos;
     if (flash) {
-      surface.setPx(wx, wy, 2.2, 2.2, 2.2);
+      surface.setPx(wx, wy,
+        Math.min(0.95, pixels[i + PIXEL_R] * alpha * light.r * 0.8 + 0.18),
+        Math.min(0.9, pixels[i + PIXEL_G] * alpha * light.g * 0.8 + 0.14),
+        Math.min(0.82, pixels[i + PIXEL_B] * alpha * light.b * 0.8 + 0.1));
       continue;
     }
     const r = pixels[i + PIXEL_R] * alpha;
@@ -210,7 +213,10 @@ export function drawWeaverRigSegment(
     const wx = x0 + ux * along + nx * side;
     const wy = y0 + uy * along + ny * side;
     if (flash) {
-      surface.setPx(wx, wy, 2.2, 2.2, 2.2);
+      surface.setPx(wx, wy,
+        Math.min(0.95, pixels[i + SEGMENT_R] * alpha * light.r * 0.8 + 0.18),
+        Math.min(0.9, pixels[i + SEGMENT_G] * alpha * light.g * 0.8 + 0.14),
+        Math.min(0.82, pixels[i + SEGMENT_B] * alpha * light.b * 0.8 + 0.1));
       continue;
     }
     const r = pixels[i + SEGMENT_R] * alpha;

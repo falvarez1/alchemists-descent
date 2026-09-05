@@ -8,7 +8,7 @@ import type { EnemyKind, LevelDef } from '@/core/types';
  * back to that host at the same depth. No descent portal reaches it; no portal leaves it.
  */
 export const LEVELS: Record<string, LevelDef> = {
-  d1: { id: 'd1', name: 'EARTHEN HOLLOWS', biome: 'earthen', depth: 1, nextLevelId: 'd2' },
+  d1: { id: 'd1', name: 'THE BREATHING WORKS', biome: 'earthen', depth: 1, nextLevelId: 'd2' },
   d2: { id: 'd2', name: 'FUNGAL DEEP', biome: 'fungal', depth: 2, nextLevelId: 'd3' },
   d3: { id: 'd3', name: 'FROZEN DEPTHS', biome: 'frozen', depth: 3, nextLevelId: 'd4' },
   d4: { id: 'd4', name: 'FLOODED CAVERNS', biome: 'flooded', depth: 4, nextLevelId: 'd5' },
@@ -84,6 +84,17 @@ export function populationForLevel(
   foes: Partial<Record<EnemyKind, number>>,
 ): Partial<Record<EnemyKind, number>> {
   const depth = def.depth;
+  if (depth > 0 && !def.branch) {
+    // A small habitat roster replaces the crowd curve. Species enter through
+    // terrain suited to their bodies; authored elites and bosses remain separate.
+    if (depth === 1) return { weaver: 2, rillback: 2 };
+    if (depth === 2) return { weaver: 3, rootloper: 4, rillback: 2 };
+    if (depth === 3) return { stonemaw: 3, weaver: 2, rillback: 2 };
+    if (depth === 4) return { rillback: 5, weaver: 2, stonemaw: 1 };
+    if (depth === 5) return { weaver: 4, rootloper: 4, stonemaw: 2 };
+    if (depth === 6) return { stonemaw: 4, rillback: 3, weaver: 3 };
+    return { stonemaw: 4, rootloper: 3, weaver: 3, rillback: 2 };
+  }
   const native: Partial<Record<EnemyKind, number>> = {};
   if (depth >= 2) native.acidslime = 2;
   if (depth >= 3) native.wisp = 1 + Math.floor(depth / 3);

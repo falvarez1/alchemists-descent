@@ -32,18 +32,21 @@ async function auditSeed(seed) {
       await startConsoleTestRun(page, { seed, settleMs: 350 });
 
       const results = await page.evaluate(
-        async ({ IDS }) => {
+        async ({ IDS, seed }) => {
           const ctx = window.__game.ctx;
           const { validateFindability } = await import('/src/world/validate.ts');
 
           const waitForSettledFindability = async (rt) => {
             let latest = null;
             let consecutiveClean = 0;
-            // Levels schedule a settled fail-open repair shortly after entry.
-            // Running the full validator in a tight loop can monopolize the
-            // browser thread enough to delay that timer, so give the runtime a
-            // quiet window first and then sample for stable cleanliness.
-            await new Promise((r) => setTimeout(r, 700));
+            // Wait for the actual final repair, whose callbacks can take longer
+            // than their nominal delays on a loaded machine. Do not run another
+            // full-grid BFS while that sequence is still working.
+            const settleDeadline = performance.now() + 60000;
+            while (!ctx.levels.findabilityReady && performance.now() < settleDeadline) {
+              await new Promise((r) => setTimeout(r, 100));
+            }
+            if (!ctx.levels.findabilityReady) throw new Error(`Route repair did not finish for ${rt.def.id}`);
             const deadline = performance.now() + 2600;
             while (performance.now() < deadline) {
               latest = validateFindability(rt);
@@ -61,10 +64,11 @@ async function auditSeed(seed) {
           const out = [];
           for (const id of IDS) {
             if (id !== 'd1') {
-              ctx.levels.leaveLevel();
-              ctx.levels.enterLevel(ctx, id);
+              const started = await ctx.console.exec(`run test --level ${id} --world campaign-level --seed ${seed} --loadout fresh`);
+              if (!started.ok) throw new Error(started.text ?? JSON.stringify(started));
             }
             const rt = ctx.levels.current;
+            if (rt?.def.id !== id) throw new Error(`Expected ${id}, received ${rt?.def.id}`);
             const all = await waitForSettledFindability(rt);
             const issues = all
               .filter((i) => i.severity === 'error')
@@ -85,17 +89,17 @@ async function auditSeed(seed) {
               sensors > 0 ||
               Object.values(braziersByDoor).some((n) => n >= 3);
             const placedPrefabs = rt.placedPrefabs ?? [];
-            const machines = placedPrefabs.filter((p) => String(p.id ?? '').startsWith('machine-')).length;
+            const machines = rt.living ? rt.mechanisms.filter(m => m.kind === 'valve').length : placedPrefabs.filter((p) => String(p.id ?? '').startsWith('machine-')).length;
             const surfaceConflicts =
               rt.def.id === 'd1' && Number.isFinite(rt.surfaceSkyLine)
                 ? placedPrefabs.filter((p) => p.y0 <= rt.surfaceSkyLine + 44).map((p) => `${p.id}@${p.x0},${p.y0}`)
                 : [];
-            const spellLab = id !== 'd1' || !!rt.spellLab;
+            const spellLab = id !== 'd1' || (!!rt.living && !!rt.refuge && placedPrefabs.length === 8);
             out.push({ id, waveE, spellLab, issues, buried, prefabs: placedPrefabs.length, machines, surfaceConflicts });
           }
           return out;
         },
-        { IDS: DEPTHS },
+        { IDS: DEPTHS, seed },
       );
       await context.close();
       return { results, pageErrors };

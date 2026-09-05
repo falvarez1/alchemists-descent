@@ -9,6 +9,9 @@ export class AudioEngine implements AudioApi {
   private masterGain: GainNode | null = null;
   private soundOn = true;
   private readonly sfxThrottle: Record<string, number> = {};
+  private voices = 0;
+  private noiseBuffer: AudioBuffer | null = null;
+  private pan = 0;
 
   get enabled(): boolean {
     return this.soundOn;
@@ -58,30 +61,58 @@ export class AudioEngine implements AudioApi {
   tone(freq: number, endFreq: number, dur: number, type: OscillatorType, vol: number): void {
     // Guard masterGain explicitly (set together with audioCtx in ensure()) so the
     // sink is a real local, not a non-null assertion riding on that coupling.
-    if (!this.soundOn || !this.audioCtx || !this.masterGain) return;
+    if (!this.soundOn || !this.audioCtx || !this.masterGain || this.voices >= 32) return;
+    dur = Math.max(0.005, Math.min(4, dur));
     const audioCtx = this.audioCtx, master = this.masterGain;
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, audioCtx.currentTime);
     o.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), audioCtx.currentTime + dur);
     g.gain.setValueAtTime(vol, audioCtx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
-    o.connect(g); g.connect(master);
+    const panner = audioCtx.createStereoPanner(); panner.pan.value = this.pan;
+    o.connect(g); g.connect(panner); panner.connect(master);
+    this.voices++;
+    o.onended = () => { this.voices = Math.max(0, this.voices - 1); o.disconnect(); g.disconnect(); panner.disconnect(); };
     o.start(); o.stop(audioCtx.currentTime + dur + 0.02);
   }
 
   noiseBurst(dur: number, filterFreq: number, vol: number, hp?: boolean): void {
-    if (!this.soundOn || !this.audioCtx || !this.masterGain) return;
+    if (!this.soundOn || !this.audioCtx || !this.masterGain || this.voices >= 32) return;
+    dur = Math.max(0.005, Math.min(4, dur));
     const audioCtx = this.audioCtx, master = this.masterGain;
-    const len = Math.floor(audioCtx.sampleRate * dur);
-    const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    if (!this.noiseBuffer) {
+      this.noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+      const noise = this.noiseBuffer.getChannelData(0);
+      for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
+    }
+    const buf = this.noiseBuffer;
     const src = audioCtx.createBufferSource(); src.buffer = buf;
     const f = audioCtx.createBiquadFilter(); f.type = hp ? 'highpass' : 'lowpass'; f.frequency.value = filterFreq;
     const g = audioCtx.createGain(); g.gain.setValueAtTime(vol, audioCtx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
-    src.connect(f); f.connect(g); g.connect(master);
-    src.start();
+    const panner = audioCtx.createStereoPanner(); panner.pan.value = this.pan;
+    src.connect(f); f.connect(g); g.connect(panner); panner.connect(master);
+    this.voices++;
+    src.loop = true;
+    src.onended = () => { this.voices = Math.max(0, this.voices - 1); src.disconnect(); f.disconnect(); g.disconnect(); panner.disconnect(); };
+    src.start(0, audioCtx.currentTime % 1); src.stop(audioCtx.currentTime + dur + 0.02);
+  }
+
+  /** Local, bounded cues. Distance shapes volume and stereo position together. */
+  worldSound(kind: 'stone' | 'metal' | 'water' | 'weaver' | 'rillback' | 'pressure', x: number, y: number, listenerX: number, listenerY: number): void {
+    const distance = Math.hypot(x - listenerX, y - listenerY);
+    if (distance > 330 || !this.throttled(`world-${kind}`, kind === 'pressure' ? 800 : 105)) return;
+    const gain = (1 - distance / 330) ** 2;
+    const previousPan = this.pan;
+    this.pan = Math.max(-0.9, Math.min(0.9, (x - listenerX) / 230));
+    try {
+      if (kind === 'stone') { this.noiseBurst(0.035, 780, 0.06 * gain); this.tone(100, 52, 0.045, 'triangle', 0.028 * gain); }
+      else if (kind === 'metal') { this.tone(370, 240, 0.09, 'sine', 0.045 * gain); this.noiseBurst(0.025, 1600, 0.03 * gain); }
+      else if (kind === 'water') { this.noiseBurst(0.13, 850, 0.045 * gain); this.tone(320, 120, 0.08, 'sine', 0.018 * gain); }
+      else if (kind === 'weaver') { this.noiseBurst(0.026, 2600, 0.036 * gain, true); this.tone(140, 80, 0.07, 'triangle', 0.022 * gain); }
+      else if (kind === 'rillback') { this.tone(92, 62, 0.18, 'sine', 0.034 * gain); this.noiseBurst(0.10, 470, 0.035 * gain); }
+      else { this.noiseBurst(0.7, 400, 0.055 * gain); this.tone(60, 82, 1.2, 'sine', 0.045 * gain); }
+    } finally { this.pan = previousPan; }
   }
 
   boom(size: number): void { if (!this.throttled('boom', 60)) return; this.noiseBurst(0.35 + size * 0.012, 500, 0.6); this.tone(95, 28, 0.4 + size * 0.01, 'sine', 0.55); }

@@ -50,7 +50,7 @@ function conductorFalloff(ctx: Ctx, t: number, base: number): number {
 
 export function updateElectricalGrid(ctx: Ctx): void {
   const w = ctx.world;
-  const sim = w.simBounds;
+  const sim = w.allBounds;
   // Gather tracked live charges in the active window, then apply spreads + decay in two phases.
   // Save loads and legacy direct writes start with an empty tracker, so the first pass rebuilds
   // discovery from the active simulation window; sustained charge then stays sparse.

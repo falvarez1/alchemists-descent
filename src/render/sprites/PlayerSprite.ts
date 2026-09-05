@@ -44,7 +44,7 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   const player = ctx.player;
   const frameCount = ctx.state.frameCount;
   if (ctx.state.mode !== 'play' || player.dead) return;
-  if (player.invuln > 0 && frameCount % 6 < 3) return;
+  if (!ctx.state.reduceFlashes && player.invuln > 0 && frameCount % 6 < 3) return;
 
   // Silhouette pass: every BODY pixel is recorded so a near-black rim can be
   // stamped around the finished figure (Noita/Dead Cells readability — the
@@ -82,8 +82,8 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   const px = player.x, f = player.facing;
   // Value-contrast palette: edges run DARK (they read as outline from inside),
   // accents run bright, so the figure keeps its shape at 2-3 screen px/cell.
-  const HAT: RGB = [0.62, 0.30, 0.94], HAT_D: RGB = [0.24, 0.09, 0.42], BAND: RGB = [1.0, 0.84, 0.25];
-  const ROBE: RGB = [0.22, 0.50, 0.95], ROBE_D: RGB = [0.08, 0.16, 0.38], TRIM: RGB = [0.70, 0.85, 1.0];
+  const HAT: RGB = [0.83, 0.81, 0.65], HAT_D: RGB = [0.35, 0.40, 0.34], BAND: RGB = [0.66, 0.42, 0.22];
+  const ROBE: RGB = [0.69, 0.73, 0.62], ROBE_D: RGB = [0.26, 0.36, 0.33], TRIM: RGB = [0.88, 0.87, 0.71];
   const SKIN: RGB = [0.95, 0.80, 0.62], SKIN_D: RGB = [0.78, 0.62, 0.46], BOOT: RGB = [0.10, 0.08, 0.14], BOOT_L: RGB = [0.30, 0.24, 0.34];
   const SHADE: RGB = [0.48, 0.38, 0.30]; // brim shadow across the brow
 

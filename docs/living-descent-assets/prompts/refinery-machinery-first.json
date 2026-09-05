@@ -1,0 +1,23 @@
+{
+  "prompt": "Use case: style-transfer.\nAsset type: reusable TRUE TRANSPARENT RGBA production machinery layer for a 2D pixel-art game, Alchemist's Descent, Living Descent. Target PNG canvas 1152 by 768 pixels, landscape 3:2, nearest-neighbor display at a 575 by 391 logical-pixel viewport.\nInput images: Image 1 (sluice) is the approved corroded-refinery material and palette reference; Image 2 (intake) supplies the enormous cropped pressure-vessel scale; Image 3 (web-gallery) supplies wheel and hanging-chain detail. They are references only. Generate an original, isolated clean layer of the background machinery; do not crop the screenshots or reproduce any terrain/UI.\nPrimary request: a sparse perimeter arrangement of wet dark metal machinery that can be composited over a separate background. On the extreme left edge, a partial enormous vertical pipe and the clipped outside arc of a heavy pressure wheel, most of the wheel extending beyond the canvas. On the extreme right edge, two slender corroded copper elbow pipes and a separate fragment of a much larger wheel just inside the bottom corner. Two thin broken hanging chains descend only from the far upper corners. All objects are physically plausible original refinery machinery from the reference world.\nTransparency is the most important requirement: empty areas must have alpha exactly zero. No colored background, no paper, no darkness filling the empty regions, no fog, no gradient, no checkerboard drawn into pixels, no cast shadow onto a backdrop. At least 80 percent of the entire canvas must be transparent. The center rectangle from 15 percent to 85 percent width, and 7 percent to 95 percent height, must be completely empty transparent alpha. Keep all solid material within the outermost 12 percent at the left and right, or outermost 5 percent at the top. Keep the top-middle and entire center open.\nStyle/medium: coarse handcrafted pixel art, crisp square stepped edges and flat clustered shading aligned at roughly 2 by 2 pixels in the delivered image. Subdued distant-midplane lighting; machinery should be readable behind dynamic terrain and never look walkable. Wet slate blue-black iron; muted corroded copper seams; tiny low-contrast mineral chalk and mint oxidation. No bright highlights or glows.\nConstraints: genuinely transparent RGBA PNG, isolated cutout assets in one coherent loose composition. No opaque plate or vignette. No floors, rock, stone, masonry, platforms, catwalks, ladders, terrain, water, liquid, humanoid, animal, insect, creature, plant, valve handle, foreground lamp, web, UI, text, lettering, glyphs, logo, watermark, border or frame. No reticle-like wheel centered in playable air. Preserve the original references' restrained material language, without copying copyrighted game assets.",
+  "tool": "built-in image_gen",
+  "type": "style-transfer",
+  "requestedDimensions": [
+    1152,
+    768
+  ],
+  "referenceImages": [
+    ".impeccable/mocks/sluice.png",
+    ".impeccable/mocks/intake.png",
+    ".impeccable/mocks/web-gallery.png"
+  ],
+  "role": "transparent sparse mid-distance machinery",
+  "nonCollidable": true,
+  "sourcePath": ".impeccable/assets/living-descent/sources/refinery-machinery-first-rgb.png",
+  "sourceDimensions": [
+    1536,
+    1024
+  ],
+  "actualTransparency": "Opaque RGB with painted checkerboard; alpha 255",
+  "qaStatus": "blocked"
+}

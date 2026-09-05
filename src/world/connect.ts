@@ -29,6 +29,7 @@ export function carvePocket(
       const i = world.idx(X, Y);
       if (world.types[i] !== Cell.Metal) {
         world.types[i] = Cell.Empty;
+        world.activity.touchIndex(i);
         world.colors[i] = 0x08080c;
       }
     }
@@ -56,6 +57,7 @@ export function carveRect(
       const i = world.idx(X, Y);
       if (world.types[i] !== Cell.Metal) {
         world.types[i] = Cell.Empty;
+        world.activity.touchIndex(i);
         world.colors[i] = 0x08080c;
       }
     }

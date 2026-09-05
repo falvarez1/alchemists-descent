@@ -1,13 +1,14 @@
-# Purple Llama Studio — Alchemist's Descent
+# Alchemist's Descent
 
-A falling-sand action roguelite: a fully simulated cellular-automata world (35
-append-only materials with real interactions), a Three.js pixel renderer with
-dynamic 2D lighting, bloom, and tunable post-processing, procedural audio, and a
-platformer-wizard action game on top.
+A falling-sand action roguelite set inside a living alchemical refinery. Cross
+wet masonry and corroded machinery, manipulate real materials, distract wildlife,
+and descend through a persistent campaign. TypeScript, Vite, Three.js and Web Audio
+power the game; material IDs remain append-only save contracts.
 
 Originally a single 3,818-line HTML file (kept as `noita-sandbox.html` for
 reference), now a modular TypeScript + Vite project evolving toward a full indie
-game — see `docs/DESIGN.md` for the expansion roadmap.
+game. See `docs/DESIGN.md` for the current game contract and
+`docs/living-descent-implementation.md` for overhaul validation and remaining gates.
 
 ## Run it
 
@@ -49,10 +50,11 @@ and a fixpoint-findability validation pass — then PLAYTEST (or T, from the
 cursor) compiles the document into a disposable custom level. See
 `docs/BUILDER.md`.
 
-**Play mode** (TAB or the PLAY button) — descend through the persistent biome
-stack. Find the sealed well in each floor, break the stone plug, and drop deeper.
-Light waystone braziers with real fire to set your respawn; death keeps the world
-exactly as you scarred it and costs 15% of your gold.
+**Expedition** — choose Begin or Continue. Find the brass bell in the Breathing
+Works and carry it to the lower gate; deeper floors use keyed portals. Rest at
+the warm refuge to refill health and glowseeds. Other waystones require real fire.
+Death preserves the level and leaves a recoverable portion of carried gold.
+
 - `A`/`D` move, `SPACE` jump / levitate (coyote time + jump buffering included)
 - `S` crouches, crawls with movement, or dives in air; `Shift`/`C` grabs walls
   and `W`/`S` climbs while grabbed
@@ -60,18 +62,28 @@ exactly as you scarred it and costs 15% of your gold.
   (multicasts, modifiers, impact triggers, the flask-fed Infuser); earn cards by
   lighting waystones, descending, and brewing
 - `1`/`2` or mouse wheel switch wands, `B` opens the wand bench
-- `E` siphon materials into your flask, `Q` pour, `F` throw the bottle, `X` drink
+- `E` interact / siphon, `Q` pour, right click throw a flask, `X` drink,
+  `3`–`6` select a flask, `F` kick, `G` carry, `V` throw a glowseed
   (brew elixirs at cauldrons: real reagents in the bowl + real fire against it)
 - `M` fog-of-war map, `R` rise again when dead, `F3` perf overlay
-- `FULLSCREEN PLAY` starts play mode in fullscreen and requests keyboard lock
-  when the browser supports it; the non-reserved controls above remain the
-  fallback
-- ``` ` ``` enables transient QA god mode in Play: upgraded wands, every spell
-  card, all Sanctum powers, stocked potion pickups, and bench potion/elixir test
-  controls. Debug-modified runs are not autosaved.
+- Escape pauses; Controls & comfort provides remapping, text size, flash and
+  shake controls, high-readability lighting, and creature sound captions.
 
-The backquote key is reserved as the future debug console entry point, in the
-style of Minecraft/Quake command consoles.
+Standard controller: left stick moves, right stick aims, A jumps, B crouches,
+RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y changes
+wands, and Start pauses. D-pad/A/B operate menus.
+
+In development, the entry screen also opens Sandbox and Builder. Backquote opens
+the Developer Console. Use `run new --seed 777`, `run continue`, `run save`, and
+`run status` for normal lifecycle work; `run test --level d4 --world campaign-level
+--seed 777 --loadout fresh` creates a disposable test. Debug-modified runs do not
+autosave. Avoid direct game-context or browser-storage mutation for lifecycle setup.
+
+## Screenshots
+
+Local test screenshots are archived by run under `screenshots/living-descent/`.
+Open `screenshots/living-descent/index.html` to browse them. The entire
+`screenshots/` directory is ignored by Git.
 
 ## Architecture
 

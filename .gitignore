@@ -4,6 +4,7 @@ dist/
 .DS_Store
 coverage/
 verify-out/
+screenshots/
 build/
 .agents/
 .codex-vite-*.log

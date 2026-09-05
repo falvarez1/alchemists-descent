@@ -1,0 +1,96 @@
+{
+  "prompt": "Use case: style-transfer.\nAsset type: a clean production PIXEL-ART SPRITE ATLAS SOURCE for the original game Alchemist's Descent, Living Descent. Exactly three isolated environment props on a completely flat solid chroma-key background, color HEX #FF00FF. Output landscape 2:1 canvas, 1536 by 768 native pixels if supported, designed as a 192 by 96 logical-pixel atlas enlarged eight times. No text, no labels, no frame, no cell boundaries, no padding shadows.\nInput images: Image 1 The Sluice and Image 2 The Web Gallery are approved material and prop references. Repaint original small reusable props using their corroded copper, slate and mineral-chalk language. Do not crop their pixels or reproduce their gameplay scene.\nLayout: three completely separate props arranged left-to-right, with wide pure magenta gaps. All three stand on an imaginary baseline at 83 percent canvas height; do not draw a floor or ground shadow. Keep every pixel of each prop inside its allocated rectangle, including highlights. Props must not touch one another.\nLEFT PROP: recognizable brass handwheel valve on a short corroded copper pedestal. Logical bounding box x=8..40, y=40..80, exactly 32 by 40 logical pixels. The circular six-spoke handwheel fills the top half of the box, with a bright restrained bone/brass rim, dark holes between its spokes, small center hub, and narrow vertical stem onto a stable short bolted foot. Clearly a physical handwheel valve, not a gear icon. No attached wall or long pipes. Front-facing with minimal thickness, flat sprite projection.\nCENTER PROP: warm refuge arched shelter/hearth, clearly the largest object. Logical bounding box x=48..144, y=24..80, exactly 96 by 56 logical pixels. A low broad asymmetrical arch of chiselled mineral-chalk masonry surrounding a recessed ochre/amber hearth niche, short stone shoulders to either side and a thin bottom threshold. Warmly worn surfaces, cool slate cracks, a few dull copper brackets. The arch must read from silhouette, with a spacious opening and quiet warm recessed interior. Include a small unlit blackened hearth bowl near the bottom as part of the shelter. NO flame, no animated glow, no smoke, no separate floating particles, no person, no roof extended outside the rectangle, no text. This dresses a real shelter interaction; live lighting and collision are handled by code.\nRIGHT PROP: corroded pipe mouth vent. Logical bounding box x=152..184, y=56..80, exactly 32 by 24 logical pixels. A short thick horizontal cut pipe facing slightly toward the viewer, with a clear dark oval/round mouth, chalky copper rim, heavy bolted flange and short ribbed barrel. Recognizable open pipe, no grate, no long extension, no steam or smoke.\nStyle: strong clean silhouettes and coarse logical-pixel clusters. The left and right props must read at only 32 logical pixels wide; omit microscopic greebles and per-pixel noise. Approximately 28 to 40 coherent colors: dull warm copper and brass, mineral chalk/bone outline accents, cool dark slate shadows, warm ochre inside the refuge only. Neutral readable objects, no green wash or neon. Hard square pixel steps, no blur, no antialiasing, no rendered drop shadow.\nBackground key: Every area outside the three objects, including gaps and valve-spoke openings, is one exact flat saturated RGB (255,0,255) magenta. No gradient, fog, color texture, checkerboard, vignette or painted transparency. Magenta must not appear in the objects. We will convert the verified flat key to real alpha.\nConstraints: Exactly the three specified props. No character, creature, foliage, water, liquid, terrain scene, separate floor, platform, UI, letters, numbers, diagram labels, icons, logos or watermark. No collision or interaction states baked in. Preserve the approved material world.",
+  "tool": "built-in image_gen",
+  "type": "style-transfer",
+  "compositionReferences": [
+    ".impeccable/mocks/sluice.png",
+    ".impeccable/mocks/web-gallery.png"
+  ],
+  "role": "transparent prop dressing for simulation-owned valve, refuge and vent",
+  "requestedSourceDimensions": [
+    1536,
+    768
+  ],
+  "outputDimensions": [
+    192,
+    96
+  ],
+  "sprites": [
+    {
+      "id": "brass-valve",
+      "x": 8,
+      "y": 40,
+      "width": 32,
+      "height": 40,
+      "anchor": [
+        16,
+        40
+      ],
+      "anchorMeaning": "bottom center relative to crop",
+      "sourceCrop": {
+        "left": 117,
+        "top": 325,
+        "width": 220,
+        "height": 359
+      }
+    },
+    {
+      "id": "refuge-hearth",
+      "x": 48,
+      "y": 24,
+      "width": 96,
+      "height": 56,
+      "anchor": [
+        48,
+        56
+      ],
+      "anchorMeaning": "bottom center relative to crop",
+      "sourceCrop": {
+        "left": 454,
+        "top": 176,
+        "width": 818,
+        "height": 508
+      }
+    },
+    {
+      "id": "pipe-mouth",
+      "x": 152,
+      "y": 56,
+      "width": 32,
+      "height": 24,
+      "anchor": [
+        16,
+        12
+      ],
+      "anchorMeaning": "center relative to crop",
+      "sourceCrop": {
+        "left": 1402,
+        "top": 477,
+        "width": 256,
+        "height": 207
+      }
+    }
+  ],
+  "sourcePath": ".impeccable/assets/living-descent/sources/props-atlas-chroma-original.png",
+  "sourceDimensions": [
+    1774,
+    887
+  ],
+  "outputPath": "public/assets/living-descent/props-atlas.png",
+  "conversion": {
+    "tool": "Node Sharp",
+    "alphaScript": "docs/living-descent-assets/convert-chroma-key.mjs",
+    "keyHue": 302,
+    "hueTolerance": 25,
+    "minimumSaturation": 0.25,
+    "alphaChanges": "Only the magenta key sets alpha to zero. All native keyed RGB samples are preserved.",
+    "packing": "Three separated source-region alpha bounds; nearest-neighbor contain sizing to each logical sprite rectangle; bottom-center alignment and transparent padding; no painted or freeform object edits.",
+    "assemblyEvidence": ".impeccable/assets/living-descent/sources/props-atlas-assembly.json"
+  },
+  "sampling": "Use crop rectangles and nearest filtering; never sample the full atlas as a world tile. Transparent padding preserves object aspect ratio within requested logical dimensions.",
+  "interactionAuthority": "Attach these props to existing lever, refuge and vent entities. Collision, anchors, reach, activation, live lighting, particles and all text remain code-owned.",
+  "nativeGenerationLimits": "Earlier verified native alpha attempts for this production batch returned RGB checkerboards; the already-authorized chroma fallback was used directly. Native size was 1774x887 rather than the requested 1536x768.",
+  "qaStatus": "accepted",
+  "qaEvidence": ".impeccable/assets/living-descent/sources/props-atlas-dark-review.png",
+  "qaNotes": "Final 192x96 atlas and nearest-enlarged composite over wet slate inspected. Clear valve, arched refuge/hearth, and pipe-mouth silhouettes; no text or visible bright key fringe. Runtime placement remains an integration check."
+}

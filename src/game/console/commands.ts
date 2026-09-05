@@ -1688,7 +1688,8 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
           });
         }
         ctx.levels.saveExpedition(ctx);
-        return result(true, 'Expedition saved.', { action: 'save', status: ctx.levels.runStatus(ctx) });
+        const persistence = ctx.levels.persistenceStatus?.();
+        return result(persistence?.state !== 'error', persistence?.state === 'error' ? persistence.error ?? 'Checkpoint unavailable.' : 'Expedition checkpoint queued.', { action: 'save', persistence, status: ctx.levels.runStatus(ctx) });
       }
       if (sub === 'continue' || sub === 'resume') {
         ctx.audio.ensure();

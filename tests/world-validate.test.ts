@@ -6,6 +6,27 @@ import { blocksEntity, Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { failOpenFindability, validateFindability } from '@/world/validate';
 
+it('repairs an approach around a protected closed gate to reach its pressure plate', () => {
+  const world = new World(128, 96);
+  world.types.fill(Cell.Stone);
+  for (let y = 42; y < 80; y++) for (let x = 8; x < 120; x++) world.types[world.idx(x, y)] = Cell.Empty;
+  const body: Array<[number, number]> = [];
+  for (let y = 45; y < 80; y++) for (let x = 50; x < 54; x++) {
+    world.types[world.idx(x, y)] = Cell.Metal; body.push([x, y]);
+  }
+  const plateBody: Array<[number, number]> = [];
+  for (let x = 23; x < 30; x++) { world.types[world.idx(x, 79)] = Cell.Metal; plateBody.push([x, 79]); }
+  const runtime = { ...runtimeWithRune(false), world, spawn: { x: 96, y: 78 }, runeVaults: [], mechanisms: [
+    { id: 1, kind: 'door', x: 50, y: 45, w: 4, h: 35, state: 0, targetId: 0, body },
+    { id: 2, kind: 'plate', x: 23, y: 79, w: 7, h: 1, state: 0, targetId: 1, body: plateBody },
+  ] } as LevelRuntime;
+  expect(validateFindability(runtime).some(issue => issue.what === 'plate' && issue.severity === 'error')).toBe(true);
+  const result = failOpenFindability(runtime);
+  expect(result.remaining.filter(issue => issue.severity === 'error')).toEqual([]);
+  for (const [x, y] of [...body, ...plateBody]) expect(world.type(x, y)).toBe(Cell.Metal);
+  expect(runtime.mechanisms.map(mechanism => mechanism.state)).toEqual([0, 0]);
+});
+
 function runtimeWithRune(blocked: boolean): LevelRuntime {
   const world = new World(32, 32);
   world.types.fill(Cell.Empty);
@@ -192,6 +213,19 @@ function settleSand(world: World, frames: number): void {
 }
 
 describe('findability validation', () => {
+  it('judges a filled counterweight by its feed opening and still rejects a sealed machine', () => {
+    const runtime = runtimeWithRune(false), world = runtime.world;
+    runtime.runeVaults.length = 0;
+    runtime.mechanisms.push({ id: 1, kind: 'counterweight', x: 20, y: 29, w: 9, h: 1,
+      state: 1, targetId: -1, zone: { x0: 20, y0: 22, x1: 28, y1: 28 } });
+    for (let y = 22; y <= 29; y++) for (let x = 19; x <= 29; x++) {
+      world.types[world.idx(x, y)] = x === 19 || x === 29 || y === 29 ? Cell.Metal : Cell.Sand;
+    }
+    expect(validateFindability(runtime).some(issue => issue.what === 'counterweight')).toBe(false);
+    for (let y = 1; y < 31; y++) world.types[world.idx(15, y)] = Cell.Stone;
+    expect(validateFindability(runtime)).toContainEqual({ what: 'counterweight', x: 24, y: 20, severity: 'error' });
+  });
+
   it('requires line of sight for ranged rune interactions', () => {
     const issues = validateFindability(runtimeWithRune(true));
 

@@ -1,4 +1,8 @@
 import type { Ctx, PerkId } from '@/core/types';
+import { livingObjective } from '@/game/LivingExpedition';
+import { worksRoomAt } from '@/world/breathingWorks';
+import { getBindings, keyLabel } from '@/input/bindings';
+import { VIEW_H, VIEW_W } from '@/config/constants';
 import { CARD_DEFS } from '@/combat/wands/cards';
 import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { nextWandSentence } from '@/combat/wands/sentenceView';
@@ -29,6 +33,8 @@ export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFr
   if (ctx.state.mode !== 'play') return fallback;
   const runtime = ctx.levels.current;
   if (!runtime) return fallback;
+  const living = livingObjective(ctx);
+  if (living) return living;
   if (benchNudgeFrames > 0 && ctx.wands.collection.length > 0) return INTRO_OBJECTIVE.benchAvailable;
   const nearUnlitWaystone = runtime.waystones.some((waystone) => {
     if (waystone.lit) return false;
@@ -63,7 +69,9 @@ export function cardGrantBenchCue(ctx: Ctx): string {
 export class Hud {
   /** Last flask material rendered (undefined = never rendered), so the palette lookup runs once per change. */
   private flaskMaterial: number | null | undefined = undefined;
-  private readonly flaskSlots: Array<{ root: HTMLElement; fill: HTMLElement; count: HTMLElement }> = [];
+  private readonly flaskSlots: Array<{ root: HTMLElement; fill: HTMLElement; count: HTMLElement; name: HTMLElement }> = [];
+  private readonly soundCaption = document.createElement('div');
+  private captionUntil = 0;
   /** Filled hotbar tiles of the ACTIVE wand (+ costs and slot positions). */
   private hotbarSlots: Array<{ tile: HTMLElement; cost: number; slotIdx: number }> = [];
   /** The active wand's recharge bar fill (rebuilt with the hotbar). */
@@ -98,6 +106,17 @@ export class Hud {
   private readonly timeouts = new Set<number>();
 
   constructor(private ctx: Ctx) {
+    this.soundCaption.id = 'sound-caption'; this.soundCaption.setAttribute('aria-live', 'polite');
+    el('objective').closest('.wave-readout')!.appendChild(this.soundCaption);
+    this.disposers.push(ctx.events.on('habitatSound', ({ kind, x, y }) => {
+      if (!ctx.state.creatureCaptions || performance.now() < this.captionUntil) return;
+      const direction = Math.abs(x - ctx.player.x) < 35 ? (y < ctx.player.y - 30 ? 'above' : 'nearby') : x < ctx.player.x ? 'left' : 'right';
+      this.soundCaption.textContent = `${kind === 'weaver' ? 'Dry claws tapping' : 'A body sliding through water'} · ${direction}`;
+      this.captionUntil = performance.now() + 1500;
+      this.setHudTimeout(() => { this.soundCaption.textContent = ''; }, 1500);
+    }));
+    const tools = el('expedition-tools');
+    tools.append(el('spell-hotbar'), el('flask-belt'), el('field-note'));
     // Treasure-row pixel icons (hud-gold itself rolls toward the score in
     // update() — income you can watch).
     const goldIconHost = el('gold-chip-icon');
@@ -140,7 +159,7 @@ export class Hud {
     // The descent: depth readout + arrival banner whenever a level is entered.
     this.disposers.push(ctx.events.on('levelChanged', ({ depth, name }) => {
       el('wave-num').textContent = 'D' + depth;
-      this.showBanner('D' + depth + ' — ' + name, 'THE DESCENT CONTINUES');
+      if (!ctx.levels.current?.living) this.showBanner('D' + depth + ' — ' + name, 'THE DESCENT CONTINUES');
     }));
 
     this.disposers.push(ctx.events.on('waystoneLit', () => {
@@ -231,6 +250,7 @@ export class Hud {
   }
 
   dispose(): void {
+    this.soundCaption.remove();
     for (const dispose of this.disposers.splice(0)) dispose();
     for (const timeout of this.timeouts) window.clearTimeout(timeout);
     this.timeouts.clear();
@@ -264,9 +284,10 @@ export class Hud {
       const count = document.createElement('div');
       count.className = 'flask-slot-count';
       count.textContent = '0';
-      root.append(fill, key, count);
+      const name = document.createElement('div'); name.className = 'flask-slot-name';
+      root.append(fill, key, count, name);
       belt.appendChild(root);
-      this.flaskSlots.push({ root, fill, count });
+      this.flaskSlots.push({ root, fill, count, name });
     }
   }
 
@@ -365,10 +386,21 @@ export class Hud {
 
   /** Tier-2 contextual hint: the nearest interactable's "what to do" line. */
   private renderInteractionHint(ctx: Ctx): void {
-    const text = ctx.hints.current?.line ?? '';
+    const hint = ctx.hints.current;
+    const anchored = hint?.key === 'works-valve' && hint.world;
+    const controller = anchored && Array.from(navigator.getGamepads?.() ?? []).some(pad => pad?.connected);
+    const text = anchored ? `${controller ? 'X' : keyLabel(getBindings().interact)} · Turn valve` : hint?.line ?? '';
     const node = this.interactionHintNode;
     if (node.textContent !== text) node.textContent = text;
     node.classList.toggle('visible', text !== '');
+    node.classList.toggle('world-anchor', Boolean(anchored));
+    if (anchored) {
+      const width = node.parentElement!.clientWidth, height = node.parentElement!.clientHeight;
+      const x = (anchored.x - ctx.camera.renderX + 26) / VIEW_W * width;
+      const y = (anchored.y - ctx.camera.renderY - 25) / VIEW_H * height;
+      node.style.left = `${Math.max(10, Math.min(width - 165, x))}px`;
+      node.style.top = `${Math.max(70, Math.min(height - 90, y))}px`;
+    } else { node.style.removeProperty('left'); node.style.removeProperty('top'); }
   }
 
   /**
@@ -465,6 +497,13 @@ export class Hud {
     // Critical-state bar language: HP pulses near death, LEV blinks on fumes,
     // the mana track recovers from its dry-fire flinch.
     this.hpFill.classList.toggle('critical', !player.dead && player.hp / player.maxHp < 0.25);
+    this.hpFill.parentElement?.setAttribute('aria-label', `Health ${Math.ceil(player.hp)} of ${player.maxHp}`);
+    const rt = ctx.levels.current;
+    el('wave-num').textContent = rt?.living ? worksRoomAt(player.x, player.y).name : rt?.def.name ?? '';
+    const bindings = getBindings();
+    el('field-note').textContent = rt?.living
+      ? `${keyLabel(bindings.lure)} Glowseed · ${rt.living.glowseeds} left · 1 / 2 Swap wand · H Handbook`
+      : '1 / 2 Swap wand · M Map · H Handbook';
     this.levitFill.classList.toggle('low', player.levit / player.maxLevit < 0.2);
     if (this.dryFlashUntil && ctx.state.frameCount > this.dryFlashUntil) {
       this.manaFill.parentElement?.classList.remove('mana-dry');
@@ -515,11 +554,13 @@ export class Hud {
       if (slot.material === null || slot.count === 0) {
         rendered.fill.style.backgroundColor = '';
         rendered.root.title = `Flask ${i + 1}: Empty`;
+        rendered.name.textContent = 'Empty';
       } else {
         const c = COLOR_FN[slot.material]();
         rendered.fill.style.backgroundColor = 'rgb(' + unpackR(c) + ', ' + unpackG(c) + ', ' + unpackB(c) + ')';
         const name = ctx.params.materials[slot.material]?.name ?? 'Unknown material';
         rendered.root.title = `Flask ${i + 1}: ${name} (${slot.count}/${slot.capacity})`;
+        rendered.name.textContent = name === 'Liquid Nitrogen' ? 'Nitrogen' : name;
       }
     }
 
@@ -535,8 +576,8 @@ export class Hud {
     const groupUnaffordable = player.mana < sentence.manaCost;
     if (this.castCaption) {
       this.castCaption.textContent = groupUnaffordable
-        ? sentence.label + ' - Needs ' + sentence.manaCost + ' mana, tank has ' + Math.floor(player.mana)
-        : sentence.label + ' - ' + sentence.detail;
+        ? sentence.label.replace(/^Next: /, '') + ' · Needs ' + sentence.manaCost + ' mana'
+        : sentence.label.replace(/^Next: /, '') + ' · ' + sentence.manaCost + ' mana';
       this.castCaption.classList.toggle('overmana', groupUnaffordable);
     }
     for (const s of this.hotbarSlots) {

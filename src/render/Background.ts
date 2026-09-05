@@ -1,4 +1,5 @@
 import { BACKDROP_LAYER_SPECS } from '@/config/backdrop';
+import { loadTerrainArt } from '@/render/TerrainArt';
 import type { ParallaxBitmapLayer, ParallaxLayers } from '@/render/pixels';
 
 function fallbackPixel(alpha: number): Uint8ClampedArray {
@@ -18,6 +19,7 @@ export class Background implements ParallaxLayers {
   private loadedCount = 0;
 
   constructor() {
+    loadTerrainArt();
     this.backdropLayers = BACKDROP_LAYER_SPECS.map((spec, index) => ({
       id: spec.id,
       label: spec.label,
@@ -40,6 +42,11 @@ export class Background implements ParallaxLayers {
   }
 
   private loadLayer(layer: ParallaxBitmapLayer): void {
+    if (!layer.src) {
+      layer.loaded = true;
+      this.loadedCount++;
+      return;
+    }
     if (typeof fetch === 'function' && typeof createImageBitmap === 'function') {
       void this.loadLayerBitmap(layer);
       return;

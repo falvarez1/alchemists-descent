@@ -98,6 +98,19 @@ function makeCtx(frameCount: number): Ctx {
 }
 
 describe('FrameComposer light rebuild cadence', () => {
+  it('lets GPU composition mask the deep void without writing a full sprite strip', () => {
+    const target = makeTarget([]), overlay = makeOverlay();
+    let marked = 0;
+    overlay.mark = () => { marked++; };
+    target.beginGpuCompose = () => overlay;
+    const composer = new FrameComposer(target, makeLight(), { backdropLayers: [], ready: true },
+      () => undefined, () => undefined, () => undefined);
+    const ctx = makeCtx(10);
+    ctx.camera.y = ctx.world.height - 100;
+    composer.compose(ctx);
+    expect(marked).toBe(0);
+  });
+
   it('rebuilds light once per fixed frame and camera snapshot', () => {
     const lightFlags: boolean[] = [];
     const target = makeTarget(lightFlags);

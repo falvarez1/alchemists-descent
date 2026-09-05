@@ -86,6 +86,7 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
       // an ember on an oil slick starts it burning IN PLACE (handleOil throws the
       // flame each frame for burnDuration) — a sustained pool fire, not a flash.
       w.life[ni] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(simRandom() * 30);
+      w.activity.touchIndex(ni);
     } else if (n === Cell.Gunpowder && simRandom() < P.igniteChance! * 7) {
       igniteGunpowder(ctx, nx, ny);
     }
@@ -211,6 +212,7 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         // for burnDuration). Don't flash it to a fire cell that just rises away —
         // a sustained pool fire is what lets oil in a bowl hold a checkpoint lit.
         w.life[ti] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(simRandom() * 30);
+        w.activity.touchIndex(ti);
       }
       if (n === Cell.Gunpowder) {
         igniteGunpowder(ctx, tx, ty);

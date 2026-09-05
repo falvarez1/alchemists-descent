@@ -1,0 +1,15 @@
+{
+  "prompt": "Use case: background-extraction.\nEdit target: the provided machinery plate. Keep the dark copper machinery, the edge positions, wheel arcs, pipes and hanging chains exactly as rendered. Change only the background.\nThe prior output failed because its pale checkerboard was painted into a three-channel RGB PNG. Remove that checkerboard entirely. Generate and deliver an actual FOUR-CHANNEL RGBA PNG where every empty background pixel is alpha=0. The checkerboard must not be visible pixels in the artwork. This is a game layer to overlay on a dark slate scene.\nPreserve the input dimensions 1536 by 1024, all machinery positions, coarse pixel-art edge steps, material colors, and no text. Remove all pale checkerboard, white, and gray outside the object silhouettes; leave true transparent void. Keep at least 70 percent of the full canvas transparent and all central gameplay area open. Do not render new scenery, haze, background colors, any floor or shadow plate, letters, UI or borders.",
+  "tool": "built-in image_gen",
+  "type": "background-extraction",
+  "referenceImages": [
+    ".impeccable/assets/living-descent/sources/refinery-machinery-first-rgb.png"
+  ],
+  "sourcePath": ".impeccable/assets/living-descent/sources/refinery-machinery-correction-rgb.png",
+  "sourceDimensions": [
+    1536,
+    1024
+  ],
+  "actualTransparency": "Opaque RGB with painted checkerboard; alpha 255",
+  "qaStatus": "blocked"
+}

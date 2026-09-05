@@ -4,6 +4,7 @@ import { mechanismTriggersFor } from '@/core/mechanisms';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { computeLooseRubbleBlockingMask } from '@/sim/collision';
 import { extractRegionGraph } from '@/world/regions';
+import { protectedRepairRoute } from '@/world/repairRoute';
 
 /**
  * Findability validation: mechanism-correct is NOT player-findable.
@@ -260,7 +261,7 @@ function markRepairInterior(runtime: LevelRuntime, interior: Uint8Array, cx: num
   }
 }
 
-function markStableRepairPathInterior(runtime: LevelRuntime, interior: Uint8Array, issue: FindabilityIssue): void {
+function markStableRepairPathInterior(runtime: LevelRuntime, interior: Uint8Array, protectedCells: Uint8Array, issue: FindabilityIssue): void {
   const fromX = Math.floor(runtime.spawn.x);
   const fromY = Math.floor(runtime.spawn.y - 2);
   const toX = Math.max(2, Math.min(runtime.world.width - 3, Math.floor(issue.x)));
@@ -268,6 +269,23 @@ function markStableRepairPathInterior(runtime: LevelRuntime, interior: Uint8Arra
   const dx = toX - fromX;
   const dy = toY - fromY;
   const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / REPAIR_STEP));
+  let obstructed = false;
+  for (let step = 0; step <= steps && !obstructed; step++) {
+    const x = Math.round(fromX + dx * step / steps), y = Math.round(fromY + dy * step / steps);
+    for (let py = Math.max(0, y - PH + 1); py <= Math.min(runtime.world.height - 1, y); py++) {
+      for (let px = Math.max(0, x - PW); px <= Math.min(runtime.world.width - 1, x + PW); px++) {
+        const i = px + py * runtime.world.width;
+        if (protectedCells[i] && blocksEntity(runtime.world.types[i])) obstructed = true;
+      }
+    }
+  }
+  if (obstructed) {
+    const route = protectedRepairRoute(runtime.world, protectedCells, { x: fromX, y: fromY }, { x: toX, y: toY });
+    if (route) {
+      for (const point of route) markRepairInterior(runtime, interior, point.x, point.y);
+      return;
+    }
+  }
   for (let step = 0; step <= steps; step++) {
     markRepairInterior(runtime, interior, fromX + (dx * step) / steps, fromY + (dy * step) / steps);
   }
@@ -337,34 +355,32 @@ function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly Findabil
   // Brace only material that was already blocking. Painting the shell into open
   // air creates permanent diagonal rails through playable space.
   const originalTypes = world.types.slice();
-  for (const issue of issues) markStableRepairPathInterior(runtime, interior, issue);
+  for (const issue of issues) markStableRepairPathInterior(runtime, interior, protectedCells, issue);
   for (let i = 0; i < interior.length; i++) {
     if (interior[i] && !protectedCells[i]) world.clearCellAt(i);
   }
 
+  const shell = new Uint8Array(interior.length), shellCells: number[] = [];
   for (let y = 1; y < world.height - 1; y++) {
     const row = y * world.width;
     for (let x = 1; x < world.width - 1; x++) {
       const i = row + x;
-      if (interior[i]) continue;
-      let nearInterior = false;
-      for (let sy = -REPAIR_SHELL; sy <= REPAIR_SHELL && !nearInterior; sy++) {
+      if (!interior[i]) continue;
+      for (let sy = -REPAIR_SHELL; sy <= REPAIR_SHELL; sy++) {
         const yy = y + sy;
         if (yy <= 0 || yy >= world.height - 1) continue;
         const shellRow = yy * world.width;
         for (let sx = -REPAIR_SHELL; sx <= REPAIR_SHELL; sx++) {
           const xx = x + sx;
           if (xx <= 0 || xx >= world.width - 1) continue;
-          if (interior[shellRow + xx]) {
-            nearInterior = true;
-            break;
-          }
+          const neighbor = shellRow + xx;
+          if (!interior[neighbor] && !shell[neighbor]) { shell[neighbor] = 1; shellCells.push(neighbor); }
         }
       }
-      if (nearInterior && !protectedCells[i] && blocksEntity(originalTypes[i])) {
-        world.replaceCellAt(i, Cell.Metal, REPAIR_SLEEVE_COLOR);
-      }
     }
+  }
+  for (const i of shellCells) if (!protectedCells[i] && blocksEntity(originalTypes[i])) {
+    world.replaceCellAt(i, Cell.Metal, REPAIR_SLEEVE_COLOR);
   }
 }
 
@@ -441,9 +457,15 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
     } else if (m.kind === 'plug') {
       if (mechanismTriggersFor(runtime, m.id).length > 0) continue;
       check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
+    } else if (m.kind === 'counterweight') {
+      // Powder enters through the top of the pan. Its filled floor and raised
+      // rim are intentionally solid, so checking x,y-2 reports a solved bowl
+      // as buried and repeatedly excavates the surrounding machine.
+      const feedX = m.zone ? (m.zone.x0 + m.zone.x1) / 2 : m.x + m.w / 2;
+      const feedY = m.zone ? m.zone.y0 - 2 : m.y - 7;
+      check(nearWithLine(seen, runtime.world, feedX, feedY, 5), m.kind, feedX, feedY);
     } else if (
       m.kind === 'sensor' ||
-      m.kind === 'counterweight' ||
       m.kind === 'buoy' ||
       m.kind === 'chargelatch'
     ) {

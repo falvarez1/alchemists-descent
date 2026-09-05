@@ -11,6 +11,7 @@ import {
   LIGHT_KNEE_SLOPE,
   LIGHT_KNEE_START,
   LIGHT_READABILITY_FLOOR,
+  renderAmbient,
   SELF_GLOW_BASE,
   SELF_GLOW_SCALE,
   VIGNETTE_BASE,
@@ -26,6 +27,7 @@ import type {
 import { cloudSumGlsl, glslFloat, SKY } from '@/render/skyAtmosphere';
 import { Cell } from '@/sim/CellType';
 import type { World } from '@/sim/World';
+import { terrainArtPixels, terrainBlocksGlsl, usesTerrainArt } from '@/render/TerrainArt';
 
 /** Short alias for embedding SKY tuning numbers as GLSL float literals below. */
 const flt = glslFloat;
@@ -96,6 +98,9 @@ uniform sampler2D uBackdrop2;
 uniform sampler2D uBackdrop3;
 uniform sampler2D uBackdrop4;
 uniform sampler2D uOverlay;
+uniform sampler2D uTerrain;
+uniform sampler2D uScars;
+uniform bool uTerrainEnabled;
 
 uniform ivec2 uCam;        // integer camera snapshot (renderCamX/Y)
 uniform ivec2 uWinOrigin;  // world coords of window texel (0,0)
@@ -339,9 +344,32 @@ void main() {
       }
       c = vec3(r, g, b) + ringGlow * vec3(0.55, 0.42, 0.26);
     } else {
-      float r = float(cell.r) / 255.0;
-      float g = float(cell.g) / 255.0;
-      float b = float(cell.b) / 255.0;
+      vec3 albedo = vec3(cell.rgb);
+      if (uTerrainEnabled && texelFetch(uScars, ivec2(lx, ly), 0).r < 0.5) {
+        int above = int(texelFetch(uWin, ivec2(lx, max(0, ly - 1)), 0).a & 0x7fu);
+        if (type == ${Cell.Water}) {
+          albedo = above == ${Cell.Empty} && lookupY > 0 ? vec3(101, 142, 148) : vec3(49, 91, 103);
+        } else if (type == ${Cell.Wall} || type == ${Cell.Stone} || type == ${Cell.Wood} || type == ${Cell.Metal}) {
+          bool rock = type == ${Cell.Stone} && lookupY > 810;
+          int tileX = type == ${Cell.Metal} || rock ? 128 : 0;
+          int tileY = type == ${Cell.Wood} || rock ? 128 : 0;
+          albedo = texelFetch(uTerrain, ivec2(tileX + (lookupX & 127), tileY + (lookupY & 127)), 0).rgb * 255.0 * 1.5 + vec3(24, 26, 28);
+          int t = above;
+          bool top = lookupY > 0 && !(${terrainBlocksGlsl});
+          t = int(texelFetch(uWin, ivec2(max(0, lx - 1), ly), 0).a & 0x7fu);
+          bool left = lookupX > 0 && !(${terrainBlocksGlsl});
+          t = int(texelFetch(uWin, ivec2(lx, min(${WIN_H - 1}, ly + 1)), 0).a & 0x7fu);
+          bool bottom = lookupY + 1 < ${HEIGHT} && !(${terrainBlocksGlsl});
+          if (top || left) {
+            float chip = ((lookupX * 17 + lookupY * 29) & 7) < 2 ? 0.76 : 1.0;
+            albedo = albedo * 0.55 + vec3(115, 111, 94) * chip;
+          } else if (bottom) albedo *= vec3(0.62, 0.62, 0.67);
+          albedo = floor(min(vec3(255), albedo));
+        }
+      }
+      float r = albedo.r / 255.0;
+      float g = albedo.g / 255.0;
+      float b = albedo.b / 255.0;
 
       // Living flame: per-frame flicker on hot cells (stochastic, hash-rolled)
       if (type == ${Cell.Fire}) {
@@ -533,6 +561,12 @@ export class GpuCompose {
   private readonly winBytes = new Uint8Array(WIN_W * WIN_H * 4);
   private readonly win32 = new Uint32Array(this.winBytes.buffer);
   private readonly winTex: THREE.DataTexture;
+  private packedWorld: World | null = null;
+  private packedTick = -1;
+  private packedRevision = -1;
+  private packedCamX = NaN;
+  private packedCamY = NaN;
+  private packedFull = false;
 
   private readonly lightData: Float32Array<ArrayBuffer>;
   private readonly lightTex: THREE.DataTexture;
@@ -542,6 +576,15 @@ export class GpuCompose {
 
   private readonly backdropTex: THREE.DataTexture[] = [];
   private readonly backdropVersions = new Int32Array(5).fill(-1);
+  private terrainPixels: Uint8ClampedArray | null = null;
+  private terrainTex = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+  private readonly scarBytes = new Uint8Array(WIN_W * WIN_H);
+  private readonly scarTex = new THREE.DataTexture(this.scarBytes, WIN_W, WIN_H, THREE.RedFormat, THREE.UnsignedByteType);
+  private scarsUploaded = false;
+  private scarWorld: World | null = null;
+  private scarRevision = -1;
+  private scarCamX = NaN;
+  private scarCamY = NaN;
 
   private readonly overlayTex: THREE.DataTexture;
   private readonly overlay = new Overlay();
@@ -572,6 +615,9 @@ export class GpuCompose {
     );
     this.winTex.internalFormat = 'RGBA8UI';
     this.winTex.minFilter = this.winTex.magFilter = THREE.NearestFilter;
+    this.terrainTex.minFilter = this.terrainTex.magFilter = THREE.NearestFilter;
+    this.scarTex.minFilter = this.scarTex.magFilter = THREE.NearestFilter;
+    this.terrainTex.needsUpdate = true;
 
     // Half-res light field as raw float32 — bit-identical to the CPU arrays.
     this.lightData = new Float32Array(light.LW * light.LH * 4);
@@ -626,6 +672,9 @@ export class GpuCompose {
         uBackdrop3: { value: this.backdropTex[3] },
         uBackdrop4: { value: this.backdropTex[4] },
         uOverlay: { value: this.overlayTex },
+        uTerrain: { value: this.terrainTex },
+        uScars: { value: this.scarTex },
+        uTerrainEnabled: { value: false },
         uCam: { value: new THREE.Vector2() },
         uWinOrigin: { value: new THREE.Vector2() },
         uBackdropCfg0: { value: new THREE.Vector4() },
@@ -678,8 +727,17 @@ export class GpuCompose {
   ): OverlaySurface {
     const camX = ctx.camera.renderX;
     const camY = ctx.camera.renderY;
-    this.packWindow(ctx.world, camX, camY, ctx.shockwaves.length > 0 || lenses.length > 0);
-    this.winTex.needsUpdate = true;
+    this.syncTerrain(ctx, camX, camY);
+    const world = ctx.world, fullWindow = ctx.shockwaves.length > 0 || lenses.length > 0;
+    if (this.packedWorld !== world || this.packedTick !== ctx.state.frameCount ||
+        this.packedRevision !== world.mutationVersion || this.packedCamX !== camX || this.packedCamY !== camY ||
+        (fullWindow && !this.packedFull)) {
+      this.packWindow(world, world.colors, camX, camY, fullWindow);
+      this.winTex.needsUpdate = true;
+      this.packedWorld = world; this.packedTick = ctx.state.frameCount;
+      this.packedRevision = world.mutationVersion; this.packedCamX = camX; this.packedCamY = camY;
+      this.packedFull = fullWindow;
+    }
 
     if (lightRebuilt || !this.lightUploaded) {
       this.uploadLight(light);
@@ -692,7 +750,7 @@ export class GpuCompose {
     (u.uCam.value as THREE.Vector2).set(camX, camY);
     (u.uWinOrigin.value as THREE.Vector2).set(camX - COMPOSE_PAD, camY - COMPOSE_PAD);
     this.updateBackdropUniforms(ctx);
-    u.uAmbient.value = ctx.params.global.ambient;
+    u.uAmbient.value = renderAmbient(ctx);
     u.uSkyLine.value = ctx.levels.current?.skyLine ?? 0;
     u.uBoost.value = ctx.params.global.maxBrightness;
     u.uVignette.value = ctx.state.postFx.vignette;
@@ -745,6 +803,8 @@ export class GpuCompose {
     this.winTex.dispose();
     this.lightTex.dispose();
     this.lutTex.dispose();
+    this.terrainTex.dispose();
+    this.scarTex.dispose();
     this.overlayTex.dispose();
     this.overlayUploadTex?.dispose();
     for (const tex of this.backdropTex) tex.dispose();
@@ -825,6 +885,35 @@ export class GpuCompose {
     return tex;
   }
 
+  private syncTerrain(ctx: Ctx, camX: number, camY: number): void {
+    const pixels = terrainArtPixels();
+    if (pixels && pixels !== this.terrainPixels) {
+      this.terrainTex.dispose();
+      this.terrainPixels = pixels;
+      this.terrainTex = new THREE.DataTexture(new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength), 256, 256, THREE.RGBAFormat, THREE.UnsignedByteType);
+      this.terrainTex.minFilter = this.terrainTex.magFilter = THREE.NearestFilter;
+      this.terrainTex.needsUpdate = true;
+      this.material.uniforms.uTerrain.value = this.terrainTex;
+    }
+    this.material.uniforms.uTerrainEnabled.value = Boolean(pixels && usesTerrainArt(ctx));
+    const scars = ctx.world.colorOverrides;
+    if (!this.scarsUploaded || this.scarWorld !== ctx.world || this.scarRevision !== scars.revision ||
+        (scars.size > 0 && (this.scarCamX !== camX || this.scarCamY !== camY))) {
+      this.scarBytes.fill(0);
+      const x0 = camX - COMPOSE_PAD, y0 = camY - COMPOSE_PAD;
+      const left = Math.max(0, x0), right = Math.min(ctx.world.width, x0 + WIN_W);
+      if (scars.size > 0 && left < right) {
+        for (let y = Math.max(0, y0); y < Math.min(ctx.world.height, y0 + WIN_H); y++) {
+          const row = y * ctx.world.width;
+          this.scarBytes.set(scars.mask.subarray(row + left, row + right), (y - y0) * WIN_W + left - x0);
+        }
+      }
+      this.scarTex.needsUpdate = true; this.scarsUploaded = true;
+      this.scarWorld = ctx.world; this.scarRevision = scars.revision;
+      this.scarCamX = camX; this.scarCamY = camY;
+    }
+  }
+
   private syncBackdropTextures(): void {
     const sourceLayers = this.layers.backdropLayers;
     for (let i = 0; i < this.backdropTex.length; i++) {
@@ -876,16 +965,17 @@ export class GpuCompose {
    * distortion that stays inside the pad. Field loads are hoisted — V8 does
    * not hoist them past the call boundary on its own (perf lesson).
    */
-  private packWindow(world: World, camX: number, camY: number, fullWindow: boolean): void {
+  private packWindow(world: World, colors: Uint32Array, camX: number, camY: number, fullWindow: boolean): void {
     const types = world.types;
-    const colors = world.colors;
     const charge = world.charge;
     const out = this.win32;
     const x0 = camX - COMPOSE_PAD;
     const y0 = camY - COMPOSE_PAD;
     this.winTex.clearUpdateRanges();
     if (!fullWindow) {
-      this.packWindowRows(types, colors, charge, camX, camY, COMPOSE_PAD - 1, VIEW_H + 1);
+      // One-cell halo covers live albedo boundaries and vegetation contact.
+      // The 64-cell distortion window is needed only for active waves/lenses.
+      this.packWindowRows(types, colors, charge, camX, camY, COMPOSE_PAD - 1, VIEW_H + 2);
       return;
     }
     // Columns left of / right of the world edge use a clamped repeat value,
@@ -928,9 +1018,9 @@ export class GpuCompose {
     rowCount: number,
   ): void {
     const out = this.win32;
-    const col0 = COMPOSE_PAD;
-    const col1 = COMPOSE_PAD + VIEW_W;
-    const x0 = camX;
+    const col0 = COMPOSE_PAD - 1;
+    const col1 = COMPOSE_PAD + VIEW_W + 1;
+    const x0 = camX - 1;
     for (let row = startRow; row < startRow + rowCount; row++) {
       let wy = camY + row - COMPOSE_PAD;
       if (wy < 0) wy = 0;
@@ -949,7 +1039,7 @@ export class GpuCompose {
           ((c & 0xff) << 16) |
           ((types[sample] | (charge[sample] !== 0 ? 0x80 : 0)) << 24);
       }
-      this.winTex.addUpdateRange((row * WIN_W + col0) * 4, VIEW_W * 4);
+      this.winTex.addUpdateRange((row * WIN_W + col0) * 4, (VIEW_W + 2) * 4);
     }
   }
 

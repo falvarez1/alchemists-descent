@@ -1,6 +1,6 @@
 import type { Ctx, Enemy } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
-import { clamp, lerp, traceLine } from '@/core/math';
+import { clamp, traceLine } from '@/core/math';
 import { solveConstrainedLegIk } from '@/render/animation/ConstrainedLegIk';
 // Pure pose data/math from the Weaver's tick-rate locomotion — the renderer
 // reads the rig it owns (no gameplay coupling; nothing here is called back).
@@ -30,16 +30,12 @@ function flickerNoise(frameCount: number, seed: number): number {
  * hover/flap/flicker, wisp self-lit guttering diamond, mage hooded robe with
  * channel-flare hands, golem heavy stride with pulsing core.
  *
- * NOTE: this function intentionally MUTATES animation state on the enemy
- * (e.splat / e.prevG / e.blink for slimes; e._px / e._svx / e.stride for
- * golems) exactly like the original did from inside the renderer. The mage
- * only READS e.blink — there it is the telekinesis telegraph countdown set
- * by the AI (Enemies.ts), and the hands flare while it runs.
+ * Presentation reads simulation-owned poses. Repeated draws cannot change a creature.
  */
-export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e: Enemy): void {
+export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e: Readonly<Enemy>): void {
   const frameCount = ctx.state.frameCount;
   const def = ctx.enemyCtl.defs[e.kind];
-  const flash = e.flash > 0;
+  const flash = e.flash > 0 && !ctx.state.reduceFlashes;
   const boost = ctx.params.global.maxBrightness;
   // Creatures obey the light: a body in shadow is a silhouette, a body near
   // glowing material is revealed. Emissive parts (eyes, cores, flames) stay lit.
@@ -65,17 +61,17 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   const syq = bodySquash !== 0 ? clamp(1 - bodySquash * 0.55, 0.68, 1.03) : 1;
   const sq = (dy: number): number => (syq === 1 ? dy : Math.round(dy * syq));
   const P = (dx: number, dy: number, r: number, g: number, b: number): void => {
-    if (flash) s.setPx(bx + dx, by - sq(dy), 2.2, 2.2, 2.2);
+    if (flash) s.setPx(bx + dx, by - sq(dy), Math.min(0.95, r * bR * 0.8 + 0.18), Math.min(0.9, g * bG * 0.8 + 0.14), Math.min(0.82, b * bB * 0.8 + 0.1));
     else s.setPx(bx + dx, by - sq(dy), r * bR, g * bG, b * bB);
   };
   const PE = (dx: number, dy: number, r: number, g: number, b: number): void => {
-    if (flash) s.setPx(bx + dx, by - sq(dy), 2.2, 2.2, 2.2);
+    if (flash) s.setPx(bx + dx, by - sq(dy), Math.min(0.95, r * 0.8 + 0.18), Math.min(0.9, g * 0.8 + 0.14), Math.min(0.82, b * 0.8 + 0.1));
     else s.setPx(bx + dx, by - sq(dy), r, g, b);
   };
   // Eyes are honest (Rain World): an unaware creature scans the room on a
   // slow wander; only an ALERTED one locks its gaze onto the alchemist.
   const look = e.alerted
-    ? ctx.player.x > e.x
+    ? (e.mind?.targetX ?? e.x) > e.x
       ? 1
       : -1
     : Math.sin(frameCount * 0.02 + e.bobPhase * 3.7) > 0
@@ -102,10 +98,6 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
 
   if (e.kind === 'slime' || e.kind === 'acidslime') {
     // --- Squash & stretch: tall in flight, splat on landing, wobble at rest ---
-    if (e.grounded && !e.prevG && Math.abs(e.vy) < 0.1) e.splat = 8;
-    e.prevG = e.grounded;
-    if (e.splat > 0) e.splat--;
-    if (e.blink > 0) e.blink--; else if (flickerNoise(frameCount, e.bobPhase * 5.3) < 0.008) e.blink = 6;
 
     let sy = 1, sx = 1;
     if (!e.grounded) { sy = 1 + Math.min(0.45, Math.abs(e.vy) * 0.13); sx = 1 / sy; }
@@ -138,7 +130,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     }
     if (e.blink === 0) {
       // alerted eyes also pitch toward the alchemist's altitude
-      const vlook = e.alerted ? (e.y - ctx.player.y > 14 ? 1 : ctx.player.y - e.y > 14 ? -1 : 0) : 0;
+      const vlook = e.alerted ? (e.y - (e.mind?.targetY ?? e.y) > 14 ? 1 : (e.mind?.targetY ?? e.y) - e.y > 14 ? -1 : 0) : 0;
       const eyeY = Math.max(1, Math.round(H * 0.4) + vlook);
       P(look - 2, eyeY, 0.95, 1.0, 0.95); P(look + 2, eyeY, 0.95, 1.0, 0.95);
       P(look - 2 + (look > 0 ? 1 : 0), eyeY, 0.02, 0.10, 0.02);
@@ -264,8 +256,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
   } else if (e.kind === 'bat' && e.sleeping) {
     // --- Roosting bat: folded teardrop hanging from the ceiling.
     //     It STIRS when you get close — the shiver is your last warning. ---
-    const pdx2 = ctx.player.x - e.x,
-      pdy2 = ctx.player.y - e.y;
+    const pdx2 = (e.mind?.targetX ?? e.x) - e.x,
+      pdy2 = (e.mind?.targetY ?? e.y) - e.y;
     const near = !ctx.player.dead && pdx2 * pdx2 + pdy2 * pdy2 < 110 * 110;
     const tr = near && frameCount % 7 < 2 ? (frameCount % 14 < 7 ? 1 : -1) : 0;
     const V2: RGB = [0.3, 0.18, 0.38],
@@ -363,9 +355,6 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     P(sway + 2, hy - 1, ...TB);
   } else if (e.kind === 'bomber') {
     // --- Volatile orange slime: jiggles, then strobes white as the fuse burns ---
-    if (e.grounded && !e.prevG && Math.abs(e.vy) < 0.1) e.splat = 8;
-    e.prevG = e.grounded;
-    if (e.splat > 0) e.splat--;
     let sy = 1,
       sx = 1;
     if (!e.grounded) {
@@ -399,7 +388,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     PB(0, H, ...OD);
     PB(0, H + 1, ...OD);
     if (fusing) {
-      const sp = 1.4 + Math.random() * 0.8;
+      const sp = 1.4 + flickerNoise(frameCount, e.bobPhase * 4.1) * 0.8;
       PE(0, H + 2, sp * boost * 0.5, sp * boost * 0.4, 0.1);
     } else {
       const eyeY = Math.max(1, Math.round(H * 0.4));
@@ -430,10 +419,10 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       const rank = arm % 3;
       const hipX = side * (2 + rank);
       const hipY = 5 + rank * 2 + bodyLift;
-      const phase = frameCount * (panic ? 0.18 : 0.055) + e.bobPhase + arm * 1.7;
       const reach = 9 + rank * 3 + support * 5;
-      const footX = side * reach + Math.round(Math.sin(phase) * (panic ? 4 : 2)) + lean;
-      const footY = Math.max(0, hipY - 7 - rank + Math.round(Math.cos(phase) * (panic ? 3 : 1)));
+      const foot = e.feet?.[arm];
+      const footX = foot ? foot.x - e.x : side * reach + lean;
+      const footY = foot ? e.y - foot.y : 0;
       lineRoot(hipX + lean, hipY, Math.round((hipX + footX) * 0.5), Math.round((hipY + footY) * 0.5 + 2), RD);
       lineRoot(Math.round((hipX + footX) * 0.5), Math.round((hipY + footY) * 0.5 + 2), footX, footY, panic ? RD : RL);
       if (support > 0.45 && frameCount % 20 < 8) PE(footX, footY, 0.16, 0.65, 0.2);
@@ -470,8 +459,9 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const SD: RGB = [0.18, 0.16, 0.15];
     const SL: RGB = [0.58, 0.5, 0.42];
     for (let seg = 0; seg < 6; seg++) {
-      const sx = -dir * (seg * 4 - 8);
-      const sy = 5 + Math.round(Math.sin(seg * 0.9 + pulse) * (stunned ? 1 : 2));
+      const node = e.body?.nodes[seg];
+      const sx = node ? Math.round(node.x - bx) : -dir * (seg * 4 - 8);
+      const sy = node ? Math.round(by - node.y) : 5 + Math.round(Math.sin(seg * 0.9 + pulse) * (stunned ? 1 : 2));
       const radius = Math.max(2, 5 - Math.floor(seg * 0.45) + (chew > 0 && seg < 2 ? 1 : 0));
       for (let dy = -radius; dy <= radius; dy++) {
         for (let dx = -radius; dx <= radius; dx++) {
@@ -497,43 +487,38 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const wet = e.rillWet ?? 0;
     const charging = (e.rillChargeWindup ?? 0) > 0;
     const charged = charging || (e.blink ?? 0) > 0 || e.status.electrified > 0;
-    const count = 7;
-    if (!e.rillSegments || e.rillSegments.length !== count) {
-      e.rillSegments = Array.from({ length: count }, (_, idx) => ({ x: e.x - look * idx * 3, y: e.y - 4 }));
-    }
-    e.rillSegments[0].x += (e.x - e.rillSegments[0].x) * 0.55;
-    e.rillSegments[0].y += (e.y - 4 - e.rillSegments[0].y) * 0.55;
-    for (let idx = 1; idx < count; idx++) {
-      const prev = e.rillSegments[idx - 1];
-      const seg = e.rillSegments[idx];
-      const dx = prev.x - seg.x;
-      const dy = prev.y - seg.y;
-      const d = Math.hypot(dx, dy) || 1;
-      const desired = wet >= 0.28 ? 3.8 : 2.8;
-      seg.x += (dx / d) * (d - desired) * 0.45;
-      seg.y += (dy / d) * (d - desired) * 0.45;
-      if (wet >= 0.28) seg.y += Math.sin(frameCount * 0.18 + idx * 0.9 + e.bobPhase) * 0.12;
-    }
-    const A: RGB = wet >= 0.28 ? [0.12, 0.34, 0.36] : [0.18, 0.23, 0.22];
-    const AD: RGB = [0.05, 0.16, 0.17];
+    const segments = e.body?.nodes ?? e.rillSegments;
+    if (!segments?.length) return;
+    const count = segments.length;
+    const A: RGB = wet >= 0.28 ? [0.63, 0.72, 0.62] : [0.62, 0.58, 0.43];
+    const AD: RGB = [0.23, 0.34, 0.34];
+    const belly: RGB = [0.82, 0.77, 0.58];
     const AL: RGB = charged ? [0.2, 0.9, 1.1] : [0.2, 0.5, 0.5];
     for (let idx = count - 1; idx >= 0; idx--) {
-      const seg = e.rillSegments[idx];
+      const seg = segments[idx];
       const dx = Math.round(seg.x - bx);
       const dy = Math.round(by - seg.y);
-      const r = idx === 0 ? 3 : Math.max(1, 3 - Math.floor(idx / 3));
+      const r = Math.max(1, Math.round(e.body?.nodes[idx]?.radius ?? (3.8 - idx * 0.32)));
       for (let yy = -r; yy <= r; yy++) {
         for (let xx = -r; xx <= r; xx++) {
           if (xx * xx + yy * yy > r * r) continue;
-          P(dx + xx, dy + yy, ...(xx * xx + yy * yy >= (r - 1) * (r - 1) ? AD : A));
+          const edge = xx * xx + yy * yy >= r * r - 1;
+          P(dx + xx, dy + yy, ...(edge ? AD : yy < 0 ? belly : A));
         }
+      }
+      // Overlapping dorsal scutes and a pale belly keep the ribbon continuous
+      // while its simulated joints coil, brace and push against the floor.
+      P(dx - 1, dy + r - 1, 0.72, 0.82, 0.71);
+      if (idx > 0 && idx < count - 1) {
+        P(dx, dy + r, 0.4, 0.56, 0.51);
+        P(dx + 1, dy - r, ...belly);
       }
       if (charged && idx % 2 === 0) {
         const lift = charging ? Math.round(Math.sin(frameCount * 0.75 + idx) * 1.5) : 0;
         PE(dx, dy + 1 + lift, ...AL);
       }
     }
-    const head = e.rillSegments[0];
+    const head = segments[0];
     const hx = Math.round(head.x - bx);
     const hy = Math.round(by - head.y);
     PE(hx + look, hy + 1, charged ? 0.35 : 0.75, charged ? 0.9 : 0.85, charged ? 1.1 : 0.78);
@@ -571,43 +556,12 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     const weaving = !asleep && e.blink > 0;
     const cranky = !asleep && (e.cranky ?? 0) > 0;
     const pulse = Math.max(0, e.webPulse ?? 0) / 18;
-    const feedCrouch = !asleep && (e.weaverFeedT ?? 0) > 0;
-    const fallPose = airborneNow ? clamp((e.weaverFallT ?? 0) / 45, 0, 1) : 0;
-    const aim = Math.sign(ctx.player.x - e.x || 1); // world-x aim for attack poses
-
-    // REAR-UP REACH: pose smoothing for the grasping front leg + head crane
-    // (the physical rise comes from the locomotion's 'rear' stance).
-    const headYW = e.y - def.h * 0.5;
-    const overhead = e.alerted && !asleep ? clamp((headYW - ctx.player.y) / 58, 0, 1) : 0;
-    const nearX = e.alerted && !asleep ? clamp(1 - Math.abs(ctx.player.x - e.x) / 170, 0, 1) : 0;
-    const reachTarget =
-      unstable || airborneNow || feedCrouch || poised || weaving ? 0 : overhead * (0.35 + 0.65 * nearX);
-    e.weaverReach = lerp(e.weaverReach ?? 0, reachTarget, 0.06);
-    const reach01 = e.weaverReach ?? 0;
-    // AGGRESSION: alerted + actually closing = lower, hungrier posture cues.
-    const aggroTarget =
-      e.alerted && moving && !feedCrouch && !unstable && !poised && !weaving && reach01 < 0.3
-        ? clamp(0.45 + (cranky ? 0.55 : 0) + Math.min(0.35, speedNow * 0.4), 0, 1)
-        : 0;
-    e.weaverAggro = lerp(e.weaverAggro ?? 0, aggroTarget, aggroTarget > (e.weaverAggro ?? 0) ? 0.08 : 0.04);
-    const aggro = e.weaverAggro ?? 0;
-
-    // FREE HEAD: the cephalothorax is slung on a short neck and carried by a
-    // light spring, so it TRACKS the alchemist, SCANS when unaware, LEADS the
-    // crawl, and never simply snaps to the facing. Cosmetic only.
     const aware = e.alerted && !asleep;
-    const headPdx = ctx.player.x - e.x;
-    const headPdy = ctx.player.y - (e.y - def.h * 0.62);
-    const trackX = aware ? clamp(headPdx / 52, -1, 1) : Math.sin(frameCount * 0.017 + e.bobPhase * 2.7) * 0.7;
-    const trackY = aware ? clamp(-headPdy / 60, -1, 1.2) : Math.sin(frameCount * 0.012 + e.bobPhase * 1.3) * 0.4;
-    const idleBob = Math.sin(frameCount * 0.05 + e.bobPhase) * (aware ? 0.5 : 0.3);
-    const headTX = clamp(trackX * 3.6 + (loco?.vx ?? 0) * 1.4 + (aware ? 0 : bodyFace * 0.6), -5.5, 5.5);
-    const headTY = clamp(trackY * 3.1 + reach01 * 2 + idleBob + (cranky ? Math.sin(frameCount * 0.4) * 0.5 : 0), -4, 4.5);
-    const headStiff = cranky ? 0.27 : poised || weaving ? 0.34 : 0.18; // snappier when agitated/striking
-    e.weaverHeadVX = (e.weaverHeadVX ?? 0) * 0.74 + (headTX - (e.weaverHeadX ?? 0)) * headStiff;
-    e.weaverHeadVY = (e.weaverHeadVY ?? 0) * 0.74 + (headTY - (e.weaverHeadY ?? 0)) * headStiff;
-    e.weaverHeadX = clamp((e.weaverHeadX ?? 0) + e.weaverHeadVX, -7, 7);
-    e.weaverHeadY = clamp((e.weaverHeadY ?? 0) + e.weaverHeadVY, -5, 6);
+    const fallPose = airborneNow ? clamp((e.weaverFallT ?? 0) / 45, 0, 1) : 0;
+    const aim = Math.sign((e.mind?.targetX ?? e.x) - e.x || 1); // world-x aim for attack poses
+
+    const reach01 = e.weaverReach ?? 0;
+    const aggro = e.weaverAggro ?? 0;
     const headDX = asleep ? 0 : Math.round(e.weaverHeadX ?? 0);
     const headDY = asleep ? -1 : Math.round(e.weaverHeadY ?? 0);
 
@@ -632,14 +586,14 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       if (glow) PE(dx, dy, col[0], col[1], col[2]);
       else P(dx, dy, col[0], col[1], col[2]);
     };
-    const rigReady = weaverRigReady();
+    const rigReady = ctx.state.mode !== 'play' && weaverRigReady();
     const rigLight = { r: bR, g: bG, b: bB };
 
-    const LEG: RGB = unstable ? [0.2, 0.08, 0.1] : [0.13, 0.09, 0.11];
+    const LEG: RGB = unstable ? [0.62, 0.39, 0.27] : [0.65, 0.57, 0.39];
     const LEG_HI: RGB = [
-      0.24 + support * 0.08 + pulse * 0.08,
-      0.2 + support * 0.12 + pulse * 0.25,
-      0.18 + pulse * 0.05,
+      0.62 + support * 0.08 + pulse * 0.08,
+      0.58 + support * 0.12 + pulse * 0.12,
+      0.41 + pulse * 0.05,
     ];
     const LEG_MID: RGB = [
       0.18 + support * 0.06 + pulse * 0.05,
@@ -647,8 +601,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       0.13 + pulse * 0.04,
     ];
     const JOINT: RGB = [0.28 + pulse * 0.08, 0.23 + support * 0.12 + pulse * 0.18, 0.2];
-    const LEG_WARN: RGB = [0.35, 0.95, 0.42];
-    const PLANT_DOT: RGB = [0.32, 0.62, 0.26];
+    const LEG_WARN: RGB = [0.92, 0.55, 0.25];
+    const PLANT_DOT: RGB = [0.48, 0.60, 0.43];
     // --- BODY ORIENTATION comes straight from the locomotion (0 floor, ±π/2
     // wall, π ceiling — the chimney straddle is pinned upright at tick rate).
     // Rotation is rigid about the body centre (WV_PIVOT above the anchor), so
@@ -703,8 +657,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       if (hot) {
         // Needle Step: the poised foreleg aims at the locked target
         const aimT = 1 - clamp((e.windup ?? 0) / 18, 0, 1);
-        footX = (e.needleX ?? ctx.player.x) - aim * (4 - aimT * 8);
-        footY = e.needleY ?? ctx.player.y - 9;
+        footX = (e.needleX ?? (e.mind?.targetX ?? e.x)) - aim * (4 - aimT * 8);
+        footY = e.needleY ?? (e.mind?.targetY ?? e.y) - 9;
       } else if (silkLeg) {
         // Thread-spit: the second foreleg braces high while silk streams
         footX = e.x + aim * 17;
@@ -712,8 +666,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       } else if (grasping) {
         // Rear-up: the front leg paws up toward the hovering alchemist,
         // clamped to the leg's real reach so the bones stay connected.
-        let rx = ctx.player.x - aim * 3;
-        let ry = ctx.player.y + 2;
+        let rx = (e.mind?.targetX ?? e.x) - aim * 3;
+        let ry = (e.mind?.targetY ?? e.y) + 2;
         const rd = Math.hypot(rx - hipX, ry - hipY) || 1;
         const maxR = WEAVER_LEG_REACH_LOCO[i] * 1.24;
         if (rd > maxR) {
@@ -808,6 +762,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
         drawWeaverRigPart(s, 'jointCap', lowerX, lowerY, jointAngle, rigJointBOptions);
       }
       if (!rigReady || hot || failing) {
+        if (!rigReady) lineW(hipX, hipY - 1, upperX, upperY - 1, LEG_HI);
         lineW(hipX, hipY, upperX, upperY, hot || failing ? LEG_WARN : LEG, hot || failing);
         lineW(upperX, upperY, lowerX, lowerY, hot || failing ? LEG_WARN : LEG_MID, hot || failing);
         lineW(lowerX, lowerY, ikFootX, ikFootY, hot || failing ? LEG_WARN : LEG_HI, hot || failing);
@@ -825,9 +780,9 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       ? [0.1, 0.08, 0.09]
       : unstable || fallPose > 0.35
         ? [0.2, 0.09, 0.11]
-        : [0.16, 0.11, 0.13];
-    const BODY_D: RGB = asleep ? [0.04, 0.035, 0.045] : [0.07, 0.05, 0.06];
-    const BODY_L: RGB = asleep ? [0.15, 0.12, 0.13] : [0.27, 0.21, 0.22];
+        : [0.49, 0.46, 0.32];
+    const BODY_D: RGB = asleep ? [0.21, 0.20, 0.16] : [0.26, 0.24, 0.19];
+    const BODY_L: RGB = asleep ? [0.47, 0.43, 0.31] : [0.83, 0.74, 0.52];
     const bellyBob = asleep
       ? -1
       : Math.round(
@@ -861,20 +816,20 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
         const t = (dy - 8.5) / 5.8;
         const w2 = Math.max(2, Math.round(10 * Math.sqrt(Math.max(0, 1 - t * t))));
         for (let dx = -w2; dx <= w2; dx++) {
+          const ridge = (dx + bodyFace * dy + 30) % 6;
+          const plate = Math.abs(dx) >= w2 || dy === 4 ? BODY_D : dy > 10 && ridge < 4 ? BODY_L : ridge === 0 ? BODY_D : BODY;
           PR(
             dx - bodyFace * 3 + tiltShift(dy) + abX,
             dy + bellyBob + crouch + bodyDrawLift - sag - abY,
-            Math.abs(dx) >= w2 ? BODY_D[0] : BODY[0],
-            Math.abs(dx) >= w2 ? BODY_D[1] : BODY[1],
-            Math.abs(dx) >= w2 ? BODY_D[2] : BODY[2],
+            plate[0], plate[1], plate[2],
           );
         }
       }
       // thorax and head
       for (let dy = 9; dy <= 17; dy++) {
-        const w2 = dy >= 15 ? 5 : 7;
+        const w2 = dy >= 16 ? 3 : dy >= 14 ? 5 : 6;
         for (let dx = -w2; dx <= w2; dx++) {
-          PR(dx + bodyFace * 3 + tiltShift(dy) + stalkX, dy + crouch + bodyDrawLift - sag - stalkY, ...(Math.abs(dx) >= w2 ? BODY_D : BODY_L));
+          PR(dx + bodyFace * 3 + tiltShift(dy) + stalkX, dy + crouch + bodyDrawLift - sag - stalkY, ...(Math.abs(dx) >= w2 || dy === 9 ? BODY_D : dx * bodyFace < 0 ? BODY : BODY_L));
         }
       }
       for (let n = 1; n <= 2; n++) {
@@ -919,8 +874,8 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
       : 0.55 + Math.sin(frameCount * 0.11 + e.bobPhase) * 0.25 + (poised ? 0.35 : 0) + (cranky ? 0.28 : 0) + pulse * 0.45 + aggro * 0.2;
     // a faint independent eye dart while unaware — the gaze flicks even when the head is still
     const dart = aware ? 0 : Math.round(Math.sin(frameCount * 0.08 + e.bobPhase * 2) * 0.7);
-    PER(headCX + bodyFace * 2 + dart, headCY - 1, 0.18 * eyePulse * boost, 0.95 * eyePulse * boost, 0.32 * eyePulse * boost);
-    PER(headCX + bodyFace * 1 + dart, headCY, 0.14 * eyePulse * boost, 0.72 * eyePulse * boost, 0.25 * eyePulse * boost);
+    PER(headCX + bodyFace * 2 + dart, headCY - 1, 0.9 * eyePulse * boost, 0.72 * eyePulse * boost, 0.35 * eyePulse * boost);
+    PER(headCX + bodyFace * 1 + dart, headCY, 0.72 * eyePulse * boost, 0.56 * eyePulse * boost, 0.25 * eyePulse * boost);
     if (weaving) {
       const spit = 0.5 + Math.sin(frameCount * 0.6) * 0.3;
       const [sx0, sy0] = wvWorld(headCX + bodyFace * 2, headCY + 1);
@@ -933,13 +888,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     }
   } else if (e.kind === 'golem') {
     // --- Heavy stride driven by real displacement, arms, breath, pulsing core ---
-    const gx2 = e.x + (e.fx || 0);
-    const grvRaw = gx2 - (e._px === undefined ? gx2 : e._px);
-    const grv = Math.abs(grvRaw) > 8 ? 0 : grvRaw; // teleport = no stride pop
-    e._px = gx2;
-    e._svx = (e._svx || 0) * 0.55 + grv * 0.45;
-    const walking = e.grounded && Math.abs(e._svx) > 0.08;
-    if (walking) e.stride += Math.abs(e._svx) * 0.22;
+    const walking = e.grounded && Math.abs(e._svx ?? 0) > 0.08;
     const st = e.stride;
     const legA = e.grounded ? Math.round(Math.sin(st) * 2) : 1;
     const legB = -legA;
@@ -1024,13 +973,6 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     }
   } else if (e.kind === 'colossus') {
     // --- THE KILN COLOSSUS: a walking furnace of cracked basalt ---
-    const cx2 = e.x + (e.fx || 0);
-    const cdrvRaw = cx2 - (e._px === undefined ? cx2 : e._px);
-    const cdrv = Math.abs(cdrvRaw) > 8 ? 0 : cdrvRaw; // teleport = no stride pop
-    e._px = cx2;
-    e._svx = (e._svx || 0) * 0.55 + cdrv * 0.45;
-    const cWalking = e.grounded && Math.abs(e._svx) > 0.05;
-    if (cWalking) e.stride += Math.abs(e._svx) * 0.16;
     const cst = e.stride;
     const cLegA = e.grounded ? Math.round(Math.sin(cst) * 3) : 1;
     const cLegB = -cLegA;
@@ -1097,12 +1039,7 @@ export function drawEnemySprite(s: PixelSurface, light: LightField, ctx: Ctx, e:
     }
   } else if (e.kind === 'leviathan') {
     // --- THE SUNKEN LEVIATHAN: an armored deep-fish with an angler's lamp ---
-    const lx2 = e.x + (e.fx || 0);
-    const ldrvRaw = lx2 - (e._px === undefined ? lx2 : e._px);
-    const ldrv = Math.abs(ldrvRaw) > 8 ? 0 : ldrvRaw; // teleport = no stride pop
-    e._px = lx2;
-    e._svx = (e._svx || 0) * 0.6 + ldrv * 0.4;
-    const dir = Math.abs(e._svx) > 0.05 ? Math.sign(e._svx) : look;
+    const dir = Math.abs(e._svx ?? 0) > 0.05 ? Math.sign(e._svx ?? 0) : look;
     const sub = e.submerged === true;
     // swimming undulates; beached flops in heaving spasms
     const swim = Math.sin(frameCount * (sub ? 0.12 : 0.3) + e.bobPhase);

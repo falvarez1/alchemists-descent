@@ -82,7 +82,8 @@ export default defineConfig(({ mode }) => ({
   server: {
     open: false,
     watch: {
-      ignored: ['**/verify-out/**', '**/dist/**', '**/coverage/**'],
+      // Gallery writes are evidence, and must not reload a running playtest.
+      ignored: ['**/verify-out/**', '**/screenshots/**', '**/dist/**', '**/coverage/**'],
     },
   },
   test: {

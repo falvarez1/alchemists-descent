@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Ctx, Enemy, LevelRuntime, WandLoadoutSave, WandRuntimeSnapshot } from '@/core/types';
 import { GEN_TUNE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { LEVELS } from '@/config/worldgraph';
@@ -114,6 +114,48 @@ function restoreSavedBlob(levels: Levels, ctx: Ctx, blob: unknown): LevelRuntime
     restoreLevel(ctx: Ctx, def: typeof LEVELS.d2, blob: typeof blob): LevelRuntime;
   }).restoreLevel(ctx, LEVELS.d2, blob);
 }
+
+describe('settled route repairs', () => {
+  it('waits for material progress under pauses or slow frames, then cancels on disposal', () => {
+    vi.useFakeTimers();
+    const ctx = {} as Ctx;
+    const levels = new Levels(ctx);
+    const runtime = makeLevelRuntime({ def: LEVELS.d2, world: new World(32, 32), spawn: { x: 16, y: 24 } });
+    const internals = levels as unknown as {
+      currentId: string;
+      levels: Map<string, LevelRuntime>;
+      repairFindability: () => boolean;
+      scheduleSettledFindabilityRepair(ctx: Ctx, runtime: LevelRuntime): void;
+    };
+    const repair = vi.fn(() => false);
+    internals.currentId = 'd2'; internals.levels.set('d2', runtime);
+    internals.repairFindability = repair;
+    try {
+      internals.scheduleSettledFindabilityRepair(ctx, runtime);
+      vi.advanceTimersByTime(7000);
+      expect(repair).not.toHaveBeenCalled();
+      expect(levels.findabilityReady).toBe(false);
+      runtime.world.activity.stepSerial = 18;
+      vi.advanceTimersByTime(100);
+      expect(repair).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(7000);
+      expect(repair).toHaveBeenCalledTimes(1);
+      runtime.world.activity.stepSerial = 390;
+      vi.advanceTimersByTime(7000);
+      expect(repair).toHaveBeenCalledTimes(5);
+      expect(levels.findabilityReady).toBe(false);
+      runtime.world.activity.stepSerial = 720;
+      vi.advanceTimersByTime(7000);
+      expect(repair).toHaveBeenCalledTimes(7);
+      expect(levels.findabilityReady).toBe(true);
+      internals.scheduleSettledFindabilityRepair(ctx, runtime);
+      levels.dispose();
+      runtime.world.activity.stepSerial += 720;
+      vi.advanceTimersByTime(7000);
+      expect(repair).toHaveBeenCalledTimes(7);
+    } finally { levels.dispose(); vi.useRealTimers(); }
+  });
+});
 
 describe('level enemy persistence', () => {
   it('round-trips behavior state used by roosts, patrols, and enemy attacks', () => {
@@ -982,7 +1024,7 @@ describe('level enemy persistence', () => {
     });
   });
 
-  it('retires expedition saves captured under different worldgen tuning', () => {
+  it('archives expedition saves captured under different worldgen tuning', () => {
     withLocalStorage((store) => {
       const originalTune = { ...GEN_TUNE };
       const savedSignature = genTuneSignature();
@@ -1027,7 +1069,8 @@ describe('level enemy persistence', () => {
 
         expect(levels.tryResumeExpedition(ctx)).toBe(false);
         expect(store.get('noita-expedition')).toBeUndefined();
-        expect(toasts).toContain('WORLDGEN TUNING CHANGED - EXPEDITION RETIRED');
+        expect(JSON.parse(store.get('noita-expedition-archive')!).genTuneSignature).toBe(savedSignature);
+        expect(toasts).toContain('WORLDGEN TUNING CHANGED - EXPEDITION ARCHIVED — start a new descent');
       } finally {
         Object.assign(GEN_TUNE, originalTune);
       }

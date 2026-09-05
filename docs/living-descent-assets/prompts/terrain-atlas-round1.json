@@ -1,0 +1,75 @@
+{
+  "prompt": "Use case: style-transfer.\nEdit target: the supplied four-quadrant terrain albedo atlas. Keep the exact same quadrant mapping and broad material structures: top left slate masonry, top right corroded copper/brass plates, bottom left worn wood, bottom right darker natural mineral rock. Keep the 2 by 2 square layout with no gutters or frame, exact equal quarter boundaries, and the seamless individually tileable full-bleed material composition.\nMake one production refinement: replace the fine gritty per-pixel surface noise with much broader deliberate pixel-art color clusters, and lift the diffuse middle-plane surfaces so the material reads in front of dark blue refinery scenery.\nThink of this entire image as only 256 by 256 logical pixels, rendered here as a large nearest-neighbor enlargement. An individual quadrant is 128 by 128 logical pixels. Details must be economical: flat quiet face regions several logical pixels wide, mostly clean highlights, crisp single-pixel chips at logical resolution, no film grain or photographic microtexture. Restrained coherent 32-color palette. Every pixel mark is square, no antialiasing.\nMasonry: more clear medium blue-slate faces (approximately #56636b and #697078), larger chalk-bone facet groups (approximately #aaa28a and #c1b399) across about 10 percent of the stones, retaining thin very dark joints. Do not whiten every stone or add broad white contour outlines. Cool blue shadows, never green.\nCopper/brass: broad matte muted aged copper midtones (approximately #6c4a33), worn brass face chips (approximately #b3925d), dark seams and economical nail/rivet pixels. Reduce rusty orange grain to a few grouped patches.\nWood: larger quiet walnut plank faces and straight grouped mineral-tan wear lines (approximately #8d775b), preserve horizontal planks and sparse iron nails, no fine all-over wood grain.\nNatural rock: remains the darkest quadrant, medium dark blue-slate mineral faces (approximately #394953 to #53616a), grouped warm chalk facets (approximately #948d76), restrained irregular black fissures. Not cobblestone, not regular bricks.\nAll four are FLAT DIFFUSE ALBEDO surface swatches: no directional lighting sweep, 3D perspective, glow, water, outside scene, platform silhouettes, characters, objects placed on the surface, text, symbols, UI, lines dividing quadrants or borders. Keep balanced detail to every tile edge so each material repeats without a visible frame. No green wash, neon, smooth painting or photorealistic noise. Do not change the approved slate/chalk/copper/timber direction. Output a square PNG.",
+  "tool": "built-in image_gen",
+  "type": "style-transfer",
+  "referenceImages": [
+    ".impeccable/assets/living-descent/sources/terrain-atlas-first-logical.png"
+  ],
+  "role": "opaque live-terrain albedo atlas; simulation retains collision authority",
+  "requestedSourceDimensions": [
+    1024,
+    1024
+  ],
+  "outputDimensions": [
+    256,
+    256
+  ],
+  "quadrants": [
+    {
+      "id": "slate-masonry",
+      "material": "wet slate masonry and chalk",
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "id": "copper-brass",
+      "material": "corroded copper and brass plates",
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "id": "wood",
+      "material": "worn timber and iron nail details",
+      "x": 0,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "id": "mineral-rock",
+      "material": "dark natural mineral rock",
+      "x": 128,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    }
+  ],
+  "compositionReferences": [
+    ".impeccable/mocks/sluice.png",
+    ".impeccable/mocks/web-gallery.png"
+  ],
+  "promptHistory": [
+    "docs/living-descent-assets/prompts/terrain-atlas-initial.json"
+  ],
+  "sourcePath": ".impeccable/assets/living-descent/sources/terrain-atlas-refined-original.png",
+  "sourceDimensions": [
+    1254,
+    1254
+  ],
+  "outputPath": "public/assets/living-descent/terrain-atlas.png",
+  "conversion": {
+    "tool": "Node Sharp",
+    "operation": "Nearest-neighbor resize from square 1254x1254 source to 256x256 PNG; compressionLevel 9.",
+    "contentChanges": "No painting, source-composition crop, alpha manipulation or palette conversion."
+  },
+  "sampling": "Each quadrant is a separate 128x128 repeat tile. Wrap world-cell coordinates within the selected quadrant. Use nearest filtering and disable mipmaps to avoid material bleed.",
+  "collisionAuthority": "Simulation grid clips every textured pixel and owns terrain shape, mutation, topology and collision. Atlas is opaque surface albedo only.",
+  "qaStatus": "accepted",
+  "qaEvidence": ".impeccable/assets/living-descent/sources/terrain-atlas-tiling-review.png",
+  "qaNotes": "Final atlas and independent 2x2 repetition of every material inspected at logical resolution. No added outer frame, gutter, text, scene, characters or visible lighting vignette. Runtime exposure/lighting remain implementation checks.",
+  "nativeGenerationLimits": "Built-in generator returned 1254x1254 rather than requested 1024x1024. No claim of an exactly restricted 32-color palette."
+}

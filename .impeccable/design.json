@@ -1,0 +1,325 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-05T06:33:15.377Z",
+  "title": "Design System: Alchemist's Descent",
+  "extensions": {
+    "colorMeta": {
+      "works-copper": {
+        "role": "primary",
+        "displayName": "Works copper"
+      },
+      "entry-action": {
+        "role": "primary",
+        "displayName": "Warm brass action"
+      },
+      "entry-hover": {
+        "role": "primary",
+        "displayName": "Warm hover"
+      },
+      "title-brass": {
+        "role": "primary",
+        "displayName": "Title brass"
+      },
+      "focus-mint": {
+        "role": "secondary",
+        "displayName": "Focus mint"
+      },
+      "water-surface": {
+        "role": "secondary",
+        "displayName": "Water surface"
+      },
+      "water-depth": {
+        "role": "secondary",
+        "displayName": "Water depth"
+      },
+      "health": {
+        "role": "secondary",
+        "displayName": "Health"
+      },
+      "mana": {
+        "role": "secondary",
+        "displayName": "Mana"
+      },
+      "levitation": {
+        "role": "secondary",
+        "displayName": "Levitation"
+      },
+      "flask-active": {
+        "role": "secondary",
+        "displayName": "Active flask"
+      },
+      "works-ink": {
+        "role": "neutral",
+        "displayName": "Works ink"
+      },
+      "works-paper": {
+        "role": "neutral",
+        "displayName": "Works paper"
+      },
+      "viewport": {
+        "role": "neutral",
+        "displayName": "Viewport slate"
+      },
+      "settings-surface": {
+        "role": "neutral",
+        "displayName": "Settings surface"
+      },
+      "settings-control": {
+        "role": "neutral",
+        "displayName": "Settings control"
+      },
+      "settings-control-text": {
+        "role": "neutral",
+        "displayName": "Settings control text"
+      },
+      "pause-surface": {
+        "role": "neutral",
+        "displayName": "Pause veil"
+      },
+      "pause-button": {
+        "role": "neutral",
+        "displayName": "Pause button"
+      },
+      "pause-button-text": {
+        "role": "neutral",
+        "displayName": "Pause button text"
+      },
+      "pause-button-hover": {
+        "role": "neutral",
+        "displayName": "Pause button hover"
+      },
+      "pause-button-hover-text": {
+        "role": "neutral",
+        "displayName": "Pause button hover text"
+      },
+      "objective-text": {
+        "role": "neutral",
+        "displayName": "Objective text"
+      },
+      "caption-text": {
+        "role": "neutral",
+        "displayName": "Sound caption text"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Entry display",
+        "purpose": "Entry title with its own width and short-height adaptations."
+      },
+      "headline": {
+        "displayName": "Pause headline",
+        "purpose": "Take a breath; this source size is independent of text-scale."
+      },
+      "title": {
+        "displayName": "Settings title",
+        "purpose": "Native comfort-dialog heading; responds to text-scale and the compact breakpoint."
+      },
+      "room-title": {
+        "displayName": "Room title",
+        "purpose": "Current location above the objective."
+      },
+      "body": {
+        "displayName": "Operating body",
+        "purpose": "Settings content and ordinary controls."
+      },
+      "body-entry": {
+        "displayName": "Entry body",
+        "purpose": "Introductory text with a 38ch measure."
+      },
+      "label": {
+        "displayName": "Vital label",
+        "purpose": "Short labels beside the vital tracks."
+      },
+      "action-entry": {
+        "displayName": "Leading entry action",
+        "purpose": "First visible Begin or Continue control."
+      },
+      "action-resume": {
+        "displayName": "Resume action",
+        "purpose": "Primary pause control."
+      },
+      "action-secondary": {
+        "displayName": "Pause action",
+        "purpose": "Outlined pause-action group."
+      }
+    },
+    "shadows": [
+      {
+        "name": "field-note-text",
+        "value": "0 1px 4px #071014",
+        "purpose": "Text shadow supporting contextual field notes against gameplay."
+      },
+      {
+        "name": "sound-caption-text",
+        "value": "0 1px 3px #071014",
+        "purpose": "Text shadow for the sound report below the objective."
+      },
+      {
+        "name": "flask-quantity-text",
+        "value": "1px 1px #112026",
+        "purpose": "Small text shadow on runtime bottle quantities."
+      }
+    ],
+    "motion": [
+      {
+        "name": "vital-fill",
+        "value": "none",
+        "purpose": "Play vital widths update directly; their inherited transition is removed."
+      },
+      {
+        "name": "flask-fill",
+        "value": "height 0.15s steps(5, end)",
+        "purpose": "Inherited material quantity change inside the bottle."
+      },
+      {
+        "name": "toast-fade",
+        "value": "toast-fade 2.6s ease forwards",
+        "purpose": "Inherited toast lifetime; reduced flashes disables this animation."
+      },
+      {
+        "name": "sound-caption-lifetime",
+        "value": "1500ms",
+        "purpose": "One creature report remains below the objective before the HUD clears it."
+      },
+      {
+        "name": "reduced-motion-duration",
+        "value": "0.01ms",
+        "purpose": "Operating-system reduced motion overrides CSS animation and transition durations."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-width",
+        "value": "760px"
+      },
+      {
+        "name": "short-height",
+        "value": "600px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Leading entry action",
+      "kind": "button",
+      "refersTo": "entry-primary",
+      "description": "Begin or Continue, whichever is the first visible expedition action; opening the entry focuses this button.",
+      "html": "<button class=\"ds-entry-primary\" type=\"button\">Begin the descent</button>",
+      "css": ".ds-entry-primary { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif; color: var(--works-paper, #e6dfca); border: 0; border-radius: 0; background: transparent; padding: 11px 0; text-align: left; cursor: pointer; font-size: calc(15px * var(--text-scale, 1)); } .ds-entry-primary:hover { color: #fff2ce; } .ds-entry-primary:disabled { opacity: 0.6; cursor: wait; } .ds-entry-primary:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; } @media (max-height: 600px) { .ds-entry-primary { padding-top: 7px; padding-bottom: 7px; } } .ds-entry-primary { color: #f2e3b6; border-bottom: 1px solid #ab9061; padding-right: 35px; font-size: calc(21px * var(--text-scale, 1)); }"
+    },
+    {
+      "name": "Secondary entry action",
+      "kind": "button",
+      "refersTo": "entry-secondary",
+      "description": "Open text control for Controls & comfort or a secondary launch action.",
+      "html": "<button class=\"ds-entry-secondary\" type=\"button\">Controls &amp; comfort</button>",
+      "css": ".ds-entry-secondary { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif; color: var(--works-paper, #e6dfca); border: 0; border-radius: 0; background: transparent; padding: 11px 0; text-align: left; cursor: pointer; font-size: calc(15px * var(--text-scale, 1)); } .ds-entry-secondary:hover { color: #fff2ce; } .ds-entry-secondary:disabled { opacity: 0.6; cursor: wait; } .ds-entry-secondary:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; } @media (max-height: 600px) { .ds-entry-secondary { padding-top: 7px; padding-bottom: 7px; } }"
+    },
+    {
+      "name": "Resume descent",
+      "kind": "button",
+      "refersTo": "pause-primary",
+      "description": "The larger, separately focused action above the pause action group; the source has no extra hover treatment.",
+      "html": "<button class=\"ds-pause-primary\" type=\"button\">Resume descent</button>",
+      "css": ".ds-pause-primary { margin: 16px 0 12px; color: #f2e3b6; border: 0; border-bottom: 1px solid #bd9460; border-radius: 0; background: none; padding: 12px 36px; font: 400 calc(20px * var(--text-scale, 1))/1.3 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-pause-primary:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; }"
+    },
+    {
+      "name": "Pause action",
+      "kind": "button",
+      "refersTo": "pause-secondary",
+      "description": "Outlined actions beneath Resume, including Restart level and Controls & comfort.",
+      "html": "<button class=\"ds-pause-secondary\" type=\"button\">Restart level</button>",
+      "css": ".ds-pause-secondary { color: #d4d8c3; border: 1px solid #7b8c785c; border-radius: 0; background: #1b2a2b; padding: 12px 18px; letter-spacing: 0; font: 400 calc(14px * var(--text-scale, 1))/1.3 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-pause-secondary:hover { background: #35433a; color: #f3e9c8; } .ds-pause-secondary:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; }"
+    },
+    {
+      "name": "Settings button",
+      "kind": "button",
+      "refersTo": "settings-button",
+      "description": "Ordinary native settings action. No separate hover color is declared in the source.",
+      "html": "<button class=\"ds-settings-button\" type=\"button\">Restore controls</button>",
+      "css": ".ds-settings-button { font: 400 calc(14px * var(--text-scale, 1))/1.5 ui-sans-serif, system-ui, sans-serif; background: #23332f; color: #e0dcc5; border: 1px solid #70816b; border-radius: 0; padding: 9px 12px; cursor: pointer; } .ds-settings-button:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; }"
+    },
+    {
+      "name": "Text-size field",
+      "kind": "input",
+      "refersTo": "settings-select",
+      "description": "Native labeled select with the three implemented comfort values; the specimen does not persist preferences.",
+      "html": "<label class=\"ds-text-size\">Text size<select class=\"ds-settings-select\" name=\"textScale\"><option value=\"1\">Standard</option><option value=\"1.15\">Large</option><option value=\"1.3\">Larger</option></select></label>",
+      "css": ".ds-text-size { display: flex; gap: 12px; align-items: center; color: var(--works-paper, #e6dfca); font: 400 calc(14px * var(--text-scale, 1))/1.5 ui-sans-serif, system-ui, sans-serif; } .ds-settings-select { margin-left: auto; } .ds-settings-select { font: 400 calc(14px * var(--text-scale, 1))/1.5 ui-sans-serif, system-ui, sans-serif; background: #23332f; color: #e0dcc5; border: 1px solid #70816b; border-radius: 0; padding: 9px 12px; cursor: pointer; } .ds-settings-select:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; }"
+    },
+    {
+      "name": "Expedition navigation",
+      "kind": "nav",
+      "refersTo": "entry-navigation",
+      "description": "The saved-expedition state places Continue first, then Start a new expedition and Controls & comfort.",
+      "html": "<nav class=\"ds-entry-nav\" aria-label=\"Expedition\"><button class=\"ds-nav-action ds-nav-primary\" type=\"button\">Continue your descent</button><button class=\"ds-nav-action\" type=\"button\">Start a new expedition</button><button class=\"ds-nav-action\" type=\"button\">Controls &amp; comfort</button></nav>",
+      "css": ".ds-entry-nav { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; color: var(--works-paper, #e6dfca); } .ds-nav-action { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif; color: var(--works-paper, #e6dfca); border: 0; border-radius: 0; background: transparent; padding: 11px 0; text-align: left; cursor: pointer; font-size: calc(15px * var(--text-scale, 1)); } .ds-nav-action:hover { color: #fff2ce; } .ds-nav-action:disabled { opacity: 0.6; cursor: wait; } .ds-nav-action:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; } @media (max-height: 600px) { .ds-nav-action { padding-top: 7px; padding-bottom: 7px; } } .ds-nav-primary { color: #f2e3b6; border-bottom: 1px solid #ab9061; padding-right: 35px; font-size: calc(21px * var(--text-scale, 1)); }"
+    },
+    {
+      "name": "Settings surface",
+      "kind": "custom",
+      "refersTo": "settings-dialog",
+      "description": "Static specimen of the native dialog's content, including native checkboxes and a binding row. Runtime uses showModal, pauses play and restores focus.",
+      "html": "<section class=\"ds-settings-dialog\" aria-labelledby=\"ds-settings-title\"><div class=\"ds-settings-heading\"><h2 class=\"ds-settings-title\" id=\"ds-settings-title\">Make yourself at home</h2><button class=\"ds-settings-close\" type=\"button\">Close</button></div><div class=\"ds-settings-options\"><label><input type=\"checkbox\" name=\"reducedFlashes\"> Reduce flashes and pulses</label><label><input type=\"checkbox\" name=\"cameraShake\" checked> Camera shake</label><label><input type=\"checkbox\" name=\"highReadability\"> High-readability lighting</label><label><input type=\"checkbox\" name=\"creatureCaptions\"> Creature sound captions</label></div><h3 class=\"ds-settings-subtitle\">Keyboard</h3><p class=\"ds-settings-copy\">Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask.</p><div class=\"ds-binding-list\"><button class=\"ds-binding\" type=\"button\"><span>Interact</span><kbd>E</kbd></button></div></section>",
+      "css": ".ds-settings-dialog { font: 400 calc(14px * var(--text-scale, 1))/1.5 ui-sans-serif, system-ui, sans-serif; background: #16242a; color: var(--works-paper, #e6dfca); border: 1px solid #768271; padding: 28px; width: min(600px, calc(100vw - 72px)); max-height: calc(100dvh - 90px); overflow: auto; border-radius: 0; } .ds-settings-dialog::backdrop { background: #071319d9; } .ds-settings-heading { display: flex; gap: 20px; align-items: flex-start; justify-content: space-between; } .ds-settings-title { margin: 0 0 28px; font: 500 calc(36px * var(--text-scale, 1))/1.05 'Cormorant Garamond', Georgia, serif; } .ds-settings-subtitle { margin: 26px 0 8px; font-size: calc(18px * var(--text-scale, 1)); font-weight: 500; } .ds-settings-copy { color: #bdc9bb; font-size: calc(13px * var(--text-scale, 1)); line-height: 1.55; max-width: 65ch; } .ds-settings-options { display: grid; gap: 16px; } .ds-settings-options label { display: flex; gap: 12px; align-items: center; font-size: inherit; } .ds-binding-list { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 18px; } .ds-binding { font: inherit; color: #e0dcc5; border: 0; border-bottom: 1px solid #53674e; background: none; display: flex; justify-content: space-between; gap: 15px; padding: 9px 0; font-size: calc(13px * var(--text-scale, 1)); text-transform: capitalize; cursor: pointer; } .ds-binding kbd { font: inherit; color: #e5c793; } .ds-binding.ds-listening { background: #34433a; } .ds-binding:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; } .ds-settings-close { font: 400 calc(14px * var(--text-scale, 1))/1.5 ui-sans-serif, system-ui, sans-serif; background: #23332f; color: #e0dcc5; border: 1px solid #70816b; border-radius: 0; padding: 9px 12px; cursor: pointer; } .ds-settings-close:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; } @media (max-width: 760px) { .ds-settings-dialog { padding: 20px; } .ds-settings-title { font-size: calc(30px * var(--text-scale, 1)); } }"
+    },
+    {
+      "name": "Four-flask belt",
+      "kind": "custom",
+      "refersTo": "flask-belt",
+      "description": "Four independent bottle slots with keys, quantities and material names. This is the empty-belt state; material fills are runtime colors.",
+      "html": "<div class=\"ds-flask-belt\" aria-label=\"Potion belt\"><div class=\"ds-flask-slot ds-active\" title=\"Flask 1: Empty\"><div class=\"ds-flask-fill\"></div><div class=\"ds-flask-key\">3</div><div class=\"ds-flask-count\"></div><div class=\"ds-flask-name\">Empty</div></div><div class=\"ds-flask-slot\" title=\"Flask 2: Empty\"><div class=\"ds-flask-fill\"></div><div class=\"ds-flask-key\">4</div><div class=\"ds-flask-count\"></div><div class=\"ds-flask-name\">Empty</div></div><div class=\"ds-flask-slot\" title=\"Flask 3: Empty\"><div class=\"ds-flask-fill\"></div><div class=\"ds-flask-key\">5</div><div class=\"ds-flask-count\"></div><div class=\"ds-flask-name\">Empty</div></div><div class=\"ds-flask-slot\" title=\"Flask 4: Empty\"><div class=\"ds-flask-fill\"></div><div class=\"ds-flask-key\">6</div><div class=\"ds-flask-count\"></div><div class=\"ds-flask-name\">Empty</div></div></div>",
+      "css": ".ds-flask-belt { display: flex; width: max-content; gap: 8px; margin: 3px 0 16px; } .ds-flask-slot { position: relative; min-width: 0; width: calc(56px * var(--text-scale, 1)); flex: 0 0 calc(56px * var(--text-scale, 1)); height: 30px; border: 0; border-bottom: 1px solid #667b70; background: transparent; border-radius: 0; box-shadow: none; overflow: visible; } .ds-flask-slot::before { content: ''; position: absolute; width: 8px; height: 5px; left: calc(50% - 4px); top: 1px; border: 1px solid #b5c2b7; } .ds-flask-slot::after { content: ''; position: absolute; left: 25%; right: 25%; top: 7px; bottom: 4px; border: 1px solid #b5c2b7; border-radius: 4px 4px 6px 6px; } .ds-flask-slot.ds-active { border-bottom-color: #e9d49c; } .ds-flask-fill { position: absolute; left: 27%; right: 0; width: 46%; bottom: 5px; height: 0; max-height: 17px; background: #b45309; border-radius: 3px 3px 5px 5px; transition: height 0.15s steps(5, end); image-rendering: pixelated; } .ds-flask-key { position: absolute; left: 2px; top: 8px; font: 900 calc(10px * var(--text-scale, 1))/1 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: #d7dfcf; text-shadow: 0 1px 2px #000; } .ds-flask-count { position: absolute; right: 0; bottom: 3px; font: 900 calc(10px * var(--text-scale, 1))/1 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: #eee3c9; text-shadow: 1px 1px #112026; } .ds-flask-name { position: absolute; top: 32px; width: 100%; text-align: center; font: 400 calc(10px * var(--text-scale, 1))/1.2 ui-sans-serif, system-ui, sans-serif; color: #cad5c5; white-space: nowrap; } @media (max-width: 760px) { .ds-flask-belt { width: auto; } .ds-flask-slot { width: calc(48px * var(--text-scale, 1)); flex-basis: calc(48px * var(--text-scale, 1)); } } @media (prefers-reduced-motion: reduce) { .ds-flask-fill { transition-duration: 0.01ms !important; } }"
+    },
+    {
+      "name": "Room objective and flowing caption",
+      "kind": "custom",
+      "refersTo": "objective-caption",
+      "description": "The Sluice objective and an enabled sound caption. The caption follows wrapped text; runtime clears reports after 1500ms.",
+      "html": "<div class=\"ds-objective-group\"><div class=\"ds-room-title\">The Sluice</div><div class=\"ds-objective-row\"><div class=\"ds-objective\">Drain the sluice, freeze a crossing, or take the high ledges.</div></div><div class=\"ds-sound-caption\" aria-live=\"polite\">A body sliding through water · left</div></div>",
+      "css": ".ds-objective-group { max-width: min(360px, 44%); background: transparent; border: 0; box-shadow: none; padding: 0; text-align: right; text-shadow: 0 1px 4px #000; font-family: ui-sans-serif, system-ui, sans-serif; } .ds-room-title { font: 500 calc(23px * var(--text-scale, 1))/1.1 'Cormorant Garamond', Georgia, serif; letter-spacing: 0; color: #e1d9c3; } .ds-objective-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 4px; } .ds-objective { margin-top: 7px; font-size: calc(12px * var(--text-scale, 1)); line-height: 1.45; letter-spacing: 0; font-weight: 400; color: #c1d0bd; text-transform: none; } .ds-sound-caption { position: static; margin-top: 10px; color: #dfd7bf; font: 400 calc(12px * var(--text-scale, 1))/1.5 ui-sans-serif, system-ui, sans-serif; text-shadow: 0 1px 3px #071014; } .ds-sound-caption:empty { display: none; } @media (max-width: 760px) { .ds-objective-group { max-width: 43%; } .ds-room-title { font-size: calc(18px * var(--text-scale, 1)); } .ds-objective, .ds-sound-caption { font-size: calc(10px * var(--text-scale, 1)); } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Living Descent",
+    "overview": "The Living Descent is a wet, corroded alchemical refinery. Slate, mineral deposits, timber and copper carry clustered pixel detail; warm refuge light and pale living bodies establish local points of attention. Water, terrain, creatures and working machinery remain independent, mutable parts of the game. Distant refinery imagery provides atmosphere and depth.\n\nThe interface uses thin, square controls, warm pale lettering and quiet corners around the scene. Cormorant Garamond gives entry and room titles their character; system text carries explanations and controls. This document extracts the implemented entry, expedition HUD, pause and comfort settings. The boot screen, workshops and inherited overlays retain additional styles outside this vocabulary.\n\nSource authority is [Living Descent CSS](src/styles/living-descent.css), its inherited [base CSS](src/styles/main.css), [entry markup](index.html), and the listed components below. The [surface brief](.impeccable/surfaces/src-game-game-ts.md) owns this expedition's composition; the [quality bar](.impeccable/quality-bar.md) and [asset manifest](docs/living-descent-asset-manifest.md) record the material direction. The generated studies are nonliteral references. This source extraction does not establish motion, listening, unaided-player or cross-hardware acceptance; the bounded visual finish verdict closed its five reported repairs. Gameplay architecture remains in [docs/DESIGN.md](docs/DESIGN.md).",
+    "keyCharacteristics": [
+      "Clustered wet stone, worn copper and connected timber grain.",
+      "Live material boundaries and articulated bodies above subdued distant scenery.",
+      "Serif titles paired with plain operating text.",
+      "Square, lightly bordered controls and sparse corner HUD groups.",
+      "Contextual input cues, independent flask slots and captions that follow their objective."
+    ],
+    "rules": [
+      {
+        "name": "The Local Contrast Rule",
+        "body": "Live terrain lips, creature anatomy and actionable machinery retain readable local contrast above the distant refinery layers.",
+        "section": "colors"
+      },
+      {
+        "name": "The Title and Instruction Rule",
+        "body": "Cormorant carries the entry, room, pause and settings headings. Explanations and ordinary controls use their defined system-sans roles; compact flask keys and quantities retain their source monospace treatment.",
+        "section": "typography"
+      },
+      {
+        "name": "The Live Boundary Rule",
+        "body": "Terrain albedo samples the real cell grid and preserves excavation and saved color overrides. Decorative refinery imagery supplies no collision or interaction; valve, refuge and pipe artwork follows real runtime anchors.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** keep terrain texture and contact highlights attached to actual cells, including excavated edges.",
+      "**Do** preserve the serif-title and system-text roles on the documented player surfaces.",
+      "**Do** use semantic buttons, native settings controls and the visible mint keyboard-focus treatment.",
+      "**Do** keep four independently sized flask slots and place captions after the complete objective in normal flow.",
+      "**Do** retain creature anatomy and local contrast during habitat lighting and hit responses."
+    ],
+    "donts": [
+      "**Don't** bake controls, labels, collision or interactive creatures into refinery imagery.",
+      "**Don't** smooth the cell-material atlas or sample across its material-quadrant boundaries.",
+      "**Don't** place the valve cue independently of the handwheel's runtime position.",
+      "**Don't** replace the shaded creature hit response with a uniform body-filling white flash.",
+      "**Don't** treat generated studies, still-frame finish review or simulated input checks as human or hardware acceptance."
+    ]
+  }
+}

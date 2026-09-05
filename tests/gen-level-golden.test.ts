@@ -161,7 +161,7 @@ describe('marsh-gas ceiling pockets', () => {
     // which may legitimately neighbour lava veins. The vug lacing's own
     // lace-time guard skips hot-adjacent cells; the property asserted here
     // is that the seams land at all.)
-    const { world } = generateLevelState(LEVELS.d1, 1337);
+    const { world } = generateLevelState(LEVELS.d2, 1337);
     let seams = 0;
     for (let i = 0; i < world.types.length; i++) {
       if (world.types[i] === Cell.Gunpowder) seams++;
@@ -178,7 +178,7 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '4ef69480' }, // re-recorded: gunpowder seams in ore/coal vugs
+  { id: 'd1', seed: 1337, hash: 'f1237011' }, // GEN_VERSION 37: authored Breathing Works
   { id: 'd4', seed: 1337, hash: '880b8755' }, // re-recorded: gas pockets + gunpowder seams
   { id: 'd8', seed: 1337, hash: '51e6187e' }, // re-recorded: lair settle/rim + gunpowder seams
   { id: 'vault', seed: 1337, hash: '0a76f43a' }, // re-recorded: gunpowder seams in ore/coal vugs
@@ -217,29 +217,18 @@ describe('full generateLevel findability regressions', () => {
   });
 });
 
-describe('D1 Spell Lab generation', () => {
+describe('D1 physical alchemy routes', () => {
   for (const seed of [1, 42, 1337]) {
     it(`places all required real-cell teaching stations at seed ${seed}`, () => {
       const level = generateLevelState(LEVELS.d1, seed);
-      const lab = level.spellLab;
-      expect(lab).toBeTruthy();
-      expect(cellsNear(level.world, lab!, Cell.Sand, 28)).toBeGreaterThan(0);
-      expect(cellsNear(level.world, lab!, Cell.Wood, 28)).toBeGreaterThan(0);
-      expect(cellsNear(level.world, lab!, Cell.Fire, 28)).toBeGreaterThan(0);
-      expect(cellsNear(level.world, lab!, Cell.Water, 28)).toBeGreaterThan(0);
-      expect(cellsNear(level.world, lab!, Cell.Lava, 28)).toBeGreaterThan(0);
-      expect(level.mechanisms.some((m) =>
-        m.kind === 'chargelatch' &&
-        Math.abs(m.x - lab!.x) < 30 &&
-        Math.abs(m.y - lab!.y) < 20,
-      )).toBe(true);
-      expect(level.pickups.some((p) =>
-        !p.taken &&
-        p.kind === 'tome' &&
-        p.data.card === 'heavy' &&
-        Math.abs(p.x - lab!.rewardX) <= 2 &&
-        Math.abs(p.y - lab!.rewardY) <= 2,
-      )).toBe(true);
+      expect(level.spellLab).toBeNull();
+      expect(cellsNear(level.world, { x: 680, y: 410 }, Cell.Water, 28)).toBeGreaterThan(2000);
+      expect(cellsNear(level.world, { x: 602, y: 343 }, Cell.Wood, 28)).toBeGreaterThan(100);
+      const lever = level.mechanisms.find(m => m.kind === 'lever')!;
+      const valve = level.mechanisms.find(m => m.kind === 'valve')!;
+      expect(lever.targetId).toBe(valve.id);
+      expect(level.world.type(524, 382)).toBe(Cell.Metal);
+      expect(level.pickups.find(p => p.kind === 'tome' && p.data.card === 'heavy')!.x).toBeGreaterThan(800);
     });
   }
 });
@@ -299,12 +288,14 @@ describe('generated organic encounter lairs', () => {
 
 describe('D1 bench progression geometry', () => {
   for (const seed of [1, 42, 1337]) {
-    it(`places the only Refuge bench near spawn and seals the old bottom shaft at seed ${seed}`, () => {
+    it(`places a sheltered midpoint Refuge and a material return bridge at seed ${seed}`, () => {
       const level = generateLevelState(LEVELS.d1, seed);
       expect(level.refuge).toBeTruthy();
       const refuge = level.refuge!;
       const dist = Math.hypot(refuge.x - level.spawn.x, refuge.y - level.spawn.y);
-      expect(dist).toBeLessThanOrEqual(150);
+      expect(dist).toBeGreaterThan(600);
+      expect(level.world.type(857, 744)).toBe(Cell.Stone);
+      expect(level.world.type(370, 315)).toBe(Cell.Wood);
       expect(emptyBottomExitCells(level)).toBe(0);
     });
   }
@@ -316,16 +307,14 @@ describe('D1 bench progression geometry', () => {
   });
 });
 
-describe('D1 Noita-style surface intro', () => {
+describe('D1 sheltered intake intro', () => {
   for (const seed of [1, 42, 1337]) {
-    it(`starts the wizard on a daylit surface above an open cave mouth at seed ${seed}`, () => {
+    it(`starts on dry ground with space to learn movement at seed ${seed}`, () => {
       const level = generateLevelState(LEVELS.d1, seed);
-      expect(level.surfaceSpawn).toBeTruthy();
-      const surf = level.surfaceSpawn!;
+      expect(level.surfaceSpawn).toBeNull();
+      const surf = level.spawn;
       const W = level.world.width;
-      // The surface start sits well above the cave spawn chamber.
-      expect(surf.y).toBeLessThan(level.spawn.y - 40);
-      // Open daylight sky directly overhead — the wizard begins outdoors.
+      // The intake has unobstructed jump clearance and a safe starting floor.
       expect(level.world.types[surf.x + (surf.y - 24) * W]).toBe(Cell.Empty);
       expect(level.world.types[surf.x + (surf.y - 60) * W]).toBe(Cell.Empty);
       // The wizard stands on solid ground.
@@ -340,7 +329,7 @@ describe('D1 Noita-style surface intro', () => {
     });
   }
 
-  it('only caps D1 with a surface — deeper levels have none', () => {
+  it('keeps deeper levels underground', () => {
     for (const id of ['d2', 'd4', 'd8', 'vault'] as const) {
       expect(generateLevelState(LEVELS[id], 1337).surfaceSpawn).toBeNull();
     }

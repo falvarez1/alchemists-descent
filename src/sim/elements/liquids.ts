@@ -79,7 +79,8 @@ function waterFeedsLivingGrowth(ctx: Ctx, x: number, y: number): boolean {
     const nx = x + o[0];
     const ny = y + o[1];
     if (!w.inBounds(nx, ny)) continue;
-    const n = w.types[w.idx(nx, ny)];
+    const ni = w.idx(nx, ny), n = w.types[ni];
+    if ((n === Cell.Vines || n === Cell.Moss || n === Cell.Fungus) && w.life[ni] < 0) continue;
     if (n === Cell.Vines && simRandom() < 0.08) {
       w.replaceCellAt(ci, Cell.Vines, vineColor());
       w.life[ci] = 65 + Math.floor(simRandom() * 50);
@@ -312,6 +313,7 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
       const ti = w.idx(tx, ty);
       if (w.types[ti] === Cell.Oil && w.life[ti] === 0 && simRandom() < P.igniteChance!) {
         w.life[ti] = P.burnDuration! + Math.floor(simRandom() * 30);
+        w.activity.touchIndex(ti);
       }
     }
     // Greasy black smoke curls off the slick — a light haze while it burns hot,
@@ -362,6 +364,7 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
       ) {
         if (simRandom() < P.igniteChance!) {
           w.life[ci] = P.burnDuration! + Math.floor(simRandom() * 30);
+          w.activity.touchIndex(ci);
           return;
         }
         break; // adjacent to flame but didn't catch this frame — let it flow, retry next tick

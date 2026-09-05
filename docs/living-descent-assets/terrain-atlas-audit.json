@@ -1,0 +1,104 @@
+{
+  "file": "public/assets/living-descent/terrain-atlas.png",
+  "revision": "finish-review-round1-material-fix",
+  "width": 256,
+  "height": 256,
+  "channels": 3,
+  "hasAlpha": false,
+  "bytes": 137466,
+  "sha256": "70251f730e78c4f724a7527f246f4abff38e7c2bb067ab2c576fae487e2602a4",
+  "transparentPixels": 0,
+  "partialAlphaPixels": 0,
+  "embeddedPromptMatchesSidecar": true,
+  "changedPixelsFromRound1": 65536,
+  "quadrantContractUnchanged": true,
+  "quadrants": [
+    {
+      "id": "slate-masonry",
+      "material": "wet slate masonry and chalk",
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 128,
+      "averageRgb": [
+        41.42,
+        45.4,
+        47.56
+      ],
+      "meanInteriorNeighborRgbDelta": 9.347,
+      "meanWrappedEdgeRgbDelta": 16.34,
+      "previousAverageRgb": [
+        54.39,
+        62.95,
+        68.34
+      ],
+      "previousMeanWrappedEdgeRgbDelta": 9.104
+    },
+    {
+      "id": "copper-brass",
+      "material": "corroded copper and brass plates",
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 128,
+      "averageRgb": [
+        64.37,
+        40.82,
+        25.79
+      ],
+      "meanInteriorNeighborRgbDelta": 6.64,
+      "meanWrappedEdgeRgbDelta": 11.458,
+      "previousAverageRgb": [
+        81.07,
+        51.96,
+        33.94
+      ],
+      "previousMeanWrappedEdgeRgbDelta": 6.917
+    },
+    {
+      "id": "wood",
+      "material": "worn timber and iron nail details",
+      "x": 0,
+      "y": 128,
+      "width": 128,
+      "height": 128,
+      "averageRgb": [
+        55.04,
+        42.98,
+        32.97
+      ],
+      "meanInteriorNeighborRgbDelta": 7.278,
+      "meanWrappedEdgeRgbDelta": 14.165,
+      "previousAverageRgb": [
+        74.76,
+        57.95,
+        44.66
+      ],
+      "previousMeanWrappedEdgeRgbDelta": 19.673
+    },
+    {
+      "id": "mineral-rock",
+      "material": "dark natural mineral rock",
+      "x": 128,
+      "y": 128,
+      "width": 128,
+      "height": 128,
+      "averageRgb": [
+        37.16,
+        39.55,
+        40.66
+      ],
+      "meanInteriorNeighborRgbDelta": 9.877,
+      "meanWrappedEdgeRgbDelta": 13.777,
+      "previousAverageRgb": [
+        44.52,
+        51.64,
+        55.72
+      ],
+      "previousMeanWrappedEdgeRgbDelta": 8.664
+    }
+  ],
+  "visualEvidence": ".impeccable/assets/living-descent/sources/terrain-atlas-round2-tiling-review.png",
+  "scope": "Single named raster material refinement; no runtime code or other assets edited.",
+  "seamNote": "Edge deltas are diagnostics, not proof of periodic equality. All four materials were inspected in independent 2x2 repeats. Existing 128-cell sampling remains periodic."
+}

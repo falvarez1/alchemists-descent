@@ -13,12 +13,12 @@ export interface ProgressionPacingTuning {
 }
 
 export const PROGRESSION_PACING: ProgressionPacingTuning = {
-  playerStart: 0.74,
-  playerDepthStep: 0.065,
+  playerStart: 1,
+  playerDepthStep: 0,
   playerMax: 1,
   playerBonusMax: 1.08,
-  verticalStart: 0.84,
-  verticalDepthStep: 0.045,
+  verticalStart: 1,
+  verticalDepthStep: 0,
   verticalMax: 1,
   verticalBonusMax: 1.06,
   enemyStart: 0.55,

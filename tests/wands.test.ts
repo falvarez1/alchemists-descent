@@ -448,18 +448,18 @@ describe('wand sentence view', () => {
 });
 
 describe('wand light defaults', () => {
-  it('preserves the shipped player wand light look', () => {
+    it('keeps the wand glow restrained enough to read nearby materials', () => {
     expect(createDefaultWandLightSettings()).toEqual({
-      intensity: 4.6,
+        intensity: 2.4,
       radius: 112,
       r: 1.0,
       g: 0.84,
       b: 0.6,
-      flicker: 0.24,
+        flicker: 0.07,
       fillR: 0.5,
       fillG: 0.45,
       fillB: 0.36,
-      torchIntensity: 5.6,
+        torchIntensity: 3.2,
       torchRadius: 152,
       torchMinFlicker: 1.05,
     });

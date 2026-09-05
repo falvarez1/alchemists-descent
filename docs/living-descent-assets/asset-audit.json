@@ -1,0 +1,38 @@
+{
+  "assets": [
+    {
+      "file": "public/assets/living-descent/refinery-distance.png",
+      "width": 1150,
+      "height": 782,
+      "channels": 3,
+      "hasAlpha": false,
+      "bytes": 462684,
+      "sha256": "b16083e3e79923d194b9af89687a516c41aa305147d55015060bbc7f38fe7471",
+      "transparentPixels": 0,
+      "transparentPercent": 0,
+      "partialAlphaPixels": 0,
+      "opaquePixels": 899300,
+      "central57PercentWidthTransparentPercent": 0,
+      "integer2xBlockMismatches": 0,
+      "embeddedPromptMatchesSidecar": true
+    },
+    {
+      "file": "public/assets/living-descent/refinery-machinery.png",
+      "width": 1150,
+      "height": 782,
+      "channels": 4,
+      "hasAlpha": true,
+      "bytes": 162142,
+      "sha256": "90a3f31e89f2e6b183f8d6b09e0a6bd97ed6717f96c5f343cc23f2de377508bb",
+      "transparentPixels": 732500,
+      "transparentPercent": 81.45224063160235,
+      "partialAlphaPixels": 0,
+      "opaquePixels": 166800,
+      "central57PercentWidthTransparentPercent": 100,
+      "integer2xBlockMismatches": 0,
+      "embeddedPromptMatchesSidecar": true
+    }
+  ],
+  "keyedSourceRgbChangedPixels": 0,
+  "verification": "PNG decode, alpha coverage, complete central clear rectangle, exact 2x pixel blocks, embedded prompt equality, and RGB preservation"
+}
