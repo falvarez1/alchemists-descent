@@ -46,7 +46,12 @@ export type AuthorLinkHandler<T extends AuthorLinkMessageType> = (
 export interface AuthorLinkClientOptions {
   url: string;
   room: string;
-  role: AuthorLinkRole;
+  /**
+   * Presentation role for `hello`. A function is read at each connect, so a
+   * window that opened the Builder after linking reports `builder` on
+   * reconnect instead of the role it happened to have at boot.
+   */
+  role: AuthorLinkRole | (() => AuthorLinkRole);
   build: string;
   clientId: string;
   /** Room token for hosted rooms; omitted locally. */
@@ -294,8 +299,9 @@ export class AuthorLinkClient {
   private readonly onOpen = (): void => {
     this.reconnectDelay = RECONNECT_MIN_MS;
     this.setStatus({ kind: 'connected', detail: undefined });
+    const role = typeof this.options.role === 'function' ? this.options.role() : this.options.role;
     this.send('hello', {
-      role: this.options.role,
+      role,
       build: this.options.build,
       ...(this.options.token ? { token: this.options.token } : {}),
     });

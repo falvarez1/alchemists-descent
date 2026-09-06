@@ -70,6 +70,11 @@ jobs:
           node scripts/verify-debug-tool.mjs http://127.0.0.1:5173/
           node scripts/verify-builder-expedition.mjs http://127.0.0.1:5173/
           npm run verify:findability -- http://127.0.0.1:5173/
+          # Two browser contexts against this dev server: the /builder.html
+          # editor route and the play route, syncing over the relay the dev
+          # server mounts. The editor route once sat broken for weeks because
+          # only unit tests ran here.
+          npm run verify:authorlink -- http://127.0.0.1:5173/
 
       - name: Builder production lazy-load network probe
         env:

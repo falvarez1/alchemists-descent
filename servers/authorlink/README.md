@@ -66,6 +66,22 @@ Two operational notes:
   never deletes secrets, so deploy first and set secrets after if you are
   moving a value from one to the other.
 
+## Client builds that talk to it
+
+The relay origin and token are BUILD-TIME env only (never the URL):
+
+```powershell
+# designer's local authoring build: full read/write
+$env:VITE_AUTHORLINK_URL = "wss://alchemists-descent-authorlink.ajar-red.workers.dev"
+$env:VITE_AUTHORLINK_TOKEN = "<the ROOM_TOKEN secret>"
+npm run build:authoring
+```
+
+The GitHub Pages play build bakes the URL in (`.github/workflows/deploy.yml`,
+overridable with a repository variable `AUTHORLINK_URL`) and **no token**: a
+playtester on Pages who opens `?link=<room>` joins read-only, receives the
+designer's edits, and their own tuning never leaves their window.
+
 ## Cloudflare deploy
 
 Requires a Cloudflare account and `wrangler`. **Nothing here runs or bills

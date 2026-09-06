@@ -40,6 +40,14 @@ jobs:
         run: npm run build
         env:
           GH_PAGES: 'true'
+          # The hosted AuthorLink relay (servers/authorlink/README.md). Baked in
+          # at build time because the relay origin must never come from the
+          # URL; without it a Pages build asked to `?link=` would try to open
+          # a socket against github.io and spin on "reconnecting" forever.
+          # A playtester on Pages joins READ-ONLY (the write token is a secret
+          # and never ships in a public build): edits from a designer's local
+          # authoring build reach them, their own tuning does not leave.
+          VITE_AUTHORLINK_URL: ${{ vars.AUTHORLINK_URL || 'wss://alchemists-descent-authorlink.ajar-red.workers.dev' }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

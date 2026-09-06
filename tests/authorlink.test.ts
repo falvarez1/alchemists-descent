@@ -481,6 +481,18 @@ describe('authored set validation', () => {
     expect(isAuthoredSet({ objects: [], links: [] })).toBe(false);
     expect(isAuthoredSet(null)).toBe(false);
   });
+
+  it('validates links, lights and embedded sprites, not just objects', () => {
+    const link = { id: 'l1', kind: 'triggerDoor', fromId: 'a', toId: 'o1' };
+    const light = { id: 'L1', x: 5, y: 6 };
+    const sprite = { id: 's1', w: 8, h: 8, frames: [] };
+    expect(isAuthoredSet({ ...good, links: [link], lights: [light], sprites: [sprite] })).toBe(true);
+    expect(isAuthoredSet({ ...good, links: [{ ...link, toId: undefined }] })).toBe(false);
+    expect(isAuthoredSet({ ...good, links: [{ ...link, kind: 7 }] })).toBe(false);
+    expect(isAuthoredSet({ ...good, lights: [{ id: 'L1', x: 'five', y: 6 }] })).toBe(false);
+    expect(isAuthoredSet({ ...good, sprites: [{ id: 's1', w: 8 }] })).toBe(false);
+    expect(isAuthoredSet({ ...good, sprites: 'nope' })).toBe(false);
+  });
 });
 
 /* ===================== storage owner ===================== */
@@ -733,6 +745,45 @@ describe('AuthorLinkClient', () => {
     expect(hello.type).toBe('hello');
     expect(hello.payload.role).toBe('builder');
     expect(hello.protocol).toBe(AUTHORLINK_PROTOCOL);
+    client.dispose();
+  });
+
+  it('reads a live role at each connect, so an editor that opened later says so', () => {
+    // The editor route installs the link BEFORE the Builder opens; a role
+    // captured at construction would announce `sandbox` forever.
+    let role: 'sandbox' | 'builder' = 'sandbox';
+    const sent: string[] = [];
+    let handlers: TransportHandlers | null = null;
+    const transport: SessionTransport = {
+      describe: 'test',
+      state: 'open',
+      open(h) {
+        handlers = h;
+        h.onOpen();
+      },
+      send(data) {
+        sent.push(data);
+        return true;
+      },
+      close() {
+        handlers = null;
+      },
+    };
+    const client = new AuthorLinkClient({
+      url: 'unused://',
+      room: 'local',
+      role: () => role,
+      build: 'test',
+      clientId: 'sandbox-x',
+      transportFactory: () => transport,
+    });
+    client.connect();
+    expect(JSON.parse(sent[0]).payload.role).toBe('sandbox');
+    role = 'builder';
+    handlers!.onClose();
+    // Reconnect goes through a timer; drive a second connect directly.
+    client.connect();
+    expect(JSON.parse(sent[sent.length - 1]).payload.role).toBe('builder');
     client.dispose();
   });
 

@@ -114,6 +114,15 @@ body.builder-open .hud-wrapper { gap: 6px; min-width: 0; }
    outranks the peer count and is the one pill state that is clickable. */
 .authorlink-pill[data-state='mismatch'] { background: #2a1d08; border-color: #9c6a22; color: #fbbf24; cursor: pointer; }
 .authorlink-pill[data-state='mismatch']:hover { background: #3a2809; color: #fde68a; }
+/* Mismatched but THIS window may not pull (it is playing a live level): still
+   amber, still worth seeing, but not a button. */
+.authorlink-pill[data-state='mismatch']:disabled { cursor: default; }
+.authorlink-pill[data-state='mismatch']:disabled:hover { background: #2a1d08; color: #fbbf24; }
+/* Play mode hides the studio header, which would take the pill with it — and
+   the play window is exactly where "your edits are being refused" needs to be
+   visible. The indicator re-parents itself into the canvas while the header is
+   away (above the pause button, clear of the vitals and the objective). */
+.authorlink-pill--floating { position: absolute; right: 28px; bottom: 64px; z-index: 12; pointer-events: auto; }
 /* Standalone Builder route: the left rail has no Sandbox palette to show. */
 .builder-entry-note { font-size: 11px; line-height: 1.7; color: var(--text-muted); padding: 0 4px; }
 .builder-entry-note a { color: #7dd3fc; }

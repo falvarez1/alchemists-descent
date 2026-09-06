@@ -43,6 +43,8 @@
     "verify:determinism": "node scripts/verify-sim-determinism.mjs",
     "verify:tuning-ranges": "node scripts/gen-tuning-ranges.mjs --check",
     "gen:tuning-ranges": "node scripts/gen-tuning-ranges.mjs",
+    "gen:builder-html": "node scripts/gen-builder-html.mjs",
+    "verify:builder-html": "node scripts/gen-builder-html.mjs --check",
     "authorlink:server": "node scripts/authorlink-server.mjs",
     "verify:builder-ux": "node scripts/verify-builder-ux.mjs",
     "verify:builder-responsive": "node scripts/verify-builder-responsive.mjs",

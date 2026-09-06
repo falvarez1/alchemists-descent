@@ -453,6 +453,12 @@ export interface Enemy {
   tumble?: number;
   /** Bat: frames of slime-gummed wings; it drops to the floor and cannot bite. */
   slimed?: number;
+  /**
+   * Id of the authored record (Builder object) this enemy was spawned from,
+   * when any. Lets AuthorLink tear down exactly the enemies a synced document
+   * created and nothing the level generated for itself.
+   */
+  sourceId?: string;
   /** Builder-authored patrol waypoints: un-alerted walkers/hoppers loop
    *  these instead of free-wandering (generated levels never set this). */
   patrol?: Array<[number, number]>;

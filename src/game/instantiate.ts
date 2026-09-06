@@ -199,6 +199,10 @@ export function makeInstantiationSink(): InstantiationSink {
 export function spawnPrefabEnemy(ctx: Ctx, rec: PrefabEnemy): void {
   const e = ctx.enemyCtl.spawn(rec.kind, rec.x, rec.y, { exact: true });
   if (!e) return;
+  // The authored record id travels onto the entity so whoever instantiated
+  // this set can find the enemy again. AuthorLink's teardown matches on it;
+  // without it every re-publish of a document spawned another copy.
+  if (rec.sourceId !== undefined) e.sourceId = rec.sourceId;
   if (rec.sleeping === true && (e.kind === 'bat' || e.kind === 'weaver')) {
     e.sleeping = true;
   }

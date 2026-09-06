@@ -66,6 +66,23 @@ function entryHasBuilderOwnedSource(key, entry) {
   return mapSourcesFor(entry).some((source) => builderOwnedSource.test(source));
 }
 
+// PLAY BUILD (no /builder.html route — `npm run build` without
+// VITE_INCLUDE_BUILDER): the Builder must not exist anywhere in the output,
+// statically OR lazily. That is the whole point of the split, and it is the
+// build CI produces; asking it for a lazy Builder chunk failed every run.
+if (!builderRouteKey) {
+  const leaked = [];
+  for (const [key, entry] of entries) {
+    if (entryHasBuilderOwnedSource(key, entry)) leaked.push(`${key} -> ${entry.file}`);
+  }
+  if (leaked.length > 0) fail(`play build ships Builder/editor source:\n  ${leaked.join('\n  ')}`);
+  console.log(
+    `Builder bundle boundary passed: play build, playerEntry=${entryKey}, no Builder chunk emitted ` +
+      `(${entries.length} manifest entries checked)`,
+  );
+  process.exit(0);
+}
+
 const staticGraph = collectStaticGraph(entryKey);
 const staticBuilderSources = [];
 for (const key of staticGraph) {
@@ -78,11 +95,24 @@ if (staticBuilderSources.length > 0) {
   fail(`initial player graph includes Builder/editor source:\n  ${staticBuilderSources.join('\n  ')}`);
 }
 
+// Walk dynamic imports TRANSITIVELY. The player entry lazy-loads the
+// BuilderLauncher (a compile-time-gated chunk), and the launcher lazy-loads
+// the Builder itself; looking only one level deep reported "no dynamic Builder
+// chunk" against a build that lazy-loads it exactly as intended.
 const dynamicBuilderEntries = [];
 const allImportsFromStaticGraph = new Set();
+const dynamicQueue = [];
 for (const key of staticGraph) {
   const entry = manifestEntry(key);
-  for (const imported of entry.dynamicImports ?? []) allImportsFromStaticGraph.add(imported);
+  for (const imported of entry.dynamicImports ?? []) dynamicQueue.push(imported);
+}
+while (dynamicQueue.length > 0) {
+  const imported = dynamicQueue.shift();
+  if (allImportsFromStaticGraph.has(imported)) continue;
+  allImportsFromStaticGraph.add(imported);
+  const entry = manifestEntry(imported);
+  for (const next of entry.imports ?? []) dynamicQueue.push(next);
+  for (const next of entry.dynamicImports ?? []) dynamicQueue.push(next);
 }
 for (const imported of allImportsFromStaticGraph) {
   const entry = manifestEntry(imported);

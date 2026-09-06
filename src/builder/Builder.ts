@@ -481,6 +481,14 @@ const DRAFT_KEY = 'noita-builder-draft';
 /** Settle previews bigger than this commit without undo (memory honesty). */
 const SETTLE_UNDO_CAP = 400000;
 
+/** Copies of the four cell planes, taken before a whole-world replacement so the net diff can follow the link. */
+interface LinkWorldSnapshot {
+  types: ArrayLike<number>;
+  colors: ArrayLike<number>;
+  life: ArrayLike<number>;
+  charge: ArrayLike<number>;
+}
+
 /** Tiny procedural pixel previews for the palette popovers (28x28). */
 type PreviewDraw = (g: CanvasRenderingContext2D) => void;
 function previewCanvas(draw: PreviewDraw): HTMLCanvasElement {
@@ -808,6 +816,17 @@ export class Builder {
   private paintDirty = false;
   /** Coalesces an object drag into one authored-set publish (AuthorLink). */
   private authoredSetPublishTimer: number | null = null;
+  /**
+   * The last authored set that went over the link, serialised. An unchanged
+   * set is not re-sent: the receiver replaces its whole copy per message, so
+   * re-sending on every terrain stroke reset every synced door and respawned
+   * every synced enemy in the other window while someone was playing it.
+   * Starts as the empty set so a document with nothing authored stays quiet.
+   */
+  private lastPublishedAuthoredKey: string | null = JSON.stringify({ objects: [], links: [], lights: [] });
+  private authoredSetPublishForced = false;
+  /** Linked peers currently on this window's world; a newcomer gets the set once. */
+  private linkedPeersOnMyWorld: Set<string> | null = null;
 
   /** Primary selection (drives the inspector); selectedIds is the full set. */
   private selectedId: string | null = null;
@@ -1078,6 +1097,22 @@ export class Builder {
       if (!this.isOpen) return;
       this.markTerrainDirty();
       this.status(`${edit.command.toUpperCase()} EDITED ${edit.cells} LIVE CELLS`, true);
+    }));
+    // A window that has just arrived on this world (it pulled ours, or we
+    // pulled its) has none of the document's objects yet, and the set only
+    // goes out on change. Send it once on arrival — an explicit, visible
+    // event — rather than waiting for the next edit to carry it by accident.
+    this.disposers.push(this.host.subscribeLinkWorldState((state) => {
+      const now = new Set(state.peers.filter((peer) => peer.sameWorld).map((peer) => peer.clientId));
+      const before = this.linkedPeersOnMyWorld;
+      this.linkedPeersOnMyWorld = now;
+      if (before === null) return; // the first snapshot is a baseline, not an arrival
+      let arrived = false;
+      for (const id of now) if (!before.has(id)) arrived = true;
+      if (!arrived || !this.isOpen) return;
+      if (this.doc.objects.length === 0 && this.doc.links.length === 0 && this.doc.lights.length === 0) return;
+      this.publishAuthoredSetToLink(true);
+      this.status('LINK: A WINDOW JOINED THIS WORLD — AUTHORED OBJECTS SENT');
     }));
     // Sandbox world-shaping buttons reshape the WHOLE world under the open
     // document with no undo. While the Builder is open they must confirm
@@ -4483,17 +4518,77 @@ export class Builder {
    * the receiver replaces its copy wholesale anyway, so coalescing to the last
    * state of a gesture is both cheaper and exactly as correct.
    */
-  private publishAuthoredSetToLink(): void {
+  private publishAuthoredSetToLink(force = false): void {
+    if (force) this.authoredSetPublishForced = true;
     if (this.authoredSetPublishTimer !== null) return;
     this.authoredSetPublishTimer = window.setTimeout(() => {
       this.authoredSetPublishTimer = null;
       if (this.disposed) return;
-      this.host.publishAuthoredSet({
+      // Only the sprites the set's decor actually references travel: a
+      // document can embed far more art than it places, and the whole set
+      // has to fit one message.
+      const spriteIds = new Set<string>();
+      for (const object of this.doc.objects) {
+        if (object.kind === 'decor' && typeof object.params.spriteId === 'string') spriteIds.add(object.params.spriteId);
+      }
+      const sprites = spriteIds.size > 0 ? (this.doc.assets?.sprites ?? []).filter((sprite) => spriteIds.has(sprite.id)) : [];
+      const set = {
         objects: this.doc.objects,
         links: this.doc.links,
         lights: this.doc.lights,
-      });
+        ...(sprites.length > 0 ? { sprites } : {}),
+      };
+      const key = JSON.stringify(set);
+      const forced = this.authoredSetPublishForced;
+      this.authoredSetPublishForced = false;
+      if (!forced && key === this.lastPublishedAuthoredKey) return;
+      this.lastPublishedAuthoredKey = key;
+      this.host.publishAuthoredSet(set);
     }, 120);
+  }
+
+  /**
+   * Whole-world replacements (restore, generate, clear, an over-cap settle)
+   * bypass the command stack, so nothing forwards them to a linked window and
+   * the two grids silently diverge while the identity still says "same
+   * world". Snapshot before, diff after, and ship the net change as one
+   * patch when it fits — otherwise say so, because the fix (re-pull the other
+   * window's world) is something only the person at the keyboard can do.
+   */
+  private snapshotWorldForLink(): LinkWorldSnapshot | null {
+    const status = this.host.getLinkStatus();
+    if (!status || status.kind !== 'connected' || status.peers === 0) return null;
+    const w = this.ctx.world;
+    return { types: w.types.slice(), colors: w.colors.slice(), life: w.life.slice(), charge: w.charge.slice() };
+  }
+
+  private mirrorWorldDiffToLink(snap: LinkWorldSnapshot, label: string): void {
+    const w = this.ctx.world;
+    if (w.types.length !== snap.types.length) return;
+    const cap = this.host.terrainPatchCellCap;
+    const after: CellPatch = { idxs: [], types: [], colors: [], life: [], charge: [] };
+    for (let i = 0; i < w.types.length; i++) {
+      if (
+        w.types[i] === snap.types[i] &&
+        w.colors[i] === snap.colors[i] &&
+        w.life[i] === snap.life[i] &&
+        w.charge[i] === snap.charge[i]
+      )
+        continue;
+      if (after.idxs.length >= cap) {
+        this.host.toast(`LINK: ${label.toUpperCase()} CHANGED OVER ${cap} CELLS — NOT MIRRORED. RE-PULL THE OTHER WINDOW'S WORLD TO KEEP EDITING IT`);
+        return;
+      }
+      after.idxs.push(i);
+      after.types.push(w.types[i]);
+      after.colors.push(w.colors[i]);
+      after.life.push(w.life[i]);
+      after.charge.push(w.charge[i]);
+    }
+    if (after.idxs.length === 0) return;
+    if (this.host.publishTerrainPatch(after, label) === 'dropped') {
+      this.host.toast(`LINK: ${label.toUpperCase()} (${after.idxs.length} CELLS) COULD NOT BE SENT — RE-PULL THE OTHER WINDOW'S WORLD`);
+    }
   }
 
   /**
@@ -5061,11 +5156,13 @@ export class Builder {
 
   /** Re-decode the authored terrain into the live world (fresh combat state). */
   private applyDocTerrain(): void {
+    const snap = this.snapshotWorldForLink();
     this.ctx.state.currentBiome = this.doc.biome;
     if (this.doc.world) applyWorldLayer(this.ctx, this.doc.world);
     else this.ctx.world.clear();
     this.ctx.enemies.length = 0;
     resetCombatTransients(this.ctx);
+    if (snap) this.mirrorWorldDiffToLink(snap, 'restore terrain');
   }
 
   private undo(): void {
@@ -6057,6 +6154,7 @@ export class Builder {
       this.buildWorldPanel();
       return;
     }
+    const linkSnap = this.snapshotWorldForLink();
     const level = this.worldgenLevelId ? LEVELS[this.worldgenLevelId] : null;
     let statusProfile = BIOME_DEFS[this.doc.biome].name.toUpperCase();
     if (level) {
@@ -6081,6 +6179,7 @@ export class Builder {
       if (this.ctx.worldgen.spawnHint) this.upsertGeneratedSpawn(this.ctx.worldgen.spawnHint);
     }
     if (this.ctx.worldgen.spawnHint) this.host.snapCameraTo(this.ctx.worldgen.spawnHint.x, this.ctx.worldgen.spawnHint.y);
+    if (linkSnap) this.mirrorWorldDiffToLink(linkSnap, 'generate world');
     this.doc.world = captureWorldLayer(this.ctx);
     this.paintDirty = false;
     this.markDocumentChanged();
@@ -6114,6 +6213,7 @@ export class Builder {
   private async guardedWorldGen(action: 'caves' | 'fortress' | 'clear'): Promise<void> {
     if (this.authoringActionBlocks('World generation')) return;
     if (!(await this.confirmWholeWorldReshape('Reshape World'))) return;
+    const linkSnap = this.snapshotWorldForLink();
     if (action === 'caves') {
       this.ctx.state.currentBiome = this.doc.biome; // the document drives the look
       this.ctx.worldgen.regenerate(this.ctx);
@@ -6122,6 +6222,7 @@ export class Builder {
     } else {
       this.ctx.world.clear();
     }
+    if (linkSnap) this.mirrorWorldDiffToLink(linkSnap, action);
     this.markTerrainDirty();
     this.status(action.toUpperCase() + ' DONE — CAPTURE TERRAIN OR SAVE WHEN HAPPY');
   }
@@ -9326,6 +9427,9 @@ export class Builder {
     // it falsely flips hasUnsavedChanges and stales the validation badge).
     if (overCap) {
       this.markTerrainDirty();
+      // Too big for the command stack means too big for the link too; this
+      // at least tells the author the other window did not follow.
+      this.mirrorWorldDiffToLink(snap, 'settle');
       this.status('SETTLED — TOO LARGE TO UNDO, CAPTURED ON NEXT SAVE');
     } else if (before.idxs.length > 0) {
       this.markTerrainDirty();

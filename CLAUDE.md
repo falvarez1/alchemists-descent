@@ -25,6 +25,8 @@ npm run verify:authorlink  # two-browser-context probe of the cross-window edito
 npm run verify:authorlink-hosted  # production build + EXTERNAL strict relay (origin/token/ranges)
 npm run authorlink:server  # standalone AuthorLink relay (dev server hosts one already)
 npm run gen:tuning-ranges  # regenerate the relay's range table (--check in verify:tuning-ranges)
+npm run gen:builder-html   # regenerate builder.html from index.html (NEVER hand-edit builder.html;
+                           # tests/builder-html.test.ts fails when it is stale)
 npm run lint               # eslint src
 node scripts/verify-game.mjs   # headless browser smoke test (needs dev server running + Edge)
 node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs saved baseline)

@@ -20,6 +20,9 @@ src/
     AuthorLinkIndicator.ts  Header LINK pill (peers, and the amber "different
                           worlds" state that pulls the peer's grid on click)
     builderEntry.ts       /builder.html entry: Game + AuthorLink, Builder opened
+                          (builder.html itself is GENERATED from index.html by
+                          scripts/gen-builder-html.mjs; the HUD resolves nodes
+                          strictly, so the two shells must not drift)
     authorLinkObjects.ts  Applies a remote authored set into the live runtime
                           through the SAME instantiateObjects the compiler uses,
                           and tears down only what it created

@@ -1,5 +1,6 @@
 import type { CellPatch } from '@/authoring/cellPatch';
 import type { EditorLight, EditorLink, EditorObject, EditorWorldLayer } from '@/authoring/document';
+import type { SpriteAsset } from '@/authoring/sprites';
 
 /**
  * AuthorLink wire protocol — the shared vocabulary between a browser client
@@ -162,6 +163,13 @@ export interface ObjectsPayload {
   objects: EditorObject[];
   links: EditorLink[];
   lights: EditorLight[];
+  /**
+   * Document-embedded sprites that the set's decor objects reference. Only the
+   * referenced ones travel: a decor whose sprite the receiver cannot resolve
+   * is silently skipped by the shared instantiation pass, so without these a
+   * sprite placed in the editor simply never appears in the other window.
+   */
+  sprites?: SpriteAsset[];
 }
 
 /** Authored records above this in one message are refused. */
@@ -169,9 +177,16 @@ export const MAX_AUTHORED_OBJECTS = 4000;
 
 /* ===================== world transfer ===================== */
 
-/** Broadcast on join and whenever this window's world changes underneath it. */
+/** Broadcast on join and whenever this window's world (or role) changes underneath it. */
 export interface WorldAnnouncePayload {
   world: WorldIdentity;
+  /**
+   * What this window is doing NOW. The client id also carries a role prefix,
+   * but that one is fixed at connect time — before the Builder has opened —
+   * so an editor window would forever announce itself as `sandbox`. Absent
+   * from older peers; receivers fall back to the id prefix.
+   */
+  role?: AuthorLinkRole;
 }
 
 /** "Send me your grid." Answered by exactly one peer — the one that owns `target`. */

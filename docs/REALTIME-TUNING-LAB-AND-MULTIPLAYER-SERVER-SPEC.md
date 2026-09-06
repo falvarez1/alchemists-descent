@@ -45,10 +45,19 @@ npm run dev
 
 Both routes join the same room automatically in dev. `/` with the BUILDER
 button still works — the standalone route just skips the Sandbox palette and
-the click.
+the click. **`builder.html` is generated from `index.html`**
+(`scripts/gen-builder-html.mjs`; `tests/builder-html.test.ts` fails when it is
+stale). It used to be a hand-edited copy, and it silently stopped booting the
+day the HUD grew nodes that only `index.html` received.
 
 The header shows a `LINK n` pill: `n` is the number of other windows in the
-room. Everything else is automatic.
+room. Play mode hides the header, so in the play window the pill floats over
+the canvas instead (above the pause button). Everything else is automatic.
+
+The intended shape is **editor edits, tester plays**: the editor pulls the
+tester's live level and edits it in place. The play window shows the amber
+`LINK ≠` pill too, but cannot pull — dropping a foreign grid under a live
+runtime leaves its exit, mechanisms and pickups pointing into rock.
 
 | Situation | How |
 | --- | --- |
@@ -64,8 +73,8 @@ room. Everything else is automatic.
 | `tuning` | any `paramsChanged` | sparse diff onto the live config singletons, then `paramsChanged` re-emitted so Inspector/Builder mirrors resync |
 | `cells` | Builder `CommandStack` terrain commands | `applyCellPatch` into the live `World` **only when the patch's `WorldIdentity` matches ours**, then a `worldEdited` event |
 | `cmd` | explicit publish | `ctx.console.exec(line)` on every peer |
-| `objects` | any Builder document command (debounced 120 ms) | the peer tears down what it previously instantiated and re-runs the shared `instantiateObjects` for the whole set |
-| `world.announce` | join, and any local world change (500 ms identity poll) | peer world table; drives the mismatch state |
+| `objects` | a Builder document command that CHANGED objects/links/lights (debounced 120 ms, deduplicated), or a peer arriving on this world | the peer tears down what it previously instantiated and re-runs the shared `instantiateObjects` for the whole set |
+| `world.announce` | join, and any local world or role change (500 ms identity poll) | peer world table; drives the mismatch state |
 | `world.request` / `world.snapshot` | the `LINK ≠` pill | `applyWorldLayer` replaces this window's grid with the peer's live one |
 
 ### Same level, or nothing happens
@@ -121,7 +130,28 @@ the design rules forbid. Teardown therefore clears the door footprint
 directly, and only cells that are *still* its metal.
 
 Authored objects need a level runtime to live in. A Sandbox window that never
-started a run reports that instead of dropping the set silently.
+started a run reports that instead of dropping the set silently, and so does
+a window whose Builder has parked its level on a scratch world.
+
+**Tracked per level, published on change.** Levels persist for the whole
+expedition, so what the sync put into D1 is remembered against D1 (and torn
+down there, into D1's own world) even while the tester is on D2. The set goes
+out only when the objects/links/lights actually changed — an early version
+re-sent it on every terrain stroke, which reset every synced door and
+respawned every synced enemy in the tester's level per brush drag — plus once
+when a window arrives on this world, so a freshly pulled peer is not left
+waiting for the next edit. Enemies carry their record id (`Enemy.sourceId`)
+so teardown can find them; without it every re-publish was a duplicate.
+Landmarks travel too: an authored exit well, portal, cauldron or boss marker
+becomes the level's, exactly as the playtest compiler would make it, and the
+previous value comes back on teardown. Decor sprites embedded in the document
+ride along (only the ones the set references).
+
+**Whole-world replacements are mirrored when they fit.** Restore terrain,
+Generate, Clear and an over-cap Settle bypass the command stack; the Builder
+snapshots the planes first and ships the net diff as one patch when it is
+under the 40k-cell cap, and says so when it is not (re-pull the other
+window's world).
 
 ### Files
 
@@ -141,7 +171,9 @@ src/app/authorLinkObjects.ts      authored-set instantiation + teardown against 
 src/core/storageOwner.ts          single-writer election for shared localStorage keys
 src/app/builderEntry.ts           /builder.html entry: boots straight into the Builder
 src/content/materialPalette.ts    the material catalog both the Sandbox and Builder read
-builder.html                      the editor route (second Vite input)
+builder.html                      the editor route (second Vite input) — GENERATED
+scripts/gen-builder-html.mjs      derives builder.html from index.html (--check)
+tests/builder-html.test.ts        fails when builder.html is stale or lacks a HUD node
 src/config/tuningRanges.ts        derived per-path bounds for strict rooms
 servers/authorlink/room.mjs       the ONE room implementation, host-agnostic
 servers/authorlink/worker.js      Cloudflare Durable Object host
@@ -236,14 +268,18 @@ is both smaller and correct.
 ### Verified
 
 ```powershell
-npx vitest run tests/authorlink.test.ts   # 46 passed
-npm run verify:authorlink                 # 27 passed (two browser contexts)
+npx vitest run tests/authorlink.test.ts tests/builder-html.test.ts   # 55 passed
+npm run verify:authorlink                 # 35 passed (two browser contexts); also runs in CI
 ```
 
-The probe drives a real Builder brush drag with real mouse events in one
-browser context and asserts every published cell appears in the other. It also
-puts the two windows on deliberately different worlds, asserts the stroke is
-**refused**, pulls the peer world, and asserts the same stroke then lands.
+The probe boots the REAL layout — `/builder.html` in one browser context, `/`
+in the other — drives a Builder brush drag with real mouse events and asserts
+every published cell appears in the other window. It also puts the two windows
+on deliberately different worlds, asserts the stroke is **refused**, pulls the
+peer world, and asserts the same stroke then lands; that a stroke does not
+re-send the authored set; that the play window refuses to pull; and that an
+identical re-publish leaves exactly one copy of each object (including the
+enemy).
 
 Phase 2, verified in the browser with real palette clicks: a door placed in
 the Builder window appeared in a live D1 expedition's runtime (13 → 14
@@ -284,12 +320,16 @@ what it observes.** Observed counters lag and lie; emitted counters do not.
 - **Object sync replaces, it does not merge.** Each authored edit re-runs the
   whole set, so mechanism runtime state resets (a door you had opened closes).
   Acceptable for an authoring loop — you are recompiling authored intent — but
-  it is not a live-object protocol.
+  it is not a live-object protocol. (Terrain strokes no longer trigger it.)
 - **An unlinked trigger does not instantiate.** A lever with no link has no
   target, so the shared instantiation pass skips it. That is existing game
   semantics, not a link limitation, but it surprises you the first time.
-- **Pull is one-shot.** Either window can pull (both show the amber pill), so
-  it is bidirectional in practice, but there is no continuous follow.
+- **Pull is one-shot, and editor-side.** Both windows show the amber pill,
+  but a window with a live level on screen refuses to pull (its runtime would
+  be stranded under the foreign grid); there is no continuous follow.
+- **Player-made changes do not flow back.** Explosions and digging in the
+  tester's window never reach the editor, and an editor undo sends `before`
+  cells, which overwrites whatever the tester did in that footprint.
 - **A pulled world is a grid, not a session.** The editor gets the peer's
   cells, not its enemies or pickups. Authored objects then sync on top.
 - **Edits land in a *live* simulation.** Paint a crystal arch into a running
@@ -299,14 +339,14 @@ what it observes.** Observed counters lag and lie; emitted counters do not.
   comparison, stop its clock (`ctx.time.setManual(true)`); `state.paused`
   alone is honoured by the fixed tick but is easy to have reset out from under
   you by a level transition.
-- **Shared `localStorage` has no owner rule.** Both windows write
-  `ad:tuning:v1`, and a second window with the Builder open would also write
-  `noita-builder-draft`. Same-value writes are benign; a real single-writer
-  lock is Phase 2.
-- **No range clamping on tuning values.** Fine for a local link, required for a
-  hosted room. Phase 4.
-- **No auth.** The dev relay accepts any connection to the port. Anything
-  hosted needs origin checks and room tokens (see Security).
+- **Tuning on join is room-first.** The `welcome` snapshot is applied, then
+  this window's remaining non-default dials are published. Local dials the
+  room already knows are overwritten by the room's values, deliberately: it
+  is the one ordering that does not depend on message timing.
+- Single-writer `localStorage` (`core/storageOwner.ts`), range clamping and
+  auth for hosted rooms shipped with Phases 2 and 4; a Pages build bakes the
+  hosted relay URL in (`deploy.yml`) and joins read-only, since the write
+  token never ships in a public build.
 
 ---
 

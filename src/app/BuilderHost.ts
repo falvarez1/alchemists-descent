@@ -1,9 +1,9 @@
 import type { EventMap } from '@/core/events';
 import type { AuthoredLight, BiomeId, Ctx, GameMode, PlaytestSource } from '@/core/types';
 import type { CellPatch } from '@/authoring/cellPatch';
-import type { AuthorLinkHandle, AuthorLinkWorldState } from '@/app/AuthorLink';
+import type { AuthorLinkHandle, AuthorLinkWorldState, TerrainPublishResult } from '@/app/AuthorLink';
 import type { AuthoredSet } from '@/app/authorLinkObjects';
-import type { AuthorLinkStatus } from '@/net/authorLinkProtocol';
+import { MAX_PATCH_CELLS, type AuthorLinkStatus } from '@/net/authorLinkProtocol';
 
 export interface BuilderModeSnapshot {
   mode: GameMode;
@@ -58,12 +58,14 @@ export interface BuilderHost {
   setCameraZoomLock(value: number | null): void;
   setBuilderVisualState(patch: BuilderVisualStatePatch): void;
   /**
-   * Forward a terrain stroke to any linked window (AuthorLink). A no-op when
-   * no link is active, so Builder never has to branch on it. Routing through
-   * the host keeps the editor free of a net-layer import and free of a
+   * Forward a terrain stroke to any linked window (AuthorLink). `unlinked`
+   * when no link is active, so Builder never has to branch on it. Routing
+   * through the host keeps the editor free of a net-layer import and free of a
    * module-level singleton, which is the whole point of the host migration.
    */
-  publishTerrainPatch(patch: CellPatch, label: string): void;
+  publishTerrainPatch(patch: CellPatch, label: string): TerrainPublishResult;
+  /** Largest patch the link will carry; bigger edits need the peer to pull. */
+  readonly terrainPatchCellCap: number;
   /** Publish the document's authored records; a linked window re-instantiates them. */
   publishAuthoredSet(set: AuthoredSet): void;
   getLinkStatus(): AuthorLinkStatus | null;
@@ -162,8 +164,12 @@ class RuntimeBuilderHost implements BuilderHost {
     }
   }
 
-  publishTerrainPatch(patch: CellPatch, label: string): void {
-    this.link?.publishTerrainPatch(patch, label);
+  publishTerrainPatch(patch: CellPatch, label: string): TerrainPublishResult {
+    return this.link ? this.link.publishTerrainPatch(patch, label) : 'unlinked';
+  }
+
+  get terrainPatchCellCap(): number {
+    return MAX_PATCH_CELLS;
   }
 
   publishAuthoredSet(set: AuthoredSet): void {
