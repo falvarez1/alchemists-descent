@@ -496,6 +496,7 @@ export class Hud {
     if (this.trickshotReadout.textContent !== trickText) this.trickshotReadout.textContent = trickText;
     this.trickshotReadout.classList.toggle('finisher', trickText === 'RETURNED WITH INTEREST');
     const player = ctx.player;
+    el('spell-hotbar').style.display = player.legClub ? 'none' : '';
     this.renderObjective();
     this.renderInteractionHint(ctx);
     this.renderGodTools(ctx);
@@ -513,7 +514,7 @@ export class Hud {
     el('wave-num').textContent = rt?.living ? worksRoomAt(player.x, player.y).name : rt?.def.name ?? '';
     const bindings = getBindings();
     el('field-note').textContent = player.legClub
-      ? `${keyLabel(bindings.kick)} ${ctx.enemies.some(e => canHumiliate(ctx, e) && Math.hypot(e.x - player.x, e.y - player.y) < 100) ? 'Finish its owner' : 'Smack'} · Weaver leg · ${player.legClub.durability} swings left`
+      ? `Weaver leg · ${player.legClub.durability} hits left · LMB/${keyLabel(bindings.kick)} ${ctx.enemies.some(e => canHumiliate(ctx, e) && Math.hypot(e.x - player.x, e.y - player.y) < 100) ? 'Finish its owner' : 'Whip'} · RMB Throw · ${keyLabel(bindings.carry)} Drop`
       : rt?.living
       ? `${keyLabel(bindings.lure)} Glowseed · ${rt.living.glowseeds} left${rt.living.room === 'refuge' ? ' · B Wand bench' : ''}`
       : '1 / 2 Swap wand · M Map · H Handbook';

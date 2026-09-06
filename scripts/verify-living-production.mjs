@@ -43,6 +43,8 @@ try {
     db.close(); return { revision: save.revision, player: save.data.player, living: save.data.levels.find(l => l.id === 'd1').living };
   });
   assert.ok(report.saved.revision >= 2); assert.equal(report.saved.living.glowseeds, 2);
+  assert.ok(Array.isArray(report.saved.living.plants), 'Actual autosave includes persistent foliage condition');
+  assert.ok(report.saved.living.plants.some(p => p && Number.isFinite(p.rootY) && Number.isFinite(p.burn)), 'Authored crowns survive checkpoint encoding');
   assert.ok(report.saved.player.x > 210);
   await page.reload({ waitUntil: 'networkidle' });
   await page.locator('[data-entry="continue"]').click();

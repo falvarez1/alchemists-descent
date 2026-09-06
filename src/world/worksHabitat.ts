@@ -15,8 +15,8 @@ export const WORKS_PLANTS: ReadonlyArray<readonly [number, number, number, boole
   [985,1010,21,false],[1120,1010,17,false],[1282,1010,25,false],[1490,1010,28,false],[1228,831,84,true],
 ] as const;
 
-/** Find the actual support near an authored planting position. The same bounded
- * query lets the renderer discard cut/burned plants rather than painting ghosts. */
+/** Find the initial material anchor near an authored planting position.
+ * Runtime crowns retain their own pose and fuel after this anchor is lost. */
 export function worksPlantRoot(world: World, x: number, y: number, hanging: boolean, planted = false): number {
   for (let yy = y - 7; yy <= y + 24; yy++) {
     if (!world.inBounds(x, yy + 1)) continue;

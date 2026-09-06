@@ -22,6 +22,23 @@ function garden() {
 }
 
 describe('Living vine continuity', () => {
+  it('ignites from an ember on a lifted leaf, chars, and severs its burned stem', () => {
+    const { ctx, system, tick } = garden(); tick(8);
+    const vine = system.strands[0], node = vine.nodes[8], previous = vine.nodes[7];
+    const dx = node.x - previous.x, dy = node.y - previous.y, distance = Math.hypot(dx, dy), length = node.leafLength!;
+    const x = node.x - dy / distance * length * .7 + dx / distance * length * .245;
+    const y = node.y + dx / distance * length * .7 + dy / distance * length * .245;
+    ctx.particles = { list: [{ x, y, vx: 0, vy: 0, type: Cell.Ember }], spawn() {} } as unknown as Ctx['particles'];
+    tick(1); expect(node.burning).toBe(true);
+    tick(45); expect(node.burn).toBeGreaterThan(.3); expect(node.burn).toBeLessThan(.5);
+    const types = new Uint8Array(ctx.world.types), life = new Int16Array(ctx.world.life);
+    system.writeSnapshotCells(ctx.world, types, life);
+    expect(node.sourceCells!.every(index => types[index] !== Cell.Vines)).toBe(true);
+    tick(105);
+    expect(system.strands.flatMap(s => s.nodes)).not.toContain(node);
+    expect(system.strands.some(s => !s.tendril)).toBe(true);
+  });
+
   it('activates an entire curved diagonal stem with its root above the view, using fewer physical joints than cells', () => {
     const { system, cells, world, tick } = garden(); tick(8);
     expect(system.strands).toHaveLength(1);

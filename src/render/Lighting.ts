@@ -609,7 +609,10 @@ export class Lighting implements LightField {
 
     // The wand: a true shadow-casting light. Rays march outward from the tip;
     // rock absorbs them hard, so edges throw real shadows and nothing wraps corners.
-    if (ctx.state.mode === 'play' && !ctx.player.dead) {
+    if (ctx.state.mode === 'play' && !ctx.player.dead && ctx.player.legClub) {
+      // The stowed wand lights the belt; no detached muzzle or aiming beam.
+      this.raycastWandLight(ctx.player.x, ctx.player.y - 8, ctx.state.wandLight.intensity * .85, ctx.state.wandLight.radius);
+    } else if (ctx.state.mode === 'play' && !ctx.player.dead) {
       // Wand muzzle: 9 cells along aimAngle from (player.x, player.y - 9) —
       // computed locally (same formula as ctx.spells.wandTip) so the render
       // layer never depends on the spells system.

@@ -118,6 +118,7 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   // Swap: the staff sweeps a quadratically-eased draw arc up into the aim.
   // Recoil: a cast kicks the WHOLE staff back along the aim for a few frames.
   const drawStaff = (gripX: number, gripY: number): void => {
+    if (player.legClub) return;
     const tipBase = ctx.spells.wandTip();
     const drawT = player.swapT > 0 ? player.swapT / 12 : 0;
     const a = Math.atan2(tipBase.y - gripY, tipBase.x - gripX) + drawT * drawT * 2.2 * f;

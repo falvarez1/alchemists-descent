@@ -8,6 +8,7 @@ import { cancelChargingBlackHole, ensureSandboxWorldDetached, resetHeldSpellInpu
 import { BUILDER_REQUEST_CLOSE_EVENT } from '@/app/builderCloseRequest';
 import type { BuilderCloseRequestDetail } from '@/app/builderCloseRequest';
 import { throwGlowseed } from '@/game/LivingExpedition';
+import { releaseWeaverLeg } from '@/combat/LooseWeaverLeg';
 import { gameplayCode } from '@/input/bindings';
 
 type KeyboardLockApi = {
@@ -162,11 +163,13 @@ export class InputManager {
             ctx.input.mouse.y = ctx.player.y - 9 + aimY * 130;
           }
           if (active) ctx.audio.ensure();
-          ctx.player.firing = held(7);
+          if (!held(7)) ctx.player.fireBlockedUntilRelease = false;
+          ctx.player.firing = held(7) && !ctx.player.fireBlockedUntilRelease;
           if (pressed(7)) ctx.player.firePressed = true;
           ctx.input.pourHeld = held(6);
-          if (pressed(5)) ctx.flask.throwFlask(ctx);
-          if (pressed(4)) throwGlowseed(ctx);
+          if (pressed(5) && !releaseWeaverLeg(ctx, true)) ctx.flask.throwFlask(ctx);
+          if (pressed(4) && ctx.player.legClub) releaseWeaverLeg(ctx, false);
+          else if (pressed(4)) throwGlowseed(ctx);
           if (pressed(3)) this.selectWand(ctx.wands.active === 0 ? 1 : 0);
           if (pressed(2)) ctx.mechanisms.interact(ctx);
           ctx.input.siphonHeld = held(2) && ctx.player.pullT <= 0;
@@ -329,8 +332,7 @@ export class InputManager {
     // Right mouse: a game verb, never the browser menu.
     if (e.button === 2) {
       if (ctx.state.mode === 'play') {
-        // Same grip as the reference build: RMB hurls the flask.
-        if (!ctx.player.dead) ctx.flask.throwFlask(ctx);
+        if (!ctx.player.dead && !releaseWeaverLeg(ctx, true)) ctx.flask.throwFlask(ctx);
       } else {
         // Sandbox eyedropper: pick up whatever material is under the cursor.
         if (ctx.world.inBounds(coords.x, coords.y)) {
@@ -353,6 +355,7 @@ export class InputManager {
     if (ctx.state.mode === 'play') {
       if (ctx.player.climbing) return;
       if (!ctx.player.dead) {
+        ctx.player.fireBlockedUntilRelease = false;
         ctx.player.firing = true;
         ctx.player.firePressed = true; // press edge: god mode fires this click instantly
       }
@@ -406,6 +409,7 @@ export class InputManager {
     // fixed-spell release to perform here. Just clear the charge counter.
     ctx.input.bombCharge = -1;
     ctx.player.firing = false;
+    ctx.player.fireBlockedUntilRelease = false;
     cancelChargingBlackHole(ctx);
   }
 
@@ -590,7 +594,7 @@ export class InputManager {
       // E behaviour — a lever-pull in reach, else hold-to-siphon the flask.
       if (!e.repeat && ctx.rigidBodies.isHolding()) {
         ctx.rigidBodies.release(ctx, false); // set the levitated crate down
-      } else if (!e.repeat && ctx.rigidBodies.grabAtCursor(ctx)) {
+      } else if (!e.repeat && !ctx.player.legClub && ctx.rigidBodies.grabAtCursor(ctx)) {
         // lifted the crate under the cursor — it now levitates and tracks the hand
       } else if (!ctx.rigidBodies.isHolding()) {
         const pulling = !e.repeat && ctx.mechanisms.interact(ctx);
@@ -604,9 +608,9 @@ export class InputManager {
       if (ctx.rigidBodies.isHolding()) ctx.rigidBodies.release(ctx, true);
       else ctx.playerCtl.kick(ctx);
     }
-    else if (code === 'KeyG' && !e.repeat && !ctx.player.dead && !ctx.player.climbing) {
+    else if (code === 'KeyG' && !e.repeat && !ctx.player.dead) {
       // hold G: latch a hanging vine to swing, else carry a body; release to let go/throw
-      if (!ctx.playerCtl.grabVine(ctx)) ctx.rigidBodies.grab(ctx);
+      if (!releaseWeaverLeg(ctx, false) && !ctx.player.climbing && !ctx.playerCtl.grabVine(ctx)) ctx.rigidBodies.grab(ctx);
     }
     else if (code.startsWith('Digit')) {
       const n = parseInt(code.slice(5)) - 1;

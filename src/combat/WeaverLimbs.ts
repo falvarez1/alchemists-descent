@@ -48,6 +48,7 @@ export function strikeWeaverLeg(ctx: Ctx, e: Enemy, index: number, damage: numbe
 export function startLegSwing(ctx: Ctx): boolean {
   const p = ctx.player, club = p.legClub;
   if (!club) return false;
+  p.firePressed = false;
   if (club.cooldown > 0 || p.recharge > 0 || p.pullT > 0) return true;
   club.angle = p.aimAngle; club.swingT = LEG_SWING_TICKS; club.cooldown = 26;
   club.hitThisSwing = false;
@@ -93,6 +94,7 @@ export function updateLegSwing(ctx: Ctx): void {
   if (club.durability <= 0) {
     ctx.particles.burst(ox + dx * 18, oy + dy * 18, 10, null, () => packRGB(158, 183, 144), 2.5, { grav: .15 });
     p.legClub = undefined;
+    p.firing = false; p.fireBlockedUntilRelease = true;
     ctx.events.emit('toast', { text: 'The borrowed leg splinters.' });
   }
 }

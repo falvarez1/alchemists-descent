@@ -22,7 +22,7 @@ The same follow-up replaces the player's death rig and death screen.
 - Weaver leg roots live inside the thorax and share one continuous joint chain
   between drawing and projectile contact. Fourteen accumulated limb damage severs
   a leg; remaining legs change gait and support. Walk over the dropped limb to
-  collect it, then use the mapped melee key (default **F**) to swing. The gripped
+  collect it, then use **LMB** or the mapped melee key (default **F**) to swing. The gripped
   shank drives a loose thigh at its knee; both keep fixed lengths, respond to
   walking/jumping/braking, and sweep physical melee contact. A connected
   strike deals 24 damage, makes the Weaver recoil, and consumes one of six uses.

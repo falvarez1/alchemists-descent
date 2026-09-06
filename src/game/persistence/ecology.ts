@@ -2,6 +2,7 @@ import type { Critter, LivingExpeditionState } from '@/core/types';
 import { createLivingState } from '@/game/LivingExpedition';
 import { WORKS_ROOMS } from '@/world/breathingWorks';
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { WORKS_PLANTS } from '@/world/worksHabitat';
 
 const finite = (value: unknown, fallback: number, min: number, max: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
@@ -42,5 +43,14 @@ export function restoreLiving(value: unknown): LivingExpeditionState {
     vx: finite(lure.vx, 0, -8, 8), vy: finite(lure.vy, 0, -8, 8), life: Math.floor(finite(lure.life, 1, 1, 1800)),
   })) : [];
   state.nextLureId = state.lures.length + 1;
+  if (Array.isArray(raw.plants)) state.plants = WORKS_PLANTS.map(([x, y, _size, hanging], i) => {
+    const p = raw.plants![i];
+    if (hanging || !p || typeof p !== 'object') return null;
+    return { x: finite(p.x, x, 1, WIDTH - 2), y: finite(p.y, y, 1, HEIGHT - 2), rootY: Math.round(finite(p.rootY, y, y - 7, y + 24)),
+      angle: finite(p.angle, 0, -.95, .95), velocity: finite(p.velocity, 0, -.5, .5), rotation: finite(p.rotation, 0, -1000, 1000),
+      spin: finite(p.spin, 0, -.5, .5), vx: finite(p.vx, 0, -8, 8), vy: finite(p.vy, 0, -8, 8),
+      detached: p.detached === true, burn: finite(p.burn, 0, 0, 1), burning: p.burning === true && p.spent !== true,
+      age: Math.floor(finite(p.age, 0, 0, 901)), spent: p.spent === true };
+  });
   return state;
 }

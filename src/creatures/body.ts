@@ -28,6 +28,21 @@ function moveNode(world: World, node: BodyNode, x: number, y: number): void {
   }
 }
 
+const chainPositions = new WeakMap<CreatureBody, Float64Array>();
+
+/** Let contact at either end carry tension through the whole animal. The
+ * leftover correction belongs to the other node when terrain blocks a move. */
+function constrainAquaticLink(world: World, a: BodyNode, b: BodyNode, rest: number, head: boolean): void {
+  const dx = b.x - a.x, dy = b.y - a.y, distance = Math.hypot(dx, dy);
+  if (distance < .001 || Math.abs(distance - rest) < .005) return;
+  const share = head ? .88 : .55, error = (distance - rest) / distance;
+  moveNode(world, b, b.x - dx * error * share, b.y - dy * error * share);
+  const ax = b.x - a.x, ay = b.y - a.y, remaining = Math.hypot(ax, ay) || 1;
+  moveNode(world, a, a.x + ax * (remaining - rest) / remaining, a.y + ay * (remaining - rest) / remaining);
+  const bx = b.x - a.x, by = b.y - a.y, final = Math.hypot(bx, by) || 1;
+  moveNode(world, b, b.x - bx * (final - rest) / final, b.y - by * (final - rest) / final);
+}
+
 export function createChain(x: number, y: number, facing = 1, count = 9, spacing = 4): CreatureBody {
   return {
     spacing,
@@ -46,10 +61,15 @@ export function tickChain(world: World, body: CreatureBody, x: number, y: number
     const dx = x - head.x, dy = y - head.y;
     for (const node of nodes) { node.x += dx; node.y += dy; node.previousX += dx; node.previousY += dy; }
   }
+  let positions = chainPositions.get(body);
+  if (aquatic) {
+    if (!positions || positions.length !== nodes.length * 2) { positions = new Float64Array(nodes.length * 2); chainPositions.set(body, positions); }
+    for (let i = 0; i < nodes.length; i++) { positions[i * 2] = nodes[i].x; positions[i * 2 + 1] = nodes[i].y; }
+  }
   head.previousX = head.x;
   head.previousY = head.y;
-  head.x = x;
-  head.y = y;
+  if (aquatic) moveNode(world, head, x, y);
+  else { head.x = x; head.y = y; }
   for (let i = 1; i < nodes.length; i++) {
     const node = nodes[i];
     const ahead = nodes[i - 1], dx = ahead.x - node.x, dy = ahead.y - node.y;
@@ -65,6 +85,24 @@ export function tickChain(world: World, body: CreatureBody, x: number, y: number
     node.previousX = node.x;
     node.previousY = node.y;
     moveNode(world, node, nx, ny);
+  }
+  if (aquatic) {
+    for (let pass = 0; pass < 4; pass++) {
+      // Reverse first: a tail caught by newly formed ice restrains the head in
+      // this tick, instead of stretching one more link every swimming tick.
+      for (let i = nodes.length - 1; i > 0; i--) constrainAquaticLink(world, nodes[i - 1], nodes[i], body.spacing, i === 1);
+      for (let i = 1; i < nodes.length; i++) constrainAquaticLink(world, nodes[i - 1], nodes[i], body.spacing, i === 1);
+    }
+    // Conflicting contacts in a narrow crevice may have no feasible solution.
+    // Keep the previous pose and discard that impulse; never accumulate strain.
+    const previousValid = nodes.every((_node, i) => i === 0 || Math.hypot(positions![i * 2] - positions![(i - 1) * 2], positions![i * 2 + 1] - positions![(i - 1) * 2 + 1]) <= body.spacing * 1.06);
+    if (previousValid && nodes.some((node, i) => i > 0 && Math.hypot(node.x - nodes[i - 1].x, node.y - nodes[i - 1].y) > body.spacing * 1.06)) {
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        node.x = node.previousX = positions![i * 2]; node.y = node.previousY = positions![i * 2 + 1];
+      }
+    }
+    return;
   }
   for (let pass = 0; pass < 4; pass++) {
     for (let i = 1; i < nodes.length; i++) {

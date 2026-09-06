@@ -28,6 +28,19 @@ export function tickCreaturePose(ctx: Ctx, e: Enemy): void {
     const facing = e.mind?.facing ?? Math.sign(e.vx || 1);
     e.body ??= createChain(e.x, e.y - 4, facing, e.kind === 'rillback' ? 9 : 7);
     tickChain(ctx.world, e.body, e.x + e.fx, e.y - 4 + e.fy, (e.rillWet ?? 0) >= 0.28, frame, e.kind === 'rillback');
+    if (e.kind === 'rillback') {
+      const head = e.body.nodes[0], dx = head.x - e.x - e.fx, dy = head.y - e.y + 4 - e.fy;
+      // A tail wedged in terrain carries a reaction force back to the swimmer.
+      // Keep the AI/collision origin on that constrained head on the next tick.
+      const reaction = Math.hypot(dx, dy);
+      if (reaction > .001) {
+        const nx = dx / reaction, ny = dy / reaction;
+        const outward = e.vx * nx + e.vy * ny;
+        if (outward < 0) { const impulse = Math.min(reaction, -outward); e.vx += nx * impulse; e.vy += ny * impulse; }
+        e.x = Math.floor(head.x); e.fx = head.x - e.x;
+        e.y = Math.floor(head.y + 4); e.fy = head.y + 4 - e.y;
+      }
+    }
     e.rillSegments = e.body.nodes;
   }
   if (e.kind === 'rootloper') {

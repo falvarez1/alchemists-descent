@@ -38,10 +38,10 @@ export class PlayerSettings {
       <label>Chain window <output id="trickshot-chainWindowMs"></output><input type="range" name="chainWindowMs" min="1200" max="4500" step="100"></label>
       <label>Aim assistance <output id="trickshot-assistDegrees"></output><input type="range" name="assistDegrees" min="0" max="8" step="1"></label>
       <p>An assisted lock steadies single shots. The guide marks first contact; a wider ring shows spread, a broken ring marks uncertain follow-through. Seeking spells and streams keep free aim.</p></div></fieldset>
-      <h3>Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask.</p>
+      <h3>Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask. With a Weaver leg equipped: left click whips, right click throws the leg, and Carry drops it.</p>
       <div class="binding-list"></div><p id="binding-feedback" role="status"></p>
       <button type="button" id="reset-controls">Restore controls</button>
-      <p class="controller-help">Controller: left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. Start pauses.</p></form>`;
+      <p class="controller-help">Controller: left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses.</p></form>`;
     document.getElementById('canvas-holder')!.appendChild(this.dialog);
     this.dialog.addEventListener('close', () => {
       // Native close events are queued. Escape/Resume may already have released

@@ -4,6 +4,10 @@ Enable **Controls & comfort → Combat experiment → Trickshot combat**. It def
 off and persists on this browser. The four sliders deliberately remain exposed
 while the pace and assistance are being playtested.
 
+The requested cinematic anticipation and synchronized multi-target volley are
+planned separately in [Cinematic Trickshots](plans/2026-09-05-cinematic-trickshots.md).
+That proposal is not implemented by the current toggle.
+
 | Control | Default | Range |
 | --- | --- | --- |
 | Slow-motion speed | 35% | 20–80% |
@@ -31,7 +35,7 @@ target can still evade a projectile in flight. The guide spends no mana or RNG
 and does not advance the wand deck.
 
 **Return with interest.** Shoot an exposed Weaver leg, walk over it, then swing
-with the mapped melee key (**F** by default). When its owner is below 30% health
+with **LMB** or the mapped melee key (**F** by default). When its owner is below 30% health
 (capped at 40 HP), a small brass diamond and the melee hint identify the finishing
 opportunity. A landed swing finishes it with stronger recoil, a slower beat and
 “RETURNED WITH INTEREST.” The leg must belong to that Weaver: enemy identity,
@@ -54,6 +58,21 @@ too; the toggle controls assistance, chains and finish flourishes.
 Solved joints interpolate between game ticks, including during slow motion.
 Saving retains the limb's ownership and durability; transient swing momentum
 resets after loading, respawning or a large teleport.
+
+The leg occupies the wizard's hands: the wand sprite, spell hotbar, aim preview
+and wand beam are stowed. **RMB throws** the leg along the live aim with inherited
+player/limb momentum; the mapped carry key (**G**) drops it. Neither action
+throws a flask or starts a grab. A loose leg keeps its ankle/knee/thigh rig,
+collides with terrain, and deals one 24-damage projectile hit per throw, spending
+one use. It remains recoverable with the same owner and remaining durability.
+The last use splinters it. A drop stays down until the player moves away and
+returns; it does not immediately snap back into their hands.
+
+On controller, **RT whips, RB throws and LB drops** while the limb is equipped.
+Releasing it restores the wand inventory without spending mana or advancing the
+deck; casting requires a fresh trigger press. The belt light remains available.
+The equipment probe covers real mouse/key actions and a disclosed severed-leg
+pickup fixture; physical controller hardware has not been dogfooded.
 
 These adapt slow motion and expressive action from the
 [publisher's description of My Friend Pedro](https://www.devolverdigital.com/games/my-friend-pedro)
@@ -100,6 +119,7 @@ node scripts/verify-trickshot-chain.mjs http://127.0.0.1:5182/
 node scripts/verify-weaver-salvage.mjs http://127.0.0.1:5182/ trickshot
 node scripts/verify-weaver-salvage.mjs http://127.0.0.1:5182/ whip
 node scripts/verify-player-ragdoll.mjs http://127.0.0.1:5182/
+node scripts/verify-weaver-equipment.mjs http://127.0.0.1:5182/
 ```
 
 Screenshots and clips are archived under the ignored `screenshots/` gallery.
@@ -116,8 +136,10 @@ real movement/gravity and an explicit lethal trigger, followed by the actual
 return button. Automation verifies behavior; player judgement still decides pace
 and entertainment value.
 
-The combined source, including the waterfall and hinged-leg changes, passed
+The earlier source at `156256b`, including the waterfall and hinged-leg changes, passed
 **105 test files / 1,145 tests**, typecheck, ESLint and the production build.
 Current runtime and performance evidence is in [the implementation report](living-descent-fidelity-and-physics.md).
+The subsequent equipment and habitat fixes are recorded in
+[the interaction report](living-descent-interactions.md).
 Actual fractional projectile contact has its own regression:
 the cover test must floor coordinates before indexing the material array.

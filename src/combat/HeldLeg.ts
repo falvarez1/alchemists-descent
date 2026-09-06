@@ -77,7 +77,8 @@ export function updateHeldLeg(ctx: Ctx): HeldLegRig | null {
 
 /** Sweep the visible thigh between solved poses. The handle itself cannot hit
  * a foe that the flopping striking segment never reaches. */
-export function heldLegContact(ctx: Ctx, enemy: Enemy, rig: HeldLegRig): HeldLegPoint | null {
+export function heldLegContact(ctx: Ctx, enemy: Enemy, rig: Pick<HeldLegRig,
+  'hand' | 'knee' | 'hip' | 'previousHand' | 'previousKnee' | 'previousHip'>): HeldLegPoint | null {
   const speed = Math.hypot(rig.hip.x - rig.previousHip.x, rig.hip.y - rig.previousHip.y);
   const steps = Math.max(1, Math.ceil(speed));
   for (let i = 0; i <= steps; i++) {

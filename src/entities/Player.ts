@@ -5,6 +5,7 @@
 // DOM writes (game-over overlay) become 'playerDied' / 'playerRespawned' events.
 
 import { DEATH_SLOWMO_FRAMES, HEIGHT, WIDTH } from '@/config/constants';
+import { gustHabitat } from '@/game/HabitatMotion';
 import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
 import type { Ctx, EnemyKind, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
@@ -814,6 +815,7 @@ export class PlayerControl implements PlayerControlApi {
       if (g > 0) ctx.enemyCtl.gustShove(e, dirX, dirY, g * GUST_ENEMY_PUSH);
     }
     ctx.vineStrands?.applyRadialImpulse(ox, oy, windRange * 0.9, 1.8); // bend the hanging vines in the gust
+    gustHabitat(ctx, gustAt, dirX, dirY);
 
     // Feedback: a dust arc along the kick + a low thud + an airy whoosh.
     for (let k = 0; k < 8; k++) {

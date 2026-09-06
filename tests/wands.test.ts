@@ -897,6 +897,24 @@ function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: num
   return ctx;
 }
 
+describe('equipped leg primary action', () => {
+  it('whips instead of casting and restores the untouched wand after a fresh press', () => {
+    const ctx = makeCastCtx(), wands = new WandSystem(ctx); ctx.wands = wands;
+    wands.wands[0].cards.splice(0, wands.wands[0].cards.length, 'spark');
+    const before = { mana: wands.wands[0].mana, index: wands.wands[0].castIndex };
+    ctx.player.legClub = { durability: 4, length: 34, angle: 0, cooldown: 0, swingT: 0 };
+    ctx.player.firePressed = true;
+    wands.fire(ctx);
+    expect(ctx.player.legClub.swingT).toBe(18); expect(ctx.projectiles).toHaveLength(0);
+    expect(wands.wands[0].mana).toBe(before.mana); expect(wands.wands[0].castIndex).toBe(before.index);
+    ctx.player.legClub = undefined; ctx.player.fireBlockedUntilRelease = true;
+    wands.fire(ctx); expect(ctx.projectiles).toHaveLength(0);
+    ctx.player.fireBlockedUntilRelease = false; ctx.player.firePressed = true;
+    wands.fire(ctx); expect(ctx.projectiles).toHaveLength(1);
+    expect(wands.wands[0].mana).toBeLessThan(before.mana);
+  });
+});
+
 function makeTestEnemy(x: number, y: number): Enemy {
   return {
     kind: 'slime',

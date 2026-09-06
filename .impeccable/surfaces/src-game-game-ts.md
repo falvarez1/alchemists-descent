@@ -60,8 +60,10 @@ Weaver sockets sit within the thorax, independent of ride height. One continuous
 joint chain supplies both native drawing and projectile contact. Remaining legs
 keep that attachment across sampled stances; severed legs leave stumps and change
 support/gait. A dropped limb retains its jointed shape and becomes a visible held
-club when collected. The bottom-left cue shows the mapped melee key (default F),
-Smack, Weaver leg and remaining swings. Connected hits consume durability, misses
+club when collected and stows the wand, hotbar, trajectory and beam. The cue shows
+remaining uses and LMB/F Whip, RMB Throw and G Drop, following remapped melee/carry
+keys. Released legs retain momentum and their hinge; throws hit once and remain
+recoverable with the same owner and remaining uses. Connected hits consume durability, misses
 do not, and walls block covered targets. Missing limbs and carried durability
 survive saves. The collected limb also retains its owner's provenance. With
 Trickshot enabled, a nearby owner at no more than 30% health, capped at 40 hp, gains
@@ -254,6 +256,13 @@ result. WebGL2 remains the shipped default. The browser implementation does not
 establish native Vulkan execution. Unfamiliar-human playtesting,
 physical-controller compatibility and cross-hardware acceptance remain separate
 gates; workshop/boon traversal was outside the finite visual verdict.
+
+The later equipment and habitat changes have separate automated evidence in
+`docs/living-descent-interactions.md`: F gusts affect ground fronds, leaves catch
+fire/embers, burned crowns fall, water quenches them, and frozen Rillback tails
+restrain the head. That evidence does not extend the earlier visual-review
+verdicts. The proposed cinematic finishers and synchronized volleys remain a plan
+in `docs/plans/2026-09-05-cinematic-trickshots.md`.
 
 Direction contract is the opening comment in `index.html`, seed 19469569. Finish
 review and DESIGN.md must describe the built result without claiming automated

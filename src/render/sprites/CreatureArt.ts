@@ -1,4 +1,5 @@
-import type { Ctx, Enemy } from '@/core/types';
+import type { Ctx, Enemy, HeldLegRig, Pickup } from '@/core/types';
+import { looseLegPose } from '@/combat/LooseWeaverLeg';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { looseLegGeometry, weaverLegGeometry } from '@/creatures/weaverAnatomy';
 import type { LimbPoint } from '@/creatures/weaverAnatomy';
@@ -116,6 +117,18 @@ export function drawHeldLeg(out: PixelSurface, light: LightField, ctx: Ctx, alph
   if (!club || p.dead) return;
   const rig = club.rig;
   if (!rig) return;
+  drawHingedLeg(out, light, ctx, rig, club.length, alpha, true);
+}
+
+export function drawLooseLeg(out: PixelSurface, light: LightField, ctx: Ctx, pickup: Pickup, alpha = 1): void {
+  const rig = looseLegPose(pickup);
+  if (rig) drawHingedLeg(out, light, ctx, rig, pickup.data.legLength ?? 34, alpha, false);
+  else drawLegFragment(out, light, ctx, pickup.x, pickup.y - 1, pickup.data.legLength ?? 34,
+    pickup.data.legAngle ?? 0, pickup.data.legAge ?? 0);
+}
+
+function drawHingedLeg(out: PixelSurface, light: LightField, ctx: Ctx, rig: Pick<HeldLegRig,
+  'hand' | 'knee' | 'hip' | 'previousHand' | 'previousKnee' | 'previousHip'>, length: number, alpha: number, gripped: boolean): void {
   const blend = (a: LimbPoint, b: LimbPoint) => ({ x: a.x + (b.x - a.x) * alpha, y: a.y + (b.y - a.y) * alpha });
   const hand = blend(rig.previousHand, rig.hand), knee = blend(rig.previousKnee, rig.knee), hip = blend(rig.previousHip, rig.hip);
   const pen = new CreaturePen(out, light, ctx, { x: knee.x, y: knee.y, flash: 0 }, 1.1);
@@ -125,10 +138,10 @@ export function drawHeldLeg(out: PixelSurface, light: LightField, ctx: Ctx, alph
   pen.oval(hip.x, hip.y, 1.5, 1, TEAL);
   for (let i = 1; i < 5; i++) {
     const t = i / 5, x = knee.x + (hip.x - knee.x) * t, y = knee.y + (hip.y - knee.y) * t;
-    const dx = (hip.x - knee.x) / (club.length * .45), dy = (hip.y - knee.y) / (club.length * .45);
+    const dx = (hip.x - knee.x) / (length * .45), dy = (hip.y - knee.y) / (length * .45);
     pen.line(x, y, x - dy * 2, y + dx * 2, SHELL, .5);
   }
-  out.setPx(hand.x, hand.y, .95, .8, .62);
+  if (gripped) out.setPx(hand.x, hand.y, .95, .8, .62);
 }
 
 function drawWeaver(p: CreaturePen, ctx: Ctx, e: Readonly<Enemy>): void {

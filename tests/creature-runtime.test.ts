@@ -64,6 +64,36 @@ describe('living creature perception', () => {
 });
 
 describe('articulated body and render ownership', () => {
+  it('transmits a frozen tail contact back to the swimmer without stretching, then swims free after thawing', () => {
+    const world = new World(240, 240), enemy = creature('rillback');
+    enemy.x = 100; enemy.y = 84; enemy.body = createChain(100, 80); enemy.rillWet = 1;
+    for (let y = 1; y < 239; y++) for (let x = 1; x < 239; x++) world.replaceCellAt(world.idx(x, y), Cell.Water, 0);
+    const tail = enemy.body.nodes.at(-1)!, tailX = tail.x, tailY = tail.y;
+    for (let y = 77; y <= 83; y++) for (let x = 65; x <= 70; x++) world.replaceCellAt(world.idx(x, y), Cell.Ice, 0);
+    const ctx = { world, state: { frameCount: 0 } } as unknown as Ctx;
+    let maxLink = 0;
+    const swim = (count: number) => {
+      for (let tick = 0; tick < count; tick++) {
+        enemy.vx = .65; enemy.vy = 1.3; enemy.fx += enemy.vx; enemy.fy += enemy.vy;
+        ctx.state.frameCount++; tickCreaturePose(ctx, enemy);
+        const nodes = enemy.body!.nodes;
+        for (let i = 1; i < nodes.length; i++) maxLink = Math.max(maxLink, Math.hypot(nodes[i].x - nodes[i - 1].x, nodes[i].y - nodes[i - 1].y));
+        expect(enemy.x + enemy.fx).toBeCloseTo(nodes[0].x, 5);
+        expect(enemy.y + enemy.fy - 4).toBeCloseTo(nodes[0].y, 5);
+      }
+    };
+    swim(180);
+    expect(maxLink).toBeLessThanOrEqual(4.24);
+    expect(Math.hypot(tail.x - tailX, tail.y - tailY)).toBeLessThan(.1);
+    expect(Math.hypot(enemy.body.nodes[0].x - tailX, enemy.body.nodes[0].y - tailY)).toBeLessThan(34);
+    expect(Math.hypot(enemy.vx, enemy.vy)).toBeLessThan(.7);
+    const trappedY = enemy.y + enemy.fy;
+    for (let y = 77; y <= 83; y++) for (let x = 65; x <= 70; x++) world.replaceCellAt(world.idx(x, y), Cell.Water, 0);
+    swim(60);
+    expect(enemy.y + enemy.fy).toBeGreaterThan(trappedY + 20);
+    expect(maxLink).toBeLessThanOrEqual(4.24);
+  });
+
   it('expresses remembered attention, feeding and injury without an omniscient target', () => {
     const enemy = creature('rillback'), mind = ensureCreatureMind(enemy, 7);
     mind.confidence = .8; mind.intent = 'investigate'; mind.targetX = -30; mind.targetY = 20;

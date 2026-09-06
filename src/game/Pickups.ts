@@ -11,6 +11,9 @@ import { blocksEntity } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
 import { LEG_CLUB_SWINGS } from '@/combat/WeaverLimbs';
+import { updateLooseWeaverLeg } from '@/combat/LooseWeaverLeg';
+import { sightClear } from '@/creatures/perception';
+import { cancelChargingBlackHole } from '@/core/runtimeState';
 import { getBindings, keyLabel } from '@/input/bindings';
 
 /**
@@ -45,6 +48,13 @@ export class Pickups implements PickupsApi {
 
     for (const p of runtime.pickups) {
       if (p.taken || p.data.offerPending) continue;
+      const handsFree = !player.legClub && !player.swinging && !ctx.rigidBodies?.isHolding?.();
+      if (p.kind === 'weaverleg' && p.data.legDurability !== undefined) {
+        updateLooseWeaverLeg(ctx, p);
+        if (!p.taken && !player.dead && handsFree && !p.data.legThrown && !p.data.legPickupBlocked &&
+            Math.hypot(player.x - p.x, player.y - 8 - p.y) < 14 && sightClear(world, player.x, player.y - 8, p.x, p.y)) this.collect(ctx, p);
+        continue;
+      }
 
       // Settle physics: fall until resting on blocking cells.
       const below = world.inBounds(Math.floor(p.x), Math.floor(p.y) + 1)
@@ -60,7 +70,7 @@ export class Pickups implements PickupsApi {
       const dx = player.x - p.x;
       const dy = player.y - 8 - p.y;
       const d2 = dx * dx + dy * dy;
-      const canCollect = p.kind !== 'weaverleg' || !player.legClub;
+      const canCollect = p.kind !== 'weaverleg' || handsFree;
       if (p.kind === 'weaverleg') {
         p.data.legAge = Math.min(100000, (p.data.legAge ?? 0) + 1);
         if (blocksEntity(below)) { p.data.legSpin = (p.data.legSpin ?? 0) * .6; p.data.legAngle = (p.data.legAngle ?? 0) * .8; }
@@ -106,8 +116,11 @@ export class Pickups implements PickupsApi {
     ctx.telemetry.count('pickup.' + p.kind);
 
     if (p.kind === 'weaverleg') {
-      player.legClub = { durability: LEG_CLUB_SWINGS, length: Math.max(26, Math.min(44, p.data.legLength ?? 34)), swingT: 0, angle: player.aimAngle, cooldown: 0, owner: p.data.legOwner };
-      ctx.events.emit('toast', { text: `Weaver leg acquired · ${keyLabel(getBindings().kick)} to smack · ${LEG_CLUB_SWINGS} sturdy swings` });
+      const durability = Math.max(1, Math.min(LEG_CLUB_SWINGS, p.data.legDurability ?? LEG_CLUB_SWINGS));
+      player.legClub = { durability, length: Math.max(26, Math.min(44, p.data.legLength ?? 34)), swingT: 0, angle: player.aimAngle, cooldown: 0, owner: p.data.legOwner };
+      player.firing = false; player.firePressed = false; player.fireBlockedUntilRelease = true; player.recoilT = 0;
+      cancelChargingBlackHole(ctx, { removeProjectile: true });
+      ctx.events.emit('toast', { text: `Weaver leg equipped · LMB whip · RMB throw · ${keyLabel(getBindings().carry)} drop` });
       ctx.audio.pickup();
     } else if (p.kind === 'goldpile') {
       const amount = p.data.amount ?? 25;

@@ -6,10 +6,11 @@ import type {
   VineStrandsApi,
 } from '@/core/types';
 import { blocksEntity, Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
-import { ashColor, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
+import { ashColor, emberColor, fireColor, packRGB, smokeColor, unpackB, unpackG, unpackR } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { entityRandom } from '@/core/simRandom';
+import { foliageHeatNearby, foliageTouchesHeat } from '@/game/FoliageHeat';
 
 const SUPPORT_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
@@ -57,6 +58,8 @@ const WEB_ASH_MAX_FLECKS = 9;
 const WEB_ASH_LIFETIME = 180;
 
 interface VineNode extends VineStrandNodeView {
+  burn?: number;
+  burning?: boolean;
   leafLength?: number;
   x: number;
   y: number;
@@ -561,9 +564,11 @@ export class VineStrands implements VineStrandsApi {
   update(ctx: Ctx): void {
     this.manageHangingVines(ctx); // lift on-screen cell-vines; re-settle far ones
     this.shakeSway(ctx.fx?.screenShake ?? 0); // the world shakes → live vines quiver
+    const burnedThrough: Array<{ x: number; y: number }> = [];
     for (let i = this.strands.length - 1; i >= 0; i--) {
       const strand = this.strands[i];
       this.stepStrand(ctx, strand);
+      if (!strand.web) this.heatStrand(ctx, strand, burnedThrough);
       if (strand.web && strand.maxAge !== undefined && strand.age >= strand.maxAge) {
         if (strand.ashOnExpire) this.shedStrandAsh(ctx.world, strand);
         this.strands.splice(i, 1);
@@ -574,6 +579,7 @@ export class VineStrands implements VineStrandsApi {
         this.strands.splice(i, 1);
       }
     }
+    for (const point of burnedThrough) this.cutAt(point.x, point.y, .7);
   }
 
   /**
@@ -722,10 +728,13 @@ export class VineStrands implements VineStrandsApi {
       return;
     }
     const color = strand.originColor ?? strand.color;
+    const residue = new Map<number, Cell>();
+    for (const node of strand.nodes) if (node.burn) for (const index of node.sourceCells ?? []) residue.set(index, node.burning ? Cell.Ember : Cell.Ash);
     for (const i of strand.originCells) {
       if (world.types[i] !== Cell.Empty) continue;
-      world.replaceCellAt(i, Cell.Vines, color);
-      world.life[i] = -1;
+      const type = residue.get(i) ?? Cell.Vines;
+      world.replaceCellAt(i, type, type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : color);
+      world.life[i] = type === Cell.Vines ? -1 : 90;
       world.moved[i] = world.movedTick;
     }
   }
@@ -772,18 +781,75 @@ export class VineStrands implements VineStrandsApi {
   }
 
   writeSnapshotCells(world: World, types: Uint8Array, life: Int16Array): void {
-    const put = (index: number) => {
+    const put = (index: number, type: Cell = Cell.Vines) => {
       if (index < 0 || index >= types.length || types[index] !== Cell.Empty) return;
-      types[index] = Cell.Vines; life[index] = -1;
+      types[index] = type; life[index] = type === Cell.Vines ? -1 : 90;
     };
     for (const strand of this.strands) {
       if (strand.web || strand.originWorld !== world) continue;
-      if (strand.tendril && strand.originCells) { for (const index of strand.originCells) put(index); continue; }
+      if (strand.tendril && strand.originCells) {
+        const residue = new Map<number, Cell>();
+        for (const node of strand.nodes) if (node.burn) for (const index of node.sourceCells ?? []) residue.set(index, node.burning ? Cell.Ember : Cell.Ash);
+        for (const index of strand.originCells) put(index, residue.get(index) ?? Cell.Vines);
+        continue;
+      }
       // Detached material is saved at its actual position, never at the old root.
-      for (const node of strand.nodes) put(world.idx(Math.floor(node.x), Math.floor(node.y)));
+      for (const node of strand.nodes) put(world.idx(Math.floor(node.x), Math.floor(node.y)), vineResidue(node));
       for (const edge of strand.segments) {
         const a = strand.nodes[edge.a], b = strand.nodes[edge.b], count = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 1.6);
-        for (let i = 1; i < count; i++) put(world.idx(Math.floor(a.x + (b.x - a.x) * i / count), Math.floor(a.y + (b.y - a.y) * i / count)));
+        const type = vineResidue((a.burn ?? 0) > (b.burn ?? 0) ? a : b);
+        for (let i = 1; i < count; i++) put(world.idx(Math.floor(a.x + (b.x - a.x) * i / count), Math.floor(a.y + (b.y - a.y) * i / count)), type);
+      }
+    }
+  }
+
+  /** Lifted stems still own combustible material. Their leaf silhouettes also
+   * catch grid fire and flying embers, even though the cells were lifted. */
+  private heatStrand(ctx: Ctx, strand: VineStrand, cuts: Array<{ x: number; y: number }>): void {
+    const bounds = strand.bounds;
+    if (!bounds) return;
+    const cx = (bounds.minX + bounds.maxX) / 2, cy = (bounds.minY + bounds.maxY) / 2;
+    const radius = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) / 2 + 13;
+    const nearby = foliageHeatNearby(ctx, cx, cy, radius);
+    if (!nearby && !strand.nodes.some(n => n.burning)) return;
+    for (let i = 0; i < strand.nodes.length; i++) {
+      const node = strand.nodes[i], previous = strand.nodes[Math.max(0, i - 1)];
+      const touches = (water: boolean) => {
+        if (foliageTouchesHeat(ctx, node.x, node.y, node.x, node.y, water)) return true;
+        for (const edge of strand.segments) {
+          if (edge.a !== i && edge.b !== i) continue;
+          const other = strand.nodes[edge.a === i ? edge.b : edge.a];
+          if (foliageTouchesHeat(ctx, node.x, node.y, other.x, other.y, water)) return true;
+        }
+        const length = (node.leafLength ?? 0) * (1 - (node.burn ?? 0));
+        const dx = node.x - previous.x, dy = node.y - previous.y, distance = Math.hypot(dx, dy) || 1;
+        const tx = dx / distance, ty = dy / distance;
+        for (const side of [-1, 1]) {
+          let ax = node.x, ay = node.y;
+          for (let k = 1; k <= Math.ceil(length); k++) {
+            const t = k / Math.ceil(length), curl = t * t * length * .5;
+            const bx = node.x - ty * side * length * t + tx * curl, by = node.y + tx * side * length * t + ty * curl;
+            if (foliageTouchesHeat(ctx, ax, ay, bx, by, water)) return true;
+            ax = bx; ay = by;
+          }
+        }
+        return false;
+      };
+      if (!node.burning && nearby && touches(false)) node.burning = true;
+      if (!node.burning) continue;
+      if (touches(true)) { node.burning = false; continue; }
+      node.burn = Math.min(1, (node.burn ?? 0) + 1 / 140);
+      if (node.burn >= 1) {
+        cuts.push({ x: node.x, y: node.y });
+        ctx.particles?.spawn(node.x, node.y, .2, -.4, Cell.Ash, ashColor(), 80, { grav: .07, deposit: true });
+        continue;
+      }
+      if ((ctx.state.frameCount + i * 3) % 12 !== 0) continue;
+      ctx.particles?.spawn(node.x, node.y, Math.sin(i + ctx.state.frameCount) * .2, -.5, Cell.Fire, fireColor(), 16, { grav: -.03, glow: 1.1 });
+      ctx.particles?.spawn(node.x, node.y - 1, .1, -.3, Cell.Smoke, smokeColor(), 35, { grav: -.02 });
+      const x = Math.floor(node.x), y = Math.floor(node.y);
+      if (ctx.world.inBounds(x, y) && ctx.world.type(x, y) === Cell.Empty) {
+        const index = ctx.world.idx(x, y); ctx.world.replaceCellAt(index, Cell.Fire, fireColor()); ctx.world.life[index] = 18;
       }
     }
   }
@@ -1031,7 +1097,15 @@ export class VineStrands implements VineStrandsApi {
   }
 
   private settleStrand(world: World, strand: VineStrand): void {
-    this.settleStrandAs(world, strand, Cell.Vines, () => strand.color, 1.6);
+    if (!strand.nodes.some(node => node.burn)) { this.settleStrandAs(world, strand, Cell.Vines, () => strand.color, 1.6); return; }
+    for (const edge of strand.segments) {
+      const a = strand.nodes[edge.a], b = strand.nodes[edge.b], type = vineResidue((a.burn ?? 0) > (b.burn ?? 0) ? a : b);
+      this.paintLineAs(world, a.x, a.y, b.x, b.y, type, () => type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color, 1.6);
+    }
+    if (strand.segments.length === 0) for (const node of strand.nodes) {
+      const type = vineResidue(node);
+      this.paintCellAt(world, node.x, node.y, type, type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color);
+    }
   }
 
   private shedStrandAsh(world: World, strand: VineStrand): void {
@@ -1102,7 +1176,7 @@ export class VineStrands implements VineStrandsApi {
     const i = world.idx(cx, cy);
     if (world.types[i] !== Cell.Empty) return;
     world.replaceCellAt(i, cellType, color);
-    world.life[i] = -1;
+    world.life[i] = cellType === Cell.Vines ? -1 : 90;
     world.moved[i] = world.movedTick;
   }
 
@@ -1111,6 +1185,8 @@ export class VineStrands implements VineStrandsApi {
 function isLoadBearingAnchor(t: number): boolean {
   return isSolid(t) && !isSoftGrowth(t);
 }
+
+function vineResidue(node: VineNode): Cell { return node.burn ? node.burning ? Cell.Ember : Cell.Ash : Cell.Vines; }
 
 function segmentDistanceSq(x: number, y: number, a: VineNode, b: VineNode): number {
   const dx = b.x - a.x, dy = b.y - a.y;

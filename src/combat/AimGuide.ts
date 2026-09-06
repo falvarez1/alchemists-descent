@@ -99,7 +99,7 @@ function assistAngle(ctx: Ctx, raw: number, spec: Ballistic): { angle: number; e
 
 const cache = new WeakMap<Ctx, { key: string; value: AimGuide | null }>();
 export function getAimGuide(ctx: Ctx): AimGuide | null {
-  if (!ctx.state.trickshot?.enabled || ctx.player.dead || ctx.state.mode !== 'play') return null;
+  if (!ctx.state.trickshot?.enabled || ctx.player.dead || ctx.player.legClub || ctx.state.mode !== 'play') return null;
   const p = ctx.player, wand = ctx.wands.wands[ctx.wands.active];
   const key = `${ctx.state.frameCount}:${p.x}:${p.y}:${p.crawling}:${ctx.input.mouse.x}:${ctx.input.mouse.y}:${ctx.wands.active}:${wand.castIndex}:${wand.mana}:${ctx.state.trickshot.assistDegrees}`;
   const old = cache.get(ctx); if (old?.key === key) return old.value;

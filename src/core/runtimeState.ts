@@ -59,7 +59,7 @@ export function resetHeldSpellInputs(ctx: Ctx): void {
   input.siphonHeld = false;
   input.pourHeld = false;
   input.drinkHeld = false;
-  if (ctx.player) ctx.player.firing = false;
+  if (ctx.player) { ctx.player.firing = false; ctx.player.fireBlockedUntilRelease = false; }
 }
 
 export function resetCombatTransients(ctx: Ctx, options: CombatTransientResetOptions = {}): void {

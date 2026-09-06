@@ -1,3 +1,4 @@
+import { startLegSwing } from '@/combat/WeaverLimbs';
 import type {
   CardId,
   CastActionExecutionContext,
@@ -221,8 +222,10 @@ export class WandSystem implements WandsApi {
 
   fire(ctx: Ctx): void {
     if (ctx.state.mode !== 'play' || ctx.player.dead) return;
+    if (ctx.player.fireBlockedUntilRelease) return;
     // Heart communion roots the wand arm; so does hauling on a lever.
     if (ctx.player.recharge > 0 || ctx.player.pullT > 0 || ctx.player.climbing) return;
+    if (startLegSwing(ctx)) return;
     if (ctx.input.activeChargingBlackHole) return;
     const wand = this.wands[this._active];
     // God mode: a wand never runs dry. A fresh CLICK (the press edge) fires
@@ -708,6 +711,7 @@ export class WandSystem implements WandsApi {
   /* ---------------- per-frame upkeep ---------------- */
 
   update(ctx: Ctx): void {
+    if (ctx.player.legClub) { this.flameBurst = 0; this.flameBurstAction = null; }
     // Mana Font boon: the old ones keep the tanks topped up 60% faster.
     const regenK = ctx.player.perks.manafont ? 1.6 : 1;
     for (const w of this.wands) {

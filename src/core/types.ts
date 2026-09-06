@@ -81,6 +81,8 @@ export interface PlayerState {
   /** Set on the LMB press edge, consumed by the first cast of that click. Lets
    *  god mode fire instantly per click while a HELD button stays interval-capped. */
   firePressed?: boolean;
+  /** Equipment changes require a fresh primary press before drawing the wand. */
+  fireBlockedUntilRelease?: boolean;
   // procedural animation state
   stridePhase: number;
   landTimer: number;
@@ -121,7 +123,7 @@ export interface PlayerState {
   kickT: number;
   /** Direction (±1) the last kick was aimed (for the pose). */
   kickDir: number;
-  /** Salvaged Weaver limb; F swings it while the wand remains on LMB. */
+  /** Equipped salvage replaces the wand; primary/F whips, secondary throws. */
   legClub?: { durability: number; length: number; swingT: number; angle: number; cooldown: number; owner?: string;
     rig?: HeldLegRig; hitThisSwing?: boolean };
   /** True while swinging on a vine (pendulum owns movement; body-resolve skips him). */
@@ -1632,6 +1634,8 @@ export interface RigidBodiesApi {
 }
 
 export interface VineStrandNodeView {
+  readonly burn?: number;
+  readonly burning?: boolean;
   /** Stable botanical detail stays with the node when a stem is severed. */
   readonly leafLength?: number;
   readonly x: number;
@@ -2157,7 +2161,8 @@ export interface Pickup {
   taken: boolean;
   /** tome: card seed/unique grant; potion: POTION_DEFS key; goldpile/chest: amount. */
   data: { card?: CardId; potion?: string; amount?: number; offerPending?: boolean;
-    legLength?: number; legAngle?: number; legSpin?: number; legAge?: number; legOwner?: string };
+    legLength?: number; legAngle?: number; legSpin?: number; legAge?: number; legOwner?: string;
+    legDurability?: number; legBend?: number; legThrown?: boolean; legPickupBlocked?: boolean };
 }
 
 /** The level's exit gate: opens when the golden key is brought to it. */
@@ -2764,8 +2769,28 @@ export interface LevelRuntime {
   vaultArch?: VaultArch;
 }
 
+/** One authored crown's persistent material condition and physical motion. */
+export interface HabitatPlantState {
+  x: number;
+  y: number;
+  rootY: number;
+  angle: number;
+  velocity: number;
+  rotation: number;
+  spin: number;
+  vx: number;
+  vy: number;
+  detached: boolean;
+  burn: number;
+  burning: boolean;
+  age: number;
+  spent: boolean;
+}
+
 /** Expedition ecology and room progress; separate from Builder documents. */
 export interface LivingExpeditionState {
+  /** Authored crowns retain damage and falling motion through an expedition save. */
+  plants?: Array<HabitatPlantState | null>;
   valveTurn?: number;
   valveAngularVelocity?: number;
   ticks: number;

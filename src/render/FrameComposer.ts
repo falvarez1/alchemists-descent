@@ -30,7 +30,8 @@ import {
 } from '@/render/lightingModel';
 import { SKY } from '@/render/skyAtmosphere';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
-import { drawHeldLeg, drawLegFragment } from '@/render/sprites/CreatureArt';
+import { drawHeldLeg, drawLooseLeg } from '@/render/sprites/CreatureArt';
+import { looseLegPose } from '@/combat/LooseWeaverLeg';
 import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
@@ -125,7 +126,13 @@ export class FrameComposer implements PixelSurface {
     const leg = ctx.player.legClub?.rig;
     const legMoving = !!leg && (Math.hypot(leg.knee.x - leg.previousKnee.x, leg.knee.y - leg.previousKnee.y) > .001
       || Math.hypot(leg.hip.x - leg.previousHip.x, leg.hip.y - leg.previousHip.y) > .001);
-    return legMoving || (!!ctx.rigidBodies.playerRagdoll && Object.values(ctx.rigidBodies.playerRagdoll.parts).some(b => !b.sleeping)) || this.poses.moving(ctx.camera) || this.poses.moving(ctx.player) || ctx.enemies.some(e => this.poses.moving(e));
+    const looseMoving = ctx.levels.current?.pickups.some(p => {
+      if (p.taken || p.kind !== 'weaverleg') return false;
+      const pose = looseLegPose(p);
+      return pose && (Math.hypot(pose.hip.x - pose.previousHip.x, pose.hip.y - pose.previousHip.y) > .001
+        || Math.hypot(pose.hand.x - pose.previousHand.x, pose.hand.y - pose.previousHand.y) > .001);
+    });
+    return legMoving || looseMoving || (!!ctx.rigidBodies.playerRagdoll && Object.values(ctx.rigidBodies.playerRagdoll.parts).some(b => !b.sleeping)) || this.poses.moving(ctx.camera) || this.poses.moving(ctx.player) || ctx.enemies.some(e => this.poses.moving(e));
   }
 
   private positionSprite(body: { x: number; y: number }): void {
@@ -1126,12 +1133,13 @@ export class FrameComposer implements PixelSurface {
           const lt = this.light.sample(x, y);
           const webGlow = strand.web === true ? 0.22 : 0;
           const denMul = strand.denWeb === true ? 0.42 : 1;
+          const char = Math.min(1, ((a.burn ?? 0) * (1 - t) + (b.burn ?? 0) * t) * 1.6);
           const r = baseR * (Math.max(0.16, lt.r) * 1.05 + webGlow * 0.45) * denMul;
           const g = baseG * (Math.max(0.18, lt.g) * 1.1 + webGlow) * denMul;
           const b2 = baseB * (Math.max(0.14, lt.b) + webGlow * 0.45) * denMul;
           for (let w = -half; w <= half + 1e-6; w += 1) {
             if (strand.denWeb === true) this.addPx(x + perpX * w, y + perpY * w, r, g, b2);
-            else this.setPx(x + perpX * w, y + perpY * w, r, g, b2);
+            else this.setPx(x + perpX * w, y + perpY * w, r * (1 - char * .5), g * (1 - char * .73), b2 * (1 - char * .78));
           }
         }
       }
@@ -1562,7 +1570,7 @@ export class FrameComposer implements PixelSurface {
     for (const p of runtime.pickups) {
       if (p.taken) continue;
       if (p.kind === 'weaverleg') {
-        drawLegFragment(this, this.light, ctx, p.x, p.y - 1, p.data.legLength ?? 34, p.data.legAngle ?? 0, p.data.legAge ?? 0);
+        drawLooseLeg(this, this.light, ctx, p, this.alpha);
         continue;
       }
       const bob = Math.sin(frame * 0.08 + p.x * 0.7) * 1.4;
