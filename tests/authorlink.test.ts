@@ -748,6 +748,58 @@ describe('AuthorLinkClient', () => {
     client.dispose();
   });
 
+  it('carries the simulation-mirror flag through a packed frame', () => {
+    // The mirror rides the same binary cells frame as a brush stroke; only
+    // the `stream` mark tells the receiver to apply it silently and lets a
+    // playing window refuse it. Losing that mark in the header would turn
+    // every sim frame into a toast-and-bloom "edit" in the editor.
+    let sinkHandlers: TransportHandlers | null = null;
+    const sinkTransport: SessionTransport = {
+      describe: 'sink',
+      state: 'open',
+      supportsBinary: true,
+      open(h) {
+        sinkHandlers = h;
+        h.onOpen();
+      },
+      send: () => true,
+      sendBinary: () => true,
+      close() {
+        sinkHandlers = null;
+      },
+    };
+    const sourceTransport: SessionTransport = {
+      describe: 'source',
+      state: 'open',
+      supportsBinary: true,
+      open(h) {
+        h.onOpen();
+      },
+      send: () => true,
+      sendBinary(bytes) {
+        sinkHandlers?.onBinary?.(bytes);
+        return true;
+      },
+      close() {},
+    };
+    const sink = new AuthorLinkClient({ url: 'x', room: 'local', role: 'builder', build: 't', clientId: 'editor-1', transportFactory: () => sinkTransport });
+    const source = new AuthorLinkClient({ url: 'x', room: 'local', role: 'play', build: 't', clientId: 'play-1', transportFactory: () => sourceTransport });
+    sink.connect();
+    source.connect();
+    const seen: Array<{ stream: boolean | undefined; label: string; cells: number }> = [];
+    sink.on('cells', (m) => seen.push({ stream: m.payload.stream, label: m.payload.label, cells: m.payload.patch.idxs.length }));
+    const world: WorldIdentity = { kind: 'level', levelId: 'd1', biome: 'earthen', seed: 1, genVersion: 1, width: 10, height: 10 };
+    const patch = { idxs: [3, 4], types: [7, 7], colors: [0xd2b48c, 0xd2b48c], life: [0, 0], charge: [0, 0] };
+    expect(source.sendCells({ world, patch, label: 'sim', stream: true })).toBe(true);
+    expect(source.sendCells({ world, patch, label: 'paint' })).toBe(true);
+    expect(seen).toEqual([
+      { stream: true, label: 'sim', cells: 2 },
+      { stream: undefined, label: 'paint', cells: 2 },
+    ]);
+    sink.dispose();
+    source.dispose();
+  });
+
   it('reads a live role at each connect, so an editor that opened later says so', () => {
     // The editor route installs the link BEFORE the Builder opens; a role
     // captured at construction would announce `sandbox` forever.

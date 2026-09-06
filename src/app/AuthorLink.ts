@@ -1,6 +1,7 @@
 import type { Ctx, PeerGhostPose } from '@/core/types';
-import type { CellPatch } from '@/authoring/cellPatch';
-import { applyCellPatch, cellPatchBounds, isValidCellPatch } from '@/authoring/cellPatch';
+import type { CellPatch, CellPatchBounds } from '@/authoring/cellPatch';
+import { applyCellPatch, cellPatchBounds, createCellPatch, isValidCellPatch } from '@/authoring/cellPatch';
+import type { World } from '@/sim/World';
 import { applyWorldLayer, captureWorldLayer } from '@/authoring/worldLayer';
 import { GEN_VERSION } from '@/config/gen';
 import { HEIGHT, WIDTH } from '@/config/constants';
@@ -84,6 +85,12 @@ export interface AuthorLinkWorldState {
   canPull: boolean;
   /** Why `canPull` is false, for the pill tooltip. */
   pullBlockedReason?: string;
+  /**
+   * The live simulation mirror: `sending` while this (playing) window streams
+   * its changed cells to an editor on the same world, `receiving` while such
+   * frames are landing here, `off` otherwise.
+   */
+  mirror: 'sending' | 'receiving' | 'off';
 }
 
 /**
@@ -258,6 +265,133 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
     if (!live || ctx.world !== live.world) return null;
     return live.def.id === 'custom' ? 'this window is running a playtest' : `this window is playing ${live.def.id}`;
   };
+
+  /* ---------------- simulation mirror (game -> editor) ---------------- */
+
+  /**
+   * The playing window streams what its simulation DID to any editor on the
+   * same world, so sand dropped from the Builder falls there exactly as it
+   * falls for the tester — instead of the editor sitting on a frozen copy
+   * (its own sim is paused for authoring) that only ever diverges.
+   *
+   * WHY A SHADOW AND CHUNK VERSIONS, NOT A SECOND SIM. Running the editor's
+   * own simulation would give similar-looking, never identical results, and
+   * no way back into step. Diffing the live planes against a shadow copy is
+   * exact by construction. The activity grid bumps a per-chunk version on
+   * every simulated move, so only chunks that changed are compared; a slow
+   * rotating sweep catches writers that bypass the grid (raw plane writes),
+   * bounding their staleness to a few seconds instead of forever.
+   *
+   * Streams only while a NON-playing peer is on our world: a window playing
+   * its own copy must never apply these, so it is never sent them either.
+   */
+  const STREAM_MS = 80;
+  const STREAM_SWEEP_CHUNKS = 8;
+  /** Under the 512 KB message cap at 13 packed bytes per cell. */
+  const STREAM_FRAME_CELLS = 32_000;
+  const STREAM_RECEIVE_HOLD_MS = 1500;
+  interface MirrorShadow {
+    world: World;
+    types: Uint8Array;
+    colors: Uint32Array;
+    life: Int16Array;
+    charge: Uint16Array;
+    versions: Uint32Array;
+    sweepAt: number;
+  }
+  let mirror: MirrorShadow | null = null;
+  let lastStreamReceivedAt = 0;
+
+  /** Take the live planes as the peer's baseline: everything after this streams. */
+  const resetMirror = (): void => {
+    const world = ctx.world;
+    mirror = {
+      world,
+      types: world.types.slice(),
+      colors: world.colors.slice(),
+      life: world.life.slice(),
+      charge: world.charge.slice(),
+      versions: world.activity.versions.slice(),
+      sweepAt: 0,
+    };
+  };
+
+  const shouldStream = (): boolean =>
+    client.connected &&
+    pullBlock() !== null &&
+    [...peerWorlds.values()].some((p) => p.role !== 'play' && sameWorld(p.world, myWorld));
+
+  const mirrorState = (): AuthorLinkWorldState['mirror'] =>
+    shouldStream() ? 'sending' : Date.now() - lastStreamReceivedAt < STREAM_RECEIVE_HOLD_MS ? 'receiving' : 'off';
+
+  const streamTick = (): void => {
+    if (!shouldStream()) return;
+    const world = ctx.world;
+    if (!mirror || mirror.world !== world || mirror.types.length !== world.types.length) {
+      // No baseline the peer shares yet: start from now. A pull resets this
+      // at snapshot time, so nothing between the snapshot and here is lost.
+      resetMirror();
+      return;
+    }
+    const shadow = mirror;
+    const activity = world.activity;
+    const columns = activity.columns;
+    const total = columns * activity.rows;
+    const chunk = Math.ceil(world.width / columns);
+    const patch = createCellPatch();
+    const diffChunk = (key: number): void => {
+      const cx = key % columns;
+      const cy = (key - cx) / columns;
+      const x0 = cx * chunk;
+      const y0 = cy * chunk;
+      const x1 = Math.min(world.width, x0 + chunk);
+      const y1 = Math.min(world.height, y0 + chunk);
+      for (let y = y0; y < y1; y++) {
+        let i = x0 + y * world.width;
+        for (let x = x0; x < x1; x++, i++) {
+          const t = world.types[i];
+          const c = world.colors[i];
+          const l = world.life[i];
+          const q = world.charge[i];
+          if (t === shadow.types[i] && c === shadow.colors[i] && l === shadow.life[i] && q === shadow.charge[i]) continue;
+          shadow.types[i] = t;
+          shadow.colors[i] = c;
+          shadow.life[i] = l;
+          shadow.charge[i] = q;
+          patch.idxs.push(i);
+          patch.types.push(t);
+          patch.colors.push(c);
+          patch.life.push(l);
+          patch.charge.push(q);
+        }
+      }
+    };
+    for (let key = 0; key < total; key++) {
+      if (activity.versions[key] === shadow.versions[key]) continue;
+      shadow.versions[key] = activity.versions[key];
+      diffChunk(key);
+    }
+    for (let n = 0; n < STREAM_SWEEP_CHUNKS && total > 0; n++) {
+      diffChunk(shadow.sweepAt);
+      shadow.sweepAt = (shadow.sweepAt + 1) % total;
+    }
+    for (let at = 0; at < patch.idxs.length; at += STREAM_FRAME_CELLS) {
+      const end = Math.min(patch.idxs.length, at + STREAM_FRAME_CELLS);
+      const frame: CellPatch =
+        at === 0 && end === patch.idxs.length
+          ? patch
+          : {
+              idxs: patch.idxs.slice(at, end),
+              types: patch.types.slice(at, end),
+              colors: patch.colors.slice(at, end),
+              life: patch.life.slice(at, end),
+              charge: patch.charge.slice(at, end),
+            };
+      client.sendCells({ world: myWorld, patch: frame, label: 'sim', stream: true });
+    }
+  };
+  const streamTimer = globalThis.setInterval(streamTick, STREAM_MS);
+  disposers.push(() => globalThis.clearInterval(streamTimer));
   const worldStateHandlers = new Set<(state: AuthorLinkWorldState) => void>();
   /** Rate-limited toast so a held brush over a mismatched world says it once. */
   let lastMismatchWarnAt = 0;
@@ -309,12 +443,36 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
       mismatch: peers.some((p) => !p.sameWorld),
       canPull: blocked === null,
       ...(blocked ? { pullBlockedReason: blocked } : {}),
+      mirror: mirrorState(),
     };
   };
 
   const emitWorldState = (): void => {
     const state = worldState();
     for (const handler of [...worldStateHandlers]) handler(state);
+  };
+
+  let streamCells = 0;
+  let lastStreamEditAt = 0;
+  /** A mirror frame landed: track it for the pill, and tell the Builder — coalesced, not per frame. */
+  const noteStreamFrame = (cells: number, bounds: CellPatchBounds | null): void => {
+    const now = Date.now();
+    const wasReceiving = now - lastStreamReceivedAt < STREAM_RECEIVE_HOLD_MS;
+    lastStreamReceivedAt = now;
+    streamCells += cells;
+    if (!wasReceiving) emitWorldState();
+    // The Builder marks its document terrain-dirty off `worldEdited` and
+    // writes a status line; at 12 Hz that would be a line per frame.
+    if (now - lastStreamEditAt < 2000) return;
+    lastStreamEditAt = now;
+    ctx.events.emit('worldEdited', {
+      source: 'authorlink',
+      command: 'sim',
+      target: 'world',
+      bounds: bounds ?? { x0: 0, y0: 0, x1: 0, y1: 0 },
+      cells: streamCells,
+    });
+    streamCells = 0;
   };
 
   let announcedRole = currentRole(ctx);
@@ -335,14 +493,18 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
    * peer or the pill would otherwise show stale.
    */
   let lastPullBlock = pullBlock();
+  let lastMirror = mirrorState();
   const refreshMyWorld = (): void => {
     const next = effectiveIdentity();
     const worldChanged = !sameWorld(next, myWorld);
     const roleChanged = currentRole(ctx) !== announcedRole;
     const blocked = pullBlock();
     const pullChanged = blocked !== lastPullBlock;
-    if (!worldChanged && !roleChanged && !pullChanged) return;
+    const mirrorNow = mirrorState();
+    const mirrorChanged = mirrorNow !== lastMirror;
+    if (!worldChanged && !roleChanged && !pullChanged && !mirrorChanged) return;
     lastPullBlock = blocked;
+    lastMirror = mirrorNow;
     if (worldChanged) {
       myWorld = next;
       // Phantoms belong to the world we just left. Keeping them would leave
@@ -350,6 +512,9 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
       // new level — the same class of bug the identity check exists to prevent.
       ctx.peers.clear();
       lastPose = null;
+      // The mirror baseline described the old world; a peer can only rejoin
+      // this one through a pull, which lays down a fresh baseline.
+      mirror = null;
     }
     if (worldChanged || roleChanged) announceWorld();
     emitWorldState();
@@ -512,12 +677,15 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
     client.on('cells', (message) => {
       const { payload } = message;
       const world = ctx.world;
+      const streamFrame = payload.stream === true;
       // A CellPatch is only indices. Every world in this game is the same size,
       // so the identity — not the dimensions — is what makes a replay legitimate.
       // Refuse rather than stamp: landing a stroke in the wrong level looks like
       // the link working right up until you notice the level is ruined.
       if (!isWorldIdentity(payload.world) || !sameWorld(payload.world, myWorld)) {
-        warnCrossWorld(payload.world, 'cell patch');
+        // A mirror frame that was in flight when the worlds parted is not an
+        // edit anyone made; it does not deserve a refusal toast.
+        if (!streamFrame) warnCrossWorld(payload.world, 'cell patch');
         return;
       }
       if (!isValidCellPatch(payload.patch, world.types.length)) {
@@ -526,6 +694,14 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
       }
       if (payload.patch.idxs.length > MAX_PATCH_CELLS) {
         console.warn('[authorlink] ignoring oversized cell patch');
+        return;
+      }
+      if (streamFrame) {
+        // This window has its own simulation if it is playing; two sims
+        // trading frames would fight over every falling grain.
+        if (pullBlock() !== null) return;
+        const streamed = applyCellPatch(world, payload.patch);
+        if (streamed > 0) noteStreamFrame(streamed, cellPatchBounds(payload.patch, world.width));
         return;
       }
       const cells = applyCellPatch(world, payload.patch);
@@ -632,6 +808,10 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
         seed: ctx.state.worldSeed >>> 0,
         paintSeed: typeof paintSeed === 'number' && Number.isFinite(paintSeed) ? paintSeed : null,
       });
+      // The snapshot IS the peer's baseline: the mirror must diff against
+      // exactly this moment, or the sim's next few frames slip between the
+      // snapshot and the first stream frame and the editor is behind forever.
+      if (pullBlock() !== null) resetMirror();
       client.send('world.snapshot', { world: myWorld, layer });
     }),
   );

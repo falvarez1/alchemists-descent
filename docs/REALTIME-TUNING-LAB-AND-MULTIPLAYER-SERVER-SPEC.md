@@ -72,6 +72,7 @@ runtime leaves its exit, mechanisms and pickups pointing into rock.
 | --- | --- | --- |
 | `tuning` | any `paramsChanged` | sparse diff onto the live config singletons, then `paramsChanged` re-emitted so Inspector/Builder mirrors resync |
 | `cells` | Builder `CommandStack` terrain commands | `applyCellPatch` into the live `World` **only when the patch's `WorldIdentity` matches ours**, then a `worldEdited` event |
+| `cells` with `stream` | the PLAYING window, 12.5 Hz, whatever its simulation changed since the last frame | applied silently into the editor's grid (no toast, no bloom, one coalesced `worldEdited` per 2 s); ignored by a window that is itself playing |
 | `cmd` | explicit publish | `ctx.console.exec(line)` on every peer |
 | `objects` | a Builder document command that CHANGED objects/links/lights (debounced 120 ms, deduplicated), or a peer arriving on this world | the peer tears down what it previously instantiated and re-runs the shared `instantiateObjects` for the whole set |
 | `world.announce` | join, and any local world or role change (500 ms identity poll) | peer world table; drives the mismatch state |
@@ -100,6 +101,34 @@ So every window publishes a `WorldIdentity`:
 identity would call it `sandbox` and the next poll would revert the adoption —
 straight back to "different worlds", refusing every stroke. The adoption is
 held until this window's own world genuinely changes underneath it.
+
+### The mirror: the editor sees the tester's simulation
+
+The Builder pauses its own simulation while you author, so on its own the
+editor is a frozen copy of the level: sand dropped there just sits, while in
+the play window it falls. Unpausing the editor would not help — a second,
+independent simulation gives similar-looking, never identical results, and no
+way back into step. So the **playing window streams what its simulation did**
+to any non-playing peer on the same world:
+
+- Every 80 ms it diffs the live cell planes against a shadow copy and sends
+  the changed cells as ordinary packed `cells` frames marked `stream`. The
+  activity grid bumps a per-64×64-chunk version on every simulated move, so
+  only chunks that changed are compared; a slow rotating sweep (8 chunks per
+  tick, the whole grid in ~4 s) catches writers that bypass the grid.
+- The pull snapshot IS the baseline: the shadow is reset at the moment the
+  grid is captured for `world.snapshot`, so nothing the sim does between the
+  snapshot and the first frame is lost. A level change drops the shadow; the
+  peer can only rejoin through another pull.
+- The receiver applies frames silently and never when it is itself playing.
+  Two testers on one world would otherwise trade frames and fight over every
+  falling grain, so a playing window is never sent them either (the announce
+  carries roles).
+- The pill shows the direction: `LINK ⇡1` in the play window, `LINK ⇣1` in
+  the editor while frames are landing.
+
+What still does not cross: entities. Enemies, projectiles and pickups are not
+cells; the tester's own wizard does arrive as a peer ghost.
 
 ### Authored objects: whole-set, not per-record
 
@@ -268,8 +297,8 @@ is both smaller and correct.
 ### Verified
 
 ```powershell
-npx vitest run tests/authorlink.test.ts tests/builder-html.test.ts   # 55 passed
-npm run verify:authorlink                 # 35 passed (two browser contexts); also runs in CI
+npx vitest run tests/authorlink.test.ts tests/builder-html.test.ts   # 56 passed
+npm run verify:authorlink                 # 41 passed (two browser contexts); also runs in CI
 ```
 
 The probe boots the REAL layout — `/builder.html` in one browser context, `/`
@@ -279,7 +308,8 @@ on deliberately different worlds, asserts the stroke is **refused**, pulls the
 peer world, and asserts the same stroke then lands; that a stroke does not
 re-send the authored set; that the play window refuses to pull; and that an
 identical re-publish leaves exactly one copy of each object (including the
-enemy).
+enemy); and that sand dropped in the play window falls in the editor too,
+with the region agreeing cell for cell afterwards (the mirror).
 
 Phase 2, verified in the browser with real palette clicks: a door placed in
 the Builder window appeared in a live D1 expedition's runtime (13 → 14
@@ -324,9 +354,11 @@ what it observes.** Observed counters lag and lie; emitted counters do not.
 - **An unlinked trigger does not instantiate.** A lever with no link has no
   target, so the shared instantiation pass skips it. That is existing game
   semantics, not a link limitation, but it surprises you the first time.
-- **Pull is one-shot, and editor-side.** Both windows show the amber pill,
-  but a window with a live level on screen refuses to pull (its runtime would
-  be stranded under the foreign grid); there is no continuous follow.
+- **Pull is the baseline, and editor-side.** Both windows show the amber
+  pill, but a window with a live level on screen refuses to pull (its runtime
+  would be stranded under the foreign grid). After the pull the mirror keeps
+  the editor in step continuously; a level change in the play window means
+  pulling again.
 - **Player-made changes do not flow back.** Explosions and digging in the
   tester's window never reach the editor, and an editor undo sends `before`
   cells, which overwrites whatever the tester did in that footprint.

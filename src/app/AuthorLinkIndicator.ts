@@ -25,6 +25,7 @@ export class AuthorLinkIndicator {
   private readonly el: HTMLButtonElement;
   private mismatch = false;
   private canPull = true;
+  private mirror: AuthorLinkWorldState['mirror'] = 'off';
   private lastStatus: AuthorLinkStatus | null = null;
   private onPull: (() => void) | null = null;
   private floating = false;
@@ -92,13 +93,23 @@ export class AuthorLinkIndicator {
     this.el.disabled = true;
     this.el.dataset.state = status.kind;
     switch (status.kind) {
-      case 'connected':
-        this.el.textContent = peers > 0 ? `LINK ${peers}` : 'LINK ·';
+      case 'connected': {
+        // The mirror arrows say which way the simulation is flowing: ⇣ this
+        // window is showing the play window's sim, ⇡ this window is the sim.
+        const glyph = this.mirror === 'receiving' ? '⇣' : this.mirror === 'sending' ? '⇡' : '';
+        this.el.textContent = peers > 0 ? `LINK ${glyph}${peers}` : 'LINK ·';
+        const mirrorNote =
+          this.mirror === 'receiving'
+            ? ' · mirroring the play window\'s simulation live'
+            : this.mirror === 'sending'
+              ? ' · streaming this simulation to the editor'
+              : '';
         this.el.title =
           peers > 0
-            ? `AuthorLink room "${this.room}" — ${peers} other window${peers === 1 ? '' : 's'} syncing (rev ${status.revision})`
+            ? `AuthorLink room "${this.room}" — ${peers} other window${peers === 1 ? '' : 's'} syncing (rev ${status.revision})${mirrorNote}`
             : `AuthorLink room "${this.room}" — connected, no other window open yet`;
         break;
+      }
       case 'connecting':
         this.el.textContent = 'LINK …';
         this.el.title = `Connecting to AuthorLink room "${this.room}"`;
@@ -117,6 +128,7 @@ export class AuthorLinkIndicator {
   updateWorlds(state: AuthorLinkWorldState): void {
     this.mismatch = state.mismatch;
     this.canPull = state.canPull;
+    this.mirror = state.mirror;
     if (state.mismatch) {
       const others = state.peers.map((p) => `${p.role}: ${describeWorld(p.world)}`).join('\n');
       const action = state.canPull

@@ -228,7 +228,7 @@ export class AuthorLinkClient {
         clientId: this.clientId,
         revision: this.status.revision,
         sentAt: this.now(),
-        payload: { world: payload.world, label: payload.label },
+        payload: { world: payload.world, label: payload.label, ...(payload.stream === true ? { stream: true } : {}) },
       },
       encodeCellPatch(payload.patch),
     );
@@ -254,7 +254,7 @@ export class AuthorLinkClient {
     const frame = decodeBinaryFrame(bytes);
     if (!frame) return;
     const header = frame.header as Partial<AuthorLinkMessage> & {
-      payload?: { world?: { width?: number; height?: number }; label?: string };
+      payload?: { world?: { width?: number; height?: number }; label?: string; stream?: boolean };
     };
     if (header.type !== 'cells' || header.protocol !== AUTHORLINK_PROTOCOL) return;
     if (typeof header.clientId !== 'string') return;
@@ -288,6 +288,7 @@ export class AuthorLinkClient {
         world: world as CellsPayload['world'],
         label: header.payload?.label ?? 'patch',
         patch,
+        ...(header.payload?.stream === true ? { stream: true } : {}),
       },
     } satisfies Extract<AuthorLinkMessage, { type: 'cells' }>;
 

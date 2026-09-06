@@ -536,6 +536,92 @@ check(
 const batsAfterTeardown = await game.evaluate(() => window.__game.ctx.enemies.filter((e) => e.kind === 'bat').length);
 check('the authored enemy was removed with the set', batsAfterTeardown === runtimeBaseline.bats, `bats=${batsAfterTeardown}`);
 
+console.log('-- mirror: the playing window streams its simulation into the editor');
+// The editor's own sim is paused for authoring, so the only way its grid can
+// show sand FALLING is the mirror. Sand is placed in the GAME through the
+// world API (which touches the activity grid the way the sim does), inside
+// the play window's sim bounds (they follow the player), the clock runs for
+// a moment, and then the region must agree cell for cell in both windows.
+const mirrorSpot = await game.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const px = Math.floor(ctx.player.x);
+  const py = Math.floor(ctx.player.y);
+  for (let r = 20; r < 220; r += 6) {
+    for (let dy = -r; dy <= r; dy += 4) {
+      for (let dx = -r; dx <= r; dx += 4) {
+        const x = px + dx;
+        const y = py + dy;
+        // A 5x14 pocket of air: room for the sand to be placed AND to fall.
+        if (ctx.physics.entityFree(x, y, 3, 14)) return { x, y };
+      }
+    }
+  }
+  return null;
+});
+check('found an air pocket near the player to drop sand into', mirrorSpot !== null);
+if (mirrorSpot) {
+  const sandTop = { x: mirrorSpot.x, y: mirrorSpot.y - 12 };
+  await game.evaluate(({ x, y }) => {
+    const w = window.__game.ctx.world;
+    for (let dy = 0; dy < 3; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        if (w.inBounds(x + dx, y + dy)) w.replaceCellAt(w.idx(x + dx, y + dy), 1, 0xd2b48c);
+      }
+    }
+  }, sandTop);
+  const editorCellsBefore = await editor.evaluate(() => window.__authorLink.getStats().received.cells ?? 0);
+  await game.evaluate(() => {
+    const ctx = window.__game.ctx;
+    ctx.time.setManual(false);
+    ctx.state.paused = false;
+  });
+  let sawReceiving = false;
+  for (let i = 0; i < 20 && !sawReceiving; i++) {
+    await editor.waitForTimeout(100);
+    sawReceiving = await editor.evaluate(() => window.__authorLink.getWorldState().mirror === 'receiving');
+  }
+  const sending = await game.evaluate(() => window.__authorLink.getWorldState().mirror);
+  await game.waitForTimeout(1200);
+  await game.evaluate(() => {
+    const ctx = window.__game.ctx;
+    ctx.state.paused = true;
+    ctx.time.setManual(true);
+  });
+  // The last frames are still in flight; the sweep also needs a moment.
+  await game.waitForTimeout(900);
+  check('the play window reports it is streaming its simulation', sending === 'sending', `mirror=${sending}`);
+  check('the editor saw itself receiving the mirror', sawReceiving);
+  const editorCellsAfter = await editor.evaluate(() => window.__authorLink.getStats().received.cells ?? 0);
+  check('mirror frames arrived in the editor', editorCellsAfter > editorCellsBefore, `${editorCellsBefore} -> ${editorCellsAfter}`);
+  const region = (page) =>
+    page.evaluate(({ x, y }) => {
+      const w = window.__game.ctx.world;
+      let h = 2166136261;
+      let sand = 0;
+      let placedRows = 0;
+      for (let yy = y - 6; yy < y + 40; yy++) {
+        for (let xx = x - 24; xx <= x + 24; xx++) {
+          if (!w.inBounds(xx, yy)) continue;
+          const t = w.types[w.idx(xx, yy)];
+          h = Math.imul(h ^ t, 16777619) >>> 0;
+          if (t === 1) {
+            sand++;
+            if (yy < y + 3) placedRows++;
+          }
+        }
+      }
+      return { h, sand, placedRows };
+    }, sandTop);
+  const gameRegion = await region(game);
+  const editorRegion = await region(editor);
+  check('the sand fell in the play window', gameRegion.sand > 0 && gameRegion.placedRows < 15, JSON.stringify(gameRegion));
+  check(
+    'the editor shows the SAME fallen sand, cell for cell',
+    gameRegion.h === editorRegion.h && editorRegion.sand === gameRegion.sand,
+    `game=${JSON.stringify(gameRegion)} editor=${JSON.stringify(editorRegion)}`,
+  );
+}
+
 console.log('-- objects: a peer set for a different world is refused');
 await game.evaluate(() => {
   window.__game.ctx.state.worldSeed = 4242424;
@@ -589,7 +675,9 @@ const pill = await editor.evaluate(() => {
   const el = document.getElementById('authorlink-status');
   return el ? { text: el.textContent, state: el.dataset.state } : null;
 });
-check('link pill shows connected with a peer', pill?.state === 'connected' && /LINK\s+1/.test(pill.text ?? ''), JSON.stringify(pill));
+// The pill may still carry a mirror arrow (⇣ receiving) for a moment after the
+// last frame; the peer count is what this asserts.
+check('link pill shows connected with a peer', pill?.state === 'connected' && /LINK\s+[⇣⇡]?1/.test(pill.text ?? ''), JSON.stringify(pill));
 
 // ---------------------------------------------------------------------------
 console.log('-- resilience: the room is genuinely idle after all that traffic');

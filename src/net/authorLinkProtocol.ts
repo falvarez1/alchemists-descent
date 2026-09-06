@@ -146,6 +146,14 @@ export interface CellsPayload {
   patch: CellPatch;
   /** Human label from the originating command ("paint", "prefab paste"). */
   label: string;
+  /**
+   * A simulation MIRROR frame: what the playing window's sim did since the
+   * last frame, streamed so an editor on the same world sees sand fall
+   * exactly as the tester does. Applied silently (no toast, no bloom), and
+   * never by a window that is itself playing — two testers on one world must
+   * not ping-pong their grids at each other.
+   */
+  stream?: boolean;
 }
 
 /* ===================== authored objects ===================== */
