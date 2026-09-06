@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 38; // 38: route reachability repairs around protected machinery
+export const GEN_VERSION = 39; // 39: reclaimed habitats, physical catwalk braces and discovery detours
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

@@ -8,6 +8,7 @@ import type { Ctx, RenderSettings } from '@/core/types';
 import { chooseRenderBackend } from '@/render/backendSelection';
 import { GpuCompose } from '@/render/ComposeShader';
 import { PostFx } from '@/render/PostFx';
+import { cameraPresentationOffset } from '@/render/presentation';
 import { WebGpuRenderBackend } from '@/render/WebGpuRenderBackend';
 import type {
   CompositorLens,
@@ -271,8 +272,9 @@ class WebGLRenderBackend implements RendererBackend {
       this.gpuFrame && this.gpu !== null ? this.gpu.material : this.basicMaterial;
 
     // Sub-cell camera smoothing + screen shake + idle zoom on the render quad
-    let ox = -(ctx.camera.x - Math.floor(ctx.camera.x)) * (2 / VIEW_W);
-    let oy = (ctx.camera.y - Math.floor(ctx.camera.y)) * (2 / VIEW_H);
+    const residual = cameraPresentationOffset(ctx.camera);
+    let ox = -residual.x * (2 / VIEW_W);
+    let oy = residual.y * (2 / VIEW_H);
     if (!ctx.state.reduceCameraShake && ctx.fx.screenShake > 0.0005) {
       ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
       oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;

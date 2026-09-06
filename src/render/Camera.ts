@@ -38,6 +38,8 @@ export class Camera implements CameraApi {
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
   renderX = 0;
   renderY = 0;
+  presentationX?: number;
+  presentationY?: number;
 
   update(ctx: Ctx): void {
     const { player, state, input } = ctx;
@@ -60,10 +62,13 @@ export class Camera implements CameraApi {
       // Crawl: a mild extra forward lead — you want to see down the tunnel,
       // not under your own knees (crouchT decays in a crawl, so the peek
       // below hands itself over to the lead as the stance changes).
-      this.tx = player.x - VIEW_W / 2 + this.aimLookaheadX;
+      this.tx = player.x - VIEW_W / 2 + this.aimLookaheadX + clamp(player.vx * 8, -22, 22);
       // Crouch-peek: holding the stance tilts the view below the ledge
       // (the lerp below turns the offset into a smooth glance down).
-      this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48;
+      // The integer-cell mover accumulates gravity before attempting a whole
+      // cell of motion. That bookkeeping velocity is not a fall while grounded.
+      const fallLead = player.grounded ? 0 : clamp(player.vy * 8, -12, 38);
+      this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48 + fallLead;
     } else if (state.mode === 'play' && player.dead) {
       // Death: ride the tumbling ragdoll down (don't freeze on the death spot).
       const corpse = ctx.rigidBodies.playerCorpse;
@@ -81,8 +86,10 @@ export class Camera implements CameraApi {
     }
     this.tx = clamp(this.tx, 0, WIDTH - VIEW_W);
     this.ty = clamp(this.ty, 0, HEIGHT - VIEW_H + CAMERA_BOTTOM_VOID);
-    this.x += (this.tx - this.x) * 0.085;
+    this.x += (this.tx - this.x) * 0.12;
     this.y += (this.ty - this.y) * 0.085;
+    if (Math.abs(this.tx - this.x) < .0001) this.x = this.tx;
+    if (Math.abs(this.ty - this.y) < .0001) this.y = this.ty;
 
     // Idle zoom: lean in when the wizard stands still, pull back the moment he moves
     const busy =
@@ -121,6 +128,7 @@ export class Camera implements CameraApi {
     this.y = this.ty = clamp(y - VIEW_H / 2, 0, HEIGHT - VIEW_H);
     this.renderX = Math.floor(this.x);
     this.renderY = Math.floor(this.y);
+    this.presentationX = this.x; this.presentationY = this.y;
     // Clear the SMOOTHING STATE too, not just the position. Every level entry
     // snaps, and leaving these behind means the new level starts with the last
     // one's aim offset baked into the target (so the camera drifts a cell or

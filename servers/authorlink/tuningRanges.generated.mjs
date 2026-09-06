@@ -511,7 +511,7 @@ export const TUNING_RANGES = {
   },
   "player.levitRampFrames": {
     "min": 0,
-    "max": 48,
+    "max": 30,
     "step": 1
   },
   "player.levitThrust0": {

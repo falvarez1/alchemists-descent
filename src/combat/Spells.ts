@@ -51,6 +51,7 @@ export class Spells implements SpellsApi {
       const gx = Math.floor(x), gy = Math.floor(y);
       if (!world.inBounds(gx, gy)) return null;
       const c = world.types[world.idx(gx, gy)];
+      if (c === Cell.Empty && this.ctx.vineStrands?.hitTest?.(x, y, .8)) return { x: gx, y: gy, hit: Cell.Vines };
       if (c === Cell.Empty || isGas(c) || c === Cell.Fire || isLiquid(c)) continue;
       return { x: gx, y: gy, hit: c as Cell };
     }
@@ -59,6 +60,7 @@ export class Spells implements SpellsApi {
 
   erodeAt(gx: number, gy: number, rad: number): number {
     const { world } = this.ctx;
+    this.ctx.vineStrands?.cutAt?.(gx, gy, rad);
     let chewed = 0, debris = 0, oreCells = 0;
     for (let dy = -rad; dy <= rad; dy++) {
       for (let dx = -rad; dx <= rad; dx++) {

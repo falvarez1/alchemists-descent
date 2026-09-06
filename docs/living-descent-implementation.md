@@ -1,5 +1,9 @@
 # Living Descent implementation and verification
 
+For the subsequent creature, fidelity and physical-response pass, see
+[Living Descent: fidelity and physical response](living-descent-fidelity-and-physics.md).
+Measurements below describe the first implementation pass.
+
 Branch `feat/living-descent` is based on `db23199` in the isolated
 `alchemists-descent-worktrees/living-descent` checkout. The existing `AGENTS.md`
 and original checkout are preserved. This document records implementation and

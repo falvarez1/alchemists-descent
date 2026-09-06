@@ -15,9 +15,8 @@ import { sightClear } from '@/creatures/perception';
  * ceiling drips into pools, ember falls in lava caves, spore drift, dust
  * motes, heal-spring bubbles — and the quiet sounds of all of it.
  *
- * Critters are transient ambience: spawned near the camera from local cell
- * context, despawned when far, never saved. The caves simply always have
- * them, the way caves do.
+ * Expeditions keep a finite, saved population with homes and prey identity.
+ * Other modes use transient local ambience. Weather remains active in both.
  */
 
 const CAPS: Record<CritterKind, number> = { moth: 6, firefly: 8, fish: 6, beetle: 4, fly: 5 };
@@ -147,7 +146,7 @@ export class Critters implements CrittersApi {
     if (!ctx.debug.active && !ctx.levels.current?.fauna && frame % 30 === 0) this.trySpawn(ctx);
     this.updateCritters(ctx); // per-critter debug-freeze gate inside
     if (!ctx.debug.active) {
-      if (!ctx.levels.current?.fauna) this.ambientGrid(ctx, frame);
+      this.ambientGrid(ctx, frame);
       this.shedFromShake(ctx);
       if (frame % 90 === 0) this.ambientAudio(ctx);
     }
@@ -378,6 +377,8 @@ export class Critters implements CrittersApi {
           if (w.inBounds(xi, yi - 1) && w.types[w.idx(xi, yi - 1)] === Cell.Empty) c.vy += 0.04;
           c.vx *= 0.94;
           c.vy *= 0.9;
+          c.vx += w.flow.x(c.x, c.y) * .07;
+          c.vy += w.flow.y(c.x, c.y) * .07;
           if (Math.abs(c.vx) > 0.05) c.facing = Math.sign(c.vx);
         } else {
           // beached: flop, gasp, and eventually a sad little end
@@ -451,8 +452,10 @@ export class Critters implements CrittersApi {
 
   private ambientGrid(ctx: Ctx, frame: number): void {
     const w = ctx.world;
-    const camX = Math.floor(ctx.camera.x),
-      camY = Math.floor(ctx.camera.y);
+    // A persistent habitat must not disable its weather. The player's area,
+    // independent of debug-camera panning, owns these local environmental events.
+    const camX = Math.max(0, Math.floor(ctx.player.x - VIEW_W / 2)),
+      camY = Math.max(0, Math.floor(ctx.player.y - VIEW_H / 2));
     const biome = ctx.state.currentBiome;
 
     // CEILING DRIPS: an overhang above open air sheds a real water droplet

@@ -63,6 +63,7 @@ export function resetHeldSpellInputs(ctx: Ctx): void {
 }
 
 export function resetCombatTransients(ctx: Ctx, options: CombatTransientResetOptions = {}): void {
+  if (ctx.fx) ctx.fx.trickshot = undefined;
   const opts = { ...DEFAULT_RESET, ...options };
   const charging = cancelChargingBlackHole(ctx);
 

@@ -46,6 +46,7 @@ import type {
 } from '@/render/pixels';
 import { WebGpuComposeBridge, webGpuComposeUnrequestedStatus } from '@/render/WebGpuComposeBridge';
 import { WebGpuDeviceLifecycle } from '@/render/WebGpuDeviceLifecycle';
+import { cameraPresentationOffset } from '@/render/presentation';
 import { WebGpuLiveCompose } from '@/render/WebGpuLiveCompose';
 
 interface NavigatorWithGpu {
@@ -699,8 +700,9 @@ export class WebGpuRenderBackend implements RendererBackend {
   render(ctx: Ctx): void {
     if (this.disposed) return;
     if (this.initState !== 'active') return;
-    let ox = -(ctx.camera.x - Math.floor(ctx.camera.x)) * (2 / VIEW_W);
-    let oy = (ctx.camera.y - Math.floor(ctx.camera.y)) * (2 / VIEW_H);
+    const residual = cameraPresentationOffset(ctx.camera);
+    let ox = -residual.x * (2 / VIEW_W);
+    let oy = residual.y * (2 / VIEW_H);
     if (ctx.fx.screenShake > 0.0005) {
       ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
       oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;

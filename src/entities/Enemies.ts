@@ -34,6 +34,7 @@ import { ensureCreatureMind, sightClear, tickCreatureMind } from '@/creatures/pe
 import { tickCreaturePose } from '@/creatures/pose';
 import { localRoute } from '@/creatures/navigation';
 import { pointHitsCreature } from '@/creatures/body';
+import { advanceRootLash, carryRillback, feedRillback, rillbackPrey } from '@/creatures/ecology';
 import type { CreatureCue } from '@/creatures/types';
 
 // ===================== Enemies =====================
@@ -242,6 +243,7 @@ export class Enemies implements EnemyControlApi {
   }
 
   private readonly cues: CreatureCue[] = [];
+  private lastImpactFeedback = -1000;
 
   private cue(x: number, y: number, radius: number, strength: number, kind: CreatureCue['kind']): void {
     if (this.cues.length >= 32) this.cues.shift();
@@ -458,6 +460,14 @@ export class Enemies implements EnemyControlApi {
     e.flash = 6;
     e.vx += kx || 0;
     e.vy += ky || 0;
+    if (amount >= 7 && Math.abs(kx) + Math.abs(ky) > .25 && ctx.state.frameCount - this.lastImpactFeedback >= 5 &&
+        Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y) < 240) {
+      this.lastImpactFeedback = ctx.state.frameCount;
+      ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, amount >= 20 ? 3 : 2);
+      e.squash = Math.max(e.squash ?? 0, .18);
+      ctx.audio.noiseBurst(.035, 1400, .035, true);
+      ctx.audio.tone(145, 65, .055, 'triangle', .035);
+    }
     const def = this.defs[e.kind];
     ctx.particles.burst(
       e.x,
@@ -2443,6 +2453,7 @@ export class Enemies implements EnemyControlApi {
         // Tanglewrist Root Loper: an overgrowth predator that moves best when
         // real vines/moss/fungus/wood give its tendrils something to plant in.
         e.vy += 0.31;
+        advanceRootLash(ctx, e, !debugEnemyAttacksSuppressed);
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
         if ((e.rootPanic ?? 0) > 0) e.rootPanic = (e.rootPanic ?? 0) - 1;
         if (e.status.burning > 0) e.rootPanic = Math.max(e.rootPanic ?? 0, 42);
@@ -2458,18 +2469,9 @@ export class Enemies implements EnemyControlApi {
         if ((e.windup ?? 0) > 0) {
           e.vx *= 0.68;
           if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
-          if (e.windup === 0 && canAttackTarget) {
-            const tx = e.rootLashX ?? ctx.player.x;
-            const ty = e.rootLashY ?? ctx.player.y - 9;
-            const dx = ctx.player.x - tx;
-            const dy = ctx.player.y - 9 - ty;
-            if (Math.abs(ctx.player.x - e.x) < 62 && Math.abs(ctx.player.y - 9 - (e.y - 7)) < 34 && dx * dx + dy * dy < 18 * 18 && sightClear(ctx.world, e.x, e.y - 7, tx, ty)) {
-              ctx.playerCtl.damage(13 * (e.dmgK ?? 1), Math.sign(ctx.player.x - e.x || 1) * -3.2, -1.8, 'rootloper-lash');
-              ctx.particles.burst(ctx.player.x, ctx.player.y - 10, 5, Cell.Vines, vineColor, 1.0);
-            }
+          if (e.windup === 0) {
+            e.rootLashT = 10;
             e.attackCd = 70;
-            e.rootLashX = undefined;
-            e.rootLashY = undefined;
           }
         } else if (canAttackTarget && e.attackCd === 0 && pDist < 62 && Math.abs(pdy) < 36 && support > 0.12) {
           e.windup = 13;
@@ -2525,8 +2527,14 @@ export class Enemies implements EnemyControlApi {
         intent.speedScale = 1;
         if ((e.recoil ?? 0) > 0) e.recoil = (e.recoil ?? 0) - 1;
         if ((e.weaverPounceCd ?? 0) > 0) e.weaverPounceCd = (e.weaverPounceCd ?? 0) - 1;
+        if ((e.weaverFlinchT ?? 0) > 0) e.weaverFlinchT = (e.weaverFlinchT ?? 0) - 1;
+        if ((e.weaverRetreatT ?? 0) > 0) e.weaverRetreatT = (e.weaverRetreatT ?? 0) - 1;
 
-        if (e.sleeping) {
+        if ((e.weaverRetreatT ?? 0) > 0) {
+          intent.move = 'toward'; intent.tx = e.x + Math.sign(e.x - player.x || 1) * 100; intent.ty = e.y;
+          intent.urgency = .55; intent.stance = (e.weaverFlinchT ?? 0) > 0 ? 'crouch' : 'normal';
+          e.windup = 0; e.blink = 0; e.attackCd = Math.max(e.attackCd, 30);
+        } else if (e.sleeping) {
           intent.stance = 'sleep';
           const forcedAwake = e.hp < e.maxHp || e.status.burning > 0 || e.status.electrified > 0;
           if (forcedAwake || (targetAlive && pDist < 82)) {
@@ -2936,6 +2944,7 @@ export class Enemies implements EnemyControlApi {
         if ((e.rillChargeWindup ?? 0) > 0) e.rillChargeWindup = (e.rillChargeWindup ?? 0) - 1;
         const chargeReady = chargeWinding && (e.rillChargeWindup ?? 0) <= 0;
         if ((e.blink ?? 0) > 0) e.blink--;
+        if ((e.rillFeedT ?? 0) > 0) e.rillFeedT = (e.rillFeedT ?? 0) - 1;
         if (e.timer % 4 === 0) {
           const footing = this.rillbackLiquidFooting(e, def);
           e.rillWet = footing.wet;
@@ -2959,7 +2968,17 @@ export class Enemies implements EnemyControlApi {
             e.vx += this.rillbackLiquidSeek.dx * 0.14;
             e.vy += this.rillbackLiquidSeek.dy * 0.12;
           }
-          if (targetAlive && e.alerted && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
+          const prey = rillbackPrey(ctx, e);
+          if ((e.rillFeedT ?? 0) > 0) {
+            e.vx *= .94; e.vy *= .94;
+          } else if (prey && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
+            const dx = prey.x - e.x, dy = prey.y - e.y + 4, length = Math.hypot(dx, dy) || 1;
+            e.vx += dx / length * .10; e.vy += dy / length * .085;
+            feedRillback(ctx, e, prey);
+          } else if (e.attackCd > 35 && mind.intent === 'hunt' && (e.swoop ?? 0) === 0) {
+            e.vx -= Math.sign(pdx || mind.facing) * .065;
+            e.vy += .014;
+          } else if (targetAlive && e.alerted && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
             const d = pDist || 1;
             e.vx += (pdx / d) * (0.07 + wet * 0.08);
             e.vy += (pdy / d) * (0.05 + wet * 0.05);
@@ -2968,7 +2987,8 @@ export class Enemies implements EnemyControlApi {
             e.vy += Math.sin(e.timer * 0.06 + e.bobPhase) * 0.02;
           }
           if (canAttackTarget && e.attackCd === 0 && pDist < 72 && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
-            e.windup = 10;
+            e.windup = 18;
+            e.rillStrikeAngle = Math.atan2(pdy, pdx);
             ctx.audio.tone(95, 170, 0.22, 'sine', 0.08);
           }
           if (
@@ -3010,18 +3030,18 @@ export class Enemies implements EnemyControlApi {
           e.vx *= 0.82;
           e.vy *= 0.82;
           if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
-          if (e.windup === 0 && canAttackTarget && swimming) {
-            const a = Math.atan2(ctx.player.y - 9 - e.y, ctx.player.x - e.x);
+          if (e.windup === 0 && swimming) {
+            const a = e.rillStrikeAngle ?? Math.atan2(pdy, pdx);
             e.swoop = 12;
-            e.vx = Math.cos(a) * 2.45;
-            e.vy = Math.sin(a) * 1.85;
+            e.vx = Math.cos(a) * 3.4;
+            e.vy = Math.sin(a) * 2.5;
             ctx.audio.noiseBurst(0.08, 850, 0.08, true);
           }
         }
         if ((e.swoop ?? 0) > 0) {
           if (!debugEnemyAttacksSuppressed) e.swoop = (e.swoop ?? 1) - 1;
           if (canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 10 && Math.abs(pdy) < 13) {
-            ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * -3.1, -1.9, 'rillback-bite');
+            ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * 3.1, -1.9, 'rillback-bite');
             e.attackCd = 85;
             e.swoop = 0;
           } else if (e.swoop === 0) {
@@ -3032,9 +3052,11 @@ export class Enemies implements EnemyControlApi {
           ctx.playerCtl.damage(4 * (e.dmgK ?? 1), Math.sign(pdx) * -1.4, -0.7, 'rillback-flop');
           e.attackCd = 55;
         }
-        const maxRill = swimming ? 1.25 + wet * 0.75 : 0.7;
+        const lunging = swimming && (e.swoop ?? 0) > 0;
+        const maxRill = lunging ? 3.4 : swimming ? 1.25 + wet * 0.75 : 0.7;
         e.vx = clamp(e.vx, -maxRill, maxRill);
-        e.vy = clamp(e.vy, swimming ? -1.2 : -1.7, swimming ? 1.2 : 2.4);
+        e.vy = clamp(e.vy, lunging ? -2.5 : swimming ? -1.2 : -1.7, lunging ? 2.5 : swimming ? 1.2 : 2.4);
+        carryRillback(ctx, e);
       } else if (e.kind === 'leviathan') {
         // ===== THE SUNKEN LEVIATHAN =====
         // d4's mid-boss, the Kiln's mirror: WATER IS ITS ARMOR. Submerged it
@@ -3212,7 +3234,7 @@ export class Enemies implements EnemyControlApi {
           e.vx *= 0.62;
           if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
           if (e.windup === 0 && canAttackTarget && Math.abs(pdx) < 18 && Math.abs(pdy) < 19) {
-            ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(pdx) * -4.1, -2.4, 'stonemaw-bite');
+            ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(pdx) * 4.1, -2.4, 'stonemaw-bite');
             e.attackCd = 115;
             e.mawChewT = Math.max(e.mawChewT ?? 0, 10);
             ctx.audio.hollowKnock();

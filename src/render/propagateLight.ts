@@ -15,11 +15,11 @@ export function propagateLight(
       const i = row + x,
         a = lightAtt[i],
         j = i - 1;
-      let v = Math.max(lightR[j], Math.max(lightR[up + x - 1], lightR[dn + x - 1]) * 0.955) * a;
+      let v = maxIncoming(lightR[j], lightR[up + x - 1], lightR[dn + x - 1]) * a;
       if (v > lightR[i]) lightR[i] = v;
-      v = Math.max(lightG[j], Math.max(lightG[up + x - 1], lightG[dn + x - 1]) * 0.955) * a;
+      v = maxIncoming(lightG[j], lightG[up + x - 1], lightG[dn + x - 1]) * a;
       if (v > lightG[i]) lightG[i] = v;
-      v = Math.max(lightB[j], Math.max(lightB[up + x - 1], lightB[dn + x - 1]) * 0.955) * a;
+      v = maxIncoming(lightB[j], lightB[up + x - 1], lightB[dn + x - 1]) * a;
       if (v > lightB[i]) lightB[i] = v;
     }
   }
@@ -32,11 +32,11 @@ export function propagateLight(
       const i = row + x,
         a = lightAtt[i],
         j = i + 1;
-      let v = Math.max(lightR[j], Math.max(lightR[up + x + 1], lightR[dn + x + 1]) * 0.955) * a;
+      let v = maxIncoming(lightR[j], lightR[up + x + 1], lightR[dn + x + 1]) * a;
       if (v > lightR[i]) lightR[i] = v;
-      v = Math.max(lightG[j], Math.max(lightG[up + x + 1], lightG[dn + x + 1]) * 0.955) * a;
+      v = maxIncoming(lightG[j], lightG[up + x + 1], lightG[dn + x + 1]) * a;
       if (v > lightG[i]) lightG[i] = v;
-      v = Math.max(lightB[j], Math.max(lightB[up + x + 1], lightB[dn + x + 1]) * 0.955) * a;
+      v = maxIncoming(lightB[j], lightB[up + x + 1], lightB[dn + x + 1]) * a;
       if (v > lightB[i]) lightB[i] = v;
     }
   }
@@ -49,11 +49,11 @@ export function propagateLight(
         a = lightAtt[i];
       const xl = x > 0 ? x - 1 : x,
         xr = x < LW - 1 ? x + 1 : x;
-      let v = Math.max(lightR[prev + x], Math.max(lightR[prev + xl], lightR[prev + xr]) * 0.955) * a;
+      let v = maxIncoming(lightR[prev + x], lightR[prev + xl], lightR[prev + xr]) * a;
       if (v > lightR[i]) lightR[i] = v;
-      v = Math.max(lightG[prev + x], Math.max(lightG[prev + xl], lightG[prev + xr]) * 0.955) * a;
+      v = maxIncoming(lightG[prev + x], lightG[prev + xl], lightG[prev + xr]) * a;
       if (v > lightG[i]) lightG[i] = v;
-      v = Math.max(lightB[prev + x], Math.max(lightB[prev + xl], lightB[prev + xr]) * 0.955) * a;
+      v = maxIncoming(lightB[prev + x], lightB[prev + xl], lightB[prev + xr]) * a;
       if (v > lightB[i]) lightB[i] = v;
     }
   }
@@ -66,12 +66,18 @@ export function propagateLight(
         a = lightAtt[i];
       const xl = x > 0 ? x - 1 : x,
         xr = x < LW - 1 ? x + 1 : x;
-      let v = Math.max(lightR[nxt + x], Math.max(lightR[nxt + xl], lightR[nxt + xr]) * 0.955) * a;
+      let v = maxIncoming(lightR[nxt + x], lightR[nxt + xl], lightR[nxt + xr]) * a;
       if (v > lightR[i]) lightR[i] = v;
-      v = Math.max(lightG[nxt + x], Math.max(lightG[nxt + xl], lightG[nxt + xr]) * 0.955) * a;
+      v = maxIncoming(lightG[nxt + x], lightG[nxt + xl], lightG[nxt + xr]) * a;
       if (v > lightG[i]) lightG[i] = v;
-      v = Math.max(lightB[nxt + x], Math.max(lightB[nxt + xl], lightB[nxt + xr]) * 0.955) * a;
+      v = maxIncoming(lightB[nxt + x], lightB[nxt + xl], lightB[nxt + xr]) * a;
       if (v > lightB[i]) lightB[i] = v;
     }
   }
+}
+
+/** Inputs are finite, nonnegative light values; no generic NaN/signed-zero maximum is needed. */
+function maxIncoming(straight: number, a: number, b: number): number {
+  const diagonal = (a > b ? a : b) * .955;
+  return straight > diagonal ? straight : diagonal;
 }

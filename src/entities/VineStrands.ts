@@ -16,7 +16,9 @@ const SUPPORT_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
   [-1, 0],
   [1, 0],
+  [-1, -1], [1, -1], [-1, 1], [1, 1],
 ];
+const VINE_EDGES = [[1, 0], [0, 1], [1, 1], [-1, 1]] as const;
 
 const SETTLE_LINE_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, 0],
@@ -44,7 +46,7 @@ const PLAYER_PUSH_STRENGTH = 1.4;
 const LIFT_PER_PASS = 4; // most clusters lifted per scan (spreads the flood-fill cost)
 const LIFT_SCAN_CADENCE = 8; // frames between on-screen scans for new tendrils
 const TENDRIL_MIN_CELLS = 4; // shorter vine specks aren't worth a soft body
-const TENDRIL_MAX_WIDTH = 4; // only THIN hanging tendrils sway; loops/drapes stay static cover
+const TENDRIL_MAX_ROW_WIDTH = 4; // thickness, not a curved stem's total horizontal span
 const TENDRIL_FAR_MARGIN = 120; // cells past the view before a lifted vine re-settles
 const SHAKE_SWAY_MIN = 0.012; // screenShake below this doesn't stir the vines
 const SHAKE_SWAY_GAIN = 12; // shake → per-node jitter amplitude
@@ -55,6 +57,7 @@ const WEB_ASH_MAX_FLECKS = 9;
 const WEB_ASH_LIFETIME = 180;
 
 interface VineNode extends VineStrandNodeView {
+  leafLength?: number;
   x: number;
   y: number;
   px: number;
@@ -62,6 +65,8 @@ interface VineNode extends VineStrandNodeView {
   contact: boolean;
   pinX?: number;
   pinY?: number;
+  /** Material ownership survives graph reduction and cuts without regrowing a lost section. */
+  sourceCells?: number[];
 }
 
 interface VineSegment extends VineStrandSegmentView {
@@ -103,6 +108,7 @@ interface VineStrand extends VineStrandView {
   maxAge?: number;
   denWeb?: boolean;
   ashOnExpire?: boolean;
+  bounds?: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
 export class VineStrands implements VineStrandsApi {
@@ -119,6 +125,7 @@ export class VineStrands implements VineStrandsApi {
 
   constructor(private readonly ctx: Ctx) {
     this.eventDisposers.push(ctx.events.on('levelChanged', () => this.settleAndClear()));
+    this.eventDisposers.push(ctx.events.on('structureStrike', ({ x, y, radius }) => this.cutAt(x, y, radius)));
   }
 
   dispose(): void {
@@ -195,7 +202,7 @@ export class VineStrands implements VineStrandsApi {
           queueY[count] = ny;
           cellIndexes[count] = ni;
           count++;
-        } else if (isLoadBearingAnchor(nt)) {
+        } else if ((dx === 0 || dy === 0) && isLoadBearingAnchor(nt)) {
           anchored = true;
           anchorIndex = ni;
           break;
@@ -234,14 +241,12 @@ export class VineStrands implements VineStrandsApi {
     for (let i = 0; i < count; i++) {
       const cx = queueX[i];
       const cy = queueY[i];
-      for (const [dx, dy] of [
-        [1, 0],
-        [0, 1],
-      ] as const) {
+      for (const [dx, dy] of VINE_EDGES) {
         if (!world.inBounds(cx + dx, cy + dy)) continue;
         const ni = nodeByCell.get(world.idx(cx + dx, cy + dy));
         if (ni === undefined) continue;
-        segments.push({ a: i, b: ni, rest: 1 });
+        if (dx !== 0 && dy !== 0 && (nodeByCell.has(world.idx(cx + dx, cy)) || nodeByCell.has(world.idx(cx, cy + dy)))) continue;
+        segments.push({ a: i, b: ni, rest: Math.hypot(dx, dy) });
       }
     }
 
@@ -253,6 +258,7 @@ export class VineStrands implements VineStrandsApi {
       age: 0,
       settleT: 0,
       originWorld: world,
+      foliage: count >= TENDRIL_MIN_CELLS,
     });
     return true;
   }
@@ -598,7 +604,8 @@ export class VineStrands implements VineStrandsApi {
     // Scan the physical interest region for ceiling-hung vine tops.
     if (ctx.state.frameCount % LIFT_SCAN_CADENCE !== 0 || this.strands.length >= MAX_ACTIVE_STRANDS) return;
     const x0 = Math.max(1, interestX);
-    const y0 = Math.max(1, interestY);
+    // A visible tail still needs its ceiling root activated above the view.
+    const y0 = Math.max(1, interestY - TENDRIL_FAR_MARGIN);
     const x1 = Math.min(world.width - 2, interestX + VIEW_W);
     const y1 = Math.min(world.height - 2, interestY + VIEW_H);
     let lifted = 0;
@@ -626,7 +633,7 @@ export class VineStrands implements VineStrandsApi {
     let count = 1;
     let truncated = false;
     let hasFreeBottom = false;
-    let minX = sx, maxX = sx;
+    const rows = new Map<number, number>();
     let colorR = 0;
     let colorG = 0;
     let colorB = 0;
@@ -645,8 +652,9 @@ export class VineStrands implements VineStrandsApi {
       colorG += unpackG(color);
       colorB += unpackB(color);
       if (world.inBounds(cx, cy + 1) && world.types[world.idx(cx, cy + 1)] === Cell.Empty) hasFreeBottom = true;
-      if (cx < minX) minX = cx;
-      if (cx > maxX) maxX = cx;
+      const rowCount = (rows.get(cy) ?? 0) + 1;
+      if (rowCount > TENDRIL_MAX_ROW_WIDTH) return false;
+      rows.set(cy, rowCount);
       for (const [dx, dy] of SUPPORT_OFFSETS) {
         const nx = cx + dx;
         const ny = cy + dy;
@@ -665,21 +673,23 @@ export class VineStrands implements VineStrandsApi {
       }
     }
     if (truncated || count < TENDRIL_MIN_CELLS || !hasFreeBottom) return false;
-    if (maxX - minX > TENDRIL_MAX_WIDTH) return false; // a loop/drape/branchy clump — leave it as static cover
 
     const nodes: VineNode[] = [];
     for (let i = 0; i < count; i++) {
-      nodes.push({ x: queueX[i] + 0.5, y: queueY[i] + 0.5, px: queueX[i] + 0.5, py: queueY[i] + 0.5, contact: false });
+      nodes.push({ x: queueX[i] + 0.5, y: queueY[i] + 0.5, px: queueX[i] + 0.5, py: queueY[i] + 0.5, contact: false, sourceCells: [cellIndexes[i]] });
     }
     const segments: VineSegment[] = [];
     for (let i = 0; i < count; i++) {
-      for (const [dx, dy] of [
-        [1, 0],
-        [0, 1],
-      ] as const) {
+      for (const [dx, dy] of VINE_EDGES) {
         const ni = nodeByCell.get(world.idx(queueX[i] + dx, queueY[i] + dy));
-        if (ni !== undefined) segments.push({ a: i, b: ni, rest: 1 });
+        if (ni === undefined) continue;
+        if (dx !== 0 && dy !== 0 && (nodeByCell.has(world.idx(queueX[i] + dx, queueY[i])) || nodeByCell.has(world.idx(queueX[i], queueY[i] + dy)))) continue;
+        segments.push({ a: i, b: ni, rest: Math.hypot(dx, dy) });
       }
+    }
+    compactVineChain(nodes, segments);
+    for (let i = 2; i < nodes.length; i += nodes.length > 50 ? 5 : 2) {
+      nodes[i].leafLength = 4 + Math.sin(i / nodes.length * Math.PI) * 7;
     }
     const inv = 1 / count;
     const color = packRGB(Math.round(colorR * inv), Math.round(colorG * inv), Math.round(colorB * inv));
@@ -700,6 +710,7 @@ export class VineStrands implements VineStrandsApi {
       originCells: origin,
       originColor: color,
       originWorld: world,
+      foliage: true,
     });
     return true;
   }
@@ -747,10 +758,76 @@ export class VineStrands implements VineStrandsApi {
     for (const strand of this.strands) {
       const world = strand.originWorld;
       if (!world) continue;
-      if (strand.originCells) this.settleTendril(world, strand);
-      else if (!strand.web && !strand.persistent) this.settleStrand(world, strand);
+      if (strand.tendril && strand.originCells) this.settleTendril(world, strand);
+      else if (!strand.web) this.settleStrand(world, strand);
     }
     this.clear();
+  }
+
+  hitTest(x: number, y: number, radius: number): boolean {
+    return this.strands.some(strand => !strand.web &&
+      (!strand.bounds || (x >= strand.bounds.minX - radius && x <= strand.bounds.maxX + radius && y >= strand.bounds.minY - radius && y <= strand.bounds.maxY + radius)) &&
+      (strand.segments.some(edge => segmentDistanceSq(x, y, strand.nodes[edge.a], strand.nodes[edge.b]) <= radius * radius) ||
+        (strand.nodes.length === 1 && Math.hypot(strand.nodes[0].x - x, strand.nodes[0].y - y) <= radius)));
+  }
+
+  writeSnapshotCells(world: World, types: Uint8Array, life: Int16Array): void {
+    const put = (index: number) => {
+      if (index < 0 || index >= types.length || types[index] !== Cell.Empty) return;
+      types[index] = Cell.Vines; life[index] = -1;
+    };
+    for (const strand of this.strands) {
+      if (strand.web || strand.originWorld !== world) continue;
+      if (strand.tendril && strand.originCells) { for (const index of strand.originCells) put(index); continue; }
+      // Detached material is saved at its actual position, never at the old root.
+      for (const node of strand.nodes) put(world.idx(Math.floor(node.x), Math.floor(node.y)));
+      for (const edge of strand.segments) {
+        const a = strand.nodes[edge.a], b = strand.nodes[edge.b], count = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 1.6);
+        for (let i = 1; i < count; i++) put(world.idx(Math.floor(a.x + (b.x - a.x) * i / count), Math.floor(a.y + (b.y - a.y) * i / count)));
+      }
+    }
+  }
+
+  cutAt(x: number, y: number, radius: number): number {
+    if (!(radius > 0)) return 0;
+    let cuts = 0;
+    for (let s = this.strands.length - 1; s >= 0; s--) {
+      const strand = this.strands[s];
+      if (strand.web) continue;
+      const bounds = strand.bounds;
+      if (bounds && (x < bounds.minX - radius || x > bounds.maxX + radius || y < bounds.minY - radius || y > bounds.maxY + radius)) continue;
+      const nodes = strand.nodes;
+      const removed = nodes.map(n => (n.x - x) ** 2 + (n.y - y) ** 2 < radius * radius);
+      const edges = strand.segments.filter(edge => !removed[edge.a] && !removed[edge.b] && segmentDistanceSq(x, y, nodes[edge.a], nodes[edge.b]) > radius * radius);
+      if (edges.length === strand.segments.length && !removed.some(Boolean)) continue;
+      cuts++;
+      this.strands.splice(s, 1);
+      const neighbors = nodes.map(() => [] as number[]);
+      for (const edge of edges) { neighbors[edge.a].push(edge.b); neighbors[edge.b].push(edge.a); }
+      const seen = new Set<number>();
+      for (let first = 0; first < nodes.length; first++) {
+        if (removed[first] || seen.has(first)) continue;
+        const component = [first]; seen.add(first);
+        for (let at = 0; at < component.length; at++) for (const next of neighbors[component[at]]) {
+          if (!seen.has(next)) { seen.add(next); component.push(next); }
+        }
+        const remap = new Map(component.map((old, index) => [old, index]));
+        const keepsRoot = first === 0 && (strand.tendril || strand.persistent);
+        const fragment: VineStrand = {
+          nodes: component.map(index => nodes[index]),
+          segments: edges.filter(edge => remap.has(edge.a) && remap.has(edge.b)).map(edge => ({ a: remap.get(edge.a)!, b: remap.get(edge.b)!, rest: edge.rest })),
+          color: strand.color, thickness: strand.thickness, foliage: strand.foliage,
+          age: 0, settleT: 0, originWorld: strand.originWorld ?? this.ctx.world,
+          persistent: keepsRoot && strand.persistent, tendril: keepsRoot && strand.tendril,
+          anchorX: strand.anchorX, anchorY: strand.anchorY,
+          originCells: keepsRoot ? component.flatMap(index => nodes[index].sourceCells ?? []) : undefined,
+          originColor: strand.originColor,
+        };
+        if (this.strands.length < MAX_ACTIVE_STRANDS) this.strands.push(fragment);
+        else this.settleStrand(this.ctx.world, fragment);
+      }
+    }
+    return cuts;
   }
 
   applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void {
@@ -794,6 +871,7 @@ export class VineStrands implements VineStrandsApi {
     if ((strand.persistent || strand.tendril) && !this.anchorSupported(ctx.world, strand)) {
       strand.persistent = false;
       strand.tendril = false; // a cut tendril becomes a normal falling strand → settles where it lands
+      strand.originCells = undefined;
     }
     let contacts = 0;
     let speedSum = 0;
@@ -807,23 +885,28 @@ export class VineStrands implements VineStrandsApi {
       const vy = (node.y - node.py) * DAMPING;
       node.px = node.x;
       node.py = node.y;
-      node.x += vx + Math.sin((strand.age + i * 13) * 0.09) * 0.012;
+      const breeze = strand.foliage ? Math.sin(strand.age * .025 + (strand.anchorX ?? 0) * .031 + i * .06) * .008 : 0;
+      node.x += vx + breeze + Math.sin((strand.age + i * 13) * 0.09) * 0.012;
       node.y += vy + GRAVITY;
       if (playerActive) this.pushFromPlayer(node, px, py);
       if (this.resolveTerrain(ctx.world, node)) contacts++;
     }
 
     for (let iter = 0; iter < SOLVER_ITERATIONS; iter++) {
-      for (const segment of strand.segments) this.solveSegment(strand.nodes, segment);
+      for (const segment of strand.segments) this.solveSegment(strand, segment);
       // Pin the anchor through the solve so the rope hangs from a fixed point.
       if (strand.persistent || strand.tendril || strand.web) this.pinAnchors(strand);
       for (const node of strand.nodes) this.resolveTerrain(ctx.world, node);
     }
     if (strand.persistent || strand.tendril || strand.web) this.pinAnchors(strand);
 
+    const bounds = strand.bounds ??= { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    bounds.minX = bounds.minY = Infinity; bounds.maxX = bounds.maxY = -Infinity;
     for (const node of strand.nodes) {
       speedSum += Math.hypot(node.x - node.px, node.y - node.py);
       if (node.contact) contacts++;
+      bounds.minX = Math.min(bounds.minX, node.x); bounds.maxX = Math.max(bounds.maxX, node.x);
+      bounds.minY = Math.min(bounds.minY, node.y); bounds.maxY = Math.max(bounds.maxY, node.y);
     }
     const avgSpeed = speedSum / Math.max(1, strand.nodes.length);
     if (contacts > 0 && avgSpeed < 0.035) strand.settleT++;
@@ -847,19 +930,22 @@ export class VineStrands implements VineStrandsApi {
     node.py -= iy * 0.4;
   }
 
-  private solveSegment(nodes: VineNode[], segment: VineSegment): void {
+  private solveSegment(strand: VineStrand, segment: VineSegment): void {
+    const nodes = strand.nodes;
     const a = nodes[segment.a];
     const b = nodes[segment.b];
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const dist = Math.hypot(dx, dy) || 0.0001;
-    const pull = ((dist - segment.rest) / dist) * 0.5;
+    const anchored = (strand.persistent || strand.tendril || (strand.web && !strand.freeWeb && !strand.denWeb));
+    const fixedA = (anchored && segment.a === 0) || a.pinX !== undefined;
+    const fixedB = (anchored && segment.b === 0) || b.pinX !== undefined || (strand.tailX !== undefined && segment.b === nodes.length - 1);
+    if (fixedA && fixedB) return;
+    const pull = ((dist - segment.rest) / dist) * (fixedA || fixedB ? 1 : .5);
     const ox = dx * pull;
     const oy = dy * pull;
-    a.x += ox;
-    a.y += oy;
-    b.x -= ox;
-    b.y -= oy;
+    if (!fixedA) { a.x += ox; a.y += oy; }
+    if (!fixedB) { b.x -= ox; b.y -= oy; }
   }
 
   private resolveTerrain(world: World, node: VineNode): boolean {
@@ -1024,4 +1110,37 @@ export class VineStrands implements VineStrandsApi {
 
 function isLoadBearingAnchor(t: number): boolean {
   return isSolid(t) && !isSoftGrowth(t);
+}
+
+function segmentDistanceSq(x: number, y: number, a: VineNode, b: VineNode): number {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+  return (x - a.x - dx * t) ** 2 + (y - a.y - dy * t) ** 2;
+}
+
+/** A thin stem needs a joint every few cells, not one simulation body per pixel.
+ * Branch junctions retain the full graph; original cells remain owned exactly once. */
+function compactVineChain(nodes: VineNode[], segments: VineSegment[]): void {
+  if (nodes.length < 12) return;
+  const neighbors = nodes.map(() => [] as number[]);
+  for (const edge of segments) { neighbors[edge.a].push(edge.b); neighbors[edge.b].push(edge.a); }
+  if (neighbors[0].length !== 1 || neighbors.some(row => row.length > 2)) return;
+  const order = [0];
+  while (order.length < nodes.length) {
+    const next = neighbors[order[order.length - 1]].find(index => index !== order[order.length - 2]);
+    if (next === undefined || next === 0) return;
+    order.push(next);
+  }
+  const reduced = [nodes[0]], edges: VineSegment[] = [];
+  let rest = 0, cells: number[] = [];
+  for (let i = 1; i < order.length; i++) {
+    const node = nodes[order[i]], previous = nodes[order[i - 1]];
+    rest += Math.hypot(node.x - previous.x, node.y - previous.y);
+    cells.push(...(node.sourceCells ?? []));
+    if (i % 3 !== 0 && i !== order.length - 1) continue;
+    reduced.push({ ...node, sourceCells: cells });
+    edges.push({ a: reduced.length - 2, b: reduced.length - 1, rest });
+    rest = 0; cells = [];
+  }
+  nodes.splice(0, nodes.length, ...reduced); segments.splice(0, segments.length, ...edges);
 }

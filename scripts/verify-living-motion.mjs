@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { launchBrowser } from './browser-launch.mjs';
 import { execConsoleCommand, waitForConsoleApi, waitForRunReady } from './run-helpers.mjs';
+import { archiveGameplayClip } from './clip-archive.mjs';
 
 const output = 'verify-out/living-descent/motion'; mkdirSync(output, { recursive: true });
 const browser = await launchBrowser({ headless: true });
@@ -27,6 +28,7 @@ try {
       fixture.interval = setInterval(() => fixture.samples.push({ tick: ctx.state.frameCount, voices: engine.voices,
         player: { x: ctx.player.x, y: ctx.player.y, hp: ctx.player.hp },
         creatures: ctx.enemies.map(e => ({ kind: e.kind, x: e.x, y: e.y, intent: e.mind?.intent, windup: e.windup, flash: e.flash,
+          hp: e.hp, expression: { ...e.expression }, missingLegs: e.weaverMissingLegs,
           support: e.weaverSupport, mode: e.weaverLoco?.mode, body: e.body?.nodes.map(n => ({ x: n.x, y: n.y, contact: n.contact })) })) }), 250);
       window.__motionCapture = fixture; recorder.start();
     });
@@ -63,6 +65,7 @@ try {
       return { data, samples: c.samples };
     });
     writeFileSync(`${output}/${name}.webm`, Buffer.from(capture.data.split(',')[1], 'base64'));
+    archiveGameplayClip(name, `${name} encounter`, `${output}/${name}.webm`, `${output}/${name}-5.png`, 'Positioned encounter · movement, lure and casting');
     assert.ok(capture.samples.length > 20); assert.ok(capture.samples.every(s => s.voices <= 32));
     report.scenes.push({ name, samples: capture.samples });
   }

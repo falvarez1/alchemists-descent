@@ -113,7 +113,9 @@ export function terrainAlbedo(world: World, index: number, x: number, y: number,
   const type = world.types[index];
   if (world.colorOverrides.has(index)) return original;
   if (type === Cell.Water) {
-    const exposed = y > 0 && world.types[index - world.width] === Cell.Empty;
+    const below = world.types[index + world.width];
+    const exposed = y > 0 && world.types[index - world.width] === Cell.Empty
+      && (below === Cell.Water || blocksEntity(below));
     // Only the immediate surface changes value. Looking three cells upward
     // exceeded the two-cell mutation halo and left stale bands as pools drained.
     return exposed ? 0x658e94 : 0x315b67;
@@ -122,7 +124,7 @@ export function terrainAlbedo(world: World, index: number, x: number, y: number,
   const tileX = type === Cell.Metal || (type === Cell.Stone && y > 810) ? 128 : 0;
   const tileY = type === Cell.Wood || (type === Cell.Stone && y > 810) ? 128 : 0;
   const offset = ((tileY + (y & 127)) * 256 + tileX + (x & 127)) * 4;
-  let r = terrain[offset] * 1.5 + 24, g = terrain[offset + 1] * 1.5 + 26, b = terrain[offset + 2] * 1.5 + 28;
+  let r = terrain[offset] * 1.28 + 15, g = terrain[offset + 1] * 1.28 + 20, b = terrain[offset + 2] * 1.28 + 21;
   // Chipped lips follow the actual terrain boundary, including freshly dug cuts.
   const top = y > 0 && !blocksEntity(world.types[index - world.width]);
   const left = x > 0 && !blocksEntity(world.types[index - 1]);
@@ -134,15 +136,21 @@ export function terrainAlbedo(world: World, index: number, x: number, y: number,
   return (Math.min(255, r) << 16) | (Math.min(255, g) << 8) | Math.min(255, b);
 }
 
-function prop(s: PixelSurface, light: LightField, crop: readonly [number, number, number, number], x: number, y: number): void {
+function prop(s: PixelSurface, light: LightField, crop: readonly [number, number, number, number], x: number, y: number, wheelAngle?: number): void {
   if (!props) return;
   const [sx, sy, width, height] = crop;
   const sample = light.sample(x + width / 2, y + height / 2);
   const r = Math.max(0.64, sample.r), g = Math.max(0.6, sample.g), b = Math.max(0.55, sample.b);
-  for (let dy = 0; dy < height; dy++) for (let dx = 0; dx < width; dx++) {
-    const i = ((sy + dy) * 192 + sx + dx) * 4;
+  const step = wheelAngle === undefined ? 1 : s.pixelStep ?? 1;
+  const c = Math.cos(wheelAngle ?? 0), sn = Math.sin(wheelAngle ?? 0);
+  for (let dy = 0; dy < height; dy += step) for (let dx = 0; dx < width; dx += step) {
+    const rx = dx - 15.5, ry = dy - 12.5;
+    const rotating = wheelAngle !== undefined && rx * rx + ry * ry < 12 * 12;
+    const tx = rotating ? Math.round(15.5 + rx * c + ry * sn) : Math.floor(dx);
+    const ty = rotating ? Math.round(12.5 - rx * sn + ry * c) : Math.floor(dy);
+    const i = ((sy + ty) * 192 + sx + tx) * 4;
     if (props[i + 3] < 128) continue;
-    s.setPx(x + dx, y + dy, props[i] / 255 * r, props[i + 1] / 255 * g, props[i + 2] / 255 * b);
+    (wheelAngle === undefined ? s.setPx : s.setFinePx ?? s.setPx).call(s, x + dx, y + dy, props[i] / 255 * r, props[i + 1] / 255 * g, props[i + 2] / 255 * b);
   }
 }
 
@@ -151,7 +159,7 @@ export function drawWorksLandmarks(s: PixelSurface, light: LightField, ctx: Ctx)
   if (!ctx.levels.current?.living) return;
   const camera = ctx.camera;
   const visible = (x: number, y: number, margin = 80): boolean => Math.abs(x - camera.x) < 400 + margin && Math.abs(y - camera.y) < 260 + margin;
-  if (visible(524, 370)) prop(s, light, [8, 40, 32, 40], 508, 343);
+  if (visible(524, 370)) prop(s, light, [8, 40, 32, 40], 508, 343, ctx.levels.current.living.valveTurn ?? 0);
   if (visible(857, 743)) prop(s, light, [48, 24, 96, 56], 809, 688);
   for (const x of [1180, 1315, 1450]) if (visible(x, 572)) prop(s, light, [152, 56, 32, 24], x - 12, 560);
 }

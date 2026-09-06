@@ -28,17 +28,17 @@ describe('Breathing Works encounter contracts', () => {
       expect(mask[runtime.world.idx(x, y)], room.id).toBe(1);
     }
     expect(validateFindability(runtime).filter(issue => issue.severity === 'error')).toEqual([]);
-    expect(generated.prefabEnemies.map(e => e.kind)).toEqual(['rillback', 'weaver', 'weaver', 'rillback']);
+    expect(generated.prefabEnemies.map(e => e.kind)).toEqual(['rillback', 'weaver', 'weaver', 'rillback', 'rootloper', 'stonemaw']);
   });
 
   it('keeps route geometry deterministic while mineral colors vary by seed', () => {
     const a = fixture(41), b = fixture(41);
     expect(Buffer.from(a.runtime.world.types).equals(Buffer.from(b.runtime.world.types))).toBe(true);
     expect(Buffer.from(a.runtime.world.colors.buffer).equals(Buffer.from(b.runtime.world.colors.buffer))).toBe(true);
-    // GEN_VERSION 37 authored route golden, independent of presentation cadence.
+    // GEN_VERSION 39 reclaimed habitat and optional spell detours.
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
-    expect((hash >>> 0).toString(16)).toBe('d90fced9');
+    expect((hash >>> 0).toString(16)).toBe('954b0fed');
   });
 
   it('warns before exhaling, consumes water and cannot vent from a frozen reservoir', () => {

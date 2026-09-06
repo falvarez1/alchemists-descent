@@ -1,25 +1,32 @@
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
+import { screenshotGalleryHtml } from './screenshot-gallery.mjs';
 
 export const SCREENSHOT_ROOT = 'screenshots/living-descent';
-const escapeHtml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const href = path => path.split(/[\\/]/).map(encodeURIComponent).join('/');
+const category = name => /failure|failed/.test(name) ? 'failure' : /creature|expression|studies/.test(name) ? 'creature'
+  : /traversal/.test(name) ? 'traversal' : /fidelity|perf|parity|compose/.test(name) ? 'performance'
+    : /entry|settings|pause|bench|boon|controls|compact/.test(name) ? 'interface' : 'scene';
 
 /** A local, offline gallery; screenshots stay outside the production build. */
 export function refreshScreenshotGallery() {
   mkdirSync(SCREENSHOT_ROOT, { recursive: true });
   const groups = readdirSync(SCREENSHOT_ROOT, { withFileTypes: true })
-    .filter(entry => entry.isDirectory()).map(entry => {
+    .filter(entry => entry.isDirectory() && entry.name !== 'creatures' && entry.name !== 'clips').map(entry => {
       const directory = join(SCREENSHOT_ROOT, entry.name);
       const files = readdirSync(directory, { recursive: true }).filter(file => /\.(png|jpe?g|webp)$/i.test(file));
-      return { name: entry.name, directory, files };
+      const match = entry.name.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-[\d.Z-]+(.+)-\d+$/);
+      const label = (match?.[4] ?? entry.name).replace(/^verify-/, '').replaceAll('-', ' ');
+      const date = match ? `${match[1]} ${match[2]}:${match[3]} UTC` : '';
+      return { name: entry.name, label, date, files: files.map(file => ({ name: basename(file),
+        url: href(relative(SCREENSHOT_ROOT, join(directory, file))), category: category(file) })) };
     }).filter(group => group.files.length).sort((a, b) => b.name.localeCompare(a.name));
-  const count = groups.reduce((total, group) => total + group.files.length, 0);
-  const body = groups.map((group, index) => `<details${index === 0 ? ' open' : ''}><summary>${escapeHtml(group.name)} · ${group.files.length} screenshots</summary><div class="grid">${group.files.sort().map(file => {
-    const url = href(relative(SCREENSHOT_ROOT, join(group.directory, file)));
-    return `<a href="${url}"><figure><img loading="lazy" src="${url}" alt="${escapeHtml(file)}"><figcaption>${escapeHtml(file)}</figcaption></figure></a>`;
-  }).join('')}</div></details>`).join('\n');
-  writeFileSync(join(SCREENSHOT_ROOT, 'index.html'), `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Living Descent screenshots</title><style>body{margin:24px;background:#172127;color:#eee;font:16px/1.5 system-ui}h1{margin-bottom:0}p{color:#bec9cd}summary{cursor:pointer;padding:16px 0;font-weight:600}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}a{color:inherit;text-decoration:none}figure{margin:0;background:#0d151a}img{display:block;width:100%;height:auto}figcaption{padding:8px;overflow-wrap:anywhere}</style><h1>Living Descent screenshots</h1><p>${count} captures across ${groups.length} runs. Open a run, then click an image for its full size. Historical and failure captures keep their original filenames.</p>${body}</html>`);
+  const manifest = join(SCREENSHOT_ROOT, 'creatures', 'manifest.json');
+  const creatures = existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf8')) : [];
+  const clipManifest = join(SCREENSHOT_ROOT, 'clips', 'manifest.json');
+  const clips = existsSync(clipManifest) ? JSON.parse(readFileSync(clipManifest, 'utf8')) : [];
+  writeFileSync(join(SCREENSHOT_ROOT, 'index.html'), screenshotGalleryHtml({ groups, creatures, clips }));
+  writeFileSync('screenshots/index.html', '<!doctype html><html lang="en"><meta charset="utf-8"><title>Living Descent captures</title><meta http-equiv="refresh" content="0;url=living-descent/index.html"><p><a href="living-descent/index.html">Open the capture library</a></p></html>');
 }
 
 /** Preserve existing evidence paths while archiving every captured frame by run. */

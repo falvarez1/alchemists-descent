@@ -3,6 +3,9 @@ import { createDefaultPostFxSettings, createDefaultRenderSettings, createDefault
 import { installTuningPersistence } from '@/config/tuningStore';
 import { EventBus } from '@/core/events';
 import { updateLivingExpedition } from '@/game/LivingExpedition';
+import { updateHabitatMotion } from '@/game/HabitatMotion';
+import { advanceTrickshotClock } from '@/combat/Trickshot';
+import { updateLegSwing } from '@/combat/WeaverLimbs';
 import { ExpeditionEntry } from '@/ui/ExpeditionEntry';
 import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
@@ -452,6 +455,7 @@ export class Game {
    * lands. Catch-up is bounded per render, with ordinary debt carried forward
    * and suspension loss exposed to the performance recorder.
    */
+  private trickshotLastTime = 0;
   private step = (now: number): void => {
     if (this.disposed) return;
     this.animationFrameId = requestAnimationFrame(this.step);
@@ -460,12 +464,14 @@ export class Game {
     // Death slow-mo: stretch the wall-clock cost of a tick so the sim advances
     // in slow motion (the ramp eases back to real-time as the timer runs out).
     // Render still fires every rAF, so the ragdoll tumble is smooth, not choppy.
-    let stepBudget = Game.STEP_MS;
+    const trickshotScale = advanceTrickshotClock(this.ctx, this.trickshotLastTime ? now - this.trickshotLastTime : 0);
+    this.trickshotLastTime = now;
+    let stepBudget = Game.STEP_MS / trickshotScale;
     const slowMo = this.ctx.fx.deathSlowMo;
     if (slowMo > 0 && !this.ctx.state.paused) {
       const t = Math.min(1, slowMo / DEATH_SLOWMO_FRAMES); // 1 at death -> 0 at end
       const scale = DEATH_SLOWMO_MIN + (1 - DEATH_SLOWMO_MIN) * (1 - t); // MIN -> 1
-      stepBudget = Game.STEP_MS / scale;
+      stepBudget = Game.STEP_MS / Math.min(scale, trickshotScale);
     }
     const frameWorkStart = performance.now();
     this.cadence = this.clock.advance(now, stepBudget, this.ctx.time.manual || this.ctx.state.paused);
@@ -556,7 +562,7 @@ export class Game {
       this.perfHud.mark('sim', simMs);
 
       const tEnt = performance.now();
-      if (!dbg.frozenPlayer()) ctx.playerCtl.update(ctx);
+      if (!dbg.frozenPlayer()) { ctx.playerCtl.update(ctx); if (!ctx.player.dead) updateLegSwing(ctx); }
       if (!debugActive) ctx.flask.update(ctx);
       const enemyStart = performance.now();
       ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy
@@ -574,6 +580,7 @@ export class Game {
         ctx.pickups.update(ctx);
         ctx.mechanisms.update(ctx);
         updateLivingExpedition(ctx);
+        updateHabitatMotion(ctx);
         this.habitatAudio.update(ctx);
       }
       const preyStart = performance.now();

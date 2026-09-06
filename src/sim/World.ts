@@ -3,6 +3,7 @@ import { Cell } from '@/sim/CellType';
 import { EMPTY_COLOR } from '@/sim/colors';
 import { ActivityGrid } from '@/sim/ActivityGrid';
 import { ColorOverrides } from '@/sim/ColorOverrides';
+import { FluidFlow } from '@/sim/FluidFlow';
 
 const CHARGE_SCAN_TILE = 64;
 
@@ -16,6 +17,7 @@ const CHARGE_SCAN_TILE = 64;
  * Colors are packed 0xRRGGBB in a Uint32Array — see colors.ts for pack/unpack.
  */
 export class World {
+  readonly flow: FluidFlow;
   readonly activity: ActivityGrid;
   readonly width: number;
   readonly height: number;
@@ -51,6 +53,7 @@ export class World {
   constructor(width = WIDTH, height = HEIGHT) {
     this.width = width;
     this.height = height;
+    this.flow = new FluidFlow(width, height);
     this.activity = new ActivityGrid(width, height);
     const n = width * height;
     this.colorOverrides = new ColorOverrides(n);
@@ -83,6 +86,7 @@ export class World {
 
   /** Reset a flat-indexed cell to empty space. */
   clearCellAt(i: number): void {
+    this.flow.forget(i);
     this.activity.touchIndex(i);
     this.types[i] = Cell.Empty;
     this.colors[i] = EMPTY_COLOR;
@@ -93,6 +97,7 @@ export class World {
 
   /** Replace a flat-indexed cell with fresh material, clearing transient metadata. */
   replaceCellAt(i: number, t: number, color: number): void {
+    this.flow.forget(i);
     this.activity.touchIndex(i);
     this.types[i] = t;
     this.colors[i] = color;
@@ -198,6 +203,7 @@ export class World {
     }
     const a = x1 + y1 * this.width;
     const b = x2 + y2 * this.width;
+    this.flow.forget(a); this.flow.forget(b);
     const overrides = this.colorOverrides.mask;
     const aOverride = overrides[a] > 0;
     const bOverride = overrides[b] > 0;
@@ -230,6 +236,7 @@ export class World {
 
   /** Wipe the whole grid back to empty space. */
   clear(): void {
+    this.flow.falling.clear();
     this.activity.invalidateAll();
     this.types.fill(Cell.Empty);
     this.colors.fill(EMPTY_COLOR);

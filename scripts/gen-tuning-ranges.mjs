@@ -43,7 +43,7 @@ try {
     // The schema modules are pure, but they sit in files that also reference
     // browser globals at type level; neutral platform + these shims keep the
     // bundle importable under plain Node.
-    define: { 'import.meta.env.DEV': 'false' },
+    define: { 'import.meta.env.DEV': 'false', 'import.meta.env.BASE_URL': '"/"' },
   });
 
   const mod = await import(pathToFileURL(bundlePath).href);

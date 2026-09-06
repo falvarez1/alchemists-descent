@@ -24,6 +24,8 @@ try {
   await page.goto(process.argv[2] ?? 'http://127.0.0.1:5182/', { waitUntil: 'networkidle' });
   await waitForConsoleApi(page);
   await page.evaluate(() => window.__game.ctx.levels.ready);
+  await page.waitForFunction(() => !document.getElementById('boot-overlay') || document.getElementById('boot-overlay').classList.contains('done'));
+  await page.waitForTimeout(400);
   await page.locator('#expedition-entry:not([hidden])').waitFor();
   await page.screenshot({ path: `${output}/entry-desktop.png` });
   await page.setViewportSize({ width: 720, height: 480 });
@@ -41,7 +43,7 @@ try {
       activity: { active: ctx.world.activity.activeChunks, sleeping: ctx.world.activity.sleepingChunks } };
   });
   assert.equal(report.opening.fauna > 0, true);
-  assert.equal(report.opening.residents.length, 4);
+  assert.equal(report.opening.residents.length, 6);
   await page.keyboard.down('KeyD');
   await page.waitForTimeout(500);
   await page.keyboard.press('Space', { delay: 150 });
@@ -58,6 +60,12 @@ try {
   assert.equal(report.lure.lures.length, 1);
   await page.locator('#expedition-pause').click();
   await page.locator('#pause-settings').click();
+  const fontSession = await page.context().newCDPSession(page);
+  await fontSession.send('DOM.enable'); await fontSession.send('CSS.enable');
+  const documentRoot = await fontSession.send('DOM.getDocument');
+  const paragraph = await fontSession.send('DOM.querySelector', { nodeId: documentRoot.root.nodeId, selector: '#player-settings p' });
+  report.settingsFonts = await fontSession.send('CSS.getPlatformFontsForNode', { nodeId: paragraph.nodeId });
+  await fontSession.detach();
   await page.locator('#player-settings [name="textScale"]').selectOption('1.3');
   await page.locator('#player-settings [name="reducedFlashes"]').check();
   await page.locator('#player-settings [name="creatureCaptions"]').check();

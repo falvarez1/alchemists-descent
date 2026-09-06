@@ -586,7 +586,9 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
         let fl = 0.7 + flickerRand(vec2<f32>(f32(wx), f32(wy)), 1.0) * 0.55;
         base.r = base.r * fl;
         base.g = base.g * fl * 0.95;
-      } else if ((typeId == ${Cell.Water} || typeId == ${Cell.Healium} || typeId == ${Cell.Teleportium}) && wy > 0 && ly > 0 && i32(textureLoad(uWin, vec2<i32>(lx, ly - 1), 0).a & 0x7fu) == ${Cell.Empty}) {
+      } else if ((typeId == ${Cell.Water} || typeId == ${Cell.Healium} || typeId == ${Cell.Teleportium}) && wy > 0 && ly > 0
+        && (typeId != ${Cell.Water} || i32(textureLoad(uWin, vec2<i32>(lx, min(${WIN_H - 1}, ly + 1)), 0).a & 0x7fu) != ${Cell.Empty})
+        && i32(textureLoad(uWin, vec2<i32>(lx, ly - 1), 0).a & 0x7fu) == ${Cell.Empty}) {
         let wave = 0.88 + sin(p(6u) + f32(wx) * 0.42) * 0.12;
         base.r = base.r * wave;
         base.g = base.g * (0.94 + (wave - 0.88) * 0.45);

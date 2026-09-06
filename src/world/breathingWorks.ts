@@ -3,6 +3,7 @@ import { reseedAllStreams } from '@/core/simRandom';
 import type { AuthoredLight, Ctx, Mechanism, Pickup, WorldGenApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { EMPTY_COLOR, packRGB } from '@/sim/colors';
+import { dressWorksHabitat } from './worksHabitat';
 
 /** Authored encounter geometry; every ledge, reservoir and pipe below is real material. */
 export const WORKS_ROOMS = [
@@ -118,6 +119,10 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   rect(267, 780, 42, 7, Cell.Stone, packRGB(78, 89, 80));
   rect(1030, 983, 65, 27, Cell.Sand, packRGB(126, 110, 74));
   rect(1130, 996, 125, 14, Cell.Wood, packRGB(85, 64, 40));
+  // Visible detours offer new spell verbs before the refuge's wand workbench.
+  rect(244, 260, 42, 5, Cell.Wood, packRGB(100, 79, 50));
+  rect(1090, 278, 70, 6, Cell.Stone, packRGB(64, 87, 78));
+  rect(638, 950, 70, 6, Cell.Wood, packRGB(87, 72, 49));
 
   // Chalk lips face walkable space. Sparse oxidation faces the walls.
   for (let y = 12; y < HEIGHT - 9; y++) {
@@ -138,6 +143,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   for (const [x, y] of [[275, 311], [505, 390], [992, 447], [1330, 386], [929, 738], [236, 820]]) {
     rect(x, y - 3, 6, 3, Cell.Glowshroom, packRGB(105, 175, 140));
   }
+  dressWorksHabitat(world, seed);
   const valveBody: Array<[number, number]> = [];
   for (let y = 412; y < 437; y++) for (let x = 800; x < 805; x++) valveBody.push([x, y]);
   const mechanisms: Mechanism[] = [
@@ -156,6 +162,8 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     waystones: [{ x: 192, y: 314, lit: true }, { x: 857, y: 743, lit: true }],
     portal: { x: 1400, y: 1008, open: false }, cauldron: null,
     pickups: [pickup('key', 285, 772), pickup('tome', 892, 735, { card: 'heavy' }),
+      pickup('tome', 265, 252, { card: 'bounce' }), pickup('tome', 1125, 270, { card: 'frostshard' }),
+      pickup('tome', 672, 942, { card: 'double' }),
       pickup('heart', 820, 735), pickup('goldpile', 1470, 722, { amount: 60 }),
       pickup('goldpile', 1063, 978, { amount: 30 })],
     mechanisms, runeVaults: [], boss: null,
@@ -164,6 +172,8 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       { kind: 'weaver', x: 1280, y: 386, sourceId: 'works-weaver-gallery' },
       { kind: 'weaver', x: 1170, y: 995, sourceId: 'works-weaver-undertow' },
       { kind: 'rillback', x: 405, y: 810, sourceId: 'works-rillback-garden' },
+      { kind: 'rootloper', x: 542, y: 816, sourceId: 'works-rootloper-garden' },
+      { kind: 'stonemaw', x: 755, y: 1008, sourceId: 'works-stonemaw-undertow' },
     ],
     placedPrefabs: WORKS_ROOMS.map(r => ({ id: `works-${r.id}`, x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.floor })),
     authoredLights: [lamp(180, 279, true, 150), lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),

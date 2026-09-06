@@ -77,6 +77,7 @@ export class Simulation implements SimulationApi {
       world.movedTick = 1;
     }
 
+    world.flow.beginStep(world);
     runHarvesterField(ctx);
     updateElectricalGrid(ctx);
     ctx.projectileCtl.update(ctx);

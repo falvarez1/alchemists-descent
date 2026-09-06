@@ -10,6 +10,10 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import { EnemySpatialIndex } from '@/core/enemySpatial';
 import { pointHitsCreature } from '@/creatures/body';
+import { weaverLegAt } from '@/creatures/weaverAnatomy';
+import { strikeWeaverLeg } from '@/combat/WeaverLimbs';
+import { recordTrickshot } from '@/combat/Trickshot';
+import { isSpentGore, projectileGravity, WEAVER_LIMB_DAMAGE } from '@/combat/projectileDefs';
 import type { Ctx, Projectile, ProjectilesApi, ProjectileType, RigidBody } from '@/core/types';
 import { Cell, isConductor, isGas, isSolid } from '@/sim/CellType';
 import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '@/sim/colors';
@@ -51,12 +55,9 @@ const FROST_BODY_MOMENTUM_GRACE = 10;
  *
  * Deliberately NOT all liquids — see docs/PORTING.md.
  */
-function isSpentGore(t: number): boolean {
-  return t === Cell.Blood || t === Cell.Slime;
-}
-
 /** Solid-for-projectiles test (same gate as the impact check in update()). */
 function solidAt(world: World, x: number, y: number): boolean {
+  x = Math.floor(x); y = Math.floor(y);
   if (!world.inBounds(x, y)) return true;
   const c = world.types[world.idx(x, y)];
   return c !== Cell.Empty && !isGas(c) && !isSpentGore(c);
@@ -467,7 +468,9 @@ export class Projectiles implements ProjectilesApi {
   }
 
   private damageEnemy(ctx: Ctx, enemy: Ctx['enemies'][number], amount: number, kx: number, ky: number): void {
+    const hp = enemy.hp;
     ctx.enemyCtl.damage(enemy, amount, kx, ky);
+    if (hp > 0 && enemy.hp < hp) recordTrickshot(ctx, enemy, enemy.hp <= 0 ? 'kill' : 'hit');
     if (enemy.hp <= 0) {
       this.enemyIndex.syncLive(ctx.enemies);
       this.indexedEnemyCount = ctx.enemies.length;
@@ -756,12 +759,8 @@ export class Projectiles implements ProjectilesApi {
       }
 
       // Per-type gravity / steering
-      if (p.type === 'bomb' || p.type === 'fireball' || p.type === 'frostbolt')
-        p.vy += p.type === 'bomb' ? 0.14 : p.type === 'fireball' ? 0.02 : 0.01;
-      else if (p.type === 'iceshard') p.vy += 0.04;
-      else if (p.type === 'meteor') p.vy += 0.07;
-      else if (p.type === 'acidglob') p.vy += 0.12;
-      else if (p.type === 'wisp') {
+      p.vy += projectileGravity(p.type);
+      if (p.type === 'wisp') {
         // Seek the nearest enemy within 240px
         let best = null,
           bestD = 240 * 240;
@@ -958,6 +957,20 @@ export class Projectiles implements ProjectilesApi {
             break;
           }
         }
+        // A visible limb is a small, separate target. Terrain still shields it;
+        // torso hits retain their ordinary spell effects and never roll a limb.
+        const limbDamage = !p.hostile ? WEAVER_LIMB_DAMAGE[p.type] : undefined;
+        if (limbDamage && !solidAt(world, p.x, p.y)) {
+          let limbHit = false;
+          for (const e of this.enemyIndex.query(p.x, p.y, 86, this.enemyScratch)) {
+            if (e.kind !== 'weaver' || !this.enemyIndex.has(e)) continue;
+            const leg = weaverLegAt(e, p.x, p.y, 1);
+            if (leg < 0 || !strikeWeaverLeg(ctx, e, leg, limbDamage * (p.mul ?? 1), p.vx, p.vy)) continue;
+            if (e.hp <= 0) { this.enemyIndex.syncLive(ctx.enemies); this.indexedEnemyCount = ctx.enemies.length; }
+            releaseTriggered(ctx, p); this.removeAt(projectiles, i); limbHit = true; break;
+          }
+          if (limbHit) { removed = true; break; }
+        }
         // Player projectiles: detonate on enemies (meteors hit a wider arc)
         if (
           !p.hostile &&
@@ -1010,6 +1023,12 @@ export class Projectiles implements ProjectilesApi {
             removed = true;
             break;
           }
+        }
+
+        // Soft stems part along the actual projectile path and keep its momentum.
+        // Lifted vines no longer occupy terrain cells, so grid impacts cannot cut them.
+        if (!p.hostile && WEAVER_LIMB_DAMAGE[p.type] && !isSolid(world.types[world.idx(gx, gy)])) {
+          ctx.vineStrands?.cutAt?.(p.x, p.y, 1.8);
         }
 
         // Rigid bodies are solid to player shots: a strike shoves + spins the

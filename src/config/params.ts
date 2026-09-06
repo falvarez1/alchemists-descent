@@ -198,22 +198,22 @@ export const PLAYER_PARAMS: PlayerTuning = {
   // Full thrust 0.33+0.24 = 0.57; with grav 0.28 and drag 0.92 that solves to a
   // terminal climb of ~3.3 cells/frame (well under the old -4.6 cap).
   levitThrustGain: 0.24,
-  levitRampFrames: 48,
+  levitRampFrames: 30,
   levitDrag: 0.92,
   vyCapUp: -4.6,
   // Flight legs are their own thing — base feel (1.0), immune to Swift buffs so
   // god-mode/Swift no longer makes levitation skate sideways while crawling up.
   levitHorizControl: 1.0,
-  // Airborne horizontal inertia: 0.985/frame retention means a fast run carries
-  // into a jump/levitate and a glide coasts, instead of snapping to a stop.
+  // Held-input inertia carries a run into flight. Releasing the direction
+  // applies firmer braking in PlayerControl so narrow landings stay readable.
   airDrag: 0.985,
   // Precision-platformer movement feel (was module consts in Player.ts; live here
   // so the inspector can tune jump/run/air feel without a recompile).
-  moveSoftStart: 0.55,
-  groundStopDecay: 0.6,
+  moveSoftStart: 0.8,
+  groundStopDecay: 0.48,
   groundStopSnap: 0.12,
   airGlideSpeed: 1.9,
-  airStopDecay: 0.74,
+  airStopDecay: 0.68,
   jumpCut: 0.25,
   jumpHoldWindow: 7,
   maxRunCap: 3.6,

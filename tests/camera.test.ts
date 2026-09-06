@@ -46,6 +46,19 @@ describe('camera inspection focus', () => {
 });
 
 describe('camera aim lookahead', () => {
+  it('ignores blocked gravity velocity when the player is standing on support', () => {
+    const camera = new Camera(), ctx = makeCtx(camera);
+    for (let tick = 0; tick < 180; tick++) { ctx.player.vy = (tick % 3) * .28; camera.update(ctx); }
+    const settled = camera.y;
+    for (let tick = 0; tick < 180; tick++) {
+      ctx.player.vy = (tick % 3) * .28; camera.update(ctx);
+      expect(camera.ty).toBe(ctx.player.y - 9 - VIEW_H / 2);
+      expect(Math.abs(camera.y - settled)).toBeLessThan(.0001);
+    }
+    ctx.player.grounded = false; ctx.player.vy = 2;
+    camera.update(ctx);
+    expect(camera.ty).toBe(ctx.player.y - 9 - VIEW_H / 2 + 16);
+  });
   it('does not fling to the opposite side for near-player crosshair corrections', () => {
     const camera = new Camera();
     const ctx = makeCtx(camera);
@@ -85,6 +98,7 @@ function makeCtx(camera: Camera): Ctx {
       x: 600,
       y: 400,
       vx: 0,
+      vy: 0,
       facing: 1,
       crawlT: 0,
       crouchT: 0,

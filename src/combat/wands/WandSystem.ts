@@ -21,6 +21,7 @@ import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
 import { buildCardOffer, collectOwnedCards, DEPTH_PROJECTILE_POOL, WAYSTONE_MOD_POOL } from './rewardPools';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES } from '@/combat/wands/wandCatalog';
 import { entityRandom } from '@/core/simRandom';
+import { getAimGuide } from '@/combat/AimGuide';
 export { REVIEW_WAND_LOADOUTS, STARTING_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/wandCatalog';
 
 /**
@@ -142,6 +143,11 @@ function takeUnused(pool: readonly CardId[], used: ReadonlySet<CardId>): CardId 
  * damage surface the bench sentence warns instead of promising a no-op.
  */
 export class WandSystem implements WandsApi {
+  peekCast(): { actions: readonly CastAction[]; spread: number; affordable: boolean } | null {
+    const wand = this.wands[this._active], program = this.program(this._active);
+    const group = program[wand.castIndex % Math.max(1, program.length)];
+    return group ? { actions: group.actions, spread: wand.frame.spread, affordable: wand.mana >= group.manaCost } : null;
+  }
   readonly wands: [WandState, WandState] = [
     { frame: WAND_FRAMES.oak, cards: ['spark', null, null], mana: WAND_FRAMES.oak.manaMax, cooldown: 0, castIndex: 0 },
     { frame: WAND_FRAMES.bone, cards: ['dig', null, null, null], mana: WAND_FRAMES.bone.manaMax, cooldown: 0, castIndex: 0 },
@@ -252,6 +258,8 @@ export class WandSystem implements WandsApi {
       return;
     }
 
+    const aimGuide = ctx.state.trickshot?.enabled ? getAimGuide(ctx) : null;
+    const precision = !!aimGuide?.assisted && !aimGuide.uncertain;
     if (!godMode) wand.mana -= group.manaCost;
     wand.castIndex++;
     const wrapped = wand.castIndex >= program.length;
@@ -292,6 +300,7 @@ export class WandSystem implements WandsApi {
         atCursor ? ctx.input.mouse.x : tip.x,
         atCursor ? ctx.input.mouse.y : tip.y,
         ctx.player.aimAngle,
+        { origin: 'wand', precision },
       );
     }
   }
@@ -372,7 +381,7 @@ export class WandSystem implements WandsApi {
       ? options.sourceSpread
       : frame.spread;
     const jitter = (): number =>
-      godMode ? angle : angle + (entityRandom() * 2 - 1) * (sourceSpread + action.spreadAdd);
+      godMode ? angle : angle + (entityRandom() * 2 - 1) * (options.origin === 'wand' && options.precision ? 0 : sourceSpread + action.spreadAdd);
     const targetPoint = (): { x: number; y: number } => options.target ?? ctx.input.mouse;
     const sp = ctx.params.spells;
     ctx.telemetry.count('card.cast.' + action.card);

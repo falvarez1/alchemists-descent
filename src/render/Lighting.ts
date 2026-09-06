@@ -646,14 +646,14 @@ export class Lighting implements LightField {
     }
 
     // Death glow: the wand goes dark with the wizard, so the corpse carries its
-    // own fading violet soul-light — the ragdoll stays readable as it tumbles.
+    // own fading warm soul-light — the ragdoll stays readable as it tumbles.
     if (ctx.state.mode === 'play' && ctx.player.dead) {
       const corpse = ctx.rigidBodies.playerCorpse;
       if (corpse) {
         const flick =
           0.82 + Math.sin(ctx.state.frameCount * 0.18) * 0.12 + (Math.random() - 0.5) * 0.06;
-        this.seedLight(corpse.x, corpse.y, 1.25 * flick, 0.82 * flick, 1.45 * flick);
-        this.seedLight(corpse.x, corpse.y - 6, 0.75 * flick, 0.5 * flick, 0.95 * flick);
+        this.seedLight(corpse.x, corpse.y, .5 * flick, .48 * flick, .38 * flick);
+        this.seedLight(corpse.x, corpse.y - 6, .3 * flick, .28 * flick, .22 * flick);
       }
     }
   }

@@ -1,6 +1,7 @@
 import type { Enemy, EnemyDef } from '@/core/types';
+import { weaverBodyHit } from '@/creatures/weaverAnatomy';
 import type { World } from '@/sim/World';
-import { blocksEntity } from '@/sim/CellType';
+import { blocksEntity, Cell } from '@/sim/CellType';
 import type { BodyNode, CreatureBody } from './types';
 
 export function circleFree(world: World, x: number, y: number, radius: number): boolean {
@@ -38,7 +39,7 @@ export function createChain(x: number, y: number, facing = 1, count = 9, spacing
 }
 
 /** Position constraints plus swept cell contact; only the head is steered by AI. */
-export function tickChain(world: World, body: CreatureBody, x: number, y: number, wet: boolean, tick: number): void {
+export function tickChain(world: World, body: CreatureBody, x: number, y: number, wet: boolean, tick: number, aquatic = false): void {
   const nodes = body.nodes;
   const head = nodes[0];
   if (Math.hypot(head.x - x, head.y - y) > 70) {
@@ -51,8 +52,16 @@ export function tickChain(world: World, body: CreatureBody, x: number, y: number
   head.y = y;
   for (let i = 1; i < nodes.length; i++) {
     const node = nodes[i];
-    const nx = node.x + (node.x - node.previousX) * (wet ? 0.92 : 0.72);
-    const ny = node.y + (node.y - node.previousY) * 0.82 + (wet ? Math.sin(tick * 0.12 - i * 0.8) * 0.07 : 0.2);
+    const ahead = nodes[i - 1], dx = ahead.x - node.x, dy = ahead.y - node.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const speed = Math.hypot(head.x - head.previousX, head.y - head.previousY);
+    const immersion = aquatic ? nodeImmersion(world, node.x, node.y, node.radius) : wet ? 1 : 0;
+    const wave = Math.sin(tick * .14 - i * .8) * Math.min(.17, .045 + speed * .055) * immersion;
+    const currentX = aquatic ? world.flow.x(node.x, node.y) * immersion * .06 : 0;
+    const currentY = aquatic ? world.flow.y(node.x, node.y) * immersion * .06 : 0;
+    const drag = aquatic ? .72 + immersion * .15 : wet ? .92 : .72;
+    const nx = node.x + (node.x - node.previousX) * drag - dy / length * wave + currentX;
+    const ny = node.y + (node.y - node.previousY) * .82 + dx / length * wave + (aquatic ? .24 : .2) * (1 - immersion) + currentY;
     node.previousX = node.x;
     node.previousY = node.y;
     moveNode(world, node, nx, ny);
@@ -77,8 +86,18 @@ export function tickChain(world: World, body: CreatureBody, x: number, y: number
   }
 }
 
+export function nodeImmersion(world: World, x: number, y: number, radius = 3): number {
+  let count = 0;
+  for (let dy = -radius; dy <= radius; dy += radius) {
+    const xx = Math.floor(x), yy = Math.floor(y + dy);
+    if (world.inBounds(xx, yy) && (world.type(xx, yy) === Cell.Water || world.type(xx, yy) === Cell.Blood)) count++;
+  }
+  return count / 3;
+}
+
 /** Shared body hit geometry for projectiles/material splashes. */
 export function pointHitsCreature(enemy: Enemy, def: EnemyDef, x: number, y: number, padding = 0): boolean {
+  if (enemy.kind === 'weaver' && enemy.weaverLoco) return weaverBodyHit(enemy, x, y, padding);
   const nodes = enemy.body?.nodes;
   if (!nodes) return Math.abs(x - enemy.x) <= def.halfW + padding && y >= enemy.y - def.h - padding && y <= enemy.y + padding;
   for (let i = 0; i < nodes.length; i++) {

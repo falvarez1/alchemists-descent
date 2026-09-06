@@ -3,6 +3,7 @@ import type { EventBus } from '@/core/events';
 import type { Cell } from '@/sim/CellType';
 import type { VirtualWorldDef } from '@/authoring/virtualWorld';
 import type { CreatureBody, CreatureMind, PlantedFoot } from '@/creatures/types';
+import type { CreatureExpression } from '@/creatures/expression';
 
 /* ============================================================
  * Entity data
@@ -46,6 +47,13 @@ export interface Hat {
  * fx/fy accumulate sub-cell motion until a whole cell is crossed.
  * Hitbox: halfW 4, height 17 (PLAYER_HALF_W / PLAYER_H).
  */
+export interface HeldLegPoint { x: number; y: number }
+export interface HeldLegRig {
+  hand: HeldLegPoint; knee: HeldLegPoint; hip: HeldLegPoint;
+  previousHand: HeldLegPoint; previousKnee: HeldLegPoint; previousHip: HeldLegPoint;
+  wrist: number; wristVelocity: number; vx: number; vy: number;
+}
+
 export interface PlayerState {
   x: number;
   y: number;
@@ -113,6 +121,9 @@ export interface PlayerState {
   kickT: number;
   /** Direction (±1) the last kick was aimed (for the pose). */
   kickDir: number;
+  /** Salvaged Weaver limb; F swings it while the wand remains on LMB. */
+  legClub?: { durability: number; length: number; swingT: number; angle: number; cooldown: number; owner?: string;
+    rig?: HeldLegRig; hitThisSwing?: boolean };
   /** True while swinging on a vine (pendulum owns movement; body-resolve skips him). */
   swinging?: boolean;
   /** Hurt stagger lean (frames left) in staggerDir (+-1, away from the hit). */
@@ -281,6 +292,8 @@ export interface ProceduralLegIkState {
 /** One Weaver leg, owned by the tick-rate locomotion (entities/weaverLocomotion).
  *  The renderer draws these; it never decides where feet go. */
 export interface WeaverLegState {
+  /** A severed socket is permanent; it cannot plant or support the animal. */
+  missing?: boolean;
   /** world foot position */
   x: number;
   y: number;
@@ -375,6 +388,7 @@ export interface WeaverLocoState {
 }
 
 export interface Enemy {
+  expression?: CreatureExpression;
   mind?: CreatureMind;
   body?: CreatureBody;
   feet?: PlantedFoot[];
@@ -510,6 +524,16 @@ export interface Enemy {
   /** Root Loper: committed lash target chosen at windup start. */
   rootLashX?: number;
   rootLashY?: number;
+  rootLashT?: number;
+  rillStrikeAngle?: number;
+  rillFeedT?: number;
+  /** Append-only anatomical bit positions, one per locomotion leg. */
+  weaverMissingLegs?: number;
+  /** Stable provenance for a severed leg, retained across saves. */
+  weaverSalvageId?: string;
+  weaverLegDamage?: number[];
+  weaverFlinchT?: number;
+  weaverRetreatT?: number;
   /** Stone Maw: committed chewing frames; sprite reads it as mouth-open pressure. */
   mawChewT?: number;
   /** Stone Maw: cooldown before another terrain bite. */
@@ -1121,6 +1145,7 @@ export interface GameStateData {
   creatureCaptions?: boolean;
   reduceCameraShake?: boolean;
   reduceFlashes?: boolean;
+  trickshot?: TrickshotSettings;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see
    *  sim/reactions.ts). Surfaced for probes and the inspector — the player
    *  learns it from the discovery toast, not from here. */
@@ -1198,7 +1223,29 @@ export interface InputState {
   releaseHeldInput?: () => void;
 }
 
+export interface TrickshotSettings {
+  enabled: boolean;
+  timeScale: number;
+  durationMs: number;
+  chainWindowMs: number;
+  assistDegrees: number;
+}
+
+export interface TrickshotRuntime {
+  remainingMs: number;
+  elapsedMs: number;
+  scale: number;
+  chainMs: number;
+  chain: number;
+  seen: Set<Enemy>;
+  label: string;
+  labelMs: number;
+  continuousMs: number;
+  recoveryMs: number;
+}
+
 export interface FxState {
+  trickshot?: TrickshotRuntime;
   /** Transient bloom surge after detonations; decays *= 0.86 per frame. */
   bloomKick: number;
   /** Camera shake magnitude; decays *= 0.88 per frame. */
@@ -1410,6 +1457,9 @@ export interface RigidBody {
   vy: number;
   angle: number;
   va: number;
+  previousX?: number;
+  previousY?: number;
+  previousAngle?: number;
   /** Inverse mass / inverse rotational inertia used by the current local solver. */
   invMass?: number;
   invInertia?: number;
@@ -1457,6 +1507,9 @@ export interface SpawnBodyOpts {
   vy?: number;
   angle?: number;
   va?: number;
+  collisionGroups?: number;
+  linearDamping?: number;
+  angularDamping?: number;
   /** What it's made of — sets density + default colour (explicit density/color win). */
   material?: BodyMaterial;
   /** Mass/inertia derive from shape area × density (default 1). */
@@ -1516,7 +1569,17 @@ export interface PeerGhostsApi {
   sample(nowMs: number): readonly PeerGhost[];
 }
 
+export type RagdollPart = 'torso' | 'head' | 'leftArm' | 'leftForearm' | 'rightArm' | 'rightForearm' |
+  'leftThigh' | 'leftShin' | 'rightThigh' | 'rightShin' | 'hat';
+export interface PlayerRagdollRig {
+  facing: number;
+  parts: Record<RagdollPart, RigidBody>;
+  joints: Array<{ a: RagdollPart; b: RagdollPart; anchorA: { x: number; y: number }; anchorB: { x: number; y: number } }>;
+}
+
 export interface RigidBodiesApi {
+  readonly playerRagdoll?: PlayerRagdollRig | null;
+  spawnPlayerRagdoll?(player: PlayerState): RigidBody;
   /** Live list — mutated in place, never reassigned (entity-array invariant). */
   readonly bodies: RigidBody[];
   /** The live player-corpse ragdoll (or null), cached so per-frame readers
@@ -1569,6 +1632,8 @@ export interface RigidBodiesApi {
 }
 
 export interface VineStrandNodeView {
+  /** Stable botanical detail stays with the node when a stem is severed. */
+  readonly leafLength?: number;
   readonly x: number;
   readonly y: number;
 }
@@ -1579,6 +1644,8 @@ export interface VineStrandSegmentView {
 }
 
 export interface VineStrandView {
+  /** Botanical leaves follow this strand's physical stem, including cut fragments. */
+  readonly foliage?: boolean;
   readonly nodes: readonly VineStrandNodeView[];
   readonly segments: readonly VineStrandSegmentView[];
   readonly color: number;
@@ -1608,6 +1675,11 @@ export interface VineStrandsApi {
   readonly strands: readonly VineStrandView[];
   /** Convert a disconnected vine component in the cell grid into a soft strand. */
   detachCluster(x: number, y: number): boolean;
+  /** Sever live botanical geometry; returns the number of strands split. */
+  cutAt?(x: number, y: number, radius: number): number;
+  hitTest?(x: number, y: number, radius: number): boolean;
+  /** Include material held by live strands in copied save buffers without changing the world. */
+  writeSnapshotCells?(world: World, types: Uint8Array, life: Int16Array): void;
   /** Add a PERSISTENT strand pinned at (x,y) hanging `length` cells down — a rope
    *  or thick vine that sways, collides, and reacts to the player (never settles). */
   addHanging(x: number, y: number, length: number, opts?: { thickness?: number; color?: number }): void;
@@ -1727,6 +1799,9 @@ export interface CameraApi {
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
   renderX: number;
   renderY: number;
+  /** The interpolated camera used to compose THIS frame, before integer snapping. */
+  presentationX?: number;
+  presentationY?: number;
   update(ctx: Ctx): void;
   /** Derive world.simBounds from the camera position (+/- SIM_MARGIN). */
   updateSimBounds(world: World): void;
@@ -2070,7 +2145,7 @@ export interface RuneVault {
   active: boolean;
 }
 
-export const PICKUP_KINDS = ['goldpile', 'heart', 'tome', 'chest', 'potion', 'key'] as const;
+export const PICKUP_KINDS = ['goldpile', 'heart', 'tome', 'chest', 'potion', 'key', 'weaverleg'] as const;
 export type PickupKind = (typeof PICKUP_KINDS)[number];
 
 export interface Pickup {
@@ -2081,7 +2156,8 @@ export interface Pickup {
   vy: number;
   taken: boolean;
   /** tome: card seed/unique grant; potion: POTION_DEFS key; goldpile/chest: amount. */
-  data: { card?: CardId; potion?: string; amount?: number; offerPending?: boolean };
+  data: { card?: CardId; potion?: string; amount?: number; offerPending?: boolean;
+    legLength?: number; legAngle?: number; legSpin?: number; legAge?: number; legOwner?: string };
 }
 
 /** The level's exit gate: opens when the golden key is brought to it. */
@@ -2220,6 +2296,8 @@ export interface CastAction {
 }
 
 export interface CastActionExecutionContext {
+  /** Single assisted wand shot; triggered payloads never inherit the lock. */
+  precision?: boolean;
   origin: 'wand' | 'trigger';
   /** Cursor-target cards use this target instead of the live mouse position. */
   target?: { x: number; y: number };
@@ -2274,6 +2352,8 @@ export interface WandState {
  * projectiles-per-cast at 6; 'trigger' nests at most one level deep.
  */
 export interface WandsApi {
+  /** Read-only next cast; does not spend mana, advance the deck or sample RNG. */
+  peekCast?(): { actions: readonly CastAction[]; spread: number; affordable: boolean } | null;
   readonly wands: [WandState, WandState];
   active: 0 | 1;
   /** Owned cards not currently slotted in either wand. */
@@ -2686,6 +2766,8 @@ export interface LevelRuntime {
 
 /** Expedition ecology and room progress; separate from Builder documents. */
 export interface LivingExpeditionState {
+  valveTurn?: number;
+  valveAngularVelocity?: number;
   ticks: number;
   visited: string[];
   room: string;

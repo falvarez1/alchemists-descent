@@ -5,6 +5,7 @@ import { createDefaultStatus } from '@/entities/status';
 import { ensureCreatureMind, tickCreatureMind } from '@/creatures/perception';
 import { createChain, pointHitsCreature, tickChain } from '@/creatures/body';
 import { tickCreaturePose } from '@/creatures/pose';
+import { tickCreatureExpression } from '@/creatures/expression';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { drawEnemySprite } from '@/render/sprites/EnemySprites';
@@ -63,6 +64,31 @@ describe('living creature perception', () => {
 });
 
 describe('articulated body and render ownership', () => {
+  it('expresses remembered attention, feeding and injury without an omniscient target', () => {
+    const enemy = creature('rillback'), mind = ensureCreatureMind(enemy, 7);
+    mind.confidence = .8; mind.intent = 'investigate'; mind.targetX = -30; mind.targetY = 20;
+    for (let tick = 0; tick < 40; tick++) tickCreatureExpression(enemy, tick);
+    expect(enemy.expression!.gazeX).toBeLessThan(-.9);
+    expect(enemy.expression!.gazeY).toBeLessThan(-.5);
+    expect(enemy.expression!.alert).toBeGreaterThan(.5);
+    enemy.rillFeedT = 60; mind.intent = 'rest'; enemy.hp = 20;
+    for (let tick = 40; tick < 65; tick++) tickCreatureExpression(enemy, tick);
+    expect(enemy.expression!.jaw).toBeGreaterThan(.1);
+    expect(enemy.expression!.hurt).toBeGreaterThan(.5);
+    mind.intent = 'retreat';
+    for (let tick = 65; tick < 90; tick++) tickCreatureExpression(enemy, tick);
+    expect(enemy.expression!.fear).toBeGreaterThan(.85);
+  });
+
+  it('keeps cosmetic blinking independent of the attack telegraph', () => {
+    const a = creature('weaver'), b = creature('weaver');
+    ensureCreatureMind(a, 7); ensureCreatureMind(b, 7); b.blink = 30;
+    for (let tick = 0; tick < 240; tick++) {
+      tickCreatureExpression(a, tick); tickCreatureExpression(b, tick);
+      expect(b.expression).toEqual(a.expression);
+    }
+  });
+
   it('preserves anatomical shading during a Weaver hit flash', () => {
     const enemy = creature(); enemy.flash = 5;
     const ctx = { state: { frameCount: 42 }, world: new World(200, 120),

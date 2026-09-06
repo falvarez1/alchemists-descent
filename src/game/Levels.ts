@@ -232,6 +232,10 @@ export interface SavedEnemyState {
   rillWet?: number;
   rillChargeCd?: number;
   rillChargeWindup?: number;
+  rillFeedT?: number;
+  weaverMissingLegs?: number;
+  weaverSalvageId?: string;
+  weaverLegDamage?: number[];
   status?: Partial<EntityStatus>;
 }
 
@@ -282,6 +286,7 @@ export interface ExpeditionSave {
     levit: number;
     maxLevit: number;
     perks: Record<string, true>;
+    legClub?: { durability: number; length: number; owner?: string };
   };
   loadout: WandLoadoutSave;
   /** Full wand runtime, including grant guards/cooldowns. Absent in v1 legacy saves. */
@@ -530,6 +535,10 @@ export function snapshotEnemyForSave(e: Enemy): SavedEnemyState {
   if (e.rillWet !== undefined) saved.rillWet = e.rillWet;
   if (e.rillChargeCd !== undefined) saved.rillChargeCd = e.rillChargeCd;
   if (e.rillChargeWindup !== undefined) saved.rillChargeWindup = e.rillChargeWindup;
+  if (e.rillFeedT !== undefined) saved.rillFeedT = e.rillFeedT;
+  if (e.weaverMissingLegs !== undefined) saved.weaverMissingLegs = e.weaverMissingLegs;
+  if (e.weaverSalvageId) saved.weaverSalvageId = e.weaverSalvageId;
+  if (e.weaverLegDamage) saved.weaverLegDamage = [...e.weaverLegDamage];
   return saved;
 }
 
@@ -599,6 +608,12 @@ export function reviveSavedEnemy(se: SavedEnemyState): Enemy {
   if (se.mawStun !== undefined) enemy.mawStun = nonNegativeInt(se.mawStun, 0);
   if (se.rillWet !== undefined) enemy.rillWet = Math.max(0, Math.min(1, finiteNumber(se.rillWet, 0)));
   if (se.rillChargeCd !== undefined) enemy.rillChargeCd = nonNegativeInt(se.rillChargeCd, 0);
+  if (se.rillFeedT !== undefined) enemy.rillFeedT = Math.min(80, nonNegativeInt(se.rillFeedT, 0));
+  if (se.kind === 'weaver') {
+    if (typeof se.weaverSalvageId === 'string') enemy.weaverSalvageId = se.weaverSalvageId.slice(0, 160);
+    enemy.weaverMissingLegs = nonNegativeInt(se.weaverMissingLegs, 0) & 255;
+    if (Array.isArray(se.weaverLegDamage)) enemy.weaverLegDamage = Array.from({ length: 8 }, (_, i) => Math.min(14, nonNegativeInt(se.weaverLegDamage?.[i], 0)));
+  }
   if (se.mind && typeof se.mind === 'object') {
     const mind = ensureCreatureMind(enemy, 0);
     const saved = se.mind;
@@ -1174,6 +1189,7 @@ export class Levels implements LevelsApi {
       levit: ctx.player.levit,
       maxLevit: ctx.player.maxLevit,
       perks: { ...ctx.player.perks } as Record<string, true>,
+      legClub: ctx.player.legClub ? { durability: ctx.player.legClub.durability, length: ctx.player.legClub.length, owner: ctx.player.legClub.owner } : undefined,
       ...override,
     };
   }
@@ -1917,8 +1933,9 @@ export class Levels implements LevelsApi {
     // Life on transient cells (fire/ember/smoke/steam) is noise a second from
     // now — skipping it keeps multi-level saves well inside localStorage quota.
     const life: Array<[number, number]> = [];
-    const types = rt.world.types;
-    const lifeArr = rt.world.life;
+    const types = rt.world.types.slice();
+    const lifeArr = rt.world.life.slice();
+    this.ctx.vineStrands?.writeSnapshotCells?.(rt.world, types, lifeArr);
     for (let i = 0; i < lifeArr.length; i++) {
       if (lifeArr[i] === 0) continue;
       const t = types[i];
@@ -1927,7 +1944,7 @@ export class Levels implements LevelsApi {
     }
     return {
       id,
-      rle: rleEncode(rt.world.types),
+      rle: rleEncode(types),
       fauna: rt.fauna,
       living: rt.living,
       colorOverrides: this.serializeColorOverrides(rt.world),
@@ -1948,6 +1965,8 @@ export class Levels implements LevelsApi {
   }
 
   private snapshotLevelForWorker(id: string, rt: LevelRuntime): PendingLevelSave {
+    const types = rt.world.types.slice(), life = rt.world.life.slice();
+    this.ctx.vineStrands?.writeSnapshotCells?.(rt.world, types, life);
     return {
       metadata: structuredClone({
         id,
@@ -1967,8 +1986,8 @@ export class Levels implements LevelsApi {
         mapWaypoint: sanitizeMapWaypoint(rt.mapWaypoint, rt.world),
         weaverLairWebs: rt.weaverLairWebs,
       }),
-      types: rt.world.types.slice(),
-      life: rt.world.life.slice(),
+      types,
+      life,
       charge: rt.world.charge.slice(),
       explored: rt.explored.slice(),
     };
@@ -2078,6 +2097,11 @@ export class Levels implements LevelsApi {
       p.maxLevit = save.player.maxLevit;
       p.levit = save.player.levit;
       p.perks = { ...save.player.perks } as typeof p.perks;
+      const club = save.player.legClub;
+      p.legClub = club && finiteNumber(club.durability, 0) > 0 ? {
+        durability: Math.min(6, nonNegativeInt(club.durability, 0)), length: Math.max(26, Math.min(44, finiteNumber(club.length, 34))),
+        swingT: 0, cooldown: 0, angle: 0, owner: typeof club.owner === 'string' ? club.owner.slice(0, 160) : undefined,
+      } : undefined;
       if (save.wands) ctx.wands.restoreRuntimeState(save.wands);
       else {
         ctx.wands.loadLoadout(save.loadout);

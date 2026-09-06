@@ -38,7 +38,7 @@ button:focus-visible, summary:focus-visible, select:focus-visible { outline: 2px
 body.play-active #game-hud { font-family: ui-sans-serif, system-ui, sans-serif; }
 body.play-active #hud-left { top: 24px; left: 28px; }
 body.play-active .vitals { width: 180px; gap: 5px; }
-body.play-active .vital-label { font: 500 calc(12px * var(--text-scale))/1.2 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.02em; color: #c1cbbb; width: 42px; }
+body.play-active .vital-label { font: 500 calc(12px * var(--text-scale))/1.2 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.02em; color: #c1cbbb; width: calc(44px * var(--text-scale)); flex-shrink: 0; }
 body.play-active .vital-track { height: 5px; padding: 1px; border: 1px solid #a594705c; border-radius: 0; background: #0a1217d9; box-shadow: none; }
 body.play-active .vital-fill { transition: none; box-shadow: none !important; background-image: none !important; }
 body.play-active #hp-fill { background: #c5836c; }
@@ -143,3 +143,64 @@ body.play-active #interaction-hint.world-anchor { bottom: auto; max-width: 170px
   .entry-footer { position: static; margin: 20px 30px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+/* Resting and discovery use the same quiet materials as the inhabited cave. */
+body.play-active #wand-bench,
+body.play-active .card-offer-panel { background: #142328f5; border: 1px solid #67796b; border-radius: 2px; color: var(--works-paper); }
+body.play-active #wand-bench { inset: 6% 9%; padding: 24px; gap: 16px; font-family: ui-sans-serif, system-ui, sans-serif; }
+body.play-active .bench-title,
+body.play-active #sanctum-overlay .sanc-title,
+body.play-active #gameover-overlay .go-title { font: 500 clamp(32px, 4vw, 54px)/1.05 'Cormorant Garamond', Georgia, serif; color: var(--works-paper); letter-spacing: 0; text-shadow: none; }
+body.play-active .bench-wand { border: 1px solid #52665b; border-radius: 2px; background: #1c2c2d; padding: 14px; }
+body.play-active .bench-wand.active { border-color: var(--works-copper); }
+body.play-active .bench-stats { color: #bcc7b9; }
+body.play-active .bench-slot, body.play-active .bench-card { border-style: solid; border-radius: 2px; background: #132126; }
+body.play-active #sanctum-overlay,
+body.play-active #gameover-overlay { background: #102026f2; color: var(--works-paper); font-family: ui-sans-serif, system-ui, sans-serif; }
+body.play-active #sanctum-overlay .sanc-sub { color: #bdcabb; letter-spacing: 0; line-height: 1.6; }
+body.play-active #sanctum-overlay .sanc-heading { color: #b9c5b5; letter-spacing: .08em; font-weight: 500; }
+body.play-active #perk-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(680px, 90vw); gap: 12px; }
+body.play-active .perk-card { width: auto; padding: 20px 16px; text-align: left; border: 1px solid #607663; border-radius: 2px; background: #1b2d30; transition: background .15s, border-color .15s, transform .15s; }
+body.play-active .perk-card:hover { background: #263a39; border-color: #c0ac77; }
+body.play-active .perk-card .pk-name { color: #e4d1a3; font: 500 24px/1.15 'Cormorant Garamond', Georgia, serif; letter-spacing: 0; }
+body.play-active .perk-card .pk-desc { color: #c4cebf; font: 400 calc(13px * var(--text-scale))/1.6 ui-sans-serif, system-ui, sans-serif; }
+body.play-active .perk-card.taken { border: 1px solid #d1b67a; box-shadow: inset 3px 0 #d1b67a; }
+body.play-active .sanc-note { border: 0; color: #c7cbb6; letter-spacing: 0; line-height: 1.6; }
+body.play-active #descend-btn { background: #d8c699; border: 1px solid #e4d4ae; border-radius: 1px; color: #18272a; padding: 13px 32px; font: 500 calc(15px * var(--text-scale))/1.4 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; box-shadow: none; }
+body.play-active #descend-btn:hover { background: #ebddba; }
+body.play-active #gameover-overlay { justify-content: flex-end; padding: 20px; background: linear-gradient(transparent 48%, #0e1c22aa); backdrop-filter: none; box-sizing: border-box; }
+body.play-active .go-panel { width: min(500px, 100%); max-height: 46vh; overflow: auto; box-sizing: border-box; padding: 20px 28px; background: #14262af5; border: 1px solid #52655b; border-top-color: #b5a074; text-align: left; }
+body.play-active #gameover-overlay .go-title { font-size: clamp(30px, 3vw, 40px); margin-bottom: 8px; }
+body.play-active #gameover-overlay .go-stats { font: 400 calc(12px * var(--text-scale))/1.5 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; text-align: left; color: #bac7b9; }
+body.play-active #gameover-overlay .go-stats span { color: #d5c299; font-weight: 500; }
+body.play-active #gameover-overlay .go-cause { border: 0; padding: 8px 0 16px; color: #c4cdbf; font: 400 calc(13px * var(--text-scale))/1.5 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; text-align: left; text-shadow: none; }
+body.play-active #respawn-btn { background: #d8c699; color: #18272a; border: 1px solid #e4d4ae; border-radius: 1px; padding: 10px 18px; font: 500 calc(14px * var(--text-scale))/1.4 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; box-shadow: none; }
+body.play-active #respawn-btn:hover { background: #ebddba; box-shadow: none; }
+body.play-active #respawn-btn:focus-visible { outline: 2px solid #a8d3bb; outline-offset: 4px; }
+body.play-active .shop-row { background: #17272d; border-color: #4a6059; }
+body.play-active #sanc-shop { min-width: 0; width: min(580px, 88vw); }
+body.play-active .card-offer-title { font: 500 32px/1.15 'Cormorant Garamond', Georgia, serif; color: var(--works-paper); text-transform: none; }
+@media (max-width: 760px) {
+  body.play-active #wand-bench { inset: 3%; padding: 14px; }
+  body.play-active #perk-row { gap: 6px; }
+  body.play-active .perk-card { padding: 12px 10px; }
+  body.play-active .perk-card .pk-name { font-size: 20px; }
+}
+/* The combat experiment keeps its controls with the other local preferences. */
+.trickshot-settings { margin: 18px 0; padding: 14px; border: 1px solid #53635d; }
+.trickshot-settings legend { color: #dbbd80; padding: 0 6px; }
+.trickshot-settings > label { display: flex; gap: 9px; align-items: center; }
+.trickshot-settings p { margin: 10px 0; color: #b8c6bc; font-size: 13px; }
+#trickshot-tuning { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+#trickshot-tuning[hidden] { display: none; }
+#trickshot-tuning label { display: grid; grid-template-columns: 1fr auto; gap: 5px; font-size: calc(13px * var(--text-scale)); }
+#trickshot-tuning input { grid-column: 1 / -1; width: 100%; accent-color: #d5b57b; }
+#trickshot-tuning p { grid-column: 1 / -1; }
+#trickshot-readout { position: absolute; top: 16%; left: 50%; transform: translateX(-50%); padding: 6px 14px; pointer-events: none; color: #d9dfc8; background: #10232cbd; border-block: 1px solid #809d83; font: 600 13px/1.4 system-ui, sans-serif; letter-spacing: .08em; }
+#trickshot-readout[hidden] { display: none; }
+#trickshot-readout.finisher { color: #f0d096; border-color: #bd9352; }
+@media(max-width: 580px) { #trickshot-tuning { grid-template-columns: 1fr; } }
+@media(max-height: 600px) {
+  body.play-active .go-panel { max-height: 36vh; padding: 12px 18px; }
+  body.play-active #gameover-overlay .go-title { font-size: 28px; margin-bottom: 5px; }
+  body.play-active #gameover-overlay .go-cause { padding: 6px 0 10px; }
+}

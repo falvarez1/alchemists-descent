@@ -2,10 +2,12 @@ import type { Ctx, Enemy } from '@/core/types';
 import { clamp, lerp } from '@/core/math';
 import { blocksEntity } from '@/sim/CellType';
 import { createChain, tickChain } from './body';
+import { tickCreatureExpression } from './expression';
 
 /** All integration is simulation-owned. Rendering can sample this state any number of times. */
 export function tickCreaturePose(ctx: Ctx, e: Enemy): void {
   const frame = ctx.state.frameCount;
+  tickCreatureExpression(e, frame);
   if (e.kind === 'slime' || e.kind === 'acidslime' || e.kind === 'bomber') {
     if (e.grounded && !e.prevG && Math.abs(e.vy) < 0.1) e.splat = 8;
     e.prevG = e.grounded;
@@ -25,7 +27,7 @@ export function tickCreaturePose(ctx: Ctx, e: Enemy): void {
   if (e.kind === 'rillback' || e.kind === 'stonemaw') {
     const facing = e.mind?.facing ?? Math.sign(e.vx || 1);
     e.body ??= createChain(e.x, e.y - 4, facing, e.kind === 'rillback' ? 9 : 7);
-    tickChain(ctx.world, e.body, e.x + e.fx, e.y - 4 + e.fy, (e.rillWet ?? 0) >= 0.28, frame);
+    tickChain(ctx.world, e.body, e.x + e.fx, e.y - 4 + e.fy, (e.rillWet ?? 0) >= 0.28, frame, e.kind === 'rillback');
     e.rillSegments = e.body.nodes;
   }
   if (e.kind === 'rootloper') {

@@ -1,6 +1,6 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { bodyMaterialDef, WATER_DENSITY } from '@/content/bodyMaterials';
-import type { Ctx, RigidBodiesApi, RigidBody, RigidShape, SpawnBodyOpts } from '@/core/types';
+import type { Ctx, RigidBodiesApi, RigidBody, RigidShape, SpawnBodyOpts, PlayerState, PlayerRagdollRig, RagdollPart } from '@/core/types';
 import { PLAYER_CRAWL_H, PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { cellBlocksEntityWithLooseRubble, type CollisionScratch } from '@/sim/collision';
@@ -109,6 +109,7 @@ export class RigidBodies implements RigidBodiesApi {
   /** The live player-corpse ragdoll, cached so the camera/lighting/compose
    *  readers don't linear-scan `bodies` for it every frame. */
   playerCorpse: RigidBody | null = null;
+  playerRagdoll: PlayerRagdollRig | null = null;
   private world: RWorld;
   private readonly handles = new Map<RigidBody, RBody>();
   private readonly terrain = new Map<number, RCollider>();
@@ -159,6 +160,9 @@ export class RigidBodies implements RigidBodiesApi {
       .setRotation(opts.angle ?? 0)
       .setLinvel((opts.vx ?? 0) * PF, (opts.vy ?? 0) * PF)
       .setAngvel((opts.va ?? 0) * PF)
+      .setLinearDamping(opts.linearDamping ?? 0)
+      .setAngularDamping(opts.angularDamping ?? 0)
+      .setAdditionalSolverIterations(opts.tag?.startsWith('player-corpse') ? 4 : 0)
       .setCcdEnabled(true);
     const rb = this.world.createRigidBody(desc);
     const matDef = opts.material ? bodyMaterialDef(opts.material) : null;
@@ -172,6 +176,7 @@ export class RigidBodies implements RigidBodiesApi {
       .setDensity(density)
       .setRestitution(restitution)
       .setFriction(friction);
+    if (opts.collisionGroups !== undefined) colDesc.setCollisionGroups(opts.collisionGroups);
     this.world.createCollider(colDesc, rb);
     const mass = rb.mass();
 
@@ -209,6 +214,10 @@ export class RigidBodies implements RigidBodiesApi {
   }
 
   remove(body: RigidBody): void {
+    if (this.playerRagdoll && Object.values(this.playerRagdoll.parts).includes(body)) {
+      const parts = Object.values(this.playerRagdoll.parts); this.playerRagdoll = null;
+      for (const part of parts) if (part !== body) this.remove(part);
+    }
     const rb = this.handles.get(body);
     if (rb) {
       this.world.removeRigidBody(rb); // also removes its colliders
@@ -239,12 +248,13 @@ export class RigidBodies implements RigidBodiesApi {
   /** A body the eviction sweep must never claim: the one the player is holding, or
    *  a long-lived tagged body whose owner keeps polling it (the player corpse). */
   private evictionProtected(b: RigidBody): boolean {
-    return b === this.held || b.tag === 'player-corpse';
+    return b === this.held || b.tag?.startsWith('player-corpse') === true;
   }
 
   clear(): void {
     this.held = null;
     this.playerCorpse = null;
+    this.playerRagdoll = null;
     this.detonations.length = 0;
     for (const rb of this.handles.values()) this.world.removeRigidBody(rb);
     this.handles.clear();
@@ -252,6 +262,53 @@ export class RigidBodies implements RigidBodiesApi {
     for (const col of this.terrain.values()) this.world.removeCollider(col, false);
     this.terrain.clear();
     this.terrainStale.clear();
+  }
+
+  /** Eleven small bodies, nine limited anatomical joints, and one loose hat.
+   * All contacts use the same mutable terrain as crates. Self-collision is
+   * excluded to keep thin overlapping cloth/limbs stable at this world scale. */
+  spawnPlayerRagdoll(player: PlayerState): RigidBody {
+    if (this.playerCorpse) this.remove(this.playerCorpse);
+    const f = player.facing || 1, vx = Math.max(-10, Math.min(10, player.vx * .85));
+    const vy = Math.max(-8, Math.min(9, player.vy * .85)) - .4, spin = -vx * .018 - f * .025;
+    const make = (name: RagdollPart, dx: number, dy: number, shape: RigidShape, density = 1.05): RigidBody =>
+      this.spawn(shape, player.x + dx, player.y + dy, { vx: vx - (dy + 8.5) * spin,
+        vy: vy + dx * spin, va: spin, density, friction: .8, restitution: .06,
+        linearDamping: .35, angularDamping: 2.2, collisionGroups: 0x0002fffd,
+        tag: name === 'torso' ? 'player-corpse' : `player-corpse-${name}`, color: packRGB(174, 185, 158) });
+    const box = (halfW: number, halfH: number): RigidShape => ({ kind: 'box', halfW, halfH });
+    const parts: PlayerRagdollRig['parts'] = {
+      torso: make('torso', 0, -8.5, box(2.2, 3.6), 1.2),
+      head: make('head', 0, -15, { kind: 'circle', radius: 2.25 }),
+      leftArm: make('leftArm', -2.2, -10, box(.85, 1.7)),
+      leftForearm: make('leftForearm', -2.2, -6.9, box(.7, 1.4)),
+      rightArm: make('rightArm', 2.2, -10, box(.85, 1.7)),
+      rightForearm: make('rightForearm', 2.2, -6.9, box(.7, 1.4)),
+      leftThigh: make('leftThigh', -1.2, -3.8, box(.9, 1.7)),
+      leftShin: make('leftShin', -1.2, -1, box(.8, 1.1)),
+      rightThigh: make('rightThigh', 1.2, -3.8, box(.9, 1.7)),
+      rightShin: make('rightShin', 1.2, -1, box(.8, 1.1)),
+      hat: make('hat', f * .3, -19.3, box(3.8, 1.5), .35),
+    };
+    const rig: PlayerRagdollRig = { facing: f, parts, joints: [] };
+    const join = (a: RagdollPart, b: RagdollPart, ax: number, ay: number, bx: number, by: number, min: number, max: number) => {
+      const anchorA = { x: ax, y: ay }, anchorB = { x: bx, y: by };
+      const joint = this.world.createImpulseJoint(RAPIER.JointData.revolute(anchorA, anchorB), this.handles.get(parts[a])!, this.handles.get(parts[b])!, true);
+      joint.setContactsEnabled(false);
+      if (joint instanceof RAPIER.RevoluteImpulseJoint) joint.setLimits(min, max);
+      rig.joints.push({ a, b, anchorA, anchorB });
+    };
+    join('torso', 'head', 0, -4, 0, 2.5, -.55, .55);
+    for (const side of ['left', 'right'] as const) {
+      const sx = side === 'left' ? -1 : 1;
+      join('torso', `${side}Arm`, sx * 2.2, -3.2, 0, -1.7, -1.8, 1.8);
+      join(`${side}Arm`, `${side}Forearm`, 0, 1.7, 0, -1.4, f > 0 ? -2.25 : -.15, f > 0 ? .15 : 2.25);
+      join('torso', `${side}Thigh`, sx * 1.2, 3, 0, -1.7, -1.3, 1.3);
+      join(`${side}Thigh`, `${side}Shin`, 0, 1.7, 0, -1.1, f > 0 ? -.12 : -2.15, f > 0 ? 2.15 : .12);
+    }
+    this.playerRagdoll = rig;
+    this.applyImpulse(parts.hat, f * .55, -.8);
+    return parts.torso;
   }
 
   /** Keep a body's integrated state sane after a step. Returns false if the body
@@ -805,6 +862,7 @@ export class RigidBodies implements RigidBodiesApi {
       }
       const t = rb.translation();
       const v = rb.linvel();
+      body.previousX = body.x; body.previousY = body.y; body.previousAngle = body.angle;
       body.x = t.x;
       body.y = t.y;
       body.angle = rb.rotation();
@@ -854,7 +912,13 @@ export class RigidBodies implements RigidBodiesApi {
   private stepPhysics(ctx: Ctx): boolean {
     try {
       this.syncTerrain(ctx.world, ctx.state.frameCount);
-      this.world.step();
+      // Small limbs otherwise stop at different CCD instants during one hard
+      // landing. Short internal steps keep joint anchors together at impact;
+      // the total simulated time is still exactly one authored 60 Hz tick.
+      const steps = this.playerRagdoll && !this.playerCorpse?.sleeping ? 6 : 1;
+      this.world.integrationParameters.dt = DT / steps;
+      for (let i = 0; i < steps; i++) this.world.step();
+      this.world.integrationParameters.dt = DT;
       return true;
     } catch (err) {
       this.recoverFromFault(err);
@@ -878,6 +942,7 @@ export class RigidBodies implements RigidBodiesApi {
     this.detonations.length = 0;
     this.held = null;
     this.playerCorpse = null;
+    this.playerRagdoll = null;
     console.error('[RigidBodies] physics solver fault — world reset to recover', err);
     this.ctx.events.emit('toast', { text: 'PHYSICS RESET (solver overload)' });
   }

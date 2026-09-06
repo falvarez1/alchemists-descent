@@ -4,7 +4,7 @@ import { blocksEntity, Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 
 export function createLivingState(): LivingExpeditionState {
-  return { ticks: 0, visited: [], room: 'intake', glowseeds: 3, nextLureId: 1, lures: [], rested: false, restTicks: 0 };
+  return { ticks: 0, visited: [], room: 'intake', glowseeds: 3, nextLureId: 1, lures: [], rested: false, restTicks: 0, valveTurn: 0, valveAngularVelocity: 0 };
 }
 
 export function pressurePhase(ticks: number): 'quiet' | 'inhale' | 'exhale' | 'settle' {
@@ -23,10 +23,13 @@ export function livingObjective(ctx: Ctx): string | null {
   }
   if (rt.keyTaken) return 'The bell is yours. Follow the undertow to the lower gate.';
   switch (living.room) {
-    case 'intake': return 'Follow the copper pipes into the Works.';
+    case 'intake': return rt.pickups.some(p => p.kind === 'tome' && p.x === 265 && !p.taken)
+      ? 'A lost spell page rests above the intake. Hold jump to rise.' : 'Follow the copper pipes into the Works.';
     case 'sluice': return 'Drain the sluice, freeze a crossing, or take the high ledges.';
-    case 'gallery': return 'The Weaver is feeding. Crawl beneath it or draw its prey away.';
-    case 'refuge': return 'Rest at the warm stone. The garden lies to the left.';
+    case 'gallery': return ctx.enemies.some(e => e.kind === 'weaver' && (e.weaverFeedT ?? 0) > 0 && e.x > 1000 && e.y < 500)
+      ? 'The Weaver is feeding. Stay low and pass while it eats.'
+      : 'The Weaver follows light and prey. Crawl beneath the catwalk.';
+    case 'refuge': return living.rested ? 'Rework your wand here. The garden lies to the left.' : 'Rest at the warm stone. The garden lies to the left.';
     case 'silt': return 'Find the brass bell above the garden pool.';
     case 'return': return 'The garden holds the bell. Climb back through the silt.';
     default: return 'Find the warm refuge beyond the pressure chamber.';
@@ -54,6 +57,11 @@ export function updateLivingExpedition(ctx: Ctx): void {
   const state = runtime?.living;
   if (!runtime || !state || ctx.state.mode !== 'play' || ctx.player.dead) return;
   state.ticks++;
+  const openValve = runtime.mechanisms.find(m => m.kind === 'valve')?.state === 1;
+  const turn = openValve ? Math.PI * 1.5 : 0;
+  state.valveTurn ??= turn; state.valveAngularVelocity ??= 0;
+  state.valveAngularVelocity = state.valveAngularVelocity * .8 + (turn - state.valveTurn) * .025;
+  state.valveTurn += state.valveAngularVelocity;
   const room = worksRoomAt(ctx.player.x, ctx.player.y);
   state.room = room.id;
   if (!state.visited.includes(room.id)) {

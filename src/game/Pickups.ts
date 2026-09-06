@@ -10,6 +10,8 @@ import type { CardId, Ctx, Pickup, PickupsApi } from '@/core/types';
 import { blocksEntity } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
+import { LEG_CLUB_SWINGS } from '@/combat/WeaverLimbs';
+import { getBindings, keyLabel } from '@/input/bindings';
 
 /**
  * World pickups (upgrade-port meta layer): hearts, spell tomes, chests,
@@ -58,6 +60,12 @@ export class Pickups implements PickupsApi {
       const dx = player.x - p.x;
       const dy = player.y - 8 - p.y;
       const d2 = dx * dx + dy * dy;
+      const canCollect = p.kind !== 'weaverleg' || !player.legClub;
+      if (p.kind === 'weaverleg') {
+        p.data.legAge = Math.min(100000, (p.data.legAge ?? 0) + 1);
+        if (blocksEntity(below)) { p.data.legSpin = (p.data.legSpin ?? 0) * .6; p.data.legAngle = (p.data.legAngle ?? 0) * .8; }
+        else p.data.legAngle = (p.data.legAngle ?? 0) + (p.data.legSpin ?? 0);
+      }
       const magnetRange = player.perks.goldmagnet && p.kind === 'goldpile' ? 48 : 24;
       let clearLine = true;
       if (d2 < magnetRange * magnetRange) {
@@ -70,7 +78,7 @@ export class Pickups implements PickupsApi {
           }
         }
       }
-      if (!player.dead && d2 < magnetRange * magnetRange && clearLine) {
+      if (!player.dead && canCollect && d2 < magnetRange * magnetRange && clearLine) {
         const d = Math.sqrt(d2) || 1;
         p.vx += (dx / d) * 0.18;
         p.vy += (dy / d) * 0.18;
@@ -79,10 +87,12 @@ export class Pickups implements PickupsApi {
       } else {
         p.vx *= 0.8;
       }
+      if (p.kind === 'weaverleg' && world.inBounds(Math.floor(p.x + p.vx), Math.floor(p.y)) &&
+          blocksEntity(world.types[world.idx(Math.floor(p.x + p.vx), Math.floor(p.y))])) p.vx *= -.3;
       p.x += p.vx;
       p.y += p.vy;
 
-      if (!player.dead && d2 < 49 && clearLine) this.collect(ctx, p);
+      if (!player.dead && canCollect && d2 < 49 && clearLine) this.collect(ctx, p);
     }
   }
 
@@ -95,7 +105,11 @@ export class Pickups implements PickupsApi {
     p.taken = true;
     ctx.telemetry.count('pickup.' + p.kind);
 
-    if (p.kind === 'goldpile') {
+    if (p.kind === 'weaverleg') {
+      player.legClub = { durability: LEG_CLUB_SWINGS, length: Math.max(26, Math.min(44, p.data.legLength ?? 34)), swingT: 0, angle: player.aimAngle, cooldown: 0, owner: p.data.legOwner };
+      ctx.events.emit('toast', { text: `Weaver leg acquired · ${keyLabel(getBindings().kick)} to smack · ${LEG_CLUB_SWINGS} sturdy swings` });
+      ctx.audio.pickup();
+    } else if (p.kind === 'goldpile') {
       const amount = p.data.amount ?? 25;
       ctx.state.score += amount;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });

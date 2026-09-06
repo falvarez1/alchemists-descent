@@ -1,6 +1,10 @@
+import { drawPlayerRagdollSprite } from '@/render/sprites/PlayerRagdollSprite';
+import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
+import { drawFallingWater } from '@/render/FallingWater';
 import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
 import { RenderPoses } from '@/render/RenderPoses';
 import { drawWorksLandmarks, prepareTerrainColors } from '@/render/TerrainArt';
+import { drawHabitatScenery, drawVineFoliage } from '@/render/HabitatScenery';
 import { PLAYER_HALF_W } from '@/core/types';
 import type {
   CompositorLens,
@@ -26,6 +30,7 @@ import {
 } from '@/render/lightingModel';
 import { SKY } from '@/render/skyAtmosphere';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
+import { drawHeldLeg, drawLegFragment } from '@/render/sprites/CreatureArt';
 import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
@@ -117,7 +122,10 @@ export class FrameComposer implements PixelSurface {
   }
 
   hasMovingPoses(ctx: Ctx): boolean {
-    return this.poses.moving(ctx.camera) || this.poses.moving(ctx.player) || ctx.enemies.some(e => this.poses.moving(e));
+    const leg = ctx.player.legClub?.rig;
+    const legMoving = !!leg && (Math.hypot(leg.knee.x - leg.previousKnee.x, leg.knee.y - leg.previousKnee.y) > .001
+      || Math.hypot(leg.hip.x - leg.previousHip.x, leg.hip.y - leg.previousHip.y) > .001);
+    return legMoving || (!!ctx.rigidBodies.playerRagdoll && Object.values(ctx.rigidBodies.playerRagdoll.parts).some(b => !b.sleeping)) || this.poses.moving(ctx.camera) || this.poses.moving(ctx.player) || ctx.enemies.some(e => this.poses.moving(e));
   }
 
   private positionSprite(body: { x: number; y: number }): void {
@@ -152,6 +160,15 @@ export class FrameComposer implements PixelSurface {
     const idx = pi * 4;
     const overlay = this.overlay;
     if (overlay !== null) {
+      if ((overlay.scale ?? 1) > 1) {
+        const scale = overlay.scale!, width = VIEW_W * scale;
+        for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
+          const fine = ((VIEW_H - 1 - vy) * scale + dy) * width + vx * scale + dx, offset = fine * 4;
+          overlay.data[offset] = r; overlay.data[offset + 1] = g; overlay.data[offset + 2] = b; overlay.data[offset + 3] = 1;
+          overlay.mark(fine);
+        }
+        return;
+      }
       const d = overlay.data;
       d[idx] = r;
       d[idx + 1] = g;
@@ -167,6 +184,32 @@ export class FrameComposer implements PixelSurface {
     pixelData[idx + 3] = 1.0;
   }
 
+  get pixelStep(): number { return 1 / (this.overlay?.scale ?? 1); }
+
+  setFinePx(x: number, y: number, r: number, g: number, b: number): void {
+    const overlay = this.overlay, scale = overlay?.scale ?? 1;
+    if (!overlay || scale === 1) { this.setPx(x, y, r, g, b); return; }
+    const vx = Math.round((x + this.drawOffsetX - this.renderCamX) * scale);
+    const vy = Math.round((y + this.drawOffsetY - this.renderCamY) * scale);
+    const width = VIEW_W * scale, height = VIEW_H * scale;
+    if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
+    const pi = (height - 1 - vy) * width + vx, idx = pi * 4;
+    overlay.data[idx] = r; overlay.data[idx + 1] = g; overlay.data[idx + 2] = b; overlay.data[idx + 3] = 1;
+    overlay.mark(pi);
+  }
+
+  addFinePx(x: number, y: number, r: number, g: number, b: number): void {
+    const overlay = this.overlay, scale = overlay?.scale ?? 1;
+    if (!overlay || scale === 1) { this.addPx(x, y, r, g, b); return; }
+    const vx = Math.round((x + this.drawOffsetX - this.renderCamX) * scale);
+    const vy = Math.round((y + this.drawOffsetY - this.renderCamY) * scale);
+    const width = VIEW_W * scale, height = VIEW_H * scale;
+    if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
+    const pi = (height - 1 - vy) * width + vx, idx = pi * 4;
+    overlay.data[idx] += r; overlay.data[idx + 1] += g; overlay.data[idx + 2] += b;
+    overlay.mark(pi);
+  }
+
   addPx(x: number, y: number, r: number, g: number, b: number): void {
     const vx = Math.round(x + this.drawOffsetX) - this.renderCamX,
       vy = Math.round(y + this.drawOffsetY) - this.renderCamY;
@@ -175,6 +218,15 @@ export class FrameComposer implements PixelSurface {
     const idx = pi * 4;
     const overlay = this.overlay;
     if (overlay !== null) {
+      if ((overlay.scale ?? 1) > 1) {
+        const scale = overlay.scale!, width = VIEW_W * scale;
+        for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
+          const fine = ((VIEW_H - 1 - vy) * scale + dy) * width + vx * scale + dx, offset = fine * 4;
+          overlay.data[offset] += r; overlay.data[offset + 1] += g; overlay.data[offset + 2] += b;
+          overlay.mark(fine);
+        }
+        return;
+      }
       const d = overlay.data;
       d[idx] += r;
       d[idx + 1] += g;
@@ -242,8 +294,10 @@ export class FrameComposer implements PixelSurface {
   compose(ctx: Ctx, alpha = 1): void {
     this.alpha = alpha;
     this.drawOffsetX = 0; this.drawOffsetY = 0;
-    ctx.camera.renderX = Math.floor(ctx.camera.x + this.poses.offset(ctx.camera, 'x', alpha));
-    ctx.camera.renderY = Math.floor(ctx.camera.y + this.poses.offset(ctx.camera, 'y', alpha));
+    ctx.camera.presentationX = ctx.camera.x + this.poses.offset(ctx.camera, 'x', alpha);
+    ctx.camera.presentationY = ctx.camera.y + this.poses.offset(ctx.camera, 'y', alpha);
+    ctx.camera.renderX = Math.floor(ctx.camera.presentationX);
+    ctx.camera.renderY = Math.floor(ctx.camera.presentationY);
     this.renderCamX = ctx.camera.renderX;
     this.renderCamY = ctx.camera.renderY;
 
@@ -316,6 +370,7 @@ export class FrameComposer implements PixelSurface {
     }
 
     drawWorksLandmarks(this, this.light, ctx);
+    drawHabitatScenery(this, this.light, ctx);
     this.composeOverlays(ctx);
     this.maskVoidBelowWorldFloor(ctx);
 
@@ -341,11 +396,13 @@ export class FrameComposer implements PixelSurface {
   private compositeOverlayToCpu(overlay: OverlaySurface): void {
     const src = overlay.data;
     const dst = this.target.pixelData;
-    for (let i = 0; i < src.length; i += 4) {
-      const r = src[i];
-      const g = src[i + 1];
-      const b = src[i + 2];
-      if (src[i + 3] > 0.5) {
+    const scale = overlay.scale ?? 1;
+    for (let i = 0; i < dst.length; i += 4) {
+      const pixel = i / 4, source = scale === 1 ? i : (Math.floor(pixel / VIEW_W) * scale * VIEW_W * scale + pixel % VIEW_W * scale) * 4;
+      const r = src[source];
+      const g = src[source + 1];
+      const b = src[source + 2];
+      if (src[source + 3] > 0.5) {
         dst[i] = r;
         dst[i + 1] = g;
         dst[i + 2] = b;
@@ -685,7 +742,8 @@ export class FrameComposer implements PixelSurface {
           const fl = 0.7 + Math.random() * 0.55;
           r *= fl;
           g *= fl * 0.95;
-        } else if ((type === Cell.Water || type === Cell.Healium || type === Cell.Teleportium) && wy > 0 && lookupY > 0 && types[ci - WIDTH] === Cell.Empty) {
+        } else if ((type === Cell.Water || type === Cell.Healium || type === Cell.Teleportium) && wy > 0 && lookupY > 0 && types[ci - WIDTH] === Cell.Empty
+          && (type !== Cell.Water || types[ci + WIDTH] !== Cell.Empty)) {
           const wave = 0.88 + Math.sin(frameCount * 0.16 + wx * 0.42) * 0.12;
           r *= wave;
           g *= 0.94 + (wave - 0.88) * 0.45;
@@ -793,17 +851,14 @@ export class FrameComposer implements PixelSurface {
         pixelData[bi + 2] = 0;
         pixelData[bi + 3] = 1;
         if (overlay !== null) {
-          overlay.data[bi] = 0;
-          overlay.data[bi + 1] = 0;
-          overlay.data[bi + 2] = 0;
-          overlay.data[bi + 3] = 1;
-          overlay.mark(rowBase + vx);
+          this.setPx(this.renderCamX + vx, this.renderCamY + vy, 0, 0, 0);
         }
       }
     }
   }
 
   private composeOverlays(ctx: Ctx): void {
+    drawFallingWater(this, this.light, ctx);
     // Ballistic debris / embers / coins, lightning arcs, projectiles — the
     // combat FX overlays live in sprites/FxSprites (shared with the gallery).
     drawParticles(this, this.light, ctx);
@@ -845,9 +900,13 @@ export class FrameComposer implements PixelSurface {
     // Peers draw BEFORE the local player so your own wizard is never hidden
     // behind a phantom you cannot interact with.
     this.drawPeers(this, this.light, ctx);
-    if (ctx.state.mode === 'play') { this.positionSprite(ctx.player); this.drawPlayer(this, this.light, ctx); }
+    if (ctx.state.mode === 'play') {
+      this.positionSprite(ctx.player); this.drawPlayer(this, this.light, ctx);
+    }
     this.drawOffsetX = 0; this.drawOffsetY = 0;
-    this.drawPlayerRagdoll(ctx);
+    drawHeldLeg(this, this.light, ctx, this.alpha);
+    drawPlayerRagdollSprite(this, this.light, ctx, this.alpha);
+    drawTrickshotOverlay(this, ctx);
   }
 
   private enemyInRenderView(ctx: Ctx, e: Enemy): boolean {
@@ -959,7 +1018,7 @@ export class FrameComposer implements PixelSurface {
     if (ctx.state.mode !== 'play') return;
     const frame = ctx.state.frameCount;
     for (const b of ctx.rigidBodies.bodies) {
-      if (b.tag === 'player-corpse') continue; // drawn as a limp wizard in drawPlayerRagdoll
+      if (b.tag?.startsWith('player-corpse')) continue; // drawn as a limp wizard in drawPlayerRagdoll
       let r = ((b.color >> 16) & 0xff) / 255;
       let g = ((b.color >> 8) & 0xff) / 255;
       let bl = (b.color & 0xff) / 255;
@@ -1022,115 +1081,6 @@ export class FrameComposer implements PixelSurface {
     }
   }
 
-  /** The death ragdoll: an ARTICULATED limp wizard (head, torso, two arms, two
-   *  legs, hat) hanging off the corpse body. Limbs flail with the body's spin +
-   *  speed so it tumbles like a ragdoll, not a rigid log; a tombstone rises once
-   *  it settles. Replaces the live player sprite. */
-  private drawPlayerRagdoll(ctx: Ctx): void {
-    if (ctx.state.mode !== 'play') return;
-    const corpse = ctx.rigidBodies.playerCorpse;
-    if (!corpse || corpse.shape.kind !== 'box') return;
-    const cx = corpse.x;
-    const cy = corpse.y;
-    const ang = corpse.angle;
-    const cos = Math.cos(ang);
-    const sin = Math.sin(ang);
-    // body-local -> world (local −y is the head end, +y the feet)
-    const wx = (lx: number, ly: number): number => cx + lx * cos - ly * sin;
-    const wy = (lx: number, ly: number): number => cy + lx * sin + ly * cos;
-    const lt = this.light.sample(cx, cy);
-    const lr = Math.max(0.16, lt.r);
-    const lg = Math.max(0.16, lt.g);
-    const lb = Math.max(0.2, lt.b);
-    const ROBE: [number, number, number] = [0.24 * lr, 0.44 * lg, 0.86 * lb];
-    const ROBE_D: [number, number, number] = [0.09 * lr, 0.18 * lg, 0.42 * lb];
-    const SKIN: [number, number, number] = [0.86 * lr, 0.7 * lg, 0.52 * lb];
-    const HAT: [number, number, number] = [0.5 * lr, 0.26 * lg, 0.8 * lb];
-    const HAT_D: [number, number, number] = [0.22 * lr, 0.1 * lg, 0.42 * lb];
-    const BOOT: [number, number, number] = [0.14 * lr, 0.12 * lg, 0.2 * lb];
-
-    const fc = ctx.state.frameCount;
-    const settled = corpse.data?.settled === true || corpse.sleeping;
-    const va = corpse.va ?? 0;
-    const speed = Math.hypot(corpse.vx ?? 0, corpse.vy ?? 0);
-    // how hard the limbs flail: driven by spin + travel, easing to a limp droop at rest
-    const flail = settled ? 0.06 : Math.min(1.4, Math.abs(va) * 5 + speed * 0.22);
-
-    const dot = (x: number, y: number, c: [number, number, number], k = 1): void => {
-      this.setPx(x, y, c[0] * k, c[1] * k, c[2] * k);
-      this.setPx(x + 1, y, c[0] * 0.78 * k, c[1] * 0.78 * k, c[2] * 0.78 * k);
-    };
-    const seg = (x0: number, y0: number, x1: number, y1: number, c: [number, number, number]): void => {
-      const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
-      for (let i = 0; i <= n; i++) dot(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n, c);
-    };
-    // a 2-segment limb (with an elbow/knee) hanging from a body-local joint. The
-    // limb stays anchored to the body but LAGS its spin and wobbles — that lag is
-    // exactly what reads as a joint instead of a welded plank.
-    const limb = (jx: number, jy: number, spread: number, len: number, phase: number, tip: [number, number, number]): void => {
-      const jwx = wx(jx, jy);
-      const jwy = wy(jx, jy);
-      const a1 = ang + Math.PI / 2 + spread + va * 4 + Math.sin(fc * 0.22 + phase) * flail;
-      const kx = jwx + Math.cos(a1) * len * 0.55;
-      const ky = jwy + Math.sin(a1) * len * 0.55;
-      const a2 = a1 + 0.45 + Math.sin(fc * 0.3 + phase + 1.3) * flail * 0.7;
-      const ex = kx + Math.cos(a2) * len * 0.5;
-      const ey = ky + Math.sin(a2) * len * 0.5;
-      seg(jwx, jwy, kx, ky, ROBE_D);
-      seg(kx, ky, ex, ey, ROBE_D);
-      dot(ex, ey, tip);
-      dot(ex, ey + 1, tip, 0.85);
-    };
-
-    // draw order: legs + arms BEHIND, torso over the shoulders, then head + hat
-    limb(-1.4, 5, 0.32, 8, 0.0, BOOT); // left leg
-    limb(1.4, 5, -0.32, 8, 2.1, BOOT); // right leg
-    limb(-2, -1, 0.55, 6, 1.0, SKIN); // left arm
-    limb(2, -1, -0.55, 6, 3.3, SKIN); // right arm
-    // TORSO — a robe slab, darker rim, purple hood up top (−y)
-    for (let ly = -3; ly <= 5; ly++) {
-      for (let lx = -2; lx <= 2; lx++) {
-        const edge = Math.abs(lx) >= 2 || ly >= 5 ? 0.6 : 1;
-        const c = ly <= -2 ? ROBE_D : ROBE;
-        this.setPx(wx(lx, ly), wy(lx, ly), c[0] * edge, c[1] * edge, c[2] * edge);
-      }
-    }
-    // HEAD — a small round skin blob above the torso
-    for (let ly = -8; ly <= -4; ly++) {
-      const r = ly === -8 || ly === -4 ? 1 : 2;
-      for (let lx = -r; lx <= r; lx++) {
-        const shade = lx * (va >= 0 ? 1 : -1) > 0 ? 1 : 0.82;
-        this.setPx(wx(lx, ly), wy(lx, ly), SKIN[0] * shade, SKIN[1] * shade, SKIN[2] * shade);
-      }
-    }
-    // HAT — purple cone + brim beyond the head, tumbling with the skull
-    for (let dx = -5; dx <= 5; dx++) this.setPx(wx(dx, -9), wy(dx, -9), HAT[0], HAT[1], HAT[2]);
-    for (let dx = -6; dx <= 6; dx++) this.setPx(wx(dx, -8), wy(dx, -8), HAT_D[0], HAT_D[1], HAT_D[2]);
-    for (let t = 1; t <= 5; t++) {
-      const w = Math.max(0, 4 - Math.floor(t * 0.7));
-      for (let dx = -w; dx <= w; dx++) this.setPx(wx(dx, -9 - t), wy(dx, -9 - t), HAT[0], HAT[1], HAT[2]);
-    }
-    // TOMBSTONE — rises once the corpse settles (world-upright marker + cross)
-    if (settled) this.drawTombstone(cx, cy - 21);
-  }
-
-  /** A small arched grey headstone with a darker cross, dimly lit, world-upright. */
-  private drawTombstone(cx: number, topY: number): void {
-    const lt = this.light.sample(cx, topY + 6);
-    const lr = Math.max(0.24, lt.r);
-    const lg = Math.max(0.24, lt.g);
-    const lb = Math.max(0.26, lt.b);
-    for (let dy = 0; dy <= 12; dy++) {
-      const halfW = dy < 4 ? Math.floor(2 + dy * 0.7) : 5;
-      for (let dx = -halfW; dx <= halfW; dx++) {
-        const edge = Math.abs(dx) >= halfW || dy >= 12 ? 0.7 : 1;
-        this.setPx(cx + dx, topY + dy, 0.5 * lr * edge, 0.5 * lg * edge, 0.52 * lb * edge);
-      }
-    }
-    for (let dy = 3; dy <= 9; dy++) this.setPx(cx, topY + dy, 0.28 * lr, 0.28 * lg, 0.3 * lb);
-    for (let dx = -2; dx <= 2; dx++) this.setPx(cx + dx, topY + 5, 0.28 * lr, 0.28 * lg, 0.3 * lb);
-  }
-
   private drawVineStrands(ctx: Ctx, layer: 'den' | 'foreground'): void {
     const strands = ctx.vineStrands?.strands;
     if (!strands?.length) return;
@@ -1140,6 +1090,7 @@ export class FrameComposer implements PixelSurface {
     const camY = this.renderCamY;
     for (const strand of strands) {
       if ((strand.denWeb === true) !== drawDen) continue;
+      if (strand.foliage) drawVineFoliage(this, this.light, ctx, strand);
       const baseR = this.unpackR01(strand.color);
       const baseG = this.unpackG01(strand.color);
       const baseB = this.unpackB01(strand.color);
@@ -1610,6 +1561,10 @@ export class FrameComposer implements PixelSurface {
 
     for (const p of runtime.pickups) {
       if (p.taken) continue;
+      if (p.kind === 'weaverleg') {
+        drawLegFragment(this, this.light, ctx, p.x, p.y - 1, p.data.legLength ?? 34, p.data.legAngle ?? 0, p.data.legAge ?? 0);
+        continue;
+      }
       const bob = Math.sin(frame * 0.08 + p.x * 0.7) * 1.4;
       const x = Math.round(p.x);
       const y = Math.round(p.y + bob) - 2;

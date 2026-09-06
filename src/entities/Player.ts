@@ -13,6 +13,8 @@ import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus, sampleB
 import { playerMovementPace, playerVerticalPace } from '@/core/progressionPacing';
 import { PERK_IDS } from '@/content/perks';
 import { makePickup } from '@/core/pickupDefs';
+import { startLegSwing } from '@/combat/WeaverLimbs';
+import { getAimGuide } from '@/combat/AimGuide';
 import { resetCombatTransients } from '@/core/runtimeState';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
@@ -181,6 +183,7 @@ export function createPlayer(): PlayerState {
     swapT: 0,
     recoilT: 0,
     kickT: 0,
+    legClub: undefined,
     kickDir: 1,
     staggerT: 0,
     staggerDir: 1,
@@ -670,6 +673,7 @@ export class PlayerControl implements PlayerControlApi {
   kick(ctx: Ctx): void {
     const player = ctx.player;
     if (player.dead || player.climbing || ctx.state.mode !== 'play') return;
+    if (startLegSwing(ctx)) return;
     if (this.kickCooldownT > 0) return;
     const lp = ctx.params.player;
     this.kickCooldownT = lp.kickCooldown;
@@ -867,6 +871,7 @@ export class PlayerControl implements PlayerControlApi {
     this.jumpCutGraceFrames = 0;
     this.prevJumpHeld = false;
     this.kickCooldownT = 0;
+    if (ctx.player.legClub) { ctx.player.legClub.swingT = 0; ctx.player.legClub.cooldown = 0; ctx.player.legClub.rig = undefined; }
     this.swingAX = 0;
     this.swingAY = 0;
     this.swingLen = 0;
@@ -962,7 +967,7 @@ export class PlayerControl implements PlayerControlApi {
     clearElementalStatus(player.status);
     this.resetClimbState(player);
     ctx.particles.burst(player.x, player.y - 7, 56, Cell.Blood, bloodColor, 4.2);
-    ctx.particles.burst(player.x, player.y - 7, 10, null, () => packRGB(168, 85, 247), 3.4, {
+    ctx.particles.burst(player.x, player.y - 7, 10, null, () => packRGB(221, 209, 159), 2.4, {
       glow: 2.4,
       grav: 0.04,
     });
@@ -987,9 +992,9 @@ export class PlayerControl implements PlayerControlApi {
     ctx.levels.saveDeathCheckpoint?.(ctx);
     // RAGDOLL DEATH: the wizard becomes a tumbling corpse flung with his last
     // momentum (plus a death-pop + spin). The game-over overlay waits until it
-    // settles (see tickCorpse → 'playerCorpseSettled'); a tombstone rises then.
+    // settles (see tickCorpse → 'playerCorpseSettled').
     if (ctx.rigidBodies) {
-      this.corpse = ctx.rigidBodies.spawn({ kind: 'box', halfW: 3, halfH: 8 }, player.x, player.y - 8, {
+      this.corpse = ctx.rigidBodies.spawnPlayerRagdoll?.(player) ?? ctx.rigidBodies.spawn({ kind: 'box', halfW: 3, halfH: 8 }, player.x, player.y - 8, {
         density: 1,
         friction: 0.7,
         restitution: 0.28,
@@ -1019,21 +1024,23 @@ export class PlayerControl implements PlayerControlApi {
   }
 
   /** Watch the death ragdoll: once it sleeps (or after a timeout so the UI is
-   *  never stranded) mark it settled — the renderer raises a tombstone and the
-   *  game-over overlay reveals. Runs every frame while a corpse exists. */
+   *  never stranded) mark it settled and reveal the game-over overlay.
+   *  Runs every frame while a corpse exists. */
   private tickCorpse(ctx: Ctx): void {
     const corpse = this.corpse;
     if (!corpse) return;
     this.corpseT++;
-    if (!this.corpseSettled && (corpse.sleeping || this.corpseT > 240)) {
+    const rig = ctx.rigidBodies.playerRagdoll;
+    const quiet = rig ? Object.values(rig.parts).every(part => part.sleeping || Math.hypot(part.vx, part.vy) < .05) : corpse.sleeping;
+    if (!this.corpseSettled && ((quiet && this.corpseT > 40) || this.corpseT > 180)) {
       this.corpseSettled = true;
-      corpse.data = { settled: true }; // the renderer reads this to raise the tombstone
+      corpse.data = { settled: true };
       ctx.audio.tone(150, 320, 0.32, 'sine', 0.09); // a low knell
       ctx.events.emit('playerCorpseSettled');
     }
   }
 
-  /** Remove the death ragdoll + tombstone (on respawn / death-clear). */
+  /** Remove every connected death part and the hat on respawn / death-clear. */
   private clearCorpse(ctx: Ctx): void {
     if (this.corpse) ctx.rigidBodies.remove(this.corpse);
     this.corpse = null;
@@ -1104,7 +1111,7 @@ export class PlayerControl implements PlayerControlApi {
   /** Original: respawnPlayer() — lines 1608-1619; descent rules added in Wave B. */
   respawn(): void {
     const ctx = this.ctx;
-    this.clearCorpse(ctx); // remove the death ragdoll + tombstone
+    this.clearCorpse(ctx);
     this.releaseVine(ctx);
 
     // Descent (Wave B): come back at the last lit waystone (or the level
@@ -1448,14 +1455,15 @@ export class PlayerControl implements PlayerControlApi {
     // gentle levitation accel stay well under it and are unchanged.
     // wadeSlow (≤1) bogs both the accel and the top speed when slogging through
     // blood — a leg-deep wade trudges, a thin film barely registers.
-    const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * pacedSpeedK * stanceK * wadeSlow, MOVE_ACCEL_CAP),
+    const accel = Math.min((player.grounded ? 0.65 : 0.575) * this.statusSlow * pacedSpeedK * stanceK * wadeSlow, MOVE_ACCEL_CAP),
       // Cap the boosted top speed (Swift/God Mode) so it stays inside the
       // precision curve; crawl/crouch then scale down from the capped run.
-      maxRun = Math.min(2.6 * pacedSpeedK, lp.maxRunCap) * stanceK * wadeSlow;
+      maxRun = Math.min(2.85 * pacedSpeedK, lp.maxRunCap) * stanceK * wadeSlow;
     // Soft-start: ease in from a standstill (a tap stays slow + precise), ramping
     // to full accel with speed. Applies in the air too, so a fresh airborne tap is
     // gentle while CARRIED speed (already near maxRun) still gets full control.
-    const stepAccel = accel * (lp.moveSoftStart + (1 - lp.moveSoftStart) * Math.min(1, Math.abs(player.vx) / maxRun));
+    const reversing = (keys.right && player.vx < -0.1) || (keys.left && player.vx > 0.1);
+    const stepAccel = accel * (reversing ? 1.5 : 1) * (lp.moveSoftStart + (1 - lp.moveSoftStart) * Math.min(1, Math.abs(player.vx) / maxRun));
     const airGlideSpeed = lp.airGlideSpeed * movePace;
     if (!player.climbing) {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
@@ -1479,14 +1487,14 @@ export class PlayerControl implements PlayerControlApi {
         }
         player.vx = clamp(player.vx, -maxRun, maxRun);
       } else {
-        // Airborne / levitating: a fast run still GLIDES (carried momentum bleeds
-        // slowly through airDrag), but a quick low-speed TAP stops fast so it's a
-        // small nudge, not a 60-cell skate. The ±12 rail caps stacked recoil.
+        // Preserve momentum while steering, then brake on release. Low-speed
+        // taps settle quickly enough to land on narrow ledges. The ±12 rail
+        // caps stacked recoil without clipping ordinary run velocity.
         if (!keys.left && !keys.right && Math.abs(player.vx) < airGlideSpeed) {
           player.vx *= lp.airStopDecay;
           if (Math.abs(player.vx) < lp.groundStopSnap) player.vx = 0;
         } else {
-          player.vx *= lp.airDrag;
+          player.vx *= !keys.left && !keys.right ? Math.min(lp.airDrag, 0.95) : lp.airDrag;
         }
         player.vx = clamp(player.vx, -12, 12);
       }
@@ -1529,6 +1537,10 @@ export class PlayerControl implements PlayerControlApi {
     }
     // submersion threshold scales to the sampled body (13/45 -> 7/25 crawling)
     player.inLiquid = contact.liquid >= (player.crawling ? 7 : 13);
+    if (player.inLiquid && contact.waterOrBlood > 0) {
+      player.vx += world.flow.x(player.x, player.y - 7) * .04;
+      player.vy += world.flow.y(player.x, player.y - 7) * .03;
+    }
     // SPLASH: breaking the surface at speed throws up droplets of whatever
     // you fell into (the pool's own colors — the grid explains the splash).
     if (player.inLiquid && !this.prevInLiquid && player.vy > LIQUID_SPLASH_MIN_SPEED) {
@@ -2032,6 +2044,7 @@ export class PlayerControl implements PlayerControlApi {
       ctx.input.mouse.y - (player.y - (player.crawling ? 4 : 9)),
       ctx.input.mouse.x - player.x,
     );
+    player.aimAngle = getAimGuide(ctx)?.angle ?? player.aimAngle;
     if (Math.cos(player.aimAngle) !== 0) player.facing = Math.cos(player.aimAngle) >= 0 ? 1 : -1;
     // Absorb glowing goo: slime residue heals on contact
     if (player.hp < player.maxHp) {

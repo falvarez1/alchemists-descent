@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { clamp } from '@/core/math';
+import { PLAYER_PALETTE } from './playerPalette';
 
 type RGB = readonly [number, number, number];
 
@@ -82,9 +83,7 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   const px = player.x, f = player.facing;
   // Value-contrast palette: edges run DARK (they read as outline from inside),
   // accents run bright, so the figure keeps its shape at 2-3 screen px/cell.
-  const HAT: RGB = [0.83, 0.81, 0.65], HAT_D: RGB = [0.35, 0.40, 0.34], BAND: RGB = [0.66, 0.42, 0.22];
-  const ROBE: RGB = [0.69, 0.73, 0.62], ROBE_D: RGB = [0.26, 0.36, 0.33], TRIM: RGB = [0.88, 0.87, 0.71];
-  const SKIN: RGB = [0.95, 0.80, 0.62], SKIN_D: RGB = [0.78, 0.62, 0.46], BOOT: RGB = [0.10, 0.08, 0.14], BOOT_L: RGB = [0.30, 0.24, 0.34];
+  const { HAT, HAT_D, BAND, ROBE, ROBE_D, TRIM, SKIN, SKIN_D, BOOT, BOOT_L } = PLAYER_PALETTE;
   const SHADE: RGB = [0.48, 0.38, 0.30]; // brim shadow across the brow
 
   const stampOutline = (): void => {

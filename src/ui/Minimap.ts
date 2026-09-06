@@ -154,6 +154,7 @@ type PickupPoiInfo = {
 };
 
 const PICKUP_POI_INFO: Record<PickupKind, PickupPoiInfo> = {
+  weaverleg: { title: 'Weaver Leg', description: 'A severed limb. Collect it to replace your melee kick with a chitin club.', glyph: 'L' },
   key: {
     title: 'Golden Key',
     description: 'Unlocks the exit portal for this depth.',

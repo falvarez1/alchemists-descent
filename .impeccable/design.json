@@ -1,104 +1,946 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-05T06:33:15.377Z",
+  "generatedAt": "2026-09-06T00:51:42.948Z",
   "title": "Design System: Alchemist's Descent",
   "extensions": {
     "colorMeta": {
       "works-copper": {
         "role": "primary",
-        "displayName": "Works copper"
+        "displayName": "Works copper",
+        "tonalRamp": [
+          "oklch(15.00% 0.08467 72.29)",
+          "oklch(26.43% 0.08467 72.29)",
+          "oklch(37.86% 0.08467 72.29)",
+          "oklch(49.29% 0.08467 72.29)",
+          "oklch(60.71% 0.08467 72.29)",
+          "oklch(72.14% 0.08467 72.29)",
+          "oklch(83.57% 0.08467 72.29)",
+          "oklch(95.00% 0.08467 72.29)"
+        ]
       },
       "entry-action": {
         "role": "primary",
-        "displayName": "Warm brass action"
+        "displayName": "Warm brass action",
+        "tonalRamp": [
+          "oklch(15.00% 0.06078 91.80)",
+          "oklch(26.43% 0.06078 91.80)",
+          "oklch(37.86% 0.06078 91.80)",
+          "oklch(49.29% 0.06078 91.80)",
+          "oklch(60.71% 0.06078 91.80)",
+          "oklch(72.14% 0.06078 91.80)",
+          "oklch(83.57% 0.06078 91.80)",
+          "oklch(95.00% 0.06078 91.80)"
+        ]
       },
       "entry-hover": {
         "role": "primary",
-        "displayName": "Warm hover"
+        "displayName": "Warm hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.04882 90.52)",
+          "oklch(26.43% 0.04882 90.52)",
+          "oklch(37.86% 0.04882 90.52)",
+          "oklch(49.29% 0.04882 90.52)",
+          "oklch(60.71% 0.04882 90.52)",
+          "oklch(72.14% 0.04882 90.52)",
+          "oklch(83.57% 0.04882 90.52)",
+          "oklch(95.00% 0.04882 90.52)"
+        ]
       },
       "title-brass": {
         "role": "primary",
-        "displayName": "Title brass"
+        "displayName": "Title brass",
+        "tonalRamp": [
+          "oklch(15.00% 0.07224 82.06)",
+          "oklch(26.43% 0.07224 82.06)",
+          "oklch(37.86% 0.07224 82.06)",
+          "oklch(49.29% 0.07224 82.06)",
+          "oklch(60.71% 0.07224 82.06)",
+          "oklch(72.14% 0.07224 82.06)",
+          "oklch(83.57% 0.07224 82.06)",
+          "oklch(95.00% 0.07224 82.06)"
+        ]
       },
       "focus-mint": {
         "role": "secondary",
-        "displayName": "Focus mint"
+        "displayName": "Focus mint",
+        "tonalRamp": [
+          "oklch(15.00% 0.05356 153.53)",
+          "oklch(26.43% 0.05356 153.53)",
+          "oklch(37.86% 0.05356 153.53)",
+          "oklch(49.29% 0.05356 153.53)",
+          "oklch(60.71% 0.05356 153.53)",
+          "oklch(72.14% 0.05356 153.53)",
+          "oklch(83.57% 0.05356 153.53)",
+          "oklch(95.00% 0.05356 153.53)"
+        ]
       },
       "water-surface": {
         "role": "secondary",
-        "displayName": "Water surface"
+        "displayName": "Water surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.04590 207.37)",
+          "oklch(26.43% 0.04590 207.37)",
+          "oklch(37.86% 0.04590 207.37)",
+          "oklch(49.29% 0.04590 207.37)",
+          "oklch(60.71% 0.04590 207.37)",
+          "oklch(72.14% 0.04590 207.37)",
+          "oklch(83.57% 0.04590 207.37)",
+          "oklch(95.00% 0.04590 207.37)"
+        ]
       },
       "water-depth": {
         "role": "secondary",
-        "displayName": "Water depth"
+        "displayName": "Water depth",
+        "tonalRamp": [
+          "oklch(15.00% 0.05077 218.39)",
+          "oklch(26.43% 0.05077 218.39)",
+          "oklch(37.86% 0.05077 218.39)",
+          "oklch(49.29% 0.05077 218.39)",
+          "oklch(60.71% 0.05077 218.39)",
+          "oklch(72.14% 0.05077 218.39)",
+          "oklch(83.57% 0.05077 218.39)",
+          "oklch(95.00% 0.05077 218.39)"
+        ]
       },
       "health": {
         "role": "secondary",
-        "displayName": "Health"
+        "displayName": "Health",
+        "tonalRamp": [
+          "oklch(15.00% 0.08867 39.98)",
+          "oklch(26.43% 0.08867 39.98)",
+          "oklch(37.86% 0.08867 39.98)",
+          "oklch(49.29% 0.08867 39.98)",
+          "oklch(60.71% 0.08867 39.98)",
+          "oklch(72.14% 0.08867 39.98)",
+          "oklch(83.57% 0.08867 39.98)",
+          "oklch(95.00% 0.08867 39.98)"
+        ]
       },
       "mana": {
         "role": "secondary",
-        "displayName": "Mana"
+        "displayName": "Mana",
+        "tonalRamp": [
+          "oklch(15.00% 0.04241 211.93)",
+          "oklch(26.43% 0.04241 211.93)",
+          "oklch(37.86% 0.04241 211.93)",
+          "oklch(49.29% 0.04241 211.93)",
+          "oklch(60.71% 0.04241 211.93)",
+          "oklch(72.14% 0.04241 211.93)",
+          "oklch(83.57% 0.04241 211.93)",
+          "oklch(95.00% 0.04241 211.93)"
+        ]
       },
       "levitation": {
         "role": "secondary",
-        "displayName": "Levitation"
+        "displayName": "Levitation",
+        "tonalRamp": [
+          "oklch(15.00% 0.07305 91.50)",
+          "oklch(26.43% 0.07305 91.50)",
+          "oklch(37.86% 0.07305 91.50)",
+          "oklch(49.29% 0.07305 91.50)",
+          "oklch(60.71% 0.07305 91.50)",
+          "oklch(72.14% 0.07305 91.50)",
+          "oklch(83.57% 0.07305 91.50)",
+          "oklch(95.00% 0.07305 91.50)"
+        ]
       },
       "flask-active": {
         "role": "secondary",
-        "displayName": "Active flask"
+        "displayName": "Active flask",
+        "tonalRamp": [
+          "oklch(15.00% 0.07605 89.88)",
+          "oklch(26.43% 0.07605 89.88)",
+          "oklch(37.86% 0.07605 89.88)",
+          "oklch(49.29% 0.07605 89.88)",
+          "oklch(60.71% 0.07605 89.88)",
+          "oklch(72.14% 0.07605 89.88)",
+          "oklch(83.57% 0.07605 89.88)",
+          "oklch(95.00% 0.07605 89.88)"
+        ]
       },
       "works-ink": {
         "role": "neutral",
-        "displayName": "Works ink"
+        "displayName": "Works ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.01755 222.50)",
+          "oklch(26.43% 0.01755 222.50)",
+          "oklch(37.86% 0.01755 222.50)",
+          "oklch(49.29% 0.01755 222.50)",
+          "oklch(60.71% 0.01755 222.50)",
+          "oklch(72.14% 0.01755 222.50)",
+          "oklch(83.57% 0.01755 222.50)",
+          "oklch(95.00% 0.01755 222.50)"
+        ]
       },
       "works-paper": {
         "role": "neutral",
-        "displayName": "Works paper"
+        "displayName": "Works paper",
+        "tonalRamp": [
+          "oklch(15.00% 0.02904 91.66)",
+          "oklch(26.43% 0.02904 91.66)",
+          "oklch(37.86% 0.02904 91.66)",
+          "oklch(49.29% 0.02904 91.66)",
+          "oklch(60.71% 0.02904 91.66)",
+          "oklch(72.14% 0.02904 91.66)",
+          "oklch(83.57% 0.02904 91.66)",
+          "oklch(95.00% 0.02904 91.66)"
+        ]
       },
       "viewport": {
         "role": "neutral",
-        "displayName": "Viewport slate"
+        "displayName": "Viewport slate",
+        "tonalRamp": [
+          "oklch(15.00% 0.01770 222.65)",
+          "oklch(26.43% 0.01770 222.65)",
+          "oklch(37.86% 0.01770 222.65)",
+          "oklch(49.29% 0.01770 222.65)",
+          "oklch(60.71% 0.01770 222.65)",
+          "oklch(72.14% 0.01770 222.65)",
+          "oklch(83.57% 0.01770 222.65)",
+          "oklch(95.00% 0.01770 222.65)"
+        ]
       },
       "settings-surface": {
         "role": "neutral",
-        "displayName": "Settings surface"
+        "displayName": "Settings surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.02229 226.56)",
+          "oklch(26.43% 0.02229 226.56)",
+          "oklch(37.86% 0.02229 226.56)",
+          "oklch(49.29% 0.02229 226.56)",
+          "oklch(60.71% 0.02229 226.56)",
+          "oklch(72.14% 0.02229 226.56)",
+          "oklch(83.57% 0.02229 226.56)",
+          "oklch(95.00% 0.02229 226.56)"
+        ]
       },
       "settings-control": {
         "role": "neutral",
-        "displayName": "Settings control"
+        "displayName": "Settings control",
+        "tonalRamp": [
+          "oklch(15.00% 0.02237 177.57)",
+          "oklch(26.43% 0.02237 177.57)",
+          "oklch(37.86% 0.02237 177.57)",
+          "oklch(49.29% 0.02237 177.57)",
+          "oklch(60.71% 0.02237 177.57)",
+          "oklch(72.14% 0.02237 177.57)",
+          "oklch(83.57% 0.02237 177.57)",
+          "oklch(95.00% 0.02237 177.57)"
+        ]
       },
       "settings-control-text": {
         "role": "neutral",
-        "displayName": "Settings control text"
+        "displayName": "Settings control text",
+        "tonalRamp": [
+          "oklch(15.00% 0.03104 98.90)",
+          "oklch(26.43% 0.03104 98.90)",
+          "oklch(37.86% 0.03104 98.90)",
+          "oklch(49.29% 0.03104 98.90)",
+          "oklch(60.71% 0.03104 98.90)",
+          "oklch(72.14% 0.03104 98.90)",
+          "oklch(83.57% 0.03104 98.90)",
+          "oklch(95.00% 0.03104 98.90)"
+        ]
       },
       "pause-surface": {
         "role": "neutral",
-        "displayName": "Pause veil"
+        "displayName": "Pause veil",
+        "tonalRamp": [
+          "oklch(15.00% 0.02164 228.64 / 0.9098)",
+          "oklch(26.43% 0.02164 228.64 / 0.9098)",
+          "oklch(37.86% 0.02164 228.64 / 0.9098)",
+          "oklch(49.29% 0.02164 228.64 / 0.9098)",
+          "oklch(60.71% 0.02164 228.64 / 0.9098)",
+          "oklch(72.14% 0.02164 228.64 / 0.9098)",
+          "oklch(83.57% 0.02164 228.64 / 0.9098)",
+          "oklch(95.00% 0.02164 228.64 / 0.9098)"
+        ]
       },
       "pause-button": {
         "role": "neutral",
-        "displayName": "Pause button"
+        "displayName": "Pause button",
+        "tonalRamp": [
+          "oklch(15.00% 0.02027 201.24)",
+          "oklch(26.43% 0.02027 201.24)",
+          "oklch(37.86% 0.02027 201.24)",
+          "oklch(49.29% 0.02027 201.24)",
+          "oklch(60.71% 0.02027 201.24)",
+          "oklch(72.14% 0.02027 201.24)",
+          "oklch(83.57% 0.02027 201.24)",
+          "oklch(95.00% 0.02027 201.24)"
+        ]
       },
       "pause-button-text": {
         "role": "neutral",
-        "displayName": "Pause button text"
+        "displayName": "Pause button text",
+        "tonalRamp": [
+          "oklch(15.00% 0.02860 115.75)",
+          "oklch(26.43% 0.02860 115.75)",
+          "oklch(37.86% 0.02860 115.75)",
+          "oklch(49.29% 0.02860 115.75)",
+          "oklch(60.71% 0.02860 115.75)",
+          "oklch(72.14% 0.02860 115.75)",
+          "oklch(83.57% 0.02860 115.75)",
+          "oklch(95.00% 0.02860 115.75)"
+        ]
       },
       "pause-button-hover": {
         "role": "neutral",
-        "displayName": "Pause button hover"
+        "displayName": "Pause button hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.02378 156.84)",
+          "oklch(26.43% 0.02378 156.84)",
+          "oklch(37.86% 0.02378 156.84)",
+          "oklch(49.29% 0.02378 156.84)",
+          "oklch(60.71% 0.02378 156.84)",
+          "oklch(72.14% 0.02378 156.84)",
+          "oklch(83.57% 0.02378 156.84)",
+          "oklch(95.00% 0.02378 156.84)"
+        ]
       },
       "pause-button-hover-text": {
         "role": "neutral",
-        "displayName": "Pause button hover text"
+        "displayName": "Pause button hover text",
+        "tonalRamp": [
+          "oklch(15.00% 0.04461 93.10)",
+          "oklch(26.43% 0.04461 93.10)",
+          "oklch(37.86% 0.04461 93.10)",
+          "oklch(49.29% 0.04461 93.10)",
+          "oklch(60.71% 0.04461 93.10)",
+          "oklch(72.14% 0.04461 93.10)",
+          "oklch(83.57% 0.04461 93.10)",
+          "oklch(95.00% 0.04461 93.10)"
+        ]
       },
       "objective-text": {
         "role": "neutral",
-        "displayName": "Objective text"
+        "displayName": "Objective text",
+        "tonalRamp": [
+          "oklch(15.00% 0.03066 139.10)",
+          "oklch(26.43% 0.03066 139.10)",
+          "oklch(37.86% 0.03066 139.10)",
+          "oklch(49.29% 0.03066 139.10)",
+          "oklch(60.71% 0.03066 139.10)",
+          "oklch(72.14% 0.03066 139.10)",
+          "oklch(83.57% 0.03066 139.10)",
+          "oklch(95.00% 0.03066 139.10)"
+        ]
       },
       "caption-text": {
         "role": "neutral",
-        "displayName": "Sound caption text"
+        "displayName": "Sound caption text",
+        "tonalRamp": [
+          "oklch(15.00% 0.03332 91.69)",
+          "oklch(26.43% 0.03332 91.69)",
+          "oklch(37.86% 0.03332 91.69)",
+          "oklch(49.29% 0.03332 91.69)",
+          "oklch(60.71% 0.03332 91.69)",
+          "oklch(72.14% 0.03332 91.69)",
+          "oklch(83.57% 0.03332 91.69)",
+          "oklch(95.00% 0.03332 91.69)"
+        ]
+      },
+      "rest-surface": {
+        "role": "neutral",
+        "displayName": "Rest surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.02249 220.88 / 0.9608)",
+          "oklch(26.43% 0.02249 220.88 / 0.9608)",
+          "oklch(37.86% 0.02249 220.88 / 0.9608)",
+          "oklch(49.29% 0.02249 220.88 / 0.9608)",
+          "oklch(60.71% 0.02249 220.88 / 0.9608)",
+          "oklch(72.14% 0.02249 220.88 / 0.9608)",
+          "oklch(83.57% 0.02249 220.88 / 0.9608)",
+          "oklch(95.00% 0.02249 220.88 / 0.9608)"
+        ]
+      },
+      "rest-border": {
+        "role": "neutral",
+        "displayName": "Rest border",
+        "tonalRamp": [
+          "oklch(15.00% 0.03018 151.93)",
+          "oklch(26.43% 0.03018 151.93)",
+          "oklch(37.86% 0.03018 151.93)",
+          "oklch(49.29% 0.03018 151.93)",
+          "oklch(60.71% 0.03018 151.93)",
+          "oklch(72.14% 0.03018 151.93)",
+          "oklch(83.57% 0.03018 151.93)",
+          "oklch(95.00% 0.03018 151.93)"
+        ]
+      },
+      "rest-veil": {
+        "role": "neutral",
+        "displayName": "Rest veil",
+        "tonalRamp": [
+          "oklch(15.00% 0.02451 223.92 / 0.9490)",
+          "oklch(26.43% 0.02451 223.92 / 0.9490)",
+          "oklch(37.86% 0.02451 223.92 / 0.9490)",
+          "oklch(49.29% 0.02451 223.92 / 0.9490)",
+          "oklch(60.71% 0.02451 223.92 / 0.9490)",
+          "oklch(72.14% 0.02451 223.92 / 0.9490)",
+          "oklch(83.57% 0.02451 223.92 / 0.9490)",
+          "oklch(95.00% 0.02451 223.92 / 0.9490)"
+        ]
+      },
+      "bench-wand": {
+        "role": "neutral",
+        "displayName": "Bench wand",
+        "tonalRamp": [
+          "oklch(15.00% 0.02139 200.91)",
+          "oklch(26.43% 0.02139 200.91)",
+          "oklch(37.86% 0.02139 200.91)",
+          "oklch(49.29% 0.02139 200.91)",
+          "oklch(60.71% 0.02139 200.91)",
+          "oklch(72.14% 0.02139 200.91)",
+          "oklch(83.57% 0.02139 200.91)",
+          "oklch(95.00% 0.02139 200.91)"
+        ]
+      },
+      "bench-border": {
+        "role": "neutral",
+        "displayName": "Bench border",
+        "tonalRamp": [
+          "oklch(15.00% 0.02980 161.02)",
+          "oklch(26.43% 0.02980 161.02)",
+          "oklch(37.86% 0.02980 161.02)",
+          "oklch(49.29% 0.02980 161.02)",
+          "oklch(60.71% 0.02980 161.02)",
+          "oklch(72.14% 0.02980 161.02)",
+          "oklch(83.57% 0.02980 161.02)",
+          "oklch(95.00% 0.02980 161.02)"
+        ]
+      },
+      "bench-slot": {
+        "role": "neutral",
+        "displayName": "Bench slot",
+        "tonalRamp": [
+          "oklch(15.00% 0.02151 222.36)",
+          "oklch(26.43% 0.02151 222.36)",
+          "oklch(37.86% 0.02151 222.36)",
+          "oklch(49.29% 0.02151 222.36)",
+          "oklch(60.71% 0.02151 222.36)",
+          "oklch(72.14% 0.02151 222.36)",
+          "oklch(83.57% 0.02151 222.36)",
+          "oklch(95.00% 0.02151 222.36)"
+        ]
+      },
+      "boon-surface": {
+        "role": "neutral",
+        "displayName": "Boon surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.02421 209.00)",
+          "oklch(26.43% 0.02421 209.00)",
+          "oklch(37.86% 0.02421 209.00)",
+          "oklch(49.29% 0.02421 209.00)",
+          "oklch(60.71% 0.02421 209.00)",
+          "oklch(72.14% 0.02421 209.00)",
+          "oklch(83.57% 0.02421 209.00)",
+          "oklch(95.00% 0.02421 209.00)"
+        ]
+      },
+      "boon-border": {
+        "role": "neutral",
+        "displayName": "Boon border",
+        "tonalRamp": [
+          "oklch(15.00% 0.03909 148.84)",
+          "oklch(26.43% 0.03909 148.84)",
+          "oklch(37.86% 0.03909 148.84)",
+          "oklch(49.29% 0.03909 148.84)",
+          "oklch(60.71% 0.03909 148.84)",
+          "oklch(72.14% 0.03909 148.84)",
+          "oklch(83.57% 0.03909 148.84)",
+          "oklch(95.00% 0.03909 148.84)"
+        ]
+      },
+      "boon-hover": {
+        "role": "neutral",
+        "displayName": "Boon hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.02561 192.07)",
+          "oklch(26.43% 0.02561 192.07)",
+          "oklch(37.86% 0.02561 192.07)",
+          "oklch(49.29% 0.02561 192.07)",
+          "oklch(60.71% 0.02561 192.07)",
+          "oklch(72.14% 0.02561 192.07)",
+          "oklch(83.57% 0.02561 192.07)",
+          "oklch(95.00% 0.02561 192.07)"
+        ]
+      },
+      "boon-hover-border": {
+        "role": "neutral",
+        "displayName": "Boon hover border",
+        "tonalRamp": [
+          "oklch(15.00% 0.07403 89.70)",
+          "oklch(26.43% 0.07403 89.70)",
+          "oklch(37.86% 0.07403 89.70)",
+          "oklch(49.29% 0.07403 89.70)",
+          "oklch(60.71% 0.07403 89.70)",
+          "oklch(72.14% 0.07403 89.70)",
+          "oklch(83.57% 0.07403 89.70)",
+          "oklch(95.00% 0.07403 89.70)"
+        ]
+      },
+      "boon-title": {
+        "role": "primary",
+        "displayName": "Boon title",
+        "tonalRamp": [
+          "oklch(15.00% 0.06393 88.21)",
+          "oklch(26.43% 0.06393 88.21)",
+          "oklch(37.86% 0.06393 88.21)",
+          "oklch(49.29% 0.06393 88.21)",
+          "oklch(60.71% 0.06393 88.21)",
+          "oklch(72.14% 0.06393 88.21)",
+          "oklch(83.57% 0.06393 88.21)",
+          "oklch(95.00% 0.06393 88.21)"
+        ]
+      },
+      "boon-description": {
+        "role": "neutral",
+        "displayName": "Boon description",
+        "tonalRamp": [
+          "oklch(15.00% 0.02322 134.97)",
+          "oklch(26.43% 0.02322 134.97)",
+          "oklch(37.86% 0.02322 134.97)",
+          "oklch(49.29% 0.02322 134.97)",
+          "oklch(60.71% 0.02322 134.97)",
+          "oklch(72.14% 0.02322 134.97)",
+          "oklch(83.57% 0.02322 134.97)",
+          "oklch(95.00% 0.02322 134.97)"
+        ]
+      },
+      "boon-taken": {
+        "role": "primary",
+        "displayName": "Boon taken",
+        "tonalRamp": [
+          "oklch(15.00% 0.08386 86.28)",
+          "oklch(26.43% 0.08386 86.28)",
+          "oklch(37.86% 0.08386 86.28)",
+          "oklch(49.29% 0.08386 86.28)",
+          "oklch(60.71% 0.08386 86.28)",
+          "oklch(72.14% 0.08386 86.28)",
+          "oklch(83.57% 0.08386 86.28)",
+          "oklch(95.00% 0.08386 86.28)"
+        ]
+      },
+      "boon-focus": {
+        "role": "primary",
+        "displayName": "Boon focus",
+        "tonalRamp": [
+          "oklch(15.00% 0.12882 88.53)",
+          "oklch(26.43% 0.12882 88.53)",
+          "oklch(37.86% 0.12882 88.53)",
+          "oklch(49.29% 0.12882 88.53)",
+          "oklch(60.71% 0.12882 88.53)",
+          "oklch(72.14% 0.12882 88.53)",
+          "oklch(83.57% 0.12882 88.53)",
+          "oklch(95.00% 0.12882 88.53)"
+        ]
+      },
+      "descend-action": {
+        "role": "primary",
+        "displayName": "Descend action",
+        "tonalRamp": [
+          "oklch(15.00% 0.06287 88.79)",
+          "oklch(26.43% 0.06287 88.79)",
+          "oklch(37.86% 0.06287 88.79)",
+          "oklch(49.29% 0.06287 88.79)",
+          "oklch(60.71% 0.06287 88.79)",
+          "oklch(72.14% 0.06287 88.79)",
+          "oklch(83.57% 0.06287 88.79)",
+          "oklch(95.00% 0.06287 88.79)"
+        ]
+      },
+      "descend-border": {
+        "role": "primary",
+        "displayName": "Descend border",
+        "tonalRamp": [
+          "oklch(15.00% 0.05326 87.89)",
+          "oklch(26.43% 0.05326 87.89)",
+          "oklch(37.86% 0.05326 87.89)",
+          "oklch(49.29% 0.05326 87.89)",
+          "oklch(60.71% 0.05326 87.89)",
+          "oklch(72.14% 0.05326 87.89)",
+          "oklch(83.57% 0.05326 87.89)",
+          "oklch(95.00% 0.05326 87.89)"
+        ]
+      },
+      "descend-hover": {
+        "role": "primary",
+        "displayName": "Descend hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.04863 88.81)",
+          "oklch(26.43% 0.04863 88.81)",
+          "oklch(37.86% 0.04863 88.81)",
+          "oklch(49.29% 0.04863 88.81)",
+          "oklch(60.71% 0.04863 88.81)",
+          "oklch(72.14% 0.04863 88.81)",
+          "oklch(83.57% 0.04863 88.81)",
+          "oklch(95.00% 0.04863 88.81)"
+        ]
+      },
+      "descend-text": {
+        "role": "primary",
+        "displayName": "Descend text",
+        "tonalRamp": [
+          "oklch(15.00% 0.02102 211.43)",
+          "oklch(26.43% 0.02102 211.43)",
+          "oklch(37.86% 0.02102 211.43)",
+          "oklch(49.29% 0.02102 211.43)",
+          "oklch(60.71% 0.02102 211.43)",
+          "oklch(72.14% 0.02102 211.43)",
+          "oklch(83.57% 0.02102 211.43)",
+          "oklch(95.00% 0.02102 211.43)"
+        ]
+      },
+      "descend-hover-text": {
+        "role": "primary",
+        "displayName": "Enabled Descend hover text",
+        "tonalRamp": [
+          "oklch(15.00% 0 0)",
+          "oklch(26.43% 0 0)",
+          "oklch(37.86% 0 0)",
+          "oklch(49.29% 0 0)",
+          "oklch(60.71% 0 0)",
+          "oklch(72.14% 0 0)",
+          "oklch(83.57% 0 0)",
+          "oklch(95.00% 0 0)"
+        ]
+      },
+      "gallery-ink": {
+        "role": "neutral",
+        "displayName": "Gallery ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.02159 228.58)",
+          "oklch(26.43% 0.02159 228.58)",
+          "oklch(37.86% 0.02159 228.58)",
+          "oklch(49.29% 0.02159 228.58)",
+          "oklch(60.71% 0.02159 228.58)",
+          "oklch(72.14% 0.02159 228.58)",
+          "oklch(83.57% 0.02159 228.58)",
+          "oklch(95.00% 0.02159 228.58)"
+        ]
+      },
+      "gallery-line": {
+        "role": "neutral",
+        "displayName": "Gallery line",
+        "tonalRamp": [
+          "oklch(15.00% 0.03148 217.78)",
+          "oklch(26.43% 0.03148 217.78)",
+          "oklch(37.86% 0.03148 217.78)",
+          "oklch(49.29% 0.03148 217.78)",
+          "oklch(60.71% 0.03148 217.78)",
+          "oklch(72.14% 0.03148 217.78)",
+          "oklch(83.57% 0.03148 217.78)",
+          "oklch(95.00% 0.03148 217.78)"
+        ]
+      },
+      "gallery-text": {
+        "role": "neutral",
+        "displayName": "Gallery text",
+        "tonalRamp": [
+          "oklch(15.00% 0.01943 122.85)",
+          "oklch(26.43% 0.01943 122.85)",
+          "oklch(37.86% 0.01943 122.85)",
+          "oklch(49.29% 0.01943 122.85)",
+          "oklch(60.71% 0.01943 122.85)",
+          "oklch(72.14% 0.01943 122.85)",
+          "oklch(83.57% 0.01943 122.85)",
+          "oklch(95.00% 0.01943 122.85)"
+        ]
+      },
+      "gallery-muted": {
+        "role": "neutral",
+        "displayName": "Gallery muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.02139 173.79)",
+          "oklch(26.43% 0.02139 173.79)",
+          "oklch(37.86% 0.02139 173.79)",
+          "oklch(49.29% 0.02139 173.79)",
+          "oklch(60.71% 0.02139 173.79)",
+          "oklch(72.14% 0.02139 173.79)",
+          "oklch(83.57% 0.02139 173.79)",
+          "oklch(95.00% 0.02139 173.79)"
+        ]
+      },
+      "gallery-accent": {
+        "role": "primary",
+        "displayName": "Gallery accent",
+        "tonalRamp": [
+          "oklch(15.00% 0.07870 83.78)",
+          "oklch(26.43% 0.07870 83.78)",
+          "oklch(37.86% 0.07870 83.78)",
+          "oklch(49.29% 0.07870 83.78)",
+          "oklch(60.71% 0.07870 83.78)",
+          "oklch(72.14% 0.07870 83.78)",
+          "oklch(83.57% 0.07870 83.78)",
+          "oklch(95.00% 0.07870 83.78)"
+        ]
+      },
+      "gallery-control": {
+        "role": "neutral",
+        "displayName": "Gallery control",
+        "tonalRamp": [
+          "oklch(15.00% 0.02714 219.97)",
+          "oklch(26.43% 0.02714 219.97)",
+          "oklch(37.86% 0.02714 219.97)",
+          "oklch(49.29% 0.02714 219.97)",
+          "oklch(60.71% 0.02714 219.97)",
+          "oklch(72.14% 0.02714 219.97)",
+          "oklch(83.57% 0.02714 219.97)",
+          "oklch(95.00% 0.02714 219.97)"
+        ]
+      },
+      "gallery-control-border": {
+        "role": "neutral",
+        "displayName": "Gallery control border",
+        "tonalRamp": [
+          "oklch(15.00% 0.03051 211.21)",
+          "oklch(26.43% 0.03051 211.21)",
+          "oklch(37.86% 0.03051 211.21)",
+          "oklch(49.29% 0.03051 211.21)",
+          "oklch(60.71% 0.03051 211.21)",
+          "oklch(72.14% 0.03051 211.21)",
+          "oklch(83.57% 0.03051 211.21)",
+          "oklch(95.00% 0.03051 211.21)"
+        ]
+      },
+      "gallery-selected": {
+        "role": "neutral",
+        "displayName": "Gallery selected",
+        "tonalRamp": [
+          "oklch(15.00% 0.02654 192.30)",
+          "oklch(26.43% 0.02654 192.30)",
+          "oklch(37.86% 0.02654 192.30)",
+          "oklch(49.29% 0.02654 192.30)",
+          "oklch(60.71% 0.02654 192.30)",
+          "oklch(72.14% 0.02654 192.30)",
+          "oklch(83.57% 0.02654 192.30)",
+          "oklch(95.00% 0.02654 192.30)"
+        ]
+      },
+      "gallery-hover": {
+        "role": "neutral",
+        "displayName": "Gallery hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.02796 214.22)",
+          "oklch(26.43% 0.02796 214.22)",
+          "oklch(37.86% 0.02796 214.22)",
+          "oklch(49.29% 0.02796 214.22)",
+          "oklch(60.71% 0.02796 214.22)",
+          "oklch(72.14% 0.02796 214.22)",
+          "oklch(83.57% 0.02796 214.22)",
+          "oklch(95.00% 0.02796 214.22)"
+        ]
+      },
+      "death-surface": {
+        "role": "neutral",
+        "displayName": "Lower death surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.02489 213.36 / 0.9608)",
+          "oklch(26.43% 0.02489 213.36 / 0.9608)",
+          "oklch(37.86% 0.02489 213.36 / 0.9608)",
+          "oklch(49.29% 0.02489 213.36 / 0.9608)",
+          "oklch(60.71% 0.02489 213.36 / 0.9608)",
+          "oklch(72.14% 0.02489 213.36 / 0.9608)",
+          "oklch(83.57% 0.02489 213.36 / 0.9608)",
+          "oklch(95.00% 0.02489 213.36 / 0.9608)"
+        ]
+      },
+      "death-border": {
+        "role": "neutral",
+        "displayName": "Death panel border",
+        "tonalRamp": [
+          "oklch(15.00% 0.02797 162.24)",
+          "oklch(26.43% 0.02797 162.24)",
+          "oklch(37.86% 0.02797 162.24)",
+          "oklch(49.29% 0.02797 162.24)",
+          "oklch(60.71% 0.02797 162.24)",
+          "oklch(72.14% 0.02797 162.24)",
+          "oklch(83.57% 0.02797 162.24)",
+          "oklch(95.00% 0.02797 162.24)"
+        ]
+      },
+      "death-top-rule": {
+        "role": "primary",
+        "displayName": "Death panel top rule",
+        "tonalRamp": [
+          "oklch(15.00% 0.06453 85.27)",
+          "oklch(26.43% 0.06453 85.27)",
+          "oklch(37.86% 0.06453 85.27)",
+          "oklch(49.29% 0.06453 85.27)",
+          "oklch(60.71% 0.06453 85.27)",
+          "oklch(72.14% 0.06453 85.27)",
+          "oklch(83.57% 0.06453 85.27)",
+          "oklch(95.00% 0.06453 85.27)"
+        ]
+      },
+      "death-stat": {
+        "role": "neutral",
+        "displayName": "Death report stat",
+        "tonalRamp": [
+          "oklch(15.00% 0.02399 143.34)",
+          "oklch(26.43% 0.02399 143.34)",
+          "oklch(37.86% 0.02399 143.34)",
+          "oklch(49.29% 0.02399 143.34)",
+          "oklch(60.71% 0.02399 143.34)",
+          "oklch(72.14% 0.02399 143.34)",
+          "oklch(83.57% 0.02399 143.34)",
+          "oklch(95.00% 0.02399 143.34)"
+        ]
+      },
+      "death-stat-value": {
+        "role": "primary",
+        "displayName": "Death report value",
+        "tonalRamp": [
+          "oklch(15.00% 0.05868 86.02)",
+          "oklch(26.43% 0.05868 86.02)",
+          "oklch(37.86% 0.05868 86.02)",
+          "oklch(49.29% 0.05868 86.02)",
+          "oklch(60.71% 0.05868 86.02)",
+          "oklch(72.14% 0.05868 86.02)",
+          "oklch(83.57% 0.05868 86.02)",
+          "oklch(95.00% 0.05868 86.02)"
+        ]
+      },
+      "death-cause": {
+        "role": "neutral",
+        "displayName": "Death report cause",
+        "tonalRamp": [
+          "oklch(15.00% 0.02152 134.11)",
+          "oklch(26.43% 0.02152 134.11)",
+          "oklch(37.86% 0.02152 134.11)",
+          "oklch(49.29% 0.02152 134.11)",
+          "oklch(60.71% 0.02152 134.11)",
+          "oklch(72.14% 0.02152 134.11)",
+          "oklch(83.57% 0.02152 134.11)",
+          "oklch(95.00% 0.02152 134.11)"
+        ]
+      },
+      "death-focus": {
+        "role": "secondary",
+        "displayName": "Return focus",
+        "tonalRamp": [
+          "oklch(15.00% 0.05629 160.44)",
+          "oklch(26.43% 0.05629 160.44)",
+          "oklch(37.86% 0.05629 160.44)",
+          "oklch(49.29% 0.05629 160.44)",
+          "oklch(60.71% 0.05629 160.44)",
+          "oklch(72.14% 0.05629 160.44)",
+          "oklch(83.57% 0.05629 160.44)",
+          "oklch(95.00% 0.05629 160.44)"
+        ]
+      },
+      "trickshot-field-border": {
+        "role": "neutral",
+        "displayName": "Combat experiment border",
+        "tonalRamp": [
+          "oklch(15.00% 0.02175 170.72)",
+          "oklch(26.43% 0.02175 170.72)",
+          "oklch(37.86% 0.02175 170.72)",
+          "oklch(49.29% 0.02175 170.72)",
+          "oklch(60.71% 0.02175 170.72)",
+          "oklch(72.14% 0.02175 170.72)",
+          "oklch(83.57% 0.02175 170.72)",
+          "oklch(95.00% 0.02175 170.72)"
+        ]
+      },
+      "trickshot-legend": {
+        "role": "primary",
+        "displayName": "Combat experiment legend",
+        "tonalRamp": [
+          "oklch(15.00% 0.08583 84.43)",
+          "oklch(26.43% 0.08583 84.43)",
+          "oklch(37.86% 0.08583 84.43)",
+          "oklch(49.29% 0.08583 84.43)",
+          "oklch(60.71% 0.08583 84.43)",
+          "oklch(72.14% 0.08583 84.43)",
+          "oklch(83.57% 0.08583 84.43)",
+          "oklch(95.00% 0.08583 84.43)"
+        ]
+      },
+      "trickshot-slider": {
+        "role": "primary",
+        "displayName": "Combat tuning slider",
+        "tonalRamp": [
+          "oklch(15.00% 0.08389 81.83)",
+          "oklch(26.43% 0.08389 81.83)",
+          "oklch(37.86% 0.08389 81.83)",
+          "oklch(49.29% 0.08389 81.83)",
+          "oklch(60.71% 0.08389 81.83)",
+          "oklch(72.14% 0.08389 81.83)",
+          "oklch(83.57% 0.08389 81.83)",
+          "oklch(95.00% 0.08389 81.83)"
+        ]
+      },
+      "trickshot-text": {
+        "role": "neutral",
+        "displayName": "Combat readout text",
+        "tonalRamp": [
+          "oklch(15.00% 0.03147 118.93)",
+          "oklch(26.43% 0.03147 118.93)",
+          "oklch(37.86% 0.03147 118.93)",
+          "oklch(49.29% 0.03147 118.93)",
+          "oklch(60.71% 0.03147 118.93)",
+          "oklch(72.14% 0.03147 118.93)",
+          "oklch(83.57% 0.03147 118.93)",
+          "oklch(95.00% 0.03147 118.93)"
+        ]
+      },
+      "trickshot-surface": {
+        "role": "neutral",
+        "displayName": "Combat readout surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.03023 230.21 / 0.7412)",
+          "oklch(26.43% 0.03023 230.21 / 0.7412)",
+          "oklch(37.86% 0.03023 230.21 / 0.7412)",
+          "oklch(49.29% 0.03023 230.21 / 0.7412)",
+          "oklch(60.71% 0.03023 230.21 / 0.7412)",
+          "oklch(72.14% 0.03023 230.21 / 0.7412)",
+          "oklch(83.57% 0.03023 230.21 / 0.7412)",
+          "oklch(95.00% 0.03023 230.21 / 0.7412)"
+        ]
+      },
+      "trickshot-rule": {
+        "role": "secondary",
+        "displayName": "Combat readout rule",
+        "tonalRamp": [
+          "oklch(15.00% 0.04996 147.82)",
+          "oklch(26.43% 0.04996 147.82)",
+          "oklch(37.86% 0.04996 147.82)",
+          "oklch(49.29% 0.04996 147.82)",
+          "oklch(60.71% 0.04996 147.82)",
+          "oklch(72.14% 0.04996 147.82)",
+          "oklch(83.57% 0.04996 147.82)",
+          "oklch(95.00% 0.04996 147.82)"
+        ]
+      },
+      "finisher-text": {
+        "role": "primary",
+        "displayName": "Owner finisher text",
+        "tonalRamp": [
+          "oklch(15.00% 0.08267 82.03)",
+          "oklch(26.43% 0.08267 82.03)",
+          "oklch(37.86% 0.08267 82.03)",
+          "oklch(49.29% 0.08267 82.03)",
+          "oklch(60.71% 0.08267 82.03)",
+          "oklch(72.14% 0.08267 82.03)",
+          "oklch(83.57% 0.08267 82.03)",
+          "oklch(95.00% 0.08267 82.03)"
+        ]
+      },
+      "finisher-rule": {
+        "role": "primary",
+        "displayName": "Owner finisher rule",
+        "tonalRamp": [
+          "oklch(15.00% 0.09718 76.91)",
+          "oklch(26.43% 0.09718 76.91)",
+          "oklch(37.86% 0.09718 76.91)",
+          "oklch(49.29% 0.09718 76.91)",
+          "oklch(60.71% 0.09718 76.91)",
+          "oklch(72.14% 0.09718 76.91)",
+          "oklch(83.57% 0.09718 76.91)",
+          "oklch(95.00% 0.09718 76.91)"
+        ]
       }
     },
     "typographyMeta": {
@@ -141,6 +983,70 @@
       "action-secondary": {
         "displayName": "Pause action",
         "purpose": "Outlined pause-action group."
+      },
+      "settings-help": {
+        "displayName": "Settings explanation",
+        "purpose": "System-sans explanatory paragraphs with a 65ch measure; supplied Windows font evidence resolves Segoe UI."
+      },
+      "settings-section": {
+        "displayName": "Settings section",
+        "purpose": "Keyboard and controller subheadings, scaled with the comfort preference."
+      },
+      "rest-title": {
+        "displayName": "Rest title",
+        "purpose": "Wand-bench and sanctum headings; the clamped source size is independent of text-scale."
+      },
+      "boon-title": {
+        "displayName": "Boon name",
+        "purpose": "Serif choice name, reduced to 20px at the compact breakpoint."
+      },
+      "boon-description": {
+        "displayName": "Boon explanation",
+        "purpose": "Left-aligned choice description, scaled with the comfort preference."
+      },
+      "action-descend": {
+        "displayName": "Descend action",
+        "purpose": "Filled pale-brass action beneath rest choices."
+      },
+      "gallery-headline": {
+        "displayName": "Capture-library heading",
+        "purpose": "Standalone system-sans page heading; compact layout changes it to 25px."
+      },
+      "gallery-title": {
+        "displayName": "Capture-library section",
+        "purpose": "Named media destination above search and filters."
+      },
+      "gallery-body": {
+        "displayName": "Capture-library body",
+        "purpose": "Offline utility text and destination buttons; the library does not load Cormorant."
+      },
+      "gallery-control": {
+        "displayName": "Capture-library field",
+        "purpose": "Native search and select controls, independent of the game text-scale preference."
+      },
+      "death-title": {
+        "displayName": "Death title",
+        "purpose": "You fell; a smaller Cormorant clamp changes to 28px at the short-height breakpoint, independently of text-scale."
+      },
+      "death-stat": {
+        "displayName": "Death stat",
+        "purpose": "Depth and carried gold in the lower report; the system-sans role responds to text-scale."
+      },
+      "death-cause": {
+        "displayName": "Death cause",
+        "purpose": "The lower report explanation uses scaled system sans with left alignment."
+      },
+      "action-return": {
+        "displayName": "Return action",
+        "purpose": "Focused Return to your waystone control; its label scales with the comfort preference."
+      },
+      "trickshot-tuning": {
+        "displayName": "Combat tuning",
+        "purpose": "All four native range labels and their numeric outputs share the same text-scale multiplier."
+      },
+      "trickshot-readout": {
+        "displayName": "Combat readout",
+        "purpose": "Brief clean-hit, chain, borrowed-leg and finisher cues; the fixed 13px source role sits above the action."
       }
     },
     "shadows": [
@@ -158,6 +1064,26 @@
         "name": "flask-quantity-text",
         "value": "1px 1px #112026",
         "purpose": "Small text shadow on runtime bottle quantities."
+      },
+      {
+        "name": "boon-taken-rule",
+        "value": "inset 3px 0 #d1b67a",
+        "purpose": "Accepted boon uses a narrow inset brass rule rather than a floating card shadow."
+      },
+      {
+        "name": "bench-slot-inset",
+        "value": "inset 0 0 10px rgba(0,0,0,0.55)",
+        "purpose": "Inherited depth inside equipment slots; their play surface and corners are overridden while this shadow remains."
+      },
+      {
+        "name": "spell-offer-panel",
+        "value": "0 18px 50px rgba(0,0,0,0.55)",
+        "purpose": "Inherited shadow beneath the constrained spell-offer panel."
+      },
+      {
+        "name": "descend-enabled-hover",
+        "value": "0 0 22px rgba(168,85,247,0.6)",
+        "purpose": "Inherited enabled-hover glow survives the new default shadow reset through selector specificity."
       }
     ],
     "motion": [
@@ -185,6 +1111,51 @@
         "name": "reduced-motion-duration",
         "value": "0.01ms",
         "purpose": "Operating-system reduced motion overrides CSS animation and transition durations."
+      },
+      {
+        "name": "boon-hover",
+        "value": "background .15s, border-color .15s, transform .15s",
+        "purpose": "The current boon surface transition retains the inherited 2px upward hover shift; reduced motion shortens its duration."
+      },
+      {
+        "name": "descend-state",
+        "value": "all 0.15s ease",
+        "purpose": "Inherited transition on the rest action; the operating-system reduced-motion rule overrides its duration."
+      },
+      {
+        "name": "return-state",
+        "value": "all 0.15s ease",
+        "purpose": "The return control retains its inherited transition with a warm surface hover and no glow; reduced motion shortens its duration."
+      },
+      {
+        "name": "trickshot-entry",
+        "value": "75ms",
+        "purpose": "Enabled distinct-target rewards ease into slow motion through the runtime time envelope; simulation ticks retain their authored size."
+      },
+      {
+        "name": "trickshot-recovery",
+        "value": "180ms",
+        "purpose": "The runtime envelope returns to normal speed at the end of a rewarded window."
+      },
+      {
+        "name": "trickshot-continuous-limit",
+        "value": "4000ms",
+        "purpose": "Maximum continuous slowdown before the runtime forces a normal-speed recovery interval."
+      },
+      {
+        "name": "trickshot-recovery-interval",
+        "value": "600ms",
+        "purpose": "Minimum normal-speed interval after the continuous slowdown limit."
+      },
+      {
+        "name": "held-leg-swing",
+        "value": "18 fixed ticks",
+        "purpose": "The carried limb gathers through a harmless wind-up; elapsed ticks 6-15 sweep the solved free thigh. Committed aim and cover address the actual body contact, with durability consumed at most once per swing."
+      },
+      {
+        "name": "held-leg-solver",
+        "value": "6 substeps per fixed tick",
+        "purpose": "After player movement, a spring-driven wrist and constrained free thigh solve momentum and contact. Drawing interpolates those poses, including while a stationary player holds a moving limb during slow motion."
       }
     ],
     "breakpoints": [
@@ -195,6 +1166,14 @@
       {
         "name": "short-height",
         "value": "600px"
+      },
+      {
+        "name": "capture-library-compact",
+        "value": "850px"
+      },
+      {
+        "name": "trickshot-narrow",
+        "value": "580px"
       }
     ]
   },
@@ -278,17 +1257,86 @@
       "description": "The Sluice objective and an enabled sound caption. The caption follows wrapped text; runtime clears reports after 1500ms.",
       "html": "<div class=\"ds-objective-group\"><div class=\"ds-room-title\">The Sluice</div><div class=\"ds-objective-row\"><div class=\"ds-objective\">Drain the sluice, freeze a crossing, or take the high ledges.</div></div><div class=\"ds-sound-caption\" aria-live=\"polite\">A body sliding through water · left</div></div>",
       "css": ".ds-objective-group { max-width: min(360px, 44%); background: transparent; border: 0; box-shadow: none; padding: 0; text-align: right; text-shadow: 0 1px 4px #000; font-family: ui-sans-serif, system-ui, sans-serif; } .ds-room-title { font: 500 calc(23px * var(--text-scale, 1))/1.1 'Cormorant Garamond', Georgia, serif; letter-spacing: 0; color: #e1d9c3; } .ds-objective-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 4px; } .ds-objective { margin-top: 7px; font-size: calc(12px * var(--text-scale, 1)); line-height: 1.45; letter-spacing: 0; font-weight: 400; color: #c1d0bd; text-transform: none; } .ds-sound-caption { position: static; margin-top: 10px; color: #dfd7bf; font: 400 calc(12px * var(--text-scale, 1))/1.5 ui-sans-serif, system-ui, sans-serif; text-shadow: 0 1px 3px #071014; } .ds-sound-caption:empty { display: none; } @media (max-width: 760px) { .ds-objective-group { max-width: 43%; } .ds-room-title { font-size: calc(18px * var(--text-scale, 1)); } .ds-objective, .ds-sound-caption { font-size: calc(10px * var(--text-scale, 1)); } }"
+    },
+    {
+      "name": "Boon choice",
+      "kind": "card",
+      "refersTo": "boon-card",
+      "description": "A semantic boon button with source-derived Might copy. Runtime adds taken or faded classes; this specimen preserves their visual states without selecting a boon.",
+      "html": "<button class=\"ds-boon-card\" type=\"button\"><div class=\"ds-boon-name\">Might</div><div class=\"ds-boon-desc\">All spell damage +25%</div></button>",
+      "css": ".ds-boon-card { width: auto; padding: 20px 16px; cursor: pointer; text-align: left; color: var(--works-paper, #e6dfca); font-family: ui-sans-serif, system-ui, sans-serif; background: #1b2d30; border: 1px solid #607663; border-radius: 2px; transition: background .15s, border-color .15s, transform .15s; } .ds-boon-card:hover { background: #263a39; border-color: #c0ac77; transform: translateY(-2px); } .ds-boon-card:focus-visible { outline: 2px solid #e8c15a; outline-offset: 2px; } .ds-boon-card:disabled { color: var(--works-paper, #e6dfca); } .ds-boon-name { margin-bottom: 6px; color: #e4d1a3; font: 500 24px/1.15 'Cormorant Garamond', Georgia, serif; letter-spacing: 0; } .ds-boon-desc { color: #c4cebf; font: 400 calc(13px * var(--text-scale, 1))/1.6 ui-sans-serif, system-ui, sans-serif; } .ds-boon-card.ds-taken { border: 1px solid #d1b67a; box-shadow: inset 3px 0 #d1b67a; } .ds-boon-card.ds-faded { opacity: .35; pointer-events: none; } @media (max-width: 760px) { .ds-boon-card { padding: 12px 10px; } .ds-boon-name { font-size: 20px; } } @media (prefers-reduced-motion: reduce) { .ds-boon-card { transition-duration: .01ms !important; } }"
+    },
+    {
+      "name": "Descend from rest",
+      "kind": "button",
+      "refersTo": "descend-action",
+      "description": "The filled pale-brass rest action has a 1px corner and warmer hover. Its enabled hover retains inherited white text and purple glow; disabled state remains dimmed. The specimen has no expedition side effect.",
+      "html": "<button class=\"ds-descend-action\" type=\"button\">Descend</button>",
+      "css": ".ds-descend-action { margin-top: 10px; background: #d8c699; border: 1px solid #e4d4ae; border-radius: 1px; color: #18272a; padding: 13px 32px; font: 500 calc(15px * var(--text-scale, 1))/1.4 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; box-shadow: none; cursor: pointer; transition: all 0.15s ease; } .ds-descend-action:hover { background: #ebddba; } .ds-descend-action:hover:not(:disabled) { color: #fff; box-shadow: 0 0 22px rgba(168,85,247,0.6); } .ds-descend-action:disabled { opacity: .4; cursor: default; } .ds-descend-action:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; } @media (prefers-reduced-motion: reduce) { .ds-descend-action { transition-duration: .01ms !important; } }"
+    },
+    {
+      "name": "Capture-library destinations",
+      "kind": "nav",
+      "refersTo": "gallery-navigation",
+      "description": "The four source destinations with the current-page, hover and keyboard-focus states. This specimen shows the navigation; runtime changes the catalog view.",
+      "html": "<nav class=\"ds-gallery-nav\" aria-label=\"Capture library\"><button type=\"button\" aria-current=\"page\">Latest captures</button><button type=\"button\">Creature poses</button><button type=\"button\">Gameplay clips</button><button type=\"button\">All runs</button></nav>",
+      "css": ".ds-gallery-nav { display: grid; gap: 6px; color: var(--text, #e2e7d9); font: 400 15px/1.5 system-ui, 'Segoe UI', sans-serif; } .ds-gallery-nav button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; text-align: left; padding: 12px; background: none; border: 1px solid transparent; border-radius: 3px; display: flex; justify-content: space-between; gap: 8px; } .ds-gallery-nav button[aria-current=\"page\"] { background: #2b403f; color: var(--accent, #d5b982); border-color: #657668; } .ds-gallery-nav button:hover { background: #263b40; } .ds-gallery-nav button:disabled { cursor: default; opacity: .4; } .ds-gallery-nav button:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; } @media (max-width: 850px) { .ds-gallery-nav { display: flex; flex-wrap: wrap; gap: 4px; } .ds-gallery-nav button { padding: 9px 12px; } }"
+    },
+    {
+      "name": "Capture-library search",
+      "kind": "input",
+      "refersTo": "gallery-search",
+      "description": "Native labelled search field. The actual gallery searches filenames, rooms, creatures and listed poses; this specimen is the source-derived field only.",
+      "html": "<label class=\"ds-gallery-search\">Search the library<input type=\"search\" placeholder=\"Creature, room, pose or filename\" autocomplete=\"off\"></label>",
+      "css": ".ds-gallery-search { display: grid; gap: 6px; flex: 1; min-width: 190px; color: var(--muted, #b1c3bd); font: 400 12px/1.5 system-ui, 'Segoe UI', sans-serif; } .ds-gallery-search input { font: 400 14px/1.5 system-ui, 'Segoe UI', sans-serif; border: 1px solid #526b70; border-radius: 3px; color: var(--text, #e2e7d9); background: #172a30; padding: 10px 12px; min-height: 43px; touch-action: manipulation; } .ds-gallery-search input:focus-visible { outline: 2px solid #bde2c7; outline-offset: 4px; } @media (max-width: 850px) { .ds-gallery-search { flex-basis: 100%; } }"
+    },
+    {
+      "name": "Combat experiment tuning",
+      "kind": "custom",
+      "refersTo": "trickshot-settings",
+      "description": "Enabled-state specimen of the default-off experiment. Native controls show the implemented defaults and ranges; the specimen does not persist settings or wire the toggle to tuning visibility.",
+      "html": "<fieldset class=\"ds-trickshot-settings\"><legend>Combat experiment</legend><label><input type=\"checkbox\" name=\"trickshotEnabled\" checked> Trickshot combat</label><p>Chain different enemies for a brief window of borrowed time. Take a Weaver's leg, then finish its weakened owner with it.</p><div class=\"ds-trickshot-tuning\"><label>Slow-motion speed <output>35%</output><input type=\"range\" name=\"timeScale\" min=\"0.2\" max=\"0.8\" step=\"0.05\" value=\"0.35\"></label><label>Slow-motion duration <output>0.7s</output><input type=\"range\" name=\"durationMs\" min=\"300\" max=\"1200\" step=\"100\" value=\"700\"></label><label>Chain window <output>2.6s</output><input type=\"range\" name=\"chainWindowMs\" min=\"1200\" max=\"4500\" step=\"100\" value=\"2600\"></label><label>Aim assistance <output>4°</output><input type=\"range\" name=\"assistDegrees\" min=\"0\" max=\"8\" step=\"1\" value=\"4\"></label><p>An assisted lock steadies single shots. The guide marks first contact; a wider ring shows spread, a broken ring marks uncertain follow-through. Seeking spells and streams keep free aim.</p></div></fieldset>",
+      "css": ".ds-trickshot-settings { margin: 18px 0; padding: 14px; border: 1px solid #53635d; border-radius: 0; background: transparent; color: var(--works-paper, #e6dfca); font: 400 calc(14px * var(--text-scale, 1))/1.5 ui-sans-serif, system-ui, sans-serif; } .ds-trickshot-settings legend { color: #dbbd80; padding: 0 6px; } .ds-trickshot-settings > label { display: flex; gap: 9px; align-items: center; } .ds-trickshot-settings p { margin: 10px 0; color: #bdc9bb; font-size: calc(13px * var(--text-scale, 1)); line-height: 1.55; max-width: 65ch; } .ds-trickshot-tuning { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; } .ds-trickshot-tuning[hidden] { display: none; } .ds-trickshot-tuning label { display: grid; grid-template-columns: 1fr auto; gap: 5px; font-size: calc(13px * var(--text-scale, 1)); } .ds-trickshot-tuning input { grid-column: 1 / -1; width: 100%; accent-color: #d5b57b; } .ds-trickshot-tuning p { grid-column: 1 / -1; } @media (max-width: 580px) { .ds-trickshot-tuning { grid-template-columns: 1fr; } }"
+    },
+    {
+      "name": "Physical death report",
+      "kind": "custom",
+      "refersTo": "death-panel",
+      "description": "Lower report panel with the source empty-cause fallback. Runtime opens after corpse settling or timeout, keeps the upper scene visible and focuses Return; this panel-only specimen has no respawn side effect.",
+      "html": "<section class=\"ds-death-panel\" aria-labelledby=\"ds-death-title\"><div class=\"ds-death-title\" id=\"ds-death-title\">You fell.</div><div class=\"ds-death-stats\"><span>D1</span> · <span>0</span> oz carried</div><div class=\"ds-death-cause\">THE CAVES DECLINE TO SPECIFY</div><button class=\"ds-return-waystone\" type=\"button\">Return to your waystone</button></section>",
+      "css": ".ds-death-panel { width: min(500px, 100%); max-height: 46vh; overflow: auto; box-sizing: border-box; padding: 20px 28px; background: #14262af5; color: var(--works-paper, #e6dfca); border: 1px solid #52655b; border-top-color: #b5a074; border-radius: 0; text-align: left; font-family: ui-sans-serif, system-ui, sans-serif; } .ds-death-title { font: 500 clamp(30px, 3vw, 40px)/1.05 'Cormorant Garamond', Georgia, serif; color: var(--works-paper, #e6dfca); letter-spacing: 0; text-shadow: none; margin-bottom: 8px; } .ds-death-stats { font: 400 calc(12px * var(--text-scale, 1))/1.5 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; text-align: left; color: #bac7b9; } .ds-death-stats span { color: #d5c299; font-weight: 500; } .ds-death-cause { border: 0; padding: 8px 0 16px; color: #c4cdbf; font: 400 calc(13px * var(--text-scale, 1))/1.5 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; text-align: left; text-shadow: none; } .ds-return-waystone { background: #d8c699; color: #18272a; border: 1px solid #e4d4ae; border-radius: 1px; padding: 10px 18px; font: 500 calc(14px * var(--text-scale, 1))/1.4 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; box-shadow: none; cursor: pointer; transition: all 0.15s ease; } .ds-return-waystone:hover { background: #ebddba; box-shadow: none; } .ds-return-waystone:focus-visible { outline: 2px solid #a8d3bb; outline-offset: 4px; } @media (prefers-reduced-motion: reduce) { .ds-return-waystone { transition-duration: .01ms !important; } } @media (max-height: 600px) { .ds-death-panel { max-height: 36vh; padding: 12px 18px; } .ds-death-title { font-size: 28px; margin-bottom: 5px; } .ds-death-cause { padding: 6px 0 10px; } }"
+    },
+    {
+      "name": "Return to waystone",
+      "kind": "button",
+      "refersTo": "return-waystone",
+      "description": "Filled pale-brass return control with its local mint focus and warm hover. Runtime focuses it when the report opens and removes all corpse parts on return.",
+      "html": "<button class=\"ds-return-waystone\" type=\"button\">Return to your waystone</button>",
+      "css": ".ds-return-waystone { background: #d8c699; color: #18272a; border: 1px solid #e4d4ae; border-radius: 1px; padding: 10px 18px; font: 500 calc(14px * var(--text-scale, 1))/1.4 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; box-shadow: none; cursor: pointer; transition: all 0.15s ease; } .ds-return-waystone:hover { background: #ebddba; box-shadow: none; } .ds-return-waystone:focus-visible { outline: 2px solid #a8d3bb; outline-offset: 4px; } @media (prefers-reduced-motion: reduce) { .ds-return-waystone { transition-duration: .01ms !important; } }"
+    },
+    {
+      "name": "Combat reward readout",
+      "kind": "chip",
+      "refersTo": "trickshot-readout",
+      "description": "Inline specimen of a brief readout anchored at 16% from the top of the runtime scene. The finisher class supplies RETURNED WITH INTEREST colors; runtime shows one cue at a time and hides it on death or when disabled.",
+      "html": "<div class=\"ds-trickshot-readout\">CLEAN HIT</div>",
+      "css": ".ds-trickshot-readout { display: inline-block; padding: 6px 14px; pointer-events: none; color: #d9dfc8; background: #10232cbd; border-block: 1px solid #809d83; font: 600 13px/1.4 system-ui, sans-serif; letter-spacing: .08em; } .ds-trickshot-readout[hidden] { display: none; } .ds-trickshot-readout.ds-finisher { color: #f0d096; border-color: #bd9352; }"
     }
   ],
   "narrative": {
     "northStar": "The Living Descent",
-    "overview": "The Living Descent is a wet, corroded alchemical refinery. Slate, mineral deposits, timber and copper carry clustered pixel detail; warm refuge light and pale living bodies establish local points of attention. Water, terrain, creatures and working machinery remain independent, mutable parts of the game. Distant refinery imagery provides atmosphere and depth.\n\nThe interface uses thin, square controls, warm pale lettering and quiet corners around the scene. Cormorant Garamond gives entry and room titles their character; system text carries explanations and controls. This document extracts the implemented entry, expedition HUD, pause and comfort settings. The boot screen, workshops and inherited overlays retain additional styles outside this vocabulary.\n\nSource authority is [Living Descent CSS](src/styles/living-descent.css), its inherited [base CSS](src/styles/main.css), [entry markup](index.html), and the listed components below. The [surface brief](.impeccable/surfaces/src-game-game-ts.md) owns this expedition's composition; the [quality bar](.impeccable/quality-bar.md) and [asset manifest](docs/living-descent-asset-manifest.md) record the material direction. The generated studies are nonliteral references. This source extraction does not establish motion, listening, unaided-player or cross-hardware acceptance; the bounded visual finish verdict closed its five reported repairs. Gameplay architecture remains in [docs/DESIGN.md](docs/DESIGN.md).",
+    "overview": "The Living Descent is a wet, corroded alchemical refinery. Slate, mineral deposits, timber and copper carry clustered pixel detail; warm refuge light and pale living bodies establish local points of attention. Broken terrain faces, attached foliage and species-specific anatomy give the inhabited foreground its texture. Visible joints, missing limbs, bent crowns and falling vine fragments follow their physical state. Water, terrain, creatures and working machinery remain independent, mutable parts of the game. Distant refinery imagery provides atmosphere and depth.\n\nThe interface uses thin controls, warm pale lettering and quiet corners around the scene. Cormorant Garamond gives entry, room, rest and death headings their character; system text carries explanations and ordinary controls. A lower slate/brass death panel preserves the visible ivory-and-copper body. Optional Trickshot cues add native mint/brass targeting and brief combat readouts within the same scene. The separate offline capture library uses slate and brass with system-sans headings so the media remains prominent. The boot screen and authoring workshops keep their existing identity; spell-card details and shop controls retain some inherited treatments.\n\nSource authority is [Living Descent CSS](src/styles/living-descent.css), its inherited [base CSS](src/styles/main.css), [entry markup](index.html), the [capture-library generator](scripts/screenshot-gallery.mjs), and the rendering and component sources below. The [surface brief](.impeccable/surfaces/src-game-game-ts.md) owns this expedition's composition; the [quality bar](.impeccable/quality-bar.md) and [asset manifest](docs/living-descent-asset-manifest.md) record the material direction. Generated compositions remain nonliteral references. Bounded art, Weaver/gallery and environment reviews are closed; the Trickshot/death extension has a SHIP verdict with its tuning-text and compact-panel findings resolved. Waterfall and held-limb corrections also have bounded SHIP verdicts. Source, reviewed stills and disclosed fixture measurements support this extraction within those reviews' limits. Subjective motion, listening, unaided play and hardware performance need their own evidence. [Fidelity and physical response](docs/living-descent-fidelity-and-physics.md) and [Trickshot combat](docs/trickshot-combat.md) hold implementation and validation evidence, including the separate worldgen and serial-timing gates; gameplay architecture remains in [docs/DESIGN.md](docs/DESIGN.md).",
     "keyCharacteristics": [
-      "Clustered wet stone, worn copper and connected timber grain.",
-      "Live material boundaries and articulated bodies above subdued distant scenery.",
+      "Clustered wet stone, worn copper, connected timber grain and material-rooted foliage.",
+      "Live material boundaries and detailed articulated bodies above subdued distant scenery.",
+      "Continuous anatomical attachments, visible limb loss and foliage that travels with its support.",
+      "Momentum carries water over ledges and swings a held limb's free thigh from its driven shank.",
+      "Species-specific plates, membranes, gills, scutes and state-driven faces at the established actor scale.",
       "Serif titles paired with plain operating text.",
-      "Square, lightly bordered controls and sparse corner HUD groups.",
-      "Contextual input cues, independent flask slots and captions that follow their objective."
+      "Mostly square, lightly bordered controls, small rest-panel corner exceptions and sparse corner HUD groups.",
+      "Contextual input cues, independent flask slots and captions that follow their objective.",
+      "Optional first-contact aiming cues and a death composition that keeps the physical body visible.",
+      "A quiet capture library that discloses pose fixtures and keeps historical media findable."
     ],
     "rules": [
       {
@@ -298,26 +1346,42 @@
       },
       {
         "name": "The Title and Instruction Rule",
-        "body": "Cormorant carries the entry, room, pause and settings headings. Explanations and ordinary controls use their defined system-sans roles; compact flask keys and quantities retain their source monospace treatment.",
+        "body": "Cormorant carries entry, room, pause, settings, rest and death headings. Explanations and ordinary controls use their defined system-sans roles; flask keys and equipment annotations retain their source monospace treatment.",
         "section": "typography"
       },
       {
         "name": "The Live Boundary Rule",
         "body": "Terrain albedo samples the real cell grid and preserves excavation and saved color overrides. Decorative refinery imagery supplies no collision or interaction; valve, refuge and pipe artwork follows real runtime anchors.",
         "section": "elevation"
+      },
+      {
+        "name": "The Attachment Rule",
+        "body": "Visible joints and foliage derive their anchors from authoritative anatomy, living roots or strand nodes. Severing changes the owning geometry; drawing must not restore a missing attachment.",
+        "section": "elevation"
       }
     ],
     "dos": [
       "**Do** keep terrain texture and contact highlights attached to actual cells, including excavated edges.",
+      "**Do** add presentation detail within the established world-cell camera coverage and actor sizes.",
+      "**Do** keep fronds attached to living material roots and creature expression attached to simulation state.",
+      "**Do** use the same anatomical chain for Weaver drawing and limb contact, retaining visible stumps after loss.",
+      "**Do** derive held-limb drawing and damage from the solved free thigh, preserving its knee and harmless wind-up.",
+      "**Do** trace falling-water highlights along actual cell motion beneath actors and reserve pool edges for supported water.",
+      "**Do** keep vine leaves with their strand nodes through cuts and falls, and rotate grounded crowns through their spring response.",
       "**Do** preserve the serif-title and system-text roles on the documented player surfaces.",
-      "**Do** use semantic buttons, native settings controls and the visible mint keyboard-focus treatment.",
+      "**Do** use semantic buttons, native settings controls and the existing visible focus treatments, including the boon cards' brass focus.",
       "**Do** keep four independently sized flask slots and place captions after the complete objective in normal flow.",
-      "**Do** retain creature anatomy and local contrast during habitat lighting and hit responses."
+      "**Do** retain creature anatomy and local contrast during habitat lighting and hit responses.",
+      "**Do** retain the living player's materials on solved corpse parts and keep the return panel below the visible body.",
+      "**Do** scale tuning labels and numeric values together and distinguish confirmed first contact from uncertain follow-through.",
+      "**Do** label pose fixtures, encounter clips and historical captures clearly in the library."
     ],
     "donts": [
       "**Don't** bake controls, labels, collision or interactive creatures into refinery imagery.",
       "**Don't** smooth the cell-material atlas or sample across its material-quadrant boundaries.",
+      "**Don't** infer hidden-player positions in the expression renderer or advance a separate pose simulation during drawing.",
       "**Don't** place the valve cue independently of the handwheel's runtime position.",
+      "**Don't** place hanging leaves on a fixed ceiling overlay after their supporting strand moves or is severed.",
       "**Don't** replace the shaded creature hit response with a uniform body-filling white flash.",
       "**Don't** treat generated studies, still-frame finish review or simulated input checks as human or hardware acceptance."
     ]

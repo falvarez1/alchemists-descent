@@ -130,14 +130,12 @@ function runScene(worldSeed: number, ticks: number): { world: World; sim: Simula
   return { world, sim, ctx };
 }
 
-/** Living Descent / GEN_VERSION 37: active-cell traversal and enclosed-water
- * rejection deliberately change random draws. These snapshots pin that policy. */
+/** Living Descent: hydraulic pressure, persistent ballistic water and suspended blood
+ * deliberately change material trajectories and subsequent reaction draws. */
 const GOLDEN: Record<number, { state: string; colors: string }> = {
-  // Living Descent: enclosed oil joins the inactive frontier, while burning
-  // oil and charged contacts stay urgent. This deliberately changes RNG draws.
-  1: { state: '7f84d2f7', colors: '5613f9b2' },
-  7: { state: 'aff887ef', colors: '4894c5af' },
-  1337: { state: '347c19aa', colors: 'd19ae197' },
+  1: { state: '28da9205', colors: '198aa7ec' },
+  7: { state: '89dfe2bb', colors: 'b701b55f' },
+  1337: { state: '18f68036', colors: 'f2235d13' },
 };
 
 describe('sim golden frames', () => {

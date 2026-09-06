@@ -24,6 +24,9 @@ try {
   await page.screenshot({ path: `${output}/production-pause.png` });
   await page.locator('#pause-settings').click();
   await page.locator('[name="textScale"]').selectOption('1.3');
+  assert.equal(await page.locator('[name="trickshotEnabled"]').isChecked(), false);
+  await page.locator('[name="trickshotEnabled"]').check();
+  await page.locator('[name="timeScale"]').focus(); await page.keyboard.press('ArrowRight');
   await page.screenshot({ path: `${output}/production-settings.png` });
   await page.setViewportSize({ width: 720, height: 480 });
   await page.screenshot({ path: `${output}/production-settings-compact.png` });
@@ -47,6 +50,12 @@ try {
   await page.waitForTimeout(4500);
   assert.match(await page.locator('#field-note').innerText(), /2 left/);
   report.resumed = true;
+  await page.locator('#expedition-pause').click(); await page.locator('#pause-settings').click();
+  assert.equal(await page.locator('[name="trickshotEnabled"]').isChecked(), true);
+  assert.equal(await page.locator('[name="timeScale"]').inputValue(), '0.4');
+  report.trickshotPreferencesResumed = true;
+  await page.locator('[name="trickshotEnabled"]').uncheck();
+  await page.locator('#player-settings button[value="close"]').click(); await page.keyboard.press('Escape');
   report.network = await page.evaluate(() => ({ debugHandle: Boolean(window.__game),
     resources: performance.getEntriesByType('resource').map(r => ({ name: new URL(r.name).pathname, bytes: r.transferSize })) }));
   assert.equal(report.network.debugHandle, false);

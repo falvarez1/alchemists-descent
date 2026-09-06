@@ -3,6 +3,7 @@ import { DataUtils } from 'three';
 
 import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
+import { PIXEL_H, PIXEL_SCALE, PIXEL_W } from '@/render/presentation';
 import { COMPOSE_MAX_LENSES, COMPOSE_MAX_WAVES } from '@/render/composeLimits';
 import {
   COMPOSE_PAD,
@@ -156,9 +157,14 @@ float flickerRand(vec2 p, float salt) {
   return hash12(p + uFlickerSeed * salt);
 }
 
+vec2 detailSubpixel() {
+  return ${PIXEL_SCALE === 2 ? `floor(fract(vec2(vUv.x, 1.0 - vUv.y) * vec2(${VIEW_W}.0, ${VIEW_H}.0)) * 2.0) * 0.5` : 'vec2(0.0)'};
+}
+
 void overBackdrop(inout vec3 c, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offset, int vx, int vy) {
   if (cfg.z < 0.5 || cfg.y <= 0.0 || cfg.w <= 0.0) return;
-  vec2 samplePx = floor((floor(vec2(uCam) * cfg.x) + vec2(float(vx), float(vy))) / max(cfg.w, 0.25) + offset);
+  vec2 sub = detailSubpixel();
+  vec2 samplePx = floor((floor(vec2(uCam) * cfg.x) + vec2(float(vx), float(vy)) + sub) / max(cfg.w, 0.25) + offset);
   vec2 p = (samplePx + vec2(0.5)) * invSize;
   vec4 s = texture(tex, p);
   float a = clamp(s.a * cfg.y, 0.0, 1.0);
@@ -180,7 +186,7 @@ void main() {
 
   // Overlay first: a setPx'd pixel replaces terrain outright, so all terrain
   // work can be skipped (exact CPU semantics: setPx overwrote the buffer).
-  vec4 ov = texelFetch(uOverlay, ivec2(col, rowB), 0);
+  vec4 ov = texelFetch(uOverlay, clamp(ivec2(vUv * vec2(${PIXEL_W}.0, ${PIXEL_H}.0)), ivec2(0), ivec2(${PIXEL_W - 1}, ${PIXEL_H - 1})), 0);
 
   vec3 c = vec3(0.0);
   if (ov.a <= 0.5) {
@@ -253,6 +259,16 @@ void main() {
     uvec4 cell = texelFetch(uWin, ivec2(lx, ly), 0);
     int type = int(cell.a & 0x7Fu);
     bool charged = (cell.a & 0x80u) != 0u;
+    vec2 sub = detailSubpixel();
+    ${PIXEL_SCALE === 2 ? `
+    // Half-cell bevels soften exposed corners without changing material IDs,
+    // collision, or the footprint of a wall. Interior seams stay crisp.
+    if (uTerrainEnabled && (type == ${Cell.Stone} || type == ${Cell.Wall} || type == ${Cell.Wood})) {
+      bool topAir = (texelFetch(uWin, ivec2(lx, max(0, ly - 1)), 0).a & 0x7fu) == 0u;
+      bool leftAir = (texelFetch(uWin, ivec2(max(0, lx - 1), ly), 0).a & 0x7fu) == 0u;
+      bool rightAir = (texelFetch(uWin, ivec2(min(${WIN_W - 1}, lx + 1), ly), 0).a & 0x7fu) == 0u;
+      if (topAir && sub.y < 0.5 && ((leftAir && sub.x < 0.5) || (rightAir && sub.x >= 0.5))) type = ${Cell.Empty};
+    }` : ''}
 
     vec3 light = texelFetch(uLight, ivec2(vx >> 1, vy >> 1), 0).rgb;
     float dxv = float(vx) - ${VIG_CX.toFixed(1)};
@@ -348,12 +364,15 @@ void main() {
       if (uTerrainEnabled && texelFetch(uScars, ivec2(lx, ly), 0).r < 0.5) {
         int above = int(texelFetch(uWin, ivec2(lx, max(0, ly - 1)), 0).a & 0x7fu);
         if (type == ${Cell.Water}) {
-          albedo = above == ${Cell.Empty} && lookupY > 0 ? vec3(101, 142, 148) : vec3(49, 91, 103);
+          int t = int(texelFetch(uWin, ivec2(lx, min(${WIN_H - 1}, ly + 1)), 0).a & 0x7fu);
+          bool supported = t == ${Cell.Water} || (${terrainBlocksGlsl});
+          albedo = above == ${Cell.Empty} && lookupY > 0 && supported ? vec3(101, 142, 148) : vec3(49, 91, 103);
         } else if (type == ${Cell.Wall} || type == ${Cell.Stone} || type == ${Cell.Wood} || type == ${Cell.Metal}) {
           bool rock = type == ${Cell.Stone} && lookupY > 810;
           int tileX = type == ${Cell.Metal} || rock ? 128 : 0;
           int tileY = type == ${Cell.Wood} || rock ? 128 : 0;
-          albedo = texelFetch(uTerrain, ivec2(tileX + (lookupX & 127), tileY + (lookupY & 127)), 0).rgb * 255.0 * 1.5 + vec3(24, 26, 28);
+          ivec2 grain = ivec2(vec2(lookupX, lookupY) * ${PIXEL_SCALE}.0 + sub * ${PIXEL_SCALE}.0) & ivec2(127);
+          albedo = texelFetch(uTerrain, ivec2(tileX, tileY) + grain, 0).rgb * 255.0 * 1.28 + vec3(15, 20, 21);
           int t = above;
           bool top = lookupY > 0 && !(${terrainBlocksGlsl});
           t = int(texelFetch(uWin, ivec2(max(0, lx - 1), ly), 0).a & 0x7fu);
@@ -362,7 +381,8 @@ void main() {
           bool bottom = lookupY + 1 < ${HEIGHT} && !(${terrainBlocksGlsl});
           if (top || left) {
             float chip = ((lookupX * 17 + lookupY * 29) & 7) < 2 ? 0.76 : 1.0;
-            albedo = albedo * 0.55 + vec3(115, 111, 94) * chip;
+            float lip = ${PIXEL_SCALE === 2 ? '((top && sub.y < 0.5) || (left && sub.x < 0.5)) ? 1.0 : 0.45' : '1.0'};
+            albedo = albedo * (1.0 - 0.45 * lip) + vec3(115, 111, 94) * chip * lip;
           } else if (bottom) albedo *= vec3(0.62, 0.62, 0.67);
           albedo = floor(min(vec3(255), albedo));
         }
@@ -370,6 +390,15 @@ void main() {
       float r = albedo.r / 255.0;
       float g = albedo.g / 255.0;
       float b = albedo.b / 255.0;
+      ${PIXEL_SCALE === 2 ? `
+      if (type == ${Cell.Water}) {
+        // Subtle moving caustic bands belong to the water, not the screen.
+        vec2 waterPos = vec2(wx, wy) + sub;
+        float bands = sin(waterPos.x * 0.13 + waterPos.y * 0.22 + uPhaseWater * 0.3)
+          * sin(waterPos.x * 0.065 - waterPos.y * 0.16 - uPhaseWater * 0.2);
+        float caustic = smoothstep(0.72, 0.96, bands) * 0.055;
+        r += caustic * 0.35; g += caustic * 0.8; b += caustic;
+      }` : ''}
 
       // Living flame: per-frame flicker on hot cells (stochastic, hash-rolled)
       if (type == ${Cell.Fire}) {
@@ -383,6 +412,7 @@ void main() {
         r *= fl; g *= fl * 0.95;
       } else if ((type == ${Cell.Water} || type == ${Cell.Healium} || type == ${Cell.Teleportium})
                  && wy > 0 && ly > 0
+                 && (type != ${Cell.Water} || (texelFetch(uWin, ivec2(lx, min(${WIN_H - 1}, ly + 1)), 0).a & 0x7Fu) != ${Cell.Empty}u)
                  && (texelFetch(uWin, ivec2(lx, ly - 1), 0).a & 0x7Fu) == ${Cell.Empty}u) {
         // liquid surface shimmer — deterministic in (frameCount, wx)
         float wave = 0.88 + sin(uPhaseWater + float(wx) * 0.42) * 0.12;
@@ -475,13 +505,14 @@ function packCellValue(
  * the old 187k-pixel path is ~1/30th the work here.
  */
 class Overlay implements OverlaySurface {
-  readonly data = new Float32Array(VIEW_W * VIEW_H * 4);
-  readonly half = new Uint16Array(VIEW_W * VIEW_H * 4);
-  private readonly touched = new Uint8Array(VIEW_W * VIEW_H);
+  readonly scale = PIXEL_SCALE;
+  readonly data = new Float32Array(PIXEL_W * PIXEL_H * 4);
+  readonly half = new Uint16Array(PIXEL_W * PIXEL_H * 4);
+  private readonly touched = new Uint8Array(PIXEL_W * PIXEL_H);
   private written = new Uint32Array(8192);
   private count = 0;
-  private dirtyX0 = VIEW_W;
-  private dirtyY0 = VIEW_H;
+  private dirtyX0 = PIXEL_W;
+  private dirtyY0 = PIXEL_H;
   private dirtyX1 = -1;
   private dirtyY1 = -1;
 
@@ -538,8 +569,8 @@ class Overlay implements OverlaySurface {
   }
 
   private includeDirty(pixelIdx: number): void {
-    const x = pixelIdx % VIEW_W;
-    const y = (pixelIdx / VIEW_W) | 0;
+    const x = pixelIdx % PIXEL_W;
+    const y = (pixelIdx / PIXEL_W) | 0;
     if (x < this.dirtyX0) this.dirtyX0 = x;
     if (y < this.dirtyY0) this.dirtyY0 = y;
     if (x > this.dirtyX1) this.dirtyX1 = x;
@@ -547,8 +578,8 @@ class Overlay implements OverlaySurface {
   }
 
   private resetDirty(): void {
-    this.dirtyX0 = VIEW_W;
-    this.dirtyY0 = VIEW_H;
+    this.dirtyX0 = PIXEL_W;
+    this.dirtyY0 = PIXEL_H;
     this.dirtyX1 = -1;
     this.dirtyY1 = -1;
   }
@@ -567,6 +598,11 @@ export class GpuCompose {
   private packedCamX = NaN;
   private packedCamY = NaN;
   private packedFull = false;
+  private packedEpoch = -1;
+  private packedOverrides = -1;
+  private packedVersions = new Uint32Array(0);
+  private readonly packLeft = new Int16Array(WIN_H);
+  private readonly packRight = new Int16Array(WIN_H);
 
   private readonly lightData: Float32Array<ArrayBuffer>;
   private readonly lightTex: THREE.DataTexture;
@@ -647,8 +683,8 @@ export class GpuCompose {
 
     this.overlayTex = new THREE.DataTexture(
       this.overlay.half,
-      VIEW_W,
-      VIEW_H,
+      PIXEL_W,
+      PIXEL_H,
       THREE.RGBAFormat,
       THREE.HalfFloatType,
     );
@@ -732,11 +768,16 @@ export class GpuCompose {
     if (this.packedWorld !== world || this.packedTick !== ctx.state.frameCount ||
         this.packedRevision !== world.mutationVersion || this.packedCamX !== camX || this.packedCamY !== camY ||
         (fullWindow && !this.packedFull)) {
-      this.packWindow(world, world.colors, camX, camY, fullWindow);
-      this.winTex.needsUpdate = true;
+      const reset = this.packedWorld !== world || this.packedCamX !== camX || this.packedCamY !== camY ||
+        this.packedEpoch !== world.activity.epoch || this.packedOverrides !== world.colorOverrides.revision ||
+        (fullWindow && !this.packedFull) || !world.activity.ready;
+      if (this.packWindow(world, world.colors, camX, camY, fullWindow, reset)) this.winTex.needsUpdate = true;
       this.packedWorld = world; this.packedTick = ctx.state.frameCount;
       this.packedRevision = world.mutationVersion; this.packedCamX = camX; this.packedCamY = camY;
       this.packedFull = fullWindow;
+      this.packedEpoch = world.activity.epoch; this.packedOverrides = world.colorOverrides.revision;
+      if (this.packedVersions.length !== world.activity.versions.length) this.packedVersions = new Uint32Array(world.activity.versions.length);
+      this.packedVersions.set(world.activity.versions);
     }
 
     if (lightRebuilt || !this.lightUploaded) {
@@ -814,7 +855,7 @@ export class GpuCompose {
     const dirtyPixels = dirty.w * dirty.h;
     if (
       this.overlaySubUploadFailed ||
-      dirtyPixels >= VIEW_W * VIEW_H * OVERLAY_FULL_UPLOAD_RATIO
+      dirtyPixels >= PIXEL_W * PIXEL_H * OVERLAY_FULL_UPLOAD_RATIO
     ) {
       this.overlayTex.needsUpdate = true;
       return;
@@ -823,7 +864,7 @@ export class GpuCompose {
     const uploadData = this.ensureOverlayUploadTexture(dirty.w, dirty.h);
     const rowElems = dirty.w * 4;
     for (let row = 0; row < dirty.h; row++) {
-      const src = ((dirty.y + row) * VIEW_W + dirty.x) * 4;
+      const src = ((dirty.y + row) * PIXEL_W + dirty.x) * 4;
       uploadData.set(this.overlay.half.subarray(src, src + rowElems), row * rowElems);
     }
 
@@ -965,18 +1006,50 @@ export class GpuCompose {
    * distortion that stays inside the pad. Field loads are hoisted — V8 does
    * not hoist them past the call boundary on its own (perf lesson).
    */
-  private packWindow(world: World, colors: Uint32Array, camX: number, camY: number, fullWindow: boolean): void {
+  private packWindow(world: World, colors: Uint32Array, camX: number, camY: number, fullWindow: boolean, reset: boolean): boolean {
     const types = world.types;
     const charge = world.charge;
     const out = this.win32;
     const x0 = camX - COMPOSE_PAD;
     const y0 = camY - COMPOSE_PAD;
     this.winTex.clearUpdateRanges();
+    if (!reset && !fullWindow) {
+      // Chunk generations are independent of simulation sleep. Scheduled
+      // chunks also refresh because embers, gas and blood can change color
+      // without changing material. Merge spans before touching the buffer.
+      this.packLeft.fill(WIN_W); this.packRight.fill(0);
+      const activity = world.activity;
+      const left = Math.max(0, camX - 1), top = Math.max(0, camY - 1);
+      const right = Math.min(world.width, camX + VIEW_W + 1), bottom = Math.min(world.height, camY + VIEW_H + 1);
+      let changed = false;
+      for (let cy = top >> 6; cy <= (bottom - 1) >> 6; cy++) for (let cx = left >> 6; cx <= (right - 1) >> 6; cx++) {
+        const key = cx + cy * activity.columns;
+        if (this.packedVersions[key] === activity.versions[key] && !activity.scheduled[key]) continue;
+        changed = true;
+        const col0 = cx === 0 && left === 0 ? COMPOSE_PAD - 1 : Math.max(left, cx * 64) - x0;
+        const col1 = cx === activity.columns - 1 && right === world.width ? COMPOSE_PAD + VIEW_W + 1 : Math.min(right, cx * 64 + 64) - x0;
+        const yStart = cy === 0 && top === 0 ? camY - 1 : Math.max(top, cy * 64);
+        const yEnd = cy === activity.rows - 1 && bottom === world.height ? camY + VIEW_H + 1 : Math.min(bottom, cy * 64 + 64);
+        for (let y = yStart; y < yEnd; y++) {
+          const row = y - y0;
+          this.packLeft[row] = Math.min(this.packLeft[row], col0);
+          this.packRight[row] = Math.max(this.packRight[row], col1);
+        }
+      }
+      for (let row = COMPOSE_PAD - 1; row < COMPOSE_PAD + VIEW_H + 1; row++) {
+        const base = Math.max(0, Math.min(HEIGHT - 1, y0 + row)) * WIDTH;
+        let ci = base + x0 + this.packLeft[row];
+        for (let col = this.packLeft[row]; col < this.packRight[row]; col++, ci++) {
+          out[row * WIN_W + col] = packCellValue(types, colors, charge, Math.max(base, Math.min(base + WIDTH - 1, ci)));
+        }
+      }
+      return changed;
+    }
     if (!fullWindow) {
       // One-cell halo covers live albedo boundaries and vegetation contact.
       // The 64-cell distortion window is needed only for active waves/lenses.
       this.packWindowRows(types, colors, charge, camX, camY, COMPOSE_PAD - 1, VIEW_H + 2);
-      return;
+      return true;
     }
     // Columns left of / right of the world edge use a clamped repeat value,
     // so the hot middle loop runs branch-free.
@@ -1006,6 +1079,7 @@ export class GpuCompose {
         for (let i = rightStart; i < WIN_W; i++) out[o++] = v;
       }
     }
+    return true;
   }
 
   private packWindowRows(
@@ -1039,7 +1113,8 @@ export class GpuCompose {
           ((c & 0xff) << 16) |
           ((types[sample] | (charge[sample] !== 0 ? 0x80 : 0)) << 24);
       }
-      this.winTex.addUpdateRange((row * WIN_W + col0) * 4, (VIEW_W + 2) * 4);
+      // One contiguous upload beats hundreds of one-row GL calls. The small
+      // padding overhead is bounded; cached chunks reduce CPU packing work.
     }
   }
 

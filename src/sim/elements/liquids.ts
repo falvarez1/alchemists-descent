@@ -119,26 +119,28 @@ export function handleWater(ctx: Ctx, x: number, y: number): void {
     }
   }
   if (waterFeedsLivingGrowth(ctx, x, y)) return;
+  if (w.flow.fall(w, x, y)) return;
+  if (w.flow.discharge(w, x, y)) return;
   if (w.inBounds(x, y + 1) && waterCanPass(w.types[w.idx(x, y + 1)])) {
-    w.swap(x, y, x, y + 1);
+    w.flow.move(w, x, y, x, y + 1);
     return;
   }
   const dir = simRandom() < 0.5 ? 1 : -1;
   if (w.inBounds(x + dir, y + 1) && waterCanPass(w.types[w.idx(x + dir, y + 1)])) {
-    w.swap(x, y, x + dir, y + 1);
+    w.flow.move(w, x, y, x + dir, y + 1);
     return;
   }
   if (w.inBounds(x - dir, y + 1) && waterCanPass(w.types[w.idx(x - dir, y + 1)])) {
-    w.swap(x, y, x - dir, y + 1);
+    w.flow.move(w, x, y, x - dir, y + 1);
     return;
   }
   if (simRandom() < ctx.params.materials[Cell.Water].flowRate!) {
     if (w.inBounds(x + dir, y) && waterCanPass(w.types[w.idx(x + dir, y)])) {
-      w.swap(x, y, x + dir, y);
+      w.flow.move(w, x, y, x + dir, y);
       return;
     }
     if (w.inBounds(x - dir, y) && waterCanPass(w.types[w.idx(x - dir, y)])) {
-      w.swap(x, y, x - dir, y);
+      w.flow.move(w, x, y, x - dir, y);
       return;
     }
   }
@@ -147,6 +149,7 @@ export function handleWater(ctx: Ctx, x: number, y: number): void {
 // Blood and slime: generic viscous liquids
 export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell): void {
   const w = ctx.world;
+  if (type === Cell.Blood && advectBlood(ctx, x, y)) return;
   // Blood soaks whatever sturdy surface it flows across or pools against — the
   // floor beneath it and the walls beside it pick up a red stain over time
   // (stainCell no-ops on non-sturdy cells, so empty space/sand is unaffected).
@@ -198,6 +201,27 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
       w.replaceCellAt(i, Cell.Empty, EMPTY_COLOR);
     }
   }
+}
+
+/** Blood is suspended material in water, rather than an immovable obstacle to it. */
+function advectBlood(ctx: Ctx, x: number, y: number): boolean {
+  const w = ctx.world;
+  if (!CARDINAL_OFFSETS.some(([dx, dy]) => w.inBounds(x + dx, y + dy) && w.type(x + dx, y + dy) === Cell.Water)) return false;
+  const index = w.idx(x, y), age = Math.max(0, w.life[index]) + 1;
+  w.life[index] = age;
+  if (age > 180 && simRandom() < .018) { w.replaceCellAt(index, Cell.Water, waterColor()); return true; }
+  const vx = w.flow.x(x, y), vy = w.flow.y(x, y);
+  const axis = Math.abs(vx) > Math.abs(vy) ? 0 : 1;
+  const current = axis === 0 ? vx : vy;
+  let dx = 0, dy = 0;
+  if (simRandom() < Math.min(1, Math.abs(current))) {
+    if (axis === 0) dx = Math.sign(current); else dy = Math.sign(current);
+  } else if (simRandom() < .28) {
+    const direction = Math.floor(simRandom() * 4); dx = CARDINAL_OFFSETS[direction][0]; dy = CARDINAL_OFFSETS[direction][1];
+  } else return true;
+  const nx = x + dx, ny = y + dy;
+  if (w.inBounds(nx, ny) && (w.type(nx, ny) === Cell.Water || w.type(nx, ny) === Cell.Empty)) w.swap(x, y, nx, ny);
+  return true;
 }
 
 function bridgeWaterSurface(ctx: Ctx, x: number, y: number): boolean {

@@ -120,6 +120,12 @@ export interface RenderBackendStatus {
 
 /** The two pixel primitives every sprite/particle/beam renderer draws with. */
 export interface PixelSurface {
+  /** Smallest presentation step in world units, independent of collision. */
+  readonly pixelStep?: number;
+  /** Draw one presentation pixel. Legacy surfaces fall back to setPx. */
+  setFinePx?(wx: number, wy: number, r: number, g: number, b: number): void;
+  /** Add light at the same fine presentation resolution. */
+  addFinePx?(wx: number, wy: number, r: number, g: number, b: number): void;
   /** Write one RGB pixel (alpha 1) at world coords; camera-relative, view-culled. */
   setPx(wx: number, wy: number, r: number, g: number, b: number): void;
   /** Additively blend RGB at world coords (alpha untouched). */
@@ -191,6 +197,8 @@ export interface CompositorLens {
  * they touch — only marked pixels are cleared next frame and uploaded.
  */
 export interface OverlaySurface {
+  /** Presentation pixels per material cell; omitted by legacy backends. */
+  readonly scale?: number;
   /** Float RGBA staging, VIEW_W x VIEW_H, Y-flipped rows. */
   readonly data: Float32Array;
   /** Record a touched pixel (pixel index, not float offset). Idempotent. */

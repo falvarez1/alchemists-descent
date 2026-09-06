@@ -1,5 +1,6 @@
 import type { Ctx, PerkId } from '@/core/types';
 import { livingObjective } from '@/game/LivingExpedition';
+import { canHumiliate } from '@/combat/Trickshot';
 import { worksRoomAt } from '@/world/breathingWorks';
 import { getBindings, keyLabel } from '@/input/bindings';
 import { VIEW_H, VIEW_W } from '@/config/constants';
@@ -71,6 +72,7 @@ export class Hud {
   private flaskMaterial: number | null | undefined = undefined;
   private readonly flaskSlots: Array<{ root: HTMLElement; fill: HTMLElement; count: HTMLElement; name: HTMLElement }> = [];
   private readonly soundCaption = document.createElement('div');
+  private readonly trickshotReadout = document.createElement('div');
   private captionUntil = 0;
   /** Filled hotbar tiles of the ACTIVE wand (+ costs and slot positions). */
   private hotbarSlots: Array<{ tile: HTMLElement; cost: number; slotIdx: number }> = [];
@@ -106,6 +108,8 @@ export class Hud {
   private readonly timeouts = new Set<number>();
 
   constructor(private ctx: Ctx) {
+    this.trickshotReadout.id = 'trickshot-readout'; this.trickshotReadout.hidden = true;
+    el('canvas-holder').appendChild(this.trickshotReadout);
     this.soundCaption.id = 'sound-caption'; this.soundCaption.setAttribute('aria-live', 'polite');
     el('objective').closest('.wave-readout')!.appendChild(this.soundCaption);
     this.disposers.push(ctx.events.on('habitatSound', ({ kind, x, y }) => {
@@ -224,8 +228,9 @@ export class Hud {
       el('go-cause').textContent = deathCauseLine(cause, this.ctx.state.frameCount);
     }));
     this.disposers.push(ctx.events.on('playerCorpseSettled', () => {
-      // The corpse has come to rest (tombstone is up) — now offer the respawn.
+      // Keep the resting body visible while offering the return journey.
       el('gameover-overlay').classList.add('visible');
+      el('respawn-btn').focus({ preventScroll: true });
     }));
 
     this.disposers.push(ctx.events.on('playerRespawned', () => {
@@ -251,6 +256,7 @@ export class Hud {
 
   dispose(): void {
     this.soundCaption.remove();
+    this.trickshotReadout.remove();
     for (const dispose of this.disposers.splice(0)) dispose();
     for (const timeout of this.timeouts) window.clearTimeout(timeout);
     this.timeouts.clear();
@@ -484,6 +490,11 @@ export class Hud {
   }
 
   update(ctx: Ctx): void {
+    const trick = ctx.fx.trickshot;
+    this.trickshotReadout.hidden = !ctx.state.trickshot?.enabled || !trick || trick.labelMs <= 0 || ctx.player.dead;
+    const trickText = trick && trick.labelMs > 0 ? trick.label : '';
+    if (this.trickshotReadout.textContent !== trickText) this.trickshotReadout.textContent = trickText;
+    this.trickshotReadout.classList.toggle('finisher', trickText === 'RETURNED WITH INTEREST');
     const player = ctx.player;
     this.renderObjective();
     this.renderInteractionHint(ctx);
@@ -501,8 +512,10 @@ export class Hud {
     const rt = ctx.levels.current;
     el('wave-num').textContent = rt?.living ? worksRoomAt(player.x, player.y).name : rt?.def.name ?? '';
     const bindings = getBindings();
-    el('field-note').textContent = rt?.living
-      ? `${keyLabel(bindings.lure)} Glowseed · ${rt.living.glowseeds} left · 1 / 2 Swap wand · H Handbook`
+    el('field-note').textContent = player.legClub
+      ? `${keyLabel(bindings.kick)} ${ctx.enemies.some(e => canHumiliate(ctx, e) && Math.hypot(e.x - player.x, e.y - player.y) < 100) ? 'Finish its owner' : 'Smack'} · Weaver leg · ${player.legClub.durability} swings left`
+      : rt?.living
+      ? `${keyLabel(bindings.lure)} Glowseed · ${rt.living.glowseeds} left${rt.living.room === 'refuge' ? ' · B Wand bench' : ''}`
       : '1 / 2 Swap wand · M Map · H Handbook';
     this.levitFill.classList.toggle('low', player.levit / player.maxLevit < 0.2);
     if (this.dryFlashUntil && ctx.state.frameCount > this.dryFlashUntil) {
@@ -565,7 +578,7 @@ export class Hud {
     }
 
     const hurt = 1 - (player.hp / player.maxHp);
-    this.damageVignette.style.opacity = String(player.dead ? 0.85 : Math.max(0, (hurt - 0.4) * 1.3));
+    this.damageVignette.style.opacity = String(player.dead ? 0.22 : Math.max(0, (hurt - 0.4) * 1.3));
 
     // Cast cursor: the cards the NEXT click will fire pulse amber, so the
     // left-to-right cast cycle is something you can watch, not guess at.
