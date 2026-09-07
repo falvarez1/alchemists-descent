@@ -6,7 +6,9 @@ coverage/
 verify-out/
 screenshots/
 build/
-.agents/
+# Keep repository skills versioned; ignore other local agent state.
+.agents/*
+!.agents/skills/
 .codex-vite-*.log
 .claude/projects/
 
