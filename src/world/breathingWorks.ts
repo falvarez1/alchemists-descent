@@ -181,7 +181,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   const valveBody: Array<[number, number]> = [];
   for (let y = 412; y < 437; y++) for (let x = 800; x < 805; x++) valveBody.push([x, y]);
   const mechanisms: Mechanism[] = [
-    { id: 8101, kind: 'lever', x: 524, y: 370, w: 8, h: 12, state: 0, targetId: 8102 },
+    { id: 8101, kind: 'lever', x: 524, y: 370, w: 8, h: 12, state: 0, targetId: 8102, look: 'handwheel' },
     { id: 8102, kind: 'valve', x: 800, y: 412, w: 5, h: 25, state: 0, targetId: 0, material: Cell.Metal, body: valveBody, oneShot: false },
   ];
   const pickup = (kind: Pickup['kind'], x: number, y: number, data: Pickup['data'] = {}): Pickup =>

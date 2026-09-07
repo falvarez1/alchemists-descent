@@ -1,6 +1,7 @@
 import type { Ctx, RuntimeDecor } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { VIEW_H, VIEW_W } from '@/config/constants';
+import { blitCellArt } from '@/render/sprites/FineArt';
 
 /**
  * Animated decor renderer — sibling of drawEnemySprite.
@@ -89,18 +90,10 @@ export function drawDecor(s: PixelSurface, light: LightField, ctx: Ctx, d: Runti
     lb = Math.max(0.05, lt.b);
   }
   const data = frame.data;
-  for (let py = 0; py < sp.h; py++) {
-    const row = py * sp.w;
-    for (let px = 0; px < sp.w; px++) {
-      const o = (row + (d.flipX ? sp.w - 1 - px : px)) * 4;
-      if (data[o + 3] < 128) continue;
-      s.setPx(
-        x0 + px,
-        y0 + py,
-        (data[o] / 255) * lr,
-        (data[o + 1] / 255) * lg,
-        (data[o + 2] / 255) * lb,
-      );
-    }
-  }
+  // Authored frames share the presentation grain (EPX upsample) with every
+  // other cell-authored sprite; alpha stays binary at the importer's threshold.
+  blitCellArt(s, sp.w, sp.h, (px, py) => {
+    const o = (py * sp.w + (d.flipX ? sp.w - 1 - px : px)) * 4;
+    return data[o + 3] < 128 ? -1 : (data[o] << 16) | (data[o + 1] << 8) | data[o + 2];
+  }, x0, y0, lr, lg, lb);
 }

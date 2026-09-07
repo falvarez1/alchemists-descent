@@ -4,6 +4,7 @@ import type { LightField, PixelSurface } from '@/render/pixels';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { COMPOSE_PAD } from '@/render/lightingModel';
+import { blitCellArt, viewIntersects } from '@/render/sprites/FineArt';
 
 let terrain: Uint8ClampedArray | null = null;
 let props: Uint8ClampedArray | null = null;
@@ -136,30 +137,29 @@ export function terrainAlbedo(world: World, index: number, x: number, y: number,
   return (Math.min(255, r) << 16) | (Math.min(255, g) << 8) | Math.min(255, b);
 }
 
-function prop(s: PixelSurface, light: LightField, crop: readonly [number, number, number, number], x: number, y: number, wheelAngle?: number): void {
-  if (!props) return;
+function prop(s: PixelSurface, light: LightField, crop: readonly [number, number, number, number], x: number, y: number): void {
+  const atlas = props;
+  if (!atlas) return;
   const [sx, sy, width, height] = crop;
   const sample = light.sample(x + width / 2, y + height / 2);
   const r = Math.max(0.64, sample.r), g = Math.max(0.6, sample.g), b = Math.max(0.55, sample.b);
-  const step = wheelAngle === undefined ? 1 : s.pixelStep ?? 1;
-  const c = Math.cos(wheelAngle ?? 0), sn = Math.sin(wheelAngle ?? 0);
-  for (let dy = 0; dy < height; dy += step) for (let dx = 0; dx < width; dx += step) {
-    const rx = dx - 15.5, ry = dy - 12.5;
-    const rotating = wheelAngle !== undefined && rx * rx + ry * ry < 12 * 12;
-    const tx = rotating ? Math.round(15.5 + rx * c + ry * sn) : Math.floor(dx);
-    const ty = rotating ? Math.round(12.5 - rx * sn + ry * c) : Math.floor(dy);
-    const i = ((sy + ty) * 192 + sx + tx) * 4;
-    if (props[i + 3] < 128) continue;
-    (wheelAngle === undefined ? s.setPx : s.setFinePx ?? s.setPx).call(s, x + dx, y + dy, props[i] / 255 * r, props[i + 1] / 255 * g, props[i + 2] / 255 * b);
-  }
+  // Bitmap props share the presentation grain through the same EPX upsample
+  // as every other cell-authored sprite.
+  blitCellArt(s, width, height, (px, py) => {
+    const i = ((sy + py) * 192 + sx + px) * 4;
+    return atlas[i + 3] < 128 ? -1 : (atlas[i] << 16) | (atlas[i + 1] << 8) | atlas[i + 2];
+  }, x, y, r, g, b);
 }
 
 /** Dress real room anchors behind bodies; these pixels never imply a new collider. */
 export function drawWorksLandmarks(s: PixelSurface, light: LightField, ctx: Ctx): void {
   if (!ctx.levels.current?.living) return;
+  // Cull against the composed view's real rectangle. The old test measured
+  // from the camera's top-left corner, so a prop in the right quarter or the
+  // bottom of the view popped out of existence as the player approached it.
   const camera = ctx.camera;
-  const visible = (x: number, y: number, margin = 80): boolean => Math.abs(x - camera.x) < 400 + margin && Math.abs(y - camera.y) < 260 + margin;
-  if (visible(524, 370)) prop(s, light, [8, 40, 32, 40], 508, 343, ctx.levels.current.living.valveTurn ?? 0);
-  if (visible(857, 743)) prop(s, light, [48, 24, 96, 56], 809, 688);
-  for (const x of [1180, 1315, 1450]) if (visible(x, 572)) prop(s, light, [152, 56, 32, 24], x - 12, 560);
+  const visible = (x0: number, y0: number, x1: number, y1: number): boolean => viewIntersects(camera, x0, y0, x1, y1);
+  // The sluice handwheel is the dressed lever itself (MechanismSprites).
+  if (visible(809, 688, 905, 744)) prop(s, light, [48, 24, 96, 56], 809, 688);
+  for (const x of [1180, 1315, 1450]) if (visible(x - 12, 560, x + 20, 584)) prop(s, light, [152, 56, 32, 24], x - 12, 560);
 }

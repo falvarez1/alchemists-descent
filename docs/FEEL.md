@@ -201,8 +201,36 @@ Layered, bottom to top:
 | **Hurt stagger** | Damage leans the body away from the knockback vector for 12 frames and whips the hat with the blow (on top of hitstop ≥ 8 dmg) |
 | **Idle fidgets** | ~7 s of true stillness: the off-hand reaches up and straightens the hat (the hat springs at the touch), then the staff gets a slow flourish of cyan sparks. Repeats ~6 s later. Cancelled by any action; a crouch is a stance, not boredom |
 | Blink | Random 6-frame blinks (~0.7%/frame) |
-| Lever pull | E starts a 26-frame hand-pull: rooted, staff stowed, both arms reach, strain bob; the lever arm smoothsteps across and flips at completion |
+| Lever pull | E starts a 26-frame hand-pull: rooted, staff stowed, both arms reach, strain bob; the lever arm smoothsteps across and flips at completion. A dressed lever (the engine's brass crank wheel, the sluice handwheel — `Mechanism.look`) swings its handle half a turn with the same ease instead of an arm, so its state is literally which side the handle rests on |
 | Heart communion | Refilling at a heart roots and disarms the wizard for the ~2 s channel; broken by damage (with toast) |
+
+### Fixtures and machinery (presentation resolution)
+
+- Every mechanism sprite, the Bell & Tea Engine's linkages, rigid bodies,
+  ropes and chains, bitmap decor and landmark props draw through
+  `render/sprites/FineArt.ts` at the surface's presentation step — half a
+  cell on the default fine surface, whole cells in the Builder gallery and
+  classic (`?pixelScale=1`) mode — so nothing on screen reads as "bigger
+  pixels" than the terrain, foliage and creatures beside it.
+- **Wheels** are filled brass with a dark rim, a hub, and spokes that rotate
+  with real travel only: pulleys by cable stroke, the winding drum by the
+  counterweight's drop, the handwheel by the valve's spring-damped turn, the
+  crank by the pull. The lamp highlight on the rim stays put — the fixed
+  highlight against moving spokes is what makes rotation legible.
+- **Cables** carry a two-tone twist that advances with the plate's real
+  travel, sag in proportion to their span (never on vertical drops) and a
+  dark underside thread; chains alternate lit and edge-on links; hemp ropes
+  twist in ochre.
+- **Rigid bodies** (boulder, pendulum bob, dominoes, sugar, piston, duck)
+  interpolate between fixed ticks (`interpolateBody`), so they move at frame
+  rate; a frame between ticks still composes while any body is awake.
+- Fixtures take the room's lamps through the light field, clamped to
+  [0.55, 1] so brass never blooms to white beside the staff's glow and never
+  vanishes in a dark bay. Knobs, lamps and sparks stay self-lit.
+- Landmark props cull against the composed view rectangle
+  (`viewIntersects`); the old corner-distance test made the sluice handwheel
+  pop out of existence whenever it sat in the right quarter or the bottom of
+  the view.
 
 ### Character definition (the Noita-class readability pass)
 
@@ -210,6 +238,16 @@ Layered, bottom to top:
   near-black 4-neighbour outline is stamped around the finished figure
   (skipped below the feet; the staff/meters/tip draw outside the recording).
   The figure cuts against any background.
+- **Presentation resolution:** the pose is still authored in whole cells, but
+  on the fine surface the body and staff layers are re-emitted at half-cell
+  resolution with EPX corner smoothing, the rim is one presentation pixel
+  wide, and the figure is nudged to the nearest presentation pixel of his
+  real position (vertically only while airborne). Pupil and lash, hat band
+  and buckle, robe pleats and hem shadow, boot soles and toe-cap, the trim's
+  stitching, the staff's highlight thread and brass ferrule are
+  presentation-only details stamped on top of the upsampled art
+  (`CellCapture` in `render/sprites/FineArt.ts`); a classic surface gets
+  the byte-for-byte cell drawing.
 - **Value-contrast palette:** edges run dark (near-navy robe edge, deep hat
   shade), accents run bright (gold band, trim), boots near-black, and the brim
   shades the brow (a dedicated shadow row).

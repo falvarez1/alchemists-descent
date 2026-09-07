@@ -2,7 +2,7 @@ import { drawPlayerRagdollSprite } from '@/render/sprites/PlayerRagdollSprite';
 import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
 import { drawFallingWater } from '@/render/FallingWater';
 import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
-import { RenderPoses } from '@/render/RenderPoses';
+import { RenderPoses, interpolateBody } from '@/render/RenderPoses';
 import { drawWorksLandmarks, prepareTerrainColors } from '@/render/TerrainArt';
 import { drawHabitatScenery, drawVineFoliage } from '@/render/HabitatScenery';
 import { PLAYER_HALF_W } from '@/core/types';
@@ -36,6 +36,7 @@ import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
 import { drawTeaMachineDecor } from '@/render/TeaMachineDecor';
+import { INK, Pen, cameraView } from '@/render/sprites/FineArt';
 import {
   drawDigBeam,
   drawLightningArcs,
@@ -133,7 +134,11 @@ export class FrameComposer implements PixelSurface {
       return pose && (Math.hypot(pose.hip.x - pose.previousHip.x, pose.hip.y - pose.previousHip.y) > .001
         || Math.hypot(pose.hand.x - pose.previousHand.x, pose.hand.y - pose.previousHand.y) > .001);
     });
-    return legMoving || looseMoving || (!!ctx.rigidBodies.playerRagdoll && Object.values(ctx.rigidBodies.playerRagdoll.parts).some(b => !b.sleeping)) || this.poses.moving(ctx.camera) || this.poses.moving(ctx.player) || ctx.enemies.some(e => this.poses.moving(e));
+    // Awake rigid bodies are drawn interpolated, so a frame between ticks
+    // must still compose while one of them is in flight.
+    const bodyMoving = ctx.rigidBodies.bodies.some(b => !b.sleeping && b.previousX !== undefined
+      && (b.previousX !== b.x || b.previousY !== b.y || b.previousAngle !== b.angle));
+    return legMoving || looseMoving || bodyMoving || (!!ctx.rigidBodies.playerRagdoll && Object.values(ctx.rigidBodies.playerRagdoll.parts).some(b => !b.sleeping)) || this.poses.moving(ctx.camera) || this.poses.moving(ctx.player) || ctx.enemies.some(e => this.poses.moving(e));
   }
 
   private positionSprite(body: { x: number; y: number }): void {
@@ -885,7 +890,7 @@ export class FrameComposer implements PixelSurface {
     this.drawCritters(ctx);
     this.drawFlaskEffects(ctx);
     this.drawRigidBodies(ctx);
-    drawTeaMachineDecor(this, ctx);
+    drawTeaMachineDecor(this, this.light, ctx, this.alpha);
     this.drawVineStrands(ctx, 'foreground');
 
     // Entities on top. Contact shadows first, under everything, so a body's
@@ -1020,29 +1025,36 @@ export class FrameComposer implements PixelSurface {
     this.drawContactShadow(ctx, e.x, e.y, halfW + 1, 0.55 * faint);
   }
 
-  /** Rigid bodies: rotated boxes and circles, flat-shaded with a darker rim for
-   *  read and (on circles) a radial spoke so spin is visible. Lit by the ambient
-   *  field like the rest of the world. */
+  /** Rigid bodies: rotated plates and discs at presentation resolution,
+   *  interpolated between fixed ticks. Discs get a dark rim, a spherical
+   *  shade and a radial spoke so spin is visible; plates a dark edge and a
+   *  lit top bevel. Ropes twist and chains link along their real sag. Lit
+   *  by the ambient field like the rest of the world. */
   private drawRigidBodies(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const frame = ctx.state.frameCount;
+    const view = cameraView(ctx.camera, 6);
+    const ropePen = new Pen(this, view);
+    const points: Array<readonly [number, number]> = [];
     for (const b of ctx.rigidBodies.bodies) {
+      const pose = interpolateBody(b, this.alpha);
       for (const rope of [b.rope, b.tether]) {
         if (!rope) continue;
-        const distance = Math.hypot(b.x - rope.x, b.y - rope.y);
+        const distance = Math.hypot(pose.x - rope.x, pose.y - rope.y);
         const slack = Math.sqrt(Math.max(0, rope.length * rope.length - distance * distance)) * .25;
-        for (let i = 0; i <= distance; i += .5) {
-          const t = i / Math.max(1, distance);
-          const x = rope.x + (b.x - rope.x) * t, y = rope.y + (b.y - rope.y) * t + Math.sin(t * Math.PI) * slack;
-          const shade = Math.floor(i) % 3 === 0 ? .8 : .58;
-          this.setPx(x, y, shade, shade * (rope.material === 'chain' ? .95 : .78), shade * (rope.material === 'chain' ? .9 : .43));
+        const n = Math.max(2, Math.ceil(distance / 5));
+        points.length = 0;
+        for (let i = 0; i <= n; i++) {
+          const t = i / n;
+          points.push([rope.x + (pose.x - rope.x) * t, rope.y + (pose.y - rope.y) * t + Math.sin(t * Math.PI) * slack]);
         }
+        ropePen.cable(points, 0, { material: rope.material === 'chain' ? 'chain' : 'rope', sag: 0 });
       }
       if (b.tag?.startsWith('player-corpse')) continue; // drawn as a limp wizard in drawPlayerRagdoll
       let r = ((b.color >> 16) & 0xff) / 255;
       let g = ((b.color >> 8) & 0xff) / 255;
       let bl = (b.color & 0xff) / 255;
-      const lt = this.light.sample(b.x, b.y);
+      const lt = this.light.sample(pose.x, pose.y);
       let lr = Math.max(0.06, lt.r);
       let lg = Math.max(0.06, lt.g);
       let lb = Math.max(0.06, lt.b);
@@ -1061,42 +1073,27 @@ export class FrameComposer implements PixelSurface {
         g = g * 0.7 + 0.28;
         bl = Math.min(1, bl * 0.8 + 0.55);
       }
-      const cos = Math.cos(b.angle);
-      const sin = Math.sin(b.angle);
       const reach = b.shape.kind === 'circle' ? b.shape.radius : Math.hypot(b.shape.halfW, b.shape.halfH);
       // Coarse off-screen cull (matches the landmark/decor draws).
       if (
-        b.x + reach < this.renderCamX ||
-        b.x - reach > this.renderCamX + VIEW_W ||
-        b.y + reach < this.renderCamY ||
-        b.y - reach > this.renderCamY + VIEW_H
+        pose.x + reach < this.renderCamX ||
+        pose.x - reach > this.renderCamX + VIEW_W ||
+        pose.y + reach < this.renderCamY ||
+        pose.y - reach > this.renderCamY + VIEW_H
       )
         continue;
-      this.drawContactShadow(ctx, b.x, b.y + reach, reach, 0.5);
-      const x0 = Math.floor(b.x - reach);
-      const x1 = Math.ceil(b.x + reach);
-      const y0 = Math.floor(b.y - reach);
-      const y1 = Math.ceil(b.y + reach);
-      for (let yy = y0; yy <= y1; yy++) {
-        for (let xx = x0; xx <= x1; xx++) {
-          const dx = xx + 0.5 - b.x;
-          const dy = yy + 0.5 - b.y;
-          const lx = dx * cos + dy * sin; // into the body's local frame
-          const ly = -dx * sin + dy * cos;
-          let edge = 1;
-          if (b.shape.kind === 'circle') {
-            const rad = b.shape.radius;
-            if (dx * dx + dy * dy > rad * rad) continue;
-            if (dx * dx + dy * dy > (rad - 1) * (rad - 1)) edge = 0.6;
-            // a single spoke toward local +x makes the roll legible
-            else if (lx > 0 && Math.abs(ly) < 0.9) edge = 0.5;
-          } else {
-            const { halfW, halfH } = b.shape;
-            if (Math.abs(lx) > halfW || Math.abs(ly) > halfH) continue;
-            if (Math.abs(lx) > halfW - 1 || Math.abs(ly) > halfH - 1) edge = 0.6;
-          }
-          this.setPx(xx, yy, r * lr * edge, g * lg * edge, bl * lb * edge);
-        }
+      this.drawContactShadow(ctx, pose.x, pose.y + reach, reach, 0.5);
+      const pen = new Pen(this, view, [lr, lg, lb]);
+      const fill: readonly [number, number, number] = [r, g, bl];
+      const edge: readonly [number, number, number] = [r * 0.42 + INK[0] * 0.3, g * 0.42 + INK[1] * 0.3, bl * 0.42 + INK[2] * 0.3];
+      if (b.shape.kind === 'circle') {
+        const rad = b.shape.radius;
+        pen.disc(pose.x, pose.y, rad, fill, edge, Math.max(pen.step, rad * 0.09));
+        // a single spoke toward local +x makes the roll legible
+        pen.line(pose.x, pose.y, pose.x + Math.cos(pose.angle) * (rad - 1), pose.y + Math.sin(pose.angle) * (rad - 1), edge, pen.step * 2);
+        pen.arc(pose.x, pose.y, rad * 0.62, Math.PI * 1.1, Math.PI * 1.4, fill, 0, 1.35);
+      } else {
+        pen.box(pose.x, pose.y, b.shape.halfW, b.shape.halfH, pose.angle, fill, edge);
       }
     }
   }
@@ -1561,10 +1558,17 @@ export class FrameComposer implements PixelSurface {
     const camX = ctx.camera.renderX,
       camY = ctx.camera.renderY;
 
+    const turn = runtime.living?.valveTurn ?? 0;
     for (const m of runtime.mechanisms) {
-      if (m.x < camX - 12 || m.x > camX + VIEW_W + 12 || m.y < camY - 12 || m.y > camY + VIEW_H + 12)
+      // Dressed levers (crank wheel, handwheel) reach well past their cell.
+      const pad = m.look ? 30 : 12;
+      if (m.x < camX - pad || m.x > camX + VIEW_W + pad || m.y < camY - pad || m.y > camY + VIEW_H + pad)
         continue;
-      drawMechanismSprite(this, m, frame);
+      const lt = this.light.sample(m.x, m.y - 4);
+      drawMechanismSprite(this, m, frame, {
+        light: [Math.min(1, Math.max(0.55, lt.r)), Math.min(1, Math.max(0.55, lt.g)), Math.min(1, Math.max(0.55, lt.b))],
+        turn: m.look === 'handwheel' ? turn : undefined,
+      });
     }
 
     for (const v of runtime.runeVaults) {

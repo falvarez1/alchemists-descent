@@ -169,7 +169,7 @@ export function stampTeaMachine(world: World, mechanisms: Mechanism[], repair = 
   rect(1364, 93, 5, 8); // fixed coil core, separated from the falling weight
   rect(1373, 94, 3, 5); // armature's mechanical end stop
   teaRect(world, TEA.bellGate, Cell.Metal);
-  if (!mechanisms.some(m => m.id === TEA.lever.id)) mechanisms.push({ kind: 'lever', ...TEA.lever, w: 6, h: 10, state: 0, targetId: -1 });
+  if (!mechanisms.some(m => m.id === TEA.lever.id)) mechanisms.push({ kind: 'lever', ...TEA.lever, w: 6, h: 10, state: 0, targetId: -1, look: 'crank' });
   return [505, 630, 790, 970, 1110, 1250, 1430, 1510].map((x, i) => ({
     x, y: i % 2 ? 54 : 248, r: 1, g: .72, b: .4, intensity: .72, radius: 125,
     bloom: .15, flicker: .03, flickerPhase: i * 79, falloff: 'soft' as const, occluded: true,

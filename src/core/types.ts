@@ -2183,6 +2183,10 @@ export interface Mechanism {
   material?: number;
   /** valve: stays open once fired. */
   oneShot?: boolean;
+  /** lever: presentation dressing — the Bell & Tea Engine's brass crank
+   *  wheel or the sluice's handwheel. Pull/flip behaviour is the plain
+   *  lever's; only the drawing changes. */
+  look?: 'crank' | 'handwheel';
   /** valve: force-close N frames after opening; reopens only on a fresh
    *  rising edge of its trigger aggregate (ignored when oneShot). */
   autoCloseFrames?: number;

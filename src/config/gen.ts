@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 42; // 42: physical rocker, guided float, moving valves and sacrificial supports make engine handoffs visible
+export const GEN_VERSION = 43; // 43: the engine crank and sluice handwheel are dressed levers (look), drawn at presentation resolution
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

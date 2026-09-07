@@ -119,6 +119,13 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
                           interpolates it into GLSL) so the CPU/GPU sky (gradient,
                           sun, drifting clouds, parallax hills) can never drift
     sprites/              Procedural pixel sprites (player wizard, enemies)
+    sprites/FineArt.ts    Presentation-resolution kit: Pen primitives (rods,
+                          wheels, cables, plates, rivets), the EPX cell-capture
+                          upsample with a one-pixel rim, bitmap blit, view
+                          culling. Every sprite family that is not creature
+                          art draws through it so the frame shares one grain
+    TeaMachineLinkages.ts Bell & Tea Engine linkage drawings: wheels, cables
+                          and rods follow solver poses + real plate travel
   audio/
     AudioEngine.ts        Procedural WebAudio SFX synthesis
   input/

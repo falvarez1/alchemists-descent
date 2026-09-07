@@ -1,5 +1,18 @@
 interface Position { x: number; y: number }
 
+/** A rigid body's presentation pose between fixed ticks: the solver records
+ * its previous pose each step, so sprites can follow it at frame rate. A
+ * jump longer than a teleport threshold is drawn where the body IS. */
+export function interpolateBody(
+  b: { x: number; y: number; angle: number; previousX?: number; previousY?: number; previousAngle?: number },
+  alpha: number,
+): { x: number; y: number; angle: number } {
+  const px = b.previousX ?? b.x, py = b.previousY ?? b.y, pa = b.previousAngle ?? b.angle;
+  const t = Math.max(0, Math.min(1, alpha));
+  if (Math.hypot(b.x - px, b.y - py) > 80) return { x: b.x, y: b.y, angle: b.angle };
+  return { x: px + (b.x - px) * t, y: py + (b.y - py) * t, angle: pa + Math.atan2(Math.sin(b.angle - pa), Math.cos(b.angle - pa)) * t };
+}
+
 /** Previous fixed-tick positions live only in the presentation layer. */
 export class RenderPoses {
   private readonly previous = new WeakMap<object, Position>();
