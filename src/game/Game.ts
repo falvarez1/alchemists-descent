@@ -5,6 +5,8 @@ import { EventBus } from '@/core/events';
 import { updateLivingExpedition } from '@/game/LivingExpedition';
 import { updateHabitatMotion } from '@/game/HabitatMotion';
 import { advanceTrickshotClock } from '@/combat/Trickshot';
+import { TeaMachine } from '@/game/TeaMachine';
+import { TeaMachineOverlay } from '@/ui/TeaMachineOverlay';
 import { updateLegSwing } from '@/combat/WeaverLimbs';
 import { ExpeditionEntry } from '@/ui/ExpeditionEntry';
 import { randomSeed } from '@/core/rng';
@@ -237,6 +239,9 @@ export class Game {
     ctx.perf = this.perfHud;
     ctx.console = createConsoleApi(ctx);
     this.ctx = ctx;
+    const contraption = new TeaMachine(ctx);
+    ctx.contraption = contraption;
+    this.disposables.push(contraption);
 
     // Rehydrate live tuning (Global Controls, player feel, worldgen look, material/
     // spell params) from localStorage BEFORE the UI seeds its sliders or the first
@@ -331,6 +336,7 @@ export class Game {
     this.pollInput = () => inputManager.pollGamepad();
     this.entry = new ExpeditionEntry(ctx);
     this.disposables.push(this.entry);
+    this.disposables.push(new TeaMachineOverlay(ctx));
     this.restoreSavedMode = () => {
       if (!import.meta.env.DEV) return;
       const mode = readAppMode();
@@ -544,6 +550,7 @@ export class Game {
       bounds.y0 = Math.max(0, Math.floor(ctx.player.y - VIEW_H / 2 - 80));
       bounds.y1 = Math.min(ctx.world.height, Math.ceil(ctx.player.y + VIEW_H / 2 + 80));
     }
+    ctx.contraption?.includeSimulation();
 
     if (!frozen) {
       ctx.world.simulationTick = ctx.state.frameCount;
@@ -562,8 +569,8 @@ export class Game {
       this.perfHud.mark('sim', simMs);
 
       const tEnt = performance.now();
-      if (!dbg.frozenPlayer()) { ctx.playerCtl.update(ctx); if (!ctx.player.dead) updateLegSwing(ctx); }
-      if (!debugActive) ctx.flask.update(ctx);
+      if (!dbg.frozenPlayer() && !ctx.contraption?.watching) { ctx.playerCtl.update(ctx); if (!ctx.player.dead) updateLegSwing(ctx); }
+      if (!debugActive && !ctx.contraption?.watching) ctx.flask.update(ctx);
       const enemyStart = performance.now();
       ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy
       let creatureMs = performance.now() - enemyStart;
@@ -579,6 +586,7 @@ export class Game {
         ctx.levels.update(ctx);
         ctx.pickups.update(ctx);
         ctx.mechanisms.update(ctx);
+        ctx.contraption?.update();
         updateLivingExpedition(ctx);
         updateHabitatMotion(ctx);
         this.habitatAudio.update(ctx);

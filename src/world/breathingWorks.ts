@@ -4,6 +4,7 @@ import type { AuthoredLight, Ctx, Mechanism, Pickup, WorldGenApi } from '@/core/
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { dressWorksHabitat } from './worksHabitat';
+import { stampTeaMachine, TEA } from './teaMachine';
 
 /** Authored encounter geometry; every ledge, reservoir and pipe below is real material. */
 export const WORKS_ROOMS = [
@@ -185,6 +186,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   ];
   const pickup = (kind: Pickup['kind'], x: number, y: number, data: Pickup['data'] = {}): Pickup =>
     ({ kind, x, y, vx: 0, vy: 0, taken: false, data });
+  const machineLights = stampTeaMachine(world, mechanisms);
   const lamp = (x: number, y: number, warm = false, radius = 120): AuthoredLight => ({
     x, y, r: warm ? 1 : 0.46, g: warm ? 0.66 : 0.81, b: warm ? 0.30 : 0.75,
     intensity: 0.65, radius, bloom: 0.12, flicker: 0.04, flickerPhase: hash(x, y) % 600,
@@ -194,7 +196,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     spawn: { x: 170, y: 314 }, exit: { x: 1400, sealY: 1010, halfW: 14 },
     waystones: [{ x: 192, y: 314, lit: true }, { x: 857, y: 743, lit: true }],
     portal: { x: 1400, y: 1008, open: false }, cauldron: null,
-    pickups: [pickup('key', 285, 772), pickup('tome', 892, 735, { card: 'heavy' }),
+    pickups: [pickup('key', TEA.receiver.x, TEA.receiver.y), pickup('tome', 892, 735, { card: 'heavy' }),
       pickup('tome', 265, 252, { card: 'bounce' }), pickup('tome', 1125, 270, { card: 'frostshard' }),
       pickup('tome', 672, 942, { card: 'double' }),
       pickup('heart', 820, 735), pickup('goldpile', 1470, 722, { amount: 60 }),
@@ -210,9 +212,10 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       { kind: 'rootloper', x: 542, y: 816, sourceId: 'works-rootloper-garden' },
       { kind: 'stonemaw', x: 755, y: 1008, sourceId: 'works-stonemaw-undertow' },
     ],
-    placedPrefabs: WORKS_ROOMS.map(r => ({ id: `works-${r.id}`, x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.floor })),
+    placedPrefabs: [...WORKS_ROOMS.map(r => ({ id: `works-${r.id}`, x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.floor })),
+      { id: 'works-bell-tea-engine', ...TEA.bounds }],
     authoredLights: [lamp(180, 279, true, 150), lamp(30, 300, true, 70), lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),
-      lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true)],
+      lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true), ...machineLights],
     emitters: [], decors: [], refuge: { x: 857, y: 739 }, spellLab: null,
     vaultArch: null, vaultHoard: null, surfaceSpawn: null, surfaceSkyLine: null,
   };

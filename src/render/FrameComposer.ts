@@ -35,6 +35,7 @@ import { looseLegPose } from '@/combat/LooseWeaverLeg';
 import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
+import { drawTeaMachineDecor } from '@/render/TeaMachineDecor';
 import {
   drawDigBeam,
   drawLightningArcs,
@@ -884,6 +885,7 @@ export class FrameComposer implements PixelSurface {
     this.drawCritters(ctx);
     this.drawFlaskEffects(ctx);
     this.drawRigidBodies(ctx);
+    drawTeaMachineDecor(this, ctx);
     this.drawVineStrands(ctx, 'foreground');
 
     // Entities on top. Contact shadows first, under everything, so a body's
@@ -1025,6 +1027,16 @@ export class FrameComposer implements PixelSurface {
     if (ctx.state.mode !== 'play') return;
     const frame = ctx.state.frameCount;
     for (const b of ctx.rigidBodies.bodies) {
+      if (b.rope) {
+        const rope = b.rope, distance = Math.hypot(b.x - rope.x, b.y - rope.y);
+        const slack = Math.sqrt(Math.max(0, rope.length * rope.length - distance * distance)) * .25;
+        for (let i = 0; i <= distance; i += .5) {
+          const t = i / Math.max(1, distance);
+          const x = rope.x + (b.x - rope.x) * t, y = rope.y + (b.y - rope.y) * t + Math.sin(t * Math.PI) * slack;
+          const shade = Math.floor(i) % 3 === 0 ? .8 : .58;
+          this.setPx(x, y, shade, shade * .78, shade * .43);
+        }
+      }
       if (b.tag?.startsWith('player-corpse')) continue; // drawn as a limp wizard in drawPlayerRagdoll
       let r = ((b.color >> 16) & 0xff) / 255;
       let g = ((b.color >> 8) & 0xff) / 255;
@@ -1568,7 +1580,7 @@ export class FrameComposer implements PixelSurface {
     const frame = ctx.state.frameCount;
 
     for (const p of runtime.pickups) {
-      if (p.taken) continue;
+      if (p.taken || (p.kind === 'key' && runtime.living && !runtime.living.tea?.completed)) continue;
       if (p.kind === 'weaverleg') {
         drawLooseLeg(this, this.light, ctx, p, this.alpha);
         continue;

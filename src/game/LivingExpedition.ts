@@ -21,19 +21,12 @@ export function livingObjective(ctx: Ctx): string | null {
     if (phase === 'inhale') return 'The pipes are drawing breath. Get beneath a shelter.';
     if (phase === 'exhale') return 'The Works exhale. Cross between the steam jets.';
   }
-  if (rt.keyTaken) return 'The bell is yours. Follow the undertow to the lower gate.';
-  switch (living.room) {
-    case 'intake': return rt.pickups.some(p => p.kind === 'tome' && p.x === 265 && !p.taken)
-      ? 'A lost spell page rests above the intake. Hold jump to rise.' : 'Follow the copper pipes into the Works.';
-    case 'sluice': return 'Drain the sluice, freeze a crossing, or take the high ledges.';
-    case 'gallery': return ctx.enemies.some(e => e.kind === 'weaver' && (e.weaverFeedT ?? 0) > 0 && e.x > 1000 && e.y < 500)
-      ? 'The Weaver is feeding. Stay low and pass while it eats.'
-      : 'The Weaver follows light and prey. Crawl beneath the catwalk.';
-    case 'refuge': return living.rested ? 'Rework your wand here. The garden lies to the left.' : 'Rest at the warm stone. The garden lies to the left.';
-    case 'silt': return 'Find the brass bell above the garden pool.';
-    case 'return': return 'The garden holds the bell. Climb back through the silt.';
-    default: return 'Find the warm refuge beyond the pressure chamber.';
-  }
+  if (!living.tea?.completed) return living.tea?.stalled
+    ? 'The engine stalled. Use its crank again to recharge the workshop.'
+    : living.tea && living.tea.stage > 0 ? 'The Bell & Tea Engine is running. Its receiver is at the far end of the catwalk.'
+    : 'Start the Bell & Tea Engine. Follow the upper walkway right to its crank.';
+  if (!rt.keyTaken) return 'Collect the brass bell at the far end of the engine’s catwalk.';
+  return 'The bell is yours. Follow the undertow to the lower gate.';
 }
 
 /** Throws a physical lure; creatures respond to its position and the prey it gathers. */

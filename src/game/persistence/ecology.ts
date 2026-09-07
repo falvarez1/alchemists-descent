@@ -3,6 +3,7 @@ import { createLivingState } from '@/game/LivingExpedition';
 import { WORKS_ROOMS } from '@/world/breathingWorks';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { WORKS_PLANTS } from '@/world/worksHabitat';
+import { restoreTeaMachine } from '@/game/TeaMachine';
 
 const finite = (value: unknown, fallback: number, min: number, max: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
@@ -30,6 +31,7 @@ export function restoreLiving(value: unknown): LivingExpeditionState {
   const state = createLivingState();
   if (!value || typeof value !== 'object') return state;
   const raw = value as Partial<LivingExpeditionState>;
+  state.tea = restoreTeaMachine(raw.tea);
   const rooms = new Set<string>(WORKS_ROOMS.map(room => room.id));
   state.ticks = Math.floor(finite(raw.ticks, 0, 0, Number.MAX_SAFE_INTEGER));
   state.room = rooms.has(raw.room ?? '') ? raw.room! : 'intake';

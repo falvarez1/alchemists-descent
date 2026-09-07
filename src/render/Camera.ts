@@ -37,6 +37,7 @@ export class Camera implements CameraApi {
   cineDx = 0;
   cineDy = 0;
   cineZoom = 1;
+  actionFocus: { x: number; y: number; zoom: number } | null = null;
   idleFrames = 0;
   private aimLookaheadX = 0;
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
@@ -47,7 +48,11 @@ export class Camera implements CameraApi {
 
   update(ctx: Ctx): void {
     const { player, state, input } = ctx;
-    if (state.mode === 'play' && this.inspectionFocus !== null) {
+    const action = state.mode === 'play' ? this.actionFocus : null;
+    if (action) {
+      this.tx = action.x - VIEW_W / 2;
+      this.ty = action.y - VIEW_H / 2;
+    } else if (state.mode === 'play' && this.inspectionFocus !== null) {
       this.tx = this.inspectionFocus.x - VIEW_W / 2;
       this.ty = this.inspectionFocus.y - VIEW_H / 2;
     } else if (state.mode === 'play' && !player.dead) {
@@ -92,8 +97,10 @@ export class Camera implements CameraApi {
       if (input.keys.jump) this.ty -= pan;
       if (input.keys.down) this.ty += pan;
     }
-    this.tx = clamp(this.tx, 0, WIDTH - VIEW_W);
-    this.ty = clamp(this.ty, 0, HEIGHT - VIEW_H + CAMERA_BOTTOM_VOID);
+    const padX = action ? VIEW_W * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
+    const padY = action ? VIEW_H * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
+    this.tx = clamp(this.tx, -padX, WIDTH - VIEW_W + padX);
+    this.ty = clamp(this.ty, -padY, HEIGHT - VIEW_H + CAMERA_BOTTOM_VOID);
     this.x += (this.tx - this.x) * 0.12;
     this.y += (this.ty - this.y) * 0.085;
     if (Math.abs(this.tx - this.x) < .0001) this.x = this.tx;
@@ -108,8 +115,8 @@ export class Camera implements CameraApi {
       !player.grounded ||
       player.firing;
     this.idleFrames = busy ? 0 : this.idleFrames + 1;
-    const zTarget = this.zoomLock ?? this.cineZoom;
-    this.zoom += (zTarget - this.zoom) * (this.zoomLock !== null ? 0.16 : this.cineZoom !== 1 ? 0.09 : 0.035);
+    const zTarget = action?.zoom ?? this.zoomLock ?? this.cineZoom;
+    this.zoom += (zTarget - this.zoom) * (action ? .035 : this.zoomLock !== null ? 0.16 : this.cineZoom !== 1 ? 0.09 : 0.035);
   }
 
   updateSimBounds(world: World): void {

@@ -8,6 +8,7 @@ import type { CardId, TimeControlStatus } from '@/core/types';
  * score subscribe without the sim knowing they exist.
  */
 export interface EventMap {
+  contraptionView: { visible: boolean; watching: boolean; title: string; detail: string; stage: number; stalled: boolean };
   habitatSound: { kind: 'weaver' | 'rillback'; x: number; y: number };
   creatureSignal: { x: number; y: number; radius: number; strength: number; kind: 'sound' | 'vibration' | 'lure' };
   /** Gold total changed — HUD score readouts re-render. */

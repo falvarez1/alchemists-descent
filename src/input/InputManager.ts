@@ -147,7 +147,8 @@ export class InputManager {
           else window.dispatchEvent(new Event('game-pause-request'));
         }
       }
-      if (!ctx.state.paused && !document.querySelector(KEYBOARD_UI_BLOCK_SELECTOR)) {
+      if (ctx.contraption?.watching && pressed(1)) ctx.contraption.skip();
+      if (!ctx.state.paused && !ctx.contraption?.watching && !document.querySelector(KEYBOARD_UI_BLOCK_SELECTOR)) {
         const ax = pad.axes[0] ?? 0, ay = pad.axes[1] ?? 0;
         const aimX = pad.axes[2] ?? 0, aimY = pad.axes[3] ?? 0;
         const active = Math.hypot(ax, ay) > 0.2 || Math.hypot(aimX, aimY) > 0.25 || pad.buttons.some(b => b.pressed);
@@ -316,6 +317,7 @@ export class InputManager {
 
   private onMouseDown(e: MouseEvent): void {
     const { ctx } = this;
+    if (ctx.contraption?.watching) return;
     ctx.audio.ensure();
     const coords = this.getMouseGridCoords(e);
     ctx.input.mouse.x = coords.x;
@@ -520,6 +522,7 @@ export class InputManager {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    if (this.ctx.contraption?.watching && e.code !== 'Escape') return;
     if (e.defaultPrevented) return;
     if (this.shouldIgnoreKeyboard(e)) return;
     const { ctx } = this;

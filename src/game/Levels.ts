@@ -951,7 +951,8 @@ export class Levels implements LevelsApi {
       const pdx = player.x - portal.x;
       const pdy = player.y - 6 - portal.y;
       const near = pdx * pdx + pdy * pdy < 100;
-      if (near && runtime.keyTaken) {
+      const engineReady = !runtime.living || runtime.living.tea?.completed === true;
+      if (near && runtime.keyTaken && engineReady) {
         if (!portal.open) {
           portal.open = true;
           ctx.audio.portalWhoosh();
@@ -971,9 +972,9 @@ export class Levels implements LevelsApi {
         }
         return;
       }
-      if (near && !runtime.keyTaken && ctx.state.frameCount % 90 === 0) {
+      if (near && (!runtime.keyTaken || !engineReady) && ctx.state.frameCount % 90 === 0) {
         ctx.events.emit('toast', {
-          text: runtime.living ? 'The lower gate awaits the brass bell.' : 'SEALED — THE GOLDEN KEY IS MISSING',
+          text: runtime.living ? 'Restart the Bell & Tea Engine above the Intake. Bring its brass bell here.' : 'SEALED — THE GOLDEN KEY IS MISSING',
         });
       }
     }

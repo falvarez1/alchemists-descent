@@ -112,6 +112,7 @@ export class RigidBodies implements RigidBodiesApi {
   playerRagdoll: PlayerRagdollRig | null = null;
   private world: RWorld;
   private readonly handles = new Map<RigidBody, RBody>();
+  private readonly ropeAnchors = new Map<RigidBody, RBody>();
   private readonly terrain = new Map<number, RCollider>();
   /** Cell index → frame it left the desired set. Removal is DEFERRED a few frames
    *  so we never yank a collider out of an active contact with a fast body (that
@@ -165,6 +166,7 @@ export class RigidBodies implements RigidBodiesApi {
       .setAdditionalSolverIterations(opts.tag?.startsWith('player-corpse') ? 4 : 0)
       .setCcdEnabled(true);
     const rb = this.world.createRigidBody(desc);
+    if (opts.steamPiston) rb.lockRotations(true, true);
     const matDef = opts.material ? bodyMaterialDef(opts.material) : null;
     const density = opts.density ?? matDef?.density ?? 1;
     const color = opts.color ?? matDef?.color ?? packRGB(150, 100, 55);
@@ -206,6 +208,7 @@ export class RigidBodies implements RigidBodiesApi {
       tag: opts.tag,
       data: opts.data,
       onTerrainHit: opts.onTerrainHit,
+      steamPiston: opts.steamPiston,
     };
     this.handles.set(body, rb);
     this.bodies.push(body);
@@ -214,6 +217,7 @@ export class RigidBodies implements RigidBodiesApi {
   }
 
   remove(body: RigidBody): void {
+    this.cutRope(body);
     if (this.playerRagdoll && Object.values(this.playerRagdoll.parts).includes(body)) {
       const parts = Object.values(this.playerRagdoll.parts); this.playerRagdoll = null;
       for (const part of parts) if (part !== body) this.remove(part);
@@ -248,10 +252,11 @@ export class RigidBodies implements RigidBodiesApi {
   /** A body the eviction sweep must never claim: the one the player is holding, or
    *  a long-lived tagged body whose owner keeps polling it (the player corpse). */
   private evictionProtected(b: RigidBody): boolean {
-    return b === this.held || b.tag?.startsWith('player-corpse') === true;
+    return b === this.held || b.tag?.startsWith('player-corpse') === true || b.tag?.startsWith('tea-') === true;
   }
 
   clear(): void {
+    for (const body of this.ropeAnchors.keys()) this.cutRope(body);
     this.held = null;
     this.playerCorpse = null;
     this.playerRagdoll = null;
@@ -262,6 +267,23 @@ export class RigidBodies implements RigidBodiesApi {
     for (const col of this.terrain.values()) this.world.removeCollider(col, false);
     this.terrain.clear();
     this.terrainStale.clear();
+  }
+
+  tieRope(body: RigidBody, x: number, y: number, length = Math.hypot(body.x - x, body.y - y)): void {
+    const rb = this.handles.get(body);
+    if (!rb || ![x, y, length].every(Number.isFinite) || length < 1 || length > 300) return;
+    this.cutRope(body);
+    const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y));
+    this.world.createImpulseJoint(RAPIER.JointData.rope(length, { x: 0, y: 0 }, { x: 0, y: 0 }), anchor, rb, true);
+    this.ropeAnchors.set(body, anchor);
+    body.rope = { x, y, length };
+  }
+
+  cutRope(body: RigidBody): void {
+    const anchor = this.ropeAnchors.get(body);
+    if (anchor) this.world.removeRigidBody(anchor);
+    this.ropeAnchors.delete(body);
+    body.rope = undefined;
   }
 
   /** Eleven small bodies, nine limited anatomical joints, and one loose hat.
@@ -875,9 +897,11 @@ export class RigidBodies implements RigidBodiesApi {
     if (dead) for (const body of dead) this.remove(body);
     this.tickGoreChunks(ctx);
     this.reactBodies(ctx);
-    this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
-    this.updatePlankRip(ctx); // hold E aimed at a wood platform to tear a plank loose
-    this.resolvePlayer(ctx);
+    if (!ctx.contraption?.watching) {
+      this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
+      this.updatePlankRip(ctx);
+      this.resolvePlayer(ctx);
+    }
     this.resolveBodyEnemyHits(ctx); // thrown/flung bodies bludgeon foes they strike
   }
 
@@ -934,6 +958,7 @@ export class RigidBodies implements RigidBodiesApi {
    *  flow still resolves without its ragdoll. */
   private recoverFromFault(err: unknown): void {
     this.world = this.createWorld();
+    this.ropeAnchors.clear();
     this.handles.clear();
     this.terrain.clear();
     this.terrainStale.clear();
@@ -988,6 +1013,28 @@ export class RigidBodies implements RigidBodiesApi {
       const body = this.bodies[i];
       if (body.kind !== 'dynamic') continue;
       const matDef = body.material ? bodyMaterialDef(body.material) : null;
+
+      // Hemp responds to the same heat and solvent as the rest of the room.
+      // Sampling along its live span also lets a player cut it with a flame.
+      const rope = body.rope;
+      if (rope) {
+        const distance = Math.hypot(body.x - rope.x, body.y - rope.y);
+        for (let d = 3; d < distance - 3; d += 2) {
+          const t = world.type(Math.round(rope.x + (body.x - rope.x) * d / distance), Math.round(rope.y + (body.y - rope.y) * d / distance));
+          if (isHotCell(t) || t === Cell.Acid) { this.cutRope(body); break; }
+        }
+      }
+
+      // A piston is a pressure face, not a floating stone. Only real steam
+      // trapped immediately beneath its broad underside supplies lift.
+      if (body.steamPiston && body.shape.kind === 'box') {
+        let steam = 0;
+        const bottom = Math.ceil(body.y + body.shape.halfH);
+        for (let x = Math.floor(body.x - body.shape.halfW); x <= body.x + body.shape.halfW; x++) {
+          for (let y = bottom; y <= bottom + 12; y++) if (world.type(x, y) === Cell.Steam) steam++;
+        }
+        if (steam > 3) this.applyImpulse(body, 0, -Math.min(1.2, steam * .12));
+      }
 
       // FIRE — a flammable body lit by adjacent fire/lava/ember burns, then chars to ash.
       if (matDef?.flammable) {
@@ -1055,7 +1102,9 @@ export class RigidBodies implements RigidBodiesApi {
           const density = Math.max(0.2, body.density ?? 1);
           const buoy = submerged * (WATER_DENSITY / density) * GRAVITY * DT; // upward (−y)
           const drag = 1 - Math.min(0.5, submerged * WATER_DRAG);
-          const nvx = v.x * drag;
+          // Currents carry floating props, just as they carry suspended cells.
+          const flowX = Math.max(-3, Math.min(3, world.flow.x(body.x, body.y))) * PF;
+          const nvx = v.x * drag + flowX * (1 - drag);
           const nvy = (v.y - buoy) * drag;
           rb.setLinvel({ x: nvx, y: nvy }, true);
           rb.setAngvel(rb.angvel() * drag, true);

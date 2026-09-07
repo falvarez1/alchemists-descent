@@ -48,6 +48,7 @@ export class Pickups implements PickupsApi {
 
     for (const p of runtime.pickups) {
       if (p.taken || p.data.offerPending) continue;
+      if (p.kind === 'key' && runtime.living && !runtime.living.tea?.completed) continue;
       const handsFree = !player.legClub && !player.swinging && !ctx.rigidBodies?.isHolding?.();
       if (p.kind === 'weaverleg' && p.data.legDurability !== undefined) {
         updateLooseWeaverLeg(ctx, p);

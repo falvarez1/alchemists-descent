@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 40; // 40: the Intake's two lessons — an oil-cored wooden gate over a lit store, a sand-plugged overhang over gold
+export const GEN_VERSION = 41; // 41: the Bell & Tea Engine produces D1's required brass bell; connected workshop catwalk
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

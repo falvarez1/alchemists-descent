@@ -1505,6 +1505,10 @@ export type BodyMaterial = 'wood' | 'metal' | 'stone';
  * cells/frame; `va` rad/frame.
  */
 export interface RigidBody {
+  /** A real maximum-length rope to a fixed world anchor. */
+  rope?: { x: number; y: number; length: number };
+  /** A broad piston face that receives pressure from real steam beneath it. */
+  steamPiston?: boolean;
   readonly id: number;
   kind: RigidBodyKind;
   shape: RigidShape;
@@ -1559,6 +1563,7 @@ export interface RigidBody {
 }
 
 export interface SpawnBodyOpts {
+  steamPiston?: boolean;
   kind?: RigidBodyKind;
   vx?: number;
   vy?: number;
@@ -1635,6 +1640,8 @@ export interface PlayerRagdollRig {
 }
 
 export interface RigidBodiesApi {
+  tieRope(body: RigidBody, x: number, y: number, length?: number): void;
+  cutRope(body: RigidBody): void;
   readonly playerRagdoll?: PlayerRagdollRig | null;
   spawnPlayerRagdoll?(player: PlayerState): RigidBody;
   /** Live list — mutated in place, never reassigned (entity-array invariant). */
@@ -1845,6 +1852,7 @@ export interface SpellsApi {
 }
 
 export interface CameraApi {
+  actionFocus?: { x: number; y: number; zoom: number } | null;
   x: number;
   y: number;
   tx: number;
@@ -2851,7 +2859,17 @@ export interface HabitatPlantState {
 }
 
 /** Expedition ecology and room progress; separate from Builder documents. */
+export interface TeaMachineState {
+  stage: number;
+  ticks: number;
+  stageTicks: number;
+  completed: boolean;
+  stalled: boolean;
+  bodies: Array<{ key: string; x: number; y: number; vx: number; vy: number; angle: number; va: number; rope: boolean }>;
+}
+
 export interface LivingExpeditionState {
+  tea?: TeaMachineState;
   /** Authored crowns retain damage and falling motion through an expedition save. */
   plants?: Array<HabitatPlantState | null>;
   valveTurn?: number;
@@ -2945,6 +2963,14 @@ export interface DebugControl {
 }
 
 export interface Ctx {
+  /** Optional authored spectacle director; absent in small test contexts. */
+  contraption?: {
+    readonly watching: boolean;
+    update(): void;
+    skip(): void;
+    interact(): boolean;
+    includeSimulation(): void;
+  };
   world: World;
   events: EventBus;
   audio: AudioApi;

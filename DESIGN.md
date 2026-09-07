@@ -564,6 +564,14 @@ Creature cards show static previews until the labelled pose loop is opened, disc
 
 Terrain, water, props and bodies respond to their own state. Creature art samples habitat lighting with a local readability floor and applies a bounded warm hit lift while retaining body shading; reduced-flash mode skips that tint. Reduced flashes also lower the damage-vignette opacity and disable selected HUD animations. The operating-system reduced-motion query reduces CSS animation and transition durations to 0.01ms. Camera shake and high-readability lighting are independent settings. These implemented controls do not by themselves establish accessibility or real-controller acceptance.
 
+### Bell & Tea Engine action view
+
+[TeaMachineOverlay.ts](src/ui/TeaMachineOverlay.ts) pairs a centered bottom caption with a top-right **Return to player — Esc** button while the first-level engine runs. The square caption uses dark slate, a thin worn-brass border, warm lettering and a Georgia heading; explanation text inherits the system font. Heading, explanation and return text all follow the saved text scale. At the existing compact-width breakpoint, the panel moves closer to the bottom edge and its heading and explanation reduce together. Hover lightens the return control; keyboard focus adds a pale-brass outline. Stage titles use a polite live region, and the ordinary HUD hides during the action view.
+
+[Camera.ts](src/render/Camera.ts) eases toward the current physical handoff and back to the player. Escape and the visible button return control while the engine continues. The close framing respects the camera comfort setting. [TeaMachineDecor.ts](src/render/TeaMachineDecor.ts) keeps brass wheels and the rotating duck in the native cell-scale rendering; the duck head is filled through rotation. The caption describes the observed stage and ends with the bell collection instruction. A stalled engine identifies its recharge crank.
+
+The bounded finish review is **PASS**, with scaled captions (TM1) and the solid rotated duck head (TM2) resolved. Desktop and compact captures use text scale 1.3. Physical completion, Escape/comfort and save/Continue checks are recorded separately in the [surface brief](.impeccable/surfaces/src-ui-teamachineoverlay-ts.md) and [engine record](docs/BELL-TEA-ENGINE.md); these checks do not establish subjective camera comfort or unaided-player acceptance.
+
 ## Do's and Don'ts
 
 ### Do:

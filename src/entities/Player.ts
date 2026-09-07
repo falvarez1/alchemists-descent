@@ -616,6 +616,7 @@ export class PlayerControl implements PlayerControlApi {
 
   /** Original: damagePlayer(amount, kx, ky) — lines 1565-1575. */
   damage(amount: number, kx: number, ky: number, src?: string): void {
+    if (this.ctx.contraption?.watching) return;
     const ctx = this.ctx;
     const player = ctx.player;
     if (player.dead || player.invuln > 0) return;
