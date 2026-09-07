@@ -22,7 +22,8 @@ function fixture() {
   const pickups: Pickup[] = [], player = createPlayer(); player.x = 65; player.y = 80; player.aimAngle = 0;
   const ctx = { world: new World(200, 120), state: { mode: 'play', frameCount: 5 }, player, enemies: [e],
     levels: { current: { pickups } }, fx: { hitstop: 0 }, events: { emit: vi.fn() }, telemetry: { count: vi.fn() },
-    audio: { tone: vi.fn(), noiseBurst: vi.fn(), pickup: vi.fn() }, particles: { burst: vi.fn() },
+    audio: { tone: vi.fn(), noiseBurst: vi.fn(), pickup: vi.fn(), at: (_x: number, _y: number, fn: () => void) => fn(),
+      finisherWhip: vi.fn(), duck: vi.fn(), shellCrack: vi.fn(), chirr: vi.fn() }, particles: { burst: vi.fn() },
     enemyCtl: { damage: vi.fn((enemy: Enemy, damage: number) => { enemy.hp -= damage; }), gustShove: vi.fn() },
   } as unknown as Ctx;
   return { ctx, e, pickups };

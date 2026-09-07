@@ -53,10 +53,19 @@ try {
   });
   check('the renderer mounted the main canvas', size.w > 600 && size.h > 400, JSON.stringify(size));
 
-  // Start a real run through the real UI.
-  await page.click('#mode-play-btn');
-  await page.waitForSelector('#run-launcher.visible', { timeout: 30000 });
-  await page.click('#run-launcher .run-launcher-start');
+  // Start through whichever cold-load flow this build presents.
+  const entryBegin = page.locator('#expedition-entry:not([hidden]) [data-entry="begin"]');
+  await Promise.race([
+    entryBegin.waitFor({ state: 'visible', timeout: 30000 }),
+    page.locator('#mode-play-btn').waitFor({ state: 'visible', timeout: 30000 }),
+  ]);
+  if (await entryBegin.isVisible()) {
+    await entryBegin.click();
+  } else {
+    await page.click('#mode-play-btn');
+    await page.waitForSelector('#run-launcher.visible', { timeout: 30000 });
+    await page.click('#run-launcher .run-launcher-start');
+  }
   await page.waitForFunction(() => document.body.classList.contains('play-active'), null, {
     timeout: 90000,
   });

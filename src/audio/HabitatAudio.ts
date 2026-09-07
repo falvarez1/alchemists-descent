@@ -1,4 +1,5 @@
 import type { Ctx } from '@/core/types';
+import { VIEW_H, VIEW_W } from '@/config/constants';
 import { Cell, isLiquid } from '@/sim/CellType';
 
 export class HabitatAudio {
@@ -7,6 +8,10 @@ export class HabitatAudio {
   private stride = 0;
 
   update(ctx: Ctx): void {
+    // The ears sit on the wizard in play and on the camera otherwise, so a
+    // positional voice in the Sandbox or Builder still comes from the right side.
+    if (ctx.state.mode === 'play' && !ctx.player.dead) ctx.audio.setListener(ctx.player.x, ctx.player.y - 8);
+    else ctx.audio.setListener(ctx.camera.x + VIEW_W / 2, ctx.camera.y + VIEW_H / 2);
     if (ctx.state.mode !== 'play' || ctx.player.dead) return;
     const { player, world } = ctx;
     const distance = Math.hypot(player.x - this.lastX, player.y - this.lastY);

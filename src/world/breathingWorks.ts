@@ -2,7 +2,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import { reseedAllStreams } from '@/core/simRandom';
 import type { AuthoredLight, Ctx, Mechanism, Pickup, WorldGenApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
-import { EMPTY_COLOR, packRGB } from '@/sim/colors';
+import { COLOR_FN, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { dressWorksHabitat } from './worksHabitat';
 
 /** Authored encounter geometry; every ledge, reservoir and pipe below is real material. */
@@ -124,6 +124,39 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   rect(1090, 278, 70, 6, Cell.Stone, packRGB(64, 87, 78));
   rect(638, 950, 70, 6, Cell.Wood, packRGB(87, 72, 49));
 
+  // TWO QUIET LESSONS IN THE INTAKE. Neither is on the forced route and
+  // neither does anything until the player acts, so they cannot overwhelm a
+  // first minute — but both are in the first camera frame, and both answer a
+  // wand with the whole simulation at once.
+  //
+  // 1. The sealed store, left of the spawn: a wooden gate in a stone wall,
+  //    a dark oil slick soaked into its foot, and warm light leaking over
+  //    the top of the wood. The spark bolt's blast turns wood and oil into
+  //    fire; the gate burns out of the wall and the store is open.
+  const oilColor = COLOR_FN[Cell.Oil] ?? (() => packRGB(46, 38, 28));
+  rect(14, 288, 31, 27);
+  rect(45, 290, 5, 25, Cell.Wood, packRGB(112, 84, 52));
+  // Oil-cored timber: two sealed channels of oil between three planks. Wood
+  // alone catches too fitfully (flammability 0.1) to burn a whole gate from
+  // one blast; once any plank opens, the oil inside burns long and hot,
+  // pours out of the breach, and takes the rest of the gate with it.
+  for (let y = 291; y < 315; y++) { put(46, y, Cell.Oil, oilColor()); put(48, y, Cell.Oil, oilColor()); }
+  // The slick runs UNDER the gate's foot as well: a burning gate that left a
+  // knee-high stump at the floor would still be a gate.
+  rect(45, 315, 13, 1);
+  for (let x = 45; x < 58; x++) put(x, 315, Cell.Oil, oilColor());
+  rect(18, 311, 7, 3, Cell.Glowshroom, packRGB(105, 175, 140));
+  // 2. The sand plug, over the walk from the spawn to the return shaft: a
+  //    stone overhang whose belly is packed with sand around a gold pile,
+  //    ore glinting on its underside (ore, not gold powder, which would pour
+  //    out on its own). The excavation ray opens the glinting lip; the sand
+  //    comes down in a curtain onto solid floor and the gold with it.
+  const sandColor = COLOR_FN[Cell.Sand] ?? (() => packRGB(126, 110, 74));
+  rect(288, 236, 40, 26, Cell.Stone, packRGB(52, 70, 74));
+  for (let y = 240; y < 258; y++) for (let x = 293; x < 323; x++) put(x, y, Cell.Sand, sandColor());
+  for (const [x, y] of [[303, 261], [304, 261], [305, 261], [311, 261], [312, 261], [308, 260], [317, 261]]) put(x, y, Cell.RawOre, packRGB(214, 176, 62));
+  rect(305, 312, 6, 3, Cell.Glowshroom, packRGB(105, 175, 140));
+
   // Chalk lips face walkable space. Sparse oxidation faces the walls.
   for (let y = 12; y < HEIGHT - 9; y++) {
     for (let x = 10; x < WIDTH - 10; x++) {
@@ -165,7 +198,9 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       pickup('tome', 265, 252, { card: 'bounce' }), pickup('tome', 1125, 270, { card: 'frostshard' }),
       pickup('tome', 672, 942, { card: 'double' }),
       pickup('heart', 820, 735), pickup('goldpile', 1470, 722, { amount: 60 }),
-      pickup('goldpile', 1063, 978, { amount: 30 })],
+      pickup('goldpile', 1063, 978, { amount: 30 }),
+      // The Intake lessons pay in gold: behind the wooden gate, and inside the sand plug.
+      pickup('goldpile', 30, 313, { amount: 45 }), pickup('goldpile', 308, 256, { amount: 40 })],
     mechanisms, runeVaults: [], boss: null,
     prefabEnemies: [
       { kind: 'rillback', x: 707, y: 413, sourceId: 'works-rillback-sluice' },
@@ -176,7 +211,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       { kind: 'stonemaw', x: 755, y: 1008, sourceId: 'works-stonemaw-undertow' },
     ],
     placedPrefabs: WORKS_ROOMS.map(r => ({ id: `works-${r.id}`, x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.floor })),
-    authoredLights: [lamp(180, 279, true, 150), lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),
+    authoredLights: [lamp(180, 279, true, 150), lamp(30, 300, true, 70), lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),
       lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true)],
     emitters: [], decors: [], refuge: { x: 857, y: 739 }, spellLab: null,
     vaultArch: null, vaultHoard: null, surfaceSpawn: null, surfaceSkyLine: null,

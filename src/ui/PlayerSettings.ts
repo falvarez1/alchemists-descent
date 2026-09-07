@@ -37,7 +37,11 @@ export class PlayerSettings {
       <label>Slow-motion duration <output id="trickshot-durationMs"></output><input type="range" name="durationMs" min="300" max="1200" step="100"></label>
       <label>Chain window <output id="trickshot-chainWindowMs"></output><input type="range" name="chainWindowMs" min="1200" max="4500" step="100"></label>
       <label>Aim assistance <output id="trickshot-assistDegrees"></output><input type="range" name="assistDegrees" min="0" max="8" step="1"></label>
-      <p>An assisted lock steadies single shots. The guide marks first contact; a wider ring shows spread, a broken ring marks uncertain follow-through. Seeking spells and streams keep free aim.</p></div></fieldset>
+      <p>An assisted lock steadies single shots. The guide marks first contact; a wider ring shows spread, a broken ring marks uncertain follow-through. Seeking spells and streams keep free aim.</p>
+      <label><input type="checkbox" name="finisher"> Humiliation finisher</label>
+      <p>With a Weaver's own leg in hand and its owner wounded, the swing slows as it closes, and only a real hit ends it. A miss just costs the moment.</p>
+      <label>Impact pause <output id="trickshot-impactPauseMs"></output><input type="range" name="impactPauseMs" min="0" max="70" step="10"></label>
+      <label><input type="checkbox" name="cameraMotion"> Camera leans in during the finisher</label></div></fieldset>
       <h3>Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask. With a Weaver leg equipped: left click whips, right click throws the leg, and Carry drops it.</p>
       <div class="binding-list"></div><p id="binding-feedback" role="status"></p>
       <button type="button" id="reset-controls">Restore controls</button>
@@ -61,9 +65,14 @@ export class PlayerSettings {
     this.dialog.querySelector('[name="trickshotEnabled"]')!.addEventListener('change', e => {
       this.preferences.trickshot.enabled = (e.target as HTMLInputElement).checked; this.apply(true);
     });
-    for (const name of ['timeScale', 'durationMs', 'chainWindowMs', 'assistDegrees'] as const) {
+    for (const name of ['timeScale', 'durationMs', 'chainWindowMs', 'assistDegrees', 'impactPauseMs'] as const) {
       this.dialog.querySelector(`[name="${name}"]`)!.addEventListener('input', e => {
         this.preferences.trickshot[name] = Number((e.target as HTMLInputElement).value); this.apply(true);
+      });
+    }
+    for (const name of ['finisher', 'cameraMotion'] as const) {
+      this.dialog.querySelector(`[name="${name}"]`)!.addEventListener('change', e => {
+        this.preferences.trickshot[name] = (e.target as HTMLInputElement).checked; this.apply(true);
       });
     }
     this.renderBindings(); this.apply();
@@ -111,10 +120,14 @@ export class PlayerSettings {
     if (!this.preferences.trickshot.enabled) this.ctx.fx.trickshot = undefined;
     (this.dialog.querySelector('[name="trickshotEnabled"]') as HTMLInputElement).checked = this.preferences.trickshot.enabled;
     (this.dialog.querySelector('#trickshot-tuning') as HTMLElement).hidden = !this.preferences.trickshot.enabled;
-    for (const name of ['timeScale', 'durationMs', 'chainWindowMs', 'assistDegrees'] as const) {
+    for (const name of ['timeScale', 'durationMs', 'chainWindowMs', 'assistDegrees', 'impactPauseMs'] as const) {
       const value = this.preferences.trickshot[name];
       (this.dialog.querySelector(`[name="${name}"]`) as HTMLInputElement).value = String(value);
-      this.dialog.querySelector(`#trickshot-${name}`)!.textContent = name === 'timeScale' ? `${Math.round(value * 100)}%` : name === 'assistDegrees' ? `${value}°` : `${(value / 1000).toFixed(1)}s`;
+      this.dialog.querySelector(`#trickshot-${name}`)!.textContent =
+        name === 'timeScale' ? `${Math.round(value * 100)}%` : name === 'assistDegrees' ? `${value}°` : name === 'impactPauseMs' ? `${value} ms` : `${(value / 1000).toFixed(1)}s`;
+    }
+    for (const name of ['finisher', 'cameraMotion'] as const) {
+      (this.dialog.querySelector(`[name="${name}"]`) as HTMLInputElement).checked = this.preferences.trickshot[name];
     }
     (this.dialog.querySelector('[name="textScale"]') as HTMLSelectElement).value = String(this.preferences.textScale);
     for (const name of ['reducedFlashes', 'cameraShake', 'highReadability', 'creatureCaptions'] as const) {

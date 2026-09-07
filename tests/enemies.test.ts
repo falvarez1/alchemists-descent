@@ -84,6 +84,13 @@ describe('enemy bounty economy', () => {
   });
 });
 
+/** Creature voices are positional now: `at` runs the placed cue, every other method is a no-op unless counted. */
+const fakeAudio = (counted: Record<string, () => void> = {}): Ctx['audio'] =>
+  new Proxy(counted, {
+    get: (target, key) =>
+      key === 'at' ? (_x: number, _y: number, fn: () => void) => fn() : (target[key as string] ?? (() => undefined)),
+  }) as unknown as Ctx['audio'];
+
 describe('enemy controller edge cases', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -231,7 +238,7 @@ describe('enemy controller edge cases', () => {
           type: number | null,
         ) => spawned.push({ type }),
       },
-      audio: { tone: () => undefined },
+      audio: fakeAudio(),
       camera: { x: 0, y: 0 },
       fx: { screenShake: 0 },
     } as unknown as Ctx;
@@ -256,7 +263,7 @@ describe('enemy controller edge cases', () => {
       particles: {
         spawn: (_x: number, _y: number, _vx: number, _vy: number, type: number | null) => spawned.push({ type }),
       },
-      audio: { tone: () => undefined },
+      audio: fakeAudio(),
       camera: { x: 0, y: 0 },
       fx: { screenShake: 0 },
       levels: { current: null },
@@ -341,7 +348,7 @@ describe('enemy controller edge cases', () => {
         spawn: (_x: number, _y: number, _vx: number, _vy: number, type: number | null) => spawned.push({ type }),
         burst: () => undefined,
       },
-      audio: { hollowKnock: () => undefined },
+      audio: fakeAudio(),
       camera: { x: 0, y: 0 },
       fx: { screenShake: 0 },
       levels: { current: null },
@@ -443,7 +450,7 @@ describe('enemy controller edge cases', () => {
     const world = new World(70, 60);
     const ctx = {
       world,
-      audio: { zap: () => undefined },
+      audio: fakeAudio(),
       particles: { burst: () => undefined },
     } as unknown as Ctx;
     const enemies = new Enemies(ctx);
@@ -630,7 +637,7 @@ describe('weaver encounter contract', () => {
     const webShots: Array<{ x: number; y: number; dirX: number; dirY: number; length?: number; ashOnExpire?: boolean }> = [];
     const ctx = {
       world,
-      audio: { squelch: () => undefined },
+      audio: fakeAudio(),
       particles: { burst: () => undefined },
       vineStrands: {
         addWebShot: (
@@ -682,7 +689,7 @@ describe('weaver encounter contract', () => {
           return undefined;
         },
       },
-      audio: { squelch: () => undefined },
+      audio: fakeAudio(),
       particles: { burst: () => undefined },
     } as unknown as Ctx;
     const enemies = new Enemies(ctx);
@@ -716,7 +723,7 @@ describe('weaver encounter contract', () => {
       burst: 0,
       impulse: 0,
       scatter: 0,
-      squelch: 0,
+      chirr: 0,
       tone: 0,
       webShot: 0,
     };
@@ -742,14 +749,14 @@ describe('weaver encounter contract', () => {
       enemies: [sleeper],
       state: { worldSeed: 7, frameCount: 0 },
       player: { x: 30, y: 80 },
-      audio: {
-        squelch: () => {
-          calls.squelch++;
+      audio: fakeAudio({
+        chirr: () => {
+          calls.chirr++;
         },
         tone: () => {
           calls.tone++;
         },
-      },
+      }),
       particles: {
         burst: () => {
           calls.burst++;
@@ -787,7 +794,7 @@ describe('weaver encounter contract', () => {
     expect(calls.webShot).toBe(1);
     expect(calls.scatter).toBe(1);
     expect(calls.impulse).toBe(1);
-    expect(calls.squelch).toBeGreaterThan(0);
+    expect(calls.chirr).toBeGreaterThan(0);
     expect(calls.tone).toBeGreaterThan(0);
     expect(calls.burst).toBeGreaterThanOrEqual(2);
     expect(ctx.fx.screenShake).toBeGreaterThan(0);
@@ -796,7 +803,7 @@ describe('weaver encounter contract', () => {
     calls.burst = 0;
     calls.impulse = 0;
     calls.scatter = 0;
-    calls.squelch = 0;
+    calls.chirr = 0;
     calls.tone = 0;
     calls.webShot = 0;
     ctx.fx.screenShake = 0;
@@ -814,7 +821,7 @@ describe('weaver encounter contract', () => {
     expect(calls.webShot).toBe(1);
     expect(calls.scatter).toBe(1);
     expect(calls.impulse).toBe(1);
-    expect(calls.squelch).toBeGreaterThan(0);
+    expect(calls.chirr).toBeGreaterThan(0);
     expect(calls.burst).toBeGreaterThanOrEqual(2);
     expect(ctx.fx.screenShake).toBeGreaterThan(0);
   });

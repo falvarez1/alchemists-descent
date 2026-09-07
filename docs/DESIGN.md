@@ -8,6 +8,8 @@ Begin or continue an expedition directly from the entry screen. Explore the Inta
 
 The starting kit includes spark and excavation wands, water, nitrogen, oil, and physical glowseeds. Movement starts at full pace. Players can take dry ledges, drain the sluice with its handwheel, alter water with chemistry, or draw prey and predators aside. The optional wand upgrade rewards exploration. The first route requires no compulsory lesson, upgrade, or enemy kill.
 
+The Intake also holds two quiet lessons, both in the first camera frame and neither on the forced route: an oil-cored wooden gate with warm light leaking over it seals a small store left of the spawn (the spark bolt's blast burns it out of the wall), and a sand-packed stone overhang with ore glinting on its underside hangs over the walk to the return shaft (the excavation ray opens the lip; the sand comes down in a curtain and a gold pile with it). Nothing happens until the player acts, so they cannot overwhelm the opening minute; when the player does act, the whole simulation answers.
+
 Weavers remember what they saw and heard, investigate disturbances, feed, and return to their habitat. Their planted legs support a separate head and articulated posture. Rillbacks move through connected physical body segments and telegraph their attacks. Small fauna persist through saving and returning; offscreen promotion does not create replacement populations. Established vegetation starts dormant; new growth follows material rules.
 
 The ventilation cycle warns before expelling real steam from finite water sources. Shelter, draining and freezing change the consequences. Terrain, chemistry and creature bodies remain authoritative; original raster textures and room landmarks are presentation assets.

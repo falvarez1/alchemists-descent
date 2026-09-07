@@ -1,6 +1,18 @@
 # Cinematic Trickshots: Borrowed Time and Borrowed Limbs
 
-Status: **design proposal; not implemented**. Requested September 5, 2026.
+Status: **finisher implemented (September 6, 2026); volley not implemented**.
+Requested September 5, 2026. The time director (`src/combat/Trickshot.ts`)
+now owns phases — approach at 25%, a contact-confirmed impact with a real-time
+pause, a 180 ms release — beside the chain slow-motion, and the two never
+multiply. `startLegSwing` recognizes the opportunity (owner's leg, wounded
+owner, within reach, along the aim, clear line) and `updateLegSwing` confirms
+it only on swept contact; a miss or an intercepting body releases time with a
+short recovery and no cue. Presentation: brass knee trail and a bracket in
+`TrickshotOverlay`, a small camera lean and zoom (`cineDx/cineDy/cineZoom`,
+off under the camera-motion setting), a vignette lift (off under reduced
+flashes), a rising whip under a ducked mix, then the shell crack and the
+embarrassed chirr. Settings: Humiliation finisher, Impact pause (0–70 ms),
+Camera leans in. Section 2 (Synchronized volley) remains a proposal.
 This plan expands the existing optional experiment. The equipment and habitat
 physics fixes can ship independently; this document does not enable new combat.
 

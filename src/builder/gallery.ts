@@ -102,6 +102,9 @@ const GALLERY_NOOP_AUDIO: AudioApi = (() => {
     heartbeat: s, cardPick: s, cardSlot: s, footstep: s, crawlShuffle: s,
     crampedBump: s, landThud: s, splash: s, alert: s, gong: s, coin: s, hurt: s,
     jump: s, squelch: s, flame: s, dig: s, waveHorn: s, levitate: s, implode: s,
+    setListener: s, at: (_x: number, _y: number, fn: () => void) => fn(), duck: s,
+    chitin: s, chirr: s, slither: s, creak: s, grind: s, squeak: s, hop: s, deathCry: s,
+    finisherWhip: s, shellCrack: s,
   };
 })();
 

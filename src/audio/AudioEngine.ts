@@ -12,6 +12,84 @@ export class AudioEngine implements AudioApi {
   private voices = 0;
   private noiseBuffer: AudioBuffer | null = null;
   private pan = 0;
+  private listenerX = 0;
+  private listenerY = 0;
+  /** Distance attenuation applied inside `at()`; 1 everywhere else. */
+  private gainScale = 1;
+
+  setListener(x: number, y: number): void {
+    this.listenerX = x;
+    this.listenerY = y;
+  }
+
+  /**
+   * Position a sound. Everything `fn` plays is panned by bearing and scaled
+   * by a squared-ish falloff to silence at `range`. Restores the previous
+   * placement afterwards, so nested and scheduled cues stay independent.
+   */
+  at(x: number, y: number, fn: () => void, range = 380): void {
+    const distance = Math.hypot(x - this.listenerX, y - this.listenerY);
+    if (distance >= range) return;
+    const previousPan = this.pan, previousGain = this.gainScale;
+    this.pan = Math.max(-0.9, Math.min(0.9, (x - this.listenerX) / 230));
+    this.gainScale = previousGain * (1 - distance / range) ** 1.6;
+    try { fn(); } finally { this.pan = previousPan; this.gainScale = previousGain; }
+  }
+
+  duck(level: number, ms: number): void {
+    if (!this.soundOn || !this.audioCtx || !this.masterGain) return;
+    const gain = this.masterGain.gain, t = this.audioCtx.currentTime;
+    gain.cancelScheduledValues(t);
+    gain.setValueAtTime(gain.value, t);
+    gain.linearRampToValueAtTime(0.4 * Math.max(0.05, Math.min(1, level)), t + 0.05);
+    gain.linearRampToValueAtTime(0.4, t + Math.max(0.1, ms / 1000));
+  }
+
+  /** Schedule `fn` keeping the placement it was scheduled under, not whatever is current when it fires. */
+  private later(delayMs: number, fn: () => void): void {
+    const pan = this.pan, gain = this.gainScale;
+    setTimeout(() => {
+      const p = this.pan, g = this.gainScale;
+      this.pan = pan; this.gainScale = gain;
+      try { fn(); } finally { this.pan = p; this.gainScale = g; }
+    }, delayMs);
+  }
+
+  private noiseSource(audioCtx: AudioContext): AudioBufferSourceNode {
+    if (!this.noiseBuffer) {
+      this.noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+      const noise = this.noiseBuffer.getChannelData(0);
+      for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
+    }
+    const src = audioCtx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    return src;
+  }
+
+  /** Filtered noise whose cutoff glides from `fromHz` to `toHz` (then back for a slide). */
+  private sweepNoise(dur: number, fromHz: number, toHz: number, vol: number, hp = false, q = 1, back = false): void {
+    if (!this.soundOn || !this.audioCtx || !this.masterGain || this.voices >= 32) return;
+    vol *= this.gainScale;
+    if (vol < 0.0015) return;
+    const audioCtx = this.audioCtx, master = this.masterGain, t = audioCtx.currentTime;
+    const src = this.noiseSource(audioCtx);
+    const f = audioCtx.createBiquadFilter(); f.type = hp ? 'highpass' : 'lowpass'; f.Q.value = q;
+    f.frequency.setValueAtTime(fromHz, t);
+    if (back) {
+      f.frequency.exponentialRampToValueAtTime(toHz, t + dur * 0.45);
+      f.frequency.exponentialRampToValueAtTime(fromHz, t + dur);
+    } else f.frequency.exponentialRampToValueAtTime(toHz, t + dur);
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.05, dur * 0.3));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const panner = audioCtx.createStereoPanner(); panner.pan.value = this.pan;
+    src.connect(f); f.connect(g); g.connect(panner); panner.connect(master);
+    this.voices++;
+    src.onended = () => { this.voices = Math.max(0, this.voices - 1); src.disconnect(); f.disconnect(); g.disconnect(); panner.disconnect(); };
+    src.start(0, t % 1); src.stop(t + dur + 0.02);
+  }
 
   get enabled(): boolean {
     return this.soundOn;
@@ -62,6 +140,8 @@ export class AudioEngine implements AudioApi {
     // Guard masterGain explicitly (set together with audioCtx in ensure()) so the
     // sink is a real local, not a non-null assertion riding on that coupling.
     if (!this.soundOn || !this.audioCtx || !this.masterGain || this.voices >= 32) return;
+    vol *= this.gainScale;
+    if (vol < 0.0015) return;
     dur = Math.max(0.005, Math.min(4, dur));
     const audioCtx = this.audioCtx, master = this.masterGain;
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
@@ -78,22 +158,17 @@ export class AudioEngine implements AudioApi {
 
   noiseBurst(dur: number, filterFreq: number, vol: number, hp?: boolean): void {
     if (!this.soundOn || !this.audioCtx || !this.masterGain || this.voices >= 32) return;
+    vol *= this.gainScale;
+    if (vol < 0.0015) return;
     dur = Math.max(0.005, Math.min(4, dur));
     const audioCtx = this.audioCtx, master = this.masterGain;
-    if (!this.noiseBuffer) {
-      this.noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
-      const noise = this.noiseBuffer.getChannelData(0);
-      for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
-    }
-    const buf = this.noiseBuffer;
-    const src = audioCtx.createBufferSource(); src.buffer = buf;
+    const src = this.noiseSource(audioCtx);
     const f = audioCtx.createBiquadFilter(); f.type = hp ? 'highpass' : 'lowpass'; f.frequency.value = filterFreq;
     const g = audioCtx.createGain(); g.gain.setValueAtTime(vol, audioCtx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
     const panner = audioCtx.createStereoPanner(); panner.pan.value = this.pan;
     src.connect(f); f.connect(g); g.connect(panner); panner.connect(master);
     this.voices++;
-    src.loop = true;
     src.onended = () => { this.voices = Math.max(0, this.voices - 1); src.disconnect(); f.disconnect(); g.disconnect(); panner.disconnect(); };
     src.start(0, audioCtx.currentTime % 1); src.stop(audioCtx.currentTime + dur + 0.02);
   }
@@ -109,8 +184,10 @@ export class AudioEngine implements AudioApi {
       if (kind === 'stone') { this.noiseBurst(0.035, 780, 0.06 * gain); this.tone(100, 52, 0.045, 'triangle', 0.028 * gain); }
       else if (kind === 'metal') { this.tone(370, 240, 0.09, 'sine', 0.045 * gain); this.noiseBurst(0.025, 1600, 0.03 * gain); }
       else if (kind === 'water') { this.noiseBurst(0.13, 850, 0.045 * gain); this.tone(320, 120, 0.08, 'sine', 0.018 * gain); }
-      else if (kind === 'weaver') { this.noiseBurst(0.026, 2600, 0.036 * gain, true); this.tone(140, 80, 0.07, 'triangle', 0.022 * gain); }
-      else if (kind === 'rillback') { this.tone(92, 62, 0.18, 'sine', 0.034 * gain); this.noiseBurst(0.10, 470, 0.035 * gain); }
+      // Weaver legs are dry chitin on stone: two quick taps, no body tone.
+      else if (kind === 'weaver') { this.noiseBurst(0.012, 3600, 0.05 * gain, true); this.later(46, () => this.noiseBurst(0.012, 4300, 0.04 * gain, true)); }
+      // A Rillback moves as a wet slide, not a drum: the filter opens and closes over the body.
+      else if (kind === 'rillback') { this.sweepNoise(0.24, 220, 1000, 0.045 * gain, false, 2, true); this.tone(96, 66, 0.2, 'sine', 0.022 * gain); }
       else { this.noiseBurst(0.7, 400, 0.055 * gain); this.tone(60, 82, 1.2, 'sine', 0.045 * gain); }
     } finally { this.pan = previousPan; }
   }
@@ -234,5 +311,119 @@ export class AudioEngine implements AudioApi {
     this.tone(70, 950, 0.5, 'sine', 0.4);          // rising suction
     this.noiseBurst(0.45, 260, 0.42);               // deep rush
     setTimeout(() => this.tone(1200, 180, 0.22, 'sawtooth', 0.18), 380); // snap shut
+  }
+
+  // ---- Creature voices ----
+  //
+  // Each kind gets a sound built from what its body is made of, and every
+  // caller places it with `at()` so distance and bearing are part of the
+  // voice. The generic "squelch for everything" made a stone creature and a
+  // spider sound like the same wet bag; worse, it played at full volume from
+  // anywhere in the level.
+
+  chitin(intensity = 1): void {
+    if (!this.throttled('chitin', 110)) return;
+    const clicks = 2 + (Math.random() < 0.5 ? 1 : 0);
+    for (let i = 0; i < clicks; i++) {
+      this.later(i * (36 + Math.random() * 34), () => {
+        this.noiseBurst(0.012, 3400 + Math.random() * 1400, 0.05 * intensity, true);
+        this.tone(2100 + Math.random() * 900, 1400, 0.018, 'square', 0.011 * intensity);
+      });
+    }
+  }
+
+  chirr(dur = 0.28, pitch = 1, vol = 0.07): void {
+    if (!this.throttled('chirr', 140) || !this.soundOn || !this.audioCtx || !this.masterGain || this.voices >= 32) return;
+    const gain = vol * this.gainScale;
+    if (gain < 0.0015) return;
+    // A buzzing carrier chopped by a fast square LFO: a stridulation, not a note.
+    const ac = this.audioCtx, t = ac.currentTime;
+    const carrier = ac.createOscillator(); carrier.type = 'sawtooth';
+    carrier.frequency.setValueAtTime(420 * pitch, t);
+    carrier.frequency.exponentialRampToValueAtTime(290 * pitch, t + dur);
+    const lfo = ac.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 26 + Math.random() * 14;
+    const depth = ac.createGain(); depth.gain.value = 0.5;
+    const chop = ac.createGain(); chop.gain.value = 0.5;
+    lfo.connect(depth); depth.connect(chop.gain);
+    const filter = ac.createBiquadFilter(); filter.type = 'bandpass'; filter.frequency.value = 1300 * pitch; filter.Q.value = 1.1;
+    const env = ac.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(gain, t + 0.03);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const panner = ac.createStereoPanner(); panner.pan.value = this.pan;
+    carrier.connect(chop); chop.connect(filter); filter.connect(env); env.connect(panner); panner.connect(this.masterGain);
+    this.voices++;
+    carrier.onended = () => {
+      this.voices = Math.max(0, this.voices - 1);
+      for (const node of [carrier, lfo, depth, chop, filter, env, panner]) node.disconnect();
+    };
+    carrier.start(t); lfo.start(t); carrier.stop(t + dur + 0.02); lfo.stop(t + dur + 0.02);
+  }
+
+  slither(intensity = 1): void {
+    if (!this.throttled('slither', 160)) return;
+    this.sweepNoise(0.28, 220, 1100, 0.06 * intensity, false, 2, true);
+    this.tone(96, 64, 0.22, 'sine', 0.028 * intensity);
+  }
+
+  creak(intensity = 1): void {
+    if (!this.throttled('creak', 180)) return;
+    this.tone(62, 98, 0.34, 'sawtooth', 0.05 * intensity);
+    this.noiseBurst(0.14, 900, 0.028 * intensity, true);
+    this.later(110, () => this.tone(150, 84, 0.22, 'triangle', 0.032 * intensity));
+  }
+
+  grind(intensity = 1): void {
+    if (!this.throttled('grind', 170)) return;
+    this.noiseBurst(0.3, 340, 0.1 * intensity);
+    this.tone(44, 36, 0.36, 'sine', 0.1 * intensity);
+    this.later(120, () => this.noiseBurst(0.06, 1900, 0.04 * intensity, true));
+  }
+
+  squeak(): void {
+    if (!this.throttled('squeak', 120)) return;
+    this.tone(3300 + Math.random() * 500, 2200, 0.05, 'sine', 0.055);
+  }
+
+  hop(size = 1): void {
+    if (!this.throttled('hop', 120)) return;
+    this.noiseBurst(0.05, 280, 0.05 * size);
+    this.tone(150, 70, 0.07, 'sine', 0.04 * size);
+  }
+
+  deathCry(kind: string): void {
+    switch (kind) {
+      case 'weaver':
+        this.chitin(1.4); this.noiseBurst(0.09, 2200, 0.09, true);
+        this.later(60, () => this.chirr(0.4, 0.7, 0.07));
+        break;
+      case 'rillback':
+        this.slither(1.6); this.noiseBurst(0.22, 600, 0.12); this.tone(120, 40, 0.3, 'sine', 0.09);
+        break;
+      case 'rootloper':
+        this.creak(1.5); this.noiseBurst(0.08, 1200, 0.12, true); this.tone(90, 40, 0.25, 'square', 0.06);
+        break;
+      case 'stonemaw':
+        this.grind(1.4); this.noiseBurst(0.12, 2600, 0.1, true);
+        break;
+      case 'bat':
+        this.squeak(); this.noiseBurst(0.05, 1800, 0.05, true);
+        break;
+      default:
+        this.squelch();
+    }
+  }
+
+  finisherWhip(): void {
+    this.sweepNoise(0.55, 300, 2800, 0.09, true, 0.7);
+    this.tone(170, 540, 0.5, 'sine', 0.045);
+  }
+
+  shellCrack(): void {
+    this.noiseBurst(0.05, 3200, 0.22, true);
+    this.tone(760, 140, 0.09, 'square', 0.12);
+    this.tone(120, 48, 0.2, 'sine', 0.16);
+    // ...and, a beat later, the small embarrassed chirr of a creature that recognizes its own leg.
+    this.later(230, () => this.chirr(0.32, 1.7, 0.05));
   }
 }

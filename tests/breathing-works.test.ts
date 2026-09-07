@@ -38,7 +38,8 @@ describe('Breathing Works encounter contracts', () => {
     // GEN_VERSION 39 reclaimed habitat and optional spell detours.
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
-    expect((hash >>> 0).toString(16)).toBe('954b0fed');
+    // Re-recorded for GEN_VERSION 40: the Intake's oil-cored gate and sand-plugged overhang.
+    expect((hash >>> 0).toString(16)).toBe('e7790a7e');
   });
 
   it('warns before exhaling, consumes water and cannot vent from a frozen reservoir', () => {

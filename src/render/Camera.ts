@@ -33,6 +33,10 @@ export class Camera implements CameraApi {
   zoomLock: number | null = null;
   /** Runtime inspector/debug focus target; null means normal play follow. */
   inspectionFocus: { x: number; y: number } | null = null;
+  /** Cinematic framing written by the combat time director; see CameraApi. */
+  cineDx = 0;
+  cineDy = 0;
+  cineZoom = 1;
   idleFrames = 0;
   private aimLookaheadX = 0;
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
@@ -69,6 +73,10 @@ export class Camera implements CameraApi {
       // cell of motion. That bookkeeping velocity is not a fall while grounded.
       const fallLead = player.grounded ? 0 : clamp(player.vy * 8, -12, 38);
       this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48 + fallLead;
+      // A finisher leans the frame a little toward its victim. One camera
+      // transform for everything, and never enough to hide an incoming hazard.
+      this.tx += this.cineDx;
+      this.ty += this.cineDy;
     } else if (state.mode === 'play' && player.dead) {
       // Death: ride the tumbling ragdoll down (don't freeze on the death spot).
       const corpse = ctx.rigidBodies.playerCorpse;
@@ -100,8 +108,8 @@ export class Camera implements CameraApi {
       !player.grounded ||
       player.firing;
     this.idleFrames = busy ? 0 : this.idleFrames + 1;
-    const zTarget = this.zoomLock ?? 1;
-    this.zoom += (zTarget - this.zoom) * (this.zoomLock !== null ? 0.16 : 0.035);
+    const zTarget = this.zoomLock ?? this.cineZoom;
+    this.zoom += (zTarget - this.zoom) * (this.zoomLock !== null ? 0.16 : this.cineZoom !== 1 ? 0.09 : 0.035);
   }
 
   updateSimBounds(world: World): void {

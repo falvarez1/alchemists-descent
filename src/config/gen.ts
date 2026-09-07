@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 39; // 39: reclaimed habitats, physical catwalk braces and discovery detours
+export const GEN_VERSION = 40; // 40: the Intake's two lessons — an oil-cored wooden gate over a lit store, a sand-plugged overhang over gold
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

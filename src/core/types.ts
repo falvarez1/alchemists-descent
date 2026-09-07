@@ -554,6 +554,10 @@ export interface Enemy {
   rillWet?: number;
   /** Rillback: cooldown before another living-conductor pulse. */
   rillChargeCd?: number;
+  /** Beached-hop bookkeeping: where the last hop started, how many went nowhere, and a rest timer after a wall. */
+  hopFromX?: number;
+  hopBlocked?: number;
+  hopRest?: number;
   /** Rillback: visible pre-pulse frames before a local conductor charge. */
   rillChargeWindup?: number;
   /** Tick-owned trailing body nodes (legacy tooling alias). */
@@ -1237,7 +1241,15 @@ export interface TrickshotSettings {
   durationMs: number;
   chainWindowMs: number;
   assistDegrees: number;
+  /** The humiliation finisher: a directed slow approach, a confirmed impact, a cue. */
+  finisher: boolean;
+  /** Real-time hit pause when the finisher lands (0..70 ms). */
+  impactPauseMs: number;
+  /** Small framing nudge and zoom during the finisher; off for comfort. */
+  cameraMotion: boolean;
 }
+
+export type FinisherPhase = 'idle' | 'approach' | 'impact' | 'release';
 
 export interface TrickshotRuntime {
   remainingMs: number;
@@ -1250,6 +1262,13 @@ export interface TrickshotRuntime {
   labelMs: number;
   continuousMs: number;
   recoveryMs: number;
+  /** The finisher's time-director phase; real-time `phaseMs` since it began. */
+  phase: FinisherPhase;
+  phaseMs: number;
+  /** The creature being finished, for framing and the bracket. */
+  target: Enemy | null;
+  /** Recent knee positions of the whipped limb (brass trail), newest last. */
+  trail: Array<{ x: number; y: number }>;
 }
 
 export interface FxState {
@@ -1349,6 +1368,36 @@ export interface AudioApi {
   splash(intensity: number): void;
   /** A foe notices you: one short rising blip. */
   alert(): void;
+  /** Where the ears are this tick (the wizard in play, the camera otherwise). */
+  setListener(x: number, y: number): void;
+  /**
+   * Run `fn` as a sound placed at (x, y): panned and attenuated by distance to
+   * the listener, silent beyond `range`. Every creature voice goes through
+   * this, so a Rillback three rooms away is not in your ear at full volume.
+   */
+  at(x: number, y: number, fn: () => void, range?: number): void;
+  /** Dip everything to `level` (0..1) and come back over `ms` — under a cinematic beat. */
+  duck(level: number, ms: number): void;
+  /** Weaver: two or three dry chitin clicks. Never wet. */
+  chitin(intensity?: number): void;
+  /** Weaver voice: a fast-modulated chirr; `pitch` < 1 threatens, > 1 squeaks. */
+  chirr(dur?: number, pitch?: number, vol?: number): void;
+  /** Rillback: a wet body sliding — filtered noise that opens and closes. */
+  slither(intensity?: number): void;
+  /** Root Loper: a slow low creak of wood under strain, with a dry rasp. */
+  creak(intensity?: number): void;
+  /** Stone Maw: grinding stone over a low knock, then grit. */
+  grind(intensity?: number): void;
+  /** Bat: a short falling squeak. */
+  squeak(): void;
+  /** A small soft pat: a body launching off the ground (slime, beached Rillback). */
+  hop(size?: number): void;
+  /** The death voice of a creature kind; falls back to the wet squelch. */
+  deathCry(kind: string): void;
+  /** Rising whip-whoosh under the finisher approach. */
+  finisherWhip(): void;
+  /** Dry shell crack, then a small embarrassed chirr: the finisher lands. */
+  shellCrack(): void;
   /** Waystone ignition: a deep bronze gong with overtones. */
   gong(): void;
   coin(streak?: number): void;
@@ -1805,6 +1854,14 @@ export interface CameraApi {
   inspectionFocus: { x: number; y: number } | null;
   /** Editor zoom override: when set, zoom lerps here instead of idle-zoom. */
   zoomLock: number | null;
+  /**
+   * Cinematic framing (the finisher): a small offset added to the follow
+   * target and a zoom the idle-zoom lerps toward. Written eased by the time
+   * director each presentation tick; 0/1 means ordinary follow.
+   */
+  cineDx?: number;
+  cineDy?: number;
+  cineZoom?: number;
   idleFrames: number;
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
   renderX: number;

@@ -22,10 +22,28 @@ export function drawTrickshotOverlay(out: PixelSurface, ctx: Ctx): void {
     }
     if (guide.enemy) for (const s of [-1, 1]) { pixel(end.x + s * (radius + 1.5), end.y, gold); pixel(end.x, end.y + s * (radius + 1.5), gold); }
   }
+  const trick = ctx.fx.trickshot;
   for (const e of ctx.enemies) {
     if (!canHumiliate(ctx, e) || Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y) > 100) continue;
     const x = e.x, y = e.y - 25;
+    // The diamond brightens into a bracket while the finisher is committed to THIS creature.
+    const committed = trick?.target === e && trick.phase !== 'idle';
     for (let i = -3; i <= 3; i += .5) { pixel(x + i, y - 3 + Math.abs(i), true); pixel(x + i, y + 3 - Math.abs(i), true); }
+    if (committed) {
+      const bx = e.weaverLoco?.px ?? e.x, by = e.weaverLoco?.py ?? e.y - 7;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+        for (let d = 0; d < 5; d++) { pixel(bx + sx * 11, by + sy * (11 - d), true); pixel(bx + sx * (11 - d), by + sy * 11, true); }
+      }
+    }
+  }
+  // The brass trail the whipped knee leaves through the slow approach.
+  if (trick && trick.trail.length > 1) {
+    const n = trick.trail.length;
+    for (let i = 1; i < n; i++) {
+      const a = trick.trail[i - 1], b = trick.trail[i], fade = i / n;
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      for (let d = 0; d <= length; d += 1.5) pixel(a.x + (b.x - a.x) * d / Math.max(1, length), a.y + (b.y - a.y) * d / Math.max(1, length), true, .25 + .75 * fade);
+    }
   }
   if ((ctx.fx.trickshot?.remainingMs ?? 0) > 0) for (const p of ctx.projectiles) {
     if (p.hostile) continue;

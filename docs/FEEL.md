@@ -388,6 +388,19 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   active, long potion timers, stocked potion pickups, and bench-only potion
   refresh / elixir flask-fill tiles. Normal starts remain progression-driven,
   and debug-modified runs are not autosaved.
+- **Humiliation finisher (Trickshot experiment, `combat/Trickshot.ts`):** with
+  a Weaver's own leg in hand and its owner under 30% HP, the whip commits into
+  a directed beat — time eases to 25% for the approach (≤1.1 s real, then it
+  expires), the ambience ducks under a rising whip, the victim recoils, and
+  only a swept thigh contact confirms it: a real-time hit pause (0–70 ms,
+  default 50), a brass burst and chitin shards along the actual stroke, a
+  heavier lateral impulse so the corpse rolls, the shell crack and an
+  embarrassed chirr, "RETURNED WITH INTEREST", then a 180 ms smooth return.
+  A miss or an intercepting body releases time with a 500 ms recovery and no
+  cue. Framing is one small camera lean and a 6% zoom (`cineDx/cineDy/
+  cineZoom`, off with the camera-motion setting) plus a vignette lift (off
+  under reduced flashes); the chain slow-motion and the finisher never
+  multiply — the deeper one wins.
 
 ---
 
@@ -405,6 +418,19 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   chimes on pickup, bench card clicks + slot flash, door retraction grind,
   trigger→gate spark line, chirps/skitters/drips from the critter layer.
 - All one-shot presets are throttled per-key so spam can't stack them.
+- **Creature voices are placed and made of the body.** Every enemy cue runs
+  through `audio.at(x, y, fn)`: panned by bearing, attenuated to silence at
+  380 cells (bosses 640–720), so a creature three rooms away is not in your
+  ear. Each kind speaks in its own material — Weaver: dry chitin clicks and a
+  chopped `chirr`; Rillback: a wet `slither` whose filter opens and closes;
+  Root Loper: a low `creak` with a rasp; Stone Maw: `grind` over a knock;
+  bat: a falling `squeak`; small bodies launching: a soft `hop` pat. Alerts
+  and death cries use the same voices (`alertVoice`, `deathCry`), so the
+  generic wet squelch is now the slime's alone.
+- **A blocked creature stops drumming.** A beached Rillback hops toward what
+  it wants; three hops that went nowhere mean a wall, and it rests 2.5–4 s
+  before trying again instead of thudding into the rock every half second
+  until you leave.
 
 ---
 

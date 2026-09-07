@@ -3,8 +3,9 @@ import { makePickup } from '@/core/pickupDefs';
 import { clamp } from '@/core/math';
 import { weaverLegGeometry } from '@/creatures/weaverAnatomy';
 import { packRGB } from '@/sim/colors';
-import { canHumiliate, recordTrickshot } from '@/combat/Trickshot';
+import { beginFinisher, canHumiliate, confirmFinisher, finisherPhase, missFinisher, recordTrickshot } from '@/combat/Trickshot';
 import { heldLegContact, updateHeldLeg } from '@/combat/HeldLeg';
+import { sightClear } from '@/creatures/perception';
 
 export const LEG_STRENGTH = 14;
 export const LEG_CLUB_SWINGS = 6;
@@ -45,6 +46,29 @@ export function strikeWeaverLeg(ctx: Ctx, e: Enemy, index: number, damage: numbe
   return true;
 }
 
+/**
+ * The finisher opportunity: the leg's own wounded owner, within plausible whip
+ * reach, roughly along the aim, with clear contact geometry from the hand.
+ * Recognized at the moment of commitment, never automatically walked into.
+ */
+function finisherOpportunity(ctx: Ctx): Enemy | null {
+  const p = ctx.player, club = p.legClub;
+  // No owner on record, or the experiment off: there is nobody to humiliate.
+  if (!club || !club.owner || ctx.state.trickshot?.enabled !== true || ctx.state.trickshot.finisher !== true) return null;
+  const ox = p.x, oy = p.y - (p.crawling ? 4 : 10);
+  const dx = Math.cos(club.angle), dy = Math.sin(club.angle);
+  for (const e of ctx.enemies) {
+    if (!canHumiliate(ctx, e)) continue;
+    const ex = e.weaverLoco?.px ?? e.x, ey = e.weaverLoco?.py ?? e.y - 7;
+    const distance = Math.hypot(ex - ox, ey - oy);
+    if (distance > club.length + 30) continue;
+    if (((ex - ox) * dx + (ey - oy) * dy) / Math.max(1, distance) < .4) continue;
+    if (!sightClear(ctx.world, ox, oy, ex, ey)) continue;
+    return e;
+  }
+  return null;
+}
+
 export function startLegSwing(ctx: Ctx): boolean {
   const p = ctx.player, club = p.legClub;
   if (!club) return false;
@@ -54,6 +78,8 @@ export function startLegSwing(ctx: Ctx): boolean {
   club.hitThisSwing = false;
   p.facing = Math.cos(club.angle) < 0 ? -1 : 1;
   ctx.audio.noiseBurst(.06, 680, .065, true);
+  const victim = finisherOpportunity(ctx);
+  if (victim) beginFinisher(ctx, victim);
   return true;
 }
 
@@ -65,6 +91,8 @@ export function updateLegSwing(ctx: Ctx): void {
   club.cooldown = Math.max(0, club.cooldown - 1);
   club.swingT = Math.max(0, club.swingT - 1);
   const rig = updateHeldLeg(ctx);
+  // The stroke is over and nothing was struck: the moment is spent, time returns.
+  if (club.swingT === 0 && !club.hitThisSwing && finisherPhase(ctx) === 'approach') missFinisher(ctx);
   if (!rig || club.hitThisSwing || club.swingT > 12 || club.swingT < 3) return;
   const ox = p.x, oy = p.y - (p.crawling ? 4 : 10), dx = Math.cos(club.angle), dy = Math.sin(club.angle);
   let hit = false;
@@ -76,7 +104,11 @@ export function updateLegSwing(ctx: Ctx): void {
     const ex = contact.x - ox, ey = contact.y - oy, distance = Math.hypot(ex, ey);
     if ((ex * dx + ey * dy) / Math.max(1, distance) < .55) continue;
     const finish = canHumiliate(ctx, e);
-    ctx.enemyCtl.damage(e, finish ? Math.max(24, e.hp * 2) : 24, dx * (finish ? 5.2 : 3.2), dy * 2 - (finish ? 2 : 1.2));
+    const cinematic = finisherPhase(ctx) === 'approach';
+    // A heavy lateral strike rolls the corpse; an overhead one folds it down.
+    ctx.enemyCtl.damage(e, finish ? Math.max(24, e.hp * 2) : 24, dx * (finish ? 6.4 : 3.2), dy * 2 - (finish ? 2.2 : 1.2));
+    if (finish && e.hp <= 0) confirmFinisher(ctx, e, contact.x, contact.y, dx, dy);
+    else if (cinematic) missFinisher(ctx); // something else took the stroke: resolve it physically, at normal time
     recordTrickshot(ctx, e, finish && e.hp <= 0 ? 'finish' : e.hp <= 0 ? 'kill' : 'hit');
     if (e.hp > 0) ctx.enemyCtl.gustShove(e, dx, dy - .15, 1.6);
     if (e.kind === 'weaver') {
