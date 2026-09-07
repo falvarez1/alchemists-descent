@@ -24,7 +24,7 @@ try {
   await page.screenshot({ path: `${output}/ignition.png` });
   await page.waitForFunction(() => document.querySelector('#tea-view strong')?.textContent.includes('Tea is served'), null, { timeout: 100000 });
   await page.screenshot({ path: `${output}/complete.png` });
-  await page.locator('#tea-view.watching').waitFor({ state: 'hidden', timeout: 10000 });
+  await page.locator('#tea-view.watching').waitFor({ state: 'hidden', timeout: 20000 });
   assert.match(await page.locator('#objective').innerText(), /Collect the brass bell/);
   assert.deepEqual(report.errors, []);
   report.completed = true;

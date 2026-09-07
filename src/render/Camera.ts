@@ -6,6 +6,12 @@ import type { World } from '@/sim/World';
 const AIM_LOOKAHEAD_DEADZONE = 28;
 const AIM_LOOKAHEAD_FULL_DISTANCE = 150;
 const AIM_LOOKAHEAD_LERP = 0.12;
+export const ACTION_PAN_MAX_SPEED = 2.4; // world cells/tick, shared by both axes
+
+/** Ease out across a handoff, then close in once the camera catches up. */
+export function actionCameraZoom(zoom: number, distance: number): number {
+  return zoom + (Math.min(zoom, .82) - zoom) * smoothstep(clamp((distance - 45) / 150, 0, 1));
+}
 
 /**
  * How far the camera may travel BELOW the world floor. The world ends in solid
@@ -40,6 +46,8 @@ export class Camera implements CameraApi {
   actionFocus: { x: number; y: number; zoom: number } | null = null;
   idleFrames = 0;
   private aimLookaheadX = 0;
+  private actionVx = 0;
+  private actionVy = 0;
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
   renderX = 0;
   renderY = 0;
@@ -101,8 +109,19 @@ export class Camera implements CameraApi {
     const padY = action ? VIEW_H * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
     this.tx = clamp(this.tx, -padX, WIDTH - VIEW_W + padX);
     this.ty = clamp(this.ty, -padY, HEIGHT - VIEW_H + CAMERA_BOTTOM_VOID);
-    this.x += (this.tx - this.x) * 0.12;
-    this.y += (this.ty - this.y) * 0.085;
+    const actionDistance = Math.hypot(this.tx - this.x, this.ty - this.y);
+    if (action) {
+      const scale = actionDistance > 0 ? Math.min(.065, ACTION_PAN_MAX_SPEED / actionDistance) : 0;
+      this.actionVx += ((this.tx - this.x) * scale - this.actionVx) * .12;
+      this.actionVy += ((this.ty - this.y) * scale - this.actionVy) * .12;
+      // Deceleration near the target must not overshoot it.
+      this.x += Math.sign(this.actionVx) === Math.sign(this.tx - this.x) ? Math.sign(this.actionVx) * Math.min(Math.abs(this.actionVx), Math.abs(this.tx - this.x)) : this.actionVx;
+      this.y += Math.sign(this.actionVy) === Math.sign(this.ty - this.y) ? Math.sign(this.actionVy) * Math.min(Math.abs(this.actionVy), Math.abs(this.ty - this.y)) : this.actionVy;
+    } else {
+      this.actionVx = 0; this.actionVy = 0;
+      this.x += (this.tx - this.x) * 0.12;
+      this.y += (this.ty - this.y) * 0.085;
+    }
     if (Math.abs(this.tx - this.x) < .0001) this.x = this.tx;
     if (Math.abs(this.ty - this.y) < .0001) this.y = this.ty;
 
@@ -115,7 +134,7 @@ export class Camera implements CameraApi {
       !player.grounded ||
       player.firing;
     this.idleFrames = busy ? 0 : this.idleFrames + 1;
-    const zTarget = action?.zoom ?? this.zoomLock ?? this.cineZoom;
+    const zTarget = action ? actionCameraZoom(action.zoom, actionDistance) : this.zoomLock ?? this.cineZoom;
     this.zoom += (zTarget - this.zoom) * (action ? .035 : this.zoomLock !== null ? 0.16 : this.cineZoom !== 1 ? 0.09 : 0.035);
   }
 
@@ -152,6 +171,7 @@ export class Camera implements CameraApi {
     // the sim window follows the camera, so a one-cell difference here changed
     // which cells were simulated at all.
     this.aimLookaheadX = 0;
+    this.actionVx = 0; this.actionVy = 0;
     this.idleFrames = 0;
   }
 }

@@ -31,9 +31,18 @@ try {
   assert.deepEqual(await page.evaluate(() => { const p=window.__game.ctx.player;return {x:p.x,y:p.y,hp:p.hp}; }), report.before);
   assert.equal(await page.evaluate(() => window.__game.ctx.levels.current.living.glowseeds), 3);
   await page.evaluate(() => {
-    window.teaProbe = { pistonMin: 1000, steamMax: 0 };
+    window.teaProbe = { pistonMin: 1000, steamMax: 0, maxDuckTilt: 0, maxDuckDrift: 0, maxPanPerTick: 0 };
+    let previousCamera = null;
     const sample = () => {
       const c = window.__game.ctx, p = c.rigidBodies.bodies.find(b => b.tag === 'tea-piston');
+      const duck = c.rigidBodies.bodies.find(b => b.tag === 'tea-duck');
+      if (duck) { window.teaProbe.maxDuckTilt = Math.max(window.teaProbe.maxDuckTilt, Math.abs(duck.angle));
+        window.teaProbe.maxDuckDrift = Math.max(window.teaProbe.maxDuckDrift, Math.abs(duck.x - 967)); }
+      if (c.contraption.watching && previousCamera && c.state.frameCount > previousCamera.frame) {
+        window.teaProbe.maxPanPerTick = Math.max(window.teaProbe.maxPanPerTick,
+          Math.hypot(c.camera.x - previousCamera.x, c.camera.y - previousCamera.y) / (c.state.frameCount - previousCamera.frame));
+      }
+      previousCamera = { x: c.camera.x, y: c.camera.y, frame: c.state.frameCount };
       if (p) { let n = 0; for(let x=Math.floor(p.x-10);x<=p.x+10;x++)for(let y=Math.ceil(p.y+4);y<=Math.ceil(p.y+4)+5;y++)if(c.world.type(x,y)===9)n++;
         window.teaProbe.pistonMin=Math.min(window.teaProbe.pistonMin,p.y); window.teaProbe.steamMax=Math.max(window.teaProbe.steamMax,n); }
       requestAnimationFrame(sample);
@@ -44,14 +53,14 @@ try {
     const data = await page.evaluate(() => {
       const c = window.__game.ctx, s = c.levels.current.living.tea;
       return { stage: s.stage, ticks: s.ticks, stageTicks: s.stageTicks, complete: s.completed, stalled: s.stalled,
-        bodies: s.bodies, probe: window.teaProbe, watching: c.contraption.watching, player: { x: c.player.x, y: c.player.y, hp: c.player.hp },
+        travel: s.travel, bodies: s.bodies, probe: window.teaProbe, watching: c.contraption.watching, player: { x: c.player.x, y: c.player.y, hp: c.player.hp },
         camera: { x: c.camera.x, y: c.camera.y, zoom: c.camera.zoom },
         materials: (() => { const result = {}; for (const [name,x0,y0,x1,y1] of [['acid',1090,110,1170,240],['boiler',1214,94,1268,238],['finale',1298,200,1532,258]]) {
           const counts = {}; for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){const t=c.world.type(x,y);counts[t]=(counts[t]??0)+1;}result[name]=counts;
         } return result; })() };
     });
     if (data.stage !== previous) {
-      report.stages.push(data); previous = data.stage; console.log(JSON.stringify({ stage: data.stage, ticks: data.ticks, probe: data.probe }));
+      report.stages.push(data); previous = data.stage; console.log(JSON.stringify({ stage: data.stage, ticks: data.ticks, travel: data.travel, probe: data.probe }));
       await page.screenshot({ path: `${output}/stage-${data.stage}.png` });
     }
     if (!compact && data.stage === 4 && data.watching) {
@@ -65,15 +74,17 @@ try {
       await page.waitForFunction(() => !window.__game.ctx.contraption.watching);
       assert.equal(await page.evaluate(() => window.__game.ctx.state.paused), false); skipped = true;
     }
-    if (resume && !resumed && data.stage >= 4) {
+    if (resume && !resumed && data.stage >= 4 && (data.travel?.acid ?? 0) > 0) {
       await execConsoleCommand(page, 'run save');
       await page.waitForFunction(() => window.__game.ctx.levels.persistenceStatus().state === 'ready');
       report.savedStage = await page.evaluate(() => window.__game.ctx.levels.current.living.tea.stage);
+      report.savedTravel = await page.evaluate(() => window.__game.ctx.levels.current.living.tea.travel);
       await page.reload(); await execConsoleCommand(page, 'run continue'); await waitForRunReady(page);
-      await page.waitForFunction(() => window.__game.ctx.rigidBodies.bodies.filter(b => b.tag?.startsWith('tea-')).length === 5);
+      await page.waitForFunction(() => window.__game.ctx.rigidBodies.bodies.filter(b => b.tag?.startsWith('tea-')).length === 15);
       assert.equal(await page.evaluate(() => window.__game.ctx.contraption.watching), false);
       assert.ok(await page.evaluate(stage => window.__game.ctx.levels.current.living.tea.stage >= stage, report.savedStage));
-      assert.equal(await page.evaluate(() => window.__game.ctx.rigidBodies.bodies.filter(b => b.tag?.startsWith('tea-')).length), 5);
+      assert.equal(await page.evaluate(() => window.__game.ctx.rigidBodies.bodies.filter(b => b.tag?.startsWith('tea-')).length), 15);
+      assert.ok(await page.evaluate(travel => window.__game.ctx.levels.current.living.tea.travel.acid >= travel.acid, report.savedTravel));
       resumed = true;
     }
     report.last = data;
@@ -89,8 +100,13 @@ try {
     await page.waitForTimeout(1000);
   }
   assert.equal(report.last.complete, true, JSON.stringify(report.last));
+  if (!resume) {
+    assert.ok(report.last.probe.maxDuckTilt < .001); assert.ok(report.last.probe.maxDuckDrift < .01);
+    assert.ok(report.last.probe.maxPanPerTick <= 2.401, 'Camera travel stays under its speed cap');
+  }
+  assert.ok(report.last.travel.bell >= 12, 'The electrical counterweight must lift the final bell latch');
   assert.deepEqual(report.errors, []);
-  await page.waitForFunction(() => !window.__game.ctx.contraption.watching, null, { timeout: 10000 });
+  await page.waitForFunction(() => !window.__game.ctx.contraption.watching, null, { timeout: 20000 });
   assert.equal(await page.evaluate(() => window.__game.ctx.camera.actionFocus), null);
   await page.keyboard.down('KeyD'); await page.waitForTimeout(500); await page.keyboard.up('KeyD');
   assert.ok(await page.evaluate(x => window.__game.ctx.player.x > x + 10, report.before.x));

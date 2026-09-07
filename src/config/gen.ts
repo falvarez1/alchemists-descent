@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 41; // 41: the Bell & Tea Engine produces D1's required brass bell; connected workshop catwalk
+export const GEN_VERSION = 42; // 42: physical rocker, guided float, moving valves and sacrificial supports make engine handoffs visible
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

@@ -38,8 +38,8 @@ describe('Breathing Works encounter contracts', () => {
     // GEN_VERSION 39 reclaimed habitat and optional spell detours.
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
-    // GEN_VERSION 41: mandatory Bell & Tea Engine and its main inspection catwalk.
-    expect((hash >>> 0).toString(16)).toBe('5b1db440');
+    // GEN_VERSION 42: domino/spring latch, guided valves and electrical gallery.
+    expect((hash >>> 0).toString(16)).toBe('70af2f55');
   });
 
   it('warns before exhaling, consumes water and cannot vent from a frozen reservoir', () => {

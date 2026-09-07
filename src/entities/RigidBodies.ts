@@ -113,6 +113,8 @@ export class RigidBodies implements RigidBodiesApi {
   private world: RWorld;
   private readonly handles = new Map<RigidBody, RBody>();
   private readonly ropeAnchors = new Map<RigidBody, RBody>();
+  private readonly tetherAnchors = new Map<RigidBody, RBody>();
+  private readonly hingeAnchors = new Map<RigidBody, RBody>();
   private readonly terrain = new Map<number, RCollider>();
   /** Cell index → frame it left the desired set. Removal is DEFERRED a few frames
    *  so we never yank a collider out of an active contact with a fast body (that
@@ -148,6 +150,7 @@ export class RigidBodies implements RigidBodiesApi {
   }
 
   spawn(shape: RigidShape, x: number, y: number, opts: SpawnBodyOpts = {}): RigidBody {
+    if (opts.guideAxis && opts.hinge) throw new Error('A rigid body may use a sliding guide or a pivot hinge, not both.');
     const kinematic = opts.kind === 'kinematic';
     // Keep the dynamic-body set bounded so a runaway spawn (chain detonations,
     // repeated shatter) can't overflow Rapier's solver — thin out the oldest first.
@@ -166,7 +169,7 @@ export class RigidBodies implements RigidBodiesApi {
       .setAdditionalSolverIterations(opts.tag?.startsWith('player-corpse') ? 4 : 0)
       .setCcdEnabled(true);
     const rb = this.world.createRigidBody(desc);
-    if (opts.steamPiston) rb.lockRotations(true, true);
+    if (opts.steamPiston || opts.guideAxis) rb.lockRotations(true, true);
     const matDef = opts.material ? bodyMaterialDef(opts.material) : null;
     const density = opts.density ?? matDef?.density ?? 1;
     const color = opts.color ?? matDef?.color ?? packRGB(150, 100, 55);
@@ -209,8 +212,24 @@ export class RigidBodies implements RigidBodiesApi {
       data: opts.data,
       onTerrainHit: opts.onTerrainHit,
       steamPiston: opts.steamPiston,
+      torsionSpring: opts.torsionSpring,
+      guideAxis: opts.guideAxis,
     };
     this.handles.set(body, rb);
+    if (opts.guideAxis) {
+      const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y));
+      const axis = opts.guideAxis === 'vertical' ? { x: 0, y: 1 } : { x: 1, y: 0 };
+      this.world.createImpulseJoint(RAPIER.JointData.prismatic({ x: 0, y: 0 }, { x: 0, y: 0 }, axis), anchor, rb, true);
+      this.hingeAnchors.set(body, anchor);
+    }
+    if (opts.hinge) {
+      const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y));
+      const joint = RAPIER.JointData.revolute({ x: 0, y: 0 }, { x: 0, y: 0 });
+      joint.limitsEnabled = true; joint.limits = [opts.hinge.minAngle, opts.hinge.maxAngle];
+      const hinge = this.world.createImpulseJoint(joint, anchor, rb, true) as RAPIER.RevoluteImpulseJoint;
+      hinge.setLimits(opts.hinge.minAngle, opts.hinge.maxAngle);
+      this.hingeAnchors.set(body, anchor);
+    }
     this.bodies.push(body);
     if (opts.tag === 'player-corpse') this.playerCorpse = body;
     return body;
@@ -218,6 +237,10 @@ export class RigidBodies implements RigidBodiesApi {
 
   remove(body: RigidBody): void {
     this.cutRope(body);
+    const hinge = this.hingeAnchors.get(body);
+    this.cutRope(body, true);
+    if (hinge) this.world.removeRigidBody(hinge);
+    this.hingeAnchors.delete(body);
     if (this.playerRagdoll && Object.values(this.playerRagdoll.parts).includes(body)) {
       const parts = Object.values(this.playerRagdoll.parts); this.playerRagdoll = null;
       for (const part of parts) if (part !== body) this.remove(part);
@@ -257,6 +280,9 @@ export class RigidBodies implements RigidBodiesApi {
 
   clear(): void {
     for (const body of this.ropeAnchors.keys()) this.cutRope(body);
+    for (const body of this.tetherAnchors.keys()) this.cutRope(body, true);
+    for (const anchor of this.hingeAnchors.values()) this.world.removeRigidBody(anchor);
+    this.hingeAnchors.clear();
     this.held = null;
     this.playerCorpse = null;
     this.playerRagdoll = null;
@@ -269,21 +295,22 @@ export class RigidBodies implements RigidBodiesApi {
     this.terrainStale.clear();
   }
 
-  tieRope(body: RigidBody, x: number, y: number, length = Math.hypot(body.x - x, body.y - y)): void {
+  tieRope(body: RigidBody, x: number, y: number, length = Math.hypot(body.x - x, body.y - y), material: 'rope' | 'chain' = 'rope', secondary = false): void {
     const rb = this.handles.get(body);
     if (!rb || ![x, y, length].every(Number.isFinite) || length < 1 || length > 300) return;
-    this.cutRope(body);
+    this.cutRope(body, secondary);
     const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y));
     this.world.createImpulseJoint(RAPIER.JointData.rope(length, { x: 0, y: 0 }, { x: 0, y: 0 }), anchor, rb, true);
-    this.ropeAnchors.set(body, anchor);
-    body.rope = { x, y, length };
+    (secondary ? this.tetherAnchors : this.ropeAnchors).set(body, anchor);
+    body[secondary ? 'tether' : 'rope'] = { x, y, length, material };
   }
 
-  cutRope(body: RigidBody): void {
-    const anchor = this.ropeAnchors.get(body);
+  cutRope(body: RigidBody, secondary = false): void {
+    const anchors = secondary ? this.tetherAnchors : this.ropeAnchors;
+    const anchor = anchors.get(body);
     if (anchor) this.world.removeRigidBody(anchor);
-    this.ropeAnchors.delete(body);
-    body.rope = undefined;
+    anchors.delete(body);
+    body[secondary ? 'tether' : 'rope'] = undefined;
   }
 
   /** Eleven small bodies, nine limited anatomical joints, and one loose hat.
@@ -363,7 +390,8 @@ export class RigidBodies implements RigidBodiesApi {
     const rb = this.handles.get(body);
     if (!rb) return;
     const v = rb.linvel();
-    rb.setLinvel({ x: v.x + ix * PF, y: v.y + iy * PF }, true);
+    rb.setLinvel({ x: body.guideAxis === 'vertical' ? 0 : v.x + ix * PF,
+      y: body.guideAxis === 'horizontal' ? 0 : v.y + iy * PF }, true);
   }
 
   applyImpulseAt(body: RigidBody, ix: number, iy: number, px: number, py: number): void {
@@ -861,6 +889,12 @@ export class RigidBodies implements RigidBodiesApi {
     // which sets its Rapier translation directly without a step.
     if (ctx.state.mode === 'play' && ctx.debug.active) return;
     this.processDetonations(ctx);
+    for (const body of this.bodies) {
+      const spring = body.torsionSpring, rb = this.handles.get(body);
+      if (!spring || !rb) continue;
+      const acceleration = (spring.restAngle - body.angle) * spring.stiffness - body.va * spring.damping;
+      rb.applyTorqueImpulse(acceleration * PF * rb.effectiveAngularInertia(), Math.abs(acceleration) > .00001);
+    }
     // Terrain sync + the solver step are the two places a degenerate contact/
     // collider pile can overflow Rapier's wasm stack. That overflow leaves the
     // world PERMANENTLY borrow-locked ("recursive use of an object detected"),
@@ -959,6 +993,8 @@ export class RigidBodies implements RigidBodiesApi {
   private recoverFromFault(err: unknown): void {
     this.world = this.createWorld();
     this.ropeAnchors.clear();
+    this.tetherAnchors.clear();
+    this.hingeAnchors.clear();
     this.handles.clear();
     this.terrain.clear();
     this.terrainStale.clear();
@@ -1016,12 +1052,13 @@ export class RigidBodies implements RigidBodiesApi {
 
       // Hemp responds to the same heat and solvent as the rest of the room.
       // Sampling along its live span also lets a player cut it with a flame.
-      const rope = body.rope;
-      if (rope) {
+      for (const secondary of [false, true]) {
+        const rope = body[secondary ? 'tether' : 'rope'];
+        if (!rope || rope.material === 'chain') continue;
         const distance = Math.hypot(body.x - rope.x, body.y - rope.y);
         for (let d = 3; d < distance - 3; d += 2) {
           const t = world.type(Math.round(rope.x + (body.x - rope.x) * d / distance), Math.round(rope.y + (body.y - rope.y) * d / distance));
-          if (isHotCell(t) || t === Cell.Acid) { this.cutRope(body); break; }
+          if (isHotCell(t) || t === Cell.Acid) { this.cutRope(body, secondary); break; }
         }
       }
 
@@ -1104,8 +1141,8 @@ export class RigidBodies implements RigidBodiesApi {
           const drag = 1 - Math.min(0.5, submerged * WATER_DRAG);
           // Currents carry floating props, just as they carry suspended cells.
           const flowX = Math.max(-3, Math.min(3, world.flow.x(body.x, body.y))) * PF;
-          const nvx = v.x * drag + flowX * (1 - drag);
-          const nvy = (v.y - buoy) * drag;
+          const nvx = body.guideAxis === 'vertical' ? 0 : v.x * drag + flowX * (1 - drag);
+          const nvy = body.guideAxis === 'horizontal' ? 0 : (v.y - buoy) * drag;
           rb.setLinvel({ x: nvx, y: nvy }, true);
           rb.setAngvel(rb.angvel() * drag, true);
           body.vx = nvx / PF;

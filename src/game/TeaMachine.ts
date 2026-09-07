@@ -1,18 +1,23 @@
 import type { Ctx, RigidBody, TeaMachineState } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { fireColor } from '@/sim/colors';
-import { TEA, TEA_BODIES, stampTeaMachine, teaRect } from '@/world/teaMachine';
+import { TEA, TEA_BODIES, TEA_COMPLETE_STAGE, TEA_VALVES, type TeaValve, stampTeaMachine } from '@/world/teaMachine';
+import { pullTeaValve } from '@/game/TeaMachineLinkages';
+import { attractElectromagnet, generateFromDrop } from '@/entities/Energy';
 
 const ACTS = [
   ['The Unreasonable Bell & Tea Engine', 'The descent gate needs its brass bell. Pull the crank to begin.'],
-  ['First, a little powder', 'A very long fuse. A very small spark.'],
+  ['First, a little powder', 'The powder burns the retaining cord. The heavy pendulum swings free.'],
   ['Percussive maintenance', 'A hanging weight politely introduces itself to a boulder.'],
-  ['The boulder has a job', 'Gravity carries the message to the reservoir.'],
-  ['Please mind the duck', 'Water lifts the float. The float pulls the solvent tap.'],
-  ['Dissolving the safety precautions', 'Acid eats the stone pin holding the sugar weight.'],
-  ['One lump or two?', 'The falling weight opens the furnace.'],
-  ['An unreasonable kettle', 'Lava meets water. Steam pushes the piston.'],
-  ['This is probably enough heat', 'The piston opens the oil. The last fuse has other ideas.'],
+  ['Six dominoes and a wound spring', 'The boulder topples the dominoes. The last releases the spring crank and its reservoir cable.'],
+  ['Please mind the duck', 'The rising duck pulls the chain around the pulleys, lifting the acid gate.'],
+  ['Dissolving the safety precautions', 'Acid eats the stone pedestal directly beneath the sugar weight.'],
+  ['One lump or two?', 'The falling sugar pulls its sling, lifting the lava gate.'],
+  ['An unreasonable kettle', 'Steam lifts the piston and its rods: oil gate up, flint striker across.'],
+  ['This is probably enough heat', 'The flint lights the powder. The last blast burns the copper tea bag’s retaining cord.'],
+  ['A most electrifying tea bag', 'The copper weight falls through a generator coil. Current races along the overhead wire.'],
+  ['The magnet has opinions', 'Electricity powers the coil, pulling the iron latch out from under the counterweight.'],
+  ['Gravity gets the last word', 'The braked counterweight pulls four pulley strands, slowly lifting the bell latch.'],
   ['Tea is served. The bell is yours.', 'Collect the brass bell at the receiver, then carry it to the descent gate.'],
 ] as const;
 
@@ -22,15 +27,17 @@ export function restoreTeaMachine(value: unknown): TeaMachineState | undefined {
   const finite = (n: unknown, fallback: number, min: number, max: number): number =>
     typeof n === 'number' && Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
   return {
-    stage: Math.floor(finite(s.stage, 0, 0, 9)), ticks: Math.floor(finite(s.ticks, 0, 0, 1000000)),
-    stageTicks: Math.floor(finite(s.stageTicks, 0, 0, 1000000)), completed: s.completed === true && s.stage === 9,
+    stage: Math.floor(finite(s.stage, 0, 0, TEA_COMPLETE_STAGE)), ticks: Math.floor(finite(s.ticks, 0, 0, 1000000)),
+    stageTicks: Math.floor(finite(s.stageTicks, 0, 0, 1000000)), completed: s.completed === true && s.stage === TEA_COMPLETE_STAGE,
     stalled: s.stalled === true,
+    travel: Object.fromEntries((Object.keys(TEA_VALVES) as TeaValve[]).map(key =>
+      [key, Math.floor(finite(s.travel?.[key], 0, 0, TEA_VALVES[key].max))])),
     bodies: Array.isArray(s.bodies) ? TEA_BODIES.flatMap(def => {
       const b = s.bodies!.find(body => body?.key === def.key);
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y)) return [];
       return [{ key: def.key, x: finite(b.x, def.x, 8, 1591), y: finite(b.y, def.y, 8, 1055),
         vx: finite(b.vx, 0, -20, 20), vy: finite(b.vy, 0, -20, 20), angle: finite(b.angle, 0, -10000, 10000),
-        va: finite(b.va, 0, -1, 1), rope: b.rope === true }];
+        va: finite(b.va, 0, -1, 1), rope: b.rope === true, tether: b.tether === true }];
     }) : [],
   };
 }
@@ -71,7 +78,8 @@ export class TeaMachine {
       const b = this.ctx.rigidBodies.spawn(def.shape, old?.x ?? def.x, old?.y ?? def.y,
         { ...def.opts, ...(old ? { vx: old.vx, vy: old.vy, angle: old.angle, va: old.va } : {}), tag: `tea-${def.key}` });
       this.bodies.set(def.key, b);
-      if (def.rope && (!old || old.rope)) this.ctx.rigidBodies.tieRope(b, def.rope.x, def.rope.y, def.rope.length);
+      if (def.rope && (!old || old.rope)) this.ctx.rigidBodies.tieRope(b, def.rope.x, def.rope.y, def.rope.length, def.rope.material);
+      if (def.tether && (!old || old.tether)) this.ctx.rigidBodies.tieRope(b, def.tether.x, def.tether.y, def.tether.length, 'rope', true);
     }
     this.snapshot(s);
     return s;
@@ -79,7 +87,7 @@ export class TeaMachine {
 
   private snapshot(s: TeaMachineState): void {
     s.bodies = [...this.bodies].filter(([, b]) => this.ctx.rigidBodies.bodies.includes(b)).map(([key, b]) =>
-      ({ key, x: b.x, y: b.y, vx: b.vx, vy: b.vy, angle: b.angle, va: b.va, rope: !!b.rope }));
+      ({ key, x: b.x, y: b.y, vx: b.vx, vy: b.vy, angle: b.angle, va: b.va, rope: !!b.rope, tether: !!b.tether }));
   }
 
   private count(x: number, y: number, w: number, h: number, types: readonly number[]): number {
@@ -148,40 +156,61 @@ export class TeaMachine {
     const near = Math.hypot(ctx.player.x - TEA.lever.x, ctx.player.y - TEA.lever.y) < 110;
     const lever = this.runtime!.mechanisms.find(m => m.id === TEA.lever.id)!;
     if (s.stage === 0 && lever.state === 1) {
-      this.spark(465, 163); this.advance(s);
+      this.spark(465, TEA.fuse.y - 2); this.advance(s);
       if (near) this.startWatching();
     }
     if (s.stage > 0 && !s.completed && !s.stalled) {
       s.ticks++; s.stageTicks++;
-      const boulder = this.bodies.get('boulder'), duck = this.bodies.get('duck');
-      const sugar = this.bodies.get('sugar'), piston = this.bodies.get('piston');
+      const live = (key: string): RigidBody | undefined => {
+        const b = this.bodies.get(key); return b && ctx.rigidBodies.bodies.includes(b) ? b : undefined;
+      };
+      const bob = live('pendulum'), boulder = live('boulder'), duck = live('duck');
+      const rocker = live('rocker'), sugar = live('sugar'), piston = live('piston');
+      const domino = live('domino-5');
+      const armature = live('armature'), latch = live('magnet-latch'), counterweight = live('counterweight');
+      if (armature) generateFromDrop(ctx, armature, TEA.generatorTerminal, 222, 249);
+      if (latch) attractElectromagnet(ctx, latch, TEA.magnetTerminal);
+      // Persistent, one-way mechanical linkages. Their travel is supplied by
+      // the solver's body poses, even while the camera is following the next act.
+      if (s.stage >= 3 && domino) pullTeaValve(ctx.world, s, 'spring', Math.max(0, domino.angle) * 18);
+      if (s.stage >= 3 && rocker) pullTeaValve(ctx.world, s, 'water', (.25 - rocker.angle) * 24);
+      if (s.stage >= 4 && duck) pullTeaValve(ctx.world, s, 'acid', 233 - duck.y);
+      if (s.stage >= 5 && sugar) pullTeaValve(ctx.world, s, 'lava', sugar.y - 187);
+      if (s.stage >= 7 && piston) pullTeaValve(ctx.world, s, 'oil', 191 - piston.y);
+      if (s.stage >= 10 && counterweight) pullTeaValve(ctx.world, s, 'bell', (counterweight.y - 96) / 4);
       switch (s.stage) {
         case 1:
-          if (this.count(585, 160, 15, 8, [Cell.Fire, Cell.Ember]) > 0) {
-            teaRect(ctx.world, TEA.cradle, Cell.Empty); teaRect(ctx.world, TEA.cradleStop, Cell.Empty); this.advance(s);
-          } break;
+          if (bob && bob.x > 616) this.advance(s);
+          break;
         case 2: if (boulder && boulder.x > 700) this.advance(s); break;
         case 3:
-          if (boulder && boulder.x > 808 && boulder.y > 163) {
-            teaRect(ctx.world, TEA.waterGate, Cell.Empty); this.advance(s);
-          } break;
+          if ((s.travel?.water ?? 0) >= 4 && this.count(893, 143, 12, 24, [Cell.Water]) > 0) this.advance(s);
+          break;
         case 4:
-          if (duck?.inWater && duck.y < 216) { teaRect(ctx.world, TEA.acidGate, Cell.Empty); this.advance(s); }
+          if ((s.travel?.acid ?? 0) >= 6 && this.count(1099, 117, 13, 12, [Cell.Acid]) > 0) this.advance(s);
           break;
         case 5:
-          if (this.count(TEA.acidPin.x, TEA.acidPin.y, TEA.acidPin.w, TEA.acidPin.h, [Cell.Stone]) < 3) {
-            teaRect(ctx.world, { x: 1140, y: 184, w: 21, h: 5 }, Cell.Empty); this.advance(s);
-          } break;
+          if (sugar && sugar.y > 188) this.advance(s);
+          break;
         case 6:
-          if (sugar && sugar.y > 211) { teaRect(ctx.world, TEA.lavaGate, Cell.Empty); this.advance(s); }
+          if ((s.travel?.lava ?? 0) >= 6 && this.count(1217, 95, 10, 15, [Cell.Lava]) > 0) this.advance(s);
           break;
         case 7:
-          if (piston && piston.y < 175) {
-            teaRect(ctx.world, TEA.oilGate, Cell.Empty); this.spark(1305, 224); this.advance(s);
+          if ((s.travel?.oil ?? 0) >= 10) {
+            this.spark(1305, 224); this.advance(s);
           } break;
         case 8:
-          if (this.count(1487, 212, 7, 11, [Cell.Gunpowder]) < 5 && this.count(1475, 200, 40, 35, [Cell.Fire, Cell.Ember, Cell.Steam]) > 0) {
-            teaRect(ctx.world, { x: 1499, y: 237, w: 17, h: 2 }, Cell.Empty);
+          if (this.count(1487, 212, 7, 11, [Cell.Gunpowder]) < 5 && armature && !armature.rope && armature.y > 222) {
+            this.advance(s);
+          } break;
+        case 9:
+          if (ctx.world.charge[ctx.world.idx(TEA.magnetTerminal.x, TEA.magnetTerminal.y)] >= 20) this.advance(s);
+          break;
+        case 10:
+          if (counterweight && counterweight.y > 105) this.advance(s);
+          break;
+        case 11:
+          if ((s.travel?.bell ?? 0) >= 12) {
             this.advance(s); s.completed = true;
             ctx.audio.gong(); ctx.events.emit('objectiveChanged', { text: 'Collect the brass bell from the engine receiver.' });
           } break;
@@ -198,7 +227,9 @@ export class TeaMachine {
       if (this.returning) {
         ctx.camera.actionFocus = { x: ctx.player.x, y: ctx.player.y - 9, zoom: 1 };
         this.returning++;
-        if (this.returning > 65) {
+        const camera = ctx.camera;
+        const arrived = Number.isFinite(camera.tx) ? Math.hypot(camera.x - camera.tx, camera.y - camera.ty) < 1 : this.returning > 65;
+        if (this.returning > 30 && arrived) {
           this.watching = false; this.returning = 0; ctx.camera.actionFocus = null;
           ctx.player.fireBlockedUntilRelease = true; ctx.input.queuedJump = undefined;
         }
@@ -210,14 +241,20 @@ export class TeaMachine {
 
   private focus(s: TeaMachineState): { x: number; y: number; zoom: number } {
     const close = this.ctx.state.reduceCameraShake ? 1 : 1.35;
-    const b = this.bodies.get(s.stage === 2 ? 'pendulum' : s.stage === 3 ? 'boulder' : s.stage === 4 ? 'duck' : s.stage === 6 ? 'sugar' : 'piston');
-    if ([2, 3, 4, 6, 7].includes(s.stage) && b) return { x: b.x + (s.stage === 3 ? 50 : 0), y: b.y, zoom: s.stage === 3 ? 1.05 : close };
+    // Frame the driver AND its destination. Cutting to the liquid downstream
+    // before a cable moves made an honest position trigger look like a timer.
+    if (s.stage === 2) return { x: 652, y: 133, zoom: close };
+    if (s.stage === 3) return { x: 801, y: 146, zoom: 1.05 };
+    if (s.stage === 4 || (s.stage === 5 && s.stageTicks < 90)) return { x: 1028, y: 153, zoom: 1 };
+    if (s.stage === 5 || s.stage === 6) return { x: 1159, y: 148, zoom: this.ctx.state.reduceCameraShake ? 1 : 1.12 };
+    if (s.stage === 7) return { x: 1268, y: 165, zoom: this.ctx.state.reduceCameraShake ? 1 : 1.18 };
     if (s.stage === 1) {
       let head = TEA.fuse.x0 as number;
-      for (let x = TEA.fuse.x0; x <= TEA.fuse.x1; x++) if (this.count(x, 160, 1, 7, [Cell.Fire]) > 0) head = x;
-      return { x: head + 40, y: 150, zoom: close };
+      for (let x = TEA.fuse.x0; x <= TEA.fuse.x1; x++) if (this.count(x, TEA.fuse.y - 5, 1, 8, [Cell.Fire]) > 0) head = x;
+      return { x: head + 40, y: 133, zoom: close };
     }
-    return s.stage === 5 ? { x: 1118, y: 157, zoom: close } : s.stage >= 9
+    if (s.stage >= 9 && s.stage < TEA_COMPLETE_STAGE) return { x: 1453, y: 150, zoom: 1 };
+    return s.stage >= TEA_COMPLETE_STAGE
       ? { x: 1484, y: 220, zoom: close } : { x: 1400, y: 198, zoom: 1.02 };
   }
 

@@ -1505,8 +1505,12 @@ export type BodyMaterial = 'wood' | 'metal' | 'stone';
  * cells/frame; `va` rad/frame.
  */
 export interface RigidBody {
+  guideAxis?: 'vertical' | 'horizontal';
+  /** Stored angular spring energy, integrated by Rapier as a restoring torque. */
+  torsionSpring?: { restAngle: number; stiffness: number; damping: number };
   /** A real maximum-length rope to a fixed world anchor. */
-  rope?: { x: number; y: number; length: number };
+  rope?: { x: number; y: number; length: number; material?: 'rope' | 'chain' };
+  tether?: RigidBody['rope'];
   /** A broad piston face that receives pressure from real steam beneath it. */
   steamPiston?: boolean;
   readonly id: number;
@@ -1563,7 +1567,12 @@ export interface RigidBody {
 }
 
 export interface SpawnBodyOpts {
+  torsionSpring?: RigidBody['torsionSpring'];
   steamPiston?: boolean;
+  /** A slider rail: the solver permits travel on this axis and locks rotation. */
+  guideAxis?: 'vertical' | 'horizontal';
+  /** Pivot at the spawn position, with mechanical angular stops in radians. */
+  hinge?: { minAngle: number; maxAngle: number };
   kind?: RigidBodyKind;
   vx?: number;
   vy?: number;
@@ -1640,8 +1649,8 @@ export interface PlayerRagdollRig {
 }
 
 export interface RigidBodiesApi {
-  tieRope(body: RigidBody, x: number, y: number, length?: number): void;
-  cutRope(body: RigidBody): void;
+  tieRope(body: RigidBody, x: number, y: number, length?: number, material?: 'rope' | 'chain', secondary?: boolean): void;
+  cutRope(body: RigidBody, secondary?: boolean): void;
   readonly playerRagdoll?: PlayerRagdollRig | null;
   spawnPlayerRagdoll?(player: PlayerState): RigidBody;
   /** Live list — mutated in place, never reassigned (entity-array invariant). */
@@ -2865,7 +2874,9 @@ export interface TeaMachineState {
   stageTicks: number;
   completed: boolean;
   stalled: boolean;
-  bodies: Array<{ key: string; x: number; y: number; vx: number; vy: number; angle: number; va: number; rope: boolean }>;
+  /** Ratcheted valve travel in cells; the grid contains the actual moving plates. */
+  travel?: Partial<Record<'spring' | 'water' | 'acid' | 'lava' | 'oil' | 'bell', number>>;
+  bodies: Array<{ key: string; x: number; y: number; vx: number; vy: number; angle: number; va: number; rope: boolean; tether?: boolean }>;
 }
 
 export interface LivingExpeditionState {

@@ -1027,14 +1027,15 @@ export class FrameComposer implements PixelSurface {
     if (ctx.state.mode !== 'play') return;
     const frame = ctx.state.frameCount;
     for (const b of ctx.rigidBodies.bodies) {
-      if (b.rope) {
-        const rope = b.rope, distance = Math.hypot(b.x - rope.x, b.y - rope.y);
+      for (const rope of [b.rope, b.tether]) {
+        if (!rope) continue;
+        const distance = Math.hypot(b.x - rope.x, b.y - rope.y);
         const slack = Math.sqrt(Math.max(0, rope.length * rope.length - distance * distance)) * .25;
         for (let i = 0; i <= distance; i += .5) {
           const t = i / Math.max(1, distance);
           const x = rope.x + (b.x - rope.x) * t, y = rope.y + (b.y - rope.y) * t + Math.sin(t * Math.PI) * slack;
           const shade = Math.floor(i) % 3 === 0 ? .8 : .58;
-          this.setPx(x, y, shade, shade * .78, shade * .43);
+          this.setPx(x, y, shade, shade * (rope.material === 'chain' ? .95 : .78), shade * (rope.material === 'chain' ? .9 : .43));
         }
       }
       if (b.tag?.startsWith('player-corpse')) continue; // drawn as a limp wizard in drawPlayerRagdoll
