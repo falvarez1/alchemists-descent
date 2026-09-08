@@ -210,7 +210,13 @@ export class TeaMachine {
           if (counterweight && counterweight.y > 105) this.advance(s);
           break;
         case 11:
-          if ((s.travel?.bell ?? 0) >= 12) {
+          // The last powder charge can legitimately tear the thin receiver
+          // gate away before the counterweight finishes its stroke. That is an
+          // open physical path, not a jam: accept either the full linkage
+          // travel or a gate whose load-bearing metal is already gone.
+          if ((s.travel?.bell ?? 0) >= 12 ||
+              this.count(TEA.bellGate.x, TEA.bellGate.y - 20, TEA.bellGate.w,
+                TEA.bellGate.h + 20, [Cell.Metal]) < 8) {
             this.advance(s); s.completed = true;
             ctx.audio.gong(); ctx.events.emit('objectiveChanged', { text: 'Collect the brass bell from the engine receiver.' });
           } break;

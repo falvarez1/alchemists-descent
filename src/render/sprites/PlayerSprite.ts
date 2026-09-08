@@ -3,6 +3,7 @@ import type { LightField, PixelSurface } from '@/render/pixels';
 import { clamp } from '@/core/math';
 import { PLAYER_PALETTE } from './playerPalette';
 import { CellCapture, finePixelStep } from './FineArt';
+import { drawAlchemistSprite } from './AlchemistSprite';
 
 type RGB = readonly [number, number, number];
 
@@ -50,11 +51,14 @@ const STAIN_R = 0.5, STAIN_G = 0.06, STAIN_B = 0.09; // soaked-cloth blood (dark
  * The player is fully self-lit — the light field is not sampled here (the
  * parameter is kept for the shared sprite-drawing signature).
  */
-export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx): void {
+export function drawPlayerSprite(out: PixelSurface, light: LightField, ctx: Ctx): void {
   const player = ctx.player;
   const frameCount = ctx.state.frameCount;
   if (ctx.state.mode !== 'play' || player.dead) return;
   if (!ctx.state.reduceFlashes && player.invuln > 0 && frameCount % 6 < 3) return;
+  // The game surface has half-cell pixels and uses the joint-driven art pass.
+  // Classic cell surfaces retain the legacy sprite for Builder compatibility.
+  if (!player.legClub && drawAlchemistSprite(out, light, ctx)) return;
 
   // Silhouette pass: every BODY pixel is recorded so a near-black rim can be
   // stamped around the finished figure (Noita/Dead Cells readability — the

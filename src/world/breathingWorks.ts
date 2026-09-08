@@ -18,6 +18,16 @@ export const WORKS_ROOMS = [
   { id: 'descent', name: 'The Lower Bell', x: 925, y: 825, w: 610, h: 185, floor: 1010 },
 ] as const;
 
+/** Stable authored ids let objectives, tests and presentation describe the
+ * same physical cold lock without searching by incidental coordinates. */
+export const WORKS_COLD_LOCK = {
+  leftDoorId: 8301,
+  rightDoorId: 8302,
+  leftSensorId: 8303,
+  rightSensorId: 8304,
+  basin: { x0: 302, y0: 333, x1: 327, y1: 341 },
+} as const;
+
 export function worksRoomAt(x: number, y: number): (typeof WORKS_ROOMS)[number] {
   let best: (typeof WORKS_ROOMS)[number] = WORKS_ROOMS[0];
   let distance = Infinity;
@@ -74,9 +84,16 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       rect(Math.round(ax + (bx - ax) * t) - 19, Math.round(ay + (by - ay) * t) - height, 38, height);
     }
   };
-  tunnel(440, 315, 545, 400);
+  // The first descent now leaves from beneath the locked crank balcony. The
+  // player sees the cold census before dropping, then later climbs this same
+  // shaft with Frost Shard: an authored out-and-back loop instead of the old
+  // straight catwalk march.
+  tunnel(400, 365, 545, 400);
   tunnel(880, 400, 975, 450);
-  tunnel(1455, 450, 1420, 590);
+  // Keep the gallery-to-pressure chute west of the third breathing stack.
+  // Its old mouth crossed the stack's solid uprights, creating a visually
+  // open route that pinched the player against an eight-cell pipe throat.
+  tunnel(1432, 450, 1415, 590);
   tunnel(1105, 715, 990, 760);
   tunnel(700, 760, 575, 825);
   tunnel(430, 815, 490, 1008);
@@ -84,7 +101,11 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   // A return climb reconnects the refuge to the intake; alternating landings
   // keep it traversable with the starting jump, climb and levitation budget.
   rect(330, 285, 82, 320);
-  for (let y = 342, step = 0; y < 600; y += 35, step++) {
+  // Carry the rungs all the way to the garden floor. The earlier half-height
+  // version asked a fresh player to spend their entire levitation charge just
+  // reaching the first foothold, which made the intended return read like an
+  // exploit instead of a designed route.
+  for (let y = 342, step = 0; y < 810; y += 35, step++) {
     rect(step % 2 ? 330 : 383, y, 29, 5, Cell.Metal, packRGB(90, 75, 53));
   }
   rect(330, 315, 82, 8, Cell.Wood, packRGB(116, 91, 58));
@@ -115,8 +136,21 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   rect(1185, 683, 225, 44, Cell.Water, packRGB(40, 83, 90));
   // The refuge is a deliberate patch of warm, dry, readable ground.
   rect(767, 744, 160, 16, Cell.Stone, packRGB(73, 70, 57));
+  // Two worn steps on each side turn the refuge plinth into an invitation.
+  // A sheer body-height curb at both entrances used to snag ordinary running
+  // and made the safe room feel less safe than the pressure chamber outside.
+  rect(753, 750, 14, 10, Cell.Stone, packRGB(69, 68, 57));
+  rect(739, 755, 14, 5, Cell.Stone, packRGB(66, 66, 56));
+  rect(927, 750, 14, 10, Cell.Stone, packRGB(69, 68, 57));
+  rect(941, 755, 14, 5, Cell.Stone, packRGB(66, 66, 56));
   rect(807, 743, 9, 2, Cell.Wood, packRGB(117, 79, 41));
+  // Pale, walk-through moss marks the required tome without putting a tiny
+  // collision curb in the safe room's main path.
+  rect(885, 743, 15, 1, Cell.Moss, packRGB(124, 174, 183));
   rect(280, 794, 210, 30, Cell.Water, packRGB(48, 98, 93));
+  // The garden pool is stamped after the shaft and would otherwise erase its
+  // lowest rung. A broad, dry dock makes the start of the backtrack explicit.
+  rect(330, 788, 29, 5, Cell.Metal, packRGB(90, 75, 53));
   rect(267, 780, 42, 7, Cell.Stone, packRGB(78, 89, 80));
   rect(1030, 983, 65, 27, Cell.Sand, packRGB(126, 110, 74));
   rect(1130, 996, 125, 14, Cell.Wood, packRGB(85, 64, 40));
@@ -187,17 +221,83 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   const pickup = (kind: Pickup['kind'], x: number, y: number, data: Pickup['data'] = {}): Pickup =>
     ({ kind, x, y, vx: 0, vy: 0, taken: false, data });
   const machineLights = stampTeaMachine(world, mechanisms);
-  const lamp = (x: number, y: number, warm = false, radius = 120): AuthoredLight => ({
+  // THE COLD CENSUS. The crank can be seen through two portcullises, but the
+  // alchemist cannot reach through either one. A shallow cistern outside the
+  // cage is the key: both sensors count actual Ice cells and latch forever.
+  // Frost Shard is deliberately below in the refuge; starting nitrogen is a
+  // finite, system-literate sequence break rather than an invisible exception.
+  const coldMetal = packRGB(83, 116, 128);
+  rect(408, 275, 46, 4, Cell.Metal, coldMetal); // cage lintel around the striker rod
+  rect(412, 279, 5, 36, Cell.Metal, coldMetal);
+  rect(449, 279, 5, 36, Cell.Metal, coldMetal);
+  // The census tank is recessed into the west shaft wall rather than laid
+  // across the walking route. It can be aimed into from the hatch/landings,
+  // and the bright water remains visible on both the first drop and return.
+  rect(299, 315, 32, 18, Cell.Empty, EMPTY_COLOR); // open inspection well above the tank
+  rect(299, 342, 32, 3, Cell.Metal, coldMetal);
+  rect(299, 331, 3, 14, Cell.Metal, coldMetal);
+  rect(328, 331, 3, 14, Cell.Metal, coldMetal);
+  rect(WORKS_COLD_LOCK.basin.x0, WORKS_COLD_LOCK.basin.y0,
+    WORKS_COLD_LOCK.basin.x1 - WORKS_COLD_LOCK.basin.x0 + 1,
+    WORKS_COLD_LOCK.basin.y1 - WORKS_COLD_LOCK.basin.y0 + 1,
+    Cell.Water, packRGB(76, 143, 151));
+  // Open hatch into the return shaft. It sits left of the cistern, leaving a
+  // safe lip from which the lock, water and caged crank remain visible.
+  rect(336, 311, 24, 19, Cell.Empty, EMPTY_COLOR);
+  // Frosted glass teeth make the desired transformation readable before the
+  // player owns it; they are decoration/material, never the thing being read.
+  for (const x of [304, 311, 318, 325]) {
+    put(x, 332, Cell.Glass, packRGB(144, 187, 188));
+    if (x % 2 === 0) put(x + 1, 332, Cell.Glass, packRGB(105, 153, 161));
+  }
+  const leftDoor: Mechanism = { id: WORKS_COLD_LOCK.leftDoorId, kind: 'door', x: 412, y: 279, w: 5, h: 36,
+    state: 0, targetId: -1, requiresCard: 'frostshard' };
+  const rightDoor: Mechanism = { id: WORKS_COLD_LOCK.rightDoorId, kind: 'door', x: 449, y: 279, w: 5, h: 36,
+    state: 0, targetId: -1, requiresCard: 'frostshard' };
+  const coldSensor = (id: number, targetId: number, x: number): Mechanism => ({
+    id, kind: 'sensor', x, y: 334, w: 1, h: 1, state: 0, targetId,
+    threshold: 32, zone: { ...WORKS_COLD_LOCK.basin }, sensorType: 'material', materialFilter: [Cell.Ice],
+    latch: 'permanent', body: [[x, 334]],
+  });
+  mechanisms.push(leftDoor, rightDoor,
+    coldSensor(WORKS_COLD_LOCK.leftSensorId, leftDoor.id, 306),
+    coldSensor(WORKS_COLD_LOCK.rightSensorId, rightDoor.id, 324));
+  put(306, 334, Cell.Metal, packRGB(72, 145, 148));
+  put(324, 334, Cell.Metal, packRGB(72, 145, 148));
+  const teaCrank = mechanisms.find(mechanism => mechanism.id === TEA.lever.id);
+  if (teaCrank) teaCrank.requiresCard = 'frostshard';
+
+  // Failed electrical fixtures turn the Undertow into a deliberate tension
+  // trough. Their glass and brackets occupy the grid; only the light's pulse
+  // is authored. Each fixture is hung from the first real ceiling above it.
+  const failingLights: AuthoredLight[] = [];
+  const failingFixture = (x: number, flickerPhase: number, radius: number): void => {
+    let ceiling = 858;
+    while (ceiling < 930 && world.type(x, ceiling) !== Cell.Empty) ceiling++;
+    if (ceiling >= 930) return;
+    for (let d = 0; d < 5; d++) put(x, ceiling + d, Cell.Metal, packRGB(66 + d * 3, 78 + d * 2, 74));
+    for (let dx = -3; dx <= 3; dx++) put(x + dx, ceiling + 5, Cell.Metal, packRGB(78, 89, 78));
+    put(x - 1, ceiling + 6, Cell.Glass, packRGB(128, 152, 122));
+    put(x, ceiling + 6, Cell.Glass, packRGB(190, 187, 122));
+    put(x + 1, ceiling + 6, Cell.Glass, packRGB(102, 130, 109));
+    failingLights.push({ x, y: ceiling + 7, r: .72, g: .66, b: .42, intensity: .36,
+      radius, bloom: .08, flicker: .72, flickerPhase, falloff: 'soft', occluded: true });
+  };
+  failingFixture(388, hash(388, 860) % 600, 92);
+  failingFixture(614, hash(614, 860) % 600, 76);
+  failingFixture(854, hash(854, 860) % 600, 88);
+
+  const lamp = (x: number, y: number, warm = false, radius = 120, flicker = .04, intensity = .65): AuthoredLight => ({
     x, y, r: warm ? 1 : 0.46, g: warm ? 0.66 : 0.81, b: warm ? 0.30 : 0.75,
-    intensity: 0.65, radius, bloom: 0.12, flicker: 0.04, flickerPhase: hash(x, y) % 600,
+    intensity, radius, bloom: 0.12, flicker, flickerPhase: hash(x, y) % 600,
     falloff: 'soft', occluded: true,
   });
   return {
     spawn: { x: 170, y: 314 }, exit: { x: 1400, sealY: 1010, halfW: 14 },
     waystones: [{ x: 192, y: 314, lit: true }, { x: 857, y: 743, lit: true }],
     portal: { x: 1400, y: 1008, open: false }, cauldron: null,
-    pickups: [pickup('key', TEA.receiver.x, TEA.receiver.y), pickup('tome', 892, 735, { card: 'heavy' }),
-      pickup('tome', 265, 252, { card: 'bounce' }), pickup('tome', 1125, 270, { card: 'frostshard' }),
+    pickups: [pickup('key', TEA.receiver.x, TEA.receiver.y), pickup('tome', 892, 735, { card: 'frostshard' }),
+      pickup('tome', 265, 252, { card: 'bounce' }), pickup('tome', 1125, 270, { card: 'heavy' }),
       pickup('tome', 672, 942, { card: 'double' }),
       pickup('heart', 820, 735), pickup('goldpile', 1470, 722, { amount: 60 }),
       pickup('goldpile', 1063, 978, { amount: 30 }),
@@ -215,7 +315,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     placedPrefabs: [...WORKS_ROOMS.map(r => ({ id: `works-${r.id}`, x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.floor })),
       { id: 'works-bell-tea-engine', ...TEA.bounds }],
     authoredLights: [lamp(180, 279, true, 150), lamp(30, 300, true, 70), lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),
-      lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true), ...machineLights],
+      lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true, 115, .1, .48), ...failingLights, ...machineLights],
     emitters: [], decors: [], refuge: { x: 857, y: 739 }, spellLab: null,
     vaultArch: null, vaultHoard: null, surfaceSpawn: null, surfaceSkyLine: null,
   };

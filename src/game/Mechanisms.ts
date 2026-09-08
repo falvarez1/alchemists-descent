@@ -63,7 +63,11 @@ export class Mechanisms implements MechanismsApi {
       // Fail-open rule: a wrecked mechanism groans, then its gate falls open.
       // Physics can never hard-lock progression. Plugs are exempt: their
       // body being destroyed is their JOB — the plug branch below fires them.
-      if (m.kind !== 'plug' && m.broken === undefined && m.body && ctx.state.frameCount % 30 === 0) {
+      // An open valve has deliberately retracted every recorded body cell;
+      // that is its healthy state, not structural destruction. Closed valves
+      // and physical trigger nodes still retain the normal fail-open audit.
+      const shouldAuditBody = m.kind !== 'plug' && !(m.kind === 'valve' && m.state === 1);
+      if (shouldAuditBody && m.broken === undefined && m.body && ctx.state.frameCount % 30 === 0) {
         let intact = 0;
         for (const [bx, by] of m.body) {
           if (!world.inBounds(bx, by)) continue;

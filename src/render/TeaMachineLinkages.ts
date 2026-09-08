@@ -34,6 +34,84 @@ export function drawTeaLinkages(out: PixelSurface, light: LightField, ctx: Ctx, 
   };
   const eyeRing = (p: Pen, x: number, y: number): void => { p.ring(x, y, 1.4, 0.6, BRASS); p.px(x - 0.5, y - 0.5, BRASS_L); };
 
+  // The apparatus occupies one inherited workshop, not a row of unrelated
+  // toys. Riveted bays, a shared service manifold and stateful gauges bind the
+  // causal stages into a single readable silhouette while leaving every real
+  // material reservoir and moving body unobscured.
+  const bays: ReadonlyArray<readonly [number, number, number, RGB]> = [
+    [452, 614, 1, [0.58, 0.34, 0.16]],
+    [616, 710, 2, [0.49, 0.44, 0.28]],
+    [712, 827, 3, [0.59, 0.45, 0.22]],
+    [829, 930, 4, [0.28, 0.52, 0.55]],
+    [932, 1084, 5, [0.35, 0.53, 0.48]],
+    [1086, 1189, 6, [0.49, 0.56, 0.34]],
+    [1191, 1284, 7, [0.67, 0.35, 0.19]],
+    [1286, 1350, 8, [0.52, 0.37, 0.23]],
+    [1352, 1450, 10, [0.29, 0.54, 0.57]],
+    [1452, 1554, 12, [0.65, 0.53, 0.28]],
+  ];
+  for (let bayIndex = 0; bayIndex < bays.length; bayIndex++) {
+    const [x0, x1, stage, accent] = bays[bayIndex];
+    const centre = (x0 + x1) / 2, p = penAt(centre, 142);
+    if (!p.inView(x0, 31, x1, 258)) continue;
+    for (const x of [x0 + 3, x1 - 3]) {
+      p.rod(x, 42, x, 256, bayIndex % 2 ? IRON_D : IRON, 1);
+      for (let y = 50; y < 252; y += 26) p.rivet(x + (x === x0 + 3 ? .8 : -.8), y, BRASS_D);
+    }
+    p.curve(x0 + 3, 46, centre, 31 - (bayIndex % 3) * 3, x1 - 3, 46, IRON_D, 1.2);
+    p.line(x0 + 5, 252, x1 - 5, 252, IRON_D, 1.4);
+    p.line(x0 + 8, 255, x1 - 8, 255, BRASS_D, .5, .65);
+    // The dial is a physical stage witness. Its needle advances only after
+    // this bay has actually completed, mirroring the causal state machine.
+    const gaugeX = x0 + 14, gaugeY = 52;
+    p.disc(gaugeX, gaugeY, 4.2, [0.29, 0.31, 0.28], INK, .7);
+    p.arc(gaugeX, gaugeY, 3.1, Math.PI * 1.08, Math.PI * 1.92, STEEL_L, .5, .75);
+    const live = Math.min(1, Math.max(0, s.stage - stage + 1));
+    const needle = Math.PI * (1.1 + live * .78);
+    p.line(gaugeX, gaugeY, gaugeX + Math.cos(needle) * 2.7, gaugeY + Math.sin(needle) * 2.7,
+      live > 0 ? accent : STEEL_D, .5);
+    p.disc(gaugeX, gaugeY, .7, BRASS_L, INK);
+    // Etched station count: a workshop convention rather than floating text.
+    for (let mark = 0; mark <= bayIndex % 4; mark++) p.line(x1 - 14 + mark * 2, 50, x1 - 14 + mark * 2, 55, BRASS_D, .5);
+    p.disc(x1 - 10, 62, 1.45, live > 0 ? accent : IRON_D, INK);
+    if (live > 0) p.glow(x1 - 10, 62, accent, .42 + Math.sin(ctx.state.frameCount * .08 + stage) * .08);
+  }
+  // Shared copper service line. Its drooping runs and bolted elbows give the
+  // eye one continuous route across the machine without pretending to carry
+  // any gameplay signal that is not already present in the cells below.
+  {
+    const p = penAt(995, 41);
+    p.cable([[458, 39], [610, 39], [618, 45], [825, 45], [835, 39], [1080, 39],
+      [1090, 45], [1280, 45], [1290, 39], [1548, 39]], 0, { color: COPPER, dark: BRASS_D, width: 1, sag: 2 });
+    for (const x of [610, 825, 1080, 1280, 1450]) {
+      p.ring(x, x % 2 ? 42 : 39, 2.2, .7, BRASS_D);
+      p.rivet(x - .5, (x % 2 ? 42 : 39) - .5, BRASS_L);
+    }
+  }
+  // Consequence residue accumulates only after its corresponding process:
+  // mineral run-off, acid etch, boiler soot and oil varnish make the route
+  // legible even after the fast chain reaction has passed.
+  if (s.stage >= 4) {
+    const p = penAt(905, 244);
+    for (let i = 0; i < 7; i++) p.curve(900 + i * 5, 244, 899 + i * 5, 249, 897 + i * 6, 253,
+      i % 2 ? [0.26, 0.48, 0.51] : [0.39, 0.61, 0.57], .5, .75);
+  }
+  if (s.stage >= 6) {
+    const p = penAt(1122, 212);
+    for (let i = 0; i < 5; i++) p.curve(1105 + i * 6, 211, 1107 + i * 6, 219,
+      1103 + i * 8, 226, [0.37, 0.5, 0.22], .5, .7);
+  }
+  if (s.stage >= 8) {
+    const p = penAt(1275, 223);
+    for (let i = 0; i < 12; i++) p.px(1240 + (i * 17) % 62, 223 - (i * 7) % 12,
+      i % 3 ? [0.16, 0.14, 0.13] : [0.29, 0.23, 0.16], .65);
+  }
+  if (s.stage >= 9) {
+    const p = penAt(1332, 226);
+    for (let i = 0; i < 8; i++) p.curve(1315 + i * 3, 216, 1314 + i * 3, 221,
+      1313 + i * 4, 226, [0.24, 0.18, 0.12], .5, .8);
+  }
+
   /** Guide rails and the brass frame over a plate's real metal; returns the cable eye. */
   const valve = (key: TeaValve): Point => {
     const { plate, dx, dy, max } = TEA_VALVES[key], travel = s.travel?.[key] ?? 0;

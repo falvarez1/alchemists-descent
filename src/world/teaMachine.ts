@@ -158,11 +158,23 @@ export function stampTeaMachine(world: World, mechanisms: Mechanism[], repair = 
   // into the Feeding Gallery: this is the main route through the level.
   rect(449, 264, 1076, 48, Cell.Empty);
   rect(449, 312, 1076, 4, Cell.Metal);
+  // Secondary containment beneath the reactive bays. Acid can eventually eat
+  // through the machine's ordinary belly and the boiler can crack it; a deep
+  // riveted metal drip tray keeps that readable aftermath overhead instead of
+  // turning the only post-puzzle catwalk into an unavoidable lethal pool.
+  rect(1074, 270, 290, 5);
+  rect(1074, 258, 4, 17); rect(1360, 258, 4, 17);
   rect(1500, 253, 28, 59, Cell.Empty);
   rect(1500, 253, 19, 2, Cell.Metal);
   rect(1525, 263, 30, 188, Cell.Empty);
   rect(1531, 233, 24, 82, Cell.Empty);
-  for (let y = 282, n = 0; y < 443; y += 30, n++) rect(n % 2 ? 1526 : 1540, y, 14, 3);
+  // Staggered maintenance rungs frame a clear central drop for the finished
+  // bell. The old upper-right rung caught the reward sixty cells above the
+  // route while the objective told players to look along the catwalk.
+  // Keep the short delivery drop itself clear; maintenance rungs begin below
+  // the tray, where they cannot catch either the bell or a running player.
+  for (let y = 342, n = 0; y < 443; y += 30, n++) rect(n % 2 ? 1526 : 1546, y, 9, 3);
+  rect(1536, 331, 11, 3); // receiver tray, one short drop below the catwalk
   // The finale extends up into a second gallery. A falling copper tea bag is
   // a linear generator; its real metal wire feeds a solenoid release above.
   rect(1524, 40, 1, 185); rect(1368, 40, 157, 1); rect(1368, 40, 1, 58);

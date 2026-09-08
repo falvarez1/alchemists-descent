@@ -205,6 +205,21 @@ describe('machine physics', () => {
 });
 
 describe('machine state and camera ownership', () => {
+  it('treats a blast-open final bell gate as a successful fail-open handoff', () => {
+    const { ctx, rigid, runtime, world } = fixture(); ctx.player.dead = false;
+    ctx.audio.gong = vi.fn();
+    stampTeaMachine(world, runtime.mechanisms);
+    const director = new TeaMachine(ctx); director.update();
+    const tea = runtime.living!.tea!;
+    tea.stage = 11; tea.stageTicks = 0; tea.completed = false; tea.stalled = false;
+    teaRect(world, TEA.bellGate, Cell.Empty);
+    director.update();
+    expect(tea.completed).toBe(true);
+    expect(tea.stage).toBe(TEA_COMPLETE_STAGE);
+    expect(ctx.audio.gong).toHaveBeenCalledOnce();
+    director.dispose(); rigid.dispose();
+  });
+
   it('keeps control with the camera until a long return pan actually arrives', () => {
     const { ctx, rigid, world, runtime } = fixture(); ctx.player.dead = false;
     ctx.camera = new Camera(); ctx.camera.snapTo(1450, 200);

@@ -103,7 +103,11 @@ export class Pickups implements PickupsApi {
       p.x += p.vx;
       p.y += p.vy;
 
-      if (!player.dead && canCollect && d2 < 49 && clearLine) this.collect(ctx, p);
+      // Floor-resting tomes sit about eight cells below the standing body's
+      // interaction focus. Give this authored, important pickup one body-width
+      // of grace so walking across a spell pedestal cannot silently miss it.
+      const collectRadius = p.kind === 'tome' ? 11 : p.kind === 'weaverleg' ? 7 : 9;
+      if (!player.dead && canCollect && d2 < collectRadius * collectRadius && clearLine) this.collect(ctx, p);
     }
   }
 

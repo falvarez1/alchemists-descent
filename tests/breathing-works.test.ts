@@ -8,11 +8,14 @@ import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { validateFindability, wizardMask } from '@/world/validate';
 import { EventBus } from '@/core/events';
+import { Mechanisms } from '@/game/Mechanisms';
 
 function fixture(seed = 777) {
+  const noop = (): void => undefined;
   const world = new World();
   const ctx = { world, state: { mode: 'play' }, player: { x: 170, y: 314, vx: 0, dead: false, hp: 70, maxHp: 110 },
-    enemies: [], events: new EventBus(), audio: { tone: () => {} } } as unknown as Ctx;
+    enemies: [], events: new EventBus(), audio: { tone: noop, groan: noop, zap: noop, bubble: noop, brazier: noop,
+      doorGrind: noop }, particles: { spawn: noop, burst: noop } } as unknown as Ctx;
   const generated = generateBreathingWorks(ctx, seed);
   const runtime = makeLevelRuntime({ ...generated, def: LEVELS.d1, world, regions: null, living: createLivingState() });
   ctx.levels = { current: runtime, saveExpedition: () => {} } as unknown as Ctx['levels'];
@@ -38,8 +41,32 @@ describe('Breathing Works encounter contracts', () => {
     // GEN_VERSION 39 reclaimed habitat and optional spell detours.
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
-    // GEN_VERSION 42: domino/spring latch, guided valves and electrical gallery.
-    expect((hash >>> 0).toString(16)).toBe('70af2f55');
+    // GEN_VERSION 44: cold-lock backtrack, return hatch and living habitat.
+    expect((hash >>> 0).toString(16)).toBe('e3131c67');
+  });
+
+  it('makes Frost Shard a real out-and-back gate before the engine crank', () => {
+    const { ctx, runtime } = fixture();
+    const frost = runtime.pickups.find(p => p.kind === 'tome' && p.data.card === 'frostshard')!;
+    const gate = runtime.mechanisms.filter(m => m.requiresCard === 'frostshard');
+    expect(frost).toMatchObject({ x: 892, y: 735, taken: false });
+    expect(gate.map(m => m.kind).sort()).toEqual(['door', 'door', 'lever']);
+    expect(gate.filter(m => m.kind === 'door').every(m => m.state === 0)).toBe(true);
+    const basin = runtime.mechanisms.find(m => m.sensorType === 'material' && m.materialFilter?.includes(Cell.Ice))!.zone!;
+    let frozen = 0;
+    for (let y = basin.y0; y <= basin.y1 && frozen < 32; y++) for (let x = basin.x0; x <= basin.x1 && frozen < 32; x++) {
+      const i = runtime.world.idx(x, y);
+      if (runtime.world.types[i] === Cell.Water) { runtime.world.types[i] = Cell.Ice; frozen++; }
+    }
+    expect(frozen).toBe(32);
+    const system = new Mechanisms(ctx);
+    ctx.state.paused = false;
+    for (let frame = 0; frame < 80; frame++) { ctx.state.frameCount = frame; system.update(ctx); }
+    expect(gate.filter(m => m.kind === 'door').every(m => m.state === 1)).toBe(true);
+    expect(gate.filter(m => m.kind === 'door').every(m => !m.dissolve)).toBe(true);
+    const postUnlock = wizardMask(runtime);
+    expect(postUnlock[runtime.world.idx(430, 311)]).toBe(1);
+    system.dispose();
   });
 
   it('warns before exhaling, consumes water and cannot vent from a frozen reservoir', () => {

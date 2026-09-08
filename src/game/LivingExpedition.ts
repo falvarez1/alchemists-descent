@@ -1,5 +1,5 @@
 import type { Ctx, LivingExpeditionState } from '@/core/types';
-import { worksRoomAt } from '@/world/breathingWorks';
+import { WORKS_COLD_LOCK, worksRoomAt } from '@/world/breathingWorks';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 
@@ -20,6 +20,16 @@ export function livingObjective(ctx: Ctx): string | null {
     const phase = pressurePhase(living.ticks);
     if (phase === 'inhale') return 'The pipes are drawing breath. Get beneath a shelter.';
     if (phase === 'exhale') return 'The Works exhale. Cross between the steam jets.';
+  }
+  const coldDoors = rt.mechanisms.filter(m =>
+    m.id === WORKS_COLD_LOCK.leftDoorId || m.id === WORKS_COLD_LOCK.rightDoorId);
+  const coldLockOpen = coldDoors.length === 2 && coldDoors.every(door => door.state === 1);
+  if (!coldLockOpen && !living.tea?.completed && (!living.tea || living.tea.stage === 0)) {
+    const frostShardTaken = rt.pickups.some(pickup => pickup.kind === 'tome' && pickup.data.card === 'frostshard' && pickup.taken);
+    if (frostShardTaken) return 'Return to the Intake. Freeze its shallow cistern to release the engine crank.';
+    if (living.room === 'intake') return 'The crank is cold-locked. Descend the return shaft and find a source of frost.';
+    if (living.room === 'refuge') return 'Claim Frost Shard in the Warm Refuge, then climb back to the Intake.';
+    return 'Find a source of frost below, then backtrack to the sealed engine crank.';
   }
   if (!living.tea?.completed) return living.tea?.stalled
     ? 'The engine stalled. Use its crank again to recharge the workshop.'

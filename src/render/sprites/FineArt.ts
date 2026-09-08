@@ -272,6 +272,44 @@ export class Pen {
     }
   }
 
+  /** Quadratic stroke for cloth hems, anatomy, roots and hand-bent pipe. */
+  curve(ax: number, ay: number, cx: number, cy: number, bx: number, by: number, c: RGB, width = 0, k = 1): void {
+    if (!this.inView(Math.min(ax, cx, bx), Math.min(ay, cy, by), Math.max(ax, cx, bx), Math.max(ay, cy, by))) return;
+    const length = Math.hypot(cx - ax, cy - ay) + Math.hypot(bx - cx, by - cy);
+    const n = Math.max(4, Math.ceil(length / Math.max(this.step, 0.25)));
+    let px = ax, py = ay;
+    for (let i = 1; i <= n; i++) {
+      const t = i / n, u = 1 - t;
+      const x = u * u * ax + 2 * u * t * cx + t * t * bx;
+      const y = u * u * ay + 2 * u * t * cy + t * t * by;
+      this.line(px, py, x, y, c, width, k);
+      px = x; py = y;
+    }
+  }
+
+  /**
+   * A rotated, shaded ellipse with an optional inked rim. Unlike a scaled
+   * circle its scanlines follow the rotated silhouette, so narrow heads,
+   * boots and bladders keep their authored profile at half-cell resolution.
+   */
+  oval(x: number, y: number, rx: number, ry: number, c: RGB, angle = 0, rim?: RGB, rimWidth = this.step, flat = false): void {
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const boundX = Math.ceil(Math.hypot(rx * cos, ry * sin));
+    const boundY = Math.ceil(Math.hypot(rx * sin, ry * cos));
+    if (!this.inView(x - boundX, y - boundY, x + boundX, y + boundY)) return;
+    const s = this.step;
+    for (let dy = -boundY; dy <= boundY; dy += s) for (let dx = -boundX; dx <= boundX; dx += s) {
+      const u = (dx * cos + dy * sin) / Math.max(s, rx);
+      const v = (-dx * sin + dy * cos) / Math.max(s, ry);
+      const d2 = u * u + v * v;
+      if (d2 > 1) continue;
+      const edge = 1 - Math.min(0.92, rimWidth / Math.max(rx, ry));
+      if (rim && d2 > edge * edge) { this.px(x + dx, y + dy, rim); continue; }
+      const shade = flat ? 1 : 0.68 + Math.sqrt(1 - d2) * 0.32 - u * 0.09 - v * 0.14;
+      this.px(x + dx, y + dy, c, shade);
+    }
+  }
+
   /** A machined rod: dark edges, a lit core and a single highlight thread. */
   rod(ax: number, ay: number, bx: number, by: number, c: RGB, width = 1): void {
     if (!this.inView(ax - width, ay - width, bx + width, by + width)) return;

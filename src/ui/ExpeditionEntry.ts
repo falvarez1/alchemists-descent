@@ -22,7 +22,7 @@ export class ExpeditionEntry {
       <button type="button" data-entry="settings">Controls & comfort</button></nav>
       <p class="entry-status" role="status"></p>
       <details class="entry-workshops"><summary>Workshops</summary><div><button type="button" data-entry="sandbox">Material sandbox</button><button type="button" data-entry="builder">Level builder</button><button type="button" data-entry="advanced">Advanced run setup</button></div></details>
-      </div><div class="entry-footer"><span>The Breathing Works</span><span>Keyboard + mouse / controller</span></div>`;
+      </div><div class="entry-footer"><span class="entry-release">The Breathing Works <b aria-label="Game version ${__APP_VERSION__}">v${__APP_VERSION__}</b></span><span>Keyboard + mouse / controller</span></div>`;
     document.getElementById('canvas-holder')!.appendChild(this.root);
     this.root.addEventListener('click', e => {
       const button = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-entry]');

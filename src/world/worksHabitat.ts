@@ -13,6 +13,10 @@ export const WORKS_PLANTS: ReadonlyArray<readonly [number, number, number, boole
   [183,825,28,false],[248,825,21,false],[516,825,32,false],[575,825,29,false],[465,544,82,true],
   [525,1010,21,false],[659,1010,16,false],[817,1010,24,false],[620,864,64,true],
   [985,1010,21,false],[1120,1010,17,false],[1282,1010,25,false],[1490,1010,28,false],[1228,831,84,true],
+  // New plantings stay append-only so persisted plant-state indices remain stable.
+  [62,315,12,false],[644,445,12,false],[748,445,10,false],[1080,730,13,false],[1362,730,11,false],
+  [715,760,13,false],[214,825,13,false],[345,825,16,false],[614,825,15,false],
+  [336,1010,9,false],[478,1010,13,false],[744,1010,11,false],
 ] as const;
 
 /** Find the initial material anchor near an authored planting position.
@@ -50,18 +54,64 @@ export function dressWorksHabitat(world: World, seed: number): void {
     const type = hanging ? Cell.Vines : Cell.Moss;
     put(x, y, type, packRGB(58, 100, 73));
     if (hanging) {
+      let drift = 0;
       for (let d = 1; d < size; d++) {
-        const xx = x + Math.round(Math.sin(d * .065 + x) * d * .10), yy = y + d;
+        if (d % 9 === 0) drift += (hash(x + d, y) % 3) - 1;
+        const xx = x + drift + Math.round(Math.sin(d * (.045 + (x % 5) * .006) + x) * (2 + d * .035)), yy = y + d;
         if (world.type(xx, yy) !== Cell.Empty) break;
         put(xx, yy, Cell.Vines, packRGB(44 + d % 3 * 4, 75 + d % 4 * 4, 60));
+        // Young side shoots fork from the load-bearing stem. They remain a
+        // connected real-cell graph, so cutting or burning the parent owns them.
+        if (d > 10 && d < size - 5 && d % (13 + x % 4) === 0) {
+          const side = hash(x, y + d) % 2 ? 1 : -1;
+          const reach = 2 + hash(x + d, y) % 4;
+          for (let branch = 1; branch <= reach; branch++) {
+            const bx = xx + side * branch, by = yy + Math.floor(branch * .55);
+            if (world.type(bx, by) !== Cell.Empty) break;
+            put(bx, by, Cell.Vines, packRGB(54, 92 + branch * 2, 67));
+          }
+        }
       }
     } else {
-      for (let dx = -9; dx <= 9; dx++) for (let dy = -1; dy <= 2; dy++) {
+      const left = 5 + hash(x, y) % 9, right = 6 + hash(x + 11, y) % 11;
+      for (let dx = -left; dx <= right; dx++) for (let dy = -1; dy <= 2; dy++) {
         if (world.type(x + dx, y + dy) === Cell.Empty && blocksEntity(world.type(x + dx, y + dy + 1))) {
-          put(x + dx, y + dy, Cell.Moss, packRGB(66, 108, 78));
+          if (hash(x + dx, y + dy) % 7 !== 0 || Math.abs(dx) < 3) {
+            put(x + dx, y + dy, Cell.Moss, packRGB(58 + hash(x + dx, y) % 14, 96 + hash(x, y + dy) % 22, 70));
+          }
         }
       }
     }
+  }
+  // Wall ivy follows authored masonry faces, searching locally as the cavern
+  // shoulder wanders. This produces climbing seams and sideward forks instead
+  // of more ceiling strings or isolated green pixels.
+  const wallIvy = (wallX: number, startY: number, openDir: number, length: number): void => {
+    let x = wallX + openDir;
+    for (let d = 0; d < length; d++) {
+      const yy = startY + d;
+      let found = 0;
+      for (let reach = 0; reach <= 5 && found === 0; reach++) for (const sign of reach === 0 ? [0] : [-1, 1]) {
+        const cx = x + reach * sign;
+        if (world.type(cx, yy) === Cell.Empty && blocksEntity(world.type(cx - openDir, yy))) { found = cx; break; }
+      }
+      if (found === 0) continue;
+      x = found;
+      put(x, yy, Cell.Vines, packRGB(46 + d % 4 * 3, 82 + d % 5 * 3, 61));
+      if (d > 5 && d % 11 === 0) {
+        const side = hash(x, yy) % 2 ? openDir : -openDir;
+        for (let branch = 1; branch <= 3; branch++) {
+          const bx = x + side * branch, by = yy + branch;
+          if (world.type(bx, by) !== Cell.Empty) break;
+          put(bx, by, Cell.Vines, packRGB(54, 99, 69));
+        }
+      }
+    }
+  };
+  for (const [x, y, dir, length] of [[45,150,1,78],[514,188,-1,62],[455,225,1,88],[930,205,-1,72],
+    [910,220,1,74],[1524,215,-1,88],[1060,530,1,76],[1050,560,-1,69],[675,590,1,86],
+    [160,590,1,96],[645,570,-1,90],[310,880,1,78],[930,880,-1,75],[925,855,1,78]] as const) {
+    wallIvy(x, y, dir, length);
   }
   // Timber braces physically connect the catwalks to their knees. The crawl
   // passage below remains open, including after the softer braces burn away.

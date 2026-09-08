@@ -34,6 +34,8 @@ button:focus-visible, summary:focus-visible, select:focus-visible { outline: 2px
 .entry-workshops > div { display: flex; flex-wrap: wrap; gap: 4px 22px; }
 .entry-workshops button { font-size: 13px; color: #b8c8be; }
 .entry-footer { position: absolute; left: clamp(28px, 9vw, 172px); right: 34px; bottom: 25px; display: flex; justify-content: space-between; gap: 16px; color: #a5b7aa; font-size: 12px; }
+.entry-release { display: inline-flex; align-items: baseline; gap: 10px; }
+.entry-release b { color: #d6c59e; font: 500 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .055em; }
 /* The scene owns the screen. Vitals and tools occupy opposite quiet corners. */
 body.play-active #game-hud { font-family: ui-sans-serif, system-ui, sans-serif; }
 body.play-active #hud-left { top: 24px; left: 28px; }

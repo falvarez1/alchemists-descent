@@ -119,6 +119,16 @@ describe('valve', () => {
     expect(countCells(h.world, 100, 100, 103, 102, Cell.Stone)).toBe(12);
   });
 
+  it('does not mistake a deliberately retracted valve body for structural damage', () => {
+    const valve = makeValve(h.ctx, h.list, 100, 100, 4, 3);
+    const lever = placeLever(h, 90, 110, valve);
+    lever.state = 1;
+    step(h.ctx, mech, 90);
+    expect(valve.state).toBe(1);
+    expect(valve.broken).toBeUndefined();
+    expect(countCells(h.world, 100, 100, 103, 102, Cell.Metal)).toBe(0);
+  });
+
   it('oneShot valves stay open after the trigger releases', () => {
     const valve = makeValve(h.ctx, h.list, 100, 100, 4, 2, { oneShot: true });
     const lever = placeLever(h, 90, 110, valve);

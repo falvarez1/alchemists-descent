@@ -85,6 +85,7 @@ try {
   await execConsoleCommand(page, 'run test --level d1 --world campaign-level --seed 777 --loadout fresh');
   await waitForRunReady(page);
   for (const [name, x, y] of [['sluice', 525, 381], ['gallery', 1130, 387], ['refuge', 854, 743]]) {
+    if (name === 'refuge') await page.evaluate(() => { window.__game.ctx.enemies.length = 0; });
     await execConsoleCommand(page, `tp ${x} ${y}`);
     await execConsoleCommand(page, 'god off');
     await page.waitForTimeout(3000);
@@ -96,10 +97,14 @@ try {
       const ctx = window.__game.ctx, rt = ctx.levels.current;
       return { name, player: { x: ctx.player.x, y: ctx.player.y, hp: ctx.player.hp },
         living: rt.living, valve: rt.mechanisms.find(m => m.id === 8102)?.state,
+        broken: rt.mechanisms.filter(m => m.broken !== undefined).map(m => ({ id: m.id, kind: m.kind, broken: m.broken })),
         fauna: ctx.critters.list.length, activeChunks: ctx.world.activity.activeChunks,
         enemies: ctx.enemies.map(e => ({ kind: e.kind, intent: e.mind?.intent, x: e.x, y: e.y, hp: e.hp })) };
     }, name));
-    if (name === 'sluice') assert.equal(report.encounters.at(-1).valve, 1);
+    if (name === 'sluice') {
+      assert.equal(report.encounters.at(-1).valve, 1);
+      assert.deepEqual(report.encounters.at(-1).broken, []);
+    }
     if (name === 'refuge') assert.equal(report.encounters.at(-1).living.rested, true);
     await page.screenshot({ path: `${output}/${name}-desktop.png` });
   }

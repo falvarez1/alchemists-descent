@@ -1,7 +1,7 @@
 import type { Mechanism, RuneVault } from '@/core/types';
 import type { PixelSurface } from '@/render/pixels';
 import { hash2 } from '@/core/math';
-import { BRASS, BRASS_L, INK, IRON, IRON_D, Pen, STEEL, type RGB } from './FineArt';
+import { BRASS, BRASS_L, INK, IRON, IRON_D, Pen, STEEL, STEEL_D, type RGB } from './FineArt';
 
 /**
  * Procedural mechanism overlays (extracted from FrameComposer so the Builder
@@ -127,7 +127,30 @@ function drawGauge(p: Pen, x: number, y: number, frac: number, lit: RGB, dim: RG
 
 export function drawMechanismSprite(s: PixelSurface, m: Mechanism, frame: number, opts: MechanismSpriteOptions = {}): void {
   const p = new Pen(s, null, opts.light ?? [1, 1, 1]);
-  if (m.kind === 'lever') {
+  if (m.kind === 'door' && m.requiresCard) {
+    // Ability-gate escutcheon: the world cells remain the actual door, while
+    // this inset tells the player which element the old mechanism expects.
+    const cx = m.x + (m.w - 1) / 2, sealY = m.y + m.h - 9;
+    p.box(cx, m.y + 1.5, m.w / 2 + .8, 1.5, 0, IRON_D);
+    p.rivet(cx - m.w / 2, m.y + 1.5); p.rivet(cx + m.w / 2, m.y + 1.5);
+    const open = m.state === 1;
+    const cold: RGB = open ? [.3, .82, .55] : [.36, .7, .78];
+    if (!open) {
+      // A small frost-glass lens bolted into the gate, not a floating HUD
+      // emblem. The six etched arms are legible up close but stay subordinate
+      // to the actual cistern players must transform.
+      p.disc(cx, sealY, 2.35, IRON_D, STEEL_D, .55, true);
+      p.disc(cx, sealY, 1.72, [.12, .25, .28], undefined, 0, true);
+      for (let arm = 0; arm < 3; arm++) {
+        const a = arm * Math.PI / 3;
+        p.line(cx - Math.cos(a) * 1.35, sealY - Math.sin(a) * 1.35,
+          cx + Math.cos(a) * 1.35, sealY + Math.sin(a) * 1.35, cold, 0, .9);
+      }
+      p.raw(cx, sealY, [.64, .9, .92], .55 + Math.sin(frame * .11 + m.id) * .08);
+    }
+    p.raw(cx, m.y + 1.5, cold, .62 + Math.sin(frame * .08 + m.id) * .1);
+    p.glow(cx, m.y + 1.5, cold, open ? .2 : .1);
+  } else if (m.kind === 'lever') {
     if (m.look === 'crank') drawCrank(p, m, frame);
     else if (m.look === 'handwheel') drawHandwheel(p, m, frame, opts.turn ?? 0);
     else drawLever(p, m, frame);

@@ -2187,6 +2187,10 @@ export interface Mechanism {
    *  wheel or the sluice's handwheel. Pull/flip behaviour is the plain
    *  lever's; only the drawing changes. */
   look?: 'crank' | 'handwheel';
+  /** Authored Metroidvania gate. The physical world still enforces the lock;
+   * this tells findability that initial inaccessibility is deliberate and
+   * makes the corresponding tome a hard progression requirement. */
+  requiresCard?: CardId;
   /** valve: force-close N frames after opening; reopens only on a fresh
    *  rising edge of its trigger aggregate (ignored when oneShot). */
   autoCloseFrames?: number;

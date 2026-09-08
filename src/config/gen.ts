@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 43; // 43: the engine crank and sluice handwheel are dressed levers (look), drawn at presentation resolution
+export const GEN_VERSION = 44; // 44: Breathing Works cold-lock backtrack, return hatch, living habitat and failed-light corridor
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

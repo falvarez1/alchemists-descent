@@ -74,6 +74,12 @@ export class Critters implements CrittersApi {
         for (let i = 0; i < 5; i++) resident('firefly', x + Math.sin(i * 1.9) * 22, y + Math.cos(i * 2.3) * 13);
       }
       for (const [x, y] of [[640, 400], [680, 410], [755, 420], [355, 808]]) resident('fish', x, y);
+      // The Undertow's failed lamps shelter a finite cave-roach colony. They
+      // persist like every resident and visibly abandon their feeding line
+      // when the alchemist sweeps wand-light across it.
+      for (const [x, y] of [[352, 1007], [374, 1007], [438, 1007], [548, 1007], [576, 1007],
+        [692, 1007], [721, 1007], [828, 1007], [872, 1007]]) resident('beetle', x, y);
+      for (const [x, y] of [[410, 966], [632, 978], [803, 962]]) resident('fly', x, y);
     } else if (rt.def.depth > 0) {
       // Seed habitats once across the world. Looking away never replaces prey.
       for (let i = 0; i < 180 && this.list.length < 32; i++) {
@@ -298,6 +304,28 @@ export class Critters implements CrittersApi {
             const pd = Math.sqrt(pd2), k = 1 - pd / 32;
             ax += (pdx / pd) * k; ay += (pdy / pd) * k; threatened = true;
           }
+          // The wand is the scene's moving key light. A clear, forward-facing
+          // cone makes the dark-corridor colony scatter before the body arrives,
+          // so the response reads as sight rather than proximity scripting.
+          const aim = player.aimAngle ?? 0;
+          const wandX = player.x + Math.cos(aim) * 9;
+          const wandY = player.y - 9 + Math.sin(aim) * 9;
+          // Ground critters sit on the first solid cell. Aim the visibility ray
+          // at their shell instead of their contact point, which is deliberately
+          // embedded a fraction into the floor by the collision solver.
+          const lightTargetY = c.y - (c.kind === 'beetle' ? 1.5 : 0);
+          const wdx = c.x - wandX, wdy = lightTargetY - wandY;
+          const wd2 = wdx * wdx + wdy * wdy;
+          if (wd2 > 9 && wd2 < 112 * 112) {
+            const wd = Math.sqrt(wd2);
+            const inBeam = (wdx * Math.cos(aim) + wdy * Math.sin(aim)) / wd > .16;
+            if (inBeam && sightClear(w, wandX, wandY, c.x, lightTargetY)) {
+              const k = 1 - wd / 112;
+              ax += (wdx / wd) * (.65 + k * 1.4);
+              ay += (wdy / wd) * (.65 + k * 1.4);
+              threatened = true;
+            }
+          }
         }
         for (let s = 0; s < 4; s++) {
           const sx = xi + ((entityRandom() * 29) | 0) - 14;
@@ -311,7 +339,7 @@ export class Critters implements CrittersApi {
           const am = Math.hypot(ax, ay) || 1;
           c.vx += (ax / am) * 0.7;
           c.vy += (ay / am) * 0.7 - 0.3; // a little hop into the scramble
-          c.startle = 8;
+          c.startle = c.kind === 'beetle' ? 18 : 10;
         }
       }
 

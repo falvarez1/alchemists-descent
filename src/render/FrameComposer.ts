@@ -36,7 +36,7 @@ import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
 import { drawTeaMachineDecor } from '@/render/TeaMachineDecor';
-import { INK, Pen, cameraView } from '@/render/sprites/FineArt';
+import { BRASS, BRASS_D, BRASS_L, INK, IRON, IRON_D, Pen, STEEL, STEEL_D, STEEL_L, cameraView } from '@/render/sprites/FineArt';
 import {
   drawDigBeam,
   drawLightningArcs,
@@ -1088,10 +1088,70 @@ export class FrameComposer implements PixelSurface {
       const edge: readonly [number, number, number] = [r * 0.42 + INK[0] * 0.3, g * 0.42 + INK[1] * 0.3, bl * 0.42 + INK[2] * 0.3];
       if (b.shape.kind === 'circle') {
         const rad = b.shape.radius;
-        pen.disc(pose.x, pose.y, rad, fill, edge, Math.max(pen.step, rad * 0.09));
-        // a single spoke toward local +x makes the roll legible
-        pen.line(pose.x, pose.y, pose.x + Math.cos(pose.angle) * (rad - 1), pose.y + Math.sin(pose.angle) * (rad - 1), edge, pen.step * 2);
-        pen.arc(pose.x, pose.y, rad * 0.62, Math.PI * 1.1, Math.PI * 1.4, fill, 0, 1.35);
+        const at = (x: number, y: number): readonly [number, number] => [
+          pose.x + x * Math.cos(pose.angle) - y * Math.sin(pose.angle),
+          pose.y + x * Math.sin(pose.angle) + y * Math.cos(pose.angle),
+        ];
+        const radial = (count: number, radiusAt: (index: number) => number): Array<readonly [number, number]> => {
+          const silhouette: Array<readonly [number, number]> = [];
+          for (let i = 0; i < count; i++) {
+            const a = Math.PI * 2 * i / count, rr = radiusAt(i);
+            silhouette.push(at(Math.cos(a) * rr, Math.sin(a) * rr));
+          }
+          return silhouette;
+        };
+        if (b.tag === 'tea-boulder') {
+          // The trigger stone is intentionally not a physics-debug sphere. A
+          // chipped outline, broad planes and one forked crack preserve its
+          // circular collider while making it read as a quarried boulder.
+          const chips = [1, .92, .98, .89, .96, 1, .91, .97, .9, .99, .93, .97];
+          pen.polygon(radial(chips.length, i => rad * chips[i]), edge);
+          pen.polygon(radial(chips.length, i => rad * chips[i] * .9), fill, 1, .24);
+          pen.polygon([at(-rad * .72, -rad * .22), at(-rad * .15, -rad * .72), at(rad * .15, -rad * .08)], STEEL_D, .72, .18);
+          pen.polygon([at(rad * .15, -rad * .08), at(rad * .76, rad * .05), at(rad * .26, rad * .48)], IRON, .65, .16);
+          pen.line(...at(-rad * .08, -rad * .78), ...at(rad * .12, -rad * .1), edge, pen.step);
+          pen.line(...at(rad * .12, -rad * .1), ...at(rad * .48, rad * .25), edge, pen.step);
+          pen.line(...at(rad * .12, -rad * .1), ...at(-rad * .15, rad * .38), edge);
+        } else if (b.tag === 'tea-pendulum') {
+          // A cast workshop bob: steel cheeks, a brass tyre and bolted hub.
+          // Concentric construction detail makes its rotation visible without
+          // the placeholder-looking single radius line.
+          pen.disc(pose.x, pose.y, rad, IRON_D, INK, Math.max(pen.step, rad * .08));
+          pen.ring(pose.x, pose.y, rad * .87, Math.max(.8, rad * .12), BRASS_D);
+          pen.disc(pose.x, pose.y, rad * .7, STEEL_D, IRON, Math.max(pen.step, rad * .07));
+          for (let i = 0; i < 6; i++) {
+            const a = pose.angle + i * Math.PI / 3;
+            pen.rivet(pose.x + Math.cos(a) * rad * .55, pose.y + Math.sin(a) * rad * .55, i % 2 ? BRASS : STEEL_L);
+          }
+          pen.rod(...at(-rad * .58, 0), ...at(rad * .58, 0), BRASS, .7);
+          pen.disc(pose.x, pose.y, rad * .17, BRASS_L, INK);
+        } else if (b.tag === 'tea-sugar') {
+          // A fused crystal lump, not a smooth stone. The facets stay inside
+          // the real circular collider and catch the boiler's light as it falls.
+          const crystal = [1, .9, .97, .86, .94, 1, .88, .96, .9, .98, .87, .95, .91, .98];
+          pen.polygon(radial(crystal.length, i => rad * crystal[i]), edge);
+          pen.polygon(radial(crystal.length, i => rad * crystal[i] * .9), fill, 1.08, .18);
+          pen.polygon([at(-rad * .72, -.1 * rad), at(-rad * .12, -.72 * rad), at(-rad * .02, .12 * rad)], STEEL_L, .74, .08);
+          pen.polygon([at(-rad * .02, .12 * rad), at(.68 * rad, -.32 * rad), at(.52 * rad, .55 * rad)], BRASS_L, .52, .16);
+          pen.line(...at(-rad * .02, -.72 * rad), ...at(-rad * .02, .12 * rad), edge);
+          pen.line(...at(-rad * .02, .12 * rad), ...at(.52 * rad, .55 * rad), edge);
+        } else if (b.tag === 'tea-counterweight') {
+          // Octagonal foundry weight with a bolted face plate. It still rolls
+          // as a circle, but visually belongs to the same riveted apparatus.
+          pen.polygon(radial(12, i => rad * (i % 2 ? .92 : 1)), INK);
+          pen.polygon(radial(12, i => rad * (i % 2 ? .82 : .89)), IRON, 1, .22);
+          pen.ring(pose.x, pose.y, rad * .62, Math.max(.7, rad * .1), BRASS_D);
+          for (let i = 0; i < 4; i++) {
+            const a = pose.angle + Math.PI / 4 + i * Math.PI / 2;
+            pen.rivet(pose.x + Math.cos(a) * rad * .46, pose.y + Math.sin(a) * rad * .46, BRASS);
+          }
+          pen.box(pose.x, pose.y, rad * .35, rad * .12, pose.angle, STEEL, IRON_D);
+        } else {
+          pen.disc(pose.x, pose.y, rad, fill, edge, Math.max(pen.step, rad * 0.09));
+          // A single spoke toward local +x makes generic rolling cargo legible.
+          pen.line(pose.x, pose.y, pose.x + Math.cos(pose.angle) * (rad - 1), pose.y + Math.sin(pose.angle) * (rad - 1), edge, pen.step * 2);
+          pen.arc(pose.x, pose.y, rad * 0.62, Math.PI * 1.1, Math.PI * 1.4, fill, 0, 1.35);
+        }
       } else {
         pen.box(pose.x, pose.y, b.shape.halfW, b.shape.halfH, pose.angle, fill, edge);
       }
@@ -1538,8 +1598,44 @@ export class FrameComposer implements PixelSurface {
         this.setPx(x - c.facing, y, 0.36, 0.46, 0.5);
         this.setPx(x - c.facing * 2, y + tail - 0, 0.26, 0.36, 0.4);
       } else if (c.kind === 'beetle') {
-        this.setPx(x, y, 0.16, 0.13, 0.1);
-        this.setPx(x + c.facing, y, 0.22, 0.18, 0.12);
+        // Cave roach: low segmented carapace, six independent legs and long
+        // feelers. It remains tiny in the ecology, but no longer reads as two
+        // loose pixels when the Undertow colony breaks into a run.
+        const face = c.facing < 0 ? -1 : 1;
+        const scramble = (c.startle ?? 0) > 0 ? Math.sin(c.phase * 3.2) : Math.sin(c.phase * .9) * .45;
+        const fineLine = (ax: number, ay: number, bx: number, by: number, r: number, g: number, b: number): void => {
+          const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
+          for (let i = 0; i <= steps; i++) this.setFinePx(ax + (bx - ax) * i / steps,
+            ay + (by - ay) * i / steps, r, g, b);
+        };
+        for (let segment = -2; segment <= 1; segment++) {
+          const sx = x + face * segment * .72;
+          const width = segment === -1 ? 1.15 : segment === 0 ? 1 : .72;
+          for (let dy = -width; dy <= width; dy += .5) {
+            const taper = 1 - Math.abs(dy) / (width + .5);
+            this.setFinePx(sx, y - .75 + dy * .5, .16 + taper * .14, .085 + taper * .1, .035 + taper * .055);
+            this.setFinePx(sx + face * .5, y - .75 + dy * .5, .23 + taper * .11, .12 + taper * .08, .045 + taper * .04);
+          }
+        }
+        // A warm shell ridge catches the wand light while the legs stay dark;
+        // the insects remain environmental detail but do not disappear into
+        // the black floor precisely when their scatter beat should read.
+        fineLine(x - face * 1.3, y - 1.15, x + face * .95, y - 1.2, .35, .2, .075);
+        this.setFinePx(x + face * 1.7, y - .85, .4, .24, .085);
+        this.setFinePx(x + face * 2.1, y - .8, .08, .055, .035);
+        for (let leg = 0; leg < 3; leg++) {
+          const rootX = x + face * (-1.1 + leg * .9);
+          const kick = Math.sin(c.phase * 2.6 + leg * 2.1) * (1 + Math.abs(scramble));
+          for (const side of [-1, 1]) fineLine(rootX, y - .4, rootX - face * kick * .55 + side * .65,
+            y + .5 + Math.abs(kick) * .28, .14, .075, .035);
+        }
+        fineLine(x + face * 1.8, y - 1.1, x + face * (3.8 + scramble), y - 2.2 - scramble * .35, .16, .11, .055);
+        fineLine(x + face * 1.8, y - .7, x + face * (4.1 - scramble * .6), y - .3 + scramble * .45, .12, .08, .04);
+        if ((c.startle ?? 0) > 0) {
+          const trail = -face * (3.1 + Math.abs(scramble));
+          this.setFinePx(x + trail, y - .25, .32, .27, .18);
+          this.setFinePx(x + trail - face * 1.4, y - .65 - Math.abs(scramble) * .3, .2, .18, .13);
+        }
       } else if (c.kind === 'fly') {
         this.setPx(x, y, 0.12, 0.11, 0.09);
         if (frame % 4 < 2) this.addPx(x, y - 1, 0.08, 0.08, 0.07);
@@ -1559,6 +1655,35 @@ export class FrameComposer implements PixelSurface {
       camY = ctx.camera.renderY;
 
     const turn = runtime.living?.valveTurn ?? 0;
+    // Material-sensor conduits make D1's cold census visually traceable. They
+    // are old physical capillary lines first, magic signal second: oxidised
+    // copper remains visible at rest and a restrained green pulse runs through
+    // the tube only after real Ice satisfies the sensor.
+    const coldSensors = runtime.mechanisms.filter(m => m.kind === 'sensor' &&
+      m.sensorType === 'material' && m.materialFilter?.includes(Cell.Ice));
+    if (coldSensors.length > 0) {
+      const conduit = new Pen(this, cameraView(ctx.camera, 10));
+      for (let n = 0; n < coldSensors.length; n++) {
+        const sensor = coldSensors[n], target = runtime.mechanisms.find(m => m.id === sensor.targetId);
+        if (!target) continue;
+        const busY = 321 + n * 4, targetX = target.x + (target.w - 1) / 2;
+        const live = sensor.state > 0;
+        const route: ReadonlyArray<readonly [number, number]> = [[sensor.x, sensor.y - 2],
+          [sensor.x, busY], [targetX, busY], [targetX, target.y + target.h - 4]];
+        for (let i = 1; i < route.length; i++) {
+          conduit.rod(...route[i - 1], ...route[i], [.15, .24, .23], .9);
+          conduit.line(...route[i - 1], ...route[i], [.32, .28, .18], 0, .82);
+        }
+        if (live) conduit.cable(route, frame * -.1, {
+          material: 'cable', color: [.3, .83, .61], dark: [.12, .42, .31], width: .5, sag: 0,
+        });
+        for (const [x, y] of [[sensor.x, busY], [targetX, busY]] as const) {
+          conduit.disc(x, y, 1.25, [.17, .22, .2], [.43, .34, .19], .5, true);
+          conduit.rivet(x - .25, y - .25, live ? [.32, .86, .63] : [.36, .52, .5]);
+          if (live) conduit.glow(x, y, [.2, .68, .48], .16);
+        }
+      }
+    }
     for (const m of runtime.mechanisms) {
       // Dressed levers (crank wheel, handwheel) reach well past their cell.
       const pad = m.look ? 30 : 12;

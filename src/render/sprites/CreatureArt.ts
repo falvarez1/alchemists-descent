@@ -81,6 +81,41 @@ class CreaturePen {
       }
     }
   }
+  /** Uneven living volume. The perimeter is authored from overlapping growth
+   * rhythms, then inset for a constant ink rim; it never resolves to a scaled
+   * circle even when the creature is standing still. */
+  blob(x: number, y: number, rx: number, ry: number, c: Color, phase: number, lobes = 9, angle = 0): void {
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const ring = (inset: number): Array<readonly [number, number]> => {
+      const points: Array<readonly [number, number]> = [];
+      for (let i = 0; i < lobes * 2; i++) {
+        const a = i * Math.PI / lobes;
+        const growth = 1 + Math.sin(a * 3 + phase) * .055 + Math.sin(a * 5 - phase * .7) * .035;
+        const localX = Math.cos(a) * Math.max(this.step, rx * growth - inset);
+        const localY = Math.sin(a) * Math.max(this.step, ry * growth - inset);
+        points.push([x + localX * cos - localY * sin, y + localX * sin + localY * cos]);
+      }
+      return points;
+    };
+    this.polygon(ring(0), INK);
+    this.polygon(ring(Math.max(this.step, Math.min(rx, ry) * .11)), c);
+  }
+  /** Asymmetric mineral plate with a chipped contour and hand-cut facets. */
+  rock(x: number, y: number, rx: number, ry: number, c: Color, phase: number, angle = 0): void {
+    const points: Array<readonly [number, number]> = [];
+    const cos = Math.cos(angle), sin = Math.sin(angle), count = 9;
+    for (let i = 0; i < count; i++) {
+      const a = i * Math.PI * 2 / count;
+      const chip = .78 + ((Math.sin(phase + i * 4.17) + 1) * .5) * .3;
+      const lx = Math.cos(a) * rx * chip, ly = Math.sin(a) * ry * chip;
+      points.push([x + lx * cos - ly * sin, y + lx * sin + ly * cos]);
+    }
+    this.polygon(points, INK);
+    const inner = points.map(([px, py]) => [x + (px - x) * .86, y + (py - y) * .86] as const);
+    this.polygon(inner, c);
+    this.line(...inner[1], ...inner[4], SHELL, .5);
+    this.line(...inner[4], ...inner[7], TEAL, .5);
+  }
   eye(x: number, y: number, rx: number, ry: number, iris: Color, rig: Readonly<CreatureExpression>, angle = 0): void {
     const open = Math.max(.12, 1 - rig.lid), cos = Math.cos(angle), sin = Math.sin(angle);
     if (open < .22) { this.line(x - cos * rx, y - sin * rx, x + cos * rx, y + sin * rx, INK); return; }
@@ -291,7 +326,7 @@ function drawRootLoper(p: CreaturePen, ctx: Ctx, e: Readonly<Enemy>): void {
     p.curve(kx, ky, fx - side * 2, fy - 4, fx + side * 2, fy, [.48, .58, .34], .5);
     if (foot?.planted) for (let root = -1; root <= 1; root++) p.line(fx, fy - 1, fx + root * 2, fy + Math.abs(root), TEAL, .5);
   }
-  p.oval(bx - face * 3, by, 10, 6.5, shell, e.vx * .1, 4);
+  p.blob(bx - face * 3, by, 10, 6.5, shell, e.bobPhase + tick * .012, 10, e.vx * .1);
   for (let i = 0; i < 5; i++) p.curve(bx - 10 + i * 3, by - 4,
     bx - 8 + i * 3, by - 1, bx - 9 + i * 3, by + 4, i % 2 ? TEAL : [.62, .7, .4], .5);
   for (let i = 0; i < 6; i++) {
@@ -304,7 +339,7 @@ function drawRootLoper(p: CreaturePen, ctx: Ctx, e: Readonly<Enemy>): void {
     for (let rib = 0; rib < 3; rib++) p.line(lx - 2 + rib * 2, ly + 1 - rib * .5, lx - 2 + rib * 2, ly - 1.5, TEAL, .5);
   }
   const hx = bx + face * (7 + rig.alert * 2 - rig.fear * 5), hy = by - 1 + rig.fear * 2 + rig.gazeY;
-  p.oval(hx, hy, 4, 4.5, SHELL, -.2 * face);
+  p.blob(hx, hy, 4, 4.5, SHELL, e.bobPhase + 2.4, 7, -.2 * face);
   p.eye(hx + face * 1.5, hy - 1, 1.8, 2, [.55, .66, .25], rig);
   p.curve(hx + face, hy + 2, hx + face * 4, hy + 2 + rig.jaw * 2, hx + face * 5, hy + 1, TEAL, .5);
   p.curve(hx, hy - 3, hx + face * 3, hy - 8 - rig.alert * 3, hx + face * 5, hy - 5, TEAL, .5);
@@ -335,15 +370,39 @@ function drawInhabitant(p: CreaturePen, ctx: Ctx, e: Readonly<Enemy>): void {
     }
     const squash = (e.grounded ? 1 + Math.min(.4, e.splat * .035) + breath * .025 : 1 / (1 + Math.min(.35, Math.abs(e.vy) * .1))) + rig.fear * .14 + (winding ? .15 : 0);
     const radius = def.halfW * squash, h = def.h / squash;
-    p.oval(x, y - h / 2, radius + 1, h / 2 + 1, color, 0, 7);
-    for (let i = 0; i < 3; i++) p.oval(x - radius + 2 + i * (radius - 2), y - 1, 3, 2, TEAL);
-    for (let i = 0; i < 3; i++) p.oval(x - face * (radius * .35 + i % 2), y - h * (.3 + i * .17), .7 + i % 2 * .3, .8, i % 2 ? TEAL : SHELL);
-    p.curve(x - radius * .6, y - h * .65, x - radius * .4, y - h, x, y - h * .9, SILK, .5);
+    const centreY = y - h / 2;
+    // A wet, asymmetrical mantle with weight-bearing pseudopods. It has one
+    // continuous skin instead of a perfect ellipse sitting on three circles.
+    p.blob(x - face * .35, centreY, radius + 1, h / 2 + 1, color,
+      e.bobPhase + tick * .018 + e.splat * .08, bomber ? 8 : 11, e.vx * .025);
+    for (let i = -2; i <= 2; i++) {
+      const footX = x + i * radius * .42 + Math.sin(e.bobPhase + i * 2.2) * .7;
+      const footW = 1.5 + ((i + 5) % 3) * .45;
+      p.curve(footX - footW, y - 1.7, footX, y + .15, footX + footW, y - .45,
+        i % 2 ? TEAL : color, i === 0 ? 1 : .5);
+    }
+    // Internal bubbles, sediment and a stretched surface highlight sell a
+    // translucent organism without alpha or post-process cheats.
+    for (let i = 0; i < 5; i++) {
+      const bubbleX = x - face * (radius * (.1 + i * .08)) + Math.sin(e.bobPhase + i * 2.7) * radius * .35;
+      const bubbleY = y - h * (.2 + (i * .17) % .58);
+      p.oval(bubbleX, bubbleY, .55 + i % 2 * .35, .7 + (i + 1) % 2 * .4, i % 2 ? TEAL : SHELL, .2 * i);
+    }
+    p.curve(x - radius * .72, y - h * .63, x - radius * .38, y - h * .98,
+      x + radius * .12, y - h * .9, SILK, .5);
+    p.curve(x - radius * .55, y - h * .28, x, y - h * .12, x + radius * .62, y - h * .34, TEAL, .5);
     p.eye(x + face * (radius * .4 + rig.alert * .6), y - h * .65 - rig.alert * .5, 2.3, 2.4 + rig.fear * .5, bomber ? GOLD : acid ? [.51, .58, .2] : TEAL, rig);
     p.curve(x + face * radius * .35, y - h * .3, x + face * (radius - 1), y - h * .3 + 1 + rig.jaw * 2, x + face * radius * .85, y - h * .4, INK, .5);
     if (bomber) {
-      p.oval(x - face * 2, y - h * .5, 1.4 + rig.alert * .8 + breath * .15, 2 + rig.alert, GOLD);
-      for (let i = 0; i < 3; i++) p.curve(x - face * 2, y - h * .5, x - radius + i * 2, y - h * .4, x - radius + i * 3, y - h * .2, [.42, .31, .21], .5);
+      const bladderX = x - face * (radius * .24), bladderY = y - h * .56;
+      p.blob(bladderX, bladderY, 1.8 + rig.alert * .8 + breath * .15, 2.7 + rig.alert,
+        GOLD, e.bobPhase + tick * .05, 7);
+      for (let i = 0; i < 4; i++) p.curve(bladderX, bladderY,
+        x - face * (radius * .55 + i), y - h * (.42 + i * .04),
+        x - face * (radius * (.75 + i * .05)), y - h * (.19 + i * .025), [.42, .31, .21], .5);
+      p.curve(bladderX, bladderY - 2.1, bladderX - face * 1.5, bladderY - 4.5,
+        bladderX + Math.sin(tick * .1) * 1.2, bladderY - 5.6, [.2, .15, .11], .6);
+      p.pixel(bladderX + Math.sin(tick * .1) * 1.2, bladderY - 5.8, GOLD, 1, true);
     }
   } else if (e.kind === 'wisp') {
     const drift = Math.sin(tick * .05 + e.bobPhase);
@@ -359,17 +418,40 @@ function drawInhabitant(p: CreaturePen, ctx: Ctx, e: Readonly<Enemy>): void {
     const span = folded ? 4 : 13 + Math.abs(e.vx) * 2 - rig.fear * 3, lift = folded ? -8 : flap * (10 - rig.hurt * 3) - rig.alert * 3;
     for (const side of [-1, 1]) {
       const tipX = x + side * span, tipY = y - 5 + lift + side * tumble * 9;
-      p.polygon([[x, y - 6], [x + side * span * .55, tipY - 5], [tipX, tipY], [tipX - side * 4, tipY + 2], [x + side * 6, y + 3], [x, y - 1]], flame ? [.56, .35, .26] : [.24, .41, .40]);
-      for (let rib = 0; rib < 3; rib++) p.curve(x, y - 5, x + side * (span * .5 + rib), tipY - 4 + rib * 2, tipX - side * rib * 3, tipY + rib * 2, flame ? [.68, .5, .32] : [.53, .64, .57]);
+      const elbowX = x + side * span * .5, elbowY = tipY - (folded ? 1 : 5);
+      const trailing = y + 2 + Math.max(0, flap) * 1.5;
+      // Five scallops hang from articulated fingers; the wing is a stretched
+      // membrane under load, not a triangle hinged to a bean-shaped body.
+      const membrane: Array<readonly [number, number]> = [[x, y - 6], [elbowX, elbowY], [tipX, tipY]];
+      for (let scallop = 0; scallop < 5; scallop++) {
+        const t = scallop / 4;
+        const sx = tipX + (x + side * 2 - tipX) * t;
+        const sy = tipY + (trailing - tipY) * t + Math.sin(t * Math.PI * 4) * (folded ? .6 : 2.2);
+        membrane.push([sx, sy]);
+      }
+      p.polygon(membrane, INK);
+      const inner = membrane.map(([mx, my]) => [x + (mx - x) * .94, y - 4 + (my - (y - 4)) * .9] as const);
+      p.polygon(inner, flame ? [.56, .35, .26] : [.24, .41, .40]);
+      for (let rib = 0; rib < 4; rib++) {
+        const t = (rib + 1) / 5;
+        const fingerX = tipX + (x + side * 2 - tipX) * t;
+        const fingerY = tipY + (trailing - tipY) * t + Math.sin(t * Math.PI * 4) * (folded ? .6 : 2.2);
+        p.curve(x, y - 5, elbowX + side * rib, elbowY + rib * 1.4,
+          fingerX, fingerY, flame ? [.68, .5, .32] : [.53, .64, .57], rib === 0 ? 1 : .5);
+      }
       for (let vein = 0; vein < 3; vein++) {
         const rootX = x + side * (5 + vein * 2), rootY = y - 5 + lift * .55 + vein;
         p.curve(rootX, rootY, rootX + side * 2, rootY + 2, tipX - side * (2 + vein * 2), tipY + 1 + vein, flame ? [.4, .25, .22] : [.18, .32, .32], .5);
       }
-      p.line(x, y - 6, tipX, tipY, flame ? GOLD : SHELL);
-      p.oval(x + side * span * .55, tipY - 4, 1.2, 1, flame ? GOLD : SHELL);
+      p.line(x, y - 6, elbowX, elbowY, flame ? GOLD : SHELL, 1.2);
+      p.line(elbowX, elbowY, tipX, tipY, flame ? GOLD : SHELL, .8);
+      p.rock(elbowX, elbowY, 1.35, 1.05, flame ? GOLD : SHELL, e.bobPhase + side);
       if (rig.hurt > .3 && side === -1) p.polygon([[tipX - side * 2, tipY + 1], [tipX - side * 4, tipY - 2], [tipX - side * 5, tipY + 3]], INK);
     }
-    p.oval(x, y - 4, 3.5, 5, flame ? [.65, .42, .25] : SHELL, e.vx * .08 + tumble * .6); p.oval(x + face, y - 7, 2.5, 2.2, flame ? [.73, .54, .35] : TEAL);
+    p.blob(x, y - 4, 3.5, 5, flame ? [.65, .42, .25] : SHELL,
+      e.bobPhase + tick * .02, 7, e.vx * .08 + tumble * .6);
+    p.blob(x + face, y - 7, 2.5, 2.2, flame ? [.73, .54, .35] : TEAL,
+      e.bobPhase + 1.7, 6);
     for (const side of [-1, 1]) {
       p.polygon([[x + side, y - 8], [x + side * (3.3 + rig.fear * 2), y - (flame ? 14 : 12) + rig.fear * 3], [x + side * 3, y - 7]], flame ? GOLD : SHELL);
       p.line(x + side * 2, y - 8, x + side * (2.8 + rig.fear), y - 11 + rig.fear * 2, TEAL, .5);
@@ -380,26 +462,52 @@ function drawInhabitant(p: CreaturePen, ctx: Ctx, e: Readonly<Enemy>): void {
     if (flame) { const tail = x - face * 9 + Math.sin(tick * .07) * 3; p.curve(x, y, tail, y + 8, tail - face * 4, y + 1, TEAL); p.oval(tail - face * 4, y + 1, 1.5, 3, GOLD, -.3 * face); }
   } else if (e.kind === 'spitter') {
     const recoil = Math.min(1, (e.recoil ?? 0) / 10), step = Math.sin(tick * .22) * Math.min(1, Math.abs(e.vx));
-    p.oval(x - face * (2 + recoil), y - 5 + breath * .2, 9 + recoil, 6 - recoil, TEAL, -.1 * face, 5);
+    p.blob(x - face * (2 + recoil), y - 5 + breath * .2, 9 + recoil, 6 - recoil,
+      TEAL, e.bobPhase + tick * .015, 10, -.1 * face);
+    // Warty dorsal ridge and mottled flank interrupt the single-volume read.
+    for (let wart = 0; wart < 5; wart++) {
+      const wx = x - face * (7 - wart * 2.7), wy = y - 10 - Math.sin(wart * 1.4) * 1.2;
+      p.blob(wx, wy, 1.1 + wart % 2 * .35, 1 + (wart + 1) % 2 * .45,
+        wart % 2 ? SHELL : [.36, .56, .49], e.bobPhase + wart, 6);
+    }
     for (const side of [-1, 1]) {
       const lift = Math.max(0, side * step) * 2, footX = x + side * 9 + step * 2;
-      p.oval(x + side * 7, y - 3 - lift, 4, 3.5, SHELL, side * .4);
-      p.line(x + side * 8, y - 2 - lift, footX, y - lift, TEAL, 2);
-      for (let toe = 0; toe < 3; toe++) p.line(footX, y - lift, footX + face * (1 + toe), y - lift - toe % 2, SHELL, .5);
+      const kneeX = x + side * 6.5, kneeY = y - 3.8 - lift;
+      p.blob(kneeX, kneeY, 3.6, 3.1, SHELL, e.bobPhase + side * 2.3, 7, side * .4);
+      p.curve(x + side * 2.5, y - 5, kneeX, kneeY - 1.5, footX, y - lift, TEAL, 2.2);
+      p.rock(footX, y - lift, 1.7, .85, SHELL, e.bobPhase + side * 4, side * .2);
+      for (let toe = 0; toe < 3; toe++) p.curve(footX, y - lift,
+        footX + face * (1.2 + toe * .65), y - lift - (toe % 2) * .5,
+        footX + face * (2.6 + toe), y - lift + .15, SHELL, .5);
     }
     const hx = x + face * (6 - rig.fear * 2 - recoil * 3), hy = y - 8 + rig.fear;
-    p.oval(hx, hy, 5, 4, SHELL, -.15 * face);
-    p.oval(x + face * 9, y - 6, 2.5 + rig.jaw * 2, 2 + rig.jaw * 2, [.68, .62, .37]);
+    p.blob(hx, hy, 5, 4, SHELL, e.bobPhase + 3.1, 8, -.15 * face);
+    const throatX = x + face * 8.5, throatY = y - 5.8;
+    p.blob(throatX, throatY, 2.5 + rig.jaw * 2, 2 + rig.jaw * 2,
+      [.68, .62, .37], e.bobPhase + tick * .04, 8);
     for (let fold = 0; fold < 3; fold++) p.curve(x + face * (7 + fold), y - 7, x + face * (8 + fold), y - 4 + rig.jaw, x + face * (9 + fold), y - 6, [.45, .46, .25], .5);
     p.eye(hx + face * 1.5, hy - 2, 2, 1.8, GOLD, rig);
     p.curve(x - face * 6, y - 7, x - face * 2, y - 10, x + face * 3, y - 7, SHELL, .5);
   } else if (e.kind === 'mage') {
     const sway = Math.sin(tick * .04 + e.bobPhase) * 2;
-    p.polygon([[x - 4, y - 17], [x + 4, y - 17], [x + 8 + sway, y - 1], [x + 2, y - 3], [x - 2, y - 1], [x - 8 + sway, y - 2]], [.34, .48, .46]);
-    p.curve(x - 2, y - 16, x - 2 + sway, y - 8, x - 4 + sway, y - 2, SILK);
-    p.oval(x + face, y - 17, 4.8, 5.2, SHELL); p.oval(x + face * 2, y - 17, 2.8, 3, INK);
+    const cloak: Array<readonly [number, number]> = [[x - 4.5, y - 17], [x + 4, y - 17],
+      [x + 5 + sway * .25, y - 12], [x + 7 + sway * .55, y - 7], [x + 9 + sway, y - 1],
+      [x + 5 + sway * .8, y - 2.7], [x + 2 + sway * .35, y - .6], [x - 1 + sway * .15, y - 3],
+      [x - 4 + sway * .55, y - .8], [x - 9 + sway, y - 2], [x - 7 + sway * .5, y - 9]];
+    p.polygon(cloak, INK);
+    const inner = cloak.map(([cx, cy]) => [x + (cx - x) * .9, y - 9 + (cy - (y - 9)) * .94] as const);
+    p.polygon(inner, [.34, .48, .46]);
+    p.curve(x - 2, y - 16, x - 3 + sway, y - 9, x - 5 + sway, y - 2, SILK, .8);
+    p.curve(x + 1, y - 14, x + sway * .2, y - 8, x + 2 + sway * .4, y - 2, TEAL, .5);
+    p.curve(x + 4, y - 11, x + 5 + sway * .5, y - 6, x + 7 + sway, y - 1.5, [.47, .61, .54], .5);
+    // Crooked cowl, mask and trailing veil replace the circular head-on-cone.
+    p.blob(x + face * .4, y - 17.2, 5.2, 5.4, SHELL, e.bobPhase + 1.2, 8, -.08 * face);
+    p.polygon([[x - face * 3.4, y - 20.5], [x + face * 1.2, y - 23], [x + face * 5.5, y - 19.5],
+      [x + face * 4.4, y - 14], [x - face * 1.8, y - 13.5]], [.2, .32, .32]);
+    p.curve(x - face * 2.5, y - 14.5, x - face * 5 + sway, y - 10,
+      x - face * 4 + sway, y - 5, [.25, .39, .38], 1);
+    p.rock(x + face * 2, y - 17, 2.8, 3, INK, e.bobPhase + 4.4, -.12 * face);
     p.eye(x + face * 2.5, y - 17, 1.1, 1.4, GOLD, rig);
-    for (let fold = -1; fold <= 1; fold++) p.curve(x + fold * 2, y - 12, x + fold * 3 + sway, y - 6, x + fold * 5 + sway, y - 2, fold < 0 ? TEAL : [.45, .6, .53], .5);
     p.line(x, y - 11, x + face, y - 8, GOLD, .5);
     for (const side of [-1, 1]) {
       const handY = y - 9 + Math.sin(tick * .055 + side) * 2 - rig.alert * 5 + rig.hurt * 2;
@@ -441,7 +549,11 @@ function drawInhabitant(p: CreaturePen, ctx: Ctx, e: Readonly<Enemy>): void {
     const stride = Math.sin(e.stride ?? 0), height = def.h, shoulder = y - height * .7 + rig.hurt * 1.5;
     for (const side of [-1, 1]) {
       const footX = x + side * (4 + stride * 3) * scale;
-      p.line(x + side * 3 * scale, y - height * .35, footX, y - Math.max(0, side * stride * 2), TEAL, 2); p.oval(footX + face, y - 1, 3 * scale, 2 * scale, body);
+      const kneeX = x + side * (3 + stride) * scale, kneeY = y - height * .28;
+      p.line(x + side * 3 * scale, y - height * .42, kneeX, kneeY, INK, 3 * scale);
+      p.line(kneeX, kneeY, footX, y - Math.max(0, side * stride * 2), TEAL, 2 * scale);
+      p.rock(kneeX, kneeY, 2.5 * scale, 3.2 * scale, body, e.bobPhase + side * 3.7, side * .18);
+      p.rock(footX + face, y - 1, 3.5 * scale, 2.1 * scale, body, e.bobPhase + side * 6.1, side * .08);
       const punch = side === face ? Math.min(1, (e.punching ?? 0) / 6) : 0;
       const handX = x + side * (10 + punch * 6 - rig.fear * 2) * scale, handY = y - height * .3 + side * stride * 2 - punch * 5;
       p.line(x + side * 6 * scale, shoulder, handX, handY, TEAL, 2 * scale);
@@ -449,7 +561,7 @@ function drawInhabitant(p: CreaturePen, ctx: Ctx, e: Readonly<Enemy>): void {
       p.line(handX - 2 * scale, handY - 2 * scale, handX + 2 * scale, handY - 3 * scale, SHELL, .5);
       for (let finger = -1; finger <= 1; finger++) p.line(handX + finger * scale, handY + scale, handX + finger * scale, handY + 2.5 * scale, INK, .5);
     }
-    p.polygon([[x - 6 * scale, shoulder - 2 * scale], [x + 3 * scale, shoulder - 4 * scale], [x + 7 * scale, shoulder], [x + 6 * scale, y - height * .25], [x + 2 * scale, y - height * .19], [x - 5 * scale, y - height * .28], [x - 7 * scale, shoulder + 3 * scale]], body);
+    p.polygon([[x - 6 * scale, shoulder - 2 * scale], [x - 1 * scale, shoulder - 5 * scale], [x + 3 * scale, shoulder - 4 * scale], [x + 7 * scale, shoulder], [x + 5.5 * scale, y - height * .25], [x + 2 * scale, y - height * .19], [x - 5 * scale, y - height * .28], [x - 7 * scale, shoulder + 3 * scale]], body);
     p.line(x - 6 * scale, shoulder - 2 * scale, x + 3 * scale, shoulder - 4 * scale, SHELL, .5);
     for (const side of [-1, 1]) {
       p.line(x + side * 5 * scale, shoulder, x + side * 4 * scale, shoulder + 5 * scale, INK, .5);
@@ -459,16 +571,29 @@ function drawInhabitant(p: CreaturePen, ctx: Ctx, e: Readonly<Enemy>): void {
     }
     // A small embedded head and a ribbed furnace distinguish mineral hulks
     // from the robed, floating mage. The kiln's visible heat follows wetness.
-    p.oval(x + face * 1.5, y - height * .83, 3.5 * scale, 3 * scale, [.5, .58, .51]);
+    p.rock(x + face * 1.5, y - height * .83, 3.8 * scale, 3.2 * scale,
+      [.5, .58, .51], e.bobPhase + 9.2, -.08 * face);
     p.line(x - 2 * scale, y - height * .86, x + 3 * scale, y - height * .86, INK, 2);
     p.eye(x + face * 2 * scale, y - height * .86, .9 * scale, (.6 + rig.alert * .4) * scale, GOLD, rig);
-    p.oval(x, y - height * .55, 3.4 * scale, 4.5 * scale, INK);
+    p.rock(x, y - height * .55, 3.8 * scale, 4.8 * scale, INK, e.bobPhase + 7.3);
     for (let i = -1; i <= 1; i++) p.line(x + i * 2 * scale, y - height * .55 - 3 * scale, x + i * 2 * scale, y - height * .55 + 3 * scale, e.status.wet > 0 ? TEAL : GOLD, scale);
     for (const side of [-1, 1]) for (let i = 0; i < (e.kind === 'colossus' ? 3 : 1); i++) {
       const sx = x + side * (6 + i) * scale, sy = shoulder + i * scale * 2;
       p.polygon([[sx - 3 * scale, sy], [sx - 2 * scale, sy - 2 * scale], [sx + 2 * scale, sy - 2.5 * scale], [sx + 3.5 * scale, sy + scale], [sx, sy + 2 * scale]], [.64, .54, .39]);
       p.line(sx - 2 * scale, sy - 2 * scale, sx + 2 * scale, sy - 2.5 * scale, SHELL, .5);
       p.line(sx, sy - 2 * scale, sx + scale, sy, INK, .5);
+    }
+    // Old seepage lives in the joints; tiny rootlets and mineral crust break
+    // the manufactured-toy read without hiding the readable furnace core.
+    for (let growth = 0; growth < (e.kind === 'colossus' ? 7 : 4); growth++) {
+      const gx = x - 5 * scale + growth * 1.8 * scale;
+      const gy = shoulder + (growth % 3) * 2.1 * scale;
+      p.curve(gx, gy, gx - face * scale, gy - (2 + growth % 2) * scale,
+        gx + Math.sin(growth * 2.1) * 2 * scale, gy - (3.5 + growth % 3) * scale,
+        growth % 2 ? [.31, .48, .35] : [.42, .56, .35], .5 * scale);
+      if (growth % 2 === 0) p.blob(gx + Math.sin(growth * 2.1) * 2 * scale,
+        gy - (3.5 + growth % 3) * scale, 1.1 * scale, .65 * scale,
+        [.52, .64, .38], e.bobPhase + growth, 6, growth * .2);
     }
   }
 }

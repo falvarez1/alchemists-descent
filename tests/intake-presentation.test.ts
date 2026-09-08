@@ -121,21 +121,16 @@ describe('Intake machine presentation', () => {
     } as unknown as Ctx;
   }
 
-  it('draws the alchemist at presentation resolution with a one-pixel rim that stops at his feet', () => {
+  it('draws a layered, presentation-resolution alchemist with a readable authored palette', () => {
     const { s, fine, fineWrites } = fineSurface();
     drawPlayerSprite(s, {} as LightField, playerScene());
     expect(fineWrites()).toBeGreaterThan(300);
-    const rimKeys = [...fine.entries()].filter(([, c]) => c[0] < 0.03 && c[2] < 0.08 && c[2] > 0.06).map(([k]) => k);
-    expect(rimKeys.length).toBeGreaterThan(40);
-    for (const k of rimKeys) {
-      const [x, y] = parse(k);
-      expect(y).toBeLessThanOrEqual(100.5);
-      const touchesBody = [[0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5]].some(([dx, dy]) => {
-        const c = fine.get(key(x + dx, y + dy));
-        return !!c && !(c[0] < 0.03 && c[2] < 0.08);
-      });
-      expect(touchesBody).toBe(true);
-    }
+    const colors = [...fine.values()];
+    expect(colors.filter(c => c[0] <= .03 && c[1] <= .05 && c[2] <= .055).length).toBeGreaterThan(80); // inked silhouette/joints
+    expect(colors.some(c => c[0] < .3 && c[1] > .25 && c[2] > .25)).toBe(true); // teal coat
+    expect(colors.some(c => c[0] > .58 && c[1] > .5 && c[2] > .35)).toBe(true); // bone mantle/hat
+    expect(colors.some(c => c[0] > .6 && c[1] > .25 && c[2] < .3)).toBe(true); // copper hardware
+    expect(colors.some(c => c[1] > .7 && c[2] > .75)).toBe(true); // reagent/wand cyan
   });
 
   it('keeps the classic cell drawing on a surface without fine pixels', () => {

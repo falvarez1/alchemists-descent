@@ -1,21 +1,27 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 // @ts-expect-error -- plain-JS dev plugin; it must also run standalone under node
 import { authorLinkPlugin } from './scripts/vite-plugin-authorlink.mjs';
 
 // Build stamp baked into the bundle (see __BUILD_STAMP__ in src/vite-env.d.ts):
 // playtest feedback is only actionable when it names the exact build it came
 // from. Commit hash + UTC time; falls back cleanly when git is unavailable.
-function buildStamp(): string {
+function gitRevision(): string {
   let hash = 'nogit';
   try {
     hash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
   } catch {
     // shallow CI checkout without git or tarball build — the timestamp still identifies it
   }
-  return `${hash} ${new Date().toISOString().slice(0, 16)}Z`;
+  return hash;
 }
+
+const PACKAGE_VERSION = (JSON.parse(readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8')) as { version: string }).version;
+const BUILD_REVISION = gitRevision();
+const buildStamp = (): string => `${BUILD_REVISION} ${new Date().toISOString().slice(0, 16)}Z`;
+const appVersion = (): string => `${PACKAGE_VERSION}+${BUILD_REVISION}`;
 
 /**
  * Authoring surface = the Builder route plus the debug toggles (console,
@@ -47,6 +53,7 @@ export default defineConfig(({ mode }) => ({
   plugins: [authorLinkPlugin()],
   define: {
     __BUILD_STAMP__: JSON.stringify(buildStamp()),
+    __APP_VERSION__: JSON.stringify(appVersion()),
     __AUTHORING__: JSON.stringify(authoringEnabled(mode)),
   },
   // GitHub Pages serves a project site under /<repo>/, so the deploy build needs

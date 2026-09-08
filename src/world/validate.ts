@@ -427,7 +427,15 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
     if (!ok) issues.push({ what, x: Math.floor(x), y: Math.floor(y), severity });
   };
 
+  const requiredCards = new Set<string>();
   for (const m of runtime.mechanisms) {
+    // An authored ability lock is expected to be inaccessible from spawn.
+    // Its real gate remains in the grid; below we instead prove that the card
+    // which unlocks the route can itself be reached by a full-size wizard.
+    if (m.requiresCard) {
+      requiredCards.add(m.requiresCard);
+      continue;
+    }
     if (m.kind === 'door') {
       check(
         near(wiz, W, H, m.x - 2, m.y + m.h - 2, 8) ||
@@ -479,6 +487,11 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       // hands-on triggers: the WIZARD must be able to stand here
       check(near(wiz, W, H, m.x, m.y - 2, 6), m.kind, m.x, m.y - 2);
     }
+  }
+  for (const card of requiredCards) {
+    const source = runtime.pickups.find(p => !p.taken && p.kind === 'tome' && p.data.card === card);
+    check(!!source && near(wiz, W, H, source.x, source.y, 10), `ability-${card}`,
+      source?.x ?? runtime.spawn.x, source?.y ?? runtime.spawn.y);
   }
   for (const v of runtime.runeVaults) {
     // glyphs answer to projectiles — line of sight from a standable spot is
