@@ -28,6 +28,11 @@
       "voiceId": "Yd3Cqxgu0pFzOerUXcsu",
       "name": "The Docent (designed for Breathing Works)",
       "source": "designed; preview 3 of 3"
+    },
+    "daniel": {
+      "voiceId": "htZQqY7WtacRNV7s62Iy",
+      "name": "Daniel — the gruff old British wizard",
+      "source": "ElevenLabs library voice; chosen 2026-09-27 over the Docent, whose designed voice lisps its S sounds"
     }
   }
 }

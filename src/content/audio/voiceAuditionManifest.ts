@@ -12,8 +12,8 @@
 interface AuditionEntry { id: string; group: string; label: string; prompt: string; urls: string[]; loop?: boolean }
 
 const VOICES = [
-  { id: 'docent', name: 'Docent (current)', note: 'designed voice · soft, lisp-like S · 5 sibilant frames · 17.3 s' },
-  { id: 'daniel', name: 'Daniel — the gruff old British wizard', note: 'library · crispest S · 190 frames · 17.4 s (same unhurried pace)' },
+  { id: 'docent', name: 'Docent (previous narrator)', note: 'designed voice · soft, lisp-like S · 5 sibilant frames · 17.3 s' },
+  { id: 'daniel', name: 'Daniel — the gruff old British wizard (NOW THE NARRATOR)', note: 'library · crispest S · 190 frames · 17.4 s (same unhurried pace)' },
   { id: 'david', name: 'David — engaging wildlife narrator', note: 'library · crisp S · 230 frames · 13.6 s' },
   { id: 'ak', name: 'AK — British posh well-spoken old man', note: 'library · crisp S · 223 frames · 13.0 s' },
   { id: 'oliver', name: 'Oliver — clean, British and steady', note: 'library · clean S · 83 frames · 11.2 s' },

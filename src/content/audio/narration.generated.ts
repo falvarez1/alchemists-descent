@@ -2,7 +2,7 @@
 // The narrator's clips, keyed by narrationKey(text) (src/audio/narrationText.ts).
 import type { NarrationCandidate, NarrationClip, NarrationLine } from '@/content/audio/narrationTypes';
 
-export const NARRATOR_VOICE = {key:"docent",name:"The Docent (designed for Breathing Works)",model:"eleven_v3"} as const;
+export const NARRATOR_VOICE = {key:"daniel",name:"Daniel — the gruff old British wizard",model:"eleven_v3"} as const;
 
 /** The line every narrator candidate reads on the audition page. */
 export const NARRATOR_SAMPLE = "The Bellows. The Works draw breath. Mind the pressure. And please, do mind the duck: it has been here longer than you have, and it knows where the tea is kept.";
@@ -11,69 +11,69 @@ export const NARRATOR_SAMPLE = "The Bellows. The Works draw breath. Mind the pre
 export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "78213380": {
   url: "audio/voice/78213380.mp3",
-  seconds: 4.32
+  seconds: 4
  },
  "91830607": {
   url: "audio/voice/91830607.mp3",
-  seconds: 3.76
+  seconds: 3.44
  },
  "d486ea84": {
   url: "audio/voice/d486ea84.mp3",
-  seconds: 9.36
+  seconds: 9.02
  },
  "0b348985": {
   url: "audio/voice/0b348985.mp3",
-  seconds: 8.64
+  seconds: 7.12
  },
  "0385d169": {
   url: "audio/voice/0385d169.mp3",
-  seconds: 7.04
+  seconds: 7.28
  },
  "f038efe5": {
   url: "audio/voice/f038efe5.mp3",
-  seconds: 7.52
+  seconds: 8.32
  },
  "ba957668": {
   url: "audio/voice/ba957668.mp3",
-  seconds: 7.27
+  seconds: 7.61
  },
  "0c1c54c1": {
   url: "audio/voice/0c1c54c1.mp3",
-  seconds: 8.96
+  seconds: 8.48
  },
  "5e82323f": {
   url: "audio/voice/5e82323f.mp3",
-  seconds: 8.08
+  seconds: 7.84
  },
  "4832ad5f": {
   url: "audio/voice/4832ad5f.mp3",
-  seconds: 6.88
+  seconds: 6.69
  },
  "60a5e047": {
   url: "audio/voice/60a5e047.mp3",
-  seconds: 3.94,
+  seconds: 4.75,
   captioned: true
  },
  "cbc141aa": {
   url: "audio/voice/cbc141aa.mp3",
-  seconds: 5.2,
+  seconds: 4.03,
   captioned: true
  },
  "461853b2": {
   url: "audio/voice/461853b2.mp3",
-  seconds: 2.4
+  seconds: 2.45
  },
  "9c378255": {
   url: "audio/voice/9c378255.mp3",
-  seconds: 2.48
+  seconds: 2.8
  },
  "2a03f631": {
   url: "audio/voice/2a03f631.mp3",
-  seconds: 1.9
+  seconds: 2.16
  },
  "d11f0fa0": {
   url: "audio/voice/d11f0fa0.mp3",
-  seconds: 1.76
+  seconds: 1.84
  },
  "f46aa2aa": {
   url: "audio/voice/f46aa2aa.mp3",
@@ -81,99 +81,99 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  },
  "5c2a1e51": {
   url: "audio/voice/5c2a1e51.mp3",
-  seconds: 2
+  seconds: 1.67
  },
  "2d36a7dc": {
   url: "audio/voice/2d36a7dc.mp3",
-  seconds: 1.57
+  seconds: 1.68
  },
  "0468773a": {
   url: "audio/voice/0468773a.mp3",
-  seconds: 2.14
+  seconds: 1.84
  },
  "fb96edf3": {
   url: "audio/voice/fb96edf3.mp3",
-  seconds: 1.8
+  seconds: 1.92
  },
  "9997e670": {
   url: "audio/voice/9997e670.mp3",
-  seconds: 1.6
+  seconds: 1.68
  },
  "5ac70782": {
   url: "audio/voice/5ac70782.mp3",
-  seconds: 1.99
+  seconds: 1.52
  },
  "112a2c89": {
   url: "audio/voice/112a2c89.mp3",
-  seconds: 3.92
+  seconds: 3.36
  },
  "4ef597c5": {
   url: "audio/voice/4ef597c5.mp3",
-  seconds: 2.08
+  seconds: 1.6
  },
  "7d4e76b7": {
   url: "audio/voice/7d4e76b7.mp3",
-  seconds: 2.1
+  seconds: 2.05
  },
  "4f1dafb9": {
   url: "audio/voice/4f1dafb9.mp3",
-  seconds: 2.5
+  seconds: 3.16
  },
  "bf79a725": {
   url: "audio/voice/bf79a725.mp3",
-  seconds: 1.35
+  seconds: 1.6
  },
  "9b9a14d8": {
   url: "audio/voice/9b9a14d8.mp3",
-  seconds: 2.48
+  seconds: 2.11
  },
  "c8f4bc24": {
   url: "audio/voice/c8f4bc24.mp3",
-  seconds: 2.8
+  seconds: 2.88
  },
  "b0d344fd": {
   url: "audio/voice/b0d344fd.mp3",
-  seconds: 2.32
+  seconds: 2.08
  },
  "d39e9e91": {
   url: "audio/voice/d39e9e91.mp3",
-  seconds: 2.35
+  seconds: 2.16
  },
  "007ca4f4": {
   url: "audio/voice/007ca4f4.mp3",
-  seconds: 3.36
+  seconds: 3.2
  },
  "eaa2ff43": {
   url: "audio/voice/eaa2ff43.mp3",
-  seconds: 4.88
+  seconds: 5.36
  },
  "4e2d8eab": {
   url: "audio/voice/4e2d8eab.mp3",
-  seconds: 4.9
+  seconds: 4.77
  },
  "52bbf8e1": {
   url: "audio/voice/52bbf8e1.mp3",
-  seconds: 2.93
+  seconds: 3.12
  },
  "6d5db4eb": {
   url: "audio/voice/6d5db4eb.mp3",
-  seconds: 4.7
+  seconds: 4.74
  },
  "fc7683eb": {
   url: "audio/voice/fc7683eb.mp3",
-  seconds: 2.96
+  seconds: 2.16
  },
  "11ec726f": {
   url: "audio/voice/11ec726f.mp3",
-  seconds: 3.04
+  seconds: 2.67
  },
  "3f36a2d2": {
   url: "audio/voice/3f36a2d2.mp3",
-  seconds: 3.36
+  seconds: 3.6
  },
  "fb37b9f7": {
   url: "audio/voice/fb37b9f7.mp3",
-  seconds: 3.25
+  seconds: 2.79
  },
  "fc526d8a": {
   url: "audio/voice/fc526d8a.mp3",
@@ -181,63 +181,63 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  },
  "7bd0939f": {
   url: "audio/voice/7bd0939f.mp3",
-  seconds: 4.08
+  seconds: 3.44
  },
  "744022af": {
   url: "audio/voice/744022af.mp3",
-  seconds: 3.37
+  seconds: 2.88
  },
  "1ee5e288": {
   url: "audio/voice/1ee5e288.mp3",
-  seconds: 5.68
+  seconds: 5.6
  },
  "ffccc90d": {
   url: "audio/voice/ffccc90d.mp3",
-  seconds: 5.12
+  seconds: 4
  },
  "2b1d0f6a": {
   url: "audio/voice/2b1d0f6a.mp3",
-  seconds: 5.36
+  seconds: 4.48
  },
  "852840d9": {
   url: "audio/voice/852840d9.mp3",
-  seconds: 1.14
+  seconds: 1.19
  },
  "568f0e13": {
   url: "audio/voice/568f0e13.mp3",
-  seconds: 5.12
+  seconds: 4.49
  },
  "97a0070a": {
   url: "audio/voice/97a0070a.mp3",
-  seconds: 3.52
+  seconds: 3.68
  },
  "2bdc9400": {
   url: "audio/voice/2bdc9400.mp3",
-  seconds: 5.43
+  seconds: 4.16
  },
  "f4217730": {
   url: "audio/voice/f4217730.mp3",
-  seconds: 2.39
+  seconds: 2.48
  },
  "9a7be7c3": {
   url: "audio/voice/9a7be7c3.mp3",
-  seconds: 4.09
+  seconds: 3.48
  },
  "ae74033a": {
   url: "audio/voice/ae74033a.mp3",
-  seconds: 5.68
+  seconds: 5.37
  },
  "28442cb1": {
   url: "audio/voice/28442cb1.mp3",
-  seconds: 1.54
+  seconds: 1.68
  },
  "bb56a48b": {
   url: "audio/voice/bb56a48b.mp3",
-  seconds: 3.76
+  seconds: 3.42
  },
  "5693dc11": {
   url: "audio/voice/5693dc11.mp3",
-  seconds: 4.64
+  seconds: 3.84
  },
  "43a3a108": {
   url: "audio/voice/43a3a108.mp3",
@@ -245,79 +245,79 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  },
  "689bee0b": {
   url: "audio/voice/689bee0b.mp3",
-  seconds: 4.16
+  seconds: 3.81
  },
  "02e8d016": {
   url: "audio/voice/02e8d016.mp3",
-  seconds: 4.07
+  seconds: 3.12
  },
  "9b9e86d3": {
   url: "audio/voice/9b9e86d3.mp3",
-  seconds: 5.68
+  seconds: 5.6
  },
  "32b02cc3": {
   url: "audio/voice/32b02cc3.mp3",
-  seconds: 2.48
+  seconds: 2.32
  },
  "67f26592": {
   url: "audio/voice/67f26592.mp3",
-  seconds: 1.6
+  seconds: 0.82
  },
  "fa5e86f2": {
   url: "audio/voice/fa5e86f2.mp3",
-  seconds: 4.4
+  seconds: 3.2
  },
  "149140d7": {
   url: "audio/voice/149140d7.mp3",
-  seconds: 4.32
+  seconds: 4.39
  },
  "8bf5a6af": {
   url: "audio/voice/8bf5a6af.mp3",
-  seconds: 3.73
+  seconds: 3.66
  },
  "6adc69ed": {
   url: "audio/voice/6adc69ed.mp3",
-  seconds: 3.44
+  seconds: 3.75
  },
  "834a9b53": {
   url: "audio/voice/834a9b53.mp3",
-  seconds: 2.64
+  seconds: 2.72
  },
  "722268d3": {
   url: "audio/voice/722268d3.mp3",
-  seconds: 1.14
+  seconds: 1.28
  },
  "ca7a90e2": {
   url: "audio/voice/ca7a90e2.mp3",
-  seconds: 3.54
+  seconds: 2.59
  },
  "8e281ebb": {
   url: "audio/voice/8e281ebb.mp3",
-  seconds: 3.36
+  seconds: 3.07
  },
  "a2a070a7": {
   url: "audio/voice/a2a070a7.mp3",
-  seconds: 1.52
+  seconds: 1.36
  },
  "95f8ec08": {
   url: "audio/voice/95f8ec08.mp3",
-  seconds: 4.4
+  seconds: 4.28
  },
  "1ecc8201": {
   url: "audio/voice/1ecc8201.mp3",
-  seconds: 3.52
+  seconds: 3.68
  },
  "e5113309": {
   url: "audio/voice/e5113309.mp3",
-  seconds: 3.04
+  seconds: 2.78
  },
  "3ee85252": {
   url: "audio/voice/3ee85252.mp3",
-  seconds: 3.2
+  seconds: 2.72
  },
  "47c8959e": {
   url: "audio/voice/47c8959e.mp3",
-  seconds: 4.67
+  seconds: 4.24
  },
  "f5efe778": {
   url: "audio/voice/f5efe778.mp3",
@@ -325,7 +325,7 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  },
  "3709450e": {
   url: "audio/voice/3709450e.mp3",
-  seconds: 0.94
+  seconds: 0.88
  },
  "5c4641dc": {
   url: "audio/voice/5c4641dc.mp3",
@@ -333,11 +333,11 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  },
  "a61d7e08": {
   url: "audio/voice/a61d7e08.mp3",
-  seconds: 3.12
+  seconds: 3.36
  },
  "ffd20377": {
   url: "audio/voice/ffd20377.mp3",
-  seconds: 3.84
+  seconds: 3.54
  },
  "75b4a9c6": {
   url: "audio/voice/75b4a9c6.mp3",
@@ -345,99 +345,99 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  },
  "6ddd62a9": {
   url: "audio/voice/6ddd62a9.mp3",
-  seconds: 3.68
+  seconds: 2.72
  },
  "79a825b5": {
   url: "audio/voice/79a825b5.mp3",
-  seconds: 2.8
+  seconds: 2.64
  },
  "c9cd4701": {
   url: "audio/voice/c9cd4701.mp3",
-  seconds: 3.12
+  seconds: 2.8
  },
  "b445fa69": {
   url: "audio/voice/b445fa69.mp3",
-  seconds: 2.72
+  seconds: 2.08
  },
  "b9f7c08a": {
   url: "audio/voice/b9f7c08a.mp3",
-  seconds: 3.68
+  seconds: 3.44
  },
  "29f45618": {
   url: "audio/voice/29f45618.mp3",
-  seconds: 3.46
+  seconds: 2.96
  },
  "79c416ad": {
   url: "audio/voice/79c416ad.mp3",
-  seconds: 4.64
+  seconds: 4.24
  },
  "137c9934": {
   url: "audio/voice/137c9934.mp3",
-  seconds: 6.96
+  seconds: 7.44
  },
  "2f3e7705": {
   url: "audio/voice/2f3e7705.mp3",
-  seconds: 1.52
+  seconds: 0.88
  },
  "16f819bf": {
   url: "audio/voice/16f819bf.mp3",
-  seconds: 5.52
+  seconds: 3.76
  },
  "dad3dc72": {
   url: "audio/voice/dad3dc72.mp3",
-  seconds: 2.56
+  seconds: 2.32
  },
  "f5c4bf47": {
   url: "audio/voice/f5c4bf47.mp3",
-  seconds: 1.92
+  seconds: 1.04
  },
  "f2dfbea6": {
   url: "audio/voice/f2dfbea6.mp3",
-  seconds: 4.72
+  seconds: 4.48
  },
  "af8f3a57": {
   url: "audio/voice/af8f3a57.mp3",
-  seconds: 2.88
+  seconds: 2.85
  },
  "30486fc1": {
   url: "audio/voice/30486fc1.mp3",
-  seconds: 3.15
+  seconds: 3.19
  },
  "f325bbf1": {
   url: "audio/voice/f325bbf1.mp3",
-  seconds: 2.7
+  seconds: 2.23
  },
  "3205a1d9": {
   url: "audio/voice/3205a1d9.mp3",
-  seconds: 4.24
+  seconds: 4.26
  },
  "ced1f053": {
   url: "audio/voice/ced1f053.mp3",
-  seconds: 3.2
+  seconds: 3.28
  },
  "e8071e34": {
   url: "audio/voice/e8071e34.mp3",
-  seconds: 1.54
+  seconds: 1.76
  },
  "e19779e7": {
   url: "audio/voice/e19779e7.mp3",
-  seconds: 2.56
+  seconds: 2.64
  },
  "b79860b2": {
   url: "audio/voice/b79860b2.mp3",
-  seconds: 3.11
+  seconds: 2.83
  },
  "a24c7037": {
   url: "audio/voice/a24c7037.mp3",
-  seconds: 1.04
+  seconds: 1.28
  },
  "ef6d4989": {
   url: "audio/voice/ef6d4989.mp3",
-  seconds: 2.96
+  seconds: 2.72
  },
  "469e5646": {
   url: "audio/voice/469e5646.mp3",
-  seconds: 4.49
+  seconds: 4.96
  },
  "846d7bfa": {
   url: "audio/voice/846d7bfa.mp3",
@@ -445,23 +445,23 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  },
  "a24fe67f": {
   url: "audio/voice/a24fe67f.mp3",
-  seconds: 3.56
+  seconds: 3.35
  },
  "67b6d2a5": {
   url: "audio/voice/67b6d2a5.mp3",
-  seconds: 5.12
+  seconds: 4.8
  },
  "834b7a28": {
   url: "audio/voice/834b7a28.mp3",
-  seconds: 4.24
+  seconds: 3.03
  },
  "85fcb302": {
   url: "audio/voice/85fcb302.mp3",
-  seconds: 2.88
+  seconds: 2.15
  },
  "d992dcb1": {
   url: "audio/voice/d992dcb1.mp3",
-  seconds: 3.68
+  seconds: 3.84
  },
  "84b0b82c": {
   url: "audio/voice/84b0b82c.mp3",
@@ -469,63 +469,63 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  },
  "021173e9": {
   url: "audio/voice/021173e9.mp3",
-  seconds: 1.52
+  seconds: 1.95
  },
  "b4d1c838": {
   url: "audio/voice/b4d1c838.mp3",
-  seconds: 3.12
+  seconds: 3.08
  },
  "639f5bb5": {
   url: "audio/voice/639f5bb5.mp3",
-  seconds: 2.06
+  seconds: 1.92
  },
  "88d0dea0": {
   url: "audio/voice/88d0dea0.mp3",
-  seconds: 5.44
+  seconds: 4.96
  },
  "bd5b6740": {
   url: "audio/voice/bd5b6740.mp3",
-  seconds: 2.48
+  seconds: 2.4
  },
  "4db18cb0": {
   url: "audio/voice/4db18cb0.mp3",
-  seconds: 4.14
+  seconds: 3.2
  },
  "93ac4a43": {
   url: "audio/voice/93ac4a43.mp3",
-  seconds: 4.88
+  seconds: 5.2
  },
  "6e675487": {
   url: "audio/voice/6e675487.mp3",
-  seconds: 1.5
+  seconds: 1.28
  },
  "ee03f586": {
   url: "audio/voice/ee03f586.mp3",
-  seconds: 3.03
+  seconds: 2.59
  },
  "d8b31898": {
   url: "audio/voice/d8b31898.mp3",
-  seconds: 2.88
+  seconds: 2.47
  },
  "010ab859": {
   url: "audio/voice/010ab859.mp3",
-  seconds: 1.04
+  seconds: 1.46
  },
  "1687f393": {
   url: "audio/voice/1687f393.mp3",
-  seconds: 4.48
+  seconds: 4.4
  },
  "1ae676dc": {
   url: "audio/voice/1ae676dc.mp3",
-  seconds: 2.08
+  seconds: 2
  },
  "42e037b9": {
   url: "audio/voice/42e037b9.mp3",
-  seconds: 6.3
+  seconds: 6.16
  },
  "0dd7b5f3": {
   url: "audio/voice/0dd7b5f3.mp3",
-  seconds: 3.44
+  seconds: 3.2
  },
  "4b9d5a04": {
   url: "audio/voice/4b9d5a04.mp3",
@@ -533,127 +533,127 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  },
  "6ed85358": {
   url: "audio/voice/6ed85358.mp3",
-  seconds: 2.35
+  seconds: 1.76
  },
  "f6d7b040": {
   url: "audio/voice/f6d7b040.mp3",
-  seconds: 2.48
+  seconds: 2.32
  },
  "b64497dc": {
   url: "audio/voice/b64497dc.mp3",
-  seconds: 1.62
+  seconds: 1.2
  },
  "9ddb206f": {
   url: "audio/voice/9ddb206f.mp3",
-  seconds: 4
+  seconds: 4.56
  },
  "f58f9195": {
   url: "audio/voice/f58f9195.mp3",
-  seconds: 3.24
+  seconds: 3.28
  },
  "a9888d37": {
   url: "audio/voice/a9888d37.mp3",
-  seconds: 2.92
+  seconds: 3.15
  },
  "c03e88b4": {
   url: "audio/voice/c03e88b4.mp3",
-  seconds: 2.4
+  seconds: 2.43
  },
  "1967d415": {
   url: "audio/voice/1967d415.mp3",
-  seconds: 2.67
+  seconds: 2.93
  },
  "6a025a89": {
   url: "audio/voice/6a025a89.mp3",
-  seconds: 4.32
+  seconds: 4.07
  },
  "f2a19a95": {
   url: "audio/voice/f2a19a95.mp3",
-  seconds: 1.6
+  seconds: 1.36
  },
  "7abc81bf": {
   url: "audio/voice/7abc81bf.mp3",
-  seconds: 5.2
+  seconds: 4.24
  },
  "c3bc2233": {
   url: "audio/voice/c3bc2233.mp3",
-  seconds: 2.48
+  seconds: 2.4
  },
  "cfa9b63e": {
   url: "audio/voice/cfa9b63e.mp3",
-  seconds: 7.84
+  seconds: 6.8
  },
  "7772e8f7": {
   url: "audio/voice/7772e8f7.mp3",
-  seconds: 3.68
+  seconds: 3.84
  },
  "e106828c": {
   url: "audio/voice/e106828c.mp3",
-  seconds: 2.06
+  seconds: 1.63
  },
  "b17079ec": {
   url: "audio/voice/b17079ec.mp3",
-  seconds: 8.26
+  seconds: 7.76
  },
  "1380ece7": {
   url: "audio/voice/1380ece7.mp3",
-  seconds: 2.08
+  seconds: 1.98
  },
  "611c3d75": {
   url: "audio/voice/611c3d75.mp3",
-  seconds: 1.92
+  seconds: 2.02
  },
  "7204eb8a": {
   url: "audio/voice/7204eb8a.mp3",
-  seconds: 2.16
+  seconds: 1.92
  },
  "344e1388": {
   url: "audio/voice/344e1388.mp3",
-  seconds: 2.39
+  seconds: 2.16
  },
  "8b69f07b": {
   url: "audio/voice/8b69f07b.mp3",
-  seconds: 2.96
+  seconds: 2.64
  },
  "1a038953": {
   url: "audio/voice/1a038953.mp3",
-  seconds: 2.88
+  seconds: 2.64
  },
  "51bdf1b7": {
   url: "audio/voice/51bdf1b7.mp3",
-  seconds: 2.16
+  seconds: 1.92
  },
  "0437bddb": {
   url: "audio/voice/0437bddb.mp3",
-  seconds: 2.64
+  seconds: 2.08
  },
  "5a3bb28f": {
   url: "audio/voice/5a3bb28f.mp3",
-  seconds: 4.8
+  seconds: 5.12
  },
  "46e1fe93": {
   url: "audio/voice/46e1fe93.mp3",
-  seconds: 5.68
+  seconds: 3.31
  },
  "01a58998": {
   url: "audio/voice/01a58998.mp3",
-  seconds: 2.64
+  seconds: 2.56
  },
  "ed0c2fec": {
   url: "audio/voice/ed0c2fec.mp3",
-  seconds: 7.77
+  seconds: 6.63
  },
  "3698d668": {
   url: "audio/voice/3698d668.mp3",
-  seconds: 7.04
+  seconds: 6.4
  },
  "6ac75f06": {
   url: "audio/voice/6ac75f06.mp3",
-  seconds: 8.08
+  seconds: 6.48
  },
  "eeda0140": {
   url: "audio/voice/eeda0140.mp3",
-  seconds: 6.24,
+  seconds: 5.36,
   captioned: true
  }
 };
@@ -665,7 +665,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Something is alive in the old refinery. Listen. Experiment. Find your way down.",
   say: "[softly] Something is alive in the old refinery. Listen. Experiment. Find your way down.",
   group: "Title",
-  seconds: 9.36,
+  seconds: 9.02,
   urls: [
    "audio/voice/d486ea84.mp3",
    "audio/voice/d486ea84-2.mp3"
@@ -676,7 +676,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Bellows. The Works draw breath. Mind the pressure.",
   say: "The Bellows. The Works draw breath. Mind the pressure.",
   group: "Floor arrivals",
-  seconds: 8.64,
+  seconds: 7.12,
   urls: [
    "audio/voice/0b348985.mp3",
    "audio/voice/0b348985-2.mp3"
@@ -687,7 +687,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Rot Gardens. Where the refinery digests. Do not linger.",
   say: "The Rot Gardens. Where the refinery digests. Do not linger.",
   group: "Floor arrivals",
-  seconds: 7.04,
+  seconds: 7.28,
   urls: [
    "audio/voice/0385d169.mp3",
    "audio/voice/0385d169-2.mp3"
@@ -698,7 +698,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Drowned Cisterns. The veins run cold. Something large keeps them company.",
   say: "The Drowned Cisterns. The veins run cold. Something large keeps them company.",
   group: "Floor arrivals",
-  seconds: 7.52,
+  seconds: 8.32,
   urls: [
    "audio/voice/f038efe5.mp3",
    "audio/voice/f038efe5-2.mp3"
@@ -709,7 +709,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Kiln Heart. The heart still burns. It would rather you did not.",
   say: "The Kiln Heart. The heart still burns. It would rather you did not.",
   group: "Floor arrivals",
-  seconds: 7.27,
+  seconds: 7.61,
   urls: [
    "audio/voice/ba957668.mp3",
    "audio/voice/ba957668-2.mp3"
@@ -720,7 +720,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The gut. Everything here is growing, rotting, or making up its mind, and the air is flammable.",
   say: "The gut. Everything here is growing, rotting, or making up its mind, and the air is flammable.",
   group: "Sanctum",
-  seconds: 8.96,
+  seconds: 8.48,
   urls: [
    "audio/voice/0c1c54c1.mp3"
   ]
@@ -730,7 +730,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The veins. Several hundred tons of water and one very large tenant who never pays rent.",
   say: "The veins. Several hundred tons of water and one very large tenant who never pays rent.",
   group: "Sanctum",
-  seconds: 8.08,
+  seconds: 7.84,
   urls: [
    "audio/voice/5e82323f.mp3"
   ]
@@ -740,7 +740,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The heart. Hot, loud, and under the impression that it is a volcano.",
   say: "The heart. Hot, loud, and under the impression that it is a volcano.",
   group: "Sanctum",
-  seconds: 6.88,
+  seconds: 6.69,
   urls: [
    "audio/voice/4832ad5f.mp3"
   ]
@@ -750,7 +750,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Sunken Leviathan. It drains poorly.",
   say: "[whispers] The Sunken Leviathan. It drains poorly.",
   group: "Bosses · leviathan",
-  seconds: 3.94,
+  seconds: 4.75,
   urls: [
    "audio/voice/60a5e047.mp3"
   ]
@@ -760,7 +760,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Kiln Colossus. Stopping it is the whole point.",
   say: "The Kiln Colossus. Stopping it is the whole point.",
   group: "Bosses · colossus",
-  seconds: 5.2,
+  seconds: 4.03,
   urls: [
    "audio/voice/cbc141aa.mp3"
   ]
@@ -770,7 +770,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Drain the Sunken Leviathan.",
   say: "Drain the Sunken Leviathan.",
   group: "Bosses",
-  seconds: 2.4,
+  seconds: 2.45,
   urls: [
    "audio/voice/461853b2.mp3"
   ]
@@ -780,7 +780,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Bring down the Kiln Colossus.",
   say: "Bring down the Kiln Colossus.",
   group: "Bosses",
-  seconds: 2.48,
+  seconds: 2.8,
   urls: [
    "audio/voice/9c378255.mp3"
   ]
@@ -790,7 +790,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "THE SUMP FALLS STILL",
   say: "The sump falls still.",
   group: "Bosses",
-  seconds: 1.9,
+  seconds: 2.16,
   urls: [
    "audio/voice/2a03f631.mp3"
   ]
@@ -800,7 +800,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "THE KILN IS COLD",
   say: "The kiln is cold.",
   group: "Bosses",
-  seconds: 1.76,
+  seconds: 1.84,
   urls: [
    "audio/voice/d11f0fa0.mp3"
   ]
@@ -820,7 +820,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "First, a little powder",
   say: "First, a little powder.",
   group: "Tea Engine · acts",
-  seconds: 2,
+  seconds: 1.67,
   urls: [
    "audio/voice/5c2a1e51.mp3"
   ]
@@ -830,7 +830,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A broken coupling",
   say: "A broken coupling.",
   group: "Tea Engine · acts",
-  seconds: 1.57,
+  seconds: 1.68,
   urls: [
    "audio/voice/2d36a7dc.mp3"
   ]
@@ -840,7 +840,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The knot is the fuse",
   say: "The knot is the fuse.",
   group: "Tea Engine · acts",
-  seconds: 2.14,
+  seconds: 1.84,
   urls: [
    "audio/voice/0468773a.mp3"
   ]
@@ -850,7 +850,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Percussive maintenance",
   say: "Percussive maintenance.",
   group: "Tea Engine · acts",
-  seconds: 1.8,
+  seconds: 1.92,
   urls: [
    "audio/voice/fb96edf3.mp3"
   ]
@@ -860,7 +860,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Downhill, briskly",
   say: "Downhill, briskly.",
   group: "Tea Engine · acts",
-  seconds: 1.6,
+  seconds: 1.68,
   urls: [
    "audio/voice/9997e670.mp3"
   ]
@@ -870,7 +870,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The tollgate is stuck",
   say: "The tollgate is stuck.",
   group: "Tea Engine · acts",
-  seconds: 1.99,
+  seconds: 1.52,
   urls: [
    "audio/voice/5ac70782.mp3"
   ]
@@ -880,7 +880,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Six dominoes and a wound spring",
   say: "Six dominoes and a wound spring.",
   group: "Tea Engine · acts",
-  seconds: 3.92,
+  seconds: 3.36,
   urls: [
    "audio/voice/112a2c89.mp3"
   ]
@@ -890,7 +890,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The spring lets go",
   say: "The spring lets go.",
   group: "Tea Engine · acts",
-  seconds: 2.08,
+  seconds: 1.6,
   urls: [
    "audio/voice/4ef597c5.mp3"
   ]
@@ -900,7 +900,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Please mind the duck",
   say: "[dryly] Please mind the duck.",
   group: "Tea Engine · acts",
-  seconds: 2.1,
+  seconds: 2.05,
   urls: [
    "audio/voice/7d4e76b7.mp3"
   ]
@@ -910,7 +910,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A marble of some urgency",
   say: "A marble of some urgency.",
   group: "Tea Engine · acts",
-  seconds: 2.5,
+  seconds: 3.16,
   urls: [
    "audio/voice/4f1dafb9.mp3"
   ]
@@ -920,7 +920,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The second fuse",
   say: "The second fuse.",
   group: "Tea Engine · acts",
-  seconds: 1.35,
+  seconds: 1.6,
   urls: [
    "audio/voice/bf79a725.mp3"
   ]
@@ -930,7 +930,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "This is probably enough heat",
   say: "[dryly] This is probably enough heat.",
   group: "Tea Engine · acts",
-  seconds: 2.48,
+  seconds: 2.11,
   urls: [
    "audio/voice/9b9a14d8.mp3"
   ]
@@ -940,7 +940,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A most electrifying tea bag",
   say: "A most electrifying tea bag.",
   group: "Tea Engine · acts",
-  seconds: 2.8,
+  seconds: 2.88,
   urls: [
    "audio/voice/c8f4bc24.mp3"
   ]
@@ -950,7 +950,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The magnet has opinions",
   say: "The magnet has opinions.",
   group: "Tea Engine · acts",
-  seconds: 2.32,
+  seconds: 2.08,
   urls: [
    "audio/voice/b0d344fd.mp3"
   ]
@@ -960,7 +960,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Gravity gets the last word",
   say: "Gravity gets the last word.",
   group: "Tea Engine · acts",
-  seconds: 2.35,
+  seconds: 2.16,
   urls: [
    "audio/voice/d39e9e91.mp3"
   ]
@@ -970,7 +970,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Tea is served. The bell is yours.",
   say: "Tea is served. The bell is yours.",
   group: "Tea Engine · acts",
-  seconds: 3.36,
+  seconds: 3.2,
   urls: [
    "audio/voice/007ca4f4.mp3"
   ]
@@ -980,7 +980,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The descent gate needs its brass bell. Pull the crank to begin.",
   say: "The descent gate needs its brass bell. Pull the crank to begin.",
   group: "Tea Engine · acts",
-  seconds: 4.88,
+  seconds: 5.36,
   urls: [
    "audio/voice/eaa2ff43.mp3"
   ]
@@ -990,7 +990,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Collect the brass bell at the receiver, then carry it to the descent gate.",
   say: "Collect the brass bell at the receiver, then carry it to the descent gate.",
   group: "Tea Engine · acts",
-  seconds: 4.9,
+  seconds: 4.77,
   urls: [
    "audio/voice/4e2d8eab.mp3"
   ]
@@ -1000,7 +1000,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A slight technical difficulty",
   say: "[sighs] A slight technical difficulty.",
   group: "Tea Engine · faults",
-  seconds: 2.93,
+  seconds: 3.12,
   urls: [
    "audio/voice/52bbf8e1.mp3"
   ]
@@ -1010,7 +1010,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Return to the crank. Press Use to recharge the engine.",
   say: "Return to the crank. Press Use to recharge the engine.",
   group: "Tea Engine · faults",
-  seconds: 4.7,
+  seconds: 4.74,
   urls: [
    "audio/voice/6d5db4eb.mp3"
   ]
@@ -1020,7 +1020,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Shoot the priming pan under the floor",
   say: "Shoot the priming pan under the floor.",
   group: "Tea Engine · faults",
-  seconds: 2.96,
+  seconds: 2.16,
   urls: [
    "audio/voice/fc7683eb.mp3"
   ]
@@ -1030,7 +1030,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Kick the Persuader hanging from the ceiling",
   say: "Kick the Persuader hanging from the ceiling.",
   group: "Tea Engine · faults",
-  seconds: 3.04,
+  seconds: 2.67,
   urls: [
    "audio/voice/11ec726f.mp3"
   ]
@@ -1040,7 +1040,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Pour water through the grate into the duck’s bath",
   say: "Pour water through the grate into the duck’s bath.",
   group: "Tea Engine · faults",
-  seconds: 3.36,
+  seconds: 3.6,
   urls: [
    "audio/voice/3f36a2d2.mp3"
   ]
@@ -1050,7 +1050,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The slow match reaches the priming pan.",
   say: "The slow match reaches the priming pan.",
   group: "Tea Engine · toasts",
-  seconds: 3.25,
+  seconds: 2.79,
   urls: [
    "audio/voice/fb37b9f7.mp3"
   ]
@@ -1070,7 +1070,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Engine recharged. Pull the crank to try again.",
   say: "Engine recharged. Pull the crank to try again.",
   group: "Tea Engine · toasts",
-  seconds: 4.08,
+  seconds: 3.44,
   urls: [
    "audio/voice/7bd0939f.mp3"
   ]
@@ -1080,7 +1080,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The clockwork knocker gives the Persuader a whack.",
   say: "The clockwork knocker gives the Persuader a whack.",
   group: "Tea Engine · toasts",
-  seconds: 3.37,
+  seconds: 2.88,
   urls: [
    "audio/voice/744022af.mp3"
   ]
@@ -1090,7 +1090,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Bell & Tea Engine: The fuse fizzled out at the cracked coupling.",
   say: "Bell and Tea Engine: The fuse fizzled out at the cracked coupling.",
   group: "Tea Engine · toasts",
-  seconds: 5.68,
+  seconds: 5.6,
   urls: [
    "audio/voice/1ee5e288.mp3"
   ]
@@ -1100,7 +1100,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Bell & Tea Engine: The tollgate is jammed shut.",
   say: "Bell and Tea Engine: The tollgate is jammed shut.",
   group: "Tea Engine · toasts",
-  seconds: 5.12,
+  seconds: 4,
   urls: [
    "audio/voice/ffccc90d.mp3"
   ]
@@ -1110,7 +1110,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Bell & Tea Engine: The downpipe is clogged.",
   say: "Bell and Tea Engine: The downpipe is clogged.",
   group: "Tea Engine · toasts",
-  seconds: 5.36,
+  seconds: 4.48,
   urls: [
    "audio/voice/2b1d0f6a.mp3"
   ]
@@ -1120,7 +1120,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You dissolved.",
   say: "You dissolved.",
   group: "Death · titles",
-  seconds: 1.14,
+  seconds: 1.19,
   urls: [
    "audio/voice/852840d9.mp3"
   ]
@@ -1130,7 +1130,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Dissolved by acid. Very clean work, chemically speaking.",
   say: "Dissolved by acid. Very clean work, chemically speaking.",
   group: "Death · causes",
-  seconds: 5.12,
+  seconds: 4.49,
   urls: [
    "audio/voice/568f0e13.mp3"
   ]
@@ -1140,7 +1140,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Acid reduced the alchemist to a smaller argument.",
   say: "Acid reduced the alchemist to a smaller argument.",
   group: "Death · causes",
-  seconds: 3.52,
+  seconds: 3.68,
   urls: [
    "audio/voice/97a0070a.mp3"
   ]
@@ -1150,7 +1150,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Tagged by an acid glob. The glob was smug about it.",
   say: "[dryly] Tagged by an acid glob. The glob was smug about it.",
   group: "Death · causes",
-  seconds: 5.43,
+  seconds: 4.16,
   urls: [
    "audio/voice/2bdc9400.mp3"
   ]
@@ -1160,7 +1160,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A caustic lob made its point.",
   say: "A caustic lob made its point.",
   group: "Death · causes",
-  seconds: 2.39,
+  seconds: 2.48,
   urls: [
    "audio/voice/f4217730.mp3"
   ]
@@ -1170,7 +1170,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "An acid slime turned a hug into a hazard.",
   say: "An acid slime turned a hug into a hazard.",
   group: "Death · causes",
-  seconds: 4.09,
+  seconds: 3.48,
   urls: [
    "audio/voice/9a7be7c3.mp3"
   ]
@@ -1180,7 +1180,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Acid slime contact. Sticky, sour, final.",
   say: "Acid slime contact. Sticky, sour, final.",
   group: "Death · causes",
-  seconds: 5.68,
+  seconds: 5.37,
   urls: [
    "audio/voice/ae74033a.mp3"
   ]
@@ -1190,7 +1190,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You were blown apart.",
   say: "You were blown apart.",
   group: "Death · titles",
-  seconds: 1.54,
+  seconds: 1.68,
   urls: [
    "audio/voice/28442cb1.mp3"
   ]
@@ -1200,7 +1200,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "An explosive barrel fulfilled its destiny nearby.",
   say: "An explosive barrel fulfilled its destiny nearby.",
   group: "Death · causes",
-  seconds: 3.76,
+  seconds: 3.42,
   urls: [
    "audio/voice/bb56a48b.mp3"
   ]
@@ -1210,7 +1210,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Barrel chemistry: one, alchemist: zero.",
   say: "Barrel chemistry: one, alchemist: zero.",
   group: "Death · causes",
-  seconds: 4.64,
+  seconds: 3.84,
   urls: [
    "audio/voice/5693dc11.mp3"
   ]
@@ -1230,7 +1230,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A bat cashed in the smallest possible assassination.",
   say: "A bat cashed in the smallest possible assassination.",
   group: "Death · causes",
-  seconds: 4.16,
+  seconds: 3.81,
   urls: [
    "audio/voice/689bee0b.mp3"
   ]
@@ -1240,7 +1240,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Bitten out of the air by a flying nuisance.",
   say: "Bitten out of the air by a flying nuisance.",
   group: "Death · causes",
-  seconds: 4.07,
+  seconds: 3.12,
   urls: [
    "audio/voice/02e8d016.mp3"
   ]
@@ -1250,7 +1250,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A bomber slime chose mutual destruction. You were not consulted.",
   say: "A bomber slime chose mutual destruction. You were not consulted.",
   group: "Death · causes",
-  seconds: 5.68,
+  seconds: 5.6,
   urls: [
    "audio/voice/9b9e86d3.mp3"
   ]
@@ -1260,7 +1260,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The fuse had one joke.",
   say: "The fuse had one joke.",
   group: "Death · causes",
-  seconds: 2.48,
+  seconds: 2.32,
   urls: [
    "audio/voice/32b02cc3.mp3"
   ]
@@ -1270,7 +1270,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You burned.",
   say: "You burned.",
   group: "Death · titles",
-  seconds: 1.6,
+  seconds: 0.82,
   urls: [
    "audio/voice/67f26592.mp3"
   ]
@@ -1280,7 +1280,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Burned to death while still technically on fire.",
   say: "Burned to death while still technically on fire.",
   group: "Death · causes",
-  seconds: 4.4,
+  seconds: 3.2,
   urls: [
    "audio/voice/fa5e86f2.mp3"
   ]
@@ -1290,7 +1290,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Stopped, dropped, and forgot the rolling part.",
   say: "Stopped, dropped, and forgot the rolling part.",
   group: "Death · causes",
-  seconds: 3.76,
+  seconds: 3.44,
   urls: [
    "audio/voice/91830607.mp3"
   ]
@@ -1300,7 +1300,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Kiln died loudly and took you as a footnote.",
   say: "The Kiln died loudly and took you as a footnote.",
   group: "Death · causes",
-  seconds: 4.32,
+  seconds: 4.39,
   urls: [
    "audio/voice/149140d7.mp3"
   ]
@@ -1310,7 +1310,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Victory explosion. Timing could improve.",
   say: "[dryly] Victory explosion. Timing could improve.",
   group: "Death · causes",
-  seconds: 3.73,
+  seconds: 3.66,
   urls: [
    "audio/voice/8bf5a6af.mp3"
   ]
@@ -1320,7 +1320,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Kiln Colossus served you extra crispy.",
   say: "The Kiln Colossus served you extra crispy.",
   group: "Death · causes",
-  seconds: 3.44,
+  seconds: 3.75,
   urls: [
    "audio/voice/6adc69ed.mp3"
   ]
@@ -1330,7 +1330,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Molten rock, express delivery.",
   say: "Molten rock, express delivery.",
   group: "Death · causes",
-  seconds: 2.64,
+  seconds: 2.72,
   urls: [
    "audio/voice/834a9b53.mp3"
   ]
@@ -1340,7 +1340,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You were crushed.",
   say: "You were crushed.",
   group: "Death · titles",
-  seconds: 1.14,
+  seconds: 1.28,
   urls: [
    "audio/voice/722268d3.mp3"
   ]
@@ -1350,7 +1350,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Kiln Colossus stamped your ticket.",
   say: "The Kiln Colossus stamped your ticket.",
   group: "Death · causes",
-  seconds: 3.54,
+  seconds: 2.59,
   urls: [
    "audio/voice/ca7a90e2.mp3"
   ]
@@ -1360,7 +1360,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A furnace with fists ended the expedition.",
   say: "A furnace with fists ended the expedition.",
   group: "Death · causes",
-  seconds: 3.36,
+  seconds: 3.07,
   urls: [
    "audio/voice/8e281ebb.mp3"
   ]
@@ -1370,7 +1370,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The current took you.",
   say: "The current took you.",
   group: "Death · titles",
-  seconds: 1.52,
+  seconds: 1.36,
   urls: [
    "audio/voice/a2a070a7.mp3"
   ]
@@ -1380,7 +1380,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Electrocuted. The sparks were not applause.",
   say: "Electrocuted. The sparks were not applause.",
   group: "Death · causes",
-  seconds: 4.4,
+  seconds: 4.28,
   urls: [
    "audio/voice/95f8ec08.mp3"
   ]
@@ -1390,7 +1390,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Conducted electricity better than good judgment.",
   say: "Conducted electricity better than good judgment.",
   group: "Death · causes",
-  seconds: 3.52,
+  seconds: 3.68,
   urls: [
    "audio/voice/1ecc8201.mp3"
   ]
@@ -1400,7 +1400,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Exploded by local cave policy.",
   say: "Exploded by local cave policy.",
   group: "Death · causes",
-  seconds: 3.04,
+  seconds: 2.78,
   urls: [
    "audio/voice/e5113309.mp3"
   ]
@@ -1410,7 +1410,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A blast made a persuasive counterargument.",
   say: "A blast made a persuasive counterargument.",
   group: "Death · causes",
-  seconds: 3.2,
+  seconds: 2.72,
   urls: [
    "audio/voice/3ee85252.mp3"
   ]
@@ -1420,7 +1420,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Cooked by open flame. The robe was not rated for this.",
   say: "Cooked by open flame. The robe was not rated for this.",
   group: "Death · causes",
-  seconds: 4.67,
+  seconds: 4.24,
   urls: [
    "audio/voice/47c8959e.mp3"
   ]
@@ -1440,7 +1440,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You froze.",
   say: "You froze.",
   group: "Death · titles",
-  seconds: 0.94,
+  seconds: 0.88,
   urls: [
    "audio/voice/3709450e.mp3"
   ]
@@ -1460,7 +1460,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Put on ice by something with aim.",
   say: "Put on ice by something with aim.",
   group: "Death · causes",
-  seconds: 3.12,
+  seconds: 3.36,
   urls: [
    "audio/voice/a61d7e08.mp3"
   ]
@@ -1470,7 +1470,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Rock, thrown by golem. Case closed.",
   say: "Rock, thrown by golem. Case closed.",
   group: "Death · causes",
-  seconds: 3.84,
+  seconds: 3.54,
   urls: [
    "audio/voice/ffd20377.mp3"
   ]
@@ -1490,7 +1490,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A golem explained gravity with its fists.",
   say: "A golem explained gravity with its fists.",
   group: "Death · causes",
-  seconds: 3.68,
+  seconds: 2.72,
   urls: [
    "audio/voice/6ddd62a9.mp3"
   ]
@@ -1500,7 +1500,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Flattened by stone with an opinion.",
   say: "Flattened by stone with an opinion.",
   group: "Death · causes",
-  seconds: 2.8,
+  seconds: 2.64,
   urls: [
    "audio/voice/79a825b5.mp3"
   ]
@@ -1510,7 +1510,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Gunpowder remembered it was gunpowder.",
   say: "Gunpowder remembered it was gunpowder.",
   group: "Death · causes",
-  seconds: 3.12,
+  seconds: 2.8,
   urls: [
    "audio/voice/c9cd4701.mp3"
   ]
@@ -1520,7 +1520,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Powder line became a full stop.",
   say: "Powder line became a full stop.",
   group: "Death · causes",
-  seconds: 2.72,
+  seconds: 2.08,
   urls: [
    "audio/voice/b445fa69.mp3"
   ]
@@ -1530,7 +1530,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Hostile debris introduced itself at speed.",
   say: "Hostile debris introduced itself at speed.",
   group: "Death · causes",
-  seconds: 3.68,
+  seconds: 3.44,
   urls: [
    "audio/voice/b9f7c08a.mp3"
   ]
@@ -1540,7 +1540,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Hit by cave mail, postage due.",
   say: "Hit by cave mail, postage due.",
   group: "Death · causes",
-  seconds: 3.46,
+  seconds: 2.96,
   urls: [
    "audio/voice/29f45618.mp3"
   ]
@@ -1550,7 +1550,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A hostile fireball delivered kiln-to-door service.",
   say: "A hostile fireball delivered kiln-to-door service.",
   group: "Death · causes",
-  seconds: 4.64,
+  seconds: 4.24,
   urls: [
    "audio/voice/79c416ad.mp3"
   ]
@@ -1560,7 +1560,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Fireball to the face. Elegant? No. Effective? Yes.",
   say: "Fireball to the face. Elegant? No. Effective? Yes.",
   group: "Death · causes",
-  seconds: 6.96,
+  seconds: 7.44,
   urls: [
    "audio/voice/137c9934.mp3"
   ]
@@ -1570,7 +1570,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You fell.",
   say: "You fell.",
   group: "Death · titles",
-  seconds: 1.52,
+  seconds: 0.88,
   urls: [
    "audio/voice/2f3e7705.mp3"
   ]
@@ -1580,7 +1580,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Killed by impact. The floor was technically uninvolved.",
   say: "Killed by impact. The floor was technically uninvolved.",
   group: "Death · causes",
-  seconds: 5.52,
+  seconds: 3.76,
   urls: [
    "audio/voice/16f819bf.mp3"
   ]
@@ -1590,7 +1590,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Physics submitted the final blow.",
   say: "Physics submitted the final blow.",
   group: "Death · causes",
-  seconds: 2.56,
+  seconds: 2.32,
   urls: [
    "audio/voice/dad3dc72.mp3"
   ]
@@ -1600,7 +1600,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You melted.",
   say: "You melted.",
   group: "Death · titles",
-  seconds: 1.92,
+  seconds: 1.04,
   urls: [
    "audio/voice/f5c4bf47.mp3"
   ]
@@ -1610,7 +1610,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Lava bath. Zero stars, no refund.",
   say: "[dryly] Lava bath. Zero stars, no refund.",
   group: "Death · causes",
-  seconds: 4.72,
+  seconds: 4.48,
   urls: [
    "audio/voice/f2dfbea6.mp3"
   ]
@@ -1620,7 +1620,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Attempted geology by immersion.",
   say: "Attempted geology by immersion.",
   group: "Death · causes",
-  seconds: 2.88,
+  seconds: 2.85,
   urls: [
    "audio/voice/af8f3a57.mp3"
   ]
@@ -1630,7 +1630,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Leviathan surfaced for a snack.",
   say: "[dryly] The Leviathan surfaced for a snack.",
   group: "Death · causes",
-  seconds: 3.15,
+  seconds: 3.19,
   urls: [
    "audio/voice/30486fc1.mp3"
   ]
@@ -1640,7 +1640,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Eaten by the problem in the pool.",
   say: "Eaten by the problem in the pool.",
   group: "Death · causes",
-  seconds: 2.7,
+  seconds: 2.23,
   urls: [
    "audio/voice/f325bbf1.mp3"
   ]
@@ -1650,7 +1650,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Leviathan brushed past and took most of you with it.",
   say: "The Leviathan brushed past and took most of you with it.",
   group: "Death · causes",
-  seconds: 4.24,
+  seconds: 4.26,
   urls: [
    "audio/voice/3205a1d9.mp3"
   ]
@@ -1660,7 +1660,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Grazed by a basement-sized appetite.",
   say: "Grazed by a basement-sized appetite.",
   group: "Death · causes",
-  seconds: 3.2,
+  seconds: 3.28,
   urls: [
    "audio/voice/ced1f053.mp3"
   ]
@@ -1670,7 +1670,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You were swept away.",
   say: "You were swept away.",
   group: "Death · titles",
-  seconds: 1.54,
+  seconds: 1.76,
   urls: [
    "audio/voice/e8071e34.mp3"
   ]
@@ -1680,7 +1680,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Leviathan threw the pool at you.",
   say: "The Leviathan threw the pool at you.",
   group: "Death · causes",
-  seconds: 2.56,
+  seconds: 2.64,
   urls: [
    "audio/voice/e19779e7.mp3"
   ]
@@ -1690,7 +1690,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Defeated by high-velocity plumbing.",
   say: "Defeated by high-velocity plumbing.",
   group: "Death · causes",
-  seconds: 3.11,
+  seconds: 2.83,
   urls: [
    "audio/voice/b79860b2.mp3"
   ]
@@ -1700,7 +1700,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Struck down.",
   say: "Struck down.",
   group: "Death · titles",
-  seconds: 1.04,
+  seconds: 1.28,
   urls: [
    "audio/voice/a24c7037.mp3"
   ]
@@ -1710,7 +1710,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Self-administered lightning. Bold, brief.",
   say: "Self-administered lightning. Bold, brief.",
   group: "Death · causes",
-  seconds: 4.32,
+  seconds: 4,
   urls: [
    "audio/voice/78213380.mp3"
   ]
@@ -1720,7 +1720,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Lightning found the shortest path through you.",
   say: "Lightning found the shortest path through you.",
   group: "Death · causes",
-  seconds: 2.96,
+  seconds: 2.72,
   urls: [
    "audio/voice/ef6d4989.mp3"
   ]
@@ -1730,7 +1730,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Oiled, then lit. Classic wizard candle behavior.",
   say: "[dryly] Oiled, then lit. Classic wizard candle behavior.",
   group: "Death · causes",
-  seconds: 4.49,
+  seconds: 4.96,
   urls: [
    "audio/voice/469e5646.mp3"
   ]
@@ -1750,7 +1750,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A Powder Mage made the cave throw things at you.",
   say: "A Powder Mage made the cave throw things at you.",
   group: "Death · causes",
-  seconds: 3.56,
+  seconds: 3.35,
   urls: [
    "audio/voice/a24fe67f.mp3"
   ]
@@ -1760,7 +1760,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Telekinetic debris: local, organic, fatal.",
   say: "Telekinetic debris: local, organic, fatal.",
   group: "Death · causes",
-  seconds: 5.12,
+  seconds: 4.8,
   urls: [
    "audio/voice/67b6d2a5.mp3"
   ]
@@ -1770,7 +1770,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A Rillback came out of the water with its mouth open.",
   say: "A Rillback came out of the water with its mouth open.",
   group: "Death · causes",
-  seconds: 4.24,
+  seconds: 3.03,
   urls: [
    "audio/voice/834b7a28.mp3"
   ]
@@ -1780,7 +1780,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The pool had teeth after all.",
   say: "The pool had teeth after all.",
   group: "Death · causes",
-  seconds: 2.88,
+  seconds: 2.15,
   urls: [
    "audio/voice/85fcb302.mp3"
   ]
@@ -1790,7 +1790,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Flattened by a Rillback flailing on dry stone.",
   say: "Flattened by a Rillback flailing on dry stone.",
   group: "Death · causes",
-  seconds: 3.68,
+  seconds: 3.84,
   urls: [
    "audio/voice/d992dcb1.mp3"
   ]
@@ -1810,7 +1810,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You were struck down.",
   say: "You were struck down.",
   group: "Death · titles",
-  seconds: 1.52,
+  seconds: 1.95,
   urls: [
    "audio/voice/021173e9.mp3"
   ]
@@ -1820,7 +1820,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A Rootloper whipped its roots through you.",
   say: "A Rootloper whipped its roots through you.",
   group: "Death · causes",
-  seconds: 3.12,
+  seconds: 3.08,
   urls: [
    "audio/voice/b4d1c838.mp3"
   ]
@@ -1830,7 +1830,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The undergrowth lashed back.",
   say: "The undergrowth lashed back.",
   group: "Death · causes",
-  seconds: 2.06,
+  seconds: 1.92,
   urls: [
    "audio/voice/639f5bb5.mp3"
   ]
@@ -1840,7 +1840,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Self-inflicted explosion. The wand technically worked.",
   say: "Self-inflicted explosion. The wand technically worked.",
   group: "Death · causes",
-  seconds: 5.44,
+  seconds: 4.96,
   urls: [
    "audio/voice/88d0dea0.mp3"
   ]
@@ -1850,7 +1850,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Own spell, own crater.",
   say: "Own spell, own crater.",
   group: "Death · causes",
-  seconds: 2.48,
+  seconds: 2.4,
   urls: [
    "audio/voice/bd5b6740.mp3"
   ]
@@ -1860,7 +1860,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A slime bounced, bit, and somehow won.",
   say: "A slime bounced, bit, and somehow won.",
   group: "Death · causes",
-  seconds: 4.14,
+  seconds: 3.2,
   urls: [
    "audio/voice/4db18cb0.mp3"
   ]
@@ -1870,7 +1870,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Slime contact: humiliating, but documented.",
   say: "[dryly] Slime contact: humiliating, but documented.",
   group: "Death · causes",
-  seconds: 4.88,
+  seconds: 5.2,
   urls: [
    "audio/voice/93ac4a43.mp3"
   ]
@@ -1880,7 +1880,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You succumbed.",
   say: "You succumbed.",
   group: "Death · titles",
-  seconds: 1.5,
+  seconds: 1.28,
   urls: [
    "audio/voice/6e675487.mp3"
   ]
@@ -1890,7 +1890,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A status effect finished the job quietly.",
   say: "A status effect finished the job quietly.",
   group: "Death · causes",
-  seconds: 3.03,
+  seconds: 2.59,
   urls: [
    "audio/voice/ee03f586.mp3"
   ]
@@ -1900,7 +1900,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The aftereffect got the last word.",
   say: "The aftereffect got the last word.",
   group: "Death · causes",
-  seconds: 2.88,
+  seconds: 2.47,
   urls: [
    "audio/voice/d8b31898.mp3"
   ]
@@ -1910,7 +1910,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You were scalded.",
   say: "You were scalded.",
   group: "Death · titles",
-  seconds: 1.04,
+  seconds: 1.46,
   urls: [
    "audio/voice/010ab859.mp3"
   ]
@@ -1920,7 +1920,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Scalded by a pressure vent. The gauge did warn you.",
   say: "Scalded by a pressure vent. The gauge did warn you.",
   group: "Death · causes",
-  seconds: 4.48,
+  seconds: 4.4,
   urls: [
    "audio/voice/1687f393.mp3"
   ]
@@ -1930,7 +1930,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Steamed open by the works.",
   say: "Steamed open by the works.",
   group: "Death · causes",
-  seconds: 2.08,
+  seconds: 2,
   urls: [
    "audio/voice/1ae676dc.mp3"
   ]
@@ -1940,7 +1940,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Stone Maw closed its jaw. The cave digests slowly.",
   say: "The Stone Maw closed its jaw. The cave digests slowly.",
   group: "Death · causes",
-  seconds: 6.3,
+  seconds: 6.16,
   urls: [
    "audio/voice/42e037b9.mp3"
   ]
@@ -1950,7 +1950,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Swallowed by a mouth that looked like the floor.",
   say: "Swallowed by a mouth that looked like the floor.",
   group: "Death · causes",
-  seconds: 3.44,
+  seconds: 3.2,
   urls: [
    "audio/voice/0dd7b5f3.mp3"
   ]
@@ -1970,7 +1970,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Poison did the paperwork slowly.",
   say: "Poison did the paperwork slowly.",
   group: "Death · causes",
-  seconds: 2.35,
+  seconds: 1.76,
   urls: [
    "audio/voice/6ed85358.mp3"
   ]
@@ -1980,7 +1980,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Toxic sludge won the debate.",
   say: "Toxic sludge won the debate.",
   group: "Death · causes",
-  seconds: 2.48,
+  seconds: 2.32,
   urls: [
    "audio/voice/f6d7b040.mp3"
   ]
@@ -1990,7 +1990,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You died.",
   say: "You died.",
   group: "Death · titles",
-  seconds: 1.62,
+  seconds: 1.2,
   urls: [
    "audio/voice/b64497dc.mp3"
   ]
@@ -2000,7 +2000,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The caves decline to specify. Suspicious.",
   say: "The caves decline to specify. Suspicious.",
   group: "Death · causes",
-  seconds: 4,
+  seconds: 4.56,
   urls: [
    "audio/voice/9ddb206f.mp3"
   ]
@@ -2010,7 +2010,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Cause of death: alchemy happened.",
   say: "Cause of death: alchemy happened.",
   group: "Death · causes",
-  seconds: 3.24,
+  seconds: 3.28,
   urls: [
    "audio/voice/f58f9195.mp3"
   ]
@@ -2020,7 +2020,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The descent wrote the report in dust.",
   say: "The descent wrote the report in dust.",
   group: "Death · causes",
-  seconds: 2.92,
+  seconds: 3.15,
   urls: [
    "audio/voice/a9888d37.mp3"
   ]
@@ -2030,7 +2030,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Weaver got its revenge.",
   say: "The Weaver got its revenge.",
   group: "Death · causes",
-  seconds: 2.4,
+  seconds: 2.43,
   urls: [
    "audio/voice/c03e88b4.mp3"
   ]
@@ -2040,7 +2040,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Weaver filed you under caught.",
   say: "The Weaver filed you under caught.",
   group: "Death · causes",
-  seconds: 2.67,
+  seconds: 2.93,
   urls: [
    "audio/voice/1967d415.mp3"
   ]
@@ -2050,7 +2050,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Weaver brought teeth. The web was optional.",
   say: "The Weaver brought teeth. The web was optional.",
   group: "Death · causes",
-  seconds: 4.32,
+  seconds: 4.07,
   urls: [
    "audio/voice/6a025a89.mp3"
   ]
@@ -2060,7 +2060,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You were pinned.",
   say: "You were pinned.",
   group: "Death · titles",
-  seconds: 1.6,
+  seconds: 1.36,
   urls: [
    "audio/voice/f2a19a95.mp3"
   ]
@@ -2070,7 +2070,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Pinned by the Weaver. No corkboard survived.",
   say: "Pinned by the Weaver. No corkboard survived.",
   group: "Death · causes",
-  seconds: 5.2,
+  seconds: 4.24,
   urls: [
    "audio/voice/7abc81bf.mp3"
   ]
@@ -2080,7 +2080,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Weaver threaded the needle through you.",
   say: "The Weaver threaded the needle through you.",
   group: "Death · causes",
-  seconds: 2.48,
+  seconds: 2.4,
   urls: [
    "audio/voice/c3bc2233.mp3"
   ]
@@ -2090,7 +2090,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Self-inflicted electrocution in water. Excellent conductivity, poor planning.",
   say: "Self-inflicted electrocution in water. Excellent conductivity, poor planning.",
   group: "Death · causes",
-  seconds: 7.84,
+  seconds: 6.8,
   urls: [
    "audio/voice/cfa9b63e.mp3"
   ]
@@ -2100,7 +2100,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Wet, shocked, and briefly educational.",
   say: "Wet, shocked, and briefly educational.",
   group: "Death · causes",
-  seconds: 3.68,
+  seconds: 3.84,
   urls: [
    "audio/voice/7772e8f7.mp3"
   ]
@@ -2110,7 +2110,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Kiln is quiet.",
   say: "[softly] The Kiln is quiet.",
   group: "Ledger",
-  seconds: 2.06,
+  seconds: 1.63,
   urls: [
    "audio/voice/e106828c.mp3",
    "audio/voice/e106828c-2.mp3"
@@ -2121,7 +2121,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Colossus is scrap, the Kiln is cooling, and somewhere a kettle is finally allowed to boil.",
   say: "[warmly] The Colossus is scrap, the Kiln is cooling, and somewhere a kettle is finally allowed to boil.",
   group: "Ledger",
-  seconds: 8.26,
+  seconds: 7.76,
   urls: [
    "audio/voice/b17079ec.mp3",
    "audio/voice/b17079ec-2.mp3"
@@ -2132,7 +2132,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You fell in the Bellows.",
   say: "You fell in the Bellows.",
   group: "Ledger",
-  seconds: 2.08,
+  seconds: 1.98,
   urls: [
    "audio/voice/1380ece7.mp3"
   ]
@@ -2142,7 +2142,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You left the Bellows early.",
   say: "You left the Bellows early.",
   group: "Ledger",
-  seconds: 1.92,
+  seconds: 2.02,
   urls: [
    "audio/voice/611c3d75.mp3"
   ]
@@ -2152,7 +2152,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You fell in the Rot Gardens.",
   say: "You fell in the Rot Gardens.",
   group: "Ledger",
-  seconds: 2.16,
+  seconds: 1.92,
   urls: [
    "audio/voice/7204eb8a.mp3"
   ]
@@ -2162,7 +2162,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You left the Rot Gardens early.",
   say: "You left the Rot Gardens early.",
   group: "Ledger",
-  seconds: 2.39,
+  seconds: 2.16,
   urls: [
    "audio/voice/344e1388.mp3"
   ]
@@ -2172,7 +2172,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You fell in the Drowned Cisterns.",
   say: "You fell in the Drowned Cisterns.",
   group: "Ledger",
-  seconds: 2.96,
+  seconds: 2.64,
   urls: [
    "audio/voice/8b69f07b.mp3"
   ]
@@ -2182,7 +2182,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You left the Drowned Cisterns early.",
   say: "You left the Drowned Cisterns early.",
   group: "Ledger",
-  seconds: 2.88,
+  seconds: 2.64,
   urls: [
    "audio/voice/1a038953.mp3"
   ]
@@ -2192,7 +2192,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You fell in the Kiln Heart.",
   say: "You fell in the Kiln Heart.",
   group: "Ledger",
-  seconds: 2.16,
+  seconds: 1.92,
   urls: [
    "audio/voice/51bdf1b7.mp3"
   ]
@@ -2202,7 +2202,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "You left the Kiln Heart early.",
   say: "You left the Kiln Heart early.",
   group: "Ledger",
-  seconds: 2.64,
+  seconds: 2.08,
   urls: [
    "audio/voice/0437bddb.mp3"
   ]
@@ -2212,7 +2212,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Left the descent unharmed, which the Works will count as a draw.",
   say: "Left the descent unharmed, which the Works will count as a draw.",
   group: "Ledger",
-  seconds: 4.8,
+  seconds: 5.12,
   urls: [
    "audio/voice/5a3bb28f.mp3"
   ]
@@ -2222,7 +2222,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "Left the descent with the ledger open and the kettle still warm.",
   say: "Left the descent with the ledger open and the kettle still warm.",
   group: "Ledger",
-  seconds: 5.68,
+  seconds: 3.31,
   urls: [
    "audio/voice/46e1fe93.mp3"
   ]
@@ -2232,7 +2232,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The Works decline to specify.",
   say: "The Works decline to specify.",
   group: "Ledger",
-  seconds: 2.64,
+  seconds: 2.56,
   urls: [
    "audio/voice/01a58998.mp3"
   ]
@@ -2242,7 +2242,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A new case on the rack: The Rime Case. Choose it at your next descent.",
   say: "A new case on the rack: The Rime Case. Choose it at your next descent.",
   group: "Kit unlocks",
-  seconds: 7.77,
+  seconds: 6.63,
   urls: [
    "audio/voice/ed0c2fec.mp3"
   ]
@@ -2252,7 +2252,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A new case on the rack: The Ember Case. Choose it at your next descent.",
   say: "A new case on the rack: The Ember Case. Choose it at your next descent.",
   group: "Kit unlocks",
-  seconds: 7.04,
+  seconds: 6.4,
   urls: [
    "audio/voice/3698d668.mp3"
   ]
@@ -2262,7 +2262,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "A new case on the rack: The Storm Case. Choose it at your next descent.",
   say: "A new case on the rack: The Storm Case. Choose it at your next descent.",
   group: "Kit unlocks",
-  seconds: 8.08,
+  seconds: 6.48,
   urls: [
    "audio/voice/6ac75f06.mp3"
   ]
@@ -2272,7 +2272,7 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   text: "The material sandbox. Nothing here can hurt you, much.",
   say: "The material sandbox. Nothing here can hurt you, much.",
   group: "Workshop",
-  seconds: 6.24,
+  seconds: 5.36,
   urls: [
    "audio/voice/eeda0140.mp3"
   ]
@@ -2295,6 +2295,11 @@ export const NARRATOR_CANDIDATES: readonly NarrationCandidate[] = [
   id: "design-3",
   label: "Designed preview 3 (saved as the Docent)",
   url: "audio/voice/candidates/design-3.mp3"
+ },
+ {
+  id: "daniel",
+  label: "Daniel — the gruff old British wizard — full sample",
+  url: "audio/voice/candidates/daniel.mp3"
  },
  {
   id: "docent",

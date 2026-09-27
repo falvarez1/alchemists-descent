@@ -18,8 +18,13 @@ import { spawnSync } from 'node:child_process';
 import { Budget, CACHE_DIR, createVoice, designVoice, measure, speech, subscription } from './elevenlabs.mjs';
 import { SAMPLE_LINE, buildCatalog } from './voice-lines.mjs';
 
-/** THE narrator. 'docent' (designed for this game) or 'george' (premade), or any voice id. */
-export const NARRATOR = 'docent';
+/**
+ * THE narrator: 'daniel' (library), 'docent' (designed for this game) or
+ * 'george' (premade), or any voice id. The Docent read its S sounds soft and
+ * mushy (a lisp in the voice itself, measured on the raw 192 kbps output), so
+ * Daniel took over on 2026-09-27; the Docent's lines stay cached if wanted back.
+ */
+export const NARRATOR = 'daniel';
 
 /**
  * Lines recorded twice (the title, the arrivals, the victory) play take 1 in the
@@ -64,7 +69,7 @@ function masterSpeech(input, output) {
   const j = JSON.parse(probe.slice(probe.lastIndexOf('{'), probe.lastIndexOf('}') + 1));
   const norm = `loudnorm=I=${TARGET_LUFS}:TP=-1.5:LRA=11:measured_I=${j.input_i}:measured_TP=${j.input_tp}:measured_LRA=${j.input_lra}` +
     `:measured_thresh=${j.input_thresh}:offset=${j.target_offset}:linear=true`;
-  ffmpeg(['-y', '-v', 'error', '-i', input, '-af', `${trim},${norm}`, '-ar', '44100', '-ac', '1', '-codec:a', 'libmp3lame', '-b:a', '64k', output]);
+  ffmpeg(['-y', '-v', 'error', '-i', input, '-af', `${trim},${norm}`, '-ar', '44100', '-ac', '1', '-codec:a', 'libmp3lame', '-b:a', '96k', output]);
   return output;
 }
 
@@ -130,7 +135,7 @@ async function main() {
   // The audition sample, read by every saved candidate (the design previews read it already).
   const candidates = [];
   record.design.previews.forEach((p, i) => candidates.push({ id: `design-${i + 1}`, label: `Designed preview ${i + 1}${i === record.design.chosen ? ' (saved as the Docent)' : ''}`, url: p.file }));
-  for (const key of ['docent', 'george']) {
+  for (const key of ['daniel', 'docent', 'george']) {
     const v = resolveVoice(record, key);
     const res = await speech({ voiceId: v.voiceId, text: SAMPLE_LINE, modelId: MODEL, voiceSettings: VOICE_SETTINGS }, budget);
     masterSpeech(res.file, join(CANDIDATE_DIR, `${key}.mp3`));
