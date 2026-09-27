@@ -251,7 +251,8 @@ try {
     // Phototaxis: the slime follows the beam's spot.
     const s0 = await page.evaluate(() => Math.round(window.__game.ctx.enemies.find((e) => e.kind === 'slime' && e.y > 850)?.x ?? -1));
     const calm = async () => page.evaluate(() => { const sl = window.__game.ctx.enemies.find((e) => e.kind === 'slime' && e.y > 850); if (sl?.mind) { sl.mind.confidence = 0; sl.mind.facing = 1; sl.alerted = false; } });
-    for (let k = 0; k < 10; k++) { await calm(); await hold(20, { x: px, y: py, aimX: px + 380, aimY: py + 2 }); }
+    // Beam spot on the floor ~80 cells short of the slime: it should hop back toward it.
+    for (let k = 0; k < 10; k++) { await calm(); await hold(20, { x: px, y: py, aimX: px + 170, aimY: py + 3 }); }
     const s1 = await page.evaluate(() => Math.round(window.__game.ctx.enemies.find((e) => e.kind === 'slime' && e.y > 850)?.x ?? -1));
     results.slime = { start: s0, after: s1, spot: await page.evaluate(() => window.__game.ctx.lightQuery && null) };
     await resume();
