@@ -78,6 +78,8 @@ export class TeaMachine {
   private lastView = '';
   private framing = false;
   private publishedStage = -1;
+  /** The tick the percussion cap last fired (one cap per tick). */
+  private primedFrame = -1;
   private readonly disposers: Array<() => void>;
 
   constructor(private readonly ctx: Ctx) {
@@ -483,6 +485,11 @@ export class TeaMachine {
   /** Current on the pan runs through the floor into the coupling, igniting the powder beyond it. */
   private primePan(toast: string): void {
     const ctx = this.ctx, pan = TEA.pan;
+    // One shot strikes twice on the same tick (its projectile impact AND its
+    // blast both announce a structureStrike): the cap fires once (QA: "The
+    // percussion cap fires." ×2).
+    if (this.primedFrame === ctx.state.frameCount) return;
+    this.primedFrame = ctx.state.frameCount;
     for (let x = pan.x; x < pan.x + pan.w; x++) {
       if (ctx.world.type(x, pan.y + pan.h - 1) === Cell.Metal) ctx.world.setChargeAt(ctx.world.idx(x, pan.y + pan.h - 1), chargeDeposit(ctx, 60));
     }

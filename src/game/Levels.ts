@@ -2439,7 +2439,7 @@ export class Levels implements LevelsApi {
     ctx.events.emit('toast', { text: 'REVIEW POTION BELT STOCKED' });
   }
 
-  private repairFindability(ctx: Ctx, runtime: LevelRuntime, phase: 'initial' | 'settled'): boolean {
+  private repairFindability(_ctx: Ctx, runtime: LevelRuntime, phase: 'initial' | 'settled'): boolean {
     const findability = failOpenFindability(runtime);
     if (import.meta.env.DEV) {
       if (findability.repaired.length) {
@@ -2460,7 +2460,9 @@ export class Levels implements LevelsApi {
     }
     if (findability.repaired.length > 0) {
       this.blobCache.delete(runtime.def.id);
-      ctx.events.emit('toast', { text: 'Somewhere below, rock shifts. A way opens.' });
+      // World repair is silent: it runs on arrival and afterwards, on rock the
+      // player never touched ("Somewhere below, rock shifts…" narrated a change
+      // he never made — QA). The DEV console line above still reports it.
     }
     return findability.repaired.length > 0;
   }

@@ -37,6 +37,11 @@ export {
 
 /** Within roughly a screen of the player: close enough to have seen it happen. */
 const WITNESS_RADIUS = 360;
+/** Arrival: the first 8 s on a floor belong to the sim settling what generation
+ *  left (sand filling a bucket, a plate crushed by rubble, a brazier over lava).
+ *  Those are changes the player never made — the machines still move, but the
+ *  toast stays quiet (QA: "A mechanism groans…" ×2 on arriving at floors 2/3). */
+const ARRIVAL_QUIET_FRAMES = 480;
 function nearPlayer(ctx: Ctx, m: Mechanism): boolean {
   const dx = m.x - ctx.player.x, dy = m.y - ctx.player.y;
   return dx * dx + dy * dy <= WITNESS_RADIUS * WITNESS_RADIUS;
@@ -46,10 +51,39 @@ export class Mechanisms implements MechanismsApi {
   private readonly sequenceScratch: Mechanism[] = [];
   private readonly edgeScratch: boolean[] = [];
   private readonly eventDisposers: Array<() => void> = [];
+  /** No world-driven toast before this frame (see ARRIVAL_QUIET_FRAMES). */
+  private quietUntil = 0;
+  /** Mechanisms wrecked during an arrival: their gate later falls open quietly too. */
+  private readonly quietBreaks = new WeakSet<Mechanism>();
+  /** Toasts said this tick — one line per tick, however many machines say it. */
+  private saidFrame = -1;
+  private readonly saidThisTick = new Set<string>();
 
   constructor(private ctx: Ctx) {
     // Explosions / projectile impacts / dig hits all announce themselves here.
     this.eventDisposers.push(ctx.events.on('structureStrike', ({ x, y, radius }) => this.strike(this.ctx, x, y, radius)));
+    this.eventDisposers.push(ctx.events.on('levelChanged', () => {
+      this.quietUntil = this.ctx.state.frameCount + ARRIVAL_QUIET_FRAMES;
+    }));
+  }
+
+  /** Emit a toast once per tick (two machines saying the same line on the same
+   *  tick is one event to the player). */
+  private say(ctx: Ctx, text: string): void {
+    const frame = ctx.state.frameCount;
+    if (frame !== this.saidFrame) {
+      this.saidFrame = frame;
+      this.saidThisTick.clear();
+    }
+    if (this.saidThisTick.has(text)) return;
+    this.saidThisTick.add(text);
+    ctx.events.emit('toast', { text });
+  }
+
+  /** A world-driven change (not a lever the player pulled) worth a toast: near
+   *  enough to have been seen, and not the arrival's settling. */
+  private witnessed(ctx: Ctx, m: Mechanism): boolean {
+    return nearPlayer(ctx, m) && ctx.state.frameCount >= this.quietUntil;
   }
 
   dispose(): void {
@@ -87,7 +121,8 @@ export class Mechanisms implements MechanismsApi {
           // Announce only what the player can witness: generation/settling can
           // wreck several far-off mechanisms on arrival, and a stack of
           // identical groans about machines you have never seen is noise.
-          if (nearPlayer(ctx, m)) ctx.events.emit('toast', { text: 'A mechanism groans. Something gives way.' });
+          if (ctx.state.frameCount < this.quietUntil) this.quietBreaks.add(m);
+          else if (nearPlayer(ctx, m)) this.say(ctx, 'A mechanism groans. Something gives way.');
         }
       }
       if (m.broken !== undefined && m.broken > 0) {
@@ -98,8 +133,8 @@ export class Mechanisms implements MechanismsApi {
             grav: 0.06,
           });
         }
-        if (m.broken === 0 && nearPlayer(ctx, m)) {
-          ctx.events.emit('toast', { text: 'The broken gate falls open.' });
+        if (m.broken === 0 && !this.quietBreaks.has(m) && this.witnessed(ctx, m)) {
+          this.say(ctx, 'The broken gate falls open.');
         }
         continue; // a dying mechanism no longer senses
       }
@@ -181,7 +216,7 @@ export class Mechanisms implements MechanismsApi {
               glow: 2.4,
               grav: -0.01,
             });
-            ctx.events.emit('toast', { text: 'The coil drinks the spark and latches.' });
+            if (this.witnessed(ctx, m)) this.say(ctx, 'The coil drinks the spark and latches.');
           }
         }
       } else if (m.kind === 'plug') {
@@ -246,7 +281,7 @@ export class Mechanisms implements MechanismsApi {
               grav: 0.05,
               glow: 0.9,
             });
-            ctx.events.emit('toast', { text: 'The counterweight settles. Something shifts.' });
+            if (this.witnessed(ctx, m)) this.say(ctx, 'The counterweight settles. Something shifts.');
           }
         }
       } else if (m.kind === 'brazier') {
@@ -269,7 +304,7 @@ export class Mechanisms implements MechanismsApi {
               glow: 2.2,
               grav: -0.02,
             });
-            ctx.events.emit('toast', { text: 'A brazier roars to life.' });
+            if (this.witnessed(ctx, m)) this.say(ctx, 'A brazier roars to life.');
           }
         } else if (ctx.state.frameCount % 6 === 0) {
           // keep it burning: re-seed a flame in the bowl
@@ -709,7 +744,7 @@ export class Mechanisms implements MechanismsApi {
     ctx.particles.burst(m.x + m.w / 2, m.y + m.h / 2, 8, null, () => packRGB(180, 150, 110), 1.2, {
       grav: 0.05,
     });
-    if (!m.routeSeal) ctx.events.emit('toast', { text: 'A seal gives way.' });
+    if (!m.routeSeal) this.say(ctx, 'A seal gives way.');
   }
 
   /** One bounded sensor-zone read (the sensorType decides what counts). */
