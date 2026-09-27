@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  BOSS_CUES, BossGate, FLOOR_CUES, TensionGate, chooseCue, cueLevel, dipFor, engagedBoss, equalPowerCurve, fadeSeconds,
-  floorForLevel, loopFadeSeconds, rampValue, threatScore, threatWeight, type DirectorInput, type ThreatSubject,
+  BOSS_CUES, BossGate, DARK_THIN, FLOOR_CUES, PHASE_DIP, PHASE_DIP_MS, TensionGate, chooseCue, cueLevel, dipFor, engagedBoss,
+  equalPowerCurve, fadeSeconds, floorForLevel, inDeepDark, loopFadeSeconds, phaseDipActive, rampValue, threatScore, threatWeight,
+  type DirectorInput, type ThreatSubject,
 } from '@/audio/musicRules';
 import { SCORE_TRACKS } from '@/content/audio/score.generated';
 import { AUDITION_ENTRIES } from '@/content/audio/scoreManifest';
@@ -125,6 +126,30 @@ describe('crossfades and levels', () => {
     expect(dipFor({ ...d, ledgerOpen: true })).toBeLessThan(1);
     expect(dipFor({ ...d, paused: true, mode: 'build' })).toBe(1);
     expect(cueLevel('bellows')).toBeLessThan(cueLevel('bellows-tension'));
+  });
+
+  it('thins a floor\'s calm cue in the deep dark, never a hunt or a boss', () => {
+    const d = { hidden: false, paused: false, playerDead: false, ledgerOpen: false, mode: 'play' as const, dark: true };
+    expect(dipFor({ ...d, cue: 'cisterns' })).toBe(DARK_THIN);
+    expect(dipFor({ ...d, cue: 'cisterns-tension' })).toBe(1);
+    expect(dipFor({ ...d, cue: BOSS_CUES.leviathan })).toBe(1);
+    expect(dipFor({ ...d, cue: 'cisterns', dark: false })).toBe(1);
+    // Hysteresis: in at the light wave's "entered the dark", out only once it is properly lit again.
+    expect(inDeepDark(false, 0.6)).toBe(false);
+    expect(inDeepDark(false, 0.8)).toBe(true);
+    expect(inDeepDark(true, 0.5)).toBe(true);
+    expect(inDeepDark(true, 0.3)).toBe(false);
+  });
+
+  it('holds its breath under a boss phase roar, then swells back', () => {
+    const d = { hidden: false, paused: false, playerDead: false, ledgerOpen: false, mode: 'play' as const, cue: BOSS_CUES.colossus };
+    expect(dipFor({ ...d, sincePhaseMs: 100 })).toBe(PHASE_DIP);
+    expect(dipFor({ ...d, sincePhaseMs: PHASE_DIP_MS + 1 })).toBe(1);
+    expect(dipFor({ ...d, sincePhaseMs: undefined })).toBe(1);
+    expect(phaseDipActive(0)).toBe(true);
+    expect(phaseDipActive(PHASE_DIP_MS)).toBe(false);
+    // A death still wins: the breath out is deeper than the roar's dip.
+    expect(dipFor({ ...d, sincePhaseMs: 100, playerDead: true })).toBeLessThan(PHASE_DIP);
   });
 
   it('maps off-spine levels onto the floor whose organ they resemble', () => {

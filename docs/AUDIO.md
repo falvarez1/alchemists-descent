@@ -5,7 +5,7 @@ from, how it is mixed and loaded, and how to change it. Music and narration
 are a separate workstream (their own buses and director); this document is
 the sound effects and ambience.
 
-- **316 cues, 608 takes, 5.4 MB** of mastered MP3 (`src/assets/audio/`),
+- **366 cues, 699 takes, 6.1 MB** of mastered MP3 (`src/assets/audio/`),
   generated with ElevenLabs text-to-sound and mastered offline.
 - **Nothing is fetched before the first gesture.** Then the core packs load in
   about two seconds; each floor's creatures and bed load with the floor; the
@@ -58,7 +58,9 @@ src/audio/LoopVoice.ts     crossfaded loops (MP3 is not gapless)
 src/audio/sfxFallbacks.ts  the original procedural recipes, per cue
 src/audio/AudioDirector.ts which packs and which bed, per floor; Sanctum prefetch; release
 src/audio/UiSounds.ts      hover/click on every button, overlay open/close, run-event cues
-src/audio/HabitatAudio.ts  stride layer, creature idles and hops, projectile travel, the material scanner
+src/audio/HabitatAudio.ts  stride layer, creature idles and hops, projectile travel, the material scanner,
+                           moths at the lantern, a stomp's running shockwaves
+src/audio/EventCues.ts     announced moments → cues: the light devices, organisms, boss-move tells (§3)
 src/audio/Stingers.ts      run events → stingers (unchanged; the engine samples them)
 scripts/audio/sfx-prompts.mjs  one prompt per cue (+ duration, takes, influence)
 scripts/audio/gen-sfx.mjs      buy → QC → master → encode; take choice in sfx-takes.json
@@ -113,6 +115,42 @@ level/pan/muffle on each call, and fades out ~0.2 s after the calls stop
 - **The Breathing Chamber** draws a long breath at the start of the inhale
   (placed at the chamber) and exhales with the jets; the jets roar as a loop
   while the Works exhale.
+- **Moths at the lantern.** Three or more moths (or ash moths) circling the
+  wand tip flutter as a soft papery loop at the swarm's centroid, swelling
+  with its size; hood the lantern and the swarm — and the sound — drifts off.
+- **A stomp's shockwaves** each carry a gritty rumble that runs with the ridge
+  along the real floor and thins as it dies: the jump can be timed by ear.
+- **A photocell under a held beam** hums, swelling as it fills; it latches
+  with a brass click and a glass chime.
+
+### Announced moments (EventCues)
+
+The light devices, the organisms and the bosses announce what they do on the
+event bus and never touch audio; `audio/EventCues.ts` is the one table that
+decides how each moment sounds, placed at the event's position (the cue's own
+range) and held in check by each cue's cooldown and instance cap, so a floor of
+isopods curling in one gust is one clatter, not eighteen.
+
+| event | what you hear |
+| --- | --- |
+| `lanternHooded` | the brass hood dropping (a click, the flame's last breath) or flipping open (a click, a warm whoomph); a floor change or a death lifts the hood silently (`quiet`) |
+| `darkZoneEntered` | a low hush as the air goes still — once per entry, unplaced |
+| `eyeshineCaught` | a tiny glassy glint where the eyes flash back |
+| `lightDevice` | a photocell's latch and chime; a lumen bloom's glass petals unfurling, or folding shut |
+| `organism` | snapjaw snap (and the swallow a beat later), puffer ripe/burst, glow-worm lower/retract/snare, leech latch/drink/shed, isopod curl, ash moth flare, a fish school bolting, a bat roost scattering, an imp snapping an ash moth |
+| `bossMove` | every tell as the move commits: the Colossus heaving its fists up (slam, stomp), scooping melt (throw), grinding its vents open, its phase roar, the kneel after a thermal-shock crack, the long groan as it goes down; the Leviathan's lure going dark before a lunge or a dive, the coil before a thrash |
+
+The blows themselves sound at the tick they land, in the boss and organism
+modules (a slam's stone-on-stone over the blast, a stomp's thud, the vent's
+roar, the plates bursting off, the rubble; the tail's sheet of water, the
+surge, the shock; a snapjaw's tell, chew and death, an ember beetle's crunch
+and pop, a beached fish's flop). Idle-life fidgets and staggers stay silent on
+purpose: the hit and the creature's own idle mutter already carry them.
+
+The score reacts too (audio/MusicDirector, pure rules in musicRules): when a
+boss breaks into a new phase the music drops to 0.42 for 1.5 s under the roar
+and swells back, and in a designed deep-dark zone a floor's calm cue thins to
+0.62 (never a hunt or a boss theme).
 
 ## 4. The mix
 
@@ -148,17 +186,17 @@ layer). To re-tune: edit a target in the calibration script, run it with
 | --- | --- | --- |
 | page load, title screen | no audio and no URL table: only the engine code (+14 KB gzipped of JS; same 14 requests as before this layer) | 0 audio bytes |
 | first gesture | the lazy `sfxManifest` chunk (the URL table, 64 KB) | |
-| first gesture + 0.3 s | `ui`, `player`, `spells`, `world` (3 lanes, ~2 s) | 3.0 MB MP3 → ~40 MB PCM |
-| a floor loads | its bed (`amb-dN`), a pack per creature kind living there + its boss, `tea` on floor 1 | 0.3–0.9 MB MP3 |
-| the Sanctum opens | the next floor's bed and roster (prefetch) | |
+| first gesture + 0.3 s | `ui`, `player`, `spells`, `world` (3 lanes, ~2 s) | 3.1 MB MP3 → ~42 MB PCM |
+| a floor loads | its bed (`amb-dN`), a pack per creature kind living there + its boss, a pack per organism kind in its census (`org-<kind>`, game/organisms FLOOR_FAUNA, plus any organism actually present), `tea` on floor 1 | 0.3–1.1 MB MP3 |
+| the Sanctum opens | the next floor's bed, roster and organisms (prefetch) | |
 | 30 s after a pack is last needed | released | |
 
 Decoded PCM is the cost of sampled audio, so buffers decode at the rate their
 family needs: 44.1 kHz for the sparkly ones (UI, pickups, spells, glass,
 sizzle), 32 kHz for bodies (the MP3s are band-limited near 15 kHz, so nothing
 audible is lost), 24 kHz for the long stereo beds. Measured
-(`verify:audio-sfx`): ~48 MB on floor 1 (core + bed + Tea Engine + creatures),
-~51 MB steady on floor 4, 84 MB peak while racing through all four floors
+(`verify:audio-sfx`): ~50 MB on floor 1 (core + bed + Tea Engine + creatures),
+~58 MB steady on floor 4 (its organisms included), 94 MB peak while racing through all four floors
 before the releases land.
 
 ## 6. Workflow
@@ -180,7 +218,8 @@ takes (peak under −32 dBFS: mostly noise floor), crushed takes (>8 % of
 samples at full scale — ElevenLabs masters hot, peaks of ~1.4 are normal),
 late onsets, and loops whose quarters differ by >15 dB; a refused slot is
 refilled from takes already paid for (best score first) before a new variant
-is bought. Spend so far: **33,548 credits** for 747 generations.
+is bought. Spend so far: **38,660 credits** for 851 generations (the wave-2
+pass — light, organisms, the rebuilt bosses — was 5,112 of them).
 
 **Audition** (dev server running): open `/audition.html`. Every cue from every
 `src/content/audio/*Manifest.ts` that exports `AUDITION_ENTRIES` (the score
@@ -190,26 +229,37 @@ browser), **Export rejects**, save as `scripts/audio/sfx-rejects.json`, re-run
 the generator: exactly those takes are replaced (spare paid takes first), the
 rejected variants are never used again, and the rejects file is consumed.
 
-**Verify:** `npx vitest run tests/audio-sfx.test.ts tests/audio-bundle.test.ts`,
-then with the dev server up `npm run verify:audio-sfx` (sampled layer) and
-`npm run verify:audio` (buses, sliders, limiter, stingers).
+**Verify:** `npx vitest run tests/audio-sfx.test.ts tests/audio-event-cues.test.ts tests/audio-bundle.test.ts`,
+then with the dev server up `npm run verify:audio-sfx` (sampled layer),
+`npm run verify:audio` (buses, sliders, limiter, stingers) and
+`npm run verify:audio-life -- <url>` (the wave-2 moments: every announced
+event plays its own cue, placed, sampled; the L key, spawned organisms, a
+photocell, the Colossus's stomp, phases and long death, the Leviathan's
+thrash and surge, each floor's organism packs, the score's phase dip and dark
+thinning).
 
 **Add a cue:** add it to `sfxCues.ts` (pack, family, overrides) and
 `sfx-prompts.mjs` (prompt, duration, takes), run the generator with
 `--only <id>`, call `ctx.audio.sfx('<id>')` (or give it a fallback recipe in
 `sfxFallbacks.ts` if it replaces an old sound), audition, and regenerate this
-table with `node scripts/audio/sfx-doc.mjs`.
+table with `node scripts/audio/sfx-doc.mjs`. A moment the game already
+announces on the bus (an organism's action, a boss move's tell, a light
+device) gets its cue in `audio/EventCues.ts`'s tables, not at the call site;
+a blow that lands on a particular tick is called where it lands. A new
+organism kind's cues go in its own `org-<kind>` pack (the director loads it
+with the floors whose census lists it).
 
 ## 7. Coverage
 
 | pack | cues | takes | what |
 | --- | --- | --- | --- |
 | ui | 31 | 65 | hover, click, back, ledger open/close, pause/resume valve, toast, objective tube, hint, grimoire quill, card reveal/choose/pick/slot, bench drawer, coins, tally, learn, curtain, phial refill/drain, run over, summary chords; stingers: alchemy, phial crack/fill, victory, fallen, shutter |
-| player | 53 | 116 | steps ×5 surfaces, gear, wade, crawl, jump, landings, skid, grab, pull-up, cramped, kick, dive, slam, stomp, hurt, death, corpse wand + knell, heartbeat, sputter, levitation loop, vine, teleport, heal, drink, communion, staff, glowseed, leg club ×3; flask siphon/pour loops, throw, shatter, dry; wand swap/dry; pickups ×9 (gold, coin, heart, chest, potion, key, the brass bell…) |
+| player | 55 | 120 | the lantern's brass hood (down/up), steps ×5 surfaces, gear, wade, crawl, jump, landings, skid, grab, pull-up, cramped, kick, dive, slam, stomp, hurt, death, corpse wand + knell, heartbeat, sputter, levitation loop, vine, teleport, heal, drink, communion, staff, glowseed, leg club ×3; flask siphon/pour loops, throw, shatter, dry; wand swap/dry; pickups ×9 (gold, coin, heart, chest, potion, key, the brass bell…) |
 | spells | 32 | 59 | per card family: spark cast/impact, bomb cast + fuse loop, lightning, flame ignite + loop, dig loop, warp, singularity loop + implosion, vitriol/cryo/aqua loops, frost shard, ice lance, ice impact, freeze, wisp cast + loop, meteor cast + loop, conjure, vitrify, ember storm, three crits, two charge payoffs, the Trickshot whip and shell crack |
-| world | 68 | 124 | explosions ×3, materials (zap, shatter, steam, sizzle, ignite, squelch, bubble, splashes, drip, hollow knock), material loops ×7 (fire, lava, water, acid, steam, electric, fuse), rigid bodies per material (impact, smash) + grab/lift/throw/drop/rip/tear/bash/burn-out, portal, gong, waystone, 20 mechanisms, critters, generic creature voices, hostile fireball loop |
+| world | 78 | 142 | the light wave (the deep dark's hush, eyeshine, photocell hum + latch, lumen bloom open/furl/petal), fish school scatter + flop, moth swarm loop, explosions ×3, materials (zap, shatter, steam, sizzle, ignite, squelch, bubble, splashes, drip, hollow knock), material loops ×7 (fire, lava, water, acid, steam, electric, fuse), rigid bodies per material (impact, smash) + grab/lift/throw/drop/rip/tear/bash/burn-out, portal, gong, waystone, 20 mechanisms, critters, generic creature voices, hostile fireball loop |
 | tea | 15 | 16 | striker, percussion cap, fault, knocker, ratchet, pendulum, boulder, dominoes, spring, duck, marble, generator, magnet, counterweight, tea served |
-| creature-× (16) | 110 | 221 | every kind: alert, hurt, death, plus its own idle / movement / wind-up / attack / specials; the Leviathan and the Colossus with boss-sized idles, alerts, attacks and deaths |
+| creature-× (16) | 129 | 253 | every kind: alert, hurt, death, plus its own idle / movement / wind-up / attack / specials (a bat roost scattering); the Leviathan and the Colossus with boss-sized idles, alerts, attacks and deaths, and every move of the rebuilt fights: the Colossus's heave, slam, stomp + running shockwave loop, melt scoop, vent tell + blast, phase roar, plates bursting, thermal-shock crack, kneel, death groan and rubble; the Leviathan's dimming lure, tail thrash, dive, surge and shock |
+| org-× (7) | 19 | 37 | the organisms, per kind: snapjaw tell/snap/gulp/chew/burn/tear, puffer swell/burst, glow-worm lower/retract/snare, leech latch/drink/shed, isopod curl/roll, ember beetle crunch/pop, ash moth flare |
 | amb-d1…d4 | 7 | 7 | the Bellows, the Rot Gardens, the Drowned Cisterns, the Kiln Heart (28 s stereo beds); the Breathing Chamber's inhale, exhale and jet loop |
 
 Not generated here: music and narration (the score workstream).
@@ -247,6 +297,7 @@ cue).
 | `creature.bat.death` | creature · voices | 0.21 | 0.80 / 0.80 | creature(bat, 'death') | A bat's dying squeal and a soft thump as it falls, short |
 | `creature.bat.hurt` | creature · voices | 0.21 | 0.46 / 0.43 | creature(bat, 'hurt') | A bat's pained shriek, short |
 | `creature.bat.idle` | creature · voices | 0.10 | 0.64 / 0.87 | creature(bat, 'idle') | A cave bat's leathery wings fluttering with faint high squeaks, short |
+| `creature.bat.scatter` | creature · voices | 0.25 | 0.81 / 1.20 | EventCues | A whole roost of bats bursting off a cave ceiling at once: a flurry of many leathery wings and a scatter of high squeaks, short |
 | `creature.bat.slimed` | creature · voices | 0.21 | 0.60 | Enemies | A bat's wings gummed with slime: sticky wet flapping and a distressed squeak, short |
 | `creature.bat.swoop` | creature · voices | 0.21 | 0.39 / 0.35 | Enemies | A bat swooping fast: a leathery wing whoosh and a sharp squeak, short |
 | `creature.bat.wake` | creature · voices | 0.21 | 0.33 / 0.60 | Enemies | A bat waking and dropping from a ceiling: a sudden wing flap and a squeak, short |
@@ -258,11 +309,24 @@ cue).
 | `creature.bomber.idle` | creature · voices | 0.12 | 0.77 / 0.75 | creature(bomber, 'idle') | A small goblin-like creature giggling nervously, wordless, short |
 | **creature-colossus** | | | | | |
 | `creature.colossus.alert` | boss · voices | 0.88 | 2.15 / 2.35 | Enemies, creature(colossus, 'alert') | A colossal magma giant's thunderous deep roar with rumbling rock and a roar of fire |
-| `creature.colossus.death` | boss · voices | 0.96 | 3.22 | Enemies, creature(colossus, 'death') | A colossal magma giant collapsing: a final deep dying roar and a huge rumbling crumble of rock and fire |
-| `creature.colossus.hurt` | boss · voices | 0.64 | 0.75 / 0.77 | creature(colossus, 'hurt') | A magma giant hit: cracking stone and a deep angry growl with hissing lava, short |
+| `creature.colossus.death` | boss · voices | 0.96 | 3.22 | colossus, Enemies, creature(colossus, 'death') | A colossal magma giant collapsing: a final deep dying roar and a huge rumbling crumble of rock and fire |
+| `creature.colossus.death.crack` | boss · voices | 0.80 | 2.03 | EventCues | A dying stone giant sinking down: a long deep groan of grinding rock as fissures split open with hissing jets of fire |
+| `creature.colossus.death.rubble` | boss · voices | 0.96 | 3.14 | colossus | A colossal furnace bursting apart: a huge detonation of stone, then a long cascade of rocks and slabs tumbling and settling, embers hissing |
+| `creature.colossus.heave` | boss · voices | 0.48 | 0.90 / 0.90 | EventCues | A colossal stone giant rearing up with both fists raised: a deep grinding creak of rock, gravel sifting down and a rising furnace roar |
+| `creature.colossus.hurt` | boss · voices | 0.64 | 0.75 / 0.77 | kilnQuench, creature(colossus, 'hurt') | A magma giant hit: cracking stone and a deep angry growl with hissing lava, short |
 | `creature.colossus.idle` | boss · voices | 0.64 | 2.89 | creature(colossus, 'idle') | A giant of molten rock breathing: a deep slow rumble, crackling magma and hissing heat |
-| `creature.colossus.step` | boss · voices | 0.72 | 0.83 / 0.92 / 0.76 | Enemies, creature(colossus, 'step') | A colossal stone giant's footstep: a huge earth-shaking boom with cracking rock, short |
-| `creature.colossus.volley` | boss · voices | 0.80 | 0.94 / 1.04 | Enemies | A magma giant hurling a volley of fireballs: a deep roaring whoosh and crackling flames |
+| `creature.colossus.kneel` | boss · voices | 0.60 | 1.19 | EventCues | A wounded stone giant dropping to one knee: a heavy grinding thud, then its chest cracking open with a glowing molten hiss |
+| `creature.colossus.plates` | boss · voices | 0.88 | 2.00 | colossus | Heavy stone armour plates bursting off a giant's back: a sharp cracking detonation of rock, then stone slabs clattering and tumbling onto a stone floor |
+| `creature.colossus.quench` | boss · voices | 0.88 | 1.36 / 1.36 | kilnQuench | Cold water flung onto a white-hot furnace: an explosive steam hiss and the loud crack of superheated stone splitting |
+| `creature.colossus.roar` | boss · voices | 0.92 | 1.56 / 1.64 | EventCues | A wounded stone giant's long, low bellowing roar echoing in a cavern, slow and deep, rock cracking and a soft whoosh of flame, clean, not distorted |
+| `creature.colossus.scoop` | boss · voices | 0.64 | 0.75 / 0.70 | EventCues | A magma giant tearing a molten gob out of its own furnace chest: a thick wet lava slurp and a hiss of heat, short |
+| `creature.colossus.slam` | boss · voices | 0.80 | 1.02 / 0.87 | colossus | Two gigantic stone fists smashing into a rock floor: a massive crunching impact, cracking stone and a spray of rubble |
+| `creature.colossus.step` | boss · voices | 0.72 | 0.83 / 0.92 / 0.76 | creature(colossus, 'step') | A colossal stone giant's footstep: a huge earth-shaking boom with cracking rock, short |
+| `creature.colossus.stomp` | boss · voices | 1.00 | 1.40 / 1.31 | colossus | A giant stamping the ground: a deep earth-shaking thud and a rolling rumble of rock racing away along the floor |
+| `creature.colossus.vent` | boss · voices | 0.88 | 1.68 / 1.62 | colossus | A furnace giant venting: a huge roaring blast of fire and steam bursting from its seams, crackling flames |
+| `creature.colossus.vent.tell` | boss · voices | 0.64 | 1.00 | EventCues | Heavy iron furnace plates grinding open with a deep rising inhale of air, steam hissing and building |
+| `creature.colossus.volley` | boss · voices | 0.80 | 0.94 / 1.04 | colossus | A magma giant hurling a volley of fireballs: a deep roaring whoosh and crackling flames |
+| `creature.colossus.wave.loop` ⟲ | loop · fx | 0.27 | 3.00 | HabitatAudio | Continuous low gritty rumble of rock and gravel rippling fast along a stone floor |
 | **creature-eggs** | | | | | |
 | `creature.eggs.death` | creature · voices | 0.21 | 0.71 | creature(eggs, 'death') | A clutch of eggs bursting apart, wet splattering pops, short |
 | `creature.eggs.hatch` | creature · voices | 0.23 | 0.68 / 1.10 | Enemies | Slimy eggs hatching: wet cracking shells and squishy slurps as little things wriggle out |
@@ -283,15 +347,20 @@ cue).
 | `creature.imp.hurt` | creature · voices | 0.21 | 0.46 / 0.48 | creature(imp, 'hurt') | A fire imp's hissing screech like water on embers, short |
 | `creature.imp.idle` | creature · voices | 0.12 | 0.76 / 0.75 | creature(imp, 'idle') | A small fire imp's crackling wordless snicker, embers popping, short |
 | **creature-leviathan** | | | | | |
-| `creature.leviathan.alert` | boss · voices | 0.80 | 2.86 / 2.89 | Enemies, creature(leviathan, 'alert') | A colossal sea serpent's deep bellowing roar rising from underwater, churning water and huge bubbles |
+| `creature.leviathan.alert` | boss · voices | 0.80 | 2.86 / 2.89 | leviathan, Enemies, creature(leviathan, 'alert') | A colossal sea serpent's deep bellowing roar rising from underwater, churning water and huge bubbles |
 | `creature.leviathan.death` | boss · voices | 0.88 | 2.51 | Enemies, creature(leviathan, 'death') | A colossal sea serpent dying: a long agonized deep roar sinking into gurgling water and a heavy final splash |
-| `creature.leviathan.flop` | boss · voices | 0.64 | 0.66 / 0.81 | Enemies | A giant beached sea creature heaving and flopping on stone, a heavy wet slam and a groan |
+| `creature.leviathan.dim` | boss · voices | 0.40 | 0.97 / 1.00 | EventCues | A glowing lure snuffed out deep underwater: a soft descending glassy hum fading into a muffled bubble, eerie, quiet, short |
+| `creature.leviathan.dive` | boss · voices | 0.64 | 1.27 / 1.26 | EventCues | A huge sea creature diving deep: a heavy churning plunge and a long descending rush of bubbles, muffled |
+| `creature.leviathan.flop` | boss · voices | 0.64 | 0.66 / 0.81 | leviathan | A giant beached sea creature heaving and flopping on stone, a heavy wet slam and a groan |
 | `creature.leviathan.glance` | boss · voices | 0.48 | 0.48 / 0.48 | Enemies | A blow glancing off a creature's wet armoured hide underwater: a dull plink and a muffled splash, short |
 | `creature.leviathan.hurt` | boss · voices | 0.64 | 0.51 / 0.67 | creature(leviathan, 'hurt') | A giant sea serpent's pained bellow, wet and deep, short |
 | `creature.leviathan.idle` | boss · voices | 0.64 | 2.07 | creature(leviathan, 'idle') | A colossal underwater beast's deep slow breathing churn, huge bubbles rising, low and ominous |
-| `creature.leviathan.lunge` | boss · voices | 0.80 | 1.15 / 1.05 | Enemies | A giant sea serpent lunging out of the water: a massive splash and a snapping roar, short |
+| `creature.leviathan.lunge` | boss · voices | 0.80 | 1.15 / 1.05 | leviathan | A giant sea serpent lunging out of the water: a massive splash and a snapping roar, short |
+| `creature.leviathan.shock` | boss · voices | 0.72 | 0.77 / 0.88 | leviathan | A giant sea creature electrocuted: a crackling electric buzz and a strangled deep wet groan as it convulses, short |
 | `creature.leviathan.spit` | boss · voices | 0.80 | 0.97 / 1.03 | Enemies | A giant sea beast spewing a blast of water, a powerful gushing spray, short |
-| `creature.leviathan.windup` | boss · voices | 0.80 | 1.06 / 1.01 | Enemies | A giant sea serpent inhaling and coiling, a rising deep growl and churning water, short |
+| `creature.leviathan.surge` | boss · voices | 0.88 | 1.54 / 1.47 | leviathan | A colossal sea serpent erupting straight up out of deep water: a rising underwater roar bursting into a massive geyser splash |
+| `creature.leviathan.thrash` | boss · voices | 0.80 | 0.52 / 0.90 | leviathan | A giant sea serpent's tail slamming the water surface: a huge flat thwack and a heavy sheet of water flung through the air, splattering down |
+| `creature.leviathan.windup` | boss · voices | 0.80 | 1.06 / 1.01 | EventCues | A giant sea serpent inhaling and coiling, a rising deep growl and churning water, short |
 | **creature-mage** | | | | | |
 | `creature.mage.alert` | creature · voices | 0.21 | 0.75 / 0.79 | creature(mage, 'alert') | A hooded sorcerer's low menacing wordless hum and a crackle of magic, short |
 | `creature.mage.blink` | creature · voices | 0.21 | 0.55 / 0.33 | Enemies | A sorcerer teleporting: a magical pop and a quick reverse whoosh, short |
@@ -361,12 +430,40 @@ cue).
 | `creature.wisp.death` | creature · voices | 0.21 | 0.86 / 1.00 | creature(wisp, 'death') | A frost wisp shattering: bursting ice crystals and a fading glassy chime, short |
 | `creature.wisp.hurt` | creature · voices | 0.21 | 0.48 / 0.48 | creature(wisp, 'hurt') | A frost wisp flickering: a crackling icy glitch and a thin glassy whine, short |
 | `creature.wisp.idle` | creature · voices | 0.10 | 0.96 / 1.00 | creature(wisp, 'idle') | A frost wisp humming: a soft icy crystalline shimmer, quiet, short |
+| **org-ashmoth** | | | | | |
+| `organism.ashmoth.flare` | critter · ambience | 0.21 | 0.48 / 0.48 | EventCues | A moth flying into a flame: a tiny bright fizzing flare and a papery crackle, short |
+| **org-emberbeetle** | | | | | |
+| `organism.emberbeetle.crunch` | critter · ambience | 0.10 | 0.48 / 0.48 | crawler | A small beetle crunching a lump of coal: a dry gritty crunch with a faint ember crackle, quiet, short |
+| `organism.emberbeetle.pop` | creature · voices | 0.14 | 0.48 / 0.33 | crawler | A tiny ember-filled beetle popping: a small crackling pop and a spray of sizzling sparks, short |
+| **org-glowworm** | | | | | |
+| `organism.glowworm.lower` | critter · ambience | 0.12 | 0.77 / 0.79 | EventCues | A fine luminous silk thread paying out slowly: a soft thin stretching creak and a faint glassy twinkle, quiet, short |
+| `organism.glowworm.retract` | creature · voices | 0.23 | 0.48 / 0.47 | EventCues | A sticky beaded thread reeled up fast: a quick high silky zip and a faint glassy rattle of beads, short |
+| `organism.glowworm.snare` | critter · ambience | 0.15 | 0.56 / 0.59 | EventCues | A small moth stuck on a sticky thread: a tiny frantic wing flutter and a faint glassy tick, short |
+| **org-isopod** | | | | | |
+| `organism.isopod.curl` | creature · voices | 0.12 | 0.40 / 0.40 | EventCues | A pill bug curling into an armoured ball: a quick dry clicking of chitin plates folding tight, short |
+| `organism.isopod.roll` | critter · ambience | 0.12 | 0.15 / 0.23 | crawler | A small hard armoured ball bouncing on stone: a light hollow chitin tap, short, dry |
+| **org-leech** | | | | | |
+| `organism.leech.drink` | creature · voices | 0.12 | 0.48 / 0.45 | EventCues | A leech drinking: a small wet sucking slurp, quiet, close-miked, short |
+| `organism.leech.latch` | creature · voices | 0.29 | 0.42 / 0.35 | EventCues | A leech fastening onto skin: a wet sucking smack, close-miked, short |
+| `organism.leech.shed` | creature · voices | 0.17 | 0.58 / 0.30 | EventCues | A swollen leech letting go: a wet slurping pop and a soft plop into water, short |
+| **org-puffer** | | | | | |
+| `organism.puffer.burst` | creature · voices | 0.29 | 0.66 / 0.45 | EventCues | A swollen fungal spore sac bursting: a wet rubbery pop and a soft rushing hiss of gas spilling out, short |
+| `organism.puffer.swell` | creature · voices | 0.12 | 0.74 / 0.77 | EventCues | A fungal bladder swelling tight: a soft rubbery stretching creak and a faint wheezing hiss, quiet, short |
+| **org-snapjaw** | | | | | |
+| `organism.snapjaw.burn` | creature · voices | 0.31 | 1.20 | snapjaw | A green plant stalk burning through: wet sap hissing and popping in a crackling flare of flame, then a dry crumble of ash, short |
+| `organism.snapjaw.chew` | creature · voices | 0.10 | 0.80 / 0.80 | snapjaw | A closed plant pod slowly digesting: a muffled wet churn and a soft sap gurgle, quiet, short |
+| `organism.snapjaw.gulp` | creature · voices | 0.19 | 0.47 / 0.60 | EventCues | A plant pod swallowing something whole: a thick wet gulp and a muffled squelch, short |
+| `organism.snapjaw.snap` | creature · voices | 0.27 | 0.33 / 0.25 | EventCues | Huge carnivorous plant jaws slamming shut: a sharp wet woody clack with a fibrous whip crack, short, punchy |
+| `organism.snapjaw.tear` | creature · voices | 0.21 | 0.60 / 0.28 | snapjaw | A fleshy plant pod torn apart: a wet fibrous rip and a spatter of sap, short |
+| `organism.snapjaw.tell` | creature · voices | 0.21 | 0.60 / 0.60 | snapjaw | A carnivorous plant pod quivering open to strike: a wet fibrous creak and a low rattling hiss of tension, short |
 | **player** | | | | | |
 | `flask.dry` | player · fx | 0.14 | 0.48 / 0.48 | Flask | A hollow tap on an empty glass bottle, a dull clink, short, dry |
 | `flask.pour.loop` ⟲ | loop · fx | 0.27 | 3.00 | Flask | Continuous stream of liquid pouring out of a glass flask onto stone, glugging and splattering |
 | `flask.shatter` | impact · fx | 0.46 | 0.39 / 0.80 / 0.59 | Flask | A glass flask smashing on stone: bright shattering glass and a liquid splash, short |
 | `flask.siphon.loop` ⟲ | loop · fx | 0.27 | 3.00 | Flask | Continuous suction slurp of liquid drawn up through a narrow glass tube into a flask, bubbling gurgle |
 | `flask.throw` | player · fx | 0.14 | 0.41 / 0.31 | Flask | A glass bottle thrown, a short whoosh with liquid sloshing inside |
+| `light.lantern.hood` | player · fx | 0.21 | 0.48 / 0.32 | EventCues | A small brass hood snapped down over a lantern: a dry low metallic click, then a tiny flame's last breath hissing out to a smoulder, close-miked, short, dry |
+| `light.lantern.unhood` | player · fx | 0.27 | 0.68 / 0.45 | EventCues | A small brass lantern hood flipped open: a bright crisp metallic click and a soft warm whoomph of a small flame taking the air, close-miked, short, dry |
 | `pickup.bell` | pickup · ui | 0.30 | 1.00 | Pickups | A small brass hand bell lifted, a clear bright ring with a gentle wobble, short |
 | `pickup.chest` | pickup · ui | 0.25 | 1.28 / 1.22 | audio.chest() | An old wooden treasure chest creaking open with a brass latch, and gold coins spilling out, short |
 | `pickup.coin` | pickup · ui | 0.29 | 0.48 / 0.48 / 0.38 | audio.coin() | A single small gold coin landing and ringing with a bright clear ching, short |
@@ -522,7 +619,14 @@ cue).
 | `creature.hit` | impact · voices | 0.24 | 0.48 / 0.48 / 0.15 | Enemies | A punchy hit on a creature: a short fleshy thwack, close-miked |
 | `creature.hop` | creature · voices | 0.08 | 0.33 / 0.48 | audio.hop() | A small soft body landing and launching: a soft pat, short |
 | `critter.chirp` | critter · ambience | 0.16 | 0.48 / 0.48 / 0.48 | audio.chirp() | A single cave cricket chirp, tiny and quiet, short |
-| `critter.skitter` | critter · ambience | 0.08 | 0.38 / 0.46 / 0.47 | audio.skitter() | A small beetle skittering quickly across stone, tiny dry clicks, short |
+| `critter.skitter` | critter · ambience | 0.08 | 0.38 / 0.46 / 0.47 | EventCues, audio.skitter() | A small beetle skittering quickly across stone, tiny dry clicks, short |
+| `light.bloom.furl` | mechanism · fx | 0.17 | 1.03 / 0.93 | EventCues | Delicate glass petals folding shut: a dry crystalline creak and a soft descending tinkle, quiet, short |
+| `light.bloom.open` | mechanism · fx | 0.42 | 1.03 / 1.29 | EventCues | Glass flower petals growing and unfurling: delicate crystalline tinkling rising and a soft airy shimmer blooming open, short |
+| `light.bloom.petal` | mechanism · fx | 0.12 | 0.35 / 0.35 / 0.35 | lumenBlooms | A single tiny glass bell tink, delicate and bright, very short, dry |
+| `light.dark` | material · ambience | 0.27 | 2.45 | EventCues | Stepping into a pitch-black cave: a low hollow hush as the air goes still and close, a faint deep sub rumble and one distant water drip, subtle, no music |
+| `light.eyeshine` | mechanism · fx | 0.14 | 0.48 / 0.48 | EventCues | Two small animal eyes catching lamplight in the dark: a tiny bright glassy glint with a faint cold shimmer, very short, quiet |
+| `light.photocell.latch` | mechanism · fx | 0.52 | 0.54 / 0.36 | EventCues | A brass lens clicking home as it fills with light: a crisp metallic latch, a bright glassy chime ringing out and a tiny crackle of sparks, short |
+| `light.photocell.loop` ⟲ | loop · fx | 0.20 | 3.00 | Mechanisms | Continuous soft warm electrical hum of a brass lens gathering light, a faint singing glassy resonance, steady |
 | `mat.acid.loop` ⟲ | loop · ambience | 0.20 | 3.00 | HabitatAudio (material scan) | Continuous acid fizzing and dissolving, a bubbling sizzle |
 | `mat.bubble` | material · ambience | 0.22 | 0.36 / 0.39 / 0.48 | audio.bubble() | A single thick bubble bursting in a bubbling cauldron, blub, short |
 | `mat.drip` | critter · ambience | 0.15 | 0.66 / 0.48 / 0.71 / 0.46 | audio.drip() | A single water drop falling into a still underground pool, a clear plink with a cave echo |
@@ -561,6 +665,9 @@ cue).
 | `mech.sequence.step` | mechanism · fx | 0.35 | 0.60 | Mechanisms | A single clear brass chime tone, bright and short |
 | `mech.shrine` | mechanism · fx | 0.24 | 1.00 | Mechanisms | A soft warm humming chime of a small shrine, gentle and quiet, short |
 | `mech.vault` | mechanism · fx | 0.38 | 0.84 | Mechanisms | A heavy vault door unsealing: a hiss of air, bolts retracting and a deep stone rumble |
+| `organism.fish.flop` | critter · ambience | 0.10 | 0.30 / 0.30 | Critters | A small fish flopping once on wet stone, a tiny wet slap, short, close-miked |
+| `organism.fish.scatter` | critter · ambience | 0.15 | 0.65 / 0.51 | EventCues | A small school of fish darting away underwater: a quick muffled flurry of fins and a burst of tiny bubbles, short |
+| `organism.moth.swarm.loop` ⟲ | loop · ambience | 0.17 | 3.00 | HabitatAudio | Continuous soft papery fluttering of many small moth wings close by, delicate and dry |
 | `proj.fireball.loop` ⟲ | loop · fx | 0.24 | 3.00 | HabitatAudio (in flight) | Continuous whooshing roar of a small fireball flying through the air |
 | `world.gong` | mechanism · fx | 0.90 | 2.88 / 2.88 | audio.gong() | A deep bronze gong struck once, rich overtones, a long rolling decay through caves |
 | `world.portal` | mechanism · fx | 0.70 | 2.16 | audio.portalWhoosh() | A great stone gate unlocking: a deep resonant bell ringing in a lock, then heavy stone grinding open under a rising magical whoosh |

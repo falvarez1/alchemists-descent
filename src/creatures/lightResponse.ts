@@ -113,10 +113,10 @@ export function respondToLight(ctx: Ctx, e: Enemy, def: EnemyDef, mind: Creature
   const tick = ctx.state.frameCount;
 
   // THE CATCH: the beam finds a pair of eyes in the dark — a small glassy
-  // tink as they flash back (render/creatures/eyeshine draws the flash).
+  // glint as they flash back (render/creatures/eyeshine draws the flash; the
+  // event is the sound's: audio/EventCues).
   if (s.beam && !wasBeam && !e.sleeping && tick - (s.glintAt ?? -999) > 50 && q.darkness(at.x, at.y) >= 0.5) {
     s.glintAt = tick;
-    ctx.audio.sfx?.('mech.sensor', at.x, at.y, { gain: 0.3, pitch: 14 });
     ctx.events?.emit('eyeshineCaught', { kind: e.kind, x: at.x, y: at.y });
   }
 
@@ -159,7 +159,8 @@ export function respondToLight(ctx: Ctx, e: Enemy, def: EnemyDef, mind: Creature
       if (s.wand < LIGHT_RESPONSE.flinchAt || !s.beam) break;
       if (s.habit > LIGHT_RESPONSE.weaverHabit * 1.6) break; // a starving bat stops caring
       if (e.sleeping) {
-        // The roost wakes: every sleeper near this one drops and scatters.
+        // The roost wakes: every sleeper near this one drops and scatters
+        // (a burst of wings: the organism event's sound, audio/EventCues).
         for (const o of ctx.enemies) {
           if (o.kind !== 'bat' || !o.sleeping || Math.abs(o.x - e.x) > 40 || Math.abs(o.y - e.y) > 30) continue;
           o.sleeping = false;
@@ -169,7 +170,7 @@ export function respondToLight(ctx: Ctx, e: Enemy, def: EnemyDef, mind: Creature
           o.fleeDir = Math.sign(o.x - p.x || 1);
           o.alerted = true;
         }
-        ctx.audio.at?.(e.x, e.y, () => ctx.audio.squeak?.(), 300);
+        ctx.events?.emit('organism', { kind: 'bat', action: 'scatter', x: e.x, y: e.y });
         s.cd = 30;
         break;
       }

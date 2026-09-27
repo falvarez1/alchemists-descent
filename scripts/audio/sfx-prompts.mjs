@@ -90,6 +90,9 @@ export const SFX_PROMPTS = {
   'player.club.swing': { p: "A long bony insect leg swung like a club, a heavy whooshing swipe through the air, short", d: 0.5, t: 2, i: 0.55 },
   'player.club.hit': { p: "A hard chitinous club smashing into a body, a crunchy thwack with a crack, short, punchy", d: 0.5, t: 2, i: 0.55 },
   'player.club.throw': { p: "A long object hurled end over end, a whirring spinning whoosh, short", d: 0.6, t: 1, i: 0.55 },
+  // The hooded lantern: a brass hood over a small flame.
+  'light.lantern.hood': { p: "A small brass hood snapped down over a lantern: a dry low metallic click, then a tiny flame's last breath hissing out to a smoulder, close-miked, short, dry", d: 0.8, t: 2, i: 0.6 },
+  'light.lantern.unhood': { p: "A small brass lantern hood flipped open: a bright crisp metallic click and a soft warm whoomph of a small flame taking the air, close-miked, short, dry", d: 0.7, t: 2, i: 0.6 },
   'flask.siphon.loop': { p: "Continuous suction slurp of liquid drawn up through a narrow glass tube into a flask, bubbling gurgle", d: 3, t: 1, i: 0.5 },
   'flask.pour.loop': { p: "Continuous stream of liquid pouring out of a glass flask onto stone, glugging and splattering", d: 3, t: 1, i: 0.5 },
   'flask.throw': { p: "A glass bottle thrown, a short whoosh with liquid sloshing inside", d: 0.5, t: 2, i: 0.6 },
@@ -210,6 +213,18 @@ export const SFX_PROMPTS = {
   'creature.generic.hurt': { p: "A small cave creature's pained squeal, short", d: 0.5, t: 2, i: 0.6 },
   'creature.generic.death': { p: "A small cave creature's dying screech fading away, short", d: 0.8, t: 2, i: 0.55 },
   'proj.fireball.loop': { p: "Continuous whooshing roar of a small fireball flying through the air", d: 3, t: 1, i: 0.5 },
+  // Light and dark: glass that answers a beam, and the places no lamp reaches.
+  'light.dark': { p: "Stepping into a pitch-black cave: a low hollow hush as the air goes still and close, a faint deep sub rumble and one distant water drip, subtle, no music", d: 2.5, t: 1, i: 0.5, soft: true },
+  'light.eyeshine': { p: "Two small animal eyes catching lamplight in the dark: a tiny bright glassy glint with a faint cold shimmer, very short, quiet", d: 0.5, t: 2, i: 0.6, max: 0.5 },
+  'light.photocell.loop': { p: "Continuous soft warm electrical hum of a brass lens gathering light, a faint singing glassy resonance, steady", d: 3, t: 1, i: 0.55 },
+  'light.photocell.latch': { p: "A brass lens clicking home as it fills with light: a crisp metallic latch, a bright glassy chime ringing out and a tiny crackle of sparks, short", d: 1.2, t: 2, i: 0.55 },
+  'light.bloom.open': { p: "Glass flower petals growing and unfurling: delicate crystalline tinkling rising and a soft airy shimmer blooming open, short", d: 1.4, t: 2, i: 0.55 },
+  'light.bloom.furl': { p: "Delicate glass petals folding shut: a dry crystalline creak and a soft descending tinkle, quiet, short", d: 1.2, t: 2, i: 0.55 },
+  'light.bloom.petal': { p: "A single tiny glass bell tink, delicate and bright, very short, dry", d: 0.5, t: 3, i: 0.7, max: 0.35 },
+  // Fish schools and moth swarms: life under everything.
+  'organism.fish.scatter': { p: "A small school of fish darting away underwater: a quick muffled flurry of fins and a burst of tiny bubbles, short", d: 0.7, t: 2, i: 0.55 },
+  'organism.fish.flop': { p: "A small fish flopping once on wet stone, a tiny wet slap, short, close-miked", d: 0.5, t: 2, i: 0.6, max: 0.3 },
+  'organism.moth.swarm.loop': { p: "Continuous soft papery fluttering of many small moth wings close by, delicate and dry", d: 3, t: 1, i: 0.55 },
 
   // ------------------------------------------------ Bell & Tea Engine (D1)
   'tea.striker': { p: "A flint striker scraping and sparking, then a black powder fuse catching with a fizzing hiss", d: 1.2, t: 1, i: 0.55 },
@@ -236,6 +251,33 @@ export const SFX_PROMPTS = {
   'amb.breath.inhale': { p: "An enormous mechanical bellows slowly drawing in air through iron pipes: a long rising whoosh with groaning leather and creaking metal", d: 8, t: 1, i: 0.5, soft: true },
   'amb.breath.exhale': { p: "A massive bellows exhaling: pressurized steam blasting through iron pipes with a roaring hiss, then slowly easing off", d: 10, t: 1, i: 0.5, soft: true },
   'amb.breath.jet': { p: "Continuous high-pressure steam jet blasting from a brass nozzle, a loud roaring hiss", d: 3, t: 1, i: 0.5 },
+
+  // ------------------------------------------------ organisms (floors 2-4)
+  // Snapjaw: a hinged, toothed pod on a muscular stalk; wet wood and sap.
+  'organism.snapjaw.tell': { p: "A carnivorous plant pod quivering open to strike: a wet fibrous creak and a low rattling hiss of tension, short", d: 0.6, t: 2, i: 0.55 },
+  'organism.snapjaw.snap': { p: "Huge carnivorous plant jaws slamming shut: a sharp wet woody clack with a fibrous whip crack, short, punchy", d: 0.5, t: 2, i: 0.6 },
+  'organism.snapjaw.gulp': { p: "A plant pod swallowing something whole: a thick wet gulp and a muffled squelch, short", d: 0.6, t: 2, i: 0.55 },
+  'organism.snapjaw.chew': { p: "A closed plant pod slowly digesting: a muffled wet churn and a soft sap gurgle, quiet, short", d: 0.8, t: 2, i: 0.55 },
+  'organism.snapjaw.burn': { p: "A green plant stalk burning through: wet sap hissing and popping in a crackling flare of flame, then a dry crumble of ash, short", d: 1.2, t: 1, i: 0.5 },
+  'organism.snapjaw.tear': { p: "A fleshy plant pod torn apart: a wet fibrous rip and a spatter of sap, short", d: 0.6, t: 2, i: 0.55 },
+  // Spore puffer: a fungal bladder of bog gas.
+  'organism.puffer.swell': { p: "A fungal bladder swelling tight: a soft rubbery stretching creak and a faint wheezing hiss, quiet, short", d: 0.8, t: 2, i: 0.55 },
+  'organism.puffer.burst': { p: "A swollen fungal spore sac bursting: a wet rubbery pop and a soft rushing hiss of gas spilling out, short", d: 0.9, t: 2, i: 0.55 },
+  // Glow-worm: a pale larva fishing with a thread of luminous glass beads.
+  'organism.glowworm.lower': { p: "A fine luminous silk thread paying out slowly: a soft thin stretching creak and a faint glassy twinkle, quiet, short", d: 0.8, t: 2, i: 0.5, soft: true },
+  'organism.glowworm.retract': { p: "A sticky beaded thread reeled up fast: a quick high silky zip and a faint glassy rattle of beads, short", d: 0.5, t: 2, i: 0.55 },
+  'organism.glowworm.snare': { p: "A small moth stuck on a sticky thread: a tiny frantic wing flutter and a faint glassy tick, short", d: 0.6, t: 2, i: 0.55 },
+  // Leech: the Cisterns' small tax on wading.
+  'organism.leech.latch': { p: "A leech fastening onto skin: a wet sucking smack, close-miked, short", d: 0.5, t: 2, i: 0.6 },
+  'organism.leech.drink': { p: "A leech drinking: a small wet sucking slurp, quiet, close-miked, short", d: 0.5, t: 2, i: 0.6 },
+  'organism.leech.shed': { p: "A swollen leech letting go: a wet slurping pop and a soft plop into water, short", d: 0.6, t: 2, i: 0.55 },
+  // Isopod: a pill bug of ivory chitin.
+  'organism.isopod.curl': { p: "A pill bug curling into an armoured ball: a quick dry clicking of chitin plates folding tight, short", d: 0.5, t: 2, i: 0.6, max: 0.4 },
+  'organism.isopod.roll': { p: "A small hard armoured ball bouncing on stone: a light hollow chitin tap, short, dry", d: 0.5, t: 2, i: 0.6, max: 0.3 },
+  // Ember beetle and ash moth: the Kiln's small fire-eaters.
+  'organism.emberbeetle.crunch': { p: "A small beetle crunching a lump of coal: a dry gritty crunch with a faint ember crackle, quiet, short", d: 0.5, t: 2, i: 0.6 },
+  'organism.emberbeetle.pop': { p: "A tiny ember-filled beetle popping: a small crackling pop and a spray of sizzling sparks, short", d: 0.5, t: 2, i: 0.6 },
+  'organism.ashmoth.flare': { p: "A moth flying into a flame: a tiny bright fizzing flare and a papery crackle, short", d: 0.5, t: 2, i: 0.6 },
 
   // ------------------------------------------------------------ creatures
   // Weaver: an eight-legged lair guardian of ivory chitin.
@@ -288,6 +330,7 @@ export const SFX_PROMPTS = {
   'creature.bat.slimed': { p: "A bat's wings gummed with slime: sticky wet flapping and a distressed squeak, short", d: 0.6, t: 1, i: 0.55 },
   'creature.bat.hurt': { p: "A bat's pained shriek, short", d: 0.5, t: 2, i: 0.6 },
   'creature.bat.death': { p: "A bat's dying squeal and a soft thump as it falls, short", d: 0.8, t: 2, i: 0.55 },
+  'creature.bat.scatter': { p: "A whole roost of bats bursting off a cave ceiling at once: a flurry of many leathery wings and a scatter of high squeaks, short", d: 1.2, t: 2, i: 0.55 },
   // Slime: squash-and-stretch hopper.
   'creature.slime.idle': { p: "A slime creature wobbling, a soft gloopy jiggle, short", d: 0.8, t: 2, i: 0.55 },
   'creature.slime.hop': { p: "A slime blob hopping: a squishy boing and a wet slap landing, short", d: 0.5, t: 3, i: 0.6 },
@@ -357,6 +400,11 @@ export const SFX_PROMPTS = {
   'creature.leviathan.flop': { p: "A giant beached sea creature heaving and flopping on stone, a heavy wet slam and a groan", d: 1.2, t: 2, i: 0.55 },
   'creature.leviathan.hurt': { p: "A giant sea serpent's pained bellow, wet and deep, short", d: 1, t: 2, i: 0.55 },
   'creature.leviathan.death': { p: "A colossal sea serpent dying: a long agonized deep roar sinking into gurgling water and a heavy final splash", d: 3.5, t: 1, i: 0.5 },
+  'creature.leviathan.dim': { p: "A glowing lure snuffed out deep underwater: a soft descending glassy hum fading into a muffled bubble, eerie, quiet, short", d: 1, t: 2, i: 0.5 },
+  'creature.leviathan.thrash': { p: "A giant sea serpent's tail slamming the water surface: a huge flat thwack and a heavy sheet of water flung through the air, splattering down", d: 1.4, t: 2, i: 0.55 },
+  'creature.leviathan.dive': { p: "A huge sea creature diving deep: a heavy churning plunge and a long descending rush of bubbles, muffled", d: 1.4, t: 2, i: 0.55 },
+  'creature.leviathan.surge': { p: "A colossal sea serpent erupting straight up out of deep water: a rising underwater roar bursting into a massive geyser splash", d: 1.6, t: 2, i: 0.55 },
+  'creature.leviathan.shock': { p: "A giant sea creature electrocuted: a crackling electric buzz and a strangled deep wet groan as it convulses, short", d: 1, t: 2, i: 0.55 },
   // The Kiln Colossus (floor 4 boss): water is the strategy.
   'creature.colossus.idle': { p: "A giant of molten rock breathing: a deep slow rumble, crackling magma and hissing heat", d: 3, t: 1, i: 0.5, soft: true },
   'creature.colossus.alert': { p: "A colossal magma giant's thunderous deep roar with rumbling rock and a roar of fire", d: 3, t: 2, i: 0.5 },
@@ -364,4 +412,17 @@ export const SFX_PROMPTS = {
   'creature.colossus.volley': { p: "A magma giant hurling a volley of fireballs: a deep roaring whoosh and crackling flames", d: 1.5, t: 2, i: 0.55 },
   'creature.colossus.hurt': { p: "A magma giant hit: cracking stone and a deep angry growl with hissing lava, short", d: 1, t: 2, i: 0.55 },
   'creature.colossus.death': { p: "A colossal magma giant collapsing: a final deep dying roar and a huge rumbling crumble of rock and fire", d: 4, t: 1, i: 0.5 },
+  'creature.colossus.heave': { p: "A colossal stone giant rearing up with both fists raised: a deep grinding creak of rock, gravel sifting down and a rising furnace roar", d: 1, t: 2, i: 0.5, max: 0.9 },
+  'creature.colossus.slam': { p: "Two gigantic stone fists smashing into a rock floor: a massive crunching impact, cracking stone and a spray of rubble", d: 1.5, t: 2, i: 0.55 },
+  'creature.colossus.stomp': { p: "A giant stamping the ground: a deep earth-shaking thud and a rolling rumble of rock racing away along the floor", d: 1.6, t: 2, i: 0.55 },
+  'creature.colossus.wave.loop': { p: "Continuous low gritty rumble of rock and gravel rippling fast along a stone floor", d: 3, t: 1, i: 0.5 },
+  'creature.colossus.scoop': { p: "A magma giant tearing a molten gob out of its own furnace chest: a thick wet lava slurp and a hiss of heat, short", d: 0.9, t: 2, i: 0.5 },
+  'creature.colossus.vent.tell': { p: "Heavy iron furnace plates grinding open with a deep rising inhale of air, steam hissing and building", d: 1.2, t: 1, i: 0.5, soft: true, max: 1.0 },
+  'creature.colossus.vent': { p: "A furnace giant venting: a huge roaring blast of fire and steam bursting from its seams, crackling flames", d: 2, t: 2, i: 0.5 },
+  'creature.colossus.roar': { p: "A wounded stone giant's long, low bellowing roar echoing in a cavern, slow and deep, rock cracking and a soft whoosh of flame, clean, not distorted", d: 2.5, t: 2, i: 0.45 },
+  'creature.colossus.plates': { p: "Heavy stone armour plates bursting off a giant's back: a sharp cracking detonation of rock, then stone slabs clattering and tumbling onto a stone floor", d: 2, t: 1, i: 0.5 },
+  'creature.colossus.quench': { p: "Cold water flung onto a white-hot furnace: an explosive steam hiss and the loud crack of superheated stone splitting", d: 1.4, t: 2, i: 0.55 },
+  'creature.colossus.kneel': { p: "A wounded stone giant dropping to one knee: a heavy grinding thud, then its chest cracking open with a glowing molten hiss", d: 1.5, t: 1, i: 0.5 },
+  'creature.colossus.death.crack': { p: "A dying stone giant sinking down: a long deep groan of grinding rock as fissures split open with hissing jets of fire", d: 2.5, t: 1, i: 0.5, soft: true },
+  'creature.colossus.death.rubble': { p: "A colossal furnace bursting apart: a huge detonation of stone, then a long cascade of rocks and slabs tumbling and settling, embers hissing", d: 4, t: 1, i: 0.5 },
 };

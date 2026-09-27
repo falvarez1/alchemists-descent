@@ -108,8 +108,7 @@ export function stepGlowworm(ctx: Ctx, c: Critter, host: OrganismHost): boolean 
         c.state = GLOW.REEL; c.stateT = 0;
         ext = Math.max(1, prey.y - ay - 0.6);
         ctx.particles.burst(prey.x, prey.y, 3, null, () => packRGB(170, 240, 230), 0.4, { glow: 1.6, grav: 0.01 });
-        organismEvent(ctx, 'glowworm', 'snare', prey.x, prey.y);
-        if (Math.abs(prey.x - ctx.player.x) < 200) ctx.audio.chirp(prey.x, prey.y);
+        organismEvent(ctx, 'glowworm', 'snare', prey.x, prey.y); // the stuck flutter: audio/EventCues
         break;
       }
     }
@@ -134,7 +133,10 @@ export function stepGlowworm(ctx: Ctx, c: Critter, host: OrganismHost): boolean 
     const hide = GLOW_HIDE + (ax * 37 + ay * 11) % 140;
     const lit = litWorm(ctx, c);
     if (lit > GLOW_LIGHT_SHY) c.stateT = Math.min(c.stateT ?? 0, 60); // it will not come down into the beam
-    if ((c.stateT ?? 0) > hide && !disturbed) { c.state = GLOW.FISH; c.stateT = 0; }
+    if ((c.stateT ?? 0) > hide && !disturbed) {
+      c.state = GLOW.FISH; c.stateT = 0;
+      organismEvent(ctx, 'glowworm', 'lower', ax, ay); // the lure comes back down
+    }
   }
   c.extent = ext;
   return true;

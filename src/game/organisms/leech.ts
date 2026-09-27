@@ -63,6 +63,7 @@ export function stepLeech(ctx: Ctx, c: Critter, host: OrganismHost): boolean {
     // It drinks.
     if ((c.stateT ?? 0) % LEECH_DRAIN_TICKS === LEECH_DRAIN_TICKS - 1) {
       ctx.playerCtl.damage(LEECH_DRAIN, 0, 0, 'leech');
+      organismEvent(ctx, 'leech', 'eat', c.x, c.y); // a sip: audio/EventCues
       c.meal = (c.meal ?? 0) + 1;
       c.extent = Math.min(1, (c.meal ?? 0) / LEECH_SATED);
       ctx.particles.spawn(c.x, c.y, 0, 0.2, Cell.Blood, packRGB(150, 20, 28), 40);
@@ -114,8 +115,7 @@ export function stepLeech(ctx: Ctx, c: Critter, host: OrganismHost): boolean {
       c.anchorX = Math.round((c.x - p.x) * (p.facing ?? 1));
       c.anchorX = Math.max(-3, Math.min(3, c.anchorX));
       c.anchorY = Math.max(-13, Math.min(-2, Math.round(c.y - p.y)));
-      organismEvent(ctx, 'leech', 'latch', c.x, c.y);
-      ctx.audio.squelch(c.x, c.y);
+      organismEvent(ctx, 'leech', 'latch', c.x, c.y); // the wet smack: audio/EventCues
       return true;
     }
   }

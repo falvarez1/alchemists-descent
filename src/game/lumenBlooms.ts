@@ -98,8 +98,8 @@ export function updateLumenBlooms(ctx: Ctx, blooms: LumenBloom[]): void {
     } else if (b.hold > 0) {
       b.hold--;
       if (b.hold === 0 && b.open > 0.05) {
-        // The furl begins: a dry creak and a shiver down the petals.
-        ctx.audio.creak?.(0.6);
+        // The furl begins: a dry glassy creak and a shiver down the petals
+        // (the lightDevice event's sound: audio/EventCues).
         ctx.events.emit('lightDevice', { kind: 'bloom-furl', x: b.x, y: b.y });
       }
     } else {
@@ -110,14 +110,14 @@ export function updateLumenBlooms(ctx: Ctx, blooms: LumenBloom[]): void {
       const n = unfurlTo(ctx, b, want, 3);
       if (wasOpen <= 0.001 && b.open > 0) {
         // Waking: a crystalline growth (glass petals forming), and pollen-light
-        // spilling off the heart. The lightDevice event is the proper cue hook.
-        ctx.audio.sfx('spell.freeze', b.x, b.y, { gain: 0.45, pitch: 5 });
+        // spilling off the heart (the lightDevice event's sound: audio/EventCues).
         ctx.particles.burst(b.x, b.y, 6, null, () => packRGB(190, 255, 214), 0.8, { glow: 1.6, grav: -0.01 });
         ctx.events.emit('lightDevice', { kind: 'bloom-open', x: b.x, y: b.y });
       }
       if (n > 0 && (b.shown & 15) === 0) {
+        // Every sixteenth petal a glass tink, climbing as the bloom fills.
         const [px, py] = b.petals[Math.max(0, b.shown - 1)];
-        ctx.audio.sfx('mech.sensor', px, py, { gain: 0.22, pitch: 6 + Math.min(10, b.shown / 10) });
+        ctx.audio.sfx('light.bloom.petal', px, py, { pitch: Math.min(10, b.shown / 10) });
       }
     } else if (want < b.shown) {
       const n = furlTo(ctx, b, want, 1);

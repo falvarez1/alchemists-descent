@@ -75,6 +75,18 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/d11f0fa0.mp3",
   seconds: 1.84
  },
+ "b67e3823": {
+  url: "audio/voice/b67e3823.mp3",
+  seconds: 1.58
+ },
+ "1ad0a89c": {
+  url: "audio/voice/1ad0a89c.mp3",
+  seconds: 0.64
+ },
+ "d440ddfa": {
+  url: "audio/voice/d440ddfa.mp3",
+  seconds: 1.2
+ },
  "f46aa2aa": {
   url: "audio/voice/f46aa2aa.mp3",
   seconds: 3.04
@@ -295,6 +307,22 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/8e281ebb.mp3",
   seconds: 3.07
  },
+ "de99388e": {
+  url: "audio/voice/de99388e.mp3",
+  seconds: 3.39
+ },
+ "1120618b": {
+  url: "audio/voice/1120618b.mp3",
+  seconds: 3.12
+ },
+ "4c6e719f": {
+  url: "audio/voice/4c6e719f.mp3",
+  seconds: 4.8
+ },
+ "eb27caa7": {
+  url: "audio/voice/eb27caa7.mp3",
+  seconds: 2.8
+ },
  "a2a070a7": {
   url: "audio/voice/a2a070a7.mp3",
   seconds: 1.36
@@ -399,6 +427,18 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/af8f3a57.mp3",
   seconds: 2.85
  },
+ "5952ac38": {
+  url: "audio/voice/5952ac38.mp3",
+  seconds: 1.28
+ },
+ "c5de5ef6": {
+  url: "audio/voice/c5de5ef6.mp3",
+  seconds: 4.88
+ },
+ "3ca3110e": {
+  url: "audio/voice/3ca3110e.mp3",
+  seconds: 4.18
+ },
  "30486fc1": {
   url: "audio/voice/30486fc1.mp3",
   seconds: 3.19
@@ -418,6 +458,14 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "e8071e34": {
   url: "audio/voice/e8071e34.mp3",
   seconds: 1.76
+ },
+ "f85bf22c": {
+  url: "audio/voice/f85bf22c.mp3",
+  seconds: 4.48
+ },
+ "f001ebff": {
+  url: "audio/voice/f001ebff.mp3",
+  seconds: 2
  },
  "e19779e7": {
   url: "audio/voice/e19779e7.mp3",
@@ -494,6 +542,14 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "93ac4a43": {
   url: "audio/voice/93ac4a43.mp3",
   seconds: 5.2
+ },
+ "a6931200": {
+  url: "audio/voice/a6931200.mp3",
+  seconds: 4.81
+ },
+ "9d0914d1": {
+  url: "audio/voice/9d0914d1.mp3",
+  seconds: 5.28
  },
  "6e675487": {
   url: "audio/voice/6e675487.mp3",
@@ -803,6 +859,36 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 1.84,
   urls: [
    "audio/voice/d11f0fa0.mp3"
+  ]
+ },
+ {
+  key: "b67e3823",
+  text: "THE CORE IS BARE",
+  say: "The core is bare.",
+  group: "Bosses · phases",
+  seconds: 1.58,
+  urls: [
+   "audio/voice/b67e3823.mp3"
+  ]
+ },
+ {
+  key: "1ad0a89c",
+  text: "SHORTED",
+  say: "Shorted.",
+  group: "Bosses · phases",
+  seconds: 0.64,
+  urls: [
+   "audio/voice/1ad0a89c.mp3"
+  ]
+ },
+ {
+  key: "d440ddfa",
+  text: "THERMAL SHOCK",
+  say: "Thermal shock.",
+  group: "Bosses · phases",
+  seconds: 1.2,
+  urls: [
+   "audio/voice/d440ddfa.mp3"
   ]
  },
  {
@@ -1366,6 +1452,46 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   ]
  },
  {
+  key: "de99388e",
+  text: "The Kiln Colossus stamped, and the floor delivered it.",
+  say: "The Kiln Colossus stamped, and the floor delivered it.",
+  group: "Death · causes",
+  seconds: 3.39,
+  urls: [
+   "audio/voice/de99388e.mp3"
+  ]
+ },
+ {
+  key: "1120618b",
+  text: "Knocked flat by a shockwave you could have jumped.",
+  say: "Knocked flat by a shockwave you could have jumped.",
+  group: "Death · causes",
+  seconds: 3.12,
+  urls: [
+   "audio/voice/1120618b.mp3"
+  ]
+ },
+ {
+  key: "4c6e719f",
+  text: "The Kiln Colossus opened its vents. You were standing in the chimney.",
+  say: "[dryly] The Kiln Colossus opened its vents. You were standing in the chimney.",
+  group: "Death · causes",
+  seconds: 4.8,
+  urls: [
+   "audio/voice/4c6e719f.mp3"
+  ]
+ },
+ {
+  key: "eb27caa7",
+  text: "Roasted by a furnace letting off steam.",
+  say: "Roasted by a furnace letting off steam.",
+  group: "Death · causes",
+  seconds: 2.8,
+  urls: [
+   "audio/voice/eb27caa7.mp3"
+  ]
+ },
+ {
   key: "a2a070a7",
   text: "The current took you.",
   say: "The current took you.",
@@ -1626,6 +1752,36 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   ]
  },
  {
+  key: "5952ac38",
+  text: "You were drained.",
+  say: "You were drained.",
+  group: "Death · titles",
+  seconds: 1.28,
+  urls: [
+   "audio/voice/5952ac38.mp3"
+  ]
+ },
+ {
+  key: "c5de5ef6",
+  text: "Drained by leeches. Each one only had a small drink.",
+  say: "Drained by leeches. Each one only had a small drink.",
+  group: "Death · causes",
+  seconds: 4.88,
+  urls: [
+   "audio/voice/c5de5ef6.mp3"
+  ]
+ },
+ {
+  key: "3ca3110e",
+  text: "The Cisterns collected their toll, one sip at a time.",
+  say: "The Cisterns collected their toll, one sip at a time.",
+  group: "Death · causes",
+  seconds: 4.18,
+  urls: [
+   "audio/voice/3ca3110e.mp3"
+  ]
+ },
+ {
   key: "30486fc1",
   text: "The Leviathan surfaced for a snack.",
   say: "[dryly] The Leviathan surfaced for a snack.",
@@ -1673,6 +1829,26 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 1.76,
   urls: [
    "audio/voice/e8071e34.mp3"
+  ]
+ },
+ {
+  key: "f85bf22c",
+  text: "The Leviathan slapped the pool at you, and the pool won.",
+  say: "The Leviathan slapped the pool at you, and the pool won.",
+  group: "Death · causes",
+  seconds: 4.48,
+  urls: [
+   "audio/voice/f85bf22c.mp3"
+  ]
+ },
+ {
+  key: "f001ebff",
+  text: "Tail-whipped by the plumbing.",
+  say: "Tail-whipped by the plumbing.",
+  group: "Death · causes",
+  seconds: 2,
+  urls: [
+   "audio/voice/f001ebff.mp3"
   ]
  },
  {
@@ -1873,6 +2049,26 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 5.2,
   urls: [
    "audio/voice/93ac4a43.mp3"
+  ]
+ },
+ {
+  key: "a6931200",
+  text: "A snapjaw closed on you. It had been waiting all day.",
+  say: "A snapjaw closed on you. It had been waiting all day.",
+  group: "Death · causes",
+  seconds: 4.81,
+  urls: [
+   "audio/voice/a6931200.mp3"
+  ]
+ },
+ {
+  key: "9d0914d1",
+  text: "Eaten by the shrubbery. The Rot Gardens are not decorative.",
+  say: "[dryly] Eaten by the shrubbery. The Rot Gardens are not decorative.",
+  group: "Death · causes",
+  seconds: 5.28,
+  urls: [
+   "audio/voice/9d0914d1.mp3"
   ]
  },
  {

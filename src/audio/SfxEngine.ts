@@ -102,6 +102,8 @@ export class SfxAudioEngine extends AudioEngine {
       shatter: () => super.shatter(),
       groan: () => super.groan(),
       flame: () => super.flame(),
+      sizzle: () => super.sizzle(),
+      steam: () => super.steam(),
       boom: (s) => super.boom(s),
       landThud: (k) => super.landThud(k),
       splash: (k) => super.splash(k),

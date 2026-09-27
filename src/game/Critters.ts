@@ -84,6 +84,8 @@ export class Critters implements CrittersApi {
     find: (id: string | undefined) => (id === undefined ? undefined : this.pool.list.find(c => c.id === id)),
   };
   private readonly ctx: Ctx;
+  /** Fish bolting from a threat right now (so a school's scatter is announced once, as it starts). */
+  private readonly bolting = new WeakSet<Critter>();
 
   constructor(ctx: Ctx) {
     this.ctx = ctx;
@@ -527,18 +529,25 @@ export class Critters implements CrittersApi {
             pdy = c.y - player.y;
           const close = !player.dead && pdx * pdx + pdy * pdy < 30 * 30;
           c.vx += (close ? Math.sign(pdx) * 0.12 : Math.sin(c.phase * 0.4) * 0.02);
+          let fleeing = close;
           // Eels and the Leviathan are what fish are afraid of; an angler's lure is what they can't resist.
           for (const e of ctx.enemies) {
             if (e.hp <= 0 || (e.kind !== 'rillback' && e.kind !== 'leviathan')) continue;
             const hx = e.body?.nodes[0]?.x ?? e.rig?.pts[0]?.x ?? e.x, hy = e.body?.nodes[0]?.y ?? e.rig?.pts[0]?.y ?? e.y - 6;
             const dx = c.x - hx, dy = c.y - hy, d2 = dx * dx + dy * dy;
             const moving = Math.abs(e.vx) + Math.abs(e.vy) > 0.35 || (e.swoop ?? 0) > 0;
-            if (d2 < 40 * 40 && moving) { const d = Math.sqrt(d2) || 1; c.vx += dx / d * 0.16; c.vy += dy / d * 0.08; }
+            if (d2 < 40 * 40 && moving) { const d = Math.sqrt(d2) || 1; c.vx += dx / d * 0.16; c.vy += dy / d * 0.08; fleeing = true; }
             else if (e.kind === 'leviathan' && !moving) {
               const lure = e.rig?.chains[1]?.pts.at(-1);
               if (lure) { const lx = lure.x - c.x, ly = lure.y + 3 - c.y, ld = Math.hypot(lx, ly); if (ld < 110 && ld > 4) { c.vx += lx / ld * 0.03; c.vy += ly / ld * 0.02; } }
             }
           }
+          // The school bolts: announced once as it starts (the cue's cooldown folds a
+          // school into one flurry), and not again until this fish has truly settled.
+          if (fleeing && !this.bolting.has(c)) {
+            this.bolting.add(c);
+            ctx.events.emit('organism', { kind: 'fish', action: 'scatter', x: c.x, y: c.y });
+          } else if (!fleeing && (player.dead || pdx * pdx + pdy * pdy > 60 * 60)) this.bolting.delete(c);
           c.vy += (entityRandom() - 0.5) * 0.02;
           // stay submerged: nudge down if surface is right above
           if (w.inBounds(xi, yi - 1) && w.types[w.idx(xi, yi - 1)] === Cell.Empty) c.vy += 0.04;
@@ -551,7 +560,10 @@ export class Critters implements CrittersApi {
           // beached: flop, gasp, and eventually a sad little end
           c.gasp++;
           c.vy += 0.18;
-          if (c.gasp % 22 === 0) c.vy = -1.4 - entityRandom();
+          if (c.gasp % 22 === 0) {
+            c.vy = -1.4 - entityRandom();
+            ctx.audio.sfx('organism.fish.flop', c.x, c.y);
+          }
           if (c.gasp > 260) {
             ctx.particles.burst(c.x, c.y, 4, Cell.Blood, () => packRGB(180, 40, 50), 1.1);
             ctx.audio.squelch(c.x, c.y); // the arc ends audibly, not in silence

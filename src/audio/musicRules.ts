@@ -1,4 +1,5 @@
 import type { BiomeId, EnemyKind } from '@/core/types';
+import { DARKNESS } from '@/config/darkness';
 
 /**
  * The music director's rules, pure (tests/music-director.test.ts): which cue
@@ -189,19 +190,50 @@ export interface DipInput {
   playerDead: boolean;
   ledgerOpen: boolean;
   mode: 'build' | 'play';
+  /** The alchemist stands in a designed deep-dark zone (see `inDeepDark`). */
+  dark?: boolean;
+  /** The cue playing now: the dark thins only a floor's calm cue, never a hunt or a boss. */
+  cue?: string | null;
+  /** Ms since a boss broke into a new phase (undefined: none lately). */
+  sincePhaseMs?: number;
+}
+
+/** The floor's calm cue sits back this far in the deep dark: the Works go quiet where no lamp reaches. */
+export const DARK_THIN = 0.62;
+/** Under a boss's phase roar the score holds its breath this low, for this long, then swells back. */
+export const PHASE_DIP = 0.42;
+export const PHASE_DIP_MS = 1500;
+
+/** Deep-dark hysteresis on the darkness under the alchemist (0..1): the light wave's own "you entered the dark" thresholds. */
+export function inDeepDark(wasDark: boolean, darkness: number): boolean {
+  return wasDark ? darkness >= DARKNESS.leaveDark : darkness >= DARKNESS.enterDark;
+}
+
+/** A boss's phase roar is playing: the score ducks under it (the director ramps down fast and swells back slowly). */
+export function phaseDipActive(sincePhaseMs: number | undefined): boolean {
+  return sincePhaseMs !== undefined && sincePhaseMs >= 0 && sincePhaseMs < PHASE_DIP_MS;
 }
 
 /**
  * The director's overall level on top of the cue: a hidden tab is silent, a
  * death is a breath out (the floor music sinks while the body settles), the
- * pause menu and the ledger sit back so the room can be read.
+ * pause menu and the ledger sit back so the room can be read. In play, a
+ * boss breaking into a new phase makes the score hold its breath under the
+ * roar, and the deep dark thins a floor's calm cue.
  */
 export function dipFor(d: DipInput): number {
   if (d.hidden) return 0;
   if (d.ledgerOpen) return 0.55;
   if (d.mode === 'play' && d.playerDead) return 0.3;
   if (d.mode === 'play' && d.paused) return 0.6;
+  if (d.mode === 'play' && phaseDipActive(d.sincePhaseMs)) return PHASE_DIP;
+  if (d.mode === 'play' && d.dark && d.cue && isCalmFloorCue(d.cue)) return DARK_THIN;
   return 1;
+}
+
+/** A floor's exploration cue (not its hunted layer, not a boss, the Sanctum or the Tea Engine). */
+export function isCalmFloorCue(id: string): boolean {
+  return Object.values(FLOOR_CUES).some(pair => pair.explore === id);
 }
 
 /** Cue loudness relative to its master: exploration sits under the action; hunted and boss cues lead. */

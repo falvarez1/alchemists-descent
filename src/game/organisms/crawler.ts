@@ -53,8 +53,7 @@ function curl(ctx: Ctx, c: Critter, vx: number, vy: number): void {
   if (c.state === CRAWL.BALL) { c.vx += vx; c.vy += vy; return; }
   c.state = CRAWL.BALL; c.stateT = 0;
   c.vx = vx + (c.nx ?? 0) * 0.3; c.vy = vy + (c.ny ?? 0) * 0.3;
-  organismEvent(ctx, c.kind, 'curl', c.x, c.y);
-  if (Math.abs(c.x - ctx.player.x) < 200) ctx.audio.skitter(c.x, c.y);
+  organismEvent(ctx, c.kind, 'curl', c.x, c.y); // plates folding: audio/EventCues
 }
 
 /** A kick's gust or a near-miss blast: an isopod balls up and is thrown. */
@@ -76,6 +75,7 @@ function emberDeath(ctx: Ctx, c: Critter, wet: boolean): void {
       w.replaceCellAt(w.idx(x + dx, y + dy), Cell.Ember, packRGB(255, 120, 30)); n++;
     }
     ctx.particles.burst(c.x, c.y, 6, null, () => packRGB(255, 160, 50), 1.2, { glow: 2, grav: 0.04 });
+    ctx.audio.sfx('organism.emberbeetle.pop', c.x, c.y);
   }
   organismEvent(ctx, c.kind, 'die', c.x, c.y);
 }
@@ -115,7 +115,11 @@ export function stepCrawler(ctx: Ctx, c: Critter, _host: OrganismHost): boolean 
     if (!isWall(ctx, Math.floor(nx), yi)) c.x = nx; else c.vx *= -0.45;
     if (!isWall(ctx, Math.floor(c.x), Math.floor(ny))) c.y = ny;
     else {
-      if (c.vy > 1.2 && Math.abs(c.x - ctx.player.x) < 180) ctx.audio.skitter(c.x, c.y);
+      // A ball that lands hard knocks on the stone (an isopod's plates; an ember beetle's shell).
+      if (c.vy > 1.2) {
+        if (ember) ctx.audio.skitter(c.x, c.y);
+        else ctx.audio.sfx('organism.isopod.roll', c.x, c.y, { gain: Math.min(1.3, 0.5 + c.vy * 0.25) });
+      }
       c.vy *= -0.35;
       c.vx *= 0.9;
       const fx = Math.floor(c.x), fy = Math.floor(c.y);
@@ -195,6 +199,7 @@ export function stepCrawler(ctx: Ctx, c: Critter, _host: OrganismHost): boolean 
         const gx = c.anchorX - (c.nx ?? 0), gy = c.anchorY - (c.ny ?? 0);
         if (w.inBounds(gx, gy) && w.types[w.idx(gx, gy)] === Cell.Coal && entityRandom() < 0.08) {
           w.replaceCellAt(w.idx(gx, gy), Cell.Ash, packRGB(70, 66, 62));
+          ctx.audio.sfx('organism.emberbeetle.crunch', gx + 0.5, gy + 0.5);
           c.meal = 900;
           ctx.particles.spawn(gx + 0.5, gy + 0.5, 0, -0.3, null, packRGB(255, 150, 40), 20, { glow: 2, grav: -0.01 });
         }

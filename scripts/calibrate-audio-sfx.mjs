@@ -41,6 +41,12 @@ const TARGETS = {
   'creature.weaver.chirr': 0.05, 'creature.weaver.alert': 0.07, 'creature.weaver.death': 0.12, 'creature.rillback.move': 0.035,
   'creature.rootloper.step': 0.035, 'creature.stonemaw.chew': 0.06, 'creature.bat.alert': 0.04,
   'stinger.alchemy': 0.12, 'stinger.phialCrack': 0.12, 'stinger.phialFill': 0.1,
+  // Wave 2 (the light wave, organisms, the rebuilt bosses), as landed: a tell reads like an alert,
+  // a snap like a bite, the lantern like the alchemist's other small verbs, a boss blow under a blast.
+  'light.lantern.hood': 0.066, 'light.eyeshine': 0.037, 'light.photocell.latch': 0.11, 'light.bloom.open': 0.085,
+  'organism.snapjaw.tell': 0.073, 'organism.snapjaw.snap': 0.095, 'organism.puffer.burst': 0.098, 'organism.leech.latch': 0.076,
+  'organism.isopod.curl': 0.035, 'creature.bat.scatter': 0.076, 'creature.colossus.stomp': 0.29, 'creature.colossus.roar': 0.265,
+  'creature.leviathan.surge': 0.216,
 };
 
 const browser = await launchBrowser({ args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -52,7 +58,8 @@ try {
   const box = await page.locator('#expedition-entry [data-entry="begin"]').first().boundingBox();
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForFunction(() => window.__game.ctx.state.mode === 'play' && window.__game.ctx.levels.current, null, { timeout: 60000 });
-  const packs = ['ui', 'player', 'spells', 'world', 'creature-weaver', 'creature-rillback', 'creature-rootloper', 'creature-stonemaw', 'creature-bat'];
+  const packs = ['ui', 'player', 'spells', 'world', 'creature-weaver', 'creature-rillback', 'creature-rootloper', 'creature-stonemaw', 'creature-bat',
+    'creature-colossus', 'creature-leviathan', 'org-snapjaw', 'org-puffer', 'org-leech', 'org-isopod'];
   await page.evaluate((p) => window.__game.ctx.audio.requestPacks(p), packs);
   await page.waitForFunction((p) => p.every((k) => window.__game.ctx.audio.debugSamples().packs[k] === 'ready'), packs, { timeout: 60000, polling: 250 });
   rows = await page.evaluate(async (targets) => {

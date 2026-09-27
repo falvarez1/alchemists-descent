@@ -5,7 +5,7 @@ import { SCORE_TRACKS } from '@/content/audio/score.generated';
 import { TEA_COMPLETE_STAGE } from '@/world/teaMachine';
 import {
   BossGate, TensionGate, bossAlive, chooseCue, cueLevel, dipFor, engagedBoss, equalPowerCurve, fadeSeconds,
-  floorForLevel, loopFadeSeconds, rampValue, threatScore, type DirectorInput, type Ramp, type Verdict,
+  floorForLevel, inDeepDark, loopFadeSeconds, phaseDipActive, rampValue, threatScore, type DirectorInput, type Ramp, type Verdict,
 } from '@/audio/musicRules';
 
 /** How often the director looks at the world (ms). Crossfades are scheduled on the audio clock, not this. */
@@ -71,6 +71,11 @@ export class MusicDirector implements MusicApi {
   private playerDead = false;
   private previewUntil = 0;
   private lastThreat = 0;
+  /** The alchemist is in a deep-dark zone (hysteresis: musicRules.inDeepDark). */
+  private dark = false;
+  /** Each living boss's phase as last seen, and when one last broke into a new phase. */
+  private readonly bossPhase = new WeakMap<object, number>();
+  private phaseAt = -Infinity;
 
   constructor(private readonly ctx: Ctx, private readonly host: StreamHost, tracks: readonly ScoreTrack[] = SCORE_TRACKS) {
     for (const t of tracks) this.tracks.set(t.id, t);
@@ -94,7 +99,7 @@ export class MusicDirector implements MusicApi {
       on('playerDied', () => { this.playerDead = true; this.update(); }),
       on('playerRespawned', () => { this.playerDead = false; this.update(); }),
       on('playerDeathCleared', () => { this.playerDead = false; this.update(); }),
-      on('levelChanged', () => { this.tension.reset(); this.bossGate.reset(); this.teaActive = false; this.update(); }),
+      on('levelChanged', () => { this.tension.reset(); this.bossGate.reset(); this.teaActive = false; this.dark = false; this.phaseAt = -Infinity; this.update(); }),
       on('modeChanged', () => this.update()),
     );
     // Autoplay policy: the first real gesture unlocks the score (and the engine's context with it).
@@ -146,6 +151,16 @@ export class MusicDirector implements MusicApi {
     const tension = this.tension.update(this.lastThreat, now);
     const engaged = play && !player.dead ? engagedBoss(enemies, player.x, player.y) : null;
     const boss = this.bossGate.update(engaged, kind => bossAlive(enemies, kind), now);
+    // A boss breaking into a new phase (its roar, its armour bursting): the score holds its breath.
+    for (const e of enemies) {
+      if (!e.boss || e.hp <= 0) continue;
+      const seen = this.bossPhase.get(e);
+      if (seen !== undefined && e.boss.phase > seen && boss !== null) this.phaseAt = now;
+      this.bossPhase.set(e, e.boss.phase);
+    }
+    // The deep dark thins the floor's calm cue (the light wave's zones: the same thresholds).
+    const q = play && !player.dead ? ctx.lightQuery : undefined;
+    this.dark = q ? inDeepDark(this.dark, q.darkness(player.x, player.y - 9)) : false;
     const level = ctx.levels?.current;
     let verdict: Verdict | null = null, verdictPending = false;
     if (this.verdict && !this.verdict.done) {
@@ -193,7 +208,13 @@ export class MusicDirector implements MusicApi {
 
     const hidden = document.hidden;
     const i = this.input(now);
-    this.setMaster(ac, dipFor({ hidden, paused: this.ctx.state.paused, playerDead: this.playerDead || this.ctx.player.dead, ledgerOpen: this.ledgerOpen, mode: i.mode }), hidden ? 0.3 : 1.2);
+    const sincePhaseMs = now - this.phaseAt;
+    const dip = dipFor({
+      hidden, paused: this.ctx.state.paused, playerDead: this.playerDead || this.ctx.player.dead, ledgerOpen: this.ledgerOpen, mode: i.mode,
+      dark: this.dark, cue: this.current, sincePhaseMs,
+    });
+    // Under a phase roar the score drops at once and swells back over the usual glide; the dark thins slowly.
+    this.setMaster(ac, dip, hidden ? 0.3 : phaseDipActive(sincePhaseMs) ? 0.2 : this.dark ? 2.5 : 1.2);
     if (hidden) {
       if (!this.hiddenPaused) {
         this.hiddenPaused = true;
@@ -344,6 +365,8 @@ export class MusicDirector implements MusicApi {
       hidden: this.hiddenPaused,
       threat: this.lastThreat,
       tension: this.tension.tense,
+      dark: this.dark,
+      sincePhaseMs: Number.isFinite(this.phaseAt) ? Math.round(performance.now() - this.phaseAt) : null,
       verdict: this.verdict ? { ...this.verdict } : null,
       teaActive: this.teaActive,
       master: ac ? rampValue(this.masterRamp, t) : null,

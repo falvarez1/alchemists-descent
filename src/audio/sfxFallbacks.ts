@@ -29,6 +29,8 @@ export interface ProceduralKit {
   shatter(): void;
   groan(): void;
   flame(): void;
+  sizzle(): void;
+  steam(): void;
   boom(size: number): void;
   landThud(intensity: number): void;
   splash(intensity: number): void;
@@ -240,6 +242,43 @@ export const SFX_FALLBACKS: Partial<Record<SfxId, SfxFallback>> = {
   'creature.colossus.step': (p) => { p.landThud(0.8); p.hollowKnock(); },
   'creature.colossus.volley': (p) => p.tone(90, 220, 0.4, 'sawtooth', 0.16),
   'creature.colossus.death': (p) => p.portalWhoosh(),
+  // ---- wave 2: what each new cue's call site played before it had a sample ----
+  'creature.bat.scatter': (p) => p.squeak(),
+  'creature.colossus.heave': (p) => p.grind(1.2),
+  'creature.colossus.slam': (p) => p.hollowKnock(),
+  'creature.colossus.stomp': (p) => { p.boom(14); p.hollowKnock(); },
+  'creature.colossus.scoop': (p) => p.flame(),
+  'creature.colossus.vent.tell': (p) => p.steam(),
+  'creature.colossus.vent': (p) => p.flame(),
+  'creature.colossus.roar': (p) => { p.groan(); p.grind(1.3); },
+  'creature.colossus.plates': (p) => p.boom(6),
+  'creature.colossus.quench': (p) => p.steam(),
+  'creature.colossus.kneel': (p) => p.landThud(0.8),
+  'creature.colossus.death.crack': (p) => { p.groan(); p.grind(1.6); },
+  'creature.colossus.death.rubble': (p) => p.grind(1.6),
+  'creature.leviathan.thrash': (p) => { p.splash(1.6); p.boom(8); },
+  'creature.leviathan.surge': (p) => p.splash(1.4),
+  'creature.leviathan.shock': (p) => { p.zap(); p.groan(); },
+  'creature.leviathan.dive': (p) => p.bubble(),
+  'organism.snapjaw.tell': (p) => p.creak(0.35),
+  'organism.snapjaw.snap': (p) => p.chitin(1.4),
+  'organism.snapjaw.gulp': (p) => p.squelch(),
+  'organism.snapjaw.chew': (p) => p.squelch(),
+  'organism.snapjaw.burn': (p) => p.sizzle(),
+  'organism.snapjaw.tear': (p) => p.squelch(),
+  'organism.puffer.burst': (p) => { p.squelch(); p.steam(); },
+  'organism.leech.latch': (p) => p.squelch(),
+  'organism.isopod.curl': (p) => p.skitter(),
+  'organism.isopod.roll': (p) => p.skitter(),
+  'organism.emberbeetle.pop': (p) => p.sizzle(),
+  'organism.fish.flop': (p) => p.hop(0.5),
+  'light.lantern.hood': (p) => p.lever(),
+  'light.lantern.unhood': (p) => p.lever(),
+  'light.eyeshine': (p) => p.tone(2200, 2640, 0.06, 'sine', 0.018),
+  'light.photocell.latch': (p) => { p.lever(); p.tone(1318, 1318, 0.35, 'sine', 0.035); },
+  'light.bloom.open': (p) => { p.tone(880, 1760, 0.4, 'sine', 0.03); p.later(120, () => p.tone(1320, 2093, 0.4, 'triangle', 0.02)); },
+  'light.bloom.furl': (p) => p.tone(1400, 700, 0.35, 'triangle', 0.02),
+  'light.bloom.petal': (p, o) => p.tone(1568 * semis(o), 1568 * semis(o), 0.12, 'sine', 0.02),
 };
 
 /**

@@ -90,6 +90,8 @@ const wo = (cat: SfxCategory, o?: Omit<SfxCueDef, 'pack' | 'cat'>): SfxCueDef =>
 const cr = (kind: EnemyKind, o?: Omit<SfxCueDef, 'pack' | 'cat'>): SfxCueDef => c(`creature-${kind}`, 'creature', o);
 const boss = (kind: EnemyKind, o?: Omit<SfxCueDef, 'pack' | 'cat'>): SfxCueDef => c(`creature-${kind}`, 'boss', o);
 const tea = (o?: Omit<SfxCueDef, 'pack' | 'cat'>): SfxCueDef => c('tea', 'tea', o);
+/** Ambient life with behaviour (game/organisms): one pack per kind, loaded with the floors it lives on. */
+const org = (kind: string, cat: SfxCategory, o?: Omit<SfxCueDef, 'pack' | 'cat'>): SfxCueDef => c(`org-${kind}`, cat, o);
 
 export const SFX_CUES = {
   // ------------------------------------------------------------------ UI
@@ -163,6 +165,9 @@ export const SFX_CUES = {
   'player.club.swing': pl('player', { gain: 0.8 }),
   'player.club.hit': pl('player', { gain: 1.1 }),
   'player.club.throw': pl('player', { gain: 0.8 }),
+  // The hooded lantern (light wave): the stealth verb is a brass hood.
+  'light.lantern.hood': pl('player', { gain: 0.9, cooldownMs: 120, pitchCents: 30 }),
+  'light.lantern.unhood': pl('player', { gain: 1.15, cooldownMs: 120, pitchCents: 30 }),
   'flask.siphon.loop': loop('player', { gain: 0.8, range: 0, keepAliveMs: 240 }),
   'flask.pour.loop': loop('player', { gain: 0.8, range: 0, keepAliveMs: 240 }),
   'flask.throw': pl('player', { gain: 0.6 }),
@@ -283,6 +288,18 @@ export const SFX_CUES = {
   'creature.generic.hurt': c('world', 'creature', { gain: 0.8 }),
   'creature.generic.death': c('world', 'creature', { gain: 1.0 }),
   'proj.fireball.loop': loop('world', { gain: 0.7, range: 360, keepAliveMs: 200 }),
+  // Light and dark (light wave): the deep dark, eyes in the beam, photocells, lumen blooms.
+  'light.dark': wo('material', { gain: 0.9, range: 0, bus: 'ambience', cooldownMs: 12000, pitchCents: 0, priority: 3 }),
+  'light.eyeshine': wo('mechanism', { gain: 0.4, range: 380, cooldownMs: 300, pitchCents: 60 }),
+  'light.photocell.loop': loop('world', { gain: 0.6, range: 420, keepAliveMs: 250 }),
+  'light.photocell.latch': wo('mechanism', { gain: 1.5 }),
+  'light.bloom.open': wo('mechanism', { gain: 1.2, cooldownMs: 300 }),
+  'light.bloom.furl': wo('mechanism', { gain: 0.5, cooldownMs: 300 }),
+  'light.bloom.petal': wo('mechanism', { gain: 0.35, cooldownMs: 60, pitchCents: 0 }),
+  // Life on every floor with water or a light: fish schools, and moths at the lantern.
+  'organism.fish.scatter': c('world', 'critter', { gain: 1.4, cooldownMs: 1500, voices: 1 }),
+  'organism.fish.flop': c('world', 'critter', { gain: 1.0, cooldownMs: 200 }),
+  'organism.moth.swarm.loop': loop('world', { gain: 0.5, range: 300, bus: 'ambience', keepAliveMs: 700 }),
 
   // ------------------------------------------------ Bell & Tea Engine (D1)
   'tea.striker': tea(),
@@ -309,6 +326,33 @@ export const SFX_CUES = {
   'amb.breath.inhale': c('amb-d1', 'material', { gain: 1.3, range: 820, cooldownMs: 4000, bus: 'ambience', pitchCents: 0 }),
   'amb.breath.exhale': c('amb-d1', 'material', { gain: 1.4, range: 820, cooldownMs: 4000, bus: 'ambience', pitchCents: 0 }),
   'amb.breath.jet': loop('amb-d1', { gain: 1.0, range: 520, keepAliveMs: 260 }),
+
+  // ------------------------------------------------ organisms (floors 2-4)
+  // Snapjaw: an ambush plant. Its tell must be heard: it is the warning.
+  'organism.snapjaw.tell': org('snapjaw', 'creature', { cooldownMs: 200 }),
+  'organism.snapjaw.snap': org('snapjaw', 'creature', { gain: 1.3, priority: 4 }),
+  'organism.snapjaw.gulp': org('snapjaw', 'creature', { gain: 0.9 }),
+  'organism.snapjaw.chew': org('snapjaw', 'creature', { gain: 0.5, cooldownMs: 600 }),
+  'organism.snapjaw.burn': org('snapjaw', 'creature', { gain: 1.5 }),
+  'organism.snapjaw.tear': org('snapjaw', 'creature', { gain: 1.0 }),
+  // Spore puffer: a bladder of bog gas.
+  'organism.puffer.swell': org('puffer', 'creature', { gain: 0.6, cooldownMs: 800 }),
+  'organism.puffer.burst': org('puffer', 'creature', { gain: 1.4, priority: 4 }),
+  // Glow-worm: fishes with a beaded thread from the vaults.
+  'organism.glowworm.lower': org('glowworm', 'critter', { gain: 1.2, cooldownMs: 600 }),
+  'organism.glowworm.retract': org('glowworm', 'creature', { gain: 1.1, cooldownMs: 250 }),
+  'organism.glowworm.snare': org('glowworm', 'critter', { gain: 1.4 }),
+  // Leech: the Cisterns' small tax on wading (close to the ear: it is on you).
+  'organism.leech.latch': org('leech', 'creature', { gain: 1.4, priority: 4 }),
+  'organism.leech.drink': org('leech', 'creature', { gain: 0.6, cooldownMs: 300 }),
+  'organism.leech.shed': org('leech', 'creature', { gain: 0.8 }),
+  // Isopod: curls into an armoured ball and rolls.
+  'organism.isopod.curl': org('isopod', 'creature', { gain: 0.6, voices: 2, cooldownMs: 150 }),
+  'organism.isopod.roll': org('isopod', 'critter', { gain: 1.2, cooldownMs: 120 }),
+  // Ember beetle and ash moth: the Kiln's small fire-eaters.
+  'organism.emberbeetle.crunch': org('emberbeetle', 'critter', { gain: 1.0, cooldownMs: 300 }),
+  'organism.emberbeetle.pop': org('emberbeetle', 'creature', { gain: 0.7 }),
+  'organism.ashmoth.flare': org('ashmoth', 'critter', { gain: 2.0, cooldownMs: 120 }),
 
   // ------------------------------------------------------------ creatures
   'creature.weaver.step': cr('weaver', { gain: 0.45, voices: 4, cooldownMs: 60 }),
@@ -356,6 +400,7 @@ export const SFX_CUES = {
   'creature.bat.slimed': cr('bat'),
   'creature.bat.hurt': cr('bat'),
   'creature.bat.death': cr('bat'),
+  'creature.bat.scatter': cr('bat', { gain: 1.2, cooldownMs: 600 }),
   'creature.slime.idle': cr('slime', { gain: 0.5, cooldownMs: 1500 }),
   'creature.slime.hop': cr('slime', { gain: 0.6, cooldownMs: 120 }),
   'creature.slime.alert': cr('slime'),
@@ -415,12 +460,32 @@ export const SFX_CUES = {
   'creature.leviathan.flop': boss('leviathan', { gain: 0.8 }),
   'creature.leviathan.hurt': boss('leviathan', { gain: 0.8 }),
   'creature.leviathan.death': boss('leviathan', { gain: 1.1, range: 1000, priority: 5 }),
+  // Its moves (creatures/bosses/leviathan): the lure goes dark, the tail throws the pool, it dives and surges.
+  'creature.leviathan.dim': boss('leviathan', { gain: 0.5, cooldownMs: 400 }),
+  'creature.leviathan.thrash': boss('leviathan', { gain: 1.0 }),
+  'creature.leviathan.dive': boss('leviathan', { gain: 0.8 }),
+  'creature.leviathan.surge': boss('leviathan', { gain: 1.1, priority: 5 }),
+  'creature.leviathan.shock': boss('leviathan', { gain: 0.9, cooldownMs: 350 }),
   'creature.colossus.idle': boss('colossus', { gain: 0.8, cooldownMs: 3000 }),
   'creature.colossus.alert': boss('colossus', { gain: 1.1, priority: 5 }),
   'creature.colossus.step': boss('colossus', { gain: 0.9, cooldownMs: 150 }),
   'creature.colossus.volley': boss('colossus'),
   'creature.colossus.hurt': boss('colossus', { gain: 0.8 }),
   'creature.colossus.death': boss('colossus', { gain: 1.2, range: 1200, priority: 5 }),
+  // Its moves (creatures/bosses/colossus): every tell sounds on the clock the blow fires on.
+  'creature.colossus.heave': boss('colossus', { gain: 0.6 }),
+  'creature.colossus.slam': boss('colossus', { gain: 1.0, priority: 5 }),
+  'creature.colossus.stomp': boss('colossus', { gain: 1.25, priority: 5 }),
+  'creature.colossus.wave.loop': loop('creature-colossus', { gain: 0.8, range: 600, keepAliveMs: 200 }),
+  'creature.colossus.scoop': boss('colossus', { gain: 0.8 }),
+  'creature.colossus.vent.tell': boss('colossus', { gain: 0.8 }),
+  'creature.colossus.vent': boss('colossus', { gain: 1.1 }),
+  'creature.colossus.roar': boss('colossus', { gain: 1.15, priority: 5 }),
+  'creature.colossus.plates': boss('colossus', { gain: 1.1, priority: 5 }),
+  'creature.colossus.quench': boss('colossus', { gain: 1.1, priority: 5 }),
+  'creature.colossus.kneel': boss('colossus', { gain: 0.75 }),
+  'creature.colossus.death.crack': boss('colossus', { gain: 1.0, range: 1000, priority: 5 }),
+  'creature.colossus.death.rubble': boss('colossus', { gain: 1.2, range: 1200, priority: 5 }),
 } as const satisfies Record<string, SfxCueDef>;
 
 export type SfxId = keyof typeof SFX_CUES;

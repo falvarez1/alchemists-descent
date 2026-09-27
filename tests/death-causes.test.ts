@@ -42,7 +42,11 @@ describe('death cause copy', () => {
   });
 
   it('writes a line and a title for every creature that can kill', () => {
-    for (const source of ['stonemaw-bite', 'rillback-bite', 'rillback-flop', 'rootloper-lash', 'steam-pressure']) {
+    for (const source of [
+      'stonemaw-bite', 'rillback-bite', 'rillback-flop', 'rootloper-lash', 'steam-pressure',
+      // Wave 2: organisms and the rebuilt bosses' new moves.
+      'snapjaw-bite', 'leech', 'colossus-stomp', 'colossus-vent', 'leviathan-thrash',
+    ]) {
       expect(knownDeathCauseSources()).toContain(source);
       expect(deathTitle(source)).not.toBe('You died.');
     }
