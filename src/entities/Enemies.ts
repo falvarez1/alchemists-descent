@@ -751,6 +751,9 @@ export class Enemies implements EnemyControlApi {
     const def = this.defs[e.kind];
     // The world's kills are announced, chained and paid in gold (combat/AlchemyKills).
     ctx.alchemy?.onKill(e);
+    // Every death is a fact first (the run ledger counts it), THEN its aftermath —
+    // a bomber's blast, the Colossus ending the run.
+    ctx.events.emit('enemyKilled', { kind: e.kind, x: e.x, y: e.y });
     // Bombers go out the only way they know how
     if (e.kind === 'bomber') {
       ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(entityRandom() * 3), { playerDamageSource: 'bomber' });

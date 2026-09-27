@@ -99,7 +99,8 @@ export class RunDirector implements RunApi {
   private result: RunResult | null = null;
   /** Kits unlocked mid-run (floor reached, Leviathan), for the ledger. */
   private runUnlocks: KitId[] = [];
-  private lastKills = 0;
+  /** A creature died since the last tick (the Leviathan watch reads it). */
+  private killedSinceTick = false;
   private lastTickWall = 0;
   private lastGold = 0;
   private lastCause: string | null = null;
@@ -114,6 +115,7 @@ export class RunDirector implements RunApi {
     this.disposers.push(
       on('playerDied', ({ cause }) => this.onPlayerDied(cause)),
       on('runComplete', () => { if (this.active) this.endRun(this.ctx, 'victory', true); }),
+      on('enemyKilled', () => this.onEnemyKilled()),
       on('alchemyKill', (info) => this.onAlchemyKill(info)),
       on('cardGranted', () => { if (this.active && this.state) this.state.cardsFound++; }),
       on('levelChanged', () => this.onLevelChanged()),
@@ -287,10 +289,8 @@ export class RunDirector implements RunApi {
     this.lastTickWall = now;
     this.lastGold = ctx.state.score;
 
-    const kills = ctx.waves.kills;
-    const killed = kills > this.lastKills;
-    if (killed) state.kills += kills - this.lastKills;
-    this.lastKills = kills;
+    const killed = this.killedSinceTick;
+    this.killedSinceTick = false;
 
     const runtime = ctx.levels.current;
     this.watchLeviathan(ctx, runtime?.def.id ?? null, runtime?.def.boss === 'leviathan', killed);
@@ -346,6 +346,21 @@ export class RunDirector implements RunApi {
     const next = recordFloorReached(this.meta.profile, floor);
     this.meta.commit(next.profile);
     this.announceUnlocks(ctx, next.unlocked);
+  }
+
+  /**
+   * The ledger counts deaths as they happen (`enemyKilled`), not by polling a
+   * counter once a tick: the Colossus's death ends the run inside the very call
+   * that kills it, before any tick could see it, and a counter reset between
+   * floors could hide kills from a poll.
+   */
+  private onEnemyKilled(): void {
+    const ctx = this.ctx;
+    const state = this.state;
+    if (!this.active || !state) return;
+    if (ctx.state.mode !== 'play' || (ctx.state.playtestSource !== null && ctx.state.playtestSource !== undefined)) return;
+    state.kills++;
+    this.killedSinceTick = true;
   }
 
   private onAlchemyKill(info: AlchemyKillInfo): void {
@@ -411,7 +426,7 @@ export class RunDirector implements RunApi {
   }
 
   private resetTracking(ctx: Ctx): void {
-    this.lastKills = ctx.waves?.kills ?? 0;
+    this.killedSinceTick = false;
     this.lastTickWall = 0;
     this.lastGold = ctx.state.score;
     this.lastCause = null;

@@ -158,7 +158,7 @@ describe('RunDirector', () => {
     expect(h.calls.deathSaves).toBe(0);
   });
 
-  it('counts kills from the wave counter and spots the Leviathan falling', () => {
+  it('counts kills as they happen and spots the Leviathan falling', () => {
     const h = harness();
     h.run.beginRun(h.ctx, { seed: 1, kit: 'spark', daily: null, tracked: true });
     h.enter('d3');
@@ -166,8 +166,38 @@ describe('RunDirector', () => {
     h.ctx.enemies.push(leviathan);
     h.run.update(h.ctx);
     h.ctx.enemies.length = 0;
-    h.ctx.waves.kills = 2;
+    h.ctx.events.emit('enemyKilled', { kind: 'slime', x: 0, y: 0 });
+    h.ctx.events.emit('enemyKilled', { kind: 'leviathan', x: 0, y: 0 });
+    // a counter reset between floors (Levels zeroes waves.kills) cannot hide them
+    h.ctx.waves.kills = 0;
     h.run.update(h.ctx);
     expect(h.run.snapshotForSave()).toMatchObject({ kills: 2, leviathanSlain: true });
+  });
+
+  it('counts the Colossus kill before the victory ledger is written', () => {
+    const h = harness();
+    h.run.beginRun(h.ctx, { seed: 1, kit: 'spark', daily: null, tracked: true });
+    h.enter('d3');
+    h.ctx.events.emit('enemyKilled', { kind: 'leviathan', x: 0, y: 0 });
+    h.run.update(h.ctx);
+    h.enter('d4');
+    // Enemies.finishKill: the death is a fact first, then the run ends inside the same call.
+    h.ctx.events.emit('enemyKilled', { kind: 'colossus', x: 0, y: 0 });
+    h.ctx.events.emit('runComplete', { gold: 0 });
+    expect(h.ended.at(-1)).toMatchObject({ outcome: 'victory', kills: 2 });
+  });
+
+  it('does not count deaths in a Builder playtest or outside play', () => {
+    const h = harness();
+    h.run.beginRun(h.ctx, { seed: 1, kit: 'spark', daily: null, tracked: true });
+    h.enter('d1');
+    (h.ctx.state as { playtestSource?: string | null }).playtestSource = 'builder';
+    h.ctx.events.emit('enemyKilled', { kind: 'slime', x: 0, y: 0 });
+    (h.ctx.state as { playtestSource?: string | null }).playtestSource = null;
+    h.ctx.state.mode = 'build';
+    h.ctx.events.emit('enemyKilled', { kind: 'slime', x: 0, y: 0 });
+    h.ctx.state.mode = 'play';
+    h.ctx.events.emit('enemyKilled', { kind: 'slime', x: 0, y: 0 });
+    expect(h.run.snapshotForSave()).toMatchObject({ kills: 1 });
   });
 });
