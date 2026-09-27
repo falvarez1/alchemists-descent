@@ -121,6 +121,10 @@ export class VineStrands implements VineStrandsApi {
   private readonly clusterQueueY = new Int16Array(MAX_CLUSTER_CELLS);
   private readonly clusterCellIndexes = new Int32Array(MAX_CLUSTER_CELLS);
   private readonly clusterNodeByCell = new Map<number, number>();
+  /** detachCluster's visited plane: a cell is in the current flood when its
+   *  stamp equals floodSerial (no clearing between floods). */
+  private floodStamp = new Int32Array(0);
+  private floodSerial = 0;
   private supportWorld: World | null = null;
   private supportEpoch = -1;
   private supportChecked = new Float64Array(0);
@@ -159,48 +163,58 @@ export class VineStrands implements VineStrandsApi {
       if (proof.valid) return false;
     }
 
+    // PERF: the support flood runs for every locally-unsupported vine cell
+    // that has no proof — in a big unanchored colony (the Cisterns' water-fed
+    // vines) that is a 192-cell flood per cell every step. It used a Map for
+    // membership, for..of tuple destructuring per neighbour and summed colours
+    // it only needs when the cluster actually falls. Same traversal order, same
+    // cells, same result: membership is a stamped Int32Array, the Map is filled
+    // only for the detach path below, and the colour is summed there.
     const queueX = this.clusterQueueX;
     const queueY = this.clusterQueueY;
     const cellIndexes = this.clusterCellIndexes;
-    const nodeByCell = this.clusterNodeByCell;
-    nodeByCell.clear();
+    if (this.floodStamp.length !== world.types.length) {
+      this.floodStamp = new Int32Array(world.types.length);
+      this.floodSerial = 0;
+    }
+    if (this.floodSerial >= 0x7fffffff) {
+      this.floodStamp.fill(0);
+      this.floodSerial = 0;
+    }
+    const stamp = this.floodStamp;
+    const serial = ++this.floodSerial;
+    const types = world.types;
     let head = 0;
     let count = 1;
     let anchored = false;
     let anchorIndex = -1;
     let truncated = false;
-    let colorR = 0;
-    let colorG = 0;
-    let colorB = 0;
 
     queueX[0] = x;
     queueY[0] = y;
     cellIndexes[0] = start;
-    nodeByCell.set(start, 0);
+    stamp[start] = serial;
 
     while (head < count) {
       const cx = queueX[head];
       const cy = queueY[head];
-      const ci = cellIndexes[head];
-      const color = world.colors[ci];
-      colorR += unpackR(color);
-      colorG += unpackG(color);
-      colorB += unpackB(color);
       head++;
 
-      for (const [dx, dy] of SUPPORT_OFFSETS) {
+      for (let k = 0; k < SUPPORT_OFFSETS.length; k++) {
+        const dx = SUPPORT_OFFSETS[k][0];
+        const dy = SUPPORT_OFFSETS[k][1];
         const nx = cx + dx;
         const ny = cy + dy;
         if (!world.inBounds(nx, ny)) continue;
         const ni = world.idx(nx, ny);
-        const nt = world.types[ni];
+        const nt = types[ni];
         if (nt === Cell.Vines) {
-          if (nodeByCell.has(ni)) continue;
+          if (stamp[ni] === serial) continue;
           if (count >= MAX_CLUSTER_CELLS) {
             truncated = true;
             continue;
           }
-          nodeByCell.set(ni, count);
+          stamp[ni] = serial;
           queueX[count] = nx;
           queueY[count] = ny;
           cellIndexes[count] = ni;
@@ -225,6 +239,19 @@ export class VineStrands implements VineStrandsApi {
       return false;
     }
     if (!this.reserveDetachedStrandSlot(world)) return false;
+
+    const nodeByCell = this.clusterNodeByCell;
+    nodeByCell.clear();
+    let colorR = 0;
+    let colorG = 0;
+    let colorB = 0;
+    for (let i = 0; i < count; i++) {
+      nodeByCell.set(cellIndexes[i], i);
+      const color = world.colors[cellIndexes[i]];
+      colorR += unpackR(color);
+      colorG += unpackG(color);
+      colorB += unpackB(color);
+    }
 
     const nodes: VineNode[] = [];
     for (let i = 0; i < count; i++) {
