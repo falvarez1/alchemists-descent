@@ -3,7 +3,6 @@
 // lighting, bloom) plus nearest-neighbour zoom crops of every creature.
 // Usage: node scripts/shot-enemies.mjs [url] [--level d2] [--kinds a,b] [--zoom 2] [--out dir] [--tag name]
 import { mkdirSync, writeFileSync } from 'node:fs';
-import sharp from 'sharp';
 import { launchBrowser } from './browser-launch.mjs';
 import { execConsoleCommand, waitForConsoleApi, waitForRunReady } from './run-helpers.mjs';
 
