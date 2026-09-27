@@ -521,7 +521,35 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   0.0005, blast split 0.0060, shake split 0.050, film grain 0.028, hurt pulse
   1.00x. These controls exist for visual inspection as much as player-facing
   tuning; turning Post FX off should show the raw pixel-composed scene.
-- Level banners rise in; overlays rise in; gameplay fonts sized for readability.
+- **Per-floor look (`config/floorLooks.ts`):** every floor shares the Works'
+  material kit — terrain atlas, chalk lip, refinery backdrop — graded per floor.
+  Albedo = atlas × gain + lift; a jagged 1–3-cell *crown* stain creeps down from
+  exposed tops (strength 0.55–0.95, capped at 3 cells because the CPU sampler's
+  dirty halo is 2); 64×64-cell wall panels draw masonry (Rot Gardens 5/16,
+  Drowned Cisterns 12/16, Kiln Heart 9/16, D1 16/16) framed by a 0.55× mortar
+  seam where they meet rock; water, lip, underside and backdrop grade (mul/lift,
+  a parallax offset, optional mirror, machinery opacity ×0.7–1.2) are per floor.
+  D1's values are the shipped identity. Presentation only: no cell type changes.
+- **Dressing restraint:** gold powder is a mottled metal (shadowed grain /
+  body / facet / 6% glint) with bloomWeight 0.07 (was 0.15) and a 0.22 light
+  seed (was 0.34); marsh gas is a dim olive haze, bloomWeight 0.07 (was 0.24).
+  Gold piles (pickups) sit on the ground as a lit coin heap (left-lit faces,
+  coin rims, two spilled coins, a crown coin that turns every 48 frames and a
+  glint that sweeps the heap every 150).
+- **Title card:** every level arrival (D1 included) shows kicker ("Depth N"),
+  the tracked Cormorant name (letter-spacing settles 0.34em → 0.16em over
+  1.6 s), a copper rule that draws out (0.9 s), then the floor's italic
+  epigraph (0.7 s delay). It waits for the transition curtain to lift
+  (curtain hold + 120 ms; 1.6 s fallback) and holds 3.6 s. Event banners reuse
+  the style, smaller, for 2.2 s.
+- **Toasts:** a right-hand log under the objective. Identical lines within a
+  toast's 3.2 s life merge (×N badge pops 1.45 → 1 over 0.26 s, clock resets);
+  "+N …" tallies sum; at most 3 stand; shouted legacy lines are calmed to
+  sentence case. Mechanism fail-open groans only toast within 360 cells.
+- **Vitals:** 10 px tracks with a 1 px lit edge; a pale loss ghost holds a
+  lost chunk for 0.28 s then drains over 0.5 s (gains snap after 0.9 s).
+- Overlays rise in; gameplay fonts sized for readability; no monospace reaches
+  the player.
 
 ---
 
