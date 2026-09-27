@@ -16,7 +16,17 @@ import { packCues, sfxCue, sfxUrls } from '@/content/audio/sfxManifest';
  */
 export type PackState = 'queued' | 'loading' | 'ready' | 'failed';
 
-const PARALLEL_FETCHES = 6;
+/**
+ * Pace the load. Decoding the core packs in one burst right after the first
+ * gesture held the new AudioContext's clock at zero for most of a second
+ * (the device pull starved), delaying the very click that started it. So:
+ * a short grace before the first fetch, three lanes, and a breath between
+ * files. The whole core still arrives in about two seconds, and the
+ * procedural fallback covers anything asked for sooner.
+ */
+const PARALLEL_FETCHES = 3;
+const START_GRACE_MS = 300;
+const BETWEEN_FILES_MS = 6;
 
 /**
  * Decoded PCM is the memory cost of sampled audio (float32 at the device rate
@@ -35,6 +45,8 @@ const DECODE_RATE: Readonly<Record<SfxCategory, number>> = {
 
 export class SampleBank {
   private context: BaseAudioContext | null = null;
+  /** Fetching has begun (START_GRACE_MS after `start`). */
+  private pumping = false;
   /** One silent offline context per decode rate (decodeAudioData resamples to its context's rate). */
   private readonly decoders = new Map<number, BaseAudioContext>();
   private readonly buffers = new Map<SfxId, AudioBuffer[]>();
@@ -58,7 +70,10 @@ export class SampleBank {
   start(context: BaseAudioContext): void {
     if (this.context) return;
     this.context = context;
-    for (const pack of this.queue) this.load(pack);
+    setTimeout(() => {
+      this.pumping = true;
+      for (const pack of [...this.queue]) this.load(pack);
+    }, START_GRACE_MS);
   }
 
   /** Ask for packs (queued until `start`). Already requested packs are left as they are. */
@@ -68,7 +83,7 @@ export class SampleBank {
       if (state === 'ready' || state === 'loading' || state === 'queued') continue;
       this.states.set(pack, 'queued');
       this.queue.push(pack);
-      if (this.context) this.load(pack);
+      if (this.pumping) this.load(pack);
     }
   }
 
@@ -126,7 +141,8 @@ export class SampleBank {
         this.inFlight++;
         try { resolve(await job()); } catch { resolve(false); } finally {
           this.inFlight--;
-          this.pending.shift()?.();
+          const next = this.pending.shift();
+          if (next) setTimeout(next, BETWEEN_FILES_MS);
         }
       };
       if (this.inFlight < PARALLEL_FETCHES) void run();

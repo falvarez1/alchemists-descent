@@ -73,7 +73,9 @@ export function installAudioDirector(ctx: Ctx, engine: SfxAudioEngine): () => vo
     engine.requestPacks(request);
     for (const p of engine.bank.packs()) {
       if (core.has(p)) continue;
-      const seen = lastWanted.get(p) ?? 0;
+      const seen = lastWanted.get(p);
+      // A pack someone else asked for (a probe, a future caller) gets the same grace.
+      if (seen === undefined) { lastWanted.set(p, now); continue; }
       if (now - seen > RELEASE_AFTER_MS) { engine.releasePack(p); lastWanted.delete(p); }
     }
     engine.setAmbience(bed);

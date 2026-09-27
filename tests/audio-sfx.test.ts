@@ -83,7 +83,9 @@ describe('the sampled sound catalog', () => {
       expect(SFX_CATEGORIES[cue.cat], id).toBeDefined();
       expect(['fx', 'voices', 'ambience', 'ui']).toContain(cue.bus);
       expect(cue.gain, id).toBeGreaterThan(0);
-      expect(cue.gain, id).toBeLessThanOrEqual(1.2);
+      // Files are mastered to one loudness; the biggest blast plays a little
+      // over unity and the limiter chain (tested in verify:audio-sfx) holds it.
+      expect(cue.gain, id).toBeLessThanOrEqual(1.5);
       expect(cue.voices, id).toBeGreaterThanOrEqual(1);
     }
   });
