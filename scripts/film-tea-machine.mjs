@@ -20,10 +20,9 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await page.goto(url); await waitForConsoleApi(page);
 await execConsoleCommand(page, `run test --level d1 --world campaign-level --seed ${seed} --loadout fresh`);
 await waitForRunReady(page);
-// Solve the cold lock the real way: freeze the census cistern so both probes
-// count ice and the cage doors lift, as they have by the time a player cranks.
-await page.evaluate(() => { const c = window.__game.ctx, w = c.world; c.enemies.length = 0; c.state.debugGodMode = true;
-  for (let y = 333; y <= 341; y++) for (let x = 302; x <= 327; x++) if (w.type(x, y) === 2) w.replaceCellAt(w.idx(x, y), 10, 0xbfe6f2);
+// Start at the crank, past the Intake's barricade (burning it is
+// verify-tea-machine's job; the film is about the engine).
+await page.evaluate(() => { const c = window.__game.ctx; c.enemies.length = 0; c.state.debugGodMode = true;
   c.player.x = 432; c.player.y = 311; c.player.vx = 0; c.player.vy = 0; c.state.paused = false; });
 await page.waitForTimeout(2600);
 await page.keyboard.press('KeyE');

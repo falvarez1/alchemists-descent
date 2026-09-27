@@ -3,13 +3,14 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 import { execConsoleCommand, waitForRunReady } from './run-helpers.mjs';
 
-// The Bell & Tea Engine, PLAYED with real input: open the cold lock the real
-// way (freeze its cistern), walk to the crank, press Use, then walk the
-// catwalk under the chain and answer each fault — a Spark Bolt click on the
-// priming pan, F at the Persuader, Q with the water flask over the grate.
-// Asserts the player keeps control throughout, the camera keeps him in shot
-// under its pan-speed cap, the caption card shows each fault's verb (and fits
-// a compact viewport), and the bell is collected at the receiver.
+// The Bell & Tea Engine, PLAYED with real input from the spawn: burn the
+// oil-soaked barricade with one Spark Bolt click, walk to the crank, press
+// Use, then walk the catwalk under the chain and answer each fault — a Spark
+// Bolt click on the priming pan, F at the Persuader, Q with the water flask
+// over the grate. Asserts the player keeps control throughout, the camera
+// keeps him in shot under its pan-speed cap, the caption card shows each
+// fault's verb (and fits a compact viewport), the bell is collected at the
+// receiver, and the Lower Bell's floor grate rings open for it.
 // Usage: node scripts/verify-tea-machine.mjs [url] [seed] [--resume] [--comfort] [--idle]
 //   --resume   save mid-chain, reload, continue; the props and plates persist
 //   --comfort  reduced camera motion: no close zoom
@@ -71,10 +72,21 @@ try {
     await page.locator('[name="cameraShake"]').uncheck();
     await page.locator('#player-settings button[value="close"]').click(); await page.keyboard.press('Escape');
   }
-  // The cold lock, solved the way a player solves it: ice in the census cistern.
-  await page.evaluate(() => { const c = window.__game.ctx, w = c.world; c.enemies.length = 0;
-    for (let y = 333; y <= 341; y++) for (let x = 302; x <= 327; x++) if (w.type(x, y) === 2) w.replaceCellAt(w.idx(x, y), 10, 0xbfe6f2); });
-  await page.waitForFunction(() => window.__game.ctx.levels.current.mechanisms.filter(m => m.id === 8301 || m.id === 8302).every(m => m.state === 1), null, { timeout: 15000 });
+  await page.evaluate(() => { window.__game.ctx.enemies.length = 0; });
+  // The barricade: the first thing a new alchemist sets on fire. Stand back
+  // where its note says, one Spark Bolt click, wait for the doorway to cool.
+  const spawnFrame = await page.evaluate(() => window.__game.ctx.state.frameCount);
+  assert.equal(await page.locator('#objective').innerText(), 'Burn through the barricade.');
+  await walkTo(372);
+  await page.screenshot({ path: `${output}/barricade.png` });
+  await pointAtWorld(405, 300, true);
+  await page.waitForFunction(() => window.__game.ctx.levels.current.mechanisms.find(m => m.id === 8401)?.state === 1, null, { timeout: 8000 });
+  report.firstFireSeconds = (await page.evaluate(() => window.__game.ctx.state.frameCount) - spawnFrame) / 60;
+  await page.screenshot({ path: `${output}/barricade-burning.png` });
+  await page.waitForFunction(() => { const w = window.__game.ctx.world; let f = 0; for (let y = 286; y <= 316; y++) for (let x = 394; x <= 420; x++) if (w.type(x, y) === 5) f++; return f < 6; }, null, { timeout: 12000 });
+  report.afterBurn = await page.evaluate(() => ({ hp: window.__game.ctx.player.hp, x: window.__game.ctx.player.x }));
+  assert.ok(report.afterBurn.hp > 90, `standing back from the barricade fire is safe (${report.afterBurn.hp})`);
+  assert.equal(await page.locator('#objective').innerText(), 'Pull the engine crank.');
   await walkTo(428);
   await page.keyboard.press('KeyE');
   await waitStage(1, 8000);
@@ -177,7 +189,23 @@ try {
   await page.waitForFunction(() => window.__game.ctx.levels.current.keyTaken, null, { timeout: 8000 });
   await page.waitForFunction(() => window.__game.ctx.camera.actionFocus === null, null, { timeout: 10000 });
   report.bellCollected = true;
-  console.log('PASS: the engine was played through real input, the player kept control and the bell was collected.');
+  // The Lower Bell: teleport over the long Works traversal (that route is
+  // verify-living-traversal's job), then walk onto the grate. The lock rings,
+  // the leaves slide into their slots, the floor opens and the descent begins.
+  await page.evaluate(() => { const c = window.__game.ctx; Object.assign(c.player, { x: 1330, y: 1009, vx: 0, vy: 0 }); c.camera.snapTo(1330, 1000); });
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${output}/gate-closed.png` });
+  await page.keyboard.down('KeyD');
+  await page.waitForFunction(() => window.__game.ctx.levels.current.portal.open, null, { timeout: 6000 });
+  await page.keyboard.up('KeyD');
+  await page.waitForTimeout(350);
+  await page.screenshot({ path: `${output}/gate-opening.png` });
+  await page.keyboard.down('KeyD');
+  await page.waitForFunction(() => window.__game.ctx.sanctum?.isOpen || window.__game.ctx.levels.current?.def.id !== 'd1', null, { timeout: 8000 });
+  await page.keyboard.up('KeyD');
+  await page.screenshot({ path: `${output}/gate-descent.png` });
+  report.descended = true;
+  console.log(`PASS: first fire after ${report.firstFireSeconds.toFixed(1)} s; the engine was played through real input, the player kept control, the bell was collected and the lower gate opened.`);
 } finally {
   writeFileSync(`${output}/report.json`, JSON.stringify(report, null, 2));
   await page.screenshot({ path: `${output}/last.png` }).catch(() => {});
