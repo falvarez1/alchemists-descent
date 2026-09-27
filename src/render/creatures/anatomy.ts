@@ -24,6 +24,23 @@ export function chainTube(r: CreatureRaster, c: Chain, z: number, mat: number, o
 export interface EyeMats { eye: number; glint: number; iris?: number; lid?: number }
 
 /**
+ * Eyes recorded during a species draw, at the rig's real head anchors — the
+ * light wave's eyeshine pass (render/creatures/eyeshine) reads them after the
+ * body resolves. Species call markEye where they paint an open eye (the
+ * shared eye() helper does it for them); closed eyes are never marked.
+ */
+export const EYE_MARKS = { n: 0, x: new Float32Array(16), y: new Float32Array(16), r: new Float32Array(16) };
+export function resetEyeMarks(): void {
+  EYE_MARKS.n = 0;
+}
+export function markEye(x: number, y: number, size: number): void {
+  const m = EYE_MARKS;
+  if (m.n >= m.x.length) return;
+  m.x[m.n] = x; m.y[m.n] = y; m.r[m.n] = size;
+  m.n++;
+}
+
+/**
  * A small creature eye: a dark wet orb (or an iris when given) with a glint
  * that looks toward the gaze and closes with `lid` (0 open .. 1 shut).
  */
@@ -35,6 +52,7 @@ export function eye(r: CreatureRaster, x: number, y: number, rx: number, ry: num
     return;
   }
   r.stamp(x, y, rx, ry * open, angle, m.eye, 0, false);
+  markEye(x, y, Math.max(rx, ry) * open);
   if (m.iris !== undefined) {
     r.stamp(x + gazeX * rx * 0.3, y + gazeY * ry * 0.3, rx * 0.62, ry * open * 0.7, angle, m.iris, 2, true);
     r.stamp(x + gazeX * rx * 0.38, y + gazeY * ry * 0.38, rx * 0.26, ry * open * 0.5, angle, m.eye, 0, true);

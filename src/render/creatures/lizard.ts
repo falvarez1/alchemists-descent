@@ -2,6 +2,7 @@ import type { Ctx, Enemy } from '@/core/types';
 import type { CreatureRig } from '@/creatures/rig/types';
 import { LZ, LZ_CHEST, LZ_HEAD, LZ_HIPS } from '@/creatures/species/lizard';
 import type { CreatureRaster } from './raster';
+import { markEye } from './anatomy';
 import { material } from './palette';
 import type { CreatureMaterial } from './palette';
 import type { SpeciesArt } from './types';
@@ -159,6 +160,7 @@ export const lizardArt: SpeciesArt = {
     const lid = e.expression?.lid ?? 0;
     const open = Math.max(0.25, 1 - lid);
     r.stamp(ex, ey, 1.0, 0.8 * open, ha, EYE, 0, false);
+    markEye(ex, ey, 0.9 * open);
     if (open > 0.4) r.dot(ex - 0.3, ey - 0.35, GLINT, 1, 30);
     // A drip of acid at the lip when the sac is full.
     if (sac > 0.45) {

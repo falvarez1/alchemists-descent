@@ -1,8 +1,10 @@
 import { propagateLight } from '@/render/propagateLight';
 import { VIEW_H, VIEW_W } from '@/config/constants';
-import { renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
+import { DARK_ADAPT, renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
+import { DARKNESS, LANTERN } from '@/config/darkness';
+import { DARK_H, DARK_W, darkMapFor, renderDarkness, renderOpenLut, sampleDarkMap } from '@/core/darkness';
 import type { LightField, LightSample } from '@/render/pixels';
 import { creatureLights } from '@/render/creatures/lights';
 
@@ -99,8 +101,34 @@ export class Lighting implements LightField {
   readonly lightB: Float32Array;
   readonly lightAtt: Float32Array;
   readonly vignette: Float32Array;
+  /**
+   * Designed darkness as a RENDER factor per light texel: 1 = the shipped
+   * look, falling toward 0 inside a deep-dark zone. Every compose path
+   * multiplies ambient and the readability floor by it (the GPU paths ship it
+   * as the light texture's alpha); real light is untouched.
+   */
+  readonly lightOpen: Float32Array;
+  /**
+   * How much of the wand's OWN occluded light (omni + beam, normalized 0..1)
+   * reached each texel on the last build: the gameplay "is the lantern on
+   * it" read (render/LightQuery). Zero everywhere while hooded.
+   */
+  readonly wandField: Float32Array;
+  /** Camera origin of the last build: gameplay reads index the field with it. */
+  originX = 0;
+  originY = 0;
+  /** True once the field has been built at least once. */
+  built = false;
 
   private wandFlicker = 1;
+  /** Smoothed render darkness under the player (the lantern's spill shrinks in it). */
+  private playerDark = 0;
+  /** The hood shutter, eased: 0 open ... 1 hooded. */
+  private hoodK = 0;
+  /** Normalized wand-coverage gain the running raycast writes into wandField (0 = none). */
+  private wandWrite = 0;
+  /** lightOpen currently holds all-ones (a fully readable level skips the per-texel pass). */
+  private openIsFlat = true;
   private wandFlickerTarget = 1;
   private readonly authoredFalloffCache = new Map<string, AuthoredFalloffCell[]>();
 
@@ -120,6 +148,8 @@ export class Lighting implements LightField {
     this.lightG = new Float32Array(this.LW * this.LH);
     this.lightB = new Float32Array(this.LW * this.LH);
     this.lightAtt = new Float32Array(this.LW * this.LH);
+    this.lightOpen = new Float32Array(this.LW * this.LH).fill(1);
+    this.wandField = new Float32Array(this.LW * this.LH);
     this.vignette = new Float32Array(VIEW_W * VIEW_H);
     // bakeVignette (full-res radial darkening, baked once)
     const cx = VIEW_W / 2,
@@ -144,12 +174,14 @@ export class Lighting implements LightField {
     let Lr = 0,
       Lg = 0,
       Lb = 0,
-      vg = 1;
+      vg = 1,
+      open = 1;
     if (lx >= 0 && lx < this.LW && ly >= 0 && ly < this.LH) {
       const i = ly * this.LW + lx;
       Lr = this.lightR[i];
       Lg = this.lightG[i];
       Lb = this.lightB[i];
+      open = this.lightOpen[i];
     }
     if (fx >= 0 && fx < VIEW_W && fy >= 0 && fy < VIEW_H) {
       // Rescale the baked VIGNETTE_BASE vignette by the live postFx.vignette
@@ -159,12 +191,17 @@ export class Lighting implements LightField {
       const vigScale = ctx.state.postFx.vignette / VIGNETTE_BASE;
       vg = 1 - vigScale * (1 - this.vignette[fy * VIEW_W + fx]);
     }
-    let f = (AMBIENT + Math.min(2.2, Lr)) * vg;
-    this.lit.r = Math.max(0.48 * vg, Math.min(1.8, f * f));
-    f = (AMBIENT + Math.min(2.2, Lg)) * vg;
-    this.lit.g = Math.max(0.48 * vg, Math.min(1.8, f * f));
-    f = (AMBIENT + Math.min(2.2, Lb)) * vg;
-    this.lit.b = Math.max(0.48 * vg, Math.min(1.8, f * f));
+    // Designed darkness (config/darkness) lowers ambient AND the 0.48 sprite
+    // floor together, so in a deep-dark zone a body is only what light shows.
+    // Eye adaptation (lightingModel DARK_ADAPT) keeps dim light visible there.
+    const amb = AMBIENT * open, floor = 0.48 * vg * open, adapt = DARK_ADAPT * (1 - open);
+    let f = (amb + Math.min(2.2, Lr)) * vg;
+    this.lit.r = Math.max(floor, Math.min(1.8, f * f + adapt * f));
+    f = (amb + Math.min(2.2, Lg)) * vg;
+    this.lit.g = Math.max(floor, Math.min(1.8, f * f + adapt * f));
+    f = (amb + Math.min(2.2, Lb)) * vg;
+    this.lit.b = Math.max(floor, Math.min(1.8, f * f + adapt * f));
+    this.lit.open = open;
     return this.lit;
   }
 
@@ -261,6 +298,20 @@ export class Lighting implements LightField {
     const world = ctx.world;
     const renderCamX = ctx.camera.renderX,
       renderCamY = ctx.camera.renderY;
+    this.originX = renderCamX;
+    this.originY = renderCamY;
+    this.built = true;
+    this.wandField.fill(0);
+    // Designed darkness (core/darkness): a per-level baked map, read per texel
+    // through the comfort setting's render curve. A readable level skips it.
+    const darkMap = ctx.state.mode === 'play' ? darkMapFor(ctx.levels.current) : null;
+    const openLut = renderOpenLut(ctx.state.highReadability === true);
+    const lightOpen = this.lightOpen;
+    if (!darkMap && !this.openIsFlat) {
+      lightOpen.fill(1);
+      this.openIsFlat = true;
+    }
+    if (darkMap) this.openIsFlat = false;
     // Reactive bioluminescence: glow-caps flare as the alchemist passes through
     // them. Off-mode/dead → park the point far away so the flare never fires.
     const glowReact = ctx.state.mode === 'play' && !ctx.player.dead;
@@ -271,11 +322,13 @@ export class Lighting implements LightField {
     for (let ly = 0; ly < LH; ly++) {
       const wy = renderCamY + (ly << 1);
       const row = ly * LW;
+      const darkRow = darkMap ? Math.min(DARK_H - 1, Math.max(0, wy >> 1)) * DARK_W : 0;
       for (let lx = 0; lx < LW; lx++) {
         const wx = renderCamX + (lx << 1);
         const wi = world.idx(wx, wy);
         const t = world.types[wi];
         const i = row + lx;
+        if (darkMap) lightOpen[i] = openLut[darkMap[darkRow + Math.min(DARK_W - 1, Math.max(0, wx >> 1))]];
         // Translucent solids (ice, glass, crystal) pass most light through
         lightAtt[i] = MATERIAL_ATTENUATION[t] ?? 0.4;
         if (!EMISSIVE_MATERIAL[t] && !world.charge[wi]) continue;
@@ -386,6 +439,15 @@ export class Lighting implements LightField {
 
     // A faint fill around the wizard keeps him readable even in self-shadow;
     // the wand itself is raycast after the sweeps so its shadows stay crisp
+    // The lantern's state: the hood shutter eases (a visible, audible beat;
+    // see game/Lantern) and the spill tracks how dark it is under the player.
+    const hoodTarget = ctx.state.lanternHooded === true ? 1 : 0;
+    this.hoodK += (hoodTarget - this.hoodK) * LANTERN.hoodEase;
+    if (Math.abs(hoodTarget - this.hoodK) < 0.004) this.hoodK = hoodTarget;
+    const darkHere = darkMap
+      ? renderDarkness(sampleDarkMap(darkMap, ctx.player.x, ctx.player.y - 9), ctx.state.highReadability === true)
+      : 0;
+    this.playerDark += (darkHere - this.playerDark) * DARKNESS.playerEase;
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
       const wand = ctx.state.wandLight;
       this.wandFlicker += (this.wandFlickerTarget - this.wandFlicker) * 0.25;
@@ -393,7 +455,8 @@ export class Lighting implements LightField {
         const spread = Math.max(0, wand.flicker);
         this.wandFlickerTarget = spread > 0 ? 1.04 - spread + Math.random() * spread * 2 : 1;
       }
-      this.seedLight(ctx.player.x, ctx.player.y - 9, wand.fillR, wand.fillG, wand.fillB);
+      const fill = 1 + (LANTERN.hoodFill - 1) * this.hoodK;
+      this.seedLight(ctx.player.x, ctx.player.y - 9, wand.fillR * fill, wand.fillG * fill, wand.fillB * fill);
       // Active flask siphon (hold E): pulse a cool light over the drained patch
       // at the cursor so the pull reads even against the bright wand light.
       // Max-combined like every wand light (seedLight takes the max — never
@@ -546,6 +609,25 @@ export class Lighting implements LightField {
       // Lit braziers cast warmth past their own flames (fire cells help too)
       for (const m of runtime.mechanisms) {
         if (m.kind === 'brazier' && m.state === 1) this.seedLight(m.x, m.y - 2, 0.8, 0.5, 0.12);
+        else if (m.kind === 'sensor' && m.sensorType === 'light') {
+          // A photocell warms as it charges and burns steady gold once latched
+          // (restrained: well under its own blaze threshold, config/darkness).
+          const c = m.state > 0 ? 1 : Math.min(1, (m.reading ?? 0) / (m.threshold ?? 90));
+          if (c > 0.02) this.seedLight(m.x, m.y, 0.34 * c, 0.24 * c, 0.08 * c);
+        }
+      }
+      // Lumen blooms breathe their own faint light, brighter as they open, and
+      // their glass bridge glows along its length so it can be crossed in the dark.
+      if (runtime.lumenBlooms) {
+        const fc = ctx.state.frameCount;
+        for (const b of runtime.lumenBlooms) {
+          const k = 0.1 + b.open * 0.26 + Math.sin(fc * 0.045 + b.id * 1.7) * 0.03;
+          this.seedLight(b.x, b.y - 1, k * 0.45, k, k * 0.7);
+          for (let i = 6; i < b.shown; i += 10) {
+            const [px, py] = b.petals[i];
+            this.seedLight(px, py - 1, 0.05 * b.open, 0.13 * b.open, 0.09 * b.open);
+          }
+        }
       }
       // Designer-placed lights (Builder Phase 7).
       if (runtime.authoredLights) {
@@ -587,9 +669,16 @@ export class Lighting implements LightField {
 
     // The wand: a true shadow-casting light. Rays march outward from the tip;
     // rock absorbs them hard, so edges throw real shadows and nothing wraps corners.
+    // In the dark the omni SPILL shrinks toward your footing and the aimed beam
+    // carries further; hooded, the lantern is an ember and the beam is out.
+    const hoodK = this.hoodK, darkK = this.playerDark;
+    const spillRadius = (1 + (LANTERN.darkOmniRadius - 1) * darkK) * (1 + (LANTERN.hoodRadius - 1) * hoodK);
+    const spillIntensity = 1 + (LANTERN.hoodIntensity - 1) * hoodK;
+    this.wandWrite = ctx.state.lanternHooded === true ? 0 : 1;
     if (ctx.state.mode === 'play' && !ctx.player.dead && ctx.player.legClub) {
       // The stowed wand lights the belt; no detached muzzle or aiming beam.
-      this.raycastWandLight(ctx.player.x, ctx.player.y - 8, ctx.state.wandLight.intensity * .85, ctx.state.wandLight.radius);
+      this.raycastWandLight(ctx.player.x, ctx.player.y - 8, ctx.state.wandLight.intensity * .85 * spillIntensity,
+        ctx.state.wandLight.radius * spillRadius);
     } else if (ctx.state.mode === 'play' && !ctx.player.dead) {
       // Wand muzzle: 9 cells along aimAngle from (player.x, player.y - 9) —
       // computed locally (same formula as ctx.spells.wandTip) so the render
@@ -603,14 +692,17 @@ export class Lighting implements LightField {
       const rawBase = torch ? wand.torchIntensity : wand.intensity;
       const baseIntensity = rawBase * flick;
       const baseRadius = torch ? wand.torchRadius : wand.radius;
-      this.raycastWandLight(tipX, tipY, baseIntensity, baseRadius);
+      this.raycastWandLight(tipX, tipY, baseIntensity * spillIntensity, baseRadius * spillRadius);
       // Directional beam down the aim — extends corridor sightlines without
       // brightening the wizard (same flicker, max-combined, dimmer at the muzzle).
       // Fired from a point closer to the wizard than the muzzle so the cone
       // reads as starting at the wand, not floating ahead of it.
       const beamX = ctx.player.x + Math.cos(ctx.player.aimAngle) * BEAM_ORIGIN_DIST;
       const beamY = ctx.player.y - 9 + Math.sin(ctx.player.aimAngle) * BEAM_ORIGIN_DIST;
-      this.raycastWandBeam(beamX, beamY, ctx.player.aimAngle, baseIntensity, baseRadius);
+      if (hoodK < 0.999) {
+        const beamK = (1 - hoodK) * (1 + (LANTERN.darkBeamIntensity - 1) * darkK);
+        this.raycastWandBeam(beamX, beamY, ctx.player.aimAngle, baseIntensity * beamK, baseRadius, darkK);
+      }
       // Third light: non-occluded ambient glow over the same cone, on its OWN
       // faster flicker (candle-like life) instead of the steady wand flicker.
       const fc = ctx.state.frameCount;
@@ -619,12 +711,16 @@ export class Lighting implements LightField {
         Math.sin(fc * 0.31) * 0.1 +
         Math.sin(fc * 0.57 + 2.1) * 0.07 +
         (Math.random() - 0.5) * 0.05;
-      this.raycastWandGlow(beamX, beamY, ctx.player.aimAngle, rawBase * glowFlick, baseRadius);
+      if (hoodK < 0.999) {
+        this.raycastWandGlow(beamX, beamY, ctx.player.aimAngle, rawBase * glowFlick * (1 - hoodK),
+          baseRadius * (1 + (LANTERN.darkGlowRadius - 1) * darkK));
+      }
     } else if (ctx.state.mode === 'build' && ctx.state.builderWandLightPreview.enabled) {
       const preview = ctx.state.builderWandLightPreview;
       const wand = ctx.state.wandLight;
       this.raycastWandLight(preview.x, preview.y, wand.intensity, wand.radius);
     }
+    this.wandWrite = 0;
 
     // Death glow: the wand goes dark with the wizard, so the corpse carries its
     // own fading warm soul-light — the ragdoll stays readable as it tumbles.
@@ -649,6 +745,7 @@ export class Lighting implements LightField {
       s * wand.g,
       s * wand.b,
       Math.max(1, Math.round(Math.max(1, radius) * 0.5)),
+      this.wandWrite,
     );
   }
 
@@ -668,6 +765,7 @@ export class Lighting implements LightField {
     aim: number,
     intensity: number,
     radius: number,
+    darkK = 0,
   ): void {
     const wand = this.ctx.state.wandLight;
     const s = Math.max(0, intensity) * BEAM_INTENSITY_SCALE;
@@ -675,7 +773,11 @@ export class Lighting implements LightField {
     const sr = s * wand.r,
       sg = s * wand.g,
       sb = s * wand.b;
-    const { LW, LH, lightR, lightG, lightB, lightAtt } = this;
+    const { LW, LH, lightR, lightG, lightB, lightAtt, wandField } = this;
+    const wandGain = this.wandWrite;
+    // In designed darkness the beam loses less per cell of air: the one thing
+    // the wizard can see by is the thing he points.
+    const stepAir = BEAM_STEP_AIR + (LANTERN.darkBeamStepAir - BEAM_STEP_AIR) * darkK;
     const radiusHalf = Math.max(1, Math.round(Math.max(1, radius) * BEAM_RADIUS_SCALE * 0.5));
     const ox = (wx - this.ctx.camera.renderX) / 2,
       oy = (wy - this.ctx.camera.renderY) / 2;
@@ -702,8 +804,9 @@ export class Lighting implements LightField {
         if (vr > lightR[i]) lightR[i] = vr;
         if (vgc > lightG[i]) lightG[i] = vgc;
         if (vb > lightB[i]) lightB[i] = vb;
+        if (wandGain > 0 && fall * wandGain > wandField[i]) wandField[i] = fall * wandGain;
         const att = lightAtt[i];
-        T *= att < 0.5 ? BEAM_STEP_SOLID : att < 0.83 ? BEAM_STEP_LIQ : BEAM_STEP_AIR;
+        T *= att < 0.5 ? BEAM_STEP_SOLID : att < 0.83 ? BEAM_STEP_LIQ : stepAir;
         if (T < 0.02) break;
       }
     }
@@ -775,8 +878,9 @@ export class Lighting implements LightField {
     sg: number,
     sb: number,
     radiusHalf: number,
+    wandGain = 0,
   ): void {
-    const { LW, LH, lightR, lightG, lightB, lightAtt } = this;
+    const { LW, LH, lightR, lightG, lightB, lightAtt, wandField } = this;
     const ox = (wx - this.ctx.camera.renderX) / 2,
       oy = (wy - this.ctx.camera.renderY) / 2;
     if (ox < -radiusHalf || ox > LW + radiusHalf || oy < -radiusHalf || oy > LH + radiusHalf)
@@ -800,6 +904,7 @@ export class Lighting implements LightField {
         if (vr > lightR[i]) lightR[i] = vr;
         if (vgc > lightG[i]) lightG[i] = vgc;
         if (vb > lightB[i]) lightB[i] = vb;
+        if (wandGain > 0 && fall * wandGain > wandField[i]) wandField[i] = fall * wandGain;
         const att = lightAtt[i];
         T *= att < 0.5 ? STEP_SOLID : att < 0.88 ? STEP_LIQ : STEP_AIR;
         if (T < 0.02) break;

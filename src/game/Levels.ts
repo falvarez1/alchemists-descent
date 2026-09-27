@@ -2228,6 +2228,10 @@ export class Levels implements LevelsApi {
       ...(pristine.decors.length > 0 ? { decors: pristine.decors } : {}),
       ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
       ...(pristine.spellLab ? { spellLab: pristine.spellLab } : {}),
+      // Light wave: designed darkness and lumen blooms are static authored data
+      // (a bloom restores furled; its update clears any petals the save kept).
+      ...(pristine.darkZones?.length ? { darkZones: pristine.darkZones } : {}),
+      ...(pristine.lumenBlooms?.length ? { lumenBlooms: pristine.lumenBlooms } : {}),
       mapWaypoint: sanitizeMapWaypoint(blob.mapWaypoint, world),
       weaverLairWebs: sanitizeWeaverLairWebs(blob.weaverLairWebs),
     });
@@ -2545,6 +2549,8 @@ export class Levels implements LevelsApi {
       spellLab,
       surfaceSpawn,
       surfaceSkyLine,
+      darkZones,
+      lumenBlooms,
     } = ctx.worldgen.generateLevel(ctx, def, seed);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
@@ -2597,6 +2603,8 @@ export class Levels implements LevelsApi {
       ...(spellLab ? { spellLab } : {}),
       ...(surfaceSpawn ? { surfaceSpawn } : {}),
       ...(surfaceSkyLine !== null ? { skyLine: surfaceSkyLine } : {}),
+      ...(darkZones?.length ? { darkZones } : {}),
+      ...(lumenBlooms?.length ? { lumenBlooms } : {}),
       weaverLairWebs,
       population,
       ...(def.id === 'd1' ? { living: createLivingState() } : {}),

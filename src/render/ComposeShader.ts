@@ -12,6 +12,14 @@ import {
   LIGHT_KNEE_SLOPE,
   LIGHT_KNEE_START,
   LIGHT_READABILITY_FLOOR,
+  DARK_ADAPT,
+  DARK_AIR_GLOW,
+  DARK_AIR_B,
+  DARK_AIR_G,
+  DARK_AIR_R,
+  DARK_FLOOR_B,
+  DARK_FLOOR_G,
+  DARK_FLOOR_R,
   renderAmbient,
   SELF_GLOW_BASE,
   SELF_GLOW_SCALE,
@@ -333,7 +341,12 @@ void main() {
       if (topAir && sub.y < 0.5 && ((leftAir && sub.x < 0.5) || (rightAir && sub.x >= 0.5))) type = ${Cell.Empty};
     }` : ''}
 
-    vec3 light = texelFetch(uLight, ivec2(vx >> 1, vy >> 1), 0).rgb;
+    vec4 lightTexel = texelFetch(uLight, ivec2(vx >> 1, vy >> 1), 0);
+    vec3 light = lightTexel.rgb;
+    // Designed darkness (alpha): scales ambient + the readability floor.
+    float open = lightTexel.a;
+    float shut = 1.0 - open;
+    float adapt = ${DARK_ADAPT.toFixed(3)} * shut;
     float dxv = float(vx) - ${VIG_CX.toFixed(1)};
     float dyv = float(vy) - ${VIG_CY.toFixed(1)};
     float vg = 1.0 - uVignette * ((dxv * dxv + dyv * dyv) / ${VIG_MAXR2.toFixed(1)});
@@ -421,15 +434,16 @@ void main() {
         b = bg.b * k;
       } else {
         float lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.r) * vg;
-        r = (r * 0.62 + uAmbient * 0.022) * vg + r * lf0 * lf0 * 0.72;
+        r = (r * 0.62 + uAmbient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_R.toFixed(4)} * shut;
         lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.g) * vg;
-        g = (g * 0.62 + uAmbient * 0.022) * vg + g * lf0 * lf0 * 0.72;
+        g = (g * 0.62 + uAmbient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_G.toFixed(4)} * shut;
         lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.b) * vg;
-        b = (b * 0.62 + uAmbient * 0.032) * vg + b * lf0 * lf0 * 0.72;
-        // air itself catches the glow near strong light
-        r += max(0.0, light.r - 0.25) * 0.045 * vg;
-        g += max(0.0, light.g - 0.25) * 0.04 * vg;
-        b += max(0.0, light.b - 0.25) * 0.035 * vg;
+        b = (b * 0.62 + uAmbient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_B.toFixed(4)} * shut;
+        // air itself catches the glow near strong light (more so in the dark)
+        float haze = vg * (1.0 + ${DARK_AIR_GLOW.toFixed(3)} * shut);
+        r += max(0.0, light.r - 0.25) * 0.045 * haze;
+        g += max(0.0, light.g - 0.25) * 0.04 * haze;
+        b += max(0.0, light.b - 0.25) * 0.035 * haze;
       }
       c = vec3(r, g, b) + ringGlow * vec3(0.55, 0.42, 0.26);
     } else {
@@ -618,20 +632,21 @@ void main() {
       // The lighting law (per channel): vignette, ambient, clamp 2.2, square,
       // soft knee above 1.25, vignette-free selfGlow for emissives, plus the
       // 0.06 readability floor. Ported verbatim from FrameComposer.
-      float floorL = ${LIGHT_READABILITY_FLOOR.toFixed(2)} * vg;
+      float floorL = ${LIGHT_READABILITY_FLOOR.toFixed(2)} * vg * open;
+      float ambL = uAmbient * open;
       float selfGlow = scalar > 0.0 ? ${SELF_GLOW_BASE.toFixed(2)} + scalar * ${SELF_GLOW_SCALE.toFixed(2)} : 0.0;
-      float lf = (uAmbient + min(${LIGHT_CLAMP.toFixed(1)}, light.r)) * vg;
-      float lit = lf * lf;
+      float lf = (ambL + min(${LIGHT_CLAMP.toFixed(1)}, light.r)) * vg;
+      float lit = lf * lf + adapt * lf;
       if (lit > ${LIGHT_KNEE_START.toFixed(2)}) lit = min(${LIGHT_KNEE_MAX.toFixed(1)}, ${LIGHT_KNEE_START.toFixed(2)} + (lit - ${LIGHT_KNEE_START.toFixed(2)}) * ${LIGHT_KNEE_SLOPE.toFixed(1)});
-      r = r * max(lit, selfGlow) + r * floorL;
-      lf = (uAmbient + min(${LIGHT_CLAMP.toFixed(1)}, light.g)) * vg;
-      lit = lf * lf;
+      r = r * max(lit, selfGlow) + r * (floorL + ${DARK_FLOOR_R.toFixed(4)} * shut);
+      lf = (ambL + min(${LIGHT_CLAMP.toFixed(1)}, light.g)) * vg;
+      lit = lf * lf + adapt * lf;
       if (lit > ${LIGHT_KNEE_START.toFixed(2)}) lit = min(${LIGHT_KNEE_MAX.toFixed(1)}, ${LIGHT_KNEE_START.toFixed(2)} + (lit - ${LIGHT_KNEE_START.toFixed(2)}) * ${LIGHT_KNEE_SLOPE.toFixed(1)});
-      g = g * max(lit, selfGlow) + g * floorL;
-      lf = (uAmbient + min(${LIGHT_CLAMP.toFixed(1)}, light.b)) * vg;
-      lit = lf * lf;
+      g = g * max(lit, selfGlow) + g * (floorL + ${DARK_FLOOR_G.toFixed(4)} * shut);
+      lf = (ambL + min(${LIGHT_CLAMP.toFixed(1)}, light.b)) * vg;
+      lit = lf * lf + adapt * lf;
       if (lit > ${LIGHT_KNEE_START.toFixed(2)}) lit = min(${LIGHT_KNEE_MAX.toFixed(1)}, ${LIGHT_KNEE_START.toFixed(2)} + (lit - ${LIGHT_KNEE_START.toFixed(2)}) * ${LIGHT_KNEE_SLOPE.toFixed(1)});
-      b = b * max(lit, selfGlow) + b * floorL;
+      b = b * max(lit, selfGlow) + b * (floorL + ${DARK_FLOOR_B.toFixed(4)} * shut);
 
       c = vec3(r, g, b) * intensity + ringGlow * vec3(0.55, 0.42, 0.26);
     }
@@ -1410,13 +1425,15 @@ export class GpuCompose {
   }
 
   private uploadLight(light: LightField): void {
-    const { lightR, lightG, lightB } = light;
+    const { lightR, lightG, lightB, lightOpen } = light;
     const out = this.lightData;
     const n = light.LW * light.LH;
     for (let i = 0, o = 0; i < n; i++, o += 4) {
       out[o] = lightR[i];
       out[o + 1] = lightG[i];
       out[o + 2] = lightB[i];
+      // alpha = designed darkness as a render factor (1 = shipped look)
+      out[o + 3] = lightOpen ? lightOpen[i] : 1;
     }
     this.lightTex.needsUpdate = true;
   }

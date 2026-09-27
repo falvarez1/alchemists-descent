@@ -3,7 +3,7 @@ import { createChain } from '@/creatures/body';
 import type { BodyNode } from '@/creatures/types';
 import type { CreatureRig } from '@/creatures/rig/types';
 import { LEV_LINKS, SRP } from '@/creatures/species/serpents';
-import { POLY } from './anatomy';
+import { markEye, POLY } from './anatomy';
 import { material } from './palette';
 import type { CreatureMaterial } from './palette';
 import type { CreatureRaster } from './raster';
@@ -131,6 +131,7 @@ export const rillbackArt: SpeciesArt = {
     r.ellipse(...P(2.8, 0.1), 2.2, 1.5, ang, 4, R_SKIN, { group: 6 });
     const [ex, ey] = P(1.2, 1.1);
     r.stamp(ex, ey, 0.6, 0.55, 0, R_EYE, 0, false);
+    markEye(ex, ey, 0.6);
     r.dot(ex - 0.2, ey - 0.2, R_GLINT, 1, 50);
     if (charge > 0.2) r.glowStamp(...P(0, 0), 1.2, 1.2, 0, R_LINE, 1 + charge * 2, 0.3, 6);
   },
@@ -328,6 +329,7 @@ export const leviathanArt: SpeciesArt = {
     for (let g = 0; g < 3; g++) r.stroke(hx - fs * (6 + g * 1.3), hy - 2.5 + g * 0.3, hx - fs * (6.6 + g * 1.3), hy + 2.2, L_MOUTH, 1, true);
     // Eye: small, high and cold.
     r.stamp(hx + fs * 2.4, hy - 3.6, 0.9, 0.8, 0, L_EYE, 2, true);
+    markEye(hx + fs * 2.4, hy - 3.6, 1.1);
     r.dot(hx + fs * 2.2, hy - 3.9, L_LURE, 3, 90);
     // The angler's lure.
     for (let i = 1; i < lure.pts.length; i++) {

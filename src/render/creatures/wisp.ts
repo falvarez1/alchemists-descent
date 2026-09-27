@@ -1,7 +1,7 @@
 import type { Ctx, Enemy } from '@/core/types';
 import type { CreatureRig } from '@/creatures/rig/types';
 import { bellRim, WSP, WSP_BELL, WSP_TENTACLES } from '@/creatures/species/wisp';
-import { chainTube, POLY } from './anatomy';
+import { chainTube, markEye, POLY } from './anatomy';
 import { material } from './palette';
 import type { CreatureMaterial } from './palette';
 import type { CreatureRaster } from './raster';
@@ -80,7 +80,10 @@ export const wispArt: SpeciesArt = {
       r.dot(bell.x + Math.cos(a) * rx * 0.9, bell.y + Math.sin(a) * ry * 0.9 + 0.5, RIME, (c + tick / 20) % 3 < 1 ? 1 : 0, 40);
     }
     // Ocelli on the skirt — the only thing on it that looks back.
-    for (const s of [-0.55, -0.2, 0.2, 0.55]) r.dot(bell.x + s * rx * 2 * ca, bell.y + 1.9 + s * rx * 2 * sa, OCELLUS, 0, 45);
+    for (const s of [-0.55, -0.2, 0.2, 0.55]) {
+      r.dot(bell.x + s * rx * 2 * ca, bell.y + 1.9 + s * rx * 2 * sa, OCELLUS, 0, 45);
+      markEye(bell.x + s * rx * 2 * ca, bell.y + 1.9 + s * rx * 2 * sa, 0.35);
+    }
     // Charging a frost bolt: the heart flares toward the target.
     if (F[WSP.charge] > 0.1) {
       const tx = (e.mind?.targetX ?? bell.x) - bell.x, ty = (e.mind?.targetY ?? bell.y) - 9 - bell.y, d = Math.hypot(tx, ty) || 1;

@@ -47,6 +47,8 @@ export function makeLevelRuntime(
       | 'vaultArch'
       | 'surfaceSpawn'
       | 'skyLine'
+      | 'darkZones'
+      | 'lumenBlooms'
     >
   >,
 ): LevelRuntime {

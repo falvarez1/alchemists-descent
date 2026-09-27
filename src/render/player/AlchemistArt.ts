@@ -165,7 +165,7 @@ export function drawAlchemistBody(out: PixelSurface, field: LightField, ctx: Ctx
     if (fill !== null && fill !== undefined && (ctx.flask?.state.count ?? 0) > 0) r.stamp(h.x + c * 1.1 * f, h.y + sn * 1.1 + 0.3, 1.1, 0.6, h.angle, LIQUID, 2, false, 12);
     r.capsule(h.x - c * 0.7 * f, h.y - sn * 0.7, 0.45, h.x - c * 1.5 * f, h.y - sn * 1.5, 0.35, 9.5, 9.5, WOOD, { group: 12 });
   }
-  if (s.wand.visible) drawWand(r, s, frame);
+  if (s.wand.visible) drawWand(r, s, frame, ctx.state.lanternHooded === true && !a.firing);
   limb(r, s.chest, s.frontElbow, 1.0, 0.85, 8, COAT, 13);
   limb(r, s.frontElbow, s.frontHand, 0.85, 0.65, 8.5, COAT, 13);
   r.stamp((s.frontElbow.x + s.frontHand.x * 2) / 3, (s.frontElbow.y + s.frontHand.y * 2) / 3, 0.7, 0.7, 0, MANTLE, 1, false, 13);
@@ -240,13 +240,20 @@ function drawLooseHat(r: CreatureRaster, hat: RigidBody, alpha: number): void {
   r.stamp(...P(0, -0.9), 2.4, 0.5, ang, LEATHER, 1, false, 16);
 }
 
-function drawWand(r: CreatureRaster, s: Skeleton, frame: number): void {
+function drawWand(r: CreatureRaster, s: Skeleton, frame: number, hooded = false): void {
   const w = s.wand, ang = w.angle + w.spin;
   const c = Math.cos(ang), sn = Math.sin(ang);
   const len = 9.5;
   const bx = w.x - c * 2.6, by = w.y - sn * 2.6, tx = w.x + c * len, ty = w.y + sn * len;
   r.capsule(bx, by, 0.45, tx, ty, 0.3, 8.2, 8.2, WOOD, { group: 14 });
   r.capsule(tx - c * 1.4, ty - sn * 1.4, 0.42, tx - c * 0.2, ty - sn * 0.2, 0.42, 8.3, 8.3, COPPER, { group: 14 });
+  if (hooded) {
+    // Light wave: the lantern's brass hood is down over the tip, and an ember
+    // breathes inside it where the cyan flame was.
+    r.capsule(tx - c * 0.5, ty - sn * 0.5, 0.66, tx + c * 0.9, ty + sn * 0.9, 0.58, 8.5, 8.5, COPPER, { group: 14 });
+    r.glowStamp(tx + c * 0.55, ty + sn * 0.55, 0.42, 0.42, 0, FLAME, 0.8 + Math.sin(frame * 0.07) * 0.35, 0.1, 14);
+    return;
+  }
   const glow = w.glow * (0.9 + Math.sin(frame * 0.3) * 0.1);
   r.ellipse(tx + c * 0.35, ty + sn * 0.35, 0.55 + glow * 0.35, 0.55 + glow * 0.35, 0, 9, CYAN, { group: 14, noOutline: true });
   r.glowStamp(tx + c * 0.35, ty + sn * 0.35, 0.55 + glow * 0.35, 0.55 + glow * 0.35, 0, CYAN, 1.5 + glow * 1.5, 0.8, 14);

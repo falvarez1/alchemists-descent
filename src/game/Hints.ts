@@ -76,6 +76,13 @@ export class HintSystem implements HintApi {
           body: 'A wand casts its cards left to right — modifiers charge the projectile that follows them. Hover a card to see exactly which slots it touches.',
         }, true);
       }),
+      // Light wave: the first time the alchemist steps into designed darkness.
+      ctx.events.on('darkZoneEntered', () => {
+        this.teachOnce(ctx, 'dark-lantern', {
+          title: 'The Dark',
+          body: 'Nothing here is lit but what you light. Your beam goes where you aim. Watch for eyes. L hoods the lantern: you see less, and you are seen less.',
+        }, true);
+      }),
       ctx.events.on('levelChanged', ({ depth }) => {
         // Arrival is the title card's beat: every lesson waits it out.
         this.teachCalmAt = Math.max(this.teachCalmAt, ctx.state.frameCount + TEACH_ARRIVAL_HOLD_FRAMES);

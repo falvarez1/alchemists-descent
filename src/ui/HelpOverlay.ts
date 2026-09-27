@@ -106,6 +106,26 @@ const PAGES: readonly HandbookPage[] = [
       </ul>`,
   },
   {
+    id: 'light', title: 'Light and dark',
+    lead: 'The Works keep their lamps lit. The deep places do not.',
+    body: `
+      <dl class="hb-keys">
+        <dt>Aim</dt><dd>Your lantern's beam goes where the wand points; in the dark it is most of what you can see</dd>
+        <dt>{lantern}</dt><dd>Hood the lantern to an ember, and again to unhood it</dd>
+      </dl>
+      <ul>
+        <li>In a <b>dark cave</b> the rock and anything living in it are black until light lands on them. <b>Eyes</b>
+        and glowing markings give creatures away first; eyes flash when your beam catches them looking at you.</li>
+        <li>A lit alchemist is seen from far off, and a lantern in the dark is a beacon. <b>Hooded</b>, in the dark,
+        you are seen only up close, or heard.</li>
+        <li>A creature your beam lands on knows exactly where you are. Some shy from it (bats, Weavers, for a while),
+        some are drawn to it (slimes), and a <b>Root Loper</b> freezes while you watch it and creeps when you do not.</li>
+        <li>A brass <b>photocell</b> opens its gate when held in light for a moment. A <b>lumen bloom</b> unfurls a glass
+        bridge while lit and furls it again, slowly, in the dark. Fire counts as light.</li>
+        <li>Comfort: <b>High-readability lighting</b> (Pause → Controls &amp; comfort) keeps the dark lighter.</li>
+      </ul>`,
+  },
+  {
     id: 'map', title: 'The map',
     lead: 'Everything you have seen is charted as you go.',
     body: `

@@ -21,7 +21,8 @@ export function drawHabitatScenery(out: PixelSurface, light: LightField, ctx: Ct
     const x = plant?.x ?? rootX, y = plant?.y ?? worksPlantRoot(world, rootX, expectedY, false, true);
     if (x < camera.renderX - size || x > camera.renderX + VIEW_W + size || y < camera.renderY - size || y > camera.renderY + VIEW_H + size) continue;
     if (y < 0) continue;
-    const sample = light.sample(x, y), lr = Math.max(.5, sample.r), lg = Math.max(.5, sample.g), lb = Math.max(.5, sample.b);
+    const sample = light.sample(x, y), dk = sample.open ?? 1;
+    const lr = Math.max(.5 * dk, sample.r), lg = Math.max(.5 * dk, sample.g), lb = Math.max(.5 * dk, sample.b);
     const bend = plant?.angle ?? 0, burn = plant?.burn ?? 0;
     const pixel = (px: number, py: number, value: number) => {
       const ix = Math.round(px), iy = Math.round(py);
@@ -70,8 +71,8 @@ export function drawVineFoliage(out: PixelSurface, light: LightField, ctx: Ctx, 
     if (!length || node.x < camera.renderX - 14 || node.x > camera.renderX + VIEW_W + 14 || node.y < camera.renderY - 14 || node.y > camera.renderY + VIEW_H + 14) continue;
     const dx = node.x - previous.x, dy = node.y - previous.y, distance = Math.hypot(dx, dy) || 1;
     const tx = dx / distance, ty = dy / distance, nx = -ty, ny = tx;
-    const sample = light.sample(node.x, node.y);
-    const r = Math.max(.5, sample.r), g = Math.max(.5, sample.g), b = Math.max(.5, sample.b);
+    const sample = light.sample(node.x, node.y), dk = sample.open ?? 1;
+    const r = Math.max(.5 * dk, sample.r), g = Math.max(.5 * dk, sample.g), b = Math.max(.5 * dk, sample.b);
     for (const side of [-1, 1]) {
       const count = Math.ceil(length / step);
       for (let k = 0; k <= count; k++) {

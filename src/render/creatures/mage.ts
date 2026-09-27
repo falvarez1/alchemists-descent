@@ -1,7 +1,7 @@
 import type { Ctx, Enemy } from '@/core/types';
 import type { CreatureRig } from '@/creatures/rig/types';
 import { MG, MG_CHEST, MG_FAR_ARM, MG_HEAD, MG_NEAR_ARM, MG_PELVIS } from '@/creatures/species/mage';
-import { POLY } from './anatomy';
+import { markEye, POLY } from './anatomy';
 import { material } from './palette';
 import type { CreatureMaterial } from './palette';
 import type { CreatureRaster } from './raster';
@@ -115,6 +115,7 @@ export const mageArt: SpeciesArt = {
       const ex = mx + s * 0.75 + fs * 0.35 + gx, ey = my - 0.3;
       r.stamp(ex, ey, 0.5, 0.62, tilt, SKIN, 0, true);
       r.dot(ex, ey + 0.1, EYE, cast > 0.3 ? 2 : 1, 60);
+      markEye(ex, ey + 0.1, 0.5);
     }
     // The glyph: a painted rune that burns when it casts.
     const gT = 0.4 + cast * 2.6;

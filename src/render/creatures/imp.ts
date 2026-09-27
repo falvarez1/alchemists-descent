@@ -1,7 +1,7 @@
 import type { Ctx, Enemy } from '@/core/types';
 import type { CreatureRig } from '@/creatures/rig/types';
 import { IMP, IMP_BODY, IMP_HEAD } from '@/creatures/species/imp';
-import { chainTube } from './anatomy';
+import { chainTube, markEye } from './anatomy';
 import { material } from './palette';
 import type { CreatureMaterial } from './palette';
 import type { CreatureRaster } from './raster';
@@ -90,6 +90,8 @@ export const impArt: SpeciesArt = {
     const ex = head.x + fs * 0.9, ey = head.y - 0.2;
     r.stamp(ex, ey, 0.7, 0.38, fs * 0.35, EYE, 2, true);
     r.stamp(ex - fs * 1.1, ey - 0.1, 0.5, 0.3, fs * 0.35, EYE, 1, true);
+    markEye(ex, ey, 0.6);
+    markEye(ex - fs * 1.1, ey - 0.1, 0.42);
     // Mouth glows as the fire rises in it.
     const charge = F[IMP.charge];
     if (charge > 0.1 || F[IMP.throwT] > 0) r.glowStamp(head.x + fs * 1.6, head.y + 0.9, 0.7, 0.4, 0, HOT, 1 + charge * 2, 0.5, 1);

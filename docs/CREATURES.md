@@ -53,6 +53,8 @@ and saves are unchanged by anything here. What changed is what that body
 | `render/creatures/raster.ts` | The rasterizer (primitives, `shade`/`glowStamp`/`stamp` painting, lighting, sel-out, glass, `blitFine`) |
 | `render/creatures/<species>.ts` | Art per body plan: materials (OKLab ramps) and primitives from the rig |
 | `render/creatures/lights.ts` | Light seeds from rig positions (lure tips, sacs, cores), corpses included |
+| `render/creatures/eyeshine.ts` | Light wave: eyeshine at the eyes species mark (`anatomy.markEye`), glow markings (Weaver leg tips, Rillback lateral line, slime cores, Stone Maw jaw seams) and the dithered reveal in designed darkness (FEEL §10) |
+| `creatures/lightResponse.ts` | Light wave: the lit fix, photophobes (Weaver flinch/habituate, bat roost scatter), the Root Loper lurker, slime phototaxis; `playerVisibility` for sight |
 
 The Weaver keeps its own surface-crawler locomotion (`entities/weaverLocomotion`);
 its rig is a stub and its art reads `e.weaverLoco`. The Rillback and Stone Maw
@@ -86,6 +88,9 @@ flee creatures, fish bolt from eels, moths drift to living lights
   few grid writes — a snow print, a flicked sand grain, a track stain — draw
   no randomness).
 - Every enemy kind must have species art (`tests/creature-art.test.ts`).
+- Species art marks every OPEN eye it paints with `markEye` (the shared `eye()`
+  helper does it for you) so eyeshine sits on the real anchor; closed eyes are
+  never marked. A blind species marks none.
 - Renderers never step rigs; `tickRig` runs once per tick per creature.
 
 ## Tools

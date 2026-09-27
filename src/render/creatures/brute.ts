@@ -1,6 +1,7 @@
 import type { Ctx, Enemy } from '@/core/types';
 import type { CreatureRig } from '@/creatures/rig/types';
 import { BR, BR_CHEST, BR_HEAD, BR_HIPS, bruteSpec } from '@/creatures/species/brute';
+import { markEye } from './anatomy';
 import { material } from './palette';
 import type { CreatureMaterial } from './palette';
 import type { CreatureRaster } from './raster';
@@ -133,6 +134,7 @@ export const bruteArt: SpeciesArt = {
     const ex = hx + fs * 1.1 * S, ey = hy - 0.3 * S;
     const eyeHeat = e.status.wet > 0 ? 1 : 2.6 + (e.expression?.alert ?? 0) * 0.6;
     r.stamp(ex, ey, 1.0 * S, 0.33 * S, fs * 0.12, EYE, eyeHeat, true);
+    markEye(ex, ey, 0.8 * S);
     if (colossus) r.stamp(hx + fs * 1.8 * S, hy + 1.2 * S, 1.2 * S, 0.35 * S, fs * 0.1, HOT, pulse * 3, true);
     else r.stroke(hx + fs * 0.6 * S, hy + 1.1 * S, hx + fs * 2.4 * S, hy + 1.3 * S, DARK, 0, true);
     // Near arm last: it swings in front of everything.
