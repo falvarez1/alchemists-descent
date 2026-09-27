@@ -13,15 +13,6 @@ export function actionCameraZoom(zoom: number, distance: number): number {
   return zoom + (Math.min(zoom, .82) - zoom) * smoothstep(clamp((distance - 45) / 150, 0, 1));
 }
 
-/**
- * How far the camera may travel BELOW the world floor. The world ends in solid
- * bedrock, so there is nothing to walk to down there — but letting the view drop
- * past the edge keeps the wizard (and any entities/prefabs near the floor) framed
- * instead of pinned to the bottom of the screen. Everything past the edge renders
- * as flat black void (see FrameComposer). Half a viewport lets the deepest stand
- * still center on screen.
- */
-const CAMERA_BOTTOM_VOID = Math.floor(VIEW_H / 2);
 
 
 /**
@@ -118,8 +109,13 @@ export class Camera implements CameraApi {
     const zoomedFrame = action !== null || (state.mode === 'play' && player.dead);
     const padX = zoomedFrame ? VIEW_W * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
     const padY = zoomedFrame ? VIEW_H * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
+    // The floor is a hard edge for every frame on every level: below the world
+    // is only black void (it used to allow half a view of it, which showed a
+    // third of a screen of nothing under D1's Undertow and floor 4's arena).
+    // A zoomed-in frame may still sink by exactly its hidden margin.
+    const floorPad = VIEW_H * (1 - 1 / Math.max(1, this.zoom)) / 2;
     this.tx = clamp(this.tx, -padX, WIDTH - VIEW_W + padX);
-    this.ty = clamp(this.ty, -padY, HEIGHT - VIEW_H + CAMERA_BOTTOM_VOID);
+    this.ty = clamp(this.ty, -padY, HEIGHT - VIEW_H + floorPad);
     const actionDistance = Math.hypot(this.tx - this.x, this.ty - this.y);
     if (action) {
       const scale = actionDistance > 0 ? Math.min(.065, ACTION_PAN_MAX_SPEED / actionDistance) : 0;

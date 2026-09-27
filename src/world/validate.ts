@@ -110,7 +110,7 @@ function fitsOf(w: { width: number; height: number; types: Uint8Array }): Uint8A
  * structurally — so neither caller needs an `as unknown as` cast.
  */
 export interface MaskInput {
-  world: World;
+  world: Pick<World, 'width' | 'height' | 'types'>;
   spawn: { x: number; y: number };
 }
 
@@ -411,9 +411,36 @@ export function failOpenFindability(
   };
 }
 
+/**
+ * The grid as the starting kit sees it: an intact ROUTE SEAL (an authored plug
+ * that always burns or digs open, e.g. D1's oil-soaked barricade) is ground the
+ * player will pass, not a wall. Returns the real world when there is none, so
+ * every other level audits byte-for-byte as before.
+ */
+function routeSealedView(runtime: LevelRuntime): MaskInput['world'] {
+  const seals = runtime.mechanisms.filter((m) => m.kind === 'plug' && m.routeSeal && m.state === 0 && m.body?.length);
+  if (seals.length === 0) return runtime.world;
+  const types = runtime.world.types.slice();
+  const W = runtime.world.width;
+  for (const seal of seals) {
+    for (const [x, y] of seal.body!) {
+      if (x >= 0 && y >= 0 && x < W && y < runtime.world.height && types[x + y * W] === (seal.material ?? Cell.Stone)) {
+        types[x + y * W] = Cell.Empty;
+      }
+    }
+  }
+  return { width: W, height: runtime.world.height, types };
+}
+
+/** The masks' input with every intact route seal opened (see routeSealedView). */
+export function routeSealedInput(runtime: LevelRuntime): MaskInput {
+  return { world: routeSealedView(runtime), spawn: runtime.spawn };
+}
+
 export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
-  const seen = reachableMask(runtime); // the crawler's view (media, treasure)
-  const wiz = wizardMask(runtime); // the PLAYER's view (9x17, walk + jump)
+  const view = routeSealedInput(runtime);
+  const seen = reachableMask(view); // the crawler's view (media, treasure)
+  const wiz = wizardMask(view); // the PLAYER's view (9x17, walk + jump)
   const W = runtime.world.width,
     H = runtime.world.height;
   const issues: FindabilityIssue[] = [];
@@ -463,15 +490,16 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       // (the prefab earnability fixpoint enforces that in CI)
       continue;
     } else if (m.kind === 'plug') {
-      if (mechanismTriggersFor(runtime, m.id).length > 0) continue;
-      check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
+      // A route seal is ground on the way, audited as open cells above.
+      if (m.routeSeal || mechanismTriggersFor(runtime, m.id).length > 0) continue;
+      check(nearWithLine(seen, view.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
     } else if (m.kind === 'counterweight') {
       // Powder enters through the top of the pan. Its filled floor and raised
       // rim are intentionally solid, so checking x,y-2 reports a solved bowl
       // as buried and repeatedly excavates the surrounding machine.
       const feedX = m.zone ? (m.zone.x0 + m.zone.x1) / 2 : m.x + m.w / 2;
       const feedY = m.zone ? m.zone.y0 - 2 : m.y - 7;
-      check(nearWithLine(seen, runtime.world, feedX, feedY, 5), m.kind, feedX, feedY);
+      check(nearWithLine(seen, view.world, feedX, feedY, 5), m.kind, feedX, feedY);
     } else if (
       m.kind === 'sensor' ||
       m.kind === 'buoy' ||
@@ -482,7 +510,7 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       // chargelatch latches on ANY spark in its zone (lightning bolt,
       // electrified water, a conducting enemy's blood) — like rune glyphs,
       // line of sight from open space suffices, so the cell mask judges it.
-      check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
+      check(nearWithLine(seen, view.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
     } else {
       // hands-on triggers: the WIZARD must be able to stand here
       check(near(wiz, W, H, m.x, m.y - 2, 6), m.kind, m.x, m.y - 2);
@@ -496,7 +524,7 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
   for (const v of runtime.runeVaults) {
     // glyphs answer to projectiles — line of sight from a standable spot is
     // looser than standing beside it, so the cell mask + radius suffices
-    check(nearWithLine(seen, runtime.world, v.rx, v.ry, 5), 'rune', v.rx, v.ry);
+    check(nearWithLine(seen, view.world, v.rx, v.ry, 5), 'rune', v.rx, v.ry);
   }
   for (const p of runtime.pickups) {
     if (p.taken) continue;

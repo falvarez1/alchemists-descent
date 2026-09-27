@@ -1,21 +1,23 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '@/core/types';
-import { createLivingState, pressurePhase, updateLivingExpedition } from '@/game/LivingExpedition';
+import { createLivingState, livingObjective, pressurePhase, updateLivingExpedition } from '@/game/LivingExpedition';
 import { makeLevelRuntime } from '@/game/runtime';
-import { generateBreathingWorks, WORKS_ROOMS } from '@/world/breathingWorks';
+import { generateBreathingWorks, WORKS_BARRICADE, WORKS_GATE, WORKS_ROOMS, worksGateOpen, worksPlaceName } from '@/world/breathingWorks';
+import { TEA, TEA_COMPLETE_STAGE } from '@/world/teaMachine';
 import { LEVELS } from '@/config/worldgraph';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
-import { validateFindability, wizardMask } from '@/world/validate';
+import { routeSealedInput, validateFindability, wizardMask } from '@/world/validate';
 import { EventBus } from '@/core/events';
 import { Mechanisms } from '@/game/Mechanisms';
 
 function fixture(seed = 777) {
   const noop = (): void => undefined;
   const world = new World();
-  const ctx = { world, state: { mode: 'play' }, player: { x: 170, y: 314, vx: 0, dead: false, hp: 70, maxHp: 110 },
-    enemies: [], events: new EventBus(), audio: { tone: noop, groan: noop, zap: noop, bubble: noop, brazier: noop,
-      doorGrind: noop }, particles: { spawn: noop, burst: noop } } as unknown as Ctx;
+  const ctx = { world, state: { mode: 'play', frameCount: 0 }, player: { x: 170, y: 314, vx: 0, dead: false, hp: 70, maxHp: 110, grounded: true },
+    enemies: [], events: new EventBus(), fx: { screenShake: 0 }, audio: { tone: noop, groan: noop, zap: noop, bubble: noop, brazier: noop,
+      doorGrind: noop, gong: noop, keyJingle: noop, noiseBurst: noop, at: (_x: number, _y: number, fn: () => void) => fn() },
+    particles: { spawn: noop, burst: noop } } as unknown as Ctx;
   const generated = generateBreathingWorks(ctx, seed);
   const runtime = makeLevelRuntime({ ...generated, def: LEVELS.d1, world, regions: null, living: createLivingState() });
   ctx.levels = { current: runtime, saveExpedition: () => {} } as unknown as Ctx['levels'];
@@ -25,7 +27,9 @@ function fixture(seed = 777) {
 describe('Breathing Works encounter contracts', () => {
   it('connects every room and progression landmark without a repair tunnel', () => {
     const { runtime, generated } = fixture();
-    const mask = wizardMask(runtime);
+    // The barricade is a route seal: the audit walks through the timber the
+    // starting kit always burns or digs, and through nothing else.
+    const mask = wizardMask(routeSealedInput(runtime));
     for (const room of WORKS_ROOMS) {
       const x = room.x + Math.floor(room.w / 2), y = room.floor - 20;
       expect(mask[runtime.world.idx(x, y)], room.id).toBe(1);
@@ -38,35 +42,110 @@ describe('Breathing Works encounter contracts', () => {
     const a = fixture(41), b = fixture(41);
     expect(Buffer.from(a.runtime.world.types).equals(Buffer.from(b.runtime.world.types))).toBe(true);
     expect(Buffer.from(a.runtime.world.colors.buffer).equals(Buffer.from(b.runtime.world.colors.buffer))).toBe(true);
-    // GEN_VERSION 39 reclaimed habitat and optional spell detours.
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
-    // GEN_VERSION 45: contained reservoir and garden pool, west Undertow chute.
-    expect((hash >>> 0).toString(16)).toBe('107a76db');
+    // GEN_VERSION 46: barricade on the spawn route, sealed shaft hatch, engine fault stations, Lower Bell floor gate.
+    expect((hash >>> 0).toString(16)).toBe('ab575fcb');
   });
 
-  it('makes Frost Shard a real out-and-back gate before the engine crank', () => {
-    const { ctx, runtime } = fixture();
-    const frost = runtime.pickups.find(p => p.kind === 'tome' && p.data.card === 'frostshard')!;
-    const gate = runtime.mechanisms.filter(m => m.requiresCard === 'frostshard');
-    expect(frost).toMatchObject({ x: 892, y: 735, taken: false });
-    expect(gate.map(m => m.kind).sort()).toEqual(['door', 'door', 'lever']);
-    expect(gate.filter(m => m.kind === 'door').every(m => m.state === 0)).toBe(true);
-    const basin = runtime.mechanisms.find(m => m.sensorType === 'material' && m.materialFilter?.includes(Cell.Ice))!.zone!;
-    let frozen = 0;
-    for (let y = basin.y0; y <= basin.y1 && frozen < 32; y++) for (let x = basin.x0; x <= basin.x1 && frozen < 32; x++) {
-      const i = runtime.world.idx(x, y);
-      if (runtime.world.types[i] === Cell.Water) { runtime.world.types[i] = Cell.Ice; frozen++; }
+  it('puts an oil-soaked barricade on the forced route to the crank, and nothing card-locked', () => {
+    const { runtime } = fixture();
+    expect(runtime.mechanisms.filter(m => m.requiresCard)).toEqual([]);
+    const barricade = runtime.mechanisms.find(m => m.id === WORKS_BARRICADE.id)!;
+    expect(barricade).toMatchObject({ kind: 'plug', routeSeal: true, material: Cell.Wood, state: 0 });
+    expect(barricade.body!.every(([x, y]) => runtime.world.type(x, y) === Cell.Wood)).toBe(true);
+    // Oil-soaked, but safely: its oil sits in sealed pockets deeper than a
+    // Spark Bolt's blast reaches from the face (a burst store throws burning
+    // oil back at the shooter), and its seams are caulked with moss tinder.
+    let oil = 0, moss = 0;
+    for (let y = WORKS_BARRICADE.y0 - 2; y <= WORKS_BARRICADE.y1 + 2; y++) for (let x = WORKS_BARRICADE.x0 - 6; x <= WORKS_BARRICADE.x1 + 6; x++) {
+      const t = runtime.world.type(x, y);
+      if (t === Cell.Oil) { oil++; expect(x - WORKS_BARRICADE.x0, `oil at ${x},${y}`).toBeGreaterThanOrEqual(7); }
+      if (t === Cell.Moss && x >= WORKS_BARRICADE.x0 && x <= WORKS_BARRICADE.x1) moss++;
     }
-    expect(frozen).toBe(32);
+    expect(oil).toBeGreaterThan(5);
+    expect(moss).toBeGreaterThan(40);
+    // Honestly blocking: without the route-seal allowance the crank is out of reach...
+    const raw = wizardMask(runtime), opened = wizardMask(routeSealedInput(runtime));
+    const crankStand = runtime.world.idx(TEA.lever.x - 4, 311);
+    expect(raw[crankStand]).toBe(0);
+    expect(opened[crankStand]).toBe(1);
+    // ...and the walk to it has no pitfall: the old shaft hatch is sealed metal.
+    for (let x = 330; x < WORKS_BARRICADE.x0 - 4; x++) expect(runtime.world.type(x, 316), `bridge at ${x}`).toBe(Cell.Metal);
+    // Frost Shard stays in the refuge as an optional reward.
+    expect(runtime.pickups.find(p => p.kind === 'tome' && p.data.card === 'frostshard')).toMatchObject({ x: 892, y: 735, taken: false });
+  });
+
+  it('the barricade collapses once it has mostly burned, and the objective moves on to the crank', () => {
+    const { ctx, runtime } = fixture();
+    Object.assign(ctx.player, { x: 380, y: 314 });
+    updateLivingExpedition(ctx);
+    expect(livingObjective(ctx)).toBe('Burn through the barricade.');
+    const barricade = runtime.mechanisms.find(m => m.id === WORKS_BARRICADE.id)!;
+    barricade.body!.slice(0, Math.ceil(barricade.body!.length * .6)).forEach(([x, y]) => ctx.world.clearCellAt(ctx.world.idx(x, y)));
     const system = new Mechanisms(ctx);
     ctx.state.paused = false;
-    for (let frame = 0; frame < 80; frame++) { ctx.state.frameCount = frame; system.update(ctx); }
-    expect(gate.filter(m => m.kind === 'door').every(m => m.state === 1)).toBe(true);
-    expect(gate.filter(m => m.kind === 'door').every(m => !m.dissolve)).toBe(true);
-    const postUnlock = wizardMask(runtime);
-    expect(postUnlock[runtime.world.idx(430, 311)]).toBe(1);
+    for (let frame = 0; frame < 16; frame++) { ctx.state.frameCount = frame; system.update(ctx); }
+    expect(barricade.state).toBe(1);
+    expect(barricade.body!.some(([x, y]) => ctx.world.type(x, y) === Cell.Wood)).toBe(false);
+    expect(livingObjective(ctx)).toBe('Pull the engine crank.');
     system.dispose();
+  });
+
+  it('names one short step at a time from crank to lower gate', () => {
+    const { ctx, runtime } = fixture();
+    Object.assign(ctx.player, { x: 424, y: 311 });
+    runtime.mechanisms.find(m => m.id === WORKS_BARRICADE.id)!.state = 1;
+    expect(livingObjective(ctx)).toBe('Pull the engine crank.');
+    runtime.living!.tea = { stage: 1, ticks: 10, stageTicks: 10, completed: false, stalled: false, bodies: [] };
+    expect(livingObjective(ctx)).toBe('Follow the engine along the catwalk.');
+    runtime.living!.tea.fault = { id: 'rubble', ticks: 1, backup: 0 };
+    expect(livingObjective(ctx)).toBe('Dig the pendulum free.');
+    runtime.living!.tea.fault = { id: 'dry', ticks: 1, backup: 0 };
+    expect(livingObjective(ctx)).toBe('Fill the duck’s well with water.');
+    runtime.living!.tea.fault = { id: 'wire', ticks: 1, backup: 0 };
+    expect(livingObjective(ctx)).toBe('Spark the magnet coil.');
+    runtime.living!.tea = { stage: TEA_COMPLETE_STAGE, ticks: 900, stageTicks: 1, completed: true, stalled: false, bodies: [] };
+    expect(livingObjective(ctx)).toBe('Collect the brass bell.');
+    runtime.keyTaken = true;
+    expect(livingObjective(ctx)).toBe('Carry the bell to the lower gate.');
+    runtime.living!.tea = { stage: 3, ticks: 900, stageTicks: 1, completed: false, stalled: true, bodies: [] };
+    expect(livingObjective(ctx)).toBe('Recharge the engine at its crank.');
+  });
+
+  it('opens the Lower Bell floor grate only for the bell, sliding its real leaves into their slots', () => {
+    const { ctx, runtime } = fixture();
+    const metal = () => { let n = 0; for (let y = WORKS_GATE.leaves.y0; y <= WORKS_GATE.leaves.y1; y++) for (let x = WORKS_GATE.pit.x0 - WORKS_GATE.slot; x <= WORKS_GATE.pit.x1 + WORKS_GATE.slot; x++) if (ctx.world.type(x, y) === Cell.Metal) n++; return n; };
+    const leaves = metal();
+    Object.assign(ctx.player, { x: WORKS_GATE.x, y: WORKS_GATE.floor });
+    for (let i = 0; i < 90; i++) updateLivingExpedition(ctx);
+    expect(worksGateOpen(ctx.world)).toBe(false); // no bell, no gate
+    runtime.living!.tea = { stage: TEA_COMPLETE_STAGE, ticks: 900, stageTicks: 1, completed: true, stalled: false, bodies: [] };
+    runtime.keyTaken = true;
+    const toast = vi.fn(); ctx.events.on('toast', toast);
+    let opened = -1;
+    for (let i = 0; i < 120 && opened < 0; i++) { updateLivingExpedition(ctx); if (worksGateOpen(ctx.world)) opened = i; }
+    expect(opened).toBeGreaterThan(20); // it slides, it does not vanish
+    expect(runtime.portal!.open).toBe(true);
+    expect(toast).toHaveBeenCalledWith({ text: 'The bell rings in the lock. The lower gate opens.' });
+    expect(metal()).toBe(leaves); // every bar went into a slot; none were deleted
+    for (let y = WORKS_GATE.floor; y <= WORKS_GATE.pit.y1; y++) expect(ctx.world.type(WORKS_GATE.x, y)).toBe(Cell.Empty);
+  });
+
+  it('announces a room only after a grounded arrival, never while falling through it', () => {
+    const { ctx, runtime } = fixture();
+    const toast = vi.fn(); ctx.events.on('toast', toast);
+    Object.assign(ctx.player, { x: 700, y: 400, grounded: false });
+    for (let i = 0; i < 60; i++) updateLivingExpedition(ctx);
+    expect(toast).not.toHaveBeenCalledWith({ text: 'Rillback Sluice' });
+    Object.assign(ctx.player, { x: 700, y: 311, grounded: true }); // the engine catwalk over the sluice
+    for (let i = 0; i < 60; i++) updateLivingExpedition(ctx);
+    expect(toast).not.toHaveBeenCalledWith({ text: 'Rillback Sluice' });
+    expect(worksPlaceName(700, 311)).toBe('The Bell & Tea Engine');
+    Object.assign(ctx.player, { x: 700, y: 440, grounded: true });
+    for (let i = 0; i < 30; i++) updateLivingExpedition(ctx);
+    expect(toast).toHaveBeenCalledWith({ text: 'Rillback Sluice' });
+    expect(runtime.living!.visited).toContain('sluice');
   });
 
   it('warns before exhaling, consumes water and cannot vent from a frozen reservoir', () => {
