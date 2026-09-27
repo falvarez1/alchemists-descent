@@ -6,7 +6,7 @@
 //
 //   node scripts/probe-telekinesis.mjs [url] [--scenes lift,hurl,...] [--out dir]
 //
-// Scenes: lift, hurl, kick-water, oil-fire, lava, freeze, plate, snapjaw, shock, blast, audio.
+// Scenes: lift, hurl, kick-water, oil-fire, lava, acid, freeze, plate, snapjaw, shock, blast, crate, audio.
 // Writes PNG frames + strips and probe.json to --out (verify-out/telekinesis).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
@@ -16,7 +16,7 @@ import { execConsoleCommand, waitForConsoleApi, waitForRunReady } from './run-he
 const args = process.argv.slice(2);
 const url = args[0] && !args[0].startsWith('--') ? args[0] : 'http://localhost:5173/';
 const opt = (n, f) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : f; };
-const scenes = opt('scenes', 'lift,hurl,kick-water,oil-fire,lava,freeze,plate,snapjaw,shock,blast,audio').split(',');
+const scenes = opt('scenes', 'lift,hurl,kick-water,oil-fire,lava,acid,freeze,plate,snapjaw,shock,blast,crate,audio').split(',');
 const out = opt('out', 'verify-out/telekinesis');
 mkdirSync(out, { recursive: true });
 
@@ -89,7 +89,7 @@ async function arena(page, { width = 360, height = 120 } = {}) {
     window.__tkLog.length = 0;
     if (!window.__tkHooked) {
       window.__tkHooked = true;
-      for (const ev of ['telekinesis', 'corpseMoment', 'alchemyKill', 'enemyKilled', 'combatCallout', 'organism']) {
+      for (const ev of ['telekinesis', 'corpseMoment', 'alchemyKill', 'enemyKilled', 'combatCallout', 'organism', 'hintTeach']) {
         ctx.events.on(ev, (d) => { if (ev === 'telekinesis' && d.phase === 'hold') return; window.__tkLog.push({ ev, t: ctx.state.frameCount, ...d }); });
       }
     }
@@ -138,6 +138,8 @@ async function log(page) {
 async function basin(page, x0, x1, depth, cell, fill = depth - 3) {
   await page.evaluate(({ x0, x1, depth, cell, fill }) => {
     const ctx = window.__game.ctx, w = ctx.world, { cx, floor } = window.__tkArena;
+    // A metal-lined basin: acid eats stone, and the pool must stay put.
+    for (let y = floor + 1; y <= floor + 2; y++) for (let x = cx + x0 - 2; x <= cx + x1 + 2; x++) w.replaceCellAt(w.idx(x, y), 13, 0x6f7a88);
     for (let y = floor - depth; y <= floor; y++) {
       for (const x of [cx + x0 - 2, cx + x0 - 1, cx + x1 + 1, cx + x1 + 2]) w.replaceCellAt(w.idx(x, y), 13, 0x6f7a88);
       for (let x = cx + x0; x <= cx + x1; x++) {
@@ -228,6 +230,8 @@ const SCENES = {
       res[kind] = { grabbed: held?.grip, liftedY: up && c0 ? c0.y - up.y : null, heldAtEnd: up?.grip, releasedFell: down && up ? down.y - up.y : null, down: down?.grip };
     }
     res.log = (await log(page)).filter(l => l.ev === 'telekinesis').map(l => `${l.phase}:${l.target}:${l.mass}`);
+    res.hints = (await log(page)).filter(l => l.ev === 'hintTeach').map(l => l.key);
+    res.hintLine = await page.evaluate(() => window.__game.ctx.hints.current?.line ?? null);
     return res;
   },
 
@@ -493,6 +497,43 @@ const SCENES = {
       return { loaded: ids.filter(id => a.bank.has(id)).length + '/' + ids.length, out };
     });
   },
+
+  async acid(page) {
+    await arena(page);
+    await basin(page, 34, 110, 10, 7, 8);
+    await corpsesOf(page, [['spitter', -5]]);
+    const acid0 = (await countCells(page, 34, 110, -20, 0, [7]))[7];
+    await kickAt(page, 'spitter', -10, 40, -40);
+    const frames = [], t0 = Date.now();
+    let goneAt = null;
+    for (let i = 0; i < 24; i++) {
+      await page.waitForTimeout(250);
+      if (i % 3 === 0) frames.push(await shot(page, `acid-${i}`));
+      if (!(await corpseInfo(page, 'spitter')) && goneAt === null) goneAt = Date.now() - t0;
+    }
+    await strip(frames, 'strip-acid');
+    const acid1 = (await countCells(page, 34, 110, -20, 0, [7]))[7];
+    const l = await log(page);
+    return { dissolvedAfterMs: goneAt, acidSpent: acid0 - acid1, moments: l.filter(x => x.ev === 'corpseMoment').map(x => x.kind) };
+  },
+
+  async crate(page) {
+    await arena(page);
+    await corpsesOf(page, [['weaver', 0]]);
+    const crate0 = await page.evaluate(() => {
+      const ctx = window.__game.ctx, { cx, floor } = window.__tkArena;
+      const b = ctx.rigidBodies.spawn({ kind: 'box', halfW: 3, halfH: 3 }, cx + 80, floor - 4, { material: 'wood' });
+      window.__tkCrate = b;
+      return { x: b.x, y: b.y };
+    });
+    await page.waitForTimeout(400);
+    const { cx, floor } = await page.evaluate(() => window.__tkArena);
+    await liftAndHurl(page, 'weaver', cx + 80, floor - 4);
+    await page.waitForTimeout(1500);
+    const crate1 = await page.evaluate(() => ({ x: window.__tkCrate.x, y: window.__tkCrate.y }));
+    const l = await log(page);
+    return { crateMoved: Math.round(Math.hypot(crate1.x - crate0.x, crate1.y - crate0.y)), moments: l.filter(x => x.ev === 'corpseMoment').map(x => x.kind) };
+  },
 };
 
 const browser = await launchBrowser();
@@ -507,6 +548,8 @@ try {
   await page.waitForTimeout(3200);
   await page.mouse.move(640, 360);
   await page.click('#canvas-holder > canvas', { position: { x: 640, y: 200 }, button: 'middle' }).catch(() => {});
+  results.level = await page.evaluate(() => window.__game.ctx.levels.current?.def.id ?? null);
+  console.log('level', results.level);
   for (const s of scenes) {
     if (!SCENES[s]) { results[s] = 'unknown scene'; continue; }
     try { results[s] = await SCENES[s](page); }

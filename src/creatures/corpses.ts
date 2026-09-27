@@ -105,7 +105,15 @@ export interface CorpseGrip {
   index: number;
   ax: number;
   ay: number;
+  /** The tick the pull was written: a stale pull (the wand not updated this tick) only holds the body up. */
+  tick: number;
 }
+
+/** This tick's pull, or none if the wand did not write one (the body just hangs in the field). */
+function pullOf(grip: CorpseGrip, now: number): { ax: number; ay: number } {
+  return grip.tick === now ? grip : NO_PULL;
+}
+const NO_PULL = { ax: 0, ay: 0 };
 
 const CORPSE_TTL = 720; // ~12s of remains
 const MAX_CORPSES = 10;
@@ -404,7 +412,7 @@ function carryLegs(rig: CreatureRig, dx: number, dy: number): void {
  * never deeper. Held by the wand it hangs from the grip; frozen, it slides
  * like a plank with its legs locked; afloat, it bobs.
  */
-function stepWeaverCorpse(world: World, c: Corpse): void {
+function stepWeaverCorpse(world: World, c: Corpse, now: number): void {
   const e = c.e, loco = e.weaverLoco, age = c.age;
   if (!loco) return;
   const grip = c.grip, frozen = c.frozen > 0, flying = c.flight > 0;
@@ -424,8 +432,9 @@ function stepWeaverCorpse(world: World, c: Corpse): void {
   } else {
     const wet = liquidAt(world, loco.px, loco.py);
     if (grip) {
-      loco.vx = loco.vx * 0.94 + grip.ax;
-      loco.vy = loco.vy * 0.94 + grip.ay;
+      const pull = pullOf(grip, now);
+      loco.vx = loco.vx * 0.94 + pull.ax;
+      loco.vy = loco.vy * 0.94 + pull.ay;
     } else {
       // Afloat: the shell is buoyant and the water drags at it.
       loco.vy = Math.min(3, loco.vy + (wet ? -0.1 : 0.25));
@@ -507,17 +516,18 @@ function stepWeaverCorpse(world: World, c: Corpse): void {
 }
 
 /** A verlet rig's remains: limp, held, flying or frozen. */
-function stepRigCorpse(world: World, c: Corpse, rig: CreatureRig, opts: IntegrateOpts): void {
+function stepRigCorpse(world: World, c: Corpse, rig: CreatureRig, opts: IntegrateOpts, now: number): void {
   const pts = allRigPoints(rig);
   const grip = c.grip;
   // Frozen stiff, the body is one rigid piece: the wand holds all of it.
   const whole = grip !== null && (grip.index < 0 || grip.index >= pts.length || c.frozen > 0);
   const g = opts.gravity;
+  const pull = grip ? pullOf(grip, now) : NO_PULL;
   const hip0 = rig.pts[0], hx = hip0?.x ?? 0, hy = hip0?.y ?? 0;
   for (let k = 0; k < pts.length; k++) {
     let ax = 0, ay = 0;
     if (grip) {
-      if (whole || k === grip.index) { ax = grip.ax; ay = grip.ay - g; }
+      if (whole || k === grip.index) { ax = pull.ax; ay = pull.ay - g; }
       else ay = -g * FIELD_LIFT;
     }
     integrate(world, pts[k], opts, ax, ay);
@@ -592,7 +602,7 @@ function stepChainCorpse(world: World, c: Corpse, frame: number): void {
     // held, the wand's pull steers it; flung, it carries its momentum.
     const grip = c.grip;
     let tx: number, ty: number;
-    if (grip) { tx = head.x + vx * 0.94 + grip.ax; ty = head.y + vy * 0.94 + grip.ay; }
+    if (grip) { const pull = pullOf(grip, frame); tx = head.x + vx * 0.94 + pull.ax; ty = head.y + vy * 0.94 + pull.ay; }
     else if (c.flight > 0) { tx = head.x + vx * 0.985; ty = head.y + vy * 0.985 + (wet ? -0.15 : 0.22); }
     else { tx = head.x + vx * 0.9; ty = head.y + (wet ? -0.15 : 0.5); }
     const to = sweptNodeTarget(world, head, tx, ty);
@@ -625,9 +635,9 @@ function stepCorpse(ctx: Ctx, c: Corpse, index: number, pending: PendingBlow[]):
   // Move.
   const frame = corpseFrame(e);
   const opts = c.frozen > 0 ? FROZEN : c.flight > 0 ? FLIGHT : LIMP;
-  if (frame === 'weaver') stepWeaverCorpse(world, c);
+  if (frame === 'weaver') stepWeaverCorpse(world, c, now);
   else if (frame === 'chain') stepChainCorpse(world, c, now);
-  else if (e.rig) stepRigCorpse(world, c, e.rig, opts);
+  else if (e.rig) stepRigCorpse(world, c, e.rig, opts, now);
   // What the motion met.
   const a = sampleBody(e, AFTER);
   const speedBefore = Math.hypot(c.pvx, c.pvy);

@@ -290,7 +290,7 @@ function liftCorpse(ctx: Ctx, pick: CorpsePick): boolean {
   if (wand && wand.mana < cost) { dryFizzle(ctx, gx, gy, c.mass); return true; }
   if (wand) wand.mana -= cost;
   hold = { corpse: c, index: pick.index, lostSight: 0, heldT: 0 };
-  c.grip = { index: pick.index, ax: 0, ay: 0 };
+  c.grip = { index: pick.index, ax: 0, ay: 0, tick: now };
   touchCorpse(c, now);
   // The tug: the body is plucked toward the wand, and it flashes brass-white.
   const tip = ctx.spells?.wandTip?.() ?? { x: ctx.player.x, y: ctx.player.y - 9 };
@@ -426,6 +426,7 @@ export function updateTelekinesis(ctx: Ctx): void {
   c.grip.index = hold.index;
   c.grip.ax = a.ax;
   c.grip.ay = a.ay;
+  c.grip.tick = now;
   c.touchT = now;
   c.bowlUntil = now + BOWL_CREDIT_TICKS;
   hold.heldT++;

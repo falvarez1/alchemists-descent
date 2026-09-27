@@ -338,7 +338,7 @@ describe('weight, the boot, and rot', () => {
     corpseOf(s, 'bat', 200, 80);
     expect(corpseWeightOn(s.world, 90, 140, 110, 151)).toBe(4);
     expect(corpseWeightOn(s.world, 190, 140, 210, 151)).toBe(2);
-    corpses()[0].grip = { index: -1, ax: 0, ay: 0 };
+    corpses()[0].grip = { index: -1, ax: 0, ay: 0, tick: 0 };
     expect(corpseWeightOn(s.world, 90, 140, 110, 151)).toBe(0);
   });
 
@@ -358,7 +358,7 @@ describe('weight, the boot, and rot', () => {
     const s = stage(600, 200);
     corpseOf(s, 'slime', 50, 5);
     const held = corpses()[0];
-    held.grip = { index: -1, ax: 0, ay: 0 };
+    held.grip = { index: -1, ax: 0, ay: 0, tick: 0 };
     const age0 = held.age;
     step(s, 200);
     expect(held.age).toBe(age0);

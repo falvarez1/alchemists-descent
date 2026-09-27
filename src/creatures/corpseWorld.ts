@@ -1,4 +1,5 @@
 import type { Ctx, Enemy } from '@/core/types';
+import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { CorpseMomentKind } from '@/core/events';
 import type { World } from '@/sim/World';
 import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
@@ -499,4 +500,15 @@ export function landingDust(ctx: Ctx, c: Corpse, s: BodySample, dv: number): voi
     ctx.particles?.spawn(s.x + side * fxRandom() * s.r, s.y + s.r * 0.5, side * (0.4 + fxRandom() * 1.4), -0.3 - fxRandom() * 0.9, null, packRGB(r, g, b), 14 + ((fxRandom() * 12) | 0), { grav: 0.05 });
   }
   corpseMoment(ctx, c, 'thud', s.x, s.y + s.r * 0.5, Math.min(1, (dv - THUD_DV) / 4 + 0.25 + c.mass * 0.05));
+  // A heavy carcass slammed down is felt: a small, local shake (the same
+  // quadratic falloff as every ambient shake, dead at 420 cells).
+  if (c.mass >= HEAVY_THUD_MASS && dv >= HEAVY_THUD_DV && ctx.fx && ctx.camera) {
+    const d = Math.hypot(s.x - (ctx.camera.x + VIEW_W / 2), s.y - (ctx.camera.y + VIEW_H / 2));
+    const falloff = Math.max(0, 1 - d / 420);
+    ctx.fx.screenShake = Math.min((ctx.fx.screenShake ?? 0) + 0.004 * dv * Math.sqrt(c.mass) * falloff * falloff, 0.025);
+  }
 }
+
+/** Remains this heavy landing this hard shake the view a little. */
+const HEAVY_THUD_MASS = 2;
+const HEAVY_THUD_DV = 3;
