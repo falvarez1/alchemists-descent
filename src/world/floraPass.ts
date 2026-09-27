@@ -503,7 +503,9 @@ function shuffle<T>(list: T[], rng: Rng): T[] {
 const BUDGET: Record<Exclude<FloraFloor, 'bellows'>, { big: number; small: number; hang: number }> = {
   rot: { big: 18, small: 90, hang: 26 },
   cistern: { big: 14, small: 70, hang: 16 },
-  kiln: { big: 14, small: 46, hang: 0 },
+  // Kiln 14/46 -> 18/72 (fix3): its flora was sparse; the ground allows more
+  // (the heat, footing and clearance tests still decide every stand).
+  kiln: { big: 18, small: 72, hang: 0 },
 };
 
 function dress(world: World, rng: Rng, floor: Exclude<FloraFloor, 'bellows'>, ledger: PlacementLedger, pc: FloraPassContext, out: FloraPassResult): void {
@@ -582,7 +584,7 @@ function dress(world: World, rng: Rng, floor: Exclude<FloraFloor, 'bellows'>, le
     let species: FloraSpecies;
     if (floor === 'kiln') {
       if (nearHeat(world, x, y - 4, 14)) continue;
-      species = r < 0.55 ? 'firelily' : r < 0.85 ? 'grasstuft' : 'sapling';
+      species = r < 0.65 ? 'firelily' : r < 0.88 ? 'grasstuft' : 'sapling'; // 0.55/0.85 before fix3: more lilies
     } else {
       species = r < 0.45 ? 'fernbed' : r < 0.85 ? 'grasstuft' : 'sapling';
     }

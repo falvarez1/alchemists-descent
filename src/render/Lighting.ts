@@ -23,8 +23,32 @@ for (let type = 0; type < MATERIAL_ATTENUATION.length; type++) {
 const EMISSIVE_MATERIAL = new Uint8Array(256);
 for (const type of [Cell.Fire, Cell.Lava, Cell.Ember, Cell.Acid, Cell.Gold, Cell.Fungus,
   Cell.Crystal, Cell.Catalyst, Cell.Glowshroom, Cell.Moss, Cell.Healium, Cell.Toxic, Cell.Teleportium,
-  // FLORA: seeds glow faintly (glowseeds brightly); smouldering living wood glows.
-  Cell.Seed, Cell.Trunk]) EMISSIVE_MATERIAL[type] = 1;
+  // FLORA: seeds glow faintly (glowseeds brightly); smouldering living wood glows;
+  // on the Kiln, ember-bark fissures and fire-lily blooms keep a coal's glow.
+  Cell.Seed, Cell.Trunk, Cell.Leaf]) EMISSIVE_MATERIAL[type] = 1;
+
+/**
+ * KILN FLORA (fix3): the Kiln's plants carry their glow in their own cells —
+ * an ember-bark fissure is living wood the colour of a coal (floraKit's ember
+ * [196,84,34]), a fire-lily bloom a red-orange petal round a gold heart — so
+ * the grid explains every lit pixel. Read from the cell's colour: hot red,
+ * green well under red (the char bark [44,36,32] and dry rust leaves
+ * [150,84,52] stay dark).
+ */
+function emberHot(c: number, minRed: number): boolean {
+  const r = (c >> 16) & 255, g = (c >> 8) & 255;
+  return r >= minRed && g * 100 < r * 62;
+}
+/** A fissure anywhere in the 2x2 block a light texel stands for (they are one cell wide). */
+function emberSeamNear(world: Ctx['world'], wx: number, wy: number): boolean {
+  for (let k = 0; k < 4; k++) {
+    const x = wx + (k & 1), y = wy + (k >> 1);
+    if (!world.inBounds(x, y)) continue;
+    const i = world.idx(x, y);
+    if (world.types[i] === Cell.Trunk && world.life[i] <= 0 && emberHot(world.colors[i], 130)) return true;
+  }
+  return false;
+}
 
 // Wand "beam": a narrow directional cone cast along the aim, on top of (never
 // instead of) the omni wand light. It reaches further so corridors read deeper
@@ -319,6 +343,7 @@ export class Lighting implements LightField {
     // Reactive bioluminescence: glow-caps flare as the alchemist passes through
     // them. Off-mode/dead → park the point far away so the flare never fires.
     const glowReact = ctx.state.mode === 'play' && !ctx.player.dead;
+    const kilnFlora = ctx.state.mode === 'play' && ctx.levels?.current?.def.biome === 'volcanic';
     const px = glowReact ? ctx.player.x : -1e9;
     const py = glowReact ? ctx.player.y : -1e9;
 
@@ -424,13 +449,40 @@ export class Lighting implements LightField {
             lightB[i] = Math.max(lightB[i], 0.03);
           }
         } else if (t === Cell.Trunk) {
-          // Living wood only glows while it smoulders (life = burn countdown).
+          // Living wood only glows while it smoulders (life = burn countdown)…
           if (world.life[wi] > 0) {
             const f = 0.42 + Math.random() * 0.18;
             if (lightR[i] < f) {
               lightR[i] = f;
               lightG[i] = Math.max(lightG[i], f * 0.36);
               lightB[i] = Math.max(lightB[i], f * 0.06);
+            }
+          } else if (kilnFlora && emberSeamNear(world, wx, wy)) {
+            // …and an ember-bark fissure breathes like banked coal: restrained
+            // (0.34-0.44, under a loose Ember cell's 0.55), slow, out of step
+            // down the trunk. (0.2 was tried: it did not read on the basalt.)
+            const f = 0.44 * (0.78 + 0.22 * Math.sin(ctx.state.frameCount * 0.035 + wx * 0.21 + wy * 0.13));
+            if (lightR[i] < f) {
+              lightR[i] = f;
+              lightG[i] = Math.max(lightG[i], f * 0.42);
+              lightB[i] = Math.max(lightB[i], f * 0.08);
+            }
+          }
+        } else if (t === Cell.Leaf) {
+          if (kilnFlora) {
+            const c = world.colors[wi];
+            const r = (c >> 16) & 255, g = (c >> 8) & 255;
+            // A fire-lily's gold heart, then its red-orange petals.
+            const heart = r >= 200 && g >= 150 && (c & 255) <= 130;
+            if (heart || emberHot(c, 190)) {
+              // A bloom lights its own cup (0.46 heart / 0.36 petal): the
+              // flower you can find in the dark, not a lamp that lights the cave.
+              const f = (heart ? 0.46 : 0.36) * (0.88 + 0.12 * Math.sin(ctx.state.frameCount * 0.05 + wx * 0.3));
+              if (lightR[i] < f) {
+                lightR[i] = f;
+                lightG[i] = Math.max(lightG[i], f * (heart ? 0.72 : 0.5));
+                lightB[i] = Math.max(lightB[i], f * (heart ? 0.2 : 0.12));
+              }
             }
           }
         } else if (t === Cell.Seed) {

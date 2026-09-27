@@ -842,6 +842,16 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
   (≤ 70 cells) and grows with energy `min(120, 22 + water·1.6 + seeds·3)`:
   two cells wide, a Wood rung (6×2) every 12 cells on alternating sides,
   leaves at the mid-points, a crown when it ends.
+- **Kiln glow (fix3).** Ember-bark fissures (living wood the colour of a coal)
+  seed 0.34–0.44 red light, breathing out of step down the trunk; fire-lily
+  blooms light their own cup (petal 0.36, gold heart 0.46, slow shimmer) —
+  under a loose Ember cell's 0.55, so they read as embers and flowers you can
+  find in the dark, not lamps. Char bark [60,46,40] (was [44,36,32]: black
+  cut-outs on basalt). The Kiln's dressing budget is 18 stands / 72 small
+  (was 14/46), 65% of the small ones fire-lilies (was 55%).
+- **Stand footing.** A rock/wood/ice footing is anchored only by static
+  neighbours (loose powder leaves on its own); gold is never footing (the
+  harvester lifts it from under anything within 30 of the player).
 - **Cost.** Stands are re-flooded only when a chunk's support fingerprint
   moves (≤ 48 fingerprints, ≤ 10 floods per tick): Flora.update ~0.16–0.24
   ms/tick in the densest views, A/B tick+render +0.27 ms with ~7k plant cells
