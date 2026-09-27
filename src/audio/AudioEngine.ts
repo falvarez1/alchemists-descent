@@ -593,8 +593,6 @@ export class AudioEngine implements AudioApi {
     });
   }
 
-  waveHorn(): void { this.tone(196, 196, 0.5, 'triangle', 0.22); this.later(240, () => this.tone(294, 294, 0.6, 'triangle', 0.22)); }
-
   levitate(): void { if (!this.throttled('lev', 160)) return; this.noiseBurst(0.12, 1400, 0.05, true); }
 
   implode(x?: number, y?: number): void {

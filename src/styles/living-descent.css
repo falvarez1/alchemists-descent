@@ -66,7 +66,7 @@ body.play-active .flask-slot { border-color: #738575; background: #101d21c9; bor
 body.play-active .flask-slot.active { border-color: #dbca91; box-shadow: none; }
 body.play-active .wave-readout { top: 24px; right: 28px; max-width: min(360px, 44%); background: transparent; border: 0; box-shadow: none; padding: 0; }
 body.play-active .wave-readout .wave-num { font: 500 calc(23px * var(--text-scale))/1.1 'Cormorant Garamond', Georgia, serif; letter-spacing: 0; color: #e1d9c3; }
-body.play-active .wave-readout > .sub, body.play-active #treasure-row, body.play-active #minimap-corner { display: none; }
+body.play-active #treasure-row, body.play-active #minimap-corner { display: none; }
 body.play-active .wave-readout .objective { margin-top: 7px; font-size: calc(12px * var(--text-scale)); line-height: 1.45; letter-spacing: 0; font-weight: 400; color: #c1d0bd; text-transform: none; }
 body.play-active #controls-hint { display: none; }
 #field-note { color: #c5d2c1; font-size: calc(12px * var(--text-scale)); line-height: 1.5; text-shadow: 0 1px 4px #071014; }

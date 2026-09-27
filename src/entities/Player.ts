@@ -1161,14 +1161,13 @@ export class PlayerControl implements PlayerControlApi {
       return;
     }
 
-    // Legacy arena path (pre-descent / safety fallback)
+    // Fail-open fallback: no level owns the respawn (a runtime that failed to
+    // start). The wave-survival arena this path once restarted is long gone, so
+    // it only puts the wizard back on his feet — a dead end would hard-lock.
     const sp = this.findSpawnPoint();
     this.resetPlayerAt(sp.x, sp.y);
-    // Clear hostile projectiles and stale charging handles, restart current wave.
     resetCombatTransients(ctx, { projectiles: 'keep-friendly', particles: false });
     ctx.enemies.length = 0;
-    ctx.waves.active = false;
-    ctx.waves.intermission = 90;
     ctx.particles.burst(sp.x, sp.y - 7, 20, null, () => packRGB(200, 160, 255), 2.7, {
       glow: 2.2,
       grav: -0.01,

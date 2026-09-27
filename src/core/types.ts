@@ -1440,7 +1440,6 @@ export interface AudioApi {
   squelch(x?: number, y?: number): void;
   flame(x?: number, y?: number): void;
   dig(x?: number, y?: number): void;
-  waveHorn(): void;
   levitate(): void;
   implode(x?: number, y?: number): void;
   /** A run-event stinger (alchemy chime, phial crack/fill, run verdict, shutter). */

@@ -263,7 +263,6 @@ export class Game {
     // revisits inflate it — read it as traffic, not unique clears).
     ctx.events.on('levelChanged', ({ depth }) => ctx.telemetry.count(`depth.entered.${depth}`));
     ctx.events.on('benchOpened', () => ctx.telemetry.count('bench.opened'));
-    ctx.events.on('waveStarted', ({ num }) => ctx.telemetry.count(`wave.reached.${num}`));
     this.levelCurtainDisposer = ctx.events.on('levelCurtain', ({ visible, holdMs = 0, title, detail }) => {
       if (this.levelCurtainTimer !== null) {
         window.clearTimeout(this.levelCurtainTimer);
