@@ -8,6 +8,13 @@ export interface PlayerPreferences { textScale: number; reducedFlashes: boolean;
 const KEY = 'ad-player-preferences-v1';
 const VOLUME_CHANNELS: readonly VolumeChannel[] = ['master', 'effects', 'ambience'];
 
+/** What each rebindable action is called on the keyboard list (sentence case). */
+export const BINDING_LABELS: Readonly<Record<BindingAction, string>> = {
+  left: 'Move left', right: 'Move right', up: 'Up (climb)', down: 'Down (crouch, climb)',
+  jump: 'Jump / levitate', climb: 'Grab a wall', interact: 'Interact / siphon', pour: 'Pour',
+  drink: 'Drink', kick: 'Kick', carry: 'Carry', lure: 'Throw a glowseed', clip: 'Save a clip',
+};
+
 /**
  * Only the Trickshot switches are player-facing. Its timing numbers (slow-motion
  * speed, windows, aim assist, impact pause) always come from the tuned defaults
@@ -38,29 +45,35 @@ export class PlayerSettings {
   constructor(private readonly ctx: Ctx) {
     this.dialog.id = 'player-settings';
     this.dialog.setAttribute('aria-labelledby', 'player-settings-title');
+    const clipKey = keyLabel(getBindings().clip);
+    // Grouped the way a player looks for them: what they hear, what they see,
+    // how fights feel, clips, then the keys. Every combat option is reachable
+    // on its own: the finisher does not live inside the Trickshot experiment.
     this.dialog.innerHTML = `<form method="dialog"><div class="settings-heading"><h2 id="player-settings-title">Make yourself at home</h2><button value="close" class="menu-close" aria-label="Close settings"><kbd class="key">Esc</kbd>Close</button></div>
-      <h3>Sound</h3><div class="settings-options settings-volume">
+      <section class="settings-group" aria-labelledby="settings-sound"><h3 id="settings-sound">Sound</h3><div class="settings-options settings-volume">
       <label>Master<input type="range" name="volume-master" min="0" max="100" step="1"><output id="volume-master-value"></output></label>
       <label>Effects<input type="range" name="volume-effects" min="0" max="100" step="1"><output id="volume-effects-value"></output></label>
-      <label>Ambience<input type="range" name="volume-ambience" min="0" max="100" step="1"><output id="volume-ambience-value"></output></label></div>
-      <h3>Comfort</h3><div class="settings-options"><label>Text size<select name="textScale"><option value="1">Standard</option><option value="1.15">Large</option><option value="1.3">Larger</option></select></label>
+      <label>Ambience<input type="range" name="volume-ambience" min="0" max="100" step="1"><output id="volume-ambience-value"></output></label></div></section>
+      <section class="settings-group" aria-labelledby="settings-comfort"><h3 id="settings-comfort">Display & comfort</h3><div class="settings-options">
+      <label>Text size<select name="textScale"><option value="1">Standard</option><option value="1.15">Large</option><option value="1.3">Larger</option></select></label>
       <label><input type="checkbox" name="reducedFlashes"> Reduce flashes and pulses</label>
       <label><input type="checkbox" name="cameraShake"> Camera shake</label>
       <label><input type="checkbox" name="highReadability"> High-readability lighting</label>
-      <label><input type="checkbox" name="creatureCaptions"> Creature sound captions</label>
-      <label><input type="checkbox" name="recordClips"> Record clips (keeps the last ten seconds, ready to save as a GIF)</label></div>
-      <fieldset class="trickshot-settings"><legend>Combat experiment</legend>
-      <label><input type="checkbox" name="trickshotEnabled"> Trickshot combat</label>
-      <p>Chain different enemies for a brief window of borrowed time. Take a Weaver's leg, then finish its weakened owner with it.</p>
-      <div id="trickshot-tuning">
-      <p>An assisted lock steadies single shots. The guide marks first contact; a wider ring shows spread, a broken ring marks uncertain follow-through. Seeking spells and streams keep free aim.</p>
-      <label><input type="checkbox" name="finisher"> Humiliation finisher</label>
-      <p>With a Weaver's own leg in hand and its owner wounded, the swing slows as it closes, and only a real hit ends it. A miss just costs the moment.</p>
-      <label><input type="checkbox" name="cameraMotion"> Camera leans in during the finisher</label></div></fieldset>
-      <h3>Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask. With a Weaver leg equipped: left click whips, right click throws the leg, and Carry drops it.</p>
+      <label><input type="checkbox" name="creatureCaptions"> Creature sound captions</label></div></section>
+      <section class="settings-group" aria-labelledby="settings-combat"><h3 id="settings-combat">Combat</h3><div class="settings-options">
+      <div class="settings-option"><label><input type="checkbox" name="finisher"> Weaver-leg finisher</label>
+      <p class="settings-note">With a Weaver's own leg in hand and its owner wounded, the swing slows as it closes, and only a real hit ends it. A miss just costs the moment.</p>
+      <label class="settings-sub"><input type="checkbox" name="cameraMotion"> Camera leans in during the finisher</label></div>
+      <div class="settings-option"><label><input type="checkbox" name="trickshotEnabled"> Trickshot <span class="settings-tag">Experimental</span></label>
+      <p class="settings-note">Chain different enemies for a brief window of borrowed time.</p>
+      <p class="settings-note" id="trickshot-tuning">An assisted lock steadies single shots. The guide marks first contact; a wider ring shows spread, a broken ring marks uncertain follow-through. Seeking spells and streams keep free aim.</p></div></div></section>
+      <section class="settings-group" aria-labelledby="settings-clips"><h3 id="settings-clips">Clips</h3><div class="settings-options">
+      <div class="settings-option"><label><input type="checkbox" name="recordClips"> Keep the last ten seconds of play</label>
+      <p class="settings-note">Press <kbd class="key" data-clip-key>${clipKey}</kbd> (View on a controller) to save them as a GIF. The death screen and the ledger offer it too.</p></div></div></section>
+      <section class="settings-group" aria-labelledby="settings-keys"><h3 id="settings-keys">Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask. With a Weaver leg equipped: left click whips, right click throws the leg, and Carry drops it.</p>
       <div class="binding-list"></div><p id="binding-feedback" role="status"></p>
-      <button type="button" id="reset-controls">Restore controls</button>
-      <h3>Controller</h3><p class="controller-help">Controller: left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses; View saves a clip.</p></form>`;
+      <button type="button" id="reset-controls">Restore controls</button></section>
+      <section class="settings-group" aria-labelledby="settings-pad"><h3 id="settings-pad">Controller</h3><p class="controller-help">Left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses; View saves a clip.</p></section></form>`;
     document.getElementById('canvas-holder')!.appendChild(this.dialog);
     this.dialog.addEventListener('close', () => {
       // Native close events are queued. Escape/Resume may already have released
@@ -117,11 +130,14 @@ export class PlayerSettings {
     const root = this.dialog.querySelector('.binding-list')!;
     root.replaceChildren();
     const bindings = getBindings();
+    const clipKey = this.dialog.querySelector('[data-clip-key]');
+    if (clipKey) clipKey.textContent = keyLabel(bindings.clip);
     for (const action of Object.keys(DEFAULT_BINDINGS) as BindingAction[]) {
+      const label = BINDING_LABELS[action];
       const button = document.createElement('button');
       button.type = 'button';
-      button.innerHTML = `<span>${action === 'lure' ? 'Glowseed' : action === 'clip' ? 'Save clip' : action}</span><kbd>${keyLabel(bindings[action])}</kbd>`;
-      button.setAttribute('aria-label', `Change ${action}: ${keyLabel(bindings[action])}`);
+      button.innerHTML = `<span>${label}</span><kbd>${keyLabel(bindings[action])}</kbd>`;
+      button.setAttribute('aria-label', `Change ${label.toLowerCase()}: ${keyLabel(bindings[action])}`);
       button.addEventListener('click', () => {
         button.classList.add('listening');
         button.querySelector('kbd')!.textContent = 'Press a key';
@@ -129,7 +145,7 @@ export class PlayerSettings {
           event.preventDefault(); event.stopPropagation();
           if (event.code === 'Escape') { this.renderBindings(); return; }
           const message = setBinding(action, event.code);
-          this.dialog.querySelector('#binding-feedback')!.textContent = message ?? `${action} is now ${keyLabel(event.code)}.`;
+          this.dialog.querySelector('#binding-feedback')!.textContent = message ?? `${label} is now ${keyLabel(event.code)}.`;
           if (!message) this.renderBindings();
         };
       });
@@ -162,6 +178,10 @@ export class PlayerSettings {
     for (const name of ['finisher', 'cameraMotion'] as const) {
       (this.dialog.querySelector(`[name="${name}"]`) as HTMLInputElement).checked = this.preferences.trickshot[name];
     }
+    // The lean-in belongs to the finisher: greyed out (not hidden) while it is off.
+    const lean = this.dialog.querySelector('[name="cameraMotion"]') as HTMLInputElement;
+    lean.disabled = !this.preferences.trickshot.finisher;
+    lean.closest('label')?.classList.toggle('disabled', lean.disabled);
     (this.dialog.querySelector('[name="textScale"]') as HTMLSelectElement).value = String(this.preferences.textScale);
     for (const name of ['reducedFlashes', 'cameraShake', 'highReadability', 'creatureCaptions'] as const) {
       (this.dialog.querySelector(`[name="${name}"]`) as HTMLInputElement).checked = this.preferences[name];

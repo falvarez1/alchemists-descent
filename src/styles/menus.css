@@ -549,8 +549,6 @@ body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none
 #player-settings input[type="checkbox"] { width: 16px; height: 16px; }
 #player-settings select, #player-settings #reset-controls { background: var(--m-surface-2); border: 1px solid var(--m-line-strong); border-radius: 2px; color: var(--m-text); }
 #player-settings #reset-controls:hover { background: var(--m-surface-3); }
-#player-settings .trickshot-settings { border: 1px solid var(--m-line); border-radius: 2px; padding: 12px 16px 14px; margin: 22px 0 0; }
-#player-settings .trickshot-settings legend { padding: 0 6px; font: 500 calc(13px * var(--text-scale, 1))/1 var(--m-sans); color: var(--m-brass); }
 #player-settings .binding-list kbd {
   display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 7px; box-sizing: border-box;
   border: 1px solid #5d7067; border-bottom-width: 2px; border-radius: 3px; background: #1c2d31; color: var(--m-text); font: 600 12px/1 var(--m-sans);
@@ -558,3 +556,19 @@ body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none
 #player-settings .binding-list button { align-items: center; }
 #player-settings .binding-list button:hover { background: var(--m-surface-2); }
 #player-settings :focus-visible { outline: 2px solid var(--m-mint); outline-offset: 3px; }
+/* Grouped sections: a hairline between groups; notes hang under their option. */
+#player-settings .settings-group + .settings-group { margin-top: 22px; border-top: 1px solid var(--m-line); }
+#player-settings .settings-group h3 { margin-top: 18px; }
+#player-settings .settings-option { display: grid; gap: 5px; }
+#player-settings .settings-option > label { display: flex; gap: 12px; align-items: center; }
+#player-settings .settings-note { margin: 0 0 0 28px; font: 400 calc(12.5px * var(--text-scale, 1))/1.5 var(--m-sans); color: var(--m-muted); max-width: 58ch; }
+#player-settings .settings-note kbd.key { margin: 0 1px; }
+#player-settings .settings-sub { margin: 4px 0 0 28px; font-size: calc(13px * var(--text-scale, 1)); color: var(--m-text-soft); }
+#player-settings label.disabled { opacity: 0.45; cursor: default; }
+#player-settings .settings-tag {
+  margin-left: 2px; padding: 2px 6px 3px; border: 1px solid #5d6f64; border-radius: 2px;
+  font: 600 calc(10px * var(--text-scale, 1))/1 var(--m-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--m-brass);
+}
+#player-settings .binding-list button { text-transform: none; }
+/* The sticky heading must never sit over a focused or scrolled-to option. */
+#player-settings { scroll-padding-top: 88px; }
