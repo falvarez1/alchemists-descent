@@ -43,6 +43,9 @@ const ART: Partial<Record<EnemyKind, SpeciesArt>> = {
 };
 
 const LIGHT = blankLight();
+/** Remains take the scene light at this share, and never above this level. */
+const CORPSE_LIGHT_K = 0.82;
+const CORPSE_LIGHT_CAP = 0.9;
 
 export function hasSpeciesArt(kind: EnemyKind): boolean {
   return ART[kind] !== undefined;
@@ -63,10 +66,17 @@ export function drawSpecies(out: PixelSurface, light: LightField, ctx: Ctx, e: E
   r.dither = art.style?.dither ?? false;
   r.blend = art.style?.blend ?? 1.6;
   resetEyeMarks();
-  art.draw(r, ctx, e, rig);
+  art.draw(r, ctx, e, rig, glow);
   const probe = art.lightProbe?.(e, rig) ?? [e.x, e.y - 6, 10];
   const flash = !ctx.state.reduceFlashes && e.flash > 0 ? Math.min(0.55, e.flash / 11) : 0;
   sampleSceneLight(light, probe[0], probe[1], probe[2], flash, LIGHT, glow);
+  if (glow < 0.999) {
+    // The dead do not shine: remains take the room's light dully (a carcass
+    // held up at the lantern must not turn to pale lacquer).
+    LIGHT.r = Math.min(CORPSE_LIGHT_CAP, LIGHT.r * CORPSE_LIGHT_K);
+    LIGHT.g = Math.min(CORPSE_LIGHT_CAP, LIGHT.g * CORPSE_LIGHT_K);
+    LIGHT.b = Math.min(CORPSE_LIGHT_CAP, LIGHT.b * CORPSE_LIGHT_K);
+  }
   if (art.selfLit) {
     // Its own lamp floods the sample it is tinted by: keep the level, lose most of the hue.
     const lum = LIGHT.r * 0.3 + LIGHT.g * 0.5 + LIGHT.b * 0.2, k = 0.3, cap = 1.05;
@@ -86,17 +96,13 @@ const TINT: [number, number, number, number] = [0, 0, 0, 0];
 
 /**
  * What the world has done to the remains, as a wash over the body: frozen
- * ice-pale, charred toward soot with embers breathing through while it burns,
- * and a faint brass glow while the wand holds it.
+ * ice-pale, charred toward soot with embers breathing through while it burns.
+ * The wand's hold is NOT a wash (it paled dark chitin to lilac): the thread's
+ * single glint at the grip says it.
  */
 function corpseTint(ctx: Ctx, c: Corpse): SceneLight['tint'] {
   const t = ctx.state.frameCount;
   if (c.frozen > 0) { TINT[0] = 0.8; TINT[1] = 0.92; TINT[2] = 1; TINT[3] = 0.42; return TINT; }
-  if (c.grip) {
-    TINT[0] = 1; TINT[1] = 0.8; TINT[2] = 0.45;
-    TINT[3] = ctx.state.reduceFlashes ? 0.08 : 0.11 + 0.05 * Math.sin(t * 0.2);
-    return TINT;
-  }
   if (c.burn > 0) {
     const f = 0.5 + 0.5 * Math.sin(t * 0.37 + c.e.bobPhase * 9);
     TINT[0] = 0.4 + 0.25 * f; TINT[1] = 0.12 + 0.06 * f; TINT[2] = 0.03; TINT[3] = Math.min(0.8, 0.25 + c.char * 0.55);
