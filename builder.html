@@ -5,7 +5,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Builder — Alchemist's Descent</title>
+    <title>Builder — Breathing Works</title>
+    <!-- Player-facing name, tagline and share cards: keep in step with src/config/brand.ts
+         (tests/brand.test.ts compares them). -->
+    <meta name="description" content="Something is alive in the old refinery. Listen. Experiment. Find your way down.">
+    <meta name="application-name" content="Breathing Works">
+    <meta name="theme-color" content="#102025">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Breathing Works">
+    <meta property="og:title" content="Breathing Works — An Alchemist’s Descent">
+    <meta property="og:description" content="Something is alive in the old refinery. Listen. Experiment. Find your way down.">
+    <meta property="og:url" content="https://alchemists-descent.pages.dev/">
+    <meta property="og:image" content="https://alchemists-descent.pages.dev/assets/living-descent/refinery-distance.png">
+    <meta property="og:image:width" content="1150">
+    <meta property="og:image:height" content="782">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Breathing Works — An Alchemist’s Descent">
+    <meta name="twitter:description" content="Something is alive in the old refinery. Listen. Experiment. Find your way down.">
+    <!-- The entry title's face: fetch it with the HTML instead of after the JS-injected CSS. -->
+    <link rel="preload" href="/assets/fonts/cormorant-garamond-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2307070a'/%3E%3Crect x='3' y='9' width='3' height='3' fill='%23d4af37'/%3E%3Crect x='6' y='6' width='3' height='3' fill='%23a855f7'/%3E%3Crect x='9' y='9' width='3' height='3' fill='%233a7bd5'/%3E%3C/svg%3E">
     <style>
       /* Critical boot styles, inlined on purpose: the app stylesheet loads
@@ -42,7 +60,7 @@
     </div>
 
     <header>
-        <div><h1>Purple Llama Studio <span class="title-sub">| Alchemist's Descent</span></h1></div>
+        <div><h1>Purple Llama Studio <span class="title-sub">| Breathing Works</span></h1></div>
         <div class="hud-wrapper">
             <!-- data-authoring: stripped from a play build by main.ts. PERF stays
                  (a tester reporting "it's slow" needs it); these are dev tools. -->
@@ -89,8 +107,7 @@
                         </div>
                     </div>
                     <div class="wave-readout">
-                        <div class="wave-num" id="wave-num">WAVE 1</div>
-                        <div class="sub"><span id="enemies-left">0</span> HOSTILES</div>
+                        <div class="wave-num" id="wave-num"></div>
                         <div id="treasure-row">
                             <span class="treasure-chip" id="key-indicator" title="The Golden Key">&#9919;</span>
                             <span class="treasure-chip" id="cards-chip" title="Spell cards in the satchel &mdash; B to slot them"><span class="t-icon" id="cards-chip-icon"></span><b id="hud-cards">0</b></span>

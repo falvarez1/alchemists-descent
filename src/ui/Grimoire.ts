@@ -5,8 +5,10 @@ import { RECIPES, loadDiscoveredRecipes, type Recipe } from '@/game/Brewing';
 import { MATERIAL_LORE, discoveredLore } from '@/game/lore';
 import { MATERIAL_PARAMS } from '@/config/params';
 
-// Bundled like the backdrop layers (new URL → Vite asset). The authored book art.
-const GRIMOIRE_SRC = new URL('../../assets/grimoire-open-straight.png', import.meta.url).href;
+// Bundled like the backdrop layers (new URL → Vite asset). The authored book art,
+// WebP q92 (212 KB; the PNG was 1.97 MB). Not fetched at boot: the <img> carries
+// it as data-src and toggle() assigns src the first time the book opens.
+const GRIMOIRE_SRC = new URL('../../assets/grimoire-open-straight.webp', import.meta.url).href;
 
 /**
  * The wizard's Grimoire — an in-world book (toggle with `J`) drawn onto the

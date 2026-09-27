@@ -3,7 +3,7 @@ import type { LevelRuntime } from '@/core/types';
 /**
  * Shared predicates for the Noita-style D1 surface intro, so the "is the wizard
  * still up top?" / "where does he arrive?" rules live in ONE place instead of
- * being re-spelled (identically) in Levels and IntroProgression.
+ * being re-spelled (identically) in Levels and the (since removed) IntroProgression.
  *
  * The surface intro is a transient phase of the very first D1 entry: the wizard
  * starts on `surfaceSpawn` (the grass beside his cabin) and `surfaceDescended`

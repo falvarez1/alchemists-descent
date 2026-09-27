@@ -54,8 +54,9 @@ src/
     AuthorLinkClient.ts    Socket lifecycle, reconnect, heartbeat, echo drop
     SessionTransport.ts    The seam multiplayer plugs into: session semantics
                            (reconnect/presence/echo) stay in the client, a
-                           transport carries opaque frames. WebSocket today,
-                           SpacetimeDB next (docs/MULTIPLAYER-ARCHITECTURE.md)
+                           transport carries opaque frames. WebSocket today;
+                           the SpacetimeDB transport is archived (git tag
+                           archive/spacetimedb, docs/MULTIPLAYER-ARCHITECTURE.md)
     tuningPatch.ts         Dotted tuning paths <-> the live config singletons
                            (allowlist DERIVED from shipped defaults, never authored)
 servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
@@ -96,9 +97,9 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     DeathCinema.ts        The directed death: push-in, grade, heartbeats, letterbox, title beat
     WaveDirector.ts       createWaveState() — the small kill/counter state that
                           outlived the retired wave-survival director
-    surfaceIntro.ts       D1 Noita-style surface-intro arrival predicates
-                          (isOnIntroSurface / introArrivalSpawn), shared by
-                          Levels and IntroProgression
+    surfaceIntro.ts       Surface-intro arrival predicates (isOnIntroSurface /
+                          introArrivalSpawn) for Levels; no generated level has
+                          a surface since D1 became the Breathing Works
   world/
     CaveGenerator.ts      Generation pipeline host: skeleton dispatch + paint + decorations
     carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)
@@ -140,7 +141,13 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     TeaMachineLinkages.ts Bell & Tea Engine linkage drawings: wheels, cables
                           and rods follow solver poses + real plate travel
   audio/
-    AudioEngine.ts        Procedural WebAudio SFX synthesis
+    AudioEngine.ts        Procedural WebAudio SFX synthesis; mix buses -> glue
+                          compressor -> limiter -> soft clip -> master
+    mix.ts                Pure mix math: volume taper, bus levels, placeSound
+                          (pan / distance / air-absorption from the camera centre)
+    Stingers.ts           Run-event stingers (alchemyKill, phialsChanged,
+                          runEnded, clipSaved) — events in, audio calls out
+    HabitatAudio.ts       Listener placement + footfall / creature-movement cues
   input/
     InputManager.ts       Mouse/keyboard handlers, mode switching
   ui/

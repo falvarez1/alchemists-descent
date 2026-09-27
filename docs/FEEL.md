@@ -465,6 +465,32 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   bat: a falling `squeak`; small bodies launching: a soft `hop` pat. Alerts
   and death cries use the same voices (`alertVoice`, `deathCry`), so the
   generic wet squelch is now the slime's alone.
+- **One mix, one pair of ears.** Every voice lands on a bus — `fx` (the
+  player's world: blasts, spells, impacts), `voices` (creatures), `ambience`
+  (drips, chirps, simmer, the refinery's breath) and `ui` (pickups, cards,
+  stingers) — summed through a glue compressor (-12 dB, 2:1, 12 ms / 250 ms),
+  +1.6 dB make-up, a -2 dB 20:1 limiter and a tanh soft-clip shoulder above
+  0.8. A wall of forty simultaneous blasts peaks at ~0.6 instead of clipping;
+  a single blast still hits ~0.3 (the old unprotected sum peaked 0.24 alone
+  and 1.8 — hard clip — with eight). Sliders: Master 80 %, Effects 100 %
+  (fx/voices/ui), Ambience 80 %, squared taper, persisted with the player
+  preferences (`audio/mix.ts`).
+- **The ears are the camera centre** in every mode, so on-screen left is the
+  left ear. `placeSound` (`audio/mix.ts`): pan = dx / 320 × 0.85 (never hard);
+  full gain inside a 70-cell plateau, then (1 − t)^1.8 to silence at the
+  cue's range; vertical distance counts ×1.35; past a quarter of the range a
+  lowpass closes from 16 kHz toward 650 Hz, so a blast across the cavern
+  arrives as a thud. Explosions (900-cell range), lightning, frost/implode
+  impacts, spell hits, steam, splashes, doors, mechanism groans, cauldron
+  and critter sounds all pass their cell position; noise bursts start at a
+  random offset so two blasts in one frame do not comb-filter.
+- **Stingers** (`audio/Stingers.ts`, UI bus, never ducked): an alchemical kill
+  rings a glass bell over a brass swell that climbs a pentatonic ladder with
+  the chain (two kills in one blast arpeggiate 70 ms apart; the cause adds a
+  tiny material accent); a spent return phial cracks, a restored one pours
+  and settles on a warm third; victory is a rising fanfare into an open
+  chord, a fallen run a slow descending minor line — both duck the world for
+  ~2.7 s; a saved clip clicks like a shutter.
 - **A blocked creature stops drumming.** A beached Rillback hops toward what
   it wants; three hops that went nowhere mean a wall, and it rests 2.5–4 s
   before trying again instead of thudding into the rock every half second

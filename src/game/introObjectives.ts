@@ -3,7 +3,8 @@ import type { CardId } from '@/core/types';
 /**
  * Single source of truth for the D1 onboarding contract.
  *
- * `IntroProgression` PRODUCES these objective lines; the HUD CONSUMES them (the
+ * The retired procedural-D1 `IntroProgression` produced these objective lines
+ * (removed 2026-09-26: D1 is the Breathing Works); the HUD still CONSUMES them (the
  * pre-key passthrough set + the control-hint row). Keeping the strings, the
  * passthrough set, the control hints, and the gate card in one module stops the
  * producer and consumer from drifting into silent mismatches — a stale string on

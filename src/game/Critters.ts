@@ -450,7 +450,7 @@ export class Critters implements CrittersApi {
           if (c.gasp % 22 === 0) c.vy = -1.4 - entityRandom();
           if (c.gasp > 260) {
             ctx.particles.burst(c.x, c.y, 4, Cell.Blood, () => packRGB(180, 40, 50), 1.1);
-            ctx.audio.squelch(); // the arc ends audibly, not in silence
+            ctx.audio.squelch(c.x, c.y); // the arc ends audibly, not in silence
             this.removeAt(idx);
             continue;
           }
@@ -483,7 +483,7 @@ export class Critters implements CrittersApi {
               if (tt === Cell.Fungus || tt === Cell.Moss) {
                 w.clearCellAt(ti);
                 ctx.particles.burst(xi + ddx, yi + ddy, 2, null, () => packRGB(90, 160, 80), 0.6);
-                ctx.audio.skitter(); // a faint nibble — the ecology is audible
+                ctx.audio.skitter(xi, yi); // a faint nibble — the ecology is audible
                 break;
               }
             }
@@ -552,7 +552,7 @@ export class Critters implements CrittersApi {
           if (poolBelow) {
             const di = w.idx(x, solidY + 1);
             w.replaceCellAt(di, Cell.Water, waterColor());
-            if (entityRandom() < 0.3) ctx.audio.drip();
+            if (entityRandom() < 0.3) ctx.audio.drip(x, solidY + 1);
           }
         }
       }
@@ -603,7 +603,7 @@ export class Critters implements CrittersApi {
           glow: 1.2,
           grav: -0.01,
         });
-        if (entityRandom() < 0.15) ctx.audio.bubble();
+        if (entityRandom() < 0.15) ctx.audio.bubble(x, y);
       }
     }
   }
@@ -654,9 +654,9 @@ export class Critters implements CrittersApi {
       dy = c.y - ctx.player.y;
     if (dx * dx + dy * dy > 140 * 140) return;
     if (c.kind === 'moth' || c.kind === 'firefly') {
-      if (entityRandom() < 0.4) ctx.audio.chirp();
+      if (entityRandom() < 0.4) ctx.audio.chirp(c.x, c.y);
     } else if (c.kind === 'beetle' || c.kind === 'fly') {
-      if (entityRandom() < 0.5) ctx.audio.skitter();
+      if (entityRandom() < 0.5) ctx.audio.skitter(c.x, c.y);
     }
   }
 }

@@ -32,11 +32,7 @@ export interface EventMap {
   paramsChanged: undefined;
   /** Manual stepping / rewind history changed; Sandbox, Builder, and debug panels re-sync. */
   timeControlsChanged: TimeControlStatus;
-  /** A wave began — HUD updates the wave number readout. */
-  waveStarted: { num: number };
-  /** Show the big center-screen banner text for ~2.2s. */
-  waveBanner: { big: string; small: string };
-  /** Remaining hostile count changed — HUD readout. */
+  /** Live hostile count changed (Levels emits; the wave-era HUD readout that listened is retired). */
   enemiesLeft: { count: number };
   /** The player arrived in a level — HUD shows depth + biome name. */
   levelChanged: { depth: number; name: string };

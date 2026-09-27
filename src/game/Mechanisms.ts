@@ -83,7 +83,7 @@ export class Mechanisms implements MechanismsApi {
         }
         if (intact < m.body.length / 2) {
           m.broken = 1800; // 30 seconds of groaning
-          ctx.audio.groan();
+          ctx.audio.groan(m.x, m.y);
           // Announce only what the player can witness: generation/settling can
           // wreck several far-off mechanisms on arrival, and a stack of
           // identical groans about machines you have never seen is noise.
@@ -93,7 +93,7 @@ export class Mechanisms implements MechanismsApi {
       if (m.broken !== undefined && m.broken > 0) {
         m.broken--;
         if (m.broken % 360 === 0) {
-          ctx.audio.groan();
+          ctx.audio.groan(m.x, m.y);
           ctx.particles.burst(m.x, m.y - 3, 4, null, () => packRGB(130, 95, 80), 0.6, {
             grav: 0.06,
           });
@@ -156,7 +156,7 @@ export class Mechanisms implements MechanismsApi {
         m.reading = liquid;
         const afloat = liquid >= (m.threshold ?? 28);
         if (afloat && m.state === 0) {
-          ctx.audio.bubble();
+          ctx.audio.bubble(m.x, m.y);
           ctx.particles.burst(m.x, m.y - 3, 5, null, () => packRGB(130, 205, 255), 0.6, {
             grav: -0.02,
             glow: 0.8,
@@ -176,7 +176,7 @@ export class Mechanisms implements MechanismsApi {
           }
           if (charged) {
             m.state = 1;
-            ctx.audio.zap();
+            ctx.audio.zap(m.x, m.y);
             ctx.particles.burst(m.x, m.y - 3, 12, null, () => packRGB(120, 200, 255), 2.0, {
               glow: 2.4,
               grav: -0.01,
@@ -264,7 +264,7 @@ export class Mechanisms implements MechanismsApi {
           }
           if (lit) {
             m.state = 1;
-            ctx.audio.brazier();
+            ctx.audio.brazier(m.x, m.y);
             ctx.particles.burst(m.x, m.y - 3, 12, Cell.Fire, fireColor, 1.6, {
               glow: 2.2,
               grav: -0.02,
@@ -345,7 +345,7 @@ export class Mechanisms implements MechanismsApi {
           }
         }
         setDoorCells(ctx, door, want);
-        ctx.audio.doorGrind();
+        ctx.audio.doorGrind(door.x + door.w / 2, door.y + door.h / 2);
       }
     }
 
@@ -525,13 +525,13 @@ export class Mechanisms implements MechanismsApi {
         if (m.closeT <= 0) {
           m.closeT = undefined;
           setValveCells(ctx, m, false);
-          ctx.audio.doorGrind();
+          ctx.audio.doorGrind(m.x + m.w / 2, m.y + m.h / 2);
         }
         return;
       }
       if (!want) {
         setValveCells(ctx, m, false);
-        ctx.audio.doorGrind();
+        ctx.audio.doorGrind(m.x + m.w / 2, m.y + m.h / 2);
       }
     } else {
       const timed = m.autoCloseFrames !== undefined && m.autoCloseFrames > 0;
@@ -540,7 +540,7 @@ export class Mechanisms implements MechanismsApi {
           if (this.satisfied(t)) this.sparkLine(ctx, t.x, t.y - 2, m.x + m.w / 2, m.y + m.h / 2);
         }
         setValveCells(ctx, m, true);
-        ctx.audio.doorGrind();
+        ctx.audio.doorGrind(m.x + m.w / 2, m.y + m.h / 2);
       } else if (m.closePending === true) {
         setValveCells(ctx, m, false);
       }

@@ -92,7 +92,7 @@ export class Brewing {
     this.brewTicks++;
     // Simmer ambience: blub + a wisp or two of recipe-colored vapor rising off the bowl.
     if (ctx.state.frameCount % 8 === 0) {
-      ctx.audio.bubble();
+      ctx.audio.bubble(cauldron.x, cauldron.y);
       const colorFn = COLOR_FN[recipe.elixir];
       const wisps = 1 + (entityRandom() < 0.5 ? 1 : 0);
       for (let j = 0; j < wisps; j++) {
@@ -182,7 +182,7 @@ export class Brewing {
       glow: 2.0,
       grav: -0.02,
     });
-    ctx.audio.bubble();
+    ctx.audio.bubble(cauldron.x, cauldron.y);
     ctx.audio.tone(360, 720, 0.22, 'sine', 0.10);
     const firstDiscovery = this.recordDiscovery(ctx, recipe);
     ctx.events.emit('recipeBrewed', { id: recipe.id, name: recipe.name, firstDiscovery });

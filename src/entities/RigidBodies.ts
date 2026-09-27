@@ -1198,7 +1198,7 @@ export class RigidBodies implements RigidBodiesApi {
         { grav: 0.08, glow: 0.4 },
       );
     }
-    ctx.audio.bubble();
+    ctx.audio.bubble(body.x, body.y);
   }
 
   /** True if any cell within `margin` of the body's footprint passes `test`. */

@@ -1,5 +1,9 @@
 # MOBILE.md — Mobile-friendliness audit & plan
 
+> **Archived / frozen (2026-09-26).** Breathing Works targets desktop browsers
+> (keyboard + mouse / controller). This audit is kept as a record; nothing in it
+> is scheduled.
+
 Feasibility audit for running **Alchemist's Descent** on touch devices, plus a phased plan.
 Generated from a codebase audit (2026-06-22). File:line references were accurate at audit time —
 verify before acting on any single one.

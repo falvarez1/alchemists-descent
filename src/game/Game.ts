@@ -14,6 +14,7 @@ import { Telemetry } from '@/core/telemetry';
 import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode } from '@/core/types';
 import { AudioEngine } from '@/audio/AudioEngine';
 import { HabitatAudio } from '@/audio/HabitatAudio';
+import { installAudioStingers } from '@/audio/Stingers';
 import { Flask } from '@/combat/Flask';
 import { Lightning } from '@/combat/Lightning';
 import { WandSystem } from '@/combat/wands/WandSystem';
@@ -31,7 +32,6 @@ import { Critters } from '@/game/Critters';
 import { DebugTool } from '@/game/DebugTool';
 import { GrimoireInteractionObserver } from '@/game/GrimoireInteractions';
 import { HintSystem } from '@/game/Hints';
-import { IntroProgression } from '@/game/IntroProgression';
 import { Levels } from '@/game/Levels';
 import { Mechanisms } from '@/game/Mechanisms';
 import { Pickups } from '@/game/Pickups';
@@ -111,7 +111,6 @@ export class Game {
   private readonly minimap: Minimap;
   private readonly toolbar: Toolbar;
   private readonly inspector: Inspector;
-  private readonly introProgression: IntroProgression;
   private readonly perfHud = new PerfHud();
   private readonly brewing = new Brewing();
   private readonly habitatAudio = new HabitatAudio();
@@ -192,6 +191,8 @@ export class Game {
       waves: createWaveState(),
     } as unknown as Ctx;
     this.disposables.push(audio);
+    // Run-event stingers (alchemy chime, phial crack/fill, run verdict, clip shutter).
+    this.disposables.push({ dispose: installAudioStingers(ctx.events, audio) });
     ctx.events.on('paramsChanged', () => {
       this.composeDirty = true;
     });
@@ -238,8 +239,6 @@ export class Game {
     const hints = new HintSystem(ctx);
     ctx.hints = hints;
     this.disposables.push(hints);
-    this.introProgression = new IntroProgression(ctx);
-    this.disposables.push(this.introProgression);
     ctx.debug = new DebugTool(ctx);
     ctx.time = new TimeControls(ctx);
     ctx.perf = this.perfHud;
@@ -263,7 +262,6 @@ export class Game {
     // revisits inflate it — read it as traffic, not unique clears).
     ctx.events.on('levelChanged', ({ depth }) => ctx.telemetry.count(`depth.entered.${depth}`));
     ctx.events.on('benchOpened', () => ctx.telemetry.count('bench.opened'));
-    ctx.events.on('waveStarted', ({ num }) => ctx.telemetry.count(`wave.reached.${num}`));
     this.levelCurtainDisposer = ctx.events.on('levelCurtain', ({ visible, holdMs = 0, title, detail }) => {
       if (this.levelCurtainTimer !== null) {
         window.clearTimeout(this.levelCurtainTimer);
@@ -355,8 +353,14 @@ export class Game {
     };
   }
 
-  /** Boot sequence (original lines 4106-4117), then kick off the rAF loop. */
-  start(): void {
+  /**
+   * Boot sequence (original lines 4106-4117), then kick off the rAF loop.
+   * `deferWorkshop`: the player route opens on the entry screen, so the
+   * Sandbox workshop (~30 ms of cell stamping, and a lit scene rendered
+   * every frame behind an opaque overlay) waits until someone actually
+   * leaves the entry for the Sandbox, the Builder or the run launcher.
+   */
+  start(options: { deferWorkshop?: boolean } = {}): void {
     if (this.started || this.disposed) return;
     this.started = true;
 
@@ -370,8 +374,9 @@ export class Game {
     // the caves solid to bedrock — so the app opened on a misleading picture of
     // itself with nowhere to actually drop sand. "Generate Caves" is still one
     // click away for anyone who wants the generator.
-    stampSandboxArena(this.ctx);
-    this.ctx.camera.snapTo(SANDBOX_FOCUS.x, SANDBOX_FOCUS.y);
+    this.bootWorld = this.ctx.world;
+    if (options.deferWorkshop) this.workshopPending = true;
+    else this.buildWorkshop();
 
     // A hidden tab is the most likely prelude to a closed one — checkpoint.
     const checkpointOnHidden = (): void => {
@@ -395,9 +400,37 @@ export class Game {
       if (this.ctx.state.mode === 'build') this.restoreSavedMode();
       this.wireModePersistence();
       this.entry.show();
+      this.entryDecided = true;
     });
 
     this.animationFrameId = requestAnimationFrame(this.step);
+  }
+
+  private bootWorld: Ctx['world'] | null = null;
+  private workshopPending = false;
+  /** Set once boot has decided whether the entry screen shows (it waits on `levels.ready`). */
+  private entryDecided = false;
+
+  private buildWorkshop(): void {
+    this.workshopPending = false;
+    stampSandboxArena(this.ctx);
+    this.ctx.camera.snapTo(SANDBOX_FOCUS.x, SANDBOX_FOCUS.y);
+  }
+
+  /**
+   * The deferred workshop, resolved on the first presentation frame where the
+   * boot world is actually on screen in the Sandbox: the entry screen is gone,
+   * nothing replaced the world, and the Builder has not claimed it. A run
+   * swapping in its level, or the Builder opening on the boot world, cancels
+   * it — stamping later would overwrite what they put there. Runs before the
+   * tick, like a toolbar click would.
+   */
+  private settleDeferredWorkshop(): void {
+    const { ctx } = this;
+    const body = document.body.classList;
+    if (ctx.world !== this.bootWorld || body.contains('builder-open')) { this.workshopPending = false; return; }
+    if (!this.entryDecided || ctx.state.mode !== 'build' || body.contains('entry-active')) return;
+    this.buildWorkshop();
   }
 
   dispose(): void {
@@ -475,6 +508,7 @@ export class Game {
   private step = (now: number): void => {
     if (this.disposed) return;
     this.animationFrameId = requestAnimationFrame(this.step);
+    if (this.workshopPending) this.settleDeferredWorkshop();
     // Poll on presentation frames so Start can also resume a paused simulation.
     this.pollInput();
     // Death slow-mo: stretch the wall-clock cost of a tick so the sim advances
@@ -610,7 +644,6 @@ export class Game {
       if (!debugActive) {
         this.brewing.update(ctx);
         ctx.hints.update(ctx);
-        this.introProgression.update(ctx);
         ctx.wands.update(ctx);
         ctx.particles.update(ctx);
         ctx.lightning.update();

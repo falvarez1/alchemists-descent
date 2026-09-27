@@ -326,7 +326,6 @@ body.runtime-inspector-open #viewport-container {
 
 .wave-readout { position: absolute; top: 12px; right: 14px; text-align: right; text-shadow: 0 1px 4px #000; }
 .wave-readout .wave-num { font-size: 24px; font-weight: 800; color: #e9d5ff; letter-spacing: 2px; }
-.wave-readout .sub { font-size: 13px; color: rgba(255,255,255,0.5); letter-spacing: 1px; margin-top: 2px; }
 .wave-readout .objective { font-size: 13px; color: #fcd34d; letter-spacing: 1.6px; font-weight: 700; }
 .objective-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 4px; }
 /* Treasure row: everything pursed rides together under the depth readout */

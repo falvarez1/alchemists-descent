@@ -46,10 +46,12 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # (footfalls/splashes/tracks/vines/critters), bench-creatures.mjs,
 # perf-creatures-live.mjs. Player (docs/PLAYER-ART.md): player-studio.mjs
 # (every action posed + costume-ticked, zoomed), probe-player-death.mjs
-# Gameplay/runtime probes (dev server running): verify-intro-progression.mjs
-# (D1 surface intro → descent → onboarding spine), verify-descent-progression.mjs,
+# Gameplay/runtime probes (dev server running): verify-descent-progression.mjs,
 # verify-progression-pacing.mjs, verify-bat-slime.mjs, verify-death-causes.mjs,
 # verify-god-mode-qa.mjs
+# Audio (dev server running): verify-audio-mix.mjs — buses/limiter/pan/attenuation,
+# volume sliders + persistence, stingers, lazy Grimoire art (we cannot listen:
+# ctx.audio.debugSnapshot() / debugRenderOffline() are the instruments)
 node scripts/gen-builtin-prefabs.mjs   # regenerate src/world/prefabs/builtin/*.json
 node scripts/gen-machine-prefabs.mjs   # regenerate the machine-*.json structure prefabs
 ```
@@ -174,8 +176,9 @@ loops degrade criteria progressively, never silently skip.
   enemy / spell card / biome / pickup) and the full verification playbook
 - `docs/DESIGN.md` — canonical game design; `docs/FEEL.md` — every mechanic/micro-animation
   with its tuning numbers; `docs/BUILDER.md` — Builder tool spec and phases
-- `docs/MULTIPLAYER-ARCHITECTURE.md` — the two-plane decision (SpacetimeDB for
-  durable session state, a binary stream plane for cells), why the grid is NOT a
-  database, and the `SessionTransport` seam the editor and multiplayer share
+- `docs/MULTIPLAYER-ARCHITECTURE.md` — **archived/frozen 2026-09-26** (the
+  SpacetimeDB transport lives only in git tag `archive/spacetimedb`); still the
+  reference for the determinism boundary, why the grid is NOT a database, and
+  the `SessionTransport` seam AuthorLink runs on
 - `docs/PORTING.md` — port conventions + approved deviations; `docs/INVENTORY.md` — system map
   of the original HTML; `docs/UPGRADE-DELTA.md` — what was mined from the prototype files

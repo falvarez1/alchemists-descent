@@ -33,7 +33,7 @@ await page.evaluate(() => { const c = window.__game.ctx; c.state.debugGodMode = 
 const start = await census();
 console.log('start ', JSON.stringify(start));
 for (let pass = 0; pass < passes; pass++) {
-  for (const [id, x, , w, floor] of ROOMS) {
+  for (const [, x, , w, floor] of ROOMS) {
     await execConsoleCommand(page, `tp ${Math.round(x + w / 2)} ${floor - 30}`);
     await page.waitForTimeout(4500);
   }

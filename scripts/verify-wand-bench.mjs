@@ -23,32 +23,6 @@ const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
 page.on('dialog', (dialog) => dialog.dismiss().catch(() => undefined));
 
-const sampleRefugeMarker = () => page.evaluate(() => {
-  const ctx = window.__game.ctx;
-  const rt = ctx.levels.current;
-  const canvas = document.getElementById('minimap-corner');
-  const g = canvas?.getContext('2d');
-  if (!rt?.refuge || !g) return { hasRefuge: false, highlighted: 0, blue: 0 };
-  const rx = rt.refuge.x >> 3;
-  const ry = rt.refuge.y >> 3;
-  const x0 = Math.max(0, rx - 3);
-  const y0 = Math.max(0, ry - 3);
-  const w = Math.min(7, canvas.width - x0);
-  const h = Math.min(7, canvas.height - y0);
-  if (w <= 0 || h <= 0) return { hasRefuge: true, highlighted: 0, blue: 0 };
-  const img = g.getImageData(x0, y0, w, h).data;
-  let highlighted = 0;
-  let blue = 0;
-  for (let i = 0; i < img.length; i += 4) {
-    const r = img[i];
-    const gg = img[i + 1];
-    const b = img[i + 2];
-    if (r > 220 && gg > 220 && b > 220) highlighted++;
-    if (b > 180 && gg > 120 && r < 120) blue++;
-  }
-  return { hasRefuge: true, highlighted, blue };
-});
-
 const sampleBenchBadgeLayout = () => page.evaluate(() => {
   const badges = [...document.querySelectorAll('#wand-bench .bench-slot-link')];
   return badges.map((badge) => {

@@ -1,6 +1,8 @@
-# Alchemist's Descent
+# Breathing Works — An Alchemist’s Descent
 
-A falling-sand action roguelite set inside a living alchemical refinery. Cross
+*Something is alive in the old refinery. Listen. Experiment. Find your way down.*
+
+A free, browser-based falling-sand action roguelite set inside a living alchemical refinery. Cross
 wet masonry and corroded machinery, manipulate real materials, distract wildlife,
 and descend through a persistent campaign. TypeScript, Vite, Three.js and Web Audio
 power the game; material IDs remain append-only save contracts.

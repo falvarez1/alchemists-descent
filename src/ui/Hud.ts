@@ -202,12 +202,6 @@ export class Hud {
       this.setHudTimeout(() => track?.classList.remove('mana-dry'), 320);
     }));
 
-    this.disposers.push(ctx.events.on('waveStarted', ({ num }) => {
-      el('wave-num').textContent = 'WAVE ' + num;
-    }));
-
-    this.disposers.push(ctx.events.on('waveBanner', ({ big, small }) => this.showBanner(big, small)));
-
     // The descent: depth readout + one house-style title card on every arrival
     // (the hand-built Works included), with the floor's own epigraph.
     // The card waits for the transition curtain to lift, so its entrance
@@ -269,10 +263,6 @@ export class Hud {
 
     // The hotbar mirrors the active wand; any loadout change rebuilds it.
     this.disposers.push(ctx.events.on('wandChanged', () => this.buildHotbar()));
-
-    this.disposers.push(ctx.events.on('enemiesLeft', ({ count }) => {
-      el('enemies-left').textContent = String(count);
-    }));
 
     this.disposers.push(ctx.events.on('playerDied', ({ depth, level, gold, cause }) => {
       // Prep the overlay text but DON'T show it yet — the wizard ragdolls first.
