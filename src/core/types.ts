@@ -2541,7 +2541,8 @@ export interface WandsApi {
   active: 0 | 1;
   /** Owned cards not currently slotted in either wand. */
   readonly collection: CardId[];
-  /** Per-frame while player.firing (play mode): advance + cast the program. */
+  /** Per-frame while player.firing, or while a tap's press edge waits (play
+   *  mode): advance + cast the program; answering a press clears firePressed. */
   fire(ctx: Ctx): void;
   /** The active Flame Jet stream this frame (wand tip + aim + reach/half-angle),
    *  or null. A read-only sense so the enemy AI can sidestep out of the cone. */
