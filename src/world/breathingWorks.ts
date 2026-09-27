@@ -18,15 +18,28 @@ export const WORKS_ROOMS = [
   { id: 'descent', name: 'The Lower Bell', x: 925, y: 825, w: 610, h: 185, floor: 1010 },
 ] as const;
 
-/** Stable authored ids let objectives, tests and presentation describe the
- * same physical cold lock without searching by incidental coordinates. */
-export const WORKS_COLD_LOCK = {
-  leftDoorId: 8301,
-  rightDoorId: 8302,
-  leftSensorId: 8303,
-  rightSensorId: 8304,
-  basin: { x0: 302, y0: 333, x1: 327, y1: 341 },
+/** The oil-soaked barricade between the spawn and the engine crank: the
+ * first thing a new alchemist sets on fire. A route-seal plug, so it is real
+ * wood that really burns (or digs), and findability walks straight through. */
+export const WORKS_BARRICADE = { id: 8401, x0: 399, x1: 412, y0: 284, y1: 314 } as const;
+
+/** The Lower Bell gate: a riveted floor grate over the way down. Its two
+ * leaves are real metal that slide into slots under the floor lip once the
+ * brass bell is carried to it; the descent triggers from the open pit. */
+export const WORKS_GATE = {
+  x: 1400, floor: 1010, pit: { x0: 1388, x1: 1412, y1: 1022 },
+  leaves: { y0: 1011, y1: 1013, left: { x0: 1388, x1: 1399 }, right: { x0: 1400, x1: 1412 } },
+  slot: 14, arch: { x0: 1381, x1: 1419, top: 972, pillar: 5, beam: 5 },
 } as const;
+
+/** True once both grate leaves have fully withdrawn from over the pit. */
+export function worksGateOpen(world: { type(x: number, y: number): number }): boolean {
+  const { pit, leaves } = WORKS_GATE;
+  for (let y = leaves.y0; y <= leaves.y1; y++) for (let x = pit.x0; x <= pit.x1; x++) {
+    if (world.type(x, y) === Cell.Metal) return false;
+  }
+  return true;
+}
 
 /** The Breathing Chamber's sunken reservoir (water rows) under its grate. */
 export const WORKS_RESERVOIR = { x0: 1185, y0: 732, x1: 1409, y1: 766 } as const;
@@ -43,6 +56,13 @@ export function worksRoomAt(x: number, y: number): (typeof WORKS_ROOMS)[number] 
     if (d < distance) { best = room; distance = d; }
   }
   return best;
+}
+
+/** What the HUD calls the place the player stands: the engine's workshop and
+ * catwalk are their own place, not whichever room's outline they overlap. */
+export function worksPlaceName(x: number, y: number): string {
+  if (x > TEA.bounds.x0 - 4 && x < TEA.bounds.x1 && y < 318) return 'The Bell & Tea Engine';
+  return worksRoomAt(x, y).name;
 }
 
 export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<WorldGenApi['generateLevel']> {
@@ -89,10 +109,9 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       rect(Math.round(ax + (bx - ax) * t) - 19, Math.round(ay + (by - ay) * t) - height, 38, height);
     }
   };
-  // The first descent now leaves from beneath the locked crank balcony. The
-  // player sees the cold census before dropping, then later climbs this same
-  // shaft with Frost Shard: an authored out-and-back loop instead of the old
-  // straight catwalk march.
+  // Beneath the crank balcony a service tunnel joins the return shaft to the
+  // sluice. The shaft is a climb between the Silt Garden and the sluice now;
+  // its Intake hatch is sealed so the walk to the crank has no pitfall.
   tunnel(400, 365, 545, 400);
   tunnel(880, 400, 975, 450);
   // Keep the gallery-to-pressure chute west of the third breathing stack.
@@ -106,8 +125,8 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   // pool (beaching its Rillback) and flooded the Undertow within seconds.
   tunnel(190, 815, 330, 1008);
   tunnel(875, 1008, 980, 1008);
-  // A return climb reconnects the refuge to the intake; alternating landings
-  // keep it traversable with the starting jump, climb and levitation budget.
+  // A return climb joins the Silt Garden to the sluice tunnel; alternating
+  // landings keep it traversable with the starting jump and levitation budget.
   rect(330, 285, 82, 320);
   // Carry the rungs all the way to the garden floor. The earlier half-height
   // version asked a fresh player to spend their entire levitation charge just
@@ -164,8 +183,8 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     rect(x, top, 10, 760 - top, Cell.Stone, color);
   }
   rect(807, 743, 9, 2, Cell.Wood, packRGB(117, 79, 41));
-  // Pale, walk-through moss marks the required tome without putting a tiny
-  // collision curb in the safe room's main path.
+  // Pale, walk-through moss marks the refuge's Frost Shard tome (an optional
+  // reward now) without putting a tiny collision curb in the main path.
   rect(885, 743, 15, 1, Cell.Moss, packRGB(124, 174, 183));
   // The garden pool is a sunken basin between the dry foot of the return shaft
   // and the refuge tunnel, so it keeps its water (and its Rillback). Standing
@@ -183,10 +202,9 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   rect(244, 260, 42, 5, Cell.Wood, packRGB(100, 79, 50));
   rect(638, 950, 70, 6, Cell.Wood, packRGB(87, 72, 49));
 
-  // TWO QUIET LESSONS IN THE INTAKE. Neither is on the forced route and
-  // neither does anything until the player acts, so they cannot overwhelm a
-  // first minute — but both are in the first camera frame, and both answer a
-  // wand with the whole simulation at once.
+  // TWO QUIET LESSONS IN THE INTAKE, beside the loud one (the barricade on
+  // the forced route, stamped below). Neither does anything until the player
+  // acts, and both answer a wand with the whole simulation at once.
   //
   // 1. The sealed store, left of the spawn: a wooden gate in a stone wall,
   //    a dark oil slick soaked into its foot, and warm light leaking over
@@ -250,51 +268,61 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   const pickup = (kind: Pickup['kind'], x: number, y: number, data: Pickup['data'] = {}): Pickup =>
     ({ kind, x, y, vx: 0, vy: 0, taken: false, data });
   const machineLights = stampTeaMachine(world, mechanisms);
-  // THE COLD CENSUS. The crank can be seen through two portcullises, but the
-  // alchemist cannot reach through either one. A shallow cistern outside the
-  // cage is the key: both sensors count actual Ice cells and latch forever.
-  // Frost Shard is deliberately below in the refuge; starting nitrogen is a
-  // finite, system-literate sequence break rather than an invisible exception.
-  const coldMetal = packRGB(83, 116, 128);
-  rect(408, 275, 46, 4, Cell.Metal, coldMetal); // cage lintel around the striker rod
-  rect(412, 279, 5, 36, Cell.Metal, coldMetal);
-  rect(449, 279, 5, 36, Cell.Metal, coldMetal);
-  // The census tank is recessed into the west shaft wall rather than laid
-  // across the walking route. It can be aimed into from the hatch/landings,
-  // and the bright water remains visible on both the first drop and return.
-  rect(299, 315, 32, 18, Cell.Empty, EMPTY_COLOR); // open inspection well above the tank
-  rect(299, 342, 32, 3, Cell.Metal, coldMetal);
-  rect(299, 331, 3, 14, Cell.Metal, coldMetal);
-  rect(328, 331, 3, 14, Cell.Metal, coldMetal);
-  rect(WORKS_COLD_LOCK.basin.x0, WORKS_COLD_LOCK.basin.y0,
-    WORKS_COLD_LOCK.basin.x1 - WORKS_COLD_LOCK.basin.x0 + 1,
-    WORKS_COLD_LOCK.basin.y1 - WORKS_COLD_LOCK.basin.y0 + 1,
-    Cell.Water, packRGB(76, 143, 151));
-  // Open hatch into the return shaft. It sits left of the cistern, leaving a
-  // safe lip from which the lock, water and caged crank remain visible.
-  rect(336, 311, 24, 19, Cell.Empty, EMPTY_COLOR);
-  // Frosted glass teeth make the desired transformation readable before the
-  // player owns it; they are decoration/material, never the thing being read.
-  for (const x of [304, 311, 318, 325]) {
-    put(x, 332, Cell.Glass, packRGB(144, 187, 188));
-    if (x % 2 === 0) put(x + 1, 332, Cell.Glass, packRGB(105, 153, 161));
+  // THE BARRICADE. The forced route from the spawn to the engine crank runs
+  // through an oil-soaked timber barricade under an iron lintel: the store
+  // gate's lesson, moved to where nobody can miss it. Its seams are caulked
+  // with dry moss, the tinder that takes a Spark Bolt's flash, and its oil is
+  // sealed in small pockets down the timber's core, deeper than the blast
+  // reaches from the face (a burst oil store throws burning debris back at
+  // the shooter, and oil on the alchemist burns five times as long). The
+  // flame runs the seams, the pockets flare, and the barricade goes up.
+  // Mostly burned, it collapses (a route-seal plug), so no stump is left.
+  // Excavate digs wood too, so it can never lock the level. The lintel meets
+  // the striker rod: the only way into the balcony is through the timber.
+  const B = WORKS_BARRICADE;
+  rect(B.x0 - 4, 278, 443 - (B.x0 - 4), 6, Cell.Metal, packRGB(70, 66, 62));
+  const barricadeBody: Array<[number, number]> = [];
+  const channels = [B.x0 + 8, B.x0 + 9];
+  for (let y: number = B.y0; y <= B.y1; y++) for (let x: number = B.x0; x <= B.x1; x++) {
+    // Sealed pockets of oil down the core of the boards: each flares as the
+    // fire reaches it, but together they are too little to pool into a puddle
+    // that would keep a careless point-blank shooter alight.
+    if (channels.includes(x) && y > B.y0 + 3 && y < B.y1 - 3 && (y - B.y0) % 5 === 2) { put(x, y, Cell.Oil, packRGB(38, 28, 19)); continue; }
+    // Crosswise boards, five rows deep, each its own tone; the oil has
+    // blackened the lower boards and two pale braces cross the whole face.
+    const board = Math.floor((y - B.y0) / 5), row = (y - B.y0) % 5;
+    const soak = Math.min(1, Math.max(0, (y - B.y0 - 6) / (B.y1 - B.y0 - 6)));
+    const u = (x - B.x0) / (B.x1 - B.x0), v = (y - B.y0) / (B.y1 - B.y0);
+    const brace = Math.abs(u - v) < .09 || Math.abs(u - (1 - v)) < .09;
+    const tone = (hash(board, 17) % 3) * 6 + (hash(x, y) % 5) - 2;
+    let r = 142 + tone, g = 101 + tone, b = 58 + tone * .6;
+    if (brace) { r += 26; g += 22; b += 12; }
+    // Every seam is caulked with dry moss: tinder that takes a Spark Bolt's
+    // flash (wood alone catches too fitfully) and carries it across the boards.
+    if (row === 4 && !brace && x > B.x0 && x < B.x1) { put(x, y, Cell.Moss, packRGB(96, 92, 58)); continue; }
+    if ((x === B.x0 + 1 || x === B.x1 - 1) && row === 2) { r = 150; g = 140; b = 118; } // nail heads
+    r -= soak * 44; g -= soak * 36; b -= soak * 20;
+    put(x, y, Cell.Wood, packRGB(Math.round(r), Math.round(g), Math.round(b)));
+    barricadeBody.push([x, y]);
   }
-  const leftDoor: Mechanism = { id: WORKS_COLD_LOCK.leftDoorId, kind: 'door', x: 412, y: 279, w: 5, h: 36,
-    state: 0, targetId: -1, requiresCard: 'frostshard' };
-  const rightDoor: Mechanism = { id: WORKS_COLD_LOCK.rightDoorId, kind: 'door', x: 449, y: 279, w: 5, h: 36,
-    state: 0, targetId: -1, requiresCard: 'frostshard' };
-  const coldSensor = (id: number, targetId: number, x: number): Mechanism => ({
-    id, kind: 'sensor', x, y: 334, w: 1, h: 1, state: 0, targetId,
-    threshold: 32, zone: { ...WORKS_COLD_LOCK.basin }, sensorType: 'material', materialFilter: [Cell.Ice],
-    latch: 'permanent', body: [[x, 334]],
-  });
-  mechanisms.push(leftDoor, rightDoor,
-    coldSensor(WORKS_COLD_LOCK.leftSensorId, leftDoor.id, 306),
-    coldSensor(WORKS_COLD_LOCK.rightSensorId, rightDoor.id, 324));
-  put(306, 334, Cell.Metal, packRGB(72, 145, 148));
-  put(324, 334, Cell.Metal, packRGB(72, 145, 148));
-  const teaCrank = mechanisms.find(mechanism => mechanism.id === TEA.lever.id);
-  if (teaCrank) teaCrank.requiresCard = 'frostshard';
+  // A riveted sill on the Intake side keeps the collapse's burning spill in
+  // the doorway, where it pools and burns out instead of running back along
+  // the bridge under the player.
+  rect(B.x0 - 4, B.y1 - 1, 2, 2, Cell.Metal, packRGB(96, 84, 64));
+  mechanisms.push({ id: B.id, kind: 'plug', x: B.x0, y: B.y0, w: B.x1 - B.x0 + 1, h: B.y1 - B.y0 + 1, state: 0,
+    targetId: -1, material: Cell.Wood, body: barricadeBody, breakFrac: .55, routeSeal: true });
+
+  // THE LOWER BELL GATE: a riveted floor grate over a short pit. Its iron
+  // archway and lock bell are drawn behind the player (render/WorksFixtures):
+  // in a side view, solid pillars would wall the grate in. The pit is the way down.
+  const G = WORKS_GATE;
+  rect(G.pit.x0, G.floor, G.pit.x1 - G.pit.x0 + 1, G.pit.y1 - G.floor + 1);
+  rect(G.pit.x0 - G.slot, G.leaves.y0, G.slot, G.leaves.y1 - G.leaves.y0 + 1);
+  rect(G.pit.x1 + 1, G.leaves.y0, G.slot, G.leaves.y1 - G.leaves.y0 + 1);
+  for (let y: number = G.leaves.y0; y <= G.leaves.y1; y++) for (let x: number = G.pit.x0; x <= G.pit.x1; x++) {
+    const bar = (x - G.pit.x0) % 4 === 3 || y === G.leaves.y0 || x === G.leaves.left.x1 || x === G.leaves.right.x0;
+    put(x, y, Cell.Metal, bar ? packRGB(116, 104, 84) : packRGB(58, 58, 60));
+  }
 
   // Failed electrical fixtures turn the Undertow into a deliberate tension
   // trough. Their glass and brackets occupy the grid; only the light's pulse
@@ -343,7 +371,8 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     ],
     placedPrefabs: [...WORKS_ROOMS.map(r => ({ id: `works-${r.id}`, x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.floor })),
       { id: 'works-bell-tea-engine', ...TEA.bounds }],
-    authoredLights: [lamp(180, 279, true, 150), lamp(30, 300, true, 70), lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),
+    authoredLights: [lamp(180, 279, true, 150), lamp(30, 300, true, 70), lamp(394, 276, true, 80, .06, .7),
+      lamp(WORKS_GATE.x, WORKS_GATE.arch.top + 4, true, 90, .05, .6), lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),
       lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true, 115, .1, .48), ...failingLights, ...machineLights],
     emitters: [], decors: [], refuge: { x: 857, y: 739 }, spellLab: null,
     vaultArch: null, vaultHoard: null, surfaceSpawn: null, surfaceSkyLine: null,

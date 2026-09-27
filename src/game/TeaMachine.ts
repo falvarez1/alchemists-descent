@@ -236,7 +236,10 @@ export class TeaMachine {
     } else if (s.completed) s.stageTicks++;
     this.frame(s);
     this.snapshot(s);
-    const near = Math.hypot(ctx.player.x - TEA.lever.x, ctx.player.y - TEA.lever.y) < 110;
+    // While a route seal (the Intake's barricade) still stands between the
+    // player and the crank, the barricade is the only instruction on screen.
+    const sealed = this.runtime?.mechanisms.some(m => m.routeSeal && m.state === 0) ?? false;
+    const near = !sealed && Math.hypot(ctx.player.x - TEA.lever.x, ctx.player.y - TEA.lever.y) < 110;
     // Throttled for the backup meter, but a new act or fault shows at once.
     if (ctx.state.frameCount % 10 === 0 || s.stage !== this.publishedStage) {
       this.publishedStage = s.stage; this.publish(near || this.inHall());

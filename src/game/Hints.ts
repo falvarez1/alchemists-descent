@@ -1,7 +1,7 @@
 import type { Ctx, HintApi, HintInfo } from '@/core/types';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { INTRO_REWARD_CARD } from '@/game/introObjectives';
-import { coldLockHint } from '@/game/LivingExpedition';
+import { worksHint } from '@/game/LivingExpedition';
 import { getSeenHints, markHintSeen } from '@/game/hints/seenHints';
 
 /** A teach-once popover body, paired with a contextual hint line. */
@@ -26,6 +26,9 @@ interface CellHit {
 
 /** Reach (cells, squared) at which each kind of interactable starts hinting. */
 const R_OBJECT = 24 * 24;
+/** Frames between teach-once popovers: the card auto-dismisses after 9 s, so
+ *  a new one never lands on (or instantly replaces) the one being read. */
+const TEACH_GAP = 660;
 const R_GOAL = 32 * 32;
 const FLASK_SCAN = 10; // half-box (cells) swept around the player for siphonables
 
@@ -41,6 +44,9 @@ export class HintSystem implements HintApi {
   private _current: HintInfo | null = null;
   private readonly taught: Set<string>;
   private readonly disposers: Array<() => void> = [];
+  /** Frame the last popover was shown, and event-driven lessons waiting their turn. */
+  private lastTeachFrame = -Infinity;
+  private readonly pending: Array<{ key: string; teach: Teach }> = [];
 
   constructor(ctx: Ctx) {
     this.taught = new Set<string>(getSeenHints());
@@ -51,7 +57,7 @@ export class HintSystem implements HintApi {
         this.teachOnce(ctx, 'grimoire-observed', {
           title: 'The Grimoire Watches',
           body: 'Reactions you witness are inscribed in your Grimoire. Press J to read what the cave has taught you.',
-        });
+        }, true);
       }),
       // Taught at the bench itself (not on card grant — that beat already
       // belongs to the intro's own popover, and the overlay shows one at a time).
@@ -59,7 +65,7 @@ export class HintSystem implements HintApi {
         this.teachOnce(ctx, 'wand-sentence', {
           title: 'Reading a Wand',
           body: 'A wand casts its cards left to right — modifiers charge the projectile that follows them. Hover a card to see exactly which slots it touches.',
-        });
+        }, true);
       }),
       ctx.events.on('levelChanged', ({ depth }) => {
         // Taught on the first descent, not in the first 30 seconds: D2 arrival
@@ -68,7 +74,7 @@ export class HintSystem implements HintApi {
           this.teachOnce(ctx, 'map-open', {
             title: 'The Map',
             body: 'Press M for the map — explored ground, waystones, and a click plants a waypoint compass.',
-          });
+          }, true);
         }
       }),
     );
@@ -82,12 +88,21 @@ export class HintSystem implements HintApi {
     return this._current;
   }
 
-  /** Mark a hint taught (persisted) and fire its one-time popover. */
-  private teachOnce(ctx: Ctx, key: string, teach: Teach): void {
+  /**
+   * Fire a lesson's one-time popover, one at a time. A lesson is only marked
+   * seen when its card is actually shown: one that arrives while another card
+   * is still up waits (event lessons queue; proximity lessons simply come
+   * round again the next time the player is near the thing).
+   */
+  private teachOnce(ctx: Ctx, key: string, teach: Teach, queue = false): void {
     if (this.taught.has(key)) return;
+    if (ctx.state.frameCount - this.lastTeachFrame < TEACH_GAP) {
+      if (queue && !this.pending.some((p) => p.key === key)) this.pending.push({ key, teach });
+      return;
+    }
     this.taught.add(key);
     markHintSeen(key);
-    if (ctx.levels.current?.living) return;
+    this.lastTeachFrame = ctx.state.frameCount;
     ctx.events.emit('hintTeach', { key, title: teach.title, body: teach.body });
   }
 
@@ -98,9 +113,15 @@ export class HintSystem implements HintApi {
       return;
     }
     const runtime = ctx.levels.current;
+    const living = !!runtime.living;
     const px = ctx.player.x;
     const py = ctx.player.y;
     const w = ctx.world;
+    const waiting = this.pending[0];
+    if (waiting && ctx.state.frameCount - this.lastTeachFrame >= TEACH_GAP) {
+      this.pending.shift();
+      this.teachOnce(ctx, waiting.key, waiting.teach);
+    }
     const pcx = Math.floor(px);
     const pcy = Math.floor(py);
     const candidates: Candidate[] = [];
@@ -134,7 +155,9 @@ export class HintSystem implements HintApi {
           priority: 3,
           dist2: d2,
           info: { key: 'portal', line, world: { x: portal.x, y: portal.y } },
-          teach: { title: 'The Portal', body: 'The way down. It opens once you carry the Golden Key to it.' },
+          teach: living
+            ? { title: 'The Lower Gate', body: 'A riveted grate in the Lower Bell’s floor: the way down. It opens for the brass bell, and only the Bell & Tea Engine makes one.' }
+            : { title: 'The Portal', body: 'The way down. It opens once you carry the Golden Key to it.' },
         });
       }
     }
@@ -147,7 +170,9 @@ export class HintSystem implements HintApi {
             priority: 3,
             dist2: d2,
             info: { key: 'key', line: runtime.living ? 'Take the brass bell. It opens the lower gate.' : 'Grab the Golden Key — it unseals the portal', world: { x: Math.round(pk.x), y: Math.round(pk.y) } },
-            teach: { title: 'The Golden Key', body: 'Take the key, then reach the portal to descend. No key, no exit.' },
+            teach: living
+              ? { title: 'The Brass Bell', body: 'Carry it down to the Lower Bell. The floor grate there rings open for it.' }
+              : { title: 'The Golden Key', body: 'Take the key, then reach the portal to descend. No key, no exit.' },
           });
         }
       }
@@ -224,20 +249,28 @@ export class HintSystem implements HintApi {
       if (!spec) continue;
       const d2 = (m.x - px) ** 2 + (m.y - py) ** 2;
       if (d2 <= R_OBJECT) {
-        const handwheel = runtime.living && m.id === 8101;
+        const handwheel = living && m.id === 8101;
+        const crank = living && m.id === 8201;
+        // The crank is spent while its chain runs; only a stall wants it again.
+        const tea = runtime.living?.tea;
+        if (crank && tea && tea.stage > 0 && !tea.stalled) continue;
         consider({ priority: 2, dist2: d2, info: {
-          key: handwheel ? 'works-valve' : spec.key,
-          line: handwheel ? 'Turn valve' : spec.line, world: { x: m.x, y: m.y },
-        }, teach: spec.teach });
+          key: handwheel ? 'works-valve' : crank ? 'works-crank' : spec.key,
+          line: handwheel ? 'Turn valve' : crank ? 'Pull crank' : spec.line, world: { x: m.x, y: m.y },
+        }, teach: crank ? null : spec.teach }); // the engine's own card teaches the crank
       }
     }
 
-    // D1's cold census outranks the flask line: beside a cistern of water,
-    // "siphon · pour" reads as the solution, and it isn't.
-    const cold = coldLockHint(ctx);
-    if (cold) consider({ priority: 3, dist2: 0, info: cold, teach: null });
+    // The Works' own notes (the barricade, a waiting engine fault, the lower
+    // gate) outrank generic lines: beside the duck's well, "siphon · pour" is
+    // only half the answer.
+    const works = worksHint(ctx);
+    if (works) consider({ priority: 3, dist2: 0, info: works, teach: null });
 
-    if (runtime.def.depth === 1 && !runtime.keyTaken) {
+    // Inside the engine's workshop and on its catwalk the machine's own notes
+    // speak; the dig's debris or the chain's fire should not start a lesson.
+    const atEngine = living && px > 444 && px < 1560 && py < 318;
+    if (runtime.def.depth === 1 && !runtime.keyTaken && !atEngine) {
       // One hot-cell scan serves both the burn-wood and carried-cells hints.
       const hot = nearestCell(18, (type) => type === Cell.Fire || type === Cell.Ember || type === Cell.Lava);
       const wood = nearestCell(14, (type) => type === Cell.Wood);
@@ -263,8 +296,10 @@ export class HintSystem implements HintApi {
       const flask = ctx.flask.state;
       const carried = flask.count > 0 && flask.material !== null;
       if (carried && hot) {
+        // Below the burning-seal lesson: beside a barricade on fire, the fire
+        // is the lesson, and the flask is the footnote.
         consider({
-          priority: 1.8,
+          priority: 1.65,
           dist2: hot.d2,
           info: { key: 'carried-cells', line: 'Flask: Q pours carried cells · RMB throws the bottle', world: { x: hot.x, y: hot.y } },
           teach: { title: 'Carried Cells', body: 'A flask stores exact cells from the world. Pour or throw them back out to douse, flood, weigh, or conduct.' },

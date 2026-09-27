@@ -67,15 +67,15 @@ export class WaystonePromptOverlay {
     if (request.card) {
       const name = CARD_DEFS[request.card].name;
       body.innerHTML =
-        '<p>A waystone lights when fire fills the stone bowl at its base, and from then on it is where you wake after dying.</p>' +
-        '<p>Your <b>' + name + '</b> card makes fire. Equip it, then hold its flame on the bowl until the brazier catches.</p>' +
+        '<p>A waystone lights when fire keeps burning in the stone bowl at its base, and from then on it is where you wake after dying.</p>' +
+        '<p>Your <b>' + name + '</b> card makes lasting fire. Equip it, then hold its flame on the bowl until the brazier catches.</p>' +
         '<p class="waystone-prompt-warn">Equipping replaces the spells on the wand in your hand.</p>';
       row.appendChild(this.button('Equip ' + name, true, () => this.close('equip')));
       row.appendChild(this.button('Not now', false, () => this.close('dismiss')));
     } else {
       body.innerHTML =
-        '<p>A waystone lights when fire fills the stone bowl at its base, and from then on it is where you wake after dying.</p>' +
-        '<p>Your wand cannot make fire yet. Bring fire to it: siphon lava into a flask and pour it into the bowl, push something burning onto it, or find a fire spell card.</p>';
+        '<p>A waystone lights when fire keeps burning in the stone bowl at its base, and from then on it is where you wake after dying.</p>' +
+        '<p>A Spark Bolt’s flash is gone before the bowl warms. Bring fire that lasts: pour lava into the bowl from a flask, push something burning onto it, or find a fire spell card.</p>';
       row.appendChild(this.button('Got it', true, () => this.close('dismiss')));
     }
 

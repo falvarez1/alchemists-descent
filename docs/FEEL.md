@@ -617,6 +617,20 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
 - Lerp follow (0.085) with a facing lookahead (+26 cells), idle zoom-in (1.13×
   after ~1 s of stillness), hard snap on spawns/transitions.
 - Crouch-peek offset (§1). Build mode pans with WASD.
+- **Floor clamp (every level):** the view never sinks below the world's bottom
+  row; a zoomed-in frame may sink by its hidden margin only. The old half-view
+  "void allowance" (`CAMERA_BOTTOM_VOID`) showed a third of a screen of black
+  under D1's Undertow and Lower Bell and under floor 4's arena.
+- **D1 barricade:** 14 × 31 wood under an iron lintel; moss caulks every fifth
+  row (the tinder that takes a Spark Bolt's flash), sealed oil pockets sit two
+  columns deep in its core at every fifth row, and it collapses (route-seal
+  plug, `breakFrac` .55) with a shower of embers that also clears its fire and
+  moss, so the doorway is passable at once. A metal sill keeps burning spill in
+  the doorway. The note says to stand well back; from there the first fire
+  lands about 3.5 s after spawn.
+- **Lower Bell grate:** the lock rings (gong + key jingle, a light shake) when
+  the bell comes within 95 cells; each 12-cell leaf then slides one cell every
+  2 ticks into its slot, grinding every 12 ticks, dust every 6.
 - **Frame look:** half-res RGB lighting with directional sweeps, bloom with a
   uniform emissive self-glow floor (no vignetted emissives), lit-cell soft knee
   (1.25/0.3/2.0) so bright floors don't bloom-wash, PostFx chromatic

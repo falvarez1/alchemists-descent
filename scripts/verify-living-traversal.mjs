@@ -170,87 +170,22 @@ try {
     await acceptDiscoveredPage();
   }
   assert.ok(report.discoveries.some(text => /bouncing charm/i.test(text)), 'The optional intake detour gives a spell through its real offer');
-  await moveTo(347, 'cross the intake to the return hatch');
-  await settleAt(347, 'land on the upper return rung');
-  await flyTo(400, 356, 'enter the lower intake tunnel');
-  await moveTo(520, 'follow the lower intake tunnel');
-  await moveTo(488, 'step around the handwheel platform');
-  await waitForGameplay(() => window.__game.ctx.player.levit >= 70);
-  await flyTo(488, 366, 'rise beside the sluice handwheel');
-  await settleAt(524, 'land at handwheel');
-  await page.screenshot({ path: `${output}/traversal-handwheel.png` });
-  await page.keyboard.press('KeyE');
-  await page.waitForFunction(() => window.__game.ctx.levels.current.mechanisms.find(m => m.kind === 'valve').state === 1, null, { timeout: 3000 });
-  assert.equal((await sample()).valve, 1, 'Handwheel opens through actual interaction');
-  await page.keyboard.press('KeyV');
-  await moveTo(965, 'drained sluice crossing');
-  await moveTo(1035, 'gallery entrance');
-  await moveTo(1428, 'feeding gallery and pressure chute');
-  await followChute({ x: 1432, y: 450 }, { x: 1415, y: 590 }, 'pressure chute');
-  await moveTo(1115, 'cross the pressure shelters');
-  await waitForGameplay(() => window.__game.ctx.player.y >= 705);
-  await settleAt(930, 'land at the east refuge steps');
-  await page.keyboard.down('KeyA');
-  await page.keyboard.press('Space', { delay: 90 });
-  await page.waitForTimeout(260);
-  await page.keyboard.up('KeyA');
-  await settleAt(910, 'step onto the refuge plinth');
-  await moveTo(880, 'walk through the frost shrine');
-  await waitForGameplay(() => window.__game.ctx.levels.current.pickups.some(pickup =>
-    pickup.kind === 'tome' && pickup.data.card === 'frostshard' && pickup.taken));
-  await moveTo(857, 'pressure chamber to refuge');
-  await settleAt(857, 'rest at warm stone');
-  await page.keyboard.up('KeyA'); await page.keyboard.up('KeyD');
-  await page.keyboard.up('Space'); await page.keyboard.up('KeyW'); await page.keyboard.up('KeyS');
-  // Rest is intentionally interruptible by a pursuing creature; the route
-  // audit does not turn that optional combat/reset beat into a traversal gate.
-  await page.waitForTimeout(500);
-  report.refugeRested = await page.evaluate(() => window.__game.ctx.levels.current.living.rested);
-  report.stages.push({ label: 'refuge rest', ...await sample() });
-  await page.screenshot({ path: `${output}/traversal-refuge.png` });
-  assert.ok(report.discoveries.some(text => /frost shard/i.test(text)), 'The lower refuge grants the return-loop ability');
-  await page.keyboard.press('KeyB');
-  await page.locator('#wand-bench.visible').waitFor();
-  await page.locator('#wand-bench [data-bench-card-id="frostshard"]').click();
-  await page.locator('#wand-bench [data-bench-wand="0"][data-bench-slot="0"]').click();
-  await page.waitForFunction(() => window.__game.ctx.wands.wands[0].cards[0] === 'frostshard');
-  await page.screenshot({ path: `${output}/traversal-bench.png` });
-  await page.setViewportSize({ width: 720, height: 480 });
-  await page.screenshot({ path: `${output}/traversal-bench-compact.png` });
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await page.keyboard.press('KeyB');
-  await moveTo(344, 'cross the silt garden to the return shaft');
-  await settleAt(344, 'stand beneath the return ladder');
-  // The authored landings deliberately alternate around a clear center lane.
-  // Rise through that lane, then drift onto every second west landing to
-  // recharge; trying to thrust straight through a platform is not a route.
-  for (const y of [780, 719, 649, 579, 509, 439, 369]) {
-    await waitForGameplay(() => window.__game.ctx.player.levit >= 95);
-    await flyTo(371, y, `return-shaft climb to ${y}`);
-    await settleAt(344, `return-shaft landing ${y}`);
-  }
-  await waitForGameplay(() => window.__game.ctx.player.levit >= 95);
-  await flyTo(347, 306, 'rise through the intake hatch');
-  await settleAt(370, 'land beside the cold census');
-  await page.screenshot({ path: `${output}/traversal-backtrack-intake.png` });
-  // The recessed tank is deliberately targetable from the safe hatch lip.
-  // Cast through the open inspection well; no precision drop into the water.
+  // The barricade on the forced route: stand back, one Spark Bolt click, and
+  // wait for the doorway to cool. It is the first thing the level asks for.
+  await moveTo(372, 'walk to the barricade');
+  await settleAt(372, 'stand back from the barricade');
+  assert.equal(await page.locator('#objective').innerText(), 'Burn through the barricade.');
+  await page.screenshot({ path: `${output}/traversal-barricade.png` });
   for (let cast = 0; cast < 3; cast++) {
-    await pointAtWorld(315, 338, true);
-    await page.waitForTimeout(650);
-    const open = await page.evaluate(() => window.__game.ctx.levels.current.mechanisms
-      .filter(mechanism => mechanism.id === 8301 || mechanism.id === 8302)
-      .every(gate => gate.state === 1));
-    if (open) break;
+    await pointAtWorld(405, 300, true);
+    await page.waitForTimeout(900);
+    if (await page.evaluate(() => window.__game.ctx.levels.current.mechanisms.find(m => m.id === 8401)?.state === 1)) break;
   }
-  await page.waitForFunction(() => {
-    const ctx = window.__game.ctx;
-    const gates = ctx.levels.current.mechanisms.filter(m => m.id === 8301 || m.id === 8302);
-    return gates.length === 2 && gates.every(gate => gate.state === 1 && !gate.dissolve?.length);
-  }, null, { timeout: 10000 });
-  report.stages.push({ label: 'cold census opened', ...await sample() });
-  await page.screenshot({ path: `${output}/traversal-cold-census.png` });
-  await settleAt(430, 'return to the engine crank');
+  await waitForGameplay(() => window.__game.ctx.levels.current.mechanisms.find(m => m.id === 8401)?.state === 1, 8000);
+  await waitForGameplay(() => { const w = window.__game.ctx.world; let f = 0; for (let y = 286; y <= 316; y++) for (let x = 394; x <= 420; x++) if (w.type(x, y) === 5) f++; return f < 6; }, 12000);
+  report.stages.push({ label: 'barricade burned', ...await sample() });
+  await page.screenshot({ path: `${output}/traversal-barricade-burned.png` });
+  await settleAt(430, 'walk through the doorway to the engine crank');
   // The engine is PLAYED: the probe pulls the crank, walks the catwalk under
   // the chain and answers each of the three faults with the real verb and
   // real input — a Spark Bolt click on the priming pan, a kick (F) at the
@@ -277,7 +212,9 @@ try {
     await pointAtWorld(bob.x, bob.y); await page.keyboard.press('KeyF'); report.machineVerbs.push({ verb: 'kick', kick });
     await page.waitForTimeout(600);
   }
-  await waitStage(7, 4000);
+  // Left alone the clockwork knocker frees the tollgate (~12 s): a missed
+  // kick costs time, never the route.
+  await waitStage(7, 16000);
   await moveTo(1026, 'follow the dominoes to the duck');
   await settleAt(1030, 'stand beside the grate');
   await waitStage(9);

@@ -1,7 +1,7 @@
 import type { BodyMaterial, Ctx, LevelRuntime, Mechanism, MechanismsApi } from '@/core/types';
 import { mechanismTriggersFor } from '@/core/mechanisms';
-import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
-import { COLOR_FN, EMPTY_COLOR, fireColor, packRGB } from '@/sim/colors';
+import { blocksEntity, Cell, isGas, isLiquid, isSoftGrowth } from '@/sim/CellType';
+import { COLOR_FN, EMPTY_COLOR, emberColor, fireColor, packRGB } from '@/sim/colors';
 import {
   BUOY_LATCH_FRAMES,
   DEFAULT_TRIGGER_LATCH_FRAMES,
@@ -669,7 +669,9 @@ export class Mechanisms implements MechanismsApi {
     const world = ctx.world;
     const mat = m.material ?? Cell.Stone;
     const fn = COLOR_FN[mat];
-    if (demolish && m.body) {
+    // A route seal that has mostly burned or been dug away collapses: the
+    // stump would still be a wall, and its level narrates its own fall.
+    if ((demolish || m.routeSeal) && m.body) {
       for (const [bx, by] of m.body) {
         if (!world.inBounds(bx, by)) continue;
         const i = world.idx(bx, by);
@@ -689,11 +691,25 @@ export class Mechanisms implements MechanismsApi {
         }
       }
     }
+    if (m.routeSeal) {
+      // Its tinder and its burning fragments come down with it: moss caulking
+      // and flame in the seal's own outline fall as a shower of embers, so the
+      // doorway is passable at once rather than burning on beside the player.
+      for (let y = m.y; y < m.y + m.h; y++) for (let x = m.x; x < m.x + m.w; x++) {
+        if (!world.inBounds(x, y)) continue;
+        const i = world.idx(x, y), t = world.types[i];
+        if (t !== Cell.Fire && !isSoftGrowth(t)) continue;
+        world.clearCellAt(i);
+        if (entityRandom() < 0.35) ctx.particles.spawn(x, y, (entityRandom() - 0.5) * 1.1, 0.2 + entityRandom() * 0.6,
+          null, emberColor(), 22 + Math.floor(entityRandom() * 18), { grav: 0.08, glow: 2 });
+      }
+      ctx.audio.at(m.x + m.w / 2, m.y + m.h / 2, () => ctx.audio.noiseBurst(0.35, 420, 0.12));
+    }
     ctx.audio.tone(140, 220, 0.16, 'sawtooth', 0.14);
     ctx.particles.burst(m.x + m.w / 2, m.y + m.h / 2, 8, null, () => packRGB(180, 150, 110), 1.2, {
       grav: 0.05,
     });
-    ctx.events.emit('toast', { text: 'A seal gives way.' });
+    if (!m.routeSeal) ctx.events.emit('toast', { text: 'A seal gives way.' });
   }
 
   /** One bounded sensor-zone read (the sensorType decides what counts). */

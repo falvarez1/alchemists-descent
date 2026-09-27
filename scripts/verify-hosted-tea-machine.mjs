@@ -13,10 +13,22 @@ try {
   assert.equal(await page.evaluate(() => !!window.__game), false);
   await page.locator('[data-entry="begin"]').click();
   await page.locator('#expedition-entry').waitFor({ state: 'hidden' });
+  // The Intake's oil-soaked barricade stands between the spawn and the crank.
+  // Walk up to it, then Spark Bolt it just ahead of the alchemist (the camera
+  // follows him, so "just right of centre" is the timber) until it collapses
+  // and the engine's crank card appears.
+  await page.keyboard.down('KeyD');
+  await page.waitForTimeout(2600);
+  await page.keyboard.up('KeyD');
+  const canvas = await page.locator('#canvas-holder > canvas').boundingBox();
+  for (let i = 0; i < 6; i++) {
+    await page.mouse.click(canvas.x + canvas.width * 0.6, canvas.y + canvas.height * 0.47);
+    await page.waitForTimeout(1500);
+    await page.keyboard.down('KeyD'); await page.waitForTimeout(700); await page.keyboard.up('KeyD');
+    if (await page.locator('#tea-view:not([hidden])').count()) break;
+  }
   await page.keyboard.down('KeyD');
   await page.locator('#tea-view:not([hidden])').waitFor({ timeout: 12000 });
-  // The crank is behind the cold lock: this public-build probe expects a
-  // save whose cold lock is already open (or a build without one).
   const running = () => page.evaluate(() => /First, a little powder|coupling/.test(document.querySelector('#tea-view strong')?.textContent ?? ''));
   for (let i = 0; i < 60; i++) {
     await page.keyboard.press('KeyE'); await page.waitForTimeout(80);

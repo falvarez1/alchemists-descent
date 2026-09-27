@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { drawTeaLinkages } from '@/render/TeaMachineLinkages';
+import { drawWorksFixtures } from '@/render/WorksFixtures';
 import { interpolateBody } from '@/render/RenderPoses';
 import { INK, Pen, cameraView, type RGB } from '@/render/sprites/FineArt';
 
@@ -11,6 +12,7 @@ const BEAK: RGB = [0.85, 0.38, 0.09];
 /** Wheels, rods and cables follow the solver; the duck rides its carriage. */
 export function drawTeaMachineDecor(out: PixelSurface, light: LightField, ctx: Ctx, alpha = 1): void {
   if (!ctx.levels.current?.living?.tea) return;
+  drawWorksFixtures(out, light, ctx);
   drawTeaLinkages(out, light, ctx, alpha);
   const duck = ctx.rigidBodies.bodies.find(b => b.tag === 'tea-duck');
   if (!duck) return;

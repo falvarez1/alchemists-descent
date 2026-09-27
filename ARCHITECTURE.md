@@ -143,6 +143,8 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
                           art draws through it so the frame shares one grain
     TeaMachineLinkages.ts Bell & Tea Engine linkage drawings: wheels, cables
                           and rods follow solver poses + real plate travel
+    WorksFixtures.ts      D1 fixtures: barricade straps + sign, the Lower Bell
+                          floor grate's archway, lock bell and sliding bars
   audio/
     AudioEngine.ts        Procedural WebAudio SFX synthesis; mix buses -> glue
                           compressor -> limiter -> soft clip -> master

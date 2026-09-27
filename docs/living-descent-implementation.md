@@ -109,8 +109,10 @@ Browser probes archive screenshots into separate runs under the ignored root
 `screenshots/living-descent/` folder, with a browsable `index.html` gallery. The
 shared browser launcher preserves previous runs instead of overwriting them.
 The traversal probe completes the first level from its actual spawn using normal
-movement, jumping/levitation, a glowseed and the handwheel: sluice, gallery,
-pressure shelters, refuge rest and Frost Shard, the return climb and cold lock, the engine and its catwalk bell, the garden's west chute, undertow, boon choice and arrival
+movement, jumping/levitation and the starting wand: the Intake's spell page, the
+barricade (one Spark Bolt), the engine (pan, Persuader, pour) and its catwalk bell,
+the receiver ladder, gallery, pressure shelters, refuge, the garden's west chute,
+undertow, the Lower Bell's floor grate, boon choice and arrival
 in D2 alive. It makes no position, health, inventory or terrain changes. Its
 authored steering is evidence of traversability, not an unfamiliar-player test.
 
