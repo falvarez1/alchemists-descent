@@ -68,6 +68,15 @@ export function keyLabel(code: string): string {
   return code.replace('Key', '').replace('Arrow', '').replace('ShiftLeft', 'Shift').replace('ShiftRight', 'Right Shift');
 }
 
+/**
+ * The flask belt answers to the digit row after the two wands (1, 2): slot 0
+ * is key 3. Every player-facing flask name uses the KEY, so the toast for
+ * pressing 5 names the same flask the HUD labels 5.
+ */
+export function flaskSlotKey(index: number): string {
+  return String(index + 3);
+}
+
 /** Translate once at the input boundary; all gameplay keeps canonical action codes. */
 export function gameplayCode(code: string): string {
   const bindings = getBindings();

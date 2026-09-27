@@ -2,7 +2,7 @@ import type { Ctx, PerkId } from '@/core/types';
 import { livingObjective } from '@/game/LivingExpedition';
 import { canHumiliate } from '@/combat/Trickshot';
 import { worksRoomAt } from '@/world/breathingWorks';
-import { getBindings, keyLabel } from '@/input/bindings';
+import { flaskSlotKey, getBindings, keyLabel } from '@/input/bindings';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { floorLabel } from '@/config/worldgraph';
 import { CARD_DEFS } from '@/combat/wands/cards';
@@ -386,12 +386,12 @@ export class Hud {
     for (let i = 0; i < this.ctx.flask.slots.length; i++) {
       const root = document.createElement('div');
       root.className = 'flask-slot';
-      root.title = `Flask ${i + 1}`;
+      root.title = `Flask ${flaskSlotKey(i)}`;
       const fill = document.createElement('div');
       fill.className = 'flask-slot-fill';
       const key = document.createElement('div');
       key.className = 'flask-slot-key';
-      key.textContent = String(i + 3);
+      key.textContent = flaskSlotKey(i);
       const count = document.createElement('div');
       count.className = 'flask-slot-count';
       count.textContent = '0';
@@ -782,13 +782,13 @@ export class Hud {
       rendered.count.textContent = slot.count > 0 ? String(slot.count) : '';
       if (slot.material === null || slot.count === 0) {
         rendered.fill.style.backgroundColor = '';
-        rendered.root.title = `Flask ${i + 1}: Empty`;
+        rendered.root.title = `Flask ${flaskSlotKey(i)}: empty`;
         rendered.name.textContent = 'Empty';
       } else {
         const c = COLOR_FN[slot.material]();
         rendered.fill.style.backgroundColor = 'rgb(' + unpackR(c) + ', ' + unpackG(c) + ', ' + unpackB(c) + ')';
         const name = ctx.params.materials[slot.material]?.name ?? 'Unknown material';
-        rendered.root.title = `Flask ${i + 1}: ${name} (${slot.count}/${slot.capacity})`;
+        rendered.root.title = `Flask ${flaskSlotKey(i)}: ${name} (${slot.count}/${slot.capacity})`;
         rendered.name.textContent = name === 'Liquid Nitrogen' ? 'Nitrogen' : name;
       }
     }

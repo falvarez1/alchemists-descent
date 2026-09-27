@@ -111,6 +111,8 @@ export function ensureSandboxWorldDetached(ctx: Ctx, reason = 'SANDBOX WORLD DET
   ctx.world = scratch;
   ctx.enemies.length = 0;
   resetCombatTransients(ctx, { simulationAccumulator: true });
-  ctx.events.emit('toast', { text: reason });
+  // An author wants to know the Sandbox is painting a copy; a player going
+  // back to the title or into the Workshop has nothing to learn from it.
+  if (__AUTHORING__) ctx.events.emit('toast', { text: reason });
   return true;
 }

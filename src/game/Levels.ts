@@ -842,10 +842,12 @@ export class Levels implements LevelsApi {
     const runtime = this.current;
     const label = runtime?.def.name ?? levelId.toUpperCase();
     const prefix = mode === 'test' ? 'Test run' : 'Fresh expedition';
-    const diff = difficultyMods(ctx.state);
-    ctx.events.emit('toast', {
-      text: `${prefix}: ${titleCaseName(label)} · ${diff.roman} ${diff.name}`,
-    });
+    // A player's run announces itself with the floor's title card; only an
+    // authoring test run still names its difficulty tier, for the tester.
+    if (mode === 'test') {
+      const diff = difficultyMods(ctx.state);
+      ctx.events.emit('toast', { text: `${prefix}: ${titleCaseName(label)} · ${diff.roman} ${diff.name}` });
+    }
     return {
       ok: true,
       message: `${prefix} started at ${label}.`,

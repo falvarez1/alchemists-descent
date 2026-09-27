@@ -9,7 +9,7 @@ import { BUILDER_REQUEST_CLOSE_EVENT } from '@/app/builderCloseRequest';
 import type { BuilderCloseRequestDetail } from '@/app/builderCloseRequest';
 import { throwGlowseed } from '@/game/LivingExpedition';
 import { releaseWeaverLeg } from '@/combat/LooseWeaverLeg';
-import { gameplayCode } from '@/input/bindings';
+import { flaskSlotKey, gameplayCode } from '@/input/bindings';
 
 type KeyboardLockApi = {
   lock?: (keyCodes?: string[]) => Promise<void>;
@@ -436,10 +436,11 @@ export class InputManager {
   private selectFlaskSlot(idx: number): void {
     if (!this.ctx.flask.selectSlot(idx)) return;
     const slot = this.ctx.flask.state;
-    const material = slot.material === null
-      ? 'EMPTY'
-      : (this.ctx.params.materials[slot.material]?.name ?? `MATERIAL ${slot.material}`).toUpperCase();
-    this.ctx.events.emit('toast', { text: `FLASK ${idx + 1}: ${material}` });
+    const material = slot.material === null || slot.count <= 0
+      ? 'empty'
+      : (this.ctx.params.materials[slot.material]?.name ?? `material ${slot.material}`);
+    // Named by the key that picked it, as the HUD belt labels it.
+    this.ctx.events.emit('toast', { text: `Flask ${flaskSlotKey(idx)}: ${material}` });
   }
 
   private shouldIgnoreKeyboard(e: KeyboardEvent): boolean {
