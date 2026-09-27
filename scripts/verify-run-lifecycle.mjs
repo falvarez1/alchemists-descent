@@ -108,6 +108,7 @@ try {
   }
   const hudAfter = await page.$$eval('#phial-row .phial', (nodes) => nodes.map((n) => n.dataset.state));
   check('HUD shows every phial spent', hudAfter.every((x) => x === 'empty'), JSON.stringify(hudAfter));
+  await page.waitForTimeout(1300); // the letterbox lifts
   await shot('hud-phials-spent', { x: 0, y: 0, width: 520, height: 260 });
 
   /* ---------------- the last death ---------------- */

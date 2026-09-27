@@ -37,6 +37,29 @@ const menu = await page.evaluate(() => ({
 check('player build: no "Set up a run" in the pause menu', !menu.launcher, JSON.stringify(menu));
 check('player build: Abandon run + Quit to title offered', menu.abandon && menu.title && !menu.restart, JSON.stringify(menu));
 if (out) await page.screenshot({ path: `${out}/prod-pause.png` });
+// The Workshop, once earned, is the sandbox; its header Play leads back to
+// the title (never to the authoring run launcher).
+await page.evaluate(() => {
+  localStorage.setItem('alchemists-descent-meta', JSON.stringify({ version: 1, runsEnded: 1, workshopUnlocked: true, unlockedKits: ['spark'] }));
+});
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 30000 });
+const ws = await page.$('#expedition-entry [data-entry="workshop"]:not([hidden])');
+check('The Workshop is offered after a first run', !!ws);
+if (ws) {
+  const wb = await ws.boundingBox();
+  await page.mouse.click(wb.x + wb.width / 2, wb.y + wb.height / 2);
+  await page.waitForFunction(() => document.getElementById('expedition-entry').hidden && !document.body.classList.contains('play-active'), null, { timeout: 10000 });
+  if (out) await page.screenshot({ path: `${out}/prod-workshop.png` });
+  const play = await (await page.$('#mode-play-btn')).boundingBox();
+  await page.mouse.click(play.x + play.width / 2, play.y + play.height / 2);
+  await page.waitForTimeout(400);
+  const back = await page.evaluate(() => ({
+    entry: !document.getElementById('expedition-entry').hidden,
+    launcher: document.getElementById('run-launcher')?.classList.contains('visible') === true,
+  }));
+  check('Workshop Play returns to the title, not the run launcher', back.entry && !back.launcher, JSON.stringify(back));
+}
 for (const e of errors) { console.error('PAGE ERROR', e); fails++; }
 await browser.close();
 console.log(fails ? `PROD PROBE FAILED ${fails}` : 'PROD PROBE OK');

@@ -143,7 +143,10 @@ export class RunHud {
     if (run.over) {
       // The death that found no phial: every glass is already dark.
       this.deathRow.set(0, run.maxPhials);
-      this.deathNote.textContent = 'No return phials left. The descent ends here.';
+      // A death after the Colossus fell (its last blast reaches far) is not a defeat.
+      this.deathNote.textContent = run.lastResult?.summary.outcome === 'fallen'
+        ? 'No return phials left. The descent ends here.'
+        : 'The run is already over; the ledger is written.';
       if (respawn) respawn.hidden = true;
       this.ledgerButton.hidden = false;
       return;

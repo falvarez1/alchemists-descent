@@ -78,6 +78,10 @@ export class ExpeditionEntry {
       // before the launcher's own listener.
       window.addEventListener('run-launcher-request', this.onLauncherRequest, { capture: true });
       this.disposers.push(() => window.removeEventListener('run-launcher-request', this.onLauncherRequest, { capture: true }));
+      // The launcher claims the header Play button itself (capture on the
+      // button); a document-level capture sees the click first.
+      document.addEventListener('click', this.onPlayButtonCapture, true);
+      this.disposers.push(() => document.removeEventListener('click', this.onPlayButtonCapture, true));
     }
   }
 
@@ -115,6 +119,16 @@ export class ExpeditionEntry {
 
   private readonly onTitleRequest = (): void => {
     if (this.ctx.state.mode === 'play') document.getElementById('mode-build-btn')?.click();
+    this.show();
+  };
+
+  private readonly onPlayButtonCapture = (event: MouseEvent): void => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target?.closest('#mode-play-btn')) return;
+    if (this.ctx.state.playtestSource !== null || document.body.classList.contains('builder-open')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    (target.closest('#mode-play-btn') as HTMLElement | null)?.blur();
     this.show();
   };
 
